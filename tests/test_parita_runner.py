@@ -6,7 +6,7 @@ gia' difesa, piu' debolmente**, da `tests/test_runner_catalogo.py:59,69`, che
 pretende che i due runner accettino `tools` e `dispatcher`. Questo cancello non
 e' nuovo: e' piu' forte, perche' confronta le firme INTERE (ordine, nomi,
 default) invece di due nomi, e perche' i metodi li DERIVA invece di
-elencarli. Il router (`instradamento.py`) sceglie
+elencarli. Il router (`steering.py`) sceglie
 fra i due per DUCK-TYPING: chiama `chat(...)` su qualunque runner la catena gli
 metta davanti, e se le due firme divergono il ripiego da un provider all'altro
 si rompe **sul percorso che esiste apposta per non rompersi**.

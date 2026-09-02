@@ -64,7 +64,7 @@ riceve deve poterlo leggere **senza andare a cercare altrove** cosa voglia dire.
 Gli oggetti si collegano **per identificatore**, mai copiando i dati. Se due posti sanno la stessa
 cosa, prima o poi uno dei due mente, e non si saprà quale.
 > *Pagata tre volte in un giorno:* la mappa area→entità costruita con due chiamate WebSocket mentre
-> `gerarchia()` la faceva già, e meglio · `PRICING.get(model, PRICING["_default"])` scritto in linea
+> `hierarchy()` la faceva già, e meglio · `PRICING.get(model, PRICING["_default"])` scritto in linea
 > in due runner con la funzione che lo fa ferma e inutilizzata · la regola di «notevole» in
 > `buildDisplayChain` e `reconcile_chain`, che è stata **il meccanismo** con cui la pagina Modelli
 > poteva essere vera riga per riga e falsa nel complesso.

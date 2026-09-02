@@ -9,7 +9,7 @@ n.1 della mappa del prodotto, vista da dentro (due intelligenze nella stessa
 casa che ne vedono due diverse, vedi
 docs/design/2026-08-05-la-conoscenza-di-hiris.md, §7).
 
-Dopo: una fonte sola, il nucleo (`hiris.app.casa.nucleo.componi`, condiviso
+Dopo: una fonte sola, il nucleo (`hiris.app.casa.nucleo.compose`, condiviso
 con GET /api/briefing tramite `handlers_casa.compose_briefing` -- stessa
 composizione per la rotta e per la chat, non due che potrebbero divergere).
 Le sessioni precedenti restano A PARTE: sono cronologia di conversazioni
@@ -413,7 +413,7 @@ async def test_le_sessioni_precedenti_restano_anche_senza_nucleo(aiohttp_client,
 # proverebbe niente -- e' il difetto che la prova di mutazione ha gia'
 # trovato sette volte su questo ramo.
 #
-# `ToolDispatcher`, gli archivi (`ArchivioCasa`, `MemoryStore`) e
+# `ToolDispatcher`, gli archivi (`HomeSpaceStore`, `MemoryStore`) e
 # `handle_chat` restano codice di produzione vero, esattamente come nella
 # chat reale -- solo la rete verso Anthropic e' finta.
 # ---------------------------------------------------------------------------

@@ -6,7 +6,7 @@ il parsing di OGNI risposta, rami d'errore inclusi: se sbaglia, il ponte
 risponde `[vuoto]` o `[errore runner]` a tutto, e nessuno se ne accorge finche'
 un utente non se ne lamenta.
 
-Questo file esercita `runner.leggi_flusso` DIRETTAMENTE, su flussi costruiti a
+Questo file esercita `runner.read_stream` DIRETTAMENTE, su flussi costruiti a
 mano (la funzione e' pura: nessun subprocess, nessuna rete), e poi pinna gli
 esiti che `_reason_chat` ne ricava -- uno per uno, perche' un ramo d'errore che
 sparisce e' un modo di fallire che diventa muto.
@@ -444,7 +444,7 @@ def test_il_sentinella_del_flusso_incompleto_e_filtrato_dalla_cronologia():
 
 
 # ── fetta "il ponte riceve gli strumenti" (parita' B, Task 5): la raccolta di
-# `tools_called` dallo STESSO flusso che `leggi_flusso` gia' legge -- nessuna
+# `tools_called` dallo STESSO flusso che `read_stream` gia' legge -- nessuna
 # seconda lettura -- e la forma nella `decision` che il poll (handlers_chat.py)
 # restituisce come `debug.tools_called`. La ragione: da questo task `remember`
 # e' raggiungibile ANCHE dal ponte, e scrive in `memoria.db`; senza questo
@@ -554,7 +554,7 @@ def test_un_tool_result_senza_tool_use_corrispondente_non_solleva():
 
 def test_una_chiamata_mai_risolta_non_e_uguale_a_una_riuscita():
     """Fix round 1, Important. Prima di questo fix, un `tool_use` il cui
-    `tool_result` non arriva MAI (flusso troncato -- `risultato_presente`
+    `tool_result` non arriva MAI (flusso troncato -- `has_result`
     `False` -- o un `result` di errore/max-turns che chiude il flusso con una
     chiamata ancora aperta pur con `rc == 0`) produceva la STESSA forma di una
     chiamata riuscita: `{"tool", "input"}`, senza nessuna terza chiave. Un
@@ -564,7 +564,7 @@ def test_una_chiamata_mai_risolta_non_e_uguale_a_una_riuscita():
 
     Qui il flusso si tronca DAVVERO subito dopo il `tool_use` (nessun evento
     `result` finale): e' il caso (3) gia' dichiarato da
-    `risultato_presente`, incontrato ora anche da `tools_called`."""
+    `has_result`, incontrato ora anche da `tools_called`."""
     esito = runner.read_stream(_flusso(
         _init(), _tool_use("mcp__hiris__remember", {"testo": "mai confermato"}, id_="t1")))
 

@@ -468,7 +468,7 @@ async def test_la_sonda_vera_contro_il_server_vero(ponte_con_configurazione_pred
     esattamente il guasto gia' visto su questo ramo, quando il worker si
     prendeva 401 ogni tre secondi all'infinito.
 
-    `sonda_strumenti` e' sincrona e bloccante (httpx): gira in un thread,
+    `probe_tools` e' sincrona e bloccante (httpx): gira in un thread,
     come in produzione (`run_loop` -> `run_in_executor`). Chiamata
     direttamente qui bloccherebbe il loop che deve servirla, e il test
     andrebbe in stallo invece di fallire."""
@@ -650,7 +650,7 @@ def _riga_init(*, stato: str = "connected", nomi=None) -> str:
     arrivati DAVVERO: il server col nostro nome in stato `connected`, e tutti e
     i `mcp__<server>__*` del catalogo nella lista `tools` risolta.
 
-    Si costruisce da `runner.nomi_mcp()` e `runner._nome_server_mcp()`, non a
+    Si costruisce da `runner.mcp_names()` e `runner._mcp_server_name()`, non a
     mano: un elenco ricopiato qui sarebbe il secondo catalogo, e uno
     strumento che entrasse in `casa/strumenti.py` lascerebbe questo finto init
     disallineato dal vero senza che nessuno se ne accorga. `ToolSearch` c'e'
@@ -1293,7 +1293,7 @@ def test_l_init_che_smentisce_la_sonda_butta_l_invocazione(init_rotto, come, cap
     assert cli.invocations == 2
 
     # L'INVARIANTE del fix: UNA identita' sola per l'intero turno, non una
-    # per invocazione della CLI. Se `id_turno = secrets.token_urlsafe(9)`
+    # per invocazione della CLI. Se `exchange_id = secrets.token_urlsafe(9)`
     # migrasse DENTRO `_invoca` -- errore facilissimo, dato che il codice gia'
     # chiama `config_mcp` dentro quella chiusura -- verrebbe coniata due
     # volte (una per ciascuna delle due chiamate a `_invoca` sopra) e questo

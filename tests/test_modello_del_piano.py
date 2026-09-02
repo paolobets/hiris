@@ -2,7 +2,7 @@
 
 Fino alla 3.1.0 era un effetto collaterale del modello di Claude API:
 `handlers_chat._enqueue_chat_job` componeva
-`modello_cli(resolve_model("auto", "chat", provider_models["claude"]))`, e la
+`cli_model(resolve_model("auto", "chat", provider_models["claude"]))`, e la
 riga del piano nella pagina Modelli mostrava tre radio spenti. Un campo solo
 serviva due economie opposte -- a consumo si sceglie il modello frugale, nel
 piano il modello non costa di piu' -- e l'impianto del proprietario, misurato
@@ -37,7 +37,7 @@ def test_un_archivio_senza_il_campo_riceve_il_predefinito():
 ])
 def test_un_identificatore_si_riporta_dentro_invece_di_far_fallire(scritto, atteso):
     """Come i due `_clamp_int` accanto: un valore fuori range non e' un corpo
-    malformato, si riporta dentro. Il riduttore e' `modello_cli`, che qui trova
+    malformato, si riporta dentro. Il riduttore e' `cli_model`, che qui trova
     la sua unica casa."""
     assert handlers_models._clean_bridge({"modello": scritto})["modello"] == atteso
 

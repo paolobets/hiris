@@ -181,7 +181,7 @@ async def test_without_statistics_a_long_window_stays_on_detail():
 async def test_the_covered_window_rewrites_the_timezone_from_the_UTC_source():
     """I3: le statistiche di Home Assistant tornano SEMPRE in UTC -- e' il
     caso NORMALE, non l'eccezione. Nessuno degli altri test lo esercita: se
-    la riscrittura del fuso in `_coperta` sparisse, nessuno se ne
+    la riscrittura del fuso in `_covered` sparisse, nessuno se ne
     accorgerebbe, perche' gli altri test partono gia' da un sorgente in
     +02:00. 13:00 UTC di agosto sono 15:00 a Roma (CEST, +02:00)."""
     ha = _FintoHA(statistiche={"serie": {"sensor.camera": [
@@ -198,11 +198,11 @@ async def test_bands_beyond_the_max_are_sampled_like_detail():
     """C2: uno slice secco (`fasce[-N:]`) sposta `punti[0]` avanti nel tempo
     mentre `finestra_coperta` restava calcolata sull'elenco INTERO -- una
     copertura dichiarata e mai consegnata. Il ramo statistiche deve
-    campionare come il gemello del dettaglio (`_assottiglia`, primo e ultimo
+    campionare come il gemello del dettaglio (`_sample`, primo e ultimo
     sempre compresi) e dichiarare il numero VERO di fasce quando riduce.
 
     Il confronto fra `punti[0]["inizio"]` e `finestra_coperta["da"]` passa
-    per `epoch_istante`, non per l'uguaglianza di stringa: le fasce tornano
+    per `instant_epoch`, non per l'uguaglianza di stringa: le fasce tornano
     in UTC (`+00:00`) mentre `finestra_coperta` e' riscritta nel fuso della
     casa (`+02:00`) -- stesso istante, offset diverso, stessa fondamenta 3
     del test precedente."""
@@ -243,7 +243,7 @@ async def test_band_with_numeric_start_fails_loudly():
 @pytest.mark.asyncio
 async def test_band_without_start_fails_loudly():
     """Lo stesso guasto, ma con la chiave assente invece che di un tipo
-    inatteso: anche qui `epoch_istante` torna `None`, e deve fermare la
+    inatteso: anche qui `instant_epoch` torna `None`, e deve fermare la
     risposta invece di essere confuso con un vuoto legittimo."""
     ha = _FintoHA(statistiche={"serie": {"sensor.camera": [
         {"minimo": 25.9, "massimo": 27.1, "media": 26.5},
@@ -268,7 +268,7 @@ async def test_truly_empty_statistics_stay_the_no_recording_occurrence():
 
 
 def test_covered_with_unreadable_instant_has_consistent_types():
-    """`_coperta` non deve mescolare tipi nella stessa coppia: se l'istante
+    """`_covered` non deve mescolare tipi nella stessa coppia: se l'istante
     grezzo non si legge, sia `da` sia `a` restano stringhe -- un `da`
     numerico accanto a un `a` ISO e' la stessa famiglia di difetto di una
     grana taciuta."""
@@ -290,7 +290,7 @@ def test_covered_with_missing_instant_stays_none():
 @pytest.mark.asyncio
 async def test_the_client_truncation_becomes_a_declared_floor():
     """`ha.history` promette `troncato` SEMPRE, apposta perche' «chi legge
-    deve poter sapere che e' scattato». Se `tempo.andamento` non lo legge, il
+    deve poter sapere che e' scattato». Se `tempo.trend` non lo legge, il
     conteggio nella nota e' un pavimento spacciato per esatto: su 12.000
     cambi veri direbbe «5000 cambi», non «almeno 5000»."""
     punti = [{"quando": f"2026-08-24T00:{m:02d}:00+02:00", "valore": "x"}
@@ -351,7 +351,7 @@ async def test_bands_also_come_out_in_the_home_space_timezone():
 async def test_the_end_of_a_band_comes_out_in_the_SAME_timezone_as_the_start():
     """Punto 5 del mandato «il bilancio dell'energia» (BASSO, 27/08/2026):
     la traduzione unificata (`HAClient._request_statistics`) ha aggiunto
-    la chiave `fine` a ogni fascia, ma `andamento` riscriveva nel fuso della
+    la chiave `fine` a ogni fascia, ma `trend` riscriveva nel fuso della
     casa SOLO `inizio` -- lo stesso punto usciva con `inizio` a +02:00 e
     `fine` ancora a +00:00, due fusi nella stessa risposta (fondamenta 3
     rotta dentro un dizionario solo, gli stessi commenti di questo modulo la

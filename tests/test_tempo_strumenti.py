@@ -22,7 +22,7 @@ def test_il_catalogo_porta_tredici_strumenti():
     assert {"trend", "logbook"} <= nomi
 
 
-# La convenzione di nomenclatura `nome -> self._nome` regge su dodici dei
+# La convenzione di nomenclatura `nome -> self._name` regge su dodici dei
 # tredici strumenti: `agenda` e' servito da `_list_agenda`, non da
 # `_promesse` (quell'attributo e' gia' l'archivio, vedi il commento nel
 # `__init__` del dispatcher). L'eccezione e' dichiarata QUI, non nascosta
@@ -133,7 +133,7 @@ async def test_andamento_passa_unita_e_state_class_letti_dallo_specchio():
 @pytest.mark.asyncio
 async def test_accaduto_passa_la_cronaca_del_dispatcher_a_tempo_accaduto():
     """Il gemello del test sopra, per `logbook`. Senza questo test la prova
-    mentale che conta e' negativa: se `journal=self._cronaca` diventasse
+    mentale che conta e' negativa: se `journal=self._journal` diventasse
     `journal=None` nel gestore, NESSUN test della suite arrossirebbe -- ne'
     questi sette, ne' `test_tempo_accaduto.py`, che prova `tempo.logbook` e
     non il dispatcher. L'effetto sarebbe silenzioso: la risposta continua ad

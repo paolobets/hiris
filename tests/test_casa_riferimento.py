@@ -174,7 +174,7 @@ def test_il_nucleo_dichiara_l_istante_presente_nel_fuso_della_casa():
     ma nessuno gli diceva l'ora. Alle 21:01 il modello ha creduto fossero le
     23:52 e ha fissato la promessa alle 23:55; se ne e' accorto e l'ha
     disdetta, ma quella sbagliata era gia' stata accettata. Il server l'ora
-    ce l'ha esatta -- `crea(dati, adesso=time.time())` la usa per VALIDARE
+    ce l'ha esatta -- `create(dati, adesso=time.time())` la usa per VALIDARE
     l'istante che il modello ha indovinato: si chiedeva al modello un fatto
     che HIRIS possiede, e poi lo si giudicava con la propria copia.
 
@@ -191,7 +191,7 @@ def test_il_nucleo_dichiara_l_istante_presente_nel_fuso_della_casa():
 def test_il_nucleo_VERO_porta_l_orologio_e_non_solo_quello_di_prova(archivio):
     """Chi lo riempie? La domanda che questo progetto ha gia' pagato tre volte.
 
-    `componi` e' pura e riceve `adesso`: se `compose_briefing` -- l'unico
+    `compose` e' pura e riceve `adesso`: se `compose_briefing` -- l'unico
     compositore di produzione, condiviso dalla chat sincrona, dal ponte e da
     GET /api/briefing -- non gliela passa, il parametro esiste, i test passano,
     e il modello continua a indovinare l'ora esattamente come prima."""
@@ -209,7 +209,7 @@ def test_il_nucleo_VERO_porta_l_orologio_e_non_solo_quello_di_prova(archivio):
 
 def test_senza_l_istante_il_nucleo_non_ne_inventa_uno():
     """Stessa disciplina del fuso: tacere e' meglio che affermare un'ora a
-    caso. `componi` resta PURA -- non legge l'orologio, lo riceve."""
+    caso. `compose` resta PURA -- non legge l'orologio, lo riceve."""
     testo = _nucleo(reference_frame(_CONFIG))
     assert "adesso sono le" not in testo.lower()
 

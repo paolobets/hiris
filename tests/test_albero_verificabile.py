@@ -2,7 +2,7 @@
 
 Fetta 4 di `docs/design/2026-08-17-piano-i-sette-che-mancano.md`.
 
-**Il difetto che questo file sorveglia.** `casa/anagrafe.gerarchia()` e'
+**Il difetto che questo file sorveglia.** `casa/anagrafe.hierarchy()` e'
 un'AFFERMAZIONE che HIRIS fa sulla casa: la costruisce dai registri, ci ragiona
 sopra, e niente la verifica. Se un'area contiene cose che HIRIS non le
 attribuisce -- o peggio, se HIRIS le attribuisce cose che non ci sono -- non
@@ -30,8 +30,8 @@ Le prove sono in cinque parti:
 5. **la catena**, dall'app fino al testo e fino a `/api/home-space`, senza rete.
 
 Ognuna di queste prove sa PRODURRE il difetto che sorveglia -- verificato per
-mutazione, non per fiducia: togliere il ramo di `_avviso_confronto` che tace
-quando tutto combacia fa fallire il gruppo 1; togliere `_fuori_dal_confronto`
+mutazione, non per fiducia: togliere il ramo di `_comparison_notice` che tace
+quando tutto combacia fa fallire il gruppo 1; togliere `_excluded_from_comparison`
 fa fallire il gruppo 3; togliere la coda del campione fa fallire il gruppo 2;
 far ripiegare un'area non letta su liste vuote fa fallire il gruppo 4.
 """
@@ -57,7 +57,7 @@ from hiris.app.server import tree_comparison_round
 
 def _entita(identificativo, area=None, dispositivo=None, **campi):
     """Una riga del registro entita' COME LA LEGGE L'ARCHIVIO (colonne
-    italiane), che e' la forma in cui `gerarchia()` la riceve davvero."""
+    italiane), che e' la forma in cui `hierarchy()` la riceve davvero."""
     riga = {"id": identificativo, "nome": identificativo, "area_id": area,
             "dispositivo_id": dispositivo, "piattaforma": "demo",
             "categoria": None, "classe": None, "unita": None,
@@ -332,7 +332,7 @@ def test_un_area_non_letta_non_e_un_area_che_combacia():
 
 
 def test_il_giro_non_letto_non_e_un_albero_verificato():
-    """Il gemello del ramo `errore` di `_avviso_problemi`: non si sta dicendo
+    """Il gemello del ramo `errore` di `_problems_notice`: non si sta dicendo
     che l'albero combacia, si sta dicendo che non si e' potuto controllare."""
     testo, riepilogo = _nucleo({"errore": "Home Assistant non ha risposto"})
     assert "non si e' potuto controllare" in testo
@@ -348,7 +348,7 @@ def test_un_area_sparita_dall_albero_e_un_confronto_perso():
 
 
 def test_gli_elenchi_lunghi_si_tagliano_dichiarando_il_resto():
-    """Gli avvisi non passano per il taglio di `componi()`: un'area che diverge
+    """Gli avvisi non passano per il taglio di `compose()`: un'area che diverge
     di quaranta entita' scriverebbe una riga che niente puo' accorciare. Si
     taglia, ma il numero degli altri resta detto -- mai un elenco accorciato in
     silenzio."""
@@ -455,7 +455,7 @@ def test_un_client_che_non_sa_estrarre_non_scrive_niente(tmp_path):
 
 def test_il_nucleo_legge_il_confronto_dalla_memoria_dell_app():
     """La catena intera: `app["confronto_albero"]` -> `compose_briefing` ->
-    `componi`. Senza questo cablaggio il giro sarebbe un dato scritto e mai
+    `compose`. Senza questo cablaggio il giro sarebbe un dato scritto e mai
     letto -- la quarta fondamenta al contrario."""
     app = {"confronto_albero": {"aree_totali": 4, "guardate": [
         {"area": "cucina", "nome": "Cucina", "mancanti": [], "in_piu": ["light.fantasma"],
@@ -516,7 +516,7 @@ async def test_api_casa_senza_confronto_dice_none_non_una_lista_vuota(aiohttp_cl
                                      "assente_in_ha": False}]},
 ])
 def test_componi_resta_pura(confronto):
-    """La proprieta' su cui poggiano tutte le prove di `componi()`: il confronto
+    """La proprieta' su cui poggiano tutte le prove di `compose()`: il confronto
     arriva come ARGOMENTO, come `stato`, `problemi` e `sistema_di_riferimento`.
     Chiedere a Home Assistant cosa contiene un'area e' rete, e la rete sta nel
     chiamante. Se qualcuno la mettesse qui dentro, questa prova girerebbe dentro
@@ -530,7 +530,7 @@ def test_componi_resta_pura(confronto):
 
 
 def test_gerarchia_resta_pura_e_non_sa_niente_del_confronto():
-    """`gerarchia()` non cambia forma: il confronto e' un secondo parere che si
+    """`hierarchy()` non cambia forma: il confronto e' un secondo parere che si
     mette ACCANTO all'albero, non un campo che gli si appende dentro. Un albero
     che portasse il proprio verdetto sarebbe lo stesso fatto in due case.
 

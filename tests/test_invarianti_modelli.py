@@ -44,7 +44,7 @@ def test_nessuna_parola_afferma_piu_di_cio_che_il_sistema_sa(parola):
     credenziale presente» e si legge «funziona»: una chiave a credito esaurito
     era «Attivo». Cio' che si afferma dev'essere cio' che si e' misurato.
 
-    Il confine di parola non e' un dettaglio: `state.ponteAttivo` contiene la
+    Il confine di parola non e' un dettaglio: `state.bridgeActive` contiene la
     sequenza «Attivo» e non e' una parola a schermo, e' il nome di un campo del
     payload. Cercare la sottostringa renderebbe questo test rosso oggi, cioe'
     inutile domani -- e la lezione di questa fetta e' che un test che non puo'
@@ -114,8 +114,8 @@ _LETTURE_VIVE_DELLA_CREDENZIALE = 6
 # totale restasse sei perche' qualcuno ne ha tolta un'altra.
 _FUNZIONI_CHE_LEGGONO_LA_CREDENZIALE = {
     # I nomi sono passati all'inglese il 02/09 (fetta del frontend): sono le
-    # STESSE quattro funzioni, non quattro funzioni nuove -- `rigaProvider`,
-    # `renderFuori`, `ricomponiTopologia`, `rifaiCatena`. Il pin e' sopravvissuto
+    # STESSE quattro funzioni, non quattro funzioni nuove -- `providerRow`,
+    # `renderOutside`, `recomposeLayout`, `redoChain`. Il pin e' sopravvissuto
     # alla rinomina facendo il suo mestiere: ha nominato le quattro nuove e
     # chiesto conto della differenza, invece di passare perche' il CONTEGGIO
     # era rimasto quattro.
@@ -144,7 +144,7 @@ def test_la_pagina_non_contiene_la_regola_della_catena():
     """Invariante 2 della spec: se un test trova logica di ordinamento nel
     frontend, il difetto 3 e' tornato per un'altra porta.
 
-    L'UNICA deroga e' `ricomponiTopologia`, che riordina righe GIA' COMPOSTE dal
+    L'UNICA deroga e' `recomposeLayout`, che riordina righe GIA' COMPOSTE dal
     backend usando l'ordine che l'utente ha appena espresso, fra un gesto e la
     risposta del server."""
     js = _righe_vive_js(MODELS_JS)
@@ -320,13 +320,13 @@ def test_i_blocchi_a_tutta_larghezza_restano_a_tutta_larghezza(classe):
 
 def test_ogni_alias_offerto_dal_pannello_sopravvive_alla_cli():
     """`decisione_modelli.SUBSCRIPTION_ALIAS` (quello che il pannello offre) e
-    `agent/runner.modello_cli` (quello che la CLI accetta) erano due liste
+    `agent/runner.cli_model` (quello che la CLI accetta) erano due liste
     digitate a mano in due file, in ordine diverso: un quarto alias aggiunto
     la' sarebbe stato offerto, scelto, e poi ARCHIVIATO COME `sonnet` con un
     warning che nessuno legge -- il radio tornava indietro da solo, senza
     spiegazione.
 
-    Adesso `modello_cli` ITERA `SUBSCRIPTION_ALIAS`, quindi non esiste piu' una
+    Adesso `cli_model` ITERA `SUBSCRIPTION_ALIAS`, quindi non esiste piu' una
     seconda lista. Questa prova non cerca piu' i letterali nel sorgente: quel
     difetto non puo' piu' esistere, e una prova che lo cercasse non potrebbe
     piu' fallire. Verifica il COMPORTAMENTO -- che ogni alias offerto
@@ -469,7 +469,7 @@ def test_ogni_alias_offerto_sopravvive_alla_traduzione_per_la_cli(alias):
 
 
 def test_ogni_codice_di_credenziale_ha_la_sua_causa():
-    """`esiti_provider._CREDENZIALE` decide la FAMIGLIA di un esito,
+    """`esiti_provider._CREDENTIAL` decide la FAMIGLIA di un esito,
     `decisione_modelli._CREDENTIAL_CAUSE` decide la FRASE: due elenchi dello
     stesso insieme chiuso, in due moduli.
 

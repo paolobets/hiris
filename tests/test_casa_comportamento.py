@@ -130,7 +130,7 @@ class _ClienteFinto:
     La firma di `get_states` combacia con quella vera di `HAClient` — che
     richiede `entity_ids`, dove `[]` significa «tutte». Un finto con una firma
     propria non e' una semplificazione: e' un test che codifica il bug. Questo
-    finto lo aveva, e `rileggi()` chiamava `get_states()` senza argomenti:
+    finto lo aveva, e `reread()` chiamava `get_states()` senza argomenti:
     `TypeError` alla prima chiamata vera, invisibile alla suite.
     """
 
@@ -176,7 +176,7 @@ async def test_a_broken_file_is_distinguished_from_a_missing_file(tmp_path):
 
 
 def test_a_real_automation_declares_itself_real():
-    """Complemento di `test_un_automazione_nel_file_e_nello_stato_ha_il_corpo`:
+    """Complemento di `test_an_automation_in_the_file_and_in_state_has_a_body`:
     l'id combacia con un entity_id vero, ricevuto dallo stato."""
     entries, _ = compose(_AUTOMATIONS, _SCRIPT, _STATES)
     entries = _by_id(entries)
@@ -196,7 +196,7 @@ def test_a_synthetic_id_declares_itself_not_real():
 def test_a_non_dict_automation_is_discarded_without_exploding():
     """Critical (2): un trattino residuo in coda a automations.yaml
     (`- id: '1'\\n  alias: X\\n-\\n`) e' YAML VALIDO e produce `[{...}, None]`.
-    Prima `componi` esplodeva con `AttributeError: 'NoneType' object has no
+    Prima `compose` esplodeva con `AttributeError: 'NoneType' object has no
     attribute 'get'` sul secondo elemento; ora si scarta e si dichiara."""
     automations = [
         {"id": "1", "alias": "Sveglia", "trigger": []},
@@ -216,7 +216,7 @@ def test_a_scalar_automation_is_discarded_without_exploding():
 
 
 def test_a_scalar_value_script_is_discarded_without_exploding():
-    """Speculare a `test_uno_script_presente_e_nullo_non_genera_un_doppione`,
+    """Speculare a `test_a_present_and_null_script_does_not_generate_a_duplicate`,
     ma per il valore-scalare invece del valore-nullo: `saluta: 'ciao'`.
     Prima crashava con `AttributeError` in `(corpo or {}).get("alias")`
     quando lo script restava senza entita' viva corrispondente (solo_file)."""
@@ -227,9 +227,9 @@ def test_a_scalar_value_script_is_discarded_without_exploding():
 
 @pytest.mark.asyncio
 async def test_a_leftover_dash_does_not_crash_the_reread(tmp_path):
-    """Stesso guasto di `test_un_automazione_non_a_dizionario_si_scarta_senza_esplodere`,
-    ma attraverso `rileggi()` per intero — file veri su disco, corpo YAML
-    reale, non solo `componi()` isolato."""
+    """Stesso guasto di `test_a_non_dict_automation_is_discarded_without_exploding`,
+    ma attraverso `reread()` per intero — file veri su disco, corpo YAML
+    reale, non solo `compose()` isolato."""
     (tmp_path / "automations.yaml").write_text(
         "- id: '1'\n  alias: Sveglia\n  trigger: []\n-\n", encoding="utf-8"
     )

@@ -868,7 +868,7 @@ def test_il_limite_superiore_rispetta_il_protagonista_non_ignora_gli_altri(archi
 
 def test_il_limite_superiore_e_il_prossimo_episodio_non_l_ultimo(archivio):
     """Nessun test, finora, aveva TRE episodi dello stesso protagonista:
-    con solo due, `min(successivi)` e `max(successivi)` tornano lo stesso
+    con solo due, `min(later)` e `max(later)` tornano lo stesso
     valore, e niente distingue "il prossimo" da "l'ultimo". Con tre
     accensioni del riscaldamento, il limite superiore delle misure del
     PRIMO episodio deve fermarsi al SECONDO (il prossimo), non sconfinare
@@ -955,10 +955,10 @@ def test_un_energia_con_una_sola_lettura_non_sa_dire_la_differenza(archivio):
     """Una sola lettura nel giorno non permette di sapere quanto e'
     cambiato: la verita' e' 'non lo sappiamo', non 'zero' -- la stessa
     distinzione del punto 2, e il codice altrove la fa gia' restituendo
-    `None` quando il valore non si legge come numero (`_differenza`). Con
+    `None` quando il valore non si legge come numero (`_difference`). Con
     una sola lettura, iniziale e finale sono la STESSA riga: il conto
     tornerebbe 0.0, che direbbe il fatto falso "non e' cambiato niente".
-    Mutazione: calcolare comunque `_differenza(iniziale, finale)` anche con
+    Mutazione: calcolare comunque `_difference(iniziale, finale)` anche con
     un solo punto -- `differenza` tornerebbe 0.0 invece di `None`."""
     archivio.record(quando_ts=ts(12), source="entita",
                     subject="sensor.energia_casa", da=None, a="100.0",

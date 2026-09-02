@@ -471,7 +471,7 @@ async def test_due_conferme_della_stessa_proposta_non_scrivono_due_volte(banco):
 
     Si simula la finestra di corsa monkeypatchando `_store.read` cosi' da
     restituire sempre l'istantanea «in_attesa» catturata PRIMA che un'altra
-    richiesta rivendichi la proposta per prima (`archivio.rivendica` sotto):
+    richiesta rivendichi la proposta per prima (`archivio.claim` sotto):
     e' la stessa finestra che due click ravvicinati aprirebbero in un server
     vero, dove la lettura iniziale non e' piu' aggiornata nell'istante in cui
     la si confronta con l'esito di una richiesta concorrente. L'unica difesa
@@ -681,7 +681,7 @@ async def test_un_guasto_di_rete_durante_applica_disfa_gli_helper_e_non_resta_in
 
 @pytest.mark.asyncio
 async def test_un_guasto_di_rete_durante_applica_e_dichiarato_guasto_rete(banco):
-    """Punto 7 (terza pulizia): `_agisci` (handlers_costruzioni.py) deve poter
+    """Punto 7 (terza pulizia): `_act` (handlers_costruzioni.py) deve poter
     distinguere un guasto di TRASPORTO da un rifiuto vero di Home Assistant,
     per rispondere 503 e non 409 -- lo stesso flag che questo test pinna."""
     officina, ha, _archivio, _ = banco
@@ -713,7 +713,7 @@ async def test_un_guasto_di_rete_durante_cancella_non_solleva(banco):
 
 @pytest.mark.asyncio
 async def test_un_guasto_di_rete_durante_proponi_non_solleva(banco):
-    """Punto 1, il sito di `_free_key` (officina.py:168, gesto `crea`):
+    """Punto 1, il sito di `_free_key` (officina.py:168, gesto `create`):
     il modulo dichiara «non solleva mai» anche qui, non solo durante
     `apply`."""
     officina, ha, archivio, _ = banco
@@ -749,7 +749,7 @@ async def test_lo_helper_nato_riceve_l_etichetta_anche_durante_una_modifica(banc
     helper compresi». Un helper creato da `create_helper` e' SEMPRE nato,
     indipendentemente dal gesto sul dominio principale -- una `modifica`
     all'automazione non rende meno nuovo l'`input_boolean` che nasce insieme.
-    Prima di questa correzione `_rileggi` filtrava per `{dominio}.`, quindi
+    Prima di questa correzione `_reread` filtrava per `{dominio}.`, quindi
     l'helper non riceveva mai l'etichetta, e non esistendo un registro
     interno (la paternita' vive nel registro di HA, fondamenta 2) quella
     paternita' non era da nessuna parte."""

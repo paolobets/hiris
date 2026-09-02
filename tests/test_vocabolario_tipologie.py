@@ -103,8 +103,8 @@ def test_ogni_classe_di_allarme_entra_nel_digesto_e_si_legge_in_parole(classe, p
 def test_ogni_classe_di_evento_ha_anche_un_significato():
     """Le due tabelle non possono divergere: una classe che entra nel digesto e
     non ha un significato si leggerebbe «acceso» -- cioe' rientrerebbe proprio
-    il difetto che questa fetta chiude, su una riga sola. `_CLASSI_EVENTO` vive
-    in `nucleo`, `_SIGNIFICATO_CLASSE` nella sua unica casa, `anagrafe`."""
+    il difetto che questa fetta chiude, su una riga sola. `_EVENT_CLASSES` vive
+    in `nucleo`, `_CLASS_MEANING` nella sua unica casa, `anagrafe`."""
     senza = sorted(nucleo._EVENT_CLASSES - set(anagrafe._CLASS_MEANING))
     assert not senza, f"classi che entrano nel digesto senza significato: {senza}"
 
@@ -276,11 +276,11 @@ def test_una_nascosta_DISABILITATA_non_si_conta_due_volte():
 
 # ── R9: il vocabolario del nucleo pinnato alla fonte ───────────────────────
 #
-# `_STATI_ATTIVI`, `_DOMINI_EVENTO` e `_CLASSI_EVENTO` sono scritte a mano in
+# `_ACTIVE_STATES`, `_EVENT_DOMAINS` e `_EVENT_CLASSES` sono scritte a mano in
 # nucleo.py. Senza queste prove, togliere una voce (o non aggiungerne una
 # quando Home Assistant introduce un dominio o una device_class nuova) non
 # farebbe rosso nessun test -- lo stesso rischio gia' pagato con
-# `carbon_monoxide`/`co` (vedi in cima a questo file). `_SIGNIFICATO_CLASSE`
+# `carbon_monoxide`/`co` (vedi in cima a questo file). `_CLASS_MEANING`
 # in anagrafe.py aveva gia' avuto questo trattamento; qui lo stesso.
 #
 # LIMITE DICHIARATO: nucleo.py e' PURO e non installa Home Assistant (vedi
@@ -296,7 +296,7 @@ _STATI_ATTIVI_HA = {"on", "open", "unlocked", "playing", "cleaning"}
 
 
 def test_stati_attivi_e_pinnato_alla_fonte():
-    """Mutazione: togliere uno stato da `_STATI_ATTIVI` deve far rosso
+    """Mutazione: togliere uno stato da `_ACTIVE_STATES` deve far rosso
     questo test."""
     senza = sorted(_STATI_ATTIVI_HA - nucleo._ACTIVE_STATES)
     extra = sorted(nucleo._ACTIVE_STATES - _STATI_ATTIVI_HA)
@@ -312,7 +312,7 @@ _DOMINI_EVENTO_HA = {
 
 
 def test_domini_evento_e_pinnato_alla_fonte():
-    """Mutazione: togliere un dominio da `_DOMINI_EVENTO` deve far rosso
+    """Mutazione: togliere un dominio da `_EVENT_DOMAINS` deve far rosso
     questo test."""
     senza = sorted(_DOMINI_EVENTO_HA - nucleo._EVENT_DOMAINS)
     extra = sorted(nucleo._EVENT_DOMAINS - _DOMINI_EVENTO_HA)
@@ -325,7 +325,7 @@ def test_domini_evento_sono_tutte_piattaforme_vere_di_home_assistant():
     """Coerenza fra le liste: ogni dominio trattato come «evento» deve essere
     una piattaforma che Home Assistant riconosce davvero -- altrimenti
     l'eccezione descriverebbe un dominio che non esiste. Sottoinsieme, come
-    quello gia' pinnato fra `_CLASSI_EVENTO` e `_SIGNIFICATO_CLASSE`."""
+    quello gia' pinnato fra `_EVENT_CLASSES` e `_CLASS_MEANING`."""
     from tests.test_vocabolario_domini import _PIATTAFORME_HA
     sconosciuti = sorted(nucleo._EVENT_DOMAINS - set(_PIATTAFORME_HA))
     assert not sconosciuti, f"domini che Home Assistant non ha: {sconosciuti}"
@@ -338,7 +338,7 @@ _CLASSI_EVENTO_HA = {
 
 
 def test_classi_evento_e_pinnato_alla_fonte():
-    """Mutazione: togliere una classe da `_CLASSI_EVENTO` deve far rosso
+    """Mutazione: togliere una classe da `_EVENT_CLASSES` deve far rosso
     questo test -- la mutazione che il brief della fetta chiede esplicitamente
     («togliere una classe dall'elenco»)."""
     senza = sorted(_CLASSI_EVENTO_HA - nucleo._EVENT_CLASSES)

@@ -589,7 +589,7 @@ async def test_la_durata_misurata_e_quella_del_tentativo_fallito():
 
 
 def test_l_ordine_coi_nomi_e_l_ordine_senza_sono_LO_STESSO_calcolo():
-    """`_ordered_backends` e' DERIVATA da `_ordered_backends_con_nome`. Due
+    """`_ordered_backends` e' DERIVATA da `_ordered_backends_with_name`. Due
     implementazioni della stessa lista sarebbero due rappresentazioni della
     stessa cosa, libere di divergere -- e la seconda sceglie a chi chiedere
     mentre la prima decide su chi si scrive."""

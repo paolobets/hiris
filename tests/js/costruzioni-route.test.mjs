@@ -43,7 +43,7 @@ test('una modifica a un oggetto non creato da HIRIS lo dichiara', async () => {
   // modifica, riuscita o no, e cancellando `eraGiaLi()` insieme alla riga
   // "Questo oggetto esiste già in casa tua" la vecchia asserzione restava
   // verde (ondata finale, punto 4 -- il difetto n.1: un test che non puo'
-  // fallire). Una `crea`, per contrasto, non deve MAI portare questa
+  // fallire). Una `create`, per contrasto, non deve MAI portare questa
   // dichiarazione: non ha toccato niente che esistesse gia'.
   const { dom } = montaCon({ constructions: [
     { id: 'c1', stato: 'applicata', gesto: 'modifica', dominio: 'automation',
@@ -114,7 +114,7 @@ test('solo le costruzioni applicate offrono il ripristino', async () => {
 });
 
 test('una scena mostra il conteggio e gli entity_id anche se `entities` è un dizionario', async () => {
-  // Rilievo della review: `forme.py::componi_scena` (e Home Assistant per
+  // Rilievo della review: `forme.py::compose_scene` (e Home Assistant per
   // `prima`) rappresentano `entities` di una scena come un DIZIONARIO
   // entity_id -> attributi, non un array come per automazioni/script.
   // `{}.length` in JS è `undefined`, non `0`: senza gestire questa forma il
@@ -171,7 +171,7 @@ test('durante una richiesta in volo Approva e Rifiuta si disabilitano insieme', 
   conferma.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
 
   // Nessun await qui: la disabilitazione avviene sincrona dentro il
-  // gestore del click (`eseguiAzione` disabilita PRIMA di chiamare fetch),
+  // gestore del click (`executeAction` disabilita PRIMA di chiamare fetch),
   // quindi si asserisce subito, prima di qualunque flush di microtask.
   assert.equal(conferma.disabled, true, 'il bottone premuto si disabilita');
   assert.equal(rifiuta.disabled, true,

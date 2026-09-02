@@ -260,7 +260,7 @@ def test_una_riga_di_registro_senza_id_non_fa_saltare_l_albero():
     nessuna entita' avrebbe comunque potuto nominare. La gemella in
     `memoria/interpretazione.py` la guardia ce l'aveva gia' -- ed e' il
     genere di divergenza che due nomi diversi per lo stesso fatto
-    (`device_area` contro `area_del_device`) tengono nascosta."""
+    (`device_area` contro `device_area`) tengono nascosta."""
     casa = {"piani": [],
             "aree": [{"id": "cucina", "nome": "Cucina", "piano_id": None}],
             "dispositivi": [{"id": "d1", "area_id": "cucina"},

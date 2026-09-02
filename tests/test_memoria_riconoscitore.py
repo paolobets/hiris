@@ -293,7 +293,7 @@ def test_il_nome_dedotto_e_marcato_anche_sulle_voci_di_tutti():
 
 
 def test_il_marchio_non_tocca_la_casa_del_chiamante():
-    """`voce` e' il dizionario che `ArchivioCasa.leggi()` ha appena
+    """`voce` e' il dizionario che `HomeSpaceStore.leggi()` ha appena
     costruito per il chiamante: marcarlo in place accoppierebbe l'indice al
     ciclo di vita di una struttura che non gli appartiene -- e il chiamante
     si ritroverebbe un nome dedotto in una casa che credeva del registro."""
@@ -380,7 +380,7 @@ def test_un_nome_dedotto_che_collide_con_un_nome_dichiarato_e_ambiguo():
 def test_le_entita_senza_stato_vivo_restano_senza_nome_e_non_spariscono():
     """Misurato: 849 entita' vive contro 1.225 nel registro. Per le 376
     restanti non esiste un `friendly_name` da nessuna parte, e il ripiego
-    non le copre. Restano fuori da `trova()` -- come oggi -- ma non
+    non le copre. Restano fuori da `find()` -- come oggi -- ma non
     spariscono e non si inventa loro un nome: dichiarato, non nascosto."""
     lookup = costruisci_indice(_casa_senza_nomi(),
                                {"light.abat_jour_1": "Abat-jour"})
@@ -426,7 +426,7 @@ def test_due_piani_omonimi_sono_ambigui():
 
 def test_senza_comportamento_nessuna_automazione_si_indicizza():
     """Il parametro e' opzionale (default `None`): i chiamanti che ancora
-    non lo passano (`_ricorda`, le pagine di `handlers_memoria.py`) non
+    non lo passano (`_remember`, le pagine di `handlers_memoria.py`) non
     devono vedere comparire nulla sotto "automazione"/"script"."""
     lookup = costruisci_indice(_HOME_SPACE)
     assert lookup.find("sveglia") == []
@@ -558,7 +558,7 @@ def test_due_etichette_omonime_sono_ambigue():
 
 
 def test_un_etichetta_senza_nome_si_indicizza_col_suo_id():
-    """Stessa disciplina di `nomi_delle_etichette` (anagrafe.py): un
+    """Stessa disciplina di `label_names` (anagrafe.py): un
     registro con un'etichetta senza nome non produce un termine muto -- si
     usa l'id, l'unica cosa che si conosce di lei."""
     home_space = dict(_HOME_SPACE, etichette=[{"id": "senza_nome", "nome": None}])

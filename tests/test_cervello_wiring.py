@@ -177,7 +177,7 @@ def _carica_funzione_innestata(nome_funzione: str, globali: dict):
 
 class _ArchivioOsservazioniFinto:
     """La finta deve saper produrre il difetto che sorveglia (feedback
-    ricorrente di questo progetto): oltre a tornare un numero da `pota()`,
+    ricorrente di questo progetto): oltre a tornare un numero da `prune()`,
     deve poter SOLLEVARE a comando, per provare che la potatura ha una rete
     propria (punto 3 del mandato)."""
 
@@ -250,7 +250,7 @@ def test_la_potatura_non_lascia_uscire_l_eccezione(caplog):
     """Punto 3 del mandato: `_prune_observations` era l'unico dei tre lavori
     SENZA un try/except suo -- un guasto di SQLite alle tre di notte finiva
     nel registro di apscheduler senza il prefisso 'cervello:', a differenza
-    dei due lavori fratelli. Qui si prova che un errore di `pota()` sia
+    dei due lavori fratelli. Qui si prova che un errore di `prune()` sia
     catturato e loggato con quel prefisso, non lasciato propagare.
 
     La mutazione, qui, e' lo stato originale (nessun try/except): e' cio'
@@ -927,7 +927,7 @@ def test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti(tmp_path)
     `casa.db`: `reference_frame()` legge il fuso PERSISTITO dalle
     sessioni precedenti, esattamente come lo leggerebbe un vero riavvio
     dell'add-on (`casa.db` sopravvive ai riavvii). Il file si semina una
-    volta, PRIMA di eseguire l'estratto, con una `ArchivioCasa` separata che
+    volta, PRIMA di eseguire l'estratto, con una `HomeSpaceStore` separata che
     viene chiusa subito dopo: l'estratto ne apre una sua, fresca, sullo
     stesso percorso.
 
@@ -1285,7 +1285,7 @@ def test_la_riparazione_chiede_le_direzioni_una_volta_per_i_due_giorni(tmp_path)
 # --------------------------------------------------------------------------
 
 def _casa_con_un_dispositivo(tmp_path, *, fuso="Europe/Rome"):
-    """Un `ArchivioCasa` reale con un dispositivo e una sua entita' di
+    """Un `HomeSpaceStore` reale con un dispositivo e una sua entita' di
     energia -- il minimo che `build_balances` ha bisogno di leggere dal
     registro (fedele al contratto vero, non una finta a parte)."""
     from hiris.app.casa.archivio import HomeSpaceStore
@@ -1325,7 +1325,7 @@ def test_l_aggregazione_notturna_costruisce_e_scrive_il_bilancio(tmp_path):
     casa = _casa_con_un_dispositivo(tmp_path)
     try:
         # `_aggrega_ieri` calcola "ieri" nel fuso della CASA
-        # (`zona_casa(fuso)`, Europe/Rome qui), non in UTC: usare UTC per
+        # (`home_space_zone(fuso)`, Europe/Rome qui), non in UTC: usare UTC per
         # seminare il dato produce un giorno diverso da quello che il job
         # interroga davvero nella finestra (tipicamente due ore, DST) in
         # cui Roma e' gia' nel giorno successivo mentre l'UTC no --
@@ -1461,7 +1461,7 @@ def test_la_riparazione_all_avvio_si_ferma_se_le_statistiche_del_bilancio_fallis
     ENTRAMBI i giorni bersaglio (non solo quello che la mutazione tocca).
 
     Mutazione ESEGUITA: nel corpo di `reaggregate_last_two_days`, il
-    controllo `if bilanci_falliti:` nel ciclo dei bilanci sostituito con
+    controllo `if failed_balances:` nel ciclo dei bilanci sostituito con
     `if False:` (ignorare il guasto) -- arrossisce: l'oggetto ricco (col
     bilancio) viene sostituito da uno senza (l'episodio individuale torna)
     -- `dopo != prima`. Ripristinato subito dopo."""
@@ -1510,7 +1510,7 @@ def test_la_riparazione_all_avvio_si_ferma_anche_se_la_serie_torna_vuota_senza_e
     27/08/2026)**: qui `HAClient.hourly_statistics()` NON solleva nessun
     `errore` -- la richiesta riesce, ma la serie torna vuota per il
     dispositivo candidato (identificatori rinominati, recorder ripartito).
-    Prima di questa correzione `bilanci_falliti` restava a zero e la
+    Prima di questa correzione `failed_balances` restava a zero e la
     riparazione avrebbe sostituito il bilancio della notte con undici
     frammenti individuali -- l'esatto impoverimento misurato dalla review."""
     from datetime import datetime, timedelta

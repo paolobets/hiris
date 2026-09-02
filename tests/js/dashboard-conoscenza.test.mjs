@@ -265,7 +265,7 @@ test('i file non letti si mostrano con la loro RAGIONE, non solo col nome', asyn
 });
 
 /* ---------------------------------------------------------------------------
-   Minor e7 (fetta «fix pre-UAT»): `tessere(corpoComp, ...)` non passava il
+   Minor e7 (fetta «fix pre-UAT»): `tessere(behaviorBody, ...)` non passava il
    quarto argomento `caduti`, e `conteggi` non porta affatto i tipi che non ha
    contato. Conseguenza vista dal vivo: le tessere «Automazioni» e «Script»
    sparivano invece di dire qualcosa. Su questa pagina, il cui unico scopo e'

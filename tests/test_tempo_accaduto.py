@@ -28,7 +28,7 @@ class _FintoHA:
         return self._risposta
 
 
-# `HAClient` non e' convertito da questa fetta: se `.diario` cambiasse
+# `HAClient` non e' convertito da questa fetta: se `.logbook` cambiasse
 # firma (o una finta futura la seguisse a ruota rinominandosi come il
 # chiamante, gia' successo una volta in questa fetta -- review Task 8),
 # questa riga cade prima che la produzione veda un `AttributeError`.
@@ -48,8 +48,8 @@ class _FintaCronaca:
 def test_the_fake_journal_matches_the_real_signature():
     """Se `Journal.list` cambia firma, questo test cade invece di
     lasciare che il finto imiti un contratto che non esiste piu'
-    (review indipendente, fetta «la rinomina»: `entita=`/`limite=` erano
-    rimasti qui mentre `casa/tempo.py::accaduto` chiamava gia' `.list(...
+    (review indipendente, fetta «la rinomina»: `entita=`/`limit=` erano
+    rimasti qui mentre `casa/tempo.py::logbook` chiamava gia' `.list(...
     entity=...)`)."""
     assert_stessa_firma(Journal.list, _FintaCronaca.list, nome="list")
     assert_stessa_firma(Journal.list, _FintaCronacaCheSolleva.list,
@@ -146,7 +146,7 @@ async def test_the_journal_is_queried_on_the_same_window_as_the_diary():
     """Due finestre diverse produrrebbero atti senza voce e voci senza atto,
     in modo invisibile. Si chiede una finestra piu' larga di quella che il
     client clampa (`ore=1000`): la finta dichiara `ore: 168`, il vero tetto
-    del diario. La finestra della cronaca deve seguire il VERO (`ore_vere`),
+    del diario. La finestra della cronaca deve seguire il VERO (`real_hours`),
     non il chiesto -- con `ore=1000` le due grandezze non possono coincidere
     per caso, a differenza di una finta che dichiarasse le stesse ore chieste."""
     ha = _FintoHA({"voci": [], "troncato": False, "ore": 168})

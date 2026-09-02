@@ -129,7 +129,7 @@ def test_on_state_changed_handles_none_attributes():
 #
 # `_to_minimal` (chiamata da `load()` e da `on_state_changed()`) e' l'UNICO
 # punto in cui uno stato grezzo di Home Assistant diventa cio' che ogni
-# lettore di HIRIS vede -- `specchio_vivo`, `guarda`, `cerca`, il nucleo.
+# lettore di HIRIS vede -- `live_mirror`, `guarda`, `cerca`, il nucleo.
 # Friendly name, state e gli attributi testuali del media_player (titolo,
 # artista, sorgente) sono il vettore che l'audit ha verificato: un
 # media_player con un titolo ostile, un sensore-messaggio, un dispositivo che

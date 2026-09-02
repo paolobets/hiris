@@ -11,10 +11,10 @@ e `.../get_entries`.
 Quindi la colonna `classe` dell'anagrafe e' **sempre NULL**, su ogni casa. E
 da li' a cascata:
 
-- `_e_un_evento("binary_sensor", None, "on")` e' sempre falso: NESSUN sensore
+- `_is_event("binary_sensor", None, "on")` e' sempre falso: NESSUN sensore
   binario e' mai entrato in «Notevole adesso». Allagamento, fumo, monossido,
   finestra aperta: muti;
-- le voci di `_SIGNIFICATO_CLASSE` -- l'intera fetta 3.4.0, `carbon_monoxide`
+- le voci di `_CLASS_MEANING` -- l'intera fetta 3.4.0, `carbon_monoxide`
   compreso e corretto una riga per volta -- erano codice irraggiungibile;
 - `guarda` prometteva «l'entita' col suo stato e la sua CLASSE» e rispondeva
   `classe: null` su ogni entita' della casa.
@@ -109,7 +109,7 @@ def test_lo_specchio_tiene_gli_attributi_del_meteo():
     ATTENZIONE (corretto 2026-08-25, fetta "attributi al modello"): questo
     test da solo NON prova che `guarda` veda questi attributi -- prima li
     provava, e il commento diceva "guarda su un'entita' weather rispondeva
-    sereno e basta", ma `guarda` non arrivava mai a leggerli: `specchio_vivo`
+    sereno e basta", ma `guarda` non arrivava mai a leggerli: `live_mirror`
     (`casa/anagrafe.py`) li buttava tutti, su ogni dominio, un anello piu' in
     la'. Il difetto vero (misurato dal proprietario sui termostati, non sul
     meteo) e' rimasto invisibile finche' nessun test seguiva la catena intera

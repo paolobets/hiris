@@ -165,7 +165,7 @@ async def test_al_riavvio_le_promesse_in_corso_vengono_risanate(promesse, porta_
     (spec §7, «mai due volte»): al prossimo avvio deve leggersi `fallita`."""
     # `quando_ts` entro il tetto dei 30 giorni da `adesso` (spec §9.1.6,
     # `promessa.ORIZZONTE_S`): una data fissa lontana avrebbe fatto rifiutare
-    # `crea()` con "non tengo promesse oltre 30 giorni" invece di crearla --
+    # `create()` con "non tengo promesse oltre 30 giorni" invece di crearla --
     # lo stesso difetto di date-a-mano gia' documentato in
     # `test_schedulatore_strumenti.py::_fra`.
     ident = promesse.create({

@@ -69,7 +69,7 @@ def test_senza_motivo_non_se_ne_inventa_uno():
 def test_un_archivio_gia_esistente_guadagna_la_colonna(tmp_path):
     """La migrazione, e non e' una formalita': `CREATE TABLE IF NOT EXISTS` non
     tocca una tabella che esiste gia'. Senza, dal momento dell'aggiornamento il
-    primo `sostituisci` sarebbe fallito e la casa avrebbe smesso di
+    primo `replace` sarebbe fallito e la casa avrebbe smesso di
     ricostruirsi, in silenzio."""
     import sqlite3
 

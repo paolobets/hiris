@@ -186,7 +186,7 @@ def test_con_strumenti_il_ponte_riemette_base_intero_e_contiguo():
 # ---------------------------------------------------------------------------
 # ②ter fix round 1, Important 1: la fotografia porta anche la MEMORIA, e il
 # prompt deve dirlo. `compose_briefing` passa TUTTI i ricordi
-# (`fetch(limite=conta())`) e `compose_chat_context` aggiunge
+# (`fetch(limit=count())`) e `compose_chat_context` aggiunge
 # "## Sessioni precedenti": negare al modello di poter "richiamare ricordi"
 # mentre il ricordo e' scritto tre blocchi piu' sotto e' la stessa falsita'
 # speculare gia' corretta per lo stato della casa.

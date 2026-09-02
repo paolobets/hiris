@@ -89,7 +89,7 @@ def test_il_nome_dell_utente_vince_su_quello_dell_integrazione(archivio):
     assert archivio.read()["entita"][0]["nome"] == "Il mio frigo"
 
 
-# --- C-2: `sostituisci` e' l'UNICO scrittore dell'anagrafe --------------
+# --- C-2: `replace` e' l'UNICO scrittore dell'anagrafe --------------
 #
 # Ogni nome/alias/titolo/motivo che entra qui viene da un registro di Home
 # Assistant: un'integrazione compromessa, un dispositivo di rete ostile, o
@@ -147,7 +147,7 @@ def test_sostituisci_non_mutila_nomi_legittimi_con_accenti_apostrofi_e_simboli(a
 
 # --- M2 (audit-2026-08-25, minori): `motivo` non e' uno `state` -----------
 #
-# Prima usava `_nome()`/sanitize_ha_value (255, il tetto vero di uno
+# Prima usava `_name()`/sanitize_ha_value (255, il tetto vero di uno
 # `state`). Il motivo per cui un'integrazione non e' partita e' la
 # spiegazione di un guasto, non uno stato: puo' onestamente superare 255
 # senza essere un attacco (il riassunto di un'eccezione HA e' spesso una
@@ -202,8 +202,8 @@ def test_il_comportamento_si_sostituisce_e_si_rilegge(archivio):
 # lettura di rete GREZZA, che non passa da `_to_minimal`/entity_cache --
 # mentre `corpo` viene dal file YAML che il proprietario scrive di persona.
 # Sono due fonti diverse con due rischi diversi: il nome va sanificato come
-# ogni altro nome dell'anagrafe (`_nome()`, stesso pattern di
-# `ArchivioCasa.sostituisci`), il corpo resta cosi' com'e' (e' testo che
+# ogni altro nome dell'anagrafe (`_name()`, stesso pattern di
+# `HomeSpaceStore.replace`), il corpo resta cosi' com'e' (e' testo che
 # l'utente stesso ha scritto in un file locale).
 
 def test_sostituisci_comportamento_sanifica_il_nome_iniettato(archivio):

@@ -108,7 +108,7 @@ async def test_il_None_di_home_assistant_non_e_un_alias():
     (`original_name`). Non e' una parola che qualcuno ha scritto.
 
     Preso alla lettera ha riempito l'archivio -- 1030 entita' su 1223 con
-    `alias: [null]` -- e ha ucciso `cerca` e `ricorda`, gli unici due che
+    `alias: [null]` -- e ha ucciso `cerca` e `remember`, gli unici due che
     costruiscono l'indice: «'NoneType' object has no attribute 'lower'» su
     OGNI chiamata.
 
@@ -135,7 +135,7 @@ def test_l_indice_sopravvive_a_un_archivio_gia_avvelenato():
     """Difesa in profondita', e serve davvero: la causa si chiude a monte, ma
     un'installazione gia' avvelenata tiene `[null]` in archivio finche'
     l'anagrafe non si ricostruisce. Un indice che muore sul dato vecchio
-    lascia `cerca` e `ricorda` rotti fino al riavvio successivo."""
+    lascia `cerca` e `remember` rotti fino al riavvio successivo."""
     from hiris.app.memoria.resolver import costruisci_indice
 
     casa = {"entita": [

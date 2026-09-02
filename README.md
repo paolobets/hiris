@@ -74,23 +74,23 @@ them speaks to you and none of them touches the house: the entity-inventory
 reload every 2 minutes (`server.py::_reload_inventory`), the reread of Home
 Assistant's own diagnosed issues every 5 minutes
 (`server.py::_reread_problems`), the tree-vs-Home-Assistant comparison
-sample every 15 minutes (`server.py::confronta_albero`), the `mtime` sentinel
+sample every 15 minutes (`server.py::tree_comparison_round`), the `mtime` sentinel
 over `automations.yaml`/`scripts.yaml` every 5 minutes
-(`server.py::guarda_comportamento`), chat-history retention at 03:00, the
+(`server.py::behavior_sentinel`), chat-history retention at 03:00, the
 reasoning-queue sweep every 2 minutes, and three more added by the "the
 observer" slice (`hiris/app/cervello/`): the system-conditions read — the same
 diagnosed issues plus the integrations Home Assistant has not loaded, folded
 into the observer's fault objects — every 10 minutes
 (`server.py::_watch_conditions`), the nightly aggregation of the previous
 day's raw state changes into objects at 00:20
-(`server.py::_aggrega_ieri` → `cervello/oggetti.py::aggrega_giorno`), and the
+(`server.py::_aggrega_ieri` → `cervello/oggetti.py::aggregate_day`), and the
 pruning of raw changes older than 22 days at 03:00
 (`server.py::_prune_observations`). The 03:30 history compaction, the 04:00
 nightly digest and the Mayan document poll were removed in 2.1.0 together with
 the document integration and the knowledge archive they fed.
 
 The tenth is the promise scheduler's heartbeat, every 15 seconds
-(`server.py::_battito` → `schedulatore/orologio.py::Orologio.batti`). A
+(`server.py::_battito` → `schedulatore/sweeper.py::Sweeper.batti`). A
 promise is created from a sentence in chat — "at 5pm, turn on the office",
 "in an hour, check the temperature and tell me if it went up" — and its
 service call, or its comparison, is verified at that moment, the same way
@@ -264,7 +264,7 @@ because they were never two decisions.
 **That path now carries the nucleo, and — when it can — the tools.** The
 turn is enqueued together with the same context the synchronous chat composes
 (`handlers_chat.py::_enqueue_chat_job`), and the runner probes `POST /api/mcp`
-before it starts (`agent/runner.py::sonda_strumenti`). One boolean comes out of
+before it starts (`agent/runner.py::probe_tools`). One boolean comes out of
 that probe and decides two things at once: the prompt the model reads and the
 arguments the CLI is launched with. When the probe succeeds the model gets the
 same thirteen tools as the synchronous path, under an `mcp__hiris__` prefix: it
@@ -272,7 +272,7 @@ can look at the current state, not just the snapshot, and it can act — through
 the same two doors as the synchronous path, never one of its own.
 When it fails, the answer
 is prefixed with a line saying the tools were not available this turn
-(`AVVISO_STRUMENTI_ASSENTI`) instead of quietly pretending it looked; on that
+(`MISSING_TOOLS_NOTICE`) instead of quietly pretending it looked; on that
 branch it cannot act at all, and the prompt says so. The tool chips under a
 reply are drawn on this path too (`handle_chat_reply_poll` → `send.js::pollChatReply`).
 

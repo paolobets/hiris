@@ -172,7 +172,7 @@ async def test_si_chiede_sempre_il_tipo_giusto_a_home_assistant():
     `"entita" not in HAClient.RELATED_ITEM_TYPES`. Qui si legge cosa e' stato
     chiesto DAVVERO, non solo cosa e' tornato.
 
-    Mutazione ESEGUITA: `tipo_ha = TIPO_LEGAME_HA["entita"]` sostituito con
+    Mutazione ESEGUITA: `tipo_ha = HA_LINK_TYPE["entita"]` sostituito con
     la stringa letterale `"entita"` in `build_companions` -- arrossisce,
     perche' `ha.chiesti` torna `[("entita", "climate.camera_t")]` invece di
     `[("entity", "climate.camera_t")]`, e la `mappa` risultante e' vuota

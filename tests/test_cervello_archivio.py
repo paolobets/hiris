@@ -50,7 +50,7 @@ def test_annota_scrive_le_tre_classi_quando_ci_sono(archivio):
 def test_annota_senza_classi_scrive_none(archivio):
     """Le condizioni di sistema, e il grezzo scritto prima di questa
     correzione, non portano le tre classi: devono rileggersi come `None`, non
-    far sollevare `annota`."""
+    far sollevare `record`."""
     archivio.record(quando_ts=ADESSO, source="sistema",
                     subject="problema:sonos.x", da=None, a="aperto")
     riga = archivio.readings(from_ts=0.0, to_ts=ADESSO + 1)[0]

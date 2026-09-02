@@ -135,7 +135,7 @@ async def test_put_persiste_e_aggiorna_a_caldo_le_impostazioni_in_memoria(client
     # e' il confine e parla inglese, `impostazioni_chat.json` e' un archivio
     # sul disco di un utente vero e resta com'e' -- stessa classe di
     # `models_config.json` e del database. La traduzione vive in
-    # `ChatSettings.load`/`.salva`, ed e' questa riga a pinzarla.
+    # `ChatSettings.load`/`.save`, ed e' questa riga a pinzarla.
     assert _su_disco(client) == {
         "nome": "Casa",
         "system_prompt": "Sei utile e conciso.",
@@ -378,7 +378,7 @@ _SURROGATO = chr(92) + "ud800"
 @pytest.mark.parametrize("campo", ["system_prompt", "name"])
 async def test_put_con_un_surrogato_spaiato_e_400_parlante_non_500(client, campo):
     """Prima del fix round 1 questo era l'UNICO buco nella promessa «ogni
-    corpo sbagliato produce un 400 che dice quale campo»: `valida()` verificava
+    corpo sbagliato produce un 400 che dice quale campo»: `validate()` verificava
     il tipo e non la codificabilita', e l'`UnicodeEncodeError` di `json.dump`
     (che NON e' un `OSError`) usciva come 500 col traceback."""
     await client.put(ROTTA, json={"name": "Valore precedente"})
@@ -402,7 +402,7 @@ async def test_put_con_un_surrogato_spaiato_e_400_parlante_non_500(client, campo
 @pytest.mark.asyncio
 async def test_il_surrogato_arriva_davvero_fino_a_valida(client):
     """Guardia del test qui sopra: se un giorno aiohttp/json rifiutassero il
-    surrogato PRIMA di `valida()`, i test sopra passerebbero per il motivo
+    surrogato PRIMA di `validate()`, i test sopra passerebbero per il motivo
     sbagliato (400 da un altro punto). Qui si verifica che il valore attraversi
     `json.loads` intatto, cioe' che il caso da difendere esista ancora."""
     import json as _json

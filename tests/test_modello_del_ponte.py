@@ -1,7 +1,7 @@
 """Il modello che gira sul ponte, e DA DOVE VIENE.
 
 Fino alla 3.1.0 veniva composto a ogni turno da `provider_models["claude"]`:
-`modello_cli(resolve_model("auto", "chat", provider_models["claude"]))`, in
+`cli_model(resolve_model("auto", "chat", provider_models["claude"]))`, in
 `handlers_chat._enqueue_chat_job` e -- identico -- in
 `handlers_models._models_in_use`. Due implementazioni dello stesso calcolo, e
 un campo solo per due economie opposte: a consumo si sceglie il modello
@@ -12,7 +12,7 @@ Dalla fetta «il modello del piano» il ponte LEGGE `ponte.modello`, un campo
 suo. Questo file inchioda l'INDIPENDENZA -- che e' la cosa che il proprietario
 non poteva esprimere.
 
-I test [1]-[4] su `modello_cli` restano validi parola per parola: la funzione
+I test [1]-[4] su `cli_model` restano validi parola per parola: la funzione
 non e' sparita, ha cambiato mestiere. Da traduttore chiamato a ogni turno e'
 diventata il VALIDATORE del campo (`handlers_models._clean_subscription_model`),
 e il suo silenzio dichiarato -- il `log.warning` su un modello non-Anthropic --

@@ -15,10 +15,10 @@ from tests.test_nucleo import _CASA, _COMPORTAMENTO
 # tests/test_domande.py, stessa convenzione).
 #
 # `_CASA` e' gia' nella forma "post-lettura" (id/nome/piano_id/alias/...),
-# la stessa che `ArchivioCasa.leggi()` restituisce: si scrive direttamente
-# nelle tabelle SQLite invece di passare da `sostituisci()` (che si aspetta
+# la stessa che `HomeSpaceStore.leggi()` restituisce: si scrive direttamente
+# nelle tabelle SQLite invece di passare da `replace()` (che si aspetta
 # i registri grezzi di Home Assistant, floor_id/name/... -- tradurli qui
-# sarebbe solo rumore, i test di `ArchivioCasa` gia' coprono quella strada
+# sarebbe solo rumore, i test di `HomeSpaceStore` gia' coprono quella strada
 # in tests/test_casa_archivio.py).
 
 
@@ -339,7 +339,7 @@ async def test_un_automazione_rinominata_invalida_la_cache_dell_indice(archivio_
          "corpo": {"trigger": []}, "origine": "file"},
     ])
     # Stesso accorgimento di test_cambia_l_anagrafe_e_cerca_vede_la_nuova_entita:
-    # `sostituisci_comportamento` marca la data col secondo corrente, e due
+    # `replace_behavior` marca la data col secondo corrente, e due
     # chiamate nello stesso secondo di orologio darebbero la stessa stringa.
     archivio_casa._conn.execute(
         "UPDATE meta SET valore = 'sentinella-2' WHERE chiave = 'comportamento_letto_il'")
@@ -480,12 +480,12 @@ async def test_guarda_un_entita_senza_nome_dichiara_il_nome_dedotto_dal_dispatch
         archivio_casa, memoria):
     """Il test che prova la FETTA, non solo la funzione pura: i tre test di
     `test_domande.py` chiamano `view()` direttamente e le passano
-    `nomi_di_ripiego` a mano, quindi restano verdi anche se `_guarda` smette
+    `nomi_di_ripiego` a mano, quindi restano verdi anche se `_view` smette
     di inoltrare i nomi vivi dell'archivio -- esattamente il difetto che
     questo task esiste per chiudere. Solo passando da `dispatch()` con una
     cache che porta un `friendly_name` si prova che il collegamento c'e'
     davvero (mutazione che uccide: togliere `nomi_di_ripiego=nomi_vivi`
-    dalla chiamata a `_guarda_dettaglio` in `strumenti._guarda`)."""
+    dalla chiamata a `_guarda_dettaglio` in `strumenti._view`)."""
     archivio_casa.replace({"entita": [
         {"entity_id": "light.abat_jour_1", "name": None, "original_name": None}]}, [])
     d = ToolDispatcher(archivio_casa, memoria, cache=_CacheConNomi())
@@ -501,11 +501,11 @@ async def test_guarda_un_area_dichiara_il_nome_dedotto_delle_sue_entita_dal_disp
     """I1 (review finale): il test che prova la FETTA per il ramo area, non
     solo la funzione pura -- stessa lezione di B5. I due test di
     `test_domande.py` chiamano `view()` direttamente e passano
-    `nomi_di_ripiego` a mano: restano verdi anche se `_guarda` smette di
+    `nomi_di_ripiego` a mano: restano verdi anche se `_view` smette di
     inoltrarlo a `_guarda_dettaglio`, o se `view()` smette di inoltrarlo a
-    `_guarda_area`. Solo passando da `dispatch()` con una cache vera si prova
+    `_view_area`. Solo passando da `dispatch()` con una cache vera si prova
     il collegamento (mutazione che uccide: togliere l'inoltro su QUESTO
-    ramo, lasciando intatto quello di `_guarda_entita`)."""
+    ramo, lasciando intatto quello di `_view_entity`)."""
     archivio_casa.replace({
         "aree": [{"area_id": "giardino", "name": "Giardino"}],
         "entita": [{"entity_id": "light.abat_jour_1", "area_id": "giardino",
@@ -522,7 +522,7 @@ async def test_guarda_un_area_dichiara_il_nome_dedotto_delle_sue_entita_dal_disp
 @pytest.mark.asyncio
 async def test_guarda_un_dispositivo_dichiara_il_nome_dedotto_delle_sue_entita_dal_dispatcher(
         archivio_casa, memoria):
-    """Stesso rilievo I1, sul ramo `_guarda_dispositivo` -- il percorso che
+    """Stesso rilievo I1, sul ramo `_view_device` -- il percorso che
     la specifica mette come metro della fetta (§7, la domanda
     dell'irrigazione: 'guarda' su un dispositivo trovato). Mutazione che
     uccide: togliere l'inoltro su QUESTO ramo, lasciando intatti gli altri
@@ -598,7 +598,7 @@ async def test_su_una_casa_intera_con_lo_specchio_giu_cerca_non_si_lamenta(archi
 async def test_cerca_dichiara_le_entita_senza_nome_anche_a_specchio_leggibile(
     archivio_casa, memoria
 ):
-    """I3 (review finale), invariante 4: `_cecita` (Task B3) dichiarava solo
+    """I3 (review finale), invariante 4: `_blind_spots` (Task B3) dichiarava solo
     la cecita' TOTALE (registri caduti, o specchio illeggibile). Qui lo
     specchio E' leggibile -- restituisce un friendly_name per un'ALTRA
     entita' -- ma non sa come si chiama proprio questa: senza dichiararlo,
@@ -631,13 +631,13 @@ async def test_cerca_dichiara_le_entita_senza_nome_anche_a_specchio_leggibile(
 
 @pytest.mark.asyncio
 async def test_cerca_non_dichiara_cecita_permanente_su_una_ricerca_riuscita(archivio_casa, memoria):
-    """N2 (ri-review): dopo I3, il ramo `senza_nome_vivo` di `_cecita` si
+    """N2 (ri-review): dopo I3, il ramo `unnamed_even_live` di `_blind_spots` si
     accende su OGNI `search`, comprese quelle riuscite -- perche' sull'impianto
     vero esistono SEMPRE entita' senza nome ne' nel registro ne' nello
     specchio (un fatto stabile della casa, non un guasto di questa ricerca:
     il ledger ne conta 376). `non_ho_potuto_guardare` esiste per spiegare un
     `trovati` vuoto che potrebbe nascondere qualcosa (vedi il docstring di
-    `_cecita`): non ha niente da spiegare quando la ricerca ha gia' trovato
+    `_blind_spots`): non ha niente da spiegare quando la ricerca ha gia' trovato
     quello che cercava. Senza il fix, un modello riceve questa riserva a
     OGNI turno, comprese le risposte giuste -- l'invariante 4 applicata bene
     ma rivoltata contro se stessa (esitazione sistematica)."""
@@ -668,8 +668,8 @@ async def test_cerca_non_dichiara_cecita_permanente_su_una_ricerca_riuscita(arch
 @pytest.mark.asyncio
 async def test_cerca_dichiara_caduti_e_specchio_ma_non_il_ramo_strutturale_su_ricerca_riuscita(
         archivio_casa, memoria):
-    """Prova per mutazione del cancello N2 (`trovati_vuoti`): quel cancello
-    protegge SOLO il ramo strutturale di `_cecita` (entita' senza nome ne'
+    """Prova per mutazione del cancello N2 (`found_nothing`): quel cancello
+    protegge SOLO il ramo strutturale di `_blind_spots` (entita' senza nome ne'
     nel registro ne' nello specchio -- un limite stabile della casa). Gli
     altri due rami, registri caduti e specchio illeggibile, sono impedimenti
     che capitano ADESSO: devono dichiararsi anche quando `search` ha gia'
@@ -725,7 +725,7 @@ async def test_cerca_non_conta_un_entita_disabilitata_senza_nome_come_cecita(
 async def test_cerca_dichiara_il_registro_etichette_caduto(archivio_casa, memoria):
     """Fix finale ①: `etichette` e' una tabella vera di `_TABELLE` che puo'
     comparire in `non_disponibili()` (T8, R2 -- `search` indicizza le
-    etichette stesse come candidati), ma `_cecita` filtrava i registri
+    etichette stesse come candidati), ma `_blind_spots` filtrava i registri
     caduti con `STORE_KEY_PER_TYPE.values()`, che non la contiene
     (deliberatamente: non e' un tipo di ancora, vedi il commento su
     `_ARCHIVI`). Un registro etichette caduto restituiva 'trovati': []
@@ -743,8 +743,8 @@ async def test_cerca_dichiara_i_file_di_comportamento_non_letti(archivio_casa, m
     """Fix finale ①: il comportamento (automazioni/script) non passa affatto
     da `non_disponibili()` -- la sua fonte e' `automations.yaml`/
     `scripts.yaml`, col proprio segnale di incompletezza
-    (`ArchivioCasa.file_non_letti()`, la stessa lettura che gia' fa
-    `_guarda` per lo stesso motivo). Prima del fix `_cerca` non lo leggeva
+    (`HomeSpaceStore.file_non_letti()`, la stessa lettura che gia' fa
+    `_view` per lo stesso motivo). Prima del fix `_search` non lo leggeva
     mai: un file di comportamento non letto restituiva 'trovati': [] nudo
     per un nome di automazione/script che potrebbe essere scritto proprio
     li'."""
@@ -803,7 +803,7 @@ async def test_richiama_con_tipo_piano_lo_dice_anche_dopo_R2(dispatcher):
     ora contiene anche "piano", ma "piano" NON e' un tipo di ancora che
     `remember` possa mai scrivere (`memoria/interpretazione.VOCABULARY`) --
     la memoria continua a conoscere solo area/entita'/dispositivo. Se
-    `_TIPI_ANCORA` (casa/strumenti.py) fosse rimasto derivato da
+    `_TETHER_TYPES` (casa/strumenti.py) fosse rimasto derivato da
     `STORE_KEY_PER_TYPE` invece che da `VOCABULARY["ancore"]`,
     "piano" sarebbe scivolato dentro in silenzio, e `fetch` avrebbe
     smesso di insegnare l'errore -- restituendo `{"ricordi": []}`, lo
@@ -843,7 +843,7 @@ async def test_senza_archivi_dice_cosa_manca_non_un_errore_python():
 
 # -- Task B7: l'indice si riusa invece di essere ricostruito e buttato -----
 #
-# `_cerca` e `_ricorda` sono i due punti che costruiscono un `Lookup`
+# `_search` e `_remember` sono i due punti che costruiscono un `Lookup`
 # (verificato con `awk` sul brief prima di scrivere -- riga 440 e 565).
 # Ogni test qui sotto dichiara quale mutazione lo fa cadere: il difetto
 # numero uno di questa campagna e' un test che non puo' fallire.
@@ -909,7 +909,7 @@ async def test_cambia_l_anagrafe_e_cerca_vede_la_nuova_entita_anche_con_la_cache
 
     archivio_casa.replace({"entita": [
         {"entity_id": "light.frullatore", "name": "Frullatore", "area_id": "cucina"}]}, [])
-    # `sostituisci()` marca `aggiornata_il` col secondo corrente: forzare un
+    # `replace()` marca `aggiornata_il` col secondo corrente: forzare un
     # valore diverso da quello di prima garantisce che il test non dipenda
     # dal caso di due chiamate nello stesso secondo di orologio.
     archivio_casa._conn.execute(
@@ -952,7 +952,7 @@ async def test_cambiano_i_nomi_vivi_e_cerca_vede_il_nuovo_ripiego_anche_con_la_c
 @pytest.mark.asyncio
 async def test_cerca_e_ricorda_non_condividono_indice_anche_con_la_cache(
         archivio_casa, memoria, monkeypatch):
-    """`_cerca` passa i nomi di ripiego, `_ricorda` no: alternarli a stato
+    """`_search` passa i nomi di ripiego, `_remember` no: alternarli a stato
     invariato deve costruire ESATTAMENTE due indici (uno per spazio), mai
     quattro (rimbalzo) e mai uno solo condiviso (servirebbe contenuti
     sbagliati all'uno o all'altro)."""
@@ -968,14 +968,14 @@ async def test_cerca_e_ricorda_non_condividono_indice_anche_con_la_cache(
 @pytest.mark.asyncio
 async def test_ricorda_con_anagrafe_mai_letta_non_si_confonde_con_anagrafe_letta_vuota(
         tmp_path, memoria, monkeypatch):
-    """`_ricorda` su un'anagrafe MAI letta usa `{}`; su un'anagrafe letta ma
+    """`_remember` su un'anagrafe MAI letta usa `{}`; su un'anagrafe letta ma
     vuota usa la casa vera (vuota lo stesso, ma DAVVERO letta:
     `aggiornata_il()` passa da `None` a un valore). Una chiave che non
     distinguesse i due rami servirebbe -- o riuserebbe -- l'indice sbagliato:
     qui si conta, non si guarda solo il risultato (entrambi darebbero
     `problemi` non vuoti comunque, un test sul risultato non basterebbe)."""
     chiamate = _conta_costruzioni(monkeypatch)
-    # Nessun `sostituisci()` ancora: `aggiornata_il()` e' `None` davvero.
+    # Nessun `replace()` ancora: `aggiornata_il()` e' `None` davvero.
     vuoto = HomeSpaceStore(str(tmp_path / "vuota.db"))
     d = ToolDispatcher(vuoto, memoria, lookup_cache=LookupCache())
     await d.dispatch("remember", {"testo": "prima, anagrafe non letta"})
@@ -995,7 +995,7 @@ async def test_ricorda_con_anagrafe_mai_letta_non_si_confonde_con_anagrafe_letta
 async def test_ricorda_su_un_colpo_a_segno_non_legge_l_anagrafe(
     archivio_casa, memoria, monkeypatch
 ):
-    """Rilievo Importante della review indipendente: `_ricorda` chiamava
+    """Rilievo Importante della review indipendente: `_remember` chiamava
     SEMPRE `HomeSpaceStore.read()` prima di sapere se la cache avrebbe dato un
     colpo a segno -- su un hit quella lettura (SQL vero + json.loads per
     riga) veniva fatta e buttata. La chiave (aggiornata_il + impronta dei
@@ -1057,6 +1057,6 @@ async def test_l_unita_ARRIVA_dalla_cache_fino_a_guarda(archivio_casa, memoria):
     assert per_id["sensor.cucina_t"]["stato"] == "21.5"
     assert per_id["sensor.cucina_t"]["unita"] == "°C", (
         "l'unita' non arriva dalla cache: `_specchio()` non la estrae, oppure "
-        "`_guarda` non la inoltra")
+        "`_view` non la inoltra")
     assert "unita" not in per_id["light.cucina_1"], (
         "una lampada non ha unita': la chiave non deve comparire")

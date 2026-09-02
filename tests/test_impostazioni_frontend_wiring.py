@@ -23,7 +23,7 @@ def _senza_commenti_js(testo: str) -> str:
 
     Fix round 1, I-3 (la variante lieve). Queste guardie sono testuali, quindi
     un COMMENTO che nomina la cosa cercata le soddisfa esattamente come il
-    codice vero -- lo stesso vizio per cui la guardia su `salva()` e' passata
+    codice vero -- lo stesso vizio per cui la guardia su `save()` e' passata
     all'AST. Qui l'AST non c'e' (non si vuole un parser JavaScript in questa
     suite per tre `assert`), ma togliere i commenti chiude la falla concreta:
     ogni commento di `static/config/*.js` in questo repo e' un blocco

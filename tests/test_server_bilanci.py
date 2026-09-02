@@ -16,9 +16,9 @@ G = "2026-08-24"
 
 
 def _casa(tmp_path, *, entita, dispositivi):
-    """Un `ArchivioCasa` reale, seminato coi registri GREZZI (chiavi
+    """Un `HomeSpaceStore` reale, seminato coi registri GREZZI (chiavi
     inglesi, come li manderebbe `HAClient.read_registries()`): fedele al
-    contratto vero di `ArchivioCasa.sostituisci`, non una finta a parte."""
+    contratto vero di `HomeSpaceStore.replace`, non una finta a parte."""
     a = HomeSpaceStore(str(tmp_path / "casa.db"))
     a.replace({"dispositivi": dispositivi, "entita": entita}, [],
                  reference_frame={"fuso": "Europe/Rome"})
@@ -294,7 +294,7 @@ async def test_una_serie_vuota_per_un_candidato_conta_come_fallimento(tmp_path):
 @pytest.mark.asyncio
 async def test_i_membri_del_bilancio_sono_solo_i_soggetti_con_una_direzione_vera(tmp_path):
     """**Punto 6 del mandato (BASSO, 27/08/2026)**: nella vita vera
-    `soggetti_energia` porta TUTTI i soggetti osservati quel giorno, non
+    `energy_subjects` porta TUTTI i soggetti osservati quel giorno, non
     solo quelli di energia (`server.py::_aggrega_ieri`/`riaggrega_gli_
     ultimi_due_giorni` passano `sorted(soggetti)`, senza filtro). Prima di
     questa correzione un interruttore o un sensore diagnostico dello STESSO

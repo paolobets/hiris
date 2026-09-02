@@ -41,7 +41,7 @@ def test_ogni_forza_del_vocabolario_e_scegliibile_nella_pagina():
 
 def test_la_pagina_non_offre_forze_che_il_vocabolario_non_ammette():
     """Il contrario, e serve quanto le altre due: un'opzione che il cancello
-    di `valida()` rifiuterebbe e' una scelta offerta all'utente che non puo'
+    di `validate()` rifiuterebbe e' una scelta offerta all'utente che non puo'
     andare a buon fine."""
     import re
 

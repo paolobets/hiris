@@ -293,7 +293,7 @@ async def test_un_servizio_senza_parametri_rifiuta_ancora_quello_in_piu():
 # costruisce la sua chiamata con `"bersaglio": {}`, e questa funzione la
 # rifiutava incondizionatamente, prima ancora di guardare il servizio.
 #
-# La prova per mutazione di questa famiglia: rimettere `if not bersaglio_ha:`
+# La prova per mutazione di questa famiglia: rimettere `if not ha_target:`
 # incondizionato (senza `and _declare_target(definizione)`) fa cadere
 # `test_un_servizio_senza_target_accetta_un_bersaglio_vuoto`.
 

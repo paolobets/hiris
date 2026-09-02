@@ -371,7 +371,7 @@ async def test_un_guasto_di_home_assistant_diventa_un_errore_leggibile():
 
 @pytest.mark.asyncio
 async def test_un_registro_illeggibile_diventa_un_errore_leggibile():
-    """`assicura_fresco` solleva al primissimo caricamento (contratto del Task 1)."""
+    """`ensure_fresh` solleva al primissimo caricamento (contratto del Task 1)."""
     class ClientSenzaServizi(FintoClient):
         async def get_services(self):
             raise RuntimeError("connessione rifiutata")
@@ -1183,7 +1183,7 @@ NOTIFICA_HIRIS = {"servizio": "notify.mobile_app_x", "bersaglio": {},
 
 class ClientCheRegistraGliAscoltatori(FintoClient):
     """Fotografa `self.ascoltatori` nell'ISTANTE in cui `call_service` gira --
-    prima che `_chiudi_ascolto` (nel `finally` della porta) possa svuotarli.
+    prima che `_close_listen` (nel `finally` della porta) possa svuotarli.
     E' l'unico modo per provare che un ascolto NON e' stato aperto: guardare
     `client.ascoltatori` DOPO `esegui()` sarebbe vuoto comunque, aperto o no,
     perche' la porta lo chiude sempre prima di tornare."""

@@ -51,11 +51,11 @@ def test_ogni_punto_di_guarda_che_emette_uno_stato_emette_anche_l_istante():
     immediatamente seguenti.
 
     Erano quattro occorrenze TESTUALI il 24/08/2026 (una per lista di
-    entita' che `_guarda_area` costruiva a mano); dalla fetta "nascoste
+    entita' che `_view_area` costruiva a mano); dalla fetta "nascoste
     fuori dagli elenchi" (2026-08-25) sono TRE, non perche' un punto abbia
-    perso l'istante, ma perche' `_righe_entita()` ha unito in una porta sola
+    perso l'istante, ma perche' `_entity_rows()` ha unito in una porta sola
     cio' che prima erano due list comprehension duplicate dentro
-    `_guarda_area` (fondamenta: nessun doppione) -- e quella porta sola serve
+    `_view_area` (fondamenta: nessun doppione) -- e quella porta sola serve
     oggi QUATTRO punti logici (`entita`, `entita_disabilitate` di un'area,
     `entita_nascoste` di un'area e di un dispositivo), non uno. Il conteggio
     resta una guardia contro una regex che non trova NIENTE, non una
@@ -65,8 +65,8 @@ def test_ogni_punto_di_guarda_che_emette_uno_stato_emette_anche_l_istante():
     righe = sorgente.splitlines()
     punti = [i for i, r in enumerate(righe) if re.search(r'"stato":\s*state\.get\(', r)]
     # Tre, verificati col grep sul sorgente vero al 25/08/2026 (righe 447 --
-    # `_righe_entita`, condivisa --, 565 -- `_guarda_entita` --, 636 --
-    # `_guarda_dispositivo` --). Il conteggio serve solo a impedire che una
+    # `_entity_rows`, condivisa --, 565 -- `_view_entity` --, 636 --
+    # `_view_device` --). Il conteggio serve solo a impedire che una
     # regex che non trova NIENTE passi per verde: la difesa vera e' il ciclo
     # qui sotto, che lega ogni occorrenza al suo gemello.
     assert len(punti) >= 3, "i punti che emettono uno stato sono cambiati: rileggi"

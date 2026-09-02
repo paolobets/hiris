@@ -630,13 +630,13 @@ test('seam _rendiOggetti: senza comprimari e senza misure non c\'è nessun rivel
 // ---------------------------------------------------------------------------
 // Il bilancio dell'energia (mandato «il bilancio dell'energia», 27/08/2026):
 // un oggetto al giorno per dispositivo, una QUANTITA' CON UNA FORMA, non un
-// episodio. La forma reale del corpo è quella di `costruisci_corpo_bilancio`
+// episodio. La forma reale del corpo è quella di `build_balance_body`
 // (hiris/app/cervello/oggetti.py): {totali:{dimensione:{valore,provenienza}},
 // forma:{dimensione:[{ora,valore}...]}, momenti:{...}}, più `dispositivo`/`entita`
-// aggiunti da `aggrega_giorno`. Prima di questa fetta il genere "bilancio"
-// cadeva nel ramo di default di `frasePrincipale` e mostrava «(nessun
+// aggiunti da `aggregate_day`. Prima di questa fetta il genere "bilancio"
+// cadeva nel ramo di default di `mainPhrase` e mostrava «(nessun
 // dettaglio)» — questi test bloccano quella regressione E vietano lo stampo
-// dell'episodio («da X a Y», la freccia di `periodo()`).
+// dell'episodio («da X a Y», la freccia di `period()`).
 // ---------------------------------------------------------------------------
 
 // `forma[dimensione]` porta l'ORA VERA di ogni punto dal 27/08/2026 (mandato
@@ -833,7 +833,7 @@ test('seam _rendiOggetti: l\'ora mostrata è quella LOCALE (convertita con Date)
   // (fino a due ore, con l'ora legale). Un fuso ESPLICITO e lontano da UTC
   // rende la prova indipendente dal fuso di chi fa girare il test: se la
   // resa leggesse le cifre grezze mostrerebbe "13:00" anche qui; la resa
-  // corretta converte con `new Date(iso)`, come fa già `fmtOraIso` per i
+  // corretta converte con `new Date(iso)`, come fa già `fmtIsoHour` per i
   // momenti -- la STESSA strada, non una nuova.
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
@@ -880,12 +880,12 @@ test('seam _rendiOggetti: un punto senza `ora` valida non si disegna (mai un\'or
 // passaggio del mouse direbbe «le 13», e la barra starebbe alle 14 -- e la
 // POSIZIONE e' cio' che si guarda per decidere, non l'etichetta.
 // Serve un ancoraggio ASSOLUTO: la coordinata x attesa, calcolata dalla SUA
-// ora con lo stesso contratto geometrico di `rendiCurvaBilancio`
+// ora con lo stesso contratto geometrico di `renderBalanceCurve`
 // (watcher-route.js: viewBox 640x140, margine sinistro 4, 24 ore fisse
 // -- `L`/`sinistra`/`ORE_DEL_GIORNO` nel sorgente, non ricopiati per caso:
 // e' lo stesso disegno che la pagina dichiara nel suo `viewBox`, verificato
 // sotto). Una sola serie (produzione) rende l'indice di serie ininfluente
-// (`si * larghezzaBarra` = 0), cosi' la formula attesa non dipende da un
+// (`si * barWidth` = 0), cosi' la formula attesa non dipende da un
 // dettaglio che non e' oggetto di questo test.
 test('seam _rendiOggetti: la barra sta alla coordinata ASSOLUTA della sua ora, non solo in un ordine relativo alle altre (mutazione: un piazzamento spostato di un\'ora resta verde per tutti gli altri test)', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
@@ -1116,7 +1116,7 @@ test('due cambi rapidi di giorno: la risposta più lenta e superata non deve vin
 });
 
 // ---------------------------------------------------------------------------
-// Pulizia: nessun `TONO_IGNOTO` morto, nessun innerHTML (rilievo 8d + disciplina generale)
+// Pulizia: nessun `TONE_UNKNOWN` morto, nessun innerHTML (rilievo 8d + disciplina generale)
 // ---------------------------------------------------------------------------
 
 test('il sorgente non definisce TONO_IGNOTO se non lo usa (o si usa, o si toglie)', () => {

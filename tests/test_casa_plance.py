@@ -209,7 +209,7 @@ async def test_a_listing_that_never_arrives_is_distinguished_from_an_empty_listi
 
 @pytest.mark.asyncio
 async def test_a_failed_listing_does_not_delete_the_additional_dashboards(archivio):
-    """Important (4), riprodotto a livello di `rileggi_plance`: l'elenco va
+    """Important (4), riprodotto a livello di `reread_dashboards`: l'elenco va
     in timeout ma la config della predefinita si legge lo stesso -> senza
     distinguere i due casi, la guardia "nessuna leggibile" non scatterebbe
     (la predefinita E' leggibile) e la replica verrebbe sostituita con la

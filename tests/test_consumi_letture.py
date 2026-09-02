@@ -98,7 +98,7 @@ def test_una_sezione_senza_nessun_costo_NOTO_non_afferma_zero(tmp_path):
             "nessun costo noto: 0.0 direbbe «misurato, e non e' costato niente»")
         assert a.totali()["costo_usd"] == 0.0, (
             "il TOTALE resta un numero: e' la somma di cio' che si conosce, e "
-            "`costo_parziale` dice che c'e' dell'altro")
+            "`partial_cost` dice che c'e' dell'altro")
     finally:
         a.close()
 

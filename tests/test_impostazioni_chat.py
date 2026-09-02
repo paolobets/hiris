@@ -96,7 +96,7 @@ def test_carica_system_prompt_vuoto_in_file_ricade_sul_default(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# fetta E5 Task 2: `salva()` smette di essere orfana, e la sua scrittura si
+# fetta E5 Task 2: `save()` smette di essere orfana, e la sua scrittura si
 # allinea al precedente di questo ramo per i file di /data che devono
 # sopravvivere ai riavvii (token_interno._write_token).
 # ---------------------------------------------------------------------------
@@ -115,7 +115,7 @@ def _chiamate_a_salva():
     E' esattamente il limite che il report di questo task imputa al censimento
     («il rilevatore crede il nome citato»), riprodotto dentro il test scritto
     per rimediarvi. Con l'AST la prosa smette di contare: si cercano nodi
-    `Call` il cui `func` e' un `Attribute` di nome `salva`, cioe' chiamate
+    `Call` il cui `func` e' un `Attribute` di nome `save`, cioe' chiamate
     vere. Verificato per mutazione (vedi il report): cancellando la riga della
     chiamata e lasciando la docstring, il test diventa rosso.
     """
@@ -237,7 +237,7 @@ def test_salva_non_riscrive_il_vecchio_modello_che_quindi_sparisce_dal_file(tmp_
 
     A differenza di `brain_model` in `handlers_models.load_models_config` --
     che sopravvive perché `save_models_config` fa lettura-modifica-scrittura
-    -- qui `salva()` riscrive il file da zero coi sei campi veri: la chiave
+    -- qui `save()` riscrive il file da zero coi sei campi veri: la chiave
     `model` sparisce al primo salvataggio dell'utente. Il log lo dice, e
     questo test verifica che sia vero."""
     import json as _json
@@ -317,7 +317,7 @@ def test_un_ambiente_muto_non_solleva_e_ricade_sul_default(tmp_path, monkeypatch
 
 def test_un_ambiente_non_numerico_non_solleva_e_ricade_sul_default(tmp_path, monkeypatch):
     """`bashio::config` su un campo vuoto/malformato torna una stringa che
-    `int()` non digerisce: stessa disciplina di `migrazione_opzioni._intero`
+    `int()` non digerisce: stessa disciplina di `options_migration._integer`
     per gli altri sette valori che arrivano da `run.sh`."""
     monkeypatch.setenv("HISTORY_RETENTION_DAYS", "")
     assert ChatSettings.load(str(tmp_path)).retention_days == 90
@@ -333,7 +333,7 @@ def test_salva_scrive_i_giorni_di_conservazione(tmp_path):
 # **C2 della revisione finale: la versione A, per questo campo, non migrava.**
 #
 # `carica()` LEGGE attraverso `HISTORY_RETENTION_DAYS` quando la chiave manca,
-# ma non SCRIVE, e `salva()` ha un solo chiamante di produzione: la PUT di
+# ma non SCRIVE, e `save()` ha un solo chiamante di produzione: la PUT di
 # «Impostazioni chat». Chi quella pagina non la apre mai non produce mai la
 # chiave sul disco -- e il rilascio successivo (versione B, l'opzione fuori
 # dallo schema) trova l'ambiente muto e fa valere il default del codice, 90.

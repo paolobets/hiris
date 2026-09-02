@@ -61,7 +61,7 @@ def test_i_ricordi_dichiarati_entrano_interi():
 
 # --- C-2: il ricordo entra INTERO a ogni turno, senza che nessuno lo -----
 # richieda -- e' il canale piu' pericoloso per un'iniezione che deve
-# sopravvivere: una `ricorda()` avvenuta in un turno iniettato torna nel
+# sopravvivere: una `remember()` avvenuta in un turno iniettato torna nel
 # nucleo di OGNI turno successivo, per sempre (I-1). Va sanificato qui,
 # dove il testo del ricordo diventa parte del testo che il modello legge
 # sempre -- non nell'archivio, che resta la verita' cosi' come e' stata
@@ -83,7 +83,7 @@ def test_un_ricordo_legittimo_con_accenti_e_apostrofi_non_si_mutila():
 
 
 
-# N1 (review indipendente 25/08/2026): `_righe_ricordi` deve usare la
+# N1 (review indipendente 25/08/2026): `_memory_lines` deve usare la
 # funzione CONDIVISA `domande.ricordi_sanificati`, non una propria copia
 # inline di `sanitize_text` -- e' l'unico modo per cui il docstring di
 # `_sanitize.py` ("un punto solo, non tre") sia vero da solo, non per una
@@ -130,10 +130,10 @@ def test_una_casa_vuota_non_produce_un_nucleo_bugiardo():
     stanze.
 
     `assert testo.strip()` non bastava, e il nome della prova prometteva molto
-    di piu' di quello che la prova faceva: `_assembla()` scrive SEMPRE i titoli
+    di piu' di quello che la prova faceva: `_assemble()` scrive SEMPRE i titoli
     di sezione ("## La casa", "## Notevole adesso", ...) anche a righe vuote,
     quindi quel controllo non poteva fallire mai, qualunque cosa contenesse la
-    sezione. Con un `_righe_casa()` che restituiva "Piano terra: - Cucina
+    sezione. Con un `_home_space_lines()` che restituiva "Piano terra: - Cucina
     fantasma: 5 luci" la prova restava verde -- e con lei tutte e 41 le prove
     del file.
 
@@ -161,7 +161,7 @@ def test_le_entita_disabilitate_non_si_contano():
 
 def test_le_entita_nascoste_non_si_contano_nemmeno_in_la_casa():
     """Effetto collaterale voluto della fetta "nascoste fuori dagli elenchi"
-    (2026-08-25): `gerarchia()` non mette piu' le nascoste in
+    (2026-08-25): `hierarchy()` non mette piu' le nascoste in
     `area["entita"]`, e "La casa" legge lo STESSO albero di "Notevole
     adesso" -- che le esclude gia' da prima (`if e.get("nascosta"):
     continue`). Prima di questa fetta le due sezioni si contraddicevano: una
@@ -204,8 +204,8 @@ def test_senza_registri_caduti_non_si_inventa_un_avviso():
 
 
 def test_registro_aree_caduto_non_dice_senza_area():
-    """CRITICAL ①, riproduzione esatta del difetto: `_righe_casa` chiamava
-    `gerarchia(casa)` SENZA `non_disponibili`, che invece serve solo alla
+    """CRITICAL ①, riproduzione esatta del difetto: `_home_space_lines` chiamava
+    `hierarchy(casa)` SENZA `non_disponibili`, che invece serve solo alla
     frase in fondo. Un'entita' senza area risolta, col registro delle aree
     caduto, deve finire in "Aree non lette" -- MAI in "Senza area", che
     afferma un dato che non abbiamo (e che «Cio' che HIRIS ignora» due
@@ -220,8 +220,8 @@ def test_registro_aree_caduto_non_dice_senza_area():
 
 
 def test_notevole_usa_lo_stesso_albero_della_casa():
-    """CRITICAL ①, seconda meta': `_righe_notevole` non deve ricalcolare
-    l'area a mano (`e.get("area_id") or area_del_dispositivo.get(...)`) --
+    """CRITICAL ①, seconda meta': `_highlight_lines` non deve ricalcolare
+    l'area a mano (`e.get("area_id") or device_area.get(...)`) --
     quella logica non sa distinguere un riferimento penzolante da
     un'assenza vera, e lascia l'entita' senza prefisso in silenzio. Deve
     usare lo STESSO albero di «La casa», che a un'area_id sconosciuta da'
@@ -369,7 +369,7 @@ def test_allarme_scattato_e_notevole_armato_no():
 
 def test_i_ricordi_tagliati_sono_ordinati_esplicitamente_dal_codice():
     """MINOR ④: se il chiamante li passasse in un ordine diverso da quello
-    di `MemoryStore.richiama()` (che oggi e' gia' "il piu' recente
+    di `MemoryStore.fetch()` (che oggi e' gia' "il piu' recente
     prima" per coincidenza, `ORDER BY id DESC`), il taglio deve comunque
     scartare il PIU' VECCHIO, non l'ultimo della lista che gli e' arrivata."""
     ricordi_in_ordine_sbagliato = [
@@ -471,7 +471,7 @@ def test_il_notevole_raggruppato_tiene_insieme_le_aree():
 
 def test_registro_entita_caduto_rende_lo_stato_inaffidabile():
     """CRITICAL ②: aree e piani letti, registro "entita" caduto (tabella
-    vuota, com'e' dopo un `sostituisci` parziale), cinque luci accese nella
+    vuota, com'e' dopo un `replace` parziale), cinque luci accese nella
     cache viva. Prima del fix: `casa.get("entita", [])` vuota faceva
     scattare il ramo "casa senza entita' = niente da guardare", e
     "Notevole adesso" diceva "Niente di notevole al momento." -- una
@@ -506,7 +506,7 @@ def test_avviso_corpi_mancanti_conta_non_elenca():
     avviso = next(a for a in riepilogo["notices"] if "senza corpo" in a)
     assert avviso == "100 voci di comportamento senza corpo disponibile (solo il nome)."
     # I nomi restano visibili riga per riga in "Cio' che la casa fa gia' da
-    # sola" (`_righe_comportamento` marca ogni voce senza corpo in linea):
+    # sola" (`_behavior_lines` marca ogni voce senza corpo in linea):
     # e' l'AVVISO che non deve piu' duplicarli per esteso, non il nucleo
     # intero a doverli nascondere.
     sezione_lacune = testo.split("## Cio' che HIRIS ignora")[1]
@@ -515,7 +515,7 @@ def test_avviso_corpi_mancanti_conta_non_elenca():
 
 def test_rete_di_sicurezza_taglia_anche_senza_ricordi_da_tagliare():
     """IMPORTANT ④: con zero ricordi, la vecchia rete di sicurezza (limitata
-    a `while ... and righe_ricordi`) non aveva alcuna leva -- il nucleo
+    a `while ... and memory_lines`) non aveva alcuna leva -- il nucleo
     poteva sfondare il tetto del 94% in silenzio. Cento script `solo_stato`,
     zero ricordi, tetto di default: il testo non deve MAI superare il
     tetto*1.1, con o senza ricordi da tagliare."""
@@ -659,7 +659,7 @@ def test_una_sola_entita_su_un_solo_dispositivo_non_si_annota():
     un'entita' per dominio -- una cosa, un conteggio, niente da aggiungere.
 
     E' l'UNICO caso che il confronto `>= quante` decide da solo: con piu'
-    dispositivi decide gia' `_MAX_NOMI_DISPOSITIVO_IN_RIGA`, quindi la
+    dispositivi decide gia' `_MAX_DEVICE_NAMES_IN_LINE`, quindi la
     mutazione "togliere `>= quante`" sopravvive a tutti gli altri test e
     muore solo qui -- e da qui si vedrebbe subito, perche' e' la riga piu'
     frequente della casa. La presa porta anche un `sensor`: il filtro sul
@@ -670,7 +670,7 @@ def test_una_sola_entita_su_un_solo_dispositivo_non_si_annota():
 
 def test_quattro_valvole_di_quattro_dispositivi_non_si_annotano():
     """La regola si spegne da sola: quando sono quattro cose separate il
-    conteggio e' tutto cio' che serve. Mutazione uccisa: `_portatori` che
+    conteggio e' tutto cio' che serve. Mutazione uccisa: `_carriers` che
     smettesse di distinguere gli id (per esempio tenendo solo il primo)
     annoterebbe qui col nome di una valvola sola, spacciando quattro cose
     per una."""
@@ -680,7 +680,7 @@ def test_quattro_valvole_di_quattro_dispositivi_non_si_annotano():
 
 
 def test_dodici_sensori_di_tre_dispositivi_contano_e_non_elencano():
-    """Sopra `_MAX_NOMI_DISPOSITIVO_IN_RIGA` non si citano nomi. E' la riga
+    """Sopra `_MAX_DEVICE_NAMES_IN_LINE` non si citano nomi. E' la riga
     che tiene il budget: senza, 61 righe come questa citerebbero 344 nomi."""
     entita = [_e(f"sensor.s{i}", f"dev{i % 3}") for i in range(12)]
     nomi = {f"dev{i}": f"Presa {i}" for i in range(3)}
@@ -712,7 +712,7 @@ def test_un_dispositivo_senza_nome_mostra_l_id_marcato_come_id():
 
 def test_col_registro_dispositivi_caduto_non_si_annota_niente():
     """`None` non e' `{}`: "non ho potuto guardare" non e' "nessun
-    dispositivo". Mutazione uccisa: usare `nomi_dispositivo or {}` invece del
+    dispositivo". Mutazione uccisa: usare `device_names or {}` invece del
     controllo esplicito, che stamperebbe "(id: ...)" su tutta la casa."""
     entita = [_e(f"valve.v{i}", "dev1") for i in range(4)]
     assert nucleo._device_annotation(entita, "valve", 4, None) == ""
@@ -748,7 +748,7 @@ def _casa_irrigazione():
     una volta per AREA invece che per gruppo, o attaccata al gruppo
     sbagliato, non puo' passare. Nella stessa area un pluviometro con
     un'entita' sola: e' il 75% delle righe della casa vera, quelle che
-    devono restare mute -- e passare a `_annotazione_dispositivo` il totale
+    devono restare mute -- e passare a `_device_annotation` il totale
     dell'area invece del conteggio del dominio le annoterebbe tutte, che e'
     esattamente lo sfondamento di budget che questa fetta evita. In «Orto»
     due rubinetti separati, che sono davvero due cose: li' la regola deve
@@ -759,7 +759,7 @@ def _casa_irrigazione():
     proverebbe che la regola si spegne quando i portatori sono piu' d'uno.
 
     `dispositivi` resta POPOLATA anche quando il test dichiara il registro
-    caduto: e' proprio cio' che rende falsificabile la riga di `componi()`
+    caduto: e' proprio cio' che rende falsificabile la riga di `compose()`
     che guarda `non_disponibili`. Costruire i nomi dalla lista -- che in
     produzione sarebbe vuota, e che qui non lo e' -- stamperebbe subito
     «Irrigazione giardino» dove non deve comparire.
@@ -808,7 +808,7 @@ def test_il_nucleo_dice_che_le_quattro_valvole_sono_un_irrigatore_solo():
     dispositivi o uno.
 
     Si asserisce la RIGA INTERA, non due `in` separati: "valve" non e' in
-    `_NOMI_DOMINIO`, quindi `_nome_dominio` restituisce il dominio nudo e la
+    `_DOMAIN_NAMES`, quindi `_domain_name` restituisce il dominio nudo e la
     riga dice esattamente questo. Cosi' cadono anche la mutazione che attacca
     l'annotazione al gruppo sbagliato (le tende), quella che la calcola una
     volta per riga invece che per gruppo, e quella che passa il totale
@@ -857,9 +857,9 @@ def test_l_annotazione_non_solleva_mai_con_un_conteggio_incoerente():
     """Nel nucleo un'eccezione non degrada: questo testo entra nel prompt di
     OGNI messaggio, quindi un `IndexError` qui SPEGNE LA CHAT.
 
-    `_righe_casa` passa un `quante` coerente per costruzione (stessa lista,
+    `_home_space_lines` passa un `quante` coerente per costruzione (stessa lista,
     stesso `_dominio`), quindi questa chiamata non e' raggiungibile da
-    `componi()` -- ed e' proprio per questo che la guardia va pinnata a mano:
+    `compose()` -- ed e' proprio per questo che la guardia va pinnata a mano:
     nessun test di composizione puo' farla cadere. Mutazione uccisa:
     togliere `if not dispositivi` -> `IndexError: list index out of range`."""
     assert nucleo._device_annotation([], "valve", 4, {"dev1": "Irrigazione"}) == ""
@@ -870,7 +870,7 @@ def test_l_annotazione_non_solleva_mai_con_un_conteggio_incoerente():
 def test_il_nucleo_regge_un_registro_dispositivi_a_meta():
     """Righe che l'archivio produce DAVVERO: in SQLite `id TEXT PRIMARY KEY`
     ammette NULL, e `nome` e' `name_by_user or name` -- entrambi nullable
-    (casa/archivio.py). La tabella dei nomi che `componi()` costruisce e' la
+    (casa/archivio.py). La tabella dei nomi che `compose()` costruisce e' la
     giunzione NUOVA di questa fetta e va pinnata da fuori: le prove di A1
     ricevono il dizionario gia' fatto e non possono vedere come nasce.
 
@@ -882,7 +882,7 @@ def test_il_nucleo_regge_un_registro_dispositivi_a_meta():
 
     NB: la riga senza id NON prova la guardia `if d.get("id")` -- con la
     chiave presente e a `None` la guardia e' un mutante equivalente (nessun
-    `dispositivo_id` falsy arriva mai a `_portatori`). Sta qui perche' e' la
+    `dispositivo_id` falsy arriva mai a `_carriers`). Sta qui perche' e' la
     forma che l'archivio puo' produrre, non perche' uccida qualcosa."""
     casa = _casa_irrigazione()
     casa["dispositivi"] = [{"id": None, "nome": "Riga senza id"},

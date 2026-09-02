@@ -41,7 +41,7 @@ def _sys_text(system) -> str:
 
 
 def test_base_prompt_instructs_saving_user_statements():
-    """Must name the real save tool (`ricorda`, casa/strumenti.py) and use an
+    """Must name the real save tool (`remember`, casa/strumenti.py) and use an
     imperative save verb -- asserting on a whole sentence would break on the
     first stylistic touch-up."""
     assert NOME_RICORDA in BASE_SYSTEM_PROMPT

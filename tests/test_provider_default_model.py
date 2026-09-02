@@ -9,7 +9,7 @@ lo ricevevano come argomento di costruzione, `default_model=`, e poi leggevano
 non imprecisa**, cioe' l'invariante 4 della spec violato in due modi insieme.
 
 Da qui la scelta (a) del progetto §11.3: togliere il problema invece della
-frase. I runner ricevono una LETTURA (`leggi_modello`), e la pagina non ha piu'
+frase. I runner ricevono una LETTURA (`read_model`), e la pagina non ha piu'
 nessuna didascalia da fare -- l'assenza di didascalie e' la cosa piu' onesta
 che possa dire di se'.
 """
@@ -124,7 +124,7 @@ def test_senza_lettura_il_comportamento_e_quello_di_prima(tmp_path):
 
 
 def test_una_lettura_che_torna_None_non_rompe_il_turno(tmp_path):
-    """`leggi_modello` e' fornita da chi costruisce il runner: se un giorno
+    """`read_model` e' fornita da chi costruisce il runner: se un giorno
     restituisse `None` (una chiave assente letta male), il runner deve ripiegare
     come se non ci fosse scelta, non mandare `None` al provider."""
     runner = ClaudeRunner(api_key="sk-test",
@@ -302,7 +302,7 @@ async def test_la_chiamata_a_ollama_parte_col_modello_LETTO_ADESSO(tmp_path):
 def test_una_lettura_che_torna_None_non_arriva_MAI_al_provider(tmp_path):
     """Il locale e' il caso pericoloso: `_resolve_model` restituisce il valore
     scelto senza ripiego (quell'istanza ha un modello solo), quindi un `None`
-    finirebbe dritto nel `model=` della richiesta. `_modello_scelto` normalizza
+    finirebbe dritto nel `model=` della richiesta. `_chosen_model` normalizza
     a "" per tutti e due i runner, cosi' il ripiego esiste sempre."""
     locale = OpenAICompatRunner(
         base_url="http://192.168.1.50:11434/v1", api_key="ollama", local=True,

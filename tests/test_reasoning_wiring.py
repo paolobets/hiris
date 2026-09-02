@@ -11,10 +11,10 @@ def test_reasoning_queue_importable():
     assert ReasoningQueue is not None
 
 
-# ── Il cablaggio di `leggi_fuso` non era sorvegliato da nessun test ───────────
+# ── Il cablaggio di `read_timezone` non era sorvegliato da nessun test ───────────
 #
 # **Le tre righe qui sotto sono un VERBALE e portano i nomi di ALLORA**: quel
-# giorno il kwarg si chiamava `leggi_fuso=`, e `read_timezone` non esisteva.
+# giorno il kwarg si chiamava `read_timezone=`, e `read_timezone` non esisteva.
 # Riportate al nome di allora il 01/09, dopo che il giro di `reasoning/` le
 # aveva riscritte: una citazione che registra una misura non segue il codice,
 # altrimenti la misura non e' piu' ripetibile da chi legge.

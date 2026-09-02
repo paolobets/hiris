@@ -152,7 +152,7 @@ test('risposta 202 pending: il polling completa e la risposta finale viene rende
 //
 // Qui c'era la coppia opposta: pretendeva che le targhette comparissero. Erano
 // state aggiunte al ramo del ponte l'11 agosto perche' l'osservabilita' di una
-// scrittura di `ricorda` mancava proprio sul percorso che la produce.
+// scrittura di `remember` mancava proprio sul percorso che la produce.
 //
 // Il proprietario le ha viste e non le vuole a schermo. L'osservabilita' non si
 // perde: si SPOSTA nei log a livello debug, dove il backend adesso scrive gli
@@ -867,9 +867,9 @@ test('clearConversation: se la DELETE fallisce lato server, i messaggi NON spari
     'la UI non deve fingere di aver cancellato se il server non lo ha fatto');
 });
 
-/* ── La proprieta' cieca `alSicuro`: il test viene PRIMA della rinomina ─────
+/* ── La proprieta' cieca `safeOnServer`: il test viene PRIMA della rinomina ─────
  *
- * `row._attesa.alSicuro` e' scritta in un posto (`waitSafeOnServer`) e
+ * `row._attesa.safeOnServer` e' scritta in un posto (`waitSafeOnServer`) e
  * letta in un altro (la riga di servizio, dopo la soglia). Ogni sua lettura sta
  * in posizione di verita', ed e' la forma che la misura del 30/08 ha trovato
  * cieca: rinominata da un lato solo, la lettura orfana da' `undefined`,

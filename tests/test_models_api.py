@@ -91,7 +91,7 @@ async def test_il_get_pinna_l_insieme_esatto_delle_sue_chiavi(client):
 @pytest.mark.asyncio
 async def test_i_cinque_provider_ci_sono_tutti_e_stanno_in_una_lista_sola(client):
     """Task 8: il payload storico `providers[]` E' USCITO. Elencava tutti e
-    cinque con `in_catena` + `has_credential`, cioe' diceva l'appartenenza alla
+    cinque con `in_chain` + `has_credential`, cioe' diceva l'appartenenza alla
     catena una SECONDA volta accanto a `catena`/`fuori_catena`, che la dicono
     per esteso -- due rappresentazioni della stessa cosa nello stesso payload,
     la miniatura del difetto che questa fetta chiude. Il suo unico lettore era
@@ -460,7 +460,7 @@ async def test_list_models_never_leaks_secrets(client):
 
 @pytest.mark.asyncio
 async def test_list_models_non_dice_piu_l_appartenenza_alla_catena(claude_con_elenco):
-    """Task 9: `in_catena` + `has_credential` erano la TERZA superficie che
+    """Task 9: `in_chain` + `has_credential` erano la TERZA superficie che
     descriveva l'appartenenza, dopo che il Task 7 aveva tolto
     `providers[].active` e il Task 8 l'intero `providers[]` da
     `/api/models/config`. L'unico lettore era il picker uscito col Task 8;
@@ -507,7 +507,7 @@ async def test_il_pannello_arriva_gia_composto_e_dice_da_dove_viene_l_elenco(cli
 
 @pytest.mark.asyncio
 async def test_il_pannello_del_piano_offre_tre_alias_E_SI_SCRIVE(client, monkeypatch):
-    """`agent/runner.modello_cli` riduce QUALUNQUE modello risolto a
+    """`agent/runner.cli_model` riduce QUALUNQUE modello risolto a
     opus/haiku/sonnet: offrire `claude-opus-4-7` sul piano sarebbe una
     precisione finta.
 

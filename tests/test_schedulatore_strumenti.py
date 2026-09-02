@@ -25,7 +25,7 @@ def _fra(minuti: int) -> str:
     """Un istante ISO-8601 col fuso, `minuti` da ADESSO -- quello vero.
 
     Il brief di questo task scriveva `quando` come una data di calendario
-    fissa ("2026-08-19T18:00:00+02:00"). `_prometti` confronta `quando` con
+    fissa ("2026-08-19T18:00:00+02:00"). `_promise` confronta `quando` con
     `time.time()` VERO (non un orologio finto passato dal test): una data
     scritta a mano e' un rifiuto "e' gia' passato" in attesa di succedere, e
     difatti e' successo -- questi test fallivano se eseguiti la sera dello
@@ -136,7 +136,7 @@ async def test_un_fai_senza_registro_e_rifiutato_non_verificato_in_silenzio(prom
     fix), OGGI ogni `fai` nascerebbe senza che il suo servizio sia mai stato
     verificato -- e `PROMISE_TOOL_DEF` dichiara al modello, senza
     condizioni, «viene VERIFICATA adesso». Stessa guardia di
-    `azione/porta.py::_REGISTRO_MUTO`, spostata al momento della promessa.
+    `azione/porta.py::_MUTE_REGISTRY`, spostata al momento della promessa.
     """
     d = _dispatcher(promesse)  # nessun registro, nessuna cache
     esito = await d.dispatch("promise", {
@@ -155,14 +155,14 @@ async def test_un_fai_con_registro_presente_ma_mai_caricato_e_rifiutato_come_sen
     """Il caso limite che il cablaggio del Task 7 rende raggiungibile per la
     prima volta: all'avvio `server.py` costruisce SEMPRE `ServiceRegistry()`
     (mai `None`), ma vuoto -- si carica al primo uso, non all'avvio. Senza la
-    guardia su `domains()`, `_verifica_ora` avrebbe proseguito fino a
+    guardia su `domains()`, `_verify_now` avrebbe proseguito fino a
     `verification()`, che avrebbe rifiutato con «il dominio "light" non esiste in
     questa casa. Domini disponibili: .» -- una frase FALSA detta con
     sicurezza (la casa non e' vuota, e' il registro che non e' stato letto),
     esattamente cio' da cui mette in guardia `azione/porta.py::_MUTE_REGISTRY`.
     """
     # `cache=_CacheFinta()`: senza uno specchio dello stato leggibile
-    # `_verifica_ora` si ferma prima (`_stati_grezzi()` -> `None` -> nessun
+    # `_verify_now` si ferma prima (`_state_readings()` -> `None` -> nessun
     # rifiuto), e il test non arriverebbe mai al ramo che questa guardia
     # esiste per chiudere -- vedi `verification()` in `azione/verifica.py`.
     d = _dispatcher(promesse, registry=_RegistroVuoto(), cache=_CacheFinta())
@@ -180,7 +180,7 @@ async def test_un_fai_con_registro_presente_ma_mai_caricato_e_rifiutato_come_sen
 async def test_un_fai_senza_specchio_e_rifiutato_non_verificato_in_silenzio(promesse):
     """Rilievo minore della review finale, terza occorrenza dello stesso
     schema gia' deciso due volte (registro assente: Task 6; recapito: Task
-    7): senza uno specchio leggibile `_verifica_ora` tornava `None` -- nessun
+    7): senza uno specchio leggibile `_verify_now` tornava `None` -- nessun
     rifiuto -- e la promessa nasceva senza che il suo servizio fosse mai
     stato verificato, mentre `PROMISE_TOOL_DEF` dichiara al modello «viene
     VERIFICATA adesso» senza condizioni."""
@@ -196,7 +196,7 @@ async def test_un_fai_senza_specchio_e_rifiutato_non_verificato_in_silenzio(prom
 
 @pytest.mark.asyncio
 async def test_un_chiedi_nasce_anche_senza_registro(promesse):
-    """Il gemello del test sopra: un `chiedi` non passa da `_verifica_ora`
+    """Il gemello del test sopra: un `chiedi` non passa da `_verify_now`
     (non ha `chiamata`), quindi la guardia nuova sul registro non deve
     toccarlo. Non e' un test ridondante con
     `test_prometti_un_chiedi_crea_la_promessa`: quello non dichiara ESPLICITO
@@ -242,7 +242,7 @@ async \
 def test_un_recapito_con_registro_presente_ma_mai_caricato_e_rifiutato_come_non_ancora_verificabile(
     promesse,
 ):
-    """Il gemello del test sopra su `_verifica_ora` (review Task 7, Rilievo
+    """Il gemello del test sopra su `_verify_now` (review Task 7, Rilievo
     1): prima del fix, un `_RegistroVuoto` (presente, `domains()` vuoto)
     faceva rispondere `service(dominio, nome)` con `None` per QUALUNQUE
     recapito -- «"notify.mobile_app_x" non esiste in questa casa», una frase
@@ -265,7 +265,7 @@ async def test_prometti_scalda_il_registro_vuoto_se_il_canale_ha_c_e(promesse):
     """Il difetto misurato dal vivo su 3.9.1: un add-on appena avviato ha un
     registro PRESENTE ma mai caricato (si carica pigramente alla prima
     azione ESEGUITA, `azione/porta.py::ActionActuator.execute`) -- e prima di questo
-    fix `_prometti` interrogava `_registro_non_pronto()` senza mai scaldare
+    fix `_promise` interrogava `_registry_not_ready()` senza mai scaldare
     il registro. L'utente aveva appena chiesto di leggere le otto
     temperature (riuscito: quella lettura passa da un'altra strada, non dal
     registro dei servizi) e poi un `promise` con recapito veniva rifiutato
@@ -296,7 +296,7 @@ async def test_prometti_senza_canale_ha_non_tenta_di_scaldare_il_registro(promes
     il registro non si puo' caricare (`ensure_fresh` vuole un client), e
     deve restare il rifiuto onesto di sempre -- MAI tentare comunque.
 
-    `_RegistroTracciaScaldamento.assicura_fresco` solleva se viene chiamato:
+    `_RegistroTracciaScaldamento.ensure_fresh` solleva se viene chiamato:
     e' la finta che sa PRODURRE il difetto (fondamenta "test che non possono
     fallire") -- se la guardia sul canale assente sparisse, questa finta lo
     direbbe subito, mentre un'asserzione sul solo messaggio di errore no
@@ -352,7 +352,7 @@ async def test_un_da_confrontare_con_riferimento_inesistente_e_rifiutato_alla_na
 @pytest.mark.asyncio
 async def test_un_chiedi_senza_da_confrontare_resta_legittimo_anche_senza_specchio(promesse):
     """Requisito 2 della spec R7, reso esplicito: un `chiedi` senza
-    `da_confrontare` non chiede mai nessuna istantanea, quindi non deve MAI
+    `to_compare` non chiede mai nessuna istantanea, quindi non deve MAI
     toccare lo specchio -- nessuna cache passata al dispatcher, apposta: se
     la guardia nuova leggesse lo specchio anche a lista vuota, questo test lo
     direbbe (il rifiuto "non vedo lo stato di questa casa" comparirebbe)."""
@@ -368,9 +368,9 @@ async def test_un_chiedi_senza_da_confrontare_resta_legittimo_anche_senza_specch
 async def test_un_da_confrontare_senza_specchio_leggibile_e_rifiutato_non_verificato_in_silenzio(
     promesse,
 ):
-    """Requisito 3: stessa domanda di `_verifica_ora` sullo specchio cieco
+    """Requisito 3: stessa domanda di `_verify_now` sullo specchio cieco
     (`test_un_fai_senza_specchio_e_rifiutato_non_verificato_in_silenzio`), qui
-    per `da_confrontare` -- riusa la STESSA forma, non ne inventa una terza:
+    per `to_compare` -- riusa la STESSA forma, non ne inventa una terza:
     senza uno specchio leggibile non si sa se il riferimento esiste, quindi
     non si tace facendo nascere una promessa mai verificata."""
     d = _dispatcher(promesse, registry=_RegistroFinto())  # nessuna cache
@@ -421,7 +421,7 @@ class _RegistroFinto:
 
     Fix review Task 6, Rilievo 1: espone SOLO i metodi che il percorso
     esercitato da questo file legge davvero -- `domains()` e `service()`
-    (chiamati da `_verifica_ora`/`_verifica_recapito`), e `services_for()`, che
+    (chiamati da `_verify_now`/`_verify_recipient`), e `services_for()`, che
     `azione/verifica.py` chiama nel ramo «il servizio non esiste» per
     elencare quelli veri. Senza `services_for()` quel ramo faceva sollevare
     `AttributeError`, catturato solo dalla rete di sicurezza generica di
@@ -431,7 +431,7 @@ class _RegistroFinto:
     «per avere gli stessi nomi» invece che per coprire cio' che viene letto
     davvero.
 
-    `vuoto()` e `assicura_fresco()` (della classe vera, usati da
+    `vuoto()` e `ensure_fresh()` (della classe vera, usati da
     `azione/porta.py` prima di eseguire) sono usciti da qui apposta: nessun
     gestore di `ToolDispatcher` li chiama, e tenerli avrebbe continuato
     a dare l'illusione di un doppio completo senza che nulla li provasse.
@@ -453,8 +453,8 @@ class _RegistroFinto:
 class _RegistroVuoto:
     """Il doppio del registro PRESENTE ma mai caricato da Home Assistant --
     lo stato reale di `app["registro_servizi"]` fra l'avvio e la prima
-    `assicura_fresco()`. Solo `domains()`: e' l'UNICO metodo che
-    `_verifica_ora` deve poter chiamare su un registro in questo stato, prima
+    `ensure_fresh()`. Solo `domains()`: e' l'UNICO metodo che
+    `_verify_now` deve poter chiamare su un registro in questo stato, prima
     di rifiutare -- se ne chiamasse un altro (`service()`, `services_for()`)
     solleverebbe `AttributeError` invece di rifiutare col motivo giusto,
     esattamente l'errore che la review del Task 6 aveva trovato nel percorso
@@ -479,7 +479,7 @@ def test_i_registri_finti_combaciano_con_la_firma_vera():
 
 class _HaConServizi:
     """Il doppio del canale HA che risponde a `get_services()` per davvero
-    -- quello che `ServiceRegistry.assicura_fresco` chiama per scaldarsi.
+    -- quello che `ServiceRegistry.ensure_fresh` chiama per scaldarsi.
 
     Deve saper PRODURRE il difetto: `light`/`notify` con almeno un
     servizio ciascuno, nella stessa forma di `RISPOSTA_HA`
@@ -505,7 +505,7 @@ class _RegistroTracciaScaldamento:
     scaldarlo -- e si rifiuta di farlo passare inosservato: solleva.
 
     Serve al test gemello di quello sopra (canale HA assente): la guardia
-    su `_canale_ha() is None` deve impedire la chiamata PRIMA che parta, non
+    su `_ha_channel() is None` deve impedire la chiamata PRIMA che parta, non
     limitarsi a sperare che un `try/except` a valle la inghiotta -- questa
     finta lo dimostra tenendo il conto (`chiamato`) invece di limitarsi a
     non rompersi.
@@ -531,9 +531,9 @@ class _CacheFinta:
     quello vero di `EntityCache`, lo stesso che legge sia
     `ToolDispatcher._specchio` sia `azione/porta.py::Porta._stati`.
     Un doppio con `get_all()` non avrebbe mai potuto produrre il difetto che
-    il test del passo 7 chiede di provare: `_stati_grezzi()` avrebbe sempre
+    il test del passo 7 chiede di provare: `_state_readings()` avrebbe sempre
     ricevuto una cache "senza `all_states`" e il test sarebbe passato anche
-    con `_verifica_ora` saltata per intero.
+    con `_verify_now` saltata per intero.
 
     Il difetto R6: `all_states()` NON e' lo stato grezzo di Home Assistant
     (`entity_id`/`attributes.unit_of_measurement`/`attributes.friendly_name`)

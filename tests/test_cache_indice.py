@@ -21,7 +21,7 @@ def _entita(id_, nome=None):
 # Mutazione: "non usare mai la cache anche quando c'e' (il guadagno sparisce
 # e nessun test se ne accorge, se i test guardano solo i risultati e non
 # quante volte si costruisce)". Questo test conta le costruzioni con uno spia
-# su `costruisci_indice`, non sul risultato di `trova()`.
+# su `costruisci_indice`, non sul risultato di `find()`.
 
 def test_due_richieste_identiche_costruiscono_un_solo_indice(monkeypatch):
     chiamate = []

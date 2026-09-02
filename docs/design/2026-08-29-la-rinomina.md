@@ -197,6 +197,15 @@ ultimi, e per le stesse ragioni scritte sotto. `api/` porta il numero 9 perche' 
 sta convertendo mentre questa riga viene scritta -- non era numerata affatto, e i suoi rapporti la
 chiamano «Task 9».
 
+**FATTO il 02/09 — i nomi dei file.** I sei moduli qui sotto e i sei file di rotta del
+frontend hanno preso il nome inglese con un `git mv` per linguaggio: `instradamento.py` ->
+`steering.py`, `impostazioni_chat.py` -> `chat_settings.py`, `decisione_modelli.py` ->
+`model_resolution.py`, `esiti_provider.py` -> `provider_occurrences.py`, `migrazione_opzioni.py`
+-> `options_migration.py`, `token_interno.py` -> `internal_token.py`; e
+`albero|costruzioni|impostazioni|memoria|osservatore|promesse-route.js` ->
+`tree|constructions|settings|memory|watcher|agenda-route.js`. **Le righe qui sotto restano coi
+nomi di allora perche' sono l'elenco di quel giorno.**
+
 **I moduli italiani alla radice** (fetta 7), per non lasciarli impliciti: `instradamento.py`,
 `impostazioni_chat.py`, `decisione_modelli.py`, `esiti_provider.py`, `migrazione_opzioni.py`,
 `token_interno.py`, piu' `chat_store.py` e `storage.py` che hanno gia' un nome inglese ma

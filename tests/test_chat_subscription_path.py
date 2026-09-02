@@ -2,7 +2,7 @@
 
 When ``app["ponte_attivo"]`` is truthy AND the reasoning-queue
 bridge is wired (``app["reasoning_queue"]`` present — see
-``instradamento._bridge_on``), ``handle_chat`` must:
+``steering._bridge_on``), ``handle_chat`` must:
   1. persist the user turn to chat_store BEFORE enqueueing — otherwise a
      session could start on an assistant turn, which the Claude API rejects
      (contract from Task 1's report);
@@ -1142,7 +1142,7 @@ async def test_una_risposta_gia_in_volo_NON_ripiega(tmp_path):
 async def test_i_tre_motivi_del_ripiego_sono_quelli_che_la_nota_sa_dire(tmp_path, monkeypatch):
     """Il test che lega i due file.
 
-    `_piano_puo_rispondere` restituisce una PAROLA, e quella parola dev'essere
+    `_subscription_can_answer` restituisce una PAROLA, e quella parola dev'essere
     una chiave di `decisione_modelli._DOWNGRADE_REASONS`, o la nota non si scrive.
     Non produrrebbe un errore: produrrebbe silenzio, cioe' un ripiego dal
     forfait al consumo che non si annuncia -- esattamente cio' che la decisione
@@ -1166,7 +1166,7 @@ async def test_i_tre_motivi_del_ripiego_sono_quelli_che_la_nota_sa_dire(tmp_path
     assert _subscription_can_answer(app) == (True, "")
 
     # E la terza chiave e' quella del ripiego a valle, che non passa da
-    # `_piano_puo_rispondere`: la scrive `_downgrade_to_chain`.
+    # `_subscription_can_answer`: la scrive `_downgrade_to_chain`.
     assert "scadenza" in _DOWNGRADE_REASONS
 
 

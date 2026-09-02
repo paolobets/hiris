@@ -79,7 +79,7 @@ def test_entrambe_le_guide_legano_gli_id_dell_albero_agli_strumenti():
 
 def test_entrambe_le_guide_legano_anche_gli_script_agli_id_dell_albero():
     """Fix finale ③: l'albero annota gli id anche per gli SCRIPT
-    (`nucleo.py::_righe_comportamento`, stessa forma di aree/piani/
+    (`nucleo.py::_behavior_lines`, stessa forma di aree/piani/
     automazioni), ma la riga che lega gli id fra parentesi agli strumenti
     nominava solo "un'area, un piano o un'automazione" -- dimenticando lo
     script, che porta l'id con la stessa identica annotazione."""

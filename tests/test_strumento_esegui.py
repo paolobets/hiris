@@ -4,7 +4,7 @@ Il punto di questo file non e' che `execute` funzioni -- il lavoro vero
 (verifica, chiamata, rilettura, registro) e' in `azione/porta.py` e ha i suoi
 test. Qui si pinnano tre cose che nessun altro test copre:
 
-1. `execute` sta nel catalogo UNICO, e da li' arriva da solo a `nomi_mcp()`
+1. `execute` sta nel catalogo UNICO, e da li' arriva da solo a `mcp_names()`
    (l'argv del ponte) e a `mcp_catalog()` (la rotta MCP). Se uno di quei due
    test cade, qualcuno ha ricopiato i nomi a mano da qualche parte;
 2. il dispatcher passa alla porta e DICHIARA l'origine (`"chat"`): la porta

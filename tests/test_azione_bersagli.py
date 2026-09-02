@@ -570,7 +570,7 @@ async def test_un_client_che_non_sa_risolvere_non_esegue_e_lo_dichiara():
     client = FintoClientSenzaBocca()
     # La finta deve DAVVERO non avere la bocca, o questo test non prova
     # niente. Provato per mutazione durante la fetta «la rinomina» (lotto
-    # 19c): rinominato `HAClient.estrai_dal_bersaglio` in
+    # 19c): rinominato `HAClient.extract_from_target` in
     # `extract_from_target`, questo attributo e' rimasto indietro e la
     # finta ha ricominciato a EREDITARE il metodo vero da
     # `FintoClientPorta` -- e il test e' rimasto verde lo stesso, cioe'

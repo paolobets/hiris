@@ -36,7 +36,7 @@ ROOT = Path(__file__).resolve().parents[1]
 #
 # fetta «la catena diventa l'unica verita'» Task 2: la soglia era rimasta a 8
 # mentre i file erano diventati 11 -- tre file aggiunti dopo la riancora
-# (`chat-page`, `chat-usage-widget`, `chat-usage-non-misurata`) senza rialzarla,
+# (`chat-page`, `chat-usage-widget`, `chat-usage-non-measured`) senza rialzarla,
 # cioe' un margine di 3 file cancellabili in silenzio: esattamente cio' che il
 # paragrafo qui sopra vieta. Piu' `models-route.test.mjs`, che questo task
 # aggiunge (la pagina #/models non aveva alcun test comportamentale, ed e' la

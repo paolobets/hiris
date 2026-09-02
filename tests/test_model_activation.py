@@ -375,7 +375,7 @@ def test_scegliere_il_modello_di_ollama_lo_fa_entrare_SENZA_riavviare():
     """Il gesto che il Task 9 ha reso possibile e che questo task deve far
     valere: si sceglie il modello nel pannello, si mette in catena, e il
     prossimo messaggio ci passa. Il runner locale esiste gia' perche' nasce con
-    l'indirizzo -- se nascesse con `indirizzo AND modello`, questo gesto
+    l'indirizzo -- se nascesse con `address AND modello`, questo gesto
     tornerebbe 200 e non farebbe niente fino al riavvio."""
     from hiris.app.server import _recompute_chain
 
@@ -448,7 +448,7 @@ def test_l_avvio_pubblica_il_ricalcolo_FUORI_dai_due_rami():
 
 def test_l_avvio_costruisce_il_runner_locale_con_l_INDIRIZZO_non_col_modello():
     """Il runner locale nasce con la credenziale (l'indirizzo) e non con
-    `indirizzo AND modello`. Se nascesse col modello, scegliere un modello
+    `address AND modello`. Se nascesse col modello, scegliere un modello
     dalla pagina su un'installazione partita senza sarebbe un gesto che torna
     200 e non fa niente fino al riavvio -- cioe' la didascalia che il Task 10
     toglie, rimessa da un'altra porta. Chi puo' RISPONDERE resta `_risponde`

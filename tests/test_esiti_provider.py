@@ -2,7 +2,7 @@
 
 Oggi HIRIS butta via questa informazione: `LLMRouter.chat` logga «Backend …
 failed, trying next» e va avanti, e i runner collassano ogni errore in
-`RunnerBackendError("Errore temporaneo del servizio AI")` perdendo codice e
+`RunnerBackendError("Errore temporary del servizio AI")` perdendo codice e
 causa. È la ragione per cui il proprietario non ha mai saputo del credito
 esaurito.
 
@@ -143,7 +143,7 @@ def test_le_famiglie_d_errore_sono_tre_piu_una(codice, attesa):
 
 
 def test_ogni_famiglia_dichiarata_e_una_di_quelle_che_esistono():
-    """`FAMIGLIE` è l'elenco, e non è decorativo: `occurrence_phrase` ha un ramo per
+    """`FAMILIES` è l'elenco, e non è decorativo: `occurrence_phrase` ha un ramo per
     ognuna, e una famiglia introdotta di soppiatto finirebbe nel ramo di
     scorta senza che nessuno se ne accorga.
 
@@ -198,7 +198,7 @@ def test_le_due_sdk_dicono_irraggiungibile_nello_stesso_modo():
 
 def test_famiglia_errore_legge_il_codice_quando_l_eccezione_ce_l_ha():
     """I runner sollevano da `anthropic.APIError` / `openai.APIError`, che
-    portano `status_code`. Se `famiglia_errore` lo ignorasse, ogni errore d'API
+    portano `status_code`. Se `error_family` lo ignorasse, ogni errore d'API
     tornerebbe «altro» e il caso del proprietario (400, credito) non sarebbe
     distinguibile da un 500 -- cioè il difetto che questo modulo chiude,
     rientrato dall'unica porta che i runner usano."""

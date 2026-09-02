@@ -1000,7 +1000,7 @@ def test_un_motivo_che_non_e_un_fatto_osservato_non_si_annuncia():
     """La seconda meta' della stessa regola. Un motivo fuori tabella
     produrrebbe, con un ripiego del tipo «se non so niente, comportati come
     prima», una frase generica su un ripiego di cui non si sa il perche': si
-    tace, e il test che lega le due estremita' (`_piano_puo_rispondere` ->
+    tace, e il test che lega le due estremita' (`_subscription_can_answer` ->
     `_DOWNGRADE_REASONS`) sta in test_chat_subscription_path.py."""
     assert downgrade_note(reason="boh", who_answered="openrouter") == ""
 

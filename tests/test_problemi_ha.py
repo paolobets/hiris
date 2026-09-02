@@ -126,7 +126,7 @@ def test_i_warning_innocui_non_si_elencano_a_ogni_messaggio():
 
 def test_un_registro_vuoto_non_produce_nessuna_riga():
     """L'altra meta' del rumore: una casa senza guasti non deve spendere una
-    riga per dirlo. Stessa scelta di `_avviso_integrazioni` su una casa sana."""
+    riga per dirlo. Stessa scelta di `_integrations_notice` su una casa sana."""
     testo, riepilogo = _nucleo({"problemi": []})
     assert "Riparazioni" not in testo
     assert riepilogo["faults"] == []
@@ -177,7 +177,7 @@ def test_una_casa_sana_non_ha_la_sezione_dei_guasti():
 
 
 def test_il_tetto_conta_cio_che_non_elenca():
-    """Gli avvisi non passano per il taglio di `componi()`: venti guasti gravi
+    """Gli avvisi non passano per il taglio di `compose()`: venti guasti gravi
     produrrebbero un avviso che niente puo' accorciare, dentro un nucleo che ha
     seimila caratteri in tutto. Si citano i primi, si CONTANO gli altri."""
     testo, _ = _nucleo({"problemi": [
@@ -252,7 +252,7 @@ def test_i_taciuti_si_dichiarano_anche_accanto_a_un_guasto_grave():
 def test_al_singolare_la_frase_concorda_per_intero():
     """Non e' pignoleria: concordare una desinenza per volta produce «Altri 1
     problema non sono elencato», che e' il nucleo che sembra rotto proprio
-    mentre parla di cose rotte. Stessa disciplina di `_avviso_taglio`."""
+    mentre parla di cose rotte. Stessa disciplina di `_cut_notice`."""
     solo_taciuto, _ = _nucleo({"problemi": [
         _p(domain="hue", issue_id="a", severity="warning"),
     ]})
@@ -319,7 +319,7 @@ def test_is_fixable_assente_non_e_un_no():
 
 def test_il_nucleo_legge_i_problemi_dalla_memoria_dell_app():
     """La catena intera: `app["problemi_ha"]` -> `compose_briefing` ->
-    `componi`. Senza questo cablaggio la lettura di `server.py` sarebbe un dato
+    `compose`. Senza questo cablaggio la lettura di `server.py` sarebbe un dato
     scritto e mai letto -- la quarta fondamenta al contrario."""
     app = {"problemi_ha": {"problemi": [
         _p(domain="caldaia", issue_id="pressione", severity="critical"),
@@ -384,7 +384,7 @@ def test_un_client_che_non_sa_leggere_i_problemi_non_scrive_niente():
     {"problemi": [_p(domain="caldaia", issue_id="x", severity="critical")]},
 ])
 def test_componi_resta_pura(problemi):
-    """La proprieta' su cui poggiano tutte le prove di `componi()`: i problemi
+    """La proprieta' su cui poggiano tutte le prove di `compose()`: i problemi
     arrivano come ARGOMENTO, come `stato` e `sistema_di_riferimento`. Se
     qualcuno ci mettesse dentro una chiamata di rete, questa prova girerebbe
     dentro un loop asyncio gia' in corso e la chiamata esploderebbe."""

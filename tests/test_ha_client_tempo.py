@@ -68,7 +68,7 @@ async def test_storico_restituisce_una_serie_per_entita():
     c = _client([_FintaRisposta(200, corpo)])
     esito = await c.history(["sensor.camera"], "2026-08-24T08:00:00+00:00",
                             "2026-08-24T10:00:00+00:00")
-    # `troncato` c'e' SEMPRE, anche a falso: stessa forma di `diario`, non due
+    # `troncato` c'e' SEMPRE, anche a falso: stessa forma di `logbook`, non due
     # modi di dire la stessa cosa (fondamenta HIRIS, consistenza fra porte).
     assert esito == {"serie": {"sensor.camera": [
         {"quando": "2026-08-24T08:00:00+00:00", "valore": "21.0"},
@@ -78,7 +78,7 @@ async def test_storico_restituisce_una_serie_per_entita():
 
 # --- I1 (review indipendente 25/08/2026): `valore` e' lo stato grezzo di -----
 # QUALUNQUE entita', non un numero per costruzione -- la stessa L1-sicurezza.md
-# lo elenca per primo (un sensore-messaggio) e `andamento` promuove esplicitamente
+# lo elenca per primo (un sensore-messaggio) e `trend` promuove esplicitamente
 # questo strumento anche per «se una porta e' rimasta aperta».
 
 @pytest.mark.asyncio
@@ -169,7 +169,7 @@ async def test_storico_tetto_sui_punti_e_dichiarato():
 
 @pytest.mark.asyncio
 async def test_storico_rifiuta_un_entity_id_non_valido_prima_di_fare_rete():
-    """F6 (onda finale): era l'ultima asimmetria rimasta con `diario`, che
+    """F6 (onda finale): era l'ultima asimmetria rimasta con `logbook`, che
     valida gia'. Non e' un buco di sicurezza -- il percent-encoding chiude
     l'iniezione nell'URL -- ma un identificatore malformato deve fermarsi
     con un errore leggibile, non partire verso Home Assistant: la prova e'
@@ -187,7 +187,7 @@ async def test_storico_rifiuta_un_entity_id_non_valido_prima_di_fare_rete():
 
 @pytest.mark.asyncio
 async def test_storico_con_piu_entita_rifiuta_se_una_sola_non_e_valida():
-    """`entita` e' una LISTA (a differenza di `diario`, che ne prende una
+    """`entita` e' una LISTA (a differenza di `logbook`, che ne prende una
     sola): un solo identificatore malformato deve fermare l'intera
     richiesta, non solo scartare quello."""
     c = _client([])
@@ -223,7 +223,7 @@ async def test_diario_distingue_il_silenzio_dal_guasto():
 #
 # `nome`/`messaggio` sono testo libero che Home Assistant non controlla:
 # il titolo di un brano, un messaggio di un'automazione, il nome che un
-# ospite ha dato a un device. `_accaduto` (casa/tempo.py) li passa al
+# ospite ha dato a un device. `_happened` (casa/tempo.py) li passa al
 # modello cosi' come arrivano da qui -- vanno sanificati QUI, al confine,
 # non a valle.
 
@@ -407,7 +407,7 @@ async def test_statistiche_lo_start_e_un_epoch_in_MILLISECONDI(monkeypatch):
     `{"start": 1787342400000, "end": ..., "max": .., "mean": .., "min": ..}`
     -- `start` e' un INTERO in millisecondi, non una stringa ISO.
 
-    Era il difetto che fermava l'intero ramo delle statistiche: `andamento`
+    Era il difetto che fermava l'intero ramo delle statistiche: `trend`
     non sapeva leggere quell'istante e rifiutava di rispondere (correttamente:
     dichiarava di non poter leggere invece di dire «non ci sono dati»).
     """

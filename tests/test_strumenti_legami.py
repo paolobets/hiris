@@ -160,7 +160,7 @@ async def test_senza_canale_verso_home_assistant_lo_strumento_lo_DICHIARA(casa, 
     «non la tocca nessuno» a chi non ha nemmeno chiesto.
 
     E il messaggio dev'essere LEGGIBILE. Senza il cancello di
-    `_archivio_mancante` un `errore` arriva lo stesso -- dalla rete di
+    `_missing_resource` un `errore` arriva lo stesso -- dalla rete di
     sicurezza di `dispatch()` -- ma dice «'NoneType' object has no attribute
     'legami'»: un errore Python travestito da risposta, che il modello non
     sa spiegare all'utente e che lo fa riprovare all'infinito. E' l'unica

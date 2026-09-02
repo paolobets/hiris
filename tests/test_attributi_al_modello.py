@@ -4,12 +4,12 @@ Ha chiesto in chat se il riscaldamento fosse attivo. HIRIS ha risposto che
 SI', citando due termostati «in modalita' riscaldamento ("heat")» -- ed era
 falso: erano IMPOSTATI su riscaldamento ma `hvac_action: idle`, cioe' fermi.
 Misurato in produzione: `guarda` su un termostato tornava
-`{"stato": "heat", "stato_leggibile": "heat", ...}` e nient'altro.
+`{"stato": "heat", "readable_state": "heat", ...}` e nient'altro.
 
 La causa non era `entity_cache._to_minimal`: quella funzione raccoglie gia'
 `hvac_action`, `current_temperature`, `temperature` dentro
 `result["attributes"]` (`_DOMAIN_ATTRS["climate"]`). La causa era un anello
-piu' in la': `casa.anagrafe.specchio_vivo` -- il punto da cui passano
+piu' in la': `casa.anagrafe.live_mirror` -- il punto da cui passano
 `guarda`, `cerca` e il nucleo -- teneva solo `e.get("state")` e buttava
 `e.get("attributes")` per intero, su OGNI dominio.
 
@@ -121,7 +121,7 @@ def test_f_un_area_NON_porta_gli_attributi_di_ogni_entita():
     """Decisione del proprietario: un'area puo' elencare venti entita', e
     mettere tutti gli attributi di ognuna dentro quell'elenco gonfierebbe la
     risposta di un dato che nessuno ha chiesto per la singola cosa. Il
-    dettaglio di UNA entita' (`_guarda_entita`) e' l'unico posto dove esce."""
+    dettaglio di UNA entita' (`_view_entity`) e' l'unico posto dove esce."""
     stato, _nomi, _unita, _classi, _da_quando, attributi = _specchio_del_termostato()
     dettaglio = view(_CASA, [], [], stato, "area", "camera", reported_attributes=attributi)
     entita = dettaglio["entita"][0]
@@ -130,7 +130,7 @@ def test_f_un_area_NON_porta_gli_attributi_di_ogni_entita():
 
 
 def test_g_un_area_porta_comunque_lo_stato_leggibile_onesto():
-    """Il confine sopra riguarda il BLOB grezzo, non `stato_leggibile`: quel
+    """Il confine sopra riguarda il BLOB grezzo, non `readable_state`: quel
     campo esce gia' su ogni ramo, e deve restare onesto ovunque -- la stessa
     domanda (Camera: il termostato sta scaldando?) non puo' avere due
     risposte diverse a seconda che si chiami `guarda('area', ...)` o
@@ -157,8 +157,8 @@ def test_h_un_dispositivo_NON_porta_gli_attributi_ma_lo_stato_leggibile_si():
 
 
 def test_i_senza_attributi_vivi_guarda_si_comporta_come_prima():
-    """Nessuna rottura per chi non passa `attributi_vivi` (retrocompatibile):
-    niente chiave "attributi", e `stato_leggibile` degrada onestamente
+    """Nessuna rottura per chi non passa `reported_attributes` (retrocompatibile):
+    niente chiave "attributi", e `readable_state` degrada onestamente
     all'impostazione sola -- non torna "heat" nudo, che sarebbe il vecchio
     difetto con un'altra faccia."""
     dettaglio = view(_CASA, [], [], {"climate.matrimoniale": "heat"},

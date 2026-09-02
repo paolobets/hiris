@@ -55,7 +55,7 @@ const PROMESSE = [
   },
 ];
 
-/* Una riga di cronaca (`Cronaca.leggi`, azione/cronaca.py::_riga), per i
+/* Una riga di cronaca (`Journal.leggi`, azione/cronaca.py::_riga), per i
    test del pannello «Cosa è cambiato». */
 function esecuzione(campi) {
   return Object.assign({

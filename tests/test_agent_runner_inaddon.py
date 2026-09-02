@@ -94,7 +94,7 @@ def test_reason_chat_returns_fallback_reply_on_timeout():
 
 class _Resp:
     # fetta "il ponte riceve gli strumenti" (parita' B, Task 3): `status_code`
-    # non c'era, perche' nessuno lo guardava. `runner.sonda_strumenti` lo
+    # non c'era, perche' nessuno lo guardava. `runner.probe_tools` lo
     # guarda: un 200 e' la condizione minima perche' valga la pena di leggere
     # il corpo.
     def __init__(self, data, status_code=200):
@@ -152,7 +152,7 @@ def _init_col_server_collegato() -> str:
     Task 4 quell'evento e' cio' su cui il ponte decide, e un finto flusso che
     lo contraddice descrive il guasto, non il giro felice.
 
-    I nomi si derivano da `runner.nomi_mcp()`: un elenco ricopiato qui
+    I nomi si derivano da `runner.mcp_names()`: un elenco ricopiato qui
     sarebbe il secondo catalogo."""
     nomi = ", ".join(f'"{n}"' for n in runner.mcp_names())
     return ('{"type":"system","subtype":"init","tools":["Task", ' + nomi + '],'
@@ -437,7 +437,7 @@ def test_il_prompt_di_sistema_del_ponte_non_promette_strumenti_ne_azioni():
     # ── fix round 1, Important 1: la falsita' speculare era stata corretta
     # per la casa («leggere» -> «guardare adesso») e lasciata in piedi per la
     # META' MEMORIA. Il contesto che arriva al ponte contiene TUTTI i ricordi
-    # (`compose_briefing` chiama `fetch(limite=conta())`) e le sessioni
+    # (`compose_briefing` chiama `fetch(limit=count())`) e le sessioni
     # precedenti: dire al modello che non puo' «richiamare ricordi» mentre il
     # ricordo e' scritto tre blocchi piu' sotto e' lo stesso difetto.
     assert "richiamare ricordi" not in system
@@ -452,7 +452,7 @@ def test_il_prompt_di_sistema_del_ponte_non_promette_strumenti_ne_azioni():
     # falsita' SPECULARE, dello stesso genere di quelle tre. Il prompt deve
     # dire l'una e l'altra cosa insieme: nessuno strumento, ma una fotografia
     # -- e la fotografia e' ancorata al TURNO, mai a un orario (il nucleo non
-    # timbra: `casa/nucleo.py::componi` e' pura e non compone nessuna data,
+    # timbra: `casa/nucleo.py::compose` e' pura e non compone nessuna data,
     # quindi qualunque ora nel prompt sarebbe inventata).
     assert "la fotografia qui sotto" in system
     # fix round 1, Important 1: «non e' aggiornabile in questo turno» e' USCITA
@@ -497,7 +497,7 @@ def test_il_prompt_di_sistema_del_ponte_non_promette_strumenti_ne_azioni():
 # normale, verde. `_GUIDE_WITH_TOOLS` nomina `mcp__hiris__execute` e non
 # dichiara piu' «HIRIS non agisce comunque»; l'invariante argv <=> prompt e'
 # di nuovo intera, e questo test la sorveglia sui CINQUE nomi senza saperlo
-# (li prende da `runner.nomi_mcp()`, che deriva dal catalogo unico). Il nome
+# (li prende da `runner.mcp_names()`, che deriva dal catalogo unico). Il nome
 # del test ha perso «i_quattro_»: contava un numero che non conta.
 def test_col_ramo_attivo_il_prompt_afferma_gli_strumenti_prefissati():
     """Il GEMELLO del pin qui sopra, nato con la fetta "il ponte riceve gli

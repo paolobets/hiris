@@ -367,7 +367,7 @@ async def test_col_ponte_in_testa_il_turno_va_in_coda_e_non_al_router(col_token_
 @pytest.mark.asyncio
 async def test_il_job_porta_cio_che_serve_a_mantenere_la_promessa(col_token_del_piano):
     """Il ponte gira altrove e non ha gli archivi: cio' che non entra nel job
-    non esiste per lui. Senza `promessa_id` la rotta MCP non saprebbe quale
+    non esiste per lui. Senza `promise_id` la rotta MCP non saprebbe quale
     turno sta parlando, e `conclude` non avrebbe niente da chiudere."""
     from hiris.app.schedulatore.turno import interpreta_promise
 

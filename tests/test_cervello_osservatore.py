@@ -11,7 +11,7 @@ from hiris.app.cervello.osservatore import Watcher
 
 class _FintoArchivio:
     """La finta deve saper produrre il difetto che sorveglia: oltre ad
-    `annota`, tiene righe di `cambi` VERE (per la ricostruzione all'avvio, D1
+    `record`, tiene righe di `cambi` VERE (per la ricostruzione all'avvio, D1
     del mandato) e puo' sollevare a comando (per provare che la ricostruzione
     non si ferma se l'archivio non risponde, e che `watch_reading` non
     solleva mai se l'archivio e' rotto).
@@ -313,7 +313,7 @@ def test_osservate_include_una_condizione_ricostruita_al_riavvio():
 # -- Correzione 6: `watch_system` aggiorna la memoria in modo incrementale
 
 def test_guarda_sistema_ricorda_solo_cio_che_ha_scritto_davvero(coppia):
-    """Se `annota` solleva a meta', le righe 'aperto' gia' scritte devono
+    """Se `record` solleva a meta', le righe 'aperto' gia' scritte devono
     restare ricordate (altrimenti il giro dopo le riscriverebbe con una
     seconda data di nascita), e quella fallita NON deve esserlo. La
     mutazione e' rimettere `self._conditions = open_conditions` dopo i due cicli."""

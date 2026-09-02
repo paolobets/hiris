@@ -12,7 +12,7 @@ un modo per chiederlo, non e' conoscenza, e' zavorra.
   template, mqtt). Scritta a ogni ricostruzione, ZERO lettori.
 - `etichette`: la tassonomia che l'utente ha scritto a mano in Home Assistant
   -- il significato piu' dichiarato che esista in quella casa. Letta, salvata,
-  messa perfino nell'albero da `gerarchia()`, e mai in una risposta.
+  messa perfino nell'albero da `hierarchy()`, e mai in una risposta.
 - l'unita' delle entita' in `deduci_unit`: la legge dal REGISTRO, che non la
   manda -- `config/entity_registry/list` risponde con `as_partial_dict`, dove
   ne' l'unita' ne' la classe ne' gli alias compaiono (verificato sul sorgente
@@ -136,7 +136,7 @@ def test_si_cerca_per_etichetta(casa):
 # --- l'unita': la fonte viva, non il registro muto ------------------------
 
 def test_la_regola_dell_unita_sta_in_un_posto_solo():
-    """`unita_effettiva` e' l'UNICO punto in cui e' scritto che l'unita' viva
+    """`actual_unit` e' l'UNICO punto in cui e' scritto che l'unita' viva
     vince su quella del registro. Prima la stessa decisione era presa a mano
     in due funzioni diverse: la stessa forma di difetto per cui la pagina
     Modelli era vera riga per riga e falsa nel complesso."""
@@ -164,7 +164,7 @@ def test_deduci_unita_da_un_area_vede_l_area_EREDITATA_dal_dispositivo(casa):
     """Il caso NORMALE, non l'eccezione.
 
     Moltissime entita' non hanno un'area propria: la portano dal loro
-    dispositivo. `anagrafe.gerarchia()` lo dichiara e lo risolve; la deduzione
+    dispositivo. `anagrafe.hierarchy()` lo dichiara e lo risolve; la deduzione
     dell'unita' confrontava invece il solo `area_id` PROPRIO, quindi su una
     casa vera non trovava niente e archiviava il ricordo senza unita' -- «in
     cucina non sotto i 20» diventava «da 20» nudo, per sempre, da tutte le
@@ -203,7 +203,7 @@ class _SpecchioFinto:
 async def test_correggere_un_ricordo_dalla_pagina_deduce_la_stessa_unita(
         aiohttp_client, tmp_path):
     """CONSISTENZA: correggere la grandezza di un ricordo dalla pagina deve
-    dedurre la stessa unita' che `ricorda` deduce in chat.
+    dedurre la stessa unita' che `remember` deduce in chat.
 
     Prima di questa fetta la pagina non leggeva affatto lo specchio dello
     stato: lo stesso ricordo, corretto dalla stessa persona, usciva con
@@ -251,7 +251,7 @@ def test_guarda_dice_cosa_significa_lo_stato_non_solo_il_valore():
     entra affatto. Il modello leggeva «acceso» e riferiva «il sensore perdita
     e' acceso», che per una persona significa «funziona», non «c'e' acqua».
 
-    Il valore grezzo RESTA: `stato` e' il fatto, `stato_leggibile` e'
+    Il valore grezzo RESTA: `stato` e' il fatto, `readable_state` e'
     l'interpretazione. Stessa disciplina di `nome`/`nome_dedotto` -- dichiarato
     e interpretato non si sovrascrivono a vicenda.
     """

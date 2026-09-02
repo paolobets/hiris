@@ -135,7 +135,7 @@ async def test_api_casa_mostra_le_plance_compresa_la_predefinita(aiohttp_client,
     assert resp.status == 200
     corpo = await resp.json()
     sezione = corpo["plance"]
-    # Data propria della sezione: `sostituisci_plance` l'ha appena scritta,
+    # Data propria della sezione: `replace_dashboards` l'ha appena scritta,
     # non e' `aggiornata_il`/`anagrafe_letta_il`.
     assert sezione["lette_il"] is not None
     assert sezione["non_disponibili"] == []
@@ -243,12 +243,12 @@ async def test_api_nucleo_propaga_i_registri_non_disponibili(aiohttp_client, tmp
 
 @pytest.mark.asyncio
 async def test_api_nucleo_non_tronca_i_ricordi_al_default_di_richiama(aiohttp_client, tmp_path):
-    """CRITICAL ①: il default di `MemoryStore.fetch()` e' `limite=20`.
-    Con 200 ricordi veri, il vecchio handler ne passava a `componi()` solo
+    """CRITICAL ①: il default di `MemoryStore.fetch()` e' `limit=20`.
+    Con 200 ricordi veri, il vecchio handler ne passava a `compose()` solo
     20 -- il primo ricordo ("d'inverno la sala...") spariva PRIMA ancora di
     arrivare al taglio, e il riepilogo giurava `ricordi_esclusi: 0` su una
     casa con 180 ricordi invisibili. Qui si verifica che TUTTI i ricordi
-    arrivino a `componi()` (usando `conta()`), lasciando al taglio -- che
+    arrivino a `compose()` (usando `count()`), lasciando al taglio -- che
     dichiara sempre -- decidere cosa non entra."""
     archivio_casa = HomeSpaceStore(str(tmp_path / "casa.db"))
     archivio_casa.replace({
@@ -288,7 +288,7 @@ async def test_api_nucleo_non_tronca_i_ricordi_al_default_di_richiama(aiohttp_cl
 async def test_api_nucleo_riceve_i_problemi_e_i_file_non_letti_del_comportamento(
         aiohttp_client, tmp_path):
     """IMPORTANT ⑧: `/api/home-space` espone gia' `problemi`/`file_non_letti` del
-    comportamento, ma `componi()` non aveva un parametro per riceverli --
+    comportamento, ma `compose()` non aveva un parametro per riceverli --
     con un `automations.yaml` malformato, il PERCHE' non arrivava mai al
     modello attraverso `/api/briefing`."""
     archivio_casa = HomeSpaceStore(str(tmp_path / "casa.db"))

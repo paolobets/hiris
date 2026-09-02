@@ -108,7 +108,7 @@ def test_una_riga_vecchia_e_superata_si_pota(archivio):
                        dopo={"alias": "c"}, now=ADESSO + 60)["id"]
     archivio.mark_applied(recente, now=ADESSO + 60, execution_id="e2")
     tardi = ADESSO + ConstructionStore.RETENTION_S + 86400
-    # `_pota` e' l'unica operazione irreversibile del modulo: il suo
+    # `_prune` e' l'unica operazione irreversibile del modulo: il suo
     # conteggio va sorvegliato quanto quello pubblico di `scadi`.
     with archivio._lock:
         quante = archivio._prune(tardi)
@@ -192,7 +192,7 @@ def test_non_si_disdice_cio_che_e_gia_stato_applicato(archivio):
 def test_non_si_disdice_una_riga_gia_rivendicata(archivio):
     """Cucitura Task 5 <-> Task 10-bis (ondata finale, punto 2): la disdetta
     transita SOLO da `in_attesa`, non anche da `in_corso` come la `WHERE`
-    condivisa da `_cambia_stato` ammetterebbe.
+    condivisa da `_change_state` ammetterebbe.
 
     La corsa che questo test chiude: una conferma dalla chat rivendica la
     riga (passa a `in_corso`) e comincia a scrivere su Home Assistant; nella
@@ -200,7 +200,7 @@ def test_non_si_disdice_una_riga_gia_rivendicata(archivio):
     che la scrittura torni. Se la disdetta fosse permessa da `in_corso`, la
     scrittura arriverebbe comunque a Home Assistant -- l'automazione
     esisterebbe DAVVERO -- ma la riga che la descrive resterebbe `disdetta`,
-    fuori dall'insieme che `_pota` protegge per sempre: il suo «prima»,
+    fuori dall'insieme che `_prune` protegge per sempre: il suo «prima»,
     l'unica copia al mondo di com'era l'oggetto, diventerebbe cancellabile a
     90 giorni. Impedendo la transizione da `in_corso`, chi ha vinto la
     rivendicazione e' l'unico che puo' portare la riga a uno stato finale."""

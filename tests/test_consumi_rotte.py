@@ -1,7 +1,7 @@
 """Le tre rotte dei consumi: il riepilogo, la storia, l'ancora.
 
 `GET /api/usage` resta la rotta LEGGERA. Non e' cortesia verso il passato: il
-riquadro «Utilizzo» della chat la richiama a intervalli e legge `misurata`,
+riquadro «Utilizzo» della chat la richiama a intervalli e legge `measured`,
 `total_requests`, `input_tokens`, `output_tokens`, `cost_eur`, `last_reset`,
 `messaggio`. Appesantirla con trenta giorni di serie storica farebbe pagare a
 ogni giro della chat una domanda che la chat non fa -- da cui la seconda

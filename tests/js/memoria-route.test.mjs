@@ -11,7 +11,7 @@ import { loadScripts, tick } from './helpers/dom.mjs';
      un'ancora cancellata;
    - un PATCH rifiutato mostra la ragione che manda il server, non un errore
      generico;
-   - `mostrati < totale` si dichiara, cosi' un ricordo oltre il taglio non
+   - `mostrati < total` si dichiara, cosi' un ricordo oltre il taglio non
      sembra sparito. */
 
 function fixtureHtml() {

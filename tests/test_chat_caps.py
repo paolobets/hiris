@@ -6,7 +6,7 @@ untouched.
 Real APIs verified before writing this test (matches Task 2's report /
 tests/test_chat_subscription_path.py):
 - handle_chat gates on app["ponte_attivo"] AND app["reasoning_queue"]
-  present (``instradamento._bridge_on``) before taking the async branch.
+  present (``steering._bridge_on``) before taking the async branch.
 - ReasoningQueue.enqueue(kind, wake, context, deadline_ts, *, job_id=None, now)
   stores context as JSON; the chat job context carries "chatbot_id" (NOT
   "conversation_id" -- chat_store has no separate conversation_id concept,

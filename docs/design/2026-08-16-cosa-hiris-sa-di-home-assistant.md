@@ -11,6 +11,17 @@ tracciato). Il file è cambiato *durante* la mia lettura: da 864 a 966 righe. I 
 `nucleo.py` qui sotto sono all'**albero di lavoro** al momento della seconda lettura, non a
 `15ae32e`. Tutti gli altri file sono puliti.
 
+**Annotazione del 02/09/2026 — i nomi citati qui sono quelli del 16 agosto.**
+Questo e' un rapporto di MISURA: ogni riga porta un `file:riga` letto quel giorno, e riscrivere
+i nomi lo trasformerebbe in un documento che non e' piu' il verbale di niente. La fetta «la
+rinomina» ha da allora portato il codice all'inglese, quindi le 25 citazioni di questo file
+vanno lette con la tabella del `docs/GLOSSARIO.md`: fra le altre, `_NOMI_DOMINIO` e'
+`_DOMAIN_NAMES`, `_SIGNIFICATO_CLASSE` e' `_CLASS_MEANING`, `_CLASSI_EVENTO` e'
+`_EVENT_CLASSES`, `_DOMINI_EVENTO` e' `_EVENT_DOMAINS`, `_STATI_ATTIVI` e' `_ACTIVE_STATES`,
+`gerarchia()` e' `hierarchy()`, `_guarda_area` e' `_view_area`, `RegistroServizi` e'
+`ServiceRegistry`, `memoria/riconoscitore.py` e' `memoria/resolver.py`. **Cio' che il rapporto
+dice resta vero; sono cambiati i nomi, non i buchi.**
+
 ---
 
 ## 1. In una frase

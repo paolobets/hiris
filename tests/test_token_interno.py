@@ -407,7 +407,7 @@ async def test_senza_token_pubblicato_il_giro_del_ponte_fallisce_come_prima(
 # scrivesse entrava in circolo dopo un solo `.strip()`. Non era teorico -- con
 # un token che contiene CR/LF/NUL il client HTTP solleva **col valore dentro**
 # il messaggio, e quel messaggio finisce nel log dell'add-on
-# (`agent/runner.py::sonda_strumenti`), cioe' nel file che si incolla in una
+# (`agent/runner.py::probe_tools`), cioe' nel file che si incolla in una
 # segnalazione. Il docstring di quella funzione prometteva «il motivo non
 # contiene mai il token»: era una dichiarazione falsa al presente, ed e' questa
 # validazione a renderla vera.
@@ -418,7 +418,7 @@ def test_l_alfabeto_rifiuta_cio_che_rompe_l_header_e_nient_altro():
     che si possa scrivere: rifiutare anche le virgolette avrebbe respinto
     configurazioni legittime che oggi funzionano, e quel fronte -- la redazione
     del token nei log -- si chiude dove si manifesta
-    (`agent/runner.py::forme_del_token`)."""
+    (`agent/runner.py::token_forms`)."""
     # ammessi: tutto cio' che e' consegnabile in un header HTTP
     for buono in ("abc-def_123", 'ab"cd\\ef', "con spazio interno", "a+b/c=",
                   "x" * 200, "!#$%&'()*,;:@"):
@@ -512,7 +512,7 @@ def test_i_caratteri_rifiutati_sono_ESATTAMENTE_quelli_che_fanno_sollevare_il_cl
 ):
     """**Il ponte fra la validazione e la promessa che rende vera.**
 
-    `agent/runner.py::sonda_strumenti` promette nel suo docstring che il motivo
+    `agent/runner.py::probe_tools` promette nel suo docstring che il motivo
     non nomina mai il token. La promessa regge solo perche' un token che fa
     sollevare il client HTTP non arriva mai fin li'. Qui si prova la premessa
     contro un listener VERO -- non contro un doppio, perche' la validazione

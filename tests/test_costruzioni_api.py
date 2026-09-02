@@ -195,7 +195,7 @@ async def test_una_conferma_rifiutata_non_risponde_200():
 
 @pytest.mark.asyncio
 async def test_un_guasto_di_rete_dell_officina_da_503_non_409():
-    """Ondata finale, punto 7 (terza pulizia): `_agisci` appiattiva ogni
+    """Ondata finale, punto 7 (terza pulizia): `_act` appiattiva ogni
     errore dell'officina su 409 -- anche un guasto di Home Assistant, che
     dalla GET sarebbe un 503. `Workshop._fallita`/`_rete` marcano un guasto
     di trasporto con `guasto_rete: True`; questa rotta lo deve leggere."""
@@ -219,7 +219,7 @@ async def test_ripristinare_passa_dall_officina():
 
 @pytest.mark.asyncio
 async def test_confermare_senza_officina_da_503():
-    """Il ramo 503 di `_agisci` non aveva un test proprio -- era coperto
+    """Il ramo 503 di `_act` non aveva un test proprio -- era coperto
     solo dal lato GET (`handle_get_constructions`/`handle_get_construction`).
     Un archivio presente ma un'officina assente non e' un caso remoto: e'
     esattamente la finestra fra la creazione dell'app e il momento in cui

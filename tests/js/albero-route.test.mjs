@@ -9,7 +9,7 @@ import { loadScripts, tick } from './helpers/dom.mjs';
    pagina #/albero (config/tree-route.js), che lo mostra.
 
    Ciò che conta qui non è l'impaginazione — è che le SEI cause distinte di
-   silenzio che `gerarchia()` dichiara (Senza area / Area sconosciuta / Aree
+   silenzio che `hierarchy()` dichiara (Senza area / Area sconosciuta / Aree
    non lette / Dispositivi non letti / Senza piano / Piani non letti) restino
    SEI frasi diverse, non un'unica "non si sa" — e che le entità disabilitate
    compaiano sempre, marcate, mai nascoste. */
@@ -160,7 +160,7 @@ test('un\'entità disabilitata compare SEMPRE, marcata, anche quando è l\'unica
 
 test('un\'entità nascosta compare SEMPRE, marcata, in una sezione propria (2026-08-25)', async () => {
   // Stessa prova gemella di quella per le disabilitate qui sopra: fetta
-  // "nascoste fuori dagli elenchi" -- `gerarchia()` toglie le nascoste da
+  // "nascoste fuori dagli elenchi" -- `hierarchy()` toglie le nascoste da
   // `entita` per STRUTTURA (la stessa ragione per cui la chat non le nomina
   // piu' di sua iniziativa), ma questa pagina audita cosa HIRIS sa e non
   // deve far sparire niente: le mostra in `entita_nascoste`, come già fa per

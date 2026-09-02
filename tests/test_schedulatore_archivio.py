@@ -111,7 +111,7 @@ def test_disdire_una_promessa_in_attesa_riesce_e_una_conclusa_no(archivio):
 
 
 def test_una_promessa_presa_non_si_disdice(archivio):
-    """La decisione di `disdici` vive nella query, non in una lettura fatta
+    """La decisione di `cancel` vive nella query, non in una lettura fatta
     prima: se un `prendi` fosse gia' passato, disdire non deve ne' riuscire
     ne' toccare lo stato che l'orologio ha appena scritto."""
     ident = archivio.create(_fai(quando_ts=ADESSO + 10), now=ADESSO)["promessa"]["id"]
@@ -136,7 +136,7 @@ def test_elenca_in_sospeso_include_anche_in_corso(archivio):
     dall'orologio (`in_corso`) non e' ancora conclusa (guida di disegno §1),
     e non deve sparire dall'elenco fra `prendi()` e `concludi()`.
 
-    Mutazione che deve farlo fallire: restringere la query di `elenca` a
+    Mutazione che deve farlo fallire: restringere la query di `list` a
     `stato='in_attesa'`."""
     ident = archivio.create(_fai(), now=ADESSO)["promessa"]["id"]
     archivio.prendi(ident, now=ADESSO + 1)
@@ -154,7 +154,7 @@ def test_lo_stato_in_corso_conta_nel_tetto_delle_in_sospeso(archivio):
     `concludi`.
 
     Mutazione che deve farlo fallire: contare `stato='in_attesa'` invece di
-    `stato IN (STATES_SOSPESO)` in `crea()`."""
+    `stato IN (STATES_SOSPESO)` in `create()`."""
     for _ in range(CEILING_IN_SOSPESO - 1):
         archivio.create(_fai(), now=ADESSO)
     ultima = archivio.create(_fai(), now=ADESSO)["promessa"]["id"]
@@ -196,7 +196,7 @@ def test_la_potatura_misura_l_eta_dalla_conclusione_non_dalla_nascita(archivio):
     dev'essere per una conclusione recente) non deve sparire.
 
     Mutazione che deve farlo fallire: rimettere `nata_ts` al posto di
-    `risvegliata_ts` nella query di `_pota`.
+    `risvegliata_ts` nella query di `_prune`.
     """
     nata = ADESSO - 91 * 86400
     conclusa = ADESSO - 86400  # ieri

@@ -263,11 +263,11 @@ test('un GET fallito lo dice, e non lascia il riquadro a metà', async () => {
 
 /* ── C1 della revisione finale: dopo un GET fallito non si scrive ───────────
    I tre preset «Rifai la catena» stanno nell'INTESTAZIONE della sezione 01, e
-   `renderErrore` ridisegna solo `#catena-body` e `#fuori-body`: dopo un GET
+   `renderError` ridisegna solo `#catena-body` e `#fuori-body`: dopo un GET
    fallito restavano a schermo, e insieme a «Riprova» erano l'unica cosa
-   cliccabile della pagina. `rifaiCatena` non aveva nessuna guardia sul
+   cliccabile della pagina. `redoChain` non aveva nessuna guardia sul
    caricamento: con `state.catena` e `state.fuoriCatena` vuote, `credenziati`
-   e' `{}`, l'ordine filtrato e' `[]`, e `scriviCatena([])` mandava una PUT con
+   e' `{}`, l'ordine filtrato e' `[]`, e `writeChain([])` mandava una PUT con
    lo `state.cfg` DI DEFAULT DEL MODULO -- catena vuota, nessun modello per
    provider, ponte e Ollama ai predefiniti, e `seminato: false`.
 
@@ -1329,7 +1329,7 @@ test('la riga di stato non finisce dentro il pannello del modello', async () => 
 
 /* ── Due proprieta' cieche, e il test viene PRIMA della rinomina ─────────────
  *
- * `state.ponteAttivo` e `state.caricato` sono scritte in un posto e lette in un
+ * `state.bridgeActive` e `state.caricato` sono scritte in un posto e lette in un
  * altro, e OGNI loro lettura sta in posizione di verita' (`if (state.x)`,
  * `if (!state.x) return`). E' la forma che la misura del 30/08 ha trovato
  * cieca: rinominata da un lato solo, la lettura orfana da' `undefined`,

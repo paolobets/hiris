@@ -2,7 +2,7 @@
 
 Fetta «le promesse seguono la catena» (22/08/2026). Un turno di promessa e' un
 TURNO -- stessa sonda degli strumenti, stesso ritentativo, stessa
-`verifica_init`, stessa redazione dei segreti. Cio' che cambia e' il contenuto,
+`verify_init`, stessa redazione dei segreti. Cio' che cambia e' il contenuto,
 e il contenuto arriva tutto dal contesto del job.
 
 Questi test tengono ferme le due cose che rendono quel riuso corretto invece

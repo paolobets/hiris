@@ -135,8 +135,8 @@ def test_elenca_filtra_per_entita_senza_confondere_i_prefissi(cronaca):
 
 def test_elenca_vede_anche_le_costruzioni(cronaca):
     """Una tabella sola perche' la domanda dell'utente e' una sola -- «cosa hai
-    fatto?». Un `elenca` che vedesse solo i comandi avrebbe reintrodotto la
-    divisione che `registra_costruzione` ha evitato."""
+    fatto?». Un `list` che vedesse solo i comandi avrebbe reintrodotto la
+    divisione che `log_construction` ha evitato."""
     cronaca.log_construction(actor="chat", operation="crea", domain="automation",
                                  key="abc", entity=["automation.sveglia"],
                                  executed=True, now=1000.0)
@@ -155,10 +155,10 @@ def test_elenca_ha_un_tetto(cronaca):
 
 def test_elenca_moltiplica_il_limite_per_10_con_filtro_entita(cronaca):
     """Il LIMIT di SQL non puo' essere il risultato finale quando filtra per
-    entita'. Registriamo piu' di `limite` righe ma meno di `limite*10` di
+    entita'. Registriamo piu' di `limit` righe ma meno di `limit*10` di
     un'altra entita' (tutte piu' recenti), poi una riga dell'entita' cercata
     piu' indietro. Senza il moltiplicatore per 10, la query leggerebbe solo
-    `limite` righe e non vedrebbe la riga che cerchiamo."""
+    `limit` righe e non vedrebbe la riga che cerchiamo."""
     # Registra 99 righe di light.cucina_2 con timestamp 1000-1098
     for i in range(99):
         cronaca.log(actor="chat", service="light.turn_on",
@@ -177,7 +177,7 @@ def test_elenca_moltiplica_il_limite_per_10_con_filtro_entita(cronaca):
 
 def test_elenca_il_moltiplicatore_ha_un_confine(cronaca):
     """Il moltiplicatore per 10 NON risolve il problema, lo sposta. Se piu'
-    di `limite*10` righe piu' recenti nella finestra non appartengono
+    di `limit*10` righe piu' recenti nella finestra non appartengono
     all'entita' richiesta, il risultato puo' essere ancora vuoto pur
     avendone. Questo test documenta il confine: con 2100 righe di un'altra
     entita' e limit=10 (tetto 100), la riga cercata resta fuori."""

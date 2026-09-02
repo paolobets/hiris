@@ -136,7 +136,7 @@ def test_l_ambito_esce_insieme_al_nome(casa):
 def test_una_categoria_che_il_registro_non_nomina_resta_il_suo_id(casa):
     """Un riferimento penzolante -- o uno dei quattro ambiti caduto -- non fa
     sparire l'assegnazione: «sta in una categoria che non so nominare» e' piu'
-    vero di «non ha categoria». Stessa scelta di `etichette_con_nome`."""
+    vero di «non ha categoria». Stessa scelta di `labels_with_name`."""
     d = view(casa, [], [], {}, "entita", "script.irrigazione")
     assert d["categorie"] == {"script": "01sparita"}
 
@@ -163,7 +163,7 @@ def test_categoria_e_categorie_restano_due_fatti_distinti(casa):
 
 def test_le_tre_porte_di_guarda_dicono_la_stessa_cosa(casa):
     """CONSISTENZA. `piattaforma` ed `etichette` uscivano da una porta su tre,
-    ed e' il difetto per cui `_arricchisci_entita` e' nata: un campo nuovo che
+    ed e' il difetto per cui `_enrich_entity` e' nata: un campo nuovo che
     entra da un ramo solo lo rifa'."""
     dall_entita = view(casa, [], [], {}, "entita", "switch.pompa")
     dal_dispositivo = view(casa, [], [], {}, "dispositivo", "d1")
@@ -200,7 +200,7 @@ def test_l_identificativo_non_diventa_un_termine_di_ricerca(casa):
 
 
 def test_la_categoria_non_diventa_il_nome_di_niente(casa):
-    """Entra fra i termini che `trova()` riconosce, non fra i nomi: un'entita'
+    """Entra fra i termini che `find()` riconosce, non fra i nomi: un'entita'
     continua a chiamarsi come la chiama la casa."""
     d = view(casa, [], [], {}, "entita", "automation.luci_giardino")
     assert d["nome"] == "Luci giardino"
@@ -212,7 +212,7 @@ def test_la_categoria_non_diventa_il_nome_di_niente(casa):
 def test_un_archivio_gia_esistente_guadagna_la_colonna(tmp_path):
     """`CREATE TABLE IF NOT EXISTS` non tocca una tabella che esiste gia'.
 
-    Senza la migrazione 4, il primo `sostituisci` dopo l'aggiornamento
+    Senza la migrazione 4, il primo `replace` dopo l'aggiornamento
     fallirebbe e la casa smetterebbe di ricostruirsi -- in silenzio, dal
     momento dell'aggiornamento in poi.
     """
@@ -267,7 +267,7 @@ def test_due_ambiti_con_lo_stesso_id_non_fanno_saltare_la_casa(tmp_path):
     ...]]` (verificato in `helpers/category_registry.py`) e garantisce
     l'unicita' dentro l'ambito -- perfino i nomi sono verificati per ambito.
 
-    E siccome `sostituisci` e' tutto-o-niente, un id ripetuto non perdeva una
+    E siccome `replace` e' tutto-o-niente, un id ripetuto non perdeva una
     riga: faceva rotolare indietro la ricostruzione INTERA della casa. La casa
     restava quella di prima, senza che nessuno lo dicesse.
     """
