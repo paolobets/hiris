@@ -210,3 +210,104 @@ def test_e_davvero_un_oggetto_indice():
     cache = LookupCache()
     esito = cache.get("cerca", _casa(), "t1", {})
     assert isinstance(esito, Lookup)
+
+
+# ---------------------------------------------------------------------------
+# IL CABLAGGIO -- il test che mancava, e che la fetta delle chiavi di `app`
+# ha scoperto mancare
+# ---------------------------------------------------------------------------
+# Tutti i test qui sopra provano la cache come OGGETTO: costruita a mano,
+# interrogata a mano. Nessuno provava che il prodotto gliela passi davvero --
+# e il 02/09, rinominando `app["cache_indice_strumenti"]` in
+# `app["tools_lookup_cache"]`, la mutazione l'ha misurato: rimettendo il nome
+# vecchio nel SOLO `server.py` -- cioe' scollegando la cache, che da quel
+# momento sarebbe stata `None` a ogni turno e avrebbe fatto ricostruire
+# l'indice da capo ogni volta -- la suite restava **3049 passed, 1 skipped:
+# tutta verde**. E' il §5 del documento di progetto della rinomina
+# (`docs/design/2026-08-29-la-rinomina.md`, «la trappola che puo' rompere
+# qualcosa in silenzio») avverato con nome e cognome.
+#
+# Questo test chiude quel buco, e lo chiude sui DUE capi con UNA misura: la
+# riga vera di `_on_startup` che SCRIVE la chiave viene letta dal sorgente ed
+# ESEGUITA, e l'app che ne esce viene data alla funzione vera che LEGGE la
+# chiave (`create_tool_dispatcher`). Se uno dei due nomi cambia senza l'altro,
+# la cache non arriva e il conto degli indici costruiti passa da uno a due.
+#
+# Mutazioni ESEGUITE, tutte e tre rosse (02/09):
+#   1. `app["tools_lookup_cache"]` -> `app["cache_indice_strumenti"]` nel solo
+#      `server.py` (il capo che SCRIVE);
+#   2. `app.get("tools_lookup_cache")` -> `app.get("cache_indice_strumenti")`
+#      nel solo `api/handlers_chat.py` (il capo che LEGGE);
+#   3. `lookup_cache=app.get(...)` tolta del tutto da `create_tool_dispatcher`
+#      -- la mutazione che dice «la cache non serve».
+
+def _estrai_riga_cache_indice() -> str:
+    """La riga VERA di `_on_startup` che mette la cache dell'indice in `app`.
+
+    Letta dal sorgente per poterla ESEGUIRE, non per confrontarla con una
+    stringa: un `assert "tools_lookup_cache" in sorgente` passerebbe anche
+    se il lettore chiedesse un altro nome, ed e' esattamente il difetto che
+    questo test esiste per non ripetere.
+
+    Se la riga sparisce, `str.index` solleva `ValueError: substring not
+    found` -- un rosso esplicito sull'estrazione, non un'asserzione che
+    potrebbe passare per la ragione sbagliata.
+    """
+    import inspect
+    import textwrap
+
+    from hiris.app import server
+
+    sorgente = inspect.getsource(server._on_startup)
+    marcatore = "LookupCache()"
+    fine = sorgente.index(marcatore) + len(marcatore)
+    inizio = sorgente.rfind("\n", 0, fine) + 1
+    return textwrap.dedent(sorgente[inizio:fine])
+
+
+def test_la_cache_dell_indice_arriva_davvero_al_dispatcher(monkeypatch):
+    """Un indice per DUE turni, non due.
+
+    `ToolDispatcher` nasce a ogni turno (per progetto): il riuso fra i turni
+    esiste solo se la cache che riceve e' la STESSA istanza, quella che
+    l'avvio ha messo in `app`. Qui si eseguono due costruzioni del dispatcher
+    -- due turni -- e si conta quante volte `costruisci_indice` gira.
+    """
+    from hiris.app.api.handlers_chat import create_tool_dispatcher
+    from hiris.app.memory import lookup_cache as modulo
+    from hiris.app.server import LookupCache as LookupCacheDiAvvio
+
+    namespace: dict = {"app": {}, "LookupCache": LookupCacheDiAvvio}
+    exec(compile(_estrai_riga_cache_indice(),
+                 "<_on_startup cache dell'indice>", "exec"), namespace)
+    app = namespace["app"]
+
+    turno_1 = create_tool_dispatcher(app)
+    turno_2 = create_tool_dispatcher(app)
+
+    assert turno_1._lookup_cache is not None, (
+        "il dispatcher non ha ricevuto nessuna cache: l'avvio la scrive sotto "
+        "un nome e `create_tool_dispatcher` ne chiede un altro"
+    )
+    assert turno_1._lookup_cache is turno_2._lookup_cache, (
+        "due turni hanno due cache diverse: il riuso vale solo DENTRO un "
+        "turno, che e' meta' del punto"
+    )
+
+    chiamate = []
+    originale = modulo.costruisci_indice
+
+    def spia(casa, nomi=None, comportamento=None):
+        chiamate.append(1)
+        return originale(casa, nomi, comportamento)
+
+    monkeypatch.setattr(modulo, "costruisci_indice", spia)
+
+    casa = _casa([_entita("light.a", "Luce A")])
+    turno_1._lookup_cache.get("cerca", casa, "2026-01-01", {})
+    turno_2._lookup_cache.get("cerca", casa, "2026-01-01", {})
+
+    assert len(chiamate) == 1, (
+        f"l'indice e' stato costruito {len(chiamate)} volte per due turni: "
+        "la cache non sopravvive al turno"
+    )
