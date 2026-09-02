@@ -7,7 +7,7 @@ piu' blocchi `tool_use` di una risposta in un solo giro).
 Questo file pinna le istruzioni nuove -- "risolvi piu' nomi con UNA chiamata
 cerca" e la riga raccolta dal Task 4 che lega gli id `(id: X)` dell'albero
 agli strumenti -- su ENTRAMBE le guide: `claude_runner.BASE_TOOL_RULES`
-(il percorso sincrono, con chiave API) e `agent.prompts._GUIDA_CON_STRUMENTI`
+(il percorso sincrono, con chiave API) e `agent.prompts._GUIDE_WITH_TOOLS`
 (il ponte, chat in abbonamento) -- guardare `tests/test_prompt_azione.py` per
 il perche' un'istruzione di prodotto deve stare in BASE_TOOL_RULES e non
 nella sola guida del ponte.
@@ -18,17 +18,17 @@ stesso modo sui due percorsi:
 - sincrono (`BASE_TOOL_RULES`): il ciclo di `claude_runner.py` conta
   UN giro per risposta, non per chiamata -- N `tool_use` nella stessa
   risposta costano un'iterazione sola. La giustificazione e' vera, e resta;
-- ponte (`_GUIDA_CON_STRUMENTI`): il tetto vero e' quello del server MCP
+- ponte (`_GUIDE_WITH_TOOLS`): il tetto vero e' quello del server MCP
   (`MAX_TOOL_ROUNDS` in `api/handlers_mcp.py`), e `_count_round` incrementa
-  a OGNI `tools/call` -- 8 `guarda` paralleli nella stessa risposta della CLI
+  a OGNI `tools/call` -- 8 `view` paralleli nella stessa risposta della CLI
   costano comunque 8 giri. La VECCHIA frase ("il ciclo conta un giro per
   risposta, non per chiamata") era falsa su questo percorso: qui il
-  risparmio vero e' il batch di `cerca` e la parsimonia, non il
+  risparmio vero e' il batch di `search` e la parsimonia, non il
   parallelismo -- vedi `test_solo_il_ponte_insegna_ogni_chiamata_conta` sotto.
 
 Fix "il ponte muore a 9" (2026-08-21): `MAX_TOOL_ROUNDS` era rimasto a 10
 mentre questo file era scritto (la fetta aveva alzato solo il tetto
-sincrono); un turno reale sul ponte moriva prima di arrivare a `prometti`.
+sincrono); un turno reale sul ponte moriva prima di arrivare a `promise`.
 La decisione del proprietario era "50 per chat e promessa", non "50 solo
 sul ramo sincrono": i due tetti tornano allo stesso NUMERO per la stessa
 decisione. Cio' che questo file continua a provare -- e che resta vero
@@ -69,7 +69,7 @@ def test_entrambe_le_guide_legano_gli_id_dell_albero_agli_strumenti():
     """Raccolta dal Task 4 (nota in progress.md): l'albero della casa ora
     porta gli id fra parentesi (`Nome (id: X)`, T4), ma senza questa riga
     nessuna guida diceva al modello che sono ESATTAMENTE gli identificatori
-    da passare agli strumenti -- il modello chiamerebbe comunque `cerca` per
+    da passare agli strumenti -- il modello chiamerebbe comunque `search` per
     qualcosa che il contesto gli sta gia' dando."""
     for percorso, testo in _le_due_guide().items():
         assert "(id: X)" in testo, (
@@ -100,10 +100,10 @@ def test_il_sincrono_insegna_il_parallelismo_col_conteggio_vero():
 def test_solo_il_ponte_insegna_ogni_chiamata_conta():
     """Sul ponte il tetto vero e' quello MCP (`MAX_TOOL_ROUNDS`,
     `api/handlers_mcp.py`), e `_count_round` incrementa a OGNI `tools/call`:
-    8 `guarda` paralleli nella stessa risposta della CLI costano comunque 8
+    8 `view` paralleli nella stessa risposta della CLI costano comunque 8
     giri. La guida del ponte non deve piu' promettere il risparmio falso
     ("un giro per risposta, non per chiamata") -- deve dire che ogni
-    chiamata conta, e che il risparmio vero e' il batch di `cerca` piu' la
+    chiamata conta, e che il risparmio vero e' il batch di `search` piu' la
     parsimonia."""
     assert "il ciclo conta un giro per risposta, non per" not in _GUIDE_WITH_TOOLS, (
         "la guida del ponte ripete ancora la giustificazione falsa: sul "
@@ -124,9 +124,9 @@ def test_il_tetto_delle_iterazioni_e_50():
 
 def test_il_tetto_del_ponte_e_50():
     """Fix "il ponte muore a 9" (2026-08-21, misurato dal vivo): un turno
-    reale sul ponte (8 `guarda` per le stanze + 1 `cerca` + la `prometti`
+    reale sul ponte (8 `view` per le stanze + 1 `search` + la `promise`
     finale = 10 chiamate) moriva contro il vecchio `MAX_TOOL_ROUNDS = 10`
-    prima di arrivare a `prometti`. La decisione del proprietario citata dal
+    prima di arrivare a `promise`. La decisione del proprietario citata dal
     test sopra era "tetto a 50 per chat E promessa", non "50 solo sul ramo
     sincrono": il ponte E' la chat quando l'abbonamento e' attivo, e il suo
     costo e' forfettario (nessun costo marginale sulle chiamate in piu').

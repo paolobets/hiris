@@ -11,13 +11,13 @@ test che pinnavano il vecchio fallback (`EVALUATION_TOOL_DEFS` filtrato) sono
 usciti con lui, non spostati: il loro soggetto non esiste piu'.
 
 Il soggetto di QUESTO file pero' e' un altro, ed e' vivo: perche' la chat
-(`DispatcherStrumenti`, casa/strumenti.py -- quattro strumenti che conoscono
-la casa piu' `esegui`, che la comanda) offra il PROPRIO catalogo invece di
+(`ToolDispatcher`, casa/strumenti.py -- quattro strumenti che conoscono
+la casa piu' `execute`, che la comanda) offra il PROPRIO catalogo invece di
 quello interno, i runner devono poterli ricevere dall'esterno. Quando
 `strumenti` e' passato, i quattro filtri in cascata (gia' spariti col catalogo che
 filtravano) NON si applicano comunque: il catalogo passato e' gia' la
 decisione. Stessa cosa per `dispatcher`: se passato, il runner lo chiama con
-`dispatch(nome, argomenti)` -- l'interfaccia minima di `DispatcherStrumenti`
+`dispatch(nome, argomenti)` -- l'interfaccia minima di `ToolDispatcher`
 -- non con le kwargs che il dispatcher di scorta del runner accetta
 (allowed_entities, chatbot_id, visible_entity_ids, ...; era `ToolDispatcher`,
 uscito -- fetta E2 Task 7).
@@ -150,7 +150,7 @@ async def _openai_chat_tools(runner, **kw) -> set:
 # (la Sentinella, uscita al Task 7). L'"additivita'" che questi due test
 # pinnavano -- "senza `strumenti` tutto resta com'era prima" -- non descrive
 # piu' nessun chiamante reale: chatbot_engine.py e api/handlers_chat.py
-# passano sempre `tools=STRUMENTI_CONOSCENZA`. Il nuovo comportamento e'
+# passano sempre `tools=KNOWLEDGE_TOOLS`. Il nuovo comportamento e'
 # piu' semplice da dichiarare che da giustificare: senza `strumenti`, nessun
 # tool.
 
@@ -224,7 +224,7 @@ async def test_openai_con_strumenti_nessun_filtro_si_applica(openai_runner):
 
 # --- con `dispatcher`, si chiama dispatch(nome, argomenti) ------------------
 # Non le kwargs pensate per ToolDispatcher (allowed_entities, chatbot_id,
-# visible_entity_ids, ...): DispatcherStrumenti espone solo l'interfaccia
+# visible_entity_ids, ...): ToolDispatcher espone solo l'interfaccia
 # minima dichiarata in casa/strumenti.py.
 
 @pytest.mark.asyncio

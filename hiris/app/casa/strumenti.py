@@ -11,16 +11,16 @@ che la E2 le aveva promesso") -- oggi non esistono piu' in nessuna forma.
 Qui il modello ne riceveva SEI, dalla fetta «lo schedulatore» (Task 6) ne
 riceve NOVE, dalla fetta «costruire» (Task 9) ne riceve UNDICI, e dalla
 fetta «HIRIS e il tempo» (Task 6) ne riceve TREDICI. Cinque leggono e
-ricordano; `esegui` fa succedere qualcosa in casa SUBITO -- ed e', chiamato
+ricordano; `execute` fa succedere qualcosa in casa SUBITO -- ed e', chiamato
 DIRETTAMENTE dal modello in un turno, l'unico che scrive nella casa (i
 servizi, non la configurazione) senza passare da un'attesa. Non e' pero'
 l'unica STRADA verso lo stesso effetto (fix I3, review indipendente
-25/08/2026): `prometti` con specie `fai` (vedi sotto) scrive lo stesso
+25/08/2026): `promise` con specie `fai` (vedi sotto) scrive lo stesso
 servizio, dalla STESSA porta, solo piu' tardi -- lo schedulatore lo chiama
 da solo quando la promessa matura, senza un turno del modello in quel
-momento. `costruisci` e `conferma`, in coppia, sono l'unica strada che scrive
+momento. `propose` e `confirm`, in coppia, sono l'unica strada che scrive
 CONFIGURAZIONE -- automazioni, script, scene -- e lo fanno in due tempi
-apposta (vedi piu' sotto); `andamento` e `accaduto`, gli ultimi due, leggono
+apposta (vedi piu' sotto); `trend` e `logbook`, gli ultimi due, leggono
 INDIETRO nel tempo passando per `casa/tempo.py` -- come e' andato un valore,
 cosa e' successo e per mano di chi (vedi la sezione «-- il tempo --» piu'
 sotto). Per un tratto della 2.0
@@ -29,7 +29,7 @@ agisce»: era vero allora, non lo e' piu' dalla fetta «comandare», che ha
 ridato l'azione al prodotto con un progetto proprio, dopo che la conoscenza
 si era fatta solida. La differenza fra i quattro e il quinto non e' di
 importanza ma di verso: i quattro LEGGONO gli archivi e lo specchio dello
-stato, `esegui` SCRIVE -- e scrive per una sola strada, la porta
+stato, `execute` SCRIVE -- e scrive per una sola strada, la porta
 (`azione/porta.py`), che verifica prima e rilegge dopo.
 
     cerca    -- trova qualcosa per nome o alias, dichiarando le ambiguita'
@@ -41,16 +41,16 @@ stato, `esegui` SCRIVE -- e scrive per una sola strada, la porta
     esegui   -- chiama un servizio di Home Assistant, verificato prima e
                 riletto dopo: chiamato dal modello, tocca la casa SUBITO --
                 ma non e' il solo modo in cui la casa viene toccata, vedi
-                `prometti` due righe sotto
+                `promise` due righe sotto
 
 Tre vengono dallo Schedulatore (`schedulatore/`, spec §9.1) e fanno nascere,
 leggere e disdire una PROMESSA -- «alle 17 accendi lo studio», «fra un'ora
 dimmi se e' aumentata»: qualcosa da fare o da guardare piu' tardi, non adesso.
-La differenza con `esegui` non e' di importanza ma di QUANDO: `esegui` agisce
-ora, `prometti` mette da parte un'azione o una domanda per un istante futuro,
+La differenza con `execute` non e' di importanza ma di QUANDO: `execute` agisce
+ora, `promise` mette da parte un'azione o una domanda per un istante futuro,
 e tutto cio' che si puo' verificare contro questa installazione (il servizio
 esiste, l'entita' esiste, il canale di notifica esiste) si verifica ALLA
-NASCITA, non al momento di mantenerla -- vedi `DispatcherStrumenti._prometti`.
+NASCITA, non al momento di mantenerla -- vedi `ToolDispatcher._prometti`.
 
     prometti -- mette da parte un `fai` (verificato subito) o un `chiedi`
                 (con l'istantanea di partenza) per un istante futuro
@@ -61,10 +61,10 @@ Gli ultimi due vengono dalla fetta «costruire» (spec
 `docs/design/2026-08-22-costruire-in-home-assistant.md`) e scrivono
 CONFIGURAZIONE -- non un servizio, non uno stato: un'automazione, uno script
 o una scena che prima non esisteva, o che smette di esistere. La differenza
-con `esegui` non e' di importanza ma di NATURA: `esegui` chiama qualcosa che
+con `execute` non e' di importanza ma di NATURA: `execute` chiama qualcosa che
 gia' esiste, questi due fanno esistere o smettere di esistere qualcosa. Ed e'
-per questo che sono DUE e non uno: `costruisci` compone e fa validare contro
-QUESTA casa (mai uno YAML scritto a mano), `conferma` scrive -- e in mezzo
+per questo che sono DUE e non uno: `propose` compone e fa validare contro
+QUESTA casa (mai uno YAML scritto a mano), `confirm` scrive -- e in mezzo
 deve starci un umano, riconosciuto dal TURNO e non da un campo che il modello
 potrebbe compilare da solo. Vedi `azione/costruzione/officina.py` per il
 giro intero e la guardia.
@@ -74,7 +74,7 @@ giro intero e la guardia.
     conferma   -- applica una proposta, in un turno diverso da quello che
                   l'ha creata
 
-**Perche' `legami` e' uno strumento e non un campo di `guarda`.** E' la
+**Perche' `related` e' uno strumento e non un campo di `view`.** E' la
 decisione di questa fetta, e ha quattro ragioni che tirano tutte dalla stessa
 parte.
 
@@ -85,32 +85,32 @@ parte.
    automazione nuova cambia i legami di una luce nell'istante in cui viene
    salvata. Quindi si CHIEDONO quando servono, e non si salvano da nessuna
    parte: ne' in `casa.db`, ne' nell'anagrafe, ne' nel digesto del nucleo.
-2. **`guarda` e' pura e non fa I/O** (vedi il suo docstring in `domande.py`).
+2. **`view` e' pura e non fa I/O** (vedi il suo docstring in `domande.py`).
    Per infilarci i legami bisognerebbe che `_guarda` facesse un giro
-   WebSocket PRIMA di ogni chiamata -- anche per `guarda("ricordo", 3)`, che
+   WebSocket PRIMA di ogni chiamata -- anche per `view("ricordo", 3)`, che
    con Home Assistant non c'entra nulla. Un costo di rete pagato da ogni
    domanda per servirne una.
-3. **Sono due domande, non due campi dello stesso fatto.** `guarda` porta il
-   CORPO (cosa fa quell'automazione, letto dai file); `legami` porta i
+3. **Sono due domande, non due campi dello stesso fatto.** `view` porta il
+   CORPO (cosa fa quell'automazione, letto dai file); `related` porta i
    LEGAMI (chi nomina questa entita', calcolato da Home Assistant su tutto
    cio' che ha caricato). Il piano della fetta lo dice in chiaro: confonderli
    rifarebbe la confusione fra «dichiarato» e «dedotto» che questo progetto
    paga da sempre. Due risposte separate sono cio' che li tiene distinti.
-4. **Il guasto avrebbe due padroni.** `guarda` promette `esiste`, letto dagli
+4. **Il guasto avrebbe due padroni.** `view` promette `esiste`, letto dagli
    archivi. Un legame non letto e' il guasto di un ALTRO canale: dentro
-   `guarda` diventerebbe una chiave d'errore accanto a un `esiste: true`, e
+   `view` diventerebbe una chiave d'errore accanto a un `esiste: true`, e
    il modello non saprebbe a quale delle due domande si riferisce. Separati,
-   ciascuno dichiara il proprio -- e `legami` dichiara il suo con un
+   ciascuno dichiara il proprio -- e `related` dichiara il suo con un
    `errore`, mai con un elenco vuoto.
 
-`ricorda` e' il motivo per cui questo modulo esiste: l'utente aveva scritto
+`remember` e' il motivo per cui questo modulo esiste: l'utente aveva scritto
 in chat *"d'inverno il soggiorno ideale e' 19.5"*, e HIRIS aveva risposto
 "preso nota" -- SENZA salvare niente, perche' il vecchio dispatcher non
-chiamava mai `MemoryStore.remember()`. Qui sotto, `ricorda` salva davvero
-(vedi `DispatcherStrumenti._ricorda`).
+chiamava mai `MemoryStore.remember()`. Qui sotto, `remember` salva davvero
+(vedi `ToolDispatcher._ricorda`).
 
-Le due funzioni pure che fanno il lavoro vero -- `cerca()` e `guarda()` --
-vivono gia' in `domande.py`, e non si riscrivono qui: `DispatcherStrumenti`
+Le due funzioni pure che fanno il lavoro vero -- `search()` e `view()` --
+vivono gia' in `domande.py`, e non si riscrivono qui: `ToolDispatcher`
 e' solo il punto che le collega agli archivi (`casa/archivio.py`,
 `memoria/archivio.py`) e all'indice (`memoria/resolver.py`), nella
 forma che il modello puo' chiamare.
@@ -145,16 +145,16 @@ from .domande import view as _view_detail
 # `memoria/interpretazione.VOCABULARY["ancore"]` -- la fonte vera, non
 # `STORE_KEY_PER_TYPE`. Ordinati (come fa gia' `interpretazione.py`
 # per il proprio messaggio d'errore) perche' un frozenset non promette un
-# ordine stabile fra due letture, ed e' l'ordine in cui `richiama` cerca
+# ordine stabile fra due letture, ed e' l'ordine in cui `fetch` cerca
 # quando il modello non specifica un `tipo` -- vedi `_richiama`.
 #
 # T7 (R2): prima di questo task le due fonti coincidevano per coincidenza
 # (`_ARCHIVI` aveva solo i tre tipi che sono anche ancore valide), e
 # derivare da `STORE_KEY_PER_TYPE` sembrava innocuo. Da quando
 # `_ARCHIVI` include anche "piano" -- un registro dell'anagrafe vero, ma
-# NON un tipo di ancora che `ricorda` possa mai scrivere -- le due cose
+# NON un tipo di ancora che `remember` possa mai scrivere -- le due cose
 # sono tornate a essere quello che sono sempre state: due vocabolari
-# diversi con scopi diversi. Se fossero rimaste legate, `richiama`
+# diversi con scopi diversi. Se fossero rimaste legate, `fetch`
 # avrebbe accettato silenziosamente `tipo="piano"` (nessun errore, solo
 # una lista di ricordi sempre vuota, perche' nessuna ancora di quel tipo
 # puo' esistere) al posto del messaggio che insegna i tipi validi -- lo
@@ -294,7 +294,7 @@ VIEW_TOOL_DEF = {
     },
 }
 
-# I tipi che `legami` accetta, nel vocabolario di HIRIS. DERIVATI dalla
+# I tipi che `related` accetta, nel vocabolario di HIRIS. DERIVATI dalla
 # tabella di `domande.py` -- che e' anche quella con cui si traduce verso
 # Home Assistant -- invece di riscritti qui: un elenco a mano nella
 # descrizione e un altro nel gestore sarebbero due vocabolari, e il primo a
@@ -896,7 +896,7 @@ KNOWLEDGE_TOOLS: list[dict] = [
 # da tenere allineato -- esattamente la forma di difetto che questo ramo ha
 # gia' pagato coi tre cataloghi divergenti dei trentaquattro strumenti. Con
 # quelle scritte a mano, uno strumento nuovo nel catalogo sarebbe arrivato al
-# modello (che legge `STRUMENTI_CONOSCENZA`) e poi si sarebbe sentito
+# modello (che legge `KNOWLEDGE_TOOLS`) e poi si sarebbe sentito
 # rispondere «non e' fra quelli disponibili» dal dispatcher: il tipo di
 # incoerenza che il modello non puo' ne' capire ne' aggirare.
 _TOOL_NAMES = frozenset(d["name"] for d in KNOWLEDGE_TOOLS)
@@ -924,7 +924,7 @@ class ToolDispatcher:
         self._memory = memory_store
         # Lo specchio dello stato vivo. E' la STESSA `entity_cache` da cui
         # il nucleo prende "notevole adesso": una sola fonte, un solo
-        # specchio. La cache resta in SOLA LETTURA anche adesso che `esegui`
+        # specchio. La cache resta in SOLA LETTURA anche adesso che `execute`
         # esiste: chi scrive e' la porta (`azione/porta.py`), che chiama
         # Home Assistant e poi RILEGGE da qui -- lo specchio non si aggiorna
         # a mano per far tornare i conti. Prima della fetta «comandare» la
@@ -933,7 +933,7 @@ class ToolDispatcher:
         self._cache = cache
         # La porta dell'azione (`azione/porta.py`), l'unico punto del prodotto
         # che esegue. `None` e' legittimo: il dispatcher e' SEMPRE costruibile
-        # (contratto della classe), e senza porta `esegui` dichiara un errore
+        # (contratto della classe), e senza porta `execute` dichiara un errore
         # invece di sollevare -- come gli altri quattro fanno senza archivi.
         self._actuator = actuator
         # Task B7: la cache del Lookup (`memoria/cache_indice.py`), di vita
@@ -945,7 +945,7 @@ class ToolDispatcher:
         # task -- ogni chiamante esistente (i test, e ogni altro punto del
         # prodotto che non la passa esplicitamente) non cambia comportamento.
         self._lookup_cache = lookup_cache
-        # Il canale verso Home Assistant, per `legami` e per cio' che dopo di
+        # Il canale verso Home Assistant, per `related` e per cio' che dopo di
         # esso chiedera' un fatto MOMENTANEO (i legami non si archiviano --
         # vedi il docstring del modulo). In SOLA LETTURA come `_cache`: chi
         # scrive resta la porta, e questo attributo non le fa concorrenza.
@@ -953,7 +953,7 @@ class ToolDispatcher:
         # Il registro dei servizi (`azione/registro.py::ServiceRegistry`), la
         # STESSA istanza che usa la porta -- non se ne apre un secondo, per la
         # stessa ragione di `_canale_ha`: due registri sarebbero due opinioni
-        # su cosa esiste, e potrebbero divergere. Serve a `prometti` per
+        # su cosa esiste, e potrebbero divergere. Serve a `promise` per
         # verificare un `fai` ADESSO (`_verifica_ora`) e un `recapito`
         # (`_verifica_recapito`). `None` e' legittimo e NON passa da
         # `_archivio_mancante` (che solleverebbe un errore diverso, "l'archivio
@@ -981,7 +981,7 @@ class ToolDispatcher:
         self._exchange = exchange
         # La cronaca degli atti (`azione/cronaca.py`), la STESSA istanza che
         # riceve l'officina -- non una seconda apertura dello stesso file
-        # SQLite. Serve ad `accaduto` per dire «l'ho fatto io» dove il diario
+        # SQLite. Serve ad `logbook` per dire «l'ho fatto io» dove il diario
         # di Home Assistant direbbe soltanto «servizio chiamato». `None` e'
         # legittimo e NON passa da `_archivio_mancante`: senza cronaca lo
         # strumento risponde lo stesso, perdendo l'attribuzione e non la
@@ -1002,7 +1002,7 @@ class ToolDispatcher:
     def _ha_channel(self):
         """Il canale vivo verso Home Assistant -- uno solo, mai un secondo.
 
-        `legami` chiede a Home Assistant un fatto che non esiste in nessun
+        `related` chiede a Home Assistant un fatto che non esiste in nessun
         archivio (chi tocca cosa, ADESSO), quindi gli serve il client. Aprirne
         uno qui sarebbe un secondo canale verso la stessa casa: la fondamenta
         «nessun doppione» vale anche per le connessioni, e due websocket che
@@ -1118,9 +1118,9 @@ class ToolDispatcher:
             return {"errore": "«search» richiede un «testo» non vuoto."}
         home_space = self._home_space.read()
         # T7 (R2): automazioni e script, dalla stessa fonte che alimenta
-        # `guarda` (`ArchivioCasa.comportamento()`), non dall'anagrafe --
+        # `view` (`ArchivioCasa.comportamento()`), non dall'anagrafe --
         # senza indicizzarli qui, nessuna sequenza di chiamate produceva mai
-        # il loro id, e `guarda("automazione", ...)` restava irraggiungibile
+        # il loro id, e `view("automazione", ...)` restava irraggiungibile
         # per chi partiva da un nome. Letto eagerly come `casa`: `_cerca`
         # non ha niente da rimandare (a differenza di `_ricorda`, che non lo
         # passa affatto -- il comportamento non e' un tipo di ancora).
@@ -1164,7 +1164,7 @@ class ToolDispatcher:
 
         Invariante 4 della fetta: «non c'e' nessuna cosa con quel nome» e «non
         ho potuto guardare» oggi hanno la stessa faccia -- una lista vuota --
-        e la seconda e' cio' che ha bruciato quattro giri di `cerca` sulle
+        e la seconda e' cio' che ha bruciato quattro giri di `search` sulle
         abat-jour. Da qui hanno due facce diverse.
 
         Solo fatti, e solo quando ci sono: la chiave non compare quando non
@@ -1175,7 +1175,7 @@ class ToolDispatcher:
         (entita' senza nome ne' nel registro ne' nello specchio) descrive un
         fatto STABILE della casa -- sull'impianto vero non si risolve mai da
         solo, quindi senza questo cancello si accenderebbe a ogni singola
-        `cerca`, comprese quelle riuscite: un'assenza dichiarata SEMPRE
+        `search`, comprese quelle riuscite: un'assenza dichiarata SEMPRE
         smette di essere un segnale (la stessa invariante 4 qui sopra,
         rivoltata contro se stessa). Riportato solo quando serve DAVVERO a
         spiegare un `trovati` vuoto -- mai accanto a candidati trovati."""
@@ -1185,7 +1185,7 @@ class ToolDispatcher:
         # `_ARCHIVI` in memoria/resolver.py -- allargarla rifarebbe il
         # secondo vocabolario che R9 denuncia). Ma "etichette" e' comunque
         # una tabella vera di `_TABELLE` (casa/archivio.py) che PUO' cadere
-        # in `non_disponibili()`, e da T8 (R2) `cerca` indicizza le
+        # in `non_disponibili()`, e da T8 (R2) `search` indicizza le
         # etichette stesse come candidati: un registro etichette caduto
         # merita lo stesso motivo dei registri di `STORE_KEY_PER_TYPE`,
         # aggiunta qui invece che nella mappa che serve a un altro scopo.
@@ -1272,7 +1272,7 @@ class ToolDispatcher:
         # sparire dal suo stesso dettaglio solo perche' non e' fra i piu'
         # recenti -- stessa scelta di `handlers_casa.handle_get_briefing`.
         memories = self._memory.fetch(limit=self._memory.count())
-        # `guarda()` (domande.py) e' pura: lo stato glielo passa il chiamante.
+        # `view()` (domande.py) e' pura: lo stato glielo passa il chiamante.
         # Si legge dalla stessa `entity_cache` del nucleo, nella forma che usa
         # lei (chiave "id", non "entity_id").
         (state, reported_names, reported_units, reported_classes,
@@ -1301,8 +1301,8 @@ class ToolDispatcher:
         """Lo specchio vivo in UNA lettura:
         `(stato, nomi, unita, classi, da_quando, attributi, letto)`.
 
-        Sostituisce `_stato_vivo`, non gli si affianca: `cerca` ha bisogno dei
-        `friendly_name` e `guarda` dello stato, e due metodi che chiamano
+        Sostituisce `_stato_vivo`, non gli si affianca: `search` ha bisogno dei
+        `friendly_name` e `view` dello stato, e due metodi che chiamano
         `all_states()` a turno sarebbero due letture della stessa cosa in
         istanti diversi -- la stessa classe di divergenza che il nucleo chiude
         condividendo un solo albero.
@@ -1334,7 +1334,7 @@ class ToolDispatcher:
         una luce, ...) e che questo specchio buttava, su OGNI dominio, prima
         della fetta "attributi al modello" (2026-08-25) -- il difetto misurato
         dal proprietario: un termostato IMPOSTATO su riscaldamento e FERMO
-        usciva da `guarda` come «heat» e basta.
+        usciva da `view` come «heat» e basta.
 
         `letto` conserva esattamente la semantica del fix E1-(3): False solo
         quando la lettura di QUESTA chiamata e' fallita davvero. Cache assente
@@ -1471,7 +1471,7 @@ class ToolDispatcher:
         # in `per_tether(tipo, riferimento)`, che semplicemente non trova
         # mai nulla per un tipo che nessuna ancora usa: il risultato era
         # `{"ricordi": []}`, indistinguibile da "nessun ricordo riguarda
-        # questa cosa" -- proprio quando invece il ricordo esiste. `guarda`
+        # questa cosa" -- proprio quando invece il ricordo esiste. `view`
         # con un tipo ignoto almeno risponde `esiste: False`; qui si
         # dichiara l'errore invece, cosi' un input non valido resta
         # distinguibile da "non ti ho detto niente".
@@ -1496,9 +1496,9 @@ class ToolDispatcher:
                 memories.append(memory)
         memories.sort(key=lambda r: r["id"], reverse=True)
         # C-2/I1 (review indipendente 25/08/2026): `per_tether` legge
-        # l'archivio direttamente, non passa da `domande.guarda` -- senza
-        # questa riga il testo usciva filtrato da `guarda` e grezzo da
-        # `richiama`, la fondamenta 3 rotta dentro la correzione che doveva
+        # l'archivio direttamente, non passa da `domande.view` -- senza
+        # questa riga il testo usciva filtrato da `view` e grezzo da
+        # `fetch`, la fondamenta 3 rotta dentro la correzione che doveva
         # chiuderla. Stessa funzione condivisa, un punto solo.
         return {"ricordi": _sanitized_memories(memories)}
 
@@ -1537,14 +1537,14 @@ class ToolDispatcher:
         la frase giusta per «non so ancora cosa questa casa sa fare»: una
         seconda frase per lo stesso fatto sarebbe un doppione.
 
-        Senza registro (`None`, legittimo: `prometti` non lo dichiara come
-        archivio richiesto in `_ARCHIVIO_PER_STRUMENTO`) o senza un canale HA
+        Senza registro (`None`, legittimo: `promise` non lo dichiara come
+        archivio richiesto in `_RESOURCE_PER_TOOL`) o senza un canale HA
         vivo (`_canale_ha()` e' `None`, altrettanto legittimo per lo stesso
         motivo) non si tenta nemmeno: il registro non si puo' caricare senza
         un client a cui chiedere, e restare senza canale resta il rifiuto
-        onesto di sempre -- non diventa "«prometti» non e' disponibile"
+        onesto di sempre -- non diventa "«promise» non e' disponibile"
         (quel messaggio e' di `_archivio_mancante`, per un'altra assenza:
-        aggiungere "ha" a `_ARCHIVIO_PER_STRUMENTO["prometti"]` sarebbe
+        aggiungere "ha" a `_RESOURCE_PER_TOOL["promise"]` sarebbe
         proprio quello scambio).
         """
         if self._registry is None:
@@ -1573,7 +1573,7 @@ class ToolDispatcher:
         registro (`_assicura_registro_fresco`, sopra): il dispatcher gia'
         sapeva attendere un gestore awaitable (`dispatch`, `inspect.
         isawaitable`), quindi renderlo `async` non ha toccato nessun
-        chiamante -- tutti passano gia' da `dispatch("prometti", ...)`,
+        chiamante -- tutti passano gia' da `dispatch("promise", ...)`,
         sempre atteso.
         """
         import time as _time
@@ -1638,7 +1638,7 @@ class ToolDispatcher:
         return self._agenda.cancel(identifier.strip(), now=_time.time())
 
     async def _propose(self, arguments: dict[str, Any]) -> dict:
-        """Propone. Non scrive: lo fa `conferma`, e non nello stesso turno."""
+        """Propone. Non scrive: lo fa `confirm`, e non nello stesso turno."""
         import time as _time
         intent = {
             "gesto": arguments.get("gesto"),
@@ -1662,7 +1662,7 @@ class ToolDispatcher:
             intent, actor="chat", exchange=self._exchange, now=_time.time())
 
     async def _confirm(self, arguments: dict[str, Any]) -> dict:
-        """Applica una proposta gia' creata da `costruisci`. La guardia del
+        """Applica una proposta gia' creata da `propose`. La guardia del
         turno (non si conferma nel turno che ha proposto) vive nell'officina:
         qui si passa `self._turno`, la stessa identita' coniata una volta per
         turno dal chiamante (`api/handlers_chat.py`/`api/handlers_mcp.py`)."""
@@ -1698,7 +1698,7 @@ class ToolDispatcher:
         alla stessa situazione. La frase e' diversa apposta: li' si sta
         eseguendo, qui si sta promettendo, e "riprova fra un momento" ha un
         senso diverso nei due casi. Tacere qui lascerebbe nascere un `fai`
-        senza che il suo servizio sia mai stato verificato: `PROMETTI_TOOL_DEF`
+        senza che il suo servizio sia mai stato verificato: `PROMISE_TOOL_DEF`
         dichiara al modello "viene VERIFICATA adesso" senza condizioni, e
         prima del cablaggio del Task 7 il registro e' SEMPRE `None` in
         produzione -- quindi il silenzio avrebbe reso quella frase falsa
@@ -1738,7 +1738,7 @@ class ToolDispatcher:
             # rifiutarsi allo stesso modo -- non tornare `None` in silenzio.
             # Prima di questo fix una `chiamata` nasceva SENZA che
             # `_verifica_ora` avesse potuto verificare l'entita' nominata,
-            # mentre `PROMETTI_TOOL_DEF` dichiara al modello, senza
+            # mentre `PROMISE_TOOL_DEF` dichiara al modello, senza
             # condizioni, «viene VERIFICATA adesso». Stesso criterio di
             # `azione/porta.py::_BLIND_MIRROR` (`None` e `{}` insieme, di
             # proposito: una casa che davvero non ha nessuna entita' non ha
@@ -1781,7 +1781,7 @@ class ToolDispatcher:
         (`_specchio_cieco_rifiuto`, requisito 3): "non lo so ancora" si
         rifiuta, non si tace -- senza sapere cosa esiste non si puo' dire
         che un riferimento NON esiste, e lasciare nascere la promessa
-        renderebbe falsa la dichiarazione di `PROMETTI_TOOL_DEF` («viene
+        renderebbe falsa la dichiarazione di `PROMISE_TOOL_DEF` («viene
         VERIFICATA adesso»).
 
         Uno specchio leggibile ma senza il riferimento -> il rifiuto vero
@@ -1793,7 +1793,7 @@ class ToolDispatcher:
         recapito (`_verifica_recapito`): un `chiedi` non puo' rispondere
         diversamente alla stessa domanda solo perche' e' la terza specie.
         Il motivo nomina il riferimento (cosa non esiste) e la strada per
-        correggersi (pattern `azione/verifica.py:430-432`: «usa "cerca"...»).
+        correggersi (pattern `azione/verifica.py:430-432`: «usa "search"...»).
         """
         if not entities:
             return None

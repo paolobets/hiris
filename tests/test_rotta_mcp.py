@@ -4,9 +4,9 @@ Questi test tengono ferme le due cose che rendono la rotta cio' che dice di
 essere:
 
 1. **un catalogo solo e un dispatcher solo.** `tools/list` ri-forma
-   `STRUMENTI_CONOSCENZA` (nessun nome scritto a mano qui dentro: una lista
+   `KNOWLEDGE_TOOLS` (nessun nome scritto a mano qui dentro: una lista
    scritta a mano sarebbe il secondo catalogo che nasce) e `tools/call` passa
-   dal `DispatcherStrumenti` vero -- provato dal fatto che un `ricorda` fatto
+   dal `ToolDispatcher` vero -- provato dal fatto che un `remember` fatto
    attraverso la rotta si ritrova in `memoria.db`;
 2. **l'autenticazione, con le valvole della suite RIMOSSE.** `conftest.py`
    imposta `HIRIS_ALLOW_NO_TOKEN=1` e `HIRIS_ALLOW_NO_CSRF=1` per tutta la
@@ -183,7 +183,7 @@ async def test_initialize_dichiara_la_versione_dell_addon_da_read_version(rotta)
 async def test_tools_call_ricorda_scrive_davvero_in_memoria_db(rotta):
     """La prova che questa rotta non ha una logica di strumento propria: la
     frase entra da HTTP e si ritrova nel FILE `memoria.db`, letto da una
-    connessione a parte. E' anche il guasto storico da cui `ricorda` e' nato --
+    connessione a parte. E' anche il guasto storico da cui `remember` e' nato --
     «preso nota» senza salvare niente."""
     client, memoria_db = rotta
     frase = "d'inverno il soggiorno ideale e' 19.5"
@@ -209,7 +209,7 @@ async def test_tools_call_ricorda_scrive_davvero_in_memoria_db(rotta):
 
 @pytest.mark.asyncio
 async def test_tools_call_cerca_risponde_dagli_archivi_dell_app(rotta):
-    """`cerca` legge lo stesso `archivio_casa` che alimenta il turno sincrono:
+    """`search` legge lo stesso `archivio_casa` che alimenta il turno sincrono:
     il dispatcher e' costruito dagli oggetti dell'app, non da archivi propri."""
     client, _ = rotta
     corpo = await (await _jsonrpc(client, {
@@ -289,7 +289,7 @@ async def test_tetto_raggiunto_rifiuta_e_il_dispatcher_non_viene_invocato(rotta,
     passano regolarmente; la successiva riceve il testo del tetto -- e la
     prova che il dispatcher non e' stato invocato non e' un'asserzione sulla
     forma della risposta, ma sull'EFFETTO: nessuna scrittura in `memoria.db`
-    per un `ricorda` tentato oltre il tetto."""
+    per un `remember` tentato oltre il tetto."""
     client, memoria_db = rotta
     intestazioni = {**INTESTAZIONI_CLI, "X-HIRIS-Turno": "turno-al-tetto"}
 
@@ -511,7 +511,7 @@ async def test_metodo_sconosciuto_e_32601_e_dice_quali_esistono(rotta):
 @pytest.mark.asyncio
 async def test_json_non_valido_e_32700_e_non_un_500(rotta):
     """Mai un 500 nudo, e mai un'eccezione che risalga: e' la stessa proprieta'
-    che `DispatcherStrumenti.dispatch` promette per contratto."""
+    che `ToolDispatcher.dispatch` promette per contratto."""
     client, _ = rotta
     risposta = await client.post(
         "/api/mcp", data="{non e' json", headers=INTESTAZIONI_CLI)
@@ -675,7 +675,7 @@ def test_la_rotta_e_registrata_in_create_app():
 
 def test_il_dispatcher_si_costruisce_in_un_solo_punto_del_prodotto():
     """Due costruzioni che possono divergere sono il difetto da cui e' nata la
-    fetta E2. `handlers_mcp` non costruisce un `DispatcherStrumenti` proprio:
+    fetta E2. `handlers_mcp` non costruisce un `ToolDispatcher` proprio:
     chiama la stessa funzione del turno sincrono. Il test guarda il sorgente di
     `hiris/app/` perche' e' l'unico modo di pinnare un'ASSENZA."""
     import pathlib

@@ -15,8 +15,8 @@ import anthropic
 # 12 moduli di `tools/` (da cui venivano importate queste definizioni)
 # sopravvivevano solo per donargliele. Cataloghi, `run_with_actions` e
 # `tools/` escono qui insieme -- la chat riceve il suo catalogo da fuori
-# (`strumenti=STRUMENTI_CONOSCENZA`, casa/strumenti.py: quattro strumenti che
-# conoscono la casa, piu' `esegui` che la comanda per la porta unica) da prima
+# (`strumenti=KNOWLEDGE_TOOLS`, casa/strumenti.py: quattro strumenti che
+# conoscono la casa, piu' `execute` che la comanda per la porta unica) da prima
 # di questo task.
 #
 # fetta «cosa è successo davvero»: la classificazione dell'errore vive in
@@ -118,7 +118,7 @@ def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None
 # `save_memory` -- uno strumento che non esiste piu' (il catalogo di oggi e'
 # SOLO cerca/guarda/ricorda/richiama, casa/strumenti.py). Un prompt che
 # ordina di chiamare uno strumento inesistente riapre dal lato del prompt
-# esattamente il bug per cui `ricorda` e' nato (vedi il docstring in cima a
+# esattamente il bug per cui `remember` e' nato (vedi il docstring in cima a
 # casa/strumenti.py): il modello puo' rispondere "preso nota" senza aver
 # salvato, perche' la chiamata che gli abbiamo insegnato a fare fallisce in
 # silenzio. Riscritta perche' descriva cio' che HIRIS e' oggi: conosce la
@@ -126,7 +126,7 @@ def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None
 #
 # fetta «comandare» (Task 6): «non attua» non e' piu' vero, e la riscrittura
 # di allora e' diventata la falsita' che quel commento vieta -- girata al
-# contrario. Il Task 5 ha messo `esegui` nel catalogo unico
+# contrario. Il Task 5 ha messo `execute` nel catalogo unico
 # (`casa/strumenti.py`) e quindi nei tool del ramo sincrono E nell'argv della
 # CLI: il modello RICEVE lo strumento, e questa costante gli diceva «non
 # controlli dispositivi ... rispondi, non agisci». Un ordine di NON usare uno
@@ -136,7 +136,7 @@ def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None
 # accendere») e' indistinguibile da «gli strumenti sono rotti».
 #
 # Perche' le regole nuove stanno QUI e non nella guida del ponte
-# (`agent/prompts._GUIDA_CON_STRUMENTI`, dove il brief le aveva messe): sono
+# (`agent/prompts._GUIDE_WITH_TOOLS`, dove il brief le aveva messe): sono
 # regole del PRODOTTO, e questa meta' e' l'unico testo emesso SE E SOLO SE
 # gli strumenti esistono -- sempre sul percorso sincrono (che le guide non le
 # vede MAI: `chat()` qui sotto compone `BASE_SYSTEM_PROMPT`) e sul ponte solo
@@ -164,7 +164,7 @@ def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None
 #
 # Cio' che il prompt NON dice, e non dira' finche' non esiste: che HIRIS
 # chieda conferma prima di agire. Nessun meccanismo di conferma esiste in
-# questa fetta -- `esegui` verifica e chiama -- e prometterlo sarebbe la
+# questa fetta -- `execute` verifica e chiama -- e prometterlo sarebbe la
 # classe di difetto che questo ramo ha passato settimane a chiudere.
 #
 # fetta "il ponte riceve il nucleo" (parita' A, Task 2, fix round 1 --
@@ -182,7 +182,7 @@ def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None
 # ricorda subito" sono ORDINI DI CHIAMARE UNO STRUMENTO INESISTENTE, cioe'
 # esattamente cio' che il commento qui sopra dichiara di non voler piu' fare:
 # il modello puo' rispondere "preso nota" senza aver salvato -- il bug misurato
-# in produzione da cui `ricorda` e' nato. Una smentita di TESTO non e' un
+# in produzione da cui `remember` e' nato. Una smentita di TESTO non e' un
 # meccanismo. Spezzata, il ponte compone la sola meta' VERA quando non ha
 # strumenti, ed entrambe quando li avra' (fetta B): la parte falsa non viene
 # proprio emessa.
@@ -337,7 +337,7 @@ BASE_SYSTEM_PROMPT = BASE_IDENTITY + BASE_TOOL_RULES
 # 34) e `EVALUATION_ONLY_TOOLS` (le 18 letture concesse alla Sentinella) sono
 # uscite insieme a `run_with_actions`, il loro unico chiamante -- vedi il
 # commento in testa al file. La chat non ha mai smesso di ricevere il suo
-# catalogo dall'esterno (`strumenti=STRUMENTI_CONOSCENZA`); ora e' l'UNICO
+# catalogo dall'esterno (`strumenti=KNOWLEDGE_TOOLS`); ora e' l'UNICO
 # modo in cui `chat()` vede dei tool, non piu' il ramo di scorta.
 
 MODEL = "claude-sonnet-4-6"
@@ -358,7 +358,7 @@ MAX_TOKENS = 4096
 # presente: HIRIS 2.0 LEGGE le plance (proxy/ha_client.py, casa/
 # comportamento.py) e non ne scrive nessuna, e il catalogo della chat e'
 # quello di casa/strumenti.py -- che dalla fetta «comandare» chiama servizi di
-# Home Assistant (`esegui`) ma continua a non scrivere plance.
+# Home Assistant (`execute`) ma continua a non scrivere plance.
 # fix round 1: la riscrittura aveva lasciato dentro un secondo soggetto morto
 # -- diceva "il tetto da 4096 dell'agente di valutazione" al PRESENTE, ma
 # quell'agente non esiste piu' (fetta E3 Task 8, commento poco sopra): 4096 e'
@@ -531,10 +531,10 @@ MINIMAL_PROMPT = (
 # `REQUIRE_CONFIRMATION_PROMPT` sono uscite. Nominavano cinque strumenti che
 # ATTUANO (call_ha_service, trigger_automation, toggle_automation,
 # set_input_helper, create_ha_config): nessuno dei cinque esiste in un
-# catalogo raggiungibile da nessun runner (chat = STRUMENTI_CONOSCENZA;
+# catalogo raggiungibile da nessun runner (chat = KNOWLEDGE_TOOLS;
 # Sentinella = soli read + task, ne' l'uno ne' l'altro li offre; e quando
 # l'azione e' rientrata, alla fetta «comandare», e' rientrata come UNO
-# strumento solo, `esegui`, e senza conferme -- vedi i vincoli della fetta).
+# strumento solo, `execute`, e senza conferme -- vedi i vincoli della fetta).
 # L'iniezione nel system prompt (qui sotto e nei
 # due punti gemelli di backends/openai_compat_runner.py) istruiva il modello
 # a chiedere conferma prima di strumenti che non puo' comunque chiamare --
@@ -546,7 +546,7 @@ MINIMAL_PROMPT = (
 # Review finale fetta E2, I-4: `_redact_stream_tool_calls` e' uscita.
 # Redigeva l'OTP di `confirm_pending` prima di emetterlo in un evento SSE
 # "done" -- ma `confirm_pending` non e' dichiarato in nessun catalogo
-# raggiungibile (STRUMENTI_CONOSCENZA, EVALUATION_TOOL_DEFS): un modello non
+# raggiungibile (KNOWLEDGE_TOOLS, EVALUATION_TOOL_DEFS): un modello non
 # puo' emettere un tool_use per un tool mai offerto, quindi il ramo che
 # redigeva non era mai raggiungibile da nessun input reale -- un OTP dentro
 # un tool input non esiste piu' in tutto il prodotto (l'impianto OTP e'
@@ -705,7 +705,7 @@ class ClaudeRunner:
     # "di scorta" -- usato SOLO dal ramo `elif self._dispatcher is not None`
     # dentro `chat()`, uscito con lui in questo stesso task. Nessun chiamante
     # di produzione lo passava mai (fetta E2 Task 7, commit 68d3670: la chat
-    # passa SEMPRE il proprio DispatcherStrumenti per-chiamata, il parametro
+    # passa SEMPRE il proprio ToolDispatcher per-chiamata, il parametro
     # `dispatcher`/`strumenti` che invece resta -- vedi `chat()` sotto). Un
     # tool richiesto senza un dispatcher per-chiamata degrada comunque a "non
     # disponibile", come faceva gia' prima con `self._dispatcher` sempre
@@ -836,7 +836,7 @@ class ClaudeRunner:
         effective_model = resolve_model(model, agent_type, self._chosen_model())
         if tools is not None:
             # Il catalogo arriva gia' deciso dal chiamante (es. gli
-            # strumenti di DispatcherStrumenti, casa/strumenti.py).
+            # strumenti di ToolDispatcher, casa/strumenti.py).
             tools = list(tools)
         else:
             # fetta E3 Task 8: non esiste piu' un catalogo di scorta da cui
@@ -938,7 +938,7 @@ class ClaudeRunner:
                 for block in response.content:
                     if block.type == "tool_use":
                         if dispatcher is not None:
-                            # DispatcherStrumenti (e affini) espone la stessa
+                            # ToolDispatcher (e affini) espone la stessa
                             # interfaccia minima -- dispatch(nome, argomenti).
                             # fetta E4 Task 6: il ramo "dispatcher di scorta"
                             # (self._dispatcher, con le kwargs allowed_entities/

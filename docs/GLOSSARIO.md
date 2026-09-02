@@ -801,9 +801,15 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > questo task usa «guarda e promesse compaiono due volte» come scorciatoia per descrivere questa
 > coppia insieme al caso di `guarda` — ma a differenza di `guarda` (stessa identica grafia in due
 > sezioni), qui **le grafie sono diverse**: singolare (`promessa`) per il concetto, plurale
-> (`promesse`) perche' cosi' e' scritta la stringa nel codice (`schedulatore/turno.py:38`, la lista
-> bianca di sicurezza). Non e' un doppione mancato ne' un dedup fatto a meta': sono deliberatamente
-> due voci, con due grafie diverse perche' cosi' sono nel codice.
+> (`promesse`) perche' cosi' era scritta la stringa nel codice. Non e' un doppione mancato ne' un
+> dedup fatto a meta': sono deliberatamente due voci.
+>
+> **Due correzioni, 02/09, dalla fetta che ha applicato questi nomi.** (1) Il rimando a
+> `schedulatore/turno.py:38` era sbagliato da sempre: quella riga e' `SOLA_LETTURA`, la lista bianca
+> dei SEI lettori, e `promesse` non c'e' mai stata (non e' un lettore ammesso in un turno di
+> promessa). La stringa viveva in `casa/strumenti.py`, nel catalogo della chat. (2) La stringa nel
+> codice ora e' `agenda`: la distinzione fra le due voci resta -- il concetto e' `promise`, il nome
+> di strumento e' `agenda` -- ma non si legge piu' dalla grafia italiana, si legge da qui.
 
 > **`origine` e `segno`: perche' sono qui e non fra le parole ordinarie, e perche' il glossario
 > vince sulla spec.** Il §4② di `docs/design/2026-08-28-il-glossario.md` elenca `origine` come
@@ -828,7 +834,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > **Verdetto su `turno` (`schedulatore/turno.py`) contro `ReasoningQueue`
 > (`reasoning/queue.py`): NON sono la stessa cosa, e la differenza e' voluta.** `turno` e' lo
 > scambio applicativo -- una chiamata al modello con un catalogo di strumenti ristretto ai soli
-> lettori, che deve chiudersi chiamando `concludi` o e' un errore dichiarato. `ReasoningQueue` e'
+> lettori, che deve chiudersi chiamando `conclude` o e' un errore dichiarato. `ReasoningQueue` e'
 > l'infrastruttura di persistenza -- una coda SQLite generica con `claim`/`submit`/`sweep_expired`/
 > `reclama_scaduto`, usata **sia** dai turni di chat **sia** dalle promesse instradate sul ponte,
 > quando la risposta deve attraversare un confine di processo e non si puo' aspettare in linea.
@@ -2199,7 +2205,13 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   `_TIPI_LEGAME_NOSTRI -> _OUR_LINK_TYPES`, `STRUMENTI_CONOSCENZA -> KNOWLEDGE_TOOLS`,
   `_NOMI_STRUMENTI -> _TOOL_NAMES`, `DispatcherStrumenti -> ToolDispatcher`, e le tredici costanti
   `*_TOOL_DEF` (`CERCA_TOOL_DEF -> SEARCH_TOOL_DEF`, ecc.): ognuna e' il nome della costante Python,
-  mai la stringa `"name"` che il modello legge dentro -- quella resta italiana, e' il contratto.
+  mai la stringa `"name"` che il modello legge dentro. **L'ultima meta' di questa frase e' scaduta il
+  02/09**: allora la stringa restava italiana perche' era il contratto col modello e nessuna suite
+  poteva smentirne il cambio; la fetta dei nomi degli strumenti l'ha convertita, dopo essersi
+  costruita il cancello che quella suite non aveva
+  (`tests/test_nomi_degli_strumenti.py`). Oggi il `"name"` e' inglese quanto la costante che lo
+  porta, e cio' che resta italiano dentro la definizione sono le chiavi dello schema e la
+  description.
 - **`entita` (bare, locale)**: tradotta `entity` dove il valore e' UNA cosa sola (`_andamento`,
   `_accaduto`), `entities` dove e' una lista (`_verifica_da_confrontare`, `_istantanea`) --
   l'italiano non flette la parola fra singolare e plurale, l'inglese si', e la forma del
@@ -3287,7 +3299,7 @@ verifica l'ha fatto.
 
 | cosa | perche' |
 |---|---|
-| il record di `/api/memories` (`forza`, `grandezza`, `minimo`, `massimo`, `unita`, `testo`, `detto_da`, `detto_il`, `corretto_da_utente`) | sono le colonne di `ricordi`, sono i campi del corpo PATCH, e `grandezza` e' una chiave di `REMEMBER_TOOL_DEF` -- congelata fino alla fetta degli strumenti |
+| il record di `/api/memories` (`forza`, `grandezza`, `minimo`, `massimo`, `unita`, `testo`, `detto_da`, `detto_il`, `corretto_da_utente`) | sono le colonne di `ricordi`, sono i campi del corpo PATCH, e `grandezza` e' una chiave di `REMEMBER_TOOL_DEF`. **La fetta degli strumenti (02/09) e' passata e `grandezza` non e' cambiata**: quella fetta converte i NOMI degli strumenti, non le chiavi dei loro schemi -- 24 su 45 coincidono con un nome di colonna, e il database resta fuori. Non e' piu' congelata in attesa di una fetta: e' decisa italiana |
 | il record di `/api/agenda` | `schedulatore/promise.py::serializza`, la stessa forma che esce dallo strumento del modello |
 | il record di `/api/constructions` e di `/api/executions` | colonne di `costruzioni` e di `esecuzioni`; `errore` di un'esecuzione e' una COLONNA e resta italiano anche ora che l'involucro dice `error` |
 | il record di `/api/mind/facts` | `_fact_row`, colonne di `oggetti` |

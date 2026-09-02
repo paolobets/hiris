@@ -10,7 +10,7 @@ gli strumenti per dati sulla casa», «chiama remember subito»), e il commento
 che questo prodotto ha scritto sopra quella costante
 (`claude_runner.py`, sopra `BASE_IDENTITY`) dice che «un prompt che ordina di
 chiamare uno strumento inesistente riapre dal lato del prompt esattamente il
-bug per cui `ricorda` e' nato»: il modello risponde "preso nota" senza aver
+bug per cui `remember` e' nato»: il modello risponde "preso nota" senza aver
 salvato. Una smentita di TESTO non e' un meccanismo.
 
 Il taglio ha due invarianti, e questo file le pinna entrambe:

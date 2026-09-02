@@ -96,38 +96,38 @@ def test_il_catalogo_e_questo_e_le_due_strade_che_scrivono_su_home_assistant():
     apposta, cosi' che aggiungerne o toglierne uno sia una decisione e non un
     effetto collaterale. Ovunque altro si DERIVANO da qui.
 
-    Da 34 a 4, poi 5, poi 6, poi 9, poi 11, e ora 13. `esegui` resta l'unico che
+    Da 34 a 4, poi 5, poi 6, poi 9, poi 11, e ora 13. `execute` resta l'unico che
     scrive un SERVIZIO in Home Assistant SUBITO -- e non lo fa da se': chiede
     alla porta unica (`azione/porta.py`), che verifica prima e rilegge dopo.
     E' la differenza con i trentaquattro usciti, dove ciascuno attuava per
     conto proprio.
 
-    Il sesto e' `legami`: chiede a Home Assistant CHI tocca una cosa. Non e'
+    Il sesto e' `related`: chiede a Home Assistant CHI tocca una cosa. Non e'
     un sesto modo di leggere gli archivi -- non ne legge nessuno -- ed e' il
-    motivo per cui e' uno strumento invece di un campo di `guarda`: i legami
+    motivo per cui e' uno strumento invece di un campo di `view`: i legami
     sono momentanei, non si archiviano, e chiederli costa un giro di rete che
-    `guarda` non deve pagare (vedi il docstring di `casa/strumenti.py`).
+    `view` non deve pagare (vedi il docstring di `casa/strumenti.py`).
 
-    Tre -- `prometti`, `promesse`, `disdici` (fetta «lo schedulatore», Task
+    Tre -- `promise`, `agenda`, `cancel` (fetta «lo schedulatore», Task
     6) -- mettono da parte un'azione o una domanda per UN ISTANTE FUTURO,
-    invece di agire adesso: `prometti` non scrive nella casa nel turno in cui
+    invece di agire adesso: `promise` non scrive nella casa nel turno in cui
     viene chiamato (un `fai` viene solo VERIFICATO contro questa
-    installazione, non eseguito), quindi non e' un secondo `esegui`.
+    installazione, non eseguito), quindi non e' un secondo `execute`.
 
-    Due -- `costruisci`, `conferma` (fetta «costruire», Task 9) -- sono la
+    Due -- `propose`, `confirm` (fetta «costruire», Task 9) -- sono la
     SECONDA strada che scrive su Home Assistant, e scrivono CONFIGURAZIONE
     (un'automazione, uno script, una scena), non un servizio: passano per
     l'officina (`azione/costruzione/officina.py`), sorella della porta e non
-    sua sostituta. `costruisci` non scrive neanche lui -- compone e fa
-    validare, come `prometti` verifica senza eseguire -- e' `conferma`, in un
+    sua sostituta. `propose` non scrive neanche lui -- compone e fa
+    validare, come `promise` verifica senza eseguire -- e' `confirm`, in un
     turno diverso, a far scrivere davvero.
 
-    Gli ultimi due -- `andamento`, `accaduto` (fetta «HIRIS e il tempo», Task
+    Gli ultimi due -- `trend`, `logbook` (fetta «HIRIS e il tempo», Task
     6) -- non scrivono niente: guardano INDIETRO nel tempo passando per
     `casa/tempo.py`, come e' andato un valore e cosa e' successo (e per mano
     di chi). LEGGONO e basta, come i primi cinque -- ed e' per questo che
     entrano anche nel catalogo del turno delle promesse
-    (`schedulatore/turno.py::SOLA_LETTURA`), da cui `costruisci` e `conferma`
+    (`schedulatore/turno.py::SOLA_LETTURA`), da cui `propose` e `confirm`
     restano fuori."""
     nomi = {s["name"] for s in KNOWLEDGE_TOOLS}
     assert nomi == {"search", "view", "related", "remember", "fetch", "execute",
@@ -199,8 +199,8 @@ async def test_richiama_da_i_ricordi_di_una_parte_della_casa(dispatcher, memoria
     assert len(esito["ricordi"]) == 1
 
 
-# --- I1 (review indipendente 25/08/2026): `richiama` legge `per_tether` -----
-# direttamente, non passa da `domande.guarda` -- lo stesso ricordo usciva
+# --- I1 (review indipendente 25/08/2026): `fetch` legge `per_tether` -----
+# direttamente, non passa da `domande.view` -- lo stesso ricordo usciva
 # filtrato da una porta e grezzo dall'altra.
 
 @pytest.mark.asyncio
@@ -291,7 +291,7 @@ async def test_cerca_niente_di_riconoscibile_non_e_un_errore(dispatcher):
     assert esito["trovati"] == []
 
 
-# --- R2 (T7): `cerca` impara piani, automazioni e script -------------------
+# --- R2 (T7): `search` impara piani, automazioni e script -------------------
 
 
 @pytest.mark.asyncio
@@ -301,15 +301,15 @@ async def test_cerca_trova_un_piano_per_nome(dispatcher):
     "Piano terra", ...}`, vedi tests/test_nucleo.py)."""
     esito = await dispatcher.dispatch("search", {"testo": "il piano terra"})
     candidati = [c for t in esito["trovati"] for c in t["candidati"] if c["tipo"] == "piano"]
-    # `domande.cerca()` arricchisce ogni candidato col `nome` (non solo
+    # `domande.search()` arricchisce ogni candidato col `nome` (non solo
     # `Lookup.find()`, che ne resta scarico -- vedi test_memoria_riconoscitore.py).
     assert candidati == [{"tipo": "piano", "riferimento": "terra", "nome": "Piano terra"}]
 
 
 @pytest.mark.asyncio
 async def test_cerca_poi_guarda_un_automazione_end_to_end(dispatcher):
-    """Requisito 2 del brief, alla superficie del dispatcher: `guarda` deve
-    accettare DAVVERO cio' che `cerca` restituisce, non solo un id che il
+    """Requisito 2 del brief, alla superficie del dispatcher: `view` deve
+    accettare DAVVERO cio' che `search` restituisce, non solo un id che il
     modello sapeva gia'."""
     trovato = await dispatcher.dispatch("search", {"testo": "sveglia"})
     candidato = next(c for t in trovato["trovati"] for c in t["candidati"]
@@ -354,10 +354,10 @@ async def test_un_automazione_rinominata_invalida_la_cache_dell_indice(archivio_
 
 def test_cerca_tool_def_dichiara_i_tipi_nuovi():
     """Requisito 4 del brief T7 (esteso da T8): la descrizione di
-    `CERCA_TOOL_DEF` deve dire cio' che lo strumento ora sa fare, non solo
+    `SEARCH_TOOL_DEF` deve dire cio' che lo strumento ora sa fare, non solo
     cio' che sapeva prima. «etichetta» (T8, R2) e' il tipo piu' recente:
     senza dichiararlo qui, un modello che leggesse solo le definizioni degli
-    strumenti non scoprirebbe mai che `cerca` risolve un'etichetta per nome
+    strumenti non scoprirebbe mai che `search` risolve un'etichetta per nome
     -- il requisito 2 del brief T8 lo pretende esplicitamente («un modello
     che sa solo il NOME di un'etichetta deve poter arrivare al label_id con
     UNA chiamata»)."""
@@ -370,8 +370,8 @@ def test_la_descrizione_del_bersaglio_etichette_dice_da_dove_si_prende_l_id():
     """Requisito 3 del brief T8 (R2): fino a questa fetta il `label_id` non
     usciva da NESSUNA porta, e la descrizione del bersaglio non diceva
     nemmeno DOVE andarlo a cercare -- un modello che leggesse solo la
-    definizione dello strumento non aveva modo di scoprire che «cerca» e
-    «guarda» lo producono ora."""
+    definizione dello strumento non aveva modo di scoprire che «search» e
+    «view» lo producono ora."""
     descrizione = EXECUTE_TOOL_DEF["input_schema"]["properties"]["bersaglio"][
         "properties"]["etichette"]["description"].lower()
     assert "search" in descrizione
@@ -390,9 +390,9 @@ class _CacheFinta:
 
 @pytest.mark.asyncio
 async def test_guarda_mostra_lo_stato_vivo(archivio_casa, memoria):
-    """Sapere che una luce e' accesa e' CONOSCENZA, non azione: `guarda` legge
+    """Sapere che una luce e' accesa e' CONOSCENZA, non azione: `view` legge
     lo specchio dello stato e non lo scrive -- nemmeno adesso che il prodotto
-    agisce. Chi scrive e' `esegui`, e passa dalla porta. Prima `guarda`
+    agisce. Chi scrive e' `execute`, e passa dalla porta. Prima `view`
     restituiva sempre `stato: None` perche' la cache non era cablata --
     onesto ma inutile."""
     cache = _CacheFinta({"light.cucina_1": "on", "light.cucina_2": "off"})
@@ -465,7 +465,7 @@ def test_lo_specchio_restituisce_stato_nomi_unita_e_classi_in_una_lettura(archiv
 
 @pytest.mark.asyncio
 async def test_cerca_trova_un_entita_senza_nome_grazie_al_friendly_name(archivio_casa, memoria):
-    """Le abat-jour, dal vivo: quattro giri di `cerca` diventano uno."""
+    """Le abat-jour, dal vivo: quattro giri di `search` diventano uno."""
     archivio_casa.replace({"entita": [
         {"entity_id": "light.abat_jour_1", "name": None, "original_name": None}]}, [])
     d = ToolDispatcher(archivio_casa, memoria, cache=_CacheConNomi())
@@ -479,7 +479,7 @@ async def test_cerca_trova_un_entita_senza_nome_grazie_al_friendly_name(archivio
 async def test_guarda_un_entita_senza_nome_dichiara_il_nome_dedotto_dal_dispatcher(
         archivio_casa, memoria):
     """Il test che prova la FETTA, non solo la funzione pura: i tre test di
-    `test_domande.py` chiamano `guarda()` direttamente e le passano
+    `test_domande.py` chiamano `view()` direttamente e le passano
     `nomi_di_ripiego` a mano, quindi restano verdi anche se `_guarda` smette
     di inoltrare i nomi vivi dell'archivio -- esattamente il difetto che
     questo task esiste per chiudere. Solo passando da `dispatch()` con una
@@ -500,9 +500,9 @@ async def test_guarda_un_area_dichiara_il_nome_dedotto_delle_sue_entita_dal_disp
         archivio_casa, memoria):
     """I1 (review finale): il test che prova la FETTA per il ramo area, non
     solo la funzione pura -- stessa lezione di B5. I due test di
-    `test_domande.py` chiamano `guarda()` direttamente e passano
+    `test_domande.py` chiamano `view()` direttamente e passano
     `nomi_di_ripiego` a mano: restano verdi anche se `_guarda` smette di
-    inoltrarlo a `_guarda_dettaglio`, o se `guarda()` smette di inoltrarlo a
+    inoltrarlo a `_guarda_dettaglio`, o se `view()` smette di inoltrarlo a
     `_guarda_area`. Solo passando da `dispatch()` con una cache vera si prova
     il collegamento (mutazione che uccide: togliere l'inoltro su QUESTO
     ramo, lasciando intatto quello di `_guarda_entita`)."""
@@ -541,10 +541,10 @@ async def test_guarda_un_dispositivo_dichiara_il_nome_dedotto_delle_sue_entita_d
 
 
 def test_nome_dedotto_e_documentato_in_tutti_gli_strumenti_che_lo_restituiscono():
-    """I2 (review finale): prima di questo fix `CERCA_TOOL_DEF` descriveva
-    `nome_dedotto` come un flag booleano e `GUARDA_TOOL_DEF` non lo nominava
-    affatto -- un modello che avesse imparato la forma da `cerca` avrebbe
-    letto male il campo di `guarda` (`nome: null` + una chiave non
+    """I2 (review finale): prima di questo fix `SEARCH_TOOL_DEF` descriveva
+    `nome_dedotto` come un flag booleano e `VIEW_TOOL_DEF` non lo nominava
+    affatto -- un modello che avesse imparato la forma da `search` avrebbe
+    letto male il campo di `view` (`nome: null` + una chiave non
     descritta), concludendo «senza nome» mentre il nome c'era. Una forma
     sola, dichiarata in entrambe le definizioni."""
     from hiris.app.casa.strumenti import SEARCH_TOOL_DEF, VIEW_TOOL_DEF
@@ -603,7 +603,7 @@ async def test_cerca_dichiara_le_entita_senza_nome_anche_a_specchio_leggibile(
     specchio E' leggibile -- restituisce un friendly_name per un'ALTRA
     entita' -- ma non sa come si chiama proprio questa: senza dichiararlo,
     'trovati': [] e' indistinguibile da 'nessuna cosa con quel nome', il
-    difetto che ha gia' bruciato quattro giri di `cerca` sulle abat-jour."""
+    difetto che ha gia' bruciato quattro giri di `search` sulle abat-jour."""
     archivio_casa.replace({"entita": [
         {"entity_id": "light.senza", "name": None, "original_name": None}]}, [])
 
@@ -632,7 +632,7 @@ async def test_cerca_dichiara_le_entita_senza_nome_anche_a_specchio_leggibile(
 @pytest.mark.asyncio
 async def test_cerca_non_dichiara_cecita_permanente_su_una_ricerca_riuscita(archivio_casa, memoria):
     """N2 (ri-review): dopo I3, il ramo `senza_nome_vivo` di `_cecita` si
-    accende su OGNI `cerca`, comprese quelle riuscite -- perche' sull'impianto
+    accende su OGNI `search`, comprese quelle riuscite -- perche' sull'impianto
     vero esistono SEMPRE entita' senza nome ne' nel registro ne' nello
     specchio (un fatto stabile della casa, non un guasto di questa ricerca:
     il ledger ne conta 376). `non_ho_potuto_guardare` esiste per spiegare un
@@ -672,7 +672,7 @@ async def test_cerca_dichiara_caduti_e_specchio_ma_non_il_ramo_strutturale_su_ri
     protegge SOLO il ramo strutturale di `_cecita` (entita' senza nome ne'
     nel registro ne' nello specchio -- un limite stabile della casa). Gli
     altri due rami, registri caduti e specchio illeggibile, sono impedimenti
-    che capitano ADESSO: devono dichiararsi anche quando `cerca` ha gia'
+    che capitano ADESSO: devono dichiararsi anche quando `search` ha gia'
     trovato quello che cercava, altrimenti un registro caduto o uno specchio
     giu' smetterebbero in silenzio di dichiararsi a ogni ricerca riuscita.
 
@@ -724,7 +724,7 @@ async def test_cerca_non_conta_un_entita_disabilitata_senza_nome_come_cecita(
 @pytest.mark.asyncio
 async def test_cerca_dichiara_il_registro_etichette_caduto(archivio_casa, memoria):
     """Fix finale ①: `etichette` e' una tabella vera di `_TABELLE` che puo'
-    comparire in `non_disponibili()` (T8, R2 -- `cerca` indicizza le
+    comparire in `non_disponibili()` (T8, R2 -- `search` indicizza le
     etichette stesse come candidati), ma `_cecita` filtrava i registri
     caduti con `STORE_KEY_PER_TYPE.values()`, che non la contiene
     (deliberatamente: non e' un tipo di ancora, vedi il commento su
@@ -787,7 +787,7 @@ def test_senza_cache_lo_specchio_e_vuoto_ma_non_dichiara_un_guasto(archivio_casa
 
 @pytest.mark.asyncio
 async def test_richiama_con_tipo_fuori_vocabolario_lo_dice(dispatcher, memoria):
-    """Fix E1-②: «richiama» con un `tipo` che non e' area/entita/dispositivo
+    """Fix E1-②: «fetch» con un `tipo` che non e' area/entita/dispositivo
     restituiva `{"ricordi": []}` -- indistinguibile da "non ti ho detto
     niente", anche quando il ricordo esiste davvero."""
     memoria.remember("in cucina niente luci dopo le 23", detto_da="paolo",
@@ -801,11 +801,11 @@ async def test_richiama_con_tipo_fuori_vocabolario_lo_dice(dispatcher, memoria):
 async def test_richiama_con_tipo_piano_lo_dice_anche_dopo_R2(dispatcher):
     """T7 (R2), regressione da non fare: `_ARCHIVI` (memoria/resolver.py)
     ora contiene anche "piano", ma "piano" NON e' un tipo di ancora che
-    `ricorda` possa mai scrivere (`memoria/interpretazione.VOCABULARY`) --
+    `remember` possa mai scrivere (`memoria/interpretazione.VOCABULARY`) --
     la memoria continua a conoscere solo area/entita'/dispositivo. Se
     `_TIPI_ANCORA` (casa/strumenti.py) fosse rimasto derivato da
     `STORE_KEY_PER_TYPE` invece che da `VOCABULARY["ancore"]`,
-    "piano" sarebbe scivolato dentro in silenzio, e `richiama` avrebbe
+    "piano" sarebbe scivolato dentro in silenzio, e `fetch` avrebbe
     smesso di insegnare l'errore -- restituendo `{"ricordi": []}`, lo
     stesso "non ti ho detto niente" bugiardo che il fix E1-② (sopra) ha
     gia' chiuso una volta."""
@@ -858,7 +858,7 @@ def _conta_costruzioni(monkeypatch):
     per nome (`strumenti.py`, per il ramo senza cache, e
     `memoria/cache_indice.py`, per il ramo con cache -- un monkeypatch su un
     solo modulo non vedrebbe le chiamate che passano dall'altro): conta le
-    costruzioni vere, non i risultati di `cerca` -- la mutazione 'non usare
+    costruzioni vere, non i risultati di `search` -- la mutazione 'non usare
     mai la cache anche quando c'e'' lascia i risultati identici e solo un
     conteggio la scopre (brief B7, penultimo punto)."""
     chiamate = []
@@ -887,7 +887,7 @@ async def test_due_cerca_di_fila_a_stato_invariato_costruiscono_un_solo_indice(
 async def test_senza_cache_indice_il_comportamento_resta_quello_di_oggi(
         archivio_casa, memoria, monkeypatch):
     """Default `None`: mutazione 'usare sempre la cache anche quando il
-    chiamante non la passa' rovinerebbe questo test -- due `cerca` devono
+    chiamante non la passa' rovinerebbe questo test -- due `search` devono
     ricostruire due volte, come prima del Task B7."""
     chiamate = _conta_costruzioni(monkeypatch)
     d = ToolDispatcher(archivio_casa, memoria)  # cache_indice non passata
@@ -901,7 +901,7 @@ async def test_cambia_l_anagrafe_e_cerca_vede_la_nuova_entita_anche_con_la_cache
         archivio_casa, memoria):
     """Il rischio peggiore del task: una cache con la chiave sbagliata
     servirebbe un indice VECCHIO, facendo sparire un'entita' che esiste
-    davvero. Qui la si aggiunge dopo la prima `cerca` e si pretende che la
+    davvero. Qui la si aggiunge dopo la prima `search` e si pretende che la
     seconda la trovi."""
     d = ToolDispatcher(archivio_casa, memoria, lookup_cache=LookupCache())
     prima = await d.dispatch("search", {"testo": "frullatore"})
@@ -1001,7 +1001,7 @@ async def test_ricorda_su_un_colpo_a_segno_non_legge_l_anagrafe(
     riga) veniva fatta e buttata. La chiave (aggiornata_il + impronta dei
     nomi) si calcola SENZA leggere l'anagrafe: su un hit, `read()` non deve
     essere chiamata affatto. Un test che guarda solo il risultato di
-    `ricorda` passerebbe identico con la lettura ancora dentro -- serve
+    `remember` passerebbe identico con la lettura ancora dentro -- serve
     contare le chiamate vere, come per le costruzioni dell'indice."""
     chiamate_leggi = []
     originale = archivio_casa.read
@@ -1042,7 +1042,7 @@ async def test_l_unita_ARRIVA_dalla_cache_fino_a_guarda(archivio_casa, memoria):
 
     `_to_minimal` conservava `unit` con cura e `_specchio()` estraeva solo
     `state` e `name`: l'unita' non usciva mai dalla cache. Le prove su
-    `guarda()` passano un dizionario a mano e resterebbero verdi anche cosi' --
+    `view()` passano un dizionario a mano e resterebbero verdi anche cosi' --
     e' esattamente la forma «prova che non puo' fallire» gia' pagata su questo
     ramo (il commento su `_CacheFinta` racconta la volta scorsa: «prima guarda
     restituiva sempre stato: None perche' la cache non era cablata»).

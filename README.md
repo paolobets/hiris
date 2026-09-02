@@ -62,7 +62,7 @@ was asked for. There is no confirmation step and no allowlist: capability
 first, safeguards as a designed phase of their own. What there is instead is a
 boundary on **judgment, not on time**: nothing decides to act, or decides what
 to say, on its own — every execution traces back to a sentence you typed. What
-that does *not* mean is *immediately*, or *never on a schedule*: `prometti`,
+that does *not* mean is *immediately*, or *never on a schedule*: `promise`,
 one of the thirteen tools below, lets a sentence you type now run later, at a
 time you name, with nobody in the chat when it happens — see the next
 paragraph for what that means in practice.
@@ -94,7 +94,7 @@ The tenth is the promise scheduler's heartbeat, every 15 seconds
 promise is created from a sentence in chat — "at 5pm, turn on the office",
 "in an hour, check the temperature and tell me if it went up" — and its
 service call, or its comparison, is verified at that moment, the same way
-`esegui` is. But its *when* is checked, not acted on, right away: once the
+`execute` is. But its *when* is checked, not acted on, right away: once the
 named moment arrives, the heartbeat carries out that service call **by
 itself, hours after the sentence that created it, with nobody in the chat**
 — and for a `chiedi` promise that named a `notify.*` recapito, it delivers
@@ -187,25 +187,25 @@ The chat is the only surface. The model gets the nucleo plus exactly thirteen to
 
 | Tool | What it does |
 |---|---|
-| `cerca` | finds an area, entity or device from a name or alias — and returns **every** candidate, flagging the ambiguous ones instead of silently picking the first |
-| `guarda` | the detail of one single thing: an area with its entities and states, an entity, a device, an automation or script *with its body*, or a memory with its interpretation |
-| `legami` | who touches a thing, according to Home Assistant — which automations, scripts, scenes, groups or people name it, and where it lives |
-| `ricorda` | saves what a person said, with its anchors to the house |
-| `richiama` | the memories anchored to one part of the house |
-| `esegui` | calls a Home Assistant service — verified against your installation before it is sent, and the state read back after, so `prima`, `dopo` and `cambiato` say what actually changed |
-| `prometti` | schedules an action or a question for later — the action is verified now, against this installation, not when it eventually runs |
-| `promesse` | what HIRIS still owes, and the history of what happened to the rest |
-| `disdici` | cancels a promise that has not been kept yet |
-| `costruisci` | proposes an automation, a script or a scene — composes it, validates it against this installation, and writes nothing |
-| `conferma` | applies a proposal `costruisci` made, only in a turn after the one where the preview was shown |
-| `andamento` | how a value moved over time — an entity's real changes within the last 24 hours, hourly min/max/average buckets beyond that, always declaring which grain and which window it actually got |
-| `accaduto` | what happened in the house in a time window, and — where the logbook says so — who did it; HIRIS recognizes its own acts by matching against its own history and reports that match as *probable*, never certain |
+| `search` | finds an area, entity or device from a name or alias — and returns **every** candidate, flagging the ambiguous ones instead of silently picking the first |
+| `view` | the detail of one single thing: an area with its entities and states, an entity, a device, an automation or script *with its body*, or a memory with its interpretation |
+| `related` | who touches a thing, according to Home Assistant — which automations, scripts, scenes, groups or people name it, and where it lives |
+| `remember` | saves what a person said, with its anchors to the house |
+| `fetch` | the memories anchored to one part of the house |
+| `execute` | calls a Home Assistant service — verified against your installation before it is sent, and the state read back after, so `prima`, `dopo` and `cambiato` say what actually changed |
+| `promise` | schedules an action or a question for later — the action is verified now, against this installation, not when it eventually runs |
+| `agenda` | what HIRIS still owes, and the history of what happened to the rest |
+| `cancel` | cancels a promise that has not been kept yet |
+| `propose` | proposes an automation, a script or a scene — composes it, validates it against this installation, and writes nothing |
+| `confirm` | applies a proposal `propose` made, only in a turn after the one where the preview was shown |
+| `trend` | how a value moved over time — an entity's real changes within the last 24 hours, hourly min/max/average buckets beyond that, always declaring which grain and which window it actually got |
+| `logbook` | what happened in the house in a time window, and — where the logbook says so — who did it; HIRIS recognizes its own acts by matching against its own history and reports that match as *probable*, never certain |
 
-Two of the thirteen write to Home Assistant the moment they are called. `esegui` does it
+Two of the thirteen write to Home Assistant the moment they are called. `execute` does it
 immediately, through the services door (`azione/porta.py`), with no confirmation step — verified
-against your installation, not approved by you first. `conferma` does it through the configuration
-door (`azione/costruzione/officina.py`), applying a proposal `costruisci` already composed and
-validated, and only in a turn after the one where you saw the preview. A third, `prometti`, does
+against your installation, not approved by you first. `confirm` does it through the configuration
+door (`azione/costruzione/officina.py`), applying a proposal `propose` already composed and
+validated, and only in a turn after the one where you saw the preview. A third, `promise`, does
 not touch the house when it is called — a `fai` promise only verifies and stores a service call —
 but it *will*, through the same services door, once the time you named arrives: see
 [the scheduler's heartbeat](#what-hiris-20-is) above for what that means. Everything else reads,
@@ -444,7 +444,7 @@ rewritten, with a design of its own.
 
 - **Dashboards** — no creating or editing Lovelace views. Building
   automations, scripts and scenes moved back **in** with the "costruire"
-  slice (`costruisci` and `conferma`, two of the chat's tools): HIRIS
+  slice (`propose` and `confirm`, two of the chat's tools): HIRIS
   composes them, validates against your installation, and writes them into
   Home Assistant only once you confirm the preview.
 - **The semaforo** — tiers, denylists, step-up confirmations, per-action gating.
@@ -457,7 +457,7 @@ rewritten, with a design of its own.
 - **Notifications** — HIRIS has no notification channel of its own: no
   Apprise, no HA push, no Telegram/ntfy/… That is a statement about HIRIS, not
   a guarantee about your house: if your installation exposes `notify.*`
-  entities, `esegui` can call their services like any other while you are in
+  entities, `execute` can call their services like any other while you are in
   the chat, and a `chiedi` promise (see [the boundary](#what-hiris-20-is)
   above) that named a `notify.*` recapito **will** reach you when you are not
   in the chat — it is the one way this add-on can, on a channel you chose

@@ -54,18 +54,18 @@ def _trim_history(history: list[dict], max_tokens: int = _MAX_HISTORY_TOKENS) ->
 
 
 def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
-    """L'UNICO punto del prodotto in cui `DispatcherStrumenti` viene costruito.
+    """L'UNICO punto del prodotto in cui `ToolDispatcher` viene costruito.
 
     I tredici strumenti della chat (`casa/strumenti.py`) -- non il catalogo
-    di trentaquattro di ALL_TOOL_DEFS: cinque conoscono la casa (`cerca`,
-    `guarda`, `legami`, `ricorda`, `richiama`), il sesto, `esegui`, la comanda
+    di trentaquattro di ALL_TOOL_DEFS: cinque conoscono la casa (`search`,
+    `view`, `related`, `remember`, `fetch`), il sesto, `execute`, la comanda
     passando per la porta unica (vedi il docstring di quel modulo), tre
-    (`prometti`, `promesse`, `disdici`, fetta «lo schedulatore») la impegnano
+    (`promise`, `agenda`, `cancel`, fetta «lo schedulatore») la impegnano
     per un momento futuro passando per l'archivio delle promesse
-    (`schedulatore/archivio.py`), due (`costruisci`, `conferma`,
+    (`schedulatore/archivio.py`), due (`propose`, `confirm`,
     fetta «costruire») scrivono CONFIGURAZIONE -- non un servizio, un'entita'
     nuova -- passando per l'officina (`azione/costruzione/officina.py`), e gli
-    ultimi due (`andamento`, `accaduto`, fetta «HIRIS e il tempo») guardano
+    ultimi due (`trend`, `logbook`, fetta «HIRIS e il tempo») guardano
     INDIETRO nel tempo -- come e' andato un valore, cosa e' successo e per
     mano di chi -- passando per `casa/tempo.py`. Il dispatcher si costruisce
     dagli stessi oggetti dell'app che alimentano `compose_briefing()`
@@ -74,7 +74,7 @@ def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
     ricalcolato a mano -- ed e' SEMPRE costruibile, anche quando archivi,
     porta e officina sono assenti: i suoi gestori non sollevano mai,
     dichiarano un `errore` per strumento invece (vedi
-    `DispatcherStrumenti.dispatch`).
+    `ToolDispatcher.dispatch`).
 
     `exchange` (fetta «costruire», facoltativo e `None` per default: ogni
     chiamante che non lo passa non cambia comportamento) e' l'identita' di
@@ -117,7 +117,7 @@ def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
         cache=app.get("entity_cache"),
         actuator=app.get("porta_azione"),
         lookup_cache=app.get("cache_indice_strumenti"),
-        # Il canale verso Home Assistant, per `legami`: quello strumento non
+        # Il canale verso Home Assistant, per `related`: quello strumento non
         # legge l'archivio, chiede a HA chi tocca una cosa
         # (`search/related`). Senza questa riga sarebbe uno strumento sempre
         # «non disponibile» -- un dato che c'e' e che nessuno puo' chiedere,
@@ -129,14 +129,14 @@ def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
         ha=app.get("ha_client"),
         # Il registro dei servizi (`azione/registro.py`), la STESSA istanza
         # che riceve `porta_azione` qui sopra -- mai una seconda costruzione.
-        # Serve a `prometti` per verificare un `fai` ADESSO
-        # (`DispatcherStrumenti._verifica_ora`) e un `recapito`.
+        # Serve a `promise` per verificare un `fai` ADESSO
+        # (`ToolDispatcher._verifica_ora`) e un `recapito`.
         registry=app.get("registro_servizi"),
         # L'archivio delle promesse (`schedulatore/archivio.py`): la casa di
-        # `prometti`/`promesse`/`disdici`.
+        # `promise`/`agenda`/`cancel`.
         agenda=app.get("promesse"),
         # L'officina (`azione/costruzione/officina.py`, fetta «costruire»):
-        # la casa di `costruisci`/`conferma`. Sorella di `porta_azione`, non
+        # la casa di `propose`/`confirm`. Sorella di `porta_azione`, non
         # sua sostituta -- due canali diversi, spec «un canale, una porta».
         workshop=app.get("officina"),
         # L'identita' di QUESTO turno -- vedi il docstring qui sopra per chi
@@ -144,7 +144,7 @@ def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
         exchange=exchange,
         # La cronaca degli atti: la STESSA istanza che riceve l'officina in
         # `server.py`, mai una seconda apertura di `azioni.db`. Serve ad
-        # `accaduto` per attribuire a HIRIS cio' che ha fatto HIRIS.
+        # `logbook` per attribuire a HIRIS cio' che ha fatto HIRIS.
         journal=app.get("cronaca"),
     )
 
@@ -514,7 +514,7 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
         # mai, e questo ramo non puo' quindi confermare una proposta nata sul
         # ponte. Ma e' a un cambiamento di distanza dall'aprire il cancello
         # in silenzio: se un giorno il contesto del ripiego portasse anche lo
-        # stato di una `costruisci` in sospeso, questa identita' nuova la
+        # stato di una `propose` in sospeso, questa identita' nuova la
         # renderebbe confermabile qui -- fuori dal turno che l'ha proposta,
         # ed e' esattamente cio' che la guardia esiste per impedire. Chi
         # tocca questo contesto deve saperlo.
@@ -628,7 +628,7 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
         return web.json_response({"status": "pending"})
     payload = {"status": "done", "reply": reply}
     # fetta "il ponte riceve gli strumenti" (parita' B, Task 5): `tools_called`
-    # e' la SOLA cosa che rende osservabile una scrittura di `ricorda` fatta
+    # e' la SOLA cosa che rende osservabile una scrittura di `remember` fatta
     # dal ponte -- vedi il docstring in cima a `agent/runner.py`. Compare in
     # `decision` SOLO quando `_reason_chat` ha girato in modalita' `live`
     # (un job mock o un `decision_json` scritto prima di questo deploy non
@@ -641,9 +641,9 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
     #
     # Fino al 17/08/2026 finivano in `payload["debug"]["tools_called"]` e il
     # frontend ne disegnava una targhetta per ciascuno, col nome e -- al click --
-    # con gli ARGOMENTI: per `ricorda` il testo del ricordo, per `esegui`/`cerca`
+    # con gli ARGOMENTI: per `remember` il testo del ricordo, per `execute`/`search`
     # gli id delle entita' di casa. Erano nate per rendere OSSERVABILE una
-    # scrittura di `ricorda` fatta dal ponte (parita' B, I-7), e quella ragione
+    # scrittura di `remember` fatta dal ponte (parita' B, I-7), e quella ragione
     # resta buona: per questo l'osservabilita' non e' stata tolta ma spostata
     # qui. Toglierla e basta avrebbe distrutto la capacita' per cui esisteva.
     #
@@ -864,7 +864,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     # fetta «costruire»: l'identita' di QUESTO turno si conia UNA volta qui,
     # non dentro il dispatcher -- questa funzione risponde a UNA richiesta
     # HTTP sola (sincrona o in streaming, mai entrambe), quindi un turno le
-    # basta. Serve alla guardia dell'officina (`costruisci`/`conferma`, vedi
+    # basta. Serve alla guardia dell'officina (`propose`/`confirm`, vedi
     # il docstring di `create_tool_dispatcher`).
     exchange_id = secrets.token_urlsafe(8)
     tool_dispatcher = create_tool_dispatcher(request.app, exchange=exchange_id)

@@ -11,7 +11,7 @@ domanda che richiede di leggere anche una classe stateful per rispondere. Qui
 `LookupCache` CHIAMA `costruisci_indice()`, non la sostituisce e non la
 modifica: nessuna riga di questo file cambia cosa contiene un `Lookup`.
 
-`DispatcherStrumenti` nasce a OGNI turno (`handlers_chat.py:76`, per design:
+`ToolDispatcher` nasce a OGNI turno (`handlers_chat.py:76`, per design:
 senza un dispatcher per-chiamata i runner degradano ogni tool a un errore
 "non disponibile"). Una cache sull'istanza del dispatcher aiuterebbe solo
 DENTRO un turno -- il caso vero misurato (`cerca` chiamato quattro volte per
@@ -73,7 +73,7 @@ volte l'anagrafe e' cambiata durante l'uptime del processo.
 
 Il processo e' asincrono a thread singolo; il lavoratore del ponte gira
 in-processo sullo stesso event loop (nessun `threading.Thread` ne'
-`ThreadPoolExecutor` fra `DispatcherStrumenti` e il ponte -- verificato con
+`ThreadPoolExecutor` fra `ToolDispatcher` e il ponte -- verificato con
 grep su `hiris/app/`). `get()` non contiene nessun `await`: legge e
 scrive `_voci` in un'unica porzione di codice sincrona, quindi non puo' mai
 essere interrotta a meta' da un'altra coroutine. Il caso peggiore e'
@@ -113,7 +113,7 @@ class LookupCache:
     """Un `Lookup` per spazio, riusato finche' la sua chiave non cambia.
 
     Si costruisce una volta (accanto a `entity_cache`, in
-    `hiris/app/server.py`) e si passa a `DispatcherStrumenti` come
+    `hiris/app/server.py`) e si passa a `ToolDispatcher` come
     dipendenza. Non ha altro stato che `_voci`: nessuna scadenza a tempo,
     nessuna dimensione massima diversa dal numero di spazi distinti.
     """

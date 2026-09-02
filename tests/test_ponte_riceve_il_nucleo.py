@@ -153,7 +153,7 @@ def test_base_system_prompt_e_importato_non_ricopiato():
 # permesso» non sono affermazioni: sono ORDINI di chiamare uno strumento che
 # qui non esiste. Il caso peggiore -- l'utente dice "ricordati che la caldaia
 # perde", il modello obbedisce a BASE, lo strumento non c'e', e risponde
-# "preso nota" -- e' il bug misurato in produzione da cui `ricorda` e' nato
+# "preso nota" -- e' il bug misurato in produzione da cui `remember` e' nato
 # (vedi il commento sopra BASE_IDENTITY in claude_runner.py). Un ordine non
 # emesso e' un meccanismo; una frase che lo contraddice e' una speranza.
 # ---------------------------------------------------------------------------
@@ -186,7 +186,7 @@ def test_con_strumenti_il_ponte_riemette_base_intero_e_contiguo():
 # ---------------------------------------------------------------------------
 # ②ter fix round 1, Important 1: la fotografia porta anche la MEMORIA, e il
 # prompt deve dirlo. `compose_briefing` passa TUTTI i ricordi
-# (`richiama(limite=conta())`) e `compose_chat_context` aggiunge
+# (`fetch(limite=conta())`) e `compose_chat_context` aggiunge
 # "## Sessioni precedenti": negare al modello di poter "richiamare ricordi"
 # mentre il ricordo e' scritto tre blocchi piu' sotto e' la stessa falsita'
 # speculare gia' corretta per lo stato della casa.
@@ -219,7 +219,7 @@ def test_il_ramo_senza_strumenti_li_nega():
 
 
 def test_il_ramo_con_strumenti_afferma_gli_strumenti_del_catalogo():
-    """L'UNICO lettore di `_GUIDA_CON_STRUMENTI` nella fetta A: e' un orfano
+    """L'UNICO lettore di `_GUIDE_WITH_TOOLS` nella fetta A: e' un orfano
     DICHIARATO, scritto ora perche' la fetta B possa cambiare un argomento
     invece di riscrivere il prompt una terza volta (e' il difetto che il
     docstring di prompts.py documenta di aver gia' commesso due volte).
@@ -255,7 +255,7 @@ def test_il_runner_gira_l_interruttore_da_un_solo_booleano():
 
     **Cosa pinnava.** Che nessun chiamante di produzione girasse l'interruttore
     degli strumenti: `"strumenti_attivi" not in inspect.getsource(_reason_chat)`.
-    Nella parita' A era vero e doveva restarlo -- il ramo `_GUIDA_CON_STRUMENTI`
+    Nella parita' A era vero e doveva restarlo -- il ramo `_GUIDE_WITH_TOOLS`
     era scritto e non raggiungibile.
 
     **Cosa e' successo.** Il Task 3 lo ha girato, ed e' diventato rosso proprio

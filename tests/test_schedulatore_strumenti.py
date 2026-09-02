@@ -134,7 +134,7 @@ async def test_un_fai_senza_registro_e_rifiutato_non_verificato_in_silenzio(prom
     Prima del cablaggio del Task 7 il registro e' SEMPRE `None` in
     produzione: se questo strumento tacesse (come faceva prima di questo
     fix), OGGI ogni `fai` nascerebbe senza che il suo servizio sia mai stato
-    verificato -- e `PROMETTI_TOOL_DEF` dichiara al modello, senza
+    verificato -- e `PROMISE_TOOL_DEF` dichiara al modello, senza
     condizioni, «viene VERIFICATA adesso». Stessa guardia di
     `azione/porta.py::_REGISTRO_MUTO`, spostata al momento della promessa.
     """
@@ -182,7 +182,7 @@ async def test_un_fai_senza_specchio_e_rifiutato_non_verificato_in_silenzio(prom
     schema gia' deciso due volte (registro assente: Task 6; recapito: Task
     7): senza uno specchio leggibile `_verifica_ora` tornava `None` -- nessun
     rifiuto -- e la promessa nasceva senza che il suo servizio fosse mai
-    stato verificato, mentre `PROMETTI_TOOL_DEF` dichiara al modello «viene
+    stato verificato, mentre `PROMISE_TOOL_DEF` dichiara al modello «viene
     VERIFICATA adesso» senza condizioni."""
     d = _dispatcher(promesse, registry=_RegistroFinto())  # nessuna cache
     esito = await d.dispatch("promise", {
@@ -268,7 +268,7 @@ async def test_prometti_scalda_il_registro_vuoto_se_il_canale_ha_c_e(promesse):
     fix `_prometti` interrogava `_registro_non_pronto()` senza mai scaldare
     il registro. L'utente aveva appena chiesto di leggere le otto
     temperature (riuscito: quella lettura passa da un'altra strada, non dal
-    registro dei servizi) e poi un `prometti` con recapito veniva rifiutato
+    registro dei servizi) e poi un `promise` con recapito veniva rifiutato
     per sempre con "il registro dei servizi non e' pronto", anche se Home
     Assistant era raggiungibile e pronto a rispondere.
 
@@ -433,7 +433,7 @@ class _RegistroFinto:
 
     `vuoto()` e `assicura_fresco()` (della classe vera, usati da
     `azione/porta.py` prima di eseguire) sono usciti da qui apposta: nessun
-    gestore di `DispatcherStrumenti` li chiama, e tenerli avrebbe continuato
+    gestore di `ToolDispatcher` li chiama, e tenerli avrebbe continuato
     a dare l'illusione di un doppio completo senza che nulla li provasse.
     """
     _SERVIZI: ClassVar[dict[tuple[str, str], dict]] = {
@@ -529,7 +529,7 @@ class _CacheFinta:
     `loaded` guida `inventory_is_readable` (`proxy/entity_cache.py`); il
     metodo che porta gli stati e' `all_states()`, non `get_all()` -- e'
     quello vero di `EntityCache`, lo stesso che legge sia
-    `DispatcherStrumenti._specchio` sia `azione/porta.py::Porta._stati`.
+    `ToolDispatcher._specchio` sia `azione/porta.py::Porta._stati`.
     Un doppio con `get_all()` non avrebbe mai potuto produrre il difetto che
     il test del passo 7 chiede di provare: `_stati_grezzi()` avrebbe sempre
     ricevuto una cache "senza `all_states`" e il test sarebbe passato anche

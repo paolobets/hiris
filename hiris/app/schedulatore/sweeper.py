@@ -1,7 +1,7 @@
 """Il battito dello schedulatore: chi e' scaduto, chi si e' perso, chi si sveglia.
 
 Non conosce ne' la chat, ne' il modello, ne' Home Assistant. Riceve due
-funzioni al montaggio -- `esegui` (la porta unica) e `interpreta` (il turno di
+funzioni al montaggio -- `execute` (la porta unica) e `interpreta` (il turno di
 `chiedi`) -- e non sa da dove vengano. E' la stessa disciplina che ha reso
 riusabile `azione/porta.py`, ed e' il motivo per cui questo modulo si prova
 per intero con due finte.
@@ -98,7 +98,7 @@ class Sweeper:
         catena» (22/08/2026), senza cambiarne una riga di comportamento. Sul
         ramo sincrono la conclusione torna dal turno e si chiude subito, come
         sempre; sul ponte il turno gira altrove e per minuti, e a chiamare qui
-        e' la rotta MCP quando il modello ha chiamato `concludi`.
+        e' la rotta MCP quando il modello ha chiamato `conclude`.
 
         **Un solo punto conclude una promessa**, come `azione/porta.py` e'
         l'unico che esegue: un secondo sarebbe un difetto, non

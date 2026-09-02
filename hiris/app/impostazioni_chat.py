@@ -58,7 +58,7 @@ _FILE_PERMISSIONS = 0o600
 #
 # Fix della review totale della fetta "il ponte riceve il nucleo" (parita' A,
 # I-1). Questo testo era scritto all'IMPERATIVO INCONDIZIONATO -- «Per
-# scoprire cosa c'e' in casa USA `cerca` ... e `guarda`», «USA I TOOL per
+# scoprire cosa c'e' in casa USA `search` ... e `view`», «USA I TOOL per
 # valori precisi» -- e arriva VERBATIM al ponte: `_build_system_prompt`
 # (api/handlers_chat.py) lo mette in `context["system_prompt"]`, il job lo
 # porta ad `agent/runner.py::_reason_chat`, e `agent/prompts.py::
@@ -71,7 +71,7 @@ _FILE_PERMISSIONS = 0o600
 # `BASE_SYSTEM_PROMPT` e' stata spezzata in due meta' (claude_runner.py, il
 # commento sopra `BASE_IDENTITA`): li' l'ordine falso ha smesso di essere
 # EMESSO, qui restava emesso e affidato alla smentita che lo segue tre
-# capoversi sotto (`prompts._GUIDA_SENZA_STRUMENTI`: «se il prompt qui sopra
+# capoversi sotto (`prompts._GUIDE_WITHOUT_TOOLS`: «se il prompt qui sopra
 # nomina degli strumenti ... quelle istruzioni non si applicano»). Con le
 # parole di quel file: «un ordine non emesso e' una difesa, una frase che lo
 # contraddice e' una speranza» -- e una speranza calibrata su UN modello, che
@@ -82,7 +82,7 @@ _FILE_PERMISSIONS = 0o600
 # di la' gli strumenti di casa/strumenti.py esistono davvero, e l'ordine
 # di usarli e' lo stesso di prima); il ponte legge il ramo "altrimenti", che
 # e' esattamente cio' che puo' fare -- rispondere col contesto e dichiarare
-# cio' che non c'e'. I due nomi `cerca` e `guarda` restano SCRITTI: la guida
+# cio' che non c'e'. I due nomi `search` e `view` restano SCRITTI: la guida
 # del ponte li nomina per negarli, e `test_il_prompt_del_ponte_smentisce_gli_
 # strumenti_nominati_dalla_persona` asserisce che il default continui a
 # nominarli.
@@ -119,19 +119,19 @@ _FILE_PERMISSIONS = 0o600
 # pagina (`handlers_impostazioni.valida`, `system_prompt` vuoto ->
 # `DEFAULT_SYSTEM_PROMPT`), che e' una decisione dell'utente, non nostra.
 #
-# fetta «comandare» (Task 7): questo testo NON e' stato esteso a `esegui`, ed
+# fetta «comandare» (Task 7): questo testo NON e' stato esteso a `execute`, ed
 # e' una decisione, non una dimenticanza. Il testo qui sotto non e' FALSO --
 # non dice da nessuna parte che HIRIS non agisce -- e' soltanto INCOMPLETO:
 # nomina due strumenti a titolo di esempio in una condizionale («Se in questa
-# conversazione hai gli strumenti `cerca` ... e `guarda` ..., usali per
+# conversazione hai gli strumenti `search` ... e `view` ..., usali per
 # scoprire cosa c'e' in casa»), che resta vera parola per parola con cinque
 # strumenti nel catalogo. Le tre ragioni per lasciarlo stare:
 #
 #   1. Questa e' la PERSONA, il campo che l'utente riscrive dalla pagina
 #      Impostazioni. Le regole del PRODOTTO stanno in
-#      `claude_runner.BASE_REGOLE_STRUMENTI`, l'unico testo emesso esattamente
+#      `claude_runner.BASE_TOOL_RULES`, l'unico testo emesso esattamente
 #      quando gli strumenti ci sono e su ENTRAMBI i percorsi -- ed e' li' che
-#      il Task 6 ha messo `esegui` con tutte le sue regole (gli id esatti,
+#      il Task 6 ha messo `execute` con tutte le sue regole (gli id esatti,
 #      raccontare cosa e' successo, l'ambiguita'). Scrivere le regole
 #      dell'azione anche qui le renderebbe cancellabili dall'utente con una
 #      modifica alla persona: una regola di sicurezza d'uso che sparisce
@@ -142,7 +142,7 @@ _FILE_PERMISSIONS = 0o600
 #      comunque -- e la via per riallinearsi (svuotare il campo) e' gia' la
 #      stessa in entrambi i casi.
 #   3. Il ponte, sul ramo di degrado, deve poter SMENTIRE ogni strumento che
-#      la persona nomina (`prompts._GUIDA_SENZA_STRUMENTI`, e il test
+#      la persona nomina (`prompts._GUIDE_WITHOUT_TOOLS`, e il test
 #      `test_il_prompt_del_ponte_smentisce_gli_strumenti_nominati_dalla_
 #      persona`). Ogni nome aggiunto qui e' un nome in piu' da tenere
 #      allineato di la': il conto delle dichiarazioni da mantenere a mano

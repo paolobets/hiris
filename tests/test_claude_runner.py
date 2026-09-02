@@ -42,7 +42,7 @@ fetta E4 Task 6 ("un bot solo"): the constructor `dispatcher=` kwarg (the
 dispatcher into) is gone -- `self._dispatcher` and the `elif self._dispatcher
 is not None` branch that read it are gone too, zero production callers ever
 populated them (fetta E2 Task 7, commit 68d3670). Both tests move to the
-per-call `dispatcher=` kwarg of `chat()` (the one that stays: DispatcherStrumenti's
+per-call `dispatcher=` kwarg of `chat()` (the one that stays: ToolDispatcher's
 own path) instead -- verified BEFORE moving that leaving them untouched would
 have kept them GREEN for the wrong reason: `last_tool_calls.append(...)` runs
 unconditionally after the tool-dispatch if/else regardless of which branch
@@ -758,7 +758,7 @@ async def test_chat_concurrent_calls_do_not_leak_tool_calls(runner):
 # TEMPLATE_TOOL_DEF) e' uscita da EVALUATION_TOOL_DEFS insieme al resto dei
 # 34: non e' nominata da EVALUATION_ONLY_TOOLS (esclusa di proposito, vedi il
 # commento su quel set in claude_runner.py), e la chat non offre piu' un
-# catalogo da questo file (STRUMENTI_CONOSCENZA, casa/strumenti.py). Nessuna
+# catalogo da questo file (KNOWLEDGE_TOOLS, casa/strumenti.py). Nessuna
 # combinazione di allowed_tools/allowed_entities puo' piu' far comparire
 # "render_template" in un catalogo che non lo contiene: due dei tre test
 # fallivano gia' per costruzione, il terzo era diventato vacuo. Il filtro

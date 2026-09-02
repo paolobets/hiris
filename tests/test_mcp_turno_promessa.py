@@ -36,7 +36,7 @@ ADESSO = 1787324400.0
 
 
 class PortaFinta:
-    """SA eseguire davvero: se il guardiano lasciasse passare un `esegui`, la
+    """SA eseguire davvero: se il guardiano lasciasse passare un `execute`, la
     casa verrebbe toccata e questo doppio lo registrerebbe. Una finta che non
     sa produrre il difetto non lo puo' provare."""
 
@@ -207,7 +207,7 @@ async def test_concludi_dal_ponte_chiude_la_promessa_e_fa_partire_la_notifica(ro
     """Il secondo tempo di `mantieni`, raggiunto dall'altra strada.
 
     Sul ramo sincrono la conclusione torna a `interpreta_promise` e
-    l'orologio chiude. Sul ponte non torna niente a nessuno: `concludi` e'
+    l'orologio chiude. Sul ponte non torna niente a nessuno: `conclude` e'
     una `tools/call` come le altre, e se questa rotta si limitasse a
     registrarla nel dispatcher la promessa resterebbe `in_corso` per
     sempre -- che e' peggio di una fallita, perche' non si vede."""
@@ -255,7 +255,7 @@ async def test_concludere_senza_avvisare_chiude_lo_stesso_e_non_notifica(rotta):
 @pytest.mark.asyncio
 async def test_concludi_con_argomenti_sbagliati_non_chiude_niente(rotta):
     """Il guardiano rifiuta e la promessa resta in corso: chiudere su un
-    `concludi` malformato scriverebbe in pagina un testo che il modello non
+    `conclude` malformato scriverebbe in pagina un testo che il modello non
     ha mai composto."""
     client, promesse, _porta = rotta
     ident = _crea_in_corso(promesse)

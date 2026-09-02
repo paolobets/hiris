@@ -98,6 +98,29 @@
 > «nessuna autonomia» senza qualificarlo è la stessa frase falsa che il README ha appena corretto
 > (`README.md`, sezione «What HIRIS 2.0 is»). Per cosa il prodotto fa davvero oggi, il `README.md`.
 
+> ## 🗄 Annotazione — 2 settembre 2026
+>
+> I blocchi qui sopra nominano gli strumenti della chat col loro nome di allora — `esegui`,
+> `costruisci`, `conferma`, `andamento`, `accaduto`. **Non si riscrivono, si annotano**, per la
+> stessa regola con cui il 24 agosto annota il 23: sono verbali, e un verbale dice cosa era vero il
+> giorno in cui è stato scritto.
+>
+> Con la fetta **«la rinomina»** i quattordici nomi che il modello legge sono passati all'inglese, e
+> chi provasse a chiamarne uno con la grafia di questi blocchi riceverebbe «non è fra quelli
+> disponibili». La corrispondenza, una volta sola:
+>
+> `cerca`→`search` · `guarda`→`view` · `legami`→`related` · `ricorda`→`remember` ·
+> `richiama`→`fetch` · `esegui`→`execute` · `prometti`→`promise` · `promesse`→`agenda` ·
+> `disdici`→`cancel` · `costruisci`→`propose` · `conferma`→`confirm` · `andamento`→`trend` ·
+> `accaduto`→`logbook` · `concludi`→`conclude` (il quattordicesimo vive solo nel turno di una
+> promessa, non in chat).
+>
+> Ciò che **non** è cambiato, e va detto perché è la domanda che nasce guardando questa tabella:
+> le descrizioni che il modello legge restano in italiano — il prodotto parla italiano — e così le
+> chiavi degli argomenti. È cambiato il nome con cui lo strumento si chiama, non la lingua in cui
+> parla. Le ragioni riga per riga stanno in `docs/GLOSSARIO.md`, «I nomi degli strumenti»; l'elenco
+> vivo, con cosa fa ciascuno oggi, nel `README.md`.
+
 > ## ⚠️ Documento parzialmente superato — 4 agosto 2026
 >
 > Le sezioni **Users**, **Product Purpose** e **Design Principles** sono **superate** dal

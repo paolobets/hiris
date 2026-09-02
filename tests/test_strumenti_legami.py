@@ -9,8 +9,8 @@ sempre quando le perde.
 1. **Un guasto non e' un «niente».** `legami: {}` afferma «questa cosa non la
    tocca nessuno». Se Home Assistant non ha risposto, quell'affermazione e'
    falsa e nessuno ha il diritto di farla.
-2. **«Non lo so aprire» non e' «non esiste».** `legami` restituisce
-   identificatori veri di scene, gruppi e persone che `guarda` non sa aprire:
+2. **«Non lo so aprire» non e' «non esiste».** `related` restituisce
+   identificatori veri di scene, gruppi e persone che `view` non sa aprire:
    senza dirlo, il modello legge `esiste: false` e riferisce all'utente che
    quella scena non c'e'.
 
@@ -79,10 +79,10 @@ def test_il_vocabolario_copre_ESATTAMENTE_i_tipi_di_home_assistant():
 
 @pytest.mark.asyncio
 async def test_i_legami_escono_nel_vocabolario_della_casa_e_ordinati(casa, memoria):
-    """Il modello nomina «entita» e «automazione» ovunque -- in `cerca`, in
-    `guarda`, nelle ancore dei ricordi. Se qui leggesse `entity` e
+    """Il modello nomina «entita» e «automazione» ovunque -- in `search`, in
+    `view`, nelle ancore dei ricordi. Se qui leggesse `entity` e
     `automation` dovrebbe imparare due vocabolari per la stessa casa, e il
-    `riferimento` che passa a `guarda` verrebbe da una risposta scritta in
+    `riferimento` che passa a `view` verrebbe da una risposta scritta in
     un'altra lingua."""
     ha = _ClienteLegami(default={"script": ["script.sera"], "automation": ["automation.a"],
                                   "entity": ["light.corridoio"]})
@@ -251,9 +251,9 @@ _CASA_MINIMA = {"piani": [], "aree": [], "dispositivi": [], "entita": []}
 
 
 def test_guarda_dichiara_i_tipi_che_non_sa_aprire():
-    """Il buco che questa fetta APRIREBBE se non lo chiudesse: `legami`
+    """Il buco che questa fetta APRIREBBE se non lo chiudesse: `related`
     restituisce scene, gruppi e persone -- cose vere, che Home Assistant ha
-    appena mostrato -- e `guarda` non le sa aprire. Rispondere `esiste: false`
+    appena mostrato -- e `view` non le sa aprire. Rispondere `esiste: false`
     e basta significa far dire al modello «quella scena non esiste»."""
     dettaglio = view(_CASA_MINIMA, [], [], {}, "scena", "scene.serata")
     assert dettaglio["esiste"] is False

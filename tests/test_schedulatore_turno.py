@@ -39,7 +39,7 @@ def test_il_prompt_di_sistema_spiega_gli_id_fra_parentesi_e_il_parallelismo():
     il prompt non lo spiegava affatto, ne' diceva il conteggio del
     parallelismo -- che QUI e' vero al 100% perche' il turno gira su
     `runner.chat`, lo stesso ciclo di `claude_runner.py`
-    (`BASE_REGOLE_STRUMENTI`) che conta un giro per risposta, non per
+    (`BASE_TOOL_RULES`) che conta un giro per risposta, non per
     chiamata."""
     from hiris.app.schedulatore.turno import _system_prompt
     testo = _system_prompt()
@@ -55,7 +55,7 @@ def test_concludi_dichiara_che_la_notifica_la_manda_hiris():
 
     La frase della persona arriva VERBATIM al turno (`_domanda`), e quando
     dice «mandami una notifica» il modello cerca uno strumento per mandarla.
-    Non c'e', e non deve esserci: la manda lo Schedulatore DOPO `concludi`,
+    Non c'e', e non deve esserci: la manda lo Schedulatore DOPO `conclude`,
     sul canale approvato alla nascita. Ma niente glielo diceva -- la
     descrizione di `avvisare` parlava solo del GIUDIZIO («se valga la pena
     disturbarla»), mai del MECCANISMO -- e il modello rispondeva a parole
@@ -73,7 +73,7 @@ def test_concludi_dichiara_che_la_notifica_la_manda_hiris():
 
 def test_il_prompt_manda_a_concludi_invece_di_dire_solo_nel_testo():
     """«scrivila come proposta nel testo» era ambiguo fra il campo `testo` di
-    «concludi» e la propria risposta. Il modello sceglieva la seconda, e il
+    «conclude» e la propria risposta. Il modello sceglieva la seconda, e il
     turno moriva senza conclusione. Il prompt PUNTA al meccanismo, non lo
     ricopia: la sua casa e' `CONCLUDI_TOOL_DEF` (fondamenta n.2)."""
     from hiris.app.schedulatore.turno import _system_prompt
@@ -86,7 +86,7 @@ def test_il_prompt_manda_a_concludi_invece_di_dire_solo_nel_testo():
 
 
 class DispatcherFinto:
-    """Sa rispondere a TUTTO, `esegui` compreso: se il wrapper lasciasse
+    """Sa rispondere a TUTTO, `execute` compreso: se il wrapper lasciasse
     passare uno strumento che scrive, questo doppio glielo eseguirebbe."""
 
     def __init__(self):
@@ -147,7 +147,7 @@ async def test_l_ultima_conclusione_vince_e_non_si_accumula():
 # prima (`orologio.py` + `verifica.py`, vedi `test_schedulatore_orologio.py`)
 # si e' rivelata rotta, ed e' la priorita' fra i minori per lo stesso motivo:
 # ogni test altrove costruisce un `TurnoFinto` che RESTITUISCE gia' la
-# conclusione, mai un runner che la produce chiamando `concludi` attraverso
+# conclusione, mai un runner che la produce chiamando `conclude` attraverso
 # `PromiseDispatcher` -- il percorso vero.
 #
 # Un `app` vuoto (`{}`) e' legittimo: `compose_briefing` e
@@ -157,7 +157,7 @@ async def test_l_ultima_conclusione_vince_e_non_si_accumula():
 # rende `interpreta_promise` provabile senza un server vero.
 
 class _RunnerCheConclude:
-    """Un runner finto che CHIAMA `concludi` attraverso il dispatcher che
+    """Un runner finto che CHIAMA `conclude` attraverso il dispatcher che
     riceve -- non lo restituisce gia' pronto: e' cio' che attraversa
     davvero `PromiseDispatcher`, non un suo doppio."""
 
@@ -173,7 +173,7 @@ class _RunnerCheConclude:
 
 
 class _RunnerCheNonConclude:
-    """Il turno che gira e non chiama MAI `concludi`: la promessa "forse e'
+    """Il turno che gira e non chiama MAI `conclude`: la promessa "forse e'
     andata bene" che la spec vieta esplicitamente (§6.2)."""
 
     async def chat(self, **kwargs):
@@ -221,13 +221,13 @@ async def test_interpreta_promessa_senza_concludi_e_un_errore_dichiarato():
 
 
 class _RunnerCheRispondeInTesto:
-    """Il turno che risponde IN TESTO invece di chiamare `concludi`.
+    """Il turno che risponde IN TESTO invece di chiamare `conclude`.
 
     E' il modo esatto in cui la promessa delle 17:00 del 21/08/2026 e' fallita
     sull'add-on vero, riprodotto poi tre volte di seguito: la frase della
     persona chiedeva una notifica, il turno non ha nessuno strumento per
     mandarla (non ce l'ha per progetto -- la manda lo Schedulatore dopo
-    `concludi`), e il modello ha risposto a parole invece di concludere.
+    `conclude`), e il modello ha risposto a parole invece di concludere.
 
     `_RunnerCheNonConclude` NON sapeva produrre questo difetto: restituisce
     `None`, mentre `chat()` in produzione restituisce SEMPRE una stringa -- ed
@@ -368,7 +368,7 @@ async def test_col_ponte_in_testa_il_turno_va_in_coda_e_non_al_router(col_token_
 async def test_il_job_porta_cio_che_serve_a_mantenere_la_promessa(col_token_del_piano):
     """Il ponte gira altrove e non ha gli archivi: cio' che non entra nel job
     non esiste per lui. Senza `promessa_id` la rotta MCP non saprebbe quale
-    turno sta parlando, e `concludi` non avrebbe niente da chiudere."""
+    turno sta parlando, e `conclude` non avrebbe niente da chiudere."""
     from hiris.app.schedulatore.turno import interpreta_promise
 
     coda = _CodaFinta()

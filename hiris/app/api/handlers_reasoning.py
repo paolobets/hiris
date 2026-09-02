@@ -36,11 +36,11 @@ async def handle_reasoning_submit(request: web.Request) -> web.Response:
     if (job or {}).get("kind") == "promessa":
         # Fetta «le promesse seguono la catena» (22/08/2026). La consegna di un
         # turno di promessa NON porta la risposta all'utente: la conclusione,
-        # se c'e' stata, e' gia' arrivata per un'altra strada -- `concludi`
+        # se c'e' stata, e' gia' arrivata per un'altra strada -- `conclude`
         # attraverso `POST /api/mcp`, che chiude la promessa e fa partire la
         # notifica nel momento in cui il modello decide, senza aspettare qui.
         #
-        # Questo ramo serve al caso opposto: il turno e' finito e `concludi`
+        # Questo ramo serve al caso opposto: il turno e' finito e `conclude`
         # non e' mai stato chiamato. La promessa non puo' restare `in_corso` --
         # sarebbe invisibile, e peggio di una fallita.
         #
@@ -59,7 +59,7 @@ async def handle_reasoning_submit(request: web.Request) -> web.Response:
                 "id=%r): non c'e' niente da chiudere", job_id, ident)
             outcome = "promessa_sconosciuta"
         elif row.get("stato") != "in_corso":
-            # `concludi` e' gia' arrivato: la promessa e' chiusa e non si
+            # `conclude` e' gia' arrivato: la promessa e' chiusa e non si
             # riapre. Riaprirla cancellerebbe un testo che l'utente puo' gia'
             # aver letto -- o peggio, farebbe partire una seconda notifica.
             outcome = "promessa_gia_conclusa"

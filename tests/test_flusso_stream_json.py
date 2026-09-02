@@ -446,7 +446,7 @@ def test_il_sentinella_del_flusso_incompleto_e_filtrato_dalla_cronologia():
 # ── fetta "il ponte riceve gli strumenti" (parita' B, Task 5): la raccolta di
 # `tools_called` dallo STESSO flusso che `leggi_flusso` gia' legge -- nessuna
 # seconda lettura -- e la forma nella `decision` che il poll (handlers_chat.py)
-# restituisce come `debug.tools_called`. La ragione: da questo task `ricorda`
+# restituisce come `debug.tools_called`. La ragione: da questo task `remember`
 # e' raggiungibile ANCHE dal ponte, e scrive in `memoria.db`; senza questo
 # campo l'unico modo di accorgersi di una scrittura indebita e' trovarla nel
 # nucleo giorni dopo (vedi il docstring in cima a `agent/runner.py`). ────────
@@ -558,7 +558,7 @@ def test_una_chiamata_mai_risolta_non_e_uguale_a_una_riuscita():
     `False` -- o un `result` di errore/max-turns che chiude il flusso con una
     chiamata ancora aperta pur con `rc == 0`) produceva la STESSA forma di una
     chiamata riuscita: `{"tool", "input"}`, senza nessuna terza chiave. Un
-    `ricorda` fallito il cui esito si perde nel troncamento sarebbe apparso,
+    `remember` fallito il cui esito si perde nel troncamento sarebbe apparso,
     nel dato, come un ricordo salvato -- l'esatto opposto di cio' per cui
     questo task esiste.
 
@@ -673,8 +673,8 @@ def test_due_invocazioni_nello_stesso_turno_accumulano_le_chiamate_di_entrambe()
     strumenti (regole-fetta.md). La risposta OVVIA sarebbe riportare solo
     l'ultima invocazione, quella la cui reply l'utente legge davvero -- ma non
     e' quella giusta: se nella prima invocazione (poi buttata) il modello ha
-    chiamato `mcp__hiris__ricorda`, quella chiamata e' gia' passata per
-    davvero da `POST /api/mcp` fino a `DispatcherStrumenti` e ha gia' scritto
+    chiamato `mcp__hiris__remember`, quella chiamata e' gia' passata per
+    davvero da `POST /api/mcp` fino a `ToolDispatcher` e ha gia' scritto
     in `memoria.db`, PRIMA che il ponte si accorgesse che il prompt prometteva
     strumenti a meta'. Buttare l'invocazione non disfa la scrittura.
     Riportare solo l'ultimo giro nasconderebbe esattamente il turno per cui

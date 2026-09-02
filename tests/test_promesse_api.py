@@ -149,17 +149,22 @@ async def test_la_rotta_e_lo_strumento_danno_la_STESSA_forma(client):
     suoi diciassette campi escono identici dalle due porte -- e' questo che la
     fondamenta n.3 protegge, ed e' rimasto intatto.
 
-    Non prova piu' l'INVOLUCRO, e la divergenza e' voluta e temporanea: la
-    rotta dice `agenda` (il collettivo, come il percorso `/api/agenda`), lo
-    strumento dice ancora `promesse` perche' i tredici nomi degli strumenti
-    sono congelati fino alla fetta successiva, che li convertira' con la sua
-    verifica dal vivo. I due involucri sono due dict LETTERALI in due file
-    diversi (`api/handlers_promesse.py` e `casa/strumenti.py::_list_agenda`),
-    mai lo stesso oggetto: nessuno dei due si porta dietro l'altro.
+    Non prova piu' l'INVOLUCRO, e la divergenza NON e' piu' temporanea --
+    corretto il 02/09, con la fetta dei nomi degli strumenti. La rotta dice
+    `agenda` (il collettivo, come il percorso `/api/agenda`); lo STRUMENTO ora
+    si chiama `agenda` anche lui, ma il suo involucro resta `promesse`, e non
+    perche' qualcuno se ne sia dimenticato: e' una chiave del payload che il
+    modello legge, cioe' la stessa categoria delle 42 chiavi di `input_schema`
+    che quella fetta lascia in italiano per decisione (24 su 45 sono anche un
+    nome di colonna, e il database e' fuori). La frase di prima -- «i tredici
+    nomi degli strumenti sono congelati fino alla fetta successiva» -- era
+    vera quel giorno ed e' scaduta: e' proprio la specie «citazione resa
+    falsa» che questo ramo ha imparato a cercare.
 
-    Quando gli strumenti usciranno, questa asserzione torna a confrontare i
-    due corpi interi -- e se non lo facesse, vorrebbe dire che l'involucro
-    dello strumento e' rimasto indietro.
+    I due involucri sono due dict LETTERALI in due file diversi
+    (`api/handlers_promesse.py` e `casa/strumenti.py::_list_agenda`), mai lo
+    stesso oggetto: nessuno dei due si porta dietro l'altro, ed e' questo che
+    rende il confronto sul CORPO l'unica cosa che valga la pena pinzare.
     """
     from hiris.app.casa.strumenti import ToolDispatcher
 

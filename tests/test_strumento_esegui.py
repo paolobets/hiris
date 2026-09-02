@@ -1,10 +1,10 @@
-"""Il quinto strumento: `esegui`, e il fatto che si propaghi da solo.
+"""Il quinto strumento: `execute`, e il fatto che si propaghi da solo.
 
-Il punto di questo file non e' che `esegui` funzioni -- il lavoro vero
+Il punto di questo file non e' che `execute` funzioni -- il lavoro vero
 (verifica, chiamata, rilettura, registro) e' in `azione/porta.py` e ha i suoi
 test. Qui si pinnano tre cose che nessun altro test copre:
 
-1. `esegui` sta nel catalogo UNICO, e da li' arriva da solo a `nomi_mcp()`
+1. `execute` sta nel catalogo UNICO, e da li' arriva da solo a `nomi_mcp()`
    (l'argv del ponte) e a `mcp_catalog()` (la rotta MCP). Se uno di quei due
    test cade, qualcuno ha ricopiato i nomi a mano da qualche parte;
 2. il dispatcher passa alla porta e DICHIARA l'origine (`"chat"`): la porta
@@ -88,7 +88,7 @@ async def test_gli_altri_quattro_restano_sincroni_e_funzionanti():
 
 # -- il cablaggio: la porta arriva davvero fin qui --------------------------
 # I due test sopra provano che il dispatcher USA la porta se ce l'ha. Questi
-# due provano che ce l'ha: senza, `esegui` sarebbe nel catalogo, il modello lo
+# due provano che ce l'ha: senza, `execute` sarebbe nel catalogo, il modello lo
 # chiamerebbe, e riceverebbe per sempre «il collegamento con Home Assistant
 # non e' disponibile» -- un guasto silenzioso che nessun test di unita'
 # avrebbe visto, perche' ogni finta passa la porta a mano.

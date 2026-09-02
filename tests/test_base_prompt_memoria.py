@@ -16,7 +16,7 @@ string "save_memory" -- a tool that stopped existing at E3 Task 8 (the chat
 catalog is today casa/strumenti.py's four tools: cerca, guarda, ricorda,
 richiama). The suite was DEFENDING the stale prompt instead of catching it.
 Fixed by reading the real save-tool name from casa/strumenti.py
-(RICORDA_TOOL_DEF["name"]) instead of hardcoding a guess -- if the tool is
+(REMEMBER_TOOL_DEF["name"]) instead of hardcoding a guess -- if the tool is
 ever renamed again, this pin moves with it instead of silently going stale.
 """
 from __future__ import annotations

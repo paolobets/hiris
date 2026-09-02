@@ -12,7 +12,7 @@ promettevano capacita' inesistenti).
 Cosa difende ciascun gruppo:
 
 - ① **l'invariante nei due versi**: `"--mcp-config" in argv` **<=>**
-  `_GUIDA_CON_STRUMENTI in system`. E' il test da non cancellare mai: pinnato
+  `_GUIDE_WITH_TOOLS in system`. E' il test da non cancellare mai: pinnato
   in un verso solo, il giorno in cui i due divergono nessuno se ne accorge;
 - ② **la mcp-config**: JSON valido, la URL giusta, **entrambe** le
   intestazioni, e **nessun file** su disco (dentro c'e' un segreto);
@@ -24,7 +24,7 @@ Cosa difende ciascun gruppo:
   quella del ponte sono **lo stesso token**, non due;
 - ⑤ **la rientranza**: mentre la CLI "gira" nel thread dell'executor, l'add-on
   serve davvero la callback -- e la serve per **tutti** gli
-  strumenti di conoscenza, `guarda` compreso, che e' l'unico che legge la `entity_cache` e
+  strumenti di conoscenza, `view` compreso, che e' l'unico che legge la `entity_cache` e
   quindi l'argomento portante con cui il disegno giustifica una rotta invece
   di un sottoprocesso separato;
 - ⑥ **il degrado dichiarato**: gli strumenti erano attesi e non ci sono -- la
@@ -108,7 +108,7 @@ class _ClientFinto:
 
 @pytest.mark.parametrize("strumenti_attivi", [True, False])
 def test_invariante_argv_e_prompt_nei_due_versi(strumenti_attivi):
-    """`"--mcp-config" in argv` **<=>** `_GUIDA_CON_STRUMENTI in system`.
+    """`"--mcp-config" in argv` **<=>** `_GUIDE_WITH_TOOLS in system`.
 
     E' il test che rende impossibile un prompt che promette cio' che l'`argv`
     non da' -- e, nell'altro verso, un `argv` che serve strumenti a un modello
@@ -150,30 +150,30 @@ def test_le_due_guide_non_convivono_mai_nello_stesso_prompt():
 
 def test_i_nomi_si_derivano_dal_catalogo_e_non_si_riscrivono():
     """Nessun secondo catalogo: i nomi che finiscono in `--allowedTools` e nel
-    testo del prompt nascono da `STRUMENTI_CONOSCENZA`. Stringhe scritte a
+    testo del prompt nascono da `KNOWLEDGE_TOOLS`. Stringhe scritte a
     mano nel runner sarebbero l'errore che l'intera fetta E2 e' esistita per
     chiudere (tre cataloghi divergenti della stessa cosa).
 
     Il numero letterale e' un filo teso di proposito: non aggiunge nulla alla
     verifica dei nomi qui sotto, ma fa in modo che uno strumento che entra o
     esce dal catalogo passi da una decisione esplicita invece che di
-    soppiatto. fetta "comandare" Task 5: da 4 a 5, entra `esegui`; fetta
-    «i legami» : da 5 a 6, entra `legami` -- che al ponte serve quanto alla
+    soppiatto. fetta "comandare" Task 5: da 4 a 5, entra `execute`; fetta
+    «i legami» : da 5 a 6, entra `related` -- che al ponte serve quanto alla
     chat, perche' «se cancello questa entita' cosa smette di funzionare?» e'
     una domanda da farsi PRIMA di proporre una modifica, ed e' il ponte a
-    proporne. Fetta «lo schedulatore» Task 6: da 6 a 9, entrano `prometti`,
-    `promesse` e `disdici` -- le promesse che il modello puo' far nascere
+    proporne. Fetta «lo schedulatore» Task 6: da 6 a 9, entrano `promise`,
+    `agenda` e `cancel` -- le promesse che il modello puo' far nascere
     parlando, non solo leggere (`schedulatore/turno.py` le tiene FUORI dal
     proprio catalogo derivato, con un elenco di ammissione a parte: un turno
     non si da' appuntamenti da solo). Fetta «costruire» Task 9: da 9 a 11,
-    entrano `costruisci` e `conferma` -- che scrivono CONFIGURAZIONE passando
+    entrano `propose` e `confirm` -- che scrivono CONFIGURAZIONE passando
     per l'officina, non un servizio (`schedulatore/turno.py` li tiene FUORI
     dallo stesso elenco di ammissione, per la stessa ragione: un turno di
     promessa non costruisce da solo). Fetta «HIRIS e il tempo» Task 6: da 11
-    a 13, entrano `andamento` e `accaduto` -- che guardano indietro nel tempo
+    a 13, entrano `trend` e `logbook` -- che guardano indietro nel tempo
     passando per `casa/tempo.py`, LEGGONO e basta, ed entrano invece nello
     stesso elenco di ammissione del turno delle promesse, per la ragione
-    opposta a `costruisci`/`conferma`."""
+    opposta a `propose`/`confirm`."""
     nomi = runner.mcp_names()
 
     assert len(nomi) == len(KNOWLEDGE_TOOLS) == 13
@@ -427,10 +427,10 @@ def _base_url(client) -> str:
 def _semina_gli_archivi(app, tmp_path):
     """Gli archivi veri e la `entity_cache` vera nell'app gia' avviata.
 
-    `guarda` e' l'unico strumento di lettura che legge la cache delle entita', ed e'
+    `view` e' l'unico strumento di lettura che legge la cache delle entita', ed e'
     **l'argomento portante** con cui il disegno giustifica una rotta invece di
     un sottoprocesso stdio separato (`handlers_mcp.py`, «la stessa
-    `entity_cache` del turno sincrono»): senza di essa `guarda` risponderebbe
+    `entity_cache` del turno sincrono»): senza di essa `view` risponderebbe
     sempre `stato_non_letto`, e avremmo due intelligenze nella stessa casa che
     ne vedono due diverse. Un'affermazione del genere si prova, non si cita."""
     casa = _semina_casa(tmp_path)
@@ -557,8 +557,8 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
     l'unico modo onesto di fallire per questa proprieta'.
 
     Si esercitano **tutti e quattro** gli strumenti DI CONOSCENZA attraverso la
-    rotta, `guarda` e `richiama` compresi (Minor noto del Task 1: non l'avevano mai
-    attraversata), e `guarda` legge la `entity_cache` vera dell'app -- che e'
+    rotta, `view` e `fetch` compresi (Minor noto del Task 1: non l'avevano mai
+    attraversata), e `view` legge la `entity_cache` vera dell'app -- che e'
     l'argomento con cui il disegno ha scartato un sottoprocesso stdio."""
     client, coda, app = ponte_con_configurazione_predefinita
     casa, memoria, memoria_db = _semina_gli_archivi(app, tmp_path)
@@ -619,15 +619,15 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
         # la callback e' stata servita, e ha portato i nomi del catalogo
         assert visto["nomi"] == _NOMI_NUDI
 
-        # `cerca` legge l'archivio della casa dell'app
+        # `search` legge l'archivio della casa dell'app
         assert visto["search"]["trovati"]
-        # `guarda` legge la STESSA entity_cache del turno sincrono: e' la
+        # `view` legge la STESSA entity_cache del turno sincrono: e' la
         # ragione per cui questa e' una rotta e non un sottoprocesso separato.
         stati = {e["id"]: e["stato"] for e in visto["view"]["entita"]}
         assert stati["light.cucina_1"] == "on"
         assert stati["light.cucina_2"] == "off"
         assert "stato_non_letto" not in visto["view"]
-        # `ricorda` scrive davvero in memoria.db -- il guasto storico da cui
+        # `remember` scrive davvero in memoria.db -- il guasto storico da cui
         # questo strumento e' nato («preso nota» senza salvare niente)
         assert visto["remember"]["salvato"] is True
         conn = sqlite3.connect(memoria_db)
@@ -636,7 +636,7 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
         finally:
             conn.close()
         assert righe == ["in cucina si cena alle 20"]
-        # `richiama` rilegge cio' che `ricorda` ha appena scritto, dalla stessa
+        # `fetch` rilegge cio' che `remember` ha appena scritto, dalla stessa
         # rotta e nello stesso turno
         assert [r["testo"] for r in visto["fetch"]["ricordi"]] == [
             "in cucina si cena alle 20"]
@@ -675,7 +675,7 @@ class _ProcFelice:
     """Il turno che riesce, per intero.
 
     Task 4: fino a ieri questo finto stdout dichiarava UN solo strumento
-    risolto (`mcp__hiris__cerca`) mentre il prompt li prometteva tutti --
+    risolto (`mcp__hiris__search`) mentre il prompt li prometteva tutti --
     cioe' precisamente il guasto che il Task 4 esiste per scoprire. Passava
     perche' nessuno leggeva l'`init`. Ora si legge, e la forma dello stdout
     finto deve essere quella del flusso vero: e' la stessa passata che il
@@ -839,14 +839,14 @@ def test_il_blocco_del_contesto_non_contraddice_nessuno_dei_due_rami(strumenti_a
 def test_la_ridondanza_che_ha_permesso_di_togliere_le_due_clausole():
     """**La verifica, non l'assunzione.** Togliere una clausola dal prompt del
     ramo di degrado si puo' solo se cio' che diceva resta detto altrove: se
-    domani qualcuno alleggerisse `_GUIDA_SENZA_STRUMENTI`, questo test diventa
+    domani qualcuno alleggerisse `_GUIDE_WITHOUT_TOOLS`, questo test diventa
     rosso e dice che la rimozione di allora non e' piu' coperta.
 
     - «non e' aggiornabile in questo turno» -> la guida dice gia' che non si
       puo' guardare adesso, e ordina di DIRLO quando servirebbe un valore
       corrente;
     - «cercalo li' dentro invece di rispondere che non puoi richiamarlo» ->
-      la compensazione dell'assenza di `richiama` resta detta due volte nello
+      la compensazione dell'assenza di `fetch` resta detta due volte nello
       stesso blocco del contesto («ricordi e sessioni precedenti compresi»,
       «Usala per rispondere»), e il divieto di negare la memoria e' intatto."""
     system, _u = prompts.build_chat_messages(

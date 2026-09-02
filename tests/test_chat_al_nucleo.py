@@ -196,7 +196,7 @@ async def test_la_chat_offre_gli_strumenti_del_catalogo(aiohttp_client, tmp_path
     call_kwargs = mock_runner.chat.call_args.kwargs
     nomi = {t["name"] for t in call_kwargs["tools"]}
     # Derivati, non ricopiati: cio' che questo test prova e' che la rotta
-    # passi al runner IL catalogo (`STRUMENTI_CONOSCENZA`), non un elenco
+    # passi al runner IL catalogo (`KNOWLEDGE_TOOLS`), non un elenco
     # suo -- e quella proprieta' non dipende da quante voci abbia.
     assert nomi == {d["name"] for d in KNOWLEDGE_TOOLS}
     assert isinstance(call_kwargs["dispatcher"], ToolDispatcher)
@@ -210,9 +210,9 @@ async def test_il_ramo_sincrono_conia_un_turno_non_vuoto_per_l_officina(aiohttp_
     proposta nata dalla chat sincrona inconfermabile (`self._turno` sarebbe
     tornato al default `None`), e nessun test se ne sarebbe accorto.
 
-    Il dispatcher che arriva al runner e' un `DispatcherStrumenti` VERO (non
+    Il dispatcher che arriva al runner e' un `ToolDispatcher` VERO (non
     una finta): si legge `_turno` direttamente, la stessa via che
-    `costruisci`/`conferma` usano per passare l'identita' all'officina."""
+    `propose`/`confirm` usano per passare l'identita' all'officina."""
     client, mock_runner = await _build_chat_client(aiohttp_client, tmp_path)
 
     resp = await client.post("/api/chat", json={"message": "ciao"})
@@ -413,7 +413,7 @@ async def test_le_sessioni_precedenti_restano_anche_senza_nucleo(aiohttp_client,
 # proverebbe niente -- e' il difetto che la prova di mutazione ha gia'
 # trovato sette volte su questo ramo.
 #
-# `DispatcherStrumenti`, gli archivi (`ArchivioCasa`, `MemoryStore`) e
+# `ToolDispatcher`, gli archivi (`ArchivioCasa`, `MemoryStore`) e
 # `handle_chat` restano codice di produzione vero, esattamente come nella
 # chat reale -- solo la rete verso Anthropic e' finta.
 # ---------------------------------------------------------------------------
@@ -452,7 +452,7 @@ async def _build_chat_client_runner_reale(aiohttp_client, tmp_path, *, archivio_
     if cache is not None:
         app["entity_cache"] = cache
     # La porta dell'azione (`azione/porta.py`). Passarla e' cio' che rende
-    # `esegui` disponibile al dispatcher: senza, lo strumento c'e' nel
+    # `execute` disponibile al dispatcher: senza, lo strumento c'e' nel
     # catalogo ma dichiara «il collegamento con Home Assistant non e'
     # disponibile» -- il degrado onesto del contratto di `dispatch()`.
     if actuator is not None:
@@ -483,7 +483,7 @@ def _falsa_risposta_tool_use(nome: str, argomenti: dict, id_: str = "tu_1") -> M
 # Conversazione 1: "cosa c'e' in cucina?" -- il nucleo conta gia' le entita'
 # per area (tests/test_nucleo.py::test_il_nucleo_conta_invece_di_elencare):
 # un modello che ha quel conteggio nel proprio system prompt non ha nessun
-# bisogno di chiamare `guarda`. Se lo chiamasse, sarebbe il nucleo a non
+# bisogno di chiamare `view`. Se lo chiamasse, sarebbe il nucleo a non
 # fare il suo lavoro, non il modello a sbagliare -- qui si verifica che il
 # giro finisce in UNA sola chiamata API, senza tool_use.
 # ---------------------------------------------------------------------------
@@ -528,7 +528,7 @@ async def test_conversazione_1_cosa_c_e_in_cucina_risponde_dal_nucleo(aiohttp_cl
 
 # ---------------------------------------------------------------------------
 # Conversazione 2: "cosa fa l'automazione della sveglia?" -- la Legge I che
-# smette di essere sulla carta. Il modello chiama `guarda`, il dispatcher
+# smette di essere sulla carta. Il modello chiama `view`, il dispatcher
 # VERO legge il corpo VERO dall'archivio, e il SECONDO giro della stessa
 # conversazione (la seconda chiamata API vera, non una supposizione del
 # test) riceve quel corpo dentro il proprio tool_result.
@@ -539,7 +539,7 @@ async def test_conversazione_2_cosa_fa_la_sveglia_chiama_guarda_e_riporta_il_cor
     aiohttp_client, tmp_path, caplog):
     caplog.set_level("DEBUG", logger="hiris.app.api.handlers_chat")
     archivio_casa = _semina_casa_con_comportamento(tmp_path)  # porta automation.sveglia
-    # DispatcherStrumenti._guarda legge SEMPRE anche l'archivio della
+    # ToolDispatcher._guarda legge SEMPRE anche l'archivio della
     # memoria (per i ricordi ancorati alla cosa guardata): in produzione
     # `_on_startup` (server.py) lo cabla sempre insieme a `archivio_casa`,
     # mai l'uno senza l'altro -- qui si replica lo stesso accoppiamento,
@@ -659,7 +659,7 @@ async def test_conversazione_3_ricorda_salva_davvero_e_si_ritrova_in_api_memoria
 # della risposta -- che il finto controlla ancora -- ma la CATENA, in tre
 # punti che nessun altro test copre insieme:
 #
-#   1. il modello riceve `esegui` fra gli strumenti della chat vera;
+#   1. il modello riceve `execute` fra gli strumenti della chat vera;
 #   2. quando lo chiama, la richiesta arriva alla PORTA (l'unico punto che
 #      esegue), con l'origine dichiarata;
 #   3. cio' che la porta restituisce torna al modello COME TOOL_RESULT, non
@@ -672,7 +672,7 @@ async def test_conversazione_3_ricorda_salva_davvero_e_si_ritrova_in_api_memoria
 #
 # Resta il vecchio guardiano: nessuno dei nomi del catalogo VECCHIO
 # (`claude_runner.ALL_TOOL_DEFS`, i trentaquattro) deve poter rientrare da una
-# porta di servizio. Quelli attuavano ciascuno per conto proprio; `esegui`
+# porta di servizio. Quelli attuavano ciascuno per conto proprio; `execute`
 # passa da una porta sola.
 # ---------------------------------------------------------------------------
 
@@ -724,7 +724,7 @@ async def test_conversazione_4_spegni_la_luce_arriva_alla_porta_e_torna_al_model
     assert resp.status == 200
     await resp.json()
 
-    # (1) il catalogo offerto e' quello unico, `esegui` compreso -- e nessuno
+    # (1) il catalogo offerto e' quello unico, `execute` compreso -- e nessuno
     # dei trentaquattro e' rientrato.
     nomi_offerti = {t["name"] for t in richieste[0]["tools"]}
     assert nomi_offerti == {d["name"] for d in KNOWLEDGE_TOOLS}
@@ -767,7 +767,7 @@ async def test_conversazione_4_spegni_la_luce_arriva_alla_porta_e_torna_al_model
 
 
 # ---------------------------------------------------------------------------
-# Il gemello: senza porta cablata `esegui` non sparisce dal catalogo -- dice
+# Il gemello: senza porta cablata `execute` non sparisce dal catalogo -- dice
 # perche' non puo'. E' il contratto di `dispatch()` (non solleva mai, degrada
 # in un `errore` leggibile) applicato al quinto strumento, e la ragione per
 # cui il dispatcher resta SEMPRE costruibile.
@@ -798,7 +798,7 @@ async def test_senza_porta_esegui_resta_offerto_ma_dichiara_il_motivo(
     resp = await client.post("/api/chat", json={"message": "spegni la luce della cucina"})
     assert resp.status == 200
 
-    # `esegui` e' offerto lo stesso: toglierlo dal catalogo quando manca la
+    # `execute` e' offerto lo stesso: toglierlo dal catalogo quando manca la
     # porta darebbe al modello un prodotto diverso a ogni turno.
     assert "execute" in {t["name"] for t in richieste[0]["tools"]}
     blocchi = [b for m in richieste[1]["messages"]

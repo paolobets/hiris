@@ -6,9 +6,9 @@ API (`/api/reasoning/claim` e `/api/reasoning/submit`).
 
 OGGI, in una riga: il ponte LEGGE la casa e la memoria, e da questa fetta puo'
 anche AGIRE su di essa -- gli strumenti sono tredici, lo stesso catalogo della
-chat sincrona (`casa/strumenti.py`): fra loro `esegui` chiama un servizio di
+chat sincrona (`casa/strumenti.py`): fra loro `execute` chiama un servizio di
 Home Assistant passando per la porta dei servizi (`azione/porta.py`), e
-`costruisci`/`conferma` (fetta «costruire») passano per l'officina
+`propose`/`confirm` (fetta «costruire») passano per l'officina
 (`azione/costruzione/officina.py`) -- due canali, due porte, non piu' una
 sola. Le note che seguono sono la STORIA di come ci si e' arrivati, e sono al
 passato apposta: fino alla review
@@ -43,7 +43,7 @@ chiede alla rotta `POST /api/mcp` (Task 1) se gli strumenti ci sono
 decisioni da tenere allineate. Quando la sonda dice di si', il modello puo'
 guardare la casa ADESSO, salvare o richiamare ricordi e -- dalla fetta
 «comandare» -- far succedere qualcosa in casa, coi nomi che MCP gli
-serve (`mcp__hiris__cerca`, ...). Quando dice di no -- ed erano attesi -- il
+serve (`mcp__hiris__search`, ...). Quando dice di no -- ed erano attesi -- il
 prompt torna a negarli e la `reply` lo dichiara ANCHE all'utente, in una riga
 premessa: mai una risposta che sembra normale.
 
@@ -52,7 +52,7 @@ non due -- strumenti attivi, strumenti mai attesi, e strumenti attesi e non
 arrivati IN QUESTO TURNO. Il terzo nasce quando l'evento `system/init` della CLI
 smentisce la sonda (`verifica_init`): li' l'invocazione si BUTTA e se ne
 ricompone una senza strumenti, una sola volta. Il terzo stato non ha un terzo
-testo di guida -- `_GUIDA_SENZA_STRUMENTI` e' vera anche li' -- e cio' che lo
+testo di guida -- `_GUIDE_WITHOUT_TOOLS` e' vera anche li' -- e cio' che lo
 distingue e' `AVVISO_STRUMENTI_ASSENTI`, la riga che l'utente legge.
 
 fetta "il ponte riceve gli strumenti" (parita' B, Task 5): da qui `ricorda' e'
@@ -156,7 +156,7 @@ _LOCAL_TOOLS_DENY = (
 # allineate: e' l'unica difesa strutturale contro il difetto numero uno di
 # questo prodotto -- un prompt che promette capacita' che l'invocazione non da'.
 # L'invariante e' pinnato NEI DUE VERSI in tests/test_strumenti_al_ponte.py:
-# `--mcp-config` nell'argv  <=>  `_GUIDA_CON_STRUMENTI` nel system.
+# `--mcp-config` nell'argv  <=>  `_GUIDE_WITH_TOOLS` nel system.
 #
 # Task 4: la sonda puo' dire di si' e la CLI fallire lo stesso -- fra i due c'e'
 # Node, il parsing della mcp-config e un loopback visto da un altro processo.
@@ -190,11 +190,11 @@ def _mcp_server_name() -> str:
 def mcp_names(by_promise: bool = False) -> tuple[str, ...]:
     """I nomi che il modello vede DAVVERO, derivati dal catalogo.
 
-    Attraverso MCP la CLI prefissa ogni strumento col nome del server: `cerca`
-    diventa `mcp__hiris__cerca`, ed e' quello -- non il nome nudo -- cio' che il
+    Attraverso MCP la CLI prefissa ogni strumento col nome del server: `search`
+    diventa `mcp__hiris__search`, ed e' quello -- non il nome nudo -- cio' che il
     modello legge nell'elenco e cio' che `--allowedTools` deve permettere.
 
-    Si DERIVA da `STRUMENTI_CONOSCENZA`: un elenco di stringhe scritto a mano
+    Si DERIVA da `KNOWLEDGE_TOOLS`: un elenco di stringhe scritto a mano
     qui sarebbe il SECONDO catalogo, l'errore che l'intera fetta E2 e' esistita
     per chiudere (tre cataloghi divergenti della stessa cosa). Cosi' uno
     strumento che entra o esce da `casa/strumenti.py` arriva qui da solo.
@@ -204,16 +204,16 @@ def mcp_names(by_promise: bool = False) -> tuple[str, ...]:
     che a import-time non si puo' ancora leggere."""
     prefix = f"mcp__{_mcp_server_name()}__"
     # Il catalogo di QUESTO turno, non sempre quello della chat. Un turno di
-    # promessa ne vede sette -- i sei lettori piu' `concludi` -- e i due
-    # elenchi non sono l'uno il sottoinsieme dell'altro: `concludi` esiste solo
-    # di la', `esegui` solo di qua.
+    # promessa ne vede sette -- i sei lettori piu' `conclude` -- e i due
+    # elenchi non sono l'uno il sottoinsieme dell'altro: `conclude` esiste solo
+    # di la', `execute` solo di qua.
     #
     # Difetto trovato dalla VERIFICA LIVE della 3.10.0: la fetta «le promesse
     # seguono la catena» aveva reso il catalogo per-turno nella rotta MCP e
     # lasciato qui i nove nomi della chat. Il turno di promessa ne risolveva
     # cinque, `verifica_init` ne pretendeva nove, ne dichiarava quattro
     # mancanti, e il ritentativo ripartiva SENZA strumenti -- cioe' senza
-    # `concludi`, cioe' senza nessun modo di finire.
+    # `conclude`, cioe' senza nessun modo di finire.
     definitions = promise_tools() if by_promise else KNOWLEDGE_TOOLS
     return tuple(f"{prefix}{d['name']}" for d in definitions)
 
@@ -237,7 +237,7 @@ def config_mcp(base_url: str, token: str, exchange_id: str = "",
     `api/handlers_mcp.py::_call_tool`, che la ripropone al dispatcher
     invariata. Toglierla o smettere di propagarla non e' piu' un dettaglio
     del conteggio: apre il cancello del consenso in silenzio, lasciando
-    passare una `conferma` nello stesso turno della `costruisci` che l'ha
+    passare una `confirm` nello stesso turno della `propose` che l'ha
     proposta. Resta comunque il gancio esatto su cui la fase sicurezze potra'
     innestare il "token per-invocazione di validita' pari al turno" che il
     progetto suggerisce (§3.3), senza dover inventare un secondo meccanismo.
@@ -291,7 +291,7 @@ def config_mcp(base_url: str, token: str, exchange_id: str = "",
     # Fetta «le promesse seguono la catena» (22/08/2026). Quando il job che il
     # ponte sta servendo e' un `kind="promessa"`, questa intestazione dice a
     # `/api/mcp` QUALE promessa il turno sta mantenendo: da li' la rotta serve
-    # `promise_tools()` (i sei lettori piu' `concludi`) e dispaccia
+    # `promise_tools()` (i sei lettori piu' `conclude`) e dispaccia
     # con `PromiseDispatcher`. Come `X-HIRIS-Turno` qui sopra NON e'
     # un'autenticazione -- quella resta il token -- e per questo la rotta la
     # VERIFICA contro una promessa `in_corso` invece di crederle.
@@ -411,11 +411,11 @@ def _reda_struttura(value, *segreti: str):
 
     fetta "il ponte riceve gli strumenti" (parita' B, Task 5). `tools_called`
     porta l'`input` che il MODELLO ha passato a uno strumento -- per
-    `ricorda`, il testo del ricordo -- cioe' testo che noi non controlliamo.
+    `remember`, il testo del ricordo -- cioe' testo che noi non controlliamo.
     Il cancello unico in uscita per la reply (`_reply` in `_reason_chat`) vale
     anche per questo canale nuovo: se un giorno un input contenesse per caso
     una delle forme del token (l'utente lo detta a voce a HIRIS e HIRIS lo
-    scrive in un `ricorda`, per dire), non deve uscire comunque. Nessuna
+    scrive in un `remember`, per dire), non deve uscire comunque. Nessuna
     prova nota lo fa succedere oggi: e' difesa in profondita', non una
     riparazione di un buco osservato."""
     if isinstance(value, str):
@@ -474,7 +474,7 @@ def probe_tools(client, base_url: str, headers: dict,
     strumenti promessi e non serviti.
 
     Restituisce `True` **solo** se la risposta porta TUTTI i nomi attesi --
-    quelli di `nomi_mcp()`, quindi il catalogo intero, `esegui` compreso. Il 200
+    quelli di `nomi_mcp()`, quindi il catalogo intero, `execute` compreso. Il 200
     non basta, e non e' un dettaglio: la rotta risponde 200 anche
     con gli archivi assenti (l'errore sta DENTRO il risultato della singola
     chiamata, non nello stato HTTP), quindi una sonda che si accontentasse del
@@ -596,7 +596,7 @@ def _chat_claude_args(system: str, user: str, model: str, *,
     dice alla CLI di usare SOLO i server MCP che le passiamo noi e di ignorare
     quelli dell'ambiente. Sul ramo con strumenti quello che resta e' il nostro;
     sul ramo di degrado non resta NIENTE, che e' esattamente cio' che
-    `prompts._GUIDA_SENZA_STRUMENTI` afferma al modello («NON hai alcuno
+    `prompts._GUIDE_WITHOUT_TOOLS` afferma al modello («NON hai alcuno
     strumento di HIRIS»).
 
     Perche' non bastava lasciarlo dentro l'`if`: riprodotto dal vivo con
@@ -725,7 +725,7 @@ _INCOMPLETE_STREAM_SENTINEL = INCOMPLETE_STREAM_SENTINEL
 # risposta legittima, che e' il difetto opposto e altrettanto grave.
 #
 # Riserva 2 del progetto (sezione D): il terzo stato -- "strumenti assenti IN
-# QUESTO TURNO" -- NON ha un terzo testo di prompt. `_GUIDA_SENZA_STRUMENTI` e'
+# QUESTO TURNO" -- NON ha un terzo testo di prompt. `_GUIDE_WITHOUT_TOOLS` e'
 # gia' vera anche qui; cio' che distingue il terzo stato dal secondo e' proprio
 # questa riga.
 MISSING_TOOLS_NOTICE = (
@@ -774,7 +774,7 @@ class StreamOccurrence:
       per la UI della E5, non due. Lista VUOTA (mai `None`) quando nessuno
       strumento e' stato chiamato: `None` direbbe "non lo so", una lista vuota
       dice "nessuno". Il nome e' quello GREZZO che il modello ha usato
-      (`mcp__hiris__ricorda`), MAI normalizzato: normalizzarlo nasconderebbe il
+      (`mcp__hiris__remember`), MAI normalizzato: normalizzarlo nasconderebbe il
       caso -- il solo che conta per questo task -- in cui il modello chiama
       qualcosa che non gli abbiamo dato. Quando un `tool_result` abbinato
       (stesso `tool_use_id`, in un evento `user` successivo) ARRIVA ed e'
@@ -790,7 +790,7 @@ class StreamOccurrence:
       chiamata ancora aperta pur con `rc == 0` -- e' esattamente il caso (3)
       che questo modulo gia' dichiara altrove, e prima di questo fix
       produceva la STESSA forma di una riuscita: `{"tool", "input"}`, senza
-      nessuna terza chiave. Un `ricorda` fallito il cui esito si perde nel
+      nessuna terza chiave. Un `remember` fallito il cui esito si perde nel
       troncamento sarebbe apparso come un ricordo salvato. Ora quella voce
       guadagna una terza chiave diversa, `"esito": "sconosciuto"`
       (mutualmente esclusiva con `"is_error"`: una voce e' o RISOLTA -- riuscita
@@ -925,7 +925,7 @@ def read_stream(stdout: str) -> StreamOccurrence:
     # marcatore `_risolto` -- si tolgono a fine ciclo, dopo aver letto
     # TUTTI gli eventi, perche' un `tool_result` puo' arrivare in una riga
     # successiva a quella del `tool_use` che lo attende. Il silenzio
-    # dichiarato (6) della fetta: senza questa marcatura un `ricorda`
+    # dichiarato (6) della fetta: senza questa marcatura un `remember`
     # fallito il cui esito si perde nel troncamento sarebbe apparso, nel
     # dato, come un ricordo salvato.
     for entry in occurrence.tools_called:
@@ -1287,8 +1287,8 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # Quando il Task 4 butta la prima invocazione (l'`init` smentisce la
     # sonda) e ne ricompone una seconda SENZA strumenti, il testo della prima
     # sparisce -- ma le sue chiamate MCP, se ce ne sono state, sono gia'
-    # passate per davvero da `POST /api/mcp` fino a `DispatcherStrumenti`:
-    # un `ricorda` chiamato li' ha gia' scritto in `memoria.db`, prima che
+    # passate per davvero da `POST /api/mcp` fino a `ToolDispatcher`:
+    # un `remember` chiamato li' ha gia' scritto in `memoria.db`, prima che
     # noi si scoprisse che il prompt prometteva strumenti a meta'. Buttare
     # l'invocazione non disfa quella scrittura. Riportare solo l'ultima
     # invocazione nasconderebbe esattamente il turno in cui questo task
@@ -1302,9 +1302,9 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # job risolto, ma NON `decision_json` -- la risposta, che serve al poll.
     # Questa lista vive quindi in `decision["tools_called"]` e resta su
     # disco fino alla potatura a 7 giorni, con gli INPUT che il modello ha
-    # passato agli strumenti: per `ricorda`, non solo `testo` ma anche
+    # passato agli strumenti: per `remember`, non solo `testo` ma anche
     # `detto_da` (un identificativo di PERSONA), `ancore` e `condizioni`
-    # (`casa/strumenti.py::_ricorda`, `argomenti.get(...)`); per `cerca`, la
+    # (`casa/strumenti.py::_ricorda`, `argomenti.get(...)`); per `search`, la
     # frase dell'utente. Cambiare la potatura di `decision_json` e' fuori dal
     # perimetro di questa fetta (regole-fetta.md): si dichiara qui, si
     # consegna alla fase sicurezze, con lo stesso perche' con cui il Task 5

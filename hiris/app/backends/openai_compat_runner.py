@@ -824,7 +824,7 @@ class OpenAICompatRunner:
                         })
                         continue
                     if dispatcher is not None:
-                        # DispatcherStrumenti (e affini): stessa interfaccia
+                        # ToolDispatcher (e affini): stessa interfaccia
                         # minima dispatch(nome, argomenti). fetta E4 Task 6:
                         # il ramo "dispatcher di scorta" (self._dispatcher,
                         # con le kwargs allowed_entities/allowed_services/
@@ -1133,7 +1133,7 @@ class OpenAICompatRunner:
                         })
                         continue
                     if dispatcher is not None:
-                        # DispatcherStrumenti (e affini): stessa interfaccia
+                        # ToolDispatcher (e affini): stessa interfaccia
                         # minima dispatch(nome, argomenti). fetta E4 Task 6:
                         # il ramo "dispatcher di scorta" (self._dispatcher) e'
                         # uscito -- vedi il commento gemello in chat().

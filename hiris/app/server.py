@@ -1803,7 +1803,7 @@ async def _on_startup(app: web.Application) -> None:
 
     # Task B7: la cache del Lookup (`memoria/cache_indice.py`), di vita
     # LUNGA come `entity_cache` qui sopra -- non a ogni turno, come il
-    # `DispatcherStrumenti` che la riceve (`create_tool_dispatcher`
+    # `ToolDispatcher` che la riceve (`create_tool_dispatcher`
     # in `api/handlers_chat.py`). Prima di questo task `_cerca`/`_ricorda`
     # ricostruivano un `Lookup` da zero A OGNI chiamata e lo buttavano
     # subito: si ripagava ogni volta la lettura dell'anagrafe E la
@@ -2079,7 +2079,7 @@ async def _on_startup(app: web.Application) -> None:
     # `engine.set_entity_cache(entity_cache)`/`set_archivi(archivio_casa,
     # archivio_memoria)` non hanno bisogno di un successore: erano gia'
     # orfani prima di questo task (nessun lettore in produzione dalla fetta
-    # E4 Task 2 -- DispatcherStrumenti legge `app["entity_cache"]`/
+    # E4 Task 2 -- ToolDispatcher legge `app["entity_cache"]`/
     # `app["archivio_casa"]`/`app["archivio_memoria"]` direttamente, gia'
     # valorizzati sopra).
     chat_settings = ChatSettings.load(data_dir)

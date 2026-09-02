@@ -99,7 +99,7 @@ def test_guarda_un_entita_che_non_esiste_lo_dice():
 
 
 def test_guarda_un_entita_senza_nome_dichiara_il_nome_dedotto():
-    """Stessa porta di `cerca` (B3/B4), qui su `guarda`: un'entita' senza
+    """Stessa porta di `search` (B3/B4), qui su `view`: un'entita' senza
     nome nel registro non deve uscire con `nome: null` secco quando lo
     specchio dello stato sa come Home Assistant la chiama."""
     casa = {"entita": [{"id": "light.a", "nome": None, "classe": None, "unita": None}]}
@@ -165,12 +165,12 @@ def test_guarda_un_dispositivo_dichiara_il_nome_dedotto_delle_sue_entita():
 
 
 def test_guarda_un_ricordo_da_la_sua_interpretazione_NELLA_STESSA_FORMA():
-    """Piatta, come da `richiama` e come dai `ricordi` che ogni altro ramo di
-    `guarda` restituisce gia'.
+    """Piatta, come da `fetch` e come dai `ricordi` che ogni altro ramo di
+    `view` restituisce gia'.
 
     Prima l'interpretazione era annidata sotto `interpretazione` e `detto_il`
     non usciva: lo stesso ricordo aveva DUE FORME a seconda della porta. Il
-    modello ne imparava una dentro `guarda("area", ...)`, poi leggeva
+    modello ne imparava una dentro `view("area", ...)`, poi leggeva
     `r["forza"]` sul dettaglio -> assente, e riferiva «di questo ricordo non
     so la forza» su un ricordo che ce l'ha."""
     dettaglio = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "ricordo", 1)
@@ -178,7 +178,7 @@ def test_guarda_un_ricordo_da_la_sua_interpretazione_NELLA_STESSA_FORMA():
     assert dettaglio["testo"] == _RICORDI[0]["testo"]
     assert dettaglio["forza"] == "preferenza"
     assert "interpretazione" not in dettaglio, "il livello annidato non deve tornare"
-    # `detto_il` c'era in `richiama` e spariva qui: alla domanda «quando te
+    # `detto_il` c'era in `fetch` e spariva qui: alla domanda «quando te
     # l'ho detto?» la risposta dipendeva da quale strumento il modello sceglie.
     assert "detto_il" in dettaglio
 
@@ -189,7 +189,7 @@ def test_guarda_un_ricordo_che_non_esiste_lo_dice():
     assert "forza" not in dettaglio
 
 
-# --- C-2: `guarda` e' l'unica porta con cui il modello chiede il dettaglio
+# --- C-2: `view` e' l'unica porta con cui il modello chiede il dettaglio
 # di un ricordo (per id, o ancorato a un'area/entita'/dispositivo) -- va
 # sanificato qui, non nell'archivio (che resta la verita' cosi' come detta).
 
@@ -301,7 +301,7 @@ def test_guarda_un_area_non_trovata_dichiara_il_registro_caduto():
 def test_guarda_col_registro_caduto_non_suggerisce_cerca():
     """Review indipendente Task 3 (Important, confermato): quando il
     registro e' caduto (`non_disponibile: True`), la causa non e' un nome
-    scambiato per un id -- e' un guasto. `cerca` legge la STESSA anagrafe
+    scambiato per un id -- e' un guasto. `search` legge la STESSA anagrafe
     incompleta, quindi suggerirlo sarebbe una strada altrettanto cieca, e
     diluirebbe la distinzione fra "non trovato" e "non ho potuto guardare"
     che questo file marca come critica tre volte (CRITICAL ③). Le due
@@ -343,7 +343,7 @@ def test_guarda_un_automazione_non_trovata_senza_file_non_letti_non_si_inventa_i
                        "automazione", "automation.non_esiste")
     assert dettaglio["esiste"] is False
     assert "non_disponibile" not in dettaglio
-    # T7 (R2): da questa fetta `cerca` indicizza le automazioni per nome,
+    # T7 (R2): da questa fetta `search` indicizza le automazioni per nome,
     # quindi "automation.non_esiste" potrebbe essere un NOME scambiato per
     # un id -- lo stesso caso di area/entita'/dispositivo, e insegna la
     # stessa correzione.
@@ -361,10 +361,10 @@ def test_guarda_non_trovato_suggerisce_cerca_con_la_STESSA_FORMA_in_tutti_i_tipi
     sbagliato con un nome in un ramo non deve indovinare la differenza per
     gli altri.
 
-    Automazione e script si aggiungono qui perche' `cerca` ora li
+    Automazione e script si aggiungono qui perche' `search` ora li
     indicizza per nome (test_memoria_riconoscitore.py): fino a T7 restavano
     fuori apposta (decisione del Task 3), perche' suggerire "cerca" quando
-    `cerca` non li trovava comunque sarebbe stato un invito a una strada
+    `search` non li trovava comunque sarebbe stato un invito a una strada
     cieca -- vedi il docstring di `_dettaglio_non_trovato`.
 
     Il confronto e' fra i rami stessi (non asserzioni indipendenti): stesso
@@ -386,14 +386,14 @@ def test_guarda_non_trovato_suggerisce_cerca_con_la_STESSA_FORMA_in_tutti_i_tipi
     assert len(forme) == 1, f"i rami non usano la stessa forma: {forme}"
 
 
-# --- R2 (T7): `cerca` impara piani, automazioni e script -------------------
+# --- R2 (T7): `search` impara piani, automazioni e script -------------------
 
 
 def test_cerca_poi_guarda_un_automazione_end_to_end():
-    """Requisito 2 del brief: `guarda` deve accettare DAVVERO i riferimenti
-    che `cerca` ora produce -- non solo un id che il modello sapeva gia'.
-    Qui si parte da un nome, si passa da `cerca`, e si chiude il giro con
-    `guarda` sul candidato restituito."""
+    """Requisito 2 del brief: `view` deve accettare DAVVERO i riferimenti
+    che `search` ora produce -- non solo un id che il modello sapeva gia'.
+    Qui si parte da un nome, si passa da `search`, e si chiude il giro con
+    `view` sul candidato restituito."""
     indice = costruisci_indice(_CASA, behavior=_COMPORTAMENTO)
     trovati = search(indice, "spegni la sveglia")
     candidato = next(c for t in trovati for c in t["candidati"] if c["tipo"] == "automazione")
@@ -407,10 +407,10 @@ def test_cerca_poi_guarda_un_automazione_end_to_end():
 
 def test_guarda_non_sa_aprire_un_piano():
     """Requisito 2 del brief, il caso negativo che va scritto e non lasciato
-    implicito: `cerca` ora risolve un piano per nome, ma `guarda` non ha (e
+    implicito: `search` ora risolve un piano per nome, ma `view` non ha (e
     non deve avere) un tipo "piano" -- un piano si ESEGUE
-    (`esegui(piani=...)`, promesso da `claude_runner.py`), non si apre in
-    dettaglio come un'area. `guarda` lo dichiara con la stessa onesta' con
+    (`execute(piani=...)`, promesso da `claude_runner.py`), non si apre in
+    dettaglio come un'area. `view` lo dichiara con la stessa onesta' con
     cui dichiara ogni altro tipo che non sa aprire (`non_so_guardare`),
     invece di un `esiste: False` indistinguibile da "questo piano non
     esiste"."""
@@ -456,11 +456,11 @@ def test_l_entita_orfana_finisce_nella_pseudo_area_giusta():
     assert [e["id"] for e in senza_area["entita"]] == ["light.forno"]
 
 
-# --- Task B4: i candidati di `cerca` portano nome e dominio -------------
+# --- Task B4: i candidati di `search` portano nome e dominio -------------
 
 
 def test_i_candidati_portano_il_dominio_cosi_un_contatore_non_sembra_una_luce():
-    """`cerca("luci")` restituiva `sensor.lights` e niente lo diceva."""
+    """`search("luci")` restituiva `sensor.lights` e niente lo diceva."""
     casa = {"aree": [], "dispositivi": [],
             "entita": [{"id": "sensor.lights", "nome": "Luci", "alias": []},
                        {"id": "light.salotto", "nome": "Luce salotto", "alias": []}]}
@@ -481,9 +481,9 @@ def test_i_candidati_portano_il_nome():
 def test_un_nome_dedotto_si_dichiara_dedotto():
     """I2 (review finale): `nome_dedotto` e' una forma sola in tutto il
     modulo -- la stringa col nome dedotto, mai un booleano. Prima di questo
-    fix `cerca()` scriveva `True` mentre `guarda()` scriveva la stringa: due
+    fix `search()` scriveva `True` mentre `view()` scriveva la stringa: due
     tipi diversi per lo stesso fatto, e un modello che avesse imparato la
-    forma da `cerca` avrebbe letto male quella di `guarda` (e viceversa)."""
+    forma da `search` avrebbe letto male quella di `view` (e viceversa)."""
     casa = {"aree": [], "dispositivi": [],
             "entita": [{"id": "light.a", "nome": None, "alias": []}]}
     voci = search(costruisci_indice(casa, {"light.a": "Abat-jour"}), "abat-jour")
@@ -506,7 +506,7 @@ def test_il_nome_dichiarato_vince_sul_dedotto_quando_ci_sono_entrambi():
     nessuna delle case sopra puo' esercitare questo ramo passando per
     l'indice vero. La precedenza si prova qui direttamente sull'oggetto che
     `verifica()` restituisce, con un indice finto che li mette entrambi: e'
-    la garanzia che `cerca()` non deleghi la propria correttezza a
+    la garanzia che `search()` non deleghi la propria correttezza a
     un'invariante di un modulo diverso."""
     class _IndiceFinto:
         def find(self, testo):
@@ -606,7 +606,7 @@ def test_senza_unita_vive_si_comporta_come_prima():
 
 def test_cerca_un_etichetta_da_il_label_id_end_to_end():
     """Requisito 2 del brief T8: un modello che sa solo il NOME di
-    un'etichetta arriva al suo `label_id` con UNA chiamata a `cerca` --
+    un'etichetta arriva al suo `label_id` con UNA chiamata a `search` --
     anche quando nessuna entita' la porta ancora, il vicolo cieco piu'
     radicale della famiglia (R2, docs/design/2026-08-20-i-riferimenti.md):
     fino a questa fetta il `label_id` non usciva da NESSUNA porta."""
@@ -623,7 +623,7 @@ def test_cerca_un_etichetta_da_il_label_id_end_to_end():
 
 def test_guarda_un_entita_mostra_il_label_id_accanto_al_nome():
     """Requisito 1 del brief T8: dove un'etichetta compare in una risposta
-    di `guarda`, l'id le sta accanto -- il nome resta protagonista, l'id e'
+    di `view`, l'id le sta accanto -- il nome resta protagonista, l'id e'
     il dato accessorio (`Nome (id: X)`, la stessa forma dell'albero del
     nucleo per aree/piani/automazioni)."""
     casa = dict(_CASA, entita=[dict(_CASA["entita"][0], etichette=["notturne"])],
@@ -633,9 +633,9 @@ def test_guarda_un_entita_mostra_il_label_id_accanto_al_nome():
 
 
 def test_guarda_non_sa_aprire_un_etichetta():
-    """Come per i piani (`test_guarda_non_sa_aprire_un_piano`): `cerca` da
+    """Come per i piani (`test_guarda_non_sa_aprire_un_piano`): `search` da
     T8 risolve un'etichetta per nome, ma un'etichetta non e' una cosa che
-    si apre in dettaglio -- e' un'ancora per `esegui`. `guarda` lo dichiara
+    si apre in dettaglio -- e' un'ancora per `execute`. `view` lo dichiara
     con la stessa onesta' di ogni altro tipo che non sa aprire, invece di
     un `esiste: False` indistinguibile da "questa etichetta non esiste"."""
     dettaglio = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "etichetta", "notturne")
@@ -646,7 +646,7 @@ def test_guarda_non_sa_aprire_un_etichetta():
 # --- Fetta "nascoste fuori dagli elenchi" (2026-08-25) ---------------------
 #
 # Il caso VERO, misurato in produzione dal proprietario (non una casa finta
-# piu' semplice): `guarda("area", "sala_da_pranzo")` restituiva sette luci
+# piu' semplice): `view("area", "sala_da_pranzo")` restituiva sette luci
 # mescolate, quattro nascoste (tre lampade LIFX piu' una che si chiama
 # "lampadario fake"), sei senza nome dichiarato nel registro (nome_dedotto
 # dallo specchio dello stato). La regola voluta dal proprietario: "HIRIS non
@@ -808,7 +808,7 @@ def test_guarda_un_area_disabilitata_e_nascosta_insieme_resta_fra_le_disabilitat
 
 
 def test_cerca_marca_un_candidato_entita_nascosto():
-    """Misurato in produzione: `cerca` non riportava affatto questo campo --
+    """Misurato in produzione: `search` non riportava affatto questo campo --
     "lampadario" trovava le lampade LIFX nascoste e nulla lo diceva."""
     casa = _casa_sala_da_pranzo()
     indice = costruisci_indice(casa, _ripiego_sala_da_pranzo())
@@ -832,7 +832,7 @@ def test_cerca_non_marca_un_candidato_entita_visibile():
 
 
 def test_cerca_non_esclude_i_candidati_nascosti():
-    """Il caso che questa fetta distingue esplicitamente da `guarda`:
+    """Il caso che questa fetta distingue esplicitamente da `view`:
     cercare "lampadario 2" (il nome dedotto intero di una lampada LIFX
     nascosta) deve TROVARLA, non farla sparire -- dire "non esiste" di una
     cosa che c'e' e' precisamente la frase che questo prodotto non deve mai

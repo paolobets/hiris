@@ -256,7 +256,7 @@ async def test_chat_replaces_leaked_tool_call_with_user_msg(tmp_path):
     la chat non offre piu' nessun tool, quindi `tool_name_set` sarebbe vuoto e
     la fuga non verrebbe piu' riconosciuta. Il soggetto del test -- la
     detection end-to-end -- e' vivo (e' cosi' che funziona in produzione,
-    dove la chat passa sempre `tools=STRUMENTI_CONOSCENZA`): si sposta su
+    dove la chat passa sempre `tools=KNOWLEDGE_TOOLS`): si sposta su
     `strumenti`, con due tool_def minimi locali (stesso pattern di
     test_runner_catalogo.py's _FINTO_HTTP_REQUEST_TOOL_DEF)."""
     runner = OpenAICompatRunner(
@@ -924,7 +924,7 @@ async def test_chat_healthy_backend_behavior_unchanged(tmp_path):
 # file gemello: RENDER_TEMPLATE_TOOL_DEF e' uscita da EVALUATION_TOOL_DEFS
 # insieme al resto dei 34 (non nominata da EVALUATION_ONLY_TOOLS, esclusa di
 # proposito), e la chat non offre piu' un catalogo da questo file
-# (STRUMENTI_CONOSCENZA, casa/strumenti.py). Nessuna combinazione di
+# (KNOWLEDGE_TOOLS, casa/strumenti.py). Nessuna combinazione di
 # allowed_tools/allowed_entities puo' piu' far comparire "render_template" in
 # un catalogo che non lo contiene: tre dei sei test fallivano gia' per
 # costruzione, gli altri tre erano diventati vacui.

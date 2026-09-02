@@ -9,7 +9,7 @@ solo il giorno in cui qualcuno lo aggiunge alla chat, e nessuno se ne
 accorgerebbe. Il verso di questa derivazione e' una questione di sicurezza, non
 di stile.
 
-`concludi` esiste SOLO in questo catalogo: dalla chat non si vede, perche' li'
+`conclude` esiste SOLO in questo catalogo: dalla chat non si vede, perche' li'
 a concludere e' la risposta all'utente. E' l'unico modo in cui questo turno
 puo' finire, ed e' cio' che rende il SILENZIO un fatto dichiarato invece di
 un'assenza da interpretare.
@@ -24,14 +24,14 @@ from ..decisione_modelli import _DOWNGRADE_REASONS
 
 logger = logging.getLogger(__name__)
 
-# I sei che leggono e basta. Non `esegui` (tocca la casa), non `ricorda`
+# I sei che leggono e basta. Non `execute` (tocca la casa), non `remember`
 # (scrive nella memoria, che dal giro 1 di questa correzione entra nel
 # prompt di sistema SANIFICATA -- C-2 -- non piu' verbatim), non
-# `prometti`/`disdici` (un turno che si da' appuntamenti da solo e' autonomia
-# costruita per sbaglio), non `costruisci`/`conferma` (scrivono
+# `promise`/`cancel` (un turno che si da' appuntamenti da solo e' autonomia
+# costruita per sbaglio), non `propose`/`confirm` (scrivono
 # configurazione: un turno che nessuno guarda non costruisce).
 #
-# `andamento` e `accaduto` (fetta «HIRIS e il tempo») entrano: leggono e
+# `trend` e `logbook` (fetta «HIRIS e il tempo») entrano: leggono e
 # basta, ed e' cio' che permette a una promessa delle 17:00 di confrontare la
 # temperatura con quella di un'ora prima invece di portarsi dietro una
 # fotografia scattata alla nascita.
@@ -74,7 +74,7 @@ CONCLUDI_TOOL_DEF = {
 def promise_tools() -> list[dict]:
     """Il catalogo di questo turno, DERIVATO da quello della chat.
 
-    Le definizioni sono gli STESSI dizionari di `STRUMENTI_CONOSCENZA`, non
+    Le definizioni sono gli STESSI dizionari di `KNOWLEDGE_TOOLS`, non
     copie: una descrizione migliorata li' vale anche qui, senza che nessuno se
     ne debba ricordare.
     """
@@ -90,9 +90,9 @@ def promise_tools() -> list[dict]:
 
 
 class PromiseDispatcher:
-    """Il guardiano del turno: lascia scendere solo i lettori, e tiene `concludi`.
+    """Il guardiano del turno: lascia scendere solo i lettori, e tiene `conclude`.
 
-    Sta DAVANTI a `DispatcherStrumenti` invece di modificarlo, per non mettere
+    Sta DAVANTI a `ToolDispatcher` invece di modificarlo, per non mettere
     nel dispatcher della chat uno strumento che li' non deve esistere.
     """
 
@@ -122,7 +122,7 @@ async def interpreta_promise(app, promise: dict) -> dict:
     """Sveglia il modello per una promessa «chiedi». Non solleva mai.
 
     Ritorna `{"avvisare": bool, "testo": str}` oppure `{"errore": str}`. Un
-    turno che finisce senza chiamare `concludi` e' un errore dichiarato, non un
+    turno che finisce senza chiamare `conclude` e' un errore dichiarato, non un
     «forse e' andata bene».
     """
     from ..api.handlers_casa import compose_briefing
@@ -192,7 +192,7 @@ _CEILING_RIPORTO = 300
 
 
 def _senza_conclusione(answer) -> str:
-    """Il motivo di un turno che NON ha chiamato `concludi`, con dentro cio'
+    """Il motivo di un turno che NON ha chiamato `conclude`, con dentro cio'
     che il modello aveva risposto al suo posto.
 
     Fino al 21/08/2026 questa funzione non esisteva e il motivo era una
@@ -245,7 +245,7 @@ def _accoda_al_bridge(app, promise: dict) -> dict:
     promesse dello stesso giro partono lo stesso, invece di essere marcate
     saltate mentre questa pensa.
 
-    La promessa resta `in_corso`, e a concluderla sara' `concludi` attraverso
+    La promessa resta `in_corso`, e a concluderla sara' `conclude` attraverso
     la rotta MCP (`api/handlers_mcp`), oppure la consegna del job se il turno
     finisce senza aver concluso.
 
@@ -299,11 +299,11 @@ def _system_prompt() -> str:
     # della chat (`compose_briefing`, vedi `interpreta_promise` sopra), coi
     # suoi `(id: X)` accanto ad aree/piani/automazioni/script -- ma senza
     # queste due righe il prompt non lo spiegava, e il modello non aveva modo
-    # di sapere che poteva usarli direttamente invece di chiamare `cerca`.
+    # di sapere che poteva usarli direttamente invece di chiamare `search`.
     # Il parallelismo, qui, e' vero al 100%: il turno gira su `runner.chat`,
-    # lo STESSO ciclo di `claude_runner.py` (`BASE_REGOLE_STRUMENTI`) che
+    # lo STESSO ciclo di `claude_runner.py` (`BASE_TOOL_RULES`) che
     # conta un giro per risposta, non per chiamata -- a differenza del ponte
-    # (vedi `agent/prompts._GUIDA_CON_STRUMENTI`, dove la stessa frase e'
+    # (vedi `agent/prompts._GUIDE_WITH_TOOLS`, dove la stessa frase e'
     # falsa perche' il tetto MCP conta ogni `tools/call`).
     return (
         "Stai mantenendo una promessa: qualcuno ti ha chiesto, tempo fa, di "

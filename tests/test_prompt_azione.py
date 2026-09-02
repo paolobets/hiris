@@ -1,6 +1,6 @@
 """fetta «comandare» (Task 6): il prompt sa che HIRIS puo' agire.
 
-Il Task 5 ha messo `esegui` nel catalogo unico e nell'argv della CLI: da
+Il Task 5 ha messo `execute` nel catalogo unico e nell'argv della CLI: da
 quel commit il modello RICEVE lo strumento. Ma i due prompt continuavano a
 dirgli «HIRIS non agisce: non accendi, non spegni» -- e un modello che legge
 quell'ordine rifiuta di agire pur avendo lo strumento in mano. Il sintomo
@@ -17,9 +17,9 @@ qui sotto guardano il testo che il modello legge DAVVERO su ciascuno:
   compone `BASE_IDENTITY` + -- solo quando gli strumenti ci sono davvero --
   `BASE_TOOL_RULES`, e poi una delle due guide.
 
-Le quattro cose che questo task deve dire (`esegui` esiste; gli id e non i
+Le quattro cose che questo task deve dire (`execute` esiste; gli id e non i
 nomi; racconta cosa e' SUCCESSO; come si tratta l'ambiguita') sono regole del
-PRODOTTO, non del ponte: se vivessero nella sola `_GUIDA_CON_STRUMENTI` il
+PRODOTTO, non del ponte: se vivessero nella sola `_GUIDE_WITH_TOOLS` il
 percorso sincrono -- quello che oggi porta la chat vera -- agirebbe senza
 nessuna di esse. Stanno quindi in `BASE_TOOL_RULES`, l'unico testo che
 viene emesso SE E SOLO SE gli strumenti esistono, su entrambi i percorsi.
@@ -39,7 +39,7 @@ from hiris.app.claude_runner import BASE_SYSTEM_PROMPT
 
 def _prompt_del_ponte() -> str:
     """Il system prompt del ponte col ramo attivo: BASE intero + persona +
-    `_GUIDA_CON_STRUMENTI`. E' cio' che il modello legge quando la sonda ha
+    `_GUIDE_WITH_TOOLS`. E' cio' che il modello legge quando la sonda ha
     trovato gli strumenti -- l'unico turno del ponte in cui puo' agire."""
     system, _user = prompts.build_chat_messages(
         "Per scoprire cosa c'e' in casa usa `cerca` e `guarda`.",
@@ -57,7 +57,7 @@ def _i_due_testi_di_chi_puo_agire() -> dict[str, str]:
     return {"sincrono": BASE_SYSTEM_PROMPT, "ponte": _prompt_del_ponte()}
 
 
-# -- 1. `esegui` esiste -----------------------------------------------------
+# -- 1. `execute` esiste -----------------------------------------------------
 
 def test_la_guida_nomina_esegui():
     assert "execute" in _GUIDE_WITH_TOOLS
@@ -66,9 +66,9 @@ def test_la_guida_nomina_esegui():
 def test_entrambi_i_percorsi_dicono_che_esegui_esiste():
     """Il brief guardava la sola guida del ponte. Il percorso sincrono e'
     quello che oggi porta la chat vera, e la guida non la vede mai: senza
-    questo test `esegui` potrebbe esistere nel prompt di meta' prodotto.
+    questo test `execute` potrebbe esistere nel prompt di meta' prodotto.
 
-    Il nome si cerca COI BACKTICK, e non e' un vezzo: `"esegui" in testo`
+    Il nome si cerca COI BACKTICK, e non e' un vezzo: `"execute" in testo`
     passava gia' prima di questo task, perche' entrambi i testi contengono
     «non ho realmente eseguito» e «azioni mai eseguite». Un pin che non puo'
     fallire non sorveglia niente -- verificato rimettendo il testo vecchio."""
@@ -154,7 +154,7 @@ def test_la_guida_chiede_gli_id_non_i_nomi():
 
 def test_entrambi_i_percorsi_mandano_a_cerca_chi_ha_solo_un_nome():
     """E' l'errore piu' probabile: il modello ha «la luce della cucina» e
-    passa quel nome a `esegui`, che vuole `light.cucina`. La verifica lo
+    passa quel nome a `execute`, che vuole `light.cucina`. La verifica lo
     rifiuta con un motivo giusto, ma il giro e' sprecato e all'utente arriva
     una frase di errore invece di una luce accesa."""
     for percorso, testo in _i_due_testi_di_chi_puo_agire().items():
@@ -254,7 +254,7 @@ def test_la_guida_non_promette_una_conferma_che_non_esiste():
 
 def test_nessuno_dei_due_percorsi_promette_una_conferma_che_non_esiste():
     """Il gemello sui testi COMPOSTI. Nessuna conferma esiste in questa
-    fetta: `esegui` chiama e basta. Prometterla sarebbe la classe di difetto
+    fetta: `execute` chiama e basta. Prometterla sarebbe la classe di difetto
     -- il prompt che descrive un meccanismo assente -- che questo ramo ha
     passato settimane a chiudere."""
     for percorso, testo in _i_due_testi_di_chi_puo_agire().items():
@@ -275,7 +275,7 @@ def test_entrambi_i_percorsi_dicono_che_il_ricordo_e_una_preferenza_non_una_sost
     stanza. Il prompt deve chiedere la forma generale, perche' la sostituzione
     e' quella che al modello viene naturale.
 
-    Il brief chiedeva questo test sulla sola `_GUIDA_CON_STRUMENTI`; guarda
+    Il brief chiedeva questo test sulla sola `_GUIDE_WITH_TOOLS`; guarda
     entrambi i percorsi per la ragione dichiarata in cima al file -- il
     paragrafo dell'ambiguita' vive in `BASE_TOOL_RULES`, l'unico testo
     che raggiunge chi puo' agire su ENTRAMBI i rami."""
@@ -479,7 +479,7 @@ def test_entrambe_le_GUIDE_dicono_di_NON_risolvere_una_stanza_a_mano():
     progetto, comparso dentro la prova scritta per chiuderlo.
     """
     # DUE SORGENTI DIVERSE, e la distinzione e' il punto della prova.
-    # `_GUIDA_CON_STRUMENTI` (importata in cima) e' quella del PONTE;
+    # `_GUIDE_WITH_TOOLS` (importata in cima) e' quella del PONTE;
     # `BASE_SYSTEM_PROMPT` di `claude_runner` e' quella del SINCRONO, che porta
     # la chat vera. Il secondo tentativo di questa prova le metteva entrambe
     # sulla guida del ponte -- due chiavi, un testo solo -- e il percorso

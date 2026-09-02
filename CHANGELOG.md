@@ -1,5 +1,45 @@
 # HIRIS — Changelog
 
+## [Non rilasciato] — I nomi degli strumenti passano all'inglese
+
+**Cosa cambia per chi usa HIRIS: niente che si veda in chat.** HIRIS continua a rispondere in
+italiano, e le descrizioni che il modello legge per capire cosa fa ciascuno strumento sono rimaste
+in italiano parola per parola. E' cambiato il NOME con cui il modello chiama uno strumento, non la
+lingua in cui HIRIS parla.
+
+`cerca`→`search` · `guarda`→`view` · `legami`→`related` · `ricorda`→`remember` · `richiama`→`fetch`
+· `esegui`→`execute` · `prometti`→`promise` · `promesse`→`agenda` · `disdici`→`cancel` ·
+`costruisci`→`propose` · `conferma`→`confirm` · `andamento`→`trend` · `accaduto`→`logbook`. Il
+quattordicesimo, `concludi`→`conclude`, non si vede dalla chat: e' il modo in cui si chiude il turno
+che una promessa risveglia.
+
+**Perche' e' stata la fetta piu' delicata.** Gli strumenti non sono codice che i test coprono: sono
+DATI che un modello linguistico legge per decidere cosa chiamare. Cambiandoli a meta' -- il catalogo
+che dice gia' `view` e la sua descrizione che continua a ordinare «chiama `guarda`» -- la suite non
+se ne accorge: **misurato, 3012 prove su 3013 restavano verdi**. Prima di toccare un solo nome e'
+stato scritto un controllo che quella meta' la vede, e provato facendogli produrre il difetto cinque
+volte.
+
+**UNA COSA DA SAPERE DOPO L'AGGIORNAMENTO.** Il testo del prompt di sistema della chat
+(Impostazioni → Chat) nomina due strumenti. Quel testo e' un **valore di partenza**: chi non l'ha
+mai toccato riceve la versione nuova, che dice `search` e `view`; **chi l'ha modificato e salvato
+almeno una volta continua a servire al modello il testo che ha scritto lui**, coi nomi vecchi. Non
+si rompe niente -- HIRIS spiega comunque al modello con che nome chiamare gli strumenti -- ma il
+proprio prompt vale la pena rileggerlo, e chi ci ha scritto «usa `cerca`» puo' aggiornarlo. Lo
+stesso vale, sul ponte, per la frase che ricollega i nomi scritti nel proprio prompt a quelli veri:
+oggi elenca i nomi inglesi.
+
+**Cosa NON e' cambiato, e non per dimenticanza.** Le descrizioni dei quattordici strumenti restano
+in italiano. Le chiavi degli argomenti (`testo`, `riferimento`, `grandezza`, ...) restano in
+italiano: ventiquattro su quarantacinque sono anche il nome di una colonna del database, e il
+database non si tocca. Le chiavi delle risposte (`promesse`, `legami`) restano in italiano, come
+ogni altro campo. E la memoria della casa non e' toccata: nessuna tabella, nessuna colonna, nessun
+ricordo, nessuna promessa gia' presa.
+
+**Il quattordicesimo strumento aveva un buco nel vocabolario.** `concludi` non era mai stato deciso:
+il glossario ne dichiarava quattordici sopra una tabella di tredici righe. Non si puo' rinominare
+cio' che non e' stato nominato -- deciso per primo, con la ragione scritta, e solo dopo applicato.
+
 ## [3.16.0] — Le rotte e la pagina web parlano inglese (2026-09-02)
 
 **Cosa cambia per chi usa HIRIS: niente che si veda.** Le frasi in chat, le parole della pagina, i

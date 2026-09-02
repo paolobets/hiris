@@ -29,7 +29,7 @@ futuro non lo scambi per una dimenticanza:
 **I bersagli che non sono entita' (area, piano, etichetta, dispositivo).**
 Fino alla fetta «i bersagli» questa funzione li rifiutava, e il difetto non
 era il rifiuto: era cosa il modello faceva dopo. «Spegni tutto in cucina»
-lo obbligava a chiamare `cerca`, raccogliere gli id a mano e passarli tutti
+lo obbligava a chiamare `search`, raccogliere gli id a mano e passarli tutti
 qui; se ne perdeva uno -- e su una cucina con quindici entita' ne perdeva uno
 -- HIRIS ne spegneva quattordici e **dichiarava di aver spento tutto**. Una
 risposta sbagliata detta con sicurezza.
@@ -173,7 +173,7 @@ def _allows_empty_target(domain: str, definition: dict) -> bool:
 
 # I cinque modi in cui un bersaglio puo' nominare cio' che va toccato, e il
 # campo di Home Assistant che gli corrisponde. Le chiavi sono quelle che il
-# modello scrive (`strumenti.ESEGUI_TOOL_DEF`), i valori sono quelli di
+# modello scrive (`strumenti.EXECUTE_TOOL_DEF`), i valori sono quelli di
 # `cv.TARGET_FIELDS` -- la traduzione vive QUI, in un posto solo: `ha_client`
 # riceve gia' la forma di Home Assistant e non ha un'opinione sull'italiano
 # del modello.

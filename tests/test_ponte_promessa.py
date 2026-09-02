@@ -80,9 +80,9 @@ def test_un_kind_davvero_sconosciuto_resta_dichiarato(caplog):
 #
 # La fetta aveva reso il catalogo PER TURNO nella rotta MCP, e lasciato tre
 # punti ancorati a quello della chat: `--allowedTools`, la sonda, e la verifica
-# dell'init. Un turno di promessa riceve 5 strumenti (4 lettori + `concludi`),
+# dell'init. Un turno di promessa riceve 5 strumenti (4 lettori + `conclude`),
 # la verifica ne pretendeva 9, li dichiarava mancanti, e il ritentativo
-# ripartiva senza strumenti. Il modello non aveva `concludi`, quindi non aveva
+# ripartiva senza strumenti. Il modello non aveva `conclude`, quindi non aveva
 # nessun modo di finire.
 
 

@@ -4,7 +4,7 @@ Fetta «le promesse seguono la catena» (22/08/2026). Il turno del ponte
 finisce in uno di tre modi, e tutti e tre devono lasciare la promessa in uno
 stato che si vede:
 
-  - il modello ha chiamato `concludi` -> la promessa e' gia' chiusa dalla
+  - il modello ha chiamato `conclude` -> la promessa e' gia' chiusa dalla
     rotta MCP, e la consegna non la riapre;
   - il turno finisce senza aver concluso -> fallisce, col motivo che porta
     cio' che il modello aveva detto al suo posto (la forma della v3.9.3);
@@ -116,7 +116,7 @@ async def test_un_turno_che_finisce_senza_concludere_fa_fallire_la_promessa(cons
 
 @pytest.mark.asyncio
 async def test_se_concludi_e_gia_arrivato_la_consegna_non_riapre_niente(consegna):
-    """`concludi` chiude SUBITO dalla rotta MCP (non aspetta la consegna):
+    """`conclude` chiude SUBITO dalla rotta MCP (non aspetta la consegna):
     quando il job si chiude la promessa e' gia' mantenuta, e riaprirla
     cancellerebbe un testo che l'utente puo' gia' aver letto."""
     client, coda, promesse = consegna
@@ -187,7 +187,7 @@ def test_un_turno_scaduto_sul_piano_fa_fallire_la_promessa(tmp_path):
 
 
 def test_una_promessa_gia_conclusa_non_viene_riaperta_dalla_scadenza(tmp_path):
-    """`concludi` puo' essere arrivato mentre il turno finiva: riaprirla
+    """`conclude` puo' essere arrivato mentre il turno finiva: riaprirla
     cancellerebbe un testo che l'utente puo' gia' aver letto."""
     from hiris.app.server import _close_expired_promise
 

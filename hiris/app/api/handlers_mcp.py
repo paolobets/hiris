@@ -1,8 +1,8 @@
 """`POST /api/mcp` -- l'adattatore JSON-RPC che porta gli strumenti al ponte.
 
 **Perche' esiste.** HIRIS ha due percorsi di chat. Il turno sincrono passa gli
-strumenti (`STRUMENTI_CONOSCENZA`) direttamente al runner, che li
-dispaccia con `DispatcherStrumenti`. Il ponte via abbonamento invece invoca la
+strumenti (`KNOWLEDGE_TOOLS`) direttamente al runner, che li
+dispaccia con `ToolDispatcher`. Il ponte via abbonamento invece invoca la
 CLI `claude` come sottoprocesso, e **l'unico modo in cui quella CLI accetta
 strumenti nostri e' MCP**: senza questa rotta il ponte risponde su una
 fotografia (il nucleo composto all'accodamento) e non puo' ne' cercare, ne'
@@ -18,13 +18,13 @@ funziona: tre metodi JSON-RPC su una rotta aiohttp dell'app che c'e' gia'.
 Nessuna dipendenza nuova, nessun processo da governare, nessuna porta nuova da
 configurare -- e soprattutto **la stessa `entity_cache`** del turno sincrono, che
 e' la ragione per cui un sottoprocesso stdio e' stato scartato: senza di essa
-`guarda` risponderebbe sempre `stato_non_letto`, e avremmo due intelligenze nella
+`view` risponderebbe sempre `stato_non_letto`, e avremmo due intelligenze nella
 stessa casa che ne vedono due diverse.
 
 **Cosa NON e'.** Non e' una superficie remota: la chiama solo il sottoprocesso
 `claude` che gira dentro l'add-on, su `127.0.0.1`, e nessuna opzione `Network`
 la espone. Non e' un secondo catalogo: `tools/list` **ri-forma**
-`STRUMENTI_CONOSCENZA` (una sola chiave rinominata) e non ne dichiara uno
+`KNOWLEDGE_TOOLS` (una sola chiave rinominata) e non ne dichiara uno
 proprio -- tre cataloghi divergenti della stessa cosa sono il difetto da cui e'
 nata l'intera fetta E2. Non e' un secondo dispatcher: `tools/call` chiama
 `create_tool_dispatcher(app, exchange=exchange_id)`, la stessa funzione del
@@ -37,17 +37,17 @@ TURNO.** Quando il job che il ponte sta servendo e' un `kind="promessa"`, la
 promessa `in_corso`, e per quel turno serve `promise_tools()` dispacciando
 con `PromiseDispatcher`. Non incrina niente di quanto scritto qui sopra: sono
 gli STESSI due oggetti del ramo sincrono, e `promise_tools()` filtra le
-definizioni di `STRUMENTI_CONOSCENZA` invece di riscriverle. Senza questo, un
-turno di promessa sul ponte non avrebbe `concludi` -- cioe' nessun modo di
-finire -- e vedrebbe `esegui`, cioe' potrebbe toccare la casa senza nessuno
+definizioni di `KNOWLEDGE_TOOLS` invece di riscriverle. Senza questo, un
+turno di promessa sul ponte non avrebbe `conclude` -- cioe' nessun modo di
+finire -- e vedrebbe `execute`, cioe' potrebbe toccare la casa senza nessuno
 davanti.
 
 **E' anche un canale di azione, dalla fetta «comandare», e dalla fetta
 «costruire» anche di configurazione.** Fino a quel momento qui si leggeva «gli
 strumenti restano quattro e nessuno tocca Home Assistant -- HIRIS conosce e
 non agisce»: era vero, e ha smesso di esserlo su entrambe le meta'. Gli
-strumenti sono tredici, lo stesso catalogo del turno sincrono: `esegui` chiama
-un servizio di Home Assistant, `costruisci`/`conferma` compongono e scrivono
+strumenti sono tredici, lo stesso catalogo del turno sincrono: `execute` chiama
+un servizio di Home Assistant, `propose`/`confirm` compongono e scrivono
 configurazione. Cio' che NON cambia e' il motivo per cui la frase stava qui:
 questa rotta non e' una porta di scrittura propria. `tools/call` dispaccia con
 la stessa funzione del turno sincrono, che dispaccia alle stesse due porte --
@@ -107,8 +107,8 @@ METHODS = ("initialize", "tools/list", "tools/call")
 # giri di strumento PER TURNO -- l'unico freno che l'abbonamento abbia.
 #
 # **Perche' qui e non sulla riga di comando.** Il piano lo chiede come
-# mitigazione minima (progetto, §5.2): il modello puo' incatenare `cerca` ->
-# `guarda` -> `richiama` -> ancora, e ogni giro costa un turno di
+# mitigazione minima (progetto, §5.2): il modello puo' incatenare `search` ->
+# `view` -> `fetch` -> ancora, e ogni giro costa un turno di
 # `chat_daily_cap` mentre ne consuma N. `claude 2.1.226` pero' NON ha un
 # `--max-turns` ne' alcun flag che limiti i giri di strumento (verificato su
 # `claude --help`, decisione A.7 del progetto): il tetto non puo' stare
@@ -134,7 +134,7 @@ METHODS = ("initialize", "tools/list", "tools/call")
 # "i riferimenti" era "tetto a 50 per chat e promessa" -- non "per il ramo
 # sincrono": sul ponte l'abbonamento e' forfettario, quindi 50 chiamate non
 # hanno un costo marginale in piu' di 10, e un turno reale (8 stanze da
-# guardare + 1 `cerca` + la `prometti` finale) moriva esattamente come
+# guardare + 1 `search` + la `promise` finale) moriva esattamente come
 # sarebbe morto il ramo sincrono col vecchio tetto. Il numero torna a essere
 # lo stesso su entrambi i percorsi, per la stessa decisione del proprietario.
 #
@@ -145,11 +145,11 @@ METHODS = ("initialize", "tools/list", "tools/call")
 # nella stessa risposta costano una sola iterazione (vedi il for su
 # `response.content` in `claude_runner.chat()`). `MAX_TOOL_ROUNDS` (qui)
 # conta un giro per OGNI singola `tools/call` che arriva su questa rotta,
-# comprese quelle parallele della stessa risposta della CLI: 8 `guarda`
+# comprese quelle parallele della stessa risposta della CLI: 8 `view`
 # richiesti insieme dal modello costano comunque 8 giri qui, non 1. Stesso
 # tetto, contatori diversi -- e' per questo che `agent/prompts.py::
-# _GUIDA_CON_STRUMENTI` insegna al ponte una parsimonia che
-# `claude_runner.BASE_REGOLE_STRUMENTI` non ha bisogno di insegnare al ramo
+# _GUIDE_WITH_TOOLS` insegna al ponte una parsimonia che
+# `claude_runner.BASE_TOOL_RULES` non ha bisogno di insegnare al ramo
 # sincrono (vedi `tests/test_prompt_parallelismo.py`).
 #
 # **Costante di modulo, non un'opzione dell'add-on** (regole della fetta): un
@@ -230,7 +230,7 @@ def _exchange_promise_id(request: web.Request) -> str:
     Proprio perche' non autentica, si VERIFICA: un id che non corrisponde a una
     promessa `in_corso` non vale niente. Senza questo controllo l'intestazione
     sarebbe un modo per farsi servire un catalogo diverso -- quello che contiene
-    `concludi` -- mostrando un identificatore qualunque.
+    `conclude` -- mostrando un identificatore qualunque.
 
     Fetta «le promesse seguono la catena» (22/08/2026).
     """
@@ -253,7 +253,7 @@ def mcp_catalog(definitions: list[dict] | None = None) -> list[dict]:
     qui da sola invece di essere dimenticata.
 
     Il parametro serve al turno di una promessa, che ha un catalogo suo
-    (`promise_tools()`: i sei lettori piu' `concludi`). E' la STESSA
+    (`promise_tools()`: i sei lettori piu' `conclude`). E' la STESSA
     trasformazione, non una seconda: due funzioni che riformattano cataloghi
     sarebbero il difetto da cui e' nata la fetta E2 (tre cataloghi divergenti).
     """
@@ -319,7 +319,7 @@ def _ceiling_rejection(name: str) -> dict:
     si' risponde `-32603`). Il tetto raggiunto non e' un guasto del
     protocollo -- la richiesta era benformata e la rotta funziona -- e' un
     esito di merito dello strumento, la stessa categoria di
-    `DispatcherStrumenti._archivio_mancante`: si dichiara COSA e' successo
+    `ToolDispatcher._archivio_mancante`: si dichiara COSA e' successo
     invece di restituire un guasto opaco. Un `error` di protocollo rischia
     inoltre di far trattare l'intera chiamata dal client MCP della CLI come
     una rottura del canale (schema non risolto, connessione da riprovare)
@@ -384,7 +384,7 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
     # `params` malformata e' un guasto di protocollo, non un giro speso) e
     # PRIMA del dispatcher -- il dispatcher non deve mai vedere una chiamata
     # oltre il tetto, o l'effetto (una scrittura in `memoria.db` per un
-    # `ricorda`, per dire) sarebbe gia' avvenuto quando lo si rifiuta.
+    # `remember`, per dire) sarebbe gia' avvenuto quando lo si rifiuta.
     #
     # `X-HIRIS-Turno` e' l'intestazione che `agent/runner.py::config_mcp`
     # aggiunge alla voce `--mcp-config` del ponte: la CLI la ripete su OGNI
@@ -421,7 +421,7 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
                     "e' invocato", MAX_TOOL_ROUNDS, exchange_id, name)
             return _answer(request_id, _ceiling_rejection(name))
 
-    # Il nome accettato e' quello nudo (`cerca`, ...): il prefisso
+    # Il nome accettato e' quello nudo (`search`, ...): il prefisso
     # `mcp__hiris__` lo mette la CLI dal lato modello, non arriva nel
     # protocollo. Se un giorno arrivasse, il dispatcher lo direbbe con un
     # `errore` leggibile invece di sollevare -- non c'e' niente da sbucciare
@@ -430,7 +430,7 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
     # fetta «costruire»: si ripropone al dispatcher la STESSA `exchange_id` gia'
     # letta sopra da `X-HIRIS-Turno` per il tetto dei giri -- non se ne conia
     # una seconda. E' l'identita' che la guardia dell'officina usa per
-    # rifiutare una `conferma` nello stesso turno della `costruisci` che
+    # rifiutare una `confirm` nello stesso turno della `propose` che
     # l'ha proposta. Quando l'intestazione manca (`exchange_id` e' `None`, il
     # ramo del log qui sopra) il dispatcher la propaga cosi' com'e':
     # l'officina rifiuta di applicare e lo dichiara, non finge un turno che
@@ -441,14 +441,14 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
         # Lo STESSO guardiano del ramo sincrono, non una seconda regola:
         # `SOLA_LETTURA` e' un elenco di AMMISSIONE, e con due implementazioni
         # uno strumento nuovo che scrive entrerebbe da solo in una delle due il
-        # giorno in cui qualcuno lo aggiunge alla chat. `concludi` non esiste
+        # giorno in cui qualcuno lo aggiunge alla chat. `conclude` non esiste
         # nel dispatcher della chat: lo serve il wrapper, ed e' li' che il
         # turno finisce.
         dispatcher = PromiseDispatcher(dispatcher)
     result = await dispatcher.dispatch(name, arguments)
 
     if promise_id and dispatcher.conclusione is not None:
-        # Il turno ha chiamato `concludi`: la promessa si chiude ADESSO, e la
+        # Il turno ha chiamato `conclude`: la promessa si chiude ADESSO, e la
         # notifica parte adesso. Non si aspetta la consegna del job -- se la
         # CLI morisse dopo aver concluso, la decisione del modello sarebbe gia'
         # al sicuro, e il `submit` che arriva dopo trovera' una promessa non
@@ -590,9 +590,9 @@ async def handle_mcp(request: web.Request) -> web.Response:
         if method == "tools/list":
             _promise_id = _exchange_promise_id(request)
             # Il turno di una promessa vede il catalogo della promessa:
-            # i sei lettori piu' `concludi`, che li' e' l'unico modo
+            # i sei lettori piu' `conclude`, che li' e' l'unico modo
             # in cui il turno puo' finire. Le definizioni sono le STESSE
-            # di `STRUMENTI_CONOSCENZA` (promise_tools le filtra, non
+            # di `KNOWLEDGE_TOOLS` (promise_tools le filtra, non
             # le riscrive), quindi una descrizione migliorata vale su
             # entrambe le strade.
             return _answer(request_id, {"tools": mcp_catalog(
@@ -606,7 +606,7 @@ async def handle_mcp(request: web.Request) -> web.Response:
             request_id,
         )
     except Exception as error:
-        # Stessa proprieta' di `DispatcherStrumenti.dispatch`: da qui non
+        # Stessa proprieta' di `ToolDispatcher.dispatch`: da qui non
         # risale mai un'eccezione, e non esce mai un 500 nudo. Un turno del
         # ponte spezzato da una traccia Python sarebbe indistinguibile, per
         # l'utente, da una risposta che non arriva.

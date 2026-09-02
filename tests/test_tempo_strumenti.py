@@ -23,7 +23,7 @@ def test_il_catalogo_porta_tredici_strumenti():
 
 
 # La convenzione di nomenclatura `nome -> self._nome` regge su dodici dei
-# tredici strumenti: `promesse` e' servito da `_promesse_elenco`, non da
+# tredici strumenti: `agenda` e' servito da `_list_agenda`, non da
 # `_promesse` (quell'attributo e' gia' l'archivio, vedi il commento nel
 # `__init__` del dispatcher). L'eccezione e' dichiarata QUI, non nascosta
 # saltando la verifica per quel nome.
@@ -41,7 +41,7 @@ async def test_ogni_strumento_del_catalogo_ha_il_proprio_gestore():
     """Il difetto che questo test chiude: uno strumento nel catalogo arriva al
     modello, e poi si sente rispondere «non e' fra quelli disponibili» (nessun
     gestore per quel nome) OPPURE -- refuso di copia-incolla fra due nomi
-    adiacenti, es. `"accaduto": self._andamento` -- viene servito dal gestore
+    adiacenti, es. `"logbook": self._trend` -- viene servito dal gestore
     di un ALTRO strumento senza che nessuno se ne accorga: in entrambi i casi
     il modello non puo' ne' capire ne' aggirare l'incoerenza.
 
@@ -68,17 +68,17 @@ async def test_ogni_strumento_del_catalogo_ha_il_proprio_gestore():
 
 
 def test_i_due_lettori_entrano_nel_turno_delle_promesse():
-    """`andamento` e `accaduto` LEGGONO e basta: escluderli sarebbe la scelta
-    opposta a quella presa per `costruisci`, e per la ragione opposta."""
+    """`trend` e `logbook` LEGGONO e basta: escluderli sarebbe la scelta
+    opposta a quella presa per `propose`, e per la ragione opposta."""
     assert "trend" in SOLA_LETTURA and "logbook" in SOLA_LETTURA
     nomi = {d["name"] for d in promise_tools()}
     assert {"trend", "logbook"} <= nomi
 
 
 def test_il_dispatcher_riceve_la_cronaca_dall_app():
-    """Senza questa riga `accaduto` risponderebbe sempre senza attribuzione:
+    """Senza questa riga `logbook` risponderebbe sempre senza attribuzione:
     un dato che c'e' e che nessuno puo' chiedere -- la fondamenta 4 al
-    contrario, lo stesso difetto gia' pagato da `legami`."""
+    contrario, lo stesso difetto gia' pagato da `related`."""
     sorgente = inspect.getsource(handlers_chat.create_tool_dispatcher)
     assert 'journal=app.get("cronaca")' in sorgente
 
@@ -132,7 +132,7 @@ async def test_andamento_passa_unita_e_state_class_letti_dallo_specchio():
 
 @pytest.mark.asyncio
 async def test_accaduto_passa_la_cronaca_del_dispatcher_a_tempo_accaduto():
-    """Il gemello del test sopra, per `accaduto`. Senza questo test la prova
+    """Il gemello del test sopra, per `logbook`. Senza questo test la prova
     mentale che conta e' negativa: se `journal=self._cronaca` diventasse
     `journal=None` nel gestore, NESSUN test della suite arrossirebbe -- ne'
     questi sette, ne' `test_tempo_accaduto.py`, che prova `tempo.logbook` e

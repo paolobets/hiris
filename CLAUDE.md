@@ -70,10 +70,10 @@ cosa, prima o poi uno dei due mente, e non si saprà quale.
 > poteva essere vera riga per riga e falsa nel complesso.
 
 **3. Consistenza — la stessa cosa ha la stessa forma da tutte le porte.**
-Un'entità vista da `guarda`, da `cerca` o dal nucleo è la stessa entità, con gli stessi campi e gli
+Un'entità vista da `view`, da `search` o dal nucleo è la stessa entità, con gli stessi campi e gli
 stessi nomi. Un campo che compare da una porta e non dall'altra è un difetto anche quando nessuna
 delle due è sbagliata.
-> *Pagata:* `nome_dedotto` usciva solo da `_guarda_entita` e non da area e dispositivo (rilievo I1);
+> *Pagata:* `nome_dedotto` usciva solo da `_view_entity` e non da area e dispositivo (rilievo I1);
 > `nome_dedotto` era una **stringa** in un posto e un **booleano** in un altro (I2).
 
 **4. Autonomia funzionale — ogni oggetto ha la sua funzionalità, richiamabile dagli altri.**

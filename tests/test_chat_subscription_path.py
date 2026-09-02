@@ -151,7 +151,7 @@ async def test_context_del_job_porta_esattamente_queste_sei_chiavi_ne_una_di_piu
     #   - `nome`: non e' letto da nessuno dei due percorsi (sincrono o
     #     ponte), solo dal campo di compatibilita' `ChatSettings.name`
     #     stesso (impostazioni_chat.py);
-    #   - gli strumenti (STRUMENTI_CONOSCENZA/dispatcher) e `debug`
+    #   - gli strumenti (KNOWLEDGE_TOOLS/dispatcher) e `debug`
     #     (tools_called/thinking_blocks): la fetta A non da' strumenti al
     #     ponte (regole-fetta.md), sono della fetta B.
     # Questo e' il test che impedisce a un task futuro di aggiungerne meta'
@@ -481,10 +481,10 @@ async def test_poll_route_claimed_job_still_returns_pending(tmp_path):
 # I NOMI DEGLI STRUMENTI NON STANNO NEL PAYLOAD (17/08/2026).
 #
 # Qui questa sezione pinnava il contrario: `debug.tools_called` era «la SOLA
-# cosa che rende osservabile una scrittura di `ricorda` fatta dal ponte», e il
+# cosa che rende osservabile una scrittura di `remember` fatta dal ponte», e il
 # frontend ne disegnava una targhetta. Il proprietario le ha viste e non le
-# vuole in chat -- coi nomi viaggiavano anche gli ARGOMENTI, che per `ricorda`
-# sono il testo del ricordo e per `esegui` gli id delle entita' di casa.
+# vuole in chat -- coi nomi viaggiavano anche gli ARGOMENTI, che per `remember`
+# sono il testo del ricordo e per `execute` gli id delle entita' di casa.
 #
 # L'osservabilita' non e' stata tolta: e' stata spostata nei log a livello
 # debug (`api/handlers_chat.py`), e `tests/test_chat_al_nucleo.py` la legge di
@@ -509,7 +509,7 @@ async def test_poll_route_decision_con_tools_called_porta_debug_nella_stessa_for
         # La forma che `_reason_chat` produce davvero (agent/runner.py,
         # `_reply`): `reply` + `tools_called`, quest'ultima nella forma
         # ESATTA del ramo sincrono -- Step 6, ④ del brief: una chiamata a
-        # `mcp__hiris__ricorda` compare nella lista, ed e' il caso che questo
+        # `mcp__hiris__remember` compare nella lista, ed e' il caso che questo
         # task esiste per rendere visibile.
         ok = q.submit(job_id, claimed["nonce"], {
             "reply": "Preso nota: la caldaia perde.",
@@ -525,14 +525,14 @@ async def test_poll_route_decision_con_tools_called_porta_debug_nella_stessa_for
 
     # DAL 17/08/2026 il payload NON porta piu' i nomi degli strumenti. Qui si
     # asseriva il contrario, e la ragione era buona: erano l'unica cosa che
-    # rendeva osservabile una scrittura di `ricorda` fatta dal ponte. Quella
+    # rendeva osservabile una scrittura di `remember` fatta dal ponte. Quella
     # osservabilita' non e' stata tolta, e' stata SPOSTATA nei log a livello
     # debug -- vedi `tests/test_chat_al_nucleo.py`, che la legge di li'.
     #
     # L'insieme ESATTO, non «`debug` non c'e'»: un test scritto come «X non
     # c'e'» lascia rientrare X sotto un altro nome (lezione gia' pagata su
     # `test_models_api`). E gli ARGOMENTI erano la parte peggiore: per
-    # `ricorda` sono il testo del ricordo.
+    # `remember` sono il testo del ricordo.
     assert body == {
         "status": "done",
         "reply": "Preso nota: la caldaia perde.",

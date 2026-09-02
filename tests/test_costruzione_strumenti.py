@@ -1,4 +1,4 @@
-"""I due strumenti: `costruisci` propone, `conferma` applica. E il catalogo."""
+"""I due strumenti: `propose` propone, `confirm` applica. E il catalogo."""
 import pytest
 
 from hiris.app.agent.runner import mcp_names
@@ -88,7 +88,7 @@ async def test_conferma_passa_lo_stesso_turno_cosi_la_guardia_puo_scattare():
 async def test_una_sola_istanza_da_la_stessa_identita_a_costruisci_e_conferma():
     """La proprieta' su cui si regge la guardia non e' che un turno letterale
     combaci per coincidenza fra due test separati (i due qui sopra
-    costruiscono ciascuno un proprio `DispatcherStrumenti`, ed entrambi
+    costruiscono ciascuno un proprio `ToolDispatcher`, ed entrambi
     usano "t7" per caso, non per dimostrazione): e' che LA STESSA istanza --
     quella che il chiamante costruisce UNA volta per turno
     (`create_tool_dispatcher`) -- dia la stessa identita' a

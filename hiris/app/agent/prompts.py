@@ -57,7 +57,7 @@ from ..claude_runner import (
 # Resta solo «non agisce», che qui e' vero due volte.
 #
 # fetta «comandare» (Task 6): «non agisce» ha smesso di essere vero DUE
-# volte, ed e' rimasto vero UNA. Il Task 5 ha dato a HIRIS `esegui` (catalogo
+# volte, ed e' rimasto vero UNA. Il Task 5 ha dato a HIRIS `execute` (catalogo
 # unico, `casa/strumenti.py`): il prodotto agisce. Questo turno no -- qui non
 # c'e' nessuno strumento da chiamare -- e la differenza fra le due cose e'
 # tutta nella frase. «HIRIS non agisce» era una proprieta' del PRODOTTO
@@ -73,7 +73,7 @@ from ..claude_runner import (
 # Cio' che NON e' cambiato di una virgola e' l'altra meta': in questo turno
 # gli strumenti non ci sono davvero, e un modello che si credesse capace di
 # agire annuncerebbe accensioni mai avvenute -- il «preso nota» senza aver
-# salvato, in un'altra forma. Per questo `esegui` entra anche nell'elenco
+# salvato, in un'altra forma. Per questo `execute` entra anche nell'elenco
 # degli strumenti che il testo NOMINA PER NEGARLI: se il prompt di sopra lo
 # ordina, qui quell'ordine non si applica.
 #
@@ -91,11 +91,11 @@ from ..claude_runner import (
 # Fix round 1, Critical 1: fino a poco fa la smentita doveva coprire anche
 # `BASE_SYSTEM_PROMPT`, che il Task 2 aveva cominciato a passare INTERO al
 # ponte -- ordini come «Usa SEMPRE gli strumenti per dati sulla casa» e
-# «chiama ricorda subito» rivolti a un percorso senza strumenti. Non piu': la
+# «chiama remember subito» rivolti a un percorso senza strumenti. Non piu': la
 # meta' che nomina gli strumenti (`BASE_TOOL_RULES`) qui NON viene
 # emessa affatto (vedi `build_chat_messages`). La smentita di testo restava
 # l'unica difesa contro un ORDINE di chiamare uno strumento inesistente, ed e'
-# esattamente il bug per cui `ricorda` e' nato: un ordine non emesso e' una
+# esattamente il bug per cui `remember` e' nato: un ordine non emesso e' una
 # difesa, una frase che lo contraddice e' una speranza.
 #
 # fetta "il ponte riceve il nucleo" (parita' A, Task 2): la frase «non puoi
@@ -157,7 +157,7 @@ _GUIDE_WITHOUT_TOOLS = (
 # `casa/strumenti.py`), quindi la forma prefissata non e' una possibilita' fra
 # due: e' l'UNICA in cui gli strumenti gli sono serviti e l'unica che potra'
 # chiamare. Un «possono comparire» lascerebbe il modello a credere che
-# `cerca` nudo sia altrettanto valido -- e una chiamata a un nome che non
+# `search` nudo sia altrettanto valido -- e una chiamata a un nome che non
 # esiste e' proprio il modo in cui questo prodotto ha gia' prodotto un «preso
 # nota» senza aver salvato. Il testo nomina quindi i nomi VERI, e
 # ricollega a loro i nomi nudi che la persona (il system prompt delle
@@ -165,7 +165,7 @@ _GUIDE_WITHOUT_TOOLS = (
 #
 # fetta «comandare» (Task 6). Tre cose cambiano qui, e una NON cambia.
 #
-# ① I nomi sono cinque: `mcp__hiris__esegui` e' nell'argv da `33da82b`
+# ① I nomi sono cinque: `mcp__hiris__execute` e' nell'argv da `33da82b`
 #   (`--allowedTools` deriva da `runner.nomi_mcp()`, che deriva dal catalogo
 #   unico), e l'invariante argv <=> prompt vuole che il testo lo nomini --
 #   e' cio' che pinna `test_col_ramo_attivo_il_prompt_afferma_gli_strumenti_
@@ -183,7 +183,7 @@ _GUIDE_WITHOUT_TOOLS = (
 #   USCITO, ed e' la ragione per cui questo task esiste: era un ordine di non
 #   usare uno strumento che il turno successivo serve davvero. Al suo posto
 #   c'e' la sola cosa che questo testo -- quello dei NOMI -- ha il compito di
-#   dire su `esegui`: che gli id vanno presi da `mcp__hiris__cerca` e non
+#   dire su `execute`: che gli id vanno presi da `mcp__hiris__search` e non
 #   ricavati dal nome. E' l'errore piu' probabile («la luce della cucina»
 #   passata come id) ed e' un problema di NOMI, cioe' materia di questa
 #   guida. Le altre regole dell'azione -- raccontare cosa e' successo,
@@ -197,15 +197,15 @@ _GUIDE_WITHOUT_TOOLS = (
 # qualcosa». E' la stessa regola di sempre, e da questa fetta ha una vittima
 # in piu' da proteggere.
 #
-# fetta «lo schedulatore» (Task 6). Da 6 a 9: entrano `prometti`,
-#   `promesse`, `disdici` -- lo stesso "li nomini, il modello li chiama coi
-#   nomi prefissati" di sopra, non un secondo giro di logica. `prometti` NON
-#   e' un secondo `esegui`: mette da parte un'azione o una domanda per un
+# fetta «lo schedulatore» (Task 6). Da 6 a 9: entrano `promise`,
+#   `agenda`, `cancel` -- lo stesso "li nomini, il modello li chiama coi
+#   nomi prefissati" di sopra, non un secondo giro di logica. `promise` NON
+#   e' un secondo `execute`: mette da parte un'azione o una domanda per un
 #   istante futuro, verificata SUBITO contro questa installazione -- il testo
 #   lo dice esplicitamente (ADESSO / PIU' TARDI) perche' il modello non lo
 #   confonda con l'unico strumento che scrive nella casa nel turno stesso.
 #
-# fetta «costruire» (Task 9). Da 9 a 11: entrano `costruisci` e `conferma` --
+# fetta «costruire» (Task 9). Da 9 a 11: entrano `propose` e `confirm` --
 #   di nuovo lo stesso ricollegamento nome nudo -> nome prefissato, non un
 #   secondo giro di logica. Le REGOLE del giro in due tempi (mostra
 #   l'anteprima, aspetta il turno successivo, non concatenare) stanno SOLO in
@@ -214,8 +214,8 @@ _GUIDE_WITHOUT_TOOLS = (
 #   tenere allineato che questo modulo esiste per evitare. Qui basta che il
 #   modello sappia CON CHE NOME chiamarli, come per gli altri nove.
 #
-# fetta «HIRIS e il tempo» (Task 6). Da 11 a 13: entrano `andamento` e
-#   `accaduto` -- ancora lo stesso ricollegamento nome nudo -> nome
+# fetta «HIRIS e il tempo» (Task 6). Da 11 a 13: entrano `trend` e
+#   `logbook` -- ancora lo stesso ricollegamento nome nudo -> nome
 #   prefissato, non un terzo giro di logica. Sono lettori come i primi
 #   cinque (nessuna regola del giro in due tempi da ripetere): guardano
 #   INDIETRO nel tempo invece che lo stato di adesso, ed e' l'unica cosa
@@ -280,7 +280,7 @@ _GUIDE_WITH_TOOLS = (
 # Perche' stanno FUORI dalle due guide invece che dentro: un job accodato
 # PRIMA di questo deploy arriva al runner senza la chiave `contesto` (silenzio
 # dichiarato ①, vedi `agent/runner.py::_reason_chat`). Se «la fotografia qui
-# sotto» vivesse dentro `_GUIDA_SENZA_STRUMENTI`, quel job leggerebbe un
+# sotto» vivesse dentro `_GUIDE_WITHOUT_TOOLS`, quel job leggerebbe un
 # prompt che promette una fotografia che non c'e' -- la stessa falsita' che
 # questo task esiste per chiudere, riaperta dal caso limite. Tenendole
 # separate la guida resta UNA (un solo posto dove si dice cosa il modello ha e
@@ -290,20 +290,20 @@ _GUIDE_WITH_TOOLS = (
 # cosa che il modello legge prima del blocco `## La casa` -- ma era scritto
 # quando il ramo con gli strumenti non esisteva. Due sue clausole, accese le
 # quattro chiamate, diventavano un CONTRORDINE alla riga che le precede di
-# poche parole (`_GUIDA_CON_STRUMENTI`: «quando serve un valore CORRENTE
+# poche parole (`_GUIDE_WITH_TOOLS`: «quando serve un valore CORRENTE
 # chiama lo strumento ... guarda adesso»), ed erano per giunta FALSE al
 # presente. Sono uscite:
 #
 #   - «non e' aggiornabile in questo turno»: col ramo attivo la fotografia
-#     E' aggiornabile -- si chiama `mcp__hiris__guarda`. Sul ramo di degrado
-#     la frase e' ridondante, non necessaria: `_GUIDA_SENZA_STRUMENTI` dice
+#     E' aggiornabile -- si chiama `mcp__hiris__view`. Sul ramo di degrado
+#     la frase e' ridondante, non necessaria: `_GUIDE_WITHOUT_TOOLS` dice
 #     gia' «non puoi guardare adesso lo stato della casa» e «se per
 #     rispondere servirebbe un valore aggiornato ADESSO, DILLO». Verificato
 #     riga per riga prima di togliere, non assunto.
 #   - «Se ti chiedono cosa ti hanno detto, cercalo li' dentro invece di
 #     rispondere che non puoi richiamarlo»: nata come COMPENSAZIONE
-#     dell'assenza di `richiama` (fetta A, fix round 1, Important 1). Col
-#     ramo attivo `richiama` c'e', e mandare il modello a frugare nella
+#     dell'assenza di `fetch` (fetta A, fix round 1, Important 1). Col
+#     ramo attivo `fetch` c'e', e mandare il modello a frugare nella
 #     fotografia invece di chiamarlo produce esattamente il sintomo che il
 #     tester non saprebbe distinguere da «gli strumenti non funzionano»:
 #     `status: connected` nel log e NESSUNA `tools/call`. Cio' che la
@@ -414,13 +414,13 @@ def build_chat_messages(system_prompt: str, history: list, *,
     1. **quanto di BASE viene emesso.** `BASE_IDENTITY` (chi e' HIRIS, cosa
        conosce) e' vera su entrambi i percorsi ed entra sempre.
        `BASE_TOOL_RULES` -- «Usa SEMPRE gli strumenti per dati sulla
-       casa», «chiama ricorda subito», «se hai chiamato uno strumento con
+       casa», «chiama remember subito», «se hai chiamato uno strumento con
        successo l'azione e' reale» -- e' un ORDINE DI CHIAMARE UNO STRUMENTO
        che sul ponte non esiste, e sul ponte non viene emessa affatto. La
        prima stesura di questo task passava BASE intero e lo faceva smentire
        dalla guida che segue: una smentita di testo non e' un meccanismo, e
        il caso peggiore -- «preso nota» senza aver salvato -- e' il bug
-       misurato in produzione da cui `ricorda` e' nato. Con
+       misurato in produzione da cui `remember` e' nato. Con
        `strumenti_attivi=True` i due pezzi tornano contigui e il blocco e'
        byte per byte `BASE_SYSTEM_PROMPT`, come nel ramo sincrono;
     2. **quale delle due guide entra.**

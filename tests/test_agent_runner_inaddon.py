@@ -107,7 +107,7 @@ class _Resp:
 def _tools_list_come_la_rotta() -> dict:
     """La risposta di `tools/list` nella forma che la rotta vera produce.
 
-    I nomi si DERIVANO da `STRUMENTI_CONOSCENZA`: un elenco scritto a
+    I nomi si DERIVANO da `KNOWLEDGE_TOOLS`: un elenco scritto a
     mano qui sarebbe il secondo catalogo, e questo finto client smetterebbe
     di somigliare alla rotta il giorno in cui il catalogo cambia."""
     return {"jsonrpc": "2.0", "id": 1,
@@ -362,7 +362,7 @@ def test_run_once_job_non_chat_invia_la_decisione_vuota_senza_chiamare_claude():
 # legge come verita': senza, la falsita' potrebbe rientrare a suite verde.
 #
 # fetta «comandare» (Task 7): di quel blocco una sola cosa e' rimasta indietro,
-# ed e' «HIRIS non agisce». Il prodotto agisce dal Task 5 (`esegui`, catalogo
+# ed e' «HIRIS non agisce». Il prodotto agisce dal Task 5 (`execute`, catalogo
 # unico) e il prompt lo dice dal Task 6. Cio' che questo test difende NON
 # cambia, e per questo il blocco non si riscrive: il ramo di DEGRADO -- quello
 # senza strumenti -- non ha davvero niente da chiamare, e li' l'assenza di
@@ -397,7 +397,7 @@ def test_il_prompt_di_sistema_del_ponte_non_promette_strumenti_ne_azioni():
     # fetta «comandare» (Task 6): questo assert era `"non agisce" in system`.
     # Il soggetto e' vivo -- in QUESTO turno non si tocca la casa -- ma la
     # formula era una proprieta' del PRODOTTO, e dal Task 5 il prodotto agisce
-    # (`esegui`). Il testo dice ora la cosa vera e piu' stretta, e il pin la
+    # (`execute`). Il testo dice ora la cosa vera e piu' stretta, e il pin la
     # segue: cambia la via d'accesso, non cio' che difende.
     assert "non puoi accendere, spegnere o chiamare un servizio" in system
     assert "non perche' HIRIS non sappia farlo" in system, (
@@ -437,7 +437,7 @@ def test_il_prompt_di_sistema_del_ponte_non_promette_strumenti_ne_azioni():
     # ── fix round 1, Important 1: la falsita' speculare era stata corretta
     # per la casa («leggere» -> «guardare adesso») e lasciata in piedi per la
     # META' MEMORIA. Il contesto che arriva al ponte contiene TUTTI i ricordi
-    # (`compose_briefing` chiama `richiama(limite=conta())`) e le sessioni
+    # (`compose_briefing` chiama `fetch(limite=conta())`) e le sessioni
     # precedenti: dire al modello che non puo' «richiamare ricordi» mentre il
     # ricordo e' scritto tre blocchi piu' sotto e' lo stesso difetto.
     assert "richiamare ricordi" not in system
@@ -473,10 +473,10 @@ def test_il_prompt_di_sistema_del_ponte_non_promette_strumenti_ne_azioni():
     assert "Salotto: luce accesa." in system
 
 
-# fetta "comandare" (Task 5, lo strumento `esegui`): questo test cade, e cade
+# fetta "comandare" (Task 5, lo strumento `execute`): questo test cade, e cade
 # per la ragione GIUSTA -- non perche' contasse quattro dove ora ce ne sono
 # cinque. Da questo commit l'argv passa `--allowedTools ... mcp__hiris__esegui`
-# (deriva da `STRUMENTI_CONOSCENZA`) mentre `_GUIDA_CON_STRUMENTI` nomina
+# (deriva da `KNOWLEDGE_TOOLS`) mentre `_GUIDE_WITH_TOOLS` nomina
 # ancora solo i quattro e per giunta dichiara «HIRIS non agisce comunque»:
 # l'invariante argv <=> prompt e' DAVVERO rotta, e questo test ha fatto
 # esattamente il suo mestiere segnalandolo.
@@ -488,13 +488,13 @@ def test_il_prompt_di_sistema_del_ponte_non_promette_strumenti_ne_azioni():
 # complessivo -- e' il motivo per cui il piano lo tiene separato.
 #
 # `strict=True` non e' un dettaglio: e' cio' che rende questo debito
-# AUTO-ESIGIBILE. Appena il Task 6 nominera' `esegui` nella guida, questo test
+# AUTO-ESIGIBILE. Appena il Task 6 nominera' `execute` nella guida, questo test
 # passera' -- e con `strict` un XPASS e' un FALLIMENTO: la suite tornera'
 # rossa finche' qualcuno non toglie questa riga. Un `xfail` non-strict
 # sarebbe stato il modo silenzioso di dimenticarsene.
 #
 # Task 6, DEBITO SALDATO: il marker e' stato tolto e il test e' un test
-# normale, verde. `_GUIDA_CON_STRUMENTI` nomina `mcp__hiris__esegui` e non
+# normale, verde. `_GUIDE_WITH_TOOLS` nomina `mcp__hiris__execute` e non
 # dichiara piu' «HIRIS non agisce comunque»; l'invariante argv <=> prompt e'
 # di nuovo intera, e questo test la sorveglia sui CINQUE nomi senza saperlo
 # (li prende da `runner.nomi_mcp()`, che deriva dal catalogo unico). Il nome
@@ -509,7 +509,7 @@ def test_col_ramo_attivo_il_prompt_afferma_gli_strumenti_prefissati():
     isolato: l'argv da' `--allowedTools mcp__hiris__*`, e questo test verifica
     che il testo del prompt nomini quegli stessi nomi. Se un giorno il nome
     del server MCP cambiasse senza che il prompt lo segua, il modello
-    leggerebbe di poter chiamare `mcp__hiris__cerca` e la CLI gli servirebbe
+    leggerebbe di poter chiamare `mcp__hiris__search` e la CLI gli servirebbe
     tutt'altro: strumenti visibili e non chiamabili, cioe' il difetto numero
     uno di questo prodotto in una forma nuova."""
     system, _user = prompts.build_chat_messages(
@@ -537,7 +537,7 @@ def test_col_ramo_attivo_il_prompt_afferma_gli_strumenti_prefissati():
     assert "STESSI strumenti" in system
     # ── fetta «comandare» (Task 6). Qui stavano `"non agisce" in system` e
     # `"per agire" not in system`: il pin di un prodotto che conosceva e non
-    # attuava. Il Task 5 ha dato `esegui` al modello, e questa e' la prima
+    # attuava. Il Task 5 ha dato `execute` al modello, e questa e' la prima
     # riga di test che DEVE cambiare di segno -- non per accomodare il codice
     # ma perche' la proprieta' difesa non esiste piu'. Al suo posto: il prompt
     # del ramo attivo non deve poter tornare a NEGARE l'azione, che sarebbe il
@@ -587,7 +587,7 @@ def test_il_prompt_del_ponte_smentisce_gli_strumenti_nominati_dalla_persona():
     # chat (`impostazioni_chat.DEFAULT_SYSTEM_PROMPT`), scritto per il percorso
     # SINCRONO -- dove gli strumenti di casa/strumenti.py esistono
     # davvero. Qui non esistono: la guida deve smentirlo esplicitamente, o il
-    # modello leggerebbe "usa `cerca`" senza alcun modo di scoprire che non c'e'.
+    # modello leggerebbe "usa `search`" senza alcun modo di scoprire che non c'e'.
     from hiris.app.impostazioni_chat import DEFAULT_SYSTEM_PROMPT
 
     # ── PIN RIBALTATO (parita' B, Task 3): il ramo esplicito e' quello di
@@ -607,8 +607,8 @@ def test_il_prompt_del_ponte_smentisce_gli_strumenti_nominati_dalla_persona():
     # L'invariante e' che LA GUIDA li nomini per negarli, quindi si asserisce
     # sul segmento della guida, non sulla concatenazione.
     # fetta "il ponte riceve il nucleo" (parita' A, Task 2): `_CHAT_TOOL_
-    # GUIDANCE` si chiama ora `_GUIDA_SENZA_STRUMENTI`, perche' le guide sono
-    # diventate DUE -- l'altra (`_GUIDA_CON_STRUMENTI`) e' scritta per la
+    # GUIDANCE` si chiama ora `_GUIDE_WITHOUT_TOOLS`, perche' le guide sono
+    # diventate DUE -- l'altra (`_GUIDE_WITH_TOOLS`) e' scritta per la
     # fetta B e non e' raggiungibile dalla produzione. Il soggetto di questo
     # test e' vivo e invariato: cambia solo la via d'accesso, quindi il test
     # si adegua invece di essere cancellato (verificato prima dell'adeguamento
@@ -621,7 +621,7 @@ def test_il_prompt_del_ponte_smentisce_gli_strumenti_nominati_dalla_persona():
 
 def test_col_ramo_attivo_la_persona_non_viene_smentita_ma_ricollegata():
     """Il gemello (parita' B, Task 3). Sul ramo con gli strumenti la persona
-    dice il VERO -- `cerca` e `guarda` esistono davvero -- e smentirla sarebbe
+    dice il VERO -- `search` e `view` esistono davvero -- e smentirla sarebbe
     la falsita' speculare, lo stesso difetto girato al contrario.
 
     Cio' che il prompt deve fare qui e' un'altra cosa: **ricollegare** i nomi
@@ -639,9 +639,9 @@ def test_col_ramo_attivo_la_persona_non_viene_smentita_ma_ricollegata():
     # la smentita del ramo di degrado non deve poter comparire qui: sarebbe
     # falsa, e la falsita' speculare e' lo stesso difetto.
     assert "quelle istruzioni non si applicano" not in guida
-    # i nomi nudi del catalogo sono tutti nominati dalla guida -- `esegui`
+    # i nomi nudi del catalogo sono tutti nominati dalla guida -- `execute`
     # compreso dalla fetta «comandare»: l'elenco si DERIVA da
-    # `STRUMENTI_CONOSCENZA`, cosi' uno strumento nuovo entra qui da solo
+    # `KNOWLEDGE_TOOLS`, cosi' uno strumento nuovo entra qui da solo
     # invece di lasciare questo test a sorvegliarne quattro su cinque.
     for voce in KNOWLEDGE_TOOLS:
         assert f"`{voce['name']}`" in guida
@@ -685,7 +685,7 @@ def test_col_ramo_attivo_la_persona_non_viene_smentita_ma_ricollegata():
 #   - con `strumenti_attivi=False` l'asserzione vecchia resta viva PAROLA PER
 #     PAROLA: e' il ramo di degrado, e deve restare onesto per sempre.
 # L'invariante che lega i due rami al prompt -- `--mcp-config` nell'argv <=>
-# `_GUIDA_CON_STRUMENTI` nel system, nei DUE VERSI -- e' pinnato in
+# `_GUIDE_WITH_TOOLS` nel system, nei DUE VERSI -- e' pinnato in
 # tests/test_strumenti_al_ponte.py, ed e' quello da non cancellare mai.
 #
 # `_normalizza` SI CONSERVA: la variante kebab-case `--allowed-tools` non

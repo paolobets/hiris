@@ -27,7 +27,7 @@ nessuno legge.
 
 La priorita' di taglio NON e' "cosa e' recuperabile": tutto qui dentro lo e',
 un ricordo tagliato incluso -- sta in SQLite e si raggiunge con
-`guarda("ricordo", id)`, esattamente come un'area o un dispositivo (una
+`view("ricordo", id)`, esattamente come un'area o un dispositivo (una
 versione precedente di questo commento affermava il contrario: era falso, e
 motivava con una bugia una scelta che una ragione vera ha comunque). La
 priorita' vera e' "cosa il modello perde la possibilita' di SAPERE che
@@ -130,7 +130,7 @@ _DOMAIN_NAMES = {
     "group": ("gruppo", "gruppi"),
     "sun": ("sole", "sole"),
     # "tag" NON e' "etichetta": in HIRIS quella parola significa gia' le label
-    # che l'utente scrive in Home Assistant (che ora escono da `guarda` e si
+    # che l'utente scrive in Home Assistant (che ora escono da `view` e si
     # cercano). Due significati per la stessa parola nella stessa risposta e'
     # esattamente cio' che la consistenza vieta.
     "tag": ("tag NFC", "tag NFC"),
@@ -188,7 +188,7 @@ _ACTIVE_STATES = {"on", "open", "unlocked", "playing", "cleaning"}
 #   - `automation`/`script`/`input_boolean`: `on` significa ABILITATA. Erano 18,
 #     ed erano riposo travestito da eccezione.
 #   - `device_tracker`/`person`: `home` e' una CONDIZIONE (un telefono a casa e'
-#     il riposo). Erano 49. Non sono esclusi dal prodotto: `guarda` e `cerca` li
+#     il riposo). Erano 49. Non sono esclusi dal prodotto: `view` e `search` li
 #     riportano quando li chiedi -- e' la differenza fra un vocabolario e un
 #     filtro, ed e' pinnata in tests/test_vocabolario_tipologie.py.
 #   - `sensor`/`number`/`weather`/`sun`: sono MISURE. Un numero non e' un evento.
@@ -359,7 +359,7 @@ def _device_annotation(area_entities: list[dict], domain: str, count: int,
     # `name_by_user or name`, ed entrambi sono nullable. Si mostra l'id
     # MARCATO come id -- la stessa convenzione di `_nome_area_visualizzato`
     # (IMPORTANT ⑦) -- perche' e' l'unica chiave con cui
-    # `guarda("dispositivo", ...)` lo ritrova, e perche' un id tecnico non va
+    # `view("dispositivo", ...)` lo ritrova, e perche' un id tecnico non va
     # mai spacciato per un nome dichiarato dall'utente.
     return f" (id: {device_id})"
 
@@ -412,7 +412,7 @@ def _count_per_domain(entity: list[dict]) -> dict[str, int]:
 
 
 # `nome_con_id` (R1, fetta "i riferimenti", incidente 2026-08-20) ora vive in
-# `anagrafe.py`: T8 (R2) la riusa per le etichette di `guarda`, e una regola
+# `anagrafe.py`: T8 (R2) la riusa per le etichette di `view`, e una regola
 # che deve valere per OGNI riferimento della casa non puo' avere due sedi --
 # scritta due volte sarebbe la stessa forma di difetto che sta chiudendo.
 
@@ -421,15 +421,15 @@ def _displayed_area_name(area: dict) -> str:
     """Il nome di un'area per il PREFISSO di "Notevole adesso"
     (`_area_di_ogni_entita`): l'id accanto solo se e' una pseudo-area
     (IMPORTANT ⑦): "Senza area", "Aree non lette" & co. non esistono
-    nell'anagrafe grezza di Home Assistant, quindi ne' `cerca()` ne'
-    `guarda('area', nome)` le trovano per nome -- solo per id
-    (`guarda('area', '__senza_area__')`). Mostrare solo il nome e' un vicolo
+    nell'anagrafe grezza di Home Assistant, quindi ne' `search()` ne'
+    `view('area', nome)` le trovano per nome -- solo per id
+    (`view('area', '__senza_area__')`). Mostrare solo il nome e' un vicolo
     cieco: le entita' che piu' meritano attenzione (orfane, non lette)
     finirebbero contate nel nucleo e irraggiungibili nel dettaglio.
 
     Le aree REALI non mostrano qui il proprio id (decisione del proprietario,
     spec "i riferimenti"): a differenza delle pseudo-aree sono comunque
-    risolvibili per nome da `cerca`/`guarda`, e ripeterlo a ogni entita'
+    risolvibili per nome da `search`/`view`, e ripeterlo a ogni entita'
     notevole costerebbe piu' di quel che rende. Per l'albero di "La casa",
     che puo' permetterselo (una riga per area, non una per entita'), vedi
     `_nome_area_per_albero`."""
@@ -442,7 +442,7 @@ def _tree_area_name(area: dict) -> str:
     """Il nome di un'area per l'albero di "La casa" (`_righe_casa`): l'id
     accanto SEMPRE che differisca dal nome, reale o pseudo che sia -- e' il
     reperto R1 dell'incidente 2026-08-20: l'albero mostrava solo nomi,
-    `guarda`/`esegui` pretendono l'id esatto e vietano di indovinarlo dal
+    `view`/`execute` pretendono l'id esatto e vietano di indovinarlo dal
     nome mostrato. A differenza di `_nome_area_visualizzato`, che alimenta
     anche il prefisso di "Notevole adesso" (dove l'id resta fuori, vedi
     li'), qui il costo e' una riga per area."""
@@ -469,7 +469,7 @@ _MEASUREMENT_NAMES = {
 def _now_line(frame: dict | None, now: float | None) -> str:
     """Che ore sono, nel fuso della casa. Vuota se nessuno l'ha detto.
 
-    Nasce da un difetto misurato sull'add-on vero il 21/08/2026: `prometti`
+    Nasce da un difetto misurato sull'add-on vero il 21/08/2026: `promise`
     ordina al modello «`quando` e' un istante ISO-8601 col fuso: risolvilo tu
     da "fra un'ora"», e il nucleo dichiarava il fuso e MAI l'ora. Alle 21:01
     il modello ha creduto fossero le 23:52 e ha fissato una promessa alle
@@ -740,7 +740,7 @@ def _highlight_lines(home_space: dict, state: dict, floors: list[dict],
         # primary UI displays»: qui vale lo stesso, perche' un digesto e' una
         # vista principale -- e' cio' che HIRIS dice senza che tu abbia chiesto.
         #
-        # NON valgono per `guarda`/`cerca`: li' hai chiesto tu, e filtrare una
+        # NON valgono per `view`/`search`: li' hai chiesto tu, e filtrare una
         # risposta esplicita sarebbe nascondere.
         if e.get("categoria"):          # "config" o "diagnostic"
             continue
@@ -796,7 +796,7 @@ def _highlight_lines(home_space: dict, state: dict, floors: list[dict],
 def _behavior_lines(behavior: list[dict]) -> list[str]:
     """I NOMI di cio' che la casa fa gia' da sola, con l'id accanto (R1,
     stessa regola di `nome_con_id` in `anagrafe.py`: fetta "i riferimenti",
-    incidente 2026-08-20) -- `guarda('automazione'/'script', ...)` pretende l'id
+    incidente 2026-08-20) -- `view('automazione'/'script', ...)` pretende l'id
     esatto, e senza di qui il modello non aveva da dove prenderlo. Il corpo
     si va a chiedere -- per trecento automazioni non ci sta, e qui serve solo
     sapere che esistono. Chi non ha il corpo lo dichiara in riga."""
@@ -1228,7 +1228,7 @@ def _memory_lines(memories: list[dict]) -> list[str]:
     # C-2 (L1-sicurezza.md): il ricordo e' l'UNICA cosa che entra intera
     # nel nucleo, a OGNI turno, senza che il modello lo richieda -- e'
     # il canale piu' pericoloso per un'iniezione che deve sopravvivere
-    # (I-1: una `ricorda()` avvenuta in un turno iniettato tornerebbe nel
+    # (I-1: una `remember()` avvenuta in un turno iniettato tornerebbe nel
     # contesto di ogni turno successivo, per sempre). Sanificato QUI,
     # dove il testo diventa parte di cio' che il modello legge sempre --
     # non nell'archivio (`memoria/archivio.py`), che resta la verita'
@@ -1240,8 +1240,8 @@ def _memory_lines(memories: list[dict]) -> list[str]:
     for r in sorted_memories:
         said_by = r.get("detto_da") or "qualcuno"
         # L'ID, che mancava. Il modulo dichiara a inizio file che un ricordo
-        # tagliato «si raggiunge con `guarda("ricordo", id)`» -- ma l'id non
-        # era stampato da nessuna porta, e `richiama` esige un'ancora che i
+        # tagliato «si raggiunge con `view("ricordo", id)`» -- ma l'id non
+        # era stampato da nessuna porta, e `fetch` esige un'ancora che i
         # ricordi come «mi piace il caffe'» non hanno. Il digesto dichiarava
         # una lacuna («12 ricordi non inclusi») e chiudeva l'unica strada per
         # colmarla.
@@ -1415,7 +1415,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     #
     # Qui, e non altrove, perche' questa sezione esiste per dire cio' che HIRIS
     # NON porta nel discorso -- ed e' l'unico posto da cui la risposta si legge
-    # senza chiamare uno strumento per ognuna delle sedici aree. `guarda` le
+    # senza chiamare uno strumento per ognuna delle sedici aree. `view` le
     # riporta gia' (filtra `disabilitata`, mai `nascosta`): la conoscenza c'era,
     # mancava il numero.
     hidden = [e for e in home_space.get("entita", [])
