@@ -7,10 +7,10 @@ import re
 
 import pytest
 
-from hiris.app.azione.costruzione import officina as officina_modulo
-from hiris.app.azione.costruzione.officina import Workshop
-from hiris.app.azione.costruzione.versioni import ConstructionStore
-from hiris.app.azione.cronaca import Journal
+from hiris.app.action.construction import workshop as officina_modulo
+from hiris.app.action.construction.revisions import ConstructionStore
+from hiris.app.action.construction.workshop import Workshop
+from hiris.app.action.journal import Journal
 
 ADESSO = 1_756_000_000.0
 
@@ -409,7 +409,7 @@ async def test_l_origine_umana_che_scavalca_il_cancello_lascia_una_traccia(banco
     modello come `pagina`, deve restarne una traccia -- non il silenzio."""
     officina, _ha, _, _ = banco
     p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
-    with caplog.at_level("INFO", logger="hiris.app.azione.costruzione.officina"):
+    with caplog.at_level("INFO", logger="hiris.app.action.construction.workshop"):
         await officina.apply(p["proposta_id"], actor="pagina", exchange=None,
                                now=ADESSO + 60)
     assert any(r.levelname == "INFO" and "pagina" in r.message.lower()
@@ -963,7 +963,7 @@ async def test_un_guasto_di_rete_logga_tipo_ed_exc_info(banco, caplog):
     ha._solleva.add("save_configuration")
 
     with caplog.at_level(logging.WARNING,
-                         logger="hiris.app.azione.costruzione.officina"):
+                         logger="hiris.app.action.construction.workshop"):
         await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
                                now=ADESSO + 60)
 
@@ -1013,7 +1013,7 @@ def test_il_troncatore_dell_officina_e_lo_stesso_oggetto_di_sanitize():
     come gia' verificato fra `ha_client` e `_sanitize`
     (test_ha_client_diagnostics.py::test_truncate_e_la_stessa_funzione_di_
     sanitize)."""
-    from hiris.app.azione.costruzione import officina as officina_modulo
+    from hiris.app.action.construction import workshop as officina_modulo
     from hiris.app.proxy import _sanitize
     assert officina_modulo._truncate is _sanitize.truncate_with_marker
 

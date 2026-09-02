@@ -99,12 +99,12 @@ memoria **da solo**, apre questioni e **propone**; non tocca la casa senza un s�
 attivi solo dopo un sì).
 
 **Dove sta oggi il prodotto in quell'impianto.** ① c'è. ② e ③ no. Dalla fetta «comandare»
-(agosto 2026) la **chat** esegue: chiede a `hiris/app/azione/porta.py`, che verifica la chiamata
+(agosto 2026) la **chat** esegue: chiede a `hiris/app/action/actuator.py`, che verifica la chiamata
 contro l'installazione, la esegue e rilegge lo stato. Non è ③ — non c'è nessun agente, nessuna
 autonomia, nessun perimetro da approvare — è la chat che fa una cosa sola quando gliela chiedi.
 **Un canale, una porta.** Per ogni canale di scrittura verso Home Assistant esiste **un unico
-modulo** che lo attraversa. Oggi sono due: i **servizi** (`azione/porta.py`, dalla fetta
-«comandare») e la **configurazione** (`azione/costruzione/officina.py`, dalla fetta «costruire»).
+modulo** che lo attraversa. Oggi sono due: i **servizi** (`action/actuator.py`, dalla fetta
+«comandare») e la **configurazione** (`azione/construction/workshop.py`, dalla fetta «costruire»).
 Sono canali diversi in tutto — rotta, verifica, «dopo» — e condividono ciò che conta: la cronaca,
 l'`origine` e la forma del rifiuto motivato, che vivono **una volta sola** e hanno la **stessa
 forma da entrambi**. Un terzo punto che scriva su Home Assistant fuori da queste due porte è un

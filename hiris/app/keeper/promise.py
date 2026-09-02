@@ -46,7 +46,7 @@ CEILING_IN_SOSPESO = 50
 # Quanto si conserva una promessa CONCLUSA (spec §8.1). Un registro che cresce
 # per sempre su una scheda SD e' un guasto rimandato. E' una politica di
 # QUESTO strato (lo Schedulatore), indipendente da quella della cronaca delle
-# esecuzioni (`azione/cronaca.py::EXECUTIONS_RETENTION_S`, nello strato
+# esecuzioni (`action/journal.py::EXECUTIONS_RETENTION_S`, nello strato
 # sotto): oggi vale lo stesso numero, 90 giorni, ma sono due fatti distinti --
 # per quanto si conserva una PROMESSA conclusa, per quanto si conserva
 # un'ESECUZIONE -- che possono divergere in futuro senza che l'uno debba

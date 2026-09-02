@@ -1,7 +1,7 @@
 """Il quinto strumento: `execute`, e il fatto che si propaghi da solo.
 
 Il punto di questo file non e' che `execute` funzioni -- il lavoro vero
-(verifica, chiamata, rilettura, registro) e' in `azione/porta.py` e ha i suoi
+(verifica, chiamata, rilettura, registro) e' in `action/actuator.py` e ha i suoi
 test. Qui si pinnano tre cose che nessun altro test copre:
 
 1. `execute` sta nel catalogo UNICO, e da li' arriva da solo a `mcp_names()`
@@ -17,7 +17,7 @@ import inspect
 
 import pytest
 
-from hiris.app.azione.porta import ActionActuator
+from hiris.app.action.actuator import ActionActuator
 from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS, ToolDispatcher
 from tests._contratti import assert_stessa_firma
 
@@ -120,7 +120,7 @@ def test_la_porta_nasce_nell_app_e_dopo_lo_specchio_dello_stato():
     `registro_servizi`, dove pero' la cache non esiste ancora: `app.get(
     "entity_cache")` avrebbe dato `None`, e una porta senza specchio rifiuta
     OGNI azione con «non vedo lo stato di questa casa» (guardia (b) di
-    `azione/porta.py`) -- per sempre, e senza che nulla sollevi. E' il tipo di
+    `action/actuator.py`) -- per sempre, e senza che nulla sollevi. E' il tipo di
     difetto che si vede solo sulla casa vera: qui lo si vede subito."""
     from hiris.app import server
 

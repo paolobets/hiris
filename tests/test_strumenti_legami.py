@@ -42,7 +42,7 @@ from tests.test_cervello_comprimari import _ClienteLegami
 
 
 class _FintaPorta:
-    """La porta vera (`azione/porta.py`) tiene il client in `_ha`: e' da li'
+    """La porta vera (`action/actuator.py`) tiene il client in `_ha`: e' da li'
     che il dispatcher lo prende finche' il suo costruttore non glielo passa."""
 
     def __init__(self, ha):

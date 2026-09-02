@@ -7,9 +7,9 @@ API (`/api/reasoning/claim` e `/api/reasoning/submit`).
 OGGI, in una riga: il ponte LEGGE la casa e la memoria, e da questa fetta puo'
 anche AGIRE su di essa -- gli strumenti sono tredici, lo stesso catalogo della
 chat sincrona (`casa/strumenti.py`): fra loro `execute` chiama un servizio di
-Home Assistant passando per la porta dei servizi (`azione/porta.py`), e
+Home Assistant passando per la porta dei servizi (`action/actuator.py`), e
 `propose`/`confirm` (fetta «costruire») passano per l'officina
-(`azione/costruzione/officina.py`) -- due canali, due porte, non piu' una
+(`azione/construction/workshop.py`) -- due canali, due porte, non piu' una
 sola. Le note che seguono sono la STORIA di come ci si e' arrivati, e sono al
 passato apposta: fino alla review
 totale della parita' B la prima di esse affermava al PRESENTE il contrario, ed
@@ -232,7 +232,7 @@ def config_mcp(base_url: str, token: str, exchange_id: str = "",
     per tale: un turno sbagliato o assente non lascia entrare nessuno che
     non ci fosse gia'. **Dalla fetta «costruire» pero' non serve piu' solo a
     contare**: e' anche l'UNICA identita' su cui la guardia dell'officina
-    (`azione/costruzione/officina.py`) rifiuta di confermare una proposta
+    (`azione/construction/workshop.py`) rifiuta di confermare una proposta
     nel turno stesso in cui e' stata creata -- consumata da
     `api/handlers_mcp.py::_call_tool`, che la ripropone al dispatcher
     invariata. Toglierla o smettere di propagarla non e' piu' un dettaglio

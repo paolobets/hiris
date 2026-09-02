@@ -324,7 +324,7 @@ def test_direzioni_bilancio_ora_compare_come_proposta(g):
     """`DIREZIONI_BILANCIO`: due pezzi, entrambi plurali/non decisi da soli
     (`direzioni` non e' `direzione`, `bilancio` e' un valore di dominio
     rinviato) -- prima di questa guardia era invisibile per intero."""
-    esito = rinomina.classifica("DIREZIONI_BILANCIO", g, "azione")
+    esito = rinomina.classifica("DIREZIONI_BILANCIO", g, "action")
     assert isinstance(esito, rinomina.Proposta)
     assert "direzioni" in esito.pezzi
 

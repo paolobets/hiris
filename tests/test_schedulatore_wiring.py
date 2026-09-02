@@ -32,9 +32,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from hiris.app import server
+from hiris.app.action.actuator import ActionActuator
+from hiris.app.action.journal import Journal
 from hiris.app.api.handlers_chat import create_tool_dispatcher
-from hiris.app.azione.cronaca import Journal
-from hiris.app.azione.porta import ActionActuator
 from hiris.app.keeper.exchange import interpreta_promise
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.keeper.sweeper import Sweeper

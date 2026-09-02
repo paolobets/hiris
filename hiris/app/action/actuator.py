@@ -11,7 +11,7 @@ le sicurezze -- i controlli si scrivono UNA volta e valgono per chiunque.
 
 **Dalla fetta «costruire» i canali sono due, e le porte anche.** Questa e' la
 porta dei SERVIZI. La configurazione -- automazioni, script, scene, helper --
-passa da `azione/costruzione/officina.py`, che e' un modulo diverso perche' e'
+passa da `azione/construction/workshop.py`, che e' un modulo diverso perche' e'
 un canale diverso: altra rotta di Home Assistant, altra verifica
 (`validate_config` invece del registro dei servizi), altro «dopo» (un `reload`
 e un'entita' che compare, non un `state_changed`). Le due porte condividono la
@@ -96,7 +96,7 @@ import logging
 import time
 
 from ..proxy.entity_cache import _to_minimal, inventory_is_readable
-from .verifica import verification
+from .verification import verification
 
 logger = logging.getLogger(__name__)
 

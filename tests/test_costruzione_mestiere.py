@@ -1,5 +1,5 @@
 """Il mestiere: quale struttura serve, e perche'. La Legge I che diventa codice."""
-from hiris.app.azione.costruzione.mestiere import consiglia
+from hiris.app.action.construction.advisor import consiglia
 
 
 def _intento(**kw):

@@ -5,6 +5,9 @@ import pytest
 import pytest_asyncio
 from aiohttp import web
 
+from hiris.app.action.construction.revisions import ConstructionStore
+from hiris.app.action.construction.workshop import Workshop
+from hiris.app.action.journal import Journal
 from hiris.app.api.handlers_constructions import (
     handle_confirm_construction,
     handle_get_construction,
@@ -12,9 +15,6 @@ from hiris.app.api.handlers_constructions import (
     handle_reject_construction,
     handle_restore_construction,
 )
-from hiris.app.azione.costruzione.officina import Workshop
-from hiris.app.azione.costruzione.versioni import ConstructionStore
-from hiris.app.azione.cronaca import Journal
 from hiris.app.server import create_app
 from tests._contratti import assert_stessa_firma
 from tests.test_costruzione_officina import FintoHA

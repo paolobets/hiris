@@ -114,7 +114,7 @@ def _fact_row(r) -> dict:
 class ObservationsStore:
     """La memoria dell'osservatore. Il lock e' lo stesso delle scritture anche
     in lettura: la connessione e' condivisa fra thread (`check_same_thread=
-    False`), ed e' il pattern gia' consolidato in `azione/cronaca.py`."""
+    False`), ed e' il pattern gia' consolidato in `action/journal.py`."""
 
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)

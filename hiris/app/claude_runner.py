@@ -229,7 +229,7 @@ BASE_IDENTITY = (
 # vera HIRIS ha spento due abat-jour -- si sono spente -- e ha risposto:
 # «nulla e' cambiato ... probabile problema di comunicazione col dispositivo.
 # Vuoi che riprovi?». Il difetto di FONTE che gli faceva vedere lo stato di
-# prima e' chiuso in `azione/porta.py`; ma la seconda meta' della frase --
+# prima e' chiuso in `action/actuator.py`; ma la seconda meta' della frase --
 # quella che ha mandato il proprietario a cercare un guasto inesistente -- e'
 # nata QUI, e sarebbe rimasta.
 #
@@ -492,7 +492,7 @@ def _max_tokens_message(text_blocks: list[str]) -> str:
 # backends/openai_compat_runner.py -- senza nessun log. Una casa sola, non
 # due costanti con parentela dichiarata (il pattern usato quando due strati
 # NON possono importare l'uno dall'altro senza invertire la gerarchia, come
-# azione/cronaca.py::CONSERVAZIONE_ESECUZIONI_S rispetto a
+# action/journal.py::CONSERVAZIONE_ESECUZIONI_S rispetto a
 # keeper/promise.py::CONSERVAZIONE_S): qui la gerarchia va gia' in un
 # verso solo -- backends/openai_compat_runner.py importa GIA' da questo
 # modulo (_TRUNCATION_NOTICE, RESTRICT_PROMPT, COMPACT_PROMPT, MINIMAL_

@@ -164,7 +164,7 @@ risparmiare tempo.
 | 2 | `consumi/` | 3 file, 462 righe | **il più piccolo: prova lo strumento da capo a fondo** |
 | 3 | `keeper/` + `memory/` | 10 file, 2.083 righe | → **rilascio** |
 | 4 | `mind/` | 5 file, 1.624 righe | |
-| 5 | `azione/` | 10 file, 3.052 righe | |
+| 5 | `action/` | 10 file, 3.052 righe | |
 | 6 | `casa/` | 9 file, 7.368 righe | il più grande fra i sottosistemi |
 | 7 | i moduli alla radice, `server.py`, il frontend JS | 3.818 righe di solo `server.py` (elenco sotto) | → **rilascio** |
 | 8 | le 14 rotte HTTP e i campi JSON, col frontend che le chiama | 14 rotte | un commit solo, le due sponde insieme |

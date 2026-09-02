@@ -54,7 +54,7 @@ consequences worth knowing before you install it:
   claimed otherwise, and the claim was resting on an accident.
 
 Action came back deliberately, and through **one door only**
-(`hiris/app/azione/porta.py`): every call is verified against *your*
+(`hiris/app/action/actuator.py`): every call is verified against *your*
 installation before it is sent — the service has to exist, the entity has to
 exist, the parameters have to belong to that service — and the state is read
 back afterwards, so the chat tells you what actually happened rather than what
@@ -202,9 +202,9 @@ The chat is the only surface. The model gets the nucleo plus exactly thirteen to
 | `logbook` | what happened in the house in a time window, and — where the logbook says so — who did it; HIRIS recognizes its own acts by matching against its own history and reports that match as *probable*, never certain |
 
 Two of the thirteen write to Home Assistant the moment they are called. `execute` does it
-immediately, through the services door (`azione/porta.py`), with no confirmation step — verified
+immediately, through the services door (`action/actuator.py`), with no confirmation step — verified
 against your installation, not approved by you first. `confirm` does it through the configuration
-door (`azione/costruzione/officina.py`), applying a proposal `propose` already composed and
+door (`azione/construction/workshop.py`), applying a proposal `propose` already composed and
 validated, and only in a turn after the one where you saw the preview. A third, `promise`, does
 not touch the house when it is called — a `fai` promise only verifies and stores a service call —
 but it *will*, through the same services door, once the time you named arrives: see

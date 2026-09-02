@@ -34,7 +34,7 @@ parecchi domini core -- faceva rifiutare un parametro legittimo offrendo
 ①). A differenza di `fields`, che va appiattito per essere letto,
 `_detail()` lo lascia esattamente come Home Assistant lo manda -- spreads
 `**grezzo`, quindi la chiave sopravvive intera, `None` compreso -- perche' qui
-serve il dato grezzo, non una sua interpretazione: e' `azione/verifica.py` a
+serve il dato grezzo, non una sua interpretazione: e' `action/verification.py` a
 decidere cosa significhi «un servizio senza `target`» (vedi
 `verifica._declare_target`), non questo modulo. `servizio("light", "turn_on") ==
 {"target": {}}` (con) e `servizio("light", "toggle") == {}` (senza -- la chiave non

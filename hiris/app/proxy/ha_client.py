@@ -227,7 +227,7 @@ def _translate_statistics(raw: dict) -> dict[str, list[dict]]:
 #
 # Era stata scartata di proposito, e l'argomento era serio -- «una seconda
 # forma non misurata della stessa risposta», della stessa specie dei due
-# difetti di `fields` in `azione/registro.py`. L'argomento non e' stato
+# difetti di `fields` in `action/registry.py`. L'argomento non e' stato
 # ignorato: e' stato applicato. Questa e' la forma non misurata **trattata
 # come tale**, cioe' esattamente come `registro.py` tratta `fields`:
 #
@@ -251,7 +251,7 @@ def _translate_statistics(raw: dict) -> dict[str, list[dict]]:
 # davvero: «la risposta di Home Assistant e' list, 0 voci utilizzabili, chiavi
 # della prima: None». La forma e' quella attesa -- una lista -- ma su quella
 # casa e' VUOTA anche a comando riuscito. Il lettore qui sotto e' corretto e
-# non cambia; cio' che e' cambiato e' chi ci si appoggia: `azione/porta.py`
+# non cambia; cio' che e' cambiato e' chi ci si appoggia: `action/actuator.py`
 # non fonda piu' l'esito su questo ritorno da solo, e aspetta l'annuncio degli
 # eventi con una scadenza.
 _changed_form_declared = False
@@ -371,7 +371,7 @@ class HAClient:
         stato tolto: descriveva un fatto che non e' piu' vero.
 
         **Non chiamarla direttamente.** L'unico chiamante di produzione e'
-        `azione/porta.py`, che verifica prima e legge il suo ritorno. Questa
+        `action/actuator.py`, che verifica prima e legge il suo ritorno. Questa
         funzione non verifica NIENTE: se le si passa un servizio inesistente,
         la richiesta parte e Home Assistant risponde 400. E' voluto -- la
         verifica e' un pezzo separato e testabile senza rete, e questa e' la
@@ -391,7 +391,7 @@ class HAClient:
         Cio' che nessuna delle due misure sincrone sa dire lo dicono gli
         **eventi**: `add_state_listener` (sotto) e' il rubinetto da cui la
         porta aspetta l'annuncio delle entita' che ha comandato, con una
-        scadenza (`azione/porta.py`). Lo specchio interno (`EntityCache`) e'
+        scadenza (`action/actuator.py`). Lo specchio interno (`EntityCache`) e'
         alimentato dagli stessi eventi, quindi rileggerlo nella riga dopo
         questa `await` legge quasi sempre lo stato di PRIMA: non e' una fonte
         del «dopo», e' l'ultimo valore noto.
@@ -451,7 +451,7 @@ class HAClient:
 
     # Punto 6 (residuo, ondata finale punto 1): queste tre primitive sollevano
     # quello che rompe il trasporto -- non catturano niente da sole. Il loro
-    # UNICO chiamante (`azione/costruzione/officina.py::Workshop._rete`) le
+    # UNICO chiamante (`azione/construction/workshop.py::Workshop._rete`) le
     # avvolge apposta: quella guardia e' cio' che trasforma un guasto di rete
     # in `{"errore": ..., "guasto_rete": True}` invece di lasciarlo risalire
     # come eccezione fuori dall'officina. Chi aggiunge un chiamante nuovo a
@@ -485,7 +485,7 @@ class HAClient:
         """Scrive un oggetto di configurazione. La primitiva che COSTRUISCE.
 
         **Non chiamarla direttamente.** L'unico chiamante di produzione e'
-        `azione/costruzione/officina.py`, che compone il corpo dai parametri,
+        `azione/construction/workshop.py`, che compone il corpo dai parametri,
         lo valida, archivia il «prima» e rilegge dopo.
 
         **Non solleva sul rifiuto**, ed e' la differenza voluta con
@@ -1727,7 +1727,7 @@ class HAClient:
         Due tipi di ascoltatori, e la differenza conta per chi si aggiunge:
         quelli PERMANENTI si registrano all'avvio e restano (lo specchio);
         quelli EFFIMERI vivono una sola operazione e devono togliersi con
-        `remove_state_listener` (`azione/porta.py`, che aspetta l'annuncio
+        `remove_state_listener` (`action/actuator.py`, che aspetta l'annuncio
         delle entita' che ha appena comandato). Un effimero che non si toglie
         e' una perdita silenziosa: la lista cresce a ogni comando, e ogni
         evento della casa la percorre tutta.

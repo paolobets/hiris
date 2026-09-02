@@ -234,7 +234,7 @@ def parse_upstream_rate_limit(exc: Any) -> str | None:
             # il modello dell'utente era `mistralai/mistral-large`, a
             # pagamento, e questa riga gli diceva che era un `:free`,
             # mandandolo a cercare un problema che non aveva. E' lo stesso
-            # difetto della diagnosi inventata di `azione/porta.py` («probabile
+            # difetto della diagnosi inventata di `action/actuator.py` («probabile
             # problema di comunicazione col dispositivo»), che gli fece cercare
             # un guasto inesistente: una frase che afferma piu' del misurato.
             #

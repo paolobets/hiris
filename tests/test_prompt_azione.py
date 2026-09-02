@@ -186,7 +186,7 @@ def test_entrambi_i_percorsi_chiedono_di_raccontare_cosa_e_successo():
 # danno peggiore. HIRIS spegne due abat-jour -- si spengono -- e risponde:
 # «nulla e' cambiato ... probabile problema di comunicazione col dispositivo.
 # Vuoi che riprovi?». La prima meta' della frase e' un difetto di FONTE, chiuso
-# in `azione/porta.py`. La seconda e' nata QUI: il prompt diceva al modello,
+# in `action/actuator.py`. La seconda e' nata QUI: il prompt diceva al modello,
 # con autorita', che «nulla e' cambiato IN CASA» -- un'affermazione sulla casa
 # ricavata da un dato che parla solo di cio' che HIRIS ha potuto vedere. A un
 # modello a cui si dice che l'utente ha chiesto di spegnere e in casa non e'
@@ -317,7 +317,7 @@ def test_la_guida_senza_strumenti_continua_a_dire_cio_che_in_quel_turno_manca():
 # fetta «comandare» (Task 7). Il Task 6 ha chiuso il suo lavoro dichiarando
 # questo buco (§9.3 del suo rapporto): il prompt promette al modello quattro
 # CHIAVI -- `prima`, `dopo`, `cambiato`, `avviso` -- e quelle chiavi le
-# produce `azione/porta.py`. Le due cose non erano legate da niente. Se domani
+# produce `action/actuator.py`. Le due cose non erano legate da niente. Se domani
 # la porta rinominasse `cambiato`, il prompt continuerebbe a nominarlo, il
 # modello riceverebbe un dizionario senza quel campo e racconterebbe cio' che
 # e' stato CHIESTO invece di cio' che e' successo -- **in silenzio**, con la
@@ -356,9 +356,9 @@ async def _chiavi_prodotte_dalla_porta(monkeypatch) -> set:
     accorciarla, questa guardia sul prompt pagherebbe due secondi per contare
     delle chiavi. Il valore vero e' pinnato da `tests/test_azione_porta.py`.
     """
-    from hiris.app.azione import porta as porta_modulo
-    from hiris.app.azione.porta import ActionActuator
-    from hiris.app.azione.registro import ServiceRegistry
+    from hiris.app.action import actuator as porta_modulo
+    from hiris.app.action.actuator import ActionActuator
+    from hiris.app.action.registry import ServiceRegistry
     from tests.test_azione_porta import (
         ANNUNCIA_IL_SALOTTO_SPENTO,
         SALOTTO_ACCESO,
@@ -404,7 +404,7 @@ async def test_le_chiavi_che_il_prompt_promette_esistono_davvero_nell_esito(monk
                 continue  # il prompt non la promette: niente da garantire
             assert chiave in prodotte, (
                 f"il prompt del percorso {percorso} promette al modello il "
-                f"campo `{chiave}`, ma `azione/porta.py` non lo produce (ne' "
+                f"campo `{chiave}`, ma `action/actuator.py` non lo produce (ne' "
                 f"sul giro che cambia stato ne' su quello che non cambia "
                 f"niente). Il modello leggerebbe di un campo che non riceve: "
                 f"o il prompt nomina una chiave vecchia, o la porta l'ha "

@@ -41,10 +41,10 @@ la preparazione sta in un helper `await`ato.
 """
 import pytest
 
-from hiris.app.azione import porta as porta_modulo
-from hiris.app.azione.porta import ActionActuator
-from hiris.app.azione.registro import ServiceRegistry
-from hiris.app.azione.verifica import TARGETS, translate_target, verification
+from hiris.app.action import actuator as porta_modulo
+from hiris.app.action.actuator import ActionActuator
+from hiris.app.action.registry import ServiceRegistry
+from hiris.app.action.verification import TARGETS, translate_target, verification
 from hiris.app.proxy.ha_client import HAClient
 
 # Come in `test_azione_porta.py`: cio' che si misura qui non e' la DURATA

@@ -212,9 +212,9 @@ def test_config_yaml_no_direct_port():
 # executes. So the capability this section used to gate is reachable again,
 # by a different road and with no gate: that is the deliberate decision of
 # this fetta (capability first, safeguards as a designed phase). What replaces
-# the gate today is verification, not authorisation -- `azione/verifica.py`
+# the gate today is verification, not authorisation -- `action/verification.py`
 # checks the service, the entity and the parameters against THIS installation,
-# and `azione/porta.py` reads the state back. The gating logic these deleted
+# and `action/actuator.py` reads the state back. The gating logic these deleted
 # tests covered is still gone, and is not coming back in this form.
 
 # ---------------------------------------------------------------------------

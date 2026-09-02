@@ -3,7 +3,7 @@
    Il posto dove il proprietario approva o rifiuta cio' che HIRIS propone di
    scrivere in Home Assistant, legge il confronto prima/dopo, e rimette
    com'era un oggetto. Senza questa pagina l'archivio delle versioni
-   (`hiris/app/azione/costruzione/versioni.py`) sarebbe uno stato che solo un
+   (`hiris/app/action/construction/revisions.py`) sarebbe uno stato che solo un
    curl puo' vedere -- la fondamenta 4 violata.
 
    Guida di disegno: `.superpowers/sdd/2026-08-23-costruire/

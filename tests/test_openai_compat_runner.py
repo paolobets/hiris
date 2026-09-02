@@ -1154,7 +1154,7 @@ def test_il_rate_limit_senza_nome_NON_inventa_che_il_modello_e_gratuito():
     Il ramo esiste per il caso in cui il provider dice «rate-limited upstream»
     senza nominare il modello. Non sapendo QUALE sia, non puo' nemmeno sapere
     che sia gratuito -- e affermarlo manda a cercare un problema che non c'e',
-    esattamente come la diagnosi inventata di `azione/porta.py` mando' il
+    esattamente come la diagnosi inventata di `action/actuator.py` mando' il
     proprietario a cercare un guasto di comunicazione inesistente."""
     from hiris.app.backends.openai_compat_runner import parse_upstream_rate_limit
 

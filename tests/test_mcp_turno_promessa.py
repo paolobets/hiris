@@ -22,7 +22,7 @@ import pytest
 import pytest_asyncio
 
 from hiris.app import server
-from hiris.app.azione.porta import ActionActuator
+from hiris.app.action.actuator import ActionActuator
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.keeper.sweeper import Sweeper

@@ -12,7 +12,7 @@ paga piu' caro di ogni altro.
 """
 import pytest
 
-from hiris.app.azione.cronaca import Journal
+from hiris.app.action.journal import Journal
 from hiris.app.casa.tempo import logbook
 from hiris.app.proxy.ha_client import HAClient
 from tests._contratti import assert_stessa_firma

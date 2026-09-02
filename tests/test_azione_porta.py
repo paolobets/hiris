@@ -47,9 +47,9 @@ import time
 
 import pytest
 
-from hiris.app.azione import porta as porta_modulo
-from hiris.app.azione.porta import ActionActuator
-from hiris.app.azione.registro import ServiceRegistry
+from hiris.app.action import actuator as porta_modulo
+from hiris.app.action.actuator import ActionActuator
+from hiris.app.action.registry import ServiceRegistry
 from hiris.app.proxy.entity_cache import _to_minimal
 
 # La scadenza vera e' 2 secondi, e il perche' sta scritto accanto alla
@@ -71,7 +71,7 @@ def _scadenza_corta(monkeypatch):
 RISPOSTA_HA = [
     # `target`, scritto a mano nella forma plausibile di /api/services (NON
     # misurato su un'installazione vera -- vedi la nota sopra
-    # `_DOMINI_UNIVERSALI` in `azione/verifica.py`): senza, dopo la review
+    # `_DOMINI_UNIVERSALI` in `action/verification.py`): senza, dopo la review
     # finale (rilievo CRITICO ①) questi due servizi smetterebbero di
     # richiedere un bersaglio, e i test di questo file che chiamano
     # SPEGNI_IL_SALOTTO smetterebbero di provare cio' che dicono di provare.
@@ -547,7 +547,7 @@ def test_gli_attributi_confrontati_sono_quelli_che_lo_specchio_tiene():
     «non e' cambiato niente». Qui l'impronta si costruisce sulla voce che
     produce il codice VERO dell'inventario.
     """
-    from hiris.app.azione.porta import _fingerprint
+    from hiris.app.action.actuator import _fingerprint
     from hiris.app.proxy.entity_cache import _to_minimal
 
     voce = _to_minimal({"entity_id": "climate.salotto", "state": "heat",
@@ -1038,7 +1038,7 @@ async def test_la_porta_registra_in_cronaca_e_restituisce_l_identificatore(tmp_p
     """L'esito riuscito deve poter essere CHIESTO, non solo loggato (fondamenta n.4)."""
     import os
 
-    from hiris.app.azione.cronaca import Journal
+    from hiris.app.action.journal import Journal
 
     cronaca = Journal(os.path.join(str(tmp_path), "azioni.db"))
     try:
@@ -1072,7 +1072,7 @@ async def test_un_fallimento_di_home_assistant_scrive_comunque_in_cronaca(tmp_pa
     rifiuto della verifica, provato subito sotto)."""
     import os
 
-    from hiris.app.azione.cronaca import Journal
+    from hiris.app.action.journal import Journal
 
     class ClientCheRompe(FintoClient):
         async def call_service(self, domain, service, data):
@@ -1113,7 +1113,7 @@ async def test_un_rifiuto_della_verifica_non_finisce_in_cronaca(tmp_path):
     import os
     import sqlite3
 
-    from hiris.app.azione.cronaca import Journal
+    from hiris.app.action.journal import Journal
 
     db_path = os.path.join(str(tmp_path), "azioni.db")
     cronaca = Journal(db_path)
@@ -1148,7 +1148,7 @@ def test_la_scadenza_e_dichiarata_finita_e_una_sola():
     """
     import inspect
 
-    from hiris.app.azione import porta as modulo_vero
+    from hiris.app.action import actuator as modulo_vero
 
     sorgente = inspect.getsource(modulo_vero)
     assert "STATE_WAIT_S = 2.0" in sorgente, (
@@ -1274,7 +1274,7 @@ async def test_una_notifica_riuscita_finisce_in_cronaca_con_entita_vuote(tmp_pat
     essere CHIESTA come ogni altra, con `entita` onestamente vuote."""
     import os
 
-    from hiris.app.azione.cronaca import Journal
+    from hiris.app.action.journal import Journal
 
     cronaca = Journal(os.path.join(str(tmp_path), "azioni.db"))
     try:

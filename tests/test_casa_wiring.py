@@ -231,7 +231,7 @@ async def test_lovelace_updated_raggiunge_solo_l_ascoltatore_delle_plance():
 # --- I servizi si rinfrescano su EVENTO, non a scadenza --------------------
 #
 # `ServiceRegistry` si ricarica solo se ha piu' di 300 secondi
-# (`azione/registro.py`). Conseguenza misurata da una review: per cinque minuti
+# (`action/registry.py`). Conseguenza misurata da una review: per cinque minuti
 # dopo aver installato un'integrazione, HIRIS rifiuta i suoi servizi dicendo
 # «non esiste in questa casa» -- una frase FALSA detta con sicurezza, che e'
 # peggio di un «non lo so».
@@ -277,7 +277,7 @@ async def test_gli_eventi_dei_servizi_raggiungono_il_loro_ascoltatore():
 async def test_invalidare_il_registro_lo_fa_ricaricare_prima_della_scadenza():
     """Il cuore della fetta. Senza `invalidate()`, `ensure_fresh` guarda solo
     l'eta' e torna subito: l'evento non servirebbe a niente."""
-    from hiris.app.azione.registro import ServiceRegistry
+    from hiris.app.action.registry import ServiceRegistry
 
     class _Ha:
         def __init__(self):
@@ -308,7 +308,7 @@ def test_invalidare_non_svuota_cio_che_si_sapeva():
     fra l'evento e la rilettura HIRIS non potrebbe verificare NIENTE -- e un
     registro assente e' peggio di uno vecchio (e' la ragione scritta in
     `ensure_fresh`)."""
-    from hiris.app.azione.registro import ServiceRegistry
+    from hiris.app.action.registry import ServiceRegistry
 
     r = ServiceRegistry()
     r._per_domain = {"light": {"turn_on": {}}}

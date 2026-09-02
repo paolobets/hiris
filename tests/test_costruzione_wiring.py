@@ -60,7 +60,7 @@ def test_le_costruzioni_rimaste_in_corso_si_risanano_all_avvio(tmp_path):
     **Questo test prova la CHIAMATA, non la sua presenza nel sorgente, e la
     ragione e' un difetto vissuto.** La versione precedente diceva
     `assert 'app["costruzioni"].risana(' in sorgente` -- e una parola chiave
-    SBAGLIATA la soddisfaceva uguale. Il 29/08 la conversione di `azione/` ha
+    SBAGLIATA la soddisfaceva uguale. Il 29/08 la conversione di `action/` ha
     rinominato il parametro nella `def` (`adesso -> now`) e ha lasciato indietro
     il chiamante: `risana(adesso=...)` contro `def risana(*, now)`. **Il
     `try/except Exception` che avvolge la riga inghiottiva il `TypeError` in un
@@ -79,7 +79,7 @@ def test_le_costruzioni_rimaste_in_corso_si_risanano_all_avvio(tmp_path):
     """
     import time as _time
 
-    from hiris.app.azione.costruzione.versioni import ConstructionStore
+    from hiris.app.action.construction.revisions import ConstructionStore
 
     archivio = ConstructionStore(str(tmp_path / "costruzioni.db"))
     try:

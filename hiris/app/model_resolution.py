@@ -342,7 +342,7 @@ def downgrade_note(*, reason: str, who_answered: str) -> str:
     """La riga che dichiara un ripiego dal piano a forfait alla catena.
 
     E' un FATTO su cio' che HIRIS ha potuto vedere, mai un'ipotesi sulla causa:
-    la stessa regola scritta in `azione/porta.py` per gli avvisi di `esegui`, e
+    la stessa regola scritta in `action/actuator.py` per gli avvisi di `esegui`, e
     per lo stesso motivo -- la' una frase che affermava piu' del misurato
     («nessuno stato e' cambiato») produsse sulla casa vera una diagnosi
     inventata («probabile problema di comunicazione col dispositivo») che mando'

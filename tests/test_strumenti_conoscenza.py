@@ -98,7 +98,7 @@ def test_il_catalogo_e_questo_e_le_due_strade_che_scrivono_su_home_assistant():
 
     Da 34 a 4, poi 5, poi 6, poi 9, poi 11, e ora 13. `execute` resta l'unico che
     scrive un SERVIZIO in Home Assistant SUBITO -- e non lo fa da se': chiede
-    alla porta unica (`azione/porta.py`), che verifica prima e rilegge dopo.
+    alla porta unica (`action/actuator.py`), che verifica prima e rilegge dopo.
     E' la differenza con i trentaquattro usciti, dove ciascuno attuava per
     conto proprio.
 
@@ -117,7 +117,7 @@ def test_il_catalogo_e_questo_e_le_due_strade_che_scrivono_su_home_assistant():
     Due -- `propose`, `confirm` (fetta «costruire», Task 9) -- sono la
     SECONDA strada che scrive su Home Assistant, e scrivono CONFIGURAZIONE
     (un'automazione, uno script, una scena), non un servizio: passano per
-    l'officina (`azione/costruzione/officina.py`), sorella della porta e non
+    l'officina (`azione/construction/workshop.py`), sorella della porta e non
     sua sostituta. `propose` non scrive neanche lui -- compone e fa
     validare, come `promise` verifica senza eseguire -- e' `confirm`, in un
     turno diverso, a far scrivere davvero.

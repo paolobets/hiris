@@ -5,7 +5,7 @@ from typing import ClassVar
 
 import pytest
 
-from hiris.app.azione.registro import ServiceRegistry
+from hiris.app.action.registry import ServiceRegistry
 from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.proxy.entity_cache import _to_minimal
@@ -107,7 +107,7 @@ async def test_un_fai_con_un_servizio_inesistente_e_rifiutato_SUBITO(promesse):
 
     Fix review Task 6, Rilievo 1: prima asseriva solo `"errore" in esito`, e
     passava anche se `verification()` fosse ESPLOSA (il doppio del registro non
-    aveva `services_for`, che `azione/verifica.py` chiama proprio nel ramo «il
+    aveva `services_for`, che `action/verification.py` chiama proprio nel ramo «il
     servizio non esiste» -- vedi `_RegistroFinto` sotto) invece di rifiutare
     col motivo vero. Ora si asserisce il CONTENUTO del messaggio: deve nominare
     il servizio inventato e i servizi che esistono davvero, che e' possibile
@@ -136,7 +136,7 @@ async def test_un_fai_senza_registro_e_rifiutato_non_verificato_in_silenzio(prom
     fix), OGGI ogni `fai` nascerebbe senza che il suo servizio sia mai stato
     verificato -- e `PROMISE_TOOL_DEF` dichiara al modello, senza
     condizioni, «viene VERIFICATA adesso». Stessa guardia di
-    `azione/porta.py::_MUTE_REGISTRY`, spostata al momento della promessa.
+    `action/actuator.py::_MUTE_REGISTRY`, spostata al momento della promessa.
     """
     d = _dispatcher(promesse)  # nessun registro, nessuna cache
     esito = await d.dispatch("promise", {
@@ -159,12 +159,12 @@ async def test_un_fai_con_registro_presente_ma_mai_caricato_e_rifiutato_come_sen
     `verification()`, che avrebbe rifiutato con «il dominio "light" non esiste in
     questa casa. Domini disponibili: .» -- una frase FALSA detta con
     sicurezza (la casa non e' vuota, e' il registro che non e' stato letto),
-    esattamente cio' da cui mette in guardia `azione/porta.py::_MUTE_REGISTRY`.
+    esattamente cio' da cui mette in guardia `action/actuator.py::_MUTE_REGISTRY`.
     """
     # `cache=_CacheFinta()`: senza uno specchio dello stato leggibile
     # `_verify_now` si ferma prima (`_state_readings()` -> `None` -> nessun
     # rifiuto), e il test non arriverebbe mai al ramo che questa guardia
-    # esiste per chiudere -- vedi `verification()` in `azione/verifica.py`.
+    # esiste per chiudere -- vedi `verification()` in `action/verification.py`.
     d = _dispatcher(promesse, registry=_RegistroVuoto(), cache=_CacheFinta())
     esito = await d.dispatch("promise", {
         "specie": "fai", "frase": "alle 17 accendi lo studio",
@@ -264,7 +264,7 @@ def test_un_recapito_con_registro_presente_ma_mai_caricato_e_rifiutato_come_non_
 async def test_prometti_scalda_il_registro_vuoto_se_il_canale_ha_c_e(promesse):
     """Il difetto misurato dal vivo su 3.9.1: un add-on appena avviato ha un
     registro PRESENTE ma mai caricato (si carica pigramente alla prima
-    azione ESEGUITA, `azione/porta.py::ActionActuator.execute`) -- e prima di questo
+    azione ESEGUITA, `action/actuator.py::ActionActuator.execute`) -- e prima di questo
     fix `_promise` interrogava `_registry_not_ready()` senza mai scaldare
     il registro. L'utente aveva appena chiesto di leggere le otto
     temperature (riuscito: quella lettura passa da un'altra strada, non dal
@@ -417,12 +417,12 @@ async def test_un_quando_illeggibile_e_un_rifiuto_leggibile(promesse):
 
 
 class _RegistroFinto:
-    """Il doppio del registro dei servizi (`azione/registro.py::ServiceRegistry`).
+    """Il doppio del registro dei servizi (`action/registry.py::ServiceRegistry`).
 
     Fix review Task 6, Rilievo 1: espone SOLO i metodi che il percorso
     esercitato da questo file legge davvero -- `domains()` e `service()`
     (chiamati da `_verify_now`/`_verify_recipient`), e `services_for()`, che
-    `azione/verifica.py` chiama nel ramo «il servizio non esiste» per
+    `action/verification.py` chiama nel ramo «il servizio non esiste» per
     elencare quelli veri. Senza `services_for()` quel ramo faceva sollevare
     `AttributeError`, catturato solo dalla rete di sicurezza generica di
     `dispatch()`: il test bandiera passava lo stesso (`"errore" in esito`
@@ -432,7 +432,7 @@ class _RegistroFinto:
     davvero.
 
     `vuoto()` e `ensure_fresh()` (della classe vera, usati da
-    `azione/porta.py` prima di eseguire) sono usciti da qui apposta: nessun
+    `action/actuator.py` prima di eseguire) sono usciti da qui apposta: nessun
     gestore di `ToolDispatcher` li chiama, e tenerli avrebbe continuato
     a dare l'illusione di un doppio completo senza che nulla li provasse.
     """
@@ -529,7 +529,7 @@ class _CacheFinta:
     `loaded` guida `inventory_is_readable` (`proxy/entity_cache.py`); il
     metodo che porta gli stati e' `all_states()`, non `get_all()` -- e'
     quello vero di `EntityCache`, lo stesso che legge sia
-    `ToolDispatcher._specchio` sia `azione/porta.py::Porta._stati`.
+    `ToolDispatcher._specchio` sia `action/actuator.py::Porta._stati`.
     Un doppio con `get_all()` non avrebbe mai potuto produrre il difetto che
     il test del passo 7 chiede di provare: `_state_readings()` avrebbe sempre
     ricevuto una cache "senza `all_states`" e il test sarebbe passato anche

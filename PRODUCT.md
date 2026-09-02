@@ -46,7 +46,7 @@
 >
 > Era vero il 10 agosto. Con la fetta **«comandare»** l'azione è rientrata: gli strumenti della
 > chat sono **cinque**, e il quinto (`esegui`) chiama i servizi di Home Assistant passando da un
-> unico punto che verifica prima e rilegge lo stato dopo (`hiris/app/azione/porta.py`). Ciò che
+> unico punto che verifica prima e rilegge lo stato dopo (`hiris/app/action/actuator.py`). Ciò che
 > resta vero, e che separa questa 2.0 dal prodotto descritto nel corpo del documento, è il resto:
 > nessuna autonomia — ogni esecuzione nasce da una frase in chat — e nessun semaforo, che non è
 > tornato con lei. Per cosa il prodotto fa davvero oggi, il `README.md`.
@@ -59,10 +59,10 @@
 >
 > Era vero il 12 agosto. Da allora il catalogo è cresciuto per tappe, e dalla fetta **«costruire»**
 > gli strumenti della chat sono **undici** (`hiris/app/casa/strumenti.py`). `esegui` continua a
-> chiamare i servizi passando dalla stessa porta di allora (`hiris/app/azione/porta.py`);
+> chiamare i servizi passando dalla stessa porta di allora (`hiris/app/action/actuator.py`);
 > `costruisci` e `conferma`, in coppia, scrivono **configurazione** — automazioni, script, scene —
 > passando da un secondo canale che verifica e rilegge come il primo ma non lo sostituisce, l'officina
-> (`hiris/app/azione/costruzione/officina.py`). Questo tocca anche il blocco del 4 agosto qui
+> (`hiris/app/action/construction/workshop.py`). Questo tocca anche il blocco del 4 agosto qui
 > sotto: dove dice che la 2.0 pubblicata «non costruisce né oggetti HA né agenti», la prima metà
 > ha smesso di essere vera — HIRIS costruisce oggetti Home Assistant dalla fetta «costruire»; resta
 > vero che non costruisce agenti. Per cosa il prodotto fa davvero oggi, il `README.md`.
@@ -78,7 +78,7 @@
 > sempre da Home Assistant, senza un archivio proprio: come è andato un valore nel tempo (una
 > temperatura, un consumo), e cosa è successo in casa e per mano di chi, quando si può dirlo. Ciò
 > che resta vero è il resto del blocco del 23 agosto qui sopra: due canali di scrittura
-> (`hiris/app/azione/porta.py` per i servizi, `hiris/app/azione/costruzione/officina.py` per la
+> (`hiris/app/action/actuator.py` per i servizi, `hiris/app/action/construction/workshop.py` per la
 > configurazione), nessuna autonomia, nessun semaforo. Per cosa il prodotto fa davvero oggi, il
 > `README.md`.
 

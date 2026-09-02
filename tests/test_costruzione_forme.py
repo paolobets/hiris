@@ -1,5 +1,5 @@
 """Le forme: si compongono dai PARAMETRI, mai inoltrando lo YAML del modello."""
-from hiris.app.azione.costruzione.composer import (
+from hiris.app.action.construction.composer import (
     available_slug,
     compose_automation,
     compose_scene,

@@ -194,7 +194,7 @@ def _validate_ancore(ancore, lookup, tipi_non_verificabili: frozenset[str],
             # R5: si scarta comunque (il ricordo si salva, il testo resta
             # la verita' -- decisione del proprietario), ma il problema deve
             # INSEGNARE la correzione, non solo dichiarare lo scarto: stesso
-            # pattern gia' in `azione/verifica.py::_no` per un bersaglio non
+            # pattern gia' in `action/verification.py::_no` per un bersaglio non
             # risolto («Usa "cerca" per trovare il nome giusto e ripeti il
             # comando»), esteso qui a `remember`.
             problemi.append(

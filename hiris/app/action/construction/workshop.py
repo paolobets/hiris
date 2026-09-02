@@ -1,6 +1,6 @@
 """L'unico punto del prodotto che scrive CONFIGURAZIONE su Home Assistant.
 
-E' la sorella di `azione/porta.py`, e insieme a lei realizza l'invariante
+E' la sorella di `action/actuator.py`, e insieme a lei realizza l'invariante
 riformulato dalla spec (§2.1): **un canale, una porta**. Quella esegue
 servizi; questa scrive automazioni, script, scene e helper. I due canali sono
 diversi in tutto -- rotta, verifica, «dopo» -- e condividono cio' che conta:
@@ -39,7 +39,7 @@ import logging
 from ...casa.tempo import home_space_zone
 from ...proxy._sanitize import truncate_with_marker as _truncate
 from . import composer
-from .mestiere import consiglia
+from .advisor import consiglia
 
 logger = logging.getLogger(__name__)
 

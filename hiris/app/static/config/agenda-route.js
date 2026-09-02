@@ -51,10 +51,10 @@
    all'apertura). Il bottone e' un `<button>` semplice: raggiungibile da
    tastiera e con il focus visibile del browser di serie, stessa disciplina
    del bottone «Disdici» qui sotto -- nessun sistema nuovo. Un 404 (riga
-   potata dopo 90 giorni, `azione/cronaca.py::EXECUTIONS_RETENTION_S`) si
+   potata dopo 90 giorni, `action/journal.py::EXECUTIONS_RETENTION_S`) si
    dichiara onestamente dentro il pannello; un guasto di rete passa dalla
    riga di stato di pagina (`setStatus`), come ogni altro guasto di rete qui.
-   L'`avviso` della porta (`azione/porta.py`) non si appiattisce MAI in
+   L'`avviso` della porta (`action/actuator.py`) non si appiattisce MAI in
    «niente e' cambiato»: e' un fatto dichiarato su cio' che HIRIS ha potuto
    vedere, e si mostra verbatim. */
 window.HirisAgendaRoute = (function () {
@@ -166,7 +166,7 @@ window.HirisAgendaRoute = (function () {
   /* Il contenuto del pannello «Cosa è cambiato» (review finale, rilievo ①):
      legge la riga di `GET /api/executions/{id}` cosi' com'e', senza
      ricostruire un'altra forma -- la cronaca gia' porta `servizio`,
-     `entita`, `cambiato`, `avviso`, `errore` (`azione/cronaca.py::_riga`).
+     `entita`, `cambiato`, `avviso`, `errore` (`action/journal.py::_riga`).
 
      Il caso «cambiato è vuoto» (guida generale del progetto, non della
      pagina: il rilievo la richiama esplicitamente) NON diventa mai «niente
@@ -194,7 +194,7 @@ window.HirisAgendaRoute = (function () {
       notice.style.cssText = 'font-size:var(--fs-13);color:var(--warn-ink);margin:4px 0 0';
       panel.appendChild(notice);
     } else if (!changed && !execution.errore) {
-      // Difensivo: nella porta attuale (`azione/porta.py`) un `cambiato`
+      // Difensivo: nella porta attuale (`action/actuator.py`) un `cambiato`
       // vuoto porta SEMPRE un `avviso` -- questo ramo non dovrebbe mai
       // rendersi oggi, ma se un domani smettesse di esserlo, tacere
       // sarebbe di nuovo il difetto che questo rilievo chiude.

@@ -13,6 +13,11 @@ import aiohttp
 from aiohttp import web
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from .action.actuator import ActionActuator
+from .action.construction.revisions import ConstructionStore
+from .action.construction.workshop import Workshop
+from .action.journal import Journal
+from .action.registry import ServiceRegistry
 from .api.handlers_chat import handle_chat, handle_chat_reply_poll
 from .api.handlers_chat_history import handle_clear_chat_history, handle_get_chat_history
 from .api.handlers_config import handle_config
@@ -29,11 +34,6 @@ from .api.handlers_settings import (
 from .api.handlers_usage import handle_reset_usage, handle_usage, handle_usage_history
 from .api.middleware_csrf import csrf_middleware
 from .api.middleware_internal_auth import internal_auth_middleware
-from .azione.costruzione.officina import Workshop
-from .azione.costruzione.versioni import ConstructionStore
-from .azione.cronaca import Journal
-from .azione.porta import ActionActuator
-from .azione.registro import ServiceRegistry
 from .backends.embeddings import build_embedding_provider
 from .casa.anagrafe import (
     AREAS_PER_ROUND,
@@ -1845,7 +1845,7 @@ async def _on_startup(app: web.Application) -> None:
         logger.warning(
             "cervello: primo giro delle condizioni di sistema fallito: %s", exc)
 
-    # Il registro delle esecuzioni (`azione/cronaca.py`): la riga di log che
+    # Il registro delle esecuzioni (`action/journal.py`): la riga di log che
     # la porta scriveva gia' con `logger.info`, resa CHIEDIBILE (fondamenta
     # n.4 -- nessuno poteva interrogarla). Nasce PRIMA della porta, perche' la
     # porta la riceve qui sotto.
@@ -1861,7 +1861,7 @@ async def _on_startup(app: web.Application) -> None:
     app["promesse"] = AgendaStore(os.path.join(data_dir, "promesse.db"))
 
     # L'unico punto del prodotto che esegue qualcosa su Home Assistant
-    # (`azione/porta.py`). Sta QUI, e non accanto a `registro_servizi` piu'
+    # (`action/actuator.py`). Sta QUI, e non accanto a `registro_servizi` piu'
     # sopra, per l'ordine: la porta ha bisogno dello specchio dello stato
     # (`entity_cache`) per rileggere dopo aver agito, e sopra la cache non
     # esiste ancora -- `app.get("entity_cache")` avrebbe dato `None` e la
@@ -2208,7 +2208,7 @@ async def _on_startup(app: web.Application) -> None:
     # (nessuna verifica umana indipendente -- mappa §3.5): l'ultima via
     # d'attuazione rimasta in un HIRIS che per decisione, ALLORA, non agiva.
     # L'azione e' rientrata con la fetta «comandare», ma rifatta e da una parte
-    # sola: `esegui` -> `azione/porta.py`, che verifica contro l'installazione
+    # sola: `esegui` -> `action/actuator.py`, che verifica contro l'installazione
     # e rilegge lo stato. Queste tre vie NON sono rientrate con lei -- scrivere
     # config, proposte e plance e' materia del progetto agenti, col perimetro
     # e la verifica umana. SILENZIO DICHIARATO, stessa disciplina di advisory.db/
@@ -3423,7 +3423,7 @@ async def _on_cleanup(app: web.Application) -> None:
     if "cronaca" in app:
         app["cronaca"].close()
     # Fetta «costruire» (Task 8): l'archivio delle proposte/versioni
-    # dell'officina (`azione/costruzione/versioni.py`), costruito in
+    # dell'officina (`azione/construction/revisions.py`), costruito in
     # `_on_startup` accanto a `app["cronaca"]`. Stessa disciplina dei due
     # archivi qui sopra: senza chiuderlo il file sqlite resterebbe bloccato
     # al riavvio.

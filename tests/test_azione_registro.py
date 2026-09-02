@@ -20,7 +20,7 @@ import inspect
 
 import pytest
 
-from hiris.app.azione.registro import ServiceRegistry
+from hiris.app.action.registry import ServiceRegistry
 from hiris.app.proxy.ha_client import HAClient
 
 RISPOSTA_HA = [
@@ -285,7 +285,7 @@ async def test_una_risposta_letta_e_non_capita_lo_dice(caplog):
     chi non ha il foglio in mano deve poterlo diagnosticare dal log."""
     import logging
     registro = ServiceRegistry()
-    with caplog.at_level(logging.WARNING, logger="hiris.app.azione.registro"):
+    with caplog.at_level(logging.WARNING, logger="hiris.app.action.registry"):
         # un dizionario, non una lista
         await registro.refresh(FintoClient({"light": {"turn_on": {}}}))
     assert registro.domains() == []
@@ -298,6 +298,6 @@ async def test_una_casa_senza_servizi_non_viene_dichiarata_un_guasto(caplog):
     da «non c'era niente da capire», o sarebbe un allarme che urla sempre."""
     import logging
     registro = ServiceRegistry()
-    with caplog.at_level(logging.WARNING, logger="hiris.app.azione.registro"):
+    with caplog.at_level(logging.WARNING, logger="hiris.app.action.registry"):
         await registro.refresh(FintoClient([]))
     assert [r for r in caplog.records if r.levelno >= logging.WARNING] == []

@@ -564,7 +564,7 @@ def _righe_di_percorso_e_parola_chiave(
 
     Una parola chiave in una chiamata (`f(origine="x")`) e' un nome che lo
     strumento non puo' verificare: potrebbe risolvere verso una funzione di
-    un ambito non ancora convertito (`azione/porta.py::esegui(*, origine)`),
+    un ambito non ancora convertito (`action/actuator.py::esegui(*, origine)`),
     e rinominarla romperebbe la chiamata in un modo che nessun test di
     QUESTO file puo' vedere. Riconosciuta per struttura: un NAME seguito da
     un singolo `=` (mai `==`), dentro una parentesi aperta da un NAME (o da
@@ -734,7 +734,7 @@ def riscrivi(sorgente: str, g: Glossario, ambito: str
             # sapere se punta a una funzione gia' convertita. Si segnala
             # come una proposta -- non indovina, chiede -- invece di
             # applicarla e rischiare di rompere una firma altrui in
-            # silenzio (`origine=` verso `azione/porta.py::esegui`, misurato).
+            # silenzio (`origine=` verso `action/actuator.py::esegui`, misurato).
             # Stessa cura per un metodo di HAClient o di UsageStore
             # (`confine_ha`, che nonostante il nome copre entrambi ora):
             # rompere `ha.statistiche()` in `ha.statistics()` e' lo stesso

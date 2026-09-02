@@ -36,7 +36,7 @@ from ..storage import connect, init_schema
 # Quanto si conserva un'esecuzione (riuscita o fallita) in questo registro.
 # E' una politica di QUESTO modulo, non presa in prestito da altrove: la
 # cronaca vive ACCANTO alla porta (vedi il docstring del file) e deve reggersi
-# da sola, come la porta stessa -- oggi `azione/` non importa nulla da
+# da sola, come la porta stessa -- oggi `action/` non importa nulla da
 # `keeper/`, e farlo per un solo numero invertirebbe gli strati per
 # risparmiare una riga. Vale 90 giorni come la conservazione delle promesse
 # concluse (`keeper/promise.py::CONSERVAZIONE_S`): sono due fatti

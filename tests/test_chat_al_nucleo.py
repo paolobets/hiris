@@ -50,7 +50,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from hiris.app.azione.porta import ActionActuator
+from hiris.app.action.actuator import ActionActuator
 from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.chat_settings import ChatSettings
@@ -451,7 +451,7 @@ async def _build_chat_client_runner_reale(aiohttp_client, tmp_path, *, archivio_
         app["archivio_memoria"] = archivio_memoria
     if cache is not None:
         app["entity_cache"] = cache
-    # La porta dell'azione (`azione/porta.py`). Passarla e' cio' che rende
+    # La porta dell'azione (`action/actuator.py`). Passarla e' cio' che rende
     # `execute` disponibile al dispatcher: senza, lo strumento c'e' nel
     # catalogo ma dichiara «il collegamento con Home Assistant non e'
     # disponibile» -- il degrado onesto del contratto di `dispatch()`.
@@ -683,7 +683,7 @@ async def test_conversazione_4_spegni_la_luce_arriva_alla_porta_e_torna_al_model
     archivio_casa = _semina_casa_con_comportamento(tmp_path)
 
     class _PortaFinta:
-        """Sta al posto di `azione/porta.py` -- che ha i suoi test, con la
+        """Sta al posto di `action/actuator.py` -- che ha i suoi test, con la
         verifica e la rilettura vere (`tests/test_azione_porta.py`). Qui
         interessa solo che la chat ci ARRIVI, e con cosa."""
         def __init__(self):

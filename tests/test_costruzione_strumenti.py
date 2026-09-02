@@ -1,8 +1,8 @@
 """I due strumenti: `propose` propone, `confirm` applica. E il catalogo."""
 import pytest
 
+from hiris.app.action.construction.workshop import Workshop
 from hiris.app.agent.runner import mcp_names
-from hiris.app.azione.costruzione.officina import Workshop
 from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.keeper.exchange import promise_tools
 from tests._contratti import assert_stessa_firma

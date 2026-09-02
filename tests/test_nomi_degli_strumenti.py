@@ -49,7 +49,7 @@ e le elenca nel proprio messaggio.
 quattordici definizioni. Quella ha il suo cancello gemello in fondo a
 questo file, sui testi che si possono importare come costanti; le sei
 citazioni sparse dentro funzioni (`casa/domande.py`, `casa/nucleo.py`,
-`memory/interpretation.py`, `azione/verifica.py`) non hanno rete e si
+`memory/interpretation.py`, `action/verification.py`) non hanno rete e si
 sono lette a mano.
 """
 import re

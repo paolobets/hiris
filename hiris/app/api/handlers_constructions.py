@@ -1,7 +1,7 @@
 """Le cinque rotte della pagina Costruzioni.
 
 Non serializzano niente per conto proprio: la forma di una costruzione e' UNA
-e vive in `azione/costruzione/versioni.py::_row`, gia' usata dall'archivio.
+e vive in `azione/construction/revisions.py::_row`, gia' usata dall'archivio.
 Una seconda forma costruita qui renderebbe la pagina e la chat due racconti
 diversi dello stesso atto il primo giorno in cui qualcuno aggiunge un campo da
 una parte sola (fondamenta 3).

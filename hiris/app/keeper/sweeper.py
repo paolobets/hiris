@@ -3,7 +3,7 @@
 Non conosce ne' la chat, ne' il modello, ne' Home Assistant. Riceve due
 funzioni al montaggio -- `execute` (la porta unica) e `interpreta` (il turno di
 `chiedi`) -- e non sa da dove vengano. E' la stessa disciplina che ha reso
-riusabile `azione/porta.py`, ed e' il motivo per cui questo modulo si prova
+riusabile `action/actuator.py`, ed e' il motivo per cui questo modulo si prova
 per intero con due finte.
 
 `batti()` non solleva MAI: un guasto su una promessa diventa il suo motivo, e
@@ -100,7 +100,7 @@ class Sweeper:
         sempre; sul ponte il turno gira altrove e per minuti, e a chiamare qui
         e' la rotta MCP quando il modello ha chiamato `conclude`.
 
-        **Un solo punto conclude una promessa**, come `azione/porta.py` e'
+        **Un solo punto conclude una promessa**, come `action/actuator.py` e'
         l'unico che esegue: un secondo sarebbe un difetto, non
         un'ottimizzazione -- due strade che decidono se notificare, e con
         quali parole, sono due strade libere di divergere sul gesto piu'

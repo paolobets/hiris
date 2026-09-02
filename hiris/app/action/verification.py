@@ -119,7 +119,7 @@ def _declare_target(definition: dict) -> bool:
     """Vero se questo servizio si aspetta un bersaglio (entita', area...).
 
     Review finale, rilievo CRITICO ①. Il campo e' `target` di
-    `/api/services`, che `azione/registro.py` conserva TALE E QUALE (vedi il
+    `/api/services`, che `action/registry.py` conserva TALE E QUALE (vedi il
     suo docstring): quando c'e' -- anche vuoto, `{}` -- il servizio accetta un
     bersaglio, e un bersaglio vuoto resta un errore, come e' sempre stato.
     Quando manca, o e' `None`, il servizio non lo dichiara affatto: e' il

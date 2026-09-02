@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from hiris.app.azione.costruzione.versioni import ConstructionStore
+from hiris.app.action.construction.revisions import ConstructionStore
 
 ADESSO = 1_756_000_000.0
 

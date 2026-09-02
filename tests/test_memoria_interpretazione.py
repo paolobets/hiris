@@ -56,7 +56,7 @@ def test_un_ancora_che_non_esiste_insegna_a_correggersi(lookup):
     """R5: il ricordo si salva comunque -- decisione del proprietario, il
     testo e' la verita' -- ma il problema dentro `problemi` deve insegnare
     la correzione, non solo scartare in silenzio. Stesso pattern gia' in
-    `azione/verifica.py::_no` (bersaglio non risolto: «Usa "search" per
+    `action/verification.py::_no` (bersaglio non risolto: «Usa "search" per
     trovare il nome giusto...»), esteso qui a `remember`."""
     _pulita, problemi, _correzioni = validate(
         {"ancore": [{"tipo": "area", "riferimento": "taverna", "nome_visto": "taverna"}]}, lookup)

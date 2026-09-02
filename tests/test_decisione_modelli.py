@@ -968,7 +968,7 @@ def test_i_tre_motivi_sono_tre_fatti_diversi():
 
 @pytest.mark.parametrize("motivo", ["scadenza", "manca il token", "tetto giornaliero"])
 def test_la_nota_non_diagnostica_e_non_allarma(motivo):
-    """Stessa disciplina degli avvisi di `esegui` (`azione/porta.py`): un
+    """Stessa disciplina degli avvisi di `esegui` (`action/actuator.py`): un
     avviso e' un FATTO su cio' che HIRIS ha potuto vedere, mai un'ipotesi sulla
     causa. Una parola di troppo qui e il modello -- che rilegge la cronologia --
     la trasforma in una diagnosi inventata: e' successo davvero, il giorno in

@@ -51,7 +51,7 @@ un servizio di Home Assistant, `propose`/`confirm` compongono e scrivono
 configurazione. Cio' che NON cambia e' il motivo per cui la frase stava qui:
 questa rotta non e' una porta di scrittura propria. `tools/call` dispaccia con
 la stessa funzione del turno sincrono, che dispaccia alle stesse due porte --
-`azione/porta.py` per i servizi, `azione/costruzione/officina.py` per la
+`action/actuator.py` per i servizi, `azione/construction/workshop.py` per la
 configurazione -- il ponte non ha una strada verso la casa che la chat non
 abbia, e non ne ha una sua. Un secondo punto di scrittura sarebbe un difetto,
 non un'ottimizzazione.
@@ -487,7 +487,7 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
     if isinstance(result, dict) and "errore" in result:
         content["isError"] = True
         # A livello DEBUG, non `info`: il testo dell'errore lo compongono i
-        # gestori (`casa/strumenti.py`, `azione/porta.py`) e puo' contenere
+        # gestori (`casa/strumenti.py`, `action/actuator.py`) e puo' contenere
         # dati di casa -- id di entita', nomi di aree, frammenti di frase. Un
         # log e' un posto in cui quelle cose restano scritte, e il livello
         # predefinito dell'add-on non e' `debug`. Che la chiamata sia fallita

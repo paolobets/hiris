@@ -382,7 +382,7 @@ def _search_suggestion(reference) -> str:
     dell'incidente che ha generato questa fetta: il modello ritenta uguale
     finche' il turno muore.
 
-    Il pattern esiste gia' in `azione/verifica.py::_no` per il bersaglio
+    Il pattern esiste gia' in `action/verification.py::_no` per il bersaglio
     non risolto («Usa "cerca" per trovare il nome giusto e ripeti il
     comando») -- questa funzione lo estende a `guarda`, non lo reinventa:
     UNA sola sorgente per i tre rami (fondamenta 3, "stessa forma"), cosi'

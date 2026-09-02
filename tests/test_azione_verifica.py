@@ -14,15 +14,15 @@ difende, il test cade. L'esito e' nel rapporto del task.
 """
 import pytest
 
-from hiris.app.azione.registro import ServiceRegistry
-from hiris.app.azione.verifica import verification
+from hiris.app.action.registry import ServiceRegistry
+from hiris.app.action.verification import verification
 from tests._contratti import assert_stessa_firma
 
 RISPOSTA_HA = [
     {"domain": "light", "services": {
         # `target`, scritto a mano nella forma plausibile di /api/services
         # (NON misurato su un'installazione vera -- vedi la nota sopra
-        # `_DOMINI_UNIVERSALI` in `azione/verifica.py`: quel dato non c'e'
+        # `_DOMINI_UNIVERSALI` in `action/verification.py`: quel dato non c'e'
         # ancora). Senza, `test_senza_bersaglio_rifiutato` sotto passerebbe
         # per il motivo sbagliato dopo la review finale (rilievo CRITICO ①)
         # -- non perche' «serve un bersaglio», ma perche' nessun servizio di

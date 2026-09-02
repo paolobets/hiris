@@ -56,7 +56,7 @@ async def test_call_service_propaga_il_rifiuto_di_home_assistant():
 # -- la forma della risposta, che nessuno aveva mai misurata (2.2.1) --------
 #
 # Il ritorno di questa funzione ha smesso di essere decorativo: e' la fonte
-# del «dopo» di `azione/porta.py`, cioe' l'unica misura del prodotto presa nel
+# del «dopo» di `action/actuator.py`, cioe' l'unica misura del prodotto presa nel
 # momento giusto. Da qui in avanti una forma buttata via in silenzio non e'
 # piu' un dato inutilizzato: e' un comando riuscito raccontato come fallito.
 

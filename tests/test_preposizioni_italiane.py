@@ -158,7 +158,7 @@ Diceva: «`a` in coda e' SEMPRE un'etichetta di enumerazione». **E' falso, ed
 e' stato misurato**: su otto `a` in coda, sei lo erano (`call_a`, `text_a`,
 `tools_a`, ...) e **due erano la preposizione vera** -- `aggiungi_etichetta_a`
 (`proxy/ha_client.py`, «aggiungi etichetta A qualcosa») e `_caricato_a`
-(`azione/registro.py:113`). **Rimisurato dopo il lotto 19c: sei a UNO.**
+(`action/registry.py:113`). **Rimisurato dopo il lotto 19c: sei a UNO.**
 `aggiungi_etichetta_a` si chiama ora `add_label_to` -- non perche' questo
 cancello l'abbia segnalato (non poteva: la regola lo lascia passare) ma
 perche' la conversione di `proxy/` e' arrivata a quel metodo. Uno dei due

@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from hiris.app.azione.porta import ActionActuator
+from hiris.app.action.actuator import ActionActuator
 from hiris.app.keeper.promise import TOLLERANZA_S
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.keeper.sweeper import Sweeper
@@ -266,7 +266,7 @@ async def test_un_turno_che_non_conclude_lascia_la_promessa_fallita(archivio):
 # quella forma sia ACCETTABILE per la `verifica` vera. La stringa `"bersaglio":
 # {}` che `sweeper._keep_chiedi` costruisce per notificare compariva una
 # sola volta in tutto il repo -- la riga che la genera -- e mai in un test
-# contro `azione/verifica.py` vera: e' cosi' che il difetto e' sopravvissuto a
+# contro `action/verification.py` vera: e' cosi' che il difetto e' sopravvissuto a
 # nove task e alla loro review.
 #
 # Questo test attraversa la giuntura per davvero: la STESSA `Sweeper`, con la
@@ -310,8 +310,8 @@ class _CasaMinima:
 
 
 async def test_la_notifica_dello_schedulatore_attraversa_la_verifica_vera(archivio):
-    from hiris.app.azione.porta import ActionActuator
-    from hiris.app.azione.registro import ServiceRegistry
+    from hiris.app.action.actuator import ActionActuator
+    from hiris.app.action.registry import ServiceRegistry
 
     ident = _crea_chiedi(archivio, quando=ADESSO + 10, recapito="notify.mobile_app_x")
     client = _ClientSoloNotifica()

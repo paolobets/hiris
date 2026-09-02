@@ -12,7 +12,7 @@ pagina a leggere il testo dell'errore per sapere quale dei due mostrare.
 
 **`GET /api/executions/{id}`** vive qui e non in un file suo (review finale
 della fetta, rilievo ①): non serializza niente di suo neppure lei --
-`Journal.read` gia' lo fa (`azione/cronaca.py::_row`) -- ed e' la sorella
+`Journal.read` gia' lo fa (`action/journal.py::_row`) -- ed e' la sorella
 delle due sopra per lo stesso motivo per cui loro sono insieme: la pagina
 Promesse le chiama tutte e tre. La promessa NON ricopia i fatti
 dell'esecuzione (spec §8): si collega per `esecuzione_id`, e chi vuole

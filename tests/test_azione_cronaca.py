@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from hiris.app.azione.cronaca import Journal
+from hiris.app.action.journal import Journal
 
 ADESSO = 1_755_600_000.0
 

@@ -22,7 +22,7 @@ import os
 import pytest
 import pytest_asyncio
 
-from hiris.app.azione.cronaca import Journal
+from hiris.app.action.journal import Journal
 from hiris.app.chat_store import close_all_stores
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.server import create_app

@@ -264,7 +264,7 @@ def test_una_parola_chiave_in_una_chiamata_non_si_applica_da_sola():
     strumento non puo' saperlo, quindi non indovina: propone e si ferma,
     come un composto. Misurato dal vivo (review del Task 5): senza questa
     guardia, `origine=\"schedulatore\"` (verso
-    `azione/porta.py::esegui(*, origine)`, non convertito) diventava
+    `action/actuator.py::esegui(*, origine)`, non convertito) diventava
     `actor=\"schedulatore\"` e rompeva la chiamata."""
     gf = rinomina.Glossario(mappa={"origine": "actor"})
     dentro = 'esito = f(chiamata, origine="x")\n'
@@ -591,7 +591,7 @@ def _sostituzioni_di_identificatori(prima: str, dopo: str) -> set[tuple[str, str
 # sottosistemi su sei (schedulatore, memoria) -- un residuo trovato durante
 # il lotto 5 viveva in un ambito COPERTO ma non riverificato dopo
 # l'aggiunta di parole nuove al glossario; un secondo, in
-# `azione/costruzione/composer.py`, vive invece in un ambito che questo
+# `azione/construction/composer.py`, vive invece in un ambito che questo
 # test non guardava affatto. Allargato a tutti e sei.
 #
 # `casa/` non e' ancora finito (`domande.py` e `nucleo.py` restano in
@@ -616,15 +616,15 @@ def _sostituzioni_di_identificatori(prima: str, dopo: str) -> set[tuple[str, str
 # comunque a poco: due nomi corretti non avvicinano il file a
 # "convertito".
 #
-# `residui_noti` per `azione`: `costruzione/composer.py` ha ancora
+# `residui_noti` per `azione`: `construction/composer.py` ha ancora
 # `candidato` (due funzioni private) e il parametro PUBBLICO keyword-only
 # `modo` di `compose_automation`/`compose_script` in italiano -- entrambi
 # parole gia' decise. **Corretto durante la review del lotto 5**: `modo`
 # non ha ZERO chiamanti che lo passano per keyword in tutto il repo
 # (verificato con un grep, non presunto) -- il rinvio non e' perche'
-# cercarli costerebbe caro, e' semplicemente che `azione/` non e' un file
+# cercarli costerebbe caro, e' semplicemente che `action/` non e' un file
 # di questo lotto: rinominare un parametro pubblico, anche a costo zero,
-# resta un giro a se', rimandato al lotto che convertira' `azione/`.
+# resta un giro a se', rimandato al lotto che convertira' `action/`.
 #
 # `schedulatore` mostra `frozenset()` (nessun residuo) qui sotto, ed e'
 # VERO -- lo strumento non cambia nulla su quell'ambito -- ma non e'
@@ -692,7 +692,7 @@ _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     ("memory", "memory", frozenset({Path("resolver.py")})),
     ("usage", "usage", frozenset()),
     ("mind", "mind", frozenset()),
-    ("azione", "azione", frozenset({Path("costruzione/composer.py")})),
+    ("action", "action", frozenset({Path("construction/composer.py")})),
     ("casa/lettura_yaml.py", "casa", frozenset()),
     ("casa/comportamento.py", "casa", frozenset()),
     ("casa/archivio.py", "casa", frozenset()),
@@ -804,22 +804,22 @@ def test_il_residuo_di_schedulatore_e_solo_concludi_conclude(tmp_path):
 
 
 def test_il_residuo_di_azione_composer_e_solo_candidato_e_modo(tmp_path):
-    """Il terzo gemello: `azione/costruzione/composer.py` in `_SORVEGLIATI`
+    """Il terzo gemello: `azione/construction/composer.py` in `_SORVEGLIATI`
     porta DUE parole (`candidato`, `modo`), non una -- l'insieme atteso ha
     due elementi, non uno, ed e' comunque ESATTO: un terzo nome che comparisse
     domani deve far arrossire questa prova, non allargarla in silenzio."""
     import shutil
 
     from _comune import ROOT
-    base = ROOT / "hiris" / "app" / "azione" / "costruzione" / "composer.py"
+    base = ROOT / "hiris" / "app" / "action" / "construction" / "composer.py"
     copia = tmp_path / "composer.py"
     shutil.copy(base, copia)
     prima = copia.read_text(encoding="utf-8")
-    rinomina.applica(copia, "azione", scrivi=True)
+    rinomina.applica(copia, "action", scrivi=True)
     dopo = copia.read_text(encoding="utf-8")
     sostituzioni = _sostituzioni_di_identificatori(prima, dopo)
     assert sostituzioni == {("candidato", "candidate"), ("modo", "mode")}, (
-        f"azione/costruzione/composer.py diverge su {sostituzioni}, atteso "
+        f"azione/construction/composer.py diverge su {sostituzioni}, atteso "
         "solo {('candidato', 'candidate'), ('modo', 'mode')} -- un nuovo "
         "nome e' comparso: decidilo davvero (applicalo, o traccialo qui) "
         "invece di lasciarlo dentro un'eccezione a grana di file")
@@ -1056,11 +1056,11 @@ _MUTE_VOLUTE = {
     # `senza` e' qualificata SOLO `(casa)`. Altrove sta dentro nomi italiani
     # per intero o dentro residui gia' dichiarati (`memory/resolver.py`,
     # `keeper/exchange.py::_senza_conclusione`).
-    ("senza", "api"), ("senza", "azione"), ("senza", "memory"),
+    ("senza", "api"), ("senza", "action"), ("senza", "memory"),
     ("senza", "keeper"),
     # `note (casa)` vuol dire «cose che la casa SA» (-> `known`). Fuori da
     # `casa/` `note` sono annotazioni, un senso diverso: la mutezza e' giusta.
-    ("note", "api"), ("note", "azione"), ("note", "usage"),
+    ("note", "api"), ("note", "action"), ("note", "usage"),
     ("note", "keeper"),
     # `note` in `radice` non e' italiano affatto: e' l'INGLESE che ci ha messo
     # la conversione stessa (`nota -> note`, `decisione_modelli.py`). Il
@@ -1068,22 +1068,28 @@ _MUTE_VOLUTE = {
     # italiano: e' lo stesso incrocio gia' descritto per `officina.py` accanto
     # alla riga `note (casa)` del glossario, misurato una seconda volta.
     ("note", "radice"),
-    # `dopo (casa)` e' l'ordine temporale. In `azione/` `dopo` e' la CHIAVE
+    # `dopo (casa)` e' l'ordine temporale. In `action/` `dopo` e' la CHIAVE
     # JSON `"prima"`/`"dopo"` di un confronto di stati: valore di dominio,
     # italiano per decisione (vedi la riga `primo` del glossario).
-    ("dopo", "azione"),
+    ("dopo", "action"),
     # `fuori (casa)` e' «all'aperto». In `usage/` e `keeper/` e' «in
     # uscita»/«fuori finestra»: senso diverso, mutezza giusta.
     ("fuori", "usage"), ("fuori", "keeper"),
     # `lettura` e' qualificata `(casa)`/`(usage)`. In `keeper/` compare
     # solo dentro `SOLA_LETTURA`, dove e' «read-only»: terzo senso.
     ("lettura", "keeper"),
-    # `loro`/`nostro` sono qualificate SOLO `(casa)`; in `azione/verifica.py`
+    # `loro`/`nostro` sono qualificate SOLO `(casa)`; in `action/verification.py`
     # stanno in una riga sola, e non sono state decise per quell'ambito.
-    ("loro", "azione"), ("nostro", "azione"),
-    # `verifica` e' qualificata `(azione)`/`(memory)`; in `casa/strumenti.py`
-    # c'e' un'occorrenza sola, dentro il residuo dichiarato di quel file.
-    ("verifica", "casa"),
+    ("loro", "action"), ("nostro", "action"),
+    # `("verifica", "casa")` e' USCITA il 02/09, e la ragione va letta perche'
+    # riguarda tutto questo insieme: l'unica occorrenza del pezzo `verifica`
+    # in `casa/` non era un identificatore di `casa/` -- era il PERCORSO
+    # dell'import differito `from ..azione.verifica import verification`
+    # dentro `strumenti.py`. Rinominata la cartella (`azione/verifica.py` ->
+    # `action/verification.py`), il pezzo non compare piu' in quell'ambito e
+    # la mutezza non esiste piu'. **Una voce di `_MUTE_VOLUTE` che viveva di
+    # un percorso e non di un nome**: e' stato questo cancello a dirlo,
+    # andando rosso da solo.
 }
 
 # ── 2. DA CONVERTIRE: la parola e' muta solo perche' il suo sottosistema non

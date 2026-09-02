@@ -64,7 +64,7 @@ def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
     per un momento futuro passando per l'archivio delle promesse
     (`keeper/store.py`), due (`propose`, `confirm`,
     fetta «costruire») scrivono CONFIGURAZIONE -- non un servizio, un'entita'
-    nuova -- passando per l'officina (`azione/costruzione/officina.py`), e gli
+    nuova -- passando per l'officina (`azione/construction/workshop.py`), e gli
     ultimi due (`trend`, `logbook`, fetta «HIRIS e il tempo») guardano
     INDIETRO nel tempo -- come e' andato un valore, cosa e' successo e per
     mano di chi -- passando per `casa/tempo.py`. Il dispatcher si costruisce
@@ -127,7 +127,7 @@ def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
         # canale: due connessioni verso HA sarebbero due stati di
         # riconnessione da tenere allineati.
         ha=app.get("ha_client"),
-        # Il registro dei servizi (`azione/registro.py`), la STESSA istanza
+        # Il registro dei servizi (`action/registry.py`), la STESSA istanza
         # che riceve `porta_azione` qui sopra -- mai una seconda costruzione.
         # Serve a `promise` per verificare un `fai` ADESSO
         # (`ToolDispatcher._verify_now`) e un `recapito`.
@@ -135,7 +135,7 @@ def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
         # L'archivio delle promesse (`keeper/store.py`): la casa di
         # `promise`/`agenda`/`cancel`.
         agenda=app.get("promesse"),
-        # L'officina (`azione/costruzione/officina.py`, fetta «costruire»):
+        # L'officina (`azione/construction/workshop.py`, fetta «costruire»):
         # la casa di `propose`/`confirm`. Sorella di `porta_azione`, non
         # sua sostituta -- due canali diversi, spec «un canale, una porta».
         workshop=app.get("officina"),

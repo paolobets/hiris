@@ -30,7 +30,7 @@ ridato l'azione al prodotto con un progetto proprio, dopo che la conoscenza
 si era fatta solida. La differenza fra i quattro e il quinto non e' di
 importanza ma di verso: i quattro LEGGONO gli archivi e lo specchio dello
 stato, `execute` SCRIVE -- e scrive per una sola strada, la porta
-(`azione/porta.py`), che verifica prima e rilegge dopo.
+(`action/actuator.py`), che verifica prima e rilegge dopo.
 
     cerca    -- trova qualcosa per nome o alias, dichiarando le ambiguita'
     guarda   -- il dettaglio di una cosa: un'area, un'entita', un'automazione
@@ -66,7 +66,7 @@ gia' esiste, questi due fanno esistere o smettere di esistere qualcosa. Ed e'
 per questo che sono DUE e non uno: `propose` compone e fa validare contro
 QUESTA casa (mai uno YAML scritto a mano), `confirm` scrive -- e in mezzo
 deve starci un umano, riconosciuto dal TURNO e non da un campo che il modello
-potrebbe compilare da solo. Vedi `azione/costruzione/officina.py` per il
+potrebbe compilare da solo. Vedi `azione/construction/workshop.py` per il
 giro intero e la guardia.
 
     costruisci -- propone (crea, modifica, cancella): non scrive, restituisce
@@ -925,13 +925,13 @@ class ToolDispatcher:
         # Lo specchio dello stato vivo. E' la STESSA `entity_cache` da cui
         # il nucleo prende "notevole adesso": una sola fonte, un solo
         # specchio. La cache resta in SOLA LETTURA anche adesso che `execute`
-        # esiste: chi scrive e' la porta (`azione/porta.py`), che chiama
+        # esiste: chi scrive e' la porta (`action/actuator.py`), che chiama
         # Home Assistant e poi RILEGGE da qui -- lo specchio non si aggiorna
         # a mano per far tornare i conti. Prima della fetta «comandare» la
         # ragione scritta qui era «conosce, non agisce»: era una proprieta'
         # del prodotto, oggi e' una proprieta' di QUESTO attributo.
         self._cache = cache
-        # La porta dell'azione (`azione/porta.py`), l'unico punto del prodotto
+        # La porta dell'azione (`action/actuator.py`), l'unico punto del prodotto
         # che esegue. `None` e' legittimo: il dispatcher e' SEMPRE costruibile
         # (contratto della classe), e senza porta `execute` dichiara un errore
         # invece di sollevare -- come gli altri quattro fanno senza archivi.
@@ -950,7 +950,7 @@ class ToolDispatcher:
         # vedi il docstring del modulo). In SOLA LETTURA come `_cache`: chi
         # scrive resta la porta, e questo attributo non le fa concorrenza.
         self._ha = ha
-        # Il registro dei servizi (`azione/registro.py::ServiceRegistry`), la
+        # Il registro dei servizi (`action/registry.py::ServiceRegistry`), la
         # STESSA istanza che usa la porta -- non se ne apre un secondo, per la
         # stessa ragione di `_ha_channel`: due registri sarebbero due opinioni
         # su cosa esiste, e potrebbero divergere. Serve a `promise` per
@@ -969,7 +969,7 @@ class ToolDispatcher:
         # legittimo come per la porta: i tre strumenti dichiarano un errore
         # leggibile invece di sollevare.
         self._agenda = agenda
-        # L'officina (`azione/costruzione/officina.py`), l'unico punto che
+        # L'officina (`azione/construction/workshop.py`), l'unico punto che
         # scrive CONFIGURAZIONE. Sorella della porta, non sua sostituta: sono
         # due canali diversi (spec «un canale, una porta»). `None` e'
         # legittimo come per la porta: i due strumenti dichiarano un errore.
@@ -979,7 +979,7 @@ class ToolDispatcher:
         # l'officina rifiuta di applicare dalla chat e indica la pagina --
         # un cancello che non sa chi sta passando non e' un cancello.
         self._exchange = exchange
-        # La cronaca degli atti (`azione/cronaca.py`), la STESSA istanza che
+        # La cronaca degli atti (`action/journal.py`), la STESSA istanza che
         # riceve l'officina -- non una seconda apertura dello stesso file
         # SQLite. Serve ad `logbook` per dire «l'ho fatto io» dove il diario
         # di Home Assistant direbbe soltanto «servizio chiamato». `None` e'
@@ -1508,7 +1508,7 @@ class ToolDispatcher:
         """Non fa nulla: chiede alla porta.
 
         E' voluto. Tutta la logica -- verifica, chiamata, rilettura, registro
-        -- vive in `azione/porta.py`, perche' domani lo schedulatore e il brain
+        -- vive in `action/actuator.py`, perche' domani lo schedulatore e il brain
         chiederanno alla STESSA porta senza passare da qui. Se un giorno questo
         metodo cresce, la logica sta migrando nel posto sbagliato.
         """
@@ -1519,7 +1519,7 @@ class ToolDispatcher:
     async def _ensure_registry_fresh(self) -> None:
         """Scalda il registro dei servizi prima di verificare, se puo'.
 
-        Stessa forma di `azione/porta.py::ActionActuator.execute` (righe ~598-604): un
+        Stessa forma di `action/actuator.py::ActionActuator.execute` (righe ~598-604): un
         `try/except` attorno a `ensure_fresh`, perche' il registro si
         carica PIGRAMENTE alla prima azione ESEGUITA (`server.py`, commento
         sulla scelta) -- un add-on appena avviato che non ha ancora eseguito
@@ -1578,7 +1578,7 @@ class ToolDispatcher:
         """
         import time as _time
 
-        from ..azione.verifica import verification
+        from ..action.verification import verification
 
         await self._ensure_registry_fresh()
 
@@ -1692,7 +1692,7 @@ class ToolDispatcher:
 
         Senza registro si RIFIUTA, non si tace piu' (fix review Task 6,
         Rilievo 2, deciso dal proprietario): e' la STESSA guardia di
-        `azione/porta.py::_MUTE_REGISTRY` ("non so ancora cosa Home Assistant
+        `action/actuator.py::_MUTE_REGISTRY` ("non so ancora cosa Home Assistant
         sa fare"), spostata al momento della promessa invece che
         dell'esecuzione -- due porte non devono rispondere in modo opposto
         alla stessa situazione. La frase e' diversa apposta: li' si sta
@@ -1709,7 +1709,7 @@ class ToolDispatcher:
         lo costruisce sempre) ma e' ancora VUOTO -- mai caricato da Home
         Assistant. Lasciare proseguire fino a `verification()` produrrebbe «il
         dominio non esiste. Domini disponibili: .» -- la frase FALSA detta
-        con sicurezza contro cui mette in guardia `azione/porta.py`
+        con sicurezza contro cui mette in guardia `action/actuator.py`
         (`_MUTE_REGISTRY`). Le due assenze raccontano lo stesso fatto («non so
         ancora cosa questa casa sa fare») e si riconoscono con lo STESSO
         criterio della porta -- si CHIEDE al registro (`domains()` vuoto), non
@@ -1740,7 +1740,7 @@ class ToolDispatcher:
             # `_verify_now` avesse potuto verificare l'entita' nominata,
             # mentre `PROMISE_TOOL_DEF` dichiara al modello, senza
             # condizioni, «viene VERIFICATA adesso». Stesso criterio di
-            # `azione/porta.py::_BLIND_MIRROR` (`None` e `{}` insieme, di
+            # `action/actuator.py::_BLIND_MIRROR` (`None` e `{}` insieme, di
             # proposito: una casa che davvero non ha nessuna entita' non ha
             # nemmeno l'entita' bersaglio, quindi non c'e' chiamata legittima
             # che questo rifiuto possa negare). Estratta in
@@ -1793,7 +1793,7 @@ class ToolDispatcher:
         recapito (`_verify_recipient`): un `chiedi` non puo' rispondere
         diversamente alla stessa domanda solo perche' e' la terza specie.
         Il motivo nomina il riferimento (cosa non esiste) e la strada per
-        correggersi (pattern `azione/verifica.py:430-432`: «usa "search"...»).
+        correggersi (pattern `action/verification.py:430-432`: «usa "search"...»).
         """
         if not entities:
             return None
@@ -1811,7 +1811,7 @@ class ToolDispatcher:
         """«Non so ancora cosa questa casa sa fare»: il registro e' assente
         (`None`) o presente ma mai caricato da Home Assistant (`domains()`
         vuoto). Le due assenze si trattano uguali -- e' lo stesso criterio di
-        `azione/porta.py::ActionActuator.execute` per la guardia `_MUTE_REGISTRY` --
+        `action/actuator.py::ActionActuator.execute` per la guardia `_MUTE_REGISTRY` --
         perche' senza domini non si puo' verificare NIENTE, ne' un `fai` ne'
         un recapito. Estratta qui (review Task 7, Rilievo 1) perche'
         `_verify_now` e `_verify_recipient` la interrogavano entrambe, e la
@@ -1883,9 +1883,9 @@ class ToolDispatcher:
         `_specchio()` ritorna mappe GIA' DERIVATE (nomi, unita', classi) per
         chi le vuole cosi'; qui serve invece la forma minima di
         `EntityCache.all_states()`, la stessa che legge
-        `azione/porta.py::Porta._stati` per verificare una chiamata prima di
+        `action/actuator.py::ActionActuator._states` per verificare una chiamata prima di
         eseguirla. La guardia (`inventory_is_readable`) e' la STESSA di
-        `_specchio` e di `Porta._stati`: la regola «cache assente o mai
+        `_specchio` e di `ActionActuator._states`: la regola «cache assente o mai
         caricata non e' un inventario leggibile» si paga in un posto solo,
         non in un terzo qui.
 
