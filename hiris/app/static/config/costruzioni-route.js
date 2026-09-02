@@ -130,7 +130,7 @@
 window.HirisCostruzioni = (function () {
   'use strict';
 
-  var STATO_APERTI = ['in_attesa', 'in_corso'];
+  var OPEN_STATES = ['in_attesa', 'in_corso'];
 
   var STATO_LABEL = {
     in_attesa: 'In attesa',
@@ -152,8 +152,8 @@ window.HirisCostruzioni = (function () {
     scaduta: 'badge-warn'
   };
 
-  var NOME_DOMINIO = { automation: 'Automazione', script: 'Script', scene: 'Scena' };
-  var ARTICOLO_DOMINIO = { automation: 'l’automazione', script: 'lo script', scene: 'la scena' };
+  var DOMAIN_NAME = { automation: 'Automazione', script: 'Script', scene: 'Scena' };
+  var DOMAIN_ARTICLE = { automation: 'l’automazione', script: 'lo script', scene: 'la scena' };
 
   var CHIAVI_CONFRONTO = [
     { chiave: 'triggers', etichetta: 'trigger' },
@@ -198,16 +198,16 @@ window.HirisCostruzioni = (function () {
      sola catena di ripiego riproduce entrambi i casi senza duplicare logica:
      prima.alias quando c'e' (l'oggetto esisteva), altrimenti dopo.alias
      (l'oggetto nuovo), altrimenti la chiave tecnica. */
-  function nomeOggetto(c) {
+  function objectName(c) {
     return (c.prima && c.prima.alias) || (c.dopo && c.dopo.alias) || c.chiave;
   }
 
-  function nomeDominio(c) {
-    return NOME_DOMINIO[c.dominio] || c.dominio;
+  function domainName(c) {
+    return DOMAIN_NAME[c.dominio] || c.dominio;
   }
 
-  function articoloOggetto(c) {
-    return ARTICOLO_DOMINIO[c.dominio] || ('l’oggetto ' + c.dominio);
+  function objectArticle(c) {
+    return DOMAIN_ARTICLE[c.dominio] || ('l’oggetto ' + c.dominio);
   }
 
   /* guida §4: dare a OGNI modifica e cancellazione lo stesso trattamento
@@ -239,18 +239,18 @@ window.HirisCostruzioni = (function () {
      scena. Ritorna `null` solo quando la chiave non c'e' o non e' un
      array/oggetto -- una lista/dizionario vuoto ma PRESENTE resta `0`,
      distinzione che `righeConfronto` usa per decidere se mostrare la riga. */
-  function contaElementi(value) {
+  function countElements(value) {
     if (value === undefined || value === null) return null;
     if (Array.isArray(value)) return value.length;
     if (typeof value === 'object') return Object.keys(value).length;
     return null;
   }
 
-  function contaChiave(corpo, def) {
+  function countForKey(corpo, def) {
     if (!corpo) return null;
-    var n = contaElementi(corpo[def.chiave]);
+    var n = countElements(corpo[def.chiave]);
     if ((n === null || n === 0) && def.chiaveAlt) {
-      var alt = contaElementi(corpo[def.chiaveAlt]);
+      var alt = countElements(corpo[def.chiaveAlt]);
       if (alt !== null) n = alt;
     }
     return n;
@@ -258,11 +258,11 @@ window.HirisCostruzioni = (function () {
 
   /* guida §3: la transizione "azioni: 2 -> 3", non due numeri separati da
      confrontare a mente. Un solo lato presente mostra solo quel numero. */
-  function righeConfronto(prima, dopo) {
+  function comparisonLines(prima, dopo) {
     var line = [];
     CHIAVI_CONFRONTO.forEach(function (def) {
-      var n1 = contaChiave(prima, def);
-      var n2 = contaChiave(dopo, def);
+      var n1 = countForKey(prima, def);
+      var n2 = countForKey(dopo, def);
       if (n1 === null && n2 === null) return;
       var text = def.etichetta + ': ';
       if (n1 !== null && n2 !== null && n1 !== n2) text += n1 + ' → ' + n2;
@@ -278,7 +278,7 @@ window.HirisCostruzioni = (function () {
      un array, sono gia' loro. E' proprio il dominio in cui questa lista e'
      tutto il contenuto dell'oggetto (guida §3): senza questo ramo non
      compariva MAI. */
-  function elencoEntita(value) {
+  function entityList(value) {
     if (!value) return null;
     if (Array.isArray(value)) return value.length ? value : null;
     if (typeof value === 'object') {
@@ -288,13 +288,13 @@ window.HirisCostruzioni = (function () {
     return null;
   }
 
-  function entitaToccate(c) {
-    return elencoEntita(c.dopo && c.dopo.entities) || elencoEntita(c.prima && c.prima.entities);
+  function touchedEntities(c) {
+    return entityList(c.dopo && c.dopo.entities) || entityList(c.prima && c.prima.entities);
   }
 
   /* guida §3: il rivelatore e' SINCRONO -- niente rete, `prima`/`dopo`
      arrivano gia' nel payload dell'elenco. */
-  function pannelloDettagli(c) {
+  function detailsPanel(c) {
     var box = el('div');
 
     ['prima', 'dopo'].forEach(function (side) {
@@ -304,25 +304,25 @@ window.HirisCostruzioni = (function () {
       box.appendChild(el('div', 'field-hint', label + ': ' + name));
     });
 
-    righeConfronto(c.prima, c.dopo).forEach(function (line) {
+    comparisonLines(c.prima, c.dopo).forEach(function (line) {
       box.appendChild(el('div', 'field-hint', line));
     });
 
-    var entity = entitaToccate(c);
+    var entity = touchedEntities(c);
     if (entity) box.appendChild(el('div', 'text-mono', entity.join(', ')));
 
     return box;
   }
 
-  function rivelatoreDettagli(c) {
+  function detailsDisclosure(c) {
     var wrap = el('div', 'field-group');
-    var testoChiuso = 'Dettagli tecnici';
-    var testoAperto = 'Nascondi i dettagli tecnici';
-    var btn = el('button', 'btn btn-ghost btn-sm', testoChiuso);
+    var closedText = 'Dettagli tecnici';
+    var openText = 'Nascondi i dettagli tecnici';
+    var btn = el('button', 'btn btn-ghost btn-sm', closedText);
     btn.type = 'button';
     btn.setAttribute('aria-expanded', 'false');
     var idPannello = 'costruzione-dettagli-' + c.id;
-    var panel = pannelloDettagli(c);
+    var panel = detailsPanel(c);
     panel.id = idPannello;
     panel.hidden = true;
     btn.setAttribute('aria-controls', idPannello);
@@ -331,7 +331,7 @@ window.HirisCostruzioni = (function () {
       var open = btn.getAttribute('aria-expanded') === 'true';
       panel.hidden = open;
       btn.setAttribute('aria-expanded', open ? 'false' : 'true');
-      btn.textContent = open ? testoChiuso : testoAperto;
+      btn.textContent = open ? closedText : openText;
     });
 
     wrap.appendChild(btn);
@@ -340,12 +340,12 @@ window.HirisCostruzioni = (function () {
   }
 
   /* guida §7: il testo del confirm() composto solo da campi reali. */
-  function messaggioRipristino(c) {
-    return 'Rimetto ' + articoloOggetto(c) + ' «' + nomeOggetto(c) + '» com’era il ' +
+  function restoreMessage(c) {
+    return 'Rimetto ' + objectArticle(c) + ' «' + objectName(c) + '» com’era il ' +
       fmtData(c.creata_ts) + '. Le modifiche fatte dopo vengono sovrascritte. Procedo?';
   }
 
-  function eseguiAzione(action, id, button, statusEl, reload) {
+  function executeAction(action, id, button, statusEl, reload) {
     button.forEach(function (b) { b.disabled = true; });
     statusEl.textContent = '';
     api('api/constructions/' + encodeURIComponent(id) + '/' + action, { method: 'POST' })
@@ -375,14 +375,14 @@ window.HirisCostruzioni = (function () {
      entrambi i bottoni (vedi `riga()`): la closure lo legge al click, non
      alla creazione, quindi vede gia' il gruppo completo. Senza `gruppo`
      (Ripristina, sola sulla propria riga) si disabilita solo se stesso. */
-  function bottoneAzione(action, label, cls, c, statusEl, reload, group) {
+  function actionButton(action, label, cls, c, statusEl, reload, group) {
     var b = el('button', cls, label);
     b.type = 'button';
     b.setAttribute('data-azione', action);
     b.setAttribute('data-id', c.id);
     b.addEventListener('click', function () {
-      if (action === 'restore' && !window.confirm(messaggioRipristino(c))) return;
-      eseguiAzione(action, c.id, group || [b], statusEl, reload);
+      if (action === 'restore' && !window.confirm(restoreMessage(c))) return;
+      executeAction(action, c.id, group || [b], statusEl, reload);
     });
     return b;
   }
@@ -397,7 +397,7 @@ window.HirisCostruzioni = (function () {
 
     var testa = el('div');
     testa.style.cssText = 'display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap';
-    testa.appendChild(el('span', null, nomeDominio(c) + ' «' + nomeOggetto(c) + '»'));
+    testa.appendChild(el('span', null, domainName(c) + ' «' + objectName(c) + '»'));
     var bGesto = badgeGesto(c);
     testa.appendChild(el('span', 'agent-badge ' + bGesto.cls, bGesto.testo));
     testa.appendChild(el('span', 'agent-badge ' + (STATO_BADGE[c.stato] || 'badge-off'),
@@ -432,7 +432,7 @@ window.HirisCostruzioni = (function () {
         'Nasce anche: ' + (h.dominio || '') + ' «' + nomeHelper + '»'));
     });
 
-    if (c.prima || c.dopo) box.appendChild(rivelatoreDettagli(c));
+    if (c.prima || c.dopo) box.appendChild(detailsDisclosure(c));
 
     /* motivo: MAI per `disdetta` -- vedi il commento di testa, `versioni.py`
        scrive letteralmente "rifiutata dal proprietario" su ogni riga
@@ -451,15 +451,15 @@ window.HirisCostruzioni = (function () {
        attesa": `in_corso` ci sta ma non e' azionabile (guida §6, nessuna UI
        di recupero, la guarigione e' gia' lato server). */
     if (c.stato === 'in_attesa') {
-      var gruppoAttesa = [];
-      var bConferma = bottoneAzione('confirm', 'Approva', 'btn btn-primary', c, statusEl, reload, gruppoAttesa);
-      var bRifiuta = bottoneAzione('reject', 'Rifiuta', 'btn', c, statusEl, reload, gruppoAttesa);
-      gruppoAttesa.push(bConferma, bRifiuta);
+      var pendingGroup = [];
+      var bConferma = actionButton('confirm', 'Approva', 'btn btn-primary', c, statusEl, reload, pendingGroup);
+      var bRifiuta = actionButton('reject', 'Rifiuta', 'btn', c, statusEl, reload, pendingGroup);
+      pendingGroup.push(bConferma, bRifiuta);
       actions.appendChild(bConferma);
       actions.appendChild(bRifiuta);
     }
     if (c.stato === 'applicata') {
-      actions.appendChild(bottoneAzione('restore', 'Rimetti com’era',
+      actions.appendChild(actionButton('restore', 'Rimetti com’era',
         'btn btn-ghost btn-ghost-danger', c, statusEl, reload));
     }
     if (actions.childNodes.length) box.appendChild(actions);
@@ -467,14 +467,14 @@ window.HirisCostruzioni = (function () {
     return box;
   }
 
-  function ordinaAperte(list) {
+  function sortOpen(list) {
     return list.slice().sort(function (a, b) { return a.creata_ts - b.creata_ts; });
   }
-  function ordinaStorico(list) {
+  function sortHistory(list) {
     return list.slice().sort(function (a, b) { return b.creata_ts - a.creata_ts; });
   }
 
-  function rendiSezione(corpo, list, empty, statusEl, reload, sort) {
+  function renderSection(corpo, list, empty, statusEl, reload, sort) {
     clearEl(corpo);
     if (!list.length) {
       corpo.appendChild(el('p', 'field-hint', empty));
@@ -483,7 +483,7 @@ window.HirisCostruzioni = (function () {
     sort(list).forEach(function (c) { corpo.appendChild(line(c, statusEl, reload)); });
   }
 
-  function rendiErrore(apertaCorpo, storicoCorpo, reload) {
+  function renderError(apertaCorpo, storicoCorpo, reload) {
     [apertaCorpo, storicoCorpo].forEach(function (node) {
       clearEl(node);
       node.appendChild(el('p', 'proposals-error',
@@ -539,16 +539,16 @@ window.HirisCostruzioni = (function () {
       return r.json();
     }).then(function (data) {
       var all = (data && data.constructions) || [];
-      var open = all.filter(function (c) { return STATO_APERTI.indexOf(c.stato) !== -1; });
-      var history = all.filter(function (c) { return STATO_APERTI.indexOf(c.stato) === -1; });
-      rendiSezione(apertaCorpo, open,
+      var open = all.filter(function (c) { return OPEN_STATES.indexOf(c.stato) !== -1; });
+      var history = all.filter(function (c) { return OPEN_STATES.indexOf(c.stato) === -1; });
+      renderSection(apertaCorpo, open,
         'Nessuna proposta in attesa. Quando chiedi a HIRIS di creare, modificare o cancellare ' +
         'un’automazione, uno script o una scena, la trovi qui prima che diventi reale.',
-        statusEl, reload, ordinaAperte);
-      rendiSezione(storicoCorpo, history, 'Nessuna costruzione nello storico.',
-        statusEl, reload, ordinaStorico);
+        statusEl, reload, sortOpen);
+      renderSection(storicoCorpo, history, 'Nessuna costruzione nello storico.',
+        statusEl, reload, sortHistory);
     }).catch(function () {
-      rendiErrore(apertaCorpo, storicoCorpo, reload);
+      renderError(apertaCorpo, storicoCorpo, reload);
     });
   }
 
