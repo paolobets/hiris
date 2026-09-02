@@ -57,7 +57,7 @@ def test_init_ollama_local_does_not_raise(tmp_path):
 #
 # Il fatto che difendevano -- «mai dati dell'utente rimossi in silenzio» --
 # non esce con loro: i vecchi `usage_*.json` restano sul disco e vengono
-# importati una volta sola. Lo pinna `tests/test_consumi_ancora.py`.
+# importati una volta sola. Lo pinna `tests/test_usage_anchor.py`.
 
 
 def test_circuit_open_message_names_local_backend(tmp_path):

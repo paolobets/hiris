@@ -747,7 +747,7 @@ async def test_chat_concurrent_calls_do_not_leak_tool_calls(runner):
 # Il fatto che quei test difendevano -- «mai dati dell'utente rimossi in
 # silenzio» -- non e' uscito con loro: i vecchi `usage_*.json` restano sul
 # disco e vengono importati una volta sola come riga «(prima del dettaglio)».
-# Lo pinna `tests/test_consumi_ancora.py`.
+# Lo pinna `tests/test_usage_anchor.py`.
 
 # --- render_template e il perimetro delle entita' ---------------------------
 # fetta E2 Task 8 ("escono i trentaquattro"): i tre test che vivevano qui
