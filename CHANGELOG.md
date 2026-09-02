@@ -1,5 +1,42 @@
 # HIRIS — Changelog
 
+## [3.18.0] — Le cartelle, i file di prova, e nove allarmi che erano uno (2026-09-02)
+
+**La cosa che vedrai cambiare e' una sola, ed e' una bugia in meno.** Il riepilogo della casa ti
+annunciava «**9 integrazioni di Home Assistant non stanno funzionando**». **Otto di quelle nove non
+erano rotte: le avevi ignorate tu.** Quando in Home Assistant si preme «Ignora» su un dispositivo
+scoperto, quella voce resta registrata e non si carica mai — per tua scelta. HIRIS la contava come
+un guasto.
+
+Da oggi ne annuncia **una**, che e' quella vera (`Abat-jour`, che non riesce a connettersi e
+riprova). La correzione e' su due punti: lo stato «non caricata» **non e' un errore** — la
+documentazione di Home Assistant dice che e' lo stato iniziale — e le voci che hai ignorato non sono
+mai un guasto, in nessuno stato.
+
+**Lo stesso difetto viveva in un secondo posto, e li' era peggio:** l'osservatore apriva una
+condizione di guasto per ognuna di quelle otto e la riapriva ogni dieci minuti. Al primo avvio dopo
+l'aggiornamento le vedrai **chiudersi**, con una riga «finito» datata oggi. Non e' un evento: e'
+la pulizia di qualcosa che non doveva esserci.
+
+**Il resto non si vede, ed e' la fine del lavoro sulla lingua.** Le sette cartelle del progetto
+(`casa`, `memoria`, `azione`, `cervello`, `consumi`, `schedulatore`, `costruzione`), i trenta moduli
+dentro, i centoventotto file di prova e le ultime citazioni nei commenti sono passati all'inglese.
+Nessuna rotta, nessun campo, nessun nome di strumento e **nessuna tabella del database** sono
+cambiati.
+
+**Dove il lavoro si ferma, e perche'.** Di circa **15.900 nomi** di partenza ne restano **31** in
+italiano, su sei parole: tre sono residui gia' dichiarati e sorvegliati da una prova, tre sono debito
+nuovo e misurato. Restano in italiano **per decisione scritta**: il database (22 tabelle, 63 nomi di
+colonna — sessanta su centodue non hanno mai avuto un inglese deciso, e non si rinomina cio' che non
+e' stato nominato), **tutti i commenti e le frasi che HIRIS ti dice**, i valori di dominio, e le
+chiavi che viaggiano fra il motore e la pagina.
+
+**Una cosa che questo rilascio NON chiude, e la scrivo perche' la scoprirai leggendo.** Il riepilogo
+ti dice «N entita' non rispondono», ma **non ti dice di quale integrazione sono**. In questo momento
+sedici entita' dell'irrigazione sono ferme perche' Hydrawise risponde «403 Forbidden»: il numero lo
+vedi, la causa no. La salute di un'integrazione non e' il suo stato di caricamento, e' quante delle
+sue entita' rispondono — ed e' il tema del prossimo lavoro.
+
 ## [3.17.0] — I tredici strumenti che HIRIS offre al modello parlano inglese (2026-09-02)
 
 — I nomi degli strumenti passano all'inglese
