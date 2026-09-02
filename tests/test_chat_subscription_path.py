@@ -40,8 +40,8 @@ from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
 from hiris.app.api.handlers_chat import handle_chat, handle_chat_reply_poll
+from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import append_messages, close_all_stores, load_history
-from hiris.app.impostazioni_chat import ChatSettings
 from hiris.app.reasoning.queue import ReasoningQueue
 
 
@@ -1148,8 +1148,8 @@ async def test_i_tre_motivi_del_ripiego_sono_quelli_che_la_nota_sa_dire(tmp_path
     forfait al consumo che non si annuncia -- esattamente cio' che la decisione
     del proprietario vieta. Nessun test lo direbbe, perche' la nota e'
     facoltativa per costruzione."""
-    from hiris.app.decisione_modelli import _DOWNGRADE_REASONS
-    from hiris.app.instradamento import _subscription_can_answer
+    from hiris.app.model_resolution import _DOWNGRADE_REASONS
+    from hiris.app.steering import _subscription_can_answer
 
     app, _q, _, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
 
@@ -1180,7 +1180,7 @@ def _con_registro(app, *, catena, chi_ha_risposto=None):
     lascia che l'helper lo trovi scorrendo la catena. Se il ripiego nominasse
     `catena_modelli[0]` invece di chi ha davvero risposto, i test che mettono
     un fallimento in testa lo direbbero."""
-    from hiris.app.esiti_provider import OccurrenceRegistry
+    from hiris.app.provider_occurrences import OccurrenceRegistry
 
     registro = OccurrenceRegistry(clock=lambda: 1000.0)
     app["registro_esiti"] = registro
@@ -1397,7 +1397,7 @@ async def test_la_scadenza_del_piano_finisce_nel_registro_degli_esiti(tmp_path):
     E la famiglia e' `scaduto`, non il ramo di scorta: quello direbbe «ha
     rifiutato», che e' piu' largo del fatto -- il piano non ha rifiutato, non
     ha risposto."""
-    from hiris.app.decisione_modelli import occurrence_phrase
+    from hiris.app.model_resolution import occurrence_phrase
 
     app, q, _runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     registro = _con_registro(app, catena=["openrouter"], chi_ha_risposto="openrouter")

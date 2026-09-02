@@ -942,7 +942,7 @@ async def test_il_registro_degli_esiti_esiste_appena_l_app_esiste(client):
     dire «non l'hai ancora usato» invece di non dire niente. `_on_startup` e'
     anche cio' che OGNI fixture azzera -- un registro che nascesse li'
     avrebbe copertura zero (la lezione del debito E del Task 1)."""
-    from hiris.app.esiti_provider import OccurrenceRegistry
+    from hiris.app.provider_occurrences import OccurrenceRegistry
 
     assert isinstance(client.app["registro_esiti"], OccurrenceRegistry)
 

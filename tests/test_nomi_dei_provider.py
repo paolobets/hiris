@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from hiris.app.decisione_modelli import DISPLAY_NAMES
+from hiris.app.model_resolution import DISPLAY_NAMES
 
 BASE = Path(__file__).resolve().parents[1] / "hiris"
 

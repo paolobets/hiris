@@ -191,7 +191,7 @@ def test_l_ordine_fisso_del_frontend_e_quello_del_backend():
     """Due liste con lo stesso nome in due linguaggi sono la miniatura del
     difetto che questa fetta chiude. Non si possono fondere (il frontend non
     importa Python), ma si possono tenere legate da un test che si rompe."""
-    from hiris.app.decisione_modelli import FIXED_ORDER
+    from hiris.app.model_resolution import FIXED_ORDER
     js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
     # Dopo la rinomina del frontend i due nomi COINCIDONO -- `FIXED_ORDER` di
     # qua e di la' -- ed e' il caso migliore per un pin che confronta due

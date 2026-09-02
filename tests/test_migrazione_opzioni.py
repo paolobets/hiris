@@ -13,7 +13,7 @@ Un avvio con questa versione, e i valori sono al sicuro. Solo dopo, la B.
 import io
 import logging
 
-from hiris.app.migrazione_opzioni import seed, seed_chain
+from hiris.app.options_migration import seed, seed_chain
 
 VUOTO = {
     "chain_order": [],
@@ -156,7 +156,7 @@ def test_la_semina_finisce_sul_disco_non_solo_in_memoria(tmp_path):
     import logging
 
     from hiris.app.api.handlers_models import load_models_config, save_models_config
-    from hiris.app.migrazione_opzioni import seed
+    from hiris.app.options_migration import seed
 
     archivio, _ = seed(load_models_config(str(tmp_path)),
                        {"BRIDGE_DEADLINE_MIN": "20"}, log=logging.getLogger("t"))
@@ -418,7 +418,7 @@ def _blocco_semina_catena_dallo_startup(ambiente_finto):
     from hiris.app import server
 
     src = inspect.getsource(server._on_startup)
-    start = src.index("    from .migrazione_opzioni import seed_chain")
+    start = src.index("    from .options_migration import seed_chain")
     marker = 'app["models_config"] = load_models_config(data_dir)'
     end = src.index(marker, start) + len(marker)
     corpo = textwrap.dedent(src[start:end])

@@ -23,8 +23,8 @@ scende alla catena:
 """
 import pytest
 
-from hiris.app.decisione_modelli import _DOWNGRADE_REASONS, SUBSCRIPTION_TOKEN_VAR
-from hiris.app.instradamento import who_answers
+from hiris.app.model_resolution import _DOWNGRADE_REASONS, SUBSCRIPTION_TOKEN_VAR
+from hiris.app.steering import who_answers
 
 
 class _CodaFinta:

@@ -82,7 +82,7 @@ import logging
 
 from aiohttp import web
 
-from ..impostazioni_chat import DEFAULT_SYSTEM_PROMPT, ChatSettings
+from ..chat_settings import DEFAULT_SYSTEM_PROMPT, ChatSettings
 
 # I nomi di HTTP e i nomi del FILE non sono piu' gli stessi, e la differenza e'
 # voluta (fetta «la rinomina», lotto dei campi JSON). Il payload e' il confine e

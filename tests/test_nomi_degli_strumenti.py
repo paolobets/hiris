@@ -189,8 +189,8 @@ def _prose_runtime():
         _GUIDE_WITHOUT_TOOLS,
         _OLD_NAMES_NOTICE,
     )
+    from hiris.app.chat_settings import DEFAULT_SYSTEM_PROMPT
     from hiris.app.claude_runner import BASE_TOOL_RULES
-    from hiris.app.impostazioni_chat import DEFAULT_SYSTEM_PROMPT
     from hiris.app.schedulatore.turno import _system_prompt
     return [
         ("agent/prompts._GUIDE_WITHOUT_TOOLS", _GUIDE_WITHOUT_TOOLS),

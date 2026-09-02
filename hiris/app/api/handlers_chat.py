@@ -23,8 +23,8 @@ from ..chat_store import (
 # scioglie anche mezzo ciclo: era `handlers_chat` -> `agent.runner` la meta'
 # che obbligava `agent/runner._nome_server_mcp` a un import differito.
 from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
-from ..decisione_modelli import downgrade_note
-from ..instradamento import who_answers
+from ..model_resolution import downgrade_note
+from ..steering import who_answers
 from .handlers_casa import compose_briefing
 
 logger = logging.getLogger(__name__)

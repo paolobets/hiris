@@ -13,8 +13,13 @@ regalare una freschezza che la produzione non ha.
 """
 import pytest
 
-from hiris.app.decisione_modelli import occurrence_phrase
-from hiris.app.esiti_provider import FAMILIES, OccurrenceRegistry, error_family, family_from_code
+from hiris.app.model_resolution import occurrence_phrase
+from hiris.app.provider_occurrences import (
+    FAMILIES,
+    OccurrenceRegistry,
+    error_family,
+    family_from_code,
+)
 
 
 def _registro(t0=1000.0):
@@ -244,7 +249,7 @@ def test_un_errore_di_connessione_resta_irraggiungibile_anche_col_codice():
     (172800, "2 giorni fa"),
 ])
 def test_l_eta_sui_confini(secondi, attesa):
-    from hiris.app.decisione_modelli import _age
+    from hiris.app.model_resolution import _age
     assert _age(secondi) == attesa
 
 
@@ -253,7 +258,7 @@ def test_un_orologio_che_va_all_indietro_non_produce_un_futuro():
     orologio, e su un sistema che si sincronizza con NTP la seconda può
     risultare PRIMA della prima. «fra 3 min» sarebbe una previsione, e questa
     pagina non ne fa."""
-    from hiris.app.decisione_modelli import _age
+    from hiris.app.model_resolution import _age
     assert _age(-5) == "poco fa"
 
 

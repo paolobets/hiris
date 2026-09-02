@@ -126,7 +126,7 @@ from ..chat_store import (
     MOCK_SENTINEL,
     RUNNER_ERROR_PREFIX,
 )
-from ..decisione_modelli import SUBSCRIPTION_ALIAS
+from ..model_resolution import SUBSCRIPTION_ALIAS
 from ..schedulatore.turno import promise_tools
 from . import prompts
 

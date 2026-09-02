@@ -8,7 +8,7 @@ import json
 
 import pytest
 
-from hiris.app.impostazioni_chat import DEFAULT_SYSTEM_PROMPT, ChatSettings
+from hiris.app.chat_settings import DEFAULT_SYSTEM_PROMPT, ChatSettings
 
 
 def test_default_e_completo_senza_argomenti():
@@ -374,7 +374,7 @@ def _blocco_giorni_dallo_startup():
 def _avvia(tmp_path):
     import logging
 
-    from hiris.app.impostazioni_chat import file_lacks_retention_days
+    from hiris.app.chat_settings import file_lacks_retention_days
 
     app: dict = {}
     _blocco_giorni_dallo_startup()(

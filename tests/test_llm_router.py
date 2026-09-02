@@ -444,7 +444,7 @@ async def test_un_turno_finisce_con_la_catena_con_cui_e_partito():
 
 
 def _registro_fermo(t0=1000.0):
-    from hiris.app.esiti_provider import OccurrenceRegistry
+    from hiris.app.provider_occurrences import OccurrenceRegistry
     adesso = [t0]
     return OccurrenceRegistry(clock=lambda: adesso[0]), adesso
 

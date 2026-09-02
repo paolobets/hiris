@@ -42,7 +42,7 @@ from __future__ import annotations
 import logging
 
 from .api.handlers_models import _STORE_DEFAULTS
-from .decisione_modelli import subscription_has_token
+from .model_resolution import subscription_has_token
 
 logger = logging.getLogger(__name__)
 

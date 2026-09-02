@@ -344,7 +344,7 @@ def _app_col_ponte(coda=None, router=None):
 
 @pytest.fixture
 def col_token_del_piano(monkeypatch):
-    from hiris.app.decisione_modelli import SUBSCRIPTION_TOKEN_VAR
+    from hiris.app.model_resolution import SUBSCRIPTION_TOKEN_VAR
     monkeypatch.setenv(SUBSCRIPTION_TOKEN_VAR, "un-token-qualunque")
 
 
@@ -387,7 +387,7 @@ async def test_il_job_porta_cio_che_serve_a_mantenere_la_promessa(col_token_del_
 @pytest.mark.asyncio
 async def test_senza_il_token_del_piano_il_turno_scende_alla_catena(monkeypatch):
     """Il ripiego della chat, identico: e' la regola sola che la fetta cerca."""
-    from hiris.app.decisione_modelli import SUBSCRIPTION_TOKEN_VAR
+    from hiris.app.model_resolution import SUBSCRIPTION_TOKEN_VAR
     from hiris.app.schedulatore.turno import interpreta_promise
 
     monkeypatch.delenv(SUBSCRIPTION_TOKEN_VAR, raising=False)
@@ -421,7 +421,7 @@ async def test_il_ripiego_dal_piano_alla_catena_finisce_nella_promessa(monkeypat
     scopre a fine mese. In chat lo dice una nota in coda alla risposta; una
     promessa non ha una risposta in cui metterla -- ha il suo motivo, ed e'
     quello che si legge dalla pagina."""
-    from hiris.app.decisione_modelli import SUBSCRIPTION_TOKEN_VAR
+    from hiris.app.model_resolution import SUBSCRIPTION_TOKEN_VAR
     from hiris.app.schedulatore.turno import interpreta_promise
 
     monkeypatch.delenv(SUBSCRIPTION_TOKEN_VAR, raising=False)

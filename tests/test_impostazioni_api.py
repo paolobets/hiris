@@ -18,8 +18,8 @@ from hiris.app.api.handlers_impostazioni import (
     MAX_PROMPT_CHARS,
     RESPONSE_MODES,
 )
+from hiris.app.chat_settings import DEFAULT_SYSTEM_PROMPT, ChatSettings
 from hiris.app.chat_store import close_all_stores
-from hiris.app.impostazioni_chat import DEFAULT_SYSTEM_PROMPT, ChatSettings
 from hiris.app.server import create_app
 
 ROTTA = "/api/chat-settings"

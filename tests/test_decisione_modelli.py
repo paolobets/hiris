@@ -6,7 +6,7 @@ complesso.
 """
 import pytest
 
-from hiris.app.decisione_modelli import FIXED_ORDER, compose_now, display_name, nature
+from hiris.app.model_resolution import FIXED_ORDER, compose_now, display_name, nature
 
 
 def test_il_primo_della_catena_e_quello_che_risponde():
@@ -323,13 +323,13 @@ def test_col_ponte_acceso_e_niente_sotto_non_c_e_nessuna_rete_ed_e_un_guasto():
 # riquadro «Adesso» lo applica alla frase.
 # ---------------------------------------------------------------------------
 
-from hiris.app.decisione_modelli import (
+from hiris.app.model_resolution import (
     compose_panel,
     explanation,
     is_alias,
     provenance,
 )
-from hiris.app.decisione_modelli import compose_topology as _compose_topology
+from hiris.app.model_resolution import compose_topology as _compose_topology
 
 
 def compose_topology(**kw):
@@ -946,7 +946,7 @@ def test_i_due_parametri_nuovi_sono_obbligatori():
 # ogni volta (decisione del proprietario, 13 agosto), e cio' che la riga dice
 # e' l'unica cosa che l'utente vedra' mai di tutta questa fetta.
 
-from hiris.app.decisione_modelli import downgrade_note
+from hiris.app.model_resolution import downgrade_note
 
 
 def test_la_nota_dice_cosa_e_successo_e_chi_ha_risposto():
@@ -1020,7 +1020,7 @@ def test_l_avviso_sui_gratuiti_segue_il_CONTENUTO_dell_elenco():
     riserva conteneva cinque `:free`; falso dal momento in cui e' stata potata
     dei nomi morti, che erano tutti gratuiti. Una riga che dice il falso su
     cio' che si sta guardando e' il difetto n.1 di questo prodotto."""
-    from hiris.app.decisione_modelli import compose_panel
+    from hiris.app.model_resolution import compose_panel
 
     con_gratuiti = compose_panel(
         provider_id="openrouter", values=["openrouter:a/b:free", "openrouter:c/d"],

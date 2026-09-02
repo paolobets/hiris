@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from hiris.app.api import handlers_models
-from hiris.app.decisione_modelli import provenance
+from hiris.app.model_resolution import provenance
 
 # La fixture `client` (app vera via `create_app()`), la stessa che
 # `tests/test_models_api.py` importa. Serve alla prova sulla chiave assente.

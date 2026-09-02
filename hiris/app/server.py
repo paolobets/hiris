@@ -56,18 +56,18 @@ from .cervello.oggetti import (
     day_boundaries,
 )
 from .cervello.osservatore import Watcher
-from .decisione_modelli import subscription_has_token
+from .chat_settings import ChatSettings, file_lacks_retention_days
 from .env_util import env_bool
-from .esiti_provider import OccurrenceRegistry
-from .impostazioni_chat import ChatSettings, file_lacks_retention_days
+from .internal_token import prepare_internal_token
 from .memoria.archivio import MemoryStore
 from .memoria.cache_indice import LookupCache
+from .model_resolution import subscription_has_token
+from .provider_occurrences import OccurrenceRegistry
 from .proxy.entity_cache import EntityCache
 from .proxy.ha_client import HAClient
 from .schedulatore.archivio import AgendaStore
 from .schedulatore.sweeper import Sweeper
 from .schedulatore.turno import interpreta_promise
-from .token_interno import prepare_internal_token
 from .version import read_version
 
 logger = logging.getLogger(__name__)
@@ -1893,7 +1893,7 @@ async def _on_startup(app: web.Application) -> None:
     # Task 7: il Brain (_holistic_reason) che l'avrebbe letto è già uscito
     # con la E3 -- vedi handlers_models.py.
     from .api.handlers_models import load_models_config, save_models_config
-    from .migrazione_opzioni import seed
+    from .options_migration import seed
     # Task 6 -- versione A della migrazione. Il Supervisor scarta ogni chiave
     # fuori schema PRIMA che /data/options.json esista: togliere un'opzione
     # dallo schema, da sola, fa sparire IN SILENZIO il valore dell'utente, e
@@ -2370,7 +2370,7 @@ async def _on_startup(app: web.Application) -> None:
     # vuota, da questa fetta, e' una decisione esprimibile in due click, e
     # regolarsi su di lei faceva ripopolare al riavvio una catena svuotata di
     # proposito. Vedi `seed_chain`.
-    from .migrazione_opzioni import seed_chain
+    from .options_migration import seed_chain
     if not app["models_config"].get("catena_seminata"):
         _current_chain = _chain_as_it_was(
             os.environ.get("LLM_STRATEGY", "balanced"),
@@ -2398,7 +2398,7 @@ async def _on_startup(app: web.Application) -> None:
     # semine in una scrittura sola le renderebbe una migrazione sola che puo'
     # trovarsi a meta', che e' esattamente cio' che i segni distinti esistono
     # per evitare.
-    from .migrazione_opzioni import seed_subscription_model
+    from .options_migration import seed_subscription_model
     if not app["models_config"].get("piano_seminato"):
         from .agent.runner import cli_model
         from .claude_runner import resolve_model

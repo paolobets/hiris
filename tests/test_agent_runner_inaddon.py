@@ -588,7 +588,7 @@ def test_il_prompt_del_ponte_smentisce_gli_strumenti_nominati_dalla_persona():
     # SINCRONO -- dove gli strumenti di casa/strumenti.py esistono
     # davvero. Qui non esistono: la guida deve smentirlo esplicitamente, o il
     # modello leggerebbe "usa `search`" senza alcun modo di scoprire che non c'e'.
-    from hiris.app.impostazioni_chat import DEFAULT_SYSTEM_PROMPT
+    from hiris.app.chat_settings import DEFAULT_SYSTEM_PROMPT
 
     # ── PIN RIBALTATO (parita' B, Task 3): il ramo esplicito e' quello di
     # DEGRADO. La smentita resta necessaria esattamente li': quando gli
@@ -628,7 +628,7 @@ def test_col_ramo_attivo_la_persona_non_viene_smentita_ma_ricollegata():
     nudi della persona ai nomi prefissati che la CLI serve davvero.
     Senza quel ponte il modello leggerebbe «usa `cerca`» e chiamerebbe un nome
     che non gli e' stato dato."""
-    from hiris.app.impostazioni_chat import DEFAULT_SYSTEM_PROMPT
+    from hiris.app.chat_settings import DEFAULT_SYSTEM_PROMPT
 
     system, _user = prompts.build_chat_messages(DEFAULT_SYSTEM_PROMPT, [],
                                                 active_tools=True)

@@ -53,9 +53,9 @@ import pytest
 from hiris.app.azione.porta import ActionActuator
 from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS, ToolDispatcher
+from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import _TS_FMT, _get_store, close_all_stores
 from hiris.app.claude_runner import ClaudeRunner
-from hiris.app.impostazioni_chat import ChatSettings
 from hiris.app.memoria.archivio import MemoryStore
 from hiris.app.server import create_app
 from tests._contratti import assert_stessa_firma

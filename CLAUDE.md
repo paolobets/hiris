@@ -228,19 +228,19 @@ hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
     ├── main.py           # factory aiohttp + run_app
     ├── server.py         # 3.570 righe: registrazione rotte E gran parte del wiring
     ├── claude_runner.py  # loop agentico Claude + orchestrazione tool
-    ├── llm_router.py · chat_store.py · impostazioni_chat.py · model_activation.py
+    ├── llm_router.py · chat_store.py · chat_settings.py · model_activation.py
     ├── config.py · storage.py · env_util.py · version.py
     ├── api/        (16 file) handlers_* — la superficie HTTP
     ├── casa/       (8)       anagrafe, archivio, comportamento, nucleo, domande, strumenti
     ├── azione/     (5)       porta.py — i SERVIZI, l'unica porta sul canale — verifica.py,
     │                         registro.py, cronaca.py; costruzione/ (4) — officina.py, l'unica
-    │                         porta sul canale della CONFIGURAZIONE — forme.py, mestiere.py,
+    │                         porta sul canale della CONFIGURAZIONE — composer.py, mestiere.py,
     │                         versioni.py (fetta «costruire»)
     ├── backends/   (7)       runner OpenAI-compat, embeddings, pricing
-    ├── memoria/    (4)       archivio, interpretazione, riconoscitore
+    ├── memoria/    (4)       archivio, interpretazione, resolver
     ├── proxy/      (4)       ha_client.py (il VERO client HA: REST+WS), entity_cache, _sanitize
     ├── agent/      (3)       runner.py (il ponte push) + prompts.py
-    ├── schedulatore/ (5)     promessa, archivio, orologio, turno — le promesse dell'utente
+    ├── schedulatore/ (5)     promise, archivio, sweeper, turno — le promesse dell'utente
     ├── reasoning/  (2)
     └── static/     index.html · config.html · chat/*.js · config/*.js
 ```

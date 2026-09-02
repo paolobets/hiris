@@ -42,6 +42,7 @@ from aiohttp.test_utils import TestClient, TestServer
 from hiris.app.agent import prompts, runner
 from hiris.app.api.handlers_chat import handle_chat
 from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS
+from hiris.app.chat_settings import ChatSettings
 from hiris.app.claude_runner import (
     BASE_IDENTITY,
     BASE_SYSTEM_PROMPT,
@@ -50,7 +51,6 @@ from hiris.app.claude_runner import (
     MINIMAL_PROMPT,
     RESTRICT_PROMPT,
 )
-from hiris.app.impostazioni_chat import ChatSettings
 from hiris.app.reasoning.queue import ReasoningQueue
 
 

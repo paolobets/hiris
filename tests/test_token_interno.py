@@ -31,15 +31,15 @@ import httpx
 import pytest
 import pytest_asyncio
 
-from hiris.app import server, token_interno
+from hiris.app import internal_token, server
 from hiris.app.agent import runner as agent_runner
+from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import close_all_stores
-from hiris.app.impostazioni_chat import ChatSettings
-from hiris.app.reasoning.queue import ReasoningQueue
-from hiris.app.token_interno import (
+from hiris.app.internal_token import (
     prepare_internal_token,
     token_path,
 )
+from hiris.app.reasoning.queue import ReasoningQueue
 
 
 @pytest.fixture(autouse=True)
@@ -64,7 +64,7 @@ def ambiente_pulito(monkeypatch):
 
 def test_campo_vuoto_genera_scrive_e_pubblica(tmp_path, monkeypatch, caplog):
     monkeypatch.setenv("INTERNAL_TOKEN", "")
-    caplog.set_level(logging.INFO, logger="hiris.app.token_interno")
+    caplog.set_level(logging.INFO, logger="hiris.app.internal_token")
 
     token = prepare_internal_token(str(tmp_path))
 
@@ -113,10 +113,10 @@ def test_secondo_avvio_rilegge_lo_stesso_token_e_non_ne_genera_un_altro(
     def _mai_piu(*a, **kw):
         raise AssertionError("al secondo avvio il token va RILETTO, non rigenerato")
 
-    monkeypatch.setattr(token_interno.secrets, "token_urlsafe", _mai_piu)
+    monkeypatch.setattr(internal_token.secrets, "token_urlsafe", _mai_piu)
     # run.sh riesporta il campo vuoto a ogni avvio: l'ambiente riparte da li'.
     monkeypatch.setenv("INTERNAL_TOKEN", "")
-    caplog.set_level(logging.INFO, logger="hiris.app.token_interno")
+    caplog.set_level(logging.INFO, logger="hiris.app.internal_token")
 
     secondo = prepare_internal_token(str(tmp_path))
 
@@ -136,8 +136,8 @@ def test_token_configurato_a_mano_vince_e_non_scrive_niente(tmp_path, monkeypatc
     def _mai(*a, **kw):
         raise AssertionError("con il campo valorizzato non si genera niente")
 
-    monkeypatch.setattr(token_interno.secrets, "token_urlsafe", _mai)
-    caplog.set_level(logging.INFO, logger="hiris.app.token_interno")
+    monkeypatch.setattr(internal_token.secrets, "token_urlsafe", _mai)
+    caplog.set_level(logging.INFO, logger="hiris.app.internal_token")
 
     token = prepare_internal_token(str(tmp_path))
 
@@ -182,7 +182,7 @@ def test_scrittura_impossibile_nega_e_dichiara(tmp_path, monkeypatch, caplog):
     finta_dir = tmp_path / "data"
     finta_dir.write_text("non sono una directory", encoding="utf-8")
     monkeypatch.setenv("INTERNAL_TOKEN", "")
-    caplog.set_level(logging.INFO, logger="hiris.app.token_interno")
+    caplog.set_level(logging.INFO, logger="hiris.app.internal_token")
 
     token = prepare_internal_token(str(finta_dir))
 
@@ -199,7 +199,7 @@ def test_file_illeggibile_nega_e_non_lo_sovrascrive(tmp_path, monkeypatch, caplo
     segreto sotto ai lavori gia' in coda. Si nega e si dichiara."""
     os.makedirs(token_path(str(tmp_path)))
     monkeypatch.setenv("INTERNAL_TOKEN", "")
-    caplog.set_level(logging.INFO, logger="hiris.app.token_interno")
+    caplog.set_level(logging.INFO, logger="hiris.app.internal_token")
 
     token = prepare_internal_token(str(tmp_path))
 
@@ -219,9 +219,9 @@ def test_scrittura_fallita_a_meta_non_lascia_un_token_troncato(tmp_path, monkeyp
     def _replace_che_esplode(src, dst):
         raise OSError("disco pieno")
 
-    monkeypatch.setattr(token_interno.os, "replace", _replace_che_esplode)
+    monkeypatch.setattr(internal_token.os, "replace", _replace_che_esplode)
     token = prepare_internal_token(str(tmp_path))
-    monkeypatch.setattr(token_interno.os, "replace", vero_replace)
+    monkeypatch.setattr(internal_token.os, "replace", vero_replace)
 
     assert token == ""
     assert not os.path.exists(token_path(str(tmp_path)))
@@ -422,7 +422,7 @@ def test_l_alfabeto_rifiuta_cio_che_rompe_l_header_e_nient_altro():
     # ammessi: tutto cio' che e' consegnabile in un header HTTP
     for buono in ("abc-def_123", 'ab"cd\\ef', "con spazio interno", "a+b/c=",
                   "x" * 200, "!#$%&'()*,;:@"):
-        assert token_interno.invalid_token_reason(buono) is None, buono
+        assert internal_token.invalid_token_reason(buono) is None, buono
     # rifiutati: i caratteri di controllo e il non-ASCII
     for cattivo, atteso in (("abc\rdef", "ritorno a capo"),
                             ("abc\ndef", "a-capo"),
@@ -430,12 +430,12 @@ def test_l_alfabeto_rifiuta_cio_che_rompe_l_header_e_nient_altro():
                             ("abc\tdef", "tabulazione"),
                             ("abc\x7fdef", "carattere di controllo"),
                             ("ab\u00e8cd", "non-ASCII")):
-        motivo = token_interno.invalid_token_reason(cattivo)
+        motivo = internal_token.invalid_token_reason(cattivo)
         assert motivo is not None, cattivo
         assert atteso in motivo, f"{cattivo!r} -> {motivo!r}"
         # la POSIZIONE si dice (serve a correggere l'opzione), il VALORE no
         assert "posizione" in motivo
-    assert token_interno.invalid_token_reason("") is None
+    assert internal_token.invalid_token_reason("") is None
 
 
 def test_un_token_configurato_non_consegnabile_e_rifiutato_e_dichiarato(
@@ -447,7 +447,7 @@ def test_un_token_configurato_non_consegnabile_e_rifiutato_e_dichiarato(
     credere che il valore configurato funziona."""
     cattivo = "abc\r\ndef-SEGRETO"
     monkeypatch.setenv("INTERNAL_TOKEN", cattivo)
-    caplog.set_level(logging.INFO, logger="hiris.app.token_interno")
+    caplog.set_level(logging.INFO, logger="hiris.app.internal_token")
 
     token = prepare_internal_token(str(tmp_path))
 
@@ -494,7 +494,7 @@ def test_il_token_riletto_da_disco_e_validato_come_quello_configurato(
     with open(percorso, "w", encoding="utf-8") as f:
         f.write("meta\x00SEGRETO\n")
     monkeypatch.setenv("INTERNAL_TOKEN", "")
-    caplog.set_level(logging.INFO, logger="hiris.app.token_interno")
+    caplog.set_level(logging.INFO, logger="hiris.app.internal_token")
 
     token = prepare_internal_token(str(tmp_path))
 
@@ -555,7 +555,7 @@ def test_i_caratteri_rifiutati_sono_ESATTAMENTE_quelli_che_fanno_sollevare_il_cl
             "la premessa di questo test e' cambiata, va riletta -- non "
             "cancellata")
         # (b) ...e per questo un token del genere non deve mai arrivare fin qui
-        assert token_interno.invalid_token_reason(cattivo) is not None
+        assert internal_token.invalid_token_reason(cattivo) is not None
         monkeypatch.setenv("INTERNAL_TOKEN", cattivo)
         assert prepare_internal_token(str(tmp_path)) == ""
         assert agent_runner.build_headers()["X-HIRIS-Internal-Token"] == ""
@@ -588,4 +588,4 @@ async def test_col_token_rifiutato_il_ponte_resta_negato(
 
 def test_secrets_e_della_libreria_standard():
     """Nessuna dipendenza nuova: il segreto viene dal `secrets` di sistema."""
-    assert token_interno.secrets is secrets_stdlib
+    assert internal_token.secrets is secrets_stdlib

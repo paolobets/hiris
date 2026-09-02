@@ -9,14 +9,14 @@ import time
 import aiohttp
 from aiohttp import web
 
-from ..decisione_modelli import (
+from ..model_resolution import (
     CHAIN_END,
     compose_now,
     compose_panel,
     compose_topology,
     subscription_has_token,
 )
-from ..migrazione_opzioni import _DEFAULTS as _SEED_DEFAULTS
+from ..options_migration import _DEFAULTS as _SEED_DEFAULTS
 
 logger = logging.getLogger(__name__)
 

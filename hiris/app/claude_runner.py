@@ -23,7 +23,7 @@ import anthropic
 # `esiti_provider`, che non importa niente da qui a livello di modulo (il suo
 # unico import di `openai_compat_runner` è dentro `famiglia_errore`) -- quindi
 # nessun ciclo.
-from .esiti_provider import error_family
+from .provider_occurrences import error_family
 
 logger = logging.getLogger(__name__)
 

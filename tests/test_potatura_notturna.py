@@ -24,7 +24,7 @@ import textwrap
 from datetime import UTC
 
 from hiris.app import server
-from hiris.app.impostazioni_chat import ChatSettings
+from hiris.app.chat_settings import ChatSettings
 
 
 def _load_run_retention():

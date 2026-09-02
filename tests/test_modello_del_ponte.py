@@ -97,8 +97,8 @@ async def test_job_accodato_porta_il_modello_risolto_in_argv(tmp_path):
     from aiohttp.test_utils import TestClient, TestServer
 
     from hiris.app.api.handlers_chat import handle_chat
+    from hiris.app.chat_settings import ChatSettings
     from hiris.app.chat_store import close_all_stores
-    from hiris.app.impostazioni_chat import ChatSettings
     from hiris.app.reasoning.queue import ReasoningQueue
 
     close_all_stores()

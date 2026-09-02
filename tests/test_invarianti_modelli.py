@@ -333,7 +333,7 @@ def test_ogni_alias_offerto_dal_pannello_sopravvive_alla_cli():
     sopravviva davvero al passaggio, e che un nome estraneo ricada
     dichiaratamente su `sonnet` invece di far fallire il turno."""
     from hiris.app.agent.runner import cli_model
-    from hiris.app.decisione_modelli import SUBSCRIPTION_ALIAS
+    from hiris.app.model_resolution import SUBSCRIPTION_ALIAS
 
     for alias, _descrizione in SUBSCRIPTION_ALIAS:
         assert cli_model(alias) == alias
@@ -355,7 +355,7 @@ def test_l_insieme_che_il_validatore_accetta_e_quello_che_la_pagina_offre():
     piu' sotto: li' era il pannello contro la CLI, qui il pannello contro il
     posto in cui la scelta si ferma."""
     from hiris.app.api import handlers_models
-    from hiris.app.decisione_modelli import SUBSCRIPTION_ALIAS
+    from hiris.app.model_resolution import SUBSCRIPTION_ALIAS
 
     offerti = [v for v, _ in SUBSCRIPTION_ALIAS]
     for alias in offerti:
@@ -434,7 +434,7 @@ def test_il_messaggio_di_primo_avvio_dice_ANCHE_il_secondo_gesto():
     I due gesti citati sono quelli che la pagina disegna DAVVERO: «Mettilo
     primo» arriva da `ACTION_PUT_SUBSCRIPTION_FIRST`, «Usa» e' l'etichetta del
     bottone che mette una riga in catena."""
-    from hiris.app.decisione_modelli import ACTION_PUT_SUBSCRIPTION_FIRST
+    from hiris.app.model_resolution import ACTION_PUT_SUBSCRIPTION_FIRST
 
     testo = (BASE / "app" / "api" / "handlers_chat.py").read_text(encoding="utf-8")
     blocco = re.search(
@@ -462,7 +462,7 @@ def test_ogni_alias_offerto_sopravvive_alla_traduzione_per_la_cli(alias):
     e' davvero la voce che arriva alla CLI. Senza, `SUBSCRIPTION_ALIAS` potrebbe
     contenere `Sonnet` maiuscolo e i due test sarebbero d'accordo su niente."""
     from hiris.app.agent.runner import cli_model
-    from hiris.app.decisione_modelli import SUBSCRIPTION_ALIAS
+    from hiris.app.model_resolution import SUBSCRIPTION_ALIAS
 
     assert alias in {v for v, _ in SUBSCRIPTION_ALIAS}
     assert cli_model(alias) == alias
@@ -477,8 +477,8 @@ def test_ogni_codice_di_credenziale_ha_la_sua_causa():
     che nessuno ha misurato -- e nel caso concreto (un 429 di quota aggiunto
     per farlo comparire come problema di credito) manderebbe l'utente a
     rigenerare una chiave che funziona."""
-    from hiris.app.decisione_modelli import _CREDENTIAL_CAUSE
-    from hiris.app.esiti_provider import _CREDENTIAL
+    from hiris.app.model_resolution import _CREDENTIAL_CAUSE
+    from hiris.app.provider_occurrences import _CREDENTIAL
 
     senza_causa = sorted(c for c in _CREDENTIAL if c not in _CREDENTIAL_CAUSE)
     assert senza_causa == [], f"codici senza una causa dichiarata: {senza_causa}"
@@ -488,7 +488,7 @@ def test_un_codice_senza_causa_non_ne_inventa_una():
     """La rete di sicurezza sotto la prova qui sopra: anche se i due elenchi
     divergessero, HIRIS dice il numero e si ferma invece di affermare un
     perche' che non ha misurato. E' la stessa disciplina del ramo `altro`."""
-    from hiris.app.decisione_modelli import occurrence_phrase
+    from hiris.app.model_resolution import occurrence_phrase
 
     frase = occurrence_phrase(
         {"tipo": "rifiutato", "famiglia": "credenziale", "codice": 429,

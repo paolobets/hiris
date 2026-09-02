@@ -21,7 +21,7 @@ from ..claude_runner import (
     _current_tool_calls,
     _PerCallList,
 )
-from ..esiti_provider import error_family
+from ..provider_occurrences import error_family
 from .pricing import get_price as _prezzo
 
 # Circuit-breaker: after this many consecutive connection-class failures, skip

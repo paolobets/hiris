@@ -27,7 +27,7 @@ import pytest
 import pytest_asyncio
 
 from hiris.app import server
-from hiris.app.impostazioni_chat import ChatSettings
+from hiris.app.chat_settings import ChatSettings
 from hiris.app.reasoning.queue import ReasoningQueue
 from hiris.app.schedulatore.archivio import AgendaStore
 

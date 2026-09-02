@@ -169,8 +169,8 @@ def test_il_job_scaduto_resta_distinguibile_da_un_job_mai_esistito(q):
 
 from hiris.app.api.handlers_chat import handle_chat, handle_chat_reply_poll
 from hiris.app.casa.archivio import HomeSpaceStore
+from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import close_all_stores
-from hiris.app.impostazioni_chat import ChatSettings
 from hiris.app.memoria.archivio import MemoryStore
 
 

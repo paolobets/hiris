@@ -25,7 +25,7 @@ def _make_app_with_runner(runner):
     is left as a live subject here, so only that route is registered now.
     """
     from hiris.app.api.handlers_chat import handle_chat
-    from hiris.app.impostazioni_chat import ChatSettings
+    from hiris.app.chat_settings import ChatSettings
     from hiris.app.server import _security_headers
 
     app = web.Application(middlewares=[_security_headers])
