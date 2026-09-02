@@ -1,4 +1,4 @@
-/* HIRIS · Configurazione · «Promesse» (route #/promesse)
+/* HIRIS · Configurazione · «Promesse» (route #/agenda)
 
    La terza condizione della spec dello Schedulatore (docs/design/2026-08-19-
    lo-schedulatore.md, §10): «Si vede. Un posto dove guardare cosa e' in

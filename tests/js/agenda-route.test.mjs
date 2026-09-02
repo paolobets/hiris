@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts, tick } from './helpers/dom.mjs';
 
-/* fetta «lo schedulatore» Task 9: la pagina #/promesse (config/agenda-route.js).
+/* fetta «lo schedulatore» Task 9: la pagina #/agenda (config/agenda-route.js).
    Chiude la terza condizione della spec (§10): «Si vede. Un posto dove guardare
    cosa e' in sospeso e annullarlo.» Legge UNA sola GET /api/agenda?all=1 e
    filtra lato client per `stato` -- lo stato e' un campo della stessa lista,

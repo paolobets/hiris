@@ -3567,7 +3567,7 @@ def create_app() -> web.Application:
     # cambiavano solo scrivendo a mano `/data/impostazioni_chat.json`
     # (`save()` non aveva chiamanti di produzione). Il PUT passa dallo stesso
     # `csrf_middleware` di ogni altra rotta di scrittura -- nessuna
-    # autenticazione propria -- e la pagina che lo chiama e' `#/impostazioni`
+    # autenticazione propria -- e la pagina che lo chiama e' `#/settings`
     # (static/config/settings-route.js), nello stesso commit.
     app.router.add_get("/api/chat-settings", handle_get_settings)
     app.router.add_put("/api/chat-settings", handle_save_settings)

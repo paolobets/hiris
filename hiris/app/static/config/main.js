@@ -5,7 +5,7 @@
      insieme a editor-kit.js e ai tre editor che la usavano (Chatbot,
      Agentbot, wizard): in questa SPA non c'e' piu' nessuna pagina che possa
      avere modifiche pendenti da perdere -- le due che scrivono
-     (#/impostazioni e #/models) salvano al click, senza stato "sporco". Un
+     (#/settings e #/models) salvano al click, senza stato "sporco". Un
      `if (window.HirisEditorKit)` su un modulo che non esiste piu' sarebbe
      una dichiarazione falsa, non una degradazione. */
 
@@ -76,12 +76,12 @@
     document.querySelectorAll('.nav-item[data-route]').forEach(function(item) {
       var route = item.getAttribute('data-route');
       var isActive =
-        (route === 'conoscenza' && (hash === '#/' || hash === '')) ||
-        (route === 'albero' && hash.indexOf('#/albero') === 0) ||
-        (route === 'memoria' && hash.indexOf('#/memoria') === 0) ||
-        (route === 'promesse' && hash.indexOf('#/promesse') === 0) ||
-        (route === 'costruzioni' && hash.indexOf('#/costruzioni') === 0) ||
-        (route === 'osservatore' && hash.indexOf('#/osservatore') === 0) ||
+        (route === 'knowledge' && (hash === '#/' || hash === '')) ||
+        (route === 'tree' && hash.indexOf('#/tree') === 0) ||
+        (route === 'memory' && hash.indexOf('#/memory') === 0) ||
+        (route === 'agenda' && hash.indexOf('#/agenda') === 0) ||
+        (route === 'constructions' && hash.indexOf('#/constructions') === 0) ||
+        (route === 'watcher' && hash.indexOf('#/watcher') === 0) ||
         (route === 'usage' && hash.indexOf('#/usage') === 0) ||
         (route === 'models' && hash.indexOf('#/models') === 0) ||
         /* fetta E5 Task 2: qui c'era un ramo `settings` orfano -- nessuna
@@ -89,8 +89,12 @@
            route `#/settings` registrata sotto, quindi la condizione non
            poteva essere vera per nessun elemento. Non se ne aggiunge un
            secondo accanto: quel ramo diventa questo, l'unico, sulla pagina
-           che ora esiste davvero. */
-        (route === 'impostazioni' && hash.indexOf('#/impostazioni') === 0);
+           che ora esiste davvero.
+           02/09: da questa fetta la route si chiama `#/settings` per davvero
+           (era `#/impostazioni`), quindi il nome del ramo e quello dell'hash
+           coincidono di nuovo -- il paragrafo qui sopra resta perche' e' la
+           misura di allora, non una descrizione di oggi. */
+        (route === 'settings' && hash.indexOf('#/settings') === 0);
       item.classList.toggle('active', isActive);
     });
   }
@@ -115,7 +119,7 @@
   });
   /* Reperto 26: la faccia di `casa.piani` -- vedi config/tree-route.js
      per il perché. */
-  HirisRouter.register(/^#\/albero\/?$/, function() {
+  HirisRouter.register(/^#\/tree\/?$/, function() {
     setCrumbHere('Albero della casa');
     if (window.HirisTreeRoute) {
       HirisTreeRoute.mount();
@@ -125,7 +129,7 @@
   });
   /* fetta E5 Task 9: sostituisce il pannello Memoria della chat -- vedi
      config/memory-route.js per il perché. */
-  HirisRouter.register(/^#\/memoria\/?$/, function() {
+  HirisRouter.register(/^#\/memory\/?$/, function() {
     setCrumbHere('Memoria');
     if (window.HirisMemoryRoute) {
       HirisMemoryRoute.mount();
@@ -133,12 +137,12 @@
       document.getElementById('route-outlet').innerHTML = '<div class="page-title">Memoria</div>';
     }
   });
-  /* fetta «lo schedulatore» Task 9: la pagina #/promesse -- vedi
+  /* fetta «lo schedulatore» Task 9: la pagina #/agenda -- vedi
      config/agenda-route.js per il perche'. Una sola rotta: la pagina
      legge UNA GET /api/agenda?all=1 e filtra lì per `stato`, invece di
      chiederne due -- lo stato di una promessa è un campo, non un
      endpoint. */
-  HirisRouter.register(/^#\/promesse\/?$/, function() {
+  HirisRouter.register(/^#\/agenda\/?$/, function() {
     setCrumbHere('Promesse');
     if (window.HirisAgendaRoute) {
       HirisAgendaRoute.mount();
@@ -146,11 +150,11 @@
       document.getElementById('route-outlet').innerHTML = '<div class="page-title">Promesse</div>';
     }
   });
-  /* fetta «costruire» Task 11: la pagina #/costruzioni -- vedi
+  /* fetta «costruire» Task 11: la pagina #/constructions -- vedi
      config/constructions-route.js per il perche'. `mount(outlet)` porta il
      proprio outlet, a differenza delle altre route qui sopra: e' l'unico
      modulo di questa SPA con quella firma, pinnata dal Task 11. */
-  HirisRouter.register(/^#\/costruzioni\/?$/, function() {
+  HirisRouter.register(/^#\/constructions\/?$/, function() {
     setCrumbHere('Costruzioni');
     if (window.HirisConstructions) {
       HirisConstructions.mount(document.getElementById('route-outlet'));
@@ -158,12 +162,12 @@
       document.getElementById('route-outlet').innerHTML = '<div class="page-title">Costruzioni</div>';
     }
   });
-  /* fetta «l'osservatore» Task 7: la pagina #/osservatore -- vedi
+  /* fetta «l'osservatore» Task 7: la pagina #/watcher -- vedi
      config/watcher-route.js per il perche'. `mount()` senza argomenti,
      legge da solo `#route-outlet`: stesso pattern di tree-route.js e
      memory-route.js, non quello di constructions-route.js (che porta
      l'outlet come parametro). */
-  HirisRouter.register(/^#\/osservatore\/?$/, function() {
+  HirisRouter.register(/^#\/watcher\/?$/, function() {
     setCrumbHere('L’osservatore');
     if (window.HirisWatcherRoute) {
       HirisWatcherRoute.mount();
@@ -193,8 +197,8 @@
   /* fetta E5 Task 2: la route che in v0.10.5 era stata rimossa perché
      placeholder vuoto (`#/settings`, «Implementata in Phase 11») rinasce qui
      con contenuto reale e con il nome italiano del resto della fetta:
-     `#/impostazioni`, i sette campi di ChatSettings. */
-  HirisRouter.register(/^#\/impostazioni\/?$/, function() {
+     `#/settings`, i sette campi di ChatSettings. */
+  HirisRouter.register(/^#\/settings\/?$/, function() {
     setCrumbHere('Impostazioni chat');
     if (window.HirisSettingsRoute) {
       HirisSettingsRoute.mount();

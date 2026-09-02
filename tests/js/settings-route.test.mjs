@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts, tick } from './helpers/dom.mjs';
 
-/* fetta E5 Task 2: la pagina #/impostazioni (config/settings-route.js).
+/* fetta E5 Task 2: la pagina #/settings (config/settings-route.js).
    E' la prima interfaccia che i campi di ChatSettings abbiano mai avuto:
    fino a quel task si cambiavano solo scrivendo a mano
    /data/impostazioni_chat.json. Qui si verifica cio' che un tester UAT fa

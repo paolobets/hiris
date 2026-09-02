@@ -247,6 +247,21 @@ questa fetta in cui si può rompere qualcosa senza che niente diventi rosso.
 **Regola: ogni fetta di sottosistema cerca esplicitamente i propri accessi dinamici e li tratta a
 mano, prima di dichiararsi finita.** Il report della fetta elenca quelli trovati e dove.
 
+> **Nota del 02/09.** `app["archivio_casa"]` non esiste più: la fetta delle chiavi
+> dell'applicazione l'ha portata a `app["home_space_store"]`, insieme alle altre ventuno chiavi
+> italiane. **L'esempio resta scritto com'era perché è la misura di quel giorno**, e questo
+> paragrafo è anche il primo posto in cui chi arriva legge come si evita di rompere qualcosa in
+> silenzio: cambiargli l'esempio sotto lo renderebbe una descrizione di oggi invece del verbale
+> che è.
+>
+> Vale la pena aggiungere come è andata a finire, perché il paragrafo aveva ragione **e si può
+> misurare**: rimettendo `app["cache_indice_strumenti"]` nel solo `server.py` — cioè scollegando
+> la cache dell'indice degli strumenti — la suite restava **3049 passed, 1 skipped: tutta
+> verde**. Non era un rischio teorico. La cura non è stata una rinomina più prudente ma il test
+> che mancava (`tests/test_lookup_cache.py::test_la_cache_dell_indice_arriva_davvero_al_dispatcher`,
+> provato per mutazione sui due capi), e la lezione generale è quella: **dove la rete non arriva,
+> l'enumerazione a mano trova il sito e solo un test nuovo lo tiene chiuso.**
+
 ---
 
 ## 6. La rete, e dove non arriva

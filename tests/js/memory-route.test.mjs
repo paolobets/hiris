@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadScripts, tick } from './helpers/dom.mjs';
 
-/* fetta E5 Task 9: la pagina #/memoria (config/memory-route.js). Sostituisce
+/* fetta E5 Task 9: la pagina #/memory (config/memory-route.js). Sostituisce
    il pannello Memoria della chat (coda di approvazione, uscita con questo
    stesso task) e interroga l'archivio vero (GET/PATCH/DELETE /api/memories*).
 

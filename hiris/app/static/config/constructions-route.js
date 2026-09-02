@@ -1,4 +1,4 @@
-/* HIRIS · Configurazione · «Costruzioni» (route #/costruzioni)
+/* HIRIS · Configurazione · «Costruzioni» (route #/constructions)
 
    Il posto dove il proprietario approva o rifiuta cio' che HIRIS propone di
    scrivere in Home Assistant, legge il confronto prima/dopo, e rimette

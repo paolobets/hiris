@@ -6,7 +6,7 @@ import { loadScripts, tick } from './helpers/dom.mjs';
 /* Reperto 26 (docs/design/2026-08-17-reperti-della-review.md): `GET
    /api/home-space` manda l'albero completo che `anagrafe.gerarchia()` costruisce
    (`casa.piani`), e prima usciva verso nessuna pagina. Questo file pinna la
-   pagina #/albero (config/tree-route.js), che lo mostra.
+   pagina #/tree (config/tree-route.js), che lo mostra.
 
    Ciò che conta qui non è l'impaginazione — è che le SEI cause distinte di
    silenzio che `hierarchy()` dichiara (Senza area / Area sconosciuta / Aree
@@ -258,17 +258,17 @@ test('una fetch caduta lo dichiara: niente casa vuota travestita da silenzio', a
   assert.match(testo, /non significa che la casa sia vuota/);
 });
 
-test('wiring: la rotta #/albero e lo script sono registrati nella SPA', () => {
+test('wiring: la rotta #/tree e lo script sono registrati nella SPA', () => {
   const configHtml = readFileSync(
     new URL('../../hiris/app/static/config.html', import.meta.url), 'utf8');
   assert.match(configHtml, /static\/config\/tree-route\.js/,
     'config.html deve caricare config/tree-route.js');
-  assert.match(configHtml, /href="#\/albero"/, 'deve esistere una voce di navigazione verso #/albero');
+  assert.match(configHtml, /href="#\/tree"/, 'deve esistere una voce di navigazione verso #/tree');
 
   const mainJs = readFileSync(
     new URL('../../hiris/app/static/config/main.js', import.meta.url), 'utf8');
-  assert.ok(mainJs.includes('HirisRouter.register(/^#\\/albero\\/?$/'),
-    'main.js deve registrare la rotta #/albero presso HirisRouter');
+  assert.ok(mainJs.includes('HirisRouter.register(/^#\\/tree\\/?$/'),
+    'main.js deve registrare la rotta #/tree presso HirisRouter');
   assert.ok(mainJs.includes('HirisTreeRoute.mount()'),
     'la rotta registrata deve montare HirisTreeRoute');
 });

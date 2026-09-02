@@ -116,7 +116,7 @@ def test_load_filters_messages_older_than_30_days(tmp_path):
 
 def test_i_giorni_limitano_anche_quanto_HIRIS_rilegge_della_conversazione(tmp_path):
     """Il secondo lavoro dello stesso numero, che la vecchia descrizione
-    dell'opzione dichiarava e la nuova pagina (#/impostazioni) deve
+    dell'opzione dichiarava e la nuova pagina (#/settings) deve
     continuare a dichiarare: `days` non e' una soglia di pulizia qui --
     `load_context` non cancella niente, filtra solo cio' che RILEGGE. Con
     `days=1` un messaggio di due giorni fa, ancora nella sessione attiva

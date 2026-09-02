@@ -109,7 +109,7 @@ _FILE_PERMISSIONS = 0o600
 # ha nessun chiamante fuori dai test, e la superficie HTTP che lo scrivera' e'
 # della fetta E5». Quella superficie ORA esiste --
 # `api/handlers_settings.py`, `PUT /api/chat-settings`, la pagina
-# `#/impostazioni` -- quindi un `impostazioni_chat.json` sul disco non e' piu'
+# `#/settings` -- quindi un `impostazioni_chat.json` sul disco non e' piu'
 # necessariamente scritto a mano: puo' essere stato salvato dall'utente dalla
 # pagina. Cio' che NON cambia e' la conclusione: un meccanismo alla
 # `_LEGACY_DEFAULT_PROMPTS` (riconoscere per uguaglianza esatta un prompt
@@ -177,7 +177,7 @@ DEFAULT_SYSTEM_PROMPT = (
 #   2. lo STESSO numero limita quanto `chat_store.load_context()` rilegge
 #      della conversazione in corso -- abbassarlo non libera spazio, fa
 #      DIMENTICARE PRIMA. Un file/opzione mai toccato non lo diceva: la
-#      descrizione in `#/impostazioni` lo dichiara adesso.
+#      descrizione in `#/settings` lo dichiara adesso.
 # E `0` non cancella e non limita MAI niente: i due lettori di `chat_store`
 # scrivono la stessa regola al contrario (`if days > 0` in `load_context`,
 # `if retention_days <= 0: return 0` in `delete_old_messages`) -- il contrario

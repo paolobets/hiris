@@ -1,4 +1,4 @@
-/* HIRIS · Configurazione · «Memoria» (route #/memoria)
+/* HIRIS · Configurazione · «Memoria» (route #/memory)
 
    Sostituisce il pannello Memoria della chat, che interrogava la coda di
    approvazione di knowledge_store (lo stato "pending") — vuota per

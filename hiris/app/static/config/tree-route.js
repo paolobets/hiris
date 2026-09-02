@@ -1,4 +1,4 @@
-/* HIRIS · Configurazione · «Albero della casa» (route #/albero)
+/* HIRIS · Configurazione · «Albero della casa» (route #/tree)
 
    Chiude il reperto 26: `GET /api/home-space` manda gia' l'albero completo che
    `anagrafe.hierarchy()` costruisce -- piani -> aree -> entita', col

@@ -16,8 +16,66 @@
      monta regolarmente. */
   var lastResolvedHash = null;
 
+  /* ── Gli indirizzi DI PRIMA ───────────────────────────────────
+     Fino alla fetta della rinomina (02/09) le sei pagine italiane avevano
+     un hash italiano. L'hash si vede nella barra del browser e finisce nei
+     SEGNALIBRI: su questa casa la porta 8099 puo' essere esposta da Home
+     Assistant (`config.yaml`, `ports`), quindi
+     `http://<casa>:8099/config.html#/promesse` e' un URL stabile che
+     qualcuno puo' aver salvato -- e anche sotto ingress il token di
+     percorso dell'add-on sopravvive alle sessioni. Rinominare senza questa
+     tabella avrebbe risposto «Pagina non trovata» a un segnalibro valido.
+
+     **CONDIZIONE D'USCITA**: questa tabella si toglie il giorno in cui
+     nessun segnalibro in circolazione punta piu' a un hash italiano. Come
+     per l'avviso sui nomi vecchi degli strumenti
+     (`agent/prompts.py::_OLD_NAMES_NOTICE`), quel giorno **si misura
+     sull'USO, non su questo repository**: qui dentro non resta nessun hash
+     italiano gia' da oggi, quindi il repository direbbe «togliila» subito e
+     avrebbe torto. Quando si toglie, si toglie insieme a
+     `tests/js/router-alias.test.mjs`, che e' scritto per andare rosso se la
+     tabella si svuota -- il suo rosso E' il promemoria.
+
+     La meta' ESEGUIBILE della condizione vive li': ogni bersaglio deve
+     essere una route che `main.js` registra davvero (altrimenti la tabella
+     manderebbe un segnalibro valido su una pagina che non c'e' piu', in
+     silenzio), e nessuna sorgente puo' essere a sua volta una route viva
+     (altrimenti la tabella ne oscurerebbe una vera). ────────────────── */
+  var HASH_DI_PRIMA = {
+    '#/albero': '#/tree',
+    '#/memoria': '#/memory',
+    '#/promesse': '#/agenda',
+    '#/costruzioni': '#/constructions',
+    '#/osservatore': '#/watcher',
+    '#/impostazioni': '#/settings',
+  };
+
+  /* `history.replaceState` e NON `window.location.hash = ...`, per due
+     ragioni misurate:
+     1. assegnare l'hash aggiungerebbe una voce di cronologia, e il tasto
+        «indietro» riporterebbe sull'hash vecchio, che rimanda avanti: un
+        utente non potrebbe piu' tornare indietro;
+     2. assegnare l'hash fa partire un `hashchange` ASINCRONO, quindi la
+        route si monterebbe in un secondo giro invece che in questo. Con
+        `replaceState` la correzione e' sincrona: si prosegue nello stesso
+        `resolveRoute()` col nome nuovo, e la barra dice gia' il vero.
+     Il ripiego per un browser senza `replaceState` assegna l'hash: il
+     `hashchange` che ne segue viene assorbito da `lastResolvedHash`, che a
+     quel punto vale gia' l'hash NUOVO. */
+  function correggiHashDiPrima(hash) {
+    var nudo = hash.replace(/\/$/, '');
+    if (!Object.prototype.hasOwnProperty.call(HASH_DI_PRIMA, nudo)) return hash;
+    var nuovo = HASH_DI_PRIMA[nudo];
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState(null, '', nuovo);
+    } else {
+      window.location.hash = nuovo;
+    }
+    return nuovo;
+  }
+
   function resolveRoute() {
-    var hash = window.location.hash || '#/';
+    var hash = correggiHashDiPrima(window.location.hash || '#/');
     if (hash === lastResolvedHash) return;
     for (var i = 0; i < routes.length; i++) {
       var r = routes[i];
@@ -74,5 +132,6 @@
       window.location.hash = hash;
     },
     _internal_routes: routes, /* exposed for test only */
+    _hash_di_prima: HASH_DI_PRIMA, /* exposed for test only */
   };
 })();

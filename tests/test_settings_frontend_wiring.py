@@ -1,4 +1,4 @@
-"""fetta E5 Task 2: la pagina `#/impostazioni` esiste E si raggiunge.
+"""fetta E5 Task 2: la pagina `#/settings` esiste E si raggiunge.
 
 Guardie di WIRING (testo sul sorgente), stessa forma di
 `tests/test_models_frontend_wiring.py` e famiglia. La copertura
@@ -31,7 +31,7 @@ def _senza_commenti_js(testo: str) -> str:
 
     Limite dichiarato, non nascosto: i commenti di riga `// ...` NON vengono
     tolti, perche' toglierli con una regex mangerebbe le barre dentro le
-    stringhe e i letterali di espressione regolare (`/^#\/impostazioni\/?$/`).
+    stringhe e i letterali di espressione regolare (`/^#\/settings\/?$/`).
     Se un giorno questi file ne usassero, la guardia tornerebbe soddisfabile
     da un commento di riga. Un `assert` qui sotto lo pinna, cosi' il limite si
     accorge da solo di essere stato superato.
@@ -81,26 +81,50 @@ def test_la_voce_di_menu_esiste_e_punta_alla_route():
     # etichette spariscono: senza quei due attributi restano sei icone senza
     # nome). Il soggetto del test resta lo stesso: che la voce esista, che
     # punti a quella route e che porti quel testo.
-    voce = re.search(r'<a class="nav-item"[^>]*href="#/impostazioni"[^>]*>.*?</a>', HTML, re.DOTALL)
+    voce = re.search(r'<a class="nav-item"[^>]*href="#/settings"[^>]*>.*?</a>', HTML, re.DOTALL)
     assert voce, "senza voce di nav la pagina esisterebbe e nessuno la troverebbe"
-    assert 'data-route="impostazioni"' in voce.group(0)
+    assert 'data-route="settings"' in voce.group(0)
     assert "Impostazioni chat" in voce.group(0)
 
 
 def test_main_registra_la_route_e_monta_il_modulo():
-    assert re.search(r"HirisRouter\.register\(/\^#\\/impostazioni", MAIN), \
-        "la route #/impostazioni deve essere registrata in main.js"
+    assert re.search(r"HirisRouter\.register\(/\^#\\/settings", MAIN), \
+        "la route #/settings deve essere registrata in main.js"
     assert "HirisSettingsRoute.mount()" in MAIN
 
 
-def test_updatenavactive_conosce_impostazioni_e_non_ha_piu_il_ramo_orfano():
-    """Il ramo `settings` di `updateNavActive()` era orfano: nessuna voce di
-    nav con `data-route="settings"` (tolta in v0.10.5) e nessuna route
-    `#/settings` registrata. Diventa il ramo di `impostazioni`; non ne restano
-    due."""
-    assert "route === 'impostazioni'" in MAIN
-    assert "route === 'settings'" not in MAIN
-    assert 'data-route="settings"' not in HTML
+def test_updatenavactive_non_ha_nessun_ramo_orfano():
+    """Nessun ramo di `updateNavActive()` senza la sua voce di nav, e nessuna
+    voce di nav senza il suo ramo.
+
+    **Storia, e perche' l'invariante e' scritta cosi' e non com'era.** Fino al
+    02/09 questo test diceva tre cose sui nomi di ALLORA: che il ramo
+    `settings` -- orfano da v0.10.5, quando la voce di nav corrispondente era
+    uscita -- fosse diventato il ramo di `impostazioni`, e che di
+    `data-route="settings"` non ne restasse traccia. La fetta della rinomina
+    ha portato la pagina a chiamarsi `settings` per davvero, e quelle tre
+    righe sono diventate una contraddizione letterale
+    (`"route === 'settings'" in MAIN` e `not in MAIN` insieme).
+
+    Riscritte NON coi nomi nuovi al posto dei vecchi -- sarebbe stato lo
+    stesso test fragile con un'altra parola -- ma con l'INVARIANTE che quelle
+    tre righe volevano proteggere, che e' piu' forte e non ha nomi dentro:
+    **i due insiemi devono combaciare**. Un ramo senza voce non puo' mai
+    essere vero (era il difetto del 2026); una voce senza ramo non si accende
+    mai. Vale per tutte e nove le pagine, non per una.
+    """
+    rami = set(re.findall(r"route === '([a-z_-]+)'", MAIN))
+    voci = set(re.findall(r'data-route="([a-z_-]+)"', HTML))
+    assert rami, "nessun ramo trovato: la regex non descrive piu' updateNavActive()"
+    assert voci, "nessuna voce di nav trovata: la regex non descrive piu' config.html"
+    assert rami == voci, (
+        f"rami senza voce di nav (non si accendono mai): {sorted(rami - voci)}; "
+        f"voci di nav senza ramo (non si evidenziano mai): {sorted(voci - rami)}"
+    )
+    assert "settings" in rami, (
+        "la pagina delle impostazioni deve avere il suo ramo: e' il soggetto "
+        "di questo file"
+    )
 
 
 def test_la_pagina_non_dipende_dai_moduli_che_escono_al_task_6():

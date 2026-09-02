@@ -1148,7 +1148,7 @@
   background: var(--accent-tint);
   border-color: var(--accent-tint-2);
 }
-/* fetta «lo schedulatore» Task 9 (#/promesse): mancava una variante ambra e
+/* fetta «lo schedulatore» Task 9 (#/agenda): mancava una variante ambra e
    una rossa di `.agent-badge` -- i token `--warn-*`/`--err-*` esistono dal
    principio e sono gia' usati come colore di testo inline in
    memory-route.js, ma nessuna pagina li aveva mai portati fin qui come
@@ -1426,7 +1426,7 @@
    `.sc-body` (--sp-5) spezzerebbe proprio cio' che tiene insieme la frase. */
 #chain-body, #outside-body { gap: 0; }
 
-/* fetta «lo schedulatore» Task 9 (#/promesse): stesso motivo di sopra --
+/* fetta «lo schedulatore» Task 9 (#/agenda): stesso motivo di sopra --
    ogni riga porta il proprio separatore (`border-top`), non il gap del
    flex del `.sc-body` che eredita. */
 #agenda-pending-body, #agenda-history-body { gap: 0; }

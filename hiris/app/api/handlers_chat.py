@@ -815,7 +815,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     # la potatura notturna, ma anche quanto di questa conversazione HIRIS
     # rilegge adesso. Riletto a ogni turno dall'archivio come il modello
     # (vedi il commento sulla scadenza del ponte qui sotto), non catturato
-    # all'avvio: un utente che lo abbassa in `#/impostazioni` lo vede avere
+    # all'avvio: un utente che lo abbassa in `#/settings` lo vede avere
     # effetto dal messaggio successivo, senza riavviare.
     history = load_history(data_dir, days=settings.retention_days)
 

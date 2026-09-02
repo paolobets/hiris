@@ -1,4 +1,4 @@
-/* HIRIS · Configurazione · «L'osservatore» (route #/osservatore)
+/* HIRIS · Configurazione · «L'osservatore» (route #/watcher)
 
    La prima fetta del cervello nuovo (docs/design/2026-08-26-l-osservatore.md).
    Guarda la casa e ne ricava oggetti -- non conclude niente, non parla, non

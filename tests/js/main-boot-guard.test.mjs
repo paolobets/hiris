@@ -47,24 +47,24 @@ const ROUTE = [
   // e' «Cosa HIRIS sa» -- il segnaposto e la briciola sono cambiati con lei.
   ['#/', 'Cosa HIRIS sa'],
   // Reperto 26: la faccia di `casa.piani` (gerarchia()).
-  ['#/albero', 'Albero della casa'],
+  ['#/tree', 'Albero della casa'],
   // fetta E5 Task 9: sostituisce il pannello Memoria della chat.
-  ['#/memoria', 'Memoria'],
+  ['#/memory', 'Memoria'],
   // fetta «lo schedulatore» Task 9: la terza condizione della spec, «si vede».
-  ['#/promesse', 'Promesse'],
+  ['#/agenda', 'Promesse'],
   // fetta «costruire» Task 11: approvare o rifiutare cio' che HIRIS propone
   // di scrivere in Home Assistant, leggere il prima/dopo, tornare indietro.
-  ['#/costruzioni', 'Costruzioni'],
+  ['#/constructions', 'Costruzioni'],
   // fetta «l'osservatore» Task 7: guarda la casa e ne ricava oggetti -- non
   // conclude, non parla, non tocca niente.
-  ['#/osservatore', 'L’osservatore'],
+  ['#/watcher', 'L’osservatore'],
   ['#/usage', 'Consumi'],
   ['#/models', 'Modelli'],
   // fetta «esce il documentale»: qui c'era ['#/history', 'Storicizzazione'].
   // La pagina è uscita con la cattura dello storico che configurava, quindi
   // la route non è più registrata da main.js: lasciarla qui avrebbe fatto
   // fallire il conteggio, che è esattamente il compito di questo elenco.
-  ['#/impostazioni', 'Impostazioni chat'],
+  ['#/settings', 'Impostazioni chat'],
 ];
 
 function avvia() {
