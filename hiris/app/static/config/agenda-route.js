@@ -102,7 +102,7 @@ window.HirisAgendaRoute = (function () {
   }
 
   function setStatus(text) {
-    var s = byId('promesse-status');
+    var s = byId('agenda-status');
     if (s) s.textContent = text || '';
   }
 
@@ -224,7 +224,7 @@ window.HirisAgendaRoute = (function () {
     var panel = el('div');
     panel.style.marginTop = '6px';
     panel.hidden = true;
-    var panelId = 'esec-' + p.id;
+    var panelId = 'execution-' + p.id;
     panel.id = panelId;
     btn.setAttribute('aria-controls', panelId);
     var loaded = false;
@@ -416,10 +416,10 @@ window.HirisAgendaRoute = (function () {
   }
 
   function load() {
-    var pendingBody = byId('promesse-sospeso-body');
-    var historyBody = byId('promesse-storico-body');
-    var pendingDesc = byId('promesse-sospeso-desc');
-    var historyDesc = byId('promesse-storico-desc');
+    var pendingBody = byId('agenda-pending-body');
+    var historyBody = byId('agenda-history-body');
+    var pendingDesc = byId('agenda-pending-desc');
+    var historyDesc = byId('agenda-history-desc');
     if (!pendingBody || !historyBody) return;
     clearEl(pendingBody); pendingBody.appendChild(el('p', 'field-hint', 'Caricamento…'));
     clearEl(historyBody); historyBody.appendChild(el('p', 'field-hint', 'Caricamento…'));
@@ -439,9 +439,9 @@ window.HirisAgendaRoute = (function () {
   }
 
   /* ── Shell statico: due `.section-card`, stesso pattern di
-     `buildSectionShell` in models-route.js. `#promesse-sospeso-body`/
-     `#promesse-storico-body` ricevono `gap:0` da hiris-config.css, stesso
-     trattamento di `#catena-body`/`#fuori-body`: le righe si separano con
+     `buildSectionShell` in models-route.js. `#agenda-pending-body`/
+     `#agenda-history-body` ricevono `gap:0` da hiris-config.css, stesso
+     trattamento di `#chain-body`/`#outside-body`: le righe si separano con
      un `border-top` proprio (guida §2), non col gap del flex. ────────── */
   function buildSectionShell(num, idPrefix, sectionAttr, title) {
     var section = el('section', 'section-card');
@@ -450,10 +450,10 @@ window.HirisAgendaRoute = (function () {
     head.appendChild(el('h2', 'sc-title', title));
     section.appendChild(head);
     var desc = el('p', 'sc-desc', '');
-    desc.id = 'promesse-' + idPrefix + '-desc';
+    desc.id = 'agenda-' + idPrefix + '-desc';
     section.appendChild(desc);
     var body = el('div', 'sc-body');
-    body.id = 'promesse-' + idPrefix + '-body';
+    body.id = 'agenda-' + idPrefix + '-body';
     body.setAttribute('data-sezione', sectionAttr);
     body.appendChild(el('p', 'field-hint', 'Caricamento…'));
     section.appendChild(body);
@@ -468,14 +468,14 @@ window.HirisAgendaRoute = (function () {
     outlet.appendChild(el('p', 'page-subtitle',
       'Ciò che hai chiesto a HIRIS di fare o guardare più tardi, e com’è andata finora.'));
     var status = el('p', 'sc-desc', '');
-    status.id = 'promesse-status';
+    status.id = 'agenda-status';
     outlet.appendChild(status);
 
     /* «In sospeso» sopra: e' la sezione corta, azionabile, ed e' la
        domanda con cui si apre questa pagina piu' spesso. Lo storico e' un
        registro di consultazione, non l'atterraggio (guida §1). */
-    outlet.appendChild(buildSectionShell('01', 'sospeso', 'in-sospeso', 'In sospeso'));
-    outlet.appendChild(buildSectionShell('02', 'storico', 'storico', 'Storico'));
+    outlet.appendChild(buildSectionShell('01', 'pending', 'pending', 'In sospeso'));
+    outlet.appendChild(buildSectionShell('02', 'history', 'history', 'Storico'));
 
     load();
   }

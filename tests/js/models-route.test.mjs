@@ -115,7 +115,7 @@ function monta(opts = {}) {
 }
 
 function adesso(document) {
-  return document.getElementById('adesso-card');
+  return document.getElementById('now-card');
 }
 
 /* ── Le righe della catena: i dati del payload, non una ricostruzione ─────── */
@@ -158,11 +158,11 @@ const FUORI = [
 ];
 
 function righeCatena(document) {
-  return Array.from(document.querySelectorAll('#catena-card .riga-provider'));
+  return Array.from(document.querySelectorAll('#chain-card .riga-provider'));
 }
 
 function righeFuori(document) {
-  return Array.from(document.querySelectorAll('#fuori-card .riga-provider'));
+  return Array.from(document.querySelectorAll('#outside-card .riga-provider'));
 }
 
 /* I bottoni di una riga MENO quello del modello. Dal Task 9 il modello e' un
@@ -263,7 +263,7 @@ test('un GET fallito lo dice, e non lascia il riquadro a metà', async () => {
 
 /* ── C1 della revisione finale: dopo un GET fallito non si scrive ───────────
    I tre preset «Rifai la catena» stanno nell'INTESTAZIONE della sezione 01, e
-   `renderError` ridisegna solo `#catena-body` e `#fuori-body`: dopo un GET
+   `renderError` ridisegna solo `#chain-body` e `#outside-body`: dopo un GET
    fallito restavano a schermo, e insieme a «Riprova» erano l'unica cosa
    cliccabile della pagina. `redoChain` non aveva nessuna guardia sul
    caricamento: con `state.catena` e `state.fuoriCatena` vuote, `credenziati`
@@ -451,7 +451,7 @@ test('un gesto che il disco rifiuta non resta a schermo come se fosse passato', 
   adesso(ctx.document).querySelector('.diagnosi-azione')
     .dispatchEvent(new ctx.window.Event('click'));
   await tick(20);
-  assert.match(ctx.document.getElementById('catena-stato').textContent,
+  assert.match(ctx.document.getElementById('chain-status').textContent,
     /Salvataggio non riuscito/);
 
   ctx.document.querySelectorAll('.sc-actions button')[0]
@@ -482,7 +482,7 @@ test('fra due righe c\'è il connettore, e l\'ultimo dice cosa succede se non ri
   const { window, document } = monta({ config: { catena: CATENA, fuori_catena: FUORI } });
   window.HirisModelsRoute.mount();
   await tick(20);
-  const conn = Array.from(document.querySelectorAll('#catena-card .connettore'))
+  const conn = Array.from(document.querySelectorAll('#chain-card .connettore'))
     .map((c) => c.textContent);
   assert.equal(conn.length, 2, 'un connettore fra le righe, e uno in fondo');
   assert.equal(conn[0], 'se rifiuta, subito');
@@ -501,7 +501,7 @@ test('il connettore del piano dichiara i minuti, e non promette un ripiego che n
     ponte: { attivo: true, scadenza_min: 5, tetto_giornaliero: 50 }, catena: catena, fuori_catena: [] } });
   window.HirisModelsRoute.mount();
   await tick(20);
-  const conn = document.querySelectorAll('#catena-card .connettore')[0];
+  const conn = document.querySelectorAll('#chain-card .connettore')[0];
   assert.equal(conn.textContent,
     'il ponte non ripiega: se non risponde entro 7 min il messaggio va perso');
 });
@@ -517,11 +517,11 @@ test('sopra i 5 minuti la riga in più sta SOTTO il connettore, non dentro', asy
     ponte: { attivo: true, scadenza_min: 5, tetto_giornaliero: 50 }, catena: catena, fuori_catena: [] } });
   sopra.window.HirisModelsRoute.mount();
   await tick(20);
-  const nota = sopra.document.querySelector('#catena-card .connettore-nota');
+  const nota = sopra.document.querySelector('#chain-card .connettore-nota');
   assert.ok(nota, 'la riga in più deve esistere');
   assert.match(nota.textContent, /sopra i 5 minuti la chat smette di aspettare prima/);
   assert.doesNotMatch(
-    sopra.document.querySelectorAll('#catena-card .connettore')[0].textContent,
+    sopra.document.querySelectorAll('#chain-card .connettore')[0].textContent,
     /sopra i 5 minuti/, "dentro il connettore no: li' c'e' la frase con il numero");
 
   const senza = [Object.assign({}, PIANO_DENTRO, { connettore_nota: '' }),
@@ -530,7 +530,7 @@ test('sopra i 5 minuti la riga in più sta SOTTO il connettore, non dentro', asy
     ponte: { attivo: true, scadenza_min: 5, tetto_giornaliero: 50 }, catena: senza, fuori_catena: [] } });
   sotto.window.HirisModelsRoute.mount();
   await tick(20);
-  assert.equal(sotto.document.querySelector('#catena-card .connettore-nota'), null,
+  assert.equal(sotto.document.querySelector('#chain-card .connettore-nota'), null,
     'sotto il tetto il backend non manda niente, e la pagina non inventa una riga');
 });
 
@@ -547,7 +547,7 @@ test('una riga senza credenziale non sta in catena: sta fuori, e dice cosa manca
     'senza credenziale non si offre «Usa»: sarebbe un bottone che non può funzionare');
   assert.equal(openai.querySelector('a'), null,
     'e nemmeno un collegamento che non naviga da nessuna parte');
-  assert.match(document.getElementById('fuori-card').textContent,
+  assert.match(document.getElementById('outside-card').textContent,
     /Le chiavi si mettono in Configurazione add-on/,
     'dove si mette la credenziale si dice una volta, non su cinque righe');
 });
@@ -559,7 +559,7 @@ test('«Usa» mette il provider in fondo alla catena, e salva l\'oggetto intero'
   const ctx = monta({ config: { catena: CATENA, fuori_catena: fuori } });
   ctx.window.HirisModelsRoute.mount();
   await tick(20);
-  const usa = Array.from(ctx.document.querySelectorAll('#fuori-card button'))
+  const usa = Array.from(ctx.document.querySelectorAll('#outside-card button'))
     .find((b) => b.textContent === 'Usa');
   usa.dispatchEvent(new ctx.window.Event('click'));
   await tick(20);
@@ -611,7 +611,7 @@ test('«(x)» toglie dalla catena, e se il salvataggio fallisce si torna esattam
     'anche i numeri di posizione devono tornare quelli di prima');
   assert.equal(righeFuori(ctx.document).length, 3,
     'e la riga non deve restare anche fuori: sarebbe in due posti insieme');
-  assert.match(ctx.document.getElementById('catena-card').textContent,
+  assert.match(ctx.document.getElementById('chain-card').textContent,
     /Salvataggio non riuscito/);
 });
 
@@ -653,9 +653,9 @@ test('col ponte acceso la catena resta visibile e riordinabile, e si dice scaval
   assert.equal(righeCatena(ctx.document).length, 3);
   assert.equal(righeCatena(ctx.document)[2].querySelector('.riga-su').disabled, false,
     'la catena si prepara anche mentre è scavalcata');
-  assert.ok(ctx.document.getElementById('catena-card').classList.contains('catena-inerte'),
+  assert.ok(ctx.document.getElementById('chain-card').classList.contains('catena-inerte'),
     'disegnata come ciò che è: inerte, adesso -- ma non tolta');
-  assert.match(ctx.document.querySelectorAll('#catena-card .connettore')[0].textContent,
+  assert.match(ctx.document.querySelectorAll('#chain-card .connettore')[0].textContent,
     /il ponte non ripiega/,
     'e a dirlo è il connettore del backend, che cambierà con la regola');
 });
@@ -758,7 +758,7 @@ test('«Risparmio» rifà la catena, e ci mette solo chi ha una credenziale', as
   const ctx = monta({ config: { catena: CATENA, fuori_catena: FUORI } });
   ctx.window.HirisModelsRoute.mount();
   await tick(20);
-  Array.from(ctx.document.querySelectorAll('#catena-card button'))
+  Array.from(ctx.document.querySelectorAll('#chain-card button'))
     .find((b) => b.textContent === 'Risparmio')
     .dispatchEvent(new ctx.window.Event('click'));
   await tick(20);
@@ -1343,7 +1343,7 @@ test('col ponte attivo la catena si disegna inerte, e senza no', async () => {
   const a = monta({ config: { ponte: conPonte } });
   a.window.HirisModelsRoute.mount();
   await tick(20);
-  const cardA = a.document.getElementById('catena-card');
+  const cardA = a.document.getElementById('chain-card');
   assert.ok(cardA, 'la card della catena deve esistere');
   assert.ok(cardA.classList.contains('catena-inerte'),
     'col ponte attivo la catena e\' scavalcata, e la pagina lo disegna');
@@ -1351,7 +1351,7 @@ test('col ponte attivo la catena si disegna inerte, e senza no', async () => {
   const b = monta();   // CONFIG porta `ponte.attivo: false`
   b.window.HirisModelsRoute.mount();
   await tick(20);
-  const cardB = b.document.getElementById('catena-card');
+  const cardB = b.document.getElementById('chain-card');
   assert.ok(!cardB.classList.contains('catena-inerte'),
     'senza ponte la catena e\' viva: disegnarla inerte sarebbe una bugia');
 });

@@ -58,7 +58,7 @@ test('C-1: senza contatori non si offre di azzerarli', async () => {
      viene disegnato affatto. Il fatto difeso e' lo stesso -- offrire di
      azzerare cio' che non esiste e' un pulsante che mente -- e l'assenza e'
      un modo piu' forte di dirlo di un `display:none`. */
-  assert.equal(outlet.querySelector('#usage-riparti'), null,
+  assert.equal(outlet.querySelector('#usage-reset'), null,
     'non c\'è nessuna ancora da spostare');
 });
 
@@ -81,7 +81,7 @@ test('C-1: con i consumi misurati la pagina mostra i numeri e il pulsante', asyn
 
   assert.match(testo, /42/);
   assert.match(testo, /1\.2k/, 'i token si abbreviano, ma ci sono');
-  assert.ok(outlet.querySelector('#usage-riparti'), 'il pulsante c\'è');
+  assert.ok(outlet.querySelector('#usage-reset'), 'il pulsante c\'è');
 });
 
 // ---------------------------------------------------------------------------
@@ -115,14 +115,14 @@ test('I9: chat e pagina Consumi scrivono lo stesso numero nello stesso modo', as
   await tick(0);
   await tick(0);
 
-  const tessere = [...ctx.document.querySelectorAll('#usage-riepilogo .stat-tile')]
+  const tessere = [...ctx.document.querySelectorAll('#usage-summary .stat-tile')]
     .map((t) => t.querySelector('.st-value').textContent);
   // L'ordine delle tessere e' cambiato col disegno nuovo -- il costo viene per
   // primo, perche' e' la domanda che si fa chi apre questa pagina -- ma
   // l'invariante non e' l'ordine: e' che i DUE posti scrivano lo stesso numero
   // nello stesso modo. Si cercano per etichetta, non per posizione.
   const perEtichetta = {};
-  [...ctx.document.querySelectorAll('#usage-riepilogo .stat-tile')].forEach((t) => {
+  [...ctx.document.querySelectorAll('#usage-summary .stat-tile')].forEach((t) => {
     perEtichetta[t.querySelector('.st-label').textContent] = t.querySelector('.st-value').textContent;
   });
   assert.equal(ctx.document.getElementById('u-input').textContent, perEtichetta['Token IN'],

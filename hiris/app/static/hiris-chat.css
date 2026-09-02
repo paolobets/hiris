@@ -549,7 +549,7 @@
        in italiano, e non dice niente che serva mentre si scrive. */
     @media (max-width: 900px) {
       #header-subtitle { display: none; }
-      #cancella-conv-btn { white-space: nowrap; }
+      #delete-conv-btn { white-space: nowrap; }
     }
 
     /* Era 720 px. Portato a 768 per far cambiare forma alle due superfici alla
@@ -592,9 +592,9 @@
       #mobile-task-btn, #mobile-proposals-btn { display: none; }
       #header-title { font-size: 16px; }
       #header-tools { margin-left: auto; gap: 4px; }
-      #cancella-conv-btn {
+      #delete-conv-btn {
         font-size: 0; gap: 0; padding: 0; width: 44px; height: 44px;
         display: inline-flex; align-items: center; justify-content: center;
       }
-      #cancella-conv-btn svg { width: 19px; height: 19px; }
+      #delete-conv-btn svg { width: 19px; height: 19px; }
     }

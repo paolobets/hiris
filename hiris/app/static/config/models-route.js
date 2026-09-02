@@ -197,7 +197,7 @@
      i gesti sulla catena non ridisegnano il riquadro (la decisione nuova la
      dice il backend, alla prossima lettura). */
   function renderNow() {
-    var card = byId('adesso-card');
+    var card = byId('now-card');
     if (!state.adesso || !state.adesso.frase) {
       if (card && card.parentNode) card.parentNode.removeChild(card);
       return;
@@ -257,8 +257,8 @@
   }
 
   function createNowShell() {
-    var card = el('div', 'adesso-card');
-    card.id = 'adesso-card';
+    var card = el('div', 'now-card');
+    card.id = 'now-card';
     card.setAttribute('aria-live', 'polite');
     var outlet = byId('route-outlet');
     /* Sopra la prima section-card: la risposta viene prima delle ragioni. */
@@ -762,9 +762,9 @@
 
   /* ── 01 LA CATENA ──────────────────────────────────────────────────────── */
   function renderChain() {
-    var body = clearEl(byId('catena-body'));
+    var body = clearEl(byId('chain-body'));
     if (!body) return;
-    var card = byId('catena-card');
+    var card = byId('chain-card');
     /* Col ponte acceso la catena resta VISIBILE e riordinabile: nascondere ciò
        che conta è proibito, e serve poterla preparare per quando il ponte si
        spegne. È disegnata come ciò che è -- inerte, adesso -- e a DIRE che è
@@ -798,9 +798,9 @@
 
   /* ── 02 FUORI DALLA CATENA ─────────────────────────────────────────────── */
   function renderOutside() {
-    var body = clearEl(byId('fuori-body'));
+    var body = clearEl(byId('outside-body'));
     if (!body) return;
-    var note = byId('fuori-nota');
+    var note = byId('outside-note');
     if (note) note.textContent = '';
     if (!state.fuoriCatena.length) {
       body.appendChild(el('p', 'field-hint', 'Nessuno: sono tutti in catena.'));
@@ -965,20 +965,20 @@
      mutazioni di contenuto e due fallimenti identici di seguito non
      produrrebbero nessuna mutazione da annunciare. */
   function showChainError(text) {
-    var p = byId('catena-stato');
+    var p = byId('chain-status');
     if (!p) return;
     p.textContent = '';
     p.textContent = text;
   }
 
   function clearChainError() {
-    var p = byId('catena-stato');
+    var p = byId('chain-status');
     if (p) p.textContent = '';
   }
 
   function renderError() {
     renderNow();
-    var body = clearEl(byId('catena-body'));
+    var body = clearEl(byId('chain-body'));
     if (body) {
       body.appendChild(el('p', 'proposals-error', 'Errore caricamento provider.'));
       var btn = el('button', 'btn btn-ghost btn-sm', 'Riprova');
@@ -986,7 +986,7 @@
       btn.addEventListener('click', function() { loadModelsAndConfig(); });
       body.appendChild(btn);
     }
-    var outside = clearEl(byId('fuori-body'));
+    var outside = clearEl(byId('outside-body'));
     if (outside) {
       outside.appendChild(el('p', 'field-hint',
         'Impossibile leggere chi è fuori dalla catena — vedi qui sopra.'));
@@ -1002,7 +1002,7 @@
      pazienza ciascuno. Adesso si legge quando serve, un provider alla volta,
      all'apertura del pannello (`loadPanel`). */
   function loadModelsAndConfig() {
-    var body = byId('catena-body');
+    var body = byId('chain-body');
     if (body) { clearEl(body); body.appendChild(el('p', 'field-hint', 'Caricamento…')); }
     fetch('api/models/config').then(function(r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -1070,7 +1070,7 @@
     outlet.appendChild(el('div', 'page-title', 'Modelli'));
     outlet.appendChild(el('p', 'page-subtitle', 'Chi risponde alle tue domande, e in che ordine.'));
 
-    var chainCard = buildSectionShell('01', 'catena', 'La catena',
+    var chainCard = buildSectionShell('01', 'chain', 'La catena',
       'Le righe in uso, in ordine. È l\'unica verità: un provider è usato se e solo se sta qui.',
       'list');
     /* I tre preset: un gesto che RIFÀ la catena, non uno stato da cui la catena
@@ -1099,16 +1099,16 @@
        e il riordino vale dal prossimo messaggio. Non è stata SOSTITUITA da un
        «vale subito»: l'assenza di didascalia È l'affermazione, ed è la cosa
        più onesta che questa pagina possa dire di sé. */
-    var statusEl = el('p', 'catena-stato');
-    statusEl.id = 'catena-stato';
+    var statusEl = el('p', 'chain-status');
+    statusEl.id = 'chain-status';
     statusEl.setAttribute('aria-live', 'polite');
     chainCard.appendChild(statusEl);
     outlet.appendChild(chainCard);
 
-    var outsideCard = buildSectionShell('02', 'fuori', 'Fuori dalla catena',
+    var outsideCard = buildSectionShell('02', 'outside', 'Fuori dalla catena',
       'Chi potrebbe entrare, e chi non può finché manca la credenziale.', 'list');
-    var outsideNote = el('p', 'fuori-nota');
-    outsideNote.id = 'fuori-nota';
+    var outsideNote = el('p', 'outside-note');
+    outsideNote.id = 'outside-note';
     outsideCard.appendChild(outsideNote);
     outlet.appendChild(outsideCard);
 

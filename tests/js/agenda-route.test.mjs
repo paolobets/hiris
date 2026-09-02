@@ -115,8 +115,8 @@ async function monta(opts) {
 
 test('le in sospeso e lo storico stanno in due sezioni distinte', async () => {
   const { document } = await monta();
-  const sospeso = document.querySelector('[data-sezione="in-sospeso"]');
-  const storico = document.querySelector('[data-sezione="storico"]');
+  const sospeso = document.querySelector('[data-sezione="pending"]');
+  const storico = document.querySelector('[data-sezione="history"]');
   assert.ok(sospeso, 'deve esistere la sezione in sospeso');
   assert.ok(storico, 'deve esistere la sezione storico');
   assert.ok(sospeso.textContent.includes('accendi lo studio'));
@@ -163,10 +163,10 @@ test('in_corso sta in "In sospeso" insieme a in_attesa, ma senza il bottone per 
       ],
     },
   });
-  const sospeso = document.querySelector('[data-sezione="in-sospeso"]');
+  const sospeso = document.querySelector('[data-sezione="pending"]');
   assert.ok(sospeso.textContent.includes('sto accendendo il forno'),
     'in_corso non e\' ancora concluso: deve stare in "In sospeso"');
-  const storico = document.querySelector('[data-sezione="storico"]');
+  const storico = document.querySelector('[data-sezione="history"]');
   assert.ok(!storico.textContent.includes('sto accendendo il forno'),
     'in_corso non deve finire nello storico: sparirebbe e ricomparirebbe a ogni ricaricamento');
 
@@ -242,7 +242,7 @@ test('in sospeso l\'ordine e\' per quando_ts crescente (la prossima prima)', asy
       ],
     },
   });
-  const sospeso = document.querySelector('[data-sezione="in-sospeso"]');
+  const sospeso = document.querySelector('[data-sezione="pending"]');
   const idxVicina = sospeso.textContent.indexOf('la piu\' vicina');
   const idxTardiva = sospeso.textContent.indexOf('la piu\' tardiva');
   assert.ok(idxVicina >= 0 && idxTardiva >= 0);
@@ -251,7 +251,7 @@ test('in sospeso l\'ordine e\' per quando_ts crescente (la prossima prima)', asy
 
 test('nello storico l\'ordine e\' per quando_ts decrescente (la piu\' recente prima)', async () => {
   const { document } = await monta();
-  const storico = document.querySelector('[data-sezione="storico"]');
+  const storico = document.querySelector('[data-sezione="history"]');
   // p2 (quando_ts 1755500000) e' piu' recente di p3 (1755400000).
   const idxP2 = storico.textContent.indexOf('verifica la temperatura');
   const idxP3 = storico.textContent.indexOf('posso aprire le finestre');

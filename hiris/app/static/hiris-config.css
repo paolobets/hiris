@@ -1424,12 +1424,12 @@
 /* Il corpo delle due sezioni non e' un elenco di blocchi distanti: e' una
    sequenza che si legge di seguito, riga-connettore-riga. Il `gap` grande del
    `.sc-body` (--sp-5) spezzerebbe proprio cio' che tiene insieme la frase. */
-#catena-body, #fuori-body { gap: 0; }
+#chain-body, #outside-body { gap: 0; }
 
 /* fetta «lo schedulatore» Task 9 (#/promesse): stesso motivo di sopra --
    ogni riga porta il proprio separatore (`border-top`), non il gap del
    flex del `.sc-body` che eredita. */
-#promesse-sospeso-body, #promesse-storico-body { gap: 0; }
+#agenda-pending-body, #agenda-history-body { gap: 0; }
 
 /* La riga-provider: quattro colonne, quattro domande. Dove sei (la posizione),
    chi sei (il nome), con che cosa (il modello), quanto costi (la natura). Il
@@ -1544,18 +1544,18 @@
 /* L'esito delle scritture: vive nel guscio della sezione, non nel corpo che
    viene ridisegnato, cosi' e' una regione viva che esiste PRIMA del
    fallimento. Vuota non occupa spazio. */
-.catena-stato {
+.chain-status {
   margin: var(--sp-3) 0 0;
   font-size: var(--fs-13); color: var(--err-ink);
 }
-.catena-stato:empty { display: none; }
+.chain-status:empty { display: none; }
 
-.fuori-nota {
+.outside-note {
   margin: var(--sp-4) 0 0;
   font-size: var(--fs-12); color: var(--text-3);
   line-height: var(--lh-snug);
 }
-.fuori-nota:empty { display: none; }
+.outside-note:empty { display: none; }
 
 /* Gli embedding: una riga, in fondo, sotto un filetto. Non sono una sezione e
    non sono numerati -- la numerazione, in questa pagina, significa «qui si
@@ -1695,7 +1695,7 @@
    che lo distingue da una sezione, insieme all'assenza del numero. Non
    decide niente, quindi non e' numerato; dice cosa succede, quindi sta in
    cima. */
-.adesso-card {
+.now-card {
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--r-md);
@@ -1705,16 +1705,16 @@
 /* Il guscio nasce vuoto al mount -- una regione viva annuncia cio' che le
    arriva dentro, non la propria comparsa -- e finche' e' vuoto non c'e' niente
    da mostrare: un riquadro bordato e vuoto durante la fetch sarebbe rumore. */
-.adesso-card:empty {
+.now-card:empty {
   display: none;
 }
-.adesso-card .adesso-frase {
+.now-card .adesso-frase {
   margin: 0;
   font-size: var(--fs-20);
   line-height: var(--lh-snug);
   color: var(--text);
 }
-.adesso-card .adesso-diagnosi {
+.now-card .adesso-diagnosi {
   margin: var(--sp-3) 0 0;
   padding-left: var(--sp-4);
   display: flex;
@@ -1725,8 +1725,8 @@
 /* Testo su token `*-ink`, mai su `--warn`/`--err`: la regola d'uso e' scritta
    in hiris-theme.css (righe 76-82) e questa pagina e' l'ultima superficie che
    non la rispettava. */
-.adesso-card .diagnosi-spreco { color: var(--warn-ink); }
-.adesso-card .diagnosi-guasto { color: var(--err-ink); }
+.now-card .diagnosi-spreco { color: var(--warn-ink); }
+.now-card .diagnosi-guasto { color: var(--err-ink); }
 /* La terza gravita', nata col ripiego (Task 14): un FATTO che non e' ne' un
    guasto ne' uno spreco -- «il piano prova per primo, e se non risponde entro
    N minuti il turno passa al successivo». Prima quella riga era uno spreco
@@ -1734,7 +1734,7 @@
    esserlo: quei provider adesso servono. Colorarla d'ambra direbbe
    «attenzione» dove non c'e' niente di storto. Stesso token della nota nella
    chat (`.msg-nota`, hiris-chat.css), e per la stessa ragione. */
-.adesso-card .diagnosi-fatto { color: var(--text-3); }
+.now-card .diagnosi-fatto { color: var(--text-3); }
 
 /* Il gesto accanto alla riga che lo motiva (versione B, 3.0.0). Non e' un
    pulsante di sezione e non sta in un'intestazione: sta DENTRO la voce di
@@ -1744,7 +1744,7 @@
    dopo una frase di due righe finirebbe orfana in fondo. Il colore lo eredita
    dalla gravita' della voce (`--warn-ink` su uno spreco, `--text-3` su un
    fatto), che e' cio' che tiene il gesto attaccato al suo motivo. */
-.adesso-card .diagnosi-azione {
+.now-card .diagnosi-azione {
   display: block;
   margin-top: var(--sp-2);
 }
@@ -1780,8 +1780,8 @@
 .usage-quando .btn.attivo {
   background: var(--surface-3); color: var(--text); border-color: var(--border-2);
 }
-.usage-riparti-blocco { max-width: 42ch; }
-.usage-riparti-blocco .hint { margin-top: 4px; }
+.usage-reset-block { max-width: 42ch; }
+.usage-reset-block .hint { margin-top: 4px; }
 
 .st-avviso { color: var(--warn-ink); }
 

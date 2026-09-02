@@ -57,7 +57,7 @@ function fixtureHtml() {
         <header id="header">
           <button id="menu-btn"></button>
           <div id="header-title">HIRIS <span id="header-version"></span></div>
-          <button id="cancella-conv-btn"></button>
+          <button id="delete-conv-btn"></button>
           <button id="theme-toggle"><svg class="ic-moon"></svg><svg class="ic-sun" style="display:none"></svg></button>
           <div id="agent-pill"><span id="ap-avatar"></span><span id="ap-name"></span></div>
           <div id="conn-dot"></div>

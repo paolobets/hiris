@@ -55,8 +55,8 @@ test('una modifica a un oggetto non creato da HIRIS lo dichiara', async () => {
   ] });
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
   const document = dom.window.document;
-  const storico = document.getElementById('costruzioni-storico-body');
-  const aperte = document.getElementById('costruzioni-aperte-body');
+  const storico = document.getElementById('constructions-history-body');
+  const aperte = document.getElementById('constructions-open-body');
   assert.match(storico.textContent, /Questo oggetto esiste già in casa tua\./);
   assert.doesNotMatch(aperte.textContent, /esiste già/);
 });

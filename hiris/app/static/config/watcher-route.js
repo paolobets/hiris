@@ -982,7 +982,7 @@ window.HirisWatcherRoute = (function () {
     dayInput.type = 'date';
     // Rilievo 3: l'etichetta era muta -- nessun for/id -- e per un lettore
     // di schermo il campo era una data anonima.
-    dayInput.id = 'osservatore-giorno';
+    dayInput.id = 'watcher-day';
     dayLabel.setAttribute('for', dayInput.id);
     dayField.appendChild(dayLabel);
     dayInput.value = ieriLocale();

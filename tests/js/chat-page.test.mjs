@@ -54,7 +54,7 @@ function fixtureHtml() {
             </div>
           </div>
         </div>
-        <button id="cancella-conv-btn"></button>
+        <button id="delete-conv-btn"></button>
         <div id="input-area"><textarea id="input"></textarea><button id="send-btn"></button></div>
         <div id="turn-counter" style="display:none"></div>
         <div id="session-ended-msg" style="display:none"></div>
@@ -686,7 +686,7 @@ test('durante la risposta via abbonamento (202) l\'input resta bloccato e un sec
   assert.equal(state.els.input.disabled, false, 'ma non disabilitata: perderebbe il fuoco');
   assert.match(state.els.input.placeholder, /sta rispondendo/,
     'il campo dice PERCHE\' non si puo\' scrivere, invece di restare muto');
-  assert.equal(document.getElementById('cancella-conv-btn').disabled, true,
+  assert.equal(document.getElementById('delete-conv-btn').disabled, true,
     'cancellare la conversazione mentre HIRIS elabora faceva sparire la risposta');
 
   const before = state.els.messages.querySelectorAll('.msg-row.user').length;
@@ -697,7 +697,7 @@ test('durante la risposta via abbonamento (202) l\'input resta bloccato e un sec
   await tick(3700); // il poll completa -> sblocco
   assert.equal(state.isLoading, false, 'sbloccato a fine poll');
   assert.equal(state.els.input.readOnly, false, 'textarea riscrivibile dopo la risposta');
-  assert.equal(document.getElementById('cancella-conv-btn').disabled, false,
+  assert.equal(document.getElementById('delete-conv-btn').disabled, false,
     'e il bottone torna premibile');
 });
 

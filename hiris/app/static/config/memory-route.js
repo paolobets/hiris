@@ -115,7 +115,7 @@ window.HirisMemoryRoute = (function () {
   }
 
   function setStatus(text) {
-    var s = byId('memoria-status');
+    var s = byId('memory-status');
     if (s) s.textContent = text || '';
   }
 
@@ -411,7 +411,7 @@ window.HirisMemoryRoute = (function () {
   }
 
   function load() {
-    var list = byId('memoria-list');
+    var list = byId('memory-list');
     if (!list) return;
     clearEl(list);
     list.appendChild(el('p', 'field-hint', 'Caricamento…'));
@@ -436,10 +436,10 @@ window.HirisMemoryRoute = (function () {
       'Ciò che hai detto a HIRIS, e cosa ne ha capito. Puoi correggere l’interpretazione — mai il ' +
       'testo — o cancellare un ricordo per sempre.'));
     var status = el('p', 'sc-desc', '');
-    status.id = 'memoria-status';
+    status.id = 'memory-status';
     outlet.appendChild(status);
     var list = el('div');
-    list.id = 'memoria-list';
+    list.id = 'memory-list';
     outlet.appendChild(list);
     load();
   }

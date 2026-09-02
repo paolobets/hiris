@@ -217,7 +217,7 @@ def test_il_testo_semantico_usa_i_token_ink():
 #   * i quattro agganci sui bottoni gia' vestiti da `btn btn-ghost btn-sm`, che
 #     esistono per i test e per `querySelector`, non per il foglio.
 _CLASSI_SENZA_REGOLA_PER_SCELTA = {
-    "catena-body", "catena-card", "fuori-body", "route-outlet",
+    "chain-body", "chain-card", "outside-body", "route-outlet",
     "riga-usa", "riga-su", "riga-giu", "riga-esci",
 }
 

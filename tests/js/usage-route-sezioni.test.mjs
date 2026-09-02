@@ -164,7 +164,7 @@ test('i rifiuti 429 compaiono solo se ce ne sono', async () => {
 
 test('il pulsante non minaccia una distruzione che non compie', async () => {
   const { outlet, testo } = await monta();
-  const bottone = outlet.querySelector('#usage-riparti');
+  const bottone = outlet.querySelector('#usage-reset');
   assert.ok(bottone, 'il pulsante esiste');
   assert.doesNotMatch(bottone.className, /btn-danger/,
     'sposta un\'ancora: il rosso comunicherebbe una distruzione');
@@ -177,7 +177,7 @@ test('premere il pulsante non apre nessun confirm()', async () => {
   let chiesto = false;
   ctx.window.confirm = () => { chiesto = true; return true; };
 
-  ctx.outlet.querySelector('#usage-riparti').click();
+  ctx.outlet.querySelector('#usage-reset').click();
   for (let i = 0; i < 8; i++) await tick(0);
 
   assert.equal(chiesto, false,
@@ -203,6 +203,6 @@ test('quando non si misura, la pagina lo dice e toglie il pulsante', async () =>
   });
 
   assert.match(testo, /Nessun provider AI configurato/);
-  assert.equal(outlet.querySelector('#usage-riparti'), null,
+  assert.equal(outlet.querySelector('#usage-reset'), null,
     'non c\'e\' nessuna ancora da spostare');
 });

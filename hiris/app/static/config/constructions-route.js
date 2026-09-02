@@ -321,7 +321,7 @@ window.HirisConstructions = (function () {
     var btn = el('button', 'btn btn-ghost btn-sm', closedText);
     btn.type = 'button';
     btn.setAttribute('aria-expanded', 'false');
-    var panelId = 'costruzione-dettagli-' + c.id;
+    var panelId = 'construction-details-' + c.id;
     var panel = detailsPanel(c);
     panel.id = panelId;
     panel.hidden = true;
@@ -502,7 +502,7 @@ window.HirisConstructions = (function () {
     head.appendChild(el('h2', 'sc-title', title));
     section.appendChild(head);
     var body = el('div', 'sc-body');
-    body.id = 'costruzioni-' + idPrefix + '-body';
+    body.id = 'constructions-' + idPrefix + '-body';
     body.setAttribute('data-sezione', idPrefix);
     section.appendChild(body);
     return section;
@@ -511,9 +511,9 @@ window.HirisConstructions = (function () {
   function draw(outlet) {
     function reload() { return draw(outlet); }
 
-    var openBody = outlet.querySelector('#costruzioni-aperte-body');
-    var historyBody = outlet.querySelector('#costruzioni-storico-body');
-    var statusEl = outlet.querySelector('#costruzioni-status');
+    var openBody = outlet.querySelector('#constructions-open-body');
+    var historyBody = outlet.querySelector('#constructions-history-body');
+    var statusEl = outlet.querySelector('#constructions-status');
 
     if (!openBody || !historyBody) {
       clearEl(outlet);
@@ -522,13 +522,13 @@ window.HirisConstructions = (function () {
         'Le proposte di HIRIS per creare, modificare o cancellare automazioni, script e ' +
         'scene di questa casa — e cosa ne hai deciso.'));
       var status = el('p', 'sc-desc', '');
-      status.id = 'costruzioni-status';
+      status.id = 'constructions-status';
       outlet.appendChild(status);
-      outlet.appendChild(buildSectionShell('01', 'aperte', 'In attesa'));
-      outlet.appendChild(buildSectionShell('02', 'storico', 'Storico'));
-      openBody = outlet.querySelector('#costruzioni-aperte-body');
-      historyBody = outlet.querySelector('#costruzioni-storico-body');
-      statusEl = outlet.querySelector('#costruzioni-status');
+      outlet.appendChild(buildSectionShell('01', 'open', 'In attesa'));
+      outlet.appendChild(buildSectionShell('02', 'history', 'Storico'));
+      openBody = outlet.querySelector('#constructions-open-body');
+      historyBody = outlet.querySelector('#constructions-history-body');
+      statusEl = outlet.querySelector('#constructions-status');
     }
 
     clearEl(openBody); openBody.appendChild(el('p', 'field-hint', 'Caricamento…'));

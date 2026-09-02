@@ -117,7 +117,7 @@
     var note = u.partial_cost
       ? '<div class="st-delta st-avviso">cifra minima — manca il prezzo di almeno un modello</div>'
       : '';
-    return '<div class="stat-grid" id="usage-riepilogo">'
+    return '<div class="stat-grid" id="usage-summary">'
       + '<div class="stat-tile"><div class="st-label">Costo</div>'
       + '<div class="st-value">' + cost + '</div>' + note + '</div>'
       + '<div class="stat-tile"><div class="st-label">Richieste</div>'
@@ -134,12 +134,12 @@
     return '<div class="usage-barra">'
       + '<div class="usage-quando" role="group" aria-label="Da quando contare">'
       + '<button class="btn btn-ghost' + (state.daAncora ? ' attivo' : '') + '" '
-      + 'id="usage-da-ancora">da ultimo azzeramento</button>'
+      + 'id="usage-since-anchor">da ultimo azzeramento</button>'
       + '<button class="btn btn-ghost' + (state.daAncora ? '' : ' attivo') + '" '
-      + 'id="usage-da-sempre">da sempre</button>'
+      + 'id="usage-all-time">da sempre</button>'
       + '</div>'
-      + '<div class="usage-riparti-blocco">'
-      + '<button class="btn btn-ghost" id="usage-riparti">Riparti da adesso</button>'
+      + '<div class="usage-reset-block">'
+      + '<button class="btn btn-ghost" id="usage-reset">Riparti da adesso</button>'
       + '<div class="hint">Non cancella niente: sposta solo il punto da cui contare.'
       + (da ? ' Adesso conta da ' + escHtml(da) + '.' : '') + '</div>'
       + '</div></div>';
@@ -278,15 +278,15 @@
       var el = document.getElementById(id);
       if (el) el.addEventListener('click', fn);
     };
-    per('usage-da-ancora', function() { state.daAncora = true; mount(); });
-    per('usage-da-sempre', function() { state.daAncora = false; mount(); });
+    per('usage-since-anchor', function() { state.daAncora = true; mount(); });
+    per('usage-all-time', function() { state.daAncora = false; mount(); });
     per('usage-7', function() { state.giorni = 7; mount(); });
     per('usage-30', function() { state.giorni = 30; mount(); });
     /* Nessun `confirm()`: il gesto e' reversibile dall'interfaccia stessa
        (basta «da sempre») e non distrugge niente. La frase che lo dice e'
        SEMPRE visibile sotto il pulsante, non nascosta in un blocco modale che
        compare a cose fatte. */
-    per('usage-riparti', function() {
+    per('usage-reset', function() {
       fetch('api/usage/reset', {
         method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' }
       }).then(function() { mount(); })

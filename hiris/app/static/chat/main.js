@@ -4,7 +4,7 @@
    final <script> in config.html). */
 (function() {
   function wireHeaderAndSidebarButtons() {
-    var clearBtn = document.getElementById('cancella-conv-btn');
+    var clearBtn = document.getElementById('delete-conv-btn');
     if (clearBtn) clearBtn.addEventListener('click', window.HirisChatAgents.clearConversation);
   }
 

@@ -123,7 +123,7 @@
        -- gia' pagata in token -- veniva poi scritta dentro una riga staccata
        dal DOM, che nessuno vedeva mai. E' la stessa condizione che blocca il
        composer, quindi vive qui e non in un secondo posto da tenere allineato. */
-    var clearBtn = document.getElementById('cancella-conv-btn');
+    var clearBtn = document.getElementById('delete-conv-btn');
     if (clearBtn) clearBtn.disabled = loading;
     state.els.sendBtn.classList.toggle('loading', loading);
   }

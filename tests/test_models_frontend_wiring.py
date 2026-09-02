@@ -78,7 +78,7 @@ def test_la_pagina_riceve_la_frase_e_non_la_compone():
     assert "el('p', 'adesso-frase', state.adesso.frase)" in js, (
         "la frase a schermo dev'essere quella del backend, non una composta qui"
     )
-    assert "adesso-card" in js
+    assert "now-card" in js
     # Le parole del prodotto stanno in `decisione_modelli.compose_now` e in
     # nessun altro posto: se l'incipit della frase ricompare nel frontend,
     # esistono due file che affermano cose sul prodotto (invariante 3).
