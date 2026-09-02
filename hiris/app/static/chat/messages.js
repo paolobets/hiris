@@ -255,7 +255,7 @@
      resa viene programmato -- perche' su questo percorso una resa c'e'. */
   function attesaAlSicuroSulServer(row, scadenzaMs) {
     if (!row || !row._attesa) return;
-    row._attesa.alSicuro = true;
+    row._attesa.safeOnServer = true;
     if (!scadenzaMs) return;
     row._attesa.scadenza = scadenzaMs;
     var fraQuanto = scadenzaMs - WAIT_THRESHOLDS.margineResa - (Date.now() - row._attesa.avvio);
@@ -299,7 +299,7 @@
     var start = Date.now();
     var bubble = row.querySelector('.bubble');
     var label = row.querySelector('.tl-label');
-    row._attesa = { avvio: start, timeout: [], intervallo: null, alSicuro: false, scadenza: 0 };
+    row._attesa = { avvio: start, timeout: [], intervallo: null, safeOnServer: false, scadenza: 0 };
     waits.push(row);
 
     /* Il cronometro NON parte subito. Sotto i dieci secondi il tempo non e'
@@ -332,7 +332,7 @@
       if (!row._attesa) return;
       var line = document.createElement('div');
       line.className = 'tl-servizio';
-      line.textContent = row._attesa.alSicuro ? SERVIZIO_AL_SICURO : KEEP_OPEN_NOTICE;
+      line.textContent = row._attesa.safeOnServer ? SERVIZIO_AL_SICURO : KEEP_OPEN_NOTICE;
       bubble.appendChild(line);
       state.els.messages.scrollTop = state.els.messages.scrollHeight;
     }, WAIT_THRESHOLDS.servizio));

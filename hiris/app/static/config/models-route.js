@@ -115,7 +115,7 @@
        a «Riprova», l'unica cosa cliccabile della pagina, e un click mandava
        una PUT che azzerava l'archivio. Nascono `disabled` (mount) e si
        abilitano di là. */
-    caricato: false,
+    loaded: false,
     catena: [],            // GET api/models/config -> catena[]
     fuoriCatena: [],       // GET api/models/config -> fuori_catena[]
     adesso: null,          // GET api/models/config -> adesso (la decisione già presa)
@@ -124,7 +124,7 @@
        e poteva dire `true` mentre `ponte.attivo` diceva `false`: due risposte
        alla stessa domanda nello stesso payload. Il campo è uscito con la
        versione B, e questo valore viene da dove vive. */
-    ponteAttivo: false,
+    bridgeActive: false,
     fineCatena: '',        // GET api/models/config -> fine_catena
     /* Il pannello aperto, o `null`. `{ id, dati, errore, filtro }`, dove
        `dati` è la voce di GET api/models?provider=<id> -- letta QUANDO IL
@@ -241,7 +241,7 @@
      fallimento si rimette il valore di prima: la pagina non deve restare a
      mostrare una scelta che il disco non ha accettato. */
   function applyAction(action) {
-    if (!state.caricato) return;
+    if (!state.loaded) return;
     var where = action.dove;
     var precedente = readPath(where);
     writePath(where, action.valore);
@@ -686,7 +686,7 @@
      della pagina NOMINA il modello: lasciarla ferma la farebbe mentire di
      nuovo, in corpo 20. */
   function chooseModel(value) {
-    if (!state.caricato) return;
+    if (!state.loaded) return;
     var p = state.pannello;
     if (!p || !p.dati) return;
     var where = p.dati.dove || [];
@@ -707,7 +707,7 @@
   /* La casella invece NON ricarica la pagina: cambia l'elenco che si sta
      guardando, e il posto dove guardarlo è quello aperto adesso. */
   function changeBox(where, value) {
-    if (!state.caricato) return;
+    if (!state.loaded) return;
     var p = state.pannello;
     var precedente = readPath(where);
     writePath(where, value);
@@ -773,7 +773,7 @@
        ponte imparerà a ripiegare (Task 14), cioè tornerebbe a mentire da sola.
        Il colore non è mai l'unico segnale (WCAG 1.4.1). */
     if (card) {
-      if (state.ponteAttivo) card.classList.add('catena-inerte');
+      if (state.bridgeActive) card.classList.add('catena-inerte');
       else card.classList.remove('catena-inerte');
     }
 
@@ -829,8 +829,8 @@
      ESATTAMENTE allo stato precedente -- posizioni comprese, perché
      `ricomponiTopologia` le ricalcola dall'ordine. */
   function writeChain(newOrder, errText) {
-    /* Niente si scrive prima di aver letto: vedi `state.caricato`. */
-    if (!state.caricato) return;
+    /* Niente si scrive prima di aver letto: vedi `state.loaded`. */
+    if (!state.loaded) return;
     var precedente = state.cfg.chain_order.slice();
     var strategiaPrecedente = state.cfg.strategia_ultima;
     state.cfg.chain_order = newOrder;
@@ -1012,7 +1012,7 @@
       state.catena = Array.isArray(cfgRaw.catena) ? cfgRaw.catena : [];
       state.fuoriCatena = Array.isArray(cfgRaw.fuori_catena) ? cfgRaw.fuori_catena : [];
       state.adesso = (cfgRaw.adesso && typeof cfgRaw.adesso === 'object') ? cfgRaw.adesso : null;
-      state.ponteAttivo = !!(cfgRaw.ponte && cfgRaw.ponte.attivo);
+      state.bridgeActive = !!(cfgRaw.ponte && cfgRaw.ponte.attivo);
       state.fineCatena = typeof cfgRaw.fine_catena === 'string' ? cfgRaw.fine_catena : '';
       state.cfg = {
         chain_order: Array.isArray(cfgRaw.chain_order) ? cfgRaw.chain_order.slice() : [],
@@ -1027,7 +1027,7 @@
       };
       /* L'UNICO posto che apre le scritture, ed è il ramo del GET riuscito:
          da qui in poi `state.cfg` è ciò che il prodotto ha davvero. */
-      state.caricato = true;
+      state.loaded = true;
       presetButtons.forEach(function(b) { b.disabled = false; });
       clearChainError();
       renderNow();
@@ -1064,7 +1064,7 @@
     /* Il modulo è un singleton e la route si rimonta: senza questo azzeramento
        un secondo montaggio partirebbe «già caricato» con lo `state.cfg` della
        visita precedente. */
-    state.caricato = false;
+    state.loaded = false;
     var outlet = document.getElementById('route-outlet');
     clearEl(outlet);
     outlet.appendChild(el('div', 'page-title', 'Modelli'));
@@ -1084,7 +1084,7 @@
       b.type = 'button';
       /* Spenti finché il primo GET non è tornato: un preset è un gesto che
          RIFÀ la catena, e rifarla su uno stato mai letto vuol dire cancellarla.
-         `state.caricato` rifiuta comunque la scrittura -- questo lo dice a
+         `state.loaded` rifiuta comunque la scrittura -- questo lo dice a
          schermo, che è la metà che l'utente vede. */
       b.disabled = true;
       b.addEventListener('click', function() { redoChain(key); });
