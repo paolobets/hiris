@@ -55,7 +55,7 @@ def _migration_2(conn) -> None:
     aspect()` legge solo `device_class` e `source_type` per decidere la
     gamba di `sensor` e `binary_sensor` -- `state_class` NON e' piu' fra i
     criteri. Resta comunque QUI, nel grezzo: non e' tolta dallo schema, e'
-    `pavimento.aspect()` che ha smesso di leggerla per decidere la gamba, non
+    `baseline.aspect()` che ha smesso di leggerla per decidere la gamba, non
     `store.py` che smette di conservarla -- i 22 giorni di grezzo
     permettono di rifare il giudizio anche se un domani tornasse a servire.
 
@@ -140,7 +140,7 @@ class ObservationsStore:
 
         `device_class`, `state_class` e `source_type` sono le tre classi che
         Home Assistant dichiara sull'entita' -- **grezzo per definizione**, non
-        un giudizio nostro: e' cio' che serve a `pavimento.aspect()` per
+        un giudizio nostro: e' cio' che serve a `baseline.aspect()` per
         decidere la gamba di `sensor` e `binary_sensor` quando l'aggregazione
         rilegge la riga, giorni dopo che l'evento e' passato. Tutti e tre
         annullabili: le condizioni di sistema non li portano, e una riga

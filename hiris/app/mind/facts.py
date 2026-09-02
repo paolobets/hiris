@@ -12,11 +12,11 @@ guardia -- vedi `archivio.READING_RETENTION_S`), uno preso in scrittura non
 si corregge piu'.
 
 **L'obiettivo sceglie QUALI entita', la natura decide CHE TIPO di oggetto ne
-esce.** La prima non e' una lista scritta a mano: il pavimento (`pavimento.
+esce.** La prima non e' una lista scritta a mano: il pavimento (`baseline.
 gamba`) deriva QUALI entita' da cio' che Home Assistant dichiara gia' --
 dominio, `device_class`, `source_type` (**non `state_class`**: correzione
 di parole della review, mandato «il bilancio dell'energia», punto 7,
-27/08/2026 -- dopo la correzione del 27/08, `pavimento.aspect` non lo legge
+27/08/2026 -- dopo la correzione del 27/08, `baseline.aspect` non lo legge
 piu' per decidere nessuna gamba, vedi il suo docstring). **La seconda, invece, SI'**
 (correzione del giro di review, punto 9): `_OPERABLE` qui sotto e' una
 lista scritta a mano dei domini che si accendono e si spengono. Non c'e' modo
@@ -226,14 +226,14 @@ def _reading_aspect(subject: str, row: dict) -> str | None:
     presenza, tutto cio' che cambierebbe il giudizio) ma porta, da questa
     correzione, le tre classi che Home Assistant dichiara sull'entita' --
     `device_class`, `state_class`, `source_type` -- perche' sono grezzo per
-    definizione, non un giudizio nostro. **`pavimento.aspect()` legge solo
+    definizione, non un giudizio nostro. **`baseline.aspect()` legge solo
     `device_class` e `source_type`** per decidere la gamba di `sensor` e
     `binary_sensor` (correzione di parole della review, mandato «il
     bilancio dell'energia», punto 7, 27/08/2026: prima di questa
     correzione questo docstring diceva che le leggeva tutte e tre --
     `state_class` NON e' fra i criteri, dalla correzione del 27/08 sul
     traffico di rete, vedi il docstring di `gamba`). Resta comunque nel
-    grezzo, non e' tolta dallo schema: e' `pavimento.aspect()` che non la
+    grezzo, non e' tolta dallo schema: e' `baseline.aspect()` che non la
     legge, non `store.py` che smette di conservarla -- i 22 giorni di
     grezzo permettono di rifare il giudizio anche se un domani tornasse a
     servire.

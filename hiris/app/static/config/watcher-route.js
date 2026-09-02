@@ -26,12 +26,12 @@
    e la spec le tiene separate apposta (§7 e' la pagina, §1-6 sono gli
    oggetti).
 
-   -- I sei gambe dell'obiettivo, non un elenco a caso (`pavimento.ASPECTS`) --
+   -- I sei gambe dell'obiettivo, non un elenco a caso (`baseline.ASPECTS`) --
    Le voci di «cosa sto guardando» si raggruppano per gamba, nello stesso
    ordine in cui il pavimento le dichiara: chi c'e', comfort, dispersione,
    energia, buono stato, sicurezza. Duplicato qui (non importato: questa SPA
    non porta build step, ogni route e' autonoma come le sue sorelle) --
-   stringhe letterali IDENTICHE a `pavimento.ASPECTS`, apostrofo compreso
+   stringhe letterali IDENTICHE a `baseline.ASPECTS`, apostrofo compreso
    («chi c'e'»).
 
    -- I SEI generi (`mind/facts.py::GENRES`, contati nel sorgente
@@ -108,11 +108,11 @@ window.HirisWatcherRoute = (function () {
   var TONE_PROBLEM = 'color:var(--err-ink)';
   var TONE_CALM = 'color:var(--text-3)';
 
-  /* Letterale, identico a `pavimento.ASPECTS` (vedi il commento di testa): sei
+  /* Letterale, identico a `baseline.ASPECTS` (vedi il commento di testa): sei
      gambe, quest'ordine. Una gamba che l'archivio manda e questa lista non
      conosce finisce comunque in coda, col suo nome grezzo -- non sparisce
      mai, stessa regola di `NOMI_REGISTRI` in tree-route.js. I VALORI
-     restano quelli letterali (identici a `pavimento.ASPECTS`): solo la resa
+     restano quelli letterali (identici a `baseline.ASPECTS`): solo la resa
      (`ASPECT_LABEL` sotto) traduce la chiave in un'etichetta leggibile. */
   var ASPECT_ORDER = ["chi c'e'", 'comfort', 'dispersione', 'energia', 'buono stato', 'sicurezza'];
 
