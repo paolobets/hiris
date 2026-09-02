@@ -127,7 +127,7 @@ def test_il_catalogo_e_questo_e_le_due_strade_che_scrivono_su_home_assistant():
     `casa/tempo.py`, come e' andato un valore e cosa e' successo (e per mano
     di chi). LEGGONO e basta, come i primi cinque -- ed e' per questo che
     entrano anche nel catalogo del turno delle promesse
-    (`schedulatore/turno.py::SOLA_LETTURA`), da cui `propose` e `confirm`
+    (`keeper/exchange.py::SOLA_LETTURA`), da cui `propose` e `confirm`
     restano fuori."""
     nomi = {s["name"] for s in KNOWLEDGE_TOOLS}
     assert nomi == {"search", "view", "related", "remember", "fetch", "execute",

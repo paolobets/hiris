@@ -4,7 +4,7 @@
 valere su ENTRAMBE le strade. Se valesse solo sul ramo sincrono, uno strumento
 nuovo che scrive entrerebbe da solo nel turno del ponte il giorno in cui
 qualcuno lo aggiunge alla chat -- e nessuno se ne accorgerebbe: e' esattamente
-il verso sbagliato di derivazione che `schedulatore/turno.py` esiste per
+il verso sbagliato di derivazione che `keeper/exchange.py` esiste per
 evitare.
 
 L'intestazione `X-HIRIS-Promessa` dice QUALE turno sta parlando. Non e'
@@ -24,9 +24,9 @@ import pytest_asyncio
 from hiris.app import server
 from hiris.app.azione.porta import ActionActuator
 from hiris.app.chat_settings import ChatSettings
+from hiris.app.keeper.store import AgendaStore
+from hiris.app.keeper.sweeper import Sweeper
 from hiris.app.memory.store import MemoryStore
-from hiris.app.schedulatore.archivio import AgendaStore
-from hiris.app.schedulatore.sweeper import Sweeper
 from tests._contratti import assert_stessa_firma
 from tests.test_strumenti_conoscenza import _semina_casa
 

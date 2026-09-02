@@ -43,7 +43,7 @@ stato, `execute` SCRIVE -- e scrive per una sola strada, la porta
                 ma non e' il solo modo in cui la casa viene toccata, vedi
                 `promise` due righe sotto
 
-Tre vengono dallo Schedulatore (`schedulatore/`, spec §9.1) e fanno nascere,
+Tre vengono dallo Schedulatore (`keeper/`, spec §9.1) e fanno nascere,
 leggere e disdire una PROMESSA -- «alle 17 accendi lo studio», «fra un'ora
 dimmi se e' aumentata»: qualcosa da fare o da guardare piu' tardi, non adesso.
 La differenza con `execute` non e' di importanza ma di QUANDO: `execute` agisce
@@ -965,7 +965,7 @@ class ToolDispatcher:
         # una promessa che dichiara "viene VERIFICATA adesso" senza esserlo
         # stata.
         self._registry = registry
-        # L'archivio delle promesse (`schedulatore/archivio.py`). `None` e'
+        # L'archivio delle promesse (`keeper/store.py`). `None` e'
         # legittimo come per la porta: i tre strumenti dichiarano un errore
         # leggibile invece di sollevare.
         self._agenda = agenda

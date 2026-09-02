@@ -90,7 +90,7 @@ nightly digest and the Mayan document poll were removed in 2.1.0 together with
 the document integration and the knowledge archive they fed.
 
 The tenth is the promise scheduler's heartbeat, every 15 seconds
-(`server.py::_battito` → `schedulatore/sweeper.py::Sweeper.batti`). A
+(`server.py::_battito` → `keeper/sweeper.py::Sweeper.batti`). A
 promise is created from a sentence in chat — "at 5pm, turn on the office",
 "in an hour, check the temperature and tell me if it went up" — and its
 service call, or its comparison, is verified at that moment, the same way

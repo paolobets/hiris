@@ -11,8 +11,8 @@ import pytest
 
 from hiris.app.api import handlers_chat
 from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS, ToolDispatcher
+from hiris.app.keeper.exchange import SOLA_LETTURA, promise_tools
 from hiris.app.proxy.ha_client import HAClient
-from hiris.app.schedulatore.turno import SOLA_LETTURA, promise_tools
 from tests._contratti import assert_stessa_firma
 
 

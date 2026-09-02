@@ -1,7 +1,7 @@
 """Le tre rotte delle promesse: guardare, disdire, e guardare cosa e' cambiato.
 
 Non serializzano niente per conto proprio. La forma di una promessa e' UNA, e
-vive in `schedulatore/promise.py::serializza` (gia' usata dall'archivio): se
+vive in `keeper/promise.py::serializza` (gia' usata dall'archivio): se
 questa rotta ne costruisse una sua, la pagina e la chat mostrerebbero due
 cose diverse della stessa promessa il primo giorno in cui qualcuno aggiunge
 un campo da una parte sola.

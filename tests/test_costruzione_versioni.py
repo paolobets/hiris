@@ -133,7 +133,7 @@ def test_applicare_due_volte_la_stessa_proposta_non_si_puo(archivio):
 
 
 def test_rivendicare_prende_in_carico_una_sola_volta(archivio):
-    """La stessa guardia usata dalle promesse in schedulatore/archivio.py:
+    """La stessa guardia usata dalle promesse in keeper/store.py:
     chi rivendica per primo vince, il secondo trova la porta chiusa."""
     ident = _proponi(archivio)["id"]
     prima = archivio.claim(ident, now=ADESSO + 1)

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 /* Review finale della fetta «lo schedulatore», rilievo ②: il vocabolario
    degli stati «in sospeso» (`in_attesa`, `in_corso`) vive in Python
-   (`hiris/app/schedulatore/promise.py::STATES_SOSPESO`, usata da
+   (`hiris/app/keeper/promise.py::STATES_SOSPESO`, usata da
    `archivio.py` per le sue due query) E in JavaScript
    (`static/config/agenda-route.js::STATI_SOSPESO`, che filtra
    `GET /api/agenda?all=1` lato client) -- senza niente che li legasse.
@@ -36,7 +36,7 @@ import { readFileSync } from 'node:fs';
    pagina. */
 
 const PROMESSA_PY = readFileSync(
-  new URL('../../hiris/app/schedulatore/promise.py', import.meta.url), 'utf8');
+  new URL('../../hiris/app/keeper/promise.py', import.meta.url), 'utf8');
 const ROUTE_JS = readFileSync(
   new URL('../../hiris/app/static/config/agenda-route.js', import.meta.url), 'utf8');
 

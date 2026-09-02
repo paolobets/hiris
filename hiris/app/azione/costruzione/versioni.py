@@ -29,7 +29,7 @@ from ...storage import connect, init_schema
 logger = logging.getLogger(__name__)
 
 # L'insieme «in sospeso» -- stessa forma di `STATES_SOSPESO` in
-# `schedulatore/promise.py`, per lo stesso motivo: una proposta rivendicata
+# `keeper/promise.py`, per lo stesso motivo: una proposta rivendicata
 # (`in_corso`) non e' ancora conclusa, e non deve sparire dall'elenco delle
 # pendenti ne' smettere di contare contro il tetto nella finestra fra
 # `claim` e la transizione finale (`applicata`/`rifiutata`).
@@ -161,7 +161,7 @@ class ConstructionStore:
         (spec §7).
 
         E' la stessa guardia gia' usata per le promesse in
-        `schedulatore/archivio.py`: una UPDATE atomica `WHERE stato=
+        `keeper/store.py`: una UPDATE atomica `WHERE stato=
         'in_attesa'` e' l'UNICO punto in cui due conferme quasi simultanee
         della stessa proposta si possono distinguere. Chi la chiama per primo
         vince e la proposta passa a `in_corso`; l'altro trova `rowcount == 0`
@@ -183,7 +183,7 @@ class ConstructionStore:
     def risana(self, *, now: float) -> int:
         """Le proposte rimaste `in_corso` al riavvio: chiuse, non ripescate.
 
-        Stessa forma di `AgendaStore.risana` (`schedulatore/archivio.py`):
+        Stessa forma di `AgendaStore.risana` (`keeper/store.py`):
         una riga `in_corso` all'avvio significa una cosa sola, l'add-on si e'
         fermato fra `claim` e la transizione finale (`apply` non ha
         fatto in tempo a chiamare `mark_applied` o `mark_rejected`).
@@ -282,7 +282,7 @@ class ConstructionStore:
             # continuare a funzionare esattamente come prima. La UPDATE resta
             # atomica: e' cosi' che due conferme simultanee non applicano due
             # volte la stessa proposta. Stessa forma della presa in carico di
-            # una promessa (`schedulatore/archivio.py`).
+            # una promessa (`keeper/store.py`).
             cur = self._conn.execute(
                 "UPDATE costruzioni SET stato=?, aggiornata_ts=?, esecuzione_id=?, motivo=? "
                 "WHERE id=? AND stato IN ('in_attesa','in_corso')",

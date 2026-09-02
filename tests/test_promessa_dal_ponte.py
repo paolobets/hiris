@@ -28,8 +28,8 @@ import pytest_asyncio
 
 from hiris.app import server
 from hiris.app.chat_settings import ChatSettings
+from hiris.app.keeper.store import AgendaStore
 from hiris.app.reasoning.queue import ReasoningQueue
-from hiris.app.schedulatore.archivio import AgendaStore
 
 TOKEN = "token-di-prova-della-consegna"
 INTESTAZIONI = {"X-HIRIS-Internal-Token": TOKEN}

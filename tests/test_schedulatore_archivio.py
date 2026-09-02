@@ -3,11 +3,11 @@ import os
 
 import pytest
 
-from hiris.app.schedulatore.archivio import AgendaStore
-from hiris.app.schedulatore.promise import (
+from hiris.app.keeper.promise import (
     CEILING_IN_SOSPESO,
     CONSERVAZIONE_S,
 )
+from hiris.app.keeper.store import AgendaStore
 
 ADESSO = 1_755_600_000.0
 
@@ -132,7 +132,7 @@ def test_il_tetto_delle_in_sospeso_rifiuta_nominandolo(archivio):
 
 def test_elenca_in_sospeso_include_anche_in_corso(archivio):
     """Review finale, rilievo ②: l'insieme «in sospeso» e' `STATES_SOSPESO`
-    (`schedulatore/promise.py`), non solo `in_attesa` -- una promessa presa
+    (`keeper/promise.py`), non solo `in_attesa` -- una promessa presa
     dall'orologio (`in_corso`) non e' ancora conclusa (guida di disegno §1),
     e non deve sparire dall'elenco fra `prendi()` e `concludi()`.
 

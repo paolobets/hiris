@@ -51,6 +51,9 @@ from .casa.tempo import home_space_zone
 from .chat_settings import ChatSettings, file_lacks_retention_days
 from .env_util import env_bool
 from .internal_token import prepare_internal_token
+from .keeper.exchange import interpreta_promise
+from .keeper.store import AgendaStore
+from .keeper.sweeper import Sweeper
 from .memory.lookup_cache import LookupCache
 from .memory.store import MemoryStore
 from .mind.facts import (
@@ -65,9 +68,6 @@ from .model_resolution import subscription_has_token
 from .provider_occurrences import OccurrenceRegistry
 from .proxy.entity_cache import EntityCache
 from .proxy.ha_client import HAClient
-from .schedulatore.archivio import AgendaStore
-from .schedulatore.sweeper import Sweeper
-from .schedulatore.turno import interpreta_promise
 from .version import read_version
 
 logger = logging.getLogger(__name__)
@@ -1851,7 +1851,7 @@ async def _on_startup(app: web.Application) -> None:
     # porta la riceve qui sotto.
     app["cronaca"] = Journal(os.path.join(data_dir, "azioni.db"))
 
-    # L'archivio delle promesse (`schedulatore/archivio.py`): l'unica casa di
+    # L'archivio delle promesse (`keeper/store.py`): l'unica casa di
     # «cosa e quando». Nasce qui, accanto alla cronaca -- i due archivi nuovi
     # di questo cablaggio. La legge sia la chat (via
     # `create_tool_dispatcher`, per `prometti`/`promesse`/`cancel`)
@@ -2743,7 +2743,7 @@ async def _on_startup(app: web.Application) -> None:
 
     # Il battito dello schedulatore delle promesse (Task 7 SDD schedulatore).
     #
-    # Le prese a meta' del giro precedente (`schedulatore/archivio.py::risana`):
+    # Le prese a meta' del giro precedente (`keeper/store.py::risana`):
     # al riavvio diventano `fallita`, col motivo, e non ripartono (spec §7,
     # «mai due volte»). PRIMA di registrare il battito, non dopo: se il primo
     # giro del battito arrivasse prima di questa riga, potrebbe prendere in
@@ -2765,9 +2765,9 @@ async def _on_startup(app: web.Application) -> None:
     except Exception as exc:
         logger.warning("risanamento delle costruzioni in sospeso fallito: %s", exc)
 
-    # L'orologio (`schedulatore/sweeper.py`): non conosce ne' la chat ne' il
+    # L'orologio (`keeper/sweeper.py`): non conosce ne' la chat ne' il
     # modello, riceve solo `esegui` (la porta unica, costruita sopra) e
-    # `interpreta` (il turno di `chiedi`, `schedulatore/turno.py`).
+    # `interpreta` (il turno di `chiedi`, `keeper/exchange.py`).
     # `interpreta_promise` prende DUE argomenti (`app`, `promessa`); l'orologio
     # chiama `interpreta(promessa)` con uno solo -- la chiusura qui sotto e'
     # quel secondo argomento, catturato.
@@ -3416,7 +3416,7 @@ async def _on_cleanup(app: web.Application) -> None:
         app["archivio_casa"].close()
     if "archivio_memoria" in app:
         app["archivio_memoria"].close()
-    # I due archivi del Task 7 (schedulatore): stessa disciplina dei due qui
+    # I due archivi del Task 7 (keeper): stessa disciplina dei due qui
     # sopra -- senza chiuderli un riavvio lascerebbe il file sqlite bloccato.
     if "promesse" in app:
         app["promesse"].close()
@@ -3675,7 +3675,7 @@ def create_app() -> web.Application:
     # legge di qui, e disdice di qui. Le stesse due operazioni che il
     # modello ha come strumenti (`promesse`/`cancel` in
     # `casa/strumenti.py`), sulla stessa serializzazione
-    # (`schedulatore/promise.py::serializza`, dentro l'archivio): due porte,
+    # (`keeper/promise.py::serializza`, dentro l'archivio): due porte,
     # una forma sola. Passa dallo stesso `csrf_middleware` di
     # `/api/memories/{id}` -- nessuna rotta mutante e' esente.
     from .api.handlers_agenda import (

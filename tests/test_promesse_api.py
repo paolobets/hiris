@@ -24,7 +24,7 @@ import pytest_asyncio
 
 from hiris.app.azione.cronaca import Journal
 from hiris.app.chat_store import close_all_stores
-from hiris.app.schedulatore.archivio import AgendaStore
+from hiris.app.keeper.store import AgendaStore
 from hiris.app.server import create_app
 
 # Fixture generica (annulla la valvola `HIRIS_ALLOW_NO_CSRF` per la suite),

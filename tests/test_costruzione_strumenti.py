@@ -4,7 +4,7 @@ import pytest
 from hiris.app.agent.runner import mcp_names
 from hiris.app.azione.costruzione.officina import Workshop
 from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS, ToolDispatcher
-from hiris.app.schedulatore.turno import promise_tools
+from hiris.app.keeper.exchange import promise_tools
 from tests._contratti import assert_stessa_firma
 
 

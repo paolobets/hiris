@@ -17,7 +17,7 @@ produce un turno in cui HIRIS dice "ho guardato" senza aver guardato.
 
 **Cosa fa.** Per ognuna delle QUATTORDICI definizioni (i tredici di
 `casa/strumenti.py`, il catalogo della chat, piu' `CONCLUDI_TOOL_DEF` di
-`schedulatore/turno.py`, che vive solo nel turno di una promessa) prende
+`keeper/exchange.py`, che vive solo nel turno di una promessa) prende
 la `description` e ogni `description` annidata dentro `input_schema` --
 proprieta', proprieta' di proprieta', `items` -- ed estrae **ogni parola
 dentro ogni coppia di delimitatori**: backtick oppure virgolette caporali.
@@ -57,7 +57,7 @@ import re
 import pytest
 
 from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS
-from hiris.app.schedulatore.turno import CONCLUDI_TOOL_DEF
+from hiris.app.keeper.exchange import CONCLUDI_TOOL_DEF
 
 # I nomi che sono STATI un nome di strumento, in una qualunque delle due
 # lingue. E' un elenco STORICO e si scrive a mano: non esiste un posto da
@@ -191,7 +191,7 @@ def _prose_runtime():
     )
     from hiris.app.chat_settings import DEFAULT_SYSTEM_PROMPT
     from hiris.app.claude_runner import BASE_TOOL_RULES
-    from hiris.app.schedulatore.turno import _system_prompt
+    from hiris.app.keeper.exchange import _system_prompt
     return [
         ("agent/prompts._GUIDE_WITHOUT_TOOLS", _GUIDE_WITHOUT_TOOLS),
         # MENO l'avviso sui nomi vecchi, che e' l'unico testo del prodotto
@@ -199,7 +199,7 @@ def _prose_runtime():
         ("agent/prompts._GUIDE_WITH_TOOLS",
          _GUIDE_WITH_TOOLS.replace(_OLD_NAMES_NOTICE, "")),
         ("claude_runner.BASE_TOOL_RULES", BASE_TOOL_RULES),
-        ("schedulatore/turno._system_prompt()", _system_prompt()),
+        ("keeper/exchange._system_prompt()", _system_prompt()),
         ("impostazioni_chat.DEFAULT_SYSTEM_PROMPT", DEFAULT_SYSTEM_PROMPT),
     ]
 

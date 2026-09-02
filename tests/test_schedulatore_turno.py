@@ -2,7 +2,7 @@
 import pytest
 
 from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS
-from hiris.app.schedulatore.turno import (
+from hiris.app.keeper.exchange import (
     SOLA_LETTURA,
     PromiseDispatcher,
     promise_tools,
@@ -41,7 +41,7 @@ def test_il_prompt_di_sistema_spiega_gli_id_fra_parentesi_e_il_parallelismo():
     `runner.chat`, lo stesso ciclo di `claude_runner.py`
     (`BASE_TOOL_RULES`) che conta un giro per risposta, non per
     chiamata."""
-    from hiris.app.schedulatore.turno import _system_prompt
+    from hiris.app.keeper.exchange import _system_prompt
     testo = _system_prompt()
     assert "(id: X)" in testo, "il prompt non spiega piu' gli id fra parentesi dell'albero"
     assert "IN PARALLELO" in testo, "il prompt non insegna piu' il parallelismo"
@@ -61,7 +61,7 @@ def test_concludi_dichiara_che_la_notifica_la_manda_hiris():
     disturbarla»), mai del MECCANISMO -- e il modello rispondeva a parole
     invece di concludere. Riprodotto tre volte sull'add-on vero: senza la
     richiesta di notifica il turno conclude, con la richiesta fallisce."""
-    from hiris.app.schedulatore.turno import CONCLUDI_TOOL_DEF
+    from hiris.app.keeper.exchange import CONCLUDI_TOOL_DEF
 
     d = CONCLUDI_TOOL_DEF["description"]
     assert "la manda HIRIS per te" in d, (
@@ -76,7 +76,7 @@ def test_il_prompt_manda_a_concludi_invece_di_dire_solo_nel_testo():
     «conclude» e la propria risposta. Il modello sceglieva la seconda, e il
     turno moriva senza conclusione. Il prompt PUNTA al meccanismo, non lo
     ricopia: la sua casa e' `CONCLUDI_TOOL_DEF` (fondamenta n.2)."""
-    from hiris.app.schedulatore.turno import _system_prompt
+    from hiris.app.keeper.exchange import _system_prompt
 
     testo = _system_prompt()
     assert "nel campo `testo` di «conclude»" in testo, (
@@ -189,7 +189,7 @@ def _promessa_chiedi(**extra) -> dict:
 
 @pytest.mark.asyncio
 async def test_interpreta_promessa_ritorna_cio_che_il_turno_ha_concluso():
-    from hiris.app.schedulatore.turno import interpreta_promise
+    from hiris.app.keeper.exchange import interpreta_promise
 
     runner = _RunnerCheConclude(avvisare=True, testo="e' salita di 2 gradi")
     app = {"llm_router": runner}
@@ -211,7 +211,7 @@ async def test_interpreta_promessa_senza_concludi_e_un_errore_dichiarato():
     "forse e' andata bene" -- deve dichiarare l'errore, cosi' l'orologio
     marca la promessa `fallita` con un motivo vero (vedi
     `sweeper._keep_chiedi`)."""
-    from hiris.app.schedulatore.turno import interpreta_promise
+    from hiris.app.keeper.exchange import interpreta_promise
 
     esito = await interpreta_promise({"llm_router": _RunnerCheNonConclude()},
                                       _promessa_chiedi())
@@ -251,7 +251,7 @@ async def test_il_turno_che_non_conclude_riporta_cio_che_il_modello_aveva_detto(
     HIRIS il testo ce l'aveva in mano e lo scartava, e per sapere quale delle
     tre uscite del ciclo avesse preso il turno e' servita un'indagine di
     un'ora sull'add-on vivo."""
-    from hiris.app.schedulatore.turno import interpreta_promise
+    from hiris.app.keeper.exchange import interpreta_promise
 
     app = {"llm_router": _RunnerCheRispondeInTesto(
         "Ho letto le otto stanze, ma da qui non posso mandarti una notifica.")}
@@ -270,7 +270,7 @@ async def test_il_turno_che_non_conclude_riporta_cio_che_il_modello_aveva_detto(
 async def test_la_risposta_del_modello_entra_nel_motivo_troncata():
     """Il motivo finisce in una colonna di SQLite e in una pagina: la
     risposta del modello puo' essere lunghissima, e va riportata a misura."""
-    from hiris.app.schedulatore.turno import interpreta_promise
+    from hiris.app.keeper.exchange import interpreta_promise
 
     app = {"llm_router": _RunnerCheRispondeInTesto("temperatura " * 2000)}
 
@@ -284,7 +284,7 @@ async def test_la_risposta_del_modello_entra_nel_motivo_troncata():
 async def test_se_il_modello_non_ha_detto_proprio_niente_il_motivo_lo_dichiara():
     """L'altra meta' del fatto: quando non c'e' NESSUNA risposta da
     riportare, il motivo non deve inventarsi un virgolettato vuoto."""
-    from hiris.app.schedulatore.turno import interpreta_promise
+    from hiris.app.keeper.exchange import interpreta_promise
 
     esito = await interpreta_promise({"llm_router": _RunnerCheNonConclude()},
                                       _promessa_chiedi())
@@ -295,7 +295,7 @@ async def test_se_il_modello_non_ha_detto_proprio_niente_il_motivo_lo_dichiara()
 
 @pytest.mark.asyncio
 async def test_interpreta_promessa_senza_runner_e_un_errore_dichiarato():
-    from hiris.app.schedulatore.turno import interpreta_promise
+    from hiris.app.keeper.exchange import interpreta_promise
 
     esito = await interpreta_promise({}, _promessa_chiedi())
 
@@ -350,7 +350,7 @@ def col_token_del_piano(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_col_ponte_in_testa_il_turno_va_in_coda_e_non_al_router(col_token_del_piano):
-    from hiris.app.schedulatore.turno import interpreta_promise
+    from hiris.app.keeper.exchange import interpreta_promise
 
     coda, router = _CodaFinta(), _RouterCheNonDeveRispondere()
     app = _app_col_ponte(coda, router)
@@ -369,7 +369,7 @@ async def test_il_job_porta_cio_che_serve_a_mantenere_la_promessa(col_token_del_
     """Il ponte gira altrove e non ha gli archivi: cio' che non entra nel job
     non esiste per lui. Senza `promise_id` la rotta MCP non saprebbe quale
     turno sta parlando, e `conclude` non avrebbe niente da chiudere."""
-    from hiris.app.schedulatore.turno import interpreta_promise
+    from hiris.app.keeper.exchange import interpreta_promise
 
     coda = _CodaFinta()
     await interpreta_promise(coda and _app_col_ponte(coda), _promessa_chiedi())
@@ -387,8 +387,8 @@ async def test_il_job_porta_cio_che_serve_a_mantenere_la_promessa(col_token_del_
 @pytest.mark.asyncio
 async def test_senza_il_token_del_piano_il_turno_scende_alla_catena(monkeypatch):
     """Il ripiego della chat, identico: e' la regola sola che la fetta cerca."""
+    from hiris.app.keeper.exchange import interpreta_promise
     from hiris.app.model_resolution import SUBSCRIPTION_TOKEN_VAR
-    from hiris.app.schedulatore.turno import interpreta_promise
 
     monkeypatch.delenv(SUBSCRIPTION_TOKEN_VAR, raising=False)
     coda = _CodaFinta()
@@ -402,7 +402,7 @@ async def test_senza_il_token_del_piano_il_turno_scende_alla_catena(monkeypatch)
 
 @pytest.mark.asyncio
 async def test_col_ponte_spento_il_turno_resta_sulla_catena_come_sempre():
-    from hiris.app.schedulatore.turno import interpreta_promise
+    from hiris.app.keeper.exchange import interpreta_promise
 
     coda = _CodaFinta()
     app = _app_col_ponte(coda, _RunnerCheConclude(avvisare=False, testo="niente"))
@@ -421,8 +421,8 @@ async def test_il_ripiego_dal_piano_alla_catena_finisce_nella_promessa(monkeypat
     scopre a fine mese. In chat lo dice una nota in coda alla risposta; una
     promessa non ha una risposta in cui metterla -- ha il suo motivo, ed e'
     quello che si legge dalla pagina."""
+    from hiris.app.keeper.exchange import interpreta_promise
     from hiris.app.model_resolution import SUBSCRIPTION_TOKEN_VAR
-    from hiris.app.schedulatore.turno import interpreta_promise
 
     monkeypatch.delenv(SUBSCRIPTION_TOKEN_VAR, raising=False)
     app = _app_col_ponte(_CodaFinta(),
@@ -441,7 +441,7 @@ async def test_senza_ripiego_non_si_annuncia_niente():
     """Ponte spento non e' un ripiego: e' la configurazione. Una nota a ogni
     promessa direbbe all'utente che sta perdendo qualcosa che non ha mai
     avuto."""
-    from hiris.app.schedulatore.turno import interpreta_promise
+    from hiris.app.keeper.exchange import interpreta_promise
 
     app = _app_col_ponte(_CodaFinta(),
                          _RunnerCheConclude(avvisare=False, testo="niente"))

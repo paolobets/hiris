@@ -163,11 +163,11 @@ def test_i_nomi_si_derivano_dal_catalogo_e_non_si_riscrivono():
     una domanda da farsi PRIMA di proporre una modifica, ed e' il ponte a
     proporne. Fetta «lo schedulatore» Task 6: da 6 a 9, entrano `promise`,
     `agenda` e `cancel` -- le promesse che il modello puo' far nascere
-    parlando, non solo leggere (`schedulatore/turno.py` le tiene FUORI dal
+    parlando, non solo leggere (`keeper/exchange.py` le tiene FUORI dal
     proprio catalogo derivato, con un elenco di ammissione a parte: un turno
     non si da' appuntamenti da solo). Fetta «costruire» Task 9: da 9 a 11,
     entrano `propose` e `confirm` -- che scrivono CONFIGURAZIONE passando
-    per l'officina, non un servizio (`schedulatore/turno.py` li tiene FUORI
+    per l'officina, non un servizio (`keeper/exchange.py` li tiene FUORI
     dallo stesso elenco di ammissione, per la stessa ragione: un turno di
     promessa non costruisce da solo). Fetta «HIRIS e il tempo» Task 6: da 11
     a 13, entrano `trend` e `logbook` -- che guardano indietro nel tempo

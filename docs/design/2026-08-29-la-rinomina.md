@@ -162,7 +162,7 @@ risparmiare tempo.
 |---|---|---|---|
 | 1 | lo strumento + cancellare `brain/` e `history/` | — | nessuna rinomina ancora |
 | 2 | `consumi/` | 3 file, 462 righe | **il più piccolo: prova lo strumento da capo a fondo** |
-| 3 | `schedulatore/` + `memory/` | 10 file, 2.083 righe | → **rilascio** |
+| 3 | `keeper/` + `memory/` | 10 file, 2.083 righe | → **rilascio** |
 | 4 | `mind/` | 5 file, 1.624 righe | |
 | 5 | `azione/` | 10 file, 3.052 righe | |
 | 6 | `casa/` | 9 file, 7.368 righe | il più grande fra i sottosistemi |
@@ -188,7 +188,7 @@ questa fetta esiste per curare, applicata al piano della fetta stessa.
 Che l'assunzione fosse falsa e' misurato, non temuto: `reasoning/queue.py` ha quattro metodi
 PUBBLICI ancora italiani (`reclama_scaduto`, `risolvi_ripiego`, `fallisci_ripieghi_bloccati`,
 `count_turni_oggi`) chiamati da `api/handlers_chat.py`, `api/handlers_reasoning.py`,
-`schedulatore/turno.py`, `instradamento.py` e `server.py`; `backends/` porta 30 identificatori che
+`keeper/exchange.py`, `instradamento.py` e `server.py`; `backends/` porta 30 identificatori che
 il glossario di oggi tocca (`_codice_di`, `_modello_scelto`, `registra_consumo`, `famiglia_errore`,
 `stato_circuito`, ...). Le due cartelle sono inglesi di nome e miste di contenuto.
 

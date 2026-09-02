@@ -645,7 +645,7 @@ def _sostituzioni_di_identificatori(prima: str, dopo: str) -> set[tuple[str, str
 # fetta -- `concludi` e' il quattordicesimo strumento e il glossario non
 # l'aveva mai nominato; deciderlo (`concludi -> conclude`, «I nomi degli
 # strumenti») mette la parola nella mappa piatta, e da quel momento
-# `AgendaStore.concludi` e i suoi chiamanti dentro `schedulatore/` sono
+# `AgendaStore.concludi` e i suoi chiamanti dentro `keeper/` sono
 # identificatori GIA' DECISI e non piu' invisibili.
 #
 # **Non e' un debito nuovo: e' lo stesso debito, che smette di essere
@@ -659,11 +659,11 @@ def _sostituzioni_di_identificatori(prima: str, dopo: str) -> set[tuple[str, str
 # rinomina a meta', perche' `server.py:122`,
 # `api/handlers_reasoning.py:67` e `api/handlers_mcp.py:474` chiamano
 # `store.concludi(...)`/`sweeper.concludi_chiedi(...)` da FUORI
-# dell'ambito, dove un giro limitato a `schedulatore` non li vedrebbe.
+# dell'ambito, dove un giro limitato a `keeper` non li vedrebbe.
 # Tracciato qui, con la grana fine sotto, invece che applicato di sfuggita.
 _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
-    ("schedulatore", "schedulatore",
-     frozenset({Path("archivio.py"), Path("sweeper.py")})),
+    ("keeper", "keeper",
+     frozenset({Path("store.py"), Path("sweeper.py")})),
     # `proxy` entra il 01/09 col lotto 19c, e **senza residui**: zero
     # composti da decidere e zero applicazioni su tutti e quattro i suoi
     # file, misurato prima di scrivere questa riga. E' il primo
@@ -788,16 +788,16 @@ def test_il_residuo_di_schedulatore_e_solo_concludi_conclude(tmp_path):
     import shutil
 
     from _comune import ROOT
-    for nome in ("archivio.py", "sweeper.py"):
-        base = ROOT / "hiris" / "app" / "schedulatore" / nome
+    for nome in ("store.py", "sweeper.py"):
+        base = ROOT / "hiris" / "app" / "keeper" / nome
         copia = tmp_path / nome
         shutil.copy(base, copia)
         prima = copia.read_text(encoding="utf-8")
-        rinomina.applica(copia, "schedulatore", scrivi=True)
+        rinomina.applica(copia, "keeper", scrivi=True)
         dopo = copia.read_text(encoding="utf-8")
         sostituzioni = _sostituzioni_di_identificatori(prima, dopo)
         assert sostituzioni == {("concludi", "conclude")}, (
-            f"schedulatore/{nome} diverge su {sostituzioni}, atteso solo "
+            f"keeper/{nome} diverge su {sostituzioni}, atteso solo "
             "{('concludi', 'conclude')} -- un nuovo nome e' comparso: "
             "decidilo davvero (applicalo, o traccialo qui) invece di "
             "lasciarlo dentro un'eccezione a grana di file")
@@ -830,14 +830,14 @@ def test_il_residuo_di_schedulatore_archivio_e_solo_solo_in_sospeso():
     strumento non ha NIENTE da applicare, quindi non c'e' un `prima`/`dopo`
     da confrontare con `_sostituzioni_di_identificatori`.
 
-    `AgendaStore.list` (`schedulatore/archivio.py:213`) ha ancora il
+    `AgendaStore.list` (`keeper/store.py:213`) ha ancora il
     parametro keyword-only `solo_in_sospeso: bool = False`, mai deciso: i
     suoi tre pezzi (`solo`, `in`, `sospeso`) sono tutti fuori dal
     glossario, quindi `classifica()` torna `None` per ciascuno e la parola
     e' invisibile al dry-run come al join meccanico -- verificato
-    eseguendo `python scripts/rinomina.py --percorso hiris/app/schedulatore
-    --ambito schedulatore --dry-run`: non compare ne' fra i composti ne'
-    applicata. Per questo `_SORVEGLIATI` dichiara `schedulatore` con
+    eseguendo `python scripts/rinomina.py --percorso hiris/app/keeper
+    --ambito keeper --dry-run`: non compare ne' fra i composti ne'
+    applicata. Per questo `_SORVEGLIATI` dichiara `keeper` con
     residuo `frozenset()` (vuoto): la guardia di idempotenza e' vera --
     lo strumento non cambia nulla, quindi e' stabile -- ma stabile non
     e' completo. La firma vera e' un canarino diretto sul parametro,
@@ -855,12 +855,12 @@ def test_il_residuo_di_schedulatore_archivio_e_solo_solo_in_sospeso():
     nello stesso commit del parametro, non lasciati indietro."""
     import inspect
 
-    from hiris.app.schedulatore.archivio import AgendaStore
+    from hiris.app.keeper.store import AgendaStore
 
     parametri = inspect.signature(AgendaStore.list).parameters
     assert "solo_in_sospeso" in parametri, (
         "il residuo tracciato qui e' sparito: se e' stato deciso e "
-        "applicato per davvero (schedulatore/archivio.py, "
+        "applicato per davvero (keeper/store.py, "
         "api/handlers_agenda.py, casa/strumenti.py, i due test dedicati), "
         "questo test va tolto, non solo aggiornato")
     assert parametri["solo_in_sospeso"].kind == inspect.Parameter.KEYWORD_ONLY
@@ -1055,13 +1055,13 @@ def test_sponde_per_nome_tace_su_un_nome_nudo_e_sui_file_file_lotto(tmp_path):
 _MUTE_VOLUTE = {
     # `senza` e' qualificata SOLO `(casa)`. Altrove sta dentro nomi italiani
     # per intero o dentro residui gia' dichiarati (`memory/resolver.py`,
-    # `schedulatore/turno.py::_senza_conclusione`).
+    # `keeper/exchange.py::_senza_conclusione`).
     ("senza", "api"), ("senza", "azione"), ("senza", "memory"),
-    ("senza", "schedulatore"),
+    ("senza", "keeper"),
     # `note (casa)` vuol dire «cose che la casa SA» (-> `known`). Fuori da
     # `casa/` `note` sono annotazioni, un senso diverso: la mutezza e' giusta.
     ("note", "api"), ("note", "azione"), ("note", "usage"),
-    ("note", "schedulatore"),
+    ("note", "keeper"),
     # `note` in `radice` non e' italiano affatto: e' l'INGLESE che ci ha messo
     # la conversione stessa (`nota -> note`, `decisione_modelli.py`). Il
     # cancello lo vede perche' guarda i PEZZI, e `note` e' anche un plurale
@@ -1072,12 +1072,12 @@ _MUTE_VOLUTE = {
     # JSON `"prima"`/`"dopo"` di un confronto di stati: valore di dominio,
     # italiano per decisione (vedi la riga `primo` del glossario).
     ("dopo", "azione"),
-    # `fuori (casa)` e' «all'aperto». In `usage/` e `schedulatore/` e' «in
+    # `fuori (casa)` e' «all'aperto». In `usage/` e `keeper/` e' «in
     # uscita»/«fuori finestra»: senso diverso, mutezza giusta.
-    ("fuori", "usage"), ("fuori", "schedulatore"),
-    # `lettura` e' qualificata `(casa)`/`(usage)`. In `schedulatore/` compare
+    ("fuori", "usage"), ("fuori", "keeper"),
+    # `lettura` e' qualificata `(casa)`/`(usage)`. In `keeper/` compare
     # solo dentro `SOLA_LETTURA`, dove e' «read-only»: terzo senso.
-    ("lettura", "schedulatore"),
+    ("lettura", "keeper"),
     # `loro`/`nostro` sono qualificate SOLO `(casa)`; in `azione/verifica.py`
     # stanno in una riga sola, e non sono state decise per quell'ambito.
     ("loro", "azione"), ("nostro", "azione"),

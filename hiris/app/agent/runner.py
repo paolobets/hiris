@@ -99,10 +99,10 @@ o cosa dire senza una frase scritta da una persona. Non e' piu' vero -- dalla
 fetta «schedulare» -- che nessuna esecuzione possa partire senza una frase
 IN QUESTA conversazione: `prometti` lascia una frase di adesso eseguire piu'
 tardi, e questo e' esattamente il modulo da cui puo' partire. Un turno
-`chiedi` di una promessa arriva QUI (`schedulatore/turno.py::interpreta_promise`
+`chiedi` di una promessa arriva QUI (`keeper/exchange.py::interpreta_promise`
 -> `who_answers` -> `_enqueue_to_bridge`, quando il ponte e' la via) tanto
 quanto un turno di chat vero: il battito dello schedulatore
-(`schedulatore/sweeper.py`, ogni 15 s) lo sveglia da solo, ore dopo la
+(`keeper/sweeper.py`, ogni 15 s) lo sveglia da solo, ore dopo la
 promessa e senza nessuno in chat in quel momento. Il giudizio (cosa fare, e
 se) resta della persona che ha promesso; il MOMENTO in cui accade no --
 vedi `README.md`, sezione «What HIRIS 2.0 is», per la stessa distinzione
@@ -126,8 +126,8 @@ from ..chat_store import (
     MOCK_SENTINEL,
     RUNNER_ERROR_PREFIX,
 )
+from ..keeper.exchange import promise_tools
 from ..model_resolution import SUBSCRIPTION_ALIAS
-from ..schedulatore.turno import promise_tools
 from . import prompts
 
 log = logging.getLogger("hiris.agent")
@@ -1611,7 +1611,7 @@ def reason(job: dict, mode: str, *, client=None, base_url: str = "",
         # che cambia e' il CONTENUTO -- la domanda al posto della
         # conversazione, il prompt del turno di promessa al posto di quello
         # della chat, e l'id della promessa nella mcp-config -- e il contenuto
-        # arriva tutto dal contesto del job (`schedulatore/turno.
+        # arriva tutto dal contesto del job (`keeper/exchange.
         # _accoda_al_ponte`). Un `_reason_promessa` gemello avrebbe duplicato
         # trecento righe di macchinario per cambiare tre stringhe: e' la
         # «funzione doppia» che CLAUDE.md vieta, e la copia sarebbe rimasta

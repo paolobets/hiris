@@ -4,9 +4,9 @@ import os
 import pytest
 
 from hiris.app.azione.porta import ActionActuator
-from hiris.app.schedulatore.archivio import AgendaStore
-from hiris.app.schedulatore.promise import TOLLERANZA_S
-from hiris.app.schedulatore.sweeper import Sweeper
+from hiris.app.keeper.promise import TOLLERANZA_S
+from hiris.app.keeper.store import AgendaStore
+from hiris.app.keeper.sweeper import Sweeper
 from tests._contratti import assert_stessa_firma
 
 ADESSO = 1_755_600_000.0

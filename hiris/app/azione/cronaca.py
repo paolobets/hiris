@@ -37,9 +37,9 @@ from ..storage import connect, init_schema
 # E' una politica di QUESTO modulo, non presa in prestito da altrove: la
 # cronaca vive ACCANTO alla porta (vedi il docstring del file) e deve reggersi
 # da sola, come la porta stessa -- oggi `azione/` non importa nulla da
-# `schedulatore/`, e farlo per un solo numero invertirebbe gli strati per
+# `keeper/`, e farlo per un solo numero invertirebbe gli strati per
 # risparmiare una riga. Vale 90 giorni come la conservazione delle promesse
-# concluse (`schedulatore/promessa.py::CONSERVAZIONE_S`): sono due fatti
+# concluse (`keeper/promise.py::CONSERVAZIONE_S`): sono due fatti
 # distinti -- per quanto si conserva una PROMESSA conclusa, per quanto si
 # conserva un'ESECUZIONE -- che oggi COINCIDONO, non uno che insegue l'altro.
 # Si possono cambiare separatamente, in futuro, senza che l'altro se ne
@@ -166,7 +166,7 @@ class Journal:
         # Lettura, ma sulla stessa connessione condivisa (`check_same_thread=
         # False`) delle scritture: senza lock qui una `registra` in corso su
         # un altro thread potrebbe intrecciarsi con questa query. E' il
-        # pattern appena consolidato in `schedulatore/archivio.py`.
+        # pattern appena consolidato in `keeper/store.py`.
         with self._lock:
             r = self._conn.execute(
                 "SELECT * FROM esecuzioni WHERE id=?", (execution_id,)).fetchone()

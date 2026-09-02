@@ -62,7 +62,7 @@ def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
     passando per la porta unica (vedi il docstring di quel modulo), tre
     (`promise`, `agenda`, `cancel`, fetta «lo schedulatore») la impegnano
     per un momento futuro passando per l'archivio delle promesse
-    (`schedulatore/archivio.py`), due (`propose`, `confirm`,
+    (`keeper/store.py`), due (`propose`, `confirm`,
     fetta «costruire») scrivono CONFIGURAZIONE -- non un servizio, un'entita'
     nuova -- passando per l'officina (`azione/costruzione/officina.py`), e gli
     ultimi due (`trend`, `logbook`, fetta «HIRIS e il tempo») guardano
@@ -132,7 +132,7 @@ def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
         # Serve a `promise` per verificare un `fai` ADESSO
         # (`ToolDispatcher._verify_now`) e un `recapito`.
         registry=app.get("registro_servizi"),
-        # L'archivio delle promesse (`schedulatore/archivio.py`): la casa di
+        # L'archivio delle promesse (`keeper/store.py`): la casa di
         # `promise`/`agenda`/`cancel`.
         agenda=app.get("promesse"),
         # L'officina (`azione/costruzione/officina.py`, fetta «costruire»):

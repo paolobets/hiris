@@ -1174,7 +1174,7 @@ def test_la_scadenza_e_dichiarata_finita_e_una_sola():
 #
 # E' anche la giuntura che la review finale ha trovato rotta: prima di questo
 # fix, `verifica()` rifiutava QUALUNQUE bersaglio vuoto -- incondizionatamente
-# -- e la promessa che `schedulatore/orologio.py::_mantieni_chiedi` costruisce
+# -- e la promessa che `keeper/sweeper.py::_keep_chiedi` costruisce
 # per notificare (`"bersaglio": {}`) non passava mai di qui.
 
 NOTIFICA_HIRIS = {"servizio": "notify.mobile_app_x", "bersaglio": {},

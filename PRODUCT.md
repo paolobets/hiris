@@ -89,7 +89,7 @@
 > semaforo»*, come se le due cose fossero ancora vere insieme.
 >
 > Resta vero che non c'è un semaforo. Non è più vero, da tre fette (la fetta «schedulare»), che
-> non ci sia autonomia: lo schedulatore delle promesse (`hiris/app/schedulatore/orologio.py`,
+> non ci sia autonomia: lo schedulatore delle promesse (`hiris/app/keeper/sweeper.py`,
 > battito ogni 15 secondi) esegue una promessa `fai` da solo, ore dopo la frase che l'ha creata e
 > senza nessuno in chat, passando dalla stessa porta di `esegui`; e una promessa `chiedi` con
 > recapito manda una notifica sul canale `notify.*` scelto, fuori dalla chat. Non è un giudizio

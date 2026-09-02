@@ -35,9 +35,9 @@ from hiris.app import server
 from hiris.app.api.handlers_chat import create_tool_dispatcher
 from hiris.app.azione.cronaca import Journal
 from hiris.app.azione.porta import ActionActuator
-from hiris.app.schedulatore.archivio import AgendaStore
-from hiris.app.schedulatore.sweeper import Sweeper
-from hiris.app.schedulatore.turno import interpreta_promise
+from hiris.app.keeper.exchange import interpreta_promise
+from hiris.app.keeper.store import AgendaStore
+from hiris.app.keeper.sweeper import Sweeper
 
 # ── Estrazione 1: cronaca + promesse + porta (con cronaca) ──────────────────
 

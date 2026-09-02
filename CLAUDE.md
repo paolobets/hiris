@@ -240,7 +240,7 @@ hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
     ├── memoria/    (4)       archivio, interpretazione, resolver
     ├── proxy/      (4)       ha_client.py (il VERO client HA: REST+WS), entity_cache, _sanitize
     ├── agent/      (3)       runner.py (il ponte push) + prompts.py
-    ├── schedulatore/ (5)     promise, archivio, sweeper, turno — le promesse dell'utente
+    ├── keeper/     (5)       promise, store, sweeper, exchange — le promesse dell'utente
     ├── reasoning/  (2)
     └── static/     index.html · config.html · chat/*.js · config/*.js
 ```

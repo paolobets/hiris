@@ -2,7 +2,7 @@
 import re
 from pathlib import Path
 
-from hiris.app.schedulatore.promise import (
+from hiris.app.keeper.promise import (
     CEILING_IN_SOSPESO,
     CONSERVAZIONE_S,
     ORIZZONTE_S,

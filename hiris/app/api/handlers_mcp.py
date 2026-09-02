@@ -79,7 +79,7 @@ from collections import OrderedDict
 from aiohttp import web
 
 from ..casa.strumenti import KNOWLEDGE_TOOLS
-from ..schedulatore.turno import PromiseDispatcher, promise_tools
+from ..keeper.exchange import PromiseDispatcher, promise_tools
 from ..version import read_version
 from .handlers_chat import create_tool_dispatcher
 

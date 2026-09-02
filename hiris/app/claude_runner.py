@@ -383,7 +383,7 @@ AUTO_MODEL_MAP: dict[str, str] = {
     "chat": "claude-sonnet-4-6",
     "agent": "claude-haiku-4-5-20251001",
 }
-# Il turno di una promessa "chiedi" (`schedulatore/turno.py::interpreta_promise`)
+# Il turno di una promessa "chiedi" (`keeper/exchange.py::interpreta_promise`)
 # ragiona come un turno di chat -- confronta un valore con un'istantanea,
 # giudica se una condizione si e' verificata -- e per giunta gira SENZA
 # nessuno davanti: e' il caso in cui la qualita' del modello conta di piu',
@@ -493,7 +493,7 @@ def _max_tokens_message(text_blocks: list[str]) -> str:
 # due costanti con parentela dichiarata (il pattern usato quando due strati
 # NON possono importare l'uno dall'altro senza invertire la gerarchia, come
 # azione/cronaca.py::CONSERVAZIONE_ESECUZIONI_S rispetto a
-# schedulatore/promise.py::CONSERVAZIONE_S): qui la gerarchia va gia' in un
+# keeper/promise.py::CONSERVAZIONE_S): qui la gerarchia va gia' in un
 # verso solo -- backends/openai_compat_runner.py importa GIA' da questo
 # modulo (_TRUNCATION_NOTICE, RESTRICT_PROMPT, COMPACT_PROMPT, MINIMAL_
 # PROMPT), mai il contrario -- quindi definirla due volte sarebbe il

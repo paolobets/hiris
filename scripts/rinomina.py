@@ -1238,7 +1238,7 @@ def nomi_esportati(sorgente: str, g: Glossario, ambito: str, *,
     dichiarava 4 sponde vere, alimentandola coi 27 ne dichiarava 40. **Le 36
     che mancavano non erano rumore**: fra loro i cinque import di
     `api/handlers_models.py`, quello di `agent/runner.py`, quello di
-    `schedulatore/turno.py` e quello di `server.py:59` -- cioe' l'add-on che
+    `keeper/exchange.py` e quello di `server.py:59` -- cioe' l'add-on che
     non parte. Chi chiama questa funzione per alimentare `sponde_per_nome` le
     passi le coppie DAVVERO applicate (si ricavano confrontando i token NAME
     del file prima e dopo), non solo quelle del glossario.

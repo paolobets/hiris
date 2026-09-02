@@ -65,7 +65,7 @@ per una dimenticanza:
 CRITICO ①. Fino a questa passata un bersaglio vuoto era SEMPRE un rifiuto,
 anche per un servizio come `notify.*` che non accetta un `target` -- e questo
 significava che una promessa «chiedi» non poteva mai notificare
-(`schedulatore/sweeper.py` costruisce la sua chiamata con `"bersaglio": {}`,
+(`keeper/sweeper.py` costruisce la sua chiamata con `"bersaglio": {}`,
 e questa funzione la rifiutava incondizionatamente, PRIMA di guardare il
 servizio). Adesso un bersaglio vuoto e' legittimo quando -- e solo quando --
 il servizio non dichiara un `target` **e** appartiene alla famiglia dei
@@ -126,7 +126,7 @@ def _declare_target(definition: dict) -> bool:
     caso di `notify.*` e di parecchi servizi di sistema, che oggi HIRIS
     rifiuta SEMPRE anche quando non hanno niente da bersagliare -- il difetto
     per cui una promessa «chiedi» non poteva mai notificare (vedi
-    `schedulatore/sweeper.py::_keep_chiedi`).
+    `keeper/sweeper.py::_keep_chiedi`).
 
     **Il verso e' quello prudente.** Si allarga SOLO quando il dato dice
     esplicitamente «niente bersaglio» (`isinstance(..., dict)` falso): mai per

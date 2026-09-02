@@ -229,7 +229,7 @@ di `anagrafe.py` (`fuori_dalle_aree` → `outside_areas`, `_ID_FUORI_DALLE_AREE`
 di un confine". Ma la stessa parola, **nuda**, compare una volta sola nello stesso file
 (`categorie_con_nome`, oggi `categories_with_name`) con un senso completamente diverso: non
 "escluso", ma "il dizionario che la funzione produce in uscita" -- lo stesso idioma di
-`schedulatore/promise.py::serializza` (`fuori = {...}; return fuori`) e di
+`keeper/promise.py::serializza` (`fuori = {...}; return fuori`) e di
 `usage/store.py`, gli stessi due file che avevano gia' motivato la qualificazione `(casa)` invece
 di lasciare `fuori` nudo per l'intero repository. **Qui l'asimmetria gira dalla parte sbagliata**:
 non e' la forma composta a portare il senso minoritario (come per `riferimento`, sopra) -- e'
@@ -724,7 +724,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | gamba | una delle sei dimensioni lungo cui l'osservatore guarda la casa: chi c'e', comfort, dispersione, energia, buono stato, sicurezza | aspect | ✓ arriva |
 | genere | classifica a quale dei sei ambiti appartiene un fatto compiuto della casa -- funzionamento, presenza, energia, guasto, sicurezza, bilancio -- e insieme all'obiettivo che sceglie quali entita' guardare decide che forma prendera' il fatto quando viene scritto | genre | ~ parziale |
 | gesto | il verbo con cui una proposta di costruzione viene toccata -- crearla, modificarla, cancellarla -- usato anche per scegliere la forma grammaticale del testo che la descrive all'utente | operation | ~ parziale |
-| grezzo (mind) | un cambiamento di stato registrato esattamente come Home Assistant lo riporta, con le classi che lo accompagnano, prima che qualunque giudizio lo trasformi in un fatto interpretato -- **qualificata l'01/09 per la stessa ragione di `forza (memory)`.** Una riga di una parola sola si applica da sola, e lasciata nuda avrebbe scritto `reading` su una risposta HTTP (`server.py:889`, `grezzo = await ha_client.related(...)`) -- falso, e con l'aria di essere giusto. **La prima stesura di questa nota diceva che l'inglese non era MAI stato applicato: era falsa, e la review l'ha misurata.** `reading` e' applicato in otto file, e in UNO solo porta il concetto definito qui: `azione/porta.py:316,332,335,355`, dove e' proprio uno stato di Home Assistant «come lui lo riporta». Negli altri sette e' l'aggettivo ordinario applicato al senso sbagliato da lotti precedenti (`azione/verifica.py:318` una stringa di servizio, `azione/costruzione/composer.py:51` uno slug, `memory/resolver.py:110` una lista, `schedulatore/promise.py:101` un JSON): **debito misurato, non causato da questa riga**, e una fetta a se' -- rinominarli adesso vorrebbe dire toccare quattro ambiti chiusi per una parola. Il caso che QUESTO blocco aveva scritto e' stato corretto: `impostazioni_chat.py::_retention_days_from_environment` leggeva una variabile d'ambiente e diceva `reading`, ora dice `raw`. **La qualificazione resta su `(mind)` e non si sposta su `(azione)`**: cosi' com'e', `Glossario.per("grezzo", ambito)` tace ovunque e lo strumento non puo' riarmare la trappola da solo dentro `azione/`, che e' l'ambito dove i due sensi convivono | reading | ~ parziale |
+| grezzo (mind) | un cambiamento di stato registrato esattamente come Home Assistant lo riporta, con le classi che lo accompagnano, prima che qualunque giudizio lo trasformi in un fatto interpretato -- **qualificata l'01/09 per la stessa ragione di `forza (memory)`.** Una riga di una parola sola si applica da sola, e lasciata nuda avrebbe scritto `reading` su una risposta HTTP (`server.py:889`, `grezzo = await ha_client.related(...)`) -- falso, e con l'aria di essere giusto. **La prima stesura di questa nota diceva che l'inglese non era MAI stato applicato: era falsa, e la review l'ha misurata.** `reading` e' applicato in otto file, e in UNO solo porta il concetto definito qui: `azione/porta.py:316,332,335,355`, dove e' proprio uno stato di Home Assistant «come lui lo riporta». Negli altri sette e' l'aggettivo ordinario applicato al senso sbagliato da lotti precedenti (`azione/verifica.py:318` una stringa di servizio, `azione/costruzione/composer.py:51` uno slug, `memory/resolver.py:110` una lista, `keeper/promise.py:101` un JSON): **debito misurato, non causato da questa riga**, e una fetta a se' -- rinominarli adesso vorrebbe dire toccare quattro ambiti chiusi per una parola. Il caso che QUESTO blocco aveva scritto e' stato corretto: `impostazioni_chat.py::_retention_days_from_environment` leggeva una variabile d'ambiente e diceva `reading`, ora dice `raw`. **La qualificazione resta su `(mind)` e non si sposta su `(azione)`**: cosi' com'e', `Glossario.per("grezzo", ambito)` tace ovunque e lo strumento non puo' riarmare la trappola da solo dentro `azione/`, che e' l'ambito dove i due sensi convivono | reading | ~ parziale |
 | guarda (mind) | il verbo con cui l'osservatore si aggancia al rubinetto dei cambi di stato e delle condizioni di sistema e li annota cosi' come sono, senza interpretare nulla -- il meccanismo centrale della classe che lo fa (`Watcher`, ex `Osservatore`) | watch | ✓ arriva |
 | impostazioni | i valori che governano il comportamento della chat -- il prompt di sistema, i giorni di conservazione della cronologia -- caricati da un file proprio e gia' completi al momento della costruzione, cosicche' un valore mancante non sia mai un caso da gestire a valle | settings | ✓ arriva |
 | indice | la struttura, costruita una sola volta dai nomi e dagli alias dichiarati nell'anagrafe, che trova i riferimenti che un testo libero puo' significare -- dichiarando l'ambiguita' quando piu' di uno corrisponde -- e conferma se un identificatore proposto esiste davvero | lookup | ✓ arriva |
@@ -745,7 +745,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | officina | il modulo gemello di quello dei servizi ma per l'altro canale: compone e scrive su Home Assistant automazioni, script, scene e helper in due tempi -- una proposta archiviata, poi una scrittura che avviene solo con l'approvazione di un umano -- e disfa quanto ha appena creato se il passo finale viene rifiutato | workshop | ~ parziale |
 | oggetti | il fatto interpretato che l'aggregazione ricava da un periodo di grezzo, nella forma che il suo genere impone -- un intervallo con inizio e fine per la maggioranza, una condizione che puo' restare aperta per un guasto, una quantita' che riassume l'intera giornata per il bilancio -- mai il dato grezzo stesso | fact | ✓ arriva |
 | origine | classifica chi ha richiesto un'operazione di costruzione -- un umano che ha appena cliccato sulla pagina, oppure il modello durante un turno -- e decide se un controllo pensato per trattenere il modello si applica o si scavalca | actor | ~ parziale |
-| orologio (schedulatore) | **Qualificato il 01/09, e la ragione e' la stessa di `forme`**: il concetto e' il battito dello SCHEDULATORE, che vive come NOME DI MODULO (`schedulatore/sweeper.py`) e quindi solo dentro percorsi di import, dove la guardia lo protegge. L'identificatore `orologio` esiste in un file solo del progetto -- `esiti_provider.py`, dove e' un OROLOGIO: `float(self._orologio())`. La riga nuda lo traduceva `sweeper`, che direbbe una cosa diversa. Il battito che, ricevuto un istante dall'esterno, scorre le promesse scadute e porta ciascuna a termine senza mai fermarsi per il guasto di una singola, cosi' che le altre dello stesso giro vengano comunque servite -- **corretto in fix round 1:** `clock` era stato dichiarato pulito per errore (il report diceva "una sola occorrenza, in prosa"; sono due, e la seconda -- `request.app.get("_clock")` in `api/handlers_reasoning.py:12` -- e' una chiave di dizionario, contesto non-prosa che la regola meccanica blocca. Non ho fatto eccezione: e' lo stesso standard gia' applicato a `turn`/`wake` in questo stesso lotto, bloccati per identificatori altrettanto estranei al sottosistema che stavo nominando. Nuovo inglese: `heartbeat`, pulito (`hiris/` ne ha una sola occorrenza, dentro un commento non correlato su un keep-alive SSE, tollerata) | sweeper | arbitrato del proprietario |
+| orologio (keeper) | **Qualificato il 01/09, e la ragione e' la stessa di `forme`**: il concetto e' il battito dello SCHEDULATORE, che vive come NOME DI MODULO (`keeper/sweeper.py`) e quindi solo dentro percorsi di import, dove la guardia lo protegge. L'identificatore `orologio` esiste in un file solo del progetto -- `esiti_provider.py`, dove e' un OROLOGIO: `float(self._orologio())`. La riga nuda lo traduceva `sweeper`, che direbbe una cosa diversa. Il battito che, ricevuto un istante dall'esterno, scorre le promesse scadute e porta ciascuna a termine senza mai fermarsi per il guasto di una singola, cosi' che le altre dello stesso giro vengano comunque servite -- **corretto in fix round 1:** `clock` era stato dichiarato pulito per errore (il report diceva "una sola occorrenza, in prosa"; sono due, e la seconda -- `request.app.get("_clock")` in `api/handlers_reasoning.py:12` -- e' una chiave di dizionario, contesto non-prosa che la regola meccanica blocca. Non ho fatto eccezione: e' lo stesso standard gia' applicato a `turn`/`wake` in questo stesso lotto, bloccati per identificatori altrettanto estranei al sottosistema che stavo nominando. Nuovo inglese: `heartbeat`, pulito (`hiris/` ne ha una sola occorrenza, dentro un commento non correlato su un keep-alive SSE, tollerata) | sweeper | arbitrato del proprietario |
 | osservatore | il modulo che si aggancia al flusso dei cambiamenti di stato e li annota cosi' come sono, applicando solo il filtro fisso dei confini, senza interpretare nulla | watcher | ✓ arriva |
 | osservazioni | il deposito unico dove finiscono sia i cambiamenti annotati cosi' come sono sia i fatti compiuti che se ne ricavano, la fonte a cui un domani attingera' chi analizza | observations | ✓ arriva |
 | pavimento | l'insieme fisso di classi che entra comunque, qualunque cosa dica l'obiettivo del momento: quest'ultimo puo' solo allargarlo, mai restringerlo sotto quella soglia | baseline | ~ parziale |
@@ -805,7 +805,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > dedup fatto a meta': sono deliberatamente due voci.
 >
 > **Due correzioni, 02/09, dalla fetta che ha applicato questi nomi.** (1) Il rimando a
-> `schedulatore/turno.py:38` era sbagliato da sempre: quella riga e' `SOLA_LETTURA`, la lista bianca
+> `keeper/exchange.py:38` era sbagliato da sempre: quella riga e' `SOLA_LETTURA`, la lista bianca
 > dei SEI lettori, e `promesse` non c'e' mai stata (non e' un lettore ammesso in un turno di
 > promessa). La stringa viveva in `casa/strumenti.py`, nel catalogo della chat. (2) La stringa nel
 > codice ora e' `agenda`: la distinzione fra le due voci resta -- il concetto e' `promise`, il nome
@@ -831,7 +831,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > gia' applicato a `origine`/`segno` sopra -- il glossario vince sull'estrazione automatica quando
 > il codice mostra un buco che lo script non poteva vedere.
 
-> **Verdetto su `turno` (`schedulatore/turno.py`) contro `ReasoningQueue`
+> **Verdetto su `turno` (`keeper/exchange.py`) contro `ReasoningQueue`
 > (`reasoning/queue.py`): NON sono la stessa cosa, e la differenza e' voluta.** `turno` e' lo
 > scambio applicativo -- una chiamata al modello con un catalogo di strumenti ristretto ai soli
 > lettori, che deve chiudersi chiamando `conclude` o e' un errore dichiarato. `ReasoningQueue` e'
@@ -1781,7 +1781,7 @@ al Task 6 invece che deciso qui.
 | riga (agent) | line | una riga di STDOUT della CLI (`agent/runner.py::read_stream`, `stdout.splitlines()`): e' una linea di testo, lo stesso senso di `riga (casa)` e non quello di `(api)`/`(proxy)`, che sono record di un registro. Quarta qualificazione della stessa parola, e la piu' facile da sbagliare proprio perche' le altre tre dicono `row` |
 | riga (api) | row |
 | riga (casa) | line |
-| riga (proxy) | row | **La terza qualificazione della stessa parola, e la ragione e' il limite gia' documentato**: `riga (api)` e `riga (casa)` spengono la riga nuda per OGNI altro ambito, quindi in `proxy/` `Glossario.per("riga", "proxy")` tornava `None` e `riga`/`righe` restavano italiane senza nessun segnale dal dry-run (misurato chiamando `per()` da codice, non dedotto). Il senso e' lo stesso di `(api)`: una riga di un registro di Home Assistant, cioe' un record. Lo stesso buco e' ancora aperto in `usage/store.py`, `memory/store.py`, `schedulatore/archivio.py`, `schedulatore/turno.py`, `azione/costruzione/officina.py` e `versioni.py`, che portano `righe` italiano dentro ambiti STABILI: qualificare per ambito obbliga a qualificare in OGNI ambito dove serve |
+| riga (proxy) | row | **La terza qualificazione della stessa parola, e la ragione e' il limite gia' documentato**: `riga (api)` e `riga (casa)` spengono la riga nuda per OGNI altro ambito, quindi in `proxy/` `Glossario.per("riga", "proxy")` tornava `None` e `riga`/`righe` restavano italiane senza nessun segnale dal dry-run (misurato chiamando `per()` da codice, non dedotto). Il senso e' lo stesso di `(api)`: una riga di un registro di Home Assistant, cioe' un record. Lo stesso buco e' ancora aperto in `usage/store.py`, `memory/store.py`, `keeper/store.py`, `keeper/exchange.py`, `azione/costruzione/officina.py` e `versioni.py`, che portano `righe` italiano dentro ambiti STABILI: qualificare per ambito obbliga a qualificare in OGNI ambito dove serve |
 | riga (static) | line | **Quinta** qualificazione della stessa parola, e **`static/` porta ENTRAMBI i sensi**, come `ancora`. `line` e' il senso di `tree-route.js::line(parent, text, style)`, che AGGIUNGE UNA RIGA DI TESTO a un nodo -- quello di `riga (casa)` e `riga (agent)`. Ma quattro nomi della stessa cartella portano il senso RECORD, cioe' `riga (api) -> row`: `config/api.js::righe` (un NodeList di `.usage-row`), `models-route.js::rigaProvider` (una riga della tabella della catena, classe CSS `riga-su`/`riga-giu`), `agenda-route.js::costruisciRigaSospeso` e `usage-route.js::rigaModello`. Sono stati rinominati A MANO in `rows`/`providerRow`/`buildPendingRow`/`modelRow`, e questa riga non li copre: e' il limite descritto in «Il limite della qualificazione per ambito», e in `static/` ha due parole invece di una. Chi incontra `riga` qui guarda cosa costruisce prima di fidarsi. `tree-route.js::riga(padre, testo, stile)` AGGIUNGE UNA RIGA DI TESTO a un nodo: e' il senso di `riga (casa)` e `riga (agent)`, non il record di `(api)`/`(proxy)` |
 | rileggi | reread |
 | riordinabile | reorderable |
@@ -1792,7 +1792,7 @@ al Task 6 invece che deciso qui.
 | riserva | reserve |
 | risolto | resolved |
 | risolvi | resolve |
-| risposta | answer | **`answer` e `response` non sono un doppione: sono due cose, e a separarle e' la legge del confine.** `answer` e' il testo che il modello produce -- DOMINIO, e il dominio prende il nome che il glossario decide (cosi' lo chiamano gia' `schedulatore/turno.py` e `schedulatore/sweeper.py`). `response` e' il `web.Response` di aiohttp -- CONFINE, e il confine prende il nome del sistema esterno, come `entity`, `state`, `unit`, `domain`. Convivono nello stesso file (`api/handlers_chat.py`: `answer` in `_downgrade_to_chain`, `response` in `handle_chat_reply_poll` e nel ramo sincrono di `handle_chat`) ed e' corretto cosi'. La distinzione non era scritta da nessuna parte, e senza di lei il primo lettore la scambia per due nomi della stessa cosa. **E c'e' un TERZO senso, che non prende ne' l'uno ne' l'altro nome**: le risposte del websocket di Home Assistant, una per comando (`proxy/ha_client.py::_ws_batch`, `read_dashboards`, `read_registries`), i cui elementi il file chiama gia' `msg`. Non sono `answer` (non e' il testo di un modello) e non sono `response` (in quel file `resp` e' gia' il `ClientResponse` HTTP di aiohttp, e chiamare `responses` una lista di messaggi WS metterebbe due cose diverse sotto lo stesso nome nello stesso file): si chiamano `replies`. **Annotazione, non una riga**: qualificare `risposta (proxy)` spegnerebbe la riga nuda per tutti gli altri ambiti (vedi «Il limite della qualificazione per ambito») in cambio di un solo nome, e si applica a mano |
+| risposta | answer | **`answer` e `response` non sono un doppione: sono due cose, e a separarle e' la legge del confine.** `answer` e' il testo che il modello produce -- DOMINIO, e il dominio prende il nome che il glossario decide (cosi' lo chiamano gia' `keeper/exchange.py` e `keeper/sweeper.py`). `response` e' il `web.Response` di aiohttp -- CONFINE, e il confine prende il nome del sistema esterno, come `entity`, `state`, `unit`, `domain`. Convivono nello stesso file (`api/handlers_chat.py`: `answer` in `_downgrade_to_chain`, `response` in `handle_chat_reply_poll` e nel ramo sincrono di `handle_chat`) ed e' corretto cosi'. La distinzione non era scritta da nessuna parte, e senza di lei il primo lettore la scambia per due nomi della stessa cosa. **E c'e' un TERZO senso, che non prende ne' l'uno ne' l'altro nome**: le risposte del websocket di Home Assistant, una per comando (`proxy/ha_client.py::_ws_batch`, `read_dashboards`, `read_registries`), i cui elementi il file chiama gia' `msg`. Non sono `answer` (non e' il testo di un modello) e non sono `response` (in quel file `resp` e' gia' il `ClientResponse` HTTP di aiohttp, e chiamare `responses` una lista di messaggi WS metterebbe due cose diverse sotto lo stesso nome nello stesso file): si chiamano `replies`. **Annotazione, non una riga**: qualificare `risposta (proxy)` spegnerebbe la riga nuda per tutti gli altri ambiti (vedi «Il limite della qualificazione per ambito») in cambio di un solo nome, e si applica a mano |
 | risultato | result |
 | ritardo | delay |
 | rivelatore | disclosure | **Corretta il 02/09 usandola.** La fetta di vocabolario aveva scritto `detector`, leggendo la parola e non il codice. Le due sole occorrenze (`constructions-route.js:317`, `watcher-route.js:58`) sono un bottone con `aria-expanded` e `aria-controls` che scopre un pannello: e' il pattern ARIA che si chiama **disclosure**, non un rilevatore di niente. «La prova vera di un nome e' usarlo», e questa e' la prima riga della fetta del frontend che l'uso ha smentito |
@@ -1802,7 +1802,7 @@ al Task 6 invece che deciso qui.
 | salva | save |
 | sanificato | sanitized |
 | scadenza | deadline |
-| scaduto | expired | **Il femminile plurale `scadute` NON e' aliasato, ed e' una decisione**: in `schedulatore/archivio.py` e `schedulatore/sweeper.py` `scadute` e' una variabile locale di un ambito STABILE, e un alias la tradurrebbe da sola (un nome di una parola sola si applica senza passare da una proposta). Stessa forma delle note su `prima` e `valida`. Il participio prende un inglese diverso dal sostantivo `scadenza -> deadline`, come `leggi`/`letto` |
+| scaduto | expired | **Il femminile plurale `scadute` NON e' aliasato, ed e' una decisione**: in `keeper/store.py` e `keeper/sweeper.py` `scadute` e' una variabile locale di un ambito STABILE, e un alias la tradurrebbe da sola (un nome di una parola sola si applica senza passare da una proposta). Stessa forma delle note su `prima` e `valida`. Il participio prende un inglese diverso dal sostantivo `scadenza -> deadline`, come `leggi`/`letto` |
 | scegli | choose |
 | scelto | chosen |
 | scena | scene |
@@ -1884,7 +1884,7 @@ al Task 6 invece che deciso qui.
 | verifica (static) | verify | `build-check.js::verifica()` confronta build locale e remota: il verbo, come `verifica (agent)` e `verifica (memory)` |
 | verificabile | verifiable |
 | versione | version |
-| via | route | **decisa nel Task 9, lotto 12, dopo che era stata scelta a mano senza riga** (`_via -> _route` in `api/handlers_chat.py`): e' il canale che servira' il turno, e i due valori che porta -- `"ponte"` e `"catena"` -- sono VALORI DI DOMINIO, la sezione che il glossario ha rinviato di proposito con la ragione scritta. Il nome dice cosa la variabile sceglie, non traduce la parola. Vive anche in `schedulatore/turno.py:139` (stesso idioma, `via, ... = chi_risponde(app)`) e in `decisione_modelli.py`, dove `"via"` e' anche una CHIAVE del dizionario che la pagina Modelli legge: la chiave resta italiana come ogni altra, si rinomina la variabile |
+| via | route | **decisa nel Task 9, lotto 12, dopo che era stata scelta a mano senza riga** (`_via -> _route` in `api/handlers_chat.py`): e' il canale che servira' il turno, e i due valori che porta -- `"ponte"` e `"catena"` -- sono VALORI DI DOMINIO, la sezione che il glossario ha rinviato di proposito con la ragione scritta. Il nome dice cosa la variabile sceglie, non traduce la parola. Vive anche in `keeper/exchange.py:139` (stesso idioma, `via, ... = chi_risponde(app)`) e in `decisione_modelli.py`, dove `"via"` e' anche una CHIAVE del dizionario che la pagina Modelli legge: la chiave resta italiana come ogni altra, si rinomina la variabile |
 | vicino | near |
 | visibile | visible |
 | visto | seen |
@@ -2077,7 +2077,7 @@ al Task 6 invece che deciso qui.
 > scegliere guardando `anagrafe`, non `registro`, e verificare la collisione con `registry` prima
 > di riusarla.**
 > `interpreta` (verbo — `schedulatore/orologio.py:27` `Orologio.__init__(self, archivio, *,
-> esegui, interpreta, ...)`, `schedulatore/turno.py:121` `async def interpreta_promessa(app,
+> esegui, interpreta, ...)`, `keeper/exchange.py:121` `async def interpreta_promessa(app,
 > promessa)`) e' il callback che risveglia il modello per una promessa "chiedi" e ne interpreta la
 > risposta -- un concetto del sottosistema `schedulatore`, non di `memoria`. La riga
 > `interpretazione` (sotto, `interpretation`) e' invece `memory/interpretation.py`: *«il
@@ -2254,7 +2254,7 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   PUBBLICO ancora italiano in un ambito gia' chiuso (`azione/`), mai deciso nel glossario --
   invisibile allo strumento per costruzione (nessun pezzo di `scadi` e' mai stato tradotto), la
   stessa classe di residuo gia' tracciata per `AgendaStore.list::solo_in_sospeso`
-  (`schedulatore/`, vedi `tests/test_rinomina_applica.py`). Non tracciato li' perche' fuori dal
+  (`keeper/`, vedi `tests/test_rinomina_applica.py`). Non tracciato li' perche' fuori dal
   perimetro-file di questo lotto: segnalato qui perche' chi apre `azione/costruzione/versioni.py`
   lo sappia prima di scoprirlo per caso.
 
@@ -2273,16 +2273,16 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   quattordici, non uno. Pinzato oggi da `tests/test_promesse_api.py`, il cui docstring porta la
   stessa distinzione.
 - `store.concludi(...)`/`_senza_conclusione` (`handlers_reasoning.py`, verso
-  `AgendaStore.concludi` e `schedulatore/turno.py::_senza_conclusione`) **lasciati intatti di
+  `AgendaStore.concludi` e `keeper/exchange.py::_senza_conclusione`) **lasciati intatti di
   proposito**: stessa classe di residuo di `store.scadi`, sopra -- metodi/funzioni ancora italiani
-  in un ambito gia' chiuso (`schedulatore/`), mai decisi. Entrambi nell'elenco unico del debito nel
+  in un ambito gia' chiuso (`keeper/`), mai decisi. Entrambi nell'elenco unico del debito nel
   report di Task 9, non ripetuti qui parola per parola. **Meta' di questa ragione e' caduta il
   02/09**: `concludi` ORA e' deciso (`-> conclude`, «I nomi degli strumenti»), perche' la fetta che
   applica i nomi degli strumenti non poteva rinominare il quattordicesimo senza prima nominarlo.
   Cio' che resta vero e' il rinvio, non l'invisibilita': gli identificatori Python restano italiani
   perche' quella fetta converte le STRINGHE che il modello legge, e i tre chiamanti fuori ambito
   (`server.py`, `api/handlers_reasoning.py`, `api/handlers_mcp.py`) rendono un giro limitato a
-  `schedulatore/` una rinomina a meta'. Da invisibile il debito e' diventato **misurato**: due file
+  `keeper/` una rinomina a meta'. Da invisibile il debito e' diventato **misurato**: due file
   in `_SORVEGLIATI` e una prova a grana di parola
   (`tests/test_rinomina_applica.py::test_il_residuo_di_schedulatore_e_solo_concludi_conclude`).
   `_senza_conclusione`, `conclusione` e `concludi_chiedi` restano invisibili davvero -- composti i
@@ -2319,7 +2319,7 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   non una parola generale: vedi sopra il perche' di `storia`), `_puo_rispondere -> _can_respond`,
   `_non_misurata -> _unmeasured`, `_modello_fuori -> _model_out` (`fuori` qui e' il senso
   "dato in uscita", NON il senso `fuori (casa) -> outside`: lo stesso idioma di
-  `schedulatore/promise.py::serializza` gia' documentato in «Il limite della qualificazione per
+  `keeper/promise.py::serializza` gia' documentato in «Il limite della qualificazione per
   ambito», applicato a mano senza toccare la riga `fuori (casa)`). Tutte private, nessun
   chiamante esterno.
 - **`nome`/`giorni_conservazione` (`handlers_settings.py`, verso `ChatSettings`) --
@@ -2443,7 +2443,7 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   invisibili allo strumento (le propone entrambe) e non sono difficili: escono insieme a
   `api/handlers_chat.py`, che le tiene per un'importazione vera (`from .handlers_home_space import
   costruisci_nucleo`, riga 28) e per una citazione fra backtick (riga 220). `costruisci_nucleo` e'
-  importata per nome anche da `schedulatore/turno.py` (ambito chiuso, righe 128 e 259) e citata fra
+  importata per nome anche da `keeper/exchange.py` (ambito chiuso, righe 128 e 259) e citata fra
   backtick in una ventina di punti fra `casa/nucleo.py`, `casa/strumenti.py`,
   `impostazioni_chat.py`, `proxy/entity_cache.py`, `server.py` e otto file di test: rinominarla e'
   un giro suo, e il suo commit naturale e' quello di `handlers_chat.py`. Il suggerimento meccanico
@@ -2525,7 +2525,7 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   italiane finche' quei file non si convertono.
 - **`risposta` -> `answer` in `_downgrade_to_chain`, ma `response` in `handle_chat_reply_poll`**:
   nel primo caso la variabile tiene il testo che il modello ha prodotto (lo stesso senso che
-  `schedulatore/turno.py` chiama gia' `answer`), nel secondo tiene un `web.Response`. Lo strumento
+  `keeper/exchange.py` chiama gia' `answer`), nel secondo tiene un `web.Response`. Lo strumento
   applicava `answer` a entrambe. **Debito onesto che ne resta**: nel ramo sincrono di `handle_chat`
   la stessa cosa del primo caso si chiama gia' `response` da prima di questa fetta -- due nomi
   inglesi per un concetto solo nello stesso file. Non l'ho unificato: `response` non e' un
@@ -2540,7 +2540,7 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   due funzioni FANNO.
 - **La coppia `nucleo` esce intera, mai a meta'**: `compose_briefing` e `handle_get_briefing`
   (`api/handlers_home_space.py`) si convertono in QUESTO lotto e non nel loro, perche' la prima e'
-  importata per nome da `api/handlers_chat.py:28` e da `schedulatore/turno.py:128,259`.
+  importata per nome da `api/handlers_chat.py:28` e da `keeper/exchange.py:128,259`.
   Rinominarne una sola avrebbe lasciato mezza coppia sulla stessa parola -- lo stesso difetto di
   `_risolvi_ancora`/`ancora` corretto poche ore prima.
 - **Composti ad hoc, tutti privati e senza chiamanti esterni**: `_ripiega_sulla_catena ->
@@ -2548,7 +2548,7 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   -> downgrade`: vedi «Verbo e sostantivo possono condividere lo stesso inglese»),
   `_nota_di_chi_ha_risposto -> _who_answered_note`, `_motivo_ripiego -> _downgrade_reason`
   (l'aggettivo prima del nome, non l'ordine italiano `reason_downgrade` del suggerimento -- il
-  gemello di `schedulatore/turno.py`, che quell'ordine l'aveva accettato, e' stato allineato a
+  gemello di `keeper/exchange.py`, che quell'ordine l'aveva accettato, e' stato allineato a
   `downgrade_reason` dalla misura ordine e preposizioni),
   `_motivo_del_piano -> _subscription_reason` (`piano (abbonamento)`, la riga annotata come
   irraggiungibile e applicata a mano), `_scadenza_min -> _deadline_min`,
@@ -2718,7 +2718,7 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
 > `*_TOOL_DEF` sono **quattordici**: i tredici di `casa/strumenti.py`
 > (`accaduto`, `andamento`, `cerca`, `conferma`, `costruisci`, `disdici`,
 > `esegui`, `guarda`, `legami`, `promesse`, `prometti`, `richiama`, `ricorda`)
-> **piu' `CONCLUDI_TOOL_DEF`** in `schedulatore/turno.py`, lo strumento con cui
+> **piu' `CONCLUDI_TOOL_DEF`** in `keeper/exchange.py`, lo strumento con cui
 > si chiude una promessa -- che non e' un utensile della chat e vive nel turno
 > dello schedulatore. Verificato per enumerazione l'02/09, non per lettura.
 >
@@ -2756,11 +2756,11 @@ confonderesti») ad aver prodotto il reperto che segue.
 l'applicazione differita erano imprecise; una era proprio falsa.** Le ragioni vere, verificate sul
 codice:
 
-- **Sono una lista bianca di sicurezza, indicizzata per nome.** `schedulatore/turno.py:38`:
+- **Sono una lista bianca di sicurezza, indicizzata per nome.** `keeper/exchange.py:38`:
   `SOLA_LETTURA = ("cerca", "guarda", "legami", "richiama", "andamento", "accaduto")` -- i sei nomi
   che un turno risvegliato da una promessa "chiedi" puo' invocare, e nient'altro. E' controllata a
-  `schedulatore/turno.py:81-82` (il catalogo esposto al turno e' filtrato su questa tupla) e
-  `schedulatore/turno.py:113` (`if nome not in SOLA_LETTURA`, il rifiuto quando il modello prova a
+  `keeper/exchange.py:81-82` (il catalogo esposto al turno e' filtrato su questa tupla) e
+  `keeper/exchange.py:113` (`if nome not in SOLA_LETTURA`, il rifiuto quando il modello prova a
   chiamare uno strumento di scrittura). Rinominare uno dei tredici senza toccare in sincrono questa
   tupla apre o chiude la lista bianca per errore -- un difetto di sicurezza, non solo di lettura.
 - **Il testo del prompt nomina gli strumenti al modello, in chiaro.** `casa/domande.py:393-394`
@@ -2787,7 +2787,7 @@ codice:
   (`"cerca"`, `"ricorda"`) -- ma non c'e' niente da migrare in un database perche' non c'e' un
   database.
 - ~~i nomi vivono in un database, nel `chiamata_json` delle promesse~~ -- **falso: quel campo non
-  contiene un nome di strumento.** `schedulatore/archivio.py:39` (`chiamata_json TEXT`) persiste
+  contiene un nome di strumento.** `keeper/store.py:39` (`chiamata_json TEXT`) persiste
   cio' che `schedulatore/promessa.py:124` rilegge come `chiamata`: una **chiamata di servizio di
   Home Assistant** (`dominio.servizio` + bersaglio), la stessa forma richiesta da `esegui`, passata
   a `azione/porta.py:607` (`async def esegui(self, chiamata: dict, *, origine: str)`) e verificata
@@ -2821,7 +2821,7 @@ codice:
 > per cui non c'era.** La nota in cima a questa sezione dichiarava gia' che i `*_TOOL_DEF` sono
 > quattordici, ma la tabella ne aveva tredici: `concludi` era **nominato in prosa e mai deciso**.
 > Il Task 8 aveva misurato il perimetro della CHAT, e `concludi` in chat non c'e' -- vive solo nel
-> catalogo del turno di promessa (`schedulatore/turno.py::promise_tools`, sei lettori piu' lui).
+> catalogo del turno di promessa (`keeper/exchange.py::promise_tools`, sei lettori piu' lui).
 > **Il silenzio non era accettabile**, per due ragioni che si vedono solo quando si applica: un
 > catalogo di tredici inglesi piu' un italiano e' esattamente la mescolanza che questa fetta
 > esiste per curare, e `concludi` e' l'unico dei quattordici il cui **identificatore Python** era
@@ -2831,7 +2831,7 @@ codice:
 > **Perche' `conclude`, e il controllo di collisione sul CODICE (passo 2), eseguito e non
 > presunto.** `conclude` ricorre **sette volte** in `hiris/` e `tests/`, e tutte e sette sono la
 > terza persona del verbo italiano dentro la prosa (`mind/__init__.py:4`,
-> `schedulatore/sweeper.py:103`, cinque docstring di test): **non e' un identificatore da nessuna
+> `keeper/sweeper.py:103`, cinque docstring di test): **non e' un identificatore da nessuna
 > parte**, e il falso amico e' l'italiano, non l'inglese. I candidati scartati, ciascuno per una
 > ragione che sta nel codice o in questo documento:
 >
@@ -2841,7 +2841,7 @@ codice:
 > - **`close`** -- `chiudi -> close` e' gia' una parola ordinaria decisa, e `close` ricorre 259
 >   volte in Python fra file, connessioni e socket: il nome direbbe "chiudi una risorsa".
 > - **`answer`** -- `risposta -> answer` e' gia' deciso, e `answer` e' la **variabile locale della
->   funzione stessa che dispaccia questo strumento** (`schedulatore/turno.py::interpreta_promise`):
+>   funzione stessa che dispaccia questo strumento** (`keeper/exchange.py::interpreta_promise`):
 >   contiene il testo che il modello ha scritto a parole, cioe' **cio' che questo strumento NON
 >   e'** -- il testo che nessuno legge, la ragione per cui `concludi` esiste. Un nome che indica
 >   il proprio contrario nello stesso file.
@@ -2857,8 +2857,8 @@ codice:
 > quei sei gli somiglia per una lettera. Verificato sul codice, non assunto.
 >
 > **Fondamenta n.3 (la stessa cosa ha la stessa forma da tutte le porte).** Il dominio dice gia'
-> "concludere" da ogni porta: `STATES_CONCLUSI` (`schedulatore/promise.py`), `AgendaStore.concludi`,
-> `schedulatore/turno.py::_senza_conclusione`, la risposta `{"concluso": True}`. E' la stessa
+> "concludere" da ogni porta: `STATES_CONCLUSI` (`keeper/promise.py`), `AgendaStore.concludi`,
+> `keeper/exchange.py::_senza_conclusione`, la risposta `{"concluso": True}`. E' la stessa
 > ragione n.2 con cui `prometti` e' diventato `promise`: lo strumento che chiude una promessa
 > porta il nome di cio' che fa al dominio. (`AgendaStore.concludi` resta italiano oggi -- e' il
 > residuo gia' dichiarato nell'elenco del debito, sopra -- ma il giorno in cui si decidera' andra'
@@ -2890,14 +2890,14 @@ codice:
 >
 > **La riserva ha una conseguenza OPERATIVA, non solo documentale, ed e' stata eseguita**: cio' che
 > il nome non dice, **la description deve dirlo**. Verificato nel testo vero
-> (`schedulatore/turno.py::CONCLUDI_TOOL_DEF`), non supposto: «l'unica uscita» c'era gia' («e'
+> (`keeper/exchange.py::CONCLUDI_TOOL_DEF`), non supposto: «l'unica uscita» c'era gia' («e'
 > l'UNICO modo in cui questo turno puo' finire»); **«obbligatorio» e «l'esito viene letto» erano
 > solo IMPLICATI**, il primo dalla conseguenza, il secondo da un «viene comunque registrata» che
 > dice archiviata, non letta. Aggiunti entrambi in chiaro, con il meccanismo vero accanto: il
 > `testo` finisce nella pagina delle promesse e la persona lo rilegge **anche quando
 > `avvisare=false`** (`static/config/agenda-route.js`, il blocco risposta di un `chiedi`
 > mantenuto), e un turno che non chiama lo strumento chiude la promessa come **fallita**
-> (`schedulatore/sweeper.py::_keep_chiedi`). La prima frase della description nega ora
+> (`keeper/sweeper.py::_keep_chiedi`). La prima frase della description nega ora
 > esplicitamente la lettura sbagliata che la prova ha misurato: *«non e' una conclusione che trai
 > per te»*.
 >
@@ -3204,7 +3204,7 @@ nome di modulo ne' di classe.
 Esiste uno strato di vocabolario che vive **come valore**, non come identificatore: tassonomie di
 dominio dichiarate come costanti Python e **persistite nei database** (`genere TEXT NOT NULL` in
 `mind/store.py:91` e `azione/cronaca.py:65`, `specie TEXT NOT NULL` in
-`schedulatore/archivio.py:34`). **Sono dati, esattamente come i 13 nomi degli strumenti** qui sopra:
+`keeper/store.py:34`). **Sono dati, esattamente come i 13 nomi degli strumenti** qui sopra:
 il nome si decide qui, si applica in una fetta che sa gestire la migrazione di cio' che e' gia'
 scritto — non con la rinomina degli identificatori.
 
@@ -3245,9 +3245,9 @@ per usarla.)
 |---|---|---|---|
 | `GENRES` (ex `GENERI`, rinominata dal Task 6 -- solo il nome della costante, non i valori) | funzionamento · presenza · energia · guasto · sicurezza · bilancio | `mind/facts.py:44`; colonna `genere` in `mind/store.py:91` e `azione/cronaca.py:65` |  |
 | `ASPECTS` (ex `GAMBE`, rinominata dal Task 6 -- solo il nome della costante, non i valori) | chi c'e' · comfort · dispersione · energia · buono stato · sicurezza | `mind/baseline.py:21` — i nomi delle sei gambe del pavimento dell'osservatore |  |
-| `SPECIE` | fai · chiedi | `schedulatore/promessa.py:21`; colonna `specie` in `schedulatore/archivio.py:34` |  |
-| `STATES_CONCLUSI` (ex `STATI_CONCLUSI`, rinominata durante la conversione di `schedulatore/` -- solo il nome della costante, non i valori; non composta in `..._STATES` per il rischio di confusione con l'elenco vivo delle entita' di Home Assistant, vedi la nota sopra) | mantenuta · saltata · disdetta · fallita | `schedulatore/promise.py:22` — stato concluso delle promesse |  |
-| `STATES_SOSPESO` (ex `STATI_SOSPESO`, rinominata dal Task 7 (`azione/`), gia' applicata a `schedulatore/promise.py` durante la sua conversione -- solo il nome della costante, non i valori; stessa cautela sulla composizione della riga sopra) | in_attesa · in_corso | `azione/costruzione/versioni.py:36` e `schedulatore/promise.py:34` — definita due volte, stesso valore |  |
+| `SPECIE` | fai · chiedi | `keeper/promise.py:21`; colonna `specie` in `keeper/store.py:34` |  |
+| `STATES_CONCLUSI` (ex `STATI_CONCLUSI`, rinominata durante la conversione di `keeper/` -- solo il nome della costante, non i valori; non composta in `..._STATES` per il rischio di confusione con l'elenco vivo delle entita' di Home Assistant, vedi la nota sopra) | mantenuta · saltata · disdetta · fallita | `keeper/promise.py:22` — stato concluso delle promesse |  |
+| `STATES_SOSPESO` (ex `STATI_SOSPESO`, rinominata dal Task 7 (`azione/`), gia' applicata a `keeper/promise.py` durante la sua conversione -- solo il nome della costante, non i valori; stessa cautela sulla composizione della riga sopra) | in_attesa · in_corso | `azione/costruzione/versioni.py:36` e `keeper/promise.py:34` — definita due volte, stesso valore |  |
 | `BALANCE_DIRECTIONS` (ex `DIREZIONI_BILANCIO`, rinominata dal Task 6 -- solo il nome della costante, non i valori) | produzione · autoconsumo · immissione · prelievo · carica · scarica · consumo | `mind/facts.py:71` — le direzioni del bilancio energia dell'osservatore |  |
 | `FAMIGLIE` | credenziale · modello · irraggiungibile · scaduto · altro | `esiti_provider.py:63` — famiglie di esito dei provider LLM |  |
 | `OPERATIONS` (ex `_GESTI`, rinominata dal Task 7 -- solo il nome della costante, non i valori; invisibile agli Step 1/2 perche' plurale, trovata solo eseguendo lo strumento sull'ambito `azione`) | crea · modifica · cancella | `azione/costruzione/officina.py:56` — i gesti sulle costruzioni |  |
@@ -3349,7 +3349,7 @@ verifica l'ha fatto.
 | cosa | perche' |
 |---|---|
 | il record di `/api/memories` (`forza`, `grandezza`, `minimo`, `massimo`, `unita`, `testo`, `detto_da`, `detto_il`, `corretto_da_utente`) | sono le colonne di `ricordi`, sono i campi del corpo PATCH, e `grandezza` e' una chiave di `REMEMBER_TOOL_DEF`. **La fetta degli strumenti (02/09) e' passata e `grandezza` non e' cambiata**: quella fetta converte i NOMI degli strumenti, non le chiavi dei loro schemi -- 24 su 45 coincidono con un nome di colonna, e il database resta fuori. Non e' piu' congelata in attesa di una fetta: e' decisa italiana |
-| il record di `/api/agenda` | `schedulatore/promise.py::serializza`, la stessa forma che esce dallo strumento del modello |
+| il record di `/api/agenda` | `keeper/promise.py::serializza`, la stessa forma che esce dallo strumento del modello |
 | il record di `/api/constructions` e di `/api/executions` | colonne di `costruzioni` e di `esecuzioni`; `errore` di un'esecuzione e' una COLONNA e resta italiano anche ora che l'involucro dice `error` |
 | il record di `/api/mind/facts` | `_fact_row`, colonne di `oggetti` |
 | tutto `/api/models` e `/api/models/config` | sono `models_config.json` sul disco di un utente vero, e la PUT rimanda indietro l'archivio intero |
