@@ -325,7 +325,7 @@ def _costanti_gia_legate(test: list[Path]) -> set[str]:
     era, e l'ha pagata cancellando la forza dei ricordi.
 
     Il riconoscimento e' preciso: non basta che una prova NOMINI la costante
-    (`test_memoria_interpretazione.py` lo faceva gia', e pinnava la sola
+    (`test_memory_interpretation.py` lo faceva gia', e pinnava la sola
     versione Python -- non avrebbe visto nessuna divergenza). Serve che il
     file di prova nomini la costante E legga un `.js`: e' l'unica forma in cui
     puo' confrontarli davvero.

@@ -173,7 +173,7 @@ window.HirisMemoryRoute = (function () {
     // ricostruisce da nessuna parte.
     //
     // Il vocabolario vero sta in `memory/interpretation.py::VOCABULARY`, ed
-    // e' legato a questo file da `tests/test_memoria_frontend_wiring.py`: quel
+    // e' legato a questo file da `tests/test_memory_frontend_wiring.py`: quel
     // test si rompe il giorno in cui le liste divergono. Questo ramo e' cio'
     // che protegge l'utente NEL FRATTEMPO.
     if (r.forza && !MODALITY_OPTIONS.some(function (v) { return v[0] === r.forza; })) {

@@ -302,7 +302,7 @@ async def test_cerca_trova_un_piano_per_nome(dispatcher):
     esito = await dispatcher.dispatch("search", {"testo": "il piano terra"})
     candidati = [c for t in esito["trovati"] for c in t["candidati"] if c["tipo"] == "piano"]
     # `domande.search()` arricchisce ogni candidato col `nome` (non solo
-    # `Lookup.find()`, che ne resta scarico -- vedi test_memoria_riconoscitore.py).
+    # `Lookup.find()`, che ne resta scarico -- vedi test_memory_resolver.py).
     assert candidati == [{"tipo": "piano", "riferimento": "terra", "nome": "Piano terra"}]
 
 

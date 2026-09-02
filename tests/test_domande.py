@@ -362,7 +362,7 @@ def test_guarda_non_trovato_suggerisce_cerca_con_la_STESSA_FORMA_in_tutti_i_tipi
     gli altri.
 
     Automazione e script si aggiungono qui perche' `search` ora li
-    indicizza per nome (test_memoria_riconoscitore.py): fino a T7 restavano
+    indicizza per nome (test_memory_resolver.py): fino a T7 restavano
     fuori apposta (decisione del Task 3), perche' suggerire "cerca" quando
     `search` non li trovava comunque sarebbe stato un invito a una strada
     cieca -- vedi il docstring di `_not_found_detail`.

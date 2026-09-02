@@ -66,7 +66,7 @@ function esecuzione(campi) {
 }
 
 /* Il finto server: risponde a GET/DELETE api/agenda*, stesso pattern di
-   montaConServer() in memoria-route.test.mjs. */
+   montaConServer() in memory-route.test.mjs. */
 function montaConServer(opts = {}) {
   const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const chiamate = [];

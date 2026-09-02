@@ -106,7 +106,7 @@ def test_il_percorso_sincrono_continua_a_comporre_la_costante_intera():
     strumenti esistono davvero e le regole sono vere.
 
     (Che la regola arrivi davvero al modello lo verificano gia' i test di
-    `tests/test_base_prompt_memoria.py`, che chiamano i runner veri con un
+    `tests/test_base_prompt_memory.py`, che chiamano i runner veri con un
     client finto. Qui si difende il livello che quelli non vedono: DA QUALE
     costante il blocco viene preso.)"""
     for sorgente in (inspect.getsource(ClaudeRunner.chat),

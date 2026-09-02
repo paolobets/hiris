@@ -171,7 +171,7 @@ def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None
 # Critical 1 della review indipendente): la costante e' spezzata in DUE meta',
 # e `BASE_SYSTEM_PROMPT` resta la loro concatenazione, byte per byte. NESSUN
 # chiamante cambia: `chat()` qui sotto, backends/openai_compat_runner.py
-# (`chat` e `chat_stream`) e tests/test_base_prompt_memoria.py continuano a
+# (`chat` e `chat_stream`) e tests/test_base_prompt_memory.py continuano a
 # vedere la STESSA costante con lo STESSO testo (pinnato da
 # tests/test_base_prompt_diviso.py).
 #

@@ -157,7 +157,7 @@ def test_un_vocabolario_gia_legato_da_una_prova_non_si_segnala(tmp_path):
 
 
 def test_una_prova_che_NON_legge_il_javascript_non_basta(tmp_path):
-    """`test_memoria_interpretazione.py` nominava gia' `VOCABULARY` e pinnava
+    """`test_memory_interpretation.py` nominava gia' `VOCABULARY` e pinnava
     la sola versione Python: non avrebbe visto nessuna divergenza. Serve che la
     prova legga entrambi i lati, o non e' un legame."""
     py = _scrivi(tmp_path, "a.py", 'VOCI = ("alfa", "beta", "gamma")\n')
