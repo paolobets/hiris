@@ -9,8 +9,8 @@ from urllib.parse import quote
 
 import aiohttp
 
-from ..casa.anagrafe import PROBLEM_SEVERITY
-from ..casa.tempo import normalize_hours
+from ..home_space.historian import normalize_hours
+from ..home_space.topology import PROBLEM_SEVERITY
 from ._sanitize import sanitize_ha_free_text, sanitize_ha_value
 from ._sanitize import truncate_with_marker as _truncate
 
@@ -26,7 +26,7 @@ from ._sanitize import truncate_with_marker as _truncate
 # ostile PRIMA di comporlo in un URL: e' una GUARDIA, e va tenuta la piu'
 # STRETTA possibile.
 #
-# In `casa/comportamento.py` c'e' oggi la stessa espressione, ma per l'esigenza
+# In `home_space/behavior.py` c'e' oggi la stessa espressione, ma per l'esigenza
 # opposta -- riconoscere gli entity_id dentro una plancia, il piu' LARGAMENTE
 # possibile. Non sono due copie da tenere allineate: allentare questa per
 # seguire quella e' una falla, non una pulizia.
@@ -74,7 +74,7 @@ SERVICE_EVENTS = ("service_registered", "service_removed")
 # un'altra cosa — le plance hanno un proprio ascoltatore.
 DASHBOARD_EVENT = "lovelace_updated"
 
-# Deve restare identica a `_MAIN_DASHBOARD_KEY` in casa/archivio.py: e'
+# Deve restare identica a `_MAIN_DASHBOARD_KEY` in home_space/store.py: e'
 # la chiave sotto cui la predefinita finisce nell'archivio (percorso vero
 # `None` -> questa stringa li'). Duplicata invece di importata per non far
 # dipendere il client HA dallo storage — stesso principio per cui DASHBOARD_EVENT
@@ -100,7 +100,7 @@ DEFAULT_LOGBOOK_HOURS = 24
 # N x MAX_HISTORY_POINTS. Due giorni di un sensore chiacchierone ne producono
 # migliaia: il cap protegge la memoria di QUESTO processo per ogni singola
 # serie, non la leggibilita' della risposta (di quella si occupa
-# `casa/tempo.py`, che riassume). Chi legge deve poter sapere che e' scattato,
+# `home_space/historian.py`, che riassume). Chi legge deve poter sapere che e' scattato,
 # quindi la risposta lo dichiara invece di tacere -- e' la stessa regola del
 # troncamento del diario, imparata li'.
 MAX_HISTORY_POINTS = 5000
@@ -121,7 +121,7 @@ def _instant_from_ha(raw):
     `recorder/statistics_during_period` risponde
     `{"start": 1787342400000, "end": ..., "max": .., "mean": .., "min": ..}`
     -- `start` e' un INTERO in millisecondi. Prima di questa misura il
-    traduttore lo lasciava passare cosi' com'era, e `casa/tempo.py` rifiutava
+    traduttore lo lasciava passare cosi' com'era, e `home_space/historian.py` rifiutava
     di rispondere perche' non sapeva leggerlo: l'intero ramo delle statistiche
     era fermo, ed e' il difetto che la prima domanda vera ha rivelato.
 
@@ -191,7 +191,7 @@ def _translate_statistics(raw: dict) -> dict[str, list[dict]]:
 # keeps every call site below unchanged. Both copies used the identical
 # marker string before the merge, so there was nothing to choose between;
 # `_sanitize.py` is the survivor because it is the module both this file and
-# `casa/archivio.py`/`casa/domande.py` already depend on.
+# `home_space/store.py`/`home_space/queries.py` already depend on.
 
 
 # fetta E3 Task 12 ("esce il ritratto", il task della coerenza): il Task 10
@@ -358,7 +358,7 @@ class HAClient:
     # verificato di nuovo, zero chiamanti in tutto il repo.
     #
     # 24/08/2026, fetta «HIRIS e il tempo»: lo storico dettagliato e' TORNATO, come
-    # `history()` qui sotto, e questa volta con un chiamante vero (`casa/tempo.py`).
+    # `history()` qui sotto, e questa volta con un chiamante vero (`home_space/historian.py`).
     # La rimozione raccontata sopra resta vera come storia -- usci' perche' nessuno
     # leggeva -- ma non descrive piu' lo stato di adesso.
 
@@ -461,7 +461,7 @@ class HAClient:
 
         Serve al «prima» di una modifica e di una cancellazione (spec §6): HA
         non tiene storico, e questa e' la fonte di cio' che c'era. NON si usa
-        `casa/comportamento.py` al suo posto: quello e' l'archivio di HIRIS,
+        `home_space/behavior.py` al suo posto: quello e' l'archivio di HIRIS,
         aggiornato a cadenza propria, e potrebbe essere vecchio di minuti.
 
         Solleva solo cio' che rompe il trasporto.
@@ -953,7 +953,7 @@ class HAClient:
 
         **Questa primitiva era gia' esistita ed e' uscita come orfana**
         (`get_history`, censimento del 17/08/2026: scriveva e nessuno
-        leggeva). Torna adesso con un chiamante vero, `casa/tempo.py`.
+        leggeva). Torna adesso con un chiamante vero, `home_space/historian.py`.
 
         `minimal_response` + `no_attributes`: senza, Home Assistant rimanda
         l'intero dizionario degli attributi a ogni cambio di stato. Il prezzo
@@ -1010,7 +1010,7 @@ class HAClient:
                 # GREZZO di QUALUNQUE entita' richiesta, non un numero per
                 # costruzione -- un'affermazione contraria era finita anche
                 # nel docstring di `_sanitize.py`, ed era falsa: si vede qui.
-                # `trend` (casa/tempo.py) promuove esplicitamente questo
+                # `trend` (home_space/historian.py) promuove esplicitamente questo
                 # strumento anche per «se una porta e' rimasta aperta», e
                 # L1-sicurezza.md elenca il sensore-messaggio (testo libero)
                 # come il PRIMO vettore concreto -- si applica identico alla
@@ -1089,7 +1089,7 @@ class HAClient:
             # controlla -- il titolo di un brano, il testo di
             # un'automazione, il nome che un ospite ha dato a un device --
             # e finiscono grezzi nel contesto del modello via `_happened`
-            # (casa/tempo.py) se non si sanificano QUI, al confine (C-2,
+            # (home_space/historian.py) se non si sanificano QUI, al confine (C-2,
             # L1-sicurezza.md). Solo quando c'e' davvero un valore: un
             # `None` sanificato non deve diventare una stringa vuota, che
             # affermerebbe un fatto ("questa voce ha un nome") che il
@@ -1392,7 +1392,7 @@ class HAClient:
         return {key: sorted(str(v) for v in values)
                 for key, values in result.items() if values}
 
-    # Le tre severita' di un problema, da `casa.anagrafe` -- la foglia dove
+    # Le tre severita' di un problema, da `home_space.topology` -- la foglia dove
     # vivono i vocabolari di Home Assistant. Le legge anche il nucleo, e
     # tenerle qui avrebbe voluto dire far importare il client di rete al
     # digesto, che si dichiara puro.
@@ -1668,7 +1668,7 @@ class HAClient:
         della nonna» come alias non trovava niente cercandola.
 
         La classe non si prende da qui: arriva gia' dallo specchio dello stato
-        (`casa.anagrafe.actual_class`), che ce l'ha per ogni entita' e non
+        (`home_space.topology.actual_class`), che ce l'ha per ogni entita' e non
         costa nessuna chiamata. Questo comando serve per cio' che lo specchio
         NON ha.
 

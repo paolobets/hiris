@@ -13,7 +13,7 @@ from hiris.app.api.handlers_memory import (
     handle_get_memories,
     handle_patch_memory,
 )
-from hiris.app.casa.archivio import HomeSpaceStore
+from hiris.app.home_space.store import HomeSpaceStore
 from hiris.app.memory.store import MemoryStore
 
 _PHRASE = "d'inverno la sala da pranzo la preferisco fra 19 e 20 gradi quando sono a casa"

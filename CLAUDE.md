@@ -257,7 +257,7 @@ Dalla fetta «esce il documentale» (2.1.0) non esistono più nemmeno le cartell
 `app/history/`, né `api/handlers_knowledge.py` e `api/handlers_history_policy.py`: l'integrazione
 documentale (Mayan), l'archivio di conoscenza (`knowledge.db`), la cattura dello storico
 (`history.db`) e la pseudonimizzazione (`privacy.py`, `vault.db`) sono uscite insieme — nessuna
-aveva più un consumatore vivo. La conoscenza vive in `casa/` (l'anagrafe, il nucleo) e in
+aveva più un consumatore vivo. La conoscenza vive in `home_space/` (l'anagrafe, il nucleo) e in
 `memory/` (ciò che le persone hanno detto).
 Dalla fetta E5 (Task 5) non esiste più nemmeno `static/hiris-chat-card.js`, la card Lovelace:
 è uscita per intero — file, copia dentro Home Assistant, registrazione della risorsa — e tornerà

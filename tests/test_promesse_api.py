@@ -162,11 +162,11 @@ async def test_la_rotta_e_lo_strumento_danno_la_STESSA_forma(client):
     falsa» che questo ramo ha imparato a cercare.
 
     I due involucri sono due dict LETTERALI in due file diversi
-    (`api/handlers_agenda.py` e `casa/strumenti.py::_list_agenda`), mai lo
+    (`api/handlers_agenda.py` e `home_space/tools.py::_list_agenda`), mai lo
     stesso oggetto: nessuno dei due si porta dietro l'altro, ed e' questo che
     rende il confronto sul CORPO l'unica cosa che valga la pena pinzare.
     """
-    from hiris.app.casa.strumenti import ToolDispatcher
+    from hiris.app.home_space.tools import ToolDispatcher
 
     archivio = client.app["promesse"]
     archivio.create({"specie": "chiedi", "frase": "x", "quando_ts": 3601.0,

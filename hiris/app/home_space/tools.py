@@ -21,7 +21,7 @@ da solo quando la promessa matura, senza un turno del modello in quel
 momento. `propose` e `confirm`, in coppia, sono l'unica strada che scrive
 CONFIGURAZIONE -- automazioni, script, scene -- e lo fanno in due tempi
 apposta (vedi piu' sotto); `trend` e `logbook`, gli ultimi due, leggono
-INDIETRO nel tempo passando per `casa/tempo.py` -- come e' andato un valore,
+INDIETRO nel tempo passando per `home_space/historian.py` -- come e' andato un valore,
 cosa e' successo e per mano di chi (vedi la sezione «-- il tempo --» piu'
 sotto). Per un tratto della 2.0
 questo modulo ne offriva quattro soli e diceva «la chat CONOSCE, non
@@ -80,7 +80,7 @@ parte.
 
 1. **I legami sono MOMENTANEI, e non vanno in archivio.** Sono la stessa
    sostanza di `state`, tenuto fuori dal sistema di riferimento per iscritto
-   (`casa/anagrafe.sistema_di_riferimento`): «in un archivio che si rilegge
+   (`home_space/topology.sistema_di_riferimento`): «in un archivio che si rilegge
    di rado mentirebbe poche ore dopo, ed e' peggio che non saperlo». Un'
    automazione nuova cambia i legami di una luce nell'istante in cui viene
    salvata. Quindi si CHIEDONO quando servono, e non si salvano da nessuna
@@ -111,7 +111,7 @@ chiamava mai `MemoryStore.remember()`. Qui sotto, `remember` salva davvero
 
 Le due funzioni pure che fanno il lavoro vero -- `search()` e `view()` --
 vivono gia' in `domande.py`, e non si riscrivono qui: `ToolDispatcher`
-e' solo il punto che le collega agli archivi (`casa/archivio.py`,
+e' solo il punto che le collega agli archivi (`home_space/store.py`,
 `memory/store.py`) e all'indice (`memory/resolver.py`), nella
 forma che il modello puo' chiamare.
 
@@ -132,14 +132,14 @@ from ..memory.lookup_cache import LookupCache
 from ..memory.resolver import STORE_KEY_PER_TYPE, costruisci_indice
 from ..memory.store import MemoryStore
 from ..proxy.entity_cache import inventory_is_readable
-from . import tempo
-from .anagrafe import live_mirror
-from .archivio import HomeSpaceStore
-from .domande import HA_LINK_TYPE
-from .domande import related as _readable_links
-from .domande import sanitized_memories as _sanitized_memories
-from .domande import search as _search_candidates
-from .domande import view as _view_detail
+from . import historian
+from .queries import HA_LINK_TYPE
+from .queries import related as _readable_links
+from .queries import sanitized_memories as _sanitized_memories
+from .queries import search as _search_candidates
+from .queries import view as _view_detail
+from .store import HomeSpaceStore
+from .topology import live_mirror
 
 # I tipi di ancora che la memoria conosce, DERIVATI da
 # `memory/interpretation.VOCABULARY["ancore"]` -- la fonte vera, non
@@ -1184,7 +1184,7 @@ class ToolDispatcher:
         # SENZA "etichette" (non e' un tipo di ancora, vedi il commento su
         # `_ARCHIVI` in memory/resolver.py -- allargarla rifarebbe il
         # secondo vocabolario che R9 denuncia). Ma "etichette" e' comunque
-        # una tabella vera di `_TABELLE` (casa/archivio.py) che PUO' cadere
+        # una tabella vera di `_TABELLE` (home_space/store.py) che PUO' cadere
         # in `non_disponibili()`, e da T8 (R2) `search` indicizza le
         # etichette stesse come candidati: un registro etichette caduto
         # merita lo stesso motivo dei registri di `STORE_KEY_PER_TYPE`,
@@ -1361,7 +1361,7 @@ class ToolDispatcher:
         MOMENTANEI quanto lo stato -- un'automazione salvata un minuto fa li
         cambia -- e una tabella riletta di rado mentirebbe poche ore dopo. E'
         la stessa ragione per cui `state` sta fuori dal sistema di riferimento
-        (`casa/anagrafe.sistema_di_riferimento`). Quindi si chiede quando
+        (`home_space/topology.sistema_di_riferimento`). Quindi si chiede quando
         serve, e la risposta vive il tempo di un turno.
 
         Qui dentro c'e' solo il collegamento: la traduzione dei tipi e la
@@ -1582,7 +1582,7 @@ class ToolDispatcher:
 
         await self._ensure_registry_fresh()
 
-        when = tempo.instant_epoch(arguments.get("quando"))
+        when = historian.instant_epoch(arguments.get("quando"))
         if when is None:
             return {"errore": ("non ho capito quando: dammi un istante come "
                                "«2026-08-19T17:00:00+02:00».")}
@@ -1911,7 +1911,7 @@ class ToolDispatcher:
     def _timezone(self) -> str | None:
         """Il fuso della casa, dalla stessa fonte del nucleo.
 
-        `HomeSpaceStore.sistema_di_riferimento()` (`casa/archivio.py`) e' l'UNICO
+        `HomeSpaceStore.sistema_di_riferimento()` (`home_space/store.py`) e' l'UNICO
         accessore: rileggere `get_config` per conto proprio qui sarebbe un
         secondo posto che sa lo stesso fatto, e i due potrebbero divergere il
         giorno in cui uno dei due cambia. Senza `archivio_casa` (i test che
@@ -1926,7 +1926,7 @@ class ToolDispatcher:
     # -- il tempo ------------------------------------------------------
 
     async def _trend(self, arguments: dict[str, Any]) -> dict:
-        """Un valore nel tempo. La scelta della superficie e' di `casa/tempo.py`.
+        """Un valore nel tempo. La scelta della superficie e' di `home_space/historian.py`.
 
         Qui si legge dallo specchio cio' che il modello non deve doverci
         dire: l'unita' di misura e `state_class`. Chiederglieli sarebbe
@@ -1941,15 +1941,15 @@ class ToolDispatcher:
         entity = entity.strip()
         states = self._state_readings() or {}
         entry = states.get(entity) or {}
-        return await tempo.trend(
+        return await historian.trend(
             ha=self._ha_channel(), entity=entity, hours=arguments.get("ore"),
             unit=entry.get("unit") or None,
-            # `tempo.produces_statistics`, non `bool(state_class)` (fix onda
+            # `historian.produces_statistics`, non `bool(state_class)` (fix onda
             # finale, F4): `measurement_angle` e' un `state_class` vero e
             # proprio ma NON produce statistiche (spec §1) -- una banderuola
             # interrogata oltre la soglia di grana finirebbe su un elenco
             # vuoto invece che sul dettaglio, la superficie giusta per lei.
-            has_statistics=tempo.produces_statistics(entry.get("state_class")),
+            has_statistics=historian.produces_statistics(entry.get("state_class")),
             now_ts=_time.time(), timezone=self._timezone())
 
     async def _happened(self, arguments: dict[str, Any]) -> dict:
@@ -1958,7 +1958,7 @@ class ToolDispatcher:
             return {"errore": "«logbook» vuole «entita» come identificatore, oppure niente."}
         import time as _time
 
-        return await tempo.logbook(
+        return await historian.logbook(
             ha=self._ha_channel(), journal=self._journal,
             entity=entity.strip() if isinstance(entity, str) else None,
             hours=arguments.get("ore"), now_ts=_time.time())

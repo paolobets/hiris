@@ -28,9 +28,9 @@ import sqlite3
 
 import pytest
 
-from hiris.app.casa.anagrafe import category_names
-from hiris.app.casa.archivio import HomeSpaceStore
-from hiris.app.casa.domande import view
+from hiris.app.home_space.queries import view
+from hiris.app.home_space.store import HomeSpaceStore
+from hiris.app.home_space.topology import category_names
 from hiris.app.memory.resolver import costruisci_indice
 
 # Il campo `ambito` di ogni riga NON viene da Home Assistant: lo mette

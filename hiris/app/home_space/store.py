@@ -432,7 +432,7 @@ class HomeSpaceStore:
         diverse e vanno trattati diversamente. `corpo` viene dal file YAML
         (`automations.yaml`/`scripts.yaml`) che il proprietario di casa
         scrive di persona -- resta cosi' com'e', nessuna sanificazione, come
-        gia' deciso per `casa/comportamento.py` in generale. Ma `nome` NON
+        gia' deciso per `home_space/behavior.py` in generale. Ma `nome` NON
         viene dal file: e' il `friendly_name` letto da `get_states([])`
         (`comportamento.reread()`), una lettura di rete GREZZA che non
         passa da `entity_cache._to_minimal` -- lo stesso genere di testo

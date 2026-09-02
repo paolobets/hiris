@@ -2,8 +2,8 @@ from unittest.mock import create_autospec
 
 import pytest
 
-from hiris.app.casa.anagrafe import device_areas, hierarchy, rebuild
-from hiris.app.casa.archivio import HomeSpaceStore
+from hiris.app.home_space.store import HomeSpaceStore
+from hiris.app.home_space.topology import device_areas, hierarchy, rebuild
 from hiris.app.proxy.ha_client import HAClient
 
 _REGISTRI = {

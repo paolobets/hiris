@@ -35,7 +35,7 @@ casa, il comportamento, i ricordi, lo stato vivo, la risposta che Home
 Assistant ha gia' dato) e non aprono archivi ne' chiamano la rete -- la
 stessa scelta che rende `compose()` del nucleo verificabile senza finti
 elaborati (nucleo.py). Vale anche per `legami`: la chiamata WebSocket la fa
-il chiamante (`casa/strumenti.py`), qui arriva solo cio' che ha risposto.
+il chiamante (`home_space/tools.py`), qui arriva solo cio' che ha risposto.
 
 **Un silenzio non dichiarato e' indistinguibile da un'assenza di
 problemi** (pagato sedici volte su questo ramo, sempre trovato da una
@@ -49,7 +49,7 @@ corpo e' vuoto» (un fatto sulla casa: `corpo: {}` o simile).
 from __future__ import annotations
 
 from ..proxy._sanitize import sanitize_text
-from .anagrafe import (
+from .topology import (
     actual_class,
     actual_unit,
     categories_with_name,
@@ -933,7 +933,7 @@ def related(answer: dict, kind: str, reference) -> dict:
 
     Prende la risposta GIA' ottenuta da `HAClient.related()` -- questa
     funzione e' pura come le altre due, la rete la fa il chiamante
-    (`casa/strumenti.py`) -- e fa tre cose sole: distingue il guasto dal
+    (`home_space/tools.py`) -- e fa tre cose sole: distingue il guasto dal
     niente, traduce i tipi nel vocabolario di HIRIS, e ordina.
 
     **Il guasto non e' un «niente».** `legami: {}` e' un'affermazione:

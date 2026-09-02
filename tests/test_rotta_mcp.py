@@ -29,8 +29,8 @@ import pytest_asyncio
 
 from hiris.app import server
 from hiris.app.api import handlers_mcp
-from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS
 from hiris.app.chat_settings import ChatSettings
+from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 from hiris.app.memory.store import MemoryStore
 from tests.test_strumenti_conoscenza import _semina_casa
 

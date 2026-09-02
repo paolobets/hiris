@@ -48,7 +48,7 @@ def test_NON_tocca_le_query_sql(g):
 
 def test_i_composti_escono_come_proposte_e_il_file_NON_cambia(g):
     dentro = "archivio_casa = 1\n"
-    fuori, proposte = rinomina.riscrivi(dentro, g, "casa")
+    fuori, proposte = rinomina.riscrivi(dentro, g, "home_space")
     assert fuori == dentro, "un composto non si applica da solo"
     assert [p.nome for p in proposte] == ["archivio_casa"]
 
@@ -211,26 +211,26 @@ def test_applica_su_un_file_singolo(g, tmp_path):
 
 
 def test_un_percorso_di_import_non_si_tocca_anche_se_la_parola_e_decisa():
-    """`from ..casa.archivio import X`: `casa` e `archivio` sono un
+    """`from ..home_space.store import X`: `casa` e `archivio` sono un
     indirizzo verso un altro modulo, non identificatori del proprio
     ambito -- anche quando entrambi hanno una riga nel glossario finto.
     Misurato dal vivo (review del Task 5): senza questa guardia lo
-    strumento riscriveva `from ..casa.anagrafe import ...` in
+    strumento riscriveva `from ..home_space.topology import ...` in
     `from ..home_space.topology import ...`, un `ModuleNotFoundError`
-    certo perche' `casa/` non viene rinominata da questo task."""
+    certo perche' `home_space/` non viene rinominata da questo task."""
     gf = rinomina.Glossario(mappa={"casa": "home_space", "archivio": "store"})
-    dentro = "from ..casa.archivio import ArchivioCasa\narchivio = 1\n"
+    dentro = "from ..home_space.store import ArchivioCasa\narchivio = 1\n"
     fuori, _ = rinomina.riscrivi(dentro, gf, "qualunque")
-    assert "from ..casa.archivio import ArchivioCasa" in fuori, (
+    assert "from ..home_space.store import ArchivioCasa" in fuori, (
         "il percorso dell'import non deve cambiare")
     assert "store = 1" in fuori, (
         "un identificatore VERO, fuori dall'import, deve continuare a tradursi")
 
 
 def test_un_percorso_di_import_semplice_senza_from_non_si_tocca():
-    """`import casa.archivio`: stessa guardia, forma senza `from`."""
+    """`import home_space.store`: stessa guardia, forma senza `from`."""
     gf = rinomina.Glossario(mappa={"casa": "home_space", "archivio": "store"})
-    dentro = "import casa.archivio\n"
+    dentro = "import home_space.store\n"
     fuori, _ = rinomina.riscrivi(dentro, gf, "qualunque")
     assert fuori == dentro
 
@@ -253,9 +253,9 @@ def test_l_alias_di_un_import_semplice_resta_un_identificatore_vero():
     codice -- non un segmento di percorso -- e resta soggetto alla
     classificazione normale."""
     gf = rinomina.Glossario(mappa={"casa": "home_space", "archivio": "store"})
-    dentro = "import casa.archivio as archivio\n"
+    dentro = "import home_space.store as archivio\n"
     fuori, _ = rinomina.riscrivi(dentro, gf, "qualunque")
-    assert fuori == "import casa.archivio as store\n"
+    assert fuori == "import home_space.store as store\n"
 
 
 def test_una_parola_chiave_in_una_chiamata_non_si_applica_da_sola():
@@ -300,7 +300,7 @@ def test_un_metodo_di_haclient_non_si_applica_da_solo():
 
     **Il caso misurato dal vivo era `ha.statistiche(...)`** (review Task 8):
     senza questa guardia diventava `ha.statistics(...)` dentro
-    `casa/tempo.py::trend`, un `AttributeError` in produzione perche'
+    `home_space/historian.py::trend`, un `AttributeError` in produzione perche'
     `HAClient.statistiche` restava italiano. **Quel caso oggi non esiste
     piu'**: dal lotto 19 `proxy/` e' convertito e quel metodo si chiama
     `statistics` per davvero. La guardia serve identica nel verso opposto --
@@ -572,7 +572,7 @@ def _sostituzioni_di_identificatori(prima: str, dopo: str) -> set[tuple[str, str
     dal vivo: `memory/resolver.py::_compila` aveva sia `inizio` (residuo
     dichiarato) sia `prefisso`/`suffisso` -- una meta' di quella seconda
     coppia era stata decisa nel glossario da questo stesso lotto per
-    `casa/strumenti.py`, e la guardia a grana di file non l'avrebbe vista
+    `home_space/tools.py`, e la guardia a grana di file non l'avrebbe vista
     finche' qualcuno non fosse arrivato a leggere `resolver.py` di
     persona)."""
     toks_prima = [t for t in tokenize.generate_tokens(io.StringIO(prima).readline)
@@ -594,20 +594,20 @@ def _sostituzioni_di_identificatori(prima: str, dopo: str) -> set[tuple[str, str
 # `azione/construction/composer.py`, vive invece in un ambito che questo
 # test non guardava affatto. Allargato a tutti e sei.
 #
-# `casa/` non e' ancora finito (`domande.py` e `nucleo.py` restano in
+# `home_space/` non e' ancora finito (`domande.py` e `nucleo.py` restano in
 # parte italiani, `strumenti.py` per intero): elencare la cartella intera
 # pretenderebbe zero anche li', cosa falsa per costruzione. Si elencano
 # invece i singoli file gia' chiusi, uno per lotto -- un dato esplicito
 # che chi legge puo' contare, non un'assenza silenziosa. Quando l'ultimo
-# lotto di `casa/` chiude, le cinque righe si possono sostituire con
-# `("casa", "casa", frozenset())`.
+# lotto di `home_space/` chiude, le cinque righe si possono sostituire con
+# `("home_space", "home_space", frozenset())`.
 #
 # `residui_noti` per `memoria`: `resolver.py::Lookup.find` ha `inizio`
 # ancora italiano -- **deliberatamente**, review del lotto 5: tradurlo da
 # solo (`inizio -> start`) senza il suo gemello nella stessa espressione
 # (`fine`, mai deciso nel glossario) avrebbe lasciato una coppia a meta'
 # tradotta (`start, fine = m.span()`), la STESSA asimmetria che ha
-# motivato la qualificazione `dopo (casa)` invece di lasciarlo nudo. La
+# motivato la qualificazione `dopo (home_space)` invece di lasciarlo nudo. La
 # correzione tocca solo file gia' miei (`domande.py`), non `resolver.py`
 # per intero (~30 identificatori italiani restano li', fuori dal
 # perimetro): chiudere le coppie (`fine -> end`,
@@ -693,35 +693,31 @@ _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     ("usage", "usage", frozenset()),
     ("mind", "mind", frozenset()),
     ("action", "action", frozenset({Path("construction/composer.py")})),
-    ("casa/lettura_yaml.py", "casa", frozenset()),
-    ("casa/comportamento.py", "casa", frozenset()),
-    ("casa/archivio.py", "casa", frozenset()),
-    ("casa/tempo.py", "casa", frozenset()),
-    ("casa/anagrafe.py", "casa", frozenset()),
-    ("casa/domande.py", "casa", frozenset()),
-    ("casa/nucleo.py", "casa", frozenset()),
-    # `strumenti.py` importa il proprio vicino con `from . import tempo`: la
-    # protezione dei percorsi di import (`_righe_di_percorso_e_parola_chiave`)
-    # segue il proprio `modo` di stato PAROLA PER PAROLA e lo azzera appena
-    # incontra "import" -- corretto per `from .X import Y` (il nome
-    # importato arriva DOPO l'azzeramento, ma "X" e' gia' protetto perche'
-    # letto PRIMA), ma non per `from . import X` (qui "X" e' l'unico token
-    # dopo "import", quindi arriva DOPO l'azzeramento e resta un NAME
-    # qualunque). "tempo" e' un concetto gia' deciso (`tempo -> historian`,
-    # "I concetti"): senza questa eccezione lo strumento riscriverebbe
-    # l'import in `from . import historian`, un `ModuleNotFoundError` --
-    # `casa/tempo.py` non e' stato rinominato (i nomi dei file sono un passo
-    # a parte, mai una riscrittura di stringa). Misurato dal vivo (lotto 7):
-    # la stessa importazione dentro `casa/nucleo.py` non ha questo problema
-    # perche' usa la forma `from .anagrafe import (...)`, dove il nome del
-    # modulo vive PRIMA di "import" ed e' quindi gia' protetto.
-    ("casa/strumenti.py", "casa", frozenset({Path("strumenti.py")})),
+    ("home_space/yaml_loader.py", "home_space", frozenset()),
+    ("home_space/behavior.py", "home_space", frozenset()),
+    ("home_space/store.py", "home_space", frozenset()),
+    ("home_space/historian.py", "home_space", frozenset()),
+    ("home_space/topology.py", "home_space", frozenset()),
+    ("home_space/queries.py", "home_space", frozenset()),
+    ("home_space/briefing.py", "home_space", frozenset()),
+    # **L'eccezione di `tools.py` e' USCITA il 02/09, sciolta dalla rinomina dei
+    # file invece che aggirata.** Diceva: `strumenti.py` importa il vicino con
+    # `from . import tempo`, e la protezione dei percorsi di import
+    # (`_righe_di_percorso_e_parola_chiave`) non copre quella forma -- "tempo"
+    # arriva DOPO "import", quindi resta un NAME qualunque e lo strumento lo
+    # riscriveva in `from . import historian`, cioe' un `ModuleNotFoundError`,
+    # **perche' il file si chiamava ancora `tempo.py`**. Ora si chiama
+    # `historian.py`: quella riscrittura e' esattamente quella giusta, la
+    # divergenza sparisce e l'eccezione non ha piu' niente da coprire.
+    # Il buco dello strumento resta (la forma `from . import X` non e'
+    # protetta): e' scritto qui perche' il prossimo che ci inciampa lo sappia.
+    ("home_space/tools.py", "home_space", frozenset()),
 )
 
 
 def test_gli_ambiti_chiusi_restano_idempotenti(tmp_path):
     """La guardia sui sei ambiti (cinque interi piu' i file gia' chiusi di
-    `casa/`, vedi `_SORVEGLIATI` sopra): una regressione futura (in questo
+    `home_space/`, vedi `_SORVEGLIATI` sopra): una regressione futura (in questo
     script o nel glossario) si vede qui, sull'ambito dove e' successa,
     invece di scoprirsi per caso al prossimo lotto che tocca quell'ambito."""
     from _comune import ROOT
@@ -751,29 +747,6 @@ def test_il_residuo_di_memoria_resolver_e_solo_inizio_start(tmp_path):
     assert sostituzioni == {("inizio", "start")}, (
         f"memory/resolver.py diverge su {sostituzioni}, atteso solo "
         "{('inizio', 'start')} -- un nuovo nome e' comparso: decidilo "
-        "davvero (applicalo, o traccialo qui) invece di lasciarlo dentro "
-        "un'eccezione a grana di file")
-
-
-def test_il_residuo_di_casa_strumenti_e_solo_tempo_historian(tmp_path):
-    """Il gemello di `test_il_residuo_di_memoria_resolver_e_solo_inizio_start`,
-    per il residuo di `casa/strumenti.py` in `_SORVEGLIATI`: la stessa cecita'
-    a grana di file (un secondo debito italiano nello stesso file non
-    l'avrebbe fatta arrossire) e' stata trovata dal vivo dal revisore --
-    la lezione del gemello di `memory/` non era stata replicata qui."""
-    import shutil
-
-    from _comune import ROOT
-    base = ROOT / "hiris" / "app" / "casa" / "strumenti.py"
-    copia = tmp_path / "strumenti.py"
-    shutil.copy(base, copia)
-    prima = copia.read_text(encoding="utf-8")
-    rinomina.applica(copia, "casa", scrivi=True)
-    dopo = copia.read_text(encoding="utf-8")
-    sostituzioni = _sostituzioni_di_identificatori(prima, dopo)
-    assert sostituzioni == {("tempo", "historian")}, (
-        f"casa/strumenti.py diverge su {sostituzioni}, atteso solo "
-        "{('tempo', 'historian')} -- un nuovo nome e' comparso: decidilo "
         "davvero (applicalo, o traccialo qui) invece di lasciarlo dentro "
         "un'eccezione a grana di file")
 
@@ -850,7 +823,7 @@ def test_il_residuo_di_schedulatore_archivio_e_solo_solo_in_sospeso():
     Due chiamanti pubblici usano gia' questo nome esatto per keyword, ed
     e' per questo che nessuno dei due lo tocca: `api/handlers_agenda.py`
     (`store.list(solo_in_sospeso=not show_all, ...)`, Task 9 di questa
-    fetta) e `casa/strumenti.py:1630` (gia' chiuso). Se le tre parole
+    fetta) e `home_space/tools.py:1630` (gia' chiuso). Se le tre parole
     vengono decise un domani, tutti e due i chiamanti vanno aggiornati
     nello stesso commit del parametro, non lasciati indietro."""
     import inspect
@@ -861,7 +834,7 @@ def test_il_residuo_di_schedulatore_archivio_e_solo_solo_in_sospeso():
     assert "solo_in_sospeso" in parametri, (
         "il residuo tracciato qui e' sparito: se e' stato deciso e "
         "applicato per davvero (keeper/store.py, "
-        "api/handlers_agenda.py, casa/strumenti.py, i due test dedicati), "
+        "api/handlers_agenda.py, home_space/tools.py, i due test dedicati), "
         "questo test va tolto, non solo aggiornato")
     assert parametri["solo_in_sospeso"].kind == inspect.Parameter.KEYWORD_ONLY
 
@@ -1058,21 +1031,21 @@ _MUTE_VOLUTE = {
     # `keeper/exchange.py::_senza_conclusione`).
     ("senza", "api"), ("senza", "action"), ("senza", "memory"),
     ("senza", "keeper"),
-    # `note (casa)` vuol dire «cose che la casa SA» (-> `known`). Fuori da
-    # `casa/` `note` sono annotazioni, un senso diverso: la mutezza e' giusta.
+    # `note (home_space)` vuol dire «cose che la casa SA» (-> `known`). Fuori da
+    # `home_space/` `note` sono annotazioni, un senso diverso: la mutezza e' giusta.
     ("note", "api"), ("note", "action"), ("note", "usage"),
     ("note", "keeper"),
     # `note` in `radice` non e' italiano affatto: e' l'INGLESE che ci ha messo
     # la conversione stessa (`nota -> note`, `decisione_modelli.py`). Il
     # cancello lo vede perche' guarda i PEZZI, e `note` e' anche un plurale
     # italiano: e' lo stesso incrocio gia' descritto per `officina.py` accanto
-    # alla riga `note (casa)` del glossario, misurato una seconda volta.
+    # alla riga `note (home_space)` del glossario, misurato una seconda volta.
     ("note", "radice"),
-    # `dopo (casa)` e' l'ordine temporale. In `action/` `dopo` e' la CHIAVE
+    # `dopo (home_space)` e' l'ordine temporale. In `action/` `dopo` e' la CHIAVE
     # JSON `"prima"`/`"dopo"` di un confronto di stati: valore di dominio,
     # italiano per decisione (vedi la riga `primo` del glossario).
     ("dopo", "action"),
-    # `fuori (casa)` e' «all'aperto». In `usage/` e `keeper/` e' «in
+    # `fuori (home_space)` e' «all'aperto». In `usage/` e `keeper/` e' «in
     # uscita»/«fuori finestra»: senso diverso, mutezza giusta.
     ("fuori", "usage"), ("fuori", "keeper"),
     # `lettura` e' qualificata `(casa)`/`(usage)`. In `keeper/` compare
@@ -1083,7 +1056,7 @@ _MUTE_VOLUTE = {
     ("loro", "action"), ("nostro", "action"),
     # `("verifica", "casa")` e' USCITA il 02/09, e la ragione va letta perche'
     # riguarda tutto questo insieme: l'unica occorrenza del pezzo `verifica`
-    # in `casa/` non era un identificatore di `casa/` -- era il PERCORSO
+    # in `home_space/` non era un identificatore di `home_space/` -- era il PERCORSO
     # dell'import differito `from ..azione.verifica import verification`
     # dentro `strumenti.py`. Rinominata la cartella (`azione/verifica.py` ->
     # `action/verification.py`), il pezzo non compare piu' in quell'ambito e
@@ -1179,7 +1152,7 @@ def test_ogni_parola_qualificata_e_muta_solo_dove_e_dichiarato():
     non cala mai (senso diverso, mutezza giusta), `_MUTE_PROVVISORIE` si
     esaurisce a ogni sottosistema convertito.
 
-    Provato per mutazione: tolta la riga `note (casa)` dal glossario, questo
+    Provato per mutazione: tolta la riga `note (home_space)` dal glossario, questo
     test va rosso nominando `('note', 'casa')` fra le coppie mai viste prima;
     rimessa, torna verde.
 
@@ -1265,13 +1238,13 @@ def test_un_metodo_normale_porta_il_proprio_nome_non_quello_della_classe():
 
 
 def test_sponde_per_nome_non_scambia_un_percorso_di_import_per_un_attributo(tmp_path):
-    """`from ..casa.strumenti import X` porta `.strumenti` in posizione di
+    """`from ..home_space.tools import X` porta `.strumenti` in posizione di
     attributo, ma quello e' il nome di un MODULO -- e un modulo si rinomina con
     `git mv`, non riscrivendo la stringa dell'import.
 
     Misurato aprendo `backends/`, dove il parametro `strumenti` di `chat()`
     doveva diventare `tools`: senza questa distinzione la terza rete dava **34
-    segnalazioni, 32 delle quali erano `casa.strumenti`** in trenta file. Un
+    segnalazioni, 32 delle quali erano `home_space.tools`** in trenta file. Un
     elenco cosi' non si legge -- ed e' il difetto n.1 del progetto («un elenco
     che dice sempre qualcosa») applicato al rimedio invece che al male.
 

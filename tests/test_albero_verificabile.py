@@ -2,7 +2,7 @@
 
 Fetta 4 di `docs/design/2026-08-17-piano-i-sette-che-mancano.md`.
 
-**Il difetto che questo file sorveglia.** `casa/anagrafe.hierarchy()` e'
+**Il difetto che questo file sorveglia.** `home_space/topology.hierarchy()` e'
 un'AFFERMAZIONE che HIRIS fa sulla casa: la costruisce dai registri, ci ragiona
 sopra, e niente la verifica. Se un'area contiene cose che HIRIS non le
 attribuisce -- o peggio, se HIRIS le attribuisce cose che non ci sono -- non
@@ -41,14 +41,14 @@ import pytest
 from aiohttp import web
 
 from hiris.app.api.handlers_home_space import compose_briefing, handle_get_home_space
-from hiris.app.casa.anagrafe import (
+from hiris.app.home_space.briefing import compose
+from hiris.app.home_space.store import HomeSpaceStore
+from hiris.app.home_space.topology import (
     choose_sample,
     compare_with_home_assistant,
     hierarchy,
     tree_areas,
 )
-from hiris.app.casa.archivio import HomeSpaceStore
-from hiris.app.casa.nucleo import compose
 from hiris.app.server import tree_comparison_round
 
 # --------------------------------------------------------------------------

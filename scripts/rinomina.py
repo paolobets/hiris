@@ -419,7 +419,7 @@ from _comune import file_py, rel
 # HACLIENT che si chiama cosi' per caso" -- l'attributo dopo il punto e'
 # un NAME come un altro per il tokenizzatore. Misurato dal vivo (Task 8,
 # review indipendente): il join meccanico ha tradotto
-# `ha.statistiche(...)` in `ha.statistics(...)` dentro `casa/tempo.py` --
+# `ha.statistiche(...)` in `ha.statistics(...)` dentro `home_space/historian.py` --
 # un `AttributeError` in produzione alla prima domanda di andamento sopra
 # le 24 ore, perche' `HAClient.statistiche` resta cosi' finche' `proxy/`
 # non viene convertito, e nessun test lo vedeva perche' il finto che lo
@@ -549,7 +549,7 @@ def _righe_di_percorso_e_parola_chiave(
     PAROLA CHIAVE (keyword argument) in una chiamata, e quelli che sono un
     METODO DI HACLIENT letto per attributo (`ha.history(...)`).
 
-    Un percorso di import (`from ..casa.anagrafe import X`, `import
+    Un percorso di import (`from ..home_space.topology import X`, `import
     hiris.app.memory.store`) e' un indirizzo verso UN ALTRO modulo, mai
     un identificatore del proprio ambito -- vale anche quando punta al
     proprio stesso sottosistema (il file, se deciso, si rinomina con
@@ -739,7 +739,7 @@ def riscrivi(sorgente: str, g: Glossario, ambito: str
             # (`confine_ha`, che nonostante il nome copre entrambi ora):
             # rompere `ha.statistiche()` in `ha.statistics()` e' lo stesso
             # guasto di rompere `archivio.sezioni()` in `archivio.section()`,
-            # misurato dal vivo su `casa/tempo.py` (Task 8) e prevenuto per
+            # misurato dal vivo su `home_space/historian.py` (Task 8) e prevenuto per
             # `usage/store.py` prima di commetterlo (Task 9).
             proposta = Proposta(nome=t.string, pezzi=[t.string.lower()], suggerito=esito)
             if proposta.nome not in visti:
@@ -1405,12 +1405,12 @@ def sponde_per_nome(nomi: dict[str, str], radice: Path | None = None, *,
         except (tokenize.TokenError, IndentationError, SyntaxError):
             continue
         # I segmenti di un PERCORSO di import non sono sponde: `from
-        # ..casa.strumenti import X` porta `.strumenti` in posizione di
+        # ..home_space.tools import X` porta `.strumenti` in posizione di
         # attributo, ma quello e' il nome di un MODULO -- e un modulo si
         # rinomina con `git mv`, non riscrivendo la stringa dell'import.
         # Misurato aprendo `backends/`: senza questa riga, rinominare il
         # parametro `strumenti` di `chat()` produceva **34 segnalazioni, 32
-        # delle quali erano `casa.strumenti`** in trenta file. Un elenco cosi'
+        # delle quali erano `home_space.tools`** in trenta file. Un elenco cosi'
         # non si legge: e' il difetto n.1 del progetto applicato al rimedio.
         for indice, vecchio, specie in _sponde_tokenizzate(tokens, nomi):
             trovati.append((f, tokens[indice].start[0], vecchio,
@@ -1430,10 +1430,10 @@ def _sponde_tokenizzate(tokens: list, nomi) -> list[tuple[int, str, str]]:
     `parametri_def_rinominati` e `chiamanti_orfani`, uniti al round 8).
 
     I segmenti di un PERCORSO di import non sono sponde: `from
-    ..casa.strumenti import X` porta `.strumenti` in posizione di attributo, ma
+    ..home_space.tools import X` porta `.strumenti` in posizione di attributo, ma
     quello e' il nome di un MODULO -- e un modulo si rinomina con `git mv`.
     Misurato aprendo `backends/`: senza, rinominare il parametro `strumenti`
-    di `chat()` dava 34 segnalazioni, 32 delle quali `casa.strumenti`.
+    di `chat()` dava 34 segnalazioni, 32 delle quali `home_space.tools`.
     """
     percorso, _, _, _ = _righe_di_percorso_e_parola_chiave(tokens)
     fuori: list[tuple[int, str, str]] = []

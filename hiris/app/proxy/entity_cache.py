@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from ..casa.anagrafe import domain_of
+from ..home_space.topology import domain_of
 from ._sanitize import sanitize_ha_value
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ def unreadable_inventory_error(cache) -> dict | None:
     return None
 
 
-# Una lettura sola per tutti, in `casa/anagrafe.domain_of`: era scritta sei
+# Una lettura sola per tutti, in `home_space/topology.domain_of`: era scritta sei
 # volte, e due copie non erano d'accordo su un id senza punto.
 _domain = domain_of
 
@@ -83,7 +83,7 @@ _DOMAIN_ATTRS: dict[str, tuple[str, ...]] = {
     #
     # ATTENZIONE a cosa questa riga NON faceva da sola, fino alla fetta
     # "attributi al modello" (2026-08-25): `_to_minimal` li raccoglieva gia'
-    # dentro `result["attributes"]`, ma `casa.anagrafe.live_mirror` -- il
+    # dentro `result["attributes"]`, ma `home_space.topology.live_mirror` -- il
     # punto da cui passano `guarda`, `cerca` e il nucleo -- li buttava tutti,
     # su OGNI dominio, tenendo solo la stringa di `state`. Un'entita' `weather`
     # rispondeva «sereno» e basta non perche' mancasse questa riga, ma perche'
@@ -229,7 +229,7 @@ class EntityCache:
     # `get_on` e `get_all_useful` sono USCITI (stesso censimento). Il secondo
     # era l'unico lettore di `NOISE_DOMAINS`, uscito con lui: quella lista
     # decideva cosa fosse "rumore" per un consumatore che non esiste piu', e la
-    # domanda «cosa merita di essere detto» vive adesso in `casa/nucleo.py`, per
+    # domanda «cosa merita di essere detto» vive adesso in `home_space/briefing.py`, per
     # TIPOLOGIA e non per dominio (fetta «il vocabolario delle tipologie»).
     #
     # `load_area_registry`/`get_area_map` SONO usciti, insieme -- ed e' il
@@ -242,7 +242,7 @@ class EntityCache:
     # E non era nemmeno una mappa giusta. Indicizzava per NOME dell'area --
     # due "Bagno" su piani diversi si fondevano in uno -- e ignorava l'area
     # EREDITATA dal dispositivo, che in una casa vera e' il caso normale, non
-    # l'eccezione. `casa/anagrafe.hierarchy()` risponde alla stessa domanda
+    # l'eccezione. `home_space/topology.hierarchy()` risponde alla stessa domanda
     # per id, con l'ereditarieta', e dichiarando quale registro non ha
     # risposto. Due risposte alla stessa domanda, una delle quali sbagliata e
     # letta da nessuno: NESSUN DOPPIONE.

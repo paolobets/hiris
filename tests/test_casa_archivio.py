@@ -1,6 +1,6 @@
 import pytest
 
-from hiris.app.casa.archivio import HomeSpaceStore
+from hiris.app.home_space.store import HomeSpaceStore
 
 _REGISTRI = {
     "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0, "icon": "mdi:home"}],

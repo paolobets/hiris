@@ -13,9 +13,9 @@ is a rule half the users never get.
 
 Review finale fetta E3, Important #1: this file used to pin the literal
 string "save_memory" -- a tool that stopped existing at E3 Task 8 (the chat
-catalog is today casa/strumenti.py's four tools: cerca, guarda, ricorda,
+catalog is today home_space/tools.py's four tools: cerca, guarda, ricorda,
 richiama). The suite was DEFENDING the stale prompt instead of catching it.
-Fixed by reading the real save-tool name from casa/strumenti.py
+Fixed by reading the real save-tool name from home_space/tools.py
 (REMEMBER_TOOL_DEF["name"]) instead of hardcoding a guess -- if the tool is
 ever renamed again, this pin moves with it instead of silently going stale.
 """
@@ -27,8 +27,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
-from hiris.app.casa.strumenti import REMEMBER_TOOL_DEF
 from hiris.app.claude_runner import BASE_SYSTEM_PROMPT, ClaudeRunner
+from hiris.app.home_space.tools import REMEMBER_TOOL_DEF
 
 NOME_RICORDA = REMEMBER_TOOL_DEF["name"]
 
@@ -41,7 +41,7 @@ def _sys_text(system) -> str:
 
 
 def test_base_prompt_instructs_saving_user_statements():
-    """Must name the real save tool (`remember`, casa/strumenti.py) and use an
+    """Must name the real save tool (`remember`, home_space/tools.py) and use an
     imperative save verb -- asserting on a whole sentence would break on the
     first stylistic touch-up."""
     assert NOME_RICORDA in BASE_SYSTEM_PROMPT

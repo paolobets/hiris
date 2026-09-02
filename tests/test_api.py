@@ -427,7 +427,7 @@ async def test_chat_does_not_persist_leaked_tool_call_response(client):
 # wiring that task retired -- SemanticContextMap.get_context() and
 # KnowledgeStore.search()/.declared() called FROM handle_chat, with their
 # output injected into context_str/visible_entity_ids. handle_chat stopped
-# calling either; its context comes from the nucleo (hiris/app/casa/
+# calling either; its context comes from the nucleo (hiris/app/home_space/
 # nucleo.py, via handlers_home_space.compose_briefing) -- see
 # tests/test_chat_al_nucleo.py for the tests that replace these.
 # SemanticContextMap itself (and knowledge_db, its only persistence) are gone

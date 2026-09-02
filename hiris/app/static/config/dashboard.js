@@ -105,7 +105,7 @@ window.HirisDashboard = (function () {
      `tessere()` non veniva passato affatto, ed era il Minor e7.
 
      Attenzione a cosa significa davvero un file non letto: le voci arrivano
-     dai file E dallo stato di Home Assistant (`casa/comportamento.reread`),
+     dai file E dallo stato di Home Assistant (`home_space/behavior.reread`),
      quindi con `automations.yaml` assente HIRIS puo' comunque conoscere per
      NOME dodici automazioni prese dallo stato -- e `senza_corpo` dice gia'
      di quante non conosce il corpo. Marcare quella tessera «non letto»

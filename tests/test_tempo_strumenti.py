@@ -10,7 +10,7 @@ import inspect
 import pytest
 
 from hiris.app.api import handlers_chat
-from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS, ToolDispatcher
+from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.keeper.exchange import SOLA_LETTURA, promise_tools
 from hiris.app.proxy.ha_client import HAClient
 from tests._contratti import assert_stessa_firma
@@ -118,14 +118,14 @@ async def test_andamento_passa_unita_e_state_class_letti_dallo_specchio():
         visti.update(kwargs)
         return {"entita": kwargs["entity"], "grana": "dettaglio", "punti": []}
 
-    import hiris.app.casa.strumenti as modulo
-    originale = modulo.tempo.trend
-    modulo.tempo.trend = _finto_trend
+    import hiris.app.home_space.tools as modulo
+    originale = modulo.historian.trend
+    modulo.historian.trend = _finto_trend
     try:
         d = ToolDispatcher(None, None, cache=_Cache(), ha=object())
         await d.dispatch("trend", {"entita": "sensor.camera", "ore": 6})
     finally:
-        modulo.tempo.trend = originale
+        modulo.historian.trend = originale
     assert visti["unit"] == "°C"
     assert visti["has_statistics"] is True
 
@@ -135,7 +135,7 @@ async def test_accaduto_passa_la_cronaca_del_dispatcher_a_tempo_accaduto():
     """Il gemello del test sopra, per `logbook`. Senza questo test la prova
     mentale che conta e' negativa: se `journal=self._journal` diventasse
     `journal=None` nel gestore, NESSUN test della suite arrossirebbe -- ne'
-    questi sette, ne' `test_tempo_accaduto.py`, che prova `tempo.logbook` e
+    questi sette, ne' `test_tempo_accaduto.py`, che prova `historian.logbook` e
     non il dispatcher. L'effetto sarebbe silenzioso: la risposta continua ad
     arrivare, solo senza mai dire «l'ho fatto io» -- l'attribuzione sparisce
     e nessuno se ne accorge."""
@@ -147,14 +147,14 @@ async def test_accaduto_passa_la_cronaca_del_dispatcher_a_tempo_accaduto():
         visti.update(kwargs)
         return {"voci": [], "troncato": False, "ore": kwargs["hours"], "nota": None}
 
-    import hiris.app.casa.strumenti as modulo
-    originale = modulo.tempo.logbook
-    modulo.tempo.logbook = _finto_logbook
+    import hiris.app.home_space.tools as modulo
+    originale = modulo.historian.logbook
+    modulo.historian.logbook = _finto_logbook
     try:
         d = ToolDispatcher(None, None, ha=object(), journal=cronaca_vera)
         await d.dispatch("logbook", {"ore": 6})
     finally:
-        modulo.tempo.logbook = originale
+        modulo.historian.logbook = originale
     assert visti["journal"] is cronaca_vera
 
 
@@ -165,7 +165,7 @@ async def test_measurement_angle_resta_sul_dettaglio_oltre_la_soglia():
     (`bool(state_class)`) manderebbe una banderuola oltre le 24 ore sul ramo
     statistiche, cioe' su un elenco vuoto che direbbe «non e' mai cambiata»
     -- mentre il dettaglio, la superficie giusta per lei, esiste. Qui
-    `tempo.trend` gira DAVVERO (non e' fintato): se il cablaggio tornasse
+    `historian.trend` gira DAVVERO (non e' fintato): se il cablaggio tornasse
     a `bool(...)`, `grana` sarebbe «oraria» e la finta HA registrerebbe
     «statistiche», non «storico»."""
     class _Cache:

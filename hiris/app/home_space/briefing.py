@@ -46,7 +46,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from .anagrafe import (
+from .queries import sanitized_memories
+from .topology import (
     PROBLEM_SEVERITY,
     actual_class,
     domain_of,
@@ -55,7 +56,6 @@ from .anagrafe import (
     name_with_id,
     translate_state,
 )
-from .domande import sanitized_memories
 
 # Il TIPO di un'entita' si ricava dal dominio del suo entity_id (la parte
 # prima del punto) -- lo dichiara Home Assistant nell'id stesso, non un
@@ -323,7 +323,7 @@ def _device_annotation(area_entities: list[dict], domain: str, count: int,
 
     `device_names` a `None` significa «non ho potuto guardare», non
     «nessun dispositivo»: col registro "dispositivi" caduto la tabella e'
-    VUOTA (casa/archivio.py::sostituisci cancella tutto e reinserisce cio'
+    VUOTA (home_space/store.py::sostituisci cancella tutto e reinserisce cio'
     che e' arrivato), quindi un dizionario vuoto renderebbe ogni
     `dispositivo_id` un riferimento al nulla e l'annotazione stamperebbe
     "(id: ...)" su tutta la casa. La lacuna e' gia' dichiarata in "cio' che
@@ -355,7 +355,7 @@ def _device_annotation(area_entities: list[dict], domain: str, count: int,
     name = (device_names.get(device_id) or "").strip()
     if name:
         return f" ({name})"
-    # Un dispositivo senza nome esiste davvero: `casa/archivio.py` scrive
+    # Un dispositivo senza nome esiste davvero: `home_space/store.py` scrive
     # `name_by_user or name`, ed entrambi sono nullable. Si mostra l'id
     # MARCATO come id -- la stessa convenzione di `_displayed_area_name`
     # (IMPORTANT ⑦) -- perche' e' l'unica chiave con cui

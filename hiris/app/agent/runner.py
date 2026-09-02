@@ -6,7 +6,7 @@ API (`/api/reasoning/claim` e `/api/reasoning/submit`).
 
 OGGI, in una riga: il ponte LEGGE la casa e la memoria, e da questa fetta puo'
 anche AGIRE su di essa -- gli strumenti sono tredici, lo stesso catalogo della
-chat sincrona (`casa/strumenti.py`): fra loro `execute` chiama un servizio di
+chat sincrona (`home_space/tools.py`): fra loro `execute` chiama un servizio di
 Home Assistant passando per la porta dei servizi (`action/actuator.py`), e
 `propose`/`confirm` (fetta «costruire») passano per l'officina
 (`azione/construction/workshop.py`) -- due canali, due porte, non piu' una
@@ -89,7 +89,7 @@ parallele della stessa risposta della CLI -- vedi il commento su
 
 Fino alla fetta «comandare» questo docstring si chiudeva su una cosa che il
 ponte «continua a non poter fare, e che nessuna fetta di questo ramo cambia:
-AGIRE». La fetta l'ha cambiata. Gli strumenti sono tredici (hiris/app/casa/
+AGIRE». La fetta l'ha cambiata. Gli strumenti sono tredici (hiris/app/home_space/
 strumenti.py): il ponte agisce quando la sonda dice di si', esattamente come
 la chat sincrona, per la porta dei servizi (`esegui`) o, dalla fetta
 «costruire», per quella della configurazione (`costruisci`/`conferma`).
@@ -118,7 +118,6 @@ from dataclasses import dataclass, field
 
 import httpx
 
-from ..casa.strumenti import KNOWLEDGE_TOOLS
 from ..chat_store import (
     EMPTY_SENTINEL,
     INCOMPLETE_STREAM_SENTINEL,
@@ -126,6 +125,7 @@ from ..chat_store import (
     MOCK_SENTINEL,
     RUNNER_ERROR_PREFIX,
 )
+from ..home_space.tools import KNOWLEDGE_TOOLS
 from ..keeper.exchange import promise_tools
 from ..model_resolution import SUBSCRIPTION_ALIAS
 from . import prompts
@@ -197,7 +197,7 @@ def mcp_names(by_promise: bool = False) -> tuple[str, ...]:
     Si DERIVA da `KNOWLEDGE_TOOLS`: un elenco di stringhe scritto a mano
     qui sarebbe il SECONDO catalogo, l'errore che l'intera fetta E2 e' esistita
     per chiudere (tre cataloghi divergenti della stessa cosa). Cosi' uno
-    strumento che entra o esce da `casa/strumenti.py` arriva qui da solo.
+    strumento che entra o esce da `home_space/tools.py` arriva qui da solo.
 
     E' una funzione e non una costante di modulo per la stessa ragione
     dell'import differito qui sopra: il prefisso ha bisogno del nome del server,
@@ -1304,7 +1304,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # disco fino alla potatura a 7 giorni, con gli INPUT che il modello ha
     # passato agli strumenti: per `remember`, non solo `testo` ma anche
     # `detto_da` (un identificativo di PERSONA), `ancore` e `condizioni`
-    # (`casa/strumenti.py::_remember`, `argomenti.get(...)`); per `search`, la
+    # (`home_space/tools.py::_remember`, `argomenti.get(...)`); per `search`, la
     # frase dell'utente. Cambiare la potatura di `decision_json` e' fuori dal
     # perimetro di questa fetta (regole-fetta.md): si dichiara qui, si
     # consegna alla fase sicurezze, con lo stesso perche' con cui il Task 5

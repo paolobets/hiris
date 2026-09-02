@@ -81,7 +81,7 @@ I composti rompono la sostituzione cieca in tre modi distinti, tutti misurati:
    in ordine italiano.
 2. **Ci sono preposizioni.** `nomi_di_ripiego`: quel `di` non è una parola del glossario, e in
    inglese sparisce del tutto.
-3. **Ci sono sigle di confine.** `sanitize_ha_value` (`casa/archivio.py:109`, 29 siti): quel `ha`
+3. **Ci sono sigle di confine.** `sanitize_ha_value` (`home_space/store.py:109`, 29 siti): quel `ha`
    è *Home Assistant*, e resta `ha` — non si traduce e non si espande. Lo stesso vale per
    `ha_client` (109 siti), `ha_base_url`, `ha_config_dir`, `_ha_channel`,
    `_fingerprint_from_ha_state`.
@@ -145,7 +145,7 @@ delle parole: lo chiede.
    provider — `entity`, `state`, `unit`, `domain`, `model`, `tool`, `token` — sono in un elenco
    intoccabile, letto dal glossario e non scritto a mano nello strumento.
 4. **Risolve gli omonimi per sottosistema.** `ancora` è `tether` in `memory/` e `anchor` in
-   `consumi/`; `piano` è `floor` in `casa/` e `subscription` altrove. Lo strumento lo sa **solo
+   `consumi/`; `piano` è `floor` in `home_space/` e `subscription` altrove. Lo strumento lo sa **solo
    perché gli si dice dove sta lavorando**, ed è il motivo per cui non esiste una modalità
    «rinomina tutto».
 
@@ -165,7 +165,7 @@ risparmiare tempo.
 | 3 | `keeper/` + `memory/` | 10 file, 2.083 righe | → **rilascio** |
 | 4 | `mind/` | 5 file, 1.624 righe | |
 | 5 | `action/` | 10 file, 3.052 righe | |
-| 6 | `casa/` | 9 file, 7.368 righe | il più grande fra i sottosistemi |
+| 6 | `home_space/` | 9 file, 7.368 righe | il più grande fra i sottosistemi |
 | 7 | i moduli alla radice, `server.py`, il frontend JS | 3.818 righe di solo `server.py` (elenco sotto) | → **rilascio** |
 | 8 | le 14 rotte HTTP e i campi JSON, col frontend che le chiama | 14 rotte | un commit solo, le due sponde insieme |
 | 9 | `api/` | 17 file, 4.609 righe | **mancava da questa tabella** -- vedi la nota sotto |

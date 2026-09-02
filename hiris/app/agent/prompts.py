@@ -58,7 +58,7 @@ from ..claude_runner import (
 #
 # fetta «comandare» (Task 6): «non agisce» ha smesso di essere vero DUE
 # volte, ed e' rimasto vero UNA. Il Task 5 ha dato a HIRIS `execute` (catalogo
-# unico, `casa/strumenti.py`): il prodotto agisce. Questo turno no -- qui non
+# unico, `home_space/tools.py`): il prodotto agisce. Questo turno no -- qui non
 # c'e' nessuno strumento da chiamare -- e la differenza fra le due cose e'
 # tutta nella frase. «HIRIS non agisce» era una proprieta' del PRODOTTO
 # affermata da un percorso che parla solo di se': lo stesso errore di scala
@@ -81,7 +81,7 @@ from ..claude_runner import (
 # impostazioni della chat (`chat_settings.DEFAULT_SYSTEM_PROMPT`, via
 # `handlers_chat._build_system_prompt`) e' scritto per il percorso SINCRONO e
 # nomina in backtick alcuni degli strumenti. Di la' gli strumenti di
-# `casa/strumenti.py` esistono davvero; QUI no. Senza questa smentita
+# `home_space/tools.py` esistono davvero; QUI no. Senza questa smentita
 # esplicita -- che sta DOPO la persona, ed e' il motivo per cui l'ordine di
 # composizione conta -- il modello leggerebbe «usa `cerca` e `guarda`» senza
 # alcun modo di scoprire che non ci sono: di nuovo il "preso nota" senza aver
@@ -107,7 +107,7 @@ from ..claude_runner import (
 # si puo' GUARDARE ADESSO: la fotografia e' stata presa una volta sola, quando
 # il messaggio e' stato accodato, e in questo turno non si aggiorna.
 # L'affermazione e' ancorata al TURNO e non a un'ora perche' il nucleo non
-# timbra (`casa/nucleo.py::compose` e' pura e non compone nessuna data): un
+# timbra (`home_space/briefing.py::compose` e' pura e non compone nessuna data): un
 # orario nel prompt sarebbe inventato, mentre "in questo turno" e' l'unica
 # formulazione che non puo' diventare falsa.
 _GUIDE_WITHOUT_TOOLS = (
@@ -154,7 +154,7 @@ _GUIDE_WITHOUT_TOOLS = (
 # DEBOLE per essere vera: `_chat_claude_args` passa
 # `--allowedTools mcp__hiris__cerca,mcp__hiris__guarda,mcp__hiris__ricorda,
 # mcp__hiris__richiama` (i nomi di `runner.nomi_mcp()`, derivati da
-# `casa/strumenti.py`), quindi la forma prefissata non e' una possibilita' fra
+# `home_space/tools.py`), quindi la forma prefissata non e' una possibilita' fra
 # due: e' l'UNICA in cui gli strumenti gli sono serviti e l'unica che potra'
 # chiamare. Un «possono comparire» lascerebbe il modello a credere che
 # `search` nudo sia altrettanto valido -- e una chiamata a un nome che non
@@ -231,7 +231,7 @@ _GUIDE_WITHOUT_TOOLS = (
 # DEFAULT, e chi ha salvato il proprio testo almeno una volta serve al modello
 # «usa `cerca` e `guarda`» anche dopo l'aggiornamento. Senza questa riga il
 # modello legge un'istruzione che nomina uno strumento che non esiste piu' --
-# e il dispatcher lo rifiuta davvero (`casa/strumenti.py`, `name not in
+# e il dispatcher lo rifiuta davvero (`home_space/tools.py`, `name not in
 # _TOOL_NAMES`), quindi il turno si brucia o, peggio, il modello se ne
 # dimentica e racconta di aver guardato.
 #

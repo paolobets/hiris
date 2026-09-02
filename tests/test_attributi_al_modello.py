@@ -9,7 +9,7 @@ Misurato in produzione: `guarda` su un termostato tornava
 La causa non era `entity_cache._to_minimal`: quella funzione raccoglie gia'
 `hvac_action`, `current_temperature`, `temperature` dentro
 `result["attributes"]` (`_DOMAIN_ATTRS["climate"]`). La causa era un anello
-piu' in la': `casa.anagrafe.live_mirror` -- il punto da cui passano
+piu' in la': `home_space.topology.live_mirror` -- il punto da cui passano
 `guarda`, `cerca` e il nucleo -- teneva solo `e.get("state")` e buttava
 `e.get("attributes")` per intero, su OGNI dominio.
 
@@ -18,8 +18,8 @@ fino a cio' che `guarda` restituisce -- non i singoli anelli: un test per
 anello (come esistevano gia' per `_to_minimal`) non avrebbe mai visto questo
 difetto, perche' ogni anello faceva il proprio lavoro.
 """
-from hiris.app.casa.anagrafe import live_mirror, translate_state
-from hiris.app.casa.domande import view
+from hiris.app.home_space.queries import view
+from hiris.app.home_space.topology import live_mirror, translate_state
 from hiris.app.proxy.entity_cache import _to_minimal
 
 # Lo stato grezzo COM'E' DAVVERO sull'impianto del proprietario: impostato su

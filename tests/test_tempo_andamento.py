@@ -16,7 +16,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from hiris.app.casa.tempo import (
+from hiris.app.home_space.historian import (
     MAX_POINTS_PER_ANSWER,
     _covered,
     instant_epoch,

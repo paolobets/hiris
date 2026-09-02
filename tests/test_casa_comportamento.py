@@ -1,7 +1,7 @@
 import pytest
 
-from hiris.app.casa.archivio import HomeSpaceStore
-from hiris.app.casa.comportamento import compose, reread
+from hiris.app.home_space.behavior import compose, reread
+from hiris.app.home_space.store import HomeSpaceStore
 
 _AUTOMATIONS = [
     {"id": "1700", "alias": "Sveglia", "trigger": [{"platform": "time", "at": "07:00"}]},

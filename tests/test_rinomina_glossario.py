@@ -115,7 +115,7 @@ def test_un_trattino_basso_finale_si_conserva(g):
     forma non coperta, dopo maiuscole, costanti TUTTE MAIUSCOLE e prefisso
     privato: `gamba_` (`hiris/app/mind/facts.py`, evita di ombreggiare
     `gamba`) sarebbe diventato `aspect`, non `aspect_`."""
-    assert rinomina.classifica("tipo_", g, "casa") == "type_"
+    assert rinomina.classifica("tipo_", g, "home_space") == "type_"
     assert rinomina.classifica("gamba_", g, "mind") == "aspect_"
     assert rinomina.classifica("_archivio_", g, "memory") == "_store_"
 
@@ -124,20 +124,20 @@ def test_un_composto_si_classifica_come_PROPOSTA_non_come_nome(g):
     """IL CUORE DELLO STRUMENTO. `unita_vive` non e' `unit_reported`: e'
     `reported_units`. L'italiano mette l'aggettivo dopo, l'inglese prima, e
     nessuna sostituzione pezzo per pezzo puo' saperlo. Quindi si propone."""
-    esito = rinomina.classifica("unita_vive", g, "casa")
+    esito = rinomina.classifica("unita_vive", g, "home_space")
     assert isinstance(esito, rinomina.Proposta)
     assert esito.nome == "unita_vive"
     assert esito.pezzi == ["unita", "vive"]
 
 
 def test_un_nome_senza_nessuna_parola_del_glossario_resta_fermo(g):
-    assert rinomina.classifica("json", g, "casa") is None
-    assert rinomina.classifica("self", g, "casa") is None
+    assert rinomina.classifica("json", g, "home_space") is None
+    assert rinomina.classifica("self", g, "home_space") is None
 
 
 def test_una_parola_scartata_resta_ferma(g):
     for p in list(g.scartate)[:1]:
-        assert rinomina.classifica(p, g, "casa") is None
+        assert rinomina.classifica(p, g, "home_space") is None
 
 
 def test_i_veri_scarti_restano_scartate(g):
@@ -161,7 +161,7 @@ def test_una_forma_alias_si_propone_con_l_inglese_del_lemma(g):
     l'inflessione inglese non e' sempre «+s»: lo strumento non indovina
     `constructions`, propone `construction` e si ferma -- lo stesso
     principio dei composti, applicato a un alias invece che a un pezzo."""
-    esito = rinomina.classifica("costruzioni", g, "casa")
+    esito = rinomina.classifica("costruzioni", g, "home_space")
     assert isinstance(esito, rinomina.Proposta)
     assert esito.nome == "costruzioni"
     assert esito.suggerito == "construction"
@@ -246,7 +246,7 @@ def test_le_parole_pericolose_vere_del_glossario_si_propongono(g, parola):
     identificatori nudi, la prima produce un SyntaxError rumoroso, le altre
     tre ombreggiano `type`/`list`/`round` in silenzio. Tutte e cinque devono
     uscire come proposte, mai come applicazioni dirette."""
-    assert isinstance(rinomina.classifica(parola, g, "casa"), rinomina.Proposta)
+    assert isinstance(rinomina.classifica(parola, g, "home_space"), rinomina.Proposta)
 
 
 def test_la_guardia_keyword_builtin_si_vede_anche_nel_file_riscritto(g):
@@ -254,7 +254,7 @@ def test_la_guardia_keyword_builtin_si_vede_anche_nel_file_riscritto(g):
     `classifica()` isolata): un file con `tipo = 1` non deve diventare
     `type = 1`."""
     dentro = "tipo = 1\n"
-    fuori, proposte = rinomina.riscrivi(dentro, g, "casa")
+    fuori, proposte = rinomina.riscrivi(dentro, g, "home_space")
     assert fuori == dentro, "un builtin ombreggiato non si applica da solo"
     assert [p.nome for p in proposte] == ["tipo"]
 
@@ -450,7 +450,7 @@ def test_il_glossario_vero_non_ha_conflitti_silenziosi(g):
     passata per caricare `g` (fixture di modulo): se non sollevasse qui e
     l'avesse sollevato altrove, vorrebbe dire che la correzione di `guarda`
     non e' completa."""
-    assert g.omonimi["guarda"] == {"mind": "watch", "casa": "view"}
+    assert g.omonimi["guarda"] == {"mind": "watch", "home_space": "view"}
     assert "guarda" not in g.mappa
 
 

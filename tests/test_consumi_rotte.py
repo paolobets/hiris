@@ -19,7 +19,7 @@ from hiris.app.api.handlers_usage import (
     handle_usage,
     handle_usage_history,
 )
-from hiris.app.casa.archivio import HomeSpaceStore
+from hiris.app.home_space.store import HomeSpaceStore
 from hiris.app.usage.store import UsageStore
 from tests._contratti import assert_stessa_firma
 

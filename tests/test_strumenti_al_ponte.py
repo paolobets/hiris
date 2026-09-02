@@ -46,7 +46,7 @@ import pytest
 
 from hiris.app.agent import prompts, runner
 from hiris.app.api import handlers_mcp
-from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS
+from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 from hiris.app.memory.store import MemoryStore
 from tests.test_strumenti_conoscenza import _semina_casa
 
@@ -171,7 +171,7 @@ def test_i_nomi_si_derivano_dal_catalogo_e_non_si_riscrivono():
     dallo stesso elenco di ammissione, per la stessa ragione: un turno di
     promessa non costruisce da solo). Fetta «HIRIS e il tempo» Task 6: da 11
     a 13, entrano `trend` e `logbook` -- che guardano indietro nel tempo
-    passando per `casa/tempo.py`, LEGGONO e basta, ed entrano invece nello
+    passando per `home_space/historian.py`, LEGGONO e basta, ed entrano invece nello
     stesso elenco di ammissione del turno delle promesse, per la ragione
     opposta a `propose`/`confirm`."""
     nomi = runner.mcp_names()
@@ -652,7 +652,7 @@ def _riga_init(*, stato: str = "connected", nomi=None) -> str:
 
     Si costruisce da `runner.mcp_names()` e `runner._mcp_server_name()`, non a
     mano: un elenco ricopiato qui sarebbe il secondo catalogo, e uno
-    strumento che entrasse in `casa/strumenti.py` lascerebbe questo finto init
+    strumento che entrasse in `home_space/tools.py` lascerebbe questo finto init
     disallineato dal vero senza che nessuno se ne accorga. `ToolSearch` c'e'
     perche' c'e' anche nel flusso vero (la CLI lo usa per risolvere gli schemi
     MCP) e perche' un `tools` con SOLO i nostri nomi renderebbe il test piu'

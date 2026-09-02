@@ -18,7 +18,7 @@ import inspect
 import pytest
 
 from hiris.app.action.actuator import ActionActuator
-from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS, ToolDispatcher
+from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from tests._contratti import assert_stessa_firma
 
 

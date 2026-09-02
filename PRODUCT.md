@@ -58,7 +58,7 @@
 > sono **cinque**, e il quinto (`esegui`) chiama i servizi di Home Assistant»*.
 >
 > Era vero il 12 agosto. Da allora il catalogo è cresciuto per tappe, e dalla fetta **«costruire»**
-> gli strumenti della chat sono **undici** (`hiris/app/casa/strumenti.py`). `esegui` continua a
+> gli strumenti della chat sono **undici** (`hiris/app/home_space/tools.py`). `esegui` continua a
 > chiamare i servizi passando dalla stessa porta di allora (`hiris/app/action/actuator.py`);
 > `costruisci` e `conferma`, in coppia, scrivono **configurazione** — automazioni, script, scene —
 > passando da un secondo canale che verifica e rilegge come il primo ma non lo sostituisce, l'officina
@@ -71,7 +71,7 @@
 >
 > Il blocco del 23 agosto qui sopra è a sua volta superato su un numero, per lo stesso motivo per
 > cui lui stesso supera il 12: non si riscrive, si annota. Diceva che *«dalla fetta «costruire»
-> gli strumenti della chat sono **undici** (`hiris/app/casa/strumenti.py`)»*.
+> gli strumenti della chat sono **undici** (`hiris/app/home_space/tools.py`)»*.
 >
 > Era vero il 23 agosto. Con la fetta **«HIRIS e il tempo»** gli strumenti della chat sono
 > **tredici**. Gli ultimi due, `andamento` e `accaduto`, guardano INDIETRO nel tempo passando

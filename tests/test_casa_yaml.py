@@ -1,7 +1,7 @@
 import pytest
 import yaml
 
-from hiris.app.casa.lettura_yaml import load_file, load_yaml
+from hiris.app.home_space.yaml_loader import load_file, load_yaml
 
 
 def test_yaml_normale():

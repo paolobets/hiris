@@ -10,7 +10,7 @@ import pytest
 from aiohttp import web
 
 from hiris.app.api.handlers_home_space import handle_get_briefing, handle_get_home_space
-from hiris.app.casa.archivio import HomeSpaceStore
+from hiris.app.home_space.store import HomeSpaceStore
 from hiris.app.memory.store import MemoryStore
 
 

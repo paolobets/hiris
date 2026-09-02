@@ -33,7 +33,7 @@ from __future__ import annotations
 import re
 import unicodedata
 
-from ..casa.anagrafe import (
+from ..home_space.topology import (
     categories_with_name,
     category_names,
     label_names,
@@ -47,7 +47,7 @@ from ..casa.anagrafe import (
 #
 # "piani" (T7, R2 -- docs/design/2026-08-20-i-riferimenti.md): stesso
 # trattamento di aree/entita/dispositivi, perche' e' la stessa cosa che
-# loro sono -- un REGISTRO dell'anagrafe (`_TABELLE`, casa/archivio.py),
+# loro sono -- un REGISTRO dell'anagrafe (`_TABELLE`, home_space/store.py),
 # gia' dentro la `casa` che ogni chiamante legge, che puo' mancare
 # all'appello di una ricostruzione esattamente come gli altri tre
 # (`HomeSpaceStore.non_disponibili()`). Prima di questo task nessuna
@@ -63,7 +63,7 @@ from ..casa.anagrafe import (
 # e' UN tipo solo. Mescolarli qui avrebbe fatto sembrare "automazione" un
 # registro dell'anagrafe che puo' comparire in `non_disponibili()`, cosa
 # che non fa mai -- e avrebbe allargato `STORE_KEY_PER_TYPE` (e con
-# lei `_TETHER_TYPES` in casa/strumenti.py) a tipi che la memoria non puo'
+# lei `_TETHER_TYPES` in home_space/tools.py) a tipi che la memoria non puo'
 # mai scrivere come ancora (`memory/interpretation.VOCABULARY`),
 # creando esattamente il secondo vocabolario che R9 denuncia altrove.
 # `costruisci_indice()` le indicizza per conto suo, sotto: stessa forma
@@ -293,7 +293,7 @@ def costruisci_indice(home_space: dict,
 
     `nomi_di_ripiego` (entity_id -> `friendly_name`) NON e' un rimedio per i
     casi rari in cui il nome manca: sull'impianto del proprietario, misurato
-    il 14 agosto, e' la STRADA NORMALE. `casa/archivio.py:133` prende il nome
+    il 14 agosto, e' la STRADA NORMALE. `home_space/store.py:133` prende il nome
     dell'entita' da `name or original_name` del REGISTRO, e li' il nome e'
     nullo QUASI OVUNQUE (le quattro valvole dell'irrigazione, le abat-jour);
     nello specchio dello stato vivo il `friendly_name` c'e' invece su TUTTE
@@ -344,7 +344,7 @@ def costruisci_indice(home_space: dict,
     di Home Assistant) -- vedi il commento su `_ARCHIVI` per la ragione per
     cui non condividono la stessa tupla. Nessun ripiego sul nome qui: le
     voci di comportamento arrivano gia' con un nome (`friendly_name` dello
-    stato o l'`alias` dello YAML -- vedi `casa/comportamento.py`), mai nullo
+    stato o l'`alias` dello YAML -- vedi `home_space/behavior.py`), mai nullo
     per costruzione.
     """
     termini: dict[str, list[tuple[str, str]]] = {}
@@ -384,7 +384,7 @@ def costruisci_indice(home_space: dict,
             # gli slug (`da_controllare`), e indicizzare quelli avrebbe fatto
             # funzionare la ricerca SOLO per le etichette di una parola sola
             # senza maiuscole. Nessuno cerca «da_controllare»: si cerca «da
-            # controllare». L'unione la fa `casa.anagrafe.labels_with_name`,
+            # controllare». L'unione la fa `home_space.topology.labels_with_name`,
             # la stessa che usa `guarda` -- scritta due volte sarebbe una
             # ricerca che trova per un nome e una risposta che ne mostra un
             # altro.
@@ -392,7 +392,7 @@ def costruisci_indice(home_space: dict,
             # trappola: sono l'altra tassonomia che l'utente scrive a mano in
             # Home Assistant («Luci esterne», «Vacanza»), e nei registri HA
             # manda i soli `category_id`. Entrano col NOME -- l'unione la fa
-            # `casa.anagrafe.categories_with_name`, la stessa che usa `guarda`.
+            # `home_space.topology.categories_with_name`, la stessa che usa `guarda`.
             # Solo i nomi, non gli ambiti: `automation` e' un termine tecnico
             # di Home Assistant, non una parola che qualcuno cerchera'.
             # Un termine che non e' una stringa non e' un termine.
@@ -412,7 +412,7 @@ def costruisci_indice(home_space: dict,
     # Automazioni e script (T7, R2): stessa disciplina, fonte diversa --
     # vedi il commento su `_ARCHIVI` e il docstring qui sopra. `tipo` viene
     # dalla VOCE stessa, non da `_ARCHIVI`: una lista sola porta entrambi i
-    # tipi, distinti campo per campo (`casa/comportamento.py`). Una voce col
+    # tipi, distinti campo per campo (`home_space/behavior.py`). Una voce col
     # `tipo` che non e' ne' "automazione" ne' "script", o senza `id`, non e'
     # una voce di comportamento valida: si scarta invece di indicizzarla
     # sotto un tipo che ne' `guarda` ne' `verifica()` altrove riconoscono.

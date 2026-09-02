@@ -28,9 +28,9 @@ voce dello specchio dello stato (`entity_cache._to_minimal`). E' anche la fonte
 che Home Assistant stesso preferisce (`helpers/entity.py::get_device_class`).
 """
 
-from hiris.app.casa.anagrafe import actual_class, live_mirror
-from hiris.app.casa.domande import view
-from hiris.app.casa.nucleo import compose
+from hiris.app.home_space.briefing import compose
+from hiris.app.home_space.queries import view
+from hiris.app.home_space.topology import actual_class, live_mirror
 
 # L'anagrafe COM'E' DAVVERO: `classe` a None, perche' HA non la manda.
 _CASA = {
@@ -110,7 +110,7 @@ def test_lo_specchio_tiene_gli_attributi_del_meteo():
     test da solo NON prova che `guarda` veda questi attributi -- prima li
     provava, e il commento diceva "guarda su un'entita' weather rispondeva
     sereno e basta", ma `guarda` non arrivava mai a leggerli: `live_mirror`
-    (`casa/anagrafe.py`) li buttava tutti, su ogni dominio, un anello piu' in
+    (`home_space/topology.py`) li buttava tutti, su ogni dominio, un anello piu' in
     la'. Il difetto vero (misurato dal proprietario sui termostati, non sul
     meteo) e' rimasto invisibile finche' nessun test seguiva la catena intera
     -- vedi `test_attributi_al_modello.py`, che la segue fino a `guarda`."""

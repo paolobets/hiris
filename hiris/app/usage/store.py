@@ -6,7 +6,7 @@ senza una politica di ritenzione da governare e senza mai cancellare dati
 dell'utente a scadenza.
 
 Non legge l'orologio: lo riceve (`now=`), come l'archivio delle promesse e
-come `casa/nucleo.compose`. E non legge il fuso alla costruzione ma a ogni
+come `home_space/briefing.compose`. E non legge il fuso alla costruzione ma a ogni
 scrittura: la casa puo' cambiarlo (`core_config_updated`), e un fuso cotto qui
 dentro sarebbe quello di quando l'add-on e' partito.
 """

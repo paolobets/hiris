@@ -2,9 +2,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from hiris.app.casa.archivio import _MAIN_DASHBOARD_KEY as _ARCHIVE_KEY
-from hiris.app.casa.archivio import HomeSpaceStore
-from hiris.app.casa.comportamento import reread_dashboards
+from hiris.app.home_space.behavior import reread_dashboards
+from hiris.app.home_space.store import _MAIN_DASHBOARD_KEY as _ARCHIVE_KEY
+from hiris.app.home_space.store import HomeSpaceStore
 from hiris.app.proxy.ha_client import _MAIN_DASHBOARD_KEY as _HA_CLIENT_KEY
 from hiris.app.proxy.ha_client import HAClient
 

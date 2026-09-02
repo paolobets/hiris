@@ -11,9 +11,9 @@ fra tutti i sensori dell'area quale intende chi chiede -- e su una stanza con
 il termostato, la valvola e il sensore della finestra puo' benissimo scegliere
 quello sbagliato e rispondere con sicurezza.
 """
-from hiris.app.casa.anagrafe import hierarchy
-from hiris.app.casa.archivio import HomeSpaceStore
-from hiris.app.casa.domande import view
+from hiris.app.home_space.queries import view
+from hiris.app.home_space.store import HomeSpaceStore
+from hiris.app.home_space.topology import hierarchy
 
 _REGISTRI = {
     "aree": [

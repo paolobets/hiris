@@ -36,7 +36,7 @@ from __future__ import annotations
 
 from aiohttp import web
 
-from ..casa.anagrafe import live_mirror
+from ..home_space.topology import live_mirror
 from ..memory.interpretation import deduci_unit, validate
 from ..memory.resolver import STORE_KEY_PER_TYPE, costruisci_indice
 
@@ -74,7 +74,7 @@ def _page_mirror(request) -> tuple[dict, dict, dict, dict, dict, dict]:
     """Lo specchio dello stato per questa pagina:
     `(stato, nomi, unita, classi, da_quando, attributi)`.
 
-    La lettura vera sta in `casa.anagrafe.live_mirror`, la stessa che usa il
+    La lettura vera sta in `home_space.topology.live_mirror`, la stessa che usa il
     dispatcher: qui c'e' solo la difesa su una cache assente o guasta, perche'
     ne' la vista ne' la correzione di un ricordo devono fallire per colpa dello
     specchio.

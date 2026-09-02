@@ -122,20 +122,20 @@ governs the refactor:
 On startup, and again whenever Home Assistant tells it something changed, HIRIS
 re-reads the HA registries over the WebSocket API — floors, areas, devices,
 entities, labels, categories, config entries — and rebuilds the house from them
-(`hiris/app/casa/anagrafe.py:14-50`, `hiris/app/proxy/ha_client.py:564-572`; the
+(`hiris/app/home_space/topology.py:14-50`, `hiris/app/proxy/ha_client.py:564-572`; the
 registry-update subscriptions live at `hiris/app/proxy/ha_client.py:26-31`, the
 debounced rebuild at `hiris/app/server.py:403`). The meaning is never guessed:
 it is whatever you already declared in Home Assistant.
 
 If a registry fails to answer, HIRIS keeps the previous copy and records the
 gap rather than replacing a good house with ten empty lists
-(`hiris/app/casa/anagrafe.py:39-49`).
+(`hiris/app/home_space/topology.py:39-49`).
 
 ### What the house already does by itself
 
 HIRIS reads `automations.yaml` and `scripts.yaml` from your HA config directory
 and cross-references them with live state
-(`hiris/app/casa/comportamento.py`). The file says what is *written*; the state
+(`hiris/app/home_space/behavior.py`). The file says what is *written*; the state
 says what *exists* — and the difference is information. Automations written by
 hand outside those files are known by name but not by body, and HIRIS says so
 instead of pretending they are empty.
@@ -143,12 +143,12 @@ instead of pretending they are empty.
 ### The nucleo — one compact house, in every prompt
 
 Everything above is condensed into a single text that goes into the model's
-context on every turn (`hiris/app/casa/nucleo.py`, shared with the chat via
+context on every turn (`hiris/app/home_space/briefing.py`, shared with the chat via
 `hiris/app/api/handlers_chat.py:317`). With three hundred entities, listing them
 all would blow the context window, so the nucleo **counts** rather than
 enumerates — "Cucina: 2 luci, 1 sensore", not the entity ids.
 
-It has five sections (`hiris/app/casa/nucleo.py:545-548,648`):
+It has five sections (`hiris/app/home_space/briefing.py:545-548,648`):
 
 | Section | What it holds |
 |---|---|
@@ -162,7 +162,7 @@ That last section is the point, not a footnote: **HIRIS declares what it does
 not know instead of faking it.** When HA is unreachable, the nucleo says
 *"Stato non letto (o dichiarato non attendibile): non si puo' dire se in
 questo momento c'e' qualcosa di notevole -- non e' lo stesso di 'niente di
-notevole'"* (`hiris/app/casa/nucleo.py:321-324`). The same discipline applies when the text
+notevole'"* (`hiris/app/home_space/briefing.py:321-324`). The same discipline applies when the text
 has to be truncated to fit: the cut is written *inside* the nucleo, not only in
 a summary nobody reads.
 
@@ -183,7 +183,7 @@ Saved memories come back in the nucleo on the next turn, under
 ## The chat, and its thirteen tools
 
 The chat is the only surface. The model gets the nucleo plus exactly thirteen tools
-(`hiris/app/casa/strumenti.py`, passed at `hiris/app/api/handlers_chat.py`):
+(`hiris/app/home_space/tools.py`, passed at `hiris/app/api/handlers_chat.py`):
 
 | Tool | What it does |
 |---|---|

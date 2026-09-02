@@ -6,7 +6,7 @@ import threading
 import time
 from datetime import datetime, timedelta
 
-from ..casa.tempo import home_space_zone
+from ..home_space.historian import home_space_zone
 from ..storage import connect, init_schema
 
 _SCHEMA = """
@@ -85,7 +85,7 @@ class ReasoningQueue:
     # `sweep_expired()` sotto, la stessa UPDATE che chiude il job azzera anche
     # `context_json` a '{}'. Il `context` di un job di chat porta il nucleo
     # per intero -- aree, dispositivi, entita', "cio' che le persone hanno
-    # detto" (`casa/nucleo.py::compose`) -- e senza questo azzeramento resterebbe
+    # detto" (`home_space/briefing.py::compose`) -- e senza questo azzeramento resterebbe
     # nel file `reasoning.db` fino alla potatura a 7 giorni (`prune()`,
     # chiamata da `server.py` con `before_ts = now - 7*86400`), ben oltre il
     # tempo in cui serve a qualcuno. Verificato (non assunto) che nessun

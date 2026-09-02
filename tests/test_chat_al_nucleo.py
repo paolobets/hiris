@@ -9,7 +9,7 @@ n.1 della mappa del prodotto, vista da dentro (due intelligenze nella stessa
 casa che ne vedono due diverse, vedi
 docs/design/2026-08-05-la-conoscenza-di-hiris.md, §7).
 
-Dopo: una fonte sola, il nucleo (`hiris.app.casa.nucleo.compose`, condiviso
+Dopo: una fonte sola, il nucleo (`hiris.app.home_space.briefing.compose`, condiviso
 con GET /api/briefing tramite `handlers_home_space.compose_briefing` -- stessa
 composizione per la rotta e per la chat, non due che potrebbero divergere).
 Le sessioni precedenti restano A PARTE: sono cronologia di conversazioni
@@ -51,11 +51,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from hiris.app.action.actuator import ActionActuator
-from hiris.app.casa.archivio import HomeSpaceStore
-from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import _TS_FMT, _get_store, close_all_stores
 from hiris.app.claude_runner import ClaudeRunner
+from hiris.app.home_space.store import HomeSpaceStore
+from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.memory.store import MemoryStore
 from hiris.app.server import create_app
 from tests._contratti import assert_stessa_firma

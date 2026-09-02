@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import logging
 
-from ...casa.tempo import home_space_zone
+from ...home_space.historian import home_space_zone
 from ...proxy._sanitize import truncate_with_marker as _truncate
 from . import composer
 from .advisor import consiglia
@@ -495,7 +495,7 @@ class Workshop:
             # agnostico al trasporto), ma senza tipo ne' traceback un nostro
             # `TypeError` diventa indistinguibile, in log, da un guasto di rete
             # vero -- il difetto nascosto due volte. Stessa forma gia' usata da
-            # `casa/strumenti.py` nella sua rete finale.
+            # `home_space/tools.py` nella sua rete finale.
             logger.warning("chiamata verso Home Assistant non riuscita (%s): %s",
                            type(exc).__name__, exc, exc_info=True)
             return {"errore": (f"Home Assistant non ha risposto: "

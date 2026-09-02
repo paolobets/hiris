@@ -168,7 +168,7 @@ def live_mirror(rows) -> tuple[dict[str, str], dict[str, str], dict[str, str],
     ha, `attributes`.
 
     Una passata sola per tutti i dizionari, e in un posto solo per tutti i
-    chiamanti. Prima lo specchio si leggeva in `casa/strumenti.py` e basta: chi
+    chiamanti. Prima lo specchio si leggeva in `home_space/tools.py` e basta: chi
     stava altrove (la correzione di un ricordo dalla pagina, per esempio) o
     rileggeva la cache per conto suo, o faceva a meno di cio' che ci sta
     dentro. Nel secondo caso la stessa domanda dava due risposte diverse a
@@ -556,7 +556,7 @@ def domain_of(entity_id) -> str:
     Lo DICHIARA Home Assistant nell'id stesso -- non e' un elenco nostro -- e
     per questo la lettura e' banale. Il punto non e' la logica: e' che era
     scritta SEI volte (`nucleo`, `domande`, `entity_cache`, `action/verification`,
-    `casa/comportamento` due volte, `api/handlers_entities`) e due copie non
+    `home_space/behavior` due volte, `api/handlers_entities`) e due copie non
     erano d'accordo. Su un id senza punto -- una riga di registro corrotta, un
     id sintetico di un'integrazione mal formata -- una restituiva l'id intero e
     l'altra la stringa vuota, cosi' il nucleo stampava «1 unknown» fra i

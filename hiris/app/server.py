@@ -35,7 +35,14 @@ from .api.handlers_usage import handle_reset_usage, handle_usage, handle_usage_h
 from .api.middleware_csrf import csrf_middleware
 from .api.middleware_internal_auth import internal_auth_middleware
 from .backends.embeddings import build_embedding_provider
-from .casa.anagrafe import (
+from .chat_settings import ChatSettings, file_lacks_retention_days
+from .env_util import env_bool
+from .home_space.behavior import reread, reread_dashboards
+from .home_space.historian import home_space_zone
+from .home_space.queries import HA_LINK_TYPE
+from .home_space.queries import related as _legami_leggibili
+from .home_space.store import HomeSpaceStore
+from .home_space.topology import (
     AREAS_PER_ROUND,
     choose_sample,
     compare_with_home_assistant,
@@ -43,13 +50,6 @@ from .casa.anagrafe import (
     rebuild,
     tree_areas,
 )
-from .casa.archivio import HomeSpaceStore
-from .casa.comportamento import reread, reread_dashboards
-from .casa.domande import HA_LINK_TYPE
-from .casa.domande import related as _legami_leggibili
-from .casa.tempo import home_space_zone
-from .chat_settings import ChatSettings, file_lacks_retention_days
-from .env_util import env_bool
 from .internal_token import prepare_internal_token
 from .keeper.exchange import interpreta_promise
 from .keeper.store import AgendaStore
@@ -595,7 +595,7 @@ async def reload_entity_inventory(cache, ha_client) -> bool:
     # Qui c'erano due chiamate WebSocket per ricostruire una mappa area->entita'
     # che nessuno leggeva, e che sbagliava (per nome invece che per id, senza
     # l'area ereditata dal dispositivo). Le aree le ricostruisce
-    # `casa.anagrafe.rebuild`, che le legge per id e dichiara i registri
+    # `home_space.topology.rebuild`, che le legge per id e dichiara i registri
     # caduti.
     return True
 
@@ -604,7 +604,7 @@ async def reread_ha_problems(app, ha_client) -> dict | None:
     """Rilegge i guasti che Home Assistant ha gia' diagnosticato e li mette in
     `app["problemi_ha"]`. Ritorna cio' che ha scritto (`None` senza client).
 
-    DOVE VIVONO I PROBLEMI, e perche' qui e non in `casa/archivio.py`.
+    DOVE VIVONO I PROBLEMI, e perche' qui e non in `home_space/store.py`.
 
     Un `repair` e' momentaneo. L'utente apre Home Assistant, clicca «ripara»,
     e quel problema non esiste piu': un archivio SQLite riletto solo quando i
@@ -612,7 +612,7 @@ async def reread_ha_problems(app, ha_client) -> dict | None:
     allarme ripetuto in ogni prompt e' precisamente il rumore che questa fetta
     esiste per non produrre. E' lo stesso ragionamento, sullo stesso genere di
     dato, per cui `state` non entra nel sistema di riferimento della casa
-    (`casa/anagrafe.sistema_di_riferimento`: «in un archivio che si rilegge di
+    (`home_space/topology.sistema_di_riferimento`: «in un archivio che si rilegge di
     rado mentirebbe poche ore dopo, ed e' peggio che non saperlo»).
 
     C'e' anche una ragione meccanica, e da sola basterebbe: l'anagrafe si
@@ -707,7 +707,7 @@ def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):
     """Restituisce `giro()`: confronta un CAMPIONE di aree con Home Assistant
     e scrive l'esito in `app["confronto_albero"]`.
 
-    **Cosa fa, in una riga.** `casa/anagrafe.hierarchy()` e' una replica che
+    **Cosa fa, in una riga.** `home_space/topology.hierarchy()` e' una replica che
     HIRIS costruisce dai registri, cioe' un'affermazione sulla casa che niente
     verificava. Qui la stessa domanda va all'originale --
     `HAClient.extract_from_target({"area_id": [...]}) `, che e' Home Assistant
@@ -732,7 +732,7 @@ def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):
     replica si rifa' da sola al primo evento di registro -- e un archivio
     riletto di rado continuerebbe ad annunciare per ore una divergenza gia'
     rientrata. E' lo stesso ragionamento per cui `state` non entra nel sistema
-    di riferimento della casa (`casa/anagrafe.sistema_di_riferimento`).
+    di riferimento della casa (`home_space/topology.sistema_di_riferimento`).
 
     Si tiene SOLO l'ultimo giro, non un archivio di verdetti che si accumula:
     cosi' ogni verdetto che il nucleo legge e' vecchio al massimo quanto la
@@ -826,8 +826,8 @@ async def build_companions(
     porta una busta `{"legami": {...}}`: e' il dizionario grezzo di
     `search/related`, a chiavi inglesi (`"entity"`, `"automation"`, ...). La
     traduzione -- tipo in ingresso, chiavi in uscita -- e' un fatto gia'
-    codificato altrove (`casa/domande.py::LINK_NAME`/`HA_LINK_TYPE`, e la
-    funzione pura `casa/domande.py::legami` che la applica): si usano quelle,
+    codificato altrove (`home_space/queries.py::LINK_NAME`/`HA_LINK_TYPE`, e la
+    funzione pura `home_space/queries.py::legami` che la applica): si usano quelle,
     non se ne scrive una terza copia -- sarebbe il doppione che questo
     progetto insegue da una notte intera.
 
@@ -835,7 +835,7 @@ async def build_companions(
     soggetto, non la giornata**: `mappa[soggetto] = []`, e si prosegue con
     gli altri -- QUI DENTRO, per QUESTA funzione, che costruisce sempre da
     zero. Ma il guasto **lascia traccia**: non e' un «non c'e' niente»
-    (`casa/domande.py::legami`, stessa regola), e chi rilegge il log deve
+    (`home_space/queries.py::legami`, stessa regola), e chi rilegge il log deve
     poter distinguere «questa entita' non ha comprimari» da «non si e'
     potuto saperlo». Un warning per soggetto sarebbe rumore su una casa da
     88 entita' col wifi debole; un riepilogo a fine giro, se almeno uno e'
@@ -856,7 +856,7 @@ async def build_companions(
     Assistant -- `HAClient.related` che rifiuta il `tipo` o non risponde -- e'
     contenuto per intero, sempre: e' il `try/except` qui sopra, che mette
     `mappa[soggetto] = []` e conta un fallito. La TRADUZIONE di una risposta
-    BUONA (`_legami_leggibili`, cioe' `casa/domande.py::legami`, chiamata
+    BUONA (`_legami_leggibili`, cioe' `home_space/queries.py::legami`, chiamata
     subito dopo quel `try/except`) NON e' contenuta: e' fuori da ogni `try`
     di questa funzione. Home Assistant vero non manda mai una chiave che non
     porti una lista, ma nessun contratto lo impedisce a un client rotto o a
@@ -3674,7 +3674,7 @@ def create_app() -> web.Application:
     # Task 8 SDD schedulatore: le promesse -- la faccia dello schedulatore
     # legge di qui, e disdice di qui. Le stesse due operazioni che il
     # modello ha come strumenti (`promesse`/`cancel` in
-    # `casa/strumenti.py`), sulla stessa serializzazione
+    # `home_space/tools.py`), sulla stessa serializzazione
     # (`keeper/promise.py::serializza`, dentro l'archivio): due porte,
     # una forma sola. Passa dallo stesso `csrf_middleware` di
     # `/api/memories/{id}` -- nessuna rotta mutante e' esente.
@@ -3718,7 +3718,7 @@ def create_app() -> web.Application:
     app.router.add_post("/api/constructions/{id}/reject", handle_reject_construction)
 
     # Task 3 SDD nucleo: vedere cio' che il modello vedra' -- il testo
-    # ESATTO che compone `casa.nucleo.compose()`, non una sua descrizione.
+    # ESATTO che compone `home_space.briefing.compose()`, non una sua descrizione.
     # Nata senza faccia, come /api/home-space e /api/memories: dalla fetta E5
     # Task 8 una faccia ce l'ha -- la home della configurazione
     # (`static/config/dashboard.js`) legge questa rotta e /api/home-space, e non

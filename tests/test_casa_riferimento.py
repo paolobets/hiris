@@ -17,10 +17,10 @@ from unittest.mock import create_autospec
 
 import pytest
 
-from hiris.app.casa.anagrafe import rebuild, reference_frame
-from hiris.app.casa.archivio import HomeSpaceStore
-from hiris.app.casa.nucleo import compose
-from hiris.app.casa.strumenti import ToolDispatcher
+from hiris.app.home_space.briefing import compose
+from hiris.app.home_space.store import HomeSpaceStore
+from hiris.app.home_space.tools import ToolDispatcher
+from hiris.app.home_space.topology import rebuild, reference_frame
 from hiris.app.memory.store import MemoryStore
 from hiris.app.proxy.ha_client import TOPOLOGY_EVENTS, HAClient
 

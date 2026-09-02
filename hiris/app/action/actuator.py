@@ -452,7 +452,7 @@ class ActionActuator:
         cache mai caricata (`loaded is False`: cio' che ha dentro sono le
         entita' mosse dagli eventi, non la casa) e lettura che solleva.
         `inventory_is_readable` copre i primi due ed e' la stessa funzione che
-        usa `casa/strumenti.py` -- duplicarne la regola era il modo in cui
+        usa `home_space/tools.py` -- duplicarne la regola era il modo in cui
         questo difetto e' gia' sopravvissuto altrove.
 
         La forma e' quella vera di `EntityCache.all_states()`: una lista di

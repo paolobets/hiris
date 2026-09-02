@@ -16,7 +16,7 @@ e' il guasto peggiore di questa fetta, perche' non produce un'eccezione:
 produce un turno in cui HIRIS dice "ho guardato" senza aver guardato.
 
 **Cosa fa.** Per ognuna delle QUATTORDICI definizioni (i tredici di
-`casa/strumenti.py`, il catalogo della chat, piu' `CONCLUDI_TOOL_DEF` di
+`home_space/tools.py`, il catalogo della chat, piu' `CONCLUDI_TOOL_DEF` di
 `keeper/exchange.py`, che vive solo nel turno di una promessa) prende
 la `description` e ogni `description` annidata dentro `input_schema` --
 proprieta', proprieta' di proprieta', `items` -- ed estrae **ogni parola
@@ -48,7 +48,7 @@ e le elenca nel proprio messaggio.
 **Cosa questo cancello NON copre**: la prosa a runtime che vive FUORI dalle
 quattordici definizioni. Quella ha il suo cancello gemello in fondo a
 questo file, sui testi che si possono importare come costanti; le sei
-citazioni sparse dentro funzioni (`casa/domande.py`, `casa/nucleo.py`,
+citazioni sparse dentro funzioni (`home_space/queries.py`, `home_space/briefing.py`,
 `memory/interpretation.py`, `action/verification.py`) non hanno rete e si
 sono lette a mano.
 """
@@ -56,7 +56,7 @@ import re
 
 import pytest
 
-from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS
+from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 from hiris.app.keeper.exchange import CONCLUDI_TOOL_DEF
 
 # I nomi che sono STATI un nome di strumento, in una qualunque delle due

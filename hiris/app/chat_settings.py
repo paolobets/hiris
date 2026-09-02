@@ -52,7 +52,7 @@ _FILE_PERMISSIONS = 0o600
 # Review finale fetta E3, Important #2: la versione precedente istruiva a
 # chiamare `get_home_status()`/`get_area_entities()`, morti dalla E2 Task 8 --
 # catturato dal vivo in un turno di chat reale. Riscritta sui due strumenti
-# veri di oggi (casa/strumenti.py: cerca, guarda). Spostato qui invariato da
+# veri di oggi (home_space/tools.py: cerca, guarda). Spostato qui invariato da
 # `chatbot_engine.py::ChatbotEngine._DEFAULT_SYSTEM_PROMPT` (era li' righe
 # 231-237).
 #
@@ -79,7 +79,7 @@ _FILE_PERMISSIONS = 0o600
 #
 # Il default e' NOSTRO, non dell'utente: riscritto in forma CONDIZIONALE, vera
 # su ENTRAMBI i percorsi. Il sincrono non perde nulla (l'antecedente e' vero:
-# di la' gli strumenti di casa/strumenti.py esistono davvero, e l'ordine
+# di la' gli strumenti di home_space/tools.py esistono davvero, e l'ordine
 # di usarli e' lo stesso di prima); il ponte legge il ramo "altrimenti", che
 # e' esattamente cio' che puo' fare -- rispondere col contesto e dichiarare
 # cio' che non c'e'. I due nomi `search` e `view` restano SCRITTI: la guida

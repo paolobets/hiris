@@ -10,7 +10,7 @@ nascoste sono UN SISTEMA SOLO.
 mandato originale del Task 6 (correzione del Critical trovato dalla review
 de «l'osservatore», 26/08/2026). La finta precedente accettava QUALUNQUE
 `tipo` e rispondeva gia' nella busta TRADOTTA `{"legami": {...}}` -- che e'
-la forma di `casa/domande.py::legami`, non quella del client. Con quella
+la forma di `home_space/queries.py::legami`, non quella del client. Con quella
 finta, `build_companions` poteva chiamare `ha_client.legami("entita",
 ...)` (la chiave ITALIANA: il client vero la rifiuta prima di toccare la
 rete, perche' `RELATED_ITEM_TYPES` ha i valori inglesi) e leggere `esito["legami"]`
@@ -28,7 +28,7 @@ era stato parziale, solo se una `Exception` era uscita -- e in generale non
 esce: la `legami` vera CONTIENE i guasti di canale in `{"errore": ...}`, non
 solleva. Eccetto un caso, vero anche lui: una risposta malformata fa uscire
 un `TypeError` vero dalla catena vera, perche' la traduzione
-(`casa/domande.py::legami`, chiamata da `build_companions`) sta FUORI
+(`home_space/queries.py::legami`, chiamata da `build_companions`) sta FUORI
 da quel contenimento -- il quarto esito che `_ClienteLegami` sa produrre, piu'
 sotto. Ora torna `(mappa, falliti)`: ogni test qui sotto legge la coppia."""
 import pytest
@@ -72,7 +72,7 @@ class _ClienteLegami:
       `default={"errore": ...}` per farlo rispondere cosi' a QUALUNQUE
       identificatore senza doverli elencare tutti;
     - **risposta malformata**: `mappa[identifier]` un dizionario la cui
-      traduzione (`casa/domande.py::legami`, chiamata da
+      traduzione (`home_space/queries.py::legami`, chiamata da
       `build_companions`) non e' contenuta -- es. `{"entity": 5}`, un
       intero al posto della lista che Home Assistant vero manda sempre. E'
       l'innesco del punto 1 (difesa-profondita-brief.md): fa uscire un

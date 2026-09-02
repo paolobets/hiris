@@ -1,7 +1,7 @@
 """Il turno di «chiedi»: guarda, risponde, e non tocca niente."""
 import pytest
 
-from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS
+from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 from hiris.app.keeper.exchange import (
     SOLA_LETTURA,
     PromiseDispatcher,

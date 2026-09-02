@@ -11,7 +11,7 @@ test che pinnavano il vecchio fallback (`EVALUATION_TOOL_DEFS` filtrato) sono
 usciti con lui, non spostati: il loro soggetto non esiste piu'.
 
 Il soggetto di QUESTO file pero' e' un altro, ed e' vivo: perche' la chat
-(`ToolDispatcher`, casa/strumenti.py -- quattro strumenti che conoscono
+(`ToolDispatcher`, home_space/tools.py -- quattro strumenti che conoscono
 la casa piu' `execute`, che la comanda) offra il PROPRIO catalogo invece di
 quello interno, i runner devono poterli ricevere dall'esterno. Quando
 `strumenti` e' passato, i quattro filtri in cascata (gia' spariti col catalogo che
@@ -28,8 +28,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
-from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS
 from hiris.app.claude_runner import ClaudeRunner
+from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 
 # fetta E2 Task 8: `tools/http_tools.py` e' uscito per intero (HTTP_REQUEST_
 # TOOL_DEF non serve a EVALUATION_ONLY_TOOLS, e `http_request` era gia'
@@ -225,7 +225,7 @@ async def test_openai_con_strumenti_nessun_filtro_si_applica(openai_runner):
 # --- con `dispatcher`, si chiama dispatch(nome, argomenti) ------------------
 # Non le kwargs pensate per ToolDispatcher (allowed_entities, chatbot_id,
 # visible_entity_ids, ...): ToolDispatcher espone solo l'interfaccia
-# minima dichiarata in casa/strumenti.py.
+# minima dichiarata in home_space/tools.py.
 
 @pytest.mark.asyncio
 async def test_claude_con_dispatcher_esterno_chiama_linterfaccia_minima(claude_runner):

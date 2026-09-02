@@ -8,10 +8,10 @@ nessuno leggesse, e l'avvio lo tratta ancora oggi come un residuo da
 rimuovere. Ricostruirlo qui non sarebbe una scelta nuova, sarebbe
 dissotterrare qualcosa che il prodotto ha gia' seppellito.
 
-Vive in `casa/` e non in `proxy/` perche' non parla il protocollo di Home
+Vive in `home_space/` e non in `proxy/` perche' non parla il protocollo di Home
 Assistant: lo fanno le tre primitive di `proxy/ha_client.py`. Qui si decide
 COSA chiedere e si compone la risposta -- ed e' la stessa divisione che il
-prodotto ha gia' fra `casa/domande.py` (puro) e chi gli passa lo stato.
+prodotto ha gia' fra `home_space/queries.py` (puro) e chi gli passa lo stato.
 """
 from __future__ import annotations
 
@@ -150,7 +150,7 @@ def window(*, hours: float, now_ts: float, timezone: str | None) -> tuple[str, s
 
     Un istante senza fuso e' la stessa classe di difetto di un numero senza
     unita': «alle 17» di quale fuso? E' la stessa regola che `instant_epoch`,
-    qui sotto, applica in lettura (e che `casa/strumenti.py` riusa per gli
+    qui sotto, applica in lettura (e che `home_space/tools.py` riusa per gli
     istanti in ingresso della chat) -- applicata qui in uscita.
     """
     zone = home_space_zone(timezone)
@@ -328,7 +328,7 @@ def instant_epoch(raw) -> float | None:
     «alle 17» di quale fuso? E' la stessa regola dell'unita' di misura
     applicata al tempo -- l'UNICA lettura di un istante nel prodotto: la usa
     questo modulo per cio' che arriva da Home Assistant, e la usa
-    `casa/strumenti.py` (`_promise`) per l'istante che arriva dalla chat. Era
+    `home_space/tools.py` (`_promise`) per l'istante che arriva dalla chat. Era
     scritta due volte (una in ciascun modulo, letteralmente identica); questo
     modulo e' leggero e non importa quasi niente, quindi resta qui e
     `strumenti.py` la importa -- mai il contrario.

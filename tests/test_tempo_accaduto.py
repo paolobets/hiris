@@ -13,7 +13,7 @@ paga piu' caro di ogni altro.
 import pytest
 
 from hiris.app.action.journal import Journal
-from hiris.app.casa.tempo import logbook
+from hiris.app.home_space.historian import logbook
 from hiris.app.proxy.ha_client import HAClient
 from tests._contratti import assert_stessa_firma
 
@@ -49,7 +49,7 @@ def test_the_fake_journal_matches_the_real_signature():
     """Se `Journal.list` cambia firma, questo test cade invece di
     lasciare che il finto imiti un contratto che non esiste piu'
     (review indipendente, fetta «la rinomina»: `entita=`/`limit=` erano
-    rimasti qui mentre `casa/tempo.py::logbook` chiamava gia' `.list(...
+    rimasti qui mentre `home_space/historian.py::logbook` chiamava gia' `.list(...
     entity=...)`)."""
     assert_stessa_firma(Journal.list, _FintaCronaca.list, nome="list")
     assert_stessa_firma(Journal.list, _FintaCronacaCheSolleva.list,

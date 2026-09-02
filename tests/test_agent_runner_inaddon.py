@@ -7,8 +7,8 @@ from unittest.mock import patch
 import pytest
 
 from hiris.app.agent import prompts, runner
-from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS
 from hiris.app.claude_runner import BASE_IDENTITY, BASE_TOOL_RULES
+from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 
 
 def test_build_chat_messages_available():
@@ -452,7 +452,7 @@ def test_il_prompt_di_sistema_del_ponte_non_promette_strumenti_ne_azioni():
     # falsita' SPECULARE, dello stesso genere di quelle tre. Il prompt deve
     # dire l'una e l'altra cosa insieme: nessuno strumento, ma una fotografia
     # -- e la fotografia e' ancorata al TURNO, mai a un orario (il nucleo non
-    # timbra: `casa/nucleo.py::compose` e' pura e non compone nessuna data,
+    # timbra: `home_space/briefing.py::compose` e' pura e non compone nessuna data,
     # quindi qualunque ora nel prompt sarebbe inventata).
     assert "la fotografia qui sotto" in system
     # fix round 1, Important 1: «non e' aggiornabile in questo turno» e' USCITA
@@ -585,7 +585,7 @@ def test_col_ramo_attivo_il_prompt_afferma_gli_strumenti_prefissati():
 def test_il_prompt_del_ponte_smentisce_gli_strumenti_nominati_dalla_persona():
     # Il `system_prompt` che arriva al ponte e' quello delle impostazioni della
     # chat (`impostazioni_chat.DEFAULT_SYSTEM_PROMPT`), scritto per il percorso
-    # SINCRONO -- dove gli strumenti di casa/strumenti.py esistono
+    # SINCRONO -- dove gli strumenti di home_space/tools.py esistono
     # davvero. Qui non esistono: la guida deve smentirlo esplicitamente, o il
     # modello leggerebbe "usa `search`" senza alcun modo di scoprire che non c'e'.
     from hiris.app.chat_settings import DEFAULT_SYSTEM_PROMPT
@@ -679,7 +679,7 @@ def test_col_ramo_attivo_la_persona_non_viene_smentita_ma_ricollegata():
 # **Cosa pinnano adesso i due test qui sotto, insieme.** La nuova condizione di
 # verita', nei due rami:
 #   - con `strumenti_attivi=True` gli strumenti CI SONO, sono ESATTAMENTE
-#     quelli di `casa/strumenti.py` (derivati, mai scritti a mano) e il prompt
+#     quelli di `home_space/tools.py` (derivati, mai scritti a mano) e il prompt
 #     lo dice (il gemello sul prompt e'
 #     `test_col_ramo_attivo_il_prompt_afferma_gli_strumenti_prefissati`);
 #   - con `strumenti_attivi=False` l'asserzione vecchia resta viva PAROLA PER

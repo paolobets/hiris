@@ -3,7 +3,7 @@ il `context_json` di un job risolto -- via `submit()` (Task 1 il risolve) o
 via `sweep_expired()` (Task 1 il fa scadere) -- non deve piu' restare nel
 file `reasoning.db` fino alla potatura a 7 giorni. Dal Task 2 quel campo
 porta il nucleo per intero: aree, dispositivi, entita' e "cio' che le
-persone hanno detto" (`hiris/app/casa/nucleo.py`) -- non un dato tecnico.
+persone hanno detto" (`hiris/app/home_space/briefing.py`) -- non un dato tecnico.
 
 Questo file pinna il comportamento voluto su ENTRAMBE le strade di
 chiusura di un job, non solo una:
@@ -168,9 +168,9 @@ def test_il_job_scaduto_resta_distinguibile_da_un_job_mai_esistito(q):
 # ---------------------------------------------------------------------------
 
 from hiris.app.api.handlers_chat import handle_chat, handle_chat_reply_poll
-from hiris.app.casa.archivio import HomeSpaceStore
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import close_all_stores
+from hiris.app.home_space.store import HomeSpaceStore
 from hiris.app.memory.store import MemoryStore
 
 

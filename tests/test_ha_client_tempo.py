@@ -223,7 +223,7 @@ async def test_diario_distingue_il_silenzio_dal_guasto():
 #
 # `nome`/`messaggio` sono testo libero che Home Assistant non controlla:
 # il titolo di un brano, un messaggio di un'automazione, il nome che un
-# ospite ha dato a un device. `_happened` (casa/tempo.py) li passa al
+# ospite ha dato a un device. `_happened` (home_space/historian.py) li passa al
 # modello cosi' come arrivano da qui -- vanno sanificati QUI, al confine,
 # non a valle.
 
@@ -443,7 +443,7 @@ async def test_statistiche_reggono_anche_lo_start_gia_in_ISO(monkeypatch):
 @pytest.mark.asyncio
 async def test_statistiche_un_istante_illeggibile_resta_illeggibile(monkeypatch):
     """Non si inventa: una forma che non sappiamo leggere passa cosi' com'e',
-    e chi la riceve la rifiuta rumorosamente (`casa/tempo.py`). Convertirla a
+    e chi la riceve la rifiuta rumorosamente (`home_space/historian.py`). Convertirla a
     caso sarebbe peggio del difetto che stiamo chiudendo."""
     c = HAClient("http://ha.local", "token")
 

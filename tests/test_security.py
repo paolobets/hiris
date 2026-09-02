@@ -188,7 +188,7 @@ def test_config_yaml_no_direct_port():
 # either -- their ONLY caller was direct LLM tool dispatch. That caller was
 # already gone before this task: the chat/Test Run surfaces switched to the
 # four `ToolDispatcher` tools (fetta E2 Task 2, "il Test Run passa ai
-# 4 strumenti"; `casa/strumenti.py`'s KNOWLEDGE_TOOLS has no automation
+# 4 strumenti"; `home_space/tools.py`'s KNOWLEDGE_TOOLS has no automation
 # tool at all), and `EVALUATION_ONLY_TOOLS` (claude_runner.py) has
 # deliberately excluded all three from the Sentinel/Agentbot evaluation
 # catalog since before this fetta -- "Strumenti che ATTUANO davvero" are
@@ -205,7 +205,7 @@ def test_config_yaml_no_direct_port():
 # fetta «comandare» (Task 7). One present-tense clause above has stopped being
 # true and is NOT rewritten -- the block is a dated record of why these tests
 # were deleted, and it was correct on its date. The clause is
-# "`casa/strumenti.py`'s KNOWLEDGE_TOOLS has no automation tool at all".
+# "`home_space/tools.py`'s KNOWLEDGE_TOOLS has no automation tool at all".
 # It still has no automation-SPECIFIC tool, but since Task 5 it has `esegui`,
 # which calls any Home Assistant service the installation declares -- and
 # `automation.turn_on` on an `automation.*` entity passes the verification and

@@ -1,7 +1,7 @@
 import pytest
 
-from hiris.app.casa.archivio import HomeSpaceStore
-from hiris.app.casa.strumenti import (
+from hiris.app.home_space.store import HomeSpaceStore
+from hiris.app.home_space.tools import (
     EXECUTE_TOOL_DEF,
     KNOWLEDGE_TOOLS,
     SEARCH_TOOL_DEF,
@@ -106,7 +106,7 @@ def test_il_catalogo_e_questo_e_le_due_strade_che_scrivono_su_home_assistant():
     un sesto modo di leggere gli archivi -- non ne legge nessuno -- ed e' il
     motivo per cui e' uno strumento invece di un campo di `view`: i legami
     sono momentanei, non si archiviano, e chiederli costa un giro di rete che
-    `view` non deve pagare (vedi il docstring di `casa/strumenti.py`).
+    `view` non deve pagare (vedi il docstring di `home_space/tools.py`).
 
     Tre -- `promise`, `agenda`, `cancel` (fetta «lo schedulatore», Task
     6) -- mettono da parte un'azione o una domanda per UN ISTANTE FUTURO,
@@ -124,7 +124,7 @@ def test_il_catalogo_e_questo_e_le_due_strade_che_scrivono_su_home_assistant():
 
     Gli ultimi due -- `trend`, `logbook` (fetta «HIRIS e il tempo», Task
     6) -- non scrivono niente: guardano INDIETRO nel tempo passando per
-    `casa/tempo.py`, come e' andato un valore e cosa e' successo (e per mano
+    `home_space/historian.py`, come e' andato un valore e cosa e' successo (e per mano
     di chi). LEGGONO e basta, come i primi cinque -- ed e' per questo che
     entrano anche nel catalogo del turno delle promesse
     (`keeper/exchange.py::SOLA_LETTURA`), da cui `propose` e `confirm`
@@ -547,7 +547,7 @@ def test_nome_dedotto_e_documentato_in_tutti_gli_strumenti_che_lo_restituiscono(
     letto male il campo di `view` (`nome: null` + una chiave non
     descritta), concludendo «senza nome» mentre il nome c'era. Una forma
     sola, dichiarata in entrambe le definizioni."""
-    from hiris.app.casa.strumenti import SEARCH_TOOL_DEF, VIEW_TOOL_DEF
+    from hiris.app.home_space.tools import SEARCH_TOOL_DEF, VIEW_TOOL_DEF
     for tool_def in (SEARCH_TOOL_DEF, VIEW_TOOL_DEF):
         assert "nome_dedotto" in tool_def["description"], (
             f"«{tool_def['name']}» restituisce nome_dedotto ma non lo dichiara")
@@ -803,7 +803,7 @@ async def test_richiama_con_tipo_piano_lo_dice_anche_dopo_R2(dispatcher):
     ora contiene anche "piano", ma "piano" NON e' un tipo di ancora che
     `remember` possa mai scrivere (`memory/interpretation.VOCABULARY`) --
     la memoria continua a conoscere solo area/entita'/dispositivo. Se
-    `_TETHER_TYPES` (casa/strumenti.py) fosse rimasto derivato da
+    `_TETHER_TYPES` (home_space/tools.py) fosse rimasto derivato da
     `STORE_KEY_PER_TYPE` invece che da `VOCABULARY["ancore"]`,
     "piano" sarebbe scivolato dentro in silenzio, e `fetch` avrebbe
     smesso di insegnare l'errore -- restituendo `{"ricordi": []}`, lo
@@ -848,7 +848,7 @@ async def test_senza_archivi_dice_cosa_manca_non_un_errore_python():
 # Ogni test qui sotto dichiara quale mutazione lo fa cadere: il difetto
 # numero uno di questa campagna e' un test che non puo' fallire.
 
-import hiris.app.casa.strumenti as _modulo_strumenti
+import hiris.app.home_space.tools as _modulo_strumenti
 import hiris.app.memory.lookup_cache as _lookup_cache_modulo
 from hiris.app.memory.lookup_cache import LookupCache
 

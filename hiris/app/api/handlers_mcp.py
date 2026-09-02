@@ -78,7 +78,7 @@ from collections import OrderedDict
 
 from aiohttp import web
 
-from ..casa.strumenti import KNOWLEDGE_TOOLS
+from ..home_space.tools import KNOWLEDGE_TOOLS
 from ..keeper.exchange import PromiseDispatcher, promise_tools
 from ..version import read_version
 from .handlers_chat import create_tool_dispatcher
@@ -249,7 +249,7 @@ def mcp_catalog(definitions: list[dict] | None = None) -> list[dict]:
 
     Trasformazione **meccanica**, e deve restare tale: nessun testo nuovo,
     nessuna descrizione riscritta, nessun nome aggiunto o tolto. Le altre chiavi
-    passano invariate, cosi' che una chiave nuova in `casa/strumenti.py` arrivi
+    passano invariate, cosi' che una chiave nuova in `home_space/tools.py` arrivi
     qui da sola invece di essere dimenticata.
 
     Il parametro serve al turno di una promessa, che ha un catalogo suo
@@ -487,7 +487,7 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
     if isinstance(result, dict) and "errore" in result:
         content["isError"] = True
         # A livello DEBUG, non `info`: il testo dell'errore lo compongono i
-        # gestori (`casa/strumenti.py`, `action/actuator.py`) e puo' contenere
+        # gestori (`home_space/tools.py`, `action/actuator.py`) e puo' contenere
         # dati di casa -- id di entita', nomi di aree, frammenti di frase. Un
         # log e' un posto in cui quelle cose restano scritte, e il livello
         # predefinito dell'add-on non e' `debug`. Che la chiamata sia fallita

@@ -3,7 +3,7 @@
 taglio sia cio' che il taglio NON deve rompere.
 
 Perche' esiste. Dal Task 2 `BASE_SYSTEM_PROMPT` arriva anche al ponte (la chat
-in abbonamento), dove gli strumenti di `casa/strumenti.py` non esistono.
+in abbonamento), dove gli strumenti di `home_space/tools.py` non esistono.
 La prima stesura del task lo passava INTERO e lo faceva smentire dal testo che
 lo segue -- ma dentro ci sono ORDINI di chiamare uno strumento («Usa SEMPRE
 gli strumenti per dati sulla casa», «chiama remember subito»), e il commento

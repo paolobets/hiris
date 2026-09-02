@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 import aiohttp
 import pytest
 
-from hiris.app.casa.archivio import HomeSpaceStore
+from hiris.app.home_space.store import HomeSpaceStore
 from hiris.app.proxy.ha_client import HAClient
 from hiris.app.server import schedule_behavior_reread, schedule_registry_rebuild
 

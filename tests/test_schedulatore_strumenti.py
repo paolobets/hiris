@@ -6,7 +6,7 @@ from typing import ClassVar
 import pytest
 
 from hiris.app.action.registry import ServiceRegistry
-from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS, ToolDispatcher
+from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.proxy.entity_cache import _to_minimal
 from tests._contratti import assert_stessa_firma

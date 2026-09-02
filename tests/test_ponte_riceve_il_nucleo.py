@@ -4,7 +4,7 @@ che quel percorso ha e cio' che non ha.
 
 Prima di questo task i due percorsi di chat erano disuguali: il sincrono
 riceveva il nucleo (`handlers_chat.compose_chat_context`, estratta dal Task
-1) e i quattro strumenti di `casa/strumenti.py`; il ponte riceveva SOLO
+1) e i quattro strumenti di `home_space/tools.py`; il ponte riceveva SOLO
 `history` + `system_prompt` e rispondeva senza sapere niente della casa. Qui
 si pinna la meta' che questa fetta chiude -- il contesto -- e NON gli
 strumenti, che restano fuori (fetta B,
@@ -41,7 +41,6 @@ from aiohttp.test_utils import TestClient, TestServer
 
 from hiris.app.agent import prompts, runner
 from hiris.app.api.handlers_chat import handle_chat
-from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.claude_runner import (
     BASE_IDENTITY,
@@ -51,6 +50,7 @@ from hiris.app.claude_runner import (
     MINIMAL_PROMPT,
     RESTRICT_PROMPT,
 )
+from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 from hiris.app.reasoning.queue import ReasoningQueue
 
 

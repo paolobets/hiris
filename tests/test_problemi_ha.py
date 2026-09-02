@@ -24,7 +24,7 @@ import asyncio
 import pytest
 
 from hiris.app.api.handlers_home_space import compose_briefing
-from hiris.app.casa.nucleo import compose
+from hiris.app.home_space.briefing import compose
 from hiris.app.proxy.ha_client import HAClient
 from hiris.app.server import reread_ha_problems
 

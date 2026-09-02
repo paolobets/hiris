@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import time
 
-from ..casa.tempo import instant_epoch
+from ..home_space.historian import instant_epoch
 from .baseline import aspect
 
 logger = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # pochi secondi, non sono un guasto. Se il primo giro del lavoro periodico
 # cade durante il boot, trattarli come guasto scriverebbe una coppia di righe
 # di rumore (nasce, finisce) per ogni integrazione della casa. Stessi valori
-# di `casa/nucleo.py::_BROKEN_INTEGRATION_STATES` (verificati su
+# di `home_space/briefing.py::_BROKEN_INTEGRATION_STATES` (verificati su
 # `ConfigEntryState`, `homeassistant/config_entries.py`), che pero' non li
 # elenca perche' li esclude gia' per costruzione -- RICOPIATI, non importati,
 # per la stessa ragione di `pavimento.py`: «cosa e' un guasto QUI» e «cosa

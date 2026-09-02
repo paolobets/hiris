@@ -1,6 +1,6 @@
 """L'archivio della memoria -- l'unica cosa di HIRIS che non si ricostruisce.
 
-Tutto il resto (`hiris/app/casa/archivio.py`) e' una REPLICA di cio' che Home
+Tutto il resto (`hiris/app/home_space/store.py`) e' una REPLICA di cio' che Home
 Assistant dichiara: si cancella e si rifa' in pochi secondi. Questo archivio
 no: e' cio' che l'utente ha detto e cio' che HIRIS ne ha capito. Per questo
 vive nel suo file (`/data/memoria.db`), separato da `casa.db` -- non si mette

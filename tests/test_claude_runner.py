@@ -758,7 +758,7 @@ async def test_chat_concurrent_calls_do_not_leak_tool_calls(runner):
 # TEMPLATE_TOOL_DEF) e' uscita da EVALUATION_TOOL_DEFS insieme al resto dei
 # 34: non e' nominata da EVALUATION_ONLY_TOOLS (esclusa di proposito, vedi il
 # commento su quel set in claude_runner.py), e la chat non offre piu' un
-# catalogo da questo file (KNOWLEDGE_TOOLS, casa/strumenti.py). Nessuna
+# catalogo da questo file (KNOWLEDGE_TOOLS, home_space/tools.py). Nessuna
 # combinazione di allowed_tools/allowed_entities puo' piu' far comparire
 # "render_template" in un catalogo che non lo contiene: due dei tre test
 # fallivano gia' per costruzione, il terzo era diventato vacuo. Il filtro

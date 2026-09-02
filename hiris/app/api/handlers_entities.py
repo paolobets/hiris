@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from aiohttp import web
 
-from ..casa.anagrafe import domain_of
+from ..home_space.topology import domain_of
 from ..proxy.entity_cache import unreadable_inventory_error
 
 
@@ -49,7 +49,7 @@ def filter_entities(states: list[dict], domains: set | None, device_classes: set
             "state": s.get("state"),
             # Senza, `state: "72"` non dice se sono gradi Celsius o Fahrenheit
             # -- e chi consuma questa rotta non puo' ripiegare sull'unita'
-            # della casa (vedi `casa.anagrafe.sistema_di_riferimento`).
+            # della casa (vedi `home_space.topology.sistema_di_riferimento`).
             "unit": s.get("unit") or None,
             # Misura di adesso o contatore che sale: e' cio' che dice se ha
             # senso chiederne una statistica.

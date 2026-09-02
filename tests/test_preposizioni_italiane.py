@@ -102,7 +102,7 @@ Che ci siano anche articoli, congiunzioni e `non`, e non solo preposizioni,
 non e' zelo: e' il conto di **due omissioni pagate**. La prima lista ometteva
 `a` nuda e le elisioni, e furono trovate LEGGENDO -- `a_ts`, `a_iso`. La
 seconda -- questa -- ometteva `non`, e con lei cinque nomi in un ambito
-dichiarato chiuso (`casa/anagrafe.py`: `_ID_AREA_NON_LOADED`,
+dichiarato chiuso (`home_space/topology.py`: `_ID_AREA_NON_LOADED`,
 `_ID_DEVICE_NON_LOADED`, `_ID_FLOOR_NON_LOADED`, `device_non_loaded`,
 `area_non_loaded`), piu' `senza` (28 nomi), `che` (7), `come` (4), `oltre`
 (2), `durante` (1). Anche loro trovate leggendo, non dalla lista.

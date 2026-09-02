@@ -20,7 +20,7 @@ import textwrap
 from datetime import UTC
 
 from hiris.app import server
-from hiris.app.casa.archivio import HomeSpaceStore
+from hiris.app.home_space.store import HomeSpaceStore
 from hiris.app.mind.store import READING_RETENTION_S
 from hiris.app.server import watch_system_conditions
 from tests._contratti import assert_stessa_firma
@@ -303,7 +303,7 @@ class _ClienteFinto:
 
 def test_il_cliente_finto_combacia_con_haclient_leggi_registri():
     """Guardia contro il buco misurato dal vivo (review lotto 5,
-    `casa/anagrafe.py`): un finto duck-typed puo' rinominare i suoi
+    `home_space/topology.py`): un finto duck-typed puo' rinominare i suoi
     parametri o cambiarne il conteggio senza che nessuno se ne accorga,
     perche' Python non controlla un'interfaccia -- solo che il nome
     esista. Qui `read_registries` non ha parametri oltre `self`, quindi il
@@ -610,7 +610,7 @@ def test_una_risposta_malformata_ferma_la_riparazione_senza_scrivere(tmp_path, c
     manda sempre -- fa uscire un `TypeError` VERO dalla catena vera: non da
     `build_companions` (che CONTIENE solo il guasto di `HAClient.related`
     stesso, non la forma della sua risposta buona), ma da
-    `casa/domande.py::legami` (`_legami_leggibili`, chiamata da
+    `home_space/queries.py::legami` (`_legami_leggibili`, chiamata da
     `build_companions` FUORI dal suo `try/except` interno): `list(5)`
     solleva mentre traduce le chiavi. E' il controesempio del punto 2: la
     frase «nessuna `Exception` esce mai da qui» era falsa esattamente per
@@ -950,7 +950,7 @@ def test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti(tmp_path)
     from datetime import datetime, timedelta
     from zoneinfo import ZoneInfo
 
-    from hiris.app.casa.archivio import HomeSpaceStore
+    from hiris.app.home_space.store import HomeSpaceStore
     from hiris.app.mind.store import ObservationsStore
 
     roma = ZoneInfo("Europe/Rome")
@@ -1288,7 +1288,7 @@ def _casa_con_un_dispositivo(tmp_path, *, fuso="Europe/Rome"):
     """Un `HomeSpaceStore` reale con un dispositivo e una sua entita' di
     energia -- il minimo che `build_balances` ha bisogno di leggere dal
     registro (fedele al contratto vero, non una finta a parte)."""
-    from hiris.app.casa.archivio import HomeSpaceStore
+    from hiris.app.home_space.store import HomeSpaceStore
 
     casa = HomeSpaceStore(str(tmp_path / "casa.db"))
     casa.replace(

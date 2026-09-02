@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from hiris.app.casa.archivio import HomeSpaceStore
+from hiris.app.home_space.store import HomeSpaceStore
 from hiris.app.server import behavior_sentinel
 
 

@@ -12,7 +12,7 @@ delle cose che HA crea da se' (`input_*`, `counter`, `timer`, `zone`, `sun`,
 ...). Ognuno e' stato verificato come componente vero del sorgente di Home
 Assistant, non ricordato.
 """
-from hiris.app.casa.nucleo import _DOMAIN_NAMES, _domain_name
+from hiris.app.home_space.briefing import _DOMAIN_NAMES, _domain_name
 
 # Le 45 piattaforme di `homeassistant/generated/entity_platforms.py`,
 # copiate dalla fonte. Se HA ne aggiunge una, questa prova lo dice il giorno

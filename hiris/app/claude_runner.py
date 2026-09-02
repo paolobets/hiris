@@ -15,7 +15,7 @@ import anthropic
 # 12 moduli di `tools/` (da cui venivano importate queste definizioni)
 # sopravvivevano solo per donargliele. Cataloghi, `run_with_actions` e
 # `tools/` escono qui insieme -- la chat riceve il suo catalogo da fuori
-# (`strumenti=KNOWLEDGE_TOOLS`, casa/strumenti.py: quattro strumenti che
+# (`strumenti=KNOWLEDGE_TOOLS`, home_space/tools.py: quattro strumenti che
 # conoscono la casa, piu' `execute` che la comanda per la porta unica) da prima
 # di questo task.
 #
@@ -116,10 +116,10 @@ def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None
 # modello «strumenti per leggere stati, controllare dispositivi, inviare
 # notifiche, gestire automazioni, calendario, task» e ordinava di chiamare
 # `save_memory` -- uno strumento che non esiste piu' (il catalogo di oggi e'
-# SOLO cerca/guarda/ricorda/richiama, casa/strumenti.py). Un prompt che
+# SOLO cerca/guarda/ricorda/richiama, home_space/tools.py). Un prompt che
 # ordina di chiamare uno strumento inesistente riapre dal lato del prompt
 # esattamente il bug per cui `remember` e' nato (vedi il docstring in cima a
-# casa/strumenti.py): il modello puo' rispondere "preso nota" senza aver
+# home_space/tools.py): il modello puo' rispondere "preso nota" senza aver
 # salvato, perche' la chiamata che gli abbiamo insegnato a fare fallisce in
 # silenzio. Riscritta perche' descriva cio' che HIRIS e' oggi: conosce la
 # casa e la memoria, risponde, non attua.
@@ -127,7 +127,7 @@ def _compress_old_tool_results(messages: list[dict], keep_last: int = 2) -> None
 # fetta «comandare» (Task 6): «non attua» non e' piu' vero, e la riscrittura
 # di allora e' diventata la falsita' che quel commento vieta -- girata al
 # contrario. Il Task 5 ha messo `execute` nel catalogo unico
-# (`casa/strumenti.py`) e quindi nei tool del ramo sincrono E nell'argv della
+# (`home_space/tools.py`) e quindi nei tool del ramo sincrono E nell'argv della
 # CLI: il modello RICEVE lo strumento, e questa costante gli diceva «non
 # controlli dispositivi ... rispondi, non agisci». Un ordine di NON usare uno
 # strumento che esiste e' lo stesso difetto dell'ordine di usarne uno che non
@@ -357,7 +357,7 @@ MAX_TOKENS = 4096
 # modello propone poche viste per volta" -- una dichiarazione falsa al
 # presente: HIRIS 2.0 LEGGE le plance (proxy/ha_client.py, casa/
 # comportamento.py) e non ne scrive nessuna, e il catalogo della chat e'
-# quello di casa/strumenti.py -- che dalla fetta «comandare» chiama servizi di
+# quello di home_space/tools.py -- che dalla fetta «comandare» chiama servizi di
 # Home Assistant (`execute`) ma continua a non scrivere plance.
 # fix round 1: la riscrittura aveva lasciato dentro un secondo soggetto morto
 # -- diceva "il tetto da 4096 dell'agente di valutazione" al PRESENTE, ma
@@ -836,7 +836,7 @@ class ClaudeRunner:
         effective_model = resolve_model(model, agent_type, self._chosen_model())
         if tools is not None:
             # Il catalogo arriva gia' deciso dal chiamante (es. gli
-            # strumenti di ToolDispatcher, casa/strumenti.py).
+            # strumenti di ToolDispatcher, home_space/tools.py).
             tools = list(tools)
         else:
             # fetta E3 Task 8: non esiste piu' un catalogo di scorta da cui

@@ -1,7 +1,7 @@
 import re
 
-from hiris.app.casa import nucleo
-from hiris.app.casa.nucleo import compose
+from hiris.app.home_space import briefing
+from hiris.app.home_space.briefing import compose
 
 _CASA = {
     "piani": [{"id": "terra", "nome": "Piano terra", "livello": 0}],
@@ -84,13 +84,13 @@ def test_un_ricordo_legittimo_con_accenti_e_apostrofi_non_si_mutila():
 
 
 # N1 (review indipendente 25/08/2026): `_memory_lines` deve usare la
-# funzione CONDIVISA `domande.ricordi_sanificati`, non una propria copia
+# funzione CONDIVISA `queries.ricordi_sanificati`, non una propria copia
 # inline di `sanitize_text` -- e' l'unico modo per cui il docstring di
 # `_sanitize.py` ("un punto solo, non tre") sia vero da solo, non per una
 # lista tenuta allineata a mano.
 def test_il_nucleo_usa_la_funzione_condivisa_ricordi_sanificati():
-    from hiris.app.casa import domande
-    assert nucleo.sanitized_memories is domande.sanitized_memories
+    from hiris.app.home_space import queries
+    assert briefing.sanitized_memories is queries.sanitized_memories
 
 def test_i_nomi_di_cio_che_la_casa_fa_da_sola_ci_sono_i_corpi_no():
     testo, _ = compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)
@@ -650,7 +650,7 @@ def test_quattro_valvole_di_un_solo_dispositivo_si_annotano_col_nome():
     raggruppare, dovrebbe indovinare di cercare un dispositivo di cui non
     conosce il nome."""
     entita = [_e(f"valve.v{i}", "dev1") for i in range(4)]
-    assert nucleo._device_annotation(
+    assert briefing._device_annotation(
         entita, "valve", 4, {"dev1": "Irrigazione giardino"}) == " (Irrigazione giardino)"
 
 
@@ -665,7 +665,7 @@ def test_una_sola_entita_su_un_solo_dispositivo_non_si_annota():
     frequente della casa. La presa porta anche un `sensor`: il filtro sul
     dominio deve escluderlo."""
     entita = [_e("light.presa", "dev1"), _e("sensor.presa_w", "dev1")]
-    assert nucleo._device_annotation(entita, "light", 1, {"dev1": "Presa cucina"}) == ""
+    assert briefing._device_annotation(entita, "light", 1, {"dev1": "Presa cucina"}) == ""
 
 
 def test_quattro_valvole_di_quattro_dispositivi_non_si_annotano():
@@ -676,7 +676,7 @@ def test_quattro_valvole_di_quattro_dispositivi_non_si_annotano():
     per una."""
     entita = [_e(f"valve.v{i}", f"dev{i}") for i in range(4)]
     nomi = {f"dev{i}": f"Valvola {i}" for i in range(4)}
-    assert nucleo._device_annotation(entita, "valve", 4, nomi) == ""
+    assert briefing._device_annotation(entita, "valve", 4, nomi) == ""
 
 
 def test_dodici_sensori_di_tre_dispositivi_contano_e_non_elencano():
@@ -684,7 +684,7 @@ def test_dodici_sensori_di_tre_dispositivi_contano_e_non_elencano():
     che tiene il budget: senza, 61 righe come questa citerebbero 344 nomi."""
     entita = [_e(f"sensor.s{i}", f"dev{i % 3}") for i in range(12)]
     nomi = {f"dev{i}": f"Presa {i}" for i in range(3)}
-    assert nucleo._device_annotation(entita, "sensor", 12, nomi) == ""
+    assert briefing._device_annotation(entita, "sensor", 12, nomi) == ""
 
 
 def test_un_dispositivo_e_un_entita_libera_non_producono_un_annotazione_parziale():
@@ -692,11 +692,11 @@ def test_un_dispositivo_e_un_entita_libera_non_producono_un_annotazione_parziale
     coprirebbe solo una parte del conteggio. Mutazione uccisa: togliere
     `senza or` dalla condizione."""
     entita = [_e("sensor.a", "dev1"), _e("sensor.b", "dev1"), _e("sensor.c")]
-    assert nucleo._device_annotation(entita, "sensor", 3, {"dev1": "Presa"}) == ""
+    assert briefing._device_annotation(entita, "sensor", 3, {"dev1": "Presa"}) == ""
 
 
 def test_un_dispositivo_senza_nome_mostra_l_id_marcato_come_id():
-    """`name_by_user or name` sono entrambi nullable in casa/archivio.py. Un
+    """`name_by_user or name` sono entrambi nullable in home_space/store.py. Un
     id tecnico si marca come dedotto, mai spacciato per nome dichiarato --
     ed e' comunque la chiave con cui `guarda("dispositivo", ...)` lo trova.
 
@@ -705,9 +705,9 @@ def test_un_dispositivo_senza_nome_mostra_l_id_marcato_come_id():
     non nomina -- mutazione uccisa: togliere `.strip()`, che stamperebbe
     " (   )")."""
     entita = [_e(f"valve.v{i}", "dev9") for i in range(3)]
-    assert nucleo._device_annotation(entita, "valve", 3, {"dev9": ""}) == " (id: dev9)"
-    assert nucleo._device_annotation(entita, "valve", 3, {}) == " (id: dev9)"
-    assert nucleo._device_annotation(entita, "valve", 3, {"dev9": "   "}) == " (id: dev9)"
+    assert briefing._device_annotation(entita, "valve", 3, {"dev9": ""}) == " (id: dev9)"
+    assert briefing._device_annotation(entita, "valve", 3, {}) == " (id: dev9)"
+    assert briefing._device_annotation(entita, "valve", 3, {"dev9": "   "}) == " (id: dev9)"
 
 
 def test_col_registro_dispositivi_caduto_non_si_annota_niente():
@@ -715,14 +715,14 @@ def test_col_registro_dispositivi_caduto_non_si_annota_niente():
     dispositivo". Mutazione uccisa: usare `device_names or {}` invece del
     controllo esplicito, che stamperebbe "(id: ...)" su tutta la casa."""
     entita = [_e(f"valve.v{i}", "dev1") for i in range(4)]
-    assert nucleo._device_annotation(entita, "valve", 4, None) == ""
+    assert briefing._device_annotation(entita, "valve", 4, None) == ""
 
 
 def test_i_portatori_contano_le_entita_senza_dispositivo_una_a_testa():
     entita = [_e("sensor.a", "dev1"), _e("sensor.b", "dev1"),
               _e("sensor.c"), _e("light.x", "dev2")]
-    assert nucleo._carriers(entita, "sensor") == (["dev1"], 1)
-    assert nucleo._carriers(entita, "light") == (["dev2"], 0)
+    assert briefing._carriers(entita, "sensor") == (["dev1"], 1)
+    assert briefing._carriers(entita, "light") == (["dev2"], 0)
 
 
 def test_i_portatori_conservano_l_ordine_dell_anagrafe():
@@ -733,7 +733,7 @@ def test_i_portatori_conservano_l_ordine_dell_anagrafe():
     arrivo = ["dev_mu", "dev_alfa", "dev_zeta", "dev_beta", "dev_omega"]
     entita = [_e(f"sensor.s{i}", d) for i, d in enumerate(arrivo)]
     entita.append(_e("sensor.s99", "dev_mu"))  # ritorno del primo: non si ripete
-    assert nucleo._carriers(entita, "sensor") == (arrivo, 0)
+    assert briefing._carriers(entita, "sensor") == (arrivo, 0)
 
 
 # --- l'annotazione collegata al nucleo (A2) --------------------------------
@@ -862,15 +862,15 @@ def test_l_annotazione_non_solleva_mai_con_un_conteggio_incoerente():
     `compose()` -- ed e' proprio per questo che la guardia va pinnata a mano:
     nessun test di composizione puo' farla cadere. Mutazione uccisa:
     togliere `if not dispositivi` -> `IndexError: list index out of range`."""
-    assert nucleo._device_annotation([], "valve", 4, {"dev1": "Irrigazione"}) == ""
-    assert nucleo._device_annotation(
+    assert briefing._device_annotation([], "valve", 4, {"dev1": "Irrigazione"}) == ""
+    assert briefing._device_annotation(
         [_e("light.a", "dev1")], "valve", 4, {"dev1": "Irrigazione"}) == ""
 
 
 def test_il_nucleo_regge_un_registro_dispositivi_a_meta():
     """Righe che l'archivio produce DAVVERO: in SQLite `id TEXT PRIMARY KEY`
     ammette NULL, e `nome` e' `name_by_user or name` -- entrambi nullable
-    (casa/archivio.py). La tabella dei nomi che `compose()` costruisce e' la
+    (home_space/store.py). La tabella dei nomi che `compose()` costruisce e' la
     giunzione NUOVA di questa fetta e va pinnata da fuori: le prove di A1
     ricevono il dizionario gia' fatto e non possono vedere come nasce.
 

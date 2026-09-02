@@ -16,8 +16,8 @@ import logging
 import re
 from pathlib import Path
 
-from .anagrafe import domain_of
-from .lettura_yaml import load_file
+from .topology import domain_of
+from .yaml_loader import load_file
 
 logger = logging.getLogger(__name__)
 

@@ -924,7 +924,7 @@ async def test_chat_healthy_backend_behavior_unchanged(tmp_path):
 # file gemello: RENDER_TEMPLATE_TOOL_DEF e' uscita da EVALUATION_TOOL_DEFS
 # insieme al resto dei 34 (non nominata da EVALUATION_ONLY_TOOLS, esclusa di
 # proposito), e la chat non offre piu' un catalogo da questo file
-# (KNOWLEDGE_TOOLS, casa/strumenti.py). Nessuna combinazione di
+# (KNOWLEDGE_TOOLS, home_space/tools.py). Nessuna combinazione di
 # allowed_tools/allowed_entities puo' piu' far comparire "render_template" in
 # un catalogo che non lo contiene: tre dei sei test fallivano gia' per
 # costruzione, gli altri tre erano diventati vacui.

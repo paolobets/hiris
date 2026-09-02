@@ -17,8 +17,8 @@ import time
 
 from aiohttp import web
 
-from ..casa.anagrafe import category_names, hierarchy, live_mirror
-from ..casa.nucleo import compose
+from ..home_space.briefing import compose
+from ..home_space.topology import category_names, hierarchy, live_mirror
 from ..proxy.entity_cache import inventory_is_readable
 
 
@@ -254,7 +254,7 @@ def compose_briefing(app) -> tuple[str, dict]:
         memories = []
 
     # Lo specchio dello stato, dalla funzione condivisa e non riletto a mano:
-    # `casa.anagrafe.live_mirror` e' la stessa che usano `guarda`, `cerca` e
+    # `home_space.topology.live_mirror` e' la stessa che usano `guarda`, `cerca` e
     # la correzione dei ricordi. Prima questa porta -- che alimenta SIA
     # `GET /api/briefing` SIA il contesto della chat, cioe' la piu' importante --
     # se lo rileggeva da sola: una normalizzazione imparata li' non sarebbe mai
@@ -280,7 +280,7 @@ def compose_briefing(app) -> tuple[str, dict]:
     # accanto a `entity_cache` -- una fotografia riletta ogni pochi minuti da
     # `server.reread_ha_problems`, mai una tabella. La ragione e' scritta per
     # esteso li'; in breve e' la stessa per cui `state` non entra nel sistema di
-    # riferimento (vedi `casa/anagrafe.sistema_di_riferimento`): un problema e'
+    # riferimento (vedi `home_space/topology.sistema_di_riferimento`): un problema e'
     # momentaneo, l'utente lo ripara con un clic in Home Assistant, e un
     # archivio che si rilegge di rado continuerebbe ad annunciarlo per ore dopo
     # che non c'e' piu'. Un falso allarme ripetuto in ogni prompt e'
@@ -299,7 +299,7 @@ def compose_briefing(app) -> tuple[str, dict]:
     # replica si ricostruisce da sola al primo evento di registro. Una tabella
     # riletta di rado continuerebbe ad annunciare per ore una divergenza gia'
     # rientrata, che e' il falso allarme che questa fetta esiste per non
-    # produrre (stesso ragionamento di `casa/anagrafe.sistema_di_riferimento`
+    # produrre (stesso ragionamento di `home_space/topology.sistema_di_riferimento`
     # su `state`).
     #
     # Si legge con `.get()` e si passa cosi' com'e': `None` (nessun giro

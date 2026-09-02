@@ -16,7 +16,7 @@ import logging
 from unittest.mock import patch
 
 from hiris.app.agent import runner
-from hiris.app.casa.strumenti import KNOWLEDGE_TOOLS
+from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 
 # ── i mattoni dei flussi finti ───────────────────────────────────────────────
 

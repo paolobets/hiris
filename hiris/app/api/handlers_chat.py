@@ -6,7 +6,6 @@ import time
 from aiohttp import web
 
 from ..api.handlers_models import _STORE_DEFAULTS
-from ..casa.strumenti import KNOWLEDGE_TOOLS, ToolDispatcher
 from ..chat_store import (
     _is_toxic_assistant,
     append_messages,
@@ -23,6 +22,7 @@ from ..chat_store import (
 # scioglie anche mezzo ciclo: era `handlers_chat` -> `agent.runner` la meta'
 # che obbligava `agent/runner._mcp_server_name` a un import differito.
 from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
+from ..home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from ..model_resolution import downgrade_note
 from ..steering import who_answers
 from .handlers_home_space import compose_briefing
@@ -56,7 +56,7 @@ def _trim_history(history: list[dict], max_tokens: int = _MAX_HISTORY_TOKENS) ->
 def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
     """L'UNICO punto del prodotto in cui `ToolDispatcher` viene costruito.
 
-    I tredici strumenti della chat (`casa/strumenti.py`) -- non il catalogo
+    I tredici strumenti della chat (`home_space/tools.py`) -- non il catalogo
     di trentaquattro di ALL_TOOL_DEFS: cinque conoscono la casa (`search`,
     `view`, `related`, `remember`, `fetch`), il sesto, `execute`, la comanda
     passando per la porta unica (vedi il docstring di quel modulo), tre
@@ -67,7 +67,7 @@ def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
     nuova -- passando per l'officina (`azione/construction/workshop.py`), e gli
     ultimi due (`trend`, `logbook`, fetta «HIRIS e il tempo») guardano
     INDIETRO nel tempo -- come e' andato un valore, cosa e' successo e per
-    mano di chi -- passando per `casa/tempo.py`. Il dispatcher si costruisce
+    mano di chi -- passando per `home_space/historian.py`. Il dispatcher si costruisce
     dagli stessi oggetti dell'app che alimentano `compose_briefing()`
     (`archivio_casa`, `archivio_memoria`, `entity_cache`), piu' `porta_azione`,
     `officina` e `cronaca` -- lo stesso specchio dello stato vivo, non uno

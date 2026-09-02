@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 import time
 
-from ..casa.strumenti import KNOWLEDGE_TOOLS
+from ..home_space.tools import KNOWLEDGE_TOOLS
 from ..model_resolution import _DOWNGRADE_REASONS
 
 logger = logging.getLogger(__name__)

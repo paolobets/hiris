@@ -7,7 +7,7 @@ conosca la politica di conservazione del recorder di QUESTA casa.
 """
 import pytest
 
-from hiris.app.casa.tempo import (
+from hiris.app.home_space.historian import (
     DEFAULT_HOURS,
     GRANULARITY_THRESHOLD_HOURS,
     MAX_WINDOW_HOURS,

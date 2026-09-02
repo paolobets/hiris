@@ -4,7 +4,7 @@ Un finto scritto a mano (non un `Mock`) puo' rinominare i suoi parametri
 indipendentemente da chi imita: se il chiamante vero e il finto vengono
 rinominati insieme, ALLA STESSA maniera sbagliata, la suite resta verde
 mentre il contratto reale e' gia' rotto (fetta «la rinomina», Task 7 —
-review indipendente, tre Critical: `casa/strumenti.py` chiamava
+review indipendente, tre Critical: `home_space/tools.py` chiamava
 `Workshop.proponi`/`applica` con `origine=`/`turno=`/`adesso=` mentre il
 finto in `test_costruzione_strumenti.py` accettava esattamente quei nomi,
 non quelli veri).

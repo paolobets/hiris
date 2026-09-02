@@ -40,7 +40,7 @@ can enter the model's context calls one of the two functions below:
   WHATEVER entity was asked for, and `trend`'s own tool description
   promotes it for "whether a door was left open". Same vector as `logbook`,
   same fix.
-- `casa/archivio.py::HomeSpaceStore.replace` -- the SOLE writer of the
+- `home_space/store.py::HomeSpaceStore.replace` -- the SOLE writer of the
   house registry mirror. Sanitizes `nome`/`alias`/`titolo`/`motivo` for
   piani, aree, dispositivi (incl. produttore/modello), entita, etichette,
   categorie and integrazioni at write time, so every reader (`leggi()`, the
@@ -50,7 +50,7 @@ can enter the model's context calls one of the two functions below:
   friendly_name/title, `state`-shaped); `integrazioni.motivo` (why an
   integration failed, not a `state`) goes through `sanitize_ha_free_text`
   (500) since M2, correzioni-minori.md.
-- `casa/archivio.py::HomeSpaceStore.replace_behavior` -- a SECOND,
+- `home_space/store.py::HomeSpaceStore.replace_behavior` -- a SECOND,
   separate writer (different cadence, different source, see its docstring)
   for automations/scripts. Sanitizes `nome` only. `nome` is Home Assistant's
   `friendly_name`, read by `comportamento.reread()` via a RAW
@@ -60,12 +60,12 @@ can enter the model's context calls one of the two functions below:
   (`corpo`, the automation/script body) genuinely comes from a local YAML
   file the house owner edits. Two fields, two sources, two answers: `corpo`
   is left alone (see below), `nome` is not.
-- `casa/domande.py::ricordi_sanificati` -- a memory is the one thing that
+- `home_space/queries.py::ricordi_sanificati` -- a memory is the one thing that
   re-enters the model's context on every subsequent turn without being asked
   for (I-1: a `remember()` call from an injected turn would otherwise plant a
-  permanent backdoor). ONE shared function, called from `casa/nucleo.py::
-  _righe_ricordi` (the always-on channel), `casa/domande.py::guarda` (by id
-  or anchored to an area/entity/device), AND `casa/strumenti.py::_recall`
+  permanent backdoor). ONE shared function, called from `home_space/briefing.py::
+  _righe_ricordi` (the always-on channel), `home_space/queries.py::guarda` (by id
+  or anchored to an area/entity/device), AND `home_space/tools.py::_recall`
   (`MemoryStore.per_tether`, a THIRD read path the first pass missed --
   it does not go through `guarda`, so the same memory came out filtered from
   one door and raw from another). A single shared function, not three copies
@@ -78,7 +78,7 @@ can enter the model's context calls one of the two functions below:
   both promises true at once.
 
 DELIBERATELY NOT WIRED, and why: the `corpo` field of an automation/script
-(`casa/comportamento.py`, `automations.yaml`/`scripts.yaml`) is a local file
+(`home_space/behavior.py`, `automations.yaml`/`scripts.yaml`) is a local file
 the house owner edits, not something a network device or a compromised
 integration can write -- it is not the vector this fix closes. This is
 narrower than the same sentence used to be: it once covered the whole
@@ -282,7 +282,7 @@ def sanitize_ha_value(v) -> str:
 # `state` string -- correct for `sanitize_ha_value` above, wrong for fields
 # that are not `state`. `messaggio` (a logbook entry's free text --
 # ha_client.py::diario) and `motivo` (why an integration failed to start --
-# casa/archivio.py::sostituisci) are HA free text with no such ceiling: a
+# home_space/store.py::sostituisci) are HA free text with no such ceiling: a
 # legitimate one -- an automation message that quotes an SMS/email body, an
 # exception summary from a broken integration -- can honestly run past 255
 # without being an attack. Clamping them to the `state` ceiling was honest

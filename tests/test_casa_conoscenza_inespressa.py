@@ -21,9 +21,9 @@ un modo per chiederlo, non e' conoscenza, e' zavorra.
 """
 import pytest
 
-from hiris.app.casa.anagrafe import actual_unit
-from hiris.app.casa.archivio import HomeSpaceStore
-from hiris.app.casa.domande import view
+from hiris.app.home_space.queries import view
+from hiris.app.home_space.store import HomeSpaceStore
+from hiris.app.home_space.topology import actual_unit
 from hiris.app.memory.interpretation import deduci_unit
 from hiris.app.memory.resolver import costruisci_indice
 

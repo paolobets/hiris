@@ -87,7 +87,7 @@ serve ADESSO (la notifica dello Schedulatore), non un'ipotesi sul resto.
 """
 from dataclasses import dataclass, field
 
-from ..casa.anagrafe import domain_of
+from ..home_space.topology import domain_of
 
 # I servizi di questo dominio si applicano a QUALUNQUE dominio di entita'
 # (`homeassistant.turn_off` spegne luci, prese, media player...). Senza

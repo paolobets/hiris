@@ -12,10 +12,10 @@ test che li CONTA e' quello che impedisce al sesto di nascere senza.
 import re
 from pathlib import Path
 
-from hiris.app.casa.anagrafe import live_mirror
+from hiris.app.home_space.topology import live_mirror
 from hiris.app.proxy.entity_cache import _to_minimal
 
-_SORGENTE_DOMANDE = Path(__file__).parent.parent / "hiris" / "app" / "casa" / "domande.py"
+_SORGENTE_DOMANDE = Path(__file__).parent.parent / "hiris" / "app" / "home_space" / "queries.py"
 
 
 def test_la_proiezione_conserva_l_istante_del_cambio():

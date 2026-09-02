@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from hiris.app.casa.archivio import HomeSpaceStore
+from hiris.app.home_space.store import HomeSpaceStore
 from hiris.app.mind.facts import day_boundaries
 from hiris.app.server import build_balances
 from tests.test_cervello_comprimari import _ClienteLegami

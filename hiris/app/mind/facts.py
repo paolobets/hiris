@@ -29,7 +29,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from ..casa.tempo import home_space_zone
+from ..home_space.historian import home_space_zone
 from .baseline import aspect
 
 # `aggregate_day` e' SINCRONA: non fa nessuna lettura di rete. I comprimari
@@ -267,7 +267,7 @@ def day_boundaries(day: str, timezone: str | None) -> tuple[float, float]:
     in due giorni.
 
     **Pubblica (correzione del giro di review, punto 4).** Prima era `_confini`
-    e importava `_zona`, un'altra privata, da `casa/tempo.py`: due nomi con
+    e importava `_zona`, un'altra privata, da `home_space/historian.py`: due nomi con
     underscore attraversati da fuori dal solo import. Il calcolo e' uno solo
     (nessun doppione nel prodotto); tenerlo privato avrebbe solo obbligato chi
     ne ha bisogno a importare comunque il nome privato, o a riscrivere il

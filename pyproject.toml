@@ -110,8 +110,8 @@ ignore = [
 # (`extend-select = [..., "S"]`) su `hiris scripts tests conftest.py
 # .smoke-test` produce 26 rilievi: S608 10, S324 3, S603 3, S105 2, S107 2,
 # S310 2, S101 1, S104 1, S506 1, S607 1. Di questi, S506 e' un FALSO
-# POSITIVO gia' verificato: hiris/app/casa/lettura_yaml.py:56 chiama
-# `yaml.load` con `_CaricatoreHA`, che eredita da `yaml.SafeLoader` — ruff non
+# POSITIVO gia' verificato: hiris/app/home_space/yaml_loader.py:56 chiama
+# `yaml.load` con `_HALoader`, che eredita da `yaml.SafeLoader` — ruff non
 # risale la gerarchia delle classi e non lo vede. Il codice lo spiega gia' in
 # un commento e un test lo dimostra. Gli altri 25 restano da valutare uno per
 # uno: non sono ne' accesi ne' esclusi, sono semplicemente non ancora guardati.

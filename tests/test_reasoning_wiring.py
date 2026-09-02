@@ -85,7 +85,7 @@ class _SpiaReasoningQueue:
 
 
 def test_la_reasoning_queue_riceve_leggi_fuso_e_legge_il_fuso_della_casa(tmp_path):
-    from hiris.app.casa.archivio import HomeSpaceStore
+    from hiris.app.home_space.store import HomeSpaceStore
 
     archivio_casa = HomeSpaceStore(str(tmp_path / "casa.db"))
     try:

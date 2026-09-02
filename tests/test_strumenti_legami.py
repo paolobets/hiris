@@ -22,9 +22,9 @@ import hashlib
 
 import pytest
 
-from hiris.app.casa.archivio import HomeSpaceStore
-from hiris.app.casa.domande import LINK_NAME, related, view
-from hiris.app.casa.strumenti import ToolDispatcher
+from hiris.app.home_space.queries import LINK_NAME, related, view
+from hiris.app.home_space.store import HomeSpaceStore
+from hiris.app.home_space.tools import ToolDispatcher
 from hiris.app.memory.store import MemoryStore
 from hiris.app.proxy.ha_client import HAClient
 from tests.test_cervello_comprimari import _ClienteLegami
@@ -218,7 +218,7 @@ async def test_i_legami_non_finiscono_in_nessun_archivio(tmp_path, memoria):
 
     I legami sono momentanei quanto lo stato -- un'automazione salvata un
     minuto fa li cambia -- ed e' la stessa ragione per cui `state` sta fuori
-    dal sistema di riferimento (`casa/anagrafe.sistema_di_riferimento`): «in
+    dal sistema di riferimento (`home_space/topology.sistema_di_riferimento`): «in
     un archivio che si rilegge di rado mentirebbe poche ore dopo, ed e' peggio
     che non saperlo».
 

@@ -97,7 +97,7 @@ _ENERGIA = frozenset({"energy", "power", "gas", "water"})
 # ed era il buco peggiore possibile, sulla categoria di dati che conta piu'
 # di tutte (docs/design/2026-08-26-l-osservatore.md §4).
 #
-# Il vocabolario gemello vive in `casa/nucleo.py::_EVENT_DOMAINS` e
+# Il vocabolario gemello vive in `home_space/briefing.py::_EVENT_DOMAINS` e
 # `_EVENT_CLASSES`. La prima e' un giudizio del prodotto, misurato
 # sull'impianto, con gli stati verificati il 20/08/2026; la seconda e'
 # verificata sulla documentazione di Home Assistant il 16/08/2026. Qui NON

@@ -23,8 +23,8 @@ Spec: docs/design/2026-08-16-il-vocabolario-delle-tipologie.md
 """
 import pytest
 
-from hiris.app.casa import anagrafe, nucleo
-from hiris.app.casa.nucleo import compose
+from hiris.app.home_space import briefing, topology
+from hiris.app.home_space.briefing import compose
 
 # Le finte vivono gia' in `test_nucleo.py`: si riusano invece di riscriverle.
 # Due finte che fingono la stessa casa sono la seconda rappresentazione in
@@ -105,7 +105,7 @@ def test_ogni_classe_di_evento_ha_anche_un_significato():
     non ha un significato si leggerebbe «acceso» -- cioe' rientrerebbe proprio
     il difetto che questa fetta chiude, su una riga sola. `_EVENT_CLASSES` vive
     in `nucleo`, `_CLASS_MEANING` nella sua unica casa, `anagrafe`."""
-    senza = sorted(nucleo._EVENT_CLASSES - set(anagrafe._CLASS_MEANING))
+    senza = sorted(briefing._EVENT_CLASSES - set(topology._CLASS_MEANING))
     assert not senza, f"classi che entrano nel digesto senza significato: {senza}"
 
 
@@ -125,7 +125,7 @@ def test_porte_e_finestre_si_leggono_ancora_aperto_e_chiuso():
     della mappa dei significati. La prova che l'estensione ha ASSORBITO il caso
     particolare invece di affiancarlo -- che e' la differenza fra finire un
     vocabolario e aggiungergliene accanto un secondo."""
-    assert not hasattr(nucleo, "_CLASSI_APERTURA"), (
+    assert not hasattr(briefing, "_CLASSI_APERTURA"), (
         "la tabella vecchia deve sparire, non restare accanto alla nuova")
     sezione = _sezione_notevole(compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)[0])
     assert "Porta" in sezione and "aperto" in sezione
@@ -136,7 +136,7 @@ def test_porte_e_finestre_si_leggono_ancora_aperto_e_chiuso():
 def test_un_entita_diagnostic_non_entra_qualunque_sia_il_suo_stato():
     """Il caso da 179 unita' su 300. Home Assistant DICHIARA che queste non
     sono primarie, e la sua documentazione dice che sono normalmente nascoste
-    dalle viste principali. HIRIS legge gia' il campo (`casa/archivio.py:135`)
+    dalle viste principali. HIRIS legge gia' il campo (`home_space/store.py:135`)
     e il digesto lo ignorava."""
     sezione = _sezione_notevole(_con(
         [_voce("switch.led_stato", "LED di stato", categoria="diagnostic")],
@@ -179,7 +179,7 @@ def test_un_telefono_in_casa_non_e_un_evento_MA_guarda_lo_riporta():
     non saprebbe piu' rispondere a «chi e' in casa?». Senza la seconda meta' di
     questa prova avremmo costruito un filtro invece di un vocabolario, e la
     suite sarebbe restata verde."""
-    from hiris.app.casa.domande import view
+    from hiris.app.home_space.queries import view
     voce = _voce("device_tracker.paolo", "Telefono di Paolo")
     sezione = _sezione_notevole(_con([voce], {"device_tracker.paolo": "home"}))
     assert "Telefono di Paolo" not in sezione
@@ -277,17 +277,17 @@ def test_una_nascosta_DISABILITATA_non_si_conta_due_volte():
 # ── R9: il vocabolario del nucleo pinnato alla fonte ───────────────────────
 #
 # `_ACTIVE_STATES`, `_EVENT_DOMAINS` e `_EVENT_CLASSES` sono scritte a mano in
-# nucleo.py. Senza queste prove, togliere una voce (o non aggiungerne una
+# briefing.py. Senza queste prove, togliere una voce (o non aggiungerne una
 # quando Home Assistant introduce un dominio o una device_class nuova) non
 # farebbe rosso nessun test -- lo stesso rischio gia' pagato con
 # `carbon_monoxide`/`co` (vedi in cima a questo file). `_CLASS_MEANING`
-# in anagrafe.py aveva gia' avuto questo trattamento; qui lo stesso.
+# in topology.py aveva gia' avuto questo trattamento; qui lo stesso.
 #
-# LIMITE DICHIARATO: nucleo.py e' PURO e non installa Home Assistant (vedi
+# LIMITE DICHIARATO: briefing.py e' PURO e non installa Home Assistant (vedi
 # il suo docstring), quindi non c'e' un enum vero da importare e confrontare
 # a runtime -- come per `_PIATTAFORME_HA` in test_vocabolario_domini.py,
 # l'elenco sotto e' ricopiato A MANO dalla fonte (vedi i commenti sopra le
-# tre liste in nucleo.py per dove ciascuna voce e' verificata). La prova non
+# tre liste in briefing.py per dove ciascuna voce e' verificata). La prova non
 # si accorge se Home Assistant cambia la fonte da sola: va RIVISTA a mano
 # quando si aggiorna Home Assistant, o quando entra un dominio/classe nuova
 # nel prodotto.
@@ -298,8 +298,8 @@ _STATI_ATTIVI_HA = {"on", "open", "unlocked", "playing", "cleaning"}
 def test_stati_attivi_e_pinnato_alla_fonte():
     """Mutazione: togliere uno stato da `_ACTIVE_STATES` deve far rosso
     questo test."""
-    senza = sorted(_STATI_ATTIVI_HA - nucleo._ACTIVE_STATES)
-    extra = sorted(nucleo._ACTIVE_STATES - _STATI_ATTIVI_HA)
+    senza = sorted(_STATI_ATTIVI_HA - briefing._ACTIVE_STATES)
+    extra = sorted(briefing._ACTIVE_STATES - _STATI_ATTIVI_HA)
     assert not senza and not extra, (
         f"_STATI_ATTIVI e' cambiato senza aggiornare questo pin -- mancanti: "
         f"{senza}, in piu': {extra}")
@@ -314,8 +314,8 @@ _DOMINI_EVENTO_HA = {
 def test_domini_evento_e_pinnato_alla_fonte():
     """Mutazione: togliere un dominio da `_EVENT_DOMAINS` deve far rosso
     questo test."""
-    senza = sorted(_DOMINI_EVENTO_HA - nucleo._EVENT_DOMAINS)
-    extra = sorted(nucleo._EVENT_DOMAINS - _DOMINI_EVENTO_HA)
+    senza = sorted(_DOMINI_EVENTO_HA - briefing._EVENT_DOMAINS)
+    extra = sorted(briefing._EVENT_DOMAINS - _DOMINI_EVENTO_HA)
     assert not senza and not extra, (
         f"_DOMINI_EVENTO e' cambiato senza aggiornare questo pin -- "
         f"mancanti: {senza}, in piu': {extra}")
@@ -327,7 +327,7 @@ def test_domini_evento_sono_tutte_piattaforme_vere_di_home_assistant():
     l'eccezione descriverebbe un dominio che non esiste. Sottoinsieme, come
     quello gia' pinnato fra `_EVENT_CLASSES` e `_CLASS_MEANING`."""
     from tests.test_vocabolario_domini import _PIATTAFORME_HA
-    sconosciuti = sorted(nucleo._EVENT_DOMAINS - set(_PIATTAFORME_HA))
+    sconosciuti = sorted(briefing._EVENT_DOMAINS - set(_PIATTAFORME_HA))
     assert not sconosciuti, f"domini che Home Assistant non ha: {sconosciuti}"
 
 
@@ -341,8 +341,8 @@ def test_classi_evento_e_pinnato_alla_fonte():
     """Mutazione: togliere una classe da `_EVENT_CLASSES` deve far rosso
     questo test -- la mutazione che il brief della fetta chiede esplicitamente
     («togliere una classe dall'elenco»)."""
-    senza = sorted(_CLASSI_EVENTO_HA - nucleo._EVENT_CLASSES)
-    extra = sorted(nucleo._EVENT_CLASSES - _CLASSI_EVENTO_HA)
+    senza = sorted(_CLASSI_EVENTO_HA - briefing._EVENT_CLASSES)
+    extra = sorted(briefing._EVENT_CLASSES - _CLASSI_EVENTO_HA)
     assert not senza and not extra, (
         f"_CLASSI_EVENTO e' cambiato senza aggiornare questo pin -- "
         f"mancanti: {senza}, in piu': {extra}")

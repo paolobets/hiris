@@ -226,7 +226,7 @@ def test_le_espressioni_si_compilano_una_volta_sola():
 
 def _casa_senza_nomi() -> dict:
     """Le abat-jour: registro con `name` e `original_name` entrambi vuoti --
-    la forma esatta che casa/archivio.py:133 produce su questa casa."""
+    la forma esatta che home_space/store.py:133 produce su questa casa."""
     return {
         "aree": [{"id": "salotto", "nome": "Salotto", "alias": []}],
         "dispositivi": [],
@@ -306,7 +306,7 @@ def test_il_marchio_non_tocca_la_casa_del_chiamante():
 def test_il_ripiego_non_tocca_chi_un_nome_ce_l_ha():
     """Mutazione uccisa: applicare il ripiego sempre invece che solo sul
     vuoto. Il nome scelto dall'utente vince, e' la regola di
-    casa/archivio.py:130-133."""
+    home_space/store.py:130-133."""
     home_space = {"aree": [], "dispositivi": [],
             "entita": [{"id": "light.x", "nome": "Piantana", "alias": []}]}
     lookup = costruisci_indice(home_space, {"light.x": "Lampada da terra"})
@@ -494,7 +494,7 @@ def test_gli_alias_e_le_etichette_valgono_anche_per_il_comportamento():
 
 def test_l_indice_costruito_senza_ripiego_e_identico_a_prima():
     """I quattro chiamanti esistenti (handlers_memory.py:118 e :184,
-    casa/strumenti.py:430 e :512) non passano niente: la firma nuova non
+    home_space/tools.py:430 e :512) non passano niente: la firma nuova non
     deve cambiargli nulla sotto i piedi -- e non deve marcare come dedotto
     cio' che il registro dichiara."""
     home_space = {"aree": [{"id": "cucina", "nome": "Cucina", "alias": ["sala da pranzo"]}],
