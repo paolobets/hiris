@@ -47,7 +47,7 @@ async def handle_reasoning_submit(request: web.Request) -> web.Response:
         # L'id viene da `wake`, non dal contesto: `q.submit()` qui sopra ha
         # gia' azzerato `context_json` (porta il nucleo per intero e non deve
         # restare su disco). `wake` no, ed e' per questo che
-        # `schedulatore/turno._accoda_al_bridge` ce lo mette.
+        # `schedulatore/turno._enqueue_to_bridge` ce lo mette.
         from ..schedulatore.turno import _senza_conclusione
 
         ident = ((job or {}).get("wake") or {}).get("promessa_id") or ""

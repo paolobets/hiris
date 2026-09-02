@@ -100,7 +100,7 @@ fetta «schedulare» -- che nessuna esecuzione possa partire senza una frase
 IN QUESTA conversazione: `prometti` lascia una frase di adesso eseguire piu'
 tardi, e questo e' esattamente il modulo da cui puo' partire. Un turno
 `chiedi` di una promessa arriva QUI (`schedulatore/turno.py::interpreta_promise`
--> `who_answers` -> `_accoda_al_bridge`, quando il ponte e' la via) tanto
+-> `who_answers` -> `_enqueue_to_bridge`, quando il ponte e' la via) tanto
 quanto un turno di chat vero: il battito dello schedulatore
 (`schedulatore/sweeper.py`, ogni 15 s) lo sveglia da solo, ore dopo la
 promessa e senza nessuno in chat in quel momento. Il giudizio (cosa fare, e

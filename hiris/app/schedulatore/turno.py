@@ -142,7 +142,7 @@ async def interpreta_promise(app, promise: dict) -> dict:
     # diceva.
     route, downgrade_reason = who_answers(app)
     if route == "ponte":
-        return _accoda_al_bridge(app, promise)
+        return _enqueue_to_bridge(app, promise)
 
     runner = app.get("llm_router") or app.get("claude_runner")
     if runner is None:
@@ -241,7 +241,7 @@ def _downgrade_note(reason: str) -> str:
             "a consumo.")
 
 
-def _accoda_al_bridge(app, promise: dict) -> dict:
+def _enqueue_to_bridge(app, promise: dict) -> dict:
     """Il turno va al piano: si accoda e si torna SUBITO.
 
     Il battito non aspetta -- e' cio' che tiene in piedi «mai in ritardo»

@@ -343,8 +343,9 @@ def _scansione() -> dict[str, str]:
 # 1. il debito italiano coerente dei sottosistemi non convertiti (`agent/`,
 #    `proxy/`, `backends/`, `reasoning/`, i moduli di radice, gran parte di
 #    `tests/`) -- `nomi_di_ripiego`, `_avvisi_del_ponte`, `catena_di_oggi`;
-# 2. i MISTI che la misura ha tenuto fuori apposta (`_accoda_al_bridge`,
-#    `_normalize_con_mappa`, `cost_da_listino`; il quarto,
+# 2. i MISTI che la misura ha tenuto fuori apposta (`_normalize_con_mappa`,
+#    `cost_da_listino`; il primo dei quattro, `_accoda_al_bridge`, e' uscito
+#    il 02/09 diventando `_enqueue_to_bridge`; il quarto,
 #    `CEILING_IN_SOSPESO`, non compare qui perche' porta `in`, forma esclusa);
 # 3. i QUATTRO falsi positivi noti -- **annotati uno per uno ACCANTO alla
 #    loro voce**, in cima all'elenco, e non qui: una decisione che vive
@@ -379,7 +380,7 @@ _NOTE_ITALIANE = frozenset({
     "_FALSITA_IN_ENTRAMBE_LE_VOCI", "_FUNZIONI_CHE_LEGGONO_LA_CREDENZIALE",
     "_LETTURE_VIVE_DELLA_CREDENZIALE",
     "_MARK_DOPO_VAULT", "_NOMI_DEL_CATALOGO", "_NON_SLUG", "_SENZA_RECAPITO",
-    "_accoda_al_bridge", "_accoda_e_prendi", "_annuncia_fra_poco",
+    "_accoda_e_prendi", "_annuncia_fra_poco",
     "_app_col_ponte", "_app_come_in_produzione", "_archivio_con_una_casa",
     "_avvia_la_semina_della_catena", "_blocco_catena_dallo_startup",
     "_blocco_giorni_dallo_startup", "_blocco_risponde_dallo_startup",
