@@ -46,59 +46,59 @@
 window.HirisAlberoRoute = (function () {
   'use strict';
 
-  var TONO_IGNOTO = 'color:var(--warn-ink)';
-  var TONO_PROBLEMA = 'color:var(--err-ink)';
-  var TONO_QUIETO = 'color:var(--text-3)';
+  var TONE_UNKNOWN = 'color:var(--warn-ink)';
+  var TONE_PROBLEM = 'color:var(--err-ink)';
+  var TONE_CALM = 'color:var(--text-3)';
 
   /* Gli stessi id letterali che `anagrafe.py` usa per le pseudo-aree e i
      due piani-contenitore (`_ID_*`). Non sono un'API pubblica dichiarata,
      ma sono stringhe stabili: `gerarchia()` le costruisce a mano, non le
      genera, e un test di mutazione su questo file prova che restano
      allineate (vedi tests/js/albero-route.test.mjs). */
-  var ID_SENZA_AREA = '__senza_area__';
-  var ID_AREE_NON_LETTE = '__aree_non_lette__';
-  var ID_AREA_SCONOSCIUTA = '__area_sconosciuta__';
-  var ID_DISPOSITIVI_NON_LETTI = '__dispositivi_non_letti__';
-  var ID_SENZA_PIANO = '__senza_piano__';
-  var ID_PIANI_NON_LETTI = '__piani_non_letti__';
-  var ID_FUORI_DALLE_AREE = '__fuori_dalle_aree__';
+  var ID_WITHOUT_AREA = '__senza_area__';
+  var ID_AREAS_NOT_LOADED = '__aree_non_lette__';
+  var ID_UNKNOWN_AREA = '__area_sconosciuta__';
+  var ID_DEVICES_NOT_LOADED = '__dispositivi_non_letti__';
+  var ID_WITHOUT_FLOOR = '__senza_piano__';
+  var ID_FLOORS_NOT_LOADED = '__piani_non_letti__';
+  var ID_OUTSIDE_AREAS = '__fuori_dalle_aree__';
 
-  var SPIEGAZIONE_PIANO = {};
-  SPIEGAZIONE_PIANO[ID_SENZA_PIANO] = {
+  var FLOOR_EXPLANATION = {};
+  FLOOR_EXPLANATION[ID_WITHOUT_FLOOR] = {
     testo: 'Aree vere di Home Assistant, che l’utente non ha assegnato a nessun piano.',
-    tono: TONO_QUIETO
+    tono: TONE_CALM
   };
-  SPIEGAZIONE_PIANO[ID_PIANI_NON_LETTI] = {
+  FLOOR_EXPLANATION[ID_FLOORS_NOT_LOADED] = {
     testo: 'Il registro dei piani non ha risposto: queste aree potrebbero avere un piano che ' +
       'HIRIS non ha potuto leggere — non è detto che non ne abbiano uno.',
-    tono: TONO_IGNOTO
+    tono: TONE_UNKNOWN
   };
-  SPIEGAZIONE_PIANO[ID_FUORI_DALLE_AREE] = {
+  FLOOR_EXPLANATION[ID_OUTSIDE_AREAS] = {
     testo: 'Entità che non stanno in nessuna area nota, per quattro ragioni diverse — una per ' +
       'ciascun gruppo qui sotto.',
-    tono: TONO_IGNOTO
+    tono: TONE_UNKNOWN
   };
 
-  var SPIEGAZIONE_AREA = {};
-  SPIEGAZIONE_AREA[ID_SENZA_AREA] = {
+  var AREA_EXPLANATION = {};
+  AREA_EXPLANATION[ID_WITHOUT_AREA] = {
     testo: 'Il registro delle aree ha risposto: queste entità davvero non sono assegnate a ' +
       'nessuna stanza.',
-    tono: TONO_QUIETO
+    tono: TONE_CALM
   };
-  SPIEGAZIONE_AREA[ID_AREE_NON_LETTE] = {
+  AREA_EXPLANATION[ID_AREAS_NOT_LOADED] = {
     testo: 'Il registro delle aree non ha risposto: non si può sapere se queste entità abbiano ' +
       'un’area o no.',
-    tono: TONO_IGNOTO
+    tono: TONE_UNKNOWN
   };
-  SPIEGAZIONE_AREA[ID_AREA_SCONOSCIUTA] = {
+  AREA_EXPLANATION[ID_UNKNOWN_AREA] = {
     testo: 'Queste entità puntano a un’area che non esiste più nel registro — un riferimento ' +
       'rotto, non un’assenza.',
-    tono: TONO_PROBLEMA
+    tono: TONE_PROBLEM
   };
-  SPIEGAZIONE_AREA[ID_DISPOSITIVI_NON_LETTI] = {
+  AREA_EXPLANATION[ID_DEVICES_NOT_LOADED] = {
     testo: 'Il registro dei dispositivi non ha risposto: queste entità erediterebbero l’area ' +
       'dal proprio dispositivo, ma HIRIS non ha potuto leggere quale.',
-    tono: TONO_IGNOTO
+    tono: TONE_UNKNOWN
   };
 
   /* Nomi italiani dei registri di `non_disponibili` -- stessa mappa di
@@ -133,7 +133,7 @@ window.HirisAlberoRoute = (function () {
     volume: 'volume', wind_speed: 'vento', accumulated_precipitation: 'pioggia', area: 'area'
   };
 
-  function misureCasa(unit) {
+  function homeMeasurements(unit) {
     if (!unit) return [];
     var chiavi = CHIAVI_MISURA_NOTE.slice();
     Object.keys(unit).forEach(function (k) { if (chiavi.indexOf(k) === -1) chiavi.push(k); });
@@ -157,7 +157,7 @@ window.HirisAlberoRoute = (function () {
      anche quando `mappa` e' `null` (l'archivio manca, stessa disciplina
      a tre stati di `non_disponibili`): un lookup su `null` non trova
      niente, e la stessa riga sotto ripiega sull'id grezzo. */
-  function nomeEtichetta(id, map) {
+  function labelName(id, map) {
     if (map && Object.prototype.hasOwnProperty.call(map, id)) return map[id];
     return id;
   }
@@ -198,13 +198,13 @@ window.HirisAlberoRoute = (function () {
 
   /* --------------------------------------------------------- sistema di riferimento */
 
-  function rendiSistema(body, system) {
+  function renderSystem(body, system) {
     var title = el('div', null, 'Sistema di riferimento');
     title.style.cssText = 'font-weight:500;margin-top:14px';
     body.appendChild(title);
 
     if (!system || !Object.keys(system).length) {
-      line(body, 'Non letto: fuso, unità, valuta e lingua della casa non sono disponibili.', TONO_IGNOTO);
+      line(body, 'Non letto: fuso, unità, valuta e lingua della casa non sono disponibili.', TONE_UNKNOWN);
       return;
     }
 
@@ -215,18 +215,18 @@ window.HirisAlberoRoute = (function () {
     if (system.valuta) identity.push('valuta ' + system.valuta);
     if (system.paese) identity.push('paese ' + system.paese);
     if (system.versione_ha) identity.push('Home Assistant ' + system.versione_ha);
-    line(body, identity.length ? identity.join(', ') + '.' : 'Nessun dettaglio d’identità dichiarato.', TONO_QUIETO);
+    line(body, identity.length ? identity.join(', ') + '.' : 'Nessun dettaglio d’identità dichiarato.', TONE_CALM);
 
-    var measurements = misureCasa(system.unita);
+    var measurements = homeMeasurements(system.unita);
     if (measurements.length) {
       line(body, 'Unità con cui ragiona la casa: ' + measurements.join(', ') +
-        ' (ogni entità porta la propria: se manca, manca — non è questa).', TONO_QUIETO);
+        ' (ogni entità porta la propria: se manca, manca — non è questa).', TONE_CALM);
     }
   }
 
   /* --------------------------------------------------------------------- entità */
 
-  function rigaEntita(ul, e, disabled, mappaEtichette) {
+  function entityLine(ul, e, disabled, labelMap) {
     var li = el('li');
     /* `overflow-wrap:anywhere` anche qui (non solo sull'id): alias ed
        etichette penzolanti sono a loro volta slug senza spazi, stesso
@@ -255,12 +255,12 @@ window.HirisAlberoRoute = (function () {
        sono fatti diversi, e un'entità puo' portarli entrambi. */
     if (disabled) {
       var d = el('span', null, ' [disabilitata]');
-      d.style.cssText = TONO_IGNOTO + ';font-size:var(--fs-12)';
+      d.style.cssText = TONE_UNKNOWN + ';font-size:var(--fs-12)';
       li.appendChild(d);
     }
     if (e.nascosta) {
       var n = el('span', null, ' [nascosta in Home Assistant]');
-      n.style.cssText = TONO_IGNOTO + ';font-size:var(--fs-12)';
+      n.style.cssText = TONE_UNKNOWN + ';font-size:var(--fs-12)';
       li.appendChild(n);
     }
 
@@ -281,7 +281,7 @@ window.HirisAlberoRoute = (function () {
       li.appendChild(a);
     }
     if (e.etichette && e.etichette.length) {
-      var nomiEtichette = e.etichette.map(function (id) { return nomeEtichetta(id, mappaEtichette); });
+      var nomiEtichette = e.etichette.map(function (id) { return labelName(id, labelMap); });
       var et = el('div', null, 'etichette: ' + nomiEtichette.join(', '));
       et.style.cssText = 'font-size:var(--fs-12);color:var(--text-3)';
       li.appendChild(et);
@@ -292,7 +292,7 @@ window.HirisAlberoRoute = (function () {
 
   /* ------------------------------------------------------------------------ aree */
 
-  function etichettaConteggioEntita(area) {
+  function entityCountLabel(area) {
     var active = (area.entita || []).length;
     var disabled = (area.entita_disabilitate || []).length;
     var hidden = (area.entita_nascoste || []).length;
@@ -306,7 +306,7 @@ window.HirisAlberoRoute = (function () {
     return base;
   }
 
-  function rendiArea(container, area, mappaEtichette) {
+  function renderArea(container, area, labelMap) {
     var det = el('details');
     /* C2 (audit 2026-08-24): con `open` sempre vero, una casa di 1224
        entità rendeva 49.282px di pagina su desktop e 70.154px su mobile --
@@ -317,14 +317,14 @@ window.HirisAlberoRoute = (function () {
        aprire il resto, non e' un limite, solo non nasce gia' tutto steso. */
     det.open = false;
 
-    var summary = el('summary', null, area.nome + ' — ' + etichettaConteggioEntita(area));
+    var summary = el('summary', null, area.nome + ' — ' + entityCountLabel(area));
     summary.style.cssText = 'cursor:pointer;font-weight:500';
     det.appendChild(summary);
 
     var body = el('div');
     body.style.cssText = 'padding:6px 0 10px 18px;border-left:2px solid var(--border);margin-left:4px';
 
-    var explanation = SPIEGAZIONE_AREA[area.id];
+    var explanation = AREA_EXPLANATION[area.id];
     if (explanation) line(body, explanation.testo, explanation.tono + ';font-size:var(--fs-13)');
 
     if (area.entita_temperatura) {
@@ -344,12 +344,12 @@ window.HirisAlberoRoute = (function () {
     var hidden = area.entita_nascoste || [];
 
     if (!active.length && !disabled.length && !hidden.length) {
-      line(body, 'Nessuna entità.', TONO_QUIETO);
+      line(body, 'Nessuna entità.', TONE_CALM);
     }
     if (active.length) {
       var ul = el('ul');
       ul.style.cssText = 'margin:4px 0;padding-left:18px';
-      active.forEach(function (e) { rigaEntita(ul, e, false, mappaEtichette); });
+      active.forEach(function (e) { entityLine(ul, e, false, labelMap); });
       body.appendChild(ul);
     }
     if (disabled.length) {
@@ -362,7 +362,7 @@ window.HirisAlberoRoute = (function () {
       body.appendChild(titoloDis);
       var ulD = el('ul');
       ulD.style.cssText = 'margin:4px 0;padding-left:18px';
-      disabled.forEach(function (e) { rigaEntita(ulD, e, true, mappaEtichette); });
+      disabled.forEach(function (e) { entityLine(ulD, e, true, labelMap); });
       body.appendChild(ulD);
     }
     if (hidden.length) {
@@ -376,7 +376,7 @@ window.HirisAlberoRoute = (function () {
       body.appendChild(titoloNas);
       var ulN = el('ul');
       ulN.style.cssText = 'margin:4px 0;padding-left:18px';
-      hidden.forEach(function (e) { rigaEntita(ulN, e, false, mappaEtichette); });
+      hidden.forEach(function (e) { entityLine(ulN, e, false, labelMap); });
       body.appendChild(ulN);
     }
 
@@ -386,30 +386,30 @@ window.HirisAlberoRoute = (function () {
 
   /* ----------------------------------------------------------------------- piani */
 
-  function etichettaConteggioAree(floor) {
+  function areaCountLabel(floor) {
     var n = (floor.aree || []).length;
-    var word = floor.id === ID_FUORI_DALLE_AREE ? (n === 1 ? 'gruppo' : 'gruppi') : (n === 1 ? 'area' : 'aree');
+    var word = floor.id === ID_OUTSIDE_AREAS ? (n === 1 ? 'gruppo' : 'gruppi') : (n === 1 ? 'area' : 'aree');
     return n + ' ' + word;
   }
 
-  function rendiPiano(container, floor, mappaEtichette) {
+  function renderFloor(container, floor, labelMap) {
     var det = el('details');
     /* Primo livello: resta aperto (vedi il commento in rendiArea per il
        perche' le aree, sotto, non lo sono piu'). */
     det.open = true;
 
-    var titoloPiano = floor.nome + (floor.livello != null ? ' (livello ' + floor.livello + ')' : '');
-    var summary = el('summary', null, titoloPiano + ' — ' + etichettaConteggioAree(floor));
+    var floorTitle = floor.nome + (floor.livello != null ? ' (livello ' + floor.livello + ')' : '');
+    var summary = el('summary', null, floorTitle + ' — ' + areaCountLabel(floor));
     summary.style.cssText = 'cursor:pointer;font-weight:600;font-size:var(--fs-15)';
     det.appendChild(summary);
 
     var body = el('div');
     body.style.cssText = 'padding:8px 0 12px 12px';
 
-    var explanation = SPIEGAZIONE_PIANO[floor.id];
+    var explanation = FLOOR_EXPLANATION[floor.id];
     if (explanation) line(body, explanation.testo, explanation.tono + ';font-size:var(--fs-13)');
 
-    (floor.aree || []).forEach(function (area) { rendiArea(body, area, mappaEtichette); });
+    (floor.aree || []).forEach(function (area) { renderArea(body, area, labelMap); });
 
     det.appendChild(body);
     container.appendChild(det);
@@ -417,7 +417,7 @@ window.HirisAlberoRoute = (function () {
 
   /* --------------------------------------------------------------------- albero */
 
-  function rendiAlbero(outlet, home_space) {
+  function renderTree(outlet, home_space) {
     var body = section(outlet, 'Albero della casa',
       'Piani, aree ed entità come HIRIS li ha ricostruiti — con ogni silenzio dichiarato per nome, ' +
       'non appiattito in un unico «non si sa».');
@@ -428,11 +428,11 @@ window.HirisAlberoRoute = (function () {
     if (home_space.anagrafe_letta_il == null) {
       line(body,
         'L’anagrafe non è ancora stata letta: qui non c’è un albero vuoto, c’è una casa che HIRIS non ha ancora guardato.',
-        TONO_IGNOTO);
+        TONE_UNKNOWN);
       return;
     }
 
-    line(body, 'Letta il ' + home_space.anagrafe_letta_il + '.', TONO_QUIETO);
+    line(body, 'Letta il ' + home_space.anagrafe_letta_il + '.', TONE_CALM);
 
     /* `non_disponibili` a tre stati: null = non si sa quali registri hanno
        risposto; [] = tutti hanno risposto; pieno = una lettura a metà, che
@@ -440,17 +440,17 @@ window.HirisAlberoRoute = (function () {
     if (home_space.non_disponibili == null) {
       line(body,
         'Non si sa quali registri abbiano risposto: HIRIS non ha potuto controllarlo. ' +
-        'L’albero qui sotto potrebbe essere letto solo in parte.', TONO_IGNOTO);
+        'L’albero qui sotto potrebbe essere letto solo in parte.', TONE_UNKNOWN);
     } else if (home_space.non_disponibili.length) {
       line(body,
         'Registri che non hanno risposto all’ultima lettura — una casa letta a metà, non una casa piccola:',
-        TONO_PROBLEMA);
+        TONE_PROBLEM);
       list(body, nomiRegistriInItaliano(home_space.non_disponibili));
     } else {
-      line(body, 'Tutti i registri hanno risposto.', TONO_QUIETO);
+      line(body, 'Tutti i registri hanno risposto.', TONE_CALM);
     }
 
-    rendiSistema(body, home_space.sistema_di_riferimento);
+    renderSystem(body, home_space.sistema_di_riferimento);
 
     /* `etichette` (`casa.etichette`) e' a tre stati come `non_disponibili`:
        `null` = l'archivio manca, nessun nome risolvibile (nella pratica
@@ -460,31 +460,31 @@ window.HirisAlberoRoute = (function () {
        gli id grezzi invece di un nome inventato, e lo DICHIAREREBBE, non lo
        tacerebbe); `{}` = il registro ha risposto senza etichette; pieno = la
        mappa che `nomeEtichetta()` usa per tradurre gli slug sotto. */
-    var mappaEtichette = home_space.etichette;
-    if (mappaEtichette == null) {
+    var labelMap = home_space.etichette;
+    if (labelMap == null) {
       line(body,
         'I nomi delle etichette non sono stati letti: dove un’entità o un’area ne porta una, ' +
-        'resta visibile il solo identificativo grezzo.', TONO_IGNOTO);
+        'resta visibile il solo identificativo grezzo.', TONE_UNKNOWN);
     }
 
-    var titoloAlbero = el('div', null, 'L’albero');
-    titoloAlbero.style.cssText = 'font-weight:600;margin-top:16px;font-size:var(--fs-15)';
-    body.appendChild(titoloAlbero);
+    var treeTitle = el('div', null, 'L’albero');
+    treeTitle.style.cssText = 'font-weight:600;margin-top:16px;font-size:var(--fs-15)';
+    body.appendChild(treeTitle);
 
     var floor = home_space.piani || [];
     if (!floor.length) {
-      line(body, 'La lettura non ha prodotto nessun piano né area.', TONO_QUIETO);
+      line(body, 'La lettura non ha prodotto nessun piano né area.', TONE_CALM);
       return;
     }
-    floor.forEach(function (floor) { rendiPiano(body, floor, mappaEtichette); });
+    floor.forEach(function (floor) { renderFloor(body, floor, labelMap); });
   }
 
-  function rendiErrore(outlet, err) {
+  function renderError(outlet, err) {
     console.error('[albero-della-casa] lettura fallita', err);
     var body = section(outlet, 'Albero della casa', null);
     line(body,
       'Non è stato possibile leggere l’albero della casa. Questo non significa che la casa sia vuota: ' +
-      'la richiesta non è andata a buon fine.', TONO_PROBLEMA);
+      'la richiesta non è andata a buon fine.', TONE_PROBLEM);
   }
 
   function read(path) {
@@ -516,16 +516,16 @@ window.HirisAlberoRoute = (function () {
 
     return read('api/home-space').then(function (home_space) {
       if (loading.parentNode) loading.parentNode.removeChild(loading);
-      rendiAlbero(outlet, home_space);
+      renderTree(outlet, home_space);
     }, function (err) {
       if (loading.parentNode) loading.parentNode.removeChild(loading);
-      rendiErrore(outlet, err);
+      renderError(outlet, err);
     });
   }
 
   return {
     mount: mount,
     /* Seam di test: la resa è pura DOM + dati, va pinnata senza passare da fetch. */
-    _rendi: rendiAlbero
+    _rendi: renderTree
   };
 })();
