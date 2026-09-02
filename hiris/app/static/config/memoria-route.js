@@ -120,13 +120,13 @@ window.HirisMemoriaRoute = (function () {
   }
 
   /* ── Ancore: tre resi diversi per tre fatti diversi (regola 1) ────────── */
-  function rendiAncore(body, ancore) {
+  function renderTethers(body, tethers) {
     var tit = el('div', null, 'Riguarda:');
     tit.style.cssText = 'font-weight:500;font-size:var(--fs-13);margin:8px 0 4px';
     body.appendChild(tit);
     var ul = el('ul');
     ul.style.cssText = 'margin:0 0 8px;padding-left:18px;font-size:var(--fs-13);color:var(--text-2)';
-    ancore.forEach(function (a) {
+    tethers.forEach(function (a) {
       var name = a.nome_attuale || a.nome_visto || a.riferimento;
       var text, tone;
       if (a.esiste === true) { text = name; tone = ''; }
@@ -311,7 +311,7 @@ window.HirisMemoriaRoute = (function () {
       ? 'HIRIS ha capito: ' + interpretation.join(' · ')
       : 'Nessuna struttura riconosciuta — resta solo la frase.'));
 
-    if (r.ancore && r.ancore.length) rendiAncore(body, r.ancore);
+    if (r.ancore && r.ancore.length) renderTethers(body, r.ancore);
     if (r.condizioni && r.condizioni.length) {
       body.appendChild(el('p', 'sc-desc', 'Quando vale: ' +
         r.condizioni.map(function (c) { return c.tipo + ': ' + c.valore; }).join(' · ')));
