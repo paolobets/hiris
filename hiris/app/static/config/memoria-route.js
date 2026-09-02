@@ -325,10 +325,10 @@ window.HirisMemoriaRoute = (function () {
        rosso, bordato -- mentre «Correggi», l'azione sicura, sembrava
        un'etichetta: la gerarchia era rovesciata. Ora sono due ghost uguali e il
        rosso di questo arriva col passaggio del mouse (`.btn-ghost-danger`). */
-    var btnCancella = el('button', 'btn btn-ghost btn-ghost-danger btn-sm', 'Dimentica');
-    btnCancella.type = 'button';
+    var clearBtn = el('button', 'btn btn-ghost btn-ghost-danger btn-sm', 'Dimentica');
+    clearBtn.type = 'button';
     bar.appendChild(btnCorreggi);
-    bar.appendChild(btnCancella);
+    bar.appendChild(clearBtn);
     body.appendChild(bar);
 
     var formWrap = el('div');
@@ -351,7 +351,7 @@ window.HirisMemoriaRoute = (function () {
        "in attesa"): la conferma mostra SEMPRE la frase esatta, così chi
        clicca sa cosa sta togliendo — stesso linguaggio del pannello che
        questa pagina sostituisce. */
-    btnCancella.addEventListener('click', function () {
+    clearBtn.addEventListener('click', function () {
       var msg = 'Cancellare questo ricordo per sempre?\n\n«' + r.testo + '»\n\n' +
         'Non si può annullare: il ricordo e le sue ancore vengono tolti dall’archivio.';
       if (!window.confirm(msg)) return;
