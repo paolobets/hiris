@@ -70,8 +70,8 @@
   var timerConsumi = null;
 
   function refreshUsage() {
-    return loadUsage().then(function (continua) {
-      if (continua === false && timerConsumi !== null) {
+    return loadUsage().then(function (keepGoing) {
+      if (keepGoing === false && timerConsumi !== null) {
         clearInterval(timerConsumi);
         timerConsumi = null;
       }

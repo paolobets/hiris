@@ -358,8 +358,8 @@ window.HirisMemoriaRoute = (function () {
       cardErr.style.display = 'none';
       api('api/memories/' + encodeURIComponent(r.id), { method: 'DELETE' }).then(function (res) {
         if (res.status === 204) { setStatus('Ricordo cancellato.'); reload(); return; }
-        return res.json().catch(function () { return {}; }).then(function (corpo) {
-          mostraErroreCard(cardErr, (corpo && corpo.error) || ('Errore HTTP ' + res.status));
+        return res.json().catch(function () { return {}; }).then(function (payload) {
+          mostraErroreCard(cardErr, (payload && payload.error) || ('Errore HTTP ' + res.status));
         });
       }, function () {
         mostraErroreCard(cardErr, 'La memoria non ha risposto. Riprova più tardi.');

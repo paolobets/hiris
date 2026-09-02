@@ -58,10 +58,10 @@
          qualcosa che non so». Un concetto solo, a due scale. */
       return '<span class="umr-costo umr-ignoto">≥ ' + fmtEuro(m.cost_eur, 4) + '</span>';
     }
-    var classe = m.cost_state === 'non_noto' ? 'umr-costo umr-ignoto'
+    var cssClass = m.cost_state === 'non_noto' ? 'umr-costo umr-ignoto'
                : m.cost_state === 'compreso' ? 'umr-costo umr-compreso'
                : 'umr-costo umr-gratuito';
-    return '<span class="' + classe + '">'
+    return '<span class="' + cssClass + '">'
       + escHtml(Word[m.cost_state] || m.cost_state) + '</span>';
   }
 

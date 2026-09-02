@@ -203,7 +203,7 @@ window.HirisImpostazioniRoute = (function () {
     }
 
     save.addEventListener('click', function () {
-      var corpo = {
+      var payload = {
         name: name.value,
         system_prompt: prompt.value,
         response_mode: selModo.value,
@@ -219,7 +219,7 @@ window.HirisImpostazioniRoute = (function () {
       };
       save.disabled = true;
       showStatus('Salvataggio…');
-      api(URL_IMPOSTAZIONI, { method: 'PUT', body: JSON.stringify(corpo) })
+      api(URL_IMPOSTAZIONI, { method: 'PUT', body: JSON.stringify(payload) })
         .then(function (r) {
           return r.json().catch(function () { return {}; })
             .then(function (j) { return { ok: r.ok, corpo: j }; });

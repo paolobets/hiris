@@ -578,9 +578,9 @@
     if (data.quando) {
       box.appendChild(el('p', 'pannello-quando', data.quando));
     }
-    var stato = el('p', 'pannello-stato');
-    stato.setAttribute('aria-live', 'polite');
-    box.appendChild(stato);
+    var statusEl = el('p', 'pannello-stato');
+    statusEl.setAttribute('aria-live', 'polite');
+    box.appendChild(statusEl);
   }
 
   function panelList(data, p, writable) {
@@ -643,16 +643,16 @@
     return lab;
   }
 
-  function panelBox(casella) {
+  function panelBox(checkbox) {
     var lab = el('label', 'pannello-casella');
     var box = el('input');
     box.type = 'checkbox';
-    box.checked = !!readPath(casella.dove);
+    box.checked = !!readPath(checkbox.dove);
     box.addEventListener('change', function() {
-      changeBox(casella.dove, box.checked);
+      changeBox(checkbox.dove, box.checked);
     });
     lab.appendChild(box);
-    lab.appendChild(el('span', null, casella.etichetta || ''));
+    lab.appendChild(el('span', null, checkbox.etichetta || ''));
     return lab;
   }
 
@@ -1099,10 +1099,10 @@
        e il riordino vale dal prossimo messaggio. Non è stata SOSTITUITA da un
        «vale subito»: l'assenza di didascalia È l'affermazione, ed è la cosa
        più onesta che questa pagina possa dire di sé. */
-    var stato = el('p', 'catena-stato');
-    stato.id = 'catena-stato';
-    stato.setAttribute('aria-live', 'polite');
-    chainCard.appendChild(stato);
+    var statusEl = el('p', 'catena-stato');
+    statusEl.id = 'catena-stato';
+    statusEl.setAttribute('aria-live', 'polite');
+    chainCard.appendChild(statusEl);
     outlet.appendChild(chainCard);
 
     var outsideCard = buildSectionShell('02', 'fuori', 'Fuori dalla catena',
