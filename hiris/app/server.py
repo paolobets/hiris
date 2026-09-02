@@ -17,14 +17,14 @@ from .api.handlers_chat import handle_chat, handle_chat_reply_poll
 from .api.handlers_chat_history import handle_clear_chat_history, handle_get_chat_history
 from .api.handlers_config import handle_config
 from .api.handlers_entities import handle_list_entities
-from .api.handlers_impostazioni import (
-    handle_get_settings,
-    handle_save_settings,
-)
 from .api.handlers_models import (
     handle_get_models_config,
     handle_list_models,
     handle_save_models_config,
+)
+from .api.handlers_settings import (
+    handle_get_settings,
+    handle_save_settings,
 )
 from .api.handlers_usage import handle_reset_usage, handle_usage, handle_usage_history
 from .api.middleware_csrf import csrf_middleware
@@ -2805,7 +2805,7 @@ async def _on_startup(app: web.Application) -> None:
     # `app["chat_settings"].retention_days` -- letto AD OGNI GIRO
     # dentro la chiusura, non catturato una volta sola all'avvio: un PUT su
     # /api/chat-settings riassegna quella chiave a caldo
-    # (`handlers_impostazioni.handle_save_settings`), e la potatura di
+    # (`handlers_settings.handle_save_settings`), e la potatura di
     # stanotte deve vedere il valore che l'utente ha scelto oggi, non quello
     # con cui l'add-on e' partito.
     from .chat_store import delete_old_messages as _delete_old_messages
@@ -3656,13 +3656,13 @@ def create_app() -> web.Application:
     # ha ricostruito -- la suite verde non prova che la lettura funzioni.
     # Dalla fetta E5 Task 8 e' anche la fonte della home della
     # configurazione: vedi il commento di /api/briefing piu' sotto.
-    from .api.handlers_casa import handle_get_home_space
+    from .api.handlers_home_space import handle_get_home_space
     app.router.add_get("/api/home-space", handle_get_home_space)
 
     # Task 4 SDD memoria: la pagina "cio' che HIRIS sa" -- la decisione (5)
     # del progetto della memoria. Nessun frontend in questo task: si guarda
     # dal browser come /api/home-space.
-    from .api.handlers_memoria import (
+    from .api.handlers_memory import (
         handle_delete_memory,
         handle_get_memories,
         handle_patch_memory,
@@ -3678,7 +3678,7 @@ def create_app() -> web.Application:
     # (`schedulatore/promise.py::serializza`, dentro l'archivio): due porte,
     # una forma sola. Passa dallo stesso `csrf_middleware` di
     # `/api/memories/{id}` -- nessuna rotta mutante e' esente.
-    from .api.handlers_promesse import (
+    from .api.handlers_agenda import (
         handle_delete_promise,
         handle_get_agenda,
         handle_get_execution,
@@ -3699,7 +3699,7 @@ def create_app() -> web.Application:
     # (`POST`/`PUT`/`PATCH`/`DELETE` sotto `/api/*`), non per un elenco di
     # rotte scritto a mano: non c'e' niente da aggiungere altrove perche'
     # queste due non saltino la protezione.
-    from .api.handlers_costruzioni import (
+    from .api.handlers_constructions import (
         handle_confirm_construction,
         handle_get_construction,
         handle_get_constructions,
@@ -3714,7 +3714,7 @@ def create_app() -> web.Application:
     # due righe sopra -- il middleware la copre per METODO e prefisso, non
     # per un elenco di rotte, quindi non c'e' niente da aggiungere altrove
     # perche' anche questa non la salti. Non scrive su Home Assistant: si
-    # scrive nell'archivio e basta (vedi il modulo `handlers_costruzioni`).
+    # scrive nell'archivio e basta (vedi il modulo `handlers_constructions`).
     app.router.add_post("/api/constructions/{id}/reject", handle_reject_construction)
 
     # Task 3 SDD nucleo: vedere cio' che il modello vedra' -- il testo
@@ -3723,7 +3723,7 @@ def create_app() -> web.Application:
     # Task 8 una faccia ce l'ha -- la home della configurazione
     # (`static/config/dashboard.js`) legge questa rotta e /api/home-space, e non
     # ne ricalcola nessun dato per conto proprio.
-    from .api.handlers_casa import handle_get_briefing
+    from .api.handlers_home_space import handle_get_briefing
     app.router.add_get("/api/briefing", handle_get_briefing)
 
     # Fetta «l'osservatore», Task 7 (docs/design/2026-08-26-l-osservatore.md
@@ -3731,7 +3731,7 @@ def create_app() -> web.Application:
     # oggetti che l'aggregazione notturna ha costruito. Due GET, come
     # /api/home-space e /api/memories qui sopra: nessuna scrittura, quindi nessun
     # `csrf_middleware` da rispettare.
-    from .api.handlers_cervello import handle_facts, handle_watching
+    from .api.handlers_mind import handle_facts, handle_watching
     app.router.add_get("/api/mind/watching", handle_watching)
     app.router.add_get("/api/mind/facts", handle_facts)
 

@@ -255,7 +255,7 @@ class EntityCache:
     # Task 2, il cui unico chiamante era `semantic_context_map`, cancellata
     # insieme alla context map. Verificato di nuovo qui: zero chiamanti.
     # Da non confondere con `all_states` (sotto), la forma a lista che
-    # `api/handlers_casa.py` e l'inventario entita' usano ancora: quella
+    # `api/handlers_home_space.py` e l'inventario entita' usano ancora: quella
     # resta.
 
     def all_states(self) -> list[dict]:

@@ -4,7 +4,7 @@
    lo-schedulatore.md, §10): «Si vede. Un posto dove guardare cosa e' in
    sospeso e annullarlo. Promesse che HIRIS tiene e non mostra sarebbero
    stato invisibile.» Questa pagina e' quel posto: legge l'archivio vero
-   (`GET /api/agenda?all=1`, `hiris/app/api/handlers_promesse.py`) e
+   (`GET /api/agenda?all=1`, `hiris/app/api/handlers_agenda.py`) e
    lascia disdire cio' che non e' ancora scattato (`DELETE
    /api/agenda/{id}`).
 
@@ -13,7 +13,7 @@
    «Storico»), una richiesta.
 
    Il vocabolario mostrato non e' quello del backend (guida di disegno,
-   scritta da ux-ui-specialist dopo aver letto handlers_promesse.py e
+   scritta da ux-ui-specialist dopo aver letto handlers_agenda.py e
    archivio.py): `saltata` -> «Non eseguita», `fallita` -> «Non riuscita».
    Sono scelte apposta per non fare rima e non condividere la prima parola --
    la stessa distinzione che la spec (§7) chiama «non e' un guasto, e' la

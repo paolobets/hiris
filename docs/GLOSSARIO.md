@@ -242,7 +242,7 @@ resta corretta per tutti gli altri usi del file (composti, mai applicati da soli
 uno solo, ed era nella forma che il meccanismo si fida di piu'.
 
 **Quarto caso, di meccanismo non di significato: una riga ambito-qualificata spegne la riga nuda
-per OGNI ALTRO ambito, non solo per il proprio.** Trovato convertendo `api/handlers_promesse.py`
+per OGNI ALTRO ambito, non solo per il proprio.** Trovato convertendo `api/handlers_agenda.py`
 (Task 9 di questa fetta): `Glossario.per()` cerca prima in `omonimi`, e `leggi_glossario()` toglie
 la parola da `mappa` (la riga nuda) nel momento stesso in cui legge la PRIMA riga qualificata per
 quella parola, qualunque sia l'ambito -- verificato chiamando `Glossario.per("riga", ...)` da
@@ -355,7 +355,7 @@ Confrontare l'intero contenuto dei backtick con l'elenco dei nomi rinominati non
 che sia un'ESPRESSIONE: `` `indice is None` `` non combacia con `indice`, `` `turno=id_turno` `` non
 combacia con `id_turno`, `` `_LIMITE_RICORDI_MOSTRATI = 200` `` non combacia con la costante.
 Misurato dal vivo due volte: il lotto 9 aveva dichiarato di aver verificato tutte le citazioni del
-proprio file e ne aveva mancata una **nello stesso file** (`handlers_memoria.py:118`); il lotto 10
+proprio file e ne aveva mancata una **nello stesso file** (`handlers_memory.py:118`); il lotto 10
 ne ha lasciata una in un test (`tests/test_rotta_mcp.py:652`), trovata solo dal lotto 11 col
 criterio corretto. Non e' distrazione: e' il criterio sbagliato.
 
@@ -695,7 +695,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | anagrafe | il modulo che legge i quattro registri grezzi di Home Assistant -- piani, aree, dispositivi, entita' -- e li assembla in un'unica gerarchia coerente | topology | ~ parziale |
 | ancora (usage) | il punto nel tempo da cui l'archivio dei consumi conta il progresso corrente: spostarlo in avanti congela, in una riga a parte, i totali per provider e modello registrati fino a quell'istante, cosi' un contatore riportato a zero non perde la storia che lo precede **`hiris/app/static/` porta ENTRAMBI i sensi, e per giunta un terzo che non e' un senso** (fetta del frontend, 02/09): `memory-route.js::TIPO_ANCORA_LABELS` e' `tether`, `usage-route.js::daAncora` e' `anchor`, e `models-route.js:506` scrive `var ancora = el('button', ..., 'Riprova')` -- li' `ancora` e' l'AVVERBIO, e quel nome si rinomina `retry` invece di tradursi (e' il gemello di `bottoneRiprova`, la cui variabile locale si chiama gia' cosi'). Nessuna riga `ancora (static)`: gli ambiti sono CARTELLE, e una cartella con due sensi dentro e' il limite descritto in «Il limite della qualificazione per ambito». Si applica a mano, come `piano (abbonamento)`. | anchor | ~ parziale |
 | ancora (memoria) | il legame -- di un tipo dichiarato fra area, dispositivo ed entita' -- fra un ricordo e la parte della casa a cui si riferisce, con il nome visto nel momento in cui il legame e' stato scritto **`hiris/app/static/` porta ENTRAMBI i sensi, e per giunta un terzo che non e' un senso** (fetta del frontend, 02/09): `memory-route.js::TIPO_ANCORA_LABELS` e' `tether`, `usage-route.js::daAncora` e' `anchor`, e `models-route.js:506` scrive `var ancora = el('button', ..., 'Riprova')` -- li' `ancora` e' l'AVVERBIO, e quel nome si rinomina `retry` invece di tradursi (e' il gemello di `bottoneRiprova`, la cui variabile locale si chiama gia' cosi'). Nessuna riga `ancora (static)`: gli ambiti sono CARTELLE, e una cartella con due sensi dentro e' il limite descritto in «Il limite della qualificazione per ambito». Si applica a mano, come `piano (abbonamento)`. | tether | ~ parziale |
-| ancora (api) | la stessa `ancora (memoria)` qui sopra, letta dal confine `api/`: `handlers_memoria.py::_resolve_tether` riceve lo stesso dizionario `{"tipo": ..., "riferimento": ...}` che `memoria/interpretazione.py` costruisce -- la stessa riga che `riga (api)` (Task 9, lotto 2) rende raggiungibile anche da questo ambito. **Attenzione, e la prima stesura lo taceva: `api` porta ENTRAMBI i sensi di `ancora`, non uno solo.** `api/handlers_usage.py:119,120,121,153,218` usa l'ancora dei CONSUMI (`ancora (usage) -> anchor`), non questa. Questa riga non sbaglia oggi solo perche' `usage/` e' stato convertito PRIMA, e quelle cinque occorrenze si scrivono gia' `anchor`: con un altro ordine dei lotti sarebbe una regola che sbaglia in silenzio, ed e' esattamente il caso che «Il limite della qualificazione per ambito» descrive (due sensi DENTRO lo stesso ambito, che una riga per ambito non sa distinguere). Chi incontra `ancora` nuda in un file di `api/` guarda il file prima di fidarsi di questa riga: se e' `handlers_usage.py` o un suo parente, e' `anchor` | tether | ~ parziale |
+| ancora (api) | la stessa `ancora (memoria)` qui sopra, letta dal confine `api/`: `handlers_memory.py::_resolve_tether` riceve lo stesso dizionario `{"tipo": ..., "riferimento": ...}` che `memoria/interpretazione.py` costruisce -- la stessa riga che `riga (api)` (Task 9, lotto 2) rende raggiungibile anche da questo ambito. **Attenzione, e la prima stesura lo taceva: `api` porta ENTRAMBI i sensi di `ancora`, non uno solo.** `api/handlers_usage.py:119,120,121,153,218` usa l'ancora dei CONSUMI (`ancora (usage) -> anchor`), non questa. Questa riga non sbaglia oggi solo perche' `usage/` e' stato convertito PRIMA, e quelle cinque occorrenze si scrivono gia' `anchor`: con un altro ordine dei lotti sarebbe una regola che sbaglia in silenzio, ed e' esattamente il caso che «Il limite della qualificazione per ambito» descrive (due sensi DENTRO lo stesso ambito, che una riga per ambito non sa distinguere). Chi incontra `ancora` nuda in un file di `api/` guarda il file prima di fidarsi di questa riga: se e' `handlers_usage.py` o un suo parente, e' `anchor` | tether | ~ parziale |
 | archivio | una classe che apre la propria connessione SQLite, applica lo schema e le eventuali migrazioni al costruttore, e offre ai chiamanti metodi tipizzati per scrivere e rileggere lo stato persistito di UN sottosistema -- mai una connessione condivisa fra sottosistemi diversi | store | ✓ arriva |
 | ascolto | la finestra temporanea, aperta prima di eseguire un comando su Home Assistant e richiusa subito dopo, durante la quale ci si aggancia agli annunci di cambiamento di stato delle sole entita' bersaglio per confermare che l'effetto e' davvero arrivato, invece di fidarsi del silenzio | listen | ~ parziale |
 | azione | il sottosistema che sa cosa questa casa puo' fare secondo Home Assistant e lo fa succedere davvero -- chiamando i suoi servizi, scrivendo la sua configurazione -- sempre passando per un solo punto per ciascun canale | action | ✓ arriva |
@@ -786,7 +786,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | strumenti | l'insieme dei nomi che il modello puo' invocare durante un turno, ciascuno con la propria definizione di argomenti, dichiarato in un unico catalogo che sia il canale sincrono sia quello del ponte leggono senza tenerne una copia propria | tools | ~ parziale |
 | tempo | il modulo che decide, per una domanda su un periodo passato, quale superficie viva di Home Assistant interrogare e con quale grana, e compone come dire cio' che si e' letto -- senza conservare nulla in proprio | historian | arbitrato del proprietario |
 | tetto | il limite massimo -- di caratteri in un testo, o altrove di turni in un giorno -- oltre il quale si deve tagliare o rifiutare, mai superato in silenzio: quando si taglia, il taglio stesso si dichiara dentro cio' che resta | ceiling | ✓ arriva |
-| turno | il singolo scambio col modello che si apre quando una promessa che deve solo controllare si risveglia: puo' usare solo strumenti di lettura e finisce esclusivamente quando chiama lo strumento di chiusura obbligatorio -- oppure, se le risposte passano dalla catena esterna, si affida alla coda persistente invece di aspettare (vedi la nota su `ReasoningQueue`, sotto la tabella) -- **`turni` in `api/handlers_impostazioni.py::validate` (Task 9, lotto 8) NON e' questo concetto**: e' il conteggio di `max_chat_turns` (gia' inglese con la parola "turns"), non lo scambio col modello del reasoning delle promesse. Deciso a mano `turni -> turns`, MAI applicato alla cieca il suggerimento meccanico (`exchange`, questa riga). **Non qualificare `turno (api)`**: la collisione e' di SENSO, non di ambito -- `api/handlers_chat.py` usera' `turno` nel senso VERO di questa riga, nello stesso ambito `api` di `handlers_impostazioni.py` -- una riga per ambito qui risolverebbe meta' dei casi e sbaglierebbe l'altra meta'. `classifica('turni','api')` resta `Proposta(suggerito='exchange')` di proposito: e' la forma corretta, decidere ogni occorrenza guardando il codice, non un'automazione da attivare | exchange | ~ parziale |
+| turno | il singolo scambio col modello che si apre quando una promessa che deve solo controllare si risveglia: puo' usare solo strumenti di lettura e finisce esclusivamente quando chiama lo strumento di chiusura obbligatorio -- oppure, se le risposte passano dalla catena esterna, si affida alla coda persistente invece di aspettare (vedi la nota su `ReasoningQueue`, sotto la tabella) -- **`turni` in `api/handlers_settings.py::validate` (Task 9, lotto 8) NON e' questo concetto**: e' il conteggio di `max_chat_turns` (gia' inglese con la parola "turns"), non lo scambio col modello del reasoning delle promesse. Deciso a mano `turni -> turns`, MAI applicato alla cieca il suggerimento meccanico (`exchange`, questa riga). **Non qualificare `turno (api)`**: la collisione e' di SENSO, non di ambito -- `api/handlers_chat.py` usera' `turno` nel senso VERO di questa riga, nello stesso ambito `api` di `handlers_settings.py` -- una riga per ambito qui risolverebbe meta' dei casi e sbaglierebbe l'altra meta'. `classifica('turni','api')` resta `Proposta(suggerito='exchange')` di proposito: e' la forma corretta, decidere ogni occorrenza guardando il codice, non un'automazione da attivare | exchange | ~ parziale |
 | verdetto | l'oggetto che la funzione di controllo restituisce: un booleano che dice se il comando puo' procedere, il motivo quando non puo', e -- quando puo' -- dominio, servizio ed entita' toccate, comprese quelle esplicitamente escluse | verdict | ✓ arriva |
 | verifica (azione) | la funzione pura che esamina un comando proposto contro cio' che Home Assistant sa fare e contro lo stato vivo della casa, e decide se puo' procedere -- mai i valori dei parametri, mai le capacita' fini di un dispositivo, solo dominio, servizio e bersaglio (`azione/verifica.py`) | verification | ✓ arriva |
 | verifica (agent) | il VERBO, non il sostantivo: `verify_init` (`agent/runner.py`) chiede alla riga di init della CLI se dichiara davvero cio' che prometteva -- gli strumenti attivi, il modello, il permesso di agire. Stesso inglese di `(memoria)`, diverso da `(azione) -> verification` che nomina invece il referto | verify | ✓ arriva |
@@ -2033,7 +2033,7 @@ al Task 6 invece che deciso qui.
 > e' gia' un concetto, non e' in questa tabella) — guardando per ciascuna in quali sottosistemi
 > compare e con che tipo di parametro. Nessuna delle otto ha mostrato la stessa spaccatura di
 > `stato`: `tipo` ha un caso vicino (classificatore di dominio in `proxy/ha_client.py: legami` vs.
-> nome di tipo dato in `api/handlers_impostazioni.py: _tipo`), ma in entrambi i casi l'inglese
+> nome di tipo dato in `api/handlers_settings.py: _tipo`), ma in entrambi i casi l'inglese
 > «type» resta corretto senza perdere informazione — a differenza di «state» per uno status HTTP.
 > Le altre sette (`valore`, `voce`, `campo`, `chiave`, `nome`, `motivo`, `testo`) sono risultate
 > genuinamente uniformi in ogni sottosistema in cui compaiono.
@@ -2224,32 +2224,32 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   gia' deciso a se' (`promesse -> agenda`, distinto da `promessa -> promise`), mentre
   `costruzioni` non ha una riga propria -- e' il semplice plurale di `costruzione -> construction`
   gia' deciso, senza bisogno di un sostantivo collettivo diverso come per `promesse`.
-- `tutte` (`handlers_promesse.py`, il flag booleano `?tutte=1`) -> parola ordinaria decisa
+- `tutte` (`handlers_agenda.py`, il flag booleano `?tutte=1`) -> parola ordinaria decisa
   `tutte -> all`, ma applicata a mano come **`show_all`**, non `all` nudo: `all` e' un builtin
   Python, la stessa guardia di `classe`/`class` che lo strumento applica gia' alle parole che
   decide da solo.
-- `esito` (`handlers_promesse.py`/`handlers_costruzioni.py`, il dict `{"errore": ...}`/`{...}`
+- `esito` (`handlers_agenda.py`/`handlers_constructions.py`, il dict `{"errore": ...}`/`{...}`
   che un tentativo di operazione restituisce) -> **`occurrence`**, la riga gia' decisa: verificato
   contro il codice prima di applicarla (non per fiducia nel suggerimento), perche' la descrizione
   della riga parla di "un tentativo" in un senso che in `azione/porta.py` e
   `azione/costruzione/officina.py` (gia' chiusi) e' esattamente questo stesso idioma -- non una
   collisione di senso come `grezzo`/`reading`.
-- `_NON_TROVATA` (`handlers_costruzioni.py`, il testo del 404 condiviso da lettura e azione) ->
+- `_NON_TROVATA` (`handlers_constructions.py`, il testo del 404 condiviso da lettura e azione) ->
   **`_NOT_FOUND`**: composto ad hoc, non una parola del vocabolario generale -- `non` e' un
   prefisso di negazione che in altri composti gia' decisi (`non_disponibili -> unavailable`) non
   si traduce affatto con "not_", quindi non e' stata scritta una riga generale per `non`; `trovata`
   e' la forma femminile di `trovato -> found`, mai aliasata perche' non ricorre altrove.
-- `solo_aperte` (`handlers_costruzioni.py`, il flag booleano `?in_attesa=1`) -> non tradotta parola
+- `solo_aperte` (`handlers_constructions.py`, il flag booleano `?in_attesa=1`) -> non tradotta parola
   per parola (`solo`/`aperte` non sono mai state decise): rinominata **`pending_only`**, lo stesso
   nome del parametro keyword-only VERO di `ConstructionStore.list` che riceve (gia' inglese) --
   stesso principio di `metodo`/`method` sotto, riusare il nome dell'interfaccia che si sta gia'
   chiamando invece di inventarne uno diverso per lo stesso fatto.
-- `agisci`/`verbo`/`metodo` (`handlers_costruzioni.py::_agisci`, il dispatcher privato che sceglie
+- `agisci`/`verbo`/`metodo` (`handlers_constructions.py::_agisci`, il dispatcher privato che sceglie
   fra `officina.apply`/`.restore` con `getattr`) -> **`_act`/`verb`/`method`**, tre parole
   ordinarie nuove (sotto, in "Le parole ordinarie"): nessuna collisione nel resto di `hiris/app`
   (scansione `tokenize`, `metodo` ricorre anche in `api/handlers_mcp.py` col senso di "nome del
   metodo JSON-RPC richiesto" -- stesso concetto generale, non un secondo senso).
-- `store.scadi(...)` (`handlers_costruzioni.py`, verso `ConstructionStore.scadi`,
+- `store.scadi(...)` (`handlers_constructions.py`, verso `ConstructionStore.scadi`,
   `azione/costruzione/versioni.py:295`) **lasciato intatto di proposito**: `scadi` e' un metodo
   PUBBLICO ancora italiano in un ambito gia' chiuso (`azione/`), mai deciso nel glossario --
   invisibile allo strumento per costruzione (nessun pezzo di `scadi` e' mai stato tradotto), la
@@ -2322,7 +2322,7 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   `schedulatore/promise.py::serializza` gia' documentato in «Il limite della qualificazione per
   ambito», applicato a mano senza toccare la riga `fuori (casa)`). Tutte private, nessun
   chiamante esterno.
-- **`nome`/`giorni_conservazione` (`handlers_impostazioni.py`, verso `ChatSettings`) --
+- **`nome`/`giorni_conservazione` (`handlers_settings.py`, verso `ChatSettings`) --
   terza voce della guardia meccanica**: `ChatSettings` (`impostazioni_chat.py`, un file di
   RADICE, ne' ambito chiuso ne' aperto) e' un dataclass con due campi ancora italiani. Misurato
   PRIMA di romperlo (`rinomina.riscrivi()` su uno snippet isolato): `corrente.nome` diventava
@@ -2437,11 +2437,11 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   `('definizione', 'definition')`), piu' l'unica citazione fra backtick che diventava falsa nello
   stesso file. Stessa famiglia di `carattere` (lotto 8) e `richiesto` (lotto 9).
 
-**Decisioni del lotto 11 (`api/handlers_casa.py`), non parole del vocabolario generale.**
+**Decisioni del lotto 11 (`api/handlers_home_space.py`), non parole del vocabolario generale.**
 
 - **`costruisci_nucleo` e `handle_get_nucleo` LASCIATE italiane, di proposito.** Non sono
   invisibili allo strumento (le propone entrambe) e non sono difficili: escono insieme a
-  `api/handlers_chat.py`, che le tiene per un'importazione vera (`from .handlers_casa import
+  `api/handlers_chat.py`, che le tiene per un'importazione vera (`from .handlers_home_space import
   costruisci_nucleo`, riga 28) e per una citazione fra backtick (riga 220). `costruisci_nucleo` e'
   importata per nome anche da `schedulatore/turno.py` (ambito chiuso, righe 128 e 259) e citata fra
   backtick in una ventina di punti fra `casa/nucleo.py`, `casa/strumenti.py`,
@@ -2478,12 +2478,12 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   chiavi d'applicazione `app["archivio_casa"]`/`app["archivio_memoria"]` che restano identiche --
   sono l'accesso dinamico del §5 della spec (41 occorrenze per la sola prima), e la loro rinomina
   e' una fetta a se'. `home_space_store` e' lo stesso nome gia' scelto dal lotto 9 per lo stesso
-  oggetto (`handlers_memoria.py`).
+  oggetto (`handlers_memory.py`).
 - **`inventario_leggibile` lasciata intatta**: e' importata da `proxy/entity_cache.py`, ambito che
   questa fetta non converte -- stessa trappola di `inventario_non_leggibile` (lotto 3), protetta
   per costruzione (composto, mai applicato da solo). **CHIUSA dal lotto 15**, che ha convertito
   `proxy/entity_cache.py`: le due funzioni sono ora `inventory_is_readable` e
-  `unreadable_inventory_error`, e i quattro importatori -- `api/handlers_casa.py`,
+  `unreadable_inventory_error`, e i quattro importatori -- `api/handlers_home_space.py`,
   `api/handlers_entities.py`, `azione/porta.py`, `casa/strumenti.py` -- sono stati aggiornati
   nello STESSO commit. Il nome importato non e' protetto dalla guardia dei percorsi di import
   (arriva dopo `import`, vedi la nota in `_righe_di_percorso_e_parola_chiave`) ne' dal controllo
@@ -2493,7 +2493,7 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   riscriverebbe nei sei ambiti chiusi e' rimasto identico (`resolver.py`, `composer.py`,
   `strumenti.py`), misurato prima del commit come prescritto sotto.
 
-**Decisioni del lotto 12 (`api/handlers_chat.py` + la coppia `nucleo` di `api/handlers_casa.py`).**
+**Decisioni del lotto 12 (`api/handlers_chat.py` + la coppia `nucleo` di `api/handlers_home_space.py`).**
 
 - **`esito` -> la QUARTA voce della guardia meccanica, e la sola delle quattro che ferma un
   difetto ATTIVO invece che futuro.** `handlers_chat.py:303` scrive
@@ -2539,7 +2539,7 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
   `create_rounds_per_exchange` nel lotto 10) e `compose` (riga gia' decisa) sul nome di cio' che le
   due funzioni FANNO.
 - **La coppia `nucleo` esce intera, mai a meta'**: `compose_briefing` e `handle_get_briefing`
-  (`api/handlers_casa.py`) si convertono in QUESTO lotto e non nel loro, perche' la prima e'
+  (`api/handlers_home_space.py`) si convertono in QUESTO lotto e non nel loro, perche' la prima e'
   importata per nome da `api/handlers_chat.py:28` e da `schedulatore/turno.py:128,259`.
   Rinominarne una sola avrebbe lasciato mezza coppia sulla stessa parola -- lo stesso difetto di
   `_risolvi_ancora`/`ancora` corretto poche ore prima.

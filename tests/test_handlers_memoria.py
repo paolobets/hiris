@@ -8,7 +8,7 @@ import json
 import pytest
 from aiohttp import web
 
-from hiris.app.api.handlers_memoria import (
+from hiris.app.api.handlers_memory import (
     handle_delete_memory,
     handle_get_memories,
     handle_patch_memory,
@@ -380,7 +380,7 @@ async def test_senza_archivio_le_rotte_dichiarano_il_guasto_con_la_chiave_del_co
     """
     from aiohttp import web
 
-    from hiris.app.api.handlers_memoria import (
+    from hiris.app.api.handlers_memory import (
         handle_delete_memory,
         handle_get_memories,
         handle_patch_memory,

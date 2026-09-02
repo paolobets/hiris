@@ -8,7 +8,7 @@
 
    Guida di disegno: `.superpowers/sdd/2026-08-23-costruire/
    guida-ux-costruzioni.md`, prodotta da ux-ui-specialist dopo aver letto il
-   codice vero (`handlers_costruzioni.py`, `versioni.py`, `officina.py`), non
+   codice vero (`handlers_constructions.py`, `versioni.py`, `officina.py`), non
    solo lo scheletro del brief. Cio' che segue e' la sua sostanza.
 
    -- Due scostamenti che la guida ha trovato leggendo il codice --

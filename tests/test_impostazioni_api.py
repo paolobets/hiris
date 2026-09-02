@@ -13,7 +13,7 @@ import pytest
 import pytest_asyncio
 from aiohttp.test_utils import TestClient, TestServer
 
-from hiris.app.api.handlers_impostazioni import (
+from hiris.app.api.handlers_settings import (
     FIELDS,
     MAX_PROMPT_CHARS,
     RESPONSE_MODES,

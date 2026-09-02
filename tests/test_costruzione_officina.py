@@ -681,7 +681,7 @@ async def test_un_guasto_di_rete_durante_applica_disfa_gli_helper_e_non_resta_in
 
 @pytest.mark.asyncio
 async def test_un_guasto_di_rete_durante_applica_e_dichiarato_guasto_rete(banco):
-    """Punto 7 (terza pulizia): `_act` (handlers_costruzioni.py) deve poter
+    """Punto 7 (terza pulizia): `_act` (handlers_constructions.py) deve poter
     distinguere un guasto di TRASPORTO da un rifiuto vero di Home Assistant,
     per rispondere 503 e non 409 -- lo stesso flag che questo test pinna."""
     officina, ha, _archivio, _ = banco

@@ -213,7 +213,7 @@ async def test_correggere_un_ricordo_dalla_pagina_deduce_la_stessa_unita(
     """
     from aiohttp import web
 
-    from hiris.app.api.handlers_memoria import handle_patch_memory
+    from hiris.app.api.handlers_memory import handle_patch_memory
     from hiris.app.memoria.archivio import MemoryStore
 
     casa_archivio = HomeSpaceStore(str(tmp_path / "casa.db"))

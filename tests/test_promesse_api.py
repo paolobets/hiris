@@ -162,7 +162,7 @@ async def test_la_rotta_e_lo_strumento_danno_la_STESSA_forma(client):
     falsa» che questo ramo ha imparato a cercare.
 
     I due involucri sono due dict LETTERALI in due file diversi
-    (`api/handlers_promesse.py` e `casa/strumenti.py::_list_agenda`), mai lo
+    (`api/handlers_agenda.py` e `casa/strumenti.py::_list_agenda`), mai lo
     stesso oggetto: nessuno dei due si porta dietro l'altro, ed e' questo che
     rende il confronto sul CORPO l'unica cosa che valga la pena pinzare.
     """

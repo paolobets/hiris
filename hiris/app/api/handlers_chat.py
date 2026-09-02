@@ -25,7 +25,7 @@ from ..chat_store import (
 from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
 from ..model_resolution import downgrade_note
 from ..steering import who_answers
-from .handlers_casa import compose_briefing
+from .handlers_home_space import compose_briefing
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +95,7 @@ def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
     grep del nome della classe seguito da parentesi su `hiris/app/` lo dimostra
     (e `tests/test_rotta_mcp.py` lo pinna). E' lo stesso
     principio gia' applicato al nucleo con `compose_briefing`
-    (`handlers_casa.py`: «la STESSA composizione, non due che potrebbero
+    (`handlers_home_space.py`: «la STESSA composizione, non due che potrebbero
     divergere»).
 
     Passarlo sempre (mai `None`) al runner tiene chiusa anche un'altra trappola:
@@ -175,7 +175,7 @@ def compose_chat_context(app, data_dir: str) -> str:
     stringa nel job del ponte (chat via abbonamento) -- se la ricopiasse, i
     due percorsi avrebbero due composizioni destinate a divergere, la
     "funzione doppia" vietata da CLAUDE.md:70-72. Prende `app` (non
-    `request`), stessa ragione di `compose_briefing` in handlers_casa.py:
+    `request`), stessa ragione di `compose_briefing` in handlers_home_space.py:
     nessun motivo di legarla a una request in corso.
     """
     # Inject closed-session summaries so Claude remembers previous conversations.
@@ -200,7 +200,7 @@ def compose_chat_context(app, data_dir: str) -> str:
     # intelligenze nella stessa casa che ne vedono due diverse -- vedi
     # docs/design/2026-08-05-la-conoscenza-di-hiris.md, §7).
     # `compose_briefing()` (condivisa con GET /api/briefing,
-    # handlers_casa.py -- stessa composizione, non due che potrebbero
+    # handlers_home_space.py -- stessa composizione, non due che potrebbero
     # divergere) contiene gia' i dichiarati (come "cio' che le persone hanno
     # detto"), la casa, cosa e' notevole adesso, e cosa la casa fa da sola --
     # ed e' lo stesso testo che vedranno il Brain e gli agenti quando

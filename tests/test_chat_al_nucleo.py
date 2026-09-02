@@ -10,7 +10,7 @@ casa che ne vedono due diverse, vedi
 docs/design/2026-08-05-la-conoscenza-di-hiris.md, §7).
 
 Dopo: una fonte sola, il nucleo (`hiris.app.casa.nucleo.compose`, condiviso
-con GET /api/briefing tramite `handlers_casa.compose_briefing` -- stessa
+con GET /api/briefing tramite `handlers_home_space.compose_briefing` -- stessa
 composizione per la rotta e per la chat, non due che potrebbero divergere).
 Le sessioni precedenti restano A PARTE: sono cronologia di conversazioni
 chiuse, non conoscenza sulla casa.

@@ -963,7 +963,7 @@ def _problems_notice(problems: dict | None) -> str | None:
     In «Notevole adesso» annuncerebbero a ogni messaggio una cosa che non e'
     successa adesso.
 
-    `problemi` arriva gia' letto dal chiamante (`handlers_casa.compose_briefing`,
+    `problemi` arriva gia' letto dal chiamante (`handlers_home_space.compose_briefing`,
     da `app["problemi_ha"]`), esattamente come `stato` e
     `sistema_di_riferimento`: `compose()` resta PURA.
 
@@ -1091,7 +1091,7 @@ def _comparison_notice(comparison: dict | None) -> str | None:
     contiene un'area davvero, e `anagrafe.compare_with_home_assistant` mette
     le due liste una accanto all'altra su un campione di aree.
 
-    `confronto` arriva gia' letto dal chiamante (`handlers_casa.compose_briefing`,
+    `confronto` arriva gia' letto dal chiamante (`handlers_home_space.compose_briefing`,
     da `app["confronto_albero"]`), esattamente come `stato`, `problemi` e
     `sistema_di_riferimento`: `compose()` resta PURA.
 
@@ -1454,7 +1454,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
 
     # `compose()` resta PURA. I nomi dei dispositivi non si vanno a prendere:
     # sono gia' in `casa["dispositivi"]`, la stessa struttura che il chiamante
-    # ha letto con `HomeSpaceStore.leggi()` (handlers_casa.compose_briefing) e
+    # ha letto con `HomeSpaceStore.leggi()` (handlers_home_space.compose_briefing) e
     # che questa funzione riceve da sempre -- fino a oggi ne buttava via un
     # campo. Nessun archivio aperto, nessuna rete.
     #

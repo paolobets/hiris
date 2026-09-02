@@ -152,7 +152,7 @@ async def test_l_ultima_conclusione_vince_e_non_si_accumula():
 #
 # Un `app` vuoto (`{}`) e' legittimo: `compose_briefing` e
 # `create_tool_dispatcher` sono "SEMPRE componibili" per contratto
-# (vedi i loro docstring in `hiris/app/api/handlers_casa.py` e
+# (vedi i loro docstring in `hiris/app/api/handlers_home_space.py` e
 # `handlers_chat.py`), anche senza archivi -- e' la stessa disciplina che
 # rende `interpreta_promise` provabile senza un server vero.
 

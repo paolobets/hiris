@@ -9,7 +9,7 @@ import { loadScripts, tick } from './helpers/dom.mjs';
    non due mondi (progetto, guida di disegno §1).
 
    Tre cose non negoziabili, dettate dalla guida di disegno e da
-   handlers_promesse.py/archivio.py:
+   handlers_agenda.py/archivio.py:
    - la DELETE riuscita risponde 200 con {"promessa": {...}}, MAI 204 come
      /api/memories/{id} -- un test lo pinza sotto;
    - il vocabolario mostrato non e' quello del backend: `saltata` -> «Non

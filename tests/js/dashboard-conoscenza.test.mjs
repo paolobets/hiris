@@ -41,7 +41,7 @@ function casaLetta(modifiche = {}) {
    separate e' il punto: la seconda e' quella che il tester incontra davvero.
 
    (a) Archivio ASSENTE: tutti i campi a tre stati sono `null`. E' la forma
-       letterale del ramo di difesa di `handlers_casa.handle_get_home_space`, che
+       letterale del ramo di difesa di `handlers_home_space.handle_get_home_space`, che
        dichiara di se stesso (`:25-31`): «difesa, non stato atteso: in
        produzione questo ramo non dovrebbe mai scattare». */
 const CASA_ARCHIVIO_ASSENTE = {
@@ -60,7 +60,7 @@ const CASA_ARCHIVIO_ASSENTE = {
          problemi_comportamento() -> []   (:256-268)
          file_non_letti()         -> {}   (:270-281)
          non_disponibili_plance() -> []   (:332-344)
-         senza_corpo              -> 0    (handlers_casa.py:75)
+         senza_corpo              -> 0    (handlers_home_space.py:75)
        E' lo stato che `server.py:723-733` dichiara per iscritto come ATTESO:
        «un Home Assistant non ancora pronto lascia l'anagrafe vuota con un
        avviso nel log, non fa fallire l'add-on». Cioe': la prima apertura

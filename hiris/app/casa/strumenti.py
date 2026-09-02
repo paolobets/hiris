@@ -1270,7 +1270,7 @@ class ToolDispatcher:
         # Tutti i ricordi, non solo gli ultimi venti (il default di
         # `fetch()`): un ricordo vecchio ancorato a QUESTA cosa non deve
         # sparire dal suo stesso dettaglio solo perche' non e' fra i piu'
-        # recenti -- stessa scelta di `handlers_casa.handle_get_briefing`.
+        # recenti -- stessa scelta di `handlers_home_space.handle_get_briefing`.
         memories = self._memory.fetch(limit=self._memory.count())
         # `view()` (domande.py) e' pura: lo stato glielo passa il chiamante.
         # Si legge dalla stessa `entity_cache` del nucleo, nella forma che usa
@@ -1418,7 +1418,7 @@ class ToolDispatcher:
         if not topology_loaded:
             # L'anagrafe non e' mai stata letta: NESSUNA ancora si puo'
             # verificare, non solo quelle il cui registro e' caduto -- stessa
-            # distinzione di `handlers_memoria._unverifiable_types`.
+            # distinzione di `handlers_memory._unverifiable_types`.
             unverifiable_kinds = frozenset(_TETHER_TYPES)
         else:
             fallen_stores = set(self._home_space.unavailable())
@@ -1437,7 +1437,7 @@ class ToolDispatcher:
         # regge (un'ancora inventata, una forza fuori vocabolario) e lo
         # DICHIARA in `problemi` -- non lo lascia passare in silenzio, e non
         # butta via l'intero ricordo per questo. E' la differenza con
-        # `handlers_memoria.handle_patch_memory`, che invece RIFIUTA
+        # `handlers_memory.handle_patch_memory`, che invece RIFIUTA
         # un'intera correzione se `problemi` non e' vuota: li' si sta
         # correggendo un ricordo gia' esistente e l'utente puo' riprovare,
         # qui si sta salvando per la prima volta cio' che qualcuno ha detto
@@ -1673,7 +1673,7 @@ class ToolDispatcher:
         occurrence = await self._workshop.apply(
             proposal_id.strip(), actor="chat", exchange=self._exchange, now=_time.time())
         # Punto 7 (residuo): `guasto_rete` e' interno (`Workshop._fallita`/
-        # `_rete`) -- `handlers_costruzioni.py` lo toglie gia' sul percorso
+        # `_rete`) -- `handlers_constructions.py` lo toglie gia' sul percorso
         # HTTP (lo legge per scegliere 503 invece di 409, poi lo estrae dal
         # corpo). Qui, sul percorso chat, questo dizionario va DIRETTO al
         # modello: senza questa riga il flag ci arrivava integro, e «interno»

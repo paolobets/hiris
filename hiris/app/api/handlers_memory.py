@@ -30,7 +30,7 @@ Tre cose, non di piu':
    "corregge" con successo.
 3. Senza archivio, la risposta non afferma "zero ricordi" come se fosse un
    fatto accertato: lo dichiara (`available: false`) -- stessa convenzione
-   di `handlers_casa.handle_get_home_space`, non una seconda inventata qui.
+   di `handlers_home_space.handle_get_home_space`, non una seconda inventata qui.
 """
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ def _topology_loaded(home_space_store) -> bool:
 
     `create_app()` istanzia sempre `archivio_casa`: in produzione non e'
     mai `None`. Ma un archivio appena creato (Home Assistant non ancora
-    pronto all'avvio, handlers_casa.py:27-29 lo dichiara possibile) ha
+    pronto all'avvio, handlers_home_space.py:27-29 lo dichiara possibile) ha
     `aggiornata_il() is None` -- una casa vuota, non una casa cambiata.
     Trattarla come "letta e senza ancore" farebbe sparire ogni ancora
     valida al primo avvio, che e' esattamente il bug che questa funzione
@@ -135,7 +135,7 @@ def _resolve_tether(tether: dict, lookup, unverifiable: frozenset[str]) -> dict:
 async def handle_get_memories(request: web.Request) -> web.Response:
     store = request.app.get("archivio_memoria")
     if store is None:
-        # Stessa convenzione di handle_get_home_space (handlers_casa.py): senza
+        # Stessa convenzione di handle_get_home_space (handlers_home_space.py): senza
         # archivio non sappiamo se i ricordi sono zero o se e' l'archivio a
         # mancare -- `available` lo dice, `memories: []` resta un
         # contenitore naturale, non l'affermazione di un fatto.

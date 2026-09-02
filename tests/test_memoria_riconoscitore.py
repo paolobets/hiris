@@ -426,7 +426,7 @@ def test_due_piani_omonimi_sono_ambigui():
 
 def test_senza_comportamento_nessuna_automazione_si_indicizza():
     """Il parametro e' opzionale (default `None`): i chiamanti che ancora
-    non lo passano (`_remember`, le pagine di `handlers_memoria.py`) non
+    non lo passano (`_remember`, le pagine di `handlers_memory.py`) non
     devono vedere comparire nulla sotto "automazione"/"script"."""
     lookup = costruisci_indice(_HOME_SPACE)
     assert lookup.find("sveglia") == []
@@ -493,7 +493,7 @@ def test_gli_alias_e_le_etichette_valgono_anche_per_il_comportamento():
 
 
 def test_l_indice_costruito_senza_ripiego_e_identico_a_prima():
-    """I quattro chiamanti esistenti (handlers_memoria.py:118 e :184,
+    """I quattro chiamanti esistenti (handlers_memory.py:118 e :184,
     casa/strumenti.py:430 e :512) non passano niente: la firma nuova non
     deve cambiargli nulla sotto i piedi -- e non deve marcare come dedotto
     cio' che il registro dichiara."""

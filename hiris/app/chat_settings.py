@@ -108,7 +108,7 @@ _FILE_PERMISSIONS = 0o600
 # «nessun codice di produzione scrive `impostazioni_chat.json`, `save()` non
 # ha nessun chiamante fuori dai test, e la superficie HTTP che lo scrivera' e'
 # della fetta E5». Quella superficie ORA esiste --
-# `api/handlers_impostazioni.py`, `PUT /api/chat-settings`, la pagina
+# `api/handlers_settings.py`, `PUT /api/chat-settings`, la pagina
 # `#/impostazioni` -- quindi un `impostazioni_chat.json` sul disco non e' piu'
 # necessariamente scritto a mano: puo' essere stato salvato dall'utente dalla
 # pagina. Cio' che NON cambia e' la conclusione: un meccanismo alla
@@ -116,7 +116,7 @@ _FILE_PERMISSIONS = 0o600
 # vecchio e riscriverlo) NON serve e sarebbe dannoso -- sovrascrivere il
 # prompt che l'utente ha scelto e' peggio del difetto che chiuderebbe. La via
 # di ritorno al default esiste ed e' esplicita: si svuota il campo nella
-# pagina (`handlers_impostazioni.validate`, `system_prompt` vuoto ->
+# pagina (`handlers_settings.validate`, `system_prompt` vuoto ->
 # `DEFAULT_SYSTEM_PROMPT`), che e' una decisione dell'utente, non nostra.
 #
 # fetta «comandare» (Task 7): questo testo NON e' stato esteso a `execute`, ed
@@ -377,7 +377,7 @@ class ChatSettings:
            restare li' a sporcare `/data` dopo ogni errore.
 
         Solleva `OSError` se il disco non collabora: il chiamante HTTP
-        (`api/handlers_impostazioni.handle_save_settings`) la cattura e
+        (`api/handlers_settings.handle_save_settings`) la cattura e
         risponde dichiarando il guasto, invece di rispondere "salvato".
         """
         path = os.path.join(data_dir, _SETTINGS_FILE)

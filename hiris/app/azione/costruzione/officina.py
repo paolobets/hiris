@@ -475,7 +475,7 @@ class Workshop:
         `_disfa` (spazzatura in casa dell'utente, spec §3.1), lascerebbe la
         riga bloccata `in_corso` fino al riavvio, e farebbe uscire un 500
         grezzo dalla pagina invece del contratto 404/409/503 dichiarato da
-        `handlers_costruzioni.py`.
+        `handlers_constructions.py`.
 
         Ritorna cio' che `chiamata` ritorna, oppure `{"errore": "Home
         Assistant non ha risposto: ...", "guasto_rete": True}` -- la stessa
@@ -552,7 +552,7 @@ class Workshop:
         occurrence = {"errore": reason, "esecuzione_id": execution_id}
         if guasto_rete:
             # Distingue un guasto di TRASPORTO da un rifiuto vero di Home
-            # Assistant (validazione, 400): `_act` (handlers_costruzioni.py)
+            # Assistant (validazione, 400): `_act` (handlers_constructions.py)
             # legge questo flag per rispondere 503 invece di 409 -- la stessa
             # indisponibilita' che la GET dichiarerebbe (ondata finale, punto
             # 7, terza pulizia).

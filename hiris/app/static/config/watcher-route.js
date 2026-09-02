@@ -4,7 +4,7 @@
    Guarda la casa e ne ricava oggetti -- non conclude niente, non parla, non
    tocca niente. Questa pagina e' la sola faccia che ha oggi: due GET,
    `api/mind/watching` e `api/mind/facts?day=...`
-   (`hiris/app/api/handlers_cervello.py`).
+   (`hiris/app/api/handlers_mind.py`).
 
    -- Trasparenza al posto del permesso (spec §7) --
    L'osservatore non chiede il permesso di guardare qualcosa: si deve poter

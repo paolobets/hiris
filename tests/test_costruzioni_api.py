@@ -5,7 +5,7 @@ import pytest
 import pytest_asyncio
 from aiohttp import web
 
-from hiris.app.api.handlers_costruzioni import (
+from hiris.app.api.handlers_constructions import (
     handle_confirm_construction,
     handle_get_construction,
     handle_get_constructions,
@@ -362,7 +362,7 @@ async def test_ripristina_con_x_requested_with_ripristina_anche_a_csrf_stretto(
 async def test_rifiuta_senza_x_requested_with_e_403_e_non_scrive_niente(client, csrf_stretto):
     """Punto 9 (residuo): `/reject` era l'unica delle tre POST senza questa
     prova end-to-end, nel file il cui stesso commento argomenta perche' serve.
-    Non tocca Home Assistant (vedi `handlers_costruzioni.py`), quindi la meta'
+    Non tocca Home Assistant (vedi `handlers_constructions.py`), quindi la meta'
     che conta qui non e' `salvate == []` ma lo stato della proposta."""
     archivio = client.app["costruzioni"]
     ident = archivio.propose(

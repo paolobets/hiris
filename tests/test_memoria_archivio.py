@@ -99,7 +99,7 @@ def test_la_memoria_non_evapora(memory):
 
 def test_correggere_un_id_inesistente_dice_di_no(memory):
     """`correggi()` deve poter distinguere "ho corretto" da "non c'era
-    niente da correggere": il chiamante (handlers_memoria.py) risponde 404
+    niente da correggere": il chiamante (handlers_memory.py) risponde 404
     su questo `False`, non 200 `ok: true` su un ricordo che non esiste."""
     assert memory.correggi(9999, forza="preferenza") is False
 

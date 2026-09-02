@@ -75,7 +75,7 @@ _ARCHIVI = (("aree", "area"), ("entita", "entita"), ("dispositivi", "dispositivo
 # del registro che l'anagrafe usa per quel tipo. Pubblica perche' serve a chi
 # deve sapere se QUEL registro specifico ha risposto all'ultima lettura
 # (`HomeSpaceStore.non_disponibili()`), non solo se l'anagrafe intera e' stata
-# letta -- vedi handlers_memoria.py.
+# letta -- vedi handlers_memory.py.
 STORE_KEY_PER_TYPE: dict[str, str] = {type: key for key, type in _ARCHIVI}
 
 
@@ -173,7 +173,7 @@ class Lookup:
         # candidati, ed e' trova() a dichiararlo, non a sceglierne uno.
         #
         # Le espressioni pero' NON si compilano qui: costruisci_indice()
-        # gira a ogni GET/PATCH di /api/memories (handlers_memoria.py), ma
+        # gira a ogni GET/PATCH di /api/memories (handlers_memory.py), ma
         # quelle rotte usano solo verifica() -- un accesso a dizionario.
         # Compilare un pattern per termine per una richiesta che non chiama
         # mai trova() e' lavoro morto (misurato: 16,8 ms a 380 voci). Si

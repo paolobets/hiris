@@ -148,7 +148,7 @@ class MemoryStore:
         `None` se non esiste.
 
         Serve a chi deve leggere lo stato ARCHIVIATO prima di scrivere una
-        correzione parziale -- handlers_memoria.py verifica la coerenza di
+        correzione parziale -- handlers_memory.py verifica la coerenza di
         un intervallo (minimo/massimo) contro il valore gia' archiviato
         quando la richiesta ne tocca solo meta', non contro `None`.
         """
@@ -177,7 +177,7 @@ class MemoryStore:
 
         Restituisce `True` se `id` esisteva ed e' stato corretto, `False`
         se non esisteva -- il chiamante DEVE poterlo distinguere da un
-        successo (handlers_memoria.py risponde 404, non 200 `ok: true`:
+        successo (handlers_memory.py risponde 404, non 200 `ok: true`:
         un `PATCH` su un id sparito non e' andato a buon fine solo perche'
         la UPDATE non ha sollevato). L'UPDATE su `ricordi` gira SEMPRE,
         anche quando `campi` e' vuoto (il ramo `else` sotto), proprio

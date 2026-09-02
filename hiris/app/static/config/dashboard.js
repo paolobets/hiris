@@ -10,7 +10,7 @@
      - GET /api/home-space   -> l'anagrafe ricostruita, il comportamento, le plance;
      - GET /api/briefing -> il testo ESATTO che il modello ha davanti in chat
                           (la stessa composizione, non un secondo conto:
-                          `handlers_casa.compose_briefing()` e' condivisa con
+                          `handlers_home_space.compose_briefing()` e' condivisa con
                           `handlers_chat.compose_chat_context`).
 
    La regola che governa ogni riga qui sotto: i campi di /api/home-space hanno TRE
@@ -94,7 +94,7 @@ window.HirisDashboard = (function () {
   }
 
   /* Il comportamento ha DUE tipi fissi, e nessuno dei due puo' sparire.
-     `conteggi` (handlers_casa.py) si costruisce contando le voci lette: una
+     `conteggi` (handlers_home_space.py) si costruisce contando le voci lette: una
      casa con dodici automazioni e zero script produce `{automazione: 12}` e
      la tessera «Script» non veniva disegnata affatto -- ne' «0» ne' «non
      letto», proprio niente. Qui i due tipi ci sono sempre.
@@ -211,7 +211,7 @@ window.HirisDashboard = (function () {
      torna `[]` (archivio.py:173-183), `behavior_problems()` `[]`
      (:256-268), `file_non_letti()` `{}` (:270-281),
      `unavailable_dashboards()` `[]` (:332-344), e `senza_corpo` è un `sum()`
-     su zero voci, cioè `0` (handlers_casa.py:75). Solo le tre date tornano
+     su zero voci, cioè `0` (handlers_home_space.py:75). Solo le tre date tornano
      `None`.
 
      Quindi un elenco vuoto è prova di «controllato, niente da segnalare»

@@ -11,12 +11,12 @@
    vista della memoria, e legge l'archivio vero (/api/memories).
 
    Questa pagina interroga invece l'archivio vero (`GET/PATCH/DELETE
-   /api/memories*`, `hiris/app/api/handlers_memoria.py`) ed esegue la
+   /api/memories*`, `hiris/app/api/handlers_memory.py`) ed esegue la
    decisione (5) del progetto della memoria (docs/design/2026-08-05-la-
    conoscenza-di-hiris.md, §6): «si può ricordare subito solo se poi si può
    guardare e correggere».
 
-   Tre regole non negoziabili, tutte già motivate in handlers_memoria.py e
+   Tre regole non negoziabili, tutte già motivate in handlers_memory.py e
    verificate leggendo quel file prima di scrivere questa pagina:
    1. `ancora.esiste === null` significa «non ho potuto controllare»
       (l'anagrafe non è mai stata letta, o quel registro non ha risposto),
@@ -220,7 +220,7 @@ window.HirisMemoryRoute = (function () {
       /* Solo i campi TOCCATI entrano nel corpo: un PATCH parziale lascia
          intatto ciò che l'utente non ha guardato (es. non rimanda `unita`
          se ha corretto solo `grandezza` — il server la rideduce da sé,
-         handlers_memoria.py). Un valore numerico illeggibile si dichiara
+         handlers_memory.py). Un valore numerico illeggibile si dichiara
          qui, prima di mandarlo. */
       var body = {};
       var nMin = minInput.value === '' ? null : parseFloat(minInput.value);
@@ -402,7 +402,7 @@ window.HirisMemoryRoute = (function () {
 
     /* Il taglio a `_MEMORIES_SHOWN_LIMIT` si dichiara: senza questa
        riga un ricordo oltre il taglio è invisibile, indistinguibile da uno
-       cancellato (handlers_memoria.py, regola 3). */
+       cancellato (handlers_memory.py, regola 3). */
     list.appendChild(el('p', 'field-hint', show < total
       ? ('Stai vedendo i ' + show + ' ricordi più recenti su ' + total + ' in tutto.')
       : (total === 1 ? '1 ricordo.' : total + ' ricordi.')));

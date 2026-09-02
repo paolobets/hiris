@@ -123,7 +123,7 @@ async def test_conferma_senza_identificatore_non_indovina():
 @pytest.mark.asyncio
 async def test_conferma_non_lascia_uscire_guasto_rete_verso_il_modello():
     """Punto 7 (residuo): `guasto_rete` e' dichiarato «interno»
-    (`handlers_costruzioni.py`), e sul percorso HTTP lo e' davvero -- quella
+    (`handlers_constructions.py`), e sul percorso HTTP lo e' davvero -- quella
     rotta lo legge per scegliere 503 invece di 409 e poi lo toglie dal corpo.
     Sul percorso chat, prima di questa correzione, lo strumento restituiva il
     dizionario di `apply` tale e quale: il flag usciva integro verso il

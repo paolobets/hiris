@@ -195,7 +195,7 @@ def test_il_nucleo_VERO_porta_l_orologio_e_non_solo_quello_di_prova(archivio):
     compositore di produzione, condiviso dalla chat sincrona, dal ponte e da
     GET /api/briefing -- non gliela passa, il parametro esiste, i test passano,
     e il modello continua a indovinare l'ora esattamente come prima."""
-    from hiris.app.api.handlers_casa import compose_briefing
+    from hiris.app.api.handlers_home_space import compose_briefing
 
     archivio.replace({}, [], reference_frame=reference_frame(_CONFIG))
 

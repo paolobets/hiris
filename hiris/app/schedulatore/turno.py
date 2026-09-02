@@ -129,8 +129,8 @@ async def interpreta_promise(app, promise: dict) -> dict:
     turno che finisce senza chiamare `conclude` e' un errore dichiarato, non un
     «forse e' andata bene».
     """
-    from ..api.handlers_casa import compose_briefing
     from ..api.handlers_chat import create_tool_dispatcher
+    from ..api.handlers_home_space import compose_briefing
     from ..steering import who_answers
 
     # La STESSA domanda che si fa la chat, dalla STESSA funzione. Fino al
@@ -260,7 +260,7 @@ def _enqueue_to_bridge(app, promise: dict) -> dict:
     composto qui perche' e' l'ultimo punto in cui esistono l'app e gli
     archivi, con la STESSA funzione del ramo sincrono.
     """
-    from ..api.handlers_casa import compose_briefing
+    from ..api.handlers_home_space import compose_briefing
     from ..api.handlers_models import _STORE_DEFAULTS
 
     try:

@@ -6,7 +6,7 @@ import { loadScripts, tick } from './helpers/dom.mjs';
    il pannello Memoria della chat (coda di approvazione, uscita con questo
    stesso task) e interroga l'archivio vero (GET/PATCH/DELETE /api/memories*).
 
-   Tre cose non negoziabili, dettate dal brief e da handlers_memoria.py:
+   Tre cose non negoziabili, dettate dal brief e da handlers_memory.py:
    - `ancora.esiste === null` ("non ho potuto controllare") non si legge come
      un'ancora cancellata;
    - un PATCH rifiutato mostra la ragione che manda il server, non un errore

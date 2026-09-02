@@ -40,7 +40,7 @@ import asyncio
 import pytest
 from aiohttp import web
 
-from hiris.app.api.handlers_casa import compose_briefing, handle_get_home_space
+from hiris.app.api.handlers_home_space import compose_briefing, handle_get_home_space
 from hiris.app.casa.anagrafe import (
     choose_sample,
     compare_with_home_assistant,

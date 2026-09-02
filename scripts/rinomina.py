@@ -478,7 +478,7 @@ _METODI_USAGE_STORE = frozenset({
     "_sottrai_saldo", "importa_legacy",
 })
 
-# Terza voce (Task 9, `api/handlers_impostazioni.py`, PRIMA di applicare il
+# Terza voce (Task 9, `api/handlers_settings.py`, PRIMA di applicare il
 # file, non dopo): `ChatSettings` (`impostazioni_chat.py`, un file di
 # RADICE -- non un ambito di questa fetta, ne' chiuso ne' aperto) e' un
 # dataclass, non una classe di servizio: il rischio non e' un METODO

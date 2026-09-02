@@ -107,7 +107,7 @@ def _chiamate_a_salva():
     Fix round 1, I-3. La prima versione di questa guardia cercava
     `\.salva\(` con una regex riga per riga, scartando solo le righe che
     cominciano con `#`. Una DOCSTRING la soddisfaceva: la prosa in cima a
-    `api/handlers_impostazioni.py` contiene la frase «`ChatSettings.save()`
+    `api/handlers_settings.py` contiene la frase «`ChatSettings.save()`
     non aveva nessun chiamante», che combacia col pattern e nomina il file
     cercato -- quindi entrambe le asserzioni sarebbero rimaste verdi anche
     cancellando la chiamata vera.
@@ -151,7 +151,7 @@ def test_salva_ha_un_chiamante_di_produzione():
         "campi tornerebbero a essere modificabili solo scrivendo a mano il JSON "
         "in /data"
     )
-    assert any(c.startswith("handlers_impostazioni.py:") for c in chiamanti), chiamanti
+    assert any(c.startswith("handlers_settings.py:") for c in chiamanti), chiamanti
 
 
 def test_salva_non_lascia_il_temporaneo_se_la_scrittura_fallisce(tmp_path, monkeypatch):

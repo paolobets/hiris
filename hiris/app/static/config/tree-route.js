@@ -144,7 +144,7 @@ window.HirisTreeRoute = (function () {
 
   /* I NOMI delle etichette (`casa.etichette`, `GET /api/home-space`): mappa
      id -> nome, risolta una volta sola dal backend -- vedi
-     `handlers_casa.handle_get_home_space`. `hierarchy()` mette su aree ed
+     `handlers_home_space.handle_get_home_space`. `hierarchy()` mette su aree ed
      entita' i soli `label_id` (cosi' li manda Home Assistant): senza
      questa funzione l'albero mostrerebbe lo slug («da_controllare»)
      invece del nome che l'utente ha scritto («Da controllare»).

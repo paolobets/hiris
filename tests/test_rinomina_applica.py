@@ -497,7 +497,7 @@ def test_un_attributo_che_non_e_di_registroesiti_si_applica_normalmente():
 
 
 def test_un_campo_di_impostazionichat_non_si_applica_da_solo():
-    """Terza voce della stessa guardia (Task 9, `api/handlers_impostazioni.py`):
+    """Terza voce della stessa guardia (Task 9, `api/handlers_settings.py`):
     `ChatSettings` e' un dataclass, non una classe di servizio -- il
     rischio e' un CAMPO letto per attributo, non un metodo. `nome` e' una
     parola ordinaria gia' decisa (`-> name`); l'attributo vero del dataclass
@@ -633,7 +633,7 @@ def _sostituzioni_di_identificatori(prima: str, dopo: str) -> set[tuple[str, str
 # `in`, `sospeso`) e' mai stato deciso -- non una parola gia' decisa
 # rimandata (come `modo` sopra), una parola MAI vista dal glossario.
 # Questa guardia misura stabilita', non completezza (Task 9, scoperto
-# convertendo `api/handlers_promesse.py`, che chiama gia' questo
+# convertendo `api/handlers_agenda.py`, che chiama gia' questo
 # parametro per keyword e lo lascia intatto): tracciato a grana di parola
 # in `test_il_residuo_di_schedulatore_archivio_e_solo_solo_in_sospeso`,
 # non qui, perche' non c'e' nessun `prima`/`dopo` da confrontare quando
@@ -848,7 +848,7 @@ def test_il_residuo_di_schedulatore_archivio_e_solo_solo_in_sospeso():
     restare silenziosamente disallineato.
 
     Due chiamanti pubblici usano gia' questo nome esatto per keyword, ed
-    e' per questo che nessuno dei due lo tocca: `api/handlers_promesse.py`
+    e' per questo che nessuno dei due lo tocca: `api/handlers_agenda.py`
     (`store.list(solo_in_sospeso=not show_all, ...)`, Task 9 di questa
     fetta) e `casa/strumenti.py:1630` (gia' chiuso). Se le tre parole
     vengono decise un domani, tutti e due i chiamanti vanno aggiornati
@@ -861,7 +861,7 @@ def test_il_residuo_di_schedulatore_archivio_e_solo_solo_in_sospeso():
     assert "solo_in_sospeso" in parametri, (
         "il residuo tracciato qui e' sparito: se e' stato deciso e "
         "applicato per davvero (schedulatore/archivio.py, "
-        "api/handlers_promesse.py, casa/strumenti.py, i due test dedicati), "
+        "api/handlers_agenda.py, casa/strumenti.py, i due test dedicati), "
         "questo test va tolto, non solo aggiornato")
     assert parametri["solo_in_sospeso"].kind == inspect.Parameter.KEYWORD_ONLY
 

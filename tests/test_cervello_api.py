@@ -1,7 +1,7 @@
 """Le due rotte della pagina dell'osservatore."""
 import pytest
 
-from hiris.app.api.handlers_cervello import handle_facts, handle_watching
+from hiris.app.api.handlers_mind import handle_facts, handle_watching
 from hiris.app.cervello.archivio import ObservationsStore
 from hiris.app.cervello.osservatore import Watcher
 from tests._contratti import assert_stessa_firma

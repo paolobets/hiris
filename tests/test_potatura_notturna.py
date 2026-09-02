@@ -49,7 +49,7 @@ def _load_run_retention():
 
 def test_la_potatura_legge_i_giorni_dall_archivio_non_da_una_costante_fissa(tmp_path, monkeypatch):
     """Il PUT che cambia `giorni_conservazione` a caldo riassegna
-    `app["impostazioni_chat"]` (handlers_impostazioni.py): la potatura di
+    `app["impostazioni_chat"]` (handlers_settings.py): la potatura di
     stanotte deve vedere QUEL valore, non uno catturato all'avvio."""
     from datetime import datetime, timedelta
 
