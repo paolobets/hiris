@@ -381,8 +381,8 @@
     return row;
   }
 
-  function iconButton(testo, cls, label, action) {
-    var b = el('button', 'btn-icon-only ' + cls, testo);
+  function iconButton(text, cls, label, action) {
+    var b = el('button', 'btn-icon-only ' + cls, text);
     b.type = 'button';
     b.setAttribute('aria-label', label);
     b.addEventListener('click', action);
@@ -491,14 +491,14 @@
       }
     });
 
-    var testa = el('div', 'pannello-testa');
-    var titolo = el('h3', 'pannello-titolo',
+    var head = el('div', 'pannello-testa');
+    var title = el('h3', 'pannello-titolo',
       'Modello di ' + ((p.dati && p.dati.nome) || line.querySelector('.riga-nome').textContent));
-    testa.appendChild(titolo);
-    testa.appendChild(iconButton('✕', 'pannello-chiudi', 'Chiudi',
+    head.appendChild(title);
+    head.appendChild(iconButton('✕', 'pannello-chiudi', 'Chiudi',
       function() { closePanel(); }));
-    box.appendChild(testa);
-    box.setAttribute('aria-label', titolo.textContent);
+    box.appendChild(head);
+    box.setAttribute('aria-label', title.textContent);
 
     if (p.errore) {
       box.appendChild(el('p', 'proposals-error',
@@ -606,13 +606,13 @@
      miniatura. Chi vuole un identificatore che l'elenco non ha lo incolla
      intero, e allora l'elenco si svuota e la voce c'è. */
   function vociVisibili(data, filter) {
-    var testo = (filter || '').trim();
-    var bottom = testo.toLowerCase();
-    if (!testo) return (data.modelli || []).slice();
+    var text = (filter || '').trim();
+    var bottom = text.toLowerCase();
+    if (!text) return (data.modelli || []).slice();
     var voci = (data.modelli || []).filter(function(v) {
       return (v.valore || '').toLowerCase().indexOf(bottom) !== -1;
     });
-    return voci.length ? voci : [{ valore: testo, nota: 'scritto da te' }];
+    return voci.length ? voci : [{ valore: text, nota: 'scritto da te' }];
   }
 
   function modelEntry(data, v, writable) {
@@ -661,21 +661,21 @@
      `['ollama','modello']`, `['nascondi_gratuiti']`). Applicarla alla cieca è
      ciò che tiene questo file ignorante dei casi particolari. */
   function readPath(where) {
-    var nodo = state.cfg;
+    var node = state.cfg;
     for (var i = 0; i < where.length; i++) {
-      if (nodo == null) return undefined;
-      nodo = nodo[where[i]];
+      if (node == null) return undefined;
+      node = node[where[i]];
     }
-    return nodo;
+    return node;
   }
 
   function writePath(where, value) {
-    var nodo = state.cfg;
+    var node = state.cfg;
     for (var i = 0; i < where.length - 1; i++) {
-      if (nodo[where[i]] == null || typeof nodo[where[i]] !== 'object') nodo[where[i]] = {};
-      nodo = nodo[where[i]];
+      if (node[where[i]] == null || typeof node[where[i]] !== 'object') node[where[i]] = {};
+      node = node[where[i]];
     }
-    nodo[where[where.length - 1]] = value;
+    node[where[where.length - 1]] = value;
   }
 
   /* Scegliere un modello e poi RILEGGERE. Le altre scritture di questa pagina
@@ -725,11 +725,11 @@
     });
   }
 
-  function showPanelError(testo) {
+  function showPanelError(text) {
     var p = document.querySelector('.pannello-stato');
     if (!p) return;
     p.textContent = '';
-    p.textContent = testo;
+    p.textContent = text;
   }
 
   /* ── Il connettore ─────────────────────────────────────────────────────
@@ -754,8 +754,8 @@
      `fine_catena`, che è una frase sulla catena e non su una riga -- quale sia
      l'ultima cambia con un gesto, e la pagina riordina da sé fra il gesto e la
      risposta del server. */
-  function connettore(cls, testo) {
-    var c = el('div', cls, testo);
+  function connettore(cls, text) {
+    var c = el('div', cls, text);
     c.setAttribute('role', 'listitem');
     return c;
   }
@@ -964,11 +964,11 @@
      fallimento; e si riscrive svuotandola, perché `aria-live` annuncia le
      mutazioni di contenuto e due fallimenti identici di seguito non
      produrrebbero nessuna mutazione da annunciare. */
-  function showChainError(testo) {
+  function showChainError(text) {
     var p = byId('catena-stato');
     if (!p) return;
     p.textContent = '';
-    p.textContent = testo;
+    p.textContent = text;
   }
 
   function clearChainError() {

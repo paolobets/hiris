@@ -778,11 +778,11 @@ window.HirisOsservatoreRoute = (function () {
     box.style.cssText = 'border-top:1px solid var(--border);padding:var(--sp-3) 0;' +
       'display:flex;flex-direction:column;gap:8px';
 
-    var testa = el('div');
-    testa.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap';
-    testa.appendChild(el('span', 'agent-badge badge-off', GENRE_LABEL.bilancio));
-    testa.appendChild(el('span', 'text-mono field-hint', o.protagonista || ''));
-    box.appendChild(testa);
+    var head = el('div');
+    head.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+    head.appendChild(el('span', 'agent-badge badge-off', GENRE_LABEL.bilancio));
+    head.appendChild(el('span', 'text-mono field-hint', o.protagonista || ''));
+    box.appendChild(head);
 
     // Il nome leggibile del dispositivo (`corpo.dispositivo`) e' il
     // CONTENUTO, non l'identificatore tecnico (`protagonista`, il
@@ -830,16 +830,16 @@ window.HirisOsservatoreRoute = (function () {
     box.style.cssText = 'border-top:1px solid var(--border);padding:var(--sp-3) 0;' +
       'display:flex;flex-direction:column;gap:4px';
 
-    var testa = el('div');
-    testa.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap';
-    testa.appendChild(el('span', 'agent-badge badge-off', GENRE_LABEL[o.genere] || o.genere));
+    var head = el('div');
+    head.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+    head.appendChild(el('span', 'agent-badge badge-off', GENRE_LABEL[o.genere] || o.genere));
     // La provenienza della direzione (mandato, punto 4): un secondo badge,
     // SOLO quando `corpo.direzione` c'e' -- niente badge per un episodio di
     // energia la cui direzione non si conosce, che e' l'esito onesto, non
     // un guasto della resa.
     if (o.genere === 'energia' && o.corpo && o.corpo.direzione) {
       var badgeDirezione = badgeProvenienzaDirezione(o.corpo.provenienza);
-      testa.appendChild(el('span', 'agent-badge ' + badgeDirezione.cls, badgeDirezione.testo));
+      head.appendChild(el('span', 'agent-badge ' + badgeDirezione.cls, badgeDirezione.testo));
     }
     // Identificatore: monospaziato, piccolo, attenuato -- il riferimento, non
     // il contenuto. `.text-mono`/`.field-hint` portano gia' `overflow-wrap:
@@ -847,8 +847,8 @@ window.HirisOsservatoreRoute = (function () {
     // span { min-width: 0 }` (hiris-config.css, rilievo 1): senza, un
     // identificatore da 93 caratteri dentro questa riga flessibile
     // sfonderebbe lo schermo di un telefono.
-    testa.appendChild(el('span', 'text-mono field-hint', protagonistName(o)));
-    box.appendChild(testa);
+    head.appendChild(el('span', 'text-mono field-hint', protagonistName(o)));
+    box.appendChild(head);
 
     var content = el('p', null, period(o) + ' · ' + mainPhrase(o));
     content.style.cssText = 'font-size:var(--fs-15);font-weight:500;margin:0;overflow-wrap:anywhere';

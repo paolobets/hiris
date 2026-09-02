@@ -216,6 +216,7 @@ def main(argv=None) -> int:
             print(f"!! {rel}: {v['errore']}")
             continue
         legami = v["legami"]
+        catena = v.get("catena", {})
         per_ambito = defaultdict(dict)
         for l in legami:
             per_ambito[l["ambito"]][l["nome"]] = l
@@ -242,11 +243,30 @@ def main(argv=None) -> int:
             if nuovo in per_ambito[l["ambito"]]:
                 collisioni.append((rel, nome, nuovo, "gia' legato nello stesso ambito"))
                 continue
-            # 2. il nome nuovo esiste altrove nel file: ombreggiamento possibile
-            altrove = [x for x in legami if x["nome"] == nuovo and x["ambito"] != l["ambito"]]
-            if altrove:
-                collisioni.append((rel, nome, nuovo,
-                                   f"esiste in {len(altrove)} altri ambiti del file"))
+            # 2. il nome nuovo esiste in un ambito che si VEDE con questo?
+            #
+            # Due ambiti FRATELLI possono portare lo stesso nome senza che
+            # nessuno ombreggi nessuno: il parametro `text` di `el(tag, cls,
+            # text)` e un `var testo` dentro un'altra funzione non si vedono a
+            # vicenda. Solo un ambito che ENCLOSE questo, o che questo
+            # enclose, produce un ombreggiamento -- e su questo albero la
+            # differenza vale 36 rifiuti su 37.
+            #
+            # `catena` viene da `legami_js.mjs`: per ogni ambito, la lista dei
+            # suoi padri fino alla radice. La domanda «si vedono?» e' allora
+            # «uno dei due e' nella catena dell'altro?», e non la si indovina.
+            mia = catena.get(str(l["ambito"]), [])
+            visibili = []
+            for x in legami:
+                if x["nome"] != nuovo or x["ambito"] == l["ambito"]:
+                    continue
+                sua = catena.get(str(x["ambito"]), [])
+                if x["ambito"] in mia or l["ambito"] in sua:
+                    visibili.append(x)
+            if visibili:
+                perche_ombra = ("ombreggerebbe lo stesso nome in un ambito che lo "
+                                f"racchiude o che ne e' racchiuso ({len(visibili)} legami)")
+                collisioni.append((rel, nome, nuovo, perche_ombra))
                 continue
             applicabili.append((rel, nome, nuovo, len(l["dich"]), len(l["rif"]),
                                 sorted(l["dich"] + l["rif"])))

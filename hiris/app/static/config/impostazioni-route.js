@@ -194,12 +194,12 @@ window.HirisImpostazioniRoute = (function () {
     bar.appendChild(state);
     body.appendChild(bar);
 
-    function showStatus(testo) {
+    function showStatus(text) {
       /* aria-live annuncia le MUTAZIONI del contenuto: si svuota e si
          riscrive, cosi' due errori identici di fila vengono comunque letti
          (stessa ragione documentata in models-route.js, showErrBadge). */
       state.textContent = '';
-      state.textContent = testo;
+      state.textContent = text;
     }
 
     save.addEventListener('click', function () {
@@ -262,10 +262,10 @@ window.HirisImpostazioniRoute = (function () {
     return isNaN(n) ? downgrade : n;
   }
 
-  function error(outlet, testo) {
+  function error(outlet, text) {
     outlet.innerHTML = '';
     outlet.appendChild(el('div', 'page-title', 'Impostazioni chat'));
-    outlet.appendChild(el('p', 'page-subtitle', testo));
+    outlet.appendChild(el('p', 'page-subtitle', text));
   }
 
   function mount() {

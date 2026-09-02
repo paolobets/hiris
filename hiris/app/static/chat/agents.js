@@ -139,9 +139,9 @@
     try {
       var r = await fetch('api/chat-settings');
       if (!r.ok) throw new Error('impostazioni-chat: ' + r.status);
-      var dati = await r.json();
-      state.maxChatTurns = dati.max_chat_turns || 0;
-      updateAgentPill(dati.name);
+      var data = await r.json();
+      state.maxChatTurns = data.max_chat_turns || 0;
+      updateAgentPill(data.name);
     } catch (e) {
       console.error('loadSettings failed', e);
     }

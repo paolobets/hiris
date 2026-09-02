@@ -213,6 +213,20 @@ function analizza(sorgente) {
   marca(albero);
   visita(albero, globale, false);
 
+  /* **La catena dei padri di ogni ambito.** Serve a chi decide una rinomina:
+   * due ambiti FRATELLI possono portare lo stesso nome senza che nessuno
+   * ombreggi nessuno -- `el(tag, cls, text)` e un `var testo` dentro
+   * un'altra funzione non si vedono a vicenda -- mentre un ambito ANNIDATO
+   * dentro l'altro si'. Senza questa informazione la guardia sulle collisioni
+   * deve rifiutare entrambi i casi, e su questo albero rifiutava 36 volte su
+   * 37 senza che ci fosse niente da rifiutare. */
+  const catena = {};
+  for (const a of tutti) {
+    const su = [];
+    for (let x = a.padre; x; x = x.padre) su.push(x.id);
+    catena[a.id] = su;
+  }
+
   const legami = [];
   for (const a of tutti) {
     for (const l of a.legami.values()) {
@@ -225,7 +239,7 @@ function analizza(sorgente) {
     p.verita = verita.has(p.start);
     delete p.start;
   }
-  return { legami, liberi, proprieta, ambiti: tutti.length };
+  return { legami, liberi, proprieta, catena, ambiti: tutti.length };
 }
 
 const fuori = {};
@@ -238,7 +252,8 @@ for (const f of tuttiIFile(STATIC)) {
     /* **La misura del testo che ho letto, perche' chi applica possa
      * verificare di leggere lo STESSO testo.** Gli offset qui sotto sono
      * indici dentro questa stringa: se chi li usa apre il file in un modo che
-     * la cambia -- la lettura universale di Python normalizza i `
+     * la cambia -- la lettura universale di Python normalizza i `
+
 ` e
      * accorcia di una posizione per riga -- ogni offset scivola, e senza
      * questa misura il primo segnale arriva solo al momento di scrivere.

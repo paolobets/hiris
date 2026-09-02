@@ -113,15 +113,15 @@
      nota appartiene a QUELLA risposta e a nessun'altra.
 
      textContent, mai innerHTML: il testo viene dal server. */
-  function appendNota(row, testo) {
-    if (!row || !testo) return;
+  function appendNota(row, text) {
+    if (!row || !text) return;
     var note = document.createElement('div');
     note.className = 'msg-nota';
-    note.textContent = testo;
+    note.textContent = text;
     var col = row.querySelector('.msg-col');
-    var bolla = col && col.querySelector('.bubble');
-    if (bolla && bolla.nextSibling) {
-      col.insertBefore(note, bolla.nextSibling);
+    var bubble = col && col.querySelector('.bubble');
+    if (bubble && bubble.nextSibling) {
+      col.insertBefore(note, bubble.nextSibling);
     } else {
       (col || row).appendChild(note);
     }
@@ -297,7 +297,7 @@
     state.els.messages.scrollTop = state.els.messages.scrollHeight;
 
     var start = Date.now();
-    var bolla = row.querySelector('.bubble');
+    var bubble = row.querySelector('.bubble');
     var label = row.querySelector('.tl-label');
     row._attesa = { avvio: start, timeout: [], intervallo: null, alSicuro: false, scadenza: 0 };
     waits.push(row);
@@ -314,7 +314,7 @@
          e' informazione per l'occhio, non per l'orecchio */
       el.setAttribute('aria-hidden', 'true');
       el.textContent = stopwatchText(Date.now() - start);
-      bolla.appendChild(el);
+      bubble.appendChild(el);
       state.els.messages.scrollTop = state.els.messages.scrollHeight;
       row._attesa.intervallo = setInterval(function () {
         el.textContent = stopwatchText(Date.now() - start);
@@ -333,7 +333,7 @@
       var line = document.createElement('div');
       line.className = 'tl-servizio';
       line.textContent = row._attesa.alSicuro ? SERVIZIO_AL_SICURO : KEEP_OPEN_NOTICE;
-      bolla.appendChild(line);
+      bubble.appendChild(line);
       state.els.messages.scrollTop = state.els.messages.scrollHeight;
     }, WAIT_THRESHOLDS.servizio));
 

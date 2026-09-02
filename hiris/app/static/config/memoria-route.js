@@ -109,9 +109,9 @@ window.HirisMemoriaRoute = (function () {
     return null;
   }
 
-  function mostraErroreCard(nodo, text) {
-    nodo.textContent = text;
-    nodo.style.display = '';
+  function mostraErroreCard(node, text) {
+    node.textContent = text;
+    node.style.display = '';
   }
 
   function setStatus(text) {
@@ -120,10 +120,10 @@ window.HirisMemoriaRoute = (function () {
   }
 
   /* ── Ancore: tre resi diversi per tre fatti diversi (regola 1) ────────── */
-  function rendiAncore(corpo, ancore) {
+  function rendiAncore(body, ancore) {
     var tit = el('div', null, 'Riguarda:');
     tit.style.cssText = 'font-weight:500;font-size:var(--fs-13);margin:8px 0 4px';
-    corpo.appendChild(tit);
+    body.appendChild(tit);
     var ul = el('ul');
     ul.style.cssText = 'margin:0 0 8px;padding-left:18px;font-size:var(--fs-13);color:var(--text-2)';
     ancore.forEach(function (a) {
@@ -138,7 +138,7 @@ window.HirisMemoriaRoute = (function () {
       if (tone) li.style.color = tone;
       ul.appendChild(li);
     });
-    corpo.appendChild(ul);
+    body.appendChild(ul);
   }
 
   /* ── Il modulo di correzione: solo i campi scalari (vedi header) ──────── */
@@ -222,7 +222,7 @@ window.HirisMemoriaRoute = (function () {
          se ha corretto solo `grandezza` — il server la rideduce da sé,
          handlers_memoria.py). Un valore numerico illeggibile si dichiara
          qui, prima di mandarlo. */
-      var corpo = {};
+      var body = {};
       var nMinimo = inpMinimo.value === '' ? null : parseFloat(inpMinimo.value);
       var nMassimo = inpMassimo.value === '' ? null : parseFloat(inpMassimo.value);
       if ((inpMinimo.value !== '' && isNaN(nMinimo)) || (inpMassimo.value !== '' && isNaN(nMassimo))) {
@@ -233,20 +233,20 @@ window.HirisMemoriaRoute = (function () {
       var nGrandezza = inpGrandezza.value.trim() || null;
       var nUnita = inpUnita.value.trim() || null;
       var nDettoDa = inpDettoDa.value.trim() || null;
-      if (nForza !== (r.forza || null)) corpo.forza = nForza;
-      if (nGrandezza !== (r.grandezza || null)) corpo.grandezza = nGrandezza;
-      if (nMinimo !== r.minimo) corpo.minimo = nMinimo;
-      if (nMassimo !== r.massimo) corpo.massimo = nMassimo;
-      if (nUnita !== (r.unita || null)) corpo.unita = nUnita;
-      if (nDettoDa !== (r.detto_da || null)) corpo.detto_da = nDettoDa;
+      if (nForza !== (r.forza || null)) body.forza = nForza;
+      if (nGrandezza !== (r.grandezza || null)) body.grandezza = nGrandezza;
+      if (nMinimo !== r.minimo) body.minimo = nMinimo;
+      if (nMassimo !== r.massimo) body.massimo = nMassimo;
+      if (nUnita !== (r.unita || null)) body.unita = nUnita;
+      if (nDettoDa !== (r.detto_da || null)) body.detto_da = nDettoDa;
 
-      if (!Object.keys(corpo).length) {
+      if (!Object.keys(body).length) {
         mostraErroreCard(cardErr, 'Nessuna modifica da salvare.');
         return;
       }
       cardErr.style.display = 'none';
       save.disabled = true;
-      api('api/memories/' + encodeURIComponent(r.id), { method: 'PATCH', body: JSON.stringify(corpo) })
+      api('api/memories/' + encodeURIComponent(r.id), { method: 'PATCH', body: JSON.stringify(body) })
         .then(function (res) {
           return res.json().catch(function () { return {}; }).then(function (json) {
             return { res: res, json: json };

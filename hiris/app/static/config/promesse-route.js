@@ -253,8 +253,8 @@ window.HirisPromesseRoute = (function () {
           return;
         }
         if (!res.ok) throw new Error('HTTP ' + res.status);
-        return res.json().then(function (corpo) {
-          renderExecutionDetail(panel, corpo.execution);
+        return res.json().then(function (body) {
+          renderExecutionDetail(panel, body.execution);
           loaded = true;
         });
       }).then(function () {
@@ -283,13 +283,13 @@ window.HirisPromesseRoute = (function () {
     line.style.cssText = 'border-top:1px solid var(--border);padding:10px 0;' +
       'display:flex;justify-content:space-between;align-items:flex-start;gap:var(--sp-3)';
 
-    var corpo = el('div');
-    corpo.appendChild(el('div', 'field-hint', fmtAssoluto(p.quando_ts) + ' · ' + fmtRelativo(p.quando_ts)));
+    var body = el('div');
+    body.appendChild(el('div', 'field-hint', fmtAssoluto(p.quando_ts) + ' · ' + fmtRelativo(p.quando_ts)));
     var phrase = el('p', null, p.frase);
     phrase.style.cssText = 'font-size:var(--fs-15);font-weight:500;margin:2px 0 0';
-    corpo.appendChild(phrase);
-    corpo.appendChild(el('div', 'field-hint', p.specie));
-    line.appendChild(corpo);
+    body.appendChild(phrase);
+    body.appendChild(el('div', 'field-hint', p.specie));
+    line.appendChild(body);
 
     /* Condizione ESATTA `stato === 'in_attesa'`, non "riga in questa
        sezione": `in_corso` ci sta (non e' ancora concluso) ma non e'
@@ -378,25 +378,25 @@ window.HirisPromesseRoute = (function () {
   function descrizioneSospeso(n) { return n === 0 ? 'Nessuna in sospeso.' : (n + ' in sospeso.'); }
   function descrizioneStorico(n) { return n === 0 ? 'Nessuna promessa nello storico.' : (n + ' nello storico.'); }
 
-  function renderPending(corpo, desc, list, reload) {
-    clearEl(corpo);
+  function renderPending(body, desc, list, reload) {
+    clearEl(body);
     desc.textContent = descrizioneSospeso(list.length);
     if (!list.length) {
-      corpo.appendChild(el('p', 'field-hint',
+      body.appendChild(el('p', 'field-hint',
         'Nessuna promessa in sospeso — quando dici a HIRIS «fra un\'ora…» o «alle…», comparirà qui.'));
       return;
     }
-    sortPending(list).forEach(function (p) { corpo.appendChild(buildPendingRow(p, reload)); });
+    sortPending(list).forEach(function (p) { body.appendChild(buildPendingRow(p, reload)); });
   }
 
-  function renderHistory(corpo, desc, list) {
-    clearEl(corpo);
+  function renderHistory(body, desc, list) {
+    clearEl(body);
     desc.textContent = descrizioneStorico(list.length);
     if (!list.length) {
-      corpo.appendChild(el('p', 'field-hint', 'Nessuna promessa nello storico.'));
+      body.appendChild(el('p', 'field-hint', 'Nessuna promessa nello storico.'));
       return;
     }
-    sortHistory(list).forEach(function (p) { corpo.appendChild(buildHistoryRow(p)); });
+    sortHistory(list).forEach(function (p) { body.appendChild(buildHistoryRow(p)); });
   }
 
   /* Un errore di lettura e una lista vuota vera NON hanno lo stesso testo
@@ -405,13 +405,13 @@ window.HirisPromesseRoute = (function () {
      manda gia' `promesse: []` dentro un corpo comunque non-2xx: basta
      guardare `r.ok`, non serve leggere un campo apposito. */
   function renderError(pendingBody, historyBody, reload) {
-    [pendingBody, historyBody].forEach(function (nodo) {
-      clearEl(nodo);
-      nodo.appendChild(el('p', 'proposals-error', 'Non è stato possibile leggere le promesse. Riprova più tardi.'));
+    [pendingBody, historyBody].forEach(function (node) {
+      clearEl(node);
+      node.appendChild(el('p', 'proposals-error', 'Non è stato possibile leggere le promesse. Riprova più tardi.'));
       var retry = el('button', 'btn btn-ghost btn-sm', 'Riprova');
       retry.type = 'button';
       retry.addEventListener('click', reload);
-      nodo.appendChild(retry);
+      node.appendChild(retry);
     });
   }
 

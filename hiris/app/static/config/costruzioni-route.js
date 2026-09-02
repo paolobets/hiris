@@ -246,11 +246,11 @@ window.HirisCostruzioni = (function () {
     return null;
   }
 
-  function countForKey(corpo, def) {
-    if (!corpo) return null;
-    var n = countElements(corpo[def.chiave]);
+  function countForKey(body, def) {
+    if (!body) return null;
+    var n = countElements(body[def.chiave]);
     if ((n === null || n === 0) && def.chiaveAlt) {
-      var alt = countElements(corpo[def.chiaveAlt]);
+      var alt = countElements(body[def.chiaveAlt]);
       if (alt !== null) n = alt;
     }
     return n;
@@ -298,9 +298,9 @@ window.HirisCostruzioni = (function () {
     var box = el('div');
 
     ['prima', 'dopo'].forEach(function (side) {
-      var corpo = c[side];
+      var body = c[side];
       var label = side === 'prima' ? 'Prima' : 'Dopo';
-      var name = corpo ? (corpo.alias || corpo.name || '(senza nome)') : '(niente)';
+      var name = body ? (body.alias || body.name || '(senza nome)') : '(niente)';
       box.appendChild(el('div', 'field-hint', label + ': ' + name));
     });
 
@@ -350,8 +350,8 @@ window.HirisCostruzioni = (function () {
     statusEl.textContent = '';
     api('api/constructions/' + encodeURIComponent(id) + '/' + action, { method: 'POST' })
       .then(function (res) {
-        return res.json().catch(function () { return {}; }).then(function (corpo) {
-          return { res: res, corpo: corpo };
+        return res.json().catch(function () { return {}; }).then(function (body) {
+          return { res: res, corpo: body };
         });
       })
       .then(function (occurrence) {
@@ -395,14 +395,14 @@ window.HirisCostruzioni = (function () {
     box.style.cssText = 'border-top:1px solid var(--border);padding:var(--sp-4) 0;' +
       'display:flex;flex-direction:column;gap:var(--sp-2)';
 
-    var testa = el('div');
-    testa.style.cssText = 'display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap';
-    testa.appendChild(el('span', null, domainName(c) + ' «' + objectName(c) + '»'));
+    var head = el('div');
+    head.style.cssText = 'display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap';
+    head.appendChild(el('span', null, domainName(c) + ' «' + objectName(c) + '»'));
     var bGesto = badgeGesto(c);
-    testa.appendChild(el('span', 'agent-badge ' + bGesto.cls, bGesto.testo));
-    testa.appendChild(el('span', 'agent-badge ' + (STATO_BADGE[c.stato] || 'badge-off'),
+    head.appendChild(el('span', 'agent-badge ' + bGesto.cls, bGesto.testo));
+    head.appendChild(el('span', 'agent-badge ' + (STATO_BADGE[c.stato] || 'badge-off'),
       STATO_LABEL[c.stato] || c.stato));
-    box.appendChild(testa);
+    box.appendChild(head);
 
     if (eraGiaLi(c)) {
       box.appendChild(el('div', 'field-hint', 'Questo oggetto esiste già in casa tua.'));
@@ -474,13 +474,13 @@ window.HirisCostruzioni = (function () {
     return list.slice().sort(function (a, b) { return b.creata_ts - a.creata_ts; });
   }
 
-  function renderSection(corpo, list, empty, statusEl, reload, sort) {
-    clearEl(corpo);
+  function renderSection(body, list, empty, statusEl, reload, sort) {
+    clearEl(body);
     if (!list.length) {
-      corpo.appendChild(el('p', 'field-hint', empty));
+      body.appendChild(el('p', 'field-hint', empty));
       return;
     }
-    sort(list).forEach(function (c) { corpo.appendChild(line(c, statusEl, reload)); });
+    sort(list).forEach(function (c) { body.appendChild(line(c, statusEl, reload)); });
   }
 
   function renderError(openBody, historyBody, reload) {
