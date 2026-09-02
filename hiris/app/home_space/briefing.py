@@ -815,12 +815,44 @@ def _behavior_lines(behavior: list[dict]) -> list[str]:
 
 
 # Gli stati in cui un'integrazione di Home Assistant NON sta funzionando.
-# I valori sono quelli veri di `ConfigEntryState` (`homeassistant/config_entries.py`),
-# verificati: `loaded` e' l'unico stato sano, `setup_in_progress` e
-# `unload_in_progress` sono momentanei e non si annunciano.
+#
+# **`not_loaded` e' USCITO da questo elenco il 02/09, ed e' istruttivo perche'
+# il difetto non era nell'elenco: era nella DOMANDA a cui rispondeva.** Come
+# elenco di «non e' `loaded`» era giusto e completo; come elenco di «e' rotto»
+# era falso, e il commento di prima dichiarava «verificati» proprio la riga
+# sbagliata. La documentazione dice il contrario:
+#
+#   NOT_LOADED: «The config entry has not been loaded. **This is the initial
+#   state when a config entry is created or when Home Assistant is
+#   restarted.**»
+#   (developers.home-assistant.io/docs/config_entries_index/)
+#
+# Non e' uno stato di errore: e' lo stato iniziale. Il costo, misurato sulla
+# casa vera dal proprietario: il nucleo annunciava «9 integrazioni non stanno
+# funzionando» e quella vera era UNA (`lifx / Abat-jour`, `setup_retry`, col
+# suo motivo). Otto falsi allarmi su nove, letti ogni giorno.
+#
+# Restano i quattro stati di errore veri. `setup_in_progress` e
+# `unload_in_progress` non compaiono perche' sono momentanei del boot.
 _BROKEN_INTEGRATION_STATES = {
-    "setup_error", "setup_retry", "migration_error", "failed_unload", "not_loaded",
+    "setup_error", "setup_retry", "migration_error", "failed_unload",
 }
+
+# Il SECONDO discriminante, che il codice non guardava affatto: `source`.
+#
+# Sulla casa vera tutte e otto le voci `not_loaded` portavano
+# `source: "ignore"`, e non e' un dettaglio tecnico -- e' un'azione deliberata
+# del proprietario. Home Assistant lo documenta cosi': «users will have the
+# option to **ignore** the discovery of your config entry, so they won't be
+# bothered about it anymore»
+# (developers.home-assistant.io/docs/config_entries_config_flow_handler/).
+#
+# Quelle integrazioni non si caricheranno MAI, per scelta sua. Annunciarle
+# come guasto significa dire al proprietario che e' rotto cio' che lui ha
+# deciso di spegnere. Si scartano in QUALUNQUE stato, non solo in
+# `not_loaded`: una voce ignorata che finisse in `setup_error` resterebbe
+# comunque una cosa che il proprietario ha chiesto di non sentire piu'.
+_IGNORED_INTEGRATION_SOURCE = "ignore"
 
 
 def _integrations_notice(integrations: list[dict]) -> str | None:
@@ -840,10 +872,17 @@ def _integrations_notice(integrations: list[dict]) -> str | None:
     quell'integrazione non hanno uno stato leggibile.
 
     Il motivo esce solo se c'e': HA lo riempie per `setup_error` e
-    `setup_retry`, non sempre per `not_loaded`. Inventarlo sarebbe peggio.
+    `setup_retry`, non sempre per `migration_error` e `failed_unload`.
+    Inventarlo sarebbe peggio.
+
+    **Due filtri, non uno, e sono domande diverse.** Lo STATO dice se
+    l'integrazione e' rotta; l'ORIGINE dice se il proprietario ha chiesto di
+    non sentirne piu' parlare. Una voce ignorata si scarta anche se lo stato
+    la direbbe rotta -- vedi `_IGNORED_INTEGRATION_SOURCE`.
     """
     broken = [i for i in integrations or []
-             if (i.get("stato") or "") in _BROKEN_INTEGRATION_STATES]
+             if (i.get("stato") or "") in _BROKEN_INTEGRATION_STATES
+             and (i.get("origine") or "") != _IGNORED_INTEGRATION_SOURCE]
     if not broken:
         return None
     # Una voce per NOME+STATO+MOTIVO, non una per config entry.

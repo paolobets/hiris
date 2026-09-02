@@ -219,17 +219,54 @@ def test_una_condizione_che_dura_non_si_riscrive(coppia):
     assert archivio.annotati == []
 
 
-def test_un_integrazione_non_caricata_diventa_un_cambio(coppia):
-    """Misurato sulla casa vera: 9 integrazioni su 53 non sono caricate."""
+def test_un_integrazione_ROTTA_diventa_un_cambio(coppia):
+    """Misurato sulla casa vera il 02/09: delle 9 integrazioni «non caricate»
+    che questo metodo trattava come guasto, **una sola era rotta davvero**
+    (`lifx / Abat-jour`, `setup_retry`). Le altre otto erano `not_loaded` --
+    lo stato INIZIALE, non un errore -- e per giunta tutte ignorate dal
+    proprietario."""
     archivio, osservatore = coppia
     scritti = osservatore.watch_system(
         problems=[],
-        integrations=[{"entry_id": "abc", "title": "Fritz-esterno",
-                       "domain": "fritz", "state": "not_loaded"},
+        integrations=[{"entry_id": "abc", "title": "Abat-jour",
+                       "domain": "lifx", "state": "setup_retry"},
                       {"entry_id": "def", "title": "Sonos",
                        "domain": "sonos", "state": "loaded"}])
     assert scritti == 1
     assert archivio.annotati[0]["subject"] == "integrazione:abc"
+
+
+def test_not_loaded_NON_e_un_guasto(coppia):
+    """«NOT_LOADED: The config entry has not been loaded. This is the initial
+    state when a config entry is created or when Home Assistant is restarted»
+    (developers.home-assistant.io/docs/config_entries_index/).
+
+    Mutazione: togliere `not_loaded` da `_HEALTHY_INTEGRATION_STATES` --
+    questo test torna rosso, e l'archivio riprende a registrare come guasto lo
+    stato in cui OGNI integrazione si trova subito dopo un riavvio."""
+    archivio, osservatore = coppia
+    scritti = osservatore.watch_system(
+        problems=[],
+        integrations=[{"entry_id": "abc", "domain": "fritz",
+                       "state": "not_loaded", "source": "user"}])
+    assert scritti == 0
+    assert archivio.annotati == []
+
+
+def test_una_voce_IGNORATA_dal_proprietario_non_e_un_guasto(coppia):
+    """`source: "ignore"` e' una decisione, non una rottura -- e si scarta
+    anche quando lo stato la direbbe rotta.
+
+    Mutazione: togliere il filtro sull'origine -- questo test torna rosso, e
+    l'archivio registra come guasto cio' che il proprietario ha chiesto di non
+    sentire piu'."""
+    archivio, osservatore = coppia
+    scritti = osservatore.watch_system(
+        problems=[],
+        integrations=[{"entry_id": "abc", "domain": "fritz",
+                       "state": "setup_error", "source": "ignore"}])
+    assert scritti == 0
+    assert archivio.annotati == []
 
 
 def test_una_integrazione_in_setup_non_e_un_guasto(coppia):
@@ -250,7 +287,7 @@ def test_una_integrazione_in_unload_non_e_un_guasto(coppia):
     """'unload_in_progress' e' l'altro stato transitorio del boot, gemello
     di 'setup_in_progress': nasce e sparisce da solo in pochi secondi.
     Nessun test lo mandava finora -- toglierlo da
-    `_TRANSIENT_INTEGRATION_STATES` restava verde. Mutazione: togliere
+    `_HEALTHY_INTEGRATION_STATES` restava verde. Mutazione: togliere
     'unload_in_progress' dall'insieme -- scriverebbe un guasto di rumore
     per ogni integrazione in fase di ricarica."""
     archivio, osservatore = coppia

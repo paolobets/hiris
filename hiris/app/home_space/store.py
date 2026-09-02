@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS categorie (
     PRIMARY KEY (ambito, id)
 );
 CREATE TABLE IF NOT EXISTS integrazioni (
-    dominio TEXT NOT NULL, titolo TEXT, stato TEXT, motivo TEXT
+    dominio TEXT NOT NULL, titolo TEXT, stato TEXT, motivo TEXT, origine TEXT
 );
 CREATE TABLE IF NOT EXISTS meta (
     chiave TEXT PRIMARY KEY, valore TEXT
@@ -226,18 +226,38 @@ def _migration_5_category_identity(conn) -> None:
             "ALTER TABLE categorie_nuova RENAME TO categorie;")
 
 
+def _migration_6_integration_source(conn) -> None:
+    """`integrazioni.origine`: il `source` del config entry di Home Assistant.
+
+    Serve a distinguere un guasto da una DECISIONE del proprietario. Quando
+    qualcuno usa «ignora» su un'integrazione scoperta, Home Assistant scrive
+    `source: "ignore"` e quella voce non si caricherà mai più -- per scelta,
+    non per rottura. Senza questa colonna il nucleo non ha modo di saperlo, e
+    infatti annunciava otto integrazioni ignorate come otto guasti.
+
+    Stessa ragione della migrazione 2 per cui serve un `ALTER TABLE` e non
+    basta il `CREATE TABLE IF NOT EXISTS`: quello non tocca una tabella che
+    esiste gia', quindi su un'installazione aggiornata la colonna non
+    comparirebbe e il primo `replace` fallirebbe -- cioe' la casa smetterebbe
+    di ricostruirsi, in silenzio, dal momento dell'aggiornamento.
+    """
+    with suppress(sqlite3.OperationalError):
+        conn.execute("ALTER TABLE integrazioni ADD COLUMN origine TEXT")
+
+
 _MIGRATIONS = {
     2: _migration_2_integration_reason,
     3: _migration_3_area_reference_entities,
     4: _migration_4_entity_categories,
     5: _migration_5_category_identity,
+    6: _migration_6_integration_source,
 }
 
 
 class HomeSpaceStore:
     def __init__(self, db_path: str = "/data/casa.db") -> None:
         self._conn = connect(db_path)
-        init_schema(self._conn, _SCHEMA, version=5, migrations=_MIGRATIONS)
+        init_schema(self._conn, _SCHEMA, version=6, migrations=_MIGRATIONS)
 
     def close(self) -> None:
         self._conn.close()
@@ -358,10 +378,23 @@ class HomeSpaceStore:
                 # -- arrivava dentro la stessa risposta e si buttava. E' la
                 # risposta a «perche' la telecamera del giardino non risponde?»,
                 # che HIRIS poteva solo non sapere.
-                c.execute("INSERT INTO integrazioni (dominio, titolo, stato, motivo) "
-                          "VALUES (?,?,?,?)",
+                # `source` -- COME la voce e' nata -- e' il secondo discriminante,
+                # e si buttava come si buttava `reason`. Non descrive un guasto:
+                # descrive una decisione. `source: "ignore"` significa che il
+                # proprietario ha usato «ignora» sulla scoperta di quella
+                # integrazione, e Home Assistant lo documenta cosi': «users will
+                # have the option to ignore the discovery of your config entry,
+                # so they won't be bothered about it anymore»
+                # (developers.home-assistant.io/docs/config_entries_config_flow_handler/).
+                # Non passa dal sanificatore, e per la stessa ragione di `stato`:
+                # e' un vocabolario chiuso di Home Assistant, non testo libero --
+                # e a differenza di `stato` non finisce nemmeno nel testo che il
+                # modello legge, serve solo a filtrare.
+                c.execute("INSERT INTO integrazioni "
+                          "(dominio, titolo, stato, motivo, origine) VALUES (?,?,?,?,?)",
                           (i.get("domain", ""), _name(i.get("title")), i.get("state"),
-                           _reason(i.get("reason") or i.get("error_reason_translation_key"))))
+                           _reason(i.get("reason") or i.get("error_reason_translation_key")),
+                           i.get("source")))
 
             c.execute("INSERT OR REPLACE INTO meta (chiave, valore) VALUES ('aggiornata_il', ?)",
                       (datetime.now(UTC).isoformat(timespec="seconds"),))

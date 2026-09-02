@@ -18,17 +18,41 @@ from .baseline import aspect
 
 logger = logging.getLogger(__name__)
 
-# Stati transitori del boot di Home Assistant: nascono e muoiono da soli in
-# pochi secondi, non sono un guasto. Se il primo giro del lavoro periodico
-# cade durante il boot, trattarli come guasto scriverebbe una coppia di righe
-# di rumore (nasce, finisce) per ogni integrazione della casa. Stessi valori
-# di `home_space/briefing.py::_BROKEN_INTEGRATION_STATES` (verificati su
-# `ConfigEntryState`, `homeassistant/config_entries.py`), che pero' non li
-# elenca perche' li esclude gia' per costruzione -- RICOPIATI, non importati,
-# per la stessa ragione di `baseline.py`: «cosa e' un guasto QUI» e «cosa
-# racconta l'anagrafe» sono due domande diverse i cui elenchi possono
-# divergere in futuro per ragioni proprie.
-_TRANSIENT_INTEGRATION_STATES = frozenset({"setup_in_progress", "unload_in_progress"})
+# Stati che NON sono un guasto, e sono di due specie diverse.
+#
+# I due transitori del boot nascono e muoiono da soli in pochi secondi: se il
+# primo giro del lavoro periodico cade durante il boot, trattarli come guasto
+# scriverebbe una coppia di righe di rumore (nasce, finisce) per ogni
+# integrazione della casa.
+#
+# **`not_loaded` si e' aggiunto il 02/09, ed e' lo STESSO difetto corretto in
+# `home_space/briefing.py::_BROKEN_INTEGRATION_STATES` -- qui pero' non
+# produceva una riga da leggere, produceva un FATTO nell'archivio.** La
+# documentazione: «NOT_LOADED: The config entry has not been loaded. **This is
+# the initial state when a config entry is created or when Home Assistant is
+# restarted.**» (developers.home-assistant.io/docs/config_entries_index/).
+# Non e' un errore, e' lo stato iniziale. Sulla casa vera erano otto
+# condizioni aperte che non erano guasti.
+#
+# **Effetto collaterale dichiarato**: al primo giro dopo questa correzione
+# `watch_system` non trova piu' quelle otto nell'elenco che riceve, quindi le
+# CHIUDE -- una riga «finito» ciascuna, con la data di oggi. E' il prezzo
+# giusto (un guasto che non c'era smette di essere aperto) ma resta un evento
+# scritto nell'archivio, e chi legge la storia di quel giorno deve saperlo.
+#
+# Valori veri di `ConfigEntryState` (`homeassistant/config_entries.py`),
+# RICOPIATI e non importati dal nucleo, per la stessa ragione di
+# `baseline.py`: «cosa e' un guasto QUI» e «cosa racconta l'anagrafe» sono due
+# domande diverse i cui elenchi possono divergere per ragioni proprie.
+_HEALTHY_INTEGRATION_STATES = frozenset({
+    "setup_in_progress", "unload_in_progress", "not_loaded"})
+
+# `source: "ignore"` e' una DECISIONE del proprietario, non un guasto: Home
+# Assistant lo scrive quando qualcuno usa «ignora» sulla scoperta di
+# un'integrazione, e quella voce non si caricherà più per scelta sua
+# (developers.home-assistant.io/docs/config_entries_config_flow_handler/).
+# Si scarta in qualunque stato, come nel nucleo.
+_IGNORED_INTEGRATION_SOURCE = "ignore"
 
 
 def _text_or_none(value) -> str | None:
@@ -132,8 +156,10 @@ class Watcher:
         aperti, e `config_entries/get` da' 9 integrazioni non caricate su 53.
         `system_health/info` torna vuoto e non si usa.
 
-        Gli stati transitori del boot (`_TRANSIENT_INTEGRATION_STATES`) non
-        contano come guasto: vedi il commento accanto alla costante.
+        Gli stati che non sono un guasto (`_HEALTHY_INTEGRATION_STATES`) e le
+        voci che il proprietario ha scelto di ignorare
+        (`_IGNORED_INTEGRATION_SOURCE`) non contano: vedi i commenti accanto
+        alle due costanti.
 
         **`self._conditions` si aggiorna incrementalmente**, un soggetto alla
         volta dopo ogni `record` riuscita -- non in blocco alla fine. Se
@@ -158,7 +184,9 @@ class Watcher:
             if not isinstance(i, dict):
                 continue
             state = str(i.get("state") or "").strip()
-            if state == "loaded" or state in _TRANSIENT_INTEGRATION_STATES:
+            if state == "loaded" or state in _HEALTHY_INTEGRATION_STATES:
+                continue
+            if str(i.get("source") or "").strip() == _IGNORED_INTEGRATION_SOURCE:
                 continue
             ident = str(i.get("entry_id") or "").strip()
             if ident:

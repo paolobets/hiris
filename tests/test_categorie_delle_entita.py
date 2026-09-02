@@ -332,7 +332,10 @@ def test_l_archivio_di_una_casa_gia_installata_risale_dalla_versione_3(tmp_path)
 
     a = HomeSpaceStore(percorso)
     try:
-        assert a._conn.execute("PRAGMA user_version").fetchone()[0] == 5
+        # 6 dal 02/09 (`integrazioni.origine`): la versione la fissa lo schema,
+        # e questa riga la insegue -- e' l'unico modo in cui una migrazione
+        # nuova fa arrossire il test che prova la CATENA delle migrazioni.
+        assert a._conn.execute("PRAGMA user_version").fetchone()[0] == 6
         a.replace(_REGISTRI, [])
         letta = a.read()
     finally:
