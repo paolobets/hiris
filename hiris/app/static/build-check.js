@@ -39,7 +39,7 @@
     return meta ? meta.getAttribute('content') : '';
   }
 
-  function mostraStriscia(locale, remoto) {
+  function mostraStriscia(local, remote) {
     if (document.getElementById('hiris-build-mismatch')) return; // gia' mostrata
     var div = document.createElement('div');
     div.id = 'hiris-build-mismatch';
@@ -51,7 +51,7 @@
       'text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.3);';
     div.textContent =
       'questa interfaccia viene da un build diverso da quello in esecuzione ' +
-      '(' + locale + ' invece di ' + remoto + '): svuota i dati del sito di Home Assistant';
+      '(' + local + ' invece di ' + remote + '): svuota i dati del sito di Home Assistant';
     if (document.body) document.body.appendChild(div);
   }
 
@@ -91,11 +91,11 @@
      ricaricamento -- che e' esattamente cio' da cui ci si deve proteggere.
      Per questo la prova e' sempre la persistenza REALE in sessionStorage,
      mai un flag JS.) */
-  function guardiaVerificata(locale) {
+  function guardiaVerificata(local) {
     try {
-      if (sessionStorage.getItem(GUARD_KEY) === locale) return 'gia-tentato';
-      sessionStorage.setItem(GUARD_KEY, locale);
-      return sessionStorage.getItem(GUARD_KEY) === locale ? 'scritta' : 'non-verificabile';
+      if (sessionStorage.getItem(GUARD_KEY) === local) return 'gia-tentato';
+      sessionStorage.setItem(GUARD_KEY, local);
+      return sessionStorage.getItem(GUARD_KEY) === local ? 'scritta' : 'non-verificabile';
     } catch {
       return 'non-verificabile';
     }
@@ -117,21 +117,21 @@
        Storage rotto o bloccato): in ENTRAMBI i casi, niente ricaricamento,
        si dichiara con la striscia. Un anello di ricaricamenti sarebbe un
        guasto peggiore di quello che questo meccanismo chiude. */
-  function verifica(remoto) {
-    var locale = letturaLocale();
-    if (!locale || !remoto || locale === remoto) {
+  function verify(remote) {
+    var local = letturaLocale();
+    if (!local || !remote || local === remote) {
       try { sessionStorage.removeItem(GUARD_KEY); } catch {}
       return;
     }
-    if (guardiaVerificata(locale) === 'scritta') {
+    if (guardiaVerificata(local) === 'scritta') {
       window.HirisBuildCheck._internal_reload();
       return;
     }
-    mostraStriscia(locale, remoto);
+    mostraStriscia(local, remote);
   }
 
   window.HirisBuildCheck = {
-    verifica: verifica,
+    verifica: verify,
     _internal_reload: _internal_reload, /* exposed for test only */
   };
 })();

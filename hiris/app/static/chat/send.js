@@ -140,7 +140,7 @@
        ne aggiungeva un'altra: un fotogramma di vuoto, un cambio d'altezza e uno
        scorrimento, proprio nell'istante in cui l'occhio sta cercando la
        risposta. Adesso ogni ramo scrive DENTRO la bolla che c'e' gia'. */
-    var attesa = window.HirisChatMessages.showThinking();
+    var pending = window.HirisChatMessages.showThinking();
     /* handedOff: sul path 202 il lock passa a pollChatReply (che sblocca a fine
        poll), quindi il finally qui NON deve sbloccare -- altrimenti l'input si
        riaprirebbe mentre HIRIS sta ancora elaborando la risposta. */
@@ -163,26 +163,26 @@
            aspettare. Sul ramo diretto la `fetch` qui sotto non ha ne un
            `AbortController` ne un timeout: nessuna scadenza da dichiarare, e
            l'indicatore infatti non ne promette una. */
-        window.HirisChatMessages.attesaAlSicuroSulServer(attesa, CHAT_POLL_MAX_MS);
+        window.HirisChatMessages.attesaAlSicuroSulServer(pending, CHAT_POLL_MAX_MS);
         handedOff = true;
-        pollChatReply(data.job_id, attesa);
+        pollChatReply(data.job_id, pending);
         return;
       }
       if (data.error === 'max_turns_reached') {
-        window.HirisChatMessages.updateBubble(attesa, 'Sessione completata. Avvia una nuova conversazione.');
+        window.HirisChatMessages.updateBubble(pending, 'Sessione completata. Avvia una nuova conversazione.');
         window.HirisChatAgents.checkTurnLimit();
         return;
       }
-      window.HirisChatMessages.updateBubble(attesa, data.response || data.error || 'Errore sconosciuto');
+      window.HirisChatMessages.updateBubble(pending, data.response || data.error || 'Errore sconosciuto');
       /* Vedi la gemella nel ramo del poll, sopra. Qui il ripiego e' quello a
          monte: il piano non poteva ricevere il turno (niente token, o tetto
          giornaliero pieno) e la catena ha risposto sincrona. */
-      if (data.nota) window.HirisChatMessages.appendNota(attesa, data.nota);
+      if (data.nota) window.HirisChatMessages.appendNota(pending, data.nota);
       state.turnCount = (state.turnCount || 0) + 1;
       window.HirisChatAgents.updateTurnCounter();
       window.HirisChatAgents.checkTurnLimit();
     } catch {
-      window.HirisChatMessages.updateBubble(attesa, 'Errore di connessione. Riprova tra poco.');
+      window.HirisChatMessages.updateBubble(pending, 'Errore di connessione. Riprova tra poco.');
     } finally {
       if (!handedOff) {
         setLoadingState(false);

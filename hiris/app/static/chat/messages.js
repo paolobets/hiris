@@ -115,15 +115,15 @@
      textContent, mai innerHTML: il testo viene dal server. */
   function appendNota(row, testo) {
     if (!row || !testo) return;
-    var nota = document.createElement('div');
-    nota.className = 'msg-nota';
-    nota.textContent = testo;
+    var note = document.createElement('div');
+    note.className = 'msg-nota';
+    note.textContent = testo;
     var col = row.querySelector('.msg-col');
     var bolla = col && col.querySelector('.bubble');
     if (bolla && bolla.nextSibling) {
-      col.insertBefore(nota, bolla.nextSibling);
+      col.insertBefore(note, bolla.nextSibling);
     } else {
-      (col || row).appendChild(nota);
+      (col || row).appendChild(note);
     }
     state.els.messages.scrollTop = state.els.messages.scrollHeight;
   }
@@ -228,7 +228,7 @@
 
   /* Tutte le attese vive, per poterle fermare anche quando la riga che le
      ospita viene buttata via senza passare da updateBubble(). */
-  var attese = [];
+  var waits = [];
 
   function fermaAttesa(row) {
     if (!row || !row._attesa) return;
@@ -236,14 +236,14 @@
     if (a.intervallo) clearInterval(a.intervallo);
     for (var i = 0; i < a.timeout.length; i++) clearTimeout(a.timeout[i]);
     row._attesa = null;
-    var pos = attese.indexOf(row);
-    if (pos >= 0) attese.splice(pos, 1);
+    var pos = waits.indexOf(row);
+    if (pos >= 0) waits.splice(pos, 1);
   }
 
   /* Chiamata da chi svuota la conversazione: senza, i cronometri delle righe
      appena cancellate continuavano a girare su nodi che non esistono piu'. */
   function fermaTutteLeAttese() {
-    while (attese.length) fermaAttesa(attese[attese.length - 1]);
+    while (waits.length) fermaAttesa(waits[waits.length - 1]);
   }
 
   /* Dichiara che QUESTO turno e' gia' al sicuro sul server, e per quanto tempo
@@ -261,8 +261,8 @@
     var fraQuanto = scadenzaMs - SOGLIE_ATTESA.margineResa - (Date.now() - row._attesa.avvio);
     row._attesa.timeout.push(setTimeout(function () {
       if (!row._attesa) return;
-      var etichetta = row.querySelector('.tl-label');
-      if (etichetta) etichetta.textContent = ETICHETTA_QUASI_RESA;
+      var label = row.querySelector('.tl-label');
+      if (label) label.textContent = ETICHETTA_QUASI_RESA;
     }, Math.max(0, fraQuanto)));
   }
 
@@ -296,11 +296,11 @@
     state.els.messages.appendChild(row);
     state.els.messages.scrollTop = state.els.messages.scrollHeight;
 
-    var avvio = Date.now();
+    var start = Date.now();
     var bolla = row.querySelector('.bubble');
-    var etichetta = row.querySelector('.tl-label');
-    row._attesa = { avvio: avvio, timeout: [], intervallo: null, alSicuro: false, scadenza: 0 };
-    attese.push(row);
+    var label = row.querySelector('.tl-label');
+    row._attesa = { avvio: start, timeout: [], intervallo: null, alSicuro: false, scadenza: 0 };
+    waits.push(row);
 
     /* Il cronometro NON parte subito. Sotto i dieci secondi il tempo non e'
        informazione: e' solo una risposta rapida trasformata in una risposta
@@ -313,11 +313,11 @@
       /* un m:ss dentro una regione live verrebbe letto ogni secondo: il tempo
          e' informazione per l'occhio, non per l'orecchio */
       el.setAttribute('aria-hidden', 'true');
-      el.textContent = testoCronometro(Date.now() - avvio);
+      el.textContent = testoCronometro(Date.now() - start);
       bolla.appendChild(el);
       state.els.messages.scrollTop = state.els.messages.scrollHeight;
       row._attesa.intervallo = setInterval(function () {
-        el.textContent = testoCronometro(Date.now() - avvio);
+        el.textContent = testoCronometro(Date.now() - start);
       }, 1000);
     }, SOGLIE_ATTESA.timer));
 
@@ -325,15 +325,15 @@
        avanzamento: non c'e' nessun avanzamento da mostrare, e inventarlo
        sarebbe esattamente la bugia che questo prodotto non racconta. */
     row._attesa.timeout.push(setTimeout(function () {
-      if (row._attesa) etichetta.textContent = ETICHETTA_LENTA;
+      if (row._attesa) label.textContent = ETICHETTA_LENTA;
     }, SOGLIE_ATTESA.lenta));
 
     row._attesa.timeout.push(setTimeout(function () {
       if (!row._attesa) return;
-      var riga = document.createElement('div');
-      riga.className = 'tl-servizio';
-      riga.textContent = row._attesa.alSicuro ? SERVIZIO_AL_SICURO : SERVIZIO_TIENI_APERTO;
-      bolla.appendChild(riga);
+      var line = document.createElement('div');
+      line.className = 'tl-servizio';
+      line.textContent = row._attesa.alSicuro ? SERVIZIO_AL_SICURO : SERVIZIO_TIENI_APERTO;
+      bolla.appendChild(line);
       state.els.messages.scrollTop = state.els.messages.scrollHeight;
     }, SOGLIE_ATTESA.servizio));
 
@@ -345,7 +345,7 @@
        parla l'altro. */
     row._attesa.timeout.push(setTimeout(function () {
       if (!row._attesa || row._attesa.scadenza) return;
-      etichetta.textContent = ETICHETTA_SENZA_SCADENZA;
+      label.textContent = ETICHETTA_SENZA_SCADENZA;
     }, SOGLIE_ATTESA.senzaScadenza));
 
     return row;

@@ -37,9 +37,9 @@ function fmtNum(n) {
 
    La funzione e' CONDIVISA col riquadro della chat: sistemarla la sistema in
    tutti e due i posti, che e' il punto di averla qui. */
-function fmtEuro(n, decimali) {
+function fmtEuro(n, decimals) {
   if (n == null) return '—';
-  var max = decimali == null ? 2 : decimali;
+  var max = decimals == null ? 2 : decimals;
   return '€ ' + Number(n).toLocaleString('it-IT',
     { minimumFractionDigits: 2, maximumFractionDigits: max });
 }
@@ -137,12 +137,12 @@ async function loadUsage() {
     _setUsageText('u-input', fmtNum(d.input_tokens));
     _setUsageText('u-output', fmtNum(d.output_tokens));
     _setUsageText('u-cost', fmtEuro(d.cost_eur));
-    var quando = fmtDataOra(d.last_reset);
+    var when = fmtDataOra(d.last_reset);
     /* «Conta da», non «Azzerato il»: dalla fetta «i consumi, per modello»
        il pulsante sposta un'ancora e non cancella piu' niente, e `last_reset`
        porta l'istante di quell'ancora. Dire «azzerato» descriverebbe un gesto
        che il prodotto non compie piu'. */
-    if (quando) _setUsageText('usage-last-reset', 'Conta da ' + quando);
+    if (when) _setUsageText('usage-last-reset', 'Conta da ' + when);
     return true;
   } catch(e) {
     console.error('loadUsage failed', e);
