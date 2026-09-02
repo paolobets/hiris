@@ -148,7 +148,7 @@ async def test_il_battito_e_registrato_come_lavoro(promesse, porta_finta):
                 interpreta_promise)
 
     assert isinstance(app["orologio"], Sweeper)
-    battiti = [c for c in scheduler.chiamate if c.get("id") == "hiris_schedulatore_battito"]
+    battiti = [c for c in scheduler.chiamate if c.get("id") == "hiris_keeper_heartbeat"]
     assert len(battiti) == 1, (
         "il battito deve essere registrato UNA volta, con questo id -- "
         f"lavori registrati: {[c.get('id') for c in scheduler.chiamate]}")
@@ -335,8 +335,8 @@ def test_costruisci_dispatcher_strumenti_riceve_registro_e_promesse():
 # col numero vero e l'elenco di cosa fa ognuno.
 #
 # Fetta «l'osservatore», Task 5 (26/08/2026): il cablaggio aggiunge tre
-# lavori (`hiris_cervello_condizioni`, `hiris_cervello_aggregazione`,
-# `hiris_cervello_potatura`), sette diventano dieci -- e il README e'
+# lavori (`hiris_mind_conditions`, `hiris_mind_aggregation`,
+# `hiris_mind_pruning`), sette diventano dieci -- e il README e'
 # aggiornato con loro, non dopo.
 #
 # Questo test ancora quel numero al codice, non lo ripete a mano: se una

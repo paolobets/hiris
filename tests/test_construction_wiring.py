@@ -150,7 +150,7 @@ def test_il_risanamento_delle_costruzioni_precede_il_battito_dello_schedulatore(
     formattazione multilinea della chiamata a `scheduler.add_job`."""
     sorgente = inspect.getsource(server)
     assert sorgente.index('app["costruzioni"].risana(') < sorgente.index(
-        'id="hiris_schedulatore_battito"')
+        'id="hiris_keeper_heartbeat"')
 
 
 def test_le_cinque_rotte_sono_registrate():

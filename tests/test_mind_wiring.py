@@ -56,8 +56,8 @@ def test_i_due_lavori_periodici_sono_registrati():
     accumula e nessun oggetto nasce; senza il secondo l'archivio cresce per
     sempre."""
     sorgente = inspect.getsource(server)
-    assert 'id="hiris_cervello_aggregazione"' in sorgente
-    assert 'id="hiris_cervello_potatura"' in sorgente
+    assert 'id="hiris_mind_aggregation"' in sorgente
+    assert 'id="hiris_mind_pruning"' in sorgente
 
 
 def test_l_archivio_si_chiude_nello_spegnimento():
@@ -99,7 +99,7 @@ def test_l_aggregazione_gira_alle_00_20_della_casa():
     fallire questo test (`{'hour': 23, 'minute': 20} != {'hour': 0,
     'minute': 20}`); ripristinato subito dopo."""
     sorgente = inspect.getsource(server)
-    assert _kwargs_add_job(sorgente, "hiris_cervello_aggregazione") == {
+    assert _kwargs_add_job(sorgente, "hiris_mind_aggregation") == {
         "hour": 0, "minute": 20}
 
 
@@ -108,7 +108,7 @@ def test_la_potatura_gira_alle_03_00():
     notte (03:00), lontana dall'aggregazione (00:20) apposta -- l'una deve
     finire prima che l'altra cominci a leggere il grezzo."""
     sorgente = inspect.getsource(server)
-    assert _kwargs_add_job(sorgente, "hiris_cervello_potatura") == {
+    assert _kwargs_add_job(sorgente, "hiris_mind_pruning") == {
         "hour": 3, "minute": 0}
 
 
@@ -123,9 +123,9 @@ def test_il_terzo_lavoro_periodico_delle_condizioni_e_registrato():
     la spec §6 (i guasti diventano oggetti dal primo giorno) diventa una
     frase falsa (task-5-correzioni.md, punto A)."""
     sorgente = inspect.getsource(server)
-    assert 'id="hiris_cervello_condizioni"' in sorgente
-    blocco = sorgente[sorgente.index('id="hiris_cervello_condizioni"') - 400:
-                      sorgente.index('id="hiris_cervello_condizioni"') + 200]
+    assert 'id="hiris_mind_conditions"' in sorgente
+    blocco = sorgente[sorgente.index('id="hiris_mind_conditions"') - 400:
+                      sorgente.index('id="hiris_mind_conditions"') + 200]
     assert "minutes=10" in blocco
     assert "watch_system_conditions" in sorgente
 
@@ -1610,15 +1610,15 @@ def test_la_riparazione_legge_le_statistiche_GIUSTE_per_ciascun_giorno(tmp_path)
 
 
 # --------------------------------------------------------------------------
-# Punto 5 del mandato: il doppione con `hiris_problemi_ha` (`repairs/
+# Punto 5 del mandato: il doppione con `hiris_ha_problems` (`repairs/
 # list_issues` letto due volte, per conto proprio) NON si unifica -- ma
 # resta documentato accanto al lavoro del cervello, o la seconda lettura
 # sembra una svista a chi legge dopo.
 # --------------------------------------------------------------------------
 
-def test_il_doppione_con_hiris_problemi_ha_e_documentato():
+def test_il_doppione_con_hiris_ha_problems_e_documentato():
     sorgente = inspect.getsource(server)
-    pos = sorgente.index('id="hiris_cervello_condizioni"')
+    pos = sorgente.index('id="hiris_mind_conditions"')
     blocco = sorgente[pos - 1000:pos]
-    assert "hiris_problemi_ha" in blocco
+    assert "hiris_ha_problems" in blocco
     assert 'app["problemi_ha"]' in blocco

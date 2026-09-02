@@ -2017,7 +2017,7 @@ async def _on_startup(app: web.Application) -> None:
     # con una cadenza di giorni, e per gli script non esiste ALCUN evento di
     # ricarica (il servizio non accetta un id), quindi lo tiene aggiornato
     # una sentinella periodica sull'mtime dei due file (vedi sotto, job
-    # "hiris_comportamento_sentinella"). Un evento di registro entita' esiste
+    # "hiris_behavior_sentinel"). Un evento di registro entita' esiste
     # pero' (TOPOLOGY_EVENTS) e aggiungere/togliere un'automazione lo emette:
     # lo si aggancia qui sotto per forzare una rilettura anche quando l'mtime
     # non basta -- un'automazione tolta o messa in un PACCHETTO non tocca
@@ -2583,7 +2583,7 @@ async def _on_startup(app: web.Application) -> None:
     scheduler.add_job(
         _reread_problems,
         trigger="interval", minutes=5,
-        id="hiris_problemi_ha", replace_existing=True,
+        id="hiris_ha_problems", replace_existing=True,
         misfire_grace_time=300,
     )
 
@@ -2598,7 +2598,7 @@ async def _on_startup(app: web.Application) -> None:
     scheduler.add_job(
         tree_comparison,
         trigger="interval", minutes=15,
-        id="hiris_confronto_albero", replace_existing=True,
+        id="hiris_tree_comparison", replace_existing=True,
         misfire_grace_time=900,
     )
 
@@ -2609,7 +2609,7 @@ async def _on_startup(app: web.Application) -> None:
     scheduler.add_job(
         watch_behavior,
         trigger="interval", minutes=5,
-        id="hiris_comportamento_sentinella", replace_existing=True,
+        id="hiris_behavior_sentinel", replace_existing=True,
         misfire_grace_time=300,
     )
 
@@ -2625,7 +2625,7 @@ async def _on_startup(app: web.Application) -> None:
     #
     # **Un doppione tollerato, dichiarato (task-5-fix-brief.md, punto 5).**
     # Questo lavoro interroga `repairs/list_issues` per conto proprio, ogni
-    # dieci minuti, verso l'archivio -- ma `hiris_problemi_ha` qui sopra lo
+    # dieci minuti, verso l'archivio -- ma `hiris_ha_problems` qui sopra lo
     # interroga GIA', ogni cinque minuti, verso `app["problemi_ha"]` in RAM
     # (che gia' porta la forma d'errore, `{"errore": ...}`, letta identica
     # da entrambi). Non si unificano ora: la lettura diretta del cervello
@@ -2643,7 +2643,7 @@ async def _on_startup(app: web.Application) -> None:
     scheduler.add_job(
         _watch_conditions,
         trigger="interval", minutes=10,
-        id="hiris_cervello_condizioni", replace_existing=True,
+        id="hiris_mind_conditions", replace_existing=True,
         misfire_grace_time=600,
     )
 
@@ -2707,7 +2707,7 @@ async def _on_startup(app: web.Application) -> None:
     scheduler.add_job(
         _aggrega_ieri,
         trigger="cron", hour=0, minute=20,
-        id="hiris_cervello_aggregazione", replace_existing=True,
+        id="hiris_mind_aggregation", replace_existing=True,
         misfire_grace_time=3600,
     )
 
@@ -2737,7 +2737,7 @@ async def _on_startup(app: web.Application) -> None:
     scheduler.add_job(
         _prune_observations,
         trigger="cron", hour=3, minute=0,
-        id="hiris_cervello_potatura", replace_existing=True,
+        id="hiris_mind_pruning", replace_existing=True,
         misfire_grace_time=3600,
     )
 
@@ -2791,7 +2791,7 @@ async def _on_startup(app: web.Application) -> None:
     scheduler.add_job(
         _battito,
         trigger="interval", seconds=15,
-        id="hiris_schedulatore_battito", replace_existing=True,
+        id="hiris_keeper_heartbeat", replace_existing=True,
         misfire_grace_time=30,
     )
 
