@@ -116,7 +116,7 @@ class LLMRouter:
         model_chain: list[str] | None = None,
         registry: Any = None,
     ) -> None:
-        # `registro` è `esiti_provider.RegistroEsiti` (app["registro_esiti"]).
+        # `registro` è `provider_occurrences.OccurrenceRegistry` (app["registro_esiti"]).
         # Facoltativo perché `LLMRouter` è costruito anche da test e da codice
         # di libreria che non ha una app intorno; quando c'è, ogni giro del
         # ciclo di ripiego ci scrive che cosa ha visto. È l'UNICO scrittore:
@@ -177,7 +177,7 @@ class LLMRouter:
     def _ordered_backends(self) -> list[Any]:
         """Return available backends in chat_policy priority order.
 
-        DERIVATA da `_ordered_backends_con_nome`, non una seconda
+        DERIVATA da `_ordered_backends_with_name`, non una seconda
         implementazione: due liste ordinate dalla stessa policy sono due
         rappresentazioni della stessa cosa, libere di divergere.
         """

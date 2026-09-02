@@ -23,7 +23,7 @@
       che non arriva mai -- un ramo su quel valore sarebbe codice morto.
 
    -- Cosa fa gia' il backend, cosa deve fare la pagina (guida §0) --
-   `anteprima` e' prosa italiana gia' composta da `Officina._anteprima()`, e
+   `anteprima` e' prosa italiana gia' composta da `Workshop._preview()`, e
    porta gia' dentro la distinzione fra "creato" e "modificato": per una
    `modifica`/`cancella` la prima riga dice sempre, testualmente, che
    l'oggetto "esiste gia' in casa tua". Il backend ha gia' fatto il lavoro
@@ -55,7 +55,7 @@
    sul dominio meno controllato lato Home Assistant.
    NON si ricostruisce mai una frase semantica leggendo dentro `actions`:
    interpretare azioni arbitrarie di Home Assistant e' il lavoro che
-   `_anteprima()` fa gia' lato server con conoscenza di dominio. Un contatore
+   `_preview()` fa gia' lato server con conoscenza di dominio. Un contatore
    sbagliato e' innocuo; una frase di senso sbagliato su un'automazione che
    aziona una sirena antincendio no.
 
@@ -63,7 +63,7 @@
    Il sistema non sa quale dei diciotto oggetti scritti a mano dal
    proprietario sia critico: nessun campo di criticita' esiste. Percio' OGNI
    `modifica` e `cancella` porta lo stesso trattamento massimo, sempre --
-   generalizzare, non selezionare: badge neutro per `crea`, ambra
+   generalizzare, non selezionare: badge neutro per `create`, ambra
    (badge-warn) per `modifica`, rosso (badge-err) per `cancella`, e la frase
    "esiste gia' in casa tua" accanto al nome per modifica/cancella -- SEMPRE,
    anche se `anteprima` la contiene gia': e' l'unica ripetizione voluta di
@@ -99,7 +99,7 @@
    registro participiale delle altre cinque etichette (In attesa, In corso,
    Applicata, Non riuscita, Scaduta) -- "Hai detto no", la prima versione,
    parlava in seconda persona e stonava nella fila dei badge (review Task 11).
-   SCOPERTA VERA, non solo del test: `versioni.py::segna_disdetta` scrive
+   SCOPERTA VERA, non solo del test: `versioni.py::mark_cancelled` scrive
    *letteralmente* `motivo="rifiutata dal proprietario"` su OGNI riga
    `disdetta` -- se la pagina mostrasse `motivo` verbatim anche li' (come fa
    per `rifiutata`), la parola tornerebbe dentro dalla porta sul retro. Questa
@@ -109,7 +109,7 @@
    Approva: nessuna conferma, la card e' gia' la revisione completa.
    Rifiuta: nessun confirm(), non distrugge niente, passa allo storico.
    Ripristina: SI', conferma esplicita -- a differenza di "applica", chiamato
-   con origine umana `ripristina` SCRIVE SUBITO (crea la proposta e la
+   con origine umana `restore` SCRIVE SUBITO (crea la proposta e la
    applica nella stessa chiamata): non c'e' il passaggio intermedio che rende
    sicuro "Approva" senza conferma. Stessa famiglia del `window.confirm()` di
    «Dimentica» in memory-route.js (azione distruttiva senza coda d'attesa).
@@ -192,7 +192,7 @@ window.HirisCostruzioni = (function () {
   }
 
   /* Nome dell'oggetto (guida §2.1): "lo stesso ripiego esatto che usa il
-     backend" -- che per `crea` legge l'alias del `dopo` (Officina._anteprima:
+     backend" -- che per `create` legge l'alias del `dopo` (Officina._anteprima:
      `intento.get('alias')`, non c'e' nessun `prima`) e per `modifica`/
      `cancella` legge l'alias del `prima` (l'oggetto che gia' esisteva). Una
      sola catena di ripiego riproduce entrambi i casi senza duplicare logica:
@@ -231,14 +231,14 @@ window.HirisCostruzioni = (function () {
 
   /* Conta gli elementi di un array O di un dizionario -- serve per la
      `scene`: `entities` li' non e' un array come per automazioni/script, e'
-     una mappa entity_id -> attributi (`forme.py::componi_scena`,
+     una mappa entity_id -> attributi (`forme.py::compose_scene`,
      Home Assistant la restituisce nella stessa forma per `prima`). In
      Python `len()` funziona uguale su liste e dict (`officina.py::
      _compatta`); in JS `{}.length` e' `undefined`, non `0` -- senza questo
      ramo il pannello mostrava letteralmente "entita': undefined" per ogni
      scena. Ritorna `null` solo quando la chiave non c'e' o non e' un
      array/oggetto -- una lista/dizionario vuoto ma PRESENTE resta `0`,
-     distinzione che `righeConfronto` usa per decidere se mostrare la riga. */
+     distinzione che `comparisonLines` usa per decidere se mostrare la riga. */
   function countElements(value) {
     if (value === undefined || value === null) return null;
     if (Array.isArray(value)) return value.length;
@@ -273,7 +273,7 @@ window.HirisCostruzioni = (function () {
   }
 
   /* Gli `entity_id` toccati (guida §3): per una `scene` sono le CHIAVI del
-     dizionario `entities` (stesso motivo di `contaElementi` sopra), non i
+     dizionario `entities` (stesso motivo di `countElements` sopra), non i
      suoi valori (gli attributi) -- per automazione/script, se mai portassero
      un array, sono gia' loro. E' proprio il dominio in cui questa lista e'
      tutto il contenuto dell'oggetto (guida §3): senza questo ramo non

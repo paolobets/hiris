@@ -60,7 +60,7 @@ FILE_PERMISSIONS = 0o600
 # libera: qualunque cosa l'utente scrivesse entrava in circolo dopo un solo
 # `.strip()`. Non era teorico -- un token con CR/LF/NUL fa sollevare il client
 # HTTP con IL VALORE DENTRO il messaggio d'errore, e quel messaggio finisce nel
-# log dell'add-on (`agent/runner.py::sonda_strumenti`, riprodotto contro un
+# log dell'add-on (`agent/runner.py::probe_tools`, riprodotto contro un
 # listener vero: LocalProtocolError, Illegal header value, col valore dentro).
 #
 # La regola e' la piu' piccola che chiude il difetto, non la piu' severa che si
@@ -69,7 +69,7 @@ FILE_PERMISSIONS = 0o600
 # dall'ASCII. Restano ammessi lo spazio interno (i bordi li toglie gia'
 # `.strip()`) e OGNI carattere stampabile, virgolette e backslash compresi:
 # sono header-safe, spezzavano soltanto la REDAZIONE del token nei log, e quel
-# fronte si chiude dove si manifesta (`agent/runner.py::forme_del_token`, che
+# fronte si chiude dove si manifesta (`agent/runner.py::token_forms`, che
 # reda anche la forma JSON-escaped). Rifiutarli anche qui avrebbe respinto
 # configurazioni legittime che oggi funzionano.
 def invalid_token_reason(token: str) -> str | None:

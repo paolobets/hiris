@@ -9,7 +9,7 @@ una cosa usa-e-getta accanto a una irripetibile.
 Vedi docs/design/2026-08-05-la-conoscenza-di-hiris.md, §1, per il contratto
 completo. Tre regole guidano questo modulo:
 
-1. **Il testo e' la verita'.** `ricorda()` archivia la frase cosi' com'e'
+1. **Il testo e' la verita'.** `remember()` archivia la frase cosi' com'e'
    stata detta; tutto il resto (`forza`, `grandezza`, le ancore, le
    condizioni) e' un'INTERPRETAZIONE di quella frase, e puo' essere rifatta
    senza toccare il testo.
@@ -18,9 +18,9 @@ completo. Tre regole guidano questo modulo:
    l'ha aggiustato l'utente", cosa utile a capire quanto spesso HIRIS
    interpreta male.
 3. **Un ricordo a meta' e' peggio di nessun ricordo**, perche' non si
-   distingue da uno interpretato male. Ogni scrittura multi-riga (`ricorda`,
+   distingue da uno interpretato male. Ogni scrittura multi-riga (`remember`,
    `correggi`, `dimentica`) usa `BEGIN`/`rollback`, stessa forma di
-   `ArchivioCasa.sostituisci`.
+   `HomeSpaceStore.replace`.
 
 **Questo archivio e' nudo di proposito.** Niente `status`, niente
 `chatbot_id`, niente `sensitivity`, niente scadenza, niente ambito per
@@ -117,7 +117,7 @@ class MemoryStore:
             raise
 
     def fetch(self, limit: int = 20) -> list[dict]:
-        """Gli ultimi `limite` ricordi, i piu' recenti prima, con ancore e
+        """Gli ultimi `limit` ricordi, i piu' recenti prima, con ancore e
         condizioni gia' risolte."""
         righe = self._conn.execute(
             "SELECT * FROM ricordi ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
@@ -156,9 +156,9 @@ class MemoryStore:
         return self._compose(dict(row)) if row else None
 
     def count(self) -> int:
-        """Quanti ricordi ci sono in tutto -- non solo i `limite` che
-        `richiama()` restituisce. La memoria non evapora (regola del
-        modulo): oltre `limite` voci restano vere e proprio invisibili
+        """Quanti ricordi ci sono in tutto -- non solo i `limit` che
+        `fetch()` restituisce. La memoria non evapora (regola del
+        modulo): oltre `limit` voci restano vere e proprio invisibili
         senza questo numero, e un ricordo invisibile e' indistinguibile
         da uno cancellato."""
         row = self._conn.execute("SELECT COUNT(*) AS n FROM ricordi").fetchone()
@@ -170,7 +170,7 @@ class MemoryStore:
         `campi` puo' contenere colonne scalari di `ricordi` (`forza`,
         `grandezza`, `minimo`, `massimo`, `unita`, `detto_da`) e/o le liste
         `ancore`/`condizioni`, che vengono SOSTITUITE per intero (stessa
-        logica di `ArchivioCasa.sostituisci`: rattoppare per singola riga
+        logica di `HomeSpaceStore.replace`: rattoppare per singola riga
         aprirebbe una classe di derive silenziose). Alza sempre
         `corretto_da_utente`, anche se si corregge solo `ancore` o
         `condizioni`: e' comunque HIRIS che aveva interpretato male.
@@ -253,7 +253,7 @@ class MemoryStore:
 
     def _compose(self, row: dict) -> dict:
         """Un ricordo con le sue ancore e condizioni gia' sciolte -- stessa
-        idea di `ArchivioCasa._sciogli`, ma qui la lista viene da tabelle
+        idea di `HomeSpaceStore._unpack`, ma qui la lista viene da tabelle
         proprie, non da una colonna JSON."""
         ricordo_id = row["id"]
         row["ancore"] = [dict(a) for a in self._conn.execute(

@@ -125,7 +125,7 @@ def _reason(value) -> str | None:
 
 
 def _sanitized_list(value) -> str:
-    """Come `_lista`, ma ogni voce stringa passa dal sanitizzatore -- per gli
+    """Come `_list`, ma ogni voce stringa passa dal sanitizzatore -- per gli
     ALIAS (testo scelto dall'utente o dall'integrazione), MAI per le liste di
     id (`labels`, slug che Home Assistant genera e che l'anagrafe risolve
     altrove, dalla tabella `etichette` -- gia' sanificata alla propria
@@ -136,7 +136,7 @@ def _sanitized_list(value) -> str:
 
 
 def _dict(value) -> str:
-    """Come `_lista`, per i campi che Home Assistant manda come dizionario.
+    """Come `_list`, per i campi che Home Assistant manda come dizionario.
 
     L'assegnazione delle categorie e' `{ambito: category_id}` -- non una lista
     -- perche' un'entita' puo' stare in UNA categoria per ambito
@@ -195,7 +195,7 @@ def _migration_4_entity_categories(conn) -> None:
     ricostruirsi, in silenzio.
 
     Il predefinito e' `'{}'` e non `'[]'`: e' un dizionario ambito -> id, non
-    una lista (vedi `_dizionario`). Una riga vecchia che non ha mai visto le
+    una lista (vedi `_dict`). Una riga vecchia che non ha mai visto le
     categorie dice cosi' «nessuna categoria», che e' vero.
     """
     with suppress(sqlite3.OperationalError):
@@ -255,7 +255,7 @@ class HomeSpaceStore:
         leggere una versione diversa della stessa verita'.
 
         Vuoto o assente NON cancella quello di prima: e' la stessa dottrina
-        con cui `anagrafe.ricostruisci` non sostituisce la casa quando tutti i
+        con cui `anagrafe.rebuild` non sostituisce la casa quando tutti i
         registri sono caduti. Il fuso di ieri e' ancora il fuso giusto; un
         riferimento cancellato farebbe leggere ogni temperatura senza sapere
         in che scala.
@@ -422,7 +422,7 @@ class HomeSpaceStore:
         un'automazione sarebbe uno spreco, e viceversa.
 
         `problems` e `unloaded_files` si archiviano ACCANTO ai dati, non solo
-        nei log: sono costruiti con cura da `comportamento.compose()`/`rileggi()`
+        nei log: sono costruiti con cura da `comportamento.compose()`/`reread()`
         proprio per dire a chi guarda perche' qualcosa manca o e' incerto —
         conservarli solo in una riga di log li rende invisibili a chiunque non
         stia leggendo il log in quel momento (vedi `non_disponibili` sopra,

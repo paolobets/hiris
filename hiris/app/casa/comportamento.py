@@ -45,7 +45,7 @@ _SCRIPT = "scripts.yaml"
 _ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 
 # Sentinella per distinguere «la chiave non c'e'» da «la chiave c'e' e vale
-# None» in `script_per_chiave.get(...)`. Con `None` come default le due cose
+# None» in `scripts_by_key.get(...)`. Con `None` come default le due cose
 # sono indistinguibili, e uno scripts.yaml a meta' modifica (chiave presente,
 # valore nullo) faceva emettere lo stesso script due volte: una `solo_stato`
 # (perche' "sembrava" senza corpo) e una `solo_file` (perche' "sembrava" mai
@@ -358,7 +358,7 @@ async def reread_dashboards(client, store) -> dict:
 
     Se NESSUNA plancia risulta leggibile (`config` a `None` su tutte, o
     l'elenco stesso vuoto) NON si sostituisce: stessa regola dell'anagrafe
-    (`anagrafe.ricostruisci`) — una replica vecchia e dichiarata e' meglio
+    (`anagrafe.rebuild`) — una replica vecchia e dichiarata e' meglio
     di una vuota e falsa. Una plancia leggibile e una in modalita' YAML
     convivono invece senza problemi: quella YAML resta con `config` a
     `None`, visibile in `non_disponibili`, le altre si aggiornano.

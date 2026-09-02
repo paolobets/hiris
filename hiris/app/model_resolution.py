@@ -40,7 +40,7 @@ import os
 # (`server.should_start_agent_worker`), se il piano ENTRA nella catena
 # (`server._credentials`), cosa la pagina Modelli DICHIARA
 # (`handlers_models._config_has_credential`), e se il turno si ACCODA
-# (`instradamento._piano_puo_rispondere`).
+# (`steering._subscription_can_answer`).
 #
 # Oggi erano identiche. Il giorno in cui il token seguisse la strada che hanno
 # gia' fatto `ponte.attivo`, `tetto_giornaliero` e `scadenza_min` -- da
@@ -168,7 +168,7 @@ def missing_reason(provider_id: str) -> str:
 # ── La riga di stato: l'ultimo esito osservato, in parole ──────────────────
 #
 # Le parole degli esiti stanno qui, con le altre, per la ragione di sempre:
-# sono affermazioni sul prodotto. I FATTI stanno in `esiti_provider.py`, che
+# sono affermazioni sul prodotto. I FATTI stanno in `provider_occurrences.py`, che
 # non sa dire niente e non deve: registra che cosa è successo, e questo modulo
 # lo racconta.
 #
@@ -238,7 +238,7 @@ _CREDENTIAL_CAUSE: dict[int, str] = {
 def occurrence_phrase(occurrence: dict | None, *, position: int | None, now: float) -> str:
     """L'ultimo esito osservato, detto a chi guarda la riga (progetto §4.3).
 
-    `esito` è il dizionario di `esiti_provider.RegistroEsiti.esito`, oppure
+    `esito` è il dizionario di `provider_occurrences.OccurrenceRegistry.esito`, oppure
     `None` quando non c'è mai stata un'osservazione. «Non l'ho interrogato» e
     «non ha risposto» sono due cose diverse e si leggono diverse.
 
@@ -293,7 +293,7 @@ def occurrence_phrase(occurrence: dict | None, *, position: int | None, now: flo
         #
         # Prima il ripiego era «la credenziale non è accettata», ed è una
         # frase che manda l'utente a rigenerare una chiave. Basta che
-        # `esiti_provider._CREDENZIALE` guadagni un codice senza che questa
+        # `provider_occurrences._CREDENTIAL` guadagni un codice senza che questa
         # tabella lo guadagni — un 429 di quota, per esempio — e HIRIS
         # scriverebbe «la credenziale non è accettata (429)» su un rate limit,
         # mandando a sostituire una chiave che funziona.
@@ -327,7 +327,7 @@ def occurrence_phrase(occurrence: dict | None, *, position: int | None, now: flo
 # divergere dalla prima.
 
 # I tre fatti che il turno puo' aver osservato, e non uno di piu'. Sono le
-# STESSE tre parole che `instradamento._piano_puo_rispondere` restituisce e
+# STESSE tre parole che `steering._subscription_can_answer` restituisce e
 # che `_downgrade_to_chain` passa: la corrispondenza e' pinnata da un test,
 # perche' un motivo che non fosse fra queste chiavi non produrrebbe un errore
 # -- produrrebbe silenzio, che e' peggio.
@@ -598,7 +598,7 @@ def compose_topology(
     numero che parla, ed è composta con lo stesso valore -- due letture non
     potrebbero divergere.
 
-    `esiti` è `esiti_provider.RegistroEsiti.tutti()`: che cosa è successo
+    `esiti` è `provider_occurrences.OccurrenceRegistry.tutti()`: che cosa è successo
     DAVVERO, per provider, misurato dal traffico vero. Non c'è nessuna voce per
     chi non è mai stato interrogato, e la differenza fra «non ha risposto» e
     «non l'ho interrogato» sopravvive fino allo schermo. `adesso` è
@@ -798,7 +798,7 @@ def compose_topology(
 # sarebbe accorto.
 
 # I TRE ALIAS DEL PIANO, e non uno di più. Non è una semplificazione
-# dell'interfaccia: `agent/runner.modello_cli` riduce QUALUNQUE modello risolto
+# dell'interfaccia: `agent/runner.cli_model` riduce QUALUNQUE modello risolto
 # a `opus`/`haiku`/`sonnet` per sottostringa, perché la CLI dell'abbonamento
 # non conosce altri nomi. Offrire `claude-opus-4-7` sul piano sarebbe una
 # precisione finta: sul ponte `claude-opus-4-7` e `claude-opus-4-1` producono
@@ -891,7 +891,7 @@ def provenance(provider_id: str, source: str, *, address: str = "",
     if source == "fissa":
         # Il piano. Non è un ripiego e non si chiama così: i tre alias non
         # possono invecchiare, perché non descrivono il catalogo di qualcun
-        # altro -- sono l'insieme esatto che `modello_cli` sa produrre.
+        # altro -- sono l'insieme esatto che `cli_model` sa produrre.
         return ("Sono tutti quelli che esistono: il ponte parla con la CLI del "
                 "piano, che di nomi ne conosce tre.")
     # Qui viveva un ramo `if provider_id == "claude"` con una frase propria,

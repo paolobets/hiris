@@ -4,8 +4,8 @@ Non esiste un timer per promessa. Un timer in memoria muore al riavvio e
 diventa un secondo posto che sa quando: qui la verita' e' la tabella, e
 l'orologio (`orologio.py`) non fa che chiederle chi e' scaduto.
 
-Non solleva mai verso il chiamante per un ingresso sbagliato: `crea` e
-`disdici` rispondono con un dizionario che porta `errore`, perche' chi li
+Non solleva mai verso il chiamante per un ingresso sbagliato: `create` e
+`cancel` rispondono con un dizionario che porta `errore`, perche' chi li
 chiama e' uno strumento che parla a un modello. Solleva soltanto cio' che
 sollevano SQLite e il filesystem, che non sono errori d'ingresso.
 """
@@ -248,7 +248,7 @@ class AgendaStore:
         di nascita e' 30 giorni, non di conclusione) doveva restare per
         novanta giorni dalla conclusione, e con `nata_ts` spariva domani.
         `risvegliata_ts` e' sempre popolato per uno stato concluso: sia
-        `concludi()` sia `disdici()` lo scrivono con
+        `concludi()` sia `cancel()` lo scrivono con
         `COALESCE(risvegliata_ts, adesso)`, quindi non serve un ripiego su
         `nata_ts` per le righe che non sono mai passate da `prendi()`.
 

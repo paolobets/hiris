@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 _SETTINGS_FILE = "impostazioni_chat.json"
 
 # Permessi del file: solo il proprietario legge e scrive -- stesso valore e
-# stessa motivazione di `token_interno.FILE_PERMISSIONS` (vedi `salva()` sotto).
+# stessa motivazione di `internal_token.FILE_PERMISSIONS` (vedi `save()` sotto).
 _FILE_PERMISSIONS = 0o600
 
 # Review finale fetta E3, Important #2: la versione precedente istruiva a
@@ -69,7 +69,7 @@ _FILE_PERMISSIONS = 0o600
 #
 # E' la stessa classe di difetto per cui, al Task 2 di questa fetta,
 # `BASE_SYSTEM_PROMPT` e' stata spezzata in due meta' (claude_runner.py, il
-# commento sopra `BASE_IDENTITA`): li' l'ordine falso ha smesso di essere
+# commento sopra `BASE_IDENTITY`): li' l'ordine falso ha smesso di essere
 # EMESSO, qui restava emesso e affidato alla smentita che lo segue tre
 # capoversi sotto (`prompts._GUIDE_WITHOUT_TOOLS`: «se il prompt qui sopra
 # nomina degli strumenti ... quelle istruzioni non si applicano»). Con le
@@ -105,7 +105,7 @@ _FILE_PERMISSIONS = 0o600
 # il vecchio testo non e' persistito da nessuna parte.
 #
 # Aggiornamento fetta E5 Task 2: fino a quel task la frase qui sopra diceva
-# «nessun codice di produzione scrive `impostazioni_chat.json`, `salva()` non
+# «nessun codice di produzione scrive `impostazioni_chat.json`, `save()` non
 # ha nessun chiamante fuori dai test, e la superficie HTTP che lo scrivera' e'
 # della fetta E5». Quella superficie ORA esiste --
 # `api/handlers_impostazioni.py`, `PUT /api/chat-settings`, la pagina
@@ -116,7 +116,7 @@ _FILE_PERMISSIONS = 0o600
 # vecchio e riscriverlo) NON serve e sarebbe dannoso -- sovrascrivere il
 # prompt che l'utente ha scelto e' peggio del difetto che chiuderebbe. La via
 # di ritorno al default esiste ed e' esplicita: si svuota il campo nella
-# pagina (`handlers_impostazioni.valida`, `system_prompt` vuoto ->
+# pagina (`handlers_impostazioni.validate`, `system_prompt` vuoto ->
 # `DEFAULT_SYSTEM_PROMPT`), che e' una decisione dell'utente, non nostra.
 #
 # fetta «comandare» (Task 7): questo testo NON e' stato esteso a `execute`, ed
@@ -185,14 +185,14 @@ DEFAULT_SYSTEM_PROMPT = (
 # questo va detto esplicitamente, non lasciato dedurre.
 #
 # **Versione A della migrazione, applicata a questo singolo campo** (la
-# sorella maggiore, su tutto `models_config.json`, e' `migrazione_opzioni.py`
+# sorella maggiore, su tutto `models_config.json`, e' `options_migration.py`
 # del Task 6 -- questo campo non ci passa attraverso, perche' vive in un
 # archivio diverso, `impostazioni_chat.json`): se il file non porta ancora la
 # chiave, `carica()` la prende da `HISTORY_RETENTION_DAYS`, la variabile che
 # `run.sh` esporta dall'opzione `history_retention_days` di `config.yaml`.
 # Una volta sola per lettura del file (non un seed permanente: un file che GIA'
 # porta la chiave, anche a `0`, vince sempre sull'opzione -- vedi
-# `_giorni_da_ambiente` sotto), dichiarata nel log ESATTAMENTE quando il valore
+# `_retention_days_from_environment` sotto), dichiarata nel log ESATTAMENTE quando il valore
 # copiato non e' quello che i default del codice avrebbero comunque prodotto
 # (stessa disciplina del blocco `if "model" in raw` qui sotto, e dello stesso
 # "non annuncia se non c'e' niente da annunciare" imparato al debito F della
@@ -204,10 +204,10 @@ DEFAULT_SYSTEM_PROMPT = (
 # `HISTORY_RETENTION_DAYS`. Su un'installazione aggiornata dal Supervisor
 # questo ramo non trova piu' niente da leggere -- e non deve trovarlo: il
 # valore e' gia' sul disco, perche' l'avvio della 2.5.0 lo ha SCRITTO
-# (`server._on_startup`, `il_file_non_porta_i_giorni`), non solo letto.
+# (`server._on_startup`, `file_lacks_retention_days`), non solo letto.
 #
 # La lettura resta, ed e' la stessa eccezione dichiarata per
-# `migrazione_opzioni.semina` e `server._chain_as_it_was`: serve a
+# `options_migration.seed` e `server._chain_as_it_was`: serve a
 # un'installazione che salti la 2.5.0 e arrivi qui con l'ambiente ancora
 # popolato dal vecchio `run.sh`. Via Supervisor non puo' succedere (le chiavi
 # fuori schema vengono scartate prima che /data/options.json esista); in
@@ -241,7 +241,7 @@ def file_lacks_retention_days(data_dir: str) -> bool:
     `giorni_conservazione`, file assente o illeggibile compresi.
 
     Esiste perche' `carica()` LEGGE attraverso l'ambiente ma non SCRIVE, e
-    `salva()` ha un solo chiamante di produzione: la PUT della pagina
+    `save()` ha un solo chiamante di produzione: la PUT della pagina
     «Impostazioni chat». Un utente che quella pagina non la apre mai non
     produce mai la chiave sul disco -- e la versione B (3.0.0, che
     `history_retention_days` l'ha tolta dallo schema) troverebbe un ambiente
@@ -287,7 +287,7 @@ class ChatSettings:
         Task 12: file assente e file corrotto convergono sullo stesso `raw =
         {}` invece di due `return cls()` separati (com'era prima) -- e' cio'
         che permette a ENTRAMBI i casi di consultare `HISTORY_RETENTION_DAYS`
-        per `giorni_conservazione` (`_giorni_da_ambiente` sopra), invece di
+        per `giorni_conservazione` (`_retention_days_from_environment` sopra), invece di
         far scomparire silenziosamente la versione A della migrazione ogni
         volta che il file non e' leggibile."""
         path = os.path.join(data_dir, _SETTINGS_FILE)
@@ -309,7 +309,7 @@ class ChatSettings:
             # catena e annullava il ripiego. Il campo e' uscito; il valore
             # salvato non viene migrato (non c'e' dove metterlo: il modello si
             # sceglie per provider, in `models_config.json`) ne' riscritto da
-            # `salva()`, quindi sparira' dal file al primo salvataggio. A
+            # `save()`, quindi sparira' dal file al primo salvataggio. A
             # differenza di `brain_model` in `load_models_config` -- che
             # sopravvive perche' `save_models_config` fa
             # lettura-modifica-scrittura -- qui NON si conserva: sarebbe
@@ -356,7 +356,7 @@ class ChatSettings:
         chat riparte dopo un riavvio, cioe' l'unico stato che le sopravvive.
 
         fetta E5 Task 2: la disciplina e' allineata a quella di
-        `token_interno._write_token`, che e' il precedente di questo ramo per
+        `internal_token._write_token`, che e' il precedente di questo ramo per
         un file di `/data` che deve sopravvivere ai riavvii. Tre differenze
         rispetto alla versione precedente (che era il semplice tmp+replace
         ereditato da `ChatbotEngine._save()`):
@@ -366,9 +366,9 @@ class ChatSettings:
            una perdita di alimentazione il file esiste, e' "valido" per il
            filesystem, ed e' vuoto. L'atomicita' del rename non e' durabilita'
            del contenuto: sono due garanzie distinte, e qui servono entrambe.
-        2. **Permessi stretti alla creazione** (`os.open` con `_PERMESSI_FILE`,
+        2. **Permessi stretti alla creazione** (`os.open` con `_FILE_PERMISSIONS`,
            non un `chmod` dopo): il file contiene il prompt di sistema, cioe'
-           testo che l'utente ha scritto. Come in `token_interno.py`, su Linux
+           testo che l'utente ha scritto. Come in `internal_token.py`, su Linux
            -- la piattaforma dell'add-on -- e' 0600; su Windows, dove gira solo
            la suite, i bit di gruppo/altri non esistono e la chiamata incide di
            fatto solo sul flag di sola lettura: e' il piu' stretto possibile
@@ -377,7 +377,7 @@ class ChatSettings:
            restare li' a sporcare `/data` dopo ogni errore.
 
         Solleva `OSError` se il disco non collabora: il chiamante HTTP
-        (`api/handlers_impostazioni.handle_save_impostazioni`) la cattura e
+        (`api/handlers_impostazioni.handle_save_settings`) la cattura e
         risponde dichiarando il guasto, invece di rispondere "salvato".
         """
         path = os.path.join(data_dir, _SETTINGS_FILE)
@@ -411,6 +411,6 @@ class ChatSettings:
 
 
 # Stesso motivo del lock di modulo in ChatbotEngine (`_save_lock`, uscito con
-# lei): due `salva()` concorrenti sullo stesso file non devono poter
+# lei): due `save()` concorrenti sullo stesso file non devono poter
 # accavallare la scrittura del `.tmp` e l'`os.replace`.
 _save_lock = threading.Lock()

@@ -50,7 +50,7 @@ La differenza con `execute` non e' di importanza ma di QUANDO: `execute` agisce
 ora, `promise` mette da parte un'azione o una domanda per un istante futuro,
 e tutto cio' che si puo' verificare contro questa installazione (il servizio
 esiste, l'entita' esiste, il canale di notifica esiste) si verifica ALLA
-NASCITA, non al momento di mantenerla -- vedi `ToolDispatcher._prometti`.
+NASCITA, non al momento di mantenerla -- vedi `ToolDispatcher._promise`.
 
     prometti -- mette da parte un `fai` (verificato subito) o un `chiedi`
                 (con l'istantanea di partenza) per un istante futuro
@@ -86,7 +86,7 @@ parte.
    salvata. Quindi si CHIEDONO quando servono, e non si salvano da nessuna
    parte: ne' in `casa.db`, ne' nell'anagrafe, ne' nel digesto del nucleo.
 2. **`view` e' pura e non fa I/O** (vedi il suo docstring in `domande.py`).
-   Per infilarci i legami bisognerebbe che `_guarda` facesse un giro
+   Per infilarci i legami bisognerebbe che `_view` facesse un giro
    WebSocket PRIMA di ogni chiamata -- anche per `view("ricordo", 3)`, che
    con Home Assistant non c'entra nulla. Un costo di rete pagato da ogni
    domanda per servirne una.
@@ -107,7 +107,7 @@ parte.
 in chat *"d'inverno il soggiorno ideale e' 19.5"*, e HIRIS aveva risposto
 "preso nota" -- SENZA salvare niente, perche' il vecchio dispatcher non
 chiamava mai `MemoryStore.remember()`. Qui sotto, `remember` salva davvero
-(vedi `ToolDispatcher._ricorda`).
+(vedi `ToolDispatcher._remember`).
 
 Le due funzioni pure che fanno il lavoro vero -- `search()` e `view()` --
 vivono gia' in `domande.py`, e non si riscrivono qui: `ToolDispatcher`
@@ -146,7 +146,7 @@ from .domande import view as _view_detail
 # `STORE_KEY_PER_TYPE`. Ordinati (come fa gia' `interpretazione.py`
 # per il proprio messaggio d'errore) perche' un frozenset non promette un
 # ordine stabile fra due letture, ed e' l'ordine in cui `fetch` cerca
-# quando il modello non specifica un `tipo` -- vedi `_richiama`.
+# quando il modello non specifica un `tipo` -- vedi `_recall`.
 #
 # T7 (R2): prima di questo task le due fonti coincidevano per coincidenza
 # (`_ARCHIVI` aveva solo i tre tipi che sono anche ancore valide), e
@@ -940,7 +940,7 @@ class ToolDispatcher:
         # LUNGA -- non nasce con questo dispatcher (che nasce a ogni turno,
         # vedi `handlers_chat.py::create_tool_dispatcher`) ma vive
         # accanto a `entity_cache` in `hiris/app/server.py` e arriva qui come
-        # dipendenza. Default `None`: nessuna cache, `_cerca`/`_ricorda`
+        # dipendenza. Default `None`: nessuna cache, `_search`/`_remember`
         # ricostruiscono l'indice ogni volta come facevano prima di questo
         # task -- ogni chiamante esistente (i test, e ogni altro punto del
         # prodotto che non la passa esplicitamente) non cambia comportamento.
@@ -952,15 +952,15 @@ class ToolDispatcher:
         self._ha = ha
         # Il registro dei servizi (`azione/registro.py::ServiceRegistry`), la
         # STESSA istanza che usa la porta -- non se ne apre un secondo, per la
-        # stessa ragione di `_canale_ha`: due registri sarebbero due opinioni
+        # stessa ragione di `_ha_channel`: due registri sarebbero due opinioni
         # su cosa esiste, e potrebbero divergere. Serve a `promise` per
-        # verificare un `fai` ADESSO (`_verifica_ora`) e un `recapito`
-        # (`_verifica_recapito`). `None` e' legittimo e NON passa da
-        # `_archivio_mancante` (che solleverebbe un errore diverso, "l'archivio
+        # verificare un `fai` ADESSO (`_verify_now`) e un `recapito`
+        # (`_verify_recipient`). `None` e' legittimo e NON passa da
+        # `_missing_resource` (che solleverebbe un errore diverso, "l'archivio
         # non e' caricato"): senza registro PRONTO -- assente o presente ma mai
-        # caricato da Home Assistant, `_registro_non_pronto()` -- i due
+        # caricato da Home Assistant, `_registry_not_ready()` -- i due
         # controlli RIFIUTANO invece di tacere (fix review Task 6 Rilievo 2 per
-        # `_verifica_ora`, esteso a `_verifica_recapito` da review Task 7
+        # `_verify_now`, esteso a `_verify_recipient` da review Task 7
         # Rilievo 1): un `fai` o un recapito mai verificati nascerebbero con
         # una promessa che dichiara "viene VERIFICATA adesso" senza esserlo
         # stata.
@@ -983,7 +983,7 @@ class ToolDispatcher:
         # riceve l'officina -- non una seconda apertura dello stesso file
         # SQLite. Serve ad `logbook` per dire «l'ho fatto io» dove il diario
         # di Home Assistant direbbe soltanto «servizio chiamato». `None` e'
-        # legittimo e NON passa da `_archivio_mancante`: senza cronaca lo
+        # legittimo e NON passa da `_missing_resource`: senza cronaca lo
         # strumento risponde lo stesso, perdendo l'attribuzione e non la
         # risposta -- che e' una degradazione, non un guasto.
         self._journal = journal
@@ -1085,9 +1085,9 @@ class ToolDispatcher:
             "logbook": self._happened,
         }[name]
         try:
-            # `_esegui`, `_legami`, `_prometti`, `_costruisci`, `_conferma`,
-            # `_andamento` e `_accaduto` sono coroutine (fanno rete, o --
-            # `_prometti` -- possono scaldare il registro dei servizi prima
+            # `_execute`, `_legami`, `_promise`, `_propose`, `_confirm`,
+            # `_trend` e `_happened` sono coroutine (fanno rete, o --
+            # `_promise` -- possono scaldare il registro dei servizi prima
             # di verificare); gli altri sei no. Si attende cio' che e'
             # attendibile invece di rendere `async` anche i sei sincroni:
             # cambiare la loro firma avrebbe toccato tredici gestori per un
@@ -1118,11 +1118,11 @@ class ToolDispatcher:
             return {"errore": "«search» richiede un «testo» non vuoto."}
         home_space = self._home_space.read()
         # T7 (R2): automazioni e script, dalla stessa fonte che alimenta
-        # `view` (`ArchivioCasa.comportamento()`), non dall'anagrafe --
+        # `view` (`HomeSpaceStore.comportamento()`), non dall'anagrafe --
         # senza indicizzarli qui, nessuna sequenza di chiamate produceva mai
         # il loro id, e `view("automazione", ...)` restava irraggiungibile
-        # per chi partiva da un nome. Letto eagerly come `casa`: `_cerca`
-        # non ha niente da rimandare (a differenza di `_ricorda`, che non lo
+        # per chi partiva da un nome. Letto eagerly come `casa`: `_search`
+        # non ha niente da rimandare (a differenza di `_remember`, che non lo
         # passa affatto -- il comportamento non e' un tipo di ancora).
         behavior = self._home_space.behavior()
         _, reported_names, _units, _classes, _since_when, _attributes, mirror_loaded = \
@@ -1131,7 +1131,7 @@ class ToolDispatcher:
         # (`aggiornata_il()`), il comportamento (`comportamento_letto_il()`,
         # T7) e i nomi vivi di ripiego non cambiano -- vedi
         # `memoria/cache_indice.py` per la chiave. Spazio "cerca", diverso da
-        # "ricorda": qui si passano SEMPRE i nomi di ripiego, `_ricorda` no,
+        # "ricorda": qui si passano SEMPRE i nomi di ripiego, `_remember` no,
         # e sulla stessa casa i due indici hanno contenuti diversi.
         if self._lookup_cache is not None:
             lookup = self._lookup_cache.get(
@@ -1141,12 +1141,12 @@ class ToolDispatcher:
             lookup = costruisci_indice(home_space, reported_names, behavior)
         found = _search_candidates(lookup, text)
         response: dict = {"trovati": found}
-        # N2 (ri-review): il ramo strutturale di `_cecita` (I3, sotto) si
+        # N2 (ri-review): il ramo strutturale di `_blind_spots` (I3, sotto) si
         # accende su OGNI casa sana che abbia entita' senza nome ne' nel
         # registro ne' nello specchio -- sull'impianto vero, un fatto
         # STABILE (376 entita'), non un guasto di QUESTA ricerca. La chiave
         # esiste per spiegare un `trovati` vuoto che potrebbe nascondere
-        # qualcosa (vedi il docstring di `_cecita`): non ha niente da
+        # qualcosa (vedi il docstring di `_blind_spots`): non ha niente da
         # spiegare quando la ricerca ha gia' trovato cio' che cercava, e
         # dichiararla comunque la rende permanente -- un'assenza dichiarata
         # SEMPRE smette di essere un segnale (la stessa invariante 4 che
@@ -1171,7 +1171,7 @@ class ToolDispatcher:
         c'e' niente da dichiarare. Un elenco vuoto che dice "nessun problema"
         e' esattamente la forma che questa funzione esiste per togliere.
 
-        `trovati_vuoti` (N2, ri-review): il ramo strutturale piu' sotto
+        `found_nothing` (N2, ri-review): il ramo strutturale piu' sotto
         (entita' senza nome ne' nel registro ne' nello specchio) descrive un
         fatto STABILE della casa -- sull'impianto vero non si risolve mai da
         solo, quindi senza questo cancello si accenderebbe a ogni singola
@@ -1198,11 +1198,11 @@ class ToolDispatcher:
                 "e potrebbe esistere lo stesso.")
         # Fix finale ① (2026-08-20): il comportamento (automazioni/script)
         # non passa MAI da `non_disponibili()` -- la sua fonte e' un file
-        # YAML riletto a una cadenza propria (`ArchivioCasa.comportamento()`),
+        # YAML riletto a una cadenza propria (`HomeSpaceStore.comportamento()`),
         # non un registro dell'anagrafe, col proprio segnale di
-        # incompletezza (`file_non_letti()`). `_guarda` lo legge gia' per lo
-        # stesso motivo (vedi `_guarda` qui sotto, `_dettaglio_non_trovato`
-        # in domande.py); `_cerca` non lo leggeva affatto, quindi un file di
+        # incompletezza (`file_non_letti()`). `_view` lo legge gia' per lo
+        # stesso motivo (vedi `_view` qui sotto, `_not_found_detail`
+        # in domande.py); `_search` non lo leggeva affatto, quindi un file di
         # comportamento non letto restituiva 'trovati': [] nudo per un nome
         # di automazione/script che poteva essere scritto proprio li'.
         unloaded_files = self._home_space.unloaded_files()
@@ -1313,7 +1313,7 @@ class ToolDispatcher:
 
         `classi` e' entity_id -> `device_class`, ed e' l'UNICA fonte che
         esista: il registro delle entita' non la manda affatto (vedi
-        `anagrafe.classe_effettiva`).
+        `anagrafe.actual_class`).
 
         `unita` e' entity_id -> `unit_of_measurement`, saltando i vuoti, e
         arriva dalla STESSA lettura per la stessa ragione dei nomi: la
@@ -1343,7 +1343,7 @@ class ToolDispatcher:
         if self._cache is None or not hasattr(self._cache, "all_states"):
             return {}, {}, {}, {}, {}, {}, True
         try:
-            # La lettura vera e' in `anagrafe.specchio_vivo`, condivisa con chi
+            # La lettura vera e' in `anagrafe.live_mirror`, condivisa con chi
             # legge lo specchio da fuori dal dispatcher: qui restano solo la
             # difesa sulla cache assente e la semantica di `letto`.
             state, names, units, classes, since_when, attributes = \
@@ -1377,7 +1377,7 @@ class ToolDispatcher:
             # Fermato QUI, prima della rete, e con l'elenco dei tipi veri:
             # mandarlo comunque a Home Assistant produrrebbe un rifiuto suo,
             # che arriva al modello come «errore» generico e non gli insegna
-            # niente. Stessa scelta di `_richiama` con le ancore.
+            # niente. Stessa scelta di `_recall` con le ancore.
             available = ", ".join(_OUR_LINK_TYPES)
             return {"errore": f"«{kind}» non e' un tipo di cui Home Assistant sappia "
                               f"i legami ({available})."}
@@ -1401,9 +1401,9 @@ class ToolDispatcher:
             # PIGRA apposta (fix review indipendente, Task B7): la chiave
             # basta a decidere un colpo a segno SENZA leggere l'anagrafe --
             # su un hit questa funzione non viene mai chiamata, e la lettura
-            # SQL vera (+ json.loads per riga di `ArchivioCasa.leggi()`) non
-            # si paga. A differenza di `_cerca`, dove `casa` serve comunque a
-            # `_cecita()` piu' sotto e non c'e' niente da rimandare.
+            # SQL vera (+ json.loads per riga di `HomeSpaceStore.leggi()`) non
+            # si paga. A differenza di `_search`, dove `casa` serve comunque a
+            # `_blind_spots()` piu' sotto e non c'e' niente da rimandare.
             return self._home_space.read() if topology_loaded else {}
 
         # Task B7, spazio "ricorda": MAI nomi di ripiego (a differenza di
@@ -1524,7 +1524,7 @@ class ToolDispatcher:
         carica PIGRAMENTE alla prima azione ESEGUITA (`server.py`, commento
         sulla scelta) -- un add-on appena avviato che non ha ancora eseguito
         nessuna azione arriva qui con un registro presente ma VUOTO, e senza
-        questa chiamata `_registro_non_pronto()` rifiuterebbe SEMPRE, anche
+        questa chiamata `_registry_not_ready()` rifiuterebbe SEMPRE, anche
         quando Home Assistant e' raggiungibile e pronto a rispondere.
         Difetto misurato dal vivo su 3.9.1: «verifica le temperature di ogni
         stanza e fra un'ora mandami il delta» rifiutato con «il registro dei
@@ -1533,17 +1533,17 @@ class ToolDispatcher:
 
         Diversa dalla porta in un punto: qui un guasto non diventa un errore
         diverso da mostrare al modello -- degrada al rifiuto onesto gia'
-        scritto in `_registro_non_pronto()` ("non e' pronto"), perche' e' gia'
+        scritto in `_registry_not_ready()` ("non e' pronto"), perche' e' gia'
         la frase giusta per «non so ancora cosa questa casa sa fare»: una
         seconda frase per lo stesso fatto sarebbe un doppione.
 
         Senza registro (`None`, legittimo: `promise` non lo dichiara come
         archivio richiesto in `_RESOURCE_PER_TOOL`) o senza un canale HA
-        vivo (`_canale_ha()` e' `None`, altrettanto legittimo per lo stesso
+        vivo (`_ha_channel()` e' `None`, altrettanto legittimo per lo stesso
         motivo) non si tenta nemmeno: il registro non si puo' caricare senza
         un client a cui chiedere, e restare senza canale resta il rifiuto
         onesto di sempre -- non diventa "«promise» non e' disponibile"
-        (quel messaggio e' di `_archivio_mancante`, per un'altra assenza:
+        (quel messaggio e' di `_missing_resource`, per un'altra assenza:
         aggiungere "ha" a `_RESOURCE_PER_TOOL["promise"]` sarebbe
         proprio quello scambio).
         """
@@ -1565,12 +1565,12 @@ class ToolDispatcher:
         Tutto si verifica ADESSO: la chiamata contro questa installazione, il
         canale di notifica, il valore di partenza. Un rifiuto alle 17 sarebbe
         arrivato quando non c'e' piu' nessuno a correggerlo. `quando_ts` e i
-        due tetti (30 giorni, 50 in sospeso) restano a `promessa.valida` /
-        `archivio.crea`: sono verifiche sulla FORMA della promessa, non su
+        due tetti (30 giorni, 50 in sospeso) restano a `promessa.validate` /
+        `archivio.create`: sono verifiche sulla FORMA della promessa, non su
         questa installazione, e vivono gia' li'.
 
         Coroutine (non piu' sincrona) da quando questo metodo scalda il
-        registro (`_assicura_registro_fresco`, sopra): il dispatcher gia'
+        registro (`_ensure_registry_fresh`, sopra): il dispatcher gia'
         sapeva attendere un gestore awaitable (`dispatch`, `inspect.
         isawaitable`), quindi renderlo `async` non ha toccato nessun
         chiamante -- tutti passano gia' da `dispatch("promise", ...)`,
@@ -1714,7 +1714,7 @@ class ToolDispatcher:
         ancora cosa questa casa sa fare») e si riconoscono con lo STESSO
         criterio della porta -- si CHIEDE al registro (`domains()` vuoto), non
         si reinventa la regola in un secondo posto. Il criterio vive in
-        `_registro_non_pronto()`, condiviso con `_verifica_recapito`: sono la
+        `_registry_not_ready()`, condiviso con `_verify_recipient`: sono la
         STESSA domanda («so gia' cosa questa casa sa fare?»), fatta da due
         strumenti diversi -- una seconda copia della condizione sarebbe un
         doppione appena creato (review Task 7, Rilievo 1).
@@ -1737,14 +1737,14 @@ class ToolDispatcher:
             # non verificabile si rifiuta (Task 7), e uno specchio cieco deve
             # rifiutarsi allo stesso modo -- non tornare `None` in silenzio.
             # Prima di questo fix una `chiamata` nasceva SENZA che
-            # `_verifica_ora` avesse potuto verificare l'entita' nominata,
+            # `_verify_now` avesse potuto verificare l'entita' nominata,
             # mentre `PROMISE_TOOL_DEF` dichiara al modello, senza
             # condizioni, «viene VERIFICATA adesso». Stesso criterio di
             # `azione/porta.py::_BLIND_MIRROR` (`None` e `{}` insieme, di
             # proposito: una casa che davvero non ha nessuna entita' non ha
             # nemmeno l'entita' bersaglio, quindi non c'e' chiamata legittima
             # che questo rifiuto possa negare). Estratta in
-            # `_specchio_cieco_rifiuto()` (Task 2, R7): `_verifica_da_confrontare`
+            # `_blind_mirror_refusal()` (Task 2, R7): `_verify_comparison_targets`
             # fa la STESSA domanda, e una seconda stringa scritta a mano li'
             # sarebbe un doppione appena creato.
             return self._blind_mirror_refusal()
@@ -1757,40 +1757,40 @@ class ToolDispatcher:
         """Il rifiuto quando lo specchio dello stato non e' leggibile: "non
         so ancora", non un silenzio.
 
-        Estratta (Task 2, spec R7) perche' `_verifica_ora` e
-        `_verifica_da_confrontare` fanno la STESSA domanda a
-        `_stati_grezzi()` -- una seconda stringa scritta a mano in un
+        Estratta (Task 2, spec R7) perche' `_verify_now` e
+        `_verify_comparison_targets` fanno la STESSA domanda a
+        `_state_readings()` -- una seconda stringa scritta a mano in un
         secondo posto sarebbe un doppione appena creato (fondamenta n.2),
-        lo stesso rilievo gia' fatto per `_registro_non_pronto`.
+        lo stesso rilievo gia' fatto per `_registry_not_ready`.
         """
         return ("non posso ancora prometterlo: non vedo lo stato di "
                 "questa casa, l'inventario delle entita' non e' "
                 "disponibile. Riprova fra un momento.")
 
     def _verify_comparison_targets(self, entities: list) -> str | None:
-        """Il rifiuto se `da_confrontare` nomina un riferimento che lo
-        specchio non conosce, o `None`. Sola lettura, come `_verifica_ora`.
+        """Il rifiuto se `to_compare` nomina un riferimento che lo
+        specchio non conosce, o `None`. Sola lettura, come `_verify_now`.
 
         Lista vuota -> `None` SUBITO, senza toccare lo specchio: un `chiedi`
-        senza `da_confrontare` resta legittimo (spec R7, requisito 2) --
+        senza `to_compare` resta legittimo (spec R7, requisito 2) --
         nessuna istantanea e' stata chiesta, quindi non c'e' niente da
         verificare, e non c'e' motivo di rifiutare un `chiedi` sulla sola
         base che lo specchio non e' pronto quando nessuno lo interroga.
 
-        Specchio non leggibile -> stesso rifiuto di `_verifica_ora`
-        (`_specchio_cieco_rifiuto`, requisito 3): "non lo so ancora" si
+        Specchio non leggibile -> stesso rifiuto di `_verify_now`
+        (`_blind_mirror_refusal`, requisito 3): "non lo so ancora" si
         rifiuta, non si tace -- senza sapere cosa esiste non si puo' dire
         che un riferimento NON esiste, e lasciare nascere la promessa
         renderebbe falsa la dichiarazione di `PROMISE_TOOL_DEF` («viene
         VERIFICATA adesso»).
 
         Uno specchio leggibile ma senza il riferimento -> il rifiuto vero
-        (requisito 1): oggi (prima di questo fix) `_istantanea` lasciava
+        (requisito 1): oggi (prima di questo fix) `_snapshot` lasciava
         nascere la promessa con `valore: null` e la nota "non esisteva
         quando l'hai chiesto" -- il danno matura fra un'ora, quando nessuno
         puo' piu' correggere. «Il modello propone, il codice restringe»
-        (spec §9.1), gia' applicato al `fai` (`_verifica_ora`) e al
-        recapito (`_verifica_recapito`): un `chiedi` non puo' rispondere
+        (spec §9.1), gia' applicato al `fai` (`_verify_now`) e al
+        recapito (`_verify_recipient`): un `chiedi` non puo' rispondere
         diversamente alla stessa domanda solo perche' e' la terza specie.
         Il motivo nomina il riferimento (cosa non esiste) e la strada per
         correggersi (pattern `azione/verifica.py:430-432`: «usa "search"...»).
@@ -1814,7 +1814,7 @@ class ToolDispatcher:
         `azione/porta.py::ActionActuator.execute` per la guardia `_MUTE_REGISTRY` --
         perche' senza domini non si puo' verificare NIENTE, ne' un `fai` ne'
         un recapito. Estratta qui (review Task 7, Rilievo 1) perche'
-        `_verifica_ora` e `_verifica_recapito` la interrogavano entrambe, e la
+        `_verify_now` e `_verify_recipient` la interrogavano entrambe, e la
         prima la scriveva mentre la seconda restava ferma al vecchio
         `is None`: due letture della stessa domanda che potevano divergere --
         e infatti divergevano, la seconda rifiutava un recapito ESISTENTE con
@@ -1825,7 +1825,7 @@ class ToolDispatcher:
     def _verify_recipient(self, service: str) -> str | None:
         """Il rifiuto della verifica su un recapito, o `None`.
 
-        Senza registro pronto si RIFIUTA (allineato a `_verifica_ora`, non
+        Senza registro pronto si RIFIUTA (allineato a `_verify_now`, non
         piu' al silenzio di prima -- review Task 7, Rilievo 1): un recapito
         che HIRIS non ha potuto verificare non fallisce rumorosamente quando
         la promessa matura, fa si' che la risposta non arrivi a nessuno --
@@ -1851,7 +1851,7 @@ class ToolDispatcher:
         paragone e il modello se lo inventerebbe. E' la fondamenta n.1: il `72`
         che non si sa se sia Celsius o Fahrenheit.
 
-        `stati` (da `_stati_grezzi()`) e' la forma MINIMALE vera di
+        `stati` (da `_state_readings()`) e' la forma MINIMALE vera di
         `proxy/entity_cache.py::_to_minimal` -- non lo stato grezzo di Home
         Assistant. L'unita' vive li' nella chiave `unit` DI PRIMO LIVELLO,
         non dentro `attributes.unit_of_measurement` (quello e' HA grezzo, mai
@@ -1911,7 +1911,7 @@ class ToolDispatcher:
     def _timezone(self) -> str | None:
         """Il fuso della casa, dalla stessa fonte del nucleo.
 
-        `ArchivioCasa.sistema_di_riferimento()` (`casa/archivio.py`) e' l'UNICO
+        `HomeSpaceStore.sistema_di_riferimento()` (`casa/archivio.py`) e' l'UNICO
         accessore: rileggere `get_config` per conto proprio qui sarebbe un
         secondo posto che sa lo stesso fatto, e i due potrebbero divergere il
         giorno in cui uno dei due cambia. Senza `archivio_casa` (i test che

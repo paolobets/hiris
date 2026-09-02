@@ -85,7 +85,7 @@ class ReasoningQueue:
     # `sweep_expired()` sotto, la stessa UPDATE che chiude il job azzera anche
     # `context_json` a '{}'. Il `context` di un job di chat porta il nucleo
     # per intero -- aree, dispositivi, entita', "cio' che le persone hanno
-    # detto" (`casa/nucleo.py::componi`) -- e senza questo azzeramento resterebbe
+    # detto" (`casa/nucleo.py::compose`) -- e senza questo azzeramento resterebbe
     # nel file `reasoning.db` fino alla potatura a 7 giorni (`prune()`,
     # chiamata da `server.py` con `before_ts = now - 7*86400`), ben oltre il
     # tempo in cui serve a qualcuno. Verificato (non assunto) che nessun
@@ -313,7 +313,7 @@ class ReasoningQueue:
 
         Il confine e' mezzanotte della CASA, non del container: senza fuso
         il tetto si azzererebbe alle due di notte invece che a mezzanotte
-        (`zona_casa` ricade su UTC quando il fuso non si sa, e non lo
+        (`home_space_zone` ricade su UTC quando il fuso non si sa, e non lo
         inventa mai)."""
         ts = time.time() if now is None else now
         dt = datetime.fromtimestamp(ts, home_space_zone(self._read_timezone()))

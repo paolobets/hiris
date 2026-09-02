@@ -29,13 +29,13 @@
       ignorerebbe comunque (`_CORRECTABLE_FIELDS`). Un rifiuto (400, ancora
       senza riscontro nell'anagrafe; o 404, ricordo sparito nel frattempo)
       mostra sempre la ragione che il server manda, non un errore generico.
-   3. La risposta porta sempre `totale` accanto ai ricordi mostrati
-      (`_MEMORIES_SHOWN_LIMIT = 200`): se `mostrati < totale` la pagina
+   3. La risposta porta sempre `total` accanto ai ricordi mostrati
+      (`_MEMORIES_SHOWN_LIMIT = 200`): se `mostrati < total` la pagina
       lo dichiara, così un ricordo oltre il taglio non sembra cancellato.
 
    Ambito dichiarato di "correggere": i campi scalari dell'interpretazione
    (forza, grandezza, intervallo, unità, detto_da) — sono quelli che
-   `ArchivioMemoria.correggi()` accetta come colonne singole. Le liste
+   `MemoryStore.correggi()` accetta come colonne singole. Le liste
    `ancore`/`condizioni` restano di sola lettura in questa pagina: il
    backend le accetta già in PATCH (sostituzione intera, non riga per
    riga), ma un editor di liste di oggetti tipo+riferimento con verifica
@@ -172,7 +172,7 @@ window.HirisMemoriaRoute = (function () {
     // del ricordo -- e la memoria e' l'unico archivio di HIRIS che non si
     // ricostruisce da nessuna parte.
     //
-    // Il vocabolario vero sta in `memoria/interpretazione.py::VOCABOLARIO`, ed
+    // Il vocabolario vero sta in `memoria/interpretazione.py::VOCABULARY`, ed
     // e' legato a questo file da `tests/test_memoria_frontend_wiring.py`: quel
     // test si rompe il giorno in cui le liste divergono. Questo ramo e' cio'
     // che protegge l'utente NEL FRATTEMPO.

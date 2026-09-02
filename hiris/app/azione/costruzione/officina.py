@@ -62,7 +62,7 @@ OPERATIONS = ("crea", "modifica", "cancella")
 # «un'scena» sono le forme sbagliate che comparivano in ogni anteprima --
 # sotto gli occhi dell'utente, nel testo su cui decide (ondata finale, punto
 # 7). La stessa distinzione (con l'apostrofo tipografico ’) vive in
-# `ARTICOLO_DOMINIO`, `constructions-route.js`: non e' importata da li' (i due
+# `DOMAIN_ARTICLE`, `constructions-route.js`: non e' importata da li' (i due
 # lati non condividono un modulo), ma la scelta grammaticale e' la stessa.
 ARTICOLO_INDETERMINATIVO = {"automation": "un'automazione", "script": "uno script",
                             "scene": "una scena"}
@@ -121,7 +121,7 @@ class Workshop:
     def _data(self, ts: float) -> str:
         """La data nel fuso della CASA. Senza, l'ora mostrata e' quella del
         container -- tipicamente UTC su un add-on, cioe' sbagliata per chi
-        legge. `zona_casa` ricade su UTC quando il fuso non si sa, e non lo
+        legge. `home_space_zone` ricade su UTC quando il fuso non si sa, e non lo
         inventa mai."""
         import datetime
         return datetime.datetime.fromtimestamp(
@@ -406,7 +406,7 @@ class Workshop:
         # Gli helper sono SEMPRE nati -- `create_helper` non e' altro --
         # indipendentemente dal gesto sul dominio principale: una
         # `modifica` puo' portarsi dietro un helper nuovo tanto quanto un
-        # `crea`. Spec §5, testuale: l'etichetta si applica «all'entita'
+        # `create`. Spec §5, testuale: l'etichetta si applica «all'entita'
         # nata, helper compresi». Senza questa riga `_reread` (sopra)
         # filtra per `{dominio}.`, quindi un `input_boolean` nato da HIRIS
         # non riceveva mai l'etichetta -- e poiche' la paternita' vive nel
@@ -552,7 +552,7 @@ class Workshop:
         occurrence = {"errore": reason, "esecuzione_id": execution_id}
         if guasto_rete:
             # Distingue un guasto di TRASPORTO da un rifiuto vero di Home
-            # Assistant (validazione, 400): `_agisci` (handlers_costruzioni.py)
+            # Assistant (validazione, 400): `_act` (handlers_costruzioni.py)
             # legge questo flag per rispondere 503 invece di 409 -- la stessa
             # indisponibilita' che la GET dichiarerebbe (ondata finale, punto
             # 7, terza pulizia).

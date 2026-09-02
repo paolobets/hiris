@@ -19,28 +19,28 @@
    nessun controllo, perche' sembrerebbe funzionare.
 
    -- Due sezioni separate, mai una dentro l'altra (mandato Task 7) --
-   «Cosa sto guardando» (l'elenco vivo, `Osservatore.osservate()`) e «Cosa e'
+   «Cosa sto guardando» (l'elenco vivo, `Watcher.osservate()`) e «Cosa e'
    successo» (gli oggetti che l'aggregazione notturna ha scritto,
-   `ArchivioOsservazioni.oggetti()`) rispondono a due domande diverse -- la
+   `ObservationsStore.oggetti()`) rispondono a due domande diverse -- la
    prima e' lo stato di un cablaggio, la seconda e' la memoria che ne esce --
    e la spec le tiene separate apposta (§7 e' la pagina, §1-6 sono gli
    oggetti).
 
-   -- I sei gambe dell'obiettivo, non un elenco a caso (`pavimento.GAMBE`) --
+   -- I sei gambe dell'obiettivo, non un elenco a caso (`pavimento.ASPECTS`) --
    Le voci di «cosa sto guardando» si raggruppano per gamba, nello stesso
    ordine in cui il pavimento le dichiara: chi c'e', comfort, dispersione,
    energia, buono stato, sicurezza. Duplicato qui (non importato: questa SPA
    non porta build step, ogni route e' autonoma come le sue sorelle) --
-   stringhe letterali IDENTICHE a `pavimento.GAMBE`, apostrofo compreso
+   stringhe letterali IDENTICHE a `pavimento.ASPECTS`, apostrofo compreso
    («chi c'e'»).
 
-   -- I SEI generi (`cervello/oggetti.py::GENERI`, contati nel sorgente
+   -- I SEI generi (`cervello/oggetti.py::GENRES`, contati nel sorgente
       Python, non ricopiati -- correzione del giro «la pagina del bilancio»,
       punto 7, 27/08/2026: questa riga diceva "cinque", e da quando
       `bilancio` e' entrato in GENERI sono sei) --
    Cinque sono EPISODIO: funzionamento, presenza, energia, guasto, sicurezza.
    Ogni genere di episodio porta un
-   `corpo` di forma diversa (`aggrega_giorno`): funzionamento/presenza/
+   `corpo` di forma diversa (`aggregate_day`): funzionamento/presenza/
    sicurezza/guasto portano `stato` (il valore che ha aperto l'episodio);
    energia porta `valore_iniziale`/`valore_finale`/`differenza` -- una
    VARIAZIONE fra due letture, mai presentata come un consumo da sola: il
@@ -49,7 +49,7 @@
    energia porta anche `direzione`/`provenienza`, QUANDO si conoscono**
    (`HAClient.energy_directions`, `energy/get_prefs` + `translation_key`):
    il campo manca del tutto se non si conosce, mai una "sconosciuta"
-   travestita da dato -- `frasePrincipale`/`badgeProvenienzaDirezione` sotto
+   travestita da dato -- `mainPhrase`/`provenanceDirectionBadge` sotto
    lo mostrano solo quando c'e'. La gamba resta "energia" (vedi
    `cervello/pavimento.py::_ENERGIA`): la direzione vive nell'EPISODIO, non
    e' una gamba nuova. Tutti e
@@ -64,26 +64,26 @@
       energia.md §3, .superpowers/sdd/2026-08-27-il-bilancio/brief-pagina.md) --
    un bilancio non e' una cosa accaduta fra due istanti, e' una QUANTITA' CON
    UNA FORMA, un giorno intero: renderlo con lo stampo dell'episodio («da X a
-   Y», la freccia di `periodo()`) rifarebbe in pagina esattamente l'errore
+   Y», la freccia di `period()`) rifarebbe in pagina esattamente l'errore
    che il giro dei dati ha appena tolto dall'archivio (undici frammenti di
    energia per lo stesso dispositivo). Il suo `corpo` (`costruisci_corpo_
    bilancio` in cervello/oggetti.py) non ha ne' `stato` ne' `valore_iniziale`/
    `valore_finale`: ha `totali` (SETTE dimensioni al massimo -- il consumo e'
    la settima, LETTA non dedotta: correzione ALTA della review, mandato «la
    pagina del bilancio», punto 1, 27/08/2026, vedi il commento sopra
-   `DIREZIONI_BILANCIO` nel sorgente Python -- ognuna `{valore,provenienza}`),
+   `BALANCE_DIRECTIONS` nel sorgente Python -- ognuna `{valore,provenienza}`),
    `forma` (le stesse dimensioni, un elenco di `{"ora","valore"}` per punto --
    **l'asse orario e' ARRIVATO il 27/08/2026** (mandato «la pagina del
    bilancio», punto 6): prima di questa correzione era una lista POSIZIONALE
    NUDA (l'indice non era l'ora, perche' HA omette le ore senza dati); ora
    ogni punto porta la SUA ora, `ora` e' lo stesso nome gia' usato da
    `picco_produzione` sotto -- vedi il contratto completo nel docstring di
-   `costruisci_corpo_bilancio`, cervello/oggetti.py), `momenti` (fatti
+   `build_balance_body`, cervello/oggetti.py), `momenti` (fatti
    derivati -- prima/ultima ora di produzione, il picco, le quote, tutti con
    l'istante VERO), piu' `dispositivo` (nome leggibile) ed `entita` (i
-   sensori che lo compongono, aggiunti da `aggrega_giorno`). `rigaBilancio`
-   sotto lo rende per conto suo, SENZA passare da `frasePrincipale`/
-   `periodo()`: sono funzioni che presuppongono la forma dell'episodio, e
+   sensori che lo compongono, aggiunti da `aggregate_day`). `balanceLine`
+   sotto lo rende per conto suo, SENZA passare da `mainPhrase`/
+   `period()`: sono funzioni che presuppongono la forma dell'episodio, e
    usarle per un bilancio le forzerebbe fuori dal loro contratto.
 
    -- Il giorno di default (mandato Task 7, verifiche dal vivo #1) --
@@ -108,20 +108,20 @@ window.HirisOsservatoreRoute = (function () {
   var TONE_PROBLEM = 'color:var(--err-ink)';
   var TONE_CALM = 'color:var(--text-3)';
 
-  /* Letterale, identico a `pavimento.GAMBE` (vedi il commento di testa): sei
+  /* Letterale, identico a `pavimento.ASPECTS` (vedi il commento di testa): sei
      gambe, quest'ordine. Una gamba che l'archivio manda e questa lista non
      conosce finisce comunque in coda, col suo nome grezzo -- non sparisce
      mai, stessa regola di `NOMI_REGISTRI` in tree-route.js. I VALORI
-     restano quelli letterali (identici a `pavimento.GAMBE`): solo la resa
-     (`ETICHETTA_GAMBA` sotto) traduce la chiave in un'etichetta leggibile. */
+     restano quelli letterali (identici a `pavimento.ASPECTS`): solo la resa
+     (`ASPECT_LABEL` sotto) traduce la chiave in un'etichetta leggibile. */
   var ASPECT_ORDER = ["chi c'e'", 'comfort', 'dispersione', 'energia', 'buono stato', 'sicurezza'];
 
   /* Rilievo 8a della review: le intestazioni di gamba erano chiavi grezze
      ("chi c'e' — 95 voci", apostrofo ASCII e minuscola) in una pagina con
-     tipografia curata altrove. Stessa idea di `ETICHETTA_GENERE` qui sotto:
-     una mappa di sole ETICHETTE, la chiave (`ORDINE_GAMBE`, il payload)
+     tipografia curata altrove. Stessa idea di `GENRE_LABEL` qui sotto:
+     una mappa di sole ETICHETTE, la chiave (`ASPECT_ORDER`, il payload)
      resta quella che il pavimento dichiara. Una gamba non in questa mappa
-     (coda di `raggruppaPerGamba`) mostra comunque il suo nome grezzo, mai
+     (coda di `groupByAspect`) mostra comunque il suo nome grezzo, mai
      "undefined". */
   var ASPECT_LABEL = {
     "chi c'e'": 'Chi c’è', comfort: 'Comfort', dispersione: 'Dispersione',
@@ -139,7 +139,7 @@ window.HirisOsservatoreRoute = (function () {
      `HAClient.energy_directions()` scrive in `corpo.direzione`. Una
      direzione non in questa mappa (un genere futuro che il backend sapesse
      dire e questa pagina non ancora) mostra comunque la sua parola grezza,
-     mai "undefined" -- stessa regola di `ETICHETTA_GAMBA`/`ETICHETTA_GENERE`. */
+     mai "undefined" -- stessa regola di `ASPECT_LABEL`/`GENRE_LABEL`. */
   var DIRECTION_LABEL = {
     produzione: 'Produzione', prelievo: 'Prelievo dalla rete',
     immissione: 'Immissione in rete', carica: 'Carica della batteria',
@@ -148,17 +148,17 @@ window.HirisOsservatoreRoute = (function () {
   };
 
   /* Le SETTE dimensioni di un bilancio, in quest'ordine -- letterale,
-     identico a `DIREZIONI_BILANCIO` in `cervello/oggetti.py` (contato nel
+     identico a `BALANCE_DIRECTIONS` in `cervello/oggetti.py` (contato nel
      sorgente Python, non ricopiato). **Correzione ALTA della review**
      (mandato «la pagina del bilancio», punto 1, 27/08/2026): questa lista
      diceva "NON sette, consumo e' ridondante con autoconsumo+prelievo" --
      un'ASSUNZIONE, non un fatto misurato, e su questa integrazione e'
      FALSA (autoconsumata esclude la batteria: la somma perde la scarica,
-     vedi il commento sopra `DIREZIONI_BILANCIO` nel sorgente Python). Il
+     vedi il commento sopra `BALANCE_DIRECTIONS` nel sorgente Python). Il
      consumo e' la settima dimensione, LETTA non dedotta -- senza di lui
-     `quota_autosufficienza` (in `_momenti_bilancio`) non si scrive affatto,
+     `quota_autosufficienza` (in `_balance_moments`) non si scrive affatto,
      mai un numero dedotto al posto di uno letto. Stessa etichetta di
-     `ETICHETTA_DIREZIONE` sopra: e' lo stesso vocabolario di "immesso in
+     `DIRECTION_LABEL` sopra: e' lo stesso vocabolario di "immesso in
      rete"/"prelevato dalla rete"/"consumo della casa" gia' usato dagli
      episodi di energia -- il mandato chiede di riusare le stesse parole,
      non inventarne di nuove. */
@@ -277,7 +277,7 @@ window.HirisOsservatoreRoute = (function () {
   /* Bottone «Riprova» (rilievo 4): era l'unica pagina di lettura senza,
      mentre l'errore piu' comune -- il riavvio dell'add-on -- e' esattamente
      transitorio. Stesso bottone delle sorelle (memory-/agenda-/
-     constructions-route.js): `btn btn-ghost btn-sm`, rilancia `ricarica`. Il
+     constructions-route.js): `btn btn-ghost btn-sm`, rilancia `reload`. Il
      TESTO dei tre messaggi sotto non cambia (rilievo 4: "il migliore del
      pannello", non si riscrive). */
   function retryButton(body, reload) {
@@ -316,7 +316,7 @@ window.HirisOsservatoreRoute = (function () {
 
   function localToday() { return isoData(new Date()); }
 
-  /* Date sempre in gg/mm/aaaa nel testo (rilievo 5): `giornoIso` arriva dal
+  /* Date sempre in gg/mm/aaaa nel testo (rilievo 5): `isoDay` arriva dal
      valore di `<input type=date>`, sempre `AAAA-MM-GG` per specifica HTML. */
   function ggMmAaaa(isoDay) {
     var parts = isoDay.split('-');
@@ -374,14 +374,14 @@ window.HirisOsservatoreRoute = (function () {
   }
 
   /* La provenienza della direzione -- non e' la stessa domanda della
-     provenienza di «cosa sto guardando» (`badgeProvenienza`, sezione 01:
+     provenienza di «cosa sto guardando» (`provenanceBadge`, sezione 01:
      pavimento/obiettivo). Qui i due valori possibili sono "dichiarata" (la
      dashboard Energia dell'utente, che vince sempre) e "dedotta"
      (`translation_key` dell'integrazione, un arricchimento specifico).
      **Le due provenienze si distinguono visibilmente apposta** (mandato,
      punto 4): il giorno in cui una dedotta sbagliasse, saperlo e' la
      differenza fra un dubbio e una caccia. Stessi due stili di badge gia'
-     usati da `badgeProvenienza` (`badge-off` per l'autorevole, `badge-warn`
+     usati da `provenanceBadge` (`badge-off` per l'autorevole, `badge-warn`
      per l'arricchimento) -- non un componente nuovo. */
   function provenanceDirectionBadge(provenance) {
     if (provenance === 'dichiarata') {
@@ -404,12 +404,12 @@ window.HirisOsservatoreRoute = (function () {
   }
 
   /* Il rivelatore sincrono, estratto (correzione di questo giro): era
-     duplicato letterale fra `rivelatoreDettagli` (comprimari/misure) e il
+     duplicato letterale fra `detailsDisclosure` (comprimari/misure) e il
      rivelatore delle entita' di un bilancio, sotto -- STESSO bottone,
      STESSA logica open/close, STESSA disciplina "chiuso di default, i dati
      sono gia' nel payload" (mandato Task 7). Un secondo copia-incolla qui
      sarebbe il doppione che le fondamenta di questo prodotto vietano.
-     `riempiPannello(pannello)` scrive il contenuto specifico di ogni
+     `fillPanel(pannello)` scrive il contenuto specifico di ogni
      chiamante dentro il pannello gia' creato, chiuso, con lo stile giusto. */
   function createDisclosure(closedText, openText, fillPanel) {
     var wrap = el('div', 'field-group');
@@ -469,7 +469,7 @@ window.HirisOsservatoreRoute = (function () {
   }
 
   /* Un valore della gamba energia -> "24,5 kWh", virgola italiana. Il
-     backend ha gia' arrotondato a 2 decimali (`costruisci_corpo_bilancio`,
+     backend ha gia' arrotondato a 2 decimali (`build_balance_body`,
      mandato punto 6, il difetto misurato `+0.010000000000000009`): qui si
      FORMATTA, non si arrotonda una seconda volta -- `maximumFractionDigits:
      2` e' un tetto che non taglia nessuna cifra vera, `minimumFractionDigits:
@@ -479,7 +479,7 @@ window.HirisOsservatoreRoute = (function () {
     return v.toLocaleString('it-IT', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) + ' kWh';
   }
 
-  /* Una quota 0..1 (`_quota`, 3 decimali nel backend) -> percentuale con un
+  /* Una quota 0..1 (`_share`, 3 decimali nel backend) -> percentuale con un
      decimale e virgola italiana: "71,2%". */
   function fmtPercent(v) {
     if (v == null) return null;
@@ -489,20 +489,20 @@ window.HirisOsservatoreRoute = (function () {
   /* Gli istanti dentro `corpo.momenti`/`corpo.forma` sono ISO-8601 CON FUSO
      (`HAClient._instant_from_ha`: sempre UTC, mai un timestamp UNIX) --
      un'origine DIVERSA da `inizio_ts`/`fine_ts` dell'oggetto (quelli sono
-     secondi UNIX, letti da `fmtOrario` con `* 1000`). Confonderli
+     secondi UNIX, letti da `fmtTime` con `* 1000`). Confonderli
      produrrebbe un `Invalid Date` o una data nel 1970: due formati, due
      funzioni, come il resto del file distingue i formati che arrivano da
      fonti diverse. Il fuso di resa e' quello del BROWSER (`new Date`
-     converte da soli) -- stessa scelta gia' fatta da `periodo()`/
-     `fmtOrario` per il resto della pagina.
+     converte da soli) -- stessa scelta gia' fatta da `period()`/
+     `fmtTime` per il resto della pagina.
 
      Punto 4 del brief-dodicesima (nota minore): il parsing e la validazione
      di questi ISO erano duplicati fra questa funzione e un secondo
-     `oraLocaleDalPunto` usato solo dal ciclo di `rendiCurvaBilancio` sotto
+     `oraLocaleDalPunto` usato solo dal ciclo di `renderBalanceCurve` sotto
      -- e ogni barra della curva costruiva DUE oggetti `Date` dalla STESSA
-     stringa (uno per il piazzamento, uno per l'etichetta). `dataLocaleDalPunto`
-     fa l'analisi e la validazione una volta sola: `fmtOraIso` la usa qui
-     sotto per i momenti, e `rendiCurvaBilancio` la chiama UNA sola volta per
+     stringa (uno per il piazzamento, uno per l'etichetta). `localDateFromPoint`
+     fa l'analisi e la validazione una volta sola: `fmtIsoHour` la usa qui
+     sotto per i momenti, e `renderBalanceCurve` la chiama UNA sola volta per
      punto, derivando sia l'ora (piazzamento) sia il testo (etichetta) dalla
      stessa `Date` -- il secondo `oraLocaleDalPunto` non serve piu' ed e'
      stato tolto (nessun doppione morto in giro). */
@@ -528,7 +528,7 @@ window.HirisOsservatoreRoute = (function () {
      prezzo"). Una sola tessera per DIMENSIONE PRESENTE: mai una tessera a
      zero per una dimensione che il dispositivo non ha (mandato, "cosa NON si
      salva" -- niente batteria, niente "carica"/"scarica"). L'ordine e'
-     `ORDINE_DIREZIONI_BILANCIO`: produzione/autoconsumo/immissione/prelievo
+     `BALANCE_DIRECTION_ORDER`: produzione/autoconsumo/immissione/prelievo
      -- le quattro del punto 1 -- vengono prima di carica/scarica, che
      compaiono solo per un dispositivo con batteria; il consumo (settima
      dimensione, letta non dedotta -- correzione ALTA della review, mandato
@@ -579,16 +579,16 @@ window.HirisOsservatoreRoute = (function () {
      arrivo", mai un orario specifico -- l'unico modo onesto di non mentire
      con un dato che non c'era. **Ora ogni punto porta la SUA ora**
      (`{"ora","valore"}`, la stessa chiave gia' usata da `picco_produzione`
-     -- vedi il docstring di `costruisci_corpo_bilancio` in cervello/
+     -- vedi il docstring di `build_balance_body` in cervello/
      oggetti.py, letto per intero prima di questa correzione): le barre si
      posizionano sull'ORA VERA di ciascun punto, in 24 posizioni fisse (una
-     per ora del giorno, fuso del BROWSER come `fmtOraIso` sopra) invece che
+     per ora del giorno, fuso del BROWSER come `fmtIsoHour` sopra) invece che
      in ordine di arrivo -- cosi' **un'ora senza dato resta uno spazio
      vuoto, non una barra spostata**: i buchi (l'impianto fermo, HA che non
      manda niente per quell'ora) si vedono per quello che sono, invece di
      essere invisibilmente compattati vicino al punto precedente. Un punto
      senza `ora` leggibile non si disegna affatto: **mai un'ora inventata**,
-     la stessa disciplina di `_differenza` (Python) per un valore che non si
+     la stessa disciplina di `_difference` (Python) per un valore che non si
      puo' calcolare.
 
      -- Il dubbio aperto sul fuso (brief-dodicesima.md, punto 3, misurato dal
@@ -605,7 +605,7 @@ window.HirisOsservatoreRoute = (function () {
      caso reale (casa e chi guarda nello stesso fuso) l'errore e' zero, a
      qualunque ora. Non si corregge qui: la cura vera e' che la rotta mandi
      il fuso della CASA e che questa pagina lo usi OVUNQUE (qui e in
-     `fmtOraIso` sopra) al posto di quello del browser -- una fetta a se'. */
+     `fmtIsoHour` sopra) al posto di quello del browser -- una fetta a se'. */
   var HOURS_IN_DAY = 24;
 
   function renderBalanceCurve(box, form, hasMoments) {
@@ -654,7 +654,7 @@ window.HirisOsservatoreRoute = (function () {
         var v = p.valore;
         if (v == null || v <= 0) return;
         // Un solo parsing per punto (punto 4 del brief-dodicesima): il
-        // piazzamento (`ora`) e l'etichetta (`formattaOraDaData`) derivano
+        // piazzamento (`ora`) e l'etichetta (`formatHourFromDate`) derivano
         // dalla STESSA `Date`, non da due `new Date(p.ora)` separate.
         var d = localDateFromPoint(p.ora);
         if (d == null) return; // mai un'ora inventata: niente ora leggibile, niente barra
@@ -694,8 +694,8 @@ window.HirisOsservatoreRoute = (function () {
      opzionale (spec, "mai una chiave con un valore fittizio") e compare solo
      se c'e'.
 
-     Punto 4 del brief-dodicesima (nota minore): estratta da `rendiMomentiBilancio`
-     perche' la frase accessibile della curva (sotto, in `rendiCurvaBilancio`)
+     Punto 4 del brief-dodicesima (nota minore): estratta da `renderBalanceMoments`
+     perche' la frase accessibile della curva (sotto, in `renderBalanceCurve`)
      doveva sapere se questa sezione avrebbe reso QUALCOSA -- prima lo
      decideva da sola guardando solo `!!momenti` (il campo c'e'), mentre QUI
      si rende solo per le chiavi note sotto: oggi i due insiemi coincidono
@@ -755,7 +755,7 @@ window.HirisOsservatoreRoute = (function () {
   }
 
   /* Le entita' che compongono il bilancio (trasparenza, spec §7): STESSO
-     rivelatore sincrono di `rivelatoreDettagli`, riusato via `creaRivelatore`
+     rivelatore sincrono di `detailsDisclosure`, riusato via `createDisclosure`
      -- non un secondo componente. */
   function balanceEntityDisclosure(entity) {
     if (!entity || !entity.length) return null;
@@ -764,13 +764,13 @@ window.HirisOsservatoreRoute = (function () {
     });
   }
 
-  /* Il bilancio NON passa da `periodo()`/`frasePrincipale()`: quelle due
+  /* Il bilancio NON passa da `period()`/`mainPhrase()`: quelle due
      funzioni presuppongono la forma dell'episodio (un `inizio_ts`/`fine_ts`
      che apre e chiude una cosa accaduta, un `corpo.stato`), e il bilancio non
      ce l'ha -- e' il punto per cui questa fetta esiste (vedi il commento di
      testa del file). `inizio_ts`/`fine_ts` restano i confini del GIORNO
-     (sempre chiuso, mai `fine_ts: None`: `aggrega_giorno`), non l'apertura e
-     la chiusura di un evento: mostrarli con la freccia di `periodo()`
+     (sempre chiuso, mai `fine_ts: None`: `aggregate_day`), non l'apertura e
+     la chiusura di un evento: mostrarli con la freccia di `period()`
      rifarebbe esattamente lo stampo sbagliato che il mandato vieta. */
   function balanceLine(o) {
     var c = o.corpo || {};
@@ -787,7 +787,7 @@ window.HirisOsservatoreRoute = (function () {
     // Il nome leggibile del dispositivo (`corpo.dispositivo`) e' il
     // CONTENUTO, non l'identificatore tecnico (`protagonista`, il
     // `dispositivo_id` opaco di HA, gia' nel monospazio sopra) -- stessa
-    // gerarchia contenuto/riferimento del rilievo 7 (vedi `rigaOggetto`).
+    // gerarchia contenuto/riferimento del rilievo 7 (vedi `factLine`).
     var title = el('p', null, c.dispositivo || protagonistName(o));
     title.style.cssText = 'font-size:var(--fs-15);font-weight:600;margin:0;overflow-wrap:anywhere';
     box.appendChild(title);
@@ -801,7 +801,7 @@ window.HirisOsservatoreRoute = (function () {
     renderBalanceMoments(box, c.momenti);
 
     // Difensivo: l'invariante di scrittura garantisce sempre almeno un
-    // totale (`aggrega_giorno`: "un bilancio senza nemmeno un totale ...
+    // totale (`aggregate_day`: "un bilancio senza nemmeno un totale ...
     // NON si scrive"), ma un payload malformato non deve tornare a
     // "(nessun dettaglio)" -- lo stesso buco che questa fetta chiude.
     if (!c.totali && !c.forma && !c.momenti) {
@@ -821,8 +821,8 @@ window.HirisOsservatoreRoute = (function () {
      riferimento -- stessa gerarchia gia' in tree-route.js, il metro. */
   function factLine(o) {
     // Il bilancio e' un genere a parte, con una forma diversa dall'episodio
-    // (vedi il commento di testa del file): esce subito verso `rigaBilancio`,
-    // che NON riusa `periodo()`/`frasePrincipale()` -- quelle presuppongono
+    // (vedi il commento di testa del file): esce subito verso `balanceLine`,
+    // che NON riusa `period()`/`mainPhrase()` -- quelle presuppongono
     // un "da → a" che il bilancio non ha.
     if (o.genere === 'bilancio') return balanceLine(o);
 

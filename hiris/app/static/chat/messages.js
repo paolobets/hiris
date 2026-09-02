@@ -101,7 +101,7 @@
      una riga di registro. Dichiara che il turno ha RIPIEGATO -- il Piano
      Claude Max non ha risposto, e ha risposto qualcun altro, con la sua natura
      (a consumo / in casa). Il testo arriva GIA' SCRITTO dal server
-     (`decisione_modelli.downgrade_note`): qui non si compone niente, per la
+     (`model_resolution.downgrade_note`): qui non si compone niente, per la
      stessa ragione per cui la pagina Modelli non compone le sue frasi -- sono
      affermazioni sul prodotto, e due posti che le fanno prima o poi ne fanno
      due diverse.
@@ -130,10 +130,10 @@
 
   /* `appendDebug` E' USCITA (17 agosto 2026). Disegnava una targhetta per
      ogni strumento chiamato, col nome e -- al click -- con gli ARGOMENTI, che
-     per `ricorda` sono il testo del ricordo e per `esegui`/`cerca` sono gli id
+     per `remember` sono il testo del ricordo e per `esegui`/`cerca` sono gli id
      delle entita' di casa.
 
-     Era nata per rendere osservabile una scrittura di `ricorda`, e quella
+     Era nata per rendere osservabile una scrittura di `remember`, e quella
      ragione resta valida: l'osservabilita' non e' stata tolta, e' stata
      SPOSTATA nei log a livello debug del backend (`api/handlers_chat.py`).
      Toglierla senza spostarla avrebbe distrutto la capacita' per cui esisteva.

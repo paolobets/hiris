@@ -78,7 +78,7 @@ def local_day(now: float, timezone: str = "") -> str:
 
     In UTC le 00:30 del 22 agosto a Roma sono ancora il 21: un secchiello
     giornaliero calcolato in UTC racconterebbe una bugia ogni notte. Il fuso lo
-    sa l'anagrafe (`ArchivioCasa.sistema_di_riferimento()['fuso']`), che tace
+    sa l'anagrafe (`HomeSpaceStore.sistema_di_riferimento()['fuso']`), che tace
     quando non lo sa: senza, si ripiega su UTC -- e la pagina lo dichiara,
     invece di far passare un giorno spostato per un giorno.
     """

@@ -78,7 +78,7 @@ from ..claude_runner import (
 # ordina, qui quell'ordine non si applica.
 #
 # Serve anche a CORREGGERE il prompt che la precede: il system prompt delle
-# impostazioni della chat (`impostazioni_chat.DEFAULT_SYSTEM_PROMPT`, via
+# impostazioni della chat (`chat_settings.DEFAULT_SYSTEM_PROMPT`, via
 # `handlers_chat._build_system_prompt`) e' scritto per il percorso SINCRONO e
 # nomina in backtick alcuni degli strumenti. Di la' gli strumenti di
 # `casa/strumenti.py` esistono davvero; QUI no. Senza questa smentita
@@ -107,7 +107,7 @@ from ..claude_runner import (
 # si puo' GUARDARE ADESSO: la fotografia e' stata presa una volta sola, quando
 # il messaggio e' stato accodato, e in questo turno non si aggiorna.
 # L'affermazione e' ancorata al TURNO e non a un'ora perche' il nucleo non
-# timbra (`casa/nucleo.py::componi` e' pura e non compone nessuna data): un
+# timbra (`casa/nucleo.py::compose` e' pura e non compone nessuna data): un
 # orario nel prompt sarebbe inventato, mentre "in questo turno" e' l'unica
 # formulazione che non puo' diventare falsa.
 _GUIDE_WITHOUT_TOOLS = (
@@ -166,7 +166,7 @@ _GUIDE_WITHOUT_TOOLS = (
 # fetta «comandare» (Task 6). Tre cose cambiano qui, e una NON cambia.
 #
 # ① I nomi sono cinque: `mcp__hiris__execute` e' nell'argv da `33da82b`
-#   (`--allowedTools` deriva da `runner.nomi_mcp()`, che deriva dal catalogo
+#   (`--allowedTools` deriva da `runner.mcp_names()`, che deriva dal catalogo
 #   unico), e l'invariante argv <=> prompt vuole che il testo lo nomini --
 #   e' cio' che pinna `test_col_ramo_attivo_il_prompt_afferma_gli_strumenti_
 #   prefissati` in tests/test_agent_runner_inaddon.py. Fra questo commit e
@@ -227,7 +227,7 @@ _GUIDE_WITHOUT_TOOLS = (
 # Questa guida ricollega gia' i nomi nudi del prompt della persona ai nomi
 # prefissati (`_GUIDE_WITH_TOOLS`, il capoverso qui sotto) -- ma quel
 # ricollegamento elenca i nomi NUOVI, e la persona nel proprio prompt continua
-# a scrivere quelli vecchi: `impostazioni_chat.py::DEFAULT_SYSTEM_PROMPT` e' un
+# a scrivere quelli vecchi: `chat_settings.py::DEFAULT_SYSTEM_PROMPT` e' un
 # DEFAULT, e chi ha salvato il proprio testo almeno una volta serve al modello
 # «usa `cerca` e `guarda`» anche dopo l'aggiornamento. Senza questa riga il
 # modello legge un'istruzione che nomina uno strumento che non esiste piu' --
@@ -466,7 +466,7 @@ def build_chat_messages(system_prompt: str, history: list, *,
     passava). La fetta "il ponte riceve gli strumenti" (parita' B, Task 3) ha
     raccolto il ramo True cambiando UN ARGOMENTO, senza riscrivere il prompt
     una terza volta: `agent/runner.py::_reason_chat` lo passa, e il valore
-    viene dalla sonda `sonda_strumenti` -- lo stesso booleano che decide
+    viene dalla sonda `probe_tools` -- lo stesso booleano che decide
     l'argv, due righe piu' sotto. Il default resta False perche' False e' il
     ramo di DEGRADO, e un degrado deve essere cio' che si ottiene quando non
     si sa: un default True prometterebbe strumenti a chi non li ha chiesti."""

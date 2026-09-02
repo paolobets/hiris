@@ -119,7 +119,7 @@ def state_problems(states: list) -> list[str]:
 
     Le tre `compose_*` hanno la stessa forma e restituiscono un corpo, non
     una coppia: la diagnosi vive qui, e la chiede il chiamante PRIMA di
-    comporre. E' la stessa forma di `casa/comportamento.py::componi`, che
+    comporre. E' la stessa forma di `casa/comportamento.py::compose`, che
     gia' separa cio' che ha costruito da cio' che non ha potuto concludere.
 
     Serve perche' una scena e' l'unico dominio che a valle non viene

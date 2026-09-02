@@ -137,7 +137,7 @@ def _purge_toxic_turns(messages: list[dict]) -> list[dict]:
 # startup via configure()", che non esisteva davvero: nessun `configure()` e'
 # mai stato definito in questo file) non l'avrebbe mai fatta arrivare a un
 # lettore che la importa per valore all'avvio. La sorgente di verita' e' ora
-# `ChatSettings.retention_days` (`impostazioni_chat.py`): entrambi i
+# `ChatSettings.retention_days` (`chat_settings.py`): entrambi i
 # lettori la ricevono come PARAMETRO a ogni chiamata, non piu' come un globale
 # fissato una volta. `load_context` sotto porta `days` con un default (90,
 # lo stesso valore che questa costante aveva) solo per i chiamanti di questo
@@ -188,7 +188,7 @@ def _reset(conn: sqlite3.Connection) -> None:
     dati ora non c'e' problema, partiamo puliti, non serve migrare nulla"*.
     Un DB 1.x aveva `chatbot_id NOT NULL` in entrambe le tabelle -- una
     chiave partizionata su un insieme di cardinalita' uno, ora che esiste un
-    solo bot (`impostazioni_chat.py`, senza id). Non si rinomina/droppa la
+    solo bot (`chat_settings.py`, senza id). Non si rinomina/droppa la
     colonna con un ALTER TABLE mirato come faceva `_migrate_v2` (uscita con
     questo task, che rinominava `agent_id` in `chatbot_id`): si droppano le
     due tabelle e si ricreano da `_SCHEMA`, che quella colonna non ce l'ha
@@ -442,7 +442,7 @@ def load_history(data_dir: str, *, days: int = 90) -> list[dict]:
 
     `days` threads through to `ChatStore.load_context` -- see its docstring
     for why this is NOT a housekeeping knob. Production callers pass
-    `impostazioni_chat.giorni_conservazione` explicitly; the default here only
+    `chat_settings.giorni_conservazione` explicitly; the default here only
     covers this repo's callers that don't have an opinion on retention."""
     return _get_store(data_dir).load_context(days=days)
 

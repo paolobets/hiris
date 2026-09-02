@@ -12,7 +12,7 @@
 # LOCAL_MODEL_NAME, OLLAMA_REQUEST_TIMEOUT, HISTORY_RETENTION_DAYS e
 # HIRIS_DEBUG_EXPOSE_PORT. Quelle decisioni vivono adesso nell'archivio di
 # HIRIS (`/data/models_config.json`, `/data/impostazioni_chat.json`), dove le
-# scrive la pagina che le fa vedere. `migrazione_opzioni.semina` e
+# scrive la pagina che le fa vedere. `options_migration.seed` e
 # `server._chain_as_it_was` continuano a LEGGERE alcune di quelle variabili
 # d'ambiente: e' la migrazione, e serve a un'installazione che salti la
 # versione A e arrivi qui con l'ambiente ancora popolato dal vecchio run.sh

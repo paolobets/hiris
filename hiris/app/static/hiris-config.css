@@ -1818,7 +1818,7 @@
    file le tiene distinte come tiene distinti tutti gli altri prefissi.
    `width:100%;height:auto` e' cio' che rende la curva (fino a 24 punti --
    meno se Home Assistant ne ha omessi alcuni, vedi l'avviso su
-   `rendiCurvaBilancio` in watcher-route.js) responsive: lo stesso
+   `renderBalanceCurve` in watcher-route.js) responsive: lo stesso
    schema di .usage-grafico, la stessa ragione per cui non scorre in
    orizzontale a 390px. */
 .bil-grafico { width: 100%; height: auto; display: block; }
@@ -1850,7 +1850,7 @@
    (misurato dal revisore: 1200px), e con dt/dd alternati piatti questo
    separa un'etichetta dal suo valore, che finisce affiancato all'etichetta
    SUCCESSIVA invece che alla propria. `.bil-momento` (watcher-route.js,
-   `rendiMomentiBilancio`) raggruppa ogni coppia in un div: e' LUI l'unico
+   `renderBalanceMoments`) raggruppa ogni coppia in un div: e' LUI l'unico
    elemento di griglia, non i suoi due figli -- una coppia non puo' piu'
    spezzarsi, a nessuna larghezza. Verificato dal vivo a 1200px. */
 .bil-momento { min-width: 0; }

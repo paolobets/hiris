@@ -29,7 +29,7 @@ def _categories_by_scope(home_space: dict) -> dict[str, dict[str, str]]:
     sarebbe lo stesso fatto scritto mille volte. Stessa scelta delle
     etichette, appena sopra.
 
-    La sorgente e' `anagrafe.nomi_delle_categorie`, la stessa che usano
+    La sorgente e' `anagrafe.category_names`, la stessa che usano
     `guarda` e l'indice di `cerca`: qui si cambia solo la FORMA (le chiavi a
     coppia non attraversano JSON), mai il contenuto -- due mappe costruite
     ognuna per conto proprio sarebbero due nomi diversi per la stessa
@@ -103,13 +103,13 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         "piani": hierarchy(home_space, unavailable),
         # I NOMI delle etichette, id -> nome.
         #
-        # `gerarchia()` mette sulle aree e sulle entita' i soli `label_id` --
+        # `hierarchy()` mette sulle aree e sulle entita' i soli `label_id` --
         # e' cosi' che Home Assistant li manda -- e senza questa mappa chi
         # legge il payload puo' solo mostrare lo slug: «da_controllare» invece
         # di «Da controllare», una parola che l'utente non ha mai scritto e che
         # non cambierebbe nemmeno rinominando l'etichetta.
         #
-        # E' lo stesso difetto gia' chiuso su `guarda` (`anagrafe.etichette_con_nome`),
+        # E' lo stesso difetto gia' chiuso su `guarda` (`anagrafe.labels_with_name`),
         # che pero' risolve i nomi DENTRO la risposta perche' li' esce un
         # dettaglio. Qui esce l'albero intero: ripetere il nome su ogni entita'
         # etichettata sarebbe lo stesso fatto scritto mille volte. Esce la
@@ -124,7 +124,7 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         # `(ambito, id)` dell'archivio esiste per chiudere.
         #
         # Perche' anche qui, e non solo in `guarda`: la fetta delle categorie
-        # ha cablato `anagrafe.categorie_con_nome` in `domande.py` e
+        # ha cablato `anagrafe.categories_with_name` in `domande.py` e
         # nell'indice di `cerca`, e ha saltato QUESTA porta -- cosi' la stessa
         # categoria usciva col nome dallo strumento e con l'id grezzo dalla
         # pagina. E' il pattern che la review ha nominato («una fetta unifica
@@ -134,7 +134,7 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         # L'esito dell'ultimo confronto fra l'albero qui sopra e cio' che Home
         # Assistant risponde su un campione di aree
         # (`server.tree_comparison_round`, verdetto in
-        # `anagrafe.confronta_con_home_assistant`).
+        # `anagrafe.compare_with_home_assistant`).
         #
         # Esce ANCHE da qui, e non solo nel nucleo, per la stessa ragione del
         # sistema di riferimento poco sopra: e' lo stesso fatto, e se il
@@ -145,7 +145,7 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         # che la porta.
         #
         # Esce grezzo (`aree_totali`, `guardate`, `letto_il`) e non gia' in
-        # parole: le frasi le costruisce `nucleo._avviso_confronto` per chi
+        # parole: le frasi le costruisce `nucleo._comparison_notice` per chi
         # legge un testo, qui serve il dato per chi disegna. `None` quando
         # nessun giro e' ancora passato -- mai `{}`, che direbbe «confrontato,
         # e non c'era niente da dire».
@@ -217,7 +217,7 @@ def compose_briefing(app) -> tuple[str, dict]:
         # Difesa, non stato atteso: come in `handle_get_home_space` qui sopra,
         # in produzione questo ramo non dovrebbe mai scattare (se
         # `_on_startup` fallisce, l'add-on non parte affatto). Senza
-        # archivio non c'e' una casa da comporre -- `componi()` riceve una
+        # archivio non c'e' una casa da comporre -- `compose()` riceve una
         # casa vuota, non inventata -- ma soprattutto lo stato non puo'
         # essere dichiarato affidabile: vedi `reliable_state` sotto.
         home_space: dict = {}
@@ -232,7 +232,7 @@ def compose_briefing(app) -> tuple[str, dict]:
         behavior = home_space_store.behavior()
         # IMPORTANT ⑧: senza questi due, il PERCHE' di un'automazione
         # sconosciuta (id duplicato, file malformato) non arrivava mai al
-        # modello -- `/api/home-space` li espone gia', `componi()` non aveva un
+        # modello -- `/api/home-space` li espone gia', `compose()` non aveva un
         # parametro per riceverli.
         behavior_problems = tuple(home_space_store.behavior_problems())
         unloaded_behavior_files = home_space_store.unloaded_files()
@@ -240,12 +240,12 @@ def compose_briefing(app) -> tuple[str, dict]:
         # sapere in che scala e "alle 8" senza sapere in che fuso.
         reference_frame = home_space_store.reference_frame()
 
-    # CRITICAL ①: il default di `MemoryStore.fetch()` e' `limite=20`.
-    # Con `conta()` (scritto apposta per dichiarare questa differenza) si
+    # CRITICAL ①: il default di `MemoryStore.fetch()` e' `limit=20`.
+    # Con `count()` (scritto apposta per dichiarare questa differenza) si
     # richiamano TUTTI i ricordi, e si lascia decidere al taglio di
-    # `componi()` -- che dichiara sempre, nel nucleo stesso, quanti ne
+    # `compose()` -- che dichiara sempre, nel nucleo stesso, quanti ne
     # restano fuori (`excluded_memories`). Prima di questo fix, i ricordi
-    # oltre il ventesimo sparivano PRIMA ancora di arrivare a `componi()`,
+    # oltre il ventesimo sparivano PRIMA ancora di arrivare a `compose()`,
     # e il riepilogo giurava "excluded_memories: 0" su una casa con 200
     # ricordi veri e solo 20 nel nucleo.
     if memory_store is not None:
@@ -254,7 +254,7 @@ def compose_briefing(app) -> tuple[str, dict]:
         memories = []
 
     # Lo specchio dello stato, dalla funzione condivisa e non riletto a mano:
-    # `casa.anagrafe.specchio_vivo` e' la stessa che usano `guarda`, `cerca` e
+    # `casa.anagrafe.live_mirror` e' la stessa che usano `guarda`, `cerca` e
     # la correzione dei ricordi. Prima questa porta -- che alimenta SIA
     # `GET /api/briefing` SIA il contesto della chat, cioe' la piu' importante --
     # se lo rileggeva da sola: una normalizzazione imparata li' non sarebbe mai
@@ -264,7 +264,7 @@ def compose_briefing(app) -> tuple[str, dict]:
     # `reported_classes` e' la ragione per cui questo cablaggio conta davvero: il
     # registro delle entita' non manda `device_class`, quindi senza queste
     # nessun allagamento e nessun allarme monossido entra in «Notevole adesso»
-    # (vedi `anagrafe.classe_effettiva`).
+    # (vedi `anagrafe.actual_class`).
     state: dict[str, str] = {}
     reported_classes: dict[str, str] = {}
     if cache is not None:
@@ -288,7 +288,7 @@ def compose_briefing(app) -> tuple[str, dict]:
     #
     # Si legge con `.get()` e si passa cosi' com'e': `None` (nessuno l'ha
     # ancora letto, o un'app di prova che non lo cabla) resta `None` fino a
-    # `componi()`, che sa distinguerlo da «letto e vuoto». Tradurlo qui in `{}`
+    # `compose()`, che sa distinguerlo da «letto e vuoto». Tradurlo qui in `{}`
     # o in una lista vuota affermerebbe che la casa non ha guasti.
     problems = app.get("problemi_ha")
 
@@ -304,7 +304,7 @@ def compose_briefing(app) -> tuple[str, dict]:
     #
     # Si legge con `.get()` e si passa cosi' com'e': `None` (nessun giro
     # ancora fatto, o un'app di prova che non lo cabla) resta `None` fino a
-    # `componi()`, che sa distinguerlo da «guardato e combacia».
+    # `compose()`, che sa distinguerlo da «guardato e combacia».
     comparison = app.get("confronto_albero")
 
     # Affidabile SOLO se sappiamo sia quali entita' esistono (archivio della
@@ -326,8 +326,8 @@ def compose_briefing(app) -> tuple[str, dict]:
         comparison=comparison,
         # L'orologio entra QUI, nell'unico compositore di produzione (chat
         # sincrona, ponte e GET /api/briefing passano tutti di qua), perche'
-        # `componi` e' pura e non legge nulla da sola. Senza questa riga il
-        # parametro esisterebbe, i test di `componi` passerebbero, e il modello
+        # `compose` e' pura e non legge nulla da sola. Senza questa riga il
+        # parametro esisterebbe, i test di `compose` passerebbero, e il modello
         # continuerebbe a indovinare l'ora quando `prometti` gli chiede di
         # risolvere «fra un'ora» -- che e' il difetto misurato il 21/08/2026.
         now=time.time(),
@@ -340,7 +340,7 @@ async def handle_get_briefing(request: web.Request) -> web.Response:
 
     Serve all'utente per capire, prima di accendere la chat, se HIRIS sta
     guardando la casa giusta -- e a noi per la verifica dal vivo, che qui
-    e' l'unica prova che conta: `componi()` e' pura e coperta da
+    e' l'unica prova che conta: `compose()` e' pura e coperta da
     `tests/test_nucleo.py`, ma nessun test dice se QUESTA casa, letta da
     QUESTO Home Assistant, produce un nucleo sensato.
 

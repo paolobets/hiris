@@ -142,7 +142,7 @@ class Journal:
         la riga.
 
         **`servizio` per una costruzione porta `dominio.gesto`** -- per esempio
-        `automation.crea`. Non e' un servizio di Home Assistant e non va letto
+        `automation.create`. Non e' un servizio di Home Assistant e non va letto
         come tale: `genere` e' li' apposta per distinguerli. `entita` porta le
         entita' NATE o toccate dall'atto, che e' la stessa cosa che porta per
         un comando.
@@ -186,7 +186,7 @@ class Journal:
         un'altra lampada. Il filtro costa una decodifica per riga sulle sole
         righe gia' ristrette dalla finestra, che l'indice `idx_esecuzioni_
         quando` copre. Il moltiplicatore per 10 sulla lettura da SQL non
-        risolve il compromesso, lo sposta: se piu' di `limite*10` righe piu'
+        risolve il compromesso, lo sposta: se piu' di `limit*10` righe piu'
         recenti della finestra non appartengono all'entita' cercata, il
         risultato puo' essere vuoto o incompleto pur avendone nella finestra.
 
@@ -203,7 +203,7 @@ class Journal:
             # entita': leggiamo 10x il limite richiesto per avere piu' righe
             # su cui applicare il filtro Python. Questo MIGLIORA la probabilita'
             # di trovare righe dell'entita' cercata, ma non la garantisce se
-            # la finestra contiene piu' di `limite*10` righe di altre entita'.
+            # la finestra contiene piu' di `limit*10` righe di altre entita'.
             rows = self._conn.execute(
                 "SELECT * FROM esecuzioni WHERE quando_ts >= ? AND quando_ts <= ? "
                 "ORDER BY quando_ts DESC LIMIT ?",

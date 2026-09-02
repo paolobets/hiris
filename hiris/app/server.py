@@ -595,7 +595,7 @@ async def reload_entity_inventory(cache, ha_client) -> bool:
     # Qui c'erano due chiamate WebSocket per ricostruire una mappa area->entita'
     # che nessuno leggeva, e che sbagliava (per nome invece che per id, senza
     # l'area ereditata dal dispositivo). Le aree le ricostruisce
-    # `casa.anagrafe.ricostruisci`, che le legge per id e dichiara i registri
+    # `casa.anagrafe.rebuild`, che le legge per id e dichiara i registri
     # caduti.
     return True
 
@@ -707,12 +707,12 @@ def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):
     """Restituisce `giro()`: confronta un CAMPIONE di aree con Home Assistant
     e scrive l'esito in `app["confronto_albero"]`.
 
-    **Cosa fa, in una riga.** `casa/anagrafe.gerarchia()` e' una replica che
+    **Cosa fa, in una riga.** `casa/anagrafe.hierarchy()` e' una replica che
     HIRIS costruisce dai registri, cioe' un'affermazione sulla casa che niente
     verificava. Qui la stessa domanda va all'originale --
     `HAClient.extract_from_target({"area_id": [...]}) `, che e' Home Assistant
     a risolvere -- e le due liste si mettono una accanto all'altra
-    (`anagrafe.confronta_con_home_assistant`, pura).
+    (`anagrafe.compare_with_home_assistant`, pura).
 
     **OGNI QUANTO, e perche' non a ogni ricostruzione dell'anagrafe.** La
     strada ovvia sarebbe agganciarsi alla ricostruzione. Sarebbe anche il
@@ -723,7 +723,7 @@ def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):
     accorgesse, una replica che INVECCHIA -- e per vederlo bisogna guardare
     mentre la copia invecchia, non appena e' stata rifatta. Quindi un lavoro
     periodico, indipendente dalla ricostruzione: quindici minuti (vedi la
-    registrazione nello schedulatore), che con `AREE_PER_GIRO` a rotazione
+    registrazione nello schedulatore), che con `AREAS_PER_ROUND` a rotazione
     coprono una casa da sedici aree in poco piu' di un'ora.
 
     **DOVE VIVE L'ESITO.** In RAM, in `app["confronto_albero"]`, accanto a
@@ -785,7 +785,7 @@ def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):
             state["dopo"] = sample[-1]["id"]
 
         report = compare_with_home_assistant(piani, home_space, answers)
-        # La data la mette il chiamante: `confronta_con_home_assistant` e'
+        # La data la mette il chiamante: `compare_with_home_assistant` e'
         # pura, e una funzione pura che leggesse l'orologio non sarebbe piu'
         # confrontabile con se stessa. Serve a chi disegna l'albero
         # (`/api/home-space`) per dire quanto e' fresco il verdetto che sta
@@ -826,7 +826,7 @@ async def build_companions(
     porta una busta `{"legami": {...}}`: e' il dizionario grezzo di
     `search/related`, a chiavi inglesi (`"entity"`, `"automation"`, ...). La
     traduzione -- tipo in ingresso, chiavi in uscita -- e' un fatto gia'
-    codificato altrove (`casa/domande.py::NOME_LEGAME`/`TIPO_LEGAME_HA`, e la
+    codificato altrove (`casa/domande.py::LINK_NAME`/`HA_LINK_TYPE`, e la
     funzione pura `casa/domande.py::legami` che la applica): si usano quelle,
     non se ne scrive una terza copia -- sarebbe il doppione che questo
     progetto insegue da una notte intera.
@@ -1733,7 +1733,7 @@ async def _on_startup(app: web.Application) -> None:
     # (`agent/runner.py::build_headers`) legge di li' a ogni giro e senza
     # quella riga continuerebbe a mandare l'header vuoto. Se generarlo o
     # scriverlo fallisce si torna "" e il rifiuto-per-default resta in piedi,
-    # dichiarato nel log: vedi `token_interno.py`.
+    # dichiarato nel log: vedi `internal_token.py`.
     app["internal_token"] = prepare_internal_token(data_dir)
     # CR-1: trusted Supervisor-ingress source CIDRs. The ingress-bypass in
     # internal_auth_middleware only applies to requests from these ranges, so a
@@ -1794,7 +1794,7 @@ async def _on_startup(app: web.Application) -> None:
     # esteso e' su `reread_ha_problems`). Le riletture sono un lavoro dello
     # schedulatore, piu' sotto.
     #
-    # Prima di questa riga la chiave non esiste, e `componi()` lo legge come
+    # Prima di questa riga la chiave non esiste, e `compose()` lo legge come
     # «non ho chiesto» -- non come «non c'e' niente di rotto». Se Home
     # Assistant e' giu' proprio adesso, `problems()` risponde `{"errore": ...}`
     # e il nucleo lo dichiara: la finestra in cui HIRIS tace su questo e' larga
@@ -1804,12 +1804,12 @@ async def _on_startup(app: web.Application) -> None:
     # Task B7: la cache del Lookup (`memoria/cache_indice.py`), di vita
     # LUNGA come `entity_cache` qui sopra -- non a ogni turno, come il
     # `ToolDispatcher` che la riceve (`create_tool_dispatcher`
-    # in `api/handlers_chat.py`). Prima di questo task `_cerca`/`_ricorda`
+    # in `api/handlers_chat.py`). Prima di questo task `_search`/`_remember`
     # ricostruivano un `Lookup` da zero A OGNI chiamata e lo buttavano
     # subito: si ripagava ogni volta la lettura dell'anagrafe E la
     # compilazione di un'espressione regolare per termine (misurato: la
     # compilazione domina il costo, non la lettura -- vedi il rapporto del
-    # task). Costruita vuota qui, si riempie alla prima `cerca`/`ricorda`.
+    # task). Costruita vuota qui, si riempie alla prima `cerca`/`remember`.
     app["cache_indice_strumenti"] = LookupCache()
 
     # Il cervello, per ora il solo osservatore (fetta «l'osservatore», Task 5:
@@ -1837,7 +1837,7 @@ async def _on_startup(app: web.Application) -> None:
     # l'osservatore vedrebbe le condizioni gia' aperte solo al primo giro del
     # lavoro periodico, fino a dieci minuti dopo l'avvio. A differenza di
     # quella lettura, questa PUO' sollevare (`Watcher.watch_system`, se
-    # `annota` fallisce a meta'): un archivio che non risponde non deve
+    # `record` fallisce a meta'): un archivio che non risponde non deve
     # impedire il boot.
     try:
         await watch_system_conditions(app, ha_client)
@@ -1854,7 +1854,7 @@ async def _on_startup(app: web.Application) -> None:
     # L'archivio delle promesse (`schedulatore/archivio.py`): l'unica casa di
     # «cosa e quando». Nasce qui, accanto alla cronaca -- i due archivi nuovi
     # di questo cablaggio. La legge sia la chat (via
-    # `create_tool_dispatcher`, per `prometti`/`promesse`/`disdici`)
+    # `create_tool_dispatcher`, per `prometti`/`promesse`/`cancel`)
     # sia lo schedulatore -- l'orologio, montato piu' sotto insieme al
     # battito, perche' gli serve prima lo scheduler, costruito piu' avanti in
     # questa funzione.
@@ -1952,11 +1952,11 @@ async def _on_startup(app: web.Application) -> None:
     # `test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti`
     # (`tests/test_cervello_wiring.py`).
     #
-    # Nasce PRIMA di `UsageStore` qui sotto e prima di `ricostruisci`
+    # Nasce PRIMA di `UsageStore` qui sotto e prima di `rebuild`
     # (la rilettura dell'anagrafe): non ha bisogno di aspettarli, perche'
     # `reference_frame()` legge il fuso GIA' PERSISTITO su disco dalle
     # sessioni precedenti (`casa.db` sopravvive ai riavvii) -- aspettare
-    # `ricostruisci()`, che parla con Home Assistant, legherebbe questa
+    # `rebuild()`, che parla con Home Assistant, legherebbe questa
     # riparazione a un servizio di rete che non le serve.
     #
     # **La lezione**: il test che sorvegliava l'ordine (ora
@@ -1992,7 +1992,7 @@ async def _on_startup(app: web.Application) -> None:
         logger.warning("costruzione iniziale dell'anagrafe fallita: %s", exc)
     ha_client.add_topology_listener(schedule_registry_rebuild(ha_client, home_space_store))
 
-    # La verifica dell'albero: `gerarchia()` smette di essere un'affermazione
+    # La verifica dell'albero: `hierarchy()` smette di essere un'affermazione
     # che nessuno controlla. Costruita QUI, subito dopo l'anagrafe, perche' e'
     # da quella che prende il campione; il primo giro parte adesso e i
     # successivi li chiama lo schedulatore (piu' sotto, quindici minuti).
@@ -2075,7 +2075,7 @@ async def _on_startup(app: web.Application) -> None:
     # fetta E4 Task 4: l'entita' Chatbot esce, sostituita dalle impostazioni
     # della chat -- un bot solo, senza id, coi default nel codice (mai
     # "assente": e' la chiusura per costruzione del degrado silenzioso che
-    # handlers_chat.py aveva prima -- vedi impostazioni_chat.py). Gli ex
+    # handlers_chat.py aveva prima -- vedi chat_settings.py). Gli ex
     # `engine.set_entity_cache(entity_cache)`/`set_archivi(archivio_casa,
     # archivio_memoria)` non hanno bisogno di un successore: erano gia'
     # orfani prima di questo task (nessun lettore in produzione dalla fetta
@@ -2310,7 +2310,7 @@ async def _on_startup(app: web.Application) -> None:
     # un'installazione che salti la 2.5.0 e arrivi qui con l'ambiente ancora
     # popolato dal vecchio `run.sh` deve poter migrare -- non puo' succedere
     # via Supervisor, puo' succedere in sviluppo. Escono con la fetta
-    # successiva, insieme a `_chain_as_it_was` e a `migrazione_opzioni`, quando
+    # successiva, insieme a `_chain_as_it_was` e a `options_migration`, quando
     # nessuna installazione potra' piu' arrivare non seminata (scadenza: la
     # prima fetta dopo il 14 agosto 2026). Fino ad allora il censimento le
     # elenca fra le «variabili lette e mai esportate da run.sh», ed e' corretto.
@@ -2802,10 +2802,10 @@ async def _on_startup(app: web.Application) -> None:
     #
     # Task 12: la fonte del numero di giorni non e' piu' il globale di modulo
     # `chat_store.HISTORY_RETENTION_DAYS` (uscito dal modulo) ma
-    # `app["impostazioni_chat"].retention_days` -- letto AD OGNI GIRO
+    # `app["chat_settings"].retention_days` -- letto AD OGNI GIRO
     # dentro la chiusura, non catturato una volta sola all'avvio: un PUT su
     # /api/chat-settings riassegna quella chiave a caldo
-    # (`handlers_impostazioni.handle_save_impostazioni`), e la potatura di
+    # (`handlers_impostazioni.handle_save_settings`), e la potatura di
     # stanotte deve vedere il valore che l'utente ha scelto oggi, non quello
     # con cui l'add-on e' partito.
     from .chat_store import delete_old_messages as _delete_old_messages
@@ -3618,7 +3618,7 @@ def create_app() -> web.Application:
     #
     # CHI LA CHIAMA: il sottoprocesso `claude` che il worker del ponte avvia
     # dentro l'add-on (`--mcp-config`), e la sonda `tools/list` che il runner
-    # fa PRIMA di comporre il turno (`agent/runner.py::sonda_strumenti`).
+    # fa PRIMA di comporre il turno (`agent/runner.py::probe_tools`).
     # Fino al Task 3 di questa fetta nessun chiamante di produzione esisteva e
     # la rotta fu un ORFANO DICHIARATO, contato da `scripts/censimento.py` fra
     # le «rotte HTTP chiamate solo dai test»: col Task 3 l'orfano e' stato
@@ -3673,7 +3673,7 @@ def create_app() -> web.Application:
 
     # Task 8 SDD schedulatore: le promesse -- la faccia dello schedulatore
     # legge di qui, e disdice di qui. Le stesse due operazioni che il
-    # modello ha come strumenti (`promesse`/`disdici` in
+    # modello ha come strumenti (`promesse`/`cancel` in
     # `casa/strumenti.py`), sulla stessa serializzazione
     # (`schedulatore/promise.py::serializza`, dentro l'archivio): due porte,
     # una forma sola. Passa dallo stesso `csrf_middleware` di
@@ -3718,7 +3718,7 @@ def create_app() -> web.Application:
     app.router.add_post("/api/constructions/{id}/reject", handle_reject_construction)
 
     # Task 3 SDD nucleo: vedere cio' che il modello vedra' -- il testo
-    # ESATTO che compone `casa.nucleo.componi()`, non una sua descrizione.
+    # ESATTO che compone `casa.nucleo.compose()`, non una sua descrizione.
     # Nata senza faccia, come /api/home-space e /api/memories: dalla fetta E5
     # Task 8 una faccia ce l'ha -- la home della configurazione
     # (`static/config/dashboard.js`) legge questa rotta e /api/home-space, e non

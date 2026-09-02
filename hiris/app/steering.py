@@ -27,12 +27,12 @@ che nascesse domani non potrebbe inventarsene una terza senza accorgersene.
   volta** (decisione del proprietario, 13 agosto): un passaggio silenzioso a
   un provider a pagamento si scopre a fine mese.
 
-Il motivo e' una **chiave** di `decisione_modelli._DOWNGRADE_REASONS`, mai una
+Il motivo e' una **chiave** di `model_resolution._DOWNGRADE_REASONS`, mai una
 frase: la frase la compone `downgrade_note`, e un motivo fuori vocabolario non
 produce un errore -- produce silenzio, cioe' esattamente il prelievo non
 annunciato che la regola esiste per evitare.
 
-`_bridge_on` e `_piano_puo_rispondere` vivono QUI e non piu' in
+`_bridge_on` e `_subscription_can_answer` vivono QUI e non piu' in
 `handlers_chat`: sono pezzi della stessa decisione, e lasciarle di la' avrebbe
 reso circolare l'import (la chat chiama questo modulo, questo modulo chiamava
 la chat).

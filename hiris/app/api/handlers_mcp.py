@@ -59,7 +59,7 @@ non un'ottimizzazione.
 **Chi la chiama.** Due chiamanti di produzione, entrambi in
 `hiris/app/agent/runner.py`: il sottoprocesso `claude` del ponte, a cui l'argv
 passa questa rotta nella voce `--mcp-config` (`config_mcp`), e la sonda
-`tools/list` che il runner fa PRIMA di comporre il turno (`sonda_strumenti`),
+`tools/list` che il runner fa PRIMA di comporre il turno (`probe_tools`),
 per decidere se il prompt puo' affermare gli strumenti. La registrazione
 in `server.py` (`app.router.add_post("/api/mcp", handle_mcp)`) porta lo stesso
 elenco: i due file devono restare d'accordo.
@@ -319,7 +319,7 @@ def _ceiling_rejection(name: str) -> dict:
     si' risponde `-32603`). Il tetto raggiunto non e' un guasto del
     protocollo -- la richiesta era benformata e la rotta funziona -- e' un
     esito di merito dello strumento, la stessa categoria di
-    `ToolDispatcher._archivio_mancante`: si dichiara COSA e' successo
+    `ToolDispatcher._missing_resource`: si dichiara COSA e' successo
     invece di restituire un guasto opaco. Un `error` di protocollo rischia
     inoltre di far trattare l'intera chiamata dal client MCP della CLI come
     una rottura del canale (schema non risolto, connessione da riprovare)
@@ -516,7 +516,7 @@ async def handle_mcp(request: web.Request) -> web.Response:
     `X-HIRIS-Internal-Token` valido. La CLI `claude` manda il token e **non**
     manda `X-Requested-With`: passa quindi da quell'esenzione, che a sua volta
     e' viva solo perche' l'add-on genera un token interno quando l'opzione e'
-    vuota (`token_interno.py`). Entrambe le vie sono pinnate in
+    vuota (`internal_token.py`). Entrambe le vie sono pinnate in
     `tests/test_rotta_mcp.py` con le valvole della suite rimosse -- e il Task 3,
     che scrive gli header della voce `--mcp-config`, ha per iscritto la
     raccomandazione di mandare **anche** `X-Requested-With`, cosi' che nessuno

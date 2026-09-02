@@ -25,16 +25,16 @@ turno -- cosi' il riuso vale anche FRA i turni, non solo dentro uno.
 Chi chiama `get()` porta tre cose:
 
 - `slot`: un'etichetta che identifica IL CHIAMANTE (`"cerca"`, `"ricorda"`),
-  non il contenuto. `_cerca` passa `nomi_di_ripiego`, `_ricorda` no: sulla
+  non il contenuto. `_search` passa `nomi_di_ripiego`, `_remember` no: sulla
   stessa identica casa i due indici hanno contenuti diversi, quindi devono
   restare due voci -- e usare il chiamante come discriminante, invece di
   sperare che il contenuto differisca sempre, e' cio' che lo garantisce anche
-  nel caso limite in cui `nomi_di_ripiego` di `_cerca` sia vuoto (specchio
+  nel caso limite in cui `nomi_di_ripiego` di `_search` sia vuoto (specchio
   giu').
 - `aggiornata_il`: la data dell'ultima ricostruzione dell'anagrafe
-  (`ArchivioCasa.aggiornata_il()`), o `None` quando l'anagrafe non e' mai
-  stata letta. `_ricorda` decide `casa={}` esattamente quando questo valore
-  e' `None` (vedi `strumenti.py::_ricorda`): passare lo STESSO valore letto
+  (`HomeSpaceStore.aggiornata_il()`), o `None` quando l'anagrafe non e' mai
+  stata letta. `_remember` decide `casa={}` esattamente quando questo valore
+  e' `None` (vedi `strumenti.py::_remember`): passare lo STESSO valore letto
   una volta sola alla decisione e alla chiave fa si' che "anagrafe non letta"
   e "anagrafe letta ma vuota" non si confondano mai, senza bisogno di un
   terzo campo esplicito.
@@ -46,12 +46,12 @@ Chi chiama `get()` porta tre cose:
   questo task esiste. Usa un'impronta del CONTENUTO (`_fingerprint_nomi`).
 - `behavior_loaded_at` (T7, R2 -- docs/design/2026-08-20-i-riferimenti.md):
   la data dell'ultima rilettura di automazioni/script
-  (`ArchivioCasa.comportamento_letto_il()`), o `None` quando non e' mai stata
+  (`HomeSpaceStore.comportamento_letto_il()`), o `None` quando non e' mai stata
   letta. Da quando `costruisci_indice()` indicizza anche il comportamento
   (parametro `comportamento`), la chiave non puo' piu' bastarsi con
   `aggiornata_il`: quella data e' dell'ANAGRAFE (aree, entita', dispositivi,
   piani) e cambia con una cadenza diversa dal comportamento (giorni contro
-  mesi, `ArchivioCasa.sostituisci_comportamento`, docstring). Senza questa
+  mesi, `HomeSpaceStore.replace_behavior`, docstring). Senza questa
   voce, un'automazione rinominata in Home Assistant non invaliderebbe MAI la
   cache -- lo stesso indice vecchio, con l'automazione ancora sotto il nome
   di ieri, servirebbe finche' l'anagrafe (non il comportamento) non cambia
@@ -59,7 +59,7 @@ Chi chiama `get()` porta tre cose:
 
 ## La forma della cache: una voce per spazio, non una sola casella
 
-Una sola casella condivisa rimbalzerebbe fra `_cerca` e `_ricorda` -- due
+Una sola casella condivisa rimbalzerebbe fra `_search` e `_remember` -- due
 chiamanti diversi nello stesso turno la ricostruirebbero a vicenda, e il
 guadagno sparirebbe senza che un test che guarda solo i risultati se ne
 accorga. `_voci` e' un dizionario per `slot`: ogni spazio tiene la SUA
@@ -134,8 +134,8 @@ class LookupCache:
         dizionario piu' veloce di un altro.
 
         Vuole `casa` gia' letta: usalo quando il chiamante ha comunque
-        bisogno del valore anche fuori dall'indice (`_cerca`, per
-        `_cecita()`) -- li' non c'e' niente da rimandare. Se invece la
+        bisogno del valore anche fuori dall'indice (`_search`, per
+        `_blind_spots()`) -- li' non c'e' niente da rimandare. Se invece la
         lettura serve SOLO a costruire l'indice, vedi `get_lazy()`.
 
         `comportamento`/`behavior_loaded_at` (T7, R2): automazioni e
@@ -152,10 +152,10 @@ class LookupCache:
                       behavior_loaded_at: str | None = None) -> Lookup:
         """Come `get()`, ma la casa si legge SOLO su un miss.
 
-        Fix della review indipendente del Task B7: `_ricorda` non ha bisogno
-        di `ArchivioCasa.leggi()` per decidere se il colpo va a segno -- la
+        Fix della review indipendente del Task B7: `_remember` non ha bisogno
+        di `HomeSpaceStore.leggi()` per decidere se il colpo va a segno -- la
         chiave (`aggiornata_il` + impronta dei nomi) si calcola senza. Prima
-        di questo fix `_ricorda` chiamava `leggi()` PRIMA di sapere se la
+        di questo fix `_remember` chiamava `leggi()` PRIMA di sapere se la
         cache avrebbe dato un colpo a segno: su un hit, una lettura SQL vera
         (piu' un `json.loads` per riga) veniva fatta e buttata -- uno dei DUE
         costi che il brief del task nominava esplicitamente (lettura
@@ -165,8 +165,8 @@ class LookupCache:
         su un hit non viene MAI chiamato, e la lettura non si paga.
 
         `comportamento` NON e' pigro come `build_home_space`: e' un valore gia'
-        letto, passato dal chiamante (`_cerca`, che lo legge comunque per
-        indicizzarlo). Solo `_ricorda` non lo passa affatto (`None`, il
+        letto, passato dal chiamante (`_search`, che lo legge comunque per
+        indicizzarlo). Solo `_remember` non lo passa affatto (`None`, il
         comportamento non e' un tipo di ancora -- vedi
         `memoria/interpretazione.VOCABULARY`), e su quello spazio la sua
         assenza dalla chiave non cambia nulla: non essendo mai indicizzato,

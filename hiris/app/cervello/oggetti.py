@@ -186,7 +186,7 @@ def genre_for(subject: str, aspect_: str | None) -> str | None:
     non sono lo stesso genere di fatto, e l'analista le trattera' in modo
     diverso: `"guasto"` resta per le condizioni di sistema (`problema:`,
     `integrazione:`, un confine netto e facile da spiegare), `"sicurezza"` per
-    tutta la gamba omonima. Qui il criterio e' `gamba_ == "sicurezza"`,
+    tutta la gamba omonima. Qui il criterio e' `aspect_ == "sicurezza"`,
     qualunque sia il dominio, cosi' non serve ripetere l'elenco dei domini/
     classi che il pavimento gia' tiene.
 
@@ -338,7 +338,7 @@ def _kwh(value) -> float | None:
     lo strumento non ha, e il difetto misurato in pagina (`+0.
     010000000000000009`) e' rumore di virgola mobile ben sotto quella
     soglia. `None` -- non zero -- quando il valore manca o non e' un
-    numero: e' la stessa distinzione di `_differenza` sopra.
+    numero: e' la stessa distinzione di `_difference` sopra.
     """
     if value is None:
         return None
@@ -493,7 +493,7 @@ def build_balance_body(*, series: dict[str, list[dict]],
     Il totale di una dimensione e' la somma delle ore CONOSCIUTE (quelle con
     `cambio` non nullo): un'ora mancante non azzera il totale, ma zero ore
     conosciute tolgono la dimensione per intero -- e' la stessa regola gia'
-    presa da `_differenza` per una sola lettura nel giorno.
+    presa da `_difference` per una sola lettura nel giorno.
 
     Ritorna `{"totali": {dimensione: {"valore","provenienza"}}, "forma":
     {dimensione: [{"ora","valore"}, ...]}, "momenti": {...},
@@ -799,7 +799,7 @@ def aggregate_day(*, store, day: str, timezone: str | None,
         initial, final = points[0][1], points[-1][1]
         # Una sola lettura nel giorno non dice quanto e' cambiato: e'
         # "non lo sappiamo" -- la stessa distinzione del punto 2, e il
-        # codice la fa gia' altrove restituendo `None` quando `_differenza`
+        # codice la fa gia' altrove restituendo `None` quando `_difference`
         # non riesce a leggere un valore come numero (pulizia del secondo
         # giro di review). Con un solo punto, iniziale e finale sono la
         # STESSA riga: il conto tornerebbe 0.0, il fatto falso "non e'

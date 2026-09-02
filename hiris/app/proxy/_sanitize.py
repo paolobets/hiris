@@ -17,14 +17,14 @@ using, and an automation/script name arriving over the network was uncovered
 can enter the model's context calls one of the two functions below:
 
 - `proxy/entity_cache.py::_to_minimal` -- the single point where a raw HA
-  state becomes what every reader sees (`specchio_vivo`, `guarda`, `cerca`,
+  state becomes what every reader sees (`live_mirror`, `guarda`, `cerca`,
   the nucleo). Sanitizes `state`, `name` (friendly_name), and the free-text
   media_player attributes (`media_title`, `media_artist`, `source`) -- the
   concrete vector the audit verified. NOT sanitized: numeric/enum attributes
   (`brightness`, `hvac_mode`, `current_position`, ...) -- they are not
   attacker-writable free text, and running them through a text filter would
   silently coerce numbers to strings for no real gain.
-- `proxy/ha_client.py::diario` -- the logbook boundary. Sanitizes `nome`,
+- `proxy/ha_client.py::logbook` -- the logbook boundary. Sanitizes `nome`,
   `stato` AND `messaggio` per entry (free text HA does not control) -- `stato`
   was missed in the first pass: for a message-sensor (email/ntfy/SMS, the
   FIRST vector L1-sicurezza.md names) the hostile text often IS the state, not
@@ -34,13 +34,13 @@ can enter the model's context calls one of the two functions below:
   arbitrary logbook prose with no HA-imposed ceiling, so it goes through
   `sanitize_ha_free_text` instead (M2, correzioni-minori.md).
 - `proxy/ha_client.py::storico` -- the historical-series boundary
-  (`andamento`'s tool). Sanitizes `valore`. The first pass left this one
+  (`trend`'s tool). Sanitizes `valore`. The first pass left this one
   unwired on the claim that the series is "numeric by construction"; that
   claim was false -- `valore` is `voce.get("state")`, the raw state of
-  WHATEVER entity was asked for, and `andamento`'s own tool description
-  promotes it for "whether a door was left open". Same vector as `diario`,
+  WHATEVER entity was asked for, and `trend`'s own tool description
+  promotes it for "whether a door was left open". Same vector as `logbook`,
   same fix.
-- `casa/archivio.py::ArchivioCasa.sostituisci` -- the SOLE writer of the
+- `casa/archivio.py::HomeSpaceStore.replace` -- the SOLE writer of the
   house registry mirror. Sanitizes `nome`/`alias`/`titolo`/`motivo` for
   piani, aree, dispositivi (incl. produttore/modello), entita, etichette,
   categorie and integrazioni at write time, so every reader (`leggi()`, the
@@ -50,7 +50,7 @@ can enter the model's context calls one of the two functions below:
   friendly_name/title, `state`-shaped); `integrazioni.motivo` (why an
   integration failed, not a `state`) goes through `sanitize_ha_free_text`
   (500) since M2, correzioni-minori.md.
-- `casa/archivio.py::ArchivioCasa.sostituisci_comportamento` -- a SECOND,
+- `casa/archivio.py::HomeSpaceStore.replace_behavior` -- a SECOND,
   separate writer (different cadence, different source, see its docstring)
   for automations/scripts. Sanitizes `nome` only. `nome` is Home Assistant's
   `friendly_name`, read by `comportamento.reread()` via a RAW
@@ -62,10 +62,10 @@ can enter the model's context calls one of the two functions below:
   is left alone (see below), `nome` is not.
 - `casa/domande.py::ricordi_sanificati` -- a memory is the one thing that
   re-enters the model's context on every subsequent turn without being asked
-  for (I-1: a `ricorda()` call from an injected turn would otherwise plant a
+  for (I-1: a `remember()` call from an injected turn would otherwise plant a
   permanent backdoor). ONE shared function, called from `casa/nucleo.py::
   _righe_ricordi` (the always-on channel), `casa/domande.py::guarda` (by id
-  or anchored to an area/entity/device), AND `casa/strumenti.py::_richiama`
+  or anchored to an area/entity/device), AND `casa/strumenti.py::_recall`
   (`MemoryStore.per_tether`, a THIRD read path the first pass missed --
   it does not go through `guarda`, so the same memory came out filtered from
   one door and raw from another). A single shared function, not three copies
@@ -82,7 +82,7 @@ DELIBERATELY NOT WIRED, and why: the `corpo` field of an automation/script
 the house owner edits, not something a network device or a compromised
 integration can write -- it is not the vector this fix closes. This is
 narrower than the same sentence used to be: it once covered the whole
-module, which was wrong -- see the `sostituisci_comportamento` bullet above
+module, which was wrong -- see the `replace_behavior` bullet above
 for the field (`nome`) that reasoning never actually applied to.
 
 TRUNCATION IS DECLARED, NOT SILENT (fixed 2026-08-25, I2 in FIX1-report.md;
@@ -218,7 +218,7 @@ def truncate_with_marker(text, cap: int) -> str:
     delle quattro superfici in cui finisce sono permanenti nella cronaca
     SQLite) -- unificata qui nello stesso giro (M1, terzo giro,
     correzioni-minori.md). Quel modulo tiene il proprio cap come costante
-    locale (`_CAP_ERRORE_RETE`, una sua scelta) e importa solo l'algoritmo,
+    locale (`_NETWORK_ERROR_CAP`, una sua scelta) e importa solo l'algoritmo,
     come `ha_client.py`.
 
     Il risultato non supera mai `cap`, marcatore incluso nel conteggio. Se

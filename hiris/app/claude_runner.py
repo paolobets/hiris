@@ -20,8 +20,8 @@ import anthropic
 # di questo task.
 #
 # fetta «cosa è successo davvero»: la classificazione dell'errore vive in
-# `esiti_provider`, che non importa niente da qui a livello di modulo (il suo
-# unico import di `openai_compat_runner` è dentro `famiglia_errore`) -- quindi
+# `provider_occurrences`, che non importa niente da qui a livello di modulo (il suo
+# unico import di `openai_compat_runner` è dentro `error_family`) -- quindi
 # nessun ciclo.
 from .provider_occurrences import error_family
 
@@ -64,10 +64,10 @@ class RunnerBackendError(Exception):
 
     `friendly_message` NON cambia: è ciò che l'utente legge in chat, e questi
     due campi non sono per lui. Servono a `LLMRouter` per scrivere nel
-    `RegistroEsiti` che cosa è successo a quel provider, e da lì alla riga di
+    `OccurrenceRegistry` che cosa è successo a quel provider, e da lì alla riga di
     stato della pagina Modelli. I valori di scorta (`"altro"`, `None`) sono
     quelli di un guasto non classificato, non un modo di dire «non lo so»:
-    `esiti_provider.famiglia_da_codice(None)` restituisce la stessa cosa.
+    `provider_occurrences.family_from_code(None)` restituisce la stessa cosa.
     """
 
     def __init__(self, friendly_message: str, *, family: str = "altro",
@@ -647,7 +647,7 @@ class ClaudeRunner:
     ) -> None:
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
         # Il runner non conosce l'archivio dei consumi: conosce una funzione.
-        # Stessa disciplina di `leggi_modello` qui sotto -- ed e' cio' che
+        # Stessa disciplina di `read_model` qui sotto -- ed e' cio' che
         # tiene i runner provabili senza costruire mezzo add-on.
         # `None` e' il ramo di libreria e dei test: non deve diventare un
         # AttributeError dentro il ciclo del modello.
@@ -685,7 +685,7 @@ class ClaudeRunner:
         # `reset_usage`. Erano la SECONDA casa del consumo -- quella che
         # sommava tutto insieme e non sapeva dire di quale modello parlasse --
         # e sono uscite col loro `usage_path`. Il consumo si scrive adesso in
-        # `consumi/store.py` attraverso `registra_consumo`, e i vecchi
+        # `consumi/store.py` attraverso `log_usage`, e i vecchi
         # `usage_*.json` ci entrano una volta sola all'avvio come riga
         # «(prima del dettaglio)»: i file restano sul disco, mai dati
         # dell'utente cancellati in silenzio.

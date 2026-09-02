@@ -37,7 +37,7 @@ popolato dal vecchio `run.sh`. Via Supervisor non puo' succedere (le chiavi
 fuori schema vengono scartate PRIMA che /data/options.json esista, quindi
 l'ambiente e' muto e la semina scrive i predefiniti su un archivio che pero' e'
 gia' `seminato`, e quindi esce subito); in sviluppo si'. **Esce con la fetta
-successiva**, insieme a `impostazioni_chat._giorni_da_ambiente`, quando nessuna
+successiva**, insieme a `chat_settings._retention_days_from_environment`, quando nessuna
 installazione potra' piu' arrivare non seminata.
 
 `server._chain_as_it_was` era elencata qui accanto, e **non esce con loro**: con
@@ -115,7 +115,7 @@ def seed(store: dict, environment: dict, *, log) -> tuple[dict, list[str]]:
 
     # I predefiniti si LEGGONO da `_DEFAULTS`, non si ridigitano qui: erano
     # gli stessi numeri scritti due volte nello stesso file (una nel
-    # dizionario, una come argomento di `_intero`/`_bool`), piu' una terza
+    # dizionario, una come argomento di `_integer`/`_bool`), piu' una terza
     # volta in `api/handlers_models._STORE_DEFAULTS`. E' esattamente la
     # struttura che ha prodotto il debito F -- `strategia_ultima` che valeva
     # `""` in una copia e `"balanced"` nell'altra, e ogni installazione, anche
@@ -243,7 +243,7 @@ def seed_subscription_model(store: dict, current_alias: str,
     """Copia nel campo nuovo l'alias che il piano sta usando ADESSO, una volta.
 
     `current_alias` lo calcola il chiamante con la derivazione ancora viva
-    (`modello_cli(resolve_model("auto", "chat", provider_models["claude"]))`):
+    (`cli_model(resolve_model("auto", "chat", provider_models["claude"]))`):
     e' la regola che la fetta «il modello del piano» ritira, e la si esegue
     un'ultima volta per non far cambiare comportamento all'installazione il
     giorno dell'aggiornamento. Qui si COPIA, non si ricalcola.

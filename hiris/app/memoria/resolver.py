@@ -15,7 +15,7 @@ identificatore, e questo modulo restringe:
   Prende cio' che il modello si dimentica, e funziona anche senza modello.
   Due voci diverse possono normalizzarsi allo stesso testo (due aree
   chiamate "Bagno", un alias che e' il nome vero di un'altra area): quando
-  succede, il termine e' AMBIGUO, e `trova()` lo dichiara -- ogni risultato
+  succede, il termine e' AMBIGUO, e `find()` lo dichiara -- ogni risultato
   porta la lista completa dei `candidati` che quel testo puo' significare,
   non uno scelto a caso. Scegliere spetta al modello, che ha la casa in
   contesto, o all'utente, che puo' correggere dalla pagina: questo modulo
@@ -50,12 +50,12 @@ from ..casa.anagrafe import (
 # loro sono -- un REGISTRO dell'anagrafe (`_TABELLE`, casa/archivio.py),
 # gia' dentro la `casa` che ogni chiamante legge, che puo' mancare
 # all'appello di una ricostruzione esattamente come gli altri tre
-# (`ArchivioCasa.non_disponibili()`). Prima di questo task nessuna
+# (`HomeSpaceStore.non_disponibili()`). Prima di questo task nessuna
 # sequenza di chiamate produceva mai un id di piano: `esegui(piani=...)`
 # lo pretende (`claude_runner.py`), e non esisteva modo di procurarselo.
 #
 # Automazioni e script NON entrano qui, apposta: vengono da
-# `ArchivioCasa.comportamento()`, una fonte diversa (file YAML riletti a
+# `HomeSpaceStore.comportamento()`, una fonte diversa (file YAML riletti a
 # una cadenza propria, non un registro di Home Assistant) con un proprio
 # segnale di incompletezza (`file_non_letti()`, non `non_disponibili()`)
 # e un proprio campo `tipo` PER VOCE -- una lista sola contiene sia le
@@ -63,7 +63,7 @@ from ..casa.anagrafe import (
 # e' UN tipo solo. Mescolarli qui avrebbe fatto sembrare "automazione" un
 # registro dell'anagrafe che puo' comparire in `non_disponibili()`, cosa
 # che non fa mai -- e avrebbe allargato `STORE_KEY_PER_TYPE` (e con
-# lei `_TIPI_ANCORA` in casa/strumenti.py) a tipi che la memoria non puo'
+# lei `_TETHER_TYPES` in casa/strumenti.py) a tipi che la memoria non puo'
 # mai scrivere come ancora (`memoria/interpretazione.VOCABULARY`),
 # creando esattamente il secondo vocabolario che R9 denuncia altrove.
 # `costruisci_indice()` le indicizza per conto suo, sotto: stessa forma
@@ -74,7 +74,7 @@ _ARCHIVI = (("aree", "area"), ("entita", "entita"), ("dispositivi", "dispositivo
 # Stessa mappa di _ARCHIVI, capovolta: dato il tipo di un'ancora, la chiave
 # del registro che l'anagrafe usa per quel tipo. Pubblica perche' serve a chi
 # deve sapere se QUEL registro specifico ha risposto all'ultima lettura
-# (`ArchivioCasa.non_disponibili()`), non solo se l'anagrafe intera e' stata
+# (`HomeSpaceStore.non_disponibili()`), non solo se l'anagrafe intera e' stata
 # letta -- vedi handlers_memoria.py.
 STORE_KEY_PER_TYPE: dict[str, str] = {type: key for key, type in _ARCHIVI}
 
@@ -95,7 +95,7 @@ def _normalize_con_mappa(text: str) -> tuple[str, list[int]]:
     """Come `_normalizza`, ma restituisce anche la mappa posizione
     normalizzata -> posizione originale.
 
-    `trova()` cerca sul testo normalizzato, ma `nome_visto` deve restare
+    `find()` cerca sul testo normalizzato, ma `nome_visto` deve restare
     cio' che l'utente ha scritto davvero (maiuscole, accenti, spaziatura),
     non il testo normalizzato: oggi non morde perche' nessuno lo archivia,
     ma nella fetta E sarebbe gia' una riscrittura silenziosa di cio' che
@@ -326,7 +326,7 @@ def costruisci_indice(home_space: dict,
     **Cio' che il ripiego non copre, e che non si nasconde:** lo specchio
     dello stato conosce solo le entita' con uno stato vivo -- 849 contro le
     1.225 del registro. Per le altre 376 non esiste un `friendly_name` da
-    nessuna parte: restano senza nome e quindi fuori da `trova()`,
+    nessuna parte: restano senza nome e quindi fuori da `find()`,
     esattamente come oggi. Non spariscono (`verifica()` e `tutti()`
     continuano a vederle) e non si inventa loro un nome dall'id.
 
@@ -334,7 +334,7 @@ def costruisci_indice(home_space: dict,
     `friendly_name` per aree e dispositivi, e un ripiego li' sarebbe di
     nuovo un id travestito da nome.
 
-    `comportamento` (T7, R2): le voci di `ArchivioCasa.comportamento()` --
+    `comportamento` (T7, R2): le voci di `HomeSpaceStore.comportamento()` --
     automazioni e script, col loro `tipo` ("automazione" o "script") gia'
     dentro ogni voce, non nella chiave del dizionario `casa` come per
     `_ARCHIVI` sopra. Indicizzate con la STESSA disciplina (nome, alias,
@@ -366,7 +366,7 @@ def costruisci_indice(home_space: dict,
                 deduced = (downgrade.get(reference) or "").strip()
             if deduced:
                 # Copia, non mutazione in place: `voce` e' il dizionario che
-                # `ArchivioCasa.leggi()` ha appena costruito per il
+                # `HomeSpaceStore.leggi()` ha appena costruito per il
                 # chiamante, e marcarlo li' accoppierebbe l'indice al ciclo
                 # di vita di una struttura che non gli appartiene.
                 entry = dict(entry)
@@ -377,14 +377,14 @@ def costruisci_indice(home_space: dict,
             # ha scritto lui in Home Assistant («inverno», «da controllare»):
             # se non portano a niente, HIRIS gli chiede di ripetere a parole
             # cio' che aveva gia' dichiarato una volta. Non diventano il NOME
-            # di niente -- entrano solo qui, fra i termini che `trova()`
+            # di niente -- entrano solo qui, fra i termini che `find()`
             # riconosce, e il nome resta quello che era.
             #
             # Col NOME, non col `label_id`: nei registri Home Assistant mette
             # gli slug (`da_controllare`), e indicizzare quelli avrebbe fatto
             # funzionare la ricerca SOLO per le etichette di una parola sola
             # senza maiuscole. Nessuno cerca «da_controllare»: si cerca «da
-            # controllare». L'unione la fa `casa.anagrafe.etichette_con_nome`,
+            # controllare». L'unione la fa `casa.anagrafe.labels_with_name`,
             # la stessa che usa `guarda` -- scritta due volte sarebbe una
             # ricerca che trova per un nome e una risposta che ne mostra un
             # altro.
@@ -392,7 +392,7 @@ def costruisci_indice(home_space: dict,
             # trappola: sono l'altra tassonomia che l'utente scrive a mano in
             # Home Assistant («Luci esterne», «Vacanza»), e nei registri HA
             # manda i soli `category_id`. Entrano col NOME -- l'unione la fa
-            # `casa.anagrafe.categorie_con_nome`, la stessa che usa `guarda`.
+            # `casa.anagrafe.categories_with_name`, la stessa che usa `guarda`.
             # Solo i nomi, non gli ambiti: `automation` e' un termine tecnico
             # di Home Assistant, non una parola che qualcuno cerchera'.
             # Un termine che non e' una stringa non e' un termine.
@@ -403,7 +403,7 @@ def costruisci_indice(home_space: dict,
             # l'ARCHIVIO -- che su un'installazione gia' avvelenata
             # contiene ancora `[null]` finche' l'anagrafe non si ricostruisce.
             # Un rilevatore che muore sul dato vecchio lascia `cerca` e
-            # `ricorda` rotti fino al riavvio successivo. Vedi `_log`.
+            # `remember` rotti fino al riavvio successivo. Vedi `_log`.
             for term_originale in [deduced or name, *(entry.get("alias") or []),
                                       *labels_with_name(entry, nomi_etichette),
                                       *categories_with_name(entry, nomi_categorie).values()]:
@@ -445,7 +445,7 @@ def costruisci_indice(home_space: dict,
     # Fonte diversa da `_ARCHIVI` per lo stesso motivo di `comportamento`
     # (vedi il commento su `_ARCHIVI` in cima al modulo): la tabella
     # `etichette` non e' una voce con `nome`/`alias`/`etichette` proprie, e'
-    # gia' l'unione id->nome (`nomi_delle_etichette`, sopra). Un nome vuoto o
+    # gia' l'unione id->nome (`label_names`, sopra). Un nome vuoto o
     # un id assente non e' un'etichetta indicizzabile: si scarta invece di
     # registrare un termine muto o un candidato senza riferimento.
     label_registry = per_type.setdefault("etichetta", {})

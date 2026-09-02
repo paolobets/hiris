@@ -25,7 +25,7 @@
    Tre cose che la guida chiede esplicitamente:
    1. `in_corso` sta nella sezione «In sospeso» insieme a `in_attesa` (non e'
       ancora concluso), ma SOLO `in_attesa` ha il bottone disdici:
-      `archivio.disdici()` scrive `WHERE stato='in_attesa'`, quindi un
+      `archivio.cancel()` scrive `WHERE stato='in_attesa'`, quindi un
       bottone su una riga `in_corso` sarebbe piu' confuso di nessun bottone.
    2. Nessun `window.confirm()`: disdire non distrugge niente, la riga passa
       allo storico con `stato:'disdetta'`, resta leggibile per sempre ed e'
@@ -51,7 +51,7 @@
    all'apertura). Il bottone e' un `<button>` semplice: raggiungibile da
    tastiera e con il focus visibile del browser di serie, stessa disciplina
    del bottone «Disdici» qui sotto -- nessun sistema nuovo. Un 404 (riga
-   potata dopo 90 giorni, `azione/cronaca.py::CONSERVAZIONE_ESECUZIONI_S`) si
+   potata dopo 90 giorni, `azione/cronaca.py::EXECUTIONS_RETENTION_S`) si
    dichiara onestamente dentro il pannello; un guasto di rete passa dalla
    riga di stato di pagina (`setStatus`), come ogni altro guasto di rete qui.
    L'`avviso` della porta (`azione/porta.py`) non si appiattisce MAI in
@@ -293,7 +293,7 @@ window.HirisPromesseRoute = (function () {
 
     /* Condizione ESATTA `stato === 'in_attesa'`, non "riga in questa
        sezione": `in_corso` ci sta (non e' ancora concluso) ma non e'
-       disdicibile (`archivio.disdici` scrive WHERE stato='in_attesa'). */
+       disdicibile (`archivio.cancel` scrive WHERE stato='in_attesa'). */
     if (p.stato === 'in_attesa') {
       var btn = el('button', 'btn btn-ghost btn-ghost-danger btn-sm', 'Disdici');
       btn.type = 'button';
@@ -401,7 +401,7 @@ window.HirisPromesseRoute = (function () {
 
   /* Un errore di lettura e una lista vuota vera NON hanno lo stesso testo
      (guida §7): un guasto non deve poter sembrare "non hai promesse". Copre
-     anche il 503 di `handle_get_promesse` (archivio non disponibile), che
+     anche il 503 di `handle_get_agenda` (archivio non disponibile), che
      manda gia' `promesse: []` dentro un corpo comunque non-2xx: basta
      guardare `r.ok`, non serve leggere un campo apposito. */
   function renderError(pendingBody, historyBody, reload) {

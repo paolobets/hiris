@@ -24,7 +24,7 @@ async def rebuild(client, store) -> dict:
 
     Se TUTTI i registri sono in `non_disponibili` (Home Assistant
     irraggiungibile: riavvio, blip di rete, il ritardo dell'antirimbalzo
-    scaduto a HA spento), non si sostituisce niente. `archivio.sostituisci`
+    scaduto a HA spento), non si sostituisce niente. `archivio.replace`
     e' incondizionato: chiamato lo stesso, rimpiazzerebbe la casa buona di
     ieri con dieci liste vuote, e la casa resterebbe vuota finche' qualcuno
     non ritocca un registro — anche per settimane, se il ② (rilettura ad ogni
@@ -143,14 +143,14 @@ _ID_OUTSIDE_AREAS = "__fuori_dalle_aree__"
 # diverse possono condividere (e' generico, non dichiarato dall'utente), e
 # `cerca()`/l'indice (resolver.py) non lo indicizzano perche' non
 # esistono nell'anagrafe grezza di Home Assistant, solo nell'albero che
-# `gerarchia()` costruisce. Chi mostra il nome da solo (IMPORTANT ⑦) mostra
+# `hierarchy()` costruisce. Chi mostra il nome da solo (IMPORTANT ⑦) mostra
 # un vicolo cieco: il nome non porta a nessun `guarda()` che funzioni.
 _ID_PSEUDO_AREA = frozenset(
     {_ID_WITHOUT_AREA, _ID_UNLOADED_AREA, _ID_UNKNOWN_AREA, _ID_UNLOADED_DEVICE})
 
 
 def is_pseudo_area(area_id: str) -> bool:
-    """Vero se `area_id` e' una pseudo-area generata da `gerarchia()` (non
+    """Vero se `area_id` e' una pseudo-area generata da `hierarchy()` (non
     un'area vera di Home Assistant): chi la mostra per nome deve mostrare
     anche l'id, l'unica chiave con cui `guarda('area', ...)` la ritrova
     davvero (IMPORTANT ⑦)."""
@@ -179,7 +179,7 @@ def live_mirror(rows) -> tuple[dict[str, str], dict[str, str], dict[str, str],
 
     `classi` (entity_id -> `device_class`) e' arrivata per ultima ed e' la piu'
     importante: il registro delle entita' NON manda la classe (vedi
-    `classe_effettiva`), quindi finche' nessuno leggeva questa nessun sensore
+    `actual_class`), quindi finche' nessuno leggeva questa nessun sensore
     binario ha mai avuto una classe in tutto il prodotto.
 
     `da_quando` (entity_id -> `last_changed`) e' l'ultima arrivata: il campo
@@ -239,7 +239,7 @@ def name_with_id(name: str, id_: str | None) -> str:
     LA regola unica dietro ogni riferimento della casa che deve portare
     entrambi -- il nome protagonista, l'id accessorio: nata in `nucleo.py`
     per l'albero (aree, piani, automazioni/script -- le pseudo-aree la
-    applicavano gia' da sole), qui perche' `etichette_con_nome` sotto la
+    applicavano gia' da sole), qui perche' `labels_with_name` sotto la
     riusa per lo stesso motivo (T8, R2) -- **un posto solo**, non una
     seconda formattazione che domani diverge dalla prima (fondamenta:
     stessa forma per lo stesso fatto).
@@ -281,12 +281,12 @@ def label_names(home_space: dict) -> dict[str, str]:
 
 def _label_id_and_name(entry: dict, names: dict[str, str]) -> list[tuple[str, str]]:
     """(label_id, nome) per ogni etichetta valida della voce -- la base
-    condivisa da `etichette_con_nome` (ricerca: nomi PURI, mai l'id nel
-    testo che si indicizza) ed `etichette_con_id` (display: nome+id
+    condivisa da `labels_with_name` (ricerca: nomi PURI, mai l'id nel
+    testo che si indicizza) ed `labels_with_id` (display: nome+id
     accessorio, T8). Un id che il registro non conosce resta com'e' invece
     di sparire: e' un riferimento penzolante (o un registro delle etichette
     non letto), e «questa cosa ha un'etichetta che non so nominare» e' piu'
-    vero di «questa cosa non ha etichette». Stessa scelta di `gerarchia()`
+    vero di «questa cosa non ha etichette». Stessa scelta di `hierarchy()`
     con le aree sconosciute.
     """
     return [(str(e), names.get(str(e), str(e))) for e in (entry.get("etichette") or [])
@@ -302,15 +302,15 @@ def labels_with_name(entry: dict, names: dict[str, str]) -> list[str]:
     testo renderebbe "da controllare" irriconoscibile, perche' il termine
     indicizzato sarebbe "da controllare (id: da_controllare)" e nessuno lo
     scrive cosi'. Chi vuole l'id accanto per un display usa
-    `etichette_con_id` sotto: due usi diversi, due funzioni -- non una che
+    `labels_with_id` sotto: due usi diversi, due funzioni -- non una che
     prova a servirli entrambi.
     """
     return [name for _, name in _label_id_and_name(entry, names)]
 
 
 def labels_with_id(entry: dict, names: dict[str, str]) -> list[str]:
-    """Come `etichette_con_nome`, ma col `label_id` accanto come dato
-    ACCESSORIO -- `Nome (id: X)`, la stessa forma di `nome_con_id` che
+    """Come `labels_with_name`, ma col `label_id` accanto come dato
+    ACCESSORIO -- `Nome (id: X)`, la stessa forma di `name_with_id` che
     l'albero del nucleo usa gia' per aree/piani/automazioni (T8, R2:
     decisione del proprietario 2026-08-20,
     docs/design/2026-08-20-i-riferimenti.md §2).
@@ -319,9 +319,9 @@ def labels_with_id(entry: dict, names: dict[str, str]) -> list[str]:
     `esegui(bersaglio.etichette=[...])` lo pretende, e nessuna sequenza di
     chiamate lo produceva mai -- il vicolo cieco piu' radicale della
     famiglia (R2). Per USARE questa funzione al posto di
-    `etichette_con_nome`: solo dove il testo e' per un umano/modello da
+    `labels_with_name`: solo dove il testo e' per un umano/modello da
     LEGGERE (`guarda`), mai dove diventa un termine da CERCARE -- vedi il
-    docstring di `etichette_con_nome`.
+    docstring di `labels_with_name`.
     """
     return [name_with_id(name, id_) for id_, name in _label_id_and_name(entry, names)]
 
@@ -348,7 +348,7 @@ def category_names(home_space: dict) -> dict[tuple[str, str], str]:
     rispondesse per l'altra.
 
     Qui, e non in `domande.py`, per la stessa ragione di
-    `nomi_delle_etichette`: la stessa unione serve all'indice di `cerca`
+    `label_names`: la stessa unione serve all'indice di `cerca`
     (`memoria/resolver.py`), e scritta due volte sarebbe una ricerca che
     trova per un nome e una risposta che ne mostra un altro.
     """
@@ -374,7 +374,7 @@ def categories_with_name(entry: dict, names: dict[tuple[str, str], str]) -> dict
     riferimento penzolante (o un registro delle categorie non letto -- ne
     esistono quattro, uno per ambito, e possono cadere separatamente), e
     «questa cosa sta in una categoria che non so nominare» e' piu' vero di
-    «questa cosa non ha categoria». Stessa scelta di `etichette_con_nome`.
+    «questa cosa non ha categoria». Stessa scelta di `labels_with_name`.
     """
     assigned = entry.get("categorie")
     if not isinstance(assigned, dict):
@@ -424,7 +424,7 @@ _STATE_TRANSLATION = {
 # "on"/"off" non bastano per una porta o una finestra: "acceso"/"spento"
 # affermerebbe un'alimentazione che l'oggetto non ha. Il principio era gia'
 # scritto qui, e copriva CINQUE classi (`_CLASSI_APERTURA`) sul totale che
-# Home Assistant documenta (le stesse di `_SIGNIFICATO_CLASSE`, qui sotto):
+# Home Assistant documenta (le stesse di `_CLASS_MEANING`, qui sotto):
 # per questo un allagamento si leggeva «1 sensore binario (acceso)»,
 # indistinguibile da una lampadina.
 #
@@ -437,7 +437,7 @@ _CLASS_MEANING: dict[str, tuple[str, str]] = {
     "smoke": ("fumo rilevato", "nessun fumo"),
     "gas": ("gas rilevato", "nessun gas"),
     # ATTENZIONE: il valore-stringa e' `carbon_monoxide`, NON `co`. E' l'unica
-    # classe di `_SIGNIFICATO_CLASSE` in cui la stringa non e' il nome della
+    # classe di `_CLASS_MEANING` in cui la stringa non e' il nome della
     # costante in minuscolo (`BinarySensorDeviceClass.CO = "carbon_monoxide"`, verificato
     # su homeassistant/components/binary_sensor/__init__.py). Scritto `co`,
     # un allarme monossido non entra nel digesto e non viene tradotto: la
@@ -495,7 +495,7 @@ _READABLE_HVAC_MODE = {
 
 # `hvac_action`: cosa sta succedendo ADESSO, non cosa e' impostato. Un
 # termostato senza questo attributo (integrazioni che non lo mandano) resta
-# onesto per omissione -- vedi `_stato_leggibile_climate` sotto, che senza
+# onesto per omissione -- vedi `_readable_climate_state` sotto, che senza
 # azione nota dice solo l'impostazione e non inventa un funzionamento.
 _READABLE_HVAC_ACTION = {
     "heating": "sta scaldando", "cooling": "sta raffrescando",
@@ -506,7 +506,7 @@ _READABLE_HVAC_ACTION = {
 
 def _readable_climate_state(value, hvac_action: str | None) -> str:
     """Lo stato di un termostato in parole, onesto sulla differenza fra
-    impostazione e funzionamento (vedi `_HVAC_MODE_LEGGIBILE`).
+    impostazione e funzionamento (vedi `_READABLE_HVAC_MODE`).
 
     Senza `hvac_action` (integrazione che non lo manda, o valore fuori
     vocabolario) si dichiara solo l'impostazione -- «impostato su
@@ -530,12 +530,12 @@ def translate_state(value, device_class: str | None = None, domain: str | None =
                     hvac_action: str | None = None) -> str:
     """Il valore in parole. La CLASSE decide: `on` di un `moisture` e' «bagnato»,
     `on` di un `door` e' «aperto», `on` di una luce e' «acceso». Vedi
-    `_SIGNIFICATO_CLASSE`, che porta i significati dichiarati da Home Assistant.
+    `_CLASS_MEANING`, che porta i significati dichiarati da Home Assistant.
 
     `dominio` e `hvac_action` sono opzionali e servono a UN solo dominio,
     `climate`: senza di loro un termostato traduce come qualunque altro stato
     sconosciuto (la stringa grezza, `heat`), che e' esattamente il difetto che
-    questa firma esiste per chiudere -- vedi `_stato_leggibile_climate`.
+    questa firma esiste per chiudere -- vedi `_readable_climate_state`.
     Chi non li passa (il nucleo, per scelta: e' testo pagato a ogni turno, e
     il climate non entra mai in "Notevole adesso") si comporta come prima."""
     if domain == "climate":
@@ -566,7 +566,7 @@ def domain_of(entity_id) -> str:
     Vince l'ID INTERO, che era anche la scelta del nucleo: un dominio vuoto
     sparisce dai raggruppamenti e dai conteggi -- cioe' fa raccontare una casa
     piu' piccola di com'e' -- mentre un dominio strano si vede e si va a
-    guardare. Stesso principio per cui `_nome_dominio` lascia uscire un
+    guardare. Stesso principio per cui `_domain_name` lascia uscire un
     dominio che non sa tradurre invece di saltare la riga.
     """
     text = str(entity_id)
@@ -581,15 +581,15 @@ def actual_area(entity: dict, device_area: dict[str, str | None]) -> str | None:
     sparire meta' della casa: moltissime entita' non hanno un'area propria, e
     la portano dal dispositivo -- e' il caso NORMALE, non l'eccezione.
 
-    Esiste come funzione per la stessa ragione di `unita_effettiva`: la
-    prendono due posti diversi. `gerarchia()` la usa per costruire l'albero, e
+    Esiste come funzione per la stessa ragione di `actual_unit`: la
+    prendono due posti diversi. `hierarchy()` la usa per costruire l'albero, e
     `memoria.interpretazione.deduci_unit` per capire quale entita' di
     un'area puo' dare l'unita' a un ricordo. Scritta due volte lo era gia': il
     secondo confrontava il solo `area_id` proprio, quindi su una casa vera non
     trovava mai niente e archiviava «in cucina non sotto i 20» come «da 20»
     nudo, senza scala, per sempre.
 
-    `device_area` e' `{id_dispositivo: area_id}` -- la costruisce
+    `device_area` e' `{device_id: area_id}` -- la costruisce
     `device_areas()`, qui sotto -- vuoto quando il
     registro dei dispositivi non ha risposto. Chi deve DISTINGUERE "non ha
     area" da "non ho potuto leggere i dispositivi" (l'albero lo fa, con la
@@ -600,12 +600,12 @@ def actual_area(entity: dict, device_area: dict[str, str | None]) -> str | None:
 
 
 def device_areas(devices) -> dict[str, str | None]:
-    """`{id_dispositivo: area_id}`, la mappa che `actual_area` legge.
+    """`{device_id: area_id}`, la mappa che `actual_area` legge.
 
     **Esisteva due volte, e due nomi diversi l'avevano resa invisibile**
     (misura ordine-e-preposizioni, 31/08): la stessa dict-comprehension viveva
     qui dentro `hierarchy()` come `device_area` e in
-    `memoria/interpretazione.py::deduci_unit` come `area_del_device`, passata
+    `memoria/interpretazione.py::deduci_unit` come `device_area`, passata
     alla stessa `actual_area()`. Nessuno strumento poteva vederlo -- il
     rilevatore di doppioni confronta i PEZZI dei nomi, e li' i pezzi erano gli
     stessi ma l'ordine no. E' la stessa ragione per cui `actual_area` esiste
@@ -645,10 +645,10 @@ def actual_class(declared: str | None, live: str | None) -> str | None:
     Quindi la colonna `classe` dell'anagrafe e' sempre NULL, su ogni casa, e
     per tutto il tempo in cui e' stata l'unica fonte:
 
-    - `nucleo._e_un_evento("binary_sensor", None, "on")` era sempre falso:
+    - `nucleo._is_event("binary_sensor", None, "on")` era sempre falso:
       NESSUN sensore binario e' mai entrato in «Notevole adesso». Un
       allagamento, un principio d'incendio, il monossido: muti;
-    - le voci di `_SIGNIFICATO_CLASSE` -- l'intera fetta 3.4.0, con
+    - le voci di `_CLASS_MEANING` -- l'intera fetta 3.4.0, con
       `carbon_monoxide` verificato una riga per volta -- erano irraggiungibili;
     - `guarda` prometteva la classe e rispondeva `null` su ogni entita'.
 
@@ -764,12 +764,12 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
     Le entita' NASCOSTE (`hidden_by` non nullo: l'utente le ha tolte dalle
     proprie viste in Home Assistant) prendono la STESSA forma, dalla fetta
     "nascoste fuori dagli elenchi" (2026-08-25): fuori da `entita` -- che
-    conta, e che alimenta anche "La casa" del nucleo (`nucleo._righe_casa`
+    conta, e che alimenta anche "La casa" del nucleo (`nucleo._home_space_lines`
     legge `area["entita"]` cosi' com'e') -- dentro una terza chiave
     parallela, `entita_nascoste`. Il proprietario ha misurato in produzione
     che `guarda("area", "sala_da_pranzo")` restituiva sette luci mescolate,
     quattro delle quali nascoste: il campo `nascosta` c'era gia' su ogni
-    entita' (`domande._arricchisci_entita`), ma stare nella STESSA lista non
+    entita' (`domande._enrich_entity`), ma stare nella STESSA lista non
     ha impedito che venissero elencate lo stesso -- la prova che un dato
     presente non basta, la sua POSIZIONE deve escluderlo da chi legge solo
     "cosa c'e' in questa stanza". Regola del proprietario: "HIRIS non prende
@@ -786,7 +786,7 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
     Effetto collaterale voluto, non un caso: "La casa" del nucleo, che legge
     lo stesso `area["entita"]`, smette anch'essa di contare le nascoste nei
     conteggi per dominio -- allineandosi a "Notevole adesso"
-    (`nucleo._righe_notevole`), che le esclude gia' da prima con un `if
+    (`nucleo._highlight_lines`), che le esclude gia' da prima con un `if
     e.get("nascosta"): continue` esplicito. Prima di questa fetta le due
     sezioni del nucleo si contraddicevano fra loro: una le contava, l'altra
     no.
@@ -833,7 +833,7 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
             "entita_umidita": area.get("entita_umidita"),
             "entita": per_area.get(area["id"], []),
             # Non nei conteggi (vedi il docstring), ma raggiungibili nel
-            # dettaglio di un'area -- vedi `domande._guarda_area`.
+            # dettaglio di un'area -- vedi `domande._view_area`.
             "entita_disabilitate": per_area_disabled.get(area["id"], []),
             # Stessa forma, per le nascoste: non nei conteggi, raggiungibili
             # a parte -- vedi il docstring qui sopra.
@@ -899,7 +899,7 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
 
 # --- il confronto: l'albero smette di essere un'affermazione ---------------
 #
-# `gerarchia()` qui sopra e' una REPLICA che HIRIS costruisce dai registri: e'
+# `hierarchy()` qui sopra e' una REPLICA che HIRIS costruisce dai registri: e'
 # un'affermazione sulla casa, e fino a questa fetta niente la verificava. Se
 # un'area contiene cose che HIRIS non le attribuisce, o se HIRIS le attribuisce
 # cose che non ci sono, non c'era modo di accorgersene -- se non sbagliando una
@@ -909,7 +909,7 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
 # (`HAClient.extract_from_target`) RISOLVE un'area invece di dedurla. Le
 # funzioni qui sotto sono la meta' pura di quel confronto: la rete la fa il
 # chiamante (`server.tree_comparison_round`), qui arrivano solo le risposte
-# gia' lette -- la stessa disciplina di `componi()`, che riceve `stato` e
+# gia' lette -- la stessa disciplina di `compose()`, che riceve `stato` e
 # `problemi` come argomenti.
 
 # QUANTE aree per giro, e perche' non tutte.
@@ -920,7 +920,7 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
 # il numero che tiene il costo del controllo sotto la meta' di quello della
 # ricostruzione, e che con la rotazione qui sotto copre comunque tutta la casa
 # in poche decine di minuti. Non e' un tetto di sicurezza: e' il CAMPIONE, e
-# chi lo legge deve saperlo -- per questo `confronta_con_home_assistant`
+# chi lo legge deve saperlo -- per questo `compare_with_home_assistant`
 # dichiara sempre `aree_totali`, e il nucleo non dice mai una divergenza senza
 # dire su quante aree l'ha cercata.
 AREAS_PER_ROUND = 3
@@ -929,7 +929,7 @@ AREAS_PER_ROUND = 3
 def _area_lookup(floors: list[dict]) -> dict[str, dict]:
     """`{area_id: area}` per le sole aree VERE dell'albero.
 
-    Le pseudo-aree (`e_pseudo_area`: «Senza area», «Aree non lette», «Area
+    Le pseudo-aree (`is_pseudo_area`: «Senza area», «Aree non lette», «Area
     sconosciuta», «Dispositivi non letti») restano fuori, e non e' un
     dettaglio: non esistono in Home Assistant, quindi chiedergli cosa contiene
     `__senza_area__` risponderebbe `aree_mancanti` -- una divergenza inventata
@@ -952,7 +952,7 @@ def tree_areas(floors: list[dict]) -> list[dict]:
 
     L'ordine e' per ID e non per nome: e' l'unica chiave che Home Assistant
     garantisce stabile (rinominare un'area non cambia il suo `area_id`), e la
-    rotazione del campione (`scegli_campione`) ci si appoggia -- un ordine che
+    rotazione del campione (`choose_sample`) ci si appoggia -- un ordine che
     cambia quando l'utente rinomina una stanza farebbe saltare il turno a
     un'area a caso.
     """
@@ -1008,14 +1008,14 @@ def _excluded_from_comparison(entity: dict | None) -> bool:
     cioe' una riga che smette subito di essere letta.
 
     - **nascoste**: `_include_entry` scarta ogni voce con `hidden_by` non
-      nullo. `gerarchia()` le tiene anche lei -- fuori da `entita` (che
+      nullo. `hierarchy()` le tiene anche lei -- fuori da `entita` (che
       conta) e dalla `nostre` di questo confronto, dentro la chiave parallela
       `entita_nascoste` (fetta "nascoste fuori dagli elenchi", 2026-08-25):
       sono entita' vere, che l'utente ha solo tolto dalle proprie viste, non
       voci che HIRIS ha perso. Questa funzione non deve piu' scartarle a
       mano sul lato "nostre" -- non ci sono gia' -- ma resta l'unico modo di
       scartarle sul lato "loro" (`note`, letto dall'anagrafe grezza qui
-      sotto, non dall'albero di `gerarchia()`);
+      sotto, non dall'albero di `hierarchy()`);
     - **di servizio** (`entity_category`, cioe' `config`/`diagnostic`): lo
       stesso `_include_entry` le scarta quando `primary_entities_only` e'
       vero, ed e' vero -- `extract_from_target` lo passa esplicito, perche'

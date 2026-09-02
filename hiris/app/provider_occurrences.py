@@ -33,12 +33,12 @@ ne dica l'età invece di regalare una freschezza che la produzione non ha -- il
 difetto più grave della settimana è sopravvissuto a 1207 test proprio perché
 una cache finta si aggiornava da sola.
 
-**L'orologio è iniettato.** `RegistroEsiti(orologio=...)` prende una funzione,
+**L'orologio è iniettato.** `OccurrenceRegistry(orologio=...)` prende una funzione,
 e nei test è una lista mutabile che avanza solo quando il test lo dice: con un
 `time.time()` cotto dentro, «3 min fa» non sarebbe provabile.
 
 Le parole che l'utente legge NON stanno qui: stanno in
-`decisione_modelli.occurrence_phrase`, dove stanno tutte le altre affermazioni sul
+`model_resolution.occurrence_phrase`, dove stanno tutte le altre affermazioni sul
 prodotto. Qui ci sono solo i fatti misurati.
 """
 from __future__ import annotations

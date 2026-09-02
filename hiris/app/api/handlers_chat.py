@@ -15,13 +15,13 @@ from ..chat_store import (
     load_history,
 )
 
-# `modello_cli` e `resolve_model` sono usciti da qui con la fetta «il modello
+# `cli_model` e `resolve_model` sono usciti da qui con la fetta «il modello
 # del piano»: servivano a comporre il modello del ponte da
 # `provider_models["claude"]`, e adesso quel modello e' un campo che si legge.
-# `modello_cli` ha un solo chiamante rimasto -- il validatore del campo, in
+# `cli_model` ha un solo chiamante rimasto -- il validatore del campo, in
 # `handlers_models._clean_subscription_model` -- e questo import in meno
 # scioglie anche mezzo ciclo: era `handlers_chat` -> `agent.runner` la meta'
-# che obbligava `agent/runner._nome_server_mcp` a un import differito.
+# che obbligava `agent/runner._mcp_server_name` a un import differito.
 from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
 from ..model_resolution import downgrade_note
 from ..steering import who_answers
@@ -130,7 +130,7 @@ def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
         # Il registro dei servizi (`azione/registro.py`), la STESSA istanza
         # che riceve `porta_azione` qui sopra -- mai una seconda costruzione.
         # Serve a `promise` per verificare un `fai` ADESSO
-        # (`ToolDispatcher._verifica_ora`) e un `recapito`.
+        # (`ToolDispatcher._verify_now`) e un `recapito`.
         registry=app.get("registro_servizi"),
         # L'archivio delle promesse (`schedulatore/archivio.py`): la casa di
         # `promise`/`agenda`/`cancel`.
@@ -214,7 +214,7 @@ def compose_chat_context(app, data_dir: str) -> str:
     # chiamante era il context-preview dell'editor Chatbot, uscito con lei.
     #
     # Se il nucleo non si compone (nessun archivio della casa, anagrafe mai
-    # letta) `componi()` non tace: lo dichiara nel testo stesso ("Nessun
+    # letta) `compose()` non tace: lo dichiara nel testo stesso ("Nessun
     # piano registrato.", "Stato non letto ... non e' lo stesso di 'niente
     # di notevole'", una voce in "Cio' che HIRIS ignora") -- lo stesso
     # principio gia' verificato per `handle_get_briefing`
@@ -262,11 +262,11 @@ def compose_chat_context(app, data_dir: str) -> str:
 
 
 # fetta «le promesse seguono la catena» (22/08/2026): `_bridge_on` e
-# `_piano_puo_rispondere` sono USCITE da qui e vivono in `app/instradamento.py`,
+# `_subscription_can_answer` sono USCITE da qui e vivono in `app/steering.py`,
 # insieme alla decisione che compongono. Restavano importabili da questo nome
 # per due soli chiamanti -- questa funzione e i suoi test -- e lasciarle qui
-# avrebbe reso circolare l'import: la chat chiede a `instradamento`, e
-# `instradamento` avrebbe dovuto chiedere alla chat.
+# avrebbe reso circolare l'import: la chat chiede a `steering`, e
+# `steering` avrebbe dovuto chiedere alla chat.
 #
 # Non sono un doppione ri-esportato: si importano da dove vivono.
 
@@ -380,7 +380,7 @@ async def _enqueue_chat_job(
         # questo punto legge da `models_config["ponte"]`.
         #
         # Fino alla 3.1.0 qui si componeva
-        # `modello_cli(resolve_model("auto", "chat", provider_models["claude"]))`,
+        # `cli_model(resolve_model("auto", "chat", provider_models["claude"]))`,
         # e lo stesso identico calcolo viveva anche in
         # `handlers_models._models_in_use`: due implementazioni della stessa
         # regola, libere di divergere. Peggio della duplicazione era cio' che
@@ -395,7 +395,7 @@ async def _enqueue_chat_job(
         # legge qui e' gia' un alias della CLI, e non c'e' niente da tradurre.
         # Il predefinito `"sonnet"` e' quello di `_STORE_DEFAULTS` e vale
         # solo per un'app senza archivio (i test): sull'impianto la semina
-        # (`migrazione_opzioni.seed_subscription_model`) ha gia' scritto il
+        # (`options_migration.seed_subscription_model`) ha gia' scritto il
         # campo prima che un turno possa arrivare qui.
         "model": ((request.app.get("models_config") or {})
                   .get("ponte", {}).get("modello", "sonnet")),
@@ -468,7 +468,7 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
         occurrence_registry.fallimento(
             "subscription", family="scaduto", code=None,
             # Il messaggio è per chi legge un log, non per la pagina: la frase
-            # che l'utente vede la compone `decisione_modelli.occurrence_phrase`.
+            # che l'utente vede la compone `model_resolution.occurrence_phrase`.
             message="nessuna risposta entro la scadenza del ponte",
             # Quanto il piano ha AVUTO, misurato sul job e non riletto
             # dall'archivio: la scadenza può essere stata cambiata mentre il
@@ -829,7 +829,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     # sbagliato, seed mai girato) faceva silenziosamente cadere `agent` a
     # `None`: il prompt degradava a una stringa vuota E la cronologia
     # smetteva di essere letta/scritta, senza che nessun log lo dicesse.
-    # `impostazioni_chat` non e' mai `None` (`ChatSettings.load` non lo
+    # `chat_settings` non e' mai `None` (`ChatSettings.load` non lo
     # restituisce mai) -- quel ramo di degrado e' impossibile per
     # costruzione, non solo non piu' preso. fetta E4 Task 5 ("un bot solo"):
     # anche l'id transitorio che qui sotto selezionava la cronologia

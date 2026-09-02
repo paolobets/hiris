@@ -328,7 +328,7 @@ def instant_epoch(raw) -> float | None:
     «alle 17» di quale fuso? E' la stessa regola dell'unita' di misura
     applicata al tempo -- l'UNICA lettura di un istante nel prodotto: la usa
     questo modulo per cio' che arriva da Home Assistant, e la usa
-    `casa/strumenti.py` (`_prometti`) per l'istante che arriva dalla chat. Era
+    `casa/strumenti.py` (`_promise`) per l'istante che arriva dalla chat. Era
     scritta due volte (una in ciascun modulo, letteralmente identica); questo
     modulo e' leggero e non importa quasi niente, quindi resta qui e
     `strumenti.py` la importa -- mai il contrario.
@@ -419,7 +419,7 @@ def _sample(points: list[dict], count: int) -> list[dict]:
         return list(points)
     if count <= 1:
         # Con un solo posto non si puo' tenere primo E ultimo: si tiene il
-        # piu' recente. Irraggiungibile con `MAX_PUNTI_IN_RISPOSTA` (120), ma
+        # piu' recente. Irraggiungibile con `MAX_POINTS_PER_ANSWER` (120), ma
         # la funzione ha un secondo chiamante (il ramo statistiche) e senza
         # questa guardia `quanti - 1` diventerebbe zero al denominatore.
         return [points[-1]]
@@ -449,7 +449,7 @@ async def logbook(*, ha, journal, entity: str | None, hours,
     qui, al momento della lettura, e mai in una tabella.
 
     L'abbinamento e' dichiarato `probabile` e non si finge certo: vedi
-    `TOLLERANZA_ABBINAMENTO_S`. Restituire un `esecuzione_id` che il modello
+    `MATCH_TOLERANCE_S`. Restituire un `esecuzione_id` che il modello
     non puo' risolvere rispetterebbe la lettera della fondamenta 2 violando la
     4, quindi l'atto viaggia con origine e servizio, non col solo numero.
 
@@ -474,8 +474,8 @@ async def logbook(*, ha, journal, entity: str | None, hours,
     # faccia (l'assenza di `per_mano_di` su ogni voce), e senza questa
     # dichiarazione il modello direbbe «l'ha accesa qualcuno, non so chi»
     # ANCHE quando e' stato HIRIS e il dato c'era, solo illeggibile. E' la
-    # stessa ragione per cui `_cerca` costruisce `non_ho_potuto_guardare`
-    # (`_cecita` in strumenti.py): due facce diverse per due fatti diversi.
+    # stessa ragione per cui `_search` costruisce `non_ho_potuto_guardare`
+    # (`_blind_spots` in strumenti.py): due facce diverse per due fatti diversi.
     journal_loaded = False
     if journal is None:
         logger.debug("logbook: nessuna cronaca disponibile, attribuzione persa")

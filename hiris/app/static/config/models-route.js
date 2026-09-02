@@ -29,14 +29,14 @@
 
    LA REGOLA DI QUESTO FILE: la pagina disegna ciò che le viene detto e non
    calcola niente. `catena[]` e `fuori_catena[]` arrivano già ordinate da
-   `decisione_modelli.compose_topology`, la frase in cima da
+   `model_resolution.compose_topology`, la frase in cima da
    `compose_now`, e ogni parola che afferma qualcosa sul prodotto (i nomi,
    le nature, «manca il token», il perché una riga non si sposta) viene dal
    payload. Se qui dentro comparisse un `.sort()`, un confronto fra
    `chain_order` e le credenziali, o un `if (id === 'subscription')`, il
    difetto sarebbe tornato per un'altra porta -- e il test «la pagina NON
    ricostruisce la catena» (Task 2) è lì per accorgersene.
-   L'unica eccezione, delimitata e dichiarata, è `ricomponiTopologia`: vedi il
+   L'unica eccezione, delimitata e dichiarata, è `recomposeLayout`: vedi il
    commento sopra la funzione.
 
    Vale anche per il PANNELLO DEL MODELLO (Task 9), che è la parte più recente
@@ -81,7 +81,7 @@
   }
 
   /* L'ordine di «Fuori dalla catena», dove un ordine non significa niente e
-     quindi non può contraddire niente. DUPLICA `decisione_modelli.FIXED_ORDER`
+     quindi non può contraddire niente. DUPLICA `model_resolution.FIXED_ORDER`
      (il frontend non importa Python): le due liste sono tenute legate da un
      test che si rompe -- test_models_frontend_wiring.py. */
   var FIXED_ORDER = ['claude', 'subscription', 'openrouter', 'openai', 'ollama'];
@@ -111,7 +111,7 @@
        mandarla al server con una PUT vorrebbe dire scrivere quei predefiniti
        sopra la configurazione vera. I tre preset «Rifai la catena» stanno
        nell'intestazione della sezione, cioè restano a schermo anche quando
-       `renderErrore` sostituisce il corpo: dopo un GET fallito erano, insieme
+       `renderError` sostituisce il corpo: dopo un GET fallito erano, insieme
        a «Riprova», l'unica cosa cliccabile della pagina, e un click mandava
        una PUT che azzerava l'archivio. Nascono `disabled` (mount) e si
        abilitano di là. */
@@ -181,7 +181,7 @@
      niente -- dice cosa succede.
 
      Non compone NESSUNA frase: `adesso.frase` e ogni `diagnosi[].testo`
-     arrivano già scritti da `decisione_modelli.compose_now`. È l'invariante
+     arrivano già scritti da `model_resolution.compose_now`. È l'invariante
      2 della spec applicato al testo e non solo all'ordine: se le parole si
      componessero qui, esisterebbero due posti che affermano cose sul
      prodotto, e uno dei due prima o poi affermerebbe più di quanto il sistema
@@ -233,7 +233,7 @@
     return b;
   }
 
-  /* Applica il gesto, e poi RILEGGE. Come `scegliModello` e per la stessa
+  /* Applica il gesto, e poi RILEGGE. Come `chooseModel` e per la stessa
      ragione: ciò che cambia non è una posizione già determinata dal gesto (le
      frecce si ridisegnano da sé), è CHI RISPONDE -- la frase in cima, la
      presenza del piano in testa, il connettore. Ricomporlo qui vorrebbe dire
@@ -364,7 +364,7 @@
        quaranta richieste», mentre una chiave a credito zero veniva mostrata
        come funzionante.
 
-       La frase arriva dal payload (`decisione_modelli.occurrence_phrase`) e non si
+       La frase arriva dal payload (`model_resolution.occurrence_phrase`) e non si
        compone qui: dice quanto tempo fa, con quale codice e da quante
        richieste, cioè tre affermazioni sul prodotto. È anche il motivo per cui
        questa riga non ha bisogno di essere toccata dal Task 14: quando il
@@ -401,7 +401,7 @@
      catalogo aperto per difetto.
 
      Il pannello dell'abbonamento offre tre voci e non di più, e non è una
-     semplificazione: `agent/runner.modello_cli` riduce tutto a
+     semplificazione: `agent/runner.cli_model` riduce tutto a
      opus/haiku/sonnet per sottostringa. Offrire `claude-opus-4-7` sul piano
      sarebbe una precisione finta -- sul ponte due opus diversi producono lo
      stesso identico comportamento.
@@ -569,7 +569,7 @@
       box.appendChild(el('p', 'pannello-spiegazione', data.spiegazione));
     }
     /* Da quando ha effetto la scelta, se mai avesse un tempo suo. Oggi il
-       backend tace su tutti e cinque i provider (`decisione_modelli`: ogni
+       backend tace su tutti e cinque i provider (`model_resolution`: ogni
        valore di questa pagina vale dal prossimo messaggio) e questa riga non
        si disegna. Il canale resta perché la pagina non deve imparare una
        forma nuova il giorno in cui un campo tornasse ad avere un tempo
@@ -827,7 +827,7 @@
      pagina non aspetta il server: è la disciplina di scrittura ottimistica che
      questa pagina ha già), si salva, e se il salvataggio fallisce si torna
      ESATTAMENTE allo stato precedente -- posizioni comprese, perché
-     `ricomponiTopologia` le ricalcola dall'ordine. */
+     `recomposeLayout` le ricalcola dall'ordine. */
   function writeChain(newOrder, errText) {
     /* Niente si scrive prima di aver letto: vedi `state.loaded`. */
     if (!state.loaded) return;
@@ -1000,7 +1000,7 @@
      -- una fetch il cui risultato nessuno legge, e non una qualunque: quella
      rotta interroga davvero OpenAI, OpenRouter e Ollama, con cinque secondi di
      pazienza ciascuno. Adesso si legge quando serve, un provider alla volta,
-     all'apertura del pannello (`caricaPannello`). */
+     all'apertura del pannello (`loadPanel`). */
   function loadModelsAndConfig() {
     var body = byId('catena-body');
     if (body) { clearEl(body); body.appendChild(el('p', 'field-hint', 'Caricamento…')); }

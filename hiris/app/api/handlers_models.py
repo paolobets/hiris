@@ -55,10 +55,10 @@ _STORE_DEFAULTS = {
     # significherebbe «non so», e «non so» e' la forma con cui la regola «se
     # non so niente allora comportati come prima» e' gia' rientrata quattro
     # volte in questo prodotto, da quattro porte diverse. Il campo nasce con un
-    # valore, e la semina (`migrazione_opzioni.seed_subscription_model`) lo
+    # valore, e la semina (`options_migration.seed_subscription_model`) lo
     # sostituisce una volta sola con quello che l'installazione stava gia'
     # usando.
-    # I numeri vengono da `migrazione_opzioni._DEFAULTS`, non ridigitati:
+    # I numeri vengono da `options_migration._DEFAULTS`, non ridigitati:
     # erano gli stessi valori in due moduli (piu' due volte dentro l'altro), ed
     # e' la struttura che ha gia' prodotto il debito F. `modello` e' l'UNICO
     # campo in piu' -- la semina lo tratta a parte
@@ -117,7 +117,7 @@ def _clean_subscription_model(value, default: str) -> str:
     """Uno dei tre alias, sempre. Si RIPORTA DENTRO come i due `_clamp_int`
     accanto: un valore fuori dall'insieme non e' un corpo malformato.
 
-    Il riduttore e' `agent.runner.modello_cli`, che qui trova il suo UNICO
+    Il riduttore e' `agent.runner.cli_model`, che qui trova il suo UNICO
     chiamante rimasto. Fino alla fetta «il modello del piano» ne aveva due --
     il turno del ponte (`handlers_chat._enqueue_chat_job`) e la riga della
     pagina (`_models_in_use`) -- che erano lo stesso calcolo fatto in due
@@ -170,7 +170,7 @@ def _store_keys(raw: dict) -> dict:
         # dell'opzione da cui viene (`llm_strategy: "balanced"` in
         # config.yaml). Valeva "", e la differenza faceva contare come
         # «copiato» un valore che nessuno aveva scelto -- vedi
-        # `migrazione_opzioni._DEFAULTS`.
+        # `options_migration._DEFAULTS`.
         "strategia_ultima": strategy if isinstance(strategy, str) else "balanced",
         "seminato": bool(raw.get("seminato", False)),
         # Il segno della semina della CATENA, distinto da `seminato` (che e'
@@ -366,7 +366,7 @@ def save_models_config(data_dir: str, data: dict, *, flags: bool = False) -> dic
 # per poterle togliere.
 #
 # Task 8: accanto viveva `_CONFIG_PROVIDERS`, le stesse cinque voci con la
-# label, per il payload `providers[]`. Le label le compone `decisione_modelli`
+# label, per il payload `providers[]`. Le label le compone `model_resolution`
 # per le due liste vere (`catena`/`fuori_catena`), e un secondo elenco di nomi
 # non serviva più a nessuno.
 _CONFIG_PROVIDER_IDS = ("subscription", "claude", "openai", "openrouter", "ollama")
@@ -550,7 +550,7 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
         models=_models,
         bridge_active=_bridge_on,
         # Che cosa è successo DAVVERO, per provider (Task 11). Non una sonda:
-        # `RegistroEsiti` è alimentato dal ciclo di ripiego del router, cioè
+        # `OccurrenceRegistry` è alimentato dal ciclo di ripiego del router, cioè
         # dal traffico vero. Sondare cinque provider a ogni apertura della
         # pagina costerebbe denaro e quota per un'informazione che scade
         # subito, e trasformerebbe questa pagina in una cosa che conviene non
@@ -562,7 +562,7 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
         # nessuna osservazione, e la pagina lo dice.
         occurrences=(request.app["registro_esiti"].occurrences()
                if request.app.get("registro_esiti") is not None else {}),
-        # L'orologio di parete, letto QUI e passato: `decisione_modelli` è un
+        # L'orologio di parete, letto QUI e passato: `model_resolution` è un
         # modulo di funzioni pure e non ne legge nessuno. È anche l'unico modo
         # in cui «3 min fa» è una cosa che si possa provare.
         now=time.time(),
@@ -610,7 +610,7 @@ async def handle_save_models_config(request: web.Request) -> web.Response:
 # sull'ambiente -- una casella che non fa niente, cioè il difetto di questa
 # fetta rimesso in un pannello nuovo. Adesso il valore arriva come argomento a
 # `_fetch_openrouter_models`, e `HIRIS_HIDE_FREE_MODELS` perde il suo unico
-# lettore di comportamento (resta letta da `migrazione_opzioni` per la semina,
+# lettore di comportamento (resta letta da `options_migration` per la semina,
 # e l'opzione esce da `config.yaml` col Task 13).
 
 # Recent Claude models (Anthropic doesn't expose a public list-models endpoint)
@@ -620,7 +620,7 @@ async def handle_save_models_config(request: web.Request) -> web.Response:
 # un difetto -- `resolve_model("auto", "chat", "auto")` restituisce "auto" e la
 # richiesta parte con `model="auto"` verso un provider che quel nome non lo
 # conosce. Nell'archivio «auto» è la STRINGA VUOTA, e il pannello la offre come
-# prima voce con la sua nota (`decisione_modelli.AUTO_NOTE`), che dice anche a
+# prima voce con la sua nota (`model_resolution.AUTO_NOTE`), che dice anche a
 # quale modello si risolve oggi.
 _CLAUDE_MODELS = [
     "claude-haiku-4-5-20251001",
@@ -648,7 +648,7 @@ _OPENAI_SKIP = re.compile(r"instruct|embed|vision|realtime|audio|transcribe|tts|
 # validità. Da qui si poteva stare davanti a un elenco che sembra vero, per un
 # provider che non risponderebbe comunque. Il valore torna al chiamante e
 # arriva fino al pannello, che lo dice con le parole di
-# `decisione_modelli.provenance`.
+# `model_resolution.provenance`.
 async def _fetch_openai_models(api_key: str) -> tuple[list[str], str]:
     headers = {"Authorization": f"Bearer {api_key}"}
     timeout = aiohttp.ClientTimeout(total=5)
@@ -950,11 +950,11 @@ async def handle_list_models(request: web.Request) -> web.Response:
         leggere, e il perché è la credenziale». Serve perché un pannello che si
         apre deve SEMPRE dare una risposta -- nascondere è comodo per chi
         capisce e crudele per chi non capisce perché una cosa è sparita -- e la
-        risposta la scrive `decisione_modelli`, non questa pagina.
+        risposta la scrive `model_resolution`, non questa pagina.
         """
         if pid == "subscription":
             # Tre alias, sempre gli stessi: non si leggono da nessuna parte
-            # perché non c'è niente da leggere. `modello_cli` ne produce
+            # perché non c'è niente da leggere. `cli_model` ne produce
             # esattamente tre. Senza il token il piano non risponde e non c'è
             # niente da scegliere: la riga lo dice già, e il pannello lo ridice
             # con la stessa parola invece di offrire tre voci inerti.
@@ -992,7 +992,7 @@ async def handle_list_models(request: web.Request) -> web.Response:
             return (values, source, provider_models.get("openrouter", ""),
                     in_use["openrouter"])
         # Ollama. Nessuna voce «auto»: il runner locale usa SEMPRE il modello
-        # scelto (`local=True` fa vincere `_modello_scelto()` su ogni altro
+        # scelto (`local=True` fa vincere `_chosen_model()` su ogni altro
         # ramo di `_resolve_model`),
         # perché quell'istanza ne ha scaricato uno solo e chiedergliene un
         # altro fallirebbe.

@@ -86,7 +86,7 @@ def validate(interpretation: dict, lookup,
     due soli argomenti) sono i tipi di ancora (`area`/`entita`/`dispositivo`)
     per cui `indice` non puo' dare una risposta affidabile -- l'anagrafe non
     e' mai stata letta, o quel registro specifico non ha risposto
-    all'ultima lettura (`ArchivioCasa.non_disponibili()`). Restano
+    all'ultima lettura (`HomeSpaceStore.non_disponibili()`). Restano
     scartate lo stesso (fail-closed: un'ancora senza riscontro non si
     scrive), ma con la ragione vera -- "non si puo' verificare", non "non
     esiste", che sarebbe falso quando semplicemente non si e' potuto

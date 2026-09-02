@@ -6,7 +6,7 @@ senza una politica di ritenzione da governare e senza mai cancellare dati
 dell'utente a scadenza.
 
 Non legge l'orologio: lo riceve (`now=`), come l'archivio delle promesse e
-come `casa/nucleo.componi`. E non legge il fuso alla costruzione ma a ogni
+come `casa/nucleo.compose`. E non legge il fuso alla costruzione ma a ogni
 scrittura: la casa puo' cambiarlo (`core_config_updated`), e un fuso cotto qui
 dentro sarebbe quello di quando l'add-on e' partito.
 """
@@ -147,7 +147,7 @@ class UsageStore:
     #
     # `totali` NON ha una query propria: somma le sezioni. Due strade di
     # calcolo per lo stesso numero sono due strade libere di divergere, e
-    # divergerebbero proprio su `costo_parziale` -- il campo che impedisce
+    # divergerebbero proprio su `partial_cost` -- il campo che impedisce
     # alla pagina di spacciare un pavimento per un costo.
 
     def _where(self, da: str) -> tuple[str, tuple]:
@@ -200,7 +200,7 @@ class UsageStore:
             section["modelli"].append({
                 "modello": r["modello"],
                 "costo_usd": r["costo_usd"],
-                # `MIN(costo_stato)` e' alfabetico e non significa niente: se
+                # `MIN(cost_state)` e' alfabetico e non significa niente: se
                 # anche un solo giorno e' ignoto, la riga lo e'. Si sceglie
                 # esplicitamente invece di fidarsi dell'ordine delle lettere.
                 "costo_stato": "non_noto" if r["ignoti"] else r["uno_stato"],

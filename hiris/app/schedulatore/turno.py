@@ -254,7 +254,7 @@ def _accoda_al_bridge(app, promise: dict) -> dict:
     finisce senza aver concluso.
 
     Il ponte gira altrove e non ha gli archivi: **cio' che non entra nel job
-    non esiste per lui**. Da cui `promessa_id` (senza, la rotta MCP non
+    non esiste per lui**. Da cui `promise_id` (senza, la rotta MCP non
     saprebbe quale turno sta parlando), la domanda gia' composta con
     l'istantanea, il prompt di sistema del turno di promessa, e il nucleo --
     composto qui perche' e' l'ultimo punto in cui esistono l'app e gli

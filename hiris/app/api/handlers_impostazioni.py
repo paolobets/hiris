@@ -2,7 +2,7 @@
 avere una superficie.
 
 **Perche' questo file esiste.** I sette campi di `ChatSettings`
-(`hiris/app/impostazioni_chat.py`) governano l'unica conversazione che HIRIS
+(`hiris/app/chat_settings.py`) governano l'unica conversazione che HIRIS
 sa avere -- il prompt di sistema, la forma della risposta, il budget di
 ragionamento, il tetto di turni, la restrizione alla casa, il nome e (dalla
 fetta "Modelli" (2.0), Task 12) i giorni di conservazione. Il modello NON e'
@@ -49,7 +49,7 @@ pagina lo dice esplicitamente invece di lasciarlo dedurre. Dalla **versione
 B** (3.0.0) `history_retention_days` NON e' piu' un'opzione dell'add-on: il
 valore vive solo qui, e ci e' arrivato con la versione A -- `carica()` lo
 copiava dall'ambiente quando l'archivio non aveva ancora la chiave, e l'avvio
-lo SCRIVEVA su disco (`il_file_non_porta_i_giorni`), che e' la meta' senza cui
+lo SCRIVEVA su disco (`file_lacks_retention_days`), che e' la meta' senza cui
 la copia non sarebbe sopravvissuta a questa versione.
 
 **Il caso speciale del prompt di sistema.** E' il campo piu' delicato del
@@ -63,7 +63,7 @@ file con la chiave vuota. Il default viaggia anche nel GET
 tenerne una copia propria destinata a invecchiare.
 
 **L'aggiornamento a caldo.** Dopo il salvataggio si riassegna
-`request.app["impostazioni_chat"]`: senza, il file su disco cambierebbe e la
+`request.app["chat_settings"]`: senza, il file su disco cambierebbe e la
 chat continuerebbe a usare i valori vecchi fino al riavvio dell'add-on -- un
 salvataggio riuscito e senza effetto, il difetto n.1 di questo prodotto sotto
 altra forma. E' lo stesso hot-update di
@@ -71,7 +71,7 @@ altra forma. E' lo stesso hot-update di
 `DeprecationWarning` di aiohttp ("Changing state of started or joined
 application is deprecated") che quella riga produce gia' oggi in suite:
 aiohttp scoraggia la mutazione di `app` dopo l'avvio, ma qui non esiste un
-canale alternativo senza cambiare il tipo di `app["impostazioni_chat"]`, letto
+canale alternativo senza cambiare il tipo di `app["chat_settings"]`, letto
 per riferimento da `handlers_chat.py` (`handlers_chatbots.py` la leggeva
 anche lui, finche' non e' uscito al Task 10 della E5). Dichiarato,
 non taciuto.
@@ -89,8 +89,8 @@ from ..chat_settings import DEFAULT_SYSTEM_PROMPT, ChatSettings
 # parla inglese; `impostazioni_chat.json` sul disco resta com'e' -- e' un
 # archivio di un utente vero, stessa classe di `models_config.json` e del
 # database, e rinominarlo vorrebbe dire scrivere una migrazione del suo dato.
-# La traduzione vive dove viveva gia': `ChatSettings.load`/`.salva`
-# (`impostazioni_chat.py`) mappano `nome`/`giorni_conservazione` del file su
+# La traduzione vive dove viveva gia': `ChatSettings.load`/`.save`
+# (`chat_settings.py`) mappano `nome`/`giorni_conservazione` del file su
 # `name`/`retention_days` del codice, e questo modulo mappa il codice su HTTP.
 # Due salti, nessuno dei due nuovo: prima coincidevano per caso.
 logger = logging.getLogger(__name__)
@@ -176,7 +176,7 @@ def _text(body: dict, key: str, current: str) -> str:
         value.encode("utf-8")
     except UnicodeEncodeError as exc:
         # Del carattere si dice la POSIZIONE, mai il valore: stessa disciplina
-        # di `token_interno.invalid_token_reason`, e un prompt di sistema
+        # di `internal_token.invalid_token_reason`, e un prompt di sistema
         # intero dentro un messaggio d'errore sarebbe illeggibile in pagina.
         raise Rejection(
             key,
@@ -204,7 +204,7 @@ def _non_negative_integer(body: dict, key: str, current: int) -> int:
 def validate(current: ChatSettings, body) -> ChatSettings:
     """Le impostazioni nuove, a partire dalle correnti e dal corpo ricevuto.
 
-    Solleva `Rifiuto` al primo campo che non va, senza aver scritto niente.
+    Solleva `Rejection` al primo campo che non va, senza aver scritto niente.
     Un campo assente conserva il valore corrente: il PUT e' il salvataggio
     dell'intero oggetto dalla pagina, ma un client che manda meno campi non
     deve distruggere quelli che non nomina."""
@@ -256,7 +256,7 @@ def validate(current: ChatSettings, body) -> ChatSettings:
     else:
         restriction = current.restrict_to_home
 
-    # Stesso `_intero_non_negativo` dei due campi sopra: `0` e' un valore
+    # Stesso `_non_negative_integer` dei due campi sopra: `0` e' un valore
     # AMMESSO (Task 12 -- "non cancella e non limita mai niente"), non un
     # errore. Nessun tetto superiore: `config.yaml` ne porta uno
     # (`int(0,3650)`) solo perche' e' l'opzione dell'add-on -- qui, come per
@@ -296,7 +296,7 @@ def _payload(settings: ChatSettings) -> dict:
 
 async def handle_get_settings(request: web.Request) -> web.Response:
     """Le impostazioni in vigore ADESSO -- quelle che il prossimo turno di
-    chat leggera'. Si prendono da `app["impostazioni_chat"]` e non dal disco:
+    chat leggera'. Si prendono da `app["chat_settings"]` e non dal disco:
     e' lo stesso oggetto che usa `handlers_chat.py`, quindi la pagina non puo'
     mostrare qualcosa di diverso da cio' che la chat sta usando."""
     settings = request.app.get("impostazioni_chat") or ChatSettings()

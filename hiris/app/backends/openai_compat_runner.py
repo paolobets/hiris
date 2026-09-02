@@ -54,7 +54,7 @@ def _is_conn_error(exc: Exception) -> bool:
     opposed to API/validation errors which should NOT trip the breaker.
 
     Dalla fetta «cosa è successo davvero» questa funzione ha un secondo
-    lettore, `esiti_provider.famiglia_errore`, che le chiede la stessa cosa per
+    lettore, `provider_occurrences.error_family`, che le chiede la stessa cosa per
     un altro scopo: dire «non risponde all'indirizzo» invece di «errore
     temporaneo». Da lì l'aggiunta di `anthropic` accanto a `openai` -- le due
     SDK hanno la stessa coppia di eccezioni con lo stesso significato, e
@@ -285,7 +285,7 @@ class OpenAICompatRunner:
         # «valida l'URL», «usa sempre questo modello». Le prime due sono la
         # MODALITA' e restano legate a `local`; la terza e' una DECISIONE
         # dell'utente, cambia da una PUT all'altra e adesso si LEGGE al
-        # momento dell'uso (`leggi_modello`) invece di essere cotta nel
+        # momento dell'uso (`read_model`) invece di essere cotta nel
         # costruttore -- era il motivo per cui cambiare il modello di Ollama
         # non poteva avere effetto senza riavviare l'add-on.
         if local:
@@ -297,14 +297,14 @@ class OpenAICompatRunner:
         self._read_model = read_model
         self._is_cloud = not local  # True = cloud (OpenAI); False = local (Ollama)
         # Il runner non conosce l'archivio dei consumi: conosce una funzione.
-        # Stessa disciplina di `leggi_modello`. Ed e' la regola non negoziabile
+        # Stessa disciplina di `read_model`. Ed e' la regola non negoziabile
         # di CLAUDE.md: un kwarg nuovo di `ClaudeRunner` lo accetta ANCHE
         # questa classe, o i backend non-Claude si rompono in silenzio.
         self._log_usage = log_usage
         # Il nome AUTOREVOLE del provider. `type(self).__name__` non lo
         # distingue: `OpenRouterRunner` e' una sottoclasse di questa classe, e
         # un consumo di OpenRouter finirebbe scritto sulla riga di OpenAI --
-        # lo stesso difetto che `LLMRouter._ordered_backends_con_nome` e' gia'
+        # lo stesso difetto che `LLMRouter._ordered_backends_with_name` e' gia'
         # stato scritto per evitare nel registro degli esiti, e per la stessa
         # ragione.
         self.provider_name = "ollama" if local else "openai"
@@ -334,7 +334,7 @@ class OpenAICompatRunner:
         # `reset_usage`. Erano la SECONDA casa del consumo -- quella che
         # sommava tutto insieme e non sapeva dire di quale modello parlasse --
         # e sono uscite col loro `usage_path`. Il consumo si scrive adesso in
-        # `consumi/store.py` attraverso `registra_consumo`, e i vecchi
+        # `consumi/store.py` attraverso `log_usage`, e i vecchi
         # `usage_*.json` ci entrano una volta sola all'avvio come riga
         # «(prima del dettaglio)»: i file restano sul disco, mai dati
         # dell'utente cancellati in silenzio.

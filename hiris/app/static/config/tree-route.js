@@ -1,7 +1,7 @@
 /* HIRIS · Configurazione · «Albero della casa» (route #/albero)
 
    Chiude il reperto 26: `GET /api/home-space` manda gia' l'albero completo che
-   `anagrafe.gerarchia()` costruisce -- piani -> aree -> entita', col
+   `anagrafe.hierarchy()` costruisce -- piani -> aree -> entita', col
    comportamento, la piattaforma, la categoria, la classe, l'unita', se
    un'entita' e' nascosta, i suoi alias e le sue etichette -- ed e' il
    payload piu' ricco che HIRIS produce. Prima usciva verso nessuno:
@@ -14,10 +14,10 @@
    cosi' l'utente si accorge quando HIRIS sbaglia.
 
    Tre distinzioni che la pagina DEVE rendere visibili, perche' sono la
-   parte che conta (vedi il docstring di `anagrafe.gerarchia()`, che resta
+   parte che conta (vedi il docstring di `anagrafe.hierarchy()`, che resta
    la spiegazione migliore che esista):
 
-   1) Le pseudo-aree/pseudo-piani che `gerarchia()` crea per dichiarare i
+   1) Le pseudo-aree/pseudo-piani che `hierarchy()` crea per dichiarare i
       SILENZI -- «Senza area», «Area sconosciuta», «Aree non lette»,
       «Dispositivi non letti», «Senza piano», «Piani non letti». Sono SEI
       cause diverse, non varianti di un unico "non si sa": "Senza area" e
@@ -27,7 +27,7 @@
       "Aree/Piani/Dispositivi non letti" sono un BUCO di lettura (non si
       puo' sapere). Appiattirle in un'unica frase sarebbe il difetto
       esatto che questa pagina esiste per chiudere -- vedi
-      `SPIEGAZIONE_PIANO`/`SPIEGAZIONE_AREA` sotto, un tono diverso per
+      `FLOOR_EXPLANATION`/`AREA_EXPLANATION` sotto, un tono diverso per
       ciascuna delle tre famiglie.
    2) Le entita' DISABILITATE -- `entita_disabilitate`, la chiave
       parallela a `entita` che ogni area vera porta. Presenti e marcate,
@@ -52,7 +52,7 @@ window.HirisAlberoRoute = (function () {
 
   /* Gli stessi id letterali che `anagrafe.py` usa per le pseudo-aree e i
      due piani-contenitore (`_ID_*`). Non sono un'API pubblica dichiarata,
-     ma sono stringhe stabili: `gerarchia()` le costruisce a mano, non le
+     ma sono stringhe stabili: `hierarchy()` le costruisce a mano, non le
      genera, e un test di mutazione su questo file prova che restano
      allineate (vedi tests/js/albero-route.test.mjs). */
   var ID_WITHOUT_AREA = '__senza_area__';
@@ -121,7 +121,7 @@ window.HirisAlberoRoute = (function () {
   }
 
   /* Le unità del sistema di riferimento, stessa mappa e stesso ordine di
-     `nucleo._NOMI_MISURA` -- cosi' la stessa casa si legge uguale sul
+     `nucleo._MEASUREMENT_NAMES` -- cosi' la stessa casa si legge uguale sul
      nucleo del modello e su questa pagina. Una chiave che HA manda e che
      questa mappa non conosce ancora NON sparisce: compare col suo nome
      grezzo, stessa regola di `NOMI_REGISTRI` sopra e delle "chiavi
@@ -144,7 +144,7 @@ window.HirisAlberoRoute = (function () {
 
   /* I NOMI delle etichette (`casa.etichette`, `GET /api/home-space`): mappa
      id -> nome, risolta una volta sola dal backend -- vedi
-     `handlers_casa.handle_get_home_space`. `gerarchia()` mette su aree ed
+     `handlers_casa.handle_get_home_space`. `hierarchy()` mette su aree ed
      entita' i soli `label_id` (cosi' li manda Home Assistant): senza
      questa funzione l'albero mostrerebbe lo slug («da_controllare»)
      invece del nome che l'utente ha scritto («Da controllare»).
@@ -337,7 +337,7 @@ window.HirisAlberoRoute = (function () {
     var active = area.entita || [];
     var disabled = area.entita_disabilitate || [];
     /* `entita_nascoste` (fetta "nascoste fuori dagli elenchi", 2026-08-25):
-       da quando `gerarchia()` le toglie da `entita` per STRUTTURA (la stessa
+       da quando `hierarchy()` le toglie da `entita` per STRUTTURA (la stessa
        ragione per cui la chat non le nomina piu' di sua iniziativa), questa
        pagina -- che esiste apposta per non far sparire niente -- le rende in
        una sezione propria, come gia' faceva per le disabilitate. */
@@ -459,7 +459,7 @@ window.HirisAlberoRoute = (function () {
        un domani i due campi divergessero, l'albero continuerebbe a mostrare
        gli id grezzi invece di un nome inventato, e lo DICHIAREREBBE, non lo
        tacerebbe); `{}` = il registro ha risposto senza etichette; pieno = la
-       mappa che `nomeEtichetta()` usa per tradurre gli slug sotto. */
+       mappa che `labelName()` usa per tradurre gli slug sotto. */
     var labelMap = home_space.etichette;
     if (labelMap == null) {
       line(body,

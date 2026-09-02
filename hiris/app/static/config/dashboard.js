@@ -105,7 +105,7 @@ window.HirisDashboard = (function () {
      `tessere()` non veniva passato affatto, ed era il Minor e7.
 
      Attenzione a cosa significa davvero un file non letto: le voci arrivano
-     dai file E dallo stato di Home Assistant (`casa/comportamento.rileggi`),
+     dai file E dallo stato di Home Assistant (`casa/comportamento.reread`),
      quindi con `automations.yaml` assente HIRIS puo' comunque conoscere per
      NOME dodici automazioni prese dallo stato -- e `senza_corpo` dice gia'
      di quante non conosce il corpo. Marcare quella tessera «non letto»
@@ -208,9 +208,9 @@ window.HirisDashboard = (function () {
   /* Il fatto «questa sezione è stata letta» non sta nel campo: sta nella sua
      DATA. I getter dell'archivio NON distinguono i due casi -- su un archivio
      esistente ma mai riempito (nessuna riga in `meta`) `non_disponibili()`
-     torna `[]` (archivio.py:173-183), `problemi_comportamento()` `[]`
+     torna `[]` (archivio.py:173-183), `behavior_problems()` `[]`
      (:256-268), `file_non_letti()` `{}` (:270-281),
-     `non_disponibili_plance()` `[]` (:332-344), e `senza_corpo` è un `sum()`
+     `unavailable_dashboards()` `[]` (:332-344), e `senza_corpo` è un `sum()`
      su zero voci, cioè `0` (handlers_casa.py:75). Solo le tre date tornano
      `None`.
 
@@ -288,7 +288,7 @@ window.HirisDashboard = (function () {
     }
 
     /* «L'ultima lettura non ha lasciato niente in sospeso» compariva una riga
-       SOPRA l'elenco dei file non letti (il `treStati` subito qui sotto): due
+       SOPRA l'elenco dei file non letti (il `threeStates` subito qui sotto): due
        frasi adiacenti che si smentivano. Questo blocco parla soltanto delle
        voci che sono state lette -- id duplicati, script vuoti, voci
        malformate -- e ora lo dice invece di promettere che non c'e' rimasto

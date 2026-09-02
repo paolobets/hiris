@@ -676,7 +676,7 @@ class HAClient:
         piani, etichette, dispositivi, entita') e risponde con le entita' che
         quel bersaglio tocca davvero.
 
-        **Perche' non lo deduce l'anagrafe.** L'albero di `gerarchia()` e' una
+        **Perche' non lo deduce l'anagrafe.** L'albero di `hierarchy()` e' una
         replica che HIRIS costruisce dai registri: e' un'AFFERMAZIONE sulla
         casa, e niente la verifica. Qui la domanda va all'originale. E' anche
         la ragione per cui questa lettura non e' un doppione dell'anagrafe: e'
@@ -797,7 +797,7 @@ class HAClient:
 
         Un percorso duplicato nell'elenco, o uguale alla chiave sentinella
         della predefinita, finisce anche lui fra i `non_disponibili` (con una
-        ragione leggibile) invece di far fallire `sostituisci_plance` con
+        ragione leggibile) invece di far fallire `replace_dashboards` con
         `UNIQUE constraint failed` — che altrimenti ferma silenziosamente
         l'aggiornamento della replica delle plance.
 
@@ -824,7 +824,7 @@ class HAClient:
 
         # `None` = la predefinita, sempre in testa. Un percorso vero deve
         # essere sia UNICO (la tabella `plance` lo usa come chiave primaria:
-        # due voci con lo stesso percorso mandano `sostituisci_plance` in
+        # due voci con lo stesso percorso mandano `replace_dashboards` in
         # `UNIQUE constraint failed`, e l'aggiornamento della replica smette
         # silenziosamente) sia DIVERSO dalla chiave sentinella della
         # predefinita (altrimenti le due collidono nello stesso modo quando
@@ -943,7 +943,7 @@ class HAClient:
 
         Ritorna `{"serie": {entity_id: [{"quando", "valore"}, ...]}, "troncato":
         bool}`. `troncato` c'e' SEMPRE (mai omesso quando falso: stessa forma
-        di `diario`, non due modi di dire la stessa cosa) ed e' vero se il cap
+        di `logbook`, non due modi di dire la stessa cosa) ed e' vero se il cap
         sui punti e' scattato su almeno un'entita'. In caso di guasto ritorna
         `{"errore": str}` e NON la chiave `serie`: una serie vuota afferma «il
         valore non e' mai cambiato», che e' una cosa che non sappiamo quando
@@ -962,11 +962,11 @@ class HAClient:
         avanti l'identificatore.
 
         **Valida ogni `entity_id` PRIMA di fare rete** (F6, onda finale): era
-        l'ultima asimmetria rimasta con `diario` qui sotto, che lo fa gia'.
+        l'ultima asimmetria rimasta con `logbook` qui sotto, che lo fa gia'.
         Il percent-encoding chiude comunque l'iniezione nella URL -- non e'
         un buco di sicurezza -- ma un identificatore ostile o malformato deve
         fermarsi con un errore leggibile, non partire verso Home Assistant.
-        `entities` e' una LISTA (quella di `diario` e' singola): tutti gli
+        `entities` e' una LISTA (quella di `logbook` e' singola): tutti gli
         elementi devono avere una forma valida, o nessuna richiesta parte.
         """
         invalid = [e for e in entities if not _ENTITY_ID_RE.match(str(e))]
@@ -1010,7 +1010,7 @@ class HAClient:
                 # GREZZO di QUALUNQUE entita' richiesta, non un numero per
                 # costruzione -- un'affermazione contraria era finita anche
                 # nel docstring di `_sanitize.py`, ed era falsa: si vede qui.
-                # `andamento` (casa/tempo.py) promuove esplicitamente questo
+                # `trend` (casa/tempo.py) promuove esplicitamente questo
                 # strumento anche per «se una porta e' rimasta aperta», e
                 # L1-sicurezza.md elenca il sensore-messaggio (testo libero)
                 # come il PRIMO vettore concreto -- si applica identico alla
@@ -1088,7 +1088,7 @@ class HAClient:
             # `nome`/`messaggio` sono testo LIBERO che Home Assistant non
             # controlla -- il titolo di un brano, il testo di
             # un'automazione, il nome che un ospite ha dato a un device --
-            # e finiscono grezzi nel contesto del modello via `_accaduto`
+            # e finiscono grezzi nel contesto del modello via `_happened`
             # (casa/tempo.py) se non si sanificano QUI, al confine (C-2,
             # L1-sicurezza.md). Solo quando c'e' davvero un valore: un
             # `None` sanificato non deve diventare una stringa vuota, che
@@ -1250,7 +1250,7 @@ class HAClient:
                          days: int) -> dict:
         """Le statistiche a lungo termine, N giorni indietro da adesso.
 
-        `periodo`: "5minute" | "hour" | "day" | "week" | "month". Comoda per
+        `period`: "5minute" | "hour" | "day" | "week" | "month". Comoda per
         una domanda umana ("l'ultima settimana") -- per una finestra
         ESPLICITA, un giorno preciso sul fuso della casa, vedi la sorella
         `hourly_statistics` qui sotto (nata per il bilancio dell'energia,
@@ -1668,7 +1668,7 @@ class HAClient:
         della nonna» come alias non trovava niente cercandola.
 
         La classe non si prende da qui: arriva gia' dallo specchio dello stato
-        (`casa.anagrafe.classe_effettiva`), che ce l'ha per ogni entita' e non
+        (`casa.anagrafe.actual_class`), che ce l'ha per ogni entita' e non
         costa nessuna chiamata. Questo comando serve per cio' che lo specchio
         NON ha.
 
@@ -1707,7 +1707,7 @@ class HAClient:
             # ha scritto.
             #
             # Preso alla lettera ha riempito l'archivio: 1030 entita' su 1223
-            # con `alias: [null]`, e `cerca` e `ricorda` -- gli unici due che
+            # con `alias: [null]`, e `cerca` e `remember` -- gli unici due che
             # costruiscono l'indice -- morivano con
             # «'NoneType' object has no attribute 'lower'» su ogni chiamata.
             #
@@ -1760,7 +1760,7 @@ class HAClient:
 
     def add_dashboard_listener(self, callback: Callable[[dict], None]) -> None:
         """callback(dati_evento) a ogni cambio di una plancia (DASHBOARD_EVENT).
-        `dati_evento` porta il `url_path` di quella cambiata, ma chi ascolta
+        `event_data` porta il `url_path` di quella cambiata, ma chi ascolta
         rilegge tutte le plance — vedi DASHBOARD_EVENT."""
         self._dashboard_listeners.append(callback)
 

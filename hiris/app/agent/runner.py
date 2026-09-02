@@ -37,7 +37,7 @@ Gli strumenti restavano fuori; li ha riattaccati la fetta B
 fetta "il ponte riceve gli strumenti" (parita' B, Task 3): li ha riattaccati.
 Le due note qui sopra sono ora vere solo per il ramo di DEGRADO. Il ponte
 chiede alla rotta `POST /api/mcp` (Task 1) se gli strumenti ci sono
-(`sonda_strumenti`), e da quell'UNICO booleano discendono insieme il prompt
+(`probe_tools`), e da quell'UNICO booleano discendono insieme il prompt
 (`prompts.build_chat_messages(strumenti_attivi=...)`) e l'argv
 (`_chat_claude_args(strumenti_attivi=..., mcp_config=...)`): non esistono due
 decisioni da tenere allineate. Quando la sonda dice di si', il modello puo'
@@ -50,17 +50,17 @@ premessa: mai una risposta che sembra normale.
 fetta "il ponte riceve gli strumenti" (parita' B, Task 4): gli stati sono TRE,
 non due -- strumenti attivi, strumenti mai attesi, e strumenti attesi e non
 arrivati IN QUESTO TURNO. Il terzo nasce quando l'evento `system/init` della CLI
-smentisce la sonda (`verifica_init`): li' l'invocazione si BUTTA e se ne
+smentisce la sonda (`verify_init`): li' l'invocazione si BUTTA e se ne
 ricompone una senza strumenti, una sola volta. Il terzo stato non ha un terzo
 testo di guida -- `_GUIDE_WITHOUT_TOOLS` e' vera anche li' -- e cio' che lo
-distingue e' `AVVISO_STRUMENTI_ASSENTI`, la riga che l'utente legge.
+distingue e' `MISSING_TOOLS_NOTICE`, la riga che l'utente legge.
 
 fetta "il ponte riceve gli strumenti" (parita' B, Task 5): da qui `ricorda' e'
 raggiungibile ANCHE dal ponte, e scrive in `memoria.db` -- il primo effetto
 DURATURO che il ponte sappia produrre. Il ramo sincrono lo mostra all'utente
 (`handlers_chat.py`, `tools_called`); il ponte no, e con le sicurezze fuori
 dall'UAT (decisione del proprietario) quella riga e' l'unica cosa che rende
-osservabile una scrittura che non doveva avvenire. `leggi_flusso` la raccoglie
+osservabile una scrittura che non doveva avvenire. `read_stream` la raccoglie
 dallo STESSO flusso che gia' legge (nessuna seconda lettura), `_reason_chat`
 la mette in `decision["tools_called"]`, nella STESSA forma del ramo sincrono.
 
@@ -100,7 +100,7 @@ fetta «schedulare» -- che nessuna esecuzione possa partire senza una frase
 IN QUESTA conversazione: `prometti` lascia una frase di adesso eseguire piu'
 tardi, e questo e' esattamente il modulo da cui puo' partire. Un turno
 `chiedi` di una promessa arriva QUI (`schedulatore/turno.py::interpreta_promise`
--> `who_answers` -> `_accoda_al_ponte`, quando il ponte e' la via) tanto
+-> `who_answers` -> `_accoda_al_bridge`, quando il ponte e' la via) tanto
 quanto un turno di chat vero: il battito dello schedulatore
 (`schedulatore/sweeper.py`, ogni 15 s) lo sveglia da solo, ore dopo la
 promessa e senza nessuno in chat in quel momento. Il giudizio (cosa fare, e
@@ -148,7 +148,7 @@ _LOCAL_TOOLS_DENY = (
 
 
 # -- fetta "il ponte riceve gli strumenti" (parita' B, Task 3): L'INTERRUTTORE -
-# Da qui in giu' vive un solo booleano. Lo decide `sonda_strumenti` un istante
+# Da qui in giu' vive un solo booleano. Lo decide `probe_tools` un istante
 # prima che si componga qualsiasi cosa, e alimenta INSIEME il prompt
 # (`prompts.build_chat_messages(strumenti_attivi=...)`) e l'argv
 # (`_chat_claude_args(strumenti_attivi=...)`), nella stessa funzione e a due
@@ -163,7 +163,7 @@ _LOCAL_TOOLS_DENY = (
 # L'evento `system/init` e' l'unico che lo dichiara, e quando smentisce la sonda
 # il prompt e' GIA' partito. La risposta non e' una postilla al testo: e'
 # rimettere il booleano a `False` e **ricomporre** prompt e argv insieme, una
-# volta sola (`verifica_init` + `MAX_INVOCAZIONI_PER_TURNO`). Il tetto e' due
+# volta sola (`verify_init` + `MAX_INVOCATIONS_PER_EXCHANGE`). Il tetto e' due
 # invocazioni per turno, ed e' asserito.
 
 
@@ -171,7 +171,7 @@ def _mcp_server_name() -> str:
     """Il nome con cui il server MCP si presenta alla CLI, dall'UNICA fonte.
 
     L'import e' DIFFERITO -- dentro la funzione e non in cima al file -- per un
-    motivo misurato, non per stile: `api/handlers_chat.py` importa `modello_cli`
+    motivo misurato, non per stile: `api/handlers_chat.py` importa `cli_model`
     da QUESTO modulo, e `api/handlers_mcp.py` importa `handlers_chat`. Un import
     in cima chiude il cerchio e rompe l'avvio: verificato prima di scrivere
     questa riga, `ImportError: cannot import name 'modello_cli' from partially
@@ -211,7 +211,7 @@ def mcp_names(by_promise: bool = False) -> tuple[str, ...]:
     # Difetto trovato dalla VERIFICA LIVE della 3.10.0: la fetta «le promesse
     # seguono la catena» aveva reso il catalogo per-turno nella rotta MCP e
     # lasciato qui i nove nomi della chat. Il turno di promessa ne risolveva
-    # cinque, `verifica_init` ne pretendeva nove, ne dichiarava quattro
+    # cinque, `verify_init` ne pretendeva nove, ne dichiarava quattro
     # mancanti, e il ritentativo ripartiva SENZA strumenti -- cioe' senza
     # `conclude`, cioe' senza nessun modo di finire.
     definitions = promise_tools() if by_promise else KNOWLEDGE_TOOLS
@@ -222,7 +222,7 @@ def config_mcp(base_url: str, token: str, exchange_id: str = "",
                promise_id: str = "") -> str:
     """La voce `--mcp-config` del ponte: una STRINGA JSON, mai un file.
 
-    `id_turno` (Task 6 della fetta, facoltativo e vuoto per default) diventa
+    `exchange_id` (Task 6 della fetta, facoltativo e vuoto per default) diventa
     l'intestazione `X-HIRIS-Turno` che la CLI ripete su OGNI `tools/call`
     verso `/api/mcp`: e' cosi' che quella rotta sa QUALE turno sta chiamando
     e puo' tenere il tetto ai giri di strumento per turno
@@ -248,7 +248,7 @@ def config_mcp(base_url: str, token: str, exchange_id: str = "",
 
     **Un'identita' per TURNO, non per invocazione della CLI.** Il chiamante
     (`_reason_chat`, sotto) la conia UNA sola volta per turno, PRIMA di
-    sapere se servira' una seconda invocazione (Task 4, `verifica_init`): se
+    sapere se servira' una seconda invocazione (Task 4, `verify_init`): se
     ne coniasse una diversa a ogni chiamata di `_invoca`, un turno sdoppiato
     finirebbe con due tetti indipendenti invece di uno solo -- il raddoppio
     silenzioso che "un tetto per-turno deve sapere cosa fa quando il turno si
@@ -279,7 +279,7 @@ def config_mcp(base_url: str, token: str, exchange_id: str = "",
         dipenderebbe da UN SOLO ramo di UN SOLO middleware. Mandandoli entrambi
         passa da qualunque dei due sopravviva (decisione A.3; entrambi i rami
         sono pinnati in tests/test_rotta_mcp.py).
-    (3) **il nome del server viene da `_nome_server_mcp()`**, non da una
+    (3) **il nome del server viene da `_mcp_server_name()`**, non da una
         stringa scritta qui: e' lo stesso nome da cui discende il prefisso
         degli strumenti."""
     intestazioni = {
@@ -298,7 +298,7 @@ def config_mcp(base_url: str, token: str, exchange_id: str = "",
     #
     # Viaggia nell'`argv` come tutto il resto della mcp-config: l'id di una
     # promessa non e' un segreto, ma la disciplina di redazione dell'eco
-    # (`reda_segreti` su `forme_del_token`) resta quella di sempre, e questa
+    # (`reda_segreti` su `token_forms`) resta quella di sempre, e questa
     # chiave non la indebolisce -- non contiene il token.
     if promise_id:
         intestazioni["X-HIRIS-Promessa"] = promise_id
@@ -367,7 +367,7 @@ def token_forms(token: str, profondita: int = 2) -> tuple[str, ...]:
     -- il segreto ricostruibile con un JSON-unescape.
 
     Che l'opzione `internal_token` possa contenerli non e' un'ipotesi: e' una
-    `password` libera in `hiris/config.yaml`, e `token_interno.py` la accetta
+    `password` libera in `hiris/config.yaml`, e `internal_token.py` la accetta
     dopo un `.strip()`. Quella validazione ora rifiuta i caratteri di CONTROLLO
     (che rompono l'header), non le virgolette: sono header-safe, e rompevano
     solo la redazione. Questo e' il posto dove quel fronte si chiude.
@@ -437,12 +437,12 @@ def _exception_reason(exc: BaseException, token: str | None = None) -> str:
     non accetta il client solleva **col valore dentro** (`LocalProtocolError:
     Illegal header value b'...'`, verificato contro un listener vero al fix
     round 2 del Task 3). Fino a oggi quel canale era chiuso da una dipendenza
-    scritta in un docstring altrui -- `token_interno.invalid_token_reason`
+    scritta in un docstring altrui -- `internal_token.invalid_token_reason`
     rifiuta i caratteri di controllo all'avvio -- cioe' da una difesa che sta
     in un altro file e che nessun test legava a questa riga.
 
     Qui la dipendenza smette di essere l'unica difesa: si passa dalla
-    redazione che c'e' gia' (`reda_segreti` su tutte le `forme_del_token`),
+    redazione che c'e' gia' (`reda_segreti` su tutte le `token_forms`),
     invece di aprire una via nuova. **Il messaggio non si butta**: perdere il
     testo dell'eccezione renderebbe illeggibile il log del giro
     (`run_once errore: HTTPStatusError` non dice quale rotta ne' quale codice),
@@ -454,7 +454,7 @@ def _exception_reason(exc: BaseException, token: str | None = None) -> str:
     (`run_loop`, `main`) mandano nell'header del claim. Chi ne avesse uno
     diverso in mano passa il suo.
 
-    **Dove NON si applica, e perche'**: `sonda_strumenti` continua a mettere
+    **Dove NON si applica, e perche'**: `probe_tools` continua a mettere
     nel motivo il messaggio grezzo. Non e' una dimenticanza -- vedi la nota
     nel suo docstring: quel comportamento e' pinnato contro un listener vero
     in `tests/test_token_interno.py`, file che questa fetta non tocca."""
@@ -474,7 +474,7 @@ def probe_tools(client, base_url: str, headers: dict,
     strumenti promessi e non serviti.
 
     Restituisce `True` **solo** se la risposta porta TUTTI i nomi attesi --
-    quelli di `nomi_mcp()`, quindi il catalogo intero, `execute` compreso. Il 200
+    quelli di `mcp_names()`, quindi il catalogo intero, `execute` compreso. Il 200
     non basta, e non e' un dettaglio: la rotta risponde 200 anche
     con gli archivi assenti (l'errore sta DENTRO il risultato della singola
     chiamata, non nello stato HTTP), quindi una sonda che si accontentasse del
@@ -495,12 +495,12 @@ def probe_tools(client, base_url: str, headers: dict,
     e con un token che contiene CR/LF/NUL il client HTTP solleva **col valore
     dentro** -- verificato contro un listener vero, `LocalProtocolError: Illegal
     header value b'...'`. La promessa regge perche' un token del genere non
-    arriva fin qui: `token_interno.invalid_token_reason` lo rifiuta
+    arriva fin qui: `internal_token.invalid_token_reason` lo rifiuta
     all'avvio, lo dichiara nel log e lascia in piedi il rifiuto-per-difetto. Se
     quella validazione sparisse, questo docstring tornerebbe falso.
 
     Task 4: **questa e' l'unica dipendenza del genere che resta scoperta**, ed
-    e' scoperta di proposito. Farla passare da `_motivo_eccezione` (la
+    e' scoperta di proposito. Farla passare da `_exception_reason` (la
     redazione usata per il settimo canale, in `run_once`) chiuderebbe il buco
     da sola -- ma renderebbe rosso
     `tests/test_token_interno.py::test_i_caratteri_rifiutati_sono_ESATTAMENTE_quelli_che_fanno_sollevare_il_client`,
@@ -586,7 +586,7 @@ def _chat_claude_args(system: str, user: str, model: str, *,
     `True` si aggiungono due opzioni, e nessuna e' facoltativa:
 
     - `--mcp-config <stringa>`: la voce del server (vedi `config_mcp`);
-    - `--allowedTools <i nomi del catalogo>`: i nomi PREFISSATI di `nomi_mcp()`,
+    - `--allowedTools <i nomi del catalogo>`: i nomi PREFISSATI di `mcp_names()`,
       derivati dal catalogo. Senza, gli strumenti sarebbero visibili e non
       permessi.
 
@@ -645,7 +645,7 @@ def cli_model(resolved_model: str) -> str:
     della fetta, un `log.warning` che nomina il valore configurato e dice
     perche' si ricade su 'sonnet' -- mai un pass silenzioso."""
     name = (resolved_model or "").lower()
-    # I tre alias vengono da `decisione_modelli.SUBSCRIPTION_ALIAS`, che e' anche
+    # I tre alias vengono da `model_resolution.SUBSCRIPTION_ALIAS`, che e' anche
     # cio' che la pagina Modelli offre: erano digitati due volte, in due file,
     # in ordine diverso e senza nessun test che li legasse. Un quarto alias
     # aggiunto la' sarebbe stato offerto all'utente, scelto, e poi ARCHIVIATO
@@ -692,7 +692,7 @@ def _safe_subprocess_env() -> dict:
 # da solo, PRIMA degli strumenti: uno `stream-json` sbagliato e un MCP che non
 # parte, nello stesso commit, sarebbero indistinguibili.
 #
-# `leggi_flusso` e' l'UNICA strada di lettura: non affianca il vecchio parsing,
+# `read_stream` e' l'UNICA strada di lettura: non affianca il vecchio parsing,
 # lo sostituisce. `_reason_chat` la chiama una volta sola, PRIMA di guardare il
 # returncode, e tutti e cinque i suoi esiti (rc!=0, testo, flusso senza
 # risultato, testo vuoto, CLI non eseguibile) si decidono su quell'unico esito.
@@ -758,10 +758,10 @@ class StreamOccurrence:
     - `usage`: il blocco `usage` del risultato (o `{}`) -- la misura che chiude
       la domanda aperta 2 (costo del prefisso) dopo la prima settimana di UAT,
       invece di lasciarla a un'opinione;
-    - `righe_saltate`: quante righe non erano JSON. Una riga illeggibile si
+    - `lines_skipped`: quante righe non erano JSON. Una riga illeggibile si
       salta e si CONTA, non fa cadere il flusso: la CLI puo' scrivere una riga
       di rumore senza che la risposta vada persa, ma il fatto non sparisce;
-    - `righe_lette`: quante righe non vuote sono arrivate (distingue un flusso
+    - `lines_read`: quante righe non vuote sono arrivate (distingue un flusso
       VUOTO da un flusso pieno di rumore);
     - `risultato`: l'evento finale grezzo, o `None`. La sua ASSENZA e' il
       silenzio dichiarato (3) della fetta e non deve mai diventare una stringa
@@ -785,7 +785,7 @@ class StreamOccurrence:
 
       **Fix round 1, Important**: l'ASSENZA di `is_error` significa "nessun
       esito d'errore VISTO", non "prova di riuscita". Un `tool_use` il cui
-      `tool_result` non arriva MAI -- flusso troncato (`risultato_presente`
+      `tool_result` non arriva MAI -- flusso troncato (`has_result`
       `False`), o un `result` di errore/max-turns che chiude il flusso con una
       chiamata ancora aperta pur con `rc == 0` -- e' esattamente il caso (3)
       che questo modulo gia' dichiara altrove, e prima di questo fix
@@ -839,7 +839,7 @@ def read_stream(stdout: str) -> StreamOccurrence:
 
     Non solleva mai: ogni modo di essere malformato (riga non-JSON, JSON che
     non e' un oggetto, flusso vuoto, flusso senza evento finale) diventa un
-    campo dell'`EsitoFlusso`, mai un'eccezione che risale a `_reason_chat`."""
+    campo dell'`StreamOccurrence`, mai un'eccezione che risale a `_reason_chat`."""
     occurrence = StreamOccurrence()
     # fetta "il ponte riceve gli strumenti" (parita' B, Task 5): gli id dei
     # `tool_use` visti finora, per abbinare il `tool_result` che arriva DOPO
@@ -881,7 +881,7 @@ def read_stream(stdout: str) -> StreamOccurrence:
                     continue
                 name = block.get("name")
                 # Il nome grezzo, MAI normalizzato (vedi il docstring di
-                # `EsitoFlusso.tools_called`): riscriverlo nasconderebbe
+                # `StreamOccurrence.tools_called`): riscriverlo nasconderebbe
                 # proprio il caso -- il modello che chiama uno strumento che
                 # non gli abbiamo dato -- che questo campo esiste per rendere
                 # visibile.
@@ -911,7 +911,7 @@ def read_stream(stdout: str) -> StreamOccurrence:
                 # questo marcatore, tolto qui sotto dopo il ciclo, che
                 # distingue "arrivato e riuscito" da "mai arrivato": senza,
                 # i due casi produrrebbero la stessa forma (vedi il
-                # docstring di `EsitoFlusso.tools_called`).
+                # docstring di `StreamOccurrence.tools_called`).
                 entry["_risolto"] = True
                 if block.get("is_error"):
                     # Solo quando VERO: cosi' una chiamata riuscita (esito
@@ -991,12 +991,12 @@ def last_bridge_init() -> dict | None:
 
 def _logga_init(occurrence: StreamOccurrence, job_id) -> None:
     """L'`init` letto e loggato. Dal Task 4 ci si DECIDE anche sopra:
-    `verifica_init` qui sotto e' la difesa (2) del progetto, e questa riga
+    `verify_init` qui sotto e' la difesa (2) del progetto, e questa riga
     resta la misura -- il log dice cosa la CLI ha collegato, in ogni turno,
     anche quando la verifica passa.
 
     Si logga il nome e lo stato di ogni server, non l'evento intero
-    (`_server_dichiarati`).
+    (`_declared_servers`).
 
     Review totale della fetta (I-3): la riga porta anche **due campi che
     l'`init` ha gia'** e che nessun altro posto dice.
@@ -1055,7 +1055,7 @@ def _logga_init(occurrence: StreamOccurrence, job_id) -> None:
 def verify_init(occurrence: StreamOccurrence, by_promise: bool = False) -> tuple[bool, str]:
     """Difesa (2) del progetto: la CLI ci e' ARRIVATA, agli strumenti?
 
-    `sonda_strumenti` (difesa 1) prova che la rotta risponde con tutti i nomi
+    `probe_tools` (difesa 1) prova che la rotta risponde con tutti i nomi
     **dal nostro lato**, e la prova un istante prima di comporre il prompt. Fra
     quel `200` e il modello restano pero' Node, il parsing della stringa
     `--mcp-config`, `--strict-mcp-config` e il loopback visto da un ALTRO
@@ -1067,7 +1067,7 @@ def verify_init(occurrence: StreamOccurrence, by_promise: bool = False) -> tuple
 
     - il server col NOSTRO nome dev'esserci fra i `mcp_servers` in stato
       `connected` (un server assente o `failed` e' il guasto conclamato);
-    - **tutti** i `mcp__<server>__*` di `nomi_mcp()` devono comparire nella lista
+    - **tutti** i `mcp__<server>__*` di `mcp_names()` devono comparire nella lista
       `tools` risolta. Un server connesso che non espone gli strumenti e' lo
       stesso guasto visto da un'altra parte -- e per il modello e' peggio,
       perche' il prompt li nomina uno per uno.
@@ -1304,7 +1304,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # disco fino alla potatura a 7 giorni, con gli INPUT che il modello ha
     # passato agli strumenti: per `remember`, non solo `testo` ma anche
     # `detto_da` (un identificativo di PERSONA), `ancore` e `condizioni`
-    # (`casa/strumenti.py::_ricorda`, `argomenti.get(...)`); per `search`, la
+    # (`casa/strumenti.py::_remember`, `argomenti.get(...)`); per `search`, la
     # frase dell'utente. Cambiare la potatura di `decision_json` e' fuori dal
     # perimetro di questa fetta (regole-fetta.md): si dichiara qui, si
     # consegna alla fase sicurezze, con lo stesso perche' con cui il Task 5
@@ -1325,7 +1325,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         del Task 3): la frase che stava qui diceva «indipendente da quanti
         involucri JSON la CLI abbia messo intorno all'eco». Non e' vero, ed e'
         proprio la classe di dichiarazione falsa al presente che questo
-        prodotto paga da tre fette. `forme_del_token` si ferma a profondita' 2
+        prodotto paga da tre fette. `token_forms` si ferma a profondita' 2
         (grezza, dentro la mcp-config, dentro l'evento che la cita): questo
         cancello copre **un involucro in piu'** di quelli che la catena
         conosce, non un numero illimitato. Un terzo involucro non esiste in
@@ -1352,7 +1352,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # censita fra le "lette e mai esportate": in produzione era SEMPRE
     # "sonnet", qualunque cosa l'utente scegliesse per la chat) ma quello
     # scelto per la chat, gia' risolto e tradotto in alias CLI da
-    # `handlers_chat._enqueue_chat_job` (`resolve_model` + `modello_cli`,
+    # `handlers_chat._enqueue_chat_job` (`resolve_model` + `cli_model`,
     # sopra) prima di entrare nel job. L'`or` qui e' legittimo, non un
     # errore di configurazione mascherato: copre SOLO il job legacy del
     # Task 2 (accodato prima di questo deploy, quando il context non
@@ -1388,7 +1388,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
                 "nessun terzo tentativo", job_id, MAX_INVOCATIONS_PER_EXCHANGE)
             return None
         invocations += 1
-        # `id_turno` e' lo STESSO a ogni chiamata di `_invoca` in questo
+        # `exchange_id` e' lo STESSO a ogni chiamata di `_invoca` in questo
         # turno (mintato una volta sola sopra, prima di questa funzione): e'
         # cosi' che il tetto per-turno della rotta MCP resta un tetto sul
         # turno anche quando il turno si sdoppia (Task 4).
@@ -1408,7 +1408,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
                                  by_promise=bool(promise_id))
         try:
             # check=False esplicito: `proc.returncode` viaggia intatto dentro
-            # `Invocazione.rc` e lo leggono i chiamanti (compreso il ramo di
+            # `Invocation.rc` e lo leggono i chiamanti (compreso il ramo di
             # verifica dell'`init` qui sotto, che tratta un rc!=0 come causa
             # plausibile e non come eccezione) -- un check=True solleverebbe
             # proprio dove oggi la gestione dell'esito funziona.
@@ -1426,7 +1426,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # che possa dimenticarsi di redigere.
         #
         # fix round 2: si redigono TUTTE le forme del token
-        # (`forme_del_token`), non la sola grezza. Il commento che stava qui
+        # (`token_forms`), non la sola grezza. Il commento che stava qui
         # diceva «il token non contiene virgolette: e' generato da
         # secrets.token_urlsafe» -- vero solo sul ramo GENERATO.
         # `internal_token` e' una `password` libera in config.yaml, e con un
@@ -1447,7 +1447,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         occurrence = read_stream(stdout)
         # Task 5: si accumula QUI, sull'esito di OGNI invocazione -- anche
         # quella che il ramo dell'`init` (sotto) sta per buttare. Vedi il
-        # commento su `tools_called_turno`, sopra: una chiamata MCP di
+        # commento su `tools_called_in_exchange`, sopra: una chiamata MCP di
         # un'invocazione buttata e' gia' successa per davvero.
         tools_called_in_exchange.extend(occurrence.tools_called)
         _logga_init(occurrence, job_id)   # la misura, a ogni giro
@@ -1464,7 +1464,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
                           occurrence=occurrence)
 
     # Il degrado dichiarato: gli strumenti erano attesi e non ci sono. Il log
-    # l'ha gia' detto (silenzio (1), dentro `sonda_strumenti`); qui si prepara
+    # l'ha gia' detto (silenzio (1), dentro `probe_tools`); qui si prepara
     # a dirlo anche all'utente, in testa alla risposta che il modello riuscira'
     # comunque a dare sul solo nucleo.
     degrado = awaited and not tools
@@ -1607,7 +1607,7 @@ def reason(job: dict, mode: str, *, client=None, base_url: str = "",
     kind = (job or {}).get("kind")
     if kind in ("chat", "promessa"):
         # Un turno di promessa E' un turno: stessa sonda degli strumenti,
-        # stesso ritentativo, stessa `verifica_init`, stessa redazione. Cio'
+        # stesso ritentativo, stessa `verify_init`, stessa redazione. Cio'
         # che cambia e' il CONTENUTO -- la domanda al posto della
         # conversazione, il prompt del turno di promessa al posto di quello
         # della chat, e l'id della promessa nella mcp-config -- e il contenuto
@@ -1682,7 +1682,7 @@ async def run_loop(base_url: str, get_headers, mode: str, poll_seconds: int) -> 
                 # Task 4, nit 1: `%s` sull'eccezione GREZZA e' il settimo
                 # canale di perdita del token (gli header del claim lo
                 # portano, e un valore non consegnabile risale col valore
-                # dentro). Si passa da `_motivo_eccezione`: tipo + messaggio
+                # dentro). Si passa da `_exception_reason`: tipo + messaggio
                 # REDATTO, cosi' il log resta diagnosticabile.
                 log.warning("run_once errore: %s", _exception_reason(exc))
             await asyncio.sleep(poll_seconds)

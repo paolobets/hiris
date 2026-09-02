@@ -74,7 +74,7 @@ def _page_mirror(request) -> tuple[dict, dict, dict, dict, dict, dict]:
     """Lo specchio dello stato per questa pagina:
     `(stato, nomi, unita, classi, da_quando, attributi)`.
 
-    La lettura vera sta in `casa.anagrafe.specchio_vivo`, la stessa che usa il
+    La lettura vera sta in `casa.anagrafe.live_mirror`, la stessa che usa il
     dispatcher: qui c'e' solo la difesa su una cache assente o guasta, perche'
     ne' la vista ne' la correzione di un ricordo devono fallire per colpa dello
     specchio.
@@ -83,7 +83,7 @@ def _page_mirror(request) -> tuple[dict, dict, dict, dict, dict, dict]:
     e non il solo pezzo che serviva prima: i nomi, le unita' e l'istante
     arrivano dalla stessa lettura, e chiamarla due volte per prenderne un
     pezzo per volta avrebbe voluto dire leggere lo specchio in due istanti
-    diversi -- la stessa classe di divergenza che `specchio_vivo` esiste per
+    diversi -- la stessa classe di divergenza che `live_mirror` esiste per
     chiudere. Questa pagina non legge `attributi` (non ne ha bisogno: mostra
     ricordi, non il dettaglio di un'entita'), ma la forma resta la stessa di
     chi lo chiama -- fondamenta 3.
@@ -103,7 +103,7 @@ def _unverifiable_types(home_space_store, topology_loaded: bool) -> frozenset[st
 
     Se l'anagrafe intera non e' mai stata letta, sono TUTTI i tipi. Se e'
     stata letta ma un registro specifico non ha risposto
-    (`ArchivioCasa.non_disponibili()` -- per esempio il registro delle
+    (`HomeSpaceStore.non_disponibili()` -- per esempio il registro delle
     aree e' caduto ma quello delle entita' no), e' solo il tipo di quel
     registro: gli altri restano verificabili normalmente.
     """
@@ -221,7 +221,7 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
     lookup = (costruisci_indice(home_space_store.read(), live_state[1])
               if topology_loaded else costruisci_indice({}))
     unverifiable_types = _unverifiable_types(home_space_store, topology_loaded)
-    # Le unita' vive, dalla stessa fonte che usa `ricorda` in chat. Senza,
+    # Le unita' vive, dalla stessa fonte che usa `remember` in chat. Senza,
     # correggere la grandezza di un ricordo DA QUESTA PAGINA avrebbe dedotto
     # un'unita' diversa da quella dedotta dalla chat sullo stesso ricordo: lo
     # stesso fatto con due forme a seconda della porta.

@@ -63,7 +63,7 @@ def unreadable_inventory_error(cache) -> dict | None:
     return None
 
 
-# Una lettura sola per tutti, in `casa/anagrafe.dominio_di`: era scritta sei
+# Una lettura sola per tutti, in `casa/anagrafe.domain_of`: era scritta sei
 # volte, e due copie non erano d'accordo su un id senza punto.
 _domain = domain_of
 
@@ -83,13 +83,13 @@ _DOMAIN_ATTRS: dict[str, tuple[str, ...]] = {
     #
     # ATTENZIONE a cosa questa riga NON faceva da sola, fino alla fetta
     # "attributi al modello" (2026-08-25): `_to_minimal` li raccoglieva gia'
-    # dentro `result["attributes"]`, ma `casa.anagrafe.specchio_vivo` -- il
+    # dentro `result["attributes"]`, ma `casa.anagrafe.live_mirror` -- il
     # punto da cui passano `guarda`, `cerca` e il nucleo -- li buttava tutti,
     # su OGNI dominio, tenendo solo la stringa di `state`. Un'entita' `weather`
     # rispondeva «sereno» e basta non perche' mancasse questa riga, ma perche'
     # nessuno la leggeva a valle: il difetto misurato sui termostati (il
     # proprietario ha letto «heat» ed era `idle`) e' lo stesso, un dominio
-    # diverso. Da quella fetta `specchio_vivo` porta gli attributi fino al
+    # diverso. Da quella fetta `live_mirror` porta gli attributi fino al
     # dettaglio di `guarda`, e questa riga finalmente serve a qualcosa.
     # I nomi sono quelli veri di `components/weather/const.py`, verificati:
     # le unita' viaggiano in attributi propri (`temperature_unit`, ...) perche'
@@ -124,7 +124,7 @@ def _to_minimal(raw: dict) -> dict:
         # nome di un dispositivo che un ospite ha messo in rete, lo stato di
         # un sensore-messaggio (email/ntfy/SMS). Sanificarli QUI, nell'unico
         # punto in cui uno stato grezzo diventa cio' che ogni lettore vede
-        # (`specchio_vivo`, `guarda`, `cerca`, il nucleo), significa che
+        # (`live_mirror`, `guarda`, `cerca`, il nucleo), significa che
         # nessun consumatore a valle deve ricordarsene da solo (C-2,
         # L1-sicurezza.md).
         "state": sanitize_ha_value(raw.get("state", "unknown")),
@@ -242,7 +242,7 @@ class EntityCache:
     # E non era nemmeno una mappa giusta. Indicizzava per NOME dell'area --
     # due "Bagno" su piani diversi si fondevano in uno -- e ignorava l'area
     # EREDITATA dal dispositivo, che in una casa vera e' il caso normale, non
-    # l'eccezione. `casa/anagrafe.gerarchia()` risponde alla stessa domanda
+    # l'eccezione. `casa/anagrafe.hierarchy()` risponde alla stessa domanda
     # per id, con l'ereditarieta', e dichiarando quale registro non ha
     # risposto. Due risposte alla stessa domanda, una delle quali sbagliata e
     # letta da nessuno: NESSUN DOPPIONE.

@@ -54,9 +54,9 @@
             if (data.nota) window.HirisChatMessages.appendNote(placeholderRow, data.nota);
             /* Qui il ramo del ponte disegnava le targhette degli strumenti,
                aggiunte l'11 agosto perche' l'osservabilita' di una scrittura di
-               `ricorda` mancava proprio sul percorso che la produce. Sono uscite
+               `remember` mancava proprio sul percorso che la produce. Sono uscite
                il 17 agosto: il proprietario non le vuole a schermo, e i nomi
-               degli strumenti (con i loro ARGOMENTI, che per `ricorda` sono il
+               degli strumenti (con i loro ARGOMENTI, che per `remember` sono il
                testo del ricordo) non sono cose da scrivere in una conversazione.
 
                L'osservabilita' non e' stata tolta ma SPOSTATA: il backend scrive
