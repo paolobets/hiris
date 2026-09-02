@@ -69,8 +69,8 @@ def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
     INDIETRO nel tempo -- come e' andato un valore, cosa e' successo e per
     mano di chi -- passando per `home_space/historian.py`. Il dispatcher si costruisce
     dagli stessi oggetti dell'app che alimentano `compose_briefing()`
-    (`archivio_casa`, `archivio_memoria`, `entity_cache`), piu' `porta_azione`,
-    `officina` e `cronaca` -- lo stesso specchio dello stato vivo, non uno
+    (`home_space_store`, `memory_store`, `entity_cache`), piu' `action_actuator`,
+    `workshop` e `journal` -- lo stesso specchio dello stato vivo, non uno
     ricalcolato a mano -- ed e' SEMPRE costruibile, anche quando archivi,
     porta e officina sono assenti: i suoi gestori non sollevano mai,
     dichiarano un `errore` per strumento invece (vedi
@@ -104,7 +104,7 @@ def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
     claude_runner.py/openai_compat_runner.py) -- passarlo sempre e' quello che
     tiene la chat viva.
 
-    Task B7 -- `cache_indice=app.get("cache_indice_strumenti")`: l'oggetto di
+    Task B7 -- `cache_indice=app.get("tools_lookup_cache")`: l'oggetto di
     vita lunga costruito accanto a `entity_cache` in `server.py`, non uno
     nuovo per turno. Il dispatcher stesso nasce a ogni turno (e' il motivo per
     cui questa funzione esiste), ma la cache dell'indice che gli si passa
@@ -112,11 +112,11 @@ def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
     (vedi `memory/lookup_cache.py` per la chiave e il perche').
     """
     return ToolDispatcher(
-        app.get("archivio_casa"),
-        app.get("archivio_memoria"),
+        app.get("home_space_store"),
+        app.get("memory_store"),
         cache=app.get("entity_cache"),
-        actuator=app.get("porta_azione"),
-        lookup_cache=app.get("cache_indice_strumenti"),
+        actuator=app.get("action_actuator"),
+        lookup_cache=app.get("tools_lookup_cache"),
         # Il canale verso Home Assistant, per `related`: quello strumento non
         # legge l'archivio, chiede a HA chi tocca una cosa
         # (`search/related`). Senza questa riga sarebbe uno strumento sempre
@@ -128,24 +128,24 @@ def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
         # riconnessione da tenere allineati.
         ha=app.get("ha_client"),
         # Il registro dei servizi (`action/registry.py`), la STESSA istanza
-        # che riceve `porta_azione` qui sopra -- mai una seconda costruzione.
+        # che riceve `action_actuator` qui sopra -- mai una seconda costruzione.
         # Serve a `promise` per verificare un `fai` ADESSO
         # (`ToolDispatcher._verify_now`) e un `recapito`.
-        registry=app.get("registro_servizi"),
+        registry=app.get("service_registry"),
         # L'archivio delle promesse (`keeper/store.py`): la casa di
         # `promise`/`agenda`/`cancel`.
-        agenda=app.get("promesse"),
+        agenda=app.get("agenda"),
         # L'officina (`action/construction/workshop.py`, fetta «costruire»):
-        # la casa di `propose`/`confirm`. Sorella di `porta_azione`, non
+        # la casa di `propose`/`confirm`. Sorella di `action_actuator`, non
         # sua sostituta -- due canali diversi, spec «un canale, una porta».
-        workshop=app.get("officina"),
+        workshop=app.get("workshop"),
         # L'identita' di QUESTO turno -- vedi il docstring qui sopra per chi
         # la conia e perche' non e' mai il dispatcher stesso a farlo.
         exchange=exchange,
         # La cronaca degli atti: la STESSA istanza che riceve l'officina in
         # `server.py`, mai una seconda apertura di `azioni.db`. Serve ad
         # `logbook` per attribuire a HIRIS cio' che ha fatto HIRIS.
-        journal=app.get("cronaca"),
+        journal=app.get("journal"),
     )
 
 
@@ -221,8 +221,8 @@ def compose_chat_context(app, data_dir: str) -> str:
     # (test_api_nucleo_senza_archivi_non_afferma_di_sapere). Un silenzio non
     # dichiarato e' indistinguibile da un'assenza di problemi: qui non puo'
     # scattare, perche' il testo che il modello legge lo dice da solo.
-    # Fix E1-①: `compose_briefing()` non e' protetta -- apre `archivio_casa`
-    # e `archivio_memoria` (SQLite) e puo' sollevare (file corrotto, o in
+    # Fix E1-①: `compose_briefing()` non e' protetta -- apre `home_space_store`
+    # e `memory_store` (SQLite) e puo' sollevare (file corrotto, o in
     # lock dopo un riavvio sporco: sqlite3.DatabaseError/OperationalError).
     # Il codice pre-fetta avvolgeva OGNI fonte in un try/except con questo
     # stesso commento: "un fallimento qui non deve mai impedire alla chat di
@@ -280,7 +280,7 @@ def _who_answered_note(request: web.Request, *, reason: str) -> str:
     ripiego silenzioso dal forfait al consumo si scopre a fine mese.
 
     **«Chi ha risposto» si MISURA, non si deduce.** La tentazione è leggere
-    `app["catena_modelli"][0]`, cioè «ha risposto il primo della catena»:
+    `app["model_chain"][0]`, cioè «ha risposto il primo della catena»:
     sarebbe falso proprio nel caso che conta, perché il router RIPIEGA, quindi
     il primo può aver fallito e aver risposto il secondo. Si legge quindi il
     registro degli esiti (Task 11), che il ciclo di ripiego del router aggiorna
@@ -296,10 +296,10 @@ def _who_answered_note(request: web.Request, *, reason: str) -> str:
     nessuna nota che una che nomina il provider sbagliato: questa riga parla di
     soldi, e una riga falsa sui soldi è peggio del silenzio.
     """
-    occurrence_registry = request.app.get("registro_esiti")
+    occurrence_registry = request.app.get("occurrence_registry")
     if occurrence_registry is None:
         return ""
-    for backend_name in (request.app.get("catena_modelli") or []):
+    for backend_name in (request.app.get("model_chain") or []):
         occurrence = occurrence_registry.occurrence(backend_name)
         if occurrence and occurrence["tipo"] == "risposto":
             return downgrade_note(reason=reason, who_answered=backend_name)
@@ -463,7 +463,7 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
     # `occurrence_phrase` direbbe «ha rifiutato», e il piano non ha rifiutato -- non
     # ha risposto. È la stessa parola più larga del fatto che questa fetta
     # esiste per togliere.
-    occurrence_registry = request.app.get("registro_esiti")
+    occurrence_registry = request.app.get("occurrence_registry")
     if occurrence_registry is not None:
         occurrence_registry.fallimento(
             "subscription", family="scaduto", code=None,
@@ -687,7 +687,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         return web.json_response({"error": "message too long (max 4000 chars)"}, status=413)
 
     data_dir = request.app.get("data_dir", "/data")
-    settings = request.app["impostazioni_chat"]
+    settings = request.app["chat_settings"]
 
     # Enforce max turns limit (count from DB, not from the trimmed context
     # window). Final-review Fix 1 (Slice 4b): hoisted ABOVE the subscription

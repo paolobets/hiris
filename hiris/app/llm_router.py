@@ -116,7 +116,7 @@ class LLMRouter:
         model_chain: list[str] | None = None,
         registry: Any = None,
     ) -> None:
-        # `registro` è `provider_occurrences.OccurrenceRegistry` (app["registro_esiti"]).
+        # `registro` è `provider_occurrences.OccurrenceRegistry` (app["occurrence_registry"]).
         # Facoltativo perché `LLMRouter` è costruito anche da test e da codice
         # di libreria che non ha una app intorno; quando c'è, ogni giro del
         # ciclo di ripiego ci scrive che cosa ha visto. È l'UNICO scrittore:

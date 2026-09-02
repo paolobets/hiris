@@ -436,8 +436,8 @@ def _semina_gli_archivi(app, tmp_path):
     casa = _semina_casa(tmp_path)
     memoria_db = str(tmp_path / "memoria.db")
     memoria = MemoryStore(memoria_db)
-    app["archivio_casa"] = casa
-    app["archivio_memoria"] = memoria
+    app["home_space_store"] = casa
+    app["memory_store"] = memoria
     app["entity_cache"] = _CacheViva({"light.cucina_1": "on",
                                       "light.cucina_2": "off"})
     return casa, memoria, memoria_db
@@ -518,7 +518,7 @@ async def test_la_sonda_dice_si_anche_senza_archivi_e_va_dichiarato(
     scrittura in memoria per una diagnosi -- e la difesa costerebbe piu' di
     cio' che difende."""
     client, _coda, app = ponte_con_configurazione_predefinita
-    assert app.get("archivio_casa") is None
+    assert app.get("home_space_store") is None
 
     with httpx.Client(timeout=30) as http:
         ok, _motivo = await asyncio.to_thread(

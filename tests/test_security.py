@@ -31,7 +31,7 @@ def _make_app_with_runner(runner):
     app = web.Application(middlewares=[_security_headers])
     app["llm_router"] = runner
     app["claude_runner"] = runner
-    app["impostazioni_chat"] = ChatSettings(system_prompt="test")
+    app["chat_settings"] = ChatSettings(system_prompt="test")
     app["data_dir"] = "/tmp"
 
     app.router.add_post("/api/chat", handle_chat)

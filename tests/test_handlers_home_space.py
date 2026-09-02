@@ -37,7 +37,7 @@ async def test_api_casa_restituisce_la_gerarchia(aiohttp_client, tmp_path):
         "integrazioni": [{"domain": "mqtt", "title": "MQTT", "state": "loaded"}],
     })
     app = web.Application()
-    app["archivio_casa"] = archivio
+    app["home_space_store"] = archivio
     app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
 
@@ -57,7 +57,7 @@ async def test_api_casa_senza_anagrafe_risponde_lo_stesso(aiohttp_client):
     """L'anagrafe puo' essere vuota se HA non era pronto all'avvio: 200 e vuota,
     non 500 -- chi guarda deve poter distinguere «vuota» da «rotta»."""
     app = web.Application()
-    app["archivio_casa"] = None
+    app["home_space_store"] = None
     app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
 
@@ -92,7 +92,7 @@ async def test_api_casa_mostra_il_comportamento_e_quanto_non_sa(aiohttp_client, 
         unloaded_files={"scripts.yaml": "assente"},
     )
     app = web.Application()
-    app["archivio_casa"] = archivio
+    app["home_space_store"] = archivio
     app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
 
@@ -127,7 +127,7 @@ async def test_api_casa_mostra_le_plance_compresa_la_predefinita(aiohttp_client,
          "config": None, "entita": []},
     ])
     app = web.Application()
-    app["archivio_casa"] = archivio
+    app["home_space_store"] = archivio
     app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
 
@@ -166,8 +166,8 @@ async def test_api_nucleo_mostra_il_testo_e_il_riepilogo(aiohttp_client, tmp_pat
     archivio_memoria = MemoryStore(str(tmp_path / "memoria.db"))
     archivio_memoria.remember("d'inverno la sala la preferisco fra 19 e 20 gradi", "paolo")
     app = web.Application()
-    app["archivio_casa"] = archivio_casa
-    app["archivio_memoria"] = archivio_memoria
+    app["home_space_store"] = archivio_casa
+    app["memory_store"] = archivio_memoria
     app["entity_cache"] = _CacheFinta([{"id": "light.cucina", "state": "on"}])
     app.router.add_get("/api/briefing", handle_get_briefing)
     client = await aiohttp_client(app)
@@ -194,8 +194,8 @@ async def test_api_nucleo_senza_archivi_non_afferma_di_sapere(aiohttp_client):
     dichiarare "non ho potuto guardare" -- MAI un nucleo vuoto spacciato per
     una casa vuota. 200 comunque: e' una lacuna dichiarata, non un guasto."""
     app = web.Application()
-    app["archivio_casa"] = None
-    app["archivio_memoria"] = None
+    app["home_space_store"] = None
+    app["memory_store"] = None
     app["entity_cache"] = None
     app.router.add_get("/api/briefing", handle_get_briefing)
     client = await aiohttp_client(app)
@@ -225,8 +225,8 @@ async def test_api_nucleo_propaga_i_registri_non_disponibili(aiohttp_client, tmp
         "etichette": [], "categorie": [], "integrazioni": [],
     }, unavailable=["aree"])
     app = web.Application()
-    app["archivio_casa"] = archivio_casa
-    app["archivio_memoria"] = None
+    app["home_space_store"] = archivio_casa
+    app["memory_store"] = None
     app["entity_cache"] = None
     app.router.add_get("/api/briefing", handle_get_briefing)
     client = await aiohttp_client(app)
@@ -262,8 +262,8 @@ async def test_api_nucleo_non_tronca_i_ricordi_al_default_di_richiama(aiohttp_cl
     for i in range(200):
         archivio_memoria.remember(f"ricordo numero {i}: qualcosa che qualcuno ha detto", "paolo")
     app = web.Application()
-    app["archivio_casa"] = archivio_casa
-    app["archivio_memoria"] = archivio_memoria
+    app["home_space_store"] = archivio_casa
+    app["memory_store"] = archivio_memoria
     app["entity_cache"] = None
     app.router.add_get("/api/briefing", handle_get_briefing)
     client = await aiohttp_client(app)
@@ -304,8 +304,8 @@ async def test_api_nucleo_riceve_i_problemi_e_i_file_non_letti_del_comportamento
         unloaded_files={"scripts.yaml": "assente"},
     )
     app = web.Application()
-    app["archivio_casa"] = archivio_casa
-    app["archivio_memoria"] = None
+    app["home_space_store"] = archivio_casa
+    app["memory_store"] = None
     app["entity_cache"] = None
     app.router.add_get("/api/briefing", handle_get_briefing)
     client = await aiohttp_client(app)
@@ -336,7 +336,7 @@ async def test_api_casa_manda_i_NOMI_delle_etichette(aiohttp_client, tmp_path):
         "entita": [],
     }, [])
     app = web.Application()
-    app["archivio_casa"] = casa
+    app["home_space_store"] = casa
     app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
 
@@ -373,7 +373,7 @@ async def test_api_casa_manda_i_nomi_delle_categorie_per_AMBITO(aiohttp_client, 
         ],
     }, [])
     app = web.Application()
-    app["archivio_casa"] = casa
+    app["home_space_store"] = casa
     app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
 
@@ -387,7 +387,7 @@ async def test_senza_archivio_etichette_e_categorie_sono_None(aiohttp_client):
     """`None` e non `{}`: qui non e' «la casa non ha etichette», e' «non
     abbiamo letto niente». La stessa distinzione di `non_disponibili`."""
     app = web.Application()
-    app["archivio_casa"] = None
+    app["home_space_store"] = None
     app.router.add_get("/api/home-space", handle_get_home_space)
     client = await aiohttp_client(app)
 

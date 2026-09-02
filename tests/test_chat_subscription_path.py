@@ -1,6 +1,6 @@
 """Slice 4b Task 2: async subscription path for handle_chat.
 
-When ``app["ponte_attivo"]`` is truthy AND the reasoning-queue
+When ``app["bridge_active"]`` is truthy AND the reasoning-queue
 bridge is wired (``app["reasoning_queue"]`` present — see
 ``steering._bridge_on``), ``handle_chat`` must:
   1. persist the user turn to chat_store BEFORE enqueueing — otherwise a
@@ -98,9 +98,9 @@ def _make_app(tmp_path, *, ponte_attivo=False, with_queue=True, runner=None,
     app = web.Application()
     app["llm_router"] = runner
     app["claude_runner"] = runner
-    app["impostazioni_chat"] = impostazioni
+    app["chat_settings"] = impostazioni
     app["data_dir"] = data_dir
-    app["ponte_attivo"] = ponte_attivo
+    app["bridge_active"] = ponte_attivo
 
     q = None
     if with_queue:
@@ -635,7 +635,7 @@ async def test_poll_route_decision_con_tools_called_vuota_porta_comunque_debug(t
 # Il fail-safe non e' stato rimosso in nessuno dei due passaggi: ha finito di
 # cambiare natura. Da regola da non sbagliare (un `and` scritto a mano in due
 # punti), a espressione condivisa (la stessa funzione chiamata due volte), a
-# VALORE condiviso: `_recompute_chain` scrive `app["ponte_attivo"]`, e la
+# VALORE condiviso: `_recompute_chain` scrive `app["bridge_active"]`, e la
 # spazzata e l'instradamento lo LEGGONO. Due letture dello stesso slot non
 # possono divergere nemmeno per distrazione.
 #
@@ -675,7 +675,7 @@ def test_il_token_da_solo_non_accende_il_ponte(monkeypatch):
     Fino alla 2.5.0 `provider_subscription` acceso col suo token accendeva il
     ponte da se' (`_sub_first_class`): chi stava nella configurazione
     consigliata non doveva accendere niente. Costava pero' l'ultima seconda
-    rappresentazione del prodotto -- `app["ponte_attivo"]` poteva valere True
+    rappresentazione del prodotto -- `app["bridge_active"]` poteva valere True
     mentre `ponte.attivo`, cioe' cio' che la pagina Modelli mostra e scrive,
     diceva False -- e rendeva IMPOSSIBILE spegnere il ponte a chiunque avesse
     un token, oltre a rendere inutile il bottone che lo accende.
@@ -706,7 +706,7 @@ def test_lo_stesso_gate_governa_la_spazzata_e_l_instradamento():
 
     ricalcola = inspect.getsource(server._recompute_chain)
     riga_cablaggio = [r for r in ricalcola.splitlines()
-                      if 'app["ponte_attivo"] =' in r]
+                      if 'app["bridge_active"] =' in r]
     assert len(riga_cablaggio) == 1, riga_cablaggio
     assert "_bridge_active(" in riga_cablaggio[0], (
         "il cablaggio non passa piu' dal combinatore condiviso: la logica "
@@ -714,7 +714,7 @@ def test_lo_stesso_gate_governa_la_spazzata_e_l_instradamento():
     )
 
     src = inspect.getsource(server._on_startup)
-    assert 'app["ponte_attivo"] =' not in src, (
+    assert 'app["bridge_active"] =' not in src, (
         "il ponte e' tornato a essere cablato UNA volta all'avvio: da li' non "
         "puo' seguire un salvataggio della pagina Modelli, e accendere il "
         "ponte tornerebbe a essere una PUT che risponde 200 e non fa niente "
@@ -723,7 +723,7 @@ def test_lo_stesso_gate_governa_la_spazzata_e_l_instradamento():
 
     sweep_pos = src.index("async def _reasoning_sweep()")
     corpo_sweep = src[sweep_pos:sweep_pos + 900]
-    assert 'app.get("ponte_attivo")' in corpo_sweep, (
+    assert 'app.get("bridge_active")' in corpo_sweep, (
         "la spazzata non legge piu' il valore condiviso: puo' tornare a essere "
         "in disaccordo con l'instradamento, ed e' esattamente il buco che l'AND "
         "di prima serviva a chiudere"
@@ -907,8 +907,8 @@ async def test_job_context_porta_il_nucleo_identico_al_ramo_sincrono(tmp_path):
     })
     archivio_memoria = MemoryStore(str(tmp_path / "memoria.db"))
     archivio_memoria.remember("La cucina ha i faretti dimmerabili", "paolo")
-    app["archivio_casa"] = archivio_casa
-    app["archivio_memoria"] = archivio_memoria
+    app["home_space_store"] = archivio_casa
+    app["memory_store"] = archivio_memoria
 
     try:
         async with TestClient(TestServer(app)) as client:
@@ -949,7 +949,7 @@ async def test_il_ponte_dichiara_che_thinking_budget_non_viene_applicato(tmp_pat
     risultava salvata e non faceva niente, in silenzio."""
     app, _q, _runner, _impostazioni, _data_dir = _make_app(
         tmp_path, ponte_attivo=True, with_queue=True)
-    app["impostazioni_chat"] = ChatSettings(
+    app["chat_settings"] = ChatSettings(
         name="test-agent", system_prompt="You are a helpful assistant.",
         thinking_budget=8000,
     )
@@ -1183,8 +1183,8 @@ def _con_registro(app, *, catena, chi_ha_risposto=None):
     from hiris.app.provider_occurrences import OccurrenceRegistry
 
     registro = OccurrenceRegistry(clock=lambda: 1000.0)
-    app["registro_esiti"] = registro
-    app["catena_modelli"] = list(catena)
+    app["occurrence_registry"] = registro
+    app["model_chain"] = list(catena)
     if chi_ha_risposto:
         registro.successo(chi_ha_risposto)
     return registro
@@ -1235,8 +1235,8 @@ async def test_senza_sapere_chi_ha_risposto_la_nota_non_si_scrive(tmp_path, monk
     parla di soldi, e una nota falsa sui soldi e' peggio del silenzio."""
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
     app, _q, _runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
-    app["registro_esiti"] = None
-    app["catena_modelli"] = []
+    app["occurrence_registry"] = None
+    app["model_chain"] = []
     async with TestClient(TestServer(app)) as client:
         body = await (await client.post("/api/chat", json={"message": "ciao"})).json()
     assert "nota" not in body

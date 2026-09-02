@@ -42,7 +42,7 @@ def _categories_by_scope(home_space: dict) -> dict[str, dict[str, str]]:
 
 
 async def handle_get_home_space(request: web.Request) -> web.Response:
-    store = request.app.get("archivio_casa")
+    store = request.app.get("home_space_store")
     if store is None:
         # Difesa, non stato atteso: in produzione questo ramo non dovrebbe mai
         # scattare. Se `_on_startup` fallisce, l'add-on non parte affatto; un
@@ -149,7 +149,7 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
         # legge un testo, qui serve il dato per chi disegna. `None` quando
         # nessun giro e' ancora passato -- mai `{}`, che direbbe «confrontato,
         # e non c'era niente da dire».
-        "confronto": request.app.get("confronto_albero"),
+        "confronto": request.app.get("tree_comparison"),
         "comportamento": {
             "letto_il": store.behavior_loaded_at(),
             "conteggi": behavior_counts,
@@ -205,8 +205,8 @@ def compose_briefing(app) -> tuple[str, dict]:
     commenti storici in git blame su questa funzione (era il corpo di
     `handle_get_briefing`) per il dettaglio di ciascuna scelta.
     """
-    home_space_store = app.get("archivio_casa")
-    memory_store = app.get("archivio_memoria")
+    home_space_store = app.get("home_space_store")
+    memory_store = app.get("memory_store")
     cache = app.get("entity_cache")
     # Stessa difesa di `handle_list_entities`: una cache finta senza
     # `all_states` (o assente) non e' un inventario leggibile.
@@ -276,7 +276,7 @@ def compose_briefing(app) -> tuple[str, dict]:
 
     # I guasti che Home Assistant ha gia' diagnosticato (`repairs/list_issues`).
     #
-    # DOVE VIVONO, e perche' non nell'archivio. In RAM, in `app["problemi_ha"]`,
+    # DOVE VIVONO, e perche' non nell'archivio. In RAM, in `app["ha_problems"]`,
     # accanto a `entity_cache` -- una fotografia riletta ogni pochi minuti da
     # `server.reread_ha_problems`, mai una tabella. La ragione e' scritta per
     # esteso li'; in breve e' la stessa per cui `state` non entra nel sistema di
@@ -290,7 +290,7 @@ def compose_briefing(app) -> tuple[str, dict]:
     # ancora letto, o un'app di prova che non lo cabla) resta `None` fino a
     # `compose()`, che sa distinguerlo da «letto e vuoto». Tradurlo qui in `{}`
     # o in una lista vuota affermerebbe che la casa non ha guasti.
-    problems = app.get("problemi_ha")
+    problems = app.get("ha_problems")
 
     # L'esito dell'ultimo giro di verifica dell'albero (`server.tree_comparison_round`).
     #
@@ -305,7 +305,7 @@ def compose_briefing(app) -> tuple[str, dict]:
     # Si legge con `.get()` e si passa cosi' com'e': `None` (nessun giro
     # ancora fatto, o un'app di prova che non lo cabla) resta `None` fino a
     # `compose()`, che sa distinguerlo da «guardato e combacia».
-    comparison = app.get("confronto_albero")
+    comparison = app.get("tree_comparison")
 
     # Affidabile SOLO se sappiamo sia quali entita' esistono (archivio della
     # casa) sia in che stato sono adesso (inventario vivo pronto). Una delle

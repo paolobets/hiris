@@ -68,7 +68,7 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
     app["ha_client"] = mock_ha
-    app["impostazioni_chat"] = ChatSettings()
+    app["chat_settings"] = ChatSettings()
     app["claude_runner"] = None
     app["theme"] = "auto"
     app["supervisor_ingress_cidrs"] = ["172.30.32.0/23"]
@@ -78,17 +78,17 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     memoria = MemoryStore(str(tmp_path / "memoria.db"))
     promesse = AgendaStore(str(tmp_path / "promesse.db"))
     porta = PortaFinta()
-    app["archivio_casa"] = casa
-    app["archivio_memoria"] = memoria
-    app["promesse"] = promesse
-    app["porta_azione"] = porta
+    app["home_space_store"] = casa
+    app["memory_store"] = memoria
+    app["agenda"] = promesse
+    app["action_actuator"] = porta
     # L'orologio vero: e' lui che conclude una promessa e fa partire la
     # notifica dalla porta. `interpreta` non viene mai chiamato in questi test
     # -- qui il turno gira sul ponte, non sulla catena.
     async def _mai(_promessa):
         raise AssertionError("il turno non doveva passare dalla catena")
 
-    app["orologio"] = Sweeper(promesse, execute=porta.execute, interpreta=_mai)
+    app["sweeper"] = Sweeper(promesse, execute=porta.execute, interpreta=_mai)
     app.on_startup.clear()
     app.on_cleanup.clear()
 

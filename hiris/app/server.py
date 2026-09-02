@@ -110,7 +110,7 @@ def _close_expired_promise(app, job: dict) -> None:
     `submit`, e `wake` e' la sola parte del job che sopravvive.
     """
     ident = (job.get("wake") or {}).get("promessa_id") or ""
-    store = app.get("promesse")
+    store = app.get("agenda")
     riga = store.read(ident) if (store is not None and ident) else None
     if riga is None or riga.get("stato") != "in_corso":
         # Gia' conclusa da `concludi` mentre il turno finiva: non si
@@ -140,7 +140,7 @@ def _bridge_active(store: dict | None) -> bool:
     Il proprietario ha fuso i due interruttori in uno solo (`ponte.attivo`,
     13 agosto 2026), e il fail-safe NON e' stato rimosso: e' diventato
     STRUTTURALE. C'e' UN valore, derivato UNA volta (`_recompute_chain`
-    scrive `app["ponte_attivo"]`) e letto da tutti -- la spazzata,
+    scrive `app["bridge_active"]`) e letto da tutti -- la spazzata,
     l'instradamento della chat, il gate del lavoratore del ponte, la pagina.
     L'invariante «non accodare mai in una coda che nessuno spazza» non regge
     piu' su un `and` da non sbagliare, e nemmeno su due chiamate alla stessa
@@ -152,7 +152,7 @@ def _bridge_active(store: dict | None) -> bool:
     Il secondo era l'IMPLICAZIONE: il piano acceso accendeva il ponte da se'.
     Esce insieme all'opzione che lo alimentava, e non e' una perdita di
     comodita' senza contropartita -- era l'ultima seconda rappresentazione del
-    prodotto (invariante 1): `app["ponte_attivo"]` poteva valere True mentre
+    prodotto (invariante 1): `app["bridge_active"]` poteva valere True mentre
     l'archivio, che e' cio' che la pagina Modelli mostra e scrive, diceva
     False. Con l'implicazione viva il bottone «Mettilo primo» non sarebbe
     costruibile: metterebbe a `true` un valore gia' scavalcato, e spegnere il
@@ -602,7 +602,7 @@ async def reload_entity_inventory(cache, ha_client) -> bool:
 
 async def reread_ha_problems(app, ha_client) -> dict | None:
     """Rilegge i guasti che Home Assistant ha gia' diagnosticato e li mette in
-    `app["problemi_ha"]`. Ritorna cio' che ha scritto (`None` senza client).
+    `app["ha_problems"]`. Ritorna cio' che ha scritto (`None` senza client).
 
     DOVE VIVONO I PROBLEMI, e perche' qui e non in `home_space/store.py`.
 
@@ -644,7 +644,7 @@ async def reread_ha_problems(app, ha_client) -> dict | None:
     reader = getattr(ha_client, "problems", None)
     if reader is None:
         # Un client vecchio o un finto di prova che non dichiara `problemi`:
-        # non si scrive niente, cosi' `app["problemi_ha"]` resta `None` e il
+        # non si scrive niente, cosi' `app["ha_problems"]` resta `None` e il
         # nucleo tace invece di affermare che la casa e' sana.
         return None
     try:
@@ -652,13 +652,13 @@ async def reread_ha_problems(app, ha_client) -> dict | None:
     except Exception as exc:  # non previsto: `problems()` cattura gia' da se'
         logger.warning("lettura dei problemi diagnosticati da HA fallita: %s", exc)
         report = {"errore": "Home Assistant non ha risposto"}
-    app["problemi_ha"] = report
+    app["ha_problems"] = report
     return report
 
 
 async def watch_system_conditions(app, ha_client) -> int | None:
     """Le condizioni di sistema (problemi diagnosticati + integrazioni non
-    caricate) verso `app["osservatore"].watch_system` (fetta «l'osservatore»,
+    caricate) verso `app["watcher"].watch_system` (fetta «l'osservatore»,
     Task 5). Torna quante ne ha scritte, o `None` se il giro e' stato saltato.
 
     **Se una delle due letture fallisce, il giro si salta INTERAMENTE**
@@ -683,7 +683,7 @@ async def watch_system_conditions(app, ha_client) -> int | None:
     puo' sollevare da `watch_system` stesso, se `record` fallisce a meta' --
     e in quel caso deve propagare, per il motivo scritto sul suo docstring.
     """
-    watcher = app.get("osservatore")
+    watcher = app.get("watcher")
     if watcher is None:
         return None
     problems_report = await ha_client.problems()
@@ -705,7 +705,7 @@ async def watch_system_conditions(app, ha_client) -> int | None:
 
 def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):
     """Restituisce `giro()`: confronta un CAMPIONE di aree con Home Assistant
-    e scrive l'esito in `app["confronto_albero"]`.
+    e scrive l'esito in `app["tree_comparison"]`.
 
     **Cosa fa, in una riga.** `home_space/topology.hierarchy()` e' una replica che
     HIRIS costruisce dai registri, cioe' un'affermazione sulla casa che niente
@@ -726,8 +726,8 @@ def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):
     registrazione nello schedulatore), che con `AREAS_PER_ROUND` a rotazione
     coprono una casa da sedici aree in poco piu' di un'ora.
 
-    **DOVE VIVE L'ESITO.** In RAM, in `app["confronto_albero"]`, accanto a
-    `app["problemi_ha"]` e per la stessa ragione, gia' scritta per esteso su
+    **DOVE VIVE L'ESITO.** In RAM, in `app["tree_comparison"]`, accanto a
+    `app["ha_problems"]` e per la stessa ragione, gia' scritta per esteso su
     `reread_ha_problems`: un confronto e' momentaneo -- la casa cambia e la
     replica si rifa' da sola al primo evento di registro -- e un archivio
     riletto di rado continuerebbe ad annunciare per ore una divergenza gia'
@@ -761,7 +761,7 @@ def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):
             # comando: non si scrive niente, cosi' la chiave resta assente e
             # il nucleo tace invece di affermare che l'albero e' verificato.
             return None
-        store = app.get("archivio_casa")
+        store = app.get("home_space_store")
         if store is None:
             return None
 
@@ -791,7 +791,7 @@ def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):
         # (`/api/home-space`) per dire quanto e' fresco il verdetto che sta
         # mostrando.
         report["letto_il"] = datetime.now(UTC).isoformat(timespec="seconds")
-        app["confronto_albero"] = report
+        app["tree_comparison"] = report
         divergenti = sum(1 for g in report["guardate"] if g.get("mancanti") or g.get("in_piu")
                          or g.get("assente_in_ha"))
         if divergenti:
@@ -926,7 +926,7 @@ async def build_balances(
 
     **Il raggruppamento per dispositivo non costa nessuna rete**: il legame
     entita'->dispositivo lo dichiara HA nel registro delle entita', gia'
-    replicato in `archivio_casa` (`read_registries()` lo alimenta da tempo --
+    replicato in `home_space_store` (`read_registries()` lo alimenta da tempo --
     fondamenta 2, nessun doppione: interrogare di nuovo `config/entity_
     registry/list` qui sarebbe una seconda porta per un fatto che ne ha gia'
     una). **Non si congela il dispositivo nel grezzo** (mandato, punto 3):
@@ -966,7 +966,7 @@ async def build_balances(
     sopra che li prende tutti insieme.
 
     Nessun dispositivo candidato -> nessuna chiamata di rete: se questa
-    casa non ha nessuna direzione nota (o `archivio_casa` non c'e' ancora),
+    casa non ha nessuna direzione nota (o `home_space_store` non c'e' ancora),
     tornare `([], 0)` non costa niente.
     """
     if home_space_store is None or not energy_subjects:
@@ -1084,7 +1084,7 @@ async def build_balances(
 
 def _timezone_from_home_space_store(home_space_store) -> str | None:
     """Il fuso della casa, letto da `reference_frame()` -- `None` se
-    `archivio_casa` non c'e' ancora (avvio a meta', o un test che non lo
+    `home_space_store` non c'e' ancora (avvio a meta', o un test che non lo
     costruisce).
 
     Un aiutante per una domanda che il codice faceva ripetendo la stessa
@@ -1249,7 +1249,7 @@ async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None
     vita vera nessuno lo passa, ed e' `datetime.now` (col fuso della casa) a
     dire cos'e' «oggi».
     """
-    timezone = _timezone_from_home_space_store(app.get("archivio_casa"))
+    timezone = _timezone_from_home_space_store(app.get("home_space_store"))
     today = now(home_space_zone(timezone)).date()
     days = [(today - timedelta(days=delta)).strftime("%Y-%m-%d") for delta in (2, 1)]
 
@@ -1260,7 +1260,7 @@ async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None
     for day in days:
         da_ts, a_ts = day_boundaries(day, timezone)
         subjects.update(r["soggetto"] for r
-                        in app["osservazioni"].readings(from_ts=da_ts, to_ts=a_ts))
+                        in app["observations"].readings(from_ts=da_ts, to_ts=a_ts))
     try:
         mappa, failed = await build_companions(ha_client, sorted(subjects))
         # Le direzioni dell'energia si leggono UNA volta per i due giorni
@@ -1324,7 +1324,7 @@ async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None
         balances_by_day: dict[str, list[dict]] = {}
         for day in days:
             bilanci, failed_balances = await build_balances(
-                ha_client, app.get("archivio_casa"), day=day, timezone=timezone,
+                ha_client, app.get("home_space_store"), day=day, timezone=timezone,
                 energy_subjects=sorted(subjects), directions=directions_map)
             if failed_balances:
                 logger.warning(
@@ -1336,7 +1336,7 @@ async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None
             balances_by_day[day] = bilanci
     except Exception as error:
         # Difesa in profondita', stessa ragione del blocco comprimari sopra:
-        # `archivio_casa.leggi()` e' una lettura SQLite locale che non ci si
+        # `home_space_store.leggi()` e' una lettura SQLite locale che non ci si
         # aspetta sollevi, ma se lo fa non deve poter scrivere oggetti
         # poveri sopra oggetti ricchi.
         logger.warning(
@@ -1347,7 +1347,7 @@ async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None
 
     for day in days:
         count = aggregate_day(
-            store=app["osservazioni"], day=day, timezone=timezone,
+            store=app["observations"], day=day, timezone=timezone,
             companions=lambda s, mappa=mappa: mappa.get(s, []),
             directions=lambda s, m=directions_map: m.get(s),
             balances=balances_by_day[day])
@@ -1370,7 +1370,7 @@ def should_start_agent_worker(bridge_active: bool) -> bool:
     VERSIONE B (3.0.0): non legge piu' NIENTE dall'ambiente per il ponte.
     `PROVIDER_SUBSCRIPTION` e `BRIDGE_ENABLED` erano le ultime due opzioni
     dell'add-on lette qui, e il valore arriva adesso come argomento --
-    `app["ponte_attivo"]`, lo stesso che governa la spazzata e
+    `app["bridge_active"]`, lo stesso che governa la spazzata e
     l'instradamento. E' una funzione di modulo senza `app`: passarglielo e'
     l'unico modo di tenerla una funzione pura e di renderla chiamabile ANCHE
     a caldo, cioe' quando la pagina Modelli accende il ponte senza un riavvio
@@ -1584,19 +1584,19 @@ def _govern_bridge_worker(app) -> None:
     except RuntimeError:
         return
 
-    voluto = should_start_agent_worker(bool(app.get("ponte_attivo")))
+    voluto = should_start_agent_worker(bool(app.get("bridge_active")))
     current = app.get("agent_worker_task")
     live = current is not None and not current.done()
 
     if voluto and not live:
         from .agent import runner as _agent_runner
 
-        if app.get("consumi") is not None:
+        if app.get("usage") is not None:
             # I token dell'abbonamento smettono di finire solo nel log. Si
             # collega QUI, dove il lavoratore in-addon nasce: nel percorso a
             # processo separato (`main()`) `/data` non e' di quel processo, e
             # li' il registro resta `None` -- dichiarato, non dimenticato.
-            _agent_runner.set_usage_logger(app["consumi"].log)
+            _agent_runner.set_usage_logger(app["usage"].log)
         app["agent_worker_task"] = _spawn(
             _agent_runner.run_loop(
                 "http://127.0.0.1:8099",
@@ -1629,7 +1629,7 @@ def _recompute_chain(app) -> None:
     chiude, spostata di un livello, e fino al Task 10 c'era una riga in pagina
     che la confessava.
 
-    VERSIONE B (3.0.0): rimette in vigore anche il PONTE. `app["ponte_attivo"]`
+    VERSIONE B (3.0.0): rimette in vigore anche il PONTE. `app["bridge_active"]`
     era una copia presa all'avvio da `BRIDGE_ENABLED`, e finche' quel valore
     veniva da un'opzione dell'add-on non poteva cambiare senza un riavvio.
     Adesso viene dall'archivio, che la pagina Modelli riscrive: se restasse
@@ -1643,7 +1643,7 @@ def _recompute_chain(app) -> None:
     # (`_reasoning_sweep`), l'instradamento (`handlers_chat.handle_chat`), la
     # pagina Consumi, il gate del lavoratore qui sotto. Nessuno dei quattro
     # ricalcola niente, quindi nessuno dei quattro puo' dire una cosa diversa.
-    app["ponte_attivo"] = _bridge_active(cfg)
+    app["bridge_active"] = _bridge_active(cfg)
     # E il lavoratore del ponte SEGUE l'interruttore, invece di essere deciso
     # una volta all'avvio. Sono i due lati dello stesso fatto: accendere il
     # ponte senza far partire chi risponde vorrebbe dire accodare ogni turno in
@@ -1667,7 +1667,7 @@ def _recompute_chain(app) -> None:
     # usa. Sono lo stesso valore -- se divergessero, divergerebbero da sé
     # stesse -- e sono due oggetti perché nessuno dei due possa modificare
     # l'altro per sbaglio (stessa ragione del `list(_chain)` dell'avvio).
-    app["catena_modelli"] = list(chain)
+    app["model_chain"] = list(chain)
     if router is None:
         return
     # NIENTE ripiego sulla policy precedente quando la catena è vuota: una
@@ -1766,7 +1766,7 @@ async def _on_startup(app: web.Application) -> None:
     # al primo uso (`ensure_fresh`), non all'avvio -- un caricamento qui
     # allungherebbe il boot per una cosa che potrebbe non servire in questa
     # sessione, e fallirebbe in silenzio se HA non fosse ancora pronto.
-    app["registro_servizi"] = ServiceRegistry()
+    app["service_registry"] = ServiceRegistry()
 
     # fetta E5 Task 5: qui l'add-on installava la card Lovelace dentro Home
     # Assistant (copia in www/, file di ingress, risorsa registrata). La card
@@ -1810,14 +1810,14 @@ async def _on_startup(app: web.Application) -> None:
     # compilazione di un'espressione regolare per termine (misurato: la
     # compilazione domina il costo, non la lettura -- vedi il rapporto del
     # task). Costruita vuota qui, si riempie alla prima `cerca`/`remember`.
-    app["cache_indice_strumenti"] = LookupCache()
+    app["tools_lookup_cache"] = LookupCache()
 
     # Il cervello, per ora il solo osservatore (fetta «l'osservatore», Task 5:
     # docs/design/2026-08-26-l-osservatore.md). L'archivio nasce prima di lui
     # perche' e' il suo unico ingresso.
-    app["osservazioni"] = ObservationsStore(
+    app["observations"] = ObservationsStore(
         os.path.join(data_dir, "osservazioni.db"))
-    app["osservatore"] = Watcher(app["osservazioni"])
+    app["watcher"] = Watcher(app["observations"])
     # Rilegge dall'archivio le condizioni di sistema gia' aperte prima di
     # QUESTO avvio (task-5-correzioni.md, punto B): senza, ogni riavvio
     # dell'add-on -- che succede a ogni aggiornamento -- riscriverebbe
@@ -1825,12 +1825,12 @@ async def _on_startup(app: web.Application) -> None:
     # momento, e l'oggetto «guasto» perderebbe la sua unica informazione
     # utile: da quando dura. **Prima** del primo giro delle condizioni, qui
     # sotto. Non solleva mai (vedi il suo docstring).
-    app["osservatore"].rebuild_conditions()
+    app["watcher"].rebuild_conditions()
     # LO STESSO rubinetto che alimenta lo specchio, non un secondo: due
     # sorgenti degli stessi eventi sarebbero due cose che possono divergere.
     # Si aggancia DOPO lo specchio: se un giorno l'ordine contasse, conta che
     # lo specchio sia aggiornato prima.
-    ha_client.add_state_listener(app["osservatore"].watch_reading)
+    ha_client.add_state_listener(app["watcher"].watch_reading)
     # La prima lettura delle condizioni di sistema (problemi diagnosticati +
     # integrazioni non caricate; task-5-correzioni.md, punto A), qui accanto
     # per lo stesso motivo di `reread_ha_problems` piu' sopra: senza,
@@ -1849,7 +1849,7 @@ async def _on_startup(app: web.Application) -> None:
     # la porta scriveva gia' con `logger.info`, resa CHIEDIBILE (fondamenta
     # n.4 -- nessuno poteva interrogarla). Nasce PRIMA della porta, perche' la
     # porta la riceve qui sotto.
-    app["cronaca"] = Journal(os.path.join(data_dir, "azioni.db"))
+    app["journal"] = Journal(os.path.join(data_dir, "azioni.db"))
 
     # L'archivio delle promesse (`keeper/store.py`): l'unica casa di
     # «cosa e quando». Nasce qui, accanto alla cronaca -- i due archivi nuovi
@@ -1858,10 +1858,10 @@ async def _on_startup(app: web.Application) -> None:
     # sia lo schedulatore -- l'orologio, montato piu' sotto insieme al
     # battito, perche' gli serve prima lo scheduler, costruito piu' avanti in
     # questa funzione.
-    app["promesse"] = AgendaStore(os.path.join(data_dir, "promesse.db"))
+    app["agenda"] = AgendaStore(os.path.join(data_dir, "promesse.db"))
 
     # L'unico punto del prodotto che esegue qualcosa su Home Assistant
-    # (`action/actuator.py`). Sta QUI, e non accanto a `registro_servizi` piu'
+    # (`action/actuator.py`). Sta QUI, e non accanto a `service_registry` piu'
     # sopra, per l'ordine: la porta ha bisogno dello specchio dello stato
     # (`entity_cache`) per rileggere dopo aver agito, e sopra la cache non
     # esiste ancora -- `app.get("entity_cache")` avrebbe dato `None` e la
@@ -1869,8 +1869,8 @@ async def _on_startup(app: web.Application) -> None:
     # casa», per sempre. Costruita una volta e condivisa: la chat la usa oggi
     # via `create_tool_dispatcher`, lo schedulatore e il brain
     # domani, senza che ne nasca una seconda.
-    app["porta_azione"] = ActionActuator(ha_client, app["registro_servizi"],
-                                      app.get("entity_cache"), app["cronaca"])
+    app["action_actuator"] = ActionActuator(ha_client, app["service_registry"],
+                                      app.get("entity_cache"), app["journal"])
 
     # L'archivio delle costruzioni e l'officina (fetta «costruire»,
     # docs/design/2026-08-22-costruire-in-home-assistant.md). Nascono QUI e non
@@ -1878,11 +1878,11 @@ async def _on_startup(app: web.Application) -> None:
     # e il canale HA. Non riceve la porta e non la usa: sono due canali di
     # scrittura diversi -- «un canale, una porta», spec §2.1 -- e l'officina
     # non chiama mai un servizio.
-    app["costruzioni"] = ConstructionStore(
+    app["constructions"] = ConstructionStore(
         os.path.join(data_dir, "costruzioni.db"))
-    app["officina"] = Workshop(
-        ha_client, app["costruzioni"], app["cronaca"],
-        read_timezone=lambda: _timezone_from_home_space_store(app.get("archivio_casa")))
+    app["workshop"] = Workshop(
+        ha_client, app["constructions"], app["journal"],
+        read_timezone=lambda: _timezone_from_home_space_store(app.get("home_space_store")))
 
     # `data_dir` e' gia' risolto piu' in alto, insieme al token interno che ci
     # vive dentro (la lettura di `HIRIS_DATA_DIR` non e' stata duplicata: e'
@@ -1928,7 +1928,7 @@ async def _on_startup(app: web.Application) -> None:
     # nel log, non fa fallire l'add-on -- il primo evento di registro la
     # ricostruira' comunque.
     home_space_store = HomeSpaceStore(os.path.join(data_dir, "casa.db"))
-    app["archivio_casa"] = home_space_store
+    app["home_space_store"] = home_space_store
 
     # La riparazione di avvio (task-5-fix-brief.md, punto 2b): riaggrega gli
     # ultimi due giorni pieni, COI comprimari (riparazione-impoverisce-brief.md)
@@ -1936,14 +1936,14 @@ async def _on_startup(app: web.Application) -> None:
     # di "due" e non "i giorni senza oggetti", e per quando si salta per
     # intero invece di scrivere oggetti impoveriti.
     #
-    # **QUI, subito dopo `app["archivio_casa"]` (cancello-rilascio-brief.md,
+    # **QUI, subito dopo `app["home_space_store"]` (cancello-rilascio-brief.md,
     # punto 1, CRITICAL -- la terza volta che questa stessa fondamenta si
     # rompe sulla stessa funzione).** Fino a questo giro la chiamata stava 87
-    # righe piu' in alto, PRIMA che `archivio_casa` esistesse:
-    # `_timezone_from_home_space_store(app.get("archivio_casa"))` leggeva sempre
+    # righe piu' in alto, PRIMA che `home_space_store` esistesse:
+    # `_timezone_from_home_space_store(app.get("home_space_store"))` leggeva sempre
     # `None`, e questa riparazione lavorava SEMPRE in UTC -- mentre
     # l'aggregazione notturna (`_aggrega_ieri`, piu' sotto in questa stessa
-    # funzione, che gira alle 00:20 quando `archivio_casa` c'e' gia' da ore)
+    # funzione, che gira alle 00:20 quando `home_space_store` c'e' gia' da ore)
     # lavora col fuso VERO della casa. Le due porte, sullo stesso grezzo,
     # potevano quindi produrre oggetti diversi: un episodio a cavallo della
     # mezzanotte UTC (che non e' la mezzanotte della casa) finiva nel giorno
@@ -1964,7 +1964,7 @@ async def _on_startup(app: web.Application) -> None:
     # `test_la_riaggregazione_degli_ultimi_due_giorni_gira_dopo_le_condizioni_
     # e_non_blocca_l_avvio`) verificava che una STRINGA comparisse in un certo
     # ordine nel sorgente, non che il collaboratore di cui la funzione ha
-    # davvero bisogno (`archivio_casa`) esistesse in quel punto -- e le finte
+    # davvero bisogno (`home_space_store`) esistesse in quel punto -- e le finte
     # di questa stessa funzione, in ogni altro test di questo file, passano
     # `"archivio_casa": None`: fedeli alla produzione ROTTA, non lo
     # sorvegliavano nemmeno per caso. Attesa, e in un try/except che non deve
@@ -1978,12 +1978,12 @@ async def _on_startup(app: web.Application) -> None:
             "fallita (%s: %s)", type(exc).__name__, exc)
 
     # L'archivio dei consumi: l'UNICA casa di «quanto ho speso, e per cosa».
-    # Nasce DOPO `archivio_casa` perche' gli chiede il fuso -- a ogni
+    # Nasce DOPO `home_space_store` perche' gli chiede il fuso -- a ogni
     # scrittura, non alla costruzione: la casa puo' cambiarlo
     # (`core_config_updated`), e un fuso cotto qui sarebbe quello dell'avvio.
     from .usage.store import UsageStore
 
-    app["consumi"] = UsageStore(
+    app["usage"] = UsageStore(
         os.path.join(data_dir, "consumi.db"),
         read_timezone=lambda: _timezone_from_home_space_store(home_space_store))
     try:
@@ -2053,7 +2053,7 @@ async def _on_startup(app: web.Application) -> None:
     # comando. Installare un'integrazione emette una raffica di eventi, e una
     # lettura per ognuno sarebbe una tempesta per un dato che serve solo quando
     # qualcuno chiede di agire.
-    _service_registry = app["registro_servizi"]
+    _service_registry = app["service_registry"]
     ha_client.add_service_listener(lambda _type: _service_registry.invalidate())
 
     # Task 4 SDD memoria: l'archivio della memoria vive nel suo file
@@ -2062,7 +2062,7 @@ async def _on_startup(app: web.Application) -> None:
     # memory/store.py). Nessuna lettura iniziale da fare qui: a
     # differenza dell'anagrafe non c'e' nulla da ricostruire all'avvio.
     memory_store = MemoryStore(os.path.join(data_dir, "memoria.db"))
-    app["archivio_memoria"] = memory_store
+    app["memory_store"] = memory_store
 
     # Task 1 fetta E4: il WebSocket verso HA parte qui -- non e' mai stato
     # dentro un "engine.start()" da quando quel task lo ha spostato (e ora
@@ -2076,14 +2076,14 @@ async def _on_startup(app: web.Application) -> None:
     # della chat -- un bot solo, senza id, coi default nel codice (mai
     # "assente": e' la chiusura per costruzione del degrado silenzioso che
     # handlers_chat.py aveva prima -- vedi chat_settings.py). Gli ex
-    # `engine.set_entity_cache(entity_cache)`/`set_archivi(archivio_casa,
-    # archivio_memoria)` non hanno bisogno di un successore: erano gia'
+    # `engine.set_entity_cache(entity_cache)`/`set_archivi(home_space_store,
+    # memory_store)` non hanno bisogno di un successore: erano gia'
     # orfani prima di questo task (nessun lettore in produzione dalla fetta
     # E4 Task 2 -- ToolDispatcher legge `app["entity_cache"]`/
-    # `app["archivio_casa"]`/`app["archivio_memoria"]` direttamente, gia'
+    # `app["home_space_store"]`/`app["memory_store"]` direttamente, gia'
     # valorizzati sopra).
     chat_settings = ChatSettings.load(data_dir)
-    app["impostazioni_chat"] = chat_settings
+    app["chat_settings"] = chat_settings
 
     # Versione A della migrazione, applicata a `giorni_conservazione`: la META'
     # CHE MANCAVA. `load()` legge il valore attraverso `HISTORY_RETENTION_DAYS`
@@ -2171,7 +2171,7 @@ async def _on_startup(app: web.Application) -> None:
     # ripiego sul fuso dell'host e poi su `"UTC"`. Quindi in produzione (sotto
     # il Supervisor vero, non `docker run` nudo) `TZ` c'e' sempre, e le 00:20
     # dichiarate da pagina, README e piano sono davvero le 00:20 della casa --
-    # la stessa fonte del fuso che `archivio_casa.reference_frame()`
+    # la stessa fonte del fuso che `home_space_store.reference_frame()`
     # legge per l'aggregazione stessa (§0 sopra). Nessuna correzione: ne' al
     # container/schedulatore (gia' corretto da chi lo ospita), ne' alle tre
     # frasi (gia' vere). Resta vero solo FUORI dal Supervisor -- uno sviluppo
@@ -2418,7 +2418,7 @@ async def _on_startup(app: web.Application) -> None:
     # (la spazzata e l'instradamento). E' USCITA con la versione B, insieme
     # all'opzione che la alimentava -- l'ultimo dei cinque interruttori ancora
     # letto, e l'ultima seconda rappresentazione del prodotto: con lei viva,
-    # `app["ponte_attivo"]` poteva dire True mentre `ponte.attivo`, cioe' cio'
+    # `app["bridge_active"]` poteva dire True mentre `ponte.attivo`, cioe' cio'
     # che la pagina Modelli mostra e scrive, diceva False. Il ponte adesso e'
     # un valore solo (`_bridge_active`, che legge l'archivio), e si accende
     # dalla pagina -- dove c'e' anche il bottone che lo fa in un gesto.
@@ -2626,7 +2626,7 @@ async def _on_startup(app: web.Application) -> None:
     # **Un doppione tollerato, dichiarato (task-5-fix-brief.md, punto 5).**
     # Questo lavoro interroga `repairs/list_issues` per conto proprio, ogni
     # dieci minuti, verso l'archivio -- ma `hiris_ha_problems` qui sopra lo
-    # interroga GIA', ogni cinque minuti, verso `app["problemi_ha"]` in RAM
+    # interroga GIA', ogni cinque minuti, verso `app["ha_problems"]` in RAM
     # (che gia' porta la forma d'errore, `{"errore": ...}`, letta identica
     # da entrambi). Non si unificano ora: la lettura diretta del cervello
     # era mandata apposta, e legare il cervello a una cache di un altro
@@ -2660,7 +2660,7 @@ async def _on_startup(app: web.Application) -> None:
             # solleva FUORI da qui il warning contestualizzato non parte --
             # l'eccezione finisce nel registro di apscheduler senza il
             # prefisso «cervello:», e la notte salta in silenzio.
-            timezone = _timezone_from_home_space_store(app.get("archivio_casa"))
+            timezone = _timezone_from_home_space_store(app.get("home_space_store"))
             ieri = (datetime.now(home_space_zone(timezone))
                     - timedelta(days=1)).strftime("%Y-%m-%d")
             # I comprimari si leggono UNA volta per giornata, prima: dentro il
@@ -2668,7 +2668,7 @@ async def _on_startup(app: web.Application) -> None:
             # migliaia di richieste (Task 6, `build_companions`).
             da_ts, a_ts = day_boundaries(ieri, timezone)
             subjects = sorted({r["soggetto"] for r
-                               in app["osservazioni"].readings(from_ts=da_ts, to_ts=a_ts)})
+                               in app["observations"].readings(from_ts=da_ts, to_ts=a_ts)})
             # Il conteggio dei falliti si ignora apposta (`_`): questo giro
             # COSTRUISCE il giorno da zero, non sostituisce niente -- tollera
             # il parziale, come dice il docstring di `build_companions`.
@@ -2692,10 +2692,10 @@ async def _on_startup(app: web.Application) -> None:
             # riparazione all'avvio, che SOSTITUISCE, non tollera invece
             # nessun guasto (vedi il suo docstring).
             bilanci, _ = await build_balances(
-                ha_client, app.get("archivio_casa"), day=ieri, timezone=timezone,
+                ha_client, app.get("home_space_store"), day=ieri, timezone=timezone,
                 energy_subjects=subjects, directions=directions_map)
             count = aggregate_day(
-                store=app["osservazioni"], day=ieri, timezone=timezone,
+                store=app["observations"], day=ieri, timezone=timezone,
                 companions=lambda s: mappa.get(s, []),
                 directions=lambda s: directions_map.get(s),
                 balances=bilanci)
@@ -2725,7 +2725,7 @@ async def _on_startup(app: web.Application) -> None:
     # l'hanno gia'.
     async def _prune_observations() -> None:
         try:
-            count = app["osservazioni"].prune(_time.time())
+            count = app["observations"].prune(_time.time())
             if count:
                 days = READING_RETENTION_S // 86400
                 logger.info("cervello: %s cambi oltre i %s giorni sono usciti",
@@ -2752,7 +2752,7 @@ async def _on_startup(app: web.Application) -> None:
     # dell'anagrafe e del comportamento qui sopra: si dichiara e si prosegue,
     # e le promesse `in_corso` restano tali fino al prossimo riavvio.
     try:
-        app["promesse"].risana(now=_time.time())
+        app["agenda"].risana(now=_time.time())
     except Exception as exc:
         logger.warning("risanamento delle promesse in sospeso fallito: %s", exc)
 
@@ -2761,7 +2761,7 @@ async def _on_startup(app: web.Application) -> None:
     # nuova -- una riga rivendicata e mai conclusa non e' piu' toccabile da
     # nessuna `apply`, e resterebbe un fantasma fino alla potatura.
     try:
-        app["costruzioni"].risana(now=_time.time())
+        app["constructions"].risana(now=_time.time())
     except Exception as exc:
         logger.warning("risanamento delle costruzioni in sospeso fallito: %s", exc)
 
@@ -2774,14 +2774,14 @@ async def _on_startup(app: web.Application) -> None:
     async def _interpreta(promise: dict) -> dict:
         return await interpreta_promise(app, promise)
 
-    app["orologio"] = Sweeper(
-        app["promesse"],
-        execute=app["porta_azione"].execute,
+    app["sweeper"] = Sweeper(
+        app["agenda"],
+        execute=app["action_actuator"].execute,
         interpreta=_interpreta,
     )
 
     async def _battito() -> None:
-        await app["orologio"].batti(_time.time())
+        await app["sweeper"].batti(_time.time())
 
     # Quindici secondi, battito FISSO: la verita' e' la tabella, non un timer
     # per promessa. Un battito fisso non si perde se l'ora di sistema salta
@@ -2811,7 +2811,7 @@ async def _on_startup(app: web.Application) -> None:
     from .chat_store import delete_old_messages as _delete_old_messages
 
     def _run_retention() -> None:
-        days = app["impostazioni_chat"].retention_days
+        days = app["chat_settings"].retention_days
         if days > 0:
             n = _delete_old_messages(data_dir, days)
             if n:
@@ -3055,7 +3055,7 @@ async def _on_startup(app: web.Application) -> None:
         # non possono divergere nemmeno per distrazione. Ed e' anche cio' che
         # rende la spazzata sensibile al ponte spento dalla pagina, senza un
         # riavvio.
-        if not app.get("ponte_attivo"):
+        if not app.get("bridge_active"):
             return
         for job in reasoning_queue.sweep_expired(_time.time()):
             if job.get("kind") == "promessa":
@@ -3096,7 +3096,7 @@ async def _on_startup(app: web.Application) -> None:
 
     # Il punto di cablaggio -- da qui `handle_chat` sa se instradare il turno
     # sul ponte -- NON e' piu' qui: e' `_recompute_chain`, l'unica riga del
-    # prodotto che scrive `app["ponte_attivo"]`, e viene chiamata sia all'avvio
+    # prodotto che scrive `app["bridge_active"]`, e viene chiamata sia all'avvio
     # (`_rimetti_in_vigore`, piu' sotto) sia a ogni salvataggio della pagina
     # Modelli. Doveva spostarsi: il valore viene adesso dall'archivio, che la
     # pagina riscrive, e un cablaggio fatto una volta all'avvio avrebbe
@@ -3106,7 +3106,7 @@ async def _on_startup(app: web.Application) -> None:
     # `handlers_chat._bridge_on` verifica soltanto che `app["reasoning_queue"]`
     # sia agganciata -- e in produzione lo e' sempre, perche' la coda si crea
     # incondizionatamente poche righe piu' su -- quindi da sola non dice che
-    # qualcuno reclami o spazzi quei job. E' `app["ponte_attivo"]` a dirlo:
+    # qualcuno reclami o spazzi quei job. E' `app["bridge_active"]` a dirlo:
     # tenere il gate li', invece di insegnare l'archivio a `_bridge_on`, lascia
     # ai test di handlers_chat.py la possibilita' di agganciare o sganciare la
     # coda senza toccare la configurazione.
@@ -3160,7 +3160,7 @@ async def _on_startup(app: web.Application) -> None:
     # coincidono. Per Ollama no -- l'indirizzo è ciò che si custodisce, il
     # modello è ciò che si decide -- e la differenza è esattamente il buco che
     # il Task 7 aveva dichiarato: con la sola credenziale, Ollama poteva finire
-    # in `catena_modelli` senza un runner dietro, cioè comparire come anello
+    # in `model_chain` senza un runner dietro, cioè comparire come anello
     # numerato in una pagina che descrive il runtime mentre
     # `LLMRouter._ordered_backends` lo saltava in silenzio.
     _risponde = {**_credentials,
@@ -3171,7 +3171,7 @@ async def _on_startup(app: web.Application) -> None:
         claude_runner = ClaudeRunner(
             api_key=api_key,
             read_model=_model_of("claude"),
-            log_usage=app["consumi"].log,
+            log_usage=app["usage"].log,
         )
 
     _usage_base, _usage_ext = os.path.splitext(usage_path)
@@ -3181,7 +3181,7 @@ async def _on_startup(app: web.Application) -> None:
     # una riga «(prima del dettaglio)» per provider: il totale ereditato non si
     # puo' attribuire a un modello -- nessuno lo ha mai registrato -- e dirlo
     # e' meglio che spalmarlo. I file NON vengono cancellati.
-    app["consumi"].importa_legacy([
+    app["usage"].importa_legacy([
         usage_path,
         f"{_usage_base}_openai{_usage_ext}",
         f"{_usage_base}_openrouter{_usage_ext}",
@@ -3194,7 +3194,7 @@ async def _on_startup(app: web.Application) -> None:
             base_url="https://api.openai.com/v1",
             api_key=openai_api_key,
             read_model=_model_of("openai"),
-            log_usage=app["consumi"].log,
+            log_usage=app["usage"].log,
         )
 
     ollama_runner = None
@@ -3217,7 +3217,7 @@ async def _on_startup(app: web.Application) -> None:
             # due posti era la seconda rappresentazione (invariante 1).
             timeout_s=(app["models_config"].get("ollama") or {}).get("timeout_s", 120),
             read_model=_local_model,
-            log_usage=app["consumi"].log,
+            log_usage=app["usage"].log,
         )
     if _risponde["ollama"]:
         # Quick reachability check — warn but don't abort startup.
@@ -3251,7 +3251,7 @@ async def _on_startup(app: web.Application) -> None:
         openrouter_runner = OpenRouterRunner(
             api_key=openrouter_api_key,
             read_model=_model_of("openrouter"),
-            log_usage=app["consumi"].log,
+            log_usage=app["usage"].log,
         )
         logger.info("OpenRouter abilitato (200+ modelli via openrouter.ai)")
 
@@ -3280,7 +3280,7 @@ async def _on_startup(app: web.Application) -> None:
     # diventa credenziato NON entra da solo: compare in «Fuori dalla catena»,
     # a un gesto di distanza.
     #
-    # La scrittura di `app["catena_modelli"]` e' UNA, fuori dal ramo dei
+    # La scrittura di `app["model_chain"]` e' UNA, fuori dal ramo dei
     # runner: prima ce n'erano due -- `list(_chain)` qui e `[]` nell'else -- e
     # la seconda non era coperta da nessun test perche' vive dentro
     # `_on_startup`, che ogni fixture azzera (il debito E dichiarato al
@@ -3312,7 +3312,7 @@ async def _on_startup(app: web.Application) -> None:
     # router poche righe sotto: se un giorno divergessero, divergerebbero da se
     # stessi -- che e' il difetto che questa fetta chiude, reso impossibile
     # invece che vietato.
-    app["catena_modelli"] = list(_chain)
+    app["model_chain"] = list(_chain)
 
     if any([claude_runner, openai_runner, openrouter_runner, ollama_runner]):
         router = LLMRouter(
@@ -3335,7 +3335,7 @@ async def _on_startup(app: web.Application) -> None:
             # via. Lo stesso oggetto che la pagina Modelli legge: se fossero
             # due, divergerebbero -- e la pagina racconterebbe un traffico che
             # non e' quello che c'e' stato.
-            registry=app["registro_esiti"],
+            registry=app["occurrence_registry"],
         )
         app["claude_runner"] = claude_runner  # backward compat (may be None)
         app["llm_router"] = router
@@ -3346,7 +3346,7 @@ async def _on_startup(app: web.Application) -> None:
     # ── Rimettere in vigore, a caldo ──────────────────────────────────────
     # Fuori da entrambi i rami, e con UNA implementazione sola: il ramo `else`
     # (nessun provider configurato) è il PRIMO gesto di chi installa HIRIS, e
-    # senza `app["ricalcola_catena"]` la prima PUT solleverebbe
+    # senza `app["recompute_chain"]` la prima PUT solleverebbe
     # `TypeError: 'NoneType' object is not callable`.
     #
     # Si chiama anche QUI, all'avvio. Non serve a mettere in vigore niente di
@@ -3357,7 +3357,7 @@ async def _on_startup(app: web.Application) -> None:
     def _rimetti_in_vigore() -> None:
         _recompute_chain(app)
 
-    app["ricalcola_catena"] = _rimetti_in_vigore
+    app["recompute_chain"] = _rimetti_in_vigore
     _rimetti_in_vigore()
 
     # ── Chat-via-abbonamento worker in-addon (Plan 2B Task 4) ──────────────
@@ -3387,7 +3387,7 @@ async def _on_startup(app: web.Application) -> None:
     # ponte. Sono l'ultima cosa dell'avvio perche' sono le prime che un
     # operatore cerca in coda al registro quando la chat costa piu' del
     # previsto.
-    for _notice in _bridge_notices(bool(app.get("ponte_attivo")),
+    for _notice in _bridge_notices(bool(app.get("bridge_active")),
                                    _credentials["subscription"]):
         logger.warning(_notice)
 
@@ -3412,29 +3412,29 @@ async def _on_cleanup(app: web.Application) -> None:
             await asyncio.wait_for(aw, timeout=5)
     if "reasoning_queue" in app:
         app["reasoning_queue"].close()
-    if "archivio_casa" in app:
-        app["archivio_casa"].close()
-    if "archivio_memoria" in app:
-        app["archivio_memoria"].close()
+    if "home_space_store" in app:
+        app["home_space_store"].close()
+    if "memory_store" in app:
+        app["memory_store"].close()
     # I due archivi del Task 7 (keeper): stessa disciplina dei due qui
     # sopra -- senza chiuderli un riavvio lascerebbe il file sqlite bloccato.
-    if "promesse" in app:
-        app["promesse"].close()
-    if "cronaca" in app:
-        app["cronaca"].close()
+    if "agenda" in app:
+        app["agenda"].close()
+    if "journal" in app:
+        app["journal"].close()
     # Fetta «costruire» (Task 8): l'archivio delle proposte/versioni
     # dell'officina (`action/construction/revisions.py`), costruito in
-    # `_on_startup` accanto a `app["cronaca"]`. Stessa disciplina dei due
+    # `_on_startup` accanto a `app["journal"]`. Stessa disciplina dei due
     # archivi qui sopra: senza chiuderlo il file sqlite resterebbe bloccato
     # al riavvio.
-    if "costruzioni" in app:
-        app["costruzioni"].close()
+    if "constructions" in app:
+        app["constructions"].close()
     # Fetta «l'osservatore» (Task 5): l'archivio dei cambi e degli oggetti
     # del cervello (`mind/store.py`), costruito in `_on_startup`
-    # accanto a `app["cronaca"]`. Stessa disciplina degli archivi qui sopra:
+    # accanto a `app["journal"]`. Stessa disciplina degli archivi qui sopra:
     # senza chiuderlo il file sqlite resterebbe bloccato al riavvio.
-    if "osservazioni" in app:
-        app["osservazioni"].close()
+    if "observations" in app:
+        app["observations"].close()
     # fetta E4 Task 4: lo scheduler non e' piu' ospitato da un
     # `engine.stop()` -- l'entita' Chatbot (e l'engine che lo portava) e'
     # uscita per intero. `wait=False`, stessa disciplina di
@@ -3513,7 +3513,7 @@ def create_app() -> web.Application:
     # Nessuna persistenza: muore col processo, e «da quando l'add-on e'
     # partito» e' un'eta' dichiarabile (progetto §11.2). Nessuna scadenza: un
     # esito di due ore fa resta li', vecchio, e la pagina ne dice l'eta'.
-    app["registro_esiti"] = OccurrenceRegistry()
+    app["occurrence_registry"] = OccurrenceRegistry()
     app.router.add_static("/static", static_path, show_index=False)
 
     app.router.add_get("/", _serve_index)

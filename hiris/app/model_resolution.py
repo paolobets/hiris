@@ -382,9 +382,9 @@ def compose_now(
 
     `catena` è l'ordine EFFETTIVO in cui il runtime prova i provider -- la
     stessa lista che `server.py` passa a `LLMRouter(model_chain=...)` e
-    pubblica su `app["catena_modelli"]`, non una seconda derivazione.
+    pubblica su `app["model_chain"]`, non una seconda derivazione.
 
-    `bridge_active` è `app["ponte_attivo"]` -- il parametro segue la
+    `bridge_active` è `app["bridge_active"]` -- il parametro segue la
     conversione, la CHIAVE dell'app resta italiana. Quando è vero E c'è il
     token, il turno parte dal piano: `api/handlers_chat.handle_chat` lo accoda invece di
     prendere il router. Dal Task 14 quella strada ha un RITORNO -- se il piano

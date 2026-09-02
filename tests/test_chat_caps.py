@@ -5,7 +5,7 @@ untouched.
 
 Real APIs verified before writing this test (matches Task 2's report /
 tests/test_chat_subscription_path.py):
-- handle_chat gates on app["ponte_attivo"] AND app["reasoning_queue"]
+- handle_chat gates on app["bridge_active"] AND app["reasoning_queue"]
   present (``steering._bridge_on``) before taking the async branch.
 - ReasoningQueue.enqueue(kind, wake, context, deadline_ts, *, job_id=None, now)
   stores context as JSON; the chat job context carries "chatbot_id" (NOT
@@ -99,9 +99,9 @@ def _make_app(tmp_path, *, ponte_attivo=True, with_queue=True,
     app = web.Application()
     app["llm_router"] = runner
     app["claude_runner"] = runner
-    app["impostazioni_chat"] = impostazioni
+    app["chat_settings"] = impostazioni
     app["data_dir"] = data_dir
-    app["ponte_attivo"] = ponte_attivo
+    app["bridge_active"] = ponte_attivo
     # Task 14: il tetto giornaliero del ponte si legge dall'ARCHIVIO
     # (`ponte.tetto_giornaliero`), dove l'utente lo cambia dalla pagina
     # Modelli, e non piu' da `app["chat_daily_cap"]` -- una copia di

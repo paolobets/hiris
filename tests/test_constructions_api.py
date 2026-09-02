@@ -82,9 +82,9 @@ def test_i_finti_combaciano_con_la_firma_vera():
 def _app(archivio=None, officina=None):
     app = web.Application()
     if archivio is not None:
-        app["costruzioni"] = archivio
+        app["constructions"] = archivio
     if officina is not None:
-        app["officina"] = officina
+        app["workshop"] = officina
     return app
 
 
@@ -223,7 +223,7 @@ async def test_confermare_senza_officina_da_503():
     solo dal lato GET (`handle_get_constructions`/`handle_get_construction`).
     Un archivio presente ma un'officina assente non e' un caso remoto: e'
     esattamente la finestra fra la creazione dell'app e il momento in cui
-    `_on_startup` monta `app["officina"]`."""
+    `_on_startup` monta `app["workshop"]`."""
     app = _app(FintoArchivio([{"id": "p1", "stato": "in_attesa"}]))
     risposta = await handle_confirm_construction(FintaRichiesta(app, ident="p1"))
     assert risposta.status == 503
@@ -271,25 +271,25 @@ ADESSO_HTTP = 1_756_100_000.0
 @pytest_asyncio.fixture
 async def client(aiohttp_client, tmp_path):
     app = create_app()
-    app["costruzioni"] = ConstructionStore(
+    app["constructions"] = ConstructionStore(
         os.path.join(str(tmp_path), "costruzioni_http.db"))
-    app["cronaca"] = Journal(os.path.join(str(tmp_path), "azioni_http.db"))
+    app["journal"] = Journal(os.path.join(str(tmp_path), "azioni_http.db"))
     ha = FintoHA()
-    app["officina"] = Workshop(ha, app["costruzioni"], app["cronaca"])
+    app["workshop"] = Workshop(ha, app["constructions"], app["journal"])
     # Solo per i test: leggere cosa e' stato scritto DAVVERO su Home
     # Assistant, senza toccare l'attributo privato dell'officina.
-    app["_ha_finta"] = ha
+    app["_fake_ha"] = ha
     app.on_startup.clear()
     app.on_cleanup.clear()
     c = await aiohttp_client(app)
     yield c
-    app["costruzioni"].close()
-    app["cronaca"].close()
+    app["constructions"].close()
+    app["journal"].close()
 
 
 @pytest.mark.asyncio
 async def test_conferma_senza_x_requested_with_e_403_e_non_scrive_niente(client, csrf_stretto):
-    archivio = client.app["costruzioni"]
+    archivio = client.app["constructions"]
     ident = archivio.propose(
         operation="crea", domain="automation", key="tapparelle_csrf",
         actor="chat", exchange="turno-1", phrase="crea", prima=None,
@@ -302,12 +302,12 @@ async def test_conferma_senza_x_requested_with_e_403_e_non_scrive_niente(client,
     # La meta' che conta: un 403 non deve aver toccato ne' l'archivio ne'
     # Home Assistant.
     assert archivio.read(ident)["stato"] == "in_attesa"
-    assert client.app["_ha_finta"].salvate == []
+    assert client.app["_fake_ha"].salvate == []
 
 
 @pytest.mark.asyncio
 async def test_conferma_con_x_requested_with_applica_anche_a_csrf_stretto(client, csrf_stretto):
-    archivio = client.app["costruzioni"]
+    archivio = client.app["constructions"]
     ident = archivio.propose(
         operation="crea", domain="automation", key="tapparelle_csrf_ok",
         actor="chat", exchange="turno-1", phrase="crea", prima=None,
@@ -318,12 +318,12 @@ async def test_conferma_con_x_requested_with_applica_anche_a_csrf_stretto(client
                                  headers={"X-Requested-With": "fetch"})
     assert risposta.status == 200
     assert archivio.read(ident)["stato"] == "applicata"
-    assert client.app["_ha_finta"].salvate
+    assert client.app["_fake_ha"].salvate
 
 
 @pytest.mark.asyncio
 async def test_ripristina_senza_x_requested_with_e_403_e_non_scrive_niente(client, csrf_stretto):
-    archivio = client.app["costruzioni"]
+    archivio = client.app["constructions"]
     ident = archivio.propose(
         operation="modifica", domain="automation", key="tapparelle_rip",
         actor="chat", exchange="turno-1", phrase="modifica",
@@ -334,7 +334,7 @@ async def test_ripristina_senza_x_requested_with_e_403_e_non_scrive_niente(clien
     risposta = await client.post(f"/api/constructions/{ident}/restore")
     assert risposta.status == 403
     assert (await risposta.json())["error"] == "csrf_required"
-    assert client.app["_ha_finta"].salvate == []
+    assert client.app["_fake_ha"].salvate == []
     # Nessuna nuova proposta di ripristino deve essere nata: quella originale
     # resta l'unica riga dell'archivio.
     assert len(archivio.list(limit=200)) == 1
@@ -344,7 +344,7 @@ async def test_ripristina_senza_x_requested_with_e_403_e_non_scrive_niente(clien
 async def test_ripristina_con_x_requested_with_ripristina_anche_a_csrf_stretto(
     client, csrf_stretto
 ):
-    archivio = client.app["costruzioni"]
+    archivio = client.app["constructions"]
     ident = archivio.propose(
         operation="modifica", domain="automation", key="tapparelle_rip_ok",
         actor="chat", exchange="turno-1", phrase="modifica",
@@ -355,7 +355,7 @@ async def test_ripristina_con_x_requested_with_ripristina_anche_a_csrf_stretto(
     risposta = await client.post(f"/api/constructions/{ident}/restore",
                                  headers={"X-Requested-With": "fetch"})
     assert risposta.status == 200
-    assert client.app["_ha_finta"].salvate
+    assert client.app["_fake_ha"].salvate
 
 
 @pytest.mark.asyncio
@@ -364,7 +364,7 @@ async def test_rifiuta_senza_x_requested_with_e_403_e_non_scrive_niente(client, 
     prova end-to-end, nel file il cui stesso commento argomenta perche' serve.
     Non tocca Home Assistant (vedi `handlers_constructions.py`), quindi la meta'
     che conta qui non e' `salvate == []` ma lo stato della proposta."""
-    archivio = client.app["costruzioni"]
+    archivio = client.app["constructions"]
     ident = archivio.propose(
         operation="crea", domain="automation", key="tapparelle_rifiuta_csrf",
         actor="chat", exchange="turno-1", phrase="crea", prima=None,
@@ -380,7 +380,7 @@ async def test_rifiuta_senza_x_requested_with_e_403_e_non_scrive_niente(client, 
 
 @pytest.mark.asyncio
 async def test_rifiuta_con_x_requested_with_rifiuta_anche_a_csrf_stretto(client, csrf_stretto):
-    archivio = client.app["costruzioni"]
+    archivio = client.app["constructions"]
     ident = archivio.propose(
         operation="crea", domain="automation", key="tapparelle_rifiuta_csrf_ok",
         actor="chat", exchange="turno-1", phrase="crea", prima=None,

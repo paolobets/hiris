@@ -274,7 +274,7 @@ def _app_come_in_produzione(tmp_path):
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
     app["ha_client"] = mock_ha
-    app["impostazioni_chat"] = ChatSettings()
+    app["chat_settings"] = ChatSettings()
     app["claude_runner"] = None
     app["theme"] = "auto"
     # Il default di produzione: la sorgente di questo client di test e' un

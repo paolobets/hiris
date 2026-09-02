@@ -6,8 +6,8 @@ from hiris.app import server
 
 def test_l_officina_e_l_archivio_sono_cablati():
     sorgente = inspect.getsource(server)
-    assert 'app["costruzioni"] = ConstructionStore(' in sorgente
-    assert 'app["officina"] = Workshop(' in sorgente
+    assert 'app["constructions"] = ConstructionStore(' in sorgente
+    assert 'app["workshop"] = Workshop(' in sorgente
 
 
 def test_l_officina_riceve_solo_ha_e_cronaca_non_la_porta():
@@ -15,7 +15,7 @@ def test_l_officina_riceve_solo_ha_e_cronaca_non_la_porta():
     la porta esegue servizi -- sono due canali di scrittura diversi e non
     devono confondersi. Si assert la chiamata INTERA, argomenti compresi,
     non solo il suo prefisso: un domani in cui qualcuno aggiungesse
-    `app["porta_azione"]` come quarto argomento (il difetto che il brief
+    `app["action_actuator"]` come quarto argomento (il difetto che il brief
     nomina per nome) farebbe arrossire questo test, non uno che si accontenta
     di vedere 'Workshop(' da qualche parte.
 
@@ -23,23 +23,24 @@ def test_l_officina_riceve_solo_ha_e_cronaca_non_la_porta():
     non del container, nella data dell'anteprima di ripristino): l'assert
     resta sull'intera chiamata, ora su piu' righe."""
     sorgente = inspect.getsource(server)
-    inizio = sorgente.index('app["officina"] = Workshop(')
+    inizio = sorgente.index('app["workshop"] = Workshop(')
     fine = sorgente.index(")\n", inizio) + 1
     chiamata = sorgente[inizio:fine]
     assert chiamata == (
-        'app["officina"] = Workshop(\n'
-        '        ha_client, app["costruzioni"], app["cronaca"],\n'
-        '        read_timezone=lambda: _timezone_from_home_space_store(app.get("archivio_casa")))'
+        'app["workshop"] = Workshop(\n'
+        '        ha_client, app["constructions"], app["journal"],\n'
+        '        read_timezone=lambda: '
+        '_timezone_from_home_space_store(app.get("home_space_store")))'
     )
-    assert "porta_azione" not in chiamata
+    assert "action_actuator" not in chiamata
 
 
 def test_l_officina_nasce_dopo_la_cronaca_che_le_serve():
     """La cronaca e' un ingresso dell'officina: se nascesse dopo, ogni atto
     resterebbe senza riga di registro -- in silenzio."""
     sorgente = inspect.getsource(server)
-    assert sorgente.index('app["cronaca"] = Journal(') < sorgente.index(
-        'app["officina"] = Workshop(')
+    assert sorgente.index('app["journal"] = Journal(') < sorgente.index(
+        'app["workshop"] = Workshop(')
 
 
 def test_i_due_archivi_si_chiudono_nel_gestore_di_spegnimento():
@@ -49,8 +50,8 @@ def test_i_due_archivi_si_chiudono_nel_gestore_di_spegnimento():
     (o mai chiamato) passerebbe comunque. Si ispeziona il sorgente della
     SOLA funzione di cleanup, non del modulo intero."""
     sorgente_cleanup = inspect.getsource(server._on_cleanup)
-    assert 'if "costruzioni" in app:' in sorgente_cleanup
-    assert 'app["costruzioni"].close()' in sorgente_cleanup
+    assert 'if "constructions" in app:' in sorgente_cleanup
+    assert 'app["constructions"].close()' in sorgente_cleanup
 
 
 def test_le_costruzioni_rimaste_in_corso_si_risanano_all_avvio(tmp_path):
@@ -59,7 +60,7 @@ def test_le_costruzioni_rimaste_in_corso_si_risanano_all_avvio(tmp_path):
 
     **Questo test prova la CHIAMATA, non la sua presenza nel sorgente, e la
     ragione e' un difetto vissuto.** La versione precedente diceva
-    `assert 'app["costruzioni"].risana(' in sorgente` -- e una parola chiave
+    `assert 'app["constructions"].risana(' in sorgente` -- e una parola chiave
     SBAGLIATA la soddisfaceva uguale. Il 29/08 la conversione di `action/` ha
     rinominato il parametro nella `def` (`adesso -> now`) e ha lasciato indietro
     il chiamante: `risana(adesso=...)` contro `def risana(*, now)`. **Il
@@ -94,7 +95,7 @@ def test_le_costruzioni_rimaste_in_corso_si_risanano_all_avvio(tmp_path):
 
         avvio = _blocco_risanamento_costruzioni()
         avvisi: list[str] = []
-        avvio({"costruzioni": archivio}, _time, _FintoLogger(avvisi))
+        avvio({"constructions": archivio}, _time, _FintoLogger(avvisi))
 
         assert archivio.read(ident)["stato"] != "in_corso", (
             "la proposta e' rimasta `in_corso`: il risanamento non e' partito"
@@ -127,7 +128,7 @@ def _blocco_risanamento_costruzioni():
     import textwrap
 
     src = inspect.getsource(server._on_startup)
-    marcatore = '    try:\n        app["costruzioni"].risana('
+    marcatore = '    try:\n        app["constructions"].risana('
     inizio = src.index(marcatore)
     fine_marcatore = 'logger.warning("risanamento delle costruzioni in sospeso fallito: %s", exc)'
     fine = src.index(fine_marcatore, inizio) + len(fine_marcatore)
@@ -149,7 +150,7 @@ def test_il_risanamento_delle_costruzioni_precede_il_battito_dello_schedulatore(
     L'ancora e' l'id del job di battito (univoco nel file), non la
     formattazione multilinea della chiamata a `scheduler.add_job`."""
     sorgente = inspect.getsource(server)
-    assert sorgente.index('app["costruzioni"].risana(') < sorgente.index(
+    assert sorgente.index('app["constructions"].risana(') < sorgente.index(
         'id="hiris_keeper_heartbeat"')
 
 

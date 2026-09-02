@@ -1003,7 +1003,7 @@ def _problems_notice(problems: dict | None) -> str | None:
     successa adesso.
 
     `problemi` arriva gia' letto dal chiamante (`handlers_home_space.compose_briefing`,
-    da `app["problemi_ha"]`), esattamente come `stato` e
+    da `app["ha_problems"]`), esattamente come `stato` e
     `sistema_di_riferimento`: `compose()` resta PURA.
 
     I tre valori, e sono tre cose diverse:
@@ -1131,7 +1131,7 @@ def _comparison_notice(comparison: dict | None) -> str | None:
     le due liste una accanto all'altra su un campione di aree.
 
     `confronto` arriva gia' letto dal chiamante (`handlers_home_space.compose_briefing`,
-    da `app["confronto_albero"]`), esattamente come `stato`, `problemi` e
+    da `app["tree_comparison"]`), esattamente come `stato`, `problemi` e
     `sistema_di_riferimento`: `compose()` resta PURA.
 
     **TRE ESITI, TRE DICITURE DIVERSE** -- la stessa disciplina con cui

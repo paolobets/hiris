@@ -54,7 +54,7 @@ def test_con_archivi_seminati_contiene_nucleo_e_sessioni_precedenti(tmp_path):
     data_dir = str(tmp_path)
     _semina_sessione_chiusa(data_dir, "parlato di irrigazione del giardino")
 
-    app = {"archivio_casa": archivio_casa}
+    app = {"home_space_store": archivio_casa}
     contesto = compose_chat_context(app, data_dir)
 
     assert "## La casa" in contesto
@@ -77,7 +77,7 @@ def test_archivio_guasto_non_solleva_e_restituisce_il_testo_di_guasto(tmp_path):
     archivio_casa.close()  # la connessione sotto e' chiusa: ogni query solleva
     data_dir = str(tmp_path)
 
-    app = {"archivio_casa": archivio_casa}
+    app = {"home_space_store": archivio_casa}
     contesto = compose_chat_context(app, data_dir)  # non deve sollevare
 
     assert "nucleo non si e' potuto comporre" in contesto

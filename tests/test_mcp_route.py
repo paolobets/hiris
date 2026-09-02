@@ -59,7 +59,7 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
     app["ha_client"] = mock_ha
-    app["impostazioni_chat"] = ChatSettings()
+    app["chat_settings"] = ChatSettings()
     app["claude_runner"] = None
     app["theme"] = "auto"
     # La sorgente del client di test e' un loopback, che NON e' nella CIDR del
@@ -71,8 +71,8 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     casa = _semina_casa(tmp_path)
     memoria_db = str(tmp_path / "memoria.db")
     memoria = MemoryStore(memoria_db)
-    app["archivio_casa"] = casa
-    app["archivio_memoria"] = memoria
+    app["home_space_store"] = casa
+    app["memory_store"] = memoria
     app.on_startup.clear()
     app.on_cleanup.clear()
 
@@ -403,7 +403,7 @@ async def test_il_dizionario_dei_contatori_non_cresce_oltre_il_limite(rotta):
             client, i, {**INTESTAZIONI_CLI, "X-HIRIS-Turno": f"turno-usa-getta-{i}"}
         )
 
-    contatori = client.app["mcp_giri_per_turno"]
+    contatori = client.app["mcp_rounds_per_exchange"]
     assert len(contatori) <= handlers_mcp._MAX_TRACKED_EXCHANGES
 
 
@@ -463,7 +463,7 @@ async def test_un_turno_attivo_non_viene_mai_espulso(rotta):
 
     # e la controprova che il dizionario e' rimasto limitato lo stesso: la
     # proprieta' nuova non e' stata comprata rinunciando al tetto di memoria.
-    assert len(client.app["mcp_giri_per_turno"]) <= handlers_mcp._MAX_TRACKED_EXCHANGES
+    assert len(client.app["mcp_rounds_per_exchange"]) <= handlers_mcp._MAX_TRACKED_EXCHANGES
 
 
 # ---------------------------------------------------------------------------

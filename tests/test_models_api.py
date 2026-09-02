@@ -71,7 +71,7 @@ async def test_il_get_pinna_l_insieme_esatto_delle_sue_chiavi(client):
         "adesso", "catena", "fuori_catena", "fine_catena",
     }
     # `ponte_attivo` E' USCITO con la versione B, ed era l'ULTIMO residuo
-    # dell'invariante 1 di tutto il payload: `app["ponte_attivo"]`, cioe'
+    # dell'invariante 1 di tutto il payload: `app["bridge_active"]`, cioe'
     # `BRIDGE_ENABLED or _sub_first_class`, pubblicato ACCANTO a
     # `ponte["attivo"]`. Non era un doppione esatto -- poteva dire `true` con
     # l'archivio a `false` -- e quindi la pagina riceveva due risposte alla
@@ -142,7 +142,7 @@ async def test_l_interruttore_dell_addon_non_mette_piu_nessuno_in_catena(client,
     l'interruttore grezzo."""
     monkeypatch.setenv("PROVIDER_OPENROUTER", "true")
     client.app["openrouter_api_key"] = "sk-or-presente"
-    client.app["catena_modelli"] = []
+    client.app["model_chain"] = []
 
     resp = await client.get("/api/models/config")
     assert resp.status == 200
@@ -165,7 +165,7 @@ async def test_l_interruttore_dell_addon_non_mette_piu_nessuno_in_catena(client,
 @pytest.mark.asyncio
 async def test_in_catena_segue_la_catena_del_runtime(client):
     client.app["openrouter_api_key"] = "sk-or-presente"
-    client.app["catena_modelli"] = ["openrouter"]
+    client.app["model_chain"] = ["openrouter"]
 
     body = await (await client.get("/api/models/config")).json()
     assert [r["id"] for r in body["catena"]] == ["openrouter"]
@@ -194,7 +194,7 @@ async def test_il_payload_porta_la_topologia_gia_composta(client):
     il backend smette di far dedurre qualcosa alla pagina: e' l'invariante 2
     che si stringe, non che si allenta."""
     client.app["openrouter_api_key"] = "sk-or-presente"
-    client.app["catena_modelli"] = ["openrouter"]
+    client.app["model_chain"] = ["openrouter"]
 
     body = await (await client.get("/api/models/config")).json()
     assert [r["id"] for r in body["catena"]] == ["openrouter"]
@@ -222,7 +222,7 @@ async def test_la_frase_e_la_catena_disegnata_leggono_la_stessa_lista(client):
     difetto in miniatura: la frase dice chi risponde, le due liste dicono in che
     ordine, e devono venire dalla stessa misura."""
     client.app["openrouter_api_key"] = "sk-or-presente"
-    client.app["catena_modelli"] = ["openrouter", "claude"]
+    client.app["model_chain"] = ["openrouter", "claude"]
 
     body = await (await client.get("/api/models/config")).json()
     assert body["adesso"]["chi"] == body["catena"][0]["id"]
@@ -232,13 +232,13 @@ async def test_la_frase_e_la_catena_disegnata_leggono_la_stessa_lista(client):
 async def test_col_ponte_acceso_il_piano_e_in_catena_anche_senza_chain_order(client, monkeypatch):
     """Il ponte si accende SCRIVENDO L'ARCHIVIO, non un valore in memoria.
 
-    Fino alla 2.5.0 questo test faceva `client.app["ponte_attivo"] = True`, e
+    Fino alla 2.5.0 questo test faceva `client.app["bridge_active"] = True`, e
     andava bene perche' il payload pubblicava quel valore. Dalla versione B il
     ponte ha una casa sola (`ponte.attivo`), e una prova che accendesse il
     ponte in un posto che il prodotto non ha piu' proverebbe uno stato
     irraggiungibile."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "oat-presente")
-    client.app["catena_modelli"] = []
+    client.app["model_chain"] = []
     await client.put("/api/models/config", json={"ponte": {"attivo": True}})
 
     body = await (await client.get("/api/models/config")).json()
@@ -348,7 +348,7 @@ async def test_il_connettore_dichiara_il_tempo_CHE_IL_TURNO_SUBISCE(client, monk
     monkeypatch.setenv("BRIDGE_DEADLINE_MIN", "44")
     await client.put("/api/models/config",
                      json={"ponte": {"attivo": True, "scadenza_min": 9}})
-    client.app["catena_modelli"] = []
+    client.app["model_chain"] = []
 
     body = await (await client.get("/api/models/config")).json()
     assert body["catena"][0]["id"] == "subscription"
@@ -362,7 +362,7 @@ async def test_una_catena_vuota_non_ha_una_fine(client):
     """`fine_catena` e' la frase che chiude la sequenza: senza sequenza non c'e'
     niente da chiudere, e una riga «se non risponde, la chat da' errore» sotto
     una catena vuota parlerebbe di un anello che non esiste."""
-    client.app["catena_modelli"] = []
+    client.app["model_chain"] = []
     body = await (await client.get("/api/models/config")).json()
     assert body["catena"] == []
     assert body["fine_catena"] == ""
@@ -381,7 +381,7 @@ async def test_get_models_config_never_leaks_secrets(client, monkeypatch):
     monkeypatch.setenv("CLAUDE_API_KEY", fake_claude_key)
     client.app["openai_api_key"] = fake_openai_key
     client.app["openrouter_api_key"] = fake_openrouter_key
-    client.app["catena_modelli"] = ["claude", "openrouter", "openai"]
+    client.app["model_chain"] = ["claude", "openrouter", "openai"]
 
     resp = await client.get("/api/models/config")
     assert resp.status == 200
@@ -701,7 +701,7 @@ async def test_accendere_il_ponte_dalla_pagina_mette_il_piano_in_testa(client, m
     si rilegge. Se `ponte.attivo` tornasse a venire dall'ambiente, la seconda
     lettura mostrerebbe il piano ancora fuori."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "oat-presente")
-    client.app["catena_modelli"] = ["claude"]
+    client.app["model_chain"] = ["claude"]
 
     prima = await (await client.get("/api/models/config")).json()
     assert "subscription" in {r["id"] for r in prima["fuori_catena"]}
@@ -728,7 +728,7 @@ async def test_col_ponte_acceso_il_gesto_e_quello_inverso(client, monkeypatch):
     di spegnere il ponte. Un interruttore che si accende e non si spegne è
     peggio di nessun interruttore."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "oat-presente")
-    client.app["catena_modelli"] = ["claude"]
+    client.app["model_chain"] = ["claude"]
     await client.put("/api/models/config", json={"ponte": {"attivo": True}})
 
     body = await (await client.get("/api/models/config")).json()
@@ -740,9 +740,9 @@ async def test_col_ponte_acceso_il_gesto_e_quello_inverso(client, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_la_frase_nomina_il_primo_della_catena_del_runtime(client):
-    """Non «il primo di chain_order»: il primo di `app["catena_modelli"]`,
+    """Non «il primo di chain_order»: il primo di `app["model_chain"]`,
     cioè la lista che il router prova davvero."""
-    client.app["catena_modelli"] = ["openrouter", "claude"]
+    client.app["model_chain"] = ["openrouter", "claude"]
     resp = await client.get("/api/models/config")
     body = await resp.json()
     assert body["adesso"]["chi"] == "openrouter"
@@ -835,7 +835,7 @@ async def test_senza_richiesta_non_compare_chi_non_ha_un_elenco(claude_con_elenc
 # Fino alla 2.4.1 questa rotta aggiornava `app["models_config"]` e basta. La
 # catena del router si costruiva all'avvio, quindi un riordino salvato non
 # cambiava il turno successivo; e siccome il GET qui sopra descrive il RUNTIME
-# (`app["catena_modelli"]`, che e' la sola misura che ha), ricaricando la
+# (`app["model_chain"]`, che e' la sola misura che ha), ricaricando la
 # pagina si rivedeva l'ordine di prima e il salvataggio sembrava perso. C'era
 # una riga in pagina che lo confessava: e' uscita con il difetto.
 # ---------------------------------------------------------------------------
@@ -848,7 +848,7 @@ async def test_la_put_rimette_in_vigore_DOPO_aver_aggiornato_l_archivio(client):
     VECCHIO -- un salvataggio che si applica con un giro di ritardo, cioe' un
     difetto peggiore di quello che sostituisce."""
     visto = []
-    client.app["ricalcola_catena"] = lambda: visto.append(
+    client.app["recompute_chain"] = lambda: visto.append(
         list(client.app["models_config"]["chain_order"]))
 
     resp = await client.put("/api/models/config",
@@ -859,7 +859,7 @@ async def test_la_put_rimette_in_vigore_DOPO_aver_aggiornato_l_archivio(client):
 
 @pytest.mark.asyncio
 async def test_la_put_non_esplode_su_un_installazione_senza_provider(client):
-    """Il primo gesto di chi installa HIRIS. `app["ricalcola_catena"]` puo'
+    """Il primo gesto di chi installa HIRIS. `app["recompute_chain"]` puo'
     mancare (nessun `_on_startup`, o un'app costruita da una fixture), e
     l'assenza del runtime da rimettere in vigore non e' un errore: e' 200."""
     assert "ricalcola_catena" not in client.app
@@ -872,7 +872,7 @@ async def test_la_put_non_esplode_su_un_installazione_senza_provider(client):
 async def test_riordinare_e_ricaricare_mostra_l_ordine_NUOVO(client):
     """La promessa dell'utente, dal suo lato: si riordina, si ricarica, e si
     rivede quello che si e' appena fatto. E' la stessa lista che il router usa
-    per il prossimo messaggio -- il GET la legge da `app["catena_modelli"]`,
+    per il prossimo messaggio -- il GET la legge da `app["model_chain"]`,
     che il ricalcolo riscrive.
 
     Qui si usa la funzione VERA (`server._recompute_chain`), non una finta:
@@ -886,9 +886,9 @@ async def test_riordinare_e_ricaricare_mostra_l_ordine_NUOVO(client):
     router = LLMRouter(claude=_Runner(), openrouter=_Runner(),
                        model_chain=["claude", "openrouter"])
     client.app["llm_router"] = router
-    client.app["ricalcola_catena"] = lambda: _recompute_chain(client.app)
+    client.app["recompute_chain"] = lambda: _recompute_chain(client.app)
     client.app["models_config"] = {"chain_order": ["claude", "openrouter"]}
-    client.app["catena_modelli"] = ["claude", "openrouter"]
+    client.app["model_chain"] = ["claude", "openrouter"]
     # Le due credenziali che il GET misura per disegnare le righe: senza,
     # `compose_topology` sposterebbe OpenRouter fra chi sta fuori e la prova
     # guarderebbe un'altra cosa.
@@ -918,7 +918,7 @@ async def test_il_connettore_di_ollama_dichiara_il_timeout_DELL_ARCHIVIO(client,
     await client.put("/api/models/config", json={
         "chain_order": ["ollama"],
         "ollama": {"modello": "llama3.1:8b", "timeout_s": 300}})
-    client.app["catena_modelli"] = ["ollama"]
+    client.app["model_chain"] = ["ollama"]
 
     body = await (await client.get("/api/models/config")).json()
     riga = {r["id"]: r for r in body["catena"]}["ollama"]
@@ -928,7 +928,7 @@ async def test_il_connettore_di_ollama_dichiara_il_timeout_DELL_ARCHIVIO(client,
 # ---------------------------------------------------------------------------
 # Cio' che il traffico vero ha gia' prodotto (Task 11)
 #
-# La rotta legge `app["registro_esiti"]`, che nasce in `create_app` e viene
+# La rotta legge `app["occurrence_registry"]`, che nasce in `create_app` e viene
 # scritto dal ciclo di ripiego del router. Nessuna sonda: la pagina riferisce
 # osservazioni, non ne provoca -- sondare cinque provider a ogni apertura
 # costerebbe denaro e quota (progetto §11.2).
@@ -944,7 +944,7 @@ async def test_il_registro_degli_esiti_esiste_appena_l_app_esiste(client):
     avrebbe copertura zero (la lezione del debito E del Task 1)."""
     from hiris.app.provider_occurrences import OccurrenceRegistry
 
-    assert isinstance(client.app["registro_esiti"], OccurrenceRegistry)
+    assert isinstance(client.app["occurrence_registry"], OccurrenceRegistry)
 
 
 @pytest.mark.asyncio
@@ -954,8 +954,8 @@ async def test_la_riga_riferisce_cio_che_il_registro_ha_visto(client):
     registro e' scritto DA QUI, come lo scriverebbe il router, e la pagina
     riceve le due frasi gia' fatte."""
     client.app["openrouter_api_key"] = "sk-or-presente"
-    client.app["catena_modelli"] = ["claude", "openrouter"]
-    registro = client.app["registro_esiti"]
+    client.app["model_chain"] = ["claude", "openrouter"]
+    registro = client.app["occurrence_registry"]
     for _ in range(40):
         registro.fallimento("claude", family="credenziale", code=400,
                             message="credit balance too low", durata_s=0.4)
@@ -975,7 +975,7 @@ async def test_senza_osservazioni_la_pagina_non_afferma_niente(client):
     """Lo stato di un add-on appena partito: nessuna osservazione, e la pagina
     lo dice invece di regalare un successo che nessuno ha misurato. E' anche
     la prova che il registro non nasce popolato."""
-    client.app["catena_modelli"] = ["claude"]
+    client.app["model_chain"] = ["claude"]
 
     body = await (await client.get("/api/models/config")).json()
     riga = {r["id"]: r for r in body["catena"]}["claude"]
@@ -993,12 +993,12 @@ async def test_la_rotta_legge_l_orologio_e_l_eta_cresce_da_sola(client, monkeypa
     settimana a 1207 test."""
     import hiris.app.api.handlers_models as modulo
 
-    client.app["catena_modelli"] = ["claude"]
+    client.app["model_chain"] = ["claude"]
     orologio = [5_000.0]
     # Il registro dell'app usa `time.time` vero: gli si scrive dentro un esito
     # con una data esplicita, cosi' l'unica variabile del test e' l'orologio
     # dell'handler.
-    client.app["registro_esiti"]._per_provider["claude"] = {
+    client.app["occurrence_registry"]._per_provider["claude"] = {
         "tipo": "rifiutato", "famiglia": "irraggiungibile", "codice": None,
         "messaggio": "", "quando": 5_000.0, "da_quante": 2, "durata_s": 5.0}
     monkeypatch.setattr(modulo.time, "time", lambda: orologio[0])
@@ -1031,11 +1031,11 @@ async def test_il_registro_e_lo_stesso_oggetto_che_il_router_scrive(client):
     buono.chat = AsyncMock(return_value="ok")
     router = LLMRouter(claude=rotto, openrouter=buono,
                        model_chain=["claude", "openrouter"],
-                       registry=client.app["registro_esiti"])
+                       registry=client.app["occurrence_registry"])
     await router.chat(model="auto")
 
     client.app["openrouter_api_key"] = "sk-or-presente"
-    client.app["catena_modelli"] = ["claude", "openrouter"]
+    client.app["model_chain"] = ["claude", "openrouter"]
     body = await (await client.get("/api/models/config")).json()
     righe = {r["id"]: r for r in body["catena"]}
     assert righe["claude"]["stato_testo"].startswith("il modello non esiste più (404), ")
@@ -1045,7 +1045,7 @@ async def test_il_registro_e_lo_stesso_oggetto_che_il_router_scrive(client):
 def test_l_avvio_consegna_al_router_IL_registro_dell_app():
     """Il cablaggio vero vive in `_on_startup`, che ogni fixture azzera
     (`app.on_startup.clear()`): senza questa guardia sul sorgente,
-    `registro=app["registro_esiti"]` si potrebbe cancellare e la suite
+    `registro=app["occurrence_registry"]` si potrebbe cancellare e la suite
     resterebbe verde -- e' la tecnica del Task 6/7 per lo stesso problema.
     Un router costruito SENZA registro non registra niente, e la pagina
     tornerebbe a non sapere niente senza che un solo test cada."""

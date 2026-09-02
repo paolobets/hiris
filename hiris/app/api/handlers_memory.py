@@ -59,7 +59,7 @@ _MEMORIES_SHOWN_LIMIT = 200
 def _topology_loaded(home_space_store) -> bool:
     """Vero solo se l'anagrafe e' stata DAVVERO letta almeno una volta.
 
-    `create_app()` istanzia sempre `archivio_casa`: in produzione non e'
+    `create_app()` istanzia sempre `home_space_store`: in produzione non e'
     mai `None`. Ma un archivio appena creato (Home Assistant non ancora
     pronto all'avvio, handlers_home_space.py:27-29 lo dichiara possibile) ha
     `aggiornata_il() is None` -- una casa vuota, non una casa cambiata.
@@ -133,7 +133,7 @@ def _resolve_tether(tether: dict, lookup, unverifiable: frozenset[str]) -> dict:
 
 
 async def handle_get_memories(request: web.Request) -> web.Response:
-    store = request.app.get("archivio_memoria")
+    store = request.app.get("memory_store")
     if store is None:
         # Stessa convenzione di handle_get_home_space (handlers_home_space.py): senza
         # archivio non sappiamo se i ricordi sono zero o se e' l'archivio a
@@ -141,7 +141,7 @@ async def handle_get_memories(request: web.Request) -> web.Response:
         # contenitore naturale, non l'affermazione di un fatto.
         return web.json_response({"available": False, "memories": []})
 
-    home_space_store = request.app.get("archivio_casa")
+    home_space_store = request.app.get("home_space_store")
     topology_loaded = _topology_loaded(home_space_store)
     # Coi NOMI DI RIPIEGO, come in chat. Senza, un ricordo ancorato a
     # un'entita' che nel registro non ha nome usciva su questa pagina col suo
@@ -172,7 +172,7 @@ async def handle_get_memories(request: web.Request) -> web.Response:
 
 
 async def handle_patch_memory(request: web.Request) -> web.Response:
-    store = request.app.get("archivio_memoria")
+    store = request.app.get("memory_store")
     if store is None:
         return web.json_response(
             {"error": "l'archivio della memoria non e' disponibile"}, status=503)
@@ -207,7 +207,7 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
         return web.json_response(
             {"error": "nessun campo correggibile nella richiesta"}, status=400)
 
-    home_space_store = request.app.get("archivio_casa")
+    home_space_store = request.app.get("home_space_store")
     topology_loaded = _topology_loaded(home_space_store)
     # L'anagrafe puo' mancare o non essere ancora stata letta (Home
     # Assistant non ancora pronto): un indice costruito su una casa vuota
@@ -322,7 +322,7 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
 
 
 async def handle_delete_memory(request: web.Request) -> web.Response:
-    store = request.app.get("archivio_memoria")
+    store = request.app.get("memory_store")
     if store is None:
         return web.json_response(
             {"error": "l'archivio della memoria non e' disponibile"}, status=503)

@@ -46,7 +46,7 @@ class ReasoningQueue:
         # Una FUNZIONE e non un valore: all'avvio l'archivio della casa puo'
         # non esserci ancora, e il fuso va letto quando serve. Stesso pattern
         # gia' usato per UsageStore (server.py, costruzione di
-        # `app["consumi"]`).
+        # `app["usage"]`).
         self._read_timezone = read_timezone or (lambda: None)
 
     def close(self) -> None:
@@ -268,7 +268,7 @@ class ReasoningQueue:
         simplification): a job whose deadline_ts is already in the past is
         excluded even if its status is still 'pending'/'claimed' -- e.g.
         because the ponte-push sweep (server.py's _reasoning_sweep, gated on
-        app["ponte_attivo"]) never ran or is off. Without this, an
+        app["bridge_active"]) never ran or is off. Without this, an
         expired-but-unswept job would 409 the conversation forever with no
         way to clear it. Takes an explicit `now`, like every other method on
         this class (enqueue/claim/submit/sweep_expired/count_exchanges_today),

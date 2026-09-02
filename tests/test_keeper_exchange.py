@@ -335,7 +335,7 @@ class _RouterCheNonDeveRispondere:
 
 def _app_col_ponte(coda=None, router=None):
     return {
-        "ponte_attivo": True,
+        "bridge_active": True,
         "reasoning_queue": coda if coda is not None else _CodaFinta(),
         "models_config": {"ponte": {"tetto_giornaliero": 150, "scadenza_min": 10}},
         "llm_router": router if router is not None else _RouterCheNonDeveRispondere(),
@@ -406,7 +406,7 @@ async def test_col_ponte_spento_il_turno_resta_sulla_catena_come_sempre():
 
     coda = _CodaFinta()
     app = _app_col_ponte(coda, _RunnerCheConclude(avvisare=False, testo="niente"))
-    app["ponte_attivo"] = False
+    app["bridge_active"] = False
 
     esito = await interpreta_promise(app, _promessa_chiedi())
 
@@ -445,7 +445,7 @@ async def test_senza_ripiego_non_si_annuncia_niente():
 
     app = _app_col_ponte(_CodaFinta(),
                          _RunnerCheConclude(avvisare=False, testo="niente"))
-    app["ponte_attivo"] = False
+    app["bridge_active"] = False
 
     esito = await interpreta_promise(app, _promessa_chiedi())
 

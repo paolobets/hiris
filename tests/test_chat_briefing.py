@@ -104,14 +104,14 @@ async def _build_chat_client(aiohttp_client, tmp_path, *, archivio_casa=None,
     mock_runner.last_tool_calls = []
 
     app["ha_client"] = mock_ha
-    app["impostazioni_chat"] = ChatSettings(system_prompt="base prompt")
+    app["chat_settings"] = ChatSettings(system_prompt="base prompt")
     app["claude_runner"] = mock_runner
     app["theme"] = "auto"
     app["data_dir"] = str(tmp_path)
     if archivio_casa is not None:
-        app["archivio_casa"] = archivio_casa
+        app["home_space_store"] = archivio_casa
     if archivio_memoria is not None:
-        app["archivio_memoria"] = archivio_memoria
+        app["memory_store"] = archivio_memoria
     if cache is not None:
         app["entity_cache"] = cache
 
@@ -257,7 +257,7 @@ async def test_lo_streaming_offre_gli_stessi_strumenti(aiohttp_client, tmp_path)
     mock_runner.last_tool_calls = []
 
     app["ha_client"] = mock_ha
-    app["impostazioni_chat"] = ChatSettings(system_prompt="base prompt")
+    app["chat_settings"] = ChatSettings(system_prompt="base prompt")
     app["claude_runner"] = mock_runner
     app["theme"] = "auto"
     app["data_dir"] = str(tmp_path)
@@ -441,14 +441,14 @@ async def _build_chat_client_runner_reale(aiohttp_client, tmp_path, *, archivio_
         runner = ClaudeRunner(api_key="test-key")
 
     app["ha_client"] = mock_ha
-    app["impostazioni_chat"] = ChatSettings(system_prompt="base prompt")
+    app["chat_settings"] = ChatSettings(system_prompt="base prompt")
     app["claude_runner"] = runner
     app["theme"] = "auto"
     app["data_dir"] = str(tmp_path)
     if archivio_casa is not None:
-        app["archivio_casa"] = archivio_casa
+        app["home_space_store"] = archivio_casa
     if archivio_memoria is not None:
-        app["archivio_memoria"] = archivio_memoria
+        app["memory_store"] = archivio_memoria
     if cache is not None:
         app["entity_cache"] = cache
     # La porta dell'azione (`action/actuator.py`). Passarla e' cio' che rende
@@ -456,7 +456,7 @@ async def _build_chat_client_runner_reale(aiohttp_client, tmp_path, *, archivio_
     # catalogo ma dichiara «il collegamento con Home Assistant non e'
     # disponibile» -- il degrado onesto del contratto di `dispatch()`.
     if actuator is not None:
-        app["porta_azione"] = actuator
+        app["action_actuator"] = actuator
 
     app.on_startup.clear()
     app.on_cleanup.clear()

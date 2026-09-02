@@ -685,9 +685,9 @@ def _make_app_ponte(tmp_path, *, restrict_to_home=False, response_mode="auto"):
     app = web.Application()
     app["llm_router"] = runner_mock
     app["claude_runner"] = runner_mock
-    app["impostazioni_chat"] = impostazioni
+    app["chat_settings"] = impostazioni
     app["data_dir"] = data_dir
-    app["ponte_attivo"] = True
+    app["bridge_active"] = True
     q = ReasoningQueue(str(tmp_path / "reasoning.db"))
     app["reasoning_queue"] = q
     app.router.add_post("/api/chat", handle_chat)

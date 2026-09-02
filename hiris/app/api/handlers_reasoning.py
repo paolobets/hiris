@@ -51,7 +51,7 @@ async def handle_reasoning_submit(request: web.Request) -> web.Response:
         from ..keeper.exchange import _senza_conclusione
 
         ident = ((job or {}).get("wake") or {}).get("promessa_id") or ""
-        store = request.app.get("promesse")
+        store = request.app.get("agenda")
         row = store.read(ident) if (store is not None and ident) else None
         if row is None:
             logger.warning(

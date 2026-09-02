@@ -31,7 +31,7 @@ per-instance state, so binding them is exact, not a guess.
 Dalla 2.4.0 la spazzata passava dal combinatore condiviso con l'instradamento
 (``_bridge_active``), e il namespace glielo forniva insieme a ``env_bool`` e
 ``_sub_first_class``. Dalla VERSIONE B (3.0.0) non deriva piu' niente: LEGGE
-``app["ponte_attivo"]``, che ``_recompute_chain`` ha gia' scritto -- una
+``app["bridge_active"]``, che ``_recompute_chain`` ha gia' scritto -- una
 lettura sola invece di due derivazioni. I tre simboli sono usciti dal
 namespace, e uscirne e' la difesa: rimettere una derivazione dentro la
 spazzata farebbe fallire l'exec con un NameError, invece di lasciarla passare
@@ -58,7 +58,7 @@ def _load_real_reasoning_sweep(reasoning_queue, *, ponte_attivo=True,
 
     # VERSIONE B (3.0.0): il namespace ha perso TRE simboli -- `env_bool`,
     # `_sub_first_class` e `_bridge_active` -- e ne ha guadagnato una chiave.
-    # La spazzata non deriva piu' niente: LEGGE `app["ponte_attivo"]`, che
+    # La spazzata non deriva piu' niente: LEGGE `app["bridge_active"]`, che
     # `_recompute_chain` ha gia' scritto. Toglierli invece di lasciarli per
     # sicurezza e' deliberato ed e' la virtu' di questo file: se qualcuno
     # rimettesse una derivazione dentro la spazzata, l'exec fallirebbe con un
@@ -73,8 +73,8 @@ def _load_real_reasoning_sweep(reasoning_queue, *, ponte_attivo=True,
         # alla scadenza: il margine e' il tempo che la catena ha per
         # rispondere. `app` e' un dizionario perche' e' cosi' che la spazzata
         # lo usa (`app.get(...)`), non perche' sia comodo.
-        "app": ({"ponte_attivo": ponte_attivo} if scadenza_min is None else {
-            "ponte_attivo": ponte_attivo,
+        "app": ({"bridge_active": ponte_attivo} if scadenza_min is None else {
+            "bridge_active": ponte_attivo,
             "models_config": {"ponte": {"scadenza_min": scadenza_min}},
         }),
     }

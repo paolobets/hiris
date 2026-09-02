@@ -38,7 +38,7 @@ assert_stessa_firma(Watcher.watching, _FintoOsservatore.watching, nome="watching
 
 @pytest.mark.asyncio
 async def test_osservate_dice_cosa_si_guarda_e_perche():
-    r = await handle_watching(_richiesta({"osservatore": _FintoOsservatore()}))
+    r = await handle_watching(_richiesta({"watcher": _FintoOsservatore()}))
     assert r.status == 200
 
 
@@ -46,7 +46,7 @@ async def test_osservate_dice_cosa_si_guarda_e_perche():
 async def test_osservate_porta_la_provenienza_di_ogni_voce():
     """La pagina decide se una voce si puo' togliere guardando questo campo:
     senza, non c'e' modo di distinguere pavimento da obiettivo (spec §7)."""
-    r = await handle_watching(_richiesta({"osservatore": _FintoOsservatore()}))
+    r = await handle_watching(_richiesta({"watcher": _FintoOsservatore()}))
     corpo = _corpo(r)
     assert corpo["watching"][0]["provenienza"] == "pavimento"
 
@@ -61,7 +61,7 @@ async def test_senza_osservatore_la_rotta_lo_DICHIARA():
 
 @pytest.mark.asyncio
 async def test_gli_oggetti_si_leggono():
-    r = await handle_facts(_richiesta({"osservazioni": _FintoArchivio()}))
+    r = await handle_facts(_richiesta({"observations": _FintoArchivio()}))
     assert r.status == 200
     # L'INVOLUCRO, per nome. Prima questi test guardavano solo lo `status`, e
     # la sorella `handle_watching` era l'unica delle due a nominare il proprio
@@ -76,7 +76,7 @@ async def test_gli_oggetti_si_leggono():
 async def test_gli_oggetti_filtrano_per_giorno_dalla_query():
     archivio = _FintoArchivio()
     r = await handle_facts(
-        _richiesta({"osservazioni": archivio}, query={"day": "2026-08-24"}))
+        _richiesta({"observations": archivio}, query={"day": "2026-08-24"}))
     assert r.status == 200
     assert archivio.chiesto["giorno"] == "2026-08-24"
 
@@ -87,7 +87,7 @@ async def test_senza_giorno_nella_query_non_si_inventa_una_data():
     stringa vuota o una data scelta qui: e' l'archivio a sapere cosa significa
     "nessun filtro" (`store.py::facts`)."""
     archivio = _FintoArchivio()
-    r = await handle_facts(_richiesta({"osservazioni": archivio}))
+    r = await handle_facts(_richiesta({"observations": archivio}))
     assert r.status == 200
     assert archivio.chiesto["giorno"] is None
 

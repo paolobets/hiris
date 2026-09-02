@@ -493,7 +493,7 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
     # questo handler, dichiarato dal Task 7 e assegnato al Task 9.
     #
     # Versione B (3.0.0): esce anche `ponte_attivo`, l'ULTIMO residuo
-    # dell'invariante 1 di tutto il payload. Era `app["ponte_attivo"]`, cioe'
+    # dell'invariante 1 di tutto il payload. Era `app["bridge_active"]`, cioe'
     # `BRIDGE_ENABLED or _sub_first_class`, pubblicato ACCANTO a
     # `payload["ponte"]["attivo"]`: non un doppione esatto -- il valore vero
     # poteva essere `true` con l'archivio a `false`, e la pagina riceveva due
@@ -514,7 +514,7 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
     # scrittura a caldo, invariante 4, che il Task 10 chiude. Finché quel
     # divario esiste, la pagina deve descrivere il RUNTIME, e descriverlo in un
     # modo solo: la frase e il disegno della catena leggono la stessa lista.
-    _chain = list(request.app.get("catena_modelli") or [])
+    _chain = list(request.app.get("model_chain") or [])
     # I due tempi che l'utente ha scelto, letti UNA volta e DOVE LI LEGGE IL
     # RUNTIME -- che dal Task 10 è l'ARCHIVIO, non l'ambiente. Fino alla 2.4.1
     # venivano da `BRIDGE_DEADLINE_MIN` e `OLLAMA_REQUEST_TIMEOUT` perché era
@@ -560,8 +560,8 @@ async def handle_get_models_config(request: web.Request) -> web.Response:
         # una app che non ne ha uno (una fixture che non fa girare
         # `create_app`), e produce esattamente ciò che è vero in quel caso --
         # nessuna osservazione, e la pagina lo dice.
-        occurrences=(request.app["registro_esiti"].occurrences()
-               if request.app.get("registro_esiti") is not None else {}),
+        occurrences=(request.app["occurrence_registry"].occurrences()
+               if request.app.get("occurrence_registry") is not None else {}),
         # L'orologio di parete, letto QUI e passato: `model_resolution` è un
         # modulo di funzioni pure e non ne legge nessuno. È anche l'unico modo
         # in cui «3 min fa» è una cosa che si possa provare.
@@ -596,7 +596,7 @@ async def handle_save_models_config(request: web.Request) -> web.Response:
     # processo dove `_on_startup` non è girato, la funzione non c'è -- e non
     # esserci non è un errore da inghiottire, è l'assenza del runtime da
     # rimettere in vigore.
-    recompute = request.app.get("ricalcola_catena")
+    recompute = request.app.get("recompute_chain")
     if callable(recompute):
         recompute()
     return web.json_response({"ok": True, **clean})

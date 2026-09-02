@@ -64,7 +64,7 @@ def test_la_vecchia_derivazione_non_esiste_piu():
 
 
 # ---------------------------------------------------------------------------
-# Il CABLAGGIO: `app["catena_modelli"]` viene da `providers_in_chain` sulla
+# Il CABLAGGIO: `app["model_chain"]` viene da `providers_in_chain` sulla
 # chain_order dell'archivio e sulle credenziali, e da nient'altro.
 #
 # Non e' provabile con la fixture dell'app (`app.on_startup.clear()` in
@@ -73,7 +73,7 @@ def test_la_vecchia_derivazione_non_esiste_piu():
 # tests/test_websocket_startup.py e tests/test_options_migration.py.
 #
 # E' anche cio' che chiude il DEBITO E dichiarato al Task 1: fino alla 2.4.1
-# `app["catena_modelli"]` aveva DUE scritture, `list(_chain)` dentro il ramo
+# `app["model_chain"]` aveva DUE scritture, `list(_chain)` dentro il ramo
 # dei runner e `[]` nel suo `else`, e la seconda non era coperta da niente.
 # Adesso ne ha una sola, fuori da entrambi i rami: non c'e' piu' un secondo
 # posto da tenere allineato.
@@ -88,7 +88,7 @@ def _blocco_catena_dallo_startup():
 
     src = inspect.getsource(server._on_startup)
     start = src.index("    from .model_activation import providers_in_chain")
-    marker = 'app["catena_modelli"] = list(_chain)'
+    marker = 'app["model_chain"] = list(_chain)'
     end = src.index(marker, start) + len(marker)
     corpo = textwrap.dedent(src[start:end])
     # Il parametro si chiama `_risponde` e non `_credentials` dal Task 9: in
@@ -112,35 +112,35 @@ def test_l_avvio_costruisce_la_catena_dall_archivio_e_dalle_credenziali():
     avvio = _blocco_catena_dallo_startup()
     app = {"models_config": {"chain_order": ["openrouter", "claude", "ollama"]}}
     avvio(app, {"openrouter": True, "claude": True, "ollama": False}, _registro())
-    assert app["catena_modelli"] == ["openrouter", "claude"]
+    assert app["model_chain"] == ["openrouter", "claude"]
 
 
 def test_l_avvio_non_accoda_un_credenziato_che_nessuno_ha_messo_in_catena():
     avvio = _blocco_catena_dallo_startup()
     app = {"models_config": {"chain_order": ["claude"]}}
     avvio(app, {"claude": True, "openrouter": True, "openai": True}, _registro())
-    assert app["catena_modelli"] == ["claude"]
+    assert app["model_chain"] == ["claude"]
 
 
 def test_l_avvio_lascia_vuota_una_catena_vuota():
-    """Il debito E, chiuso: l'unica scrittura di `app["catena_modelli"]` e'
+    """Il debito E, chiuso: l'unica scrittura di `app["model_chain"]` e'
     questa, e vale anche quando non c'e' nessun runner. Prima ce n'era una
     seconda, `[]` nel ramo `else`, che nessun test poteva raggiungere."""
     avvio = _blocco_catena_dallo_startup()
     app = {"models_config": {"chain_order": []}}
     avvio(app, {"claude": True, "openrouter": True}, _registro())
-    assert app["catena_modelli"] == []
+    assert app["model_chain"] == []
 
 
 def test_l_avvio_scrive_una_copia_non_la_lista_del_router():
-    """`app["catena_modelli"]` e' pubblicata alla pagina; `_chain` entra nel
+    """`app["model_chain"]` e' pubblicata alla pagina; `_chain` entra nel
     router. Se fossero lo STESSO oggetto, una modifica dell'una toccherebbe
     l'altro -- e la pagina e il router divergerebbero senza che nessuno abbia
     scritto una seconda regola."""
     avvio = _blocco_catena_dallo_startup()
     app = {"models_config": {"chain_order": ["claude"]}}
     avvio(app, {"claude": True}, _registro())
-    app["catena_modelli"].append("openrouter")
+    app["model_chain"].append("openrouter")
     assert app["models_config"]["chain_order"] == ["claude"]
 
 
@@ -192,7 +192,7 @@ def test_l_avvio_non_scrive_niente_quando_non_c_e_niente_da_dichiarare():
 # Il buco dichiarato dal Task 7: la credenziale di Ollama e' il SOLO indirizzo
 # -- l'indirizzo si custodisce, il modello si decide -- ma senza un modello
 # scelto `server.py` non costruisce il runner. Con la sola credenziale a
-# filtrare la catena, Ollama poteva finire in `app["catena_modelli"]` senza un
+# filtrare la catena, Ollama poteva finire in `app["model_chain"]` senza un
 # backend dietro: la pagina lo avrebbe disegnato come anello numerato, col suo
 # connettore, e `LLMRouter._ordered_backends` lo avrebbe saltato in silenzio.
 # Un anello a schermo che non risponde mai e' la bugia che questa fetta ritira.
@@ -310,7 +310,7 @@ def test_il_riordino_cambia_la_PAGINA_e_il_RUNTIME_insieme():
                 catena=["openrouter", "claude"])
     app = _app(["claude", "openrouter"], router=r)
     _recompute_chain(app)
-    assert app["catena_modelli"] == ["claude", "openrouter"]
+    assert app["model_chain"] == ["claude", "openrouter"]
     assert r._chat_policy == ["claude", "openrouter"], (
         "senza questo, il riordino cambia la PAGINA e non il RUNTIME -- "
         "cioe' la pagina torna a mentire"
@@ -327,8 +327,8 @@ def test_la_pagina_e_il_router_ricevono_lo_stesso_ordine_in_due_oggetti():
     r = _router(claude=_Runner(), openai=_Runner(), catena=[])
     app = _app(["openai", "claude"], router=r)
     _recompute_chain(app)
-    assert app["catena_modelli"] == r._chat_policy
-    assert app["catena_modelli"] is not r._chat_policy
+    assert app["model_chain"] == r._chat_policy
+    assert app["model_chain"] is not r._chat_policy
 
 
 def test_una_catena_svuotata_svuota_ANCHE_il_router():
@@ -341,7 +341,7 @@ def test_una_catena_svuotata_svuota_ANCHE_il_router():
     r = _router(claude=_Runner(), openrouter=_Runner(), catena=["claude", "openrouter"])
     app = _app([], router=r)
     _recompute_chain(app)
-    assert app["catena_modelli"] == []
+    assert app["model_chain"] == []
     assert r._chat_policy == []
     assert r._ordered_backends() == []
 
@@ -355,7 +355,7 @@ def test_un_nome_senza_backend_costruito_non_entra_in_catena():
     r = _router(claude=_Runner(), catena=["claude"])
     app = _app(["openai", "claude", "openrouter"], router=r)
     _recompute_chain(app)
-    assert app["catena_modelli"] == ["claude"]
+    assert app["model_chain"] == ["claude"]
     assert r._chat_policy == ["claude"]
 
 
@@ -368,7 +368,7 @@ def test_ollama_senza_modello_non_entra_nemmeno_col_runner_costruito():
     r = _router(ollama=_RunnerLocale(), catena=[])
     app = _app(["ollama"], ollama_modello="", router=r)
     _recompute_chain(app)
-    assert app["catena_modelli"] == []
+    assert app["model_chain"] == []
 
 
 def test_scegliere_il_modello_di_ollama_lo_fa_entrare_SENZA_riavviare():
@@ -383,7 +383,7 @@ def test_scegliere_il_modello_di_ollama_lo_fa_entrare_SENZA_riavviare():
     r = _router(claude=_Runner(), ollama=locale, catena=["claude"])
     app = _app(["claude", "ollama"], ollama_modello="llama3.1:8b", router=r)
     _recompute_chain(app)
-    assert app["catena_modelli"] == ["claude", "ollama"]
+    assert app["model_chain"] == ["claude", "ollama"]
     assert r._ordered_backends()[-1] is locale
 
 
@@ -410,7 +410,7 @@ def test_senza_router_il_ricalcolo_non_solleva_e_svuota_la_catena():
 
     app = _app(["claude", "openrouter"], router=None)
     _recompute_chain(app)
-    assert app["catena_modelli"] == []
+    assert app["model_chain"] == []
 
 
 def test_il_ricalcolo_regge_un_archivio_assente():
@@ -418,7 +418,7 @@ def test_il_ricalcolo_regge_un_archivio_assente():
 
     app: dict = {}
     _recompute_chain(app)
-    assert app["catena_modelli"] == []
+    assert app["model_chain"] == []
 
 
 def test_l_avvio_pubblica_il_ricalcolo_FUORI_dai_due_rami():
@@ -433,9 +433,9 @@ def test_l_avvio_pubblica_il_ricalcolo_FUORI_dai_due_rami():
 
     src = inspect.getsource(server._on_startup)
     righe = [r for r in src.splitlines()
-             if 'app["ricalcola_catena"]' in r and not r.lstrip().startswith("#")]
+             if 'app["recompute_chain"]' in r and not r.lstrip().startswith("#")]
     assert len(righe) == 1, righe
-    assert righe[0].startswith('    app["ricalcola_catena"]'), (
+    assert righe[0].startswith('    app["recompute_chain"]'), (
         "pubblicata con un rientro maggiore = dentro un ramo: l'altro resta "
         "senza, e la prima PUT di chi installa HIRIS solleva TypeError"
     )

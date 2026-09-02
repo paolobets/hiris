@@ -63,7 +63,7 @@ def _can_respond(app) -> bool:
     che rende `measured: false` un caso raro invece che la normalita'.
     """
     return bool(app.get("llm_router") or app.get("claude_runner")
-                or app.get("ponte_attivo"))
+                or app.get("bridge_active"))
 
 
 def _unmeasured() -> dict:
@@ -144,7 +144,7 @@ def _bucket_out(b: dict) -> dict:
 
 
 async def handle_usage(request: web.Request) -> web.Response:
-    store = request.app.get("consumi")
+    store = request.app.get("usage")
     if store is None or (store.empty() and not _can_respond(request.app)):
         return web.json_response(_unmeasured())
 
@@ -172,7 +172,7 @@ async def handle_usage(request: web.Request) -> web.Response:
     # punto 7): nessun codice di produzione scriveva quella chiave, la
     # riempiva solo la finta di un test -- vedi `tests/test_usage_routes.py`.
     from ..server import _timezone_from_home_space_store
-    timezone = _timezone_from_home_space_store(request.app.get("archivio_casa")) or ""
+    timezone = _timezone_from_home_space_store(request.app.get("home_space_store")) or ""
 
     return web.json_response({
         "measured": True,
@@ -217,7 +217,7 @@ async def handle_usage_history(request: web.Request) -> web.Response:
     `/api/usage` a intervalli: appesantirlo con trenta giorni di serie
     storica farebbe pagare a ogni giro una domanda che la chat non fa.
     """
-    store = request.app.get("consumi")
+    store = request.app.get("usage")
     if store is None:
         return web.json_response({"days": [], "from": "", "to": ""})
 
@@ -245,7 +245,7 @@ async def handle_reset_usage(request: web.Request) -> web.Response:
     richiesta in conflitto con lo stato della risorsa» -- e' uscito con la
     ragione che lo giustificava: un'ancora c'e' sempre.
     """
-    store = request.app.get("consumi")
+    store = request.app.get("usage")
     if store is None:
         body = _unmeasured()
         body["deleted"] = False

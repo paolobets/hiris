@@ -199,7 +199,7 @@ def test_il_nucleo_VERO_porta_l_orologio_e_non_solo_quello_di_prova(archivio):
 
     archivio.replace({}, [], reference_frame=reference_frame(_CONFIG))
 
-    testo, _ = compose_briefing({"archivio_casa": archivio})
+    testo, _ = compose_briefing({"home_space_store": archivio})
 
     assert "Adesso sono le" in testo, (
         "il nucleo di produzione non porta l'ora: il parametro c'e' e nessuno "

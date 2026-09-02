@@ -16,7 +16,7 @@ Il Task 1 aveva scritto questo file sapendo gia' che sarebbe successo:
 (Task 4 di questa fetta: 'quando l'engine uscira', la chiamata restera'
 li')". Il Task 4 di questa fetta ("un bot solo") ha fatto esattamente
 questo: `ChatbotEngine` e il file che lo conteneva sono usciti per intero,
-`app["engine"]` e' diventato `app["impostazioni_chat"]`, e lo scheduler
+`app["engine"]` e' diventato `app["chat_settings"]`, e lo scheduler
 (APScheduler, che l'engine ospitava solo perche' doveva stare da qualche
 parte) e' diventato `app["scheduler"]`, costruito direttamente in
 `_on_startup`.
@@ -133,7 +133,7 @@ async def test_lo_startup_apre_il_websocket_prima_di_tutto_il_resto(tmp_path):
     )
 
     ha_client.start_websocket.assert_awaited_once()
-    assert "impostazioni_chat" in app, (
+    assert "chat_settings" in app, (
         "il blocco estratto deve comunque valorizzare le impostazioni"
     )
     assert "scheduler" in app, "il blocco estratto deve comunque avviare lo scheduler"

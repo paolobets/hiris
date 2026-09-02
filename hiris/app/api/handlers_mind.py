@@ -28,7 +28,7 @@ async def handle_watching(request: web.Request) -> web.Response:
     oggi sempre `"pavimento"` -- che e' cio' che dice alla pagina se una
     voce si puo' togliere (spec §7). Non si ricalcola qui.
     """
-    watcher = request.app.get("osservatore")
+    watcher = request.app.get("watcher")
     if watcher is None:
         return web.json_response(
             {"watching": [], "error": "osservatore non disponibile"}, status=503)
@@ -48,7 +48,7 @@ async def handle_facts(request: web.Request) -> web.Response:
     (un giorno in cui la casa non ha fatto niente di osservabile), non un
     guasto.
     """
-    store = request.app.get("osservazioni")
+    store = request.app.get("observations")
     if store is None:
         return web.json_response(
             {"facts": [], "error": "archivio non disponibile"}, status=503)

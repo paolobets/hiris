@@ -32,23 +32,23 @@ from tests.test_mind_companions import _ClienteLegami
 
 def test_l_archivio_e_l_osservatore_sono_cablati():
     sorgente = inspect.getsource(server)
-    assert 'app["osservazioni"] = ObservationsStore(' in sorgente
-    assert 'app["osservatore"] = Watcher(' in sorgente
+    assert 'app["observations"] = ObservationsStore(' in sorgente
+    assert 'app["watcher"] = Watcher(' in sorgente
 
 
 def test_l_osservatore_e_agganciato_allo_STESSO_rubinetto_dello_specchio():
     """Non si apre un secondo rubinetto: due sorgenti degli stessi eventi
     sarebbero due cose che possono divergere."""
     sorgente = inspect.getsource(server)
-    assert "ha_client.add_state_listener(app[\"osservatore\"].watch_reading)" in sorgente
+    assert "ha_client.add_state_listener(app[\"watcher\"].watch_reading)" in sorgente
     assert sorgente.index("ha_client.add_state_listener(entity_cache.on_state_changed)") \
-        < sorgente.index("ha_client.add_state_listener(app[\"osservatore\"].watch_reading)")
+        < sorgente.index("ha_client.add_state_listener(app[\"watcher\"].watch_reading)")
 
 
 def test_l_osservatore_nasce_dopo_il_suo_archivio():
     sorgente = inspect.getsource(server)
-    assert sorgente.index('app["osservazioni"] = ObservationsStore(') \
-        < sorgente.index('app["osservatore"] = Watcher(')
+    assert sorgente.index('app["observations"] = ObservationsStore(') \
+        < sorgente.index('app["watcher"] = Watcher(')
 
 
 def test_i_due_lavori_periodici_sono_registrati():
@@ -62,8 +62,8 @@ def test_i_due_lavori_periodici_sono_registrati():
 
 def test_l_archivio_si_chiude_nello_spegnimento():
     sorgente = inspect.getsource(server._on_cleanup)
-    assert 'if "osservazioni" in app:' in sorgente
-    assert 'app["osservazioni"].close()' in sorgente
+    assert 'if "observations" in app:' in sorgente
+    assert 'app["observations"].close()' in sorgente
 
 
 def _kwargs_add_job(sorgente: str, job_id: str) -> dict:
@@ -144,9 +144,9 @@ def test_l_osservatore_ricostruisce_le_condizioni_all_avvio():
     riscritti come nati adesso, e l'oggetto «guasto» perderebbe la sua unica
     informazione utile: da quando dura."""
     sorgente = inspect.getsource(server._on_startup)
-    assert 'app["osservatore"].rebuild_conditions()' in sorgente
-    assert sorgente.index('app["osservatore"] = Watcher(') \
-        < sorgente.index('app["osservatore"].rebuild_conditions()') \
+    assert 'app["watcher"].rebuild_conditions()' in sorgente
+    assert sorgente.index('app["watcher"] = Watcher(') \
+        < sorgente.index('app["watcher"].rebuild_conditions()') \
         < sorgente.index('watch_system_conditions(app, ha_client)')
 
 
@@ -218,7 +218,7 @@ def test_la_potatura_logga_il_numero_vero_di_giorni(caplog):
     finto = _ArchivioOsservazioniFinto(quanti=5)
     logger_test = logging.getLogger("test_potatura_giorni")
     job = _carica_funzione_innestata("_prune_observations", {
-        "app": {"osservazioni": finto}, "_time": _tempo_fisso(0.0),
+        "app": {"observations": finto}, "_time": _tempo_fisso(0.0),
         "logger": logger_test, "READING_RETENTION_S": READING_RETENTION_S,
     })
 
@@ -236,7 +236,7 @@ def test_la_potatura_non_logga_niente_quando_non_pota_niente(caplog):
     finto = _ArchivioOsservazioniFinto(quanti=0)
     logger_test = logging.getLogger("test_potatura_silenziosa")
     job = _carica_funzione_innestata("_prune_observations", {
-        "app": {"osservazioni": finto}, "_time": _tempo_fisso(0.0),
+        "app": {"observations": finto}, "_time": _tempo_fisso(0.0),
         "logger": logger_test, "READING_RETENTION_S": READING_RETENTION_S,
     })
 
@@ -260,7 +260,7 @@ def test_la_potatura_non_lascia_uscire_l_eccezione(caplog):
     finto = _ArchivioOsservazioniFinto(pota_solleva=True)
     logger_test = logging.getLogger("test_potatura_rete")
     job = _carica_funzione_innestata("_prune_observations", {
-        "app": {"osservazioni": finto}, "_time": _tempo_fisso(0.0),
+        "app": {"observations": finto}, "_time": _tempo_fisso(0.0),
         "logger": logger_test, "READING_RETENTION_S": READING_RETENTION_S,
     })
 
@@ -316,7 +316,7 @@ def test_il_cliente_finto_combacia_con_haclient_leggi_registri():
 
 def test_guarda_condizioni_chiama_guarda_sistema_quando_le_due_letture_riescono():
     osservatore = _OsservatoreFinto()
-    app = {"osservatore": osservatore}
+    app = {"watcher": osservatore}
     cliente = _ClienteFinto(
         {"problemi": [{"domain": "hue", "issue_id": "x"}]},
         ({"integrazioni": [{"entry_id": "y", "state": "not_loaded"}]}, []))
@@ -336,7 +336,7 @@ def test_un_errore_di_problemi_salta_il_giro_per_intero():
     provata a mano durante l'implementazione e fa arrossire questa prova --
     non e' un'affermazione a vuoto."""
     osservatore = _OsservatoreFinto()
-    app = {"osservatore": osservatore}
+    app = {"watcher": osservatore}
     cliente = _ClienteFinto(
         {"errore": "Home Assistant non ha risposto"},
         ({"integrazioni": []}, []))
@@ -353,7 +353,7 @@ def test_le_integrazioni_non_disponibili_saltano_il_giro_per_intero():
     tutto bene -- passarla cosi' com'e' chiuderebbe ogni integrazione gia'
     rotta come se si fosse appena risolta."""
     osservatore = _OsservatoreFinto()
-    app = {"osservatore": osservatore}
+    app = {"watcher": osservatore}
     cliente = _ClienteFinto(
         {"problemi": []},
         ({"integrazioni": []}, ["integrazioni"]))
@@ -365,7 +365,7 @@ def test_le_integrazioni_non_disponibili_saltano_il_giro_per_intero():
 
 
 def test_senza_osservatore_non_scrive_niente():
-    """Un `app` senza `"osservatore"` (avvio a meta', o un test che non lo
+    """Un `app` senza `"watcher"` (avvio a meta', o un test che non lo
     costruisce): il giro tace invece di sollevare."""
     cliente = _ClienteFinto({"problemi": []}, ({"integrazioni": []}, []))
 
@@ -385,7 +385,7 @@ def test_senza_osservatore_non_scrive_niente():
 class _ArchivioCasaCheSolleva:
     """`reference_frame()` che solleva -- la sua query SQL, dice il
     mandato, non e' protetta: qui si simula il guasto vero, non solo
-    l'assenza di `archivio_casa`."""
+    l'assenza di `home_space_store`."""
 
     def reference_frame(self):
         raise RuntimeError("sqlite del sistema di riferimento irraggiungibile")
@@ -419,7 +419,7 @@ def test_l_aggregazione_notturna_logga_col_prefisso_cervello_anche_se_il_fuso_no
     l'assert e' sul messaggio preciso, come nel test gemello."""
     logger_test = logging.getLogger("test_aggrega_ieri_fuso")
     job = _carica_funzione_innestata("_aggrega_ieri", {
-        "app": {"archivio_casa": _ArchivioCasaCheSolleva()},
+        "app": {"home_space_store": _ArchivioCasaCheSolleva()},
         "ha_client": None, "logger": logger_test,
         "aggregate_day": server.aggregate_day, "datetime": server.datetime,
         "timedelta": server.timedelta, "home_space_zone": server.home_space_zone,
@@ -479,7 +479,7 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
                             subject=f"light.{soggetto}", da="off", a="on")
 
         asyncio.run(server.reaggregate_last_two_days(
-            {"archivio_casa": None, "osservazioni": archivio}, ha_client=_ClienteLegami(),
+            {"home_space_store": None, "observations": archivio}, ha_client=_ClienteLegami(),
             now=lambda tz: oggi.astimezone(tz)))
 
         giorni_scritti = {o["giorno"] for o in archivio.facts(limit=10)}
@@ -492,7 +492,7 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
         # Idempotente (`replace_day`, non un doppio inserimento): un
         # secondo giro non deve raddoppiare gli oggetti dei due giorni.
         asyncio.run(server.reaggregate_last_two_days(
-            {"archivio_casa": None, "osservazioni": archivio}, ha_client=_ClienteLegami(),
+            {"home_space_store": None, "observations": archivio}, ha_client=_ClienteLegami(),
             now=lambda tz: oggi.astimezone(tz)))
         assert len(archivio.facts(limit=10)) == 2
     finally:
@@ -523,7 +523,7 @@ def test_la_riparazione_all_avvio_costruisce_i_comprimari(tmp_path):
 
         cliente = _ClienteLegami({"light.principale": {"entity": ["light.secondario"]}})
         asyncio.run(server.reaggregate_last_two_days(
-            {"archivio_casa": None, "osservazioni": archivio}, ha_client=cliente,
+            {"home_space_store": None, "observations": archivio}, ha_client=cliente,
             now=lambda tz: oggi.astimezone(tz)))
 
         ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
@@ -587,7 +587,7 @@ def test_se_i_comprimari_non_si_costruiscono_l_archivio_resta_intatto(tmp_path):
         prima = {g: archivio.facts(day=g) for g in (l_altro_ieri, ieri)}
 
         asyncio.run(server.reaggregate_last_two_days(
-            {"archivio_casa": None, "osservazioni": archivio},
+            {"home_space_store": None, "observations": archivio},
             ha_client=_ClienteLegami(default={"errore": "Home Assistant non ha risposto"}),
             now=lambda tz: oggi.astimezone(tz)))
 
@@ -651,7 +651,7 @@ def test_una_risposta_malformata_ferma_la_riparazione_senza_scrivere(tmp_path, c
         cliente = _ClienteLegami({"light.principale": {"entity": 5}})
         with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
             asyncio.run(server.reaggregate_last_two_days(
-                {"archivio_casa": None, "osservazioni": archivio}, ha_client=cliente,
+                {"home_space_store": None, "observations": archivio}, ha_client=cliente,
                 now=lambda tz: oggi.astimezone(tz)))
 
         dopo = {g: archivio.facts(day=g) for g in (l_altro_ieri, ieri)}
@@ -696,7 +696,7 @@ def test_un_guasto_parziale_dei_comprimari_non_tocca_l_archivio(tmp_path):
             "light.rotto": {"errore": "Home Assistant non ha risposto"},
             "light.buono": {"entity": ["sensor.buono"]}})
         asyncio.run(server.reaggregate_last_two_days(
-            {"archivio_casa": None, "osservazioni": archivio},
+            {"home_space_store": None, "observations": archivio},
             ha_client=cliente,
             now=lambda tz: oggi.astimezone(tz)))
 
@@ -734,7 +734,7 @@ def test_il_salto_per_falliti_logga_il_messaggio_preciso(tmp_path, caplog):
         cliente = _ClienteLegami(default={"errore": "Home Assistant non ha risposto"})
         with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
             asyncio.run(server.reaggregate_last_two_days(
-                {"archivio_casa": None, "osservazioni": archivio}, ha_client=cliente,
+                {"home_space_store": None, "observations": archivio}, ha_client=cliente,
                 now=lambda tz: oggi.astimezone(tz)))
 
         assert any(
@@ -777,7 +777,7 @@ def test_l_aggregazione_notturna_prosegue_con_lo_stesso_guasto_parziale(tmp_path
             "light.rotto": {"errore": "Home Assistant non ha risposto"},
             "light.buono": {"entity": ["sensor.buono"]}})
         job = _carica_funzione_innestata("_aggrega_ieri", {
-            "app": {"archivio_casa": None, "osservazioni": archivio},
+            "app": {"home_space_store": None, "observations": archivio},
             "ha_client": cliente,
             "logger": logger_test,
             "aggregate_day": server.aggregate_day, "datetime": server.datetime,
@@ -810,17 +810,17 @@ def test_la_riaggregazione_degli_ultimi_due_giorni_gira_dopo_le_condizioni_e_non
     lezione»): questo test guarda una STRINGA in un certo ordine nel
     sorgente. Non sa dire se, nel punto in cui la chiamata compare, il
     collaboratore di cui la funzione ha davvero bisogno --
-    `app["archivio_casa"]` -- esiste gia'. E' esattamente cosi' che il
+    `app["home_space_store"]` -- esiste gia'. E' esattamente cosi' che il
     CRITICAL del punto 1 e' rimasto invisibile per due giri: la chiamata
     stava "dopo le condizioni" (verificato, verde) ma anche 87 righe PRIMA
-    della creazione di `archivio_casa` (non verificato, mai stato rosso).
+    della creazione di `home_space_store` (non verificato, mai stato rosso).
     La sorveglianza vera, per COMPORTAMENTO, e' il test qui sotto,
-    `test_la_riparazione_di_avvio_riceve_archivio_casa_gia_costruito`, che
+    `test_la_riparazione_di_avvio_riceve_home_space_store_gia_costruito`, che
     esegue la fetta reale del sorgente e legge cosa la riparazione riceve
     DAVVERO."""
     sorgente = inspect.getsource(server._on_startup)
     assert "reaggregate_last_two_days(app, ha_client)" in sorgente
-    assert sorgente.index('app["osservatore"].rebuild_conditions()') \
+    assert sorgente.index('app["watcher"].rebuild_conditions()') \
         < sorgente.index("reaggregate_last_two_days(app, ha_client)")
     pos = sorgente.index("reaggregate_last_two_days(app, ha_client)")
     blocco = sorgente[pos - 80:pos + 200]
@@ -829,14 +829,14 @@ def test_la_riaggregazione_degli_ultimi_due_giorni_gira_dopo_le_condizioni_e_non
 
 
 def _estrai_blocco_riparazione_avvio() -> str:
-    """Il sorgente VERO di `_on_startup`, dalla creazione di `archivio_casa`
+    """Il sorgente VERO di `_on_startup`, dalla creazione di `home_space_store`
     alla fine del try/except della riparazione all'avvio -- stessa tecnica di
     `_estrai_funzione_innestata`, ma su una FETTA contigua invece che su una
     funzione innestata: e' il modo di eseguire per davvero l'ordine fra le
     due righe, invece di dedurlo confrontando due indici di stringa.
 
     Se la chiamata alla riparazione torna a stare PRIMA della creazione di
-    `archivio_casa` (la regressione del punto 1), il marcatore di fine non si
+    `home_space_store` (la regressione del punto 1), il marcatore di fine non si
     trova piu' DOPO quello di inizio, e `sorgente.index(marcatore_fine,
     inizio)` solleva `ValueError` -- un rosso esplicito sull'estrazione
     stessa, non un'asserzione che potrebbe passare per la ragione sbagliata."""
@@ -853,25 +853,25 @@ def _estrai_blocco_riparazione_avvio() -> str:
     return textwrap.dedent(src[inizio_riga:fine])
 
 
-def test_la_riparazione_di_avvio_riceve_archivio_casa_gia_costruito(tmp_path):
+def test_la_riparazione_di_avvio_riceve_home_space_store_gia_costruito(tmp_path):
     """La sorveglianza per COMPORTAMENTO del punto 1 (CRITICAL,
     cancello-rilascio-brief.md): si esegue la fetta VERA di `_on_startup` che
-    crea `archivio_casa`, lo mette in `app`, e subito dopo chiama la
+    crea `home_space_store`, lo mette in `app`, e subito dopo chiama la
     riparazione -- con la riparazione sostituita da una spia che registra
     cosa ha ricevuto. Non un `assert` su una posizione di stringa: la prova
     che, quando la riparazione gira per davvero, il collaboratore che le
-    serve per leggere il fuso della casa (`archivio_casa`, non `None`) e'
+    serve per leggere il fuso della casa (`home_space_store`, non `None`) e'
     gia' li'.
 
     Le finte di TUTTI gli altri test di questo file (sopra) passano
-    `"archivio_casa": None` a `reaggregate_last_two_days` -- fedeli
+    `"home_space_store": None` a `reaggregate_last_two_days` -- fedeli
     alla produzione ROTTA, come rilevato dal cancello del rilascio: nessuna
     di loro poteva vedere questo difetto, per costruzione. Questo test e' il
     solo che guarda l'ORDINE VERO invece di darlo per assunto.
 
     Mutazione ESEGUITA: spostando a mano la chiamata alla riparazione (e il
-    suo blocco di commento) di nuovo sopra la riga `archivio_casa =
-    ArchivioCasa(...)`, com'era prima di questo giro -- `_estrai_blocco_
+    suo blocco di commento) di nuovo sopra la riga `home_space_store =
+    HomeSpaceStore(...)`, com'era prima di questo giro -- `_estrai_blocco_
     riparazione_avvio` solleva `ValueError: substring not found`, perche' il
     marcatore di fine non compare piu' dopo quello di inizio. Rosso,
     esplicito. Ripristinato subito dopo."""
@@ -880,13 +880,13 @@ def test_la_riparazione_di_avvio_riceve_archivio_casa_gia_costruito(tmp_path):
     ricevuto: dict = {}
 
     async def _spia(app, ha_client):
-        ricevuto["archivio_casa"] = app.get("archivio_casa")
+        ricevuto["home_space_store"] = app.get("home_space_store")
 
     namespace = {
         "os": os_reale, "data_dir": str(tmp_path), "HomeSpaceStore": server.HomeSpaceStore,
         "app": {}, "ha_client": None,
         "reaggregate_last_two_days": _spia,
-        "logger": logging.getLogger("test_riparazione_riceve_archivio_casa"),
+        "logger": logging.getLogger("test_riparazione_riceve_home_space_store"),
     }
     corpo = _estrai_blocco_riparazione_avvio()
     func_src = "async def _check():\n" + textwrap.indent(corpo, "    ")
@@ -894,35 +894,35 @@ def test_la_riparazione_di_avvio_riceve_archivio_casa_gia_costruito(tmp_path):
 
     try:
         asyncio.run(namespace["_check"]())
-        assert ricevuto.get("archivio_casa") is not None
-        assert isinstance(ricevuto["archivio_casa"], server.HomeSpaceStore)
-        assert ricevuto["archivio_casa"] is namespace["app"]["archivio_casa"]
+        assert ricevuto.get("home_space_store") is not None
+        assert isinstance(ricevuto["home_space_store"], server.HomeSpaceStore)
+        assert ricevuto["home_space_store"] is namespace["app"]["home_space_store"]
     finally:
-        namespace["app"]["archivio_casa"].close()
+        namespace["app"]["home_space_store"].close()
 
 
 def test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti(tmp_path):
     """Fondamenta n.3 (cancello-rilascio-brief.md, punto 1, CRITICAL -- la
     terza volta che questa fondamenta si rompe sulla stessa funzione): le due
     porte che aggregano il grezzo in oggetti -- l'aggregazione notturna
-    (mimata qui chiamando `aggregate_day` col fuso letto da `archivio_casa`,
+    (mimata qui chiamando `aggregate_day` col fuso letto da `home_space_store`,
     come fa `_aggrega_ieri`) e la riparazione all'avvio -- devono produrre GLI
     STESSI oggetti dato lo STESSO grezzo.
 
     **La porta 2 non chiama `reaggregate_last_two_days` a mano**: esegue
     la fetta VERA di `_on_startup` (`_estrai_blocco_riparazione_avvio`, sopra)
     con la funzione VERA -- non una finta, non un `app` costruito a mano con
-    `archivio_casa` gia' dentro. E' la differenza che conta: un `app`
+    `home_space_store` gia' dentro. E' la differenza che conta: un `app`
     preparato a mano da questo test "sa" gia' come va a finire, e non
     avrebbe potuto vedere il difetto del punto 1 (la chiamata era 87 righe
-    PRIMA che `archivio_casa` esistesse in `app`) -- sarebbe stato un test
+    PRIMA che `home_space_store` esistesse in `app`) -- sarebbe stato un test
     che non puo' fallire per la ragione sbagliata, esattamente il vizio che
     ha lasciato vivere questo difetto per due giri precedenti. Qui `app`
     parte con solo `"osservazioni"`, come nel vero `_on_startup` in quel
-    punto, e `archivio_casa` nasce dentro l'estratto, esattamente come nasce
+    punto, e `home_space_store` nasce dentro l'estratto, esattamente come nasce
     nel sorgente vero.
 
-    Il fuso arriva a `archivio_casa` non da una chiamata di rete (il finto
+    Il fuso arriva a `home_space_store` non da una chiamata di rete (il finto
     `ha_client` non la sa fare), ma da cio' che e' gia' scritto su
     `casa.db`: `reference_frame()` legge il fuso PERSISTITO dalle
     sessioni precedenti, esattamente come lo leggerebbe un vero riavvio
@@ -936,16 +936,16 @@ def test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti(tmp_path)
     che in UTC ricade nella sera del giorno PRIMA) piu' un ciclo pomeridiano
     nello stesso giorno di Roma. Prima della correzione del punto 1, la
     notte produceva 2 oggetti per quel giorno e la riparazione (che leggeva
-    sempre `fuso=None`, cioe' UTC, perche' `archivio_casa` non esisteva
+    sempre `fuso=None`, cioe' UTC, perche' `home_space_store` non esisteva
     ancora in `app` nel punto vero della chiamata) ne produceva 1: l'episodio
     notturno spariva dal giorno a cui appartiene davvero.
 
     Mutazione ESEGUITA: rimettendo a mano, in `server.py`, la chiamata alla
     riparazione dov'era prima di questo giro (87 righe piu' in alto, prima
-    della creazione di `archivio_casa`) -- questo test arrossisce con
+    della creazione di `home_space_store`) -- questo test arrossisce con
     `ValueError: substring not found` dentro `_estrai_blocco_riparazione_
     avvio` (lo stesso rosso di `test_la_riparazione_di_avvio_riceve_
-    archivio_casa_gia_costruito`, verificato li' per esteso). Verificato a
+    home_space_store_gia_costruito`, verificato li' per esteso). Verificato a
     mano anche qui, ripristinato subito dopo."""
     from datetime import datetime, timedelta
     from zoneinfo import ZoneInfo
@@ -981,7 +981,7 @@ def test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti(tmp_path)
             archivio.record(quando_ts=quando.timestamp(), source="entita",
                             subject="climate.soggiorno", da=da, a=a)
 
-        # Porta 1 -- la notte: fuso letto da `archivio_casa` gia' presente,
+        # Porta 1 -- la notte: fuso letto da `home_space_store` gia' presente,
         # come farebbe `_aggrega_ieri` alle 00:20.
         server.aggregate_day(store=archivio, day=giorno_bersaglio,
                               timezone="Europe/Rome", companions=lambda s: [])
@@ -993,13 +993,13 @@ def test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti(tmp_path)
         archivio.replace_day(giorno_bersaglio, [])
 
         # Porta 2 -- la riparazione all'avvio, per DAVVERO: la fetta vera del
-        # sorgente, con la funzione vera. `app` parte senza `archivio_casa`,
+        # sorgente, con la funzione vera. `app` parte senza `home_space_store`,
         # come nel vero `_on_startup` in quel punto.
         import os as os_reale
         cliente = _ClienteLegami()
         namespace = {
             "os": os_reale, "data_dir": str(tmp_path), "HomeSpaceStore": server.HomeSpaceStore,
-            "app": {"osservazioni": archivio}, "ha_client": cliente,
+            "app": {"observations": archivio}, "ha_client": cliente,
             "reaggregate_last_two_days": server.reaggregate_last_two_days,
             "logger": logging.getLogger("test_due_porte"),
         }
@@ -1010,7 +1010,7 @@ def test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti(tmp_path)
         try:
             asyncio.run(namespace["_check"]())
         finally:
-            namespace["app"]["archivio_casa"].close()
+            namespace["app"]["home_space_store"].close()
 
         oggetti_riparazione = archivio.facts(day=giorno_bersaglio)
 
@@ -1107,7 +1107,7 @@ def test_l_aggregazione_notturna_chiede_le_direzioni_una_volta(tmp_path):
             "sensor.energia_prodotta": {"direzione": "produzione", "provenienza": "dichiarata"}})
         logger_test = logging.getLogger("test_aggrega_ieri_direzioni")
         job = _carica_funzione_innestata("_aggrega_ieri", {
-            "app": {"archivio_casa": None, "osservazioni": archivio},
+            "app": {"home_space_store": None, "observations": archivio},
             "ha_client": cliente, "logger": logger_test,
             "aggregate_day": server.aggregate_day, "datetime": server.datetime,
             "timedelta": server.timedelta, "home_space_zone": server.home_space_zone,
@@ -1150,7 +1150,7 @@ def test_l_aggregazione_notturna_prosegue_se_le_direzioni_non_si_leggono(tmp_pat
         cliente = _ClienteLegami(direzioni_errore="Home Assistant non ha risposto")
         logger_test = logging.getLogger("test_aggrega_ieri_direzioni_guasto")
         job = _carica_funzione_innestata("_aggrega_ieri", {
-            "app": {"archivio_casa": None, "osservazioni": archivio},
+            "app": {"home_space_store": None, "observations": archivio},
             "ha_client": cliente, "logger": logger_test,
             "aggregate_day": server.aggregate_day, "datetime": server.datetime,
             "timedelta": server.timedelta, "home_space_zone": server.home_space_zone,
@@ -1190,7 +1190,7 @@ def test_la_riparazione_all_avvio_applica_le_direzioni(tmp_path):
         cliente = _ClienteLegami(direzioni={
             "sensor.energia_prelievo": {"direzione": "prelievo", "provenienza": "dichiarata"}})
         asyncio.run(server.reaggregate_last_two_days(
-            {"archivio_casa": None, "osservazioni": archivio}, ha_client=cliente,
+            {"home_space_store": None, "observations": archivio}, ha_client=cliente,
             now=lambda tz: oggi.astimezone(tz)))
 
         ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
@@ -1242,7 +1242,7 @@ def test_la_riparazione_all_avvio_si_ferma_se_le_direzioni_non_si_leggono(tmp_pa
 
         cliente = _ClienteLegami(direzioni_errore="Home Assistant non ha risposto")
         asyncio.run(server.reaggregate_last_two_days(
-            {"archivio_casa": None, "osservazioni": archivio}, ha_client=cliente,
+            {"home_space_store": None, "observations": archivio}, ha_client=cliente,
             now=lambda tz: oggi.astimezone(tz)))
 
         dopo = {g: archivio.facts(day=g) for g in (l_altro_ieri, ieri)}
@@ -1269,7 +1269,7 @@ def test_la_riparazione_chiede_le_direzioni_una_volta_per_i_due_giorni(tmp_path)
 
         cliente = _ClienteLegami()
         asyncio.run(server.reaggregate_last_two_days(
-            {"archivio_casa": None, "osservazioni": archivio}, ha_client=cliente,
+            {"home_space_store": None, "observations": archivio}, ha_client=cliente,
             now=lambda tz: oggi.astimezone(tz)))
 
         assert cliente.direzioni_chieste == 1
@@ -1346,7 +1346,7 @@ def test_l_aggregazione_notturna_costruisce_e_scrive_il_bilancio(tmp_path):
                 _punto_bilancio(1.0), _punto_bilancio(2.0)]})
         logger_test = logging.getLogger("test_aggrega_ieri_bilancio")
         job = _carica_funzione_innestata("_aggrega_ieri", {
-            "app": {"archivio_casa": casa, "osservazioni": archivio},
+            "app": {"home_space_store": casa, "observations": archivio},
             "ha_client": cliente, "logger": logger_test,
             "aggregate_day": server.aggregate_day, "datetime": server.datetime,
             "timedelta": server.timedelta, "home_space_zone": server.home_space_zone,
@@ -1398,7 +1398,7 @@ def test_l_aggregazione_notturna_prosegue_se_le_statistiche_del_bilancio_fallisc
             statistiche_errore="Home Assistant non ha risposto")
         logger_test = logging.getLogger("test_aggrega_ieri_bilancio_guasto")
         job = _carica_funzione_innestata("_aggrega_ieri", {
-            "app": {"archivio_casa": casa, "osservazioni": archivio},
+            "app": {"home_space_store": casa, "observations": archivio},
             "ha_client": cliente, "logger": logger_test,
             "aggregate_day": server.aggregate_day, "datetime": server.datetime,
             "timedelta": server.timedelta, "home_space_zone": server.home_space_zone,
@@ -1440,7 +1440,7 @@ def test_la_riparazione_all_avvio_applica_i_bilanci(tmp_path):
                       {"direzione": "produzione", "provenienza": "dichiarata"}},
             statistiche={"sensor.energia_prodotta_oggi": [_punto_bilancio(4.0)]})
         asyncio.run(server.reaggregate_last_two_days(
-            {"archivio_casa": casa, "osservazioni": archivio}, ha_client=cliente,
+            {"home_space_store": casa, "observations": archivio}, ha_client=cliente,
             now=lambda tz: oggi.astimezone(tz)))
 
         ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
@@ -1495,7 +1495,7 @@ def test_la_riparazione_all_avvio_si_ferma_se_le_statistiche_del_bilancio_fallis
                       {"direzione": "produzione", "provenienza": "dichiarata"}},
             statistiche_errore="Home Assistant non ha risposto")
         asyncio.run(server.reaggregate_last_two_days(
-            {"archivio_casa": casa, "osservazioni": archivio}, ha_client=cliente,
+            {"home_space_store": casa, "observations": archivio}, ha_client=cliente,
             now=lambda tz: oggi.astimezone(tz)))
 
         dopo = {g: archivio.facts(day=g) for g in (l_altro_ieri, ieri)}
@@ -1542,7 +1542,7 @@ def test_la_riparazione_all_avvio_si_ferma_anche_se_la_serie_torna_vuota_senza_e
                       {"direzione": "produzione", "provenienza": "dichiarata"}},
             statistiche={})  # riesce, ma non c'e' niente -- nessun `errore`
         asyncio.run(server.reaggregate_last_two_days(
-            {"archivio_casa": casa, "osservazioni": archivio}, ha_client=cliente,
+            {"home_space_store": casa, "observations": archivio}, ha_client=cliente,
             now=lambda tz: oggi.astimezone(tz)))
 
         dopo = {g: archivio.facts(day=g) for g in (l_altro_ieri, ieri)}
@@ -1596,7 +1596,7 @@ def test_la_riparazione_legge_le_statistiche_GIUSTE_per_ciascun_giorno(tmp_path)
                 _finestra_iso(ieri): {"sensor.energia_prodotta_oggi": [_punto_bilancio(7.0)]},
             })
         asyncio.run(server.reaggregate_last_two_days(
-            {"archivio_casa": casa, "osservazioni": archivio}, ha_client=cliente,
+            {"home_space_store": casa, "observations": archivio}, ha_client=cliente,
             now=lambda tz: oggi.astimezone(tz)))
 
         [b_altro_ieri] = [o for o in archivio.facts(day=l_altro_ieri)
@@ -1621,4 +1621,4 @@ def test_il_doppione_con_hiris_ha_problems_e_documentato():
     pos = sorgente.index('id="hiris_mind_conditions"')
     blocco = sorgente[pos - 1000:pos]
     assert "hiris_ha_problems" in blocco
-    assert 'app["problemi_ha"]' in blocco
+    assert 'app["ha_problems"]' in blocco

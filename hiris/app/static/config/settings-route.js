@@ -90,7 +90,7 @@ window.HirisSettingsRoute = (function () {
     outlet.appendChild(el('div', 'page-title', 'Impostazioni chat'));
     /* La dichiarazione che manca quasi ovunque in questo prodotto: cosa
        succede DOPO il salvataggio. Qui l'effetto e' immediato perche' il PUT
-       riassegna app["impostazioni_chat"] (api/handlers_settings.py), che
+       riassegna app["chat_settings"] (api/handlers_settings.py), che
        e' lo stesso oggetto che handlers_chat.py rilegge a ogni turno. */
     outlet.appendChild(el('p', 'page-subtitle',
       'La configurazione dell\'unica conversazione di HIRIS. Le modifiche valgono ' +

@@ -206,7 +206,7 @@ def test_il_registro_e_agganciato_all_app():
     from hiris.app import server
 
     assert server.ServiceRegistry is ServiceRegistry
-    assert 'app["registro_servizi"] = ServiceRegistry()' in inspect.getsource(
+    assert 'app["service_registry"] = ServiceRegistry()' in inspect.getsource(
         server._on_startup)
 
 

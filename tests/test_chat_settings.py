@@ -381,7 +381,7 @@ def _avvia(tmp_path):
         app, str(tmp_path), logging.getLogger("t"),
         ChatSettings, file_lacks_retention_days,
     )
-    return app["impostazioni_chat"]
+    return app["chat_settings"]
 
 
 def test_i_giorni_di_conservazione_arrivano_sul_disco_al_primo_avvio(tmp_path, monkeypatch):

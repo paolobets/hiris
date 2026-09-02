@@ -906,7 +906,7 @@ class ToolDispatcher:
     """Collega i tredici strumenti agli archivi, alla porta, all'officina e al
     canale HA -- e non altro.
 
-    Prende `archivio_casa` e `archivio_memoria` gia' costruiti dal chiamante
+    Prende `home_space_store` e `memory_store` gia' costruiti dal chiamante
     (`create_app()` o l'equivalente nei test): questa classe non ne apre
     nessuno, e non li chiude -- non le appartengono.
 
@@ -1914,7 +1914,7 @@ class ToolDispatcher:
         `HomeSpaceStore.sistema_di_riferimento()` (`home_space/store.py`) e' l'UNICO
         accessore: rileggere `get_config` per conto proprio qui sarebbe un
         secondo posto che sa lo stesso fatto, e i due potrebbero divergere il
-        giorno in cui uno dei due cambia. Senza `archivio_casa` (i test che
+        giorno in cui uno dei due cambia. Senza `home_space_store` (i test che
         costruiscono un dispatcher minimale) il fuso resta sconosciuto, e la
         promessa nasce comunque -- `fuso` e' un campo dichiarativo della
         promessa (spec §9.1), non un cancello che la blocca.

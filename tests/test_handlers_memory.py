@@ -21,8 +21,8 @@ _PHRASE = "d'inverno la sala da pranzo la preferisco fra 19 e 20 gradi quando so
 
 def _app(archivio_memoria=None, archivio_casa=None) -> web.Application:
     app = web.Application()
-    app["archivio_memoria"] = archivio_memoria
-    app["archivio_casa"] = archivio_casa
+    app["memory_store"] = archivio_memoria
+    app["home_space_store"] = archivio_casa
     app.router.add_get("/api/memories", handle_get_memories)
     app.router.add_patch("/api/memories/{id}", handle_patch_memory)
     app.router.add_delete("/api/memories/{id}", handle_delete_memory)

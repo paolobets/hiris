@@ -40,7 +40,7 @@ _NOT_FOUND = "non ho nessuna costruzione con quell'identificatore."
 
 
 def _store(request):
-    return request.app.get("costruzioni")
+    return request.app.get("constructions")
 
 
 async def handle_get_constructions(request: web.Request) -> web.Response:
@@ -69,7 +69,7 @@ async def handle_get_construction(request: web.Request) -> web.Response:
 
 async def _act(request: web.Request, verb: str) -> web.Response:
     store = _store(request)
-    workshop = request.app.get("officina")
+    workshop = request.app.get("workshop")
     if store is None or workshop is None:
         return web.json_response({"error": "officina non disponibile"}, status=503)
     ident = request.match_info["id"]

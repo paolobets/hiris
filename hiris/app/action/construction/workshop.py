@@ -115,7 +115,7 @@ class Workshop:
         # Una FUNZIONE e non un valore: all'avvio l'archivio della casa puo'
         # non esserci ancora, e il fuso va letto quando serve. Stesso pattern
         # gia' usato per UsageStore (server.py, costruzione di
-        # `app["consumi"]`).
+        # `app["usage"]`).
         self._read_timezone = read_timezone or (lambda: None)
 
     def _data(self, ts: float) -> str:

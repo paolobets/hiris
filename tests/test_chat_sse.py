@@ -33,7 +33,7 @@ async def client(aiohttp_client, tmp_path):
 
     mock_runner.chat_stream = fake_chat_stream
     app["ha_client"] = mock_ha
-    app["impostazioni_chat"] = ChatSettings()
+    app["chat_settings"] = ChatSettings()
     app["claude_runner"] = mock_runner
     app["llm_router"] = mock_runner
     app["theme"] = "auto"

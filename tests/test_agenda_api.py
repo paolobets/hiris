@@ -44,23 +44,23 @@ def reset_chat_stores():
 @pytest_asyncio.fixture
 async def client(aiohttp_client, tmp_path):
     app = create_app()
-    app["promesse"] = AgendaStore(os.path.join(str(tmp_path), "promesse.db"))
+    app["agenda"] = AgendaStore(os.path.join(str(tmp_path), "promesse.db"))
     # La cronaca (`GET /api/executions/{id}`, rilievo ① della review finale):
     # anche lei nasce qui a mano, come `promesse` due righe sopra, perche'
     # `on_startup.clear()` toglie il montaggio vero che la costruirebbe da
     # sola in `create_app` -> `_avvia` (server.py).
-    app["cronaca"] = Journal(os.path.join(str(tmp_path), "azioni.db"))
+    app["journal"] = Journal(os.path.join(str(tmp_path), "azioni.db"))
     app.on_startup.clear()
     app.on_cleanup.clear()
     c = await aiohttp_client(app)
     yield c
-    app["promesse"].close()
-    app["cronaca"].close()
+    app["agenda"].close()
+    app["journal"].close()
 
 
 @pytest.mark.asyncio
 async def test_get_promesse_torna_le_in_sospeso(client):
-    archivio = client.app["promesse"]
+    archivio = client.app["agenda"]
     archivio.create({"specie": "chiedi", "frase": "x", "quando_ts": 3601.0,
                    "domanda": "e' aumentata?"}, now=1.0)
 
@@ -72,7 +72,7 @@ async def test_get_promesse_torna_le_in_sospeso(client):
 
 @pytest.mark.asyncio
 async def test_get_promesse_tutte_include_le_concluse(client):
-    archivio = client.app["promesse"]
+    archivio = client.app["agenda"]
     ident = archivio.create({"specie": "chiedi", "frase": "x",
                            "quando_ts": 3601.0, "domanda": "?"},
                           now=1.0)["promessa"]["id"]
@@ -86,7 +86,7 @@ async def test_get_promesse_tutte_include_le_concluse(client):
 
 @pytest.mark.asyncio
 async def test_delete_disdice_e_una_gia_conclusa_da_409(client):
-    archivio = client.app["promesse"]
+    archivio = client.app["agenda"]
     ident = archivio.create({"specie": "chiedi", "frase": "x",
                            "quando_ts": 3601.0, "domanda": "?"},
                           now=1.0)["promessa"]["id"]
@@ -116,7 +116,7 @@ async def test_delete_senza_x_requested_with_e_403_e_non_disdice(client, csrf_st
     `csrf_middleware` di `/api/memories/{id}`. Un 403 non deve aver toccato
     l'archivio -- la promessa resta `in_attesa`, disdicibile per davvero piu'
     tardi, non "disdetta a meta'"."""
-    archivio = client.app["promesse"]
+    archivio = client.app["agenda"]
     ident = archivio.create({"specie": "chiedi", "frase": "x",
                            "quando_ts": 3601.0, "domanda": "?"},
                           now=1.0)["promessa"]["id"]
@@ -129,7 +129,7 @@ async def test_delete_senza_x_requested_with_e_403_e_non_disdice(client, csrf_st
 
 @pytest.mark.asyncio
 async def test_delete_con_x_requested_with_disdice_anche_a_csrf_stretto(client, csrf_stretto):
-    archivio = client.app["promesse"]
+    archivio = client.app["agenda"]
     ident = archivio.create({"specie": "chiedi", "frase": "x",
                            "quando_ts": 3601.0, "domanda": "?"},
                           now=1.0)["promessa"]["id"]
@@ -168,7 +168,7 @@ async def test_la_rotta_e_lo_strumento_danno_la_STESSA_forma(client):
     """
     from hiris.app.home_space.tools import ToolDispatcher
 
-    archivio = client.app["promesse"]
+    archivio = client.app["agenda"]
     archivio.create({"specie": "chiedi", "frase": "x", "quando_ts": 3601.0,
                    "domanda": "?"}, now=1.0)
 
@@ -190,7 +190,7 @@ async def test_la_rotta_e_lo_strumento_danno_la_STESSA_forma(client):
 
 @pytest.mark.asyncio
 async def test_get_esecuzione_torna_la_riga_di_cronaca(client):
-    journal = client.app["cronaca"]
+    journal = client.app["journal"]
     ident = journal.log(
         actor="schedulatore", service="light.turn_on", entity=["light.studio"],
         executed=True, changed=["light.studio"], now=1_755_600_000.0)
@@ -220,10 +220,10 @@ async def test_get_esecuzione_inesistente_da_404_col_motivo_leggibile(client):
 async def test_get_esecuzione_senza_cronaca_da_503(aiohttp_client):
     # App a parte, SENZA "cronaca": mutare `client.app` di un'app gia'
     # avviata e' deprecato in aiohttp (e l'ha confermato un tentativo
-    # precedente di questo stesso test, con un `del client.app["cronaca"]`
+    # precedente di questo stesso test, con un `del client.app["journal"]`
     # dopo il montaggio). Qui la chiave manca fin dall'inizio.
     #
-    # Mutazione: se la rotta leggesse `request.app["cronaca"]` con
+    # Mutazione: se la rotta leggesse `request.app["journal"]` con
     # l'indicizzazione diretta invece di `.get(...)`, questa riga
     # solleverebbe un KeyError invece del 503 onesto -- il test lo
     # vedrebbe come un 500.
@@ -242,7 +242,7 @@ async def test_get_esecuzione_non_richiede_x_requested_with(client, csrf_stretto
     passare, stessa esenzione di `GET /api/agenda`. Mutazione: se la rotta
     finisse dietro un controllo CSRF (o venisse registrata come POST/GET
     ambigua), questa richiesta senza header tornerebbe 403 invece di 404."""
-    journal = client.app["cronaca"]
+    journal = client.app["journal"]
     ident = journal.log(actor="chat", service="a.b", entity=[],
                              executed=True, now=1.0)
     risposta = await client.get(f"/api/executions/{ident}")

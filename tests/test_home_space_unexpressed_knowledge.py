@@ -225,8 +225,8 @@ async def test_correggere_un_ricordo_dalla_pagina_deduce_la_stessa_unita(
         grandezza=None, minimum=3.0, maximum=5.0)
 
     app = web.Application()
-    app["archivio_memoria"] = memoria
-    app["archivio_casa"] = casa_archivio
+    app["memory_store"] = memoria
+    app["home_space_store"] = casa_archivio
     app["entity_cache"] = _SpecchioFinto()
     app.router.add_patch("/api/memories/{id}", handle_patch_memory)
     client = await aiohttp_client(app)

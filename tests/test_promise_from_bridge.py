@@ -48,7 +48,7 @@ async def consegna(aiohttp_client, tmp_path, monkeypatch):
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
     app["ha_client"] = mock_ha
-    app["impostazioni_chat"] = ChatSettings()
+    app["chat_settings"] = ChatSettings()
     app["claude_runner"] = None
     app["theme"] = "auto"
     app["supervisor_ingress_cidrs"] = ["172.30.32.0/23"]
@@ -57,7 +57,7 @@ async def consegna(aiohttp_client, tmp_path, monkeypatch):
     coda = ReasoningQueue(str(tmp_path / "reasoning.db"))
     promesse = AgendaStore(str(tmp_path / "promesse.db"))
     app["reasoning_queue"] = coda
-    app["promesse"] = promesse
+    app["agenda"] = promesse
     app.on_startup.clear()
     app.on_cleanup.clear()
 
@@ -174,7 +174,7 @@ def test_un_turno_scaduto_sul_piano_fa_fallire_la_promessa(tmp_path):
     promesse = AgendaStore(str(tmp_path / "p.db"))
     try:
         ident = _promessa_in_corso(promesse)
-        app = {"promesse": promesse,
+        app = {"agenda": promesse,
                "models_config": {"ponte": {"scadenza_min": 10}}}
 
         _close_expired_promise(app, {"wake": {"promessa_id": ident}})
@@ -197,7 +197,7 @@ def test_una_promessa_gia_conclusa_non_viene_riaperta_dalla_scadenza(tmp_path):
         promesse.concludi(ident, state="mantenuta", now=ADESSO + 20,
                           text="tutto fermo", avvisare=False)
 
-        _close_expired_promise({"promesse": promesse, "models_config": {}},
+        _close_expired_promise({"agenda": promesse, "models_config": {}},
                                {"wake": {"promessa_id": ident}})
 
         assert promesse.read(ident)["stato"] == "mantenuta"
@@ -208,4 +208,4 @@ def test_una_promessa_gia_conclusa_non_viene_riaperta_dalla_scadenza(tmp_path):
 def test_un_job_scaduto_senza_promessa_non_esplode(tmp_path):
     from hiris.app.server import _close_expired_promise
 
-    _close_expired_promise({"promesse": None, "models_config": {}}, {"wake": {}})
+    _close_expired_promise({"agenda": None, "models_config": {}}, {"wake": {}})

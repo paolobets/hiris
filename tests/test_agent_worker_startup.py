@@ -3,7 +3,7 @@
 **VERSIONE B (3.0.0).** `should_start_agent_worker` non legge piu' NIENTE
 dall'ambiente per decidere se il ponte e' acceso: `PROVIDER_SUBSCRIPTION` e
 `BRIDGE_ENABLED` erano le ultime due opzioni dell'add-on lette qui, e sono
-uscite dallo schema. Il valore arriva come argomento -- `app["ponte_attivo"]`,
+uscite dallo schema. Il valore arriva come argomento -- `app["bridge_active"]`,
 lo stesso che governa la spazzata e l'instradamento della chat -- e il token
 resta letto dall'ambiente perche' e' una credenziale, e le credenziali stanno
 ancora fra le opzioni.
@@ -45,7 +45,7 @@ def test_il_token_da_solo_non_accende_il_lavoratore(monkeypatch):
 
     Fino alla 2.5.0 `provider_subscription` acceso col suo token accendeva il
     ponte da se' (`_sub_first_class`), e quindi anche questo lavoratore. Era
-    l'ultima seconda rappresentazione del prodotto: `app["ponte_attivo"]`
+    l'ultima seconda rappresentazione del prodotto: `app["bridge_active"]`
     poteva valere True mentre `ponte.attivo` -- cio' che la pagina Modelli
     mostra e scrive -- diceva False.
 
@@ -88,7 +88,7 @@ class _CompitoFinto:
 async def test_accendere_il_ponte_fa_partire_il_lavoratore(monkeypatch):
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
     monkeypatch.setenv("HIRIS_AGENT_MODE", "dry-run")
-    app = {"ponte_attivo": True}
+    app = {"bridge_active": True}
     _govern_bridge_worker(app)
     compito = app.get("agent_worker_task")
     assert compito is not None, (
@@ -107,7 +107,7 @@ async def test_spegnere_il_ponte_ferma_il_lavoratore(monkeypatch):
     secondi per sempre."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
     finto = _CompitoFinto()
-    app = {"ponte_attivo": False, "agent_worker_task": finto}
+    app = {"bridge_active": False, "agent_worker_task": finto}
     _govern_bridge_worker(app)
     assert finto.fermato is True
     assert app["agent_worker_task"] is None
@@ -120,7 +120,7 @@ async def test_un_lavoratore_gia_vivo_non_si_duplica(monkeypatch):
     non deve produrre due cicli che si contendono la stessa coda."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
     finto = _CompitoFinto()
-    app = {"ponte_attivo": True, "agent_worker_task": finto}
+    app = {"bridge_active": True, "agent_worker_task": finto}
     _govern_bridge_worker(app)
     assert app["agent_worker_task"] is finto
     assert finto.fermato is False
@@ -142,7 +142,7 @@ async def test_un_lavoratore_gia_vivo_non_si_duplica(monkeypatch):
 @pytest.mark.asyncio
 async def test_ricalcola_catena_accende_il_lavoratore_non_solo_l_interruttore(monkeypatch):
     """Il gesto «Mettilo primo» passa di qui: la PUT scrive l'archivio e chiama
-    `_recompute_chain`. Se questa si limitasse a cablare `app["ponte_attivo"]`
+    `_recompute_chain`. Se questa si limitasse a cablare `app["bridge_active"]`
     senza governare il lavoratore, ogni turno andrebbe in una coda senza
     consumatore e aspetterebbe la scadenza prima di ripiegare sulla catena."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
@@ -152,7 +152,7 @@ async def test_ricalcola_catena_accende_il_lavoratore_non_solo_l_interruttore(mo
     app = {"models_config": {"ponte": {"attivo": True}, "chain_order": []}}
     server._recompute_chain(app)
 
-    assert app["ponte_attivo"] is True
+    assert app["bridge_active"] is True
     compito = app.get("agent_worker_task")
     assert compito is not None, (
         "il salvataggio ha acceso il ponte e non ha fatto partire chi "
@@ -177,7 +177,7 @@ async def test_ricalcola_catena_ferma_il_lavoratore_quando_il_ponte_si_spegne(mo
            "agent_worker_task": finto}
     server._recompute_chain(app)
 
-    assert app["ponte_attivo"] is False
+    assert app["bridge_active"] is False
     assert finto.fermato is True
     assert app["agent_worker_task"] is None
 
@@ -187,6 +187,6 @@ def test_senza_un_loop_non_si_avvia_niente_e_non_si_solleva_niente(monkeypatch):
     da un server (`test_model_activation.py`). Un compito asincrono non ha dove
     girare, e non averlo non e' un errore da inghiottire: e' il fatto vero."""
     monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
-    app = {"ponte_attivo": True}
+    app = {"bridge_active": True}
     _govern_bridge_worker(app)
     assert app.get("agent_worker_task") is None

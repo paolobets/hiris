@@ -39,7 +39,7 @@ class _CodaFinta:
 
 def _app(*, ponte=True, coda=None, tetto=150):
     return {
-        "ponte_attivo": ponte,
+        "bridge_active": ponte,
         "reasoning_queue": coda if coda is not None else _CodaFinta(),
         "models_config": {"ponte": {"tetto_giornaliero": tetto}},
     }

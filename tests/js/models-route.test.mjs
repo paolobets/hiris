@@ -785,7 +785,7 @@ test('la pagina non ha più niente da confessare sull\'ordine', async () => {
      fino ad allora la chat usa quello di prima, e ricaricando questa pagina lo
      rivedi». Era vera -- `handle_save_models_config` aggiornava l'archivio, ma
      la catena del router si costruiva all'avvio -- ed è uscita col difetto che
-     la rendeva necessaria (la PUT chiama `app["ricalcola_catena"]`).
+     la rendeva necessaria (la PUT chiama `app["recompute_chain"]`).
 
      Non è stata sostituita da un «vale subito»: l'assenza di didascalia È
      l'affermazione. Quindi si guarda l'ASSENZA, su tutta la pagina e non solo

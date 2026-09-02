@@ -80,7 +80,7 @@ def test_il_dispatcher_riceve_la_cronaca_dall_app():
     un dato che c'e' e che nessuno puo' chiedere -- la fondamenta 4 al
     contrario, lo stesso difetto gia' pagato da `related`."""
     sorgente = inspect.getsource(handlers_chat.create_tool_dispatcher)
-    assert 'journal=app.get("cronaca")' in sorgente
+    assert 'journal=app.get("journal")' in sorgente
 
 
 @pytest.mark.asyncio

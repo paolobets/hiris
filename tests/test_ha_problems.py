@@ -318,10 +318,10 @@ def test_is_fixable_assente_non_e_un_no():
 # --------------------------------------------------------------------------
 
 def test_il_nucleo_legge_i_problemi_dalla_memoria_dell_app():
-    """La catena intera: `app["problemi_ha"]` -> `compose_briefing` ->
+    """La catena intera: `app["ha_problems"]` -> `compose_briefing` ->
     `compose`. Senza questo cablaggio la lettura di `server.py` sarebbe un dato
     scritto e mai letto -- la quarta fondamenta al contrario."""
-    app = {"problemi_ha": {"problemi": [
+    app = {"ha_problems": {"problemi": [
         _p(domain="caldaia", issue_id="pressione", severity="critical"),
     ]}}
     testo, _ = compose_briefing(app)
@@ -345,8 +345,8 @@ def test_rileggi_problemi_mette_la_fotografia_in_ram():
 
     app: dict = {}
     esito = asyncio.run(reread_ha_problems(app, _ClienteFinto()))
-    assert esito == app["problemi_ha"]
-    assert app["problemi_ha"]["problemi"][0]["domain"] == "caldaia"
+    assert esito == app["ha_problems"]
+    assert app["ha_problems"]["problemi"][0]["domain"] == "caldaia"
 
 
 def test_rileggi_problemi_porta_l_errore_invece_di_inghiottirlo():
@@ -359,7 +359,7 @@ def test_rileggi_problemi_porta_l_errore_invece_di_inghiottirlo():
 
     app: dict = {}
     asyncio.run(reread_ha_problems(app, _ClienteRotto()))
-    assert app["problemi_ha"] == {"errore": "Home Assistant non ha risposto"}
+    assert app["ha_problems"] == {"errore": "Home Assistant non ha risposto"}
     testo, _ = compose_briefing(app)
     assert "non si e' potuto guardare" in testo
 
@@ -374,7 +374,7 @@ def test_un_client_che_non_sa_leggere_i_problemi_non_scrive_niente():
 
     app: dict = {}
     assert asyncio.run(reread_ha_problems(app, _ClienteVecchio())) is None
-    assert "problemi_ha" not in app
+    assert "ha_problems" not in app
     assert asyncio.run(reread_ha_problems(app, None)) is None
 
 

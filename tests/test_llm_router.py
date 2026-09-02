@@ -392,7 +392,7 @@ async def test_niente_in_catena_non_e_una_risposta_che_invita_a_riprovare():
 # ---------------------------------------------------------------------------
 # La scrittura a caldo vista da un turno CHE E' GIA' PARTITO (Task 10)
 #
-# Da questa fetta `app["ricalcola_catena"]` riassegna `_chat_policy` mentre
+# Da questa fetta `app["recompute_chain"]` riassegna `_chat_policy` mentre
 # l'add-on gira, quindi una PUT puo' arrivare nel mezzo di un turno di chat.
 # E' il tipo di cosa che non si riproduce mai su un banco e si vede una volta
 # al mese in produzione, quindi si guarda apposta e si dichiara.

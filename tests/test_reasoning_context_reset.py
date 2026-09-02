@@ -203,9 +203,9 @@ async def test_un_ricordo_seminato_non_si_ritrova_piu_nel_file_dopo_la_risoluzio
 
     app = web.Application()
     app["reasoning_queue"] = reasoning_queue
-    app["impostazioni_chat"] = impostazioni
+    app["chat_settings"] = impostazioni
     app["data_dir"] = data_dir
-    app["ponte_attivo"] = True
+    app["bridge_active"] = True
 
     archivio_casa = HomeSpaceStore(str(tmp_path / "casa.db"))
     archivio_casa.replace({
@@ -218,8 +218,8 @@ async def test_un_ricordo_seminato_non_si_ritrova_piu_nel_file_dopo_la_risoluzio
     archivio_memoria = MemoryStore(str(tmp_path / "memoria.db"))
     ricordo_segreto = "Il codice del cancello e' 1974, non dirlo a nessuno"
     archivio_memoria.remember(ricordo_segreto, "paolo")
-    app["archivio_casa"] = archivio_casa
-    app["archivio_memoria"] = archivio_memoria
+    app["home_space_store"] = archivio_casa
+    app["memory_store"] = archivio_memoria
 
     app.router.add_post("/api/chat", handle_chat)
     app.router.add_get("/api/chat/reply/{job_id}", handle_chat_reply_poll)

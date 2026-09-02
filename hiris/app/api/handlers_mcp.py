@@ -181,7 +181,7 @@ _MAX_TRACKED_EXCHANGES = 64
 # La chiave sotto cui i contatori vivono nell'`Application`. Costante e non una
 # stringa ripetuta: chi la crea (`server.create_app`) e chi la legge
 # (`_count_round`) devono per forza nominare la stessa cosa.
-ROUNDS_PER_EXCHANGE_KEY = "mcp_giri_per_turno"
+ROUNDS_PER_EXCHANGE_KEY = "mcp_rounds_per_exchange"
 
 
 def create_rounds_per_exchange(app) -> None:
@@ -237,7 +237,7 @@ def _exchange_promise_id(request: web.Request) -> str:
     ident = (request.headers.get("X-HIRIS-Promessa") or "").strip()
     if not ident:
         return ""
-    store = request.app.get("promesse")
+    store = request.app.get("agenda")
     if store is None:
         return ""
     row = store.read(ident)
@@ -457,8 +457,8 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
         # A concludere e' l'orologio, non questa rotta: un secondo punto che
         # decide se notificare e con quali parole sarebbe libero di divergere
         # dal primo, sul gesto piu' visibile che il prodotto compia.
-        sweeper = request.app.get("orologio")
-        store = (request.app.get("promesse") or None)
+        sweeper = request.app.get("sweeper")
+        store = (request.app.get("agenda") or None)
         row = store.read(promise_id) if store is not None else None
         if sweeper is None or row is None:
             # Silenzio dichiarato: il modello ha concluso e noi non abbiamo di

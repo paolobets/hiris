@@ -103,7 +103,7 @@ async def test_l_unico_costruttore_del_dispatcher_passa_la_porta():
     from hiris.app.api.handlers_chat import create_tool_dispatcher
 
     actuator = FintaPorta()
-    d = create_tool_dispatcher({"porta_azione": actuator})
+    d = create_tool_dispatcher({"action_actuator": actuator})
 
     esito = await d.dispatch("execute", {"servizio": "light.turn_off",
                                         "bersaglio": {"entita": ["light.salotto"]}})
@@ -125,8 +125,8 @@ def test_la_porta_nasce_nell_app_e_dopo_lo_specchio_dello_stato():
     from hiris.app import server
 
     src = inspect.getsource(server._on_startup)
-    assert 'app["porta_azione"] = ActionActuator(' in src
+    assert 'app["action_actuator"] = ActionActuator(' in src
     assert src.index('app["entity_cache"] = entity_cache') < src.index(
-        'app["porta_azione"] = ActionActuator('), (
+        'app["action_actuator"] = ActionActuator('), (
         "la porta si costruisce PRIMA dello specchio dello stato: nascerebbe "
         "con cache=None e rifiuterebbe ogni azione")

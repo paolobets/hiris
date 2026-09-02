@@ -32,7 +32,7 @@ from .boundary import occurrence_out
 
 
 async def handle_get_agenda(request: web.Request) -> web.Response:
-    store = request.app.get("promesse")
+    store = request.app.get("agenda")
     if store is None:
         return web.json_response({"agenda": [], "error": "archivio non disponibile"},
                                  status=503)
@@ -42,7 +42,7 @@ async def handle_get_agenda(request: web.Request) -> web.Response:
 
 
 async def handle_delete_promise(request: web.Request) -> web.Response:
-    store = request.app.get("promesse")
+    store = request.app.get("agenda")
     if store is None:
         return web.json_response({"error": "archivio non disponibile"}, status=503)
     ident = request.match_info["id"]
@@ -63,7 +63,7 @@ async def handle_get_execution(request: web.Request) -> web.Response:
     lato della pagina sono la stessa cosa -- non c'e' piu' niente da mostrare
     -- e nessuna delle due merita un errore che sembri un guasto.
     """
-    journal = request.app.get("cronaca")
+    journal = request.app.get("journal")
     if journal is None:
         return web.json_response({"error": "cronaca non disponibile"}, status=503)
     ident = request.match_info["id"]

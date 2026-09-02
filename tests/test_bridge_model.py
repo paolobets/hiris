@@ -115,9 +115,9 @@ async def test_job_accodato_porta_il_modello_risolto_in_argv(tmp_path):
         )
 
         app = web.Application()
-        app["impostazioni_chat"] = impostazioni
+        app["chat_settings"] = impostazioni
         app["data_dir"] = data_dir
-        app["ponte_attivo"] = True
+        app["bridge_active"] = True
         q = ReasoningQueue(str(tmp_path / "reasoning.db"))
         app["reasoning_queue"] = q
         # LA FINTA E' SCOMODA DI PROPOSITO: il piano su `opus`, Claude API su

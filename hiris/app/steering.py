@@ -51,7 +51,7 @@ def _bridge_on(app) -> bool:
     """Se il ponte della coda di ragionamento e' cablato in questa app.
 
     `server._on_startup` crea `app["reasoning_queue"]` sempre; `ponte.attivo`
-    (nell'archivio) governa la spazzata e `app["ponte_attivo"]`, non
+    (nell'archivio) governa la spazzata e `app["bridge_active"]`, non
     l'esistenza dell'oggetto coda. Quindi la presenza della chiave e' il
     segnale giusto -- ed e' anche il modo in cui i test entrano e escono dal
     ramo senza toccare variabili d'ambiente.
@@ -93,7 +93,7 @@ def who_answers(app) -> tuple[str, str]:
     modulo per la distinzione, che non e' una sfumatura: e' la differenza fra
     una configurazione e un prelievo.
     """
-    if not (app.get("ponte_attivo") and _bridge_on(app)):
+    if not (app.get("bridge_active") and _bridge_on(app)):
         return "catena", ""
     can, reason = _subscription_can_answer(app)
     if not can:

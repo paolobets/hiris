@@ -44,12 +44,12 @@ from hiris.app.keeper.sweeper import Sweeper
 
 def _load_costruzione_archivi():
     """Estrae dal sorgente vero di `_on_startup` il blocco che costruisce
-    `app["cronaca"]`, `app["promesse"]` e passa la cronaca alla porta -- da
-    `app["cronaca"] = Journal(` fino (incluso) alla chiamata a `ActionActuator`.
+    `app["journal"]`, `app["agenda"]` e passa la cronaca alla porta -- da
+    `app["journal"] = Journal(` fino (incluso) alla chiamata a `ActionActuator`.
     """
     src = inspect.getsource(server._on_startup)
-    start = src.index('    app["cronaca"] = Journal(')
-    end_marker = 'app.get("entity_cache"), app["cronaca"])'
+    start = src.index('    app["journal"] = Journal(')
+    end_marker = 'app.get("entity_cache"), app["journal"])'
     end = src.index(end_marker, start) + len(end_marker)
     body = textwrap.dedent(src[start:end])
     func_src = (
@@ -64,7 +64,7 @@ def _load_costruzione_archivi():
 @pytest.mark.asyncio
 async def test_l_avvio_monta_cronaca_e_promesse_e_li_passa_alla_porta(tmp_path):
     check = _load_costruzione_archivi()
-    app: dict = {"registro_servizi": object()}  # sentinella: la porta la deve
+    app: dict = {"service_registry": object()}  # sentinella: la porta la deve
     # ricevere TALE E QUALE, non ricalcolata.
     ha_client = object()  # ActionActuator non lo chiama alla costruzione (solo lo
     # conserva): un oggetto qualunque basta a dimostrare che e' quello passato.
@@ -72,20 +72,20 @@ async def test_l_avvio_monta_cronaca_e_promesse_e_li_passa_alla_porta(tmp_path):
     await check(app, str(tmp_path), os, ha_client, Journal, AgendaStore,
                 ActionActuator)
 
-    assert isinstance(app["cronaca"], Journal)
-    assert isinstance(app["promesse"], AgendaStore)
+    assert isinstance(app["journal"], Journal)
+    assert isinstance(app["agenda"], AgendaStore)
     try:
-        porta = app["porta_azione"]
+        porta = app["action_actuator"]
         assert isinstance(porta, ActionActuator)
         # La porta deve aver ricevuto la STESSA cronaca appena costruita, non
         # `None` (il difetto che questo test esiste per impedire: una porta
         # costruita a tre argomenti scriverebbe di nuovo solo nel log).
-        assert porta._journal is app["cronaca"]
+        assert porta._journal is app["journal"]
         assert porta._ha is ha_client
-        assert porta._registry is app["registro_servizi"]
+        assert porta._registry is app["service_registry"]
     finally:
-        app["cronaca"].close()
-        app["promesse"].close()
+        app["journal"].close()
+        app["agenda"].close()
 
 
 # ── Estrazione 2: risana + orologio + battito ────────────────────────────────
@@ -97,7 +97,7 @@ def _load_battito_avvio():
     del risanamento fino (incluso) alla chiusura di `scheduler.add_job(...)`
     del battito."""
     src = inspect.getsource(server._on_startup)
-    start = src.index('    try:\n        app["promesse"].risana(')
+    start = src.index('    try:\n        app["agenda"].risana(')
     end_marker = '        misfire_grace_time=30,\n    )'
     end = src.index(end_marker, start) + len(end_marker)
     body = textwrap.dedent(src[start:end])
@@ -141,13 +141,13 @@ def porta_finta():
 @pytest.mark.asyncio
 async def test_il_battito_e_registrato_come_lavoro(promesse, porta_finta):
     check = _load_battito_avvio()
-    app = {"promesse": promesse, "porta_azione": porta_finta}
+    app = {"agenda": promesse, "action_actuator": porta_finta}
     scheduler = _SchedulerRegistratore()
 
     await check(app, scheduler, _time_module, server.logger, Sweeper,
                 interpreta_promise)
 
-    assert isinstance(app["orologio"], Sweeper)
+    assert isinstance(app["sweeper"], Sweeper)
     battiti = [c for c in scheduler.chiamate if c.get("id") == "hiris_keeper_heartbeat"]
     assert len(battiti) == 1, (
         "il battito deve essere registrato UNA volta, con questo id -- "
@@ -176,7 +176,7 @@ async def test_al_riavvio_le_promesse_in_corso_vengono_risanate(promesse, porta_
     assert promesse.read(ident)["stato"] == "in_corso"  # precondizione del test
 
     check = _load_battito_avvio()
-    app = {"promesse": promesse, "porta_azione": porta_finta}
+    app = {"agenda": promesse, "action_actuator": porta_finta}
     scheduler = _SchedulerRegistratore()
 
     await check(app, scheduler, _time_module, server.logger, Sweeper,
@@ -210,7 +210,7 @@ def _load_battito_closure():
     `test_websocket_startup.py`): il corpo vero, non una sua imitazione."""
     src = inspect.getsource(server._on_startup)
     start = src.index('    async def _battito() -> None:')
-    end_marker = 'await app["orologio"].batti(_time.time())'
+    end_marker = 'await app["sweeper"].batti(_time.time())'
     end = src.index(end_marker, start) + len(end_marker)
     body = textwrap.dedent(src[start:end])
     func_src = (
@@ -226,7 +226,7 @@ def _load_battito_closure():
 async def test_la_chiusura_del_battito_chiama_orologio_batti_con_un_istante():
     orologio_finto = MagicMock()
     orologio_finto.batti = AsyncMock()
-    app = {"orologio": orologio_finto}
+    app = {"sweeper": orologio_finto}
 
     wrap = _load_battito_closure()
     battito = await wrap(app, _time_module)
@@ -255,8 +255,8 @@ async def test_il_cleanup_chiude_promesse_e_cronaca():
     cronaca_finta = MagicMock()
     app = {
         "ha_client": AsyncMock(stop=AsyncMock()),
-        "promesse": promesse_finte,
-        "cronaca": cronaca_finta,
+        "agenda": promesse_finte,
+        "journal": cronaca_finta,
     }
 
     await server._on_cleanup(app)
@@ -277,8 +277,8 @@ async def test_il_cleanup_non_solleva_senza_promesse_ne_cronaca():
 
 @pytest.mark.asyncio
 async def test_il_cleanup_chiude_casa_e_memoria_con_lo_stesso_metodo():
-    """`app["archivio_casa"]` (`HomeSpaceStore`, ambito `casa`) e
-    `app["archivio_memoria"]` (`MemoryStore`, Task 5) esponevano due nomi
+    """`app["home_space_store"]` (`HomeSpaceStore`, ambito `casa`) e
+    `app["memory_store"]` (`MemoryStore`, Task 5) esponevano due nomi
     diversi per la stessa azione -- `.chiudi()` contro `.close()` -- perche'
     i due sottosistemi erano a meta' del passaggio all'inglese in due
     momenti diversi. La fetta «la rinomina» (Task 8) chiude quel divario:
@@ -290,15 +290,15 @@ async def test_il_cleanup_chiude_casa_e_memoria_con_lo_stesso_metodo():
     suite verde (nessun altro test lo copriva), e HIRIS sarebbe uscito verde
     di cancello e di suite per poi sollevare `AttributeError` allo
     SPEGNIMENTO, lasciando il file sqlite bloccato -- esattamente il guasto
-    che il commento sopra `if "archivio_memoria" in app` descrive. La
+    che il commento sopra `if "memory_store" in app` descrive. La
     guardia resta valida oggi nella direzione opposta: se una delle due
     tornasse a `.chiudi()` da sola, questo test lo direbbe."""
     archivio_casa_finto = MagicMock()
     archivio_memoria_finto = MagicMock()
     app = {
         "ha_client": AsyncMock(stop=AsyncMock()),
-        "archivio_casa": archivio_casa_finto,
-        "archivio_memoria": archivio_memoria_finto,
+        "home_space_store": archivio_casa_finto,
+        "memory_store": archivio_memoria_finto,
     }
 
     await server._on_cleanup(app)
@@ -315,10 +315,10 @@ async def test_il_cleanup_chiude_casa_e_memoria_con_lo_stesso_metodo():
 def test_costruisci_dispatcher_strumenti_riceve_registro_e_promesse():
     """Punto 1 del task: non basta `promesse=` -- serve anche `registro=`,
     preso dallo STESSO oggetto dell'app che alimenta la porta
-    (`app["registro_servizi"]`), non una seconda costruzione."""
+    (`app["service_registry"]`), non una seconda costruzione."""
     registro_sentinella = object()
     promesse_sentinella = object()
-    app = {"registro_servizi": registro_sentinella, "promesse": promesse_sentinella}
+    app = {"service_registry": registro_sentinella, "agenda": promesse_sentinella}
 
     dispatcher = create_tool_dispatcher(app)
 

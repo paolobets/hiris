@@ -8,7 +8,7 @@ Prima di questo task nessuna suite esercitava `_run_retention`: leggeva
 all'import, e nessun test costruiva uno scenario per verificarlo (si scopre
 grep-ando `hiris_retention`/`_run_retention` nei test esistenti: zero
 occorrenze prima di questo file). Il Task 12 lo rende un parametro letto da
-`app["impostazioni_chat"]` -- un valore che un PUT su
+`app["chat_settings"]` -- un valore che un PUT su
 `/api/chat-settings` puo' cambiare a caldo -- ed e' proprio questo che
 merita un pin: se il numero tornasse a essere catturato una volta sola
 all'avvio (o a leggere una costante fissa), un utente che abbassa la
@@ -49,7 +49,7 @@ def _load_run_retention():
 
 def test_la_potatura_legge_i_giorni_dall_archivio_non_da_una_costante_fissa(tmp_path, monkeypatch):
     """Il PUT che cambia `giorni_conservazione` a caldo riassegna
-    `app["impostazioni_chat"]` (handlers_settings.py): la potatura di
+    `app["chat_settings"]` (handlers_settings.py): la potatura di
     stanotte deve vedere QUEL valore, non uno catturato all'avvio."""
     from datetime import datetime, timedelta
 
@@ -71,7 +71,7 @@ def test_la_potatura_legge_i_giorni_dall_archivio_non_da_una_costante_fissa(tmp_
     check = _load_run_retention()
     import logging
 
-    app = {"impostazioni_chat": ChatSettings(retention_days=5)}
+    app = {"chat_settings": ChatSettings(retention_days=5)}
     run_retention = check(app=app, data_dir=data_dir, logger=logging.getLogger("test"))
     run_retention()
     assert load_history(data_dir) == [], "5 giorni: il messaggio di 10 giorni fa doveva sparire"
@@ -87,7 +87,7 @@ def test_la_potatura_legge_i_giorni_dall_archivio_non_da_una_costante_fissa(tmp_
         (vecchio_ts2, "recente"),
     )
     store2._conn.commit()
-    app["impostazioni_chat"] = ChatSettings(retention_days=0)
+    app["chat_settings"] = ChatSettings(retention_days=0)
     run_retention()
     assert load_history(data_dir) == [{"role": "user", "content": "recente"}], (
         "0: la potatura non deve aver toccato niente"

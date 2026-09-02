@@ -135,7 +135,7 @@ def test_la_pagina_nomina_l_unica_rotta_che_usa():
 
 
 def test_la_pagina_dice_quando_ha_effetto_il_salvataggio():
-    """L'effetto e' immediato (il PUT riassegna `app["impostazioni_chat"]`), e
+    """L'effetto e' immediato (il PUT riassegna `app["chat_settings"]`), e
     va detto in pagina -- non solo nel report del task: senza, l'utente non ha
     modo di sapere se deve riavviare l'add-on."""
     assert "non serve riavviare" in ROUTE

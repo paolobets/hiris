@@ -75,8 +75,8 @@ def app(tmp_path):
     archivio.log("openrouter", "un/modello", token_in=50, token_out=5,
                       cost_usd=None, cost_state="non_noto", now=T22)
     try:
-        yield {"consumi": archivio, "llm_router": object(),
-              "archivio_casa": _ArchivioCasaFinto(ROMA)}
+        yield {"usage": archivio, "llm_router": object(),
+              "home_space_store": _ArchivioCasaFinto(ROMA)}
     finally:
         archivio.close()
 
@@ -161,7 +161,7 @@ def test_senza_provider_e_senza_righe_si_dichiara_che_non_si_misura(tmp_path):
     si misura, e ha una sezione sua."""
     empty = UsageStore(str(tmp_path / "v.db"))
     try:
-        corpo = _corpo(_chiama(handle_usage, {"consumi": empty}))
+        corpo = _corpo(_chiama(handle_usage, {"usage": empty}))
         assert corpo["measured"] is False
         assert corpo["reason"] == "nessun_provider"
         assert "provider" in corpo["message"].lower()
@@ -176,7 +176,7 @@ def test_col_ponte_acceso_e_l_archivio_vuoto_i_consumi_SI_misurano(tmp_path):
     un'assenza di misura."""
     empty = UsageStore(str(tmp_path / "v.db"))
     try:
-        corpo = _corpo(_chiama(handle_usage, {"consumi": empty, "ponte_attivo": True}))
+        corpo = _corpo(_chiama(handle_usage, {"usage": empty, "bridge_active": True}))
         assert corpo["measured"] is True
         assert corpo["total_requests"] == 0
     finally:
@@ -221,7 +221,7 @@ def test_azzerare_sposta_l_ancora_e_NON_cancella(app):
 
     dopo = _corpo(_chiama(handle_usage, app))
     assert dopo["total_requests"] == 0, "il pulsante deve portare a zero"
-    assert app["consumi"].totali()["richieste"] == 2, "e la storia resta intera"
+    assert app["usage"].totali()["richieste"] == 2, "e la storia resta intera"
 
 
 def test_azzerare_non_risponde_piu_409_su_un_archivio_vuoto(tmp_path):
@@ -229,7 +229,7 @@ def test_azzerare_non_risponde_piu_409_su_un_archivio_vuoto(tmp_path):
     sempre un'ancora da spostare."""
     empty = UsageStore(str(tmp_path / "v.db"))
     try:
-        assert _chiama(handle_reset_usage, {"consumi": empty}).status == 200
+        assert _chiama(handle_reset_usage, {"usage": empty}).status == 200
     finally:
         empty.close()
 
@@ -238,7 +238,7 @@ def test_l_interruttore_da_sempre_cambia_davvero_i_numeri(app):
     """La pagina ha un interruttore «da ultimo azzeramento / da sempre». Se il
     server ignorasse il parametro sarebbe un pulsante che non fa niente --
     difetto trovato rileggendo il proprio codice, non da un test caduto."""
-    app["consumi"].sposta_anchor(T22 + 3600)
+    app["usage"].sposta_anchor(T22 + 3600)
 
     da_anchor = _corpo(_chiama(handle_usage, app))
     da_sempre = _corpo(_chiama(handle_usage, app, {"from": "sempre"}))
