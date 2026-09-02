@@ -685,7 +685,7 @@ class ClaudeRunner:
         # `reset_usage`. Erano la SECONDA casa del consumo -- quella che
         # sommava tutto insieme e non sapeva dire di quale modello parlasse --
         # e sono uscite col loro `usage_path`. Il consumo si scrive adesso in
-        # `consumi/store.py` attraverso `log_usage`, e i vecchi
+        # `usage/store.py` attraverso `log_usage`, e i vecchi
         # `usage_*.json` ci entrano una volta sola all'avvio come riga
         # «(prima del dettaglio)»: i file restano sul disco, mai dati
         # dell'utente cancellati in silenzio.
@@ -731,7 +731,7 @@ class ClaudeRunner:
         """
         if self._log_usage is None:
             return
-        from .consumi.vocabulary import cost_state_and_value
+        from .usage.vocabulary import cost_state_and_value
 
         state, cost_usd = cost_state_and_value(
             "claude", model, cost_dichiarato=None, cost_da_listino=cost)

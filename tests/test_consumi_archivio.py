@@ -1,7 +1,7 @@
 """L'archivio dei consumi: un secchiello al giorno per modello."""
 import pytest
 
-from hiris.app.consumi.store import UsageStore
+from hiris.app.usage.store import UsageStore
 
 ROMA = "Europe/Rome"
 T1 = 1787324400.0   # 21/08/2026 17:00 a Roma

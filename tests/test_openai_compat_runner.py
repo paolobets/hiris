@@ -53,7 +53,7 @@ def test_init_ollama_local_does_not_raise(tmp_path):
 # della persistenza di `usage.json` -- il silenzio dichiarato su `per_agent`
 # di un'installazione precedente e la lettura-modifica-scrittura che non
 # doveva perderlo. Escono col loro soggetto: `_load_usage`/`_save_usage` non
-# esistono piu', il consumo ha una casa sola (`consumi/store.py`).
+# esistono piu', il consumo ha una casa sola (`usage/store.py`).
 #
 # Il fatto che difendevano -- «mai dati dell'utente rimossi in silenzio» --
 # non esce con loro: i vecchi `usage_*.json` restano sul disco e vengono

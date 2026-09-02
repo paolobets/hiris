@@ -20,7 +20,7 @@ from hiris.app.api.handlers_usage import (
     handle_usage_history,
 )
 from hiris.app.casa.archivio import HomeSpaceStore
-from hiris.app.consumi.store import UsageStore
+from hiris.app.usage.store import UsageStore
 from tests._contratti import assert_stessa_firma
 
 ROMA = "Europe/Rome"
@@ -124,7 +124,7 @@ def test_una_sezione_porta_etichetta_nota_e_modelli(app):
     assert model["cost_state"] == "misurato"
     assert model["first_use"] == "2026-08-21"
     # L'INSIEME ESATTO delle chiavi di una riga di modello, non solo quelle
-    # che questo test guarda. E' il confine fra le colonne di `consumi/store`
+    # che questo test guarda. E' il confine fra le colonne di `usage/store`
     # e HTTP (`_model_out`): una colonna che uscisse da sola col suo nome
     # italiano, o una chiave che sparisse, si vede qui e in nessun altro
     # posto. Trovato con una batteria di mutazioni: `requests` non era

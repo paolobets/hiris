@@ -325,6 +325,6 @@ class LLMRouter:
     # `total_requests`, `total_cost_usd`, `total_rate_limit_errors`,
     # `usage_last_reset`) e `reset_usage`. Sommavano i contatori dei runner,
     # e quei contatori non esistono piu': il consumo ha una casa sola,
-    # `consumi/store.py`, che sa anche DI CHI sia -- cosa che questa somma
+    # `usage/store.py`, che sa anche DI CHI sia -- cosa che questa somma
     # buttava via per costruzione. Zero chiamanti di produzione al momento
     # della cancellazione (`handlers_usage` legge l'archivio).

@@ -63,7 +63,7 @@ def test_e_idempotente(g):
 
 def test_l_omonimo_segue_il_sottosistema(g):
     assert rinomina.riscrivi("ancora = 1\n", g, "memoria")[0] == "tether = 1\n"
-    assert rinomina.riscrivi("ancora = 1\n", g, "consumi")[0] == "anchor = 1\n"
+    assert rinomina.riscrivi("ancora = 1\n", g, "usage")[0] == "anchor = 1\n"
 
 
 def test_una_collisione_non_si_applica_e_si_segnala():
@@ -331,7 +331,7 @@ def test_un_metodo_che_non_e_di_haclient_si_applica_normalmente():
 
 def test_un_metodo_di_usagestore_non_si_applica_da_solo():
     """La stessa guardia, per `UsageStore` (Task 9): `sezioni`/`totali`/
-    `storia` sono metodi PUBBLICI di un ambito gia' chiuso (`consumi/`)
+    `storia` sono metodi PUBBLICI di un ambito gia' chiuso (`usage/`)
     ma mai decisi -- se una parola omonima venisse decisa domani per
     un'altra ragione (`sezione -> section`), applicarla alla cieca
     romperebbe `archivio.sezioni(...)` in `archivio.section(...)`, lo
@@ -690,7 +690,7 @@ _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     # aggiornato -- e' la disciplina scritta per `memoria/resolver.py`.
     ("backends", "backends", frozenset()),
     ("memoria", "memoria", frozenset({Path("resolver.py")})),
-    ("consumi", "consumi", frozenset()),
+    ("usage", "usage", frozenset()),
     ("cervello", "cervello", frozenset()),
     ("azione", "azione", frozenset({Path("costruzione/composer.py")})),
     ("casa/lettura_yaml.py", "casa", frozenset()),
@@ -1060,7 +1060,7 @@ _MUTE_VOLUTE = {
     ("senza", "schedulatore"),
     # `note (casa)` vuol dire «cose che la casa SA» (-> `known`). Fuori da
     # `casa/` `note` sono annotazioni, un senso diverso: la mutezza e' giusta.
-    ("note", "api"), ("note", "azione"), ("note", "consumi"),
+    ("note", "api"), ("note", "azione"), ("note", "usage"),
     ("note", "schedulatore"),
     # `note` in `radice` non e' italiano affatto: e' l'INGLESE che ci ha messo
     # la conversione stessa (`nota -> note`, `decisione_modelli.py`). Il
@@ -1072,10 +1072,10 @@ _MUTE_VOLUTE = {
     # JSON `"prima"`/`"dopo"` di un confronto di stati: valore di dominio,
     # italiano per decisione (vedi la riga `primo` del glossario).
     ("dopo", "azione"),
-    # `fuori (casa)` e' «all'aperto». In `consumi/` e `schedulatore/` e' «in
+    # `fuori (casa)` e' «all'aperto». In `usage/` e `schedulatore/` e' «in
     # uscita»/«fuori finestra»: senso diverso, mutezza giusta.
-    ("fuori", "consumi"), ("fuori", "schedulatore"),
-    # `lettura` e' qualificata `(casa)`/`(consumi)`. In `schedulatore/` compare
+    ("fuori", "usage"), ("fuori", "schedulatore"),
+    # `lettura` e' qualificata `(casa)`/`(usage)`. In `schedulatore/` compare
     # solo dentro `SOLA_LETTURA`, dove e' «read-only»: terzo senso.
     ("lettura", "schedulatore"),
     # `loro`/`nostro` sono qualificate SOLO `(casa)`; in `azione/verifica.py`
@@ -1145,7 +1145,7 @@ def _pezzi_per_ambito() -> dict[str, set[str]]:
 
     # **I moduli di RADICE sono un ambito, e il cancello non li guardava.**
     # Trovato dal lotto `radice`: `cache_lettura` (`claude_runner.py`) e' rimasto
-    # italiano perche' `lettura` e' qualificata `(casa)`/`(consumi)` e quindi
+    # italiano perche' `lettura` e' qualificata `(casa)`/`(usage)` e quindi
     # muta li' -- ma nessuna riga di questo elenco poteva dirlo, perche'
     # `iterdir()` filtrava sulle sole CARTELLE. Un cancello che guarda meta' del
     # perimetro non protegge meta': non protegge, e sembra di si'.

@@ -33,13 +33,13 @@ def test_gli_omonimi_non_finiscono_nella_mappa_semplice(g):
     assert "ancora" not in g.mappa
     assert "piano" not in g.mappa
     assert g.omonimi["ancora"]["memoria"] == "tether"
-    assert g.omonimi["ancora"]["consumi"] == "anchor"
+    assert g.omonimi["ancora"]["usage"] == "anchor"
 
 
 def test_per_risolve_l_omonimo_col_sottosistema(g):
     assert g.per("ancora", "memoria") == "tether"
-    assert g.per("ancora", "consumi") == "anchor"
-    assert g.per("adesso", "consumi") == "now"
+    assert g.per("ancora", "usage") == "anchor"
+    assert g.per("adesso", "usage") == "now"
 
 
 def test_per_un_omonimo_senza_ambito_noto_non_indovina(g):
@@ -92,8 +92,8 @@ def test_una_costante_TUTTA_MAIUSCOLA_resta_TUTTA_MAIUSCOLA(g):
     confonderebbe con `Archivio` e produrrebbe `Label`, non `LABEL` --
     rompendo la convenzione delle costanti in silenzio. Trovato puntando lo
     strumento su `consumi/vocabolario.py` (Task 4, poi rinominato
-    `consumi/vocabulary.py` nello stesso task)."""
-    assert rinomina.classifica("ETICHETTA", g, "consumi") == "LABEL"
+    `usage/vocabulary.py` nello stesso task)."""
+    assert rinomina.classifica("ETICHETTA", g, "usage") == "LABEL"
 
 
 def test_un_prefisso_privato_si_conserva(g):
@@ -101,10 +101,10 @@ def test_un_prefisso_privato_si_conserva(g):
     basso iniziale): sparire lo trasforma in interfaccia PUBBLICA senza che
     nessuno lo decida. Stessa famiglia del difetto sopra (la forma
     dell'originale va conservata, non solo le maiuscole) -- trovato in
-    produzione: `hiris/app/consumi/store.py`, `_fuso` era diventato
+    produzione: `hiris/app/usage/store.py`, `_fuso` era diventato
     `timezone` invece di `_timezone`."""
     assert rinomina.classifica("_archivio", g, "memoria") == "_store"
-    assert rinomina.classifica("_fuso", g, "consumi") == "_timezone"
+    assert rinomina.classifica("_fuso", g, "usage") == "_timezone"
 
 
 def test_un_trattino_basso_finale_si_conserva(g):

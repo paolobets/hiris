@@ -92,7 +92,7 @@ def _iso(ts: float) -> str | None:
 def _model_out(m: dict) -> dict:
     """Una riga di modello come la legge la pagina. `token_in` resta PURO.
 
-    A sinistra il nome HTTP, a destra il nome della COLONNA (`consumi/store.py`):
+    A sinistra il nome HTTP, a destra il nome della COLONNA (`usage/store.py`):
     e' il confine, e la legge del progetto lo vuole cosi' -- il dominio in
     italiano, il confine nella lingua del sistema esterno, che qui e' il
     browser. Il database non si tocca: `richieste` resta una colonna e diventa

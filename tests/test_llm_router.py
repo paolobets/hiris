@@ -74,7 +74,7 @@ async def test_router_chat_delegates_to_runner(mock_runner):
 # pinnava le sei proprieta' aggreganti del router (`total_input_tokens` e
 # compagnia) e `reset_usage`. Sono uscite: sommavano i contatori dei runner,
 # e quella somma buttava via per costruzione l'unica cosa che serviva
-# sapere -- DI CHI fosse il consumo. Adesso lo sa `consumi/store.py`.
+# sapere -- DI CHI fosse il consumo. Adesso lo sa `usage/store.py`.
 
 
 def test_router_last_tool_calls_reflects_current_call_not_stale_backend(mock_runner):

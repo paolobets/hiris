@@ -1,7 +1,7 @@
 """Cosa l'archivio sa rispondere: i totali, le sezioni, la storia."""
 import pytest
 
-from hiris.app.consumi.store import UsageStore
+from hiris.app.usage.store import UsageStore
 
 ROMA = "Europe/Rome"
 T21 = 1787324400.0   # 21/08/2026 17:00

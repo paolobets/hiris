@@ -362,7 +362,7 @@ def classifica(nome: str, g: Glossario, ambito: str):
         # `tipo_`/`gamba_`): non parole da tradurre, si tolgono prima di
         # guardare le maiuscole e si rimettono identici alla fine. Senza,
         # `_fuso` (un aiutante privato) diventava `timezone` (interfaccia
-        # pubblica) -- misurato su `consumi/store.py` (Task 4). Stessa
+        # pubblica) -- misurato su `usage/store.py` (Task 4). Stessa
         # famiglia sul lato finale: `gamba_` (`cervello/oggetti.py`, evita
         # di ombreggiare la parola `gamba`) sarebbe diventato `aspect`,
         # perdendo il trattino che lo distingue dalla parola che ombreggia
@@ -453,11 +453,11 @@ _METODI_HA_CLIENT = frozenset({
 })
 
 # La STESSA guardia, per una specie diversa di confine (Task 9, `api/`):
-# `UsageStore` (`consumi/store.py`) e' un ambito GIA' CHIUSO -- a
+# `UsageStore` (`usage/store.py`) e' un ambito GIA' CHIUSO -- a
 # differenza di `HAClient`, la cui intera classe resta fuori da questa
 # fetta -- ma tre dei suoi metodi PUBBLICI (`sezioni`, `totali`, `storia`)
 # non sono mai stati decisi nel glossario, e restano italiani nonostante
-# `consumi/` sia "idempotente". Un ambito idempotente non e' la garanzia
+# `usage/` sia "idempotente". Un ambito idempotente non e' la garanzia
 # che ci si aspetterebbe (vedi il debito tracciato in
 # `tests/test_rinomina_applica.py` per `AgendaStore.list::
 # solo_in_sospeso` e `ConstructionStore.scadi`, la stessa famiglia):
@@ -469,7 +469,7 @@ _METODI_HA_CLIENT = frozenset({
 # `ha.statistiche()`, misurato PRIMA di commetterlo qui (dry-run su
 # `api/handlers_usage.py`, che chiama tutti e tre), non dopo.
 #
-# Elenco letto a mano da `consumi/store.py` (stessa disciplina di
+# Elenco letto a mano da `usage/store.py` (stessa disciplina di
 # `_METODI_HA_CLIENT`: include anche i privati e i metodi gia' inglesi,
 # nessuno svantaggio a proteggerli).
 _METODI_USAGE_STORE = frozenset({
@@ -578,7 +578,7 @@ def _righe_di_percorso_e_parola_chiave(
     NAME preceduto da un singolo `.`) e per appartenenza a
     `_METODI_ESTERNI_PROTETTI`, indipendentemente da quale variabile lo
     precede. **Non solo `HAClient`**: `_METODI_ESTERNI_PROTETTI` unisce
-    anche `_METODI_USAGE_STORE` (`UsageStore`, `consumi/`) -- un ambito
+    anche `_METODI_USAGE_STORE` (`UsageStore`, `usage/`) -- un ambito
     GIA' CHIUSO puo' avere metodi pubblici mai decisi quanto uno non
     ancora toccato, e il rischio per lo strumento e' identico (Task 9).
     Trattato come una parola chiave: si segnala, non si applica.
@@ -740,7 +740,7 @@ def riscrivi(sorgente: str, g: Glossario, ambito: str
             # rompere `ha.statistiche()` in `ha.statistics()` e' lo stesso
             # guasto di rompere `archivio.sezioni()` in `archivio.section()`,
             # misurato dal vivo su `casa/tempo.py` (Task 8) e prevenuto per
-            # `consumi/store.py` prima di commetterlo (Task 9).
+            # `usage/store.py` prima di commetterlo (Task 9).
             proposta = Proposta(nome=t.string, pezzi=[t.string.lower()], suggerito=esito)
             if proposta.nome not in visti:
                 visti.add(proposta.nome)
@@ -2006,7 +2006,7 @@ def reti(percorso: str, rev: str = "HEAD") -> int:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description="Rinomina gli identificatori di un sottosistema.")
-    p.add_argument("--percorso", help="es. hiris/app/consumi")
+    p.add_argument("--percorso", help="es. hiris/app/usage")
     p.add_argument("--ambito", help="il sottosistema, per gli omonimi: es. consumi")
     p.add_argument("--dry-run", action="store_true", help="non scrive, elenca soltanto")
     p.add_argument("--citazioni", metavar="COPPIE.json",

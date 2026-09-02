@@ -9,7 +9,7 @@ import json
 
 import pytest
 
-from hiris.app.consumi.store import UsageStore
+from hiris.app.usage.store import UsageStore
 
 ROMA = "Europe/Rome"
 MATTINA = 1787292000.0     # 21/08/2026 08:00

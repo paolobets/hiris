@@ -9,7 +9,7 @@ scritto per non commettere -- e nella pagina Consumi lo commetteva davvero:
 """
 import pytest
 
-from hiris.app.consumi.vocabulary import (
+from hiris.app.usage.vocabulary import (
     STATES,
     cost_state_and_value,
     local_day,

@@ -1981,7 +1981,7 @@ async def _on_startup(app: web.Application) -> None:
     # Nasce DOPO `archivio_casa` perche' gli chiede il fuso -- a ogni
     # scrittura, non alla costruzione: la casa puo' cambiarlo
     # (`core_config_updated`), e un fuso cotto qui sarebbe quello dell'avvio.
-    from .consumi.store import UsageStore
+    from .usage.store import UsageStore
 
     app["consumi"] = UsageStore(
         os.path.join(data_dir, "consumi.db"),
@@ -2287,7 +2287,7 @@ async def _on_startup(app: web.Application) -> None:
 
     api_key = os.environ.get("CLAUDE_API_KEY", "")
     # Serve solo all'importazione una-tantum dei contatori di prima
-    # (`consumi/store.importa_legacy`): i runner non scrivono piu' su
+    # (`usage/store.importa_legacy`): i runner non scrivono piu' su
     # questi file, e i file restano dov'erano.
     usage_path = os.environ.get("USAGE_DATA_PATH", "/data/usage.json")
     local_model_url = os.environ.get("LOCAL_MODEL_URL", "")

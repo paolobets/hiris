@@ -742,7 +742,7 @@ async def test_chat_concurrent_calls_do_not_leak_tool_calls(runner):
 # perdere chiavi sconosciute, e le scritture concorrenti che non dovevano
 # corrompere il file. Sono usciti col loro soggetto: i contatori globali e la
 # loro persistenza non esistono piu', il consumo ha una casa sola
-# (`consumi/store.py`) e ci arriva per callback.
+# (`usage/store.py`) e ci arriva per callback.
 #
 # Il fatto che quei test difendevano -- «mai dati dell'utente rimossi in
 # silenzio» -- non e' uscito con loro: i vecchi `usage_*.json` restano sul
