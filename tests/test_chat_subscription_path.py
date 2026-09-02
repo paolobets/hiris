@@ -487,7 +487,7 @@ async def test_poll_route_claimed_job_still_returns_pending(tmp_path):
 # sono il testo del ricordo e per `execute` gli id delle entita' di casa.
 #
 # L'osservabilita' non e' stata tolta: e' stata spostata nei log a livello
-# debug (`api/handlers_chat.py`), e `tests/test_chat_al_nucleo.py` la legge di
+# debug (`api/handlers_chat.py`), e `tests/test_chat_briefing.py` la legge di
 # li'. Toglierla senza spostarla avrebbe distrutto la capacita' per cui era
 # nata -- rilievo I-7 della review di parita' B.
 #
@@ -527,7 +527,7 @@ async def test_poll_route_decision_con_tools_called_porta_debug_nella_stessa_for
     # asseriva il contrario, e la ragione era buona: erano l'unica cosa che
     # rendeva osservabile una scrittura di `remember` fatta dal ponte. Quella
     # osservabilita' non e' stata tolta, e' stata SPOSTATA nei log a livello
-    # debug -- vedi `tests/test_chat_al_nucleo.py`, che la legge di li'.
+    # debug -- vedi `tests/test_chat_briefing.py`, che la legge di li'.
     #
     # L'insieme ESATTO, non «`debug` non c'e'»: un test scritto come «X non
     # c'e'» lascia rientrare X sotto un altro nome (lezione gia' pagata su

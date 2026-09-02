@@ -46,7 +46,7 @@ class FintoClient:
 def test_il_finto_combacia_con_la_firma_vera():
     """La rete contro la deriva: se `HAClient.get_services` cambia firma,
     questo test cade invece di lasciare che il finto menta -- stesso metodo
-    gia' usato per `get_states` in `test_casa_comportamento.py`."""
+    gia' usato per `get_states` in `test_home_space_behavior.py`."""
     vera = inspect.signature(HAClient.get_services)
     finta = inspect.signature(FintoClient.get_services)
     assert list(vera.parameters) == list(finta.parameters)

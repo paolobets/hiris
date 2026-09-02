@@ -341,7 +341,7 @@ async def handle_get_briefing(request: web.Request) -> web.Response:
     Serve all'utente per capire, prima di accendere la chat, se HIRIS sta
     guardando la casa giusta -- e a noi per la verifica dal vivo, che qui
     e' l'unica prova che conta: `compose()` e' pura e coperta da
-    `tests/test_nucleo.py`, ma nessun test dice se QUESTA casa, letta da
+    `tests/test_briefing.py`, ma nessun test dice se QUESTA casa, letta da
     QUESTO Home Assistant, produce un nucleo sensato.
 
     La composizione vera e' in `compose_briefing()` qui sopra, condivisa

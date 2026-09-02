@@ -135,7 +135,7 @@ async def test_accaduto_passa_la_cronaca_del_dispatcher_a_tempo_accaduto():
     """Il gemello del test sopra, per `logbook`. Senza questo test la prova
     mentale che conta e' negativa: se `journal=self._journal` diventasse
     `journal=None` nel gestore, NESSUN test della suite arrossirebbe -- ne'
-    questi sette, ne' `test_tempo_accaduto.py`, che prova `historian.logbook` e
+    questi sette, ne' `test_historian_logbook.py`, che prova `historian.logbook` e
     non il dispatcher. L'effetto sarebbe silenzioso: la risposta continua ad
     arrivare, solo senza mai dire «l'ho fatto io» -- l'attribuzione sparisce
     e nessuno se ne accorge."""

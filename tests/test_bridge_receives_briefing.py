@@ -337,7 +337,7 @@ def test_il_prompt_che_esce_davvero_dal_ponte_senza_sonda_e_quello_senza_strumen
     deve continuare a negarli per sempre -- un prompt che li affermasse senza
     che l'argv li porti e' il difetto numero uno di questo prodotto. Il gemello
     (il turno CON la sonda che risponde) e'
-    tests/test_strumenti_al_ponte.py."""
+    tests/test_tools_to_bridge.py."""
     job = {"kind": "chat", "job_id": "job-senza-strumenti",
            "context": {"history": [{"role": "user", "content": "ciao"}],
                        "system_prompt": "Sei HIRIS.", "contesto": _CONTESTO}}

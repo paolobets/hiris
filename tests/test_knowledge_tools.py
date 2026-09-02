@@ -8,18 +8,18 @@ from hiris.app.home_space.tools import (
     ToolDispatcher,
 )
 from hiris.app.memory.store import MemoryStore
-from tests.test_nucleo import _CASA, _COMPORTAMENTO
+from tests.test_briefing import _CASA, _COMPORTAMENTO
 
-# _CASA/_COMPORTAMENTO sono di tests/test_nucleo.py, importati invece di
+# _CASA/_COMPORTAMENTO sono di tests/test_briefing.py, importati invece di
 # ricopiati -- stessa casa che gia' esercita nucleo.py e domande.py (vedi
-# tests/test_domande.py, stessa convenzione).
+# tests/test_queries.py, stessa convenzione).
 #
 # `_CASA` e' gia' nella forma "post-lettura" (id/nome/piano_id/alias/...),
 # la stessa che `HomeSpaceStore.leggi()` restituisce: si scrive direttamente
 # nelle tabelle SQLite invece di passare da `replace()` (che si aspetta
 # i registri grezzi di Home Assistant, floor_id/name/... -- tradurli qui
 # sarebbe solo rumore, i test di `HomeSpaceStore` gia' coprono quella strada
-# in tests/test_casa_archivio.py).
+# in tests/test_home_space_store.py).
 
 
 def _semina_casa(tmp_path, casa=_CASA, comportamento=_COMPORTAMENTO):
@@ -60,7 +60,7 @@ def archivio_casa(tmp_path):
 @pytest.fixture
 def archivio_casa_ambiguo(tmp_path):
     """Due «Bagno» su piani diversi -- la stessa ambiguita' gia' coperta in
-    tests/test_domande.py per Lookup.find(), qui alla superficie del
+    tests/test_queries.py per Lookup.find(), qui alla superficie del
     dispatcher."""
     casa = {
         "piani": [{"id": "terra", "nome": "Piano terra", "livello": 0},
@@ -298,7 +298,7 @@ async def test_cerca_niente_di_riconoscibile_non_e_un_errore(dispatcher):
 async def test_cerca_trova_un_piano_per_nome(dispatcher):
     """Requisito 1 del brief: i piani entrano nell'indice con la stessa
     forma degli altri candidati (`_CASA` porta `{"id": "terra", "nome":
-    "Piano terra", ...}`, vedi tests/test_nucleo.py)."""
+    "Piano terra", ...}`, vedi tests/test_briefing.py)."""
     esito = await dispatcher.dispatch("search", {"testo": "il piano terra"})
     candidati = [c for t in esito["trovati"] for c in t["candidati"] if c["tipo"] == "piano"]
     # `domande.search()` arricchisce ogni candidato col `nome` (non solo
@@ -479,7 +479,7 @@ async def test_cerca_trova_un_entita_senza_nome_grazie_al_friendly_name(archivio
 async def test_guarda_un_entita_senza_nome_dichiara_il_nome_dedotto_dal_dispatcher(
         archivio_casa, memoria):
     """Il test che prova la FETTA, non solo la funzione pura: i tre test di
-    `test_domande.py` chiamano `view()` direttamente e le passano
+    `test_queries.py` chiamano `view()` direttamente e le passano
     `nomi_di_ripiego` a mano, quindi restano verdi anche se `_view` smette
     di inoltrare i nomi vivi dell'archivio -- esattamente il difetto che
     questo task esiste per chiudere. Solo passando da `dispatch()` con una
@@ -500,7 +500,7 @@ async def test_guarda_un_area_dichiara_il_nome_dedotto_delle_sue_entita_dal_disp
         archivio_casa, memoria):
     """I1 (review finale): il test che prova la FETTA per il ramo area, non
     solo la funzione pura -- stessa lezione di B5. I due test di
-    `test_domande.py` chiamano `view()` direttamente e passano
+    `test_queries.py` chiamano `view()` direttamente e passano
     `nomi_di_ripiego` a mano: restano verdi anche se `_view` smette di
     inoltrarlo a `_guarda_dettaglio`, o se `view()` smette di inoltrarlo a
     `_view_area`. Solo passando da `dispatch()` con una cache vera si prova

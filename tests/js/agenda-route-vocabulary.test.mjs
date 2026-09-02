@@ -22,8 +22,8 @@ import { readFileSync } from 'node:fs';
    cui membri compaiono tutti in un file JS), e per costruzione smette di
    segnalarle SOLO quando una prova le confronta: qui e' quella prova, dal
    lato JavaScript -- lo stesso pattern di lettura di un sorgente con
-   `readFileSync(new URL(...))` gia' usato da `albero-route.test.mjs`
-   ("wiring: la rotta #/albero...") e da `dashboard-conoscenza.test.mjs`
+   `readFileSync(new URL(...))` gia' usato da `tree-route.test.mjs`
+   ("wiring: la rotta #/albero...") e da `dashboard-knowledge.test.mjs`
    ("le sole rotte raggiungibili..."), adottato qui per leggere un file
    Python invece di un altro file JS o config.html.
 

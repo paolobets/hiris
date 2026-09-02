@@ -9,7 +9,7 @@ un'unica stringa. Il Task 2 mettera' la STESSA stringa nel job del ponte
 percorsi avrebbero due composizioni destinate a divergere.
 
 Questi test chiamano `compose_chat_context` DIRETTAMENTE, senza HTTP --
-tests/test_chat_al_nucleo.py gia' verifica lo stesso comportamento passando
+tests/test_chat_briefing.py gia' verifica lo stesso comportamento passando
 per `POST /api/chat` (e resta verde, invariato: e' la prova che lo
 spostamento non ha cambiato nulla per il ramo sincrono). Qui si verifica la
 funzione condivisa in se', cosi' che il Task 2 possa fidarsene senza dover
@@ -21,7 +21,7 @@ import pytest
 
 from hiris.app.api.handlers_chat import compose_chat_context
 from hiris.app.chat_store import _TS_FMT, _get_store, close_all_stores
-from tests.test_chat_al_nucleo import _semina_casa
+from tests.test_chat_briefing import _semina_casa
 
 
 @pytest.fixture(autouse=True)
@@ -31,7 +31,7 @@ def _close_chat_stores_after_each_test():
 
 
 def _semina_sessione_chiusa(data_dir: str, riepilogo: str) -> None:
-    """Stesso pattern di test_chat_al_nucleo.py: una sessione GIA' chiusa
+    """Stesso pattern di test_chat_briefing.py: una sessione GIA' chiusa
     (summary non nullo) inserita direttamente nella ChatStore del data_dir."""
     ts = datetime.now(UTC).strftime(_TS_FMT)
     store = _get_store(data_dir)
@@ -46,7 +46,7 @@ def _semina_sessione_chiusa(data_dir: str, riepilogo: str) -> None:
 # ---------------------------------------------------------------------------
 # ① Con archivi seminati, il contesto contiene sia il nucleo sia le sessioni
 # precedenti -- le due fonti restano indipendenti (Task 3 di
-# test_chat_al_nucleo.py), qui verificato sulla funzione condivisa.
+# test_chat_briefing.py), qui verificato sulla funzione condivisa.
 # ---------------------------------------------------------------------------
 
 def test_con_archivi_seminati_contiene_nucleo_e_sessioni_precedenti(tmp_path):
@@ -69,7 +69,7 @@ def test_con_archivi_seminati_contiene_nucleo_e_sessioni_precedenti(tmp_path):
 # ② Un `archivio_casa` che solleva (guasto, non semplicemente assente) non
 # fa sollevare `compose_chat_context`: restituisce il testo di guasto,
 # copiato alla lettera dal blocco pre-estrazione (stesso principio di
-# test_chat_al_nucleo.py::test_un_archivio_guasto_non_fa_rispondere_500_alla_chat).
+# test_chat_briefing.py::test_un_archivio_guasto_non_fa_rispondere_500_alla_chat).
 # ---------------------------------------------------------------------------
 
 def test_archivio_guasto_non_solleva_e_restituisce_il_testo_di_guasto(tmp_path):

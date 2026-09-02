@@ -113,7 +113,7 @@ def test_lo_specchio_tiene_gli_attributi_del_meteo():
     (`home_space/topology.py`) li buttava tutti, su ogni dominio, un anello piu' in
     la'. Il difetto vero (misurato dal proprietario sui termostati, non sul
     meteo) e' rimasto invisibile finche' nessun test seguiva la catena intera
-    -- vedi `test_attributi_al_modello.py`, che la segue fino a `guarda`."""
+    -- vedi `test_attributes_to_model.py`, che la segue fino a `guarda`."""
     from hiris.app.proxy.entity_cache import _to_minimal
     voce = _to_minimal({"entity_id": "weather.casa", "state": "sunny",
                         "attributes": {"temperature": 24.1, "temperature_unit": "°C",

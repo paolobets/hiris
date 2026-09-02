@@ -1,6 +1,6 @@
 """GET/PATCH/DELETE /api/memories: cio' che HIRIS sa, in chiaro e correggibile.
 
-Convenzione seguita: quella di `tests/test_handlers_casa.py` -- handler
+Convenzione seguita: quella di `tests/test_handlers_home_space.py` -- handler
 `async def` semplice, app costruita a mano nel test, nessun `registra_rotte_*`.
 """
 import json

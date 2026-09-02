@@ -6,7 +6,7 @@ legge per decidere cosa chiamare. Cambiandoli a meta' -- il catalogo dice
 gia' `view` e la sua description continua a ordinare al modello di chiamare
 `guarda` -- la suite non se ne accorge: misurato prima di scrivere questo
 file, **3012 test su 3013 restano verdi**. L'unico rosso e'
-`test_strumenti_conoscenza.py::
+`test_knowledge_tools.py::
 test_la_descrizione_del_bersaglio_etichette_dice_da_dove_si_prende_l_id`,
 che nomina due strumenti dentro una description per una ragione che con la
 coerenza del catalogo non c'entra: copre 1 sito su 39, e per caso.

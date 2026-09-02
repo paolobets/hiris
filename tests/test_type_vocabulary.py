@@ -26,10 +26,10 @@ import pytest
 from hiris.app.home_space import briefing, topology
 from hiris.app.home_space.briefing import compose
 
-# Le finte vivono gia' in `test_nucleo.py`: si riusano invece di riscriverle.
+# Le finte vivono gia' in `test_briefing.py`: si riusano invece di riscriverle.
 # Due finte che fingono la stessa casa sono la seconda rappresentazione in
 # miniatura, e divergono come tutte le seconde rappresentazioni.
-from tests.test_nucleo import _CASA, _COMPORTAMENTO, _RICORDI, _STATO
+from tests.test_briefing import _CASA, _COMPORTAMENTO, _RICORDI, _STATO
 
 
 def _sezione_notevole(testo: str) -> str:
@@ -285,7 +285,7 @@ def test_una_nascosta_DISABILITATA_non_si_conta_due_volte():
 #
 # LIMITE DICHIARATO: briefing.py e' PURO e non installa Home Assistant (vedi
 # il suo docstring), quindi non c'e' un enum vero da importare e confrontare
-# a runtime -- come per `_PIATTAFORME_HA` in test_vocabolario_domini.py,
+# a runtime -- come per `_PIATTAFORME_HA` in test_domain_vocabulary.py,
 # l'elenco sotto e' ricopiato A MANO dalla fonte (vedi i commenti sopra le
 # tre liste in briefing.py per dove ciascuna voce e' verificata). La prova non
 # si accorge se Home Assistant cambia la fonte da sola: va RIVISTA a mano
@@ -326,7 +326,7 @@ def test_domini_evento_sono_tutte_piattaforme_vere_di_home_assistant():
     una piattaforma che Home Assistant riconosce davvero -- altrimenti
     l'eccezione descriverebbe un dominio che non esiste. Sottoinsieme, come
     quello gia' pinnato fra `_EVENT_CLASSES` e `_CLASS_MEANING`."""
-    from tests.test_vocabolario_domini import _PIATTAFORME_HA
+    from tests.test_domain_vocabulary import _PIATTAFORME_HA
     sconosciuti = sorted(briefing._EVENT_DOMAINS - set(_PIATTAFORME_HA))
     assert not sconosciuti, f"domini che Home Assistant non ha: {sconosciuti}"
 

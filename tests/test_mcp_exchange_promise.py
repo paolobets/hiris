@@ -28,7 +28,7 @@ from hiris.app.keeper.store import AgendaStore
 from hiris.app.keeper.sweeper import Sweeper
 from hiris.app.memory.store import MemoryStore
 from tests._contratti import assert_stessa_firma
-from tests.test_strumenti_conoscenza import _semina_casa
+from tests.test_knowledge_tools import _semina_casa
 
 TOKEN = "token-di-prova-del-turno-di-promessa"
 INTESTAZIONI_CLI = {"X-HIRIS-Internal-Token": TOKEN}

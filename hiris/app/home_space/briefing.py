@@ -18,7 +18,7 @@ di cercarli, se ne dimenticherebbe. Entrano interi.
 `compose()` e' PURA: prende dati gia' letti dal chiamante (l'anagrafe, il
 comportamento, i ricordi, lo stato vivo) e non apre archivi ne' chiama la
 rete. E' cio' che la rende verificabile senza finti elaborati -- vedi
-tests/test_nucleo.py.
+tests/test_briefing.py.
 
 **Un nucleo troncato in silenzio e' un HIRIS che crede di sapere.** Quando il
 tetto di caratteri costringe a tagliare, il taglio e' scritto DENTRO il
@@ -176,7 +176,7 @@ _DOMAIN_NAMES = {
 #   "cleaning" -- VacuumActivity.CLEANING, homeassistant/components/vacuum/const.py
 # Senza Home Assistant installato non c'e' un enum da importare e confrontare
 # a runtime: l'elenco e' ricopiato a mano e pinnato (con lo stesso limite
-# dichiarato) in tests/test_vocabolario_tipologie.py. Da riguardare quando
+# dichiarato) in tests/test_type_vocabulary.py. Da riguardare quando
 # `_EVENT_DOMAINS` guadagna un dominio nuovo -- porta con se' il proprio
 # stato "attivo" da aggiungere qui.
 _ACTIVE_STATES = {"on", "open", "unlocked", "playing", "cleaning"}
@@ -190,17 +190,17 @@ _ACTIVE_STATES = {"on", "open", "unlocked", "playing", "cleaning"}
 #   - `device_tracker`/`person`: `home` e' una CONDIZIONE (un telefono a casa e'
 #     il riposo). Erano 49. Non sono esclusi dal prodotto: `view` e `search` li
 #     riportano quando li chiedi -- e' la differenza fra un vocabolario e un
-#     filtro, ed e' pinnata in tests/test_vocabolario_tipologie.py.
+#     filtro, ed e' pinnata in tests/test_type_vocabulary.py.
 #   - `sensor`/`number`/`weather`/`sun`: sono MISURE. Un numero non e' un evento.
 #   - `button`/`event`/`tag`/`notify`/`image`: non hanno uno stato utile -- 57
 #     dei 72 `button` di questa casa sono `unknown` per costruzione.
 #
 # Ognuno dei dieci e' una piattaforma vera di Home Assistant (sottoinsieme
 # dichiarato di `_PIATTAFORME_HA`, la stessa fonte -- homeassistant/generated/
-# entity_platforms.py -- copiata in tests/test_vocabolario_domini.py); QUALE
+# entity_platforms.py -- copiata in tests/test_domain_vocabulary.py); QUALE
 # sottoinsieme merita il trattamento "evento" e' un giudizio del prodotto,
 # non qualcosa che HA dichiara da se'. Pinnato in
-# tests/test_vocabolario_tipologie.py: da riguardare quando un dominio nuovo
+# tests/test_type_vocabulary.py: da riguardare quando un dominio nuovo
 # entra nel prodotto e ha un proprio stato "attivo" degno di annuncio.
 _EVENT_DOMAINS = {
     "light", "switch", "cover", "lock", "fan",
@@ -221,7 +221,7 @@ _EVENT_DOMAINS = {
 # «acceso» invece del suo significato -- e' l'incoerenza pinnata da
 # test_ogni_classe_di_evento_ha_anche_un_significato (sottoinsieme, piu'
 # forte di un elenco ricopiato). L'elenco stesso e' pinnato di suo (mutazione:
-# toglierne una classe fa rosso) in tests/test_vocabolario_tipologie.py; da
+# toglierne una classe fa rosso) in tests/test_type_vocabulary.py; da
 # riguardare quando HA aggiunge una nuova device_class di allarme o apertura.
 _EVENT_CLASSES = {
     # allarmi
@@ -1336,7 +1336,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     Pura -- nessun I/O, nessuna rete. Restituisce `(testo, riepilogo)`:
     il riepilogo (`chars`, `truncated`, `excluded_memories`, `notices`) non
     puo' mentire su cio' che il testo non contiene, perche' e' costruito
-    dagli stessi tagli che il testo dichiara -- vedi `test_nucleo.py`.
+    dagli stessi tagli che il testo dichiara -- vedi `test_briefing.py`.
 
     L'ordine, deciso e fisso: 1) la casa (conteggi), 2) cio' che e' notevole
     adesso, 3) cio' che la casa fa gia' da sola, 4) cio' che le persone

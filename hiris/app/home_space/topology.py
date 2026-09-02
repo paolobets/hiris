@@ -86,7 +86,7 @@ def reference_frame(config) -> dict:
     (un indice, un contatore) non e' "gradi" solo perche' la casa e' metrica.
     Usare questo come ripiego per un'entita' senza unita' significa scrivere
     un'unita' sotto un numero che non ce l'ha. C'e' una prova apposta che
-    fallisce se qualcuno lo fa (`test_casa_riferimento.py`).
+    fallisce se qualcuno lo fa (`test_home_space_reference.py`).
 
     Cosa NON entra, e perche':
     - `components`: e' l'elenco delle integrazioni, che l'anagrafe ha gia'

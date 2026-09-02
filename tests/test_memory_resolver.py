@@ -511,7 +511,7 @@ def test_l_indice_costruito_senza_ripiego_e_identico_a_prima():
 #
 # Prima di questo task un'etichetta entrava nell'indice SOLO come termine
 # che porta a chi la porta (vedi test_si_cerca_per_etichetta in
-# tests/test_casa_conoscenza_inespressa.py) -- mai come candidato essa
+# tests/test_home_space_unexpressed_knowledge.py) -- mai come candidato essa
 # stessa: il suo `label_id` non usciva da NESSUNA porta, il vicolo cieco
 # piu' radicale della famiglia (R2). Vedi
 # docs/design/2026-08-20-i-riferimenti.md.

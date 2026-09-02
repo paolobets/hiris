@@ -48,7 +48,7 @@ from hiris.app.agent import prompts, runner
 from hiris.app.api import handlers_mcp
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 from hiris.app.memory.store import MemoryStore
-from tests.test_strumenti_conoscenza import _semina_casa
+from tests.test_knowledge_tools import _semina_casa
 
 # La fixture della configurazione PREDEFINITA dell'add-on, con le due valvole
 # della suite (`HIRIS_ALLOW_NO_TOKEN`, `HIRIS_ALLOW_NO_CSRF`) rimosse: si
@@ -445,7 +445,7 @@ def _semina_gli_archivi(app, tmp_path):
 
 class _CacheViva:
     """La forma vera di `entity_cache`: chiave "id", non "entity_id"
-    (tests/test_strumenti_conoscenza.py usa lo stesso doppio)."""
+    (tests/test_knowledge_tools.py usa lo stesso doppio)."""
 
     loaded = True
 

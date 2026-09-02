@@ -2,9 +2,9 @@ import pytest
 
 from hiris.app.home_space.queries import search, view
 from hiris.app.memory.resolver import costruisci_indice
-from tests.test_nucleo import _CASA, _COMPORTAMENTO, _RICORDI, _STATO
+from tests.test_briefing import _CASA, _COMPORTAMENTO, _RICORDI, _STATO
 
-# _CASA, _COMPORTAMENTO, _RICORDI, _STATO sono di tests/test_nucleo.py,
+# _CASA, _COMPORTAMENTO, _RICORDI, _STATO sono di tests/test_briefing.py,
 # importati invece di ricopiati -- stessa casa che gia' esercita nucleo.py.
 
 

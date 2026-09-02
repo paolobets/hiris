@@ -173,7 +173,7 @@ async def test_openai_senza_strumenti_non_offre_alcun_tool(openai_runner):
 # PASSAGGIO -- il runner offre esattamente cio' che il chiamante gli ha dato,
 # senza aggiungere ne' togliere -- e quella regge per qualunque catalogo. Chi
 # sono davvero le voci del catalogo e' pinnato in UN posto solo
-# (`tests/test_strumenti_conoscenza.py`): scriverle di nuovo qui era il
+# (`tests/test_knowledge_tools.py`): scriverle di nuovo qui era il
 # secondo elenco degli stessi nomi, che infatti e' caduto all'ingresso del
 # quinto strumento pur non essendoci nulla di rotto nel runner.
 _NOMI_DEL_CATALOGO = {d["name"] for d in KNOWLEDGE_TOOLS}

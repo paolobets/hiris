@@ -114,7 +114,7 @@ def test_una_lettura_fallita_non_cancella_il_riferimento_buono(archivio):
 def _client(registries=None, unavailable=(), config=_CONFIG,
            get_config_error=None):
     """Un `HAClient` finto, autospec'd sulla classe VERA -- stessa guardia di
-    `test_casa_anagrafe.py::_client` (review lotto 5: un `AsyncMock()` nudo
+    `test_home_space_topology.py::_client` (review lotto 5: un `AsyncMock()` nudo
     non si accorge di un metodo chiamato per errore che `HAClient` non ha)."""
     client = create_autospec(HAClient, instance=True)
     client.read_registries.return_value = (registries or {"entita": []}, list(unavailable))

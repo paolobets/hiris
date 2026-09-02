@@ -20,7 +20,7 @@ aveva piu' nessun lettore di produzione, e questo file e' la prova di quando
 la chat ha smesso di leggerlo. Le due chiamate citate qui sopra restano
 nominate perche' raccontano il PRIMA; non esistono piu' nel codice.
 
-Segue la convenzione REST-vera gia' in tests/test_handlers_casa.py (per
+Segue la convenzione REST-vera gia' in tests/test_handlers_home_space.py (per
 `/api/briefing`) e, prima di questa fetta, in tests/test_declared_block_chat.py
 (ora rimosso -- testava esattamente la sovrapposizione che questo task
 chiude, vedi il rapporto): un `client` costruito con `create_app()` +
@@ -59,7 +59,7 @@ from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.memory.store import MemoryStore
 from hiris.app.server import create_app
 from tests._contratti import assert_stessa_firma
-from tests.test_strumenti_conoscenza import _semina_casa as _semina_casa_con_comportamento
+from tests.test_knowledge_tools import _semina_casa as _semina_casa_con_comportamento
 
 
 @pytest.fixture(autouse=True)
@@ -70,7 +70,7 @@ def _close_chat_stores_after_each_test():
 
 class _CacheFinta:
     """Sostituto minimo di `EntityCache` -- stessa forma usata da
-    tests/test_handlers_casa.py per `handle_get_briefing`: `all_states()`
+    tests/test_handlers_home_space.py per `handle_get_briefing`: `all_states()`
     restituisce dict con chiave "id" (non "entity_id"), e `loaded` governa
     `inventory_is_readable()`."""
 
@@ -285,7 +285,7 @@ async def test_se_il_nucleo_non_si_compone_la_chat_lo_dice(aiohttp_client, tmp_p
     """Nessun `archivio_casa` wired nell'app (il caso difensivo di
     `compose_briefing`/`handle_get_briefing` quando `_on_startup` non e'
     ancora girato) -- stessa lacuna che
-    tests/test_handlers_casa.py::test_api_nucleo_senza_archivi_non_afferma_di_sapere
+    tests/test_handlers_home_space.py::test_api_nucleo_senza_archivi_non_afferma_di_sapere
     verifica per /api/briefing, qui verificata per il contesto che la chat
     passa davvero al modello."""
     client, mock_runner = await _build_chat_client(aiohttp_client, tmp_path)
@@ -481,7 +481,7 @@ def _falsa_risposta_tool_use(nome: str, argomenti: dict, id_: str = "tu_1") -> M
 
 # ---------------------------------------------------------------------------
 # Conversazione 1: "cosa c'e' in cucina?" -- il nucleo conta gia' le entita'
-# per area (tests/test_nucleo.py::test_il_nucleo_conta_invece_di_elencare):
+# per area (tests/test_briefing.py::test_il_nucleo_conta_invece_di_elencare):
 # un modello che ha quel conteggio nel proprio system prompt non ha nessun
 # bisogno di chiamare `view`. Se lo chiamasse, sarebbe il nucleo a non
 # fare il suo lavoro, non il modello a sbagliare -- qui si verifica che il
@@ -578,7 +578,7 @@ async def test_conversazione_2_cosa_fa_la_sveglia_chiama_guarda_e_riporta_il_cor
     # un'assunzione del test, la vera seconda chiamata a
     # `_client.messages.create` -- porta nel proprio `tool_result` il corpo
     # VERO letto dall'archivio VERO (ArchivioCasa.sostituisci_comportamento,
-    # tests/test_strumenti_conoscenza.py -- automation.sveglia: {"trigger": []}).
+    # tests/test_knowledge_tools.py -- automation.sveglia: {"trigger": []}).
     assert len(richieste) == 2
     ultimo_messaggio = richieste[1]["messages"][-1]
     assert ultimo_messaggio["role"] == "user"

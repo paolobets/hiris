@@ -54,7 +54,7 @@ window.HirisTreeRoute = (function () {
      due piani-contenitore (`_ID_*`). Non sono un'API pubblica dichiarata,
      ma sono stringhe stabili: `hierarchy()` le costruisce a mano, non le
      genera, e un test di mutazione su questo file prova che restano
-     allineate (vedi tests/js/albero-route.test.mjs). */
+     allineate (vedi tests/js/tree-route.test.mjs). */
   var ID_WITHOUT_AREA = '__senza_area__';
   var ID_AREAS_NOT_LOADED = '__aree_non_lette__';
   var ID_UNKNOWN_AREA = '__area_sconosciuta__';

@@ -12,7 +12,7 @@ from hiris.app.server import schedule_behavior_reread, schedule_registry_rebuild
 # fetta la ricostruzione dell'anagrafe legge anche il sistema di riferimento
 # della casa (unita', fuso, valuta). Un finto che non la dichiara e' un HA che
 # non ha risposto -- e infatti `non_disponibili` lo direbbe. Che sia questo il
-# comportamento e' provato a parte, in tests/test_casa_riferimento.py.
+# comportamento e' provato a parte, in tests/test_home_space_reference.py.
 _CONFIG = {"time_zone": "Europe/Rome", "currency": "EUR", "language": "it",
            "unit_system": {"temperature": "C", "length": "km"}}
 

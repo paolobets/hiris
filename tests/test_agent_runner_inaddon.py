@@ -674,7 +674,7 @@ def test_col_ramo_attivo_la_persona_non_viene_smentita_ma_ricollegata():
 # `test_run_once_chat_reasons_and_submits` (il giro vero, con client e
 # base_url), e il quarto campanello
 # `test_nessun_chiamante_di_produzione_gira_l_interruttore`
-# (tests/test_ponte_riceve_il_nucleo.py).
+# (tests/test_bridge_receives_briefing.py).
 #
 # **Cosa pinnano adesso i due test qui sotto, insieme.** La nuova condizione di
 # verita', nei due rami:
@@ -686,7 +686,7 @@ def test_col_ramo_attivo_la_persona_non_viene_smentita_ma_ricollegata():
 #     PAROLA: e' il ramo di degrado, e deve restare onesto per sempre.
 # L'invariante che lega i due rami al prompt -- `--mcp-config` nell'argv <=>
 # `_GUIDE_WITH_TOOLS` nel system, nei DUE VERSI -- e' pinnato in
-# tests/test_strumenti_al_ponte.py, ed e' quello da non cancellare mai.
+# tests/test_tools_to_bridge.py, ed e' quello da non cancellare mai.
 #
 # `_normalizza` SI CONSERVA: la variante kebab-case `--allowed-tools` non
 # doveva aggirare il vecchio assert e non deve aggirare nemmeno il nuovo.

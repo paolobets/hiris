@@ -26,7 +26,7 @@ Fix round 1, Critical 1: di BASE il ponte compone la sola META' VERA. Vedi
 # importata. Questo file non la usa -- il ternario di `build_chat_messages`
 # compone `BASE_IDENTITY + BASE_TOOL_RULES` -- e l'unico lettore che le
 # restava era un assert (`prompts.BASE_SYSTEM_PROMPT is BASE_SYSTEM_PROMPT`,
-# tests/test_ponte_riceve_il_nucleo.py), cioe' un import tenuto in vita dal
+# tests/test_bridge_receives_briefing.py), cioe' un import tenuto in vita dal
 # test che lo pinnava. I due assert sulle META' restano, e sono quelli che
 # contano: sono i simboli che il ponte compone davvero.
 from ..claude_runner import (
@@ -134,7 +134,7 @@ _GUIDE_WITHOUT_TOOLS = (
 # fetta B, scritto ORA e deliberatamente NON raggiungibile dalla produzione.
 # E' un ORFANO DICHIARATO: `strumenti_attivi` resta False in tutta la fetta A
 # (`agent/runner.py::_reason_chat` non lo passa), quindi il suo unico lettore
-# oggi e' un test (tests/test_ponte_riceve_il_nucleo.py). Esiste ora, e non
+# oggi e' un test (tests/test_bridge_receives_briefing.py). Esiste ora, e non
 # dopo, perche' riscrivere questo prompt una TERZA volta e' esattamente il
 # difetto che il docstring in cima al file documenta: cosi' la fetta B cambia
 # un argomento invece di riscrivere la composizione (vedi
@@ -144,7 +144,7 @@ _GUIDE_WITHOUT_TOOLS = (
 # RACCOLTO -- `_reason_chat` passa `strumenti_attivi` e questo testo esce
 # davvero, quando la sonda dice che gli strumenti ci sono. Cio' che gli
 # impedisce di diventare falso non e' piu' un pin sull'assenza degli strumenti
-# ma l'INVARIANTE nei due versi (tests/test_strumenti_al_ponte.py):
+# ma l'INVARIANTE nei due versi (tests/test_tools_to_bridge.py):
 # `--mcp-config` nell'argv <=> questo testo nel system. Mai l'uno senza l'altro.
 #
 # **La correzione di questo testo (riserva 1 della sezione D del progetto).**

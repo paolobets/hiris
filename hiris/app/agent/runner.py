@@ -155,7 +155,7 @@ _LOCAL_TOOLS_DENY = (
 # righe di distanza (`_reason_chat`). Non esistono due decisioni da tenere
 # allineate: e' l'unica difesa strutturale contro il difetto numero uno di
 # questo prodotto -- un prompt che promette capacita' che l'invocazione non da'.
-# L'invariante e' pinnato NEI DUE VERSI in tests/test_strumenti_al_ponte.py:
+# L'invariante e' pinnato NEI DUE VERSI in tests/test_tools_to_bridge.py:
 # `--mcp-config` nell'argv  <=>  `_GUIDE_WITH_TOOLS` nel system.
 #
 # Task 4: la sonda puo' dire di si' e la CLI fallire lo stesso -- fra i due c'e'
@@ -242,7 +242,7 @@ def config_mcp(base_url: str, token: str, exchange_id: str = "",
     innestare il "token per-invocazione di validita' pari al turno" che il
     progetto suggerisce (§3.3), senza dover inventare un secondo meccanismo.
     Il default vuoto (nessuna intestazione aggiunta) e' cio' che permette a
-    `test_strumenti_al_ponte.py`/`test_agent_runner_inaddon.py` di continuare
+    `test_tools_to_bridge.py`/`test_agent_runner_inaddon.py` di continuare
     a chiamare questa funzione coi soli due argomenti di sempre: un tetto
     per-turno non e' niente che quei test debbano conoscere.
 
