@@ -79,7 +79,7 @@ window.HirisPromesseRoute = (function () {
     fallita: 'badge-err',
     disdetta: 'badge-off'
   };
-  var STATI_SOSPESO = ['in_attesa', 'in_corso'];
+  var PENDING_STATES = ['in_attesa', 'in_corso'];
 
   function el(tag, cls, text) {
     var e = document.createElement(tag);
@@ -148,18 +148,18 @@ window.HirisPromesseRoute = (function () {
      (guida §3, stesso principio di rendiAncore in memoria-route.js): rosso
      solo per un vero fallimento, ambra per tutto il resto (compresa la
      nota su una "mantenuta" con motivo -- §6 della spec). */
-  function coloreMotivo(state) {
+  function reasonColor(state) {
     return state === 'fallita' ? 'var(--err-ink)' : 'var(--warn-ink)';
   }
 
-  function formattaIstantanea(snapshot) {
+  function formatSnapshot(snapshot) {
     if (!snapshot || !snapshot.length) return null;
     return snapshot.map(function (m) {
       return (m.entita || '?') + ' ' + m.valore + (m.unita ? ' ' + m.unita : '');
     }).join(' · ');
   }
 
-  function formattaElencoEntita(list) {
+  function formatEntityList(list) {
     return (list && list.length) ? list.join(', ') : null;
   }
 
@@ -176,14 +176,14 @@ window.HirisPromesseRoute = (function () {
      qualcosa che non so mostrare), e si mostra SEMPRE quando c'e', verbatim
      e senza riformularlo -- riformularlo rischierebbe di appiattire
      esattamente la distinzione per cui quel campo esiste. */
-  function rendiDettaglioEsecuzione(panel, execution) {
+  function renderExecutionDetail(panel, execution) {
     clearEl(panel);
     if (execution.errore) {
       var error = el('p', null, execution.errore);
       error.style.cssText = 'font-size:var(--fs-14);color:var(--err-ink);margin:4px 0 0';
       panel.appendChild(error);
     }
-    var changed = formattaElencoEntita(execution.cambiato);
+    var changed = formatEntityList(execution.cambiato);
     if (changed) {
       var riga1 = el('p', null, 'Cambiate: ' + changed);
       riga1.style.cssText = 'font-size:var(--fs-14);color:var(--text);margin:4px 0 0';
@@ -200,7 +200,7 @@ window.HirisPromesseRoute = (function () {
       // sarebbe di nuovo il difetto che questo rilievo chiude.
       panel.appendChild(el('p', 'field-hint', 'Nessuna nota su cosa sia cambiato.'));
     }
-    var touched = formattaElencoEntita(execution.entita);
+    var touched = formatEntityList(execution.entita);
     if (touched) panel.appendChild(el('div', 'field-hint', 'Toccate: ' + touched));
   }
 
@@ -211,14 +211,14 @@ window.HirisPromesseRoute = (function () {
      mantenuta mostra gia' la sua risposta (§6), e per un `fai` `fallita` il
      `motivo` che l'utente vede e' gia' `esito.errore` (`orologio.py::
      _mantieni_fai`): la stessa frase, non un secondo dettaglio da aprire. */
-  function aggiungiDettaglioEsecuzione(line, p) {
+  function addExecutionDetail(line, p) {
     if (!(p.specie === 'fai' && p.stato === 'mantenuta' && p.esecuzione_id)) return;
 
     var group = el('div', 'field-group');
     group.style.marginTop = '8px';
-    var testoChiuso = 'Cosa è cambiato';
-    var testoAperto = 'Nascondi il dettaglio';
-    var btn = el('button', 'btn btn-ghost btn-sm', testoChiuso);
+    var closedText = 'Cosa è cambiato';
+    var openText = 'Nascondi il dettaglio';
+    var btn = el('button', 'btn btn-ghost btn-sm', closedText);
     btn.type = 'button';
     btn.setAttribute('aria-expanded', 'false');
     var panel = el('div');
@@ -234,13 +234,13 @@ window.HirisPromesseRoute = (function () {
       if (open) {
         panel.hidden = true;
         btn.setAttribute('aria-expanded', 'false');
-        btn.textContent = testoChiuso;
+        btn.textContent = closedText;
         return;
       }
       if (loaded) {
         panel.hidden = false;
         btn.setAttribute('aria-expanded', 'true');
-        btn.textContent = testoAperto;
+        btn.textContent = openText;
         return;
       }
       btn.disabled = true;
@@ -254,20 +254,20 @@ window.HirisPromesseRoute = (function () {
         }
         if (!res.ok) throw new Error('HTTP ' + res.status);
         return res.json().then(function (corpo) {
-          rendiDettaglioEsecuzione(panel, corpo.execution);
+          renderExecutionDetail(panel, corpo.execution);
           loaded = true;
         });
       }).then(function () {
         btn.disabled = false;
         panel.hidden = false;
         btn.setAttribute('aria-expanded', 'true');
-        btn.textContent = testoAperto;
+        btn.textContent = openText;
       }, function () {
         // Guasto di rete: stessa riga di stato di pagina di ogni altro
         // guasto qui (§7 della guida), non un pannello mezzo scritto. Il
         // bottone torna chiuso cosi' un nuovo click riprova da capo.
         btn.disabled = false;
-        btn.textContent = testoChiuso;
+        btn.textContent = closedText;
         setStatus('HIRIS non ha risposto. Riprova più tardi.');
       });
     });
@@ -278,7 +278,7 @@ window.HirisPromesseRoute = (function () {
   }
 
   /* ── Una riga «in sospeso» (guida §2, §5) ────────────────────────────── */
-  function costruisciRigaSospeso(p, reload) {
+  function buildPendingRow(p, reload) {
     var line = el('div');
     line.style.cssText = 'border-top:1px solid var(--border);padding:10px 0;' +
       'display:flex;justify-content:space-between;align-items:flex-start;gap:var(--sp-3)';
@@ -329,7 +329,7 @@ window.HirisPromesseRoute = (function () {
   }
 
   /* ── Una riga «storico» (guida §2, §3, §6) ───────────────────────────── */
-  function costruisciRigaStorico(p) {
+  function buildHistoryRow(p) {
     var line = el('div');
     line.style.cssText = 'border-top:1px solid var(--border);padding:10px 0';
 
@@ -343,7 +343,7 @@ window.HirisPromesseRoute = (function () {
 
     if (p.motivo) {
       var reason = el('p', null, p.motivo);
-      reason.style.cssText = 'font-size:var(--fs-13);margin:6px 0 0;color:' + coloreMotivo(p.stato);
+      reason.style.cssText = 'font-size:var(--fs-13);margin:6px 0 0;color:' + reasonColor(p.stato);
       line.appendChild(reason);
     }
 
@@ -359,26 +359,26 @@ window.HirisPromesseRoute = (function () {
       var answer = el('p', null, p.testo);
       answer.style.cssText = 'font-size:var(--fs-14);color:var(--text);margin-top:4px';
       group.appendChild(answer);
-      var basatoSu = formattaIstantanea(p.istantanea);
+      var basatoSu = formatSnapshot(p.istantanea);
       if (basatoSu) group.appendChild(el('div', 'field-hint', 'Basato su: ' + basatoSu));
       line.appendChild(group);
     }
 
-    aggiungiDettaglioEsecuzione(line, p);
+    addExecutionDetail(line, p);
 
     return line;
   }
 
-  function ordinaSospeso(list) {
+  function sortPending(list) {
     return list.slice().sort(function (a, b) { return a.quando_ts - b.quando_ts; });
   }
-  function ordinaStorico(list) {
+  function sortHistory(list) {
     return list.slice().sort(function (a, b) { return b.quando_ts - a.quando_ts; });
   }
   function descrizioneSospeso(n) { return n === 0 ? 'Nessuna in sospeso.' : (n + ' in sospeso.'); }
   function descrizioneStorico(n) { return n === 0 ? 'Nessuna promessa nello storico.' : (n + ' nello storico.'); }
 
-  function rendiSospeso(corpo, desc, list, reload) {
+  function renderPending(corpo, desc, list, reload) {
     clearEl(corpo);
     desc.textContent = descrizioneSospeso(list.length);
     if (!list.length) {
@@ -386,17 +386,17 @@ window.HirisPromesseRoute = (function () {
         'Nessuna promessa in sospeso — quando dici a HIRIS «fra un\'ora…» o «alle…», comparirà qui.'));
       return;
     }
-    ordinaSospeso(list).forEach(function (p) { corpo.appendChild(costruisciRigaSospeso(p, reload)); });
+    sortPending(list).forEach(function (p) { corpo.appendChild(buildPendingRow(p, reload)); });
   }
 
-  function rendiStorico(corpo, desc, list) {
+  function renderHistory(corpo, desc, list) {
     clearEl(corpo);
     desc.textContent = descrizioneStorico(list.length);
     if (!list.length) {
       corpo.appendChild(el('p', 'field-hint', 'Nessuna promessa nello storico.'));
       return;
     }
-    ordinaStorico(list).forEach(function (p) { corpo.appendChild(costruisciRigaStorico(p)); });
+    sortHistory(list).forEach(function (p) { corpo.appendChild(buildHistoryRow(p)); });
   }
 
   /* Un errore di lettura e una lista vuota vera NON hanno lo stesso testo
@@ -404,8 +404,8 @@ window.HirisPromesseRoute = (function () {
      anche il 503 di `handle_get_promesse` (archivio non disponibile), che
      manda gia' `promesse: []` dentro un corpo comunque non-2xx: basta
      guardare `r.ok`, non serve leggere un campo apposito. */
-  function rendiErrore(sospesoCorpo, storicoCorpo, reload) {
-    [sospesoCorpo, storicoCorpo].forEach(function (nodo) {
+  function renderError(pendingBody, historyBody, reload) {
+    [pendingBody, historyBody].forEach(function (nodo) {
       clearEl(nodo);
       nodo.appendChild(el('p', 'proposals-error', 'Non è stato possibile leggere le promesse. Riprova più tardi.'));
       var retry = el('button', 'btn btn-ghost btn-sm', 'Riprova');
@@ -416,25 +416,25 @@ window.HirisPromesseRoute = (function () {
   }
 
   function load() {
-    var sospesoCorpo = byId('promesse-sospeso-body');
-    var storicoCorpo = byId('promesse-storico-body');
+    var pendingBody = byId('promesse-sospeso-body');
+    var historyBody = byId('promesse-storico-body');
     var sospesoDesc = byId('promesse-sospeso-desc');
     var storicoDesc = byId('promesse-storico-desc');
-    if (!sospesoCorpo || !storicoCorpo) return;
-    clearEl(sospesoCorpo); sospesoCorpo.appendChild(el('p', 'field-hint', 'Caricamento…'));
-    clearEl(storicoCorpo); storicoCorpo.appendChild(el('p', 'field-hint', 'Caricamento…'));
+    if (!pendingBody || !historyBody) return;
+    clearEl(pendingBody); pendingBody.appendChild(el('p', 'field-hint', 'Caricamento…'));
+    clearEl(historyBody); historyBody.appendChild(el('p', 'field-hint', 'Caricamento…'));
     return fetch('api/agenda?all=1').then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     }).then(function (data) {
       var all = data.agenda || [];
-      var pending = all.filter(function (p) { return STATI_SOSPESO.indexOf(p.stato) !== -1; });
-      var history = all.filter(function (p) { return STATI_SOSPESO.indexOf(p.stato) === -1; });
-      rendiSospeso(sospesoCorpo, sospesoDesc, pending, load);
-      rendiStorico(storicoCorpo, storicoDesc, history);
+      var pending = all.filter(function (p) { return PENDING_STATES.indexOf(p.stato) !== -1; });
+      var history = all.filter(function (p) { return PENDING_STATES.indexOf(p.stato) === -1; });
+      renderPending(pendingBody, sospesoDesc, pending, load);
+      renderHistory(historyBody, storicoDesc, history);
     }).catch(function (err) {
       console.error('[promesse] caricamento fallito', err);
-      rendiErrore(sospesoCorpo, storicoCorpo, load);
+      renderError(pendingBody, historyBody, load);
     });
   }
 

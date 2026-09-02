@@ -51,15 +51,19 @@ function tuplaPython(nomeCostante) {
     .map((s) => s.replace(/^["']|["']$/g, ''));
 }
 
-test('STATI_SOSPESO: lo stesso insieme in promise.py (STATES_SOSPESO) e in promesse-route.js (STATI_SOSPESO)', () => {
+test('gli stati in sospeso: lo stesso insieme in promise.py (STATES_SOSPESO) e in promesse-route.js (PENDING_STATES)', () => {
   const python = tuplaPython('STATES_SOSPESO');
   // Se questa riga fallisse, il problema e' la lettura del sorgente Python
   // (un rinominamento, un formato diverso), non ancora un confronto col JS:
   // separarla aiuta a leggere subito quale delle due cose si e' rotta.
   assert.deepEqual(new Set(python), new Set(['in_attesa', 'in_corso']));
 
-  const m = ROUTE_JS.match(/var STATI_SOSPESO = \[([^\]]*)\];/);
-  assert.ok(m, 'STATI_SOSPESO non trovata in promesse-route.js');
+  // Il nome JS e' passato all'inglese il 02/09 (fetta del frontend);
+  // `STATES_SOSPESO` di `promise.py` e' ancora mezzo italiano, ed e' un
+  // residuo del lotto Python -- questo test lega i due INSIEMI, non i due
+  // nomi, ed e' per questo che sopravvive a una rinomina di un lato solo.
+  const m = ROUTE_JS.match(/var PENDING_STATES = \[([^\]]*)\];/);
+  assert.ok(m, 'PENDING_STATES non trovata in promesse-route.js');
   const js = m[1].split(',').map((s) => s.trim()).filter(Boolean)
     .map((s) => s.replace(/^['"]|['"]$/g, ''));
 
