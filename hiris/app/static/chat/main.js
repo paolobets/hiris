@@ -69,7 +69,7 @@
      `true`: quelli possono passare, e il timer resta. */
   var timerConsumi = null;
 
-  function aggiornaConsumi() {
+  function refreshUsage() {
     return loadUsage().then(function (continua) {
       if (continua === false && timerConsumi !== null) {
         clearInterval(timerConsumi);
@@ -88,10 +88,10 @@
     /* Ricarica la history della conversazione: senza questo, tornando alla chat
        da config (reload pieno) si vedeva una chat vuota pur essendo salvata. */
     window.HirisChatAgents.restore();
-    aggiornaConsumi();
+    refreshUsage();
     window.HirisChatAgents.updateGreeting();
     setInterval(window.HirisChatAgents.loadSettings, 30000);
-    timerConsumi = setInterval(aggiornaConsumi, 30000);
+    timerConsumi = setInterval(refreshUsage, 30000);
     setInterval(window.HirisChatAgents.updateGreeting, 60 * 60 * 1000); /* refresh greeting every hour */
 
     window.HirisChatSidebar.init();

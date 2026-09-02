@@ -92,8 +92,8 @@
     }
   }
 
-  var SEGNAPOSTO_NORMALE = 'Scrivi un messaggio\u2026';
-  var SEGNAPOSTO_ATTESA = 'HIRIS sta rispondendo \u2014 potrai scrivere appena ha finito';
+  var PLACEHOLDER_NORMAL = 'Scrivi un messaggio\u2026';
+  var PLACEHOLDER_PENDING = 'HIRIS sta rispondendo \u2014 potrai scrivere appena ha finito';
 
   function setLoadingState(loading) {
     state.isLoading = loading;
@@ -111,11 +111,11 @@
        `disabled` e' giusto, perche' la sessione e' finita davvero). */
     if (loading) {
       state.els.input.readOnly = true;
-      state.els.input.placeholder = SEGNAPOSTO_ATTESA;
+      state.els.input.placeholder = PLACEHOLDER_PENDING;
       state.els.sendBtn.disabled = true;
     } else {
       state.els.input.readOnly = false;
-      state.els.input.placeholder = SEGNAPOSTO_NORMALE;
+      state.els.input.placeholder = PLACEHOLDER_NORMAL;
       window.HirisChatAgents.checkTurnLimit();
     }
     /* Il bottone «cancella conversazione» non deve poter rispondere mentre

@@ -626,7 +626,7 @@ in §4①:
 con un lexer JavaScript, e la misura ha prodotto **405 parole che nessuna tabella di questo documento
 conosceva**. Lette una per una, si dividono in sei esiti, e **solo due sono decisioni**:
 
-| esito | quante | dove vivono |
+| esito della lettura | quante | dove vivono |
 |---|---|---|
 | italiane | 188 | 134 righe in «Le parole ordinarie», 26 alias qui sotto, 8 qualificate `(static)`, 1 a mano (`ancora`), **19 rinviate** (vedi in fondo) |
 | contratto o valore di dominio | 38 | **non qui**: i valori di dominio sono gia' rinviati piu' avanti con la loro ragione, e ripetere quel rinvio 38 volte lo indebolirebbe |
@@ -1467,7 +1467,7 @@ al Task 6 invece che deciso qui.
 | assicura | ensure |
 | assoluto | absolute |
 | attesa | pending |
-| attese | waits |
+| attese | waits | **Il plurale prende un inglese diverso dal singolare, e la ragione va scritta.** `attesa -> pending` (riga sopra) e' la CONDIZIONE, e combacia col filo: `chat/send.js` legge `status: "pending"` dalla rotta. `attese` sono gli oggetti VIVI con cronometro che `chat/messages.js` tiene in un array e ferma uno per uno (`waits.splice(...)`): una collezione di attese in corso, non uno stato. E' la stessa distinzione di `leggi`/`letto`, e come quella va dichiarata invece di sembrare una svista |
 | atteso | awaited | **Il participio prende un inglese diverso dal sostantivo `attesa -> pending`, ed e' la stessa distinzione di `leggi`/`letto`**: `attesa` e' la CONDIZIONE (una promessa in attesa), `attesi` sono le cose che si stanno aspettando -- gli id dei comandi websocket a cui `_ws_batch` non ha ancora ricevuto risposta. Chiamarli `pending` metterebbe due concetti diversi sotto lo stesso nome |
 | attivo | active |
 | attributo | attribute |

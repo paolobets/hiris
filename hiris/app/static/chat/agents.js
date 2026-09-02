@@ -60,12 +60,12 @@
   function domandaDiConferma() {
     var quanti = state.els.messages
       ? state.els.messages.querySelectorAll('.msg-row').length : 0;
-    var visibili = quanti === 0
+    var visible = quanti === 0
       ? 'Qui non c’è niente da cancellare'
       : quanti === 1
         ? 'Perdi il messaggio che vedi'
         : 'Perdi i ' + quanti + ' messaggi che vedi';
-    return visibili + ', e anche i riassunti delle conversazioni precedenti '
+    return visible + ', e anche i riassunti delle conversazioni precedenti '
       + 'che HIRIS si tiene da parte. Non si può annullare.\n\nCancellare?';
   }
 

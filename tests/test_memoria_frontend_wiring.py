@@ -33,7 +33,7 @@ def test_ogni_forza_del_vocabolario_ha_un_etichetta_nella_pagina():
 def test_ogni_forza_del_vocabolario_e_scegliibile_nella_pagina():
     from hiris.app.memoria.interpretazione import VOCABULARY
     js = _js()
-    inizio = js.index("var FORZA_OPZIONI")
+    inizio = js.index("var MODALITY_OPTIONS")
     blocco = js[inizio:js.index("];", inizio)]
     mancanti = sorted(f for f in VOCABULARY["forza"] if "'" + f + "'" not in blocco)
     assert mancanti == [], f"forze non scegliibili in memoria-route.js: {mancanti}"
@@ -47,7 +47,7 @@ def test_la_pagina_non_offre_forze_che_il_vocabolario_non_ammette():
 
     from hiris.app.memoria.interpretazione import VOCABULARY
     js = _js()
-    inizio = js.index("var FORZA_OPZIONI")
+    inizio = js.index("var MODALITY_OPTIONS")
     blocco = js[inizio:js.index("];", inizio)]
     offerte = {v for v in re.findall(r"\['([a-z_]*)'", blocco) if v}
     assert offerte <= VOCABULARY["forza"], (
@@ -58,5 +58,5 @@ def test_una_forza_sconosciuta_non_si_perde_in_silenzio():
     """La rete di sicurezza NEL FRATTEMPO: anche se le due liste divergessero,
     la pagina deve mostrare il valore che c'e' invece di azzerarlo."""
     js = _js()
-    assert "FORZA_OPZIONI.some(" in js, (
+    assert "MODALITY_OPTIONS.some(" in js, (
         "manca il ramo che aggiunge alla tendina una forza non prevista")

@@ -60,7 +60,7 @@ window.HirisMemoriaRoute = (function () {
   var FORZA_LABELS = {
     preferenza: 'Preferenza', divieto: 'Divieto', fatto: 'Fatto', regola: 'Regola operativa'
   };
-  var FORZA_OPZIONI = [
+  var MODALITY_OPTIONS = [
     ['', '(non impostata)'], ['preferenza', 'Preferenza'], ['divieto', 'Divieto'],
     ['fatto', 'Fatto'], ['regola', 'Regola operativa']
   ];
@@ -99,7 +99,7 @@ window.HirisMemoriaRoute = (function () {
     } catch { return new Date(t).toLocaleString(); }
   }
 
-  function formattaIntervallo(r) {
+  function formatInterval(r) {
     var u = r.unita ? ' ' + r.unita : '';
     if (r.minimo != null && r.massimo != null) {
       return (r.minimo === r.massimo ? String(r.minimo) : 'fra ' + r.minimo + ' e ' + r.massimo) + u;
@@ -158,7 +158,7 @@ window.HirisMemoriaRoute = (function () {
     }
 
     var selForza = el('select');
-    FORZA_OPZIONI.forEach(function (v) {
+    MODALITY_OPTIONS.forEach(function (v) {
       var o = el('option', null, v[1]);
       o.value = v[0];
       selForza.appendChild(o);
@@ -176,7 +176,7 @@ window.HirisMemoriaRoute = (function () {
     // e' legato a questo file da `tests/test_memoria_frontend_wiring.py`: quel
     // test si rompe il giorno in cui le liste divergono. Questo ramo e' cio'
     // che protegge l'utente NEL FRATTEMPO.
-    if (r.forza && !FORZA_OPZIONI.some(function (v) { return v[0] === r.forza; })) {
+    if (r.forza && !MODALITY_OPTIONS.some(function (v) { return v[0] === r.forza; })) {
       var unknown = el('option', null, FORZA_LABELS[r.forza] || r.forza);
       unknown.value = r.forza;
       selForza.appendChild(unknown);
@@ -305,7 +305,7 @@ window.HirisMemoriaRoute = (function () {
 
     var interpretation = [];
     if (r.grandezza) interpretation.push(r.grandezza);
-    var interval = formattaIntervallo(r);
+    var interval = formatInterval(r);
     if (interval) interpretation.push(interval);
     body.appendChild(el('p', 'sc-desc', interpretation.length
       ? 'HIRIS ha capito: ' + interpretation.join(' · ')
@@ -379,7 +379,7 @@ window.HirisMemoriaRoute = (function () {
       'siano ricordi: la richiesta non ha trovato l’archivio.'));
   }
 
-  function rendiErrore(list, reload) {
+  function renderError(list, reload) {
     clearEl(list);
     list.appendChild(el('p', 'proposals-error', 'Non è stato possibile leggere i ricordi. Riprova più tardi.'));
     var retry = el('button', 'btn btn-ghost btn-sm', 'Riprova');
@@ -388,7 +388,7 @@ window.HirisMemoriaRoute = (function () {
     list.appendChild(retry);
   }
 
-  function rendiLista(list, data, reload) {
+  function renderList(list, data, reload) {
     clearEl(list);
     var memories = data.memories || [];
     var total = data.total != null ? data.total : memories.length;
@@ -420,10 +420,10 @@ window.HirisMemoriaRoute = (function () {
       return r.json();
     }).then(function (data) {
       if (!data.available) { rendiNonDisponibile(list); return; }
-      rendiLista(list, data, load);
+      renderList(list, data, load);
     }).catch(function (err) {
       console.error('[memoria] caricamento fallito', err);
-      rendiErrore(list, load);
+      renderError(list, load);
     });
   }
 

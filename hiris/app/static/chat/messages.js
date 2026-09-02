@@ -41,7 +41,7 @@
     if (!row) return;
     /* Era la bolla dell'attesa: ferma cronometro e cambi d'etichetta prima di
        scriverci dentro la risposta vera. */
-    fermaAttesa(row);
+    stopWait(row);
     /* La riga potrebbe non essere piu' nel documento -- succedeva quando si
        svuotava la conversazione mentre HIRIS elaborava: la risposta veniva
        scritta dentro un nodo staccato dal DOM e l'utente non la vedeva mai,
@@ -89,7 +89,7 @@
         setTimeout(function () {
           bubble.removeAttribute('role');
           bubble.removeAttribute('aria-live');
-        }, SOGLIE_ATTESA.uscitaRegioneLive);
+        }, WAIT_THRESHOLDS.uscitaRegioneLive);
       }
     }
     var timeEl = row.querySelector('.msg-time');
@@ -162,7 +162,7 @@
      l'UAT, con la distribuzione vera in mano, cambiarle e' una riga qui dentro
      e nient'altro. Le ultime due hanno una provenienza diversa, dichiarata
      accanto a ciascuna. */
-  var SOGLIE_ATTESA = {
+  var WAIT_THRESHOLDS = {
     /* compare il cronometro */
     timer: 10000,
     /* l'etichetta ammette che ci sta mettendo troppo */
@@ -187,8 +187,8 @@
     uscitaRegioneLive: 1200
   };
 
-  var ETICHETTA_ATTESA = 'HIRIS sta elaborando';
-  var ETICHETTA_LENTA = 'Ci sto mettendo più del solito';
+  var WAIT_LABEL = 'HIRIS sta elaborando';
+  var SLOW_LABEL = 'Ci sto mettendo più del solito';
   /* Due finali diversi, per la stessa ragione delle due frasi di servizio qui
      sotto: su un percorso una resa esiste, sull'altro no.
        - il ramo del ponte ha una scadenza vera (`CHAT_POLL_MAX_MS`, chat/send.js):
@@ -219,7 +219,7 @@
      promettere «non chiudere» su un turno del ponte sarebbe una paura
      inventata. L'aspetto dell'indicatore resta identico nei due casi: cambia
      una frase, e cambia perche' il fatto e' diverso. */
-  var SERVIZIO_TIENI_APERTO = 'Le risposte lunghe possono richiedere qualche minuto. Tieni aperta questa pagina: se la chiudi, questa risposta si perde.';
+  var KEEP_OPEN_NOTICE = 'Le risposte lunghe possono richiedere qualche minuto. Tieni aperta questa pagina: se la chiudi, questa risposta si perde.';
   /* Il "se arriva" non e' timidezza: `_submit_chat_reply` (server.py) scarta in
      silenzio una risposta vuota o tossica, e il job ha una scadenza sua
      (`BRIDGE_DEADLINE_MIN`). La cronologia raccoglie la risposta se la risposta
@@ -230,7 +230,7 @@
      ospita viene buttata via senza passare da updateBubble(). */
   var waits = [];
 
-  function fermaAttesa(row) {
+  function stopWait(row) {
     if (!row || !row._attesa) return;
     var a = row._attesa;
     if (a.intervallo) clearInterval(a.intervallo);
@@ -243,7 +243,7 @@
   /* Chiamata da chi svuota la conversazione: senza, i cronometri delle righe
      appena cancellate continuavano a girare su nodi che non esistono piu'. */
   function fermaTutteLeAttese() {
-    while (waits.length) fermaAttesa(waits[waits.length - 1]);
+    while (waits.length) stopWait(waits[waits.length - 1]);
   }
 
   /* Dichiara che QUESTO turno e' gia' al sicuro sul server, e per quanto tempo
@@ -258,7 +258,7 @@
     row._attesa.alSicuro = true;
     if (!scadenzaMs) return;
     row._attesa.scadenza = scadenzaMs;
-    var fraQuanto = scadenzaMs - SOGLIE_ATTESA.margineResa - (Date.now() - row._attesa.avvio);
+    var fraQuanto = scadenzaMs - WAIT_THRESHOLDS.margineResa - (Date.now() - row._attesa.avvio);
     row._attesa.timeout.push(setTimeout(function () {
       if (!row._attesa) return;
       var label = row.querySelector('.tl-label');
@@ -266,7 +266,7 @@
     }, Math.max(0, fraQuanto)));
   }
 
-  function testoCronometro(ms) {
+  function stopwatchText(ms) {
     var s = Math.floor(ms / 1000);
     var ss = s % 60;
     return Math.floor(s / 60) + ':' + (ss < 10 ? '0' + ss : ss);
@@ -287,7 +287,7 @@
            risposta si annuncia da sola (vedi updateBubble). */
         '<div class="bubble thinking-live" role="status" aria-live="polite">' +
           '<div class="tl-top">' +
-            '<span class="tl-label">' + ETICHETTA_ATTESA + '</span>' +
+            '<span class="tl-label">' + WAIT_LABEL + '</span>' +
             '<span class="tl-dots" aria-hidden="true"><i></i><i></i><i></i></span>' +
           '</div>' +
         '</div>' +
@@ -313,29 +313,29 @@
       /* un m:ss dentro una regione live verrebbe letto ogni secondo: il tempo
          e' informazione per l'occhio, non per l'orecchio */
       el.setAttribute('aria-hidden', 'true');
-      el.textContent = testoCronometro(Date.now() - start);
+      el.textContent = stopwatchText(Date.now() - start);
       bolla.appendChild(el);
       state.els.messages.scrollTop = state.els.messages.scrollHeight;
       row._attesa.intervallo = setInterval(function () {
-        el.textContent = testoCronometro(Date.now() - start);
+        el.textContent = stopwatchText(Date.now() - start);
       }, 1000);
-    }, SOGLIE_ATTESA.timer));
+    }, WAIT_THRESHOLDS.timer));
 
     /* Dichiarare l'anomalia invece di far finta di niente. Nessuna barra di
        avanzamento: non c'e' nessun avanzamento da mostrare, e inventarlo
        sarebbe esattamente la bugia che questo prodotto non racconta. */
     row._attesa.timeout.push(setTimeout(function () {
-      if (row._attesa) label.textContent = ETICHETTA_LENTA;
-    }, SOGLIE_ATTESA.lenta));
+      if (row._attesa) label.textContent = SLOW_LABEL;
+    }, WAIT_THRESHOLDS.lenta));
 
     row._attesa.timeout.push(setTimeout(function () {
       if (!row._attesa) return;
       var line = document.createElement('div');
       line.className = 'tl-servizio';
-      line.textContent = row._attesa.alSicuro ? SERVIZIO_AL_SICURO : SERVIZIO_TIENI_APERTO;
+      line.textContent = row._attesa.alSicuro ? SERVIZIO_AL_SICURO : KEEP_OPEN_NOTICE;
       bolla.appendChild(line);
       state.els.messages.scrollTop = state.els.messages.scrollHeight;
-    }, SOGLIE_ATTESA.servizio));
+    }, WAIT_THRESHOLDS.servizio));
 
     /* L'avviso di resa NON si programma qui: qui non si sa ancora se una resa
        esistera'. Lo programma `attesaAlSicuroSulServer` quando il ponte porta
@@ -346,7 +346,7 @@
     row._attesa.timeout.push(setTimeout(function () {
       if (!row._attesa || row._attesa.scadenza) return;
       label.textContent = ETICHETTA_SENZA_SCADENZA;
-    }, SOGLIE_ATTESA.senzaScadenza));
+    }, WAIT_THRESHOLDS.senzaScadenza));
 
     return row;
   }
@@ -358,6 +358,6 @@
     showThinking: showThinking,
     attesaAlSicuroSulServer: attesaAlSicuroSulServer,
     fermaTutteLeAttese: fermaTutteLeAttese,
-    SOGLIE_ATTESA: SOGLIE_ATTESA,
+    SOGLIE_ATTESA: WAIT_THRESHOLDS,
   };
 })();

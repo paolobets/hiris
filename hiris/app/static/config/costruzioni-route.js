@@ -483,8 +483,8 @@ window.HirisCostruzioni = (function () {
     sort(list).forEach(function (c) { corpo.appendChild(line(c, statusEl, reload)); });
   }
 
-  function renderError(apertaCorpo, storicoCorpo, reload) {
-    [apertaCorpo, storicoCorpo].forEach(function (node) {
+  function renderError(openBody, historyBody, reload) {
+    [openBody, historyBody].forEach(function (node) {
       clearEl(node);
       node.appendChild(el('p', 'proposals-error',
         'Non è stato possibile leggere le costruzioni. Riprova più tardi.'));
@@ -511,11 +511,11 @@ window.HirisCostruzioni = (function () {
   function draw(outlet) {
     function reload() { return draw(outlet); }
 
-    var apertaCorpo = outlet.querySelector('#costruzioni-aperte-body');
-    var storicoCorpo = outlet.querySelector('#costruzioni-storico-body');
+    var openBody = outlet.querySelector('#costruzioni-aperte-body');
+    var historyBody = outlet.querySelector('#costruzioni-storico-body');
     var statusEl = outlet.querySelector('#costruzioni-status');
 
-    if (!apertaCorpo || !storicoCorpo) {
+    if (!openBody || !historyBody) {
       clearEl(outlet);
       outlet.appendChild(el('div', 'page-title', 'Costruzioni'));
       outlet.appendChild(el('p', 'page-subtitle',
@@ -526,13 +526,13 @@ window.HirisCostruzioni = (function () {
       outlet.appendChild(status);
       outlet.appendChild(buildSectionShell('01', 'aperte', 'In attesa'));
       outlet.appendChild(buildSectionShell('02', 'storico', 'Storico'));
-      apertaCorpo = outlet.querySelector('#costruzioni-aperte-body');
-      storicoCorpo = outlet.querySelector('#costruzioni-storico-body');
+      openBody = outlet.querySelector('#costruzioni-aperte-body');
+      historyBody = outlet.querySelector('#costruzioni-storico-body');
       statusEl = outlet.querySelector('#costruzioni-status');
     }
 
-    clearEl(apertaCorpo); apertaCorpo.appendChild(el('p', 'field-hint', 'Caricamento…'));
-    clearEl(storicoCorpo); storicoCorpo.appendChild(el('p', 'field-hint', 'Caricamento…'));
+    clearEl(openBody); openBody.appendChild(el('p', 'field-hint', 'Caricamento…'));
+    clearEl(historyBody); historyBody.appendChild(el('p', 'field-hint', 'Caricamento…'));
 
     return fetch('api/constructions').then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -541,14 +541,14 @@ window.HirisCostruzioni = (function () {
       var all = (data && data.constructions) || [];
       var open = all.filter(function (c) { return OPEN_STATES.indexOf(c.stato) !== -1; });
       var history = all.filter(function (c) { return OPEN_STATES.indexOf(c.stato) === -1; });
-      renderSection(apertaCorpo, open,
+      renderSection(openBody, open,
         'Nessuna proposta in attesa. Quando chiedi a HIRIS di creare, modificare o cancellare ' +
         'un’automazione, uno script o una scena, la trovi qui prima che diventi reale.',
         statusEl, reload, sortOpen);
-      renderSection(storicoCorpo, history, 'Nessuna costruzione nello storico.',
+      renderSection(historyBody, history, 'Nessuna costruzione nello storico.',
         statusEl, reload, sortHistory);
     }).catch(function () {
-      renderError(apertaCorpo, storicoCorpo, reload);
+      renderError(openBody, historyBody, reload);
     });
   }
 

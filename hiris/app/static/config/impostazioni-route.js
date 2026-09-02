@@ -38,7 +38,7 @@ window.HirisImpostazioniRoute = (function () {
      server (payload `response_modes`), non sono scritte qui: se il backend ne
      aggiunge una e questa mappa non la conosce, si mostra la chiave grezza
      invece di far sparire l'opzione. */
-  var ETICHETTE_MODO = {
+  var MODE_LABELS = {
     auto: 'Auto — nessun vincolo di lunghezza',
     compact: 'Compatta — risposte brevi',
     minimal: 'Minima — solo l\'essenziale'
@@ -129,7 +129,7 @@ window.HirisImpostazioniRoute = (function () {
     var selModo = el('select');
     selModo.style.cssText = 'padding:8px 10px;border-radius:8px;min-height:44px;box-sizing:border-box;width:100%';
     mode.forEach(function (m) {
-      var o = el('option', null, ETICHETTE_MODO[m] || m);
+      var o = el('option', null, MODE_LABELS[m] || m);
       o.value = m;
       if (m === data.response_mode) o.selected = true;
       selModo.appendChild(o);
@@ -194,7 +194,7 @@ window.HirisImpostazioniRoute = (function () {
     bar.appendChild(state);
     body.appendChild(bar);
 
-    function mostraEsito(testo) {
+    function showStatus(testo) {
       /* aria-live annuncia le MUTAZIONI del contenuto: si svuota e si
          riscrive, cosi' due errori identici di fila vengono comunque letti
          (stessa ragione documentata in models-route.js, showErrBadge). */
@@ -218,7 +218,7 @@ window.HirisImpostazioniRoute = (function () {
         retention_days: numero(conservazione.value, data.retention_days)
       };
       save.disabled = true;
-      mostraEsito('Salvataggio…');
+      showStatus('Salvataggio…');
       api(URL_IMPOSTAZIONI, { method: 'PUT', body: JSON.stringify(corpo) })
         .then(function (r) {
           return r.json().catch(function () { return {}; })
@@ -238,18 +238,18 @@ window.HirisImpostazioniRoute = (function () {
             exchange.value = String(data.max_chat_turns);
             home_space.checked = !!data.restrict_to_home;
             conservazione.value = String(data.retention_days);
-            mostraEsito('Salvato. Vale dal prossimo messaggio.');
+            showStatus('Salvato. Vale dal prossimo messaggio.');
             return;
           }
           /* Mai un catch vuoto: l'errore del server dice quale campo non va,
              e quel testo e' scritto per essere letto da chi sta compilando. */
-          mostraEsito(occurrence.corpo && occurrence.corpo.error
+          showStatus(occurrence.corpo && occurrence.corpo.error
             ? occurrence.corpo.error
             : 'Salvataggio non riuscito. Controlla il log dell\'add-on.');
         })
         .catch(function () {
           save.disabled = false;
-          mostraEsito('Salvataggio non riuscito: il server non ha risposto.');
+          showStatus('Salvataggio non riuscito: il server non ha risposto.');
         });
     });
 

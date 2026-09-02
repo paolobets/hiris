@@ -71,7 +71,7 @@
       + fmtNum(m.cache_write) + ' scritti';
   }
 
-  function rigaModello(m, provider) {
+  function modelRow(m, provider) {
     var when = m.first_use === m.last_use
       ? 'il ' + escHtml(m.first_use)
       : 'dal ' + escHtml(m.first_use) + ' al ' + escHtml(m.last_use);
@@ -91,7 +91,7 @@
       + '</div>';
   }
 
-  function totaleSezione(s) {
+  function sectionTotal(s) {
     if (s.provider === 'ponte') {
       return '<span class="usec-costo umr-compreso">Compreso</span>';
     }
@@ -102,9 +102,9 @@
   function section(s) {
     return '<section class="usage-provider">'
       + '<div class="usec-testa"><h3 class="usec-nome">' + escHtml(s.label) + '</h3>'
-      + totaleSezione(s) + '</div>'
+      + sectionTotal(s) + '</div>'
       + '<p class="sc-desc">' + escHtml(s.note) + '</p>'
-      + s.models.map(function(m) { return rigaModello(m, s.provider); }).join('')
+      + s.models.map(function(m) { return modelRow(m, s.provider); }).join('')
       + '</section>';
   }
 
@@ -195,7 +195,7 @@
     }).join('') + '</div>';
   }
 
-  function tabellaEquivalente(giorni, provider, key, labels) {
+  function equivalentTable(giorni, provider, key, labels) {
     var line = giorni.map(function(g) {
       return '<tr><td>' + escHtml(g.day) + '</td>' + provider.map(function(p) {
         var v = ((g.per_provider || {})[p] || {})[key];
@@ -229,11 +229,11 @@
       + '" id="usage-30">30 giorni</button></div></div>'
       + svgBarre(giorni, conCosto, 'cost_eur', 'Costo al giorno per provider')
       + legend(conCosto, labels) + outside
-      + tabellaEquivalente(giorni, conCosto, 'cost_eur', labels)
+      + equivalentTable(giorni, conCosto, 'cost_eur', labels)
       + '<h3>Richieste al giorno</h3>'
       + svgBarre(giorni, present, 'requests', 'Richieste al giorno per provider')
       + legend(present, labels)
-      + tabellaEquivalente(giorni, present, 'requests', labels)
+      + equivalentTable(giorni, present, 'requests', labels)
       + '</div>';
   }
 

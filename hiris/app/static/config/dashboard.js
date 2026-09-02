@@ -32,9 +32,9 @@ window.HirisDashboard = (function () {
      colorano il TESTO con cui HIRIS dice «questo non l'ho letto», cioe' la
      frase per cui questa pagina esiste: era servita dal colore meno leggibile
      dell'intera tavolozza. */
-  var TONO_IGNOTO = 'color:var(--warn-ink)';
-  var TONO_PROBLEMA = 'color:var(--err-ink)';
-  var TONO_QUIETO = 'color:var(--text-3)';
+  var TONE_UNKNOWN = 'color:var(--warn-ink)';
+  var TONE_PROBLEM = 'color:var(--err-ink)';
+  var TONE_CALM = 'color:var(--text-3)';
 
   var NOMI_REGISTRI = {
     piani: 'Piani',
@@ -88,7 +88,7 @@ window.HirisDashboard = (function () {
   /* I registri caduti, per NOME: `non_disponibili` porta voci come "piani" o
      "categorie:script" (il perche' dopo i due punti, vedi
      `ha_client.read_registries`). Qui serve solo il nome del registro. */
-  function registriCaduti(nonDisponibili) {
+  function unavailableRegisters(nonDisponibili) {
     if (!nonDisponibili) return null;   // null = non si sa, diverso da nessuno
     return nonDisponibili.map(function (v) { return String(v).split(':')[0]; });
   }
@@ -114,7 +114,7 @@ window.HirisDashboard = (function () {
      in cui «non c'e' niente» e «non ho guardato» sono indistinguibili. */
   var FILE_PER_TIPO = { automazione: 'automations.yaml', script: 'scripts.yaml' };
 
-  function conteggiComportamento(counts) {
+  function behaviorCounts(counts) {
     var loaded = counts || {};
     var occurrence = {};
     Object.keys(FILE_PER_TIPO).forEach(function (type) {
@@ -128,7 +128,7 @@ window.HirisDashboard = (function () {
     return occurrence;
   }
 
-  function comportamentoCaduto(fileNonLetti, counts) {
+  function behaviorUnavailable(fileNonLetti, counts) {
     if (!fileNonLetti) return null;   // null = non si sa, diverso da nessuno
     var loaded = counts || {};
     return Object.keys(FILE_PER_TIPO).filter(function (type) {
@@ -147,7 +147,7 @@ window.HirisDashboard = (function () {
      registro letto e vuoto. Il terzo stato ce l'ha `non_disponibili`, che
      nomina il registro: dove i due si incontrano, vince il non-letto e il
      numero non si stampa affatto. */
-  function tile(body, counts, nomi, unavailable, motivoCaduto) {
+  function tile(body, counts, nomi, unavailable, unavailableReason) {
     var chiavi = Object.keys(counts || {});
     /* Una chiave caduta puo' NON essere in `conteggi` affatto: `conteggi` e'
        un conto di cio' che si e' letto, quindi cio' che non si e' letto non
@@ -159,7 +159,7 @@ window.HirisDashboard = (function () {
       if (chiavi.indexOf(key) === -1) chiavi.push(key);
     });
     if (!chiavi.length) {
-      line(body, 'La lettura non ha prodotto nessuna voce.', TONO_QUIETO);
+      line(body, 'La lettura non ha prodotto nessuna voce.', TONE_CALM);
       return;
     }
     chiavi.sort();
@@ -171,9 +171,9 @@ window.HirisDashboard = (function () {
       tile.appendChild(el('div', 'st-label', nomi[key] || key));
       if (unavailable && unavailable.indexOf(key) !== -1) {
         var value = el('div', 'st-value', 'non letto');
-        value.style.cssText = 'font-size:var(--fs-15);font-weight:500;letter-spacing:normal;' + TONO_IGNOTO;
+        value.style.cssText = 'font-size:var(--fs-15);font-weight:500;letter-spacing:normal;' + TONE_UNKNOWN;
         tile.appendChild(value);
-        tile.appendChild(el('div', 'st-delta', motivoCaduto || 'il registro non ha risposto'));
+        tile.appendChild(el('div', 'st-delta', unavailableReason || 'il registro non ha risposto'));
       } else {
         tile.appendChild(el('div', 'st-value', String(counts[key])));
       }
@@ -187,15 +187,15 @@ window.HirisDashboard = (function () {
      si nomina cio' che c'e'. */
   function treStati(body, value, sentences, format) {
     if (value == null) {
-      line(body, sentences.ignoto, TONO_IGNOTO);
+      line(body, sentences.ignoto, TONE_UNKNOWN);
       return;
     }
     var voci = format ? format(value) : value;
     if (!voci.length) {
-      line(body, sentences.vuoto, TONO_QUIETO);
+      line(body, sentences.vuoto, TONE_CALM);
       return;
     }
-    line(body, sentences.pieno, TONO_PROBLEMA);
+    line(body, sentences.pieno, TONE_PROBLEM);
     list(body, voci);
   }
 
@@ -243,15 +243,15 @@ window.HirisDashboard = (function () {
 
   /* ---------------------------------------------------------------- casa */
 
-  function rendiCasa(outlet, home_space) {
+  function renderHomeSpace(outlet, home_space) {
     var body = section(outlet, 'L’anagrafe della casa',
       'Piani, aree, dispositivi ed entità come HIRIS li ha ricostruiti dai registri di Home Assistant.');
 
     if (home_space.anagrafe_letta_il == null) {
-      line(body, 'L’anagrafe non è ancora stata letta: qui non c’è una casa vuota, c’è una casa che HIRIS non ha ancora guardato.', TONO_IGNOTO);
+      line(body, 'L’anagrafe non è ancora stata letta: qui non c’è una casa vuota, c’è una casa che HIRIS non ha ancora guardato.', TONE_UNKNOWN);
     } else {
-      line(body, 'Letta il ' + home_space.anagrafe_letta_il + '.', TONO_QUIETO);
-      tile(body, home_space.conteggi, NOMI_REGISTRI, registriCaduti(home_space.non_disponibili));
+      line(body, 'Letta il ' + home_space.anagrafe_letta_il + '.', TONE_CALM);
+      tile(body, home_space.conteggi, NOMI_REGISTRI, unavailableRegisters(home_space.non_disponibili));
     }
 
     treStati(body, soloSeLetta(home_space.anagrafe_letta_il, home_space.non_disponibili), {
@@ -266,11 +266,11 @@ window.HirisDashboard = (function () {
       'Automazioni e script: quanti ne conosce, e di quanti conosce solo il nome.');
 
     if (comp.letto_il == null) {
-      line(corpoComp, 'Il comportamento non è ancora stato letto.', TONO_IGNOTO);
+      line(corpoComp, 'Il comportamento non è ancora stato letto.', TONE_UNKNOWN);
     } else {
-      line(corpoComp, 'Letto il ' + comp.letto_il + '.', TONO_QUIETO);
-      tile(corpoComp, conteggiComportamento(comp.conteggi), NOMI_COMPORTAMENTO,
-              comportamentoCaduto(comp.file_non_letti, comp.conteggi),
+      line(corpoComp, 'Letto il ' + comp.letto_il + '.', TONE_CALM);
+      tile(corpoComp, behaviorCounts(comp.conteggi), NOMI_COMPORTAMENTO,
+              behaviorUnavailable(comp.file_non_letti, comp.conteggi),
               'il file non è stato letto');
     }
 
@@ -280,11 +280,11 @@ window.HirisDashboard = (function () {
        lettura il backend manda proprio `0`, non `null`. */
     var senzaCorpo = soloSeLetta(comp.letto_il, comp.senza_corpo);
     if (senzaCorpo == null) {
-      line(corpoComp, 'Non si sa di quante voci HIRIS conosca solo il nome: la lettura non è avvenuta.', TONO_IGNOTO);
+      line(corpoComp, 'Non si sa di quante voci HIRIS conosca solo il nome: la lettura non è avvenuta.', TONE_UNKNOWN);
     } else if (senzaCorpo === 0) {
-      line(corpoComp, 'Di ogni voce HIRIS conosce anche il corpo, non solo il nome.', TONO_QUIETO);
+      line(corpoComp, 'Di ogni voce HIRIS conosce anche il corpo, non solo il nome.', TONE_CALM);
     } else {
-      line(corpoComp, 'Di ' + senzaCorpo + ' voci HIRIS conosce solo il nome, non il corpo.', TONO_PROBLEMA);
+      line(corpoComp, 'Di ' + senzaCorpo + ' voci HIRIS conosce solo il nome, non il corpo.', TONE_PROBLEM);
     }
 
     /* «L'ultima lettura non ha lasciato niente in sospeso» compariva una riga
@@ -307,23 +307,23 @@ window.HirisDashboard = (function () {
 
     /* Plance */
     var dashboards = home_space.plance || {};
-    var corpoPlance = section(outlet, 'Le plance di Home Assistant',
+    var dashboardsBody = section(outlet, 'Le plance di Home Assistant',
       'Le dashboard Lovelace che HIRIS ha potuto leggere.');
 
     if (dashboards.lette_il == null) {
-      line(corpoPlance, 'Le plance non sono ancora state lette.', TONO_IGNOTO);
+      line(dashboardsBody, 'Le plance non sono ancora state lette.', TONE_UNKNOWN);
     } else {
-      line(corpoPlance, 'Lette il ' + dashboards.lette_il + '.', TONO_QUIETO);
+      line(dashboardsBody, 'Lette il ' + dashboards.lette_il + '.', TONE_CALM);
       var voci = dashboards.voci || [];
-      line(corpoPlance, voci.length === 1 ? '1 plancia letta.' : voci.length + ' plance lette.', TONO_QUIETO);
+      line(dashboardsBody, voci.length === 1 ? '1 plancia letta.' : voci.length + ' plance lette.', TONE_CALM);
       if (voci.length) {
-        list(corpoPlance, voci.map(function (p) {
+        list(dashboardsBody, voci.map(function (p) {
           return (p.titolo || p.percorso || 'plancia predefinita');
         }));
       }
     }
 
-    treStati(corpoPlance, soloSeLetta(dashboards.lette_il, dashboards.non_disponibili), {
+    treStati(dashboardsBody, soloSeLetta(dashboards.lette_il, dashboards.non_disponibili), {
       ignoto: 'Non si sa quali plance abbiano risposto: HIRIS non ha potuto controllarlo.',
       vuoto: 'Tutte le plance hanno risposto.',
       pieno: 'Plance che l’ultima lettura non è riuscita a risolvere:'
@@ -332,17 +332,17 @@ window.HirisDashboard = (function () {
 
   /* -------------------------------------------------------------- nucleo */
 
-  function rendiNucleo(outlet, briefing) {
+  function renderBriefing(outlet, briefing) {
     var summary = briefing.summary || {};
     var body = section(outlet, 'Il nucleo, come lo vede il modello',
       'Il testo esatto che HIRIS ha davanti a ogni turno di chat — non una sua descrizione, né un secondo conto.');
 
     var notices = summary.notices || [];
-    var titoloLacune = el('div', null, 'Ciò che HIRIS ignora');
-    titoloLacune.style.cssText = 'font-weight:500;margin-bottom:4px';
-    body.appendChild(titoloLacune);
+    var gapsTitle = el('div', null, 'Ciò che HIRIS ignora');
+    gapsTitle.style.cssText = 'font-weight:500;margin-bottom:4px';
+    body.appendChild(gapsTitle);
     if (!notices.length) {
-      line(body, 'Il nucleo non dichiara nessuna lacuna.', TONO_QUIETO);
+      line(body, 'Il nucleo non dichiara nessuna lacuna.', TONE_CALM);
     } else {
       list(body, notices);
     }
@@ -374,10 +374,10 @@ window.HirisDashboard = (function () {
      non ha potuto leggere, e la console porta il dettaglio tecnico. Una
      pagina che tace su una fetch caduta e' indistinguibile da una casa
      senza niente dentro -- il difetto ricorrente n.1 di questo prodotto. */
-  function rendiErrore(outlet, title, text, err) {
+  function renderError(outlet, title, text, err) {
     console.error('[cosa-hiris-sa] ' + title, err);
     var body = section(outlet, title, null);
-    line(body, text, TONO_PROBLEMA);
+    line(body, text, TONE_PROBLEM);
   }
 
   function read(path) {
@@ -409,18 +409,18 @@ window.HirisDashboard = (function () {
 
     return Promise.all([
       read('api/home-space').then(function (home_space) {
-        return function () { rendiCasa(outlet, home_space); };
+        return function () { renderHomeSpace(outlet, home_space); };
       }, function (err) {
         return function () {
-          rendiErrore(outlet, 'L’anagrafe della casa',
+          renderError(outlet, 'L’anagrafe della casa',
             'Non è stato possibile leggere ciò che HIRIS sa della casa. Questo non significa che la casa sia vuota: la richiesta non è andata a buon fine.', err);
         };
       }),
       read('api/briefing').then(function (briefing) {
-        return function () { rendiNucleo(outlet, briefing); };
+        return function () { renderBriefing(outlet, briefing); };
       }, function (err) {
         return function () {
-          rendiErrore(outlet, 'Il nucleo, come lo vede il modello',
+          renderError(outlet, 'Il nucleo, come lo vede il modello',
             'Non è stato possibile leggere il nucleo. Questo non significa che il nucleo sia vuoto: la richiesta non è andata a buon fine.', err);
         };
       })
@@ -437,6 +437,6 @@ window.HirisDashboard = (function () {
     mount: mount,
     /* Seam di test: le due funzioni di resa sono pure DOM + dati, e i tre
        stati vanno pinnati senza passare da fetch. */
-    _rendi: { casa: rendiCasa, nucleo: rendiNucleo }
+    _rendi: { casa: renderHomeSpace, nucleo: renderBriefing }
   };
 })();

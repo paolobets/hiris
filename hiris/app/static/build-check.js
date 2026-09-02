@@ -34,12 +34,12 @@
 (function () {
   var GUARD_KEY = 'hiris-build-reload-guard';
 
-  function letturaLocale() {
+  function readLocal() {
     var meta = document.querySelector('meta[name="hiris-build"]');
     return meta ? meta.getAttribute('content') : '';
   }
 
-  function mostraStriscia(local, remote) {
+  function showStrip(local, remote) {
     if (document.getElementById('hiris-build-mismatch')) return; // gia' mostrata
     var div = document.createElement('div');
     div.id = 'hiris-build-mismatch';
@@ -91,7 +91,7 @@
      ricaricamento -- che e' esattamente cio' da cui ci si deve proteggere.
      Per questo la prova e' sempre la persistenza REALE in sessionStorage,
      mai un flag JS.) */
-  function guardiaVerificata(local) {
+  function guardChecked(local) {
     try {
       if (sessionStorage.getItem(GUARD_KEY) === local) return 'gia-tentato';
       sessionStorage.setItem(GUARD_KEY, local);
@@ -118,16 +118,16 @@
        si dichiara con la striscia. Un anello di ricaricamenti sarebbe un
        guasto peggiore di quello che questo meccanismo chiude. */
   function verify(remote) {
-    var local = letturaLocale();
+    var local = readLocal();
     if (!local || !remote || local === remote) {
       try { sessionStorage.removeItem(GUARD_KEY); } catch {}
       return;
     }
-    if (guardiaVerificata(local) === 'scritta') {
+    if (guardChecked(local) === 'scritta') {
       window.HirisBuildCheck._internal_reload();
       return;
     }
-    mostraStriscia(local, remote);
+    showStrip(local, remote);
   }
 
   window.HirisBuildCheck = {

@@ -99,12 +99,12 @@ function _setUsageText(id, text) {
    "Costo" si leggono come "sto caricando": le righe escono di scena e resta
    la frase che dice perche'. Guardata sull'esistenza: la pagina di
    configurazione non ha questo riquadro. */
-function _mostraRigheConsumi(visibili) {
+function _showUsageRows(visible) {
   var widget = document.getElementById('usage-widget');
   if (!widget) return;
-  var righe = widget.querySelectorAll('.usage-row');
-  for (var i = 0; i < righe.length; i++) {
-    righe[i].style.display = visibili ? '' : 'none';
+  var rows = widget.querySelectorAll('.usage-row');
+  for (var i = 0; i < rows.length; i++) {
+    rows[i].style.display = visible ? '' : 'none';
   }
 }
 
@@ -128,11 +128,11 @@ async function loadUsage() {
     if (!r.ok) { console.error('loadUsage failed', r.status); return true; }
     var d = await r.json();
     if (d.measured === false) {
-      _mostraRigheConsumi(false);
+      _showUsageRows(false);
       _setUsageText('usage-last-reset', d.message || 'I consumi non si misurano su questa configurazione.');
       return false;
     }
-    _mostraRigheConsumi(true);
+    _showUsageRows(true);
     _setUsageText('u-requests', d.total_requests != null ? d.total_requests : '—');
     _setUsageText('u-input', fmtNum(d.input_tokens));
     _setUsageText('u-output', fmtNum(d.output_tokens));
