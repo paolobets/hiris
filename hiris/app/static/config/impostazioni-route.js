@@ -32,7 +32,7 @@
 window.HirisImpostazioniRoute = (function () {
   'use strict';
 
-  var URL_IMPOSTAZIONI = 'api/chat-settings';
+  var SETTINGS_URL = 'api/chat-settings';
 
   /* Etichette italiane dei modi di risposta. Le CHIAVI ammesse arrivano dal
      server (payload `response_modes`), non sono scritte qui: se il backend ne
@@ -126,16 +126,16 @@ window.HirisImpostazioniRoute = (function () {
 
     var mode = (data.response_modes && data.response_modes.length)
       ? data.response_modes : ['auto'];
-    var selModo = el('select');
-    selModo.style.cssText = 'padding:8px 10px;border-radius:8px;min-height:44px;box-sizing:border-box;width:100%';
+    var modeSelect = el('select');
+    modeSelect.style.cssText = 'padding:8px 10px;border-radius:8px;min-height:44px;box-sizing:border-box;width:100%';
     mode.forEach(function (m) {
       var o = el('option', null, MODE_LABELS[m] || m);
       o.value = m;
       if (m === data.response_mode) o.selected = true;
-      selModo.appendChild(o);
+      modeSelect.appendChild(o);
     });
     field(body, 'Forma della risposta',
-      'Quanto deve essere asciutta la risposta.', selModo);
+      'Quanto deve essere asciutta la risposta.', modeSelect);
 
     /* Fix round 1 (I-2). La versione precedente prometteva «viene disattivato
        comunque e il log lo dice», ed era vero su UN percorso su tre: sugli
@@ -206,7 +206,7 @@ window.HirisImpostazioniRoute = (function () {
       var payload = {
         name: name.value,
         system_prompt: prompt.value,
-        response_mode: selModo.value,
+        response_mode: modeSelect.value,
         /* I tre interi passano da parseInt: un campo number svuotato produce
            '' e Number('') sarebbe 0 -- per retention_days "non cancella
            mai niente", non solo per i due tetti -- senza che l'utente lo
@@ -219,7 +219,7 @@ window.HirisImpostazioniRoute = (function () {
       };
       save.disabled = true;
       showStatus('Salvataggio…');
-      api(URL_IMPOSTAZIONI, { method: 'PUT', body: JSON.stringify(payload) })
+      api(SETTINGS_URL, { method: 'PUT', body: JSON.stringify(payload) })
         .then(function (r) {
           return r.json().catch(function () { return {}; })
             .then(function (j) { return { ok: r.ok, corpo: j }; });
@@ -233,7 +233,7 @@ window.HirisImpostazioniRoute = (function () {
             data = occurrence.corpo;
             name.value = data.name || '';
             prompt.value = data.system_prompt || '';
-            selModo.value = data.response_mode || 'auto';
+            modeSelect.value = data.response_mode || 'auto';
             thinking.value = String(data.thinking_budget);
             exchange.value = String(data.max_chat_turns);
             home_space.checked = !!data.restrict_to_home;
@@ -279,7 +279,7 @@ window.HirisImpostazioniRoute = (function () {
        che alimentava il selettore del modello) e' uscito con lui alla fetta
        "la catena diventa l'unica verita'" -- questa pagina non ha piu'
        nessuna ragione di conoscere i provider. */
-    api(URL_IMPOSTAZIONI, { method: 'GET' })
+    api(SETTINGS_URL, { method: 'GET' })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
       .then(function (data) { render(outlet, data); })
       .catch(function () {

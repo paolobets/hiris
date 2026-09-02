@@ -4,8 +4,8 @@
    final <script> in config.html). */
 (function() {
   function wireHeaderAndSidebarButtons() {
-    var btnCancella = document.getElementById('cancella-conv-btn');
-    if (btnCancella) btnCancella.addEventListener('click', window.HirisChatAgents.clearConversation);
+    var clearBtn = document.getElementById('cancella-conv-btn');
+    if (clearBtn) clearBtn.addEventListener('click', window.HirisChatAgents.clearConversation);
   }
 
   /* Unica fonte del "connesso/offline": estende la chiamata a GET api/health
@@ -67,13 +67,13 @@
      console.error ogni mezzo minuto, per sempre, senza che l'utente leggesse
      mai il perche'. Un errore di rete o un HTTP non-200 restituiscono invece
      `true`: quelli possono passare, e il timer resta. */
-  var timerConsumi = null;
+  var usageTimer = null;
 
   function refreshUsage() {
     return loadUsage().then(function (keepGoing) {
-      if (keepGoing === false && timerConsumi !== null) {
-        clearInterval(timerConsumi);
-        timerConsumi = null;
+      if (keepGoing === false && usageTimer !== null) {
+        clearInterval(usageTimer);
+        usageTimer = null;
       }
     });
   }
@@ -91,7 +91,7 @@
     refreshUsage();
     window.HirisChatAgents.updateGreeting();
     setInterval(window.HirisChatAgents.loadSettings, 30000);
-    timerConsumi = setInterval(refreshUsage, 30000);
+    usageTimer = setInterval(refreshUsage, 30000);
     setInterval(window.HirisChatAgents.updateGreeting, 60 * 60 * 1000); /* refresh greeting every hour */
 
     window.HirisChatSidebar.init();

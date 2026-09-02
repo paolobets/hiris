@@ -24,7 +24,7 @@ def _js() -> str:
 def test_ogni_forza_del_vocabolario_ha_un_etichetta_nella_pagina():
     from hiris.app.memoria.interpretazione import VOCABULARY
     js = _js()
-    inizio = js.index("var FORZA_LABELS")
+    inizio = js.index("var MODALITY_LABELS")
     blocco = js[inizio:js.index("};", inizio)]
     mancanti = sorted(f for f in VOCABULARY["forza"] if f + ":" not in blocco)
     assert mancanti == [], f"forze senza etichetta in memoria-route.js: {mancanti}"

@@ -57,14 +57,14 @@
 window.HirisMemoriaRoute = (function () {
   'use strict';
 
-  var FORZA_LABELS = {
+  var MODALITY_LABELS = {
     preferenza: 'Preferenza', divieto: 'Divieto', fatto: 'Fatto', regola: 'Regola operativa'
   };
   var MODALITY_OPTIONS = [
     ['', '(non impostata)'], ['preferenza', 'Preferenza'], ['divieto', 'Divieto'],
     ['fatto', 'Fatto'], ['regola', 'Regola operativa']
   ];
-  var TIPO_ANCORA_LABELS = { area: 'Area', entita: 'Entità', dispositivo: 'Dispositivo' };
+  var TETHER_TYPE_LABELS = { area: 'Area', entita: 'Entità', dispositivo: 'Dispositivo' };
 
   function el(tag, cls, text) {
     var e = document.createElement(tag);
@@ -89,7 +89,7 @@ window.HirisMemoriaRoute = (function () {
   /* L'istante arriva in ISO 8601 UTC (`detto_il`, `archivio.py`): l'utente
      legge l'ora locale. `null` se manca o non è interpretabile — si
      dichiara "data non disponibile", non se ne inventa una. */
-  function fmtQuando(iso) {
+  function fmtWhen(iso) {
     var t = iso ? Date.parse(iso) : NaN;
     if (isNaN(t)) return null;
     try {
@@ -109,7 +109,7 @@ window.HirisMemoriaRoute = (function () {
     return null;
   }
 
-  function mostraErroreCard(node, text) {
+  function showCardError(node, text) {
     node.textContent = text;
     node.style.display = '';
   }
@@ -134,7 +134,7 @@ window.HirisMemoriaRoute = (function () {
          chiaro i due originali stanno sotto AA (4.05:1 e 2.04:1). */
       else if (a.esiste === false) { text = name + ' — non esiste più nell’anagrafe'; tone = 'var(--err-ink)'; }
       else { text = name + ' — non è stato possibile verificarlo'; tone = 'var(--warn-ink)'; }
-      var li = el('li', null, (TIPO_ANCORA_LABELS[a.tipo] || a.tipo) + ': ' + text);
+      var li = el('li', null, (TETHER_TYPE_LABELS[a.tipo] || a.tipo) + ': ' + text);
       if (tone) li.style.color = tone;
       ul.appendChild(li);
     });
@@ -157,11 +157,11 @@ window.HirisMemoriaRoute = (function () {
       return f;
     }
 
-    var selForza = el('select');
+    var modalitySelect = el('select');
     MODALITY_OPTIONS.forEach(function (v) {
       var o = el('option', null, v[1]);
       o.value = v[0];
-      selForza.appendChild(o);
+      modalitySelect.appendChild(o);
     });
     // Una forza che questa pagina non conosce si AGGIUNGE, non si ignora.
     //
@@ -177,18 +177,18 @@ window.HirisMemoriaRoute = (function () {
     // test si rompe il giorno in cui le liste divergono. Questo ramo e' cio'
     // che protegge l'utente NEL FRATTEMPO.
     if (r.forza && !MODALITY_OPTIONS.some(function (v) { return v[0] === r.forza; })) {
-      var unknown = el('option', null, FORZA_LABELS[r.forza] || r.forza);
+      var unknown = el('option', null, MODALITY_LABELS[r.forza] || r.forza);
       unknown.value = r.forza;
-      selForza.appendChild(unknown);
+      modalitySelect.appendChild(unknown);
     }
-    selForza.value = r.forza || '';
+    modalitySelect.value = r.forza || '';
 
     var inpGrandezza = el('input'); inpGrandezza.type = 'text'; inpGrandezza.value = r.grandezza || '';
-    var inpMinimo = el('input'); inpMinimo.type = 'number'; inpMinimo.step = 'any';
-    inpMinimo.value = r.minimo != null ? r.minimo : '';
-    var inpMassimo = el('input'); inpMassimo.type = 'number'; inpMassimo.step = 'any';
-    inpMassimo.value = r.massimo != null ? r.massimo : '';
-    var inpUnita = el('input'); inpUnita.type = 'text'; inpUnita.value = r.unita || '';
+    var minInput = el('input'); minInput.type = 'number'; minInput.step = 'any';
+    minInput.value = r.minimo != null ? r.minimo : '';
+    var maxInput = el('input'); maxInput.type = 'number'; maxInput.step = 'any';
+    maxInput.value = r.massimo != null ? r.massimo : '';
+    var unitInput = el('input'); unitInput.type = 'text'; unitInput.value = r.unita || '';
     var inpDettoDa = el('input'); inpDettoDa.type = 'text'; inpDettoDa.value = r.detto_da || '';
 
     /* L'ambito di «Correggi» era dichiarato SOLO nel commento in cima a
@@ -205,11 +205,11 @@ window.HirisMemoriaRoute = (function () {
     scope.style.cssText = 'margin:0;font-size:var(--fs-12);color:var(--text-3)';
     wrap.appendChild(scope);
 
-    wrap.appendChild(field('Forza', selForza));
+    wrap.appendChild(field('Forza', modalitySelect));
     wrap.appendChild(field('Grandezza (es. temperature, humidity — vocabolario di Home Assistant)', inpGrandezza));
-    wrap.appendChild(field('Minimo', inpMinimo));
-    wrap.appendChild(field('Massimo', inpMassimo));
-    wrap.appendChild(field('Unità', inpUnita));
+    wrap.appendChild(field('Minimo', minInput));
+    wrap.appendChild(field('Massimo', maxInput));
+    wrap.appendChild(field('Unità', unitInput));
     wrap.appendChild(field('Detto da', inpDettoDa));
 
     var save = el('button', 'btn btn-primary btn-sm', 'Salva correzione');
@@ -223,25 +223,25 @@ window.HirisMemoriaRoute = (function () {
          handlers_memoria.py). Un valore numerico illeggibile si dichiara
          qui, prima di mandarlo. */
       var body = {};
-      var nMinimo = inpMinimo.value === '' ? null : parseFloat(inpMinimo.value);
-      var nMassimo = inpMassimo.value === '' ? null : parseFloat(inpMassimo.value);
-      if ((inpMinimo.value !== '' && isNaN(nMinimo)) || (inpMassimo.value !== '' && isNaN(nMassimo))) {
-        mostraErroreCard(cardErr, 'Minimo e massimo devono essere numeri.');
+      var nMin = minInput.value === '' ? null : parseFloat(minInput.value);
+      var nMax = maxInput.value === '' ? null : parseFloat(maxInput.value);
+      if ((minInput.value !== '' && isNaN(nMin)) || (maxInput.value !== '' && isNaN(nMax))) {
+        showCardError(cardErr, 'Minimo e massimo devono essere numeri.');
         return;
       }
-      var nForza = selForza.value || null;
+      var nModality = modalitySelect.value || null;
       var nGrandezza = inpGrandezza.value.trim() || null;
-      var nUnita = inpUnita.value.trim() || null;
+      var nUnit = unitInput.value.trim() || null;
       var nDettoDa = inpDettoDa.value.trim() || null;
-      if (nForza !== (r.forza || null)) body.forza = nForza;
+      if (nModality !== (r.forza || null)) body.forza = nModality;
       if (nGrandezza !== (r.grandezza || null)) body.grandezza = nGrandezza;
-      if (nMinimo !== r.minimo) body.minimo = nMinimo;
-      if (nMassimo !== r.massimo) body.massimo = nMassimo;
-      if (nUnita !== (r.unita || null)) body.unita = nUnita;
+      if (nMin !== r.minimo) body.minimo = nMin;
+      if (nMax !== r.massimo) body.massimo = nMax;
+      if (nUnit !== (r.unita || null)) body.unita = nUnit;
       if (nDettoDa !== (r.detto_da || null)) body.detto_da = nDettoDa;
 
       if (!Object.keys(body).length) {
-        mostraErroreCard(cardErr, 'Nessuna modifica da salvare.');
+        showCardError(cardErr, 'Nessuna modifica da salvare.');
         return;
       }
       cardErr.style.display = 'none';
@@ -267,7 +267,7 @@ window.HirisMemoriaRoute = (function () {
             /* Rifiutata con la ragione (regola 2): il messaggio del server
                dice QUALE ancora o intervallo non va, non un generico
                "errore". */
-            mostraErroreCard(cardErr, (occurrence.json && occurrence.json.error) || ('Errore HTTP ' + occurrence.res.status));
+            showCardError(cardErr, (occurrence.json && occurrence.json.error) || ('Errore HTTP ' + occurrence.res.status));
             return;
           }
           var note = 'Correzione salvata.';
@@ -278,7 +278,7 @@ window.HirisMemoriaRoute = (function () {
           dopoSalvataggio();
         }, function () {
           save.disabled = false;
-          mostraErroreCard(cardErr, 'La memoria non ha risposto. Riprova più tardi.');
+          showCardError(cardErr, 'La memoria non ha risposto. Riprova più tardi.');
         });
     });
 
@@ -286,16 +286,16 @@ window.HirisMemoriaRoute = (function () {
   }
 
   /* ── Una card per ricordo ──────────────────────────────────────────────── */
-  function costruisciCard(r, reload) {
+  function buildCard(r, reload) {
     var card = el('div', 'section-card');
     card.style.cssText = 'margin-bottom:10px';
     var body = el('div', 'sc-body');
 
     var head = el('div');
     head.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px';
-    var when = fmtQuando(r.detto_il);
+    var when = fmtWhen(r.detto_il);
     head.appendChild(el('span', 'field-hint', (when || 'data non disponibile') + (r.detto_da ? ' · ' + r.detto_da : '')));
-    if (r.forza) head.appendChild(el('span', 'agent-badge badge-off', FORZA_LABELS[r.forza] || r.forza));
+    if (r.forza) head.appendChild(el('span', 'agent-badge badge-off', MODALITY_LABELS[r.forza] || r.forza));
     if (r.corretto_da_utente) head.appendChild(el('span', 'agent-badge badge-on', 'corretto da te'));
     body.appendChild(head);
 
@@ -359,10 +359,10 @@ window.HirisMemoriaRoute = (function () {
       api('api/memories/' + encodeURIComponent(r.id), { method: 'DELETE' }).then(function (res) {
         if (res.status === 204) { setStatus('Ricordo cancellato.'); reload(); return; }
         return res.json().catch(function () { return {}; }).then(function (payload) {
-          mostraErroreCard(cardErr, (payload && payload.error) || ('Errore HTTP ' + res.status));
+          showCardError(cardErr, (payload && payload.error) || ('Errore HTTP ' + res.status));
         });
       }, function () {
-        mostraErroreCard(cardErr, 'La memoria non ha risposto. Riprova più tardi.');
+        showCardError(cardErr, 'La memoria non ha risposto. Riprova più tardi.');
       });
     });
 
@@ -372,7 +372,7 @@ window.HirisMemoriaRoute = (function () {
 
   /* ── I tre stati della lista: vuota, illeggibile, piena (ambiguità
      risolta nel brief: sono due fatti diversi e vanno detti diversamente) */
-  function rendiNonDisponibile(list) {
+  function renderUnavailable(list) {
     clearEl(list);
     list.appendChild(el('p', 'proposals-error',
       'L’archivio della memoria non è disponibile in questo momento. Non significa che non ci ' +
@@ -407,7 +407,7 @@ window.HirisMemoriaRoute = (function () {
       ? ('Stai vedendo i ' + show + ' ricordi più recenti su ' + total + ' in tutto.')
       : (total === 1 ? '1 ricordo.' : total + ' ricordi.')));
 
-    memories.forEach(function (r) { list.appendChild(costruisciCard(r, reload)); });
+    memories.forEach(function (r) { list.appendChild(buildCard(r, reload)); });
   }
 
   function load() {
@@ -419,7 +419,7 @@ window.HirisMemoriaRoute = (function () {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     }).then(function (data) {
-      if (!data.available) { rendiNonDisponibile(list); return; }
+      if (!data.available) { renderUnavailable(list); return; }
       renderList(list, data, load);
     }).catch(function (err) {
       console.error('[memoria] caricamento fallito', err);

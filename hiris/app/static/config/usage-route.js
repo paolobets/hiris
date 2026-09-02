@@ -49,7 +49,7 @@
      dichiara una volta sola, nella nota della sezione, e non riga per riga --
      i due stati non convivono mai nella stessa sezione, perche' e' il
      provider a determinarli. */
-  function costoDiRiga(m) {
+  function rowCost(m) {
     if (m.cost_state === 'misurato' || m.cost_state === 'reale') {
       return '<span class="umr-costo">' + fmtEuro(m.cost_eur, 4) + '</span>';
     }
@@ -65,7 +65,7 @@
       + escHtml(Word[m.cost_state] || m.cost_state) + '</span>';
   }
 
-  function rigaCache(m) {
+  function cacheRow(m) {
     if (!m.cache_read && !m.cache_write) return '';
     return ' · cache ' + fmtNum(m.cache_read) + ' letti / '
       + fmtNum(m.cache_write) + ' scritti';
@@ -83,10 +83,10 @@
     var unit = provider === 'ponte' ? 'turni' : 'richieste';
     return '<div class="usage-model-row">'
       + '<div class="umr-top"><span class="umr-nome">' + escHtml(m.model) + '</span>'
-      + costoDiRiga(m) + '</div>'
+      + rowCost(m) + '</div>'
       + '<div class="umr-meta">' + m.requests + ' ' + unit + ' · '
       + fmtNum(m.token_in) + ' IN · ' + fmtNum(m.token_out) + ' OUT'
-      + rigaCache(m) + '</div>'
+      + cacheRow(m) + '</div>'
       + '<div class="umr-foot">' + when + refusals + '</div>'
       + '</div>';
   }
@@ -215,7 +215,7 @@
     Order.forEach(function(p) { if (labels[p]) present.push(p); });
 
     var giorni = (storia.days || []).slice(-state.giorni);
-    var conCosto = present.filter(function(p) { return p !== 'ponte'; });
+    var withCost = present.filter(function(p) { return p !== 'ponte'; });
     var outside = present.indexOf('ponte') >= 0
       ? '<p class="hint">L\'abbonamento non compare qui: non ha un costo da '
         + 'impilare. I suoi turni sono nel grafico sotto.</p>'
@@ -227,9 +227,9 @@
       + (state.giorni === 7 ? ' attivo' : '') + '" id="usage-7">7 giorni</button>'
       + '<button class="btn btn-ghost' + (state.giorni === 30 ? ' attivo' : '')
       + '" id="usage-30">30 giorni</button></div></div>'
-      + svgBarre(giorni, conCosto, 'cost_eur', 'Costo al giorno per provider')
-      + legend(conCosto, labels) + outside
-      + equivalentTable(giorni, conCosto, 'cost_eur', labels)
+      + svgBarre(giorni, withCost, 'cost_eur', 'Costo al giorno per provider')
+      + legend(withCost, labels) + outside
+      + equivalentTable(giorni, withCost, 'cost_eur', labels)
       + '<h3>Richieste al giorno</h3>'
       + svgBarre(giorni, present, 'requests', 'Richieste al giorno per provider')
       + legend(present, labels)

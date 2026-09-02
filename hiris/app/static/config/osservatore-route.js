@@ -206,7 +206,7 @@ window.HirisOsservatoreRoute = (function () {
 
   /* --------------------------------------------------------- «cosa sto guardando» */
 
-  function badgeProvenienza(provenance) {
+  function provenanceBadge(provenance) {
     /* Oggi e' sempre "pavimento": la mappa resta comunque a tre voci (la
        spec ne prevede tre, §7) perche' una voce "obiettivo" o "analista" che
        arrivasse domani non deve leggersi come "pavimento" per un buco qui.
@@ -225,7 +225,7 @@ window.HirisOsservatoreRoute = (function () {
     return { cls: 'badge-warn', testo: provenance || 'provenienza sconosciuta' };
   }
 
-  function raggruppaPerGamba(voci) {
+  function groupByAspect(voci) {
     var groups = {};
     voci.forEach(function (v) {
       var g = v.gamba || '(senza gamba)';
@@ -255,7 +255,7 @@ window.HirisOsservatoreRoute = (function () {
       li.style.cssText = 'margin-bottom:6px;font-size:var(--fs-13);overflow-wrap:anywhere;' +
         'display:flex;align-items:center;gap:8px;flex-wrap:wrap';
       li.appendChild(el('span', 'text-mono', v.soggetto));
-      var b = badgeProvenienza(v.provenienza);
+      var b = provenanceBadge(v.provenienza);
       li.appendChild(el('span', 'agent-badge ' + b.cls, b.testo));
       ul.appendChild(li);
     });
@@ -263,7 +263,7 @@ window.HirisOsservatoreRoute = (function () {
     body.appendChild(det);
   }
 
-  function rendiOsservate(body, osservate) {
+  function renderWatching(body, osservate) {
     if (!osservate.length) {
       line(body,
         'Non sto guardando ancora niente. Se HIRIS è appena partito e' +
@@ -271,7 +271,7 @@ window.HirisOsservatoreRoute = (function () {
         TONE_CALM);
       return;
     }
-    raggruppaPerGamba(osservate).forEach(function (g) { renderAspectGroup(body, g); });
+    groupByAspect(osservate).forEach(function (g) { renderAspectGroup(body, g); });
   }
 
   /* Bottone «Riprova» (rilievo 4): era l'unica pagina di lettura senza,
@@ -287,7 +287,7 @@ window.HirisOsservatoreRoute = (function () {
     body.appendChild(retry);
   }
 
-  function rendiOsservateErrore(body, status, reload) {
+  function renderWatchingError(body, status, reload) {
     if (status === 503) {
       line(body,
         'L’osservatore non è disponibile: HIRIS non sta guardando niente in questo momento. ' +
@@ -318,13 +318,13 @@ window.HirisOsservatoreRoute = (function () {
 
   /* Date sempre in gg/mm/aaaa nel testo (rilievo 5): `giornoIso` arriva dal
      valore di `<input type=date>`, sempre `AAAA-MM-GG` per specifica HTML. */
-  function ggMmAaaa(giornoIso) {
-    var parts = giornoIso.split('-');
-    if (parts.length !== 3) return giornoIso;
+  function ggMmAaaa(isoDay) {
+    var parts = isoDay.split('-');
+    if (parts.length !== 3) return isoDay;
     return parts[2] + '/' + parts[1] + '/' + parts[0];
   }
 
-  function fmtOrario(ts) {
+  function fmtTime(ts) {
     if (ts == null) return null;
     var d = new Date(ts * 1000);
     return pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + ' ' +
@@ -332,8 +332,8 @@ window.HirisOsservatoreRoute = (function () {
   }
 
   function period(o) {
-    var start = fmtOrario(o.inizio_ts);
-    var fine = fmtOrario(o.fine_ts);
+    var start = fmtTime(o.inizio_ts);
+    var fine = fmtTime(o.fine_ts);
     /* «in corso a fine giornata», non «ancora in corso» (cancello-rilascio-
        brief.md, punto 2): l'aggregazione e' per giornata, e un oggetto senza
        fine non e' un oggetto che questo istante sa ancora essere aperto --
@@ -383,7 +383,7 @@ window.HirisOsservatoreRoute = (function () {
      differenza fra un dubbio e una caccia. Stessi due stili di badge gia'
      usati da `badgeProvenienza` (`badge-off` per l'autorevole, `badge-warn`
      per l'arricchimento) -- non un componente nuovo. */
-  function badgeProvenienzaDirezione(provenance) {
+  function provenanceDirectionBadge(provenance) {
     if (provenance === 'dichiarata') {
       return { cls: 'badge-off', testo: 'Dichiarata — dalla dashboard Energia' };
     }
@@ -481,7 +481,7 @@ window.HirisOsservatoreRoute = (function () {
 
   /* Una quota 0..1 (`_quota`, 3 decimali nel backend) -> percentuale con un
      decimale e virgola italiana: "71,2%". */
-  function fmtPercento(v) {
+  function fmtPercent(v) {
     if (v == null) return null;
     return (v * 100).toLocaleString('it-IT', { maximumFractionDigits: 1 }) + '%';
   }
@@ -506,19 +506,19 @@ window.HirisOsservatoreRoute = (function () {
      punto, derivando sia l'ora (piazzamento) sia il testo (etichetta) dalla
      stessa `Date` -- il secondo `oraLocaleDalPunto` non serve piu' ed e'
      stato tolto (nessun doppione morto in giro). */
-  function dataLocaleDalPunto(iso) {
+  function localDateFromPoint(iso) {
     if (!iso) return null;
     var d = new Date(iso);
     return isNaN(d.getTime()) ? null : d;
   }
 
-  function formattaOraDaData(d) {
+  function formatHourFromDate(d) {
     return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
   }
 
-  function fmtOraIso(iso) {
-    var d = dataLocaleDalPunto(iso);
-    return d ? formattaOraDaData(d) : null;
+  function fmtIsoHour(iso) {
+    var d = localDateFromPoint(iso);
+    return d ? formatHourFromDate(d) : null;
   }
 
   /* Punto 1 del brief, "in ordine di importanza": la riga che risponde a
@@ -548,7 +548,7 @@ window.HirisOsservatoreRoute = (function () {
       // gia' usato dagli episodi di energia -- niente badge quando non si
       // conosce (mai una "sconosciuta" travestita da dato).
       if (t.provenienza) {
-        var badge = badgeProvenienzaDirezione(t.provenienza);
+        var badge = provenanceDirectionBadge(t.provenienza);
         var delta = el('div', 'st-delta');
         delta.appendChild(el('span', 'agent-badge ' + badge.cls, badge.testo));
         tile.appendChild(delta);
@@ -606,9 +606,9 @@ window.HirisOsservatoreRoute = (function () {
      qualunque ora. Non si corregge qui: la cura vera e' che la rotta mandi
      il fuso della CASA e che questa pagina lo usi OVUNQUE (qui e in
      `fmtOraIso` sopra) al posto di quello del browser -- una fetta a se'. */
-  var ORE_DEL_GIORNO = 24;
+  var HOURS_IN_DAY = 24;
 
-  function renderBalanceCurve(box, form, haiMomenti) {
+  function renderBalanceCurve(box, form, hasMoments) {
     if (!form) return;
     var series = [];
     if (form.produzione) {
@@ -618,8 +618,8 @@ window.HirisOsservatoreRoute = (function () {
       series.push({ punti: form.prelievo, colore: 'var(--bilancio-prelievo)', etichetta: DIRECTION_LABEL.prelievo });
     }
     if (!series.length) return;
-    var haPunti = series.some(function (s) { return s.punti && s.punti.length; });
-    if (!haPunti) return;
+    var hasPoints = series.some(function (s) { return s.punti && s.punti.length; });
+    if (!hasPoints) return;
 
     var maximum = 0;
     series.forEach(function (s) {
@@ -628,7 +628,7 @@ window.HirisOsservatoreRoute = (function () {
     if (maximum <= 0) maximum = 0.000001; // niente divisione per zero: un giorno tutto a zero resta piatto, non rotto
 
     var L = 640, A = 140, base = A - 20, left = 4;
-    var passo = (L - left * 2) / ORE_DEL_GIORNO;
+    var passo = (L - left * 2) / HOURS_IN_DAY;
     var barWidth = Math.max(1, (passo - 2) / series.length);
 
     var svg = svgEl('svg', {
@@ -646,7 +646,7 @@ window.HirisOsservatoreRoute = (function () {
     // vero (un'ora senza barra e' un'ora senza dato), e la frase sui
     // momenti compare SOLO quando i momenti ci sono.
     descrizione.textContent = 'Barre allineate all’ora del giorno: un’ora senza barra è un’ora senza dato, non uno zero.' +
-      (haiMomenti ? ' Il picco e gli altri momenti notevoli sono qui sotto, con la loro ora vera.' : '');
+      (hasMoments ? ' Il picco e gli altri momenti notevoli sono qui sotto, con la loro ora vera.' : '');
     svg.appendChild(descrizione);
 
     series.forEach(function (s, si) {
@@ -656,7 +656,7 @@ window.HirisOsservatoreRoute = (function () {
         // Un solo parsing per punto (punto 4 del brief-dodicesima): il
         // piazzamento (`ora`) e l'etichetta (`formattaOraDaData`) derivano
         // dalla STESSA `Date`, non da due `new Date(p.ora)` separate.
-        var d = dataLocaleDalPunto(p.ora);
+        var d = localDateFromPoint(p.ora);
         if (d == null) return; // mai un'ora inventata: niente ora leggibile, niente barra
         var hour = d.getHours();
         var h = (v / maximum) * (base - 6);
@@ -668,7 +668,7 @@ window.HirisOsservatoreRoute = (function () {
           fill: s.colore
         });
         var barTitle = document.createElementNS(SVG_NS, 'title');
-        barTitle.textContent = s.etichetta + ' — ' + formattaOraDaData(d) + ': ' + fmtKwh(v);
+        barTitle.textContent = s.etichetta + ' — ' + formatHourFromDate(d) + ': ' + fmtKwh(v);
         rect.appendChild(barTitle);
         svg.appendChild(rect);
       });
@@ -708,23 +708,23 @@ window.HirisOsservatoreRoute = (function () {
     var voci = [];
     if (!moments) return voci;
     if (moments.prima_ora_produzione) {
-      voci.push(['Prima ora di produzione', fmtOraIso(moments.prima_ora_produzione)]);
+      voci.push(['Prima ora di produzione', fmtIsoHour(moments.prima_ora_produzione)]);
     }
     if (moments.ultima_ora_produzione) {
-      voci.push(['Ultima ora di produzione', fmtOraIso(moments.ultima_ora_produzione)]);
+      voci.push(['Ultima ora di produzione', fmtIsoHour(moments.ultima_ora_produzione)]);
     }
     if (moments.picco_produzione) {
       voci.push(['Picco di produzione',
-        fmtKwh(moments.picco_produzione.valore) + ' alle ' + fmtOraIso(moments.picco_produzione.ora)]);
+        fmtKwh(moments.picco_produzione.valore) + ' alle ' + fmtIsoHour(moments.picco_produzione.ora)]);
     }
     if (moments.fine_scarica_batteria) {
-      voci.push(['Fine scarica della batteria', fmtOraIso(moments.fine_scarica_batteria)]);
+      voci.push(['Fine scarica della batteria', fmtIsoHour(moments.fine_scarica_batteria)]);
     }
     if (moments.quota_autoconsumo != null) {
-      voci.push(['Quota di autoconsumo', fmtPercento(moments.quota_autoconsumo)]);
+      voci.push(['Quota di autoconsumo', fmtPercent(moments.quota_autoconsumo)]);
     }
     if (moments.quota_autosufficienza != null) {
-      voci.push(['Quota di autosufficienza', fmtPercento(moments.quota_autosufficienza)]);
+      voci.push(['Quota di autosufficienza', fmtPercent(moments.quota_autosufficienza)]);
     }
     return voci;
   }
@@ -838,8 +838,8 @@ window.HirisOsservatoreRoute = (function () {
     // energia la cui direzione non si conosce, che e' l'esito onesto, non
     // un guasto della resa.
     if (o.genere === 'energia' && o.corpo && o.corpo.direzione) {
-      var badgeDirezione = badgeProvenienzaDirezione(o.corpo.provenienza);
-      head.appendChild(el('span', 'agent-badge ' + badgeDirezione.cls, badgeDirezione.testo));
+      var directionBadge = provenanceDirectionBadge(o.corpo.provenienza);
+      head.appendChild(el('span', 'agent-badge ' + directionBadge.cls, directionBadge.testo));
     }
     // Identificatore: monospaziato, piccolo, attenuato -- il riferimento, non
     // il contenuto. `.text-mono`/`.field-hint` portano gia' `overflow-wrap:
@@ -898,17 +898,17 @@ window.HirisOsservatoreRoute = (function () {
 
   /* ------------------------------------------------------------------------ mount */
 
-  function caricaOsservate(body) {
+  function loadWatching(body) {
     clearEl(body);
     line(body, 'Caricamento…', TONE_CALM);
-    function reload() { return caricaOsservate(body); }
+    function reload() { return loadWatching(body); }
     return read('api/mind/watching').then(function (occurrence) {
       clearEl(body);
-      if (!occurrence.ok) { rendiOsservateErrore(body, occurrence.status, reload); return; }
-      rendiOsservate(body, occurrence.corpo.watching || []);
+      if (!occurrence.ok) { renderWatchingError(body, occurrence.status, reload); return; }
+      renderWatching(body, occurrence.corpo.watching || []);
     }, function () {
       clearEl(body);
-      rendiOsservateErrore(body, null, reload);
+      renderWatchingError(body, null, reload);
     });
   }
 
@@ -920,18 +920,18 @@ window.HirisOsservatoreRoute = (function () {
   var factsGeneration = 0;
 
   function loadFacts(body, day) {
-    var miaGenerazione = ++factsGeneration;
+    var myGeneration = ++factsGeneration;
     clearEl(body);
     line(body, 'Caricamento…', TONE_CALM);
     function reload() { return loadFacts(body, day); }
     var path = 'api/mind/facts' + (day ? '?day=' + encodeURIComponent(day) : '');
     return read(path).then(function (occurrence) {
-      if (miaGenerazione !== factsGeneration) return; // superata da un cambio di giorno più recente
+      if (myGeneration !== factsGeneration) return; // superata da un cambio di giorno più recente
       clearEl(body);
       if (!occurrence.ok) { renderFactsError(body, occurrence.status, reload); return; }
       renderFacts(body, occurrence.corpo.facts || [], day);
     }, function () {
-      if (miaGenerazione !== factsGeneration) return;
+      if (myGeneration !== factsGeneration) return;
       clearEl(body);
       renderFactsError(body, null, reload);
     });
@@ -950,7 +950,7 @@ window.HirisOsservatoreRoute = (function () {
     /* Rilievo 6b: la spiegazione di «Di serie» (prima ripetuta identica su
        ogni riga come "Pavimento — non si toglie", ~88 volte) vive qui, dove
        c'e' gia' spazio -- una volta sola, non su ogni voce. */
-    var corpoOsservate = section(outlet, '01', 'Cosa sto guardando',
+    var watchingBody = section(outlet, '01', 'Cosa sto guardando',
       'Ogni voce dice da dove viene. Le voci «di serie» sono ciò che HIRIS osserva sempre, comunque, ' +
       'per capire se la casa è confortevole, efficiente e sicura, e non si tolgono; quelle aggiunte ' +
       'dall’obiettivo, quando arriveranno, si potranno togliere.');
@@ -977,44 +977,44 @@ window.HirisOsservatoreRoute = (function () {
     var controls = el('div');
     controls.style.cssText = 'display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:12px';
     var dayField = el('div');
-    var labelGiorno = el('label', 'field-hint', 'Giorno');
-    var inputGiorno = el('input');
-    inputGiorno.type = 'date';
+    var dayLabel = el('label', 'field-hint', 'Giorno');
+    var dayInput = el('input');
+    dayInput.type = 'date';
     // Rilievo 3: l'etichetta era muta -- nessun for/id -- e per un lettore
     // di schermo il campo era una data anonima.
-    inputGiorno.id = 'osservatore-giorno';
-    labelGiorno.setAttribute('for', inputGiorno.id);
-    dayField.appendChild(labelGiorno);
-    inputGiorno.value = ieriLocale();
-    inputGiorno.style.cssText = 'display:block;padding:6px 8px;border-radius:8px;min-height:38px;box-sizing:border-box';
-    dayField.appendChild(inputGiorno);
+    dayInput.id = 'osservatore-giorno';
+    dayLabel.setAttribute('for', dayInput.id);
+    dayField.appendChild(dayLabel);
+    dayInput.value = ieriLocale();
+    dayInput.style.cssText = 'display:block;padding:6px 8px;border-radius:8px;min-height:38px;box-sizing:border-box';
+    dayField.appendChild(dayInput);
     controls.appendChild(dayField);
 
-    var btnRecenti = el('button', 'btn btn-ghost btn-sm', 'Vedi i più recenti, senza filtro');
-    btnRecenti.type = 'button';
-    controls.appendChild(btnRecenti);
+    var recentBtn = el('button', 'btn btn-ghost btn-sm', 'Vedi i più recenti, senza filtro');
+    recentBtn.type = 'button';
+    controls.appendChild(recentBtn);
     card2.appendChild(controls);
 
     var factsBody = el('div', 'sc-body');
     card2.appendChild(factsBody);
     outlet.appendChild(card2);
 
-    inputGiorno.addEventListener('change', function () {
-      loadFacts(factsBody, inputGiorno.value || null);
+    dayInput.addEventListener('change', function () {
+      loadFacts(factsBody, dayInput.value || null);
     });
-    btnRecenti.addEventListener('click', function () {
-      inputGiorno.value = '';
+    recentBtn.addEventListener('click', function () {
+      dayInput.value = '';
       loadFacts(factsBody, null);
     });
 
-    caricaOsservate(corpoOsservate);
-    loadFacts(factsBody, inputGiorno.value);
+    loadWatching(watchingBody);
+    loadFacts(factsBody, dayInput.value);
   }
 
   return {
     mount: mount,
     /* Seam di test: la resa e' pura DOM + dati, va pinnata senza passare da fetch. */
-    _rendiOsservate: rendiOsservate,
+    _rendiOsservate: renderWatching,
     _rendiOggetti: renderFacts
   };
 })();

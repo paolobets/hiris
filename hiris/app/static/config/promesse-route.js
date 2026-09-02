@@ -111,20 +111,20 @@ window.HirisPromesseRoute = (function () {
      `new Date(ts*1000)` legge gia' quello del browser di chi guarda. ──── */
   function pad2(n) { return n < 10 ? '0' + n : String(n); }
 
-  function fmtOraAssoluta(d) {
+  function fmtAbsoluteTime(d) {
     return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
   }
 
-  function eOggi(d) {
+  function isToday(d) {
     var hour = new Date();
     return d.getFullYear() === hour.getFullYear() && d.getMonth() === hour.getMonth() &&
       d.getDate() === hour.getDate();
   }
 
-  function fmtAssoluto(ts) {
+  function fmtAbsolute(ts) {
     var d = new Date(ts * 1000);
-    var hour = fmtOraAssoluta(d);
-    return eOggi(d) ? ('oggi alle ' + hour) : (pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + ', ' + hour);
+    var hour = fmtAbsoluteTime(d);
+    return isToday(d) ? ('oggi alle ' + hour) : (pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + ', ' + hour);
   }
 
   /* Intl.RelativeTimeFormat, API nativa (nessuna libreria, nessun build
@@ -137,7 +137,7 @@ window.HirisPromesseRoute = (function () {
   var RTF = (typeof Intl !== 'undefined' && Intl.RelativeTimeFormat)
     ? new Intl.RelativeTimeFormat('it', { numeric: 'auto' }) : null;
 
-  function fmtRelativo(ts) {
+  function fmtRelative(ts) {
     if (!RTF) return '';
     var diffS = ts - (Date.now() / 1000);
     if (Math.abs(diffS) < 3600) return RTF.format(Math.round(diffS / 60), 'minute');
@@ -224,9 +224,9 @@ window.HirisPromesseRoute = (function () {
     var panel = el('div');
     panel.style.marginTop = '6px';
     panel.hidden = true;
-    var idPannello = 'esec-' + p.id;
-    panel.id = idPannello;
-    btn.setAttribute('aria-controls', idPannello);
+    var panelId = 'esec-' + p.id;
+    panel.id = panelId;
+    btn.setAttribute('aria-controls', panelId);
     var loaded = false;
 
     btn.addEventListener('click', function () {
@@ -284,7 +284,7 @@ window.HirisPromesseRoute = (function () {
       'display:flex;justify-content:space-between;align-items:flex-start;gap:var(--sp-3)';
 
     var body = el('div');
-    body.appendChild(el('div', 'field-hint', fmtAssoluto(p.quando_ts) + ' · ' + fmtRelativo(p.quando_ts)));
+    body.appendChild(el('div', 'field-hint', fmtAbsolute(p.quando_ts) + ' · ' + fmtRelative(p.quando_ts)));
     var phrase = el('p', null, p.frase);
     phrase.style.cssText = 'font-size:var(--fs-15);font-weight:500;margin:2px 0 0';
     body.appendChild(phrase);
@@ -333,7 +333,7 @@ window.HirisPromesseRoute = (function () {
     var line = el('div');
     line.style.cssText = 'border-top:1px solid var(--border);padding:10px 0';
 
-    line.appendChild(el('div', 'field-hint', fmtAssoluto(p.quando_ts)));
+    line.appendChild(el('div', 'field-hint', fmtAbsolute(p.quando_ts)));
     var phrase = el('p', null, p.frase);
     phrase.style.cssText = 'font-size:var(--fs-15);font-weight:500;margin:2px 0 8px';
     line.appendChild(phrase);
@@ -359,8 +359,8 @@ window.HirisPromesseRoute = (function () {
       var answer = el('p', null, p.testo);
       answer.style.cssText = 'font-size:var(--fs-14);color:var(--text);margin-top:4px';
       group.appendChild(answer);
-      var basatoSu = formatSnapshot(p.istantanea);
-      if (basatoSu) group.appendChild(el('div', 'field-hint', 'Basato su: ' + basatoSu));
+      var basedOn = formatSnapshot(p.istantanea);
+      if (basedOn) group.appendChild(el('div', 'field-hint', 'Basato su: ' + basedOn));
       line.appendChild(group);
     }
 
@@ -418,8 +418,8 @@ window.HirisPromesseRoute = (function () {
   function load() {
     var pendingBody = byId('promesse-sospeso-body');
     var historyBody = byId('promesse-storico-body');
-    var sospesoDesc = byId('promesse-sospeso-desc');
-    var storicoDesc = byId('promesse-storico-desc');
+    var pendingDesc = byId('promesse-sospeso-desc');
+    var historyDesc = byId('promesse-storico-desc');
     if (!pendingBody || !historyBody) return;
     clearEl(pendingBody); pendingBody.appendChild(el('p', 'field-hint', 'Caricamento…'));
     clearEl(historyBody); historyBody.appendChild(el('p', 'field-hint', 'Caricamento…'));
@@ -430,8 +430,8 @@ window.HirisPromesseRoute = (function () {
       var all = data.agenda || [];
       var pending = all.filter(function (p) { return PENDING_STATES.indexOf(p.stato) !== -1; });
       var history = all.filter(function (p) { return PENDING_STATES.indexOf(p.stato) === -1; });
-      renderPending(pendingBody, sospesoDesc, pending, load);
-      renderHistory(historyBody, storicoDesc, history);
+      renderPending(pendingBody, pendingDesc, pending, load);
+      renderHistory(historyBody, historyDesc, history);
     }).catch(function (err) {
       console.error('[promesse] caricamento fallito', err);
       renderError(pendingBody, historyBody, load);
@@ -443,7 +443,7 @@ window.HirisPromesseRoute = (function () {
      `#promesse-storico-body` ricevono `gap:0` da hiris-config.css, stesso
      trattamento di `#catena-body`/`#fuori-body`: le righe si separano con
      un `border-top` proprio (guida §2), non col gap del flex. ────────── */
-  function buildSectionShell(num, idPrefix, sezioneAttr, title) {
+  function buildSectionShell(num, idPrefix, sectionAttr, title) {
     var section = el('section', 'section-card');
     var head = el('div', 'sc-header');
     head.appendChild(el('span', 'sc-num', num));
@@ -454,7 +454,7 @@ window.HirisPromesseRoute = (function () {
     section.appendChild(desc);
     var body = el('div', 'sc-body');
     body.id = 'promesse-' + idPrefix + '-body';
-    body.setAttribute('data-sezione', sezioneAttr);
+    body.setAttribute('data-sezione', sectionAttr);
     body.appendChild(el('p', 'field-hint', 'Caricamento…'));
     section.appendChild(body);
     return section;

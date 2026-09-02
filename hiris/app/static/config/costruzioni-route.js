@@ -132,7 +132,7 @@ window.HirisCostruzioni = (function () {
 
   var OPEN_STATES = ['in_attesa', 'in_corso'];
 
-  var STATO_LABEL = {
+  var STATE_LABEL = {
     in_attesa: 'In attesa',
     in_corso: 'In corso',
     applicata: 'Applicata',
@@ -143,7 +143,7 @@ window.HirisCostruzioni = (function () {
     rifiutata: 'Non riuscita',
     scaduta: 'Scaduta'
   };
-  var STATO_BADGE = {
+  var STATE_BADGE = {
     in_attesa: 'badge-off',
     in_corso: 'badge-on',
     applicata: 'badge-on',
@@ -217,7 +217,7 @@ window.HirisCostruzioni = (function () {
     return c.gesto !== 'crea' && !!c.prima;
   }
 
-  function badgeGesto(c) {
+  function operationBadge(c) {
     if (c.gesto === 'cancella') return { cls: 'badge-err', testo: 'Cancellata' };
     if (c.gesto === 'modifica') return { cls: 'badge-warn', testo: 'Modificata' };
     return { cls: 'badge-off', testo: 'Creata' };
@@ -225,7 +225,7 @@ window.HirisCostruzioni = (function () {
 
   /* La `frase` prefissata "ripristino di " non e' detta dall'utente (scarto
      2 del commento di testa): e' generata dal server. */
-  function eRipristino(c) {
+  function isRestore(c) {
     return typeof c.frase === 'string' && c.frase.indexOf('ripristino di ') === 0;
   }
 
@@ -321,11 +321,11 @@ window.HirisCostruzioni = (function () {
     var btn = el('button', 'btn btn-ghost btn-sm', closedText);
     btn.type = 'button';
     btn.setAttribute('aria-expanded', 'false');
-    var idPannello = 'costruzione-dettagli-' + c.id;
+    var panelId = 'costruzione-dettagli-' + c.id;
     var panel = detailsPanel(c);
-    panel.id = idPannello;
+    panel.id = panelId;
     panel.hidden = true;
-    btn.setAttribute('aria-controls', idPannello);
+    btn.setAttribute('aria-controls', panelId);
 
     btn.addEventListener('click', function () {
       var open = btn.getAttribute('aria-expanded') === 'true';
@@ -398,10 +398,10 @@ window.HirisCostruzioni = (function () {
     var head = el('div');
     head.style.cssText = 'display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap';
     head.appendChild(el('span', null, domainName(c) + ' «' + objectName(c) + '»'));
-    var bGesto = badgeGesto(c);
-    head.appendChild(el('span', 'agent-badge ' + bGesto.cls, bGesto.testo));
-    head.appendChild(el('span', 'agent-badge ' + (STATO_BADGE[c.stato] || 'badge-off'),
-      STATO_LABEL[c.stato] || c.stato));
+    var bOperation = operationBadge(c);
+    head.appendChild(el('span', 'agent-badge ' + bOperation.cls, bOperation.testo));
+    head.appendChild(el('span', 'agent-badge ' + (STATE_BADGE[c.stato] || 'badge-off'),
+      STATE_LABEL[c.stato] || c.stato));
     box.appendChild(head);
 
     if (eraGiaLi(c)) {
@@ -410,7 +410,7 @@ window.HirisCostruzioni = (function () {
 
     if (c.frase) {
       var phrase;
-      if (eRipristino(c)) {
+      if (isRestore(c)) {
         phrase = el('p', 'field-hint', 'Ripristino di una versione precedente');
       } else {
         phrase = el('p', 'field-hint', '«' + c.frase + '»');
@@ -427,9 +427,9 @@ window.HirisCostruzioni = (function () {
     }
 
     (c.helper || []).forEach(function (h) {
-      var nomeHelper = (h.dati && h.dati.name) || '(senza nome)';
+      var helperName = (h.dati && h.dati.name) || '(senza nome)';
       box.appendChild(el('div', 'field-hint',
-        'Nasce anche: ' + (h.dominio || '') + ' «' + nomeHelper + '»'));
+        'Nasce anche: ' + (h.dominio || '') + ' «' + helperName + '»'));
     });
 
     if (c.prima || c.dopo) box.appendChild(detailsDisclosure(c));
@@ -452,11 +452,11 @@ window.HirisCostruzioni = (function () {
        di recupero, la guarigione e' gia' lato server). */
     if (c.stato === 'in_attesa') {
       var pendingGroup = [];
-      var bConferma = actionButton('confirm', 'Approva', 'btn btn-primary', c, statusEl, reload, pendingGroup);
-      var bRifiuta = actionButton('reject', 'Rifiuta', 'btn', c, statusEl, reload, pendingGroup);
-      pendingGroup.push(bConferma, bRifiuta);
-      actions.appendChild(bConferma);
-      actions.appendChild(bRifiuta);
+      var bConfirm = actionButton('confirm', 'Approva', 'btn btn-primary', c, statusEl, reload, pendingGroup);
+      var bReject = actionButton('reject', 'Rifiuta', 'btn', c, statusEl, reload, pendingGroup);
+      pendingGroup.push(bConfirm, bReject);
+      actions.appendChild(bConfirm);
+      actions.appendChild(bReject);
     }
     if (c.stato === 'applicata') {
       actions.appendChild(actionButton('restore', 'Rimetti com’era',

@@ -356,10 +356,10 @@ window.HirisAlberoRoute = (function () {
       /* Presenti e marcate, MAI nascoste: questo titolo compare SEMPRE che
          ce ne sia almeno una, anche se `attive` è vuoto -- un'area con tre
          luci disabilitate e zero attive non deve leggersi come vuota. */
-      var titoloDis = el('div', null,
+      var disabledTitle = el('div', null,
         disabled.length === 1 ? 'Entità disabilitata' : 'Entità disabilitate (' + disabled.length + ')');
-      titoloDis.style.cssText = 'font-weight:500;margin-top:8px;font-size:var(--fs-13)';
-      body.appendChild(titoloDis);
+      disabledTitle.style.cssText = 'font-weight:500;margin-top:8px;font-size:var(--fs-13)';
+      body.appendChild(disabledTitle);
       var ulD = el('ul');
       ulD.style.cssText = 'margin:4px 0;padding-left:18px';
       disabled.forEach(function (e) { entityLine(ulD, e, true, labelMap); });
@@ -370,10 +370,10 @@ window.HirisAlberoRoute = (function () {
          motivo: "questa luce c'è ma l'hai nascosta" è informazione, non
          un'assenza -- questa pagina audita cosa HIRIS sa, non filtra cosa
          mostrare come farebbe una risposta in chat. */
-      var titoloNas = el('div', null,
+      var hiddenTitle = el('div', null,
         hidden.length === 1 ? 'Entità nascosta' : 'Entità nascoste (' + hidden.length + ')');
-      titoloNas.style.cssText = 'font-weight:500;margin-top:8px;font-size:var(--fs-13)';
-      body.appendChild(titoloNas);
+      hiddenTitle.style.cssText = 'font-weight:500;margin-top:8px;font-size:var(--fs-13)';
+      body.appendChild(hiddenTitle);
       var ulN = el('ul');
       ulN.style.cssText = 'margin:4px 0;padding-left:18px';
       hidden.forEach(function (e) { entityLine(ulN, e, false, labelMap); });

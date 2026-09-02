@@ -199,8 +199,8 @@
          la risposta arriva o la connessione cade. Dire li "fra poco smetto di
          aspettare" era una promessa che nessuno avrebbe mantenuto, scritta
          nell'istante in cui l'utente decide se abbandonare. */
-  var ETICHETTA_QUASI_RESA = 'Ancora niente: fra poco smetto di aspettare';
-  var ETICHETTA_SENZA_SCADENZA = 'Ancora niente. Continuo ad aspettare: su questo turno non ho un tempo massimo.';
+  var ALMOST_GIVING_UP_LABEL = 'Ancora niente: fra poco smetto di aspettare';
+  var NO_DEADLINE_LABEL = 'Ancora niente. Continuo ad aspettare: su questo turno non ho un tempo massimo.';
 
   /* Le due frasi dei due minuti dicono cose OPPOSTE su che fine fa il turno se
      l'utente se ne va, e la differenza non e' di stile: e' verificata sul
@@ -224,7 +224,7 @@
      silenzio una risposta vuota o tossica, e il job ha una scadenza sua
      (`BRIDGE_DEADLINE_MIN`). La cronologia raccoglie la risposta se la risposta
      c'e', ed e' esattamente quel che il messaggio dei cinque minuti dice gia. */
-  var SERVIZIO_AL_SICURO = 'Le risposte lunghe possono richiedere qualche minuto. Puoi anche chiudere: se arriva, la risposta finisce nella cronologia e la ritrovi qui.';
+  var SAFE_ON_SERVER_NOTICE = 'Le risposte lunghe possono richiedere qualche minuto. Puoi anche chiudere: se arriva, la risposta finisce nella cronologia e la ritrovi qui.';
 
   /* Tutte le attese vive, per poterle fermare anche quando la riga che le
      ospita viene buttata via senza passare da updateBubble(). */
@@ -253,16 +253,16 @@
      non ne tiene una copia da mantenere allineata. Due conseguenze, entrambe
      sul VERO: la frase dei due minuti dice che si puo' chiudere, e l'avviso di
      resa viene programmato -- perche' su questo percorso una resa c'e'. */
-  function attesaAlSicuroSulServer(row, scadenzaMs) {
+  function attesaAlSicuroSulServer(row, deadlineMs) {
     if (!row || !row._attesa) return;
     row._attesa.safeOnServer = true;
-    if (!scadenzaMs) return;
-    row._attesa.scadenza = scadenzaMs;
-    var fraQuanto = scadenzaMs - WAIT_THRESHOLDS.margineResa - (Date.now() - row._attesa.avvio);
+    if (!deadlineMs) return;
+    row._attesa.scadenza = deadlineMs;
+    var fraQuanto = deadlineMs - WAIT_THRESHOLDS.margineResa - (Date.now() - row._attesa.avvio);
     row._attesa.timeout.push(setTimeout(function () {
       if (!row._attesa) return;
       var label = row.querySelector('.tl-label');
-      if (label) label.textContent = ETICHETTA_QUASI_RESA;
+      if (label) label.textContent = ALMOST_GIVING_UP_LABEL;
     }, Math.max(0, fraQuanto)));
   }
 
@@ -332,7 +332,7 @@
       if (!row._attesa) return;
       var line = document.createElement('div');
       line.className = 'tl-servizio';
-      line.textContent = row._attesa.safeOnServer ? SERVIZIO_AL_SICURO : KEEP_OPEN_NOTICE;
+      line.textContent = row._attesa.safeOnServer ? SAFE_ON_SERVER_NOTICE : KEEP_OPEN_NOTICE;
       bubble.appendChild(line);
       state.els.messages.scrollTop = state.els.messages.scrollHeight;
     }, WAIT_THRESHOLDS.servizio));
@@ -345,7 +345,7 @@
        parla l'altro. */
     row._attesa.timeout.push(setTimeout(function () {
       if (!row._attesa || row._attesa.scadenza) return;
-      label.textContent = ETICHETTA_SENZA_SCADENZA;
+      label.textContent = NO_DEADLINE_LABEL;
     }, WAIT_THRESHOLDS.senzaScadenza));
 
     return row;

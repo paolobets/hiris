@@ -112,12 +112,12 @@ window.HirisDashboard = (function () {
      nasconderebbe dodici voci vere. Un tipo si dichiara non letto solo
      quando il suo file non si e' letto E il conto e' a zero: e' l'unico caso
      in cui «non c'e' niente» e «non ho guardato» sono indistinguibili. */
-  var FILE_PER_TIPO = { automazione: 'automations.yaml', script: 'scripts.yaml' };
+  var FILE_BY_TYPE = { automazione: 'automations.yaml', script: 'scripts.yaml' };
 
   function behaviorCounts(counts) {
     var loaded = counts || {};
     var occurrence = {};
-    Object.keys(FILE_PER_TIPO).forEach(function (type) {
+    Object.keys(FILE_BY_TYPE).forEach(function (type) {
       occurrence[type] = loaded[type] != null ? loaded[type] : 0;
     });
     /* Un tipo nuovo del backend deve comparire, non sparire: stessa regola
@@ -128,11 +128,11 @@ window.HirisDashboard = (function () {
     return occurrence;
   }
 
-  function behaviorUnavailable(fileNonLetti, counts) {
-    if (!fileNonLetti) return null;   // null = non si sa, diverso da nessuno
+  function behaviorUnavailable(unloadedFiles, counts) {
+    if (!unloadedFiles) return null;   // null = non si sa, diverso da nessuno
     var loaded = counts || {};
-    return Object.keys(FILE_PER_TIPO).filter(function (type) {
-      return Object.prototype.hasOwnProperty.call(fileNonLetti, FILE_PER_TIPO[type])
+    return Object.keys(FILE_BY_TYPE).filter(function (type) {
+      return Object.prototype.hasOwnProperty.call(unloadedFiles, FILE_BY_TYPE[type])
           && !loaded[type];
     });
   }
@@ -185,7 +185,7 @@ window.HirisDashboard = (function () {
   /* Il cuore della pagina: un campo a tre stati reso in tre modi diversi.
      `valore` null -> non si sa; vuoto -> si sa che non c'e' niente; pieno ->
      si nomina cio' che c'e'. */
-  function treStati(body, value, sentences, format) {
+  function threeStates(body, value, sentences, format) {
     if (value == null) {
       line(body, sentences.ignoto, TONE_UNKNOWN);
       return;
@@ -199,7 +199,7 @@ window.HirisDashboard = (function () {
     list(body, voci);
   }
 
-  function dizionarioAVoci(object) {
+  function dictToEntries(object) {
     return Object.keys(object).sort().map(function (k) {
       return k + ' — ' + object[k];
     });
@@ -224,7 +224,7 @@ window.HirisDashboard = (function () {
      È la stessa regola già applicata alle tessere dei conteggi, fatta scendere
      un livello più su: dove il dato non ha tre stati, il terzo stato lo porta
      la data. */
-  function soloSeLetta(loaded, value) {
+  function onlyIfLoaded(loaded, value) {
     return loaded == null ? null : value;
   }
 
@@ -254,7 +254,7 @@ window.HirisDashboard = (function () {
       tile(body, home_space.conteggi, NOMI_REGISTRI, unavailableRegisters(home_space.non_disponibili));
     }
 
-    treStati(body, soloSeLetta(home_space.anagrafe_letta_il, home_space.non_disponibili), {
+    threeStates(body, onlyIfLoaded(home_space.anagrafe_letta_il, home_space.non_disponibili), {
       ignoto: 'Non si sa quali registri abbiano risposto: HIRIS non ha potuto controllarlo.',
       vuoto: 'Tutti i registri hanno risposto.',
       pieno: 'Registri che non hanno risposto all’ultima lettura:'
@@ -262,14 +262,14 @@ window.HirisDashboard = (function () {
 
     /* Comportamento */
     var comp = home_space.comportamento || {};
-    var corpoComp = section(outlet, 'Ciò che la casa sa fare da sola',
+    var behaviorBody = section(outlet, 'Ciò che la casa sa fare da sola',
       'Automazioni e script: quanti ne conosce, e di quanti conosce solo il nome.');
 
     if (comp.letto_il == null) {
-      line(corpoComp, 'Il comportamento non è ancora stato letto.', TONE_UNKNOWN);
+      line(behaviorBody, 'Il comportamento non è ancora stato letto.', TONE_UNKNOWN);
     } else {
-      line(corpoComp, 'Letto il ' + comp.letto_il + '.', TONE_CALM);
-      tile(corpoComp, behaviorCounts(comp.conteggi), NOMI_COMPORTAMENTO,
+      line(behaviorBody, 'Letto il ' + comp.letto_il + '.', TONE_CALM);
+      tile(behaviorBody, behaviorCounts(comp.conteggi), NOMI_COMPORTAMENTO,
               behaviorUnavailable(comp.file_non_letti, comp.conteggi),
               'il file non è stato letto');
     }
@@ -278,13 +278,13 @@ window.HirisDashboard = (function () {
        cui conosce il nome e non il corpo. A null non diventa «0»: sarebbe
        l'affermazione «conosco tutto» su una lettura mai avvenuta -- e senza
        lettura il backend manda proprio `0`, non `null`. */
-    var senzaCorpo = soloSeLetta(comp.letto_il, comp.senza_corpo);
-    if (senzaCorpo == null) {
-      line(corpoComp, 'Non si sa di quante voci HIRIS conosca solo il nome: la lettura non è avvenuta.', TONE_UNKNOWN);
-    } else if (senzaCorpo === 0) {
-      line(corpoComp, 'Di ogni voce HIRIS conosce anche il corpo, non solo il nome.', TONE_CALM);
+    var withoutBody = onlyIfLoaded(comp.letto_il, comp.senza_corpo);
+    if (withoutBody == null) {
+      line(behaviorBody, 'Non si sa di quante voci HIRIS conosca solo il nome: la lettura non è avvenuta.', TONE_UNKNOWN);
+    } else if (withoutBody === 0) {
+      line(behaviorBody, 'Di ogni voce HIRIS conosce anche il corpo, non solo il nome.', TONE_CALM);
     } else {
-      line(corpoComp, 'Di ' + senzaCorpo + ' voci HIRIS conosce solo il nome, non il corpo.', TONE_PROBLEM);
+      line(behaviorBody, 'Di ' + withoutBody + ' voci HIRIS conosce solo il nome, non il corpo.', TONE_PROBLEM);
     }
 
     /* «L'ultima lettura non ha lasciato niente in sospeso» compariva una riga
@@ -293,17 +293,17 @@ window.HirisDashboard = (function () {
        voci che sono state lette -- id duplicati, script vuoti, voci
        malformate -- e ora lo dice invece di promettere che non c'e' rimasto
        niente in sospeso in tutta la lettura. */
-    treStati(corpoComp, soloSeLetta(comp.letto_il, comp.problemi), {
+    threeStates(behaviorBody, onlyIfLoaded(comp.letto_il, comp.problemi), {
       ignoto: 'Non si sa se nelle voci lette ci siano incongruenze: la lettura non è avvenuta.',
       vuoto: 'Nelle voci lette non c’è nessuna incongruenza.',
       pieno: 'Incongruenze nelle voci lette, che HIRIS non ha potuto sciogliere con certezza:'
     });
 
-    treStati(corpoComp, soloSeLetta(comp.letto_il, comp.file_non_letti), {
+    threeStates(behaviorBody, onlyIfLoaded(comp.letto_il, comp.file_non_letti), {
       ignoto: 'Non si sa quali file di automazioni e script siano stati letti.',
       vuoto: 'Tutti i file di automazioni e script sono stati letti.',
       pieno: 'File non letti, con la ragione:'
-    }, dizionarioAVoci);
+    }, dictToEntries);
 
     /* Plance */
     var dashboards = home_space.plance || {};
@@ -323,7 +323,7 @@ window.HirisDashboard = (function () {
       }
     }
 
-    treStati(dashboardsBody, soloSeLetta(dashboards.lette_il, dashboards.non_disponibili), {
+    threeStates(dashboardsBody, onlyIfLoaded(dashboards.lette_il, dashboards.non_disponibili), {
       ignoto: 'Non si sa quali plance abbiano risposto: HIRIS non ha potuto controllarlo.',
       vuoto: 'Tutte le plance hanno risposto.',
       pieno: 'Plance che l’ultima lettura non è riuscita a risolvere:'
@@ -399,9 +399,9 @@ window.HirisDashboard = (function () {
     intro.appendChild(el('p', 'page-subtitle',
       'La conoscenza della tua casa che HIRIS ha davanti quando gli parli: ciò che ha letto, e ciò che dichiara di ignorare.'));
     head.appendChild(intro);
-    var vaiAllaChat = el('a', 'btn', 'Vai alla chat');
-    vaiAllaChat.href = './';
-    head.appendChild(vaiAllaChat);
+    var goToChat = el('a', 'btn', 'Vai alla chat');
+    goToChat.href = './';
+    head.appendChild(goToChat);
     outlet.appendChild(head);
 
     var loading = el('p', 'page-subtitle', 'Caricamento…');
