@@ -254,7 +254,10 @@ def test_le_parole_del_pannello_non_vivono_nella_pagina():
     assert "data.provenienza" in corpo
     assert "data.spiegazione" in corpo
     assert "data.quando" in corpo
-    assert "casella.etichetta" in corpo
+    # Il PARAMETRO si chiama `checkbox` dal 02/09 (era `casella`: `box` era gia'
+    # legato nello stesso ambito). Il CAMPO che legge -- `etichetta` -- e' sul
+    # filo e non cambia: e' proprio quello che questo test sorveglia.
+    assert "checkbox.etichetta" in corpo
 
 
 def test_la_pagina_legge_l_elenco_dei_modelli_solo_all_apertura_del_pannello():
