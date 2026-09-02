@@ -51,7 +51,7 @@ from hiris.app import server
 def _estrai_costruzione_reasoning_queue():
     """Estrae dal sorgente VERO di `_on_startup` il blocco che costruisce
     `app["reasoning_queue"]` e lo esegue isolato -- stessa tecnica di
-    `tests/test_schedulatore_wiring.py`. L'estrazione parte DOPO l'import
+    `tests/test_keeper_wiring.py`. L'estrazione parte DOPO l'import
     locale (`from .reasoning.queue import ReasoningQueue`) apposta: se
     partisse prima, quell'import rimporterebbe la classe VERA e
     sovrascriverebbe lo spy passato come parametro."""

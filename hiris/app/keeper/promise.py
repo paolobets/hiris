@@ -28,7 +28,7 @@ STATES_CONCLUSI = ("mantenuta", "saltata", "disdetta", "fallita")
 # in silenzio dalla sezione azionabile della pagina, senza che niente
 # fallisse -- precisamente il rischio che la spec §12 nomina per la fetta
 # successiva (i lavori di sistema, «la specie e' un campo, non un `if`»).
-# `tests/js/promesse-route-vocabolario.test.mjs` lega questo insieme al
+# `tests/js/agenda-route-vocabulary.test.mjs` lega questo insieme al
 # JavaScript: e' quello che rende la divergenza NON silenziosa
 # (`scripts/doppioni.py`, `_costanti_gia_legate`).
 STATES_SOSPESO = ("in_attesa", "in_corso")

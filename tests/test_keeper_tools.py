@@ -11,7 +11,7 @@ from hiris.app.keeper.store import AgendaStore
 from hiris.app.proxy.entity_cache import _to_minimal
 from tests._contratti import assert_stessa_firma
 
-# NON un `pytestmark` di modulo: a differenza di `test_schedulatore_orologio.py`
+# NON un `pytestmark` di modulo: a differenza di `test_keeper_sweeper.py`
 # (dove ogni test e' async), qui un test e' sincrono
 # (`test_i_tre_strumenti_sono_nel_catalogo`, sul solo catalogo statico) e la
 # suite gira in modalita' `strict` di pytest-asyncio -- vedi la stessa nota in

@@ -167,7 +167,7 @@ async def test_al_riavvio_le_promesse_in_corso_vengono_risanate(promesse, porta_
     # `promessa.ORIZZONTE_S`): una data fissa lontana avrebbe fatto rifiutare
     # `create()` con "non tengo promesse oltre 30 giorni" invece di crearla --
     # lo stesso difetto di date-a-mano gia' documentato in
-    # `test_schedulatore_strumenti.py::_fra`.
+    # `test_keeper_tools.py::_fra`.
     ident = promesse.create({
         "specie": "fai", "frase": "x", "quando_ts": 1_000.0 + 3600.0,
         "chiamata": {"servizio": "light.turn_on", "bersaglio": {"entita": ["light.x"]}},
@@ -199,7 +199,7 @@ async def test_al_riavvio_le_promesse_in_corso_vengono_risanate(promesse, porta_
 # sarebbe verde e nessuna promessa scatterebbe mai in produzione -- nessun
 # test degli altri file se ne accorgerebbe, perche' il resto della catena e'
 # provato a pezzi separati (Sweeper per conto suo in
-# `test_schedulatore_orologio.py`, la registrazione del job qui sopra).
+# `test_keeper_sweeper.py`, la registrazione del job qui sopra).
 
 
 def _load_battito_closure():

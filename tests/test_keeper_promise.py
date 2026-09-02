@@ -136,7 +136,7 @@ def test_le_costanti_sono_quelle_dichiarate_nella_spec():
 # questo test la vede.
 #
 # Un test gemello, dal lato JavaScript, vive in
-# `tests/js/promesse-route-vocabolario.test.mjs` (stesso confronto, letto
+# `tests/js/agenda-route-vocabulary.test.mjs` (stesso confronto, letto
 # nell'altro verso): questo qui chiude specificamente il rilevatore
 # meccanico del progetto, che sa leggere solo prove Python che nominano la
 # costante e leggono un `.js`.

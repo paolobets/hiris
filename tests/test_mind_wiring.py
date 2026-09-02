@@ -155,7 +155,7 @@ def _estrai_funzione_innestata(nome_funzione: str) -> str:
     def <nome_funzione>...`), dalla sua riga di definizione alla riga vuota
     che la separa dal codice seguente (tipicamente `scheduler.add_job(...)`)
     -- la stessa tecnica di `tests/test_avvio_websocket.py` e
-    `tests/test_potatura_notturna.py`: si esegue il sorgente vero isolato,
+    `tests/test_nightly_pruning.py`: si esegue il sorgente vero isolato,
     non un suo doppione riscritto a mano che potrebbe divergere da cio' che
     gira davvero."""
     src = inspect.getsource(server._on_startup)

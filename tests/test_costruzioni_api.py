@@ -21,7 +21,7 @@ from tests.test_costruzione_officina import FintoHA
 
 # Fixture generica (annulla la valvola `HIRIS_ALLOW_NO_CSRF` che conftest.py
 # mette per l'intera suite), senza niente di specifico alle impostazioni:
-# stesso riuso cross-file gia' praticato da `test_promesse_api.py`.
+# stesso riuso cross-file gia' praticato da `test_agenda_api.py`.
 from tests.test_impostazioni_api import csrf_stretto  # noqa: F401
 
 
@@ -262,7 +262,7 @@ async def test_rifiutare_cio_che_non_e_piu_in_attesa_da_409():
 # loro, una futura esenzione aggiunta per errore (o una registrazione della
 # rotta prima del middleware) lascerebbe la suite verde. Stessa ragione,
 # stessa forma di
-# `tests/test_promesse_api.py::test_delete_senza_x_requested_with_e_403_e_non_disdice`.
+# `tests/test_agenda_api.py::test_delete_senza_x_requested_with_e_403_e_non_disdice`.
 # ---------------------------------------------------------------------------
 
 ADESSO_HTTP = 1_756_100_000.0
