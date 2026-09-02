@@ -866,3 +866,42 @@ test('clearConversation: se la DELETE fallisce lato server, i messaggi NON spari
   assert.ok(document.querySelector('.msg-row.user'),
     'la UI non deve fingere di aver cancellato se il server non lo ha fatto');
 });
+
+/* ── La proprieta' cieca `alSicuro`: il test viene PRIMA della rinomina ─────
+ *
+ * `row._attesa.alSicuro` e' scritta in un posto (`attesaAlSicuroSulServer`) e
+ * letta in un altro (la riga di servizio, dopo la soglia). Ogni sua lettura sta
+ * in posizione di verita', ed e' la forma che la misura del 30/08 ha trovato
+ * cieca: rinominata da un lato solo, la lettura orfana da' `undefined`,
+ * `undefined` e' falso come il difetto `false`, e la pagina mostra l'avviso
+ * SBAGLIATO senza che niente lanci. Questo test guarda QUALE dei due testi
+ * compare, che e' l'unica differenza osservabile. */
+test('la riga di servizio dice «puoi chiudere» solo quando il turno e\' davvero al sicuro sul server', async (t) => {
+  const { window } = setupChat(t);
+  const soglie = window.HirisChatMessages.SOGLIE_ATTESA;
+  const originale = soglie.servizio;
+  soglie.servizio = 30;
+  try {
+    /* 1. senza `attesaAlSicuroSulServer`: la pagina deve chiedere di NON chiudere */
+    const riga = window.HirisChatMessages.showThinking();
+    await tick(120);
+    const avvisoA = riga.querySelector('.tl-servizio');
+    assert.ok(avvisoA, 'dopo la soglia la riga di servizio deve esserci');
+    assert.match(avvisoA.textContent, /Tieni aperta questa pagina/,
+      'senza il ponte il turno muore chiudendo la pagina, e la riga deve dirlo');
+    window.HirisChatMessages.fermaTutteLeAttese();
+
+    /* 2. con `attesaAlSicuroSulServer`: la pagina deve dire che si puo' chiudere */
+    const riga2 = window.HirisChatMessages.showThinking();
+    window.HirisChatMessages.attesaAlSicuroSulServer(riga2, 0);
+    await tick(120);
+    const avvisoB = riga2.querySelector('.tl-servizio');
+    assert.ok(avvisoB, 'la riga di servizio deve comparire anche sul percorso del ponte');
+    assert.match(avvisoB.textContent, /Puoi anche chiudere/,
+      'il turno e\' al sicuro sul server: dirgli di tenere aperto sarebbe falso');
+    window.HirisChatMessages.fermaTutteLeAttese();
+  } finally {
+    soglie.servizio = originale;
+    window.HirisChatMessages.fermaTutteLeAttese();
+  }
+});

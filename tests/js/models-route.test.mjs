@@ -1326,3 +1326,57 @@ test('la riga di stato non finisce dentro il pannello del modello', async () => 
   assert.equal(riga.querySelectorAll('.riga-stato').length, 1);
   assert.equal(riga.querySelector('.pannello-modello .riga-stato'), null);
 });
+
+/* ── Due proprieta' cieche, e il test viene PRIMA della rinomina ─────────────
+ *
+ * `state.ponteAttivo` e `state.caricato` sono scritte in un posto e lette in un
+ * altro, e OGNI loro lettura sta in posizione di verita' (`if (state.x)`,
+ * `if (!state.x) return`). E' la forma che la misura del 30/08 ha trovato
+ * cieca: rinominata da un lato solo, la lettura orfana da' `undefined`,
+ * `undefined` e' falso come il difetto `false`, e la pagina si comporta come se
+ * il flag non fosse mai stato acceso -- senza che niente lanci. Questi due test
+ * guardano il comportamento che il flag comanda, che e' l'unica differenza
+ * osservabile. */
+
+test('col ponte attivo la catena si disegna inerte, e senza no', async () => {
+  const conPonte = Object.assign({}, CONFIG.ponte, { attivo: true });
+  const a = monta({ config: { ponte: conPonte } });
+  a.window.HirisModelsRoute.mount();
+  await tick(20);
+  const cardA = a.document.getElementById('catena-card');
+  assert.ok(cardA, 'la card della catena deve esistere');
+  assert.ok(cardA.classList.contains('catena-inerte'),
+    'col ponte attivo la catena e\' scavalcata, e la pagina lo disegna');
+
+  const b = monta();   // CONFIG porta `ponte.attivo: false`
+  b.window.HirisModelsRoute.mount();
+  await tick(20);
+  const cardB = b.document.getElementById('catena-card');
+  assert.ok(!cardB.classList.contains('catena-inerte'),
+    'senza ponte la catena e\' viva: disegnarla inerte sarebbe una bugia');
+});
+
+test('un preset scrive solo dopo che la pagina ha letto la configurazione', async () => {
+  /* `writeChain` rifiuta di scrivere finche' `state.caricato` e' falso
+     («Niente si scrive prima di aver letto»), e i preset passano di li'. Il
+     gesto qui e' quello vero: il bottone «Risparmio». Se `caricato` restasse
+     falso -- cioe' se la sua scrittura e la sua lettura smettessero di parlarsi
+     -- il click non farebbe NIENTE, senza un errore e senza una riga rossa. */
+  const ctx = monta();
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+
+  const bottoni = Array.from(ctx.document.querySelectorAll('button'));
+  const risparmio = bottoni.find((b) => b.textContent.trim() === 'Risparmio');
+  assert.ok(risparmio, 'la pagina deve offrire il preset «Risparmio»');
+  assert.equal(risparmio.disabled, false,
+    'dopo il caricamento i preset sono cliccabili');
+
+  const prima = ctx.chiamate.filter((c) => (c.opts || {}).method === 'PUT').length;
+  risparmio.click();
+  await tick(20);
+  const dopo = ctx.chiamate.filter((c) => (c.opts || {}).method === 'PUT').length;
+  assert.ok(dopo > prima,
+    'il preset deve scrivere: se non scrive, state.caricato e rimasto falso '
+    + 'e la pagina rifiuta ogni gesto in silenzio');
+});
