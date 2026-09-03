@@ -679,6 +679,74 @@ non un composto (`_radici_plurali` non copre il genere), non una parola gia' dec
 `home_space/topology.py` (Task 8, lotto 4) con la scansione dedicata sull'AST che il criterio di fine
 richiede -- la stessa enumerazione gia' raccomandata dal Task 8 per non fidarsi del solo dry-run.
 
+
+### Le classi CSS, e le sei parole che sono state tradotte SENZA una riga (fetta del 03/09)
+
+Le classi CSS sono lo strato che il commit degli id del DOM aveva dichiarato e rinviato. Sono
+**stringhe in tre linguaggi** — il selettore nel `.css`, l'argomento di `el(tag, cls)` o di
+`classList` nel `.js`, l'attributo nell'`.html` — e **nessuno strumento le vede**: né
+`scripts/rinomina.py`, che lavora sui token di tipo nome, né la fetta degli identificatori del
+frontend, che lavora sugli stessi token. Misurate il 03/09: **257 definite nei quattro fogli, 138
+nominate dal JS, 36 negli `.html`; 68 italiane**, tradotte in quel commit.
+
+Le parole applicate sono quelle che questo documento aveva già deciso — `adesso -> now`,
+`riga (static) -> row` (il senso RECORD, vedi la riga), `pannello -> panel`, `voce -> entry`,
+`diagnosi -> diagnosis`, `fonte -> source`, `catena -> chain`, `nota -> note`, `stato -> status`,
+`costo -> cost`, `nome -> name`, `valore -> value`, `testa -> head`, `legenda -> legend`,
+`tabella -> table`, `quando -> when`, `barra -> bar`, `grafici -> charts`, `momento -> moment`,
+`servizio -> service`, `avviso -> notice`, `frase -> phrase`, `attivo -> active`,
+`costruzione -> construction`.
+
+**Sei parole sono state tradotte senza una riga qui, ed è una decisione, non una svista.**
+`inerte -> inert`, `compreso -> included`, `muto -> muted`, `rifiutato -> rejected`,
+`grafico -> chart`, `sezioni -> sections` (più `esci -> leave` e `su -> up`, che completano
+`giu -> down` e `usa -> use`, quelle sì in tabella). Vivono **solo dentro un nome di classe**, e
+scriverle come righe nude avrebbe armato lo strumento su del Python che nessuno ha chiesto di
+toccare. Misurato prima di decidere, contando gli identificatori Python che porterebbero ognuna:
+
+| parola | identificatori Python che la riga nuda raggiungerebbe |
+|---|---|
+| `su` | **61** — ed è anche una preposizione, che `test_preposizioni_italiane.py` vieta |
+| `sezioni` | **24**, fra cui `api/handlers_usage.py::sezioni` e `usage/store.py::sezioni`, vivi |
+| `rifiutato` | **23**, tutti nomi di funzione di test |
+| `muto`/`muta` | **15**, fra cui `ClientMuto` e `casa_muta` delle finte |
+| `connettore` | **7**, fra cui `model_resolution.py::connettore`, vivo |
+| `compreso` | 2 | 
+| `inerte`, `grafico`, `esci` | **0** |
+
+È lo stesso costo già misurato per **le 19 rinviate** qui sopra, e la stessa conclusione: *decidere
+il residuo italiano del Python è un lotto Python.* Le tre a costo zero (`inerte`, `grafico`, `esci`)
+non hanno una riga per non spezzare in due un elenco che si legge insieme: o si decidono tutte, quel
+giorno, o si decidono qui — e qui sarebbero tre righe che sembrano una regola generale mentre valgono
+per un `.css`.
+
+**Il cancello che le tiene ferme è un altro**, e la sua parzialità è scritta dentro:
+`tests/test_css_classes.py::test_nessun_nome_di_classe_porta_una_parola_italiana` fallisce se un
+nome di classe torna a contenere una parola che **questo documento** ha deciso — quindi vede
+`riga`, non vede `inerte`. Misurato sulle 256 classi di oggi: due sole hanno un pezzo che il
+glossario conosce, e sono i due suffissi di dominio qui sotto. Rumore zero.
+
+**I due composti misti restano misti, e la legge è quella dei valori di dominio.** Due classi si
+compongono a runtime col dato del backend — `'diagnosis-' + d.gravita` e `'source-' + data.fonte` —
+e i suffissi (`guasto`, `spreco`, `fatto`; `viva`, `riserva`, `fissa`, `assente`) sono **valori di
+dominio**, rinviati con la loro ragione più avanti. Quindi `.diagnosis-guasto` e `.source-riserva`
+portano un pezzo inglese e uno italiano, esattamente come `GENRES` porta valori italiani: **il
+contenitore prende il nome deciso, i valori no.** Il giorno in cui i valori di dominio si decidono,
+queste due classi si chiudono da sole.
+
+**Le sigle non sono italiano e non si toccano**: `bil-`, `umr-`, `usec-`, `st-`, `tl-`, `sc-`,
+`rr-`, `hc-`, `ic-` restano; i pezzi dopo di loro no (`bil-momenti -> bil-moments`,
+`umr-ignoto -> umr-unknown`). È la stessa riga di `ha`, applicata a un prefisso di foglio invece che
+a un identificatore.
+
+**`riga-provider` è diventato `row-provider`, non `provider-row`, e la ragione è nel foglio.**
+L'ordine inglese vorrebbe `provider-row` — ed è il nome della funzione che la disegna,
+`models-route.js::providerRow`. Ma `hiris-config.css`, nel commento che apre quella sezione,
+dichiara `.provider-row*` **ritirata** nella 2.4.1: era una delle due rappresentazioni divergenti
+che la pagina Modelli esiste per non avere più. Riusare quel nome per un'altra cosa sarebbe la
+**collisione di ambito in forma di CSS**, e nessun cancello la vedrebbe. Il prefisso di famiglia
+vince sull'ordine, come già in `usage-provider` accanto.
+
 ## I concetti
 
 Parole che il progetto ha **inventato**, o a cui ha dato un significato suo. Per spiegarle a
@@ -1782,7 +1850,7 @@ al Task 6 invece che deciso qui.
 | riga (api) | row |
 | riga (home_space) | line |
 | riga (proxy) | row | **La terza qualificazione della stessa parola, e la ragione e' il limite gia' documentato**: `riga (api)` e `riga (home_space)` spengono la riga nuda per OGNI altro ambito, quindi in `proxy/` `Glossario.per("riga", "proxy")` tornava `None` e `riga`/`righe` restavano italiane senza nessun segnale dal dry-run (misurato chiamando `per()` da codice, non dedotto). Il senso e' lo stesso di `(api)`: una riga di un registro di Home Assistant, cioe' un record. Lo stesso buco e' ancora aperto in `usage/store.py`, `memory/store.py`, `keeper/store.py`, `keeper/exchange.py`, `azione/construction/workshop.py` e `versioni.py`, che portano `righe` italiano dentro ambiti STABILI: qualificare per ambito obbliga a qualificare in OGNI ambito dove serve |
-| riga (static) | line | **Quinta** qualificazione della stessa parola, e **`static/` porta ENTRAMBI i sensi**, come `ancora`. `line` e' il senso di `tree-route.js::line(parent, text, style)`, che AGGIUNGE UNA RIGA DI TESTO a un nodo -- quello di `riga (home_space)` e `riga (agent)`. Ma quattro nomi della stessa cartella portano il senso RECORD, cioe' `riga (api) -> row`: `config/api.js::righe` (un NodeList di `.usage-row`), `models-route.js::rigaProvider` (una riga della tabella della catena, classe CSS `riga-su`/`riga-giu`), `agenda-route.js::costruisciRigaSospeso` e `usage-route.js::rigaModello`. Sono stati rinominati A MANO in `rows`/`providerRow`/`buildPendingRow`/`modelRow`, e questa riga non li copre: e' il limite descritto in «Il limite della qualificazione per ambito», e in `static/` ha due parole invece di una. Chi incontra `riga` qui guarda cosa costruisce prima di fidarsi. `tree-route.js::riga(padre, testo, stile)` AGGIUNGE UNA RIGA DI TESTO a un nodo: e' il senso di `riga (home_space)` e `riga (agent)`, non il record di `(api)`/`(proxy)` |
+| riga (static) | line | **Quinta** qualificazione della stessa parola, e **`static/` porta ENTRAMBI i sensi**, come `ancora`. `line` e' il senso di `tree-route.js::line(parent, text, style)`, che AGGIUNGE UNA RIGA DI TESTO a un nodo -- quello di `riga (home_space)` e `riga (agent)`. Ma quattro nomi della stessa cartella portano il senso RECORD, cioe' `riga (api) -> row`: `config/api.js::righe` (un NodeList di `.usage-row`), `models-route.js::rigaProvider` (una riga della tabella della catena, classi CSS `row-up`/`row-down` -- erano `riga-su`/`riga-giu`, e la fetta delle classi CSS del 03/09 ha applicato QUESTO senso: le quattordici classi `riga-*` di quella pagina sono `row-*`), `agenda-route.js::costruisciRigaSospeso` e `usage-route.js::rigaModello`. Sono stati rinominati A MANO in `rows`/`providerRow`/`buildPendingRow`/`modelRow`, e questa riga non li copre: e' il limite descritto in «Il limite della qualificazione per ambito», e in `static/` ha due parole invece di una. Chi incontra `riga` qui guarda cosa costruisce prima di fidarsi. `tree-route.js::riga(padre, testo, stile)` AGGIUNGE UNA RIGA DI TESTO a un nodo: e' il senso di `riga (home_space)` e `riga (agent)`, non il record di `(api)`/`(proxy)` |
 | rileggi | reread |
 | riordinabile | reorderable |
 | ripara | repair |

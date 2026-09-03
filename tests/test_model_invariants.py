@@ -7,13 +7,15 @@ corrisponde a un invariante della specifica (§7) o a un debito dichiarato nel
 registro dei quattordici task precedenti, e ha una sola ragione di esistere: il
 difetto che chiude non lascia traccia in nessun altro test.
 
-Due di questi test leggono un `.css`. Fino a oggi **nessun test di questo repo
-toccava un foglio di stile** (debito Task 2 -> 15, ridichiarato dai Task 8, 9 e
-11): il CSS della pagina Modelli non l'ha mai visto un browser e jsdom non
-calcola il layout. Questi due non sostituiscono la prova sulla casa vera --
+Due di questi test leggono un `.css`. Fino al Task 15 **nessun test di questo
+repo toccava un foglio di stile** (debito Task 2 -> 15, ridichiarato dai Task 8,
+9 e 11): il CSS della pagina Modelli non l'ha mai visto un browser e jsdom non
+calcola il layout. Non sostituiscono la prova sulla casa vera --
 `docs/prova-modelli-e-catena.md` la chiede esplicitamente -- ma chiudono la
-meta' che si puo' chiudere da qui: che il nome della classe scritta nel JS
-esista nel CSS, e che i blocchi a tutta larghezza continuino a dichiararsi tali.
+meta' che si puo' chiudere da qui: che il testo semantico usi i token `-ink`, e
+che i blocchi a tutta larghezza continuino a dichiararsi tali. La terza meta' --
+che il nome della classe scritta nel JS esista nel foglio -- e' passata il 03/09
+in `tests/test_css_classes.py`, che la misura su tutte e due le pagine.
 """
 import re
 from pathlib import Path
@@ -23,7 +25,6 @@ import pytest
 BASE = Path(__file__).resolve().parents[1] / "hiris"
 STATIC = BASE / "app" / "static"
 MODELS_JS = STATIC / "config" / "models-route.js"
-CONFIG_HTML = STATIC / "config.html"
 
 
 def _righe_vive_js(p: Path) -> str:
@@ -174,19 +175,6 @@ def test_solo_quattro_funzioni_della_pagina_leggono_la_credenziale():
 
 # ── I token semantici del testo, e il resto del CSS che nessuno guardava ────
 
-def _fogli_della_pagina_config() -> list[Path]:
-    """I fogli che `config.html` carica davvero, letti da li' e non elencati a
-    mano: un foglio aggiunto alla pagina e non a questa lista renderebbe i due
-    test qui sotto ciechi proprio sul codice nuovo."""
-    html = CONFIG_HTML.read_text(encoding="utf-8")
-    nomi = re.findall(r'href="static/([\w.-]+\.css)"', html)
-    fogli = [STATIC / n for n in nomi]
-    assert fogli, "config.html non carica nessun foglio di stile: forma cambiata"
-    for f in fogli:
-        assert f.exists(), f"config.html carica un foglio che non esiste: {f.name}"
-    return fogli
-
-
 def test_il_testo_semantico_usa_i_token_ink():
     """`hiris-theme.css` righe 76-82: `--x-ink` per il testo, `--x` per
     pallini, bordi e riempimenti. Secondo l'audit pre-UAT `models-route.js` era
@@ -209,94 +197,13 @@ def test_il_testo_semantico_usa_i_token_ink():
                 f"{regola[:80]}")
 
 
-# I nomi che la pagina scrive e che NON hanno (ne' devono avere) una regola
-# propria. Sono di due specie sole, e la lista e' corta apposta: una lista di
-# eccezioni che cresce e' il segno che questo test ha smesso di misurare
-# qualcosa.
-#
-#   * gli ID dei quattro contenitori (`byId`), che sono agganci di struttura --
-#     il loro aspetto viene dalla classe che portano (`sc-body`,
-#     `section-card`), non dal loro nome;
-#   * i quattro agganci sui bottoni gia' vestiti da `btn btn-ghost btn-sm`, che
-#     esistono per i test e per `querySelector`, non per il foglio.
-_CLASSI_SENZA_REGOLA_PER_SCELTA = {
-    "chain-body", "chain-card", "outside-body", "route-outlet",
-    "row-use", "row-up", "row-down", "row-leave",
-}
-
-
-def _classi_disegnate_dalla_pagina() -> set[str]:
-    """Ogni nome che somiglia a una classe, dalle righe vive -- non solo il
-    secondo argomento LETTERALE di `el(`.
-
-    **G3 della revisione finale.** La versione precedente leggeva solo
-    `el(...tag..., ...classi...)`, e in questa pagina le classi che contano non si
-    scrivono cosi': sono composte con un ternario
-    (`'row-provider' + (dentro ? '' : ' row-outside')`) o passate come
-    variabile a un wrapper (`connettore('connector-note', …)`). Erano
-    invisibili al test che prometteva di coprirle: cancellando cinque regole
-    dal foglio -- `.row-muted`, `.status-rejected`, `.model-alias`,
-    `.entry-alias`, `.row-outside`, cioe' la traduzione grafica del ritiro della
-    parola «Attivo» e la tipografia alias-contro-identificatore -- restavano
-    trentaquattro test verdi. Non era un test che non poteva fallire in
-    assoluto: era un test che non poteva fallire proprio dove il suo nome
-    prometteva che sarebbe fallito, che per la dottrina di questa fetta e' lo
-    stesso errore.
-
-    Il criterio adesso e' la FORMA del nome invece della posizione: si prende
-    ogni letterale a singolo apice fatto di soli nomi in kebab-case, e da
-    quello si tengono i pezzi che contengono un trattino. Il trattino e' cio'
-    che distingue un nome di classe di questa pagina da un tag (`div`), da un
-    ruolo (`list`, `listitem`), da un id di provider (`claude`) e da un valore
-    (`polite`, `balanced`). Restano fuori, per costruzione dichiarata, i nomi
-    di classe SENZA trattino passati come variabile -- oggi uno solo,
-    `connettore`, la cui gemella `connector-note` e' invece coperta."""
-    js = _righe_vive_js(MODELS_JS)
-    classi: set[str] = set()
-    for letterale in re.findall(r"'([^']*)'", js):
-        pezzi = letterale.split()
-        if pezzi and all(re.fullmatch(r"[a-z][a-z0-9-]*", p) for p in pezzi):
-            classi.update(p for p in pezzi if "-" in p)
-    classi.update(re.findall(r"classList\.add\('([^']+)'\)", js))
-    # I prefissi composti a runtime (`'diagnosi-' + gravita`) non sono classi:
-    # il loro suffisso arriva dal backend e questo test non puo' conoscerlo.
-    # E i nomi di attributo (`aria-live`, `data-provider`) hanno la forma di una
-    # classe e non lo sono: e' l'unica famiglia che il criterio non separa da
-    # sola, e si toglie con una regola, non con un elenco.
-    return {c for c in classi
-            if not c.endswith("-") and not c.startswith(("aria-", "data-"))}
-
-
-def test_ogni_classe_che_la_pagina_disegna_ha_una_regola_nel_css():
-    """Il difetto che questo test coglie e' l'unico difetto di CSS che si possa
-    cogliere senza un browser: il nome scritto in due posti e cambiato in uno
-    solo. Non prova che il layout regga -- quello lo prova solo la casa vera
-    (`docs/prova-modelli-e-catena.md`, prova 1) -- ma prova che il foglio e la
-    pagina parlino della stessa cosa.
-
-    E' il primo test di questo repo che apre un `.css`. Fino al Task 14 il
-    registro lo ha dichiarato quattro volte come debito aperto."""
-    # I COMMENTI si tolgono. I fogli di questo ramo CITANO i nomi delle classi
-    # per spiegare le regole (`.model-alias` compare in un commento di
-    # `hiris-config.css`), e una citazione non veste niente: cercare nel testo
-    # grezzo faceva passare per «vestita» una classe la cui unica traccia era
-    # la spiegazione di una regola cancellata. E' la gemella esatta di
-    # `_righe_vive_js`, per il foglio invece che per il sorgente.
-    css = re.sub(
-        r"/\*.*?\*/", "",
-        "\n".join(f.read_text(encoding="utf-8") for f in _fogli_della_pagina_config()),
-        flags=re.DOTALL,
-    )
-    orfane = sorted(
-        c for c in _classi_disegnate_dalla_pagina()
-        if c not in _CLASSI_SENZA_REGOLA_PER_SCELTA
-        and not re.search(r"\." + re.escape(c) + r"(?![\w-])", css)
-    )
-    assert not orfane, (
-        f"la pagina disegna classi che nessun foglio veste: {orfane}. "
-        f"O manca la regola, o il nome e' cambiato in un posto solo"
-    )
-
+# Il cancello «ogni classe che la pagina scrive ha una regola nel foglio» NON
+# vive piu' qui, e non e' stato tolto: e' passato in
+# `tests/test_css_classes.py`, dove copre le DUE pagine invece della sola
+# Modelli, e con lui la memoria del G3 (il criterio e' la FORMA del nome, non
+# la posizione) e le eccezioni dichiarate. Restava qui una versione che
+# guardava un ottavo del frontend: due cose con un nome solo, e la fetta delle
+# classi CSS (03/09) le ha unite invece di lasciarle divergere.
 
 # I tre blocchi che occupano l'intera riga dentro la griglia della
 # `.row-provider`. La griglia ha SEI colonne in largo e QUATTRO sotto i 640px:
