@@ -51,8 +51,8 @@ const SCRIPTS = ['config/state.js', 'config/router.js', 'config/main.js'];
 const SEGNAPOSTO = {
   '#/tree': 'Albero della casa',
   '#/memory': 'Memoria',
-  '#/agenda': 'Promesse',
-  '#/constructions': 'Costruzioni',
+  '#/agenda': 'Impegni',
+  '#/constructions': 'Proposte',
   '#/watcher': 'L’osservatore',
   '#/settings': 'Impostazioni chat',
 };

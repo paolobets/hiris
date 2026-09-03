@@ -57,7 +57,7 @@
    `misure` (cosa hanno fatto le grandezze collegate mentre l'episodio
    durava) -- mostrati dietro un rivelatore SINCRONO (stesso principio di
    constructions-route.js §3: sono gia' nel payload, nasconderli dietro un
-   fetch sarebbe la trappola che la guida delle Promesse vieta).
+   fetch sarebbe la trappola che la guida degli Impegni vieta).
 
    -- Il SESTO genere, `bilancio`, e' un'ALTRA FORMA (mandato «il bilancio
       dell'energia», 27/08/2026 -- docs/design/2026-08-27-il-bilancio-dell-

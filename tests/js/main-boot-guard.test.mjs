@@ -51,10 +51,10 @@ const ROUTE = [
   // fetta E5 Task 9: sostituisce il pannello Memoria della chat.
   ['#/memory', 'Memoria'],
   // fetta «lo schedulatore» Task 9: la terza condizione della spec, «si vede».
-  ['#/agenda', 'Promesse'],
+  ['#/agenda', 'Impegni'],
   // fetta «costruire» Task 11: approvare o rifiutare cio' che HIRIS propone
   // di scrivere in Home Assistant, leggere il prima/dopo, tornare indietro.
-  ['#/constructions', 'Costruzioni'],
+  ['#/constructions', 'Proposte'],
   // fetta «l'osservatore» Task 7: guarda la casa e ne ricava oggetti -- non
   // conclude, non parla, non tocca niente.
   ['#/watcher', 'L’osservatore'],

@@ -1,4 +1,4 @@
-/* HIRIS · Configurazione · «Costruzioni» (route #/constructions)
+/* HIRIS · «Proposte» (route #/constructions)
 
    Il posto dove il proprietario approva o rifiuta cio' che HIRIS propone di
    scrivere in Home Assistant, legge il confronto prima/dopo, e rimette
@@ -44,7 +44,7 @@
    Livello primario SEMPRE visibile: `anteprima`, per intero, mai riassunta.
    Livello secondario dietro un rivelatore SINCRONO (`prima`/`dopo` arrivano
    gia' nel payload dell'elenco: nasconderli dietro un fetch sarebbe la
-   trappola che la guida delle Promesse vieta) che mostra solo: il nome
+   trappola che la guida degli Impegni vieta) che mostra solo: il nome
    (alias/name), quante voci per trigger/condizioni/azioni/entita' -- come
    transizione "azioni: 2 -> 3" quando cambia, non due numeri separati -- e
    gli entity_id in monospazio. Il codice qui sotto tratta anche `sequence`
@@ -517,7 +517,7 @@ window.HirisConstructions = (function () {
 
     if (!openBody || !historyBody) {
       clearEl(outlet);
-      outlet.appendChild(el('div', 'page-title', 'Costruzioni'));
+      outlet.appendChild(el('div', 'page-title', 'Proposte'));
       outlet.appendChild(el('p', 'page-subtitle',
         'Le proposte di HIRIS per creare, modificare o cancellare automazioni, script e ' +
         'scene di questa casa — e cosa ne hai deciso.'));

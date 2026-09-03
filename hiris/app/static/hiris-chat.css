@@ -48,6 +48,16 @@
        `flex: 1` al posto del vecchio spaziatore: era `#agent-list` (flex: 1)
        a spingere footer e usage-widget in fondo alla sidebar, altrimenti
        resterebbero incollati in alto lasciando vuoto sotto. */
+    /* Le due voci esecutive (fetta «i menu esecutivi», 03/09). Sopra
+       `#sidebar-footer` e non dentro: il footer ha `flex: 1` per spingere il
+       riquadro dei consumi in fondo, e mettercele dentro le avrebbe legate a
+       quella spinta invece che alla cima del pannello. Stessa spaziatura del
+       footer -- sono le stesse `.sb-nav-item`, e due misure diverse per la
+       stessa riga si vedrebbero. */
+    #sidebar-nav {
+      padding: 8px 12px 0;
+      display: flex; flex-direction: column; gap: 2px;
+    }
     #sidebar-footer {
       flex: 1;
       padding: 8px 12px;

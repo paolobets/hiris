@@ -20,7 +20,7 @@
  *    togliere.
  * 3. I COLORI DEI PROVIDER NON RIUSANO --ok/--warn/--err. In HIRIS quei tre
  *    significano gia' riuscito / incerto / fallito (le pastiglie di Modelli e
- *    Promesse): un provider colorato `--warn` si leggerebbe come «in stato di
+ *    Impegni): un provider colorato `--warn` si leggerebbe come «in stato di
  *    allerta».
  */
 (function() {

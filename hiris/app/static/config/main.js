@@ -143,11 +143,11 @@
      chiederne due -- lo stato di una promessa è un campo, non un
      endpoint. */
   HirisRouter.register(/^#\/agenda\/?$/, function() {
-    setCrumbHere('Promesse');
+    setCrumbHere('Impegni');
     if (window.HirisAgendaRoute) {
       HirisAgendaRoute.mount();
     } else {
-      document.getElementById('route-outlet').innerHTML = '<div class="page-title">Promesse</div>';
+      document.getElementById('route-outlet').innerHTML = '<div class="page-title">Impegni</div>';
     }
   });
   /* fetta «costruire» Task 11: la pagina #/constructions -- vedi
@@ -155,11 +155,11 @@
      proprio outlet, a differenza delle altre route qui sopra: e' l'unico
      modulo di questa SPA con quella firma, pinnata dal Task 11. */
   HirisRouter.register(/^#\/constructions\/?$/, function() {
-    setCrumbHere('Costruzioni');
+    setCrumbHere('Proposte');
     if (window.HirisConstructions) {
       HirisConstructions.mount(document.getElementById('route-outlet'));
     } else {
-      document.getElementById('route-outlet').innerHTML = '<div class="page-title">Costruzioni</div>';
+      document.getElementById('route-outlet').innerHTML = '<div class="page-title">Proposte</div>';
     }
   });
   /* fetta «l'osservatore» Task 7: la pagina #/watcher -- vedi

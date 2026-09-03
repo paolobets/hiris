@@ -1,9 +1,14 @@
-/* HIRIS · Configurazione · «Promesse» (route #/agenda)
+/* HIRIS · «Impegni» (route #/agenda)
 
    La terza condizione della spec dello Schedulatore (docs/design/2026-08-19-
    lo-schedulatore.md, §10): «Si vede. Un posto dove guardare cosa e' in
    sospeso e annullarlo. Promesse che HIRIS tiene e non mostra sarebbero
-   stato invisibile.» Questa pagina e' quel posto: legge l'archivio vero
+   stato invisibile.»
+   [La parola «Promesse» qui dentro NON si rinomina in «Impegni»: e' una
+   citazione verbatim della spec dello Schedulatore, e una citazione
+   corretta a posteriori smette di essere una citazione. La pagina si chiama
+   Impegni dal 03/09; la frase che la motivo' resta quella che fu scritta.]
+   Questa pagina e' quel posto: legge l'archivio vero
    (`GET /api/agenda?all=1`, `hiris/app/api/handlers_agenda.py`) e
    lascia disdire cio' che non e' ancora scattato (`DELETE
    /api/agenda/{id}`).
@@ -464,7 +469,7 @@ window.HirisAgendaRoute = (function () {
     var outlet = document.getElementById('route-outlet');
     if (!outlet) return;
     clearEl(outlet);
-    outlet.appendChild(el('div', 'page-title', 'Promesse'));
+    outlet.appendChild(el('div', 'page-title', 'Impegni'));
     outlet.appendChild(el('p', 'page-subtitle',
       'Ciò che hai chiesto a HIRIS di fare o guardare più tardi, e com’è andata finora.'));
     var status = el('p', 'sc-desc', '');
