@@ -1,5 +1,23 @@
 # HIRIS — Changelog
 
+## [3.20.0] — Anche i nomi degli stili passano all'inglese (2026-09-03)
+
+**Non cambia niente che si veda**: le pagine si disegnano identiche. Sono passati all'inglese i nomi
+interni con cui il foglio di stile aggancia gli elementi — **68 su 257** — e con loro un controllo
+nuovo che verifica che **ogni nome usato dalla pagina esista davvero nel foglio, e viceversa**.
+
+Serviva, perche' questo e' l'unico posto del progetto dove un errore **non rompe niente**: una
+regola che non aggancia piu' il suo elemento non da' nessun errore, la pagina continua a funzionare
+e diventa soltanto **brutta**. Nessuna prova di comportamento se ne accorgerebbe. Il controllo nuovo
+si', e ha sei prove che lo dimostrano.
+
+Chiuso anche un doppione vero: due nomi diversi facevano la stessa cosa, e uno dei due e' sparito.
+
+**Cosa resta italiano, e con la ragione.** Due nomi restano meta' e meta' — `diagnosis-guasto`,
+`source-riserva` — perche' la seconda meta' e' un **valore** che viaggia sul filo (`guasto`,
+`riserva`), e i valori non si traducono finche' non si decide il vocabolario del dato. E' brutto,
+ed e' onesto: il contenitore prende il nome deciso, il contenuto no.
+
 ## [3.19.0] — Gli indirizzi delle pagine, e un segnalibro che non si rompe (2026-09-03)
 
 **Gli indirizzi delle pagine di configurazione cambiano**: `#/albero` diventa `#/tree`, `#/memoria`
