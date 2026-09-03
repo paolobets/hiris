@@ -1,5 +1,33 @@
 # HIRIS — Changelog
 
+## [3.19.0] — Gli indirizzi delle pagine, e un segnalibro che non si rompe (2026-09-03)
+
+**Gli indirizzi delle pagine di configurazione cambiano**: `#/albero` diventa `#/tree`, `#/memoria`
+diventa `#/memory`, e cosi' per sei. **Se hai un segnalibro con un indirizzo vecchio continua a
+funzionare**: la pagina lo riconosce e ti porta dove devi andare, riscrivendo l'indirizzo nella barra
+senza aggiungere una voce alla cronologia — cosi' il tasto «indietro» non ti rimbalza avanti.
+
+Quel reindirizzamento e' **dichiaratamente temporaneo**, e nel codice c'e' scritto quando si toglie:
+il giorno in cui nessun segnalibro in circolazione punta piu' a un indirizzo italiano. Una prova
+sorveglia la tabella degli alias, e **il giorno in cui qualcuno la svuota quella prova diventa rossa
+e dice di cancellare anche se' stessa**.
+
+**Il resto non si vede.** Le ventidue chiavi interne con cui il motore tiene insieme i propri pezzi,
+i sette identificatori dei lavori periodici e tredici famiglie di identificatori della pagina sono
+passati all'inglese. Nessuna rotta, nessun campo, nessun nome di strumento, **nessuna tabella del
+database**.
+
+**E un buco chiuso che nessuno aveva mai visto.** Provando a scollegare una cache interna — quella
+che evita di ricostruire l'indice degli strumenti a ogni turno di chat — **tutte e 3.049 le prove
+restavano verdi**: quella parte del cablaggio non era sorvegliata da niente. Adesso ha la sua prova,
+che verifica la cosa vera (l'indice si costruisce **una volta**, non a ogni turno) e non la presenza
+di una riga di codice.
+
+**Il database resta italiano, per decisione.** 22 tabelle e 63 nomi di colonna: sessanta su
+centodue non hanno mai avuto un inglese deciso, e quel dato e' la memoria di una casa vera —
+ricordi, promesse, cronaca di cio' che HIRIS ha fatto. Non si rinomina cio' che non e' stato
+nominato.
+
 ## [3.18.0] — Le cartelle, i file di prova, e nove allarmi che erano uno (2026-09-02)
 
 **La cosa che vedrai cambiare e' una sola, ed e' una bugia in meno.** Il riepilogo della casa ti
