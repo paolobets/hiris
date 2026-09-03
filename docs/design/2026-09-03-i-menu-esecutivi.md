@@ -191,12 +191,36 @@ di un percorso onesto, e quel giorno si toglie in un pezzo solo.
 
 ## §4 · Il pallino
 
-### 4.1 Cosa conta
+### 4.1 Cosa conta — e non è la stessa cosa nelle due voci
 
-- **Impegni** — le promesse in `STATES_SOSPESO` (`keeper/promise.py`:
-  `in_attesa`, `in_corso`).
-- **Proposte** — le costruzioni in `STATES_SOSPESO`
-  (`action/construction/revisions.py`: gli stessi due).
+Il pallino risponde a una domanda sola: **c'è qualcosa che aspetta me?** Le
+due pagine rispondono in due modi diversi, ed è la ragione per cui sono due
+pagine.
+
+- **Proposte** → le costruzioni in `STATES_SOSPESO`
+  (`action/construction/revisions.py`: `in_attesa`, `in_corso`). Una proposta
+  in attesa aspetta letteralmente te: senza il tuo sì non succede niente.
+- **Impegni** → **gli esiti conclusi che non hai ancora letto**. Non gli
+  impegni in sospeso.
+
+La seconda riga è la correzione che la prima prova del lettore ha fatto al
+disegno di partenza, ed è giusta: *un impegno in sospeso non aspetta te,
+aspetta l'ora*. Se il pallino contasse quelli, resterebbe acceso tutte le
+volte che HIRIS ha qualcosa in programma per domani — cioè quasi sempre — e
+un pallino sempre acceso **smette di essere letto**. Sarebbe il badge morto
+di §4.2 in una forma nuova: non più un numero falso, ma un numero vero che
+non è una notizia.
+
+Ciò che è una notizia è l'esito: la promessa è stata mantenuta, o è fallita,
+o è stata saltata, e tu non lo sai ancora. Quello aspetta te, e si spegne da
+solo quando l'hai guardato.
+
+Il conteggio degli impegni **in sospeso** non sparisce: sta
+nell'intestazione della sezione, dentro la pagina, dove è un'informazione e
+non un allarme.
+
+> **Le Proposte aspettano te. Gli Impegni aspettano l'ora — tranne i loro
+> esiti, che aspettano te.**
 
 Il numero è nudo; le parole stanno nel `title` e nell'`aria-label`: **«N in
 attesa»**. Sotto i 1024 px la `side-nav` si stringe a 64 px e le etichette
@@ -230,18 +254,23 @@ apertura, su un Raspberry, no.
 **Nasce `GET /api/pending`**, che risponde:
 
 ```json
-{"agenda": 3, "constructions": 1}
+{"agenda_unread": 3, "constructions_pending": 1}
 ```
 
-Due `SELECT COUNT(*) … WHERE stato IN (…)`. Le chiavi ripetono i nomi delle
-rotte che le due pagine già usano: chi legge il JSON sa subito dove andare. Su
-archivio non disponibile risponde **503** — e §4.2 fa il resto.
+**Le chiavi dicono cosa contano, non dove stanno.** Se si fossero chiamate
+`agenda` e `constructions` — simmetriche, come le rotte — avrebbero
+nascosto che i due numeri contano due cose diverse (§4.1), e il primo che
+avesse letto il JSON avrebbe creduto di vedere due volte lo stesso fatto.
+Una chiave che mente è un commento che mente con l'aggravante di essere
+eseguibile.
 
-Due metodi nuovi, `count_pending()`, uno per archivio. Sono codice nuovo,
-quindi in inglese come vuole la legge; convivranno con `solo_in_sospeso=` di
+Su archivio non disponibile risponde **503** — e §4.2 fa il resto.
+
+Due metodi nuovi, uno per archivio: `count_unread()` sulle promesse,
+`count_pending()` sulle costruzioni. Sono codice nuovo, quindi in inglese
+come vuole la legge; convivranno con `solo_in_sospeso=` di
 `keeper/store.py::list`, che è italiano ed è **debito già dichiarato** della
-fetta rimandata sul dato. Non si sana qui: sanarlo qui significherebbe toccare
-l'SQL di un archivio vivo dentro una fetta di interfaccia.
+fetta rimandata sul dato.
 
 ### 4.4 Quando si aggiorna
 
@@ -251,7 +280,9 @@ Non c'è nessun timer. Il numero cambia in momenti che si vedono tutti:
 2. **dopo ogni risposta della chat** — è lì che nasce una promessa o una
    proposta, ed è l'istante esatto in cui il pallino deve accendersi mentre
    l'utente sta ancora leggendo la frase che lo manda a guardarlo;
-3. dopo ogni azione sulle due pagine (Disdici, Approva, Rifiuta);
+3. dopo ogni azione sulle due pagine (Disdici, Approva, Rifiuta) e **dopo il
+   segno di lettura** (§4.6) — è il momento in cui il pallino degli Impegni
+   deve spegnersi, mentre l'utente è ancora lì che guarda;
 4. al ritorno del fuoco sulla finestra (`focus`) — copre il solo caso che i tre
    sopra non vedono: lo schedulatore ha mantenuto una promessa mentre la scheda
    era in secondo piano.
@@ -266,13 +297,85 @@ Un file nuovo, `static/pending-badge.js`, caricato **da tutti e due i gusci**
 stabilito. Le regole `.nav-badge` tornano in **`hiris-theme.css`**, non nei
 due fogli di guscio: entrambi lo caricano, e un fatto ha una sola casa.
 
+### 4.6 Il segno di lettura — la colonna nuova
+
+«Non letto» è un fatto che oggi non esiste da nessuna parte: va scritto.
+
+**La colonna**: `esito_letto_ts REAL` sulla tabella `promesse`, `NULL` =
+non letto. Il nome è **italiano** perché la tabella è italiana
+(`quando_ts`, `nata_ts`, `risvegliata_ts`): una colonna inglese in mezzo a
+quelle sarebbe peggio del debito che pretende di sanare, e la lingua del
+database è dentro la fetta rimandata «il vocabolario del dato», che la
+cambierà tutta insieme o non la cambierà.
+
+**La migrazione**: `promesse` è oggi allo schema `version=1`. Va a `2` con
+lo stesso meccanismo che `action/journal.py::_migration_2` usa già —
+`PRAGMA table_info` per l'idempotenza, `ALTER TABLE … ADD COLUMN`, nessuna
+tabella ricostruita. La colonna si aggiunge **anche a `_SCHEMA`**, o un
+archivio nuovo (che `init_schema` timbra a `version` senza far girare le
+migrazioni, `storage.py:55`) nascerebbe senza.
+
+**Il travaso, e perché non è neutro**: dopo l'`ALTER TABLE` ogni riga ha
+`NULL`, cioè *tutte* le promesse già concluse della casa vera risultano non
+lette. Al primo avvio il pallino si accenderebbe con il numero di tutto lo
+storico degli ultimi 90 giorni — un allarme per fatti vecchi di settimane.
+Quindi la migrazione **segna come lette tutte le concluse esistenti**. Non è
+vero che le hai lette: è una decisione, e si scrive nel commento della
+migrazione. **Il segno di lettura comincia a contare dal giorno in cui
+esiste**; ciò che è successo prima è storia, non notizia.
+
+**Chi lo scrive**: `POST /api/agenda/read`, corpo `{"ids": [...]}`, chiamata
+dalla pagina Impegni **dopo aver disegnato** la sezione «Esiti da leggere»
+(§5.1), con gli identificatori che ha effettivamente messo sullo schermo —
+non «tutti i non letti», che segnerebbe letto anche ciò che non è stato
+disegnato. È un metodo non-safe: passa dal `csrf_middleware` come ogni POST
+di questa interfaccia (stessa disciplina di `POST
+/api/constructions/{id}/confirm`, che la pagina Proposte già usa).
+
+Se la chiamata fallisce, le righe restano non lette e ricompaiono alla
+visita dopo. È il guasto giusto da avere: **il segno di lettura sbaglia
+sempre per eccesso di notizia, mai per difetto.**
+
+**`serializza()`** (`keeper/promise.py::_CHIAVI`) porta il campo nuovo: la
+pagina deve poter dire quali righe sono nella sezione di sopra, e la forma
+di una promessa è UNA — quella. Il contratto JSON cambia di un campo, e i
+test che lo bloccano diventeranno rossi: è il modo in cui si vede che è
+cambiato.
+
 ---
 
-## §5 · Lo storico compresso
+## §5 · Le sezioni
 
-Le due pagine hanno **già** due sezioni ciascuna — «In sospeso» / «Storico»
-per gli Impegni, «In attesa» / «Storico» per le Proposte. Non serve costruire
-niente: serve chiuderle.
+### 5.1 «Esiti da leggere», in cima agli Impegni
+
+Il pallino manda l'utente su quella pagina per una ragione precisa (§4.1).
+Se ciò che lo ha chiamato finisse sepolto dentro uno «Storico» chiuso a
+chiave, il pallino avrebbe mentito una seconda volta — stavolta sulla strada.
+
+La pagina Impegni prende quindi **tre** sezioni:
+
+| # | sezione | contenuto | stato iniziale |
+|---|---|---|---|
+| 01 | **Esiti da leggere** | concluse con `esito_letto_ts IS NULL` | aperta; **non compare se è vuota** |
+| 02 | **In sospeso** | `in_attesa` + `in_corso`, col conteggio | aperta |
+| 03 | **Storico** | tutte le concluse, col conteggio | **chiusa** |
+
+Una riga appena conclusa sta in **due** sezioni: la 01 e la 03. È voluto, e
+si dichiara: la 01 non è un archivio diverso, è una **finestra sul terzo** —
+la parte che non hai ancora guardato. Con la 03 chiusa non si vedono mai
+insieme, e alla visita successiva la 01 è sparita da sola.
+
+La sezione 01 **non compare quando è vuota**, che è il caso normale: una
+sezione vuota permanente insegna a non guardare quella zona dello schermo, e
+il giorno in cui ha qualcosa dentro non la si vede più.
+
+La pagina Proposte resta a **due** sezioni: lì non serve una terza, perché
+ciò che aspetta l'utente è già la prima («In attesa»).
+
+### 5.2 Lo storico compresso
+
+Le due pagine hanno **già** la sezione «Storico». Non serve costruirla:
+serve chiuderla.
 
 > «Mi basta archiviarle in una sezione che è compressa e non visibile.»
 
@@ -348,19 +451,23 @@ risposta della chat**, tolto il 17/08. È una fetta sua.
 | Cosa | Perché |
 |---|---|
 | L'osservatore | Il proprietario l'ha rimandato esplicitamente a una fase a parte |
-| Il database, i valori di dominio, le chiavi fra motore e pagina | Rimandati insieme, in una fetta sola: «il vocabolario del dato» |
+| La **lingua** del database, i valori di dominio, le chiavi fra motore e pagina | Rimandati insieme, in una fetta sola: «il vocabolario del dato» |
 | `#/agenda`, `#/constructions`, `constructions` nel codice | §2.3 |
-| Qualunque cancellazione | §5 |
-| Il badge «esiti non letti» sugli Impegni | Vedi sotto |
+| Qualunque cancellazione | §5.2 |
 
-**Sul badge degli esiti non letti**: la prima prova del lettore ha osservato
-che su quella pagina ciò che *ti* aspetta non sono gli impegni in sospeso —
-quelli aspettano l'ora, non te — ma **gli esiti che non hai ancora letto**. È
-un'osservazione giusta e non si può implementare oggi: «non letto» vuol dire un
-segno di lettura, cioè una colonna nuova nell'archivio delle promesse, che è
-dentro la fetta rimandata sul dato. Il pallino conta gli in-sospeso, che è un
-fatto vero, misurabile oggi, e già utile. **Quando la fetta sul dato passa,
-questa scelta si riapre.**
+**Una colonna sì, la lingua no.** Il proprietario ha aggiunto la colonna a
+questa fetta (03/09) dopo aver letto §4.1: senza il segno di lettura il
+pallino degli Impegni non può esistere nella forma giusta, e sarebbe nato
+già sbagliato per poi essere rifatto. Quindi `esito_letto_ts` **si scrive
+adesso** (§4.6).
+
+Questo **non** riapre la fetta sul vocabolario del dato. Si aggiunge una
+colonna alla tabella `promesse`, nella lingua che quella tabella già parla;
+non si rinomina nessuna colonna esistente, non si tocca `solo_in_sospeso=`,
+non si toccano i valori di dominio. La distinzione è netta e va tenuta:
+**aggiungere un fatto che manca è un'altra cosa dal rinominare i fatti che
+ci sono.** La prima costa una migrazione additiva e reversibile; la seconda
+costa la riscrittura di ogni query che li nomina.
 
 ---
 
@@ -373,11 +480,13 @@ difetto che la prova cerca.
    va in errore di rete, il pallino **non è nel DOM**. La prova per mutazione:
    un'implementazione che scrive `0` in caso d'errore la fa diventare rossa. È
    la prova che il badge morto non aveva.
-2. **Il pallino conta i sospesi** — con una lista finta di tre `in_attesa` + un
-   `in_corso` + due concluse, il numero è 4, non 6 e non 3 (`in_corso` conta:
-   sta nella sezione azionabile della pagina).
-3. **Zero non compare** — archivio che risponde `{"agenda": 0}`: nessun
-   pallino.
+2. **I due pallini contano due cose diverse** (§4.1) — su un archivio con
+   tre proposte `in_attesa` + una `in_corso`, e con due promesse concluse non
+   lette **più cinque promesse in sospeso**, i numeri sono **4** e **2**. La
+   mutazione che questa prova deve uccidere è quella che verrebbe scritta per
+   simmetria: contare i sospesi anche sugli Impegni darebbe 4 e 5.
+3. **Zero non compare** — archivio che risponde `{"agenda_unread": 0}`:
+   nessun pallino.
 4. **Le parole della sponda** (§6.3) — l'etichetta del menu nei due gusci e la
    parola nelle descrizioni di `promise` e `propose` coincidono. Mutazione:
    cambiare l'etichetta in un solo posto → rosso.
@@ -388,6 +497,25 @@ difetto che la prova cerca.
    memoria), e risponde 503 senza archivio.
 7. **Il raggruppamento della nav** — le voci Impegni e Proposte non stanno
    sotto l'etichetta «Configurazione».
+8. **La migrazione non inventa notizie** (§4.6) — si costruisce un archivio
+   `version=1` con lo schema VECCHIO, ci si scrivono dentro promesse
+   concluse, lo si apre con il codice nuovo: la colonna c'è, e
+   `count_unread()` risponde **0**. La mutazione da uccidere è la migrazione
+   che aggiunge la colonna e si ferma lì: quella risponderebbe col numero di
+   tutto lo storico. Questa prova è l'unica che tocca il difetto vero, cioè
+   ciò che succede **sulla casa del proprietario** al primo avvio dopo
+   l'aggiornamento — non su un archivio nato oggi.
+9. **La migrazione è idempotente** — girarla due volte non solleva e non
+   cambia i conti (`PRAGMA table_info`, come `_migration_2`).
+10. **Un archivio nuovo nasce già a posto** — nessuna migrazione girata
+    (`storage.py:55`), e la colonna c'è lo stesso: è la prova che
+    `_SCHEMA` è stato aggiornato insieme alla migrazione, e non solo lei.
+11. **Il segno di lettura segna ciò che è stato mostrato** — `POST
+    /api/agenda/read` con due id su tre non lette: dopo, `count_unread()`
+    risponde 1. E marcare una promessa **in sospeso** non la fa sparire da
+    nessuna parte: il segno vale sugli esiti, non sugli impegni.
+12. **La sezione «Esiti da leggere» sparisce quando è vuota** (§5.1) — non
+    è nel DOM, non è una sezione vuota con dentro «nessun esito».
 
 E una prova che **non** si scrive: che l'utente capisca. Quella la fa il
 proprietario, dal vivo, sulla casa vera — come ogni rilascio.
@@ -420,16 +548,30 @@ senza il quale i client non si aggiornano.
 | Il raggruppamento della nav rompe il cassetto mobile | `main.js:39` chiude il cassetto su `.nav-item`: le etichette di sezione non lo sono. Verifica dal vivo su iPad |
 | `GET /api/pending` a ogni risposta della chat pesa | Due `COUNT(*)` su SQLite locale. Se pesasse, si vedrebbe nei consumi |
 | L'utente legge «Impegni» come la propria agenda | §2.1, dichiarato e accettato: si corregge da solo aprendo la pagina |
+| **La migrazione gira sull'archivio vero e sbaglia** | È l'unico passo irreversibile della fetta. Prove 8-10, più una passata su una **copia del `.db` della casa** prima del rilascio (§11) |
+| Il pallino degli Impegni resta acceso perché il segno di lettura non parte | Prova 11. E il guasto è per eccesso: si rivede la notizia, non la si perde (§4.6) |
 
 ---
 
 ## §11 · L'ordine
 
-1. `count_pending()` sui due archivi + `GET /api/pending` + le sue prove.
-2. `pending-badge.js` + `.nav-badge` in `hiris-theme.css` + le prove del
-   pallino.
-3. Il raggruppamento della `side-nav` e le due voci nella barra della chat.
-4. Le etichette: Impegni, Proposte — menu, titoli di pagina, briciola.
-5. Lo storico compresso, sulle due pagine.
-6. Le descrizioni degli strumenti + il cancello della sponda.
-7. Verifica dal vivo sulla casa, poi rilascio.
+1. **La colonna** (§4.6): `esito_letto_ts` in `_SCHEMA` + migrazione a
+   `version=2` col travaso + `serializza()` + le prove 8, 9, 10. È il primo
+   passo perché è l'unico irreversibile su una casa vera, e perché tutto il
+   resto dipende da cosa c'è dentro.
+2. `count_unread()` / `count_pending()` + `GET /api/pending` + `POST
+   /api/agenda/read` + le prove 6 e 11.
+3. `pending-badge.js` + `.nav-badge` in `hiris-theme.css` + le prove 1, 2, 3.
+4. Il raggruppamento della `side-nav` e le due voci nella barra della chat
+   (prova 7).
+5. Le etichette: Impegni, Proposte — menu, titoli di pagina, briciola.
+6. Le tre sezioni della pagina Impegni + lo storico chiuso su entrambe
+   (prove 5 e 12).
+7. Le descrizioni degli strumenti + il cancello della sponda (prova 4).
+8. Verifica dal vivo sulla casa, poi rilascio.
+
+**Sul passo 1 e la casa vera**: la migrazione gira all'avvio dell'add-on,
+sull'archivio del proprietario, senza chiedere permesso. Prima del rilascio
+si prova su **una copia del `.db` vero**, non solo su SQLite in memoria: la
+prova 8 dice che il codice fa la cosa giusta, una copia del vero dice che la
+fa su quei dati.
