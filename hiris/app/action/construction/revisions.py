@@ -156,6 +156,28 @@ class ConstructionStore:
             righe = self._conn.execute(sql, (int(limit),)).fetchall()
         return [_row(r) for r in righe]
 
+    def count_pending(self) -> int:
+        """Quante proposte aspettano una risposta dell'utente.
+
+        Qui il pallino conta i sospesi e sugli Impegni no
+        (`keeper/store.py::count_unread`), e non e' un'incoerenza: una
+        proposta in attesa aspetta letteralmente il proprietario -- senza il
+        suo si' non succede niente -- mentre un impegno in sospeso aspetta
+        l'ora.
+
+        `in_corso` conta: rivendicata non vuol dire decisa, ed e' la stessa
+        ragione per cui `propose` guarda `STATES_SOSPESO` e non il solo
+        `in_attesa`.
+
+        NON chiama `_scadi()`: e' un conteggio, e un conteggio non scrive. Lo
+        scarto dura al massimo fino alla prossima apertura della pagina, che
+        `scadi()` lo chiama (`api/handlers_constructions.py`).
+        """
+        with self._lock:
+            return self._conn.execute(
+                f"SELECT count(*) FROM costruzioni WHERE stato IN ({_SOSPESI_SQL})"
+            ).fetchone()[0]
+
     def claim(self, ident: str, *, now: float) -> dict:
         """Prende in carico una proposta PRIMA di scrivere su Home Assistant
         (spec §7).

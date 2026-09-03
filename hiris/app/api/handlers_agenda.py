@@ -55,6 +55,34 @@ async def handle_delete_promise(request: web.Request) -> web.Response:
     return web.json_response(occurrence_out(occurrence))
 
 
+async def handle_mark_read(request: web.Request) -> web.Response:
+    """Segna letti gli esiti che la pagina ha appena mostrato.
+
+    Prende gli identificatori e non «tutti i non letti»: la pagina segna cio'
+    che ha messo sullo schermo, e cio' che non ha disegnato deve restare
+    acceso.
+
+    Un id sconosciuto, o di una promessa ancora in sospeso, NON e' un errore:
+    non viene contato, e basta. La pagina manda cio' che ha disegnato e non
+    deve conoscere le regole dell'archivio -- che sono in
+    `AgendaStore.mark_read`, l'unico posto in cui vivono. Il numero che torna
+    dice quante righe ha toccato davvero, che e' l'unica risposta onesta a
+    una richiesta di questa forma.
+    """
+    store = request.app.get("agenda")
+    if store is None:
+        return web.json_response({"error": "archivio non disponibile"}, status=503)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "corpo non leggibile"}, status=400)
+    ids = body.get("ids") if isinstance(body, dict) else None
+    if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
+        return web.json_response({"error": "serve una lista `ids` di stringhe."},
+                                 status=400)
+    return web.json_response({"marked": store.mark_read(ids, now=time.time())})
+
+
 async def handle_get_execution(request: web.Request) -> web.Response:
     """La riga di cronaca di un'esecuzione -- cosi' com'e', da `Journal.read`.
 

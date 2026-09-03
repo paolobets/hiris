@@ -162,6 +162,31 @@ class AgendaStore:
                  None if avvisare is None else int(avvisare), now, promise_id))
             self._conn.commit()
 
+    def mark_read(self, ids: list[str], *, now: float) -> int:
+        """Segna letti gli esiti degli id passati. Torna quante righe ha toccato.
+
+        Le tre condizioni della `WHERE` servono tutte, e ognuna esclude un
+        difetto diverso:
+        - `id IN (...)`: si segna cio' che e' stato MOSTRATO, non «tutto il
+          non letto». Una pagina che disegna dieci righe non deve poter
+          spegnere un esito che l'utente non ha davanti;
+        - `stato IN (conclusi)`: una promessa in sospeso non ha un esito da
+          leggere, e scriverle addosso un'ora di lettura sarebbe un fatto
+          falso in archivio;
+        - `esito_letto_ts IS NULL`: rimarcare una riga gia' letta ne
+          falserebbe il momento.
+        """
+        if not ids:
+            return 0
+        marks = ",".join("?" * len(ids))
+        with self._lock:
+            cur = self._conn.execute(
+                f"UPDATE promesse SET esito_letto_ts=? WHERE id IN ({marks}) "
+                f"AND stato IN ({_CONCLUSI}) AND esito_letto_ts IS NULL",
+                (now, *ids))
+            self._conn.commit()
+            return cur.rowcount
+
     def cancel(self, promise_id: str, *, now: float) -> dict:
         """`in_attesa` -> `disdetta`, atomica sullo stesso modello di `prendi`.
 
@@ -255,6 +280,24 @@ class AgendaStore:
                     "SELECT * FROM promesse ORDER BY quando_ts DESC LIMIT ?",
                     (int(limit),)).fetchall()
         return [serializza(r) for r in righe]
+
+    def count_unread(self) -> int:
+        """Quante promesse concluse hanno un esito che nessuno ha letto.
+
+        E' il numero del pallino degli Impegni. NON conta le promesse in
+        sospeso, e la differenza e' il punto: una promessa in sospeso non
+        aspetta l'utente, aspetta l'ora. Contarle terrebbe il pallino acceso
+        tutte le volte che HIRIS ha qualcosa in programma per domani -- cioe'
+        quasi sempre -- e un pallino sempre acceso smette di essere letto.
+
+        Le due condizioni sono ENTRAMBE necessarie: `esito_letto_ts` e' NULL
+        anche per ogni promessa in sospeso (non ha ancora un esito), quindi
+        da sola non dice «da leggere».
+        """
+        with self._lock:
+            return self._conn.execute(
+                f"SELECT count(*) FROM promesse WHERE stato IN ({_CONCLUSI}) "
+                "AND esito_letto_ts IS NULL").fetchone()[0]
 
     def scadute(self, now: float) -> list[dict]:
         with self._lock:

@@ -3682,9 +3682,24 @@ def create_app() -> web.Application:
         handle_delete_promise,
         handle_get_agenda,
         handle_get_execution,
+        handle_mark_read,
     )
     app.router.add_get("/api/agenda", handle_get_agenda)
     app.router.add_delete("/api/agenda/{id}", handle_delete_promise)
+    # Il segno di lettura: la pagina Impegni dichiara quali esiti ha
+    # mostrato, e quelli smettono di contare nel pallino.
+    #
+    # Convive con `/api/agenda/{id}` qui sopra, che a `read` darebbe lo
+    # stesso percorso: non si scontrano perche' i metodi sono diversi (DELETE
+    # contro POST). Non e' un ragionamento da fidarsi a memoria -- e' pinnato
+    # da `test_api_pending.py`, che questa POST la manda davvero e si aspetta
+    # 200, non un 405. Il giorno in cui `/api/agenda/{id}` prendesse anche la
+    # POST, quel test diventerebbe rosso: e' li' che si scopre.
+    #
+    # E' una scrittura: passa dal `csrf_middleware` come ogni altra rotta
+    # mutante, e `test_post_senza_x_requested_with_e_403_e_non_segna` lo
+    # verifica insieme al fatto che un rifiuto non lasci traccia.
+    app.router.add_post("/api/agenda/read", handle_mark_read)
     # La cronaca si chiede A PARTE, per identificatore (review finale,
     # rilievo ①): la promessa porta solo `esecuzione_id`, mai i fatti
     # dell'esecuzione ricopiati. Rotta di lettura -- niente csrf_middleware
@@ -3716,6 +3731,13 @@ def create_app() -> web.Application:
     # perche' anche questa non la salti. Non scrive su Home Assistant: si
     # scrive nell'archivio e basta (vedi il modulo `handlers_constructions`).
     app.router.add_post("/api/constructions/{id}/reject", handle_reject_construction)
+
+    # I due numeri dei pallini, in una richiesta sola. Sta qui, dopo i due
+    # archivi che legge, e non dentro nessuno dei due blocchi sopra: non
+    # appartiene ne' all'agenda ne' all'officina. Il perche' delle chiavi
+    # asimmetriche e del 503 sta nel modulo.
+    from .api.handlers_pending import handle_get_pending
+    app.router.add_get("/api/pending", handle_get_pending)
 
     # Task 3 SDD nucleo: vedere cio' che il modello vedra' -- il testo
     # ESATTO che compone `home_space.briefing.compose()`, non una sua descrizione.
