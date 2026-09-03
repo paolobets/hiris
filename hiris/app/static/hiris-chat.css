@@ -295,7 +295,7 @@
        e' la stessa disciplina degli avvisi di `esegui` (`action/actuator.py`):
        un fatto su cio' che HIRIS ha potuto vedere, mai un'ipotesi sulla causa.
        Vive dentro `.msg-col`, sotto la bolla, e ne eredita la larghezza. */
-    .msg-nota {
+    .msg-note {
       font-size: 12px;
       line-height: 1.5;
       color: var(--text-3);
@@ -418,7 +418,7 @@
     /* La riga di servizio dei due minuti: dice che cosa succede al turno se
        l'utente se ne va. Il testo lo sceglie chat/messages.js, perche' la
        risposta vera dipende da come il turno viene servito. */
-    .thinking-live .tl-servizio {
+    .thinking-live .tl-service {
       font-size: 12px; color: var(--text-3); line-height: var(--lh-snug, 1.4);
       max-width: 44ch;
       animation: hiris-thinking-entra 0.24s ease-out both;
@@ -433,7 +433,7 @@
        ha spento le animazioni. */
     @media (prefers-reduced-motion: reduce) {
       .avatar.thinking-logo, .thinking-live .tl-label, .thinking-live .tl-dots i,
-      .thinking-live .thinking-timer, .thinking-live .tl-servizio { animation: none; }
+      .thinking-live .thinking-timer, .thinking-live .tl-service { animation: none; }
       .thinking-live .tl-label {
         background-image: none;
         -webkit-text-fill-color: var(--accent-ink); color: var(--accent-ink);

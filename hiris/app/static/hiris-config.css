@@ -1409,7 +1409,7 @@
   height: 1px; background: var(--border); margin: var(--sp-4) 0;
 }
 /* ────────────────────────────────────────────────────────────
-   #/models — la riga-provider, il connettore, le due sezioni
+   #/models — la row-provider, il connettore, le due sezioni
    Fetta «la catena e' l'unica verita'» (Task 8). Qui vivevano le classi delle
    tre sezioni vecchie, e le prime due erano due rappresentazioni della stessa
    cosa: `.provider-row*` (l'elenco con il badge di stato) e `.chain-row*` (la
@@ -1431,28 +1431,28 @@
    flex del `.sc-body` che eredita. */
 #agenda-pending-body, #agenda-history-body { gap: 0; }
 
-/* La riga-provider: quattro colonne, quattro domande. Dove sei (la posizione),
+/* La row-provider: quattro colonne, quattro domande. Dove sei (la posizione),
    chi sei (il nome), con che cosa (il modello), quanto costi (la natura). Il
    pallino non e' mai l'unico segnale (WCAG 1.4.1): la colonna accanto porta
    sempre il testo -- la natura, oppure che cosa manca. */
-.riga-provider {
+.row-provider {
   display: grid;
   grid-template-columns: 1.6em 7px minmax(7em, auto) minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--sp-3);
   padding: var(--sp-3) 0;
 }
-.riga-pos {
+.row-pos {
   /* La posizione e' il dato della riga, non un ornamento: la posizione *e'* la
      decisione. */
   font-family: var(--font-mono); font-size: var(--fs-12);
   color: var(--text-3);
   text-align: right;
 }
-.riga-nome { font-size: var(--fs-13); font-weight: 500; color: var(--text); }
-.riga-modello {
+.row-name { font-size: var(--fs-13); font-weight: 500; color: var(--text); }
+.row-model {
   /* Un identificatore, non un nome proprio: la tipografia lo dice prima della
-     didascalia -- e `.modello-alias` la toglie, perche' un alias ha l'aspetto
+     didascalia -- e `.model-alias` la toglie, perche' un alias ha l'aspetto
      di una parola (progetto §6.2).
      E' un BOTTONE (apre il pannello), quindi va spogliato di tutto cio' che un
      bottone porta con se': fondo, bordo, allineamento al centro. Resta
@@ -1466,16 +1466,16 @@
   text-align: left;
   cursor: pointer;
 }
-.riga-modello.modello-alias { font-family: inherit; font-size: var(--fs-13); }
+.row-model.model-alias { font-family: inherit; font-size: var(--fs-13); }
 /* Il segno che si puo' aprire: sottolineatura tratteggiata, non un colore --
    il colore non e' mai l'unico segnale, e qui non e' nemmeno un segnale, e'
    una decorazione che qualcuno potrebbe non vedere. */
-.riga-modello { text-decoration: underline dotted var(--border-2); }
-.riga-modello:hover { color: var(--text); }
-.riga-modello[aria-expanded="true"] { color: var(--text); font-weight: 500; }
-.riga-natura { font-size: var(--fs-12); color: var(--text-3); white-space: nowrap; }
-.riga-azioni { display: flex; align-items: center; gap: var(--sp-2); }
-.riga-nota {
+.row-model { text-decoration: underline dotted var(--border-2); }
+.row-model:hover { color: var(--text); }
+.row-model[aria-expanded="true"] { color: var(--text); font-weight: 500; }
+.row-nature { font-size: var(--fs-12); color: var(--text-3); white-space: nowrap; }
+.row-actions { display: flex; align-items: center; gap: var(--sp-2); }
+.row-note {
   grid-column: 1 / -1;
   font-size: var(--fs-12); color: var(--text-2);
   line-height: var(--lh-snug);
@@ -1485,7 +1485,7 @@
    la nota, perche' e' della riga e non della sequenza (il connettore, che sta
    FRA due righe, ha lo stesso rientro e un tratteggio sopra: e' quello che li
    distingue). */
-.riga-stato {
+.row-status {
   grid-column: 1 / -1;
   font-size: var(--fs-12); color: var(--text-3);
   line-height: var(--lh-snug);
@@ -1496,21 +1496,21 @@
    pagina Modelli era, secondo l'audit pre-UAT, l'ultima superficie rimasta
    indietro. E ambra, non rosso: una riga che non risponde deve smettere di
    sembrare attiva, non diventare un allarme. */
-.riga-stato.stato-rifiutato { color: var(--warn-ink); }
+.row-status.status-rejected { color: var(--warn-ink); }
 /* Il nome perde peso, cosi' la riga *smette di sembrare attiva*: e' la
    traduzione grafica del ritiro della parola «Attivo» (progetto §4.3). */
-.riga-muta .riga-nome { font-weight: 400; color: var(--text-2); }
+.row-muted .row-name { font-weight: 400; color: var(--text-2); }
 /* Grigio-ambra: acceso quanto basta per non sparire, spento quanto basta per
    non essere un allarme. Niente alone -- l'alone di `.dot.on` e' il segno di
    qualcosa che funziona. */
-.dot.muto { background: var(--warn); opacity: 0.55; box-shadow: none; }
+.dot.muted { background: var(--warn); opacity: 0.55; box-shadow: none; }
 /* Chi sta fuori non ha una posizione e non ha un «dopo»: la colonna del numero
    resta, vuota, perche' le due liste si leggano incolonnate. */
-.riga-fuori .riga-nome { font-weight: 400; }
+.row-outside .row-name { font-weight: 400; }
 
 /* Il connettore: la frase fra una riga e la successiva, e quella dopo
    l'ultima. Tratteggiato perche' e' un passaggio, non un confine. */
-.connettore {
+.connector {
   font-size: var(--fs-12); color: var(--text-3);
   line-height: var(--lh-snug);
   border-top: 1px dashed var(--border);
@@ -1518,7 +1518,7 @@
 }
 /* Il tetto dei cinque minuti: sta sotto il numero di cui parla, non dentro la
    frase. E' un fatto, non un divieto -- quindi `--text-2`, non `--warn-ink`. */
-.connettore-nota {
+.connector-note {
   font-size: var(--fs-12); color: var(--text-2);
   font-style: italic;
   line-height: var(--lh-snug);
@@ -1530,9 +1530,9 @@
    I bottoni NON si disabilitano: la catena si prepara anche mentre e'
    scavalcata. E il colore non e' mai l'unico segnale: a dirlo, a parole, sono
    il connettore e la nota della riga del piano, che arrivano dal backend. */
-.catena-inerte .riga-nome,
-.catena-inerte .riga-modello,
-.catena-inerte .riga-natura { color: var(--text-3); }
+.chain-inert .row-name,
+.chain-inert .row-model,
+.chain-inert .row-nature { color: var(--text-3); }
 
 .sc-actions {
   margin-left: auto;
@@ -1560,7 +1560,7 @@
 /* Gli embedding: una riga, in fondo, sotto un filetto. Non sono una sezione e
    non sono numerati -- la numerazione, in questa pagina, significa «qui si
    decide qualcosa», e questi non fanno niente (progetto §8). */
-.nota-embedding {
+.embedding-note {
   margin: var(--sp-5) 0 0;
   padding-top: var(--sp-4);
   border-top: 1px solid var(--border);
@@ -1572,7 +1572,7 @@
    Un riquadro flottante coprirebbe le righe accanto -- cioè la catena, che è
    il contenuto della pagina -- e su un tablet in verticale coprirebbe anche
    sé stesso. Espanso, invece, la riga cresce e tutto il resto scorre. */
-.pannello-modello {
+.panel-model {
   grid-column: 1 / -1;
   margin: var(--sp-3) 0 var(--sp-2);
   padding: var(--sp-4);
@@ -1581,13 +1581,13 @@
   background: var(--surface-2);
   display: flex; flex-direction: column; gap: var(--sp-3);
 }
-.pannello-testa {
+.panel-head {
   display: flex; align-items: center; gap: var(--sp-3);
 }
-.pannello-titolo {
+.panel-title {
   margin: 0; font-size: var(--fs-13); font-weight: 600; color: var(--text);
 }
-.pannello-chiudi { margin-left: auto; }
+.panel-close { margin-left: auto; }
 
 /* Da dove viene l'elenco. Il colore segue il FATTO, non il gusto: una lista
    letta adesso è un'informazione neutra (--text-3), una di riserva è un
@@ -1595,15 +1595,15 @@
    token semantico del testo, `--warn-ink`, mai `--warn` (regola di
    hiris-theme.css: gli `*-ink` sono per il testo, gli altri per pallini,
    bordi e riempimenti). */
-.pannello-provenienza {
+.panel-provenance {
   margin: 0;
   font-size: var(--fs-12); color: var(--text-3);
   line-height: var(--lh-snug);
 }
-.pannello-provenienza.fonte-riserva,
-.pannello-provenienza.fonte-assente { color: var(--warn-ink); }
+.panel-provenance.source-riserva,
+.panel-provenance.source-assente { color: var(--warn-ink); }
 
-.pannello-filtro {
+.panel-filter {
   width: 100%;
   padding: var(--sp-2) var(--sp-3);
   border: 1px solid var(--border); border-radius: var(--r-sm);
@@ -1616,35 +1616,35 @@
    Un'altezza massima con lo scorrimento perché il pannello non spinga la
    catena fuori dallo schermo: undici voci ci stanno, i gratuiti di OpenRouter
    possono essere molti di più. */
-.pannello-elenco {
+.panel-list {
   display: flex; flex-direction: column;
   max-height: 15em; overflow-y: auto;
 }
-.pannello-voce {
+.panel-entry {
   display: flex; align-items: baseline; gap: var(--sp-2);
   padding: var(--sp-2) 0;
   cursor: pointer;
 }
-.pannello-voce input[disabled] { cursor: default; }
+.panel-entry input[disabled] { cursor: default; }
 /* La tipografia È la spiegazione (progetto §6.2): un identificatore ha
    l'aspetto di un identificatore, un alias l'aspetto di una parola. La stessa
    regola della colonna del modello, applicata dentro il pannello. */
-.voce-valore {
+.entry-value {
   font-family: var(--font-mono); font-size: var(--fs-12);
   color: var(--text); overflow-wrap: anywhere;
 }
-.voce-alias .voce-valore { font-family: inherit; font-size: var(--fs-13); }
-.voce-nota { font-size: var(--fs-12); color: var(--text-3); }
+.entry-alias .entry-value { font-family: inherit; font-size: var(--fs-13); }
+.entry-note { font-size: var(--fs-12); color: var(--text-3); }
 
 /* La casella vive SOTTO l'elenco che filtra: si auto-documenta, e non serve
    una descrizione per capire cosa fa una casella che sta sotto l'elenco che
    modifica. */
-.pannello-casella {
+.panel-box {
   display: flex; align-items: center; gap: var(--sp-2);
   font-size: var(--fs-12); color: var(--text-2);
   cursor: pointer;
 }
-.pannello-spiegazione {
+.panel-explanation {
   margin: 0;
   font-size: var(--fs-12); color: var(--text-2);
   line-height: var(--lh-snug);
@@ -1652,37 +1652,37 @@
 /* La confessione dell'invariante 4: lo stesso valore si applica in due modi.
    Neutra -- non è un avviso, è un fatto -- e destinata a sparire da sé quando
    il backend smetterà di mandarla (Task 10). */
-.pannello-quando {
+.panel-when {
   margin: 0;
   font-size: 11px; color: var(--text-3);
   font-style: italic;
   line-height: var(--lh-snug);
 }
-.pannello-stato {
+.panel-status {
   margin: 0;
   font-size: var(--fs-12); color: var(--err-ink);
 }
-.pannello-stato:empty { display: none; }
+.panel-status:empty { display: none; }
 
 @media (pointer: coarse) {
-  .riga-provider .btn-icon-only {
+  .row-provider .btn-icon-only {
     min-width: 44px; min-height: 44px;
     margin: -4px -4px;
   }
   /* Il modello si clicca anche con un dito: il testo da solo e' alto una riga.
      `min-height` invece di padding perche' la riga e' una griglia e un padding
      sposterebbe la colonna rispetto alle altre tre. */
-  .riga-modello { min-height: 44px; display: flex; align-items: center; }
-  .pannello-voce { min-height: 44px; }
+  .row-model { min-height: 44px; display: flex; align-items: center; }
+  .panel-entry { min-height: 44px; }
 }
 @media (max-width: 640px) {
   /* Due righe invece di sei colonne: nome e azioni sopra, modello e natura
      sotto. Non si nasconde niente -- si manda a capo. */
-  .riga-provider { grid-template-columns: 1.6em 7px minmax(0, 1fr) auto; }
-  .riga-nome { grid-column: 3; grid-row: 1; }
-  .riga-azioni { grid-column: 4; grid-row: 1; }
-  .riga-modello { grid-column: 3; grid-row: 2; }
-  .riga-natura { grid-column: 4; grid-row: 2; text-align: right; }
+  .row-provider { grid-template-columns: 1.6em 7px minmax(0, 1fr) auto; }
+  .row-name { grid-column: 3; grid-row: 1; }
+  .row-actions { grid-column: 4; grid-row: 1; }
+  .row-model { grid-column: 3; grid-row: 2; }
+  .row-nature { grid-column: 4; grid-row: 2; text-align: right; }
 }
 
 /* «Adesso»: la risposta della pagina Modelli, prima delle sue ragioni.
@@ -1708,13 +1708,13 @@
 .now-card:empty {
   display: none;
 }
-.now-card .adesso-frase {
+.now-card .now-phrase {
   margin: 0;
   font-size: var(--fs-20);
   line-height: var(--lh-snug);
   color: var(--text);
 }
-.now-card .adesso-diagnosi {
+.now-card .now-diagnosis {
   margin: var(--sp-3) 0 0;
   padding-left: var(--sp-4);
   display: flex;
@@ -1725,16 +1725,16 @@
 /* Testo su token `*-ink`, mai su `--warn`/`--err`: la regola d'uso e' scritta
    in hiris-theme.css (righe 76-82) e questa pagina e' l'ultima superficie che
    non la rispettava. */
-.now-card .diagnosi-spreco { color: var(--warn-ink); }
-.now-card .diagnosi-guasto { color: var(--err-ink); }
+.now-card .diagnosis-spreco { color: var(--warn-ink); }
+.now-card .diagnosis-guasto { color: var(--err-ink); }
 /* La terza gravita', nata col ripiego (Task 14): un FATTO che non e' ne' un
    guasto ne' uno spreco -- «il piano prova per primo, e se non risponde entro
    N minuti il turno passa al successivo». Prima quella riga era uno spreco
    («la catena qui sotto non viene consultata»), e con il ripiego ha smesso di
    esserlo: quei provider adesso servono. Colorarla d'ambra direbbe
    «attenzione» dove non c'e' niente di storto. Stesso token della nota nella
-   chat (`.msg-nota`, hiris-chat.css), e per la stessa ragione. */
-.now-card .diagnosi-fatto { color: var(--text-3); }
+   chat (`.msg-note`, hiris-chat.css), e per la stessa ragione. */
+.now-card .diagnosis-fatto { color: var(--text-3); }
 
 /* Il gesto accanto alla riga che lo motiva (versione B, 3.0.0). Non e' un
    pulsante di sezione e non sta in un'intestazione: sta DENTRO la voce di
@@ -1744,7 +1744,7 @@
    dopo una frase di due righe finirebbe orfana in fondo. Il colore lo eredita
    dalla gravita' della voce (`--warn-ink` su uno spreco, `--text-3` su un
    fatto), che e' cio' che tiene il gesto attaccato al suo motivo. */
-.now-card .diagnosi-azione {
+.now-card .diagnosis-action {
   display: block;
   margin-top: var(--sp-2);
 }
@@ -1772,62 +1772,62 @@
    colorate: sono due numeri veri e tre non-numeri di natura diversa, e cinque
    pastiglie li appiattirebbero di nuovo. */
 
-.usage-barra {
+.usage-bar {
   display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-start;
   justify-content: space-between; margin: 12px 0 20px;
 }
-.usage-quando { display: inline-flex; gap: 4px; }
-.usage-quando .btn.attivo {
+.usage-when { display: inline-flex; gap: 4px; }
+.usage-when .btn.active {
   background: var(--surface-3); color: var(--text); border-color: var(--border-2);
 }
 .usage-reset-block { max-width: 42ch; }
 .usage-reset-block .hint { margin-top: 4px; }
 
-.st-avviso { color: var(--warn-ink); }
+.st-notice { color: var(--warn-ink); }
 
 /* I due grafici. SVG scritto a mano: nessun build step, nessuna libreria. */
-.usage-grafici { margin: 24px 0; }
-.usage-testa-grafico {
+.usage-charts { margin: 24px 0; }
+.usage-chart-head {
   display: flex; align-items: center; justify-content: space-between;
   gap: 12px; flex-wrap: wrap;
 }
-.usage-grafici h3 {
+.usage-charts h3 {
   font-size: 13px; font-weight: 600; color: var(--text-2);
   margin: 18px 0 8px; text-transform: none; letter-spacing: 0;
 }
-.usage-grafico { width: 100%; height: auto; display: block; }
-.usage-legenda {
+.usage-chart { width: 100%; height: auto; display: block; }
+.usage-legend {
   display: flex; flex-wrap: wrap; gap: 14px; margin-top: 6px;
   font-size: 12px; color: var(--text-2);
 }
-.usage-legenda .ulg { display: inline-flex; align-items: center; gap: 6px; }
-.usage-legenda i {
+.usage-legend .ulg { display: inline-flex; align-items: center; gap: 6px; }
+.usage-legend i {
   width: 10px; height: 10px; border-radius: 2px; display: inline-block;
 }
-.usage-tabella { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-.usage-tabella th, .usage-tabella td {
+.usage-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.usage-table th, .usage-table td {
   text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border);
   font-variant-numeric: tabular-nums;
 }
 
 /* Il bilancio dell'energia (mandato «il bilancio dell'energia», 27/08/2026,
-   watcher-route.js): STESSO grafico SVG a mano di .usage-grafico/
-   .usage-legenda qui sopra -- niente libreria, nessuna dipendenza nuova --
+   watcher-route.js): STESSO grafico SVG a mano di .usage-chart/
+   .usage-legend qui sopra -- niente libreria, nessuna dipendenza nuova --
    ma un prefisso proprio (`bil-`, come `umr-`/`usec-` sopra sono il
    prefisso di "Consumi"): sono classi di UNA pagina diversa, e questo
    file le tiene distinte come tiene distinti tutti gli altri prefissi.
    `width:100%;height:auto` e' cio' che rende la curva (fino a 24 punti --
    meno se Home Assistant ne ha omessi alcuni, vedi l'avviso su
    `renderBalanceCurve` in watcher-route.js) responsive: lo stesso
-   schema di .usage-grafico, la stessa ragione per cui non scorre in
+   schema di .usage-chart, la stessa ragione per cui non scorre in
    orizzontale a 390px. */
-.bil-grafico { width: 100%; height: auto; display: block; }
-.bil-legenda {
+.bil-chart { width: 100%; height: auto; display: block; }
+.bil-legend {
   display: flex; flex-wrap: wrap; gap: 14px; margin-top: 6px;
   font-size: 12px; color: var(--text-2);
 }
-.bil-legenda .ulg { display: inline-flex; align-items: center; gap: 6px; }
-.bil-legenda i {
+.bil-legend .ulg { display: inline-flex; align-items: center; gap: 6px; }
+.bil-legend i {
   width: 10px; height: 10px; border-radius: 2px; display: inline-block;
 }
 
@@ -1840,7 +1840,7 @@
    del mandato: anche un solo momento (min 160px) sta dentro qualunque
    telefono, e piu' momenti si accodano in righe, mai in colonne che
    allargano il contenitore. */
-.bil-momenti {
+.bil-moments {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: var(--sp-2) var(--sp-4); margin: 4px 0;
 }
@@ -1849,13 +1849,13 @@
    `auto-fit` puo' calcolare un numero DISPARI di colonne a certe larghezze
    (misurato dal revisore: 1200px), e con dt/dd alternati piatti questo
    separa un'etichetta dal suo valore, che finisce affiancato all'etichetta
-   SUCCESSIVA invece che alla propria. `.bil-momento` (watcher-route.js,
+   SUCCESSIVA invece che alla propria. `.bil-moment` (watcher-route.js,
    `renderBalanceMoments`) raggruppa ogni coppia in un div: e' LUI l'unico
    elemento di griglia, non i suoi due figli -- una coppia non puo' piu'
    spezzarsi, a nessuna larghezza. Verificato dal vivo a 1200px. */
-.bil-momento { min-width: 0; }
-.bil-momenti dt { font-size: var(--fs-12); color: var(--text-3); }
-.bil-momenti dd {
+.bil-moment { min-width: 0; }
+.bil-moments dt { font-size: var(--fs-12); color: var(--text-3); }
+.bil-moments dd {
   font-size: var(--fs-13); color: var(--text); margin: 0 0 6px 0;
   font-variant-numeric: tabular-nums;
 }
@@ -1864,12 +1864,12 @@
    visita il cui unico scopo e' la trasparenza, e nascondere il dettaglio
    dietro un clic la contraddice. */
 .usage-provider { margin-top: 26px; }
-.usec-testa {
+.usec-head {
   display: flex; align-items: baseline; justify-content: space-between;
   gap: 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px;
 }
-.usec-nome { font-size: 14.5px; font-weight: 600; margin: 0; color: var(--text); }
-.usec-costo { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.usec-name { font-size: 14.5px; font-weight: 600; margin: 0; color: var(--text); }
+.usec-cost { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .usage-provider .sc-desc { margin: 6px 0 10px; }
 
 /* Una riga di modello e' una card a tre righe, con lo STESSO markup a ogni
@@ -1879,26 +1879,26 @@
 .umr-top {
   display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
 }
-.umr-nome {
+.umr-name {
   font-family: var(--font-mono); font-size: 13px; color: var(--text);
   word-break: break-all;
 }
-.umr-costo {
+.umr-cost {
   font-family: var(--font-mono); font-variant-numeric: tabular-nums;
   white-space: nowrap; color: var(--text);
 }
 /* Uno zero VERO: e' un numero, e si dice come parola per non confonderlo con
    un costo che non si conosce. */
-.umr-gratuito { color: var(--text-2); font-family: inherit; }
+.umr-free { color: var(--text-2); font-family: inherit; }
 /* Un'assenza NEUTRA: non c'e' niente da fare, e non c'e' niente da temere. */
-.umr-compreso { color: var(--text-3); font-family: inherit; }
+.umr-included { color: var(--text-3); font-family: inherit; }
 /* Un'assenza che CHIEDE ATTENZIONE: qualcosa e' stato speso e non sappiamo
    quanto. Mai in --err: non e' un guasto, e' una lacuna. */
-.umr-ignoto { color: var(--warn-ink); }
+.umr-unknown { color: var(--warn-ink); }
 .umr-meta { font-size: 12.5px; color: var(--text-2); margin-top: 3px; }
 .umr-foot { font-size: 11.5px; color: var(--text-3); margin-top: 2px; }
 
 @media (max-width: 640px) {
-  .usage-barra { flex-direction: column; gap: 10px; }
+  .usage-bar { flex-direction: column; gap: 10px; }
   .umr-top { flex-direction: column; gap: 2px; }
 }

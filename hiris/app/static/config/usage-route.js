@@ -51,16 +51,16 @@
      provider a determinarli. */
   function rowCost(m) {
     if (m.cost_state === 'misurato' || m.cost_state === 'reale') {
-      return '<span class="umr-costo">' + fmtEuro(m.cost_eur, 4) + '</span>';
+      return '<span class="umr-cost">' + fmtEuro(m.cost_eur, 4) + '</span>';
     }
     if (m.cost_state === 'non_noto' && m.cost_eur != null && m.cost_eur > 0) {
       /* Il pavimento a scala di riga: «questo l'ho pagato di sicuro, piu'
          qualcosa che non so». Un concetto solo, a due scale. */
-      return '<span class="umr-costo umr-ignoto">≥ ' + fmtEuro(m.cost_eur, 4) + '</span>';
+      return '<span class="umr-cost umr-unknown">≥ ' + fmtEuro(m.cost_eur, 4) + '</span>';
     }
-    var cssClass = m.cost_state === 'non_noto' ? 'umr-costo umr-ignoto'
-               : m.cost_state === 'compreso' ? 'umr-costo umr-compreso'
-               : 'umr-costo umr-gratuito';
+    var cssClass = m.cost_state === 'non_noto' ? 'umr-cost umr-unknown'
+               : m.cost_state === 'compreso' ? 'umr-cost umr-included'
+               : 'umr-cost umr-free';
     return '<span class="' + cssClass + '">'
       + escHtml(Word[m.cost_state] || m.cost_state) + '</span>';
   }
@@ -82,7 +82,7 @@
       : '';
     var unit = provider === 'ponte' ? 'turni' : 'richieste';
     return '<div class="usage-model-row">'
-      + '<div class="umr-top"><span class="umr-nome">' + escHtml(m.model) + '</span>'
+      + '<div class="umr-top"><span class="umr-name">' + escHtml(m.model) + '</span>'
       + rowCost(m) + '</div>'
       + '<div class="umr-meta">' + m.requests + ' ' + unit + ' · '
       + fmtNum(m.token_in) + ' IN · ' + fmtNum(m.token_out) + ' OUT'
@@ -93,15 +93,15 @@
 
   function sectionTotal(s) {
     if (s.provider === 'ponte') {
-      return '<span class="usec-costo umr-compreso">Compreso</span>';
+      return '<span class="usec-cost umr-included">Compreso</span>';
     }
     var text = fmtEuro(s.cost_eur, 2);
-    return '<span class="usec-costo">' + (s.partial_cost ? '≥ ' : '') + text + '</span>';
+    return '<span class="usec-cost">' + (s.partial_cost ? '≥ ' : '') + text + '</span>';
   }
 
   function section(s) {
     return '<section class="usage-provider">'
-      + '<div class="usec-testa"><h3 class="usec-nome">' + escHtml(s.label) + '</h3>'
+      + '<div class="usec-head"><h3 class="usec-name">' + escHtml(s.label) + '</h3>'
       + sectionTotal(s) + '</div>'
       + '<p class="sc-desc">' + escHtml(s.note) + '</p>'
       + s.models.map(function(m) { return modelRow(m, s.provider); }).join('')
@@ -115,7 +115,7 @@
     /* Il simbolo da solo e' criptico per chi apre la pagina dal telefono: la
        frase lo accompagna SEMPRE. */
     var note = u.partial_cost
-      ? '<div class="st-delta st-avviso">cifra minima — manca il prezzo di almeno un modello</div>'
+      ? '<div class="st-delta st-notice">cifra minima — manca il prezzo di almeno un modello</div>'
       : '';
     return '<div class="stat-grid" id="usage-summary">'
       + '<div class="stat-tile"><div class="st-label">Costo</div>'
@@ -131,11 +131,11 @@
 
   function bar(u) {
     var da = fmtDateTime(u.last_reset);
-    return '<div class="usage-barra">'
-      + '<div class="usage-quando" role="group" aria-label="Da quando contare">'
-      + '<button class="btn btn-ghost' + (state.daAncora ? ' attivo' : '') + '" '
+    return '<div class="usage-bar">'
+      + '<div class="usage-when" role="group" aria-label="Da quando contare">'
+      + '<button class="btn btn-ghost' + (state.daAncora ? ' active' : '') + '" '
       + 'id="usage-since-anchor">da ultimo azzeramento</button>'
-      + '<button class="btn btn-ghost' + (state.daAncora ? '' : ' attivo') + '" '
+      + '<button class="btn btn-ghost' + (state.daAncora ? '' : ' active') + '" '
       + 'id="usage-all-time">da sempre</button>'
       + '</div>'
       + '<div class="usage-reset-block">'
@@ -179,7 +179,7 @@
           + escHtml(p) + '</title></rect>';
       });
     });
-    return '<svg class="usage-grafico" viewBox="0 0 ' + L + ' ' + A + '" role="img" '
+    return '<svg class="usage-chart" viewBox="0 0 ' + L + ' ' + A + '" role="img" '
       + 'aria-label="' + escHtml(title) + '">'
       + '<title>' + escHtml(title) + '</title>'
       + '<desc>Barre impilate per giorno. Gli stessi numeri sono nella tabella '
@@ -189,7 +189,7 @@
   }
 
   function legend(provider, labels) {
-    return '<div class="usage-legenda">' + provider.map(function(p) {
+    return '<div class="usage-legend">' + provider.map(function(p) {
       return '<span class="ulg"><i style="background:var(--consumo-' + p + ')"></i>'
         + escHtml(labels[p] || p) + '</span>';
     }).join('') + '</div>';
@@ -203,7 +203,7 @@
       }).join('') + '</tr>';
     }).join('');
     return '<details class="usage-section"><summary>I numeri del grafico</summary>'
-      + '<table class="usage-tabella"><thead><tr><th>Giorno</th>'
+      + '<table class="usage-table"><thead><tr><th>Giorno</th>'
       + provider.map(function(p) { return '<th>' + escHtml(labels[p] || p) + '</th>'; }).join('')
       + '</tr></thead><tbody>' + line + '</tbody></table></details>';
   }
@@ -221,11 +221,11 @@
         + 'impilare. I suoi turni sono nel grafico sotto.</p>'
       : '';
 
-    return '<div class="usage-grafici">'
-      + '<div class="usage-testa-grafico"><h3>Costo al giorno</h3>'
-      + '<div class="usage-quando"><button class="btn btn-ghost'
-      + (state.giorni === 7 ? ' attivo' : '') + '" id="usage-7">7 giorni</button>'
-      + '<button class="btn btn-ghost' + (state.giorni === 30 ? ' attivo' : '')
+    return '<div class="usage-charts">'
+      + '<div class="usage-chart-head"><h3>Costo al giorno</h3>'
+      + '<div class="usage-when"><button class="btn btn-ghost'
+      + (state.giorni === 7 ? ' active' : '') + '" id="usage-7">7 giorni</button>'
+      + '<button class="btn btn-ghost' + (state.giorni === 30 ? ' active' : '')
       + '" id="usage-30">30 giorni</button></div></div>'
       + svgBarre(giorni, withCost, 'cost_eur', 'Costo al giorno per provider')
       + legend(withCost, labels) + outside
@@ -250,7 +250,7 @@
          rispondere. Il pulsante non si mostra: non c'e' nessuna ancora da
          spostare. */
       outlet.innerHTML = '<div class="page-title">Consumi</div>'
-        + '<p class="page-subtitle st-avviso">'
+        + '<p class="page-subtitle st-notice">'
         + escHtml(u.message || 'I consumi non si misurano su questa configurazione.')
         + '</p>';
       return;
@@ -266,7 +266,7 @@
       + bar(u)
       + summary(u)
       + charts(storia, u.sections || [])
-      + '<div class="usage-sezioni">'
+      + '<div class="usage-sections">'
       + (u.sections || []).map(section).join('')
       + '</div>';
 

@@ -243,7 +243,7 @@ test('via ponte (202): quando il turno ripiega, la risposta lo dice sotto la bol
   await window.HirisChatSend.send('quante luci accese?');
   await tick(3700);
 
-  const nota = document.querySelector('.msg-nota');
+  const nota = document.querySelector('.msg-note');
   assert.ok(nota, 'la nota del ripiego deve comparire');
   assert.match(nota.textContent, /Il Piano Claude Max non ha risposto in tempo/);
   /* Dentro la riga della risposta, e dentro la sua colonna: `.msg-row` è un
@@ -266,7 +266,7 @@ test('via ponte (202): senza nota non compare nessuna riga vuota', async (t) => 
   await window.HirisChatSend.send('quante luci accese?');
   await tick(3700);
 
-  assert.equal(document.querySelector('.msg-nota'), null,
+  assert.equal(document.querySelector('.msg-note'), null,
     'nessun ripiego -> nessuna riga');
 });
 
@@ -279,7 +279,7 @@ test('ramo diretto (200): il ripiego a monte si annuncia sotto la bolla', async 
 
   await window.HirisChatSend.send('quante luci accese?');
 
-  const nota = document.querySelector('.msg-nota');
+  const nota = document.querySelector('.msg-note');
   assert.ok(nota, 'anche il ramo sincrono rende la nota: sono due righe gemelle');
   assert.equal(nota.textContent, NOTA);
 });
@@ -292,7 +292,7 @@ test('ramo diretto (200): senza nota non compare nessuna riga vuota', async (t) 
 
   await window.HirisChatSend.send('quante luci accese?');
 
-  assert.equal(document.querySelector('.msg-nota'), null);
+  assert.equal(document.querySelector('.msg-note'), null);
 });
 
 test('appendNote con una nota vuota non disegna niente', (t) => {
@@ -307,9 +307,9 @@ test('appendNote con una nota vuota non disegna niente', (t) => {
   const { window, document } = setupChat(t);
   const riga = window.HirisChatMessages.appendMsg('assistant', 'Le luci accese sono due.');
   window.HirisChatMessages.appendNote(riga, '');
-  assert.equal(document.querySelector('.msg-nota'), null);
+  assert.equal(document.querySelector('.msg-note'), null);
   window.HirisChatMessages.appendNote(riga, 'una nota vera');
-  assert.equal(document.querySelectorAll('.msg-nota').length, 1);
+  assert.equal(document.querySelectorAll('.msg-note').length, 1);
 });
 
 test('la nota non viene interpretata: è testo, non markup', async (t) => {
@@ -321,7 +321,7 @@ test('la nota non viene interpretata: è testo, non markup', async (t) => {
 
   await window.HirisChatSend.send('ciao');
 
-  const nota = document.querySelector('.msg-nota');
+  const nota = document.querySelector('.msg-note');
   assert.equal(nota.querySelector('img'), null,
     'textContent, mai innerHTML: il testo viene dal server');
   assert.equal(nota.textContent, '<img src=x onerror=alert(1)>');
@@ -556,7 +556,7 @@ test('a due minuti, sul ponte, l\'attesa dice che si puo\' chiudere la pagina', 
     await window.HirisChatSend.send('dimmi tutto della casa');
     await tick(200);
 
-    const servizio = document.querySelector('.tl-servizio');
+    const servizio = document.querySelector('.tl-service');
     assert.ok(servizio, 'passata la soglia, l\'attesa dice che fine fa il turno');
     assert.match(servizio.textContent, /[Pp]uoi anche chiudere/,
       'il turno e\' gia\' sul server: spaventare chi vuole chiudere sarebbe una paura inventata');
@@ -576,7 +576,7 @@ test('a due minuti, sul percorso diretto, l\'attesa dice di tenere la pagina ape
     window.HirisChatSend.send('dimmi tutto della casa'); // non si conclude: e\' il punto
     await tick(200);
 
-    const servizio = document.querySelector('.tl-servizio');
+    const servizio = document.querySelector('.tl-service');
     assert.ok(servizio, 'passata la soglia, l\'attesa dice che fine fa il turno');
     assert.match(servizio.textContent, /si perde/,
       'qui la risposta vive solo dentro questa richiesta: promettere la cronologia sarebbe una bugia');
@@ -885,7 +885,7 @@ test('la riga di servizio dice «puoi chiudere» solo quando il turno e\' davver
     /* 1. senza `waitSafeOnServer`: la pagina deve chiedere di NON chiudere */
     const riga = window.HirisChatMessages.showThinking();
     await tick(120);
-    const avvisoA = riga.querySelector('.tl-servizio');
+    const avvisoA = riga.querySelector('.tl-service');
     assert.ok(avvisoA, 'dopo la soglia la riga di servizio deve esserci');
     assert.match(avvisoA.textContent, /Tieni aperta questa pagina/,
       'senza il ponte il turno muore chiudendo la pagina, e la riga deve dirlo');
@@ -895,7 +895,7 @@ test('la riga di servizio dice «puoi chiudere» solo quando il turno e\' davver
     const riga2 = window.HirisChatMessages.showThinking();
     window.HirisChatMessages.waitSafeOnServer(riga2, 0);
     await tick(120);
-    const avvisoB = riga2.querySelector('.tl-servizio');
+    const avvisoB = riga2.querySelector('.tl-service');
     assert.ok(avvisoB, 'la riga di servizio deve comparire anche sul percorso del ponte');
     assert.match(avvisoB.textContent, /Puoi anche chiudere/,
       'il turno e\' al sicuro sul server: dirgli di tenere aperto sarebbe falso');

@@ -99,7 +99,7 @@ test('il no del proprietario non si mostra come un fallimento', async () => {
   const testo = dom.window.document.body.textContent;
   assert.doesNotMatch(testo, /disdetta|rifiutata\b/i,
     'gli stati interni non devono uscire come token grezzi');
-  const righe = dom.window.document.querySelectorAll('.costruzione');
+  const righe = dom.window.document.querySelectorAll('.construction');
   assert.notEqual(righe[0].className, righe[1].className,
     'il no dell utente e il fallimento di HIRIS non possono avere la stessa faccia');
 });

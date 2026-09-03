@@ -158,11 +158,11 @@ const FUORI = [
 ];
 
 function righeCatena(document) {
-  return Array.from(document.querySelectorAll('#chain-card .riga-provider'));
+  return Array.from(document.querySelectorAll('#chain-card .row-provider'));
 }
 
 function righeFuori(document) {
-  return Array.from(document.querySelectorAll('#outside-card .riga-provider'));
+  return Array.from(document.querySelectorAll('#outside-card .row-provider'));
 }
 
 /* I bottoni di una riga MENO quello del modello. Dal Task 9 il modello e' un
@@ -172,7 +172,7 @@ function righeFuori(document) {
    vede nel messaggio d'errore invece di far leggere «1 !== 0». */
 function gestiDellaRiga(row) {
   return Array.from(row.querySelectorAll('button'))
-    .filter((b) => !b.classList.contains('riga-modello'))
+    .filter((b) => !b.classList.contains('row-model'))
     .map((b) => b.className);
 }
 
@@ -183,7 +183,7 @@ test('la prima cosa della pagina è la frase, e viene dal backend', async () => 
 
   const card = adesso(document);
   assert.ok(card, 'il riquadro «Adesso» deve esistere');
-  assert.equal(card.querySelector('.adesso-frase').textContent,
+  assert.equal(card.querySelector('.now-phrase').textContent,
     'Il prossimo messaggio va a OpenRouter, con anthropic/claude-sonnet-4-6, a consumo.');
 });
 
@@ -212,10 +212,10 @@ test('la pagina NON ricostruisce la catena: se il backend dice openrouter, dice 
   await tick(20);
   const testo = adesso(document).textContent;
   assert.match(testo, /OpenRouter/);
-  assert.doesNotMatch(adesso(document).querySelector('.adesso-frase').textContent,
+  assert.doesNotMatch(adesso(document).querySelector('.now-phrase').textContent,
     /Claude API/,
     'la frase deve venire da adesso.frase, non da una ricostruzione di chain_order');
-  assert.deepEqual(righeCatena(document).map((r) => r.querySelector('.riga-nome').textContent),
+  assert.deepEqual(righeCatena(document).map((r) => r.querySelector('.row-name').textContent),
     ['OpenRouter', 'Claude API'],
     'anche il disegno della catena viene dal payload, non da chain_order');
 });
@@ -224,7 +224,7 @@ test('le diagnosi compaiono sotto la frase, una per riga', async () => {
   const { window, document } = monta();
   window.HirisModelsRoute.mount();
   await tick(20);
-  const righe = adesso(document).querySelectorAll('.adesso-diagnosi li');
+  const righe = adesso(document).querySelectorAll('.now-diagnosis li');
   assert.equal(righe.length, 1);
   assert.equal(righe[0].textContent,
     'Il Piano Claude Max ha il token, lo paghi, ed è fuori dalla catena.');
@@ -235,7 +235,7 @@ test('nessuna diagnosi = nessun elenco vuoto a schermo', async () => {
     adesso: Object.assign({}, CONFIG.adesso, { diagnosi: [] }) } });
   window.HirisModelsRoute.mount();
   await tick(20);
-  assert.equal(adesso(document).querySelectorAll('.adesso-diagnosi').length, 0,
+  assert.equal(adesso(document).querySelectorAll('.now-diagnosis').length, 0,
     'lo stato buono è quello in cui la pagina è noiosa: niente lista vuota');
 });
 
@@ -354,8 +354,8 @@ test('ponte acceso senza token: la pagina lo dice in cima, in rosso', async () =
   window.HirisModelsRoute.mount();
   await tick(20);
   const card = adesso(document);
-  assert.match(card.querySelector('.adesso-frase').textContent, /manca il token/);
-  assert.equal(card.querySelectorAll('.diagnosi-guasto').length, 1);
+  assert.match(card.querySelector('.now-phrase').textContent, /manca il token/);
+  assert.equal(card.querySelectorAll('.diagnosis-guasto').length, 1);
 });
 
 /* ── Il gesto dentro la diagnosi ──────────────────────────────────────────
@@ -382,10 +382,10 @@ test('la diagnosi che porta un gesto lo disegna, con le parole del backend', asy
   const ctx = monta(diagnosiConGesto(true));
   ctx.window.HirisModelsRoute.mount();
   await tick(20);
-  const bottone = adesso(ctx.document).querySelector('.diagnosi-azione');
+  const bottone = adesso(ctx.document).querySelector('.diagnosis-action');
   assert.ok(bottone, 'la diagnosi porta un\'azione e la pagina non la disegna');
   assert.equal(bottone.textContent, 'Mettilo primo');
-  assert.ok(bottone.closest('.diagnosi-spreco'),
+  assert.ok(bottone.closest('.diagnosis-spreco'),
     'il gesto sta DENTRO la voce che lo motiva: staccato, non si sa perché cliccarlo');
 });
 
@@ -396,7 +396,7 @@ test('una diagnosi senza gesto non disegna nessun bottone', async () => {
   const ctx = monta();
   ctx.window.HirisModelsRoute.mount();
   await tick(20);
-  assert.equal(adesso(ctx.document).querySelectorAll('.diagnosi-azione').length, 0);
+  assert.equal(adesso(ctx.document).querySelectorAll('.diagnosis-action').length, 0);
 });
 
 test('il gesto scrive il PERCORSO che ha ricevuto, e poi rilegge', async () => {
@@ -411,7 +411,7 @@ test('il gesto scrive il PERCORSO che ha ricevuto, e poi rilegge', async () => {
   await tick(20);
   const prima = letture();
 
-  adesso(ctx.document).querySelector('.diagnosi-azione')
+  adesso(ctx.document).querySelector('.diagnosis-action')
     .dispatchEvent(new ctx.window.Event('click'));
   await tick(20);
 
@@ -431,7 +431,7 @@ test('il gesto sa portare anche il valore falso, senza saperlo', async () => {
   const ctx = monta(diagnosiConGesto(false));
   ctx.window.HirisModelsRoute.mount();
   await tick(20);
-  adesso(ctx.document).querySelector('.diagnosi-azione')
+  adesso(ctx.document).querySelector('.diagnosis-action')
     .dispatchEvent(new ctx.window.Event('click'));
   await tick(20);
   const put = ctx.chiamate.filter((c) => (c.opts || {}).method === 'PUT');
@@ -448,7 +448,7 @@ test('un gesto che il disco rifiuta non resta a schermo come se fosse passato', 
   const ctx = monta(Object.assign({ putRotto: true }, diagnosiConGesto(true)));
   ctx.window.HirisModelsRoute.mount();
   await tick(20);
-  adesso(ctx.document).querySelector('.diagnosi-azione')
+  adesso(ctx.document).querySelector('.diagnosis-action')
     .dispatchEvent(new ctx.window.Event('click'));
   await tick(20);
   assert.match(ctx.document.getElementById('chain-status').textContent,
@@ -472,17 +472,17 @@ test('la catena mostra posizione, nome, modello e natura di ogni riga', async ()
   await tick(20);
   const righe = righeCatena(document);
   assert.equal(righe.length, 2);
-  assert.equal(righe[0].querySelector('.riga-pos').textContent, '1');
-  assert.equal(righe[0].querySelector('.riga-nome').textContent, 'Claude API');
-  assert.equal(righe[0].querySelector('.riga-modello').textContent, 'claude-opus-4-7');
-  assert.equal(righe[0].querySelector('.riga-natura').textContent, 'a consumo');
+  assert.equal(righe[0].querySelector('.row-pos').textContent, '1');
+  assert.equal(righe[0].querySelector('.row-name').textContent, 'Claude API');
+  assert.equal(righe[0].querySelector('.row-model').textContent, 'claude-opus-4-7');
+  assert.equal(righe[0].querySelector('.row-nature').textContent, 'a consumo');
 });
 
 test('fra due righe c\'è il connettore, e l\'ultimo dice cosa succede se non risponde nessuno', async () => {
   const { window, document } = monta({ config: { catena: CATENA, fuori_catena: FUORI } });
   window.HirisModelsRoute.mount();
   await tick(20);
-  const conn = Array.from(document.querySelectorAll('#chain-card .connettore'))
+  const conn = Array.from(document.querySelectorAll('#chain-card .connector'))
     .map((c) => c.textContent);
   assert.equal(conn.length, 2, 'un connettore fra le righe, e uno in fondo');
   assert.equal(conn[0], 'se rifiuta, subito');
@@ -501,7 +501,7 @@ test('il connettore del piano dichiara i minuti, e non promette un ripiego che n
     ponte: { attivo: true, scadenza_min: 5, tetto_giornaliero: 50 }, catena: catena, fuori_catena: [] } });
   window.HirisModelsRoute.mount();
   await tick(20);
-  const conn = document.querySelectorAll('#chain-card .connettore')[0];
+  const conn = document.querySelectorAll('#chain-card .connector')[0];
   assert.equal(conn.textContent,
     'il ponte non ripiega: se non risponde entro 7 min il messaggio va perso');
 });
@@ -517,11 +517,11 @@ test('sopra i 5 minuti la riga in più sta SOTTO il connettore, non dentro', asy
     ponte: { attivo: true, scadenza_min: 5, tetto_giornaliero: 50 }, catena: catena, fuori_catena: [] } });
   sopra.window.HirisModelsRoute.mount();
   await tick(20);
-  const nota = sopra.document.querySelector('#chain-card .connettore-nota');
+  const nota = sopra.document.querySelector('#chain-card .connector-note');
   assert.ok(nota, 'la riga in più deve esistere');
   assert.match(nota.textContent, /sopra i 5 minuti la chat smette di aspettare prima/);
   assert.doesNotMatch(
-    sopra.document.querySelectorAll('#chain-card .connettore')[0].textContent,
+    sopra.document.querySelectorAll('#chain-card .connector')[0].textContent,
     /sopra i 5 minuti/, "dentro il connettore no: li' c'e' la frase con il numero");
 
   const senza = [Object.assign({}, PIANO_DENTRO, { connettore_nota: '' }),
@@ -530,7 +530,7 @@ test('sopra i 5 minuti la riga in più sta SOTTO il connettore, non dentro', asy
     ponte: { attivo: true, scadenza_min: 5, tetto_giornaliero: 50 }, catena: senza, fuori_catena: [] } });
   sotto.window.HirisModelsRoute.mount();
   await tick(20);
-  assert.equal(sotto.document.querySelector('#chain-card .connettore-nota'), null,
+  assert.equal(sotto.document.querySelector('#chain-card .connector-note'), null,
     'sotto il tetto il backend non manda niente, e la pagina non inventa una riga');
 });
 
@@ -539,7 +539,7 @@ test('una riga senza credenziale non sta in catena: sta fuori, e dice cosa manca
   window.HirisModelsRoute.mount();
   await tick(20);
   const fuori = righeFuori(document);
-  assert.deepEqual(fuori.map((r) => r.querySelector('.riga-nome').textContent),
+  assert.deepEqual(fuori.map((r) => r.querySelector('.row-name').textContent),
     ['Piano Claude Max', 'OpenAI', 'Ollama (in casa)']);
   const openai = fuori[1];
   assert.match(openai.textContent, /manca la chiave/);
@@ -575,7 +575,7 @@ test('«Usa» mette il provider in fondo alla catena, e salva l\'oggetto intero'
     + 'della migrazione (versione A), non una decisione, e un client HTTP non '
     + 'deve poterlo riscrivere');
   assert.equal(righeCatena(ctx.document).length, 3, 'la riga si sposta subito');
-  assert.equal(righeCatena(ctx.document)[2].querySelector('.riga-pos').textContent, '3');
+  assert.equal(righeCatena(ctx.document)[2].querySelector('.row-pos').textContent, '3');
 });
 
 test('il piano NON offre «Usa», perché quella PUT il server la butta via', async () => {
@@ -592,7 +592,7 @@ test('il piano NON offre «Usa», perché quella PUT il server la butta via', as
   window.HirisModelsRoute.mount();
   await tick(20);
   const piano = righeFuori(document)[0];
-  assert.equal(piano.querySelector('.riga-nome').textContent, 'Piano Claude Max');
+  assert.equal(piano.querySelector('.row-name').textContent, 'Piano Claude Max');
   assert.deepEqual(gestiDellaRiga(piano), []);
   assert.match(piano.textContent, /Entra in catena quando il ponte è acceso/);
 });
@@ -601,13 +601,13 @@ test('«(x)» toglie dalla catena, e se il salvataggio fallisce si torna esattam
   const ctx = monta({ config: { catena: CATENA, fuori_catena: FUORI }, putRotto: true });
   ctx.window.HirisModelsRoute.mount();
   await tick(20);
-  const via = righeCatena(ctx.document)[0].querySelector('.riga-esci');
+  const via = righeCatena(ctx.document)[0].querySelector('.row-leave');
   via.dispatchEvent(new ctx.window.Event('click'));
   await tick(30);
   const righe = righeCatena(ctx.document);
   assert.equal(righe.length, 2);
-  assert.equal(righe[0].querySelector('.riga-nome').textContent, 'Claude API');
-  assert.equal(righe[0].querySelector('.riga-pos').textContent, '1',
+  assert.equal(righe[0].querySelector('.row-name').textContent, 'Claude API');
+  assert.equal(righe[0].querySelector('.row-pos').textContent, '1',
     'anche i numeri di posizione devono tornare quelli di prima');
   assert.equal(righeFuori(ctx.document).length, 3,
     'e la riga non deve restare anche fuori: sarebbe in due posti insieme');
@@ -619,13 +619,13 @@ test('le frecce riordinano, e i numeri seguono senza aspettare il server', async
   const ctx = monta({ config: { catena: CATENA, fuori_catena: FUORI } });
   ctx.window.HirisModelsRoute.mount();
   await tick(20);
-  righeCatena(ctx.document)[1].querySelector('.riga-su')
+  righeCatena(ctx.document)[1].querySelector('.row-up')
     .dispatchEvent(new ctx.window.Event('click'));
   await tick(20);
   const righe = righeCatena(ctx.document);
-  assert.deepEqual(righe.map((r) => r.querySelector('.riga-nome').textContent),
+  assert.deepEqual(righe.map((r) => r.querySelector('.row-name').textContent),
     ['OpenRouter', 'Claude API']);
-  assert.deepEqual(righe.map((r) => r.querySelector('.riga-pos').textContent), ['1', '2']);
+  assert.deepEqual(righe.map((r) => r.querySelector('.row-pos').textContent), ['1', '2']);
 });
 
 test('la freccia che non ha niente da scambiare è spenta, non finta', async () => {
@@ -636,10 +636,10 @@ test('la freccia che non ha niente da scambiare è spenta, non finta', async () 
   ctx.window.HirisModelsRoute.mount();
   await tick(20);
   const righe = righeCatena(ctx.document);
-  assert.equal(righe[0].querySelector('.riga-su').disabled, true);
-  assert.equal(righe[0].querySelector('.riga-giu').disabled, false);
-  assert.equal(righe[1].querySelector('.riga-su').disabled, false);
-  assert.equal(righe[1].querySelector('.riga-giu').disabled, true);
+  assert.equal(righe[0].querySelector('.row-up').disabled, true);
+  assert.equal(righe[0].querySelector('.row-down').disabled, false);
+  assert.equal(righe[1].querySelector('.row-up').disabled, false);
+  assert.equal(righe[1].querySelector('.row-down').disabled, true);
 });
 
 test('col ponte acceso la catena resta visibile e riordinabile, e si dice scavalcata', async () => {
@@ -651,11 +651,11 @@ test('col ponte acceso la catena resta visibile e riordinabile, e si dice scaval
   ctx.window.HirisModelsRoute.mount();
   await tick(20);
   assert.equal(righeCatena(ctx.document).length, 3);
-  assert.equal(righeCatena(ctx.document)[2].querySelector('.riga-su').disabled, false,
+  assert.equal(righeCatena(ctx.document)[2].querySelector('.row-up').disabled, false,
     'la catena si prepara anche mentre è scavalcata');
-  assert.ok(ctx.document.getElementById('chain-card').classList.contains('catena-inerte'),
+  assert.ok(ctx.document.getElementById('chain-card').classList.contains('chain-inert'),
     'disegnata come ciò che è: inerte, adesso -- ma non tolta');
-  assert.match(ctx.document.querySelectorAll('#chain-card .connettore')[0].textContent,
+  assert.match(ctx.document.querySelectorAll('#chain-card .connector')[0].textContent,
     /il ponte non ripiega/,
     'e a dirlo è il connettore del backend, che cambierà con la regola');
 });
@@ -674,13 +674,13 @@ test('un gesto col ponte acceso non fa sparire il piano dalla catena', async () 
     fuori_catena: FUORI.slice(1) } });
   ctx.window.HirisModelsRoute.mount();
   await tick(20);
-  righeCatena(ctx.document)[2].querySelector('.riga-su')
+  righeCatena(ctx.document)[2].querySelector('.row-up')
     .dispatchEvent(new ctx.window.Event('click'));
   await tick(20);
   const righe = righeCatena(ctx.document);
-  assert.deepEqual(righe.map((r) => r.querySelector('.riga-nome').textContent),
+  assert.deepEqual(righe.map((r) => r.querySelector('.row-name').textContent),
     ['Piano Claude Max', 'OpenRouter', 'Claude API']);
-  assert.deepEqual(righe.map((r) => r.querySelector('.riga-pos').textContent),
+  assert.deepEqual(righe.map((r) => r.querySelector('.row-pos').textContent),
     ['1', '2', '3']);
 });
 
@@ -696,13 +696,13 @@ test('la freccia scambia con la riga che si VEDE, non con una invisibile', async
     fuori_catena: FUORI } });
   ctx.window.HirisModelsRoute.mount();
   await tick(20);
-  righeCatena(ctx.document)[0].querySelector('.riga-giu')
+  righeCatena(ctx.document)[0].querySelector('.row-down')
     .dispatchEvent(new ctx.window.Event('click'));
   await tick(20);
   const put = ctx.chiamate.filter((c) => (c.opts || {}).method === 'PUT').pop();
   assert.deepEqual(JSON.parse(put.opts.body).chain_order,
     ['openrouter', 'openai', 'claude']);
-  assert.deepEqual(righeCatena(ctx.document).map((r) => r.querySelector('.riga-nome').textContent),
+  assert.deepEqual(righeCatena(ctx.document).map((r) => r.querySelector('.row-name').textContent),
     ['OpenRouter', 'Claude API']);
 });
 
@@ -720,9 +720,9 @@ test('la riga del piano non porta frecce né «(x)», e dice perché', async () 
   ctx.window.HirisModelsRoute.mount();
   await tick(20);
   const piano = righeCatena(ctx.document)[0];
-  assert.equal(piano.querySelector('.riga-su'), null);
-  assert.equal(piano.querySelector('.riga-giu'), null);
-  assert.equal(piano.querySelector('.riga-esci'), null);
+  assert.equal(piano.querySelector('.row-up'), null);
+  assert.equal(piano.querySelector('.row-down'), null);
+  assert.equal(piano.querySelector('.row-leave'), null);
   assert.match(piano.textContent, /in testa o fuori/i);
 });
 
@@ -735,9 +735,9 @@ test('la pagina non inventa gesti per una riga che il backend dice non riordinab
     fuori_catena: FUORI } });
   ctx.window.HirisModelsRoute.mount();
   await tick(20);
-  assert.equal(righeCatena(ctx.document)[1].querySelector('.riga-su'), null);
-  assert.equal(righeCatena(ctx.document)[1].querySelector('.riga-esci'), null);
-  assert.ok(righeCatena(ctx.document)[0].querySelector('.riga-su'));
+  assert.equal(righeCatena(ctx.document)[1].querySelector('.row-up'), null);
+  assert.equal(righeCatena(ctx.document)[1].querySelector('.row-leave'), null);
+  assert.ok(righeCatena(ctx.document)[0].querySelector('.row-up'));
 });
 
 test('nemmeno «Usa» si inventa: fuori catena, non riordinabile, niente bottone', async () => {
@@ -765,7 +765,7 @@ test('«Risparmio» rifà la catena, e ci mette solo chi ha una credenziale', as
   const put = ctx.chiamate.filter((c) => (c.opts || {}).method === 'PUT').pop();
   assert.deepEqual(JSON.parse(put.opts.body).chain_order, ['openrouter', 'claude'],
     'ollama e openai non hanno credenziale: non entrano');
-  assert.deepEqual(righeCatena(ctx.document).map((r) => r.querySelector('.riga-nome').textContent),
+  assert.deepEqual(righeCatena(ctx.document).map((r) => r.querySelector('.row-name').textContent),
     ['OpenRouter', 'Claude API']);
 });
 
@@ -858,11 +858,11 @@ const PANNELLO_OLLAMA = {
 };
 
 function apriIlModello(ctx, riga) {
-  riga.querySelector('.riga-modello').dispatchEvent(new ctx.window.Event('click'));
+  riga.querySelector('.row-model').dispatchEvent(new ctx.window.Event('click'));
 }
 
 function pannello(document) {
-  return document.querySelector('.pannello-modello');
+  return document.querySelector('.panel-model');
 }
 
 test('l\'elenco dei modelli si legge SOLO quando il pannello si apre', async () => {
@@ -901,7 +901,7 @@ test('il modello è cliccabile e apre un pannello che dichiara da dove viene l\'
   assert.match(p.textContent, /potrebbe non esistere più/);
   /* Il FATTO va nella classe, le parole nella frase: la stessa divisione di
      `diagnosi[].gravita` e `diagnosi[].testo` nel riquadro «Adesso». */
-  assert.ok(p.querySelector('.pannello-provenienza').classList.contains('fonte-riserva'));
+  assert.ok(p.querySelector('.panel-provenance').classList.contains('source-riserva'));
 });
 
 test('la provenienza è quella ricevuta, non una composta qui', async () => {
@@ -915,7 +915,7 @@ test('la provenienza è quella ricevuta, non una composta qui', async () => {
   await tick(20);
   apriIlModello(ctx, righeCatena(ctx.document)[1]);
   await tick(20);
-  assert.equal(pannello(ctx.document).querySelector('.pannello-provenienza').textContent,
+  assert.equal(pannello(ctx.document).querySelector('.panel-provenance').textContent,
     'Frase che nessun codice di questa pagina saprebbe comporre.');
 });
 
@@ -928,7 +928,7 @@ test('il pannello del piano offre tre alias e nessun identificatore', async () =
   await tick(20);
   apriIlModello(ctx, righeCatena(ctx.document)[0]);
   await tick(20);
-  const voci = Array.from(ctx.document.querySelectorAll('.pannello-modello label'))
+  const voci = Array.from(ctx.document.querySelectorAll('.panel-model label'))
     .map((l) => l.textContent.trim().split(' ')[0]);
   assert.deepEqual(voci, ['haiku', 'sonnet', 'opus']);
   assert.match(pannello(ctx.document).textContent, /compresa nel piano/);
@@ -949,7 +949,7 @@ test('il pannello del piano SCRIVE, e scrive dove gli viene detto', async () => 
   await tick(20);
   apriIlModello(ctx, righeCatena(ctx.document)[0]);
   await tick(20);
-  const radio = Array.from(ctx.document.querySelectorAll('.pannello-modello input[type=radio]'));
+  const radio = Array.from(ctx.document.querySelectorAll('.panel-model input[type=radio]'));
   assert.equal(radio.length, 3);
   assert.deepEqual(radio.map((r) => r.disabled), [false, false, false],
     'i tre alias si scelgono: il campo esiste');
@@ -977,7 +977,7 @@ test('dove l\'elenco è completo non c\'è niente da incollare', async () => {
   await tick(20);
   apriIlModello(ctx, righeCatena(ctx.document)[0]);
   await tick(20);
-  assert.equal(ctx.document.querySelector('.pannello-filtro'), null,
+  assert.equal(ctx.document.querySelector('.panel-filter'), null,
     'nessun campo dove non c\'è niente da cercare altrove');
 });
 
@@ -990,7 +990,7 @@ test('dove l\'elenco è un pezzo di catalogo il campo c\'è', async () => {
   await tick(20);
   apriIlModello(ctx, righeCatena(ctx.document)[1]);
   await tick(20);
-  assert.ok(ctx.document.querySelector('.pannello-filtro'),
+  assert.ok(ctx.document.querySelector('.panel-filter'),
     'duecento modelli senza un filtro sarebbero illeggibili');
 });
 
@@ -1001,7 +1001,7 @@ test('scegliere un modello di OpenRouter salva l\'oggetto intero, e la pagina ri
   await tick(20);
   apriIlModello(ctx, righeCatena(ctx.document)[1]);
   await tick(20);
-  const radio = ctx.document.querySelectorAll('.pannello-modello input[type=radio]')[0];
+  const radio = ctx.document.querySelectorAll('.panel-model input[type=radio]')[0];
   radio.checked = true;
   radio.dispatchEvent(new ctx.window.Event('change'));
   await tick(20);
@@ -1038,7 +1038,7 @@ test('la didascalia del pannello è quella del backend, e sparisce quando il bac
   await tick(20);
   apriIlModello(parlante, righeCatena(parlante.document)[1]);
   await tick(20);
-  assert.equal(pannello(parlante.document).querySelector('.pannello-quando').textContent,
+  assert.equal(pannello(parlante.document).querySelector('.panel-when').textContent,
     'Una frase qualsiasi del backend.');
 
   const muto = monta({ config: { catena: CATENA, fuori_catena: FUORI },
@@ -1047,7 +1047,7 @@ test('la didascalia del pannello è quella del backend, e sparisce quando il bac
   await tick(20);
   apriIlModello(muto, righeCatena(muto.document)[1]);
   await tick(20);
-  assert.equal(pannello(muto.document).querySelector('.pannello-quando'), null,
+  assert.equal(pannello(muto.document).querySelector('.panel-when'), null,
     'senza la frase la pagina non ne inventa una');
 });
 
@@ -1066,7 +1066,7 @@ test('il pannello scrive DOVE gli viene detto, e non sa dove sia', async () => {
   await tick(20);
   apriIlModello(ctx, righeFuori(ctx.document)[2]);
   await tick(20);
-  const radio = ctx.document.querySelectorAll('.pannello-modello input[type=radio]')[1];
+  const radio = ctx.document.querySelectorAll('.panel-model input[type=radio]')[1];
   radio.checked = true;
   radio.dispatchEvent(new ctx.window.Event('change'));
   await tick(20);
@@ -1088,12 +1088,12 @@ test('il campo in cima filtra la lista vera, e ciò che si digita resta salvabil
   await tick(20);
   apriIlModello(ctx, righeCatena(ctx.document)[1]);
   await tick(20);
-  const campo = ctx.document.querySelector('.pannello-filtro');
+  const campo = ctx.document.querySelector('.panel-filter');
   assert.ok(campo, 'il campo c\'è dove si può scrivere');
   campo.value = 'gpt';
   campo.dispatchEvent(new ctx.window.Event('input'));
   await tick(20);
-  let valori = Array.from(ctx.document.querySelectorAll('.pannello-modello input[type=radio]'))
+  let valori = Array.from(ctx.document.querySelectorAll('.panel-model input[type=radio]'))
     .map((r) => r.value);
   assert.deepEqual(valori, ['openrouter:openai/gpt-4.1'],
     'la lista si stringe: le altre due non contengono «gpt»');
@@ -1101,11 +1101,11 @@ test('il campo in cima filtra la lista vera, e ciò che si digita resta salvabil
   campo.value = 'openrouter:x-ai/grok-4';
   campo.dispatchEvent(new ctx.window.Event('input'));
   await tick(20);
-  valori = Array.from(ctx.document.querySelectorAll('.pannello-modello input[type=radio]'))
+  valori = Array.from(ctx.document.querySelectorAll('.panel-model input[type=radio]'))
     .map((r) => r.value);
   assert.deepEqual(valori, ['openrouter:x-ai/grok-4'],
     'un identificatore che la lista non contiene resta scegliibile');
-  const scelta = ctx.document.querySelectorAll('.pannello-modello input[type=radio]')[0];
+  const scelta = ctx.document.querySelectorAll('.panel-model input[type=radio]')[0];
   scelta.checked = true;
   scelta.dispatchEvent(new ctx.window.Event('change'));
   await tick(20);
@@ -1123,7 +1123,7 @@ test('«nascondi i gratuiti» salva e RILEGGE l\'elenco, senza chiudere il panne
   await tick(20);
   apriIlModello(ctx, righeCatena(ctx.document)[1]);
   await tick(20);
-  const casella = ctx.document.querySelector('.pannello-casella input');
+  const casella = ctx.document.querySelector('.panel-box input');
   assert.ok(casella);
   assert.equal(casella.checked, false, 'lo stato viene da state.cfg, non dal nulla');
   casella.checked = true;
@@ -1146,10 +1146,10 @@ test('un pannello alla volta, e il secondo click su quello aperto lo chiude', as
   await tick(20);
   apriIlModello(ctx, righeCatena(ctx.document)[1]);
   await tick(20);
-  assert.equal(ctx.document.querySelectorAll('.pannello-modello').length, 1);
-  assert.equal(righeCatena(ctx.document)[0].querySelector('.riga-modello')
+  assert.equal(ctx.document.querySelectorAll('.panel-model').length, 1);
+  assert.equal(righeCatena(ctx.document)[0].querySelector('.row-model')
     .getAttribute('aria-expanded'), 'false');
-  assert.equal(righeCatena(ctx.document)[1].querySelector('.riga-modello')
+  assert.equal(righeCatena(ctx.document)[1].querySelector('.row-model')
     .getAttribute('aria-expanded'), 'true');
 
   apriIlModello(ctx, righeCatena(ctx.document)[1]);
@@ -1181,8 +1181,8 @@ test('un alias si vede che è un alias, prima che qualcuno lo spieghi', async ()
   ctx.window.HirisModelsRoute.mount();
   await tick(20);
   const righe = righeCatena(ctx.document);
-  assert.ok(righe[0].querySelector('.riga-modello').classList.contains('modello-alias'));
-  assert.ok(!righe[1].querySelector('.riga-modello').classList.contains('modello-alias'));
+  assert.ok(righe[0].querySelector('.row-model').classList.contains('model-alias'));
+  assert.ok(!righe[1].querySelector('.row-model').classList.contains('model-alias'));
 });
 
 test('il pannello segue la sua riga quando la riga si sposta', async () => {
@@ -1194,14 +1194,14 @@ test('il pannello segue la sua riga quando la riga si sposta', async () => {
   await tick(20);
   apriIlModello(ctx, righeCatena(ctx.document)[1]);
   await tick(20);
-  righeCatena(ctx.document)[1].querySelector('.riga-su')
+  righeCatena(ctx.document)[1].querySelector('.row-up')
     .dispatchEvent(new ctx.window.Event('click'));
   await tick(20);
   const righe = righeCatena(ctx.document);
-  assert.equal(righe[0].querySelector('.riga-nome').textContent, 'OpenRouter');
-  assert.ok(righe[0].querySelector('.pannello-modello'),
+  assert.equal(righe[0].querySelector('.row-name').textContent, 'OpenRouter');
+  assert.ok(righe[0].querySelector('.panel-model'),
     'il pannello è dentro la riga che si è mossa');
-  assert.equal(ctx.document.querySelectorAll('.pannello-modello').length, 1);
+  assert.equal(ctx.document.querySelectorAll('.panel-model').length, 1);
 });
 
 /* ── La riga di stato: l'ultimo esito osservato ───────────────────────────
@@ -1238,7 +1238,7 @@ const CATENA_OSSERVATA = [
 ];
 
 function statoDi(row) {
-  const n = row.querySelector('.riga-stato');
+  const n = row.querySelector('.row-status');
   return n ? n.textContent : null;
 }
 
@@ -1261,14 +1261,14 @@ test('chi ha rifiutato smette di sembrare attivo, e non diventa un allarme', asy
   ctx.window.HirisModelsRoute.mount();
   await tick(20);
   const righe = righeCatena(ctx.document);
-  assert.ok(righe[0].classList.contains('riga-muta'));
-  assert.equal(righe[0].querySelector('.dot').className, 'dot muto');
-  assert.ok(righe[0].querySelector('.riga-stato').classList.contains('stato-rifiutato'));
+  assert.ok(righe[0].classList.contains('row-muted'));
+  assert.equal(righe[0].querySelector('.dot').className, 'dot muted');
+  assert.ok(righe[0].querySelector('.row-status').classList.contains('status-rejected'));
 
-  assert.ok(!righe[1].classList.contains('riga-muta'),
+  assert.ok(!righe[1].classList.contains('row-muted'),
     'chi ha risposto resta com\'era');
   assert.equal(righe[1].querySelector('.dot').className, 'dot on');
-  assert.ok(!righe[1].querySelector('.riga-stato').classList.contains('stato-rifiutato'));
+  assert.ok(!righe[1].querySelector('.row-status').classList.contains('status-rejected'));
 });
 
 test('l\'aspetto segue il FATTO, non la frase', async () => {
@@ -1283,8 +1283,8 @@ test('l\'aspetto segue il FATTO, non la frase', async () => {
   ctx.window.HirisModelsRoute.mount();
   await tick(20);
   const riga = righeCatena(ctx.document)[0];
-  assert.ok(riga.classList.contains('riga-muta'));
-  assert.equal(riga.querySelector('.dot').className, 'dot muto');
+  assert.ok(riga.classList.contains('row-muted'));
+  assert.equal(riga.querySelector('.dot').className, 'dot muted');
 });
 
 test('niente da dire, nessuna riga vuota a schermo', async () => {
@@ -1296,7 +1296,7 @@ test('niente da dire, nessuna riga vuota a schermo', async () => {
     fuori_catena: [] } });
   ctx.window.HirisModelsRoute.mount();
   await tick(20);
-  assert.equal(ctx.document.querySelectorAll('.riga-stato').length, 0);
+  assert.equal(ctx.document.querySelectorAll('.row-status').length, 0);
 });
 
 test('anche chi sta fuori dalla catena dice cosa gli è successo', async () => {
@@ -1323,8 +1323,8 @@ test('la riga di stato non finisce dentro il pannello del modello', async () => 
   apriIlModello(ctx, righeCatena(ctx.document)[1]);
   await tick(20);
   const riga = righeCatena(ctx.document)[1];
-  assert.equal(riga.querySelectorAll('.riga-stato').length, 1);
-  assert.equal(riga.querySelector('.pannello-modello .riga-stato'), null);
+  assert.equal(riga.querySelectorAll('.row-status').length, 1);
+  assert.equal(riga.querySelector('.panel-model .row-status'), null);
 });
 
 /* ── Due proprieta' cieche, e il test viene PRIMA della rinomina ─────────────
@@ -1345,14 +1345,14 @@ test('col ponte attivo la catena si disegna inerte, e senza no', async () => {
   await tick(20);
   const cardA = a.document.getElementById('chain-card');
   assert.ok(cardA, 'la card della catena deve esistere');
-  assert.ok(cardA.classList.contains('catena-inerte'),
+  assert.ok(cardA.classList.contains('chain-inert'),
     'col ponte attivo la catena e\' scavalcata, e la pagina lo disegna');
 
   const b = monta();   // CONFIG porta `ponte.attivo: false`
   b.window.HirisModelsRoute.mount();
   await tick(20);
   const cardB = b.document.getElementById('chain-card');
-  assert.ok(!cardB.classList.contains('catena-inerte'),
+  assert.ok(!cardB.classList.contains('chain-inert'),
     'senza ponte la catena e\' viva: disegnarla inerte sarebbe una bugia');
 });
 

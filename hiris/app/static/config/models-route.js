@@ -204,14 +204,14 @@
     }
     if (!card) card = createNowShell();
     clearEl(card);
-    card.appendChild(el('p', 'adesso-frase', state.adesso.frase));
+    card.appendChild(el('p', 'now-phrase', state.adesso.frase));
 
     var diagnosis = state.adesso.diagnosi;
     if (Array.isArray(diagnosis) && diagnosis.length) {
-      var ul = el('ul', 'adesso-diagnosi');
+      var ul = el('ul', 'now-diagnosis');
       diagnosis.forEach(function(d) {
         if (!d || !d.testo) return;
-        var li = el('li', 'diagnosi-' + (d.gravita || 'guasto'), d.testo);
+        var li = el('li', 'diagnosis-' + (d.gravita || 'guasto'), d.testo);
         /* Il gesto accanto alla riga che lo motiva. La pagina non sa che cosa
            sta accendendo: riceve un'etichetta, un PERCORSO nell'archivio e un
            valore, e li applica -- la stessa disciplina del pannello del
@@ -227,7 +227,7 @@
   }
 
   function actionButton(action) {
-    var b = el('button', 'btn btn-sm diagnosi-azione', action.etichetta || '');
+    var b = el('button', 'btn btn-sm diagnosis-action', action.etichetta || '');
     b.type = 'button';
     b.addEventListener('click', function() { applyAction(action); });
     return b;
@@ -266,7 +266,7 @@
     return card;
   }
 
-  /* ── La riga-provider ──────────────────────────────────────────────────
+  /* ── La row-provider ──────────────────────────────────────────────────
      Una riga è una frase su quattro colonne, e ogni colonna risponde a una
      domanda diversa: dove sei (la posizione), chi sei (il nome), con che cosa
      (il modello), quanto costi (la natura). Il pallino non è mai l'unico
@@ -280,20 +280,20 @@
        ricostruirla, e questa pagina ha smesso di ricostruire. Serve a due cose
        sole, entrambe di aspetto -- il pallino e il peso del nome. */
     var reject = !!(data.esito && data.esito.tipo === 'rifiutato');
-    var row = el('div', 'riga-provider' + (dentro ? '' : ' riga-fuori')
-      + (reject ? ' riga-muta' : ''));
+    var row = el('div', 'row-provider' + (dentro ? '' : ' row-outside')
+      + (reject ? ' row-muted' : ''));
     row.setAttribute('data-provider', data.id);
     row.setAttribute('role', 'listitem');
-    row.appendChild(el('span', 'riga-pos',
+    row.appendChild(el('span', 'row-pos',
       data.posizione == null ? '' : String(data.posizione)));
     /* Il pallino di chi ha rifiutato diventa grigio-ambra, non rosso: una riga
        che non risponde deve SMETTERE DI SEMBRARE ATTIVA, che è la traduzione
        grafica del ritiro della parola «Attivo» -- non diventare un allarme.
        E non è mai l'unico segnale: la riga di stato qui sotto dice a parole
        che cosa è successo (WCAG 1.4.1). */
-    row.appendChild(el('span', 'dot ' + (reject ? 'muto'
+    row.appendChild(el('span', 'dot ' + (reject ? 'muted'
       : (data.ha_credenziale ? 'on' : 'off'))));
-    row.appendChild(el('span', 'riga-nome', data.nome));
+    row.appendChild(el('span', 'row-name', data.nome));
     /* Il modello sta NELLA RIGA, sempre visibile, e si clicca per cambiarlo.
        Un bottone e non uno `<span>` con un listener: apre e chiude una cosa, e
        chi naviga da tastiera deve poterci arrivare come ci arriva alle frecce.
@@ -302,7 +302,7 @@
        e arriva dal payload, perché è un fatto sul prodotto e non una regola
        che questa pagina possa conoscere. */
     var model = el('button',
-      'riga-modello' + (data.modello_alias ? ' modello-alias' : ''),
+      'row-model' + (data.modello_alias ? ' model-alias' : ''),
       data.modello || '—');
     model.type = 'button';
     model.setAttribute('aria-expanded', 'false');
@@ -310,10 +310,10 @@
       'Modello di «' + data.nome + '»: ' + (data.modello || 'nessuno') + '. Cambia');
     model.addEventListener('click', function() { openModelPanel(data.id); });
     row.appendChild(model);
-    row.appendChild(el('span', 'riga-natura',
+    row.appendChild(el('span', 'row-nature',
       data.ha_credenziale ? data.natura : (data.manca || '')));
 
-    var actions = el('span', 'riga-azioni');
+    var actions = el('span', 'row-actions');
     /* I gesti che scrivono `chain_order` -- entrare, uscire, salire, scendere
        -- si disegnano SOLO dove il backend dice `riordinabile`. Non c'è nessun
        `if (dati.id === 'subscription')` qui, ed è deliberato: la pagina non sa
@@ -325,10 +325,10 @@
        `save_models_config` scarta `subscription` da `chain_order`, quindi un
        «Usa» sul piano scriverebbe una PUT accettata con 200 e buttata via.) */
     if (dentro && data.riordinabile) {
-      var su = iconButton('↑', 'riga-su', 'Sposta «' + data.nome + '» su',
+      var su = iconButton('↑', 'row-up', 'Sposta «' + data.nome + '» su',
         function() { moveInChain(data.id, -1); });
       su.disabled = !neighbourInChain(data.id, -1);
-      var down = iconButton('↓', 'riga-giu', 'Sposta «' + data.nome + '» giù',
+      var down = iconButton('↓', 'row-down', 'Sposta «' + data.nome + '» giù',
         function() { moveInChain(data.id, 1); });
       down.disabled = !neighbourInChain(data.id, 1);
       actions.appendChild(su);
@@ -336,11 +336,11 @@
       /* Uscire dalla catena si può sempre, dove entrarci si può: è il gesto
          simmetrico di «Usa», e toglierlo lascerebbe una riga che non si può
          disfare. */
-      actions.appendChild(iconButton('✕', 'riga-esci',
+      actions.appendChild(iconButton('✕', 'row-leave',
         'Togli «' + data.nome + '» dalla catena',
         function() { removeFromChain(data.id); }));
     } else if (!dentro && data.ha_credenziale && data.riordinabile) {
-      var use = el('button', 'btn btn-ghost btn-sm riga-usa', 'Usa');
+      var use = el('button', 'btn btn-ghost btn-sm row-use', 'Usa');
       use.type = 'button';
       use.addEventListener('click', function() { putInChain(data.id); });
       actions.appendChild(use);
@@ -374,10 +374,10 @@
        osservazione: la riga dice già «manca la chiave»), e la pagina disegna
        solo ciò che non è vuoto -- nessuna condizione sul provider vive qui. */
     if (data.stato_testo) {
-      row.appendChild(el('div', 'riga-stato' + (reject ? ' stato-rifiutato' : ''),
+      row.appendChild(el('div', 'row-status' + (reject ? ' status-rejected' : ''),
         data.stato_testo));
     }
-    if (data.nota) row.appendChild(el('div', 'riga-nota', data.nota));
+    if (data.nota) row.appendChild(el('div', 'row-note', data.nota));
     return row;
   }
 
@@ -425,9 +425,9 @@
   }
 
   function closePanel() {
-    var open = document.querySelector('.pannello-modello');
+    var open = document.querySelector('.panel-model');
     if (open && open.parentNode) open.parentNode.removeChild(open);
-    var button = document.querySelectorAll('.riga-modello[aria-expanded="true"]');
+    var button = document.querySelectorAll('.row-model[aria-expanded="true"]');
     for (var i = 0; i < button.length; i++) {
       button[i].setAttribute('aria-expanded', 'false');
     }
@@ -469,18 +469,18 @@
      che non è una voce di elenco. Dentro la riga, invece, è quello che è: un
      dettaglio di quella riga. */
   function drawPanel() {
-    var precedente = document.querySelector('.pannello-modello');
+    var precedente = document.querySelector('.panel-model');
     if (precedente && precedente.parentNode) {
       precedente.parentNode.removeChild(precedente);
     }
     var p = state.pannello;
     if (!p) return;
-    var line = document.querySelector('.riga-provider[data-provider="' + p.id + '"]');
+    var line = document.querySelector('.row-provider[data-provider="' + p.id + '"]');
     if (!line) return;
-    var button = line.querySelector('.riga-modello');
+    var button = line.querySelector('.row-model');
     if (button) button.setAttribute('aria-expanded', 'true');
 
-    var box = el('div', 'pannello-modello');
+    var box = el('div', 'panel-model');
     box.setAttribute('role', 'group');
     /* Chiudere con Esc: un pannello che si apre da un click e si chiude solo
        da un altro click è una trappola per chi naviga da tastiera. */
@@ -491,11 +491,11 @@
       }
     });
 
-    var head = el('div', 'pannello-testa');
-    var title = el('h3', 'pannello-titolo',
-      'Modello di ' + ((p.dati && p.dati.nome) || line.querySelector('.riga-nome').textContent));
+    var head = el('div', 'panel-head');
+    var title = el('h3', 'panel-title',
+      'Modello di ' + ((p.dati && p.dati.nome) || line.querySelector('.row-name').textContent));
     head.appendChild(title);
-    head.appendChild(iconButton('✕', 'pannello-chiudi', 'Chiudi',
+    head.appendChild(iconButton('✕', 'panel-close', 'Chiudi',
       function() { closePanel(); }));
     box.appendChild(head);
     box.setAttribute('aria-label', title.textContent);
@@ -527,7 +527,7 @@
     /* Da dove viene l'elenco. La classe porta il FATTO (viva/riserva/fissa),
        la frase le parole: la stessa divisione di `diagnosi[].gravita` e
        `diagnosi[].testo` nel riquadro «Adesso». */
-    box.appendChild(el('p', 'pannello-provenienza fonte-' + (data.fonte || ''),
+    box.appendChild(el('p', 'panel-provenance source-' + (data.fonte || ''),
       data.provenienza || ''));
 
     /* Il campo si disegna solo dove c'è qualcosa da cercare FUORI dall'elenco.
@@ -542,7 +542,7 @@
        abilitato che non fa quello che dice — la stessa cosa che i tre radio
        spenti dichiaravano di voler evitare, rientrata dalla porta opposta. */
     if (writable && !data.elenco_completo) {
-      var filter = el('input', 'pannello-filtro');
+      var filter = el('input', 'panel-filter');
       filter.type = 'text';
       filter.value = p.filtro;
       filter.setAttribute('placeholder', 'filtra, o incolla un identificatore…');
@@ -551,7 +551,7 @@
          tasto gli toglierebbe il fuoco e il cursore da sotto le dita. */
       filter.addEventListener('input', function() {
         p.filtro = filter.value;
-        var old = box.querySelector('.pannello-elenco');
+        var old = box.querySelector('.panel-list');
         if (!old) return;
         old.parentNode.replaceChild(panelList(data, p, writable), old);
       });
@@ -566,7 +566,7 @@
       box.appendChild(panelBox(data.casella));
     }
     if (data.spiegazione) {
-      box.appendChild(el('p', 'pannello-spiegazione', data.spiegazione));
+      box.appendChild(el('p', 'panel-explanation', data.spiegazione));
     }
     /* Da quando ha effetto la scelta, se mai avesse un tempo suo. Oggi il
        backend tace su tutti e cinque i provider (`model_resolution`: ogni
@@ -576,15 +576,15 @@
        proprio -- e perché una frase così è un'affermazione sul prodotto, che
        si scrive dove il prodotto la sa. */
     if (data.quando) {
-      box.appendChild(el('p', 'pannello-quando', data.quando));
+      box.appendChild(el('p', 'panel-when', data.quando));
     }
-    var statusEl = el('p', 'pannello-stato');
+    var statusEl = el('p', 'panel-status');
     statusEl.setAttribute('aria-live', 'polite');
     box.appendChild(statusEl);
   }
 
   function panelList(data, p, writable) {
-    var list = el('div', 'pannello-elenco');
+    var list = el('div', 'panel-list');
     list.setAttribute('role', 'radiogroup');
     vociVisibili(data, p.filtro).forEach(function(v) {
       list.appendChild(modelEntry(data, v, writable));
@@ -616,7 +616,7 @@
   }
 
   function modelEntry(data, v, writable) {
-    var lab = el('label', 'pannello-voce' + (data.alias ? ' voce-alias' : ''));
+    var lab = el('label', 'panel-entry' + (data.alias ? ' entry-alias' : ''));
     var radio = el('input');
     radio.type = 'radio';
     radio.name = 'modello-' + data.id;
@@ -637,14 +637,14 @@
     /* Il valore per primo, sempre: è ciò che si cerca leggendo. Quando è la
        voce «auto» (valore vuoto) a parlare è la sua nota, che dice anche a
        quale modello si risolve oggi. */
-    if (v.valore) lab.appendChild(el('span', 'voce-valore', v.valore));
+    if (v.valore) lab.appendChild(el('span', 'entry-value', v.valore));
     if (v.valore && v.nota) lab.appendChild(document.createTextNode(' '));
-    if (v.nota) lab.appendChild(el('span', 'voce-nota', v.nota));
+    if (v.nota) lab.appendChild(el('span', 'entry-note', v.nota));
     return lab;
   }
 
   function panelBox(checkbox) {
-    var lab = el('label', 'pannello-casella');
+    var lab = el('label', 'panel-box');
     var box = el('input');
     box.type = 'checkbox';
     box.checked = !!readPath(checkbox.dove);
@@ -726,7 +726,7 @@
   }
 
   function showPanelError(text) {
-    var p = document.querySelector('.pannello-stato');
+    var p = document.querySelector('.panel-status');
     if (!p) return;
     p.textContent = '';
     p.textContent = text;
@@ -773,8 +773,8 @@
        ponte imparerà a ripiegare (Task 14), cioè tornerebbe a mentire da sola.
        Il colore non è mai l'unico segnale (WCAG 1.4.1). */
     if (card) {
-      if (state.bridgeActive) card.classList.add('catena-inerte');
-      else card.classList.remove('catena-inerte');
+      if (state.bridgeActive) card.classList.add('chain-inert');
+      else card.classList.remove('chain-inert');
     }
 
     if (!state.catena.length) {
@@ -785,14 +785,14 @@
     state.catena.forEach(function(data, i) {
       body.appendChild(providerRow(data, true));
       if (data.connettore && i < state.catena.length - 1) {
-        body.appendChild(connettore('connettore', data.connettore));
+        body.appendChild(connettore('connector', data.connettore));
       }
       if (data.connettore_nota) {
-        body.appendChild(connettore('connettore-nota', data.connettore_nota));
+        body.appendChild(connettore('connector-note', data.connettore_nota));
       }
     });
     if (state.fineCatena) {
-      body.appendChild(connettore('connettore', state.fineCatena));
+      body.appendChild(connettore('connector', state.fineCatena));
     }
   }
 
@@ -1122,7 +1122,7 @@
        qui, significa «si decide qualcosa», e questi non fanno niente. Restano
        in Configurazione add-on perché toglierli da lì costerebbe la perdita
        silenziosa di un valore in cambio di nulla (progetto §8). */
-    outlet.appendChild(el('p', 'nota-embedding',
+    outlet.appendChild(el('p', 'embedding-note',
       'Embedding: nessun testo viene vettorizzato, e i due campi in Configurazione add-on non ' +
       'hanno effetto. La ricerca per somiglianza è rimandata, non annullata.'));
 

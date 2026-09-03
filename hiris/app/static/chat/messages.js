@@ -116,7 +116,7 @@
   function appendNote(row, text) {
     if (!row || !text) return;
     var note = document.createElement('div');
-    note.className = 'msg-nota';
+    note.className = 'msg-note';
     note.textContent = text;
     var col = row.querySelector('.msg-col');
     var bubble = col && col.querySelector('.bubble');
@@ -331,7 +331,7 @@
     row._attesa.timeout.push(setTimeout(function () {
       if (!row._attesa) return;
       var line = document.createElement('div');
-      line.className = 'tl-servizio';
+      line.className = 'tl-service';
       line.textContent = row._attesa.safeOnServer ? SAFE_ON_SERVER_NOTICE : KEEP_OPEN_NOTICE;
       bubble.appendChild(line);
       state.els.messages.scrollTop = state.els.messages.scrollHeight;

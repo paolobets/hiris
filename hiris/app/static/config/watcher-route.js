@@ -632,7 +632,7 @@ window.HirisWatcherRoute = (function () {
     var barWidth = Math.max(1, (passo - 2) / series.length);
 
     var svg = svgEl('svg', {
-      class: 'bil-grafico', viewBox: '0 0 ' + L + ' ' + A, role: 'img',
+      class: 'bil-chart', viewBox: '0 0 ' + L + ' ' + A, role: 'img',
       'aria-label': 'Produzione e prelievo, ora per ora'
     });
     var title = document.createElementNS(SVG_NS, 'title');
@@ -676,7 +676,7 @@ window.HirisWatcherRoute = (function () {
     svg.appendChild(svgEl('line', { x1: 0, y1: base, x2: L, y2: base, stroke: 'var(--border)' }));
     box.appendChild(svg);
 
-    var legend = el('div', 'bil-legenda');
+    var legend = el('div', 'bil-legend');
     series.forEach(function (s) {
       var entry = el('span', 'ulg');
       var dot = el('i');
@@ -689,7 +689,7 @@ window.HirisWatcherRoute = (function () {
   }
 
   /* Punto 3 del brief: «I momenti derivati ... come dati secchi accanto alla
-     curva, non come frasi.» -- una lista etichetta/valore (`.bil-momenti`,
+     curva, non come frasi.» -- una lista etichetta/valore (`.bil-moments`,
      hiris-config.css), non un paragrafo discorsivo. Ogni momento e'
      opzionale (spec, "mai una chiave con un valore fittizio") e compare solo
      se c'e'.
@@ -733,7 +733,7 @@ window.HirisWatcherRoute = (function () {
     var voci = vociMomenti(moments);
     if (!voci.length) return;
 
-    var dl = el('dl', 'bil-momenti');
+    var dl = el('dl', 'bil-moments');
     voci.forEach(function (v) {
       // Punto 2 del brief-pagina (MEDIO): dt e dd erano celle INDIPENDENTI
       // della griglia -- a 1200px `auto-fit` puo' calcolare un numero
@@ -745,8 +745,8 @@ window.HirisWatcherRoute = (function () {
       // possono stare avvolti in un div) e diventa l'UNICO elemento di
       // griglia per quella coppia -- una coppia non puo' piu' spezzarsi, a
       // nessuna larghezza (verificato dal vivo a 1200px con Playwright,
-      // vedi il rapporto). `.bil-momento` in hiris-config.css.
-      var pair = el('div', 'bil-momento');
+      // vedi il rapporto). `.bil-moment` in hiris-config.css.
+      var pair = el('div', 'bil-moment');
       pair.appendChild(el('dt', null, v[0]));
       pair.appendChild(el('dd', null, v[1]));
       dl.appendChild(pair);

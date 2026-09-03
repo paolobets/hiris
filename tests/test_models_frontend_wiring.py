@@ -40,7 +40,7 @@ def test_models_route_ha_due_sezioni_e_una_riga_in_fondo():
     # numerazione, in questa pagina, significa «qui si decide qualcosa», e gli
     # embedding non decidono niente (progetto §8). Erano la sezione «03».
     assert "'Embeddings (oggi inattivi)'" not in js
-    assert "'nota-embedding'" in js
+    assert "'embedding-note'" in js
     assert "nessun testo viene vettorizzato" in js
     # E il blocco «03 QUANDO NON DECIDE LA CATENA» del progetto §3 non si
     # disegna: il campo che scavalcava la catena e' uscito col Task 4, e un
@@ -75,7 +75,7 @@ def test_la_pagina_riceve_la_frase_e_non_la_compone():
     una sottostringa che può vivere altrove.
     """
     js = (BASE / "config" / "models-route.js").read_text(encoding="utf-8")
-    assert "el('p', 'adesso-frase', state.adesso.frase)" in js, (
+    assert "el('p', 'now-phrase', state.adesso.frase)" in js, (
         "la frase a schermo dev'essere quella del backend, non una composta qui"
     )
     assert "now-card" in js

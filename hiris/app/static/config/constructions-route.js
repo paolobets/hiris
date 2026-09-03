@@ -391,7 +391,7 @@ window.HirisConstructions = (function () {
      "esiste gia'" quando serve), frase subordinata, anteprima per intero,
      helper, rivelatore dei dettagli tecnici, bottoni. */
   function line(c, statusEl, reload) {
-    var box = el('div', 'costruzione costruzione--' + c.stato);
+    var box = el('div', 'construction construction--' + c.stato);
     box.style.cssText = 'border-top:1px solid var(--border);padding:var(--sp-4) 0;' +
       'display:flex;flex-direction:column;gap:var(--sp-2)';
 

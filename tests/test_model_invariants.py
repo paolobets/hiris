@@ -193,7 +193,10 @@ def test_il_testo_semantico_usa_i_token_ink():
     l'unica superficie rimasta indietro; dopo i Task 8-11-14 le sue regole sono
     trenta e nessun test le guardava."""
     css = (STATIC / "hiris-config.css").read_text(encoding="utf-8")
-    regole = re.findall(r"\.(?:adesso|riga|connettore)[^{]*\{[^}]*\}", css)
+    # Le tre famiglie di allora -- `adesso`, `riga`, `connettore` -- portano
+    # oggi il nome inglese: `now`, `row`, `connector`. Sono le stesse tre, non
+    # un perimetro allargato, e `.row-provider` ci sta dentro col prefisso.
+    regole = re.findall(r"\.(?:now|row|connector)[^{]*\{[^}]*\}", css)
     assert len(regole) >= 20, (
         f"attese almeno venti regole della pagina Modelli, trovate "
         f"{len(regole)}: la forma del file e' cambiata e questo test sta "
@@ -218,7 +221,7 @@ def test_il_testo_semantico_usa_i_token_ink():
 #     esistono per i test e per `querySelector`, non per il foglio.
 _CLASSI_SENZA_REGOLA_PER_SCELTA = {
     "chain-body", "chain-card", "outside-body", "route-outlet",
-    "riga-usa", "riga-su", "riga-giu", "riga-esci",
+    "row-use", "row-up", "row-down", "row-leave",
 }
 
 
@@ -229,11 +232,11 @@ def _classi_disegnate_dalla_pagina() -> set[str]:
     **G3 della revisione finale.** La versione precedente leggeva solo
     `el(...tag..., ...classi...)`, e in questa pagina le classi che contano non si
     scrivono cosi': sono composte con un ternario
-    (`'riga-provider' + (dentro ? '' : ' riga-fuori')`) o passate come
-    variabile a un wrapper (`connettore('connettore-nota', …)`). Erano
+    (`'row-provider' + (dentro ? '' : ' row-outside')`) o passate come
+    variabile a un wrapper (`connettore('connector-note', …)`). Erano
     invisibili al test che prometteva di coprirle: cancellando cinque regole
-    dal foglio -- `.riga-muta`, `.stato-rifiutato`, `.modello-alias`,
-    `.voce-alias`, `.riga-fuori`, cioe' la traduzione grafica del ritiro della
+    dal foglio -- `.row-muted`, `.status-rejected`, `.model-alias`,
+    `.entry-alias`, `.row-outside`, cioe' la traduzione grafica del ritiro della
     parola «Attivo» e la tipografia alias-contro-identificatore -- restavano
     trentaquattro test verdi. Non era un test che non poteva fallire in
     assoluto: era un test che non poteva fallire proprio dove il suo nome
@@ -247,7 +250,7 @@ def _classi_disegnate_dalla_pagina() -> set[str]:
     ruolo (`list`, `listitem`), da un id di provider (`claude`) e da un valore
     (`polite`, `balanced`). Restano fuori, per costruzione dichiarata, i nomi
     di classe SENZA trattino passati come variabile -- oggi uno solo,
-    `connettore`, la cui gemella `connettore-nota` e' invece coperta."""
+    `connettore`, la cui gemella `connector-note` e' invece coperta."""
     js = _righe_vive_js(MODELS_JS)
     classi: set[str] = set()
     for letterale in re.findall(r"'([^']*)'", js):
@@ -274,7 +277,7 @@ def test_ogni_classe_che_la_pagina_disegna_ha_una_regola_nel_css():
     E' il primo test di questo repo che apre un `.css`. Fino al Task 14 il
     registro lo ha dichiarato quattro volte come debito aperto."""
     # I COMMENTI si tolgono. I fogli di questo ramo CITANO i nomi delle classi
-    # per spiegare le regole (`.modello-alias` compare in un commento di
+    # per spiegare le regole (`.model-alias` compare in un commento di
     # `hiris-config.css`), e una citazione non veste niente: cercare nel testo
     # grezzo faceva passare per «vestita» una classe la cui unica traccia era
     # la spiegazione di una regola cancellata. E' la gemella esatta di
@@ -296,11 +299,11 @@ def test_ogni_classe_che_la_pagina_disegna_ha_una_regola_nel_css():
 
 
 # I tre blocchi che occupano l'intera riga dentro la griglia della
-# `.riga-provider`. La griglia ha SEI colonne in largo e QUATTRO sotto i 640px:
+# `.row-provider`. La griglia ha SEI colonne in largo e QUATTRO sotto i 640px:
 # `1 / -1` e' scritto cosi' apposta, perche' regga in tutte e due. Un blocco che
 # perdesse questa riga si schiaccerebbe dentro una colonna -- e jsdom non se ne
 # accorgerebbe mai.
-_BLOCCHI_A_TUTTA_LARGHEZZA = ("riga-nota", "riga-stato", "pannello-modello")
+_BLOCCHI_A_TUTTA_LARGHEZZA = ("row-note", "row-status", "panel-model")
 
 
 @pytest.mark.parametrize("classe", _BLOCCHI_A_TUTTA_LARGHEZZA)
@@ -311,7 +314,7 @@ def test_i_blocchi_a_tutta_larghezza_restano_a_tutta_larghezza(classe):
     blocco = re.search(r"\." + classe + r"\s*\{([^}]*)\}", css)
     assert blocco, f".{classe} non ha una regola in hiris-config.css"
     assert re.search(r"grid-column:\s*1\s*/\s*-1", blocco.group(1)), (
-        f".{classe} sta dentro la griglia della riga-provider e deve "
+        f".{classe} sta dentro la griglia della row-provider e deve "
         f"dichiarare `grid-column: 1 / -1`: senza, si schiaccia in una colonna"
     )
 

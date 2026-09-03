@@ -952,7 +952,7 @@ test('seam _rendiOggetti: i momenti si leggono come dati secchi (orario HH:MM, p
   // TUTTA la pagina/riga può essere soddisfatto da un'altra sezione).
   // `<dt>`/`<dd>` non hanno separatore visivo nel textContent concatenato,
   // quindi si legge la coppia esatta, non l'intera riga.
-  const momenti = corpo.querySelector('.bil-momenti');
+  const momenti = corpo.querySelector('.bil-moments');
   assert.ok(momenti, 'deve esserci la sezione dei momenti derivati');
   const etichette = Array.from(momenti.querySelectorAll('dt')).map((n) => n.textContent);
   const valori = Array.from(momenti.querySelectorAll('dd')).map((n) => n.textContent);
@@ -982,14 +982,14 @@ test('seam _rendiOggetti: senza `momenti` non compare la sezione dei momenti der
 });
 
 // ---------------------------------------------------------------------------
-// Punto 2 (MEDIO): a 1200px `.bil-momenti` (auto-fit) può calcolare un numero
+// Punto 2 (MEDIO): a 1200px `.bil-moments` (auto-fit) può calcolare un numero
 // DISPARI di colonne -- dt e dd, celle indipendenti della griglia, si
 // spezzano a fine riga (misurato dal revisore: «Picco di produzione» chiude
 // una riga, il suo valore ne apre un'altra accanto a un'altra etichetta).
 // jsdom non fa layout, quindi non può riprodurre lo sfondamento a 1200px --
 // ma può verificare la precondizione strutturale della correzione: ogni
-// dt/dd deve condividere un contenitore proprio (`.bil-momento`), MAI essere
-// figlio diretto di `.bil-momenti`, perché solo così un motore vero non può
+// dt/dd deve condividere un contenitore proprio (`.bil-moment`), MAI essere
+// figlio diretto di `.bil-moments`, perché solo così un motore vero non può
 // più spezzare la coppia a nessuna larghezza (verificato dal vivo, vedi il
 // rapporto).
 // ---------------------------------------------------------------------------
@@ -999,12 +999,12 @@ test('seam _rendiOggetti: ogni momento (dt+dd) è una coppia atomica, mai due ce
   const corpo = document.createElement('div');
   window.HirisWatcherRoute._rendiOggetti(corpo, [bilancioFixture()], null);
 
-  const momenti = corpo.querySelector('.bil-momenti');
+  const momenti = corpo.querySelector('.bil-moments');
   const dts = Array.from(momenti.querySelectorAll('dt'));
   assert.ok(dts.length > 1, 'servono almeno due momenti per verificare che non si spezzino (fixture insufficiente?)');
   dts.forEach((dt) => {
     assert.notEqual(dt.parentElement, momenti,
-      'dt non deve essere figlio diretto di `.bil-momenti`: a certe larghezze un motore vero lo separa dal suo dd (rilievo 2)');
+      'dt non deve essere figlio diretto di `.bil-moments`: a certe larghezze un motore vero lo separa dal suo dd (rilievo 2)');
     const dd = dt.nextElementSibling;
     assert.ok(dd && dd.tagName === 'DD', 'ogni dt deve avere il suo dd come fratello immediato: ' + dt.textContent);
     assert.equal(dt.parentElement, dd.parentElement,
