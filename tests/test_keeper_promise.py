@@ -94,7 +94,7 @@ def test_serializza_ha_sempre_le_stesse_chiavi_per_entrambe_le_specie():
         "chiamata_json": '{"servizio": "light.turn_on"}', "domanda": None,
         "istantanea_json": None, "recapito": None, "stato": "in_attesa",
         "motivo": None, "esecuzione_id": None, "testo": None, "avvisare": None,
-        "nata_ts": 0.5, "risvegliata_ts": None,
+        "nata_ts": 0.5, "risvegliata_ts": None, "esito_letto_ts": None,
     }
     row_chiedi = dict(row_fai, id="p2", specie="chiedi", chiamata_json=None,
                        domanda="fa caldo?", istantanea_json='[{"entita": "sensor.t"}]')
@@ -108,7 +108,7 @@ def test_serializza_decodifica_il_json_e_non_lo_lascia_stringa():
         "chiamata_json": '{"servizio": "light.turn_on"}', "domanda": None,
         "istantanea_json": None, "recapito": None, "stato": "in_attesa",
         "motivo": None, "esecuzione_id": None, "testo": None, "avvisare": None,
-        "nata_ts": 0.5, "risvegliata_ts": None,
+        "nata_ts": 0.5, "risvegliata_ts": None, "esito_letto_ts": None,
     }
     fuori = serializza(row)
     assert fuori["chiamata"] == {"servizio": "light.turn_on"}

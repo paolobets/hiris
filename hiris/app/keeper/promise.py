@@ -56,7 +56,7 @@ CONSERVAZIONE_S = 90 * 86400
 _CHIAVI = (
     "id", "specie", "frase", "quando_ts", "quando_detto", "fuso", "chiamata",
     "domanda", "istantanea", "recapito", "stato", "motivo", "esecuzione_id",
-    "testo", "avvisare", "nata_ts", "risvegliata_ts",
+    "testo", "avvisare", "nata_ts", "risvegliata_ts", "esito_letto_ts",
 )
 
 
@@ -132,6 +132,11 @@ def serializza(row) -> dict:
         "avvisare": None if row["avvisare"] is None else bool(row["avvisare"]),
         "nata_ts": row["nata_ts"],
         "risvegliata_ts": row["risvegliata_ts"],
+        # NULL = non letto. La pagina Impegni ci costruisce sopra la sezione
+        # «Esiti da leggere», e il pallino ci conta sopra. E' NULL anche per
+        # ogni promessa IN SOSPESO -- che non ha ancora un esito -- quindi da
+        # solo non basta a dire «da leggere»: serve anche uno stato concluso.
+        "esito_letto_ts": row["esito_letto_ts"],
     }
     assert set(fuori) == set(_CHIAVI)  # la forma e' una sola, e si controlla qui
     return fuori

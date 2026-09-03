@@ -15,6 +15,7 @@ import json
 import logging
 import secrets
 import threading
+import time
 
 from ..storage import connect, init_schema
 from .promise import (
@@ -46,7 +47,8 @@ CREATE TABLE IF NOT EXISTS promesse (
     testo TEXT,
     avvisare INTEGER,
     nata_ts REAL NOT NULL,
-    risvegliata_ts REAL
+    risvegliata_ts REAL,
+    esito_letto_ts REAL
 );
 CREATE INDEX IF NOT EXISTS idx_promesse_scadenza ON promesse(stato, quando_ts);
 """
@@ -58,6 +60,37 @@ _CONCLUSI = ",".join(f"'{s}'" for s in STATES_CONCLUSI)
 _SOSPESI = ",".join(f"'{s}'" for s in STATES_SOSPESO)
 
 
+def _migration_2(conn) -> None:
+    """v1 -> v2: l'archivio ricorda se un esito e' stato letto.
+
+    Una colonna aggiunta, nessuna riscritta -- stessa forma di
+    `action/journal.py::_migration_2`, che e' il precedente di questo
+    archivio.
+
+    **Il travaso non e' neutro, ed e' una decisione.** Dopo l'`ALTER TABLE`
+    ogni riga vale NULL, cioe' «non letta»: su una casa vera vuol dire che
+    tutto lo storico degli ultimi 90 giorni (`CONSERVAZIONE_S`) risulterebbe
+    da leggere, e il pallino degli Impegni si accenderebbe al primo avvio con
+    un numero che parla di fatti di settimane fa. Le concluse che esistono
+    gia' si segnano lette. Non e' vero che il proprietario le ha lette: e' che
+    **il segno di lettura comincia a contare dal giorno in cui esiste**, e
+    cio' che e' successo prima e' storia, non notizia.
+
+    Le promesse ancora IN SOSPESO restano NULL, ed e' giusto: non hanno
+    ancora nessun esito da leggere. Lo prenderanno concludendosi.
+
+    L'`UPDATE` sta DENTRO l'`if`, non accanto: fuori, una seconda apertura
+    ri-timbrerebbe le righe gia' segnate e falserebbe il momento in cui
+    l'esito e' stato letto.
+    """
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(promesse)")}
+    if "esito_letto_ts" not in existing:
+        conn.execute("ALTER TABLE promesse ADD COLUMN esito_letto_ts REAL")
+        conn.execute(
+            f"UPDATE promesse SET esito_letto_ts=? WHERE stato IN ({_CONCLUSI})",
+            (time.time(),))
+
+
 def _json(value) -> str | None:
     return None if value is None else json.dumps(value)
 
@@ -66,7 +99,7 @@ class AgendaStore:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=1)
+        init_schema(self._conn, _SCHEMA, version=2, migrations={2: _migration_2})
 
     def close(self) -> None:
         with self._lock:
