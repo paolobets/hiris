@@ -98,6 +98,9 @@
     window.HirisChatKeyboard.init();
     window.HirisChatSend.wireComposer();
     wireHeaderAndSidebarButtons();
+    /* Le due voci esecutive stanno nella barra laterale, che qui e' statica
+       in `index.html`: nessun montaggio da aspettare. */
+    window.HirisPendingBadge.mount();
   }
 
   boot();

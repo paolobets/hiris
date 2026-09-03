@@ -71,7 +71,8 @@ function fixtureHtml() {
    spegne tutti insieme. */
 function setupChat(t) {
   const ctx = loadScripts(
-    ['config/api.js', 'chat/state.js', 'chat/messages.js', 'chat/agents.js', 'chat/send.js'],
+    ['config/api.js', 'chat/state.js', 'chat/messages.js', 'chat/agents.js', 'chat/send.js',
+     'pending-badge.js'],
     { html: fixtureHtml() },
   );
   if (t) t.after(() => {

@@ -232,5 +232,11 @@
     HirisState.subscribe('route', updateNavActive);
     HirisRouter.start();
     updateNavActive();
+    /* Il pallino DOPO `mountChrome()`: le voci di menu nascono da
+       `tpl-side-nav`, e prima di quella riga i due `data-badge` non
+       esistono ancora nel DOM -- il pallino non troverebbe dove attaccarsi
+       e non lo direbbe a nessuno (per disegno: non e' un guasto che una
+       pagina non abbia quelle voci). */
+    window.HirisPendingBadge.mount();
   });
 })();

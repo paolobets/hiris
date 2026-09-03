@@ -65,6 +65,12 @@
             state.turnCount = (state.turnCount || 0) + 1;
             window.HirisChatAgents.updateTurnCounter();
             window.HirisChatAgents.checkTurnLimit();
+            /* Il turno e' finito: e' l'istante in cui puo' essere nata una
+               promessa o una proposta, e il pallino deve accendersi mentre
+               l'utente sta ancora leggendo la frase che lo manda a
+               guardarlo. Terza coppia di gemelle di questo file -- l'altra
+               meta' sta in fondo a send(), sul ramo diretto. */
+            window.HirisPendingBadge.refresh();
             return;
           }
           if (data.status === 'error') {
@@ -181,6 +187,11 @@
       state.turnCount = (state.turnCount || 0) + 1;
       window.HirisChatAgents.updateTurnCounter();
       window.HirisChatAgents.checkTurnLimit();
+      /* La gemella della riga nel ramo del poll, sopra. Il ramo
+         `max_turns_reached` NON la porta, e non e' una dimenticanza: li' non
+         e' arrivata nessuna risposta, quindi non puo' essere nato niente da
+         contare. */
+      window.HirisPendingBadge.refresh();
     } catch {
       window.HirisChatMessages.updateBubble(pending, 'Errore di connessione. Riprova tra poco.');
     } finally {

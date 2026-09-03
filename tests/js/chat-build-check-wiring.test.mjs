@@ -23,7 +23,7 @@ const MAIN = join(staticSnapshotDir(), 'chat', 'main.js');
 const MODULI = [
   'config/api.js', 'chat/state.js', 'chat/messages.js', 'chat/agents.js',
   'chat/send.js', 'chat/theme.js', 'chat/sidebar.js', 'chat/keyboard.js',
-  'build-check.js',
+  'build-check.js', 'pending-badge.js',
 ];
 
 function fixtureHtml(buildLocale) {

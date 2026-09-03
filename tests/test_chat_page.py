@@ -34,15 +34,20 @@ def test_index_html_has_no_inline_script_block():
     # render, shared shape with config.html) has no logic worth extracting.
     # Everything else must be <script src="static/chat/...">.
     scripts = html.count("<script")
-    literal_src_scripts = (
-        html.count('<script src="static/chat/')
-        + html.count('<script src="static/config/')
-        # Task B8: build-check.js e' condiviso dalle DUE pagine (chat e
-        # configurazione), quindi vive alla radice di static/ e non sotto
-        # chat/ o config/ -- ma e' comunque un src= letterale, fingerprintato
-        # dalla stessa _ASSET_REF_RE di ogni altro asset qui sopra.
-        + html.count('<script src="static/build-check.js')
-    )
+    # Un solo conteggio, non un elenco di cartelle ammesse. Prima qui c'erano
+    # tre righe -- `static/chat/`, `static/config/`, e `static/build-check.js`
+    # nominato a mano perche' e' condiviso dalle due pagine e vive alla radice
+    # -- cioe' una lista da tenere aggiornata a mano ogni volta che nasce un
+    # file condiviso. `pending-badge.js` (03/09) e' il secondo, e ha fatto
+    # arrossire questo test senza che ci fosse niente di rotto.
+    #
+    # Il criterio vero e' uno solo, ed e' quello che il test dichiara di
+    # proteggere: che il tag sia un `src=` LETTERALE sotto `static/`, cosi'
+    # che `server.py::_ASSET_REF_RE` -- `(src|href)="(static/[^"?]+\.(js|css))"`
+    # -- lo veda e gli attacchi l'impronta del contenuto. Quella regex non
+    # guarda in che cartella sta il file, e nemmeno questo conteggio deve
+    # farlo: erano piu' stretti loro del contratto che difendevano.
+    literal_src_scripts = html.count('<script src="static/')
     theme_bootstrap = html.count("localStorage.getItem('hiris-theme')")
     assert theme_bootstrap == 1, "il bootstrap tema inline deve restare (evita il flash pre-render)"
     # Every <script> tag besides the theme-bootstrap one must be a literal

@@ -269,6 +269,39 @@ a { color: inherit; text-decoration: none; }
 .badge.off        { background: var(--surface-3); color: var(--text-3); }
 [data-theme="dark"] .badge.off        { background: var(--surface-3); color: var(--text-3); }
 
+/* Il pallino delle due voci esecutive (Impegni, Proposte). Sta QUI e non nei
+   due fogli di guscio perche' lo dipinge `static/pending-badge.js`, che
+   index.html e config.html caricano tutti e due: un fatto ha una sola casa,
+   e due copie divergerebbero il giorno in cui una sola si ritocca.
+
+   Non e' una variante di `.badge` qui sopra: quella e' un'etichetta di stato
+   (testo, maiuscoletto, dentro una riga), questo e' un numero dentro una
+   voce di menu. Condividono la forma a pastiglia e nient'altro -- il
+   contenuto, la dimensione e il posto sono diversi, e farne una variante
+   costringerebbe le due a muoversi insieme senza ragione.
+
+   `margin-left: auto` lo spinge in fondo alla voce, dove il pollice non
+   copre l'etichetta. `min-width` piu' il centraggio tengono tonda anche la
+   cifra singola, che e' il caso normale.
+
+   Non c'e' nessuna regola per il numero zero: uno zero qui dentro non ci
+   arriva mai (`pending-badge.js`), e una regola per uno stato impossibile e'
+   un invito a farlo diventare possibile. */
+.nav-badge {
+  margin-left: auto;
+  min-width: 18px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
 .btn {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 7px 13px;
