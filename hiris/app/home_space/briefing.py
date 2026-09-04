@@ -902,18 +902,30 @@ def _integrations_notice(integrations: list[dict]) -> str | None:
     #
     # Il titolo si ripulisce dagli spazi: sull'impianto vero c'e' un
     # «Abat-jour » con lo spazio in coda, e uscirebbe cosi' nel testo.
+    #
+    # La chiave porta il DOMINIO, non solo il titolo: due voci con lo stesso
+    # titolo ma di integrazioni diverse sono due cose diverse, e prima di
+    # questa fetta si sommavano in una.
     counts: dict[tuple, int] = {}
     for i in sorted(broken, key=lambda x: (x.get("dominio") or "", x.get("titolo") or "")):
-        name = (i.get("titolo") or i.get("dominio") or "senza nome").strip() or "senza nome"
+        domain = (i.get("dominio") or "").strip()
+        title = (i.get("titolo") or "").strip()
         reason = (i.get("motivo") or "").strip()
-        key = (name, i.get("stato"), reason)
+        key = (domain, title, i.get("stato"), reason)
         counts[key] = counts.get(key, 0) + 1
     entries = []
-    for (name, state, reason), count in counts.items():
+    for (domain, title, state, reason), count in counts.items():
         repeat_suffix = f" x{count}" if count > 1 else ""
-        entries.append(f"{name}{repeat_suffix} ({state}{': ' + reason if reason else ''})")
+        # Il titolo di una voce di configurazione NON e' il nome
+        # dell'integrazione: per LIFX c'e' una voce per lampadina, e sulla
+        # casa vera il briefing chiamava «integrazione» un abat-jour. Si
+        # nominano tutti e due, e si dice quale e' quale.
+        who = f"integrazione {domain}" if domain else "integrazione senza nome"
+        if title:
+            who += f", voce «{title}»"
+        entries.append(f"{who}{repeat_suffix} ({state}{': ' + reason if reason else ''})")
     total = sum(counts.values())
-    count_phrase = "Un'integrazione" if total == 1 else f"{total} integrazioni"
+    count_phrase = "Una voce di configurazione" if total == 1 else f"{total} voci di configurazione"
     verb = "non sta funzionando" if total == 1 else "non stanno funzionando"
     return (f"{count_phrase} di Home Assistant {verb}: {', '.join(entries)}. "
             "Le entita' che dipendono da loro possono non rispondere.")

@@ -893,3 +893,35 @@ def test_il_nucleo_regge_un_registro_dispositivi_a_meta():
         "  - Esterno (id: esterno): 2 tapparelle (Tenda esterna), "
         "1 sensore, 4 valvole (id: dev_irr)"
     )
+
+
+def test_la_voce_di_configurazione_non_e_l_integrazione():
+    """Abat-jour e' il TITOLO di una voce di configurazione lifx, non
+    un'integrazione: la frase deve nominare il dominio.
+
+    Misurato sulla casa vera il 04/09: il briefing diceva «Un'integrazione di
+    Home Assistant non sta funzionando: Abat-jour», e l'anagrafe di HIRIS
+    classifica Abat-jour come DISPOSITIVO (produttore LIFX).
+    """
+    testo = briefing._integrations_notice([
+        {"dominio": "lifx", "titolo": "Abat-jour ", "stato": "setup_retry",
+         "motivo": "get_version timed out", "origine": "user"},
+    ])
+    assert "lifx" in testo
+    assert "«Abat-jour»" in testo
+    assert "setup_retry: get_version timed out" in testo
+
+
+def test_due_voci_della_stessa_integrazione_restano_due():
+    """Il raggruppamento «x2» esisteva prima di questa fetta e non si perde:
+    due voci identiche si contano, due voci DIVERSE della stessa integrazione
+    restano due righe."""
+    testo = briefing._integrations_notice([
+        {"dominio": "lifx", "titolo": "Abat-jour", "stato": "setup_retry",
+         "motivo": "timeout", "origine": "user"},
+        {"dominio": "lifx", "titolo": "Piantana", "stato": "setup_retry",
+         "motivo": "timeout", "origine": "user"},
+    ])
+    assert "«Abat-jour»" in testo
+    assert "«Piantana»" in testo
+    assert "2 voci di configurazione" in testo

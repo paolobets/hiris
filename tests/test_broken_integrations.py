@@ -111,8 +111,8 @@ def test_due_voci_con_lo_stesso_nome_non_si_ripetono():
         {"dominio": "lifx", "titolo": "Abat-jour", "stato": "setup_retry"},
     ])
     assert testo.count("Fritz-esterno") == 1, "il nome non deve ripetersi"
-    assert "Fritz-esterno x2" in testo, "ma quante sono deve dirlo"
-    assert "3 integrazioni" in testo, "il totale conta le voci vere, non le righe"
+    assert "Fritz-esterno» x2" in testo, "ma quante sono deve dirlo"
+    assert "3 voci di configurazione" in testo, "il totale conta le voci vere, non le righe"
 
 
 def test_il_titolo_si_ripulisce_dagli_spazi():
@@ -122,7 +122,7 @@ def test_il_titolo_si_ripulisce_dagli_spazi():
         {"dominio": "lifx", "titolo": "Abat-jour ", "stato": "setup_retry",
          "motivo": "timeout"},
     ])
-    assert "Abat-jour (setup_retry" in testo
+    assert "voce «Abat-jour» (setup_retry" in testo
 
 
 # ── Il difetto del 02/09: «non e' loaded» non vuol dire «e' rotto» ──────────
@@ -187,7 +187,7 @@ def test_lo_STESSO_stato_rotto_compare_se_NON_e_ignorato():
         {"dominio": "fritz", "titolo": "Fritz-rotto", "stato": "setup_error",
          "motivo": "credenziali rifiutate", "origine": "user"},
     ])
-    assert "Fritz-rotto (setup_error: credenziali rifiutate)" in testo
+    assert "voce «Fritz-rotto» (setup_error: credenziali rifiutate)" in testo
     assert any("Fritz-rotto" in g for g in riepilogo["faults"])
 
 
@@ -206,8 +206,8 @@ def test_la_casa_vera_del_02_09_nove_voci_una_sola_rotta():
          "motivo": "timeout durante la connessione"},
     ])
     assert "9 integrazioni" not in testo
-    assert "Un'integrazione di Home Assistant non sta funzionando" in testo
-    assert "Abat-jour (setup_retry: timeout durante la connessione)" in testo
+    assert "Una voce di configurazione di Home Assistant non sta funzionando" in testo
+    assert "voce «Abat-jour» (setup_retry: timeout durante la connessione)" in testo
     assert len([g for g in riepilogo["faults"] if "integrazion" in g]) == 1
 
 
