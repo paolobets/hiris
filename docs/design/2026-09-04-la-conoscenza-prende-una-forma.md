@@ -282,9 +282,46 @@ Nessun verdetto «rotta / sana». Il codice calcola i fatti, il modello dice la 
 
 > **hydrawise — 24 entità su 30 non rispondono, tutte dalle 14:00 di oggi.**
 
-Vera senza inventare nessun numero magico. Il briefing la mette fra gli avvisi **quando c'è la
-sincronia**, non quando c'è una percentuale. È la stessa disciplina del §6, applicata al briefing
+Vera senza inventare nessun numero magico. È la stessa disciplina del §6, applicata al briefing
 invece che agli strumenti.
+
+### Correzione del 04/09, misurata durante l'implementazione — leggila prima di usare la sincronia
+
+La prima stesura diceva: *«il briefing la mette fra gli avvisi quando c'è la sincronia, non quando
+c'è una percentuale»*. **Quella frase non è sicura e va rifatta prima che qualcuno la implementi.**
+Due misure, entrambe sulle 997 entità vere della casa.
+
+**① «Stesso istante» non esiste.** La regola chiedeva un istante *identico*, e i timestamp veri
+differiscono nei microsecondi (`14:00:17.891654` contro `.892119`): come specificata, la firma
+**non sarebbe scattata mai**, e sarebbe uscito un campo morto — verde in ogni prova. Serve una
+tolleranza sull'**ampiezza** fra il primo e l'ultimo istante, e le due classi si separano da sole:
+
+| | ampiezza fra la prima e l'ultima entità muta |
+|---|---|
+| fritz · spook · ave_domina · alexa · hydrawise · tuya · lifx · matter | **1 → 108 ms** |
+| mobile_app · reolink | **10,8 ore** |
+
+Cinque ordini di grandezza. L'implementazione usa **2 secondi**, con questi numeri scritti accanto
+alla costante.
+
+**② E qui viene la parte che smonta la regola: la sincronia non prova un guasto.** Con la
+tolleranza attiva `mute_da` esce per cinque piattaforme, e **quattro riportano lo stesso istante,
+`2026-09-02T17:54`**: tuya (le luci di Natale, staccate da mesi), lifx, matter, alexa. Non sono
+quattro guasti simultanei: è la firma di un **riavvio** che ha ri-datato tutto insieme.
+
+Il *dato* resta onesto — «sono diventate mute insieme» è vero. È la *deduzione* «quindi
+l'integrazione è caduta» a essere falsa, e un briefing che la facesse annuncerebbe quattro guasti
+inesistenti a ogni riavvio di Home Assistant. È lo stesso difetto degli «otto falsi allarmi su
+nove» che questo prodotto ha già pagato una volta.
+
+**Cosa serve prima di riscrivere quella regola**, ed è materia del §7: **cosa significhi davvero
+`da_quando` dopo un riavvio di Home Assistant.** Si legge sulla documentazione, non si deduce — ed
+è la prova migliore che il tema finale non è un ornamento dello sprint: senza di lui questa regola
+sarebbe stata scritta sbagliata due volte.
+
+**Cosa NON cambia:** i conti (`entita_totali`, `entita_mute`, `entita_disabilitate`) e `mute_da`
+sono **fatti**, si producono e si mostrano. Ciò che si sospende è solo il **verdetto** che il
+briefing ne trarrebbe.
 
 ### Due cose dichiarate, non decise
 
