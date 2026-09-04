@@ -50,6 +50,7 @@ from __future__ import annotations
 
 from ..memory.resolver import _normalize
 from ..proxy._sanitize import sanitize_text
+from .historian import instant_epoch
 from .topology import (
     actual_class,
     actual_unit,
@@ -798,8 +799,24 @@ def sanitized_memories(memories: list[dict] | None) -> list[dict]:
            for r in (memories or [])]
 
 
+# Ampiezza (in secondi) fra il primo e l'ultimo istante delle entita' mute di
+# una piattaforma, sotto la quale `mute_da` esce -- misurata sui dati veri
+# della casa (revisione indipendente, 04/09), dopo che la prima versione
+# (uguaglianza esatta) non faceva mai uscire il campo: sulle nove
+# piattaforme mute della casa, l'ampiezza vera fra prima e ultima entita'
+# muta era fritz 1 ms, spook 3 ms, ave_domina 11 ms, alexa 19 ms, hydrawise
+# 21 ms, tuya 22 ms, lifx 71 ms, matter 108 ms -- CONTRO mobile_app e
+# reolink, che distano 10,8 ORE: entita' spente una alla volta nell'arco
+# della giornata, non un'integrazione caduta. Le due classi stanno a cinque
+# ordini di grandezza: 2 secondi sta comodo sopra la piu' larga onda vera
+# (matter, 108 ms) e ben sotto la piu' stretta onda falsa (mobile_app,
+# 10,8 ore).
+_SYNCHRONY_WINDOW_SECONDS = 2.0
+
+
 def _view_integration(home_space: dict, state: dict, reference,
-                      reported_since_when: dict[str, str] | None) -> dict:
+                      reported_since_when: dict[str, str] | None,
+                      unavailable: tuple[str, ...] = ()) -> dict:
     """Un'integrazione con le sue entita' e quante di esse rispondono.
 
     **La salute di un'integrazione non e' il suo `stato`** (spec §4): sulla
@@ -807,37 +824,61 @@ def _view_integration(home_space: dict, state: dict, reference,
     l'irrigazione ferma non compariva da nessuna parte. Qui si contano, e la
     frase la dice chi legge.
 
-    `mute_da` esce SOLO quando tutte le mute portano lo stesso istante: e' la
-    firma della sincronia (§4), il segnale che distingue un'integrazione
-    caduta da dispositivi spenti uno per volta. Quando gli istanti sono
-    diversi il campo non c'e' -- inventare un «da quando» medio sarebbe
-    proprio la risposta sicura che questo sprint toglie.
+    `mute_da` esce quando le mute condividono un istante ABBASTANZA vicino
+    (`_SYNCHRONY_WINDOW_SECONDS`, sopra) -- non identico: e' la firma della
+    sincronia (§4) che distingue un'integrazione caduta da dispositivi spenti
+    uno per volta. Un'entita' muta SENZA `da_quando` continua a impedire
+    l'uscita del campo (non si puo' dire se e' dentro o fuori dalla finestra
+    senza saperlo): inventare un «da quando» quando non si e' sicuri che sia
+    sincrono sarebbe proprio la risposta sicura che questo sprint toglie.
 
     `reference` si normalizza (`_normalize`, la stessa di `search`) prima del
-    confronto: il valore che arriva da `search` e' gia' la chiave canonica
-    (fix accanto a `info["dominio"]`, sopra), ma il modello puo' scrivere
-    questo `riferimento` a mano invece di ripassare quello -- ed e' l'UNICO
-    ramo di `view` dove il riferimento e' un dominio tecnico (sempre
-    minuscolo, senza accenti, in Home Assistant) invece di un id-slug come
-    per area/entita'/dispositivo: normalizzarlo qui non puo' mai confondere
-    due domini diversi (a differenza di un nome libero), e recupera un
+    confronto -- passata da `str()` prima, perche' lo schema dello strumento
+    ammette anche un intero (`riferimento: ["string", "integer"]`,
+    tools.py) e `_normalize` chiama `.lower()`, che un intero non ha: il
+    valore che arriva da `search` e' gia' la chiave canonica (fix accanto a
+    `info["dominio"]`, sopra), ma il modello puo' scrivere questo
+    `riferimento` a mano invece di ripassare quello -- ed e' l'UNICO ramo di
+    `view` dove il riferimento e' un dominio tecnico (sempre minuscolo, senza
+    accenti, in Home Assistant) invece di un id-slug come per
+    area/entita'/dispositivo: normalizzarlo qui non puo' mai confondere due
+    domini diversi (a differenza di un nome libero), e recupera un
     "Hydrawise" scritto con la maiuscola senza costringere il modello a
     passare sempre da `search` prima.
+
+    `unavailable` (i registri dell'anagrafe caduti, stessa tupla degli altri
+    rami) va propagato QUI come ovunque (CRITICAL, gia' sbagliato quattro
+    volte su questo file secondo il docstring di `view`): senza, un dominio
+    che non compare in nessuna delle due liste sembra "non esiste" anche
+    quando la causa vera e' che `entita`/`integrazioni` non hanno risposto
+    -- e un dominio che ESISTE con `entita` caduto uscirebbe con
+    `entita_totali: 0, entita_mute: 0`, "nessun problema" detto con
+    sicurezza proprio sulla domanda per cui questa fetta esiste. Il secondo
+    caso si dichiara con `elenco_incompleto` -- STESSA chiave, stessa forma
+    di `_view_device` (sopra), non un campo nuovo per lo stesso fatto.
+
+    Le entita' DISABILITATE (ruling del controller, revisione indipendente):
+    non stanno nello state machine di Home Assistant, quindi non "rispondono"
+    ne' "non rispondono" -- includerle nel denominatore farebbe sembrare
+    l'integrazione piu' sana di quanto sia (o, se il loro stato mancante
+    fosse letto come muto, meno sana). Si escludono da `entita_totali` e da
+    `entita_mute` e si dichiarano a parte, in `entita_disabilitate` (un
+    conteggio, non un elenco: qui la domanda e' "quante", non "quali" --
+    diversamente da `entita_nascoste` nelle porte area/dispositivo, dove il
+    modello deve poterle nominare), presente solo quando ce n'e' almeno una.
+    Una cosa spenta dall'utente non e' una cosa che non risponde.
     """
-    domain = _normalize(reference or "")
-    own = [e for e in home_space.get("entita") or []
-           if _normalize(e.get("piattaforma") or "") == domain]
+    domain = _normalize(str(reference or ""))
+    matching = [e for e in home_space.get("entita") or []
+                if _normalize(e.get("piattaforma") or "") == domain]
     entries = [{"titolo": i.get("titolo"), "stato": i.get("stato"), "motivo": i.get("motivo")}
                for i in home_space.get("integrazioni") or []
                if _normalize(i.get("dominio") or "") == domain]
-    if not own and not entries:
-        # `_not_found_detail` richiede il terzo argomento (`unavailable`):
-        # questo ramo non riceve (ne propaga) il registro `unavailable` di
-        # `view()` -- fuori dallo scopo di questa fetta, che apre
-        # un'integrazione con cio' che l'archivio ha gia' -- quindi e'
-        # sempre `False`. Il suggerimento «chiama cerca» resta corretto:
-        # da T2 `search` riconosce i domini di piattaforma.
-        return _not_found_detail("integrazione", reference, False)
+    if not matching and not entries:
+        return _not_found_detail("integrazione", reference,
+                                  "entita" in unavailable or "integrazioni" in unavailable)
+    own = [e for e in matching if not e.get("disabilitata")]
+    disabled = [e for e in matching if e.get("disabilitata")]
     silent = [e for e in own if state.get(e["id"]) in ("unavailable", "unknown")]
     detail = {
         "esiste": True, "tipo": "integrazione", "dominio": domain,
@@ -849,9 +890,17 @@ def _view_integration(home_space: dict, state: dict, reference,
                     "da_quando": (reported_since_when or {}).get(e["id"])}
                    for e in silent],
     }
-    moments = {(reported_since_when or {}).get(e["id"]) for e in silent}
-    if len(moments) == 1 and None not in moments:
-        detail["mute_da"] = moments.pop()
+    if disabled:
+        detail["entita_disabilitate"] = len(disabled)
+    if "entita" in unavailable:
+        detail["elenco_incompleto"] = ["entita"]
+    moments = [(reported_since_when or {}).get(e["id"]) for e in silent]
+    if moments and all(moments):
+        epochs = [instant_epoch(m) for m in moments]
+        if all(ep is not None for ep in epochs):
+            earliest, latest = min(epochs), max(epochs)
+            if latest - earliest <= _SYNCHRONY_WINDOW_SECONDS:
+                detail["mute_da"] = moments[epochs.index(earliest)]
     return detail
 
 
@@ -1003,7 +1052,7 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     if kind == "ricordo":
         return _view_memory(memories, reference)
     if kind == "integrazione":
-        return _view_integration(home_space, state, reference, reported_since_when)
+        return _view_integration(home_space, state, reference, reported_since_when, unavailable)
     # Un tipo che non conosciamo non e' un errore da sollevare: e' lo
     # stesso caso di "non l'ho trovato", solo con una causa diversa (il
     # modello ha nominato un tipo che non esiste, non un riferimento che

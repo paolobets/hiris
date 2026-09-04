@@ -977,7 +977,7 @@ def test_viewing_an_integration_counts_silent_entities_and_says_since_when():
     rispondono e di quale integrazione sono». Oggi ci volevano quindici
     chiamate e si fermava a meta'.
 
-    Mutazione: togliere il filtro sul dominio in `own` (usare tutte le
+    Mutazione: togliere il filtro sul dominio in `matching` (usare tutte le
     entita' della casa invece di quelle della sola piattaforma) -- rosso
     su `assert detail["entita_totali"] == 2` (uscirebbe 3, con
     `light.cucina` -- lifx, non hydrawise -- contata dentro)."""
@@ -1015,10 +1015,203 @@ def test_a_missing_integration_says_so_without_inventing():
     """`esiste: False` e basta -- nessun `entita: []` che si potrebbe
     scambiare per «nessun problema». Stessa disciplina degli altri rami.
 
-    Mutazione: aggiungere `"entita": []` al dict di `_not_found_detail` per
-    il tipo `integrazione` -- rosso su `assert "entita" not in detail`."""
+    Le prime due assert non bastavano a provare QUESTO ramo (revisione
+    indipendente, giro 1): senza il dispatch dentro `view()`, il tipo
+    `integrazione` cade nel fallback finale (`non_so_guardare: True`) e
+    quelle due assert passavano lo stesso -- `esiste` e' `False` li' pure, e
+    quel dict non ha mai portato `entita`. `suggerimento` e
+    `non_so_guardare` sono le uniche due chiavi che distinguono davvero i
+    due rami.
+
+    Mutazione 1: aggiungere `"entita": []` al dict di `_not_found_detail` per
+    il tipo `integrazione` -- rosso su `assert "entita" not in detail`.
+    Mutazione 2: togliere `if kind == "integrazione": ...` dal dispatch --
+    rosso su `assert "suggerimento" in detail` (il fallback non lo porta)."""
     house = {"entita": [], "integrazioni": [], "aree": [], "piani": [],
             "dispositivi": [], "etichette": [], "categorie": []}
     detail = view(house, [], [], {}, "integrazione", "inesistente")
     assert detail["esiste"] is False
     assert "entita" not in detail
+    assert "suggerimento" in detail
+    assert "non_so_guardare" not in detail
+
+
+def test_an_integer_reference_does_not_crash_the_integration_lookup():
+    """`riferimento` accetta stringa O intero nello schema dello strumento
+    (`VIEW_TOOL_DEF`, tools.py): un modello che manda un intero per errore
+    (magari confondendolo con un id di ricordo) deve ricevere `esiste:
+    False`, non un errore Python che gli spezza il turno -- gli altri rami
+    (area, entita', dispositivo) reggono gia' un riferimento qualsiasi
+    perche' confrontano senza normalizzare; questo ramo normalizza, e
+    `_normalize` chiama `.lower()`, che un intero non ha.
+
+    Mutazione: togliere `str(...)` prima di `_normalize` -- rosso su
+    `AttributeError: 'int' object has no attribute 'lower'`, sollevato
+    prima ancora di arrivare all'assert."""
+    house = {"entita": [], "integrazioni": [], "aree": [], "piani": [],
+            "dispositivi": [], "etichette": [], "categorie": []}
+    detail = view(house, [], [], {}, "integrazione", 42)
+    assert detail["esiste"] is False
+
+
+def _hydrawise_house(*, entita_unavailable=False, integrazioni_unavailable=False):
+    """Una casa minima con hydrawise, per le prove su `unavailable`
+    (revisione indipendente, giro 1): l'anagrafe restituisce comunque i
+    dizionari `entita`/`integrazioni` -- vuoti o parziali -- il registro
+    caduto si dichiara SOLO nella tupla `unavailable` che passa `view()`,
+    mai azzerando la lista che l'archivio ha gia' in mano."""
+    return {"entita": [] if entita_unavailable else [
+        {"id": "valve.giardino", "nome": "Irrigazione", "piattaforma": "hydrawise",
+         "area_id": "esterno", "dispositivo_id": None, "classe": None,
+         "unita": None, "disabilitata": 0},
+    ], "integrazioni": [] if integrazioni_unavailable else [
+        {"dominio": "hydrawise", "titolo": "Giardino", "stato": "loaded",
+         "motivo": None, "origine": "user"},
+    ], "aree": [], "piani": [], "dispositivi": [], "etichette": [], "categorie": []}
+
+
+def test_a_missing_integration_with_registries_down_does_not_suggest_a_blind_search():
+    """CRITICAL gia' pagato quattro volte su questo file (docstring di
+    `view`): "non trovato" non e' "non ho potuto guardare". Con `entita` E
+    `integrazioni` caduti, hydrawise potrebbe benissimo esistere e non
+    comparire per niente -- e `suggerimento` (chiama `cerca`) sarebbe una
+    strada cieca perche' `cerca` legge la STESSA anagrafe incompleta
+    (docstring di `_not_found_detail`).
+
+    Mutazione: passare `False` fisso come terzo argomento di
+    `_not_found_detail` (il difetto della prima versione di questa fetta) --
+    rosso su `assert detail["non_disponibile"] is True` (la chiave manca del
+    tutto, KeyError)."""
+    house = _hydrawise_house(entita_unavailable=True, integrazioni_unavailable=True)
+    detail = view(house, [], [], {}, "integrazione", "hydrawise",
+                    unavailable=("entita", "integrazioni"))
+    assert detail["esiste"] is False
+    assert detail["non_disponibile"] is True
+    assert "suggerimento" not in detail
+
+
+def test_an_integration_declares_when_the_entity_registry_did_not_answer():
+    """Il secondo caso vietato dalla stessa disciplina: la voce di
+    configurazione hydrawise risponde (`loaded`, la si vede), ma il
+    registro `entita` e' caduto -- `entita_totali: 0, entita_mute: 0` senza
+    dichiararlo sarebbe "nessun problema" detto con sicurezza proprio sulla
+    domanda per cui questa fetta esiste (l'irrigazione ferma che spariva).
+    Stessa chiave di `_view_device` (`elenco_incompleto`, queries.py) per lo
+    stesso fatto: "questo elenco puo' essere incompleto".
+
+    Mutazione: togliere `if "entita" in unavailable: detail["elenco_incompleto"]
+    = ["entita"]` -- rosso su `assert detail["elenco_incompleto"] ==
+    ["entita"]` (KeyError, la chiave non c'e' piu')."""
+    house = _hydrawise_house(entita_unavailable=True)
+    detail = view(house, [], [], {}, "integrazione", "hydrawise",
+                    unavailable=("entita",))
+    assert detail["esiste"] is True
+    assert detail["entita_totali"] == 0
+    assert detail["entita_mute"] == 0
+    assert detail["elenco_incompleto"] == ["entita"]
+
+
+def _two_silent_hydrawise_entities(first_since: str, second_since: str):
+    house = {"entita": [
+        {"id": "valve.giardino", "nome": "Irrigazione", "piattaforma": "hydrawise",
+         "area_id": "esterno", "dispositivo_id": None, "classe": None,
+         "unita": None, "disabilitata": 0},
+        {"id": "sensor.giardino_minuti", "nome": "Minuti", "piattaforma": "hydrawise",
+         "area_id": "esterno", "dispositivo_id": None, "classe": None,
+         "unita": None, "disabilitata": 0},
+    ], "integrazioni": [
+        {"dominio": "hydrawise", "titolo": "Giardino", "stato": "loaded",
+         "motivo": None, "origine": "user"},
+    ], "aree": [], "piani": [], "dispositivi": [], "etichette": [], "categorie": []}
+    states = {"valve.giardino": "unavailable", "sensor.giardino_minuti": "unavailable"}
+    since = {"valve.giardino": first_since, "sensor.giardino_minuti": second_since}
+    return house, states, since
+
+
+def test_mute_da_tolerates_the_real_jitter_between_platform_entities():
+    """Difetto trovato sui dati veri della casa (04/09), colpa del brief:
+    con `len(moments) == 1` (istanti IDENTICI al carattere) `mute_da` non
+    usciva per NESSUNA delle nove piattaforme mute misurate -- hydrawise
+    stessa ha 21 ms di scarto fra le sue entita' cadute, non zero. Qui due
+    entita' distano 21 ms (lo scarto vero di hydrawise): dentro la finestra
+    di sincronia, `mute_da` esce col PRIMO istante.
+
+    Mutazione: tornare a `len(moments) == 1` (confronto per uguaglianza
+    esatta invece che per finestra) -- rosso su `assert "mute_da" in
+    detail` (il campo non uscirebbe, gli istanti non sono identici)."""
+    house, states, since = _two_silent_hydrawise_entities(
+        "2026-09-04T14:00:17.891654+00:00", "2026-09-04T14:00:17.912654+00:00")
+    detail = view(house, [], [], states, "integrazione", "hydrawise",
+                    reported_since_when=since)
+    assert "mute_da" in detail
+    assert detail["mute_da"] == "2026-09-04T14:00:17.891654+00:00"
+
+
+def test_mute_da_stays_silent_when_the_gap_is_a_real_one():
+    """Il lato negativo, senza il quale la tolleranza da sola potrebbe
+    diventare "sempre acceso" senza che nessuna prova se ne accorga (minor
+    3, revisione indipendente): mobile_app e reolink, sulla casa vera,
+    distano 10,8 ORE fra le loro entita' mute -- dispositivi spenti uno alla
+    volta, non un'integrazione caduta. Qui due istanti distano 5 secondi,
+    oltre la finestra di sincronia (2 s): niente `mute_da`, un «da quando»
+    medio sarebbe la risposta inventata che questo sprint toglie.
+
+    Mutazione: `if moments: detail["mute_da"] = min(moments)` (nessun
+    confronto con la finestra) -- rosso su `assert "mute_da" not in
+    detail`."""
+    house, states, since = _two_silent_hydrawise_entities(
+        "2026-09-04T14:00:17+00:00", "2026-09-04T14:00:22+00:00")
+    detail = view(house, [], [], states, "integrazione", "hydrawise",
+                    reported_since_when=since)
+    assert "mute_da" not in detail
+
+
+def test_an_entity_reported_unknown_counts_as_silent():
+    """`unavailable` e `unknown` non sono lo stesso stato in Home Assistant
+    (vincolo del brief), ma sono entrambi un'entita' che non sta
+    rispondendo con un valore vero -- ed e' gia' cosi' nel codice
+    (`state.get(e["id"]) in ("unavailable", "unknown")`); nessuna prova lo
+    esercitava (minor 3, revisione indipendente).
+
+    Mutazione: togliere `"unknown"` dalla tupla degli stati muti -- rosso
+    su `assert detail["entita_mute"] == 1` (uscirebbe 0)."""
+    house = {"entita": [
+        {"id": "valve.giardino", "nome": "Irrigazione", "piattaforma": "hydrawise",
+         "area_id": "esterno", "dispositivo_id": None, "classe": None,
+         "unita": None, "disabilitata": 0},
+    ], "integrazioni": [], "aree": [], "piani": [], "dispositivi": [],
+        "etichette": [], "categorie": []}
+    detail = view(house, [], [], {"valve.giardino": "unknown"}, "integrazione", "hydrawise")
+    assert detail["entita_mute"] == 1
+    assert {e["id"] for e in detail["entita"]} == {"valve.giardino"}
+
+
+def test_disabled_entities_dont_inflate_the_healthy_denominator():
+    """Ruling del controller (revisione indipendente, giro 1): un'entita'
+    disabilitata in Home Assistant non sta nello state machine -- contarla
+    come "risponde" gonfia il denominatore e fa sembrare l'integrazione piu'
+    sana di quanto sia. Una cosa SPENTA DALL'UTENTE non e' una cosa che NON
+    RISPONDE: due fatti diversi, e la seconda e' quella che questa fetta
+    misura. Si dichiara comunque quante sono -- non e' silenzio -- in una
+    chiave separata, presente solo quando ce n'e' almeno una (stessa
+    disciplina di `entita_nascoste`/`elenco_incompleto` in questo file).
+
+    Mutazione: togliere il filtro su `disabilitata` da `own` -- rosso su
+    `assert detail["entita_totali"] == 1` (uscirebbe 2, la disabilitata
+    contata come attiva)."""
+    house = {"entita": [
+        {"id": "valve.giardino", "nome": "Irrigazione", "piattaforma": "hydrawise",
+         "area_id": "esterno", "dispositivo_id": None, "classe": None,
+         "unita": None, "disabilitata": 0},
+        {"id": "valve.spenta", "nome": "Valvola disattivata", "piattaforma": "hydrawise",
+         "area_id": "esterno", "dispositivo_id": None, "classe": None,
+         "unita": None, "disabilitata": 1},
+    ], "integrazioni": [
+        {"dominio": "hydrawise", "titolo": "Giardino", "stato": "loaded",
+         "motivo": None, "origine": "user"},
+    ], "aree": [], "piani": [], "dispositivi": [], "etichette": [], "categorie": []}
+    detail = view(house, [], [], {"valve.giardino": "unavailable"}, "integrazione", "hydrawise")
+    assert detail["entita_totali"] == 1
+    assert detail["entita_mute"] == 1
+    assert detail["entita_disabilitate"] == 1
+    assert {e["id"] for e in detail["entita"]} == {"valve.giardino"}
