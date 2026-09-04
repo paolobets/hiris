@@ -55,6 +55,174 @@ voci non sa dire se il lavoro procede.
 > del repository e da cio' che e' stato misurato sulla casa vera. La lista del proprietario va
 > reinserita da lui, e queste voci vanno lette come un fondo di magazzino, non come una sua scelta.
 
+### Il soggetto di un guasto porta il nome e la condizione, non l'identificativo
+
+`origine: il proprietario, 04/09/2026, dopo la sonda sull'osservatore` · `nessun documento`
+
+`mind/watcher.py:191` tiene solo l'`entry_id`: il soggetto scritto in archivio e'
+`integrazione:01K2CK4GG287VKK18M5J788MRQ`. Il dizionario dell'integrazione **ha** `domain`,
+`title` e `state`, e il codice li legge tre righe sopra per decidere se e' un guasto — poi li
+scarta. Non e' un dato che manca: e' un dato che si getta.
+
+Misurato sulla casa il 04/09: quel ULID e' **il protagonista piu' frequente dell'intero
+archivio**, 34 oggetti su 285 in nove giorni. Nessuno di quegli oggetti dice cosa si sia rotto,
+ne' se sia `setup_retry` o `setup_error` — che non sono la stessa cosa. Il corpo, per giunta,
+dice sempre `"stato": "aperto"` anche a episodio chiuso, perche' `facts.py:725` scrive quella
+costante alla nascita e `close()` la ricopia (`facts.py:712`).
+
+Sta nella stessa funzione dove va messa l'isteresi — vedi «Un episodio per condizione, non
+venticinque»: sono due correzioni nello stesso punto del codice, e senza questa le altre voci
+della fetta producono oggetti veri e comunque illeggibili.
+
+**Una domanda di disegno da sciogliere prima**: cambiare la forma del soggetto rompe la
+continuita' col grezzo gia' scritto (22 giorni di righe con la forma vecchia). Si migra, si
+convive, o il nome viaggia in una colonna accanto invece che dentro il soggetto?
+
+### Come HIRIS interpreta le entita' di Home Assistant — il caso `sensor.persons`
+
+`origine: il proprietario, 04/09/2026, da una chat reale` · `nessun documento`
+
+Alla domanda **«quanto tempo la casa ieri e' rimasta vuota?»** HIRIS ha risposto **«mai»**. La
+risposta giusta, che l'archivio dell'osservatore aveva gia' scritta quella notte, era **circa
+otto ore e mezza**: Paolo fuori 08:08→18:17, Marta 06:39→16:39.
+
+Cosa e' andato storto, nell'ordine in cui e' successo:
+
+1. Ha scelto **`sensor.persons`** — entita' `diagnostic` dell'integrazione *spook* — e ne ha
+   dedotto il significato **dal nome**. Non conta chi e' in casa: sta fermo su `2` dal 02/09.
+2. Ha presentato la deduzione come un fatto («nessun cambiamento registrato»), senza notare che
+   uno stato che non cambia mai non e' una misura di presenza.
+3. Corretto dal proprietario, ha tappato il buco con **Viola**: «Viola piu' qualcun altro
+   presente». **Viola non e' inventata** — il briefing porta a ogni turno, sotto «Cio' che le
+   persone hanno detto», la frase del proprietario stesso: *«in casa vivono anche marta mi
+   moglie e viola nostra figlia»*; e in casa c'e' l'area «Cameretta Viola». Inventata era la sua
+   **presenza** di ieri, dedotta per far quadrare il numero 2.
+4. Poi, alla contestazione, **ha rinnegato una fonte che aveva davanti**: «era una mia
+   supposizione, non un dato verificato». Non lo era: era una dichiarazione registrata del
+   proprietario, presente nel suo contesto in quel medesimo istante.
+
+I punti 3 e 4 sono **due difetti opposti**, e il secondo e' il piu' grave: prima afferma cio'
+che non sa, poi nega cio' che sa. In mezzo c'e' la stessa mancanza — **HIRIS non distingue le
+proprie fonti**: cio' che ha letto da Home Assistant, cio' che il proprietario gli ha detto e
+cio' che ha dedotto arrivano al modello indistinguibili, e quando qualcuno alza la voce cedono
+tutte e tre insieme.
+4. La spiegazione finale — «probabilmente conta il numero totale di entita' person» — e' **essa
+   stessa una supposizione**, dichiarata tale ma mai verificata.
+
+Il punto che lega questa voce alla fetta A: **la risposta esatta esisteva gia'** negli oggetti
+dell'osservatore, con quegli orari precisi al minuto. La chat non li ha interrogati. E' la
+stessa legge di «una fonte sola, due lettori», guardata dall'altro capo — qui il secondo lettore
+non legge affatto.
+
+**Misurato sulla casa vera il 04/09, e la causa non e' il modello.**
+
+`search` e' una ricerca di **nomi**, non di concetti — ed e' sicura di se' quando sbaglia:
+
+| interrogazione | cosa torna |
+|---|---|
+| `search "persone"` | **solo** `sensor.persons`, e dichiara `ambiguo: false` |
+| `search "presenza"` | **zero risultati** — mentre la gamba «chi c'e'» ne guarda 11 |
+| `search "chi c'e' in casa"` | estrae la parola «casa» e offre `weather.forecast_casa` |
+| `search "paolo"` | `person.paolo_bettinelli` |
+
+Cioe': le due persone si raggiungono **solo se sai gia' che si chiamano Paolo e Marta**. Chi
+chiede «chi c'e' in casa» riceve un candidato solo, quello sbagliato, marcato come non ambiguo.
+E' la stessa lacuna di «La piattaforma non e' cercabile», vista dall'altro lato: l'indice non
+porta ne' il dominio ne' il significato.
+
+`view` **aveva gia' tutti i segnali** per non cascarci, e nessuno di essi e' una regola da
+nessuna parte: `"categoria": "diagnostic"` · `"piattaforma": "spook"` · `"classe": null` ·
+`"da_quando"` di **due giorni prima**. Uno stato fermo da due giorni non puo' essere un
+conteggio di presenza, e niente in cio' che il modello riceve lo dice.
+
+**La risposta giusta era a una chiamata di distanza**: `logbook(entita="person.paolo_bettinelli",
+ore=36)` restituisce `not_home` alle 06:08 UTC e `home` alle 16:17 UTC del 03/09 — cioe'
+08:08→18:17 locali, gli stessi minuti che l'osservatore aveva gia' scritto quella notte.
+
+**E c'e' un terzo posto dove il sistema preferisce rispondere invece di rifiutare**: `logbook`
+dichiara `required: ["ore"]` nello schema ma **non lo verifica**. Chiamato senza `ore`, o con
+nomi di parametro inventati, non solleva: restituisce una finestra a caso, e con `entita`
+sbagliata restituisce l'intera casa. Un modello che sbaglia il nome di un argomento riceve dati
+plausibili sulla cosa sbagliata invece di un errore.
+
+### La conoscenza non ha spina dorsale — le quattro mancanze
+
+`origine: il proprietario, 04/09/2026, dalla verifica «qual e' lo stato della casa?»` · `nessun documento`
+
+**La copertura non e' il problema**: 1221 entita', 242 dispositivi, 53 integrazioni, piani, aree,
+comportamenti, plance, i ricordi del proprietario. Il problema e' che sono **elenchi senza
+relazioni, senza tempo e senza provenienza**. Ognuna delle quattro mancanze qui sotto e' stata
+misurata sulla casa vera il 04/09, e ognuna spiega errori veri.
+
+**1 · L'appartenenza.** Il percorso entita' → dispositivo → integrazione non e' percorribile.
+- Il briefing dice «un'**integrazione** non sta funzionando: **Abat-jour**». Abat-jour e' un
+  **dispositivo** — lo dichiara l'anagrafe di HIRIS stessa (`tipo: dispositivo`,
+  `produttore: "LIFX"`, `modello: "LIFX Mini Color"`). Sta leggendo il *titolo del config entry*,
+  che per LIFX e' uno per lampadina, e lo chiama integrazione. Il campo `domain` = `lifx` e' nella
+  stessa struttura, tre righe sopra nel codice.
+- Nella **stessa conversazione**, venti minuti dopo, dice: «Abat-jour, che risulta *spento* non
+  *non disponibile*». Due letture diverse della stessa cosa nello stesso dialogo.
+- `search "hydrawise"` → **zero risultati**.
+- Chiesto il dettaglio delle 74 entita' mute, ci ha messo **95 secondi**, ha aperto le aree una
+  per una, ed e' arrivato a **48 su 74** dichiarando di non farcela sulle due piu' grandi. E'
+  una sola giunzione, pagata con quindici chiamate.
+
+**2 · Il tempo.** La «fotografia» sono **quattro fotografie di momenti diversi**, presentate come
+una: anagrafe `13:59:15`, comportamento `13:59:14`, confronto `13:49:21`, plance **`09:34:27`** —
+quattro ore e mezza prima. Tutti questi istanti sono nel dato; **nessuno arriva alla risposta**. La
+domanda del proprietario — «come ho la certezza che nulla e' variato da allora?» — non ha risposta
+perche' non esiste la domanda.
+
+**3 · La natura.** Un diagnostico, un interruttore di configurazione e una misura reale arrivano
+al modello con la stessa forma. `sensor.persons` letto come presenza (li' `categoria: diagnostic`
+c'era e nessuno l'ha guardata); gli interruttori di AdGuard riportati «accesi» accanto al forno e
+alla lavastoviglie — e li' va detto che **`categoria` e' `null`**: HA non li distingue, l'unico
+indizio e' `piattaforma: adguard` e l'area «Configurazione». Quella correzione va **dedotta**, non
+letta: e' piu' difficile della prima, e non e' lo stesso difetto.
+
+**4 · La provenienza.** Cio' che HIRIS ha letto da Home Assistant, cio' che il proprietario gli ha
+detto e cio' che ha dedotto arrivano indistinguibili. Vedi il caso Viola in «Come HIRIS interpreta
+le entita' di Home Assistant»: prima afferma senza fonte, poi rinnega una fonte che ha davanti.
+
+**Nessuna delle quattro e' un errore del modello: sono tutte forma del dato.** Questa voce e' il
+livello sotto ai sintomi raccolti nelle altre — e ha un legame stretto con «Il vocabolario del
+dato», che il 03/09 era stata rimandata come fetta di rinomina e non lo e' piu'.
+
+**Due difetti minori trovati insieme, che non meritano una voce loro:** la risposta sullo stato
+della casa ha affermato «nessun allarme attivo» e «18 automazioni in funzione regolare» — nessuna
+delle due frasi compare nel briefing (zero occorrenze di «regolar» e di «nessun allarme» in 5670
+caratteri), e la seconda HIRIS non puo' saperla, perche' non legge le tracce. E ha taciuto la
+riga in cui il briefing dichiara se stesso incompleto: «Il nucleo superava il tetto di 6000
+caratteri: 3 elementi notevoli non inclusi».
+
+### Gli strumenti rifiutano invece di indovinare
+
+`origine: il proprietario, 04/09/2026 — «aggiungi tutto il tema»` · `nessun documento`
+
+Non e' un difetto: e' **una linea di condotta ripetuta in tre posti indipendenti**, misurati
+sulla casa vera il 04/09. Davanti all'incertezza il prodotto risponde con sicurezza invece di
+rifiutare.
+
+1. **`search` dichiara `ambiguo: false` su un candidato solo e sbagliato.** `search "persone"`
+   torna il solo `sensor.persons` e lo marca come non ambiguo; `search "presenza"` torna zero;
+   `search "chi c'e' in casa"` estrae la parola «casa» e offre `weather.forecast_casa`. Le
+   persone si raggiungono **solo se sai gia' che si chiamano Paolo e Marta**. Un candidato solo
+   non e' la stessa cosa di un candidato certo, e oggi il campo non li distingue.
+2. **`logbook` dichiara `required: ["ore"]` e non lo verifica.** Chiamato senza `ore` non
+   solleva: sceglie una finestra. Con un nome di argomento inventato lo ignora in silenzio e
+   restituisce l'intera casa invece dell'entita' chiesta. Un modello che sbaglia un nome riceve
+   dati plausibili sulla cosa sbagliata al posto di un errore.
+3. **`view` consegna i segnali e non la regola.** `categoria: diagnostic`, `classe: null` e un
+   `da_quando` di due giorni prima erano tutti li'; niente, in cio' che il modello riceve, dice
+   che una diagnostica non e' una misura o che uno stato fermo da giorni non puo' essere un
+   valore istantaneo.
+
+Il quarto anello — il modello che inventa una persona che non esiste — e' il **sintomo** di
+questi tre, non la causa, ed e' l'unico che il proprietario ha potuto vedere.
+
+Ha un legame stretto con «Come HIRIS interpreta le entita' di Home Assistant»: quella voce e' il
+caso che l'ha fatto emergere, questa e' la regola che ne esce.
+
 ### I comandi verso Home Assistant
 
 `origine: deciso dal proprietario il 04/09/2026` · `documento: docs/design/2026-09-04-i-comandi-verso-home-assistant.md`
