@@ -59,6 +59,19 @@ un'appartenenza gia' rifatta invece che accanto a una da rifare.
 **La specifica dello sprint è `docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`**: le voci qui sotto restano il
 registro (cosa e perché), la spec porta il disegno (come). Sono in ordine di lavorazione.
 
+**Stato al 04/09/2026 — il piano 1 «l'appartenenza» è su `master` (`eec94198`, CI verde.)**
+Ha chiuso: la ricerca trova per piattaforma; `view tipo: integrazione` risponde **in una
+chiamata** con quante entità non rispondono, quante hanno stato ignoto, quante sono disabilitate
+e da quando; il briefing non chiama più «integrazione» il titolo di una voce di configurazione;
+l'anagrafe ha il livello dell'istanza (migrazione 6 → 7).
+
+**Nessuna voce passa ancora in «Usciti», ed è deliberato: quello stato lo dà un RILASCIO**, e la
+versione non è stata toccata. È il momento in cui si vede perché i tre stati sono distinti — il
+lavoro è su `master`, ma la casa non ce l'ha.
+
+Resta al **piano 2**: il guasto nell'osservatore (nome, condizione, isteresi), la regola del
+riavvio — sbloccata da `sensor.uptime`, vedi spec §4 ③ — e la cancellazione di `get_error_log()`.
+
 ### La conoscenza non ha spina dorsale — le quattro mancanze
 
 `origine: il proprietario, 04/09/2026, dalla verifica «qual e' lo stato della casa?»` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
