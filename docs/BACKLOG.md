@@ -56,11 +56,12 @@ un'appartenenza gia' rifatta invece che accanto a una da rifare.
 > Oggi: 95 secondi, quindici chiamate, si ferma a 48 su 74, e il giardino resta invisibile.
 > Dopo: una chiamata, 74 su 74, e lo stato della casa nomina l'irrigazione ferma.
 
-Le voci sono in ordine di lavorazione.
+**La specifica dello sprint è `docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`**: le voci qui sotto restano il
+registro (cosa e perché), la spec porta il disegno (come). Sono in ordine di lavorazione.
 
 ### La conoscenza non ha spina dorsale — le quattro mancanze
 
-`origine: il proprietario, 04/09/2026, dalla verifica «qual e' lo stato della casa?»` · `nessun documento`
+`origine: il proprietario, 04/09/2026, dalla verifica «qual e' lo stato della casa?»` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
 
 **La copertura non e' il problema**: 1221 entita', 242 dispositivi, 53 integrazioni, piani, aree,
 comportamenti, plance, i ricordi del proprietario. Il problema e' che sono **elenchi senza
@@ -110,7 +111,7 @@ caratteri: 3 elementi notevoli non inclusi».
 
 ### La piattaforma non e' cercabile
 
-`origine: misurato sulla casa vera il 02/09/2026` · `nessun documento`
+`origine: misurato sulla casa vera il 02/09/2026` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
 
 `view` restituisce gia' `"piattaforma": "hydrawise"`, ma `search` indicizza solo nome, area e
 dispositivo. Non si puo' chiedere «cosa espone l'integrazione Sonos», ne' «l'irrigazione funziona».
@@ -119,7 +120,7 @@ chiamano «Sala da pranzo».
 
 ### La salute di un'integrazione non e' il suo stato
 
-`origine: misurato sulla casa vera il 02/09/2026` · `nessun documento`
+`origine: misurato sulla casa vera il 02/09/2026` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
 
 Un'integrazione `loaded` con **tutte** le entita' morte oggi e' invisibile. Sulla casa: 162 entita'
 su 827 (19,6%) sono `unavailable` o `unknown`, comprese tutte e 16 quelle dell'irrigazione
@@ -135,7 +136,7 @@ nome, nessun raggruppamento, nessuna integrazione nominata.
 
 ### Il soggetto di un guasto porta il nome e la condizione, non l'identificativo
 
-`origine: il proprietario, 04/09/2026, dopo la sonda sull'osservatore` · `nessun documento`
+`origine: il proprietario, 04/09/2026, dopo la sonda sull'osservatore` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
 
 `mind/watcher.py:191` tiene solo l'`entry_id`: il soggetto scritto in archivio e'
 `integrazione:01K2CK4GG287VKK18M5J788MRQ`. Il dizionario dell'integrazione **ha** `domain`,
@@ -158,7 +159,7 @@ convive, o il nome viaggia in una colonna accanto invece che dentro il soggetto?
 
 ### Un episodio per condizione, non venticinque
 
-`origine: misurato sulla casa vera il 02/09/2026` · `nessun documento`
+`origine: misurato sulla casa vera il 02/09/2026` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
 
 L'osservatore apre un episodio nuovo a ogni sfarfallio: **25 episodi di guasto per una sola
 integrazione** (`lifx / Abat-jour`, `setup_retry`), e cinque aperti contemporaneamente per la stessa
@@ -167,7 +168,7 @@ decide la forma, e la forma di una condizione e' la **durata**.
 
 ### Come HIRIS interpreta le entita' di Home Assistant — il caso `sensor.persons`
 
-`origine: il proprietario, 04/09/2026, da una chat reale` · `nessun documento`
+`origine: il proprietario, 04/09/2026, da una chat reale` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
 
 Alla domanda **«quanto tempo la casa ieri e' rimasta vuota?»** HIRIS ha risposto **«mai»**. La
 risposta giusta, che l'archivio dell'osservatore aveva gia' scritta quella notte, era **circa
@@ -234,7 +235,7 @@ plausibili sulla cosa sbagliata invece di un errore.
 
 ### Gli strumenti rifiutano invece di indovinare
 
-`origine: il proprietario, 04/09/2026 — «aggiungi tutto il tema»` · `nessun documento`
+`origine: il proprietario, 04/09/2026 — «aggiungi tutto il tema»` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
 
 Non e' un difetto: e' **una linea di condotta ripetuta in tre posti indipendenti**, misurati
 sulla casa vera il 04/09. Davanti all'incertezza il prodotto risponde con sicurezza invece di
@@ -262,7 +263,7 @@ caso che l'ha fatto emergere, questa e' la regola che ne esce.
 
 ### Le tracce delle automazioni e il log di sistema
 
-`origine: deciso dal proprietario il 31/08/2026` · `nessun documento`
+`origine: deciso dal proprietario il 31/08/2026` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
 
 Due fonti nuove di HA, e devono essere disponibili **a entrambi i lettori**: lo strumento della chat
 E l'osservatore. Una fonte sola, due lettori — l'osservatore «non apre un secondo rubinetto», perche'
@@ -281,7 +282,7 @@ giudicato**, perche' `system_log/list` consegna righe raggruppate da HA con `cou
 
 ### `get_error_log()` si cancella
 
-`origine: deciso dal proprietario il 31/08/2026` · `nessun documento`
+`origine: deciso dal proprietario il 31/08/2026` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
 
 `proxy/ha_client.py::get_error_log()` ha i test e **zero chiamanti vivi**. Punta a
 `/api/error_log`, che su HA 2026.8.3 risponde 404, e **inghiotte il 404 restituendo
@@ -291,7 +292,7 @@ non esiste piu' e mente quando non lo trova: si cancella il metodo e si cancella
 
 ### Le specifiche di Home Assistant si importano dalla documentazione — il tema finale
 
-`origine: il proprietario, 04/09/2026 — «questo e' il tema finale di questo sprint»` · `nessun documento`
+`origine: il proprietario, 04/09/2026 — «questo e' il tema finale di questo sprint»` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
 
 **Richiesta testuale**: «vanno importate e capite le specifiche di HA con la documentazione; per
 ogni stato va capito cosa rappresenta e se ci sono altri metadati o parametri che permettono di
