@@ -279,8 +279,13 @@ VIEW_TOOL_DEF = {
         "cosa (e quindi cosa smetterebbe di funzionare se la cancellassi) usa "
         "`related`, che e' una domanda diversa e una risposta diversa. "
         "`integrazione`: il dominio (`hydrawise`, `lifx`). Porta le sue voci di "
-        "configurazione, quante entita' ha e quante non rispondono, e -- quando "
-        "sono diventate mute tutte nello stesso istante -- da quando."
+        "configurazione, quante entita' ha, quante non rispondono e quante "
+        "l'utente ha disabilitato (`entita_disabilitate`, solo se ce ne sono -- "
+        "una cosa spenta dall'utente non conta fra quelle che non rispondono), "
+        "e -- quando sono diventate mute quasi nello stesso istante -- da "
+        "quando. Se un registro dell'anagrafe non ha risposto lo dice in "
+        "`elenco_incompleto`: i numeri accanto sono parziali, non una buona "
+        "notizia."
     ),
     "input_schema": {
         "type": "object",

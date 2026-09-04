@@ -1215,3 +1215,32 @@ def test_disabled_entities_dont_inflate_the_healthy_denominator():
     assert detail["entita_mute"] == 1
     assert detail["entita_disabilitate"] == 1
     assert {e["id"] for e in detail["entita"]} == {"valve.giardino"}
+
+
+def test_an_integration_declares_when_the_config_registry_did_not_answer():
+    """Il rimedio del giro precedente nominava solo `entita` -- lo aveva
+    scritto cosi' il controller, e lo chiude ora (revisione indipendente,
+    giro 2). Ma `voci` viene dal registro `integrazioni`, non da `entita`:
+    con SOLO `integrazioni` caduto e le entita' presenti (e rispondenti), la
+    risposta usciva `esiste: True, voci: []` senza dichiarare nulla --
+    "questa integrazione non ha voci di configurazione" detto come un fatto
+    sulla casa, quando la verita' e' "non ho potuto leggerle". Stessa
+    disciplina di `_view_area` (`incomplete = sorted(set(unavailable) &
+    {...})`): `elenco_incompleto` elenca ENTRAMBI i registri che
+    alimentano questa risposta, non solo quello delle entita'.
+
+    Mutazione: `incomplete = sorted(set(unavailable) & {"entita"})` (il
+    refuso del giro scorso, che ignorava `integrazioni`) -- rosso su
+    `assert detail["elenco_incompleto"] == ["integrazioni"]` (l'intersezione
+    torna vuota, quindi la chiave non compare affatto -- KeyError)."""
+    house = {"entita": [
+        {"id": "valve.giardino", "nome": "Irrigazione", "piattaforma": "hydrawise",
+         "area_id": "esterno", "dispositivo_id": None, "classe": None,
+         "unita": None, "disabilitata": 0},
+    ], "integrazioni": [], "aree": [], "piani": [], "dispositivi": [],
+        "etichette": [], "categorie": []}
+    detail = view(house, [], [], {"valve.giardino": "on"}, "integrazione", "hydrawise",
+                    unavailable=("integrazioni",))
+    assert detail["esiste"] is True
+    assert detail["voci"] == []
+    assert detail["elenco_incompleto"] == ["integrazioni"]

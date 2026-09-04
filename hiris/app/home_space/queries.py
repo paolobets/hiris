@@ -855,7 +855,16 @@ def _view_integration(home_space: dict, state: dict, reference,
     `entita_totali: 0, entita_mute: 0`, "nessun problema" detto con
     sicurezza proprio sulla domanda per cui questa fetta esiste. Il secondo
     caso si dichiara con `elenco_incompleto` -- STESSA chiave, stessa forma
-    di `_view_device` (sopra), non un campo nuovo per lo stesso fatto.
+    di `_view_area` (`incomplete = sorted(set(unavailable) & {...})`, sopra)
+    e di `_view_device`, non un campo nuovo per lo stesso fatto. La prima
+    versione di questa fetta (revisione indipendente, giro 2) nominava solo
+    `"entita"`: ma `voci` viene dal registro `integrazioni`, non da
+    `entita`, e con `integrazioni` caduto e le entita' presenti la risposta
+    usciva `esiste: True, voci: []` senza dichiarare nulla -- "questa
+    integrazione non ha voci di configurazione" detto come fatto sulla casa,
+    quando la verita' e' "non ho potuto leggerle". `elenco_incompleto`
+    elenca quindi ENTRAMBI i registri che alimentano questa risposta, non
+    solo quello che elenca le entita'.
 
     Le entita' DISABILITATE (ruling del controller, revisione indipendente):
     non stanno nello state machine di Home Assistant, quindi non "rispondono"
@@ -892,8 +901,9 @@ def _view_integration(home_space: dict, state: dict, reference,
     }
     if disabled:
         detail["entita_disabilitate"] = len(disabled)
-    if "entita" in unavailable:
-        detail["elenco_incompleto"] = ["entita"]
+    incomplete = sorted(set(unavailable) & {"entita", "integrazioni"})
+    if incomplete:
+        detail["elenco_incompleto"] = incomplete
     moments = [(reported_since_when or {}).get(e["id"]) for e in silent]
     if moments and all(moments):
         epochs = [instant_epoch(m) for m in moments]
