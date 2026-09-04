@@ -289,6 +289,45 @@ giudicato**, perche' `system_log/list` consegna righe raggruppate da HA con `cou
 che ne ha 6+11. E' lo zero che afferma. Non e' una migrazione — il vecchio punta a un endpoint che
 non esiste piu' e mente quando non lo trova: si cancella il metodo e si cancellano i suoi test.
 
+### Le specifiche di Home Assistant si importano dalla documentazione — il tema finale
+
+`origine: il proprietario, 04/09/2026 — «questo e' il tema finale di questo sprint»` · `nessun documento`
+
+**Richiesta testuale**: «vanno importate e capite le specifiche di HA con la documentazione; per
+ogni stato va capito cosa rappresenta e se ci sono altri metadati o parametri che permettono di
+capire di piu'. Per migliorare i ragionamenti serve sapere cosa stiamo guardando in profondita' e
+capire bene per ogni oggetto le sue caratteristiche.»
+
+E' la voce che chiude lo sprint perche' e' quella che lo rende **duraturo**: le altre otto
+correggono cio' che sbagliamo oggi, questa toglie la ragione per cui lo sbagliavamo. Vale la legge
+del progetto: **mai un'ipotesi su Home Assistant — prima la documentazione, poi le API vere**.
+
+**Misurato il 04/09: quanti campi che HA manda nel registro delle entita' il codice non nomina
+mai.** Conteggio delle occorrenze in tutto `hiris/app`:
+
+| campo di HA | citazioni | cosa ci perdiamo |
+|---|---:|---|
+| `supported_features` | **0** | cosa un'entita' **sa fare** (una luce che cambia colore, una tapparella che si ferma a meta') |
+| `assumed_state` | **0** | HA dichiara «questo stato lo **suppongo**, non l'ho verificato» — ed e' la provenienza, che stiamo cercando altrove |
+| `options` | **0** | i valori ammessi di un `select` |
+| `config_entry_id` | **0** | l'appartenenza all'istanza (vedi la spina n. 1) |
+| `unique_id` · `has_entity_name` | **0** | |
+| `capabilities` · `entity_category` · `original_device_class` · `hidden_by` · `original_name` · `platform` | **1 ciascuno** | letti in un punto solo, non conservati come caratteristiche |
+
+`assumed_state` merita una riga sua: **Home Assistant dichiara gia' quando non e' sicuro di uno
+stato**, e HIRIS non lo legge mai. Stiamo progettando la certezza del dato mentre il fornitore ce
+la sta gia' mandando.
+
+**Il precedente da seguire c'e' gia' in casa**: `briefing.py:69` porta un elenco «copiato da
+`homeassistant/generated/entity_platforms.py`», sorvegliato da `tests/test_domain_vocabulary.py`.
+Cioe' non si deduce e non si indovina: si importa, si dichiara da dove viene, e una prova si
+accorge quando diverge. Questa voce estende quel gesto dai domini a **stati, classi, categorie,
+capacita' e attributi**.
+
+Da decidere quando si progetta: cosa si importa a mano e cosa si legge a runtime; dove vive
+(tabella generata nel repo o nell'anagrafe); e come si accorge di essere invecchiato quando HA
+cambia versione.
+
 ---
 
 ## In attesa
