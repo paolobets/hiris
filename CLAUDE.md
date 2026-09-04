@@ -12,6 +12,13 @@ Prima di scrivere qualunque riga:
 | Cosa **deve** fare HIRIS | `docs/design/2026-08-04-scope-hiris.md` — **il contratto** |
 | Cosa **c'è dentro**, e cosa ne resta | `docs/design/2026-08-05-mappa-funzionalita.md` — **l'ordine di demolizione** |
 | Come si conosce la casa | `docs/design/2026-08-05-la-conoscenza-di-hiris.md` |
+| Cosa **aspetta** uno sprint | `docs/BACKLOG.md` — **il registro degli argomenti** |
+
+**Quando il proprietario dice «inseriamo per il prossimo sprint», la voce entra in
+`docs/BACKLOG.md` subito**, prima di continuare il discorso — non in un appunto, non in una
+risposta in chat, non nella memoria di una sessione. Un argomento annotato altrove è un argomento
+perso: è già successo, e la lista andata persa il 04/09/2026 è la ragione per cui quel registro
+esiste. Uno sprint nuovo si apre **scegliendo dal backlog**, non ripartendo da zero.
 
 **C'è un ramo solo: `master`** — è quello che l'add-on legge e da cui escono le release. Il ramo
 `2.0` è stato cancellato il 4 settembre 2026, quando la sua punta e quella di `master` erano lo
