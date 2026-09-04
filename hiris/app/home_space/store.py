@@ -32,6 +32,12 @@ CREATE TABLE IF NOT EXISTS dispositivi (
     area_id TEXT, disabilitato INTEGER NOT NULL DEFAULT 0,
     etichette TEXT NOT NULL DEFAULT '[]'
 );
+-- `config_entry_id` resta nel nome di Home Assistant, non tradotto: non e' un
+-- concetto del dominio come `piattaforma`/`classe`/`unita`, e' un identificatore
+-- OPACO di HA -- una chiave esterna, non una parola nostra. Tradurla creerebbe
+-- un secondo nome per la stessa cosa, proprio cio' che il glossario vieta.
+-- Stesso trattamento gia' in uso per `area_id`/`dispositivo_id` qui sotto, che
+-- portano il nome di HA tale e quale.
 CREATE TABLE IF NOT EXISTS entita (
     id TEXT PRIMARY KEY, nome TEXT, area_id TEXT, dispositivo_id TEXT,
     piattaforma TEXT, config_entry_id TEXT, categoria TEXT, classe TEXT, unita TEXT,
@@ -55,6 +61,8 @@ CREATE TABLE IF NOT EXISTS categorie (
     id TEXT NOT NULL, nome TEXT NOT NULL, ambito TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (ambito, id)
 );
+-- `entry_id`: stesso caso di `config_entry_id` sopra, stessa ragione -- un id
+-- opaco di HA, non un concetto da tradurre.
 CREATE TABLE IF NOT EXISTS integrazioni (
     entry_id TEXT, dominio TEXT NOT NULL, titolo TEXT, stato TEXT, motivo TEXT, origine TEXT
 );

@@ -12,13 +12,14 @@ _REGISTRI = {
                      "manufacturer": "Bosch", "model": "KGN", "area_id": "cucina",
                      "disabled_by": None, "labels": []}],
     "entita": [{"entity_id": "sensor.frigo_temp", "device_id": "d1", "area_id": None,
-                "platform": "mqtt", "entity_category": None,
+                "platform": "mqtt", "config_entry_id": "entry_mqtt_1", "entity_category": None,
                 "original_device_class": "temperature", "unit_of_measurement": "°C",
                 "disabled_by": None, "hidden_by": None, "name": None,
                 "original_name": "Temperatura frigo", "aliases": [], "labels": []}],
     "etichette": [{"label_id": "giorno", "name": "Zona giorno", "color": "blue", "icon": None}],
     "categorie": [{"category_id": "c1", "name": "Clima", "ambito": "automation"}],
-    "integrazioni": [{"domain": "mqtt", "title": "MQTT", "state": "loaded"}],
+    "integrazioni": [{"domain": "mqtt", "title": "MQTT", "state": "loaded",
+                       "entry_id": "entry_mqtt_1"}],
 }
 
 
@@ -355,7 +356,11 @@ def test_migration_7_adds_columns_to_an_old_archive(tmp_path):
     archivio simulato senza di esse fa fallire la creazione degli indici
     PRIMA di arrivare alla migrazione che questa prova vuole osservare,
     afferma un archivio v6 che non esiste davvero, e la prova morirebbe di un
-    guasto estraneo invece che di quello dichiarato."""
+    guasto estraneo invece che di quello dichiarato.
+
+    Mutazione: togliere `7: _migration_7_instance_membership` da
+    `_MIGRATIONS` -- il test torna rosso su
+    `assert "config_entry_id" in entity_columns`."""
     path = tmp_path / "casa.db"
     conn = sqlite3.connect(path)
     conn.executescript(
@@ -372,23 +377,54 @@ def test_migration_7_adds_columns_to_an_old_archive(tmp_path):
     integration_columns = {r[1] for r in store._conn.execute("PRAGMA table_info(integrazioni)")}
     assert "config_entry_id" in entity_columns
     assert "entry_id" in integration_columns
+    # La migrazione e' davvero girata, non solo lo schema per un'altra via.
+    assert store._conn.execute("PRAGMA user_version").fetchone()[0] == 7
     store.close()
 
 
 def test_migration_7_is_idempotent(tmp_path):
-    """Girarla due volte non solleva e non cambia i conti."""
-    path = str(tmp_path / "casa.db")
-    first = HomeSpaceStore(path)
-    first.close()
-    second = HomeSpaceStore(path)
-    columns = {r[1] for r in second._conn.execute("PRAGMA table_info(entita)")}
-    assert "config_entry_id" in columns
-    second.close()
+    """Il caso che il `suppress(sqlite3.OperationalError)` protegge: un
+    archivio che ha GIA' le colonne (una versione precedente di questa fetta,
+    o una seconda apertura sull'archivio appena migrato) ma e' ancora
+    fermo a `user_version = 6` -- `init_schema` fa comunque girare la
+    migrazione 7, che deve trovare le colonne gia' li' e non sollevare ne'
+    duplicarle.
+
+    Un archivio nuovo, aperto due volte, NON esercita questo caso: nasce gia'
+    a versione 7 e la seconda apertura non ha niente da migrare -- misurava
+    solo la stabilita' dello schema, un doppione di
+    `test_a_new_archive_is_born_with_the_columns`.
+
+    Mutazione: togliere il `suppress(sqlite3.OperationalError)` da
+    `_migration_7_instance_membership` -- il test torna rosso con
+    `sqlite3.OperationalError: duplicate column name: config_entry_id`."""
+    path = tmp_path / "casa.db"
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        "CREATE TABLE entita (id TEXT PRIMARY KEY, nome TEXT, area_id TEXT,"
+        " dispositivo_id TEXT, piattaforma TEXT, config_entry_id TEXT);"
+        "CREATE TABLE integrazioni (dominio TEXT NOT NULL, titolo TEXT, stato TEXT,"
+        " entry_id TEXT);"
+        "PRAGMA user_version = 6;")
+    conn.commit()
+    conn.close()
+
+    store = HomeSpaceStore(str(path))
+    entity_columns = [r[1] for r in store._conn.execute("PRAGMA table_info(entita)")]
+    integration_columns = [r[1] for r in store._conn.execute("PRAGMA table_info(integrazioni)")]
+    assert entity_columns.count("config_entry_id") == 1
+    assert integration_columns.count("entry_id") == 1
+    assert store._conn.execute("PRAGMA user_version").fetchone()[0] == 7
+    store.close()
 
 
 def test_a_new_archive_is_born_with_the_columns(tmp_path):
     """La prova che _SCHEMA e' stato aggiornato insieme alla migrazione e non
-    solo lei: un archivio nuovo non fa girare nessuna migrazione."""
+    solo lei: un archivio nuovo non fa girare nessuna migrazione.
+
+    Mutazione: togliere `config_entry_id TEXT` dalla `CREATE TABLE entita` di
+    `_SCHEMA` (migrazione intatta) -- il test torna rosso su
+    `assert "config_entry_id" in columns`."""
     store = HomeSpaceStore(str(tmp_path / "nuova.db"))
     columns = {r[1] for r in store._conn.execute("PRAGMA table_info(entita)")}
     assert "config_entry_id" in columns
@@ -398,7 +434,14 @@ def test_a_new_archive_is_born_with_the_columns(tmp_path):
 def test_replace_populates_the_instance_membership(archivio):
     """Una colonna sempre NULL sarebbe una migrazione che non serve a niente
     (avvertenza del brief): `config_entry_id`/`entry_id` devono arrivare da
-    `replace()`, non solo esistere nello schema."""
+    `replace()`, non solo esistere nello schema.
+
+    Mutazione: sostituire `e.get("config_entry_id")` con `None` nella INSERT
+    di `entita` -- il test torna rosso su
+    `assert casa["entita"][0]["config_entry_id"] == "entry_lifx_1"`.
+    Sostituire (separatamente) `i.get("entry_id")` con `None` nella INSERT di
+    `integrazioni` -- il test torna rosso su
+    `assert casa["integrazioni"][0]["entry_id"] == "entry_lifx_1"`."""
     registries = dict(_REGISTRI)
     registries["entita"] = [dict(_REGISTRI["entita"][0], config_entry_id="entry_lifx_1")]
     registries["integrazioni"] = [dict(_REGISTRI["integrazioni"][0], entry_id="entry_lifx_1")]
@@ -406,3 +449,25 @@ def test_replace_populates_the_instance_membership(archivio):
     casa = archivio.read()
     assert casa["entita"][0]["config_entry_id"] == "entry_lifx_1"
     assert casa["integrazioni"][0]["entry_id"] == "entry_lifx_1"
+
+
+def test_entry_id_tells_two_integrations_with_the_same_domain_apart(archivio):
+    """Il caso che da' senso all'intero task: dieci lampadine LIFX sono dieci
+    righe con lo stesso `dominio` e titoli diversi, e prima di questa fetta
+    `integrazioni` non aveva chiave -- nessun campo distingueva QUALE istanza
+    fosse rotta. Due righe con lo stesso `dominio` ma `entry_id` diverso
+    devono restare due righe distinguibili dopo `replace()`+`read()`.
+
+    Mutazione: sostituire `i.get("entry_id")` con `i.get("domain", "")` nella
+    INSERT di `integrazioni` -- il test torna rosso su
+    `assert entry_ids == {"entry_lifx_1", "entry_lifx_2"}` (le due righe
+    collasserebbero sullo stesso valore)."""
+    registries = dict(_REGISTRI, integrazioni=[
+        {"domain": "lifx", "title": "Abat-jour", "state": "loaded", "entry_id": "entry_lifx_1"},
+        {"domain": "lifx", "title": "Comodino", "state": "loaded", "entry_id": "entry_lifx_2"},
+    ])
+    archivio.replace(registries)
+    casa = archivio.read()
+    entry_ids = {i["entry_id"] for i in casa["integrazioni"]}
+    assert entry_ids == {"entry_lifx_1", "entry_lifx_2"}
+    assert len(casa["integrazioni"]) == 2
