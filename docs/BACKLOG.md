@@ -42,18 +42,96 @@ voci non sa dire se il lavoro procede.
 
 ## Scelti — sprint in corso
 
-*Nessuno. L'ultimo sprint chiuso e' «i menu esecutivi» (3.21.0 / 3.21.1, 04/09/2026).*
+**Sprint aperto il 04/09/2026 — «la conoscenza prende una forma».**
 
----
+Perimetro e strada decisi dal proprietario. La strada e' **una spina alla volta, verticale**:
+si prende l'appartenenza e la si porta fino in fondo attraverso tutti i lettori — anagrafe,
+ricerca, osservatore, briefing, strumenti — e solo dopo si passa oltre. Le tracce e il log
+stanno in coda **per conseguenza della strada**: sono una fonte nuova, e nascono sopra
+un'appartenenza gia' rifatta invece che accanto a una da rifare.
 
-## In attesa
+**La prova che dice quando e' finito**, e non se ne discute:
 
-> **Avvertenza sulla prima stesura (04/09/2026).** Il proprietario aveva chiesto di annotare una
-> lista di argomenti per il prossimo sprint, e quella lista **non e' stata salvata da nessuna
-> parte**: cercata in tutto il repository, nelle cartelle ignorate, nelle issue e nelle milestone di
-> GitHub, non esiste. Le voci qui sotto **non sono quella lista**: sono ricostruite dai documenti
-> del repository e da cio' che e' stato misurato sulla casa vera. La lista del proprietario va
-> reinserita da lui, e queste voci vanno lette come un fondo di magazzino, non come una sua scelta.
+> **«Quali entita' non rispondono, e di quale integrazione sono?»**
+> Oggi: 95 secondi, quindici chiamate, si ferma a 48 su 74, e il giardino resta invisibile.
+> Dopo: una chiamata, 74 su 74, e lo stato della casa nomina l'irrigazione ferma.
+
+Le voci sono in ordine di lavorazione.
+
+### La conoscenza non ha spina dorsale — le quattro mancanze
+
+`origine: il proprietario, 04/09/2026, dalla verifica «qual e' lo stato della casa?»` · `nessun documento`
+
+**La copertura non e' il problema**: 1221 entita', 242 dispositivi, 53 integrazioni, piani, aree,
+comportamenti, plance, i ricordi del proprietario. Il problema e' che sono **elenchi senza
+relazioni, senza tempo e senza provenienza**. Ognuna delle quattro mancanze qui sotto e' stata
+misurata sulla casa vera il 04/09, e ognuna spiega errori veri.
+
+**1 · L'appartenenza.** Il percorso entita' → dispositivo → integrazione non e' percorribile.
+- Il briefing dice «un'**integrazione** non sta funzionando: **Abat-jour**». Abat-jour e' un
+  **dispositivo** — lo dichiara l'anagrafe di HIRIS stessa (`tipo: dispositivo`,
+  `produttore: "LIFX"`, `modello: "LIFX Mini Color"`). Sta leggendo il *titolo del config entry*,
+  che per LIFX e' uno per lampadina, e lo chiama integrazione. Il campo `domain` = `lifx` e' nella
+  stessa struttura, tre righe sopra nel codice.
+- Nella **stessa conversazione**, venti minuti dopo, dice: «Abat-jour, che risulta *spento* non
+  *non disponibile*». Due letture diverse della stessa cosa nello stesso dialogo.
+- `search "hydrawise"` → **zero risultati**.
+- Chiesto il dettaglio delle 74 entita' mute, ci ha messo **95 secondi**, ha aperto le aree una
+  per una, ed e' arrivato a **48 su 74** dichiarando di non farcela sulle due piu' grandi. E'
+  una sola giunzione, pagata con quindici chiamate.
+
+**2 · Il tempo.** La «fotografia» sono **quattro fotografie di momenti diversi**, presentate come
+una: anagrafe `13:59:15`, comportamento `13:59:14`, confronto `13:49:21`, plance **`09:34:27`** —
+quattro ore e mezza prima. Tutti questi istanti sono nel dato; **nessuno arriva alla risposta**. La
+domanda del proprietario — «come ho la certezza che nulla e' variato da allora?» — non ha risposta
+perche' non esiste la domanda.
+
+**3 · La natura.** Un diagnostico, un interruttore di configurazione e una misura reale arrivano
+al modello con la stessa forma. `sensor.persons` letto come presenza (li' `categoria: diagnostic`
+c'era e nessuno l'ha guardata); gli interruttori di AdGuard riportati «accesi» accanto al forno e
+alla lavastoviglie — e li' va detto che **`categoria` e' `null`**: HA non li distingue, l'unico
+indizio e' `piattaforma: adguard` e l'area «Configurazione». Quella correzione va **dedotta**, non
+letta: e' piu' difficile della prima, e non e' lo stesso difetto.
+
+**4 · La provenienza.** Cio' che HIRIS ha letto da Home Assistant, cio' che il proprietario gli ha
+detto e cio' che ha dedotto arrivano indistinguibili. Vedi il caso Viola in «Come HIRIS interpreta
+le entita' di Home Assistant»: prima afferma senza fonte, poi rinnega una fonte che ha davanti.
+
+**Nessuna delle quattro e' un errore del modello: sono tutte forma del dato.** Questa voce e' il
+livello sotto ai sintomi raccolti nelle altre — e ha un legame stretto con «Il vocabolario del
+dato», che il 03/09 era stata rimandata come fetta di rinomina e non lo e' piu'.
+
+**Due difetti minori trovati insieme, che non meritano una voce loro:** la risposta sullo stato
+della casa ha affermato «nessun allarme attivo» e «18 automazioni in funzione regolare» — nessuna
+delle due frasi compare nel briefing (zero occorrenze di «regolar» e di «nessun allarme» in 5670
+caratteri), e la seconda HIRIS non puo' saperla, perche' non legge le tracce. E ha taciuto la
+riga in cui il briefing dichiara se stesso incompleto: «Il nucleo superava il tetto di 6000
+caratteri: 3 elementi notevoli non inclusi».
+
+### La piattaforma non e' cercabile
+
+`origine: misurato sulla casa vera il 02/09/2026` · `nessun documento`
+
+`view` restituisce gia' `"piattaforma": "hydrawise"`, ma `search` indicizza solo nome, area e
+dispositivo. Non si puo' chiedere «cosa espone l'integrazione Sonos», ne' «l'irrigazione funziona».
+Misurato: `search "sonos"` → **0 risultati**, mentre HA ha 13 entita' con piattaforma `sonos` — si
+chiamano «Sala da pranzo».
+
+### La salute di un'integrazione non e' il suo stato
+
+`origine: misurato sulla casa vera il 02/09/2026` · `nessun documento`
+
+Un'integrazione `loaded` con **tutte** le entita' morte oggi e' invisibile. Sulla casa: 162 entita'
+su 827 (19,6%) sono `unavailable` o `unknown`, comprese tutte e 16 quelle dell'irrigazione
+(Hydrawise risponde 403, 40 errori nel log). Ma `hydrawise` e' `loaded`, quindi non compare fra i
+guasti, e il briefing non nomina mai «non disponibile». L'irrigazione e' ferma e HIRIS non lo
+direbbe. La salute di un'integrazione e' **quante delle sue entita' rispondono**, non il suo `state`.
+
+**Rimisurato il 04/09**, e i numeri di riferimento sono questi: **74 entita' non rispondono su
+1221**, e l'irrigazione ne porta **24** — verificato entita' per entita'
+(`binary_sensor.giardino_*_irrigazione` e `valve.giardino_*` sono `unavailable`,
+`piattaforma: hydrawise`). Il briefing dice «74 entita' non rispondono» e si ferma li': nessun
+nome, nessun raggruppamento, nessuna integrazione nominata.
 
 ### Il soggetto di un guasto porta il nome e la condizione, non l'identificativo
 
@@ -77,6 +155,15 @@ della fetta producono oggetti veri e comunque illeggibili.
 **Una domanda di disegno da sciogliere prima**: cambiare la forma del soggetto rompe la
 continuita' col grezzo gia' scritto (22 giorni di righe con la forma vecchia). Si migra, si
 convive, o il nome viaggia in una colonna accanto invece che dentro il soggetto?
+
+### Un episodio per condizione, non venticinque
+
+`origine: misurato sulla casa vera il 02/09/2026` · `nessun documento`
+
+L'osservatore apre un episodio nuovo a ogni sfarfallio: **25 episodi di guasto per una sola
+integrazione** (`lifx / Abat-jour`, `setup_retry`), e cinque aperti contemporaneamente per la stessa
+cosa. Una condizione che va e viene dovrebbe essere un episodio finche' non finisce: il genere
+decide la forma, e la forma di una condizione e' la **durata**.
 
 ### Come HIRIS interpreta le entita' di Home Assistant — il caso `sensor.persons`
 
@@ -145,56 +232,6 @@ nomi di parametro inventati, non solleva: restituisce una finestra a caso, e con
 sbagliata restituisce l'intera casa. Un modello che sbaglia il nome di un argomento riceve dati
 plausibili sulla cosa sbagliata invece di un errore.
 
-### La conoscenza non ha spina dorsale — le quattro mancanze
-
-`origine: il proprietario, 04/09/2026, dalla verifica «qual e' lo stato della casa?»` · `nessun documento`
-
-**La copertura non e' il problema**: 1221 entita', 242 dispositivi, 53 integrazioni, piani, aree,
-comportamenti, plance, i ricordi del proprietario. Il problema e' che sono **elenchi senza
-relazioni, senza tempo e senza provenienza**. Ognuna delle quattro mancanze qui sotto e' stata
-misurata sulla casa vera il 04/09, e ognuna spiega errori veri.
-
-**1 · L'appartenenza.** Il percorso entita' → dispositivo → integrazione non e' percorribile.
-- Il briefing dice «un'**integrazione** non sta funzionando: **Abat-jour**». Abat-jour e' un
-  **dispositivo** — lo dichiara l'anagrafe di HIRIS stessa (`tipo: dispositivo`,
-  `produttore: "LIFX"`, `modello: "LIFX Mini Color"`). Sta leggendo il *titolo del config entry*,
-  che per LIFX e' uno per lampadina, e lo chiama integrazione. Il campo `domain` = `lifx` e' nella
-  stessa struttura, tre righe sopra nel codice.
-- Nella **stessa conversazione**, venti minuti dopo, dice: «Abat-jour, che risulta *spento* non
-  *non disponibile*». Due letture diverse della stessa cosa nello stesso dialogo.
-- `search "hydrawise"` → **zero risultati**.
-- Chiesto il dettaglio delle 74 entita' mute, ci ha messo **95 secondi**, ha aperto le aree una
-  per una, ed e' arrivato a **48 su 74** dichiarando di non farcela sulle due piu' grandi. E'
-  una sola giunzione, pagata con quindici chiamate.
-
-**2 · Il tempo.** La «fotografia» sono **quattro fotografie di momenti diversi**, presentate come
-una: anagrafe `13:59:15`, comportamento `13:59:14`, confronto `13:49:21`, plance **`09:34:27`** —
-quattro ore e mezza prima. Tutti questi istanti sono nel dato; **nessuno arriva alla risposta**. La
-domanda del proprietario — «come ho la certezza che nulla e' variato da allora?» — non ha risposta
-perche' non esiste la domanda.
-
-**3 · La natura.** Un diagnostico, un interruttore di configurazione e una misura reale arrivano
-al modello con la stessa forma. `sensor.persons` letto come presenza (li' `categoria: diagnostic`
-c'era e nessuno l'ha guardata); gli interruttori di AdGuard riportati «accesi» accanto al forno e
-alla lavastoviglie — e li' va detto che **`categoria` e' `null`**: HA non li distingue, l'unico
-indizio e' `piattaforma: adguard` e l'area «Configurazione». Quella correzione va **dedotta**, non
-letta: e' piu' difficile della prima, e non e' lo stesso difetto.
-
-**4 · La provenienza.** Cio' che HIRIS ha letto da Home Assistant, cio' che il proprietario gli ha
-detto e cio' che ha dedotto arrivano indistinguibili. Vedi il caso Viola in «Come HIRIS interpreta
-le entita' di Home Assistant»: prima afferma senza fonte, poi rinnega una fonte che ha davanti.
-
-**Nessuna delle quattro e' un errore del modello: sono tutte forma del dato.** Questa voce e' il
-livello sotto ai sintomi raccolti nelle altre — e ha un legame stretto con «Il vocabolario del
-dato», che il 03/09 era stata rimandata come fetta di rinomina e non lo e' piu'.
-
-**Due difetti minori trovati insieme, che non meritano una voce loro:** la risposta sullo stato
-della casa ha affermato «nessun allarme attivo» e «18 automazioni in funzione regolare» — nessuna
-delle due frasi compare nel briefing (zero occorrenze di «regolar» e di «nessun allarme» in 5670
-caratteri), e la seconda HIRIS non puo' saperla, perche' non legge le tracce. E ha taciuto la
-riga in cui il briefing dichiara se stesso incompleto: «Il nucleo superava il tetto di 6000
-caratteri: 3 elementi notevoli non inclusi».
-
 ### Gli strumenti rifiutano invece di indovinare
 
 `origine: il proprietario, 04/09/2026 — «aggiungi tutto il tema»` · `nessun documento`
@@ -222,6 +259,46 @@ questi tre, non la causa, ed e' l'unico che il proprietario ha potuto vedere.
 
 Ha un legame stretto con «Come HIRIS interpreta le entita' di Home Assistant»: quella voce e' il
 caso che l'ha fatto emergere, questa e' la regola che ne esce.
+
+### Le tracce delle automazioni e il log di sistema
+
+`origine: deciso dal proprietario il 31/08/2026` · `nessun documento`
+
+Due fonti nuove di HA, e devono essere disponibili **a entrambi i lettori**: lo strumento della chat
+E l'osservatore. Una fonte sola, due lettori — l'osservatore «non apre un secondo rubinetto», perche'
+due sorgenti degli stessi eventi possono divergere. Le chiamate sono `trace/list`, `trace/get`,
+`trace/contexts` e `system_log/list`, tutte WS e tutte `require_admin`.
+
+Misurato sulla casa il 30-31/08: 72 tracce su 16 automazioni, 64 `finished`, 7 `failed_conditions`,
+1 `error` — e un'automazione rotta davvero, mai segnalata al proprietario; 17 voci di log, 11
+WARNING e 6 ERROR.
+
+Due trappole gia' pagate, che decidono il lavoro e non si vedono nella documentazione:
+**le tracce hanno una finestra** (HA ne conserva 5 per automazione, poi la sesta cancella la prima —
+decide se si puo' guardare a cadenza o si devono seguire mentre accadono); e **il log arriva gia'
+giudicato**, perche' `system_log/list` consegna righe raggruppate da HA con `count` e
+`first_occurred`, il che rompe la legge dell'osservatore «scrivi il grezzo, giudica dopo».
+
+### `get_error_log()` si cancella
+
+`origine: deciso dal proprietario il 31/08/2026` · `nessun documento`
+
+`proxy/ha_client.py::get_error_log()` ha i test e **zero chiamanti vivi**. Punta a
+`/api/error_log`, che su HA 2026.8.3 risponde 404, e **inghiotte il 404 restituendo
+`{"errors": 0, "warnings": 0}`**: collegarlo com'e' farebbe dire a HIRIS «zero errori» su una casa
+che ne ha 6+11. E' lo zero che afferma. Non e' una migrazione — il vecchio punta a un endpoint che
+non esiste piu' e mente quando non lo trova: si cancella il metodo e si cancellano i suoi test.
+
+---
+
+## In attesa
+
+> **Avvertenza sulla prima stesura (04/09/2026).** Il proprietario aveva chiesto di annotare una
+> lista di argomenti per il prossimo sprint, e quella lista **non e' stata salvata da nessuna
+> parte**: cercata in tutto il repository, nelle cartelle ignorate, nelle issue e nelle milestone di
+> GitHub, non esiste. Le voci qui sotto **non sono quella lista**: sono ricostruite dai documenti
+> del repository e da cio' che e' stato misurato sulla casa vera. La lista del proprietario va
+> reinserita da lui, e queste voci vanno lette come un fondo di magazzino, non come una sua scelta.
 
 ### I comandi verso Home Assistant
 
@@ -258,63 +335,6 @@ La lingua del database, i valori di dominio e le chiavi dei record fra motore e 
 sola**, perche' sono la stessa cosa. Rinominare i fatti che ci sono costa la riscrittura di ogni
 query che li nomina — al contrario di aggiungere un fatto che manca, che costa una migrazione
 additiva e reversibile.
-
-### Le tracce delle automazioni e il log di sistema
-
-`origine: deciso dal proprietario il 31/08/2026` · `nessun documento`
-
-Due fonti nuove di HA, e devono essere disponibili **a entrambi i lettori**: lo strumento della chat
-E l'osservatore. Una fonte sola, due lettori — l'osservatore «non apre un secondo rubinetto», perche'
-due sorgenti degli stessi eventi possono divergere. Le chiamate sono `trace/list`, `trace/get`,
-`trace/contexts` e `system_log/list`, tutte WS e tutte `require_admin`.
-
-Misurato sulla casa il 30-31/08: 72 tracce su 16 automazioni, 64 `finished`, 7 `failed_conditions`,
-1 `error` — e un'automazione rotta davvero, mai segnalata al proprietario; 17 voci di log, 11
-WARNING e 6 ERROR.
-
-Due trappole gia' pagate, che decidono il lavoro e non si vedono nella documentazione:
-**le tracce hanno una finestra** (HA ne conserva 5 per automazione, poi la sesta cancella la prima —
-decide se si puo' guardare a cadenza o si devono seguire mentre accadono); e **il log arriva gia'
-giudicato**, perche' `system_log/list` consegna righe raggruppate da HA con `count` e
-`first_occurred`, il che rompe la legge dell'osservatore «scrivi il grezzo, giudica dopo».
-
-### `get_error_log()` si cancella
-
-`origine: deciso dal proprietario il 31/08/2026` · `nessun documento`
-
-`proxy/ha_client.py::get_error_log()` ha i test e **zero chiamanti vivi**. Punta a
-`/api/error_log`, che su HA 2026.8.3 risponde 404, e **inghiotte il 404 restituendo
-`{"errors": 0, "warnings": 0}`**: collegarlo com'e' farebbe dire a HIRIS «zero errori» su una casa
-che ne ha 6+11. E' lo zero che afferma. Non e' una migrazione — il vecchio punta a un endpoint che
-non esiste piu' e mente quando non lo trova: si cancella il metodo e si cancellano i suoi test.
-
-### La salute di un'integrazione non e' il suo stato
-
-`origine: misurato sulla casa vera il 02/09/2026` · `nessun documento`
-
-Un'integrazione `loaded` con **tutte** le entita' morte oggi e' invisibile. Sulla casa: 162 entita'
-su 827 (19,6%) sono `unavailable` o `unknown`, comprese tutte e 16 quelle dell'irrigazione
-(Hydrawise risponde 403, 40 errori nel log). Ma `hydrawise` e' `loaded`, quindi non compare fra i
-guasti, e il briefing non nomina mai «non disponibile». L'irrigazione e' ferma e HIRIS non lo
-direbbe. La salute di un'integrazione e' **quante delle sue entita' rispondono**, non il suo `state`.
-
-### Un episodio per condizione, non venticinque
-
-`origine: misurato sulla casa vera il 02/09/2026` · `nessun documento`
-
-L'osservatore apre un episodio nuovo a ogni sfarfallio: **25 episodi di guasto per una sola
-integrazione** (`lifx / Abat-jour`, `setup_retry`), e cinque aperti contemporaneamente per la stessa
-cosa. Una condizione che va e viene dovrebbe essere un episodio finche' non finisce: il genere
-decide la forma, e la forma di una condizione e' la **durata**.
-
-### La piattaforma non e' cercabile
-
-`origine: misurato sulla casa vera il 02/09/2026` · `nessun documento`
-
-`view` restituisce gia' `"piattaforma": "hydrawise"`, ma `search` indicizza solo nome, area e
-dispositivo. Non si puo' chiedere «cosa espone l'integrazione Sonos», ne' «l'irrigazione funziona».
-Misurato: `search "sonos"` → **0 risultati**, mentre HA ha 13 entita' con piattaforma `sonos` — si
-chiamano «Sala da pranzo».
 
 ### La gamba «acqua» dell'osservatore
 
