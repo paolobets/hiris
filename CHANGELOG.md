@@ -1,5 +1,47 @@
 # HIRIS — Changelog
 
+## [3.21.0] — I menu esecutivi: Impegni e Proposte (2026-09-04)
+
+**«Promesse» si chiama ora «Impegni», «Costruzioni» si chiama «Proposte», e nessuna delle due sta
+piu' dentro la configurazione.** Le trovi in cima al menu, sotto «Da fare», e anche **nella barra
+della chat**: da dove stai davvero, sono a un click.
+
+Non configuravano niente, ed erano sotto un'etichetta che diceva «Configurazione». Li' si guarda
+cosa sta per succedere e si dice si' o no — sono menu esecutivi. Ne approfitta anche il resto del
+menu, che ora ha tre gruppi al posto di uno solo che ne copriva nove.
+
+**Il difetto che ha fatto partire tutto**, riferito parola per parola: *«la chat mi risponde che ha
+costruito la nuova versione ed e' in attesa di conferma, ma tu non sai dove»*. Adesso la chat lo
+dice: la proposta ti aspetta nella pagina «Proposte», e la frase lo nomina. Un controllo lega la
+parola del menu a quella che la chat pronuncia, cosi' il giorno in cui una delle due cambia e
+l'altra no, qualcosa diventa rosso.
+
+**Un pallino accanto alle due voci** dice quanto c'e' da guardare, e i due numeri **non contano la
+stessa cosa** — perche' le due attese sono diverse. Le **Proposte aspettano te**: senza il tuo si'
+non succede niente, quindi il pallino conta quelle in attesa. Gli **Impegni aspettano l'ora**: un
+impegno per domani non chiede niente a nessuno, e contarlo terrebbe il pallino acceso quasi sempre.
+Li' il pallino conta un'altra cosa: **gli esiti che non hai ancora letto**. Si accende quando una
+promessa si conclude, e si spegne quando l'hai guardata.
+
+Percio' la pagina Impegni ha una sezione nuova in cima, **«Esiti da leggere»**, che compare solo
+quando ha qualcosa dentro. E lo **Storico**, su tutte e due le pagine, nasce **chiuso** col suo
+conteggio: e' un registro da consultare, non la prima cosa che devi scavalcare.
+
+**Un pallino che mente e' peggio di nessun pallino**, e in questo prodotto era gia' successo: quello
+di prima mostrava `0` leggendo una pagina che non esisteva piu', cioe' diceva «non c'e' niente da
+guardare» quando la verita' era «non lo so». Questo, se non riesce a leggere il numero, **sparisce**.
+E non compare mai per uno zero: zero non e' una notizia, e un pallino sempre acceso smette di essere
+letto.
+
+**Cosa cambia nell'archivio.** Una colonna nuova ricorda se l'esito di una promessa e' stato letto.
+Le promesse gia' concluse prima di questo aggiornamento nascono **segnate come lette**: non e' vero
+che le hai lette, ed e' scritto nel codice che e' una decisione — il segno comincia a contare dal
+giorno in cui esiste, e quello che e' successo prima e' storia, non notizia. Senza questa scelta, al
+primo avvio il pallino si sarebbe acceso con novanta giorni di storico.
+
+**Gli indirizzi delle pagine non cambiano.** I segnalibri restano validi: cambia l'etichetta, non
+l'indirizzo — quello lo legge il browser, non tu.
+
 ## [3.20.0] — Anche i nomi degli stili passano all'inglese (2026-09-03)
 
 **Non cambia niente che si veda**: le pagine si disegnano identiche. Sono passati all'inglese i nomi
