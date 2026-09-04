@@ -35,6 +35,22 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 #      rileggere. Lo stesso oggetto porta `ponte.apiKeySource`, che vale
 #      `none` quando si sta usando l'abbonamento e non una chiave a consumo.
 # 28 agosto 2026 — alzata da 2.1.241 a 2.1.251 (otto uscite, tutte patch).
+# 4 settembre 2026 — alzata da 2.1.251 a 2.1.260 (cinque uscite: 252, 257,
+# 258, 259, 260; le altre non sono mai state pubblicate). Alzata SUBITO dopo
+# il rilascio della 3.21.0, che portava la 2.1.251: e' il cancello
+# `scripts/verifica_componenti.py` ad averla segnalata al push, e la scelta
+# fu di non infilare una dipendenza non provata dentro un pacchetto provato.
+# Questa riga e' quella decisione mantenuta -- il bump vive qui, da solo,
+# fino al prossimo rilascio.
+#
+# **Cio' che questo bump lascia indietro, detto invece che taciuto**: la
+# 2.1.251 e' stata rilasciata e non e' mai stata verificata su una casa vera
+# col passo 4 -- se questa riga arriva in produzione prima di quella lettura,
+# la 2.1.251 sara' l'ennesima versione passata senza che nessuno l'abbia
+# vista girare. E' esattamente il difetto che il paragrafo qui sotto
+# descrive, ripetuto una volta di piu'. La 3.21.0 e' installabile ADESSO:
+# la lettura costa un turno di chat e una `GET /api/health`, e va fatta
+# prima che questa riga esca.
 #
 # **Ne' la 2.1.241 ne' la 2.1.234 prima di lei erano mai state verificate su
 # questo container.** Il 24 agosto la verifica fu rimandata «al prossimo
@@ -48,10 +64,13 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 # RIPRODUCIBILITA', non che la versione funzioni -- ma adesso la differenza
 # fra le due si misura in un secondo, invece che aspettando il momento giusto.
 #
-# Se la 2.1.251 desse problemi si torna alla 2.1.234: e' l'ultima provata sul
-# serio, e resta tale finche' `ponte.cli` non dice altro su una casa vera.
+# Se la 2.1.260 desse problemi si torna alla 2.1.251, che e' uscita con la
+# 3.21.0 e ha quindi girato su una casa vera -- anche se `ponte.cli` non e'
+# ancora stato letto per confermarlo. Il ripiego precedente era la 2.1.234:
+# resta valido come secondo passo indietro, ed e' l'ultima che qualcuno
+# abbia guardato girare davvero.
 RUN apk add --no-cache nodejs npm libgcc libstdc++ ripgrep \
-    && npm install -g @anthropic-ai/claude-code@2.1.251 \
+    && npm install -g @anthropic-ai/claude-code@2.1.260 \
     && npm cache clean --force
 ENV USE_BUILTIN_RIPGREP=0
 
