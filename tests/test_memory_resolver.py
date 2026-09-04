@@ -564,3 +564,26 @@ def test_un_etichetta_senza_nome_si_indicizza_col_suo_id():
     home_space = dict(_HOME_SPACE, etichette=[{"id": "senza_nome", "nome": None}])
     trovate = costruisci_indice(home_space).find("senza_nome")
     assert _riferimenti(trovate[0]) == {"senza_nome"}
+
+
+def test_platforms_key_is_normalized_and_entities_without_one_are_skipped():
+    """Prova diretta di `Lookup.platforms()`, senza passare da `search()`:
+    prima di questa prova, togliere `_normalize()` da UNO solo dei due lati
+    che lo applicano (qui, in `resolver.py`, o dal lato di `queries.py` che
+    cerca) lasciava la suite tutta verde -- nessuna prova esercitava la
+    normalizzazione della chiave in isolamento, solo indirettamente
+    attraverso `search`, dove un secondo `_normalize` sul testo cercato
+    poteva mascherare l'assenza del primo.
+
+    Mutazione: togliere `_normalize(dominio)` nella costruzione della mappa
+    -- il test torna rosso perche' la chiave resta `"Hydrawise "` (maiuscola
+    e spazio in coda) invece di `"hydrawise"`, e
+    `piattaforme["hydrawise"]` solleva `KeyError`."""
+    home_space = dict(_HOME_SPACE, entita=[
+        {"id": "valve.giardino", "nome": "Irrigazione", "piattaforma": "Hydrawise ",
+         "alias": [], "area_id": None, "classe": None, "unita": None},
+        {"id": "light.cucina", "nome": "Faretti", "piattaforma": "",
+         "alias": [], "area_id": None, "classe": None, "unita": None},
+    ])
+    piattaforme = costruisci_indice(home_space).platforms()
+    assert piattaforme == {"hydrawise": ["valve.giardino"]}

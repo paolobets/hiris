@@ -146,18 +146,17 @@ def search(lookup, text: str) -> list[dict]:
       da 1226 entita' sarebbe rumore in ogni risposta -- stessa disciplina
       di `unita`/`categorie` in `guarda()`.
 
+    Un risultato puo' portare anche `piattaforma` (`{dominio, quante_entita}`)
+    quando il testo E' il dominio di un'integrazione (`hydrawise`, `sonos`):
+    si AFFIANCA ai candidati trovati per nome, non li sostituisce mai --
+    review del 04/09, review del brief: una casa vera ha entita' che si
+    chiamano come la propria piattaforma («Sonos», «Hue», «Shelly», «Tuya»),
+    e tornare subito con `candidati: []` in quel caso le renderebbe
+    irraggiungibili da `search`, esattamente la frase vietata sopra per
+    `nascosta` applicata a un altro campo.
+
     `verify()` e' un accesso a dizionario, non una ricerca: farlo per
     candidato costa quanto leggere la lista."""
-    # Una piattaforma si riconosce PRIMA di cercare fra i nomi: se il testo e'
-    # il dominio di un'integrazione, la risposta giusta e' «esiste, porta N
-    # entita'», non un elenco di entita' che non si chiamano cosi'.
-    platforms = lookup.platforms() if hasattr(lookup, "platforms") else {}
-    matched = platforms.get(_normalize(text))
-    if matched:
-        return [{"nome_visto": text,
-                 "piattaforma": {"dominio": text.strip(), "quante_entita": len(matched)},
-                 "candidati": [], "ambiguo": False}]
-
     results = lookup.find(text)
     for entry in results:
         for candidate in entry["candidati"]:
@@ -177,6 +176,26 @@ def search(lookup, text: str) -> list[dict]:
                 candidate["dominio"] = domain_of(candidate["riferimento"])
                 if resolved.get("nascosta"):
                     candidate["nascosta"] = True
+
+    # Una piattaforma si riconosce ACCANTO alla ricerca fra i nomi, mai al
+    # suo posto: tornare subito quando il testo e' un dominio (`hydrawise`,
+    # `sonos`) cancellava gli omonimi veri di una casa -- un'entita', un'area
+    # o un dispositivo chiamati come la propria integrazione. Se il testo
+    # normalizzato e' anche il nome di una voce gia' trovata da `find()`, la
+    # piattaforma si aggiunge a QUELLA voce; altrimenti diventa una voce sua,
+    # con `candidati: []` -- non un candidato in piu' da nessuna parte.
+    platforms = lookup.platforms() if hasattr(lookup, "platforms") else {}
+    matched = platforms.get(_normalize(text))
+    if matched:
+        info = {"dominio": text.strip(), "quante_entita": len(matched)}
+        same_text = next(
+            (entry for entry in results if _normalize(entry["nome_visto"]) == _normalize(text)),
+            None)
+        if same_text is not None:
+            same_text["piattaforma"] = info
+        else:
+            results.append({"nome_visto": text, "piattaforma": info,
+                             "candidati": [], "ambiguo": False})
     return results
 
 

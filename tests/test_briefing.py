@@ -895,7 +895,7 @@ def test_il_nucleo_regge_un_registro_dispositivi_a_meta():
     )
 
 
-def test_la_voce_di_configurazione_non_e_l_integrazione():
+def test_config_entry_notice_names_the_domain_not_just_the_title():
     """Abat-jour e' il TITOLO di una voce di configurazione lifx, non
     un'integrazione: la frase deve nominare il dominio.
 
@@ -914,7 +914,7 @@ def test_la_voce_di_configurazione_non_e_l_integrazione():
     assert "setup_retry: get_version timed out" in testo
 
 
-def test_due_voci_della_stessa_integrazione_restano_due():
+def test_two_different_titles_of_the_same_integration_stay_separate():
     """Il raggruppamento «x2» esisteva prima di questa fetta e non si perde:
     due voci identiche si contano, due voci DIVERSE della stessa integrazione
     restano due righe."""
@@ -929,7 +929,7 @@ def test_due_voci_della_stessa_integrazione_restano_due():
     assert "2 voci di configurazione" in testo
 
 
-def test_stesso_titolo_domini_diversi_restano_due_non_una():
+def test_same_title_different_domains_stay_separate_not_merged():
     """Il TITOLO da solo non identifica una voce: due integrazioni diverse
     possono chiamare «Studio» la loro voce (un repeater fritz, un dispositivo
     shelly), e sono due cose, non la stessa cosa ripetuta.

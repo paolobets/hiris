@@ -848,8 +848,9 @@ def test_cerca_non_esclude_i_candidati_nascosti():
     assert candidato["nascosta"] is True
 
 
-def _lookup_piattaforme():
-    """Un indice minimo con due entita' hydrawise e una lifx."""
+def _platform_lookup():
+    """Un indice minimo con due entita' hydrawise e una lifx, nessuna
+    chiamata come la propria piattaforma."""
     casa = {
         "piani": [], "aree": [], "dispositivi": [], "etichette": [], "categorie": [],
         "integrazioni": [],
@@ -868,33 +869,86 @@ def _lookup_piattaforme():
     return costruisci_indice(casa)
 
 
-def test_cercare_una_piattaforma_la_riconosce_come_tale():
+def _platform_lookup_with_name_collision():
+    """Un indice minimo dove UN'entita' si chiama «Sonos» -- come la propria
+    piattaforma -- e un'altra porta la stessa piattaforma senza quel nome:
+    il caso vero di una casa (04/09), dove «Sonos», «Hue», «Shelly», «Tuya»
+    sono nomi comuni delle entita' stesse, non solo domini tecnici."""
+    casa = {
+        "piani": [], "aree": [], "dispositivi": [], "etichette": [], "categorie": [],
+        "integrazioni": [],
+        "entita": [
+            {"id": "media_player.soggiorno", "nome": "Sonos", "piattaforma": "sonos",
+             "area_id": None, "dispositivo_id": None, "classe": None, "unita": None,
+             "alias": [], "disabilitata": 0},
+            {"id": "sensor.sonos_batteria", "nome": "Batteria altoparlante",
+             "piattaforma": "sonos",
+             "area_id": None, "dispositivo_id": None, "classe": None, "unita": None,
+             "alias": [], "disabilitata": 0},
+        ],
+    }
+    return costruisci_indice(casa)
+
+
+def test_search_recognizes_a_platform_as_such():
     """`search "hydrawise"` tornava ZERO risultati sulla casa vera (04/09)
     mentre 30 entita' hanno quella piattaforma. Non e' un nome: e' una cosa
-    di tipo diverso, e va detta come tale.
+    di tipo diverso, e va detta come tale -- e non diventa trenta candidati:
+    la strada corta (indicizzarla come alias di ogni entita') direbbe che
+    quelle entita' SI CHIAMANO hydrawise, che e' falso.
 
-    Mutazione: rimuovere il ramo «piattaforma» in testa a `search()` (o farlo
-    restituire `[]` sempre) -- il test torna rosso su
-    `assert len(trovati) == 1`, perche' senza quel ramo `lookup.find()` non
-    riconosce affatto «hydrawise» (nessuna entita' si chiama cosi')."""
-    lookup = _lookup_piattaforme()
-    trovati = search(lookup, "hydrawise")
-    assert len(trovati) == 1
-    voce = trovati[0]
-    assert voce["piattaforma"]["dominio"] == "hydrawise"
-    assert voce["piattaforma"]["quante_entita"] == 2
-    assert voce["candidati"] == []
+    Mutazione 1: rimuovere il ramo «piattaforma» in `search()` (o farlo
+    restituire `[]` sempre) -- rosso su `assert len(found) == 1` (0 != 1),
+    perche' senza quel ramo `lookup.find()` non riconosce affatto
+    «hydrawise» (nessuna entita' si chiama cosi').
+    Mutazione 2: indicizzare la piattaforma come alias nei nomi -- rosso su
+    `assert entry["candidati"] == []`, perche' le due entita' hydrawise
+    diventerebbero candidati di un nome che non hanno mai dichiarato."""
+    lookup = _platform_lookup()
+    found = search(lookup, "hydrawise")
+    assert len(found) == 1
+    entry = found[0]
+    assert entry["piattaforma"]["dominio"] == "hydrawise"
+    assert entry["piattaforma"]["quante_entita"] == 2
+    assert entry["candidati"] == []
+    assert entry["ambiguo"] is False
 
 
-def test_una_piattaforma_non_diventa_trenta_candidati():
-    """La strada corta -- indicizzare la piattaforma come alias di ogni
-    entita' -- direbbe che quelle entita' SI CHIAMANO hydrawise, che e'
-    falso, e riverserebbe trenta righe su una domanda sola.
+def test_search_normalizes_the_domain_before_matching_a_platform():
+    """La chiave della mappa e' normalizzata da `resolver.py`
+    (maiuscole/accenti/spazi non contano); se `search()` non normalizzasse
+    anche il TESTO cercato, chi scrive «HYDRAWISE» o lascia spazi in coda
+    non troverebbe una piattaforma che pure esiste -- e nessun'altra prova
+    lo vedrebbe, perche' tutte le altre cercano gia' col testo normalizzato.
 
-    Mutazione: far scattare il ramo «piattaforma» ma marcare `ambiguo: True`
-    (o lasciare che il testo, oltre a riconoscere la piattaforma, venga
-    ANCHE cercato fra i nomi e produca candidati) -- il test torna rosso su
-    `assert voce["ambiguo"] is False`."""
-    lookup = _lookup_piattaforme()
-    voce = search(lookup, "hydrawise")[0]
-    assert voce["ambiguo"] is False
+    Mutazione: togliere `_normalize(text)` nel ramo «piattaforma» -- rosso
+    su `assert len(found) == 1` (0 != 1), perche' `platforms.get("  HYDRAWISE ")`
+    non colpisce la chiave `"hydrawise"`."""
+    lookup = _platform_lookup()
+    found = search(lookup, "  HYDRAWISE ")
+    assert len(found) == 1
+    assert found[0]["piattaforma"]["quante_entita"] == 2
+
+
+def test_search_keeps_a_name_candidate_that_shares_the_platform_domain():
+    """Il difetto trovato in review (04/09): il ramo «piattaforma» tornava
+    SUBITO, senza mai chiamare `lookup.find()`. Una casa vera ha entita' che
+    si chiamano come la propria piattaforma («Sonos», «Hue», «Shelly»,
+    «Tuya»): con quel codice diventavano irraggiungibili da `search`, la
+    stessa frase che il docstring di `search()` vieta esplicitamente per
+    `nascosta` -- "togliere dalla lista una cosa che esiste sarebbe
+    rispondere «non esiste» di una cosa che c'e'".
+
+    Mutazione: tornare subito col solo `piattaforma`, senza calcolare
+    `lookup.find(text)`, quando il testo combacia una piattaforma -- rosso
+    su `assert candidati == {"media_player.soggiorno"}` (l'insieme torna
+    vuoto), perche' l'entita' «Sonos» sparisce dalla risposta."""
+    lookup = _platform_lookup_with_name_collision()
+    found = search(lookup, "sonos")
+    assert len(found) == 1
+    entry = found[0]
+    assert entry["piattaforma"]["dominio"] == "sonos"
+    assert entry["piattaforma"]["quante_entita"] == 2
+    candidati = {c["riferimento"] for c in entry["candidati"]}
+    assert candidati == {"media_player.soggiorno"}
+    assert entry["ambiguo"] is False
