@@ -731,8 +731,30 @@
   .side-nav .brand-name { display: none; }
   .side-nav .nav-section-label { display: none; }
   /* Senza etichetta accanto, l'icona non ha piu' motivo di stare a sinistra. */
-  .side-nav .nav-item { justify-content: center; padding-left: 0; padding-right: 0; }
+  .side-nav .nav-item { justify-content: center; padding-left: 0; padding-right: 0;
+                        position: relative; }
   .side-nav .brand { justify-content: center; padding-left: 0; padding-right: 0; }
+
+  /* Il pallino esce dal flusso, o disallinea la voce che lo porta.
+     **Misurato in Chromium a 820 px**, prima: l'icona di Impegni stava a
+     `x=4` e quella di ogni altra voce a `x=23` -- diciannove pixel fuori
+     centro, perche' `margin-left: auto` (che a barra larga spinge il numero
+     in fondo alla riga) qui si prende tutto lo spazio libero di un
+     `justify-content: center`. Due voci storte su dieci, e proprio le due
+     nuove. Dopo: `x=23` come tutte le altre.
+     Il numero resta leggibile e non diventa un puntino muto: a 64 px il nome
+     della voce vive comunque solo in `title`/`aria-label` (config.html), e il
+     pallino porta i suoi in proprio. `top`/`right` lo appoggiano all'angolo
+     dell'icona invece che alla riga. */
+  .side-nav .nav-badge {
+    position: absolute;
+    top: 3px; right: 6px;
+    margin-left: 0;
+    min-width: 15px;
+    padding: 0 4px;
+    font-size: 9.5px;
+    line-height: 15px;
+  }
 }
 
 /* Off-canvas drawer on phones: the 64px rail wastes space, so below 768px the
