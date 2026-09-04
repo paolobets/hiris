@@ -376,6 +376,21 @@ sola**, perche' sono la stessa cosa. Rinominare i fatti che ci sono costa la ris
 query che li nomina — al contrario di aggiungere un fatto che manca, che costa una migrazione
 additiva e reversibile.
 
+
+**Decisione del proprietario, 04/09/2026, presa durante lo sprint dell'appartenenza:**
+«tutte le nuove colonne nei db vanno in inglese; poi migreremo tutto in inglese in uno
+sprint futuro per sanare anche questo problema». **Questa voce e' quello sprint.**
+
+Da qui in avanti quindi: le colonne **nuove** nascono in inglese (le prime sono
+`entita.config_entry_id` e `integrazioni.entry_id`, 04/09), e quelle italiane accanto
+sono **debito dichiarato**, non un modello da imitare. Nessuna colonna esistente si
+rinomina fuori da questa fetta: la migrazione si fa una volta, tutta insieme, o si
+resta con un archivio meta' e meta' -- che e' peggio di entrambe le scelte coerenti.
+
+Lo stesso vale per le **chiavi delle risposte** (`entita_totali`, `entita_mute`,
+`mute_da`, `entita_disabilitate`, `elenco_incompleto`, `entita_stato_ignoto`): sono
+un altro strato dallo stesso problema, e si convertono qui.
+
 ### La gamba «acqua» dell'osservatore
 
 `origine: dichiarata nella spec dell'osservatore, mai fatta` · `documento: docs/design/2026-08-26-l-osservatore.md`
