@@ -314,10 +314,45 @@ l'integrazione è caduta» a essere falsa, e un briefing che la facesse annuncer
 inesistenti a ogni riavvio di Home Assistant. È lo stesso difetto degli «otto falsi allarmi su
 nove» che questo prodotto ha già pagato una volta.
 
-**Cosa serve prima di riscrivere quella regola**, ed è materia del §7: **cosa significhi davvero
-`da_quando` dopo un riavvio di Home Assistant.** Si legge sulla documentazione, non si deduce — ed
-è la prova migliore che il tema finale non è un ornamento dello sprint: senza di lui questa regola
-sarebbe stata scritta sbagliata due volte.
+### ③ Il discriminante esiste, e la casa lo pubblica già — indicazione del proprietario, 04/09
+
+Il paragrafo qui sopra si fermava a «serve capire cosa significhi `da_quando` dopo un riavvio». Il
+proprietario ha indicato la strada in una frase: **ci sono sensori che dicono da quanto Home
+Assistant si è riavviato.** Cercato sulla casa vera, e c'è:
+
+```
+sensor.uptime   stato: 2026-09-02T17:54:44+00:00   classe: uptime   piattaforma: uptime
+```
+
+Lo stato **è l'istante in cui Home Assistant è partito**. Confrontando ogni `mute_da` con quello,
+il confondente smette di essere insormontabile e diventa una sottrazione:
+
+| piattaforma | scarto dall'avvio | lettura |
+|---|---:|---|
+| lifx | **+0,51 s** | è il riavvio |
+| tuya | **+0,84 s** | è il riavvio |
+| matter | **−17,8 s** | è il riavvio (spegnimento) |
+| alexa_devices | **+28,4 min** | dubbio: non si afferma |
+| **hydrawise** | **+47,1 ore** | **guasto vero, indipendente dall'avvio** |
+
+Cinque piattaforme, tre classi, e l'unica che il proprietario sa essere davvero rotta —
+l'irrigazione — è l'unica lontana dall'avvio. **La regola diventa scrivibile:** un `mute_da` che
+cade nei pressi dell'istante di avvio non è un guasto, è il riavvio; lontano da quello, è un
+guasto; nella zona di mezzo **si dichiara il dubbio invece di scegliere**.
+
+**Due cose da chiudere prima di implementarla**, e nessuna delle due è un dettaglio:
+
+1. **La semantica di `sensor.uptime` va verificata sulla documentazione**, non dedotta dalla
+   coincidenza — per quanto schiacciante. È la legge del progetto, ed è il §7.
+2. **Quel sensore può non esserci.** L'integrazione *Uptime* è opzionale: su una casa che non
+   l'ha, il discriminante non esiste. La risposta onesta lì non è «allora è un guasto»: è
+   **tornare a non affermare**, esattamente come nella zona di mezzo. Una regola che si comporta
+   bene solo dove il sensore c'è è una regola che mente altrove.
+
+**La lezione di metodo, che vale oltre questa regola.** Il difetto è stato trovato eseguendo, non
+leggendo; e il rimedio non è arrivato né dal codice né dalla documentazione, ma da **chi la casa la
+abita**. Il tema finale (§7) resta necessario — serve a sapere *cosa significa* ciò che leggiamo —
+ma non è sufficiente: alcune cose le sa solo il proprietario, e vanno chieste.
 
 **Cosa NON cambia:** i conti (`entita_totali`, `entita_mute`, `entita_disabilitate`) e `mute_da`
 sono **fatti**, si producono e si mostrano. Ciò che si sospende è solo il **verdetto** che il
