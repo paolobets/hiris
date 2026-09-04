@@ -902,7 +902,9 @@ def test_la_voce_di_configurazione_non_e_l_integrazione():
     Misurato sulla casa vera il 04/09: il briefing diceva «Un'integrazione di
     Home Assistant non sta funzionando: Abat-jour», e l'anagrafe di HIRIS
     classifica Abat-jour come DISPOSITIVO (produttore LIFX).
-    """
+
+    Mutazione: riportare `who` al solo titolo (perdere il prefisso
+    `integrazione {domain}`) -- il test torna rosso su `assert "lifx" in testo`."""
     testo = briefing._integrations_notice([
         {"dominio": "lifx", "titolo": "Abat-jour ", "stato": "setup_retry",
          "motivo": "get_version timed out", "origine": "user"},
@@ -924,4 +926,27 @@ def test_due_voci_della_stessa_integrazione_restano_due():
     ])
     assert "«Abat-jour»" in testo
     assert "«Piantana»" in testo
+    assert "2 voci di configurazione" in testo
+
+
+def test_stesso_titolo_domini_diversi_restano_due_non_una():
+    """Il TITOLO da solo non identifica una voce: due integrazioni diverse
+    possono chiamare «Studio» la loro voce (un repeater fritz, un dispositivo
+    shelly), e sono due cose, non la stessa cosa ripetuta.
+
+    Mutazione: togliere il dominio dalla chiave di raggruppamento (tornare a
+    `key = (title, state, reason)`, col dominio preso dalla prima occorrenza)
+    -- le due voci si sommerebbero in una sola riga con «x2», e questo test
+    tornerebbe rosso su `assert "«Studio»" in testo` (compare una volta sola,
+    non due) e su `"x2" not in testo`."""
+    testo = briefing._integrations_notice([
+        {"dominio": "fritz", "titolo": "Studio", "stato": "setup_retry",
+         "motivo": "timeout", "origine": "user"},
+        {"dominio": "shelly", "titolo": "Studio", "stato": "setup_retry",
+         "motivo": "timeout", "origine": "user"},
+    ])
+    assert testo.count("«Studio»") == 2
+    assert "integrazione fritz, voce «Studio»" in testo
+    assert "integrazione shelly, voce «Studio»" in testo
+    assert "x2" not in testo
     assert "2 voci di configurazione" in testo
