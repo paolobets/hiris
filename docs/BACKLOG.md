@@ -274,6 +274,51 @@ questi tre, non la causa, ed e' l'unico che il proprietario ha potuto vedere.
 Ha un legame stretto con «Come HIRIS interpreta le entita' di Home Assistant»: quella voce e' il
 caso che l'ha fatto emergere, questa e' la regola che ne esce.
 
+### I calendari si importano, e HIRIS li sa leggere
+
+`origine: il proprietario, 04/09/2026` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
+
+**Richiesta**: importare anche i calendari, e che HIRIS li possa leggere.
+
+**Misurato sulla casa vera il 04/09, e il primo fatto è che la capacità c'era e l'abbiamo tolta.**
+`proxy/ha_client.py:1173-1180` lo dichiara per esteso: `get_calendars` e
+`get_calendar_events_range` sono **uscite** nella fetta «escono i trentaquattro» (E2, Task 8),
+orfane a cascata perché il loro unico chiamante — `tools/calendar_tools.get_calendar_events` —
+era uscito a sua volta. Il commento chiude con «nessuna garanzia persa», ed era vero allora:
+nessuno le chiamava. Adesso c'è chi le chiamerebbe.
+
+**Cosa c'è sulla casa**, e quanto poco HIRIS ne sa:
+
+| | |
+|---|---|
+| `calendar.famiglia` · `calendar.personale` | piattaforma `caldav`, due calendari veri |
+| `view calendar.famiglia` restituisce | `stato: "on"`, `stato_leggibile: **"acceso"**` |
+| `search "calendario"` · `"calendar"` · `"eventi"` · `"agenda"` | **zero risultati, tutte e quattro** |
+
+Due difetti distinti, e il secondo è più insidioso del primo:
+
+1. **Gli eventi non si leggono affatto.** Un calendario, per HIRIS, è una lampadina con due
+   stati. Non sa che c'è dentro, né quando, né per chi.
+2. **«Acceso» è una traduzione falsa.** Per Home Assistant un'entità `calendar` sta a `on`
+   quando **un evento è in corso**, non quando è «accesa». Dire «acceso» a un modello non è
+   generico: è **sbagliato**, e lo porta a ragionare su un interruttore invece che su un
+   impegno. È lo stesso difetto di `sensor.persons` letto come conteggio di presenza, e
+   ricadrà sotto il tema finale dello sprint (§7): **cosa significa uno stato va importato
+   dalla documentazione, non dedotto.**
+
+E i due calendari sono raggiungibili **solo se sai già che si chiamano «Famiglia» e
+«Personale»** — la stessa lacuna delle persone, sul dominio invece che sulla piattaforma.
+
+**Dove sta nello sprint**: con «le tracce e il log», in coda. Sono la stessa forma di lavoro —
+una **fonte nuova** che nasce sopra un'appartenenza già rifatta — e vale anche qui la regola che
+il proprietario ha già dato per le tracce: **una fonte sola, due lettori**, lo strumento della
+chat *e* l'osservatore. Un calendario che sa dire «domani nessuno è in casa dalle 9 alle 18» è
+esattamente ciò che manca a un osservatore che oggi ha tre giorni di storia della presenza.
+
+**Da decidere quando si progetta**: quanto avanti si guarda (un giorno? una settimana?), se gli
+eventi si conservano o si rileggono ogni volta, e come si dichiara ciò che il calendario **non**
+dice — un calendario vuoto non significa «nessuno ha impegni», significa «nessuno l'ha scritto».
+
 ### Le tracce delle automazioni e il log di sistema
 
 `origine: deciso dal proprietario il 31/08/2026` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
