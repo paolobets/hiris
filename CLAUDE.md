@@ -2,8 +2,10 @@
 
 ## ⚠️ Leggi prima questo
 
-HIRIS è in **Refactor 2.0** (dal 4 agosto 2026). Il prodotto è stato ri-scopato da zero e una parte
-del codice esistente è **deliberatamente condannata**. Prima di scrivere qualunque riga:
+Il **Refactor 2.0 è concluso**: non è più un cantiere, è il prodotto. Resta in piedi la sua regola
+più dura — una parte del codice esistente è **deliberatamente condannata** (tabella «Cosa è
+condannato dal refactor», più sotto: se stai per estenderne una voce, **fermati e chiedi**).
+Prima di scrivere qualunque riga:
 
 | Domanda | Documento |
 |---|---|
@@ -11,8 +13,12 @@ del codice esistente è **deliberatamente condannata**. Prima di scrivere qualun
 | Cosa **c'è dentro**, e cosa ne resta | `docs/design/2026-08-05-mappa-funzionalita.md` — **l'ordine di demolizione** |
 | Come si conosce la casa | `docs/design/2026-08-05-la-conoscenza-di-hiris.md` |
 
-Il lavoro del Refactor 2.0 vive sul ramo **`2.0`**. Non un repository nuovo: la mappa ha chiesto di
-**cancellare**, non di riscrivere — e cancellare si verifica con i test esistenti, ricostruire no.
+**C'è un ramo solo: `master`** — è quello che l'add-on legge e da cui escono le release. Il ramo
+`2.0` è stato cancellato il 4 settembre 2026, quando la sua punta e quella di `master` erano lo
+stesso commit: un ramo di lavoro che coincide con quello pubblicato non separa più niente, è
+un'etichetta che mente. Nessuno degli attrezzi dipendeva da quella separazione —
+`scripts/release.py` pusha `HEAD:master` da qualunque worktree, e il cancello pre-push riconosce il
+rilascio dal **contenuto** di `hiris/config.yaml`, non dal nome del ramo.
 
 Tutto ciò che sta in `docs/out-of-scope/` (compreso `docs/out-of-scope/pre-2.0/`, l'ex
 `docs/archive/`) e in `docs/superpowers/_archivio-pre-refactor-2.0/` è **storia,
