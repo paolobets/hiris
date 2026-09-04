@@ -48,6 +48,7 @@ corpo e' vuoto» (un fatto sulla casa: `corpo: {}` o simile).
 """
 from __future__ import annotations
 
+from ..memory.resolver import _normalize
 from ..proxy._sanitize import sanitize_text
 from .topology import (
     actual_class,
@@ -147,6 +148,16 @@ def search(lookup, text: str) -> list[dict]:
 
     `verify()` e' un accesso a dizionario, non una ricerca: farlo per
     candidato costa quanto leggere la lista."""
+    # Una piattaforma si riconosce PRIMA di cercare fra i nomi: se il testo e'
+    # il dominio di un'integrazione, la risposta giusta e' «esiste, porta N
+    # entita'», non un elenco di entita' che non si chiamano cosi'.
+    platforms = lookup.platforms() if hasattr(lookup, "platforms") else {}
+    matched = platforms.get(_normalize(text))
+    if matched:
+        return [{"nome_visto": text,
+                 "piattaforma": {"dominio": text.strip(), "quante_entita": len(matched)},
+                 "candidati": [], "ambiguo": False}]
+
     results = lookup.find(text)
     for entry in results:
         for candidate in entry["candidati"]:

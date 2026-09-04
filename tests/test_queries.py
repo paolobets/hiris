@@ -846,3 +846,55 @@ def test_cerca_non_esclude_i_candidati_nascosti():
     candidato = next(c for t in trovati for c in t["candidati"]
                      if c["tipo"] == "entita" and c["riferimento"] == "light.lampadario_2")
     assert candidato["nascosta"] is True
+
+
+def _lookup_piattaforme():
+    """Un indice minimo con due entita' hydrawise e una lifx."""
+    casa = {
+        "piani": [], "aree": [], "dispositivi": [], "etichette": [], "categorie": [],
+        "integrazioni": [],
+        "entita": [
+            {"id": "valve.giardino", "nome": "Irrigazione", "piattaforma": "hydrawise",
+             "area_id": None, "dispositivo_id": None, "classe": None, "unita": None,
+             "alias": [], "disabilitata": 0},
+            {"id": "sensor.giardino_minuti", "nome": "Minuti", "piattaforma": "hydrawise",
+             "area_id": None, "dispositivo_id": None, "classe": None, "unita": None,
+             "alias": [], "disabilitata": 0},
+            {"id": "light.cucina", "nome": "Faretti", "piattaforma": "lifx",
+             "area_id": None, "dispositivo_id": None, "classe": None, "unita": None,
+             "alias": [], "disabilitata": 0},
+        ],
+    }
+    return costruisci_indice(casa)
+
+
+def test_cercare_una_piattaforma_la_riconosce_come_tale():
+    """`search "hydrawise"` tornava ZERO risultati sulla casa vera (04/09)
+    mentre 30 entita' hanno quella piattaforma. Non e' un nome: e' una cosa
+    di tipo diverso, e va detta come tale.
+
+    Mutazione: rimuovere il ramo «piattaforma» in testa a `search()` (o farlo
+    restituire `[]` sempre) -- il test torna rosso su
+    `assert len(trovati) == 1`, perche' senza quel ramo `lookup.find()` non
+    riconosce affatto «hydrawise» (nessuna entita' si chiama cosi')."""
+    lookup = _lookup_piattaforme()
+    trovati = search(lookup, "hydrawise")
+    assert len(trovati) == 1
+    voce = trovati[0]
+    assert voce["piattaforma"]["dominio"] == "hydrawise"
+    assert voce["piattaforma"]["quante_entita"] == 2
+    assert voce["candidati"] == []
+
+
+def test_una_piattaforma_non_diventa_trenta_candidati():
+    """La strada corta -- indicizzare la piattaforma come alias di ogni
+    entita' -- direbbe che quelle entita' SI CHIAMANO hydrawise, che e'
+    falso, e riverserebbe trenta righe su una domanda sola.
+
+    Mutazione: far scattare il ramo «piattaforma» ma marcare `ambiguo: True`
+    (o lasciare che il testo, oltre a riconoscere la piattaforma, venga
+    ANCHE cercato fra i nomi e produca candidati) -- il test torna rosso su
+    `assert voce["ambiguo"] is False`."""
+    lookup = _lookup_piattaforme()
+    voce = search(lookup, "hydrawise")[0]
+    assert voce["ambiguo"] is False

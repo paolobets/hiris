@@ -164,7 +164,8 @@ class Lookup:
     verificare. Si costruisce con `costruisci_indice()`, non direttamente."""
 
     def __init__(self, termini: dict[str, list[tuple[str, str]]],
-                 per_type: dict[str, dict[str, dict]]) -> None:
+                 per_type: dict[str, dict[str, dict]],
+                 platforms: dict[str, list[str]] | None = None) -> None:
         # I termini piu' lunghi vincono e consumano il testo, cosi' "sala da
         # pranzo" non collassa su "sala": l'ordine e' deciso una volta sola,
         # non a ogni chiamata di trova(). Un testo normalizzato che piu'
@@ -182,6 +183,7 @@ class Lookup:
         self._termini_grezzi = sorted(termini.items(), key=lambda kv: len(kv[0]), reverse=True)
         self._termini_compilati: list[tuple[list[tuple[str, str]], re.Pattern[str]]] | None = None
         self._per_type = per_type
+        self._platforms = platforms or {}
 
     def _termini(self) -> list[tuple[list[tuple[str, str]], re.Pattern[str]]]:
         if self._termini_compilati is None:
@@ -255,6 +257,12 @@ class Lookup:
         un accoppiamento a un dettaglio interno si propaga in silenzio.
         """
         return list(self._per_type.get(type, {}).values())
+
+    def platforms(self) -> dict[str, list[str]]:
+        """`{piattaforma normalizzata: [entity_id, ...]}`. Vuota quando
+        l'anagrafe non e' stata letta: un dizionario vuoto dice «non lo so»
+        allo stesso modo in cui lo dice `find()`."""
+        return self._platforms
 
 
 def _log(termini: dict[str, list[tuple[str, str]]], term_originale,
@@ -457,4 +465,15 @@ def costruisci_indice(home_space: dict,
         label_registry[label_id] = {"id": label_id, "nome": label_name}
         _log(termini, label_name, ("etichetta", label_id))
 
-    return Lookup(termini, per_type)
+    # Le piattaforme NON entrano nell'indice dei nomi: un'entita' non si
+    # chiama «hydrawise», ci appartiene. Sta in una mappa a parte perche' e'
+    # una cosa di tipo diverso, e `search` la riporta come tale invece di
+    # spacciarla per un nome (spec §3.1b).
+    platforms: dict[str, list[str]] = {}
+    for entry in home_space.get("entita") or []:
+        domain = (entry.get("piattaforma") or "").strip()
+        entity_id = (entry.get("id") or "").strip()
+        if domain and entity_id:
+            platforms.setdefault(_normalize(domain), []).append(entity_id)
+
+    return Lookup(termini, per_type, platforms)
