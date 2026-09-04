@@ -469,8 +469,18 @@ def costruisci_indice(home_space: dict,
     # chiama «hydrawise», ci appartiene. Sta in una mappa a parte perche' e'
     # una cosa di tipo diverso, e `search` la riporta come tale invece di
     # spacciarla per un nome (spec §3.1b).
+    #
+    # Le DISABILITATE si escludono qui come in `queries.py::_view_integration`
+    # (`entita_totali`, stesso ruling del controller): senza questo filtro
+    # `search "lifx"` e `view tipo: "integrazione"` contavano due insiemi
+    # diversi per la stessa piattaforma -- sulla casa vera, `quante_entita:
+    # 30` contro `entita_totali: 28` (revisione indipendente, I-3) -- due
+    # «quante» diverse per la stessa domanda, lette una dopo l'altra dallo
+    # stesso modello.
     platforms: dict[str, list[str]] = {}
     for entry in home_space.get("entita") or []:
+        if entry.get("disabilitata"):
+            continue
         domain = (entry.get("piattaforma") or "").strip()
         entity_id = (entry.get("id") or "").strip()
         if domain and entity_id:

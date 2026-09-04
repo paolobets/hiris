@@ -32,12 +32,12 @@ CREATE TABLE IF NOT EXISTS dispositivi (
     area_id TEXT, disabilitato INTEGER NOT NULL DEFAULT 0,
     etichette TEXT NOT NULL DEFAULT '[]'
 );
--- `config_entry_id` resta nel nome di Home Assistant, non tradotto: non e' un
--- concetto del dominio come `piattaforma`/`classe`/`unita`, e' un identificatore
--- OPACO di HA -- una chiave esterna, non una parola nostra. Tradurla creerebbe
--- un secondo nome per la stessa cosa, proprio cio' che il glossario vieta.
--- Stesso trattamento gia' in uso per `area_id`/`dispositivo_id` qui sotto, che
--- portano il nome di HA tale e quale.
+-- Le colonne NUOVE si scrivono in inglese (decisione del proprietario,
+-- 04/09/2026): `config_entry_id` segue questa regola, non fa eccezione. Le
+-- colonne italiane qui accanto (`piattaforma`, `dispositivo_id`, `classe`,
+-- `unita`, `disabilitata`, `nascosta`...) sono debito -- nate prima della
+-- regola, non un modello da imitare -- e migreranno in inglese in uno
+-- sprint dedicato futuro.
 CREATE TABLE IF NOT EXISTS entita (
     id TEXT PRIMARY KEY, nome TEXT, area_id TEXT, dispositivo_id TEXT,
     piattaforma TEXT, config_entry_id TEXT, categoria TEXT, classe TEXT, unita TEXT,
@@ -255,7 +255,7 @@ def _migration_6_integration_source(conn) -> None:
 
 def _migration_7_instance_membership(conn) -> None:
     """`CREATE TABLE IF NOT EXISTS` non tocca una tabella che esiste gia':
-    senza queste due columns il primo `replace` dopo l'aggiornamento
+    senza queste due colonne il primo `replace` dopo l'aggiornamento
     fallirebbe, e la casa smetterebbe di ricostruirsi.
 
     L'appartenenza all'ISTANZA non esisteva: `config_entry_id` non era citato

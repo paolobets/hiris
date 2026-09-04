@@ -824,13 +824,31 @@ def _view_integration(home_space: dict, state: dict, reference,
     l'irrigazione ferma non compariva da nessuna parte. Qui si contano, e la
     frase la dice chi legge.
 
-    `mute_da` esce quando le mute condividono un istante ABBASTANZA vicino
-    (`_SYNCHRONY_WINDOW_SECONDS`, sopra) -- non identico: e' la firma della
-    sincronia (§4) che distingue un'integrazione caduta da dispositivi spenti
-    uno per volta. Un'entita' muta SENZA `da_quando` continua a impedire
-    l'uscita del campo (non si puo' dire se e' dentro o fuori dalla finestra
-    senza saperlo): inventare un «da quando» quando non si e' sicuri che sia
-    sincrono sarebbe proprio la risposta sicura che questo sprint toglie.
+    `entita_mute` conta SOLO `unavailable` (correzione del 04/09, spec §4,
+    "unavailable non e' unknown"): e' lo stato che Home Assistant scrive
+    quando non riesce a leggere il dispositivo o il servizio -- "we can't
+    fetch data from a device or service" (developer docs, integration
+    quality scale, regola "entity-unavailable"). `unknown` e' un'altra cosa:
+    l'entita' risponde, ma il valore non e' noto in questo momento -- e
+    sulla casa vera lifx ha 0 `unavailable` e 7 `unknown` (spec §4): sono
+    lampadine SPENTE, non guaste. Sommarle avrebbe fatto dire a `view lifx`
+    "7 entita' non rispondono", proprio la lettura sbagliata che la spec
+    elenca fra le due cose dichiarate e non decise ("74 o 148?"). Le
+    `unknown` si contano a parte, in `entita_stato_ignoto` (presente SOLO
+    quando e' maggiore di zero, stessa disciplina di `entita_disabilitate`
+    piu' sotto) -- e non entrano mai nell'elenco `entita`, che resta quello
+    delle sole mute vere.
+
+    `mute_da` esce quando le mute (`unavailable`, lo STESSO insieme di
+    `entita_mute` -- mai le `unknown`, altrimenti la data si riferirebbe a
+    un gruppo diverso dal numero accanto) condividono un istante ABBASTANZA
+    vicino (`_SYNCHRONY_WINDOW_SECONDS`, sopra) -- non identico: e' la firma
+    della sincronia (§4) che distingue un'integrazione caduta da dispositivi
+    spenti uno per volta. Un'entita' muta SENZA `da_quando` continua a
+    impedire l'uscita del campo (non si puo' dire se e' dentro o fuori dalla
+    finestra senza saperlo): inventare un «da quando» quando non si e'
+    sicuri che sia sincrono sarebbe proprio la risposta sicura che questo
+    sprint toglie.
 
     `reference` si normalizza (`_normalize`, la stessa di `search`) prima del
     confronto -- passata da `str()` prima, perche' lo schema dello strumento
@@ -888,23 +906,26 @@ def _view_integration(home_space: dict, state: dict, reference,
                                   "entita" in unavailable or "integrazioni" in unavailable)
     own = [e for e in matching if not e.get("disabilitata")]
     disabled = [e for e in matching if e.get("disabilitata")]
-    silent = [e for e in own if state.get(e["id"]) in ("unavailable", "unknown")]
+    mute = [e for e in own if state.get(e["id"]) == "unavailable"]
+    unknown = [e for e in own if state.get(e["id"]) == "unknown"]
     detail = {
         "esiste": True, "tipo": "integrazione", "dominio": domain,
         "voci": entries,
         "entita_totali": len(own),
-        "entita_mute": len(silent),
+        "entita_mute": len(mute),
         "entita": [{"id": e["id"], "nome": e.get("nome"),
                     "stato": state.get(e["id"]),
                     "da_quando": (reported_since_when or {}).get(e["id"])}
-                   for e in silent],
+                   for e in mute],
     }
+    if unknown:
+        detail["entita_stato_ignoto"] = len(unknown)
     if disabled:
         detail["entita_disabilitate"] = len(disabled)
     incomplete = sorted(set(unavailable) & {"entita", "integrazioni"})
     if incomplete:
         detail["elenco_incompleto"] = incomplete
-    moments = [(reported_since_when or {}).get(e["id"]) for e in silent]
+    moments = [(reported_since_when or {}).get(e["id"]) for e in mute]
     if moments and all(moments):
         epochs = [instant_epoch(m) for m in moments]
         if all(ep is not None for ep in epochs):

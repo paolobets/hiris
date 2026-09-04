@@ -575,15 +575,38 @@ def test_platforms_key_is_normalized_and_entities_without_one_are_skipped():
     attraverso `search`, dove un secondo `_normalize` sul testo cercato
     poteva mascherare l'assenza del primo.
 
-    Mutazione: togliere `_normalize(dominio)` nella costruzione della mappa
+    Mutazione: togliere `_normalize(domain)` nella costruzione della mappa
     -- il test torna rosso perche' la chiave resta `"Hydrawise "` (maiuscola
-    e spazio in coda) invece di `"hydrawise"`, e
-    `platforms["hydrawise"]` solleva `KeyError`."""
+    e spazio in coda) invece di `"hydrawise"`, e l'uguaglianza
+    `platforms == {"hydrawise": ["valve.giardino"]}` fallisce (la chiave vera
+    e' `"Hydrawise "`, non `"hydrawise"`)."""
     home_space = dict(_HOME_SPACE, entita=[
         {"id": "valve.giardino", "nome": "Irrigazione", "piattaforma": "Hydrawise ",
          "alias": [], "area_id": None, "classe": None, "unita": None},
         {"id": "light.cucina", "nome": "Faretti", "piattaforma": "",
          "alias": [], "area_id": None, "classe": None, "unita": None},
+    ])
+    platforms = costruisci_indice(home_space).platforms()
+    assert platforms == {"hydrawise": ["valve.giardino"]}
+
+
+def test_platforms_excludes_disabled_entities_like_view_does():
+    """I-3 (revisione finale, spec §4): `search "lifx"` (`Lookup.platforms()`,
+    qui) e `view tipo: "integrazione"` (`_view_integration.own`, queries.py)
+    devono contare lo STESSO insieme -- sulla casa vera divergevano,
+    `quante_entita: 30` contro `entita_totali: 28`, due «quante» diverse per
+    la stessa domanda lette una dopo l'altra dallo stesso modello. Qui una
+    piattaforma con un'entita' disabilitata: `quante_entita` non la conta.
+
+    Mutazione: togliere `if entry.get("disabilitata"): continue` dal ciclo
+    -- rosso su `assert platforms == {"hydrawise": ["valve.giardino"]}`
+    (uscirebbe `{"hydrawise": ["valve.giardino", "valve.spenta"]}`, la
+    disabilitata contata dentro)."""
+    home_space = dict(_HOME_SPACE, entita=[
+        {"id": "valve.giardino", "nome": "Irrigazione", "piattaforma": "hydrawise",
+         "alias": [], "area_id": None, "classe": None, "unita": None, "disabilitata": 0},
+        {"id": "valve.spenta", "nome": "Valvola disattivata", "piattaforma": "hydrawise",
+         "alias": [], "area_id": None, "classe": None, "unita": None, "disabilitata": 1},
     ])
     platforms = costruisci_indice(home_space).platforms()
     assert platforms == {"hydrawise": ["valve.giardino"]}

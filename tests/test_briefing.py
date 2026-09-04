@@ -905,28 +905,39 @@ def test_config_entry_notice_names_the_domain_not_just_the_title():
 
     Mutazione: riportare `who` al solo titolo (perdere il prefisso
     `integrazione {domain}`) -- il test torna rosso su `assert "lifx" in testo`."""
-    testo = briefing._integrations_notice([
+    text = briefing._integrations_notice([
         {"dominio": "lifx", "titolo": "Abat-jour ", "stato": "setup_retry",
          "motivo": "get_version timed out", "origine": "user"},
     ])
-    assert "lifx" in testo
-    assert "«Abat-jour»" in testo
-    assert "setup_retry: get_version timed out" in testo
+    assert "lifx" in text
+    assert "«Abat-jour»" in text
+    assert "setup_retry: get_version timed out" in text
 
 
 def test_two_different_titles_of_the_same_integration_stay_separate():
-    """Il raggruppamento «x2» esisteva prima di questa fetta e non si perde:
-    due voci identiche si contano, due voci DIVERSE della stessa integrazione
-    restano due righe."""
-    testo = briefing._integrations_notice([
+    """La chiave di raggruppamento e' (dominio, titolo, stato, motivo): due
+    voci della STESSA integrazione (stesso dominio `lifx`) ma con titoli
+    DIVERSI ("Abat-jour", "Piantana") non sono la stessa cosa ripetuta e
+    restano due righe. Questa prova non contiene voci IDENTICHE -- il
+    raggruppamento «x2» vero e proprio lo prova
+    `test_same_title_different_domains_stay_separate_not_merged`, sotto,
+    dove il conflitto e' sul titolo condiviso fra domini diversi.
+
+    Mutazione: azzerare il titolo nella chiave (`key = (domain, "",
+    i.get("stato"), reason)`, il titolo non entra piu' nel raggruppamento) --
+    le due voci collasserebbero in una con «x2» e senza nessun titolo
+    nominato: rosso su `assert "«Abat-jour»" in text`, su
+    `assert "«Piantana»" in text` e su `assert "x2" not in text`."""
+    text = briefing._integrations_notice([
         {"dominio": "lifx", "titolo": "Abat-jour", "stato": "setup_retry",
          "motivo": "timeout", "origine": "user"},
         {"dominio": "lifx", "titolo": "Piantana", "stato": "setup_retry",
          "motivo": "timeout", "origine": "user"},
     ])
-    assert "«Abat-jour»" in testo
-    assert "«Piantana»" in testo
-    assert "2 voci di configurazione" in testo
+    assert "«Abat-jour»" in text
+    assert "«Piantana»" in text
+    assert "2 voci di configurazione" in text
+    assert "x2" not in text
 
 
 def test_same_title_different_domains_stay_separate_not_merged():
@@ -934,19 +945,20 @@ def test_same_title_different_domains_stay_separate_not_merged():
     possono chiamare «Studio» la loro voce (un repeater fritz, un dispositivo
     shelly), e sono due cose, non la stessa cosa ripetuta.
 
-    Mutazione: togliere il dominio dalla chiave di raggruppamento (tornare a
-    `key = (title, state, reason)`, col dominio preso dalla prima occorrenza)
-    -- le due voci si sommerebbero in una sola riga con «x2», e questo test
-    tornerebbe rosso su `assert "«Studio»" in testo` (compare una volta sola,
-    non due) e su `"x2" not in testo`."""
-    testo = briefing._integrations_notice([
+    Mutazione: azzerare il dominio nella chiave di raggruppamento (`key =
+    ("", title, i.get("stato"), reason)`) -- le due voci (fritz/Studio e
+    shelly/Studio) collasserebbero nella stessa chiave e uscirebbero come
+    una riga sola, «integrazione senza nome, voce «Studio» x2»: rosso su
+    `assert text.count("«Studio»") == 2` (uscirebbe 1) e su
+    `assert "x2" not in text` (uscirebbe con `x2`)."""
+    text = briefing._integrations_notice([
         {"dominio": "fritz", "titolo": "Studio", "stato": "setup_retry",
          "motivo": "timeout", "origine": "user"},
         {"dominio": "shelly", "titolo": "Studio", "stato": "setup_retry",
          "motivo": "timeout", "origine": "user"},
     ])
-    assert testo.count("«Studio»") == 2
-    assert "integrazione fritz, voce «Studio»" in testo
-    assert "integrazione shelly, voce «Studio»" in testo
-    assert "x2" not in testo
-    assert "2 voci di configurazione" in testo
+    assert text.count("«Studio»") == 2
+    assert "integrazione fritz, voce «Studio»" in text
+    assert "integrazione shelly, voce «Studio»" in text
+    assert "x2" not in text
+    assert "2 voci di configurazione" in text

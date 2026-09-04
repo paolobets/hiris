@@ -446,9 +446,9 @@ def test_replace_populates_the_instance_membership(archivio):
     registries["entita"] = [dict(_REGISTRI["entita"][0], config_entry_id="entry_lifx_1")]
     registries["integrazioni"] = [dict(_REGISTRI["integrazioni"][0], entry_id="entry_lifx_1")]
     archivio.replace(registries)
-    casa = archivio.read()
-    assert casa["entita"][0]["config_entry_id"] == "entry_lifx_1"
-    assert casa["integrazioni"][0]["entry_id"] == "entry_lifx_1"
+    house = archivio.read()
+    assert house["entita"][0]["config_entry_id"] == "entry_lifx_1"
+    assert house["integrazioni"][0]["entry_id"] == "entry_lifx_1"
 
 
 def test_entry_id_tells_two_integrations_with_the_same_domain_apart(archivio):
@@ -467,7 +467,7 @@ def test_entry_id_tells_two_integrations_with_the_same_domain_apart(archivio):
         {"domain": "lifx", "title": "Comodino", "state": "loaded", "entry_id": "entry_lifx_2"},
     ])
     archivio.replace(registries)
-    casa = archivio.read()
-    entry_ids = {i["entry_id"] for i in casa["integrazioni"]}
+    house = archivio.read()
+    entry_ids = {i["entry_id"] for i in house["integrazioni"]}
     assert entry_ids == {"entry_lifx_1", "entry_lifx_2"}
-    assert len(casa["integrazioni"]) == 2
+    assert len(house["integrazioni"]) == 2

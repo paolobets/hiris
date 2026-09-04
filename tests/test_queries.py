@@ -1099,9 +1099,11 @@ def test_an_integration_declares_when_the_entity_registry_did_not_answer():
     Stessa chiave di `_view_device` (`elenco_incompleto`, queries.py) per lo
     stesso fatto: "questo elenco puo' essere incompleto".
 
-    Mutazione: togliere `if "entita" in unavailable: detail["elenco_incompleto"]
-    = ["entita"]` -- rosso su `assert detail["elenco_incompleto"] ==
-    ["entita"]` (KeyError, la chiave non c'e' piu')."""
+    Mutazione: `incomplete = sorted(set(unavailable) & {"integrazioni"})`
+    (escludere `"entita"` dall'insieme che alimenta `elenco_incompleto`) --
+    rosso su `assert detail["elenco_incompleto"] == ["entita"]`: con
+    `unavailable=("entita",)` l'intersezione uscirebbe vuota, `if incomplete`
+    non scatterebbe e la chiave mancherebbe del tutto (`KeyError`)."""
     house = _hydrawise_house(entita_unavailable=True)
     detail = view(house, [], [], {}, "integrazione", "hydrawise",
                     unavailable=("entita",))
@@ -1166,15 +1168,65 @@ def test_mute_da_stays_silent_when_the_gap_is_a_real_one():
     assert "mute_da" not in detail
 
 
-def test_an_entity_reported_unknown_counts_as_silent():
-    """`unavailable` e `unknown` non sono lo stesso stato in Home Assistant
-    (vincolo del brief), ma sono entrambi un'entita' che non sta
-    rispondendo con un valore vero -- ed e' gia' cosi' nel codice
-    (`state.get(e["id"]) in ("unavailable", "unknown")`); nessuna prova lo
-    esercitava (minor 3, revisione indipendente).
+def test_mute_da_stays_silent_when_one_muted_entity_has_no_since_when():
+    """Il docstring di `_view_integration` afferma che un'entita' muta SENZA
+    `da_quando` continua a impedire l'uscita di `mute_da` (non si puo' dire
+    se e' dentro o fuori dalla finestra di sincronia senza saperlo) --
+    nessuna prova lo esercitava (M-1, revisione finale): la mutazione
+    `moments = [m for m in moments if m]` (scartare i muti senza `da_quando`
+    invece di lasciarli bloccare il campo) sopravviveva verde su tutta la
+    suite.
 
-    Mutazione: togliere `"unknown"` dalla tupla degli stati muti -- rosso
-    su `assert detail["entita_mute"] == 1` (uscirebbe 0)."""
+    Mutazione: `moments = [(reported_since_when or {}).get(e["id"]) for e in
+    mute if (reported_since_when or {}).get(e["id"])]` (filtrare via i muti
+    senza `da_quando` prima del controllo `all(moments)`) -- rosso su
+    `assert "mute_da" not in detail` (uscirebbe col solo istante presente)."""
+    house, states, _ = _two_silent_hydrawise_entities("", "")
+    since = {"valve.giardino": "2026-09-04T14:00:17+00:00"}  # sensor.giardino_minuti: nessuno
+    detail = view(house, [], [], states, "integrazione", "hydrawise",
+                    reported_since_when=since)
+    assert "mute_da" not in detail
+
+
+def test_mute_da_stays_silent_when_one_instant_has_no_timezone():
+    """Stessa proprieta' di sopra, sul secondo guardiano: `instant_epoch`
+    (historian.py) rifiuta un istante SENZA fuso restituendo `None` (non lo
+    legge come locale -- «alle 17» di quale fuso?), e quel `None` deve
+    bloccare `mute_da` invece di essere ignorato -- non esercitato prima
+    (M-1, revisione finale). `"2026-09-04T14:00:17"` (senza fuso) produce
+    SEMPRE `None` da `instant_epoch`, qualunque sia il fuso della macchina
+    che esegue la prova: la garanzia non dipende dall'orologio locale.
+
+    Mutazione: togliere il controllo `if all(ep is not None for ep in
+    epochs):` (procedere anche con un `None` fra gli epoch) -- rosso su
+    `TypeError` (`min()`/`max()` non confrontano `None` con un `float`),
+    sollevato prima ancora di arrivare all'assert."""
+    house, states, _ = _two_silent_hydrawise_entities("", "")
+    since = {"valve.giardino": "2026-09-04T14:00:17+00:00",
+             "sensor.giardino_minuti": "2026-09-04T14:00:17"}  # niente fuso
+    detail = view(house, [], [], states, "integrazione", "hydrawise",
+                    reported_since_when=since)
+    assert "mute_da" not in detail
+
+
+def test_an_entity_reported_unknown_does_not_count_as_mute():
+    """`unavailable` e `unknown` NON sono lo stesso stato in Home Assistant
+    (developer docs, integration quality scale, regola "entity-unavailable":
+    `unavailable` e' "we can't fetch data from a device or service", mentre
+    `unknown` e' un'entita' che risponde ma il cui valore non e' noto ora) --
+    e la spec (§4, correzione del 04/09, "unavailable non e' unknown") lo
+    vieta esplicitamente: sulla casa vera lifx ha 0 `unavailable` e 7
+    `unknown` (lampadine SPENTE, non guaste), e sommarle avrebbe fatto dire a
+    `view lifx` "7 entita' non rispondono". Prima di questa correzione il
+    codice sommava i due stati in un'unica tupla (`state.get(e["id"]) in
+    ("unavailable", "unknown")`); questa prova sostituisce quella vecchia,
+    che blindava il comportamento sbagliato citando "il vincolo del brief" --
+    il brief sbagliava rispetto alla spec.
+
+    Mutazione: tornare a `mute = [e for e in own if state.get(e["id"]) in
+    ("unavailable", "unknown")]` -- rosso su `assert detail["entita_mute"]
+    == 0` (uscirebbe 1) e su `assert detail["entita"] == []` (l'entita'
+    unknown ricomparirebbe nell'elenco delle mute)."""
     house = {"entita": [
         {"id": "valve.giardino", "nome": "Irrigazione", "piattaforma": "hydrawise",
          "area_id": "esterno", "dispositivo_id": None, "classe": None,
@@ -1182,8 +1234,28 @@ def test_an_entity_reported_unknown_counts_as_silent():
     ], "integrazioni": [], "aree": [], "piani": [], "dispositivi": [],
         "etichette": [], "categorie": []}
     detail = view(house, [], [], {"valve.giardino": "unknown"}, "integrazione", "hydrawise")
-    assert detail["entita_mute"] == 1
-    assert {e["id"] for e in detail["entita"]} == {"valve.giardino"}
+    assert detail["entita_mute"] == 0
+    assert detail["entita"] == []
+    assert detail["entita_stato_ignoto"] == 1
+
+
+def test_entita_stato_ignoto_is_absent_when_zero():
+    """`entita_stato_ignoto` segue la disciplina di `entita_disabilitate` /
+    `elenco_incompleto` in questo file: presente SOLO quando e' maggiore di
+    zero, mai uno `0` esplicito che il modello dovrebbe imparare a ignorare.
+
+    Mutazione: `detail["entita_stato_ignoto"] = len(unknown)`
+    incondizionato (fuori dall'`if unknown:`) -- rosso su
+    `assert "entita_stato_ignoto" not in detail` (uscirebbe con valore
+    `0`)."""
+    house = {"entita": [
+        {"id": "valve.giardino", "nome": "Irrigazione", "piattaforma": "hydrawise",
+         "area_id": "esterno", "dispositivo_id": None, "classe": None,
+         "unita": None, "disabilitata": 0},
+    ], "integrazioni": [], "aree": [], "piani": [], "dispositivi": [],
+        "etichette": [], "categorie": []}
+    detail = view(house, [], [], {"valve.giardino": "unavailable"}, "integrazione", "hydrawise")
+    assert "entita_stato_ignoto" not in detail
 
 
 def test_disabled_entities_dont_inflate_the_healthy_denominator():
