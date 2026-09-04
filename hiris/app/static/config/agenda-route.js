@@ -14,8 +14,20 @@
    /api/agenda/{id}`).
 
    UNA sola GET, filtrata qui per `stato`: lo stato di una promessa e' un
-   campo della stessa lista, non due mondi -- due sezioni («In sospeso»,
-   «Storico»), una richiesta.
+   campo della stessa lista, non due mondi -- tre sezioni («Esiti da
+   leggere», «In sospeso», «Storico»), una richiesta.
+
+   «Esiti da leggere» (fetta «i menu esecutivi»): il pallino del menu conta,
+   su questa voce, gli esiti conclusi che nessuno ha ancora letto
+   (`GET /api/pending` -> `agenda_unread`, `api/handlers_pending.py`), non
+   gli impegni in sospeso -- quelli aspettano l'ora, non te. Il pallino manda
+   qui: se cio' che lo ha acceso finisse dentro uno «Storico» chiuso a
+   chiave, avrebbe mentito una seconda volta, stavolta sulla strada. Percio'
+   quelle righe hanno una sezione propria, in cima, e lo «Storico» -- che
+   e' un registro di consultazione, non l'atterraggio -- nasce chiuso.
+   Non e' un quarto contenitore: le stesse righe stanno ANCHE nello storico
+   (e' un affaccio sulla sua testa), quindi «Esiti da leggere» non toglie
+   niente a nessuno e sparisce quando non ha piu' niente da dire.
 
    Il vocabolario mostrato non e' quello del backend (guida di disegno,
    scritta da ux-ui-specialist dopo aver letto handlers_agenda.py e
@@ -109,6 +121,21 @@ window.HirisAgendaRoute = (function () {
   function setStatus(text) {
     var s = byId('agenda-status');
     if (s) s.textContent = text || '';
+  }
+
+  /* Lo stato di un rivelatore scritto in un posto solo: `hidden` sul
+     pannello e `aria-expanded` sul bottone che lo governa non possono
+     divergere se nessuno li assegna separatamente -- ed e' proprio la
+     divergenza (il pannello aperto e lo screen reader che lo annuncia
+     chiuso) il difetto che questa riga rende impossibile. Lo usano tutti e
+     due i rivelatori della pagina, l'intestazione dello «Storico» e il
+     pannello «Cosa è cambiato»: un secondo meccanismo sarebbe un doppione.
+     Gemello di `constructions-route.js::setDisclosure` -- non condiviso in
+     `config/api.js` perche' i test caricano ciascuna route DA SOLA, senza
+     quel file (vedi la nota nel rapporto della fetta). */
+  function setDisclosure(btn, panel, open) {
+    panel.hidden = !open;
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
   }
 
   /* ── Date e ore (guida §4): sempre da `quando_ts`, mai da `quando_detto`
@@ -225,26 +252,23 @@ window.HirisAgendaRoute = (function () {
     var openText = 'Nascondi il dettaglio';
     var btn = el('button', 'btn btn-ghost btn-sm', closedText);
     btn.type = 'button';
-    btn.setAttribute('aria-expanded', 'false');
     var panel = el('div');
     panel.style.marginTop = '6px';
-    panel.hidden = true;
     var panelId = 'execution-' + p.id;
     panel.id = panelId;
     btn.setAttribute('aria-controls', panelId);
+    setDisclosure(btn, panel, false);
     var loaded = false;
 
     btn.addEventListener('click', function () {
       var open = btn.getAttribute('aria-expanded') === 'true';
       if (open) {
-        panel.hidden = true;
-        btn.setAttribute('aria-expanded', 'false');
+        setDisclosure(btn, panel, false);
         btn.textContent = closedText;
         return;
       }
       if (loaded) {
-        panel.hidden = false;
-        btn.setAttribute('aria-expanded', 'true');
+        setDisclosure(btn, panel, true);
         btn.textContent = openText;
         return;
       }
@@ -264,8 +288,7 @@ window.HirisAgendaRoute = (function () {
         });
       }).then(function () {
         btn.disabled = false;
-        panel.hidden = false;
-        btn.setAttribute('aria-expanded', 'true');
+        setDisclosure(btn, panel, true);
         btn.textContent = openText;
       }, function () {
         // Guasto di rete: stessa riga di stato di pagina di ogni altro
@@ -333,8 +356,20 @@ window.HirisAgendaRoute = (function () {
     return line;
   }
 
-  /* ── Una riga «storico» (guida §2, §3, §6) ───────────────────────────── */
-  function buildHistoryRow(p) {
+  /* ── Una riga conclusa (guida §2, §3, §6) ────────────────────────────────
+     La usano tutte e due le sezioni di righe concluse, «Esiti da leggere» e
+     «Storico»: un esito non letto E' una riga conclusa a tutti gli effetti,
+     e un terzo costruttore di riga sarebbe solo un secondo posto in cui
+     dimenticare di aggiornare il vocabolario.
+
+     Una promessa conclusa e non letta viene disegnata DUE volte -- una volta
+     per sezione -- ma il rivelatore «Cosa è cambiato» sta su UNA copia sola,
+     quella piu' in alto: possiede un `id` (`aria-controls` di due bottoni
+     punterebbe allo stesso pannello) e possiede una cache di rete, e due
+     copie vorrebbero dire due richieste per la stessa cronaca. Lo decide
+     `conDettaglio`, che il chiamante mette a falso sulla copia dello storico
+     quando la stessa riga sta gia' in «Esiti da leggere». ───────────────── */
+  function buildHistoryRow(p, conDettaglio) {
     var line = el('div');
     line.style.cssText = 'border-top:1px solid var(--border);padding:10px 0';
 
@@ -369,7 +404,7 @@ window.HirisAgendaRoute = (function () {
       line.appendChild(group);
     }
 
-    addExecutionDetail(line, p);
+    if (conDettaglio) addExecutionDetail(line, p);
 
     return line;
   }
@@ -381,7 +416,19 @@ window.HirisAgendaRoute = (function () {
     return list.slice().sort(function (a, b) { return b.quando_ts - a.quando_ts; });
   }
   function descrizioneSospeso(n) { return n === 0 ? 'Nessuna in sospeso.' : (n + ' in sospeso.'); }
-  function descrizioneStorico(n) { return n === 0 ? 'Nessuna promessa nello storico.' : (n + ' nello storico.'); }
+  /* Il conteggio dello storico e' passato NEL TITOLO (`Storico (14)`): da
+     quando lo storico nasce chiuso, il titolo e' l'unica riga che si vede
+     sempre, e il numero deve stare li'. Questa descrizione dice cosa c'e'
+     dentro, non quanto -- ripetere il numero a due centimetri da se stesso
+     sarebbe un doppione visibile all'utente. */
+  function descrizioneStorico(n) {
+    return n === 0 ? 'Nessuna promessa nello storico.'
+      : 'Ciò che è già successo, dal più recente.';
+  }
+  function descrizioneDaLeggere(n) {
+    return n === 1 ? 'Un esito concluso da quando non guardavi.'
+      : (n + ' esiti conclusi da quando non guardavi.');
+  }
 
   function renderPending(body, desc, list, reload) {
     clearEl(body);
@@ -394,14 +441,101 @@ window.HirisAgendaRoute = (function () {
     sortPending(list).forEach(function (p) { body.appendChild(buildPendingRow(p, reload)); });
   }
 
-  function renderHistory(body, desc, list) {
+  /* `giaSopra`: gli id gia' disegnati in «Esiti da leggere». Le righe si
+     ripetono (lo storico e' il registro completo, la sezione in cima e' un
+     affaccio sulla sua testa che si svuota man mano che si legge), il
+     rivelatore no -- vedi `buildHistoryRow`. */
+  function renderHistory(body, desc, list, giaSopra) {
     clearEl(body);
     desc.textContent = descrizioneStorico(list.length);
     if (!list.length) {
       body.appendChild(el('p', 'field-hint', 'Nessuna promessa nello storico.'));
       return;
     }
-    sortHistory(list).forEach(function (p) { body.appendChild(buildHistoryRow(p)); });
+    sortHistory(list).forEach(function (p) {
+      body.appendChild(buildHistoryRow(p, giaSopra.indexOf(p.id) === -1));
+    });
+  }
+
+  /* Il conteggio dello storico vive nel titolo, e si sa solo DOPO la fetch:
+     si scrive al render, non al montaggio. `null` quando non lo sappiamo (la
+     lettura e' fallita): un numero vecchio lasciato li' direbbe una cosa
+     falsa sul quando, che e' lo stesso difetto del pallino spento per
+     errore (`static/pending-badge.js`). */
+  function setHistoryCount(n) {
+    var btn = byId('agenda-history-toggle');
+    if (btn) btn.textContent = n == null ? 'Storico' : ('Storico (' + n + ')');
+  }
+
+  /* I numeri di sezione dicono l'ordine di lettura: 01/02/03 con «Esiti da
+     leggere» presente, 01/02 senza. Si rinumerano al render e non al
+     montaggio proprio perche' la prima sezione nasce e muore col proprio
+     contenuto. */
+  function renumberSections() {
+    var outlet = byId('route-outlet');
+    if (!outlet) return;
+    var nums = outlet.querySelectorAll('.sc-num');
+    for (var i = 0; i < nums.length; i++) nums[i].textContent = pad2(i + 1);
+  }
+
+  /* «Esiti da leggere»: le righe che il pallino del menu ha contato.
+     Restituisce gli id DISEGNATI, che sono esattamente quelli che verranno
+     segnati letti -- la pagina dichiara cio' che ha messo sullo schermo, non
+     «tutti i non letti».
+
+     Quando la lista e' vuota la sezione non esiste nel DOM, e non e' una
+     sfumatura: una sezione vuota permanente insegna a non guardare quella
+     zona dello schermo, e il giorno in cui ha qualcosa dentro non la si vede
+     piu'. Per questo nasce e muore qui dentro, a ogni caricamento, e non
+     viene montata una volta per tutte in `mount()`. */
+  function renderUnread(list) {
+    var outlet = byId('route-outlet');
+    var body = byId('agenda-unread-body');
+    if (!list.length) {
+      if (body) body.parentNode.parentNode.removeChild(body.parentNode);
+      return [];
+    }
+    if (!body) {
+      /* Il numero qui e' un segnaposto: `renumberSections()` lo riscrive
+         subito dopo, con la posizione vera fra le sezioni presenti. */
+      var section = buildSectionShell('01', 'unread', 'unread', 'Esiti da leggere');
+      outlet.insertBefore(section, outlet.querySelector('.section-card'));
+      body = byId('agenda-unread-body');
+    }
+    clearEl(body);
+    byId('agenda-unread-desc').textContent = descrizioneDaLeggere(list.length);
+    var ids = [];
+    sortHistory(list).forEach(function (p) {
+      body.appendChild(buildHistoryRow(p, true));
+      ids.push(p.id);
+    });
+    return ids;
+  }
+
+  /* Il segno di lettura: una POST con esattamente gli id disegnati, mandata
+     DOPO averli disegnati (`api/handlers_agenda.py::handle_mark_read`).
+
+     Non e' agganciata alla catena di `load()` apposta. Sbaglia sempre per
+     eccesso di notizia -- se fallisce, le righe restano non lette e
+     ricompaiono alla visita dopo, che e' il guasto giusto -- quindi non deve
+     poter far comparire il messaggio d'errore della pagina: un
+     `console.warn` e basta. */
+  function segnaLetti(ids) {
+    if (!ids.length) return;
+    api('api/agenda/read', { method: 'POST', body: JSON.stringify({ ids: ids }) })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        /* La guardia `if` ci vuole SOLO qui: `static/pending-badge.js` e'
+           caricato da tutti e due i gusci in produzione, ma questa pagina
+           gira anche nei test senza quel file (`tests/js/agenda-route.
+           test.mjs` carica `config/agenda-route.js` da solo). Senza il
+           rinfresco il pallino resterebbe acceso mentre l'utente sta gia'
+           leggendo cio' che lo aveva acceso. */
+        if (window.HirisPendingBadge) window.HirisPendingBadge.refresh();
+      })
+      .catch(function (err) {
+        console.warn('[promesse] segno di lettura non riuscito', err);
+      });
   }
 
   /* Un errore di lettura e una lista vuota vera NON hanno lo stesso testo
@@ -435,32 +569,83 @@ window.HirisAgendaRoute = (function () {
       var all = data.agenda || [];
       var pending = all.filter(function (p) { return PENDING_STATES.indexOf(p.stato) !== -1; });
       var history = all.filter(function (p) { return PENDING_STATES.indexOf(p.stato) === -1; });
+      /* DUE condizioni, ed e' la seconda a essere facile da dimenticare:
+         `esito_letto_ts` e' NULL anche per ogni promessa IN SOSPESO -- non
+         ha ancora un esito da leggere -- quindi un filtro scritto sul solo
+         campo nullo riempirebbe «Esiti da leggere» di impegni futuri. Serve
+         anche lo stato concluso, che e' il complemento di `PENDING_STATES`:
+         lo stesso che usa `renderHistory` qui sopra, non una costante nuova
+         (sarebbe un doppione, e `scripts/doppioni.py` avrebbe ragione). */
+      var unread = all.filter(function (p) {
+        return PENDING_STATES.indexOf(p.stato) === -1 && p.esito_letto_ts == null;
+      });
+      /* «Esiti da leggere» si disegna per PRIMA: e' quella che decide su
+         quale copia di una riga ripetuta va il rivelatore «Cosa è
+         cambiato», e lo storico ha bisogno di saperlo. */
+      var disegnati = renderUnread(unread);
       renderPending(pendingBody, pendingDesc, pending, load);
-      renderHistory(historyBody, historyDesc, history);
+      renderHistory(historyBody, historyDesc, history, disegnati);
+      setHistoryCount(history.length);
+      renumberSections();
+      segnaLetti(disegnati);
     }).catch(function (err) {
       console.error('[promesse] caricamento fallito', err);
+      /* La sezione degli esiti da leggere sparisce: dopo un guasto non
+         sappiamo piu' quali siano, e lasciare le righe di prima sarebbe
+         affermare un fatto che non abbiamo piu'. */
+      renderUnread([]);
+      setHistoryCount(null);
+      renumberSections();
       renderError(pendingBody, historyBody, load);
     });
   }
 
-  /* ── Shell statico: due `.section-card`, stesso pattern di
-     `buildSectionShell` in models-route.js. `#agenda-pending-body`/
-     `#agenda-history-body` ricevono `gap:0` da hiris-config.css, stesso
-     trattamento di `#chain-body`/`#outside-body`: le righe si separano con
-     un `border-top` proprio (guida §2), non col gap del flex. ────────── */
-  function buildSectionShell(num, idPrefix, sectionAttr, title) {
+  /* Il titolo di una sezione richiudibile: il bottone sta DENTRO l'`<h2>`,
+     non al suo posto. Chi naviga per intestazioni continua a trovare la
+     sezione, e un `<h2>` dentro un `<button>` sarebbe comunque HTML non
+     valido (un bottone accetta solo contenuto di frase). L'etichetta non
+     cambia fra aperto e chiuso -- porta il conteggio, che e' l'unica cosa
+     visibile quando la sezione e' chiusa: lo stato lo dicono `aria-expanded`
+     per chi ascolta e il triangolo di `.sc-toggle` per chi guarda. */
+  function buildDisclosureTitle(toggleId, title, panel) {
+    var btn = el('button', 'sc-toggle', title);
+    btn.type = 'button';
+    btn.id = toggleId;
+    btn.setAttribute('aria-controls', panel.id);
+    setDisclosure(btn, panel, false);
+    /* Nasce chiusa a ogni montaggio, e lo stato non si ricorda fra una
+       visita e l'altra: la domanda con cui si apre questa pagina e' «cosa
+       c'e' in sospeso», e deve avere la stessa risposta tutte le volte. */
+    btn.addEventListener('click', function () {
+      setDisclosure(btn, panel, btn.getAttribute('aria-expanded') !== 'true');
+    });
+    var heading = el('h2', 'sc-title');
+    heading.appendChild(btn);
+    return heading;
+  }
+
+  /* ── Shell statico: due `.section-card` al montaggio (la terza, «Esiti da
+     leggere», nasce in `renderUnread()` solo quando ha qualcosa dentro),
+     stesso pattern di `buildSectionShell` in models-route.js.
+     `#agenda-unread-body`/`#agenda-pending-body`/`#agenda-history-body`
+     ricevono `gap:0` da hiris-config.css, stesso trattamento di
+     `#chain-body`/`#outside-body`: le righe si separano con un `border-top`
+     proprio (guida §2), non col gap del flex. ─────────────────────────── */
+  function buildSectionShell(num, idPrefix, sectionAttr, title, toggleId) {
     var section = el('section', 'section-card');
-    var head = el('div', 'sc-header');
-    head.appendChild(el('span', 'sc-num', num));
-    head.appendChild(el('h2', 'sc-title', title));
-    section.appendChild(head);
-    var desc = el('p', 'sc-desc', '');
-    desc.id = 'agenda-' + idPrefix + '-desc';
-    section.appendChild(desc);
     var body = el('div', 'sc-body');
     body.id = 'agenda-' + idPrefix + '-body';
     body.setAttribute('data-sezione', sectionAttr);
     body.appendChild(el('p', 'field-hint', 'Caricamento…'));
+
+    var head = el('div', 'sc-header');
+    head.appendChild(el('span', 'sc-num', num));
+    head.appendChild(toggleId ? buildDisclosureTitle(toggleId, title, body)
+      : el('h2', 'sc-title', title));
+    section.appendChild(head);
+    var desc = el('p', 'sc-desc', '');
+    desc.id = 'agenda-' + idPrefix + '-desc';
+    section.appendChild(desc);
     section.appendChild(body);
     return section;
   }
@@ -478,9 +663,12 @@ window.HirisAgendaRoute = (function () {
 
     /* «In sospeso» sopra: e' la sezione corta, azionabile, ed e' la
        domanda con cui si apre questa pagina piu' spesso. Lo storico e' un
-       registro di consultazione, non l'atterraggio (guida §1). */
+       registro di consultazione, non l'atterraggio (guida §1) -- per questo
+       nasce chiuso. Sopra a tutti, quando esiste, «Esiti da leggere»:
+       l'inserisce `renderUnread()`, che rinumera anche i `.sc-num`. */
     outlet.appendChild(buildSectionShell('01', 'pending', 'pending', 'In sospeso'));
-    outlet.appendChild(buildSectionShell('02', 'history', 'history', 'Storico'));
+    outlet.appendChild(buildSectionShell('02', 'history', 'history', 'Storico',
+      'agenda-history-toggle'));
 
     load();
   }

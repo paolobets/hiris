@@ -145,6 +145,54 @@ test('una scena mostra il conteggio e gli entity_id anche se `entities` è un di
   assert.match(testo, /light\.salotto/);
 });
 
+/* ── Lo storico chiuso (fetta «i menu esecutivi») ──────────────────────────
+ *
+ * Gemelle delle due prove in `agenda-route.test.mjs`, e per la stessa
+ * ragione: lo storico e' un registro di consultazione, e lasciarlo aperto
+ * sotto la sezione che aspetta una decisione fa scorrere via proprio quella.
+ * Il conteggio si sa solo dopo la fetch, quindi si asserisce dopo `mount()`.
+ */
+
+test('lo storico nasce chiuso, col conteggio nel titolo', async () => {
+  const { dom } = montaCon({ constructions: [
+    { id: 'a1', stato: 'applicata', gesto: 'crea', dominio: 'automation',
+      chiave: '1', anteprima: '', prima: null, dopo: {}, creata_ts: 1 },
+    { id: 's1', stato: 'scaduta', gesto: 'crea', dominio: 'script',
+      chiave: '2', anteprima: '', prima: null, dopo: {}, creata_ts: 2 },
+    // Una in attesa: non conta nello storico, e la sua presenza e' cio' che
+    // rende il conteggio (2) diverso dal totale (3) -- senza di lei un
+    // `all.length` sbagliato passerebbe lo stesso.
+    { id: 'p1', stato: 'in_attesa', gesto: 'crea', dominio: 'automation',
+      chiave: '3', anteprima: 'x', prima: null, dopo: {}, creata_ts: 3 },
+  ] });
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  const document = dom.window.document;
+
+  assert.equal(document.querySelector('[data-sezione="history"]').hidden, true,
+    'lo storico nasce chiuso');
+  const bottone = document.querySelector('#constructions-history-toggle');
+  assert.ok(bottone, 'l\'intestazione dello storico deve essere un bottone');
+  assert.equal(bottone.getAttribute('aria-expanded'), 'false');
+  assert.match(bottone.textContent, /Storico \(2\)/);
+  assert.equal(document.querySelector('[data-sezione="open"]').hidden, false,
+    '«In attesa» non si chiude: e\' la domanda con cui si apre la pagina');
+});
+
+test('lo storico si apre con un click, e il bottone lo dice', async () => {
+  const { dom } = montaCon({ constructions: [
+    { id: 'a1', stato: 'applicata', gesto: 'crea', dominio: 'automation',
+      chiave: '1', anteprima: '', prima: null, dopo: {}, creata_ts: 1 },
+  ] });
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  const document = dom.window.document;
+
+  const bottone = document.querySelector('#constructions-history-toggle');
+  bottone.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+
+  assert.equal(document.querySelector('[data-sezione="history"]').hidden, false);
+  assert.equal(bottone.getAttribute('aria-expanded'), 'true');
+});
+
 test('durante una richiesta in volo Approva e Rifiuta si disabilitano insieme', async () => {
   // Rilievo della review: il backend regge un doppio clic (la UPDATE e'
   // atomica), ma restava un'incoerenza visibile -- premuto Approva, Rifiuta

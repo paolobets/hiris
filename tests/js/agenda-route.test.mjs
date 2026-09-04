@@ -33,7 +33,7 @@ const PROMESSE = [
     quando_ts: 1755600000, quando_detto: 'alle 17', fuso: 'Europe/Rome',
     chiamata: { servizio: 'light.turn_on' }, domanda: null, istantanea: null,
     recapito: null, stato: 'in_attesa', motivo: null, esecuzione_id: null,
-    testo: null, avvisare: null, nata_ts: 1755590000, risvegliata_ts: null, origine: null,
+    testo: null, avvisare: null, nata_ts: 1755590000, risvegliata_ts: null, origine: null, esito_letto_ts: null,
   },
   {
     id: 'p2', specie: 'chiedi', frase: 'verifica la temperatura',
@@ -42,7 +42,7 @@ const PROMESSE = [
     recapito: null, stato: 'saltata',
     motivo: 'scaduta da 41 minuti quando l\'orologio l\'ha vista -- non eseguita.',
     esecuzione_id: null, testo: null, avvisare: null,
-    nata_ts: 1755490000, risvegliata_ts: 1755500100, origine: null,
+    nata_ts: 1755490000, risvegliata_ts: 1755500100, origine: null, esito_letto_ts: null,
   },
   {
     id: 'p3', specie: 'chiedi', frase: 'posso aprire le finestre?',
@@ -51,7 +51,7 @@ const PROMESSE = [
     istantanea: [{ entita: 'sensor.temp_esterna', valore: 31, unita: '°C' }],
     recapito: null, stato: 'mantenuta', motivo: null, esecuzione_id: 'e1',
     testo: 'no: fuori ci sono 31 gradi', avvisare: false,
-    nata_ts: 1755390000, risvegliata_ts: 1755400050, origine: null,
+    nata_ts: 1755390000, risvegliata_ts: 1755400050, origine: null, esito_letto_ts: 1755400900,
   },
 ];
 
@@ -90,6 +90,10 @@ function montaConServer(opts = {}) {
       if (opts.get503) return jsonResponse({ agenda: [], error: 'archivio non disponibile' }, 503);
       const corpo = getCount === 1 || opts.getSuccessivo === undefined ? opts.get : opts.getSuccessivo;
       return jsonResponse(corpo !== undefined ? corpo : { agenda: PROMESSE });
+    }
+    if (method === 'POST' && u.indexOf('api/agenda/read') === 0) {
+      if (opts.readRotto) throw new Error('rete giu');
+      return jsonResponse({ marked: JSON.parse((options || {}).body || '{}').ids.length });
     }
     if (method === 'DELETE') {
       if (opts.deleteRotto) throw new Error('rete giu\'');
@@ -497,4 +501,101 @@ test('il bottone è raggiungibile da tastiera: un <button> vero, non un div con 
   const btn = Array.from(document.querySelectorAll('button')).find((b) => b.textContent === 'Cosa è cambiato');
   assert.equal(btn.tagName, 'BUTTON', 'un <button> e\' nativamente raggiungibile da tastiera e ha un focus visibile');
   assert.equal(btn.type, 'button');
+});
+
+/* ── «Esiti da leggere» e lo storico chiuso (fetta «i menu esecutivi») ─────
+ *
+ * Il pallino degli Impegni conta gli esiti conclusi che nessuno ha ancora
+ * letto, non gli impegni in sospeso (quelli aspettano l'ora, non te). Se
+ * cio' che il pallino ha chiamato finisse dentro uno «Storico» chiuso, il
+ * pallino avrebbe mentito una seconda volta -- stavolta sulla strada.
+ *
+ * La prova che tiene tutto e' `una in sospeso NON e' un esito da leggere`:
+ * `esito_letto_ts` e' NULL anche per ogni promessa in sospeso -- non ha
+ * ancora un esito -- quindi un filtro scritto sul solo campo nullo
+ * riempirebbe la sezione di impegni futuri. Serve ANCHE lo stato concluso.
+ */
+
+function sezione(document, nome) {
+  return document.querySelector('[data-sezione="' + nome + '"]');
+}
+
+test('gli esiti non letti stanno in una sezione propria, in cima', async () => {
+  const { document } = await monta({});
+
+  const daLeggere = sezione(document, 'unread');
+  assert.ok(daLeggere, 'la sezione «Esiti da leggere» deve esistere quando c\'e\' qualcosa');
+  /* p2 e' conclusa e non letta; p3 e' conclusa ma gia' letta; p1 e' in
+     sospeso. Solo p2. */
+  assert.match(daLeggere.textContent, /verifica la temperatura/);
+  assert.doesNotMatch(daLeggere.textContent, /posso aprire le finestre/);
+
+  const sezioni = [...document.querySelectorAll('.section-card')];
+  assert.equal(sezioni[0].querySelector('.sc-title').textContent, 'Esiti da leggere');
+});
+
+test('una in sospeso NON e\' un esito da leggere, anche se il segno e\' nullo', async () => {
+  const { document } = await monta({});
+
+  const daLeggere = sezione(document, 'unread');
+  assert.doesNotMatch(daLeggere.textContent, /accendi lo studio/);
+});
+
+test('senza esiti nuovi la sezione non c\'e\' proprio: non e\' una sezione vuota', async () => {
+  /* Una sezione vuota permanente insegna a non guardare quella zona dello
+     schermo, e il giorno in cui ha qualcosa dentro non la si vede piu'. */
+  const lette = PROMESSE.map((p) => ({ ...p, esito_letto_ts: p.stato === 'in_attesa' ? null : 1755400900 }));
+  const { document } = await monta({ get: { agenda: lette } });
+
+  assert.equal(sezione(document, 'unread'), null);
+  assert.equal(document.querySelectorAll('.section-card').length, 2);
+});
+
+test('dopo averli mostrati, segna letti ESATTAMENTE quelli mostrati', async () => {
+  const { chiamate } = await monta({});
+
+  const post = chiamate.find((c) => c.method === 'POST');
+  assert.ok(post, 'la pagina deve dichiarare cio\' che ha mostrato');
+  assert.match(post.url, /api\/agenda\/read/);
+  assert.deepEqual(JSON.parse(post.opts.body).ids, ['p2']);
+  assert.equal(post.opts.headers['X-Requested-With'], 'fetch',
+    'senza X-Requested-With il csrf_middleware risponde 403');
+});
+
+test('senza esiti nuovi non parte nessuna POST', async () => {
+  const lette = PROMESSE.map((p) => ({ ...p, esito_letto_ts: p.stato === 'in_attesa' ? null : 1755400900 }));
+  const { chiamate } = await monta({ get: { agenda: lette } });
+
+  assert.equal(chiamate.filter((c) => c.method === 'POST').length, 0);
+});
+
+test('se il segno di lettura fallisce, la pagina resta usabile', async () => {
+  /* Il guasto giusto: le righe restano non lette e ricompaiono alla visita
+     dopo. Il segno sbaglia sempre per eccesso di notizia, mai per difetto --
+     quindi non e' un errore da mostrare all'utente. */
+  const { document } = await monta({ readRotto: true });
+
+  assert.match(sezione(document, 'unread').textContent, /verifica la temperatura/);
+  assert.doesNotMatch(document.getElementById('route-outlet').textContent, /Non è stato possibile/);
+});
+
+test('lo storico nasce chiuso, col conteggio nel titolo', async () => {
+  const { document } = await monta({});
+
+  const corpo = sezione(document, 'history');
+  assert.equal(corpo.hidden, true, 'lo storico nasce chiuso');
+  const bottone = document.querySelector('#agenda-history-toggle');
+  assert.ok(bottone, 'l\'intestazione dello storico deve essere un bottone');
+  assert.equal(bottone.getAttribute('aria-expanded'), 'false');
+  assert.match(bottone.textContent, /Storico \(2\)/);
+});
+
+test('lo storico si apre con un click, e il bottone lo dice', async () => {
+  const { document } = await monta({});
+
+  const bottone = document.querySelector('#agenda-history-toggle');
+  bottone.dispatchEvent(new (bottone.ownerDocument.defaultView.Event)('click', { bubbles: true }));
+
+  assert.equal(sezione(document, 'history').hidden, false);
+  assert.equal(bottone.getAttribute('aria-expanded'), 'true');
 });

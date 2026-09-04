@@ -1428,8 +1428,45 @@
 
 /* fetta «lo schedulatore» Task 9 (#/agenda): stesso motivo di sopra --
    ogni riga porta il proprio separatore (`border-top`), non il gap del
-   flex del `.sc-body` che eredita. */
-#agenda-pending-body, #agenda-history-body { gap: 0; }
+   flex del `.sc-body` che eredita. `#agenda-unread-body` (fetta «i menu
+   esecutivi») disegna le stesse righe concluse dello storico, quindi vuole
+   lo stesso trattamento -- nasce e muore col contenuto, ma la regola no. */
+#agenda-unread-body, #agenda-pending-body, #agenda-history-body { gap: 0; }
+
+/* fetta «i menu esecutivi»: l'intestazione di una sezione richiudibile.
+   Il bottone sta dentro il proprio `<h2>` (`.sc-title`) e deve LEGGERSI come
+   quel titolo: il fondo, il bordo e il font di serie del browser lo
+   farebbero scendere al rango di azione secondaria, in cima a una sezione
+   che invece e' un capitolo della pagina. Si toglie tutto e si eredita.
+   Il focus resta quello nativo, non si tocca -- e' il solo segnale che
+   questo elemento e' raggiungibile da tastiera.
+   Il triangolo e' disegnato con i bordi, non con un carattere: un glifo
+   (▸/▾) dipende dal font installato e finisce letto ad alta voce dagli
+   screen reader, che qui direbbero due volte cio' che `aria-expanded` gia'
+   dice. Lo stato ha quindi DUE segnali indipendenti -- la rotazione per chi
+   guarda, `aria-expanded` per chi ascolta -- e nessuno dei due e' il
+   colore (WCAG 1.4.1). */
+.sc-toggle {
+  appearance: none; -webkit-appearance: none;
+  background: none; border: 0; padding: 0; margin: 0;
+  font: inherit; color: inherit; letter-spacing: inherit; text-align: left;
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+}
+.sc-toggle::after {
+  content: ''; flex: none;
+  width: 0; height: 0;
+  border-left: 5px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: transform 120ms ease;
+}
+.sc-toggle[aria-expanded="true"]::after { transform: rotate(90deg); }
+/* Chi ha chiesto meno movimento non lo riceve nemmeno qui: il triangolo
+   arriva comunque nella posizione giusta, senza la rotazione animata. */
+@media (prefers-reduced-motion: reduce) {
+  .sc-toggle::after { transition: none; }
+}
 
 /* La row-provider: quattro colonne, quattro domande. Dove sei (la posizione),
    chi sei (il nome), con che cosa (il modello), quanto costi (la natura). Il

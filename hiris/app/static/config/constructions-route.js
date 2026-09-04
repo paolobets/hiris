@@ -39,6 +39,12 @@
    insieme, stesso concetto "non ancora concluso", ordinate per `creata_ts`
    crescente -- chi aspetta da piu' tempo sta in cima) e «Storico» (tutto il
    resto, `creata_ts` decrescente, piu' recente in cima).
+   Lo «Storico» nasce CHIUSO, con il conteggio nel titolo (fetta «i menu
+   esecutivi», gemello degli Impegni): e' un registro di consultazione, e
+   lasciarlo aperto sotto la sezione che aspetta una decisione fa scorrere
+   via proprio quella. Lo stato aperto/chiuso non si ricorda fra una visita e
+   l'altra -- la domanda con cui si apre questa pagina e' sempre la stessa e
+   deve avere sempre la stessa risposta.
 
    -- Il prima/dopo: cosa mostrare, cosa NON inventare (guida §3) --
    Livello primario SEMPRE visibile: `anteprima`, per intero, mai riassunta.
@@ -186,6 +192,20 @@ window.HirisConstructions = (function () {
 
   function pad2(n) { return n < 10 ? '0' + n : String(n); }
 
+  /* Lo stato di un rivelatore scritto in un posto solo: `hidden` sul
+     pannello e `aria-expanded` sul bottone che lo governa non possono
+     divergere se nessuno li assegna separatamente. Lo usano tutti e due i
+     rivelatori della pagina -- i «Dettagli tecnici» di una riga e
+     l'intestazione dello «Storico» -- perche' un secondo meccanismo sarebbe
+     un doppione. Gemello di `agenda-route.js::setDisclosure`: NON e' stato
+     messo in `config/api.js` (il solo file davvero condiviso) perche' i test
+     caricano ciascuna route DA SOLA, senza quel file, e un helper globale
+     li' dentro semplicemente non esisterebbe durante la prova. */
+  function setDisclosure(btn, panel, open) {
+    panel.hidden = !open;
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
   function fmtData(ts) {
     var d = new Date(ts * 1000);
     return pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + '/' + d.getFullYear();
@@ -320,18 +340,16 @@ window.HirisConstructions = (function () {
     var openText = 'Nascondi i dettagli tecnici';
     var btn = el('button', 'btn btn-ghost btn-sm', closedText);
     btn.type = 'button';
-    btn.setAttribute('aria-expanded', 'false');
     var panelId = 'construction-details-' + c.id;
     var panel = detailsPanel(c);
     panel.id = panelId;
-    panel.hidden = true;
     btn.setAttribute('aria-controls', panelId);
+    setDisclosure(btn, panel, false);
 
     btn.addEventListener('click', function () {
-      var open = btn.getAttribute('aria-expanded') === 'true';
-      panel.hidden = open;
-      btn.setAttribute('aria-expanded', open ? 'false' : 'true');
-      btn.textContent = open ? closedText : openText;
+      var open = btn.getAttribute('aria-expanded') !== 'true';
+      setDisclosure(btn, panel, open);
+      btn.textContent = open ? openText : closedText;
     });
 
     wrap.appendChild(btn);
@@ -495,17 +513,54 @@ window.HirisConstructions = (function () {
     });
   }
 
-  function buildSectionShell(num, idPrefix, title) {
+  /* Il titolo di una sezione richiudibile: il bottone sta DENTRO l'`<h2>`,
+     non al suo posto. Chi naviga per intestazioni continua a trovare la
+     sezione, e un `<h2>` dentro un `<button>` sarebbe comunque HTML non
+     valido (un bottone accetta solo contenuto di frase). L'etichetta non
+     cambia fra aperto e chiuso -- porta il conteggio, che e' l'unica cosa
+     visibile quando la sezione e' chiusa: lo stato lo dicono `aria-expanded`
+     per chi ascolta e il triangolo di `.sc-toggle` per chi guarda. */
+  function buildDisclosureTitle(toggleId, title, panel) {
+    var btn = el('button', 'sc-toggle', title);
+    btn.type = 'button';
+    btn.id = toggleId;
+    btn.setAttribute('aria-controls', panel.id);
+    setDisclosure(btn, panel, false);
+    /* Nasce chiusa a ogni montaggio, e lo stato non si ricorda fra una
+       visita e l'altra: la domanda con cui si apre questa pagina e' «cosa
+       aspetta una mia risposta», e deve avere la stessa risposta tutte le
+       volte. */
+    btn.addEventListener('click', function () {
+      setDisclosure(btn, panel, btn.getAttribute('aria-expanded') !== 'true');
+    });
+    var heading = el('h2', 'sc-title');
+    heading.appendChild(btn);
+    return heading;
+  }
+
+  function buildSectionShell(num, idPrefix, title, toggleId) {
     var section = el('section', 'section-card');
-    var head = el('div', 'sc-header');
-    head.appendChild(el('span', 'sc-num', num));
-    head.appendChild(el('h2', 'sc-title', title));
-    section.appendChild(head);
     var body = el('div', 'sc-body');
     body.id = 'constructions-' + idPrefix + '-body';
     body.setAttribute('data-sezione', idPrefix);
+
+    var head = el('div', 'sc-header');
+    head.appendChild(el('span', 'sc-num', num));
+    head.appendChild(toggleId ? buildDisclosureTitle(toggleId, title, body)
+      : el('h2', 'sc-title', title));
+    section.appendChild(head);
     section.appendChild(body);
     return section;
+  }
+
+  /* Il conteggio dello storico vive nel titolo, e si sa solo DOPO la fetch:
+     si scrive al render, non al montaggio -- da quando lo storico nasce
+     chiuso, il titolo e' l'unica riga che si vede sempre. `null` quando non
+     lo sappiamo (la lettura e' fallita): un numero vecchio lasciato li'
+     direbbe una cosa falsa sul quando. */
+  function setHistoryCount(outlet, n) {
+    var btn = outlet.querySelector('#constructions-history-toggle');
+    if (btn) btn.textContent = n == null ? 'Storico' : ('Storico (' + n + ')');
   }
 
   function draw(outlet) {
@@ -525,7 +580,11 @@ window.HirisConstructions = (function () {
       status.id = 'constructions-status';
       outlet.appendChild(status);
       outlet.appendChild(buildSectionShell('01', 'open', 'In attesa'));
-      outlet.appendChild(buildSectionShell('02', 'history', 'Storico'));
+      /* Lo storico nasce chiuso: e' un registro di consultazione, non
+         l'atterraggio -- la domanda con cui si apre questa pagina e' «cosa
+         aspetta una mia risposta», ed e' la sezione 01. */
+      outlet.appendChild(buildSectionShell('02', 'history', 'Storico',
+        'constructions-history-toggle'));
       openBody = outlet.querySelector('#constructions-open-body');
       historyBody = outlet.querySelector('#constructions-history-body');
       statusEl = outlet.querySelector('#constructions-status');
@@ -547,7 +606,9 @@ window.HirisConstructions = (function () {
         statusEl, reload, sortOpen);
       renderSection(historyBody, history, 'Nessuna costruzione nello storico.',
         statusEl, reload, sortHistory);
+      setHistoryCount(outlet, history.length);
     }).catch(function () {
+      setHistoryCount(outlet, null);
       renderError(openBody, historyBody, reload);
     });
   }
