@@ -851,7 +851,7 @@ def test_cerca_non_esclude_i_candidati_nascosti():
 def _platform_lookup():
     """Un indice minimo con due entita' hydrawise e una lifx, nessuna
     chiamata come la propria piattaforma."""
-    casa = {
+    house = {
         "piani": [], "aree": [], "dispositivi": [], "etichette": [], "categorie": [],
         "integrazioni": [],
         "entita": [
@@ -866,7 +866,7 @@ def _platform_lookup():
              "alias": [], "disabilitata": 0},
         ],
     }
-    return costruisci_indice(casa)
+    return costruisci_indice(house)
 
 
 def _platform_lookup_with_name_collision():
@@ -874,7 +874,7 @@ def _platform_lookup_with_name_collision():
     piattaforma -- e un'altra porta la stessa piattaforma senza quel nome:
     il caso vero di una casa (04/09), dove «Sonos», «Hue», «Shelly», «Tuya»
     sono nomi comuni delle entita' stesse, non solo domini tecnici."""
-    casa = {
+    house = {
         "piani": [], "aree": [], "dispositivi": [], "etichette": [], "categorie": [],
         "integrazioni": [],
         "entita": [
@@ -887,7 +887,7 @@ def _platform_lookup_with_name_collision():
              "alias": [], "disabilitata": 0},
         ],
     }
-    return costruisci_indice(casa)
+    return costruisci_indice(house)
 
 
 def test_search_recognizes_a_platform_as_such():
@@ -941,7 +941,7 @@ def test_search_keeps_a_name_candidate_that_shares_the_platform_domain():
 
     Mutazione: tornare subito col solo `piattaforma`, senza calcolare
     `lookup.find(text)`, quando il testo combacia una piattaforma -- rosso
-    su `assert candidati == {"media_player.soggiorno"}` (l'insieme torna
+    su `assert candidates == {"media_player.soggiorno"}` (l'insieme torna
     vuoto), perche' l'entita' «Sonos» sparisce dalla risposta."""
     lookup = _platform_lookup_with_name_collision()
     found = search(lookup, "sonos")
@@ -949,6 +949,76 @@ def test_search_keeps_a_name_candidate_that_shares_the_platform_domain():
     entry = found[0]
     assert entry["piattaforma"]["dominio"] == "sonos"
     assert entry["piattaforma"]["quante_entita"] == 2
-    candidati = {c["riferimento"] for c in entry["candidati"]}
-    assert candidati == {"media_player.soggiorno"}
+    candidates = {c["riferimento"] for c in entry["candidati"]}
+    assert candidates == {"media_player.soggiorno"}
     assert entry["ambiguo"] is False
+
+
+def test_search_returns_the_normalized_domain_as_the_platform_key():
+    """`info["dominio"]` e' l'IDENTIFICATORE che il modello ripassera' a
+    `view(tipo="integrazione", riferimento=...)` (Task 3): deve essere gia'
+    la chiave canonica dell'archivio (`lookup.platforms()`, normalizzata da
+    `resolver.py`), non il testo grezzo digitato dall'utente -- altrimenti
+    " HYDRAWISE " uscirebbe cosi' com'e' e `view` non troverebbe mai
+    l'integrazione che pure esiste.
+
+    Mutazione: tornare a `info["dominio"] = text.strip()` -- rosso su
+    `assert entry["piattaforma"]["dominio"] == "hydrawise"` (uscirebbe
+    `"HYDRAWISE"`, la sola stripatura di ' HYDRAWISE ')."""
+    lookup = _platform_lookup()
+    found = search(lookup, "  HYDRAWISE ")
+    assert len(found) == 1
+    entry = found[0]
+    assert entry["piattaforma"]["dominio"] == "hydrawise"
+
+
+def test_viewing_an_integration_counts_silent_entities_and_says_since_when():
+    """La prova dello sprint: una chiamata sola risponde «quali entita' non
+    rispondono e di quale integrazione sono». Oggi ci volevano quindici
+    chiamate e si fermava a meta'.
+
+    Mutazione: togliere il filtro sul dominio in `own` (usare tutte le
+    entita' della casa invece di quelle della sola piattaforma) -- rosso
+    su `assert detail["entita_totali"] == 2` (uscirebbe 3, con
+    `light.cucina` -- lifx, non hydrawise -- contata dentro)."""
+    house = {"entita": [
+        {"id": "valve.giardino", "nome": "Irrigazione", "piattaforma": "hydrawise",
+         "area_id": "esterno", "dispositivo_id": None, "classe": None,
+         "unita": None, "disabilitata": 0},
+        {"id": "sensor.giardino_minuti", "nome": "Minuti", "piattaforma": "hydrawise",
+         "area_id": "esterno", "dispositivo_id": None, "classe": None,
+         "unita": None, "disabilitata": 0},
+        {"id": "light.cucina", "nome": "Faretti", "piattaforma": "lifx",
+         "area_id": "cucina", "dispositivo_id": None, "classe": None,
+         "unita": None, "disabilitata": 0},
+    ], "integrazioni": [
+        {"dominio": "hydrawise", "titolo": "Giardino", "stato": "loaded",
+         "motivo": None, "origine": "user"},
+    ], "aree": [], "piani": [], "dispositivi": [], "etichette": [], "categorie": []}
+    states = {"valve.giardino": "unavailable",
+             "sensor.giardino_minuti": "unavailable",
+             "light.cucina": "on"}
+    since = {"valve.giardino": "2026-09-04T14:00:17+00:00",
+                 "sensor.giardino_minuti": "2026-09-04T14:00:17+00:00"}
+
+    detail = view(house, [], [], states, "integrazione", "hydrawise",
+                     reported_since_when=since)
+
+    assert detail["esiste"] is True
+    assert detail["entita_totali"] == 2
+    assert detail["entita_mute"] == 2
+    assert detail["mute_da"] == "2026-09-04T14:00:17+00:00"
+    assert {e["id"] for e in detail["entita"]} == {"valve.giardino", "sensor.giardino_minuti"}
+
+
+def test_a_missing_integration_says_so_without_inventing():
+    """`esiste: False` e basta -- nessun `entita: []` che si potrebbe
+    scambiare per «nessun problema». Stessa disciplina degli altri rami.
+
+    Mutazione: aggiungere `"entita": []` al dict di `_not_found_detail` per
+    il tipo `integrazione` -- rosso su `assert "entita" not in detail`."""
+    house = {"entita": [], "integrazioni": [], "aree": [], "piani": [],
+            "dispositivi": [], "etichette": [], "categorie": []}
+    detail = view(house, [], [], {}, "integrazione", "inesistente")
+    assert detail["esiste"] is False
+    assert "entita" not in detail

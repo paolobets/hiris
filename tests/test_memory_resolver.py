@@ -578,12 +578,12 @@ def test_platforms_key_is_normalized_and_entities_without_one_are_skipped():
     Mutazione: togliere `_normalize(dominio)` nella costruzione della mappa
     -- il test torna rosso perche' la chiave resta `"Hydrawise "` (maiuscola
     e spazio in coda) invece di `"hydrawise"`, e
-    `piattaforme["hydrawise"]` solleva `KeyError`."""
+    `platforms["hydrawise"]` solleva `KeyError`."""
     home_space = dict(_HOME_SPACE, entita=[
         {"id": "valve.giardino", "nome": "Irrigazione", "piattaforma": "Hydrawise ",
          "alias": [], "area_id": None, "classe": None, "unita": None},
         {"id": "light.cucina", "nome": "Faretti", "piattaforma": "",
          "alias": [], "area_id": None, "classe": None, "unita": None},
     ])
-    piattaforme = costruisci_indice(home_space).platforms()
-    assert piattaforme == {"hydrawise": ["valve.giardino"]}
+    platforms = costruisci_indice(home_space).platforms()
+    assert platforms == {"hydrawise": ["valve.giardino"]}

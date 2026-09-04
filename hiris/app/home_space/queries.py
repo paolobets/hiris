@@ -187,7 +187,13 @@ def search(lookup, text: str) -> list[dict]:
     platforms = lookup.platforms() if hasattr(lookup, "platforms") else {}
     matched = platforms.get(_normalize(text))
     if matched:
-        info = {"dominio": text.strip(), "quante_entita": len(matched)}
+        # `dominio` e' la chiave che il modello ripassera' a `view(tipo=
+        # "integrazione", riferimento=...)` (Task 3): deve uscire gia'
+        # normalizzata, non il testo grezzo digitato dall'utente ("  HYDRAWISE ")
+        # -- altrimenti quella `view` non troverebbe mai un'integrazione che
+        # pure esiste. Stessa `_normalize` che ha costruito la chiave in
+        # `Lookup.platforms()`, cosi' le due sono garantite uguali.
+        info = {"dominio": _normalize(text), "quante_entita": len(matched)}
         same_text = next(
             (entry for entry in results if _normalize(entry["nome_visto"]) == _normalize(text)),
             None)
@@ -792,6 +798,63 @@ def sanitized_memories(memories: list[dict] | None) -> list[dict]:
            for r in (memories or [])]
 
 
+def _view_integration(home_space: dict, state: dict, reference,
+                      reported_since_when: dict[str, str] | None) -> dict:
+    """Un'integrazione con le sue entita' e quante di esse rispondono.
+
+    **La salute di un'integrazione non e' il suo `stato`** (spec §4): sulla
+    casa vera hydrawise e' `loaded` con 24 entita' su 30 mute, e per questo
+    l'irrigazione ferma non compariva da nessuna parte. Qui si contano, e la
+    frase la dice chi legge.
+
+    `mute_da` esce SOLO quando tutte le mute portano lo stesso istante: e' la
+    firma della sincronia (§4), il segnale che distingue un'integrazione
+    caduta da dispositivi spenti uno per volta. Quando gli istanti sono
+    diversi il campo non c'e' -- inventare un «da quando» medio sarebbe
+    proprio la risposta sicura che questo sprint toglie.
+
+    `reference` si normalizza (`_normalize`, la stessa di `search`) prima del
+    confronto: il valore che arriva da `search` e' gia' la chiave canonica
+    (fix accanto a `info["dominio"]`, sopra), ma il modello puo' scrivere
+    questo `riferimento` a mano invece di ripassare quello -- ed e' l'UNICO
+    ramo di `view` dove il riferimento e' un dominio tecnico (sempre
+    minuscolo, senza accenti, in Home Assistant) invece di un id-slug come
+    per area/entita'/dispositivo: normalizzarlo qui non puo' mai confondere
+    due domini diversi (a differenza di un nome libero), e recupera un
+    "Hydrawise" scritto con la maiuscola senza costringere il modello a
+    passare sempre da `search` prima.
+    """
+    domain = _normalize(reference or "")
+    own = [e for e in home_space.get("entita") or []
+           if _normalize(e.get("piattaforma") or "") == domain]
+    entries = [{"titolo": i.get("titolo"), "stato": i.get("stato"), "motivo": i.get("motivo")}
+               for i in home_space.get("integrazioni") or []
+               if _normalize(i.get("dominio") or "") == domain]
+    if not own and not entries:
+        # `_not_found_detail` richiede il terzo argomento (`unavailable`):
+        # questo ramo non riceve (ne propaga) il registro `unavailable` di
+        # `view()` -- fuori dallo scopo di questa fetta, che apre
+        # un'integrazione con cio' che l'archivio ha gia' -- quindi e'
+        # sempre `False`. Il suggerimento «chiama cerca» resta corretto:
+        # da T2 `search` riconosce i domini di piattaforma.
+        return _not_found_detail("integrazione", reference, False)
+    silent = [e for e in own if state.get(e["id"]) in ("unavailable", "unknown")]
+    detail = {
+        "esiste": True, "tipo": "integrazione", "dominio": domain,
+        "voci": entries,
+        "entita_totali": len(own),
+        "entita_mute": len(silent),
+        "entita": [{"id": e["id"], "nome": e.get("nome"),
+                    "stato": state.get(e["id"]),
+                    "da_quando": (reported_since_when or {}).get(e["id"])}
+                   for e in silent],
+    }
+    moments = {(reported_since_when or {}).get(e["id"]) for e in silent}
+    if len(moments) == 1 and None not in moments:
+        detail["mute_da"] = moments.pop()
+    return detail
+
+
 def view(home_space: dict, behavior: list[dict], memories: list[dict], state: dict,
            kind: str, reference,
            unavailable: tuple[str, ...] = (),
@@ -939,6 +1002,8 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
         return _view_behavior(behavior, memories, kind, reference, unloaded_files)
     if kind == "ricordo":
         return _view_memory(memories, reference)
+    if kind == "integrazione":
+        return _view_integration(home_space, state, reference, reported_since_when)
     # Un tipo che non conosciamo non e' un errore da sollevare: e' lo
     # stesso caso di "non l'ho trovato", solo con una causa diversa (il
     # modello ha nominato un tipo che non esiste, non un riferimento che

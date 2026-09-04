@@ -244,11 +244,13 @@ VIEW_TOOL_DEF = {
         "i loro stati, un'entita' con il suo stato e la sua classe, "
         "un'automazione o uno script con il corpo che li definisce, un "
         "dispositivo con le entita' che gli appartengono, oppure un ricordo con "
-        "la sua interpretazione (forza, ancore, condizioni). Richiede `tipo` "
-        "('area', 'entita', 'dispositivo', 'automazione', 'script' o 'ricordo') "
-        "e `riferimento`: l'identificatore ESATTO della cosa (l'id di area/"
-        "entita'/dispositivo, l'id dell'automazione o script, il numero del "
-        "ricordo) -- non un nome libero. Se hai solo un nome, usa prima `search`. "
+        "la sua interpretazione (forza, ancore, condizioni), oppure un'integrazione "
+        "con le sue voci di configurazione e quante entita' non rispondono. Richiede "
+        "`tipo` ('area', 'entita', 'dispositivo', 'automazione', 'script', 'ricordo' o "
+        "'integrazione') e `riferimento`: l'identificatore ESATTO della cosa (l'id di "
+        "area/entita'/dispositivo, l'id dell'automazione o script, il numero del "
+        "ricordo, il dominio dell'integrazione) -- non un nome libero. Se hai solo un "
+        "nome, usa prima `search`. "
         "Restituisce SEMPRE la chiave `esiste`: quando e' `false` il resto non "
         "e' inventato -- nessuna lista di entita' o corpo che potrebbe passare "
         "per un fatto sulla casa invece che per 'non trovato'. Anche quando "
@@ -275,7 +277,10 @@ VIEW_TOOL_DEF = {
         "Questo strumento porta il CORPO di una cosa -- cosa fa quell'automazione, "
         "cosa contiene quell'area -- non i suoi legami: per sapere CHI tocca una "
         "cosa (e quindi cosa smetterebbe di funzionare se la cancellassi) usa "
-        "`related`, che e' una domanda diversa e una risposta diversa."
+        "`related`, che e' una domanda diversa e una risposta diversa. "
+        "`integrazione`: il dominio (`hydrawise`, `lifx`). Porta le sue voci di "
+        "configurazione, quante entita' ha e quante non rispondono, e -- quando "
+        "sono diventate mute tutte nello stesso istante -- da quando."
     ),
     "input_schema": {
         "type": "object",
@@ -284,7 +289,7 @@ VIEW_TOOL_DEF = {
                 "type": "string",
                 "description": (
                     "'area', 'entita', 'dispositivo', "
-                    "'automazione', 'script' o 'ricordo'."
+                    "'automazione', 'script', 'ricordo' o 'integrazione'."
                 ),
             },
             "riferimento": {
@@ -292,8 +297,9 @@ VIEW_TOOL_DEF = {
                 "description": (
                     "L'identificatore esatto della cosa da guardare: l'id di "
                     "area/entita'/dispositivo o di automazione/script cosi' "
-                    "come lo conosce Home Assistant, oppure il numero di un "
-                    "ricordo (visto in `view`/`fetch`)."
+                    "come lo conosce Home Assistant, il numero di un "
+                    "ricordo (visto in `view`/`fetch`), oppure il dominio di "
+                    "un'integrazione (`hydrawise`, `lifx`)."
                 ),
             },
         },
