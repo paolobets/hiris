@@ -43,14 +43,17 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 # Questa riga e' quella decisione mantenuta -- il bump vive qui, da solo,
 # fino al prossimo rilascio.
 #
-# **Cio' che questo bump lascia indietro, detto invece che taciuto**: la
-# 2.1.251 e' stata rilasciata e non e' mai stata verificata su una casa vera
-# col passo 4 -- se questa riga arriva in produzione prima di quella lettura,
-# la 2.1.251 sara' l'ennesima versione passata senza che nessuno l'abbia
-# vista girare. E' esattamente il difetto che il paragrafo qui sotto
-# descrive, ripetuto una volta di piu'. La 3.21.0 e' installabile ADESSO:
-# la lettura costa un turno di chat e una `GET /api/health`, e va fatta
-# prima che questa riga esca.
+# **La 2.1.251 E' STATA VERIFICATA, e questa e' la prima volta che succede.**
+# Il 04/09, add-on gia' sulla 3.21.0, un turno di chat e poi
+# `GET /api/health`: `ponte.cli` ha risposto `"2.1.251"` (con
+# `apiKeySource: "none"`, cioe' abbonamento). Il pin arriva davvero fino
+# dentro il container -- cosa che fino a oggi era una speranza, non un fatto:
+# ne' la 2.1.241 ne' la 2.1.234 erano mai state lette (vedi il paragrafo qui
+# sotto). Il passo 4 non e' piu' un proposito, e' una lettura che qualcuno ha
+# fatto.
+#
+# Resta da fare per la 2.1.260, e vale la stessa riga: dopo il rilascio, un
+# turno e una GET.
 #
 # **Ne' la 2.1.241 ne' la 2.1.234 prima di lei erano mai state verificate su
 # questo container.** Il 24 agosto la verifica fu rimandata «al prossimo
@@ -64,11 +67,11 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 # RIPRODUCIBILITA', non che la versione funzioni -- ma adesso la differenza
 # fra le due si misura in un secondo, invece che aspettando il momento giusto.
 #
-# Se la 2.1.260 desse problemi si torna alla 2.1.251, che e' uscita con la
-# 3.21.0 e ha quindi girato su una casa vera -- anche se `ponte.cli` non e'
-# ancora stato letto per confermarlo. Il ripiego precedente era la 2.1.234:
-# resta valido come secondo passo indietro, ed e' l'ultima che qualcuno
-# abbia guardato girare davvero.
+# Se la 2.1.260 desse problemi si torna alla **2.1.251**, ed e' un ripiego
+# solido: e' uscita con la 3.21.0, ha girato su questa casa, e `ponte.cli`
+# l'ha confermata il 04/09. E' la prima versione di cui si possa dire davvero
+# «provata», la 2.1.234 compresa -- quella era solo l'ultima che qualcuno
+# avesse guardato girare di sfuggita.
 RUN apk add --no-cache nodejs npm libgcc libstdc++ ripgrep \
     && npm install -g @anthropic-ai/claude-code@2.1.260 \
     && npm cache clean --force
