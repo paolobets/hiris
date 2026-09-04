@@ -21,6 +21,7 @@ deve passare dagli stessi middleware di ogni altra, o il test non direbbe
 niente su cio' che accade in produzione.
 """
 import os
+import time
 
 import pytest
 import pytest_asyncio
@@ -82,12 +83,20 @@ def _promessa(archivio, n: int) -> str:
         now=ADESSO)["promessa"]["id"]
 
 
-def _proposta(archivio, n: int) -> str:
+def _proposta(archivio, n: int, *, now: float | None = None) -> str:
+    """`now` di default e' l'ORA VERA, non `ADESSO`.
+
+    `count_pending` scarta le proposte oltre `DEADLINE_S` senza riscriverle
+    (rilievo 6 della review): una finta ancorata a un timestamp di piu' di
+    sette giorni fa nascerebbe gia' scaduta, e la prova misurerebbe la
+    scadenza invece di cio' che dice di misurare.
+    """
     return archivio.propose(
         operation="crea", domain="automation", key=f"k{n}", actor="chat",
         exchange="t1", phrase="apri le tapparelle all'alba", prima=None,
         dopo={"id": f"k{n}", "alias": "Tapparelle"}, helper=[],
-        preview="Creo un'automazione.", now=ADESSO)["id"]
+        preview="Creo un'automazione.",
+        now=time.time() if now is None else now)["id"]
 
 
 @pytest.mark.asyncio
@@ -95,15 +104,20 @@ async def test_i_due_numeri_contano_cose_diverse(client):
     """Impegni conta gli esiti NON LETTI; Proposte conta i sospesi.
 
     I sette impegni sono scelti apposta perche' i due modi di contare diano
-    numeri diversi: cinque restano in sospeso e due si concludono (disdette)
-    senza che nessuno le legga. Chi contasse i sospesi anche qui direbbe 5.
+    numeri diversi: cinque restano in sospeso e due si concludono, mantenute,
+    senza che nessuno ne legga l'esito. Chi contasse i sospesi direbbe 5.
+
+    Si concludono con `mantenuta` e non con `cancel()`: una disdetta e' un
+    ordine dell'utente, non una notizia per lui, e `count_unread` non la
+    guarda (`promise.py::STATES_ESITO`). Usare `cancel()` qui, come faceva la
+    prima stesura, rendeva questa prova verde per la ragione sbagliata.
     """
     agenda = client.app["agenda"]
     costruzioni = client.app["constructions"]
 
     identificatori = [_promessa(agenda, n) for n in range(7)]
     for ident in identificatori[:2]:
-        agenda.cancel(ident, now=ADESSO + 1)
+        agenda.concludi(ident, state="mantenuta", now=ADESSO + 1)
 
     for n in range(4):
         ident = _proposta(costruzioni, n)
@@ -130,7 +144,7 @@ async def test_segna_solo_gli_id_passati(client):
     agenda = client.app["agenda"]
     identificatori = [_promessa(agenda, n) for n in range(3)]
     for ident in identificatori:
-        agenda.cancel(ident, now=ADESSO + 1)
+        agenda.concludi(ident, state="mantenuta", now=ADESSO + 1)
     assert agenda.count_unread() == 3
 
     risposta = await client.post("/api/agenda/read",
@@ -177,8 +191,39 @@ async def test_post_senza_x_requested_with_e_403_e_non_segna(client, csrf_strett
     """
     agenda = client.app["agenda"]
     ident = _promessa(agenda, 0)
-    agenda.cancel(ident, now=ADESSO + 1)
+    agenda.concludi(ident, state="mantenuta", now=ADESSO + 1)
 
     risposta = await client.post("/api/agenda/read", json={"ids": [ident]})
     assert risposta.status == 403
     assert agenda.count_unread() == 1
+
+
+@pytest.mark.asyncio
+async def test_troppi_id_sono_un_400_non_un_500(client):
+    """`mark_read` genera un segnaposto SQL per id: oltre il limite di SQLite
+    solleverebbe, e un errore d'ingresso uscirebbe come 500 (review
+    indipendente della fetta, rilievo 7). Un 400 dice la verita'."""
+    risposta = await client.post("/api/agenda/read",
+                                 json={"ids": [f"p{n}" for n in range(1001)]},
+                                 headers={"X-Requested-With": "fetch"})
+    assert risposta.status == 400
+
+
+@pytest.mark.asyncio
+async def test_una_proposta_scaduta_non_conta_nel_pallino(client):
+    """Il pallino non deve mandare l'utente su una pagina vuota.
+
+    `scadi()` gira solo all'apertura della pagina: una proposta lasciata
+    scadere resta `in_attesa` sul disco, e un conteggio che guardasse il solo
+    `stato` continuerebbe a dire «1 in attesa» per sempre. L'utente apre, la
+    scadenza viene scritta, e la pagina dice «Nessuna proposta in attesa» --
+    il contrario del mestiere del pallino (review indipendente, rilievo 6).
+    """
+    costruzioni = client.app["constructions"]
+    _proposta(costruzioni, 0, now=ADESSO)
+    oltre = ADESSO + ConstructionStore.DEADLINE_S + 1
+
+    assert costruzioni.count_pending(now=ADESSO) == 1
+    assert costruzioni.count_pending(now=oltre) == 0
+    # E la riga NON e' stata riscritta: un conteggio non scrive.
+    assert costruzioni.list()[0]["stato"] == "in_attesa"

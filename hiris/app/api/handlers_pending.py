@@ -32,6 +32,8 @@ comunque dagli stessi middleware di ogni altra rotta -- non ne salta nessuno.
 """
 from __future__ import annotations
 
+import time
+
 from aiohttp import web
 
 
@@ -46,5 +48,5 @@ async def handle_get_pending(request: web.Request) -> web.Response:
         return web.json_response({"error": "archivio non disponibile"}, status=503)
     return web.json_response({
         "agenda_unread": agenda.count_unread(),
-        "constructions_pending": constructions.count_pending(),
+        "constructions_pending": constructions.count_pending(now=time.time()),
     })

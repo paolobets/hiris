@@ -30,6 +30,11 @@ from aiohttp import web
 
 from .boundary import occurrence_out
 
+# Vedi `handle_mark_read`: sta qui e non in `keeper/`, perche' e' un limite
+# della PORTA HTTP (quanto accetto in una richiesta), non una regola
+# dell'archivio.
+_MAX_IDS = 500
+
 
 async def handle_get_agenda(request: web.Request) -> web.Response:
     store = request.app.get("agenda")
@@ -80,6 +85,18 @@ async def handle_mark_read(request: web.Request) -> web.Response:
     if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
         return web.json_response({"error": "serve una lista `ids` di stringhe."},
                                  status=400)
+    # Un tetto, perche' `mark_read` genera un segnaposto SQL per id: oltre
+    # `SQLITE_MAX_VARIABLE_NUMBER` (32766) SQLite solleva, e un errore
+    # d'ingresso uscirebbe come 500. Il tetto del corpo di aiohttp (1 MB)
+    # lascerebbe passare decine di migliaia di identificatori. Non e' una
+    # difesa da attacco -- questa rotta sta dietro CSRF e in rete locale --
+    # e' che un 400 dice la verita' e un 500 no. `MAX_IN_SOSPESO` e' 50 e
+    # lo storico e' potato a 90 giorni: la pagina non ne disegnera' mai
+    # tanti, quindi il tetto non puo' tagliare una richiesta legittima.
+    if len(ids) > _MAX_IDS:
+        return web.json_response(
+            {"error": f"troppi identificatori in una volta (il tetto e' {_MAX_IDS})."},
+            status=400)
     return web.json_response({"marked": store.mark_read(ids, now=time.time())})
 
 

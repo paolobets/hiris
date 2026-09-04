@@ -95,3 +95,34 @@ test('STATI_CONCLUSI: ogni stato concluso di promise.py (STATES_CONCLUSI) ha una
     assert.ok(badge.has(stato), 'STATE_BADGE non conosce lo stato concluso "' + stato + '"');
   }
 });
+
+/* Il terzo vocabolario: gli stati che sono una NOTIZIA (`STATES_ESITO` /
+   `OUTCOME_STATES`). Nasce con la fetta «i menu esecutivi» e non coincide
+   con quello dei conclusi: `disdetta` e' fuori, perche' una promessa
+   disdetta e' un ordine dell'utente, non un esito che gli e' capitato.
+
+   Mutazione che deve far diventare rosso questo test: rimettere `disdetta`
+   da UN lato solo -- cioe' precisamente il difetto che una review
+   indipendente ha trovato (rilievo 5), quando il lato JavaScript ricavava
+   l'insieme per complemento di `PENDING_STATES` invece di nominarlo. */
+test('gli stati che sono una notizia: lo stesso insieme in promise.py (STATES_ESITO) e in agenda-route.js (OUTCOME_STATES)', () => {
+  const python = tuplaPython('STATES_ESITO');
+  assert.deepEqual(new Set(python), new Set(['mantenuta', 'saltata', 'fallita']));
+
+  const m = ROUTE_JS.match(/var OUTCOME_STATES = \[([^\]]*)\]/);
+  assert.ok(m, 'OUTCOME_STATES non trovata in agenda-route.js');
+  const js = m[1].split(',').map((s) => s.trim()).filter(Boolean)
+    .map((s) => s.replace(/^["']|["']$/g, ''));
+
+  assert.deepEqual(new Set(js), new Set(python));
+});
+
+test('«disdetta» e\' conclusa ma NON e\' una notizia: i due insiemi differiscono di lei sola', () => {
+  /* Se qualcuno un giorno facesse coincidere i due insiemi, la pagina
+     tornerebbe a dire «da quando non guardavi» di un click appena fatto. */
+  const conclusi = new Set(tuplaPython('STATES_CONCLUSI'));
+  const esiti = new Set(tuplaPython('STATES_ESITO'));
+
+  const differenza = [...conclusi].filter((s) => !esiti.has(s));
+  assert.deepEqual(differenza, ['disdetta']);
+});

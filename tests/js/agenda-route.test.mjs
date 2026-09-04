@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadScripts, tick } from './helpers/dom.mjs';
+import { loadScripts, tick, installaFogli, displayRisolto } from './helpers/dom.mjs';
 
 /* fetta «lo schedulatore» Task 9: la pagina #/agenda (config/agenda-route.js).
    Chiude la terza condizione della spec (§10): «Si vede. Un posto dove guardare
@@ -581,9 +581,20 @@ test('se il segno di lettura fallisce, la pagina resta usabile', async () => {
 
 test('lo storico nasce chiuso, col conteggio nel titolo', async () => {
   const { document } = await monta({});
+  /* I fogli VERI della pagina, e non `corpo.hidden`. La versione precedente di
+     questa prova asseriva la proprieta' IDL, che dice solo «l'attributo c'e'»:
+     era verde mentre lo storico nasceva in piena vista, perche'
+     `.section-card .sc-body { display: flex }` (hiris-config.css) e' una
+     dichiarazione d'autore e batteva la regola `[hidden]` dello user agent.
+     Cio' che il proprietario ha chiesto e' «compressa e non visibile», quindi
+     e' la visibilita' calcolata che va guardata. `displayRisolto()` non e'
+     `getComputedStyle`: la cascata di jsdom ignora `!important` e la
+     specificita' -- helpers/dom.mjs lo misura e lo spiega. */
+  installaFogli(document);
 
   const corpo = sezione(document, 'history');
-  assert.equal(corpo.hidden, true, 'lo storico nasce chiuso');
+  assert.equal(displayRisolto(corpo), 'none', 'lo storico nasce chiuso, e non si vede');
+  assert.equal(corpo.hidden, true, 'ed e\' `hidden` che lo chiude, non una classe a parte');
   const bottone = document.querySelector('#agenda-history-toggle');
   assert.ok(bottone, 'l\'intestazione dello storico deve essere un bottone');
   assert.equal(bottone.getAttribute('aria-expanded'), 'false');
@@ -592,10 +603,15 @@ test('lo storico nasce chiuso, col conteggio nel titolo', async () => {
 
 test('lo storico si apre con un click, e il bottone lo dice', async () => {
   const { document } = await monta({});
+  installaFogli(document);
+  /* Le in sospeso, che nessuno chiude, restano visibili: e' la controprova che
+     il `none` dell'altra prova viene dal `hidden` e non da un foglio che
+     spegne l'intera pagina. */
+  assert.notEqual(displayRisolto(sezione(document, 'pending')), 'none');
 
   const bottone = document.querySelector('#agenda-history-toggle');
   bottone.dispatchEvent(new (bottone.ownerDocument.defaultView.Event)('click', { bubbles: true }));
 
-  assert.equal(sezione(document, 'history').hidden, false);
+  assert.equal(displayRisolto(sezione(document, 'history')), 'flex', 'aperto, si vede davvero');
   assert.equal(bottone.getAttribute('aria-expanded'), 'true');
 });

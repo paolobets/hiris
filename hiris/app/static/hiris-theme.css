@@ -246,6 +246,23 @@ button, input, textarea, select { font: inherit; color: inherit; }
 button { background: none; border: 0; cursor: pointer; }
 a { color: inherit; text-decoration: none; }
 
+/* `hidden` deve nascondere davvero, e senza `!important` non nasconde niente.
+   La regola `[hidden] { display: none }` che ci si aspetta e' dello
+   USER AGENT, e una qualunque dichiarazione d'AUTORE su `display` la batte a
+   prescindere dalla specificita': la cascata mette l'autore sopra lo user
+   agent prima ancora di guardare i selettori. Bastava percio' una riga
+   normalissima come `.section-card .sc-body { display: flex }`
+   (hiris-config.css) perche' un pannello con `hidden` restasse in piena vista
+   -- ed e' successo: lo «Storico» di Impegni e Proposte nasceva aperto mentre
+   il suo bottone diceva `aria-expanded="false"`. Il `!important` qui e'
+   l'unico livello che sta sopra una dichiarazione d'autore normale, quindi e'
+   cio' che serve perche' `hidden` sia una promessa che il foglio mantiene per
+   QUALUNQUE elemento, anche uno che una regola futura vestira' con un
+   `display` proprio senza sapere di questa riga.
+   Questo foglio e' caricato da tutti e due i gusci (index.html e
+   config.html): la promessa vale su entrambe le superfici. */
+[hidden] { display: none !important; }
+
 /* ─── Atoms ─── */
 .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .dot.on  { background: var(--ok); box-shadow: 0 0 0 3px oklch(0.70 0.16 155 / 0.18); }

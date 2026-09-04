@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import fs from 'node:fs';
+import { installaFogli, displayRisolto } from './helpers/dom.mjs';
 
 const SORGENTE = fs.readFileSync(
   new URL('../../hiris/app/static/config/constructions-route.js', import.meta.url), 'utf8');
@@ -167,14 +168,24 @@ test('lo storico nasce chiuso, col conteggio nel titolo', async () => {
   ] });
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
   const document = dom.window.document;
+  /* I fogli VERI della pagina, e non `.hidden`. La versione precedente di
+     questa prova asseriva la proprieta' IDL, che dice solo «l'attributo c'e'»:
+     era verde mentre lo storico nasceva in piena vista, perche'
+     `.section-card .sc-body { display: flex }` (hiris-config.css) e' una
+     dichiarazione d'autore e batteva la regola `[hidden]` dello user agent.
+     `displayRisolto()` non e' `getComputedStyle`: la cascata di jsdom ignora
+     `!important` e la specificita' -- helpers/dom.mjs lo misura e lo spiega. */
+  installaFogli(document);
 
-  assert.equal(document.querySelector('[data-sezione="history"]').hidden, true,
-    'lo storico nasce chiuso');
+  const storico = document.querySelector('[data-sezione="history"]');
+  assert.equal(displayRisolto(storico), 'none', 'lo storico nasce chiuso, e non si vede');
+  assert.equal(storico.hidden, true, 'ed e\' `hidden` che lo chiude, non una classe a parte');
   const bottone = document.querySelector('#constructions-history-toggle');
   assert.ok(bottone, 'l\'intestazione dello storico deve essere un bottone');
   assert.equal(bottone.getAttribute('aria-expanded'), 'false');
   assert.match(bottone.textContent, /Storico \(2\)/);
-  assert.equal(document.querySelector('[data-sezione="open"]').hidden, false,
+  const aperte = document.querySelector('[data-sezione="open"]');
+  assert.notEqual(displayRisolto(aperte), 'none',
     '«In attesa» non si chiude: e\' la domanda con cui si apre la pagina');
 });
 
@@ -185,11 +196,13 @@ test('lo storico si apre con un click, e il bottone lo dice', async () => {
   ] });
   await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
   const document = dom.window.document;
+  installaFogli(document);
 
   const bottone = document.querySelector('#constructions-history-toggle');
   bottone.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
 
-  assert.equal(document.querySelector('[data-sezione="history"]').hidden, false);
+  assert.equal(displayRisolto(document.querySelector('[data-sezione="history"]')), 'flex',
+    'aperto, si vede davvero');
   assert.equal(bottone.getAttribute('aria-expanded'), 'true');
 });
 

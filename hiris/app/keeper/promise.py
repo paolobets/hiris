@@ -33,6 +33,28 @@ STATES_CONCLUSI = ("mantenuta", "saltata", "disdetta", "fallita")
 # (`scripts/doppioni.py`, `_costanti_gia_legate`).
 STATES_SOSPESO = ("in_attesa", "in_corso")
 
+# Gli stati che sono una NOTIZIA per chi legge -- `STATES_CONCLUSI` meno
+# `disdetta`. Sono due insiemi diversi perche' rispondono a due domande
+# diverse: `STATES_CONCLUSI` dice «questa promessa e' finita» (e serve a
+# potare, a non ridisdire, a riempire lo storico); questo dice «e' successo
+# qualcosa che l'utente non sa».
+#
+# `disdetta` e' l'unica differenza, ed e' l'intera ragione di questa
+# costante: una promessa disdetta non e' un esito che ti e' capitato, e' un
+# ordine che hai dato tu un istante fa. Contarla fra gli esiti da leggere
+# faceva comparire, sotto gli occhi di chi aveva appena premuto «Disdici»,
+# una sezione intitolata «da quando non guardavi» -- e accendeva il pallino
+# per richiamarlo a leggere cio' che aveva appena ordinato (review
+# indipendente della fetta «i menu esecutivi», rilievo 5).
+#
+# Il difetto era entrato da una scorciatoia, non da una scelta: il filtro
+# non nominava gli stati conclusi, li ricavava come complemento di
+# `STATES_SOSPESO`. Il complemento e' comodo e non ha opinioni -- prende
+# dentro tutto cio' che non e' in sospeso, `disdetta` compresa. Percio' qui
+# c'e' un elenco esplicito: e' l'unico modo perche' la domanda «questo e'
+# una notizia?» abbia una risposta scritta invece che dedotta.
+STATES_ESITO = ("mantenuta", "saltata", "fallita")
+
 # La tolleranza: oltre questa, una promessa scaduta non si mantiene piu' --
 # si dichiara `saltata`. Una sola, non configurabile per promessa (spec §7).
 # Copre il caso vero per cui esiste: un aggiornamento dell'add-on che cade

@@ -156,7 +156,7 @@ class ConstructionStore:
             righe = self._conn.execute(sql, (int(limit),)).fetchall()
         return [_row(r) for r in righe]
 
-    def count_pending(self) -> int:
+    def count_pending(self, *, now: float) -> int:
         """Quante proposte aspettano una risposta dell'utente.
 
         Qui il pallino conta i sospesi e sugli Impegni no
@@ -169,14 +169,32 @@ class ConstructionStore:
         ragione per cui `propose` guarda `STATES_SOSPESO` e non il solo
         `in_attesa`.
 
-        NON chiama `_scadi()`: e' un conteggio, e un conteggio non scrive. Lo
-        scarto dura al massimo fino alla prossima apertura della pagina, che
-        `scadi()` lo chiama (`api/handlers_constructions.py`).
+        NON chiama `scadi()`: e' un conteggio, e un conteggio non scrive.
+        Ma non puo' nemmeno ignorare la scadenza, ed e' il motivo per cui la
+        `WHERE` qui sotto non e' semplicemente `stato IN (sospesi)` (review
+        indipendente della fetta, rilievo 6). `scadi()` la chiama solo
+        `GET /api/constructions` -- cioe' l'apertura della pagina -- e
+        `propose`. Una proposta lasciata scadere senza che nessuno apra la
+        pagina resterebbe `in_attesa` sul disco per sempre, e il pallino
+        continuerebbe a dire «1 in attesa» a ogni turno di chat e a ogni
+        ritorno del fuoco. L'utente apre, `scadi()` gira, e la pagina dice
+        «Nessuna proposta in attesa»: il pallino l'avrebbe mandato in una
+        pagina vuota, cioe' avrebbe fatto il contrario del suo mestiere, che
+        e' dire se vale la pena aprirla.
+
+        Il ragionamento «tanto dura fino alla prossima apertura» era
+        circolare: e' il pallino a decidere quando c'e' una prossima
+        apertura.
+
+        `in_corso` non ha scadenza: e' rivendicata, qualcuno ci sta gia'
+        lavorando -- e infatti `_scadi()` tocca solo `in_attesa`. La `WHERE`
+        qui rispecchia quella, o i due numeri divergerebbero.
         """
         with self._lock:
             return self._conn.execute(
-                f"SELECT count(*) FROM costruzioni WHERE stato IN ({_SOSPESI_SQL})"
-            ).fetchone()[0]
+                "SELECT count(*) FROM costruzioni WHERE stato='in_corso' "
+                "OR (stato='in_attesa' AND creata_ts >= ?)",
+                (now - self.DEADLINE_S,)).fetchone()[0]
 
     def claim(self, ident: str, *, now: float) -> dict:
         """Prende in carico una proposta PRIMA di scrivere su Home Assistant

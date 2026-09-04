@@ -97,6 +97,21 @@ window.HirisAgendaRoute = (function () {
     disdetta: 'badge-off'
   };
   var PENDING_STATES = ['in_attesa', 'in_corso'];
+  /* Gli stati che sono una NOTIZIA per chi legge -- gemello di
+     `keeper/promise.py::STATES_ESITO`, legato a quello per VALORI da
+     `tests/js/agenda-route-vocabulary.test.mjs`.
+
+     Non e' il complemento di `PENDING_STATES`, e la differenza e' una sola
+     parola: `disdetta`. Una promessa disdetta non e' un esito che ti e'
+     capitato, e' un ordine che hai dato tu un istante fa. Il filtro qui
+     sotto prima la ricavava per complemento -- comodo, e senza opinioni:
+     prendeva dentro anche quella. Il risultato era che chi premeva
+     «Disdici» si vedeva comparire in cima, sotto gli occhi, una sezione
+     intitolata «da quando non guardavi» che parlava del suo click di un
+     secondo prima; e chi disdiceva dalla chat si accendeva il pallino per
+     essere richiamato a leggere cio' che aveva appena ordinato (review
+     indipendente della fetta, rilievo 5). */
+  var OUTCOME_STATES = ['mantenuta', 'saltata', 'fallita'];
 
   function el(tag, cls, text) {
     var e = document.createElement(tag);
@@ -571,13 +586,19 @@ window.HirisAgendaRoute = (function () {
       var history = all.filter(function (p) { return PENDING_STATES.indexOf(p.stato) === -1; });
       /* DUE condizioni, ed e' la seconda a essere facile da dimenticare:
          `esito_letto_ts` e' NULL anche per ogni promessa IN SOSPESO -- non
-         ha ancora un esito da leggere -- quindi un filtro scritto sul solo
-         campo nullo riempirebbe «Esiti da leggere» di impegni futuri. Serve
-         anche lo stato concluso, che e' il complemento di `PENDING_STATES`:
-         lo stesso che usa `renderHistory` qui sopra, non una costante nuova
-         (sarebbe un doppione, e `scripts/doppioni.py` avrebbe ragione). */
+         ha ancora un esito da leggere -- quindi il solo campo nullo
+         riempirebbe «Esiti da leggere» di impegni futuri.
+
+         La seconda condizione nomina gli stati, e NON e' il complemento di
+         `PENDING_STATES` come nella prima stesura: il complemento tirava
+         dentro anche `disdetta`, che e' un ordine dell'utente e non una
+         notizia per lui. Vedi `OUTCOME_STATES` in cima al file. Non e' un
+         doppione di `promise.py::STATES_ESITO`: e' il suo gemello, e
+         `agenda-route-vocabulary.test.mjs` li lega per valori -- che e'
+         esattamente cio' che `scripts/doppioni.py` chiede per smettere di
+         segnalarli. */
       var unread = all.filter(function (p) {
-        return PENDING_STATES.indexOf(p.stato) === -1 && p.esito_letto_ts == null;
+        return OUTCOME_STATES.indexOf(p.stato) !== -1 && p.esito_letto_ts == null;
       });
       /* «Esiti da leggere» si disegna per PRIMA: e' quella che decide su
          quale copia di una riga ripetuta va il rivelatore «Cosa è

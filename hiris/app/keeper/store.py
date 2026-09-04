@@ -22,6 +22,7 @@ from .promise import (
     CEILING_IN_SOSPESO,
     CONSERVAZIONE_S,
     STATES_CONCLUSI,
+    STATES_ESITO,
     STATES_SOSPESO,
     serializza,
     validate,
@@ -58,6 +59,10 @@ _CONCLUSI = ",".join(f"'{s}'" for s in STATES_CONCLUSI)
 # volta dal vocabolario di `promessa.py`, mai riscritta a mano nelle due
 # query sotto (review finale, rilievo ②).
 _SOSPESI = ",".join(f"'{s}'" for s in STATES_SOSPESO)
+# Gli stati che sono una notizia per chi legge: `STATES_CONCLUSI` meno
+# `disdetta`. Composto UNA volta dal vocabolario di `promise.py`, come i due
+# qui sopra -- vedi li' perche' non coincide con `_CONCLUSI`.
+_ESITI = ",".join(f"'{s}'" for s in STATES_ESITO)
 
 
 def _migration_2(conn) -> None:
@@ -79,16 +84,30 @@ def _migration_2(conn) -> None:
     Le promesse ancora IN SOSPESO restano NULL, ed e' giusto: non hanno
     ancora nessun esito da leggere. Lo prenderanno concludendosi.
 
-    L'`UPDATE` sta DENTRO l'`if`, non accanto: fuori, una seconda apertura
-    ri-timbrerebbe le righe gia' segnate e falserebbe il momento in cui
-    l'esito e' stato letto.
+    **L'`UPDATE` sta FUORI dall'`if`, e la ragione e' una caduta di corrente**
+    (review indipendente della fetta, rilievo 2). In questo modulo
+    `ALTER TABLE` si auto-committa -- misurato: `conn.in_transaction` e'
+    `False` subito dopo -- mentre l'`UPDATE` no, e `init_schema` fa un solo
+    `commit()` in fondo. Fra i due c'e' quindi una finestra in cui la colonna
+    e' gia' sul disco e il travaso non lo e'. Se il Raspberry si spegne li'
+    dentro, al riavvio la colonna esiste ma `user_version` e' ancora 1:
+    `init_schema` richiama questa funzione, e una guardia che saltasse tutto
+    perche' «la colonna c'e' gia'» lascerebbe il travaso non fatto PER
+    SEMPRE -- nessun altro codice lo rifarebbe. Il pallino si accenderebbe
+    con novanta giorni di storico, che e' esattamente il difetto per cui il
+    travaso esiste.
+
+    A rendere l'`UPDATE` ripetibile senza danno basta `esito_letto_ts IS
+    NULL`: una riga gia' segnata non viene ri-timbrata, che era la sola cosa
+    che la vecchia guardia proteggeva davvero.
     """
     existing = {r["name"] for r in conn.execute("PRAGMA table_info(promesse)")}
     if "esito_letto_ts" not in existing:
         conn.execute("ALTER TABLE promesse ADD COLUMN esito_letto_ts REAL")
-        conn.execute(
-            f"UPDATE promesse SET esito_letto_ts=? WHERE stato IN ({_CONCLUSI})",
-            (time.time(),))
+    conn.execute(
+        f"UPDATE promesse SET esito_letto_ts=? WHERE stato IN ({_ESITI}) "
+        "AND esito_letto_ts IS NULL",
+        (time.time(),))
 
 
 def _json(value) -> str | None:
@@ -182,7 +201,7 @@ class AgendaStore:
         with self._lock:
             cur = self._conn.execute(
                 f"UPDATE promesse SET esito_letto_ts=? WHERE id IN ({marks}) "
-                f"AND stato IN ({_CONCLUSI}) AND esito_letto_ts IS NULL",
+                f"AND stato IN ({_ESITI}) AND esito_letto_ts IS NULL",
                 (now, *ids))
             self._conn.commit()
             return cur.rowcount
@@ -296,7 +315,7 @@ class AgendaStore:
         """
         with self._lock:
             return self._conn.execute(
-                f"SELECT count(*) FROM promesse WHERE stato IN ({_CONCLUSI}) "
+                f"SELECT count(*) FROM promesse WHERE stato IN ({_ESITI}) "
                 "AND esito_letto_ts IS NULL").fetchone()[0]
 
     def scadute(self, now: float) -> list[dict]:

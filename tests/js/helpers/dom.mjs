@@ -219,3 +219,135 @@ export function stubFetch(window, routes) {
 }
 
 export const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+
+/* ───────────────────────────────────────────────────────────────────────────
+ * La visibilita' calcolata: i fogli VERI, e una cascata scritta a mano.
+ *
+ * Perche' esiste. Le prove dello «Storico» di Impegni e Proposte asserivano
+ * `corpo.hidden === true` -- la proprieta' IDL, che dice solo che l'attributo
+ * c'e'. E' vera anche quando l'elemento e' in piena vista, ed e' esattamente
+ * cio' che succedeva: `.section-card .sc-body { display: flex }`
+ * (hiris-config.css) e' una dichiarazione d'AUTORE e batteva la regola
+ * `[hidden] { display: none }` dello USER AGENT, quindi lo storico nasceva
+ * aperto con due prove verdi sopra. La cura sta in `hiris-theme.css`
+ * (`[hidden] { display: none !important }`); queste due funzioni sono cio' che
+ * serve per provarla.
+ *
+ * Perche' NON basta `getComputedStyle` di jsdom -- misurato, non supposto.
+ * jsdom 25.0.1 applica i fogli d'autore, ma la sua cascata e' ingenua: scorre
+ * i fogli in ordine e sovrascrive, senza guardare ne' l'importanza ne' la
+ * specificita'. Sui fogli veri di questo progetto, con la regola `[hidden]`
+ * al posto giusto e col suo `!important`, `getComputedStyle(corpo).display`
+ * risponde `flex`: nella pagina vera e' `none`. Una prova scritta sul suo
+ * responso sarebbe rossa proprio sull'implementazione GIUSTA -- e verde
+ * mettendo `[hidden]` DOPO `.sc-body`, cioe' per la ragione sbagliata.
+ * `displayRisolto()` percio' risolve la cascata per conto proprio sulle sole
+ * dichiarazioni di `display`, e guarda le due cose che jsdom salta:
+ * `!important` prima di tutto, poi la specificita', poi l'ordine.
+ *
+ * Cio' che questa cascata NON fa, dichiarato invece che scoperto dopo: non
+ * valuta le @media (jsdom non sa dire quali combacino) e le salta -- ma se una
+ * regola dentro una @media combacia con l'elemento E dichiara `display`,
+ * SOLLEVA invece di tacere, perche' da quel giorno il responso sarebbe un'
+ * ipotesi. Oggi non ne combacia nessuna (verificato sui tre fogli di
+ * config.html). Non fa nemmeno l'ereditarieta' del contenitore: chiede se
+ * QUESTO elemento e' spento, che e' la domanda dei due test.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+/** I fogli che quel guscio carica DAVVERO, nel suo ordine, dentro `documento`.
+ *
+ * L'elenco si legge dal `.html` e non si scrive qui: un foglio aggiunto alla
+ * pagina e non a una lista a mano renderebbe la prova cieca proprio sul codice
+ * nuovo -- e' la stessa disciplina di `tests/test_css_classes.py::_sheets`.
+ * Se `hiris-theme.css` uscisse da `config.html`, la cura del `[hidden]` non
+ * arriverebbe piu' sulla pagina e queste prove diventano rosse. */
+export function installaFogli(documento, guscio = 'config.html') {
+  const radice = staticSnapshotDir();
+  const html = readFileSync(join(radice, guscio), 'utf8');
+  const nomi = [...html.matchAll(/<link[^>]+rel="stylesheet"[^>]+href="static\/([^"]+\.css)"/g)]
+    .map((m) => m[1]);
+  if (nomi.length === 0) throw new Error(`nessun foglio dichiarato in ${guscio}`);
+  for (const nome of nomi) {
+    const stile = documento.createElement('style');
+    stile.textContent = readFileSync(join(radice, nome), 'utf8');
+    documento.head.appendChild(stile);
+  }
+  return nomi;
+}
+
+// Spezza una lista di selettori sulle virgole di PRIMO livello: `:not(a, b)`
+// e `[href="x,y"]` contengono virgole che non separano niente.
+function spezzaSelettori(testo) {
+  const parti = [];
+  let corrente = '';
+  let tonde = 0;
+  let quadre = 0;
+  let apice = null;
+  for (const ch of testo) {
+    if (apice) { if (ch === apice) apice = null; }
+    else if (ch === '"' || ch === "'") apice = ch;
+    else if (ch === '(') tonde += 1;
+    else if (ch === ')') tonde -= 1;
+    else if (ch === '[') quadre += 1;
+    else if (ch === ']') quadre -= 1;
+    else if (ch === ',' && tonde === 0 && quadre === 0) { parti.push(corrente); corrente = ''; continue; }
+    corrente += ch;
+  }
+  parti.push(corrente);
+  return parti.map((s) => s.trim()).filter(Boolean);
+}
+
+// La terna (id, classi/attributi/pseudo-classi, elementi/pseudo-elementi)
+// come un solo numero confrontabile. I pseudo-elementi (`::before`) si tolgono
+// per primi, altrimenti il `:` iniziale li farebbe contare come pseudo-classi.
+function specificita(selettore) {
+  const senzaPseudoElementi = selettore.replace(/::[\w-]+/g, ' x');
+  const id = (senzaPseudoElementi.match(/#[\w-]+/g) || []).length;
+  const classe = (senzaPseudoElementi.match(/\.[\w-]+|\[[^\]]*\]|:[\w-]+/g) || []).length;
+  const elemento = (senzaPseudoElementi.match(/(^|[\s>+~(,])[a-zA-Z][\w-]*/g) || []).length;
+  return id * 10000 + classe * 100 + elemento;
+}
+
+/** Il `display` che l'elemento avrebbe DAVVERO nella pagina, secondo i fogli
+ *  installati da `installaFogli()`. Nessuna dichiarazione d'autore che
+ *  combaci -> si ricade sullo user agent, che jsdom quello lo sa fare. */
+export function displayRisolto(elemento) {
+  const documento = elemento.ownerDocument;
+  let vincitore = null;
+  let ordine = 0;
+  for (const foglio of documento.styleSheets) {
+    for (const regola of foglio.cssRules) {
+      ordine += 1;
+      const dentroMedia = regola.cssRules && regola.media;
+      const regoleQui = dentroMedia ? [...regola.cssRules] : [regola];
+      for (const r of regoleQui) {
+        if (!r.selectorText || !r.style) continue;
+        const valore = r.style.getPropertyValue('display');
+        if (!valore) continue;
+        const combacianti = spezzaSelettori(r.selectorText).filter((s) => elemento.matches(s));
+        if (combacianti.length === 0) continue;
+        if (dentroMedia) {
+          throw new Error(
+            `displayRisolto(): «${r.selectorText}» dichiara display dentro `
+            + `@media ${regola.conditionText || regola.media.mediaText}, e questa cascata `
+            + 'non sa quali @media combacino. Va insegnato prima di fidarsi del responso.');
+        }
+        const candidato = {
+          importante: r.style.getPropertyPriority('display') === 'important',
+          peso: Math.max(...combacianti.map(specificita)),
+          valore,
+          ordine,
+        };
+        if (vincitore === null
+            || (candidato.importante && !vincitore.importante)
+            || (candidato.importante === vincitore.importante
+                && (candidato.peso > vincitore.peso
+                    || (candidato.peso === vincitore.peso && candidato.ordine >= vincitore.ordine)))) {
+          vincitore = candidato;
+        }
+      }
+    }
+  }
+  if (vincitore) return vincitore.valore;
+  return documento.defaultView.getComputedStyle(elemento).display;
+}

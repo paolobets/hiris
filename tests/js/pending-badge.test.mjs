@@ -87,14 +87,33 @@ test("zero non compare: zero non e' una notizia", async () => {
 });
 
 test('una chiave che manca si comporta come un errore, non come uno zero', async () => {
-  /* Se la rotta cambiasse sotto e smettesse di mandare `agenda_unread`, un
-     controllo scritto come `n > 0` lo leggerebbe `undefined > 0` = falso e
-     spegnerebbe il pallino in silenzio -- cioe' direbbe «non c'e' niente».
-     E' lo stesso difetto del badge morto con un'altra provenienza. */
-  const ctx = await monta(rispostaCon({ constructions_pending: 4 }));
+  /* La versione precedente di questa prova uccideva ZERO mutazioni: passava
+     identica con e senza la guardia `typeof`, perche' pretendeva soltanto che
+     il pallino degli Impegni fosse spento -- cosa che accade in entrambi i
+     casi -- e per di piu' pretendeva `constructions` ACCESO, che e' il
+     contrario di «si comporta come un errore».
+     «Come un errore» ha due segni osservabili, e li si chiedono tutti e due:
+     TUTTI E DUE i pallini spenti (non uno spento e l'altro acceso, che
+     racconterebbe una risposta capita a meta') e la riga nel log, perche' una
+     rotta che ha smesso di mandare una chiave e' un guasto da leggere, non un
+     silenzio. Senza il `throw` in `pending-badge.js` questa prova e' rossa su
+     entrambi. */
+  const avvisi = [];
+  const warnVero = console.warn;
+  console.warn = function () { avvisi.push([].slice.call(arguments)); };
+  try {
+    const ctx = await monta(rispostaCon({ constructions_pending: 4 }));
 
-  assert.equal(pallino(ctx, 'agenda'), null);
-  assert.equal(pallino(ctx, 'constructions').textContent, '4');
+    assert.equal(pallino(ctx, 'agenda'), null);
+    assert.equal(pallino(ctx, 'constructions'), null,
+      "anche la voce la cui chiave e' arrivata resta spenta: la risposta non si e' capita");
+  } finally {
+    console.warn = warnVero;
+  }
+  assert.equal(avvisi.length, 1, 'il guasto lascia una riga nel log, non un silenzio');
+  assert.match(String(avvisi[0][0]), /pallino/);
+  assert.match(String(avvisi[0][1]), /agenda_unread/,
+    'e la riga dice QUALE chiave mancava, altrimenti non serve a chi la legge');
 });
 
 test('un secondo giro fallito SPEGNE il numero acceso prima', async () => {

@@ -86,16 +86,27 @@ window.HirisPendingBadge = (function () {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     }).then(function (dati) {
+      /* Prima si legge TUTTA la risposta, poi si dipinge. Una chiave che manca
+         (o che non e' un numero) non e' uno zero: e' una risposta che non si
+         sa leggere, e l'unico esito onesto e' quello dell'errore -- tutti e
+         due i pallini spenti e una riga nel log. Un `if (typeof n === 'number'
+         && n > 0) ... else spegni(...)` non lo faceva: la chiave mancante
+         cadeva nell'`else` esattamente come uno zero, in silenzio, e l'altro
+         pallino restava acceso come se la risposta fosse stata capita. E'
+         proprio la condizione che `api/handlers_pending.py` si rifiuta di
+         produrre -- «il guscio riceverebbe un numero e un buco, e il buco
+         diventerebbe un pallino spento» -- e non ha senso che il guscio la
+         accetti quando arriva lo stesso. Il `throw` qui e' dentro il `.then`:
+         cade nel `catch` sotto, che e' gia' il ramo giusto. */
       for (var i = 0; i < VOCI.length; i++) {
-        var n = dati[VOCI[i].chiave];
-        /* `typeof n === 'number'` e non il solo `n > 0`: se la rotta
-           cambiasse sotto e smettesse di mandare una chiave, `undefined > 0`
-           sarebbe falso e il pallino si spegnerebbe in silenzio -- cioe'
-           direbbe «non c'e' niente» sapendo niente. E' il difetto del badge
-           morto con un'altra provenienza. Qui una chiave che manca finisce
-           spenta come un errore, che e' cio' che e'. */
-        if (typeof n === 'number' && n > 0) accendi(VOCI[i].voce, n);
-        else spegni(VOCI[i].voce);
+        if (typeof dati[VOCI[i].chiave] !== 'number') {
+          throw new Error('chiave assente o non numerica: ' + VOCI[i].chiave);
+        }
+      }
+      for (var k = 0; k < VOCI.length; k++) {
+        var n = dati[VOCI[k].chiave];
+        if (n > 0) accendi(VOCI[k].voce, n);
+        else spegni(VOCI[k].voce);
       }
     }).catch(function (err) {
       /* Il ramo che il badge morto non aveva. Spegne anche cio' che era

@@ -17,7 +17,7 @@ chi installa da zero troverebbe l'add-on rotto.
 """
 import os
 
-from hiris.app.keeper.store import AgendaStore
+from hiris.app.keeper.store import AgendaStore, _migration_2
 from hiris.app.storage import connect
 
 # Lo schema com'era a version=1 -- ricopiato QUI apposta, e non importato da
@@ -91,24 +91,103 @@ def test_travaso(tmp_path):
 
 
 def test_migrazione_idempotente(tmp_path):
-    """Aprire due volte non solleva e non ri-timbra niente.
+    """`_migration_2` chiamata DUE VOLTE non solleva e non ri-timbra.
 
-    `PRAGMA table_info` protegge dal secondo `ALTER TABLE`; il fatto che
-    l'ora non cambi protegge dal secondo `UPDATE`, che falserebbe il momento
-    in cui l'esito e' stato letto.
+    **La prima stesura di questa prova non poteva fallire**, ed e' stata una
+    review indipendente a dirlo: apriva due volte `AgendaStore` e si
+    aspettava lo stesso timbro -- ma alla seconda apertura `init_schema`
+    legge `user_version == 2` e **non chiama affatto** la migrazione
+    (`storage.py`: `range(current + 1, version + 1)` e' vuoto). Provava il
+    timbro di versione, non la funzione. Provata per mutazione: sostituendo
+    `_migration_2` con una versione senza guardia -- che ri-emette
+    `ALTER TABLE` e ri-timbra l'ora -- restava verde.
+
+    Qui la funzione si chiama a mano, che e' l'unico modo di misurare cio'
+    che il nome del test promette.
     """
     db = os.path.join(str(tmp_path), "promesse.db")
-    _archivio_vecchio(db, [("a", "mantenuta")])
+    _archivio_vecchio(db, [("a", "mantenuta"), ("b", "in_attesa")])
 
-    primo = AgendaStore(db)
-    letto_ts = _per_id(primo)["a"]["esito_letto_ts"]
-    primo.close()
-
-    secondo = AgendaStore(db)
+    store = AgendaStore(db)
     try:
-        assert _per_id(secondo)["a"]["esito_letto_ts"] == letto_ts
+        primo_giro = _per_id(store)["a"]["esito_letto_ts"]
+        assert primo_giro is not None
+
+        _migration_2(store._conn)
+        store._conn.commit()
+
+        righe = _per_id(store)
+        assert righe["a"]["esito_letto_ts"] == primo_giro, (
+            "il secondo giro ha ri-timbrato una riga gia' segnata: l'ora in "
+            "cui l'esito e' stato letto e' diventata falsa")
+        assert righe["b"]["esito_letto_ts"] is None
     finally:
-        secondo.close()
+        store.close()
+
+
+def test_caduta_fra_l_alter_e_il_travaso(tmp_path):
+    """La colonna c'e' ma il travaso no: il giro dopo lo completa.
+
+    Lo scenario e' reale e non teorico. In questo modulo `ALTER TABLE` si
+    auto-committa (misurato: `conn.in_transaction` e' `False` subito dopo)
+    mentre l'`UPDATE` no, e `init_schema` fa un solo `commit()` in fondo. Se
+    il Raspberry si spegne fra i due, sul disco resta una colonna nuova con
+    `user_version` ancora a 1 -- ed e' precisamente questo stato che si
+    ricostruisce qui.
+
+    **Mutazione che questa prova deve uccidere**: rimettere l'`UPDATE`
+    dentro `if "esito_letto_ts" not in existing`. Con la colonna gia'
+    presente quella versione salta il travaso, `init_schema` timbra 2, e lo
+    storico resta non letto PER SEMPRE -- nessun altro codice lo rifarebbe.
+    Il pallino degli Impegni si accenderebbe con novanta giorni di storico,
+    cioe' il difetto per cui il travaso esiste.
+    """
+    db = os.path.join(str(tmp_path), "promesse.db")
+    _archivio_vecchio(db, [("a", "mantenuta"), ("b", "fallita"), ("c", "in_attesa")])
+
+    # Lo stato dopo la caduta: colonna sul disco, travaso mai fatto,
+    # `user_version` ancora 1.
+    conn = connect(db)
+    conn.execute("ALTER TABLE promesse ADD COLUMN esito_letto_ts REAL")
+    conn.execute("PRAGMA user_version = 1")
+    conn.commit()
+    conn.close()
+
+    store = AgendaStore(db)
+    try:
+        righe = _per_id(store)
+        assert righe["a"]["esito_letto_ts"] is not None
+        assert righe["b"]["esito_letto_ts"] is not None
+        assert righe["c"]["esito_letto_ts"] is None
+        assert store.count_unread() == 0, (
+            "il travaso non e' stato completato: al primo avvio il pallino "
+            "si accenderebbe con tutto lo storico")
+    finally:
+        store.close()
+
+
+def test_una_disdetta_non_e_un_esito_da_leggere(tmp_path):
+    """Disdire e' un ordine dell'utente, non una notizia per lui.
+
+    `STATES_CONCLUSI` include `disdetta`; `STATES_ESITO` no, e questa e'
+    l'intera ragione per cui i due insiemi esistono separati. Contarla
+    faceva accendere il pallino per richiamare l'utente a leggere cio' che
+    aveva appena ordinato (review indipendente, rilievo 5).
+    """
+    db = os.path.join(str(tmp_path), "promesse.db")
+    store = AgendaStore(db)
+    try:
+        ident = store.create(
+            {"specie": "chiedi", "frase": "x", "quando_ts": ADESSO + 3600,
+             "domanda": "y?"}, now=ADESSO)["promessa"]["id"]
+        store.cancel(ident, now=ADESSO + 1)
+
+        assert store.read(ident)["stato"] == "disdetta"
+        assert store.count_unread() == 0
+        # E non si puo' nemmeno segnare letta: non e' fra gli esiti.
+        assert store.mark_read([ident], now=ADESSO + 2) == 0
+    finally:
+        store.close()
 
 
 def test_archivio_nuovo_nasce_gia_a_posto(tmp_path):
