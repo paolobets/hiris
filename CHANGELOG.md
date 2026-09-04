@@ -1,5 +1,20 @@
 # HIRIS — Changelog
 
+## [3.21.1] — Le due voci nuove, storte sullo schermo stretto (2026-09-04)
+
+**Correzione di aspetto, niente di funzionale.** Quando la finestra sta fra 768 e 1023 pixel — cioè
+un **iPad in verticale**, o Home Assistant aperto su un portatile con la sua barra laterale — il menu
+di HIRIS si stringe a sole icone. Lì le due voci nuove, Impegni e Proposte, avevano l'icona **spostata
+di diciannove pixel** rispetto a tutte le altre: il numero del pallino si prendeva lo spazio e le
+spingeva fuori centro. Adesso il numero si appoggia all'angolo dell'icona, e le dieci voci sono
+allineate.
+
+Sullo schermo largo non cambia niente: il numero resta in fondo alla riga, com'era.
+
+**Come è saltato fuori**: una lettura indipendente del codice l'aveva **sospettato senza poterlo
+confermare**, e l'avviso diceva di guardarlo dal vivo. Guardato, misurato in un browser vero, e i
+numeri di prima e di dopo sono scritti accanto alla regola che li corregge.
+
 ## [3.21.0] — I menu esecutivi: Impegni e Proposte (2026-09-04)
 
 **«Promesse» si chiama ora «Impegni», «Costruzioni» si chiama «Proposte», e nessuna delle due sta
