@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS dispositivi (
 );
 CREATE TABLE IF NOT EXISTS entita (
     id TEXT PRIMARY KEY, nome TEXT, area_id TEXT, dispositivo_id TEXT,
-    piattaforma TEXT, categoria TEXT, classe TEXT, unita TEXT,
+    piattaforma TEXT, config_entry_id TEXT, categoria TEXT, classe TEXT, unita TEXT,
     disabilitata INTEGER NOT NULL DEFAULT 0, nascosta INTEGER NOT NULL DEFAULT 0,
     alias TEXT NOT NULL DEFAULT '[]', etichette TEXT NOT NULL DEFAULT '[]',
     categorie TEXT NOT NULL DEFAULT '{}'
@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS categorie (
     PRIMARY KEY (ambito, id)
 );
 CREATE TABLE IF NOT EXISTS integrazioni (
-    dominio TEXT NOT NULL, titolo TEXT, stato TEXT, motivo TEXT, origine TEXT
+    entry_id TEXT, dominio TEXT NOT NULL, titolo TEXT, stato TEXT, motivo TEXT, origine TEXT
 );
 CREATE TABLE IF NOT EXISTS meta (
     chiave TEXT PRIMARY KEY, valore TEXT
@@ -245,19 +245,35 @@ def _migration_6_integration_source(conn) -> None:
         conn.execute("ALTER TABLE integrazioni ADD COLUMN origine TEXT")
 
 
+def _migration_7_instance_membership(conn) -> None:
+    """`CREATE TABLE IF NOT EXISTS` non tocca una tabella che esiste gia':
+    senza queste due columns il primo `replace` dopo l'aggiornamento
+    fallirebbe, e la casa smetterebbe di ricostruirsi.
+
+    L'appartenenza all'ISTANZA non esisteva: `config_entry_id` non era citato
+    da nessuna parte in tutto `hiris/app` (spec §2.10), e `integrazioni` non
+    aveva nessuna chiave -- dieci lampadine LIFX erano dieci righe con lo
+    stesso dominio.
+    """
+    for table, column in (("entita", "config_entry_id"), ("integrazioni", "entry_id")):
+        with suppress(sqlite3.OperationalError):
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
+
+
 _MIGRATIONS = {
     2: _migration_2_integration_reason,
     3: _migration_3_area_reference_entities,
     4: _migration_4_entity_categories,
     5: _migration_5_category_identity,
     6: _migration_6_integration_source,
+    7: _migration_7_instance_membership,
 }
 
 
 class HomeSpaceStore:
     def __init__(self, db_path: str = "/data/casa.db") -> None:
         self._conn = connect(db_path)
-        init_schema(self._conn, _SCHEMA, version=6, migrations=_MIGRATIONS)
+        init_schema(self._conn, _SCHEMA, version=7, migrations=_MIGRATIONS)
 
     def close(self) -> None:
         self._conn.close()
@@ -339,16 +355,25 @@ class HomeSpaceStore:
                 # niente con `categorie` (plurale), che e' la tassonomia
                 # dell'UTENTE. Due fatti diversi, due colonne diverse.
                 c.execute("INSERT INTO entita "
-                          "(id, nome, area_id, dispositivo_id, piattaforma, categoria, "
-                          " classe, unita, disabilitata, nascosta, alias, etichette, "
+                          "(id, nome, area_id, dispositivo_id, piattaforma, config_entry_id, "
+                          " categoria, classe, unita, disabilitata, nascosta, alias, etichette, "
                           " categorie) "
-                          "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                          "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                           (e["entity_id"],
                            # Il nome scelto dall'utente vince su quello che
                            # l'integrazione ha proposto: e' il primo posto in cui
                            # HIRIS deve chiamare le cose come le chiama lui.
                            _name(e.get("name") or e.get("original_name")),
                            e.get("area_id"), e.get("device_id"), e.get("platform"),
+                           # `config_entry_id` -- QUALE istanza di
+                           # un'integrazione possiede questa entita'. Sta in
+                           # `RegistryEntry.as_partial_dict` (verificato sul
+                           # sorgente di HA, `helpers/entity_registry.py`):
+                           # arriva gia' su ogni entita' senza una chiamata in
+                           # piu', come `platform` due righe sopra. Senza,
+                           # dieci lampadine LIFX restano dieci righe
+                           # indistinguibili con lo stesso `piattaforma`.
+                           e.get("config_entry_id"),
                            e.get("entity_category"),
                            e.get("device_class") or e.get("original_device_class"),
                            e.get("unit_of_measurement"),
@@ -391,8 +416,16 @@ class HomeSpaceStore:
                 # e a differenza di `stato` non finisce nemmeno nel testo che il
                 # modello legge, serve solo a filtrare.
                 c.execute("INSERT INTO integrazioni "
-                          "(dominio, titolo, stato, motivo, origine) VALUES (?,?,?,?,?)",
-                          (i.get("domain", ""), _name(i.get("title")), i.get("state"),
+                          "(entry_id, dominio, titolo, stato, motivo, origine) "
+                          "VALUES (?,?,?,?,?,?)",
+                          # `entry_id` -- la CHIAVE che a questa tabella mancava:
+                          # dieci lampadine LIFX sono dieci righe con lo stesso
+                          # `dominio` e `titolo` diversi, e senza `entry_id` non
+                          # si puo' dire QUALE LIFX e' rotta. E' lo stesso campo
+                          # gia' letto altrove su questa stessa risposta
+                          # (`mind/watcher.py`, `config_entries/get`).
+                          (i.get("entry_id"), i.get("domain", ""), _name(i.get("title")),
+                           i.get("state"),
                            _reason(i.get("reason") or i.get("error_reason_translation_key")),
                            i.get("source")))
 

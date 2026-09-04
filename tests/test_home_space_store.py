@@ -1,3 +1,5 @@
+import sqlite3
+
 import pytest
 
 from hiris.app.home_space.store import HomeSpaceStore
@@ -339,3 +341,68 @@ def test_l_id_sintetico_si_dichiara_non_reale_anche_dall_archivio(archivio):
     voci = {v["id"]: v for v in archivio.behavior()}
     assert voci["automation.sveglia"]["id_reale"] is True
     assert voci["automation.__non_caricata_99"]["id_reale"] is False
+
+
+def test_migration_7_adds_columns_to_an_old_archive(tmp_path):
+    """Il caso che conta e' quello che succede sulla casa del proprietario al
+    primo avvio dopo l'aggiornamento, non su un archivio nato oggi.
+
+    Le colonne `area_id`/`dispositivo_id` sono nella tabella anche qui, sotto
+    la stessa forma della v6 vera: `_SCHEMA` porta gli indici
+    `idx_entita_area`/`idx_entita_dispositivo` che girano a ogni apertura
+    (`CREATE INDEX IF NOT EXISTS ... ON entita(area_id)`), e su una v6 reale
+    quelle colonne ci sono gia' -- non sono materia di questa migrazione. Un
+    archivio simulato senza di esse fa fallire la creazione degli indici
+    PRIMA di arrivare alla migrazione che questa prova vuole osservare,
+    afferma un archivio v6 che non esiste davvero, e la prova morirebbe di un
+    guasto estraneo invece che di quello dichiarato."""
+    path = tmp_path / "casa.db"
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        "CREATE TABLE entita (id TEXT PRIMARY KEY, nome TEXT, area_id TEXT,"
+        " dispositivo_id TEXT, piattaforma TEXT);"
+        "CREATE TABLE integrazioni (dominio TEXT NOT NULL, titolo TEXT, stato TEXT);"
+        "INSERT INTO entita (id, nome, piattaforma) VALUES ('light.x', 'X', 'lifx');"
+        "PRAGMA user_version = 6;")
+    conn.commit()
+    conn.close()
+
+    store = HomeSpaceStore(str(path))
+    entity_columns = {r[1] for r in store._conn.execute("PRAGMA table_info(entita)")}
+    integration_columns = {r[1] for r in store._conn.execute("PRAGMA table_info(integrazioni)")}
+    assert "config_entry_id" in entity_columns
+    assert "entry_id" in integration_columns
+    store.close()
+
+
+def test_migration_7_is_idempotent(tmp_path):
+    """Girarla due volte non solleva e non cambia i conti."""
+    path = str(tmp_path / "casa.db")
+    first = HomeSpaceStore(path)
+    first.close()
+    second = HomeSpaceStore(path)
+    columns = {r[1] for r in second._conn.execute("PRAGMA table_info(entita)")}
+    assert "config_entry_id" in columns
+    second.close()
+
+
+def test_a_new_archive_is_born_with_the_columns(tmp_path):
+    """La prova che _SCHEMA e' stato aggiornato insieme alla migrazione e non
+    solo lei: un archivio nuovo non fa girare nessuna migrazione."""
+    store = HomeSpaceStore(str(tmp_path / "nuova.db"))
+    columns = {r[1] for r in store._conn.execute("PRAGMA table_info(entita)")}
+    assert "config_entry_id" in columns
+    store.close()
+
+
+def test_replace_populates_the_instance_membership(archivio):
+    """Una colonna sempre NULL sarebbe una migrazione che non serve a niente
+    (avvertenza del brief): `config_entry_id`/`entry_id` devono arrivare da
+    `replace()`, non solo esistere nello schema."""
+    registries = dict(_REGISTRI)
+    registries["entita"] = [dict(_REGISTRI["entita"][0], config_entry_id="entry_lifx_1")]
+    registries["integrazioni"] = [dict(_REGISTRI["integrazioni"][0], entry_id="entry_lifx_1")]
+    archivio.replace(registries)
+    casa = archivio.read()
+    assert casa["entita"][0]["config_entry_id"] == "entry_lifx_1"
+    assert casa["integrazioni"][0]["entry_id"] == "entry_lifx_1"

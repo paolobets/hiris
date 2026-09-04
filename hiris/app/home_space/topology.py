@@ -642,6 +642,15 @@ def actual_class(declared: str | None, live: str | None) -> str | None:
     `aliases`. Quei campi stanno solo in `extended_dict` (`:369`), servito da
     `config/entity_registry/get` e `.../get_entries`.
 
+    `config_entry_id` NON e' uno di quei campi mancanti (misurato sullo stesso
+    sorgente, fetta 2026-09-04 dell'appartenenza): `as_partial_dict` lo
+    contiene gia', come `platform` due righe sopra -- non serve nessuna
+    chiamata in piu' ne' un ripiego come questo. Arriva intatto da
+    `read_registries()` (che non filtra nessun campo) fino a `store.replace()`,
+    che lo scrive in `entita.config_entry_id`: e' la stessa ragione per cui
+    QUESTO file non ha bisogno di una funzione `actual_config_entry` -- non
+    c'e' una seconda fonte da conciliare, a differenza di `classe` e `unita`.
+
     Quindi la colonna `classe` dell'anagrafe e' sempre NULL, su ogni casa, e
     per tutto il tempo in cui e' stata l'unica fonte:
 
