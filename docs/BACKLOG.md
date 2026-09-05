@@ -69,8 +69,13 @@ l'anagrafe ha il livello dell'istanza (migrazione 6 → 7).
 versione non è stata toccata. È il momento in cui si vede perché i tre stati sono distinti — il
 lavoro è su `master`, ma la casa non ce l'ha.
 
-Resta al **piano 2**: il guasto nell'osservatore (nome, condizione, isteresi), la regola del
-riavvio — sbloccata da `sensor.uptime`, vedi spec §4 ③ — e la cancellazione di `get_error_log()`.
+Resta al **piano 2**: il guasto nell'osservatore (nome, condizione, isteresi) e la regola del
+riavvio, sbloccata da `sensor.uptime` — vedi spec §4 ③.
+
+**Correzione del 05/09**: `get_error_log()` è passata in «Usciti» **senza che nessuno ci
+lavorasse**. Era già stata cancellata il 31/08 e rilasciata con la v3.15.0; la voce era nata da un
+ricordo che registrava la *decisione*, scambiata per lavoro da fare. È il primo caso in cui il
+registro si corregge da sé, ed è il motivo per cui ogni voce dichiara **da dove viene**.
 
 ### La conoscenza non ha spina dorsale — le quattro mancanze
 
@@ -338,16 +343,6 @@ decide se si puo' guardare a cadenza o si devono seguire mentre accadono); e **i
 giudicato**, perche' `system_log/list` consegna righe raggruppate da HA con `count` e
 `first_occurred`, il che rompe la legge dell'osservatore «scrivi il grezzo, giudica dopo».
 
-### `get_error_log()` si cancella
-
-`origine: deciso dal proprietario il 31/08/2026` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
-
-`proxy/ha_client.py::get_error_log()` ha i test e **zero chiamanti vivi**. Punta a
-`/api/error_log`, che su HA 2026.8.3 risponde 404, e **inghiotte il 404 restituendo
-`{"errors": 0, "warnings": 0}`**: collegarlo com'e' farebbe dire a HIRIS «zero errori» su una casa
-che ne ha 6+11. E' lo zero che afferma. Non e' una migrazione — il vecchio punta a un endpoint che
-non esiste piu' e mente quando non lo trova: si cancella il metodo e si cancellano i suoi test.
-
 ### Le specifiche di Home Assistant si importano dalla documentazione — il tema finale
 
 `origine: il proprietario, 04/09/2026 — «questo e' il tema finale di questo sprint»` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
@@ -476,4 +471,18 @@ prima di un rilascio.
 
 ## Usciti
 
-*Nessuno ancora: il registro nasce oggi, 04/09/2026.*
+### `get_error_log()` si cancella — **USCITA con la v3.15.0**
+
+`chiusa il 31/08/2026, commit c6d05912, rilasciata in v3.15.0`
+
+**Questa voce era gia' chiusa quando il registro e' nato**, e il registro se n'e' accorto
+il 05/09 mentre si scriveva il piano 2: `grep get_error_log` su `hiris/` e `tests/` non
+trova piu' niente. Il metodo e i suoi 20 righe di prove sono usciti insieme --
+«l'endpoint non esiste piu' e il metodo rispondeva zeri» dice il commit.
+
+Era nata da un ricordo del 31/08 che registrava la **decisione**; la decisione era stata
+eseguita lo stesso giorno. E' il primo caso in cui il registro corregge se stesso, ed e'
+il motivo per cui una voce dichiara sempre da dove viene: una decisione ricordata non e'
+un lavoro da fare.
+
+
