@@ -987,8 +987,9 @@ def test_marked_automations_is_sorted_and_has_no_duplicates(coppia):
     voce sola da rileggere.
 
     Mutazione (verificata eseguendola): `self._marked_automations` come
-    `list` invece di `set` (init `= []`, `mark_automation` con `.append`
-    invece di `.add`) -- il test torna rosso su
+    `list` invece di `dict` (init `= []`, `mark_automation` con
+    `.append(entity_id)` incondizionato invece del controllo "gia'
+    presente? non toccare") -- il test torna rosso su
     `assert osservatore.marked_automations() ==
     ["automation.alfa", "automation.zeta"]` (tornerebbe una lista con
     `"automation.alfa"` ripetuta due volte)."""
@@ -997,6 +998,66 @@ def test_marked_automations_is_sorted_and_has_no_duplicates(coppia):
     osservatore.mark_automation("automation.alfa")
     osservatore.mark_automation("automation.alfa")
     assert osservatore.marked_automations() == ["automation.alfa", "automation.zeta"]
+
+
+def test_mark_automation_records_the_name_from_the_event(coppia):
+    """L'evento porta gia' il nome amichevole (`ATTR_NAME`, verificato alla
+    fonte sui due estremi della finestra supportata,
+    `automation/__init__.py` tag `2024.7.0` e `2026.9.0`): non usarlo
+    ripeterebbe il difetto che questo sprint esiste per chiudere -- un
+    soggetto raccontato dall'archivio senza che nessuna riga dica di cosa
+    si tratti.
+
+    Mutazione (verificata eseguendola): non salvare `name` (lasciare
+    `self._marked_automations[entity_id] = None` incondizionato) -- il
+    test torna rosso su
+    `assert osservatore.automation_title("automation.luci_sera") ==
+    "Luci sera"` (tornerebbe `None`)."""
+    _archivio, osservatore = coppia
+    osservatore.mark_automation("automation.luci_sera", name="Luci sera")
+    assert osservatore.automation_title("automation.luci_sera") == "Luci sera"
+
+
+def test_automation_title_is_none_for_an_unmarked_automation(coppia):
+    """Nessuna mutazione onesta da dichiarare qui: e' il caso base di un
+    `dict.get` su una chiave assente, non un ramo di codice dedicato."""
+    _archivio, osservatore = coppia
+    assert osservatore.automation_title("automation.mai_segnata") is None
+
+
+def test_the_name_freezes_at_the_first_mark(coppia):
+    """Un'automazione rinominata in HA dopo essere gia' stata segnata resta
+    col nome VECCHIO fino al prossimo riavvio dell'add-on (quando l'insieme
+    riparte vuoto e il prossimo scatto legge il nome nuovo): e' grezzo
+    dichiarato, non un difetto -- lo stesso compromesso di
+    `rebuild_conditions` con la data d'inizio oltre i 21 giorni di potatura.
+
+    Mutazione (verificata eseguendola): togliere `if entity_id not in
+    self._marked_automations:` (aggiornare il nome a ogni chiamata) -- il
+    test torna rosso su
+    `assert osservatore.automation_title("automation.x") == "Nome vecchio"`
+    (tornerebbe `"Nome nuovo"`)."""
+    _archivio, osservatore = coppia
+    osservatore.mark_automation("automation.x", name="Nome vecchio")
+    osservatore.mark_automation("automation.x", name="Nome nuovo")
+    assert osservatore.automation_title("automation.x") == "Nome vecchio"
+
+
+def test_watch_automation_outcome_writes_the_title_only_on_opening(coppia):
+    """`domain`/`title` viaggiano verso l'archivio solo sulla riga
+    d'APERTURA -- la chiusura non li porta, come gia' fa `watch_system` per
+    le sue tre famiglie (nessuna delle quali passa `domain`/`title` alla
+    propria chiusura).
+
+    Mutazione (verificata eseguendola): passare `title=title` anche alla
+    `record` di chiusura -- il test torna rosso su
+    `assert "title" not in archivio.annotati[1]` (la chiave comparirebbe,
+    anche se `None`)."""
+    archivio, osservatore = coppia
+    osservatore.watch_automation_outcome("automation.x", "error", title="Luci sera")
+    assert archivio.annotati[0]["title"] == "Luci sera"
+    osservatore.watch_automation_outcome("automation.x", "finished")
+    assert "title" not in archivio.annotati[1]
 
 
 def test_an_error_does_not_reopen_while_already_open(coppia):
@@ -1103,8 +1164,8 @@ def test_rebuild_reseeds_an_open_automation_fault():
     osservatore = Watcher(archivio, now=lambda: 1787572800.0)
     osservatore.rebuild_conditions()
     assert "automazione:automation.rotta" in osservatore._automation_faults
-    chiuso = osservatore.watch_automation_outcome("automation.rotta", "finished")
-    assert chiuso is True
+    closed = osservatore.watch_automation_outcome("automation.rotta", "finished")
+    assert closed is True
     assert archivio.annotati[-1]["a"] == "chiuso"
 
 
@@ -1117,12 +1178,23 @@ def test_rebuild_keeps_automation_faults_out_of_watch_system_hysteresis():
     guarda mai le tracce, solo l'elenco di problemi/integrazioni/log che
     riceve (che non contiene MAI un soggetto `automazione:`).
 
-    Mutazione: nella ricostruzione, rimettere OGNI soggetto `sistema`
-    aperto (compreso `automazione:`) in `self._conditions`, come prima del
-    Task 4 -- il test torna rosso su
-    `assert "automazione:automation.rotta" in osservatore._automation_faults`
-    (l'insieme sarebbe vuoto) e su `assert scritti == 0` al secondo giro
-    (`watch_system` chiuderebbe anche l'automazione, invece di ignorarla).
+    **La precondizione strutturale (l'automazione finisce davvero in
+    `_automation_faults`, non in `_conditions`) e' gia' sorvegliata da
+    `test_rebuild_reseeds_an_open_automation_fault` qui sopra, e non si
+    ripete come assert PRIMA del comportamento** (giro di correzioni,
+    rilievo 3: la prima stesura di questo test la ripeteva qui, e pytest si
+    fermava li' -- l'assert comportamentale sotto non arrossiva mai per
+    primo, quindi non discriminava affatto la mutazione che questo test
+    dice di sorvegliare). Resta solo la precondizione che questo scenario
+    aggiunge (il problema seminato correttamente), che la mutazione qui
+    sotto NON tocca -- non oscura niente.
+
+    Mutazione (verificata eseguendola): nella ricostruzione, rimettere OGNI
+    soggetto `sistema` aperto (compreso `automazione:`) in
+    `self._conditions`, come prima del Task 4 -- il test torna rosso sul
+    PRIMO assert dopo la precondizione, `assert scritti == 1` (tornerebbe
+    `2`: `watch_system` chiuderebbe anche l'automazione dopo l'isteresi di
+    due giri, non solo il problema).
     """
     archivio = _FintoArchivio(cambi_esistenti=[
         _cambio(1787000000.0, "sistema",
@@ -1131,13 +1203,15 @@ def test_rebuild_keeps_automation_faults_out_of_watch_system_hysteresis():
     ])
     osservatore = Watcher(archivio, now=lambda: 1787572800.0)
     osservatore.rebuild_conditions()
-    assert "automazione:automation.rotta" in osservatore._automation_faults
-    assert "automazione:automation.rotta" not in osservatore._conditions
+    # Precondizione di QUESTO scenario (il problema, non l'automazione: vedi
+    # sopra il perche' l'automazione non si ricontrolla qui) -- sopravvive
+    # intatta anche sotto la mutazione, quindi non oscura il comportamento.
     assert "problema:sonos.subscriptions_failed" in osservatore._conditions
 
     # Due giri di `watch_system` senza il problema fra i problemi: lo
     # chiude dopo l'isteresi di due giri -- ma non deve MAI toccare
-    # l'automazione, che non passa mai da questo metodo.
+    # l'automazione, che non passa mai da questo metodo. Questo e' il
+    # PRIMO assert che la mutazione puo' arrossire.
     osservatore.watch_system(problems=[], integrations=[], log_entries=[])
     scritti = osservatore.watch_system(problems=[], integrations=[], log_entries=[])
     assert scritti == 1  # solo la chiusura del problema

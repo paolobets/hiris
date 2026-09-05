@@ -38,7 +38,7 @@ from .backends.embeddings import build_embedding_provider
 from .chat_settings import ChatSettings, file_lacks_retention_days
 from .env_util import env_bool
 from .home_space.behavior import reread, reread_dashboards
-from .home_space.historian import home_space_zone
+from .home_space.historian import home_space_zone, instant_epoch
 from .home_space.queries import HA_LINK_TYPE
 from .home_space.queries import related as _legami_leggibili
 from .home_space.store import HomeSpaceStore
@@ -740,6 +740,56 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
     niente" delle tre letture di sistema (che sono UNA lettura sola
     ciascuna, non una per soggetto).
 
+    **Il cursore per automazione, e perche' esiste (giro di correzioni,
+    rilievo 1 -- CRITICO, dimostrato dal revisore col `Watcher` vero).**
+    `HAClient.automation_traces()` non toglie mai una traccia dalla sua
+    risposta finche' HA non la espelle da solo (tetto `stored_traces`):
+    senza un cursore, OGNI giro di due minuti rivedrebbe ancora una volta
+    OGNI traccia ancora conservata, e `watch_automation_outcome` decide
+    solo «e' aperto adesso?» -- non «l'ho gia' vista?». Misurato dal
+    revisore su tre finestre fisse: `[finished, error]` scrive 1 alla
+    prima lettura e **2 a OGNI lettura successiva** (il `finished` non
+    aveva niente da chiudere la prima volta -- l'errore non era ancora
+    aperto -- ma lo richiude e lo riapre a ogni giro dopo, perche'
+    rivisto sempre nello stesso ordine); un'automazione rotta una volta e
+    guarita produce un episodio di guasto NUOVO ogni due minuti (720 al
+    giorno), «una bugia nella storia» ripetuta. Il cursore
+    (`app["automation_trace_cursors"]`, `entity_id -> {run_id gia'
+    processati}`) **si sostituisce** con l'insieme del giro corrente, non
+    si accumula: resta quindi limitato dal tetto che HA stesso impone
+    alle tracce conservate, non cresce mai da solo.
+
+    Due cautele, entrambe verificate alla fonte:
+
+    - **una traccia ANCORA IN CORSO non entra nel cursore.**
+      `ActionTrace._script_execution` (`trace/models.py`, tag `2026.9.0`)
+      resta `None` finche' `finished()` non viene chiamato: una lettura
+      che arriva a meta' esecuzione vede `script_execution: None` (non una
+      stringa) e non ha ancora un esito da giudicare. Se la marcassimo
+      "vista" comunque, il giro in cui si conclude troverebbe il suo
+      `run_id` gia' nel cursore e il suo esito vero non arriverebbe MAI.
+    - **una traccia con `timestamp.start` precedente all'avvio di questo
+      processo non produce un fatto** (ma ENTRA nel cursore: e'
+      permanentemente fuori scope, non "da riconsiderare"). E' scattata
+      mentre HIRIS era spento, o in un avvio precedente -- non si
+      recupera, stessa disciplina di `watch_system_conditions` ("meglio un
+      buco nella storia che una bugia nella storia"). `timestamp.start` e'
+      un `datetime` di HA serializzato ISO-8601 (`helpers/json.py`,
+      `JSONEncoder.default`: `datetime.datetime -> o.isoformat()`) --
+      `instant_epoch` lo legge gia' cosi'. **Conseguenza dichiarata**: se
+      un'automazione era rotta prima del riavvio dell'add-on, il suo
+      episodio resta APERTO finche' non gira bene di nuovo -- un buco
+      nella storia, non una bugia.
+
+    Una traccia il cui `script_execution` non e' una stringa (l'unico
+    caso vero e' quello in corso qui sopra: **non** `not_triggered`, che
+    da HA 2026.7.0 in poi vale la stringa `"not_triggered"` -- verificato
+    alla fonte, `automation/__init__.py::_handle_not_triggered`,
+    `script_execution_set("not_triggered")`, assente prima di quel tag --
+    e su una `not_triggered` questa funzione la inoltra comunque a
+    `watch_automation_outcome`, che la ignora perche' non e' ne' `"error"`
+    ne' `"finished"`) si scarta senza processarla.
+
     **L'ordine delle tracce dentro `tracce` conta, ed e' gia' quello
     giusto.** Verificato alla fonte (`homeassistant/util/limited_size_
     dict.py`, `LimitedSizeDict._check_size_limit`: evizione FIFO via
@@ -747,29 +797,34 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
     `bucket[trace.run_id] = trace`, che in un `OrderedDict` appende in
     coda) -- la lista che `automation_traces()` restituisce e' dal PIU'
     VECCHIO al piu' recente. Processarla in quest'ordine, chiamando
-    `watch_automation_outcome` una volta per traccia, fa si' che l'ultima
-    chiamata rifletta sempre l'esito piu' recente -- se una automazione ha
-    fallito e poi e' guarita nella STESSA finestra di due minuti, l'errore
-    apre e il successo lo richiude nello stesso giro, nell'ordine vero.
-    Rileggere la stessa traccia gia' vista a un giro precedente (non e'
-    ancora stata espulsa dal tetto di HA) e' innocuo: `watch_automation_
-    outcome` e' idempotente sullo stato che gia' conosce (vedi il suo
-    docstring), quindi non scrive una seconda volta per un errore gia'
-    aperto ne' per un successo che non ha niente da chiudere.
+    `watch_automation_outcome` una volta per traccia NUOVA (secondo il
+    cursore), fa si' che l'ultima chiamata rifletta sempre l'esito piu'
+    recente -- se un'automazione ha fallito e poi e' guarita nella STESSA
+    finestra di due minuti, l'errore apre e il successo lo richiude nello
+    stesso giro, nell'ordine vero.
 
     `outcome` e' `script_execution` cosi' come HA lo scrive (`"finished"`,
     `"error"`, `"failed_conditions"`, ...): questa funzione non lo giudica,
     lo passa cosi' com'e' -- il giudizio (quale valore apre, quale chiude,
     quale non fa niente) vive tutto in `Watcher.watch_automation_outcome`.
+    `title` viene da `Watcher.automation_title(entity_id)` -- il nome
+    amichevole che `mark_automation` ha segnato dall'evento -- e viaggia
+    identico a ogni chiamata per la stessa automazione: e' il metodo che
+    decide se scriverlo (solo sull'apertura), non questa funzione.
 
     Non solleva mai per la lettura delle tracce (`automation_traces()` la
     dichiara gia' cosi', vedi il suo docstring): un guasto di rete per
     un'automazione diventa un WARNING e un `continue`, non un'eccezione che
-    fermerebbe le altre.
+    fermerebbe le altre. Se la lettura fallisce, il cursore di
+    QUELL'automazione non si tocca -- resta quello dell'ultimo giro
+    riuscito, invece di essere azzerato da una risposta che non e' mai
+    arrivata.
     """
     watcher = app.get("watcher")
     if watcher is None:
         return None
+    boot_ts = app.get("automation_traces_boot_ts", 0.0)
+    cursors = app.setdefault("automation_trace_cursors", {})
     written = 0
     for entity_id in watcher.marked_automations():
         report = await ha_client.automation_traces(entity_id)
@@ -779,21 +834,29 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
                 "automazione si salta, le altre proseguono",
                 entity_id, report["errore"])
             continue
+        already_seen = cursors.get(entity_id) or set()
+        seen_this_round: set[str] = set()
+        title = watcher.automation_title(entity_id)
         for trace in report.get("tracce") or []:
             if not isinstance(trace, dict):
                 continue
             outcome = trace.get("script_execution")
             if not isinstance(outcome, str):
-                # Una traccia `not_triggered` (il trigger ha valutato un
-                # cambio ma non e' scattato) non porta mai un `script_
-                # execution` valorizzato: non e' ne' un successo ne' un
-                # errore, si scarta senza nemmeno passare da `watch_
-                # automation_outcome` (che comunque la ignorerebbe, non
-                # essendo ne' "error" ne' "finished" -- qui si evita solo
-                # la chiamata inutile).
+                # Ancora in corso (vedi il docstring): NON entra nel
+                # cursore, o il suo esito vero non arriverebbe mai.
                 continue
-            if watcher.watch_automation_outcome(entity_id, outcome):
+            run_id = trace.get("run_id")
+            if not isinstance(run_id, str):
+                continue
+            seen_this_round.add(run_id)
+            if run_id in already_seen:
+                continue  # gia' processata in un giro precedente
+            start_ts = instant_epoch((trace.get("timestamp") or {}).get("start"))
+            if start_ts is not None and start_ts < boot_ts:
+                continue  # prima dell'avvio: buco dichiarato, non si recupera
+            if watcher.watch_automation_outcome(entity_id, outcome, title=title):
                 written += 1
+        cursors[entity_id] = seen_this_round
     return written
 
 
@@ -1939,17 +2002,34 @@ async def _on_startup(app: web.Application) -> None:
     # lo specchio sia aggiornato prima.
     ha_client.add_state_listener(app["watcher"].watch_reading)
 
+    # L'istante di avvio di QUESTO processo (giro di correzioni Task 4):
+    # serve al cursore delle tracce di automazione in
+    # `watch_automation_outcomes`, per scartare una traccia piu' vecchia di
+    # questo istante -- scattata mentre HIRIS era spento (o in un avvio
+    # precedente), che non si recupera. Stessa disciplina gia' scritta per
+    # `watch_system_conditions`: meglio un buco nella storia che una bugia
+    # nella storia. Scritto QUI e non dentro `watch_automation_outcomes`
+    # stesso: quella funzione gira ogni due minuti, e fissare l'istante ad
+    # ogni chiamata lo farebbe scivolare in avanti a ogni giro invece di
+    # restare l'istante del boot.
+    app["automation_traces_boot_ts"] = time.time()
+
     # L'evento delle automazioni (Task 4 di «le tracce e il log»,
     # AUTOMATION_TRIGGERED_EVENT in `proxy/ha_client.py`): segna soltanto,
     # non scrive -- vedi il docstring di `Watcher.mark_automation` per il
     # perche'. Il glue e' qui e non un metodo di `Watcher` apposta:
-    # l'interfaccia che questo task produce e' `mark_automation(entity_id)`,
-    # una stringa sola -- estrarla dal dizionario grezzo dell'evento e'
-    # cablaggio di questo file, non un giudizio dell'osservatore.
+    # l'interfaccia che questo task produce e' `mark_automation(entity_id,
+    # *, name=None)` -- estrarre `entity_id`/`name` dal dizionario grezzo
+    # dell'evento e' cablaggio di questo file, non un giudizio
+    # dell'osservatore. `name` (giro di correzioni, rilievo 5): l'evento
+    # porta gia' il nome amichevole dell'automazione (`ATTR_NAME`, vedi
+    # `AUTOMATION_TRIGGERED_EVENT`) -- non serve `EntityCache` per averlo.
     def _mark_triggered_automation(event_data: dict) -> None:
-        entity_id = event_data.get("entity_id") if isinstance(event_data, dict) else None
+        if not isinstance(event_data, dict):
+            return
+        entity_id = event_data.get("entity_id")
         if isinstance(entity_id, str):
-            app["watcher"].mark_automation(entity_id)
+            app["watcher"].mark_automation(entity_id, name=event_data.get("name"))
     ha_client.add_automation_listener(_mark_triggered_automation)
 
     # La prima lettura delle condizioni di sistema (problemi diagnosticati +

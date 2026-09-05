@@ -120,17 +120,27 @@ class Watcher:
         # contatore si azzera), la chiusura pure: non cresce senza limite.
         self._missing_rounds: dict[str, int] = {}
         # Le automazioni SEGNATE dall'evento (Task 4 di «le tracce e il
-        # log»): l'entity_id, cosi' come l'ha dichiarato
-        # `automation_triggered`, gia' passato da `_ENTITY_ID_RE` (vedi
-        # `mark_automation`). Solo aggiunte, mai tolte -- stessa sorte di
-        # `self._watched` sopra: un'automazione che ha scattato una volta
-        # resta interessante per sempre, e non c'e' bisogno di "guarirla"
-        # dall'elenco. Vive solo in RAM e non si risemina al riavvio, come
-        # `self._watched`: la raccolta delle tracce (`server.py`) la rifara'
-        # da sola non appena l'automazione scattera' di nuovo -- diversamente
-        # da un guasto che DURA (sotto), qui non c'e' niente da perdere
-        # restando vuoti fino al prossimo scatto.
-        self._marked_automations: set[str] = set()
+        # log»): `entity_id -> nome amichevole` (giro di correzioni,
+        # rilievo 5 -- prima un `set`, solo l'entity_id). L'entity_id e'
+        # cosi' come l'ha dichiarato `automation_triggered`, gia' passato da
+        # `_ENTITY_ID_RE` (vedi `mark_automation`). Solo aggiunte, mai
+        # tolte -- stessa sorte di `self._watched` sopra: un'automazione che
+        # ha scattato una volta resta interessante per sempre, e non c'e'
+        # bisogno di "guarirla" dall'elenco. Vive solo in RAM e non si
+        # risemina al riavvio, come `self._watched`: la raccolta delle
+        # tracce (`server.py`) la rifara' da sola non appena l'automazione
+        # scattera' di nuovo -- diversamente da un guasto che DURA (sotto),
+        # qui non c'e' niente da perdere restando vuoti fino al prossimo
+        # scatto.
+        #
+        # **Il nome si fissa al PRIMO scatto e non si aggiorna piu'**
+        # (`mark_automation` sotto): se l'automazione viene rinominata in
+        # HA dopo essere gia' stata segnata, il nome vecchio resta fino al
+        # prossimo riavvio dell'add-on (quando l'insieme riparte vuoto e il
+        # prossimo scatto legge il nome nuovo). E' grezzo dichiarato, non un
+        # difetto -- lo stesso compromesso di `rebuild_conditions`, che
+        # perde la data d'inizio vera oltre i 21 giorni di potatura.
+        self._marked_automations: dict[str, str | None] = {}
         # Le automazioni la cui ultima esecuzione VISTA e' un errore
         # (`watch_automation_outcome`, sotto): un sottoinsieme di soggetti
         # `automazione:` -- SEPARATO da `self._conditions` sopra, non lo
@@ -211,16 +221,17 @@ class Watcher:
 
     # -- le automazioni --------------------------------------------------
 
-    def mark_automation(self, entity_id: str) -> bool:
+    def mark_automation(self, entity_id: str, *, name: str | None = None) -> bool:
         """Segna un'automazione come scattata. **Non scrive niente**: e' il
         callback (indiretto: vedi il glue in `server.py::_on_startup`, che
-        estrae `entity_id` da `event_data` di `AUTOMATION_TRIGGERED_EVENT`)
-        di un evento che scatta all'INIZIO delle azioni, quando la traccia
-        non e' ancora completa -- scrivere qui vorrebbe dire scrivere un
-        esito che non esiste ancora (vedi `AUTOMATION_TRIGGERED_EVENT` in
-        `proxy/ha_client.py` per la fonte). Il cambio vero -- se e quando
-        arriva -- lo scrive `watch_automation_outcome`, dalla cadenza breve
-        che rilegge le tracce di cio' che questo metodo ha segnato.
+        estrae `entity_id`/`name` da `event_data` di
+        `AUTOMATION_TRIGGERED_EVENT`) di un evento che scatta all'INIZIO
+        delle azioni, quando la traccia non e' ancora completa -- scrivere
+        qui vorrebbe dire scrivere un esito che non esiste ancora (vedi
+        `AUTOMATION_TRIGGERED_EVENT` in `proxy/ha_client.py` per la fonte).
+        Il cambio vero -- se e quando arriva -- lo scrive
+        `watch_automation_outcome`, dalla cadenza breve che rilegge le
+        tracce di cio' che questo metodo ha segnato.
 
         **Garantisce a monte la forma `dominio.oggetto` dell'`entity_id`**
         (Task 4 di «le tracce e il log»): `HAClient.automation_traces()` e
@@ -236,6 +247,23 @@ class Watcher:
         punto d'ingresso (la cadenza di `server.py` legge solo cio' che
         questo metodo ha segnato), quindi basta controllare qui.
 
+        **`name` (giro di correzioni, rilievo 5).** L'evento porta gia' il
+        nome amichevole (`ATTR_NAME`, verificato alla fonte agli estremi
+        della finestra supportata -- `automation/__init__.py`, tag
+        `2024.7.0` e `2026.9.0`: `event_data = {ATTR_NAME: self.name,
+        ATTR_ENTITY_ID: self.entity_id}`, sempre una stringa non vuota, il
+        nome che l'utente vede in HA): non usarlo ripeterebbe esattamente
+        il difetto che questo sprint esiste per chiudere -- il soggetto piu'
+        raccontato dell'archivio era un identificatore opaco, senza che
+        nessuna riga dicesse di che cosa si trattasse (vedi il docstring di
+        `watch_system` sull'apertura di `open_now`, stessa lezione). Passa
+        da `_text_or_none` come ogni testo grezzo che arriva da HA.
+        **Si fissa alla PRIMA segnatura e non si aggiorna piu'** (vedi il
+        commento su `self._marked_automations` in `__init__`): una
+        chiamata successiva per un entity_id gia' segnato non tocca il nome
+        gia' salvato, nemmeno se questa porta un nome diverso (rinominata)
+        o `None` (un chiamante che non lo sa).
+
         Torna `True` se l'ha segnata, `False` se l'ha respinta (forma non
         valida) -- utile a chi chiama per accorgersi del rifiuto, non
         necessario a chi non se ne cura.
@@ -245,7 +273,8 @@ class Watcher:
                 "osservatore: entity_id di automazione malformato, non "
                 "segnato (%r)", entity_id)
             return False
-        self._marked_automations.add(entity_id)
+        if entity_id not in self._marked_automations:
+            self._marked_automations[entity_id] = _text_or_none(name)
         return True
 
     def marked_automations(self) -> list[str]:
@@ -254,6 +283,14 @@ class Watcher:
         (non l'ordine di scoperta) perche' chi legge i log di due giri
         successivi possa confrontarli a colpo d'occhio."""
         return sorted(self._marked_automations)
+
+    def automation_title(self, entity_id: str) -> str | None:
+        """Il nome amichevole segnato per `entity_id` da `mark_automation`,
+        o `None` se non e' mai stata segnata o non portava un nome
+        leggibile. E' cio' che la cadenza breve di `server.py` passa come
+        `title=` a `watch_automation_outcome` -- vedi il docstring di
+        `mark_automation` per da dove viene e perche' non si aggiorna."""
+        return self._marked_automations.get(entity_id)
 
     def watch_automation_outcome(self, entity_id: str, outcome: str, *,
                                    domain: str | None = None,
@@ -269,12 +306,51 @@ class Watcher:
         valore GREZZO che HA scrive in `script_execution` sulla traccia
         (`ActionTrace.as_short_dict()`, verificato in `HAClient.
         automation_traces()`); questo metodo legge e non giudica quali
-        ALTRI valori esistano (`"aborted"`, `"cancelled"`, `"failed_
-        single"`, `"failed_max_runs"`, `"disallowed_recursion_detected"`,
-        verificati alla stessa fonte, `helpers/script.py`) -- nessuno dei
-        due nomi che il piano di questo verticale discute mai, quindi
-        nessuno dei due diventa un fatto: un guasto non misurato non si
-        inventa (dichiarato nel rapporto, non deciso in silenzio).
+        ALTRI valori esistano.
+
+        **Il costo di «solo `error` apre», itemizzato (giro di correzioni,
+        rilievo 4) -- non un principio, un elenco di cosa NON diventa mai
+        un fatto.** Verificato alla fonte, `helpers/script.py`, tag
+        `2026.9.0`: un `"aborted"` copre insieme, senza distinguerli
+        (`as_short_dict` non porta altro che quella stringa),
+        - **un `stop:` con `error: true`** (`_async_step_stop`,
+          `CONF_ERROR`): l'AUTORE dell'automazione ha dichiarato
+          esplicitamente che quel punto e' un errore, e non diventa un
+          fatto lo stesso -- e' il caso piu' grave, perche' e' un giudizio
+          gia' scritto da chi ha scritto l'automazione, non una nostra
+          congettura, e questo metodo lo scarta comunque;
+        - **una `condition:` falsa dentro la sequenza** (non la condizione
+          di primo livello dell'automazione, gia' esclusa da
+          `"failed_conditions"`, ma un passo `condition:` in mezzo alle
+          azioni): `_ConditionFail` -> `"aborted"`, la STESSA stringa dello
+          `stop: error: true` qui sopra -- «l'autore ha dichiarato un
+          errore» e «una condizione era falsa» sono due fatti diversi che
+          arrivano identici, e non c'e' modo di distinguerli da qui;
+        - **un `wait_template` scaduto con `continue_on_timeout: false`**
+          (`_async_handle_timeout`, default di `continue_on_timeout` e'
+          `True`): un'attesa che non si e' mai avverata diventa `"aborted"`
+          anche lei;
+        - **un template di `repeat` (`until`/`while`) che non rende**
+          (`_async_do_step_repeat`, `TemplateError`/`ValueError`
+          intercettati): stessa sorte;
+        - **la ricorsione vietata** per un'automazione in modalita'
+          `restart`/`queued` che tenta di richiamare se stessa
+          (`script_stack_cv`): `"disallowed_recursion_detected"`, un
+          valore proprio (non `"aborted"`), ma comunque fuori da questo
+          giudizio;
+        - **il rifiuto di partire** per `mode: single` gia' in esecuzione
+          (`"failed_single"`) o per il tetto di `max_runs` raggiunto in
+          modalita' diversa da `restart` (`"failed_max_runs"`).
+
+        Nessuno di questi sei casi diventa un fatto: il piano di questo
+        verticale discute solo `"finished"` e `"error"`, e un guasto non
+        misurato non si inventa. **Chiude solo `"finished"`, mai
+        `"aborted"`** non e' una scelta simmetrica di comodo: e' obbligata,
+        perche' `"aborted"` mescola «la condizione era falsa» (funzionamento
+        normale) e «l'autore ha dichiarato un errore» (un fatto mancato,
+        dichiarato qui) -- trattarlo come chiusura rischierebbe di chiudere
+        un episodio aperto sulla base di un segnale che potrebbe SIGNIFICARE
+        l'esatto contrario.
 
         **Apre sull'errore, chiude sull'esito riuscito SUCCESSIVO della
         stessa automazione -- un'esecuzione riuscita chiude ma non apre
@@ -299,12 +375,17 @@ class Watcher:
         di giri mancati per questo soggetto.
 
         `domain`/`title` viaggiano verso `store.record()` come per le altre
-        condizioni di sistema -- ma per un'`automazione:` **restano `None`
-        in questo giro**: a differenza di `problema:`/`integrazione:`, il
-        dominio non varia mai (e' sempre "automation", gia' nel prefisso del
-        soggetto) e il nome amichevole richiederebbe `EntityCache`, fuori
-        dai file che questo task tocca -- dichiarato, non un buco silenzioso
-        (vedi il rapporto).
+        condizioni di sistema, ma **solo sulla riga d'APERTURA** -- la
+        chiusura non li porta, come gia' fa `watch_system` per le sue tre
+        famiglie. `domain` resta `None` (a differenza di
+        `problema:`/`integrazione:`, il dominio di un'automazione non
+        varia mai -- e' sempre "automation", gia' nel prefisso del
+        soggetto, e non aggiunge niente da scrivere due volte). `title`
+        (giro di correzioni, rilievo 5) e' il nome amichevole segnato da
+        `mark_automation` (`Watcher.automation_title(entity_id)`, che
+        `server.py::watch_automation_outcomes` legge e passa qui) -- senza,
+        il soggetto piu' raccontato dell'archivio sarebbe di nuovo un
+        identificatore opaco.
 
         `outcome != "error" and outcome != "finished"` non tocca ne'
         l'archivio ne' `self._automation_faults`: torna `False` senza fare

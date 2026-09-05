@@ -274,7 +274,7 @@ async def test_gli_eventi_dei_servizi_raggiungono_il_loro_ascoltatore():
 
 
 @pytest.mark.asyncio
-async def test_automation_triggered_raggiunge_solo_l_ascoltatore_delle_automazioni():
+async def test_automation_triggered_reaches_only_the_automation_listener():
     """Task 4 di «le tracce e il log»: quarta famiglia di eventi, accanto ad
     anagrafe/plance/servizi -- e separata per la stessa ragione, un'
     automazione scattata non cambia la casa ne' i servizi.
@@ -283,23 +283,24 @@ async def test_automation_triggered_raggiunge_solo_l_ascoltatore_delle_automazio
     anagrafe/plance/servizi qui sopra): `mark_automation` non ha bisogno di
     "recuperare" un evento perso durante una disconnessione -- un'automazione
     gia' segnata resta segnata per sempre (vedi il docstring di
-    `Watcher._marked_automations`), e una segnata perso durante il distacco
-    tornera' a segnarsi da sola al primo scatto successivo. Verificato qui
-    guardando che l'elenco NON contenga "riconnessione", a differenza degli
-    altri tre.
+    `Watcher._marked_automations`, ora un dizionario entity_id->nome, non
+    piu' un insieme, ma con la stessa sorte: solo aggiunte, mai tolte), e
+    una segnata perso durante il distacco tornera' a segnarsi da sola al
+    primo scatto successivo. Verificato qui guardando che l'elenco NON
+    contenga "riconnessione", a differenza degli altri tre.
 
     Mutazione provata a mano: cancellare il ramo
     `elif event_type == AUTOMATION_TRIGGERED_EVENT` nello smistamento fa
-    arrossire `assert automazioni_chiamate == [...]` (tornerebbe `[]`)."""
+    arrossire `assert automation_calls == [...]` (tornerebbe `[]`)."""
     ws = _FintoWSEventi([
         ("automation_triggered", {"name": "Luci sera", "entity_id": "automation.luci_sera"}),
     ])
     client = HAClient(base_url="http://ha.test", token="t")
     client._session = _FintaSessioneEventi(ws)
 
-    automazioni_chiamate: list[dict] = []
+    automation_calls: list[dict] = []
     anagrafe_chiamate: list[str] = []
-    client.add_automation_listener(lambda dati: automazioni_chiamate.append(dati))
+    client.add_automation_listener(lambda dati: automation_calls.append(dati))
     client.add_topology_listener(lambda tipo: anagrafe_chiamate.append(tipo))
 
     task = asyncio.create_task(client._ws_loop("ws://ha.test/api/websocket"))
@@ -310,16 +311,16 @@ async def test_automation_triggered_raggiunge_solo_l_ascoltatore_delle_automazio
     except asyncio.CancelledError:
         pass
 
-    assert automazioni_chiamate == [
+    assert automation_calls == [
         {"name": "Luci sera", "entity_id": "automation.luci_sera"}]
     # E NON deve finire nell'anagrafe, ne' innescare la "riconnessione"
     # sintetica delle altre tre famiglie -- vedi il docstring sopra.
     assert anagrafe_chiamate == ["riconnessione"]
 
-    tipi_sottoscritti = {
+    subscribed_types = {
         c.get("event_type") for c in ws.comandi if c.get("type") == "subscribe_events"
     }
-    assert "automation_triggered" in tipi_sottoscritti
+    assert "automation_triggered" in subscribed_types
 
 
 @pytest.mark.asyncio

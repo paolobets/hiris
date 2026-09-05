@@ -12,6 +12,7 @@ avrebbe lasciato nascere (task-5-correzioni.md):
   A.1. un errore di lettura passato a `watch_system` come lista vuota --
        peggio di non sapere, sapere il falso e scriverlo nell'archivio.
 """
+import ast
 import asyncio
 import inspect
 import logging
@@ -1693,130 +1694,167 @@ def test_il_doppione_con_hiris_ha_problems_e_documentato():
 # l'errore. Stessa disciplina del blocco sopra -- meta' cablaggio (il
 # sorgente), meta' comportamento (`watch_automation_outcomes` esercitata per
 # davvero con dei finti).
+#
+# Giro di correzioni (rilievo 6, primo punto): una prova di sola presenza
+# nel sorgente (`"..." in inspect.getsource(server)`) passa verde anche se
+# la riga vera e' commentata via -- un commento e' comunque testo, e la
+# ricerca di sottostringa non distingue codice VIVO da un commento morto.
+# `_chiamate_reali` sotto parsa il sorgente con `ast` invece di cercarci
+# dentro: un commento non esiste per il parser, quindi una riga commentata
+# semplicemente non produce nessuna `ast.Call` da trovare.
 # --------------------------------------------------------------------------
 
-def test_l_evento_delle_automazioni_e_cablato_a_segna_automazione():
+def _real_calls(source_obj) -> list[str]:
+    """Ogni chiamata di funzione REALMENTE presente nel sorgente di
+    `source_obj` (non in un commento), come testo (`ast.unparse`)."""
+    tree = ast.parse(inspect.getsource(source_obj))
+    return [ast.unparse(node) for node in ast.walk(tree) if isinstance(node, ast.Call)]
+
+
+def test_the_automation_event_is_wired_to_mark_automation():
     """Senza questo cablaggio `Watcher.mark_automation` non ha nessun
     chiamante di produzione: l'evento HA scatterebbe, `_ws_loop` lo
     dispaccerebbe ai suoi ascoltatori, e nessuno lo riceverebbe mai --
-    nessuna automazione verrebbe mai segnata."""
-    sorgente = inspect.getsource(server)
-    assert "ha_client.add_automation_listener(" in sorgente
-    assert 'app["watcher"].mark_automation(entity_id)' in sorgente
+    nessuna automazione verrebbe mai segnata.
+
+    Mutazione (verificata eseguendola): commentare via
+    `ha_client.add_automation_listener(_mark_triggered_automation)`
+    (lasciando il testo nel file, come farebbe chiunque disabiliti una
+    riga senza cancellarla) -- il test torna rosso perche' `_real_calls`
+    non trova piu' nessuna `ast.Call` che inizi con
+    `"ha_client.add_automation_listener("`, mentre una ricerca di
+    sottostringa sul sorgente grezzo resterebbe verde."""
+    calls = _real_calls(server._on_startup)
+    assert any(c.startswith("ha_client.add_automation_listener(") for c in calls)
+    # `ast.unparse` normalizza le stringhe in apici singoli, quindi si cerca
+    # `'watcher'` e non `"watcher"` (che e' come appare nel sorgente vero).
+    assert any("['watcher'].mark_automation(entity_id" in c for c in calls)
 
 
-def test_il_quarto_lavoro_periodico_delle_tracce_di_automazione_e_registrato():
+def test_the_fourth_periodic_job_for_automation_traces_is_registered():
     """Senza questo lavoro `watch_automation_outcomes` non ha nessun
     chiamante di produzione: le automazioni segnate resterebbero segnate per
     sempre senza che nessuno rileggesse mai le loro tracce."""
-    sorgente = inspect.getsource(server)
-    assert 'id="hiris_mind_automation_traces"' in sorgente
-    blocco = sorgente[sorgente.index('id="hiris_mind_automation_traces"') - 400:
-                      sorgente.index('id="hiris_mind_automation_traces"') + 200]
-    assert "minutes=2" in blocco
-    assert "watch_automation_outcomes" in sorgente
+    source = inspect.getsource(server)
+    assert 'id="hiris_mind_automation_traces"' in source
+    block = source[source.index('id="hiris_mind_automation_traces"') - 400:
+                   source.index('id="hiris_mind_automation_traces"') + 200]
+    assert "minutes=2" in block
+    assert "watch_automation_outcomes" in source
 
 
-class _OsservatoreAutomazioniFinto:
-    """Un `Watcher` finto per `watch_automation_outcomes`: `segnate` e' cio'
+class _FakeAutomationWatcher:
+    """Un `Watcher` finto per `watch_automation_outcomes`: `marked` e' cio'
     che torna `marked_automations()` (l'ORDINE e' quello dato qui, non
     ordinato da capo -- il vero `Watcher.marked_automations` ordina da solo,
     provato altrove in `tests/test_mind_watcher.py`); ogni chiamata a
     `watch_automation_outcome` si ricorda, senza toccare un archivio vero.
-    `risultato` e' cio' che quella chiamata deve tornare -- di default
-    `True`, cosi' `esito` (il conteggio di `watch_automation_outcomes`)
-    combacia col numero di tracce forgiate, senza dover replicare qui il
-    giudizio vero (aperto/chiuso/ignorato) che appartiene al `Watcher` reale
-    e che questo file NON riprova."""
+    `result` e' cio' che quella chiamata deve tornare -- di default `True`,
+    cosi' il conteggio di ritorno di `watch_automation_outcomes` combacia
+    col numero di tracce forgiate, senza dover replicare qui il giudizio
+    vero (aperto/chiuso/ignorato) che appartiene al `Watcher` reale e che
+    questo file NON riprova. `titles` (giro di correzioni, rilievo 5) e'
+    cio' che torna `automation_title()` per entity_id -- vuoto di
+    default."""
 
-    def __init__(self, segnate, *, risultato=True):
-        self._segnate = list(segnate)
-        self.chiamate: list[tuple] = []
-        self._risultato = risultato
+    def __init__(self, marked, *, result=True, titles=None):
+        self._marked = list(marked)
+        self.calls: list[tuple] = []
+        self._result = result
+        self._titles = dict(titles or {})
 
     def marked_automations(self):
-        return list(self._segnate)
+        return list(self._marked)
+
+    def automation_title(self, entity_id):
+        return self._titles.get(entity_id)
 
     def watch_automation_outcome(self, entity_id, outcome, *, domain=None, title=None):
-        self.chiamate.append((entity_id, outcome, domain, title))
-        return self._risultato
+        self.calls.append((entity_id, outcome, domain, title))
+        return self._result
 
 
-class _ClienteTracceFinto:
-    """Un `HAClient` finto per `automation_traces()`: `tracce_per_entity`
+class _FakeTracesClient:
+    """Un `HAClient` finto per `automation_traces()`: `traces_by_entity`
     mappa entity_id -> il dizionario che il metodo vero deve tornare per
     quell'entity_id (`{"tracce": [...]}` o `{"errore": ...}`). Un entity_id
     non presente nella mappa torna un guasto, non una lista vuota -- una
     finta che rispondesse `{"tracce": []}` di default nasconderebbe un
-    errore di battitura nel test che la usa."""
+    errore di battitura nel test che la usa. `calls` (giro di correzioni,
+    rilievo 6, secondo punto) ricorda ogni entity_id chiesto: senza,
+    «`automation_traces` non deve mai essere chiamata» era una promessa nel
+    docstring del test senza un assert che la sorvegliasse."""
 
-    def __init__(self, tracce_per_entity):
-        self._tracce = dict(tracce_per_entity)
+    def __init__(self, traces_by_entity):
+        self._traces = dict(traces_by_entity)
+        self.calls: list[str] = []
 
     async def automation_traces(self, entity_id):
-        return self._tracce.get(
+        self.calls.append(entity_id)
+        return self._traces.get(
             entity_id, {"errore": f"nessuna finta per {entity_id}"})
 
 
-def test_il_finto_osservatore_automazioni_combacia_con_watcher_marked_automations():
+def test_fake_automation_watcher_matches_watcher_marked_automations():
     assert_stessa_firma(
-        Watcher.marked_automations, _OsservatoreAutomazioniFinto.marked_automations,
+        Watcher.marked_automations, _FakeAutomationWatcher.marked_automations,
         nome="Watcher.marked_automations")
 
 
-def test_il_finto_osservatore_automazioni_combacia_con_watcher_watch_automation_outcome():
+def test_fake_automation_watcher_matches_watcher_automation_title():
+    assert_stessa_firma(
+        Watcher.automation_title, _FakeAutomationWatcher.automation_title,
+        nome="Watcher.automation_title")
+
+
+def test_fake_automation_watcher_matches_watcher_watch_automation_outcome():
     assert_stessa_firma(
         Watcher.watch_automation_outcome,
-        _OsservatoreAutomazioniFinto.watch_automation_outcome,
+        _FakeAutomationWatcher.watch_automation_outcome,
         nome="Watcher.watch_automation_outcome")
 
 
-def test_il_cliente_finto_tracce_combacia_con_haclient_automation_traces():
+def test_fake_traces_client_matches_haclient_automation_traces():
     from hiris.app.proxy.ha_client import HAClient
-    assert_stessa_firma(HAClient.automation_traces, _ClienteTracceFinto.automation_traces,
+    assert_stessa_firma(HAClient.automation_traces, _FakeTracesClient.automation_traces,
                         nome="HAClient.automation_traces")
 
 
-def test_senza_watcher_il_giro_delle_tracce_torna_none():
-    esito = asyncio.run(server.watch_automation_outcomes({}, _ClienteTracceFinto({})))
-    assert esito is None
+def test_without_a_watcher_the_traces_round_returns_none():
+    result = asyncio.run(server.watch_automation_outcomes({}, _FakeTracesClient({})))
+    assert result is None
 
 
-def test_nessuna_automazione_segnata_non_legge_nessuna_traccia():
+def test_no_marked_automation_reads_no_trace():
     """`marked_automations()` vuota: il giro non deve chiamare
     `automation_traces` nemmeno una volta -- non c'e' niente da rileggere.
-
-    Nessuna mutazione onesta da dichiarare qui (dichiarato, non un buco):
-    il ciclo `for entity_id in watcher.marked_automations():` su una lista
-    vuota non esegue mai il corpo, quindi `esito == 0` e `chiamate == []`
-    sono la conseguenza NATURALE di una lista vuota, non di un ramo di
-    codice dedicato che una mutazione potrebbe rimuovere in modo
-    osservabile -- e' la stessa proprieta' di `test_ogni_traccia_di_un_
-    automazione_segnata_si_inoltra_in_ordine` qui sotto, con zero
-    automazioni invece di una."""
-    osservatore = _OsservatoreAutomazioniFinto([])
-    esito = asyncio.run(
-        server.watch_automation_outcomes({"watcher": osservatore}, _ClienteTracceFinto({})))
-    assert esito == 0
-    assert osservatore.chiamate == []
+    (Giro di correzioni, rilievo 6, secondo punto: `_FakeTracesClient` ora
+    registra le sue chiamate, quindi questa promessa e' davvero
+    sorvegliata, non solo scritta nel docstring.)"""
+    watcher = _FakeAutomationWatcher([])
+    client = _FakeTracesClient({})
+    result = asyncio.run(server.watch_automation_outcomes({"watcher": watcher}, client))
+    assert result == 0
+    assert watcher.calls == []
+    assert client.calls == []
 
 
-def test_ogni_traccia_di_un_automazione_segnata_si_inoltra_in_ordine():
-    """Tre tracce nella stessa risposta: ognuna deve arrivare a
-    `watch_automation_outcome`, nell'ordine in cui `automation_traces()` le
-    ha restituite -- l'ordine conta (vedi il docstring di
-    `watch_automation_outcomes` per la fonte HA che lo garantisce), e questa
-    prova lo sorveglia direttamente sull'inoltro, non sul giudizio (quello e'
-    provato su `Watcher` vero, non su questo finto).
+def test_every_trace_of_a_marked_automation_is_forwarded_in_order():
+    """Tre tracce nella stessa risposta, con `run_id` diversi (nuovi al
+    cursore): ognuna deve arrivare a `watch_automation_outcome`,
+    nell'ordine in cui `automation_traces()` le ha restituite -- l'ordine
+    conta (vedi il docstring di `watch_automation_outcomes` per la fonte HA
+    che lo garantisce), e questa prova lo sorveglia direttamente
+    sull'inoltro, non sul giudizio (quello e' provato su `Watcher` vero,
+    non su questo finto).
 
     Mutazione (verificata eseguendola): `reversed(report.get("tracce") or
     [])` invece dell'ordine diretto -- il test torna rosso sul primo
-    elemento di
-    `assert [c[:2] for c in osservatore.chiamate] == [...]`
+    elemento di `assert [c[:2] for c in watcher.calls] == [...]`
     (`("automation.luci_sera", "error")` al posto di
     `("automation.luci_sera", "finished")`)."""
-    osservatore = _OsservatoreAutomazioniFinto(["automation.luci_sera"])
-    cliente = _ClienteTracceFinto({
+    watcher = _FakeAutomationWatcher(["automation.luci_sera"])
+    client = _FakeTracesClient({
         "automation.luci_sera": {"tracce": [
             {"run_id": "1", "script_execution": "finished"},
             {"run_id": "2", "script_execution": "failed_conditions"},
@@ -1824,42 +1862,75 @@ def test_ogni_traccia_di_un_automazione_segnata_si_inoltra_in_ordine():
         ]},
     })
 
-    esito = asyncio.run(server.watch_automation_outcomes({"watcher": osservatore}, cliente))
+    result = asyncio.run(server.watch_automation_outcomes({"watcher": watcher}, client))
 
-    assert esito == 3
-    assert [c[:2] for c in osservatore.chiamate] == [
+    assert result == 3
+    assert [c[:2] for c in watcher.calls] == [
         ("automation.luci_sera", "finished"),
         ("automation.luci_sera", "failed_conditions"),
         ("automation.luci_sera", "error"),
     ]
 
 
-def test_una_traccia_not_triggered_non_si_inoltra():
-    """Una traccia il cui `script_execution` non e' una stringa (il caso
-    vero: un `not_triggered`, che non ne dichiara mai uno) si scarta PRIMA
-    di chiamare `watch_automation_outcome` -- non e' un successo ne' un
-    errore, e non c'e' bisogno di far decidere anche al `Watcher` un
-    `outcome` che non e' mai una delle sue due stringhe vere.
+def test_a_not_triggered_trace_is_not_forwarded():
+    """Una traccia il cui `script_execution` non e' una stringa -- il caso
+    vero e' una traccia ANCORA IN CORSO (`ActionTrace._script_execution`
+    resta `None` finche' `finished()` non viene chiamato, `trace/
+    models.py`, tag `2026.9.0`), NON un `not_triggered`: quella, da HA
+    2026.7.0 in poi, vale la stringa `"not_triggered"` (verificato alla
+    fonte, `automation/__init__.py::_handle_not_triggered`,
+    `script_execution_set("not_triggered")`) e passerebbe questo
+    controllo -- verrebbe comunque scartata, ma perche' non e' `"error"` ne'
+    `"finished"`, dentro `Watcher.watch_automation_outcome`, non qui.
 
     Mutazione (verificata eseguendola): togliere `if not isinstance(outcome,
-    str): continue` -- il test torna rosso su `assert esito == 0`
-    (tornerebbe `1`: la finta `_OsservatoreAutomazioniFinto`, che non
-    discrimina l'`outcome` come il `Watcher` vero, riceverebbe comunque
-    `None` e lo conterebbe come inoltrato)."""
-    osservatore = _OsservatoreAutomazioniFinto(["automation.x"])
-    cliente = _ClienteTracceFinto({
+    str): continue` -- il test torna rosso su `assert result == 0`
+    (tornerebbe `1`: la finta `_FakeAutomationWatcher`, che non discrimina
+    l'`outcome` come il `Watcher` vero, riceverebbe comunque `None` e lo
+    conterebbe come inoltrato)."""
+    watcher = _FakeAutomationWatcher(["automation.x"])
+    client = _FakeTracesClient({
         "automation.x": {"tracce": [
-            {"run_id": "1", "not_triggered": True, "script_execution": None},
+            {"run_id": "1", "script_execution": None},
         ]},
     })
 
-    esito = asyncio.run(server.watch_automation_outcomes({"watcher": osservatore}, cliente))
+    result = asyncio.run(server.watch_automation_outcomes({"watcher": watcher}, client))
 
-    assert esito == 0
-    assert osservatore.chiamate == []
+    assert result == 0
+    assert watcher.calls == []
 
 
-def test_la_lettura_fallita_di_un_automazione_non_ferma_le_altre():
+def test_a_trace_older_than_process_boot_is_not_forwarded():
+    """Una traccia con `timestamp.start` precedente all'avvio di QUESTO
+    processo (`app["automation_traces_boot_ts"]`, scritto in `_on_startup`)
+    e' scattata mentre HIRIS era spento, o in un avvio precedente: non si
+    recupera -- stessa disciplina di `watch_system_conditions`, "meglio un
+    buco nella storia che una bugia nella storia". `timestamp.start` e' un
+    `datetime` di HA serializzato ISO-8601 (`helpers/json.py`,
+    `JSONEncoder.default`), letto con `instant_epoch` -- gia' importato in
+    `server.py`.
+
+    Mutazione (verificata eseguendola): togliere `if start_ts is not None
+    and start_ts < boot_ts: continue` -- il test torna rosso su
+    `assert result == 0` (tornerebbe `1`: la traccia di sei anni fa
+    aprirebbe comunque un episodio, come se fosse appena successa)."""
+    watcher = _FakeAutomationWatcher(["automation.x"])
+    client = _FakeTracesClient({
+        "automation.x": {"tracce": [
+            {"run_id": "1", "script_execution": "error",
+             "timestamp": {"start": "2020-01-01T00:00:00+00:00"}},
+        ]},
+    })
+    app = {"watcher": watcher, "automation_traces_boot_ts": 1787572800.0}
+
+    result = asyncio.run(server.watch_automation_outcomes(app, client))
+
+    assert result == 0
+    assert watcher.calls == []
+
+
+def test_a_failed_read_for_one_automation_does_not_stop_the_others():
     """Una delle due automazioni segnate legge un `{"errore": ...}`: quella
     si salta, l'altra si legge lo stesso -- e' la disciplina del "parziale
     tollerato" (come `build_companions`), non quella del "tutto o niente"
@@ -1868,15 +1939,104 @@ def test_la_lettura_fallita_di_un_automazione_non_ferma_le_altre():
     Mutazione (verificata eseguendola): `return written` invece di
     `continue` sul ramo `"errore" in report` -- interrompe il giro INTERO
     alla prima automazione rotta invece di saltare solo quella. Il test
-    torna rosso su `assert esito == 1` (tornerebbe `0`: `automation.buona`
-    non verrebbe mai raggiunta, `osservatore.chiamate` resterebbe vuota)."""
-    osservatore = _OsservatoreAutomazioniFinto(["automation.rotta", "automation.buona"])
-    cliente = _ClienteTracceFinto({
+    torna rosso su `assert result == 1` (tornerebbe `0`: `automation.buona`
+    non verrebbe mai raggiunta, `watcher.calls` resterebbe vuota)."""
+    watcher = _FakeAutomationWatcher(["automation.rotta", "automation.buona"])
+    client = _FakeTracesClient({
         "automation.rotta": {"errore": "Home Assistant non ha risposto"},
         "automation.buona": {"tracce": [{"run_id": "1", "script_execution": "error"}]},
     })
 
-    esito = asyncio.run(server.watch_automation_outcomes({"watcher": osservatore}, cliente))
+    result = asyncio.run(server.watch_automation_outcomes({"watcher": watcher}, client))
 
-    assert esito == 1
-    assert [c[:2] for c in osservatore.chiamate] == [("automation.buona", "error")]
+    assert result == 1
+    assert [c[:2] for c in watcher.calls] == [("automation.buona", "error")]
+
+
+# --------------------------------------------------------------------------
+# Giro di correzioni, rilievo 1 (CRITICO): il cursore per automazione, e la
+# prova che mancava. Qui il `Watcher` e' VERO (non finto): l'idempotenza e'
+# una proprieta' del suo stato reale (`_automation_faults`), e una finta che
+# torna sempre `True` non la potrebbe mai catturare.
+# --------------------------------------------------------------------------
+
+class _CountingStore:
+    """Un archivio che conta le scritture senza salvarle: basta a
+    verificare CHE non si riscriva una seconda volta, non serve rileggerle
+    (quello lo fa gia' `tests/test_mind_watcher.py` sul `Watcher` da
+    solo)."""
+
+    def __init__(self) -> None:
+        self.count = 0
+
+    def record(self, **kwargs) -> None:
+        self.count += 1
+
+
+def test_rereading_a_fixed_finished_then_error_window_stays_at_one_write():
+    """La finestra che il revisore ha misurato scrivere **2 a ogni giro**
+    senza cursore: `[finished, error]` fissa (lo stesso `error` non ancora
+    espulso da HA, letto insieme a un `finished` PIU' VECCHIO che lo
+    precede sempre nello stesso ordine). Senza cursore, ogni giro
+    rivedrebbe il `finished` (che non avrebbe niente da chiudere la prima
+    volta, ma richiuderebbe l'errore ancora aperto a ogni giro successivo)
+    e poi l'`error` (che riaprirebbe). Con il cursore, solo il PRIMO giro
+    vede entrambe le tracce come nuove; i giri successivi non ne vedono
+    nessuna.
+
+    Mutazione (verificata eseguendola): togliere `if run_id in
+    already_seen: continue` -- il test torna rosso su
+    `assert second_round == 0` (tornerebbe `2`: il `finished` chiuderebbe
+    di nuovo e l'`error` riaprirebbe di nuovo, ogni giro, per sempre)."""
+    store = _CountingStore()
+    watcher = Watcher(store, now=lambda: 1787572800.0)
+    watcher.mark_automation("automation.rotta")
+    client = _FakeTracesClient({
+        "automation.rotta": {"tracce": [
+            {"run_id": "1", "script_execution": "finished"},
+            {"run_id": "2", "script_execution": "error"},
+        ]},
+    })
+    app = {"watcher": watcher}
+
+    first_round = asyncio.run(server.watch_automation_outcomes(app, client))
+    assert first_round == 1  # il "finished" iniziale non chiude niente; l'"error" apre
+    assert store.count == 1
+
+    second_round = asyncio.run(server.watch_automation_outcomes(app, client))
+    assert second_round == 0
+    assert store.count == 1
+
+
+def test_rereading_a_fixed_error_then_finished_window_stays_at_two_writes():
+    """L'altra finestra fissa misurata dal revisore, ordine opposto: un
+    errore che la STESSA finestra di due minuti ha gia' visto guarire
+    (`[error, finished]`). Il primo giro scrive DUE volte (apre, poi
+    chiude subito nello stesso giro -- un episodio completo, la storia
+    vera: «rotto, poi guarito»); senza cursore, ogni giro successivo
+    RIAPRIREBBE e richiuderebbe lo stesso episodio gia' concluso -- «una
+    bugia nella storia» per un'automazione che in realta' funziona da un
+    pezzo.
+
+    Mutazione (verificata eseguendola): togliere `if run_id in
+    already_seen: continue` -- il test torna rosso su
+    `assert second_round == 0` (tornerebbe `2`: la stessa coppia
+    apre/chiude si ripeterebbe a ogni giro)."""
+    store = _CountingStore()
+    watcher = Watcher(store, now=lambda: 1787572800.0)
+    watcher.mark_automation("automation.guarita")
+    client = _FakeTracesClient({
+        "automation.guarita": {"tracce": [
+            {"run_id": "1", "script_execution": "error"},
+            {"run_id": "2", "script_execution": "finished"},
+        ]},
+    })
+    app = {"watcher": watcher}
+
+    first_round = asyncio.run(server.watch_automation_outcomes(app, client))
+    assert first_round == 2  # apre e chiude nello stesso giro
+    assert store.count == 2
+
+    second_round = asyncio.run(server.watch_automation_outcomes(app, client))
+    assert second_round == 0
+    assert store.count == 2

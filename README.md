@@ -78,20 +78,22 @@ sample every 15 minutes (`server.py::tree_comparison_round`), the `mtime` sentin
 over `automations.yaml`/`scripts.yaml` every 5 minutes
 (`server.py::behavior_sentinel`), chat-history retention at 03:00, the
 reasoning-queue sweep every 2 minutes, and four more added by the "the
-observer" slice (`hiris/app/mind/`): the system-conditions read — the same
-diagnosed issues plus the integrations Home Assistant has not loaded, folded
-into the observer's fault objects — every 10 minutes
-(`server.py::_watch_conditions`), the automation-outcome trace read every
-2 minutes (`server.py::_watch_automation_traces` →
-`mind/watcher.py::Watcher.watch_automation_outcome`) — it rereads the recent
-execution traces of every automation that has fired at least once since
-startup (`Watcher.mark_automation`, on Home Assistant's own
-`automation_triggered` event) and turns a failed run into a fault episode,
-closed only by that same automation's next successful run — the nightly
-aggregation of the previous day's raw state changes into objects at 00:20
-(`server.py::_aggrega_ieri` → `mind/facts.py::aggregate_day`), and the
-pruning of raw changes older than 22 days at 03:00
-(`server.py::_prune_observations`). The 03:30 history compaction, the 04:00
+observer" slice (`hiris/app/mind/`) and its follow-up, "the traces and the
+log": the system-conditions read — the same diagnosed issues plus the
+integrations Home Assistant has not loaded, folded into the observer's
+fault objects — every 10 minutes (`server.py::_watch_conditions`), the
+nightly aggregation of the previous day's raw state changes into objects
+at 00:20 (`server.py::_aggrega_ieri` → `mind/facts.py::aggregate_day`),
+and the pruning of raw changes older than 22 days at 03:00
+(`server.py::_prune_observations`) all belong to "the observer"; the
+automation-outcome trace read every 2 minutes
+(`server.py::_watch_automation_traces` →
+`mind/watcher.py::Watcher.watch_automation_outcome`) belongs to "the
+traces and the log" instead — it rereads the recent execution traces of
+every automation that has fired at least once since startup
+(`Watcher.mark_automation`, on Home Assistant's own `automation_triggered`
+event) and turns a failed run into a fault episode, closed only by that
+same automation's next successful run. The 03:30 history compaction, the 04:00
 nightly digest and the Mayan document poll were removed in 2.1.0 together with
 the document integration and the knowledge archive they fed.
 
