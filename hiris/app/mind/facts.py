@@ -740,15 +740,20 @@ def aggregate_day(*, store, day: str, timezone: str | None,
                 # Sovrascrive senza `if subject not in open_episodes` (a
                 # differenza di `sicurezza`/`funzionamento` sotto): due
                 # aperture di fila per lo stesso soggetto perderebbero la
-                # prima data d'inizio. Oggi non puo' succedere -- non per una
-                # guardia qui, ma per la disciplina dello SCRITTORE, in un
-                # altro file: `watcher.py::rebuild_conditions` scrive una
-                # nascita solo per `set(open_now) - self._conditions`
-                # (watcher.py:227), quindi un soggetto gia' malato (in
-                # `self._conditions`) che passa da `setup_retry` a
-                # `setup_error` non produce una seconda riga d'apertura.
-                # Aggiungere la guardia qui sarebbe codice per un caso che il
-                # disegno esclude a monte.
+                # prima data d'inizio. Non per una guardia qui, ma per la
+                # disciplina dello SCRITTORE, in un altro file:
+                # `watcher.py::watch_system` scrive una nascita solo per
+                # `set(open_now) - self._conditions`, quindi un soggetto gia'
+                # malato (in `self._conditions`) che passa da `setup_retry` a
+                # `setup_error` non produce una seconda riga d'apertura --
+                # SALVO l'eccezione che `watcher.py::rebuild_conditions`
+                # dichiara nel suo docstring: se l'archivio non risponde
+                # all'avvio, `self._conditions` riparte da vuoto, e
+                # `watch_system` tratta di proposito ogni guasto gia' aperto
+                # come nuovo (e' il prerequisito della garanzia attraverso i
+                # riavvii: senza la riseminatura, sarebbe la regola, non
+                # l'eccezione). E' un'eccezione dichiarata e voluta, non un
+                # buco silenzioso -- e non e' una ragione per una guardia qui.
                 open_episodes[subject] = {
                     "genere": genre, "inizio": r["quando_ts"],
                     "stato": r["a"],
