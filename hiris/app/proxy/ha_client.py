@@ -1511,14 +1511,32 @@ class HAClient:
         `DEFAULT_STORED_TRACES = 5`) e' configurabile per automazione in YAML
         (`trace: stored_traces: N` -- schema in
         `homeassistant/components/automation/config.py`, che importa
-        `TRACE_CONFIG_SCHEMA` da `trace/__init__.py`); per difetto e' 5. Un
-        dettaglio che il capitolato non dice e che questa lettura ha trovato:
-        il tetto e' PER SECCHIO, non per automazione -- le esecuzioni
-        scattate (`runs`) e quelle valutate ma non scattate (`not_triggered`)
-        vivono in due `LimitedSizeDict` distinti, ciascuno capato a
-        `stored_traces` (`trace/util.py`, classe `TraceBuckets` e funzione
-        `async_store_trace`): un'automazione puo' avere fino al DOPPIO di
-        `stored_traces` tracce vive, non `stored_traces`.
+        `TRACE_CONFIG_SCHEMA` da `trace/__init__.py`); per difetto e' 5.
+
+        Il tetto NON e' stato lo stesso per tutta la vita di questo comando,
+        e HIRIS dichiara di girare su un intervallo che lo attraversa
+        (`hiris/config.yaml:22`, `homeassistant: "2024.7.0"` come minimo):
+
+        - **Da HA 2026.7.0 in poi** (verificato sui tag `2026.7.0`, `2026.8.0`
+          e `2026.9.0`), il tetto e' PER SECCHIO, non per automazione -- le
+          esecuzioni scattate (`runs`) e quelle valutate ma non scattate
+          (`not_triggered`) vivono in due `LimitedSizeDict` distinti, ciascuno
+          capato a `stored_traces` (classe `TraceBuckets`,
+          `trace/models.py`, funzione `async_store_trace`, `trace/util.py`):
+          un'automazione puo' avere fino al DOPPIO di `stored_traces` tracce
+          vive.
+        - **Su HA 2026.6.0 e su ogni versione precedente fino al minimo
+          dichiarato 2024.7.0** (verificato sui tag `2024.7.0` e `2026.6.0`:
+          in questa finestra il modulo si chiama `trace/__init__.py`, non
+          esiste ancora `trace/util.py`), il secchio `not_triggered` non
+          esiste: `async_store_trace` fa
+          `traces[key] = LimitedSizeDict(size_limit=stored_traces)`, UN SOLO
+          dizionario per automazione, tetto TOTALE pari a `stored_traces`.
+
+        Su una casa vecchia, quindi, il tetto vero e' la meta' di quello che
+        si vedrebbe su una casa aggiornata: chi consuma questo metodo non
+        deve assumere il caso piu' recente solo perche' e' quello su cui
+        gira la casa di sviluppo.
 
         `{"errore": ...}` su guasto, per la stessa ragione di `problemi` e
         `voci`: un elenco vuoto affermerebbe «questa automazione non ha mai

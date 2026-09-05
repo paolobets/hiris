@@ -169,15 +169,15 @@ async def test_a_single_trace_is_read_as_home_assistant_sends_it():
 
     Mutazione: proiettare il risultato su un sottoinsieme di campi che scarta
     `trace` (il grafo) -- il test torna rosso su
-    `assert traccia["trace"] == row["trace"]`.
+    `assert trace["trace"] == row["trace"]`.
     """
     row = _extended_trace(run_id="xyz", state="stopped")
     expected = copy.deepcopy(row)
     fake = _FakeConnection({"result": row})
     outcome = await _client(fake).automation_trace("automation.luci_sera", "xyz")
-    traccia = outcome["traccia"]
-    assert traccia["run_id"] == "xyz"
-    assert traccia["trace"] == row["trace"]
+    trace = outcome["traccia"]
+    assert trace["run_id"] == "xyz"
+    assert trace["trace"] == row["trace"]
     assert fake.commands[0] == (
         "trace/get",
         {"domain": "automation", "item_id": "luci_sera", "run_id": "xyz"})
