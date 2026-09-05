@@ -393,6 +393,58 @@ cambia versione.
 > del repository e da cio' che e' stato misurato sulla casa vera. La lista del proprietario va
 > reinserita da lui, e queste voci vanno lette come un fondo di magazzino, non come una sua scelta.
 
+### HIRIS per gli utenti non-admin di Home Assistant
+
+`origine: il proprietario, 05/09/2026, brainstorming` · `nessun documento`
+
+**Il bersaglio**: gli utenti HA **non amministratori**, che oggi l'add-on non lo vedono nemmeno.
+La distribuzione ad altre case e' l'orizzonte dichiarato, non il problema di questa voce.
+
+**Il fatto che governa tutto**, e va letto prima di ogni disegno: HIRIS parla con Home Assistant
+usando il **token del Supervisor**, non i permessi di chi sta chattando. Via ingress HA inoltra
+l'identita' ma **non applica i ruoli**. Quindi oggi *vedere l'add-on equivale ad avere pieni
+poteri sulla casa*, aggirando il modello di permessi di HA.
+
+**Verificato alla fonte il 05/09** (non dedotto):
+
+| | |
+|---|---|
+| `panel_admin` | «Make the menu entry only available to users in the admin group», default `true`. Governa **la voce di menu** |
+| header inoltrati dal Supervisor (`supervisor/api/ingress.py`) | `X-Remote-User-ID`, `X-Remote-User-Name`, `X-Remote-User-Display-Name` |
+| header sul **ruolo** | **nessuno**: il Supervisor non dice se l'utente e' amministratore |
+| `config/auth/list` (`components/config/auth.py`) | esiste, torna `group_ids`, ed e' `@websocket_api.require_admin` |
+
+**Deciso in brainstorming:**
+1. **Poteri uguali per tutti**, e li stabilisce la fetta sicurezza — non questa.
+2. **Una conversazione privata per persona.** Oggi ce n'e' **una sola per tutta la casa**
+   (`chat_messages(session_id, role, content, timestamp)`: nessun autore, nessun agente). Un
+   modello che legge un thread con tre autori indistinguibili ragiona su un interlocutore che non
+   esiste: e' la quarta spina — la provenienza — a un secondo livello. I **ricordi** un autore
+   gia' ce l'hanno («detto da Paolo»); le conversazioni no.
+3. **La cucitura e' quella che il prodotto ha gia'**: «Da fare» (Impegni, Proposte) e «La casa» a
+   tutti, «Configurazione» ai soli admin. Non «chat contro pannello»: un non-admin che chiede di
+   costruire qualcosa creerebbe una proposta **che non potrebbe vedere ne' approvare**, e la chat
+   gli direbbe «ti aspetta nella pagina Proposte» — la frase aggiunta il 04/09 per chiudere il
+   difetto «non sai dove» — indicando una porta che per lui non esiste.
+
+**Bloccato, e su decisione del proprietario:** *come* HIRIS sappia chi e' amministratore. Le due
+strade sono `config/auth/list` (verita' di HA, ma un'API riservata chiamata col token del
+Supervisor che scarica **tutti** gli utenti con le loro `credentials` per una domanda su uno) o un
+elenco esplicito nella configurazione dell'add-on. **Si decide con la fetta sicurezza.**
+
+**Conseguenza pratica, ed e' il motivo per cui questa voce non e' pronta a diventare una fetta:**
+senza il ruolo non si puo' scrivere `panel_admin: false`, perche' aprirebbe anche
+«Configurazione». Finche' la sicurezza non arriva, **i non-admin non raggiungono HIRIS** — e
+costruire ora i thread privati sarebbe costruire per utenti che non possono ancora entrare. Lo
+stesso genere di lavoro senza chiamanti che questo progetto ha gia' cancellato due volte
+(`get_error_log`, i calendari).
+
+**Il documento del 26/07** (`docs/design/2026-07-26-chat-tutta-la-casa-design.md`, sul ramo
+`analysis`/`feat/chat-household`, mai fuso) resta utile per l'inquadramento ma **tre dei suoi
+cinque fatti sono superati** dal refactor 2.0: `resolve_owner` non esiste piu' (uscito come
+orfano), la cronologia non e' piu' per agente ma unica, e il semaforo per-azione e' fra le cose
+che lo scope 2.0 dichiara assorbite.
+
 ### I comandi verso Home Assistant
 
 `origine: deciso dal proprietario il 04/09/2026` · `documento: docs/design/2026-09-04-i-comandi-verso-home-assistant.md`
