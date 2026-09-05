@@ -220,6 +220,13 @@ _GUIDE_WITHOUT_TOOLS = (
 #   cinque (nessuna regola del giro in due tempi da ripetere): guardano
 #   INDIETRO nel tempo invece che lo stato di adesso, ed e' l'unica cosa
 #   che questo testo -- quello dei NOMI -- deve dire su di loro.
+#
+# fetta «le tracce e il log» (Task 5). Da 13 a 15: entrano `system_log` e
+#   `automation_trace` -- ancora lo stesso ricollegamento nome nudo -> nome
+#   prefissato, non un quarto giro di logica. Leggono la STESSA fonte che
+#   l'osservatore gia' rilegge di notte (`mind/watcher.py`), non una
+#   seconda: e' l'unica cosa in piu' che questo testo -- quello dei NOMI --
+#   deve dire su di loro, oltre a come si chiamano.
 # **La riga di compatibilita' sui nomi VECCHI degli strumenti -- temporanea, e
 # qui sotto c'e' scritto cosa la fa sparire.**
 #
@@ -274,11 +281,13 @@ _GUIDE_WITH_TOOLS = (
     "un'anteprima), `mcp__hiris__confirm` per applicare quella proposta, "
     "`mcp__hiris__trend` per come e' andato nel tempo il valore di UNA "
     "entita', `mcp__hiris__logbook` per cosa e' successo in casa e per mano "
-    "di chi. "
+    "di chi, `mcp__hiris__system_log` per cosa non va nel registro degli "
+    "errori di Home Assistant, `mcp__hiris__automation_trace` per come sono "
+    "andate le esecuzioni recenti di un'automazione. "
     "Quando il prompt qui sopra parla "
     "di `search`, `view`, `related`, `remember`, `fetch`, `execute`, "
-    "`promise`, `agenda`, `cancel`, `propose`, `confirm`, `trend` "
-    "o `logbook` parla di "
+    "`promise`, `agenda`, `cancel`, `propose`, `confirm`, `trend`, "
+    "`logbook`, `system_log` o `automation_trace` parla di "
     "questi STESSI strumenti, non di altri: usa il nome prefissato per "
     "chiamarli.\n"
 ) + _OLD_NAMES_NOTICE + (

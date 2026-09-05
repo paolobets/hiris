@@ -5,7 +5,7 @@ L'internal token (env INTERNAL_TOKEN) resta usato per l'HTTP verso la reasoning
 API (`/api/reasoning/claim` e `/api/reasoning/submit`).
 
 OGGI, in una riga: il ponte LEGGE la casa e la memoria, e da questa fetta puo'
-anche AGIRE su di essa -- gli strumenti sono tredici, lo stesso catalogo della
+anche AGIRE su di essa -- gli strumenti sono quindici, lo stesso catalogo della
 chat sincrona (`home_space/tools.py`): fra loro `execute` chiama un servizio di
 Home Assistant passando per la porta dei servizi (`action/actuator.py`), e
 `propose`/`confirm` (fetta «costruire») passano per l'officina
@@ -89,8 +89,8 @@ parallele della stessa risposta della CLI -- vedi il commento su
 
 Fino alla fetta «comandare» questo docstring si chiudeva su una cosa che il
 ponte «continua a non poter fare, e che nessuna fetta di questo ramo cambia:
-AGIRE». La fetta l'ha cambiata. Gli strumenti sono tredici (hiris/app/home_space/
-strumenti.py): il ponte agisce quando la sonda dice di si', esattamente come
+AGIRE». La fetta l'ha cambiata. Gli strumenti sono quindici (hiris/app/home_space/
+tools.py): il ponte agisce quando la sonda dice di si', esattamente come
 la chat sincrona, per la porta dei servizi (`esegui`) o, dalla fetta
 «costruire», per quella della configurazione (`costruisci`/`conferma`).
 
@@ -511,7 +511,7 @@ def probe_tools(client, base_url: str, headers: dict,
     quel pin insieme al codice, invece di scavalcarlo qui."""
     # I nomi NUDI del catalogo di QUESTO turno. La sonda deve interrogare la
     # stessa cosa che il turno usera': con l'intestazione della promessa la
-    # rotta serve sette strumenti, senza ne serve tredici, e una sonda che
+    # rotta serve sette strumenti, senza ne serve quindici, e una sonda che
     # chiedesse gli uni per poi usare gli altri proverebbe il turno sbagliato.
     definitions = promise_tools() if promise_id else KNOWLEDGE_TOOLS
     awaited = {d["name"] for d in definitions}

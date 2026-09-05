@@ -9,8 +9,9 @@ i trentaquattro"; fetta E3 Task 7 "esce la Sentinella intera, e il semaforo
 che la E2 le aveva promesso") -- oggi non esistono piu' in nessuna forma.
 
 Qui il modello ne riceveva SEI, dalla fetta «lo schedulatore» (Task 6) ne
-riceve NOVE, dalla fetta «costruire» (Task 9) ne riceve UNDICI, e dalla
-fetta «HIRIS e il tempo» (Task 6) ne riceve TREDICI. Cinque leggono e
+riceve NOVE, dalla fetta «costruire» (Task 9) ne riceve UNDICI, dalla fetta
+«HIRIS e il tempo» (Task 6) ne riceve TREDICI, e dalla fetta «le tracce e il
+log» (Task 5) ne riceve QUINDICI. Cinque leggono e
 ricordano; `execute` fa succedere qualcosa in casa SUBITO -- ed e', chiamato
 DIRETTAMENTE dal modello in un turno, l'unico che scrive nella casa (i
 servizi, non la configurazione) senza passare da un'attesa. Non e' pero'
@@ -20,10 +21,21 @@ servizio, dalla STESSA porta, solo piu' tardi -- lo schedulatore lo chiama
 da solo quando la promessa matura, senza un turno del modello in quel
 momento. `propose` e `confirm`, in coppia, sono l'unica strada che scrive
 CONFIGURAZIONE -- automazioni, script, scene -- e lo fanno in due tempi
-apposta (vedi piu' sotto); `trend` e `logbook`, gli ultimi due, leggono
-INDIETRO nel tempo passando per `home_space/historian.py` -- come e' andato un valore,
-cosa e' successo e per mano di chi (vedi la sezione «-- il tempo --» piu'
-sotto). Per un tratto della 2.0
+apposta (vedi piu' sotto); `trend` e `logbook` leggono INDIETRO nel tempo
+passando per `home_space/historian.py` -- come e' andato un valore, cosa e'
+successo e per mano di chi (vedi la sezione «-- il tempo --» piu' sotto).
+Gli ultimi due, `system_log` e `automation_trace` (fetta «le tracce e il
+log», Task 5), leggono la STESSA fonte che l'osservatore (`mind/watcher.py`)
+gia' rilegge di notte -- non ne aprono una seconda (vedi il docstring di
+quel modulo, «non apre un secondo rubinetto»: due sorgenti degli stessi
+eventi potrebbero divergere): `system_log` il registro degli errori di Home
+Assistant cosi' come sta ORA, `automation_trace` le esecuzioni recenti di
+un'automazione o, con `esecuzione`, il grafo completo di una di esse.
+Rispondono rispettivamente a «cosa non va nel sistema?» e «come e' andata
+questa automazione?» -- due domande da due comandi diversi, non una sola con
+un argomento facoltativo: un solo strumento avrebbe costretto il modello a
+dedurre l'intento dalla PRESENZA di quell'argomento, l'ambiguita' che le
+description degli strumenti esistono per togliere. Per un tratto della 2.0
 questo modulo ne offriva quattro soli e diceva «la chat CONOSCE, non
 agisce»: era vero allora, non lo e' piu' dalla fetta «comandare», che ha
 ridato l'azione al prodotto con un progetto proprio, dopo che la conoscenza
@@ -125,6 +137,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+import re
 from typing import Any, ClassVar
 
 from ..memory.interpretation import VOCABULARY, validate
@@ -160,6 +173,19 @@ from .topology import live_mirror
 # puo' esistere) al posto del messaggio che insegna i tipi validi -- lo
 # stesso genere di secondo vocabolario silenzioso che R9 denuncia altrove.
 _TETHER_TYPES = tuple(sorted(VOCABULARY["ancore"]))
+
+# La forma canonica `dominio.oggetto` di un `entity_id`. DOPPIONE DICHIARATO
+# con `proxy/ha_client.py::_ENTITY_ID_RE` e `mind/watcher.py::_ENTITY_ID_RE`
+# (stessa espressione, stessa intenzione: una GUARDIA, la piu' stretta
+# possibile) -- non importata perche' e' privata al suo modulo, e questo file
+# non deve dipendere da un dettaglio interno di un altro per una guardia che
+# gli appartiene comunque (Task 5 di «le tracce e il log»): `HAClient.
+# automation_traces()`/`automation_trace()` non validano il proprio
+# `entity_id` (stessa ragione scritta in `mind/watcher.py::mark_automation`),
+# quindi la guardia sta qui, A MONTE, prima che un identificatore malformato
+# possa produrre un elenco vuoto silenzioso -- «questa automazione non ha mai
+# girato» detto per sbaglio invece di un errore che si vede.
+_ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 
 logger = logging.getLogger(__name__)
 
@@ -927,12 +953,93 @@ LOGBOOK_TOOL_DEF = {
     },
 }
 
+SYSTEM_LOG_TOOL_DEF = {
+    "name": "system_log",
+    "description": (
+        # Task 5 di «le tracce e il log»: stessa fonte dell'osservatore
+        # (`HAClient.system_log()`, Task 1), non una seconda -- «non apre un
+        # secondo rubinetto» (docstring di `mind/watcher.py`). Le tre cose
+        # che questa description deve dire (lezione della fetta precedente,
+        # vedi `LOGBOOK_TOOL_DEF` qui sopra): cosa contiene la risposta, cosa
+        # NON si puo' concludere da essa, cosa succede quando la fonte non
+        # risponde.
+        "Cosa c'e' nel registro degli errori di Home Assistant, ADESSO. Serve alla "
+        "domanda «cosa non va nel sistema?». Ogni voce porta `message`, `level`, "
+        "`source`, e -- quando HA la rivede piu' volte -- `count` (quante volte e' "
+        "ricorsa) e `first_occurred` (quando e' comparsa la prima volta): Home "
+        "Assistant DEDUPLICA gia' da solo, `count: 12` non sono dodici episodi da "
+        "raccontare uno per uno, e' la stessa causa ricomparsa dodici volte. "
+        "Non e' l'unica finestra sui guasti della casa: un repair attivo o "
+        "un'integrazione che non risponde piu' possono non lasciare mai una riga "
+        "qui dentro, il registro raccoglie solo cio' che qualcosa ha esplicitamente "
+        "loggato. `voci: []` significa che il registro e' vuoto in questo momento, "
+        "NON che nulla sia mai andato storto -- e non e' nemmeno detto che duri: "
+        "Home Assistant lo tiene finche' l'add-on gira, un riavvio lo svuota. Se "
+        "torna `errore`, Home Assistant non ha risposto: non concludere «va tutto "
+        "bene», dillo."
+    ),
+    "input_schema": {"type": "object", "properties": {}, "required": []},
+}
+
+AUTOMATION_TRACE_TOOL_DEF = {
+    "name": "automation_trace",
+    "description": (
+        # Task 5 di «le tracce e il log»: stessa fonte dell'osservatore
+        # (`HAClient.automation_traces()`/`automation_trace()`, Task 3), non
+        # una seconda. Il tetto delle tracce conservate (verificato alla
+        # fonte nel docstring di `HAClient.automation_traces()`, e datato sui
+        # tag rilasciati, non sul ramo dev) e' il fatto che decide la
+        # SECONDA cosa che questa description deve dire: una traccia
+        # mancante non e' un «e' andato tutto bene».
+        "Come sono andate le esecuzioni RECENTI di un'automazione. Serve alla "
+        "domanda «come e' andata questa automazione?». Richiede `entita`, "
+        "l'identificatore ESATTO (se hai solo un nome, usa prima `search`). Senza "
+        "altro, torna l'elenco delle ultime esecuzioni (`tracce`), ciascuna con "
+        "`script_execution` (com'e' finita -- es. `finished`, `failed_conditions`, "
+        "`aborted`: non dare per scontato quali altri valori esistano), `last_step` "
+        "e, quando c'e' stato un errore, `error`. Passa anche `esecuzione` (il "
+        "`run_id` di una voce di `tracce`) per avere il grafo COMPLETO di UNA sola "
+        "esecuzione, passo per passo (`traccia`). "
+        "**Un'esecuzione che manca da `tracce` NON significa che sia andata bene**: "
+        "Home Assistant ne conserva solo un numero limitato per automazione -- "
+        "cinque sull'installazione piu' vecchia che HIRIS puo' incontrare, fino al "
+        "doppio sulle versioni piu' recenti, e un'automazione puo' averne chiesti "
+        "di piu' da sola in YAML -- quella esecuzione puo' semplicemente essere "
+        "USCITA dal tetto, non essere andata bene. `tracce: []` significa che, "
+        "dentro quel tetto, questa automazione non ha mai girato -- non che vada "
+        "tutto bene. Se torna `errore`, Home Assistant non ha risposto: non "
+        "concludere niente su come sia andata, dillo."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "entita": {
+                "type": "string",
+                "description": (
+                    "L'identificatore esatto dell'automazione (es. "
+                    "'automation.buonanotte')."
+                ),
+            },
+            "esecuzione": {
+                "type": "string",
+                "description": (
+                    "Facoltativa: il `run_id` di una voce di `tracce`, per il "
+                    "grafo completo di quella sola esecuzione invece dell'elenco "
+                    "riassuntivo."
+                ),
+            },
+        },
+        "required": ["entita"],
+    },
+}
+
 KNOWLEDGE_TOOLS: list[dict] = [
     SEARCH_TOOL_DEF, VIEW_TOOL_DEF, RELATED_TOOL_DEF, REMEMBER_TOOL_DEF,
     FETCH_TOOL_DEF, EXECUTE_TOOL_DEF,
     PROMISE_TOOL_DEF, AGENDA_TOOL_DEF, CANCEL_TOOL_DEF,
     PROPOSE_TOOL_DEF, CONFIRM_TOOL_DEF,
     TREND_TOOL_DEF, LOGBOOK_TOOL_DEF,
+    SYSTEM_LOG_TOOL_DEF, AUTOMATION_TRACE_TOOL_DEF,
 ]
 
 # I nomi che `dispatch()` accetta. Si DERIVANO dal catalogo qui sopra: erano
@@ -947,7 +1054,7 @@ _TOOL_NAMES = frozenset(d["name"] for d in KNOWLEDGE_TOOLS)
 
 
 class ToolDispatcher:
-    """Collega i tredici strumenti agli archivi, alla porta, all'officina e al
+    """Collega i quindici strumenti agli archivi, alla porta, all'officina e al
     canale HA -- e non altro.
 
     Prende `home_space_store` e `memory_store` gia' costruiti dal chiamante
@@ -1041,6 +1148,7 @@ class ToolDispatcher:
         "cancel": ("promesse",),
         "propose": ("officina",), "confirm": ("officina",),
         "trend": ("ha",), "logbook": ("ha",),
+        "system_log": ("ha",), "automation_trace": ("ha",),
     }
 
     def _ha_channel(self):
@@ -1127,15 +1235,21 @@ class ToolDispatcher:
             "confirm": self._confirm,
             "trend": self._trend,
             "logbook": self._happened,
+            "system_log": self._system_log,
+            "automation_trace": self._automation_trace,
         }[name]
         try:
-            # `_execute`, `_legami`, `_promise`, `_propose`, `_confirm`,
-            # `_trend` e `_happened` sono coroutine (fanno rete, o --
-            # `_promise` -- possono scaldare il registro dei servizi prima
-            # di verificare); gli altri sei no. Si attende cio' che e'
-            # attendibile invece di rendere `async` anche i sei sincroni:
-            # cambiare la loro firma avrebbe toccato tredici gestori per un
-            # bisogno di sette.
+            # `_execute`, `_related`, `_promise`, `_propose`, `_confirm`,
+            # `_trend`, `_happened`, `_system_log` e `_automation_trace` sono
+            # coroutine (fanno rete, o -- `_promise` -- possono scaldare il
+            # registro dei servizi prima di verificare); gli altri sei no. Si
+            # attende cio' che e' attendibile invece di rendere `async` anche
+            # i sei sincroni: cambiare la loro firma avrebbe toccato quindici
+            # gestori per un bisogno di nove.
+            # (`_legami` era il refuso del nome italiano di `_related`,
+            # sopravvissuto alla fetta dei nomi degli strumenti del 02/09:
+            # corretto qui, di passaggio, mentre questo commento si tocca
+            # comunque per il conteggio.)
             occurrence = handler(arguments)
             if inspect.isawaitable(occurrence):
                 occurrence = await occurrence
@@ -2006,3 +2120,55 @@ class ToolDispatcher:
             ha=self._ha_channel(), journal=self._journal,
             entity=entity.strip() if isinstance(entity, str) else None,
             hours=arguments.get("ore"), now_ts=_time.time())
+
+    # -- il secondo lettore ----------------------------------------------
+    #
+    # `system_log` e `automation_trace` (Task 5 di «le tracce e il log»)
+    # leggono la STESSA fonte che l'osservatore (`mind/watcher.py`) gia'
+    # rilegge di notte -- `HAClient.system_log()`/`automation_traces()`/
+    # `automation_trace()`, i metodi dei Task 1 e 3 della stessa fetta, non
+    # una seconda strada. Nessuna trasformazione qui: a differenza di
+    # `_trend`/`_happened`, che passano per `historian.py` per la grana e
+    # l'attribuzione, questi due metodi del client tornano gia' la forma che
+    # il modello deve leggere (vedi i loro docstring: «il client legge e non
+    # giudica, cosa dire e cosa tacere e' di chi compone» -- qui chi compone
+    # e' la description dello strumento, non un livello di codice in piu').
+
+    async def _system_log(self, arguments: dict[str, Any]) -> dict:
+        """Il registro di sistema di Home Assistant, cosi' come sta ora.
+
+        Nessun argomento da validare: `system_log` non ne prende. Un
+        passthrough puro verso `HAClient.system_log()` -- la disciplina
+        `{"voci": [...]}` / `{"errore": ...}` e' gia' del client (vedi il suo
+        docstring).
+        """
+        return await self._ha_channel().system_log()
+
+    async def _automation_trace(self, arguments: dict[str, Any]) -> dict:
+        """Le esecuzioni recenti di un'automazione, o -- con `esecuzione` --
+        il grafo completo di una sola di esse.
+
+        **Valida `entita` PRIMA di fare rete**, cosa che `HAClient.
+        automation_traces()`/`automation_trace()` non fanno da soli (stessa
+        ragione scritta in `mind/watcher.py::mark_automation`): un
+        identificatore senza punto, o comunque malformato, spaccato sul
+        primo punto da quei due metodi produrrebbe un elenco vuoto
+        silenzioso -- «questa automazione non ha mai girato» detto per
+        sbaglio -- invece di un errore che si vede.
+        """
+        entity = arguments.get("entita")
+        if not isinstance(entity, str) or not entity.strip():
+            return {"errore": "«automation_trace» richiede «entita»: l'identificatore "
+                              "esatto (es. 'automation.buonanotte')."}
+        entity = entity.strip()
+        if not _ENTITY_ID_RE.match(entity):
+            return {"errore": f"«{entity}» non ha la forma di un identificatore Home "
+                              "Assistant (dominio.oggetto)."}
+        run_id = arguments.get("esecuzione")
+        if run_id is not None and not (isinstance(run_id, str) and run_id.strip()):
+            return {"errore": "«esecuzione», se presente, deve essere il «run_id» di "
+                              "una voce di «tracce»: una stringa non vuota."}
+        ha = self._ha_channel()
+        if run_id:
+            return await ha.automation_trace(entity, run_id.strip())
+        return await ha.automation_traces(entity)

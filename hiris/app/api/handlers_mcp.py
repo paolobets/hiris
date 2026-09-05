@@ -46,7 +46,7 @@ davanti.
 «costruire» anche di configurazione.** Fino a quel momento qui si leggeva «gli
 strumenti restano quattro e nessuno tocca Home Assistant -- HIRIS conosce e
 non agisce»: era vero, e ha smesso di esserlo su entrambe le meta'. Gli
-strumenti sono tredici, lo stesso catalogo del turno sincrono: `execute` chiama
+strumenti sono quindici, lo stesso catalogo del turno sincrono: `execute` chiama
 un servizio di Home Assistant, `propose`/`confirm` compongono e scrivono
 configurazione. Cio' che NON cambia e' il motivo per cui la frase stava qui:
 questa rotta non e' una porta di scrittura propria. `tools/call` dispaccia con

@@ -173,10 +173,15 @@ def test_i_nomi_si_derivano_dal_catalogo_e_non_si_riscrivono():
     a 13, entrano `trend` e `logbook` -- che guardano indietro nel tempo
     passando per `home_space/historian.py`, LEGGONO e basta, ed entrano invece nello
     stesso elenco di ammissione del turno delle promesse, per la ragione
-    opposta a `propose`/`confirm`."""
+    opposta a `propose`/`confirm`. Fetta «le tracce e il log» Task 5: da 13
+    a 15, entrano `system_log` e `automation_trace` -- la STESSA fonte che
+    l'osservatore (`mind/watcher.py`) gia' rilegge di notte, non una
+    seconda; LEGGONO e basta come `trend`/`logbook`, ma NON entrano
+    nell'elenco di ammissione del turno delle promesse (`keeper/exchange.py::
+    SOLA_LETTURA`): decisione lasciata aperta da questo task, non presa."""
     nomi = runner.mcp_names()
 
-    assert len(nomi) == len(KNOWLEDGE_TOOLS) == 13
+    assert len(nomi) == len(KNOWLEDGE_TOOLS) == 15
     assert set(nomi) == {f"mcp__hiris__{n}" for n in _NOMI_NUDI}
     # il nome del server ha UNA fonte, quella della rotta: se un giorno la
     # rotta si presentasse con un altro nome, il prefisso lo seguirebbe da
