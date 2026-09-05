@@ -480,6 +480,33 @@ class Watcher:
         dentro un archivio che si scrive una volta sola -- cio' che questo
         metodo tiene e' la DURATA dell'episodio, non quante volte e' ricorso.
 
+        **Un `log:` chiude anche quando NON e' guarito, e qui non e' ancora
+        scritto -- lo e' gia' per la chat (giro di correzioni sul Task 7).**
+        `SYSTEM_LOG_TOOL_DEF` (`home_space/tools.py`) dice all'analista che
+        il registro di HA vive nella memoria di Home Assistant, non
+        dell'add-on: un riavvio di HA lo svuota (riparte da zero), e porta
+        comunque un TETTO di voci distinte (cinquanta per difetto,
+        `DEFAULT_MAX_ENTRIES`) oltre il quale la piu' vecchia sparisce senza
+        nessun riavvio. Questo metodo non lo dice mai: per lui un `log:` che
+        sparisce dall'elenco che riceve e' identico a un `problema:` o
+        un'`integrazione:` che sparisce, e passa dalla STESSA isteresi a due
+        giri (sopra). La conseguenza vera: dopo un riavvio di Home Assistant
+        (o quando il tetto delle cinquanta voci distinte espelle quella
+        giusta), ogni condizione `log:` ancora aperta smette di comparire
+        nell'elenco -- non perche' l'errore sia sparito, ma perche' HA ha
+        dimenticato il proprio registro -- e dopo due giri (venti minuti)
+        questo metodo la CHIUDE. Non e' una bugia nel codice: `"chiuso"`
+        significa «sparita dall'elenco che HA manda», la stessa cosa per
+        tutte e tre le famiglie, ed e' la verita' su CIO' CHE SAPPIAMO. Ma un
+        lettore dell'archivio che vede un `fine` su un `log:` e conclude
+        «guarito» sbaglia esattamente nel caso -- un riavvio di HA -- in cui
+        e' meno probabile che sia vero: un riavvio non ripara il codice
+        rotto che ha scritto quella riga, e la prossima ricorrenza aprira'
+        un episodio NUOVO, non la continuazione di quello chiuso. La
+        sfumatura e' scritta per chi legge lo strumento della chat
+        (`tools.py`) e non per chi legge questo docstring: ora lo e' anche
+        qui.
+
         **`quando_ts` alla nascita resta `now`, per un `log:` come per gli
         altri due.** La prima stesura di questa fetta usava `first_occurred`
         come istante di nascita ("l'episodio comincia quando HA dice che e'
