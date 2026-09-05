@@ -850,6 +850,29 @@ def _view_integration(home_space: dict, state: dict, reference,
     sicuri che sia sincrono sarebbe proprio la risposta sicura che questo
     sprint toglie.
 
+    `avvio_home_assistant` esce accanto a `mute_da`, non a una seconda
+    chiamata di distanza (spec §4 ③): e' lo stato di `sensor.uptime`, letto
+    dallo SPECCHIO degli stati che questa funzione gia' riceve (`state`),
+    mai una chiamata nuova verso Home Assistant. L'integrazione Uptime e'
+    facoltativa -- verificato sulla documentazione ufficiale
+    (home-assistant.io/integrations/uptime/): il sensore, device class
+    timestamp, porta «the date and time when Home Assistant was last
+    started», scritto una volta all'avvio e fermo fino al riavvio
+    successivo. Misurato sulla casa vera (02/09): quattro piattaforme
+    (tuya, lifx, matter, alexa) condividono lo stesso `mute_da` -- non
+    quattro guasti simultanei, ma la firma di un riavvio che ha ri-datato
+    tutto insieme; sottratto da `sensor.uptime`, lifx e tuya distano meno
+    di un secondo e matter -18 s (il riavvio), mentre hydrawise -- l'unica
+    integrazione davvero rotta -- ne dista 47 ore. Il codice non emette
+    QUESTO verdetto: mette solo i due istanti fianco a fianco, la frase la
+    dice chi legge (spec §4: "il codice calcola i fatti, il modello dice la
+    frase"). La chiave esce SOLO quando ENTRAMBE le condizioni valgono:
+    `mute_da` e' gia' nel dettaglio (senza un istante da confrontare non
+    c'e' nulla da mettere accanto) e `sensor.uptime` ha un valore nello
+    specchio degli stati -- dove manca (l'integrazione Uptime non c'e', o
+    non ha ancora risposto) la chiave non esce affatto: l'assenza e'
+    assenza, mai un `None` che si potrebbe scambiare per un fatto.
+
     `reference` si normalizza (`_normalize`, la stessa di `search`) prima del
     confronto -- passata da `str()` prima, perche' lo schema dello strumento
     ammette anche un intero (`riferimento: ["string", "integer"]`,
@@ -932,6 +955,10 @@ def _view_integration(home_space: dict, state: dict, reference,
             earliest, latest = min(epochs), max(epochs)
             if latest - earliest <= _SYNCHRONY_WINDOW_SECONDS:
                 detail["mute_da"] = moments[epochs.index(earliest)]
+    if "mute_da" in detail:
+        ha_start = state.get("sensor.uptime")
+        if ha_start:
+            detail["avvio_home_assistant"] = ha_start
     return detail
 
 

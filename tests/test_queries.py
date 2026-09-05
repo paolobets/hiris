@@ -1316,3 +1316,36 @@ def test_an_integration_declares_when_the_config_registry_did_not_answer():
     assert detail["esiste"] is True
     assert detail["voci"] == []
     assert detail["elenco_incompleto"] == ["integrazioni"]
+
+
+def test_an_integration_carries_the_home_assistant_start_next_to_mute_da():
+    """Il confronto che scioglie il dubbio dev'essere NELLA risposta, non a
+    una seconda chiamata di distanza (spec §4 ③): `avvio_home_assistant` --
+    lo stato di `sensor.uptime`, letto dallo specchio degli stati che questa
+    funzione gia' riceve -- viaggia accanto a `mute_da`.
+
+    Mutazione: non leggere `sensor.uptime` -- il test torna rosso su
+    `assert detail["avvio_home_assistant"] == "2026-09-02T17:54:44+00:00"`
+    (la chiave mancherebbe del tutto, KeyError)."""
+    house, states, since = _two_silent_hydrawise_entities(
+        "2026-09-04T14:00:17+00:00", "2026-09-04T14:00:17.021000+00:00")
+    states = dict(states, **{"sensor.uptime": "2026-09-02T17:54:44+00:00"})
+    detail = view(house, [], [], states, "integrazione", "hydrawise",
+                    reported_since_when=since)
+    assert "mute_da" in detail
+    assert detail["avvio_home_assistant"] == "2026-09-02T17:54:44+00:00"
+
+
+def test_without_the_uptime_sensor_the_key_is_absent():
+    """L'integrazione Uptime e' facoltativa. Dove non c'e', la chiave non
+    esce: l'assenza e' assenza, non un valore inventato.
+
+    Mutazione: emettere `None` invece di omettere la chiave -- il test torna
+    rosso su `assert "avvio_home_assistant" not in detail` (la chiave
+    comparirebbe con valore `None`)."""
+    house, states, since = _two_silent_hydrawise_entities(
+        "2026-09-04T14:00:17+00:00", "2026-09-04T14:00:17.021000+00:00")
+    detail = view(house, [], [], states, "integrazione", "hydrawise",
+                    reported_since_when=since)
+    assert "mute_da" in detail
+    assert "avvio_home_assistant" not in detail
