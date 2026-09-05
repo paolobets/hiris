@@ -2893,9 +2893,11 @@ async def _on_startup(app: web.Application) -> None:
     # Le condizioni di sistema, ogni dieci minuti: la stessa funzione della
     # prima lettura fatta qui sopra all'avvio, `watch_system_conditions`
     # -- vedi il suo docstring per il perche' un giro si salta interamente
-    # quando una delle due letture fallisce (task-5-correzioni.md, punto
-    # A.1): un errore letto come lista vuota chiuderebbe ogni condizione
-    # aperta, che e' peggio di non saperlo.
+    # quando una delle TRE letture fallisce (problemi, integrazioni, registro
+    # di errori -- il terzo e' Task 2 di «le tracce e il log»;
+    # task-5-correzioni.md, punto A.1, ne discuteva due perche' il registro
+    # di errori non esisteva ancora): un errore letto come lista vuota
+    # chiuderebbe ogni condizione aperta, che e' peggio di non saperlo.
     #
     # **Un doppione tollerato, dichiarato (task-5-fix-brief.md, punto 5).**
     # Questo lavoro interroga `repairs/list_issues` per conto proprio, ogni
