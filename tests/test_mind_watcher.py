@@ -911,3 +911,234 @@ def test_a_log_entry_title_is_the_first_message_line(coppia):
     osservatore.watch_system(problems=[], integrations=[], log_entries=[_log_entry()])
     riga = archivio.annotati[0]
     assert riga["title"] == "403 Forbidden"
+
+
+# ============================================================================
+# Task 4 di «le tracce e il log»: l'evento SEGNA (mark_automation), la
+# cadenza breve RACCOGLIE l'errore (watch_automation_outcome). L'isteresi per
+# assenza di `watch_system` sopra NON si riusa qui -- vedi il docstring di
+# `watch_automation_outcome` per il perche' (l'assenza dall'elenco delle
+# automazioni segnate significa «non e' scattata», non «e' guarita»).
+# ============================================================================
+
+def test_the_event_marks_and_does_not_write(coppia):
+    """L'evento scatta all'INIZIO delle azioni (`started_action()`,
+    verificato alla fonte su `homeassistant/components/automation/
+    __init__.py`, tag rilasciati `2024.7.0` e `2026.9.0`, stesso corpo su
+    entrambi): in quell'istante la traccia (`trace/get`) non e' ancora
+    completa, e scrivere l'esito qui significherebbe scrivere un esito che
+    non esiste ancora. `mark_automation` segna e basta.
+
+    Mutazione: far scrivere l'evento -- aggiungere `self._store.record(
+    quando_ts=self._now(), source="sistema",
+    subject=f"automazione:{entity_id}", da=None, a="scattata")` dentro
+    `mark_automation`, subito dopo l'aggiunta al set -- il test torna rosso
+    su `assert archivio.annotati == []`.
+    """
+    archivio, osservatore = coppia
+    assert osservatore.mark_automation("automation.luci_sera") is True
+    assert archivio.annotati == []
+
+
+def test_only_a_failed_run_becomes_a_change(coppia):
+    """«Se una cosa funziona non va segnalata»: sessantaquattro esecuzioni
+    riuscite al giorno sono il contesto, non fatti compiuti. E una
+    `failed_conditions` non e' un errore -- un'automazione che non agisce
+    perche' la condizione e' falsa sta funzionando.
+
+    Mutazione: far scrivere anche gli esiti `"finished"` -- togliere `if
+    subject not in self._automation_faults: return False` dal ramo
+    `"finished"` di `watch_automation_outcome` (lasciando solo la
+    scrittura) -- il test torna rosso su
+    `assert len(archivio.annotati) == 1`.
+    """
+    archivio, osservatore = coppia
+    osservatore.watch_automation_outcome("automation.luci_sera", "finished")
+    osservatore.watch_automation_outcome("automation.luci_sera", "failed_conditions")
+    osservatore.watch_automation_outcome("automation.luci_sera", "error")
+    assert len(archivio.annotati) == 1
+    assert archivio.annotati[0]["a"] == "error"
+
+
+def test_mark_automation_rejects_a_malformed_entity_id(coppia):
+    """La forma `dominio.oggetto` si garantisce A MONTE, in questo metodo
+    (Task 4): un identificatore senza punto non deve mai entrare in
+    `marked_automations()`, o raggiungerebbe `HAClient.automation_traces()`
+    -- che non valida i propri argomenti, come i suoi fratelli -- e
+    produrrebbe un elenco vuoto silenzioso: «questa automazione non ha mai
+    girato» detto per sbaglio.
+
+    Mutazione: togliere il controllo di forma (`if not isinstance(...) or
+    not _ENTITY_ID_RE.match(entity_id): ...`), accettando qualunque
+    stringa -- il test torna rosso su
+    `assert osservatore.marked_automations() == []`.
+    """
+    archivio, osservatore = coppia
+    assert osservatore.mark_automation("automazione_senza_punto") is False
+    assert osservatore.marked_automations() == []
+    assert archivio.annotati == []
+
+
+def test_marked_automations_is_sorted_and_has_no_duplicates(coppia):
+    """`marked_automations()` e' cio' che la cadenza breve di `server.py`
+    rilegge a ogni giro: ordinata (non l'ordine di scoperta) perche' chi
+    confronta due giri successivi nei log possa farlo a colpo d'occhio, e
+    senza doppioni perche' un'automazione che scatta piu' volte resta UNA
+    voce sola da rileggere.
+
+    Mutazione (verificata eseguendola): `self._marked_automations` come
+    `list` invece di `set` (init `= []`, `mark_automation` con `.append`
+    invece di `.add`) -- il test torna rosso su
+    `assert osservatore.marked_automations() ==
+    ["automation.alfa", "automation.zeta"]` (tornerebbe una lista con
+    `"automation.alfa"` ripetuta due volte)."""
+    _archivio, osservatore = coppia
+    osservatore.mark_automation("automation.zeta")
+    osservatore.mark_automation("automation.alfa")
+    osservatore.mark_automation("automation.alfa")
+    assert osservatore.marked_automations() == ["automation.alfa", "automation.zeta"]
+
+
+def test_an_error_does_not_reopen_while_already_open(coppia):
+    """Un errore gia' aperto non deve riscriversi a ogni giro: senza questa
+    guardia un'automazione persistentemente rotta produrrebbe una riga
+    nuova ogni due minuti (la cadenza di `server.py`), invece di UN
+    episodio con una durata che vuol dire qualcosa.
+
+    Mutazione: togliere `if subject in self._automation_faults: return
+    False` dal ramo `"error"` -- il test torna rosso (verificato
+    eseguendolo) su
+    `assert osservatore.watch_automation_outcome("automation.x", "error") is False`
+    (la seconda chiamata tornerebbe `True`, riscrivendo l'errore anche se
+    l'episodio era gia' aperto).
+    """
+    archivio, osservatore = coppia
+    assert osservatore.watch_automation_outcome("automation.x", "error") is True
+    assert osservatore.watch_automation_outcome("automation.x", "error") is False
+    assert len(archivio.annotati) == 1
+
+
+def test_a_finished_run_closes_an_open_fault(coppia):
+    """Apre sull'errore, chiude sull'esito riuscito SUCCESSIVO: la scrittura
+    di chiusura porta `da=None, a="chiuso"` (la memoria in RAM non ricorda
+    l'ultima condizione, solo il soggetto -- stessa disciplina di
+    `watch_system`), senza `domain`/`title` (nessuno dei due chiamanti veri
+    li passa alla chiusura).
+
+    Nota sull'identita': si confronta `archivio.annotati[-1]` (l'oggetto
+    vero appena scritto) e non una copia fatta prima -- qui e' onesto
+    perche' la finta non muta MAI le righe gia' scritte (`_FintoArchivio.
+    record` fa solo `self.annotati.append(kw)`), a differenza di un caso in
+    cui la stessa variabile passata alla finta venisse mutata sul posto
+    dopo la chiamata.
+
+    Mutazione (verificata eseguendola): togliere
+    `self._automation_faults.discard(subject)` dal ramo `"finished"` -- il
+    test torna rosso su
+    `assert "automazione:automation.x" not in osservatore._automation_faults`
+    (il soggetto resterebbe nell'insieme anche dopo la chiusura).
+    """
+    archivio, osservatore = coppia
+    osservatore.watch_automation_outcome("automation.x", "error")
+    assert osservatore.watch_automation_outcome("automation.x", "finished") is True
+    assert archivio.annotati[-1] == {
+        "quando_ts": 1787572800.0, "source": "sistema",
+        "subject": "automazione:automation.x", "da": None, "a": "chiuso"}
+    assert "automazione:automation.x" not in osservatore._automation_faults
+
+
+def test_a_finished_run_with_nothing_open_writes_nothing(coppia):
+    """Un'esecuzione riuscita chiude ma non apre MAI: senza un errore aperto
+    prima, non c'e' niente da chiudere, e non si scrive niente.
+
+    Mutazione (verificata eseguendola): togliere `if subject not in
+    self._automation_faults: return False` dal ramo `"finished"` -- il test
+    torna rosso su
+    `assert osservatore.watch_automation_outcome("automation.x", "finished") is False`
+    (tornerebbe `True`, scrivendo una chiusura senza nessun errore aperto).
+    """
+    archivio, osservatore = coppia
+    assert osservatore.watch_automation_outcome("automation.x", "finished") is False
+    assert archivio.annotati == []
+
+
+def test_an_unhandled_outcome_does_nothing(coppia):
+    """`outcome` diversi da `"error"`/`"finished"` -- qui `"aborted"`, uno
+    dei valori veri che HA scrive in `script_execution`
+    (`helpers/script.py`, tag `2026.9.0`, `script_execution_set("aborted")`
+    per un `_AbortScript`/`_ConditionFail`) -- non sono ne' un successo ne'
+    un errore per questo verticale (il piano ne discute solo due,
+    `"finished"` ed `"error"`): non scrivono e non toccano lo stato.
+    Un guasto non misurato non si inventa.
+
+    Mutazione (verificata eseguendola): cambiare `if outcome == "error":`
+    in `if outcome != "finished":` (un bug plausibile -- trattare "non e'
+    un successo" come sinonimo di "e' un errore") -- il test torna rosso su
+    `assert osservatore.watch_automation_outcome("automation.x", "aborted") is False`
+    (tornerebbe `True`, aprendo un episodio per un `"aborted"`)."""
+    archivio, osservatore = coppia
+    assert osservatore.watch_automation_outcome("automation.x", "aborted") is False
+    assert archivio.annotati == []
+    assert osservatore._automation_faults == set()
+
+
+def test_rebuild_reseeds_an_open_automation_fault():
+    """Un `automazione:` gia' aperto (scritto da un giro precedente
+    dell'add-on ora spento) deve tornare a far parte di
+    `self._automation_faults` dopo la ricostruzione -- altrimenti un esito
+    riuscito successivo non troverebbe niente da chiudere, e l'episodio
+    resterebbe aperto per sempre anche se l'automazione fosse guarita nel
+    frattempo.
+
+    Mutazione: nella ricostruzione, smettere di popolare
+    `self._automation_faults` (tornare al comportamento pre-Task-4,
+    filtrando solo `self._conditions`) -- il test torna rosso (verificato
+    eseguendolo) su
+    `assert "automazione:automation.rotta" in osservatore._automation_faults`
+    (l'insieme resterebbe vuoto).
+    """
+    archivio = _FintoArchivio(cambi_esistenti=[
+        _cambio(1787000000.0, "sistema", "automazione:automation.rotta", None, "error"),
+    ])
+    osservatore = Watcher(archivio, now=lambda: 1787572800.0)
+    osservatore.rebuild_conditions()
+    assert "automazione:automation.rotta" in osservatore._automation_faults
+    chiuso = osservatore.watch_automation_outcome("automation.rotta", "finished")
+    assert chiuso is True
+    assert archivio.annotati[-1]["a"] == "chiuso"
+
+
+def test_rebuild_keeps_automation_faults_out_of_watch_system_hysteresis():
+    """L'incompatibilita' vera fra i due insiemi (vedi il commento su
+    `self._automation_faults` in `Watcher.__init__`): se un `automazione:`
+    finisse mescolato in `self._conditions`, il ciclo dei "mancati" di
+    `watch_system` lo chiuderebbe da solo dopo due giri -- anche se
+    l'automazione fosse ancora rotta davvero -- perche' quel ciclo non
+    guarda mai le tracce, solo l'elenco di problemi/integrazioni/log che
+    riceve (che non contiene MAI un soggetto `automazione:`).
+
+    Mutazione: nella ricostruzione, rimettere OGNI soggetto `sistema`
+    aperto (compreso `automazione:`) in `self._conditions`, come prima del
+    Task 4 -- il test torna rosso su
+    `assert "automazione:automation.rotta" in osservatore._automation_faults`
+    (l'insieme sarebbe vuoto) e su `assert scritti == 0` al secondo giro
+    (`watch_system` chiuderebbe anche l'automazione, invece di ignorarla).
+    """
+    archivio = _FintoArchivio(cambi_esistenti=[
+        _cambio(1787000000.0, "sistema",
+                "problema:sonos.subscriptions_failed", None, "aperto"),
+        _cambio(1787000000.0, "sistema", "automazione:automation.rotta", None, "error"),
+    ])
+    osservatore = Watcher(archivio, now=lambda: 1787572800.0)
+    osservatore.rebuild_conditions()
+    assert "automazione:automation.rotta" in osservatore._automation_faults
+    assert "automazione:automation.rotta" not in osservatore._conditions
+    assert "problema:sonos.subscriptions_failed" in osservatore._conditions
+
+    # Due giri di `watch_system` senza il problema fra i problemi: lo
+    # chiude dopo l'isteresi di due giri -- ma non deve MAI toccare
+    # l'automazione, che non passa mai da questo metodo.
+    osservatore.watch_system(problems=[], integrations=[], log_entries=[])
+    scritti = osservatore.watch_system(problems=[], integrations=[], log_entries=[])
+    assert scritti == 1  # solo la chiusura del problema
+    assert "automazione:automation.rotta" in osservatore._automation_faults

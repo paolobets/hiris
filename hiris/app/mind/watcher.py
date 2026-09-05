@@ -11,6 +11,7 @@ Tutto il giudizio sta nell'aggregazione (`facts.py`), che e' rifacibile per
 from __future__ import annotations
 
 import logging
+import re
 import time
 
 from ..home_space.historian import instant_epoch
@@ -66,6 +67,20 @@ _IGNORED_INTEGRATION_SOURCE = "ignore"
 # l'archivio porta oggi.
 _ROUNDS_BEFORE_CLOSING = 2
 
+# La forma canonica `dominio.oggetto` di un `entity_id`. DOPPIONE
+# DICHIARATO con `proxy/ha_client.py::_ENTITY_ID_RE` (stessa espressione,
+# stessa intenzione: una GUARDIA, la piu' STRETTA possibile) -- non
+# importata perche' quella e' privata al suo modulo, e questo file non deve
+# dipendere da un dettaglio interno del client HA per una guardia che gli
+# appartiene comunque (Task 4 di «le tracce e il log»: «il client non valida
+# i propri argomenti, come i fratelli» -- la validazione va garantita A
+# MONTE, qui, prima che un identificatore possa mai raggiungere
+# `automation_traces`/`automation_trace`). Un `entity_id` senza punto (o
+# comunque malformato) passato la' produrrebbe un elenco vuoto silenzioso --
+# «questa automazione non ha mai girato» detto per sbaglio -- non un errore
+# che si vede.
+_ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
+
 
 def _text_or_none(value) -> str | None:
     """Un attributo di Home Assistant -> stringa per il grezzo, o `None`.
@@ -104,6 +119,37 @@ class Watcher:
         # non ancora chiuso -- il ritorno della condizione lo toglie (il
         # contatore si azzera), la chiusura pure: non cresce senza limite.
         self._missing_rounds: dict[str, int] = {}
+        # Le automazioni SEGNATE dall'evento (Task 4 di «le tracce e il
+        # log»): l'entity_id, cosi' come l'ha dichiarato
+        # `automation_triggered`, gia' passato da `_ENTITY_ID_RE` (vedi
+        # `mark_automation`). Solo aggiunte, mai tolte -- stessa sorte di
+        # `self._watched` sopra: un'automazione che ha scattato una volta
+        # resta interessante per sempre, e non c'e' bisogno di "guarirla"
+        # dall'elenco. Vive solo in RAM e non si risemina al riavvio, come
+        # `self._watched`: la raccolta delle tracce (`server.py`) la rifara'
+        # da sola non appena l'automazione scattera' di nuovo -- diversamente
+        # da un guasto che DURA (sotto), qui non c'e' niente da perdere
+        # restando vuoti fino al prossimo scatto.
+        self._marked_automations: set[str] = set()
+        # Le automazioni la cui ultima esecuzione VISTA e' un errore
+        # (`watch_automation_outcome`, sotto): un sottoinsieme di soggetti
+        # `automazione:` -- SEPARATO da `self._conditions` sopra, non lo
+        # stesso insieme con un prefisso diverso mescolato dentro. La
+        # ragione e' un'incompatibilita' vera, non una preferenza: il ciclo
+        # dei "mancati" di `watch_system` (sotto) chiude ogni soggetto in
+        # `self._conditions` che non ricompare nel SUO elenco (`open_now`,
+        # costruito solo da problemi/integrazioni/voci di log) -- un
+        # soggetto `automazione:` mescolato li' dentro sparirebbe da
+        # `open_now` ad OGNI giro di `watch_system` (che non lo guarda mai)
+        # e verrebbe chiuso da quel meccanismo dopo `_ROUNDS_BEFORE_CLOSING`
+        # giri, indipendentemente da cosa dice davvero l'ultima traccia --
+        # esattamente l'isteresi per assenza che questo verticale ha deciso
+        # di NON usare (vedi il docstring di `watch_automation_outcome`).
+        # Ricostruito da `rebuild_conditions` come `self._conditions`, dalla
+        # STESSA lettura dell'archivio (filtrata per prefisso), per la
+        # STESSA ragione: un'automazione rotta non deve dimenticare di
+        # esserlo a ogni riavvio dell'add-on.
+        self._automation_faults: set[str] = set()
 
     # -- il rubinetto --------------------------------------------------
 
@@ -162,6 +208,125 @@ class Watcher:
             logger.warning("osservatore: evento non annotato (%s: %s)",
                            type(error).__name__, error)
             return False
+
+    # -- le automazioni --------------------------------------------------
+
+    def mark_automation(self, entity_id: str) -> bool:
+        """Segna un'automazione come scattata. **Non scrive niente**: e' il
+        callback (indiretto: vedi il glue in `server.py::_on_startup`, che
+        estrae `entity_id` da `event_data` di `AUTOMATION_TRIGGERED_EVENT`)
+        di un evento che scatta all'INIZIO delle azioni, quando la traccia
+        non e' ancora completa -- scrivere qui vorrebbe dire scrivere un
+        esito che non esiste ancora (vedi `AUTOMATION_TRIGGERED_EVENT` in
+        `proxy/ha_client.py` per la fonte). Il cambio vero -- se e quando
+        arriva -- lo scrive `watch_automation_outcome`, dalla cadenza breve
+        che rilegge le tracce di cio' che questo metodo ha segnato.
+
+        **Garantisce a monte la forma `dominio.oggetto` dell'`entity_id`**
+        (Task 4 di «le tracce e il log»): `HAClient.automation_traces()` e
+        `HAClient.automation_trace()` non validano i propri argomenti, come
+        i loro fratelli (`problems()`, `system_log()`...) -- spaccano
+        `entity_id` sul primo punto e basta. Un identificatore senza punto
+        (o comunque malformato) ci arriverebbe comunque da un evento HA
+        genuino solo per un bug altrove; ma se ci arrivasse, produrrebbe un
+        elenco vuoto silenzioso in quei due metodi -- «questa automazione
+        non ha mai girato» detto per sbaglio, non un errore che si vede.
+        Un `entity_id` respinto qui non entra MAI in `self._marked_
+        automations`, quindi non raggiunge mai quei due metodi: e' l'unico
+        punto d'ingresso (la cadenza di `server.py` legge solo cio' che
+        questo metodo ha segnato), quindi basta controllare qui.
+
+        Torna `True` se l'ha segnata, `False` se l'ha respinta (forma non
+        valida) -- utile a chi chiama per accorgersi del rifiuto, non
+        necessario a chi non se ne cura.
+        """
+        if not isinstance(entity_id, str) or not _ENTITY_ID_RE.match(entity_id):
+            logger.warning(
+                "osservatore: entity_id di automazione malformato, non "
+                "segnato (%r)", entity_id)
+            return False
+        self._marked_automations.add(entity_id)
+        return True
+
+    def marked_automations(self) -> list[str]:
+        """Le automazioni segnate finora, in ordine stabile -- cio' che la
+        cadenza breve di `server.py` deve rileggere a ogni giro. Ordinata
+        (non l'ordine di scoperta) perche' chi legge i log di due giri
+        successivi possa confrontarli a colpo d'occhio."""
+        return sorted(self._marked_automations)
+
+    def watch_automation_outcome(self, entity_id: str, outcome: str, *,
+                                   domain: str | None = None,
+                                   title: str | None = None) -> bool:
+        """L'ultimo esito noto di UN'esecuzione di un'automazione segnata,
+        verso l'archivio. **Scrive un cambio solo per un esito in errore o
+        per l'esito riuscito che chiude un errore aperto** -- non per
+        `"finished"` quando non c'era niente da chiudere, e non per
+        `"failed_conditions"` (ne' per qualunque altro valore che non sia
+        `"error"` o `"finished"`) in nessun caso: **quest'ultima non e' un
+        errore**, un'automazione che non agisce perche' la condizione e'
+        falsa sta funzionando (la legge in testa al piano). `outcome` e' il
+        valore GREZZO che HA scrive in `script_execution` sulla traccia
+        (`ActionTrace.as_short_dict()`, verificato in `HAClient.
+        automation_traces()`); questo metodo legge e non giudica quali
+        ALTRI valori esistano (`"aborted"`, `"cancelled"`, `"failed_
+        single"`, `"failed_max_runs"`, `"disallowed_recursion_detected"`,
+        verificati alla stessa fonte, `helpers/script.py`) -- nessuno dei
+        due nomi che il piano di questo verticale discute mai, quindi
+        nessuno dei due diventa un fatto: un guasto non misurato non si
+        inventa (dichiarato nel rapporto, non deciso in silenzio).
+
+        **Apre sull'errore, chiude sull'esito riuscito SUCCESSIVO della
+        stessa automazione -- un'esecuzione riuscita chiude ma non apre
+        mai.** Cosi' l'episodio ha una durata che vuol dire qualcosa
+        («rotta da martedi'») invece di una riga per ogni esecuzione fallita
+        (sessantaquattro esecuzioni riuscite al giorno sono il contesto, non
+        fatti compiuti). Se un'automazione rotta non venisse piu' eseguita,
+        l'episodio resta aperto per sempre: e' la verita' (non sappiamo se
+        e' guarita), non un difetto.
+
+        **`self._automation_faults` e non `self._conditions`.** Sono lo
+        STESSO genere di bookkeeping di `watch_system` (quali soggetti
+        `sistema` sono aperti ADESSO) ma un insieme separato apposta: vedi
+        il commento su `self._automation_faults` in `__init__` per
+        l'incompatibilita' vera con il ciclo dei "mancati" di
+        `watch_system`, che chiuderebbe ogni `automazione:` dopo due giri
+        solo perche' quel ciclo non lo guarda mai. **Non passa dall'isteresi
+        per assenza**: quel meccanismo chiude cio' che sparisce dall'elenco
+        del giro di `watch_system`, ma la raccolta delle tracce visita solo
+        le automazioni SEGNATE (`marked_automations`), e l'assenza li'
+        significa «non e' scattata», non «e' guarita» -- nessun conteggio
+        di giri mancati per questo soggetto.
+
+        `domain`/`title` viaggiano verso `store.record()` come per le altre
+        condizioni di sistema -- ma per un'`automazione:` **restano `None`
+        in questo giro**: a differenza di `problema:`/`integrazione:`, il
+        dominio non varia mai (e' sempre "automation", gia' nel prefisso del
+        soggetto) e il nome amichevole richiederebbe `EntityCache`, fuori
+        dai file che questo task tocca -- dichiarato, non un buco silenzioso
+        (vedi il rapporto).
+
+        `outcome != "error" and outcome != "finished"` non tocca ne'
+        l'archivio ne' `self._automation_faults`: torna `False` senza fare
+        nulla, come un `outcome` gia' visto che non cambia lo stato.
+        """
+        subject = f"automazione:{entity_id}"
+        if outcome == "error":
+            if subject in self._automation_faults:
+                return False
+            self._store.record(quando_ts=self._now(), source="sistema",
+                                  subject=subject, da=None, a=outcome,
+                                  domain=domain, title=title)
+            self._automation_faults.add(subject)
+            return True
+        if outcome == "finished":
+            if subject not in self._automation_faults:
+                return False
+            self._store.record(quando_ts=self._now(), source="sistema",
+                                  subject=subject, da=None, a="chiuso")
+            self._automation_faults.discard(subject)
+            return True
+        return False
 
     # -- le condizioni di sistema --------------------------------------
 
@@ -422,14 +587,25 @@ class Watcher:
         return written
 
     def rebuild_conditions(self) -> None:
-        """Risemina `self._conditions` da cio' che l'archivio gia' sa.
+        """Risemina `self._conditions` **e** `self._automation_faults` da
+        cio' che l'archivio gia' sa (Task 4 di «le tracce e il log»: prima
+        di quel task questo metodo riseminava solo `self._conditions`).
 
-        **Perche' serve.** `self._conditions` vive solo in RAM: al riavvio
-        dell'add-on -- che succede a ogni aggiornamento, non in un caso
-        limite -- quel set ripartirebbe vuoto, e `watch_system` scriverebbe
-        di nuovo «aperto» per ogni guasto gia' aperto, come se fosse nato in
-        quel momento. La data d'inizio e' l'unica informazione utile di un
-        guasto che dura: sbagliarla non e' rumore, e' un fatto falso.
+        **Perche' serve.** Ne' `self._conditions` ne' `self._automation_
+        faults` sopravvivono al processo: al riavvio dell'add-on -- che
+        succede a ogni aggiornamento, non in un caso limite -- entrambi
+        ripartirebbero vuoti. Per `self._conditions` questo vorrebbe dire
+        che `watch_system` scriverebbe di nuovo «aperto» per ogni guasto
+        gia' aperto, come se fosse nato in quel momento. Per
+        `self._automation_faults` il difetto e' diverso ma non meno vero:
+        `watch_automation_outcome` vedrebbe un errore gia' aperto come
+        assente, e (1) un esito riuscito successivo non chiuderebbe piu'
+        l'episodio vecchio -- resterebbe aperto per sempre anche se
+        l'automazione fosse guarita -- e (2) un errore successivo ne
+        aprirebbe un SECONDO, un doppione mai chiuso del primo. La data
+        d'inizio (e, per un'automazione, il fatto stesso che sia ancora
+        rotta) e' l'unica informazione utile di un guasto che dura:
+        sbagliarla non e' rumore, e' un fatto falso.
 
         Da chiamare **una volta, all'avvio**, prima che il rubinetto e il
         lavoro periodico comincino a girare.
@@ -483,6 +659,7 @@ class Watcher:
                 "osservatore: stato di sistema non ricostruito, riparto da "
                 "vuoto (%s: %s)", type(error).__name__, error)
             self._conditions = set()
+            self._automation_faults = set()
             return
 
         # `readings()` torna dal piu' vecchio al piu' recente: scrivendo in
@@ -513,8 +690,19 @@ class Watcher:
         # (non enumerabile) di stati rotti. Un `state` vuoto o `None` -- una
         # riga che non dice niente -- non conta come aperta: non e' un fatto,
         # e' l'assenza di uno.
-        self._conditions = {s for s, state in last_state.items()
-                            if state and state != "chiuso"}
+        #
+        # **Il prefisso decide l'insieme, non due volte lo stesso filtro
+        # sull'apertura** (Task 4): un `automazione:` aperto va in
+        # `self._automation_faults`, ogni altro soggetto `sistema` aperto
+        # (`problema:`/`integrazione:`/`log:`) va in `self._conditions` --
+        # MAI mescolati, vedi il commento su `self._automation_faults` in
+        # `__init__` per l'incompatibilita' vera col ciclo dei "mancati" di
+        # `watch_system`.
+        open_subjects = {s for s, state in last_state.items()
+                         if state and state != "chiuso"}
+        self._automation_faults = {s for s in open_subjects
+                                   if s.startswith("automazione:")}
+        self._conditions = open_subjects - self._automation_faults
 
     # -- la pagina -----------------------------------------------------
 

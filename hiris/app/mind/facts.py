@@ -186,7 +186,8 @@ def genre_for(subject: str, aspect_: str | None) -> str | None:
     non sono lo stesso genere di fatto, e l'analista le trattera' in modo
     diverso: `"guasto"` resta per le condizioni di sistema (`problema:`,
     `integrazione:`, `log:` -- una voce del registro di errori, Task 2 «le
-    tracce e il log» -- un confine netto e facile da spiegare), `"sicurezza"` per
+    tracce e il log» -- e `automazione:`, un'esecuzione in errore, Task 4
+    dello stesso verticale -- un confine netto e facile da spiegare), `"sicurezza"` per
     tutta la gamba omonima. Qui il criterio e' `aspect_ == "sicurezza"`,
     qualunque sia il dominio, cosi' non serve ripetere l'elenco dei domini/
     classi che il pavimento gia' tiene.
@@ -204,7 +205,7 @@ def genre_for(subject: str, aspect_: str | None) -> str | None:
     `binary_sensor` di monossido -- che scatta davvero, con uno stato on/off
     -- resta dentro senza bisogno di nessuna soglia.
     """
-    if subject.startswith(("problema:", "integrazione:", "log:")):
+    if subject.startswith(("problema:", "integrazione:", "log:", "automazione:")):
         return "guasto"
     domain = subject.split(".")[0]
     if domain in _OPERABLE:
@@ -245,15 +246,19 @@ def _reading_aspect(subject: str, row: dict) -> str | None:
     di rifarlo. Congelarlo in scrittura toglierebbe quella possibilita' il
     giorno in cui il pavimento cambiasse.
 
-    **`log:` e' un terzo prefisso senza gamba, non due volte lo stesso
-    controllo.** Una voce del registro di errori (Task 2) non e' un'entita':
-    cercarne la gamba con `baseline.aspect()` andrebbe a leggere `subject`
-    come se fosse un `entity_id` (`sensor.qualcosa`) che non e', per un
-    soggetto che ha gia' preso la sua strada in `genre_for` un rigo sopra
-    nel file -- lo stesso confine, in DUE funzioni diverse: qui decide la
-    gamba (nessuna), la' decide il genere (`"guasto"`).
+    **`log:` e `automazione:` sono un terzo e un quarto prefisso senza
+    gamba, non due volte lo stesso controllo.** Una voce del registro di
+    errori (Task 2) o un'esecuzione di automazione in errore (Task 4) non
+    sono un'entita': cercarne la gamba con `baseline.aspect()` andrebbe a
+    leggere `subject` come se fosse un `entity_id` (`sensor.qualcosa`) che
+    non e' -- per `automazione:automation.x` in particolare, spaccarlo su
+    `"."` darebbe il dominio `"automazione:automation"`, che non e' un
+    `entity_id` valido di nessuna casa -- per un soggetto che ha gia' preso
+    la sua strada in `genre_for` un rigo sopra nel file -- lo stesso
+    confine, in DUE funzioni diverse: qui decide la gamba (nessuna), la'
+    decide il genere (`"guasto"`).
     """
-    if subject.startswith(("problema:", "integrazione:", "log:")):
+    if subject.startswith(("problema:", "integrazione:", "log:", "automazione:")):
         return None
     return aspect(subject, {
         "device_class": row.get("device_class"),
@@ -726,8 +731,8 @@ def aggregate_day(*, store, day: str, timezone: str | None,
         if o.get("titolo"):
             base_body["titolo"] = o["titolo"]
         # `comparso_ts`: SOLO una voce di log lo porta (`_reading_row`
-        # rilegge `None` per un `problema:`/`integrazione:`, che non lo
-        # dichiarano mai). Non e' `inizio`: `inizio` e' quando NOI l'abbiamo
+        # rilegge `None` per un `problema:`/`integrazione:`/`automazione:`,
+        # che non lo dichiarano mai). Non e' `inizio`: `inizio` e' quando NOI l'abbiamo
         # scritto (l'orologio del giro, vedi `watcher.py::watch_system` e
         # `store.py::_migration_4`), `comparso_ts` e' quando HA dice che e'
         # cominciato -- «rilevato stamattina, va avanti dal 2» invece di una

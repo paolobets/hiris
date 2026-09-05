@@ -274,6 +274,55 @@ async def test_gli_eventi_dei_servizi_raggiungono_il_loro_ascoltatore():
 
 
 @pytest.mark.asyncio
+async def test_automation_triggered_raggiunge_solo_l_ascoltatore_delle_automazioni():
+    """Task 4 di «le tracce e il log»: quarta famiglia di eventi, accanto ad
+    anagrafe/plance/servizi -- e separata per la stessa ragione, un'
+    automazione scattata non cambia la casa ne' i servizi.
+
+    Nessuna "riconnessione" sintetica per questa famiglia (a differenza di
+    anagrafe/plance/servizi qui sopra): `mark_automation` non ha bisogno di
+    "recuperare" un evento perso durante una disconnessione -- un'automazione
+    gia' segnata resta segnata per sempre (vedi il docstring di
+    `Watcher._marked_automations`), e una segnata perso durante il distacco
+    tornera' a segnarsi da sola al primo scatto successivo. Verificato qui
+    guardando che l'elenco NON contenga "riconnessione", a differenza degli
+    altri tre.
+
+    Mutazione provata a mano: cancellare il ramo
+    `elif event_type == AUTOMATION_TRIGGERED_EVENT` nello smistamento fa
+    arrossire `assert automazioni_chiamate == [...]` (tornerebbe `[]`)."""
+    ws = _FintoWSEventi([
+        ("automation_triggered", {"name": "Luci sera", "entity_id": "automation.luci_sera"}),
+    ])
+    client = HAClient(base_url="http://ha.test", token="t")
+    client._session = _FintaSessioneEventi(ws)
+
+    automazioni_chiamate: list[dict] = []
+    anagrafe_chiamate: list[str] = []
+    client.add_automation_listener(lambda dati: automazioni_chiamate.append(dati))
+    client.add_topology_listener(lambda tipo: anagrafe_chiamate.append(tipo))
+
+    task = asyncio.create_task(client._ws_loop("ws://ha.test/api/websocket"))
+    await asyncio.sleep(0.05)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    assert automazioni_chiamate == [
+        {"name": "Luci sera", "entity_id": "automation.luci_sera"}]
+    # E NON deve finire nell'anagrafe, ne' innescare la "riconnessione"
+    # sintetica delle altre tre famiglie -- vedi il docstring sopra.
+    assert anagrafe_chiamate == ["riconnessione"]
+
+    tipi_sottoscritti = {
+        c.get("event_type") for c in ws.comandi if c.get("type") == "subscribe_events"
+    }
+    assert "automation_triggered" in tipi_sottoscritti
+
+
+@pytest.mark.asyncio
 async def test_invalidare_il_registro_lo_fa_ricaricare_prima_della_scadenza():
     """Il cuore della fetta. Senza `invalidate()`, `ensure_fresh` guarda solo
     l'eta' e torna subito: l'evento non servirebbe a niente."""

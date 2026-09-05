@@ -83,6 +83,31 @@ DASHBOARD_EVENT = "lovelace_updated"
 # con la chiave sentinella, invece di lasciarla scontrarsi in scrittura.
 _MAIN_DASHBOARD_KEY = "__principale__"
 
+# L'evento che segna l'INIZIO delle azioni di un'automazione scattata (Task 4
+# di «le tracce e il log»). Verificato alla fonte sui tag RILASCIATI che
+# delimitano la finestra che `hiris/config.yaml:22` dichiara supportata
+# (`2024.7.0`, il minimo) e la piu' recente vista finora (`2026.9.0`) --
+# stesso corpo su entrambi, in `homeassistant/components/automation/
+# __init__.py`: `EVENT_AUTOMATION_TRIGGERED = "automation_triggered"`,
+# sparato da `started_action()`, una callback passata a
+# `self.action_script.async_run(...)` ed eseguita quando le AZIONI
+# COMINCIANO -- non quando finiscono. In quell'istante la traccia
+# (`trace/get`) non e' ancora completa: l'evento non porta e non puo'
+# portare un esito.
+#
+# Non scatta MAI per un'esecuzione le cui condizioni sono false: sulla stessa
+# fonte, `script_execution_set("failed_conditions")` e il `return None` che
+# la segue arrivano PRIMA che `event_data` sia costruito e prima che
+# `started_action` sia definita -- una condizione falsa non genera l'evento,
+# non solo non genera un fatto. Coerente con la legge del prodotto (spec §8,
+# la spazzata larga uscita dal piano il 05/09): una condizione falsa e'
+# funzionamento, non un guasto.
+#
+# `event_data` porta `{ATTR_NAME: self.name, ATTR_ENTITY_ID: self.entity_id}`
+# (piu' `ATTR_SOURCE`, non usato qui) -- identico sui due tag: l'`entity_id`
+# c'e' sempre, ed e' sempre quello dell'automazione che e' scattata.
+AUTOMATION_TRIGGERED_EVENT = "automation_triggered"
+
 # Cap espliciti: questi dati finiscono nel prompt di un LLM, quindi la loro
 # dimensione va limitata alla fonte.
 # Il logbook di una settimana puo' contenere decine di migliaia di voci.
@@ -318,6 +343,7 @@ class HAClient:
         self._topology_listeners: list[Callable[[str], None]] = []
         self._dashboard_listeners: list[Callable[[dict], None]] = []
         self._service_listeners: list[Callable[[str], None]] = []
+        self._automation_listeners: list[Callable[[dict], None]] = []
 
     async def start(self) -> None:
         self._session = aiohttp.ClientSession(headers=self._headers)
@@ -1932,6 +1958,13 @@ class HAClient:
         rilegge tutte le plance — vedi DASHBOARD_EVENT."""
         self._dashboard_listeners.append(callback)
 
+    def add_automation_listener(self, callback: Callable[[dict], None]) -> None:
+        """callback(dati_evento) a ogni AUTOMATION_TRIGGERED_EVENT -- vedi la
+        sua costante per il perche' l'evento non porta (e non puo' portare)
+        un esito. `event_data` porta almeno `entity_id` (vedi la costante);
+        chi ascolta decide da solo cosa farne, questo client legge e basta."""
+        self._automation_listeners.append(callback)
+
     async def start_websocket(self) -> None:
         ws_url = self._base_url.replace("http://", "ws://").replace("https://", "wss://")
         ws_url = f"{ws_url}/api/websocket"
@@ -1976,6 +2009,15 @@ class HAClient:
                     msg_id += 1
                     await ws.send_json(
                         {"id": msg_id, "type": "subscribe_events", "event_type": DASHBOARD_EVENT}
+                    )
+                    # Task 4 di «le tracce e il log»: l'evento che segna
+                    # l'inizio delle azioni di un'automazione scattata --
+                    # vedi AUTOMATION_TRIGGERED_EVENT in cima al modulo per
+                    # la fonte e per il perche' non porta un esito.
+                    msg_id += 1
+                    await ws.send_json(
+                        {"id": msg_id, "type": "subscribe_events",
+                         "event_type": AUTOMATION_TRIGGERED_EVENT}
                     )
                     for event_type in SERVICE_EVENTS:
                         msg_id += 1
@@ -2038,6 +2080,15 @@ class HAClient:
                                         cb(event.get("data", {}))
                                     except Exception:
                                         logger.exception("plance_listener callback raised")
+                            elif event_type == AUTOMATION_TRIGGERED_EVENT:
+                                # `event["data"]` porta almeno `entity_id`
+                                # (vedi AUTOMATION_TRIGGERED_EVENT): chi
+                                # ascolta decide da solo cosa farne.
+                                for cb in self._automation_listeners:
+                                    try:
+                                        cb(event.get("data", {}))
+                                    except Exception:
+                                        logger.exception("automation_listener callback raised")
                             if event_type in SERVICE_EVENTS:
                                 for cb in self._service_listeners:
                                     try:

@@ -67,9 +67,9 @@ one of the thirteen tools below, lets a sentence you type now run later, at a
 time you name, with nobody in the chat when it happens — see the next
 paragraph for what that means in practice.
 
-Periodic work *does* run — the scheduler registers **ten** APScheduler jobs
+Periodic work *does* run — the scheduler registers **eleven** APScheduler jobs
 at startup, not four, and one of them is not housekeeping: it is the reason
-the paragraph above needed the caveat. Nine are internal bookkeeping — none of
+the paragraph above needed the caveat. Ten are internal bookkeeping — none of
 them speaks to you and none of them touches the house: the entity-inventory
 reload every 2 minutes (`server.py::_reload_inventory`), the reread of Home
 Assistant's own diagnosed issues every 5 minutes
@@ -77,19 +77,25 @@ Assistant's own diagnosed issues every 5 minutes
 sample every 15 minutes (`server.py::tree_comparison_round`), the `mtime` sentinel
 over `automations.yaml`/`scripts.yaml` every 5 minutes
 (`server.py::behavior_sentinel`), chat-history retention at 03:00, the
-reasoning-queue sweep every 2 minutes, and three more added by the "the
+reasoning-queue sweep every 2 minutes, and four more added by the "the
 observer" slice (`hiris/app/mind/`): the system-conditions read — the same
 diagnosed issues plus the integrations Home Assistant has not loaded, folded
 into the observer's fault objects — every 10 minutes
-(`server.py::_watch_conditions`), the nightly aggregation of the previous
-day's raw state changes into objects at 00:20
+(`server.py::_watch_conditions`), the automation-outcome trace read every
+2 minutes (`server.py::_watch_automation_traces` →
+`mind/watcher.py::Watcher.watch_automation_outcome`) — it rereads the recent
+execution traces of every automation that has fired at least once since
+startup (`Watcher.mark_automation`, on Home Assistant's own
+`automation_triggered` event) and turns a failed run into a fault episode,
+closed only by that same automation's next successful run — the nightly
+aggregation of the previous day's raw state changes into objects at 00:20
 (`server.py::_aggrega_ieri` → `mind/facts.py::aggregate_day`), and the
 pruning of raw changes older than 22 days at 03:00
 (`server.py::_prune_observations`). The 03:30 history compaction, the 04:00
 nightly digest and the Mayan document poll were removed in 2.1.0 together with
 the document integration and the knowledge archive they fed.
 
-The tenth is the promise scheduler's heartbeat, every 15 seconds
+The eleventh is the promise scheduler's heartbeat, every 15 seconds
 (`server.py::_battito` → `keeper/sweeper.py::Sweeper.batti`). A
 promise is created from a sentence in chat — "at 5pm, turn on the office",
 "in an hour, check the temperature and tell me if it went up" — and its

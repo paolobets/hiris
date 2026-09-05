@@ -716,6 +716,87 @@ async def watch_system_conditions(app, ha_client) -> int | None:
         log_entries=log_report.get("voci") or [])
 
 
+async def watch_automation_outcomes(app, ha_client) -> int | None:
+    """La cadenza BREVE (due minuti -- vedi il commento sul lavoro in
+    `_on_startup` per il perche' di questo numero) verso
+    `app["watcher"].watch_automation_outcome` (Task 4 di «le tracce e il
+    log»): rilegge le tracce di ogni automazione che l'evento ha SEGNATO
+    (`Watcher.mark_automation`, sottoscritto piu' sopra in `_on_startup`) e
+    scrive un cambio quando un'esecuzione e' in errore o quando un'esecuzione
+    riuscita chiude un errore aperto in precedenza. Torna quante ne ha
+    scritte, o `None` se il giro e' stato saltato per intero (nessun
+    `watcher` -- boot non ancora arrivato li').
+
+    **Un'automazione per volta, non un giro solo per tutte.** A differenza
+    di `watch_system_conditions` qui sopra -- che legge le TRE condizioni di
+    sistema con un numero fisso di chiamate e salta il giro intero se una
+    fallisce -- qui il numero di chiamate dipende da quante automazioni
+    sono segnate, e ognuna e' un `entity_id` diverso passato a
+    `HAClient.automation_traces()`. Una lettura fallita per UN'automazione
+    (Home Assistant che non risponde a quella richiesta, o un errore di
+    rete transitorio) non deve impedire di leggere le altre: si salta
+    QUELLA automazione, si continua con le prossime -- la stessa disciplina
+    del "parziale tollerato" di `build_companions`, non quella del "tutto o
+    niente" delle tre letture di sistema (che sono UNA lettura sola
+    ciascuna, non una per soggetto).
+
+    **L'ordine delle tracce dentro `tracce` conta, ed e' gia' quello
+    giusto.** Verificato alla fonte (`homeassistant/util/limited_size_
+    dict.py`, `LimitedSizeDict._check_size_limit`: evizione FIFO via
+    `popitem(last=False)`; `trace/util.py::async_store_trace`:
+    `bucket[trace.run_id] = trace`, che in un `OrderedDict` appende in
+    coda) -- la lista che `automation_traces()` restituisce e' dal PIU'
+    VECCHIO al piu' recente. Processarla in quest'ordine, chiamando
+    `watch_automation_outcome` una volta per traccia, fa si' che l'ultima
+    chiamata rifletta sempre l'esito piu' recente -- se una automazione ha
+    fallito e poi e' guarita nella STESSA finestra di due minuti, l'errore
+    apre e il successo lo richiude nello stesso giro, nell'ordine vero.
+    Rileggere la stessa traccia gia' vista a un giro precedente (non e'
+    ancora stata espulsa dal tetto di HA) e' innocuo: `watch_automation_
+    outcome` e' idempotente sullo stato che gia' conosce (vedi il suo
+    docstring), quindi non scrive una seconda volta per un errore gia'
+    aperto ne' per un successo che non ha niente da chiudere.
+
+    `outcome` e' `script_execution` cosi' come HA lo scrive (`"finished"`,
+    `"error"`, `"failed_conditions"`, ...): questa funzione non lo giudica,
+    lo passa cosi' com'e' -- il giudizio (quale valore apre, quale chiude,
+    quale non fa niente) vive tutto in `Watcher.watch_automation_outcome`.
+
+    Non solleva mai per la lettura delle tracce (`automation_traces()` la
+    dichiara gia' cosi', vedi il suo docstring): un guasto di rete per
+    un'automazione diventa un WARNING e un `continue`, non un'eccezione che
+    fermerebbe le altre.
+    """
+    watcher = app.get("watcher")
+    if watcher is None:
+        return None
+    written = 0
+    for entity_id in watcher.marked_automations():
+        report = await ha_client.automation_traces(entity_id)
+        if "errore" in report:
+            logger.warning(
+                "cervello: tracce di %s non lette (%s) -- questa "
+                "automazione si salta, le altre proseguono",
+                entity_id, report["errore"])
+            continue
+        for trace in report.get("tracce") or []:
+            if not isinstance(trace, dict):
+                continue
+            outcome = trace.get("script_execution")
+            if not isinstance(outcome, str):
+                # Una traccia `not_triggered` (il trigger ha valutato un
+                # cambio ma non e' scattato) non porta mai un `script_
+                # execution` valorizzato: non e' ne' un successo ne' un
+                # errore, si scarta senza nemmeno passare da `watch_
+                # automation_outcome` (che comunque la ignorerebbe, non
+                # essendo ne' "error" ne' "finished" -- qui si evita solo
+                # la chiamata inutile).
+                continue
+            if watcher.watch_automation_outcome(entity_id, outcome):
+                written += 1
+    return written
+
+
 def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):
     """Restituisce `giro()`: confronta un CAMPIONE di aree con Home Assistant
     e scrive l'esito in `app["tree_comparison"]`.
@@ -895,17 +976,21 @@ async def build_companions(
     # Assistant -- mai un'area, un dispositivo o un'altra delle 14 cose che
     # `search/related` sa collegare.
     for subject in subjects:
-        # I tre prefissi delle condizioni di sistema (`problema:`,
-        # `integrazione:`, `log:`, Task 2 di «le tracce e il log») non sono
-        # entita' di Home Assistant: chiederle a `legami` produrrebbe una
-        # chiamata di rete inutile per ognuna, ad ogni aggregazione -- HA
-        # tornerebbe `{}` per un `item_id` che non esiste, ma la correttezza
-        # non deve poggiare su quella tolleranza. `log:` conteneva un punto
-        # (il logger, es. `homeassistant.components.hydrawise`), quindi il
+        # I quattro prefissi delle condizioni di sistema (`problema:`,
+        # `integrazione:`, `log:`, Task 2 di «le tracce e il log»;
+        # `automazione:`, Task 4 dello stesso verticale) non sono entita' di
+        # Home Assistant: chiederle a `legami` produrrebbe una chiamata di
+        # rete inutile per ognuna, ad ogni aggregazione -- HA tornerebbe
+        # `{}` per un `item_id` che non esiste, ma la correttezza non deve
+        # poggiare su quella tolleranza. `log:` conteneva un punto (il
+        # logger, es. `homeassistant.components.hydrawise`), quindi il
         # controllo `"." not in subject` da solo NON lo scartava: misurato
-        # dalla review indipendente, non dedotto.
+        # dalla review indipendente, non dedotto. `automazione:` contiene
+        # SEMPRE un punto (l'`entity_id` che porta con se', `automation.x`),
+        # per la stessa ragione: senza il prefisso in questa tupla il
+        # controllo da solo non basterebbe a scartarlo.
         if subject in mappa or "." not in subject or subject.startswith(
-                ("problema:", "integrazione:", "log:")):
+                ("problema:", "integrazione:", "log:", "automazione:")):
             continue
         try:
             raw = await ha_client.related(ha_type, subject)
@@ -1853,6 +1938,20 @@ async def _on_startup(app: web.Application) -> None:
     # Si aggancia DOPO lo specchio: se un giorno l'ordine contasse, conta che
     # lo specchio sia aggiornato prima.
     ha_client.add_state_listener(app["watcher"].watch_reading)
+
+    # L'evento delle automazioni (Task 4 di «le tracce e il log»,
+    # AUTOMATION_TRIGGERED_EVENT in `proxy/ha_client.py`): segna soltanto,
+    # non scrive -- vedi il docstring di `Watcher.mark_automation` per il
+    # perche'. Il glue e' qui e non un metodo di `Watcher` apposta:
+    # l'interfaccia che questo task produce e' `mark_automation(entity_id)`,
+    # una stringa sola -- estrarla dal dizionario grezzo dell'evento e'
+    # cablaggio di questo file, non un giudizio dell'osservatore.
+    def _mark_triggered_automation(event_data: dict) -> None:
+        entity_id = event_data.get("entity_id") if isinstance(event_data, dict) else None
+        if isinstance(entity_id, str):
+            app["watcher"].mark_automation(entity_id)
+    ha_client.add_automation_listener(_mark_triggered_automation)
+
     # La prima lettura delle condizioni di sistema (problemi diagnosticati +
     # integrazioni non caricate; task-5-correzioni.md, punto A), qui accanto
     # per lo stesso motivo di `reread_ha_problems` piu' sopra: senza,
@@ -2635,8 +2734,9 @@ async def _on_startup(app: web.Application) -> None:
         misfire_grace_time=300,
     )
 
-    # I tre lavori periodici del cervello (fetta «l'osservatore», Task 5:
-    # docs/design/2026-08-26-l-osservatore.md).
+    # I QUATTRO lavori periodici del cervello (fetta «l'osservatore», Task 5:
+    # docs/design/2026-08-26-l-osservatore.md; il quarto, la cadenza breve
+    # delle tracce di automazione, e' Task 4 di «le tracce e il log»).
     #
     # Le condizioni di sistema, ogni dieci minuti: la stessa funzione della
     # prima lettura fatta qui sopra all'avvio, `watch_system_conditions`
@@ -2667,6 +2767,35 @@ async def _on_startup(app: web.Application) -> None:
         trigger="interval", minutes=10,
         id="hiris_mind_conditions", replace_existing=True,
         misfire_grace_time=600,
+    )
+
+    # Le tracce delle automazioni SEGNATE, ogni DUE minuti -- non dieci come
+    # le condizioni qui sopra, e il numero non e' arbitrario (Task 4 di «le
+    # tracce e il log»). `stored_traces` e' un tetto di CINQUE tracce in
+    # TOTALE per automazione sulla gran parte della finestra di versioni che
+    # `hiris/config.yaml:22` dichiara supportata (per secchio solo da HA
+    # 2026.7.0 in poi -- vedi il docstring di `HAClient.automation_traces()`
+    # per i tag verificati; questo lavoro si disegna sul caso conservativo,
+    # tetto totale, e non dipende dal secchio `not_triggered`). Un'automazione
+    # innescata dal movimento puo' bruciare cinque tracce in pochi minuti.
+    # Misurato sulla casa vera: 72 esecuzioni al giorno su 18 automazioni --
+    # in MEDIA nulla di preoccupante, ma la media non e' il caso che PERDE le
+    # tracce prima che questo giro le legga. Due minuti e' la cadenza piu'
+    # corta che non aggiunge un carico apprezzabile (un comando WebSocket per
+    # automazione segnata, non per la casa intera).
+    async def _watch_automation_traces() -> None:
+        try:
+            await watch_automation_outcomes(app, ha_client)
+        except Exception as exc:
+            logger.warning(
+                "cervello: giro delle tracce di automazione fallito (%s: %s)",
+                type(exc).__name__, exc)
+
+    scheduler.add_job(
+        _watch_automation_traces,
+        trigger="interval", minutes=2,
+        id="hiris_mind_automation_traces", replace_existing=True,
+        misfire_grace_time=120,
     )
 
     # L'aggregazione notturna: costruisce gli oggetti del giorno appena

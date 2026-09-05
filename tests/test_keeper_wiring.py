@@ -339,6 +339,11 @@ def test_costruisci_dispatcher_strumenti_riceve_registro_e_promesse():
 # `hiris_mind_pruning`), sette diventano dieci -- e il README e'
 # aggiornato con loro, non dopo.
 #
+# Fetta «le tracce e il log», Task 4 (05/09/2026): un quarto lavoro del
+# cervello, `hiris_mind_automation_traces` (la cadenza breve delle tracce di
+# automazione, ogni due minuti) -- dieci diventano undici, stessa
+# disciplina: README aggiornato insieme al codice.
+#
 # Questo test ancora quel numero al codice, non lo ripete a mano: se una
 # fetta futura aggiunge o toglie un `add_job`, questo test si rompe PRIMA
 # che la documentazione torni a mentire in silenzio -- lo stesso principio
@@ -346,10 +351,10 @@ def test_costruisci_dispatcher_strumenti_riceve_registro_e_promesse():
 # un conteggio che nessuno ancora ai fatti veri non e' un pavimento, e' una
 # frase che invecchia senza avvisare.
 
-def test_i_lavori_periodici_registrati_sono_dieci_come_dichiara_il_readme():
+def test_i_lavori_periodici_registrati_sono_undici_come_dichiara_il_readme():
     src = inspect.getsource(server._on_startup)
     n = src.count("scheduler.add_job(")
-    assert n == 10, (
-        f"server.py registra {n} lavori periodici (scheduler.add_job), non 10: "
+    assert n == 11, (
+        f"server.py registra {n} lavori periodici (scheduler.add_job), non 11: "
         "il README (sezione «What HIRIS 2.0 is») dichiara un numero preciso "
         "e va aggiornato insieme al codice, non dopo.")
