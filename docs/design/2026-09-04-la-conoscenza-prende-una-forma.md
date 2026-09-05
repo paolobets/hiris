@@ -525,6 +525,17 @@ usa entrambe. L'evento entra nella WebSocket che **esiste già** (una riga accan
 prende poi le tracce delle sole segnate — quando sono complete. Un giro più largo raccoglie le
 condizioni fallite. La finestra dei cinque smette di decidere, perché non si aspetta più.
 
+*(Correzione del 05/09: il giro più largo che raccogliesse le `failed_conditions` è stato tolto,
+per la legge del prodotto stessa. `automation_triggered` scatta **all'inizio delle azioni** di
+OGNI esecuzione che parte — l'unica cosa che l'evento non vede sono proprio le esecuzioni con le
+condizioni false, e quelle **non producono niente** (né un fatto né una traccia da riguardare: il
+paragrafo qui sotto le esclude comunque). Una spazzata che cerca solo ciò che non deve diventare un
+fatto è lavoro che può produrre soltanto silenzio. Resta scoperto un caso — gli errori accaduti
+mentre HIRIS era spento, che l'evento non ha potuto segnare e che nessun giro largo va più a
+cercare — e non si recupera: meglio un buco nella storia che una bugia nella storia. Deciso in
+`.superpowers/sdd/2026-09-05-le-tracce-e-il-log/` (gitignorato, non tracciato: questa è la
+registrazione che ne resta).)*
+
 **E nasce un oggetto solo quando l'esito è un errore.** Sessantaquattro esecuzioni riuscite al
 giorno non sono cose compiute: sono il contesto. È lo stesso principio per cui i sensori da soli
 non generano oggetti — e la legge qui sopra.
@@ -558,6 +569,14 @@ prefisso accanto a `problema:` e `integrazione:`, così il confine netto di `gen
 
 Questa fonte è anche ciò che rende dicibile «18 automazioni in funzione regolare» — la frase che
 oggi HIRIS dice senza poterla sapere (§2.7).
+
+*(Correzione del 05/09: la frase non si dirà **nemmeno ora che il dato c'è**. È la legge dettata
+dal proprietario e scritta in testa a questo paragrafo (riga 505 qui sopra), applicata a se stessa:
+«18 automazioni in funzione regolare» è esattamente il genere di segnalazione di ciò che FUNZIONA
+che quella legge vieta — il rumore sulle cose sane seppellisce l'unica rotta. Avere la fonte non
+cambia la legge; cambia solo cosa diventerebbe possibile dire se un giorno la legge cambiasse.
+Deciso in `.superpowers/sdd/2026-09-05-le-tracce-e-il-log/` (gitignorato, non tracciato: questa è
+la registrazione che ne resta).)*
 
 ---
 
