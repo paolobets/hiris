@@ -305,9 +305,16 @@ Cinque ordini di grandezza. L'implementazione usa **2 secondi**, con questi nume
 alla costante.
 
 **② E qui viene la parte che smonta la regola: la sincronia non prova un guasto.** Con la
-tolleranza attiva `mute_da` esce per cinque piattaforme, e **quattro riportano lo stesso istante,
-`2026-09-02T17:54`**: tuya (le luci di Natale, staccate da mesi), lifx, matter, alexa. Non sono
-quattro guasti simultanei: è la firma di un **riavvio** che ha ri-datato tutto insieme.
+tolleranza attiva `mute_da` esce per cinque piattaforme, e **tre riportano lo stesso istante,
+`2026-09-02T17:54`**: tuya (le luci di Natale, staccate da mesi), lifx e matter. Non sono tre
+guasti simultanei: è la firma di un **riavvio** che ha ri-datato tutto insieme.
+
+*(Correzione del 05/09: questa riga diceva «quattro», contando anche `alexa_devices`. Falso, e la
+smentita era già nella tabella qui sotto — alexa sta a **+28,4 minuti** dall'avvio, cioè alle
+18:23, non alle 17:54. L'errore gonfiava il conto e faceva sembrare l'argomento più forte di
+quanto fosse; e ironicamente **toglieva** il caso più interessante, perché alexa è proprio
+l'esempio della zona di mezzo che il §4 ③ prescrive di non chiudere. Trovato da una revisione che
+leggeva una docstring derivata da questa riga.)*
 
 Il *dato* resta onesto — «sono diventate mute insieme» è vero. È la *deduzione* «quindi
 l'integrazione è caduta» a essere falsa, e un briefing che la facesse annuncerebbe quattro guasti
