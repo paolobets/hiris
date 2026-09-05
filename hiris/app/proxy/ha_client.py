@@ -1526,10 +1526,10 @@ class HAClient:
           un'automazione puo' avere fino al DOPPIO di `stored_traces` tracce
           vive.
         - **Su HA 2026.6.0 e su ogni versione precedente fino al minimo
-          dichiarato 2024.7.0** (verificato sui tag `2024.7.0` e `2026.6.0`:
-          in questa finestra il modulo si chiama `trace/__init__.py`, non
-          esiste ancora `trace/util.py`), il secchio `not_triggered` non
-          esiste: `async_store_trace` fa
+          dichiarato 2024.7.0** (verificato sui tag `2024.7.0` e `2026.6.0`;
+          la funzione cambia casa ma non corpo: fino a 2024.10.0 sta in
+          `trace/__init__.py`, da 2024.11.0 in `trace/util.py`), il secchio
+          `not_triggered` non esiste: `async_store_trace` fa
           `traces[key] = LimitedSizeDict(size_limit=stored_traces)`, UN SOLO
           dizionario per automazione, tetto TOTALE pari a `stored_traces`.
 
