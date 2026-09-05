@@ -1148,6 +1148,27 @@ def test_an_unhandled_outcome_does_nothing(coppia):
     assert osservatore._automation_faults == set()
 
 
+def test_a_cancelled_outcome_does_nothing(coppia):
+    """`"cancelled"` (giro di correzioni, rilievo 3 di «le tracce e il
+    log») e' il settimo valore itemizzato nel docstring, non uno dei sei
+    coperti da `"aborted"`: `_ScriptRun.async_run` lo scrive quando una
+    run riprende dopo un passo e trova `self._stop` gia' impostato da
+    un'altra (`mode: restart` che ne fa ripartire una nuova, o
+    `automation.turn_off` che ferma le azioni in corso) -- verificato alla
+    fonte agli estremi della finestra supportata, tag `2024.7.0` e
+    `2026.9.0`. Stesso trattamento di `"aborted"`: non e' ne' un successo
+    ne' un errore per questo verticale, non scrive e non tocca lo stato.
+
+    Mutazione (verificata eseguendola): cambiare `if outcome == "error":`
+    in `if outcome != "finished":` -- il test torna rosso su
+    `assert osservatore.watch_automation_outcome("automation.x", "cancelled") is False`
+    (tornerebbe `True`, aprendo un episodio per un `"cancelled"`)."""
+    archivio, osservatore = coppia
+    assert osservatore.watch_automation_outcome("automation.x", "cancelled") is False
+    assert archivio.annotati == []
+    assert osservatore._automation_faults == set()
+
+
 def test_rebuild_reseeds_an_open_automation_fault():
     """Un `automazione:` gia' aperto (scritto da un giro precedente
     dell'add-on ora spento) deve tornare a far parte di

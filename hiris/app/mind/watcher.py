@@ -349,9 +349,24 @@ class Watcher:
           giudizio;
         - **il rifiuto di partire** per `mode: single` gia' in esecuzione
           (`"failed_single"`) o per il tetto di `max_runs` raggiunto in
-          modalita' diversa da `restart` (`"failed_max_runs"`).
+          modalita' diversa da `restart` (`"failed_max_runs"`);
+        - **`"cancelled"`**, per una run interrotta a meta' da un'altra:
+          `_ScriptRun.async_run` lo scrive quando riprende dopo un passo e
+          trova `self._stop` gia' impostato (`if self._stop.done():
+          script_execution_set("cancelled"); break`). Due strade vere lo
+          impostano -- `Script.async_run` per `mode: restart` con una run
+          gia' in corso (`await self.async_stop(update_state=False,
+          spare=run)`, la vecchia run cede il passo alla nuova) e
+          `automation.turn_off` con `stop_actions` predefinito a vero
+          (`AutomationEntity._async_disable` ->
+          `self.action_script.async_stop()`) -- entrambe fermano
+          un'esecuzione dall'ESTERNO, non un giudizio sul suo contenuto:
+          rientra nello stesso scarto degli altri, non nella famiglia di
+          `"aborted"`. Verificato alla fonte agli estremi della finestra
+          supportata (`hiris/config.yaml:22`), tag `2024.7.0` e `2026.9.0`:
+          stessa riga in entrambi.
 
-        Nessuno di questi sei casi diventa un fatto: il piano di questo
+        Nessuno di questi sette casi diventa un fatto: il piano di questo
         verticale discute solo `"finished"` e `"error"`, e un guasto non
         misurato non si inventa. **Chiude solo `"finished"`, mai
         `"aborted"`** non e' una scelta simmetrica di comodo: e' obbligata,
