@@ -121,6 +121,23 @@
 > parla. Le ragioni riga per riga stanno in `docs/GLOSSARIO.md`, «I nomi degli strumenti»; l'elenco
 > vivo, con cosa fa ciascuno oggi, nel `README.md`.
 
+> ## 🗄 Annotazione — 5 settembre 2026
+>
+> Il blocco del 2 settembre qui sopra è a sua volta superato su un numero, per lo stesso motivo per
+> cui lui stesso supera il 24 agosto: non si riscrive, si annota. Diceva che *«i quattordici nomi
+> che il modello legge sono passati all'inglese»*.
+>
+> Era vero il 2 settembre. Con la fetta **«le tracce e il log»** gli strumenti della chat sono
+> **quindici**, non tredici: entrano `system_log` (il registro degli errori e degli avvisi di Home
+> Assistant, così come sta ora) e `automation_trace` (come sono andate le esecuzioni recenti di
+> un'automazione, o — dato l'id di una di esse — il suo grafo completo passo per passo). Non sono
+> una rinomina come la tabella del 2 settembre: sono due strumenti **nuovi**, nati già in inglese
+> — il vincolo «tutto il codice in inglese» era già deciso quando sono stati scritti — quindi non
+> hanno un nome italiano precedente da ricollegare. Leggono la STESSA fonte che l'osservatore
+> (`hiris/app/mind/watcher.py`) già rilegge di notte per i propri fatti, non una seconda: la regola
+> «una fonte, due lettori» del piano di questa fetta. Per cosa il prodotto fa davvero oggi, il
+> `README.md`; per la registrazione dei due nomi, `docs/GLOSSARIO.md`, «I nomi degli strumenti».
+
 > ## ⚠️ Documento parzialmente superato — 4 agosto 2026
 >
 > Le sezioni **Users**, **Product Purpose** e **Design Principles** sono **superate** dal

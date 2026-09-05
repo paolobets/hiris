@@ -139,10 +139,14 @@ def test_il_catalogo_e_questo_e_le_due_strade_che_scrivono_su_home_assistant():
     argomento facoltativo perche' rispondono a due domande diverse, da due
     comandi diversi («cosa non va nel sistema?», «come e' andata questa
     automazione?»): un solo strumento avrebbe costretto il modello a
-    dedurre l'intento dalla presenza dell'argomento. **Non** entrano in
-    `SOLA_LETTURA`: quel catalogo e' un elenco di AMMISSIONE, non di
-    esclusione (docstring di `keeper/exchange.py`), ed estenderlo e' una
-    decisione che questo task non ha preso -- resta aperta."""
+    dedurre l'intento dalla presenza dell'argomento -- diverso da
+    `esecuzione` dentro `automation_trace`, che sceglie la GRANA della
+    stessa domanda, non l'intento (`list`/`get`, la stessa forma canonica
+    di HA). Entrano anche loro in `SOLA_LETTURA` (giro di correzioni, stessa
+    ragione di `trend`/`logbook`: leggono e basta, e senza di loro una
+    promessa «avvisami se un'automazione fallisce» sarebbe cieca) --
+    deliberazione scritta nel commento sopra `SOLA_LETTURA`, non
+    un'ammissione automatica."""
     nomi = {s["name"] for s in KNOWLEDGE_TOOLS}
     assert nomi == {"search", "view", "related", "remember", "fetch", "execute",
                     "promise", "agenda", "cancel", "propose", "confirm",
@@ -1087,7 +1091,7 @@ async def test_l_unita_ARRIVA_dalla_cache_fino_a_guarda(archivio_casa, memoria):
 # viva la sua suite).
 
 
-class _CanaleHATracce:
+class _FakeHAChannel:
     """Il canale HA finto per `_automation_trace`/`_system_log`: registra
     ESATTAMENTE quale metodo e' stato chiamato e con quali argomenti --
     non "un dizionario qualsiasi torna indietro", che passerebbe identico
@@ -1102,34 +1106,34 @@ class _CanaleHATracce:
     questo file.
     """
 
-    def __init__(self, voci_risposta=None, tracce_risposta=None, traccia_risposta=None):
-        self.chiamate = []
+    def __init__(self, log_response=None, traces_response=None, trace_response=None):
+        self.calls = []
         # Default non-`None`, come la vera `HAClient` (che non torna mai
         # `None`, vedi i suoi docstring): un test che non specifica una
         # risposta e finisce comunque a leggerla si accorge di un `dict`
         # vuoto, non di un `TypeError` che maschererebbe l'assert vero.
-        self._voci_risposta = (
-            voci_risposta if voci_risposta is not None else {"voci": []})
-        self._tracce_risposta = (
-            tracce_risposta if tracce_risposta is not None else {"tracce": []})
-        self._traccia_risposta = (
-            traccia_risposta if traccia_risposta is not None else {"traccia": {}})
+        self._log_response = (
+            log_response if log_response is not None else {"voci": []})
+        self._traces_response = (
+            traces_response if traces_response is not None else {"tracce": []})
+        self._trace_response = (
+            trace_response if trace_response is not None else {"traccia": {}})
 
     async def system_log(self):
-        self.chiamate.append(("voci",))
-        return self._voci_risposta
+        self.calls.append(("voci",))
+        return self._log_response
 
     async def automation_traces(self, entity_id):
-        self.chiamate.append(("tracce", entity_id))
-        return self._tracce_risposta
+        self.calls.append(("tracce", entity_id))
+        return self._traces_response
 
     async def automation_trace(self, entity_id, run_id):
-        self.chiamate.append(("traccia", entity_id, run_id))
-        return self._traccia_risposta
+        self.calls.append(("traccia", entity_id, run_id))
+        return self._trace_response
 
 
 @pytest.mark.asyncio
-async def test_system_log_senza_canale_ha_dichiara_invece_di_sollevare():
+async def test_system_log_without_ha_channel_declares_instead_of_raising():
     """`ToolDispatcher(None, None)` e' un dispatcher legittimo (contratto
     della classe): senza canale, `system_log` dichiara -- non solleva, e non
     con un messaggio Python travestito da risposta.
@@ -1144,13 +1148,13 @@ async def test_system_log_senza_canale_ha_dichiara_invece_di_sollevare():
     collegamento assente. Verificato eseguendo: con la riga tolta questo
     assert diventa rosso."""
     d = ToolDispatcher(None, None)
-    esito = await d.dispatch("system_log", {})
-    assert "errore" in esito
-    assert "collegamento vivo con Home Assistant" in esito["errore"]
+    result = await d.dispatch("system_log", {})
+    assert "errore" in result
+    assert "collegamento vivo con Home Assistant" in result["errore"]
 
 
 @pytest.mark.asyncio
-async def test_system_log_e_un_passthrough_puro_del_canale_ha():
+async def test_system_log_is_a_pure_passthrough_of_the_ha_channel():
     """Nessuna trasformazione: quello che `HAClient.system_log()` restituisce
     e' esattamente quello che il modello legge -- a differenza di
     `trend`/`logbook`, che passano per `historian.py`.
@@ -1166,17 +1170,17 @@ async def test_system_log_e_un_passthrough_puro_del_canale_ha():
     (ricostruisce un dict con lo stesso contenuto ma un'identita' diversa).
     Verificato eseguendo: con la sostituzione l'`is` diventa rosso mentre
     `==` resterebbe verde -- la ragione per cui questo test usa `is`."""
-    marcatore = {"voci": [{"message": "sentinella di guasto", "level": "error",
-                           "count": 3, "first_occurred": 1735000000}]}
-    canale = _CanaleHATracce(voci_risposta=marcatore)
-    d = ToolDispatcher(None, None, ha=canale)
-    esito = await d.dispatch("system_log", {})
-    assert esito is marcatore
-    assert canale.chiamate == [("voci",)]
+    marker = {"voci": [{"message": "sentinella di guasto", "level": "error",
+                        "count": 3, "first_occurred": 1735000000}]}
+    channel = _FakeHAChannel(log_response=marker)
+    d = ToolDispatcher(None, None, ha=channel)
+    result = await d.dispatch("system_log", {})
+    assert result is marker
+    assert channel.calls == [("voci",)]
 
 
 @pytest.mark.asyncio
-async def test_system_log_propaga_l_errore_del_canale_senza_giudicarlo():
+async def test_system_log_propagates_the_channel_error_without_judging_it():
     """Quando la fonte non risponde, `system_log` lo dice -- non restituisce
     un `voci: []` che affermerebbe «registro vuoto» al posto di «non ho
     potuto guardare» (fondamenta n.3, richiesta esplicita del capitolato:
@@ -1186,15 +1190,15 @@ async def test_system_log_propaga_l_errore_del_canale_senza_giudicarlo():
     `errore` nella risposta del canale, la sostituisce con `{"voci": []}`
     invece di propagarla. Verificato eseguendo: con quella sostituzione
     l'assert su `errore` diventa rosso."""
-    canale = _CanaleHATracce(voci_risposta={"errore": "Home Assistant non ha risposto"})
-    d = ToolDispatcher(None, None, ha=canale)
-    esito = await d.dispatch("system_log", {})
-    assert esito == {"errore": "Home Assistant non ha risposto"}
-    assert "voci" not in esito
+    channel = _FakeHAChannel(log_response={"errore": "Home Assistant non ha risposto"})
+    d = ToolDispatcher(None, None, ha=channel)
+    result = await d.dispatch("system_log", {})
+    assert result == {"errore": "Home Assistant non ha risposto"}
+    assert "voci" not in result
 
 
 @pytest.mark.asyncio
-async def test_automation_trace_senza_canale_ha_dichiara_invece_di_sollevare():
+async def test_automation_trace_without_ha_channel_declares_instead_of_raising():
     """Gemello del test su `system_log`, per `automation_trace`.
 
     **Mutazione che uccide l'assert**: togliere `"automation_trace": ("ha",)`
@@ -1204,13 +1208,13 @@ async def test_automation_trace_senza_canale_ha_dichiara_invece_di_sollevare():
     non quello del collegamento assente, e l'assert sulla frase specifica
     arrossisce."""
     d = ToolDispatcher(None, None)
-    esito = await d.dispatch("automation_trace", {"entita": "automation.buonanotte"})
-    assert "errore" in esito
-    assert "collegamento vivo con Home Assistant" in esito["errore"]
+    result = await d.dispatch("automation_trace", {"entita": "automation.buonanotte"})
+    assert "errore" in result
+    assert "collegamento vivo con Home Assistant" in result["errore"]
 
 
 @pytest.mark.asyncio
-async def test_automation_trace_pretende_un_entita():
+async def test_automation_trace_requires_an_entita():
     """Senza `entita`, l'errore lo dice -- e lo dice PRIMA di toccare la rete.
 
     **Mutazione che uccide l'assert**: togliere il controllo
@@ -1219,13 +1223,13 @@ async def test_automation_trace_pretende_un_entita():
     solleva `AttributeError`, la rete di sicurezza finale la trasforma in un
     `errore` che pero' non contiene piu' la parola «entita» -- l'assert
     dedicato ad essa arrossisce."""
-    d = ToolDispatcher(None, None, ha=_CanaleHATracce())
-    esito = await d.dispatch("automation_trace", {})
-    assert "errore" in esito and "entita" in esito["errore"]
+    d = ToolDispatcher(None, None, ha=_FakeHAChannel())
+    result = await d.dispatch("automation_trace", {})
+    assert "errore" in result and "entita" in result["errore"]
 
 
 @pytest.mark.asyncio
-async def test_automation_trace_rifiuta_un_entita_malformato_prima_di_fare_rete():
+async def test_automation_trace_rejects_a_malformed_entita_before_touching_the_network():
     """Un `entita` senza punto (o comunque non `dominio.oggetto`) non deve
     MAI raggiungere il canale: `HAClient.automation_traces()` lo spaccherebbe
     sul primo punto e produrrebbe un elenco vuoto silenzioso -- «questa
@@ -1236,18 +1240,18 @@ async def test_automation_trace_rifiuta_un_entita_malformato_prima_di_fare_rete(
     `if not _ENTITY_ID_RE.match(entity)`, lasciando solo il controllo di
     stringa non vuota. Verificato eseguendo: con quel controllo tolto
     `"senza_punto"` (una stringa non vuota, quindi valida per il primo
-    controllo) raggiunge `canale.automation_traces("senza_punto")`, e
-    `canale.chiamate` non resta piu' vuoto -- l'assert dedicato arrossisce."""
-    canale = _CanaleHATracce(tracce_risposta={"tracce": []})
-    d = ToolDispatcher(None, None, ha=canale)
-    esito = await d.dispatch("automation_trace", {"entita": "senza_punto"})
-    assert "errore" in esito
-    assert canale.chiamate == [], (
+    controllo) raggiunge `channel.automation_traces("senza_punto")`, e
+    `channel.calls` non resta piu' vuoto -- l'assert dedicato arrossisce."""
+    channel = _FakeHAChannel(traces_response={"tracce": []})
+    d = ToolDispatcher(None, None, ha=channel)
+    result = await d.dispatch("automation_trace", {"entita": "senza_punto"})
+    assert "errore" in result
+    assert channel.calls == [], (
         "un entita' malformato ha comunque raggiunto il canale HA")
 
 
 @pytest.mark.asyncio
-async def test_automation_trace_senza_esecuzione_elenca_le_esecuzioni_recenti():
+async def test_automation_trace_without_run_id_lists_recent_runs():
     """Senza `esecuzione`, il tool chiede l'ELENCO (`automation_traces`), non
     il dettaglio di una sola.
 
@@ -1256,17 +1260,17 @@ async def test_automation_trace_senza_esecuzione_elenca_le_esecuzioni_recenti():
     quale metodo si chiama in quale caso. Verificato eseguendo: con i rami
     scambiati, senza `esecuzione` il codice tenta `ha.automation_trace(entity,
     None.strip())`, solleva `AttributeError` su `None`, e l'assert sul
-    marcatore e su `chiamate` arrossisce entrambi."""
-    marcatore = {"tracce": [{"run_id": "r1", "script_execution": "finished"}]}
-    canale = _CanaleHATracce(tracce_risposta=marcatore)
-    d = ToolDispatcher(None, None, ha=canale)
-    esito = await d.dispatch("automation_trace", {"entita": "automation.buonanotte"})
-    assert esito is marcatore
-    assert canale.chiamate == [("tracce", "automation.buonanotte")]
+    marker e su `calls` arrossisce entrambi."""
+    marker = {"tracce": [{"run_id": "r1", "script_execution": "finished"}]}
+    channel = _FakeHAChannel(traces_response=marker)
+    d = ToolDispatcher(None, None, ha=channel)
+    result = await d.dispatch("automation_trace", {"entita": "automation.buonanotte"})
+    assert result is marker
+    assert channel.calls == [("tracce", "automation.buonanotte")]
 
 
 @pytest.mark.asyncio
-async def test_automation_trace_con_esecuzione_chiede_il_grafo_di_quella_sola_esecuzione():
+async def test_automation_trace_with_run_id_asks_for_that_single_run_graph():
     """Con `esecuzione`, il tool chiede il DETTAGLIO (`automation_trace`) di
     quella sola esecuzione, non l'elenco.
 
@@ -1277,20 +1281,20 @@ async def test_automation_trace_con_esecuzione_chiede_il_grafo_di_quella_sola_es
     scambiare l'ordine degli argomenti nella chiamata
     (`ha.automation_trace(run_id.strip(), entity)` invece di
     `ha.automation_trace(entity, run_id.strip())`). Verificato eseguendo:
-    con l'ordine scambiato `canale.chiamate` porta `("traccia", "r1",
+    con l'ordine scambiato `channel.calls` porta `("traccia", "r1",
     "automation.buonanotte")` invece della tupla attesa, e l'assert
     dedicato arrossisce."""
-    marcatore = {"traccia": {"run_id": "r1", "trace": {}, "script_execution": "finished"}}
-    canale = _CanaleHATracce(traccia_risposta=marcatore)
-    d = ToolDispatcher(None, None, ha=canale)
-    esito = await d.dispatch(
+    marker = {"traccia": {"run_id": "r1", "trace": {}, "script_execution": "finished"}}
+    channel = _FakeHAChannel(trace_response=marker)
+    d = ToolDispatcher(None, None, ha=channel)
+    result = await d.dispatch(
         "automation_trace", {"entita": "automation.buonanotte", "esecuzione": "r1"})
-    assert esito is marcatore
-    assert canale.chiamate == [("traccia", "automation.buonanotte", "r1")]
+    assert result is marker
+    assert channel.calls == [("traccia", "automation.buonanotte", "r1")]
 
 
 @pytest.mark.asyncio
-async def test_automation_trace_esecuzione_vuota_lo_dice_senza_toccare_la_rete():
+async def test_automation_trace_blank_run_id_declares_it_without_touching_the_network():
     """Un `esecuzione` presente ma vuoto (o non una stringa) non deve
     silenziosamente ricadere sull'elenco ne' raggiungere la rete: e' un
     argomento malformato, si dichiara.
@@ -1299,18 +1303,18 @@ async def test_automation_trace_esecuzione_vuota_lo_dice_senza_toccare_la_rete()
     lasciare solo `if run_id: ...`. Verificato eseguendo: senza quel
     controllo, `"   "` e' una stringa non vuota (quindi verita' per `if
     run_id`), il codice chiama `ha.automation_trace(entity, "   ".strip())`
-    cioe' con `run_id=""`, `canale.chiamate` smette di essere vuoto e
+    cioe' con `run_id=""`, `channel.calls` smette di essere vuoto e
     l'assert dedicato arrossisce."""
-    canale = _CanaleHATracce()
-    d = ToolDispatcher(None, None, ha=canale)
-    esito = await d.dispatch(
+    channel = _FakeHAChannel()
+    d = ToolDispatcher(None, None, ha=channel)
+    result = await d.dispatch(
         "automation_trace", {"entita": "automation.buonanotte", "esecuzione": "   "})
-    assert "errore" in esito
-    assert canale.chiamate == []
+    assert "errore" in result
+    assert channel.calls == []
 
 
 @pytest.mark.asyncio
-async def test_automation_trace_propaga_l_errore_del_canale_senza_giudicarlo():
+async def test_automation_trace_propagates_the_channel_error_without_judging_it():
     """Stessa disciplina di `system_log`: un errore del canale (`entita`
     esistente, HA che non risponde, o un `run_id` gia' caduto fuori dalle
     tracce conservate) si propaga com'e', non si ricopre con un `tracce: []`
@@ -1320,9 +1324,9 @@ async def test_automation_trace_propaga_l_errore_del_canale_senza_giudicarlo():
     **Mutazione che uccide l'assert**: fare di `_automation_trace` un ramo
     che sostituisce un `errore` in arrivo con `{"tracce": []}`. Verificato
     eseguendo: con quella sostituzione l'assert su `errore` diventa rosso."""
-    canale = _CanaleHATracce(tracce_risposta={"errore": "Home Assistant non ha risposto"})
-    d = ToolDispatcher(None, None, ha=canale)
-    esito = await d.dispatch(
+    channel = _FakeHAChannel(traces_response={"errore": "Home Assistant non ha risposto"})
+    d = ToolDispatcher(None, None, ha=channel)
+    result = await d.dispatch(
         "automation_trace", {"entita": "automation.buonanotte"})
-    assert esito == {"errore": "Home Assistant non ha risposto"}
-    assert "tracce" not in esito
+    assert result == {"errore": "Home Assistant non ha risposto"}
+    assert "tracce" not in result

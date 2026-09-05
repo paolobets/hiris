@@ -176,9 +176,10 @@ def test_i_nomi_si_derivano_dal_catalogo_e_non_si_riscrivono():
     opposta a `propose`/`confirm`. Fetta «le tracce e il log» Task 5: da 13
     a 15, entrano `system_log` e `automation_trace` -- la STESSA fonte che
     l'osservatore (`mind/watcher.py`) gia' rilegge di notte, non una
-    seconda; LEGGONO e basta come `trend`/`logbook`, ma NON entrano
-    nell'elenco di ammissione del turno delle promesse (`keeper/exchange.py::
-    SOLA_LETTURA`): decisione lasciata aperta da questo task, non presa."""
+    seconda; LEGGONO e basta come `trend`/`logbook`, ed entrano anch'essi
+    (giro di correzioni) nello stesso elenco di ammissione del turno delle
+    promesse (`keeper/exchange.py::SOLA_LETTURA`), per la stessa ragione:
+    senza, il ponte vedrebbe la casa ma non cio' che vi si e' rotto."""
     nomi = runner.mcp_names()
 
     assert len(nomi) == len(KNOWLEDGE_TOOLS) == 15

@@ -81,6 +81,15 @@ def test_i_due_lettori_entrano_nel_turno_delle_promesse():
     assert {"trend", "logbook"} <= nomi
 
 
+def test_system_log_and_automation_trace_enter_the_promise_turn_too():
+    """Gemello del test sopra, giro di correzioni: `system_log` e
+    `automation_trace` LEGGONO e basta, come `trend`/`logbook` -- senza,
+    una promessa «avvisami se un'automazione fallisce» sarebbe cieca."""
+    assert "system_log" in SOLA_LETTURA and "automation_trace" in SOLA_LETTURA
+    nomi = {d["name"] for d in promise_tools()}
+    assert {"system_log", "automation_trace"} <= nomi
+
+
 def test_il_dispatcher_riceve_la_cronaca_dall_app():
     """Senza questa riga `logbook` risponderebbe sempre senza attribuzione:
     un dato che c'e' e che nessuno puo' chiedere -- la fondamenta 4 al

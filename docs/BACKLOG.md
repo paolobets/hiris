@@ -519,6 +519,23 @@ player, valvole...) oggi non producono nessun oggetto — il pavimento non li la
 nell'immagine Docker pubblicata, mentre `LICENSE` dice «PROPRIETARY SOFTWARE LICENSE». Da sanare
 prima di un rilascio.
 
+### `_ENTITY_ID_RE` vive in quattro copie
+
+`origine: rilevata nel giro di correzioni del Task 5 di «le tracce e il log», 05/09/2026` ·
+`nessun documento`
+
+Stessa espressione (`^[a-z][a-z0-9_]*\.[a-z0-9_]+$`), stessa intenzione — una guardia sulla forma
+`dominio.oggetto` di un `entity_id`, la piu' stretta possibile — duplicata a mano quattro volte,
+ognuna dichiarata "DOPPIONE" nel proprio commento invece di importata: `proxy/ha_client.py:36`
+(la prima), `home_space/behavior.py:45` (indipendente, un'espressione diversa nello scopo ma
+identica nel testo), `mind/watcher.py:82` (Task 4 di questa stessa fetta) e
+`home_space/tools.py:352` (Task 5, questo giro). Non si unifica adesso: ogni fetta che l'ha scritta
+aveva una ragione dichiarata per non importarla da un'altra (modulo diverso, accoppiamento non
+voluto), e unificarle tutte e quattro e' un lavoro suo, con la sua verifica — non un effetto
+collaterale di un giro di correzioni. Ma quattro copie della stessa guardia, scoperte una alla
+volta invece che in un colpo solo, sono il tipo di cosa che questo registro esiste per non
+lasciar perdere.
+
 ---
 
 ## Usciti

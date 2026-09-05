@@ -511,7 +511,7 @@ def probe_tools(client, base_url: str, headers: dict,
     quel pin insieme al codice, invece di scavalcarlo qui."""
     # I nomi NUDI del catalogo di QUESTO turno. La sonda deve interrogare la
     # stessa cosa che il turno usera': con l'intestazione della promessa la
-    # rotta serve sette strumenti, senza ne serve quindici, e una sonda che
+    # rotta serve nove strumenti, senza ne serve quindici, e una sonda che
     # chiedesse gli uni per poi usare gli altri proverebbe il turno sbagliato.
     definitions = promise_tools() if promise_id else KNOWLEDGE_TOOLS
     awaited = {d["name"] for d in definitions}

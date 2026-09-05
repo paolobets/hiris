@@ -781,7 +781,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | cronaca | il registro unico e leggibile di ogni tentativo che ha gia' superato i controlli -- un comando o una scrittura di configurazione, riuscito o fallito -- con chi l'ha chiesto, cosa e' successo e quando, interrogabile a prescindere da chi ha agito | journal | ✓ arriva |
 | decisione | il risultato gia' calcolato di chi rispondera' al prossimo messaggio e perche', composto da fatti gia' misurati -- non dagli ingredienti grezzi di configurazione -- cosicche' la pagina che lo mostra si limiti a disegnarlo invece di ricalcolare la stessa regola per conto suo | resolution | ~ parziale |
 | direzione | classifica in quale verso si muove un valore fisico del bilancio energetico osservato -- prodotto, autoconsumato, immesso, prelevato, caricato, scaricato, consumato. **`energy_directions -> energy_directions` e' un nome deciso a mano, e `energia` NON prende una riga**: nuda si applicherebbe a `mind/baseline.py::_ENERGIA`, ambito stabile, che questa fetta non ha mandato di toccare -- un nome di una parola sola si applica DA SOLO, senza passare da una proposta. **La mappa che `proxy/ha_client.py::energy_directions` costruisce si chiama `by_entity`, non `map`, e `mappa` NON prende una riga**: una riga nuda `mappa -> map` si applicherebbe anche a `memory/resolver.py`, ambito stabile con un residuo dichiarato, e una riga qualificata `(proxy)` renderebbe `mappa` muta in `memoria` (dove e' usata) senza guadagnarci nulla. Il nome dice come la mappa e' INDICIZZATA -- per entity_id -- come `by_path` e `_DIRECTION_BY_TRANSLATION_KEY` nello stesso file | direction | ✓ arriva |
-| dispatcher | collega ciascuno dei tredici nomi che il modello puo' invocare alla sua implementazione concreta -- gli archivi, l'attuatore, l'officina, il canale verso Home Assistant -- attraverso un solo punto d'ingresso che non solleva mai: un nome sconosciuto, argomenti mancanti o un guasto imprevisto diventano tutti un dizionario leggibile con la chiave dell'errore, mai un'eccezione che interrompe il turno | dispatcher | ✓ arriva |
+| dispatcher | collega ciascuno dei quindici nomi che il modello puo' invocare alla sua implementazione concreta -- gli archivi, l'attuatore, l'officina, il canale verso Home Assistant -- attraverso un solo punto d'ingresso che non solleva mai: un nome sconosciuto, argomenti mancanti o un guasto imprevisto diventano tutti un dizionario leggibile con la chiave dell'errore, mai un'eccezione che interrompe il turno | dispatcher | ✓ arriva |
 | domande | le tre funzioni che, su richiesta esplicita, restituiscono il dettaglio di una cosa sola -- cercarla per nome, vederne il corpo, sapere chi la tocca -- quando il riepilogo sempre presente non basta | queries | ~ parziale |
 | esito | il fatto osservabile su cio' che e' davvero successo in un tentativo -- un provider che ha rifiutato, un comando riuscito o fallito, un tempo di attesa misurato -- mai un'ipotesi sul perche' -- **quinto caso della famiglia «due sensi dentro lo stesso ambito»** (01/09, `server.py`): `occurrence` e' giusto per l'esito di un PROVIDER, che e' il concetto qui definito e vive in `esiti_provider.py`/`decisione_modelli.py`, cioe' nella stessa radice. Ma `server.py` usa `esito` **quattro** volte per il RISULTATO di una lettura -- il payload dei problemi di Home Assistant (651), il rapporto di `compare_with_home_assistant` (787), la risposta di `related` dentro `build_companions` (896) e quella di `hourly_statistics` dentro `build_balances` (1047) -- e li' `occurrence` direbbe una cosa che quel dizionario non e'. **La prima stesura di questa nota diceva «due»: le aveva contate a occhio invece che con `tokenize`, ed e' lo stesso difetto che il glossario vieta due paragrafi piu' su -- una cifra dichiarata «misurata» e scritta a mano.** Qualificare per ambito non separa niente, perche' i due sensi vivono nello stesso: si decide occorrenza per occorrenza guardando il codice, come per `coda`/`fuori (home_space)`. Le due locali di `server.py` sono diventate `report` | occurrence | ✓ arriva |
 | famiglia | raggruppa il fallimento di un provider del modello in una delle cinque cause riconosciute -- credenziale, modello, irraggiungibile, scaduto, altro -- cosi' che due rifiuti della stessa causa vengano trattati come lo stesso evento invece che come due guasti diversi | family | ~ parziale |
@@ -3262,6 +3262,36 @@ codice:
 > risolverla. `leggi_glossario()` ora solleva se due righe nude finissero di nuovo sullo stesso nome
 > con inglesi diversi (vedi `scripts/rinomina.py`): questa correzione lo rende silenzioso di nuovo
 > per il caso vero, ma la guardia resta per il prossimo.
+
+> **13 -> 15: `system_log` e `automation_trace` (fetta «le tracce e il log», Task 5, giro di
+> correzioni), registrati qui perche' questa e' dove i nomi degli strumenti si decidono -- e non
+> passati dalla tabella qui sopra, perche' quella tabella e' la traduzione ITALIANO -> INGLESE dei
+> tredici del 02/09: questi due sono nati in inglese direttamente, senza un nome italiano da
+> tradurre (il vincolo «tutto il codice in inglese» era gia' deciso quando sono stati scritti), e
+> infilarli in una riga con una colonna «italiano» vuota avrebbe falsificato la forma della
+> tabella per far tornare il conto.
+>
+> - **`system_log`** -- il registro degli errori e degli avvisi di Home Assistant, cosi' come sta
+>   ORA: nome preso a peso dal comando WebSocket che legge (`system_log/list`,
+>   `HAClient.system_log()`, Task 1), non inventato -- la stessa legge del confine per cui
+>   `logbook` resta `logbook` due righe sopra.
+> - **`automation_trace`** -- le esecuzioni recenti di un'automazione, o -- con `esecuzione` -- il
+>   grafo completo di una sola: nome preso dal concetto che Home Assistant stesso chiama «trace»
+>   nel proprio pannello delle automazioni (non una parola coniata qui), singolare anche se il caso
+>   piu' comune (senza `esecuzione`) torna un elenco -- stessa scelta gia' fatta per `system_log`,
+>   che torna `voci` (plurale) sotto un nome singolare.
+>
+> **Non e' stata eseguita la prova del lettore nuovo su questi due.** E' dichiarato, non taciuto:
+> la fetta che li ha scritti non poteva dispacciare due lettori indipendenti su modelli diversi
+> per un compito di codice, e una riga che si prendesse un esito non provato sarebbe il precedente
+> peggiore gia' scartato per `concludi` (vedi sopra). Il rischio di collisione con gli altri
+> tredici e' stato solo RAGIONATO, non misurato: nessuno dei quattordici nomi esistenti comincia
+> per `system_` o `automation_`, ed entrambi i nomi nuovi sono composti (dominio_oggetto), non
+> verbi brevi -- la stessa famiglia di rischio che ha prodotto le collisioni vere di questa
+> sezione (`cerca`/`richiama`, `ricorda`/`richiama`) non si applica a una coppia di sostantivi
+> composti che non condividono nessuna radice fra loro ne' con gli altri tredici. Se un giorno
+> qualcuno dispaccia la prova vera, questa riga va corretta con l'esito, non semplicemente
+> cancellata.
 
 ## I valori di dominio
 

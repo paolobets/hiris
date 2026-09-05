@@ -963,20 +963,50 @@ SYSTEM_LOG_TOOL_DEF = {
         # vedi `LOGBOOK_TOOL_DEF` qui sopra): cosa contiene la risposta, cosa
         # NON si puo' concludere da essa, cosa succede quando la fonte non
         # risponde.
-        "Cosa c'e' nel registro degli errori di Home Assistant, ADESSO. Serve alla "
-        "domanda «cosa non va nel sistema?». Ogni voce porta `message`, `level`, "
-        "`source`, e -- quando HA la rivede piu' volte -- `count` (quante volte e' "
-        "ricorsa) e `first_occurred` (quando e' comparsa la prima volta): Home "
-        "Assistant DEDUPLICA gia' da solo, `count: 12` non sono dodici episodi da "
-        "raccontare uno per uno, e' la stessa causa ricomparsa dodici volte. "
-        "Non e' l'unica finestra sui guasti della casa: un repair attivo o "
-        "un'integrazione che non risponde piu' possono non lasciare mai una riga "
-        "qui dentro, il registro raccoglie solo cio' che qualcosa ha esplicitamente "
-        "loggato. `voci: []` significa che il registro e' vuoto in questo momento, "
-        "NON che nulla sia mai andato storto -- e non e' nemmeno detto che duri: "
-        "Home Assistant lo tiene finche' l'add-on gira, un riavvio lo svuota. Se "
-        "torna `errore`, Home Assistant non ha risposto: non concludere «va tutto "
-        "bene», dillo."
+        #
+        # Giro di correzioni (revisione indipendente): quattro fatti che la
+        # prima stesura sbagliava o taceva, tutti gia' verificati altrove in
+        # questo stesso ramo, non ipotizzati qui:
+        # 1. Il livello e' maiuscolo (`"ERROR"`, `"WARNING"` -- `record.
+        #    levelname`, verificato in `mind/watcher.py:447-449`): il
+        #    registro NON e' solo errori, e contarlo per lunghezza
+        #    dell'elenco invece che per `level` fa dire «dodici errori»
+        #    quando nove delle dodici voci sono avvisi.
+        # 2. `count`/`first_occurred` ci sono SEMPRE (`LogEntry.to_dict()`,
+        #    vedi `HAClient.system_log()`), non solo «quando HA la rivede
+        #    piu' volte» -- la prima stesura lo lasciava intendere.
+        # 3. L'ordine e' dal PIU' RECENTE al piu' vecchio (`DedupStore.
+        #    to_list()`, "Return reversed list of log entries - LIFO",
+        #    citato in `HAClient.system_log()`, che dice esplicitamente «chi
+        #    consuma questo metodo non deve ipotizzarlo»): la prima stesura
+        #    non lo diceva a chi legge, cioe' al modello, non solo a chi
+        #    legge il codice.
+        # 4. Il registro vive nella memoria di HOME ASSISTANT, non
+        #    dell'add-on: un riavvio di HIRIS non lo tocca. La prima
+        #    stesura diceva «lo tiene finche' l'add-on gira», falso e senza
+        #    fonte -- corretto contro `mind/watcher.py:464`, «HA tiene le
+        #    voci dall'ultimo SUO riavvio».
+        "Cosa c'e' nel registro di Home Assistant, ADESSO -- errori E avvisi, non "
+        "solo errori: ogni voce porta `level` (`ERROR` o `WARNING`, cosi' come HA "
+        "lo scrive), e su un elenco di dodici voci di cui nove `WARNING` la "
+        "risposta onesta e' «tre errori», non «dodici». Serve alla domanda «cosa "
+        "non va nel sistema?». Ogni voce porta anche `message`, `source`, e "
+        "SEMPRE `count` (quante volte e' ricorsa: Home Assistant DEDUPLICA gia' "
+        "da solo, non scrive una seconda riga per la stessa causa) e "
+        "`first_occurred` (quando e' comparsa la prima volta) -- non solo quando "
+        "ricorre piu' volte. `count: 12` non sono dodici episodi da raccontare "
+        "uno per uno, e' la stessa causa ricomparsa dodici volte. **L'ordine e' "
+        "dal PIU' RECENTE al piu' vecchio**: Home Assistant lo manda gia' cosi', "
+        "`voci[0]` e' l'ultima comparsa, non la prima. Non e' l'unica finestra "
+        "sui guasti della casa: un repair attivo o un'integrazione che non "
+        "risponde piu' possono non lasciare mai una riga qui dentro, il registro "
+        "raccoglie solo cio' che qualcosa ha esplicitamente loggato. `voci: []` "
+        "significa che il registro e' vuoto in questo momento, NON che nulla sia "
+        "mai andato storto -- e non e' nemmeno detto che duri: il registro vive "
+        "nella memoria di HOME ASSISTANT, non dell'add-on -- un riavvio di HIRIS "
+        "non lo tocca, un riavvio di Home Assistant si' (lo svuota dal proprio "
+        "ultimo riavvio in poi). Se torna `errore`, Home Assistant non ha "
+        "risposto: non concludere «va tutto bene», dillo."
     ),
     "input_schema": {"type": "object", "properties": {}, "required": []},
 }
@@ -991,6 +1021,31 @@ AUTOMATION_TRACE_TOOL_DEF = {
         # tag rilasciati, non sul ramo dev) e' il fatto che decide la
         # SECONDA cosa che questa description deve dire: una traccia
         # mancante non e' un «e' andato tutto bene».
+        #
+        # I valori di `script_execution` citati (`finished`, `failed_
+        # conditions`, `aborted`) sono verificati alla fonte, non inventati:
+        # `homeassistant/components/automation/__init__.py` (tag `2024.7.0`
+        # e `2026.9.0`, vedi il commento sopra `AUTOMATION_TRIGGERED_EVENT`
+        # in questo stesso file per `failed_conditions`) e `helpers/script.py`
+        # (tag `2026.9.0`, vedi `server.py::watch_automation_outcome` per
+        # l'elenco completo di cosa scrive `aborted`).
+        #
+        # Giro di correzioni (revisione indipendente): `tracce: []` NON
+        # distingue «questa automazione non ha mai girato» da «questa
+        # automazione non esiste» -- verificato alla fonte, non presunto:
+        # `trace/util.py::_get_debug_traces` (tag `2024.7.0` e `2026.9.0`,
+        # la funzione cambia file ma non corpo, stesso confine gia' misurato
+        # dal Task 3 per il tetto a due secchi) e' un dict.get(key) NUDO sul
+        # magazzino delle tracce vive, senza passare mai dal registro delle
+        # entita': un `entity_id` mai esistito e uno che semplicemente non
+        # ha mai eseguito nulla producono la STESSA lista vuota. Deciso di
+        # NON controllare `entita` contro lo specchio dello stato prima di
+        # chiedere: lo specchio e' una fotografia (puo' non conoscere ancora
+        # un'automazione vera appena creata) e diventerebbe una SECONDA
+        # fonte di verita' su cosa esiste in casa -- esattamente cio' che
+        # «un solo rubinetto» vieta. La description dichiara quindi
+        # l'ambiguita' al modello, invece di risolverla con una fonte in
+        # piu'.
         "Come sono andate le esecuzioni RECENTI di un'automazione. Serve alla "
         "domanda «come e' andata questa automazione?». Richiede `entita`, "
         "l'identificatore ESATTO (se hai solo un nome, usa prima `search`). Senza "
@@ -999,16 +1054,22 @@ AUTOMATION_TRACE_TOOL_DEF = {
         "`aborted`: non dare per scontato quali altri valori esistano), `last_step` "
         "e, quando c'e' stato un errore, `error`. Passa anche `esecuzione` (il "
         "`run_id` di una voce di `tracce`) per avere il grafo COMPLETO di UNA sola "
-        "esecuzione, passo per passo (`traccia`). "
+        "esecuzione, passo per passo (`traccia`): stessa fonte, stessa domanda, "
+        "solo piu' grana -- non chiamarlo come prima cosa, senza aver visto "
+        "prima l'elenco e il `run_id` che ti interessa. "
         "**Un'esecuzione che manca da `tracce` NON significa che sia andata bene**: "
         "Home Assistant ne conserva solo un numero limitato per automazione -- "
         "cinque sull'installazione piu' vecchia che HIRIS puo' incontrare, fino al "
         "doppio sulle versioni piu' recenti, e un'automazione puo' averne chiesti "
         "di piu' da sola in YAML -- quella esecuzione puo' semplicemente essere "
-        "USCITA dal tetto, non essere andata bene. `tracce: []` significa che, "
-        "dentro quel tetto, questa automazione non ha mai girato -- non che vada "
-        "tutto bene. Se torna `errore`, Home Assistant non ha risposto: non "
-        "concludere niente su come sia andata, dillo."
+        "USCITA dal tetto, non essere andata bene. "
+        "**`tracce: []` e' anche ambiguo su un'altra cosa**: dentro quel tetto puo' "
+        "significare che questa automazione non ha mai girato, ma puo' anche "
+        "significare che `entita` non esiste affatto -- un id scritto male "
+        "produce la STESSA lista vuota di un'automazione vera mai scattata: "
+        "prima di fidarti di «non ha mai girato», verifica che l'automazione "
+        "esista davvero (`search`). Se torna `errore`, Home Assistant non ha "
+        "risposto: non concludere niente su come sia andata, dillo."
     ),
     "input_schema": {
         "type": "object",

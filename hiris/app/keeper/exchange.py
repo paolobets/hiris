@@ -24,7 +24,7 @@ from ..model_resolution import _DOWNGRADE_REASONS
 
 logger = logging.getLogger(__name__)
 
-# I sei che leggono e basta. Non `execute` (tocca la casa), non `remember`
+# Gli otto che leggono e basta. Non `execute` (tocca la casa), non `remember`
 # (scrive nella memoria, che dal giro 1 di questa correzione entra nel
 # prompt di sistema SANIFICATA -- C-2 -- non piu' verbatim), non
 # `promise`/`cancel` (un turno che si da' appuntamenti da solo e' autonomia
@@ -35,7 +35,20 @@ logger = logging.getLogger(__name__)
 # basta, ed e' cio' che permette a una promessa delle 17:00 di confrontare la
 # temperatura con quella di un'ora prima invece di portarsi dietro una
 # fotografia scattata alla nascita.
-SOLA_LETTURA = ("search", "view", "related", "fetch", "trend", "logbook")
+#
+# `system_log` e `automation_trace` (fetta «le tracce e il log», giro di
+# correzioni del Task 5) entrano anch'essi, per la STESSA ragione di
+# `trend`/`logbook`: leggono e basta, dalla stessa fonte che l'osservatore
+# (`mind/watcher.py`) gia' rilegge di notte, e non e' un'ammissione
+# automatica -- questo elenco resta di AMMISSIONE, non di esclusione, quindi
+# la deliberazione va scritta: senza i due, il ponte vede la casa ma non
+# cio' che vi si e' rotto, e una promessa «avvisami se un'automazione
+# fallisce» sarebbe cieca. Verificato (revisione indipendente) che
+# l'ammissione non porti con se' nulla che scriva: ne' `system_log` ne'
+# `automation_trace` toccano `action/actuator.py` o l'officina, entrambi
+# passano solo dal canale HA in sola lettura (`ToolDispatcher._ha`).
+SOLA_LETTURA = ("search", "view", "related", "fetch", "trend", "logbook",
+                "system_log", "automation_trace")
 
 CONCLUDI_TOOL_DEF = {
     "name": "conclude",
