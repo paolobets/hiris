@@ -16,6 +16,8 @@ una LISTA nuda (`connection.send_result(msg["id"],
 hass.data[DOMAIN].records.to_list())`), non un dizionario con una chiave
 come `{"issues": [...]}`. Le prove sulla forma inattesa lo sorvegliano.
 """
+import copy
+
 import pytest
 
 from hiris.app.proxy.ha_client import HAClient
@@ -61,11 +63,19 @@ async def test_the_system_log_is_read_as_home_assistant_sends_it():
     e `first_occurred` compresi -- la deduplicazione e' gia' stata fatta da
     lui, e non e' il client a poterla disfare.
 
-    Mutazione: proiettare le righe su un sottoinsieme di campi -- il test
-    torna rosso su `assert entry["count"] == 3`.
+    Mutazione: proiettare le righe su un sottoinsieme di campi che scarta
+    `count` -- il test torna rosso su `assert entry["count"] == 3`. Una
+    proiezione che scartasse solo `message`, o che cancellasse un campo SUL
+    POSTO, arrossisce piu' in basso, su `assert outcome["voci"] ==
+    [expected]`.
     """
     row = _entry(name="zwave_js.const", level="WARNING", count=3,
                  first_occurred=1699999000.0, timestamp=1700000500.0)
+    # Il confronto in fondo deve reggere anche contro un client che modifica
+    # le righe SUL POSTO: senza questa copia, `row` e la riga in uscita sono
+    # lo STESSO oggetto, e un `r.pop("message")` dentro il client passerebbe
+    # verde -- misurato, non temuto.
+    expected = copy.deepcopy(row)
     fake = _FakeConnection({"result": [row]})
     outcome = await _client(fake).system_log()
     entry = outcome["voci"][0]
@@ -79,8 +89,9 @@ async def test_the_system_log_is_read_as_home_assistant_sends_it():
     # assert sopra bastano a coprire la mutazione dichiarata, ma non a
     # sorvegliare `message`, `source`, `exception` -- una proiezione che
     # lasciasse cadere proprio `message` passerebbe verde. La riga intera,
-    # identica a quella data alla finta, chiude la lacuna.
-    assert outcome["voci"] == [row]
+    # confrontata con una COPIA fatta prima della chiamata, chiude la lacuna:
+    # confrontarla con `row` non basterebbe, perche' e' lo stesso oggetto.
+    assert outcome["voci"] == [expected]
 
 
 @pytest.mark.asyncio
