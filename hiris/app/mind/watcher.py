@@ -201,7 +201,17 @@ class Watcher:
         for i in integrations or []:
             if not isinstance(i, dict):
                 continue
-            state = str(i.get("state") or "").strip()
+            # Stessa normalizzazione di `domain` e `title` qui sotto, non
+            # una diversa: Home Assistant non manda mai uno `state` vuoto
+            # (`as_json_fragment` lo emette sempre, verificato alla fonte) --
+            # se arrivasse comunque malformato, `continue` lo scarta invece
+            # di aprire una condizione VUOTA, che `rebuild_conditions` (che
+            # considera aperto tutto cio' che non e' "chiuso" o vuoto) non
+            # riconoscerebbe mai come aperta: scrittore e ricostruttore
+            # devono dire la stessa cosa.
+            state = _text_or_none(i.get("state"))
+            if state is None:
+                continue
             if state == "loaded" or state in _HEALTHY_INTEGRATION_STATES:
                 continue
             if str(i.get("source") or "").strip() == _IGNORED_INTEGRATION_SOURCE:
@@ -223,8 +233,14 @@ class Watcher:
             self._conditions.add(born)
             written += 1
         for ended in sorted(self._conditions - set(open_now)):
+            # `da=None`, non "aperto": la memoria in RAM (`self._conditions`)
+            # tiene solo il SOGGETTO, non l'ultima condizione -- alla
+            # chiusura non sappiamo piu' se era "aperto", "setup_retry" o
+            # altro. `None` e' "non lo so", non una parola falsa; nessuno
+            # legge `da` per le righe di sistema (ne' `rebuild_conditions`
+            # ne' `facts.py`, che guardano solo `a`).
             self._store.record(quando_ts=now, source="sistema",
-                                  subject=ended, da="aperto", a="chiuso")
+                                  subject=ended, da=None, a="chiuso")
             self._conditions.discard(ended)
             written += 1
         return written

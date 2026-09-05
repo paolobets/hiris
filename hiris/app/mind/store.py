@@ -26,9 +26,7 @@ primo.
 from __future__ import annotations
 
 import json
-import sqlite3
 import threading
-from contextlib import suppress
 
 from ..storage import connect, init_schema
 
@@ -41,6 +39,31 @@ from ..storage import connect, init_schema
 # 17:30. Il 22esimo giorno copre con margine l'ora dell'ora legale, senza far
 # entrare il fuso orario nell'archivio.
 READING_RETENTION_S = 22 * 86400
+
+
+def _add_missing_columns(conn, columns: tuple[str, ...]) -> None:
+    """Aggiunge a `cambi` le colonne di `columns` che non ci sono ancora --
+    tutte di tipo `TEXT`, tutte nullable: e' la forma che condividono tutte
+    le migrazioni di questo schema (vedi `_migration_2` e `_migration_3`),
+    perche' non ce ne sia una seconda scritta a mano, un'altra strategia
+    accanto a questa -- due migrazioni adiacenti con due meccanismi diversi
+    sarebbero un invito al copia-incolla sbagliato la prossima volta.
+
+    Il controllo su `PRAGMA table_info` (non un `try`/`except` attorno
+    all'`ALTER`) e' la scelta deliberata: un `except sqlite3.OperationalError`
+    inghiottirebbe QUALUNQUE errore dell'`ALTER`, non solo «la colonna c'e'
+    gia'» -- anche un archivio bloccato o un disco pieno -- e la migrazione
+    proseguirebbe come se fosse andata bene. `init_schema` stampa comunque
+    `PRAGMA user_version` alla fine: un fallimento inghiottito lascerebbe
+    l'archivio dichiarato alla versione nuova SENZA le colonne, e il primo
+    `record` dopo fallirebbe per sempre -- l'osservatore smetterebbe di
+    scrivere, esattamente il rischio che questa migrazione esiste per
+    evitare.
+    """
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(cambi)")}
+    for column in columns:
+        if column not in existing:
+            conn.execute(f"ALTER TABLE cambi ADD COLUMN {column} TEXT")
 
 
 def _migration_2(conn) -> None:
@@ -67,10 +90,7 @@ def _migration_2(conn) -> None:
     che ricostruisse la tabella per tre colonne rischierebbe di perdere
     settimane di osservazione per un guadagno estetico.
     """
-    existing = {r["name"] for r in conn.execute("PRAGMA table_info(cambi)")}
-    for column in ("device_class", "state_class", "source_type"):
-        if column not in existing:
-            conn.execute(f"ALTER TABLE cambi ADD COLUMN {column} TEXT")
+    _add_missing_columns(conn, ("device_class", "state_class", "source_type"))
 
 
 def _migration_3(conn) -> None:
@@ -81,9 +101,7 @@ def _migration_3(conn) -> None:
     Le righe scritte prima rileggono `None` su entrambe -- e' vero: quelle
     righe quei fatti non li avevano.
     """
-    for column in ("domain", "title"):
-        with suppress(sqlite3.OperationalError):
-            conn.execute(f"ALTER TABLE cambi ADD COLUMN {column} TEXT")
+    _add_missing_columns(conn, ("domain", "title"))
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS cambi (

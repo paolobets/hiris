@@ -261,6 +261,25 @@ def test_un_integrazione_ROTTA_diventa_un_cambio(coppia):
     assert archivio.annotati[0]["title"] == "Abat-jour"
 
 
+def test_una_integrazione_senza_stato_non_apre_nessuna_condizione(coppia):
+    """Home Assistant non manda mai uno `state` vuoto (verificato alla
+    fonte: `ConfigEntry.as_json_fragment` lo scrive sempre). Se arrivasse
+    comunque malformato, non deve aprire una condizione con `a=None` --
+    `rebuild_conditions` non la riconoscerebbe mai come aperta (scarta
+    None/vuoto, vedi sopra), e scrittore e ricostruttore devono dire la
+    stessa cosa.
+
+    Mutazione: togliere `if state is None: continue` -- il test torna rosso
+    perche' verrebbe scritta una riga con `a=None`.
+    """
+    archivio, osservatore = coppia
+    scritti = osservatore.watch_system(
+        problems=[],
+        integrations=[{"entry_id": "abc", "domain": "lifx", "title": "Abat-jour"}])
+    assert scritti == 0
+    assert archivio.annotati == []
+
+
 def test_not_loaded_NON_e_un_guasto(coppia):
     """«NOT_LOADED: The config entry has not been loaded. This is the initial
     state when a config entry is created or when Home Assistant is restarted»
@@ -485,7 +504,10 @@ def test_la_ricostruzione_non_considera_aperta_una_condizione_chiusa():
     """
     archivio = _FintoArchivio(cambi_esistenti=[
         _cambio(1787000000.0, "sistema", "integrazione:01ABC", None, "setup_retry"),
-        _cambio(1787000100.0, "sistema", "integrazione:01ABC", "setup_retry", "chiuso"),
+        # `da=None`, non "setup_retry": e' cio' che `watch_system` scrive
+        # davvero alla chiusura (la memoria in RAM non ricorda l'ultima
+        # condizione, solo il soggetto).
+        _cambio(1787000100.0, "sistema", "integrazione:01ABC", None, "chiuso"),
     ])
     osservatore = Watcher(archivio, now=lambda: 1787572800.0)
     osservatore.rebuild_conditions()
@@ -495,6 +517,25 @@ def test_la_ricostruzione_non_considera_aperta_una_condizione_chiusa():
                        "title": "Abat-jour", "state": "setup_retry"}])
     assert scritti == 1
     assert archivio.annotati[0]["a"] == "setup_retry"
+
+
+def test_la_ricostruzione_non_considera_aperta_una_riga_senza_valore():
+    """Una riga di sistema con `a=None` o `a=""` non dice niente -- non e' un
+    fatto, e' l'assenza di uno (nessuna delle due dovrebbe capitare da
+    `watch_system` per un'apertura, ma l'archivio e' testo libero: la
+    guardia protegge lo stesso da un ingresso malformato).
+
+    Mutazione: togliere `state and` (lasciare solo `state != "chiuso"`) -- il
+    test torna rosso perche' `None`/`""` verrebbero considerati aperti, e
+    `osservatore._conditions` non resterebbe vuoto.
+    """
+    archivio = _FintoArchivio(cambi_esistenti=[
+        _cambio(1787000000.0, "sistema", "integrazione:senza_valore", None, None),
+        _cambio(1787000050.0, "sistema", "integrazione:vuota", None, ""),
+    ])
+    osservatore = Watcher(archivio, now=lambda: 1787572800.0)
+    osservatore.rebuild_conditions()
+    assert osservatore._conditions == set()
 
 
 def test_la_ricostruzione_non_solleva_se_l_archivio_non_risponde():
