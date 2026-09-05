@@ -500,6 +500,62 @@ sorgenti degli stessi eventi possono divergere.
   e `first_occurred`. Rompe la legge dell'osservatore «scrivi il grezzo, giudica dopo»: o si
   accetta e **si scrive perché**, o si legge più in basso.
 
+### Le due decisioni, prese il 05/09 — misurate, non scelte a tavolino
+
+**La legge che le governa entrambe, dettata dal proprietario: «se una cosa funziona non va
+segnalata».** Non è una preferenza di stile: è la ragione per cui questo prodotto ha già pagato
+gli «otto falsi allarmi su nove». Il rumore sulle cose sane seppellisce l'unica rotta, e chi legge
+impara a saltare la riga proprio prima del giorno in cui serviva.
+
+**① Le tracce: l'evento segna, la cadenza raccoglie.**
+
+Verificato alla fonte (`homeassistant/components/automation/__init__.py`), non dedotto:
+`automation_triggered` porta `name`, `entity_id` e `source` — **e nient'altro**. Tre conseguenze
+che cambiano la domanda:
+
+- non porta l'esito: dice che è partita, non com'è andata;
+- scatta da `started_action()`, cioè **all'inizio delle azioni**: nell'istante dell'evento la
+  traccia non è ancora completa;
+- **non scatta affatto se le condizioni non passano.** Sulla casa vera erano **7 esecuzioni su
+  72**: l'evento non le vedrebbe mai.
+
+Quindi «a cadenza» e «mentre accadono» non erano alternative: **vedono cose diverse**. Il disegno
+usa entrambe. L'evento entra nella WebSocket che **esiste già** (una riga accanto a
+`state_changed`) e non scrive niente: *ricorda* che quell'automazione ha agito. Un giro breve
+prende poi le tracce delle sole segnate — quando sono complete. Un giro più largo raccoglie le
+condizioni fallite. La finestra dei cinque smette di decidere, perché non si aspetta più.
+
+**E nasce un oggetto solo quando l'esito è un errore.** Sessantaquattro esecuzioni riuscite al
+giorno non sono cose compiute: sono il contesto. È lo stesso principio per cui i sensori da soli
+non generano oggetti — e la legge qui sopra.
+
+**② Il log: non esiste un «più in basso», e una voce di errore è una condizione che dura.**
+
+Il paragrafo qui sopra offriva due strade. Verificato alla fonte
+(`homeassistant/components/system_log/__init__.py`): **la seconda non esiste.** `system_log_event`
+porta gli **stessi campi** del comando, `count` e `first_occurred` compresi — HA deduplica dentro
+il proprio gestore, su chiave `(logger, posizione nel sorgente, causa radice)`, **prima** di
+qualunque cosa noi possiamo raggiungere. E l'evento va abilitato con `fire_event` sull'impianto
+dell'utente, che non si può dare per fatto. L'unica fonte davvero più bassa è il file di log, che
+un add-on non raggiunge, o `/api/error_log`, che risponde 404 — ed è la ragione per cui
+`get_error_log` è uscita.
+
+Si accetta dunque il già-giudicato, **e il perché va scritto accanto al codice**: non per pigrizia,
+perché un più in basso non c'è, e chi un giorno penserà di cercarlo deve trovare la misura già
+fatta.
+
+La misura ha però scoperto ciò che questo paragrafo non aveva visto: **`count` cresce nel tempo.**
+La stessa riga, letta a due giri, è lo stesso oggetto con un numero più grande — non un evento, ma
+un contatore che HA continua a mutare, dentro un grezzo che per costruzione si scrive e non si
+tocca più.
+
+Decisione: **una voce di errore è una condizione che dura.** Nasce quando compare, resta aperta
+finché ricompare, finisce quando sparisce; `count` e `first_occurred` sono misure sull'episodio.
+È **letteralmente lo stesso meccanismo** dei guasti di sistema: `watch_system` riceve oggi
+`problems` e `integrations`, riceverà un terzo elenco e girerà lo stesso ciclo — con la stessa
+isteresi a due giri e la stessa regola «chiude solo chi sparisce». Il soggetto prende un terzo
+prefisso accanto a `problema:` e `integrazione:`, così il confine netto di `genre_for` resta netto.
+
 Questa fonte è anche ciò che rende dicibile «18 automazioni in funzione regolare» — la frase che
 oggi HIRIS dice senza poterla sapere (§2.7).
 
