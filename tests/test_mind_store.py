@@ -32,7 +32,7 @@ def test_un_cambio_si_rilegge_intero(archivio):
     assert righe == [{"quando_ts": ADESSO, "fonte": "entita",
                       "soggetto": "climate.camera_t", "da": "off", "a": "heat",
                       "device_class": None, "state_class": None, "source_type": None,
-                      "domain": None, "title": None}]
+                      "domain": None, "title": None, "first_occurred": None}]
 
 
 def test_annota_scrive_le_tre_classi_quando_ci_sono(archivio):
@@ -308,6 +308,81 @@ def test_migration_3_adds_the_columns_to_an_old_archive(tmp_path):
     old = store.readings(from_ts=0, to_ts=2000)[0]
     assert old["domain"] is None          # la riga vecchia resta leggibile
     assert old["a"] == "aperto"
+    store.close()
+
+
+def test_a_log_condition_carries_first_occurred_as_a_float(tmp_path):
+    """`first_occurred` e' un ISTANTE (Task 2, «le tracce e il log»), non un
+    testo: la colonna e' `TEXT` (stessa forma di `_add_missing_columns`, vedi
+    il suo docstring), ma `readings()` lo rilegge come `float | None` --
+    l'unica delle colonne nuove per cui serve una conversione, perche' e'
+    l'unica numerica.
+
+    Mutazione: tornare la stringa grezza di SQLite invece di convertirla
+    (`"first_occurred": r["first_occurred"]` senza `float(...)`) -- il test
+    torna rosso su `assert row["first_occurred"] == 1700000000.0` (diventa
+    la stringa `'1700000000.0'`, che Python non considera mai uguale al
+    float `1700000000.0`).
+    """
+    store = ObservationsStore(str(tmp_path / "oss.db"))
+    store.record(quando_ts=1000.0, source="sistema",
+                 subject="log:homeassistant.core@core.py:10", da=None, a="ERROR",
+                 domain="homeassistant.core", title="boom", first_occurred=1700000000.0)
+    row = store.readings(from_ts=0, to_ts=2000)[0]
+    assert row["first_occurred"] == 1700000000.0
+    assert isinstance(row["first_occurred"], float)
+    store.close()
+
+
+def test_first_occurred_is_null_when_not_given(tmp_path):
+    """Un *repair* o un'integrazione non dichiarano mai `first_occurred`:
+    `None` resta `None`, non zero -- e' l'assenza di un fatto, non un fatto
+    che vale zero.
+
+    Mutazione: passare `0.0` come default invece di `None` in `record()` --
+    il test torna rosso su `assert row["first_occurred"] is None`.
+    """
+    store = ObservationsStore(str(tmp_path / "oss.db"))
+    store.record(quando_ts=1000.0, source="sistema",
+                 subject="integrazione:01ABC", da=None, a="setup_retry",
+                 domain="lifx", title="Abat-jour")
+    row = store.readings(from_ts=0, to_ts=2000)[0]
+    assert row["first_occurred"] is None
+    store.close()
+
+
+def test_migration_4_adds_first_occurred_to_an_old_archive(tmp_path):
+    """Il caso che conta e' l'archivio del proprietario al primo avvio dopo
+    l'aggiornamento -- gia' alla v3 (con `domain`/`title`, senza
+    `first_occurred`), non uno nato oggi.
+
+    Mutazione: togliere `4: _migration_4` dal dizionario `migrations`
+    passato a `init_schema` in `ObservationsStore.__init__` (`mind/store.py`)
+    -- il test torna rosso su `assert "first_occurred" in columns`.
+    """
+    path = str(tmp_path / "oss.db")
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        "CREATE TABLE cambi (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " quando_ts REAL NOT NULL, fonte TEXT NOT NULL, soggetto TEXT NOT NULL,"
+        " da TEXT, a TEXT, device_class TEXT, state_class TEXT, source_type TEXT,"
+        " domain TEXT, title TEXT);"
+        "CREATE TABLE oggetti (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " giorno TEXT NOT NULL, genere TEXT NOT NULL, protagonista TEXT NOT NULL,"
+        " inizio_ts REAL NOT NULL, fine_ts REAL, corpo_json TEXT NOT NULL);"
+        "INSERT INTO cambi(quando_ts,fonte,soggetto,da,a,domain,title)"
+        " VALUES(900.0,'sistema','integrazione:01OLD',NULL,'aperto','lifx','Abat-jour');"
+        "PRAGMA user_version = 3;")
+    conn.commit()
+    conn.close()
+
+    store = ObservationsStore(path)
+    columns = [r[1] for r in store._conn.execute("PRAGMA table_info(cambi)")]
+    assert "first_occurred" in columns
+    assert columns.count("first_occurred") == 1
+    old = store.readings(from_ts=0, to_ts=2000)[0]
+    assert old["first_occurred"] is None   # la riga vecchia resta leggibile
+    assert old["domain"] == "lifx"
     store.close()
 
 

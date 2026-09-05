@@ -770,20 +770,61 @@ def test_a_log_entry_that_stays_does_not_open_twice(coppia):
     assert len(archivio.annotati) == 1
 
 
-def test_a_log_entry_uses_first_occurred_as_its_birth(coppia):
-    """L'episodio comincia quando HA dice che e' cominciato, non quando noi
-    l'abbiamo notato: `first_occurred` e' piu' vero dell'istante del nostro
-    giro, e su una casa che ha girato per ore la differenza e' quella fra
-    «e' successo adesso» e «va avanti da stamattina».
+def test_a_log_entry_is_born_on_the_round_clock_not_first_occurred(coppia):
+    """Correzione del giro di revisione indipendente: la prima stesura usava
+    `first_occurred` come istante di nascita ("l'episodio comincia quando HA
+    dice che e' cominciato"). Giusto in astratto, rotto contro
+    `aggregate_day`, che legge solo la finestra del giorno e ignora in
+    silenzio una `chiuso` senza apertura nel giorno -- una nascita scritta
+    oggi con l'istante di giorni fa (HA tiene le voci dall'ultimo suo
+    riavvio) non sarebbe MAI stata aggregata. `quando_ts` deve significare
+    la STESSA cosa per ogni soggetto -- l'orologio del giro -- come per
+    `problema:` e `integrazione:`.
 
-    Mutazione: usare l'orologio del giro invece di `first_occurred` -- il
-    test torna rosso su `assert riga["quando_ts"] == 1788595200.0`.
+    Mutazione: scrivere `quando_ts=first_occurred` invece di `quando_ts=now`
+    -- il test torna rosso su `assert riga["quando_ts"] == 1787572800.0`
+    (diventa `1788595200.0`, l'istante fissato da `_log_entry`).
     """
     archivio, osservatore = coppia
     osservatore.watch_system(problems=[], integrations=[],
                              log_entries=[_log_entry(first_occurred=1788595200.0)])
     riga = archivio.annotati[0]
-    assert riga["quando_ts"] == 1788595200.0
+    assert riga["quando_ts"] == 1787572800.0  # l'orologio del giro (fixture `coppia`)
+
+
+def test_a_log_entry_carries_first_occurred_in_its_own_column(coppia):
+    """`first_occurred` non si butta -- prende una colonna propria
+    (`store.py::_migration_4`), separata da `quando_ts`: un domani il
+    lettore potra' avere «rilevato stamattina, va avanti dal 2» invece di
+    una data sola (`facts.py::aggregate_day`, chiave `comparso_ts`).
+
+    Mutazione: non passare `first_occurred` a `self._store.record(...)` (o
+    passare sempre `None`) -- il test torna rosso su
+    `assert riga["first_occurred"] == 1788595200.0`.
+    """
+    archivio, osservatore = coppia
+    osservatore.watch_system(problems=[], integrations=[],
+                             log_entries=[_log_entry(first_occurred=1788595200.0)])
+    riga = archivio.annotati[0]
+    assert riga["first_occurred"] == 1788595200.0
+
+
+def test_first_occurred_is_null_for_repairs_and_integrations(coppia):
+    """`first_occurred` e' SOLO per una voce di log: un *repair* o
+    un'integrazione non lo dichiarano mai, e la colonna resta `None` --
+    non zero, non una data inventata.
+
+    Mutazione: passare `first_occurred=0` (o un'altra costante) invece di
+    `None` per un `problema:`/`integrazione:` -- il test torna rosso su
+    `assert riga["first_occurred"] is None`.
+    """
+    archivio, osservatore = coppia
+    osservatore.watch_system(
+        problems=[{"domain": "sonos", "issue_id": "x", "severity": "error"}],
+        integrations=[], log_entries=[])
+    riga = archivio.annotati[0]
+    assert riga["subject"] == "problema:sonos.x"
+    assert riga["first_occurred"] is None
 
 
 def test_a_log_entry_that_leaves_the_list_closes_after_two_rounds(coppia):
@@ -805,21 +846,40 @@ def test_a_log_entry_that_leaves_the_list_closes_after_two_rounds(coppia):
     assert archivio.annotati[0]["a"] == "chiuso"
 
 
-def test_a_log_entry_without_a_readable_first_occurred_falls_back_to_the_round(coppia):
+def test_a_log_entry_without_a_readable_first_occurred_writes_none(coppia):
     """`first_occurred` non e' sempre un numero -- una finta HA malformata, o
-    un formato che cambiasse un domani: il fallback dichiarato e' l'orologio
-    del giro, non una nascita inventata a partire da niente.
+    un formato che cambiasse un domani: il ripiego dichiarato e' `None` nella
+    colonna, non un istante inventato a partire da niente. `quando_ts` non
+    dipende comunque da `first_occurred` (vedi il test gemello sopra), quindi
+    resta l'orologio del giro in ogni caso.
 
-    Mutazione: propagare `birth` (cioe' `None`, qui) come `quando_ts` invece
-    di ripiegare su `now` -- il test torna rosso su
-    `assert riga["quando_ts"] == 1787572800.0` (l'orologio fissato dalla
-    fixture `coppia`), che diventa `assert None == 1787572800.0`.
+    Mutazione: `else 0.0` invece di `else None` nel controllo di tipo -- il
+    test torna rosso su `assert riga["first_occurred"] is None` (diventa
+    `0.0`, un istante fabbricato che HA non ha mai detto).
     """
     archivio, osservatore = coppia
     entry = _log_entry(first_occurred="non-un-numero")
     osservatore.watch_system(problems=[], integrations=[], log_entries=[entry])
     riga = archivio.annotati[0]
     assert riga["quando_ts"] == 1787572800.0
+    assert riga["first_occurred"] is None
+
+
+def test_a_log_entry_with_a_boolean_first_occurred_does_not_become_an_epoch(coppia):
+    """`bool` e' un sottotipo di `int` in Python (`isinstance(True, int) is
+    True`): senza l'esclusione esplicita, un `first_occurred` malformato a
+    `True` diventerebbe l'epoch fabbricato `1.0` (1970-01-01T00:00:01Z)
+    invece di `None` -- inventare un istante che HA non ha mai detto.
+
+    Mutazione: togliere `and not isinstance(raw_first_occurred, bool)` dal
+    controllo -- il test torna rosso su
+    `assert riga["first_occurred"] is None` (diventa `1.0`).
+    """
+    archivio, osservatore = coppia
+    entry = _log_entry(first_occurred=True)
+    osservatore.watch_system(problems=[], integrations=[], log_entries=[entry])
+    riga = archivio.annotati[0]
+    assert riga["first_occurred"] is None
 
 
 def test_a_log_entry_without_a_readable_source_is_skipped(coppia):

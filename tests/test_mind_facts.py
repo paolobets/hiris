@@ -13,6 +13,7 @@ import pytest
 
 from hiris.app.mind.facts import GENRES, aggregate_day, day_boundaries, genre_for
 from hiris.app.mind.store import ObservationsStore
+from hiris.app.mind.watcher import Watcher
 
 # 24 agosto 2026: mezzanotte a Roma e' 22:00 UTC del 23.
 G = "2026-08-24"
@@ -236,16 +237,23 @@ def test_a_log_entry_becomes_a_fault_object(archivio):
     qui cambierebbe (il dominio ricavato da un soggetto `log:` non puo' mai
     combaciare con un dominio HA vero, per via del prefisso), quindi la sua
     correttezza non ha una mutazione onesta che la uccida da sola -- e'
-    dichiarato, non taciuto. La mutazione che UCCIDE questo test e' nella
-    tupla di prefissi di `genre_for`: senza `"log:"` il soggetto non produce
-    nessun genere, `aggregate_day` non apre nessun episodio, e
+    dichiarato, non taciuto. Una prima mutazione che UCCIDE questo test e'
+    nella tupla di prefissi di `genre_for`: senza `"log:"` il soggetto non
+    produce nessun genere, `aggregate_day` non apre nessun episodio, e
     `archivio.facts(day=G)` torna vuoto -- il test torna rosso su
     `IndexError` nell'indicizzare `[0]`.
+
+    Una seconda, indipendente, e' su `comparso_ts` (la colonna nuova del
+    giro di revisione, `store.py::_migration_4`): togliere
+    `"comparso_ts": r.get("first_occurred")` dalla costruzione
+    dell'episodio in `aggregate_day` -- il test torna rosso su
+    `KeyError: 'comparso_ts'` nell'indicizzare `corpo["comparso_ts"]`.
     """
     archivio.record(quando_ts=ts(9, 0), source="sistema",
                     subject="log:homeassistant.components.hydrawise@hydrawise/coordinator.py:88",
                     da=None, a="ERROR",
-                    domain="homeassistant.components.hydrawise", title="403 Forbidden")
+                    domain="homeassistant.components.hydrawise", title="403 Forbidden",
+                    first_occurred=ts(9, 0) - 3 * 86400)
     archivio.record(quando_ts=ts(11, 0), source="sistema",
                     subject="log:homeassistant.components.hydrawise@hydrawise/coordinator.py:88",
                     da="ERROR", a="chiuso")
@@ -257,6 +265,54 @@ def test_a_log_entry_becomes_a_fault_object(archivio):
     assert corpo["stato"] == "ERROR"
     assert corpo["dominio"] == "homeassistant.components.hydrawise"
     assert corpo["titolo"] == "403 Forbidden"
+    assert corpo["comparso_ts"] == ts(9, 0) - 3 * 86400
+
+
+def test_comparso_ts_is_absent_for_repairs_and_integrations(archivio):
+    """`comparso_ts` e' SOLO per una voce di log: un `problema:` o
+    un'`integrazione:` non lo dichiarano mai (`_reading_row` rilegge `None`),
+    e la chiave tace nel corpo come ogni altra che non ha niente da dire --
+    non diventa mai `null`.
+
+    Mutazione: scrivere sempre `base_body["comparso_ts"] = o.get("comparso_ts")`
+    senza il controllo `is not None` -- il test torna rosso su
+    `assert "comparso_ts" not in o["corpo"]`.
+    """
+    archivio.record(quando_ts=ts(9, 0), source="sistema",
+                    subject="integrazione:01XYZ", da=None, a="setup_error",
+                    domain="lifx", title="Abat-jour")
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+    o = archivio.facts(day=G)[0]
+    assert o["genere"] == "guasto"
+    assert "comparso_ts" not in o["corpo"]
+
+
+def test_watch_system_writes_a_log_condition_that_aggregate_day_can_see(archivio):
+    """Prova end-to-end della correzione del giro di revisione:
+    `Watcher.watch_system` scrive la nascita di una voce di log con
+    `quando_ts=now` anche quando `first_occurred` e' di tre giorni fa -- il
+    caso misurato sulla casa vera, dove HA tiene le voci dall'ultimo suo
+    riavvio -- e `aggregate_day`, che legge solo la finestra del giorno, la
+    vede comunque.
+
+    Mutazione: in `watcher.py::watch_system`, scrivere `quando_ts=
+    first_occurred` (la prima stesura, prima della correzione) invece di
+    `quando_ts=now` sempre -- il test torna rosso su `IndexError`
+    nell'indicizzare `archivio.facts(day=G)[0]`, perche' la riga di apertura
+    finirebbe tre giorni prima della finestra che `aggregate_day` legge.
+    """
+    osservatore = Watcher(archivio, now=lambda: ts(9, 0))
+    tre_giorni_fa = ts(9, 0) - 3 * 86400
+    entry = {"name": "custom_components.zcsazzurro.sensor", "level": "WARNING",
+             "count": 1, "first_occurred": tre_giorni_fa,
+             "source": ["zcsazzurro/sensor.py", 44],
+             "message": ["Timeout leggendo l'inverter"]}
+    osservatore.watch_system(problems=[], integrations=[], log_entries=[entry])
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+    o = archivio.facts(day=G)[0]
+    assert o["genere"] == "guasto"
+    assert o["inizio_ts"] == ts(9, 0)
+    assert o["corpo"]["comparso_ts"] == tre_giorni_fa
 
 
 def test_i_sensori_da_soli_NON_generano_oggetti(archivio):

@@ -198,23 +198,40 @@ class Watcher:
         «la stessa riga letta a due giri» deve restare lo stesso soggetto
         (vedi il commento accanto a `subject = f"log:..."` piu' sotto per la
         terza parte di quella chiave, la causa radice, che qui non e'
-        esposta). La condizione (`a`) e' il LIVELLO (`error`, `warning`):
-        coerente con `setup_retry` qui sopra, la colonna porta la condizione
-        vera, non una costante. `domain` e `title` portano il logger e la
-        prima riga del messaggio, cosi' il grezzo resta autosufficiente anche
-        quando la voce sara' uscita dall'elenco di HA. `count` non si scrive:
-        e' un numero che HA continua a far crescere dentro il proprio
+        esposta). La condizione (`a`) e' il LIVELLO cosi' come HA lo scrive
+        (`"ERROR"`, `"WARNING"` -- **maiuscolo, non normalizzato**:
+        `record.levelname`, verificato alla fonte): coerente con
+        `setup_retry` qui sopra, la colonna porta la condizione vera, non
+        una costante. `domain` e `title` portano il logger e la prima riga
+        del messaggio, cosi' il grezzo resta autosufficiente anche quando la
+        voce sara' uscita dall'elenco di HA. `count` non si scrive: e' un
+        numero che HA continua a far crescere dentro il proprio
         `DedupStore`, e scriverlo sarebbe la fotografia di un contatore
         dentro un archivio che si scrive una volta sola -- cio' che questo
-        metodo tiene e' la DURATA dell'episodio, non quante volte e'
-        ricorso. `first_occurred` invece si usa, come istante di NASCITA:
-        l'episodio comincia quando HA dice che e' cominciato (verificato
-        alla fonte, `homeassistant/components/system_log/__init__.py`,
-        `LogEntry.__init__`: `self.first_occurred = self.timestamp =
-        record.created`, un epoch in secondi, NON una stringa ISO-8601 --
-        non e' lo stesso formato di `last_changed` che `watch_reading` legge
-        sopra, e va usato cosi' com'e', non attraverso `instant_epoch`), non
-        quando noi lo abbiamo notato al giro periodico.
+        metodo tiene e' la DURATA dell'episodio, non quante volte e' ricorso.
+
+        **`quando_ts` alla nascita resta `now`, per un `log:` come per gli
+        altri due.** La prima stesura di questa fetta usava `first_occurred`
+        come istante di nascita ("l'episodio comincia quando HA dice che e'
+        cominciato"): giusto in astratto, rotto contro `aggregate_day`, che
+        legge solo la finestra del giorno e ignora in silenzio una `chiuso`
+        senza apertura nel giorno. HA tiene le voci dall'ultimo suo riavvio
+        -- sulla casa vera, giorni prima -- quindi una nascita scritta oggi
+        con quell'istante non sarebbe mai stata aggregata, e la sua chiusura
+        futura sarebbe caduta nel vuoto: un difetto pronto a scattare al
+        primo deploy. `quando_ts` deve significare la STESSA cosa per ogni
+        soggetto -- l'istante della riga nella NOSTRA linea del tempo --
+        oppure la colonna smette di essere una colonna sola. `first_occurred`
+        non si butta: prende una colonna propria in `cambi`
+        (`store.py::_migration_4`) e arriva fino all'episodio accanto a
+        `dominio`/`titolo` (`facts.py::aggregate_day`, chiave `comparso_ts`),
+        cosi' un domani il lettore potra' avere «rilevato stamattina, va
+        avanti dal 2» invece di una data sola. Verificato alla fonte
+        (`homeassistant/components/system_log/__init__.py`, `LogEntry.
+        __init__`: `self.first_occurred = self.timestamp = record.created`):
+        e' un epoch in secondi, NON una stringa ISO-8601 -- non lo stesso
+        formato di `last_changed` che `watch_reading` legge sopra, e va usato
+        cosi' com'e', non attraverso `instant_epoch`.
 
         Gli stati che non sono un guasto (`_HEALTHY_INTEGRATION_STATES`) e le
         voci che il proprietario ha scelto di ignorare
@@ -268,14 +285,14 @@ class Watcher:
         dopo un solo mancato consecutivo, non due -- la stessa proprieta' che
         questo metodo esiste per garantire.
         """
-        # {soggetto: (condizione, dominio, titolo, nascita)}. Il soggetto
-        # resta l'IDENTITA' su cui girano `genre_for`, `self._conditions` e
-        # `rebuild_conditions` (nessuno dei tre si tocca qui): cambiarne la
-        # forma li romperebbe tutti e tre. Cio' che cambia e' cosa si scrive
-        # nella colonna `a` quando quel soggetto nasce. `nascita` e'
-        # `None` per un *repair* o un'integrazione (nasce all'istante del
-        # giro, `now` piu' sotto) e l'epoch di `first_occurred` per una voce
-        # di log (nasce quando HA dice che e' cominciata, vedi il docstring).
+        # {soggetto: (condizione, dominio, titolo, first_occurred)}. Il
+        # soggetto resta l'IDENTITA' su cui girano `genre_for`,
+        # `self._conditions` e `rebuild_conditions` (nessuno dei tre si tocca
+        # qui): cambiarne la forma li romperebbe tutti e tre. Cio' che cambia
+        # e' cosa si scrive nella colonna `a` quando quel soggetto nasce.
+        # `first_occurred` e' `None` per un *repair* o un'integrazione (non
+        # lo dichiarano mai) e l'epoch che HA dichiara per una voce di log --
+        # va nella colonna omonima, MAI in `quando_ts` (vedi il docstring).
         open_now: dict[str, tuple[str, str | None, str | None, float | None]] = {}
         for p in problems or []:
             if not isinstance(p, dict):
@@ -327,14 +344,17 @@ class Watcher:
             message = entry.get("message")
             title = (_text_or_none(message[0])
                      if isinstance(message, list) and message else None)
-            first_occurred = entry.get("first_occurred")
+            raw_first_occurred = entry.get("first_occurred")
             # Verificato alla fonte (vedi il docstring del metodo):
             # `first_occurred` e' un epoch (`record.created`), non una
-            # stringa ISO-8601 -- `bool` e' un sottotipo di `int` in Python,
-            # e non e' un istante.
-            birth = (float(first_occurred)
-                     if isinstance(first_occurred, (int, float))
-                     and not isinstance(first_occurred, bool) else None)
+            # stringa ISO-8601 -- `bool` e' un sottotipo di `int` in Python
+            # (`isinstance(True, int) is True`), e non e' un istante: senza
+            # questa esclusione un `first_occurred` malformato a `True`
+            # diventerebbe l'epoch fabbricato `1.0`, un istante che HA non
+            # ha mai detto, invece di `None`.
+            first_occurred = (float(raw_first_occurred)
+                              if isinstance(raw_first_occurred, (int, float))
+                              and not isinstance(raw_first_occurred, bool) else None)
             # Il soggetto rispecchia la chiave con cui HA deduplica -- logger
             # piu' posizione nel sorgente -- perche' «la stessa riga letta a
             # due giri» deve essere lo stesso soggetto. La terza parte della
@@ -342,7 +362,7 @@ class Watcher:
             # se due errori diversi dallo stesso punto collidessero, li
             # vedremmo come uno. Dichiarato, non ignorato.
             subject = f"log:{name}@{source_file}:{source_line}"
-            open_now[subject] = (level, name, title, birth)
+            open_now[subject] = (level, name, title, first_occurred)
 
         now = self._now()
         written = 0
@@ -366,19 +386,19 @@ class Watcher:
             self._missing_rounds.pop(seen_again, None)
 
         for born in sorted(open_set - already_open):
-            condition, domain, title, birth = open_now[born]
+            condition, domain, title, first_occurred = open_now[born]
             # `a` porta la CONDIZIONE VERA, non la costante "aperto": e'
             # letteralmente lo stato verso cui la cosa e' passata, e
             # `setup_retry` non e' `setup_error`. La chiusura resta "chiuso".
             #
-            # `quando_ts` e' `birth` quando la nascita ha un istante proprio
-            # (una voce di log, con `first_occurred`) e `now` altrimenti (un
-            # *repair* o un'integrazione, che HA non data): un *repair* o
-            # un'integrazione nascono quando NOI li notiamo, una voce di log
-            # nasce quando HA dice che e' cominciata -- vedi il docstring.
+            # `quando_ts` e' SEMPRE `now`, anche per una voce di log: vedi il
+            # docstring del metodo per il perche' (farlo significare altro
+            # per un prefisso solo rompeva `aggregate_day`). `first_occurred`
+            # viaggia nella sua colonna, non in `quando_ts`.
             self._store.record(
-                quando_ts=now if birth is None else birth, source="sistema",
-                subject=born, da=None, a=condition, domain=domain, title=title)
+                quando_ts=now, source="sistema", subject=born, da=None,
+                a=condition, domain=domain, title=title,
+                first_occurred=first_occurred)
             self._conditions.add(born)
             written += 1
 
@@ -417,10 +437,18 @@ class Watcher:
         **Limite dichiarato, non una promessa.** Il grezzo vive 21 giorni (22
         con la guardia, vedi `archivio.READING_RETENTION_S`). Una condizione
         aperta da piu' a lungo ha gia' perso la sua riga d'apertura con la
-        potatura: qui verra' vista come nuova, e la data d'inizio che
-        l'oggetto porta sara' quella del ritrovamento, non quella vera. Non e'
-        un difetto di questo metodo -- e' il pavimento dei grezzi, e chi legge
-        l'oggetto deve saperlo.
+        potatura: qui verra' vista come nuova, e la data d'inizio (`quando_ts`)
+        che l'oggetto porta sara' quella del ritrovamento, non quella vera. Non
+        e' un difetto di questo metodo -- e' il pavimento dei grezzi, e chi
+        legge l'oggetto deve saperlo. **Vale anche per `log:`**, da questa
+        correzione: `quando_ts` alla nascita e' SEMPRE `now`, mai
+        `first_occurred` (vedi il docstring di `watch_system`), quindi una
+        voce di log ritrovata dopo la potatura non fa eccezione -- perde la
+        stessa cosa che perde un *repair* o un'integrazione, non di piu'.
+        `first_occurred`, la colonna a se' che HA continua a dichiarare a ogni
+        giro finche' la voce resta nel suo registro, arriva invece fresco
+        sulla nuova riga d'apertura: non e' perso, e' semplicemente diverso
+        da `quando_ts`.
 
         **Non solleva mai.** Se l'archivio non risponde si riparte da vuoto,
         esattamente come al primissimo avvio: fermare l'avvio dell'add-on per

@@ -725,6 +725,17 @@ def aggregate_day(*, store, day: str, timezone: str | None,
             base_body["dominio"] = o["dominio"]
         if o.get("titolo"):
             base_body["titolo"] = o["titolo"]
+        # `comparso_ts`: SOLO una voce di log lo porta (`_reading_row`
+        # rilegge `None` per un `problema:`/`integrazione:`, che non lo
+        # dichiarano mai). Non e' `inizio`: `inizio` e' quando NOI l'abbiamo
+        # scritto (l'orologio del giro, vedi `watcher.py::watch_system` e
+        # `store.py::_migration_4`), `comparso_ts` e' quando HA dice che e'
+        # cominciato -- «rilevato stamattina, va avanti dal 2» invece di una
+        # data sola. `is not None`, non un controllo di verita': uno zero
+        # epoch sarebbe un istante vero (per quanto assurdo su una casa
+        # vera), non un campo vuoto.
+        if o.get("comparso_ts") is not None:
+            base_body["comparso_ts"] = o["comparso_ts"]
         episodes.append({"genere": o["genere"], "protagonista": subject,
                         "inizio": o["inizio"], "fine": when,
                         "corpo_base": base_body})
@@ -767,6 +778,7 @@ def aggregate_day(*, store, day: str, timezone: str | None,
                     "genere": genre, "inizio": r["quando_ts"],
                     "stato": r["a"],
                     "dominio": r.get("domain"), "titolo": r.get("title"),
+                    "comparso_ts": r.get("first_occurred"),
                 }
             continue
         if genre == "sicurezza":

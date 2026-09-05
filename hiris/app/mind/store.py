@@ -103,6 +103,39 @@ def _migration_3(conn) -> None:
     """
     _add_missing_columns(conn, ("domain", "title"))
 
+
+def _migration_4(conn) -> None:
+    """v3 -> v4: `first_occurred`, l'istante che Home Assistant dichiara per
+    una voce del registro di errori (`system_log/list`, Task 2 di «le
+    tracce e il log»).
+
+    **Non e' `quando_ts`.** `quando_ts` resta l'istante della riga nella
+    NOSTRA linea del tempo -- l'orologio del giro che l'ha scritta, come per
+    ogni altra condizione di sistema -- perche' significhi la stessa cosa
+    per ogni soggetto: farlo significare altro per un prefisso solo (l'idea
+    iniziale di questo task) rompeva `aggregate_day`, che legge solo la
+    finestra del giorno e ignora in silenzio una `chiuso` senza apertura nel
+    giorno. Una nascita scritta oggi con l'istante che HA dichiara -- giorni
+    prima, sulla casa vera, perche' HA tiene le voci dall'ultimo suo riavvio
+    -- non veniva mai aggregata, e la sua chiusura futura cadeva nel vuoto:
+    un difetto che sarebbe scattato al primo deploy di questa fetta.
+    `first_occurred` porta quell'istante SENZA spostare `quando_ts`: chi
+    legge l'oggetto potra' avere «rilevato stamattina, va avanti dal 2»
+    invece di una data sola (vedi `facts.py::aggregate_day`, il ramo
+    `guasto`).
+
+    **Colonna a se', non dentro `title`**: e' un fatto di tipo diverso (un
+    istante, non un'etichetta), e mischiarli costringerebbe chi legge a
+    fare il parsing di una stringa composita.
+
+    Le righe scritte prima -- ogni condizione di sistema che non e' una voce
+    di log, e ogni voce di log scritta prima di questa colonna -- rileggono
+    `None`: e' vero, quelle righe quell'istante non lo portavano (o non
+    esistono per un soggetto che non lo dichiara mai, un *repair* o
+    un'integrazione).
+    """
+    _add_missing_columns(conn, ("first_occurred",))
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS cambi (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -123,7 +156,12 @@ CREATE TABLE IF NOT EXISTS cambi (
     -- dall'anagrafe, perche' fra tre settimane quella voce potrebbe non
     -- esistere piu' e la riga deve dire ancora cosa si era rotto.
     domain TEXT,
-    title TEXT
+    title TEXT,
+    -- L'istante che HA dichiara per una voce del registro di errori
+    -- (Task 2, «le tracce e il log») -- SOLO per quelle: NULL per un
+    -- repair o un'integrazione, che non lo dichiarano mai. Non e'
+    -- `quando_ts` (vedi `_migration_4`): quello resta l'orologio del giro.
+    first_occurred TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_cambi_quando ON cambi(quando_ts);
 CREATE INDEX IF NOT EXISTS idx_cambi_soggetto ON cambi(soggetto, quando_ts);
@@ -142,11 +180,18 @@ CREATE INDEX IF NOT EXISTS idx_oggetti_giorno ON oggetti(giorno, inizio_ts);
 
 
 def _reading_row(r) -> dict:
+    # `first_occurred` e' TEXT in colonna (stessa forma di `_add_missing_
+    # columns`, vedi il suo docstring), ma e' un ISTANTE: si torna al
+    # chiamante come `float | None`, non come la stringa grezza di SQLite --
+    # e' l'unica delle colonne nuove per cui questo vale, perche' e' l'unica
+    # numerica: `domain`/`title` sono gia' testo, nessuna conversione da fare.
+    first_occurred = r["first_occurred"]
     return {"quando_ts": r["quando_ts"], "fonte": r["fonte"],
             "soggetto": r["soggetto"], "da": r["da"], "a": r["a"],
             "device_class": r["device_class"], "state_class": r["state_class"],
             "source_type": r["source_type"],
-            "domain": r["domain"], "title": r["title"]}
+            "domain": r["domain"], "title": r["title"],
+            "first_occurred": None if first_occurred is None else float(first_occurred)}
 
 
 def _fact_row(r) -> dict:
@@ -163,8 +208,8 @@ class ObservationsStore:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=3,
-                    migrations={2: _migration_2, 3: _migration_3})
+        init_schema(self._conn, _SCHEMA, version=4,
+                    migrations={2: _migration_2, 3: _migration_3, 4: _migration_4})
 
     def close(self) -> None:
         with self._lock:
@@ -176,7 +221,8 @@ class ObservationsStore:
                da, a, device_class: str | None = None,
                state_class: str | None = None,
                source_type: str | None = None,
-               domain: str | None = None, title: str | None = None) -> None:
+               domain: str | None = None, title: str | None = None,
+               first_occurred: float | None = None) -> None:
         """Un cambio, cosi' com'e'. **Nessun giudizio in scrittura**: e' la
         condizione da cui dipende tutto il resto -- una decisione presa qui non
         si corregge piu', una presa in aggregazione si'.
@@ -199,14 +245,25 @@ class ObservationsStore:
         Annullabili: le condizioni di entita' non li portano, e un `problema:`
         (un *repair* di Home Assistant) non ha un titolo -- `title=None` e'
         un campo vuoto dichiarato, non un buco.
+
+        `first_occurred` e' l'istante che Home Assistant dichiara per una
+        voce del registro di errori (`watcher.py::watch_system`, Task 2 di
+        «le tracce e il log») -- **solo per quelle**: un *repair* o
+        un'integrazione non lo dichiarano mai, e restano `None`, non zero.
+        **Non e' `quando_ts`**: quello resta l'orologio del giro per OGNI
+        soggetto, la stessa colonna che ha sempre significato la stessa cosa
+        -- vedi `_migration_4` in questo stesso file per il perche' di questa
+        separazione, scoperto contro `aggregate_day`.
         """
         with self._lock:
             self._conn.execute(
                 "INSERT INTO cambi(quando_ts,fonte,soggetto,da,a,device_class,"
-                "state_class,source_type,domain,title) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                "state_class,source_type,domain,title,first_occurred) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                 (float(quando_ts), source, subject,
                  None if da is None else str(da), None if a is None else str(a),
-                 device_class, state_class, source_type, domain, title))
+                 device_class, state_class, source_type, domain, title,
+                 None if first_occurred is None else str(float(first_occurred))))
             self._conn.commit()
 
     def readings(self, *, from_ts: float, to_ts: float, subject: str | None = None,
