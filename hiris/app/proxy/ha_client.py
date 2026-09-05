@@ -1434,6 +1434,49 @@ class HAClient:
         return {"problemi": [p for p in result["issues"]
                              if isinstance(p, dict) and not p.get("ignored")]}
 
+    async def system_log(self) -> dict:
+        """Le righe che Home Assistant ha GIA' raccolto nel proprio registro
+        di errori.
+
+        `system_log/list`, WS, `require_admin` -- HIRIS parla col token del
+        Supervisor, quindi lo puo' chiamare. Verificato alla fonte
+        (`homeassistant/components/system_log/__init__.py`, funzione
+        `list_errors`): il comando torna una LISTA NUDA, non un dizionario
+        con una chiave come `repairs/list_issues` --
+        `connection.send_result(msg["id"], hass.data[DOMAIN].records.to_list())`.
+
+        Restituisce `{"voci": [...]}` con le righe cosi' come HA le manda
+        (`name`, `message`, `level`, `source`, `timestamp`, `exception`,
+        `count`, `first_occurred` -- da `LogEntry.to_dict()`, stessa fonte):
+        come per `problemi()` e `legami()`, il client legge e non giudica,
+        cosa dire e cosa tacere e' di chi compone.
+
+        Non esiste un «piu' in basso» da cui leggere il grezzo: HA deduplica
+        gia' dentro il proprio gestore (`DedupStore.add_entry`), su chiave
+        `(logger, posizione nel sorgente, causa radice)` -- cioe' `LogEntry.
+        key = (self.name, self.source, self.root_cause)`, stessa fonte --
+        PRIMA di qualunque cosa HIRIS possa raggiungere. `count` e
+        `first_occurred` sono gia' il risultato di quella deduplicazione:
+        disfarli qui vorrebbe dire inventare un dato che HA non manda piu'.
+
+        `{"errore": ...}` su guasto, per la stessa ragione di `problemi` e
+        `legami`: un elenco vuoto significherebbe «non c'e' niente nel
+        registro», che e' un'affermazione, non un silenzio.
+        """
+        try:
+            msg = await self._ws_batch([("system_log/list", None)])
+        except Exception as e:
+            logger.debug("registro di sistema non letto: %s", e)
+            return {"errore": "Home Assistant non ha risposto"}
+        msg = msg[0] if msg else None
+        if msg and msg.get("error"):
+            error = msg["error"]
+            return {"errore": error.get("message") or error.get("code") or "rifiutato"}
+        result = msg.get("result") if msg else None
+        if not isinstance(result, list):
+            return {"errore": "risposta in forma inattesa"}
+        return {"voci": result}
+
     # Le sette direzioni, dedotte da `translation_key` -- tabella ESPLICITA,
     # non una regex sui nomi. Misurata sulla casa vera il 27/08/2026,
     # sull'integrazione `zcsazzurro`: quattordici chiavi, sette direzioni,
