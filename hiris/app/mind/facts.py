@@ -707,18 +707,18 @@ def aggregate_day(*, store, day: str, timezone: str | None,
         o = open_episodes.pop(subject, None)
         if o is None:
             return
-        corpo_base = {"stato": o["stato"]}
+        base_body = {"stato": o["stato"]}
         # `dominio`/`titolo` esistono solo per un guasto (sopra), e solo
         # quando la riga che ha aperto l'episodio li portava: tacciono come
         # ogni altra chiave del corpo che non ha niente da dire, non
         # diventano mai `null`.
         if o.get("dominio"):
-            corpo_base["dominio"] = o["dominio"]
+            base_body["dominio"] = o["dominio"]
         if o.get("titolo"):
-            corpo_base["titolo"] = o["titolo"]
+            base_body["titolo"] = o["titolo"]
         episodes.append({"genere": o["genere"], "protagonista": subject,
                         "inizio": o["inizio"], "fine": when,
-                        "corpo_base": corpo_base})
+                        "corpo_base": base_body})
 
     for r in rows:
         subject = r["soggetto"]
@@ -737,6 +737,18 @@ def aggregate_day(*, store, day: str, timezone: str | None,
             if r["a"] == "chiuso":
                 close(subject, r["quando_ts"])
             else:
+                # Sovrascrive senza `if subject not in open_episodes` (a
+                # differenza di `sicurezza`/`funzionamento` sotto): due
+                # aperture di fila per lo stesso soggetto perderebbero la
+                # prima data d'inizio. Oggi non puo' succedere -- non per una
+                # guardia qui, ma per la disciplina dello SCRITTORE, in un
+                # altro file: `watcher.py::rebuild_conditions` scrive una
+                # nascita solo per `set(open_now) - self._conditions`
+                # (watcher.py:227), quindi un soggetto gia' malato (in
+                # `self._conditions`) che passa da `setup_retry` a
+                # `setup_error` non produce una seconda riga d'apertura.
+                # Aggiungere la guardia qui sarebbe codice per un caso che il
+                # disegno esclude a monte.
                 open_episodes[subject] = {
                     "genere": genre, "inizio": r["quando_ts"],
                     "stato": r["a"],

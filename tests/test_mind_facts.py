@@ -174,8 +174,9 @@ def test_an_old_row_saying_open_still_opens_an_episode(archivio):
     superflua la convivenza che la spec ipotizzava.
 
     Mutazione: chiudere su qualunque valore diverso da una condizione nota
-    -- il test torna rosso su `assert o["genere"] == "guasto"` (nessun
-    oggetto nascerebbe).
+    -- nessun oggetto nasce: `archivio.facts(day=G)` e' vuoto, e il test
+    torna rosso su un `IndexError` nell'indicizzare `[0]`, prima di
+    arrivare a nessuno degli `assert`.
     """
     archivio.record(quando_ts=ts(9, 0), source="sistema",
                     subject="integrazione:01OLD", da=None, a="aperto")
@@ -184,6 +185,32 @@ def test_an_old_row_saying_open_still_opens_an_episode(archivio):
     assert o["genere"] == "guasto"
     assert o["corpo"]["stato"] == "aperto"
     assert o["corpo"].get("dominio") is None
+
+
+def test_a_fault_still_open_at_midnight_keeps_its_condition_and_domain(archivio):
+    """Il caso piu' frequente in produzione: un'integrazione si rompe e resta
+    rotta, senza nessuna riga di chiusura nella giornata. L'episodio si
+    chiude solo a fine giornata (`close(subject, None)`, come ogni oggetto
+    ancora in corso a mezzanotte) e passa dallo STESSO `close()` di un
+    guasto chiuso in giornata -- rischio basso, ma non provato finche' non
+    c'e' una prova apposta.
+
+    Mutazione: nella chiusura di fine giornata, costruire il corpo senza
+    ricopiare `dominio`/`titolo` (come se il percorso "ancora aperto"
+    bypassasse `close()`) -- il test torna rosso su
+    `assert corpo["dominio"] == "lifx"`.
+    """
+    archivio.record(quando_ts=ts(9, 0), source="sistema",
+                    subject="integrazione:01XYZ", da=None, a="setup_error",
+                    domain="lifx", title="Abat-jour")
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+    o = archivio.facts(day=G)[0]
+    assert o["genere"] == "guasto"
+    assert o["fine_ts"] is None
+    corpo = o["corpo"]
+    assert corpo["stato"] == "setup_error"
+    assert corpo["dominio"] == "lifx"
+    assert corpo["titolo"] == "Abat-jour"
 
 
 def test_i_sensori_da_soli_NON_generano_oggetti(archivio):
