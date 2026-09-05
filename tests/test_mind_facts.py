@@ -143,6 +143,49 @@ def test_un_guasto_di_sistema_e_un_oggetto(archivio):
     assert o["fine_ts"] is None
 
 
+def test_a_fault_body_says_which_condition_not_the_word_open(archivio):
+    """Ogni oggetto di guasto in archivio diceva `stato: "aperto"`, anche
+    quelli chiusi: `setup_retry` e `setup_error` non sono la stessa cosa, e
+    un campo che non varia mai non e' un fatto -- contraddice i timestamp
+    che gli stanno accanto.
+
+    Mutazione: rimettere la costante `"aperto"` al posto di `r["a"]` -- il
+    test torna rosso su `assert corpo["stato"] == "setup_retry"`.
+    """
+    archivio.record(quando_ts=ts(9, 0), source="sistema",
+                    subject="integrazione:01ABC", da=None, a="setup_retry",
+                    domain="lifx", title="Abat-jour")
+    archivio.record(quando_ts=ts(11, 30), source="sistema",
+                    subject="integrazione:01ABC", da="setup_retry", a="chiuso")
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+    o = archivio.facts(day=G)[0]
+    assert o["genere"] == "guasto"
+    assert o["fine_ts"] is not None
+    corpo = o["corpo"]
+    assert corpo["stato"] == "setup_retry"
+    assert corpo["dominio"] == "lifx"
+    assert corpo["titolo"] == "Abat-jour"
+
+
+def test_an_old_row_saying_open_still_opens_an_episode(archivio):
+    """Le righe scritte prima della migrazione 3 portano ancora `"aperto"`
+    e devono continuare ad aprire: la convenzione nuova e' «chiude solo
+    "chiuso"», quindi non serve nessun caso a parte. E' cio' che rende
+    superflua la convivenza che la spec ipotizzava.
+
+    Mutazione: chiudere su qualunque valore diverso da una condizione nota
+    -- il test torna rosso su `assert o["genere"] == "guasto"` (nessun
+    oggetto nascerebbe).
+    """
+    archivio.record(quando_ts=ts(9, 0), source="sistema",
+                    subject="integrazione:01OLD", da=None, a="aperto")
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+    o = archivio.facts(day=G)[0]
+    assert o["genere"] == "guasto"
+    assert o["corpo"]["stato"] == "aperto"
+    assert o["corpo"].get("dominio") is None
+
+
 def test_i_sensori_da_soli_NON_generano_oggetti(archivio):
     """«La temperatura e' salita» da sola non e' una cosa compiuta: e' il
     CONTESTO di qualcosa che e' successo. Se generasse oggetti, una giornata

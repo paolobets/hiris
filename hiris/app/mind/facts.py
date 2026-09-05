@@ -707,9 +707,18 @@ def aggregate_day(*, store, day: str, timezone: str | None,
         o = open_episodes.pop(subject, None)
         if o is None:
             return
+        corpo_base = {"stato": o["stato"]}
+        # `dominio`/`titolo` esistono solo per un guasto (sopra), e solo
+        # quando la riga che ha aperto l'episodio li portava: tacciono come
+        # ogni altra chiave del corpo che non ha niente da dire, non
+        # diventano mai `null`.
+        if o.get("dominio"):
+            corpo_base["dominio"] = o["dominio"]
+        if o.get("titolo"):
+            corpo_base["titolo"] = o["titolo"]
         episodes.append({"genere": o["genere"], "protagonista": subject,
                         "inizio": o["inizio"], "fine": when,
-                        "corpo_base": {"stato": o["stato"]}})
+                        "corpo_base": corpo_base})
 
     for r in rows:
         subject = r["soggetto"]
@@ -717,14 +726,22 @@ def aggregate_day(*, store, day: str, timezone: str | None,
         if genre is None:
             continue
         if genre == "guasto":
-            # Solo condizioni di sistema arrivano qui (vedi `genre_for`):
-            # convenzione di `osservatore.watch_system` -- "aperto" nasce,
-            # "chiuso" e nient'altro finisce.
-            if r["a"] == "aperto":
-                open_episodes[subject] = {"genere": genre, "inizio": r["quando_ts"],
-                                    "stato": "aperto"}
-            else:
+            # Solo condizioni di sistema arrivano qui (vedi `genre_for`). La
+            # convenzione si rovescia con la fetta «il guasto e il
+            # riavvio»: prima "aperto" apriva e tutto il resto chiudeva.
+            # Ora `a` porta la CONDIZIONE VERA (`setup_retry`,
+            # `setup_error`, ...), quindi chiude solo "chiuso" ed e' tutto
+            # il resto ad aprire. Le righe scritte prima della migrazione 3
+            # portano ancora "aperto" e continuano ad aprire: non serve
+            # nessun caso a parte.
+            if r["a"] == "chiuso":
                 close(subject, r["quando_ts"])
+            else:
+                open_episodes[subject] = {
+                    "genere": genre, "inizio": r["quando_ts"],
+                    "stato": r["a"],
+                    "dominio": r.get("domain"), "titolo": r.get("title"),
+                }
             continue
         if genre == "sicurezza":
             # Sesta gamba, entita' vera: stessa logica acceso/spento del
