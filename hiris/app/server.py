@@ -665,11 +665,13 @@ async def watch_system_conditions(app, ha_client) -> int | None:
     (`task-5-correzioni.md`, punto A.1). `HAClient.problems()` torna
     `{"errore": ...}` quando Home Assistant non risponde, e il suo docstring
     dice perche' un elenco vuoto non e' un ripiego accettabile: significherebbe
-    «non c'e' niente che non va». `Watcher.watch_system` chiude ogni
-    condizione che non trova piu' nell'elenco che riceve -- quindi un errore
-    letto come lista vuota scriverebbe «chiuso» su OGNI guasto aperto alla
-    prima disconnessione da Home Assistant: l'archivio registrerebbe che tutto
-    si e' risolto nel momento esatto in cui abbiamo smesso di poterlo vedere.
+    «non c'e' niente che non va». `Watcher.watch_system` chiude una
+    condizione dopo DUE giri consecutivi in cui non la trova piu' nell'elenco
+    che riceve (l'isteresi contro i buchi di un giro solo, misurati il 03/09)
+    -- quindi un errore letto come lista vuota, ripetuto per due giri di
+    fila, scriverebbe comunque «chiuso» su OGNI guasto aperto: l'archivio
+    registrerebbe che tutto si e' risolto nel momento esatto in cui abbiamo
+    smesso di poterlo vedere.
     Vale identico per `read_registries`: se `"integrazioni"` compare in
     `non_disponibili`, quella lista e' vuota per guasto, non perche' vada
     tutto bene. Meglio un buco nella storia che una bugia nella storia.

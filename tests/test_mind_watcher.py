@@ -210,8 +210,8 @@ def test_un_problema_di_HA_diventa_un_cambio(coppia):
 
 
 def test_un_problema_che_sparisce_diventa_un_cambio(coppia):
-    """Con l'isteresi (Task 3, `_ROUNDS_BEFORE_CLOSING=2`) la chiusura arriva
-    al SECONDO giro consecutivo senza il problema, non al primo -- vedi
+    """Con l'isteresi (`_ROUNDS_BEFORE_CLOSING=2`) la chiusura arriva al
+    SECONDO giro consecutivo senza il problema, non al primo -- vedi
     `test_one_missing_round_does_not_close_an_episode`.
 
     Mutazione: chiudere al primo giro mancante (rimuovere l'isteresi) --
@@ -378,19 +378,19 @@ def test_osservate_non_mostra_piu_una_condizione_chiusa(coppia):
     """All'opposto del difetto gemello: una condizione chiusa non deve
     restare per sempre in cio' che `watching()` mostra.
 
-    Due giri mancanti, non uno solo: con l'isteresi (Task 3) il primo giro
-    senza il problema la lascia ancora aperta -- verificato a meta', non
-    solo alla fine.
+    Due giri mancanti, non uno solo: con l'isteresi il primo giro senza il
+    problema la lascia ancora aperta -- verificato a meta', non solo alla
+    fine.
 
     Mutazione: chiudere al primo giro mancante (rimuovere l'isteresi) -- il
-    primo `assert ... in soggetti` (a meta') torna rosso.
+    primo `assert ... in soggetti_meta` torna rosso.
     """
     _archivio, osservatore = coppia
     p = [{"domain": "sonos", "issue_id": "subscriptions_failed", "severity": "error"}]
     osservatore.watch_system(problems=p, integrations=[])
     osservatore.watch_system(problems=[], integrations=[])  # giro 1: isteresi, resta aperta
-    assert "problema:sonos.subscriptions_failed" in {
-        o["soggetto"] for o in osservatore.watching()}
+    soggetti_meta = {o["soggetto"] for o in osservatore.watching()}
+    assert "problema:sonos.subscriptions_failed" in soggetti_meta
     osservatore.watch_system(problems=[], integrations=[])  # giro 2: si chiude
     soggetti = {o["soggetto"] for o in osservatore.watching()}
     assert "problema:sonos.subscriptions_failed" not in soggetti
@@ -610,14 +610,14 @@ def test_la_ricostruzione_vede_condizioni_recenti_nonostante_il_volume_di_entita
     assert scritti == 0  # gia' seminata come aperta: non e' una novita'
 
 
-# -- Task 3: l'isteresi -- due giri prima di chiudere -----------------------
+# -- L'isteresi -- due giri prima di chiudere --------------------------------
 #
 # Il difetto misurato sulla casa vera il 03/09: quattro episodi per un solo
 # guasto (`lifx / Abat-jour`), coi tre buchi di esattamente un giro del
 # rilevatore (dieci minuti). `setup_retry` per costruzione RITENTA: un giro
 # in cui HA non la elenca fra i problemi non vuol dire che sia guarita.
 
-def _rotta(entry_id="01ABC", state="setup_retry"):
+def _broken(entry_id="01ABC", state="setup_retry"):
     return {"entry_id": entry_id, "domain": "lifx", "title": "Abat-jour",
             "state": state, "source": "user"}
 
@@ -629,13 +629,13 @@ def test_one_missing_round_does_not_close_an_episode(coppia):
     comparire fra i problemi.
 
     Mutazione: chiudere al primo giro mancante -- il test torna rosso su
-    `assert chiusure == []`.
+    `assert closures == []`.
     """
     archivio, osservatore = coppia
-    osservatore.watch_system(problems=[], integrations=[_rotta()])   # giro 1: apre
+    osservatore.watch_system(problems=[], integrations=[_broken()])   # giro 1: apre
     osservatore.watch_system(problems=[], integrations=[])           # giro 2: assente
-    chiusure = [r for r in archivio.annotati if r["a"] == "chiuso"]
-    assert chiusure == []
+    closures = [r for r in archivio.annotati if r["a"] == "chiuso"]
+    assert closures == []
 
 
 def test_two_missing_rounds_close_the_episode(coppia):
@@ -648,14 +648,14 @@ def test_two_missing_rounds_close_the_episode(coppia):
     rifiuto di chiudere.
 
     Mutazione: alzare la soglia a tre giri -- il test torna rosso su
-    `assert len(chiusure) == 1`.
+    `assert len(closures) == 1`.
     """
     archivio, osservatore = coppia
-    osservatore.watch_system(problems=[], integrations=[_rotta()])
+    osservatore.watch_system(problems=[], integrations=[_broken()])
     osservatore.watch_system(problems=[], integrations=[])
     osservatore.watch_system(problems=[], integrations=[])
-    chiusure = [r for r in archivio.annotati if r["a"] == "chiuso"]
-    assert len(chiusure) == 1
+    closures = [r for r in archivio.annotati if r["a"] == "chiuso"]
+    assert len(closures) == 1
 
 
 def test_the_missing_counter_resets_when_the_condition_returns(coppia):
@@ -665,12 +665,41 @@ def test_the_missing_counter_resets_when_the_condition_returns(coppia):
     seguito».
 
     Mutazione: non azzerare il contatore al ritorno -- il test torna rosso
-    su `assert chiusure == []`.
+    su `assert closures == []`.
     """
     archivio, osservatore = coppia
-    osservatore.watch_system(problems=[], integrations=[_rotta()])
+    osservatore.watch_system(problems=[], integrations=[_broken()])
     osservatore.watch_system(problems=[], integrations=[])
-    osservatore.watch_system(problems=[], integrations=[_rotta()])
+    osservatore.watch_system(problems=[], integrations=[_broken()])
     osservatore.watch_system(problems=[], integrations=[])
-    chiusure = [r for r in archivio.annotati if r["a"] == "chiuso"]
-    assert chiusure == []
+    closures = [r for r in archivio.annotati if r["a"] == "chiuso"]
+    assert closures == []
+
+
+def test_the_reset_survives_a_record_failure_on_a_different_subject(coppia):
+    """Il reset dei mancati e' pura RAM (un `dict.pop`) e non puo' fallire,
+    a differenza di `record` nel ciclo delle nascite. Qui, nello STESSO
+    giro, `buona.b` (gia' aperta, mancante da un giro) RICOMPARE mentre
+    `rotto.x` NASCE e il suo `record` solleva: se il reset girasse dopo il
+    ciclo delle nascite, l'eccezione lo impedirebbe, e il contatore di
+    `buona.b` resterebbe alla quota vecchia -- un mancato consecutivo in
+    piu' del vero, che al giro successivo la chiuderebbe dopo un solo
+    mancato consecutivo (non due).
+
+    Mutazione: spostare il reset dei mancati DOPO il ciclo delle nascite --
+    il test torna rosso su `assert closures == []` (il quarto giro chiude
+    `buona.b` di troppo presto).
+    """
+    archivio = _FintoArchivio(annota_solleva_per={"problema:rotto.x"})
+    osservatore = Watcher(archivio, now=lambda: 1787572800.0)
+    buona = {"domain": "buona", "issue_id": "b", "severity": "error"}
+    rotta = {"domain": "rotto", "issue_id": "x", "severity": "error"}
+    osservatore.watch_system(problems=[buona], integrations=[])   # giro 1: buona.b apre
+    osservatore.watch_system(problems=[], integrations=[])        # giro 2: buona.b assente (1)
+    with pytest.raises(RuntimeError):
+        # giro 3: buona.b RICOMPARE (deve azzerarsi) mentre rotto.x NASCE e
+        # il suo `record` solleva -- l'eccezione propaga.
+        osservatore.watch_system(problems=[buona, rotta], integrations=[])
+    osservatore.watch_system(problems=[], integrations=[])        # giro 4: assente (1, non 2)
+    closures = [r for r in archivio.annotati if r["a"] == "chiuso"]
+    assert closures == []

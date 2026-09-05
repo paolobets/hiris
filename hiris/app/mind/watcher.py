@@ -205,19 +205,29 @@ class Watcher:
         periodico -- ma la memoria deve restare coerente con cio' che e' stato
         davvero scritto.
 
-        **L'isteresi (Task 3).** Il rilevatore gira ogni dieci minuti, e
-        `setup_retry` per costruzione RITENTA: un giro in cui HA non elenca
-        piu' una condizione fra i problemi non vuol dire che sia guarita.
-        Misurato sulla casa vera il 03/09: quattro episodi per un solo
-        guasto (`lifx / Abat-jour`), coi tre buchi di esattamente un giro --
-        era il nostro campionamento, non la casa. Una condizione non chiude
-        piu' al primo giro in cui manca: serve `_ROUNDS_BEFORE_CLOSING` giri
+        **L'isteresi.** Il rilevatore gira ogni dieci minuti, e `setup_retry`
+        per costruzione RITENTA: un giro in cui HA non elenca piu' una
+        condizione fra i problemi non vuol dire che sia guarita. Misurato
+        sulla casa vera il 03/09: quattro episodi per un solo guasto
+        (`lifx / Abat-jour`), coi tre buchi di esattamente un giro -- era il
+        nostro campionamento, non la casa. Una condizione non chiude piu' al
+        primo giro in cui manca: serve `_ROUNDS_BEFORE_CLOSING` giri
         CONSECUTIVI di assenza (vedi il commento accanto alla costante per
         il perche' della soglia). Il contatore dei mancati
         (`self._missing_rounds`) si azzera appena la condizione ricompare --
         «assente due volte» non e' «assente due volte di seguito» -- e vive
         accanto a `self._conditions` con la stessa sorte: RAM, non
         riseminato al riavvio.
+
+        **Il reset dei mancati gira PRIMA delle nuove aperture, non dopo.**
+        E' pura RAM (un `dict.pop`) e non puo' fallire, a differenza di
+        `record` nel ciclo delle nascite qui sotto -- se stesse dopo, un
+        `record` che solleva per una condizione nata nello STESSO giro
+        bloccherebbe il reset di una condizione diversa, gia' aperta, che in
+        quel giro e' ricomparsa: il suo contatore resterebbe a quota vecchia,
+        e un guasto missed-poi-tornato-poi-missed-di-nuovo si chiuderebbe
+        dopo un solo mancato consecutivo, non due -- la stessa proprieta' che
+        questo metodo esiste per garantire.
         """
         # {soggetto: (condizione, dominio, titolo)}. Il soggetto resta
         # l'IDENTITA' su cui girano `genre_for`, `self._conditions` e
@@ -265,6 +275,18 @@ class Watcher:
         # mutazione sotto ai loro piedi.
         already_open = set(self._conditions)
 
+        # Ricomparsa: gia' aperta E di nuovo nell'elenco di questo giro. Il
+        # contatore dei mancati si azzera qui -- e' la differenza fra
+        # «assente due volte» e «assente due volte DI SEGUITO». **Deve girare
+        # PRIMA del ciclo delle nascite qui sotto**: e' pura RAM e non puo'
+        # fallire, mentre quel ciclo chiama `record` e puo' sollevare a meta'
+        # -- se il reset stesse dopo, un `record` che solleva per una
+        # condizione nata in QUESTO STESSO giro bloccherebbe il reset di
+        # un'altra condizione, gia' aperta, ricomparsa nello stesso giro (vedi
+        # il docstring del metodo).
+        for seen_again in already_open & open_set:
+            self._missing_rounds.pop(seen_again, None)
+
         for born in sorted(open_set - already_open):
             condition, domain, title = open_now[born]
             # `a` porta la CONDIZIONE VERA, non la costante "aperto": e'
@@ -274,12 +296,6 @@ class Watcher:
                                da=None, a=condition, domain=domain, title=title)
             self._conditions.add(born)
             written += 1
-
-        # Ricomparsa: gia' aperta E di nuovo nell'elenco di questo giro. Il
-        # contatore dei mancati si azzera qui -- e' la differenza fra
-        # «assente due volte» e «assente due volte DI SEGUITO».
-        for seen_again in already_open & open_set:
-            self._missing_rounds.pop(seen_again, None)
 
         for missing in sorted(already_open - open_set):
             rounds = self._missing_rounds.get(missing, 0) + 1
