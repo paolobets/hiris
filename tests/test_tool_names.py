@@ -171,7 +171,7 @@ def test_ogni_nome_del_catalogo_e_nell_elenco_storico():
         "riconoscera' piu' la citazione del loro nome precedente")
 
 
-def test_il_catalogo_ha_sedici_nomi_distinti():
+def test_the_catalog_has_sixteen_distinct_names():
     """Quindici e' il numero del perimetro della CHAT (13 -> 15 con la fetta
     «le tracce e il log», Task 5: `system_log`, `automation_trace`), sedici
     quello delle definizioni: e' la sesta volta, in questa fetta, che un

@@ -351,7 +351,7 @@ def test_costruisci_dispatcher_strumenti_riceve_registro_e_promesse():
 # un conteggio che nessuno ancora ai fatti veri non e' un pavimento, e' una
 # frase che invecchia senza avvisare.
 
-def test_i_lavori_periodici_registrati_sono_undici_come_dichiara_il_readme():
+def test_the_registered_periodic_jobs_are_eleven_as_the_readme_declares():
     src = inspect.getsource(server._on_startup)
     n = src.count("scheduler.add_job(")
     assert n == 11, (

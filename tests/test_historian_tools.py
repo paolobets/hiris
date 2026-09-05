@@ -16,7 +16,7 @@ from hiris.app.proxy.ha_client import HAClient
 from tests._contracts import assert_stessa_firma
 
 
-def test_il_catalogo_porta_quindici_strumenti():
+def test_the_catalog_carries_fifteen_tools():
     """13 -> 15 con la fetta «le tracce e il log» (Task 5, `system_log` e
     `automation_trace`): questo test pinna solo il CONTEGGIO e la presenza
     di `trend`/`logbook`, che sono i due che questo file esercita -- il pin

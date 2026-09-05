@@ -317,7 +317,7 @@ class _ClienteFinto:
         return self._log_outcome
 
 
-def test_l_osservatore_finto_combacia_con_watcher_guarda_sistema():
+def test_the_fake_observer_matches_watcher_watch_system():
     """Il revisore indipendente ha provato dal vivo che un default aggiunto
     su UN SOLO lato (`log_entries: list[dict] | None = None` sulla finta)
     lasciava la suite verde: la regola per cui quel parametro non ha un
@@ -346,7 +346,7 @@ def test_il_cliente_finto_combacia_con_haclient_leggi_registri():
                         nome="HAClient.read_registries")
 
 
-def test_il_cliente_finto_combacia_con_haclient_system_log():
+def test_the_fake_client_matches_haclient_system_log():
     """Stessa guardia, per la terza lettura (Task 2, «le tracce e il
     log»): se `HAClient.system_log()` acquisisse un parametro, questa finta
     duck-typed lo ignorerebbe in silenzio."""
