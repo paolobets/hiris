@@ -573,6 +573,29 @@ un'altra ragione (l'id di configurazione come chiave delle tracce) e **non ha to
 `CONF_ID: str` coi due tag, invece di limitarsi a correggere il commento: un `str()` difensivo
 che nessuna fonte giustifica e' l'altra meta' della stessa ipotesi.
 
+### Il collettore delle tracce tiene tre pezzi di stato su `app`, e sono un oggetto che non esiste
+
+`origine: dichiarata dall'implementer del Task 6 di «le tracce e il log», 05/09/2026` ·
+`nessun documento`
+
+La cadenza che raccoglie le tracce delle automazioni ha accumulato, una fetta alla volta, tre
+voci separate nel dizionario dell'applicazione: `automation_traces_boot_ts` (l'istante d'avvio
+del processo, per non rileggere cio' che e' successo mentre HIRIS era spento),
+`automation_trace_cursors` (i `run_id` gia' visti per automazione, che rendono la raccolta
+idempotente) e `automation_trace_unresolved` (le automazioni per cui l'avviso e' gia' stato
+detto una volta). Le tre nascono in momenti diversi, si leggono insieme, e nessuna ha senso
+senza le altre due: sono lo stato di **un** collettore, tenuto in tre posti perche' nessuna
+fetta ha avuto motivo di fermarsi a costruirlo.
+
+Non e' un guasto — funziona, ed e' provato — ma e' la forma che rende facile il prossimo
+difetto: chi aggiunge la quarta voce non ha niente che gli ricordi le altre tre, e chi svuota
+una sola al riavvio rompe un invariante che nessuna firma dichiara. Chi la chiude raccolga le
+tre in un oggetto con le sue prove, invece di aggiungerne una quarta accanto.
+
+Vale la stessa disciplina della voce sulle quattro copie di `_ENTITY_ID_RE`: si nomina adesso
+perche' e' stato visto adesso,
+e si chiude in una fetta sua, non come effetto collaterale di un giro di correzioni.
+
 ---
 
 ## Usciti
