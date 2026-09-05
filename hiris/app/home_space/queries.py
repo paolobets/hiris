@@ -858,20 +858,33 @@ def _view_integration(home_space: dict, state: dict, reference,
     (home-assistant.io/integrations/uptime/): il sensore, device class
     timestamp, porta «the date and time when Home Assistant was last
     started», scritto una volta all'avvio e fermo fino al riavvio
-    successivo. Misurato sulla casa vera (02/09): quattro piattaforme
-    (tuya, lifx, matter, alexa) condividono lo stesso `mute_da` -- non
-    quattro guasti simultanei, ma la firma di un riavvio che ha ri-datato
-    tutto insieme; sottratto da `sensor.uptime`, lifx e tuya distano meno
-    di un secondo e matter -18 s (il riavvio), mentre hydrawise -- l'unica
-    integrazione davvero rotta -- ne dista 47 ore. Il codice non emette
-    QUESTO verdetto: mette solo i due istanti fianco a fianco, la frase la
-    dice chi legge (spec §4: "il codice calcola i fatti, il modello dice la
-    frase"). La chiave esce SOLO quando ENTRAMBE le condizioni valgono:
-    `mute_da` e' gia' nel dettaglio (senza un istante da confrontare non
-    c'e' nulla da mettere accanto) e `sensor.uptime` ha un valore nello
-    specchio degli stati -- dove manca (l'integrazione Uptime non c'e', o
-    non ha ancora risposto) la chiave non esce affatto: l'assenza e'
-    assenza, mai un `None` che si potrebbe scambiare per un fatto.
+    successivo. Misurato sulla casa vera (02/09): TRE piattaforme (tuya,
+    lifx, matter) condividono lo stesso `mute_da` -- non tre guasti
+    simultanei, ma la firma di un riavvio che ha ri-datato tutto insieme;
+    sottratto da `sensor.uptime`, lifx e tuya distano meno di un secondo e
+    matter -18 s (il riavvio). Alexa NON e' fra queste: e' a +28,4 minuti
+    dall'avvio, la zona di mezzo che il §4 ③ prescrive di non chiudere --
+    ne' riavvio ne' guasto, si dichiara il dubbio (correzione del 05/09,
+    la spec stessa contava "quattro" includendola per errore, docs/design,
+    commit `022cb0b2`). Hydrawise -- l'unica integrazione davvero rotta --
+    ne dista 47 ore. Il codice non emette QUESTO verdetto: mette solo i due
+    istanti fianco a fianco, la frase la dice chi legge (spec §4: "il
+    codice calcola i fatti, il modello dice la frase"). La chiave esce SOLO
+    quando ENTRAMBE le condizioni valgono: `mute_da` e' gia' nel dettaglio
+    (senza un istante da confrontare non c'e' nulla da mettere accanto) e
+    `sensor.uptime` porta un istante VALIDO nello specchio degli stati --
+    passato per lo stesso `instant_epoch` che valida `mute_da` poche righe
+    sotto, non la sola verita' Python. Serve: `unavailable` e `unknown`
+    sono le sentinelle che Home Assistant scrive quando l'integrazione
+    Uptime e' disabilitata-ma-non-rimossa o non ha ancora scritto al primo
+    giro dopo l'avvio -- STRINGHE PIENE, non `None` ne' stringa vuota, che
+    una guardia di sola truthiness lascerebbe passare come se fossero un
+    istante (rilievo di revisione, 05/09: la funzione usa gia' quelle due
+    stesse stringhe per classificare le entita' mute, poche righe sopra --
+    ignorarle qui per lo stesso sensore sarebbe incoerente). Dove
+    `sensor.uptime` manca, o e' una di quelle sentinelle, o non e' un
+    istante valido, la chiave non esce affatto: l'assenza e' assenza, mai
+    un `None` ne' una sentinella spacciata per un fatto.
 
     `reference` si normalizza (`_normalize`, la stessa di `search`) prima del
     confronto -- passata da `str()` prima, perche' lo schema dello strumento
@@ -957,7 +970,7 @@ def _view_integration(home_space: dict, state: dict, reference,
                 detail["mute_da"] = moments[epochs.index(earliest)]
     if "mute_da" in detail:
         ha_start = state.get("sensor.uptime")
-        if ha_start:
+        if ha_start and instant_epoch(ha_start) is not None:
             detail["avvio_home_assistant"] = ha_start
     return detail
 

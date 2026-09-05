@@ -1349,3 +1349,45 @@ def test_without_the_uptime_sensor_the_key_is_absent():
                     reported_since_when=since)
     assert "mute_da" in detail
     assert "avvio_home_assistant" not in detail
+
+
+def test_an_unavailable_uptime_sensor_is_not_an_instant():
+    """`unavailable`/`unknown` sono le sentinelle che Home Assistant scrive
+    quando l'integrazione Uptime e' disabilitata-ma-non-rimossa, o non ha
+    ancora scritto al primo giro dopo l'avvio -- STRINGHE PIENE, non `None`
+    ne' vuote. La stessa funzione le usa gia' per classificare le entita'
+    mute (`mute`/`unknown`, poche righe sopra): ignorarle qui, per lo stesso
+    sensore, spaccerebbe una parola per un istante.
+
+    Mutazione: togliere `and instant_epoch(ha_start) is not None` dalla
+    guardia (tornare alla sola truthiness) -- il test torna rosso su
+    `assert "avvio_home_assistant" not in detail` (la chiave comparirebbe
+    con valore `"unavailable"`)."""
+    house, states, since = _two_silent_hydrawise_entities(
+        "2026-09-04T14:00:17+00:00", "2026-09-04T14:00:17.021000+00:00")
+    states = dict(states, **{"sensor.uptime": "unavailable"})
+    detail = view(house, [], [], states, "integrazione", "hydrawise",
+                    reported_since_when=since)
+    assert "mute_da" in detail
+    assert "avvio_home_assistant" not in detail
+
+
+def test_avvio_home_assistant_is_absent_without_mute_da_too():
+    """La congiunzione e' protetta da una prova dedicata, non solo verificata
+    a mano: con `sensor.uptime` presente ma le entita' mute FUORI dalla
+    finestra di sincronia (5 s, oltre i 2 s di `_SYNCHRONY_WINDOW_SECONDS`),
+    `mute_da` non esce -- e senza `mute_da` non c'e' nulla da affiancare,
+    quindi nemmeno `avvio_home_assistant` esce, anche se il sensore c'e' ed
+    e' un istante valido.
+
+    Mutazione: togliere `if "mute_da" in detail:` (calcolare
+    `avvio_home_assistant` incondizionatamente) -- il test torna rosso su
+    `assert "avvio_home_assistant" not in detail` (la chiave comparirebbe
+    da sola, senza `mute_da` accanto)."""
+    house, states, since = _two_silent_hydrawise_entities(
+        "2026-09-04T14:00:17+00:00", "2026-09-04T14:00:22+00:00")
+    states = dict(states, **{"sensor.uptime": "2026-09-02T17:54:44+00:00"})
+    detail = view(house, [], [], states, "integrazione", "hydrawise",
+                    reported_since_when=since)
+    assert "mute_da" not in detail
+    assert "avvio_home_assistant" not in detail
