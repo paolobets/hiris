@@ -658,20 +658,24 @@ async def reread_ha_problems(app, ha_client) -> dict | None:
 
 async def watch_system_conditions(app, ha_client) -> int | None:
     """Le condizioni di sistema (problemi diagnosticati + integrazioni non
-    caricate) verso `app["watcher"].watch_system` (fetta «l'osservatore»,
-    Task 5). Torna quante ne ha scritte, o `None` se il giro e' stato saltato.
+    caricate + voci del registro di errori) verso
+    `app["watcher"].watch_system` (fetta «l'osservatore», Task 5; il registro
+    di errori e' Task 2 di «le tracce e il log»). Torna quante ne ha scritte,
+    o `None` se il giro e' stato saltato.
 
-    **Se una delle due letture fallisce, il giro si salta INTERAMENTE**
-    (`task-5-correzioni.md`, punto A.1). `HAClient.problems()` torna
-    `{"errore": ...}` quando Home Assistant non risponde, e il suo docstring
-    dice perche' un elenco vuoto non e' un ripiego accettabile: significherebbe
-    «non c'e' niente che non va». `Watcher.watch_system` chiude una
+    **Se una delle TRE letture fallisce, il giro si salta INTERAMENTE**
+    (`task-5-correzioni.md`, punto A.1 -- la stessa disciplina, estesa al
+    registro di errori). `HAClient.problems()` torna `{"errore": ...}` quando
+    Home Assistant non risponde, e il suo docstring dice perche' un elenco
+    vuoto non e' un ripiego accettabile: significherebbe «non c'e' niente
+    che non va». `HAClient.system_log()` dichiara la stessa cosa per la
+    stessa ragione (vedi il suo docstring). `Watcher.watch_system` chiude una
     condizione dopo DUE giri consecutivi in cui non la trova piu' nell'elenco
     che riceve (l'isteresi contro i buchi di un giro solo, misurati il 03/09)
     -- quindi un errore letto come lista vuota, ripetuto per due giri di
-    fila, scriverebbe comunque «chiuso» su OGNI guasto aperto: l'archivio
-    registrerebbe che tutto si e' risolto nel momento esatto in cui abbiamo
-    smesso di poterlo vedere.
+    fila, scriverebbe comunque «chiuso» su OGNI guasto aperto (una voce di
+    log compresa): l'archivio registrerebbe che tutto si e' risolto nel
+    momento esatto in cui abbiamo smesso di poterlo vedere.
     Vale identico per `read_registries`: se `"integrazioni"` compare in
     `non_disponibili`, quella lista e' vuota per guasto, non perche' vada
     tutto bene. Meglio un buco nella storia che una bugia nella storia.
@@ -681,7 +685,7 @@ async def watch_system_conditions(app, ha_client) -> int | None:
     `_on_startup` -- stessa funzione, due chiamanti, come
     `tree_comparison_round`/`watch_behavior` qui accanto.
 
-    Non solleva mai per le due letture (i client la dichiarano gia' cosi'):
+    Non solleva mai per le tre letture (i client la dichiarano gia' cosi'):
     puo' sollevare da `watch_system` stesso, se `record` fallisce a meta' --
     e in quel caso deve propagare, per il motivo scritto sul suo docstring.
     """
@@ -700,9 +704,16 @@ async def watch_system_conditions(app, ha_client) -> int | None:
             "cervello: condizioni di sistema non lette, il registro delle "
             "integrazioni non e' disponibile -- giro saltato")
         return None
+    log_report = await ha_client.system_log()
+    if "errore" in log_report:
+        logger.warning(
+            "cervello: condizioni di sistema non lette, system_log() ha "
+            "fallito (%s) -- giro saltato", log_report["errore"])
+        return None
     return watcher.watch_system(
         problems=problems_report.get("problemi") or [],
-        integrations=registries.get("integrazioni") or [])
+        integrations=registries.get("integrazioni") or [],
+        log_entries=log_report.get("voci") or [])
 
 
 def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):

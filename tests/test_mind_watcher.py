@@ -200,7 +200,7 @@ def test_un_problema_di_HA_diventa_un_cambio(coppia):
     scritti = osservatore.watch_system(
         problems=[{"domain": "sonos", "issue_id": "subscriptions_failed",
                    "severity": "error"}],
-        integrations=[])
+        integrations=[], log_entries=[])
     assert scritti == 1
     assert archivio.annotati[0]["source"] == "sistema"
     assert archivio.annotati[0]["subject"] == "problema:sonos.subscriptions_failed"
@@ -219,10 +219,12 @@ def test_un_problema_che_sparisce_diventa_un_cambio(coppia):
     """
     archivio, osservatore = coppia
     p = [{"domain": "sonos", "issue_id": "subscriptions_failed", "severity": "error"}]
-    osservatore.watch_system(problems=p, integrations=[])
+    osservatore.watch_system(problems=p, integrations=[], log_entries=[])
     archivio.annotati.clear()
-    assert osservatore.watch_system(problems=[], integrations=[]) == 0  # giro 1: isteresi
-    assert osservatore.watch_system(problems=[], integrations=[]) == 1  # giro 2: chiude
+    # giro 1: isteresi
+    assert osservatore.watch_system(problems=[], integrations=[], log_entries=[]) == 0
+    # giro 2: chiude
+    assert osservatore.watch_system(problems=[], integrations=[], log_entries=[]) == 1
     assert archivio.annotati[0]["a"] == "chiuso"
 
 
@@ -232,9 +234,9 @@ def test_una_condizione_che_dura_non_si_riscrive(coppia):
     renderebbe impossibile sapere QUANDO e' cominciata."""
     archivio, osservatore = coppia
     p = [{"domain": "sonos", "issue_id": "subscriptions_failed", "severity": "error"}]
-    osservatore.watch_system(problems=p, integrations=[])
+    osservatore.watch_system(problems=p, integrations=[], log_entries=[])
     archivio.annotati.clear()
-    assert osservatore.watch_system(problems=p, integrations=[]) == 0
+    assert osservatore.watch_system(problems=p, integrations=[], log_entries=[]) == 0
     assert archivio.annotati == []
 
 
@@ -261,7 +263,7 @@ def test_un_integrazione_ROTTA_diventa_un_cambio(coppia):
         integrations=[{"entry_id": "abc", "title": "Abat-jour",
                        "domain": "lifx", "state": "setup_retry"},
                       {"entry_id": "def", "title": "Sonos",
-                       "domain": "sonos", "state": "loaded"}])
+                       "domain": "sonos", "state": "loaded"}], log_entries=[])
     assert scritti == 1
     assert archivio.annotati[0]["subject"] == "integrazione:abc"
     assert archivio.annotati[0]["a"] == "setup_retry"
@@ -283,7 +285,7 @@ def test_una_integrazione_senza_stato_non_apre_nessuna_condizione(coppia):
     archivio, osservatore = coppia
     scritti = osservatore.watch_system(
         problems=[],
-        integrations=[{"entry_id": "abc", "domain": "lifx", "title": "Abat-jour"}])
+        integrations=[{"entry_id": "abc", "domain": "lifx", "title": "Abat-jour"}], log_entries=[])
     assert scritti == 0
     assert archivio.annotati == []
 
@@ -300,7 +302,7 @@ def test_not_loaded_NON_e_un_guasto(coppia):
     scritti = osservatore.watch_system(
         problems=[],
         integrations=[{"entry_id": "abc", "domain": "fritz",
-                       "state": "not_loaded", "source": "user"}])
+                       "state": "not_loaded", "source": "user"}], log_entries=[])
     assert scritti == 0
     assert archivio.annotati == []
 
@@ -316,7 +318,7 @@ def test_una_voce_IGNORATA_dal_proprietario_non_e_un_guasto(coppia):
     scritti = osservatore.watch_system(
         problems=[],
         integrations=[{"entry_id": "abc", "domain": "fritz",
-                       "state": "setup_error", "source": "ignore"}])
+                       "state": "setup_error", "source": "ignore"}], log_entries=[])
     assert scritti == 0
     assert archivio.annotati == []
 
@@ -330,7 +332,7 @@ def test_una_integrazione_in_setup_non_e_un_guasto(coppia):
     scritti = osservatore.watch_system(
         problems=[],
         integrations=[{"entry_id": "abc", "domain": "fritz",
-                       "state": "setup_in_progress"}])
+                       "state": "setup_in_progress"}], log_entries=[])
     assert scritti == 0
     assert archivio.annotati == []
 
@@ -346,7 +348,7 @@ def test_una_integrazione_in_unload_non_e_un_guasto(coppia):
     scritti = osservatore.watch_system(
         problems=[],
         integrations=[{"entry_id": "abc", "domain": "fritz",
-                       "state": "unload_in_progress"}])
+                       "state": "unload_in_progress"}], log_entries=[])
     assert scritti == 0
     assert archivio.annotati == []
 
@@ -369,7 +371,7 @@ def test_osservate_dice_cosa_guarda_e_PERCHE(coppia):
 def test_osservate_mostra_una_condizione_dopo_guarda_sistema(coppia):
     _archivio, osservatore = coppia
     p = [{"domain": "sonos", "issue_id": "subscriptions_failed", "severity": "error"}]
-    osservatore.watch_system(problems=p, integrations=[])
+    osservatore.watch_system(problems=p, integrations=[], log_entries=[])
     v = {o["soggetto"]: o for o in osservatore.watching()}
     assert v["problema:sonos.subscriptions_failed"]["gamba"] == "buono stato"
 
@@ -387,11 +389,13 @@ def test_osservate_non_mostra_piu_una_condizione_chiusa(coppia):
     """
     _archivio, osservatore = coppia
     p = [{"domain": "sonos", "issue_id": "subscriptions_failed", "severity": "error"}]
-    osservatore.watch_system(problems=p, integrations=[])
-    osservatore.watch_system(problems=[], integrations=[])  # giro 1: isteresi, resta aperta
+    osservatore.watch_system(problems=p, integrations=[], log_entries=[])
+    # giro 1: isteresi, resta aperta
+    osservatore.watch_system(problems=[], integrations=[], log_entries=[])
     soggetti_meta = {o["soggetto"] for o in osservatore.watching()}
     assert "problema:sonos.subscriptions_failed" in soggetti_meta
-    osservatore.watch_system(problems=[], integrations=[])  # giro 2: si chiude
+    # giro 2: si chiude
+    osservatore.watch_system(problems=[], integrations=[], log_entries=[])
     soggetti = {o["soggetto"] for o in osservatore.watching()}
     assert "problema:sonos.subscriptions_failed" not in soggetti
 
@@ -423,7 +427,7 @@ def test_guarda_sistema_ricorda_solo_cio_che_ha_scritto_davvero(coppia):
         osservatore.watch_system(
             problems=[{"domain": "buona", "issue_id": "a", "severity": "error"},
                       {"domain": "rotto", "issue_id": "x", "severity": "error"}],
-            integrations=[])
+            integrations=[], log_entries=[])
     # sorted(): "problema:buona.a" viene prima di "problema:rotto.x", quindi
     # e' gia' stata scritta quando "rotto.x" solleva.
     assert "problema:buona.a" in osservatore._conditions
@@ -450,7 +454,7 @@ def test_la_ricostruzione_evita_di_riscrivere_un_guasto_gia_aperto():
     scritti = osservatore.watch_system(
         problems=[{"domain": "sonos", "issue_id": "subscriptions_failed",
                    "severity": "error"}],
-        integrations=[])
+        integrations=[], log_entries=[])
     assert scritti == 0
     assert archivio.annotati == []
 
@@ -470,7 +474,7 @@ def test_la_ricostruzione_non_semina_una_condizione_gia_chiusa():
     scritti = osservatore.watch_system(
         problems=[{"domain": "sonos", "issue_id": "subscriptions_failed",
                    "severity": "error"}],
-        integrations=[])
+        integrations=[], log_entries=[])
     assert scritti == 1
     assert archivio.annotati[0]["a"] == "aperto"
 
@@ -506,7 +510,7 @@ def test_la_ricostruzione_riconosce_una_condizione_vera_come_aperta():
     scritti = osservatore.watch_system(
         problems=[],
         integrations=[{"entry_id": "01ABC", "domain": "lifx",
-                       "title": "Abat-jour", "state": "setup_retry"}])
+                       "title": "Abat-jour", "state": "setup_retry"}], log_entries=[])
     assert scritti == 0
     assert archivio.annotati == []
 
@@ -533,7 +537,7 @@ def test_la_ricostruzione_non_considera_aperta_una_condizione_chiusa():
     scritti = osservatore.watch_system(
         problems=[],
         integrations=[{"entry_id": "01ABC", "domain": "lifx",
-                       "title": "Abat-jour", "state": "setup_retry"}])
+                       "title": "Abat-jour", "state": "setup_retry"}], log_entries=[])
     assert scritti == 1
     assert archivio.annotati[0]["a"] == "setup_retry"
 
@@ -566,7 +570,7 @@ def test_la_ricostruzione_non_solleva_se_l_archivio_non_risponde():
     scritti = osservatore.watch_system(
         problems=[{"domain": "sonos", "issue_id": "subscriptions_failed",
                    "severity": "error"}],
-        integrations=[])
+        integrations=[], log_entries=[])
     assert scritti == 1  # riparte da vuoto: la condizione sembra nuova
 
 
@@ -606,7 +610,7 @@ def test_la_ricostruzione_vede_condizioni_recenti_nonostante_il_volume_di_entita
     scritti = osservatore.watch_system(
         problems=[{"domain": "sonos", "issue_id": "subscriptions_failed",
                    "severity": "error"}],
-        integrations=[])
+        integrations=[], log_entries=[])
     assert scritti == 0  # gia' seminata come aperta: non e' una novita'
 
 
@@ -632,8 +636,10 @@ def test_one_missing_round_does_not_close_an_episode(coppia):
     `assert closures == []`.
     """
     archivio, osservatore = coppia
-    osservatore.watch_system(problems=[], integrations=[_broken()])   # giro 1: apre
-    osservatore.watch_system(problems=[], integrations=[])           # giro 2: assente
+    # giro 1: apre
+    osservatore.watch_system(problems=[], integrations=[_broken()], log_entries=[])
+    # giro 2: assente
+    osservatore.watch_system(problems=[], integrations=[], log_entries=[])
     closures = [r for r in archivio.annotati if r["a"] == "chiuso"]
     assert closures == []
 
@@ -651,9 +657,9 @@ def test_two_missing_rounds_close_the_episode(coppia):
     `assert len(closures) == 1`.
     """
     archivio, osservatore = coppia
-    osservatore.watch_system(problems=[], integrations=[_broken()])
-    osservatore.watch_system(problems=[], integrations=[])
-    osservatore.watch_system(problems=[], integrations=[])
+    osservatore.watch_system(problems=[], integrations=[_broken()], log_entries=[])
+    osservatore.watch_system(problems=[], integrations=[], log_entries=[])
+    osservatore.watch_system(problems=[], integrations=[], log_entries=[])
     closures = [r for r in archivio.annotati if r["a"] == "chiuso"]
     assert len(closures) == 1
 
@@ -668,10 +674,10 @@ def test_the_missing_counter_resets_when_the_condition_returns(coppia):
     su `assert closures == []`.
     """
     archivio, osservatore = coppia
-    osservatore.watch_system(problems=[], integrations=[_broken()])
-    osservatore.watch_system(problems=[], integrations=[])
-    osservatore.watch_system(problems=[], integrations=[_broken()])
-    osservatore.watch_system(problems=[], integrations=[])
+    osservatore.watch_system(problems=[], integrations=[_broken()], log_entries=[])
+    osservatore.watch_system(problems=[], integrations=[], log_entries=[])
+    osservatore.watch_system(problems=[], integrations=[_broken()], log_entries=[])
+    osservatore.watch_system(problems=[], integrations=[], log_entries=[])
     closures = [r for r in archivio.annotati if r["a"] == "chiuso"]
     assert closures == []
 
@@ -694,12 +700,154 @@ def test_the_reset_survives_a_record_failure_on_a_different_subject(coppia):
     osservatore = Watcher(archivio, now=lambda: 1787572800.0)
     healthy = {"domain": "buona", "issue_id": "b", "severity": "error"}
     broken = {"domain": "rotto", "issue_id": "x", "severity": "error"}
-    osservatore.watch_system(problems=[healthy], integrations=[])  # giro 1: buona.b apre
-    osservatore.watch_system(problems=[], integrations=[])         # giro 2: buona.b assente (1)
+    # giro 1: buona.b apre
+    osservatore.watch_system(problems=[healthy], integrations=[], log_entries=[])
+    # giro 2: buona.b assente (1)
+    osservatore.watch_system(problems=[], integrations=[], log_entries=[])
     with pytest.raises(RuntimeError):
         # giro 3: buona.b RICOMPARE (deve azzerarsi) mentre rotto.x NASCE e
         # il suo `record` solleva -- l'eccezione propaga.
-        osservatore.watch_system(problems=[healthy, broken], integrations=[])
-    osservatore.watch_system(problems=[], integrations=[])        # giro 4: assente (1, non 2)
+        osservatore.watch_system(problems=[healthy, broken], integrations=[], log_entries=[])
+    # giro 4: assente (1, non 2)
+    osservatore.watch_system(problems=[], integrations=[], log_entries=[])
     closures = [r for r in archivio.annotati if r["a"] == "chiuso"]
     assert closures == []
+
+
+# --------------------------------------------------------------------------
+# Task 2 («le tracce e il log»): una voce del registro di errori
+# (`HAClient.system_log()`, Task 1) e' una condizione che dura, con lo
+# STESSO meccanismo dei due generi qui sopra -- nasce, ricorre, sparisce.
+# --------------------------------------------------------------------------
+
+def _log_entry(name="homeassistant.components.hydrawise", level="ERROR",
+               count=3, first_occurred=1788595200.0):
+    """La forma vera di una riga di `system_log/list`, verificata alla fonte
+    dall'implementer del Task 1 (`homeassistant/components/system_log/
+    __init__.py`, `LogEntry.to_dict()`): `source` e' una coppia (file, riga),
+    non una stringa, l'ordine dell'elenco e' LIFO, e -- verificato di nuovo
+    qui per questo task (stessa fonte, `LogEntry.__init__`:
+    `self.first_occurred = self.timestamp = record.created`) --
+    `first_occurred` e' un epoch in secondi (`float`), NON una stringa
+    ISO-8601: e' il motivo per cui questa finta non passa da `instant_epoch`,
+    a differenza di `last_changed` per un cambio di stato."""
+    return {"name": name, "level": level, "count": count,
+            "first_occurred": first_occurred,
+            "source": ["hydrawise/coordinator.py", 88],
+            "message": ["403 Forbidden"]}
+
+
+def test_a_log_entry_opens_a_condition_with_its_level(coppia):
+    """Il livello e' la condizione vera, come `setup_retry` per
+    un'integrazione: `error` e `warning` non sono la stessa cosa, e la
+    costante «aperto» direbbe meno di quello che sappiamo.
+
+    Mutazione: scrivere `a="aperto"` invece del livello -- il test torna
+    rosso su `assert riga["a"] == "ERROR"`.
+    """
+    archivio, osservatore = coppia
+    osservatore.watch_system(problems=[], integrations=[],
+                             log_entries=[_log_entry()])
+    riga = archivio.annotati[0]
+    assert riga["subject"].startswith("log:")
+    assert riga["a"] == "ERROR"
+    assert riga["domain"] == "homeassistant.components.hydrawise"
+
+
+def test_a_log_entry_that_stays_does_not_open_twice(coppia):
+    """Una voce che ricorre e' lo STESSO episodio: `count` cresce dentro HA,
+    non produce righe nuove da noi. E' il motivo per cui `count` non si
+    scrive.
+
+    Mutazione: costruire il soggetto includendo `count` -- il test torna
+    rosso su `assert len(archivio.annotati) == 1`.
+    """
+    archivio, osservatore = coppia
+    osservatore.watch_system(problems=[], integrations=[],
+                             log_entries=[_log_entry(count=3)])
+    osservatore.watch_system(problems=[], integrations=[],
+                             log_entries=[_log_entry(count=9)])
+    assert len(archivio.annotati) == 1
+
+
+def test_a_log_entry_uses_first_occurred_as_its_birth(coppia):
+    """L'episodio comincia quando HA dice che e' cominciato, non quando noi
+    l'abbiamo notato: `first_occurred` e' piu' vero dell'istante del nostro
+    giro, e su una casa che ha girato per ore la differenza e' quella fra
+    «e' successo adesso» e «va avanti da stamattina».
+
+    Mutazione: usare l'orologio del giro invece di `first_occurred` -- il
+    test torna rosso su `assert riga["quando_ts"] == 1788595200.0`.
+    """
+    archivio, osservatore = coppia
+    osservatore.watch_system(problems=[], integrations=[],
+                             log_entries=[_log_entry(first_occurred=1788595200.0)])
+    riga = archivio.annotati[0]
+    assert riga["quando_ts"] == 1788595200.0
+
+
+def test_a_log_entry_that_leaves_the_list_closes_after_two_rounds(coppia):
+    """Stessa isteresi dei due generi gemelli: un giro solo senza la riga
+    non e' «e' finita» -- la deduplicazione di HA e il campionamento a dieci
+    minuti si somigliano, e chiudere al primo giro mancante scriverebbe un
+    falso positivo per ogni singolo buco di campionamento.
+
+    Mutazione: chiudere al primo giro mancante (rimuovere l'isteresi) -- il
+    primo `assert ... == 0` torna rosso.
+    """
+    archivio, osservatore = coppia
+    osservatore.watch_system(problems=[], integrations=[], log_entries=[_log_entry()])
+    archivio.annotati.clear()
+    # giro 1: isteresi
+    assert osservatore.watch_system(problems=[], integrations=[], log_entries=[]) == 0
+    # giro 2: chiude
+    assert osservatore.watch_system(problems=[], integrations=[], log_entries=[]) == 1
+    assert archivio.annotati[0]["a"] == "chiuso"
+
+
+def test_a_log_entry_without_a_readable_first_occurred_falls_back_to_the_round(coppia):
+    """`first_occurred` non e' sempre un numero -- una finta HA malformata, o
+    un formato che cambiasse un domani: il fallback dichiarato e' l'orologio
+    del giro, non una nascita inventata a partire da niente.
+
+    Mutazione: propagare `birth` (cioe' `None`, qui) come `quando_ts` invece
+    di ripiegare su `now` -- il test torna rosso su
+    `assert riga["quando_ts"] == 1787572800.0` (l'orologio fissato dalla
+    fixture `coppia`), che diventa `assert None == 1787572800.0`.
+    """
+    archivio, osservatore = coppia
+    entry = _log_entry(first_occurred="non-un-numero")
+    osservatore.watch_system(problems=[], integrations=[], log_entries=[entry])
+    riga = archivio.annotati[0]
+    assert riga["quando_ts"] == 1787572800.0
+
+
+def test_a_log_entry_without_a_readable_source_is_skipped(coppia):
+    """Senza logger, livello o posizione nel sorgente leggibile non c'e'
+    un'identita' stabile su cui deduplicare -- aprire comunque una
+    condizione vorrebbe dire aprirla col soggetto sbagliato, o una nuova a
+    ogni giro se la forma cambiasse ogni volta.
+
+    Mutazione: togliere il controllo su `source_file`/`source_line` -- il
+    test torna rosso su `assert archivio.annotati == []` (si aprirebbe
+    comunque una riga per una voce senza posizione leggibile).
+    """
+    archivio, osservatore = coppia
+    entry = _log_entry()
+    entry["source"] = ["hydrawise/coordinator.py"]  # coppia incompleta
+    osservatore.watch_system(problems=[], integrations=[], log_entries=[entry])
+    assert archivio.annotati == []
+
+
+def test_a_log_entry_title_is_the_first_message_line(coppia):
+    """`domain` e `title` portano il logger e la prima riga del messaggio,
+    cosi' il grezzo resta autosufficiente anche quando la voce sara' uscita
+    dall'elenco di HA (HA tiene solo le ultime, non l'intera storia).
+
+    Mutazione: tornare `None` invece di `message[0]` -- il test torna rosso
+    su `assert riga["title"] == "403 Forbidden"`.
+    """
+    archivio, osservatore = coppia
+    osservatore.watch_system(problems=[], integrations=[], log_entries=[_log_entry()])
+    riga = archivio.annotati[0]
+    assert riga["title"] == "403 Forbidden"

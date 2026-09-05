@@ -280,25 +280,36 @@ class _OsservatoreFinto:
     def __init__(self):
         self.chiamate: list[dict] = []
 
-    def watch_system(self, *, problems, integrations):
-        self.chiamate.append({"problemi": problems, "integrazioni": integrations})
-        return len(problems) + len(integrations)
+    # `log_entries` senza default, come nel `Watcher` vero (Task 2, «le
+    # tracce e il log»): una finta che accettasse un default nasconderebbe
+    # esattamente il difetto che quel parametro esiste per impedire, vedi il
+    # docstring di `watcher.py::watch_system`.
+    def watch_system(self, *, problems, integrations, log_entries):
+        self.chiamate.append({"problemi": problems, "integrazioni": integrations,
+                              "voci_di_log": log_entries})
+        return len(problems) + len(integrations) + len(log_entries)
 
 
 class _ClienteFinto:
     """Un `HAClient` finto: `problemi_esito` e' cio' che torna `problems()`,
     `registri_esito` la coppia `(registri, non_disponibili)` di
-    `read_registries()`."""
+    `read_registries()`, `log_esito` cio' che torna `system_log()` (Task 2)
+    -- di default un registro vuoto, cosi' i chiamanti esistenti che non
+    hanno nulla da dire sul registro di errori non devono aggiornarsi."""
 
-    def __init__(self, problemi_esito, registri_esito):
+    def __init__(self, problemi_esito, registri_esito, log_esito=None):
         self._problemi_esito = problemi_esito
         self._registri_esito = registri_esito
+        self._log_esito = log_esito if log_esito is not None else {"voci": []}
 
     async def problems(self):
         return self._problemi_esito
 
     async def read_registries(self):
         return self._registri_esito
+
+    async def system_log(self):
+        return self._log_esito
 
 
 def test_il_cliente_finto_combacia_con_haclient_leggi_registri():
@@ -312,6 +323,15 @@ def test_il_cliente_finto_combacia_con_haclient_leggi_registri():
     from hiris.app.proxy.ha_client import HAClient
     assert_stessa_firma(HAClient.read_registries, _ClienteFinto.read_registries,
                         nome="HAClient.read_registries")
+
+
+def test_il_cliente_finto_combacia_con_haclient_system_log():
+    """Stessa guardia, per la terza lettura (Task 2, «le tracce e il
+    log»): se `HAClient.system_log()` acquisisse un parametro, questa finta
+    duck-typed lo ignorerebbe in silenzio."""
+    from hiris.app.proxy.ha_client import HAClient
+    assert_stessa_firma(HAClient.system_log, _ClienteFinto.system_log,
+                        nome="HAClient.system_log")
 
 
 def test_guarda_condizioni_chiama_guarda_sistema_quando_le_due_letture_riescono():
@@ -357,6 +377,31 @@ def test_le_integrazioni_non_disponibili_saltano_il_giro_per_intero():
     cliente = _ClienteFinto(
         {"problemi": []},
         ({"integrazioni": []}, ["integrazioni"]))
+
+    esito = asyncio.run(watch_system_conditions(app, cliente))
+
+    assert esito is None
+    assert osservatore.chiamate == []
+
+
+def test_a_broken_log_read_skips_the_round_entirely():
+    """Stessa disciplina di `test_un_errore_di_problemi_salta_il_giro_per_intero`,
+    estesa alla terza lettura (Task 2, «le tracce e il log»): se
+    `system_log()` torna `{"errore": ...}`, `watch_system` non viene
+    chiamato -- un registro non letto trattato come vuoto chiuderebbe ogni
+    voce di log gia' aperta al secondo giro di isteresi.
+
+    Mutazione: togliere il controllo `if "errore" in log_report` da
+    `watch_system_conditions` -- `log_entries` diventa `[]` (nessuna voce
+    nel report d'errore) e il giro NON si salta piu': il test torna rosso
+    su `assert esito is None` (diventa `0`, il conteggio di
+    `_OsservatoreFinto.watch_system` su tre liste vuote).
+    """
+    osservatore = _OsservatoreFinto()
+    app = {"watcher": osservatore}
+    cliente = _ClienteFinto(
+        {"problemi": []}, ({"integrazioni": []}, []),
+        {"errore": "Home Assistant non ha risposto"})
 
     esito = asyncio.run(watch_system_conditions(app, cliente))
 

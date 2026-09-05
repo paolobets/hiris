@@ -166,7 +166,8 @@ class Watcher:
     # -- le condizioni di sistema --------------------------------------
 
     def watch_system(self, *, problems: list[dict] | None,
-                       integrations: list[dict] | None) -> int:
+                       integrations: list[dict] | None,
+                       log_entries: list[dict] | None) -> int:
         """Le condizioni di Home Assistant, nella STESSA forma dei cambi.
 
         Un'integrazione rotta non e' un cambio di stato di un'entita' -- ma il
@@ -176,6 +177,44 @@ class Watcher:
         Misurato sulla casa vera il 26/08: `repairs/list_issues` da' 4 problemi
         aperti, e `config_entries/get` da' 9 integrazioni non caricate su 53.
         `system_health/info` torna vuoto e non si usa.
+
+        **`log_entries` NON ha un valore predefinito**, per lo STESSO motivo
+        di `problems` e `integrations` qui sopra: nessuno dei tre e' `= None`.
+        `None` qui e' trattato esattamente come `[]` (`for e in log_entries or
+        []`) -- non «non l'ho letto», ma «nessuna condizione aperta», e dopo
+        `_ROUNDS_BEFORE_CLOSING` giri questo METODO chiude tutto cio' che
+        aveva aperto. Un default silenzioso trasformerebbe una dimenticanza
+        del chiamante (un parametro non passato) nello stesso segnale di
+        «ho guardato ed era tutto a posto» -- l'esatta bugia che questo
+        meccanismo esiste per non dire. Costringere ogni chiamante a essere
+        esplicito e' il prezzo, pagato una volta in `server.py::
+        watch_system_conditions` e nei test.
+
+        **Una voce del registro di errori (`HAClient.system_log()`, Task 1)
+        e' una condizione che dura, come un *repair* o un'integrazione
+        rotta**: compare, ricorre (HA la fa crescere di `count` invece di
+        scriverne una seconda), sparisce. Il soggetto rispecchia la chiave
+        con cui HA deduplica -- logger piu' posizione nel sorgente -- perche'
+        «la stessa riga letta a due giri» deve restare lo stesso soggetto
+        (vedi il commento accanto a `subject = f"log:..."` piu' sotto per la
+        terza parte di quella chiave, la causa radice, che qui non e'
+        esposta). La condizione (`a`) e' il LIVELLO (`error`, `warning`):
+        coerente con `setup_retry` qui sopra, la colonna porta la condizione
+        vera, non una costante. `domain` e `title` portano il logger e la
+        prima riga del messaggio, cosi' il grezzo resta autosufficiente anche
+        quando la voce sara' uscita dall'elenco di HA. `count` non si scrive:
+        e' un numero che HA continua a far crescere dentro il proprio
+        `DedupStore`, e scriverlo sarebbe la fotografia di un contatore
+        dentro un archivio che si scrive una volta sola -- cio' che questo
+        metodo tiene e' la DURATA dell'episodio, non quante volte e'
+        ricorso. `first_occurred` invece si usa, come istante di NASCITA:
+        l'episodio comincia quando HA dice che e' cominciato (verificato
+        alla fonte, `homeassistant/components/system_log/__init__.py`,
+        `LogEntry.__init__`: `self.first_occurred = self.timestamp =
+        record.created`, un epoch in secondi, NON una stringa ISO-8601 --
+        non e' lo stesso formato di `last_changed` che `watch_reading` legge
+        sopra, e va usato cosi' com'e', non attraverso `instant_epoch`), non
+        quando noi lo abbiamo notato al giro periodico.
 
         Gli stati che non sono un guasto (`_HEALTHY_INTEGRATION_STATES`) e le
         voci che il proprietario ha scelto di ignorare
@@ -229,12 +268,15 @@ class Watcher:
         dopo un solo mancato consecutivo, non due -- la stessa proprieta' che
         questo metodo esiste per garantire.
         """
-        # {soggetto: (condizione, dominio, titolo)}. Il soggetto resta
-        # l'IDENTITA' su cui girano `genre_for`, `self._conditions` e
+        # {soggetto: (condizione, dominio, titolo, nascita)}. Il soggetto
+        # resta l'IDENTITA' su cui girano `genre_for`, `self._conditions` e
         # `rebuild_conditions` (nessuno dei tre si tocca qui): cambiarne la
         # forma li romperebbe tutti e tre. Cio' che cambia e' cosa si scrive
-        # nella colonna `a` quando quel soggetto nasce.
-        open_now: dict[str, tuple[str, str | None, str | None]] = {}
+        # nella colonna `a` quando quel soggetto nasce. `nascita` e'
+        # `None` per un *repair* o un'integrazione (nasce all'istante del
+        # giro, `now` piu' sotto) e l'epoch di `first_occurred` per una voce
+        # di log (nasce quando HA dice che e' cominciata, vedi il docstring).
+        open_now: dict[str, tuple[str, str | None, str | None, float | None]] = {}
         for p in problems or []:
             if not isinstance(p, dict):
                 continue
@@ -242,7 +284,7 @@ class Watcher:
             which = str(p.get("issue_id") or "").strip()
             if domain and which:
                 # Nessun titolo per un `problema:` -- vedi il docstring.
-                open_now[f"problema:{domain}.{which}"] = ("aperto", domain, None)
+                open_now[f"problema:{domain}.{which}"] = ("aperto", domain, None, None)
         for i in integrations or []:
             if not isinstance(i, dict):
                 continue
@@ -264,7 +306,43 @@ class Watcher:
             ident = str(i.get("entry_id") or "").strip()
             if ident:
                 open_now[f"integrazione:{ident}"] = (
-                    state, _text_or_none(i.get("domain")), _text_or_none(i.get("title")))
+                    state, _text_or_none(i.get("domain")), _text_or_none(i.get("title")), None)
+        for entry in log_entries or []:
+            if not isinstance(entry, dict):
+                continue
+            name = str(entry.get("name") or "").strip()
+            level = _text_or_none(entry.get("level"))
+            source = entry.get("source")
+            source_file = source_line = None
+            if isinstance(source, (list, tuple)) and len(source) == 2:
+                source_file = _text_or_none(source[0])
+                source_line = source[1]
+            # Serve un logger, un livello e una posizione nel sorgente
+            # leggibile -- senza uno dei tre non c'e' un'identita' stabile su
+            # cui deduplicare, e aprire una condizione qui vorrebbe dire
+            # aprirne una col soggetto sbagliato (o una nuova ogni giro).
+            if not (name and level and source_file
+                    and isinstance(source_line, int) and not isinstance(source_line, bool)):
+                continue
+            message = entry.get("message")
+            title = (_text_or_none(message[0])
+                     if isinstance(message, list) and message else None)
+            first_occurred = entry.get("first_occurred")
+            # Verificato alla fonte (vedi il docstring del metodo):
+            # `first_occurred` e' un epoch (`record.created`), non una
+            # stringa ISO-8601 -- `bool` e' un sottotipo di `int` in Python,
+            # e non e' un istante.
+            birth = (float(first_occurred)
+                     if isinstance(first_occurred, (int, float))
+                     and not isinstance(first_occurred, bool) else None)
+            # Il soggetto rispecchia la chiave con cui HA deduplica -- logger
+            # piu' posizione nel sorgente -- perche' «la stessa riga letta a
+            # due giri» deve essere lo stesso soggetto. La terza parte della
+            # chiave di HA (la causa radice) non e' esposta nel dizionario:
+            # se due errori diversi dallo stesso punto collidessero, li
+            # vedremmo come uno. Dichiarato, non ignorato.
+            subject = f"log:{name}@{source_file}:{source_line}"
+            open_now[subject] = (level, name, title, birth)
 
         now = self._now()
         written = 0
@@ -288,12 +366,19 @@ class Watcher:
             self._missing_rounds.pop(seen_again, None)
 
         for born in sorted(open_set - already_open):
-            condition, domain, title = open_now[born]
+            condition, domain, title, birth = open_now[born]
             # `a` porta la CONDIZIONE VERA, non la costante "aperto": e'
             # letteralmente lo stato verso cui la cosa e' passata, e
             # `setup_retry` non e' `setup_error`. La chiusura resta "chiuso".
-            self._store.record(quando_ts=now, source="sistema", subject=born,
-                               da=None, a=condition, domain=domain, title=title)
+            #
+            # `quando_ts` e' `birth` quando la nascita ha un istante proprio
+            # (una voce di log, con `first_occurred`) e `now` altrimenti (un
+            # *repair* o un'integrazione, che HA non data): un *repair* o
+            # un'integrazione nascono quando NOI li notiamo, una voce di log
+            # nasce quando HA dice che e' cominciata -- vedi il docstring.
+            self._store.record(
+                quando_ts=now if birth is None else birth, source="sistema",
+                subject=born, da=None, a=condition, domain=domain, title=title)
             self._conditions.add(born)
             written += 1
 

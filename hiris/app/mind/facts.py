@@ -185,7 +185,8 @@ def genre_for(subject: str, aspect_: str | None) -> str | None:
     STESSA cosa. Una porta aperta con la chiave e un'integrazione Sonos rotta
     non sono lo stesso genere di fatto, e l'analista le trattera' in modo
     diverso: `"guasto"` resta per le condizioni di sistema (`problema:`,
-    `integrazione:`, un confine netto e facile da spiegare), `"sicurezza"` per
+    `integrazione:`, `log:` -- una voce del registro di errori, Task 2 «le
+    tracce e il log» -- un confine netto e facile da spiegare), `"sicurezza"` per
     tutta la gamba omonima. Qui il criterio e' `aspect_ == "sicurezza"`,
     qualunque sia il dominio, cosi' non serve ripetere l'elenco dei domini/
     classi che il pavimento gia' tiene.
@@ -203,7 +204,7 @@ def genre_for(subject: str, aspect_: str | None) -> str | None:
     `binary_sensor` di monossido -- che scatta davvero, con uno stato on/off
     -- resta dentro senza bisogno di nessuna soglia.
     """
-    if subject.startswith(("problema:", "integrazione:")):
+    if subject.startswith(("problema:", "integrazione:", "log:")):
         return "guasto"
     domain = subject.split(".")[0]
     if domain in _OPERABLE:
@@ -243,8 +244,16 @@ def _reading_aspect(subject: str, row: dict) -> str | None:
     nell'aggregazione, precisamente perche' i 22 giorni di grezzo permettano
     di rifarlo. Congelarlo in scrittura toglierebbe quella possibilita' il
     giorno in cui il pavimento cambiasse.
+
+    **`log:` e' un terzo prefisso senza gamba, non due volte lo stesso
+    controllo.** Una voce del registro di errori (Task 2) non e' un'entita':
+    cercarne la gamba con `baseline.aspect()` andrebbe a leggere `subject`
+    come se fosse un `entity_id` (`sensor.qualcosa`) che non e', per un
+    soggetto che ha gia' preso la sua strada in `genre_for` un rigo sopra
+    nel file -- lo stesso confine, in DUE funzioni diverse: qui decide la
+    gamba (nessuna), la' decide il genere (`"guasto"`).
     """
-    if subject.startswith(("problema:", "integrazione:")):
+    if subject.startswith(("problema:", "integrazione:", "log:")):
         return None
     return aspect(subject, {
         "device_class": row.get("device_class"),

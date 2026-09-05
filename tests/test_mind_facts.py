@@ -59,6 +59,18 @@ def test_il_genere_di_sicurezza_e_diverso_dal_guasto_di_sistema():
     assert "bilancio" in GENRES
 
 
+def test_a_log_subject_is_a_fault():
+    """Il terzo prefisso entra nello stesso confine netto degli altri due:
+    `genre_for` decide dal prefisso, e una voce di log e' una condizione di
+    sistema come un repair o un'integrazione rotta.
+
+    Mutazione: togliere `"log:"` dalla tupla dei prefissi -- il test torna
+    rosso su `assert genre_for("log:homeassistant.setup@setup.py:123", None)
+    == "guasto"`.
+    """
+    assert genre_for("log:homeassistant.setup@setup.py:123", None) == "guasto"
+
+
 def test_un_termostato_acceso_e_spento_diventa_UN_oggetto(archivio):
     archivio.record(quando_ts=ts(15, 30), source="entita",
                     subject="climate.camera_t", da="off", a="heat")
@@ -211,6 +223,40 @@ def test_a_fault_still_open_at_midnight_keeps_its_condition_and_domain(archivio)
     assert corpo["stato"] == "setup_error"
     assert corpo["dominio"] == "lifx"
     assert corpo["titolo"] == "Abat-jour"
+
+
+def test_a_log_entry_becomes_a_fault_object(archivio):
+    """Il terzo prefisso (Task 2, «le tracce e il log») attraversa la STESSA
+    aggregazione dei due gemelli qui sopra: nasce, dura, chiude -- `stato`
+    porta il livello, `dominio` il logger, `titolo` la prima riga del
+    messaggio, esattamente come per un'integrazione rotta.
+
+    Questo test esercita anche `_reading_aspect`: se tornasse la gamba di
+    un'entita' inesistente invece di `None` per un soggetto `log:`, nulla
+    qui cambierebbe (il dominio ricavato da un soggetto `log:` non puo' mai
+    combaciare con un dominio HA vero, per via del prefisso), quindi la sua
+    correttezza non ha una mutazione onesta che la uccida da sola -- e'
+    dichiarato, non taciuto. La mutazione che UCCIDE questo test e' nella
+    tupla di prefissi di `genre_for`: senza `"log:"` il soggetto non produce
+    nessun genere, `aggregate_day` non apre nessun episodio, e
+    `archivio.facts(day=G)` torna vuoto -- il test torna rosso su
+    `IndexError` nell'indicizzare `[0]`.
+    """
+    archivio.record(quando_ts=ts(9, 0), source="sistema",
+                    subject="log:homeassistant.components.hydrawise@hydrawise/coordinator.py:88",
+                    da=None, a="ERROR",
+                    domain="homeassistant.components.hydrawise", title="403 Forbidden")
+    archivio.record(quando_ts=ts(11, 0), source="sistema",
+                    subject="log:homeassistant.components.hydrawise@hydrawise/coordinator.py:88",
+                    da="ERROR", a="chiuso")
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+    o = archivio.facts(day=G)[0]
+    assert o["genere"] == "guasto"
+    assert o["fine_ts"] is not None
+    corpo = o["corpo"]
+    assert corpo["stato"] == "ERROR"
+    assert corpo["dominio"] == "homeassistant.components.hydrawise"
+    assert corpo["titolo"] == "403 Forbidden"
 
 
 def test_i_sensori_da_soli_NON_generano_oggetti(archivio):
