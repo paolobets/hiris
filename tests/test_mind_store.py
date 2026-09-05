@@ -31,7 +31,8 @@ def test_un_cambio_si_rilegge_intero(archivio):
     righe = archivio.readings(from_ts=0.0, to_ts=ADESSO + 1)
     assert righe == [{"quando_ts": ADESSO, "fonte": "entita",
                       "soggetto": "climate.camera_t", "da": "off", "a": "heat",
-                      "device_class": None, "state_class": None, "source_type": None}]
+                      "device_class": None, "state_class": None, "source_type": None,
+                      "domain": None, "title": None}]
 
 
 def test_annota_scrive_le_tre_classi_quando_ci_sono(archivio):
@@ -255,6 +256,58 @@ def test_cambi_filtro_per_fonte(archivio):
                     subject="light.salotto", da="off", a="on")
     righe = archivio.readings(from_ts=0.0, to_ts=ADESSO + 3, source="sistema")
     assert [r["soggetto"] for r in righe] == ["problema:sonos.subscriptions_failed"]
+
+
+def test_a_change_carries_the_domain_and_the_title(tmp_path):
+    """Il grezzo dev'essere autosufficiente: fra tre settimane la voce di
+    configurazione potrebbe non esistere piu', e la riga deve dire ancora
+    cosa si era rotto.
+
+    Mutazione: non passare `domain`/`title` alla INSERT -- il test torna
+    rosso su `assert row["domain"] == "lifx"`.
+    """
+    store = ObservationsStore(str(tmp_path / "oss.db"))
+    store.record(quando_ts=1000.0, source="sistema",
+                 subject="integrazione:01ABC", da=None, a="setup_retry",
+                 domain="lifx", title="Abat-jour")
+    row = store.readings(from_ts=0, to_ts=2000)[0]
+    assert row["domain"] == "lifx"
+    assert row["title"] == "Abat-jour"
+    assert row["a"] == "setup_retry"
+    store.close()
+
+
+def test_migration_3_adds_the_columns_to_an_old_archive(tmp_path):
+    """Il caso che conta e' l'archivio del proprietario al primo avvio dopo
+    l'aggiornamento, non uno nato oggi.
+
+    Mutazione: togliere la 3 da `_MIGRATIONS` -- il test torna rosso su
+    `assert "domain" in columns`.
+    """
+    path = str(tmp_path / "oss.db")
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        "CREATE TABLE cambi (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " quando_ts REAL NOT NULL, fonte TEXT NOT NULL, soggetto TEXT NOT NULL,"
+        " da TEXT, a TEXT, device_class TEXT, state_class TEXT, source_type TEXT);"
+        "CREATE TABLE oggetti (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " giorno TEXT NOT NULL, genere TEXT NOT NULL, protagonista TEXT NOT NULL,"
+        " inizio_ts REAL NOT NULL, fine_ts REAL, corpo_json TEXT NOT NULL);"
+        "INSERT INTO cambi(quando_ts,fonte,soggetto,da,a)"
+        " VALUES(900.0,'sistema','integrazione:01OLD',NULL,'aperto');"
+        "PRAGMA user_version = 2;")
+    conn.commit()
+    conn.close()
+
+    store = ObservationsStore(path)
+    columns = [r[1] for r in store._conn.execute("PRAGMA table_info(cambi)")]
+    assert "domain" in columns
+    assert "title" in columns
+    assert columns.count("domain") == 1
+    old = store.readings(from_ts=0, to_ts=2000)[0]
+    assert old["domain"] is None          # la riga vecchia resta leggibile
+    assert old["a"] == "aperto"
+    store.close()
 
 
 def test_un_archivio_vecchio_si_migra_senza_perdere_le_righe(tmp_path):

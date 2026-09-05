@@ -26,7 +26,9 @@ primo.
 from __future__ import annotations
 
 import json
+import sqlite3
 import threading
+from contextlib import suppress
 
 from ..storage import connect, init_schema
 
@@ -70,6 +72,19 @@ def _migration_2(conn) -> None:
         if column not in existing:
             conn.execute(f"ALTER TABLE cambi ADD COLUMN {column} TEXT")
 
+
+def _migration_3(conn) -> None:
+    """`CREATE TABLE IF NOT EXISTS` non tocca una tabella che esiste gia':
+    senza queste due colonne il primo `record` dopo l'aggiornamento
+    fallirebbe, e l'osservatore smetterebbe di scrivere.
+
+    Le righe scritte prima rileggono `None` su entrambe -- e' vero: quelle
+    righe quei fatti non li avevano.
+    """
+    for column in ("domain", "title"):
+        with suppress(sqlite3.OperationalError):
+            conn.execute(f"ALTER TABLE cambi ADD COLUMN {column} TEXT")
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS cambi (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -80,7 +95,17 @@ CREATE TABLE IF NOT EXISTS cambi (
     a TEXT,
     device_class TEXT,
     state_class TEXT,
-    source_type TEXT
+    source_type TEXT,
+    -- Le colonne NUOVE si scrivono in inglese (decisione del proprietario,
+    -- 04/09/2026). Le italiane qui sopra sono debito in attesa della fetta
+    -- «il vocabolario del dato», non un modello da imitare.
+    --
+    -- Dominio e titolo della voce di configurazione: Home Assistant li manda
+    -- e finora si buttavano. Stanno nel GREZZO e non si risolvono dopo
+    -- dall'anagrafe, perche' fra tre settimane quella voce potrebbe non
+    -- esistere piu' e la riga deve dire ancora cosa si era rotto.
+    domain TEXT,
+    title TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_cambi_quando ON cambi(quando_ts);
 CREATE INDEX IF NOT EXISTS idx_cambi_soggetto ON cambi(soggetto, quando_ts);
@@ -102,7 +127,8 @@ def _reading_row(r) -> dict:
     return {"quando_ts": r["quando_ts"], "fonte": r["fonte"],
             "soggetto": r["soggetto"], "da": r["da"], "a": r["a"],
             "device_class": r["device_class"], "state_class": r["state_class"],
-            "source_type": r["source_type"]}
+            "source_type": r["source_type"],
+            "domain": r["domain"], "title": r["title"]}
 
 
 def _fact_row(r) -> dict:
@@ -119,7 +145,8 @@ class ObservationsStore:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=2, migrations={2: _migration_2})
+        init_schema(self._conn, _SCHEMA, version=3,
+                    migrations={2: _migration_2, 3: _migration_3})
 
     def close(self) -> None:
         with self._lock:
@@ -130,7 +157,8 @@ class ObservationsStore:
     def record(self, *, quando_ts: float, source: str, subject: str,
                da, a, device_class: str | None = None,
                state_class: str | None = None,
-               source_type: str | None = None) -> None:
+               source_type: str | None = None,
+               domain: str | None = None, title: str | None = None) -> None:
         """Un cambio, cosi' com'e'. **Nessun giudizio in scrittura**: e' la
         condizione da cui dipende tutto il resto -- una decisione presa qui non
         si corregge piu', una presa in aggregazione si'.
@@ -145,14 +173,22 @@ class ObservationsStore:
         rilegge la riga, giorni dopo che l'evento e' passato. Tutti e tre
         annullabili: le condizioni di sistema non li portano, e una riga
         scritta prima che queste colonne esistessero li rilegge come `None`.
+
+        `domain` e `title` sono dominio e titolo della voce di configurazione
+        di una condizione di SISTEMA (`watcher.py::watch_system`) -- **grezzo
+        anche loro**: stanno qui perche' fra tre settimane la voce potrebbe
+        non esistere piu', e la riga deve dire ancora cosa si era rotto.
+        Annullabili: le condizioni di entita' non li portano, e un `problema:`
+        (un *repair* di Home Assistant) non ha un titolo -- `title=None` e'
+        un campo vuoto dichiarato, non un buco.
         """
         with self._lock:
             self._conn.execute(
                 "INSERT INTO cambi(quando_ts,fonte,soggetto,da,a,device_class,"
-                "state_class,source_type) VALUES(?,?,?,?,?,?,?,?)",
+                "state_class,source_type,domain,title) VALUES(?,?,?,?,?,?,?,?,?,?)",
                 (float(quando_ts), source, subject,
                  None if da is None else str(da), None if a is None else str(a),
-                 device_class, state_class, source_type))
+                 device_class, state_class, source_type, domain, title))
             self._conn.commit()
 
     def readings(self, *, from_ts: float, to_ts: float, subject: str | None = None,

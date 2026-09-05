@@ -161,25 +161,43 @@ class Watcher:
         (`_IGNORED_INTEGRATION_SOURCE`) non contano: vedi i commenti accanto
         alle due costanti.
 
+        **`open_now` porta la condizione vera, non solo il soggetto.** Prima
+        qui si buttavano `domain`, `title` e `state` -- letti da questo stesso
+        dizionario tre righe sopra per DECIDERE se un'integrazione e' un
+        guasto, e poi scartati. Misurato sulla casa vera: il soggetto piu'
+        raccontato dell'intero archivio (34 oggetti su 285 in nove giorni) era
+        proprio un'integrazione, e nessuna riga diceva cosa si fosse rotto.
+        Per i `problema:` (i *repairs*) non c'e' un titolo (verificato alla
+        fonte su `ws_list_issues`, `components/repairs/websocket_api.py`: la
+        riga porta `domain`, `issue_id`, `severity`, non un titolo) ne' uno
+        stato graduato come per le integrazioni -- la condizione resta
+        `"aperto"`, ed e' l'unica vera per un *repair*, non un ripiego.
+
         **`self._conditions` si aggiorna incrementalmente**, un soggetto alla
         volta dopo ogni `record` riuscita -- non in blocco alla fine. Se
-        `record` solleva a meta', le righe «aperto» gia' scritte devono
-        restare ricordate: altrimenti il giro successivo le riscriverebbe con
-        un istante piu' tardo, cioe' due «aperto» per lo stesso soggetto e una
+        `record` solleva a meta', le righe gia' scritte devono restare
+        ricordate: altrimenti il giro successivo le riscriverebbe con un
+        istante piu' tardo, cioe' due aperture per lo stesso soggetto e una
         data di nascita ambigua per chi aggrega. Qui e' legittimo che
         l'eccezione propaghi -- il «mai sollevare» vale per `watch_reading` e
         per la ricostruzione, non per questo metodo, che gira dentro un lavoro
         periodico -- ma la memoria deve restare coerente con cio' che e' stato
         davvero scritto.
         """
-        open_conditions: set[str] = set()
+        # {soggetto: (condizione, dominio, titolo)}. Il soggetto resta
+        # l'IDENTITA' su cui girano `genre_for`, `self._conditions` e
+        # `rebuild_conditions` (nessuno dei tre si tocca qui): cambiarne la
+        # forma li romperebbe tutti e tre. Cio' che cambia e' cosa si scrive
+        # nella colonna `a` quando quel soggetto nasce.
+        open_now: dict[str, tuple[str, str | None, str | None]] = {}
         for p in problems or []:
             if not isinstance(p, dict):
                 continue
             domain = str(p.get("domain") or "").strip()
             which = str(p.get("issue_id") or "").strip()
             if domain and which:
-                open_conditions.add(f"problema:{domain}.{which}")
+                # Nessun titolo per un `problema:` -- vedi il docstring.
+                open_now[f"problema:{domain}.{which}"] = ("aperto", domain, None)
         for i in integrations or []:
             if not isinstance(i, dict):
                 continue
@@ -190,16 +208,21 @@ class Watcher:
                 continue
             ident = str(i.get("entry_id") or "").strip()
             if ident:
-                open_conditions.add(f"integrazione:{ident}")
+                open_now[f"integrazione:{ident}"] = (
+                    state, _text_or_none(i.get("domain")), _text_or_none(i.get("title")))
 
         now = self._now()
         written = 0
-        for born in sorted(open_conditions - self._conditions):
-            self._store.record(quando_ts=now, source="sistema",
-                                  subject=born, da=None, a="aperto")
+        for born in sorted(set(open_now) - self._conditions):
+            condition, domain, title = open_now[born]
+            # `a` porta la CONDIZIONE VERA, non la costante "aperto": e'
+            # letteralmente lo stato verso cui la cosa e' passata, e
+            # `setup_retry` non e' `setup_error`. La chiusura resta "chiuso".
+            self._store.record(quando_ts=now, source="sistema", subject=born,
+                               da=None, a=condition, domain=domain, title=title)
             self._conditions.add(born)
             written += 1
-        for ended in sorted(self._conditions - open_conditions):
+        for ended in sorted(self._conditions - set(open_now)):
             self._store.record(quando_ts=now, source="sistema",
                                   subject=ended, da="aperto", a="chiuso")
             self._conditions.discard(ended)

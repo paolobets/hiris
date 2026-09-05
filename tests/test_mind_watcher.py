@@ -186,7 +186,16 @@ def test_guarda_cambio_con_archivio_rotto_non_solleva():
 
 def test_un_problema_di_HA_diventa_un_cambio(coppia):
     """Un'integrazione rotta non e' un cambio di stato -- ma il suo COMPARIRE
-    lo e'. Cosi' la riga del grezzo resta una sola."""
+    lo e'. Cosi' la riga del grezzo resta una sola.
+
+    Un `problema:` (un *repair* di Home Assistant) porta `domain` ma non un
+    titolo -- `ws_list_issues` non ne manda uno (verificato alla fonte,
+    `components/repairs/websocket_api.py`): `title=None` e' un campo vuoto
+    dichiarato, non un buco.
+
+    Mutazione: passare `title=domain` invece di `title=None` per i
+    `problema:` -- il test torna rosso su `assert ...["title"] is None`.
+    """
     archivio, osservatore = coppia
     scritti = osservatore.watch_system(
         problems=[{"domain": "sonos", "issue_id": "subscriptions_failed",
@@ -196,6 +205,8 @@ def test_un_problema_di_HA_diventa_un_cambio(coppia):
     assert archivio.annotati[0]["source"] == "sistema"
     assert archivio.annotati[0]["subject"] == "problema:sonos.subscriptions_failed"
     assert archivio.annotati[0]["a"] == "aperto"
+    assert archivio.annotati[0]["domain"] == "sonos"
+    assert archivio.annotati[0]["title"] is None
 
 
 def test_un_problema_che_sparisce_diventa_un_cambio(coppia):
@@ -224,7 +235,18 @@ def test_un_integrazione_ROTTA_diventa_un_cambio(coppia):
     che questo metodo trattava come guasto, **una sola era rotta davvero**
     (`lifx / Abat-jour`, `setup_retry`). Le altre otto erano `not_loaded` --
     lo stato INIZIALE, non un errore -- e per giunta tutte ignorate dal
-    proprietario."""
+    proprietario.
+
+    **Il difetto misurato sulla casa vera**: `integrazione:<entry_id>` era il
+    soggetto piu' raccontato dell'intero archivio (34 oggetti su 285 in nove
+    giorni) e nessuna riga diceva cosa si fosse rotto -- `domain`, `title` e
+    `state` si leggevano per decidere il guasto e poi si scartavano. Qui si
+    verifica che restino: `a` porta la condizione VERA (`setup_retry`, non la
+    costante `"aperto"`), `domain` e `title` la voce di configurazione.
+
+    Mutazione: tornare a scrivere `a="aperto"` invece della condizione vera --
+    il test torna rosso su `assert ...["a"] == "setup_retry"`.
+    """
     archivio, osservatore = coppia
     scritti = osservatore.watch_system(
         problems=[],
@@ -234,6 +256,9 @@ def test_un_integrazione_ROTTA_diventa_un_cambio(coppia):
                        "domain": "sonos", "state": "loaded"}])
     assert scritti == 1
     assert archivio.annotati[0]["subject"] == "integrazione:abc"
+    assert archivio.annotati[0]["a"] == "setup_retry"
+    assert archivio.annotati[0]["domain"] == "lifx"
+    assert archivio.annotati[0]["title"] == "Abat-jour"
 
 
 def test_not_loaded_NON_e_un_guasto(coppia):
