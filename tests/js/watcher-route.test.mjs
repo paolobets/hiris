@@ -583,6 +583,59 @@ test('seam _rendiOggetti: un guasto ancora aperto lo dice esplicitamente', () =>
     'un protagonista "problema:" diventa un nome leggibile, come in tree-route.js');
 });
 
+// Onda finale, rilievo 1 (revisione di ramo): dal Task 2 `corpo.stato` porta
+// la condizione VERA (`setup_retry`, `setup_error`, ...), mai la costante
+// "aperto" -- ma un'integrazione con quella condizione e' comunque APERTA
+// (`fine_ts: null`). Il codice di prima decideva "ancora aperto" da
+// `c.stato === 'aperto'`: per questo episodio sarebbe rimasto rosso muto,
+// mostrando solo "stato: setup_retry" senza mai dire che e' ancora aperto.
+// Mutazione ESEGUITA per provarlo: ripristinare
+// `c.stato === 'aperto' ? 'ancora aperto' : 'stato: ' + (c.stato || '?')`
+// in `mainPhrase` -- il test torna rosso su
+// `assert.match(corpo.textContent, /ancora aperto/)` (il testo diventa
+// "stato: setup_retry", senza "ancora aperto").
+test('seam _rendiOggetti: un\'integrazione con una condizione vera (non "aperto") e fine_ts nullo e\' comunque "ancora aperto"', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisWatcherRoute._rendiOggetti(corpo, [{
+    id: 1, genere: 'guasto', protagonista: 'integrazione:01ABC',
+    inizio_ts: 1, fine_ts: null,
+    corpo: { stato: 'setup_retry', dominio: 'lifx', titolo: 'Abat-jour' },
+  }], null);
+  assert.match(corpo.textContent, /ancora aperto/,
+    '"in corso" si decide da fine_ts, non da uno stato che dal Task 2 non vale mai "aperto"');
+  assert.match(corpo.textContent, /stato: setup_retry/,
+    'la condizione vera resta mostrata, come informazione nuova');
+  assert.match(corpo.textContent, /Abat-jour/,
+    'il nome leggibile (corpo.titolo) sostituisce l\'identificativo opaco quando c\'e\'');
+  assert.doesNotMatch(corpo.textContent, /01ABC/,
+    'con titolo/dominio presenti l\'identificativo opaco non deve piu\' comparire');
+});
+
+// Onda finale, rilievo 1 (revisione di ramo): per un `problema:` `stato`
+// resta "aperto" anche a episodio CHIUSO (spec §2.3) -- il difetto misurato
+// e rimasto sullo schermo perche' il codice di prima leggeva "ancora
+// aperto" da `c.stato`, non da `fine_ts`. Mutazione ESEGUITA per provarlo:
+// stessa mutazione di sopra (ripristinare la vecchia `mainPhrase` per
+// "guasto") -- il test torna rosso su
+// `assert.doesNotMatch(corpo.textContent, /ancora aperto/)` (l'episodio
+// chiuso mostrerebbe di nuovo "ancora aperto").
+test('seam _rendiOggetti: un `problema:` con stato ancora "aperto" ma fine_ts valorizzato non dice "ancora aperto"', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisWatcherRoute._rendiOggetti(corpo, [{
+    id: 1, genere: 'guasto', protagonista: 'problema:hue.bridge_offline',
+    inizio_ts: 1, fine_ts: 2,
+    corpo: { stato: 'aperto' },
+  }], null);
+  assert.doesNotMatch(corpo.textContent, /ancora aperto/,
+    'un episodio chiuso (fine_ts valorizzato) non deve mai dire "ancora aperto", ' +
+    'anche se `corpo.stato` resta "aperto" per costruzione (spec §2.3)');
+  assert.match(corpo.textContent, /chiuso/);
+  assert.match(corpo.textContent, /stato: aperto/,
+    'la condizione resta mostrata per quello che e\', non nascosta');
+});
+
 test('seam _rendiOggetti: comprimari e misure stanno dietro un rivelatore sincrono, chiuso di default', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');

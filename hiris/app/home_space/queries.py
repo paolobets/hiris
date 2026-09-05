@@ -875,12 +875,10 @@ def _view_integration(home_space: dict, state: dict, reference,
     `sensor.uptime` porta un istante VALIDO nello specchio degli stati --
     passato per lo stesso `instant_epoch` che valida `mute_da` poche righe
     sotto, non la sola verita' Python. Serve: `unavailable` e `unknown`
-    sono le sentinelle che Home Assistant scrive quando l'integrazione
-    Uptime e' disabilitata-ma-non-rimossa o non ha ancora scritto al primo
-    giro dopo l'avvio -- STRINGHE PIENE, non `None` ne' stringa vuota, che
-    una guardia di sola truthiness lascerebbe passare come se fossero un
-    istante (rilievo di revisione, 05/09: la funzione usa gia' quelle due
-    stesse stringhe per classificare le entita' mute, poche righe sopra --
+    sono STRINGHE PIENE, non `None` ne' stringa vuota, che una guardia di
+    sola truthiness lascerebbe passare come se fossero un istante (rilievo
+    di revisione, 05/09: la funzione usa gia' quelle due stesse stringhe
+    come sentinelle per classificare le entita' mute, poche righe sopra --
     ignorarle qui per lo stesso sensore sarebbe incoerente). Dove
     `sensor.uptime` manca, o e' una di quelle sentinelle, o non e' un
     istante valido, la chiave non esce affatto: l'assenza e' assenza, mai

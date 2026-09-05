@@ -368,7 +368,17 @@ window.HirisWatcherRoute = (function () {
       return base;
     }
     if (o.genere === 'guasto') {
-      return c.stato === 'aperto' ? 'ancora aperto' : 'stato: ' + (c.stato || '?');
+      /* Correzione onda finale, rilievo 1: "in corso" si decide da
+         `fine_ts` (come gia' fa `period()` qui sopra), non da `c.stato`.
+         Dal Task 2 `stato` porta la condizione VERA (`setup_retry`,
+         `setup_error`, ...), che per un'integrazione non vale mai
+         "aperto" nemmeno a episodio aperto -- e per un `problema:` resta
+         "aperto" anche a episodio chiuso (spec §2.3). Le due domande sono
+         indipendenti: questa riga risponde alla prima con `fine_ts`, poi
+         mostra sempre la condizione come tale, mai come sinonimo di
+         aperto/chiuso. */
+      var aperto = o.fine_ts == null ? 'ancora aperto' : 'chiuso';
+      return c.stato != null ? aperto + ' · stato: ' + c.stato : aperto;
     }
     return c.stato != null ? 'stato: ' + c.stato : '(nessun dettaglio)';
   }
@@ -395,9 +405,19 @@ window.HirisWatcherRoute = (function () {
 
   /* `problema:dominio.id` / `integrazione:entry_id` -> un nome leggibile.
      Stessa idea di `nomiRegistriInItaliano` in tree-route.js: un prefisso
-     tecnico non deve restare tale e quale sulla pagina. */
+     tecnico non deve restare tale e quale sulla pagina.
+
+     Correzione onda finale, rilievo 1: dal Task 2 il corpo di un guasto
+     porta `dominio`/`titolo` quando la riga che ha aperto l'episodio li
+     portava (vedi `facts.py`, `close()`) -- un nome leggibile che questa
+     funzione ignorava, mostrando l'identificativo opaco (`entry_id`) anche
+     quando il dato buono era gia' li'. Quando ci sono si usano loro;
+     l'identificativo resta il ripiego per le righe vecchie che non li
+     hanno. */
   function protagonistName(o) {
     var s = o.protagonista || '';
+    var c = o.corpo || {};
+    if (c.titolo) return c.dominio ? c.titolo + ' (' + c.dominio + ')' : c.titolo;
     if (s.indexOf('problema:') === 0) return 'Problema Home Assistant: ' + s.slice('problema:'.length);
     if (s.indexOf('integrazione:') === 0) return 'Integrazione non caricata: ' + s.slice('integrazione:'.length);
     return s;

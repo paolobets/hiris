@@ -1352,10 +1352,8 @@ def test_without_the_uptime_sensor_the_key_is_absent():
 
 
 def test_an_unavailable_uptime_sensor_is_not_an_instant():
-    """`unavailable`/`unknown` sono le sentinelle che Home Assistant scrive
-    quando l'integrazione Uptime e' disabilitata-ma-non-rimossa, o non ha
-    ancora scritto al primo giro dopo l'avvio -- STRINGHE PIENE, non `None`
-    ne' vuote. La stessa funzione le usa gia' per classificare le entita'
+    """`unavailable`/`unknown` sono STRINGHE PIENE, non `None` ne' vuote. La
+    stessa funzione le usa gia' come sentinelle per classificare le entita'
     mute (`mute`/`unknown`, poche righe sopra): ignorarle qui, per lo stesso
     sensore, spaccerebbe una parola per un istante.
 

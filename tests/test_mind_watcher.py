@@ -643,9 +643,9 @@ def test_two_missing_rounds_close_the_episode(coppia):
     la condizione la chiudono. Senza questa prova la soglia potrebbe
     crescere all'infinito senza che nessuno se ne accorga.
 
-    Gia' verde col codice di OGGI (che chiude al primo giro mancante): la si
-    tiene comunque, perche' e' la prova che l'isteresi non diventa un
-    rifiuto di chiudere.
+    Gia' verde col codice di OGGI (che chiude dopo due giri mancanti
+    consecutivi, l'isteresi di questo task): la si tiene comunque, perche'
+    e' la prova che l'isteresi non diventa un rifiuto di chiudere.
 
     Mutazione: alzare la soglia a tre giri -- il test torna rosso su
     `assert len(closures) == 1`.
@@ -692,14 +692,14 @@ def test_the_reset_survives_a_record_failure_on_a_different_subject(coppia):
     """
     archivio = _FintoArchivio(annota_solleva_per={"problema:rotto.x"})
     osservatore = Watcher(archivio, now=lambda: 1787572800.0)
-    buona = {"domain": "buona", "issue_id": "b", "severity": "error"}
-    rotta = {"domain": "rotto", "issue_id": "x", "severity": "error"}
-    osservatore.watch_system(problems=[buona], integrations=[])   # giro 1: buona.b apre
-    osservatore.watch_system(problems=[], integrations=[])        # giro 2: buona.b assente (1)
+    healthy = {"domain": "buona", "issue_id": "b", "severity": "error"}
+    broken = {"domain": "rotto", "issue_id": "x", "severity": "error"}
+    osservatore.watch_system(problems=[healthy], integrations=[])  # giro 1: buona.b apre
+    osservatore.watch_system(problems=[], integrations=[])         # giro 2: buona.b assente (1)
     with pytest.raises(RuntimeError):
         # giro 3: buona.b RICOMPARE (deve azzerarsi) mentre rotto.x NASCE e
         # il suo `record` solleva -- l'eccezione propaga.
-        osservatore.watch_system(problems=[buona, rotta], integrations=[])
+        osservatore.watch_system(problems=[healthy, broken], integrations=[])
     osservatore.watch_system(problems=[], integrations=[])        # giro 4: assente (1, non 2)
     closures = [r for r in archivio.annotati if r["a"] == "chiuso"]
     assert closures == []

@@ -281,8 +281,9 @@ def test_migration_3_adds_the_columns_to_an_old_archive(tmp_path):
     """Il caso che conta e' l'archivio del proprietario al primo avvio dopo
     l'aggiornamento, non uno nato oggi.
 
-    Mutazione: togliere la 3 da `_MIGRATIONS` -- il test torna rosso su
-    `assert "domain" in columns`.
+    Mutazione: togliere `3: _migration_3` dal dizionario `migrations`
+    passato a `init_schema` in `ObservationsStore.__init__` (`mind/store.py`)
+    -- il test torna rosso su `assert "domain" in columns`.
     """
     path = str(tmp_path / "oss.db")
     conn = sqlite3.connect(path)
