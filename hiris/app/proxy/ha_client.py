@@ -1481,6 +1481,109 @@ class HAClient:
             return {"errore": "risposta in forma inattesa"}
         return {"voci": result}
 
+    async def automation_traces(self, entity_id: str) -> dict:
+        """Le esecuzioni RECENTI di un'automazione, cosi' come HA le riassume.
+
+        `trace/list`, WS, `require_admin` (HIRIS parla col token del
+        Supervisor, quindi lo puo' chiamare). Verificato alla fonte
+        (`homeassistant/components/trace/websocket_api.py`, funzione
+        `websocket_trace_list`; `trace/util.py`, `async_list_traces`): il
+        comando vuole `domain` e `item_id` SEPARATI, non l'`entity_id` intero
+        -- HA stesso li ricompone con `key = f"{msg['domain']}.{msg['item_id']}"`
+        -- quindi qui si spacca sul primo punto, come fa HA.
+
+        Stessa trappola di `system_log()`, verificata di nuovo alla fonte
+        invece di darla per scontata perche' gia' vista una volta: il
+        risultato e' una LISTA NUDA (`async_list_traces(...) ->
+        list[dict[str, Any]]`), non un dizionario con una chiave come
+        `repairs/list_issues`.
+
+        Restituisce `{"tracce": [...]}` con le righe cosi' come HA le manda
+        (`ActionTrace.as_short_dict()`, `trace/models.py`, verificato): `run_id`,
+        `state`, `script_execution`, `timestamp` (`start`/`finish`), `domain`,
+        `item_id`, `last_step`, e -- solo quando presenti -- `not_triggered`
+        ed `error`. Come `problems()` e `system_log()`, il client legge e non
+        giudica: cosa dire e cosa tacere e' di chi compone.
+
+        **Il fatto che decide la forma del Task successivo**, verificato alla
+        fonte e non ipotizzato: HA non conserva tutte le esecuzioni.
+        `stored_traces` (`homeassistant/components/trace/const.py`,
+        `DEFAULT_STORED_TRACES = 5`) e' configurabile per automazione in YAML
+        (`trace: stored_traces: N` -- schema in
+        `homeassistant/components/automation/config.py`, che importa
+        `TRACE_CONFIG_SCHEMA` da `trace/__init__.py`); per difetto e' 5. Un
+        dettaglio che il capitolato non dice e che questa lettura ha trovato:
+        il tetto e' PER SECCHIO, non per automazione -- le esecuzioni
+        scattate (`runs`) e quelle valutate ma non scattate (`not_triggered`)
+        vivono in due `LimitedSizeDict` distinti, ciascuno capato a
+        `stored_traces` (`trace/util.py`, classe `TraceBuckets` e funzione
+        `async_store_trace`): un'automazione puo' avere fino al DOPPIO di
+        `stored_traces` tracce vive, non `stored_traces`.
+
+        `{"errore": ...}` su guasto, per la stessa ragione di `problemi` e
+        `voci`: un elenco vuoto affermerebbe «questa automazione non ha mai
+        girato», che e' un'affermazione, non un silenzio.
+        """
+        domain, _, item_id = entity_id.partition(".")
+        try:
+            msg = await self._ws_batch(
+                [("trace/list", {"domain": domain, "item_id": item_id})])
+        except Exception as e:
+            logger.debug("tracce di %s non lette: %s", entity_id, e)
+            return {"errore": "Home Assistant non ha risposto"}
+        msg = msg[0] if msg else None
+        if msg and msg.get("error"):
+            error = msg["error"]
+            return {"errore": error.get("message") or error.get("code") or "rifiutato"}
+        result = msg.get("result") if msg else None
+        if not isinstance(result, list):
+            return {"errore": "risposta in forma inattesa"}
+        return {"tracce": result}
+
+    async def automation_trace(self, entity_id: str, run_id: str) -> dict:
+        """UNA esecuzione di un'automazione, con la storia intera del suo
+        grafo di passi.
+
+        `trace/get`, WS, `require_admin`. Stessa fonte di
+        `automation_traces()` (`homeassistant/components/trace/websocket_api.py`,
+        funzione `websocket_trace_get`; `trace/util.py`, `async_get_trace`):
+        stessi `domain`/`item_id` spaccati dall'`entity_id`, piu' `run_id` --
+        la chiave che `trace/list` ha gia' dato in `run_id`.
+
+        A differenza di `trace/list`, qui il risultato E' un dizionario
+        (`ActionTrace.as_extended_dict()`, `trace/models.py`, verificato):
+        tutti i campi di `as_short_dict()` (vedi `automation_traces()`) piu'
+        `trace` (il grafo: per ogni nodo eseguito, la lista dei suoi passi),
+        `config`, `blueprint_inputs`, `context`. Il client legge e non
+        giudica, come ovunque in questo file.
+
+        Se `run_id` e' gia' caduto fuori dalle tracce conservate, HA non
+        manda un vuoto: `websocket_trace_get` intercetta il `KeyError` di
+        `async_get_trace` e risponde con un errore esplicito
+        (`ERR_NOT_FOUND`, "The trace could not be found", verificato alla
+        stessa fonte) -- arriva qui come lo stesso `{"errore": ...}` di ogni
+        altro rifiuto, non come un caso a parte da distinguere.
+
+        `{"errore": ...}` su ogni guasto di lettura, stessa disciplina di
+        `automation_traces()` e di tutto il resto del file.
+        """
+        domain, _, item_id = entity_id.partition(".")
+        try:
+            msg = await self._ws_batch(
+                [("trace/get", {"domain": domain, "item_id": item_id,
+                                "run_id": run_id})])
+        except Exception as e:
+            logger.debug("traccia %s/%s non letta: %s", entity_id, run_id, e)
+            return {"errore": "Home Assistant non ha risposto"}
+        msg = msg[0] if msg else None
+        if msg and msg.get("error"):
+            error = msg["error"]
+            return {"errore": error.get("message") or error.get("code") or "rifiutato"}
+        result = msg.get("result") if msg else None
+        if not isinstance(result, dict):
+            return {"errore": "risposta in forma inattesa"}
+        return {"traccia": result}
+
     # Le sette direzioni, dedotte da `translation_key` -- tabella ESPLICITA,
     # non una regex sui nomi. Misurata sulla casa vera il 27/08/2026,
     # sull'integrazione `zcsazzurro`: quattordici chiavi, sette direzioni,
