@@ -2076,6 +2076,71 @@ def test_an_unresolvable_automation_is_skipped_without_writing_anything():
     assert [c[:2] for c in watcher.calls] == [("automation.buona", "error")]
 
 
+def test_an_unresolvable_automation_is_shouted_once_then_whispered(caplog):
+    """Un'automazione irrisolvibile lo resta per tutta la vita del processo
+    (`marked_automations()` non si svuota mai): un WARNING a ogni cadenza
+    sarebbero 720 avvisi al giorno per una condizione che non puo' cambiare a
+    caldo -- il rumore sano che seppellisce la rotta, applicato ai log. Il
+    fatto non si tace, cambia di livello: WARNING la prima volta per entita',
+    DEBUG le successive.
+
+    **Il livello si asserisce, non il testo**: un test che guardasse solo «e'
+    stato loggato qualcosa» resterebbe verde con tre WARNING di fila, che e'
+    esattamente il difetto.
+
+    Mutazione (verificata eseguendola): togliere `unresolved.add(entity_id)`
+    (cioe' non ricordarsi mai di aver gia' segnalato) -- il test torna rosso
+    su `assert levels == ["WARNING", "DEBUG", "DEBUG"]`, che riceve
+    `["WARNING", "WARNING", "WARNING"]`.
+    """
+    watcher = _FakeAutomationWatcher(["automation.scritta_a_mano"])
+    client = _FakeTracesClient({})
+    app = {"watcher": watcher,
+           "entity_cache": _FakeMirror({"automation.scritta_a_mano": None})}
+
+    with caplog.at_level(logging.DEBUG, logger="hiris.app.server"):
+        for _ in range(3):
+            asyncio.run(server.watch_automation_outcomes(app, client))
+
+    levels = [r.levelname for r in caplog.records
+              if "non si risolve dallo specchio" in r.getMessage()]
+    assert levels == ["WARNING", "DEBUG", "DEBUG"]
+    assert client.calls == []
+
+
+def test_an_automation_that_starts_resolving_again_is_shouted_again(caplog):
+    """L'altra meta', e la ragione per cui `unresolved` si SVUOTA su
+    successo: «la prima volta per entita'» non deve voler dire «una volta
+    sola per sempre». Un'automazione che si risolve (inventario arrivato) e
+    che domani torna irrisolvibile (HA riavviato, ricarica andata male) e' un
+    guasto NUOVO, e deve farsi sentire -- non restare muta perche' mesi fa
+    aveva gia' avuto il suo unico WARNING.
+
+    Mutazione (verificata eseguendola): togliere `unresolved.discard(
+    entity_id)` dopo la risoluzione riuscita -- il test torna rosso su
+    `assert levels == ["WARNING", "WARNING"]`, che riceve
+    `["WARNING", "DEBUG"]`.
+    """
+    watcher = _FakeAutomationWatcher(["automation.luci_sera"])
+    client = _FakeTracesClient({
+        "1771346155970": {"tracce": [{"run_id": "1", "script_execution": "error"}]},
+    })
+    blind = _FakeMirror({"automation.luci_sera": None})
+    seeing = _FakeMirror({"automation.luci_sera": "1771346155970"})
+    app = {"watcher": watcher, "entity_cache": blind}
+
+    with caplog.at_level(logging.DEBUG, logger="hiris.app.server"):
+        asyncio.run(server.watch_automation_outcomes(app, client))   # cieco
+        app["entity_cache"] = seeing
+        asyncio.run(server.watch_automation_outcomes(app, client))   # risolve
+        app["entity_cache"] = blind
+        asyncio.run(server.watch_automation_outcomes(app, client))   # cieco di nuovo
+
+    levels = [r.levelname for r in caplog.records
+              if "non si risolve dallo specchio" in r.getMessage()]
+    assert levels == ["WARNING", "WARNING"]
+
+
 def test_an_unresolvable_automation_does_not_touch_its_cursor():
     """Il secondo tempo del test qui sopra, e la ragione per cui NON basta
     quello: uno specchio che diventa pronto DOPO -- il caso vero, l'add-on

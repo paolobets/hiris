@@ -144,7 +144,11 @@ from ..memory.interpretation import VOCABULARY, validate
 from ..memory.lookup_cache import LookupCache
 from ..memory.resolver import STORE_KEY_PER_TYPE, costruisci_indice
 from ..memory.store import MemoryStore
-from ..proxy.entity_cache import automation_config_id, inventory_is_readable
+from ..proxy.entity_cache import (
+    automation_config_id,
+    inventory_is_readable,
+    unreadable_inventory_error,
+)
 from . import historian
 from .queries import HA_LINK_TYPE
 from .queries import related as _readable_links
@@ -2259,12 +2263,17 @@ class ToolDispatcher:
         """Le esecuzioni recenti di un'automazione, o -- con `esecuzione` --
         il grafo completo di una sola di esse.
 
-        **Valida `entita` PRIMA di fare rete**, cosa che `HAClient.
-        automation_traces()`/`automation_trace()` non fanno da soli (stessa
-        ragione scritta in `mind/watcher.py::mark_automation`): un
-        identificatore malformato non deve produrre un elenco vuoto
-        silenzioso -- «questa automazione non ha mai girato» detto per
-        sbaglio -- invece di un errore che si vede.
+        **Prima la FORMA di `entita`, e non e' un doppione della
+        risoluzione.** La minaccia per cui questa guardia era nata -- un
+        identificatore malformato spaccato sul primo punto dal client, che
+        produceva un elenco vuoto silenzioso -- non esiste piu': il client
+        prende l'id di configurazione, e un identificatore malformato non si
+        risolve comunque. Cio' che solo la guardia garantisce e' la
+        DISTINZIONE fra due errori diversi: «non ha la forma di un
+        identificatore Home Assistant» e «non lo conosco» dicono a chi legge
+        due cose diverse, e la prima si dice senza nemmeno scandire lo
+        specchio (vedi il commento accanto a `_ENTITY_ID_RE`, in cima al
+        modulo, per la stessa ragione detta per esteso).
 
         **Poi RISOLVE l'`entity_id` nell'id di CONFIGURAZIONE**, che e' la
         chiave con cui Home Assistant archivia davvero le tracce
@@ -2286,6 +2295,27 @@ class ToolDispatcher:
         sbagliato, automazione che lo specchio non conosce ancora,
         automazione YAML senza `id:` -- le cui tracce non sono comunque
         indirizzabili per automazione).
+
+        **Ma prima si guarda se lo specchio si puo' leggere affatto, e la
+        ragione e' la stessa legge.** `automation_config_id` torna `None`
+        anche quando l'inventario non e' cablato o non e' ancora caricato --
+        all'avvio dell'add-on, o dopo un caricamento iniziale fallito. Se in
+        quel caso rispondessimo col messaggio delle tre cause,
+        attribuiremmo la colpa all'IDENTIFICATORE su una casa che non abbiamo
+        ancora guardato: un'affermazione che non possiamo fare, cioe' la cosa
+        che questa fetta esiste per togliere, ricomparsa un livello piu' in
+        basso. Il controllo sta quindi PRIMA della risoluzione, e le due
+        risposte restano distinte -- «non ho l'inventario» e «non trovo
+        quell'automazione» chiedono a chi legge due cose diverse.
+
+        Il testo dei due guasti dell'inventario vive in un posto solo
+        (`proxy/entity_cache.NO_INVENTORY_ERROR` /
+        `INVENTORY_NOT_READY_ERROR`, via `unreadable_inventory_error`), lo
+        stesso che serve la rotta `/api/entities`: qui si ri-chiavizza da
+        `error` a `errore` perche' quella e' la chiave del dispatcher, ma il
+        testo non si riscrive -- duplicarlo era il modo in cui lo stesso
+        difetto e' sopravvissuto nei fratelli (vedi il commento sopra quelle
+        costanti).
         """
         entity = arguments.get("entita")
         if not isinstance(entity, str) or not entity.strip():
@@ -2299,6 +2329,12 @@ class ToolDispatcher:
         if run_id is not None and not (isinstance(run_id, str) and run_id.strip()):
             return {"errore": "«esecuzione», se presente, deve essere il «run_id» di "
                               "una voce di «tracce»: una stringa non vuota."}
+        fault = unreadable_inventory_error(self._cache)
+        if fault is not None:
+            # PRIMA della risoluzione: senza inventario ogni identificatore
+            # risulterebbe irrisolvibile, e il messaggio sotto darebbe la
+            # colpa a lui invece che a noi che non abbiamo guardato.
+            return {"errore": fault["error"]}
         automation_id = automation_config_id(self._cache, entity)
         if automation_id is None:
             return {"errore": f"non riesco a risolvere «{entity}»: non trovo il suo id "

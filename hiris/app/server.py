@@ -748,17 +748,31 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
     `attributes["id"]` non esiste proprio, e le sue tracce vivono sotto la
     chiave condivisa `"automation.None"`, non indirizzabile per automazione),
     questa funzione **salta quell'automazione senza toccarne il cursore e
-    senza scrivere nessun fatto**, e lo dice in un WARNING. Scrivere sarebbe
+    senza scrivere nessun fatto**, e lo dice. Scrivere sarebbe
     un'affermazione su una casa che non abbiamo potuto guardare -- la stessa
     disciplina del «meglio un buco nella storia che una bugia nella storia»
     gia' applicata alle tracce anteriori all'avvio.
+
+    **Lo dice UNA volta per entita' a voce alta, poi sottovoce.**
+    `Watcher.marked_automations()` non si svuota mai: un'automazione YAML
+    senza `id:` che e' scattata una volta resta segnata per tutta la vita del
+    processo, e un WARNING a ogni cadenza sarebbero 720 avvisi al giorno per
+    una condizione che non puo' cambiare a caldo. Il primo giro che non
+    risolve una certa entita' logga WARNING, i successivi DEBUG
+    (`app["automation_trace_unresolved"]`, l'insieme delle entita' gia'
+    segnalate). Il fatto non si tace: cambia di livello. L'insieme e'
+    limitato da quello dei segnati, quindi non cresce da solo, e un'entita'
+    che torna a risolversi ne ESCE -- cosi' un guasto nuovo, dopo un periodo
+    di normalita', si fa sentire di nuovo invece di restare muto per sempre.
 
     **Un'automazione per volta, non un giro solo per tutte.** A differenza
     di `watch_system_conditions` qui sopra -- che legge le TRE condizioni di
     sistema con un numero fisso di chiamate e salta il giro intero se una
     fallisce -- qui il numero di chiamate dipende da quante automazioni
-    sono segnate, e ognuna e' un `entity_id` diverso passato a
-    `HAClient.automation_traces()`. Una lettura fallita per UN'automazione
+    sono segnate, e ognuna e' una lettura a se': un `entity_id` diverso
+    risolto nel proprio id di configurazione (vedi il blocco qui sopra) e
+    passato COSI' a `HAClient.automation_traces()` -- al client non arriva
+    mai un `entity_id`. Una lettura fallita per UN'automazione
     (Home Assistant che non risponde a quella richiesta, o un errore di
     rete transitorio) non deve impedire di leggere le altre: si salta
     QUELLA automazione, si continua con le prossime -- la stessa disciplina
@@ -852,6 +866,7 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
     boot_ts = app.get("automation_traces_boot_ts", 0.0)
     cursors = app.setdefault("automation_trace_cursors", {})
     cache = app.get("entity_cache")
+    unresolved = app.setdefault("automation_trace_unresolved", set())
     written = 0
     for entity_id in watcher.marked_automations():
         automation_id = automation_config_id(cache, entity_id)
@@ -860,12 +875,30 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
             # irrisolto non e' «non ha mai girato», e' «non ho potuto
             # guardare». Si salta questa automazione come si salta una
             # lettura fallita, e le altre proseguono.
-            logger.warning(
+            #
+            # WARNING la PRIMA volta per entita', poi DEBUG. `_marked_
+            # automations` non si svuota mai, quindi un'automazione YAML
+            # senza `id:` che e' scattata una volta resterebbe segnata per
+            # tutta la vita del processo: un avviso ogni due minuti, 720 al
+            # giorno, per una condizione che non puo' cambiare a caldo. La
+            # legge del prodotto -- «se una cosa funziona non va segnalata,
+            # il rumore sano seppellisce la rotta» -- vale anche per i log:
+            # un WARNING ripetuto per sempre smette di essere un avviso e
+            # diventa lo sfondo davanti a cui gli avvisi veri spariscono.
+            # Il fatto non si tace, cambia di livello.
+            (logger.debug if entity_id in unresolved else logger.warning)(
                 "cervello: l'id di configurazione di %s non si risolve dallo "
                 "specchio (automazione senza `id:` in YAML, oppure inventario "
                 "non ancora pronto) -- le sue tracce non si possono chiedere, "
                 "questo giro la salta", entity_id)
+            unresolved.add(entity_id)
             continue
+        # Risolta: si dimentica di averla mai segnalata. Cosi' il WARNING e'
+        # «la prima volta di OGNI tratto di irrisolvibilita'», non «la prima
+        # volta in assoluto» -- un'automazione risolta oggi e irrisolvibile
+        # domani (inventario ricaricato male, HA riavviato) torna a farsi
+        # sentire una volta, invece di restare muta per sempre.
+        unresolved.discard(entity_id)
         report = await ha_client.automation_traces(automation_id)
         if "errore" in report:
             logger.warning(

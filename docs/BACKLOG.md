@@ -537,6 +537,42 @@ collaterale di un giro di correzioni. Ma quattro copie della stessa guardia, sco
 volta invece che in un colpo solo, sono il tipo di cosa che questo registro esiste per non
 lasciar perdere.
 
+### `home_space/behavior.py` ipotizza un `id` di automazione intero, e la fonte dice `str`
+
+`origine: rilevata dal giro di correzioni del Task 6 di «le tracce e il log», 05/09/2026` ·
+`nessun documento`
+
+`home_space/behavior.py:161-164` porta il commento «`None` e' l'unica assenza: un id intero `0`
+(numerazione a mano da zero) e' un id vero, non un id mancante», e di conseguenza scrive
+`key = str(attribute_id) if attribute_id is not None else ""`.
+
+**L'id intero non esiste.** Lo schema di Home Assistant e' `CONF_ID: str` — con accanto, nel
+sorgente, il commento `# str on purpose` — in `components/automation/config.py`, sia in
+`_MINIMAL_PLATFORM_SCHEMA` sia in `PLATFORM_SCHEMA`; verificato sui tag rilasciati `2024.7.0`
+(righe 47 e 60) e `2026.9.0` (righe 48 e 70), non su `dev`. Un `id: 0` non quotato in YAML **non
+supera lo schema**: voluptuous tratta il tipo nudo `str` come un controllo di istanza, e
+`PLATFORM_SCHEMA(config)` solleva. Quindi `attributes["id"]`, quando c'e', e' sempre una
+stringa — che e' il fatto che serve qui.
+
+**Cosa NON e' stato tracciato fino in fondo**, e va detto invece di essere presunto: dove
+finisce quell'automazione dopo il rifiuto. `_async_validate_config_item` ripiega su
+`_minimal_config`, che pero' rivalida con `_MINIMAL_PLATFORM_SCHEMA` — dove `CONF_ID: str` c'e'
+di nuovo — quindi il ripiego solleva a sua volta, e chi raccolga quell'eccezione piu' a monte
+non e' stato verificato. Chi chiude questa voce non ha bisogno di saperlo (basta il tipo), ma
+non scriva la fine della storia senza averla letta.
+
+E' un'**ipotesi su Home Assistant mai verificata alla fonte** — la specie di difetto che il
+prodotto ha una regola apposta per non commettere — sopravvissuta perche' il codice che ne
+deriva e' innocuo: `str()` su una stringa e' l'identita', e il ramo dell'intero non si esercita
+mai. Non e' quindi un guasto, e' una **frase falsa dentro il codice**, che il prossimo lettore
+prendera' per vera e usera' per decidere qualcosa.
+
+Debito PRECEDENTE a questa fetta: il Task 6 lo ha trovato mentre verificava la stessa fonte per
+un'altra ragione (l'id di configurazione come chiave delle tracce) e **non ha toccato
+`behavior.py`**, che non era nel suo perimetro. Chi lo chiude tolga il ramo dell'intero e citi
+`CONF_ID: str` coi due tag, invece di limitarsi a correggere il commento: un `str()` difensivo
+che nessuna fonte giustifica e' l'altra meta' della stessa ipotesi.
+
 ---
 
 ## Usciti

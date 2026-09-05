@@ -1149,9 +1149,13 @@ class _FakeMirror:
     torna `None` quando `unique_id is None` (tag `2024.7.0` e `2026.9.0`).
     """
 
-    loaded = True
-
-    def __init__(self, config_id_by_entity):
+    def __init__(self, config_id_by_entity, loaded=True):
+        # `loaded` come la cache vera: False finche' `load()` non e' andata a
+        # buon fine almeno una volta. Le righe possono esserci lo stesso --
+        # `on_state_changed` le scrive anche dopo un caricamento iniziale
+        # fallito, e NON alza la bandiera -- ed e' proprio il caso in cui
+        # rispondere «non conosco quell'automazione» sarebbe una bugia.
+        self.loaded = loaded
         self._rows = []
         for entity_id, config_id in config_id_by_entity.items():
             attributes = {"friendly_name": entity_id}
@@ -1365,6 +1369,79 @@ async def test_an_unresolvable_entita_says_so_instead_of_an_empty_list():
 
 
 @pytest.mark.asyncio
+async def test_an_unreadable_mirror_does_not_blame_the_identifier():
+    """**Il difetto di prodotto trovato dalla revisione del Task 6.** Uno
+    specchio non ancora caricato fa fallire la risoluzione di QUALUNQUE
+    identificatore, anche di uno perfettamente giusto: se rispondessimo col
+    messaggio delle tre cause («identificatore sbagliato, automazione che non
+    conosco ancora, YAML senza id:»), daremmo la colpa all'IDENTIFICATORE su
+    una casa che non abbiamo ancora guardato. La causa vera -- l'inventario
+    non e' pronto -- non e' in quell'elenco, e affermare le altre e'
+    esattamente cio' che questa fetta esiste per togliere, ricomparso un
+    livello piu' in basso.
+
+    La cache finta e' `loaded=False` **ma con la riga dentro**: e' il caso
+    vero (`on_state_changed` scrive anche dopo un caricamento iniziale
+    fallito e NON alza `loaded`, vedi il docstring della proprieta'), ed e'
+    l'unico in cui la guardia si distingue da «non trovo la riga».
+
+    L'assert centrale e' che il messaggio **non nomina l'identificatore**:
+    non c'e' nessuna frase onesta che citi `automation.buonanotte` qui, e
+    citarlo e' precisamente il modo in cui la colpa si sposta.
+
+    **Mutazione che uccide l'assert**: togliere il blocco
+    `fault = unreadable_inventory_error(self._cache); if fault is not None:
+    return {"errore": fault["error"]}`. Verificato eseguendo: la risoluzione
+    fallisce comunque, la risposta diventa il messaggio delle tre cause, e
+    l'assert `_BUONANOTTE not in result["errore"]` arrossisce.
+    """
+    channel = _FakeHAChannel()
+    d = ToolDispatcher(
+        None, None, ha=channel,
+        cache=_FakeMirror({_BUONANOTTE: _BUONANOTTE_CONFIG_ID}, loaded=False))
+    result = await d.dispatch("automation_trace", {"entita": _BUONANOTTE})
+    assert "errore" in result
+    assert channel.calls == []
+    assert _BUONANOTTE not in result["errore"], (
+        "il messaggio da' la colpa all'identificatore per una casa che non "
+        "abbiamo guardato")
+    assert "inventario" in result["errore"], (
+        "il messaggio non nomina la causa vera: l'inventario non e' pronto")
+
+
+@pytest.mark.asyncio
+async def test_a_missing_mirror_says_so_instead_of_blaming_the_identifier():
+    """Il fratello del test qui sopra per l'altra meta' di
+    `unreadable_inventory_error`: cache MAI cablata (`cache=None`), non
+    «cablata e non ancora caricata». Sono due assenze diverse e i due
+    messaggi restano distinti -- una e' un guasto di configurazione, l'altra
+    passa da sola col lavoro periodico di ricarica -- ma nessuna delle due
+    deve nominare l'identificatore.
+
+    **Mutazione che uccide l'assert**: sostituire il blocco con il solo
+    `inventory_is_readable`, che non distingue i due casi (`if not
+    inventory_is_readable(self._cache): return {"errore": <il testo di
+    INVENTORY_NOT_READY_ERROR>}`). Verificato eseguendo: l'assert
+    `result["errore"] != other["errore"]` arrossisce, con le due frasi
+    identiche una sopra l'altra nel diff -- una cache assente riceve il
+    messaggio di quella non ancora pronta.
+    """
+    channel = _FakeHAChannel()
+    d = ToolDispatcher(None, None, ha=channel, cache=None)
+    result = await d.dispatch("automation_trace", {"entita": _BUONANOTTE})
+    assert "errore" in result
+    assert channel.calls == []
+    assert _BUONANOTTE not in result["errore"]
+    not_ready = _FakeMirror({}, loaded=False)
+    other = await ToolDispatcher(
+        None, None, ha=_FakeHAChannel(), cache=not_ready
+    ).dispatch("automation_trace", {"entita": _BUONANOTTE})
+    assert result["errore"] != other["errore"], (
+        "cache assente e cache non ancora caricata dicono la stessa frase: "
+        "sono due guasti diversi e chiedono due interventi diversi")
+
+
+@pytest.mark.asyncio
 async def test_an_automation_without_a_yaml_id_is_declared_not_guessed():
     """Il caso vero e scomodo: un'automazione scritta a mano in YAML senza
     `id:`. Esiste, e' viva, lo specchio la conosce -- ed e' comunque
@@ -1401,11 +1478,13 @@ async def test_automation_trace_without_run_id_lists_recent_runs():
     il dettaglio di una sola.
 
     **Mutazione che uccide l'assert**: scambiare i due rami (`if run_id: ...
-    automation_traces(...) else: ... automation_trace(...)`), cioe' invertire
-    quale metodo si chiama in quale caso. Verificato eseguendo: con i rami
-    scambiati, senza `esecuzione` il codice tenta `ha.automation_trace(entity,
-    None.strip())`, solleva `AttributeError` su `None`, e l'assert sul
-    marker e su `calls` arrossisce entrambi."""
+    automation_traces(automation_id) else: ... automation_trace(automation_id,
+    run_id.strip())`), cioe' invertire quale metodo si chiama in quale caso.
+    Verificato eseguendo: con i rami scambiati, senza `esecuzione` il codice
+    tenta `ha.automation_trace(automation_id, None.strip())` e solleva
+    `AttributeError: 'NoneType' object has no attribute 'strip'`, che la rete
+    di sicurezza finale di `dispatch` trasforma in un `errore`; il primo
+    assert ad arrossire e' `assert result is marker`."""
     marker = {"tracce": [{"run_id": "r1", "script_execution": "finished"}]}
     channel = _FakeHAChannel(traces_response=marker)
     d = ToolDispatcher(None, None, ha=channel, cache=_mirror_with_buonanotte())
@@ -1420,15 +1499,17 @@ async def test_automation_trace_with_run_id_asks_for_that_single_run_graph():
     quella sola esecuzione, non l'elenco.
 
     L'ordine degli argomenti passati al canale conta quanto il metodo
-    scelto: `entity_id` e `run_id`, in questo ordine, sono i due posizionali
-    veri di `HAClient.automation_trace` (`tests/test_ha_client_contract.py`
-    lo garantisce sul canale finto). **Mutazione che uccide l'assert**:
-    scambiare l'ordine degli argomenti nella chiamata
-    (`ha.automation_trace(run_id.strip(), entity)` invece di
-    `ha.automation_trace(entity, run_id.strip())`). Verificato eseguendo:
-    con l'ordine scambiato `channel.calls` porta `("traccia", "r1",
-    "automation.buonanotte")` invece della tupla attesa, e l'assert
-    dedicato arrossisce."""
+    scelto: `automation_id` e `run_id`, in questo ordine, sono i due
+    posizionali veri di `HAClient.automation_trace` -- il primo e' l'id di
+    CONFIGURAZIONE dal Task 6, non un `entity_id`
+    (`tests/test_ha_client_contract.py` confronta le firme delle finte con
+    l'originale in modo derivato, quindi una finta scritta diversa
+    arrossirebbe la'). **Mutazione che uccide l'assert**: scambiare l'ordine
+    degli argomenti nella chiamata (`ha.automation_trace(run_id.strip(),
+    automation_id)` invece di `ha.automation_trace(automation_id,
+    run_id.strip())`). Verificato eseguendo: con l'ordine scambiato
+    `channel.calls` porta `("traccia", "r1", "1771346155970")` invece della
+    tupla attesa, e l'assert su `channel.calls` arrossisce."""
     marker = {"traccia": {"run_id": "r1", "trace": {}, "script_execution": "finished"}}
     channel = _FakeHAChannel(trace_response=marker)
     d = ToolDispatcher(None, None, ha=channel, cache=_mirror_with_buonanotte())
@@ -1447,9 +1528,10 @@ async def test_automation_trace_blank_run_id_declares_it_without_touching_the_ne
     **Mutazione che uccide l'assert**: togliere il controllo su `run_id` e
     lasciare solo `if run_id: ...`. Verificato eseguendo: senza quel
     controllo, `"   "` e' una stringa non vuota (quindi verita' per `if
-    run_id`), il codice chiama `ha.automation_trace(entity, "   ".strip())`
-    cioe' con `run_id=""`, `channel.calls` smette di essere vuoto e
-    l'assert dedicato arrossisce."""
+    run_id`), il codice chiama `ha.automation_trace(automation_id,
+    "   ".strip())` cioe' con `run_id=""`; il primo assert ad arrossire e'
+    `assert "errore" in result`, che riceve `{"traccia": {}}` -- la risposta
+    di difetto del canale finto."""
     channel = _FakeHAChannel()
     d = ToolDispatcher(None, None, ha=channel, cache=_mirror_with_buonanotte())
     result = await d.dispatch(
