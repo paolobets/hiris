@@ -2932,9 +2932,13 @@ async def _on_startup(app: web.Application) -> None:
     # per i tag verificati; questo lavoro si disegna sul caso conservativo,
     # tetto totale, e non dipende dal secchio `not_triggered`). Un'automazione
     # innescata dal movimento puo' bruciare cinque tracce in pochi minuti.
-    # Misurato sulla casa vera: 72 esecuzioni al giorno su 18 automazioni --
-    # in MEDIA nulla di preoccupante, ma la media non e' il caso che PERDE le
-    # tracce prima che questo giro le legga. Due minuti e' la cadenza piu'
+    # Misurato sulla casa vera il 30-31/08 (spec §8): 72 tracce su 16
+    # automazioni -- **la finestra CONSERVATA nel tetto di cinque per
+    # automazione, non una frequenza giornaliera** (un numero non misurato
+    # non si scrive: non e' stata misurata alcuna cadenza di esecuzioni al
+    # giorno). Un'automazione sola puo' comunque saturare il proprio tetto
+    # in pochi minuti, ed e' il caso che PERDE le tracce prima che questo
+    # giro le legga, non la media. Due minuti e' la cadenza piu'
     # corta che non aggiunge un carico apprezzabile (un comando WebSocket per
     # automazione segnata, non per la casa intera).
     async def _watch_automation_traces() -> None:
