@@ -437,6 +437,66 @@ def test_la_ricostruzione_non_semina_una_condizione_gia_chiusa():
     assert archivio.annotati[0]["a"] == "aperto"
 
 
+# -- Correzione al Ruling 2 (04/09): `a` non e' piu' solo "aperto" ----------
+#
+# Da Task 1, un'integrazione scrive in `a` la condizione VERA dichiarata da HA
+# (`setup_retry`, non la costante), e solo i `problema:` continuano a
+# scrivere "aperto". La riga precedente di `rebuild_conditions` cercava
+# soltanto `state == "aperto"`: per un guasto di integrazione, gia' aperto da
+# un giro precedente, non lo avrebbe MAI ritrovato -- a ogni riavvio
+# dell'add-on sarebbe rinato come nuovo, con una data d'inizio falsa. Non e'
+# territorio del Task 3 (isteresi): e' la conseguenza diretta del cambio di
+# `a` fatto in questo stesso task, e si corregge qui.
+
+def test_la_ricostruzione_riconosce_una_condizione_vera_come_aperta():
+    """L'archivio finto contiene gia' `integrazione:01ABC -> setup_retry`,
+    come se scritto da un giro precedente dell'add-on ora spento (Task 1: la
+    scrittura di apertura porta la condizione vera, non piu' "aperto"). Dopo
+    la ricostruzione, la stessa integrazione ancora rotta non deve produrre
+    una riga nuova.
+
+    Mutazione: rimettere `state == "aperto"` al posto di `state != "chiuso"`
+    -- il test torna rosso su `assert scritti == 0` (la ricostruzione non
+    ritroverebbe piu' nessun guasto di integrazione, e ognuno rinascerebbe
+    come nuovo a ogni riavvio).
+    """
+    archivio = _FintoArchivio(cambi_esistenti=[
+        _cambio(1787000000.0, "sistema", "integrazione:01ABC", None, "setup_retry"),
+    ])
+    osservatore = Watcher(archivio, now=lambda: 1787572800.0)
+    osservatore.rebuild_conditions()
+    scritti = osservatore.watch_system(
+        problems=[],
+        integrations=[{"entry_id": "01ABC", "domain": "lifx",
+                       "title": "Abat-jour", "state": "setup_retry"}])
+    assert scritti == 0
+    assert archivio.annotati == []
+
+
+def test_la_ricostruzione_non_considera_aperta_una_condizione_chiusa():
+    """Simmetrico al test sopra: una condizione che si e' aperta con una
+    condizione vera e poi si e' chiusa (`a="chiuso"`) non deve rientrare fra
+    le aperte -- la ricomparsa e' un guasto NUOVO, non la continuazione del
+    vecchio, e deve produrre una riga.
+
+    Mutazione: togliere `and state != "chiuso"` (lasciare solo `if state`) --
+    il test torna rosso su `assert scritti == 1` (la vecchia chiusura
+    resterebbe considerata aperta, e la ricomparsa non scriverebbe niente).
+    """
+    archivio = _FintoArchivio(cambi_esistenti=[
+        _cambio(1787000000.0, "sistema", "integrazione:01ABC", None, "setup_retry"),
+        _cambio(1787000100.0, "sistema", "integrazione:01ABC", "setup_retry", "chiuso"),
+    ])
+    osservatore = Watcher(archivio, now=lambda: 1787572800.0)
+    osservatore.rebuild_conditions()
+    scritti = osservatore.watch_system(
+        problems=[],
+        integrations=[{"entry_id": "01ABC", "domain": "lifx",
+                       "title": "Abat-jour", "state": "setup_retry"}])
+    assert scritti == 1
+    assert archivio.annotati[0]["a"] == "setup_retry"
+
+
 def test_la_ricostruzione_non_solleva_se_l_archivio_non_risponde():
     """Un'eccezione qui non deve fermare l'avvio dell'add-on: si riparte da
     vuoto, esattamente come al primo avvio in assoluto."""

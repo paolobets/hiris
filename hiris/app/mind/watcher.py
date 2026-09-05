@@ -302,7 +302,19 @@ class Watcher:
             if not subject:
                 continue
             last_state[subject] = c.get("a")
-        self._conditions = {s for s, state in last_state.items() if state == "aperto"}
+        # **Al negativo, non al positivo.** Da Task 1, `a` porta la condizione
+        # VERA dichiarata da HA (`setup_retry`, `setup_error`, ... per le
+        # integrazioni; `"aperto"` resta l'unica per i `problema:`) -- e
+        # l'insieme di tutte le condizioni possibili non e' enumerabile qui,
+        # ne' e' compito di questo metodo conoscerlo. `"chiuso"` invece e' UNA
+        # parola sola, e la scriviamo noi (vedi il commento sulla chiusura in
+        # `watch_system`): e' lo stesso ragionamento di `_HEALTHY_INTEGRATION_
+        # STATES` qui sopra, un elenco enumerabile di stati SANI invece di uno
+        # (non enumerabile) di stati rotti. Un `state` vuoto o `None` -- una
+        # riga che non dice niente -- non conta come aperta: non e' un fatto,
+        # e' l'assenza di uno.
+        self._conditions = {s for s, state in last_state.items()
+                            if state and state != "chiuso"}
 
     # -- la pagina -----------------------------------------------------
 
