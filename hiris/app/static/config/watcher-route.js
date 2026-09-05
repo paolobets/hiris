@@ -403,9 +403,10 @@ window.HirisWatcherRoute = (function () {
     return { cls: 'badge-warn', testo: provenance || 'provenienza sconosciuta' };
   }
 
-  /* `problema:dominio.id` / `integrazione:entry_id` -> un nome leggibile.
-     Stessa idea di `nomiRegistriInItaliano` in tree-route.js: un prefisso
-     tecnico non deve restare tale e quale sulla pagina.
+  /* `problema:dominio.id` / `integrazione:entry_id` / `log:logger@file:riga` /
+     `automazione:entity_id` -> un nome leggibile. Stessa idea di
+     `nomiRegistriInItaliano` in tree-route.js: un prefisso tecnico non deve
+     restare tale e quale sulla pagina.
 
      Correzione onda finale, rilievo 1: dal Task 2 il corpo di un guasto
      porta `dominio`/`titolo` quando la riga che ha aperto l'episodio li
@@ -413,13 +414,27 @@ window.HirisWatcherRoute = (function () {
      funzione ignorava, mostrando l'identificativo opaco (`entry_id`) anche
      quando il dato buono era gia' li'. Quando ci sono si usano loro;
      l'identificativo resta il ripiego per le righe vecchie che non li
-     hanno. */
+     hanno.
+
+     Giro di correzioni sul Task 7: `problema:`/`integrazione:` erano gli
+     unici due prefissi tradotti, ma dal Task 2 (registro di errori) e dal
+     Task 4 (automazioni) l'archivio ne scrive altri due, `log:` e
+     `automazione:` -- senza un ramo qui sotto ricadevano sul `return s`
+     finale, cioe' l'esatto identificatore opaco che questa funzione esiste
+     per non mostrare (un `automazione:` senza `titolo` dall'evento, o un
+     `log:` senza `message[0]`, sono i casi che ci arrivano davvero: vedi
+     `Watcher.watch_system`/`mark_automation` in watcher.py per quando
+     `titolo` puo' mancare). Copriva quasi sempre perche' il titolo di
+     solito c'e' -- ma «quasi sempre» e' proprio il difetto silenzioso che
+     questa fetta esiste per chiudere. */
   function protagonistName(o) {
     var s = o.protagonista || '';
     var c = o.corpo || {};
     if (c.titolo) return c.dominio ? c.titolo + ' (' + c.dominio + ')' : c.titolo;
     if (s.indexOf('problema:') === 0) return 'Problema Home Assistant: ' + s.slice('problema:'.length);
     if (s.indexOf('integrazione:') === 0) return 'Integrazione non caricata: ' + s.slice('integrazione:'.length);
+    if (s.indexOf('log:') === 0) return 'Voce del registro di Home Assistant: ' + s.slice('log:'.length);
+    if (s.indexOf('automazione:') === 0) return 'Automazione: ' + s.slice('automazione:'.length);
     return s;
   }
 

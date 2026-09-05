@@ -583,6 +583,39 @@ test('seam _rendiOggetti: un guasto ancora aperto lo dice esplicitamente', () =>
     'un protagonista "problema:" diventa un nome leggibile, come in tree-route.js');
 });
 
+// Giro di correzioni sul Task 7: `protagonistName` traduceva solo
+// `problema:`/`integrazione:` -- un `log:` o un `automazione:` SENZA
+// `corpo.titolo` (l'evento non porta un nome, o `message[0]` manca)
+// ricadeva sul `return s` finale, mostrando l'identificatore opaco sulla
+// pagina che una persona legge. Mutazione ESEGUITA per provarlo: togliere
+// i due `if` aggiunti da `protagonistName` -- entrambi i test qui sotto
+// tornano rossi sul rispettivo `assert.match` (il testo mostrerebbe
+// l'identificatore grezzo invece del nome leggibile).
+test('seam _rendiOggetti: un `log:` senza titolo diventa un nome leggibile, non l\'identificatore grezzo', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisWatcherRoute._rendiOggetti(corpo, [{
+    id: 1, genere: 'guasto', protagonista: 'log:homeassistant.components.lifx@lifx/light.py:120',
+    inizio_ts: 1, fine_ts: null,
+    corpo: { stato: 'ERROR' },
+  }], null);
+  assert.match(corpo.textContent,
+    /Voce del registro di Home Assistant: homeassistant\.components\.lifx@lifx\/light\.py:120/,
+    'un protagonista "log:" senza titolo deve diventare un nome leggibile, non restare grezzo');
+});
+
+test('seam _rendiOggetti: un `automazione:` senza titolo diventa un nome leggibile, non l\'identificatore grezzo', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisWatcherRoute._rendiOggetti(corpo, [{
+    id: 1, genere: 'guasto', protagonista: 'automazione:automation.rotta',
+    inizio_ts: 1, fine_ts: null,
+    corpo: { stato: 'error' },
+  }], null);
+  assert.match(corpo.textContent, /Automazione: automation\.rotta/,
+    'un protagonista "automazione:" senza titolo deve diventare un nome leggibile, non restare grezzo');
+});
+
 // Onda finale, rilievo 1 (revisione di ramo): dal Task 2 `corpo.stato` porta
 // la condizione VERA (`setup_retry`, `setup_error`, ...), mai la costante
 // "aperto" -- ma un'integrazione con quella condizione e' comunque APERTA
