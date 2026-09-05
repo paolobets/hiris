@@ -1221,3 +1221,25 @@ def test_rebuild_keeps_automation_faults_out_of_watch_system_hysteresis():
     scritti = osservatore.watch_system(problems=[], integrations=[], log_entries=[])
     assert scritti == 1  # solo la chiusura del problema
     assert "automazione:automation.rotta" in osservatore._automation_faults
+
+
+# -- giro di correzioni sul Task 7: `watching()` mostra anche le automazioni --
+
+def test_watching_shows_an_open_automation_fault(coppia):
+    """`watching()` e' cio' che l'osservatore sta guardando ADESSO: un
+    guasto di automazione aperto ne fa parte tanto quanto un'integrazione
+    rotta, non e' cosa da tenere fuori dalla pagina di prodotto.
+
+    Mutazione (verificata eseguendola): togliere `automation` dalla lista
+    che finisce in `sorted([*entity, *system, *automation], ...)` (tornare
+    a `[*entity, *system]`) -- il test torna rosso su
+    `assert "automazione:automation.rotta" in soggetti` (l'insieme non lo
+    conterrebbe piu').
+    """
+    _archivio, osservatore = coppia
+    aperto = osservatore.watch_automation_outcome("automation.rotta", "error")
+    assert aperto is True
+    soggetti = {o["soggetto"]: o for o in osservatore.watching()}
+    assert "automazione:automation.rotta" in soggetti
+    assert soggetti["automazione:automation.rotta"]["gamba"] == "buono stato"
+    assert soggetti["automazione:automation.rotta"]["provenienza"] == "pavimento"

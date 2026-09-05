@@ -804,10 +804,18 @@ class Watcher:
         e' pavimento: il prompt dell'obiettivo entra nella fetta successiva, e
         la terza provenienza -- «me l'ha chiesto l'analista» -- con lui.
 
-        **Una fonte sola per fatto.** Le entita' vengono da `_watched`, le
-        condizioni di sistema da `_conditions` -- non si semina `_watched` con
-        le condizioni per rattoppare: sarebbe tenere in vita un doppione, e
-        due risposte alla stessa domanda divergono (dopo un riavvio un
+        **Una fonte per famiglia, non una fonte sola per fatto.** Le entita'
+        vengono da `_watched`, le condizioni di sistema (`problema:`/
+        `integrazione:`/`log:`) da `_conditions`, le automazioni rotte
+        (`automazione:`) da `_automation_faults` -- **tre insiemi, dal Task
+        4**, non uno: `_automation_faults` e' separato apposta da
+        `_conditions` (vedi il commento in `__init__` e il docstring di
+        `watch_automation_outcome`), e un'automazione con un errore aperto
+        e' cosa sta guardando l'osservatore tanto quanto un'integrazione
+        rotta -- ometterla da questa pagina la renderebbe invisibile
+        proprio dove un lettore la cerca. Non si semina `_watched` con
+        nessuno dei due per rattoppare: sarebbe tenere in vita un doppione,
+        e due risposte alla stessa domanda divergono (dopo un riavvio un
         guasto ricostruito sparirebbe da qui per sempre; all'opposto, una
         condizione chiusa scritta anche qui non verrebbe mai tolta).
         """
@@ -815,4 +823,7 @@ class Watcher:
                   for s, g in self._watched.items())
         system = ({"soggetto": s, "gamba": "buono stato", "provenienza": "pavimento"}
                    for s in self._conditions)
-        return sorted([*entity, *system], key=lambda o: (o["gamba"], o["soggetto"]))
+        automation = ({"soggetto": s, "gamba": "buono stato", "provenienza": "pavimento"}
+                      for s in self._automation_faults)
+        return sorted([*entity, *system, *automation],
+                      key=lambda o: (o["gamba"], o["soggetto"]))
