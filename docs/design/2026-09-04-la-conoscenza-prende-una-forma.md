@@ -317,9 +317,10 @@ l'esempio della zona di mezzo che il §4 ③ prescrive di non chiudere. Trovato 
 leggeva una docstring derivata da questa riga.)*
 
 Il *dato* resta onesto — «sono diventate mute insieme» è vero. È la *deduzione* «quindi
-l'integrazione è caduta» a essere falsa, e un briefing che la facesse annuncerebbe quattro guasti
-inesistenti a ogni riavvio di Home Assistant. È lo stesso difetto degli «otto falsi allarmi su
-nove» che questo prodotto ha già pagato una volta.
+l'integrazione è caduta» a essere falsa, e un briefing che la facesse annuncerebbe **tre** guasti
+inesistenti a ogni riavvio di Home Assistant — le tre sincrone — più un quarto **dubbio** dichiarato
+come certezza. È lo stesso difetto degli «otto falsi allarmi su nove» che questo prodotto ha già
+pagato una volta.
 
 ### ③ Il discriminante esiste, e la casa lo pubblica già — indicazione del proprietario, 04/09
 
