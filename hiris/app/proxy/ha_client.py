@@ -1448,8 +1448,12 @@ class HAClient:
         Restituisce `{"voci": [...]}` con le righe cosi' come HA le manda
         (`name`, `message`, `level`, `source`, `timestamp`, `exception`,
         `count`, `first_occurred` -- da `LogEntry.to_dict()`, stessa fonte):
-        come per `problemi()` e `legami()`, il client legge e non giudica,
+        come per `problems()` e `related()`, il client legge e non giudica,
         cosa dire e cosa tacere e' di chi compone.
+
+        L'ORDINE non e' rimescolato: `DedupStore.to_list()` (stessa fonte,
+        `"Return reversed list of log entries - LIFO"`) manda gia' la piu'
+        recente per prima. Chi consuma questo metodo non deve ipotizzarlo.
 
         Non esiste un «piu' in basso» da cui leggere il grezzo: HA deduplica
         gia' dentro il proprio gestore (`DedupStore.add_entry`), su chiave

@@ -62,20 +62,25 @@ async def test_the_system_log_is_read_as_home_assistant_sends_it():
     lui, e non e' il client a poterla disfare.
 
     Mutazione: proiettare le righe su un sottoinsieme di campi -- il test
-    torna rosso su `assert voce["count"] == 3`.
+    torna rosso su `assert entry["count"] == 3`.
     """
-    fake = _FakeConnection({"result": [
-        _entry(name="zwave_js.const", level="WARNING", count=3,
-               first_occurred=1699999000.0, timestamp=1700000500.0),
-    ]})
+    row = _entry(name="zwave_js.const", level="WARNING", count=3,
+                 first_occurred=1699999000.0, timestamp=1700000500.0)
+    fake = _FakeConnection({"result": [row]})
     outcome = await _client(fake).system_log()
-    voce = outcome["voci"][0]
-    assert voce["name"] == "zwave_js.const"
-    assert voce["level"] == "WARNING"
-    assert voce["count"] == 3
-    assert voce["first_occurred"] == 1699999000.0
-    assert voce["timestamp"] == 1700000500.0
+    entry = outcome["voci"][0]
+    assert entry["name"] == "zwave_js.const"
+    assert entry["level"] == "WARNING"
+    assert entry["count"] == 3
+    assert entry["first_occurred"] == 1699999000.0
+    assert entry["timestamp"] == 1700000500.0
     assert fake.commands[0] == ("system_log/list", None)
+    # La proprieta' che la docstring dichiara e' «senza proiezioni»: gli
+    # assert sopra bastano a coprire la mutazione dichiarata, ma non a
+    # sorvegliare `message`, `source`, `exception` -- una proiezione che
+    # lasciasse cadere proprio `message` passerebbe verde. La riga intera,
+    # identica a quella data alla finta, chiude la lacuna.
+    assert outcome["voci"] == [row]
 
 
 @pytest.mark.asyncio
@@ -85,12 +90,12 @@ async def test_a_failed_read_says_error_not_an_empty_log():
     per cui quel metodo e' uscito (v3.15.0).
 
     Mutazione: tornare `{"voci": []}` invece di `{"errore": ...}` -- il test
-    torna rosso su `assert "errore" in esito`.
+    torna rosso su `assert "errore" in outcome`.
     """
     fake = _FakeConnection(raises=True)
-    esito = await _client(fake).system_log()
-    assert "errore" in esito
-    assert "voci" not in esito
+    outcome = await _client(fake).system_log()
+    assert "errore" in outcome
+    assert "voci" not in outcome
 
 
 @pytest.mark.asyncio
@@ -108,8 +113,26 @@ async def test_every_failure_shape_says_error_not_an_empty_log(fake, why):
 
     Mutazione: togliere il controllo `isinstance(result, list)` -- il caso
     `fake2` (forma inattesa) torna rosso su
-    `assert "errore" in esito, why`.
+    `assert "errore" in outcome, why`.
     """
-    esito = await _client(fake).system_log()
-    assert "errore" in esito, why
-    assert "voci" not in esito
+    outcome = await _client(fake).system_log()
+    assert "errore" in outcome, why
+    assert "voci" not in outcome
+
+
+@pytest.mark.asyncio
+async def test_an_empty_log_stays_empty_not_an_error():
+    """L'altra meta' della disciplina che apre il file: il vuoto non e' un
+    errore, quanto l'errore non e' un vuoto. Una casa senza righe recenti in
+    `DedupStore` ha davvero `records.to_list() == []`
+    (`homeassistant/components/system_log/__init__.py`), e deve restare
+    `{"voci": []}` -- scambiarlo per un guasto sarebbe la stessa bugia
+    all'incontrario.
+
+    Mutazione: `if not result: return {"errore": "..."}` subito dopo il
+    controllo di forma -- il test torna rosso su
+    `assert outcome == {"voci": []}`.
+    """
+    fake = _FakeConnection({"result": []})
+    outcome = await _client(fake).system_log()
+    assert outcome == {"voci": []}
