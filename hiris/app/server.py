@@ -66,7 +66,7 @@ from .mind.store import READING_RETENTION_S, ObservationsStore
 from .mind.watcher import Watcher
 from .model_resolution import subscription_has_token
 from .provider_occurrences import OccurrenceRegistry
-from .proxy.entity_cache import EntityCache
+from .proxy.entity_cache import EntityCache, automation_config_id
 from .proxy.ha_client import HAClient
 from .version import read_version
 
@@ -727,6 +727,32 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
     scritte, o `None` se il giro e' stato saltato per intero (nessun
     `watcher` -- boot non ancora arrivato li').
 
+    **L'evento porta un `entity_id`, Home Assistant archivia le tracce per
+    id di CONFIGURAZIONE: la risoluzione avviene qui.** `automation_
+    triggered` nomina l'automazione con il suo `entity_id`, ed e' quello che
+    `Watcher.marked_automations()` restituisce; ma la chiave con cui HA
+    archivia le tracce e' `automation.<id della configurazione>`
+    (`config_block.get(CONF_ID)`, catena verificata sui tag `2024.7.0` e
+    `2026.9.0` nel docstring di `HAClient.automation_traces()`). Su una casa
+    vera i due valori non coincidono quasi mai -- l'interfaccia di HA genera
+    id numerici come `"1771346155970"` -- e chiedere le tracce con
+    l'`object_id` non ne sbaglia una: non ne legge MAI nessuna, per nessuna
+    automazione. La traduzione sta QUI e non dentro il client (che resta
+    «legge e non giudica», senza dipendere dallo stato): la fa
+    `proxy/entity_cache.automation_config_id`, che legge lo specchio gia'
+    cablato in `app["entity_cache"]` -- nessuna lettura nuova verso Home
+    Assistant, nessun secondo rubinetto.
+
+    **Un id che non si risolve NON e' «non ha mai girato».** Se lo specchio
+    non e' pronto, o l'automazione e' scritta in YAML senza `id:` (allora
+    `attributes["id"]` non esiste proprio, e le sue tracce vivono sotto la
+    chiave condivisa `"automation.None"`, non indirizzabile per automazione),
+    questa funzione **salta quell'automazione senza toccarne il cursore e
+    senza scrivere nessun fatto**, e lo dice in un WARNING. Scrivere sarebbe
+    un'affermazione su una casa che non abbiamo potuto guardare -- la stessa
+    disciplina del «meglio un buco nella storia che una bugia nella storia»
+    gia' applicata alle tracce anteriori all'avvio.
+
     **Un'automazione per volta, non un giro solo per tutte.** A differenza
     di `watch_system_conditions` qui sopra -- che legge le TRE condizioni di
     sistema con un numero fisso di chiamate e salta il giro intero se una
@@ -825,14 +851,27 @@ async def watch_automation_outcomes(app, ha_client) -> int | None:
         return None
     boot_ts = app.get("automation_traces_boot_ts", 0.0)
     cursors = app.setdefault("automation_trace_cursors", {})
+    cache = app.get("entity_cache")
     written = 0
     for entity_id in watcher.marked_automations():
-        report = await ha_client.automation_traces(entity_id)
+        automation_id = automation_config_id(cache, entity_id)
+        if automation_id is None:
+            # NON si tocca il cursore, e NON si scrive nessun fatto: un id
+            # irrisolto non e' «non ha mai girato», e' «non ho potuto
+            # guardare». Si salta questa automazione come si salta una
+            # lettura fallita, e le altre proseguono.
+            logger.warning(
+                "cervello: l'id di configurazione di %s non si risolve dallo "
+                "specchio (automazione senza `id:` in YAML, oppure inventario "
+                "non ancora pronto) -- le sue tracce non si possono chiedere, "
+                "questo giro la salta", entity_id)
+            continue
+        report = await ha_client.automation_traces(automation_id)
         if "errore" in report:
             logger.warning(
-                "cervello: tracce di %s non lette (%s) -- questa "
-                "automazione si salta, le altre proseguono",
-                entity_id, report["errore"])
+                "cervello: tracce di %s (id di configurazione %s) non lette "
+                "(%s) -- questa automazione si salta, le altre proseguono",
+                entity_id, automation_id, report["errore"])
             continue
         already_seen = cursors.get(entity_id) or set()
         seen_this_round: set[str] = set()

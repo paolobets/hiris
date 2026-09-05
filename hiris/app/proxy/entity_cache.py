@@ -45,6 +45,50 @@ def inventory_is_readable(cache) -> bool:
     return cache is not None and bool(getattr(cache, "loaded", True))
 
 
+def automation_config_id(cache, entity_id: str) -> str | None:
+    """L'id di CONFIGURAZIONE dell'automazione `entity_id`, o `None` se non
+    si riesce a ricavarlo.
+
+    **Perche' esiste, e perche' sta qui.** Home Assistant archivia le tracce
+    di un'automazione sotto `automation.<id della configurazione>`, non sotto
+    il suo `object_id` (catena verificata sui tag `2024.7.0` e `2026.9.0`,
+    scritta per esteso in `HAClient.automation_traces()`). L'unico posto in
+    cui quell'id vive gia', senza aprire un secondo rubinetto verso Home
+    Assistant, e' lo specchio dello stato: `_to_minimal` lo porta in
+    `automation_id`. I due chiamanti che devono risolverlo -- il collettore
+    delle tracce in `server.py` e lo strumento `automation_trace` in
+    `home_space/tools.py` -- farebbero altrimenti la stessa scansione due
+    volte, in due file diversi: e' un solo posto, come per
+    `inventory_is_readable` qui sopra.
+
+    **`None` significa «non riesco a risolvere», MAI «non ha mai girato».**
+    Sono tre casi distinti e nessuno dei tre e' un fatto sull'automazione:
+    lo specchio non e' cablato o non e' ancora pronto; l'entita' non c'e'
+    (nome sbagliato, o automazione appena creata che lo specchio non ha
+    ancora visto); l'automazione esiste ma la sua configurazione non ha
+    `id:` (YAML scritto a mano) e allora `attributes["id"]` non esiste
+    proprio -- le sue tracce finiscono sotto la chiave condivisa
+    `"automation.None"` e non sono indirizzabili per automazione. Chi chiama
+    deve DIRLO, non ripiegare sull'`object_id`: un elenco vuoto e un id
+    irrisolto sono due cose diverse.
+
+    `getattr(..., None)` su `all_states` per la stessa ragione di
+    `inventory_is_readable`: una cache finta senza quel metodo non deve far
+    sollevare un lettore, deve risultare «non risolvibile».
+    """
+    if not inventory_is_readable(cache):
+        return None
+    all_states = getattr(cache, "all_states", None)
+    if not callable(all_states):
+        return None
+    for state in all_states() or []:
+        if not isinstance(state, dict) or state.get("id") != entity_id:
+            continue
+        automation_id = state.get("automation_id")
+        return automation_id if isinstance(automation_id, str) and automation_id else None
+    return None
+
+
 def unreadable_inventory_error(cache) -> dict | None:
     """None se l'inventario e' utilizzabile, altrimenti l'errore da restituire
     subito al chiamante.
@@ -148,6 +192,31 @@ def _to_minimal(raw: dict) -> dict:
         # quando qualcuno ne ha toccato la luminosita'».
         "last_changed": raw.get("last_changed"),
     }
+    # L'id della CONFIGURAZIONE di un'automazione (`attributes["id"]`), che
+    # NON e' l'`object_id` dell'entita' e che senza questa riga si perdeva
+    # nella proiezione. E' la chiave con cui Home Assistant archivia le
+    # tracce (`automation.<id di configurazione>`, catena verificata sui tag
+    # `2024.7.0` e `2026.9.0` nel docstring di
+    # `HAClient.automation_traces()`), quindi senza di essa lo specchio non
+    # puo' rispondere alla domanda «come e' andata questa automazione?».
+    #
+    # In cima, e NON dentro `_DOMAIN_ATTRS`, di proposito: quel dizionario
+    # decide cosa il MODELLO vede degli attributi (`home_space/topology.
+    # live_mirror` porta `attributes` fino a `guarda` e `cerca`), e un timbro
+    # numerico di configurazione li' dentro sarebbe rumore davanti al
+    # modello. Qui e' una chiave di giunzione per il codice, e resta tale.
+    #
+    # `attributes["id"]` c'e' solo quando l'automazione ha un `id:` nella sua
+    # configurazione: `BaseAutomationEntity.capability_attributes` torna
+    # `None` se `unique_id is None` (stessi due tag), e le capability
+    # attributes entrano negli attributi dello stato via
+    # `helpers/entity.py::__async_calculate_state`. Un'automazione YAML
+    # scritta senza `id:` non ne ha, e chi legge deve dire «non riesco a
+    # risolverla», non ripiegare sull'`object_id`.
+    if dom == "automation":
+        automation_id = attrs.get("id")
+        if isinstance(automation_id, str) and automation_id:
+            result["automation_id"] = automation_id
     domain_keys = _DOMAIN_ATTRS.get(dom, [])
     if domain_keys:
         extra = {k: attrs[k] for k in domain_keys if k in attrs}

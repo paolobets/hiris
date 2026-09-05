@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from hiris.app.proxy.entity_cache import EntityCache
+from hiris.app.proxy.entity_cache import EntityCache, automation_config_id
 
 
 @pytest.mark.asyncio
@@ -190,3 +190,131 @@ async def test_load_non_mutila_un_nome_legittimo_con_accenti_apostrofi_e_simboli
     assert entita["state"] == "on"
 
 
+
+
+# --------------------------------------------------------------------------
+# `automation_config_id` -- Task 6 di «le tracce e il log».
+#
+# La traduzione `entity_id -> id di configurazione`, che i due chiamanti delle
+# tracce (il collettore in `server.py` e lo strumento `automation_trace`)
+# devono fare prima di chiedere a Home Assistant. Un `None` qui significa
+# «non riesco a risolvere», MAI «non ha mai girato»: la distinzione e' la
+# ragione per cui questa fetta esiste.
+# --------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_automation_config_id_translates_the_entity_id():
+    """Dalla cache VERA, caricata da stati veri: l'`entity_id` che l'evento
+    e il modello nominano diventa l'id di configurazione con cui HA archivia
+    le tracce.
+
+    La cache e' quella vera e non un doppio di proposito: la proprieta' da
+    provare e' che la traduzione sopravvive alla PROIEZIONE (`_to_minimal`),
+    che e' esattamente il punto in cui l'id si perdeva.
+
+    Mutazione: `return state.get("id")` invece di
+    `state.get("automation_id")` dentro `automation_config_id` (cioe' tornare
+    l'`entity_id`, il difetto originale) -- il test torna rosso su
+    `assert automation_config_id(cache, "automation.luci_sera") ==
+    "1771346155970"`, che riceve `"automation.luci_sera"`.
+    """
+    mock_ha = AsyncMock()
+    mock_ha.get_states.return_value = [
+        {"entity_id": "automation.luci_sera", "state": "on",
+         "attributes": {"id": "1771346155970", "friendly_name": "Luci sera"}},
+    ]
+    cache = EntityCache()
+    await cache.load(mock_ha)
+    assert automation_config_id(cache, "automation.luci_sera") == "1771346155970"
+
+
+@pytest.mark.asyncio
+async def test_automation_config_id_is_none_for_an_automation_without_an_id():
+    """Un'automazione YAML senza `id:` esiste, e' viva, e non e' risolvibile:
+    `capability_attributes` torna `None` quando `unique_id is None` (tag
+    `2024.7.0` e `2026.9.0`), quindi non c'e' nessun `attributes["id"]`.
+
+    E' il caso in cui il ripiego sarebbe piu' tentante -- l'entita' c'e', il
+    suo `object_id` e' li' -- ed e' il caso in cui il ripiego mentirebbe di
+    piu': le tracce di TUTTE le automazioni senza `id` vivono sotto la stessa
+    chiave `"automation.None"` (`ActionTrace.__init__`: `self.key =
+    f"{self._domain}.{item_id}"` con `item_id` a `None`, e `async_store_trace`
+    la memorizza perche' `if key := trace.key` vede una stringa non vuota),
+    che non e' indirizzabile per automazione.
+
+    Mutazione: ripiegare sull'`object_id` quando l'id manca
+    (`return automation_id or entity_id.partition(".")[2]`) -- il test torna
+    rosso su `assert automation_config_id(cache, "automation.scritta_a_mano")
+    is None`, che riceve `"scritta_a_mano"`.
+    """
+    mock_ha = AsyncMock()
+    mock_ha.get_states.return_value = [
+        {"entity_id": "automation.scritta_a_mano", "state": "on",
+         "attributes": {"friendly_name": "Scritta a mano"}},
+    ]
+    cache = EntityCache()
+    await cache.load(mock_ha)
+    assert automation_config_id(cache, "automation.scritta_a_mano") is None
+
+
+@pytest.mark.asyncio
+async def test_automation_config_id_is_none_for_an_entity_the_mirror_does_not_know():
+    """Un `entity_id` che lo specchio non conosce -- nome sbagliato, o
+    automazione appena creata -- non si risolve, e non deve prendersi l'id di
+    un'ALTRA automazione: la scansione cerca la riga giusta, non la prima.
+
+    Mutazione: togliere il filtro `state.get("id") != entity_id` dal ciclo
+    (cioe' tornare l'id della prima automazione trovata) -- il test torna
+    rosso su `assert automation_config_id(cache, "automation.mai_vista") is
+    None`, che riceve `"1771346155970"`.
+    """
+    mock_ha = AsyncMock()
+    mock_ha.get_states.return_value = [
+        {"entity_id": "automation.luci_sera", "state": "on",
+         "attributes": {"id": "1771346155970"}},
+    ]
+    cache = EntityCache()
+    await cache.load(mock_ha)
+    assert automation_config_id(cache, "automation.mai_vista") is None
+
+
+@pytest.mark.asyncio
+async def test_automation_config_id_is_none_while_the_mirror_is_not_ready():
+    """Uno specchio non ancora caricato non e' una casa senza automazioni:
+    e' «non ho potuto guardare», la stessa distinzione che `loaded` esiste
+    per tenere in piedi (`inventory_is_readable`). Una cache appena costruita
+    ha `all_states() == []`, che senza la guardia darebbe lo stesso `None`
+    per la ragione sbagliata -- qui la cache viene CARICATA dopo, e la stessa
+    domanda cambia risposta: e' cosi' che si vede che la guardia c'e'.
+
+    Mutazione: togliere `if not inventory_is_readable(cache): return None` --
+    il test resta verde sul primo assert (una cache vuota non trova nulla
+    comunque) ma NON e' quello che sorveglia la guardia: rosso arriva su
+    `assert automation_config_id(cache, "automation.luci_sera") is None`
+    DOPO aver messo lo stato dentro con `on_state_changed` a caricamento mai
+    avvenuto -- li' la cache ha la riga ma non e' pronta, e senza la guardia
+    tornerebbe `"1771346155970"`.
+    """
+    cache = EntityCache()
+    assert automation_config_id(cache, "automation.luci_sera") is None
+    # Gli eventi arrivano anche quando il caricamento iniziale e' fallito, e
+    # NON alzano `loaded` (vedi il docstring della proprieta'): la riga c'e',
+    # l'inventario resta dichiaratamente non pronto.
+    cache.on_state_changed({"new_state": {
+        "entity_id": "automation.luci_sera", "state": "on",
+        "attributes": {"id": "1771346155970"}}})
+    assert cache.all_states()[0]["automation_id"] == "1771346155970"
+    assert automation_config_id(cache, "automation.luci_sera") is None
+
+
+def test_automation_config_id_is_none_without_a_mirror_at_all():
+    """Nessuna cache cablata (o una finta che non sa fare `all_states`): non
+    si solleva, si dichiara non risolvibile -- stessa tolleranza di
+    `inventory_is_readable`, che una finta senza `loaded` non deve rompere.
+
+    Mutazione: togliere `if not callable(all_states): return None` -- il test
+    torna rosso su `assert automation_config_id(object(), "automation.x") is
+    None` con un `TypeError` (`'NoneType' object is not callable`).
+    """
+    assert automation_config_id(None, "automation.x") is None
+    assert automation_config_id(object(), "automation.x") is None

@@ -24,6 +24,7 @@ from hiris.app import server
 from hiris.app.home_space.store import HomeSpaceStore
 from hiris.app.mind.store import READING_RETENTION_S
 from hiris.app.mind.watcher import Watcher
+from hiris.app.proxy.entity_cache import _to_minimal
 from hiris.app.server import watch_system_conditions
 from tests._contracts import assert_stessa_firma
 from tests.test_mind_companions import _ClienteLegami
@@ -1775,24 +1776,66 @@ class _FakeAutomationWatcher:
 
 
 class _FakeTracesClient:
-    """Un `HAClient` finto per `automation_traces()`: `traces_by_entity`
-    mappa entity_id -> il dizionario che il metodo vero deve tornare per
-    quell'entity_id (`{"tracce": [...]}` o `{"errore": ...}`). Un entity_id
-    non presente nella mappa torna un guasto, non una lista vuota -- una
+    """Un `HAClient` finto per `automation_traces()`: `traces_by_automation_id`
+    mappa **l'id di CONFIGURAZIONE** -- non l'`entity_id` -- al dizionario che
+    il metodo vero deve tornare (`{"tracce": [...]}` o `{"errore": ...}`).
+
+    **La chiave e' l'id di configurazione dal Task 6**, e non e' un dettaglio
+    della finta: e' la proprieta' che questi test sorvegliano. Home Assistant
+    archivia le tracce sotto `automation.<id della configurazione>` (catena
+    verificata sui tag `2024.7.0` e `2026.9.0`, nel docstring di
+    `HAClient.automation_traces()`), quindi un collettore che passasse
+    l'`entity_id` -- come faceva la prima stesura -- non troverebbe nessuna
+    chiave qui, esattamente come non ne trova nessuna sulla casa vera.
+
+    Un id non presente nella mappa torna un guasto, non una lista vuota -- una
     finta che rispondesse `{"tracce": []}` di default nasconderebbe un
-    errore di battitura nel test che la usa. `calls` (giro di correzioni,
-    rilievo 6, secondo punto) ricorda ogni entity_id chiesto: senza,
+    errore di battitura nel test che la usa, e (peggio) farebbe passare verde
+    proprio il difetto che questa fetta corregge. `calls` (giro di
+    correzioni, rilievo 6, secondo punto) ricorda ogni id chiesto: senza,
     «`automation_traces` non deve mai essere chiamata» era una promessa nel
     docstring del test senza un assert che la sorvegliasse."""
 
-    def __init__(self, traces_by_entity):
-        self._traces = dict(traces_by_entity)
+    def __init__(self, traces_by_automation_id):
+        self._traces = dict(traces_by_automation_id)
         self.calls: list[str] = []
 
-    async def automation_traces(self, entity_id):
-        self.calls.append(entity_id)
+    async def automation_traces(self, automation_id):
+        self.calls.append(automation_id)
         return self._traces.get(
-            entity_id, {"errore": f"nessuna finta per {entity_id}"})
+            automation_id, {"errore": f"nessuna finta per {automation_id}"})
+
+
+class _FakeMirror:
+    """Lo specchio dello stato, ridotto a cio' che il collettore gli chiede:
+    `loaded` e `all_states()`.
+
+    Le righe le costruisce `proxy/entity_cache._to_minimal`, la proiezione
+    VERA, a partire da stati grezzi veri -- non a mano. Se un domani la
+    proiezione smettesse di portare `automation_id`, questi test
+    arrossirebbero invece di continuare a provare una finta che nessuno
+    produce piu'.
+
+    Un `entity_id` mappato a `None` e' un'automazione **senza `id:` nella
+    configurazione** (YAML scritto a mano): esiste, e' viva, e non e'
+    risolvibile -- `capability_attributes` torna `None` quando `unique_id is
+    None` (tag `2024.7.0` e `2026.9.0`), quindi nello stato vero non c'e'
+    proprio nessun `attributes["id"]`.
+    """
+
+    loaded = True
+
+    def __init__(self, config_id_by_entity):
+        self._rows = []
+        for entity_id, config_id in config_id_by_entity.items():
+            attributes = {"friendly_name": entity_id}
+            if config_id is not None:
+                attributes["id"] = config_id
+            self._rows.append(_to_minimal(
+                {"entity_id": entity_id, "state": "on", "attributes": attributes}))
+
+    def all_states(self):
+        return list(self._rows)
 
 
 def test_fake_automation_watcher_matches_watcher_marked_automations():
@@ -1855,14 +1898,16 @@ def test_every_trace_of_a_marked_automation_is_forwarded_in_order():
     `("automation.luci_sera", "finished")`)."""
     watcher = _FakeAutomationWatcher(["automation.luci_sera"])
     client = _FakeTracesClient({
-        "automation.luci_sera": {"tracce": [
+        "1771346155970": {"tracce": [
             {"run_id": "1", "script_execution": "finished"},
             {"run_id": "2", "script_execution": "failed_conditions"},
             {"run_id": "3", "script_execution": "error"},
         ]},
     })
+    app = {"watcher": watcher,
+           "entity_cache": _FakeMirror({"automation.luci_sera": "1771346155970"})}
 
-    result = asyncio.run(server.watch_automation_outcomes({"watcher": watcher}, client))
+    result = asyncio.run(server.watch_automation_outcomes(app, client))
 
     assert result == 3
     assert [c[:2] for c in watcher.calls] == [
@@ -1890,12 +1935,14 @@ def test_a_not_triggered_trace_is_not_forwarded():
     conterebbe come inoltrato)."""
     watcher = _FakeAutomationWatcher(["automation.x"])
     client = _FakeTracesClient({
-        "automation.x": {"tracce": [
+        "1771346155970": {"tracce": [
             {"run_id": "1", "script_execution": None},
         ]},
     })
+    app = {"watcher": watcher,
+           "entity_cache": _FakeMirror({"automation.x": "1771346155970"})}
 
-    result = asyncio.run(server.watch_automation_outcomes({"watcher": watcher}, client))
+    result = asyncio.run(server.watch_automation_outcomes(app, client))
 
     assert result == 0
     assert watcher.calls == []
@@ -1917,12 +1964,13 @@ def test_a_trace_older_than_process_boot_is_not_forwarded():
     aprirebbe comunque un episodio, come se fosse appena successa)."""
     watcher = _FakeAutomationWatcher(["automation.x"])
     client = _FakeTracesClient({
-        "automation.x": {"tracce": [
+        "1771346155970": {"tracce": [
             {"run_id": "1", "script_execution": "error",
              "timestamp": {"start": "2020-01-01T00:00:00+00:00"}},
         ]},
     })
-    app = {"watcher": watcher, "automation_traces_boot_ts": 1787572800.0}
+    app = {"watcher": watcher, "automation_traces_boot_ts": 1787572800.0,
+           "entity_cache": _FakeMirror({"automation.x": "1771346155970"})}
 
     result = asyncio.run(server.watch_automation_outcomes(app, client))
 
@@ -1943,14 +1991,127 @@ def test_a_failed_read_for_one_automation_does_not_stop_the_others():
     non verrebbe mai raggiunta, `watcher.calls` resterebbe vuota)."""
     watcher = _FakeAutomationWatcher(["automation.rotta", "automation.buona"])
     client = _FakeTracesClient({
-        "automation.rotta": {"errore": "Home Assistant non ha risposto"},
-        "automation.buona": {"tracce": [{"run_id": "1", "script_execution": "error"}]},
+        "1771346155970": {"errore": "Home Assistant non ha risposto"},
+        "1771346155971": {"tracce": [{"run_id": "1", "script_execution": "error"}]},
     })
+    app = {"watcher": watcher, "entity_cache": _FakeMirror({
+        "automation.rotta": "1771346155970",
+        "automation.buona": "1771346155971"})}
 
-    result = asyncio.run(server.watch_automation_outcomes({"watcher": watcher}, client))
+    result = asyncio.run(server.watch_automation_outcomes(app, client))
 
     assert result == 1
     assert [c[:2] for c in watcher.calls] == [("automation.buona", "error")]
+
+
+def test_traces_are_asked_for_by_configuration_id_not_by_entity_id():
+    """La proprieta' che tutta questa fetta esiste per garantire, isolata:
+    il collettore riceve un `entity_id` (e' quello che l'evento
+    `automation_triggered` porta, ed e' quello che
+    `Watcher.marked_automations()` restituisce) e chiede le tracce con l'id
+    di CONFIGURAZIONE, risolto dallo specchio.
+
+    Sulla casa vera i due valori non coincidono mai -- l'interfaccia di HA
+    genera timbri numerici -- e HA cerca la chiave `automation.<id di
+    configurazione>` con un `.get(key)` nudo (`trace/util.py::
+    _get_debug_traces`, tag `2024.7.0` e `2026.9.0`): con l'`object_id` non
+    si sbaglia UNA traccia, non se ne legge mai nessuna. Qui l'`entity_id` e
+    l'id sono deliberatamente diversi, cosi' la differenza si vede.
+
+    Mutazione (verificata eseguendola): `report = await
+    ha_client.automation_traces(entity_id)` invece di `(automation_id)` -- il
+    test torna rosso su `assert client.calls == ["1771346155970"]`, che
+    riceve `["automation.luci_sera"]`; e anche su `assert result == 1`, che
+    riceve `0`, perche' la finta non ha nessuna traccia sotto quella chiave
+    (proprio come HA non ne ha).
+    """
+    watcher = _FakeAutomationWatcher(["automation.luci_sera"])
+    client = _FakeTracesClient({
+        "1771346155970": {"tracce": [{"run_id": "1", "script_execution": "error"}]},
+    })
+    app = {"watcher": watcher,
+           "entity_cache": _FakeMirror({"automation.luci_sera": "1771346155970"})}
+
+    result = asyncio.run(server.watch_automation_outcomes(app, client))
+
+    assert client.calls == ["1771346155970"]
+    assert result == 1
+    # Il `Watcher` continua a ragionare per `entity_id`: la traduzione serve
+    # a Home Assistant, non all'osservatore, che deve poter ricollegare il
+    # fatto all'automazione col nome che l'utente vede.
+    assert [c[:2] for c in watcher.calls] == [("automation.luci_sera", "error")]
+
+
+def test_an_unresolvable_automation_is_skipped_without_writing_anything():
+    """Un'automazione segnata il cui id non si risolve -- YAML senza `id:`,
+    oppure specchio non ancora pronto -- si SALTA: non si chiedono le sue
+    tracce (non c'e' niente da chiedere) e soprattutto non si scrive nessun
+    fatto. Un id irrisolto e' «non ho potuto guardare», non «non ha mai
+    girato»: la distinzione e' la ragione di questa fetta.
+
+    Le altre automazioni proseguono, come per una lettura fallita: e' la
+    stessa disciplina del "parziale tollerato".
+
+    Mutazione (verificata eseguendola): ripiegare sull'`object_id` quando la
+    risoluzione fallisce (`automation_id = automation_config_id(...) or
+    entity_id.partition(".")[2]`) -- il test torna rosso su
+    `assert client.calls == ["1771346155971"]`, che riceve
+    `["scritta_a_mano", "1771346155971"]`: la finta risponderebbe con un
+    guasto inventato per quella chiave, cioe' esattamente il silenzio che
+    Home Assistant produrrebbe davvero.
+    """
+    watcher = _FakeAutomationWatcher(
+        ["automation.scritta_a_mano", "automation.buona"])
+    client = _FakeTracesClient({
+        "1771346155971": {"tracce": [{"run_id": "1", "script_execution": "error"}]},
+    })
+    app = {"watcher": watcher, "entity_cache": _FakeMirror({
+        "automation.scritta_a_mano": None,
+        "automation.buona": "1771346155971"})}
+
+    result = asyncio.run(server.watch_automation_outcomes(app, client))
+
+    assert client.calls == ["1771346155971"]
+    assert result == 1
+    assert [c[:2] for c in watcher.calls] == [("automation.buona", "error")]
+
+
+def test_an_unresolvable_automation_does_not_touch_its_cursor():
+    """Il secondo tempo del test qui sopra, e la ragione per cui NON basta
+    quello: uno specchio che diventa pronto DOPO -- il caso vero, l'add-on
+    appena partito -- non deve trovare il cursore gia' riempito da un giro
+    che non ha letto niente.
+
+    Se il giro cieco scrivesse `cursors[entity_id] = set()` (o peggio, un
+    insieme parziale), le tracce viste al primo giro utile risulterebbero
+    «gia' processate» o «mai viste» in modo arbitrario. Non toccarlo
+    significa che il primo giro che risolve davvero vede tutte le tracce
+    ancora conservate come nuove.
+
+    Mutazione (verificata eseguendola): azzerare il cursore anche quando non
+    si e' letto nulla, cioe' `cursors[entity_id] = set()` subito prima del
+    `continue` dell'id irrisolto -- il test torna rosso su
+    `assert "automation.luci_sera" not in app.get("automation_trace_cursors",
+    {})`.
+    """
+    watcher = _FakeAutomationWatcher(["automation.luci_sera"])
+    client = _FakeTracesClient({
+        "1771346155970": {"tracce": [{"run_id": "1", "script_execution": "error"}]},
+    })
+    app = {"watcher": watcher,
+           "entity_cache": _FakeMirror({"automation.luci_sera": None})}
+
+    blind_round = asyncio.run(server.watch_automation_outcomes(app, client))
+    assert blind_round == 0
+    assert client.calls == []
+    assert "automation.luci_sera" not in app.get("automation_trace_cursors", {})
+
+    # Lo specchio arriva: la traccia gia' conservata da HA e' NUOVA per il
+    # cursore, e il fatto si scrive adesso invece di essere perso per sempre.
+    app["entity_cache"] = _FakeMirror({"automation.luci_sera": "1771346155970"})
+    seeing_round = asyncio.run(server.watch_automation_outcomes(app, client))
+    assert seeing_round == 1
+    assert client.calls == ["1771346155970"]
 
 
 # --------------------------------------------------------------------------
@@ -1992,12 +2153,13 @@ def test_rereading_a_fixed_finished_then_error_window_stays_at_one_write():
     watcher = Watcher(store, now=lambda: 1787572800.0)
     watcher.mark_automation("automation.rotta")
     client = _FakeTracesClient({
-        "automation.rotta": {"tracce": [
+        "1771346155970": {"tracce": [
             {"run_id": "1", "script_execution": "finished"},
             {"run_id": "2", "script_execution": "error"},
         ]},
     })
-    app = {"watcher": watcher}
+    app = {"watcher": watcher,
+           "entity_cache": _FakeMirror({"automation.rotta": "1771346155970"})}
 
     first_round = asyncio.run(server.watch_automation_outcomes(app, client))
     assert first_round == 1  # il "finished" iniziale non chiude niente; l'"error" apre
@@ -2026,12 +2188,13 @@ def test_rereading_a_fixed_error_then_finished_window_stays_at_two_writes():
     watcher = Watcher(store, now=lambda: 1787572800.0)
     watcher.mark_automation("automation.guarita")
     client = _FakeTracesClient({
-        "automation.guarita": {"tracce": [
+        "1771346155970": {"tracce": [
             {"run_id": "1", "script_execution": "error"},
             {"run_id": "2", "script_execution": "finished"},
         ]},
     })
-    app = {"watcher": watcher}
+    app = {"watcher": watcher,
+           "entity_cache": _FakeMirror({"automation.guarita": "1771346155970"})}
 
     first_round = asyncio.run(server.watch_automation_outcomes(app, client))
     assert first_round == 2  # apre e chiude nello stesso giro

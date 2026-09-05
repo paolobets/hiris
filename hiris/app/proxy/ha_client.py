@@ -1507,16 +1507,69 @@ class HAClient:
             return {"errore": "risposta in forma inattesa"}
         return {"voci": result}
 
-    async def automation_traces(self, entity_id: str) -> dict:
+    async def automation_traces(self, automation_id: str) -> dict:
         """Le esecuzioni RECENTI di un'automazione, cosi' come HA le riassume.
 
         `trace/list`, WS, `require_admin` (HIRIS parla col token del
-        Supervisor, quindi lo puo' chiamare). Verificato alla fonte
-        (`homeassistant/components/trace/websocket_api.py`, funzione
-        `websocket_trace_list`; `trace/util.py`, `async_list_traces`): il
-        comando vuole `domain` e `item_id` SEPARATI, non l'`entity_id` intero
-        -- HA stesso li ricompone con `key = f"{msg['domain']}.{msg['item_id']}"`
-        -- quindi qui si spacca sul primo punto, come fa HA.
+        Supervisor, quindi lo puo' chiamare).
+
+        **L'argomento e' l'id della CONFIGURAZIONE, non l'`object_id`
+        dell'entita'** -- e non e' una sfumatura: e' la differenza fra
+        leggere le tracce e non leggerne mai nessuna. La catena, verificata
+        alla fonte sui tag RILASCIATI `2024.7.0` e `2026.9.0` (non su `dev`),
+        anello per anello:
+
+        1. `components/automation/__init__.py` traccia con
+           `trace_automation(self.hass, self.unique_id, ...)`;
+        2. nella stessa classe, `self._attr_unique_id = automation_id`, e
+           `automation_id: str | None = config_block.get(CONF_ID)` -- cioe'
+           la chiave `id:` della configurazione, quella che l'interfaccia di
+           HA genera come timbro numerico (`"1771346155970"`);
+        3. `components/trace/models.py`, `ActionTrace.__init__`:
+           `self.key = f"{self._domain}.{item_id}"`, con `_domain` fisso a
+           `"automation"` (`components/automation/trace.py`,
+           `AutomationTrace._domain = DOMAIN`);
+        4. `components/trace/websocket_api.py`, `websocket_trace_list` e
+           `websocket_trace_get`: ricompongono
+           `key = f"{msg['domain']}.{msg['item_id']}"` e lo cercano nel
+           magazzino con un `.get(key)` NUDO -- nessuna validazione, nessun
+           passaggio dal registro delle entita'.
+
+        Sulla casa vera tutte e diciotto le automazioni hanno un `id` di
+        configurazione DIVERSO dall'`object_id`: mandare l'`object_id`
+        significa `[]` per ognuna, sempre, scattata o no -- un vuoto che
+        legge come «non ha mai girato». Per questo la firma dice
+        `automation_id` e non `entity_id`: chi legge questo nome non ci mette
+        un `entity_id`, e il disallineamento non si puo' riconfondere.
+
+        **La risoluzione `entity_id -> automation_id` NON avviene qui**, ma
+        ai chiamanti (`server.py::watch_automation_outcomes` e
+        `home_space/tools.py::ToolDispatcher._automation_trace`), dove lo
+        specchio dello stato gia' vive: il client resta «legge e non
+        giudica», senza una seconda lettura dentro di se' e senza dipendere
+        dallo stato. L'id sta in `attributes["id"]` dello stato
+        dell'entita' -- `BaseAutomationEntity.capability_attributes`
+        (`{CONF_ID: self.unique_id}`, solo `if self.unique_id is not None`),
+        e `helpers/entity.py::__async_calculate_state` copia le capability
+        attributes dentro gli attributi dello stato (verificato su entrambi
+        i tag).
+
+        **Un'automazione YAML scritta SENZA `id:`** non e' un caso teorico, e
+        chi legge deve saperlo: `unique_id` resta `None`, `capability_
+        attributes` torna `None` (quindi NESSUN `attributes["id"]` da
+        risolvere), e la sua traccia finisce sotto la chiave letterale
+        `"automation.None"` -- `async_store_trace` la memorizza davvero,
+        perche' `if key := trace.key` vede una stringa non vuota, ma quella
+        chiave e' CONDIVISA da tutte le automazioni senza `id`, e
+        `trace_automation` non chiama nemmeno `finished()` su di esse
+        (`finally: if automation_id: trace.finished()`). Non sono quindi
+        tracce indirizzabili per automazione: chi non risolve l'id non deve
+        ripiegare sull'`object_id` ne' sulla stringa `"None"`, deve dire che
+        non riesce a risolvere -- che NON e' «non ha mai girato».
+
+        Il `domain` e' la costante `"automation"` e non piu' la parte
+        sinistra di un `entity_id`: e' `AutomationTrace._domain`, l'unico
+        valore che quella chiave puo' avere per una traccia di automazione.
 
         Stessa trappola di `system_log()`, verificata di nuovo alla fonte
         invece di darla per scontata perche' gia' vista una volta: il
@@ -1568,12 +1621,12 @@ class HAClient:
         `voci`: un elenco vuoto affermerebbe «questa automazione non ha mai
         girato», che e' un'affermazione, non un silenzio.
         """
-        domain, _, item_id = entity_id.partition(".")
         try:
             msg = await self._ws_batch(
-                [("trace/list", {"domain": domain, "item_id": item_id})])
+                [("trace/list", {"domain": "automation",
+                                 "item_id": automation_id})])
         except Exception as e:
-            logger.debug("tracce di %s non lette: %s", entity_id, e)
+            logger.debug("tracce di %s non lette: %s", automation_id, e)
             return {"errore": "Home Assistant non ha risposto"}
         msg = msg[0] if msg else None
         if msg and msg.get("error"):
@@ -1584,15 +1637,24 @@ class HAClient:
             return {"errore": "risposta in forma inattesa"}
         return {"tracce": result}
 
-    async def automation_trace(self, entity_id: str, run_id: str) -> dict:
+    async def automation_trace(self, automation_id: str, run_id: str) -> dict:
         """UNA esecuzione di un'automazione, con la storia intera del suo
         grafo di passi.
 
         `trace/get`, WS, `require_admin`. Stessa fonte di
         `automation_traces()` (`homeassistant/components/trace/websocket_api.py`,
         funzione `websocket_trace_get`; `trace/util.py`, `async_get_trace`):
-        stessi `domain`/`item_id` spaccati dall'`entity_id`, piu' `run_id` --
-        la chiave che `trace/list` ha gia' dato in `run_id`.
+        stessi `domain`/`item_id`, piu' `run_id` -- la chiave che `trace/list`
+        ha gia' dato in `run_id`.
+
+        **`automation_id` e' l'id della CONFIGURAZIONE**, per la stessa
+        catena verificata sui tag `2024.7.0` e `2026.9.0` e scritta per
+        esteso nel docstring di `automation_traces()` qui sopra:
+        `websocket_trace_get` ricompone `f"{msg['domain']}.{msg['item_id']}"`
+        e lo cerca con un `.get(key)` nudo, e quella chiave nasce da
+        `self.unique_id`, cioe' da `config_block.get(CONF_ID)`. Con
+        l'`object_id` al posto suo non si sbaglia UNA traccia: non se ne
+        legge mai nessuna. La risoluzione avviene ai chiamanti, non qui.
 
         A differenza di `trace/list`, qui il risultato E' un dizionario
         (`ActionTrace.as_extended_dict()`, `trace/models.py`, verificato):
@@ -1611,13 +1673,12 @@ class HAClient:
         `{"errore": ...}` su ogni guasto di lettura, stessa disciplina di
         `automation_traces()` e di tutto il resto del file.
         """
-        domain, _, item_id = entity_id.partition(".")
         try:
             msg = await self._ws_batch(
-                [("trace/get", {"domain": domain, "item_id": item_id,
+                [("trace/get", {"domain": "automation", "item_id": automation_id,
                                 "run_id": run_id})])
         except Exception as e:
-            logger.debug("traccia %s/%s non letta: %s", entity_id, run_id, e)
+            logger.debug("traccia %s/%s non letta: %s", automation_id, run_id, e)
             return {"errore": "Home Assistant non ha risposto"}
         msg = msg[0] if msg else None
         if msg and msg.get("error"):

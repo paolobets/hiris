@@ -8,6 +8,7 @@ from hiris.app.home_space.tools import (
     ToolDispatcher,
 )
 from hiris.app.memory.store import MemoryStore
+from hiris.app.proxy.entity_cache import _to_minimal
 from tests.test_briefing import _CASA, _COMPORTAMENTO
 
 # _CASA/_COMPORTAMENTO sono di tests/test_briefing.py, importati invece di
@@ -1099,7 +1100,8 @@ class _FakeHAChannel:
     scambiati.
 
     Le firme di `system_log`/`automation_traces`/`automation_trace` sono
-    quelle vere di `HAClient` (`entity_id`, `run_id`, in quest'ordine):
+    quelle vere di `HAClient` (`automation_id`, `run_id`, in quest'ordine --
+    l'id di CONFIGURAZIONE dal Task 6, non un `entity_id`):
     `tests/test_ha_client_contract.py` le confronta con l'originale in modo
     DERIVATO (`tests/_contracts.py::doppi`), quindi una firma finta scritta
     diversa da qui arrossirebbe LA', non qui -- e' voluto, non un buco di
@@ -1123,13 +1125,55 @@ class _FakeHAChannel:
         self.calls.append(("voci",))
         return self._log_response
 
-    async def automation_traces(self, entity_id):
-        self.calls.append(("tracce", entity_id))
+    async def automation_traces(self, automation_id):
+        self.calls.append(("tracce", automation_id))
         return self._traces_response
 
-    async def automation_trace(self, entity_id, run_id):
-        self.calls.append(("traccia", entity_id, run_id))
+    async def automation_trace(self, automation_id, run_id):
+        self.calls.append(("traccia", automation_id, run_id))
         return self._trace_response
+
+
+class _FakeMirror:
+    """Lo specchio dello stato, ridotto a cio' che `_automation_trace` gli
+    chiede: `loaded` e `all_states()`.
+
+    Le righe le costruisce `proxy/entity_cache._to_minimal`, la proiezione
+    VERA, a partire da stati grezzi veri: se un domani smettesse di portare
+    `automation_id`, questi test arrossirebbero invece di continuare a
+    provare una finta che nessuno produce piu'.
+
+    `None` come id significa **automazione senza `id:` nella configurazione**
+    (YAML scritto a mano): viva, ma non risolvibile -- nello stato vero non
+    c'e' proprio nessun `attributes["id"]`, perche' `capability_attributes`
+    torna `None` quando `unique_id is None` (tag `2024.7.0` e `2026.9.0`).
+    """
+
+    loaded = True
+
+    def __init__(self, config_id_by_entity):
+        self._rows = []
+        for entity_id, config_id in config_id_by_entity.items():
+            attributes = {"friendly_name": entity_id}
+            if config_id is not None:
+                attributes["id"] = config_id
+            self._rows.append(_to_minimal(
+                {"entity_id": entity_id, "state": "on", "attributes": attributes}))
+
+    def all_states(self):
+        return list(self._rows)
+
+
+# L'automazione che tutti i test di `automation_trace` nominano: `entity_id`
+# e id di configurazione DELIBERATAMENTE diversi -- e' l'unico modo in cui la
+# differenza fra i due si vede (vedi `_FakeMirror` e il docstring di
+# `HAClient.automation_traces()`).
+_BUONANOTTE = "automation.buonanotte"
+_BUONANOTTE_CONFIG_ID = "1771346155970"
+
+
+def _mirror_with_buonanotte():
+    return _FakeMirror({_BUONANOTTE: _BUONANOTTE_CONFIG_ID})
 
 
 @pytest.mark.asyncio
@@ -1207,8 +1251,8 @@ async def test_automation_trace_without_ha_channel_declares_instead_of_raising()
     un problema: 'NoneType' object has no attribute 'automation_traces'»),
     non quello del collegamento assente, e l'assert sulla frase specifica
     arrossisce."""
-    d = ToolDispatcher(None, None)
-    result = await d.dispatch("automation_trace", {"entita": "automation.buonanotte"})
+    d = ToolDispatcher(None, None, cache=_mirror_with_buonanotte())
+    result = await d.dispatch("automation_trace", {"entita": _BUONANOTTE})
     assert "errore" in result
     assert "collegamento vivo con Home Assistant" in result["errore"]
 
@@ -1223,7 +1267,8 @@ async def test_automation_trace_requires_an_entita():
     solleva `AttributeError`, la rete di sicurezza finale la trasforma in un
     `errore` che pero' non contiene piu' la parola «entita» -- l'assert
     dedicato ad essa arrossisce."""
-    d = ToolDispatcher(None, None, ha=_FakeHAChannel())
+    d = ToolDispatcher(None, None, ha=_FakeHAChannel(),
+                       cache=_mirror_with_buonanotte())
     result = await d.dispatch("automation_trace", {})
     assert "errore" in result and "entita" in result["errore"]
 
@@ -1231,23 +1276,123 @@ async def test_automation_trace_requires_an_entita():
 @pytest.mark.asyncio
 async def test_automation_trace_rejects_a_malformed_entita_before_touching_the_network():
     """Un `entita` senza punto (o comunque non `dominio.oggetto`) non deve
-    MAI raggiungere il canale: `HAClient.automation_traces()` lo spaccherebbe
-    sul primo punto e produrrebbe un elenco vuoto silenzioso -- «questa
-    automazione non ha mai girato» detto per sbaglio (stessa trappola
-    dichiarata in `mind/watcher.py::mark_automation`).
+    MAI raggiungere il canale, e deve avere una frase SUA.
+
+    **Cos'e' cambiato col Task 6, e perche' questo test e' stato riscritto.**
+    Prima la guardia era l'unica difesa: senza di essa `"senza_punto"`
+    arrivava a `HAClient.automation_traces()`, che lo spaccava sul primo
+    punto. Adesso c'e' anche la risoluzione contro lo specchio, che un
+    identificatore malformato non supera comunque -- quindi «non raggiunge
+    il canale» non e' piu' una proprieta' della guardia: sarebbe verde
+    anche senza. Cio' che resta suo, e che solo lei garantisce, e' la
+    DISTINZIONE fra i due errori: «non ha la forma di un identificatore» e
+    «non lo conosco» sono due cose diverse per chi legge, e il primo si dice
+    senza nemmeno scandire lo specchio.
 
     **Mutazione che uccide l'assert**: togliere il controllo
-    `if not _ENTITY_ID_RE.match(entity)`, lasciando solo il controllo di
-    stringa non vuota. Verificato eseguendo: con quel controllo tolto
-    `"senza_punto"` (una stringa non vuota, quindi valida per il primo
-    controllo) raggiunge `channel.automation_traces("senza_punto")`, e
-    `channel.calls` non resta piu' vuoto -- l'assert dedicato arrossisce."""
+    `if not _ENTITY_ID_RE.match(entity)`, lasciando solo quello di stringa
+    non vuota. Verificato eseguendo: `"senza_punto"` scende fino alla
+    risoluzione, che fallisce, e la risposta diventa «non riesco a
+    risolvere...» -- l'assert su «non ha la forma» arrossisce
+    (`AssertionError: la guardia sulla forma non parla piu' con voce
+    propria`), mentre quello su `channel.calls` resterebbe verde da solo."""
     channel = _FakeHAChannel(traces_response={"tracce": []})
-    d = ToolDispatcher(None, None, ha=channel)
+    d = ToolDispatcher(None, None, ha=channel, cache=_mirror_with_buonanotte())
     result = await d.dispatch("automation_trace", {"entita": "senza_punto"})
     assert "errore" in result
+    assert "non ha la forma" in result["errore"], (
+        "la guardia sulla forma non parla piu' con voce propria")
     assert channel.calls == [], (
         "un entita' malformato ha comunque raggiunto il canale HA")
+
+
+@pytest.mark.asyncio
+async def test_automation_trace_asks_by_configuration_id_not_by_entity_id():
+    """La proprieta' centrale di questa fetta: il modello nomina
+    l'automazione col suo `entity_id` (e' quello che `search` gli da'), e lo
+    strumento chiede le tracce con l'id di CONFIGURAZIONE, risolto dallo
+    specchio.
+
+    Home Assistant archivia le tracce sotto `automation.<id della
+    configurazione>` e le cerca con un `.get(key)` NUDO (catena verificata
+    sui tag rilasciati `2024.7.0` e `2026.9.0`, nel docstring di
+    `HAClient.automation_traces()`): con l'`object_id` la risposta e' `[]`
+    per ogni automazione della casa, sempre -- un silenzio che legge come
+    «non ha mai girato». Qui i due valori sono deliberatamente diversi, cosi'
+    la differenza si vede: con `automation.buonanotte` da entrambe le parti
+    un ripiego sull'`object_id` passerebbe verde.
+
+    **Mutazione che uccide l'assert**: `return await
+    ha.automation_traces(entity)` invece di `(automation_id)`. Verificato
+    eseguendo: `channel.calls` diventa `[("tracce",
+    "automation.buonanotte")]` e l'assert su `_BUONANOTTE_CONFIG_ID`
+    arrossisce.
+    """
+    channel = _FakeHAChannel()
+    d = ToolDispatcher(None, None, ha=channel, cache=_mirror_with_buonanotte())
+    await d.dispatch("automation_trace", {"entita": _BUONANOTTE})
+    assert channel.calls == [("tracce", _BUONANOTTE_CONFIG_ID)]
+
+
+@pytest.mark.asyncio
+async def test_an_unresolvable_entita_says_so_instead_of_an_empty_list():
+    """«Non riesco a risolvere quell'automazione» NON e' «non ha mai
+    girato», e la risposta deve dire la prima cosa: e' la bugia da cui e'
+    nato tutto questo verticale.
+
+    Un `entita` ben formato ma che lo specchio non conosce non raggiunge la
+    rete -- non c'e' nessun id da mandare -- e torna un `errore`, non un
+    `tracce: []` che affermerebbe un fatto sull'automazione.
+
+    **Mutazione che uccide l'assert**: ripiegare sull'`object_id` quando la
+    risoluzione fallisce (`if automation_id is None: automation_id =
+    entity.partition(".")[2]`) invece di dichiarare. Verificato eseguendo: la
+    chiamata raggiunge il canale e la risposta diventa `{"tracce": []}` --
+    il primo assert ad arrossire e' `assert "errore" in result`
+    (`AssertionError: assert 'errore' in {'tracce': []}`), cioe' esattamente
+    la lista vuota spacciata per un fatto.
+    """
+    channel = _FakeHAChannel(traces_response={"tracce": []})
+    d = ToolDispatcher(None, None, ha=channel, cache=_mirror_with_buonanotte())
+    result = await d.dispatch("automation_trace", {"entita": "automation.mai_vista"})
+    assert "errore" in result
+    assert "tracce" not in result
+    assert channel.calls == [], (
+        "un `entita` irrisolto ha comunque raggiunto il canale HA")
+    assert "non ho potuto guardare" in result["errore"], (
+        "il messaggio non dice al lettore che si tratta di un'assenza di "
+        "lettura e non di un fatto sull'automazione")
+
+
+@pytest.mark.asyncio
+async def test_an_automation_without_a_yaml_id_is_declared_not_guessed():
+    """Il caso vero e scomodo: un'automazione scritta a mano in YAML senza
+    `id:`. Esiste, e' viva, lo specchio la conosce -- ed e' comunque
+    irrisolvibile, perche' `capability_attributes` torna `None` quando
+    `unique_id is None` (tag `2024.7.0` e `2026.9.0`) e quindi non c'e'
+    nessun `attributes["id"]`.
+
+    E' il caso in cui il ripiego sull'`object_id` sarebbe piu' tentante, ed
+    e' quello in cui mentirebbe di piu': le tracce di TUTTE le automazioni
+    senza `id` finiscono sotto la stessa chiave `"automation.None"`
+    (`ActionTrace.__init__`, `f"{self._domain}.{item_id}"` con `item_id` a
+    `None`), che non e' indirizzabile per automazione. Il messaggio lo dice
+    a chi legge, invece di tacere.
+
+    **Mutazione che uccide l'assert**: togliere dal messaggio la menzione
+    dello YAML senza «id:» (o ripiegare sull'`object_id`, come nel test
+    qui sopra). Verificato eseguendo: l'assert su `"id:" in
+    result["errore"]` arrossisce.
+    """
+    channel = _FakeHAChannel()
+    d = ToolDispatcher(None, None, ha=channel,
+                       cache=_FakeMirror({"automation.scritta_a_mano": None}))
+    result = await d.dispatch(
+        "automation_trace", {"entita": "automation.scritta_a_mano"})
+    assert "errore" in result
+    assert channel.calls == []
+    assert "id:" in result["errore"], (
+        "il messaggio non dice al lettore il caso vero in cui si trova")
 
 
 @pytest.mark.asyncio
@@ -1263,10 +1408,10 @@ async def test_automation_trace_without_run_id_lists_recent_runs():
     marker e su `calls` arrossisce entrambi."""
     marker = {"tracce": [{"run_id": "r1", "script_execution": "finished"}]}
     channel = _FakeHAChannel(traces_response=marker)
-    d = ToolDispatcher(None, None, ha=channel)
-    result = await d.dispatch("automation_trace", {"entita": "automation.buonanotte"})
+    d = ToolDispatcher(None, None, ha=channel, cache=_mirror_with_buonanotte())
+    result = await d.dispatch("automation_trace", {"entita": _BUONANOTTE})
     assert result is marker
-    assert channel.calls == [("tracce", "automation.buonanotte")]
+    assert channel.calls == [("tracce", _BUONANOTTE_CONFIG_ID)]
 
 
 @pytest.mark.asyncio
@@ -1286,11 +1431,11 @@ async def test_automation_trace_with_run_id_asks_for_that_single_run_graph():
     dedicato arrossisce."""
     marker = {"traccia": {"run_id": "r1", "trace": {}, "script_execution": "finished"}}
     channel = _FakeHAChannel(trace_response=marker)
-    d = ToolDispatcher(None, None, ha=channel)
+    d = ToolDispatcher(None, None, ha=channel, cache=_mirror_with_buonanotte())
     result = await d.dispatch(
-        "automation_trace", {"entita": "automation.buonanotte", "esecuzione": "r1"})
+        "automation_trace", {"entita": _BUONANOTTE, "esecuzione": "r1"})
     assert result is marker
-    assert channel.calls == [("traccia", "automation.buonanotte", "r1")]
+    assert channel.calls == [("traccia", _BUONANOTTE_CONFIG_ID, "r1")]
 
 
 @pytest.mark.asyncio
@@ -1306,9 +1451,9 @@ async def test_automation_trace_blank_run_id_declares_it_without_touching_the_ne
     cioe' con `run_id=""`, `channel.calls` smette di essere vuoto e
     l'assert dedicato arrossisce."""
     channel = _FakeHAChannel()
-    d = ToolDispatcher(None, None, ha=channel)
+    d = ToolDispatcher(None, None, ha=channel, cache=_mirror_with_buonanotte())
     result = await d.dispatch(
-        "automation_trace", {"entita": "automation.buonanotte", "esecuzione": "   "})
+        "automation_trace", {"entita": _BUONANOTTE, "esecuzione": "   "})
     assert "errore" in result
     assert channel.calls == []
 
@@ -1325,8 +1470,8 @@ async def test_automation_trace_propagates_the_channel_error_without_judging_it(
     che sostituisce un `errore` in arrivo con `{"tracce": []}`. Verificato
     eseguendo: con quella sostituzione l'assert su `errore` diventa rosso."""
     channel = _FakeHAChannel(traces_response={"errore": "Home Assistant non ha risposto"})
-    d = ToolDispatcher(None, None, ha=channel)
+    d = ToolDispatcher(None, None, ha=channel, cache=_mirror_with_buonanotte())
     result = await d.dispatch(
-        "automation_trace", {"entita": "automation.buonanotte"})
+        "automation_trace", {"entita": _BUONANOTTE})
     assert result == {"errore": "Home Assistant non ha risposto"}
     assert "tracce" not in result

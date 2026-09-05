@@ -874,7 +874,8 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 >
 > **Due correzioni, 02/09, dalla fetta che ha applicato questi nomi.** (1) Il rimando a
 > `keeper/exchange.py:38` era sbagliato da sempre: quella riga e' `SOLA_LETTURA`, la lista bianca
-> dei SEI lettori, e `promesse` non c'e' mai stata (non e' un lettore ammesso in un turno di
+> dei lettori ammessi (sei allora, OTTO da «le tracce e il log», che vi ha aggiunto `system_log`
+> e `automation_trace`), e `promesse` non c'e' mai stata (non e' un lettore ammesso in un turno di
 > promessa). La stringa viveva in `home_space/tools.py`, nel catalogo della chat. (2) La stringa nel
 > codice ora e' `agenda`: la distinzione fra le due voci resta -- il concetto e' `promise`, il nome
 > di strumento e' `agenda` -- ma non si legge piu' dalla grafia italiana, si legge da qui.
@@ -2889,7 +2890,8 @@ codice:
 > per cui non c'era.** La nota in cima a questa sezione dichiarava gia' che i `*_TOOL_DEF` sono
 > quattordici, ma la tabella ne aveva tredici: `concludi` era **nominato in prosa e mai deciso**.
 > Il Task 8 aveva misurato il perimetro della CHAT, e `concludi` in chat non c'e' -- vive solo nel
-> catalogo del turno di promessa (`keeper/exchange.py::promise_tools`, sei lettori piu' lui).
+> catalogo del turno di promessa (`keeper/exchange.py::promise_tools`, i lettori di
+> `SOLA_LETTURA` piu' lui: sei allora, otto da «le tracce e il log»).
 > **Il silenzio non era accettabile**, per due ragioni che si vedono solo quando si applica: un
 > catalogo di tredici inglesi piu' un italiano e' esattamente la mescolanza che questa fetta
 > esiste per curare, e `concludi` e' l'unico dei quattordici il cui **identificatore Python** era
@@ -3289,9 +3291,19 @@ codice:
 > per `system_` o `automation_`, ed entrambi i nomi nuovi sono composti (dominio_oggetto), non
 > verbi brevi -- la stessa famiglia di rischio che ha prodotto le collisioni vere di questa
 > sezione (`cerca`/`richiama`, `ricorda`/`richiama`) non si applica a una coppia di sostantivi
-> composti che non condividono nessuna radice fra loro ne' con gli altri tredici. Se un giorno
-> qualcuno dispaccia la prova vera, questa riga va corretta con l'esito, non semplicemente
-> cancellata.
+> composti.
+>
+> **Correzione del Task 6: «nessuna radice in comune con gli altri tredici» era FALSO, e proprio
+> sulla coppia che un lettore nuovo puo' accostare.** `system_log` condivide la radice `log` con
+> `logbook`, che e' uno dei tredici. Il rischio resta basso, ma va detto perche' e' basso e non
+> perche' non esista: le due radici sono distinte gia' in Home Assistant stesso, che chiama
+> «Logs» il registro di sistema e «Logbook» il diario degli eventi della casa -- chi legge
+> l'interfaccia di HA incontra la stessa distinzione con le stesse due parole, e i due strumenti
+> rispondono qui alle stesse due domande diverse (`system_log`: «cosa non va nel sistema?»;
+> `logbook`: «cosa e' successo in casa?»). Il rischio vero non e' la radice condivisa, e' che
+> qualcuno abbrevi `system_log` in `log`: quel nome NON e' preso, e non va preso. Se un giorno
+> qualcuno dispaccia la prova del lettore nuovo, questa riga va corretta con l'esito, non
+> semplicemente cancellata.
 
 ## I valori di dominio
 

@@ -18,6 +18,28 @@ Una differenza di forma fra i due comandi, verificata alla fonte e non
 copiata dal capitolato: `trace/list` risponde con una LISTA NUDA (come
 `system_log/list`), `trace/get` con un DIZIONARIO (come `repairs/list_issues`)
 -- ciascuno ha quindi la propria prova sulla forma inattesa.
+
+**Correzione del Task 6, e la prova che passava verde sul comportamento
+sbagliato.** La prima stesura di questi due metodi spaccava un `entity_id`
+sul primo punto e mandava l'`object_id` come `item_id`; il test di questo
+file lo PINNAVA (`assert fake.commands[0] == ("trace/list", {"domain":
+"automation", "item_id": "luci_sera"})`), cioe' asseriva il FATTO che la
+finta gli aveva messo davanti invece della PROPRIETA' che avrebbe dovuto
+produrlo -- e restava verde mentre sulla casa vera `trace/list` rispondeva
+`[]` per ogni automazione, sempre. La chiave con cui HA archivia le tracce e'
+`automation.<id della CONFIGURAZIONE>` (`config_block.get(CONF_ID)`, non
+l'`object_id`): la catena e' verificata sui tag rilasciati `2024.7.0` e
+`2026.9.0` e scritta anello per anello nel docstring di
+`HAClient.automation_traces()`.
+
+La proprieta' che questi test sorvegliano adesso e' quindi: **cio' che il
+chiamante passa arriva a `item_id` TALE E QUALE, senza essere spaccato,
+tagliato o ricomposto**, e il `domain` e' la costante `"automation"`. Per
+poterla vedere davvero, l'id usato in tutto il file e' un timbro numerico
+come quelli che l'interfaccia di HA genera (`"1771346155970"`) e che NON
+somiglia a nessun `object_id`: con `"luci_sera"` sia da una parte sia
+dall'altra, un metodo che tornasse a spaccare un `entity_id` passerebbe
+verde di nuovo.
 """
 import copy
 
@@ -49,6 +71,13 @@ def _client(fake):
     return c
 
 
+# L'id di CONFIGURAZIONE di un'automazione, nella forma che l'interfaccia di
+# Home Assistant genera davvero: un timbro numerico. Volutamente NON
+# somigliante a un `object_id` -- e' cio' che rende visibile la proprieta'
+# che questo file sorveglia (vedi il docstring del modulo).
+_CONFIG_ID = "1771346155970"
+
+
 def _short_trace(**fields):
     """Una riga di `trace/list` nella forma vera di
     `ActionTrace.as_short_dict()` (`homeassistant/components/trace/models.py`,
@@ -57,7 +86,7 @@ def _short_trace(**fields):
            "script_execution": "success",
            "timestamp": {"start": "2026-09-05T10:00:00+00:00",
                          "finish": "2026-09-05T10:00:01+00:00"},
-           "domain": "automation", "item_id": "luci_sera"}
+           "domain": "automation", "item_id": _CONFIG_ID}
     row.update(fields)
     return row
 
@@ -68,7 +97,7 @@ def _extended_trace(**fields):
     `as_short_dict()` piu' `trace`, `config`, `blueprint_inputs`, `context`."""
     row = _short_trace()
     row.update({"trace": {"trigger/0": [{"path": "trigger/0", "result": {}}]},
-                "config": {"id": "luci_sera"}, "blueprint_inputs": None,
+                "config": {"id": _CONFIG_ID}, "blueprint_inputs": None,
                 "context": {"id": "ctx1", "parent_id": None, "user_id": None}})
     row.update(fields)
     return row
@@ -80,10 +109,7 @@ def _extended_trace(**fields):
 
 @pytest.mark.asyncio
 async def test_automation_traces_are_read_as_home_assistant_sends_them():
-    """Il client legge e non giudica: le righe escono coi campi di HA, e il
-    comando manda `domain`/`item_id` SEPARATI (spaccati dall'`entity_id` sul
-    primo punto, come fa HA stesso in `websocket_trace_list`), non
-    l'`entity_id` intero.
+    """Il client legge e non giudica: le righe escono coi campi di HA.
 
     Mutazione: proiettare le righe su un sottoinsieme di campi che scarta
     `script_execution` -- il test torna rosso su
@@ -97,13 +123,40 @@ async def test_automation_traces_are_read_as_home_assistant_sends_them():
     # posto passerebbe verde se confrontato con `row` stesso.
     expected = copy.deepcopy(row)
     fake = _FakeConnection({"result": [row]})
-    outcome = await _client(fake).automation_traces("automation.luci_sera")
+    outcome = await _client(fake).automation_traces(_CONFIG_ID)
     trace = outcome["tracce"][0]
     assert trace["run_id"] == "xyz"
     assert trace["script_execution"] == "failed"
-    assert fake.commands[0] == (
-        "trace/list", {"domain": "automation", "item_id": "luci_sera"})
     assert outcome["tracce"] == [expected]
+
+
+@pytest.mark.asyncio
+async def test_traces_are_asked_for_by_configuration_id_verbatim():
+    """L'argomento arriva a `item_id` TALE E QUALE, e il `domain` e' la
+    costante `"automation"`.
+
+    E' la proprieta' che il vecchio test non sorvegliava: pinnava
+    `item_id: "luci_sera"` mentre il metodo spaccava un `entity_id`, cioe'
+    il fatto che la finta gli aveva messo davanti. Qui l'argomento e' un id
+    di configurazione che NON somiglia a un `entity_id` (nessun punto, tutte
+    cifre), quindi un metodo che tornasse a spaccare, a tagliare un prefisso
+    o a ricomporre una chiave non potrebbe piu' passare per caso.
+
+    Fonte della chiave (tag rilasciati `2024.7.0` e `2026.9.0`):
+    `components/automation/__init__.py` traccia con `self.unique_id`, che e'
+    `config_block.get(CONF_ID)`; `trace/models.py` ne fa
+    `f"{self._domain}.{item_id}"`; `websocket_trace_list` ricompone
+    `f"{msg['domain']}.{msg['item_id']}"` e fa un `.get(key)` nudo.
+
+    Mutazione: `automation_id.partition(".")[2]` come `item_id` (cioe' il
+    vecchio comportamento, che su un id senza punto restituisce `""`) -- il
+    test torna rosso su `assert fake.commands == [("trace/list", {"domain":
+    "automation", "item_id": _CONFIG_ID})]`, che riceve `item_id: ""`.
+    """
+    fake = _FakeConnection({"result": []})
+    await _client(fake).automation_traces(_CONFIG_ID)
+    assert fake.commands == [
+        ("trace/list", {"domain": "automation", "item_id": _CONFIG_ID})]
 
 
 @pytest.mark.asyncio
@@ -115,7 +168,7 @@ async def test_a_failed_traces_read_says_error_not_an_empty_list():
     test torna rosso su `assert "errore" in outcome`.
     """
     fake = _FakeConnection(raises=True)
-    outcome = await _client(fake).automation_traces("automation.luci_sera")
+    outcome = await _client(fake).automation_traces(_CONFIG_ID)
     assert "errore" in outcome
     assert "tracce" not in outcome
 
@@ -137,7 +190,7 @@ async def test_every_traces_failure_shape_says_error_not_an_empty_list(fake, why
     terzo caso (forma inattesa) tocca quel ramo e torna rosso su
     `assert "errore" in outcome, why`.
     """
-    outcome = await _client(fake).automation_traces("automation.luci_sera")
+    outcome = await _client(fake).automation_traces(_CONFIG_ID)
     assert "errore" in outcome, why
     assert "tracce" not in outcome
 
@@ -153,7 +206,7 @@ async def test_an_empty_traces_list_stays_empty_not_an_error():
     `assert outcome == {"tracce": []}`.
     """
     fake = _FakeConnection({"result": []})
-    outcome = await _client(fake).automation_traces("automation.luci_sera")
+    outcome = await _client(fake).automation_traces(_CONFIG_ID)
     assert outcome == {"tracce": []}
 
 
@@ -163,9 +216,7 @@ async def test_an_empty_traces_list_stays_empty_not_an_error():
 
 @pytest.mark.asyncio
 async def test_a_single_trace_is_read_as_home_assistant_sends_it():
-    """Il client legge e non giudica anche qui, e il comando manda
-    `domain`/`item_id`/`run_id`: gli stessi due primi spaccati dall'`entity_id`
-    di `automation_traces()`, piu' il `run_id` richiesto.
+    """Il client legge e non giudica anche qui.
 
     Mutazione: proiettare il risultato su un sottoinsieme di campi che scarta
     `trace` (il grafo) -- il test torna rosso su
@@ -174,14 +225,32 @@ async def test_a_single_trace_is_read_as_home_assistant_sends_it():
     row = _extended_trace(run_id="xyz", state="stopped")
     expected = copy.deepcopy(row)
     fake = _FakeConnection({"result": row})
-    outcome = await _client(fake).automation_trace("automation.luci_sera", "xyz")
+    outcome = await _client(fake).automation_trace(_CONFIG_ID, "xyz")
     trace = outcome["traccia"]
     assert trace["run_id"] == "xyz"
     assert trace["trace"] == row["trace"]
-    assert fake.commands[0] == (
-        "trace/get",
-        {"domain": "automation", "item_id": "luci_sera", "run_id": "xyz"})
     assert outcome["traccia"] == expected
+
+
+@pytest.mark.asyncio
+async def test_a_single_trace_is_asked_for_by_configuration_id_verbatim():
+    """Gemello del test su `trace/list`, per `trace/get`: `item_id` e' l'id
+    di configurazione tale e quale, `domain` e' `"automation"`, e `run_id`
+    e' il terzo campo -- l'ordine dei due argomenti del metodo conta quanto
+    il loro valore.
+
+    Stessa fonte (`websocket_trace_get`, stessi due tag), stessa chiave
+    ricomposta con un `.get(key)` nudo.
+
+    Mutazione: scambiare i due argomenti nel comando (`"item_id": run_id,
+    "run_id": automation_id`) -- il test torna rosso sull'unico assert,
+    che riceve `item_id: "xyz"` e `run_id: _CONFIG_ID`.
+    """
+    fake = _FakeConnection({"result": _extended_trace()})
+    await _client(fake).automation_trace(_CONFIG_ID, "xyz")
+    assert fake.commands == [
+        ("trace/get", {"domain": "automation", "item_id": _CONFIG_ID,
+                       "run_id": "xyz"})]
 
 
 @pytest.mark.asyncio
@@ -194,7 +263,7 @@ async def test_a_failed_trace_read_says_error_not_an_empty_dict():
     test torna rosso su `assert "errore" in outcome`.
     """
     fake = _FakeConnection(raises=True)
-    outcome = await _client(fake).automation_trace("automation.luci_sera", "xyz")
+    outcome = await _client(fake).automation_trace(_CONFIG_ID, "xyz")
     assert "errore" in outcome
     assert "traccia" not in outcome
 
@@ -219,6 +288,6 @@ async def test_every_trace_failure_shape_says_error_not_an_empty_dict(fake, why)
     terzo caso (forma inattesa) tocca quel ramo e torna rosso su
     `assert "errore" in outcome, why`.
     """
-    outcome = await _client(fake).automation_trace("automation.luci_sera", "xyz")
+    outcome = await _client(fake).automation_trace(_CONFIG_ID, "xyz")
     assert "errore" in outcome, why
     assert "traccia" not in outcome

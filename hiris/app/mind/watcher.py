@@ -74,11 +74,16 @@ _ROUNDS_BEFORE_CLOSING = 2
 # dipendere da un dettaglio interno del client HA per una guardia che gli
 # appartiene comunque (Task 4 di «le tracce e il log»: «il client non valida
 # i propri argomenti, come i fratelli» -- la validazione va garantita A
-# MONTE, qui, prima che un identificatore possa mai raggiungere
-# `automation_traces`/`automation_trace`). Un `entity_id` senza punto (o
-# comunque malformato) passato la' produrrebbe un elenco vuoto silenzioso --
-# «questa automazione non ha mai girato» detto per sbaglio -- non un errore
-# che si vede.
+# MONTE, qui, prima che un identificatore malformato possa entrare in
+# `_marked_automations` e vivere li' dentro come se fosse un'automazione).
+#
+# Dal Task 6 il client non prende piu' un `entity_id` ma l'id di
+# CONFIGURAZIONE, risolto dal collettore contro lo specchio: un
+# identificatore malformato non ci arriverebbe comunque, perche' non si
+# risolverebbe. Questa guardia resta perche' e' PRIMA -- l'insieme dei
+# segnati e' cio' che il collettore rilegge a ogni cadenza, e tenerci dentro
+# un identificatore che non e' un identificatore significherebbe un WARNING
+# ogni due minuti, per sempre, su una cosa che non esiste.
 _ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 
 
@@ -234,18 +239,22 @@ class Watcher:
         tracce di cio' che questo metodo ha segnato.
 
         **Garantisce a monte la forma `dominio.oggetto` dell'`entity_id`**
-        (Task 4 di «le tracce e il log»): `HAClient.automation_traces()` e
-        `HAClient.automation_trace()` non validano i propri argomenti, come
-        i loro fratelli (`problems()`, `system_log()`...) -- spaccano
-        `entity_id` sul primo punto e basta. Un identificatore senza punto
-        (o comunque malformato) ci arriverebbe comunque da un evento HA
-        genuino solo per un bug altrove; ma se ci arrivasse, produrrebbe un
-        elenco vuoto silenzioso in quei due metodi -- «questa automazione
-        non ha mai girato» detto per sbaglio, non un errore che si vede.
-        Un `entity_id` respinto qui non entra MAI in `self._marked_
-        automations`, quindi non raggiunge mai quei due metodi: e' l'unico
-        punto d'ingresso (la cadenza di `server.py` legge solo cio' che
-        questo metodo ha segnato), quindi basta controllare qui.
+        (Task 4 di «le tracce e il log»). Un identificatore malformato
+        arriverebbe da un evento HA genuino solo per un bug altrove; ma se
+        arrivasse, resterebbe in `self._marked_automations` -- l'insieme che
+        la cadenza breve di `server.py` rilegge OGNI due minuti -- e non c'e'
+        nessun altro punto d'ingresso da cui filtrarlo dopo. Questo e'
+        l'unico, quindi basta controllare qui.
+
+        **Cosa NON e' piu' vero, dal Task 6.** Questa guardia era stata
+        scritta perche' `HAClient.automation_traces()`/`automation_trace()`
+        spaccavano l'`entity_id` sul primo punto: un identificatore
+        malformato ci produceva un elenco vuoto silenzioso. Quei due metodi
+        non prendono piu' un `entity_id` ma l'id di CONFIGURAZIONE, risolto
+        dal collettore contro lo specchio (`proxy/entity_cache.
+        automation_config_id`), e un identificatore malformato non si
+        risolve. La guardia resta per la ragione detta sopra -- non
+        sporcare l'insieme dei segnati -- non piu' per quella.
 
         **`name` (giro di correzioni, rilievo 5).** L'evento porta gia' il
         nome amichevole (`ATTR_NAME`, verificato alla fonte agli estremi

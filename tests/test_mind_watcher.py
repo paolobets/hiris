@@ -963,10 +963,15 @@ def test_only_a_failed_run_becomes_a_change(coppia):
 def test_mark_automation_rejects_a_malformed_entity_id(coppia):
     """La forma `dominio.oggetto` si garantisce A MONTE, in questo metodo
     (Task 4): un identificatore senza punto non deve mai entrare in
-    `marked_automations()`, o raggiungerebbe `HAClient.automation_traces()`
-    -- che non valida i propri argomenti, come i suoi fratelli -- e
-    produrrebbe un elenco vuoto silenzioso: «questa automazione non ha mai
-    girato» detto per sbaglio.
+    `marked_automations()`, che e' l'insieme riletto OGNI due minuti dalla
+    cadenza breve di `server.py` -- e non c'e' nessun altro punto in cui
+    filtrarlo dopo.
+
+    (Dal Task 6 non e' piu' vero che raggiungerebbe `HAClient.
+    automation_traces()`: quel metodo prende l'id di CONFIGURAZIONE, non
+    l'`entity_id`, e un identificatore malformato non si risolve contro lo
+    specchio. La guardia resta per la ragione detta sopra -- vedi il
+    docstring di `mark_automation`.)
 
     Mutazione: togliere il controllo di forma (`if not isinstance(...) or
     not _ENTITY_ID_RE.match(entity_id): ...`), accettando qualunque

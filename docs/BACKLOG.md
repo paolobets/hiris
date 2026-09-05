@@ -529,9 +529,10 @@ Stessa espressione (`^[a-z][a-z0-9_]*\.[a-z0-9_]+$`), stessa intenzione — una 
 ognuna dichiarata "DOPPIONE" nel proprio commento invece di importata: `proxy/ha_client.py:36`
 (la prima), `home_space/behavior.py:45` (indipendente, un'espressione diversa nello scopo ma
 identica nel testo), `mind/watcher.py:82` (Task 4 di questa stessa fetta) e
-`home_space/tools.py:352` (Task 5, questo giro). Non si unifica adesso: ogni fetta che l'ha scritta
-aveva una ragione dichiarata per non importarla da un'altra (modulo diverso, accoppiamento non
-voluto), e unificarle tutte e quattro e' un lavoro suo, con la sua verifica — non un effetto
+`home_space/tools.py:188` (Task 5, questo giro; il rimando diceva `:352`, corretto nel Task 6 --
+`:352` e' dentro lo schema di `view`, non la guardia). Non si unifica adesso: ogni fetta che
+l'ha scritta aveva una ragione dichiarata per non importarla da un'altra (modulo diverso,
+accoppiamento non voluto), e unificarle tutte e quattro e' un lavoro suo, con la sua verifica — non un effetto
 collaterale di un giro di correzioni. Ma quattro copie della stessa guardia, scoperte una alla
 volta invece che in un colpo solo, sono il tipo di cosa che questo registro esiste per non
 lasciar perdere.

@@ -71,3 +71,91 @@ def test_to_minimal_no_extra_attrs_for_binary_sensor():
     }
     result = _to_minimal(raw)
     assert result.get("attributes", {}) == {}
+
+
+# --------------------------------------------------------------------------
+# L'id di CONFIGURAZIONE di un'automazione (Task 6 di «le tracce e il log»).
+#
+# Home Assistant archivia le tracce di un'automazione sotto
+# `automation.<id della configurazione>`, non sotto il suo `object_id`:
+# catena verificata sui tag rilasciati `2024.7.0` e `2026.9.0`, scritta
+# anello per anello nel docstring di `HAClient.automation_traces()`. Lo
+# specchio e' l'unico posto da cui quell'id si puo' ricavare senza aprire una
+# seconda lettura verso HA, e senza queste righe la proiezione lo buttava.
+# --------------------------------------------------------------------------
+
+def test_to_minimal_keeps_the_automation_configuration_id():
+    """`attributes["id"]` di un'automazione sopravvive alla proiezione, e
+    sopravvive DISTINTO dall'`entity_id` -- sono due identificatori diversi
+    dello stesso oggetto, e confonderli e' il difetto che questa fetta
+    corregge.
+
+    Fonte del fatto che quell'attributo esiste:
+    `BaseAutomationEntity.capability_attributes` torna `{CONF_ID:
+    self.unique_id}`, e `helpers/entity.py::__async_calculate_state` copia
+    le capability attributes dentro gli attributi dello stato (entrambi i
+    tag).
+
+    Mutazione: togliere il blocco `if dom == "automation": ...` da
+    `_to_minimal` -- il test torna rosso su
+    `assert result["automation_id"] == "1771346155970"` (`KeyError`).
+    """
+    raw = {"entity_id": "automation.luci_sera", "state": "on",
+           "attributes": {"id": "1771346155970", "friendly_name": "Luci sera",
+                          "mode": "single"}}
+    result = _to_minimal(raw)
+    assert result["automation_id"] == "1771346155970"
+    assert result["id"] == "automation.luci_sera"
+
+
+def test_to_minimal_leaves_the_configuration_id_out_of_the_model_attributes():
+    """L'id NON entra in `attributes`, che e' cio' che il modello legge
+    (`home_space/topology.live_mirror` porta quel dizionario fino a `guarda`
+    e `cerca`): e' una chiave di giunzione per il codice, non un fatto sulla
+    casa da mettere davanti a chi risponde.
+
+    Mutazione: spostare l'id dentro `_DOMAIN_ATTRS` (`"automation": ("id",)`)
+    invece di scriverlo in cima -- il test torna rosso su
+    `assert result.get("attributes", {}) == {}`, che troverebbe
+    `{"id": "1771346155970"}`.
+    """
+    raw = {"entity_id": "automation.luci_sera", "state": "on",
+           "attributes": {"id": "1771346155970", "friendly_name": "Luci sera"}}
+    result = _to_minimal(raw)
+    assert result.get("attributes", {}) == {}
+
+
+def test_to_minimal_has_no_configuration_id_for_an_automation_without_one():
+    """Un'automazione YAML scritta senza `id:` non ha
+    `attributes["id"]`: `capability_attributes` torna `None` quando
+    `unique_id is None` (entrambi i tag). La chiave non deve comparire per
+    finta -- ne' vuota ne' col ripiego dell'`object_id`: chi legge deve poter
+    dire «non riesco a risolverla».
+
+    Mutazione: `result["automation_id"] = attrs.get("id") or eid.partition(
+    ".")[2]` (il ripiego sull'`object_id`, cioe' proprio il difetto che
+    questa fetta corregge) -- il test torna rosso su
+    `assert "automation_id" not in result`, che troverebbe `"scritta_a_mano"`.
+    """
+    raw = {"entity_id": "automation.scritta_a_mano", "state": "on",
+           "attributes": {"friendly_name": "Scritta a mano", "mode": "single"}}
+    result = _to_minimal(raw)
+    assert "automation_id" not in result
+
+
+def test_to_minimal_has_no_configuration_id_outside_the_automation_domain():
+    """`attributes["id"]` esiste anche fuori dal dominio `automation`: una
+    `scene` ne porta uno (verificato alla fonte sui tag `2024.7.0` e
+    `2026.9.0`, `components/homeassistant/scene.py::HomeAssistantScene.
+    extra_state_attributes`, `attributes[CONF_ID] = unique_id`). Li' non e'
+    pero' la chiave delle tracce -- le scene non ne hanno -- e raccoglierlo
+    lo stesso metterebbe in circolo un `automation_id` che non lo e'.
+
+    Mutazione (verificata eseguendola): `if True:` al posto di
+    `if dom == "automation":` -- il test torna rosso su
+    `assert "automation_id" not in result`.
+    """
+    raw = {"entity_id": "scene.buonanotte", "state": "unknown",
+           "attributes": {"id": "1771346155971", "friendly_name": "Buonanotte"}}
+    result = _to_minimal(raw)
+    assert "automation_id" not in result

@@ -144,7 +144,7 @@ from ..memory.interpretation import VOCABULARY, validate
 from ..memory.lookup_cache import LookupCache
 from ..memory.resolver import STORE_KEY_PER_TYPE, costruisci_indice
 from ..memory.store import MemoryStore
-from ..proxy.entity_cache import inventory_is_readable
+from ..proxy.entity_cache import automation_config_id, inventory_is_readable
 from . import historian
 from .queries import HA_LINK_TYPE
 from .queries import related as _readable_links
@@ -179,12 +179,19 @@ _TETHER_TYPES = tuple(sorted(VOCABULARY["ancore"]))
 # (stessa espressione, stessa intenzione: una GUARDIA, la piu' stretta
 # possibile) -- non importata perche' e' privata al suo modulo, e questo file
 # non deve dipendere da un dettaglio interno di un altro per una guardia che
-# gli appartiene comunque (Task 5 di «le tracce e il log»): `HAClient.
-# automation_traces()`/`automation_trace()` non validano il proprio
-# `entity_id` (stessa ragione scritta in `mind/watcher.py::mark_automation`),
-# quindi la guardia sta qui, A MONTE, prima che un identificatore malformato
-# possa produrre un elenco vuoto silenzioso -- «questa automazione non ha mai
-# girato» detto per sbaglio invece di un errore che si vede.
+# gli appartiene comunque (Task 5 di «le tracce e il log»): la guardia sta
+# qui, A MONTE, perche' `entita` arriva dal modello e nessuno a valle la
+# controlla (stessa ragione scritta in `mind/watcher.py::mark_automation`).
+#
+# Dal Task 6 non e' piu' la sola difesa su questa strada, ed e' bene sapere
+# quale delle due para cosa: `HAClient.automation_traces()`/
+# `automation_trace()` non prendono piu' un `entity_id` ma l'id di
+# CONFIGURAZIONE, risolto contro lo specchio in `_automation_trace` -- un
+# identificatore inesistente non arriva comunque alla rete, perche' non si
+# risolve. Questa guardia resta perche' e' PRIMA e piu' economica (nessuna
+# scansione dello specchio) e perche' distingue «non ha la forma di un
+# identificatore» da «non lo conosco»: due errori diversi, due frasi diverse
+# per chi legge.
 _ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 
 logger = logging.getLogger(__name__)
@@ -986,10 +993,36 @@ SYSTEM_LOG_TOOL_DEF = {
         #    stesura diceva «lo tiene finche' l'add-on gira», falso e senza
         #    fonte -- corretto contro `mind/watcher.py:464`, «HA tiene le
         #    voci dall'ultimo SUO riavvio».
+        #
+        # SECONDO giro di correzioni (Task 6), due insiemi chiusi che non lo
+        # erano, entrambi verificati sui tag rilasciati `2024.7.0` e
+        # `2026.9.0` (non su `dev`):
+        # 5. «`ERROR` o `WARNING`» era un insieme chiuso NON fondato. Il
+        #    gestore che riempie il registro e' installato con
+        #    `handler.setLevel(logging.WARNING)`
+        #    (`components/system_log/__init__.py`, `async_setup`), cioe' con
+        #    una SOGLIA: entra tutto cio' che sta a `WARNING` o sopra, e
+        #    `CRITICAL` sta sopra. `level` e' `record.levelname`, quindi la
+        #    stringa del livello vero, `"CRITICAL"` compresa (e il nome di un
+        #    livello personalizzato, se qualche integrazione ne registra uno).
+        #    La description dice adesso la soglia, non l'elenco.
+        # 6. «lo svuota dal proprio ultimo riavvio in poi» lasciava intendere
+        #    che il registro fosse COMPLETO da li' in avanti. Non lo e': c'e'
+        #    anche un tetto. `DEFAULT_MAX_ENTRIES = 50` (configurabile con
+        #    `system_log: max_entries:`), e `DedupStore.add_entry` fa
+        #    `if len(self) > self.maxlen: self.popitem(last=False)` -- la
+        #    voce piu' vecchia sparisce, senza nessun riavvio. Il tetto conta
+        #    voci DISTINTE, non ricorrenze: una voce che ricompare aggiorna
+        #    `count` e torna in coda (`move_to_end`), non ne consuma una
+        #    seconda.
         "Cosa c'e' nel registro di Home Assistant, ADESSO -- errori E avvisi, non "
-        "solo errori: ogni voce porta `level` (`ERROR` o `WARNING`, cosi' come HA "
-        "lo scrive), e su un elenco di dodici voci di cui nove `WARNING` la "
-        "risposta onesta e' «tre errori», non «dodici». Serve alla domanda «cosa "
+        "solo errori: ogni voce porta `level` (il livello cosi' come HA lo scrive, "
+        "in maiuscolo). Il registro raccoglie tutto cio' che e' `WARNING` o piu' "
+        "grave -- quindi `WARNING`, `ERROR` e anche `CRITICAL`: e' una soglia, non "
+        "un elenco chiuso, non dare per scontato di aver visto tutti i livelli "
+        "possibili. Guarda `level` voce per voce: su un elenco di dodici voci di "
+        "cui nove `WARNING` la risposta onesta e' «tre errori», non «dodici». "
+        "Serve alla domanda «cosa "
         "non va nel sistema?». Ogni voce porta anche `message`, `source`, e "
         "SEMPRE `count` (quante volte e' ricorsa: Home Assistant DEDUPLICA gia' "
         "da solo, non scrive una seconda riga per la stessa causa) e "
@@ -1004,8 +1037,15 @@ SYSTEM_LOG_TOOL_DEF = {
         "significa che il registro e' vuoto in questo momento, NON che nulla sia "
         "mai andato storto -- e non e' nemmeno detto che duri: il registro vive "
         "nella memoria di HOME ASSISTANT, non dell'add-on -- un riavvio di HIRIS "
-        "non lo tocca, un riavvio di Home Assistant si' (lo svuota dal proprio "
-        "ultimo riavvio in poi). Se torna `errore`, Home Assistant non ha "
+        "non lo tocca, un riavvio di Home Assistant si' (riparte da zero). "
+        "**E nemmeno fra un riavvio e l'altro il registro e' completo**: c'e' un "
+        "TETTO di voci distinte (cinquanta per difetto, l'installazione puo' "
+        "alzarlo o abbassarlo), e quando si supera sparisce la piu' vecchia. Una "
+        "voce che non c'e' puo' quindi essere semplicemente uscita dal tetto: "
+        "l'assenza di una riga non e' la prova che quel guasto non sia mai "
+        "successo. Il tetto conta voci distinte, non ricorrenze: una causa che "
+        "ricompare fa salire `count` della sua riga e non ne consuma una seconda. "
+        "Se torna `errore`, Home Assistant non ha "
         "risposto: non concludere «va tutto bene», dillo."
     ),
     "input_schema": {"type": "object", "properties": {}, "required": []},
@@ -1030,22 +1070,31 @@ AUTOMATION_TRACE_TOOL_DEF = {
         # (tag `2026.9.0`, vedi `server.py::watch_automation_outcome` per
         # l'elenco completo di cosa scrive `aborted`).
         #
-        # Giro di correzioni (revisione indipendente): `tracce: []` NON
-        # distingue «questa automazione non ha mai girato» da «questa
-        # automazione non esiste» -- verificato alla fonte, non presunto:
-        # `trace/util.py::_get_debug_traces` (tag `2024.7.0` e `2026.9.0`,
-        # la funzione cambia file ma non corpo, stesso confine gia' misurato
-        # dal Task 3 per il tetto a due secchi) e' un dict.get(key) NUDO sul
-        # magazzino delle tracce vive, senza passare mai dal registro delle
-        # entita': un `entity_id` mai esistito e uno che semplicemente non
-        # ha mai eseguito nulla producono la STESSA lista vuota. Deciso di
-        # NON controllare `entita` contro lo specchio dello stato prima di
-        # chiedere: lo specchio e' una fotografia (puo' non conoscere ancora
-        # un'automazione vera appena creata) e diventerebbe una SECONDA
-        # fonte di verita' su cosa esiste in casa -- esattamente cio' che
-        # «un solo rubinetto» vieta. La description dichiara quindi
-        # l'ambiguita' al modello, invece di risolverla con una fonte in
-        # piu'.
+        # SECONDO giro di correzioni (Task 6): la stesura precedente diceva
+        # al modello «un id scritto male produce la STESSA lista vuota di
+        # un'automazione vera mai scattata», e dichiarava di NON controllare
+        # `entita` contro lo specchio. Quella frase non descrive piu' il
+        # comportamento, e la decisione che la reggeva era fondata su un
+        # fatto sbagliato: si credeva che l'`object_id` dell'entita' fosse la
+        # chiave delle tracce. NON lo e'. La chiave e' l'id della
+        # CONFIGURAZIONE (`automation.<config id>`, catena verificata sui tag
+        # `2024.7.0` e `2026.9.0` nel docstring di
+        # `HAClient.automation_traces()`), e con l'`object_id` `trace/list`
+        # risponde `[]` per OGNI automazione della casa, scattata o no.
+        #
+        # Lo specchio quindi non e' piu' un CANCELLO sull'esistenza -- il
+        # ruolo che «un solo rubinetto» giustamente vietava: e' l'unico posto
+        # da cui l'id si puo' ricavare senza aprire una seconda lettura verso
+        # Home Assistant (`proxy/entity_cache.automation_config_id`). E cio'
+        # che il modello deve sapere e' cambiato di conseguenza: un id che
+        # non si risolve torna un `errore` esplicito, non una lista vuota, e
+        # `tracce: []` significa adesso una cosa sola -- questa automazione,
+        # che esiste ed e' stata risolta, non ha esecuzioni conservate.
+        #
+        # `trace/util.py::_get_debug_traces` resta quello che era (un
+        # `dict.get(key)` NUDO sul magazzino delle tracce vive, senza passare
+        # mai dal registro delle entita', stessi due tag): e' proprio per
+        # questo che una chiave sbagliata non da' mai errore, solo silenzio.
         "Come sono andate le esecuzioni RECENTI di un'automazione. Serve alla "
         "domanda «come e' andata questa automazione?». Richiede `entita`, "
         "l'identificatore ESATTO (se hai solo un nome, usa prima `search`). Senza "
@@ -1063,13 +1112,14 @@ AUTOMATION_TRACE_TOOL_DEF = {
         "doppio sulle versioni piu' recenti, e un'automazione puo' averne chiesti "
         "di piu' da sola in YAML -- quella esecuzione puo' semplicemente essere "
         "USCITA dal tetto, non essere andata bene. "
-        "**`tracce: []` e' anche ambiguo su un'altra cosa**: dentro quel tetto puo' "
-        "significare che questa automazione non ha mai girato, ma puo' anche "
-        "significare che `entita` non esiste affatto -- un id scritto male "
-        "produce la STESSA lista vuota di un'automazione vera mai scattata: "
-        "prima di fidarti di «non ha mai girato», verifica che l'automazione "
-        "esista davvero (`search`). Se torna `errore`, Home Assistant non ha "
-        "risposto: non concludere niente su come sia andata, dillo."
+        "**Un id che non riesco a risolvere non e' un elenco vuoto, ed e' detto "
+        "come tale**: se `entita` non corrisponde a nessuna automazione che "
+        "conosco, torna un `errore` che lo dice -- non `tracce: []`. Le due cose "
+        "sono diverse e non vanno confuse: `tracce: []` (dentro il tetto qui "
+        "sopra) significa che questa automazione, che esiste, non ha esecuzioni "
+        "conservate; un `errore` significa che non ho potuto guardare. Se torna "
+        "`errore`, non concludere niente su come sia andata -- ne' «non ha mai "
+        "girato» ne' «e' andato tutto bene»: dillo."
     ),
     "input_schema": {
         "type": "object",
@@ -2212,10 +2262,30 @@ class ToolDispatcher:
         **Valida `entita` PRIMA di fare rete**, cosa che `HAClient.
         automation_traces()`/`automation_trace()` non fanno da soli (stessa
         ragione scritta in `mind/watcher.py::mark_automation`): un
-        identificatore senza punto, o comunque malformato, spaccato sul
-        primo punto da quei due metodi produrrebbe un elenco vuoto
+        identificatore malformato non deve produrre un elenco vuoto
         silenzioso -- «questa automazione non ha mai girato» detto per
         sbaglio -- invece di un errore che si vede.
+
+        **Poi RISOLVE l'`entity_id` nell'id di CONFIGURAZIONE**, che e' la
+        chiave con cui Home Assistant archivia davvero le tracce
+        (`automation.<id della configurazione>`, catena verificata sui tag
+        `2024.7.0` e `2026.9.0` nel docstring di
+        `HAClient.automation_traces()`). Il modello nomina l'automazione col
+        suo `entity_id` -- e' quello che `search` gli ha dato -- ma
+        `trace/list` con l'`object_id` non torna una traccia sbagliata:
+        torna `[]` sempre, per ogni automazione della casa. La traduzione sta
+        qui e non nel client (che resta «legge e non giudica»):
+        `proxy/entity_cache.automation_config_id` legge `self._cache`, lo
+        specchio gia' cablato e in SOLA LETTURA -- nessuna lettura nuova
+        verso Home Assistant.
+
+        **Un id che non si risolve si DICHIARA, e non e' «non ha mai
+        girato».** Un elenco vuoto e un id irrisolto sono due cose diverse, e
+        confonderle e' esattamente la bugia che questo verticale esiste per
+        togliere: qui si torna un `errore` che nomina le tre cause vere (nome
+        sbagliato, automazione che lo specchio non conosce ancora,
+        automazione YAML senza `id:` -- le cui tracce non sono comunque
+        indirizzabili per automazione).
         """
         entity = arguments.get("entita")
         if not isinstance(entity, str) or not entity.strip():
@@ -2229,7 +2299,18 @@ class ToolDispatcher:
         if run_id is not None and not (isinstance(run_id, str) and run_id.strip()):
             return {"errore": "«esecuzione», se presente, deve essere il «run_id» di "
                               "una voce di «tracce»: una stringa non vuota."}
+        automation_id = automation_config_id(self._cache, entity)
+        if automation_id is None:
+            return {"errore": f"non riesco a risolvere «{entity}»: non trovo il suo id "
+                              "di configurazione, che e' la chiave con cui Home "
+                              "Assistant archivia le tracce. Puo' essere un "
+                              "identificatore sbagliato, un'automazione che non "
+                              "conosco ancora, oppure un'automazione scritta in YAML "
+                              "senza «id:» (di quelle Home Assistant non conserva "
+                              "tracce leggibili una per una). Questo NON significa "
+                              "che non abbia mai girato: significa che non ho potuto "
+                              "guardare."}
         ha = self._ha_channel()
         if run_id:
-            return await ha.automation_trace(entity, run_id.strip())
-        return await ha.automation_traces(entity)
+            return await ha.automation_trace(automation_id, run_id.strip())
+        return await ha.automation_traces(automation_id)
