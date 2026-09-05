@@ -209,6 +209,28 @@ async def test_un_guasto_di_sistema_non_si_chiede_a_legami():
 
 
 @pytest.mark.asyncio
+async def test_a_log_condition_is_not_asked_to_legami():
+    """Il terzo prefisso (Task 2, «le tracce e il log»): un soggetto `log:`
+    contiene un punto (il logger, es. `homeassistant.components.hydrawise`
+    dentro `log:homeassistant.components.hydrawise@file.py:88`), quindi il
+    controllo `"." not in subject` da solo non lo scarterebbe -- misurato
+    dalla review indipendente, non un caso teorico.
+
+    Mutazione: togliere `"log:"` dalla tupla di prefissi -- il test torna
+    rosso su `assert mappa == {}` (diventa `{"log:...": []}`: parte una
+    `related("entity", ...)` per un soggetto che non e' un'entita', e la
+    finta -- che risponde `{}` per qualunque identificatore -- lo mappa a
+    lista vuota invece di scartarlo).
+    """
+    ha = _ClienteLegami({})
+    mappa, falliti = await build_companions(
+        ha, ["log:homeassistant.components.hydrawise@hydrawise/coordinator.py:88"])
+    assert mappa == {}
+    assert falliti == 0
+    assert ha.chiesti == []
+
+
+@pytest.mark.asyncio
 async def test_un_guasto_di_legami_non_ferma_l_aggregazione():
     """Se `legami` non risponde si perdono i comprimari, non la giornata: un
     oggetto senza contesto e' peggio di uno completo, ma infinitamente meglio

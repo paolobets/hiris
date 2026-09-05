@@ -22,6 +22,7 @@ from datetime import UTC
 from hiris.app import server
 from hiris.app.home_space.store import HomeSpaceStore
 from hiris.app.mind.store import READING_RETENTION_S
+from hiris.app.mind.watcher import Watcher
 from hiris.app.server import watch_system_conditions
 from tests._contracts import assert_stessa_firma
 from tests.test_mind_companions import _ClienteLegami
@@ -293,14 +294,16 @@ class _OsservatoreFinto:
 class _ClienteFinto:
     """Un `HAClient` finto: `problemi_esito` e' cio' che torna `problems()`,
     `registri_esito` la coppia `(registri, non_disponibili)` di
-    `read_registries()`, `log_esito` cio' che torna `system_log()` (Task 2)
+    `read_registries()`, `log_outcome` cio' che torna `system_log()` (Task 2)
     -- di default un registro vuoto, cosi' i chiamanti esistenti che non
-    hanno nulla da dire sul registro di errori non devono aggiornarsi."""
+    hanno nulla da dire sul registro di errori non devono aggiornarsi.
+    `log_outcome` e' in inglese (i due fratelli qui sopra sono debito, non
+    un modello da imitare -- identificatori nuovi in inglese)."""
 
-    def __init__(self, problemi_esito, registri_esito, log_esito=None):
+    def __init__(self, problemi_esito, registri_esito, log_outcome=None):
         self._problemi_esito = problemi_esito
         self._registri_esito = registri_esito
-        self._log_esito = log_esito if log_esito is not None else {"voci": []}
+        self._log_outcome = log_outcome if log_outcome is not None else {"voci": []}
 
     async def problems(self):
         return self._problemi_esito
@@ -309,7 +312,23 @@ class _ClienteFinto:
         return self._registri_esito
 
     async def system_log(self):
-        return self._log_esito
+        return self._log_outcome
+
+
+def test_l_osservatore_finto_combacia_con_watcher_guarda_sistema():
+    """Il revisore indipendente ha provato dal vivo che un default aggiunto
+    su UN SOLO lato (`log_entries: list[dict] | None = None` sulla finta)
+    lasciava la suite verde: la regola per cui quel parametro non ha un
+    default sul `Watcher` vero era protetta solo dalla prosa del docstring,
+    non da nessuna prova. `assert_stessa_firma` confronta anche i default
+    dei keyword-only (`tests/_contracts.py`, punto 3): e' la guardia
+    giusta.
+
+    Mutazione: dare a `_OsservatoreFinto.watch_system` un default
+    `log_entries=None` -- il test torna rosso.
+    """
+    assert_stessa_firma(Watcher.watch_system, _OsservatoreFinto.watch_system,
+                        nome="Watcher.watch_system")
 
 
 def test_il_cliente_finto_combacia_con_haclient_leggi_registri():

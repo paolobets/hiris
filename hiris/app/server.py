@@ -895,8 +895,17 @@ async def build_companions(
     # Assistant -- mai un'area, un dispositivo o un'altra delle 14 cose che
     # `search/related` sa collegare.
     for subject in subjects:
+        # I tre prefissi delle condizioni di sistema (`problema:`,
+        # `integrazione:`, `log:`, Task 2 di «le tracce e il log») non sono
+        # entita' di Home Assistant: chiederle a `legami` produrrebbe una
+        # chiamata di rete inutile per ognuna, ad ogni aggregazione -- HA
+        # tornerebbe `{}` per un `item_id` che non esiste, ma la correttezza
+        # non deve poggiare su quella tolleranza. `log:` conteneva un punto
+        # (il logger, es. `homeassistant.components.hydrawise`), quindi il
+        # controllo `"." not in subject` da solo NON lo scartava: misurato
+        # dalla review indipendente, non dedotto.
         if subject in mappa or "." not in subject or subject.startswith(
-                ("problema:", "integrazione:")):
+                ("problema:", "integrazione:", "log:")):
             continue
         try:
             raw = await ha_client.related(ha_type, subject)
