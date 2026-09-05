@@ -210,11 +210,19 @@ def test_un_problema_di_HA_diventa_un_cambio(coppia):
 
 
 def test_un_problema_che_sparisce_diventa_un_cambio(coppia):
+    """Con l'isteresi (Task 3, `_ROUNDS_BEFORE_CLOSING=2`) la chiusura arriva
+    al SECONDO giro consecutivo senza il problema, non al primo -- vedi
+    `test_one_missing_round_does_not_close_an_episode`.
+
+    Mutazione: chiudere al primo giro mancante (rimuovere l'isteresi) --
+    il primo `assert ... == 0` torna rosso.
+    """
     archivio, osservatore = coppia
     p = [{"domain": "sonos", "issue_id": "subscriptions_failed", "severity": "error"}]
     osservatore.watch_system(problems=p, integrations=[])
     archivio.annotati.clear()
-    assert osservatore.watch_system(problems=[], integrations=[]) == 1
+    assert osservatore.watch_system(problems=[], integrations=[]) == 0  # giro 1: isteresi
+    assert osservatore.watch_system(problems=[], integrations=[]) == 1  # giro 2: chiude
     assert archivio.annotati[0]["a"] == "chiuso"
 
 
@@ -368,11 +376,22 @@ def test_osservate_mostra_una_condizione_dopo_guarda_sistema(coppia):
 
 def test_osservate_non_mostra_piu_una_condizione_chiusa(coppia):
     """All'opposto del difetto gemello: una condizione chiusa non deve
-    restare per sempre in cio' che `watching()` mostra."""
+    restare per sempre in cio' che `watching()` mostra.
+
+    Due giri mancanti, non uno solo: con l'isteresi (Task 3) il primo giro
+    senza il problema la lascia ancora aperta -- verificato a meta', non
+    solo alla fine.
+
+    Mutazione: chiudere al primo giro mancante (rimuovere l'isteresi) -- il
+    primo `assert ... in soggetti` (a meta') torna rosso.
+    """
     _archivio, osservatore = coppia
     p = [{"domain": "sonos", "issue_id": "subscriptions_failed", "severity": "error"}]
     osservatore.watch_system(problems=p, integrations=[])
-    osservatore.watch_system(problems=[], integrations=[])  # si chiude
+    osservatore.watch_system(problems=[], integrations=[])  # giro 1: isteresi, resta aperta
+    assert "problema:sonos.subscriptions_failed" in {
+        o["soggetto"] for o in osservatore.watching()}
+    osservatore.watch_system(problems=[], integrations=[])  # giro 2: si chiude
     soggetti = {o["soggetto"] for o in osservatore.watching()}
     assert "problema:sonos.subscriptions_failed" not in soggetti
 
@@ -589,3 +608,69 @@ def test_la_ricostruzione_vede_condizioni_recenti_nonostante_il_volume_di_entita
                    "severity": "error"}],
         integrations=[])
     assert scritti == 0  # gia' seminata come aperta: non e' una novita'
+
+
+# -- Task 3: l'isteresi -- due giri prima di chiudere -----------------------
+#
+# Il difetto misurato sulla casa vera il 03/09: quattro episodi per un solo
+# guasto (`lifx / Abat-jour`), coi tre buchi di esattamente un giro del
+# rilevatore (dieci minuti). `setup_retry` per costruzione RITENTA: un giro
+# in cui HA non la elenca fra i problemi non vuol dire che sia guarita.
+
+def _rotta(entry_id="01ABC", state="setup_retry"):
+    return {"entry_id": entry_id, "domain": "lifx", "title": "Abat-jour",
+            "state": state, "source": "user"}
+
+
+def test_one_missing_round_does_not_close_an_episode(coppia):
+    """Quattro episodi per un guasto solo il 03/09, coi tre buchi di
+    esattamente un giro del rilevatore: era il nostro campionamento, non la
+    casa. `setup_retry` per costruzione RITENTA, e in un giro puo' non
+    comparire fra i problemi.
+
+    Mutazione: chiudere al primo giro mancante -- il test torna rosso su
+    `assert chiusure == []`.
+    """
+    archivio, osservatore = coppia
+    osservatore.watch_system(problems=[], integrations=[_rotta()])   # giro 1: apre
+    osservatore.watch_system(problems=[], integrations=[])           # giro 2: assente
+    chiusure = [r for r in archivio.annotati if r["a"] == "chiuso"]
+    assert chiusure == []
+
+
+def test_two_missing_rounds_close_the_episode(coppia):
+    """L'isteresi non e' un rifiuto di chiudere: due giri consecutivi senza
+    la condizione la chiudono. Senza questa prova la soglia potrebbe
+    crescere all'infinito senza che nessuno se ne accorga.
+
+    Gia' verde col codice di OGGI (che chiude al primo giro mancante): la si
+    tiene comunque, perche' e' la prova che l'isteresi non diventa un
+    rifiuto di chiudere.
+
+    Mutazione: alzare la soglia a tre giri -- il test torna rosso su
+    `assert len(chiusure) == 1`.
+    """
+    archivio, osservatore = coppia
+    osservatore.watch_system(problems=[], integrations=[_rotta()])
+    osservatore.watch_system(problems=[], integrations=[])
+    osservatore.watch_system(problems=[], integrations=[])
+    chiusure = [r for r in archivio.annotati if r["a"] == "chiuso"]
+    assert len(chiusure) == 1
+
+
+def test_the_missing_counter_resets_when_the_condition_returns(coppia):
+    """Un giro mancante, poi la condizione torna, poi un altro giro
+    mancante: non sono due mancati consecutivi, e l'episodio resta aperto.
+    E' la differenza fra «assente due volte» e «assente due volte di
+    seguito».
+
+    Mutazione: non azzerare il contatore al ritorno -- il test torna rosso
+    su `assert chiusure == []`.
+    """
+    archivio, osservatore = coppia
+    osservatore.watch_system(problems=[], integrations=[_rotta()])
+    osservatore.watch_system(problems=[], integrations=[])
+    osservatore.watch_system(problems=[], integrations=[_rotta()])
+    osservatore.watch_system(problems=[], integrations=[])
+    chiusure = [r for r in archivio.annotati if r["a"] == "chiuso"]
+    assert chiusure == []

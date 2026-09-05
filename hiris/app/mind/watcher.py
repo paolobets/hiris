@@ -54,6 +54,18 @@ _HEALTHY_INTEGRATION_STATES = frozenset({
 # Si scarta in qualunque stato, come nel nucleo.
 _IGNORED_INTEGRATION_SOURCE = "ignore"
 
+# Quanti giri consecutivi una condizione deve mancare prima di dirla finita.
+#
+# DUE, e i due errori non costano uguale. Il rilevatore gira ogni 10 minuti
+# (`server.py`, `hiris_mind_conditions`), e `setup_retry` per costruzione
+# RITENTA: un giro in cui HA non la elenca fra i problemi non significa che
+# sia guarita. Misurato sulla casa il 03/09: quattro episodi per un solo
+# guasto, coi tre buchi di esattamente un giro -- due giri li unificano
+# tutti. Sbagliare per eccesso costa dieci minuti di ritardo nel dichiarare
+# finito un guasto; sbagliare per difetto costa i cinquanta episodi che
+# l'archivio porta oggi.
+_ROUNDS_BEFORE_CLOSING = 2
+
 
 def _text_or_none(value) -> str | None:
     """Un attributo di Home Assistant -> stringa per il grezzo, o `None`.
@@ -83,6 +95,15 @@ class Watcher:
         # ogni passaggio del lavoro periodico. Vive solo in RAM: al riavvio
         # va ricostruito con `rebuild_conditions`, vedi sotto.
         self._conditions: set[str] = set()
+        # Giri consecutivi in cui una condizione APERTA e' mancata
+        # dall'elenco che arriva a `watch_system`, per soggetto. Vive accanto
+        # a `self._conditions` e con la stessa sorte -- solo RAM, e non si
+        # risemina al riavvio (`rebuild_conditions` non lo tocca): una
+        # condizione vista aperta all'avvio e' aperta, zero giri mancati e'
+        # il valore giusto. Un soggetto compare qui solo mentre e' mancante e
+        # non ancora chiuso -- il ritorno della condizione lo toglie (il
+        # contatore si azzera), la chiusura pure: non cresce senza limite.
+        self._missing_rounds: dict[str, int] = {}
 
     # -- il rubinetto --------------------------------------------------
 
@@ -183,6 +204,20 @@ class Watcher:
         per la ricostruzione, non per questo metodo, che gira dentro un lavoro
         periodico -- ma la memoria deve restare coerente con cio' che e' stato
         davvero scritto.
+
+        **L'isteresi (Task 3).** Il rilevatore gira ogni dieci minuti, e
+        `setup_retry` per costruzione RITENTA: un giro in cui HA non elenca
+        piu' una condizione fra i problemi non vuol dire che sia guarita.
+        Misurato sulla casa vera il 03/09: quattro episodi per un solo
+        guasto (`lifx / Abat-jour`), coi tre buchi di esattamente un giro --
+        era il nostro campionamento, non la casa. Una condizione non chiude
+        piu' al primo giro in cui manca: serve `_ROUNDS_BEFORE_CLOSING` giri
+        CONSECUTIVI di assenza (vedi il commento accanto alla costante per
+        il perche' della soglia). Il contatore dei mancati
+        (`self._missing_rounds`) si azzera appena la condizione ricompare --
+        «assente due volte» non e' «assente due volte di seguito» -- e vive
+        accanto a `self._conditions` con la stessa sorte: RAM, non
+        riseminato al riavvio.
         """
         # {soggetto: (condizione, dominio, titolo)}. Il soggetto resta
         # l'IDENTITA' su cui girano `genre_for`, `self._conditions` e
@@ -223,7 +258,14 @@ class Watcher:
 
         now = self._now()
         written = 0
-        for born in sorted(set(open_now) - self._conditions):
+        open_set = set(open_now)
+        # Istantanea di cio' che era gia' aperto PRIMA di questo giro: i tre
+        # casi (nasce, ricompare, manca) si decidono guardando lo stato con
+        # cui il giro e' COMINCIATO, non `self._conditions` in corso di
+        # mutazione sotto ai loro piedi.
+        already_open = set(self._conditions)
+
+        for born in sorted(open_set - already_open):
             condition, domain, title = open_now[born]
             # `a` porta la CONDIZIONE VERA, non la costante "aperto": e'
             # letteralmente lo stato verso cui la cosa e' passata, e
@@ -232,7 +274,19 @@ class Watcher:
                                da=None, a=condition, domain=domain, title=title)
             self._conditions.add(born)
             written += 1
-        for ended in sorted(self._conditions - set(open_now)):
+
+        # Ricomparsa: gia' aperta E di nuovo nell'elenco di questo giro. Il
+        # contatore dei mancati si azzera qui -- e' la differenza fra
+        # «assente due volte» e «assente due volte DI SEGUITO».
+        for seen_again in already_open & open_set:
+            self._missing_rounds.pop(seen_again, None)
+
+        for missing in sorted(already_open - open_set):
+            rounds = self._missing_rounds.get(missing, 0) + 1
+            if rounds < _ROUNDS_BEFORE_CLOSING:
+                # Ancora dentro l'isteresi: resta aperta, si conta il giro.
+                self._missing_rounds[missing] = rounds
+                continue
             # `da=None`, non "aperto": la memoria in RAM (`self._conditions`)
             # tiene solo il SOGGETTO, non l'ultima condizione -- alla
             # chiusura non sappiamo piu' se era "aperto", "setup_retry" o
@@ -240,8 +294,9 @@ class Watcher:
             # legge `da` per le righe di sistema (ne' `rebuild_conditions`
             # ne' `facts.py`, che guardano solo `a`).
             self._store.record(quando_ts=now, source="sistema",
-                                  subject=ended, da=None, a="chiuso")
-            self._conditions.discard(ended)
+                                  subject=missing, da=None, a="chiuso")
+            self._conditions.discard(missing)
+            self._missing_rounds.pop(missing, None)
             written += 1
         return written
 
