@@ -50,6 +50,7 @@ from __future__ import annotations
 
 from ..memory.resolver import _normalize
 from ..proxy._sanitize import sanitize_text
+from .behavior import FILE_GENUINELY_ABSENT
 from .historian import instant_epoch
 from .topology import (
     actual_class,
@@ -754,7 +755,25 @@ def _view_behavior(behavior: list[dict], memories: list[dict],
         # della cosa), e ora che `cerca` indicizza automazioni e script un
         # NOME al posto dell'id e' un errore possibile anche qui: merita lo
         # stesso `suggerimento` degli altri tre rami, con la stessa frase.
-        return _not_found_detail(kind, reference, bool(unloaded_files))
+        #
+        # Ma non OGNI motivo di `unloaded_files` merita `non_disponibile`
+        # (ri-review sul Task 2, quinto giro -- la stessa conflazione appena
+        # chiusa su `ToolDispatcher._blind_spots`, a una chiamata di
+        # distanza): un file GENUINAMENTE assente
+        # (`behavior.FILE_GENUINELY_ABSENT` -- la cartella si raggiunge, il
+        # file no) non nasconde NIENTE, perche' non c'e' contenuto scritto
+        # da poter mancare. Dire `non_disponibile: True` per quel motivo
+        # affermerebbe un'incertezza che il caso genuino non ha: uno
+        # script il cui file semplicemente non c'e' (e che nemmeno
+        # `compose()` ha potuto popolare da uno stato vivo, altrimenti
+        # `entry` non sarebbe `None`) NON esiste, punto -- la stessa mezza
+        # verita' che il resto di questa fetta ha tolto da `search`. Solo un
+        # motivo che non e' `FILE_GENUINELY_ABSENT` (`FOLDER_UNREACHABLE` --
+        # la cartella stessa irraggiungibile -- o "illeggibile: ...") merita
+        # il dubbio.
+        unavailable_files = any(
+            reason != FILE_GENUINELY_ABSENT for reason in (unloaded_files or {}).values())
+        return _not_found_detail(kind, reference, unavailable_files)
     return {
         "esiste": True, "tipo": kind, "id": entry["id"], "nome": entry.get("nome"),
         # `corpo` passa cosi' com'e': `None` (HIRIS non l'ha, `origine` lo

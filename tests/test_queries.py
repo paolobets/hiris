@@ -330,10 +330,55 @@ def test_guarda_un_automazione_non_trovata_dichiara_i_file_non_letti():
     """CRITICAL ③, quinto ramo: `_view_behavior` non aveva alcun
     punto d'ingresso per `file_non_letti` -- uno script il cui file non si
     e' letto risultava `esiste: False` secco, indistinguibile da uno script
-    che davvero non esiste."""
+    che davvero non esiste.
+
+    Quinto giro di ri-review (Task 2): usa `"illeggibile: ..."`, non piu'
+    `"assente"` -- un file davvero assente non nasconde niente (vedi il test
+    dedicato subito sotto), un file ROTTO invece nasconde davvero cio' che
+    c'e' scritto: e' il caso vero per cui questo test esiste."""
+    dettaglio = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
+                       "script", "script.scritto_a_mano",
+                       unloaded_files={"scripts.yaml": "illeggibile: yaml non valido"})
+    assert dettaglio["esiste"] is False
+    assert dettaglio["non_disponibile"] is True
+
+
+def test_guarda_un_automazione_non_trovata_con_file_assente_non_si_inventa_incertezza():
+    """La stessa conflazione appena chiusa su `ToolDispatcher._blind_spots`
+    (Task 2, quarto giro), a una chiamata di distanza: `bool(unloaded_files)`
+    trattava un file GENUINAMENTE assente (`FILE_GENUINELY_ABSENT` --
+    la cartella si raggiunge, il file no) come lo stesso guasto di un file
+    illeggibile o di una cartella irraggiungibile. Non lo e': un file che
+    non c'e' non nasconde NIENTE (nessun contenuto scritto da poter
+    mancare), quindi `view` di uno script che non esiste in questo caso deve
+    restare un `esiste: False` CONFIDENTE (col `suggerimento` normale a
+    riprovare `search`), non un `non_disponibile` che promette
+    un'incertezza che il caso genuino non ha.
+
+    Mutazione che uccide: tornare a `bool(unloaded_files)` invece del
+    filtro su `FILE_GENUINELY_ABSENT` in `_view_behavior` -- il test torna
+    rosso su `assert "non_disponibile" not in dettaglio` (comparirebbe)."""
     dettaglio = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
                        "script", "script.scritto_a_mano",
                        unloaded_files={"scripts.yaml": "assente"})
+    assert dettaglio["esiste"] is False
+    assert "non_disponibile" not in dettaglio
+    assert "suggerimento" in dettaglio
+
+
+def test_guarda_un_automazione_non_trovata_con_la_cartella_irraggiungibile_dichiara_l_incertezza():
+    """Il gemello del test sopra, sul verso opposto: la cartella di Home
+    Assistant stessa irraggiungibile (`FOLDER_UNREACHABLE`) NON e'
+    un'assenza -- i due file potrebbero esserci ed essere scritti, HIRIS non
+    ha potuto nemmeno controllare. Deve restare `non_disponibile`.
+
+    Mutazione che uccide: escludere ANCHE `FOLDER_UNREACHABLE` dal calcolo
+    di `unavailable_files` in `_view_behavior` (non solo
+    `FILE_GENUINELY_ABSENT`) -- il test torna rosso su `assert
+    dettaglio["non_disponibile"] is True` (`KeyError: 'non_disponibile'`)."""
+    dettaglio = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
+                       "script", "script.scritto_a_mano",
+                       unloaded_files={"scripts.yaml": "cartella non raggiungibile"})
     assert dettaglio["esiste"] is False
     assert dettaglio["non_disponibile"] is True
 
