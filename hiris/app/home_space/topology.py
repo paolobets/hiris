@@ -608,27 +608,33 @@ def translate_state(value, device_class: str | None = None, domain: str | None =
 # `__init__.py` e `const.py`, nessuna traccia di un `EntityFeature`):
 # `button`, `device_tracker`, `switch` -- e `automation`, gia' citato sopra.
 #
-# COPERTURA IN NUMERI (misurata il 06/09/2026, non a parole -- e non lo
-# stesso numero delle "capacita' dette": vedi sotto). 157 entita' su 181
-# (87%) sono in un dominio con tabella qui sotto: update 53 + light 50 +
-# notify 11 + camera 9 + climate 8 + media_player 7 + valve 4 + siren 4 +
-# todo 4 + remote 2 + calendar 2 + conversation 1 + alarm_control_panel 1 +
-# weather 1 = 157, piu' i quattro a zero (`cover`/`fan`/`water_heater`/
-# `vacuum`) che non aggiungono nulla al numeratore. Le restanti 24 (`button`
-# 16, `device_tracker` 4, `switch` 4) sono in domini senza tabella
-# verificata e restano dichiaratamente FUORI -- un debito dichiarato,
-# tracciato in `docs/BACKLOG.md` ("22 entita'..." -> aggiornata a questa
-# fetta).
+# COPERTURA IN NUMERI -- TRE fatti diversi, misurati sulla casa vera
+# (`/api/states`) il 06/09/2026, non a parole e non confusi l'uno con
+# l'altro (il primo giro di questa fetta li aveva confusi: vedi git log):
 #
-# QUESTO NUMERO NON E' "quante dicono qualcosa": fra le entita' in un
-# dominio con tabella, una parte ha `supported_features == 0` (nessun bit
-# acceso -- l'integrazione dichiara il campo ma non attiva nessuna
-# capacita'), e per quelle `decoded_capabilities` torna `[]` cosi' come deve
-# (vedi la legge sotto: una chiave senza niente da dire non esce). "Dominio
-# coperto" e "capacita' dette" sono due conteggi diversi, e non si scambiano
-# -- misurare solo il primo e chiamarlo "capacita' su questa casa" sarebbe
-# di nuovo la stessa confusione fra dichiarato e vero che questo sprint
-# combatte altrove.
+#   181  entita' dichiarano `supported_features` -- il totale.
+#   157  (87%) sono in un dominio con una tabella qui sotto: update 53 +
+#        light 50 + notify 11 + camera 9 + climate 8 + media_player 7 +
+#        valve 4 + siren 4 + todo 4 + remote 2 + calendar 2 +
+#        conversation 1 + alarm_control_panel 1 + weather 1 = 157, piu' i
+#        quattro a zero entita' qui (`cover`/`fan`/`water_heater`/
+#        `vacuum`) che non aggiungono nulla al numeratore.
+#   104  producono DAVVERO una `capacita'` non vuota -- non 157: dei 157 in
+#        un dominio coperto, 53 hanno `supported_features == 0` (nessun bit
+#        acceso: light 44, notify 7, remote 2), quindi 157 - 53 = 104.
+#    24  restano fuori per MANCANZA DI FONTE (`button` 16,
+#        `device_tracker` 4, `switch` 4) -- tracciate in `docs/BACKLOG.md`.
+#
+# PERCHE' sono tre numeri e non uno: "dominio coperto" (157) dice se QUESTA
+# funzione sa leggere il dominio, "capacita' dette" (104) dice quante
+# entita' hanno DAVVERO ricevuto un bit da un'integrazione. Un
+# `supported_features == 0` non e' un dato mancante -- e' un'entita' che
+# DICHIARA di non saper fare niente di speciale, e la legge di questo
+# sprint (una chiave senza niente da dire non esce) lo rispetta lasciando
+# `capacita'` assente anche li'. Scambiare 157 con 104 -- o con 181 --
+# sarebbe la stessa confusione fra dichiarato e vero che questo sprint
+# combatte ovunque altrove; chi legge fra sei mesi deve trovare tutti e tre
+# scritti, non doverli dedurre o rimisurare.
 #
 # Due bit sono ESCLUSI di proposito, perche' il sorgente mostra che il loro
 # significato NON regge per l'intera finestra supportata -- rimossi fra i
