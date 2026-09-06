@@ -86,7 +86,13 @@ can enter the model's context calls one of the two functions below:
   these three fields raw (see its own docstring: "questo metodo non ha oggi
   nessun consumatore ... chi consuma questo metodo per metterlo in un prompt
   deve passare da `sanitize_ha_free_text` da solo") -- this tool is that
-  consumer, and the boundary lives here, not in the client.
+  consumer, and the boundary lives here, not in the client. Also sanitizes
+  the calendar's own `name` (`HAClient.calendars()`'s `state.name`, a
+  `friendly_name` a person picks and a Google Calendar can share) via
+  `sanitize_ha_value` -- missed in the first pass of this task, found by an
+  independent review that measured it: a 638-character name carrying an
+  injection phrase came back whole, in both `calendario` and `non_letti`.
+  Sanitized ONCE before it reaches either destination, not twice.
 
 DELIBERATELY NOT WIRED, and why: the `corpo` field of an automation/script
 (`home_space/behavior.py`, `automations.yaml`/`scripts.yaml`) is a local file

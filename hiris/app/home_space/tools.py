@@ -25,7 +25,7 @@ CONFIGURAZIONE -- automazioni, script, scene -- e lo fanno in due tempi
 apposta (vedi piu' sotto); `trend` e `logbook` leggono INDIETRO nel tempo
 passando per `home_space/historian.py` -- come e' andato un valore, cosa e'
 successo e per mano di chi (vedi la sezione «-- il tempo --» piu' sotto).
-Gli ultimi due, `system_log` e `automation_trace` (fetta «le tracce e il
+Due di mezzo, `system_log` e `automation_trace` (fetta «le tracce e il
 log», Task 5), leggono la STESSA fonte che l'osservatore (`mind/watcher.py`)
 gia' rilegge di notte -- non ne aprono una seconda (vedi il docstring di
 quel modulo, «non apre un secondo rubinetto»: due sorgenti degli stessi
@@ -155,7 +155,7 @@ from ..memory.interpretation import VOCABULARY, validate
 from ..memory.lookup_cache import LookupCache
 from ..memory.resolver import STORE_KEY_PER_TYPE, costruisci_indice
 from ..memory.store import MemoryStore
-from ..proxy._sanitize import sanitize_ha_free_text
+from ..proxy._sanitize import sanitize_ha_free_text, sanitize_ha_value
 from ..proxy.entity_cache import (
     automation_config_id,
     inventory_is_readable,
@@ -753,7 +753,13 @@ AGENDA_TOOL_DEF = {
         "storico, com'e' andata -- mantenuta, saltata (col ritardo misurato), "
         "disdetta o fallita col motivo. Usalo quando la persona chiede «cosa hai "
         "in programma?», «l'hai fatto?», o prima di disdire qualcosa, per avere "
-        "l'identificatore giusto invece di indovinarlo."
+        "l'identificatore giusto invece di indovinarlo. "
+        "**Non e' il calendario della persona.** Questi sono impegni DI HIRIS "
+        "con se stesso -- azioni o domande che HA preso in carico, verificate "
+        "contro questa casa quando sono nate. Per gli appuntamenti che una "
+        "persona ha scritto su un calendario di Home Assistant («cosa ho in "
+        "programma questa settimana?», nel senso comune della parola) usa "
+        "«calendar», non questo."
     ),
     "input_schema": {
         "type": "object",
@@ -1161,12 +1167,15 @@ AUTOMATION_TRACE_TOOL_DEF = {
     },
 }
 
-# I tetti sulla finestra di «calendar». Oltre un ANNO in ciascuna direzione la
-# domanda non e' piu' sui PROSSIMI appuntamenti ma una scansione del
-# calendario -- la stessa soglia concettuale di `historian.MAX_WINDOW_HOURS`
-# (90 giorni, la' per un valore nel tempo), spostata piu' in la' perche' un
-# calendario vive per natura su questa scala: un impegno come «Ferie estive»
-# o «Anniversario» (`home_space/appointments.py`) e' proprio annuale.
+# I tetti sulla finestra di «calendar». **Tetto SCELTO, non misurato** --
+# a differenza del 30 predefinito qui sotto, che e' una misura sulla casa
+# vera. Oltre un ANNO in ciascuna direzione la domanda non e' piu' sui
+# PROSSIMI appuntamenti ma una scansione del calendario -- la stessa soglia
+# concettuale di `historian.MAX_WINDOW_HOURS` (90 giorni, la' per un valore
+# nel tempo, anch'esso scelto e non misurato), spostata piu' in la' perche'
+# un calendario vive per natura su questa scala: un impegno come «Ferie
+# estive» o «Anniversario» (`home_space/appointments.py`) e' proprio
+# annuale.
 MAX_CALENDAR_DAYS_AHEAD = 365
 MAX_CALENDAR_DAYS_BACK = 365
 # Misurato sulla casa vera il 06/09/2026 (`HAClient.calendar_events`): sette
@@ -1201,8 +1210,11 @@ def _clamp_days(raw, *, default: float, ceiling: float) -> float:
 CALENDAR_TOOL_DEF = {
     "name": "calendar",
     "description": (
-        "I PROSSIMI appuntamenti nei calendari di questa casa -- risponde "
-        "alla domanda «quali sono i miei prossimi appuntamenti?». Ogni "
+        "**Non e' «agenda».** Quello sono gli impegni di HIRIS con se "
+        "stesso; questi sono i PROSSIMI appuntamenti scritti da una persona "
+        "sui calendari di questa casa -- risponde alla domanda «quali sono "
+        "i miei prossimi appuntamenti?», «cosa ho in programma questa "
+        "settimana?». Ogni "
         "impegno porta `titolo`, `inizio`, `fine`, `giornaliero` (vero se "
         "dura l'intera giornata) e, SOLO quando il calendario li ha scritti, "
         "`luogo`/`descrizione`; porta anche `calendario`, il NOME di chi lo "
@@ -1227,7 +1239,17 @@ CALENDAR_TOOL_DEF = {
         "calendario rotto sono due fatti diversi: confonderli direbbe «non "
         "hai impegni» con la sicurezza di chi ha guardato tutto, quando in "
         "realta' un calendario non ha risposto. Se `non_letti` compare, "
-        "dillo invece di tacerlo."
+        "dillo invece di tacerlo. "
+        "**`troncato: true` significa che almeno un calendario aveva PIU' "
+        "impegni di quanti ne siano tornati** -- come per `logbook`, non "
+        "concludere «non e' successo altro» (qui: «non ci sono altri "
+        "impegni»). Non dice QUALE calendario e' stato tagliato, solo che "
+        "ne e' successo almeno uno. Cio' che manca e' cio' che sta PIU' "
+        "LONTANO dall'inizio della finestra chiesta -- che di solito e' "
+        "ADESSO, quindi di solito manca cio' che e' piu' in la' nel futuro; "
+        "ma se hai chiesto anche `giorni_indietro`, l'inizio della finestra "
+        "e' nel passato, e cio' che manca potrebbe essere proprio i "
+        "PROSSIMI appuntamenti, non i piu' lontani in assoluto."
     ),
     "input_schema": {
         "type": "object",
@@ -2500,7 +2522,18 @@ class ToolDispatcher:
         quel testo, scritto da una persona in un calendario condiviso, entra
         DAVVERO in un prompt. `titolo`/`luogo`/`descrizione` passano da
         `sanitize_ha_free_text`, la stessa strada dei fratelli (`logbook`,
-        `system_log`), non una seconda.
+        `system_log`), non una seconda. **Il NOME del calendario passa da
+        `sanitize_ha_value`** (non `sanitize_ha_free_text`: e' un
+        `friendly_name`, la stessa forma di `nome` in `logbook()`, non testo
+        libero senza tetto HA) -- e' `state.name` di
+        `HAClient.calendars()`, scelto da una persona e potenzialmente
+        condiviso (un Google Calendar puo' esserlo), quindi un vettore di
+        testo iniettato quanto `summary`/`description`/`location`: sanificare
+        tre campi su quattro e lasciare il quarto grezzo sarebbe la stessa
+        fuga che l'audit di questo prodotto ha gia' pagato altrove
+        (L1-sicurezza.md). Sanificato UNA volta, prima di finire sia in
+        `calendario` sia in `non_letti` -- non due sanificazioni per due
+        destinazioni dello stesso valore.
 
         **Ogni impegno porta `calendario`**, il nome (non l'`entity_id`) del
         calendario da cui viene: fondendo «Personale» e «Famiglia» in un
@@ -2512,7 +2545,23 @@ class ToolDispatcher:
         (`HAClient.calendar_events`, `MAX_CALENDAR_EVENTS`): un elenco
         tagliato non deve poter sembrare completo, stessa legge del client
         che lo genera -- propagarla in silenzio sarebbe ricreare lo stesso
-        difetto un livello piu' in alto.
+        difetto un livello piu' in alto. Non dice quale calendario (vedi la
+        `description` dello strumento).
+
+        **Un evento che non si sa interpretare affonda il SUO calendario,
+        non tutti quanti.** `read_appointment` puo' sollevare (un evento
+        senza ne' `start.date` ne' `start.dateTime`, per esempio): senza una
+        guardia qui, quell'eccezione risalirebbe fino alla rete di
+        sicurezza di `dispatch`, e la risposta perderebbe INSIEME gli
+        impegni gia' letti di questo calendario e quelli di ogni altro
+        calendario gia' letto bene in questo stesso giro -- il guasto di
+        UNO che costa il silenzio su TUTTI, l'esatto difetto opposto a
+        quello che questa fetta cura. Un calendario il cui evento non si sa
+        interpretare finisce quindi in `non_letti` come uno che non
+        risponde -- e i suoi impegni GIA' raccolti in questo giro si
+        scartano: un elenco parziale che si finge completo e' peggio di un
+        elenco assente, la stessa legge di `add_label_to` in
+        `proxy/ha_client.py` («non ho letto» non e' «non ce n'erano»).
         """
         import time as _time
 
@@ -2543,15 +2592,25 @@ class ToolDispatcher:
             entity_id = entry.get("entity_id")
             if not entity_id:
                 continue
-            name = entry.get("name") or entity_id
+            name = sanitize_ha_value(entry.get("name") or entity_id)
             events = await ha.calendar_events(entity_id, start, end)
             if "errore" in events:
                 unreadable.append(name)
                 continue
             if events.get("troncato"):
                 truncated = True
+            calendar_appointments: list[dict] = []
+            unreadable_event = False
             for raw_event in events.get("eventi") or []:
-                appointment = read_appointment(raw_event, timezone=timezone)
+                try:
+                    appointment = read_appointment(raw_event, timezone=timezone)
+                except Exception as error:
+                    logger.warning(
+                        "calendario «%s»: un evento non si sa interpretare "
+                        "(%s: %s) -- l'intero calendario finisce in non_letti",
+                        name, type(error).__name__, error)
+                    unreadable_event = True
+                    break
                 appointment["titolo"] = sanitize_ha_free_text(appointment["titolo"])
                 if "luogo" in appointment:
                     appointment["luogo"] = sanitize_ha_free_text(appointment["luogo"])
@@ -2559,7 +2618,11 @@ class ToolDispatcher:
                     appointment["descrizione"] = sanitize_ha_free_text(
                         appointment["descrizione"])
                 appointment["calendario"] = name
-                appointments.append(appointment)
+                calendar_appointments.append(appointment)
+            if unreadable_event:
+                unreadable.append(name)
+                continue
+            appointments.extend(calendar_appointments)
 
         result: dict = {"impegni": sort_appointments(appointments)}
         if unreadable:

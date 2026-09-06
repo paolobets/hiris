@@ -875,7 +875,8 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 > **Due correzioni, 02/09, dalla fetta che ha applicato questi nomi.** (1) Il rimando a
 > `keeper/exchange.py:38` era sbagliato da sempre: quella riga e' `SOLA_LETTURA`, la lista bianca
 > dei lettori ammessi (sei allora, OTTO da «le tracce e il log», che vi ha aggiunto `system_log`
-> e `automation_trace`), e `promesse` non c'e' mai stata (non e' un lettore ammesso in un turno di
+> e `automation_trace`, NOVE da «i calendari», che vi ha aggiunto `calendar`), e `promesse` non
+> c'e' mai stata (non e' un lettore ammesso in un turno di
 > promessa). La stringa viveva in `home_space/tools.py`, nel catalogo della chat. (2) La stringa nel
 > codice ora e' `agenda`: la distinzione fra le due voci resta -- il concetto e' `promise`, il nome
 > di strumento e' `agenda` -- ma non si legge piu' dalla grafia italiana, si legge da qui.
@@ -3329,11 +3330,33 @@ codice:
 > (`GET /api/calendars`, vedi `HAClient.calendars()`): preso a peso dalla fonte, non coniato qui,
 > la stessa legge del confine gia' applicata a `logbook`/`system_log` due righe sopra.
 >
-> **Non e' stata eseguita la prova del lettore nuovo su questo nome**, per la stessa ragione
-> dichiarata sopra per `system_log`/`automation_trace`: dispacciare due lettori indipendenti su
-> modelli diversi non e' un'azione che un compito di codice possa prendere da solo. Il rischio di
-> collisione e' stato solo RAGIONATO (nessuna radice condivisa, nessuna parola vicina fra i
-> quindici esistenti), non misurato -- dichiarato, non taciuto.
+> **Non e' stata eseguita la prova del lettore nuovo su questo nome DA CHI L'HA SCRITTO**, per la
+> stessa ragione dichiarata sopra per `system_log`/`automation_trace`: dispacciare due lettori
+> indipendenti su modelli diversi non e' un'azione che un compito di codice possa prendere da
+> solo. Il rischio era stato solo RAGIONATO -- e il ragionamento era SBAGLIATO, corretto dalla
+> revisione indipendente che segue.
+>
+> **Corretto dalla revisione: «nessuna parola vicina fra i quindici esistenti» era vero solo per
+> la RADICE, non per il SIGNIFICATO.** `calendar` non condivide una lettera con `agenda` -- questo
+> resta vero, ed e' quello che la frase originale misurava. Ma il criterio di questa sezione non
+> e' la somiglianza delle lettere: e' se un lettore nuovo, senza contesto, puo' confondere due
+> strumenti (vedi lo standard in cima alla sezione). E per un lettore ITALIANO, «agenda» **e'** la
+> parola con cui si chiama il libretto degli appuntamenti -- il significato che questa fetta
+> assegna a `calendar`. Alla domanda «cosa c'e' in programma questa settimana?» il modello ha DUE
+> candidati ugualmente plausibili: `agenda` (che restituisce le promesse di HIRIS) e `calendar`
+> (che restituisce gli impegni della persona). La collisione e' SEMANTICA, non lessicale -- la
+> stessa specie di rischio di `cerca`/`richiama` in questa sezione (li' due nomi vicini per
+> lettera, qui due nomi vicini per significato quotidiano), non una specie nuova.
+>
+> **Il rimedio non e' cambiare nome** (`calendar` resta il nome giusto: preso a peso dalla fonte,
+> vedi sopra, e non condivide radice con nulla) **ma far si' che le due description si nominino a
+> vicenda per escludersi**, cosi' che il lettore -- umano o modello -- non debba indovinare dal
+> nome solo: la description di `agenda` dice esplicitamente «non e' il calendario della persona...
+> per gli appuntamenti scritti su un calendario di Home Assistant usa calendar, non questo», e
+> quella di `calendar` apre con «non e' agenda: quello sono gli impegni di HIRIS con se stesso».
+> Nessuna delle due si legge piu' da sola. Resta non misurato (nessun lettore nuovo indipendente
+> ha provato le description corrette): e' un ragionamento verificato da una seconda lettura, non
+> una prova eseguita.
 
 ## I valori di dominio
 
