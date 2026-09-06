@@ -211,6 +211,22 @@ _TETHER_TYPES = tuple(sorted(VOCABULARY["ancore"]))
 # per chi legge.
 _ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 
+# Il rifiuto di `_search` quando `trovati` e' vuoto (correzione del 06/09 al
+# §6a, primo bordo): «nessun nome combacia» non e' «questa cosa non esiste»,
+# ma da solo resta un vicolo cieco -- lo stesso difetto per cui esiste
+# `queries._search_suggestion` sul verso opposto (un id passato a `view` che
+# poteva essere un nome). Qui il verso e' l'altro: `search` stesso non ha
+# riconosciuto niente, quindi non c'e' un id da suggerire -- si indica la
+# strada (il nome esatto, o `view` diretto se tipo e riferimento sono gia'
+# noti) invece di lasciare il modello a ripetere la stessa ricerca uguale.
+_NOTHING_RECOGNIZED_SUGGESTION = (
+    "Nessun nome ne' alias dichiarato in questa casa combacia con questo "
+    "testo -- non e' detto che la cosa non esista, «search» ha guardato i "
+    "nomi, non l'inventario. Se conosci il nome esatto con cui la casa "
+    "chiama cio' che cerchi, riprova «search» con quel nome; se conosci "
+    "gia' il tipo e il riferimento, chiama «view» direttamente."
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -243,6 +259,14 @@ SEARCH_TOOL_DEF = {
         "spontaneamente se la domanda non la riguarda; se invece la riguarda — l'utente "
         "ha cercato proprio quel nome, o chiede esplicitamente cosa è nascosto — usala "
         "e dillo, non negarla. "
+        "Un risultato può portare `solo_una_parte: true` (mai `false`, esce solo quando "
+        "è vera): il testo cercato riconosce nomi DENTRO la frase, quindi «la lampada di "
+        "sopra» può agganciare un'entità chiamata esattamente «lampada» — hai un "
+        "riferimento preciso per UNA PAROLA di ciò che l'utente ha chiesto, non per "
+        "l'intera frase. Il frammento riconosciuto è già in `nome_visto`; questo campo "
+        "dice che è un PEZZO, non il tutto — non dare per scontato che l'utente parlasse "
+        "proprio di quella cosa se la frase portava altro (una posizione, un dettaglio) "
+        "che il match non ha catturato. "
         "Un candidato di tipo `piano` NON si passa a `view`, che non sa aprire un "
         "piano da solo: serve a `execute(piani=...)`, per agire su tutte le aree di "
         "quel piano insieme. `automazione` e `script` invece si passano a `view` "
@@ -261,6 +285,12 @@ SEARCH_TOOL_DEF = {
         "tipo `integrazione`. "
         "Se il testo non nomina niente che la casa conosca, `trovati` e' una lista "
         "vuota: non e' un errore, significa che nessun nome o alias corrisponde. "
+        "In quel caso la risposta porta anche `nulla_riconosciuto: true` con un "
+        "`suggerimento`: **una lista vuota vuol dire «non ho riconosciuto niente in "
+        "questo testo», MAI «questa cosa non esiste in casa»** -- non hai guardato "
+        "l'inventario, hai guardato i NOMI dichiarati. Segui il suggerimento (il nome "
+        "esatto, o `view` diretto sul tipo giusto) invece di concludere che la cosa "
+        "manchi o di ripetere la stessa ricerca uguale. "
         "**Ma una lista vuota non basta sempre a concludere che la cosa non esista**: "
         "quando e' vuota per un motivo diverso, la risposta porta anche "
         "`non_ho_potuto_guardare` (MAI insieme a candidati gia' trovati) con la lista "
@@ -1644,6 +1674,18 @@ class ToolDispatcher:
             lookup = costruisci_indice(home_space, reported_names, behavior)
         found = _search_candidates(lookup, text)
         response: dict = {"trovati": found}
+        # Correzione del 06/09 al §6a, primo bordo: `not found` e' l'unica
+        # guardia corretta qui -- la voce SENZA candidati che `search()`
+        # aggiunge quando il testo e' il dominio di una piattaforma
+        # (`queries.search`, il ramo «piattaforma») porta comunque una voce
+        # in `found`, perche' e' un nome riconosciuto (di tipo diverso da un
+        # candidato), non un vuoto. Guardare "candidati non vuoti" invece di
+        # "lista non vuota" avrebbe dichiarato `nulla_riconosciuto` proprio
+        # quando una piattaforma era stata trovata -- l'errore che
+        # l'Attenzione del brief del Task 2 avverte di non fare.
+        if not found:
+            response["nulla_riconosciuto"] = True
+            response["suggerimento"] = _NOTHING_RECOGNIZED_SUGGESTION
         # N2 (ri-review): il ramo strutturale di `_blind_spots` (I3, sotto) si
         # accende su OGNI casa sana che abbia entita' senza nome ne' nel
         # registro ne' nello specchio -- sull'impianto vero, un fatto

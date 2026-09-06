@@ -156,10 +156,29 @@ def search(lookup, text: str) -> list[dict]:
     irraggiungibili da `search`, esattamente la frase vietata sopra per
     `nascosta` applicata a un altro campo.
 
+    Un risultato puo' portare anche `solo_una_parte` (sempre `True` quando
+    c'e', mai `False`) -- il secondo bordo della correzione del 06/09 al §6a:
+    `find()` cerca i termini DENTRO la frase, quindi «la lampada di sopra»
+    aggancia un'entita' chiamata esattamente «lampada» e il modello riceve
+    un riferimento preciso per UNA PAROLA di cio' che ha chiesto. Il
+    frammento riconosciuto e' gia' in `nome_visto`, ma niente diceva che
+    fosse un PEZZO della frase e non la frase intera -- la differenza fra
+    «ho capito» e «ho capito questa parola». Si dichiara confrontando
+    `nome_visto` normalizzato con l'intero `testo` normalizzato (la stessa
+    `_normalize` che gia' unisce `nome_visto` alla piattaforma qui sotto):
+    non e' un punteggio, e' lo stesso confronto letterale su cui questo
+    modulo intero si fonda, applicato al bordo invece che al termine. Quando
+    combaciano per intero la chiave NON esce -- stessa disciplina di
+    `mute_da`/`elenco_incompleto`: le chiavi che non hanno niente da dire non
+    escono.
+
     `verify()` e' un accesso a dizionario, non una ricerca: farlo per
     candidato costa quanto leggere la lista."""
     results = lookup.find(text)
+    whole_phrase = _normalize(text)
     for entry in results:
+        if _normalize(entry["nome_visto"]) != whole_phrase:
+            entry["solo_una_parte"] = True
         for candidate in entry["candidati"]:
             resolved = lookup.verify(candidate["tipo"], candidate["riferimento"]) or {}
             deduced = (resolved.get("nome_dedotto") or "").strip()
@@ -186,7 +205,7 @@ def search(lookup, text: str) -> list[dict]:
     # piattaforma si aggiunge a QUELLA voce; altrimenti diventa una voce sua,
     # con `candidati: []` -- non un candidato in piu' da nessuna parte.
     platforms = lookup.platforms() if hasattr(lookup, "platforms") else {}
-    matched = platforms.get(_normalize(text))
+    matched = platforms.get(whole_phrase)
     if matched:
         # `dominio` e' la chiave che il modello ripassera' a `view(tipo=
         # "integrazione", riferimento=...)` (Task 3): deve uscire gia'
@@ -194,9 +213,9 @@ def search(lookup, text: str) -> list[dict]:
         # -- altrimenti quella `view` non troverebbe mai un'integrazione che
         # pure esiste. Stessa `_normalize` che ha costruito la chiave in
         # `Lookup.platforms()`, cosi' le due sono garantite uguali.
-        info = {"dominio": _normalize(text), "quante_entita": len(matched)}
+        info = {"dominio": whole_phrase, "quante_entita": len(matched)}
         same_text = next(
-            (entry for entry in results if _normalize(entry["nome_visto"]) == _normalize(text)),
+            (entry for entry in results if _normalize(entry["nome_visto"]) == whole_phrase),
             None)
         if same_text is not None:
             same_text["piattaforma"] = info

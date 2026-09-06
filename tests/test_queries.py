@@ -46,6 +46,39 @@ def test_cerca_non_appiattisce_l_ambiguita(indice_ambiguo):
     assert len(trovate[0]["candidati"]) == 2
 
 
+# --- Correzione del 06/09 al §6a: i due bordi veri (T2) ---------------------
+
+
+def test_a_match_on_a_fragment_says_which_fragment(indice):
+    """«la cucina di sopra» aggancia l'area chiamata esattamente «cucina»:
+    il modello riceve un riferimento preciso per UNA PAROLA di cio' che ha
+    chiesto («di sopra» -- la parte che localizzava la domanda -- non e'
+    entrata nel match). Il frammento c'e' gia' in `nome_visto`, ma senza
+    questo campo niente dice che e' un PEZZO della frase e non la frase
+    intera -- la differenza fra «ho capito» e «ho capito questa parola».
+
+    Mutazione che uccide: non dichiarare il frammento parziale in `search()`
+    (rimuovere `entry["solo_una_parte"] = True`) -- il test torna rosso su
+    `assert trovate[0]["solo_una_parte"] is True` (`KeyError: 'solo_una_parte'`)."""
+    trovate = search(indice, "la cucina di sopra")
+    assert trovate[0]["nome_visto"].strip().lower() == "cucina"
+    assert trovate[0]["solo_una_parte"] is True
+
+
+def test_a_whole_phrase_match_does_not_claim_to_be_partial(indice):
+    """Il rovescio, e vale quanto l'altro: quando il testo cercato combacia
+    PER INTERO col nome trovato, la chiave non esce -- stessa disciplina di
+    `mute_da`/`elenco_incompleto` (`queries.py`): le chiavi che non hanno
+    niente da dire non escono.
+
+    Mutazione che uccide: dichiarare sempre `solo_una_parte` (togliere il
+    confronto con `whole_phrase` in `search()`) -- il test torna rosso su
+    `assert "solo_una_parte" not in trovate[0]`."""
+    trovate = search(indice, "  CUCINA  ")
+    assert trovate[0]["nome_visto"].strip().lower() == "cucina"
+    assert "solo_una_parte" not in trovate[0]
+
+
 def test_guarda_un_area_da_le_sue_entita_con_lo_stato():
     dettaglio = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "area", "cucina")
     ids = {e["id"] for e in dettaglio["entita"]}

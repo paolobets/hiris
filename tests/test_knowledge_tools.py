@@ -505,6 +505,50 @@ async def test_cerca_niente_di_riconoscibile_non_e_un_errore(dispatcher):
     assert esito["trovati"] == []
 
 
+# --- Correzione del 06/09 al §6a: i due bordi veri (T2) ---------------------
+
+
+@pytest.mark.asyncio
+async def test_nothing_recognised_is_not_the_same_as_nothing_exists(dispatcher):
+    """`find()` torna una lista vuota quando non riconosce niente, e il
+    modello legge quel vuoto come «questa cosa non esiste in casa». Sono due
+    affermazioni diverse, e solo una delle due e' vera: `search` non ha
+    guardato l'inventario, ha guardato i NOMI (correzione del 06/09 al §6a:
+    niente punteggio, solo i due bordi veri -- questo e' il primo). Il
+    rifiuto deve anche dire cosa fare dopo, non solo dichiararsi.
+
+    Mutazione che uccide: togliere la dichiarazione quando `trovati` e'
+    vuoto (rimuovere il ramo `if not found` in `ToolDispatcher._search`) --
+    il test torna rosso su `assert esito["nulla_riconosciuto"] is True`
+    (`KeyError: 'nulla_riconosciuto'`)."""
+    esito = await dispatcher.dispatch("search", {"testo": "xyzzy qwerty"})
+    assert esito["trovati"] == []
+    assert esito["nulla_riconosciuto"] is True
+    assert esito.get("suggerimento")
+
+
+@pytest.mark.asyncio
+async def test_a_platform_recognised_alone_is_not_nothing_recognised(archivio_casa, memoria):
+    """L'Attenzione del brief del Task 2: `search()` aggiunge gia' una voce
+    SENZA candidati quando il testo E' il dominio di una piattaforma
+    (`queries.search`, il ramo «piattaforma» -- vedi `test_queries.py`).
+    Quella voce non e' «niente riconosciuto»: e' un nome (di tipo diverso da
+    un candidato) che la casa riconosce comunque. Guardare "candidati non
+    vuoti" invece di "lista non vuota" avrebbe dichiarato `nulla_riconosciuto`
+    proprio in questo caso -- l'errore che l'Attenzione avverte di non fare.
+
+    Mutazione che uccide: calcolare `nulla_riconosciuto` da "nessun candidato
+    in nessuna voce" invece che da "`trovati` vuoto" -- il test torna rosso
+    su `assert "nulla_riconosciuto" not in esito` (diventerebbe presente)."""
+    archivio_casa.replace({"entita": [
+        {"entity_id": "sensor.giardino_minuti", "name": "Minuti", "platform": "hydrawise"}]}, [])
+    d = ToolDispatcher(archivio_casa, memoria)
+    esito = await d.dispatch("search", {"testo": "hydrawise"})
+    assert esito["trovati"][0]["candidati"] == []
+    assert esito["trovati"][0]["piattaforma"]["dominio"] == "hydrawise"
+    assert "nulla_riconosciuto" not in esito
+
+
 # --- R2 (T7): `search` impara piani, automazioni e script -------------------
 
 
