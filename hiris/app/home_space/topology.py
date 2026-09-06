@@ -550,6 +550,110 @@ def translate_state(value, device_class: str | None = None, domain: str | None =
     return _STATE_TRANSLATION.get(v, str(value))
 
 
+# `supported_features` -- COSA UN'ENTITA' SA FARE -- e' un intero A BIT il
+# cui significato dipende dal DOMINIO: Home Assistant lo dichiara come un
+# `IntFlag` per ognuno (`LightEntityFeature`, `CoverEntityFeature`, ...).
+# Misurato sull'impianto del proprietario il 06/09/2026: 181 entita' su 834
+# lo dichiarano, e prima di questa fetta la conoscenza non lo citava in
+# NESSUN punto -- il fornitore dice cosa un'entita' sa fare, e HIRIS lo
+# buttava.
+#
+# Ogni tabella qui sotto e' verificata sul SORGENTE di Home Assistant, non a
+# memoria e non su `dev`: ai DUE estremi della finestra che questo add-on
+# dichiara di supportare -- il tag piu' vecchio, `2024.7.0`
+# (`hiris/config.yaml: homeassistant`), e `2026.9.1`, il piu' recente
+# rilasciato al momento di questa fetta. Solo i domini che QUESTA casa ha
+# davvero entrano: la stessa lista di `proxy/entity_cache.py::_DOMAIN_ATTRS`
+# (misurata nella fetta "attributi al modello", 2026-08-25) piu' `weather`,
+# che ci vive gia' accanto. Un dominio senza i due tag verificati resta
+# FUORI: non si inventa una tabella (`automation` non ne ha una -- il
+# dominio non dichiara nessun `EntityFeature` alla fonte).
+#
+# Due bit sono ESCLUSI di proposito, perche' il sorgente mostra che il loro
+# significato NON regge per l'intera finestra supportata -- rimossi fra i
+# due tag, non solo rinominati:
+# - `ClimateEntityFeature.AUX_HEAT` (64): presente a `2024.7.0`
+#   (`components/climate/const.py`), sparito a `2026.9.1` (lo stesso file
+#   non lo dichiara piu');
+# - `VacuumEntityFeature.BATTERY` (64): stessa sorte, stesso file
+#   (`components/vacuum/const.py`, prima `__init__.py`).
+# Decodificare quei due bit avrebbe affermato un significato che il
+# fornitore, per meta' della finestra che HIRIS dichiara di supportare, non
+# garantisce piu' -- esattamente il difetto che questo sprint combatte.
+#
+# I bit aggiunti fra i due tag (`CoverEntityFeature.SPEED`,
+# `FanEntityFeature.TURN_ON`/`TURN_OFF`,
+# `ClimateEntityFeature.SWING_HORIZONTAL_MODE`,
+# `MediaPlayerEntityFeature.SEARCH_MEDIA`, `VacuumEntityFeature.CLEAN_AREA`)
+# restano DENTRO: non collidono con nessun valore piu' vecchio dello stesso
+# dominio (verificato riga per riga), quindi decodificarli non afferma
+# niente di falso su una casa ferma a `2024.7.0` -- semplicemente quel bit
+# non vi comparira' mai.
+_FEATURE_NAMES: dict[str, dict[int, str]] = {
+    "light": {4: "effetti", 8: "flash", 32: "transizione"},
+    "cover": {
+        1: "apertura", 2: "chiusura", 4: "posizione", 8: "stop",
+        16: "apertura_lamelle", 32: "chiusura_lamelle", 64: "stop_lamelle",
+        128: "posizione_lamelle", 256: "velocita",
+    },
+    "climate": {
+        1: "temperatura_target", 2: "intervallo_temperatura",
+        4: "umidita_target", 8: "modo_ventola", 16: "preset",
+        32: "oscillazione", 128: "spegnimento", 256: "accensione",
+        512: "oscillazione_orizzontale",
+    },
+    "media_player": {
+        1: "pausa", 2: "avanzamento", 4: "volume", 8: "muto",
+        16: "traccia_precedente", 32: "traccia_successiva", 128: "accensione",
+        256: "spegnimento", 512: "riproduzione_media", 1024: "volume_a_passi",
+        2048: "selezione_sorgente", 4096: "stop", 8192: "svuota_playlist",
+        16384: "play", 32768: "shuffle", 65536: "modo_audio",
+        131072: "sfoglia_media", 262144: "ripeti", 524288: "raggruppamento",
+        1048576: "annuncio", 2097152: "accoda", 4194304: "ricerca_media",
+    },
+    "vacuum": {
+        1: "accensione", 2: "spegnimento", 4: "pausa", 8: "stop",
+        16: "rientro_alla_base", 32: "velocita_aspirazione",
+        128: "stato_dettagliato", 256: "comando_diretto", 512: "localizzazione",
+        1024: "pulizia_puntuale", 2048: "mappa", 4096: "riporta_stato",
+        8192: "avvio", 16384: "pulizia_area",
+    },
+    "fan": {
+        1: "velocita", 2: "oscillazione", 4: "direzione", 8: "preset",
+        16: "spegnimento", 32: "accensione",
+    },
+    "water_heater": {
+        1: "temperatura_target", 2: "modo_operativo", 4: "modo_assenza",
+        8: "accensione_spegnimento",
+    },
+    "valve": {1: "apertura", 2: "chiusura", 4: "posizione", 8: "stop"},
+    "weather": {
+        1: "previsioni_giornaliere", 2: "previsioni_orarie",
+        4: "previsioni_due_volte_al_giorno",
+    },
+}
+
+
+def decoded_capabilities(domain: str, supported_features) -> list[str]:
+    """Cio' che un'entita' SA FARE, in parole -- non il numero grezzo.
+
+    `supported_features` da solo non dice niente a chi legge: e' un intero a
+    bit il cui significato dipende dal dominio (vedi `_FEATURE_NAMES`).
+    Un dominio senza tabella verificata, o un valore che non e' un intero
+    (l'integrazione non lo manda, o manda `None`), torna una lista vuota --
+    MAI un'ipotesi su un bit che questa funzione non ha verificato alla
+    fonte.
+
+    L'ordine e' quello del dizionario (crescente per bit), non quello di
+    inserimento in Home Assistant: stabile e riproducibile, non un dettaglio
+    di quale versione del sorgente e' stata letta per prima.
+    """
+    table = _FEATURE_NAMES.get(domain)
+    if not table or not isinstance(supported_features, int):
+        return []
+    return [name for bit, name in sorted(table.items()) if supported_features & bit]
+
+
 def domain_of(entity_id) -> str:
     """Il dominio di un `entity_id`: `light.cucina` -> `light`.
 

@@ -62,6 +62,25 @@ def test_la_categoria_conserva_il_proprio_ambito(archivio):
     assert archivio.read()["categorie"][0]["ambito"] == "automation"
 
 
+def test_entity_category_survives_the_round_trip(archivio):
+    """`entity_category` (`RegistryEntry.as_partial_dict`, "config" o
+    "diagnostic") arriva GRATIS dentro la risposta del registro delle
+    entita' e si scrive gia' in `sostituisci` (`store.py:385`) -- questo file
+    non aveva mai chiuso il giro: nessuna prova verificava che sopravvivesse
+    a `sostituisci()`+`leggi()`, il confine esatto su cui Task 3 di
+    «rifiutare e importare» costruisce (chi compone deve poterlo leggere da
+    qui, non da un secondo posto -- fondamenta: nessun doppione).
+
+    Mutazione: togliere `e.get("entity_category")` dall'INSERT di
+    `sostituisci()` (scrivere `None` al suo posto) -- il test torna rosso su
+    `assert casa["entita"][0]["categoria"] == "diagnostic"`."""
+    registri = dict(_REGISTRI, entita=[
+        dict(_REGISTRI["entita"][0], entity_category="diagnostic")])
+    archivio.replace(registri)
+    casa = archivio.read()
+    assert casa["entita"][0]["categoria"] == "diagnostic"
+
+
 def test_sostituisci_non_accumula(archivio):
     """E' una replica: la seconda lettura di HA rimpiazza la prima, non ci si somma."""
     archivio.replace(_REGISTRI)

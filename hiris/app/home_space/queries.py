@@ -57,6 +57,7 @@ from .topology import (
     actual_unit,
     categories_with_name,
     category_names,
+    decoded_capabilities,
     domain_of,
     hierarchy,
     label_names,
@@ -298,7 +299,13 @@ def _enrich_entity(entity_detail: dict, entry: dict,
     Condivisa fra i TRE rami di `guarda` che elencano entita' (I1, review
     finale): prima di quel fix solo `_view_entity` applicava il nome dedotto,
     e le altre due porte mostravano `nome: null` secco. L'unita' entra dalla
-    stessa porta unica, per non ripetere quella storia."""
+    stessa porta unica, per non ripetere quella storia.
+
+    `capacita` e `stato_presunto` vengono dallo SPECCHIO VIVO come `unita`, e
+    per la stessa ragione: `_to_minimal` li conserva gia'
+    (`proxy/entity_cache.py`), e nessun lettore li metteva davanti a chi
+    compone la risposta -- vedi i due commenti sotto, accanto a dove
+    escono davvero."""
     entity_id = entry.get("id")
     if not (entity_detail.get("nome") or "").strip():
         deduced = ((fallback_names or {}).get(entity_id) or "").strip()
@@ -334,8 +341,9 @@ def _enrich_entity(entity_detail: dict, entry: dict,
     # ogni altro dominio, e ricalcolarli qui una volta e' piu' semplice che
     # farlo condizionale.
     value = entity_detail.get("stato")
+    attributes = (reported_attributes or {}).get(entity_id) or {}
     if value is not None:
-        hvac_action = ((reported_attributes or {}).get(entity_id) or {}).get("hvac_action")
+        hvac_action = attributes.get("hvac_action")
         entity_detail["stato_leggibile"] = translate_state(
             value, entity_detail.get("classe"), domain_of(entity_id), hvac_action)
     # L'integrazione che la fornisce (hue, zwave_js, template): dice perche'
@@ -343,6 +351,28 @@ def _enrich_entity(entity_detail: dict, entry: dict,
     platform = (entry.get("piattaforma") or "").strip()
     if platform:
         entity_detail["piattaforma"] = platform
+    # `capacita`: COSA UN'ENTITA' SA FARE, decodificato da `supported_features`
+    # (`decoded_capabilities`, `topology.py` -- tabelle verificate alla fonte,
+    # per dominio). E' il guadagno vero di questa fetta: 181 entita' su 834
+    # (misurato il 06/09/2026) lo dichiarano, e la conoscenza non lo citava
+    # in NESSUN punto prima d'ora.
+    #
+    # Solo quando la decodifica produce qualcosa: 653 entita' su 834 non
+    # hanno `supported_features` affatto, e una tabella senza fonte per il
+    # dominio non decodifica niente -- `capacita: []` (o peggio, `null`) su
+    # ognuna sarebbe il rumore che seppellisce le 181 dove c'e' davvero.
+    # Stessa disciplina di `unita`/`categoria` due righe sopra.
+    capabilities = decoded_capabilities(domain_of(entity_id), attributes.get("supported_features"))
+    if capabilities:
+        entity_detail["capacita"] = capabilities
+    # `stato_presunto`: Home Assistant lo manda SOLO quando e' vero
+    # (`assumed_state`, verificato alla fonte -- vedi `entity_cache._to_minimal`).
+    # Leggerlo quando c'e' costa zero, ma su questa casa non e' MAI arrivato
+    # (0 entita' su 834, misurato il 06/09/2026): non e' -- e non diventa,
+    # scrivendo questa riga -- il fondamento su cui HIRIS regge la certezza
+    # del dato in generale.
+    if attributes.get("assumed_state"):
+        entity_detail["stato_presunto"] = True
     # NASCOSTA e CATEGORIA: fuori dalle gestioni, dentro la conoscenza.
     #
     # Il digesto conta le nascoste e scrive «esistono, e `guarda` le riporta se

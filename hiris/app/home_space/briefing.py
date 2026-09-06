@@ -1479,6 +1479,31 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
             "perche' l'utente le ha nascoste, ma esistono e `view` le "
             "riporta se gliele chiedi.")
 
+    # `entity_category`: fuori dalle gestioni, dentro la conoscenza -- stessa
+    # legge delle nascoste due righe sopra, per lo stesso dato che
+    # `_highlight_lines` gia' filtra (`e.get("categoria")`, "config" o
+    # "diagnostic") ma non ha mai dichiarato: prima di questa fetta il
+    # digesto le escludeva in silenzio, e alla domanda «quante sono le
+    # entita' di servizio?» HIRIS non aveva un numero -- solo `view` (che
+    # gia' porta `categoria`, `queries.py::_enrich_entity`) poteva dirlo, una
+    # per una. `nascoste` e `entita' di servizio` restano CONTATE separate:
+    # una disabilitata e nascosta insieme finisce fra le disabilitate
+    # (stessa precedenza di `hierarchy()`), e la stessa entita' puo' essere
+    # sia di servizio sia nascosta -- contarla due volte sarebbe un doppione,
+    # ometterla da uno dei due conteggi sarebbe una perdita. Qui si conta
+    # senza escludere le nascoste, perche' la domanda e' "quante sono di
+    # servizio", non "quante di servizio si vedono anche altrove".
+    service = [e for e in home_space.get("entita", []) if e.get("categoria")
+                and not e.get("disabilitata")]
+    if service:
+        n = len(service)
+        entry = _plural(n, "entita' di servizio (config/diagnostic)",
+                             "entita' di servizio (config/diagnostic)")
+        notices.append(
+            f"{n} {entry} in Home Assistant: non entrano in «Notevole adesso» "
+            "perche' l'integrazione le marca cosi', ma esistono e `view` le "
+            "riporta se gliele chiedi.")
+
     # IMPORTANT ④: si CONTA, non si elenca -- la stessa regola che il
     # nucleo applica a trecento entita' (vedi il docstring del modulo),
     # applicata qui al modulo stesso. Con cento script `solo_stato` (il

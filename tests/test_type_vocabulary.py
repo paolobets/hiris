@@ -151,6 +151,39 @@ def test_un_entita_config_non_entra():
     assert "Ripeti segnale" not in sezione
 
 
+def test_le_entita_di_servizio_si_contano_anche_se_non_si_annunciano():
+    """Task 3 di «rifiutare e importare» (§7①): `entity_category` era gia'
+    letto (`store.py:385`, e da questa stessa fetta anche da `_enrich_entity`,
+    `queries.py`) ma nessun lettore lo metteva DAVANTI -- il digesto le
+    escludeva in silenzio da «Notevole adesso» (le due prove sopra) senza mai
+    dire QUANTE fossero. Stessa disciplina delle nascoste due sezioni sopra:
+    «non le annuncio» e «non so che esistono» sono due cose diverse.
+
+    Mutazione: non contare `service` (o non appenderlo a `notices`) -- il
+    test torna rosso su
+    `assert "2 entita' di servizio" in lacune` (`AssertionError`, la
+    sottostringa non compare)."""
+    entita, stato = [], {}
+    for i in range(2):
+        entita.append(_voce(f"switch.servizio_{i}", f"Servizio {i}", categoria="diagnostic"))
+        stato[f"switch.servizio_{i}"] = "on"
+    testo = _con(entita, stato)
+
+    assert "Servizio 0" not in _sezione_notevole(testo), (
+        "il digesto rispetta la dichiarazione di Home Assistant")
+    lacune = _sezione_lacune(testo)
+    assert "2 entita' di servizio" in lacune, (
+        "ma il numero c'e', altrimenti la domanda «quante sono di servizio?» "
+        "costerebbe una chiamata a `view` per ognuna")
+
+
+def test_senza_entita_di_servizio_non_si_dice_niente():
+    """Un avviso che compare sempre non e' un avviso -- stessa lezione delle
+    nascoste, stesso file."""
+    assert "servizio" not in _sezione_lacune(
+        compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)[0])
+
+
 def test_un_entita_nascosta_dall_utente_non_entra():
     """E' una scelta esplicita dentro Home Assistant: rimetterla davanti da
     un'altra porta sarebbe disfarla."""

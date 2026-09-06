@@ -218,13 +218,42 @@ def _to_minimal(raw: dict) -> dict:
         if isinstance(automation_id, str) and automation_id:
             result["automation_id"] = automation_id
     domain_keys = _DOMAIN_ATTRS.get(dom, [])
-    if domain_keys:
-        extra = {k: attrs[k] for k in domain_keys if k in attrs}
-        for key in _FREE_TEXT_ATTRIBUTES:
-            if isinstance(extra.get(key), str):
-                extra[key] = sanitize_ha_value(extra[key])
-        if extra:
-            result["attributes"] = extra
+    extra = {k: attrs[k] for k in domain_keys if k in attrs}
+    # `supported_features`/`assumed_state`/`options`: a differenza di
+    # `_DOMAIN_ATTRS` sopra, Home Assistant li dichiara sull'ENTITA' base
+    # (`helpers/entity.py::Entity`), non su un dominio preciso -- il
+    # significato di `supported_features` lo decide POI il dominio (vedi
+    # `home_space/topology.decoded_capabilities`), non questa proiezione, che
+    # si limita a non buttarlo.
+    #
+    # Misurato sull'impianto del proprietario il 06/09/2026: `supported_features`
+    # su 181 entita' su 834, `options` su 26, `assumed_state` su NESSUNA.
+    # Quest'ultimo non e' un'assenza della proiezione: Home Assistant lo
+    # manda SOLO quando vale `True`
+    # (`helpers/entity.py::Entity.state_attributes`, verificato sui tag
+    # `2024.7.0` e `2026.9.1` -- la riga che scrive la chiave e' dentro un
+    # `if assumed_state := self.assumed_state:` in entrambi). Leggerlo
+    # quando c'e' costa zero; non significa che HIRIS fondi su questo campo
+    # la certezza del dato in generale -- su questa casa non e' mai arrivato.
+    supported_features = attrs.get("supported_features")
+    if isinstance(supported_features, int):
+        extra["supported_features"] = supported_features
+    if attrs.get("assumed_state"):
+        extra["assumed_state"] = True
+    # `options`: la lista di scelte di un `select`/`input_select`
+    # (`SelectEntity.capability_attributes`, verificato sui due tag) -- testo
+    # che l'integrazione dichiara, non un numero da interpretare. Sanificato
+    # voce per voce come `_FREE_TEXT_ATTRIBUTES` qui sotto: e' testo che
+    # arriva da un'integrazione o da un dispositivo, non da HIRIS.
+    options = attrs.get("options")
+    if isinstance(options, list) and options:
+        extra["options"] = [sanitize_ha_value(o) if isinstance(o, str) else o
+                             for o in options]
+    for key in _FREE_TEXT_ATTRIBUTES:
+        if isinstance(extra.get(key), str):
+            extra[key] = sanitize_ha_value(extra[key])
+    if extra:
+        result["attributes"] = extra
     return result
 
 

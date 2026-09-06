@@ -1434,3 +1434,77 @@ def test_avvio_home_assistant_is_absent_without_mute_da_too():
                     reported_since_when=since)
     assert "mute_da" not in detail
     assert "avvio_home_assistant" not in detail
+
+
+# --- Task 3, «rifiutare e importare»: cio' che HA dichiara di questa casa --
+# arriva a chi compone (§7①). `light.cucina_1`/`light.cucina_2` sono gia'
+# in `_CASA` (tests/test_briefing.py): niente fixture nuova per un fatto
+# che una casa di prova ha gia'.
+
+
+def test_supported_features_reaches_who_composes():
+    """181 entita' su 834 lo dichiarano (misurato il 06/09/2026) e la
+    conoscenza non lo cita in nessun punto: e' il fornitore che dice COSA
+    UN'ENTITA' SA FARE, e noi lo buttavamo via. Il valore vero -- 32 --
+    e' `LightEntityFeature.TRANSITION`, verificato sul sorgente di Home
+    Assistant sui tag `2024.7.0` e `2026.9.1` (`topology._FEATURE_NAMES`).
+
+    Mutazione: non proiettarlo -- il test torna rosso su
+    `assert vista["capacita"]` (`KeyError: 'capacita'`)."""
+    vista = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "entita", "light.cucina_1",
+                  reported_attributes={"light.cucina_1": {"supported_features": 32}})
+    assert vista["capacita"] == ["transizione"]
+
+
+def test_a_missing_metadata_does_not_come_out():
+    """653 entita' su 834 non hanno `supported_features`: una chiave a
+    `null` su ognuna sarebbe il rumore che seppellisce le 181 dove c'e'
+    davvero. Le chiavi che non hanno niente da dire non escono -- stessa
+    disciplina di `mute_da`/`elenco_incompleto`.
+
+    Mutazione: emettere sempre la chiave -- il test torna rosso su
+    `assert "capacita" not in vista`."""
+    vista = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "entita", "light.cucina_2")
+    assert "capacita" not in vista
+
+
+def test_a_domain_without_a_verified_source_does_not_get_a_guess():
+    """`sensor` non ha nessuna tabella verificata: nessun `EntityFeature`
+    esiste alla fonte per quel dominio. Un `supported_features` che arrivasse
+    lo stesso (un'integrazione fuori standard) non deve inventare un
+    significato -- e' esattamente il divieto del capitolato («se per un
+    dominio non hai la fonte, quel dominio resta fuori»).
+
+    Mutazione: un ripiego che decodifica con la tabella di un altro dominio
+    quando quello vero manca -- il test torna rosso su
+    `assert "capacita" not in vista`."""
+    vista = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "entita", "sensor.cucina_t",
+                  reported_attributes={"sensor.cucina_t": {"supported_features": 32}})
+    assert "capacita" not in vista
+
+
+def test_assumed_state_is_read_when_home_assistant_sends_it():
+    """Zero entita' su 834 lo mandano (misurato il 06/09/2026): Home
+    Assistant scrive questa chiave SOLO quando vale `True`
+    (`helpers/entity.py::Entity.state_attributes`, verificato sui tag
+    `2024.7.0` e `2026.9.1`). Leggerlo quando c'e' costa zero -- non
+    diventa, scrivendo questa riga, il fondamento su cui HIRIS regge la
+    certezza del dato in generale: su questa casa non e' mai arrivato.
+
+    Mutazione: non leggere `assumed_state` dagli attributi vivi -- il test
+    torna rosso su `assert vista["stato_presunto"] is True`
+    (`KeyError: 'stato_presunto'`)."""
+    vista = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "entita", "light.cucina_1",
+                  reported_attributes={"light.cucina_1": {"assumed_state": True}})
+    assert vista["stato_presunto"] is True
+
+
+def test_assumed_state_absent_does_not_come_out():
+    """Il rovescio, stessa disciplina delle chiavi assenti: senza
+    `assumed_state` negli attributi vivi, `stato_presunto` non esce --
+    `stato_presunto: false` su ogni entita' sarebbe rumore.
+
+    Mutazione: scrivere sempre `stato_presunto` (anche `False`) -- il test
+    torna rosso su `assert "stato_presunto" not in vista`."""
+    vista = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "entita", "light.cucina_2")
+    assert "stato_presunto" not in vista
