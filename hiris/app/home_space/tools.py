@@ -163,6 +163,7 @@ from ..proxy.entity_cache import (
 )
 from . import historian
 from .appointments import read_appointment, sort_appointments
+from .behavior import FILE_GENUINELY_ABSENT
 from .queries import HA_LINK_TYPE
 from .queries import related as _readable_links
 from .queries import sanitized_memories as _sanitized_memories
@@ -288,14 +289,18 @@ SEARCH_TOOL_DEF = {
         "la risposta puo' portare `nulla_riconosciuto` e/o `non_ho_potuto_guardare`, a "
         "seconda del perche'. "
         "`non_ho_potuto_guardare` esce quando la ricerca non ha potuto guardare tutto, "
-        "con la lista dei motivi -- e puo' comparire ANCHE accanto a candidati gia' "
-        "trovati: un registro non letto o un limite di alcune entita' possono nascondere "
-        "altri omonimi anche quando questa ricerca ha gia' trovato qualcosa. Ogni motivo "
-        "e' o un guasto DI ADESSO (un registro non letto, lo specchio dello stato giu': "
-        "ha senso riprovare piu' tardi) o un limite STABILE di alcune entita' di questa "
-        "casa (nessun nome ne' nel registro ne' nello stato vivo: riprovare la stessa "
-        "ricerca non cambia nulla, serve rinominarle in Home Assistant) -- il testo del "
-        "motivo dice quale dei due e'. "
+        "con la lista dei motivi. Ogni motivo e' o un guasto DI ADESSO (un registro non "
+        "letto, lo specchio dello stato giu', un file di comportamento illeggibile o la "
+        "cartella di Home Assistant non raggiungibile: ha senso riprovare piu' tardi) o "
+        "un limite STABILE di alcune entita' di questa casa (nessun nome ne' nel registro "
+        "ne' nello stato vivo: riprovare la stessa ricerca non cambia nulla, serve "
+        "rinominarle in Home Assistant) -- il testo del motivo dice quale dei due e'. "
+        "SOLO un guasto DI ADESSO puo' comparire ANCHE accanto a candidati gia' trovati: "
+        "un registro non letto o un file non letto possono nascondere altri omonimi anche "
+        "quando questa ricerca ha gia' trovato qualcosa. Il limite STABILE invece esce "
+        "SOLO quando `trovati` e' vuoto (mai accanto a candidati gia' trovati): riguarda "
+        "sempre un'ALTRA entita' rispetto a quella cercata, e dirlo mentre la ricerca ha "
+        "gia' avuto successo non spiegherebbe niente. "
         "Se hai guardato TUTTI i nomi dichiarati per intero e nessuno combaciava -- "
         "nessun guasto DI ADESSO a impedirtelo -- la risposta porta anche "
         "`nulla_riconosciuto: true` con un `suggerimento`: **vuol dire «non ho "
@@ -1702,7 +1707,7 @@ class ToolDispatcher:
         blind_spots = [message for message, _stable in blind_spot_entries]
         # Correzione del 06/09 al §6a, primo bordo -- e SECONDA correzione
         # della ri-review su questo ramo. La prima correzione (`not found and
-        # not blind_spots`) trattava OGNI motivo di `_blind_spot_entries`
+        # not blind_spots`) trattava OGNI motivo di `blind_spot_entries`
         # come lo stesso genere di dubbio: misurato che non lo sono. Un
         # registro non letto o uno specchio giu' sono un guasto DI ADESSO --
         # la casa non e' stata guardata per intero, e "nulla_riconosciuto"
@@ -1775,7 +1780,16 @@ class ToolDispatcher:
         NON hanno questo cancello: un registro caduto puo' nascondere altri
         omonimi anche quando QUESTA ricerca ha gia' trovato qualcosa, quindi
         possono uscire accanto a candidati gia' trovati (`tools.py::
-        SEARCH_TOOL_DEF["description"]` lo dichiara)."""
+        SEARCH_TOOL_DEF["description"]` lo dichiara).
+
+        Terzo giro di ri-review: un file "genuinamente assente"
+        (`behavior.FILE_GENUINELY_ABSENT`, la cartella di HA si raggiunge ma
+        il file no) NON entra affatto in questo elenco -- non e' un terzo
+        genere da etichettare, e' un motivo che qui non conta per niente:
+        non c'e' contenuto scritto da poter mancare, quindi non nasconde
+        NIENTE a chi cerca. Solo `behavior.FOLDER_UNREACHABLE` (la cartella
+        stessa irraggiungibile) e "illeggibile: ..." producono una voce dal
+        ramo sui file di comportamento, sotto."""
         entries: list[tuple[str, bool]] = []
         # Fix finale ① (2026-08-20): `STORE_KEY_PER_TYPE` e' apposta
         # SENZA "etichette" (non e' un tipo di ancora, vedi il commento su
@@ -1803,11 +1817,25 @@ class ToolDispatcher:
         # in domande.py); `_search` non lo leggeva affatto, quindi un file di
         # comportamento non letto restituiva 'trovati': [] nudo per un nome
         # di automazione/script che poteva essere scritto proprio li'.
-        unloaded_files = self._home_space.unloaded_files()
-        if unloaded_files:
+        # Terzo giro di ri-review sul Task 2: il "quarto motivo", trovato
+        # leggendo `behavior.reread()` (non solo dove compila). Qui dentro
+        # NON tutti i file di `unloaded_files()` sono un guasto di adesso --
+        # `FILE_GENUINELY_ABSENT` (il file davvero non c'e', la cartella si
+        # raggiunge) non nasconde NIENTE: non c'e' contenuto scritto da
+        # poter mancare, quindi non e' affatto un punto cieco per `search`.
+        # Includerlo qui spegneva `nulla_riconosciuto` per SEMPRE su una
+        # casa senza `scripts.yaml` (misurato) -- lo stesso fianco appena
+        # chiuso su `unnamed_even_live` qui sotto, un livello piu' in basso:
+        # un genere di motivo diverso infilato nello stesso elenco. Restano
+        # invece guasti di adesso, e quindi dentro: `FOLDER_UNREACHABLE` (la
+        # cartella stessa non si raggiunge -- i file potrebbero esserci) e
+        # `"illeggibile: ..."` (il file c'e' ed e' rotto).
+        hidden_files = {name: reason for name, reason in self._home_space.unloaded_files().items()
+                        if reason != FILE_GENUINELY_ABSENT}
+        if hidden_files:
             message = (
                 f"file di automazioni/script non letti: "
-                f"{', '.join(sorted(unloaded_files))}. Cio' che c'e' scritto li' dentro "
+                f"{', '.join(sorted(hidden_files))}. Cio' che c'e' scritto li' dentro "
                 "non e' cercabile adesso, e potrebbe esistere lo stesso.")
             entries.append((message, False))
 

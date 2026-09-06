@@ -24,6 +24,30 @@ logger = logging.getLogger(__name__)
 _AUTOMATIONS = "automations.yaml"
 _SCRIPT = "scripts.yaml"
 
+# Le RAGIONI di `file_non_letti` (`reread()`, sotto). Pubbliche perche' chi
+# consuma quella mappa per decidere se dichiarare un punto cieco
+# (`tools.py::ToolDispatcher._blind_spots`) deve poter distinguere i due
+# generi senza duplicare la stringa letterale -- ri-review sul Task 2
+# «rifiutare e importare», secondo giro di correzioni: la stessa forma del
+# fianco gia' chiuso su `_blind_spots` (guasto di adesso vs limite stabile),
+# un livello piu' sotto.
+#
+# Un file davvero assente (la cartella e' raggiungibile, il file no) non
+# nasconde NIENTE: non c'e' contenuto scritto da poter mancare, quindi non
+# e' un punto cieco per `search` -- va creato, non riparato.
+FILE_GENUINELY_ABSENT = "assente"
+
+# Quando la cartella di configurazione di Home Assistant stessa non e'
+# raggiungibile (`ha_folder is None`, sotto): i due file POTREBBERO esserci,
+# HIRIS non ha potuto nemmeno controllare. E' un guasto DI ADESSO -- il
+# Supervisor puo' non aver ancora montato la cartella (`server.py::
+# behavior_sentinel` la ricerca a ogni giro apposta per questo), non
+# un'assenza -- misurato che confonderlo con `FILE_GENUINELY_ABSENT` spegne
+# `nulla_riconosciuto` per SEMPRE su questa casa, con un motivo che dice
+# "cio' che c'e' scritto li' dentro potrebbe esistere lo stesso" di un file
+# che il codice non ha nemmeno guardato.
+FOLDER_UNREACHABLE = "cartella non raggiungibile"
+
 # entity_id canonico (dominio.oggetto). Qui serve a RICONOSCERE, dentro una
 # configurazione di plancia, quali stringhe sono un entity_id.
 #
@@ -237,10 +261,33 @@ async def reread(client, store, ha_folder: Path | None) -> dict:
     poter dire cosa fanno, ed e' l'unica misura onesta di quanto sa davvero.
 
     `file_non_letti` mappa il nome del file alla RAGIONE per cui non e' stato
-    letto: `"assente"` (il file non esiste, va creato) oppure
-    `"illeggibile: <motivo>"` (il file c'e' ed e' rotto, va riparato). Le due
-    cose chiedono interventi opposti, e un elenco unico dei "mancanti" le
-    rendeva indistinguibili.
+    letto, e sono TRE, non due (ri-review sul Task 2 «rifiutare e
+    importare», secondo giro di correzioni -- il fianco era proprio qui):
+
+    - `FILE_GENUINELY_ABSENT` (`"assente"`): la cartella e' raggiungibile e
+      il file non c'e' -- va CREATO. Non nasconde niente: non c'e' contenuto
+      scritto da poter mancare, quindi per chi cerca qualcosa non e' affatto
+      un punto cieco.
+    - `"illeggibile: <motivo>"`: il file c'e' ed e' rotto -- va RIPARATO. Un
+      guasto DI ADESSO: il contenuto esiste ma non si legge in questo
+      momento, e potrebbe nascondere qualcosa.
+    - `FOLDER_UNREACHABLE` (`"cartella non raggiungibile"`): non sappiamo
+      NEMMENO se i file esistono -- la cartella stessa non si raggiunge
+      (`ha_folder is None`, tipicamente perche' il Supervisor non l'ha
+      ancora montata: vedi `server.py::behavior_sentinel`, che la ricerca a
+      ogni giro apposta per questo). Anche questo e' un guasto DI ADESSO,
+      MAI un'assenza: i due file potrebbero esserci ed essere scritti,
+      semplicemente HIRIS non ha potuto controllare -- prima di questa
+      correzione usava la STESSA stringa di `FILE_GENUINELY_ABSENT`,
+      spegnendo per sempre la dichiarazione di punto cieco su una casa dove
+      la cartella non si raggiunge mai (misurato: `nulla_riconosciuto`
+      moriva silenziosamente).
+
+    Le prime due chiedono interventi opposti (creare contro riparare), e un
+    elenco unico dei "mancanti" le rendeva indistinguibili -- ed e' per
+    questo che sono nate come due stringhe diverse. La terza e' nata
+    confusa con la prima (stessa stringa, motivo opposto): questa fetta le
+    separa.
     """
     automations = script = None
     unloaded: dict[str, str] = {}
@@ -254,13 +301,13 @@ async def reread(client, store, ha_folder: Path | None) -> dict:
                 unloaded[name] = f"illeggibile: {exc}"
             else:
                 if content is None:
-                    unloaded[name] = "assente"
+                    unloaded[name] = FILE_GENUINELY_ABSENT
             if attribute == "automazioni":
                 automations = content
             else:
                 script = content
     else:
-        unloaded = {_AUTOMATIONS: "assente", _SCRIPT: "assente"}
+        unloaded = {_AUTOMATIONS: FOLDER_UNREACHABLE, _SCRIPT: FOLDER_UNREACHABLE}
 
     # `[]` significa «tutte»: e' la convenzione di HAClient.get_states, che
     # richiede l'argomento. Gli altri sei chiamanti fanno cosi'.

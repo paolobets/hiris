@@ -1,6 +1,11 @@
 import pytest
 
-from hiris.app.home_space.behavior import compose, reread
+from hiris.app.home_space.behavior import (
+    FILE_GENUINELY_ABSENT,
+    FOLDER_UNREACHABLE,
+    compose,
+    reread,
+)
 from hiris.app.home_space.store import HomeSpaceStore
 
 _AUTOMATIONS = [
@@ -173,6 +178,38 @@ async def test_a_broken_file_is_distinguished_from_a_missing_file(tmp_path):
     assert "illeggibile" in esito["file_non_letti"]["automations.yaml"]
     assert esito["file_non_letti"]["scripts.yaml"] == "assente"
     assert cliente.chiamato_con == []   # «tutte», la convenzione di HAClient
+
+
+@pytest.mark.asyncio
+async def test_an_unreachable_folder_is_not_the_same_as_an_absent_file(tmp_path):
+    """Ri-review sul Task 2 «rifiutare e importare», terzo giro: la cartella
+    di Home Assistant stessa irraggiungibile (`ha_folder is None`) NON e' la
+    stessa cosa di un file davvero assente -- i due file POTREBBERO esserci
+    ed essere scritti, HIRIS non ha potuto nemmeno controllare (il
+    Supervisor puo' non aver ancora montato la cartella:
+    `server.py::behavior_sentinel` la ricerca a ogni giro apposta per
+    questo). Prima di questa correzione le due situazioni condividevano la
+    STESSA stringa (`"assente"`), e chi consuma `file_non_letti` per
+    decidere se un motivo nasconde qualcosa (`tools.py::ToolDispatcher.
+    _blind_spots`) non poteva distinguerle: misurato che questo spegneva
+    `nulla_riconosciuto` PER SEMPRE su una casa dove la cartella non si
+    raggiunge mai.
+
+    Mutazione che uccide: nel ramo `else` di `reread()` (quando `ha_folder`
+    e' `None`), scrivere `FILE_GENUINELY_ABSENT` invece di
+    `FOLDER_UNREACHABLE` -- il test torna rosso su `assert
+    esito["file_non_letti"]["automations.yaml"] == FOLDER_UNREACHABLE`
+    (uscirebbe `"assente"`)."""
+    archivio = HomeSpaceStore(str(tmp_path / "casa.db"))
+    try:
+        cliente = _ClienteFinto()
+        esito = await reread(cliente, archivio, None)
+    finally:
+        archivio.close()
+
+    assert esito["file_non_letti"]["automations.yaml"] == FOLDER_UNREACHABLE
+    assert esito["file_non_letti"]["scripts.yaml"] == FOLDER_UNREACHABLE
+    assert FOLDER_UNREACHABLE != FILE_GENUINELY_ABSENT
 
 
 def test_a_real_automation_declares_itself_real():

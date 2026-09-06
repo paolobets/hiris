@@ -586,8 +586,10 @@ class HomeSpaceStore:
         return value if isinstance(value, list) else []
 
     def unloaded_files(self) -> dict[str, str]:
-        """Il nome di ogni file di comportamento non letto, con la RAGIONE
-        (`"assente"` o `"illeggibile: <motivo>"`). Vedi `comportamento.reread()`."""
+        """Il nome di ogni file di comportamento non letto, con la RAGIONE --
+        tre forme, non due (`"assente"`, `"illeggibile: <motivo>"`, o
+        `"cartella non raggiungibile"`), vedi `behavior.reread()` per il
+        perche' sono tre e non vanno confuse fra loro."""
         row = self._conn.execute(
             "SELECT valore FROM meta WHERE chiave = 'comportamento_file_non_letti'").fetchone()
         if not row:
