@@ -1,7 +1,7 @@
 """`supported_features` decodificato in parole -- topology.decoded_capabilities.
 
 Home Assistant lo dichiara come un intero A BIT il cui significato dipende
-dal DOMINIO (`LightEntityFeature`, `CoverEntityFeature`, ...). Le tabelle in
+dal DOMINIO (`LightEntityFeature`, `UpdateEntityFeature`, ...). Le tabelle in
 `topology._FEATURE_NAMES` sono verificate sul SORGENTE di Home Assistant, ai
 due estremi della finestra che questo add-on dichiara di supportare:
 `2024.7.0` (`hiris/config.yaml: homeassistant`) e `2026.9.1`, il tag stabile
@@ -11,7 +11,17 @@ Due bit sono stati esclusi apposta perche' il sorgente li ha rimossi fra i
 due tag (`ClimateEntityFeature.AUX_HEAT`, `VacuumEntityFeature.BATTERY`,
 entrambi valore 64): decodificarli avrebbe affermato un significato che il
 fornitore, per meta' della finestra supportata, non garantisce piu'.
-"""
+
+CORREZIONE del 06/09/2026 (dubbio segnalato, poi misurato dal coordinatore):
+la prima versione copriva i domini di `_DOMAIN_ATTRS` (una lista fatta per
+un'ALTRA domanda) invece delle 181 entita' VERE che dichiarano
+`supported_features` su questa casa. Contate per davvero: `update` (53) e
+`light` (50) valgono da soli 103/181; `cover`/`fan`/`water_heater`/`vacuum`
+-- i quattro della prima versione -- valgono ZERO. Le tabelle di
+`update`/`notify`/`camera` sono nuove di questa correzione; `button` (16
+entita' su questa casa) resta fuori perche' NESSUNA versione del sorgente
+definisce un `ButtonEntityFeature` -- non e' un dominio dimenticato, e' un
+dominio senza bit da decodificare."""
 from hiris.app.home_space.topology import decoded_capabilities
 
 
@@ -79,22 +89,62 @@ def test_decoded_capabilities_does_not_decode_the_excluded_vacuum_bit():
     assert decoded_capabilities("vacuum", 64) == []
 
 
-def test_decoded_capabilities_covers_every_domain_this_house_has():
-    """Le tabelle coprono gli stessi domini di
-    `proxy/entity_cache.py::_DOMAIN_ATTRS` (misurati come domini che QUESTA
-    casa ha davvero, fetta "attributi al modello" 2026-08-25) piu' `weather`
-    -- non un dominio in piu', non uno in meno: un dominio senza fonte
-    verificata resta fuori per dichiarazione esplicita, non per
-    dimenticanza.
+def test_decoded_capabilities_covers_the_domains_measured_on_this_house():
+    """Le tabelle coprono i domini MISURATI il 06/09/2026 sulle 181 entita'
+    vere che dichiarano `supported_features` su questa casa -- non un elenco
+    dedotto da un'altra ragione. `update`/`light` da soli sono 103/181;
+    `cover`/`fan`/`water_heater`/`vacuum` restano (verificati, corretti)
+    anche se valgono zero qui -- una casa diversa li avra'.
 
     Mutazione: cancellare una voce da `_FEATURE_NAMES` (per esempio
-    `"valve"`) -- il test torna rosso su
-    `assert decoded_capabilities("valve", 1) == ["apertura"]`."""
+    `"update"`, la piu' numerosa) -- il test torna rosso su
+    `assert decoded_capabilities("update", 1) == ["installazione"]`."""
+    assert decoded_capabilities("update", 1) == ["installazione"]
+    assert decoded_capabilities("light", 4) == ["effetti"]
+    assert decoded_capabilities("notify", 1) == ["titolo"]
+    assert decoded_capabilities("camera", 1) == ["accensione"]
     assert decoded_capabilities("climate", 1) == ["temperatura_target"]
-    assert decoded_capabilities("cover", 1) == ["apertura"]
     assert decoded_capabilities("media_player", 1) == ["pausa"]
-    assert decoded_capabilities("vacuum", 1) == ["accensione"]
-    assert decoded_capabilities("fan", 1) == ["velocita"]
-    assert decoded_capabilities("water_heater", 1) == ["temperatura_target"]
     assert decoded_capabilities("valve", 1) == ["apertura"]
     assert decoded_capabilities("weather", 1) == ["previsioni_giornaliere"]
+    # Zero entita' su questa casa (06/09/2026), ma le tabelle restano
+    # verificate e corrette -- una casa diversa le usera'.
+    assert decoded_capabilities("cover", 1) == ["apertura"]
+    assert decoded_capabilities("fan", 1) == ["velocita"]
+    assert decoded_capabilities("water_heater", 1) == ["temperatura_target"]
+    assert decoded_capabilities("vacuum", 1) == ["accensione"]
+
+
+def test_decoded_capabilities_leaves_button_out_for_lack_of_a_source():
+    """16 entita' su questa casa dichiarano `supported_features` nel dominio
+    `button` (misurato il 06/09/2026) -- il secondo gruppo per grandezza
+    dopo quelli con tabella. Ma NESSUNA versione del sorgente fra i due tag
+    (`components/button/__init__.py` e `const.py`, entrambi verificati)
+    definisce un `ButtonEntityFeature`: il dominio non ha bit da
+    decodificare. Resta fuori per MANCANZA DI FONTE -- la stessa legge di
+    `sensor` (vedi sopra), non una svista su un dominio numeroso.
+
+    Mutazione: aggiungere una tabella inventata per `"button"` -- il test
+    torna rosso su `assert decoded_capabilities("button", 1) == []`."""
+    assert decoded_capabilities("button", 1) == []
+
+
+def test_decoded_capabilities_decodes_update():
+    """`update` e' il dominio PIU' numeroso su questa casa (53/181, misurato
+    il 06/09/2026) -- la prima versione di questa tabella lo lasciava fuori
+    per intero, avendo dedotto i domini invece di misurarli.
+
+    Mutazione: cancellare `_FEATURE_NAMES["update"]` -- il test torna rosso
+    su `assert decoded_capabilities("update", 9) == [...]` (`KeyError`
+    a monte, lista vuota qui)."""
+    assert sorted(decoded_capabilities("update", 9)) == ["backup", "installazione"]
+
+
+def test_decoded_capabilities_decodes_notify_and_camera():
+    """`notify` (11/181) e `camera` (9/181): terzo e quarto dominio per
+    numero su questa casa, anch'essi assenti dalla prima versione.
+
+    Mutazione: cancellare una delle due voci da `_FEATURE_NAMES` -- il test
+    torna rosso sulla riga corrispondente."""
+    assert decoded_capabilities("notify", 1) == ["titolo"]
+    assert sorted(decoded_capabilities("camera", 3)) == ["accensione", "streaming"]
