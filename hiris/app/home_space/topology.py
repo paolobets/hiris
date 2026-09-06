@@ -417,6 +417,16 @@ _STATE_TRANSLATION = {
     "locked": "bloccata", "playing": "in riproduzione", "paused": "in pausa",
     "unavailable": "non disponibile", "detected": "rilevato",
     "problem": "in problema", "triggered": "in allarme",
+    # "opening"/"closing": i due stati TRANSITORI di `ValveState`
+    # (components/valve/const.py, tag 2026.9.1 -- verificato alla fonte, non
+    # ipotizzato) mancavano qui pur essendo "open"/"closed" gia' presenti:
+    # trovato durante la revisione del vocabolario importato (task
+    # "rifiutare e importare" §7②), che cercava un doppione con
+    # `_CLASS_MEANING` per le tipologie del valve e ha trovato invece un
+    # buco vero -- "quali stati ha un dominio" (spec) restava scoperto
+    # proprio nell'esempio letterale citato dalla spec. Misurato: 4 entita'
+    # `valve` su questa casa.
+    "opening": "in apertura", "closing": "in chiusura",
 }
 
 # COSA SIGNIFICANO I VALORI, per classe.

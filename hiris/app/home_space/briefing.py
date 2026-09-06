@@ -47,6 +47,7 @@ from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .behavior import FILE_GENUINELY_ABSENT
+from .ha_vocabulary import house_is_newer_than_vocabulary
 from .queries import sanitized_memories
 from .topology import (
     PROBLEM_SEVERITY,
@@ -495,6 +496,41 @@ def _now_line(frame: dict | None, now: float | None) -> str:
         when.strftime("%H:%M"), when.strftime("%d/%m/%Y"), label)
 
 
+def _vocabulary_freshness_line(frame: dict | None) -> str:
+    """Il pezzo duraturo di `ha_vocabulary`: quando questa casa supera la
+    versione di Home Assistant su cui il vocabolario delle classi
+    (`device_class`/`state_class`) e' stato verificato, lo si dice -- QUI,
+    dove la versione viva della casa e' gia' dichiarata (la riga
+    "Riferimento:" appena sopra), non in una seconda idea di "versione della
+    casa": stesso campo (`frame["versione_ha"]`), stesso posto.
+
+    Non e' un avviso e non sta in "Cosa non va in casa": una casa piu' nuova
+    del vocabolario non e' rotta, e' un fatto misurabile che invita a
+    rileggere la documentazione -- lo stesso principio per cui i `repairs`
+    diagnosticati da HA restano avvisi e non eccezioni altrove in questo
+    modulo. Tace quando non c'e' niente da dire (vocabolario ancora
+    aggiornato, o versione della casa non letta): un fatto falso ripetuto a
+    ogni turno sarebbe esattamente il rumore che questo digesto esiste per
+    non produrre.
+    """
+    # Chiamata `freshness`, non `note`: dentro `home_space/` quest'ultimo
+    # identificatore e' riservato dal glossario (docs/GLOSSARIO.md) a un
+    # altro significato -- le entita' GIA' CONOSCIUTE dentro il confronto di
+    # `topology.compare_with_home_assistant` -- e un secondo uso qui
+    # collide (verificato con `scripts/rinomina.py`, che lo riscriverebbe in
+    # `known`, sbagliando il senso: questo non e' un dizionario di entita'
+    # conosciute).
+    freshness = house_is_newer_than_vocabulary((frame or {}).get("versione_ha"))
+    if not freshness["vocabolario_piu_vecchio_della_casa"]:
+        return ""
+    return (
+        f"(Il vocabolario delle classi di Home Assistant che HIRIS importa e' "
+        f"verificato fino alla versione {freshness['versione_vocabolario']}; "
+        f"questa casa e' alla {freshness['versione_casa']} -- vale la pena "
+        f"rileggere la documentazione, non e' un errore.)"
+    )
+
+
 def _reference_frame_lines(frame: dict | None, now: float | None = None) -> list[str]:
     """Il sistema di riferimento della casa, in una o due righe.
 
@@ -535,6 +571,9 @@ def _reference_frame_lines(frame: dict | None, now: float | None = None) -> list
         identity.append(f"Home Assistant {frame['versione_ha']}")
     if identity:
         lines.append("Riferimento: " + ", ".join(identity) + ".")
+    freshness_line = _vocabulary_freshness_line(frame)
+    if freshness_line:
+        lines.append(freshness_line)
     # Subito dopo il fuso, perche' e' lo stesso oggetto: l'ora e il sistema in
     # cui leggerla. Dentro `reference_frame_lines` e non accanto, cosi' eredita il peso
     # 0 del taglio (`home_space_weights` in `compose`): un nucleo che tronca via

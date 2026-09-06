@@ -96,9 +96,12 @@ VOCABULARY_HA_VERSION = "2026.9.1"
 def _parsed_version(version: str) -> tuple[int, ...]:
     """`"2026.9.1"` -> `(2026, 9, 1)`. Home Assistant usa una versione
     calendariale (CalVer: anno.mese.patch), non semver -- confrontarla come
-    stringa metterebbe `"2026.10.0"` PRIMA di `"2026.9.1"` (il carattere `1`
-    e' minore di `1` seguito da `0`... la trappola vera e' che l'ordine
-    lessicografico ignora il valore numerico: `"10"` < `"9"` come stringhe).
+    STRINGA metterebbe `"2026.10.0"` PRIMA di `"2026.9.1"`: lessicograficamente
+    il carattere `'1'` (di `"10"`) e' minore di `'9'`, quindi `"10" < "9"` come
+    stringhe anche se `10 > 9` come numeri. Ed e' il confine vero, non un
+    caso di scuola: `2026.10.0` e' la release successiva a quella pinnata da
+    `VOCABULARY_HA_VERSION` (`tests/test_ha_vocabulary.py` lo attraversa
+    apposta).
 
     Una componente con un suffisso non numerico (`"2026.9.0b0"`, una beta) si
     tronca al primo carattere non cifra, cosi' una beta non supera per
@@ -157,8 +160,11 @@ def house_is_newer_than_vocabulary(house_ha_version: str | None) -> dict:
 #
 # Misurato sulla casa il 07/09/2026: 130 entita' su 130 con `state_class`
 # sono `sensor` (l'unico dominio che lo dichiara) -- 57 `total`, 56
-# `measurement`, 17 `total_increasing`. Le tre chiavi qui sotto sono le tre
-# che esistono nel sorgente: non ce ne sono altre da lasciare fuori.
+# `measurement`, 17 `total_increasing`. Il sorgente (`SensorStateClass`)
+# dichiara ANCHE una quarta chiave, `measurement_angle`: zero entita' di
+# questa casa la usano, e resta fuori per la stessa regola di sempre --
+# "si importa cio' che la casa usa davvero", non "si importa tutto cio' che
+# esiste" (`tests/test_ha_vocabulary.py` pinna anche questa esclusione).
 STATE_CLASS_MEANING = {
     "measurement": (
         "Il valore rappresenta una misura ISTANTANEA, valida ORA -- non "
@@ -238,14 +244,11 @@ DEVICE_CLASS_MEANING = {
     ),
     ("sensor", "current"): "Corrente elettrica (A, mA, ...).",
     ("sensor", "carbon_dioxide"): "Concentrazione di CO2 nell'aria (ppm).",
-    ("sensor", "atmospheric_pressure"): (
-        "Pressione atmosferica (tipicamente da una stazione meteo)."
-    ),
+    ("sensor", "atmospheric_pressure"): "Pressione atmosferica.",
     ("sensor", "sound_pressure"): "Pressione sonora (dB, dBA).",
     ("sensor", "data_size"): "Quantita' di dati (GB, MB, ...).",
     ("sensor", "pressure"): (
-        "Pressione generica (bar, Pa, hPa, psi, ...) -- a differenza di "
-        "`atmospheric_pressure`, non necessariamente meteo."
+        "Pressione (mbar, cbar, bar, mPa, Pa, hPa, kPa, inHg, psi, inH2O)."
     ),
 
     # --- number: 1 classe, 4 entita' -----------------------------------

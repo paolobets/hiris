@@ -84,6 +84,21 @@ def test_the_vocabulary_says_which_version_it_came_from():
     assert VOCABULARY_HA_VERSION.split(".")[0].isdigit()
 
 
+def test_the_version_and_the_source_cannot_drift_apart():
+    """`VOCABULARY_HA_VERSION` e `VOCABULARY_SOURCE` sono due dichiarazioni
+    dello STESSO fatto (il tag su cui il modulo e' stato verificato) scritte
+    in due punti diversi: senza un legame, cambiare la prima senza
+    riverificare la fonte (e senza aggiornare la seconda) resta verde mentre
+    la fonte citata dice ancora il tag vecchio -- due idee della stessa
+    versione che divergono in silenzio.
+
+    Mutazione: cambiare `VOCABULARY_HA_VERSION` in `"2027.1.0"` senza
+    toccare `VOCABULARY_SOURCE` (che continua a citare `2026.9.1`) -- il
+    test torna rosso su `assert VOCABULARY_HA_VERSION in VOCABULARY_SOURCE`.
+    """
+    assert VOCABULARY_HA_VERSION in VOCABULARY_SOURCE
+
+
 def test_a_house_newer_than_the_vocabulary_is_a_fact_not_an_error():
     """Non e' un guasto ed e' inutile gridarlo: e' un fatto misurabile,
     detto una volta, che invita a rileggere la documentazione.
@@ -94,6 +109,26 @@ def test_a_house_newer_than_the_vocabulary_is_a_fact_not_an_error():
     dizionario con `assert nota["vocabolario_piu_vecchio_della_casa"] is True`.
     """
     note = house_is_newer_than_vocabulary("2099.1.0")
+    assert note["vocabolario_piu_vecchio_della_casa"] is True
+
+
+def test_a_house_on_the_next_calendar_release_is_reported_as_newer():
+    """Il confine VERO, non un caso di scuola: Home Assistant usa CalVer
+    (anno.mese.patch), e la release dopo `2026.9.1` e' `2026.10.0` -- la
+    prossima in assoluto. Un confronto LESSICOGRAFICO (stringa contro
+    stringa) direbbe che `"2026.10.0"` e' PIU' VECCHIO di `"2026.9.1"`,
+    perche' `'1'` (il primo carattere di `"10"`) e' minore di `'9'` come
+    carattere: il primo giorno in cui questo meccanismo serve davvero (la
+    prima release dopo quella pinnata) sarebbe il primo giorno in cui si
+    romperebbe, in silenzio.
+
+    Mutazione: sostituire il confronto CalVer a tuple con uno lessicografico
+    a stringhe (`older = house_ha_version > VOCABULARY_HA_VERSION`) -- il
+    test torna rosso su `assert note["vocabolario_piu_vecchio_della_casa"]
+    is True` (con la mutazione, risulta `False`: `"2026.10.0" < "2026.9.1"`
+    come stringhe).
+    """
+    note = house_is_newer_than_vocabulary("2026.10.0")
     assert note["vocabolario_piu_vecchio_della_casa"] is True
 
 

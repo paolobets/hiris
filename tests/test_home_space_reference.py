@@ -165,6 +165,49 @@ def test_il_nucleo_dichiara_il_riferimento():
     assert "2026.8.1" in testo
 
 
+# --- il vocabolario invecchiato: "qualcuno lo dice" -------------------------
+#
+# Il pezzo che rende duraturo il tema "rifiutare e importare" §7②:
+# `ha_vocabulary.house_is_newer_than_vocabulary` esisteva gia' (con le sue
+# prove dirette in `tests/test_ha_vocabulary.py`), ma NESSUN chiamante lo
+# invocava fuori dalla propria prova -- il fatto non veniva detto da
+# nessuna parte, esattamente come prima che il modulo esistesse. Queste due
+# prove verificano il COLLEGAMENTO: che il nucleo lo dica quando serve, e
+# che TACCIA quando non serve (un fatto falso ripetuto a ogni turno sarebbe
+# il rumore che questo digesto esiste per non produrre).
+
+def test_the_nucleus_says_when_the_house_is_newer_than_the_vocabulary():
+    """«Quando la casa supera la versione del vocabolario, qualcuno lo
+    dice» -- qui, non gridato: una frase in piu' vicino a "Riferimento:",
+    non un avviso in "Cosa non va in casa" (una casa piu' nuova non e'
+    rotta).
+
+    Mutazione: in `briefing._reference_frame_lines`, non chiamare mai
+    `_vocabulary_freshness_line` (o farla sempre restituire `""`) -- il
+    test torna rosso su `assert "vale la pena rileggere" in testo`.
+    """
+    config_piu_nuova = dict(_CONFIG, version="2026.10.0")
+    testo = _nucleo(reference_frame(config_piu_nuova))
+    assert "2026.10.0" in testo
+    assert "2026.9.1" in testo, "la versione pinnata dal vocabolario deve comparire"
+    assert "vale la pena rileggere" in testo
+
+
+def test_the_nucleus_stays_silent_when_the_vocabulary_is_still_current():
+    """Il gemello della prova sopra: `_CONFIG["version"]` (`2026.8.1`) e'
+    PIU' VECCHIA della versione pinnata dal vocabolario (`2026.9.1`) -- non
+    c'e' niente da dire, e dirlo comunque sarebbe un falso allarme ripetuto
+    a ogni digesto.
+
+    Mutazione: in `briefing._vocabulary_freshness_line`, togliere il
+    controllo `if not note["vocabolario_piu_vecchio_della_casa"]: return
+    ""` (dichiarare sempre) -- il test torna rosso su
+    `assert "vale la pena rileggere" not in testo`.
+    """
+    testo = _nucleo(reference_frame(_CONFIG))
+    assert "vale la pena rileggere" not in testo
+
+
 def test_il_nucleo_dichiara_l_istante_presente_nel_fuso_della_casa():
     """«Domani alle 8» non vuol dire niente senza il fuso -- e «fra un'ora»
     non vuol dire niente senza SAPERE CHE ORA E'.

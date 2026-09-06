@@ -131,6 +131,25 @@ def test_porte_e_finestre_si_leggono_ancora_aperto_e_chiuso():
     assert "Porta" in sezione and "aperto" in sezione
 
 
+def test_a_valve_opening_or_closing_is_not_a_dumb_on_off():
+    """`ValveState` (`components/valve/const.py`, tag 2026.9.1 -- verificato
+    alla fonte) ha QUATTRO stati: `open`, `closed`, `opening`, `closing`.
+    "open"/"closed" erano gia' tradotti in `_STATE_TRANSLATION`;
+    "opening"/"closing" mancavano -- trovato durante la revisione del
+    vocabolario importato (task "rifiutare e importare" §7②), che cercava
+    un doppione con `topology._CLASS_MEANING` per il `valve` e ha trovato
+    invece un buco vero: "quali stati ha un dominio", l'esempio letterale
+    della spec, restava scoperto proprio li' (4 entita' `valve` su questa
+    casa).
+
+    Mutazione: cancellare le due chiavi `"opening"`/`"closing"` da
+    `_STATE_TRANSLATION` -- il test torna rosso perche' `translate_state`
+    ripiega sulla stringa grezza (`"opening"` invece di `"in apertura"`).
+    """
+    assert topology.translate_state("opening") == "in apertura"
+    assert topology.translate_state("closing") == "in chiusura"
+
+
 # ── Cio' che Home Assistant dichiara non primario ──────────────────────────
 
 def test_un_entita_diagnostic_non_entra_qualunque_sia_il_suo_stato():
