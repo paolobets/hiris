@@ -179,10 +179,17 @@ def test_i_nomi_si_derivano_dal_catalogo_e_non_si_riscrivono():
     seconda; LEGGONO e basta come `trend`/`logbook`, ed entrano anch'essi
     (giro di correzioni) nello stesso elenco di ammissione del turno delle
     promesse (`keeper/exchange.py::SOLA_LETTURA`), per la stessa ragione:
-    senza, il ponte vedrebbe la casa ma non cio' che vi si e' rotto."""
+    senza, il ponte vedrebbe la casa ma non cio' che vi si e' rotto. Fetta
+    «i calendari» Task 3: da 15 a 16, entra `calendar` -- i prossimi
+    appuntamenti di OGNI calendario di questa casa, provando a leggere
+    ciascuno invece di fidarsi dello stato; LEGGE e basta come i cinque
+    sopra, ed entra anche lui (deliberato, non automatico) nello stesso
+    elenco di ammissione del turno delle promesse, per la stessa ragione:
+    senza, il ponte non potrebbe mai tenere una promessa «avvisami la sera
+    prima di un impegno»."""
     nomi = runner.mcp_names()
 
-    assert len(nomi) == len(KNOWLEDGE_TOOLS) == 15
+    assert len(nomi) == len(KNOWLEDGE_TOOLS) == 16
     assert set(nomi) == {f"mcp__hiris__{n}" for n in _NOMI_NUDI}
     # il nome del server ha UNA fonte, quella della rotta: se un giorno la
     # rotta si presentasse con un altro nome, il prefisso lo seguirebbe da

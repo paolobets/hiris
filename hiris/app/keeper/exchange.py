@@ -24,7 +24,7 @@ from ..model_resolution import _DOWNGRADE_REASONS
 
 logger = logging.getLogger(__name__)
 
-# Gli otto che leggono e basta. Non `execute` (tocca la casa), non `remember`
+# I nove che leggono e basta. Non `execute` (tocca la casa), non `remember`
 # (scrive nella memoria, che dal giro 1 di questa correzione entra nel
 # prompt di sistema SANIFICATA -- C-2 -- non piu' verbatim), non
 # `promise`/`cancel` (un turno che si da' appuntamenti da solo e' autonomia
@@ -47,8 +47,17 @@ logger = logging.getLogger(__name__)
 # l'ammissione non porti con se' nulla che scriva: ne' `system_log` ne'
 # `automation_trace` toccano `action/actuator.py` o l'officina, entrambi
 # passano solo dal canale HA in sola lettura (`ToolDispatcher._ha`).
+#
+# `calendar` (fetta «i calendari», Task 3) entra anche lui, per la STESSA
+# ragione dei quattro sopra e non per contagio: legge e basta (due chiamate
+# REST, `HAClient.calendars()`/`calendar_events()`, mai una scrittura), e
+# senza di lui il ponte non potrebbe mai tenere una promessa del tipo
+# «avvisami la sera prima di un impegno» -- resterebbe cieco esattamente
+# sulla fonte che quella promessa deve guardare. Deliberato, non automatico:
+# questo elenco resta di AMMISSIONE, e uno strumento nuovo non ci entra da
+# solo finche' qualcuno non scrive perche'.
 SOLA_LETTURA = ("search", "view", "related", "fetch", "trend", "logbook",
-                "system_log", "automation_trace")
+                "system_log", "automation_trace", "calendar")
 
 CONCLUDI_TOOL_DEF = {
     "name": "conclude",

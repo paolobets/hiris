@@ -77,6 +77,17 @@ can enter the model's context calls one of the two functions below:
   correction page and the record. Sanitizing on read, not on write, keeps
   both promises true at once.
 
+- `home_space/tools.py::ToolDispatcher._calendar` -- the `calendar` tool's
+  boundary (fetta «i calendari», Task 3). Sanitizes `titolo`/`luogo`/
+  `descrizione` per appointment, via `sanitize_ha_free_text` (500, same cap
+  as `logbook`'s `messaggio`): a calendar's summary/description/location are
+  written by a PERSON in a calendar that can be shared, exactly the vector
+  L1-sicurezza.md names. `HAClient.calendar_events()` deliberately leaves
+  these three fields raw (see its own docstring: "questo metodo non ha oggi
+  nessun consumatore ... chi consuma questo metodo per metterlo in un prompt
+  deve passare da `sanitize_ha_free_text` da solo") -- this tool is that
+  consumer, and the boundary lives here, not in the client.
+
 DELIBERATELY NOT WIRED, and why: the `corpo` field of an automation/script
 (`home_space/behavior.py`, `automations.yaml`/`scripts.yaml`) is a local file
 the house owner edits, not something a network device or a compromised

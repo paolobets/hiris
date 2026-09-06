@@ -124,7 +124,7 @@ def test_an_unrecognized_timezone_falls_back_to_utc_like_home_space_zone_does():
 
 def test_a_missing_timezone_falls_back_to_utc_too():
     """`read_appointment(..., timezone=None)` e' un caso VERO, non un
-    capriccio della firma: `ToolDispatcher._timezone()` (`tools.py:2184`)
+    capriccio della firma: `ToolDispatcher._timezone()` (`tools.py:2292`)
     torna proprio `None` finche' il fuso della casa non e' ancora noto.
     `home_space_zone(None)` ripiega gia' su UTC -- questo modulo non deve
     inventare un secondo comportamento per `None`.

@@ -227,6 +227,12 @@ _GUIDE_WITHOUT_TOOLS = (
 #   l'osservatore gia' rilegge di notte (`mind/watcher.py`), non una
 #   seconda: e' l'unica cosa in piu' che questo testo -- quello dei NOMI --
 #   deve dire su di loro, oltre a come si chiamano.
+#
+# fetta «i calendari» (Task 3). Da 15 a 16: entra `calendar` -- ancora lo
+#   stesso ricollegamento nome nudo -> nome prefissato, non un quinto giro
+#   di logica. Legge i calendari di questa casa e i prossimi appuntamenti,
+#   non lo stato di adesso: e' l'unica cosa in piu' che questo testo --
+#   quello dei NOMI -- deve dire su di lui.
 # **La riga di compatibilita' sui nomi VECCHI degli strumenti -- temporanea, e
 # qui sotto c'e' scritto cosa la fa sparire.**
 #
@@ -283,11 +289,12 @@ _GUIDE_WITH_TOOLS = (
     "entita', `mcp__hiris__logbook` per cosa e' successo in casa e per mano "
     "di chi, `mcp__hiris__system_log` per cosa non va nel registro degli "
     "errori di Home Assistant, `mcp__hiris__automation_trace` per come sono "
-    "andate le esecuzioni recenti di un'automazione. "
+    "andate le esecuzioni recenti di un'automazione, `mcp__hiris__calendar` "
+    "per i prossimi appuntamenti nei calendari di questa casa. "
     "Quando il prompt qui sopra parla "
     "di `search`, `view`, `related`, `remember`, `fetch`, `execute`, "
     "`promise`, `agenda`, `cancel`, `propose`, `confirm`, `trend`, "
-    "`logbook`, `system_log` o `automation_trace` parla di "
+    "`logbook`, `system_log`, `automation_trace` o `calendar` parla di "
     "questi STESSI strumenti, non di altri: usa il nome prefissato per "
     "chiamarli.\n"
 ) + _OLD_NAMES_NOTICE + (

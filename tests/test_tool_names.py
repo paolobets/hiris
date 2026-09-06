@@ -15,10 +15,11 @@ Un catalogo che ordina al modello di chiamare un nome che non esiste piu'
 e' il guasto peggiore di questa fetta, perche' non produce un'eccezione:
 produce un turno in cui HIRIS dice "ho guardato" senza aver guardato.
 
-**Cosa fa.** Per ognuna delle SEDICI definizioni (i quindici di
+**Cosa fa.** Per ognuna delle DICIASSETTE definizioni (i sedici di
 `home_space/tools.py`, il catalogo della chat -- tredici fino alla fetta
 «le tracce e il log», che vi aggiunge `system_log` e `automation_trace`,
-Task 5 -- piu' `CONCLUDI_TOOL_DEF` di
+Task 5, quindici fino alla fetta «i calendari», che vi aggiunge
+`calendar`, Task 3 -- piu' `CONCLUDI_TOOL_DEF` di
 `keeper/exchange.py`, che vive solo nel turno di una promessa) prende
 la `description` e ogni `description` annidata dentro `input_schema` --
 proprieta', proprieta' di proprieta', `items` -- ed estrae **ogni parola
@@ -28,8 +29,8 @@ inglese, e che NON sia nel catalogo di oggi, fa fallire.
 
 **Il limite, ed e' importante scriverlo qui e non altrove: questo cancello
 vede solo le citazioni DELIMITATE.** Dentro le quattordici description
-misurate il giorno di questo file (non le sedici di oggi -- vedi sopra) ci
-sono anche **otto occorrenze NUDE** di quelle stesse parole, e non sono
+misurate il giorno di questo file (non le diciassette di oggi -- vedi
+sopra) ci sono anche **otto occorrenze NUDE** di quelle stesse parole, e non sono
 citazioni: sono italiano ordinario, il verbo o il nome comune. Elencate,
 perche' chi legge questo file non deve "correggerle":
 
@@ -49,7 +50,7 @@ e' per questo che il commit che traduce le citazioni si legge riga per riga
 e le elenca nel proprio messaggio.
 
 **Cosa questo cancello NON copre**: la prosa a runtime che vive FUORI dalle
-sedici definizioni. Quella ha il suo cancello gemello in fondo a
+diciassette definizioni. Quella ha il suo cancello gemello in fondo a
 questo file, sui testi che si possono importare come costanti; le sei
 citazioni sparse dentro funzioni (`home_space/queries.py`, `home_space/briefing.py`,
 `memory/interpretation.py`, `action/verification.py`) non hanno rete e si
@@ -83,6 +84,10 @@ _NOMI_MAI_STATI_STRUMENTO = frozenset({
     # `test_ogni_nome_del_catalogo_e_nell_elenco_storico` sotto), non
     # perche' abbiano gia' un nome vecchio da riconoscere.
     "system_log", "automation_trace",
+    # fetta «i calendari» (Task 3, 06/09): stesso caso di `system_log`/
+    # `automation_trace` due righe sopra -- uno strumento nuovo, non una
+    # rinomina.
+    "calendar",
 })
 
 _DEFINIZIONI = list(KNOWLEDGE_TOOLS) + [CONCLUDI_TOOL_DEF]
@@ -159,8 +164,8 @@ def test_nessuna_citazione_nomina_uno_strumento_che_non_esiste(definizione):
 
 
 def test_ogni_nome_del_catalogo_e_nell_elenco_storico():
-    """La guardia sull'elenco scritto a mano. Un diciassettesimo strumento --
-    o un nome nuovo per uno dei sedici -- che non venisse aggiunto a
+    """La guardia sull'elenco scritto a mano. Un diciottesimo strumento --
+    o un nome nuovo per uno dei diciassette -- che non venisse aggiunto a
     `_NOMI_MAI_STATI_STRUMENTO` renderebbe il cancello sopra cieco su
     quella riga, e in silenzio: nessuna citazione del nome VECCHIO verrebbe
     piu' riconosciuta come nome di strumento."""
@@ -171,17 +176,18 @@ def test_ogni_nome_del_catalogo_e_nell_elenco_storico():
         "riconoscera' piu' la citazione del loro nome precedente")
 
 
-def test_the_catalog_has_sixteen_distinct_names():
-    """Quindici e' il numero del perimetro della CHAT (13 -> 15 con la fetta
-    «le tracce e il log», Task 5: `system_log`, `automation_trace`), sedici
-    quello delle definizioni: e' la sesta volta, in questa fetta, che un
+def test_the_catalog_has_seventeen_distinct_names():
+    """Sedici e' il numero del perimetro della CHAT (13 -> 15 con la fetta
+    «le tracce e il log», Task 5: `system_log`, `automation_trace`; 15 -> 16
+    con la fetta «i calendari», Task 3: `calendar`), diciassette quello
+    delle definizioni: e' la sesta volta, in questa fetta, che un
     numero giusto su un perimetro sembra sbagliato su un altro (vedi la nota
     in cima a "I nomi degli strumenti" nel glossario). Pinnato qui perche'
     un doppione fra i due cataloghi -- `concludi` che finisse anche nella
     chat -- non lo vedrebbe nessun altro test."""
     nomi = [d["name"] for d in _DEFINIZIONI]
-    assert len(nomi) == 16, nomi
-    assert len(set(nomi)) == 16, "due definizioni portano lo stesso nome"
+    assert len(nomi) == 17, nomi
+    assert len(set(nomi)) == 17, "due definizioni portano lo stesso nome"
 
 
 def _prose_runtime():
@@ -256,7 +262,7 @@ def test_l_avviso_e_l_unico_testo_che_puo_nominare_un_nome_vecchio():
     scarto. Ogni nome vecchio che l'avviso cita deve (1) essere davvero
     fuori dal catalogo di oggi, (2) avere il proprio nome nuovo **citato
     nell'avviso stesso**, e (3) quel nome nuovo deve essere nel catalogo.
-    Cosi' il giorno in cui uno dei quindici venisse rinominato di nuovo,
+    Cosi' il giorno in cui uno dei sedici venisse rinominato di nuovo,
     l'avviso diventerebbe rosso invece di restare a insegnare una
     corrispondenza scaduta.
 

@@ -16,20 +16,21 @@ from hiris.app.proxy.ha_client import HAClient
 from tests._contracts import assert_stessa_firma
 
 
-def test_the_catalog_carries_fifteen_tools():
+def test_the_catalog_carries_sixteen_tools():
     """13 -> 15 con la fetta «le tracce e il log» (Task 5, `system_log` e
-    `automation_trace`): questo test pinna solo il CONTEGGIO e la presenza
-    di `trend`/`logbook`, che sono i due che questo file esercita -- il pin
+    `automation_trace`), 15 -> 16 con la fetta «i calendari» (Task 3,
+    `calendar`): questo test pinna solo il CONTEGGIO e la presenza di
+    `trend`/`logbook`, che sono i due che questo file esercita -- il pin
     sull'INSIEME completo dei nomi vive in
     `tests/test_knowledge_tools.py::
     test_il_catalogo_e_questo_e_le_due_strade_che_scrivono_su_home_assistant`."""
-    assert len(KNOWLEDGE_TOOLS) == 15
+    assert len(KNOWLEDGE_TOOLS) == 16
     nomi = {d["name"] for d in KNOWLEDGE_TOOLS}
     assert {"trend", "logbook"} <= nomi
 
 
-# La convenzione di nomenclatura `nome -> self._name` regge su quattordici
-# dei quindici strumenti: `agenda` e' servito da `_list_agenda`, non da
+# La convenzione di nomenclatura `nome -> self._name` regge su quindici
+# dei sedici strumenti: `agenda` e' servito da `_list_agenda`, non da
 # `_promesse` (quell'attributo e' gia' l'archivio, vedi il commento nel
 # `__init__` del dispatcher). L'eccezione e' dichiarata QUI, non nascosta
 # saltando la verifica per quel nome.

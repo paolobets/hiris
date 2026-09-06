@@ -138,6 +138,22 @@
 > «una fonte, due lettori» del piano di questa fetta. Per cosa il prodotto fa davvero oggi, il
 > `README.md`; per la registrazione dei due nomi, `docs/GLOSSARIO.md`, «I nomi degli strumenti».
 
+> ## 🗄 Annotazione — 6 settembre 2026
+>
+> Il blocco del 5 settembre qui sopra è a sua volta superato su un numero, per lo stesso motivo
+> per cui lui stesso supera il 2 settembre: non si riscrive, si annota. Diceva che *«gli strumenti
+> della chat sono **quindici**, non tredici»*.
+>
+> Era vero il 5 settembre. Con la fetta **«i calendari»** gli strumenti della chat sono
+> **sedici**, non quindici: entra `calendar`, che risponde alla domanda per nome del
+> proprietario — «quali sono i miei prossimi appuntamenti?» — fondendo in un unico elenco
+> ordinato i prossimi impegni di OGNI calendario di questa casa. Non è una rinomina: è uno
+> strumento **nuovo**, nato già in inglese come i due del blocco precedente. La leggibilità di un
+> calendario si verifica LEGGENDO, mai dallo stato — un calendario rotto e uno senza impegni
+> tornerebbero altrimenti lo stesso elenco vuoto — quindi un calendario che non risponde non
+> sparisce: il suo nome finisce in `non_letti`. Per cosa il prodotto fa davvero oggi, il
+> `README.md`; per la registrazione del nome, `docs/GLOSSARIO.md`, «I nomi degli strumenti».
+
 > ## ⚠️ Documento parzialmente superato — 4 agosto 2026
 >
 > Le sezioni **Users**, **Product Purpose** e **Design Principles** sono **superate** dal

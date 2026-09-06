@@ -56,7 +56,7 @@ def _trim_history(history: list[dict], max_tokens: int = _MAX_HISTORY_TOKENS) ->
 def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
     """L'UNICO punto del prodotto in cui `ToolDispatcher` viene costruito.
 
-    I quindici strumenti della chat (`home_space/tools.py`) -- non il catalogo
+    I sedici strumenti della chat (`home_space/tools.py`) -- non il catalogo
     di trentaquattro di ALL_TOOL_DEFS: cinque conoscono la casa (`search`,
     `view`, `related`, `remember`, `fetch`), il sesto, `execute`, la comanda
     passando per la porta unica (vedi il docstring di quel modulo), tre
@@ -67,12 +67,16 @@ def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
     nuova -- passando per l'officina (`action/construction/workshop.py`), due
     (`trend`, `logbook`, fetta «HIRIS e il tempo») guardano
     INDIETRO nel tempo -- come e' andato un valore, cosa e' successo e per
-    mano di chi -- passando per `home_space/historian.py`, e gli ultimi due
+    mano di chi -- passando per `home_space/historian.py`, due
     (`system_log`, `automation_trace`, fetta «le tracce e il log») leggono
     la STESSA fonte che l'osservatore (`mind/watcher.py`) gia' rilegge di
     notte -- il registro degli errori di Home Assistant e le esecuzioni
     recenti di un'automazione -- senza passare per `historian.py`, ne'
-    aprire un secondo collegamento. Il dispatcher si costruisce
+    aprire un secondo collegamento, e l'ultimo (`calendar`, fetta «i
+    calendari») fonde i prossimi appuntamenti di OGNI calendario di questa
+    casa, provando a leggere ciascuno invece di fidarsi dello stato -- un
+    calendario che non risponde finisce nominato in `non_letti`, mai in
+    silenzio. Il dispatcher si costruisce
     dagli stessi oggetti dell'app che alimentano `compose_briefing()`
     (`home_space_store`, `memory_store`, `entity_cache`), piu' `action_actuator`,
     `workshop` e `journal` -- lo stesso specchio dello stato vivo, non uno
@@ -850,7 +854,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     # ricopiarla) e per il ragionamento storico su nucleo/degrado/sessioni.
     context_str = compose_chat_context(request.app, data_dir)
 
-    # I quindici strumenti della chat -- il perche' di ogni riga sta
+    # I sedici strumenti della chat -- il perche' di ogni riga sta
     # nel docstring di `create_tool_dispatcher` (sopra), che dalla
     # parita' B e' l'unico costruttore del dispatcher: qui e nella rotta
     # `/api/mcp` del ponte si chiama la STESSA funzione, non due costruzioni

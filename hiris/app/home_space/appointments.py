@@ -42,7 +42,7 @@ applicare la correzione anche li' sarebbe il difetto opposto.
 
 **Il fuso e' quello della casa, non UTC**, e non si indovina: arriva come
 parametro (`str | None` -- il produttore vero, `ToolDispatcher._timezone()`
-in `home_space/tools.py:2184`, torna `None` quando il fuso non e' ancora
+in `home_space/tools.py:2292`, torna `None` quando il fuso non e' ancora
 noto). Riusa `home_space_zone` (`historian.py`), che gestisce gia' il fuso
 non riconosciuto con un avviso e il ripiego su UTC -- una seconda gestione
 qui divergerebbe al primo caso strano.

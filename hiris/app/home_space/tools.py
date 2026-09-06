@@ -10,8 +10,9 @@ che la E2 le aveva promesso") -- oggi non esistono piu' in nessuna forma.
 
 Qui il modello ne riceveva SEI, dalla fetta «lo schedulatore» (Task 6) ne
 riceve NOVE, dalla fetta «costruire» (Task 9) ne riceve UNDICI, dalla fetta
-«HIRIS e il tempo» (Task 6) ne riceve TREDICI, e dalla fetta «le tracce e il
-log» (Task 5) ne riceve QUINDICI. Cinque leggono e
+«HIRIS e il tempo» (Task 6) ne riceve TREDICI, dalla fetta «le tracce e il
+log» (Task 5) ne riceve QUINDICI, e dalla fetta «i calendari» (Task 3) ne
+riceve SEDICI. Cinque leggono e
 ricordano; `execute` fa succedere qualcosa in casa SUBITO -- ed e', chiamato
 DIRETTAMENTE dal modello in un turno, l'unico che scrive nella casa (i
 servizi, non la configurazione) senza passare da un'attesa. Non e' pero'
@@ -35,7 +36,15 @@ Rispondono rispettivamente a «cosa non va nel sistema?» e «come e' andata
 questa automazione?» -- due domande da due comandi diversi, non una sola con
 un argomento facoltativo: un solo strumento avrebbe costretto il modello a
 dedurre l'intento dalla PRESENZA di quell'argomento, l'ambiguita' che le
-description degli strumenti esistono per togliere. Per un tratto della 2.0
+description degli strumenti esistono per togliere. Il sedicesimo, `calendar`
+(fetta «i calendari», Task 3), risponde alla domanda che il proprietario ha
+chiesto per nome: «quali sono i miei prossimi appuntamenti?». Legge OGNI
+calendario di questa casa (Task 1, `HAClient.calendars()`/`calendar_events()`)
+e compone gli impegni (Task 2, `home_space/appointments.py`) in un unico
+elenco ordinato -- e un calendario che non risponde non sparisce in silenzio:
+il suo nome finisce in `non_letti`, perche' la leggibilita' si verifica
+LEGGENDO, non dallo stato (un calendario rotto e uno senza impegni tornano
+lo stesso elenco vuoto). Per un tratto della 2.0
 questo modulo ne offriva quattro soli e diceva «la chat CONOSCE, non
 agisce»: era vero allora, non lo e' piu' dalla fetta «comandare», che ha
 ridato l'azione al prodotto con un progetto proprio, dopo che la conoscenza
@@ -137,19 +146,23 @@ from __future__ import annotations
 
 import inspect
 import logging
+import math
 import re
+from datetime import datetime, timedelta
 from typing import Any, ClassVar
 
 from ..memory.interpretation import VOCABULARY, validate
 from ..memory.lookup_cache import LookupCache
 from ..memory.resolver import STORE_KEY_PER_TYPE, costruisci_indice
 from ..memory.store import MemoryStore
+from ..proxy._sanitize import sanitize_ha_free_text
 from ..proxy.entity_cache import (
     automation_config_id,
     inventory_is_readable,
     unreadable_inventory_error,
 )
 from . import historian
+from .appointments import read_appointment, sort_appointments
 from .queries import HA_LINK_TYPE
 from .queries import related as _readable_links
 from .queries import sanitized_memories as _sanitized_memories
@@ -1148,6 +1161,98 @@ AUTOMATION_TRACE_TOOL_DEF = {
     },
 }
 
+# I tetti sulla finestra di «calendar». Oltre un ANNO in ciascuna direzione la
+# domanda non e' piu' sui PROSSIMI appuntamenti ma una scansione del
+# calendario -- la stessa soglia concettuale di `historian.MAX_WINDOW_HOURS`
+# (90 giorni, la' per un valore nel tempo), spostata piu' in la' perche' un
+# calendario vive per natura su questa scala: un impegno come «Ferie estive»
+# o «Anniversario» (`home_space/appointments.py`) e' proprio annuale.
+MAX_CALENDAR_DAYS_AHEAD = 365
+MAX_CALENDAR_DAYS_BACK = 365
+# Misurato sulla casa vera il 06/09/2026 (`HAClient.calendar_events`): sette
+# giorni avanti danno ZERO eventi su ENTRAMBI i calendari, trenta ne danno
+# cinque. Un predefinito di sette risponderebbe quasi sempre "niente impegni",
+# anche quando qualcosa sta per arrivare -- e' la ragione del numero, non un
+# valore di comodo. Il passato resta a RICHIESTA (`giorni_indietro`,
+# predefinito 0): la domanda per cui questo strumento esiste e' sui
+# PROSSIMI appuntamenti, non sui passati.
+DEFAULT_CALENDAR_DAYS_AHEAD = 30
+
+
+def _clamp_days(raw, *, default: float, ceiling: float) -> float:
+    """Qualunque cosa -> un numero di giorni fra 0 e `ceiling`.
+
+    Gemella di `historian.normalize_hours` (stesso contratto totale: NaN,
+    stringhe, numeri fuori scala diventano tutti il default, mai
+    un'eccezione), ma con un minimo diverso apposta: qui 0 e' un valore
+    LEGITTIMO -- e' il default di `giorni_indietro`, "niente passato" -- e
+    alzarlo a 1 come fa `normalize_hours` trasformerebbe "niente passato" in
+    "un giorno di passato" a ogni chiamata senza l'argomento esplicito.
+    """
+    try:
+        number = float(raw)
+    except Exception:
+        return default
+    if math.isnan(number):
+        return default
+    return min(float(ceiling), max(0.0, number))
+
+
+CALENDAR_TOOL_DEF = {
+    "name": "calendar",
+    "description": (
+        "I PROSSIMI appuntamenti nei calendari di questa casa -- risponde "
+        "alla domanda «quali sono i miei prossimi appuntamenti?». Ogni "
+        "impegno porta `titolo`, `inizio`, `fine`, `giornaliero` (vero se "
+        "dura l'intera giornata) e, SOLO quando il calendario li ha scritti, "
+        "`luogo`/`descrizione`; porta anche `calendario`, il NOME di chi lo "
+        "tiene (es. 'Personale', 'Famiglia') -- fondendo piu' calendari in "
+        "un unico elenco, sapere DA QUALE viene un impegno e' meta' della "
+        "risposta. `giorni_avanti` (predefinito 30, tetto 365) e "
+        "`giorni_indietro` (predefinito 0, tetto 365) scelgono la finestra: "
+        "il passato resta a richiesta, perche' la domanda primaria e' sui "
+        "PROSSIMI appuntamenti, non sui passati. "
+        "**Un calendario dice SOLO cio' che ci e' scritto.** `impegni: []` "
+        "significa che nella finestra chiesta non c'e' NESSUN impegno "
+        "SEGNATO -- non che la casa sara' vuota, e non che non succedera' "
+        "niente: chi ci vive puo' semplicemente non aver scritto niente sul "
+        "calendario. Aspettati di vederlo spesso: sulla casa vera i prossimi "
+        "sette giorni sono vuoti su entrambi i calendari, ed e' un fatto sul "
+        "calendario, non un fatto sulla vita di chi lo tiene. "
+        "**Un calendario che non risponde non sparisce.** Provo a leggere "
+        "OGNI calendario di questa casa, uno per uno: quelli che rispondono "
+        "finiscono in `impegni`, quelli che NON rispondono finiscono, per "
+        "nome, in `non_letti` -- una chiave che esiste SOLO se c'e' almeno "
+        "un calendario illeggibile. Un elenco vuoto di impegni e un "
+        "calendario rotto sono due fatti diversi: confonderli direbbe «non "
+        "hai impegni» con la sicurezza di chi ha guardato tutto, quando in "
+        "realta' un calendario non ha risposto. Se `non_letti` compare, "
+        "dillo invece di tacerlo."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "giorni_avanti": {
+                "type": "number",
+                "description": (
+                    "Quanti giorni in avanti guardare, da adesso. "
+                    "Predefinito 30 (non 7: sulla casa vera sette giorni "
+                    "danno zero impegni). Il massimo e' 365."
+                ),
+            },
+            "giorni_indietro": {
+                "type": "number",
+                "description": (
+                    "Quanti giorni all'indietro guardare, da adesso. "
+                    "Predefinito 0 (niente passato): usalo solo se ti viene "
+                    "chiesto esplicitamente il passato. Il massimo e' 365."
+                ),
+            },
+        },
+        "required": [],
+    },
+}
+
 KNOWLEDGE_TOOLS: list[dict] = [
     SEARCH_TOOL_DEF, VIEW_TOOL_DEF, RELATED_TOOL_DEF, REMEMBER_TOOL_DEF,
     FETCH_TOOL_DEF, EXECUTE_TOOL_DEF,
@@ -1155,6 +1260,7 @@ KNOWLEDGE_TOOLS: list[dict] = [
     PROPOSE_TOOL_DEF, CONFIRM_TOOL_DEF,
     TREND_TOOL_DEF, LOGBOOK_TOOL_DEF,
     SYSTEM_LOG_TOOL_DEF, AUTOMATION_TRACE_TOOL_DEF,
+    CALENDAR_TOOL_DEF,
 ]
 
 # I nomi che `dispatch()` accetta. Si DERIVANO dal catalogo qui sopra: erano
@@ -1169,7 +1275,7 @@ _TOOL_NAMES = frozenset(d["name"] for d in KNOWLEDGE_TOOLS)
 
 
 class ToolDispatcher:
-    """Collega i quindici strumenti agli archivi, alla porta, all'officina e al
+    """Collega i sedici strumenti agli archivi, alla porta, all'officina e al
     canale HA -- e non altro.
 
     Prende `home_space_store` e `memory_store` gia' costruiti dal chiamante
@@ -1264,6 +1370,7 @@ class ToolDispatcher:
         "propose": ("officina",), "confirm": ("officina",),
         "trend": ("ha",), "logbook": ("ha",),
         "system_log": ("ha",), "automation_trace": ("ha",),
+        "calendar": ("ha",),
     }
 
     def _ha_channel(self):
@@ -1352,15 +1459,16 @@ class ToolDispatcher:
             "logbook": self._happened,
             "system_log": self._system_log,
             "automation_trace": self._automation_trace,
+            "calendar": self._calendar,
         }[name]
         try:
             # `_execute`, `_related`, `_promise`, `_propose`, `_confirm`,
-            # `_trend`, `_happened`, `_system_log` e `_automation_trace` sono
-            # coroutine (fanno rete, o -- `_promise` -- possono scaldare il
-            # registro dei servizi prima di verificare); gli altri sei no. Si
-            # attende cio' che e' attendibile invece di rendere `async` anche
-            # i sei sincroni: cambiare la loro firma avrebbe toccato quindici
-            # gestori per un bisogno di nove.
+            # `_trend`, `_happened`, `_system_log`, `_automation_trace` e
+            # `_calendar` sono coroutine (fanno rete, o -- `_promise` --
+            # possono scaldare il registro dei servizi prima di verificare);
+            # gli altri sei no. Si attende cio' che e' attendibile invece di
+            # rendere `async` anche i sei sincroni: cambiare la loro firma
+            # avrebbe toccato sedici gestori per un bisogno di dieci.
             # (`_legami` era il refuso del nome italiano di `_related`,
             # sopravvissuto alla fetta dei nomi degli strumenti del 02/09:
             # corretto qui, di passaggio, mentre questo commento si tocca
@@ -2350,3 +2458,112 @@ class ToolDispatcher:
         if run_id:
             return await ha.automation_trace(automation_id, run_id.strip())
         return await ha.automation_traces(automation_id)
+
+    # -- i calendari ------------------------------------------------------
+
+    async def _calendar(self, arguments: dict[str, Any]) -> dict:
+        """I prossimi appuntamenti, fusi da OGNI calendario di questa casa.
+
+        **Il cuore della fetta «i calendari»: la leggibilita' si verifica
+        LEGGENDO, mai dallo stato.** Un calendario rotto e uno senza impegni
+        hanno lo STESSO stato `off` in Home Assistant e tornerebbero lo
+        STESSO elenco vuoto -- solo un tentativo di lettura li distingue.
+        Percio' questo metodo prende l'elenco dei calendari (Task 1,
+        `HAClient.calendars()`) e prova a leggere CIASCUNO (Task 1,
+        `HAClient.calendar_events()`), uno per uno: nessun elenco dichiarato
+        di calendari ammessi, nessuna decisione presa dallo stato. Un
+        calendario che fallisce NON sparisce in silenzio: il suo `name`
+        finisce in `non_letti`, che esce SOLO se c'e' almeno un calendario
+        illeggibile -- se sparisse, «non hai impegni» sarebbe una bugia detta
+        con la sicurezza di chi ha guardato tutto, ed e' il difetto che la
+        fetta precedente («le tracce e il log») ha trovato tre volte.
+
+        **Se l'elenco dei calendari stesso non arriva**, non c'e' niente da
+        provare a leggere: si propaga il suo `errore` cosi' com'e' (stessa
+        disciplina di `_system_log`, un passthrough puro).
+
+        **Il fuso e' UNO SOLO, quello del dispatcher** (`self._timezone()`,
+        la stessa fonte di `_trend` qui sopra, `tools.py:2292` -- non se ne
+        apre una seconda): serve due volte, una per calcolare `now` con
+        `historian.home_space_zone` (nessun doppione: e' la stessa funzione
+        che gestisce gia' un fuso non riconosciuto con un avviso e il
+        ripiego su UTC) e una passata a `read_appointment` per ogni evento.
+        Fondere impegni letti con fusi DIVERSI romperebbe l'ordinamento
+        lessicografico di `sort_appointments` -- non succede, perche' il
+        fuso e' unico per questa chiamata, ma e' il presupposto su cui quella
+        fusione poggia, e va dichiarato invece di dato per scontato.
+
+        **Il tetto sul testo libero vive QUI, non nel client.**
+        `HAClient.calendar_events()` lascia `summary`/`description`/
+        `location` grezzi apposta (il suo docstring lo dice: nessun
+        consumatore prima di questo strumento) -- e' questo il punto in cui
+        quel testo, scritto da una persona in un calendario condiviso, entra
+        DAVVERO in un prompt. `titolo`/`luogo`/`descrizione` passano da
+        `sanitize_ha_free_text`, la stessa strada dei fratelli (`logbook`,
+        `system_log`), non una seconda.
+
+        **Ogni impegno porta `calendario`**, il nome (non l'`entity_id`) del
+        calendario da cui viene: fondendo «Personale» e «Famiglia» in un
+        unico elenco, sapere DA QUALE viene un impegno e' meta' della
+        risposta -- perderlo fondendo prima di annotarlo sarebbe
+        un'informazione che avevamo in mano e abbiamo buttato via.
+
+        **`troncato` esce SOLO se almeno un calendario lo ha dichiarato**
+        (`HAClient.calendar_events`, `MAX_CALENDAR_EVENTS`): un elenco
+        tagliato non deve poter sembrare completo, stessa legge del client
+        che lo genera -- propagarla in silenzio sarebbe ricreare lo stesso
+        difetto un livello piu' in alto.
+        """
+        import time as _time
+
+        ahead = _clamp_days(arguments.get("giorni_avanti"),
+                            default=DEFAULT_CALENDAR_DAYS_AHEAD,
+                            ceiling=MAX_CALENDAR_DAYS_AHEAD)
+        behind = _clamp_days(arguments.get("giorni_indietro"),
+                             default=0, ceiling=MAX_CALENDAR_DAYS_BACK)
+        ha = self._ha_channel()
+        listing = await ha.calendars()
+        if "errore" in listing:
+            return listing
+        calendars = listing.get("calendari")
+        calendars = calendars if isinstance(calendars, list) else []
+
+        timezone = self._timezone()
+        zone = historian.home_space_zone(timezone)
+        now = datetime.fromtimestamp(_time.time(), tz=zone)
+        start = (now - timedelta(days=behind)).isoformat()
+        end = (now + timedelta(days=ahead)).isoformat()
+
+        appointments: list[dict] = []
+        unreadable: list[str] = []
+        truncated = False
+        for entry in calendars:
+            if not isinstance(entry, dict):
+                continue
+            entity_id = entry.get("entity_id")
+            if not entity_id:
+                continue
+            name = entry.get("name") or entity_id
+            events = await ha.calendar_events(entity_id, start, end)
+            if "errore" in events:
+                unreadable.append(name)
+                continue
+            if events.get("troncato"):
+                truncated = True
+            for raw_event in events.get("eventi") or []:
+                appointment = read_appointment(raw_event, timezone=timezone)
+                appointment["titolo"] = sanitize_ha_free_text(appointment["titolo"])
+                if "luogo" in appointment:
+                    appointment["luogo"] = sanitize_ha_free_text(appointment["luogo"])
+                if "descrizione" in appointment:
+                    appointment["descrizione"] = sanitize_ha_free_text(
+                        appointment["descrizione"])
+                appointment["calendario"] = name
+                appointments.append(appointment)
+
+        result: dict = {"impegni": sort_appointments(appointments)}
+        if unreadable:
+            result["non_letti"] = unreadable
+        if truncated:
+            result["troncato"] = True
+        return result

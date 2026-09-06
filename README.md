@@ -63,7 +63,7 @@ first, safeguards as a designed phase of their own. What there is instead is a
 boundary on **judgment, not on time**: nothing decides to act, or decides what
 to say, on its own — every execution traces back to a sentence you typed. What
 that does *not* mean is *immediately*, or *never on a schedule*: `promise`,
-one of the fifteen tools below, lets a sentence you type now run later, at a
+one of the sixteen tools below, lets a sentence you type now run later, at a
 time you name, with nobody in the chat when it happens — see the next
 paragraph for what that means in practice.
 
@@ -188,9 +188,9 @@ Saved memories come back in the nucleo on the next turn, under
 
 ---
 
-## The chat, and its fifteen tools
+## The chat, and its sixteen tools
 
-The chat is the only surface. The model gets the nucleo plus exactly fifteen tools
+The chat is the only surface. The model gets the nucleo plus exactly sixteen tools
 (`hiris/app/home_space/tools.py`, passed at `hiris/app/api/handlers_chat.py`):
 
 | Tool | What it does |
@@ -210,8 +210,9 @@ The chat is the only surface. The model gets the nucleo plus exactly fifteen too
 | `logbook` | what happened in the house in a time window, and — where the logbook says so — who did it; HIRIS recognizes its own acts by matching against its own history and reports that match as *probable*, never certain |
 | `system_log` | what is in Home Assistant's own error-and-warning log right now — errors and warnings, deduplicated by HA itself, most recent first |
 | `automation_trace` | how an automation's recent runs went, or — given one run's id — the full step-by-step graph of that single run; a run missing from the list means it aged out of what HA keeps, not that it succeeded |
+| `calendar` | the next appointments across every calendar in the house — tries to read each one rather than trusting its state, so a calendar that fails to answer is named in `non_letti` instead of silently vanishing; `impegni: []` means nothing is written down, not that the house will be empty |
 
-Two of the fifteen write to Home Assistant the moment they are called. `execute` does it
+Two of the sixteen write to Home Assistant the moment they are called. `execute` does it
 immediately, through the services door (`action/actuator.py`), with no confirmation step — verified
 against your installation, not approved by you first. `confirm` does it through the configuration
 door (`azione/construction/workshop.py`), applying a proposal `propose` already composed and
@@ -277,7 +278,7 @@ turn is enqueued together with the same context the synchronous chat composes
 before it starts (`agent/runner.py::probe_tools`). One boolean comes out of
 that probe and decides two things at once: the prompt the model reads and the
 arguments the CLI is launched with. When the probe succeeds the model gets the
-same fifteen tools as the synchronous path, under an `mcp__hiris__` prefix: it
+same sixteen tools as the synchronous path, under an `mcp__hiris__` prefix: it
 can look at the current state, not just the snapshot, and it can act — through
 the same two doors as the synchronous path, never one of its own.
 When it fails, the answer
@@ -341,7 +342,7 @@ nesting renames an option, and a renamed option loses its stored value silently.
 | `llm_strategy` | `balanced` (default) · `quality_first` · `cost_first`. Only orders the providers that are on; an order saved on the Models page wins |
 
 > With `local_model.url` + `local_model.model` set and `provider_ollama`
-> enabled, HIRIS runs offline against Ollama: the chat, the nucleo and the fifteen
+> enabled, HIRIS runs offline against Ollama: the chat, the nucleo and the sixteen
 > tools all work without any cloud key. If no provider is both enabled and
 > credentialed, AI calls are disabled.
 
@@ -474,7 +475,7 @@ rewritten, with a design of its own.
   yourself, not one of its own
 - **MQTT**, the gateway, Test Run, the sandbox
 - **HA health monitoring** — no `get_ha_health`, no `GET /api/health/ha`
-- **The thirty-four-tool catalogue** — replaced by the fifteen above
+- **The thirty-four-tool catalogue** — replaced by the sixteen above
 
 ---
 

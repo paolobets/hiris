@@ -46,7 +46,7 @@ davanti.
 «costruire» anche di configurazione.** Fino a quel momento qui si leggeva «gli
 strumenti restano quattro e nessuno tocca Home Assistant -- HIRIS conosce e
 non agisce»: era vero, e ha smesso di esserlo su entrambe le meta'. Gli
-strumenti sono quindici, lo stesso catalogo del turno sincrono: `execute` chiama
+strumenti sono sedici, lo stesso catalogo del turno sincrono: `execute` chiama
 un servizio di Home Assistant, `propose`/`confirm` compongono e scrivono
 configurazione. Cio' che NON cambia e' il motivo per cui la frase stava qui:
 questa rotta non e' una porta di scrittura propria. `tools/call` dispaccia con
@@ -253,7 +253,7 @@ def mcp_catalog(definitions: list[dict] | None = None) -> list[dict]:
     qui da sola invece di essere dimenticata.
 
     Il parametro serve al turno di una promessa, che ha un catalogo suo
-    (`promise_tools()`: gli otto lettori piu' `conclude`). E' la STESSA
+    (`promise_tools()`: i nove lettori piu' `conclude`). E' la STESSA
     trasformazione, non una seconda: due funzioni che riformattano cataloghi
     sarebbero il difetto da cui e' nata la fetta E2 (tre cataloghi divergenti).
     """
@@ -590,7 +590,7 @@ async def handle_mcp(request: web.Request) -> web.Response:
         if method == "tools/list":
             _promise_id = _exchange_promise_id(request)
             # Il turno di una promessa vede il catalogo della promessa:
-            # gli otto lettori piu' `conclude`, che li' e' l'unico modo
+            # i nove lettori piu' `conclude`, che li' e' l'unico modo
             # in cui il turno puo' finire. Le definizioni sono le STESSE
             # di `KNOWLEDGE_TOOLS` (promise_tools le filtra, non
             # le riscrive), quindi una descrizione migliorata vale su

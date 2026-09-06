@@ -623,6 +623,53 @@ gli unici chiamanti di produzione leggono con `risposta.get("troncato")`, che to
 quando la chiave manca sia quando vale `False` — verificato prima di scrivere questa voce, non
 assunto.
 
+### Il calendario come contesto per interpretare la casa
+
+`origine: il coordinatore del Task 3 di «i calendari», 06/09/2026` · `nessun documento`
+
+La fetta «i calendari» chiude con la LETTURA: lo strumento `calendar` (`home_space/tools.py`)
+risponde a «quali sono i miei prossimi appuntamenti?», fondendo gli impegni di ogni calendario di
+questa casa. Non fa — deliberatamente — l'uso piu' ricco di questa fonte: «il riscaldamento e'
+rimasto spento perche' eravate in ferie dal 17 al 30 agosto» e' un'AGGREGAZIONE (calendario +
+stato della casa nello stesso periodo), non una lettura, e non poteva nascere prima che il lettore
+esistesse — cio' che questa fetta ha appena costruito.
+
+Il materiale c'e' gia': il passato denso (misurato il 06/09/2026, `HAClient.calendar_events`, 297
+eventi su una finestra di quattro anni, 91 nel calendario «Personale», 206 in «Famiglia») e' esattamente
+dove sta l'informazione che spiegherebbe un'assenza prolungata o un consumo fuori norma.
+`read_appointment`/`sort_appointments` (`home_space/appointments.py`) gia' fanno la parte pura
+(un evento grezzo -> un impegno leggibile, piu' calendari -> un elenco ordinato): l'aggregazione
+mancante e' un consumatore nuovo di quelle stesse funzioni, dal lato dell'osservatore (`mind/`), non
+un terzo modo di leggere i calendari.
+
+**Da decidere quando si progetta**: quale FINESTRA di passato l'osservatore deve guardare per
+correlare un impegno con un pavimento (l'intera durata dell'evento? un margine attorno?), e come si
+dichiara l'incertezza quando un calendario e' rotto proprio nel periodo che si vuole spiegare — la
+stessa disciplina di `non_letti` nello strumento della chat, vista dal lato dell'osservatore.
+
+### Scrittura e conservazione degli eventi di calendario — misurate come non necessarie
+
+`origine: il coordinatore del Task 3 di «i calendari», 06/09/2026` · `nessun documento`
+
+Due capacita' che Home Assistant espone e che questa fetta ha lasciato fuori di proposito, non per
+dimenticanza — misurate, non assunte:
+
+- **Scrivere sul calendario** (`calendar/event/create`, esposto da HA): non serve a nulla di cio'
+  che e' stato chiesto («leggere i calendari», «rispondere sui prossimi appuntamenti»), ed
+  espandere il perimetro senza una richiesta e' la stessa disciplina gia' applicata altrove in
+  questo prodotto (spec §1, «il meccanismo lo dichiara HA, non lo indoviniamo noi» — qui vale al
+  contrario: non si costruisce un meccanismo che nessuno ha chiesto).
+- **Conservare gli eventi in un archivio proprio**: misurato come rischio, non solo come lavoro in
+  piu'. Una copia diverge il giorno in cui un evento viene spostato dal telefono — HIRIS
+  continuerebbe a rispondere sulla versione vecchia finche' qualcosa non la rileggesse, ed e' lo
+  stesso difetto per cui l'archivio storico proprio (`history.db`) e' uscito dal prodotto. Se un
+  giorno servisse una cache (per costo di rete, non per verita'), va invalidata da un evento vero
+  di Home Assistant, non da un timer — vedi `home_space/topology.py` per la stessa scelta gia'
+  fatta sui registri della casa.
+
+Nessuna delle due e' bloccata da un lavoro a monte: sono scartate come **scelte**, non rinviate come
+**dipendenze**. Riaprirle richiede una richiesta nuova, non solo tempo libero in uno sprint.
+
 ---
 
 ## Usciti
