@@ -198,17 +198,17 @@ async def test_an_unreachable_folder_is_not_the_same_as_an_absent_file(tmp_path)
     Mutazione che uccide: nel ramo `else` di `reread()` (quando `ha_folder`
     e' `None`), scrivere `FILE_GENUINELY_ABSENT` invece di
     `FOLDER_UNREACHABLE` -- il test torna rosso su `assert
-    esito["file_non_letti"]["automations.yaml"] == FOLDER_UNREACHABLE`
+    result["file_non_letti"]["automations.yaml"] == FOLDER_UNREACHABLE`
     (uscirebbe `"assente"`)."""
     archivio = HomeSpaceStore(str(tmp_path / "casa.db"))
     try:
         cliente = _ClienteFinto()
-        esito = await reread(cliente, archivio, None)
+        result = await reread(cliente, archivio, None)
     finally:
         archivio.close()
 
-    assert esito["file_non_letti"]["automations.yaml"] == FOLDER_UNREACHABLE
-    assert esito["file_non_letti"]["scripts.yaml"] == FOLDER_UNREACHABLE
+    assert result["file_non_letti"]["automations.yaml"] == FOLDER_UNREACHABLE
+    assert result["file_non_letti"]["scripts.yaml"] == FOLDER_UNREACHABLE
     assert FOLDER_UNREACHABLE != FILE_GENUINELY_ABSENT
 
 

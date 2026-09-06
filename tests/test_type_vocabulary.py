@@ -167,11 +167,11 @@ def test_service_entities_are_counted_even_when_not_announced():
     for i in range(2):
         entita.append(_voce(f"switch.servizio_{i}", f"Servizio {i}", categoria="diagnostic"))
         stato[f"switch.servizio_{i}"] = "on"
-    testo = _con(entita, stato)
+    text = _con(entita, stato)
 
-    assert "Servizio 0" not in _sezione_notevole(testo), (
+    assert "Servizio 0" not in _sezione_notevole(text), (
         "il digesto rispetta la dichiarazione di Home Assistant")
-    lacune = _sezione_lacune(testo)
+    lacune = _sezione_lacune(text)
     assert "2 entita' di servizio" in lacune, (
         "ma il numero c'e', altrimenti la domanda «quante sono di servizio?» "
         "costerebbe una chiamata a `view` per ognuna")

@@ -519,12 +519,12 @@ async def test_nothing_recognised_is_not_the_same_as_nothing_exists(dispatcher):
 
     Mutazione che uccide: togliere la dichiarazione quando `trovati` e'
     vuoto (rimuovere il ramo `if not found` in `ToolDispatcher._search`) --
-    il test torna rosso su `assert esito["nulla_riconosciuto"] is True`
+    il test torna rosso su `assert result["nulla_riconosciuto"] is True`
     (`KeyError: 'nulla_riconosciuto'`)."""
-    esito = await dispatcher.dispatch("search", {"testo": "xyzzy qwerty"})
-    assert esito["trovati"] == []
-    assert esito["nulla_riconosciuto"] is True
-    assert esito.get("suggerimento")
+    result = await dispatcher.dispatch("search", {"testo": "xyzzy qwerty"})
+    assert result["trovati"] == []
+    assert result["nulla_riconosciuto"] is True
+    assert result.get("suggerimento")
 
 
 @pytest.mark.asyncio
@@ -539,14 +539,14 @@ async def test_a_platform_recognised_alone_is_not_nothing_recognised(archivio_ca
 
     Mutazione che uccide: calcolare `nulla_riconosciuto` da "nessun candidato
     in nessuna voce" invece che da "`trovati` vuoto" -- il test torna rosso
-    su `assert "nulla_riconosciuto" not in esito` (diventerebbe presente)."""
+    su `assert "nulla_riconosciuto" not in result` (diventerebbe presente)."""
     archivio_casa.replace({"entita": [
         {"entity_id": "sensor.giardino_minuti", "name": "Minuti", "platform": "hydrawise"}]}, [])
     d = ToolDispatcher(archivio_casa, memoria)
-    esito = await d.dispatch("search", {"testo": "hydrawise"})
-    assert esito["trovati"][0]["candidati"] == []
-    assert esito["trovati"][0]["piattaforma"]["dominio"] == "hydrawise"
-    assert "nulla_riconosciuto" not in esito
+    result = await d.dispatch("search", {"testo": "hydrawise"})
+    assert result["trovati"][0]["candidati"] == []
+    assert result["trovati"][0]["piattaforma"]["dominio"] == "hydrawise"
+    assert "nulla_riconosciuto" not in result
 
 
 @pytest.mark.asyncio
@@ -568,14 +568,14 @@ async def test_a_fallen_registry_is_not_the_same_as_nothing_recognised(archivio_
 
     Mutazione che uccide: tornare alla guardia `if not found:` (senza il
     controllo sui motivi "guasto DI ADESSO") in `ToolDispatcher._search` --
-    il test torna rosso su `assert "nulla_riconosciuto" not in esito`."""
+    il test torna rosso su `assert "nulla_riconosciuto" not in result`."""
     archivio_casa.replace({"aree": [], "entita": []}, ["entita"])
-    esito = await ToolDispatcher(archivio_casa, memoria).dispatch(
+    result = await ToolDispatcher(archivio_casa, memoria).dispatch(
         "search", {"testo": "il bagno"})
-    assert esito["trovati"] == []
-    assert any("entita" in m for m in esito["non_ho_potuto_guardare"])
-    assert "nulla_riconosciuto" not in esito
-    assert "suggerimento" not in esito
+    assert result["trovati"] == []
+    assert any("entita" in m for m in result["non_ho_potuto_guardare"])
+    assert "nulla_riconosciuto" not in result
+    assert "suggerimento" not in result
 
 
 @pytest.mark.asyncio
@@ -596,7 +596,7 @@ async def test_a_stable_naming_gap_does_not_silence_nulla_riconosciuto(archivio_
 
     Mutazione che uccide: tornare alla guardia `if not found and not
     blind_spots:` (l'intero elenco, non solo i motivi non stabili) --
-    il test torna rosso su `assert esito["nulla_riconosciuto"] is True`
+    il test torna rosso su `assert result["nulla_riconosciuto"] is True`
     (`KeyError: 'nulla_riconosciuto'`)."""
     archivio_casa.replace({"entita": [
         {"entity_id": "light.senza", "name": None, "original_name": None}]}, [])
@@ -606,13 +606,13 @@ async def test_a_stable_naming_gap_does_not_silence_nulla_riconosciuto(archivio_
         def all_states(self):
             return [{"id": "light.altra", "state": "on", "name": "Un'altra luce"}]
 
-    esito = await ToolDispatcher(archivio_casa, memoria,
-                                      cache=_SpecchioSenzaQuestaVoce()).dispatch(
+    result = await ToolDispatcher(archivio_casa, memoria,
+                                   cache=_SpecchioSenzaQuestaVoce()).dispatch(
         "search", {"testo": "abat-jour"})
-    assert esito["trovati"] == []
-    assert esito["nulla_riconosciuto"] is True
-    assert esito.get("suggerimento")
-    assert any("limite stabile" in m for m in esito["non_ho_potuto_guardare"])
+    assert result["trovati"] == []
+    assert result["nulla_riconosciuto"] is True
+    assert result.get("suggerimento")
+    assert any("limite stabile" in m for m in result["non_ho_potuto_guardare"])
 
 
 def test_search_description_names_the_nome_visto_comparison():
@@ -1140,17 +1140,17 @@ async def test_a_genuinely_absent_file_hides_nothing_so_nulla_riconosciuto_still
     Mutazione che uccide: togliere il filtro su `FILE_GENUINELY_ABSENT` in
     `ToolDispatcher._blind_spots` (contare `unloaded_files` cosi' com'e',
     senza escludere i file davvero assenti) -- il test torna rosso su
-    `assert esito["nulla_riconosciuto"] is True` (`KeyError:
+    `assert result["nulla_riconosciuto"] is True` (`KeyError:
     'nulla_riconosciuto'`, perche' il file assente tornerebbe a contare come
     guasto di adesso e spegnerebbe la dichiarazione)."""
     archivio_casa.replace_behavior(
         [], unloaded_files={"scripts.yaml": "assente"})
-    esito = await ToolDispatcher(archivio_casa, memoria).dispatch(
+    result = await ToolDispatcher(archivio_casa, memoria).dispatch(
         "search", {"testo": "xyzzy qwerty"})
-    assert esito["trovati"] == []
-    assert esito["nulla_riconosciuto"] is True
-    assert esito.get("suggerimento")
-    assert "non_ho_potuto_guardare" not in esito
+    assert result["trovati"] == []
+    assert result["nulla_riconosciuto"] is True
+    assert result.get("suggerimento")
+    assert "non_ho_potuto_guardare" not in result
 
 
 @pytest.mark.asyncio
@@ -1173,19 +1173,19 @@ async def test_an_unreachable_folder_silences_nulla_riconosciuto(archivio_casa, 
     Mutazione che uccide: allargare il filtro di `_blind_spots` per
     escludere ANCHE `FOLDER_UNREACHABLE` (non solo `FILE_GENUINELY_ABSENT`)
     dai motivi che contano -- il test torna rosso su `assert
-    "nulla_riconosciuto" not in esito` (tornerebbe a comparire, perche' la
+    "nulla_riconosciuto" not in result` (tornerebbe a comparire, perche' la
     cartella irraggiungibile smetterebbe di contare come guasto di adesso)."""
     archivio_casa.replace_behavior(
         [], unloaded_files={"automations.yaml": "cartella non raggiungibile",
                              "scripts.yaml": "cartella non raggiungibile"})
-    esito = await ToolDispatcher(archivio_casa, memoria).dispatch(
+    result = await ToolDispatcher(archivio_casa, memoria).dispatch(
         "search", {"testo": "xyzzy qwerty"})
-    assert esito["trovati"] == []
-    assert "nulla_riconosciuto" not in esito
-    assert "suggerimento" not in esito
-    assert "non_ho_potuto_guardare" in esito
+    assert result["trovati"] == []
+    assert "nulla_riconosciuto" not in result
+    assert "suggerimento" not in result
+    assert "non_ho_potuto_guardare" in result
     assert any("automations.yaml" in m and "scripts.yaml" in m
-               for m in esito["non_ho_potuto_guardare"])
+               for m in result["non_ho_potuto_guardare"])
 
 
 def test_uno_specchio_che_solleva_non_restituisce_nomi_a_meta(archivio_casa, memoria):

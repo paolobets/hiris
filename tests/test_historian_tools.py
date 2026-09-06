@@ -74,8 +74,8 @@ async def test_ogni_strumento_del_catalogo_ha_il_proprio_gestore():
         # finto per gli undici strumenti che ne dichiarano almeno uno, e
         # fallirebbe per una ragione estranea al cablaggio che vuole provare.
         required_fields = definizione["input_schema"].get("required", [])
-        esito = await d.dispatch(nome, {field_name: "x" for field_name in required_fields})
-        assert esito == marcatore, (
+        result = await d.dispatch(nome, {field_name: "x" for field_name in required_fields})
+        assert result == marcatore, (
             f"«{nome}» non ha chiamato `self.{attributo}`: il dispatcher lo "
             "lega a un gestore diverso da quello atteso")
 

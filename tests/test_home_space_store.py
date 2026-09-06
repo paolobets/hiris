@@ -73,12 +73,12 @@ def test_entity_category_survives_the_round_trip(archivio):
 
     Mutazione: togliere `e.get("entity_category")` dall'INSERT di
     `sostituisci()` (scrivere `None` al suo posto) -- il test torna rosso su
-    `assert casa["entita"][0]["categoria"] == "diagnostic"`."""
-    registri = dict(_REGISTRI, entita=[
+    `assert house["entita"][0]["categoria"] == "diagnostic"`."""
+    registries = dict(_REGISTRI, entita=[
         dict(_REGISTRI["entita"][0], entity_category="diagnostic")])
-    archivio.replace(registri)
-    casa = archivio.read()
-    assert casa["entita"][0]["categoria"] == "diagnostic"
+    archivio.replace(registries)
+    house = archivio.read()
+    assert house["entita"][0]["categoria"] == "diagnostic"
 
 
 def test_sostituisci_non_accumula(archivio):

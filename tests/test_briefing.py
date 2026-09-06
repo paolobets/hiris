@@ -529,11 +529,11 @@ def test_a_genuinely_absent_behavior_file_is_not_a_gap_in_knowledge():
     (tornare a `if unloaded_behavior_files:` sull'elenco intero, non
     filtrato) -- il test torna rosso su `assert not any(...)` (l'avviso
     comparirebbe)."""
-    testo, riepilogo = compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
-                                unloaded_behavior_files={"scripts.yaml": FILE_GENUINELY_ABSENT})
-    assert not any("file di comportamento non letti" in a for a in riepilogo["notices"])
-    sezione_lacune = testo.split("## Cio' che HIRIS ignora")[1]
-    assert "scripts.yaml" not in sezione_lacune
+    text, summary = compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
+                             unloaded_behavior_files={"scripts.yaml": FILE_GENUINELY_ABSENT})
+    assert not any("file di comportamento non letti" in a for a in summary["notices"])
+    gaps_section = text.split("## Cio' che HIRIS ignora")[1]
+    assert "scripts.yaml" not in gaps_section
 
 
 def test_an_unreadable_behavior_file_is_still_a_gap_in_knowledge():
@@ -545,11 +545,11 @@ def test_an_unreadable_behavior_file_is_still_a_gap_in_knowledge():
     Mutazione che uccide: allargare il filtro per escludere ANCHE i motivi
     diversi da `FILE_GENUINELY_ABSENT` -- il test torna rosso su `assert
     any(...)` (`StopIteration`, l'avviso non comparirebbe piu')."""
-    _, riepilogo = compose(
+    _, summary = compose(
         _CASA, _COMPORTAMENTO, _RICORDI, _STATO,
         unloaded_behavior_files={"scripts.yaml": "illeggibile: yaml non valido"})
-    avviso = next(a for a in riepilogo["notices"] if "file di comportamento non letti" in a)
-    assert "scripts.yaml" in avviso
+    notice = next(a for a in summary["notices"] if "file di comportamento non letti" in a)
+    assert "scripts.yaml" in notice
 
 
 def test_rete_di_sicurezza_taglia_anche_senza_ricordi_da_tagliare():
