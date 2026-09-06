@@ -1661,12 +1661,27 @@ async def test_an_unreadable_calendar_is_named_not_dropped():
     che la fetta delle tracce ha trovato tre volte. Chi non risponde si
     nomina.
 
-    **Mutazione che uccide l'assert**: saltare in silenzio i calendari che
-    tornano `{"errore": ...}` invece di nominarli (`continue` senza
-    `unreadable.append(name)`). Verificato eseguendo: con quella
+    **Mutazione che uccide il primo assert**: saltare in silenzio i
+    calendari che tornano `{"errore": ...}` invece di nominarli (`continue`
+    senza `unreadable.append(name)`). Verificato eseguendo: con quella
     sostituzione `result` non porta piu' la chiave `non_letti` affatto, e
     `assert result["non_letti"] == ["Personale"]` arrossisce con un
-    `KeyError`."""
+    `KeyError`.
+
+    **L'ultimo assert fissa un invariante verificato a mano e mai custodito
+    prima**: ogni nome in `non_letti` deve comparire anche in `calendari_
+    guardati` -- guardati e' «ho provato», non_letti e' «non ci sono
+    riuscito», e non si puo' fallire a leggere un calendario che non si e'
+    nemmeno provato a leggere. **Mutazione che uccide QUESTO assert**:
+    spostare `examined.append(name)` DOPO il controllo `if "errore" in
+    events`, cosi' che un calendario il cui `calendar_events()` fallisce
+    subito non entri mai in `calendari_guardati` pur finendo in
+    `non_letti`. Verificato eseguendo: con quello spostamento
+    `result["calendari_guardati"] == []` mentre `result["non_letti"] ==
+    ["Personale"]` -- i primi due assert restano VERDI (nessuno dei due
+    guarda `calendari_guardati`), e solo
+    `assert set(result["non_letti"]) <= set(result["calendari_guardati"])`
+    arrossisce."""
     channel = _FakeCalendarChannel(
         {"calendari": [_PERSONALE]},
         {"calendar.personale": {"errore": "Home Assistant non ha risposto"}})
@@ -1674,6 +1689,7 @@ async def test_an_unreadable_calendar_is_named_not_dropped():
     result = await d.dispatch("calendar", {})
     assert result["non_letti"] == ["Personale"]
     assert result["impegni"] == []
+    assert set(result["non_letti"]) <= set(result["calendari_guardati"])
 
 
 @pytest.mark.asyncio

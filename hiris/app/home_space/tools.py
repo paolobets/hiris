@@ -41,8 +41,8 @@ description degli strumenti esistono per togliere. Il sedicesimo, `calendar`
 chiesto per nome: «quali sono i miei prossimi appuntamenti?». Legge OGNI
 calendario di questa casa (Task 1, `HAClient.calendars()`/`calendar_events()`)
 e compone gli impegni (Task 2, `home_space/appointments.py`) in un unico
-elenco ordinato -- e un calendario che non risponde non sparisce in silenzio:
-il suo nome finisce in `non_letti`, perche' la leggibilita' si verifica
+elenco ordinato -- e un calendario che non riesce a leggere non sparisce in
+silenzio: il suo nome finisce in `non_letti`, perche' la leggibilita' si verifica
 LEGGENDO, non dallo stato (un calendario rotto e uno senza impegni tornano
 lo stesso elenco vuoto). Per un tratto della 2.0
 questo modulo ne offriva quattro soli e diceva «la chat CONOSCE, non
@@ -1230,15 +1230,21 @@ CALENDAR_TOOL_DEF = {
         "niente: chi ci vive puo' semplicemente non aver scritto niente sul "
         "calendario. E' NORMALE che l'elenco sia spesso vuoto: e' un fatto "
         "sul calendario, non un fatto sulla vita di chi lo tiene. "
-        "**Un calendario che non risponde non sparisce.** Provo a leggere "
-        "OGNI calendario di questa casa, uno per uno: quelli che rispondono "
-        "finiscono in `impegni`, quelli che NON rispondono finiscono, per "
-        "nome, in `non_letti` -- una chiave che esiste SOLO se c'e' almeno "
-        "un calendario illeggibile. Un elenco vuoto di impegni e un "
-        "calendario rotto sono due fatti diversi: confonderli direbbe «non "
-        "hai impegni» con la sicurezza di chi ha guardato tutto, quando in "
-        "realta' un calendario non ha risposto. Se `non_letti` compare, "
-        "dillo invece di tacerlo. "
+        "**Un calendario che non riesco a leggere non sparisce.** Provo a "
+        "leggere OGNI calendario di questa casa, uno per uno: quelli che "
+        "riesco a leggere finiscono in `impegni`, quelli che NON riesco a "
+        "leggere finiscono, per nome, in `non_letti` -- una chiave che "
+        "esiste SOLO se ce n'e' almeno uno (i `non_letti` sono sempre un "
+        "sottoinsieme dei `calendari_guardati` qui sotto: guardati e' "
+        "«ho provato», non_letti e' «non ci sono riuscito»). Non solo "
+        "Home Assistant che non risponde: anche un calendario che ha "
+        "risposto bene ma con un evento che non so interpretare finisce "
+        "qui, per lo stesso motivo -- non e' leggibile, qualunque sia la "
+        "causa, e le cause non si confondono nel dirlo. Un elenco vuoto di "
+        "impegni e un calendario NON letto sono due fatti diversi: "
+        "confonderli direbbe «non hai impegni» con la sicurezza di chi ha "
+        "guardato tutto, quando in realta' un calendario non e' stato "
+        "letto. Se `non_letti` compare, dillo invece di tacerlo. "
         "`calendari_guardati` esce SEMPRE (anche vuoto): sono i nomi di "
         "TUTTI i calendari che ho provato a leggere in questa chiamata. "
         "Se e' vuoto, questa casa non ha nessun calendario -- non e' lo "
@@ -2521,8 +2527,8 @@ class ToolDispatcher:
         gli altri due.
 
         **Il fuso e' UNO SOLO, quello del dispatcher** (`self._timezone()`,
-        la stessa fonte di `_trend` qui sopra, `tools.py:2314` -- non se ne
-        apre una seconda): serve due volte, una per calcolare `now` con
+        `ToolDispatcher._timezone()` qui sopra, la stessa fonte di `_trend`
+        -- non se ne apre una seconda): serve due volte, una per calcolare `now` con
         `historian.home_space_zone` (nessun doppione: e' la stessa funzione
         che gestisce gia' un fuso non riconosciuto con un avviso e il
         ripiego su UTC) e una passata a `read_appointment` per ogni evento.
