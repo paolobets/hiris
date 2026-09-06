@@ -132,11 +132,13 @@ MAX_HISTORY_POINTS = 5000
 # Cap sugli eventi restituiti da UNA chiamata a `calendar_events()`.
 # Misurato sulla casa vera il 06/09/2026: 297 eventi in tutto, su una
 # finestra di QUATTRO ANNI (91 nel calendario `personale`, 206 in
-# `famiglia`). Il tetto sta molto sopra qualunque uso vero e comunque
-# limita una finestra impazzita (es. "dal 1970 a oggi"), che altrimenti
-# scandirebbe l'intero storico di un calendario ricorrente. Stessa regola
-# del troncamento di `history()`/`logbook()` qui sopra: chi legge deve
-# poter sapere che e' scattato, la risposta lo dichiara invece di tacere.
+# `famiglia`). Il tetto sta molto sopra qualunque uso vero. Non limita ne'
+# la scansione che Home Assistant fa (governata da `start`/`end`, quindi
+# da chi chiama), ne' cio' che attraversa la rete -- il JSON intero arriva
+# comunque: limita solo cio' che QUESTO processo tiene e passa a valle, la
+# stessa cosa che protegge `MAX_HISTORY_POINTS` qui sopra. Stessa regola
+# del troncamento di `history()`/`logbook()`: chi legge deve poter sapere
+# che e' scattato, la risposta lo dichiara invece di tacere.
 MAX_CALENDAR_EVENTS = 2000
 # Template accettato in ingresso: oltre questa soglia non e' piu' una domanda
 # ma un payload.
@@ -1279,28 +1281,53 @@ class HAClient:
         comunque l'iniezione.
 
         **Tetto a `MAX_CALENDAR_EVENTS` (vedi la costante qui sopra per la
-        misura e la ragione del numero), taglio dalla CODA** -- stessa
-        direzione di `history()`/`logbook()` qui sopra (`punti[-N:]`,
-        `entries[-N:]`): a differenza loro pero' non ho verificato alla
-        fonte che ogni integrazione calendario restituisca gli eventi in
-        ordine cronologico ASCENDENTE (e' una proprieta' di ogni singola
-        integrazione `CalendarEntity.async_get_events`, non della vista
-        REST), quindi qui "la coda" e' l'ultimo pezzo della lista COSI' COME
-        HA la manda, non necessariamente "i piu' recenti" in senso
-        temporale -- replico la stessa operazione dei fratelli per
-        coerenza nel file, non la stessa garanzia sui dati.
+        misura e la ragione del numero), ORDINATO e tagliato dalla TESTA --
+        DIREZIONE OPPOSTA a `history()`/`logbook()` qui sopra, e non per
+        distrazione.** Per quei due la finestra finisce ad ADESSO: la coda
+        sono i punti/le voci piu' RECENTI, cioe' i piu' rilevanti, e
+        tagliare dalla coda e' la scelta giusta (`points[-N:]` in
+        `history()`, `entries[-N:]` in `logbook()`). Per un calendario la
+        finestra tipica PARTE da adesso e va in avanti: la coda sono gli
+        eventi piu' LONTANI nel tempo, la testa sono i PROSSIMI
+        appuntamenti -- esattamente cio' per cui questo strumento esiste.
+        Tagliare dalla coda (una versione precedente di questo metodo lo
+        faceva) scarterebbe proprio quello che serve, e lo farebbe in modo
+        PREVEDIBILE proprio sulle integrazioni che rispondono gia'
+        ordinate (es. `local_calendar`, Google) -- dove ci si aspetterebbe
+        che funzionasse. Verificato alla stessa fonte: l'integrazione
+        Google di Home Assistant tronca con `islice(timeline.active_after(
+        now), max_events)` -- la TESTA di una timeline ordinata, i piu'
+        vicini, non la coda.
+
+        **Il contratto**: i primi `MAX_CALENDAR_EVENTS` eventi in ordine
+        cronologico DALL'INIZIO della finestra chiesta; cio' che manca e'
+        OLTRE quel punto. E' un contratto INDIPENDENTE dall'integrazione --
+        a differenza di un taglio-coda-senza-ordinare, che dipenderebbe da
+        un ordine che nessuna integrazione e' tenuta a garantire -- e vale
+        identico anche per una finestra nel PASSATO ("cosa avevo segnato il
+        mese scorso?"): "dall'inizio della finestra" resta la direzione
+        giusta, i primi N sono i piu' vicini a quell'inizio.
+
+        Per ordinare senza assumere che HA l'abbia gia' fatto, la chiave e'
+        `start.get("dateTime") or start.get("date")`: sono sempre stringhe
+        ISO-8601 in entrambe le forme misurate (vedi sopra), quindi
+        l'ordinamento LESSICOGRAFICO su quella stringa e' gia' quello
+        cronologico -- non serve parsare un `datetime`. L'ordinamento e'
+        STABILE (`sorted(...)`, non `list.sort()` sull'oggetto ricevuto): a
+        parita' di istante l'ordine relativo con cui HA li ha mandati si
+        conserva.
 
         **Un elenco tagliato non deve poter sembrare completo.** A
-        differenza di `history()`/`logbook()`, che dichiarano `troncato`
-        SEMPRE (anche a falso, per esplicita scelta di quei due metodi: "non
-        due modi di dire la stessa cosa"), qui la chiave `troncato` esce
-        **SOLO quando il taglio e' avvenuto** -- stessa disciplina di
+        differenza di `history()`/`logbook()` qui sopra, che dichiarano
+        `troncato` SEMPRE (anche a falso, motivato solo dalla loro
+        coerenza reciproca), qui la chiave `troncato` esce **SOLO quando
+        il taglio e' avvenuto** -- stessa disciplina di
         `elenco_incompleto`/`mute_da`/`entita_stato_ignoto` in
         `home_space/queries.py`: "le chiavi che non hanno niente da dire
-        non escono". E' una divergenza deliberata dalla convenzione dei due
-        fratelli REST di questo file (non la correggo qui: e' fuori dal mio
-        perimetro), seguita perche' e' la disciplina che l'intera fetta
-        richiede per questa chiave.
+        non escono", una legge del prodotto piu' generale del "sempre" dei
+        due fratelli. E' una divergenza DICHIARATA fra le due convenzioni
+        (stessa chiave, presenza diversa) tracciata in `docs/BACKLOG.md` --
+        non corretta qui sui fratelli: e' fuori dal mio perimetro.
         """
         if not _ENTITY_ID_RE.match(str(entity_id)):
             logger.warning("calendario: entity_id non valido: %r", entity_id)
@@ -1317,8 +1344,15 @@ class HAClient:
             return {"errore": f"Home Assistant non ha risposto: {_truncate(str(exc), 200)}"}
         if not isinstance(data, list):
             return {"errore": "Home Assistant ha risposto in una forma non attesa"}
-        result: dict = {"eventi": data[-MAX_CALENDAR_EVENTS:]}
-        if len(data) > MAX_CALENDAR_EVENTS:
+
+        def _chrono_key(event):
+            begin = event.get("start") if isinstance(event, dict) else None
+            begin = begin if isinstance(begin, dict) else {}
+            return begin.get("dateTime") or begin.get("date") or ""
+
+        ordered = sorted(data, key=_chrono_key)
+        result: dict = {"eventi": ordered[:MAX_CALENDAR_EVENTS]}
+        if len(ordered) > MAX_CALENDAR_EVENTS:
             result["troncato"] = True
         return result
 

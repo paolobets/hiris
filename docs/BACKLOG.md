@@ -596,6 +596,33 @@ Vale la stessa disciplina della voce sulle quattro copie di `_ENTITY_ID_RE`: si 
 perche' e' stato visto adesso,
 e si chiude in una fetta sua, non come effetto collaterale di un giro di correzioni.
 
+### `troncato`: stessa chiave, due semantiche di presenza in `ha_client.py`
+
+`origine: il coordinatore del Task 1 di «i calendari», 06/09/2026` · `nessun documento`
+
+`HAClient.history()` e `HAClient.logbook()` dichiarano `"troncato": bool` **sempre**, anche a
+falso — e' la loro scelta esplicita, motivata solo dalla coerenza reciproca fra i due ("non due
+modi di dire la stessa cosa", si legge nel docstring di `history()`). `HAClient.calendar_events()`,
+aggiunto dallo stesso task, dichiara la stessa identica cosa — un elenco tagliato dal tetto
+(`MAX_HISTORY_POINTS`/`MAX_LOGBOOK_ENTRIES`/`MAX_CALENDAR_EVENTS`) — ma con la chiave `"troncato"`
+che esce **solo quando il taglio e' avvenuto**, stessa disciplina di
+`elenco_incompleto`/`mute_da`/`entita_stato_ignoto` in `home_space/queries.py` ("le chiavi che non
+hanno niente da dire non escono").
+
+Non e' un errore: e' la scelta **giusta** per `calendar_events()` (la legge del prodotto — un fatto
+che non c'e' non deve parlare — e' piu' generale del "sempre" dei due fratelli), ed e' stata
+verificata e confermata durante la revisione del task che l'ha introdotta. Ma nello stesso file,
+sotto lo stesso nome di chiave, convivono oggi due semantiche di presenza diverse per lo stesso
+concetto ("questo elenco e' stato tagliato"): chi legge `"troncato" in risposta` per un metodo e
+"il valore di `risposta['troncato']`" per un altro sta leggendo due contratti diversi con lo stesso
+nome.
+
+**Chi chiude questa voce**: allinei `history()` e `logbook()` alla disciplina omit-quando-falso di
+`calendar_events()` (non il contrario: e' quella piu' generale). **Nessun consumatore si rompe**:
+gli unici chiamanti di produzione leggono con `risposta.get("troncato")`, che torna `None` sia
+quando la chiave manca sia quando vale `False` — verificato prima di scrivere questa voce, non
+assunto.
+
 ---
 
 ## Usciti

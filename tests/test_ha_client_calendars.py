@@ -30,6 +30,7 @@ delle due forme, mai entrambe: `{"dateTime": "...+02:00"}` per un evento a
 orario, `{"date": "2026-08-17"}` per un evento giornaliero.
 """
 import copy
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -423,19 +424,64 @@ async def test_calendar_events_does_not_declare_a_cut_when_there_was_none():
 
 
 @pytest.mark.asyncio
-async def test_calendar_events_cut_keeps_the_tail_not_the_head():
-    """Stessa direzione di `history()`/`logbook()`: il taglio tiene la
-    CODA della lista cosi' come HA la manda, non la testa.
+async def test_calendar_events_cut_keeps_the_nearest_not_the_farthest():
+    """Direzione OPPOSTA a `history()`/`logbook()`, e non per distrazione.
+    Per quei due la finestra finisce ad ADESSO: la coda sono i punti/voci
+    piu' RECENTI, i piu' rilevanti. Per un calendario la finestra tipica
+    PARTE da adesso e va in avanti: la coda sono gli eventi piu' LONTANI,
+    la testa i PROSSIMI appuntamenti -- cio' per cui questo strumento
+    esiste. Qui gli eventi arrivano GIA' ordinati da HA (come fanno
+    `local_calendar` e Google -- verificato alla fonte: Google tronca con
+    `islice(timeline.active_after(now), max_events)`, la TESTA di una
+    timeline ordinata) -- proprio il caso in cui un taglio-coda
+    sbaglierebbe in modo prevedibile.
 
-    Mutazione: tenere `data[:MAX_CALENDAR_EVENTS]` (la testa) invece di
-    `data[-MAX_CALENDAR_EVENTS:]` -- il test torna rosso su
-    `assert outcome["eventi"][0]["uid"] == "evt-5"`, che troverebbe invece
-    `"evt-0"`.
+    Mutazione: tornare a `data[-MAX_CALENDAR_EVENTS:]` (la direzione
+    precedente, sbagliata) -- il test torna rosso su
+    `assert kept[0]["uid"] == "evt-0"`, che con la vecchia direzione
+    troverebbe il PIU' LONTANO invece del PIU' VICINO.
     """
-    rows = [_event(uid=f"evt-{i}") for i in range(MAX_CALENDAR_EVENTS + 5)]
+    total = MAX_CALENDAR_EVENTS + 5
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    rows = [_event(uid=f"evt-{i}",
+                   start={"dateTime": (base + timedelta(hours=i)).isoformat()},
+                   end={"dateTime": (base + timedelta(hours=i, minutes=30)).isoformat()})
+            for i in range(total)]
     c = _client([_FakeResponse(200, rows)])
-    outcome = await c.calendar_events("calendar.casa", "2026-09-05T00:00:00+02:00",
-                                      "2026-09-12T00:00:00+02:00")
+    outcome = await c.calendar_events("calendar.casa", "2026-01-01T00:00:00+00:00",
+                                      "2026-04-01T00:00:00+00:00")
     kept = outcome["eventi"]
-    assert kept[0]["uid"] == "evt-5"
-    assert kept[-1]["uid"] == f"evt-{MAX_CALENDAR_EVENTS + 4}"
+    assert len(kept) == MAX_CALENDAR_EVENTS
+    assert kept[0]["uid"] == "evt-0"
+    assert kept[-1]["uid"] == f"evt-{MAX_CALENDAR_EVENTS - 1}"
+    assert f"evt-{total - 1}" not in {e["uid"] for e in kept}
+
+
+@pytest.mark.asyncio
+async def test_calendar_events_are_sorted_before_the_cut_even_when_home_assistant_does_not():
+    """Nessuna integrazione calendario e' TENUTA a rispondere ordinata
+    (`CalendarEntity.async_get_events` e' specifico per integrazione, non
+    una proprieta' della vista REST): il contratto -- i primi N in ordine
+    cronologico dall'inizio della finestra -- deve reggere anche quando HA
+    manda gli eventi in un ordine qualunque, non solo quando arrivano gia'
+    ordinati (quello lo sorveglia la prova gemella qui sopra).
+
+    Mutazione: tagliare senza ordinare (`data[:MAX_CALENDAR_EVENTS]` al
+    posto di `sorted(data, key=...)[:MAX_CALENDAR_EVENTS]`) -- il test
+    torna rosso su `assert kept[0]["uid"] == "evt-0"`, che sull'elenco
+    mandato in ordine DISCENDENTE troverebbe invece il PIU' LONTANO.
+    """
+    total = MAX_CALENDAR_EVENTS + 5
+    base = datetime(2026, 1, 1, tzinfo=UTC)
+    events = [_event(uid=f"evt-{i}",
+                     start={"dateTime": (base + timedelta(hours=i)).isoformat()},
+                     end={"dateTime": (base + timedelta(hours=i, minutes=30)).isoformat()})
+              for i in range(total)]
+    scrambled = list(reversed(events))  # il piu' lontano per primo
+    c = _client([_FakeResponse(200, scrambled)])
+    outcome = await c.calendar_events("calendar.casa", "2026-01-01T00:00:00+00:00",
+                                      "2026-04-01T00:00:00+00:00")
+    kept = outcome["eventi"]
+    assert len(kept) == MAX_CALENDAR_EVENTS
+    assert kept[0]["uid"] == "evt-0"
+    assert kept[-1]["uid"] == f"evt-{MAX_CALENDAR_EVENTS - 1}"
