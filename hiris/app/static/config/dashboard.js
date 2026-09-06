@@ -110,9 +110,33 @@ window.HirisDashboard = (function () {
      NOME dodici automazioni prese dallo stato -- e `senza_corpo` dice gia'
      di quante non conosce il corpo. Marcare quella tessera «non letto»
      nasconderebbe dodici voci vere. Un tipo si dichiara non letto solo
-     quando il suo file non si e' letto E il conto e' a zero: e' l'unico caso
-     in cui «non c'e' niente» e «non ho guardato» sono indistinguibili. */
+     quando il suo file non si e' letto E il conto e' a zero -- MA non ogni
+     ragione conta uguale (verifica finale sul Task 2 «rifiutare e
+     importare», premessa smentita da questa stessa fetta lato Python,
+     `behavior.py::reread`, e riportata qui): un file GENUINAMENTE assente
+     (`FILE_GENUINELY_ABSENT`, sotto -- la cartella di Home Assistant si
+     raggiunge, il file no) non nasconde NIENTE, quindi zero script e
+     "assente" NON sono indistinguibili -- sono la STESSA verita' detta due
+     volte. Misurato: senza questa distinzione la tessera diceva «Script:
+     non letto» tre righe sopra l'elenco che diceva «scripts.yaml --
+     assente», due frasi adiacenti che si smentivano a vicenda su una casa
+     senza script. Resta indistinguibile da «non ho guardato» SOLO quando la
+     ragione e' un guasto vero (`"illeggibile: ..."` o la cartella stessa
+     irraggiungibile) -- li' il conto a zero potrebbe davvero nascondere
+     qualcosa. */
   var FILE_BY_TYPE = { automazione: 'automations.yaml', script: 'scripts.yaml' };
+
+  /* Stessa costante del backend (`behavior.FILE_GENUINELY_ABSENT`,
+     hiris/app/home_space/behavior.py): un file che davvero non c'e' (la
+     cartella si raggiunge, il file no) non e' un punto cieco -- non c'e'
+     contenuto scritto da poter mancare. Letterale e non importata: questo
+     file non ha un bundler che condivida costanti col backend Python, e la
+     stringa e' un valore di dominio (una delle tre RAGIONI di
+     `file_non_letti`), non un dettaglio d'implementazione che rischia di
+     driftare in silenzio -- lo stesso genere di duplicazione dichiarata gia'
+     accettato altrove in questo file (`NOMI_COMPORTAMENTO`/`FILE_BY_TYPE`
+     rispecchiano un vocabolario Python senza importarlo). */
+  var FILE_GENUINELY_ABSENT = 'assente';
 
   function behaviorCounts(counts) {
     var loaded = counts || {};
@@ -132,7 +156,12 @@ window.HirisDashboard = (function () {
     if (!unloadedFiles) return null;   // null = non si sa, diverso da nessuno
     var loaded = counts || {};
     return Object.keys(FILE_BY_TYPE).filter(function (type) {
-      return Object.prototype.hasOwnProperty.call(unloadedFiles, FILE_BY_TYPE[type])
+      var file = FILE_BY_TYPE[type];
+      // Un file GENUINAMENTE assente non conta: vedi il commento sopra
+      // `FILE_BY_TYPE` per il perche' -- zero voci e "assente" sono la
+      // stessa verita', non due fatti che il "non letto" deve riconciliare.
+      return Object.prototype.hasOwnProperty.call(unloadedFiles, file)
+          && unloadedFiles[file] !== FILE_GENUINELY_ABSENT
           && !loaded[type];
     });
   }

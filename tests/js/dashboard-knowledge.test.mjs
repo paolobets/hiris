@@ -290,7 +290,42 @@ test('e7: «Script» non sparisce quando la casa non ne ha nessuno — dice 0', 
   assert.equal(script.valore, '0', 'i file sono stati letti: «zero script» è un fatto, e si dice');
 });
 
-test('e7: un tipo il cui file non si è letto E il cui conto è a zero dice «non letto», non «0»', async () => {
+test('e7: un file ROTTO e il cui conto è a zero dice «non letto», non «0»', async () => {
+  /* Verifica finale sul Task 2 (settimo giro): questa prova usava
+     `'assente'`, ma un file GENUINAMENTE assente non nasconde niente -- vedi
+     il test gemello subito sotto, che copre esattamente quel caso col verso
+     opposto. Qui la ragione è un guasto VERO (il file c'è ed è rotto): il
+     conto a zero potrebbe davvero nascondere qualcosa, ed è il caso per cui
+     questo test esiste. */
+  const comp = Object.assign(casaLetta().comportamento, {
+    conteggi: { automazione: 12 },
+    file_non_letti: { 'scripts.yaml': 'illeggibile: yaml non valido' },
+  });
+  const { document, testo } = await rendi(casaLetta({ comportamento: comp }));
+  const tessere = tessereDi(document);
+  const script = tessere.find((t) => t.etichetta === 'Script');
+  assert.equal(script.valore, 'non letto',
+    'file rotto e conto a zero: «non c’è niente» e «non ho guardato» sono indistinguibili');
+  assert.match(script.delta, /il file non è stato letto/);
+  /* e la ragione resta comunque nell'elenco sotto, con il nome del file */
+  assert.match(testo, /scripts\.yaml/);
+});
+
+test('e7: un file GENUINAMENTE assente e il cui conto è a zero dice «0», non «non letto»', async () => {
+  /* Verifica finale sul Task 2 «rifiutare e importare» (settimo giro):
+     misurato prima di questa correzione con node, `{ 'scripts.yaml':
+     'assente' }` e zero script produceva la tessera «Script: non letto — il
+     file non è stato letto», mentre TRE RIGHE PIÙ SOTTO, sulla stessa
+     pagina, l'elenco diceva «scripts.yaml — assente»: due frasi adiacenti
+     che si smentivano. Un file davvero assente non nasconde niente -- non
+     c'è contenuto scritto da poter mancare -- quindi zero script e
+     «assente» sono la STESSA verità detta due volte, non due fatti da
+     riconciliare col «non letto».
+
+     Mutazione che uccide: togliere il confronto con `FILE_GENUINELY_ABSENT`
+     in `behaviorUnavailable` (tornare a marcare «non letto» per QUALUNQUE
+     ragione con conto zero) -- il test torna rosso su `assert.equal(
+     script.valore, '0', ...)` (uscirebbe «non letto»). */
   const comp = Object.assign(casaLetta().comportamento, {
     conteggi: { automazione: 12 },
     file_non_letti: { 'scripts.yaml': 'assente' },
@@ -298,11 +333,14 @@ test('e7: un tipo il cui file non si è letto E il cui conto è a zero dice «no
   const { document, testo } = await rendi(casaLetta({ comportamento: comp }));
   const tessere = tessereDi(document);
   const script = tessere.find((t) => t.etichetta === 'Script');
-  assert.equal(script.valore, 'non letto',
-    'file non letto e conto a zero: «non c’è niente» e «non ho guardato» sono indistinguibili');
-  assert.match(script.delta, /il file non è stato letto/);
-  /* e la ragione resta comunque nell'elenco sotto, con il nome del file */
+  assert.equal(script.valore, '0',
+    'file genuinamente assente: zero script è un fatto noto, non un limite di conoscenza');
+  assert.equal(script.delta, '', 'nessun avviso «non letto» su un fatto che si conosce già');
+  /* la ragione resta comunque nell'elenco diagnostico sotto, coerente col
+     resto della pagina -- non e' questo elenco a doversi zittire, e' la
+     tessera a non doversi contraddire con lui. */
   assert.match(testo, /scripts\.yaml/);
+  assert.match(testo, /assente/);
 });
 
 test('e7: un file non letto NON cancella le voci che HIRIS conosce comunque dallo stato', async () => {

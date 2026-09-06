@@ -46,6 +46,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from .behavior import FILE_GENUINELY_ABSENT
 from .queries import sanitized_memories
 from .topology import (
     PROBLEM_SEVERITY,
@@ -1524,8 +1525,25 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
             f"{n} {entry} nella lettura del comportamento (id duplicati, voci "
             "malformate: vedi /api/home-space per il dettaglio).")
 
-    if unloaded_behavior_files:
-        names = ", ".join(sorted(unloaded_behavior_files))
+    # Verifica finale sul Task 2 «rifiutare e importare» (sesto giro): un
+    # file GENUINAMENTE assente (`behavior.FILE_GENUINELY_ABSENT` -- la
+    # cartella di Home Assistant si raggiunge, il file no) non e' un LIMITE
+    # DI CIO' CHE HIRIS SA -- e' questa sezione stessa a definirsi cosi',
+    # nel docstring del modulo -- perche' non nasconde niente: non c'e'
+    # contenuto scritto da poter mancare. Prima di questa correzione una
+    # casa senza `scripts.yaml` (l'assenza piu' comune, non un'eccezione)
+    # mostrava «file di comportamento non letti: scripts.yaml» a OGNI turno,
+    # nel posto piu' letto del prodotto -- il modello leggeva un'ignoranza
+    # che non ha, la direzione INVERSA della legge (dichiarare conoscenza
+    # che manca), ma la stessa mezza verita' che il resto di questa fetta ha
+    # gia' tolto da `search`/`view`. Solo `FOLDER_UNREACHABLE` (la cartella
+    # stessa irraggiungibile) e "illeggibile: ..." restano un limite vero.
+    hidden_behavior_files = {
+        name: reason for name, reason in (unloaded_behavior_files or {}).items()
+        if reason != FILE_GENUINELY_ABSENT
+    }
+    if hidden_behavior_files:
+        names = ", ".join(sorted(hidden_behavior_files))
         notices.append(f"file di comportamento non letti: {names}.")
 
     # `compose()` resta PURA. I nomi dei dispositivi non si vanno a prendere:

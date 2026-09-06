@@ -670,6 +670,32 @@ dimenticanza — misurate, non assunte:
 Nessuna delle due e' bloccata da un lavoro a monte: sono scartate come **scelte**, non rinviate come
 **dipendenze**. Riaprirle richiede una richiesta nuova, non solo tempo libero in uno sprint.
 
+### `non_disponibile` (singolare, su `view`) non e' descritto da nessuna parte
+
+`origine: rilevata nel giro di correzioni del Task 2 di «gli strumenti rifiutano invece di
+indovinare», 06/09/2026` · `nessun documento`
+
+`view` puo' rispondere con la chiave `non_disponibile: True` (singolare, su un'area/entita'/
+dispositivo/automazione/script non trovato quando un registro o un file non e' stato letto per
+intero -- `queries.py::_not_found_detail`/`_view_behavior`) -- ma **nessuna tool description ne'
+nessun documento la spiega al modello**. Il plurale `non_disponibili` (i registri dell'anagrafe
+caduti) e' documentato in piu' punti; questo singolare no, e il modello riceve la chiave senza che
+nessuno gli abbia detto che significa «non ho potuto controllare, potrebbe esistere lo stesso» e non
+«non esiste». Misurato leggendo il codice durante le correzioni sui punti ciechi di `search`/`view`
+(Task 2): non e' un difetto di comportamento -- il valore e' corretto -- e' un buco di
+documentazione dello stesso genere che il Task 2 ha appena chiuso per gli altri campi nuovi
+(`nulla_riconosciuto`, `solo_una_parte`, poi tolto).
+
+### 22 entita' in otto domini senza fonte per `supported_features`
+
+`origine: misurata dal Task 3 di «gli strumenti rifiutano invece di indovinare», 06/09/2026` ·
+`nessun documento`
+
+Sulla casa vera, 22 entita' nei domini `siren`, `device_tracker`, `switch`, `todo`, `remote`,
+`calendar`, `conversation`, `alarm_control_panel` non hanno una fonte nota per `supported_features`
+-- misurata dal Task 3, non dimenticata: dichiarata FUORI dal suo perimetro apposta, resta qui come
+appunto per la prossima volta che qualcuno interroga quei domini.
+
 ---
 
 ## Usciti

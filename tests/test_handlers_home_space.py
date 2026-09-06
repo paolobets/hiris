@@ -290,7 +290,15 @@ async def test_api_nucleo_riceve_i_problemi_e_i_file_non_letti_del_comportamento
     """IMPORTANT ⑧: `/api/home-space` espone gia' `problemi`/`file_non_letti` del
     comportamento, ma `compose()` non aveva un parametro per riceverli --
     con un `automations.yaml` malformato, il PERCHE' non arrivava mai al
-    modello attraverso `/api/briefing`."""
+    modello attraverso `/api/briefing`.
+
+    Verifica finale sul Task 2 (sesto giro): usa `"illeggibile: ..."`, non
+    piu' `"assente"` -- un file GENUINAMENTE assente non nasconde niente
+    (nessun contenuto scritto da poter mancare) e da questa correzione in poi
+    non produce piu' l'avviso «file di comportamento non letti» nel nucleo
+    (vedi `test_briefing.py::test_a_genuinely_absent_behavior_file_is_not_a_gap_in_knowledge`
+    per il caso dedicato). Un file ROTTO invece nasconde davvero cio' che c'e'
+    scritto: e' il caso vero per cui questo test esiste."""
     archivio_casa = HomeSpaceStore(str(tmp_path / "casa.db"))
     archivio_casa.replace({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
@@ -301,7 +309,7 @@ async def test_api_nucleo_riceve_i_problemi_e_i_file_non_letti_del_comportamento
         [{"id": "automation.sveglia", "tipo": "automazione", "nome": "Sveglia",
           "corpo": {"trigger": []}, "origine": "file"}],
         problems=["automations.yaml: id 42 usato da 2 voci"],
-        unloaded_files={"scripts.yaml": "assente"},
+        unloaded_files={"scripts.yaml": "illeggibile: yaml non valido"},
     )
     app = web.Application()
     app["home_space_store"] = archivio_casa
