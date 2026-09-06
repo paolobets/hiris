@@ -104,8 +104,9 @@ async def test_calendars_are_read_as_home_assistant_sends_them():
 
     Mutazione: proiettare i calendari su un sottoinsieme che scarta
     `entity_id` -- il test torna rosso su
-    `assert calendar["entity_id"] == "calendar.lavoro"`. Una cancellazione
-    SUL POSTO arrossisce piu' in basso, su
+    `assert calendar["entity_id"] == "calendar.lavoro"`. Un client che
+    aggiungesse una chiave in piu' SUL POSTO (nessuno dei due campi
+    asseriti direttamente cambierebbe) arrossisce piu' in basso, su
     `assert outcome["calendari"] == expected`.
     """
     rows = [{"name": "Casa", "entity_id": "calendar.casa"},
@@ -204,9 +205,10 @@ async def test_calendar_events_are_read_as_home_assistant_sends_them():
     lascerebbe passare verde un client che modifica gli eventi sul posto.
 
     Mutazione: proiettare gli eventi su un sottoinsieme che scarta `uid` --
-    il test torna rosso su `assert event["uid"] == "evt-123"`. Una
-    proiezione che scartasse solo `rrule`, o una cancellazione SUL POSTO,
-    arrossisce piu' in basso su `assert outcome["eventi"] == [expected]`.
+    il test torna rosso su `assert event["uid"] == "evt-123"`. Un client
+    che alterasse `location` SUL POSTO (un campo qui non asserito
+    direttamente) arrossisce piu' in basso su
+    `assert outcome["eventi"] == [expected]`.
     """
     row = _event(summary="Partita di padel", uid="evt-123",
                  recurrence_id="2026-09-05T16:00:00+02:00",
@@ -283,6 +285,28 @@ async def test_calendar_events_rejects_an_invalid_entity_id_before_making_a_requ
     c = _client([])
     outcome = await c.calendar_events("non e' un entity_id",
                                       "2026-09-05T00:00:00+02:00",
+                                      "2026-09-12T00:00:00+02:00")
+    assert "errore" in outcome
+    assert "eventi" not in outcome
+    assert c._session.urls_requested == []
+
+
+@pytest.mark.asyncio
+async def test_calendar_events_never_raises_even_with_a_malformed_window():
+    """Il contratto di questo metodo e' «su guasto torna un errore, mai
+    un'eccezione» -- vale anche per `start`/`end`, non solo per la rete.
+    `quote()` (usato per comporre la query) solleva un `TypeError` su un
+    valore che non e' una stringa ne' `bytes` -- qui il chiamante ha
+    passato un intero -- e quel `TypeError` deve restare dentro il `try`,
+    o il metodo solleverebbe invece di rispondere.
+
+    Mutazione: comporre l'URL (e quindi chiamare `quote(start, ...)`)
+    FUORI dal `try` -- il test torna rosso non su un `AssertionError` ma su
+    un `TypeError` non catturato che esce da `await
+    c.calendar_events(...)`, prima ancora di raggiungere il primo assert.
+    """
+    c = _client([])
+    outcome = await c.calendar_events("calendar.casa", 123,
                                       "2026-09-12T00:00:00+02:00")
     assert "errore" in outcome
     assert "eventi" not in outcome

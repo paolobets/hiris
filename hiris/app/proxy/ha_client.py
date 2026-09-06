@@ -1231,9 +1231,10 @@ class HAClient:
         `summary`, `description`, `location`, `uid`, `recurrence_id`,
         `rrule`), e `_api_event_dict_factory` scrive OGNI campo del
         dataclass incluso quando vale `None` -- non filtra come fa invece
-        `_list_events_dict_factory` (usata da un'altra vista, non da
-        questa): chi consuma questo metodo non deve assumere che una chiave
-        mancante significhi «assente», perche' non manca mai.
+        `_list_events_dict_factory` (usata dal SERVIZIO `calendar.get_events`,
+        funzione `async_get_events_service`, non da questa vista): chi
+        consuma questo metodo non deve assumere che una chiave mancante
+        significhi «assente», perche' non manca mai.
 
         `start`/`end` hanno **una delle due forme, mai entrambe** (stessa
         misura del 06/09/2026, stessa fonte): `{"dateTime":
@@ -1251,6 +1252,18 @@ class HAClient:
         guasto vero, o un calendario rotto e uno senza impegni
         risponderebbero la stessa identica cosa.
 
+        **`summary`, `description` e `location` escono GREZZI, non
+        sanificati.** E' una scelta deliberata e non un'omissione: questo
+        metodo non ha oggi nessun consumatore (arriva nel task successivo,
+        lo strumento della chat), quindi non c'e' oggi una fuga possibile.
+        Ma e' diversa dalla scelta di `logbook()` qui sopra, che sanifica
+        `nome`/`stato`/`messaggio` AL CONFINE proprio perche' un consumatore
+        futuro potrebbe dimenticarsene: un calendario condiviso e' un
+        vettore di testo iniettato quanto un sensore-messaggio (L1-
+        sicurezza.md). **Chi consuma questo metodo per metterlo in un
+        prompt deve passare da `sanitize_ha_free_text` (o equivalente) da
+        solo** -- il client qui non lo fa.
+
         Valida `entity_id` PRIMA di fare rete (stessa guardia di `history()`
         e `logbook()` qui sopra): un identificatore ostile o malformato non
         deve comporre un URL, anche se il percent-encoding qui sotto chiude
@@ -1259,9 +1272,9 @@ class HAClient:
         if not _ENTITY_ID_RE.match(str(entity_id)):
             logger.warning("calendario: entity_id non valido: %r", entity_id)
             return {"errore": _truncate(f"entity_id non valido: {entity_id!r}", 200)}
-        url = (f"{self._base_url}/api/calendars/{quote(entity_id, safe='')}"
-               f"?start={quote(start, safe='')}&end={quote(end, safe='')}")
         try:
+            url = (f"{self._base_url}/api/calendars/{quote(entity_id, safe='')}"
+                   f"?start={quote(start, safe='')}&end={quote(end, safe='')}")
             async with self._session.get(url) as resp:
                 if resp.status != 200:
                     return {"errore": f"Home Assistant ha risposto {resp.status}"}
