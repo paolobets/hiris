@@ -1,13 +1,16 @@
 """«Quali sono i miei prossimi appuntamenti?» -- un evento grezzo del Task 1
 diventa un impegno che una persona legge.
 
-`read_appointment` compone UN evento; `sort_appointments` fonde gli impegni
-di piu' calendari (ciascuno gia' ordinato per conto suo) in un unico elenco
-ordinato -- vedi `hiris/app/home_space/appointments.py` per il perche' di
-ogni scelta, in particolare la trappola della fine esclusiva sui giornalieri
-(misurata sulla casa vera il 06/09/2026) e la legge sulle chiavi che non
-hanno niente da dire.
+`read_appointment` compone UN evento; `sort_appointments` fonde impegni GIA'
+letti di piu' calendari (ciascuno gia' ordinato per conto suo) in un unico
+elenco ordinato -- vedi `hiris/app/home_space/appointments.py` per il perche'
+di ogni scelta, in particolare la trappola della fine esclusiva sui
+giornalieri (misurata sulla casa vera il 06/09/2026) e la legge sulle chiavi
+che non hanno niente da dire.
 """
+from unittest.mock import patch
+
+from hiris.app.home_space import appointments as appointments_module
 from hiris.app.home_space.appointments import read_appointment, sort_appointments
 
 
@@ -42,16 +45,16 @@ def test_an_all_day_event_ends_the_day_before_its_end_date():
     un giorno.
 
     Mutazione: usare `end["date"]` cosi' com'e' -- il test torna rosso su
-    `assert letto["fine"] == "2026-08-30"`.
+    `assert appointment["fine"] == "2026-08-30"`.
     """
-    letto = read_appointment(
+    appointment = read_appointment(
         {"start": {"date": "2026-08-17"}, "end": {"date": "2026-08-31"},
          "summary": "Ferie estive ", "description": None, "location": None,
          "uid": "270019B2", "recurrence_id": None, "rrule": None},
         timezone="Europe/Rome")
-    assert letto["giornaliero"] is True
-    assert letto["inizio"] == "2026-08-17"
-    assert letto["fine"] == "2026-08-30"
+    assert appointment["giornaliero"] is True
+    assert appointment["inizio"] == "2026-08-17"
+    assert appointment["fine"] == "2026-08-30"
 
 
 def test_a_single_day_all_day_event_lasts_exactly_one_day():
@@ -60,12 +63,12 @@ def test_a_single_day_all_day_event_lasts_exactly_one_day():
     devono coincidere.
 
     Mutazione: non sottrarre nessun giorno (`end["date"]` cosi' com'e') --
-    il test torna rosso su `assert letto["fine"] == "2026-08-30"`, che
+    il test torna rosso su `assert appointment["fine"] == "2026-08-30"`, che
     troverebbe invece `"2026-08-31"`.
     """
-    letto = read_appointment(_all_day_event(), timezone="Europe/Rome")
-    assert letto["inizio"] == "2026-08-30"
-    assert letto["fine"] == "2026-08-30"
+    appointment = read_appointment(_all_day_event(), timezone="Europe/Rome")
+    assert appointment["inizio"] == "2026-08-30"
+    assert appointment["fine"] == "2026-08-30"
 
 
 def test_a_timed_event_keeps_its_end_untouched():
@@ -75,33 +78,31 @@ def test_a_timed_event_keeps_its_end_untouched():
     portare il fuso della casa, non solo il giorno giusto.
 
     Mutazione: applicare il -1 anche al ramo a orario -- il test torna rosso
-    su `assert letto["fine"] == "2026-09-05T23:00:00+02:00"`.
+    su `assert appointment["fine"] == "2026-09-05T23:00:00+02:00"`.
     """
-    letto = read_appointment(
+    appointment = read_appointment(
         _timed_event(start={"dateTime": "2026-09-05T20:00:00+00:00"},
                      end={"dateTime": "2026-09-05T21:00:00+00:00"}),
         timezone="Europe/Rome")
-    assert letto["giornaliero"] is False
-    assert letto["inizio"] == "2026-09-05T22:00:00+02:00"
-    assert letto["fine"] == "2026-09-05T23:00:00+02:00"
+    assert appointment["giornaliero"] is False
+    assert appointment["inizio"] == "2026-09-05T22:00:00+02:00"
+    assert appointment["fine"] == "2026-09-05T23:00:00+02:00"
 
 
 def test_a_timed_event_is_rewritten_in_the_home_timezone_not_left_as_is():
     """`home_space_zone` (riusato, non reinventato) decide il fuso: un
-    istante che arriva gia' in un fuso diverso da quello della casa deve
-    uscire riscritto, non lasciato com'e' -- altrimenti il confronto
-    lessicografico di `sort_appointments` fra calendari diversi non
-    reggerebbe (vedi il modulo).
+    istante che arriva in un fuso diverso da quello della casa deve uscire
+    riscritto, non lasciato com'e'.
 
     Mutazione: emettere `start["dateTime"]`/`end["dateTime"]` grezzi senza
     passare da `home_space_zone`/`astimezone` -- il test torna rosso su
-    `assert letto["inizio"] == "2026-09-05T22:00:00+02:00"`, che troverebbe
-    invece la stringa UTC originale.
+    `assert appointment["inizio"] == "2026-09-05T22:00:00+02:00"`, che
+    troverebbe invece la stringa UTC originale.
     """
-    letto = read_appointment(
+    appointment = read_appointment(
         _timed_event(start={"dateTime": "2026-09-05T20:00:00+00:00"}),
         timezone="Europe/Rome")
-    assert letto["inizio"] == "2026-09-05T22:00:00+02:00"
+    assert appointment["inizio"] == "2026-09-05T22:00:00+02:00"
 
 
 def test_an_unrecognized_timezone_falls_back_to_utc_like_home_space_zone_does():
@@ -115,10 +116,53 @@ def test_an_unrecognized_timezone_falls_back_to_utc_like_home_space_zone_does():
     `AssertionError` ma su una `ZoneInfoNotFoundError` non catturata che
     esce da `read_appointment(...)`, prima ancora di raggiungere l'assert.
     """
-    letto = read_appointment(
+    appointment = read_appointment(
         _timed_event(start={"dateTime": "2026-09-05T20:00:00+00:00"}),
         timezone="Fuso/Inventato")
-    assert letto["inizio"] == "2026-09-05T20:00:00+00:00"
+    assert appointment["inizio"] == "2026-09-05T20:00:00+00:00"
+
+
+def test_a_missing_timezone_falls_back_to_utc_too():
+    """`read_appointment(..., timezone=None)` e' un caso VERO, non un
+    capriccio della firma: `ToolDispatcher._timezone()` (`tools.py:2184`)
+    torna proprio `None` finche' il fuso della casa non e' ancora noto.
+    `home_space_zone(None)` ripiega gia' su UTC -- questo modulo non deve
+    inventare un secondo comportamento per `None`.
+
+    Mutazione: assumere `timezone` sempre una stringa (es. chiamare
+    `timezone.strip()` prima di passarla a `home_space_zone`) -- il test
+    torna rosso non su un `AssertionError` ma su un `AttributeError:
+    'NoneType' object has no attribute 'strip'`, uscito da
+    `read_appointment(...)` prima dell'assert.
+    """
+    appointment = read_appointment(
+        _timed_event(start={"dateTime": "2026-09-05T20:00:00+00:00"}),
+        timezone=None)
+    assert appointment["inizio"] == "2026-09-05T20:00:00+00:00"
+
+
+def test_the_timezone_is_resolved_once_per_distinct_name_not_once_per_appointment():
+    """Leggere PIU' impegni con lo STESSO fuso non riconosciuto non deve
+    produrre un avviso per ognuno: `home_space_zone` logga ad OGNI chiamata,
+    e cinque impegni con la stessa configurazione sbagliata produrrebbero
+    cinque avvisi identici per UN unico problema -- il rumore che la legge
+    del prodotto vieta altrove, qui applicata ai log.
+
+    Mutazione: chiamare `home_space_zone(timezone)` direttamente in
+    `read_appointment` invece di passare dalla cache locale
+    (`_cached_zone`) -- il test torna rosso su
+    `assert mocked.call_count == 1`, che con la chiamata diretta
+    troverebbe invece `5` (una per ogni impegno letto).
+    """
+    appointments_module._cached_zone.cache_clear()
+    try:
+        with patch.object(appointments_module, "home_space_zone",
+                           wraps=appointments_module.home_space_zone) as mocked:
+            for _ in range(5):
+                read_appointment(_timed_event(), timezone="Fuso/Contatore-Test")
+            assert mocked.call_count == 1
+    finally:
+        appointments_module._cached_zone.cache_clear()
 
 
 # --------------------------------------------------------------------------
@@ -132,12 +176,12 @@ def test_a_key_with_nothing_to_say_does_not_come_out():
     gia' fanno `mute_da` ed `elenco_incompleto`.
 
     Mutazione: emettere sempre le chiavi -- il test torna rosso su
-    `assert "luogo" not in letto`.
+    `assert "luogo" not in appointment`.
     """
-    letto = read_appointment(_timed_event(location=None, description=None),
-                              timezone="Europe/Rome")
-    assert "luogo" not in letto
-    assert "descrizione" not in letto
+    appointment = read_appointment(_timed_event(location=None, description=None),
+                                    timezone="Europe/Rome")
+    assert "luogo" not in appointment
+    assert "descrizione" not in appointment
 
 
 def test_a_key_with_only_blank_space_to_say_does_not_come_out_either():
@@ -146,11 +190,11 @@ def test_a_key_with_only_blank_space_to_say_does_not_come_out_either():
 
     Mutazione: controllare `is not None` invece del testo rifilato (es. `if
     event.get("location") is not None: result["luogo"] = ...`) -- il test
-    torna rosso su `assert "luogo" not in letto`, che troverebbe invece
-    `letto["luogo"] == "   "`.
+    torna rosso su `assert "luogo" not in appointment`, che troverebbe
+    invece `appointment["luogo"] == "   "`.
     """
-    letto = read_appointment(_timed_event(location="   "), timezone="Europe/Rome")
-    assert "luogo" not in letto
+    appointment = read_appointment(_timed_event(location="   "), timezone="Europe/Rome")
+    assert "luogo" not in appointment
 
 
 def test_a_key_with_something_to_say_does_come_out():
@@ -160,13 +204,13 @@ def test_a_key_with_something_to_say_does_come_out():
 
     Mutazione: non emettere mai `luogo`/`descrizione` (es. per una svista
     nel controllo, tipo `if False:`) -- il test torna rosso su
-    `assert letto["luogo"] == "Circolo Padel"`.
+    `assert appointment["luogo"] == "Circolo Padel"`.
     """
-    letto = read_appointment(
+    appointment = read_appointment(
         _timed_event(location="Circolo Padel", description="Doppio con Marco"),
         timezone="Europe/Rome")
-    assert letto["luogo"] == "Circolo Padel"
-    assert letto["descrizione"] == "Doppio con Marco"
+    assert appointment["luogo"] == "Circolo Padel"
+    assert appointment["descrizione"] == "Doppio con Marco"
 
 
 def test_technical_identifiers_do_not_come_out_of_a_readable_appointment():
@@ -175,15 +219,15 @@ def test_technical_identifiers_do_not_come_out_of_a_readable_appointment():
     `titolo`, `inizio`, `fine`, `giornaliero`, `luogo`, `descrizione`.
 
     Mutazione: propagare anche `uid` nel dizionario letto -- il test torna
-    rosso su `assert "uid" not in letto`.
+    rosso su `assert "uid" not in appointment`.
     """
-    letto = read_appointment(
+    appointment = read_appointment(
         _timed_event(uid="evt-123", recurrence_id="2026-09-05T16:00:00+02:00",
                      rrule="FREQ=WEEKLY"),
         timezone="Europe/Rome")
-    assert "uid" not in letto
-    assert "recurrence_id" not in letto
-    assert "rrule" not in letto
+    assert "uid" not in appointment
+    assert "recurrence_id" not in appointment
+    assert "rrule" not in appointment
 
 
 def test_the_title_is_trimmed_of_stray_whitespace():
@@ -191,66 +235,80 @@ def test_the_title_is_trimmed_of_stray_whitespace():
     ") non e' cio' che una persona scriverebbe leggendolo: si rifila.
 
     Mutazione: usare `event["summary"]` cosi' com'e', senza `.strip()` -- il
-    test torna rosso su `assert letto["titolo"] == "Ferie estive"`, che
+    test torna rosso su `assert appointment["titolo"] == "Ferie estive"`, che
     troverebbe invece lo spazio in coda.
     """
-    letto = read_appointment(_timed_event(summary="Ferie estive "),
-                              timezone="Europe/Rome")
-    assert letto["titolo"] == "Ferie estive"
+    appointment = read_appointment(_timed_event(summary="Ferie estive "),
+                                    timezone="Europe/Rome")
+    assert appointment["titolo"] == "Ferie estive"
 
 
 # --------------------------------------------------------------------------
-# sort_appointments -- fondere, non riordinare un elenco gia' ordinato
+# sort_appointments -- fondere impegni GIA' letti, non riordinare un
+# elenco gia' ordinato
 # --------------------------------------------------------------------------
 
 def test_sort_appointments_merges_two_already_sorted_calendars_into_one_order():
     """La proprieta' che questa funzione esiste per produrre: NON riordina
-    un calendario (arriva gia' ordinato dal Task 1), fonde quelli di PIU'
-    calendari. Un ingresso gia' concatenato in ordine cronologico non
-    distinguerebbe «fonde davvero» da «lascia stare»: qui i due calendari
-    sono concatenati SENZA intrecciarli (A intero, poi B intero), cosi' solo
-    un ordinamento vero produce l'intreccio atteso.
+    un calendario (arriva gia' ordinato dal Task 1, e gia' letto da chi
+    chiama), fonde quelli di PIU' calendari. Un ingresso gia' concatenato in
+    ordine cronologico non distinguerebbe «fonde davvero» da «lascia
+    stare»: qui i due calendari sono concatenati SENZA intrecciarli (A
+    intero, poi B intero), cosi' solo un ordinamento vero produce
+    l'intreccio atteso.
 
-    Mutazione: tornare gli impegni letti senza `sorted(...)` (l'ordine di
-    concatenazione) -- il test torna rosso su
-    `assert titoli == ["A-mattina", "B-mattina", "A-sera", "B-sera"]`, che
+    Mutazione: tornare gli impegni cosi' come arrivano, senza `sorted(...)`
+    (l'ordine di concatenazione) -- il test torna rosso su
+    `assert titles == ["A-mattina", "B-mattina", "A-sera", "B-sera"]`, che
     troverebbe invece l'ordine di concatenazione
     `["A-mattina", "A-sera", "B-mattina", "B-sera"]`.
     """
     calendar_a = [
-        _timed_event(summary="A-mattina",
-                     start={"dateTime": "2026-09-05T08:00:00+02:00"},
-                     end={"dateTime": "2026-09-05T09:00:00+02:00"}),
-        _timed_event(summary="A-sera",
-                     start={"dateTime": "2026-09-05T20:00:00+02:00"},
-                     end={"dateTime": "2026-09-05T21:00:00+02:00"}),
+        read_appointment(
+            _timed_event(summary="A-mattina",
+                         start={"dateTime": "2026-09-05T08:00:00+02:00"},
+                         end={"dateTime": "2026-09-05T09:00:00+02:00"}),
+            timezone="Europe/Rome"),
+        read_appointment(
+            _timed_event(summary="A-sera",
+                         start={"dateTime": "2026-09-05T20:00:00+02:00"},
+                         end={"dateTime": "2026-09-05T21:00:00+02:00"}),
+            timezone="Europe/Rome"),
     ]
     calendar_b = [
-        _timed_event(summary="B-mattina",
-                     start={"dateTime": "2026-09-05T10:00:00+02:00"},
-                     end={"dateTime": "2026-09-05T11:00:00+02:00"}),
-        _timed_event(summary="B-sera",
-                     start={"dateTime": "2026-09-05T22:00:00+02:00"},
-                     end={"dateTime": "2026-09-05T23:00:00+02:00"}),
+        read_appointment(
+            _timed_event(summary="B-mattina",
+                         start={"dateTime": "2026-09-05T10:00:00+02:00"},
+                         end={"dateTime": "2026-09-05T11:00:00+02:00"}),
+            timezone="Europe/Rome"),
+        read_appointment(
+            _timed_event(summary="B-sera",
+                         start={"dateTime": "2026-09-05T22:00:00+02:00"},
+                         end={"dateTime": "2026-09-05T23:00:00+02:00"}),
+            timezone="Europe/Rome"),
     ]
-    fusi = sort_appointments(calendar_a + calendar_b, timezone="Europe/Rome")
-    titoli = [appuntamento["titolo"] for appuntamento in fusi]
-    assert titoli == ["A-mattina", "B-mattina", "A-sera", "B-sera"]
+    merged = sort_appointments(calendar_a + calendar_b)
+    titles = [appointment["titolo"] for appointment in merged]
+    assert titles == ["A-mattina", "B-mattina", "A-sera", "B-sera"]
 
 
-def test_sort_appointments_returns_readable_appointments_not_raw_events():
-    """Chi fonde gli impegni di piu' calendari deve gia' ricevere l'elenco
-    LEGGIBILE (chiavi italiane), non gli eventi grezzi da rileggere uno per
-    uno: e' la composizione che il prossimo strumento (la chat) usera'.
+def test_sort_appointments_only_looks_at_inizio_not_at_a_raw_event():
+    """`sort_appointments` prende impegni GIA' letti, non eventi grezzi da
+    rileggere: non ha bisogno di nessun altro campo che `inizio` per fare
+    il suo lavoro, ed e' per questo che la firma non porta piu' `timezone`
+    (serviva solo perche' prima la funzione leggeva ANCHE, non solo
+    fondeva).
 
-    Mutazione: tornare gli eventi grezzi ordinati invece di passarli per
-    `read_appointment` -- il test torna rosso su
-    `assert fusi[0]["titolo"] == "Solo"`, che su un evento grezzo non
-    troverebbe la chiave `titolo` (KeyError).
+    Mutazione: provare a rileggere l'evento (es. cercare `start`/`end`
+    invece di usare `inizio` gia' scritto) -- il test torna rosso su
+    `assert titles == ["a", "b"]`, con un `KeyError: 'start'` (questi
+    impegni minimi non hanno `start`, solo `inizio` e `titolo`).
     """
-    fusi = sort_appointments([_timed_event(summary="Solo")], timezone="Europe/Rome")
-    assert fusi[0]["titolo"] == "Solo"
-    assert fusi[0]["giornaliero"] is False
+    minimal = [{"titolo": "b", "inizio": "2026-09-05T10:00:00+02:00"},
+               {"titolo": "a", "inizio": "2026-09-05T08:00:00+02:00"}]
+    merged = sort_appointments(minimal)
+    titles = [appointment["titolo"] for appointment in merged]
+    assert titles == ["a", "b"]
 
 
 def test_sort_appointments_places_an_all_day_event_before_a_timed_event_the_same_day():
@@ -260,16 +318,20 @@ def test_sort_appointments_places_an_all_day_event_before_a_timed_event_the_same
     `HAClient.calendar_events`).
 
     Mutazione: ordinare per `titolo` invece che per `inizio` -- il test
-    torna rosso su `assert titoli == ["Giornaliero", "A orario"]`, che con
+    torna rosso su `assert titles == ["Giornaliero", "A orario"]`, che con
     l'ordine alfabetico troverebbe l'inverso.
     """
-    events = [
-        _timed_event(summary="A orario",
-                     start={"dateTime": "2026-09-05T09:00:00+02:00"},
-                     end={"dateTime": "2026-09-05T10:00:00+02:00"}),
-        _all_day_event(summary="Giornaliero",
-                       start={"date": "2026-09-05"}, end={"date": "2026-09-06"}),
+    appointments = [
+        read_appointment(
+            _timed_event(summary="A orario",
+                         start={"dateTime": "2026-09-05T09:00:00+02:00"},
+                         end={"dateTime": "2026-09-05T10:00:00+02:00"}),
+            timezone="Europe/Rome"),
+        read_appointment(
+            _all_day_event(summary="Giornaliero",
+                           start={"date": "2026-09-05"}, end={"date": "2026-09-06"}),
+            timezone="Europe/Rome"),
     ]
-    fusi = sort_appointments(events, timezone="Europe/Rome")
-    titoli = [appuntamento["titolo"] for appuntamento in fusi]
-    assert titoli == ["Giornaliero", "A orario"]
+    merged = sort_appointments(appointments)
+    titles = [appointment["titolo"] for appointment in merged]
+    assert titles == ["Giornaliero", "A orario"]

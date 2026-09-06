@@ -2,10 +2,11 @@
 
 Il Task 1 (`HAClient.calendar_events`, `proxy/ha_client.py`) legge i calendari
 e i loro eventi GREZZI come Home Assistant li manda -- otto chiavi sempre,
-`null` compresi, in ordine cronologico. Questo modulo compone: prende UN
-evento grezzo e lo trasforma in un IMPEGNO leggibile, con le chiavi
+`null` compresi, in ordine cronologico. Questo modulo compone: `read_appointment`
+prende UN evento grezzo e lo trasforma in un IMPEGNO leggibile, con le chiavi
 **italiane** che una risposta puo' mostrare direttamente (`titolo`, `inizio`,
-`fine`, `giornaliero`, `luogo`, `descrizione`).
+`fine`, `giornaliero`, `luogo`, `descrizione`); `sort_appointments` fonde gli
+impegni GIA' letti di uno o piu' calendari in un unico elenco ordinato.
 
 E' PURO: nessuna rete, nessun archivio, niente da scrivere -- la stessa
 scelta di `home_space/queries.py` e per la stessa ragione: e' cio' che lo
@@ -18,30 +19,48 @@ giornaliero ha la FINE ESCLUSIVA (convenzione iCal). «ANNIVERSARIO» va dal
 non assunto: `home-assistant/core`,
 `homeassistant/components/calendar/__init__.py`, sui tag RILASCIATI
 `2024.7.0` (il minimo dichiarato da `hiris/config.yaml:22`) e `2026.9.0` (il
-piu' recente visto finora) -- identico sui due tag. `CalendarEvent.
-__post_init__` corregge un evento giornaliero con `start == end` allungando
-`end` di un giorno esatto (`self.end = self.start + timedelta(days=1)`) per
-dargli una durata di un giorno: un giornaliero di un giorno solo ha percio'
-SEMPRE `end.date == start.date + 1 giorno`, mai uguale. E' la stessa
-semantica di RFC 5545 (`DTEND` esclusivo), incarnata nel modello dati di HA
-stesso, non solo nella spec: sbagliarla sposta OGNI evento giornaliero di un
-giorno, ed e' un errore che una persona nota subito perche' tocca esattamente
-la domanda per cui questo modulo esiste ("fino a quando sono le ferie?").
+piu' recente visto finora) -- identico sui due tag. **La prova diretta e'
+`_get_datetime_local`** (`2024.7.0:436-442`, `2026.9.0:464-470`): una `date`
+nuda diventa `dt_util.start_of_local_day(...)`, cioe' la MEZZANOTTE
+d'inizio di quella data -- percio' `end_datetime_local` di un giornaliero e'
+la mezzanotte d'inizio di `end.date`, non un istante dentro quel giorno.
+Ed e' cosi' che HA stessa smette di considerare "in corso" l'evento: lo
+stato del calendario si spegne li' (`2026.9.0:601`,
+`event.start_datetime_local <= now < event.end_datetime_local`) -- e' un
+comportamento, non solo una correzione isolata. La prova INDIRETTA, che
+conferma la stessa cosa da un altro lato: `CalendarEvent.__post_init__`
+corregge un evento giornaliero con `start == end` allungando `end` di un
+giorno esatto (`self.end = self.start + timedelta(days=1)`) per dargli una
+durata di un giorno -- un giornaliero di un giorno solo ha percio' SEMPRE
+`end.date == start.date + 1 giorno`, mai uguale. Sbagliare questa
+convenzione sposta OGNI evento giornaliero di un giorno, ed e' un errore
+che una persona nota subito perche' tocca esattamente la domanda per cui
+questo modulo esiste ("fino a quando sono le ferie?").
 
 **Per un evento a orario `end.dateTime` e' la fine vera e non si tocca** --
 applicare la correzione anche li' sarebbe il difetto opposto.
 
 **Il fuso e' quello della casa, non UTC**, e non si indovina: arriva come
-parametro. Riusa `home_space_zone` (`historian.py`), che gestisce gia' il
-fuso non riconosciuto con un avviso e il ripiego su UTC -- una seconda
-gestione qui divergerebbe al primo caso strano. Un `dateTime` a orario esce
-dalla vista di HA gia' passato per `dt_util.as_local(...)` (verificato alla
-stessa fonte, `_api_event_dict_factory`), quindi e' gia' nel fuso
-dell'istanza; questo modulo lo riscrive comunque nel fuso della casa
-(`astimezone`) invece di limitarsi a fidarsi -- e' cio' che rende il
-confronto lessicografico di `sort_appointments` qui sotto valido anche
-quando gli impegni arrivano da calendari/integrazioni diverse, non solo da
-uno che HA ha gia' normalizzato per conto suo.
+parametro (`str | None` -- il produttore vero, `ToolDispatcher._timezone()`
+in `home_space/tools.py:2184`, torna `None` quando il fuso non e' ancora
+noto). Riusa `home_space_zone` (`historian.py`), che gestisce gia' il fuso
+non riconosciuto con un avviso e il ripiego su UTC -- una seconda gestione
+qui divergerebbe al primo caso strano.
+
+Un `dateTime` a orario esce dalla vista di HA gia' passato per
+`dt_util.as_local(...)`, e non per un'abitudine di questa o quella
+integrazione: `CalendarEvent.__post_init__` valida OGNI istanza (qualunque
+integrazione l'abbia creata) contro `CALENDAR_EVENT_SCHEMA`, che applica
+`_as_local_timezone("start", "end")` -- verificato alla stessa fonte,
+identico sui due tag. Il fuso locale e' un invariante dello SCHEMA di HA,
+non una scelta di una integrazione in particolare. La riscrittura qui sotto
+(`astimezone`, in `read_appointment`) e' percio' un NO-OP in pratica, non la
+correzione di una divergenza fra calendari che non esiste -- la si tiene
+comunque perche' e' la stessa disciplina che il resto del prodotto applica
+a OGNI istante uscente (`historian.window`, `facts.day_boundaries`): il
+fuso e' dichiarato esplicitamente via `home_space_zone`, non ereditato per
+fiducia da una lettura di HA che questo modulo non riverifica ad ogni
+chiamata.
 
 **Le chiavi che non hanno niente da dire non escono.** Misurato: `description`
 e `location` erano `null` su OGNI evento campionato sulla casa. Un
@@ -51,17 +70,23 @@ che non si sa fare -- stessa disciplina di `elenco_incompleto`, `mute_da` ed
 tutto spazi bianchi non ha niente da dire piu' di un `null`: viene rifilato
 (`strip()`) e trattato allo stesso modo se resta vuoto.
 
-**`sort_appointments` non serve a riordinare UN calendario** -- quello arriva
-gia' ordinato dal Task 1, e riordinarlo sarebbe lavoro sprecato. Serve a
-**fondere gli impegni di PIU' calendari** in un elenco solo: ciascuno arriva
-ordinato per conto suo, ma l'unione di due elenchi ordinati non e' ordinata
-da sola. E' per questo che chiede `timezone`: legge ogni evento grezzo con
-`read_appointment` (che normalizza il fuso, sopra) prima di fonderli, cosi'
-il confronto per `inizio` resta valido anche a cavallo di calendari diversi.
+**`sort_appointments` prende impegni GIA' letti**, non eventi grezzi: legge
+calendario per calendario spetta a chi chiama (il Task 3), perche' e' li'
+che si puo' nominare un calendario che non risponde -- fondere prima
+avrebbe perso quell'informazione. Il fuso non serve piu' su questa firma:
+serviva solo perche' prima la funzione faceva due cose (leggere E fondere),
+ed era gia' inerte per l'ORDINAMENTO (che lavora su `inizio`, stringa gia'
+scritta) mentre contava solo per la LETTURA -- che ora e' compito di chi
+chiama, una volta per calendario, prima di passare qui il risultato.
+`sort_appointments` non serve a riordinare UN calendario, che arriva gia'
+ordinato dal Task 1: serve a fondere gli impegni di PIU' calendari in un
+elenco solo, perche' l'unione di due elenchi ordinati non e' ordinata da
+sola.
 """
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from functools import cache
 
 from hiris.app.home_space.historian import home_space_zone
 
@@ -75,7 +100,24 @@ def _in_home_zone(raw: str, zone) -> str:
     return datetime.fromisoformat(raw).astimezone(zone).isoformat()
 
 
-def read_appointment(event: dict, *, timezone: str) -> dict:
+@cache
+def _cached_zone(timezone: str | None):
+    """`home_space_zone(timezone)`, risolta una volta sola per ogni fuso
+    DISTINTO -- delega, non reimplementa (`home_space_zone` resta l'unico
+    posto che sa come leggere un fuso, condiviso con l'istoriografo).
+
+    Leggere N impegni con lo STESSO `timezone` chiamerebbe altrimenti
+    `home_space_zone` N volte: quando il fuso non e' riconosciuto,
+    `home_space_zone` logga un avviso ad OGNI chiamata, e N impegni
+    produrrebbero N avvisi identici per UN'UNICA configurazione sbagliata --
+    il rumore su una cosa sola ripetuta che seppellisce cio' che conta, la
+    stessa legge che il prodotto applica altrove. La cache e' per nome (una
+    stringa, o `None`): due fusi diversi restano due risoluzioni distinte.
+    """
+    return home_space_zone(timezone)
+
+
+def read_appointment(event: dict, *, timezone: str | None) -> dict:
     """UN evento grezzo del Task 1 -> UN impegno leggibile.
 
     Chiavi italiane, sempre le stesse due (`titolo`, `giornaliero`) piu'
@@ -102,7 +144,7 @@ def read_appointment(event: dict, *, timezone: str) -> dict:
         last_day = date.fromisoformat(end["date"]) - timedelta(days=1)
         result["fine"] = last_day.isoformat()
     else:
-        zone = home_space_zone(timezone)
+        zone = _cached_zone(timezone)
         result["inizio"] = _in_home_zone(start["dateTime"], zone)
         result["fine"] = _in_home_zone(end["dateTime"], zone)
 
@@ -115,21 +157,26 @@ def read_appointment(event: dict, *, timezone: str) -> dict:
     return result
 
 
-def sort_appointments(events: list[dict], *, timezone: str) -> list[dict]:
-    """Gli eventi grezzi di UNO O PIU' calendari -> un unico elenco di
-    impegni leggibili, ordinato per `inizio`.
+def sort_appointments(appointments: list[dict]) -> list[dict]:
+    """Impegni GIA' letti (uno o piu' calendari, ciascuno gia' ordinato dal
+    Task 1 e gia' passato per `read_appointment`) -> un unico elenco fuso,
+    ordinato per `inizio`.
 
-    Non riordina un calendario gia' ordinato (lo fa gia' il Task 1): fonde.
-    Ogni calendario arriva ordinato per conto suo, ma concatenare due elenchi
-    ordinati non produce un elenco ordinato -- serve un ordinamento vero
-    sull'unione, che e' esattamente cio' che c'e' qui.
+    Non riordina un calendario gia' ordinato: fonde. Ogni calendario arriva
+    ordinato per conto suo, ma concatenare due elenchi ordinati non produce
+    un elenco ordinato -- serve un ordinamento vero sull'unione, che e'
+    esattamente cio' che c'e' qui.
 
-    L'ordinamento e' sull'`inizio` GIA' letto (stringa ISO nel fuso della
-    casa per un orario, data nuda per un giornaliero): lessicografico basta,
-    stessa proprieta' di `HAClient.calendar_events` (una data e' prefisso di
-    ogni orario dello stesso giorno) -- e regge qui a maggior ragione,
-    perche' `read_appointment` ha gia' riportato ogni orario nello stesso
-    fuso, cosa che il singolo client non garantisce fra calendari diversi.
+    L'ordinamento e' lessicografico sull'`inizio` GIA' letto (stringa ISO
+    con offset per un orario, data nuda per un giornaliero): basta, stessa
+    proprieta' di `HAClient.calendar_events` (una data e' prefisso di ogni
+    orario dello stesso giorno). **La stessa eccezione dichiarata li' resta
+    IDENTICA qui, non migliora**: l'ultima domenica di ottobre, fra le 2 e
+    le 3, `02:30+02:00` esce dopo `02:00+01:00` nel confronto
+    lessicografico, perche' si confronta l'ora SCRITTA e non l'istante. Due
+    impegni entrambi dentro quell'ora possono uscire invertiti; e'
+    dichiarato, non corretto -- stessa scelta di `calendar_events`, per la
+    stessa ragione (parsare ogni istante per un'ora l'anno costerebbe piu'
+    di quanto valga).
     """
-    appointments = [read_appointment(event, timezone=timezone) for event in events]
     return sorted(appointments, key=lambda appointment: appointment["inizio"])
