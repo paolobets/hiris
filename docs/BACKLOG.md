@@ -686,15 +686,26 @@ nessuno gli abbia detto che significa «non ho potuto controllare, potrebbe esis
 documentazione dello stesso genere che il Task 2 ha appena chiuso per gli altri campi nuovi
 (`nulla_riconosciuto`, `solo_una_parte`, poi tolto).
 
-### 22 entita' in otto domini senza fonte per `supported_features`
+### 8 entita' in due domini senza fonte per `supported_features`
 
-`origine: misurata dal Task 3 di «gli strumenti rifiutano invece di indovinare», 06/09/2026` ·
-`nessun documento`
+`origine: misurata dal Task 3 di «gli strumenti rifiutano invece di indovinare», 06/09/2026 --
+aggiornata lo stesso giorno dopo una review indipendente` · `nessun documento`
 
-Sulla casa vera, 22 entita' nei domini `siren`, `device_tracker`, `switch`, `todo`, `remote`,
-`calendar`, `conversation`, `alarm_control_panel` non hanno una fonte nota per `supported_features`
--- misurata dal Task 3, non dimenticata: dichiarata FUORI dal suo perimetro apposta, resta qui come
-appunto per la prossima volta che qualcuno interroga quei domini.
+**Aggiornamento (stessa giornata):** la voce nasceva come "22 entita' in otto domini senza fonte":
+una review indipendente ha misurato che CINQUE di quegli otto domini (`siren` 4, `todo` 4,
+`alarm_control_panel` 1, `calendar` 2, `remote` 2 -- 13 entita') hanno in realta' una fonte stabile
+e identica sui due tag (`2024.7.0`/`2026.9.1`) -- lo stesso lavoro delle altre tabelle, semplicemente
+non ancora fatto. Verificate e chiuse nella stessa fetta (`topology._FEATURE_NAMES`). Un sesto,
+`conversation` (1 entita'), e' un caso diverso -- il suo `ConversationEntityFeature` non esiste a
+`2024.7.0` e nasce prima di `2026.9.1` -- chiuso comunque, la nascita di un bit dentro la finestra
+supportata non e' un problema per la decodifica (vedi il commento in `topology.py`).
+
+Restano FUORI, confermato su entrambi i tag (nessuna traccia di un `EntityFeature`, non "non ancora
+controllato"): `device_tracker` (4 entita') e `switch` (4 entita'). Diversamente dai sei chiusi
+sopra, per questi due non c'e' "lo stesso lavoro delle altre" da fare -- il dominio non ha bit da
+decodificare. Restano qui non perche' ci sia lavoro pendente, ma perche' un lettore futuro che si
+chiede "perche' `switch` non ha capacita'?" trovi la risposta gia' misurata invece di doverla
+rimisurare.
 
 ---
 

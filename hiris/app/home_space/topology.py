@@ -587,14 +587,48 @@ def translate_state(value, device_class: str | None = None, domain: str | None =
 # bit da decodificare, quindi resta fuori per MANCANZA DI FONTE, non per
 # dimenticanza. Lo stesso vale per `automation`.
 #
-# COPERTURA IN NUMERI (misurata il 06/09/2026, non a parole): 143 entita'
-# su 181 (79%) sono in un dominio con tabella qui sotto (update 53 + light
-# 50 + climate 8 + media_player 7 + valve 4 + weather 1, piu' i tre a zero
-# = 143); le restanti 38 (button 16, siren 4, device_tracker 4, switch 4,
-# todo 4, remote 2, calendar 2, conversation 1, alarm_control_panel 1) sono
-# in domini senza tabella verificata e restano dichiaratamente FUORI --
-# non un errore, un debito dichiarato (non ancora in `docs/BACKLOG.md`:
-# segnalato nel rapporto di questa fetta, non ancora una voce li').
+# SECONDA CORREZIONE, stesso giorno: la review indipendente ha confermato le
+# dodici tabelle di allora bit per bit (fonte scaricata e confrontata contro
+# ogni `*EntityFeature`, zero voci in tabella assenti dalla fonte e zero
+# voci di fonte assenti dalla tabella) e ha misurato che CINQUE degli otto
+# domini rimasti fuori hanno in realta' una fonte stabile e identica sui due
+# tag -- lo stesso lavoro delle altre, semplicemente non ancora fatto:
+# `siren`, `todo`, `alarm_control_panel`, `calendar`, `remote`. Verificate
+# qui e aggiunte. Un sesto, `conversation`, e' un caso NUOVO e diverso: il
+# suo `ConversationEntityFeature` non esiste affatto a `2024.7.0` (nessuna
+# classe, verificato su `const.py`) e NASCE prima di `2026.9.1` (`CONTROL =
+# 1`) -- non rimosso, non rinominato, NATO dentro la finestra supportata.
+# Aggiunto comunque, con la stessa logica dei bit aggiunti piu' sotto: su
+# una casa ferma a `2024.7.0` quell'entita' non dichiarerebbe mai
+# `supported_features` per cominciare (la property di base torna `None`
+# finche' l'integrazione non imposta il bit), quindi non c'e' nessun valore
+# vecchio con cui `CONTROL=1` possa confliggere.
+#
+# Restano fuori per MANCANZA DI FONTE (verificato su entrambi i tag,
+# `__init__.py` e `const.py`, nessuna traccia di un `EntityFeature`):
+# `button`, `device_tracker`, `switch` -- e `automation`, gia' citato sopra.
+#
+# COPERTURA IN NUMERI (misurata il 06/09/2026, non a parole -- e non lo
+# stesso numero delle "capacita' dette": vedi sotto). 157 entita' su 181
+# (87%) sono in un dominio con tabella qui sotto: update 53 + light 50 +
+# notify 11 + camera 9 + climate 8 + media_player 7 + valve 4 + siren 4 +
+# todo 4 + remote 2 + calendar 2 + conversation 1 + alarm_control_panel 1 +
+# weather 1 = 157, piu' i quattro a zero (`cover`/`fan`/`water_heater`/
+# `vacuum`) che non aggiungono nulla al numeratore. Le restanti 24 (`button`
+# 16, `device_tracker` 4, `switch` 4) sono in domini senza tabella
+# verificata e restano dichiaratamente FUORI -- un debito dichiarato,
+# tracciato in `docs/BACKLOG.md` ("22 entita'..." -> aggiornata a questa
+# fetta).
+#
+# QUESTO NUMERO NON E' "quante dicono qualcosa": fra le entita' in un
+# dominio con tabella, una parte ha `supported_features == 0` (nessun bit
+# acceso -- l'integrazione dichiara il campo ma non attiva nessuna
+# capacita'), e per quelle `decoded_capabilities` torna `[]` cosi' come deve
+# (vedi la legge sotto: una chiave senza niente da dire non esce). "Dominio
+# coperto" e "capacita' dette" sono due conteggi diversi, e non si scambiano
+# -- misurare solo il primo e chiamarlo "capacita' su questa casa" sarebbe
+# di nuovo la stessa confusione fra dichiarato e vero che questo sprint
+# combatte altrove.
 #
 # Due bit sono ESCLUSI di proposito, perche' il sorgente mostra che il loro
 # significato NON regge per l'intera finestra supportata -- rimossi fra i
@@ -677,6 +711,31 @@ _FEATURE_NAMES: dict[str, dict[int, str]] = {
         1: "previsioni_giornaliere", 2: "previsioni_orarie",
         4: "previsioni_due_volte_al_giorno",
     },
+    # I cinque domini della seconda correzione: fonte stabile e identica sui
+    # due tag, stesso lavoro delle otto tabelle sopra.
+    "siren": {  # 4/181
+        1: "accensione", 2: "spegnimento", 4: "toni", 8: "volume", 16: "durata",
+    },
+    "todo": {  # 4/181
+        1: "crea_elemento", 2: "elimina_elemento", 4: "aggiorna_elemento",
+        8: "sposta_elemento", 16: "scadenza_data", 32: "scadenza_data_ora",
+        64: "descrizione_elemento",
+    },
+    "alarm_control_panel": {  # 1/181
+        1: "armato_in_casa", 2: "armato_fuori_casa", 4: "armato_notte",
+        8: "allarme", 16: "armato_bypass", 32: "armato_vacanza",
+    },
+    "calendar": {  # 2/181
+        1: "crea_evento", 2: "elimina_evento", 4: "aggiorna_evento",
+    },
+    "remote": {  # 2/181
+        1: "apprendimento_comando", 2: "elimina_comando", 4: "attivita",
+    },
+    # `conversation`: caso NUOVO, non nella misura degli otto domini fuori --
+    # `ConversationEntityFeature` non esiste a `2024.7.0`, nasce prima di
+    # `2026.9.1` (`CONTROL = 1`). Vedi il commento sopra `_FEATURE_NAMES` per
+    # il perche' e' comunque sicuro includerlo.
+    "conversation": {1: "controllo"},  # 1/181
 }
 
 
@@ -695,7 +754,12 @@ def decoded_capabilities(domain: str, supported_features) -> list[str]:
     di quale versione del sorgente e' stata letta per prima.
     """
     table = _FEATURE_NAMES.get(domain)
-    if not table or not isinstance(supported_features, int):
+    # `bool` e' una sottoclasse di `int`: senza l'esclusione, `True`/`False`
+    # passerebbero il controllo e `1 & True` non solleverebbe -- stessa
+    # guardia di `entity_cache._to_minimal`, qui per difesa in profondita'
+    # (questa funzione e' pubblica, non solo raggiunta da li').
+    if (not table or not isinstance(supported_features, int)
+            or isinstance(supported_features, bool)):
         return []
     return [name for bit, name in sorted(table.items()) if supported_features & bit]
 

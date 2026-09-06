@@ -236,7 +236,12 @@ def _to_minimal(raw: dict) -> dict:
     # quando c'e' costa zero; non significa che HIRIS fondi su questo campo
     # la certezza del dato in generale -- su questa casa non e' mai arrivato.
     supported_features = attrs.get("supported_features")
-    if isinstance(supported_features, int):
+    # `bool` e' una sottoclasse di `int` in Python (`isinstance(True, int)`
+    # torna vero): senza l'esclusione, un'integrazione che manda
+    # `supported_features: true/false` fuori standard passerebbe come se
+    # fosse un bitmask valido, e `1 & True` non solleva -- decodificherebbe
+    # in silenzio un valore che non e' mai stato un intero di bit.
+    if isinstance(supported_features, int) and not isinstance(supported_features, bool):
         extra["supported_features"] = supported_features
     if attrs.get("assumed_state"):
         extra["assumed_state"] = True

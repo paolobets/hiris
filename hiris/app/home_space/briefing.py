@@ -1498,10 +1498,14 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
                 and not e.get("disabilitata")]
     if service:
         n = len(service)
-        entry = _plural(n, "entita' di servizio (config/diagnostic)",
-                             "entita' di servizio (config/diagnostic)")
+        # NON `_plural()`: "entita' di servizio" e' invariante al plurale in
+        # italiano (come "entita' nascoste" sopra usa `_plural` perche'
+        # "nascosta"/"nascoste" CAMBIANO -- qui le due forme sarebbero
+        # identiche, e chiamare `_plural` con lo stesso testo due volte e'
+        # un giro a vuoto che nasconde perche' non serve).
         notices.append(
-            f"{n} {entry} in Home Assistant: non entrano in «Notevole adesso» "
+            f"{n} entita' di servizio (config/diagnostic) in Home Assistant: "
+            "non entrano in «Notevole adesso» "
             "perche' l'integrazione le marca cosi', ma esistono e `view` le "
             "riporta se gliele chiedi.")
 

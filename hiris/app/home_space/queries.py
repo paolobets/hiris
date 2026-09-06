@@ -262,6 +262,22 @@ def _find_area(floors: list[dict], reference) -> dict | None:
     return None
 
 
+# Chiavi che `entity_cache._to_minimal` mette nello STESSO dizionario grezzo
+# di `options` per ragioni di trasporto (arrivano dalla stessa proiezione,
+# dominio-agnostiche) ma che hanno gia' una porta propria, DECODIFICATA:
+# `supported_features` -> `capacita'` (`decoded_capabilities`, sotto),
+# `assumed_state` -> `stato_presunto`. Uscire ANCHE dentro il dizionario
+# grezzo di `_view_entity` (`attributi`) le farebbe uscire due volte -- un
+# numero senza significato per chi non ha una tabella (`supported_features:
+# 27` su un sensore), o un doppione per chi ce l'ha (`capacita': [...]` E
+# `attributi: {"supported_features": 36}` per la stessa cosa). Misurato in
+# produzione dalla review indipendente di questa fetta: la catena vera
+# (`_to_minimal` -> `live_mirror` -> `guarda`) lo faceva davvero, e nessuna
+# prova se ne accorgeva perche' tutte costruivano `reported_attributes` a
+# mano, saltando `_to_minimal`.
+_RAW_ATTRIBUTES_WITH_THEIR_OWN_DOOR = frozenset({"supported_features", "assumed_state"})
+
+
 def _enrich_entity(entity_detail: dict, entry: dict,
                         fallback_names: dict[str, str] | None,
                         reported_units: dict[str, str] | None = None,
@@ -680,9 +696,24 @@ def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
     # comunque `readable_state` ovunque, dentro `_enrich_entity`: la
     # differenza qui e' solo se il resto degli attributi grezzi (luminosita',
     # posizione, titolo del brano...) esce come chiave a se'.
+    # `supported_features`/`assumed_state` NON escono da qui: vivono nello
+    # stesso dizionario grezzo per una ragione di trasporto (arrivano dalla
+    # stessa proiezione, `entity_cache._to_minimal`), ma hanno gia' una
+    # porta propria e DECODIFICATA -- `capacita'`/`stato_presunto`, poche
+    # righe sopra dentro `_enrich_entity`. Lasciarli passare anche QUI
+    # sarebbe farli uscire due volte: un numero grezzo (`supported_features:
+    # 27` su un sensore senza tabella, `supported_features: 0` su
+    # un'entita' che non accende nessun bit) accanto alla stessa cosa gia'
+    # detta in parole -- rumore nel primo caso, doppione nel secondo. Vedi
+    # `_RAW_ATTRIBUTES_WITH_THEIR_OWN_DOOR` per la lista di chi ha gia' un
+    # posto e non deve ripetersi qui. `options` invece resta: e' l'UNICA
+    # porta da cui arriva a chi compone, nessun altro lettore la porta.
     attributes = (reported_attributes or {}).get(entity["id"])
     if attributes:
-        detail["attributi"] = attributes
+        raw = {k: v for k, v in attributes.items()
+               if k not in _RAW_ATTRIBUTES_WITH_THEIR_OWN_DOOR}
+        if raw:
+            detail["attributi"] = raw
     return detail
 
 

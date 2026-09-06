@@ -172,6 +172,22 @@ def test_to_minimal_has_no_supported_features_key_when_absent():
     assert "supported_features" not in result.get("attributes", {})
 
 
+def test_to_minimal_rejects_a_boolean_supported_features():
+    """`bool` e' una sottoclasse di `int` in Python: senza l'esclusione
+    esplicita, `supported_features: true` (un'integrazione fuori standard)
+    passerebbe il controllo `isinstance(x, int)` e verrebbe trattato come
+    un bitmask valido -- `1 & True` non solleva nemmeno, decodificherebbe
+    in silenzio un valore che non e' mai stato un intero di bit.
+
+    Mutazione: togliere `and not isinstance(supported_features, bool)` --
+    il test torna rosso su
+    `assert "supported_features" not in result.get("attributes", {})`."""
+    raw = {"entity_id": "light.soggiorno", "state": "on",
+           "attributes": {"supported_features": True}}
+    result = _to_minimal(raw)
+    assert "supported_features" not in result.get("attributes", {})
+
+
 def test_to_minimal_keeps_assumed_state_only_when_true():
     """Home Assistant manda questa chiave SOLO quando vale `True`
     (`helpers/entity.py::Entity.state_attributes`, verificato sui tag
@@ -181,12 +197,12 @@ def test_to_minimal_keeps_assumed_state_only_when_true():
     anche `False`/assente) -- il test torna rosso su
     `assert "assumed_state" not in result.get("attributes", {})` per il caso
     assente."""
-    presente = _to_minimal({"entity_id": "cover.tapparella", "state": "open",
-                             "attributes": {"assumed_state": True}})
-    assente = _to_minimal({"entity_id": "cover.tapparella", "state": "open",
-                            "attributes": {}})
-    assert presente["attributes"]["assumed_state"] is True
-    assert "assumed_state" not in assente.get("attributes", {})
+    with_assumed_state = _to_minimal({"entity_id": "cover.tapparella", "state": "open",
+                                       "attributes": {"assumed_state": True}})
+    without_assumed_state = _to_minimal({"entity_id": "cover.tapparella", "state": "open",
+                                          "attributes": {}})
+    assert with_assumed_state["attributes"]["assumed_state"] is True
+    assert "assumed_state" not in without_assumed_state.get("attributes", {})
 
 
 def test_to_minimal_keeps_options_sanitized():

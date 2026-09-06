@@ -66,6 +66,20 @@ def test_decoded_capabilities_ignores_a_non_integer_value():
     assert decoded_capabilities("light", "32") == []
 
 
+def test_decoded_capabilities_rejects_a_boolean():
+    """`bool` e' una sottoclasse di `int`: `True & 1` fa `1` (non solleva) --
+    su un dominio la cui tabella ha proprio il bit 1 (`climate`), senza la
+    guardia esplicita `True` decodificherebbe come se fosse un bitmask
+    valido con solo quel bit acceso.
+
+    Mutazione: togliere `or isinstance(supported_features, bool)` dalla
+    guardia -- il test torna rosso su
+    `assert decoded_capabilities("climate", True) == []` (tornerebbe
+    `["temperatura_target"]`)."""
+    assert decoded_capabilities("climate", True) == []
+    assert decoded_capabilities("climate", False) == []
+
+
 def test_decoded_capabilities_does_not_decode_the_excluded_climate_bit():
     """`ClimateEntityFeature.AUX_HEAT` valeva 64 a `2024.7.0` -- rimosso dal
     sorgente a `2026.9.1` (`components/climate/const.py`, nessuna delle due

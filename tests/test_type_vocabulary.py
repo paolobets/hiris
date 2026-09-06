@@ -151,7 +151,7 @@ def test_un_entita_config_non_entra():
     assert "Ripeti segnale" not in sezione
 
 
-def test_le_entita_di_servizio_si_contano_anche_se_non_si_annunciano():
+def test_service_entities_are_counted_even_when_not_announced():
     """Task 3 di «rifiutare e importare» (§7①): `entity_category` era gia'
     letto (`store.py:385`, e da questa stessa fetta anche da `_enrich_entity`,
     `queries.py`) ma nessun lettore lo metteva DAVANTI -- il digesto le
@@ -177,7 +177,7 @@ def test_le_entita_di_servizio_si_contano_anche_se_non_si_annunciano():
         "costerebbe una chiamata a `view` per ognuna")
 
 
-def test_senza_entita_di_servizio_non_si_dice_niente():
+def test_without_service_entities_nothing_is_said():
     """Un avviso che compare sempre non e' un avviso -- stessa lezione delle
     nascoste, stesso file."""
     assert "servizio" not in _sezione_lacune(

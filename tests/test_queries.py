@@ -1450,10 +1450,10 @@ def test_supported_features_reaches_who_composes():
     Assistant sui tag `2024.7.0` e `2026.9.1` (`topology._FEATURE_NAMES`).
 
     Mutazione: non proiettarlo -- il test torna rosso su
-    `assert vista["capacita"]` (`KeyError: 'capacita'`)."""
-    vista = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "entita", "light.cucina_1",
-                  reported_attributes={"light.cucina_1": {"supported_features": 32}})
-    assert vista["capacita"] == ["transizione"]
+    `assert detail["capacita"]` (`KeyError: 'capacita'`)."""
+    detail = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "entita", "light.cucina_1",
+                   reported_attributes={"light.cucina_1": {"supported_features": 32}})
+    assert detail["capacita"] == ["transizione"]
 
 
 def test_a_missing_metadata_does_not_come_out():
@@ -1463,9 +1463,9 @@ def test_a_missing_metadata_does_not_come_out():
     disciplina di `mute_da`/`elenco_incompleto`.
 
     Mutazione: emettere sempre la chiave -- il test torna rosso su
-    `assert "capacita" not in vista`."""
-    vista = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "entita", "light.cucina_2")
-    assert "capacita" not in vista
+    `assert "capacita" not in detail`."""
+    detail = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "entita", "light.cucina_2")
+    assert "capacita" not in detail
 
 
 def test_a_domain_without_a_verified_source_does_not_get_a_guess():
@@ -1477,10 +1477,10 @@ def test_a_domain_without_a_verified_source_does_not_get_a_guess():
 
     Mutazione: un ripiego che decodifica con la tabella di un altro dominio
     quando quello vero manca -- il test torna rosso su
-    `assert "capacita" not in vista`."""
-    vista = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "entita", "sensor.cucina_t",
-                  reported_attributes={"sensor.cucina_t": {"supported_features": 32}})
-    assert "capacita" not in vista
+    `assert "capacita" not in detail`."""
+    detail = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "entita", "sensor.cucina_t",
+                   reported_attributes={"sensor.cucina_t": {"supported_features": 32}})
+    assert "capacita" not in detail
 
 
 def test_assumed_state_is_read_when_home_assistant_sends_it():
@@ -1492,11 +1492,11 @@ def test_assumed_state_is_read_when_home_assistant_sends_it():
     certezza del dato in generale: su questa casa non e' mai arrivato.
 
     Mutazione: non leggere `assumed_state` dagli attributi vivi -- il test
-    torna rosso su `assert vista["stato_presunto"] is True`
+    torna rosso su `assert detail["stato_presunto"] is True`
     (`KeyError: 'stato_presunto'`)."""
-    vista = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "entita", "light.cucina_1",
-                  reported_attributes={"light.cucina_1": {"assumed_state": True}})
-    assert vista["stato_presunto"] is True
+    detail = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "entita", "light.cucina_1",
+                   reported_attributes={"light.cucina_1": {"assumed_state": True}})
+    assert detail["stato_presunto"] is True
 
 
 def test_assumed_state_absent_does_not_come_out():
@@ -1505,6 +1505,6 @@ def test_assumed_state_absent_does_not_come_out():
     `stato_presunto: false` su ogni entita' sarebbe rumore.
 
     Mutazione: scrivere sempre `stato_presunto` (anche `False`) -- il test
-    torna rosso su `assert "stato_presunto" not in vista`."""
-    vista = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "entita", "light.cucina_2")
-    assert "stato_presunto" not in vista
+    torna rosso su `assert "stato_presunto" not in detail`."""
+    detail = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "entita", "light.cucina_2")
+    assert "stato_presunto" not in detail
