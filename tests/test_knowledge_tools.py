@@ -431,10 +431,15 @@ async def test_a_required_argument_present_but_null_is_missing_too(archivio_casa
 
     Mutazione: in `_bad_arguments`, tornare a
     `field not in arguments` senza `or arguments[field] is None`.
-    Verificato eseguendo: il test torna rosso su
-    `assert "riferimento" in result["errore"]` per ciascuno dei tre nomi,
-    perche' `{"riferimento": None}` supererebbe il controllo (la chiave
-    c'e') e la chiamata raggiungerebbe il gestore vero.
+    Verificato eseguendo, nome per nome, perche' i tre NON arrossiscono
+    nello stesso punto: `view` e `fetch` cadono su `assert "errore" in
+    result` -- non producono affatto un errore, tornano una risposta
+    PLAUSIBILE E SBAGLIATA (`{"esiste": False, ...}` e `{"ricordi": []}`) --
+    mentre `related` arriva fino a `assert "riferimento" in
+    result["errore"]`. Il ciclo si ferma al primo, quindi la mutazione
+    uccide comunque la prova; ma i due rossi sono di specie diversa, ed e'
+    proprio la risposta plausibile a dimostrare che quelle guardie erano
+    VIVE e non morte.
     """
     d = ToolDispatcher(archivio_casa, memoria, ha=object())
     for name, arguments in (
