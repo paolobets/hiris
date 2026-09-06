@@ -68,7 +68,13 @@ async def test_ogni_strumento_del_catalogo_ha_il_proprio_gestore():
             "esiste sul dispatcher")
         marcatore = {"marcato": nome}
         setattr(d, attributo, lambda argomenti, _m=marcatore: _m)
-        esito = await d.dispatch(nome, {})
+        # Task 1 di «rifiutare e importare» (§6b): `dispatch()` ora rifiuta
+        # PRIMA di chiamare il gestore quando un obbligatorio manca -- senza
+        # placeholder per ognuno, questo test non arriverebbe mai al gestore
+        # finto per gli undici strumenti che ne dichiarano almeno uno, e
+        # fallirebbe per una ragione estranea al cablaggio che vuole provare.
+        obbligatori = definizione["input_schema"].get("required", [])
+        esito = await d.dispatch(nome, {campo: "x" for campo in obbligatori})
         assert esito == marcatore, (
             f"«{nome}» non ha chiamato `self.{attributo}`: il dispatcher lo "
             "lega a un gestore diverso da quello atteso")
@@ -128,6 +134,29 @@ async def test_senza_canale_ha_i_due_strumenti_dichiarano_invece_di_sollevare():
 async def test_andamento_pretende_un_entita():
     d = ToolDispatcher(None, None, ha=object())
     esito = await d.dispatch("trend", {"ore": 24})
+    assert "errore" in esito and "entita" in esito["errore"]
+
+
+@pytest.mark.asyncio
+async def test_andamento_rifiuta_un_entita_presente_ma_vuoto():
+    """`entita` PRESENTE ma vuota (`""`), non assente: `dispatch()` verifica
+    solo la PRESENZA della chiave (Task 1 di «rifiutare e importare», §6b,
+    `_bad_arguments`, da `TREND_TOOL_DEF["input_schema"]["required"]`) --
+    una stringa vuota supera quel controllo tale e quale, e resta SOLO il
+    controllo del gestore stesso a fermarla prima che raggiunga
+    `historian.trend()` con un identificatore vuoto.
+
+    Mutazione: togliere `if not isinstance(entity, str) or not
+    entity.strip():` da `_trend`. Verificato eseguendo: senza quel
+    controllo `entity = "".strip()` non solleva (e' comunque una stringa
+    vera), e la chiamata prosegue fino a chiamare un metodo su `ha=object()`
+    (che non ne ha nessuno) -- la rete di sicurezza finale di `dispatch()`
+    trasforma quel guasto in un `errore` generico che pero' non nomina
+    «entita»: l'assert dedicato ad essa arrossisce
+    (`AssertionError` su `assert "errore" in esito and "entita" in
+    esito["errore"]`)."""
+    d = ToolDispatcher(None, None, ha=object())
+    esito = await d.dispatch("trend", {"entita": "", "ore": 24})
     assert "errore" in esito and "entita" in esito["errore"]
 
 

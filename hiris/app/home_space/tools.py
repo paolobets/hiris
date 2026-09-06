@@ -1307,6 +1307,63 @@ KNOWLEDGE_TOOLS: list[dict] = [
 # incoerenza che il modello non puo' ne' capire ne' aggirare.
 _TOOL_NAMES = frozenset(d["name"] for d in KNOWLEDGE_TOOLS)
 
+# Lo schema di OGNI strumento, per nome -- stessa ragione di `_TOOL_NAMES` qui
+# sopra: si DERIVA dal catalogo invece di ricopiarlo. Usato da `_bad_arguments`
+# per sapere, senza toccare i sedici gestori, quali argomenti uno strumento
+# dichiara obbligatori (`input_schema["required"]`) e quali conosce affatto
+# (`input_schema["properties"]`).
+_TOOL_SCHEMA_PER_NAME = {d["name"]: d["input_schema"] for d in KNOWLEDGE_TOOLS}
+
+
+def _quoted(names) -> str:
+    """«a», «b», «c» -- la stessa forma coi guillemet gia' usata dai
+    messaggi scritti a mano che questa funzione sostituisce (`view`,
+    `related`, ...): un elenco leggibile, non un repr di lista Python."""
+    return ", ".join(f"«{n}»" for n in names)
+
+
+def _bad_arguments(name: str, arguments: dict[str, Any]) -> dict | None:
+    """Il controllo unico sugli argomenti di uno strumento, usato da
+    `ToolDispatcher.dispatch` PRIMA di chiamare qualunque gestore -- non nei
+    sedici gestori, cosi' che uno strumento futuro nasca gia' protetto.
+
+    Consuma `input_schema["required"]` e `input_schema["properties"]`, che
+    ogni voce di `KNOWLEDGE_TOOLS` gia' dichiara: nessuna firma nuova, nessun
+    secondo elenco da tenere allineato (la stessa ragione di `_TOOL_NAMES`).
+
+    Due discipline DIVERSE, con due frasi diverse -- non una sola
+    «argomenti non validi» che le confonde:
+
+    - un obbligatorio ASSENTE: la chiave non compare affatto nel dizionario
+      degli argomenti (`required` di JSON Schema guarda la PRESENZA, non il
+      valore -- uno strumento che vuole anche un valore non vuoto lo
+      controlla gia' da se', come fa `_search` con `testo`, ed e' un
+      controllo che questa funzione non duplica: non e' il suo lavoro);
+    - un nome che lo schema non conosce affatto: ignorarlo in silenzio
+      lascerebbe il modello convinto di aver chiesto una cosa che in realta'
+      non e' mai stata letta.
+
+    Restituisce `None` quando gli argomenti vanno bene -- anche per uno
+    strumento come `agenda`, che non dichiara `required` affatto (nessun
+    obbligatorio: un dizionario vuoto e' una chiamata legittima).
+    """
+    schema = _TOOL_SCHEMA_PER_NAME[name]
+    allowed = schema.get("properties", {})
+    required = schema.get("required", [])
+
+    missing = [field for field in required if field not in arguments]
+    if missing:
+        verb = "manca" if len(missing) == 1 else "mancano"
+        every_required = f" (obbligatori: {_quoted(required)})" if len(required) > 1 else ""
+        return {"errore": f"«{name}»: {verb} {_quoted(missing)}{every_required}."}
+
+    unknown = [key for key in arguments if key not in allowed]
+    if unknown:
+        every_allowed = f" (argomenti validi: {_quoted(sorted(allowed))})" if allowed else ""
+        return {"errore": f"«{name}»: non conosco {_quoted(unknown)}{every_allowed}."}
+
+    return None
+
 
 class ToolDispatcher:
     """Collega i sedici strumenti agli archivi, alla porta, all'officina e al
@@ -1477,6 +1534,16 @@ class ToolDispatcher:
             available = ", ".join(sorted(_TOOL_NAMES))
             return {"errore": f"lo strumento «{name}» non e' fra quelli disponibili "
                               f"({available})."}
+        # Task 1 di «rifiutare e importare» (§6b): un obbligatorio mancante e
+        # un nome ignoto si rifiutano QUI, una volta sola per tutti e sedici
+        # gli strumenti -- non nei gestori, che fino ad oggi lo facevano a
+        # mano (quattro di loro) o non lo facevano affatto (`logbook`
+        # dichiara `required: ["ore"]` e non lo controllava; un argomento
+        # sconosciuto veniva ignorato in silenzio da ognuno). Vedi
+        # `_bad_arguments` per le due discipline e perche' sono diverse.
+        bad_arguments = _bad_arguments(name, arguments)
+        if bad_arguments is not None:
+            return bad_arguments
         handler = {
             "search": self._search,
             "view": self._view,
@@ -1666,8 +1733,15 @@ class ToolDispatcher:
     def _view(self, arguments: dict[str, Any]) -> dict:
         kind = arguments.get("tipo")
         reference = arguments.get("riferimento")
-        if not kind or reference is None:
-            return {"errore": "«view» richiede «tipo» e «riferimento»."}
+        # Il controllo «"tipo" e "riferimento" sono obbligatori» viveva QUI
+        # fino al Task 1 di «rifiutare e importare» (§6b): tolto perche'
+        # `dispatch()` lo fa gia' PRIMA di chiamare questo gestore
+        # (`_bad_arguments`, dallo stesso `input_schema["required"]` di
+        # `VIEW_TOOL_DEF`), e il messaggio non diceva niente di piu' di
+        # quello centrale. Verificato per davvero, non ad occhio: con questo
+        # controllo tolto la suite intera (3280 prove) resta verde -- nessuna
+        # di esse raggiunge questa riga con `tipo`/`riferimento` presenti ma
+        # invalidi, il solo caso che `dispatch()` non intercetterebbe.
         # I ricordi hanno un id numerico (MemoryStore, AUTOINCREMENT):
         # il modello puo' passarlo come stringa (i JSON tool-call spesso lo
         # fanno). Un riferimento non convertibile non e' un errore da
@@ -1785,8 +1859,11 @@ class ToolDispatcher:
         """
         kind = arguments.get("tipo")
         reference = arguments.get("riferimento")
-        if not kind or not reference:
-            return {"errore": "«related» richiede «tipo» e «riferimento»."}
+        # Stessa rimozione di `_view` qui sopra, stessa verifica: il
+        # controllo «obbligatori» viveva qui prima del Task 1 di «rifiutare
+        # e importare» (§6b), e' ora in `dispatch()` (`_bad_arguments`) da
+        # `RELATED_TOOL_DEF["input_schema"]["required"]`, e la suite intera
+        # resta verde senza di esso qui.
         ha_kind = HA_LINK_TYPE.get(kind)
         if ha_kind is None:
             # Fermato QUI, prima della rete, e con l'elenco dei tipi veri:

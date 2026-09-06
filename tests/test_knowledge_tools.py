@@ -274,6 +274,121 @@ async def test_argomenti_mancanti_non_esplodono(dispatcher):
     assert "errore" in esito
 
 
+# --- Task 1 di «rifiutare e importare» (§6b): gli obbligatori si -----------
+# verificano in dispatch(), e un nome ignoto e' un errore, non un silenzio.
+#
+# Le tre prove su «trend» passano `ha=object()` senza metodi veri: e' safe,
+# perche' una chiamata rifiutata da `_bad_arguments` non tocca mai il
+# gestore (ne' quindi il canale) -- il rifiuto vive PRIMA, in `dispatch()`.
+
+
+class _FakeAgendaStore:
+    """L'archivio delle promesse, ridotto a cio' che `_list_agenda` gli
+    chiede: nessuna promessa salvata, cosi' che una chiamata legittima
+    (nessun obbligatorio mancante, nessun nome ignoto) TERMINI con una
+    risposta vera invece di un `errore` che nasconderebbe un falso verde."""
+
+    def list(self, solo_in_sospeso):
+        return []
+
+
+@pytest.mark.asyncio
+async def test_a_missing_required_argument_names_the_field():
+    """«trend» dichiara `required: ["entita", "ore"]` (`TREND_TOOL_DEF`) e
+    fino a questo task non lo controllava affatto: la chiamata senza `ore`
+    arrivava al gestore, che decideva da solo (`historian.trend` con
+    `hours=None`). Un errore che NOMINA il campo e' cio' che permette al
+    modello di correggersi al turno dopo -- «argomenti non validi» non lo
+    permette.
+
+    Mutazione: togliere la chiamata a `_bad_arguments` da `dispatch` -- il
+    test torna rosso su `assert "ore" in esito["errore"]`.
+    """
+    d = ToolDispatcher(None, None, ha=object())
+    esito = await d.dispatch("trend", {"entita": "sensor.temperatura_soggiorno"})
+    assert "errore" in esito
+    assert "ore" in esito["errore"]
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_argument_is_an_error_not_a_silence():
+    """Un nome ignoto oggi viene ignorato in SILENZIO: il modello che scrive
+    `orario` invece di `ore` riceve una risposta come se avesse chiesto
+    un'altra cosa, e non ha modo di accorgersene. `ore` e' passato ANCHE
+    qui (accanto al refuso `orario`) apposta -- per isolare la disciplina
+    del nome ignoto da quella dell'obbligatorio mancante, che e' provata a
+    parte: senza `ore` questa chiamata sarebbe rifiutata per due ragioni
+    insieme, e l'assert su «orario» non distinguerebbe piu' quale delle
+    due l'ha prodotto.
+
+    Mutazione: togliere il controllo sui nomi ignoti da `_bad_arguments`
+    (lasciare solo quello sugli obbligatori) -- il test torna rosso su
+    `assert "errore" in esito`, perche' la chiamata raggiungerebbe
+    comunque il gestore (nessun obbligatorio manca: `entita` e `ore` ci
+    sono entrambi).
+    """
+    d = ToolDispatcher(None, None, ha=object())
+    esito = await d.dispatch(
+        "trend", {"entita": "sensor.temperatura_soggiorno", "orario": 24, "ore": 24})
+    assert "errore" in esito
+    assert "orario" in esito["errore"]
+
+
+@pytest.mark.asyncio
+async def test_the_two_refusals_do_not_say_the_same_thing():
+    """Un obbligatorio mancante e un nome ignoto portano il modello a DUE
+    correzioni diverse: «manca «ore»» chiede di aggiungere un campo, «non
+    conosco «orario»» chiede di correggerne uno gia' scritto col nome
+    sbagliato. Dirli con la stessa frase butterebbe via l'informazione che
+    li distingue.
+
+    Mutazione: usare lo stesso messaggio («argomenti non validi») per i due
+    casi in `_bad_arguments` -- il test torna rosso su
+    `assert missing["errore"] != unknown["errore"]`.
+    """
+    d = ToolDispatcher(None, None, ha=object())
+    missing = await d.dispatch("trend", {"entita": "sensor.temperatura_soggiorno"})
+    unknown = await d.dispatch(
+        "trend", {"entita": "sensor.temperatura_soggiorno", "orario": 24, "ore": 24})
+    assert missing["errore"] != unknown["errore"]
+
+
+@pytest.mark.asyncio
+async def test_a_tool_without_required_arguments_is_not_blocked():
+    """«agenda» (`AGENDA_TOOL_DEF`) non dichiara `required` affatto -- nessun
+    obbligatorio. Un controllo troppo zelante, che confondesse «nessuna
+    chiave `required` nello schema» con «tutte le proprieta' sono
+    obbligatorie», rifiuterebbe una chiamata legittima con `{}`.
+
+    Mutazione: in `_bad_arguments`, calcolare `required` come
+    `list(schema.get("properties", {}))` invece di
+    `schema.get("required", [])` -- il test torna rosso perche' «agenda»
+    verrebbe rifiutato per mancanza di `tutte`, che invece e' facoltativo
+    (verificato eseguendo: `AssertionError` su `assert "errore" not in esito`).
+    """
+    d = ToolDispatcher(None, None, agenda=_FakeAgendaStore())
+    esito = await d.dispatch("agenda", {})
+    assert "errore" not in esito
+    assert esito["promesse"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_known_optional_argument_is_not_mistaken_for_unknown():
+    """`agenda(tutte=True)` e' facoltativo ma CONOSCIUTO: il controllo sui
+    nomi ignoti non deve rifiutare un argomento solo perche' non e' fra gli
+    obbligatori.
+
+    Mutazione: in `_bad_arguments`, calcolare `allowed` come `required`
+    invece che come `schema.get("properties", {})` -- il test torna rosso
+    perche' `tutte` (facoltativo, non in `required`) verrebbe trattato come
+    ignoto (verificato eseguendo: `AssertionError` su
+    `assert "errore" not in esito`).
+    """
+    d = ToolDispatcher(None, None, agenda=_FakeAgendaStore())
+    esito = await d.dispatch("agenda", {"tutte": True})
+    assert "errore" not in esito
+
+
 # --- Copertura aggiuntiva, oltre i dieci test del brief -------------------
 
 
@@ -1280,17 +1395,27 @@ async def test_automation_trace_without_ha_channel_declares_instead_of_raising()
 
 @pytest.mark.asyncio
 async def test_automation_trace_requires_an_entita():
-    """Senza `entita`, l'errore lo dice -- e lo dice PRIMA di toccare la rete.
+    """`entita` PRESENTE ma vuota -- non del tutto assente. Da quando
+    `dispatch()` verifica gli obbligatori PRIMA di chiamare il gestore
+    (Task 1 di «rifiutare e importare», §6b, `_bad_arguments`), il caso
+    `{}` (nessuna chiave `entita`) non arriva piu' qui: lo rifiuta
+    `dispatch()`, col suo messaggio, non questo controllo. Cio' che resta
+    SOLO di questo gestore e' la stringa presente ma vuota (o di un tipo
+    che non e' una stringa): quella `dispatch()` non la vede, perche'
+    «required» di JSON Schema guarda la presenza della chiave, non il
+    valore.
 
-    **Mutazione che uccide l'assert**: togliere il controllo
+    Mutazione: togliere il controllo
     `if not isinstance(entity, str) or not entity.strip()`. Verificato
-    eseguendo: senza quel controllo `entity` resta `None`, `entity.strip()`
-    solleva `AttributeError`, la rete di sicurezza finale la trasforma in un
-    `errore` che pero' non contiene piu' la parola «entita» -- l'assert
-    dedicato ad essa arrossisce."""
+    eseguendo: senza quel controllo `entity` resta `""`, che `.strip()` non
+    fa esplodere (e' una stringa vera), ma `_ENTITY_ID_RE.match("")`
+    fallisce comunque -- la chiamata scende fino al messaggio «non ha la
+    forma di un identificatore», che non nomina piu' «entita»: l'assert
+    dedicato ad essa arrossisce (`AssertionError` su
+    `assert "errore" in result and "entita" in result["errore"]`)."""
     d = ToolDispatcher(None, None, ha=_FakeHAChannel(),
                        cache=_mirror_with_buonanotte())
-    result = await d.dispatch("automation_trace", {})
+    result = await d.dispatch("automation_trace", {"entita": ""})
     assert "errore" in result and "entita" in result["errore"]
 
 
