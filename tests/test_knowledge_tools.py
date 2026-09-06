@@ -2088,3 +2088,49 @@ async def test_a_calendar_with_one_unparseable_event_discards_its_own_partial_ap
     titles = [a["titolo"] for a in result["impegni"]]
     assert titles == ["Dentista"]
     assert result["non_letti"] == ["Famiglia"]
+
+
+@pytest.mark.asyncio
+async def test_zero_calendars_are_distinguished_from_two_empty_calendars():
+    """Verificato dal revisore: senza una chiave che dichiara SEMPRE quali
+    calendari sono stati guardati, «questa casa non ha calendari» (elenco
+    dei calendari vuoto) e «due calendari letti, entrambi senza impegni»
+    tornano lo STESSO `{"impegni": []}` -- indistinguibili, esattamente
+    come un calendario rotto e uno senza impegni prima di questa fetta. Il
+    modello direbbe «non hai impegni segnati» quando la verita' potrebbe
+    essere «questa casa non ha calendari». `calendari_guardati` e' la PROVA
+    di cosa e' stato guardato, non un dato su cosa contiene: esce SEMPRE,
+    anche vuoto -- a differenza di `non_letti`/`troncato`.
+
+    **Mutazione che uccide l'assert**: togliere la chiave `calendari_
+    guardati` dal dizionario di ritorno (tornare solo `{"impegni": ...}`
+    piu' le chiavi condizionali). Verificato eseguendo: con quella
+    sostituzione `result` non porta la chiave, e
+    `assert result["calendari_guardati"] == []` arrossisce con un
+    `KeyError`."""
+    channel = _FakeCalendarChannel({"calendari": []}, {})
+    d = ToolDispatcher(None, None, ha=channel)
+    result = await d.dispatch("calendar", {})
+    assert result["impegni"] == []
+    assert result["calendari_guardati"] == []
+    assert "non_letti" not in result
+
+
+@pytest.mark.asyncio
+async def test_calendar_always_declares_the_calendars_it_examined():
+    """Controparte del test sopra: con due calendari letti (anche se
+    entrambi vuoti), `calendari_guardati` li nomina entrambi -- e' cosi'
+    che si distingue da «questa casa non ha calendari».
+
+    **Mutazione che uccide l'assert**: togliere `examined.append(name)` dal
+    ciclo. Verificato eseguendo: con quella riga tolta
+    `result["calendari_guardati"]` torna `[]` anche con due calendari
+    davvero letti, e
+    `assert result["calendari_guardati"] == ["Personale", "Famiglia"]`
+    arrossisce con `[] == ["Personale", "Famiglia"]`."""
+    channel = _FakeCalendarChannel(
+        {"calendari": [_PERSONALE, _FAMIGLIA]},
+        {"calendar.personale": {"eventi": []}, "calendar.famiglia": {"eventi": []}})
+    d = ToolDispatcher(None, None, ha=channel)
+    result = await d.dispatch("calendar", {})
+    assert result["calendari_guardati"] == ["Personale", "Famiglia"]

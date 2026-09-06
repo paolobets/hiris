@@ -91,6 +91,23 @@ def test_system_log_and_automation_trace_enter_the_promise_turn_too():
     assert {"system_log", "automation_trace"} <= nomi
 
 
+def test_calendar_enters_the_promise_turn_too():
+    """Gemello dei due test sopra (fetta «i calendari», Task 3): `calendar`
+    LEGGE e basta, come `trend`/`logbook`/`system_log`/`automation_trace` --
+    senza custode, un `sed` o un refuso su `SOLA_LETTURA` toglierebbe
+    `calendar` dal tuple lasciando la suite verde, e il ponte resterebbe
+    cieco proprio sulla promessa che tre docstring promettono: «avvisami la
+    sera prima di un impegno».
+
+    **Mutazione che uccide l'assert**: togliere `"calendar"` dal tuple
+    `SOLA_LETTURA` in `keeper/exchange.py`. Verificato eseguendo: con quella
+    riga tolta `"calendar" in SOLA_LETTURA` e' falso, e il primo assert
+    arrossisce."""
+    assert "calendar" in SOLA_LETTURA
+    nomi = {d["name"] for d in promise_tools()}
+    assert "calendar" in nomi
+
+
 def test_il_dispatcher_riceve_la_cronaca_dall_app():
     """Senza questa riga `logbook` risponderebbe sempre senza attribuzione:
     un dato che c'e' e che nessuno puo' chiedere -- la fondamenta 4 al

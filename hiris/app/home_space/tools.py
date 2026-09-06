@@ -755,8 +755,8 @@ AGENDA_TOOL_DEF = {
         "in programma?», «l'hai fatto?», o prima di disdire qualcosa, per avere "
         "l'identificatore giusto invece di indovinarlo. "
         "**Non e' il calendario della persona.** Questi sono impegni DI HIRIS "
-        "con se stesso -- azioni o domande che HA preso in carico, verificate "
-        "contro questa casa quando sono nate. Per gli appuntamenti che una "
+        "con se stesso -- azioni o domande che ha preso in carico lui stesso, "
+        "verificate contro questa casa quando sono nate. Per gli appuntamenti che una "
         "persona ha scritto su un calendario di Home Assistant («cosa ho in "
         "programma questa settimana?», nel senso comune della parola) usa "
         "«calendar», non questo."
@@ -1228,9 +1228,8 @@ CALENDAR_TOOL_DEF = {
         "significa che nella finestra chiesta non c'e' NESSUN impegno "
         "SEGNATO -- non che la casa sara' vuota, e non che non succedera' "
         "niente: chi ci vive puo' semplicemente non aver scritto niente sul "
-        "calendario. Aspettati di vederlo spesso: sulla casa vera i prossimi "
-        "sette giorni sono vuoti su entrambi i calendari, ed e' un fatto sul "
-        "calendario, non un fatto sulla vita di chi lo tiene. "
+        "calendario. E' NORMALE che l'elenco sia spesso vuoto: e' un fatto "
+        "sul calendario, non un fatto sulla vita di chi lo tiene. "
         "**Un calendario che non risponde non sparisce.** Provo a leggere "
         "OGNI calendario di questa casa, uno per uno: quelli che rispondono "
         "finiscono in `impegni`, quelli che NON rispondono finiscono, per "
@@ -1240,6 +1239,12 @@ CALENDAR_TOOL_DEF = {
         "hai impegni» con la sicurezza di chi ha guardato tutto, quando in "
         "realta' un calendario non ha risposto. Se `non_letti` compare, "
         "dillo invece di tacerlo. "
+        "`calendari_guardati` esce SEMPRE (anche vuoto): sono i nomi di "
+        "TUTTI i calendari che ho provato a leggere in questa chiamata. "
+        "Se e' vuoto, questa casa non ha nessun calendario -- non e' lo "
+        "stesso fatto di «ho letto dei calendari e sono tutti vuoti»: "
+        "guarda questa chiave, non solo `impegni`, prima di dire «non hai "
+        "impegni». "
         "**`troncato: true` significa che almeno un calendario aveva PIU' "
         "impegni di quanti ne siano tornati** -- come per `logbook`, non "
         "concludere «non e' successo altro» (qui: «non ci sono altri "
@@ -1258,8 +1263,9 @@ CALENDAR_TOOL_DEF = {
                 "type": "number",
                 "description": (
                     "Quanti giorni in avanti guardare, da adesso. "
-                    "Predefinito 30 (non 7: sulla casa vera sette giorni "
-                    "danno zero impegni). Il massimo e' 365."
+                    "Predefinito 30, non 7: una finestra piu' corta "
+                    "rischia di rispondere «niente» anche quando qualcosa "
+                    "sta per arrivare. Il massimo e' 365."
                 ),
             },
             "giorni_indietro": {
@@ -2504,8 +2510,18 @@ class ToolDispatcher:
         provare a leggere: si propaga il suo `errore` cosi' com'e' (stessa
         disciplina di `_system_log`, un passthrough puro).
 
+        **`calendari_guardati` esce SEMPRE, anche vuoto -- a differenza di
+        `non_letti`/`troncato`, che tacciono quando non hanno niente da
+        dire.** Senza di lui, zero calendari e due calendari letti e
+        VUOTI sono indistinguibili: entrambi tornerebbero `{"impegni": []}`,
+        e il modello direbbe «non hai impegni segnati» quando la verita'
+        potrebbe essere «questa casa non ha calendari». E' la PROVA di cosa
+        e' stato guardato, non un dato su cosa c'e' scritto: senza di essa
+        la risposta non e' verificabile, quindi non e' condizionale come
+        gli altri due.
+
         **Il fuso e' UNO SOLO, quello del dispatcher** (`self._timezone()`,
-        la stessa fonte di `_trend` qui sopra, `tools.py:2292` -- non se ne
+        la stessa fonte di `_trend` qui sopra, `tools.py:2314` -- non se ne
         apre una seconda): serve due volte, una per calcolare `now` con
         `historian.home_space_zone` (nessun doppione: e' la stessa funzione
         che gestisce gia' un fuso non riconosciuto con un avviso e il
@@ -2584,6 +2600,7 @@ class ToolDispatcher:
         end = (now + timedelta(days=ahead)).isoformat()
 
         appointments: list[dict] = []
+        examined: list[str] = []
         unreadable: list[str] = []
         truncated = False
         for entry in calendars:
@@ -2593,11 +2610,22 @@ class ToolDispatcher:
             if not entity_id:
                 continue
             name = sanitize_ha_value(entry.get("name") or entity_id)
+            examined.append(name)
             events = await ha.calendar_events(entity_id, start, end)
             if "errore" in events:
                 unreadable.append(name)
                 continue
             if events.get("troncato"):
+                # Non gestito, DICHIARATO: se questo STESSO calendario viene
+                # anche scartato qui sotto (un evento che non si sa
+                # interpretare, `unreadable_event`), `truncated` resta vero
+                # ma i suoi impegni finiscono comunque in `non_letti`, non in
+                # `impegni` -- `troncato: true` sopravvivrebbe su un elenco
+                # che non contiene piu' nessun impegno di QUESTO calendario.
+                # Serve >MAX_CALENDAR_EVENTS eventi E un evento malformato
+                # nello stesso calendario per innescarlo: visto, deciso di
+                # non trattarlo (il caso e' cosi' raro da non giustificare
+                # il costo di un secondo stato "troncato ma poi scartato").
                 truncated = True
             calendar_appointments: list[dict] = []
             unreadable_event = False
@@ -2624,7 +2652,8 @@ class ToolDispatcher:
                 continue
             appointments.extend(calendar_appointments)
 
-        result: dict = {"impegni": sort_appointments(appointments)}
+        result: dict = {"impegni": sort_appointments(appointments),
+                        "calendari_guardati": examined}
         if unreadable:
             result["non_letti"] = unreadable
         if truncated:

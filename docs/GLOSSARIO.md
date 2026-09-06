@@ -2892,7 +2892,7 @@ codice:
 > quattordici, ma la tabella ne aveva tredici: `concludi` era **nominato in prosa e mai deciso**.
 > Il Task 8 aveva misurato il perimetro della CHAT, e `concludi` in chat non c'e' -- vive solo nel
 > catalogo del turno di promessa (`keeper/exchange.py::promise_tools`, i lettori di
-> `SOLA_LETTURA` piu' lui: sei allora, otto da «le tracce e il log»).
+> `SOLA_LETTURA` piu' lui: sei allora, otto da «le tracce e il log», nove da «i calendari»).
 > **Il silenzio non era accettabile**, per due ragioni che si vedono solo quando si applica: un
 > catalogo di tredici inglesi piu' un italiano e' esattamente la mescolanza che questa fetta
 > esiste per curare, e `concludi` e' l'unico dei quattordici il cui **identificatore Python** era
