@@ -1160,6 +1160,119 @@ class HAClient:
                 "troncato": len(entries) > MAX_LOGBOOK_ENTRIES,
                 "ore": window}
 
+    async def calendars(self) -> dict:
+        """L'elenco dei calendari di questa casa, via GET /api/calendars.
+
+        **Trasporto verificato alla fonte, non assunto.** I tre fratelli di
+        questo metodo -- `system_log()`, `automation_traces()`,
+        `automation_trace()` qui sopra -- leggono via WebSocket; i calendari
+        no. Verificato su `home-assistant/core`,
+        `homeassistant/components/calendar/__init__.py`, classe
+        `CalendarListView` (`url = "/api/calendars"`), sui tag RILASCIATI che
+        delimitano la finestra che `hiris/config.yaml:22` dichiara
+        supportata (`2024.7.0`, il minimo) e la piu' recente vista finora
+        (`2026.9.0`): **REST su entrambi**, corpo identico -- per ogni
+        entita' del dominio `calendar`,
+        `calendar_list.append({"name": state.name, "entity_id":
+        entity.entity_id})`, poi `self.json(sorted(calendar_list, key=...
+        "name"))`. E' la stessa via di `get_states()` qui sopra: stessa
+        sessione, stesse intestazioni.
+
+        (Su 2026.9.0 la vista filtra anche per permesso dell'utente sul
+        token -- `user.permissions.check_entity(..., POLICY_READ)`, assente
+        su 2024.7.0 -- ma HIRIS parla col token del Supervisor, che le ha
+        tutte: la differenza non cambia cosa questo metodo vede in pratica.)
+
+        **La forma e' una LISTA NUDA**, non un dizionario con una chiave --
+        la stessa trappola dei tre fratelli (`system_log/list` e `trace/list`
+        rispondono cosi', `trace/get` no), verificata di nuovo qui e non
+        data per scontata: la lista contiene solo `name` ed `entity_id`,
+        ordinata per nome da Home Assistant stesso.
+
+        Il client legge e non giudica: le righe escono cosi' come HA le
+        manda. `{"errore": ...}` su guasto -- connessione caduta, HTTP non
+        200, o una risposta che non e' la lista attesa -- mai un
+        `{"calendari": []}`: un elenco vuoto significherebbe «questa casa non
+        ha calendari», un'affermazione diversa da «non sono riuscito a
+        chiederlo».
+        """
+        url = f"{self._base_url}/api/calendars"
+        try:
+            async with self._session.get(url) as resp:
+                if resp.status != 200:
+                    return {"errore": f"Home Assistant ha risposto {resp.status}"}
+                data = await resp.json()
+        except Exception as exc:
+            logger.debug("calendari: non disponibili (%s)", exc)
+            return {"errore": f"Home Assistant non ha risposto: {_truncate(str(exc), 200)}"}
+        if not isinstance(data, list):
+            return {"errore": "Home Assistant ha risposto in una forma non attesa"}
+        return {"calendari": data}
+
+    async def calendar_events(self, entity_id: str, start: str, end: str) -> dict:
+        """Gli eventi di UN calendario in una finestra, via
+        GET /api/calendars/<entity_id>?start=&end=.
+
+        Stesso trasporto di `calendars()` qui sopra, verificato alla stessa
+        fonte e sugli stessi due tag rilasciati (`2024.7.0`, `2026.9.0`):
+        classe `CalendarEventView` (`url = "/api/calendars/{entity_id}"`),
+        corpo identico su entrambi --
+        `[dataclasses.asdict(event, dict_factory=_api_event_dict_factory)
+        for event in calendar_event_list]`.
+
+        **La forma e' anche qui una LISTA NUDA**, non un dizionario con una
+        chiave `eventi`: verificata di nuovo, non ereditata per somiglianza
+        da `calendars()`.
+
+        **Ogni evento porta OTTO chiavi, sempre, anche quando valgono
+        `null`** -- misurato sulla casa il 06/09/2026 su 297 eventi veri, e
+        confermato alla fonte: `CalendarEvent` (`calendar/__init__.py`) e' un
+        dataclass con esattamente questi otto campi (`start`, `end`,
+        `summary`, `description`, `location`, `uid`, `recurrence_id`,
+        `rrule`), e `_api_event_dict_factory` scrive OGNI campo del
+        dataclass incluso quando vale `None` -- non filtra come fa invece
+        `_list_events_dict_factory` (usata da un'altra vista, non da
+        questa): chi consuma questo metodo non deve assumere che una chiave
+        mancante significhi «assente», perche' non manca mai.
+
+        `start`/`end` hanno **una delle due forme, mai entrambe** (stessa
+        misura del 06/09/2026, stessa fonte): `{"dateTime":
+        "2026-09-05T16:00:00+02:00"}` per un evento a orario, `{"date":
+        "2026-08-17"}` per un evento giornaliero -- `_api_event_dict_factory`
+        distingue guardando se il valore e' un `datetime.datetime` o un
+        `datetime.date` nudo.
+
+        Il client legge e non giudica: gli eventi escono cosi' come HA li
+        manda, senza proiezioni -- cosa dire e cosa tacere e' di chi
+        compone. `{"errore": ...}` su guasto, mai `{"eventi": []}`: **sulla
+        casa vera i prossimi sette giorni sono vuoti su entrambi i
+        calendari** (misurato 06/09/2026) -- il vuoto e' il caso NORMALE di
+        questo metodo, non un guasto raro, e va comunque distinto da un
+        guasto vero, o un calendario rotto e uno senza impegni
+        risponderebbero la stessa identica cosa.
+
+        Valida `entity_id` PRIMA di fare rete (stessa guardia di `history()`
+        e `logbook()` qui sopra): un identificatore ostile o malformato non
+        deve comporre un URL, anche se il percent-encoding qui sotto chiude
+        comunque l'iniezione.
+        """
+        if not _ENTITY_ID_RE.match(str(entity_id)):
+            logger.warning("calendario: entity_id non valido: %r", entity_id)
+            return {"errore": _truncate(f"entity_id non valido: {entity_id!r}", 200)}
+        url = (f"{self._base_url}/api/calendars/{quote(entity_id, safe='')}"
+               f"?start={quote(start, safe='')}&end={quote(end, safe='')}")
+        try:
+            async with self._session.get(url) as resp:
+                if resp.status != 200:
+                    return {"errore": f"Home Assistant ha risposto {resp.status}"}
+                data = await resp.json()
+        except Exception as exc:
+            logger.debug("eventi di %s non letti: %s", entity_id, exc)
+            return {"errore": f"Home Assistant non ha risposto: {_truncate(str(exc), 200)}"}
+        if not isinstance(data, list):
+            return {"errore": "Home Assistant ha risposto in una forma non attesa"}
+        return {"eventi": data}
+
     async def render_template(self, template: str) -> dict:
         """Valuta un template Jinja di HA via POST /api/template.
 
