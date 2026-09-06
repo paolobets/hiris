@@ -33,7 +33,7 @@ import copy
 
 import pytest
 
-from hiris.app.proxy.ha_client import HAClient
+from hiris.app.proxy.ha_client import MAX_CALENDAR_EVENTS, HAClient
 
 
 class _FakeResponse:
@@ -375,3 +375,67 @@ async def test_an_empty_calendar_stays_empty_not_an_error():
     outcome = await c.calendar_events("calendar.casa", "2026-09-05T00:00:00+02:00",
                                       "2026-09-12T00:00:00+02:00")
     assert outcome == {"eventi": []}
+
+
+# --- Il tetto: un elenco tagliato non deve poter sembrare completo -------
+#
+# `elenco_incompleto`/`mute_da`/`entita_stato_ignoto` (home_space/queries.py)
+# seguono gia' la stessa disciplina: le chiavi che non hanno niente da dire
+# non escono. Qui si applica alla stessa fetta: `troncato` esce SOLO quando
+# il taglio e' avvenuto -- a differenza di `history()`/`logbook()` in questo
+# stesso file, che lo dichiarano SEMPRE (anche a falso). Le due meta' dello
+# stesso difetto si sorvegliano con due prove separate.
+
+@pytest.mark.asyncio
+async def test_calendar_events_declares_the_cut_when_it_happens():
+    """Un elenco tagliato non deve poter sembrare completo: chi riceve
+    `MAX_CALENDAR_EVENTS` eventi su una finestra che ne aveva di piu' e non
+    lo sa risponderebbe «questi sono tutti i tuoi impegni», la stessa bugia
+    di «non hai impegni» quando in realta' non si e' riusciti a guardare.
+
+    Mutazione: non aggiungere mai la chiave `troncato` -- il test torna
+    rosso su `assert "troncato" in outcome`.
+    """
+    rows = [_event(uid=f"evt-{i}") for i in range(MAX_CALENDAR_EVENTS + 5)]
+    c = _client([_FakeResponse(200, rows)])
+    outcome = await c.calendar_events("calendar.casa", "2026-09-05T00:00:00+02:00",
+                                      "2026-09-12T00:00:00+02:00")
+    assert outcome["troncato"] is True
+    assert len(outcome["eventi"]) == MAX_CALENDAR_EVENTS
+
+
+@pytest.mark.asyncio
+async def test_calendar_events_does_not_declare_a_cut_when_there_was_none():
+    """L'altra meta' dello stesso difetto: una chiave che parla quando non
+    ha niente da dire e' rumore, e qui e' anche peggio -- lascerebbe
+    credere che OGNI risposta sia potenzialmente incompleta.
+
+    Mutazione: dichiarare sempre `troncato` (es. sempre `False` quando non
+    scatta, invece di ometterla) -- il test torna rosso su
+    `assert "troncato" not in outcome`.
+    """
+    rows = [_event(uid=f"evt-{i}") for i in range(3)]
+    c = _client([_FakeResponse(200, rows)])
+    outcome = await c.calendar_events("calendar.casa", "2026-09-05T00:00:00+02:00",
+                                      "2026-09-12T00:00:00+02:00")
+    assert "troncato" not in outcome
+    assert len(outcome["eventi"]) == 3
+
+
+@pytest.mark.asyncio
+async def test_calendar_events_cut_keeps_the_tail_not_the_head():
+    """Stessa direzione di `history()`/`logbook()`: il taglio tiene la
+    CODA della lista cosi' come HA la manda, non la testa.
+
+    Mutazione: tenere `data[:MAX_CALENDAR_EVENTS]` (la testa) invece di
+    `data[-MAX_CALENDAR_EVENTS:]` -- il test torna rosso su
+    `assert outcome["eventi"][0]["uid"] == "evt-5"`, che troverebbe invece
+    `"evt-0"`.
+    """
+    rows = [_event(uid=f"evt-{i}") for i in range(MAX_CALENDAR_EVENTS + 5)]
+    c = _client([_FakeResponse(200, rows)])
+    outcome = await c.calendar_events("calendar.casa", "2026-09-05T00:00:00+02:00",
+                                      "2026-09-12T00:00:00+02:00")
+    kept = outcome["eventi"]
+    assert kept[0]["uid"] == "evt-5"
+    assert kept[-1]["uid"] == f"evt-{MAX_CALENDAR_EVENTS + 4}"

@@ -129,6 +129,15 @@ DEFAULT_LOGBOOK_HOURS = 24
 # quindi la risposta lo dichiara invece di tacere -- e' la stessa regola del
 # troncamento del diario, imparata li'.
 MAX_HISTORY_POINTS = 5000
+# Cap sugli eventi restituiti da UNA chiamata a `calendar_events()`.
+# Misurato sulla casa vera il 06/09/2026: 297 eventi in tutto, su una
+# finestra di QUATTRO ANNI (91 nel calendario `personale`, 206 in
+# `famiglia`). Il tetto sta molto sopra qualunque uso vero e comunque
+# limita una finestra impazzita (es. "dal 1970 a oggi"), che altrimenti
+# scandirebbe l'intero storico di un calendario ricorrente. Stessa regola
+# del troncamento di `history()`/`logbook()` qui sopra: chi legge deve
+# poter sapere che e' scattato, la risposta lo dichiara invece di tacere.
+MAX_CALENDAR_EVENTS = 2000
 # Template accettato in ingresso: oltre questa soglia non e' piu' una domanda
 # ma un payload.
 MAX_TEMPLATE_LEN = 2000
@@ -1268,6 +1277,30 @@ class HAClient:
         e `logbook()` qui sopra): un identificatore ostile o malformato non
         deve comporre un URL, anche se il percent-encoding qui sotto chiude
         comunque l'iniezione.
+
+        **Tetto a `MAX_CALENDAR_EVENTS` (vedi la costante qui sopra per la
+        misura e la ragione del numero), taglio dalla CODA** -- stessa
+        direzione di `history()`/`logbook()` qui sopra (`punti[-N:]`,
+        `entries[-N:]`): a differenza loro pero' non ho verificato alla
+        fonte che ogni integrazione calendario restituisca gli eventi in
+        ordine cronologico ASCENDENTE (e' una proprieta' di ogni singola
+        integrazione `CalendarEntity.async_get_events`, non della vista
+        REST), quindi qui "la coda" e' l'ultimo pezzo della lista COSI' COME
+        HA la manda, non necessariamente "i piu' recenti" in senso
+        temporale -- replico la stessa operazione dei fratelli per
+        coerenza nel file, non la stessa garanzia sui dati.
+
+        **Un elenco tagliato non deve poter sembrare completo.** A
+        differenza di `history()`/`logbook()`, che dichiarano `troncato`
+        SEMPRE (anche a falso, per esplicita scelta di quei due metodi: "non
+        due modi di dire la stessa cosa"), qui la chiave `troncato` esce
+        **SOLO quando il taglio e' avvenuto** -- stessa disciplina di
+        `elenco_incompleto`/`mute_da`/`entita_stato_ignoto` in
+        `home_space/queries.py`: "le chiavi che non hanno niente da dire
+        non escono". E' una divergenza deliberata dalla convenzione dei due
+        fratelli REST di questo file (non la correggo qui: e' fuori dal mio
+        perimetro), seguita perche' e' la disciplina che l'intera fetta
+        richiede per questa chiave.
         """
         if not _ENTITY_ID_RE.match(str(entity_id)):
             logger.warning("calendario: entity_id non valido: %r", entity_id)
@@ -1284,7 +1317,10 @@ class HAClient:
             return {"errore": f"Home Assistant non ha risposto: {_truncate(str(exc), 200)}"}
         if not isinstance(data, list):
             return {"errore": "Home Assistant ha risposto in una forma non attesa"}
-        return {"eventi": data}
+        result: dict = {"eventi": data[-MAX_CALENDAR_EVENTS:]}
+        if len(data) > MAX_CALENDAR_EVENTS:
+            result["troncato"] = True
+        return result
 
     async def render_template(self, template: str) -> dict:
         """Valuta un template Jinja di HA via POST /api/template.
