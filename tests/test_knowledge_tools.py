@@ -549,6 +549,49 @@ async def test_a_platform_recognised_alone_is_not_nothing_recognised(archivio_ca
     assert "nulla_riconosciuto" not in esito
 
 
+@pytest.mark.asyncio
+async def test_a_fallen_registry_is_not_the_same_as_nothing_recognised(archivio_casa, memoria):
+    """Riprodotto in ri-review: col registro «entita» caduto, `search("il
+    bagno")` aveva `not found` VERO insieme a `blind_spots` VERO, e la prima
+    stesura dichiarava `nulla_riconosciuto` in entrambi i casi -- affermando
+    "nessun nome ne' alias combacia" su TUTTI i nomi della casa quando in
+    realta' non li ha nemmeno potuti leggere, e consigliando di ripetere
+    «search» con un nome esatto: una strada che non puo' funzionare finche'
+    quel registro resta giu'. "Non ho potuto guardare" e "ho guardato e non
+    c'era" sono le due facce che `_blind_spots` esiste per separare
+    (invariante 4) -- questo test prova che `nulla_riconosciuto` sceglie la
+    seconda faccia SOLO quando e' vera anche la prima meta' («ho guardato
+    per intero»).
+
+    Mutazione che uccide: tornare alla guardia `if not found:` (senza `and
+    not blind_spots`) in `ToolDispatcher._search` -- il test torna rosso su
+    `assert "nulla_riconosciuto" not in esito`."""
+    archivio_casa.replace({"aree": [], "entita": []}, ["entita"])
+    esito = await ToolDispatcher(archivio_casa, memoria).dispatch(
+        "search", {"testo": "il bagno"})
+    assert esito["trovati"] == []
+    assert any("entita" in m for m in esito["non_ho_potuto_guardare"])
+    assert "nulla_riconosciuto" not in esito
+    assert "suggerimento" not in esito
+
+
+def test_search_description_names_the_nome_visto_comparison():
+    """Il secondo bordo della correzione del 06/09 al §6a non e' piu' una
+    chiave (`solo_una_parte` e' stata tolta -- misurato dal revisore: scattava
+    su 11 frasi su 13 sulla casa vera, rumore che si impara a saltare anche
+    il giorno in cui conta). Il fatto resta vero e gratis in `nome_visto`
+    (gia' il SOLO frammento riconosciuto): questo test assicura che la
+    sostituzione non sia una perdita silenziosa -- la description deve dire
+    al modello di confrontare `nome_visto` con cio' che ha cercato.
+
+    Mutazione che uccide: togliere la frase che nomina il confronto dalla
+    description di `SEARCH_TOOL_DEF` -- il test torna rosso su
+    `assert "nome_visto" in descrizione`."""
+    descrizione = SEARCH_TOOL_DEF["description"]
+    assert "nome_visto" in descrizione
+    assert "Confrontalo con quello che hai chiesto" in descrizione
+
+
 # --- R2 (T7): `search` impara piani, automazioni e script -------------------
 
 

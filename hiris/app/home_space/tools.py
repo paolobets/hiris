@@ -259,14 +259,13 @@ SEARCH_TOOL_DEF = {
         "spontaneamente se la domanda non la riguarda; se invece la riguarda — l'utente "
         "ha cercato proprio quel nome, o chiede esplicitamente cosa è nascosto — usala "
         "e dillo, non negarla. "
-        "Un risultato può portare `solo_una_parte: true` (mai `false`, esce solo quando "
-        "è vera): il testo cercato riconosce nomi DENTRO la frase, quindi «la lampada di "
-        "sopra» può agganciare un'entità chiamata esattamente «lampada» — hai un "
-        "riferimento preciso per UNA PAROLA di ciò che l'utente ha chiesto, non per "
-        "l'intera frase. Il frammento riconosciuto è già in `nome_visto`; questo campo "
-        "dice che è un PEZZO, non il tutto — non dare per scontato che l'utente parlasse "
-        "proprio di quella cosa se la frase portava altro (una posizione, un dettaglio) "
-        "che il match non ha catturato. "
+        "`nome_visto` è il PEZZO del testo che ha combaciato, non necessariamente tutta "
+        "la frase che hai cercato: il riconoscimento avviene DENTRO il testo, quindi «la "
+        "lampada di sopra» può agganciare un'entità chiamata esattamente «lampada». "
+        "Confrontalo con quello che hai chiesto: se è più corto, hai un riferimento "
+        "preciso per QUELLA parola, non per il resto — una posizione, un dettaglio che "
+        "il match non ha catturato — e non dare per scontato che l'utente parlasse "
+        "proprio di quella cosa. "
         "Un candidato di tipo `piano` NON si passa a `view`, che non sa aprire un "
         "piano da solo: serve a `execute(piani=...)`, per agire su tutte le aree di "
         "quel piano insieme. `automazione` e `script` invece si passano a `view` "
@@ -285,21 +284,28 @@ SEARCH_TOOL_DEF = {
         "tipo `integrazione`. "
         "Se il testo non nomina niente che la casa conosca, `trovati` e' una lista "
         "vuota: non e' un errore, significa che nessun nome o alias corrisponde. "
-        "In quel caso la risposta porta anche `nulla_riconosciuto: true` con un "
-        "`suggerimento`: **una lista vuota vuol dire «non ho riconosciuto niente in "
-        "questo testo», MAI «questa cosa non esiste in casa»** -- non hai guardato "
-        "l'inventario, hai guardato i NOMI dichiarati. Segui il suggerimento (il nome "
-        "esatto, o `view` diretto sul tipo giusto) invece di concludere che la cosa "
-        "manchi o di ripetere la stessa ricerca uguale. "
         "**Ma una lista vuota non basta sempre a concludere che la cosa non esista**: "
-        "quando e' vuota per un motivo diverso, la risposta porta anche "
-        "`non_ho_potuto_guardare` (MAI insieme a candidati gia' trovati) con la lista "
-        "dei motivi. Ognuno e' o un guasto DI ADESSO (un registro non letto, lo "
-        "specchio dello stato giu': ha senso riprovare piu' tardi) o un limite STABILE "
-        "di alcune entita' di questa casa (nessun nome ne' nel registro ne' nello stato "
-        "vivo: riprovare la stessa ricerca non cambia nulla, serve rinominarle in Home "
-        "Assistant) -- il testo del motivo dice quale dei due e'. In nessuno dei due "
-        "casi concludere che la cosa non esiste."
+        "puo' essere vuota per DUE motivi diversi, MAI insieme (e mai insieme a "
+        "candidati gia' trovati), perche' sono due fatti diversi su cio' che questa "
+        "ricerca ha potuto vedere. "
+        "Se hai guardato TUTTI i nomi dichiarati e nessuno combaciava, la risposta "
+        "porta `nulla_riconosciuto: true` con un `suggerimento`: **vuol dire «non ho "
+        "riconosciuto niente in questo testo», MAI «questa cosa non esiste in casa»** "
+        "-- non hai guardato l'inventario, hai guardato i NOMI. Segui il suggerimento "
+        "(il nome esatto, o `view` diretto sul tipo giusto) invece di concludere che la "
+        "cosa manchi o di ripetere la stessa ricerca uguale. "
+        "Se invece la ricerca stessa non ha potuto guardare tutto -- un registro non "
+        "letto, lo specchio dello stato giu' -- la risposta porta `non_ho_potuto_guardare` "
+        "con la lista dei motivi AL POSTO di `nulla_riconosciuto`: concludere «non ho "
+        "riconosciuto niente» sarebbe falso quando la casa non e' stata nemmeno letta "
+        "per intero, e il suggerimento di riprovare con un nome esatto sarebbe una "
+        "strada cieca finche' quel registro resta giu'. Ogni motivo e' o un guasto DI "
+        "ADESSO (ha senso riprovare piu' tardi) o un limite STABILE di alcune entita' "
+        "di questa casa (nessun nome ne' nel registro ne' nello stato vivo: riprovare "
+        "la stessa ricerca non cambia nulla, serve rinominarle in Home Assistant) -- il "
+        "testo del motivo dice quale dei due e'. In nessuno dei due casi (ne' "
+        "`nulla_riconosciuto` ne' `non_ho_potuto_guardare`) concludere che la cosa non "
+        "esiste."
     ),
     "input_schema": {
         "type": "object",
@@ -1674,18 +1680,6 @@ class ToolDispatcher:
             lookup = costruisci_indice(home_space, reported_names, behavior)
         found = _search_candidates(lookup, text)
         response: dict = {"trovati": found}
-        # Correzione del 06/09 al §6a, primo bordo: `not found` e' l'unica
-        # guardia corretta qui -- la voce SENZA candidati che `search()`
-        # aggiunge quando il testo e' il dominio di una piattaforma
-        # (`queries.search`, il ramo «piattaforma») porta comunque una voce
-        # in `found`, perche' e' un nome riconosciuto (di tipo diverso da un
-        # candidato), non un vuoto. Guardare "candidati non vuoti" invece di
-        # "lista non vuota" avrebbe dichiarato `nulla_riconosciuto` proprio
-        # quando una piattaforma era stata trovata -- l'errore che
-        # l'Attenzione del brief del Task 2 avverte di non fare.
-        if not found:
-            response["nulla_riconosciuto"] = True
-            response["suggerimento"] = _NOTHING_RECOGNIZED_SUGGESTION
         # N2 (ri-review): il ramo strutturale di `_blind_spots` (I3, sotto) si
         # accende su OGNI casa sana che abbia entita' senza nome ne' nel
         # registro ne' nello specchio -- sull'impianto vero, un fatto
@@ -1698,6 +1692,27 @@ class ToolDispatcher:
         # questo ramo esiste per rispettare, rivoltata contro se stessa).
         blind_spots = self._blind_spots(home_space, mirror_loaded, reported_names,
                                         found_nothing=not found)
+        # Correzione del 06/09 al §6a, primo bordo -- e correzione della
+        # ri-review sulla PRIMA stesura di questo ramo: `not found` da solo
+        # NON basta. Riprodotto: con l'anagrafe "entita" caduta, `not found`
+        # e `blind_spots` erano insieme veri, e la prima versione affermava
+        # "nessun nome ne' alias combacia" -- un fatto su TUTTI i nomi della
+        # casa che il codice non ha potuto verificare -- e consigliava di
+        # ripetere «search» con un nome esatto, una strada che non puo'
+        # funzionare finche' il registro resta giu'. `nulla_riconosciuto` e
+        # `suggerimento` sono la faccia "ho guardato e non c'era" -- l'altra
+        # faccia, "non ho potuto guardare", e' gia' `non_ho_potuto_guardare`
+        # qui sotto (`_blind_spots` esiste apposta per separarle, invariante
+        # 4): dichiararle insieme le riunisce, il difetto opposto a quello
+        # per cui questo intero task esiste. La voce SENZA candidati che
+        # `search()` aggiunge quando il testo e' il dominio di una
+        # piattaforma (`queries.search`, il ramo «piattaforma», l'Attenzione
+        # del brief del Task 2) resta comunque coperta da questa guardia:
+        # porta sempre una voce in `found`, quindi `not found` e' gia' falso
+        # e non serve un caso a parte per escluderla.
+        if not found and not blind_spots:
+            response["nulla_riconosciuto"] = True
+            response["suggerimento"] = _NOTHING_RECOGNIZED_SUGGESTION
         if blind_spots:
             response["non_ho_potuto_guardare"] = blind_spots
         return response

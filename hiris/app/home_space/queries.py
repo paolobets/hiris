@@ -156,29 +156,27 @@ def search(lookup, text: str) -> list[dict]:
     irraggiungibili da `search`, esattamente la frase vietata sopra per
     `nascosta` applicata a un altro campo.
 
-    Un risultato puo' portare anche `solo_una_parte` (sempre `True` quando
-    c'e', mai `False`) -- il secondo bordo della correzione del 06/09 al §6a:
-    `find()` cerca i termini DENTRO la frase, quindi «la lampada di sopra»
-    aggancia un'entita' chiamata esattamente «lampada» e il modello riceve
-    un riferimento preciso per UNA PAROLA di cio' che ha chiesto. Il
-    frammento riconosciuto e' gia' in `nome_visto`, ma niente diceva che
-    fosse un PEZZO della frase e non la frase intera -- la differenza fra
-    «ho capito» e «ho capito questa parola». Si dichiara confrontando
-    `nome_visto` normalizzato con l'intero `testo` normalizzato (la stessa
-    `_normalize` che gia' unisce `nome_visto` alla piattaforma qui sotto):
-    non e' un punteggio, e' lo stesso confronto letterale su cui questo
-    modulo intero si fonda, applicato al bordo invece che al termine. Quando
-    combaciano per intero la chiave NON esce -- stessa disciplina di
-    `mute_da`/`elenco_incompleto`: le chiavi che non hanno niente da dire non
-    escono.
-
     `verify()` e' un accesso a dizionario, non una ricerca: farlo per
-    candidato costa quanto leggere la lista."""
+    candidato costa quanto leggere la lista.
+
+    Il secondo bordo della correzione del 06/09 al §6a -- «la corrispondenza
+    su un frammento» -- NON aggiunge una chiave qui: misurato costruendo
+    l'indice sulla casa vera (16 aree, 1018 entita') e su due case finte
+    realistiche, un campo `solo_una_parte` (`nome_visto` normalizzato diverso
+    dall'intero `testo` normalizzato) usciva su 11 frasi su 13 nella prima e
+    11 su 15 nella seconda -- su tutto il linguaggio naturale tranne il nome
+    nudo. Una dichiarazione quasi sempre vera il modello impara a saltarla,
+    anche il giorno in cui conta, che e' l'unico giorno per cui esisterebbe
+    -- e non esiste nel repo un elenco di parole vuote («il», «la», «di») da
+    cui distinguere un frammento povero da uno che ha perso informazione
+    vera: costruirne uno, o mettere una soglia sui caratteri residui,
+    sarebbe di nuovo il punteggio che la correzione vieta. Il fatto resta
+    vero e gratis in `nome_visto` (gia' il testo del SOLO frammento
+    riconosciuto, mai la frase intera): lo dichiara la description dello
+    strumento (`tools.py::SEARCH_TOOL_DEF`), non una chiave in piu' qui."""
     results = lookup.find(text)
     whole_phrase = _normalize(text)
     for entry in results:
-        if _normalize(entry["nome_visto"]) != whole_phrase:
-            entry["solo_una_parte"] = True
         for candidate in entry["candidati"]:
             resolved = lookup.verify(candidate["tipo"], candidate["riferimento"]) or {}
             deduced = (resolved.get("nome_dedotto") or "").strip()
