@@ -1312,10 +1312,28 @@ class HAClient:
         `start.get("dateTime") or start.get("date")`: sono sempre stringhe
         ISO-8601 in entrambe le forme misurate (vedi sopra), quindi
         l'ordinamento LESSICOGRAFICO su quella stringa e' gia' quello
-        cronologico -- non serve parsare un `datetime`. L'ordinamento e'
-        STABILE (`sorted(...)`, non `list.sort()` sull'oggetto ricevuto): a
-        parita' di istante l'ordine relativo con cui HA li ha mandati si
-        conserva.
+        cronologico -- non serve parsare un `datetime`.
+
+        **Perche' il lessicografico basta, detto con precisione.** Non e' una
+        proprieta' generale delle stringhe ISO: `16:00+02:00` e `15:00Z` sono
+        lo stesso ordine sbagliato, perche' si confronta l'ora SCRITTA e non
+        l'istante. Regge perche' ogni `dateTime` esce dalla vista di HA gia'
+        passato per `dt_util.as_local(value).isoformat()` (verificato alla
+        fonte sui tag `2024.7.0` riga 417 e `2026.9.0` riga 445): un solo fuso,
+        quello dell'istanza, e mai la forma `Z`. **L'unica eccezione e' l'ora
+        ripetuta del ritorno all'ora solare** -- l'ultima domenica di ottobre
+        fra le 2 e le 3, dove `02:30+02:00` esce dopo `02:00+01:00`. Due eventi
+        entrambi dentro quell'ora possono uscire invertiti; e' dichiarato, non
+        corretto, perche' parsare ogni istante per un'ora l'anno costerebbe piu'
+        di quanto valga.
+        Un giornaliero e un evento a orario dello stesso giorno finiscono
+        nell'ordine giusto senza casi speciali: `"2026-09-05"` e' prefisso di
+        `"2026-09-05T..."`, quindi precede ogni orario di quel giorno -- che e'
+        vero, un giornaliero comincia a mezzanotte.
+
+        `sorted(...)` invece di `list.sort()` per non mutare l'oggetto
+        ricevuto; entrambi sarebbero stabili, e la stabilita' serve qui perche'
+        a parita' di istante l'ordine con cui HA li ha mandati si conserva.
 
         **Un elenco tagliato non deve poter sembrare completo.** A
         differenza di `history()`/`logbook()` qui sopra, che dichiarano
