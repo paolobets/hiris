@@ -552,20 +552,23 @@ async def test_a_platform_recognised_alone_is_not_nothing_recognised(archivio_ca
 @pytest.mark.asyncio
 async def test_a_fallen_registry_is_not_the_same_as_nothing_recognised(archivio_casa, memoria):
     """Riprodotto in ri-review: col registro «entita» caduto, `search("il
-    bagno")` aveva `not found` VERO insieme a `blind_spots` VERO, e la prima
-    stesura dichiarava `nulla_riconosciuto` in entrambi i casi -- affermando
-    "nessun nome ne' alias combacia" su TUTTI i nomi della casa quando in
-    realta' non li ha nemmeno potuti leggere, e consigliando di ripetere
-    «search» con un nome esatto: una strada che non puo' funzionare finche'
-    quel registro resta giu'. "Non ho potuto guardare" e "ho guardato e non
-    c'era" sono le due facce che `_blind_spots` esiste per separare
-    (invariante 4) -- questo test prova che `nulla_riconosciuto` sceglie la
-    seconda faccia SOLO quando e' vera anche la prima meta' («ho guardato
-    per intero»).
+    bagno")` aveva `not found` VERO insieme a un motivo "guasto DI ADESSO"
+    (registro caduto) presente, e la prima stesura dichiarava
+    `nulla_riconosciuto` in entrambi i casi -- affermando "nessun nome ne'
+    alias combacia" su TUTTI i nomi della casa quando in realta' non li ha
+    nemmeno potuti leggere, e consigliando di ripetere «search» con un nome
+    esatto: una strada che non puo' funzionare finche' quel registro resta
+    giu'. "Non ho potuto guardare" e "ho guardato e non c'era" sono le due
+    facce che `_blind_spots` esiste per separare (invariante 4) -- questo
+    test prova che `nulla_riconosciuto` sceglie la seconda faccia SOLO quando
+    NESSUN motivo "guasto DI ADESSO" e' presente (un registro non letto e'
+    apposta un motivo di quel genere, non del genere "limite stabile" -- vedi
+    il test dedicato al limite stabile piu' sotto, dove `nulla_riconosciuto`
+    esce COMUNQUE).
 
-    Mutazione che uccide: tornare alla guardia `if not found:` (senza `and
-    not blind_spots`) in `ToolDispatcher._search` -- il test torna rosso su
-    `assert "nulla_riconosciuto" not in esito`."""
+    Mutazione che uccide: tornare alla guardia `if not found:` (senza il
+    controllo sui motivi "guasto DI ADESSO") in `ToolDispatcher._search` --
+    il test torna rosso su `assert "nulla_riconosciuto" not in esito`."""
     archivio_casa.replace({"aree": [], "entita": []}, ["entita"])
     esito = await ToolDispatcher(archivio_casa, memoria).dispatch(
         "search", {"testo": "il bagno"})
@@ -573,6 +576,43 @@ async def test_a_fallen_registry_is_not_the_same_as_nothing_recognised(archivio_
     assert any("entita" in m for m in esito["non_ho_potuto_guardare"])
     assert "nulla_riconosciuto" not in esito
     assert "suggerimento" not in esito
+
+
+@pytest.mark.asyncio
+async def test_a_stable_naming_gap_does_not_silence_nulla_riconosciuto(archivio_casa, memoria):
+    """Riprodotto e misurato in ri-review: la seconda correzione (`not found
+    and not blind_spots`) trattava OGNI motivo di `_blind_spots` come lo
+    stesso genere di dubbio di un registro caduto. Non lo sono: qui una sola
+    entita' ("light.senza") non ha un nome ne' nel registro ne' nello
+    specchio -- lo specchio SI LEGGE (per un'ALTRA entita'), nessun registro
+    e' caduto, nessun file non letto. La ricerca ha guardato TUTTI i nomi
+    dichiarati per intero e nessuno combaciava con "abat-jour": e' un limite
+    STABILE che riguarda un'ALTRA entita', non un guasto di questa ricerca --
+    il `suggerimento` (il nome esatto, o `view` diretto) resta la strada
+    giusta. Misurato: sui dati di agosto (376 entita' senza stato vivo sulla
+    casa vera) la guardia sbagliata avrebbe spento `nulla_riconosciuto` su
+    OGNI ricerca senza esito dell'intera casa -- una funzione scritta,
+    provata, verde, e silenziosa.
+
+    Mutazione che uccide: tornare alla guardia `if not found and not
+    blind_spots:` (l'intero elenco, non solo i motivi non stabili) --
+    il test torna rosso su `assert esito["nulla_riconosciuto"] is True`
+    (`KeyError: 'nulla_riconosciuto'`)."""
+    archivio_casa.replace({"entita": [
+        {"entity_id": "light.senza", "name": None, "original_name": None}]}, [])
+
+    class _SpecchioSenzaQuestaVoce:
+        loaded = True
+        def all_states(self):
+            return [{"id": "light.altra", "state": "on", "name": "Un'altra luce"}]
+
+    esito = await ToolDispatcher(archivio_casa, memoria,
+                                      cache=_SpecchioSenzaQuestaVoce()).dispatch(
+        "search", {"testo": "abat-jour"})
+    assert esito["trovati"] == []
+    assert esito["nulla_riconosciuto"] is True
+    assert esito.get("suggerimento")
+    assert any("limite stabile" in m for m in esito["non_ho_potuto_guardare"])
 
 
 def test_search_description_names_the_nome_visto_comparison():
@@ -584,9 +624,21 @@ def test_search_description_names_the_nome_visto_comparison():
     sostituzione non sia una perdita silenziosa -- la description deve dire
     al modello di confrontare `nome_visto` con cio' che ha cercato.
 
-    Mutazione che uccide: togliere la frase che nomina il confronto dalla
-    description di `SEARCH_TOOL_DEF` -- il test torna rosso su
-    `assert "nome_visto" in descrizione`."""
+    Onesta' sulla prova (ri-review): e' un filo d'inciampo sulla PRESENZA
+    della frase, non sul suo SIGNIFICATO -- ne' `assert "nome_visto" in
+    descrizione` ne' `assert "Confrontalo..." in descrizione` si accorgono
+    se quella frase dicesse l'opposto (es. «se e' piu' corto, vale comunque
+    per tutta la frase»): resterebbero verdi lo stesso. E' il massimo onesto
+    per della prosa: custodisce che la spiegazione ESISTA, non che sia
+    corretta.
+
+    Mutazione che uccide: togliere la frase che nomina il confronto
+    («Confrontalo con quello che hai chiesto...») dalla description di
+    `SEARCH_TOOL_DEF` -- il test torna rosso su `assert "Confrontalo con
+    quello che hai chiesto" in descrizione` (il primo assert, su
+    `"nome_visto"`, resta verde: quella parola compare anche nella frase
+    precedente che introduce il campo; serve togliere l'INTERO paragrafo per
+    far cadere anche quello)."""
     descrizione = SEARCH_TOOL_DEF["description"]
     assert "nome_visto" in descrizione
     assert "Confrontalo con quello che hai chiesto" in descrizione
@@ -928,6 +980,13 @@ async def test_cerca_dichiara_le_entita_senza_nome_anche_a_specchio_leggibile(
         "il motivo deve dire QUANTE entita' (esattamente 1, non un altro numero che "
         "contenga la cifra '1') e PERCHE', distinto dal caso 'specchio illeggibile' -- "
         "qui lo specchio si legge benissimo, solo non porta un nome per QUESTA entita'")
+    # Ri-review, terzo giro (Task 2): questo E' il caso "limite stabile" e
+    # NIENT'ALTRO -- nessun registro caduto, nessun file non letto, lo
+    # specchio si legge benissimo. La ricerca ha guardato TUTTI i nomi
+    # dichiarati per intero e nessuno combaciava: `nulla_riconosciuto` deve
+    # uscire comunque, insieme a `non_ho_potuto_guardare` (vedi il test
+    # dedicato piu' sotto per la mutazione verificata su questo fatto).
+    assert esito["nulla_riconosciuto"] is True
 
 
 @pytest.mark.asyncio

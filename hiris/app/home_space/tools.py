@@ -285,27 +285,33 @@ SEARCH_TOOL_DEF = {
         "Se il testo non nomina niente che la casa conosca, `trovati` e' una lista "
         "vuota: non e' un errore, significa che nessun nome o alias corrisponde. "
         "**Ma una lista vuota non basta sempre a concludere che la cosa non esista**: "
-        "puo' essere vuota per DUE motivi diversi, MAI insieme (e mai insieme a "
-        "candidati gia' trovati), perche' sono due fatti diversi su cio' che questa "
-        "ricerca ha potuto vedere. "
-        "Se hai guardato TUTTI i nomi dichiarati e nessuno combaciava, la risposta "
-        "porta `nulla_riconosciuto: true` con un `suggerimento`: **vuol dire «non ho "
+        "la risposta puo' portare `nulla_riconosciuto` e/o `non_ho_potuto_guardare`, a "
+        "seconda del perche'. "
+        "`non_ho_potuto_guardare` esce quando la ricerca non ha potuto guardare tutto, "
+        "con la lista dei motivi -- e puo' comparire ANCHE accanto a candidati gia' "
+        "trovati: un registro non letto o un limite di alcune entita' possono nascondere "
+        "altri omonimi anche quando questa ricerca ha gia' trovato qualcosa. Ogni motivo "
+        "e' o un guasto DI ADESSO (un registro non letto, lo specchio dello stato giu': "
+        "ha senso riprovare piu' tardi) o un limite STABILE di alcune entita' di questa "
+        "casa (nessun nome ne' nel registro ne' nello stato vivo: riprovare la stessa "
+        "ricerca non cambia nulla, serve rinominarle in Home Assistant) -- il testo del "
+        "motivo dice quale dei due e'. "
+        "Se hai guardato TUTTI i nomi dichiarati per intero e nessuno combaciava -- "
+        "nessun guasto DI ADESSO a impedirtelo -- la risposta porta anche "
+        "`nulla_riconosciuto: true` con un `suggerimento`: **vuol dire «non ho "
         "riconosciuto niente in questo testo», MAI «questa cosa non esiste in casa»** "
         "-- non hai guardato l'inventario, hai guardato i NOMI. Segui il suggerimento "
         "(il nome esatto, o `view` diretto sul tipo giusto) invece di concludere che la "
-        "cosa manchi o di ripetere la stessa ricerca uguale. "
-        "Se invece la ricerca stessa non ha potuto guardare tutto -- un registro non "
-        "letto, lo specchio dello stato giu' -- la risposta porta `non_ho_potuto_guardare` "
-        "con la lista dei motivi AL POSTO di `nulla_riconosciuto`: concludere «non ho "
-        "riconosciuto niente» sarebbe falso quando la casa non e' stata nemmeno letta "
-        "per intero, e il suggerimento di riprovare con un nome esatto sarebbe una "
-        "strada cieca finche' quel registro resta giu'. Ogni motivo e' o un guasto DI "
-        "ADESSO (ha senso riprovare piu' tardi) o un limite STABILE di alcune entita' "
-        "di questa casa (nessun nome ne' nel registro ne' nello stato vivo: riprovare "
-        "la stessa ricerca non cambia nulla, serve rinominarle in Home Assistant) -- il "
-        "testo del motivo dice quale dei due e'. In nessuno dei due casi (ne' "
-        "`nulla_riconosciuto` ne' `non_ho_potuto_guardare`) concludere che la cosa non "
-        "esiste."
+        "cosa manchi o di ripetere la stessa ricerca uguale. Richiede `trovati` vuoto, "
+        "quindi MAI insieme a candidati gia' trovati; MAI insieme a un guasto DI ADESSO "
+        "in `non_ho_potuto_guardare` (la casa non sarebbe stata letta per intero, e il "
+        "suggerimento di riprovare con un nome esatto sarebbe una strada cieca finche' "
+        "quel registro resta giu'). PUO' invece comparire insieme a "
+        "`non_ho_potuto_guardare` quando l'UNICO motivo li' dentro e' il limite STABILE: "
+        "riguarda ALTRE entita', non mette in dubbio che tu abbia guardato i nomi "
+        "dichiarati per intero, e il suggerimento resta la strada giusta. In nessuno dei "
+        "due casi (ne' `nulla_riconosciuto` ne' `non_ho_potuto_guardare`) concludere che "
+        "la cosa non esiste."
     ),
     "input_schema": {
         "type": "object",
@@ -1683,34 +1689,45 @@ class ToolDispatcher:
         # N2 (ri-review): il ramo strutturale di `_blind_spots` (I3, sotto) si
         # accende su OGNI casa sana che abbia entita' senza nome ne' nel
         # registro ne' nello specchio -- sull'impianto vero, un fatto
-        # STABILE (376 entita'), non un guasto di QUESTA ricerca. La chiave
-        # esiste per spiegare un `trovati` vuoto che potrebbe nascondere
-        # qualcosa (vedi il docstring di `_blind_spots`): non ha niente da
-        # spiegare quando la ricerca ha gia' trovato cio' che cercava, e
-        # dichiararla comunque la rende permanente -- un'assenza dichiarata
-        # SEMPRE smette di essere un segnale (la stessa invariante 4 che
-        # questo ramo esiste per rispettare, rivoltata contro se stessa).
-        blind_spots = self._blind_spots(home_space, mirror_loaded, reported_names,
-                                        found_nothing=not found)
-        # Correzione del 06/09 al §6a, primo bordo -- e correzione della
-        # ri-review sulla PRIMA stesura di questo ramo: `not found` da solo
-        # NON basta. Riprodotto: con l'anagrafe "entita" caduta, `not found`
-        # e `blind_spots` erano insieme veri, e la prima versione affermava
-        # "nessun nome ne' alias combacia" -- un fatto su TUTTI i nomi della
-        # casa che il codice non ha potuto verificare -- e consigliava di
-        # ripetere «search» con un nome esatto, una strada che non puo'
-        # funzionare finche' il registro resta giu'. `nulla_riconosciuto` e
-        # `suggerimento` sono la faccia "ho guardato e non c'era" -- l'altra
-        # faccia, "non ho potuto guardare", e' gia' `non_ho_potuto_guardare`
-        # qui sotto (`_blind_spots` esiste apposta per separarle, invariante
-        # 4): dichiararle insieme le riunisce, il difetto opposto a quello
-        # per cui questo intero task esiste. La voce SENZA candidati che
-        # `search()` aggiunge quando il testo e' il dominio di una
-        # piattaforma (`queries.search`, il ramo «piattaforma», l'Attenzione
-        # del brief del Task 2) resta comunque coperta da questa guardia:
-        # porta sempre una voce in `found`, quindi `not found` e' gia' falso
-        # e non serve un caso a parte per escluderla.
-        if not found and not blind_spots:
+        # STABILE (376 entita' ad agosto), non un guasto di QUESTA ricerca.
+        # La chiave esiste per spiegare un `trovati` vuoto che potrebbe
+        # nascondere qualcosa (vedi il docstring di `_blind_spots`): non ha
+        # niente da spiegare quando la ricerca ha gia' trovato cio' che
+        # cercava, e dichiararla comunque la rende permanente -- un'assenza
+        # dichiarata SEMPRE smette di essere un segnale (la stessa invariante
+        # 4 che questo ramo esiste per rispettare, rivoltata contro se
+        # stessa).
+        blind_spot_entries = self._blind_spots(
+            home_space, mirror_loaded, reported_names, found_nothing=not found)
+        blind_spots = [message for message, _stable in blind_spot_entries]
+        # Correzione del 06/09 al §6a, primo bordo -- e SECONDA correzione
+        # della ri-review su questo ramo. La prima correzione (`not found and
+        # not blind_spots`) trattava OGNI motivo di `_blind_spot_entries`
+        # come lo stesso genere di dubbio: misurato che non lo sono. Un
+        # registro non letto o uno specchio giu' sono un guasto DI ADESSO --
+        # la casa non e' stata guardata per intero, e "nulla_riconosciuto"
+        # sarebbe falso. Ma il ramo strutturale (entita' senza nome ne' nel
+        # registro ne' nello specchio) e' un limite STABILE che riguarda
+        # ALTRE entita': la ricerca HA guardato tutti i nomi dichiarati per
+        # intero, e non dirlo perche' esiste quel limite altrove avrebbe
+        # spento `nulla_riconosciuto` su OGNI ricerca senza esito dell'intera
+        # casa non appena una sola entita' porta quel limite -- misurato: sui
+        # dati di agosto (376 entita' senza stato vivo) sarebbe stata una
+        # funzione scritta, provata, verde, e silenziosa sulla casa vera. Il
+        # `suggerimento` resta la strada giusta anche in quel caso: il nome
+        # esatto o `view` diretto e' esattamente cio' che serve per
+        # un'entita' che un nome non ce l'ha da nessuna parte. Per questo la
+        # guardia guarda SOLO i motivi non stabili (`stable is False`), mai
+        # l'elenco intero -- e puo' quindi coesistere con
+        # `non_ho_potuto_guardare` quando l'UNICO motivo li' dentro e'
+        # quello stabile. La voce SENZA candidati che `search()` aggiunge
+        # quando il testo e' il dominio di una piattaforma (`queries.search`,
+        # il ramo «piattaforma», l'Attenzione del brief del Task 2) resta
+        # comunque coperta da questa guardia: porta sempre una voce in
+        # `found`, quindi `not found` e' gia' falso e non serve un caso a
+        # parte per escluderla.
+        current_gap = any(not stable for _message, stable in blind_spot_entries)
+        if not found and not current_gap:
             response["nulla_riconosciuto"] = True
             response["suggerimento"] = _NOTHING_RECOGNIZED_SUGGESTION
         if blind_spots:
@@ -1719,7 +1736,7 @@ class ToolDispatcher:
 
     def _blind_spots(self, home_space: dict, mirror_loaded: bool,
                 reported_names: dict[str, str] | None = None, *,
-                found_nothing: bool = True) -> list[str]:
+                found_nothing: bool = True) -> list[tuple[str, bool]]:
         """Perche' `trovati` potrebbe essere vuoto SENZA che la cosa manchi.
 
         Invariante 4 della fetta: «non c'e' nessuna cosa con quel nome» e «non
@@ -1731,15 +1748,35 @@ class ToolDispatcher:
         c'e' niente da dichiarare. Un elenco vuoto che dice "nessun problema"
         e' esattamente la forma che questa funzione esiste per togliere.
 
+        Ogni voce e' `(messaggio, stabile)` -- ri-review sul secondo giro di
+        correzioni del Task 2: i motivi qui dentro non sono tutti dello
+        STESSO genere di dubbio. Un registro non letto o lo specchio giu'
+        sono un guasto DI ADESSO (`stabile=False`): la casa non e' stata
+        guardata per intero, e "nulla_riconosciuto" (`_search`, sopra)
+        sarebbe falso se lo dicesse. Il ramo strutturale piu' sotto (entita'
+        senza nome ne' nel registro ne' nello specchio) e' un limite STABILE
+        (`stabile=True`) che riguarda ALTRE entita': la ricerca HA guardato
+        tutti i nomi dichiarati per intero, e taciere "nulla_riconosciuto"
+        per questo motivo spegnerebbe la dichiarazione su OGNI ricerca senza
+        esito dell'intera casa non appena una sola entita' porta quel limite
+        -- misurato sui dati di agosto (376 entita' senza stato vivo):
+        sarebbe stata una funzione scritta, provata, verde, e silenziosa
+        sulla casa vera. Il chiamante decide da questa etichetta, non
+        indovinandola dal testo del messaggio.
+
         `found_nothing` (N2, ri-review): il ramo strutturale piu' sotto
-        (entita' senza nome ne' nel registro ne' nello specchio) descrive un
-        fatto STABILE della casa -- sull'impianto vero non si risolve mai da
-        solo, quindi senza questo cancello si accenderebbe a ogni singola
-        `search`, comprese quelle riuscite: un'assenza dichiarata SEMPRE
-        smette di essere un segnale (la stessa invariante 4 qui sopra,
-        rivoltata contro se stessa). Riportato solo quando serve DAVVERO a
-        spiegare un `trovati` vuoto -- mai accanto a candidati trovati."""
-        reasons: list[str] = []
+        descrive un fatto STABILE della casa -- sull'impianto vero non si
+        risolve mai da solo, quindi senza questo cancello si accenderebbe a
+        ogni singola `search`, comprese quelle riuscite: un'assenza
+        dichiarata SEMPRE smette di essere un segnale (la stessa invariante 4
+        qui sopra, rivoltata contro se stessa). Riportato solo quando serve
+        DAVVERO a spiegare un `trovati` vuoto -- mai accanto a candidati
+        trovati. I motivi "guasto di adesso" (registro/file/specchio), invece,
+        NON hanno questo cancello: un registro caduto puo' nascondere altri
+        omonimi anche quando QUESTA ricerca ha gia' trovato qualcosa, quindi
+        possono uscire accanto a candidati gia' trovati (`tools.py::
+        SEARCH_TOOL_DEF["description"]` lo dichiara)."""
+        entries: list[tuple[str, bool]] = []
         # Fix finale ① (2026-08-20): `STORE_KEY_PER_TYPE` e' apposta
         # SENZA "etichette" (non e' un tipo di ancora, vedi il commento su
         # `_ARCHIVI` in memory/resolver.py -- allargarla rifarebbe il
@@ -1752,10 +1789,11 @@ class ToolDispatcher:
         fallen_stores = sorted(set(self._home_space.unavailable())
                         & (set(STORE_KEY_PER_TYPE.values()) | {"etichette"}))
         if fallen_stores:
-            reasons.append(
+            message = (
                 f"registri non letti all'ultima ricostruzione dell'anagrafe: "
                 f"{', '.join(fallen_stores)}. Cio' che sta li' dentro non e' cercabile adesso, "
                 "e potrebbe esistere lo stesso.")
+            entries.append((message, False))
         # Fix finale ① (2026-08-20): il comportamento (automazioni/script)
         # non passa MAI da `non_disponibili()` -- la sua fonte e' un file
         # YAML riletto a una cadenza propria (`HomeSpaceStore.comportamento()`),
@@ -1767,20 +1805,22 @@ class ToolDispatcher:
         # di automazione/script che poteva essere scritto proprio li'.
         unloaded_files = self._home_space.unloaded_files()
         if unloaded_files:
-            reasons.append(
+            message = (
                 f"file di automazioni/script non letti: "
                 f"{', '.join(sorted(unloaded_files))}. Cio' che c'e' scritto li' dentro "
                 "non e' cercabile adesso, e potrebbe esistere lo stesso.")
+            entries.append((message, False))
 
         unnamed = [e for e in home_space.get("entita") or []
                      if not (e.get("nome") or "").strip() and not e.get("disabilitata")]
         mirror_ok = mirror_loaded and inventory_is_readable(self._cache)
         if unnamed and not mirror_ok:
-            reasons.append(
+            message = (
                 f"{len(unnamed)} entita' non hanno un nome nel registro di Home Assistant e "
                 "lo specchio dello stato non e' leggibile: il ripiego sul nome che Home "
                 "Assistant mostra non e' disponibile, quindi quelle entita' non sono "
                 "cercabili per nome in questo momento.")
+            entries.append((message, False))
         elif unnamed and mirror_ok:
             # I3 (review finale), invariante 4 sul caso PARZIALE: lo specchio
             # e' leggibile (altrimenti il ramo sopra avrebbe gia' parlato),
@@ -1796,15 +1836,20 @@ class ToolDispatcher:
             # trovati_vuoti: vedi il docstring -- questo fatto e' stabile
             # (non si risolve riprovando la ricerca), quindi si dichiara
             # solo quando serve a spiegare un `trovati` vuoto, mai a fianco
-            # di candidati gia' trovati.
+            # di candidati gia' trovati. Stabile (`True`): riguarda ALTRE
+            # entita' rispetto a quelle che questa ricerca cercava, e non
+            # mette in dubbio che i nomi dichiarati siano stati guardati per
+            # intero -- vedi il docstring sopra sul perche' NON spegne
+            # `nulla_riconosciuto`.
             if unnamed_even_live and found_nothing:
-                reasons.append(
+                message = (
                     f"{len(unnamed_even_live)} entita' di questa casa non hanno un nome ne' nel "
                     "registro di Home Assistant ne' nello specchio dello stato (lo specchio si "
                     "legge, ma non porta un nome per queste): e' un limite stabile di quelle "
                     "entita', non un guasto di questa ricerca -- ripetere la stessa ricerca non "
                     "cambia nulla, serve rinominarle in Home Assistant.")
-        return reasons
+                entries.append((message, True))
+        return entries
 
     # -- guarda ----------------------------------------------------------
 
