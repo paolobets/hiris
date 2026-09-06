@@ -1334,14 +1334,31 @@ def _bad_arguments(name: str, arguments: dict[str, Any]) -> dict | None:
     Due discipline DIVERSE, con due frasi diverse -- non una sola
     «argomenti non validi» che le confonde:
 
-    - un obbligatorio ASSENTE: la chiave non compare affatto nel dizionario
-      degli argomenti (`required` di JSON Schema guarda la PRESENZA, non il
-      valore -- uno strumento che vuole anche un valore non vuoto lo
-      controlla gia' da se', come fa `_search` con `testo`, ed e' un
-      controllo che questa funzione non duplica: non e' il suo lavoro);
+    - un obbligatorio ASSENTE, o presente ma `null`: `required` di JSON
+      Schema guarda in linea di principio solo la PRESENZA della chiave, ma
+      nessuna proprieta' di questo catalogo ammette `null` come valore
+      vero (vedi `input_schema["properties"]` di ognuna: sempre un tipo
+      concreto), quindi un `null` esplicito su un obbligatorio e' la STESSA
+      assenza scritta in un altro modo -- trattarlo da "presente" lascerebbe
+      passare un `{"riferimento": null}` che tre gestori diversi (`_view`,
+      `_related`, `_recall`) dovevano fermare uno per uno prima di questo
+      task (review indipendente, Task 1: «la suite verde dopo una rimozione
+      non dimostra che il codice fosse morto, dimostra che non era
+      provato»). Un valore non-`null` ma comunque vuoto (`""`) resta fuori
+      da questa disciplina apposta: uno strumento che lo vuole non vuoto lo
+      controlla gia' da se', come fa `_search` con `testo` o `_trend` con
+      `entita` -- un controllo che questa funzione non duplica;
     - un nome che lo schema non conosce affatto: ignorarlo in silenzio
       lascerebbe il modello convinto di aver chiesto una cosa che in realta'
       non e' mai stata letta.
+
+    **Le due si dicono INSIEME quando accadono insieme**, non a turni
+    separati: il caso che ha motivato questo intero task -- il modello
+    scrive `orario` invece di `ore` -- accende ENTRAMBE le condizioni
+    (`ore` manca, `orario` e' ignoto). Riportarne una sola per turno
+    costringerebbe il modello a due correzioni quando una basterebbe: prima
+    aggiungerebbe `ore` senza sapere che `orario` va tolto, e lo scoprirebbe
+    solo al turno dopo.
 
     Restituisce `None` quando gli argomenti vanno bene -- anche per uno
     strumento come `agenda`, che non dichiara `required` affatto (nessun
@@ -1351,18 +1368,22 @@ def _bad_arguments(name: str, arguments: dict[str, Any]) -> dict | None:
     allowed = schema.get("properties", {})
     required = schema.get("required", [])
 
-    missing = [field for field in required if field not in arguments]
+    missing = [field for field in required
+               if field not in arguments or arguments[field] is None]
+    unknown = [key for key in arguments if key not in allowed]
+
+    parts = []
     if missing:
         verb = "manca" if len(missing) == 1 else "mancano"
         every_required = f" (obbligatori: {_quoted(required)})" if len(required) > 1 else ""
-        return {"errore": f"«{name}»: {verb} {_quoted(missing)}{every_required}."}
-
-    unknown = [key for key in arguments if key not in allowed]
+        parts.append(f"{verb} {_quoted(missing)}{every_required}")
     if unknown:
         every_allowed = f" (argomenti validi: {_quoted(sorted(allowed))})" if allowed else ""
-        return {"errore": f"«{name}»: non conosco {_quoted(unknown)}{every_allowed}."}
+        parts.append(f"non conosco {_quoted(unknown)}{every_allowed}")
 
-    return None
+    if not parts:
+        return None
+    return {"errore": f"«{name}»: " + "; ".join(parts) + "."}
 
 
 class ToolDispatcher:
@@ -1954,8 +1975,16 @@ class ToolDispatcher:
 
     def _recall(self, arguments: dict[str, Any]) -> dict:
         reference = arguments.get("riferimento")
-        if reference is None:
-            return {"errore": "«fetch» richiede un «riferimento»."}
+        # Il controllo «"riferimento" e' obbligatorio» viveva QUI fino al
+        # giro di correzioni sul Task 1 di «rifiutare e importare» (§6b):
+        # tolto perche' `dispatch()` lo fa gia' PRIMA di chiamare questo
+        # gestore (`_bad_arguments`, che ora tratta un obbligatorio presente
+        # ma `None` come assente -- non solo un obbligatorio del tutto
+        # mancante), e il messaggio non diceva niente di piu' di quello
+        # centrale. Provato in positivo, non per assenza di rosso:
+        # `test_a_required_argument_present_but_null_is_missing_too`
+        # (`tests/test_knowledge_tools.py`) passa `riferimento: None` a
+        # `fetch` e vede il rifiuto centrale.
         kind = arguments.get("tipo")
         # Fix E1-②: un `tipo` fuori dal vocabolario delle ancore ("stanza",
         # o "entita'" con l'accento -- plausibilissimo per un modello

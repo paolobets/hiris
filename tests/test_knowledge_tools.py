@@ -302,12 +302,12 @@ async def test_a_missing_required_argument_names_the_field():
     permette.
 
     Mutazione: togliere la chiamata a `_bad_arguments` da `dispatch` -- il
-    test torna rosso su `assert "ore" in esito["errore"]`.
+    test torna rosso su `assert "ore" in result["errore"]`.
     """
     d = ToolDispatcher(None, None, ha=object())
-    esito = await d.dispatch("trend", {"entita": "sensor.temperatura_soggiorno"})
-    assert "errore" in esito
-    assert "ore" in esito["errore"]
+    result = await d.dispatch("trend", {"entita": "sensor.temperatura_soggiorno"})
+    assert "errore" in result
+    assert "ore" in result["errore"]
 
 
 @pytest.mark.asyncio
@@ -317,21 +317,25 @@ async def test_an_unknown_argument_is_an_error_not_a_silence():
     un'altra cosa, e non ha modo di accorgersene. `ore` e' passato ANCHE
     qui (accanto al refuso `orario`) apposta -- per isolare la disciplina
     del nome ignoto da quella dell'obbligatorio mancante, che e' provata a
-    parte: senza `ore` questa chiamata sarebbe rifiutata per due ragioni
-    insieme, e l'assert su «orario» non distinguerebbe piu' quale delle
-    due l'ha prodotto.
+    parte: senza `ore` questa chiamata sarebbe rifiutata anche per quello, e
+    l'assert su «orario» non distinguerebbe piu' quale delle due l'ha
+    prodotto.
 
     Mutazione: togliere il controllo sui nomi ignoti da `_bad_arguments`
-    (lasciare solo quello sugli obbligatori) -- il test torna rosso su
-    `assert "errore" in esito`, perche' la chiamata raggiungerebbe
-    comunque il gestore (nessun obbligatorio manca: `entita` e `ore` ci
-    sono entrambi).
+    (lasciare solo quello sugli obbligatori). Verificato eseguendo: senza
+    quel controllo la chiamata raggiunge il gestore vero (nessun
+    obbligatorio manca: `entita` e `ore` ci sono entrambi), che con
+    `ha=object()` solleva un `AttributeError` catturato dalla rete di
+    sicurezza finale di `dispatch()` -- il risultato porta ANCORA un
+    `errore` (generico), ma non nomina piu' «orario»: il test torna rosso
+    su `assert "orario" in result["errore"]`, non su `assert "errore" in
+    result` (che resterebbe verde da solo).
     """
     d = ToolDispatcher(None, None, ha=object())
-    esito = await d.dispatch(
+    result = await d.dispatch(
         "trend", {"entita": "sensor.temperatura_soggiorno", "orario": 24, "ore": 24})
-    assert "errore" in esito
-    assert "orario" in esito["errore"]
+    assert "errore" in result
+    assert "orario" in result["errore"]
 
 
 @pytest.mark.asyncio
@@ -354,6 +358,30 @@ async def test_the_two_refusals_do_not_say_the_same_thing():
 
 
 @pytest.mark.asyncio
+async def test_both_refusals_are_said_together_when_both_apply():
+    """Il caso che ha motivato l'intero task -- il modello scrive `orario`
+    invece di `ore` -- accende ENTRAMBE le condizioni nella STESSA chiamata:
+    `ore` manca E `orario` e' ignoto. Dirne una sola per turno costringe il
+    modello a due correzioni quando una basterebbe: prima aggiungerebbe
+    `ore` senza sapere che `orario` va tolto, e lo scoprirebbe solo al turno
+    dopo (review indipendente sul Task 1).
+
+    Mutazione: in `_bad_arguments`, fare `return` non appena `missing` non
+    e' vuoto, prima di calcolare `unknown` (cioe' tornare al comportamento
+    "vince la prima disciplina che si applica"). Verificato eseguendo: il
+    test torna rosso su `assert "orario" in result["errore"]`, perche' il
+    messaggio tornerebbe soltanto «manca «ore».», senza traccia di
+    `orario`.
+    """
+    d = ToolDispatcher(None, None, ha=object())
+    result = await d.dispatch(
+        "trend", {"entita": "sensor.temperatura_soggiorno", "orario": 24})
+    assert "errore" in result
+    assert "ore" in result["errore"]
+    assert "orario" in result["errore"]
+
+
+@pytest.mark.asyncio
 async def test_a_tool_without_required_arguments_is_not_blocked():
     """«agenda» (`AGENDA_TOOL_DEF`) non dichiara `required` affatto -- nessun
     obbligatorio. Un controllo troppo zelante, che confondesse «nessuna
@@ -364,12 +392,12 @@ async def test_a_tool_without_required_arguments_is_not_blocked():
     `list(schema.get("properties", {}))` invece di
     `schema.get("required", [])` -- il test torna rosso perche' «agenda»
     verrebbe rifiutato per mancanza di `tutte`, che invece e' facoltativo
-    (verificato eseguendo: `AssertionError` su `assert "errore" not in esito`).
+    (verificato eseguendo: `AssertionError` su `assert "errore" not in result`).
     """
     d = ToolDispatcher(None, None, agenda=_FakeAgendaStore())
-    esito = await d.dispatch("agenda", {})
-    assert "errore" not in esito
-    assert esito["promesse"] == []
+    result = await d.dispatch("agenda", {})
+    assert "errore" not in result
+    assert result["promesse"] == []
 
 
 @pytest.mark.asyncio
@@ -382,11 +410,41 @@ async def test_a_known_optional_argument_is_not_mistaken_for_unknown():
     invece che come `schema.get("properties", {})` -- il test torna rosso
     perche' `tutte` (facoltativo, non in `required`) verrebbe trattato come
     ignoto (verificato eseguendo: `AssertionError` su
-    `assert "errore" not in esito`).
+    `assert "errore" not in result`).
     """
     d = ToolDispatcher(None, None, agenda=_FakeAgendaStore())
-    esito = await d.dispatch("agenda", {"tutte": True})
-    assert "errore" not in esito
+    result = await d.dispatch("agenda", {"tutte": True})
+    assert "errore" not in result
+
+
+@pytest.mark.asyncio
+async def test_a_required_argument_present_but_null_is_missing_too(archivio_casa, memoria):
+    """`required` di JSON Schema guarda in linea di principio solo la
+    PRESENZA della chiave, non il valore -- ma nessuna proprieta' di questo
+    catalogo ammette `null` come valore vero (ogni `input_schema` dichiara
+    un tipo concreto: stringa, numero, ...): un `null` esplicito su un
+    obbligatorio e' quindi la STESSA assenza scritta in un altro modo.
+    Prima di questo fix erano `_view`, `_related` e `_recall` (`fetch`) a
+    fermarlo, ciascuno col proprio controllo scritto a mano
+    (`if reference is None: ...`); ora e' `_bad_arguments`, una volta sola
+    per tutti e tre.
+
+    Mutazione: in `_bad_arguments`, tornare a
+    `field not in arguments` senza `or arguments[field] is None`.
+    Verificato eseguendo: il test torna rosso su
+    `assert "riferimento" in result["errore"]` per ciascuno dei tre nomi,
+    perche' `{"riferimento": None}` supererebbe il controllo (la chiave
+    c'e') e la chiamata raggiungerebbe il gestore vero.
+    """
+    d = ToolDispatcher(archivio_casa, memoria, ha=object())
+    for name, arguments in (
+        ("view", {"tipo": "area", "riferimento": None}),
+        ("related", {"tipo": "area", "riferimento": None}),
+        ("fetch", {"riferimento": None}),
+    ):
+        result = await d.dispatch(name, arguments)
+        assert "errore" in result, name
+        assert "riferimento" in result["errore"], name
 
 
 # --- Copertura aggiuntiva, oltre i dieci test del brief -------------------

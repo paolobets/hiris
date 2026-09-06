@@ -73,8 +73,8 @@ async def test_ogni_strumento_del_catalogo_ha_il_proprio_gestore():
         # placeholder per ognuno, questo test non arriverebbe mai al gestore
         # finto per gli undici strumenti che ne dichiarano almeno uno, e
         # fallirebbe per una ragione estranea al cablaggio che vuole provare.
-        obbligatori = definizione["input_schema"].get("required", [])
-        esito = await d.dispatch(nome, {campo: "x" for campo in obbligatori})
+        required_fields = definizione["input_schema"].get("required", [])
+        esito = await d.dispatch(nome, {field_name: "x" for field_name in required_fields})
         assert esito == marcatore, (
             f"«{nome}» non ha chiamato `self.{attributo}`: il dispatcher lo "
             "lega a un gestore diverso da quello atteso")
@@ -138,7 +138,7 @@ async def test_andamento_pretende_un_entita():
 
 
 @pytest.mark.asyncio
-async def test_andamento_rifiuta_un_entita_presente_ma_vuoto():
+async def test_trend_rejects_an_entita_present_but_empty():
     """`entita` PRESENTE ma vuota (`""`), non assente: `dispatch()` verifica
     solo la PRESENZA della chiave (Task 1 di «rifiutare e importare», §6b,
     `_bad_arguments`, da `TREND_TOOL_DEF["input_schema"]["required"]`) --
@@ -153,11 +153,11 @@ async def test_andamento_rifiuta_un_entita_presente_ma_vuoto():
     (che non ne ha nessuno) -- la rete di sicurezza finale di `dispatch()`
     trasforma quel guasto in un `errore` generico che pero' non nomina
     «entita»: l'assert dedicato ad essa arrossisce
-    (`AssertionError` su `assert "errore" in esito and "entita" in
-    esito["errore"]`)."""
+    (`AssertionError` su `assert "errore" in result and "entita" in
+    result["errore"]`)."""
     d = ToolDispatcher(None, None, ha=object())
-    esito = await d.dispatch("trend", {"entita": "", "ore": 24})
-    assert "errore" in esito and "entita" in esito["errore"]
+    result = await d.dispatch("trend", {"entita": "", "ore": 24})
+    assert "errore" in result and "entita" in result["errore"]
 
 
 @pytest.mark.asyncio
