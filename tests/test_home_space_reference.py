@@ -200,8 +200,8 @@ def test_the_nucleus_stays_silent_when_the_vocabulary_is_still_current():
     a ogni digesto.
 
     Mutazione: in `briefing._vocabulary_freshness_line`, togliere il
-    controllo `if not note["vocabolario_piu_vecchio_della_casa"]: return
-    ""` (dichiarare sempre) -- il test torna rosso su
+    controllo `if not freshness["vocabolario_piu_vecchio_della_casa"]:
+    return ""` (dichiarare sempre) -- il test torna rosso su
     `assert "vale la pena rileggere" not in testo`.
     """
     testo = _nucleo(reference_frame(_CONFIG))

@@ -132,6 +132,24 @@ def test_a_house_on_the_next_calendar_release_is_reported_as_newer():
     assert note["vocabolario_piu_vecchio_della_casa"] is True
 
 
+def test_a_house_one_patch_ahead_is_reported_as_newer():
+    """Il TERZO campo di CalVer (anno.mese.PATCH, come promette il docstring
+    di `_parsed_version`) non e' un dettaglio: `2026.9.2` e' la release
+    successiva a `2026.9.1` senza cambiare ne' anno ne' mese. Un confronto
+    che si fermasse ai primi due campi (anno, mese) direbbe che le due
+    versioni sono "uguali" -- non "piu' vecchia", ma nemmeno "piu' nuova" --
+    e la casa sarebbe gia' avanti senza che nessuno lo sappia.
+
+    Mutazione: confrontare solo i primi due campi
+    (`_parsed_version(house_ha_version)[:2] > _parsed_version(VOCABULARY_HA_VERSION)[:2]`)
+    -- il test torna rosso su `assert note["vocabolario_piu_vecchio_della_casa"]
+    is True` (con la mutazione, risulta `False`: anno e mese sono identici,
+    il patch non viene mai guardato).
+    """
+    note = house_is_newer_than_vocabulary("2026.9.2")
+    assert note["vocabolario_piu_vecchio_della_casa"] is True
+
+
 def test_a_house_at_the_same_version_is_not_reported_as_newer():
     """La casa che HA misurato il vocabolario (`VOCABULARY_HA_VERSION`
     stesso) non e' "piu' vecchia di se stessa": il confronto deve essere
