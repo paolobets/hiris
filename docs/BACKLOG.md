@@ -854,6 +854,102 @@ turni di Consumi sarebbe gonfio.
 **Non verificato**: accertarlo richiede un turno di chat vero, che costa denaro. E non si
 corregge un numero prima di aver misurato di quanto sbaglia.
 
+### L'anagrafe dei tipi di entità — HIRIS smette di tenere liste a mano
+
+`origine: il proprietario, 07/09/2026` · `documento: indagine-cosa-ha-pubblica.md (in corso, fuori da git)`
+
+**Scelta dal proprietario come lavoro successivo al rilascio della 3.22.3**, con parole sue:
+
+> *«È importante che HIRIS conosca tutte le tipologie di entità possibili in HA e, se ci sono, le
+> sappia interpretare. Se oggi ci sono liste manuali e HA le fornisce, facciamo in modo che HIRIS
+> le recuperi e, se si accorge che sono obsolete, le aggiorni — questo per tutto.»*
+
+**Il difetto, misurato il 07/09.** HIRIS non ha un elenco dei tipi di entità: ne ha **tre**,
+scritti a mano, che non concordano fra loro, e **nessuno dei tre è derivato da Home Assistant**.
+
+| lista | dove | quanti | cosa decide |
+|---|---|---|---|
+| `aspect()` | `mind/baseline.py` | 7 rami di dominio | quali entità entrano nell'archivio |
+| `_FEATURE_NAMES` | `home_space/topology.py` | 18 domini | quali capacità sa decodificare |
+| `_OPERABLE` | `mind/facts.py` | 10 domini (**2 raggiungibili**) | quali si accendono e si spengono |
+
+Sulla casa vera ci sono **30 domini**; Home Assistant ne dichiara **53** e li pubblica lui stesso
+(`frontend/get_translations`, `category: "entity_component"` — la chiamata che la v3.22.3 ha
+appena imparato a fare). Domini presenti in casa di cui **nessuna** delle tre liste dice niente:
+`update` (53 entità), `button` (70), `number` (35), `select` (19), `input_boolean` (11), `event`,
+`tag`, `script`, `zone`, `image`.
+
+Gli otto domini orfani di `_OPERABLE` non erano un caso isolato: erano **il sintomo** di questo.
+
+**Il crinale del disegno, e non è tecnico.** Le tre liste decidono cose **diverse**. Due sono
+fatti di Home Assistant — cosa esiste, cosa sa fare — e vanno chiesti a lui. La terza no:
+*«questa entità serve all'obiettivo della casa»* è **un giudizio nostro**, e HA non potrà mai
+dircelo. Quella resta nostra, ma deve smettere di essere una lista dimenticabile.
+
+**Ed è questa la parte che rende la voce viva** invece di un file da aggiornare a mano: un
+dominio che HA ha e che **nessuna nostra lista ha mai classificato deve poter essere nominato**.
+Sapere che «la casa è più nuova del vocabolario» — cosa che `ha_vocabulary.py` sa già fare — non
+basta: non dice **cosa** è cambiato. La differenza è fra «le liste sono aggiornate» e «le liste
+non possono più derivare in silenzio».
+
+**La forma esiste già in casa**: `home_space/ha_vocabulary.py` importa le specifiche di HA
+dichiarando la fonte e la versione da cui vengono. Quello che manca è estenderla a tutto e
+renderla capace di accorgersi.
+
+**Una legge da rispettare nel disegno**: quando la lettura da HA non riesce, *«non ho potuto
+chiedere»* e *«non c'è»* sono **due fatti diversi**, e chi produce il motivo lo etichetta.
+
+### L'analista — chi trasforma le osservazioni in qualcosa di funzionale
+
+`origine: il proprietario, 07/09/2026` · `nessun documento`
+
+**Sprint suo, dichiarato tale dal proprietario.** Non è una correzione e non entra in nessuna
+fetta in corso.
+
+> *«Mettere insieme le letture dell'osservatore spetterà all'analista, che avrà proprio questo
+> compito: analizzare le letture dell'osservatore per raggruppare informazioni, creare tendenze,
+> e trasformare in qualcosa di funzionale un'osservazione dettagliata e più estesa possibile.»*
+
+**Perché adesso**: l'osservatore è vivo in produzione e scrive. Fin qui il lavoro è stato tutto
+sul **leggere meglio** — l'appartenenza, la salute senza soglia, il guasto con nome e condizione,
+le tracce, i calendari, i nomi e gli stati. Nessuno però **legge ciò che l'osservatore ha
+scritto**: gli episodi si accumulano e restano un elenco.
+
+Questa voce è il lettore che manca. E ha una conseguenza sul resto del registro: **osservare di
+più ha senso solo se qualcuno poi mette insieme** — quindi ogni fetta che allarga il pavimento
+(vedi «La luce accesa col sole alto») ha il suo valore vero **qui**, non dove nasce.
+
+### La luce accesa col sole alto
+
+`origine: il proprietario, 07/09/2026, rispondendo alla domanda sui domini orfani di _OPERABLE` · `nessun documento`
+
+**Criterio dettato dal proprietario**, parole sue:
+
+> *«Una luce accesa da sei ore sì, se fuori non c'è buio; altrimenti ci può stare.»*
+
+**È un discriminante, non una soglia** — la stessa forma già scelta per la salute delle
+integrazioni, dove una percentuale fu scartata a favore di `sensor.uptime`. E la casa ce l'ha
+già: **`sun.sun`** esiste e vale `above_horizon` / `below_horizon`. Una entità sola, gratis.
+Ci sono anche 4 sensori di illuminamento, ma sono **interni**: misurano la stanza, non il fuori.
+
+**Il perimetro si restringe da sé.** Misurato sulla casa vera: `light` **43 entità attive** (50
+in tutto), `switch` 149, `media_player` 7, `valve` 4, e `fan`/`vacuum`/`humidifier`/
+`water_heater` **zero**. Il criterio parla di luci, e un interruttore non ha niente a che fare
+col buio fuori: il pavimento crescerebbe di **~43 entità**, non di 203.
+
+**La durata non va dichiarata**: l'archivio trasforma già in episodio ciò che dura, quindi «da
+sei ore» viene da sé senza un numero scritto a mano.
+
+**La forma nuova che serve, ed è il costo vero.** Oggi l'archivio apre un episodio guardando
+**una** entità. Questo criterio è una **congiunzione di due stati** — la luce accesa *e* il sole
+sopra l'orizzonte — e ne segue che l'episodio deve nascere **all'alba** per una luce già accesa
+da prima, non nell'istante in cui la si accende. Non è difficile, ma è una forma che
+l'osservatore non ha, e va disegnata invece che infilata.
+
+**Ordine deciso**: viene **dopo** «L'anagrafe dei tipi di entità». Aggiungere `light` al
+pavimento prima di quella vorrebbe dire scrivere la **quarta** lista a mano invece di toglierne
+tre.
+
 ---
 
 ## Usciti
