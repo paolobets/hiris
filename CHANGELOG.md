@@ -1,5 +1,59 @@
 # HIRIS — Changelog
 
+## [3.22.0] — HIRIS smette di indovinare (2026-09-07)
+
+**Tre fette insieme, e un filo solo che le tiene: dove prima HIRIS deduceva, adesso legge — e
+dove non sa, lo dice invece di riempire il vuoto.**
+
+### Le tracce e il log
+
+L'osservatore vede due fonti che prima gli mancavano. **Una voce di errore del registro di Home
+Assistant è una condizione che dura**: nasce, resta, si chiude — con la stessa isteresi a due giri
+dei guasti di sistema, così un buco di campionamento non diventa quattro episodi per un guasto solo.
+
+E le **automazioni**: l'evento dice quale ha agito, una cadenza di due minuti va a prendere la
+traccia quando è completa, e **nasce un fatto solo quando qualcosa non ha funzionato**. Sessantaquattro
+esecuzioni riuscite in un giorno sono il contesto, non una notizia — e un'automazione che non agisce
+perché la sua condizione è falsa **sta funzionando**.
+
+La chat può chiedere entrambe le cose, dalla stessa fonte che usa l'osservatore: non c'è un secondo
+rubinetto che fra un mese direbbe un'altra cosa.
+
+### I calendari
+
+HIRIS legge i calendari di casa e risponde a **«quali sono i miei prossimi appuntamenti»**. Ma la
+parte che conta è un'altra: **prova a leggere ogni calendario invece di fidarsi di un elenco**, e
+quelli che non riesce a leggere **li nomina**. Un calendario rotto e uno senza impegni hanno lo
+stesso stato e restituiscono lo stesso elenco vuoto: solo un tentativo di lettura li distingue, e
+senza quella distinzione «non hai impegni» sarebbe una bugia detta con sicurezza.
+
+La risposta dichiara sempre **quali calendari ha guardato** — così «ho guardato zero calendari» non
+diventa «non hai niente in programma».
+
+### Gli strumenti rifiutano, e le specifiche si importano
+
+Un argomento obbligatorio mancante e un nome sbagliato sono **due errori diversi**, detti
+diversamente e insieme quando capitano insieme: chi sbaglia si corregge in un turno invece che in
+due. E la ricerca dice **quando non ha capito** — un elenco vuoto non significa più «questa cosa non
+esiste in casa», ma «non ho riconosciuto niente in questo testo».
+
+Sul resto, HIRIS ha smesso di dedurre dai nomi ciò che Home Assistant **dichiara già**: cosa
+un'entità sa fare, quali dei suoi dati sono di servizio e non misure della casa, cosa significhi una
+classe. Il vocabolario importato porta scritto **da quale versione di Home Assistant viene**, e
+quando la casa la supera lo dice — una riga, una volta, che invita a rileggere la documentazione.
+Senza, un vocabolario invecchia in silenzio e un giorno il digesto sbaglia senza che nessuno sappia
+perché. Non è teoria: fra le due versioni confrontate, il vocabolario di Home Assistant **si è mosso
+in tre punti**.
+
+### Da guardare per primo, dopo l'aggiornamento
+
+Niente di tutto questo è mai girato su questa casa: la versione precedente non aveva né gli
+strumenti dei calendari né quelli delle tracce, quindi quanto è scritto qui viene dal sorgente di
+Home Assistant e dalle misure sugli stati, **non dalla casa che risponde**. Tre cose valgono uno
+sguardo: che le tracce di un'automazione arrivino davvero, che il calendario nomini ciò che non
+riesce a leggere, e che la riga sulla freschezza del vocabolario **taccia** — perché questa casa è
+alla stessa versione su cui il vocabolario è stato verificato.
+
 ## [3.21.1] — Le due voci nuove, storte sullo schermo stretto (2026-09-04)
 
 **Correzione di aspetto, niente di funzionale.** Quando la finestra sta fra 768 e 1023 pixel — cioè
