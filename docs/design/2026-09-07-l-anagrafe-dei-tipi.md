@@ -402,3 +402,109 @@ fatto c'è, la chiave no**. È una scelta operativa, dichiarata, e il proprietar
 4. **Un `null` non è un'assenza di capacità.** Misurato: `light.alberello` consegna oggi
    `{'brightness': None}` — che si legge «questa luce non ha luminosità» mentre la luce è solo
    spenta. È peggio di non dire niente.
+
+---
+
+## §13 · L'altra metà del requisito: poter FARE ciò che HA sa fare
+
+Il metro del §12 ha due gambe, e la seconda è *«poter fare ciò che Home Assistant sa fare con
+lui»*. Il proprietario l'ha resa esplicita il 07/09:
+
+> *«Anche il modello, quindi, con azione deve saper cambiare colore all'Alberello o abbassare la
+> luminosità.»*
+
+### Cosa c'è già, misurato
+
+**Il meccanismo per agire esiste.** Lo strumento `execute` (`home_space/tools.py:677`) accetta un
+campo `dati` coi parametri del servizio: `light.turn_on` con `{"rgb_color": [255,0,0]}` o
+`{"brightness_pct": 30}` è già una chiamata legale, e `action/verification.py` controlla che il
+parametro **appartenga** a quel servizio leggendo `fields` dal registro.
+
+### Cosa Home Assistant pubblica, e chiude il cerchio
+
+`GET /api/services` su questa casa, per `light.turn_on`:
+
+```
+parametri:  brightness_pct · brightness_step_pct · color_temp_kelvin
+            effect · rgb_color · transition · additional_fields
+
+color_temp_kelvin
+   filter:    { attribute: { supported_color_modes: [color_temp, hs, xy, rgb, rgbw, rgbww] } }
+   selector:  { color_temp: { unit: kelvin, min: 2000, max: 6500 } }
+```
+
+**La riga `filter` è la giuntura, e non la inventiamo noi**: è Home Assistant che dichiara a quali
+entità quel parametro si applica, e lo fa guardando **esattamente l'attributo che il §12 recupera**
+(`supported_color_modes`). Le due metà del requisito — sapere e fare — si incastrano su una chiave
+che HA pubblica già.
+
+### I tre buchi, e sono tutti di conoscenza, non di meccanismo
+
+1. **Il modello non sa che quella luce fa colore.** Lo chiude il §12.
+2. **Il modello non sa quali parametri accetta un servizio.** HIRIS **ha** il registro dei servizi,
+   lo tiene in memoria e lo invalida sugli eventi — e **lo usa solo per rifiutare**. Nessuno
+   strumento mostra al modello i parametri di `light.turn_on` coi loro limiti: lui li scopre
+   sbagliando. *Sappiamo la risposta e la usiamo solo per dire di no.*
+3. **Le capacità fini non si verificano prima di comandare**, ed è dichiarato in
+   `action/verification.py:18` sotto «cosa NON verifica, di proposito»: *«le capacità fini
+   (`supported_features`: questa luce si attenua?)»*. Con il `filter` di HA e gli attributi
+   recuperati, quella rinuncia non è più necessaria.
+
+### Una trappola misurata, che decide chi ha ragione fra due fonti
+
+Il **selettore** di HA per `color_temp_kelvin` dichiara **2000–6500 K**. L'**Alberello** dichiara
+`min_color_temp_kelvin: 1500`, `max_color_temp_kelvin: 9000`.
+
+> **I limiti veri dell'entità sono più larghi di quelli generici del servizio.** Se il controllo si
+> fermasse al selettore, HIRIS negherebbe una temperatura che quella lampadina sa fare davvero.
+> **Vince l'entità**: il selettore descrive il campo di un cursore, non il dispositivo.
+
+### Cosa deve saper fare, alla fine
+
+| | |
+|---|---|
+| «cambia colore all'Alberello» | **funziona** |
+| «abbassa la luminosità dell'Alberello» | **funziona** |
+| «cambia colore alla presa della lavatrice» | **rifiutato da noi, con una frase che dice perché** — non da HA con un errore tecnico |
+| «metti l'Alberello a 8000 K» | **funziona**, perché quella lampadina arriva a 9000, anche se il cursore generico si ferma a 6500 |
+
+---
+
+## §14 · Tre decisioni prese sull'eredità degli attributi
+
+### Le chiavi della vista restano in italiano
+
+Il vincolo «chiavi nuove in inglese» **non si applica qui**, e confermo la scelta dell'implementer.
+La vista di `guarda` è italiana da sempre (`attributi`, `capacita`, `stato_leggibile`): quattro
+chiavi inglesi in mezzo l'avrebbero resa bilingue. Vale la regola del progetto — **dominio in
+italiano, confine nella lingua del sistema esterno** — e la vista verso il modello è dominio, non
+confine. L'inglese resta obbligatorio per gli identificatori del codice e per le colonne nuove.
+
+### `campo_di_manovra`, non `capacita`
+
+`detail["capacita"]` esiste già e significa altro (i bit di `supported_features` resi in verbi).
+Riusare la stessa parola sarebbe stato commettere *«due cose diverse dette con una parola sola»*
+**nell'atto stesso di curarlo**.
+
+### La regola che scioglie due esiti opposti
+
+`number.mode` è stato tolto dalle capacità **contro** la classificazione di HA (due fonti
+indipendenti); `alarm_control_panel.code_format` è stato lasciato dove HA lo mette, pur essendo
+funzionalmente un limite. Stessa forma, esito opposto, e la regola che li distingue è scritta nel
+codice:
+
+> **Il fornitore comanda sulla classificazione finché non è smentito da una FONTE, non finché non
+> è smentito dal nostro senso.**
+
+---
+
+## §15 · Cosa resta aperto dopo l'eredità
+
+1. **Il nucleo non riceve le capacità aggregate**, quindi il modello **non sa di poter chiedere**.
+   Sono **35 firme distinte per 2.349 caratteri** su un tetto di 6.000: ci stanno. E non
+   contraddicono la decisione «la completezza va nel dettaglio» — una firma aggregata è **mappa**,
+   non dettaglio. Si incrocia con la voce «Il nucleo è statico» del registro.
+2. **`sensor.options` e `select.options` escono sotto la stessa etichetta**, e non sono la stessa
+   cosa: *«cosa questa entità può assumere»* contro *«cosa le si può imporre»*. Per chi legge è una
+   sfumatura; **per chi comanda è la differenza fra un'azione possibile e una impossibile**. Va
+   sciolto nella fetta dell'azione (§13).
