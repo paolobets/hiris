@@ -426,12 +426,12 @@ Opening the add-on shows the chat. A configuration panel is served at
 | Route | What it does |
 |---|---|
 | `#/` | **What HIRIS knows** — the home as it was read (floors, areas, devices, entities) and the exact nucleo the model sees in chat. Says «not read yet» where it has not read, instead of showing a zero |
-| `#/albero` | The full home hierarchy read from Home Assistant (floors → areas → devices/entities), with each of the six distinct causes of silence spelled out — never one generic "unknown" — and disabled entities always shown, marked, never hidden |
-| `#/memoria` | The remembered facts: read them, correct them, forget them — with the anchors resolved against today's registry |
-| `#/promesse` | What you asked HIRIS to do or check later, pending and history — cancel what has not fired yet |
-| `#/costruzioni` | HIRIS's proposals to create, modify or delete an automation, script or scene in this home: approve, reject, or restore a previous version |
-| `#/osservatore` | What HIRIS is watching in the home right now, and the episodes the nightly aggregation has built from it — the first slice of the brain: it observes, it does not conclude, speak, or act |
-| `#/impostazioni` | The six chat settings (system prompt, answer shape, reasoning, turn cap, home restriction, name). The model is **not** chosen here — it is chosen per provider in `#/models`, so one page decides who answers |
+| `#/tree` | The full home hierarchy read from Home Assistant (floors → areas → devices/entities), with each of the six distinct causes of silence spelled out — never one generic "unknown" — and disabled entities always shown, marked, never hidden |
+| `#/memory` | The remembered facts: read them, correct them, forget them — with the anchors resolved against today's registry |
+| `#/agenda` | **Impegni** — what you asked HIRIS to do or check later, pending and history — cancel what has not fired yet |
+| `#/constructions` | HIRIS's proposals to create, modify or delete an automation, script or scene in this home: approve, reject, or restore a previous version |
+| `#/watcher` | What HIRIS is watching in the home right now, and the episodes the nightly aggregation has built from it — the first slice of the brain: it observes, it does not conclude, speak, or act |
+| `#/settings` | The seven chat settings (name, system prompt, answer shape, reasoning budget, turn cap, retention days, home restriction). The model is **not** chosen here — it is chosen per provider in `#/models`, so one page decides who answers |
 | `#/models` | Active providers, the automatic chain and the default model per provider |
 | `#/usage` | Tokens and cost, or the reason why they cannot be measured |
 
