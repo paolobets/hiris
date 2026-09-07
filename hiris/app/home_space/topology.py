@@ -1013,6 +1013,27 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
     proprio conteggio delle nascoste (`nascosta and not disabilitata`) -- non
     due modi diversi di dire la stessa cosa su due rami diversi del prodotto.
 
+    Le chiavi parallele NON sono un privilegio delle aree vere: "Senza area",
+    "Area sconosciuta" e "Aree non lette" (sotto) le portano anche loro,
+    riempite dallo stesso smistamento (`_outside_buckets`, chiamato una volta
+    per `per_area`/`per_area_disabled`/`per_area_hidden`). Prima di questa
+    fetta il ciclo leggeva solo `per_area`: una disabilitata o una nascosta
+    senza area -- o con un'area sconosciuta, o coi registri non letti -- non
+    finiva in NESSUNA chiave, nemmeno in `entita`: non era raggiungibile a
+    parte come le sue equivalenti dentro un'area vera, era sparita del tutto.
+    Misurato sulla casa vera (07/09/2026): 205 entita' su 1223. Per lo stesso
+    motivo il gruppo nasce se c'e' anche una sola disabilitata o nascosta,
+    non solo quando ci sono attive -- una casa con SOLO disabilitate senza
+    area le farebbe sparire di nuovo se il gruppo non nascesse.
+
+    "Dispositivi non letti" resta l'eccezione, voluta: guarda il commento nel
+    ciclo che riempie `unloaded_device`, qualche riga sopra in questa stessa
+    funzione -- un dispositivo non letto rende l'intera area indecidibile,
+    quindi disabilitate e nascoste non sono tracciate nemmeno a parte, ne'
+    prima ne' dopo questa fetta. Il gruppo per questo non porta
+    `entita_disabilitate`/`entita_nascoste`: scriverci `[]` affermerebbe
+    "zero", un fatto diverso da "non tracciate".
+
     Effetto collaterale voluto, non un caso: "La casa" del nucleo, che legge
     lo stesso `area["entita"]`, smette anch'essa di contare le nascoste nei
     conteggi per dominio -- allineandosi a "Notevole adesso"
@@ -1037,7 +1058,7 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
             # quindi non finge di essere "senza area". Vale anche per le
             # disabilitate e le nascoste: non risolvibili, non tracciate
             # nemmeno a parte.
-            if not entity.get("disabilitata"):
+            if not entity.get("disabilitata") and not entity.get("nascosta"):
                 unloaded_device.append(entity)
             continue
         area_id = actual_area(entity, device_area)
@@ -1075,16 +1096,34 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
     # "area_id assente" e "area_id sconosciuto": vanno tutte in un unico
     # bucket "Aree non lette".
     area_loaded = "aree" not in unavailable
-    without_area, unloaded_area, unknown_area = [], [], []
-    for area_id, entries in per_area.items():
-        if area_id in known_areas:
-            continue
-        if not area_loaded:
-            unloaded_area.extend(entries)
-        elif area_id is None:
-            without_area.extend(entries)
-        else:
-            unknown_area.extend(entries)
+
+    def _outside_buckets(per_area_bucket: dict[str | None, list[dict]]
+                          ) -> tuple[list[dict], list[dict], list[dict]]:
+        """Smista UN dizionario per-area (attive, disabilitate o nascoste --
+        chiamata tre volte, una per dizionario) fra le tre cause di "fuori
+        dalle aree note", con la stessa regola di sopra. Prima di questa
+        fetta il ciclo veniva scritto una volta sola e leggeva solo
+        `per_area`: le disabilitate e le nascoste senza area (o con un'area
+        sconosciuta, o coi registri non letti) non venivano smistate affatto
+        -- restavano nel dizionario e da li' non uscivano piu', il difetto
+        delle 205 entita' della casa vera che questa fetta chiude."""
+        without, unloaded, unknown = [], [], []
+        for area_id, entries in per_area_bucket.items():
+            if area_id in known_areas:
+                continue
+            if not area_loaded:
+                unloaded.extend(entries)
+            elif area_id is None:
+                without.extend(entries)
+            else:
+                unknown.extend(entries)
+        return without, unloaded, unknown
+
+    without_area, unloaded_area, unknown_area = _outside_buckets(per_area)
+    without_area_disabled, unloaded_area_disabled, unknown_area_disabled = \
+        _outside_buckets(per_area_disabled)
+    without_area_hidden, unloaded_area_hidden, unknown_area_hidden = \
+        _outside_buckets(per_area_hidden)
 
     floors = []
     for floor in home_space.get("piani", []):
@@ -1107,17 +1146,34 @@ def hierarchy(home_space: dict[str, list[dict]], unavailable: tuple[str, ...] = 
             floors.append({"id": _ID_UNLOADED_FLOOR, "nome": "Piani non letti", "livello": None,
                           "aree": rest})
 
+    # Nasce se c'e' un'attiva, una disabilitata O una nascosta: una casa con
+    # SOLO disabilitate senza area (nessuna attiva) deve comunque vedere
+    # nascere "Senza area", o quelle disabilitate sparirebbero di nuovo --
+    # lo stesso difetto, spostato dal ramo letto al ramo che decide se il
+    # gruppo esiste.
     outside_areas = []
-    if unloaded_area:
+    if unloaded_area or unloaded_area_disabled or unloaded_area_hidden:
         outside_areas.append({"id": _ID_UNLOADED_AREA, "nome": "Aree non lette",
-                                 "alias": [], "etichette": [], "entita": unloaded_area})
-    if unknown_area:
+                                 "alias": [], "etichette": [], "entita": unloaded_area,
+                                 "entita_disabilitate": unloaded_area_disabled,
+                                 "entita_nascoste": unloaded_area_hidden})
+    if unknown_area or unknown_area_disabled or unknown_area_hidden:
         outside_areas.append({"id": _ID_UNKNOWN_AREA, "nome": "Area sconosciuta",
-                                 "alias": [], "etichette": [], "entita": unknown_area})
-    if without_area:
+                                 "alias": [], "etichette": [], "entita": unknown_area,
+                                 "entita_disabilitate": unknown_area_disabled,
+                                 "entita_nascoste": unknown_area_hidden})
+    if without_area or without_area_disabled or without_area_hidden:
         outside_areas.append({"id": _ID_WITHOUT_AREA, "nome": "Senza area",
-                                 "alias": [], "etichette": [], "entita": without_area})
+                                 "alias": [], "etichette": [], "entita": without_area,
+                                 "entita_disabilitate": without_area_disabled,
+                                 "entita_nascoste": without_area_hidden})
     if unloaded_device:
+        # Nessuna chiave parallela qui, di proposito: le disabilitate e le
+        # nascoste con un dispositivo non risolvibile non sono tracciate
+        # nemmeno a parte (vedi il commento sopra, nel ciclo che riempie
+        # `unloaded_device`) -- mettere `entita_disabilitate: []` /
+        # `entita_nascoste: []` affermerebbe "zero", che e' un fatto diverso
+        # da "non tracciate".
         outside_areas.append({"id": _ID_UNLOADED_DEVICE, "nome": "Dispositivi non letti",
                                  "alias": [], "etichette": [], "entita": unloaded_device})
     if outside_areas:

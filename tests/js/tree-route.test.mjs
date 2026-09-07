@@ -217,6 +217,43 @@ test('collaudo 3.22 (A9): il plurale del riepilogo è «disabilitate»/«nascost
   assert.doesNotMatch(sommarioCucina.textContent, /nascostae/, 'mai la "e" aggiunta invece che sostituita');
 });
 
+test('U2 bis: una pseudo-area («Senza area») mostra le disabilitate/nascoste come un\'area vera', async () => {
+  // Collaudo 3.22, misure-del-controllore.md, «U2 bis»: `topology.hierarchy()`
+  // smistava le disabilitate/nascoste senza area (o con un'area sconosciuta,
+  // o coi registri non letti) in NESSUNA chiave -- sparivano. Il fix le rende
+  // raggiungibili nelle stesse chiavi parallele `entita_disabilitate`/
+  // `entita_nascoste` che un'area vera porta gia'. Questa pagina non ha
+  // bisogno di saperlo: `renderArea`/`entityCountLabel` leggono quelle chiavi
+  // da QUALUNQUE area, vera o pseudo -- questa prova lo dimostra invece di
+  // darlo per scontato.
+  const casa = casaCompleta();
+  const senzaArea = casa.piani.find((p) => p.id === '__fuori_dalle_aree__')
+    .aree.find((a) => a.id === '__senza_area__');
+  senzaArea.entita_disabilitate = [
+    { id: 'sensor.orfano_spento', nome: 'Sensore orfano spento', piattaforma: 'zwave',
+      categoria: null, classe: null, unita: null, disabilitata: 1, nascosta: 0, alias: [], etichette: [] },
+  ];
+  senzaArea.entita_nascoste = [
+    { id: 'light.orfano_nascosto', nome: 'Luce orfana nascosta', piattaforma: 'hue',
+      categoria: null, classe: null, unita: null, disabilitata: 0, nascosta: 1, alias: [], etichette: [] },
+  ];
+  const { document } = await rendi(casa);
+  const sommarioSenzaArea = [...document.querySelectorAll('summary')]
+    .find((s) => s.textContent.indexOf('Senza area') === 0);
+  assert.ok(sommarioSenzaArea, 'precondizione: la pseudo-area «Senza area» deve essere disegnata');
+  // Stesso riepilogo di un'area vera: «N entità, 1 disabilitata, 1 nascosta»
+  // -- non un conteggio a parte, non zero perche' non contate.
+  assert.match(sommarioSenzaArea.textContent, /1 disabilitata\b/,
+    'il riepilogo conta la disabilitata con la stessa label delle aree vere');
+  assert.match(sommarioSenzaArea.textContent, /1 nascosta\b/,
+    'il riepilogo conta la nascosta con la stessa label delle aree vere');
+  const corpo = sommarioSenzaArea.closest('details').textContent;
+  assert.match(corpo, /Sensore orfano spento/, 'la disabilitata compare');
+  assert.match(corpo, /\[disabilitata\]/, 'marcata come tale');
+  assert.match(corpo, /Luce orfana nascosta/, 'la nascosta compare');
+  assert.match(corpo, /\[nascosta in Home Assistant\]/, 'marcata come tale');
+});
+
 test('«non_disponibili» pieno: una casa letta a metà non sembra una casa piccola', async () => {
   const { testo } = await rendi(casaCompleta({ non_disponibili: ['aree', 'categorie:script'] }));
   assert.match(testo, /Registri che non hanno risposto all’ultima lettura/);

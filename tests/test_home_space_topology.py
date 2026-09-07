@@ -235,6 +235,170 @@ def test_i_due_contenitori_hanno_identita_distinte(archivio):
     assert [a["nome"] for a in per_id["__fuori_dalle_aree__"]["aree"]] == ["Senza area"]
 
 
+# -- U2 bis: le 205 entita' sparite (collaudo-3.22/misure-del-controllore.md) -
+
+def _pseudo_aree(piani, nome_gruppo="__fuori_dalle_aree__"):
+    """Le pseudo-aree del contenitore "Fuori dalle aree", per nome."""
+    gruppo = next(p for p in piani if p["id"] == nome_gruppo)
+    return {a["nome"]: a for a in gruppo["aree"]}
+
+
+def test_una_disabilitata_senza_area_e_raggiungibile_a_parte(archivio):
+    """Il difetto misurato sulla casa vera: il ciclo che smistava "Senza
+    area" / "Area sconosciuta" / "Aree non lette" leggeva SOLO `per_area`
+    (le attive). Una disabilitata senza area restava dentro
+    `per_area_disabled` e da li' non usciva mai -- non finiva ne' in
+    `entita` ne' in `entita_disabilitate`: non esisteva.
+
+    Mutazione che uccide questa prova: tornare a
+    `for area_id, entries in per_area.items():` come unico ciclo (senza
+    `_outside_buckets` sulle altre due mappe). Verificato eseguendo: con
+    quella riga la lista `entita_disabilitate` di "Senza area" e' vuota e
+    l'assert sotto arrossisce con `AssertionError: assert [] ==
+    ['sensor.disabilitata_orfana']`."""
+    registri = dict(_REGISTRI, entita=_REGISTRI["entita"] + [
+        {"entity_id": "sensor.disabilitata_orfana", "device_id": None, "area_id": None,
+         "disabled_by": "user"}])
+    archivio.replace(registri)
+    aree = _pseudo_aree(hierarchy(archivio.read()))
+    senza_area = aree["Senza area"]
+    assert "sensor.disabilitata_orfana" not in [e["id"] for e in senza_area["entita"]]
+    assert [e["id"] for e in senza_area["entita_disabilitate"]] == ["sensor.disabilitata_orfana"]
+
+
+def test_una_nascosta_con_area_sconosciuta_e_raggiungibile_a_parte(archivio):
+    """Stessa causa del test sopra, sull'altra chiave parallela e sull'altra
+    pseudo-area: un riferimento penzolante (`area_id` che non esiste piu' nel
+    registro) su un'entita' NASCOSTA.
+
+    Mutazione che uccide questa prova: la stessa di sopra. Verificato
+    eseguendo: `entita_nascoste` di "Area sconosciuta" torna `[]` e l'ultimo
+    assert arrossisce."""
+    registri = dict(_REGISTRI, entita=_REGISTRI["entita"] + [
+        {"entity_id": "sensor.nascosta_fantasma", "device_id": None,
+         "area_id": "area_che_non_esiste", "hidden_by": "user"}])
+    archivio.replace(registri)
+    aree = _pseudo_aree(hierarchy(archivio.read()))
+    sconosciuta = aree["Area sconosciuta"]
+    assert "sensor.nascosta_fantasma" not in [e["id"] for e in sconosciuta["entita"]]
+    assert [e["id"] for e in sconosciuta["entita_nascoste"]] == ["sensor.nascosta_fantasma"]
+
+
+def test_le_aree_non_lette_portano_anche_loro_le_chiavi_parallele(archivio):
+    """La terza causa (registro delle aree caduto): una disabilitata che
+    avrebbe un `area_id` ignoto finisce in "Aree non lette", non in "Area
+    sconosciuta" -- ma deve restare raggiungibile lo stesso, nella chiave
+    che le spetta."""
+    registri = dict(_REGISTRI, entita=_REGISTRI["entita"] + [
+        {"entity_id": "sensor.disabilitata_area_ignota", "device_id": None,
+         "area_id": "qualche_area", "disabled_by": "user"}])
+    archivio.replace(registri, ["aree"])
+    aree = _pseudo_aree(hierarchy(archivio.read(), ("aree",)))
+    unread_group = aree["Aree non lette"]
+    assert "sensor.disabilitata_area_ignota" not in [e["id"] for e in unread_group["entita"]]
+    assert [e["id"] for e in unread_group["entita_disabilitate"]] == \
+        ["sensor.disabilitata_area_ignota"]
+
+
+def test_il_gruppo_senza_area_nasce_anche_con_sole_disabilitate(archivio):
+    """Decisione del task: `if without_area:` (solo attive) creava il
+    gruppo solo se c'erano entita' attive senza area. Una casa con SOLE
+    disabilitate senza area (zero attive) non avrebbe fatto nascere "Senza
+    area" -- e quelle disabilitate sarebbero sparite comunque, anche dopo
+    aver sistemato lo smistamento sopra.
+
+    Mutazione che uccide questa prova: `if without_area:` al posto di
+    `if without_area or without_area_disabled or without_area_hidden:`.
+    Verificato eseguendo: con la sola condizione su `without_area`, il
+    gruppo "Senza area" non compare affatto (nessuna entita' attiva senza
+    area in questa casa) e `next(...)` solleva `StopIteration`."""
+    registri = {
+        "piani": [], "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": None}],
+        "dispositivi": [],
+        "entita": [{"entity_id": "sensor.unica_disabilitata_orfana", "device_id": None,
+                    "area_id": None, "disabled_by": "user"}],
+        "etichette": [], "categorie": [], "integrazioni": [],
+    }
+    archivio.replace(registri)
+    aree = _pseudo_aree(hierarchy(archivio.read()))
+    assert "Senza area" in aree
+    assert [e["id"] for e in aree["Senza area"]["entita_disabilitate"]] == \
+        ["sensor.unica_disabilitata_orfana"]
+    assert aree["Senza area"]["entita"] == []
+
+
+def test_una_nascosta_col_dispositivo_non_risolvibile_non_conta_come_attiva(archivio):
+    """Il commento sul ciclo che riempie `unloaded_device` dichiara gia' la
+    regola -- "vale anche per le disabilitate e le nascoste: non risolvibili,
+    non tracciate nemmeno a parte" -- ma il codice filtrava solo
+    `disabilitata`: una nascosta col dispositivo non risolvibile finiva in
+    `unloaded_device`, cioe' dentro `entita`, la chiave che CONTA. Il codice
+    non faceva quello che il suo stesso commento diceva.
+
+    Mutazione che uccide questa prova: `if not entity.get("disabilitata"):`
+    al posto di `if not entity.get("disabilitata") and not
+    entity.get("nascosta"):`. Verificato eseguendo: con la sola guardia su
+    `disabilitata`, `sensor.nascosta_dispositivo_ignoto` compare in
+    `entita` del gruppo "Dispositivi non letti" e il primo assert
+    arrossisce con `AssertionError: assert 'sensor.nascosta_dispositivo_ignoto'
+    not in [...]`."""
+    registri = dict(_REGISTRI, entita=_REGISTRI["entita"] + [
+        {"entity_id": "sensor.nascosta_dispositivo_ignoto", "device_id": "d1",
+         "area_id": None, "hidden_by": "user"}])
+    archivio.replace(registri, ["dispositivi"])
+    aree = _pseudo_aree(hierarchy(archivio.read(), ("dispositivi",)))
+    non_letti = aree["Dispositivi non letti"]
+    found_entity_ids = [e["id"] for e in non_letti["entita"]]
+    assert "sensor.nascosta_dispositivo_ignoto" not in found_entity_ids
+    # E non e' nemmeno un'omissione con recupero: e' la scelta deliberata e
+    # documentata di non tracciarla neanche a parte (a differenza di
+    # "Senza area"/"Area sconosciuta"/"Aree non lette", che ora la
+    # tracciano). Un dispositivo non letto rende l'intera area indecidibile.
+    assert "entita_disabilitate" not in non_letti
+    assert "entita_nascoste" not in non_letti
+
+
+def test_ogni_entita_esce_esattamente_una_volta(archivio):
+    """La prova che chiude il caso, quella che deve arrossire da sola alla
+    prossima dimenticanza: ogni entita' che entra in `hierarchy()` deve
+    ritrovarsi ESATTAMENTE una volta fra `entita`/`entita_disabilitate`/
+    `entita_nascoste` di tutte le aree (vere o pseudo) di tutti i piani --
+    tranne il solo caso deliberato (`unloaded_device` + disabilitata/nascosta,
+    provato a parte sopra), qui tenuto fuori dal calcolo di proposito.
+
+    Copre le combinazioni che sparivano prima di questa fetta: disabilitata E
+    nascosta, sia senza area sia con un'area sconosciuta.
+
+    Non fissa 1223/1018 (la misura di oggi di una casa che cambia): fissa
+    l'invariante -- l'insieme delle entita' in ingresso e l'insieme di quelle
+    trovate in uscita devono coincidere, senza doppioni."""
+    registri = dict(_REGISTRI, entita=_REGISTRI["entita"] + [
+        {"entity_id": "sensor.disabilitata_senza_area", "device_id": None, "area_id": None,
+         "disabled_by": "user"},
+        {"entity_id": "sensor.nascosta_senza_area", "device_id": None, "area_id": None,
+         "hidden_by": "user"},
+        {"entity_id": "sensor.disabilitata_area_sconosciuta", "device_id": None,
+         "area_id": "area_fantasma_1", "disabled_by": "user"},
+        {"entity_id": "sensor.nascosta_area_sconosciuta", "device_id": None,
+         "area_id": "area_fantasma_2", "hidden_by": "user"},
+    ])
+    archivio.replace(registri)
+    piani = hierarchy(archivio.read())
+
+    attese = {e["entity_id"] for e in registri["entita"]}
+
+    trovate = []
+    for piano in piani:
+        for area in piano["aree"]:
+            trovate.extend(e["id"] for e in area.get("entita", []))
+            trovate.extend(e["id"] for e in area.get("entita_disabilitate", []))
+            trovate.extend(e["id"] for e in area.get("entita_nascoste", []))
+
+    assert len(trovate) == len(set(trovate)), "nessuna entita' compare due volte"
+    assert set(trovate) == attese, \
+        f"mancano: {attese - set(trovate)}, in piu': {set(trovate) - attese}"
+
+
 # -- `device_areas`: una sola casa per la mappa dispositivo -> area ---------
 
 def test_la_mappa_delle_aree_dei_dispositivi_salta_quelli_senza_id():
