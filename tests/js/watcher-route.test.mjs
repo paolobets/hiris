@@ -232,6 +232,69 @@ test('seam _rendiOsservate: una gamba sconosciuta finisce in coda col suo nome g
 });
 
 // ---------------------------------------------------------------------------
+// Cancello del collaudo E2 (07/09/2026, BACKLOG.md «"Cosa sto guardando"
+// stampa i soggetti grezzi, gli episodi no»): renderAspectGroup scriveva
+// `v.soggetto` tale e quale, mentre gli episodi (renderFacts, la sezione
+// gemella della stessa pagina) passavano gia' da `protagonistName`. Col
+// gruppo passato da due a diciannove voci, diciassette delle quali percorsi
+// di file, il difetto -- gia' presente prima -- e' diventato visibile.
+// ---------------------------------------------------------------------------
+
+test('seam _rendiOsservate: un prefisso tecnico grezzo (log:/integrazione:/problema:/automazione:) non resta mai a schermo (collaudo E2, 07/09/2026)', () => {
+  // Mutazione dichiarata, ESEGUITA per provarla (transcript nel rapporto):
+  // ripristinare in renderAspectGroup `li.appendChild(el('span', 'text-mono',
+  // v.soggetto));` al posto delle due righe che passano da
+  // `describeWatchedSubject` fa arrossire `assert.doesNotMatch` qui sotto,
+  // sulle voci `log:` e `integrazione:` -- il soggetto grezzo torna a
+  // comparire tale e quale (verificato eseguendo la suite con la mutazione
+  // applicata, poi ripristinata).
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  // Le stesse quattro righe misurate sulla casa vera (docs/BACKLOG.md), piu'
+  // un `problema:`/`automazione:` sintetici: la prova copre tutti e quattro
+  // i prefissi che l'archivio scrive, non solo i due che il collaudo ha
+  // trovato per caso.
+  window.HirisWatcherRoute._rendiOsservate(corpo, [
+    { soggetto: 'integrazione:01K2CK4GG287VKK18M5J788MRQ', gamba: 'buono stato', provenienza: 'pavimento' },
+    { soggetto: 'log:aioamazondevices@components/alexa_devices/coordinator.py:192', gamba: 'buono stato', provenienza: 'pavimento' },
+    { soggetto: 'log:homeassistant.components.hydrawise@helpers/update_coordinator.py:481', gamba: 'buono stato', provenienza: 'pavimento' },
+    { soggetto: 'log:custom_components.zcsazzurro.api@custom_components/zcsazzurro/api.py:202', gamba: 'buono stato', provenienza: 'pavimento' },
+    { soggetto: 'problema:light.termostato_soggiorno', gamba: 'buono stato', provenienza: 'pavimento' },
+    { soggetto: 'automazione:automation.spegni_luci_notte', gamba: 'buono stato', provenienza: 'pavimento' },
+  ]);
+
+  // Il nome leggibile e' sempre il PRIMO `.text-mono` di ogni riga (la resa
+  // scrive prima `d.primary`, poi -- solo se c'e' -- `d.secondary`).
+  const primary = Array.from(corpo.querySelectorAll('li > .text-mono:first-child'))
+    .map((span) => span.textContent);
+  assert.equal(primary.length, 6, 'una riga per soggetto, come le sei voci passate');
+
+  primary.forEach((text, i) => {
+    assert.doesNotMatch(text, /^(log|integrazione|problema|automazione):/,
+      `riga ${i}: un prefisso tecnico e' rimasto a schermo tale e quale: "${text}"`);
+  });
+
+  // La legge del capitolato: non si inventa un titolo che non c'e', ma
+  // "cosa" e' quella voce si dice sempre -- mai un identificatore nudo.
+  assert.match(primary[0], /integrazione non caricata/i,
+    'senza titolo, un id opaco (ULID) non e\' risolvibile: si dice cosa e\', non l\'id da solo');
+  assert.match(primary[1], /Registro: aioamazondevices/,
+    'il logger e\' il nome utile del soggetto "log:", e resta leggibile');
+  assert.match(primary[2], /Registro: homeassistant\.components\.hydrawise/);
+  assert.match(primary[3], /Registro: custom_components\.zcsazzurro\.api/);
+
+  // Il percorso del file NON si butta (distingue due errori dello stesso
+  // logger): resta a schermo, ma in secondo piano (`.field-hint`), mai come
+  // primo testo della riga.
+  const righe = Array.from(corpo.querySelectorAll('ul > li'));
+  const secondaria = righe[1].querySelector('.field-hint');
+  assert.ok(secondaria, 'il riferimento tecnico del "log:" non deve sparire, solo passare in secondo piano');
+  assert.match(secondaria.textContent, /coordinator\.py:192/);
+  assert.doesNotMatch(righe[1].querySelector('.text-mono:first-child').textContent, /coordinator\.py/,
+    'il percorso del file non deve stare nel nome PRIMARIO della riga');
+});
+
+// ---------------------------------------------------------------------------
 // Il campo Giorno: dentro il tema, con l'etichetta associata (rilievo 3)
 // ---------------------------------------------------------------------------
 
@@ -1235,4 +1298,42 @@ test('README: il numero di rotte "live" dichiarato è quello davvero registrato 
   assert.ok(dichiarate, 'numero non riconosciuto nel README: ' + m[1]);
   assert.equal(dichiarate, registrate,
     'il README dichiara ' + m[1] + ' rotte live, ma main.js ne registra ' + registrate + ' (contate, non copiate)');
+});
+
+// ---------------------------------------------------------------------------
+// Cancello del collaudo A3 (07/09/2026, BACKLOG.md «Il README documenta sei
+// rotte che non esistono»): il numero di rotte combaciava anche col difetto
+// -- sei erano il NOME sbagliato (`#/albero` invece di `#/tree`, e simili),
+// e il test sopra (che conta soltanto) non poteva vederlo. Questo confronta
+// l'IDENTITA' di ogni rotta, non solo la conta.
+// ---------------------------------------------------------------------------
+
+test('README: ogni rotta della tabella "Interface" è una di quelle davvero registrate in main.js, e viceversa', () => {
+  const README = readFileSync(join(CONFIG_DIR, '..', '..', '..', '..', 'README.md'), 'utf8');
+  const MAIN_JS = readFileSync(join(CONFIG_DIR, 'main.js'), 'utf8');
+
+  // Ogni riga della tabella comincia con `| \`#/xxx\` |` -- l'ancora `^` in
+  // modalità multilinea la distingue da una MENZIONE di un'altra rotta
+  // dentro la colonna descrizione (es. "chosen per provider in `#/models`",
+  // dentro la riga di `#/settings`), che non comincia mai la riga.
+  const dalReadme = new Set();
+  const reReadme = /^\| `#\/(\w*)` \|/gm;
+  let m;
+  while ((m = reReadme.exec(README))) dalReadme.add(m[1]);
+  assert.ok(dalReadme.size > 0, 'nessuna riga di rotta trovata nella tabella "Interface" del README: il formato è cambiato?');
+
+  // Stessa forma letterale del test sopra: `HirisRouter.register(/^#\/xxx\/?$/`
+  // per una rotta con nome, `HirisRouter.register(/^#\/?$/` per la radice
+  // (senza segmento -- gruppo di cattura opzionale).
+  const daMainJs = new Set();
+  const reMainJs = /HirisRouter\.register\(\/\^#(?:\\\/(\w+))?\\\/\?\$\//g;
+  while ((m = reMainJs.exec(MAIN_JS))) daMainJs.add(m[1] || '');
+  assert.ok(daMainJs.size > 0, 'nessuna rotta riconosciuta in main.js: la forma della regex è cambiata?');
+
+  const soloNelReadme = [...dalReadme].filter((r) => !daMainJs.has(r));
+  const soloInMainJs = [...daMainJs].filter((r) => !dalReadme.has(r));
+  assert.deepEqual(soloNelReadme, [],
+    'il README documenta ' + JSON.stringify(soloNelReadme) + ', rotte che main.js non registra');
+  assert.deepEqual(soloInMainJs, [],
+    'main.js registra ' + JSON.stringify(soloInMainJs) + ', rotte che il README non documenta');
 });

@@ -254,7 +254,15 @@ window.HirisWatcherRoute = (function () {
       var li = el('li');
       li.style.cssText = 'margin-bottom:6px;font-size:var(--fs-13);overflow-wrap:anywhere;' +
         'display:flex;align-items:center;gap:8px;flex-wrap:wrap';
-      li.appendChild(el('span', 'text-mono', v.soggetto));
+      // Collaudo E2 (07/09/2026): un soggetto grezzo (`log:...@file:riga`,
+      // `integrazione:<id opaco>`) non deve restare tale e quale sulla
+      // pagina -- `describeWatchedSubject` (condivisa con `protagonistName`,
+      // sopra) lo separa in un nome leggibile e un riferimento tecnico
+      // secondario, mai buttato ma reso in secondo piano (`.field-hint`,
+      // stesso idioma gia' usato per l'identificatore degli episodi sotto).
+      var d = describeWatchedSubject(v.soggetto);
+      li.appendChild(el('span', 'text-mono', d.primary));
+      if (d.secondary) li.appendChild(el('span', 'text-mono field-hint', d.secondary));
       var b = provenanceBadge(v.provenienza);
       li.appendChild(el('span', 'agent-badge ' + b.cls, b.testo));
       ul.appendChild(li);
@@ -427,15 +435,79 @@ window.HirisWatcherRoute = (function () {
      `titolo` puo' mancare). Copriva quasi sempre perche' il titolo di
      solito c'e' -- ma «quasi sempre» e' proprio il difetto silenzioso che
      questa fetta esiste per chiudere. */
+  /* Il riconoscimento dei quattro prefissi tecnici (`problema:`/
+     `integrazione:`/`log:`/`automazione:`) SEPARATO dalla resa: questa
+     funzione dice solo COSA porta un soggetto grezzo, mai come scriverlo a
+     schermo -- quello lo decide chi la chiama. E' la base condivisa fra
+     `protagonistName` (un episodio, che quando ha `corpo.titolo` lo
+     preferisce sempre) e `describeWatchedSubject` (una voce di «cosa sto
+     guardando», che porta SOLO `{soggetto, gamba, provenienza}` e non ha
+     mai un `corpo` da cui prendere un titolo -- BACKLOG.md, collaudo del
+     07/09/2026: due elenchi sulla stessa pagina rendevano lo stesso
+     soggetto in due modi, e uno stampava l'identificatore grezzo perche'
+     nessuno gli aveva mai insegnato questi quattro prefissi). Un solo posto
+     che li conosce, non due che potrebbero divergere al primo caso strano.
+
+     Per `log:`, il soggetto porta DUE informazioni cucite con `@`
+     (`<logger>@<file>:<riga>`): il logger e' il nome utile, il resto e' il
+     riferimento tecnico che distingue due errori dello stesso logger --
+     nessuno dei due si butta, li separa chi chiama. */
+  function parseSubjectPrefix(s) {
+    s = s || '';
+    if (s.indexOf('problema:') === 0) {
+      return { kind: 'problema', rest: s.slice('problema:'.length) };
+    }
+    if (s.indexOf('integrazione:') === 0) {
+      return { kind: 'integrazione', rest: s.slice('integrazione:'.length) };
+    }
+    if (s.indexOf('log:') === 0) {
+      var rest = s.slice('log:'.length);
+      var at = rest.indexOf('@');
+      return {
+        kind: 'log',
+        logger: at === -1 ? rest : rest.slice(0, at),
+        location: at === -1 ? '' : rest.slice(at + 1),
+      };
+    }
+    if (s.indexOf('automazione:') === 0) {
+      return { kind: 'automazione', rest: s.slice('automazione:'.length) };
+    }
+    return { kind: null, rest: s };
+  }
+
   function protagonistName(o) {
-    var s = o.protagonista || '';
     var c = o.corpo || {};
     if (c.titolo) return c.dominio ? c.titolo + ' (' + c.dominio + ')' : c.titolo;
-    if (s.indexOf('problema:') === 0) return 'Problema Home Assistant: ' + s.slice('problema:'.length);
-    if (s.indexOf('integrazione:') === 0) return 'Integrazione non caricata: ' + s.slice('integrazione:'.length);
-    if (s.indexOf('log:') === 0) return 'Voce del registro di Home Assistant: ' + s.slice('log:'.length);
-    if (s.indexOf('automazione:') === 0) return 'Automazione: ' + s.slice('automazione:'.length);
-    return s;
+    var p = parseSubjectPrefix(o.protagonista || '');
+    if (p.kind === 'problema') return 'Problema Home Assistant: ' + p.rest;
+    if (p.kind === 'integrazione') return 'Integrazione non caricata: ' + p.rest;
+    if (p.kind === 'log') return 'Voce del registro di Home Assistant: ' + p.logger + '@' + p.location;
+    if (p.kind === 'automazione') return 'Automazione: ' + p.rest;
+    return p.rest;
+  }
+
+  /* Il gemello di `protagonistName` per «cosa sto guardando» (rilievo del
+     collaudo E2, 07/09/2026): una voce qui non ha MAI un `corpo.titolo` da
+     preferire (il tipo che arriva da `/api/mind/watching` e'
+     `{soggetto, gamba, provenienza}`, punto), quindi non si puo' riusare
+     `protagonistName` cosi' com'e' -- ma la legge resta la stessa: non
+     inventare un nome che non c'e'. Se dal soggetto non si ricava altro
+     (un'entita' del pavimento, es. `light.cucina`), il soggetto STESSO e'
+     gia' il nome leggibile e resta intatto -- il difetto era sui quattro
+     prefissi tecnici, non sugli entity_id.
+
+     Ritorna `{primary, secondary}`: `primary` e' cio' che una persona legge
+     per primo, `secondary` (puo' essere vuoto) e' il riferimento tecnico che
+     NON si butta -- e' cio' che distingue due voci altrimenti identiche
+     (due errori dello stesso logger, due integrazioni non caricate) -- ma
+     va reso in secondo piano, mai come unico contenuto della riga. */
+  function describeWatchedSubject(soggetto) {
+    var p = parseSubjectPrefix(soggetto);
+    if (p.kind === 'problema') return { primary: 'Problema Home Assistant: ' + p.rest, secondary: '' };
+    if (p.kind === 'integrazione') return { primary: 'Un’integrazione non caricata', secondary: p.rest };
+    if (p.kind === 'log') return { primary: 'Registro: ' + p.logger, secondary: p.location };
+    if (p.kind === 'automazione') return { primary: 'Automazione: ' + p.rest, secondary: '' };
+    return { primary: p.rest, secondary: '' };
   }
 
   /* Il rivelatore sincrono, estratto (correzione di questo giro): era
