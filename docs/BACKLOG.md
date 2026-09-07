@@ -1001,6 +1001,65 @@ l'osservatore non ha, e va disegnata invece che infilata.
 pavimento prima di quella vorrebbe dire scrivere la **quarta** lista a mano invece di toglierne
 tre.
 
+### Il nucleo è statico, e il proprietario chiede se non sia povero
+
+`origine: il proprietario, 07/09/2026, discutendo la completezza degli attributi` · `nessun documento`
+
+> *«Il nucleo va bene crearlo per passare qualcosa che non sia tutta la casa ai modelli, ci
+> permette di risparmiare token — ma se non è dinamico in base al quesito, non credi sia povero
+> di informazioni?»*
+
+**I numeri, misurati sul ponte il 07/09** (105 turni), che vanno letti prima di progettare:
+
+| | |
+|---|---|
+| token in **freschi** | **662** in totale, su 105 turni — sei per turno |
+| token letti **dalla cache** | **5.603.549** |
+| token **scritti** in cache | 1.914.948 |
+
+**Il 99,99% del contesto non si paga a ogni turno: si rilegge.** Ed è possibile *proprio perché* è
+identico. Un contesto che cambia a ogni domanda non si rilegge: si riscrive, e la riscrittura
+costa più di una lettura fresca.
+
+**Ma il proprietario ha ragione sul difetto, e sbaglia bersaglio chi risponde «lasciamolo
+statico».** Il nucleo non è povero di dettagli: **tronca**, e il codice lo dichiara misurandolo
+(`briefing.py:277`) — *«citando tutti i nomi sopravvivono 7 aree su 20 invece di 17»*.
+
+> Il difetto vero non è «non sa che il termostato arriva a 40 gradi»: è **«non sa che quel
+> termostato esiste»**, e allora non può nemmeno andarlo a cercare. HIRIS ha sedici strumenti: il
+> compito del nucleo non è contenere la casa, è darne una **mappa** abbastanza buona da far capire
+> cosa vale la pena chiedere. Un nucleo che tronca tredici aree su venti non fallisce come
+> riassunto: fallisce come mappa.
+
+**Due cose da sapere prima di scrivere una riga:**
+
+1. **La cache dipende da DOVE sta il pezzo che cambia.** I ~53.000 token riletti a ogni turno non
+   sono il nucleo (≈1.500): il grosso è il prompt di sistema più le descrizioni dei sedici
+   strumenti. Un'appendice variabile messa **in coda**, dopo tutto ciò che è stabile, invalida solo
+   se stessa. Dinamico *in coda* costa quasi niente; dinamico *in testa* costa dieci volte tanto.
+2. **Scegliere il contesto dalla domanda è recupero, e il nostro recupero è debole.** È la stessa
+   lacuna ancora aperta in «Scelti»: `search` non distingue un candidato **unico** da uno
+   **certo**. Un recupero che sbaglia consegna al modello un contesto **sbagliato e sicuro di sé**,
+   e il modello non sa cosa gli manca — peggio di un contesto generico, che almeno si dichiara
+   tale.
+
+**La forma proposta**, non decisa: due strati. Una **mappa stabile in testa**, completa su *cosa
+esiste e dove*, mai troncata sulle aree — è ciò che rende possibile chiedere, ed è ciò che la cache
+rilegge gratis. E un'**appendice variabile in coda**, scelta sulla domanda, che porta il dettaglio
+e **dichiara di essere una selezione**, così il modello sa che sotto c'è altro.
+
+**E la misura che va fatta prima**: quante volte il modello sbaglia o gira a vuoto perché il nucleo
+era povero? Le tracce e il log ci sono dalla v3.22.0 — **si può guardare invece di supporre**. Se
+il modello compensa già bene con gli strumenti, il lavoro vero è solo smettere di troncare la
+mappa; se si perde, l'appendice serve davvero.
+
+**Il collegamento con «Il vocabolario dei tipi», dichiarato per non lasciarlo al caso**: rendere
+completi gli attributi aumenta la pressione sul tetto dei 6.000 caratteri. La decisione presa è
+che **la completezza va nel dettaglio di una entità, non nel nucleo** — altrimenti la prima persona
+che ci lavora la prende per caso.
+
+**Si incrocia con «L'analista»**: è lui che dovrebbe decidere *cosa* mettere in quell'appendice.
+
 ---
 
 ## Usciti

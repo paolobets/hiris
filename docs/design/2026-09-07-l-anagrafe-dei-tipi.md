@@ -304,3 +304,40 @@ Ogni prova deve poter **fallire**. Dove sarebbe una tautologia, si dice e non si
 
 E una prova che **non** si scrive: che il proprietario capisca. Quella la fa lui, sulla casa vera,
 e senza di lei nessuna delle dieci sopra vale niente.
+
+---
+
+## §11 · Due decisioni prese durante la fetta 1
+
+### `tipo` e `tipologia` non sono la stessa parola
+
+Il nome «vocabolario dei tipi» sfiora `docs/design/2026-08-16-il-vocabolario-delle-tipologie.md`,
+che esiste già e parla di *cosa una cosa è, e cosa significano i suoi valori* — nato da una
+risposta sbagliata sul «Notevole adesso» del nucleo (300 elementi su 845, e HIRIS che sapeva
+**che** due luci erano accese ma non **quali**).
+
+**Non sono due vocabolari, e non sono due nomi per la stessa cosa:**
+
+| | |
+|---|---|
+| **`tipo`** | la **chiave** della riga: un dominio, o una coppia (dominio, `device_class`) |
+| **`tipologia`** | **un campo** di quella riga: cosa quella cosa **è** per chi legge — una luce, un sensore di porta, un rivelatore di fumo |
+
+Il vocabolario delle tipologie è **la prima metà di questo**, costruita per un consumatore solo.
+Alla **fetta 6** non si affianca: **si fonde**. La tipologia diventa un campo della riga del tipo,
+con la sua provenienza, e il documento del 16/08 resta come verbale datato.
+
+**Stessa sorte, e stessa ragione, per `ha_vocabulary.py`**: `DEVICE_CLASS_MEANING` è indicizzato
+per `(dominio, classe)`, che è **esattamente la chiave di un tipo**. È il candidato dichiarato a
+diventare un campo `meaning` con provenienza `importato`. Alla fetta 1 i due moduli restano
+separati con il confine scritto in entrambi i docstring — nessun fatto vive di qua e di là — ma
+la separazione è **provvisoria per decisione**, non per disegno.
+
+### Gli stati che non appartengono a nessun tipo
+
+`ABSENT_STATE_FORMS` (`""`, `"none"`) e `UNKNOWN_STATES` (`unavailable`, `unknown`) **attraversano
+ogni tipo**: attribuirli a uno solo sarebbe una bugia. Non stanno su nessuna riga, portano la loro
+provenienza, e una prova verifica che non esistano stati orfani.
+
+**È una scelta, non un fatto**: la forma reggerebbe anche una riga «qualunque tipo». Si è preferito
+non inventare un tipo che non esiste per ospitare qualcosa che è di tutti.
