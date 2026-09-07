@@ -386,6 +386,20 @@ window.HirisWatcherRoute = (function () {
          mostra sempre la condizione come tale, mai come sinonimo di
          aperto/chiuso. */
       var aperto = o.fine_ts == null ? 'ancora aperto' : 'chiuso';
+      /* Collaudo usabilita' 3.22, rilievo 2: un `problema:` porta
+         `corpo.stato === 'aperto'` per costruzione (spec §2.3), a episodio
+         aperto E a episodio chiuso -- e' la STESSA parola che questa riga ha
+         appena scritto sotto un'altra forma («chiuso»/«ancora aperto»), mai
+         un'informazione in piu'. Misurato: «chiuso · stato: aperto», due
+         parole opposte a tre centimetri di distanza -- non e' l'episodio ad
+         essere ambiguo, e' la ripetizione letterale di "aperto" a leggersi
+         come una contraddizione quando l'episodio e' chiuso. Si toglie SOLO
+         quando `stato` vale letteralmente "aperto": gli altri valori
+         (`setup_retry`, `ERROR`, ...) restano, perche' sono condizioni vere
+         e non sinonimi di aperto/chiuso -- il nome dell'episodio ("Guasto")
+         insieme ad "ancora aperto"/"chiuso" dice gia' tutto cio' che
+         "stato: aperto" ripeteva. */
+      if (c.stato === 'aperto') return aperto;
       return c.stato != null ? aperto + ' · stato: ' + c.stato : aperto;
     }
     return c.stato != null ? 'stato: ' + c.stato : '(nessun dettaglio)';

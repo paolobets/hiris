@@ -228,6 +228,43 @@ test('«Correggi» apre un modulo senza campo per il testo, e Salva manda un PAT
   assert.deepEqual(corpo, { forza: 'divieto' }, 'solo il campo toccato entra nel corpo');
 });
 
+// Collaudo usabilita' 3.22, rilievo 3: il modulo si chiudeva SOLO
+// ripremendo «Correggi» -- chi lo apre per sbaglio, o cambia idea, non ha
+// una via d'uscita dichiarata. Mutazione ESEGUITA per provarla: togliere
+// `cancel.addEventListener('click', chiudiModulo)` (il bottone «Annulla»
+// resta a schermo ma non fa niente) -- il test sotto torna rosso
+// sull'`assert.equal(outlet.querySelectorAll('select').length, 0, ...)`,
+// perche' il modulo non si chiude piu'.
+test('«Annulla» chiude il modulo senza mandare nessuna richiesta', async () => {
+  const { window, document, chiamate } = montaConServer();
+  window.HirisMemoryRoute.mount();
+  await tick(20);
+
+  bottone(document, 'Correggi').dispatchEvent(new window.Event('click', { bubbles: true }));
+  await tick(5);
+
+  const outlet = document.getElementById('route-outlet');
+  const annulla = bottone(document, 'Annulla', outlet);
+  assert.ok(annulla, 'manca il bottone «Annulla» accanto a «Salva correzione»');
+  document.querySelector('select').value = 'divieto';
+
+  annulla.dispatchEvent(new window.Event('click', { bubbles: true }));
+  await tick(10);
+
+  assert.equal(outlet.querySelectorAll('select').length, 0,
+    '«Annulla» deve chiudere il modulo, non solo restare a schermo inerte');
+  assert.equal(chiamate.filter((c) => c.method !== 'GET').length, 0,
+    '«Annulla» non deve mandare nessuna richiesta di scrittura (ne\' PATCH ne\' altro)');
+
+  // Riaprendo, il modulo riparte dai valori del ricordo, non da quelli
+  // scartati con «Annulla»: la modifica non e\' rimasta appesa da nessuna
+  // parte fuori dall\'archivio.
+  bottone(document, 'Correggi').dispatchEvent(new window.Event('click', { bubbles: true }));
+  await tick(5);
+  assert.equal(document.querySelector('select').value, RICORDO.forza,
+    'riaprendo dopo «Annulla» il modulo deve mostrare di nuovo il valore vero del ricordo');
+});
+
 test('un PATCH rifiutato (400) mostra la ragione del server, non un errore generico', async () => {
   const { window, document } = montaConServer({
     patchStatus: 400,

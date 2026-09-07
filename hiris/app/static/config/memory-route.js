@@ -142,7 +142,7 @@ window.HirisMemoryRoute = (function () {
   }
 
   /* ── Il modulo di correzione: solo i campi scalari (vedi header) ──────── */
-  function costruisciModuloCorrezione(r, cardErr, dopoSalvataggio) {
+  function costruisciModuloCorrezione(r, cardErr, dopoSalvataggio, chiudiModulo) {
     var wrap = el('div');
     wrap.style.cssText = 'border-top:1px solid var(--border);padding-top:10px;' +
       'display:flex;flex-direction:column;gap:8px;max-width:360px';
@@ -212,9 +212,21 @@ window.HirisMemoryRoute = (function () {
     wrap.appendChild(field('Unità', unitInput));
     wrap.appendChild(field('Detto da', inpDettoDa));
 
+    /* Collaudo usabilita' 3.22, rilievo 3: il modulo si chiudeva SOLO
+       ripremendo «Correggi» -- chi lo apre per sbaglio, o cambia idea, non
+       aveva una via d'uscita dichiarata. «Annulla» chiude senza salvare, con
+       la stessa forma (ghost, sm) del bottone che gia' apre/chiude il
+       modulo -- non se ne inventa una nuova. */
+    var actions = el('div');
+    actions.style.cssText = 'display:flex;gap:8px';
     var save = el('button', 'btn btn-primary btn-sm', 'Salva correzione');
     save.type = 'button';
-    wrap.appendChild(save);
+    var cancel = el('button', 'btn btn-ghost btn-sm', 'Annulla');
+    cancel.type = 'button';
+    cancel.addEventListener('click', chiudiModulo);
+    actions.appendChild(save);
+    actions.appendChild(cancel);
+    wrap.appendChild(actions);
 
     save.addEventListener('click', function () {
       /* Solo i campi TOCCATI entrano nel corpo: un PATCH parziale lascia
@@ -339,11 +351,17 @@ window.HirisMemoryRoute = (function () {
     cardErr.style.display = 'none';
     body.appendChild(cardErr);
 
+    function chiudiModulo() {
+      clearEl(formWrap);
+      formWrap.style.display = 'none';
+      cardErr.style.display = 'none';
+    }
+
     btnCorreggi.addEventListener('click', function () {
       var open = formWrap.style.display !== 'none';
+      if (open) { chiudiModulo(); return; }
       clearEl(formWrap);
-      if (open) { formWrap.style.display = 'none'; return; }
-      formWrap.appendChild(costruisciModuloCorrezione(r, cardErr, reload));
+      formWrap.appendChild(costruisciModuloCorrezione(r, cardErr, reload, chiudiModulo));
       formWrap.style.display = '';
     });
 

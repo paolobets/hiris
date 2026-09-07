@@ -136,9 +136,30 @@
       <div id="welcome">
         <img src="static/hiris-icon.svg" class="welcome-mark" alt="HIRIS">
         <h3 id="welcome-greeting"><span id="welcome-hello">Ciao</span>, <span class="grad">come posso aiutarti?</span></h3>
+        <!-- Collaudo usabilita' 3.22, rilievo 1: l'unico onboarding che il
+             prodotto ha era una domanda senza risposta -- "come posso
+             aiutarti?" e basta. Un rigo, verificato contro il catalogo
+             strumenti vero (agent/prompts.py, `_GUIDE_WITH_TOOLS`): search/
+             view/logbook/system_log/trend leggono la casa, `calendar` legge
+             i calendari, `related`/`automation_trace`/`propose`/`confirm`
+             sanno delle automazioni, `execute` accende e spegne,
+             `remember`/`fetch` sono la memoria. Nessuna promessa che gli
+             strumenti non mantengano. -->
+        <p>Leggo lo stato della casa, i calendari e le automazioni; accendo e spengo quello che mi chiedi; ricordo ciò che mi racconti.</p>
         <div class="quick-chips">
-          <button class="chip" type="button" data-quick="Stato casa"><span class="chip-glyph">⚡</span> Stato casa</button>
-          <button class="chip" type="button" data-quick="Temperatura camere"><span class="chip-glyph">🌡</span> Temperatura camere</button>
+          <!-- Le quattro pastiglie erano le domande che HIRIS sa rispondere
+               meglio ("Stato casa", "Temperatura camere") ma non quelle che
+               il proprietario fa davvero: la stessa mattina del collaudo ha
+               scritto "Quali sono i miei prossimi appuntamenti?", "Quante
+               luci ho in casa e quante sono accese adesso?" e "Cosa non va
+               in casa in questo momento?" -- nessuna delle tre era qui. La
+               prima mappa sui calendari (`mcp__hiris__calendar`), la terza
+               sulla sezione che il nucleo gia' scrive (briefing.py,
+               `_FAULTS_HEADING = "## Cosa non va in casa"`). Le altre due
+               pastiglie restano: mappano su cose vere (le automazioni, la
+               Memoria) e funzionavano gia'. -->
+          <button class="chip" type="button" data-quick="Cosa non va in casa?"><span class="chip-glyph">⚠</span> Cosa non va in casa?</button>
+          <button class="chip" type="button" data-quick="Cosa ho in agenda?"><span class="chip-glyph">📅</span> Cosa ho in agenda?</button>
           <button class="chip" type="button" data-quick="Cosa fa la casa da sola"><span class="chip-glyph">🔁</span> Cosa fa la casa da sola</button>
           <button class="chip" type="button" data-quick="Cosa ricordi di me"><span class="chip-glyph">🧠</span> Cosa ricordi di me</button>
         </div>

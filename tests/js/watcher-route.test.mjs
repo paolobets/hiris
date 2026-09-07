@@ -750,7 +750,19 @@ test('seam _rendiOggetti: un\'integrazione con una condizione vera (non "aperto"
 // "guasto") -- il test torna rosso su
 // `assert.doesNotMatch(corpo.textContent, /ancora aperto/)` (l'episodio
 // chiuso mostrerebbe di nuovo "ancora aperto").
-test('seam _rendiOggetti: un `problema:` con stato ancora "aperto" ma fine_ts valorizzato non dice "ancora aperto"', () => {
+//
+// Collaudo usabilita' 3.22, rilievo 2 (07/09/2026): finche' `mainPhrase`
+// scriveva SEMPRE "· stato: X" quando `c.stato != null`, questo stesso test
+// affermava «stato: aperto» accanto a «chiuso» -- «06/09 08:54 → 06/09
+// 19:04 · chiuso · stato: aperto», due parole opposte a tre centimetri di
+// distanza, misurato dal vivo. `c.stato === 'aperto'` e' la STESSA parola
+// che "chiuso"/"ancora aperto" ha appena scritto sotto un'altra forma: si
+// toglie SOLO in questo caso, non per gli altri valori (vedi il test subito
+// sotto, che li tiene). Mutazione ESEGUITA per provarlo: togliere
+// `if (c.stato === 'aperto') return aperto;` da `mainPhrase` -- il test
+// torna rosso sull'ultimo `assert.doesNotMatch` (il testo mostrerebbe di
+// nuovo "stato: aperto").
+test('seam _rendiOggetti: un `problema:` con stato ancora "aperto" ma fine_ts valorizzato non dice "ancora aperto", ne\' "stato: aperto"', () => {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
   window.HirisWatcherRoute._rendiOggetti(corpo, [{
@@ -762,8 +774,29 @@ test('seam _rendiOggetti: un `problema:` con stato ancora "aperto" ma fine_ts va
     'un episodio chiuso (fine_ts valorizzato) non deve mai dire "ancora aperto", ' +
     'anche se `corpo.stato` resta "aperto" per costruzione (spec §2.3)');
   assert.match(corpo.textContent, /chiuso/);
-  assert.match(corpo.textContent, /stato: aperto/,
-    'la condizione resta mostrata per quello che e\', non nascosta');
+  assert.doesNotMatch(corpo.textContent, /stato: aperto/,
+    '«chiuso · stato: aperto» e\' la contraddizione misurata dal collaudo: la parola "aperto" ' +
+    'non deve ripetersi accanto a "chiuso"');
+});
+
+// Stesso principio, ma sul caso in cui l'episodio e' ANCORA aperto: "ancora
+// aperto · stato: aperto" non e' una contraddizione (le due parole
+// concordano), ma e' comunque una ripetizione letterale che non aggiunge
+// niente -- il rilievo del collaudo non distingue i due casi, distingue
+// SOLO se `stato` vale letteralmente "aperto". Mutazione ESEGUITA per
+// provarlo: stessa di sopra -- il test torna rosso sull'`assert.doesNotMatch`
+// (il testo mostrerebbe "ancora aperto · stato: aperto").
+test('seam _rendiOggetti: un `problema:` ancora aperto con stato "aperto" non ripete la parola in "stato: aperto"', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisWatcherRoute._rendiOggetti(corpo, [{
+    id: 1, genere: 'guasto', protagonista: 'problema:hue.bridge_offline',
+    inizio_ts: 1, fine_ts: null,
+    corpo: { stato: 'aperto' },
+  }], null);
+  assert.match(corpo.textContent, /ancora aperto/);
+  assert.doesNotMatch(corpo.textContent, /stato: aperto/,
+    'la parola "aperto" non deve ripetersi come "stato:" -- non aggiunge un\'informazione nuova');
 });
 
 test('seam _rendiOggetti: comprimari e misure stanno dietro un rivelatore sincrono, chiuso di default', () => {

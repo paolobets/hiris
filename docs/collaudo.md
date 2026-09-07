@@ -68,6 +68,30 @@ che un cancello di **conta** non basta a vedere: A3 conta le rotte E ne confront
 qui il numero solo («sette») avrebbe già mascherato una volta la stessa divergenza («sei» campi
 elencati mentre il codice ne montava sette) — servono i **nomi**, non il conteggio.
 
+### A5 — Lo stato vuoto della chat dice cosa sa fare
+
+**Si fa**: si apre la chat senza cronologia (o si cancella la conversazione) e si guarda lo stato
+vuoto: il saluto, il rigo sotto e le quattro pastiglie.
+**Deve**: comparire un rigo che dice, in poche parole, cosa HIRIS sa fare (legge la casa e i
+calendari, conosce le automazioni, accende e spegne, ricorda); le quattro pastiglie devono essere
+«Cosa non va in casa?», «Cosa ho in agenda?», «Cosa fa la casa da sola» e «Cosa ricordi di me» —
+cliccandole, il testo mandato in chat deve essere identico a quello scritto sul bottone.
+**Fallimento**: il rigo manca (resta solo «come posso aiutarti?», senza dire come); una pastiglia
+promette qualcosa che nessuno strumento di HIRIS sa fare davvero (si controlla contro il catalogo
+vero in `agent/prompts.py::_GUIDE_WITH_TOOLS`, non a memoria); o il testo che parte al click non è
+quello scritto sul bottone.
+
+### A6 — Il fuoco da tastiera si vede, su entrambi i temi
+
+**Si fa**: si apre una pagina del pannello con almeno un campo di testo (es. `#/settings`, o
+`#/memory` con «Correggi» aperto) e ci si arriva **con Tab**, senza mai toccare il mouse — una
+volta nel tema chiaro, una volta in quello scuro (`hiris-theme.css` ne porta due).
+**Deve**: il campo a fuoco cambiare visibilmente aspetto rispetto a quando non ce l'ha — un bordo
+e/o un alone attorno al campo, con un contrasto sufficiente a vedersi contro lo sfondo, in
+**entrambi** i temi.
+**Fallimento**: tab dopo tab, non si riesce a dire su quale campo ci si trova — il sintomo classico
+di `input:focus{outline:none}` senza nulla rimesso al posto dell'anello tolto.
+
 ---
 
 ## B · Le fonti che HIRIS legge
