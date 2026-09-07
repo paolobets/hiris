@@ -939,7 +939,8 @@ async def test_il_connettore_di_ollama_dichiara_il_timeout_DELL_ARCHIVIO(client,
 async def test_il_registro_degli_esiti_esiste_appena_l_app_esiste(client):
     """Nasce in `create_app`, non in `_on_startup`: un add-on senza nessuna
     credenziale ha comunque una pagina Modelli, e quella pagina deve poter
-    dire «non l'hai ancora usato» invece di non dire niente. `_on_startup` e'
+    dire «nessuna osservazione da quando l'add-on è partito» invece di non
+    dire niente. `_on_startup` e'
     anche cio' che OGNI fixture azzera -- un registro che nascesse li'
     avrebbe copertura zero (la lezione del debito E del Task 1)."""
     from hiris.app.provider_occurrences import OccurrenceRegistry
@@ -980,7 +981,7 @@ async def test_senza_osservazioni_la_pagina_non_afferma_niente(client):
     body = await (await client.get("/api/models/config")).json()
     riga = {r["id"]: r for r in body["catena"]}["claude"]
     assert riga["esito"] is None
-    assert riga["stato_testo"] == "non l'hai ancora usato"
+    assert riga["stato_testo"] == "nessuna osservazione da quando l'add-on è partito"
 
 
 @pytest.mark.asyncio

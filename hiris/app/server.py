@@ -3271,6 +3271,33 @@ async def _on_startup(app: web.Application) -> None:
             # long ago) -- the poll route's chat_reply_skipped handling is
             # the user-facing side of this.
             return
+        # Task 6 (collaudo-3.22, indagine-abbonamento.md): QUI, e non prima
+        # -- e non in `agent/runner.py::_logga_uso`, dove parte gia' Consumi.
+        # Il ponte non passa mai da `LLMRouter.chat()` (l'unico chiamante di
+        # `.successo(...)` fino a questa fetta): la pagina Modelli non aveva
+        # nessun modo di sapere che il ponte avesse MAI risposto, e diceva
+        # «non l'hai ancora usato» a un proprietario con 105 turni riusciti
+        # da fine agosto (`GET /api/usage`, `last_use` di oggi).
+        #
+        # `_logga_uso` (che alimenta Consumi) e' PIU' A MONTE di questo punto:
+        # gira dentro `_invoca`, prima che il chiamante guardi `invocation.rc`
+        # o `occurrence.has_result` -- un turno con `rc != 0` o senza evento
+        # finale puo' comunque avere un `usage` non vuoto (il conteggio dei
+        # token puo' arrivare anche su un esito d'errore) e farebbe scrivere
+        # un successo su un turno che non lo e' stato. Qui invece il successo
+        # e' un fatto GIA' accertato: siamo dopo il filtro di tossicita' che
+        # scarta i cinque sentinella d'errore del ponte
+        # (`chat_store.BRIDGE_SENTINELS`) e dopo il controllo «reply non
+        # vuota» -- se il codice arriva a questa riga, e' perche' sta per
+        # scrivere in cronologia una risposta vera, la stessa che l'utente
+        # sta per leggere. E' anche il motivo per cui NON sta in
+        # `handle_reasoning_submit` (proposta dell'audit L3 dell'agosto
+        # scorso, H2): li' la guardia e' solo «reply non vuota», che i
+        # sentinella la superano -- registrare il successo li' avrebbe
+        # sostituito la bugia di oggi con la bugia opposta.
+        registry = app.get("occurrence_registry")
+        if registry is not None:
+            registry.successo("subscription")
         _append_chat_messages([{"role": "assistant", "content": reply_text}], data_dir)
     app["submit_chat_reply"] = _submit_chat_reply
 
@@ -3817,7 +3844,8 @@ def create_app() -> web.Application:
     # memoria con un orologio), e la pagina Modelli lo legge anche in un
     # processo dove i runner non ci sono -- un add-on senza nessuna
     # credenziale ha comunque una pagina Modelli, e quella pagina deve poter
-    # dire «non l'hai ancora usato» invece di non dire niente.
+    # dire «nessuna osservazione da quando l'add-on è partito» invece di non
+    # dire niente.
     #
     # Nessuna persistenza: muore col processo, e «da quando l'add-on e'
     # partito» e' un'eta' dichiarabile (progetto §11.2). Nessuna scadenza: un

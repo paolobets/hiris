@@ -264,8 +264,10 @@ def test_un_orologio_che_va_all_indietro_non_produce_un_futuro():
 
 def test_le_frasi_dei_cinque_stati():
     a = 10_000.0
-    assert occurrence_phrase(None, position=1, now=a) == "non l'hai ancora usato"
-    assert occurrence_phrase(None, position=3, now=a) == "non è mai servito ripiegare qui"
+    assert occurrence_phrase(None, position=1, now=a) == (
+        "nessuna osservazione da quando l'add-on è partito")
+    assert occurrence_phrase(None, position=3, now=a) == (
+        "nessun ripiego servito da quando l'add-on è partito")
     assert occurrence_phrase({"tipo": "risposto", "famiglia": "", "codice": None,
                         "messaggio": "", "quando": a - 180, "da_quante": 1,
                         "durata_s": 0.0}, position=2, now=a) == "ha risposto 3 min fa"
@@ -284,10 +286,11 @@ def test_le_frasi_dei_cinque_stati():
 
 
 def test_mai_provato_fuori_dalla_catena_non_e_un_ripiego_mancato():
-    """Chi sta FUORI dalla catena non ha una posizione: «non è mai servito
-    ripiegare qui» direbbe che è un anello di riserva, e non lo è. Stesso
-    fatto, la frase di chi non è mai stato usato."""
-    assert occurrence_phrase(None, position=None, now=10_000.0) == "non l'hai ancora usato"
+    """Chi sta FUORI dalla catena non ha una posizione: «nessun ripiego
+    servito» direbbe che è un anello di riserva, e non lo è. Stesso fatto,
+    la frase di chi non è mai stato osservato."""
+    assert occurrence_phrase(None, position=None, now=10_000.0) == (
+        "nessuna osservazione da quando l'add-on è partito")
 
 
 def test_una_chiave_rifiutata_non_e_un_credito_esaurito():

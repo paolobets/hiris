@@ -242,21 +242,41 @@ def occurrence_phrase(occurrence: dict | None, *, position: int | None, now: flo
     `None` quando non c'è mai stata un'osservazione. «Non l'ho interrogato» e
     «non ha risposto» sono due cose diverse e si leggono diverse.
 
-    **«Mai provato» cambia significato con la posizione, e la copia lo segue.**
-    In prima posizione è allarmante -- il provider che dovrebbe rispondere a
-    ogni messaggio non ha mai risposto a nessuno; in seconda è la notizia buona
-    -- il ripiego non è mai servito. Stesso fatto, due frasi, UNA regola sola,
-    ed è il parametro `posizione`. Fuori dalla catena una posizione non c'è
-    (`None`), e «non è mai servito ripiegare qui» direbbe che quella riga è un
-    anello di riserva, che non è.
+    **`occurrence is None` è un fatto sul REGISTRO, e la frase lo dice come
+    tale — mai come un fatto sul MONDO.** Fino al Task 6 (collaudo-3.22) le
+    due frasi di questo ramo erano «non l'hai ancora usato» e «non è mai
+    servito ripiegare qui»: un'affermazione su TUTTA la storia del
+    proprietario, che il registro non può fare -- vive in memoria e muore col
+    processo (`provider_occurrences.OccurrenceRegistry`, docstring di
+    modulo), quindi «nessuna voce» significa sempre e solo «da quando l'add-on
+    è partito», mai «mai, in assoluto». Per la rotta `subscription` la
+    distanza fra le due era totale e permanente: nessun turno riuscito del
+    ponte scriveva un successo (il buco che il Task 6 chiude altrove, in
+    `server.py::_submit_chat_reply`), quindi il registro restava vuoto per
+    sempre e la frase mentiva su una casa vera con centinaia di turni
+    riusciti. Per gli altri quattro provider la distanza è più corta -- un
+    riavvio dell'add-on la richiude al turno buono successivo -- ma è la
+    STESSA forma di errore (sesta comparsa nel ramo: due proposizioni diverse
+    dette con una parola sola), e la cura è la stessa ovunque compaia:
+    separare alla fonte. Il dato che manca (l'uso PRIMA di questo processo)
+    non si inventa qui — Consumi lo sa già, ed è un'altra pagina.
+
+    **«Mai osservato» cambia significato con la posizione, e la copia lo
+    segue.** In prima posizione è allarmante -- il provider che dovrebbe
+    rispondere a ogni messaggio non ha risposto a nessuno da quando l'add-on
+    è partito; in seconda è la notizia buona -- non c'è stato bisogno di
+    ripiegare qui da allora. Stesso fatto, due frasi, UNA regola sola, ed è
+    il parametro `posizione`. Fuori dalla catena una posizione non c'è
+    (`None`), e «nessun ripiego servito» direbbe che quella riga è un anello
+    di riserva, che non è.
 
     Nessuna previsione e nessuna diagnosi: si dice che cosa è successo, con che
     codice, e quanto tempo fa. Perché sia successo non lo sa nessuno qui.
     """
     if occurrence is None:
         if position is None or int(position) <= 1:
-            return "non l'hai ancora usato"
-        return "non è mai servito ripiegare qui"
+            return "nessuna osservazione da quando l'add-on è partito"
+        return "nessun ripiego servito da quando l'add-on è partito"
 
     age = _age(float(now) - float(occurrence["quando"]))
     if occurrence["tipo"] == "risposto":
@@ -721,9 +741,9 @@ def compose_topology(
 
         Tace SOLO quando non c'è credenziale E non c'è nessuna osservazione:
         lì la riga dice già `manca la chiave`, ed è la spiegazione completa di
-        perché non è mai stato interrogato -- «non l'hai ancora usato» sotto
-        «manca la chiave» sarebbe la stessa cosa detta due volte, la seconda
-        con meno informazione.
+        perché non è mai stato interrogato -- «nessuna osservazione da quando
+        l'add-on è partito» sotto «manca la chiave» sarebbe la stessa cosa
+        detta due volte, la seconda con meno informazione.
 
         Un'osservazione vecchia invece si mostra SEMPRE, credenziale o no:
         quella riga è stata interrogata davvero, e togliere la chiave a un

@@ -367,11 +367,15 @@ def test_la_catena_porta_posizione_nome_modello_e_natura():
                          "connettore_nota": "",
                          "ha_credenziale": True, "posizione": 1,
                          # Task 11: il fatto grezzo e la frase che lo racconta.
-                         # Qui il registro e' vuoto (add-on appena partito) e
-                         # Claude e' PRIMO: «non l'hai ancora usato», che in
-                         # prima posizione e' allarmante.
+                         # Task 6 (collaudo-3.22): la frase non afferma piu'
+                         # «non l'hai ancora usato» (un fatto sul MONDO che il
+                         # registro, vivo solo in memoria, non puo' sapere) ma
+                         # «nessuna osservazione da quando l'add-on e' partito»
+                         # (un fatto sul REGISTRO). Qui il registro e' vuoto
+                         # (add-on appena partito) e Claude e' PRIMO: la stessa
+                         # assenza resta allarmante in prima posizione.
                          "esito": None,
-                         "stato_testo": "non l'hai ancora usato",
+                         "stato_testo": "nessuna osservazione da quando l'add-on è partito",
                          "riordinabile": True}
 
 
@@ -859,19 +863,24 @@ def test_chi_non_e_stato_osservato_porta_esito_None_e_non_un_finto_successo():
         bridge_active=False, now=ADESSO, occurrences={"claude": CREDITO_FINITO})
     righe = {r["id"]: r for r in catena + fuori}
     assert righe["openrouter"]["esito"] is None
-    assert righe["openrouter"]["stato_testo"] == "non è mai servito ripiegare qui"
+    assert righe["openrouter"]["stato_testo"] == (
+        "nessun ripiego servito da quando l'add-on è partito")
 
 
 def test_mai_provato_dice_due_cose_diverse_in_prima_e_in_seconda_posizione():
-    """Stesso fatto -- nessuna osservazione -- due frasi. In testa e'
-    allarmante (chi dovrebbe rispondere a ogni messaggio non ha mai risposto a
-    nessuno), in seconda e' la notizia buona (il ripiego non e' mai servito).
-    UNA regola sola, ed e' la posizione."""
+    """Stesso fatto -- nessuna osservazione da quando l'add-on e' partito --
+    due frasi. In testa e' allarmante (chi dovrebbe rispondere a ogni
+    messaggio non ha risposto a nessuno da allora), in seconda e' la notizia
+    buona (non c'e' stato bisogno di ripiegare qui da allora). UNA regola
+    sola, ed e' la posizione. (Task 6, collaudo-3.22: non piu' «non l'hai mai
+    usato» -- un'affermazione su TUTTA la storia che il registro, vivo solo
+    in memoria, non puo' fare.)"""
     catena, _ = _compose_topology(
         chain_order=["claude", "openrouter"], credentials=CRED, models=MOD,
         bridge_active=False, now=ADESSO, occurrences={})
     assert [r["stato_testo"] for r in catena] == [
-        "non l'hai ancora usato", "non è mai servito ripiegare qui"]
+        "nessuna osservazione da quando l'add-on è partito",
+        "nessun ripiego servito da quando l'add-on è partito"]
 
 
 def test_senza_credenziale_e_senza_osservazioni_la_riga_di_stato_tace():
