@@ -1,5 +1,60 @@
 # HIRIS — Changelog
 
+## [3.22.2] — Le parole della porta d'ingresso (2026-09-07)
+
+**Un collaudo di usabilità sull'interfaccia vera, sulla casa vera, a tre larghezze — e le
+quattro correzioni che costavano poco e si vedevano subito.**
+
+### Le pastiglie erano le nostre domande, non le sue
+
+Sotto «come posso aiutarti?» c'erano «Stato casa» e «Temperatura camere»: due cose che HIRIS
+sa fare bene. Ma la stessa mattina del collaudo il proprietario aveva scritto, di suo,
+*«Quali sono i miei prossimi appuntamenti?»*, *«Quante luci ho in casa e quante sono accese
+adesso?»*, *«Cosa non va in casa in questo momento?»* — **nessuna delle tre era una
+pastiglia**. Adesso lo sono: «Cosa non va in casa?» apre la sezione che il nucleo già scrive,
+«Cosa ho in agenda?» i calendari che questa versione ha imparato a leggere. Le altre due
+restano, perché mappavano già su cose vere.
+
+E c'era un buco più semplice: la pagina di partenza faceva una **domanda** e non diceva
+niente di sé. Un rigo lo chiude — «leggo lo stato della casa, i calendari e le automazioni;
+accendo e spengo quello che mi chiedi; ricordo ciò che mi racconti» — scritto controllando
+riga per riga il catalogo degli strumenti veri, per non promettere niente che HIRIS non sappia
+mantenere.
+
+### «chiuso · stato: aperto», a tre centimetri di distanza
+
+Un episodio di guasto **finito** si annunciava così. Le due parole non si contraddicevano
+davvero — «chiuso» è l'episodio, «aperto» è la condizione con cui era nato, e per costruzione
+resta quella anche a episodio chiuso — ma chi legge non ha modo di saperlo, e vede una riga che
+si smentisce da sola. La parola ripetuta esce; gli altri stati (`setup_retry`, `ERROR`) restano,
+perché quelli dicono qualcosa in più.
+
+### Un modo per uscire dal modulo «Correggi»
+
+Nella Memoria si chiudeva solo ripremendo lo stesso bottone che l'aveva aperto: una via d'uscita
+che bisognava indovinare. Ora c'è «Annulla», accanto a «Salva correzione».
+
+### Il rilievo che non c'era
+
+Il collaudo dichiarava invisibile il fuoco da tastiera sui campi del pannello. **Non è vero**:
+misurato con un browser vero, bordo e alone si accendono a fuoco, in entrambi i temi, anche
+premendo Tab. Nessuna riga di CSS è stata toccata — resta solo una prova manuale nel foglio di
+collaudo, con dichiarato il motivo per cui gli strumenti automatici del progetto non possono
+verificarla.
+
+### Sotto il cofano
+
+La CLI del ponte sale da **2.1.260 a 2.1.263** — il salto che il cancello aveva segnalato
+durante il rilascio della 3.22.0 e che era stato tenuto fuori da quel pacchetto per non spedire
+una dipendenza non provata sotto il changelog di qualcun altro. E la 2.1.260 **è stata letta
+dentro il container** il 07/09 (`ponte.cli`), quindi il ripiego, se servisse, è una versione
+provata e non una speranza.
+
+Sette rilievi più pesanti — i nomi grezzi nell'Osservatore, la lunghezza dell'Albero su schermo
+stretto, la contraddizione fra Modelli e Consumi, le parole nostre invece che le sue, i titoli
+mancanti, la Memoria che nega ciò che mostra, gli apostrofi — sono **scritti nel registro**
+(`docs/BACKLOG.md`) con bersaglio 3.22.3, invece di restare in una conversazione.
+
 ## [3.22.1] — Un import che funzionava solo qui (2026-09-07)
 
 **Correzione urgente: la 3.22.0 non si avviava.**
