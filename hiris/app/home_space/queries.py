@@ -50,6 +50,13 @@ from __future__ import annotations
 
 from ..memory.resolver import _normalize
 from ..proxy._sanitize import sanitize_text
+from ..proxy.entity_cache import (
+    CAPABILITIES,
+    UNINTERPRETED,
+    VALUES,
+    disclosable_attributes,
+    withheld_credentials,
+)
 from .behavior import FILE_GENUINELY_ABSENT
 from .ha_vocabulary import entity_category_measure_rule
 from .historian import instant_epoch
@@ -278,6 +285,26 @@ def _find_area(floors: list[dict], reference) -> dict | None:
 # mano, saltando `_to_minimal`.
 _RAW_ATTRIBUTES_WITH_THEIR_OWN_DOOR = frozenset({"supported_features", "assumed_state"})
 
+# Come si chiamano le tre ceste degli attributi NEL TESTO CHE IL MODELLO LEGGE.
+#
+# `campo_di_manovra` e non `capacita'`: `detail["capacita"]` esiste gia', ed e'
+# un'altra cosa -- i bit di `supported_features` decodificati in verbi («sa
+# fare la transizione», «sa gli effetti»). Le capacita' che arrivano dagli
+# ATTRIBUTI sono invece i limiti e gli elenchi entro cui si comanda:
+# `hvac_modes`, `min_temp`/`max_temp`, `effect_list`, `options`, `source_list`.
+# Chiamarle entrambe «capacita'» sarebbe due cose diverse dette con una parola
+# sola, il difetto che questa fetta esiste per non ripetere -- e si separa
+# QUI, alla fonte del nome, non a valle.
+_BASKET_NAMES = {
+    CAPABILITIES: "campo_di_manovra",
+    VALUES: "valori",
+    UNINTERPRETED: "non_interpretati",
+}
+
+#: La cesta che dice cosa e' stato trattenuto, e perche'. Non i valori: i nomi
+#: e la ragione. Vedi `entity_cache.withheld_credentials`.
+_WITHHELD_BASKET = "trattenuti"
+
 
 def _enrich_entity(entity_detail: dict, entry: dict,
                         fallback_names: dict[str, str] | None,
@@ -358,7 +385,12 @@ def _enrich_entity(entity_detail: dict, entry: dict,
     # ogni altro dominio, e ricalcolarli qui una volta e' piu' semplice che
     # farlo condizionale.
     value = entity_detail.get("stato")
-    attributes = (reported_attributes or {}).get(entity_id) or {}
+    # `disclosable_attributes` e non una lettura diretta: dalla fetta
+    # dell'eredita' (07/09/2026) lo specchio porta QUATTRO ceste
+    # (`capabilities`/`values`/`uninterpreted`/`credentials`), e chi cerca un
+    # attributo per nome non deve sapere in quale sta -- ne' inciampare nelle
+    # credenziali, che di qui non passano mai.
+    attributes = disclosable_attributes((reported_attributes or {}).get(entity_id))
     if value is not None:
         hvac_action = attributes.get("hvac_action")
         entity_detail["stato_leggibile"] = translate_state(
@@ -714,7 +746,7 @@ def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
         detail.get("classe"), detail.get("unita"))
     if rule:
         detail["regola"] = rule
-    # GLI ATTRIBUTI CURATI (`_DOMAIN_ATTRS`, `proxy/entity_cache.py`): solo
+    # GLI ATTRIBUTI EREDITATI (`proxy/entity_cache.inherited_attributes`): solo
     # QUI, sul dettaglio di UNA entita' sola -- decisione del proprietario,
     # fetta "attributi al modello" (2026-08-25). `_view_area` e
     # `_view_device` elencano entita' a decine (un'area con venti
@@ -736,14 +768,31 @@ def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
     # un'entita' che non accende nessun bit) accanto alla stessa cosa gia'
     # detta in parole -- rumore nel primo caso, doppione nel secondo. Vedi
     # `_RAW_ATTRIBUTES_WITH_THEIR_OWN_DOOR` per la lista di chi ha gia' un
-    # posto e non deve ripetersi qui. `options` invece resta: e' l'UNICA
-    # porta da cui arriva a chi compone, nessun altro lettore la porta.
+    # posto e non deve ripetersi qui, e si applica a OGNI cesta: un
+    # `supported_features` che un'integrazione manda fuori standard (un
+    # booleano invece di un bitmask) finisce fra i non interpretati, e non
+    # deve ricomparire da quella porta.
+    #
+    # LE CESTE, e perche' sono quattro chiavi e non un dizionario piatto
+    # (fetta dell'eredita', 07/09/2026): «cosa puo' fare», «com'e' adesso» e
+    # «non so cosa sia» sono tre fatti di qualita' diversa, e appiattirli
+    # consegnerebbe `ave_window_state: 0` accanto a `hvac_modes` come se
+    # fossero la stessa qualita' di sapere. La quarta -- `trattenuti` -- e' la
+    # sola trattenuta di questo prodotto resa VISIBILE: nome e ragione, mai il
+    # valore, mai un silenzio.
     attributes = (reported_attributes or {}).get(entity["id"])
-    if attributes:
-        raw = {k: v for k, v in attributes.items()
-               if k not in _RAW_ATTRIBUTES_WITH_THEIR_OWN_DOOR}
-        if raw:
-            detail["attributi"] = raw
+    if isinstance(attributes, dict) and attributes:
+        baskets: dict = {}
+        for basket, italian_name in _BASKET_NAMES.items():
+            content = {k: v for k, v in (attributes.get(basket) or {}).items()
+                       if k not in _RAW_ATTRIBUTES_WITH_THEIR_OWN_DOOR}
+            if content:
+                baskets[italian_name] = content
+        withheld = withheld_credentials(attributes)
+        if withheld:
+            baskets[_WITHHELD_BASKET] = withheld
+        if baskets:
+            detail["attributi"] = baskets
     return detail
 
 
@@ -1196,10 +1245,10 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     stessa domanda non puo' avere due risposte diverse a seconda di quale
     ramo di `guarda` la porta).
 
-    `reported_attributes` (entity_id -> il dizionario `attributes` dello specchio
-    dello stato, `_DOMAIN_ATTRS` di `proxy/entity_cache.py`: `hvac_action` e
-    la temperatura di un termostato, la luminosita' di una luce, la
-    posizione di una tapparella, ...) alimenta DUE cose diverse, e non allo
+    `reported_attributes` (entity_id -> le QUATTRO CESTE dello specchio dello
+    stato, `proxy/entity_cache.inherited_attributes`: cosa l'entita' puo' fare,
+    com'e' adesso, cio' di cui nessuna fonte dichiara il significato, e le
+    credenziali che non escono di qui) alimenta DUE cose diverse, e non allo
     stesso modo:
 
     - `readable_state` lo legge SEMPRE, su ogni ramo che elenca entita'

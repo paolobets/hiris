@@ -113,14 +113,20 @@ def test_lo_specchio_tiene_gli_attributi_del_meteo():
     (`home_space/topology.py`) li buttava tutti, su ogni dominio, un anello piu' in
     la'. Il difetto vero (misurato dal proprietario sui termostati, non sul
     meteo) e' rimasto invisibile finche' nessun test seguiva la catena intera
-    -- vedi `test_attributes_to_model.py`, che la segue fino a `guarda`."""
+    -- vedi `test_attributes_to_model.py`, che la segue fino a `guarda`.
+
+    Dalla fetta dell'eredita' (07/09/2026) i tre valori escono sotto la cesta
+    `values`: `WeatherEntityStateAttribute` li dichiara tutti e tre come
+    valore corrente (`components/weather/const.py` al tag `2026.9.1`), e non
+    sono un campo di manovra -- di un meteo non si comanda niente."""
     from hiris.app.proxy.entity_cache import _to_minimal
     voce = _to_minimal({"entity_id": "weather.casa", "state": "sunny",
                         "attributes": {"temperature": 24.1, "temperature_unit": "°C",
                                        "humidity": 51, "wind_speed": 7.2}})
-    assert voce["attributes"]["temperature"] == 24.1
-    assert voce["attributes"]["temperature_unit"] == "°C"
-    assert voce["attributes"]["humidity"] == 51
+    valori = voce["attributes"]["values"]
+    assert valori["temperature"] == 24.1
+    assert valori["temperature_unit"] == "°C"
+    assert valori["humidity"] == 51
 
 
 def test_l_impronta_di_esegui_porta_l_unita():

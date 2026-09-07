@@ -95,7 +95,11 @@ import asyncio
 import logging
 import time
 
-from ..proxy.entity_cache import _to_minimal, inventory_is_readable
+from ..proxy.entity_cache import (
+    _to_minimal,
+    disclosable_attributes,
+    inventory_is_readable,
+)
 from .verification import verification
 
 logger = logging.getLogger(__name__)
@@ -264,17 +268,17 @@ def _fingerprint(entry) -> dict | None:
     funziona**: nella misura del termostato l'impronta aveva letto e riportato
     `temperature` con precisione (17.5). Sbagliata era la fonte, non lei.
 
-    **Gli attributi sono quelli che lo specchio gia' conserva**
-    (`entity_cache._DOMAIN_ATTRS`: `temperature`, `brightness`,
-    `current_position`, `volume_level`, `percentage`...). Nessuno viene
-    aggiunto qui: quell'elenco e' una decisione dell'inventario -- che lo
-    tiene corto apposta, perche' lo legge tutto il prodotto -- non della
-    porta. La conseguenza va detta invece di essere scoperta: un attributo
-    che lo specchio non tiene (il colore di una luce, l'umidita' di un
-    umidificatore) resta invisibile a questo confronto. Quel caso non e' piu'
-    muto: se Home Assistant riporta un cambiamento che l'impronta non sa
-    mostrare, l'esito lo dice con `_CHANGED_NOT_SHOWABLE` invece di
-    lasciar credere che non sia successo niente.
+    **Gli attributi sono quelli che lo specchio gia' conserva**, e dalla
+    fetta dell'eredita' (07/09/2026) sono TUTTI quelli che Home Assistant
+    espone, non piu' i nove domini scelti a mano di `_DOMAIN_ATTRS`: il colore
+    di una luce e l'umidita' di un umidificatore, che prima erano invisibili a
+    questo confronto, adesso ci sono. Le credenziali no, e per una ragione che
+    riguarda proprio l'impronta: un token che ruota da solo farebbe risultare
+    cambiata un'entita' che non e' cambiata (vedi
+    `entity_cache.disclosable_attributes`). Il caso «HA dice che qualcosa e'
+    cambiato e l'impronta non lo mostra» resta possibile -- resta anche
+    dichiarato, con `_CHANGED_NOT_SHOWABLE`, invece di lasciar credere che non
+    sia successo niente.
 
     **Vale per tutte e tre le fonti, ed e' il motivo per cui sono
     confrontabili.** L'impronta si costruisce sempre sulla voce MINIMALE di
@@ -305,11 +309,16 @@ def _fingerprint(entry) -> dict | None:
     unit = entry.get("unit")
     if isinstance(unit, str) and unit.strip():
         fingerprint["unit"] = unit.strip()
-    attributes = entry.get("attributes")
-    if isinstance(attributes, dict):
-        # `state` non si lascia sovrascrivere da un attributo omonimo: la
-        # chiave che dice lo stato dev'essere sempre quella.
-        fingerprint.update({k: v for k, v in attributes.items() if k != "state"})
+    # `disclosable_attributes` appiattisce le tre ceste che raccontano la
+    # casa (`capabilities`/`values`/`uninterpreted`) e LASCIA FUORI le
+    # credenziali. Non e' prudenza generica: un token di telecamera RUOTA, e
+    # confrontarlo farebbe risultare «cambiata» ogni camera a ogni comando --
+    # inventare un cambiamento, cioe' il verso opposto del difetto che
+    # quest'impronta esiste per chiudere.
+    attributes = disclosable_attributes(entry.get("attributes"))
+    # `state` non si lascia sovrascrivere da un attributo omonimo: la chiave
+    # che dice lo stato dev'essere sempre quella.
+    fingerprint.update({k: v for k, v in attributes.items() if k != "state"})
     return fingerprint
 
 
@@ -759,8 +768,9 @@ class ActionActuator:
             pass  # il caso normale: c'e' una differenza, e `prima`/`dopo` la mostrano
         elif annunciate or riportate_qui:
             # HA dice che qualcosa e' cambiato e l'impronta non lo mostra:
-            # tipicamente un attributo fuori da `_DOMAIN_ATTRS` (il colore di
-            # una luce). Dire «nessun cambiamento» qui sarebbe falso.
+            # oggi che l'impronta eredita tutti gli attributi resta il caso di
+            # una credenziale che cambia, o di un cambiamento che vive fuori
+            # dagli attributi. Dire «nessun cambiamento» qui sarebbe falso.
             occurrence["avviso"] = _CHANGED_NOT_SHOWABLE
         else:
             # Non e' un errore -- molti servizi legittimi non cambiano stato,

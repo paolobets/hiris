@@ -391,6 +391,23 @@ RESTING_STATES = "resting_states"
 #: I nomi dei bit di `supported_features`, dominio per dominio.
 CAPABILITY_NAMES = "capability_names"
 
+#: I nomi degli attributi che, per questo dominio, dicono COSA L'ENTITA' PUO'
+#: FARE -- il campo di manovra: `hvac_modes`, `min_temp`, `effect_list`.
+CAPABILITY_ATTRIBUTES = "capability_attributes"
+
+#: I nomi degli attributi che, per questo dominio, dicono COM'E' ADESSO --
+#: `current_temperature`, `brightness`, `media_title`.
+STATE_ATTRIBUTES = "state_attributes"
+
+#: Attributi che Home Assistant classifica come capacita' e che qui NON lo
+#: sono. Il valore e' `nome -> ragione scritta`: un'eccezione senza ragione
+#: non si dichiara.
+CAPABILITY_ATTRIBUTES_DROPPED = "capability_attributes_dropped"
+
+#: Attributi che Home Assistant NON elenca fra le capacita' del dominio e che
+#: qui lo sono. Stessa forma, stessa regola: `nome -> ragione scritta`.
+CAPABILITY_ATTRIBUTES_ADDED = "capability_attributes_added"
+
 
 # --------------------------------------------------------------------------
 # La fonte dei campi importati.
@@ -842,6 +859,278 @@ for _domain, _bits in _FEATURE_TABLES.items():
 del _domain, _bits, _table
 
 
+# -- metrica 4: quali attributi dicono cosa puo' fare, e quali com'e' adesso -
+#
+# **La separazione e' di Home Assistant, non nostra, e non c'era niente da
+# inventare.** `Entity` tiene le due meta' separate e le fonde in un
+# dizionario piatto solo all'ultimo momento, quando scrive lo stato:
+#
+#   helpers/entity.py:787-794   `capability_attributes`  -- «Attributes that
+#                                explain the capabilities of an entity»
+#   helpers/entity.py:810-828   `state_attributes` / `extra_state_attributes`
+#   helpers/entity.py:1109-1124 `attr = capability_attr.copy()`, poi
+#                               `if available:` prima di fondere le altre due
+#
+# Da quelle righe discendono i tre fatti che questa metrica esiste per
+# conservare, e nessuno dei tre e' un'opinione:
+#
+# 1. **«Attributo» e' UNA parola per DUE cose**, e la fusione avviene sul filo.
+#    Il difetto ricorrente di questa codebase -- due cose diverse dette con una
+#    parola sola -- qui NON nasce in HIRIS: nasce in Home Assistant, e HIRIS lo
+#    ereditava intero. Si separa alla fonte, cioe' in `entity_cache._to_minimal`,
+#    che e' il punto in cui un payload grezzo diventa cio' che ogni lettore vede.
+# 2. **Le capacita' sopravvivono all'indisponibilita'.** `state_attributes` ed
+#    `extra_state_attributes` entrano SOLO `if available`; le capacita' no. Una
+#    lampadina staccata dice ancora cosa saprebbe fare.
+# 3. **La meta' «valore corrente» e' APERTA per costruzione.**
+#    `extra_state_attributes` e', testualmente, «Implemented by platform
+#    classes»: qualunque integrazione ci mette dentro quello che vuole. Una
+#    lista di AMMESSI su quella meta' non potra' mai essere completa -- ed e'
+#    esattamente il modo in cui `proxy/entity_cache._DOMAIN_ATTRS` era nata
+#    sbagliata (nove domini su trenta, e per quei nove i soli valori correnti).
+#
+# **Quindi le due tabelle qui sotto NON sono una lista di ammessi**: nessun
+# attributo viene buttato perche' non compare qui. Sono un DIZIONARIO -- dicono
+# di quali nomi Home Assistant pubblica il significato. Cio' che non e' in
+# nessuna delle due esce lo stesso, sotto l'etichetta dei NON INTERPRETATI:
+# «non so cosa sia» e «so cosa sia» sono due fatti diversi, e nessuno dei due
+# e' «non esiste».
+#
+# Trascritte dal sorgente vero al tag `2026.9.1` -- lo stesso che la casa
+# esegue, mai `dev` -- scaricando ogni `components/<dominio>/const.py` e
+# leggendo le classi `StrEnum` che HA dedica alla distinzione. La prova che
+# riporta ogni riga alla fonte, e che fallisce quando divergono, e'
+# `tests/test_attribute_tables_pinned_to_source.py`, che riscrive gli elenchi
+# a mano invece di importarli da qui: una mutazione di questa tabella non deve
+# poter muovere anche il proprio metro.
+#
+# DUE SCADENZE GIA' NOTE, scritte accanto alle righe invece che scoperte fra un
+# anno: `climate.temperature` e' deprecata in favore di `TARGET_TEMPERATURE`
+# con rimozione annunciata per `2027.2.0` (`components/climate/const.py:159-166`),
+# e `water_heater.temperature` per `2027.3.0` (`components/water_heater/const.py:19-26`).
+# I due nomi restano qui perche' a `2026.9.1` sono ancora quelli che arrivano
+# nel payload; il giorno in cui spariscono, la prova pinnata lo dice.
+
+CAPABILITY_ATTRIBUTE_SOURCE_HA_VERSION = "2026.9.1"
+
+CAPABILITY_ATTRIBUTE_SOURCE = (
+    "home-assistant/core, tag 2026.9.1 -- "
+    "homeassistant/components/<dominio>/const.py, classi "
+    "`<Dominio>EntityCapabilityAttribute` e `<Dominio>EntityStateAttribute` "
+    "(`WaterHeaterCapabilityAttribute`/`WaterHeaterStateAttribute` senza "
+    "`Entity` nel nome, `ScannerEntityStateAttribute`/`TrackerEntityStateAttribute` "
+    "accanto a quella di `device_tracker`), piu' homeassistant/const.py:464-483 "
+    "per le due classi valide su OGNI entita'. Scaricate al tag, mai su `dev`."
+)
+
+#: Le capacita' di QUALUNQUE entita': `homeassistant/const.py:464-467`,
+#: `EntityCapabilityAttribute`. Una sola voce, ed e' il gruppo.
+UNIVERSAL_CAPABILITY_ATTRIBUTES = Imported(
+    {"group_entities"},
+    ha_version=CAPABILITY_ATTRIBUTE_SOURCE_HA_VERSION,
+    source=CAPABILITY_ATTRIBUTE_SOURCE)
+
+#: Il giudizio nostro accanto alla trascrizione, e non dentro di essa: a
+#: `2026.9.1` un gruppo esce ancora sotto `entity_id`, la forma vecchia, e
+#: `components/group/entity.py:43-45` le nomina ENTRAMBE nello stesso insieme
+#: (`_unrecorded_attributes = frozenset({ATTR_ENTITY_ID,
+#: EntityCapabilityAttribute.GROUP_ENTITIES})`). Misurato sulla casa vera il
+#: 07/09/2026: `light.lampadario_sala_da_pranzo` porta `entity_id`, non
+#: `group_entities`. Una tabella costruita solo dagli enum nuovi perderebbe
+#: quel gruppo IN SILENZIO.
+UNIVERSAL_CAPABILITY_ATTRIBUTES_ADDED = Ours({
+    "entity_id": (
+        "la forma vecchia di `group_entities`, che a 2026.9.1 e' ancora quella "
+        "che arriva davvero: `components/group/entity.py:43-45` nomina "
+        "entrambe, e sulla casa vera il gruppo esce solo sotto questo nome"),
+})
+
+#: Gli attributi di stato di QUALUNQUE entita': `homeassistant/const.py:470-483`,
+#: `EntityStateAttribute`.
+UNIVERSAL_STATE_ATTRIBUTES = Imported(
+    {"assumed_state", "attribution", "device_class", "entity_picture",
+     "friendly_name", "icon", "latitude", "longitude", "restored",
+     "supported_features", "unit_of_measurement"},
+    ha_version=CAPABILITY_ATTRIBUTE_SOURCE_HA_VERSION,
+    source=CAPABILITY_ATTRIBUTE_SOURCE)
+
+
+_CAPABILITY_ATTRIBUTE_TABLES: dict[str, frozenset[str]] = {
+    "automation": frozenset({"id"}),
+    "climate": frozenset({
+        "hvac_modes", "min_temp", "max_temp", "target_temp_step",
+        "min_humidity", "max_humidity", "target_humidity_step", "fan_modes",
+        "preset_modes", "swing_modes", "swing_horizontal_modes"}),
+    "cover": frozenset({"supported_speeds"}),
+    "device_tracker": frozenset({"tracking_type"}),
+    "event": frozenset({"event_types"}),
+    "fan": frozenset({"preset_modes"}),
+    "humidifier": frozenset({
+        "min_humidity", "max_humidity", "target_humidity_step",
+        "available_modes"}),
+    "light": frozenset({
+        "min_color_temp_kelvin", "max_color_temp_kelvin", "effect_list",
+        "supported_color_modes"}),
+    "media_player": frozenset({"source_list", "sound_mode_list"}),
+    # `mode` e' nella fonte, ed esce per giudizio nostro: vedi
+    # `_CAPABILITY_ATTRIBUTES_DROPPED` sotto.
+    "number": frozenset({"min", "max", "step", "mode"}),
+    "select": frozenset({"options"}),
+    "sensor": frozenset({"state_class", "options"}),
+    "siren": frozenset({"available_tones"}),
+    "text": frozenset({"mode", "min", "max", "pattern"}),
+    "vacuum": frozenset({"fan_speed_list"}),
+    "water_heater": frozenset({
+        "min_temp", "max_temp", "target_temp_step", "operation_list"}),
+}
+
+
+# I DUE GIUDIZI NOSTRI, dichiarati come nostri e non nascosti nella
+# trascrizione. Sono la ragione per cui le tabelle importate sopra restano
+# fedeli alla fonte riga per riga -- se avessi tolto `number.mode` di la', la
+# prova pinnata avrebbe dovuto mentire con me.
+#
+# `number.mode` ESCE, contro la classificazione di Home Assistant, con DUE
+# fonti indipendenti che dicono la stessa cosa:
+#   - la documentazione: «Defines how the number should be displayed in the
+#     UI» (`docs/core/entity/number.md:17`);
+#   - la casa stessa, che ne traduce i valori in `Automatico`/`Input field`/
+#     `Cursore` (`frontend/get_translations`, `entity_component`, misurato il
+#     07/09/2026).
+# E' resa grafica, non campo di manovra. Resta comunque un attributo
+# DICHIARATO -- passa fra i valori correnti, non fra i non interpretati:
+# scavalcare HA sulla presentazione non ci autorizza a dire che non sappiamo
+# cosa sia.
+#
+# `alarm_control_panel.code_format`/`code_arm_required` restano invece fra i
+# valori, SEGUENDO Home Assistant (`components/alarm_control_panel/const.py`,
+# `AlarmControlPanelEntityStateAttribute`) anche se funzionalmente sono limiti
+# («serve un codice per inserire?») che non cambiano mai. Stessa forma del
+# caso sopra, esito opposto, e la differenza e' la sola che conta: li' avevo
+# due fonti indipendenti contro HA, qui non ne ho nessuna. **Il fornitore
+# comanda sulla classificazione finche' non e' smentito da una fonte, non
+# finche' non e' smentito dal mio senso.**
+_CAPABILITY_ATTRIBUTES_DROPPED: dict[str, dict[str, str]] = {
+    "number": {
+        "mode": (
+            "resa grafica, non campo di manovra: «Defines how the number "
+            "should be displayed in the UI» (docs/core/entity/number.md:17), e "
+            "la casa ne traduce i valori in Automatico/Input field/Cursore"),
+    },
+    "text": {
+        "mode": (
+            "stessa ragione di `number.mode`: `TextMode` vale `text`/`password` "
+            "e dice come DISEGNARE il controllo, non cosa l'entita' accetta -- "
+            "il campo di manovra di un `text` sono `min`/`max`/`pattern`"),
+    },
+}
+
+
+_STATE_ATTRIBUTE_TABLES: dict[str, frozenset[str]] = {
+    "alarm_control_panel": frozenset({
+        "code_format", "changed_by", "code_arm_required"}),
+    "automation": frozenset({"last_triggered", "mode", "current", "max"}),
+    "calendar": frozenset({
+        "message", "all_day", "start_time", "end_time", "location",
+        "description"}),
+    "camera": frozenset({
+        "access_token", "model_name", "brand", "motion_detection"}),
+    # `temperature` deprecata verso `TARGET_TEMPERATURE`, rimozione 2027.2.0.
+    "climate": frozenset({
+        "current_temperature", "temperature", "target_temp_high",
+        "target_temp_low", "current_humidity", "humidity", "fan_mode",
+        "hvac_action", "preset_mode", "swing_mode", "swing_horizontal_mode"}),
+    "cover": frozenset({"is_closed", "current_position", "current_tilt_position"}),
+    # Tre classi per un dominio solo: `DeviceTrackerEntityStateAttribute`,
+    # `ScannerEntityStateAttribute` (ip/mac/host_name) e
+    # `TrackerEntityStateAttribute` (le tre di posizione, in migrazione verso
+    # `EntityStateAttribute`, `components/device_tracker/const.py:57-60`).
+    "device_tracker": frozenset({
+        "source_type", "in_zones", "ip", "mac", "host_name", "latitude",
+        "longitude", "gps_accuracy"}),
+    "event": frozenset({"event_type"}),
+    "fan": frozenset({
+        "direction", "oscillating", "percentage", "percentage_step",
+        "preset_mode"}),
+    "humidifier": frozenset({"action", "current_humidity", "humidity", "mode"}),
+    "image": frozenset({"access_token"}),
+    "input_boolean": frozenset({"editable"}),
+    "input_number": frozenset({"initial", "editable"}),
+    "input_select": frozenset({"editable"}),
+    "input_text": frozenset({"editable"}),
+    "light": frozenset({
+        "effect", "color_mode", "brightness", "color_temp_kelvin", "hs_color",
+        "rgb_color", "xy_color", "rgbw_color", "rgbww_color"}),
+    "lock": frozenset({"changed_by", "code_format"}),
+    "media_player": frozenset({
+        "volume_level", "is_volume_muted", "media_content_id",
+        "media_content_type", "media_duration", "media_position",
+        "media_position_updated_at", "media_title", "media_artist",
+        "media_album_name", "media_album_artist", "media_track",
+        "media_series_title", "media_season", "media_episode", "media_channel",
+        "media_playlist", "app_id", "app_name", "source", "sound_mode",
+        "shuffle", "repeat", "group_members", "entity_picture_local"}),
+    "person": frozenset({
+        "editable", "id", "device_trackers", "in_zones", "gps_accuracy",
+        "source", "user_id"}),
+    "remote": frozenset({"activity_list", "current_activity"}),
+    # `script` non ha una classe `StrEnum`: i cinque nomi si leggono dove li
+    # scrive, `components/script/__init__.py:591-604`, e vengono da
+    # `components/script/const.py:7-8` (`last_action`, `last_triggered`),
+    # `helpers/script.py:135-136` (`current`, `max`) e
+    # `homeassistant/const.py:388` (`mode`).
+    "script": frozenset({"last_action", "last_triggered", "mode", "current", "max"}),
+    "sensor": frozenset({"last_reset"}),
+    # `sun` nemmeno: nove costanti `STATE_ATTR_*` in
+    # `components/sun/const.py:35-43`. Sono DICHIARATE, e questo basta -- che
+    # la forma sia un enum o una costante non cambia chi le pubblica.
+    "sun": frozenset({
+        "azimuth", "elevation", "rising", "next_dawn", "next_dusk",
+        "next_midnight", "next_noon", "next_rising", "next_setting"}),
+    "tag": frozenset({"tag_id", "last_scanned_by_device_id"}),
+    "update": frozenset({
+        "auto_update", "display_precision", "installed_version", "in_progress",
+        "latest_version", "release_summary", "release_url", "skipped_version",
+        "title", "update_percentage"}),
+    "vacuum": frozenset({"fan_speed"}),
+    "valve": frozenset({"is_closed", "current_position"}),
+    "water_heater": frozenset({
+        "current_temperature", "temperature", "target_temp_high",
+        "target_temp_low", "operation_mode", "away_mode"}),
+    "weather": frozenset({
+        "temperature", "apparent_temperature", "dew_point", "temperature_unit",
+        "humidity", "ozone", "cloud_coverage", "uv_index", "pressure",
+        "pressure_unit", "wind_bearing", "wind_gust_speed", "wind_speed",
+        "wind_speed_unit", "visibility", "visibility_unit",
+        "precipitation_unit"}),
+    "zone": frozenset({"radius", "passive", "persons", "editable"}),
+}
+
+
+for _domain in sorted(set(_CAPABILITY_ATTRIBUTE_TABLES)
+                      | set(_STATE_ATTRIBUTE_TABLES)):
+    _new_fields: dict[str, Field] = {}
+    if _domain in _CAPABILITY_ATTRIBUTE_TABLES:
+        _new_fields[CAPABILITY_ATTRIBUTES] = Imported(
+            _CAPABILITY_ATTRIBUTE_TABLES[_domain],
+            ha_version=CAPABILITY_ATTRIBUTE_SOURCE_HA_VERSION,
+            source=CAPABILITY_ATTRIBUTE_SOURCE)
+    if _domain in _STATE_ATTRIBUTE_TABLES:
+        _new_fields[STATE_ATTRIBUTES] = Imported(
+            _STATE_ATTRIBUTE_TABLES[_domain],
+            ha_version=CAPABILITY_ATTRIBUTE_SOURCE_HA_VERSION,
+            source=CAPABILITY_ATTRIBUTE_SOURCE)
+    if _domain in _CAPABILITY_ATTRIBUTES_DROPPED:
+        _new_fields[CAPABILITY_ATTRIBUTES_DROPPED] = Ours(
+            _CAPABILITY_ATTRIBUTES_DROPPED[_domain])
+    if _vocabulary.row(_domain) is None:
+        _vocabulary.add(_domain, **_new_fields)
+    else:
+        _vocabulary.extend(_domain, **_new_fields)
+
+del _domain, _new_fields
+
+
 # --------------------------------------------------------------------------
 # LE TRE METRICHE, in forma di domanda
 # --------------------------------------------------------------------------
@@ -960,6 +1249,78 @@ def capability_tables() -> Mapping[str, Mapping[int, str]]:
         domain: _vocabulary.value(domain, None, CAPABILITY_NAMES)
         for domain in sorted(_vocabulary.domains())
         if _vocabulary.value(domain, None, CAPABILITY_NAMES) is not None})
+
+
+def capability_attributes(domain: str) -> frozenset[str]:
+    """**Metrica 4, prima meta'** -- i nomi degli attributi che, per questo
+    dominio, dicono COSA L'ENTITA' PUO' FARE.
+
+    Le voci valide su ogni entita' (`group_entities`, piu' la forma vecchia
+    `entity_id` che il giudizio nostro aggiunge) ci sono sempre: un gruppo e'
+    un gruppo su qualunque dominio, e senza di loro la casa perderebbe il
+    gruppo di luci in silenzio.
+
+    Un insieme vuoto NON e' un'assenza di risposta: la maggior parte dei
+    domini -- `switch`, `button`, `binary_sensor`, `camera`, `update`... --
+    non ha capacita' dichiarate affatto, e lo si e' verificato file per file
+    al tag (l'assenza dell'enum, non l'assenza del file). Cio' che quei domini
+    sanno fare viaggia in `supported_features`, che ha la sua metrica.
+    """
+    own = _vocabulary.value(domain, None, CAPABILITY_ATTRIBUTES, frozenset())
+    dropped = _vocabulary.value(domain, None, CAPABILITY_ATTRIBUTES_DROPPED, {})
+    return ((frozenset(own) - frozenset(dropped))
+            | UNIVERSAL_CAPABILITY_ATTRIBUTES.value
+            | frozenset(UNIVERSAL_CAPABILITY_ATTRIBUTES_ADDED.value))
+
+
+def state_attributes(domain: str) -> frozenset[str]:
+    """**Metrica 4, seconda meta'** -- i nomi degli attributi che, per questo
+    dominio, dicono COM'E' ADESSO.
+
+    **Non e' una lista di ammessi, ed e' la differenza che regge tutto il
+    disegno**: `extra_state_attributes` e' aperta per costruzione
+    (`helpers/entity.py:820-828`, «Implemented by platform classes»), quindi
+    un elenco completo di cio' che un'integrazione puo' mandare non esiste e
+    non esistera' mai. Questo insieme dice solo di quali nomi Home Assistant
+    PUBBLICA il significato; cio' che ne resta fuori non viene buttato --
+    viene etichettato come non interpretato.
+
+    Gli attributi tolti dalle capacita' per giudizio nostro rientrano da qui:
+    `number.mode` non e' un campo di manovra, ma resta un attributo che HA
+    dichiara, e dirne «non so cosa sia» sarebbe falso.
+    """
+    own = _vocabulary.value(domain, None, STATE_ATTRIBUTES, frozenset())
+    dropped = _vocabulary.value(domain, None, CAPABILITY_ATTRIBUTES_DROPPED, {})
+    return (frozenset(own) | frozenset(dropped)
+            | UNIVERSAL_STATE_ATTRIBUTES.value)
+
+
+def capability_attribute_tables() -> Mapping[str, frozenset[str]]:
+    """Le trascrizioni delle capacita', dominio per dominio, **come sono nella
+    fonte** -- il giudizio nostro non le tocca. Per la prova che le riporta al
+    sorgente di Home Assistant."""
+    return MappingProxyType({
+        domain: frozenset(_vocabulary.value(domain, None, CAPABILITY_ATTRIBUTES))
+        for domain in sorted(_vocabulary.domains())
+        if _vocabulary.value(domain, None, CAPABILITY_ATTRIBUTES) is not None})
+
+
+def state_attribute_tables() -> Mapping[str, frozenset[str]]:
+    """Come sopra, per la meta' «com'e' adesso»."""
+    return MappingProxyType({
+        domain: frozenset(_vocabulary.value(domain, None, STATE_ATTRIBUTES))
+        for domain in sorted(_vocabulary.domains())
+        if _vocabulary.value(domain, None, STATE_ATTRIBUTES) is not None})
+
+
+def dropped_capability_attributes() -> Mapping[str, Mapping[str, str]]:
+    """Gli attributi che Home Assistant chiama capacita' e questo vocabolario
+    no, **con la ragione scritta di ognuno**. Un'eccezione senza ragione non
+    passa la prova che legge questa vista."""
+    return MappingProxyType({
+        domain: _vocabulary.value(domain, None, CAPABILITY_ATTRIBUTES_DROPPED)
+        for domain in sorted(_vocabulary.domains())
+        if _vocabulary.value(domain, None, CAPABILITY_ATTRIBUTES_DROPPED) is not None})
 
 
 # --------------------------------------------------------------------------

@@ -385,18 +385,20 @@ VIEW_TOOL_DEF = {
         "true` (l'integrazione stessa non e' sicura che lo stato rispecchi "
         "la realta'): entrambe compaiono SOLO quando c'e' qualcosa da dire "
         "-- mai `capacita': []` ne' `stato_presunto: false`. Il dettaglio "
-        "di UNA entita' sola puo' portare anche `attributi`: NON tutto "
-        "cio' che Home Assistant dichiara per quel dominio, una SELEZIONE "
-        "che HIRIS fa a mano per NOVE domini (climate, light, cover, "
-        "media_player, vacuum, fan, water_heater, valve, weather -- la "
-        "luminosita' di una luce, la posizione di una tapparella, "
-        "`options` per un elenco di scelte chiuso, il meteo...). Un "
-        "attributo che ti aspetti e non trovi li' NON vuol dire che Home "
-        "Assistant non lo dichiara -- vuol dire solo che questa selezione "
-        "non lo porta: non concludere «questa luce non ha il colore» da "
-        "un `attributi` senza `rgb_color`. E per molti domini -- `sensor`, "
-        "`switch`, `binary_sensor`, `button` fra gli altri -- la chiave "
-        "non compare per niente, quale che sia l'entita'. Mai nelle liste "
+        "di UNA entita' sola puo' portare anche `attributi`, che raccoglie "
+        "TUTTO cio' che Home Assistant espone di quell'entita', in quattro "
+        "ceste: `campo_di_manovra` (cosa si puo' chiederle e dentro quali "
+        "limiti -- `hvac_modes`, `min_temp`/`max_temp`, `effect_list`, "
+        "`options`, `source_list`), `valori` (com'e' adesso -- luminosita', "
+        "temperatura letta, titolo del brano), `non_interpretati` (attributi "
+        "che l'integrazione manda e di cui NESSUNA fonte pubblica dichiara "
+        "il significato: leggili come dati grezzi, non dedurne cosa "
+        "vogliano dire) e `trattenuti` (nome e ragione delle credenziali "
+        "che questa entita' porta -- token, indirizzi di rete, numeri di "
+        "serie: HIRIS le conserva e non le scrive in chat). Una cesta "
+        "compare solo se ha qualcosa dentro, e una chiave senza valore non "
+        "compare affatto: un attributo assente vuol dire che Home Assistant "
+        "non l'ha mandato, non che HIRIS l'ha scartato. Mai nelle liste "
         "di un'area o di un dispositivo, dove sarebbe rumore su decine di "
         "cose alla volta. "
         "Le liste `entita` di un'area o di un dispositivo NON includono le entità che "
@@ -2007,13 +2009,13 @@ class ToolDispatcher:
         ci sono 22,4 gradi e non sapeva da quando -- non poteva nemmeno dire
         «e' fermo da tre ore». Costa un campo e zero chiamate a Home Assistant.
 
-        `attributi` e' entity_id -> il dizionario `attributes` che
-        `entity_cache._to_minimal` raccoglie gia' per dominio (`_DOMAIN_ATTRS`:
-        `hvac_action` e la temperatura di un termostato, la luminosita' di
-        una luce, ...) e che questo specchio buttava, su OGNI dominio, prima
-        della fetta "attributi al modello" (2026-08-25) -- il difetto misurato
-        dal proprietario: un termostato IMPOSTATO su riscaldamento e FERMO
-        usciva da `view` come «heat» e basta.
+        `attributi` e' entity_id -> le quattro ceste che
+        `entity_cache.inherited_attributes` costruisce (cosa l'entita' puo'
+        fare, com'e' adesso, cio' di cui nessuna fonte dichiara il
+        significato, le credenziali) e che questo specchio buttava, su OGNI
+        dominio, prima della fetta "attributi al modello" (2026-08-25) -- il
+        difetto misurato dal proprietario: un termostato IMPOSTATO su
+        riscaldamento e FERMO usciva da `view` come «heat» e basta.
 
         `letto` conserva esattamente la semantica del fix E1-(3): False solo
         quando la lettura di QUESTA chiamata e' fallita davvero. Cache assente

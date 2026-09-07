@@ -2,6 +2,7 @@ import pytest
 
 from hiris.app.home_space.queries import search, view
 from hiris.app.memory.resolver import costruisci_indice
+from hiris.app.proxy.entity_cache import inherited_attributes
 from tests.test_briefing import _CASA, _COMPORTAMENTO, _RICORDI, _STATO
 
 # _CASA, _COMPORTAMENTO, _RICORDI, _STATO sono di tests/test_briefing.py,
@@ -1452,7 +1453,8 @@ def test_supported_features_reaches_who_composes():
     Mutazione: non proiettarlo -- il test torna rosso su
     `assert detail["capacita"]` (`KeyError: 'capacita'`)."""
     detail = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "entita", "light.cucina_1",
-                   reported_attributes={"light.cucina_1": {"supported_features": 32}})
+                   reported_attributes={"light.cucina_1": inherited_attributes(
+                       {"supported_features": 32}, "light")})
     assert detail["capacita"] == ["transizione"]
 
 
@@ -1479,7 +1481,8 @@ def test_a_domain_without_a_verified_source_does_not_get_a_guess():
     quando quello vero manca -- il test torna rosso su
     `assert "capacita" not in detail`."""
     detail = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "entita", "sensor.cucina_t",
-                   reported_attributes={"sensor.cucina_t": {"supported_features": 32}})
+                   reported_attributes={"sensor.cucina_t": inherited_attributes(
+                       {"supported_features": 32}, "sensor")})
     assert "capacita" not in detail
 
 
@@ -1495,7 +1498,8 @@ def test_assumed_state_is_read_when_home_assistant_sends_it():
     torna rosso su `assert detail["stato_presunto"] is True`
     (`KeyError: 'stato_presunto'`)."""
     detail = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "entita", "light.cucina_1",
-                   reported_attributes={"light.cucina_1": {"assumed_state": True}})
+                   reported_attributes={"light.cucina_1": inherited_attributes(
+                       {"assumed_state": True}, "light")})
     assert detail["stato_presunto"] is True
 
 

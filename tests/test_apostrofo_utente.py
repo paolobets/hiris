@@ -156,13 +156,19 @@ SORVEGLIATO: dict[str, tuple[tuple[int, int], ...] | None] = {
     # altre funzioni del file (`_states`, `_preview`, `_record`, l'esecuzione
     # vera e propria) restano fuori: sono log, o campi che la cronaca porta
     # ma la pagina non rende (`entity_before`/`entity_after`).
+    # Intervalli rinumerati il 07/09/2026 (fetta dell'eredita' degli
+    # attributi): `_fingerprint` e i suoi import si sono allungati e ogni
+    # ancora si e' spostata piu' in basso. Sono ANCORE, non offset: ognuna e'
+    # stata ritrovata per contenuto, non traslata a occhio -- e la prova qui
+    # sotto (`..._la_guardia_vede_davvero_dentro_actuator_appena_allargata`)
+    # e' esattamente cio' che scopre un intervallo rimasto indietro.
     "action/actuator.py": (
-        (133, 135),    # _BLIND_MIRROR
-        (146, 149),    # _NO_TARGET_RESOLVER
-        (180, 185),    # _not_seen
-        (198, 202),    # _CHANGED_NOT_SHOWABLE
-        (213, 215),    # _NO_STATE_TO_REREAD
-        (523, 525),    # _open_listen: l'annuncio di ascolto assente
+        (137, 139),    # _BLIND_MIRROR
+        (150, 153),    # _NO_TARGET_RESOLVER
+        (184, 189),    # _not_seen
+        (202, 206),    # _CHANGED_NOT_SHOWABLE
+        (217, 219),    # _NO_STATE_TO_REREAD
+        (532, 534),    # _open_listen: l'annuncio di ascolto assente
     ),
 }
 

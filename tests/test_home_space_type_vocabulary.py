@@ -372,13 +372,19 @@ _ECCEZIONI_MOTIVATE: dict[tuple[str, tuple[str, ...]], str] = {
         "piano (fetta 6) dichiara di completare proprio questa forma -- le "
         "condizioni in linea, che nessun inventario di insiemi letterali "
         "vede.",
-    ("proxy/entity_cache.py",
-     ("climate", "cover", "fan", "light", "media_player", "vacuum", "valve",
-      "water_heater", "weather")):
-        "`entity_cache._DOMAIN_ATTRS`: e' una scelta di COSA CONSERVARE di "
-        "uno stato, non di quali tipi esistono -- la spec (§8, §9) dice di "
-        "valutarla, non di assumere che entri. La valutazione e' della "
-        "fetta 6.",
+    # `entity_cache._DOMAIN_ATTRS` stava qui, e non c'e' piu': la fetta
+    # dell'eredita' (07/09/2026) l'ha cancellata invece di dichiararla. Era la
+    # valutazione che la spec (§8, §9) rimandava; il requisito del proprietario
+    # (§12) l'ha decisa nel verso opposto -- non «quali attributi conservare»
+    # ma «tutti», e il dizionario che dice cosa significa ognuno vive adesso
+    # nel vocabolario, importato dal sorgente di Home Assistant.
+    ("home_space/behavior.py", ("automation", "script")):
+        "`behavior._reread`: non e' un vocabolario di tipi, e' la GUARDIA che "
+        "distingue «Home Assistant non ha ancora caricato le automazioni» da "
+        "«questa casa non ne ha piu'». I due domini sono li' perche' sono i "
+        "due che quel file replica, non perche' qualcuno abbia giudicato "
+        "qualcosa di loro: nessuna delle metriche del vocabolario risponde "
+        "alla domanda «di quali domini questo modulo tiene una copia».",
 }
 
 

@@ -50,7 +50,7 @@ import pytest
 from hiris.app.action import actuator as porta_modulo
 from hiris.app.action.actuator import ActionActuator
 from hiris.app.action.registry import ServiceRegistry
-from hiris.app.proxy.entity_cache import _to_minimal
+from hiris.app.proxy.entity_cache import _to_minimal, inherited_attributes
 
 # La scadenza vera e' 2 secondi, e il perche' sta scritto accanto alla
 # costante (`porta.STATE_WAIT_S`). Qui si accorcia a 50 ms perche' cio' che
@@ -209,9 +209,20 @@ def _voce(eid: str, valore) -> dict:
     serve ai comandi parametrici, dove lo stato NON cambia e cambia un
     attributo -- ed e' la stessa forma che `_to_minimal` produce davvero,
     pinnata da `test_gli_attributi_confrontati_sono_quelli_che_lo_specchio_tiene`.
+
+    **Gli attributi passano da `inherited_attributes`, non si scrivono a
+    mano.** Dalla fetta dell'eredita' (07/09/2026) la voce minimale porta
+    quattro ceste, non un dizionario piatto: una finta che scrivesse ancora
+    `{"attributes": {"temperature": 19}}` modellerebbe una forma che la
+    produzione non ha piu' -- ed e' esattamente la trappola dello stato
+    condiviso pigro che questo file gia' documenta per il `dopo=`.
     """
     if isinstance(valore, dict):
-        return {"id": eid, **valore}
+        voce = {"id": eid, **valore}
+        grezzi = voce.pop("attributes", None)
+        if grezzi:
+            voce["attributes"] = inherited_attributes(grezzi, eid.split(".")[0])
+        return voce
     return {"id": eid, "state": valore}
 
 
@@ -270,8 +281,15 @@ HA_RIPORTA_IL_SALOTTO_SPENTO = [
 # accanto viaggiano i valori con cui il modello ragiona (26.9 in stanza,
 # riscaldamento a riposo). La casa vera ha misurato che l'impronta li legge
 # bene: cio' che sbagliava era da dove veniva il «dopo».
+# Il campo di manovra (`min_temp`/`max_temp`/`hvac_modes`) sta anche nello
+# specchio, non solo in cio' che la chiamata riporta: e' cio' che Home
+# Assistant manda su OGNI stato di un termostato, e dalla fetta dell'eredita'
+# lo specchio lo conserva. Se la finta lo mettesse da un lato solo, i due
+# insiemi di chiavi differirebbero -- e la prova in fondo a
+# `test_lo_stesso_vale_per_un_attributo...` esiste proprio per accorgersene.
 CAMERA_A_17_5 = {"climate.camera": {"state": "heat", "attributes": {
-    "hvac_action": "idle", "current_temperature": 26.9, "temperature": 17.5}}}
+    "hvac_action": "idle", "current_temperature": 26.9, "temperature": 17.5,
+    "min_temp": 7, "max_temp": 35, "hvac_modes": ["off", "heat"]}}}
 METTI_LA_CAMERA_A_19_5 = {"servizio": "climate.set_temperature",
                           "bersaglio": {"entita": ["climate.camera"]},
                           "dati": {"temperature": 19.5}}
@@ -312,7 +330,12 @@ async def test_esegue_e_racconta_cosa_e_cambiato():
     assert esito["servizio"] == "light.turn_off"
     assert esito["entita"] == ["light.salotto"]
     assert esito["prima"] == {"light.salotto": {"state": "on"}}
-    assert esito["dopo"] == {"light.salotto": {"state": "off"}}
+    # `supported_color_modes` viaggia nell'annuncio ed e' una capacita' che
+    # Home Assistant dichiara (`LightEntityCapabilityAttribute`): dalla fetta
+    # dell'eredita' l'impronta la porta invece di buttarla. E' la meta'
+    # «cosa sa fare» che sopravvive anche a luce spenta.
+    assert esito["dopo"] == {"light.salotto": {"state": "off",
+                                               "supported_color_modes": ["hs"]}}
     assert esito["cambiato"] == ["light.salotto"]
     assert "avviso" not in esito
     assert cache.letture == 2, (
@@ -541,11 +564,18 @@ def test_gli_attributi_confrontati_sono_quelli_che_lo_specchio_tiene():
     """La guardia contro il difetto piu' silenzioso di questa correzione.
 
     La porta puo' confrontare solo cio' che `EntityCache` mette nella voce
-    minimale (`_DOMAIN_ATTRS`). Le finte di questo file gli attributi se li
-    scrivono da sole: se domani `temperature` uscisse da quell'elenco, tutti i
-    test qui sopra resterebbero verdi e la casa vera tornerebbe a sentirsi dire
+    minimale. Se domani `temperature` smettesse di arrivare fin qui, tutti i
+    test sopra resterebbero verdi e la casa vera tornerebbe a sentirsi dire
     «non e' cambiato niente». Qui l'impronta si costruisce sulla voce che
     produce il codice VERO dell'inventario.
+
+    Mutazione (07/09/2026): togliere `temperature` da
+    `type_vocabulary._STATE_ATTRIBUTE_TABLES["climate"]` non basta piu' a far
+    sparire l'attributo -- finirebbe fra i non interpretati, e l'impronta lo
+    porterebbe lo stesso, che e' il guadagno di questa fetta. Cio' che lo fa
+    sparire e' aggiungerlo a `_CREDENTIAL_ATTRIBUTES`, e allora questo test
+    torna rosso su `assert _fingerprint(voce) == {"state": "heat",
+    "temperature": 21}`.
     """
     from hiris.app.action.actuator import _fingerprint
     from hiris.app.proxy.entity_cache import _to_minimal
@@ -554,8 +584,8 @@ def test_gli_attributi_confrontati_sono_quelli_che_lo_specchio_tiene():
                         "attributes": {"temperature": 21, "friendly_name": "Salotto"}})
     assert _fingerprint(voce) == {"state": "heat", "temperature": 21}, (
         "l'attributo che regge «metti il termostato a 21» non arriva piu' "
-        "dall'inventario alla porta: o e' uscito da _DOMAIN_ATTRS, o la voce "
-        "minimale ha cambiato forma")
+        "dall'inventario alla porta: o e' finito fra le credenziali, o la "
+        "voce minimale ha cambiato forma")
 
 
 # --- la fonte del «dopo» ----------------------------------------------------
@@ -614,7 +644,8 @@ async def test_un_comando_riuscito_e_raccontato_come_riuscito_con_lo_specchio_in
         "«nulla e' cambiato» e' l'esatto opposto dell'invariante di questa "
         "fetta, ed e' il difetto misurato sulla casa vera")
     assert esito["prima"] == {"light.salotto": {"state": "on"}}
-    assert esito["dopo"] == {"light.salotto": {"state": "off"}}
+    assert esito["dopo"] == {"light.salotto": {"state": "off",
+                                               "supported_color_modes": ["hs"]}}
     assert "avviso" not in esito, (
         "un comando riuscito non porta avvisi: l'avviso era la meta' della "
         "frase da cui il modello ha tratto la diagnosi inventata")
@@ -739,14 +770,23 @@ async def test_un_dispositivo_lento_resta_un_caso_vero():
 
 @pytest.mark.asyncio
 async def test_un_cambiamento_che_l_impronta_non_sa_mostrare_non_diventa_nulla_e_cambiato():
-    """Il colore di una luce non sta in `_DOMAIN_ATTRS`: HA riporta un
-    cambiamento, l'impronta non lo mostra. Prima di questa versione il caso
-    finiva nell'avviso «nessuno stato e' cambiato», che qui e' FALSO -- il
-    comando ha avuto effetto. `cambiato` resta vuoto (dev'essere sempre
-    spiegabile da `prima` e `dopo`), ma l'avviso dice l'altra cosa."""
+    """Home Assistant riporta un cambiamento, l'impronta non lo mostra.
+    Prima di questa versione il caso finiva nell'avviso «nessuno stato e'
+    cambiato», che qui e' FALSO -- il comando ha avuto effetto. `cambiato`
+    resta vuoto (dev'essere sempre spiegabile da `prima` e `dopo`), ma
+    l'avviso dice l'altra cosa.
+
+    **Il caso e' cambiato, il ramo no.** Fino al 07/09/2026 l'esempio era il
+    colore di una luce, che `_DOMAIN_ATTRS` buttava; adesso `rgb_color` e' un
+    valore ereditato e l'impronta lo mostra benissimo. Cio' che resta davvero
+    invisibile e' una CREDENZIALE: `entity_picture` cambia -- un token che
+    ruota, un'immagine nuova -- e non entra nell'impronta di proposito, o ogni
+    telecamera risulterebbe cambiata a ogni comando (vedi
+    `entity_cache.disclosable_attributes`). Il ramo serve ancora, e questo e'
+    il caso che lo raggiunge."""
     client = FintoClient(cambiati=[
         {"entity_id": "light.salotto", "state": "on",
-         "attributes": {"rgb_color": [255, 0, 0]}}])
+         "attributes": {"entity_picture": "/api/image_proxy/light.salotto?token=b1"}}])
     registro = await _registro_pronto(client)
     porta = ActionActuator(client, registro, FintaCache(SALOTTO_ACCESO))
 
@@ -864,7 +904,8 @@ async def test_le_luci_si_accendono_e_hiris_lo_racconta_anche_se_la_chiamata_tac
         "raccontarlo come «non e' cambiato niente» e' il difetto che il "
         "proprietario ha visto tre volte")
     assert esito["prima"] == {eid: {"state": "off"} for eid in ABAT_JOUR}
-    assert esito["dopo"] == {eid: {"state": "on", "brightness": 255}
+    assert esito["dopo"] == {eid: {"state": "on", "brightness": 255,
+                                   "supported_color_modes": ["hs"]}
                              for eid in ABAT_JOUR}
     assert "avviso" not in esito, (
         "un comando riuscito non porta avvisi: l'avviso era la meta' della "
@@ -893,7 +934,8 @@ async def test_un_annuncio_arrivato_durante_la_chiamata_non_si_perde():
     durata = time.monotonic() - inizio
 
     assert esito["cambiato"] == ["light.salotto"]
-    assert esito["dopo"] == {"light.salotto": {"state": "off"}}
+    assert esito["dopo"] == {"light.salotto": {"state": "off",
+                                               "supported_color_modes": ["hs"]}}
     assert "avviso" not in esito
     assert durata < porta_modulo.STATE_WAIT_S, (
         "l'annuncio era gia' arrivato e la porta ha aspettato lo stesso fino "

@@ -190,17 +190,23 @@ def live_mirror(rows) -> tuple[dict[str, str], dict[str, str], dict[str, str],
     sono 22,4 gradi e non sapeva da quando -- non poteva nemmeno dire «e'
     fermo da tre ore». Costa un campo e zero chiamate a Home Assistant.
 
-    `attributi` (entity_id -> il dizionario `attributes` di `_to_minimal`,
-    quando non e' vuoto) e' il difetto misurato dal proprietario, fetta
-    "attributi al modello" (2026-08-25): `entity_cache._to_minimal` raccoglie
-    gia' `hvac_action`, `current_temperature`, la luminosita' di una luce, la
-    posizione di una tapparella -- `_DOMAIN_ATTRS` in `proxy/entity_cache.py`
-    -- e QUESTA funzione, l'unico punto da cui passano `guarda`, `cerca` e il
-    nucleo, li buttava tutti tenendo solo `state`. Un termostato IMPOSTATO su
-    riscaldamento e FERMO (`hvac_mode: heat`, `hvac_action: idle`) usciva da
-    `guarda` come `stato: "heat"` e basta -- indistinguibile da uno che sta
-    scaldando davvero. Il modello ha risposto con quell'unica informazione,
-    ed era vera solo a meta'.
+    `attributi` (entity_id -> le QUATTRO CESTE di `_to_minimal`, quando
+    l'entita' ne ha almeno una) e' il difetto misurato dal proprietario, fetta
+    "attributi al modello" (2026-08-25): `entity_cache._to_minimal` raccoglieva
+    gia' `hvac_action` e la temperatura di un termostato, e QUESTA funzione --
+    l'unico punto da cui passano `guarda`, `cerca` e il nucleo -- li buttava
+    tutti tenendo solo `state`. Un termostato IMPOSTATO su riscaldamento e
+    FERMO (`hvac_mode: heat`, `hvac_action: idle`) usciva da `guarda` come
+    `stato: "heat"` e basta -- indistinguibile da uno che sta scaldando
+    davvero. Il modello ha risposto con quell'unica informazione, ed era vera
+    solo a meta'.
+
+    Dalla fetta dell'eredita' (07/09/2026) quel dizionario non e' piu' piatto:
+    porta `capabilities`/`values`/`uninterpreted`/`credentials`
+    (`entity_cache.inherited_attributes`). Questa funzione continua a non
+    guardarci dentro -- lo specchio trasporta, non interpreta -- ma chi cerca
+    un attributo per nome usa `entity_cache.disclosable_attributes` invece di
+    frugare nelle ceste a mano.
     """
     state: dict[str, str] = {}
     names: dict[str, str] = {}

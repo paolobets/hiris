@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+import re
 
+from ..home_space import type_vocabulary
 from ..home_space.topology import domain_of
 from ._sanitize import sanitize_ha_value
 
@@ -112,49 +114,301 @@ def unreadable_inventory_error(cache) -> dict | None:
 _domain = domain_of
 
 
-_DOMAIN_ATTRS: dict[str, tuple[str, ...]] = {
-    "climate": ("hvac_mode", "hvac_action", "current_temperature", "temperature", "preset_mode"),
-    "light": ("brightness", "color_temp"),
-    "cover": ("current_position",),
-    "media_player": ("media_title", "media_artist", "source", "volume_level"),
-    "vacuum": ("battery_level",),
-    "fan": ("percentage", "preset_mode"),
-    "water_heater": ("current_temperature", "temperature", "operation_mode"),
-    "valve": ("current_position", "reports_position"),
-    # Il meteo mancava, e non serviva nessuna chiamata nuova: temperatura,
-    # umidita', vento e pressione sono ATTRIBUTI DI STATO dell'entita' meteo,
-    # gia' dentro `get_states`.
-    #
-    # ATTENZIONE a cosa questa riga NON faceva da sola, fino alla fetta
-    # "attributi al modello" (2026-08-25): `_to_minimal` li raccoglieva gia'
-    # dentro `result["attributes"]`, ma `home_space.topology.live_mirror` -- il
-    # punto da cui passano `guarda`, `cerca` e il nucleo -- li buttava tutti,
-    # su OGNI dominio, tenendo solo la stringa di `state`. Un'entita' `weather`
-    # rispondeva «sereno» e basta non perche' mancasse questa riga, ma perche'
-    # nessuno la leggeva a valle: il difetto misurato sui termostati (il
-    # proprietario ha letto «heat» ed era `idle`) e' lo stesso, un dominio
-    # diverso. Da quella fetta `live_mirror` porta gli attributi fino al
-    # dettaglio di `guarda`, e questa riga finalmente serve a qualcosa.
-    # I nomi sono quelli veri di `components/weather/const.py`, verificati:
-    # le unita' viaggiano in attributi propri (`temperature_unit`, ...) perche'
-    # il meteo non usa `unit_of_measurement`.
-    "weather": ("temperature", "temperature_unit", "humidity", "pressure",
-                "pressure_unit", "wind_speed", "wind_speed_unit", "wind_bearing",
-                "apparent_temperature", "cloud_coverage", "uv_index", "visibility"),
+# --------------------------------------------------------------------------
+# L'EREDITA': tutto cio' che Home Assistant espone di un'entita', separato in
+# quattro ceste invece di essere buttato in tre quarti.
+# --------------------------------------------------------------------------
+#
+# **Cosa c'era prima, e perche' non poteva funzionare.** Fino al 07/09/2026
+# questa proiezione teneva `_DOMAIN_ATTRS`: una lista di AMMESSI scritta a
+# mano, NOVE domini su trenta, e per quei nove i soli valori correnti. Tutto
+# il resto veniva buttato prima ancora di arrivare a chiunque. Misurato sulla
+# casa vera il 07/09/2026, eseguendo il codice sul payload di
+# `GET /api/states` (835 entita', 30 domini, 278 coppie dominio-attributo):
+#
+#   - attributi consegnati a **51 entita' su 835**, 2.582 byte in tutto;
+#   - `light.alberello` espone `supported_color_modes`, `min/max_color_temp_
+#     kelvin` (1500/9000), tre effetti -- e consegnava `{'brightness': None}`,
+#     cioe' «questa luce non ha luminosita'» mentre era solo spenta;
+#   - `climate.camera_t_camera_t` espone `hvac_modes` (sa raffrescare),
+#     `min_temp`/`max_temp` (5-40), `target_temp_step` (0,5) -- e consegnava
+#     tre valori correnti e nessun campo di manovra;
+#   - `sun.sun` e `update.adguard_home` valevano **2 byte**: `{}`;
+#   - tre chiavi della lista erano MORTE NEL SORGENTE di Home Assistant, non
+#     solo assenti qui: `climate.hvac_mode` (e' lo `state`,
+#     `components/climate/__init__.py:289-299`), `light.color_temp`
+#     (sopravvive solo come VALORE di `ColorMode`), `valve.reports_position`
+#     (zero occorrenze nel componente). Una chiave che non trattiene niente
+#     non fa rumore: nessuno se n'era accorto.
+#
+# **Il requisito che la sostituisce**, dettato dal proprietario il 07/09/2026
+# (`docs/design/2026-09-07-l-anagrafe-dei-tipi.md` §12): «*vorrei che di
+# un'entita' vengano ereditati da HIRIS tutti gli attributi, per capire fino
+# in fondo cosa puo' fare e cosa sta facendo ora*». Il metro di accettazione:
+# HIRIS deve poter capire di un dispositivo cio' che Home Assistant capisce.
+# Il volume non e' mai stato il problema -- 121 KB per tutte le 835 entita'.
+#
+# **Quindi non c'e' piu' nessuna lista di ammessi qui**, e non ce ne puo'
+# tornare una: cio' che arriva viene ereditato per intero e SMISTATO. Le
+# quattro ceste rispondono a domande diverse, e tenerle separate e' la sola
+# cosa che questa funzione decide:
+#
+#   `capabilities`   cosa l'entita' PUO' fare -- il campo di manovra
+#   `values`         com'e' ADESSO
+#   `uninterpreted`  cio' di cui nessuna fonte pubblica dichiara il significato
+#   `credentials`    token e maniglie: ereditate e usabili, mai scritte in chat
+#
+# La separazione fra le prime due **non e' nostra**: la fa Home Assistant, che
+# tiene `capability_attributes` e `state_attributes` distinte fino all'ultimo
+# momento (`helpers/entity.py:787-794`, `:810-828`, fuse a `:1109-1124`) e le
+# pubblica per dominio come `StrEnum` dal `2026.9.1`. Il dizionario che dice
+# quale nome sta di qua e quale di la' vive nel vocabolario dei tipi, con
+# provenienza `importato` e la versione da cui viene
+# (`home_space/type_vocabulary.py`, metrica 4).
+#
+# `uninterpreted` e' la cesta che rende il requisito onesto: gli otto `ave_*`
+# dei termostati AVE, i `marker_*`, `days_until`, `next_date` della raccolta
+# differenziata escono lo stesso, ma NON mescolati alle capacita'. Verificato
+# il 07/09/2026: `ave_window_state` vuol probabilmente dire «finestra aperta»,
+# e **nessuna fonte pubblica lo dichiara** -- l'integrazione `ave_domina` non
+# e' in Home Assistant core (manifest 404 al tag), non e' un repository
+# pubblico su GitHub, e l'unica AVE pubblica (`emmeoerre/ave_dominaplus`)
+# emette nomi diversi a ogni versione (zero occorrenze su cinque tag). Quel
+# significato non si indovina: consegnarlo accanto a `hvac_modes` come se
+# fosse la stessa qualita' di sapere sarebbe ripetere il difetto del
+# termostato (`hvac_mode: heat` letto come «sta scaldando»), un piano sotto.
+
+
+# Cio' che questa proiezione PROMUOVE a chiave propria, e che quindi non si
+# ripete anche nelle ceste: sarebbe lo stesso fatto in due case
+# (fondamenta 2). Non e' una trattenuta -- il valore e' nello stesso oggetto,
+# una riga piu' su.
+_ATTRIBUTES_PROMOTED_TO_THEIR_OWN_KEY = frozenset({
+    "friendly_name",        # -> `name`
+    "unit_of_measurement",  # -> `unit`
+    "device_class",         # -> `device_class`
+    "state_class",          # -> `state_class`
+})
+
+
+# LE CREDENZIALI E LE MANIGLIE -- l'unica famiglia che HIRIS eredita e NON
+# scrive nel testo che il modello riceve.
+#
+# **Non e' un'eccezione al requisito**: la cesta `credentials` porta i valori
+# veri, e chi in HIRIS deve usarli li trova li'. E' una scelta a valle, sul
+# solo confine del modello, e ha una ragione operativa precisa: una
+# trascrizione di chat si salva su disco e ci resta. Un token della telecamera
+# scritto li' dentro ci resta con lei. Quindi nel testo che va al modello
+# compare la FRASE -- «questa entita' porta un token di accesso al flusso
+# video» -- invece della chiave: il fatto c'e', la credenziale no.
+#
+# **E la trattenuta e' dichiarata, mai muta.** `_view_entity` la mostra come
+# `attributi.trattenuti`, nome per nome, con la ragione. Questo prodotto ha
+# gia' pagato una volta «l'assenza NOSTRA spacciata per silenzio del
+# fornitore»: un modello che non vede niente conclude che non c'e' niente.
+#
+# Misurato sulla casa vera il 07/09/2026: 19 coppie, 293 occorrenze -- 62 MAC,
+# 62 nomi host, 61 indirizzi IP, 26 SSID, 18 numeri di serie, 9 token di
+# telecamera, 9 URL con il token dentro. Le ragioni sono in italiano perche'
+# e' testo che una persona (e il modello) legge.
+#
+# Dove Home Assistant li dichiara: `access_token` e'
+# `CameraEntityStateAttribute.ACCESS_TOKEN` (`components/camera/const.py`) e
+# `ImageEntityStateAttribute.ACCESS_TOKEN`; `entity_picture` e'
+# `EntityStateAttribute.ENTITY_PICTURE` (`homeassistant/const.py:470-483`),
+# cioe' un attributo che QUALUNQUE entita' puo' portare; `mac`/`ip`/
+# `host_name` sono `ScannerEntityStateAttribute`
+# (`components/device_tracker/const.py`). `vpn_url`/`local_url` no: sono di
+# Netatmo, fuori standard -- ed e' il motivo per cui accanto ai nomi serve
+# anche una regola sul VALORE.
+_CREDENTIAL_ATTRIBUTES: dict[str, str] = {
+    "access_token": "un token di accesso al flusso di questa entita'",
+    "entity_picture": "un indirizzo di immagine che puo' contenere un token",
+    "entity_picture_local": "un indirizzo di immagine che puo' contenere un token",
+    "vpn_url": "un indirizzo remoto raggiungibile con la credenziale nel percorso",
+    "local_url": "un indirizzo locale con la stessa credenziale",
+    "uri_supported": "un indirizzo interno del dispositivo",
+    "mac": "l’indirizzo MAC del dispositivo",
+    "ip": "l’indirizzo IP sulla rete di casa",
+    "host_name": "il nome host del dispositivo",
+    "ssid": "il nome della rete Wi-Fi",
+    "bssid": "l’indirizzo MAC dell’access point",
+    "user_id": "l’identificativo dell’account Home Assistant",
+    "last_scanned_by_device_id": "l’identificativo del dispositivo che ha letto il tag",
+    "serial": "il numero di serie del dispositivo",
+    "media_content_id": "l’indirizzo del contenuto, con la chiave della sessione dentro",
 }
 
+# La ragione con cui esce cio' che nessun nome della tabella prevedeva.
+_CREDENTIAL_BY_VALUE = (
+    "un valore che contiene una credenziale (un indirizzo con `token=`, "
+    "una chiave esadecimale, o un indirizzo MAC)")
 
-# Gli attributi del media_player che sono testo LIBERO -- titolo, artista,
-# sorgente -- e non un valore tecnico (`volume_level`, `brightness`): sono il
-# vettore concreto che l'audit di sicurezza ha verificato (C-2, L1-sicurezza.md):
-# un media_player col titolo del brano che dice "ignora le istruzioni
-# precedenti" arriva al modello ogni volta che `guarda`/`cerca` lo tocca. Gli
-# altri attributi di `_DOMAIN_ATTRS` sono numeri o enumerazioni chiuse decise
-# dall'integrazione (hvac_mode, preset_mode, current_position...), non testo
-# che un dispositivo di rete possa scrivere liberamente: sanificarli
-# convertirebbe un numero in stringa senza motivo, e non chiude un rischio
-# vero -- e' l'eccesso di zelo che il modulo stesso mette in guardia.
-_FREE_TEXT_ATTRIBUTES = frozenset({"media_title", "media_artist", "source"})
+# LA REGOLA SUL VALORE, e non e' un lusso: `vpn_url` e `local_url` sono nomi
+# che nessuna costante di Home Assistant contiene, e il prossimo fornitore
+# chiamera' la stessa cosa in un terzo modo. Tre forme, tutte misurate sulla
+# casa vera:
+#   - un indirizzo con `token=` o `access_token=` (l'`entity_picture` di una
+#     camera e di un Sonos);
+#   - un segmento esadecimale di 32 cifre o piu' (un token nudo);
+#   - un indirizzo MAC (`camera.id` su Netatmo vale `70:ee:50:26:b5:4e`, e li'
+#     la chiave si chiama `id` -- nessun elenco di nomi lo prenderebbe).
+_TOKEN_IN_URL = re.compile(r"[?&](?:access_)?token=", re.IGNORECASE)
+_HEXADECIMAL_SECRET = re.compile(r"(?<![0-9a-fA-F])[0-9a-fA-F]{32,}(?![0-9a-fA-F])")
+_MAC_ADDRESS = re.compile(r"^(?:[0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$")
+
+
+def _is_credential(name: str, value) -> bool:
+    """Se questo attributo va trattenuto dal testo che il modello riceve.
+
+    Per NOME o per VALORE, e i due non sono la stessa difesa: il nome copre
+    cio' che Home Assistant dichiara, il valore copre cio' che un fornitore
+    inventa. `update.entity_picture` e' trattenuto pur non portando token su
+    questa casa (sono icone `/api/brands/...`): la regola si scrive sulla
+    chiave, perche' la STESSA chiave porta un token su `camera`, `image` e
+    `media_player`. E' una perdita accettata, non un'assenza.
+    """
+    if name in _CREDENTIAL_ATTRIBUTES:
+        return True
+    if not isinstance(value, str):
+        return False
+    return bool(_TOKEN_IN_URL.search(value) or _HEXADECIMAL_SECRET.search(value)
+                or _MAC_ADDRESS.match(value.strip()))
+
+
+def _has_nothing_to_say(value) -> bool:
+    """Una chiave che non ha niente da dire non esce -- legge del prodotto.
+
+    **Il `None` e' il caso misurato, e non e' «meno»: e' peggio di niente.**
+    `light.alberello` consegnava `{'brightness': None}` e a un modello si legge
+    «questa luce non ha luminosita'», mentre la luce era solo spenta. Home
+    Assistant manda `brightness: None` su 10 delle 50 luci di questa casa
+    proprio perche' sono spente.
+
+    Un contenitore vuoto per la stessa ragione: `options: []` non e' un elenco
+    di scelte, e' l'assenza di un elenco. `0`, `0.0` e `False` invece PARLANO
+    -- `wind_bearing: 0` e' nord, `is_volume_muted: False` e' «non e' muto» --
+    e non sono toccati da questa funzione.
+    """
+    if value is None:
+        return True
+    return isinstance(value, (str, list, tuple, dict, set, frozenset)) and not value
+
+
+def _sanitized(value):
+    """Ogni stringa che arriva da Home Assistant, filtrata -- non piu' un
+    elenco di chiavi «di testo libero».
+
+    Fino a questa fetta la difesa era `_FREE_TEXT_ATTRIBUTES`, tre nomi scelti
+    a mano (`media_title`, `media_artist`, `source`). Con l'eredita' intera
+    quell'elenco avrebbe dovuto crescere almeno a quattordici -- e sarebbe
+    stata la stessa lista di ammessi di `_DOMAIN_ATTRS`, con lo stesso destino:
+    `extra_state_attributes` e' aperta per costruzione, quindi il prossimo
+    campo di testo libero non e' prevedibile. Misurato su questa casa:
+    `event.voice_command` porta le frasi dette ad Alexa in chiaro,
+    `update.release_summary` porta il testo che il fornitore ci scrive,
+    `calendar.message` e `calendar.description` portano quello che l'utente
+    scrive in agenda.
+
+    Il criterio diventa quindi la FORMA e non il nome: **se e' una stringa che
+    arriva da fuori, passa dal filtro**. Numeri, booleani e istanti non lo
+    attraversano -- convertirli in stringa non chiude nessun rischio vero
+    (C-2, L1-sicurezza.md).
+    """
+    if isinstance(value, str):
+        return sanitize_ha_value(value)
+    if isinstance(value, list):
+        return [_sanitized(item) for item in value]
+    if isinstance(value, dict):
+        return {k: _sanitized(v) for k, v in value.items()}
+    return value
+
+
+#: I nomi delle quattro ceste. Scritti una volta: una cesta cercata con una
+#: stringa sbagliata risponderebbe «vuota» invece di sbagliare.
+CAPABILITIES = "capabilities"
+VALUES = "values"
+UNINTERPRETED = "uninterpreted"
+CREDENTIALS = "credentials"
+
+#: L'ordine in cui si leggono le tre ceste che possono arrivare al modello.
+_DISCLOSABLE_BASKETS = (CAPABILITIES, VALUES, UNINTERPRETED)
+
+
+def inherited_attributes(raw_attributes: dict, domain: str) -> dict[str, dict]:
+    """Gli attributi grezzi di un'entita' -> le quattro ceste.
+
+    **Nessun attributo sparisce**: ognuno finisce in una cesta, oppure e' gia'
+    uscito da una chiave propria di `_to_minimal` (`friendly_name` -> `name`,
+    ...), oppure non aveva niente da dire (`None`, elenco vuoto). Non c'e' un
+    quarto esito, ed e' cio' che una prova verifica sui due casi veri della
+    casa (`tests/test_inherited_attributes.py`).
+
+    Le ceste vuote non compaiono: `{}` per una cesta e' l'assenza di quella
+    cesta, e scriverla direbbe «ho guardato e non c'e' niente» su ogni entita'
+    della casa.
+    """
+    capability_names = type_vocabulary.capability_attributes(domain)
+    declared_values = type_vocabulary.state_attributes(domain)
+    baskets: dict[str, dict] = {}
+    for name, value in raw_attributes.items():
+        if not isinstance(name, str) or name in _ATTRIBUTES_PROMOTED_TO_THEIR_OWN_KEY:
+            continue
+        if _has_nothing_to_say(value):
+            continue
+        if _is_credential(name, value):
+            basket = CREDENTIALS
+        elif name in capability_names:
+            basket = CAPABILITIES
+        elif name in declared_values:
+            basket = VALUES
+        else:
+            basket = UNINTERPRETED
+        baskets.setdefault(basket, {})[name] = _sanitized(value)
+    return baskets
+
+
+def disclosable_attributes(attributes) -> dict:
+    """Le tre ceste che possono arrivare al modello, in un dizionario piatto:
+    capacita', valori correnti e non interpretati. **Le credenziali no.**
+
+    Esiste perche' i lettori che devono CERCARE un attributo per nome --
+    `hvac_action` per lo stato leggibile, l'impronta di un'azione -- non
+    debbano sapere in quale cesta sta: la cesta e' una distinzione per chi
+    legge il risultato, non un labirinto per chi legge il codice.
+
+    E le credenziali restano fuori anche di qui, per una ragione in piu' della
+    chat: un token di telecamera RUOTA. Nell'impronta di un'azione
+    (`action/actuator._fingerprint`) farebbe risultare «cambiata» ogni camera
+    a ogni comando, che e' inventare un cambiamento -- il verso opposto del
+    difetto che quell'impronta esiste per chiudere.
+    """
+    if not isinstance(attributes, dict):
+        return {}
+    flat: dict = {}
+    for basket in _DISCLOSABLE_BASKETS:
+        content = attributes.get(basket)
+        if isinstance(content, dict):
+            flat.update(content)
+    return flat
+
+
+def withheld_credentials(attributes) -> dict[str, str]:
+    """Nome -> ragione, per le credenziali che questa entita' porta e che non
+    si scrivono nel testo del modello. Vuoto quando non ne porta nessuna.
+
+    **E' la trattenuta resa visibile**, ed e' la condizione perche' la
+    trattenuta sia lecita: senza questa vista il modello leggerebbe un'entita'
+    con un token come una che non ne ha, e `camera.ingresso_cancellino`
+    uscirebbe identica a `button.identifica` -- che non lo sono affatto.
+    """
+    if not isinstance(attributes, dict):
+        return {}
+    carried = attributes.get(CREDENTIALS)
+    if not isinstance(carried, dict):
+        return {}
+    return {name: _CREDENTIAL_ATTRIBUTES.get(name, _CREDENTIAL_BY_VALUE)
+            for name in sorted(carried)}
 
 
 def _to_minimal(raw: dict) -> dict:
@@ -200,11 +454,13 @@ def _to_minimal(raw: dict) -> dict:
     # `HAClient.automation_traces()`), quindi senza di essa lo specchio non
     # puo' rispondere alla domanda «come e' andata questa automazione?».
     #
-    # In cima, e NON dentro `_DOMAIN_ATTRS`, di proposito: quel dizionario
-    # decide cosa il MODELLO vede degli attributi (`home_space/topology.
-    # live_mirror` porta `attributes` fino a `guarda` e `cerca`), e un timbro
-    # numerico di configurazione li' dentro sarebbe rumore davanti al
-    # modello. Qui e' una chiave di giunzione per il codice, e resta tale.
+    # E' PROMOSSA a chiave propria, e per questo esce dalle ceste degli
+    # attributi -- stessa ragione di `friendly_name` e compagni, ma per un
+    # dominio solo, e per questo la sottrazione e' scritta qui invece che in
+    # `_ATTRIBUTES_PROMOTED_TO_THEIR_OWN_KEY`: su `person` `id` e' un attributo
+    # dichiarato (`PersonEntityStateAttribute.ID`) e deve restare fra i valori.
+    # Un timbro numerico di configurazione davanti al modello sarebbe rumore;
+    # qui e' una chiave di giunzione per il codice.
     #
     # `attributes["id"]` c'e' solo quando l'automazione ha un `id:` nella sua
     # configurazione: `BaseAutomationEntity.capability_attributes` torna
@@ -213,52 +469,19 @@ def _to_minimal(raw: dict) -> dict:
     # `helpers/entity.py::__async_calculate_state`. Un'automazione YAML
     # scritta senza `id:` non ne ha, e chi legge deve dire «non riesco a
     # risolverla», non ripiegare sull'`object_id`.
+    #
+    # Solo su `automation`: una `scene` porta anch'essa un `attributes["id"]`
+    # (`components/homeassistant/scene.py`), ma li' non e' la chiave delle
+    # tracce -- le scene non ne hanno -- e raccoglierlo lo stesso metterebbe
+    # in circolo un `automation_id` che non lo e'.
     if dom == "automation":
         automation_id = attrs.get("id")
         if isinstance(automation_id, str) and automation_id:
             result["automation_id"] = automation_id
-    domain_keys = _DOMAIN_ATTRS.get(dom, [])
-    extra = {k: attrs[k] for k in domain_keys if k in attrs}
-    # `supported_features`/`assumed_state`/`options`: a differenza di
-    # `_DOMAIN_ATTRS` sopra, Home Assistant li dichiara sull'ENTITA' base
-    # (`helpers/entity.py::Entity`), non su un dominio preciso -- il
-    # significato di `supported_features` lo decide POI il dominio (vedi
-    # `home_space/topology.decoded_capabilities`), non questa proiezione, che
-    # si limita a non buttarlo.
-    #
-    # Misurato sull'impianto del proprietario il 06/09/2026: `supported_features`
-    # su 181 entita' su 834, `options` su 26, `assumed_state` su NESSUNA.
-    # Quest'ultimo non e' un'assenza della proiezione: Home Assistant lo
-    # manda SOLO quando vale `True`
-    # (`helpers/entity.py::Entity.state_attributes`, verificato sui tag
-    # `2024.7.0` e `2026.9.1` -- la riga che scrive la chiave e' dentro un
-    # `if assumed_state := self.assumed_state:` in entrambi). Leggerlo
-    # quando c'e' costa zero; non significa che HIRIS fondi su questo campo
-    # la certezza del dato in generale -- su questa casa non e' mai arrivato.
-    supported_features = attrs.get("supported_features")
-    # `bool` e' una sottoclasse di `int` in Python (`isinstance(True, int)`
-    # torna vero): senza l'esclusione, un'integrazione che manda
-    # `supported_features: true/false` fuori standard passerebbe come se
-    # fosse un bitmask valido, e `1 & True` non solleva -- decodificherebbe
-    # in silenzio un valore che non e' mai stato un intero di bit.
-    if isinstance(supported_features, int) and not isinstance(supported_features, bool):
-        extra["supported_features"] = supported_features
-    if attrs.get("assumed_state"):
-        extra["assumed_state"] = True
-    # `options`: la lista di scelte di un `select`/`input_select`
-    # (`SelectEntity.capability_attributes`, verificato sui due tag) -- testo
-    # che l'integrazione dichiara, non un numero da interpretare. Sanificato
-    # voce per voce come `_FREE_TEXT_ATTRIBUTES` qui sotto: e' testo che
-    # arriva da un'integrazione o da un dispositivo, non da HIRIS.
-    options = attrs.get("options")
-    if isinstance(options, list) and options:
-        extra["options"] = [sanitize_ha_value(o) if isinstance(o, str) else o
-                             for o in options]
-    for key in _FREE_TEXT_ATTRIBUTES:
-        if isinstance(extra.get(key), str):
-            extra[key] = sanitize_ha_value(extra[key])
-    if extra:
-        result["attributes"] = extra
+            attrs = {k: v for k, v in attrs.items() if k != "id"}
+    baskets = inherited_attributes(attrs, dom)
+    if baskets:
+        result["attributes"] = baskets
     return result
 
 

@@ -17,6 +17,14 @@ Questo file segua la CATENA INTERA -- dallo stato grezzo di Home Assistant
 fino a cio' che `guarda` restituisce -- non i singoli anelli: un test per
 anello (come esistevano gia' per `_to_minimal`) non avrebbe mai visto questo
 difetto, perche' ogni anello faceva il proprio lavoro.
+
+Aggiornato il 07/09/2026 (fetta dell'eredita' degli attributi): `hvac_action`
+e le due temperature escono adesso sotto la cesta `valori` -- Home Assistant
+le dichiara `ClimateEntityStateAttribute`, cioe' com'e' ADESSO, non cosa il
+termostato PUO' fare. E `hvac_mode` e' sparito dal caso di prova perche' e'
+sparito da Home Assistant: la modalita' e' lo `state`, non un attributo
+(`components/climate/__init__.py:289-299`). Il difetto che questo file
+sorveglia e' identico: lo `state` da solo mente.
 """
 from hiris.app.home_space.queries import view
 from hiris.app.home_space.topology import live_mirror, translate_state
@@ -31,7 +39,7 @@ _RAW_TERMOSTATO = {
     "last_changed": "2026-08-25T09:00:00+00:00",
     "attributes": {
         "friendly_name": "Termostato Matrimoniale",
-        "hvac_mode": "heat", "hvac_action": "idle",
+        "hvac_action": "idle",
         "current_temperature": 25.2, "temperature": 17,
     },
 }
@@ -55,8 +63,8 @@ def _specchio_del_termostato():
 
 def test_a_to_minimal_raccoglie_gia_hvac_action():
     minimo = _to_minimal(_RAW_TERMOSTATO)
-    assert minimo["attributes"]["hvac_action"] == "idle"
-    assert minimo["attributes"]["temperature"] == 17
+    assert minimo["attributes"]["values"]["hvac_action"] == "idle"
+    assert minimo["attributes"]["values"]["temperature"] == 17
 
 
 # --- l'anello che il difetto attraversava --------------------------------
@@ -67,8 +75,9 @@ def test_b_lo_specchio_portava_solo_lo_stato_nudo_PRIMA_del_fix():
     arrossisce."""
     stato, _n, _u, _c, _d, attributi = _specchio_del_termostato()
     assert stato["climate.matrimoniale"] == "heat"
-    assert attributi["climate.matrimoniale"]["hvac_action"] == "idle"
-    assert attributi["climate.matrimoniale"]["current_temperature"] == 25.2
+    valori = attributi["climate.matrimoniale"]["values"]
+    assert valori["hvac_action"] == "idle"
+    assert valori["current_temperature"] == 25.2
 
 
 # --- LA PROVA CHE CONTA: la catena intera fino a guarda -------------------
@@ -83,9 +92,10 @@ def test_c_guarda_su_un_entita_non_dice_piu_solo_heat():
                        reported_since_when=da_quando, reported_attributes=attributi)
     assert dettaglio["esiste"] is True
     assert dettaglio["stato"] == "heat"
-    assert dettaglio["attributi"]["hvac_action"] == "idle"
-    assert dettaglio["attributi"]["current_temperature"] == 25.2
-    assert dettaglio["attributi"]["temperature"] == 17
+    valori = dettaglio["attributi"]["valori"]
+    assert valori["hvac_action"] == "idle"
+    assert valori["current_temperature"] == 25.2
+    assert valori["temperature"] == 17
     # Il cuore del difetto: lo stato_leggibile non deve poter essere letto
     # come "sta scaldando" quando il termostato e' fermo.
     assert dettaglio["stato_leggibile"] != "heat"

@@ -53,6 +53,23 @@ def _mirror_of(*raw_states):
     return live_mirror(minimal)
 
 
+def _every_attribute_shown(detail: dict) -> dict:
+    """Tutto cio' che il modello vede sotto `attributi`, in un dizionario
+    piatto -- le tre ceste fuse.
+
+    Serve perche' dalla fetta dell'eredita' (07/09/2026) `attributi` ha una
+    forma a ceste (`campo_di_manovra`/`valori`/`non_interpretati`/
+    `trattenuti`): un `assert "supported_features" not in detail["attributi"]`
+    scritto sulla forma vecchia passerebbe SEMPRE -- guarderebbe i nomi delle
+    ceste, non i nomi degli attributi -- ed e' un test che non puo' piu'
+    fallire, il difetto n.1 di questo progetto.
+    """
+    shown: dict = {}
+    for content in (detail.get("attributi") or {}).values():
+        shown.update(content)
+    return shown
+
+
 def test_the_real_chain_decodes_capabilities_and_does_not_leak_the_raw_bit():
     """`light.con_capacita` dichiara `supported_features: 36` (EFFECT=4 +
     TRANSITION=32, `LightEntityFeature`, verificato) attraverso la catena
@@ -72,8 +89,9 @@ def test_the_real_chain_decodes_capabilities_and_does_not_leak_the_raw_bit():
                    reported_attributes=attributes)
     assert sorted(detail["capacita"]) == ["effetti", "transizione"]
     assert detail["stato_presunto"] is True
-    assert "supported_features" not in detail.get("attributi", {})
-    assert "assumed_state" not in detail.get("attributi", {})
+    shown = _every_attribute_shown(detail)
+    assert "supported_features" not in shown
+    assert "assumed_state" not in shown
 
 
 def test_supported_features_zero_does_not_come_out_anywhere():
@@ -125,10 +143,15 @@ def test_options_is_the_one_lawful_door_even_next_to_the_other_two():
     `attributi`, anche quando la stessa entita' porta anche
     `supported_features`/`assumed_state` (che invece devono restare fuori).
 
+    Dalla fetta dell'eredita' esce sotto `campo_di_manovra`, e non e' un
+    dettaglio di nome: `SelectEntityCapabilityAttribute.OPTIONS` sono i valori
+    che si possono IMPORRE a quell'entita', cioe' esattamente il campo di
+    manovra di un `select`.
+
     Mutazione: filtrare `options` insieme alle altre due (ampliare
     `_RAW_ATTRIBUTES_WITH_THEIR_OWN_DOOR` per errore) -- il test torna
-    rosso su `assert detail["attributi"]["options"] == ["eco", "comfort"]`
-    (`KeyError: 'attributi'`)."""
+    rosso su `assert detail["attributi"]["campo_di_manovra"]["options"] ==
+    ["eco", "comfort"]` (`KeyError: 'attributi'`)."""
     raw = {"entity_id": "select.con_opzioni", "state": "eco",
            "attributes": {"friendly_name": "Select con opzioni",
                           "options": ["eco", "comfort"],
@@ -138,7 +161,8 @@ def test_options_is_the_one_lawful_door_even_next_to_the_other_two():
                    fallback_names=names, reported_units=unit,
                    reported_classes=classes, reported_since_when=since,
                    reported_attributes=attributes)
-    assert detail["attributi"]["options"] == ["eco", "comfort"]
-    assert "supported_features" not in detail["attributi"]
-    assert "assumed_state" not in detail["attributi"]
+    assert detail["attributi"]["campo_di_manovra"]["options"] == ["eco", "comfort"]
+    shown = _every_attribute_shown(detail)
+    assert "supported_features" not in shown
+    assert "assumed_state" not in shown
     assert detail["stato_presunto"] is True

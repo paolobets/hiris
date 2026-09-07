@@ -18,12 +18,18 @@ can enter the model's context calls one of the two functions below:
 
 - `proxy/entity_cache.py::_to_minimal` -- the single point where a raw HA
   state becomes what every reader sees (`live_mirror`, `guarda`, `cerca`,
-  the nucleo). Sanitizes `state`, `name` (friendly_name), and the free-text
-  media_player attributes (`media_title`, `media_artist`, `source`) -- the
-  concrete vector the audit verified. NOT sanitized: numeric/enum attributes
-  (`brightness`, `hvac_mode`, `current_position`, ...) -- they are not
-  attacker-writable free text, and running them through a text filter would
-  silently coerce numbers to strings for no real gain.
+  the nucleo). Sanitizes `state`, `name` (friendly_name) and -- since the
+  inheritance slice of 07/09/2026 -- EVERY string among the inherited
+  attributes, at any depth (`entity_cache._sanitized`). The hand-picked
+  `_FREE_TEXT_ATTRIBUTES` list (`media_title`, `media_artist`, `source`) is
+  gone: with the whole payload inherited it would have had to grow to at
+  least fourteen names and would still have been incomplete, because
+  `extra_state_attributes` is open by construction -- `event.voice_command`
+  carries what was said to Alexa, `update.release_summary` whatever the
+  vendor writes, `calendar.message` whatever the user types. The criterion is
+  now the SHAPE, not the name. NOT sanitized: numbers, booleans and instants
+  -- they are not attacker-writable free text, and running them through a
+  text filter would silently coerce them to strings for no real gain.
 - `proxy/ha_client.py::logbook` -- the logbook boundary. Sanitizes `nome`,
   `stato` AND `messaggio` per entry (free text HA does not control) -- `stato`
   was missed in the first pass: for a message-sensor (email/ntfy/SMS, the
