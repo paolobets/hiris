@@ -260,7 +260,14 @@ window.HirisWatcherRoute = (function () {
       // sopra) lo separa in un nome leggibile e un riferimento tecnico
       // secondario, mai buttato ma reso in secondo piano (`.field-hint`,
       // stesso idioma gia' usato per l'identificatore degli episodi sotto).
+      // Fetta «il nome» (07/09/2026): questo elenco arriva da
+      // `/api/mind/watching`, che porta SOLO `{soggetto, gamba, provenienza}`
+      // -- nessun nome, mai. Un'entita' del pavimento resta quindi il suo
+      // `entity_id`, e la riga lo DICE (`d.technical`) invece di lasciarlo
+      // passare per un nome. Non si inventa niente dall'id, e non si tace
+      // la riga: sono le due meta' della stessa regola.
       var d = describeWatchedSubject(v.soggetto);
+      if (d.technical) li.appendChild(el('span', 'field-hint', SUBJECT_IS_ID));
       li.appendChild(el('span', 'text-mono', d.primary));
       if (d.secondary) li.appendChild(el('span', 'text-mono field-hint', d.secondary));
       var b = provenanceBadge(v.provenienza);
@@ -500,11 +507,6 @@ window.HirisWatcherRoute = (function () {
     // -- ma questa riga non deve dipendere da quella garanzia per essere
     // corretta). Una `@` appesa senza nulla dopo sarebbe un artefatto della
     // resa, non un dato: il nit del revisore, 07/09/2026.
-    // `p.location` puo' essere vuoto solo se il soggetto non porta una `@`
-    // (oggi non capita mai: `watcher.py` scrive sempre `<logger>@<file>:<riga>`
-    // -- ma questa riga non deve dipendere da quella garanzia per essere
-    // corretta). Una `@` appesa senza nulla dopo sarebbe un artefatto della
-    // resa, non un dato: il nit del revisore, 07/09/2026.
     if (p.kind === 'log') return 'Voce del registro di Home Assistant: ' + p.logger + (p.location ? '@' + p.location : '');
     if (p.kind === 'automazione') return 'Automazione: ' + p.rest;
     return p.rest;
@@ -516,23 +518,53 @@ window.HirisWatcherRoute = (function () {
      `{soggetto, gamba, provenienza}`, punto), quindi non si puo' riusare
      `protagonistName` cosi' com'e' -- ma la legge resta la stessa: non
      inventare un nome che non c'e'. Se dal soggetto non si ricava altro
-     (un'entita' del pavimento, es. `light.cucina`), il soggetto STESSO e'
-     gia' il nome leggibile e resta intatto -- il difetto era sui quattro
-     prefissi tecnici, non sugli entity_id.
+     (un'entita' del pavimento, es. `light.cucina`), il soggetto STESSO
+     resta intatto e si mostra -- **corretto il 07/09/2026 dalla fetta «il
+     nome»**: prima questa riga diceva che era «gia' il nome leggibile», ed
+     era falso. Un `entity_id` non e' un nome: e' un identificatore, e si
+     mostra DICENDO che lo e' (`technical`, sotto).
 
-     Ritorna `{primary, secondary}`: `primary` e' cio' che una persona legge
-     per primo, `secondary` (puo' essere vuoto) e' il riferimento tecnico che
-     NON si butta -- e' cio' che distingue due voci altrimenti identiche
-     (due errori dello stesso logger, due integrazioni non caricate) -- ma
-     va reso in secondo piano, mai come unico contenuto della riga. */
-  function describeWatchedSubject(soggetto) {
+     Ritorna `{primary, secondary, technical}`: `primary` e' cio' che una
+     persona legge per primo, `secondary` (puo' essere vuoto) e' il
+     riferimento tecnico che NON si butta -- e' cio' che distingue due voci
+     altrimenti identiche (due errori dello stesso logger, due integrazioni
+     non caricate) -- ma va reso in secondo piano, mai come unico contenuto
+     della riga.
+
+     `nome` (facoltativo) e' il nome amichevole SALVATO al momento del
+     cambio (`corpo.nome`, da `mind/facts.py`; la colonna e'
+     `friendly_name`, `mind/store.py::_migration_5`). Quando c'e' e' lui il
+     nome primario, e l'`entity_id` scivola nel riferimento secondario --
+     la stessa gerarchia contenuto/riferimento gia' usata da `balanceLine`
+     con `corpo.dispositivo`.
+
+     **`technical: true` significa che `primary` NON e' un nome: e' un
+     identificatore.** E' la meta' che mancava (fetta «il nome»,
+     07/09/2026): il soggetto grezzo resta intatto -- non si inventa mai un
+     nome dall'id, `light.cucina_1` non diventa «Cucina 1» -- ma chi legge
+     deve DIRLO, invece di lasciarlo passare per un nome. Chi rende decide
+     come (`SUBJECT_IS_ID`, sotto), questa funzione decide soltanto se. Le
+     righe scritte prima della colonna cadono qui, ed e' voluto: riempirle
+     dall’anagrafe di oggi vorrebbe dire attribuire a ieri il nome di
+     oggi. */
+  function describeWatchedSubject(soggetto, nome) {
     var p = parseSubjectPrefix(soggetto);
-    if (p.kind === 'problema') return { primary: 'Problema Home Assistant: ' + p.rest, secondary: '' };
-    if (p.kind === 'integrazione') return { primary: 'Un’integrazione non caricata', secondary: p.rest };
-    if (p.kind === 'log') return { primary: 'Registro: ' + p.logger, secondary: p.location };
-    if (p.kind === 'automazione') return { primary: 'Automazione: ' + p.rest, secondary: '' };
-    return { primary: p.rest, secondary: '' };
+    if (p.kind === 'problema') return { primary: 'Problema Home Assistant: ' + p.rest, secondary: '', technical: false };
+    if (p.kind === 'integrazione') return { primary: 'Un’integrazione non caricata', secondary: p.rest, technical: false };
+    if (p.kind === 'log') return { primary: 'Registro: ' + p.logger, secondary: p.location, technical: false };
+    if (p.kind === 'automazione') return { primary: 'Automazione: ' + p.rest, secondary: '', technical: false };
+    if (nome) return { primary: nome, secondary: p.rest, technical: false };
+    return { primary: p.rest, secondary: '', technical: true };
   }
+
+  /* La parola che DICHIARA un riferimento tecnico. Sta qui, in un posto
+     solo, perche' le due sezioni della pagina («cosa sto guardando» e «cosa
+     e' successo») devono dire la stessa cosa con le stesse parole: due
+     letterali in due punti diverse divergerebbero al primo ritocco. Corta
+     apposta -- e' un'etichetta accanto all'identificatore, non una frase:
+     la riga deve restare leggibile anche quando si ripete su ogni voce di
+     un elenco lungo. */
+  var SUBJECT_IS_ID = 'identificatore:';
 
   /* Il rivelatore sincrono, estratto (correzione di questo giro): era
      duplicato letterale fra `detailsDisclosure` (comprimari/misure) e il
@@ -957,6 +989,7 @@ window.HirisWatcherRoute = (function () {
     // un "da → a" che il bilancio non ha.
     if (o.genere === 'bilancio') return balanceLine(o);
 
+    var c = o.corpo || {};
     var box = el('div');
     box.style.cssText = 'border-top:1px solid var(--border);padding:var(--sp-3) 0;' +
       'display:flex;flex-direction:column;gap:4px';
@@ -978,8 +1011,28 @@ window.HirisWatcherRoute = (function () {
     // span { min-width: 0 }` (hiris-config.css, rilievo 1): senza, un
     // identificatore da 93 caratteri dentro questa riga flessibile
     // sfonderebbe lo schermo di un telefono.
+    // Fetta «il nome» (07/09/2026): `describeWatchedSubject` e' il posto
+    // unico che decide se cio' che segue e' un nome o un identificatore --
+    // `protagonistName` sa gia' rendere un titolo di guasto e i quattro
+    // prefissi tecnici, ma non sa DIRE quando quello che restituisce e' un
+    // `entity_id` nudo. Le righe scritte prima della colonna
+    // `friendly_name` cadono qui, ed e' voluto (`mind/store.py::
+    // _migration_5`): non si riempiono a posteriori dall'anagrafe di oggi.
+    var d = describeWatchedSubject(o.protagonista || '', c.nome);
+    if (d.technical) head.appendChild(el('span', 'field-hint', SUBJECT_IS_ID));
     head.appendChild(el('span', 'text-mono field-hint', protagonistName(o)));
     box.appendChild(head);
+
+    // Il nome amichevole e' il CONTENUTO, l'identificatore il riferimento
+    // (gia' nel monospazio attenuato sopra) -- stessa gerarchia di
+    // `balanceLine` con `corpo.dispositivo`, e stesso stile. Non quando
+    // c'e' un `titolo`: li' `protagonistName` ha gia' scritto il nome
+    // leggibile, e ripeterlo sarebbe la stessa cosa due volte.
+    if (c.nome && !c.titolo) {
+      var nameLine = el('p', null, c.nome);
+      nameLine.style.cssText = 'font-size:var(--fs-15);font-weight:600;margin:0;overflow-wrap:anywhere';
+      box.appendChild(nameLine);
+    }
 
     var content = el('p', null, period(o) + ' · ' + mainPhrase(o));
     content.style.cssText = 'font-size:var(--fs-15);font-weight:500;margin:0;overflow-wrap:anywhere';

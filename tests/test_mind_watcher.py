@@ -72,7 +72,8 @@ def test_una_cosa_del_pavimento_si_annota(coppia):
     assert archivio.annotati == [{"quando_ts": 1787572800.0, "source": "entita",
                                   "subject": "climate.camera_t",
                                   "da": "off", "a": "heat", "device_class": None,
-                                  "state_class": None, "source_type": None}]
+                                  "state_class": None, "source_type": None,
+                                  "friendly_name": None}]
 
 
 # -- Correzione 0: il grezzo porta le tre classi che il pavimento legge -----
@@ -1264,3 +1265,62 @@ def test_watching_shows_an_open_automation_fault(coppia):
     assert "automazione:automation.rotta" in soggetti
     assert soggetti["automazione:automation.rotta"]["gamba"] == "buono stato"
     assert soggetti["automazione:automation.rotta"]["provenienza"] == "pavimento"
+
+
+# -- Il nome amichevole: la quarta chiave dello STESSO dizionario -----------
+
+def test_il_nome_amichevole_dell_evento_entra_nel_grezzo(coppia):
+    """`attributes` e' gia' letto e gia' spremuto per tre chiavi: la quarta
+    e' gratis, e senza di lei il nome andrebbe risolto dopo -- cioe' sarebbe
+    il nome di oggi attribuito a un fatto di ieri, e sarebbe ASSENTE per un
+    oggetto piu' vecchio dei 22 giorni di grezzo.
+
+    E' la stringa che Home Assistant ha GIA' composto
+    (`helpers/entity.py:1161` -> `entity_registry.py:592-603` @ `2026.9.1`),
+    non una ricomposta da noi da `name`/`original_name`/dispositivo.
+
+    Mutazione ESEGUITA: togliere la riga
+    `friendly_name=_text_or_none(attributes.get("friendly_name"))` dalla
+    chiamata a `record()` in `watch_reading` (`mind/watcher.py`) -- il test
+    torna rosso su `assert riga["friendly_name"] == "Termostato Bagno"`
+    (`KeyError: 'friendly_name'`).
+    """
+    archivio, osservatore = coppia
+    assert osservatore.watch_reading(
+        _evento("climate.bagno_1p_t_bagno_1p_t", "off", "heat",
+                {"friendly_name": "Termostato Bagno"})) is True
+    riga = archivio.annotati[0]
+    assert riga["friendly_name"] == "Termostato Bagno"
+    assert riga["subject"] == "climate.bagno_1p_t_bagno_1p_t"
+
+
+def test_un_evento_senza_nome_amichevole_annota_none_non_l_entity_id(coppia):
+    """Quando l'attributo non c'e' (HA non lo scrive se il nome composto e'
+    vuoto), il grezzo porta `None` -- **non** l'`entity_id` messo li' per
+    riempire il campo. Inventare un nome dall'id e' esattamente cio' che
+    questa fetta rifiuta: se il nome manca, chi legge lo dice.
+
+    Mutazione ESEGUITA: scrivere
+    `friendly_name=_text_or_none(attributes.get("friendly_name")) or str(eid)`
+    -- il test torna rosso su `assert riga["friendly_name"] is None`.
+    """
+    archivio, osservatore = coppia
+    assert osservatore.watch_reading(
+        _evento("climate.senza_nome", "off", "heat")) is True
+    riga = archivio.annotati[0]
+    assert riga["friendly_name"] is None
+
+
+def test_un_nome_amichevole_non_testuale_non_entra_nel_grezzo(coppia):
+    """`_text_or_none` vale anche per la quarta chiave: un tipo inatteso non
+    diventa un `str(valore)` che scriverebbe spazzatura nella colonna. Una
+    regola sola per tutti e quattro gli attributi, non una eccezione.
+
+    Mutazione ESEGUITA: passare `attributes.get("friendly_name")` grezzo
+    invece che attraverso `_text_or_none` -- il test torna rosso su
+    `assert riga["friendly_name"] is None` (diventa la lista `[]`).
+    """
+    archivio, osservatore = coppia
+    assert osservatore.watch_reading(
+        _evento("climate.strana", "off", "heat", {"friendly_name": []})) is True
+    assert archivio.annotati[0]["friendly_name"] is None

@@ -101,3 +101,98 @@ async def test_senza_archivio_la_rotta_lo_DICHIARA():
 def _corpo(response):
     import json
     return json.loads(response.body)
+
+
+# ---------------------------------------------------------------------------
+# La strada vera, per intero: l'evento di Home Assistant -> `Watcher` ->
+# l'archivio SQLite -> l'aggregazione -> `GET /api/mind/facts`. Nessuna
+# finta in mezzo: e' la prova che il nome ARRIVA alla riga che il
+# proprietario legge, non che un pezzo isolato lo sappia trasportare.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_il_nome_viaggia_dall_evento_fino_alla_rotta_che_il_proprietario_legge(tmp_path):
+    """Mutazione ESEGUITA: togliere la riga
+    `friendly_name=_text_or_none(attributes.get("friendly_name"))` dalla
+    chiamata a `record()` in `Watcher.watch_reading` (`mind/watcher.py`) --
+    il test torna rosso su `assert corpo_oggetto["nome"] == "Termostato
+    Bagno"` (`KeyError: 'nome'`): l'unico anello tolto, e il nome non
+    arriva piu' in fondo.
+
+    Il giorno e' il 24 agosto 2026 a Roma (mezzanotte locale = 22:00 UTC del
+    23), la stessa convenzione di `tests/test_mind_facts.py`.
+    """
+    from hiris.app.mind.facts import aggregate_day
+
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        osservatore = Watcher(archivio, now=lambda: 1787580000.0)
+
+        # L'evento COSI' COME Home Assistant lo manda: `friendly_name` sta in
+        # `attributes`, accanto a `device_class`, non in un campo suo.
+        assert osservatore.watch_reading({
+            "entity_id": "climate.bagno_1p_t_bagno_1p_t",
+            "old_state": {"state": "off"},
+            "new_state": {"state": "heat",
+                          "attributes": {"friendly_name": "Termostato Bagno"},
+                          "last_changed": "2026-08-24T13:30:00+02:00"},
+        }) is True
+        assert osservatore.watch_reading({
+            "entity_id": "climate.bagno_1p_t_bagno_1p_t",
+            "old_state": {"state": "heat"},
+            "new_state": {"state": "off",
+                          "attributes": {"friendly_name": "Termostato Bagno"},
+                          "last_changed": "2026-08-24T15:05:00+02:00"},
+        }) is True
+
+        assert aggregate_day(store=archivio, day="2026-08-24",
+                             timezone="Europe/Rome") == 1
+
+        risposta = await handle_facts(
+            _richiesta({"observations": archivio}, {"day": "2026-08-24"}))
+        assert risposta.status == 200
+        oggetto = _corpo(risposta)["facts"][0]
+
+        # Il nome e' arrivato in fondo, e l'identificatore non si e' perso:
+        # sono due cose diverse nella stessa riga.
+        assert oggetto["corpo"]["nome"] == "Termostato Bagno"
+        assert oggetto["protagonista"] == "climate.bagno_1p_t_bagno_1p_t"
+    finally:
+        archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_senza_nome_la_rotta_porta_l_id_e_NESSUN_nome_inventato(tmp_path):
+    """L'altra meta' della regola, sulla stessa strada vera: quando Home
+    Assistant non scrive `friendly_name` (nome composto vuoto, oppure uno
+    stato scritto con `hass.states.async_set()`), l'oggetto arriva alla
+    pagina **senza** la chiave `nome` -- non con un nome dedotto
+    dall'`entity_id`, e non senza la riga.
+
+    Mutazione ESEGUITA: scrivere in `Watcher.watch_reading`
+    `friendly_name=_text_or_none(attributes.get("friendly_name")) or str(eid)`
+    -- il test torna rosso su `assert "nome" not in oggetto["corpo"]`.
+    """
+    from hiris.app.mind.facts import aggregate_day
+
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        osservatore = Watcher(archivio, now=lambda: 1787580000.0)
+        assert osservatore.watch_reading({
+            "entity_id": "climate.bagno_1p_t_bagno_1p_t",
+            "old_state": {"state": "off"},
+            "new_state": {"state": "heat", "attributes": {},
+                          "last_changed": "2026-08-24T13:30:00+02:00"},
+        }) is True
+
+        aggregate_day(store=archivio, day="2026-08-24", timezone="Europe/Rome")
+        risposta = await handle_facts(
+            _richiesta({"observations": archivio}, {"day": "2026-08-24"}))
+        oggetto = _corpo(risposta)["facts"][0]
+
+        assert "nome" not in oggetto["corpo"]
+        assert oggetto["protagonista"] == "climate.bagno_1p_t_bagno_1p_t"
+        # La riga esiste comunque: non si tace un fatto perche' manca il nome.
+        assert oggetto["genere"] == "funzionamento"
+    finally:
+        archivio.close()

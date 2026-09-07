@@ -136,6 +136,40 @@ def _migration_4(conn) -> None:
     """
     _add_missing_columns(conn, ("first_occurred",))
 
+
+def _migration_5(conn) -> None:
+    """v4 -> v5: `friendly_name`, il nome che Home Assistant ha gia' composto
+    per l'entita' al momento del cambio (fetta «il nome», 07/09/2026).
+
+    **Perche' si SALVA e non si risolve dopo dall'anagrafe.** E' parola per
+    parola la ragione gia' scritta accanto a `domain`/`title` nello schema
+    qui sotto: fra tre settimane quell'entita' potrebbe non esistere piu', e
+    la riga deve dire ancora di CHE COSA si parlava. E c'e' un secondo
+    motivo, proprio di questa colonna: le due tabelle hanno due vite -- i
+    `cambi` vivono 22 giorni, gli `oggetti` finche' l'utente non li cancella.
+    Un oggetto di sei mesi fa su un'entita' sostituita non avrebbe NESSUN
+    nome da risolvere, e la riga tornerebbe all'`entity_id` grezzo: il
+    difetto che questa fetta chiude ricrescerebbe da solo, un pezzo alla
+    volta, senza che nessuno se ne accorga.
+
+    **Non e' ricomposto da noi.** E' `attributes.friendly_name` dello
+    specchio dello stato, cioe' la stringa che HA ha GIA' composto con la
+    sua precedenza (`homeassistant/helpers/entity.py:1161` ->
+    `entity_registry.py:592-603` @ `2026.9.1`: il nome scritto dall'utente,
+    altrimenti nome del dispositivo + nome dell'entita', altrimenti niente
+    attributo affatto). Ricomporla vorrebbe dire riscrivere otto righe di
+    logica altrui e divergere alla prima versione di HA che le cambia.
+
+    Le righe scritte prima rileggono `None`, ed e' vero: quelle righe quel
+    nome non lo portavano. **Non si riempiono a posteriori** dall'anagrafe
+    di oggi -- sarebbe attribuire a ieri il nome di oggi, esattamente cio'
+    che questa colonna esiste per non fare. Chi legge le rende dicendo che
+    quello che mostra e' un identificatore (`static/config/watcher-route.js`,
+    `describeWatchedSubject`), mai inventando un nome dall'id.
+    """
+    _add_missing_columns(conn, ("friendly_name",))
+
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS cambi (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -161,7 +195,17 @@ CREATE TABLE IF NOT EXISTS cambi (
     -- (Task 2, «le tracce e il log») -- SOLO per quelle: NULL per un
     -- repair o un'integrazione, che non lo dichiarano mai. Non e'
     -- `quando_ts` (vedi `_migration_4`): quello resta l'orologio del giro.
-    first_occurred TEXT
+    first_occurred TEXT,
+    -- Il nome che Home Assistant ha gia' composto per l'entita' al momento
+    -- del cambio (`attributes.friendly_name` dello specchio dello stato).
+    -- Sta nel GREZZO per la stessa ragione di `domain`/`title` qui sopra, e
+    -- per una in piu' che vale solo per lui: gli `oggetti` vivono piu' a
+    -- lungo dei `cambi`, quindi un nome risolto dopo su un oggetto vecchio
+    -- non si troverebbe piu'. NULL per le condizioni di sistema (un
+    -- `problema:`/`integrazione:`/`log:`/`automazione:` non e' un'entita' e
+    -- non ne porta uno) e per le entita' su cui HA non scrive l'attributo.
+    -- Vedi `_migration_5`.
+    friendly_name TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_cambi_quando ON cambi(quando_ts);
 CREATE INDEX IF NOT EXISTS idx_cambi_soggetto ON cambi(soggetto, quando_ts);
@@ -191,6 +235,7 @@ def _reading_row(r) -> dict:
             "device_class": r["device_class"], "state_class": r["state_class"],
             "source_type": r["source_type"],
             "domain": r["domain"], "title": r["title"],
+            "friendly_name": r["friendly_name"],
             "first_occurred": None if first_occurred is None else float(first_occurred)}
 
 
@@ -208,8 +253,9 @@ class ObservationsStore:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=4,
-                    migrations={2: _migration_2, 3: _migration_3, 4: _migration_4})
+        init_schema(self._conn, _SCHEMA, version=5,
+                    migrations={2: _migration_2, 3: _migration_3, 4: _migration_4,
+                                5: _migration_5})
 
     def close(self) -> None:
         with self._lock:
@@ -222,6 +268,7 @@ class ObservationsStore:
                state_class: str | None = None,
                source_type: str | None = None,
                domain: str | None = None, title: str | None = None,
+               friendly_name: str | None = None,
                first_occurred: float | None = None) -> None:
         """Un cambio, cosi' com'e'. **Nessun giudizio in scrittura**: e' la
         condizione da cui dipende tutto il resto -- una decisione presa qui non
@@ -246,6 +293,18 @@ class ObservationsStore:
         (un *repair* di Home Assistant) non ha un titolo -- `title=None` e'
         un campo vuoto dichiarato, non un buco.
 
+        `friendly_name` e' il nome che Home Assistant ha GIA' composto per
+        l'entita' al momento del cambio -- **grezzo anche lui**, e per la
+        stessa ragione degli altri, piu' una che vale solo per lui: gli
+        `oggetti` sopravvivono ai `cambi`, quindi un nome risolto dopo su un
+        oggetto vecchio non si troverebbe piu' (vedi `_migration_5`).
+        Annullabile: una condizione di sistema non e' un'entita' e non ne
+        porta uno, e su un'entita' HA scrive l'attributo solo se il nome
+        composto non e' vuoto (`helpers/entity.py:1166-1167` @ `2026.9.1`).
+        `None` e' allora un campo vuoto dichiarato, e chi legge deve dire
+        che sta mostrando un identificatore -- mai inventare un nome
+        dall'`entity_id`.
+
         `first_occurred` e' l'istante che Home Assistant dichiara per una
         voce del registro di errori (`watcher.py::watch_system`, Task 2 di
         «le tracce e il log») -- **solo per quelle**: un *repair* o
@@ -258,11 +317,11 @@ class ObservationsStore:
         with self._lock:
             self._conn.execute(
                 "INSERT INTO cambi(quando_ts,fonte,soggetto,da,a,device_class,"
-                "state_class,source_type,domain,title,first_occurred) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                "state_class,source_type,domain,title,friendly_name,first_occurred) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                 (float(quando_ts), source, subject,
                  None if da is None else str(da), None if a is None else str(a),
-                 device_class, state_class, source_type, domain, title,
+                 device_class, state_class, source_type, domain, title, friendly_name,
                  None if first_occurred is None else str(float(first_occurred))))
             self._conn.commit()
 

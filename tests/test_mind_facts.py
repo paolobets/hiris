@@ -1244,3 +1244,109 @@ def test_direzioni_si_chiede_una_volta_per_protagonista_non_per_riga_del_grezzo(
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
                    directions=direzioni)
     assert chiesti == ["sensor.energia_prelievo"]
+
+
+# ---------------------------------------------------------------------------
+# Il nome amichevole entra nel corpo dell'oggetto (fetta «il nome»,
+# 07/09/2026). Il nome viene dal GREZZO di quel giorno, mai dall'anagrafe
+# di oggi: un oggetto sopravvive ai 22 giorni del grezzo e all'entita' stessa.
+# ---------------------------------------------------------------------------
+
+def test_il_nome_salvato_nel_grezzo_entra_nel_corpo_dell_oggetto(archivio):
+    """Mutazione ESEGUITA: togliere le tre righe `nome = names.get(subject)` /
+    `if nome:` / `base_body["nome"] = nome` da `close()` (`mind/facts.py`) --
+    il test torna rosso su `assert corpo["nome"] == "Termostato Camera"`
+    (`KeyError: 'nome'`).
+    """
+    archivio.record(quando_ts=ts(15, 30), source="entita",
+                    subject="climate.camera_t", da="off", a="heat",
+                    friendly_name="Termostato Camera")
+    archivio.record(quando_ts=ts(17, 5), source="entita",
+                    subject="climate.camera_t", da="heat", a="off",
+                    friendly_name="Termostato Camera")
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+    corpo = archivio.facts(day=G)[0]["corpo"]
+    assert corpo["nome"] == "Termostato Camera"
+    # L'identificatore NON si perde: il nome si aggiunge accanto al grezzo,
+    # non al suo posto -- e' cio' che distingue due entita' omonime.
+    assert archivio.facts(day=G)[0]["protagonista"] == "climate.camera_t"
+
+
+def test_senza_nome_nel_grezzo_la_chiave_TACE_non_diventa_null(archivio):
+    """Un `nome: null` sarebbe un buco travestito da dato: la chiave non c'e'
+    proprio, come `dominio`/`titolo` quando non hanno niente da dire. E' la
+    condizione su cui la pagina decide di dichiarare l'identificatore.
+
+    Mutazione ESEGUITA: scrivere `base_body["nome"] = names.get(subject)`
+    senza la guardia `if nome:` (`mind/facts.py`, `close()`) -- il test
+    torna rosso su `assert "nome" not in corpo`.
+    """
+    archivio.record(quando_ts=ts(15, 30), source="entita",
+                    subject="climate.senza_nome", da="off", a="heat")
+    archivio.record(quando_ts=ts(17, 5), source="entita",
+                    subject="climate.senza_nome", da="heat", a="off")
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+    corpo = archivio.facts(day=G)[0]["corpo"]
+    assert "nome" not in corpo
+    assert corpo["stato"] == "heat"
+
+
+def test_anche_un_oggetto_di_energia_porta_il_nome(archivio):
+    """L'energia nasce dall'altra strada (il riepilogo delle misure, non il
+    ciclo apri/chiudi): stessa regola, non una seconda legge.
+
+    Mutazione ESEGUITA: togliere le tre righe che aggiungono `nome` a
+    `energy_body` (`mind/facts.py`) -- il test torna rosso su
+    `assert corpo["nome"] == "Presa Forno"` (`KeyError: 'nome'`).
+    """
+    for ora, valore in ((7, "12.5"), (20, "15.0")):
+        archivio.record(quando_ts=ts(ora), source="entita",
+                        subject="sensor.presa_forno", da=None, a=valore,
+                        device_class="energy", friendly_name="Presa Forno")
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+    corpo = archivio.facts(day=G)[0]["corpo"]
+    assert corpo["nome"] == "Presa Forno"
+    assert corpo["valore_iniziale"] == "12.5"
+
+
+def test_una_condizione_di_sistema_non_porta_un_nome_amichevole(archivio):
+    """Un `integrazione:`/`problema:`/`log:` non e' un'entita': non ha un
+    `friendly_name`, e ha gia' il suo `titolo`. La chiave non deve comparire
+    nemmeno vuota.
+
+    Mutazione ESEGUITA: la stessa del test qui sopra sulla guardia `if nome:`
+    -- il test torna rosso su `assert "nome" not in corpo`.
+    """
+    archivio.record(quando_ts=ts(9), source="sistema",
+                    subject="integrazione:01ABC", da=None, a="setup_retry",
+                    domain="lifx", title="Abat-jour")
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+    corpo = archivio.facts(day=G)[0]["corpo"]
+    assert "nome" not in corpo
+    assert corpo["titolo"] == "Abat-jour"
+
+
+def test_il_giorno_dell_aggiornamento_il_primo_nome_NON_VUOTO_vince(archivio):
+    """Il caso vero del primo avvio dopo l'aggiornamento: i cambi scritti
+    prima della colonna non portano il nome, quelli scritti dopo si', e il
+    proprietario legge la pagina proprio quel giorno. Un `None` non e' un
+    nome, e' l'assenza di uno: saltarlo per prendere il nome che una riga
+    successiva dello STESSO soggetto, nello STESSO giorno, dichiara davvero
+    non inventa niente -- non e' l'anagrafe di oggi, e' il grezzo di allora.
+
+    Mutazione ESEGUITA: sostituire `if name and r["soggetto"] not in names:`
+    con `names.setdefault(r["soggetto"], name)` (che registra anche il
+    `None` della prima riga) -- il test torna rosso su
+    `assert corpo["nome"] == "Paolo"`.
+    """
+    archivio.record(quando_ts=ts(8, 10), source="entita",
+                    subject="person.paolo", da="home", a="not_home")
+    archivio.record(quando_ts=ts(12, 0), source="entita",
+                    subject="person.paolo", da="not_home", a="not_home",
+                    friendly_name="Paolo")
+    archivio.record(quando_ts=ts(17, 34), source="entita",
+                    subject="person.paolo", da="not_home", a="home",
+                    friendly_name="Paolo")
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+    corpo = archivio.facts(day=G)[0]["corpo"]
+    assert corpo["nome"] == "Paolo"

@@ -613,6 +613,16 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     del modulo). **Quando la direzione non si conosce, il campo non c'e'**
     nel corpo -- non una `"sconosciuta"` travestita da dato.
 
+    **Il corpo porta `nome`, quando il grezzo del giorno lo portava**
+    (fetta «il nome», 07/09/2026): il nome amichevole SALVATO al momento
+    del cambio (`store.py::_migration_5`), non risolto ora dall'anagrafe --
+    un oggetto sopravvive ai 22 giorni del grezzo e all'entita' stessa, e
+    un nome risolto dopo tornerebbe a essere l'`entity_id` grezzo proprio
+    sugli oggetti piu' vecchi. Il campo **tace** quando non c'e' (le righe
+    scritte prima della colonna, le condizioni di sistema, le entita' su cui
+    HA non scrive l'attributo): mai un `nome: null`, e chi legge mostra
+    allora l'identificatore DICENDO che e' un identificatore.
+
     **L'energia e' un genere a parte** (correzione del giro di review,
     punto 6): non ha un "acceso"/"spento" -- un contatore sale e basta -- e
     non nasce da un ciclo apri/chiudi come gli altri generi. Un oggetto di
@@ -706,8 +716,26 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     # Prima passata: le misure, per soggetto. Servono come contesto e non
     # generano oggetti da sole.
     measurements: dict[str, list[tuple[float, str]]] = {}
+    # Il nome amichevole del soggetto, preso dal GREZZO di questo giorno --
+    # mai dall'anagrafe di oggi (`store.py::_migration_5`: risolverlo dopo
+    # attribuirebbe a ieri il nome di oggi, e per un oggetto piu' vecchio
+    # dei 22 giorni di grezzo non ci sarebbe piu' niente da risolvere).
+    #
+    # **Il primo non vuoto vince**, e la regola vale per tutti e due i modi
+    # in cui un episodio nasce qui sotto (il ciclo apri/chiudi e il
+    # riepilogo dell'energia): uno solo, non due che possono divergere. Un
+    # `None` non e' un nome, e' l'assenza di uno -- saltarlo per prendere il
+    # nome che una riga successiva dello STESSO soggetto, nello STESSO
+    # giorno, dichiara davvero non inventa niente. E' anche il caso vero del
+    # giorno dell'aggiornamento: i cambi scritti prima della colonna non lo
+    # portano, quelli scritti dopo si', e il proprietario legge la pagina
+    # proprio quel giorno.
+    names: dict[str, str] = {}
     for r in rows:
         measurements.setdefault(r["soggetto"], []).append((r["quando_ts"], r["a"]))
+        name = r.get("friendly_name")
+        if name and r["soggetto"] not in names:
+            names[r["soggetto"]] = name
 
     open_episodes: dict[str, dict] = {}
     # Gli episodi: inizio/fine di ogni oggetto, SENZA ancora i comprimari.
@@ -722,6 +750,14 @@ def aggregate_day(*, store, day: str, timezone: str | None,
         if o is None:
             return
         base_body = {"stato": o["stato"]}
+        # Il nome amichevole, quando il grezzo del giorno lo portava. Tace
+        # come ogni altra chiave che non ha niente da dire: un `nome: null`
+        # sarebbe un buco travestito da dato, e la pagina ha gia' la sua
+        # regola per quando il nome manca (mostra l'identificatore DICENDO
+        # che e' un identificatore, mai un nome dedotto dall'`entity_id`).
+        subject_name = names.get(subject)
+        if subject_name:
+            base_body["nome"] = subject_name
         # `dominio`/`titolo` esistono solo per un guasto (sopra), e solo
         # quando la riga che ha aperto l'episodio li portava: tacciono come
         # ogni altra chiave del corpo che non ha niente da dire, non
@@ -867,11 +903,17 @@ def aggregate_day(*, store, day: str, timezone: str | None,
         # (26/08/2026): "consumato" sarebbe falso per la meta' dei sensori
         # di un impianto fotovoltaico con accumulo, che PRODUCONO.
         difference = _difference(initial, final) if len(points) > 1 else None
+        # Stessa regola di `close()` (il nome dal grezzo del giorno, il
+        # campo tace quando non c'e'): l'energia nasce da un'altra strada,
+        # non da un'altra legge.
+        energy_body = {"valore_iniziale": initial, "valore_finale": final,
+                       "differenza": difference}
+        subject_name = names.get(subject)
+        if subject_name:
+            energy_body["nome"] = subject_name
         episodes.append({"genere": "energia", "protagonista": subject,
                         "inizio": points[0][0], "fine": points[-1][0],
-                        "corpo_base": {"valore_iniziale": initial,
-                                       "valore_finale": final,
-                                       "differenza": difference}})
+                        "corpo_base": energy_body})
 
     # Il limite superiore delle misure di un comprimario e' l'inizio del
     # PROSSIMO episodio dello STESSO protagonista, e la fine della giornata

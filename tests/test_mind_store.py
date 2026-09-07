@@ -32,7 +32,8 @@ def test_un_cambio_si_rilegge_intero(archivio):
     assert righe == [{"quando_ts": ADESSO, "fonte": "entita",
                       "soggetto": "climate.camera_t", "da": "off", "a": "heat",
                       "device_class": None, "state_class": None, "source_type": None,
-                      "domain": None, "title": None, "first_occurred": None}]
+                      "domain": None, "title": None, "friendly_name": None,
+                      "first_occurred": None}]
 
 
 def test_annota_scrive_le_tre_classi_quando_ci_sono(archivio):
@@ -416,3 +417,112 @@ def test_un_archivio_vecchio_si_migra_senza_perdere_le_righe(tmp_path):
         assert riga_nuova["device_class"] == "smoke"
     finally:
         a.close()
+
+
+# ---------------------------------------------------------------------------
+# Il nome amichevole: si SALVA al momento dell'evento (fetta «il nome»,
+# 07/09/2026, docs .superpowers/sdd/collaudo-3.22/indagine-nomi-e-stati.md §5)
+# ---------------------------------------------------------------------------
+
+def test_a_change_carries_the_friendly_name(tmp_path):
+    """Il grezzo deve dire ancora DI CHE COSA si parlava anche fra sei mesi,
+    quando quell'entita' potrebbe non esistere piu': stessa ragione di
+    `domain`/`title`, piu' quella propria di questa colonna (gli `oggetti`
+    vivono piu' a lungo dei `cambi`, e un nome risolto dopo non si
+    troverebbe piu').
+
+    Mutazione ESEGUITA: scrivere `None` al posto di `friendly_name` fra i
+    valori dell'INSERT in `record()` (`mind/store.py`) -- il test torna
+    rosso su `assert row["friendly_name"] == "Termostato Bagno"` (diventa
+    `None`).
+    """
+    store = ObservationsStore(str(tmp_path / "oss.db"))
+    store.record(quando_ts=1000.0, source="entita",
+                 subject="climate.bagno_1p_t_bagno_1p_t", da="off", a="heat",
+                 device_class=None, friendly_name="Termostato Bagno")
+    row = store.readings(from_ts=0, to_ts=2000)[0]
+    assert row["friendly_name"] == "Termostato Bagno"
+    assert row["soggetto"] == "climate.bagno_1p_t_bagno_1p_t"
+    store.close()
+
+
+def test_the_friendly_name_is_null_when_not_given(tmp_path):
+    """Una condizione di sistema non e' un'entita' e non porta un nome, e su
+    un'entita' Home Assistant scrive l'attributo solo se il nome composto
+    non e' vuoto (`helpers/entity.py:1166-1167` @ `2026.9.1`). `None` e' un
+    campo vuoto DICHIARATO, non una stringa vuota travestita da nome.
+
+    Mutazione ESEGUITA: mettere `friendly_name: str | None = ""` come
+    default in `record()` -- il test torna rosso su
+    `assert row["friendly_name"] is None`.
+    """
+    store = ObservationsStore(str(tmp_path / "oss.db"))
+    store.record(quando_ts=1000.0, source="sistema",
+                 subject="integrazione:01ABC", da=None, a="setup_retry",
+                 domain="lifx", title="Abat-jour")
+    row = store.readings(from_ts=0, to_ts=2000)[0]
+    assert row["friendly_name"] is None
+    store.close()
+
+
+def test_migration_5_adds_friendly_name_to_an_old_archive(tmp_path):
+    """**Questa non e' una formalita': e' l'archivio del proprietario.** Un
+    archivio scritto dalla versione precedente (v4: con `first_occurred`,
+    senza `friendly_name`) deve aprirsi, rileggersi, e continuare a
+    scrivere -- e le sue righe vecchie devono restare vecchie, cioe' senza
+    nome, perche' riempirle dall'anagrafe di oggi vorrebbe dire attribuire
+    a ieri il nome di oggi.
+
+    Mutazione ESEGUITA: togliere `5: _migration_5` dal dizionario
+    `migrations` passato a `init_schema` in `ObservationsStore.__init__`
+    (`mind/store.py`) -- il test torna rosso su
+    `assert "friendly_name" in columns`.
+    """
+    path = str(tmp_path / "oss.db")
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        "CREATE TABLE cambi (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " quando_ts REAL NOT NULL,"
+        " fonte TEXT NOT NULL CHECK(fonte IN ('entita', 'sistema')),"
+        " soggetto TEXT NOT NULL, da TEXT, a TEXT,"
+        " device_class TEXT, state_class TEXT, source_type TEXT,"
+        " domain TEXT, title TEXT, first_occurred TEXT);"
+        "CREATE TABLE oggetti (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " giorno TEXT NOT NULL, genere TEXT NOT NULL, protagonista TEXT NOT NULL,"
+        " inizio_ts REAL NOT NULL, fine_ts REAL, corpo_json TEXT NOT NULL);"
+        "INSERT INTO cambi(quando_ts,fonte,soggetto,da,a,device_class)"
+        " VALUES(900.0,'entita','climate.vecchio','off','heat','temperature');"
+        "INSERT INTO oggetti(giorno,genere,protagonista,inizio_ts,fine_ts,corpo_json)"
+        " VALUES('2026-09-01','funzionamento','climate.vecchio',900.0,950.0,"
+        "'{\"stato\": \"heat\"}');"
+        "PRAGMA user_version = 4;")
+    conn.commit()
+    conn.close()
+
+    store = ObservationsStore(path)
+    try:
+        columns = [r[1] for r in store._conn.execute("PRAGMA table_info(cambi)")]
+        assert "friendly_name" in columns
+        assert columns.count("friendly_name") == 1
+        assert store._conn.execute("PRAGMA user_version").fetchone()[0] == 5
+
+        # La riga vecchia si rilegge intera, e il suo nome e' ASSENTE -- non
+        # riempito a posteriori.
+        old = store.readings(from_ts=0, to_ts=2000)[0]
+        assert old["friendly_name"] is None
+        assert old["a"] == "heat"
+        assert old["device_class"] == "temperature"
+
+        # E l'oggetto scritto prima della colonna si rilegge ancora: la
+        # migrazione aggiunge una colonna a `cambi`, non tocca `oggetti`.
+        oggetto = store.facts(day="2026-09-01")[0]
+        assert oggetto["corpo"] == {"stato": "heat"}
+        assert "nome" not in oggetto["corpo"]
+
+        # E la scrittura NUOVA, col nome, funziona sullo stesso archivio.
+        store.record(quando_ts=1000.0, source="entita", subject="person.paolo",
+                     da="home", a="not_home", friendly_name="Paolo")
+        nuova = store.readings(from_ts=0, to_ts=2000, subject="person.paolo")[0]
+        assert nuova["friendly_name"] == "Paolo"
+    finally:
+        store.close()

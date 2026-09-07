@@ -1404,3 +1404,104 @@ test('README: ogni rotta della tabella "Interface" è una di quelle davvero regi
   assert.deepEqual(soloInMainJs, [],
     'main.js registra ' + JSON.stringify(soloInMainJs) + ', rotte che il README non documenta');
 });
+
+// ---------------------------------------------------------------------------
+// Fetta «il nome» (07/09/2026): il nome amichevole SALVATO al momento del
+// cambio (`corpo.nome`, colonna `friendly_name`) arriva alla riga; e quando
+// non c'è, la riga mostra l'identificatore DICENDO che è un identificatore —
+// mai un nome dedotto dall'`entity_id`, mai una riga muta.
+// ---------------------------------------------------------------------------
+
+test('seam _rendiOggetti: il nome amichevole è il contenuto, l\'identificatore resta il riferimento', () => {
+  // Mutazione dichiarata, ESEGUITA (transcript nel rapporto): togliere il
+  // blocco `if (c.nome && !c.titolo) { ... }` da `factLine`
+  // (config/watcher-route.js) fa arrossire `assert.ok(rigaNome)` qui sotto —
+  // il nome non compare da nessuna parte e la pagina torna a mostrare solo
+  // l'entity_id.
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisWatcherRoute._rendiOggetti(corpo, [{
+    id: 1, genere: 'funzionamento', protagonista: 'climate.bagno_1p_t_bagno_1p_t',
+    inizio_ts: 1755270600, fine_ts: 1755277500,
+    corpo: { stato: 'heat', nome: 'Termostato Bagno' },
+  }], null);
+
+  const paragrafi = Array.from(corpo.querySelectorAll('p'));
+  const rigaNome = paragrafi.find((p) => p.textContent === 'Termostato Bagno');
+  assert.ok(rigaNome, 'il nome amichevole deve leggersi come contenuto, non restare nel payload');
+  assert.doesNotMatch(rigaNome.className || '', /\bfield-hint\b/,
+    'il nome è il contenuto: non va nella classe attenuata riservata ai riferimenti');
+
+  // L'identificatore NON si butta: distingue due entità che si chiamano
+  // uguale, e resta nel monospazio attenuato.
+  const identificatore = corpo.querySelector('.text-mono');
+  assert.equal(identificatore.textContent, 'climate.bagno_1p_t_bagno_1p_t');
+
+  // Con un nome vero non si dichiara niente: la parola «identificatore»
+  // esiste per quando il nome MANCA, non come decorazione fissa.
+  assert.doesNotMatch(corpo.textContent, /identificatore/i);
+});
+
+test('seam _rendiOggetti: senza nome la riga mostra l\'id DICENDO che è un id, e non lo inventa', () => {
+  // Mutazione dichiarata, ESEGUITA (transcript nel rapporto): togliere la
+  // riga `if (d.technical) head.appendChild(el('span', 'field-hint',
+  // SUBJECT_IS_ID));` da `factLine` fa arrossire `assert.match(testa, ...)`
+  // qui sotto — l'entity_id torna a passare per un nome.
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisWatcherRoute._rendiOggetti(corpo, [{
+    id: 1, genere: 'funzionamento', protagonista: 'climate.bagno_1p_t_bagno_1p_t',
+    inizio_ts: 1755270600, fine_ts: 1755277500,
+    corpo: { stato: 'heat' },
+  }], null);
+
+  const testa = corpo.textContent;
+  assert.match(testa, /identificatore/i,
+    'quando il nome manca, la riga deve DIRE che quello che mostra è un identificatore');
+  assert.match(testa, /climate\.bagno_1p_t_bagno_1p_t/,
+    'l\'identificatore si mostra: non si tace la riga');
+
+  // Non si inventa un nome dall'id: nessuna capitalizzazione, nessuna
+  // sostituzione degli underscore.
+  assert.doesNotMatch(testa, /Bagno 1p/,
+    'un nome dedotto dall\'entity_id sarebbe un\'invenzione, non un nome');
+
+  // E la riga resta una riga: il fatto (periodo + stato) c'è comunque.
+  const paragrafi = Array.from(corpo.querySelectorAll('p'));
+  assert.ok(paragrafi.some((p) => /→/.test(p.textContent) && /heat/.test(p.textContent)),
+    'senza nome il fatto si legge lo stesso: la riga non diventa muta');
+});
+
+test('seam _rendiOggetti: un guasto col suo titolo non viene dichiarato identificatore (ne ha già uno leggibile)', () => {
+  // Mutazione dichiarata, ESEGUITA: far tornare `technical: true` anche per il
+  // ramo `integrazione` di `describeWatchedSubject` fa arrossire
+  // `assert.doesNotMatch` qui sotto — la parola comparirebbe accanto a un
+  // nome che c'è già.
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisWatcherRoute._rendiOggetti(corpo, [{
+    id: 1, genere: 'guasto', protagonista: 'integrazione:01K2CK4GG287VKK18M5J788MRQ',
+    inizio_ts: 1755270600, fine_ts: null,
+    corpo: { stato: 'setup_retry', dominio: 'lifx', titolo: 'Abat-jour' },
+  }], null);
+  assert.match(corpo.textContent, /Abat-jour/);
+  assert.doesNotMatch(corpo.textContent, /identificatore/i);
+});
+
+test('seam _rendiOsservate: un entity_id nudo viene dichiarato per quello che è (l\'endpoint non porta nomi)', () => {
+  // Mutazione dichiarata, ESEGUITA: togliere la riga
+  // `if (d.technical) li.appendChild(...)` da `renderAspectGroup` fa arrossire
+  // `assert.match(riga.textContent, /identificatore/i)`.
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisWatcherRoute._rendiOsservate(corpo, [
+    { soggetto: 'binary_sensor.movimento_cucina', gamba: 'comfort', provenienza: 'pavimento' },
+  ]);
+  const riga = corpo.querySelector('ul > li');
+  assert.match(riga.textContent, /identificatore/i,
+    '`/api/mind/watching` non porta nomi: quello che si mostra è un id, e va detto');
+  assert.match(riga.textContent, /binary_sensor\.movimento_cucina/,
+    'l\'id non si butta e non si tace: si mostra dichiarandolo');
+  assert.doesNotMatch(riga.textContent, /Movimento Cucina/,
+    'nessun nome dedotto dall\'id');
+});

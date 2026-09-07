@@ -216,7 +216,17 @@ class Watcher:
                 a=new_state.get("state"),
                 device_class=_text_or_none(attributes.get("device_class")),
                 state_class=_text_or_none(attributes.get("state_class")),
-                source_type=_text_or_none(attributes.get("source_type")))
+                source_type=_text_or_none(attributes.get("source_type")),
+                # Il nome amichevole si SALVA qui, non si risolve dopo: fra
+                # sei mesi l'entita' puo' non esistere piu' e l'oggetto
+                # resta (i `cambi` vivono 22 giorni, gli `oggetti` finche'
+                # l'utente non li cancella -- vedi `store.py::_migration_5`).
+                # Costa zero: `attributes` e' gia' letto qui sopra e gia'
+                # spremuto per le tre classi. E' la stringa che Home
+                # Assistant ha GIA' composto (`helpers/entity.py:1161` ->
+                # `entity_registry.py:592-603` @ `2026.9.1`), non una
+                # ricomposta da noi da `name`/`original_name`/dispositivo.
+                friendly_name=_text_or_none(attributes.get("friendly_name")))
             self._watched[str(eid)] = which
             return True
         except Exception as error:
