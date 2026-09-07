@@ -59,7 +59,26 @@ handler, lettura del frontend che la mostra) prima di dichiararli.
   risposta di chat quando il backend fallisce -- non il resto del file, che e'
   runner per il modello), `api/handlers_chat.py` (i tre `web.json_response`
   con un `error`/`message` letterale -- non il `logger.warning` alla riga 423,
-  che e' un log).
+  che e' un log), `action/actuator.py` (`_BLIND_MIRROR`, `_NO_TARGET_
+  RESOLVER`, `_not_seen`, `_CHANGED_NOT_SHOWABLE`, `_NO_STATE_TO_REREAD`, e
+  il log di `_open_listen` -- **non** il resto del file: `_states`,
+  `_preview`, `_record`, `_no_change`, l'esecuzione vera e propria, che sono
+  log o campi della cronaca che la pagina non rende).
+
+**Rilievo R2 della revisione indipendente (07/09), chiuso.** Il confine
+dichiarava `action/actuator.py` fuori sorveglianza per intero, e sei
+stringhe della sua cronaca (`errore`/`avviso`) uscivano verbatim su Impegni
+(«Cosa e' cambiato», `agenda-route.js:228,238`) e come `motivo` di un `fai`
+fallito (`agenda-route.js:259`). Corrette le sei elisioni, e allargato
+`SORVEGLIATO` alle funzioni che le portano davvero -- **non** a tutto il
+file: `_states`/`_preview`/`_record`/`_no_change`/l'esecuzione restano
+fuori, log e campi che la pagina non rende. Riscansionate le 189 stringhe
+fuori registro degli altri 31 file (stessa regex, fuori da `SORVEGLIATO`):
+sono log con segnaposto (`%s`/`%r`/`%d`), prompt di sistema, o `{"errore":
+...}` che torna al modello attraverso `ToolDispatcher` -- **nessun'altra**
+raggiunge uno schermo. `mind/baseline.py` (`"chi c'e'"`, quattro occorrenze)
+resta fuori per la stessa ragione gia' scritta sopra: la pagina lo rende con
+`ASPECT_LABEL` (`watcher-route.js:136`, «Chi c'è»), mai verbatim.
 
 **Il limite dichiarato.** Questa lista e' stata costruita leggendo il
 codice l'8/09/2026, non derivata da un criterio che il codice esponga: non
@@ -128,6 +147,22 @@ SORVEGLIATO: dict[str, tuple[tuple[int, int], ...] | None] = {
         (498, 502),    # nessun altro provider dopo la scadenza del ponte
         (753, 756),    # 409, risposta gia' in arrivo
         (808, 817),    # nessun provider AI configurato
+    ),
+    # Rilievo R2 della revisione indipendente sul tratto `v3.22.2..HEAD`:
+    # il confine dichiarava questo file fuori sorveglianza per intero, ma sei
+    # stringhe della cronaca (`errore`/`avviso`) escono verbatim su Impegni
+    # («Cosa e' cambiato», `agenda-route.js:228,238`) e come `motivo` di un
+    # `fai` fallito (`agenda-route.js:259`, che legge `esito.errore`). Le
+    # altre funzioni del file (`_states`, `_preview`, `_record`, l'esecuzione
+    # vera e propria) restano fuori: sono log, o campi che la cronaca porta
+    # ma la pagina non rende (`entity_before`/`entity_after`).
+    "action/actuator.py": (
+        (133, 135),    # _BLIND_MIRROR
+        (146, 149),    # _NO_TARGET_RESOLVER
+        (180, 185),    # _not_seen
+        (198, 202),    # _CHANGED_NOT_SHOWABLE
+        (213, 215),    # _NO_STATE_TO_REREAD
+        (523, 525),    # _open_listen: l'annuncio di ascolto assente
     ),
 }
 
@@ -208,4 +243,30 @@ def test_la_guardia_arrossisce_davvero_su_un_elisione_dritta_iniettata():
 
     assert any("ultima richiesta" in d for d in difetti), (
         "la guardia non ha visto l'elisione iniettata: e' cieca, non verde per merito"
+    )
+
+
+def test_la_guardia_vede_davvero_dentro_actuator_appena_allargata():
+    """Rilievo R2 della revisione indipendente sul tratto `v3.22.2..HEAD`:
+    non basta che `action/actuator.py` compaia in `SORVEGLIATO` -- se gli
+    intervalli fossero sbagliati (spostati, invertiti, o puntati su righe di
+    commento) la prova sopra resterebbe verde senza guardare davvero le
+    frasi che finiscono su Impegni. Stessa disciplina della mutazione su
+    `model_resolution.py`: si inietta l'errore vero -- lo stesso che questa
+    correzione ha tolto da `_BLIND_MIRROR` -- in una stringa mai scritta su
+    disco, dentro l'intervallo dichiarato per la funzione."""
+    intatto = (APP / "action" / "actuator.py").read_text(encoding="utf-8")
+    assert "l’inventario delle entita'" in intatto, (
+        "questo test presuppone che _BLIND_MIRROR sia gia' corretto: se "
+        "questa asserzione fallisce, la correzione R2 e' stata disfatta altrove"
+    )
+    mutato = intatto.replace("l’inventario delle entita'", "l'inventario delle entita'", 1)
+    assert mutato != intatto
+
+    difetti = _elisioni_dritte(mutato, "actuator.py", SORVEGLIATO["action/actuator.py"])
+
+    assert any("inventario" in d for d in difetti), (
+        "la guardia non ha visto l'elisione iniettata dentro l'intervallo di "
+        "_BLIND_MIRROR: gli estremi dichiarati in SORVEGLIATO non coprono la "
+        "riga vera, o non la coprivano mai"
     )

@@ -1244,7 +1244,7 @@ async def test_l_esito_di_una_notifica_e_onesto_non_una_misura_inventata():
     assert esito["dopo"] == {}
     assert esito["cambiato"] == []
     avviso = esito["avviso"].lower()
-    assert "non c'era nessuno stato da rileggere" in avviso
+    assert "non c’era nessuno stato da rileggere" in avviso
     for parola in ("ho aspettato", "secondi", "cambiamento"):
         assert parola not in avviso, (
             f"l'avviso contiene «{parola}»: e' il linguaggio di un'attesa "
