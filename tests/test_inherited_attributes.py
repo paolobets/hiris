@@ -378,20 +378,53 @@ def test_the_three_dead_keys_have_no_callers_left():
     Si guardano le STRINGHE LETTERALI, non i commenti: la prosa che racconta
     perche' sono morte deve poter restare.
 
+    ## Le due omonimie legittime, dichiarate invece che tollerate
+
+    Dalla fetta dell'azione (07/09/2026) due di queste parole compaiono di
+    nuovo nel prodotto, e **nessuna delle due e' un attributo di entita'**:
+
+    - `type_vocabulary.py`, `"hvac_mode"` -- il PARAMETRO del servizio
+      `climate.set_hvac_mode` (e di `climate.set_temperature`), che esiste
+      eccome: e' proprio perche' la modalita' e' lo `state` che si cambia con
+      un servizio invece che scrivendo un attributo;
+    - `queries.py`, `"color_temp"` -- il tipo di SELETTORE che Home Assistant
+      pubblica per `light.turn_on.color_temp_kelvin`
+      (`selector: {color_temp: {unit: kelvin, min: 2000, max: 6500}}`), non
+      l'attributo morto omonimo.
+
+    **Si dichiarano con il conteggio esatto**, la stessa disciplina delle
+    istantanee di `test_preposizioni_italiane.py`: una seconda occorrenza
+    nello stesso file fa arrossire, e un'occorrenza che sparisce pure -- una
+    deroga dimenticata sarebbe silenziosa quanto il difetto che copriva.
+
     Mutazione (eseguita): rimettere `"hvac_mode"` fra gli attributi di stato di
     `climate` nel vocabolario -- il test torna rosso nominando file e riga."""
     dead = {"hvac_mode", "color_temp", "reports_position"}
+    # (file, parola) -> quante volte, e perche' non e' l'attributo morto.
+    omonimie = {
+        ("type_vocabulary.py", "hvac_mode"): 1,   # parametro di climate.set_hvac_mode
+        ("queries.py", "color_temp"): 1,          # tipo di selettore di Home Assistant
+    }
     found = []
+    conteggio = {}
     for path in sorted((pathlib.Path(__file__).resolve().parents[1]
                         / "hiris" / "app").rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if (isinstance(node, ast.Constant) and isinstance(node.value, str)
                     and node.value in dead):
+                chiave = (path.name, node.value)
+                if chiave in omonimie:
+                    conteggio[chiave] = conteggio.get(chiave, 0) + 1
+                    continue
                 found.append(f"{path.name}:{node.lineno} {node.value!r}")
     assert found == [], (
         "chiavi morte nel sorgente di Home Assistant ancora chieste dal "
         f"prodotto: {found}")
+    assert conteggio == omonimie, (
+        f"le omonimie dichiarate sono {omonimie} e nel codice ce ne sono "
+        f"{conteggio} -- se ne e' nata una in piu' non e' piu' l'omonimia "
+        "dichiarata e va guardata; se ne e' sparita una, togli la riga")
 
 
 def test_the_hand_written_allow_list_is_gone_for_good():

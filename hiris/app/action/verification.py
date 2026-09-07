@@ -15,16 +15,58 @@ futuro non lo scambi per una dimenticanza:
   varieta' e' grande: una validazione approssimativa RIFIUTEREBBE chiamate
   legittime, che e' peggio di lasciar passare un valore che Home Assistant
   rigetta con un errore chiaro. Il modello lo legge e si corregge.
-- **le capacita' fini** (`supported_features`: questa luce si attenua?).
-  Il controllo sul dominio copre il caso grosso. Il fine richiede di
-  interpretare bitmask dominio per dominio: sta nella fetta dei costruttori,
-  che ne ha piu' bisogno.
 - **i parametri di un servizio il cui `fields` non e' leggibile.** Il registro
   li normalizza a `None` invece di indovinarli, e qui `None` non diventa
   «nessun parametro»: il controllo si salta. Rifiutare su cio' che non si e'
   potuto misurare significherebbe dire «non accetta parametri» a un servizio
   che ne ha -- e, se la forma vera di `/api/services` fosse quella, dirlo di
   ogni servizio della casa.
+
+**Le capacita' fini, invece, ADESSO si verificano** -- e fino al 07/09/2026
+erano il terzo punto di questo elenco, con la ragione «il fine richiede di
+interpretare bitmask dominio per dominio». **Quella ragione non vale piu', e
+non perche' qualcuno abbia imparato a leggere le bitmask: perche' non serve.**
+Home Assistant pubblica lui stesso, campo per campo, un `filter` che dichiara
+a quali entita' quel parametro si applica, e lo fa nominando l'attributo da
+guardare (`supported_color_modes`) o il bit (`32`) -- gia' risolto in numero.
+Nessuna tabella nostra, nessun dominio da interpretare: la regola di confronto
+e' trascritta dal frontend di Home Assistant in `action/registry.field_applies`,
+con la fonte citata riga per riga.
+
+Quindi «cambia colore alla presa della lavatrice» -- e, piu' finemente,
+«cambia colore a una luce che fa solo acceso/spento» -- si rifiuta QUI, con
+una frase che dice perche', invece di partire e tornare come errore tecnico di
+Home Assistant.
+
+**E questa funzione resta pura.** Il `filter` va confrontato con gli attributi
+dell'entita', che sono un dato vivo -- ma quel dato **arriva gia' da fuori**:
+e' `stati`, lo specchio che il chiamante passa e che dalla fetta
+dell'eredita' (07/09/2026) porta le ceste degli attributi. E' la stessa forma
+del giro in due tempi dei bersagli, scritta piu' sotto: la parte che dice di
+no resta UNA e non chiama nessuno, chi ha la casa gliela consegna. Le prove di
+questo file continuano a girare senza Home Assistant.
+
+**Tre cose che il controllo sulle capacita' NON fa**, dichiarate perche' un
+lettore futuro non le scambi per dimenticanze:
+
+- **non verifica i VALORI**, e la prima riga di questo elenco resta vera:
+  `light.turn_on` con `color_temp_kelvin: 8000` passa. Il selettore generico
+  di Home Assistant si ferma a 6500 K, ma l'Alberello dichiara
+  `max_color_temp_kelvin: 9000` -- **vince l'entita'**, il selettore descrive
+  il campo di un cursore, non il dispositivo. Chi restringesse sul selettore
+  negherebbe una temperatura che quella lampadina sa fare davvero. I limiti
+  veri escono verso il modello dalla vista di `guarda`
+  (`home_space/queries.commands_for`), che li prende dall'entita';
+- **non rifiuta su cio' che non si e' potuto misurare**: `field_applies`
+  risponde `None` e qui `None` non diventa un no. Stessa disciplina di
+  `fields` due paragrafi sotto;
+- **su un bersaglio con piu' entita' si rifiuta solo se NESSUNA accetta quel
+  parametro** -- e' la stessa regola che Home Assistant applica per decidere
+  se disegnare il campo (`.some(...)`). Un bersaglio misto («abbassa le luci
+  del salotto», dove tre sanno attenuarsi e due no) passa, e le due che non
+  sanno le rifiuta Home Assistant una per una. **E' un limite dichiarato**:
+  qui non c'e' ancora una cesta «entita' a cui questo parametro non si
+  applica» accanto a `scartate` e `sconosciute`.
 
 **I bersagli che non sono entita' (area, piano, etichetta, dispositivo).**
 Fino alla fetta «i bersagli» questa funzione li rifiutava, e il difetto non
@@ -88,6 +130,9 @@ serve ADESSO (la notifica dello Schedulatore), non un'ipotesi sul resto.
 from dataclasses import dataclass, field
 
 from ..home_space.topology import domain_of
+from ..home_space.type_vocabulary import capability_names
+from ..proxy.entity_cache import disclosable_attributes
+from .registry import field_applies, field_filter
 
 # I servizi di questo dominio si applicano a QUALUNQUE dominio di entita'
 # (`homeassistant.turn_off` spegne luci, prese, media player...). Senza
@@ -307,6 +352,107 @@ def _list(entries, count: int = 12) -> str:
     return ", ".join(entries[:count]) + f" (e altri {len(entries) - count})"
 
 
+def _disclosed(entry) -> dict:
+    """Gli attributi di un'entita' dello specchio, piatti e senza credenziali.
+
+    `entity_cache.disclosable_attributes` e non una lettura diretta delle
+    ceste: chi cerca `supported_color_modes` per nome non deve sapere in quale
+    cesta sta, ed e' la stessa porta che usano lo stato leggibile e l'impronta
+    di un'azione. Un'entita' che lo specchio non ha (o che porta una forma che
+    nessuno sa leggere) risponde `{}`, che `field_applies` traduce in «non
+    l'ho potuto misurare» -- mai in un no.
+    """
+    if not isinstance(entry, dict):
+        return {}
+    return disclosable_attributes(entry.get("attributes"))
+
+
+def _who(entities: tuple[str, ...] | list) -> str:
+    """Come si nomina, in un rifiuto, cio' che non accetta un parametro."""
+    if len(entities) == 1:
+        return f"«{entities[0]}»"
+    return f"nessuna delle {len(entities)} entita' che questo bersaglio tocca"
+
+
+def _declares(name: str, pictures: list[dict]) -> str:
+    """Cosa le entita' bersagliate dichiarano DAVVERO in quell'attributo.
+
+    Non e' un ornamento del messaggio: senza, il rifiuto dice cosa serviva e
+    non cosa c'e', e il modello non ha da cosa correggersi. Con una entita'
+    sola si nomina il suo valore; con piu' di una si dice che nessuna
+    corrisponde, perche' elencarne quindici sarebbe un muro.
+    """
+    dichiarati = sorted({str(v) for p in pictures if name in p
+                         for v in (p[name] if isinstance(p[name], (list, tuple))
+                                   else [p[name]])})
+    if not dichiarati:
+        return f"e {'questa' if len(pictures) == 1 else 'nessuna di loro'} non lo dichiara affatto"
+    if len(pictures) == 1:
+        return f"e questa dichiara {_list(dichiarati)}"
+    return f"e quelle che lo dichiarano valgono {_list(dichiarati)}"
+
+
+def _unmet_reason(key: str, reading: str, domain: str, detail,
+                  entities, pictures: list[dict]) -> str:
+    """Perche' questo parametro non si applica a queste entita', in parole.
+
+    Legge il `filter` che Home Assistant pubblica e lo dice: quale attributo
+    guarda, quali valori ammette, cosa c'e' invece. La forma per capacita' usa
+    i nomi dei bit dell'anagrafe dei tipi quando ci sono
+    (`capability_names`) -- «sa fare la transizione» invece di «il bit 32» --
+    e ripiega sul numero quando per quel dominio non ne abbiamo una tabella
+    verificata alla fonte: un numero vero vale piu' di un nome inventato.
+    """
+    reading_filter = field_filter(detail) or {}
+    per_attribute = reading_filter.get("attribute")
+    if isinstance(per_attribute, dict) and per_attribute:
+        name, admitted = min(per_attribute.items())
+        ammessi = _list([str(v) for v in admitted]) if isinstance(admitted, list) else "?"
+        return (f"«{key}» di «{reading}» non si applica a {_who(entities)}: Home "
+                f"Assistant offre questo parametro solo alle entita' il cui "
+                f"«{name}» vale una fra {ammessi}, {_declares(name, pictures)}. "
+                f"Guarda l'entita' con «view»: sotto «comandi» c'e' cosa accetta "
+                f"davvero.")
+    bits = [b for b in reading_filter.get("supported_features") or []
+            if isinstance(b, int) and not isinstance(b, bool)]
+    names = capability_names(domain) or {}
+    detti = [names[b] for b in bits if b in names]
+    serve = _list(detti) if detti else _list([str(b) for b in bits])
+    return (f"«{key}» di «{reading}» non si applica a {_who(entities)}: Home "
+            f"Assistant offre questo parametro solo alle entita' che dichiarano "
+            f"{serve}, e {'questa' if len(entities) == 1 else 'nessuna di loro'} "
+            f"non lo fa. Guarda l'entita' con «view»: sotto «comandi» c'e' cosa "
+            f"accetta davvero.")
+
+
+def _capability_refusal(reading: str, domain: str, definition: dict, data: dict,
+                        entities, states: dict[str, dict]) -> str:
+    """Il rifiuto sulle capacita' fini, o stringa vuota se non c'e' niente da
+    dire.
+
+    Si chiama nei DUE punti in cui l'elenco definitivo delle entita' esiste --
+    il bersaglio di sole entita', e il bersaglio risolto da Home Assistant --
+    e non e' un doppione: e' una funzione sola chiamata due volte, come
+    `verification()` stessa viene richiamata intera dopo la risoluzione
+    invece di farsi aggiungere un pezzo. Scriverne una copia in ciascun ramo
+    sarebbe la seconda casa che questo prodotto passa il tempo a chiudere.
+
+    Si rifiuta **solo quando nessuna** delle entita' bersagliate accetta il
+    parametro (`is not False` su tutte e tre le risposte possibili): un `True`
+    o anche un solo `None` -- «non l'ho potuto misurare» -- lasciano passare.
+    """
+    fields = definition.get("fields")
+    if not isinstance(fields, dict) or not entities or not data:
+        return ""
+    pictures = [_disclosed(states.get(eid)) for eid in entities]
+    for key in data:
+        detail = fields.get(key)
+        if any(field_applies(detail, picture) is not False for picture in pictures):
+            continue
+        return _unmet_reason(key, reading, domain, detail, entities, pictures)
+    return ""
+
+
 def verification(call: dict, registry, states: dict[str, dict],
              *, resolved: dict | None = None) -> Verdict:
     """Il verdetto su una chiamata. `risolto` e' cio' che Home Assistant ha
@@ -406,7 +552,13 @@ def verification(call: dict, registry, states: dict[str, dict],
 
     if set(ha_target) == {"entity_id"}:
         # Il caso di sempre: il modello ha detto esattamente cosa toccare, e
-        # non c'e' niente da risolvere.
+        # non c'e' niente da risolvere. Le capacita' fini si guardano QUI,
+        # dove l'elenco delle entita' e' gia' definitivo: e' il primo dei due
+        # punti in cui `_capability_refusal` viene chiamata.
+        rejection = _capability_refusal(reading, domain, definition, data,
+                                        nominate, states)
+        if rejection:
+            return _no(rejection)
         return Verdict(ok=True, domain=domain, service=name,
                         entity=tuple(nominate), target=ha_target)
 
@@ -458,6 +610,13 @@ def verification(call: dict, registry, states: dict[str, dict],
                    f"questo bersaglio contiene non hanno uno stato in questa casa "
                    f"(disabilitate, o non caricate): non c'e' niente che io possa "
                    f"toccare e poi rileggere.")
+
+    # Il secondo punto in cui l'elenco e' definitivo: dopo la risoluzione di
+    # Home Assistant, e sulle sole entita' TENUTE -- non su quelle scartate
+    # per dominio o senza stato, che non verranno toccate comunque.
+    rejection = _capability_refusal(reading, domain, definition, data, tenute, states)
+    if rejection:
+        return _no(rejection)
 
     return Verdict(ok=True, domain=domain, service=name, entity=tuple(tenute),
                     target=ha_target, scartate=tuple(scartate),

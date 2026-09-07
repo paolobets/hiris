@@ -386,10 +386,14 @@ VIEW_TOOL_DEF = {
         "la realta'): entrambe compaiono SOLO quando c'e' qualcosa da dire "
         "-- mai `capacita': []` ne' `stato_presunto: false`. Il dettaglio "
         "di UNA entita' sola puo' portare anche `attributi`, che raccoglie "
-        "TUTTO cio' che Home Assistant espone di quell'entita', in quattro "
-        "ceste: `campo_di_manovra` (cosa si puo' chiederle e dentro quali "
+        "TUTTO cio' che Home Assistant espone di quell'entita', in cinque "
+        "ceste: `campo_di_manovra` (cosa si puo' IMPORRE e dentro quali "
         "limiti -- `hvac_modes`, `min_temp`/`max_temp`, `effect_list`, "
-        "`options`, `source_list`), `valori` (com'e' adesso -- luminosita', "
+        "`select.options`, `source_list`), `valori_che_puo_assumere` (cosa lo "
+        "stato di quell'entita' potra' VALERE -- `sensor.options`, "
+        "`event.event_types`: NON e' un elenco di comandi, un sensore non si "
+        "comanda e chiedergli uno di quei valori non e' un'azione possibile), "
+        "`valori` (com'e' adesso -- luminosita', "
         "temperatura letta, titolo del brano), `non_interpretati` (attributi "
         "che l'integrazione manda e di cui NESSUNA fonte pubblica dichiara "
         "il significato: leggili come dati grezzi, non dedurne cosa "
@@ -401,6 +405,25 @@ VIEW_TOOL_DEF = {
         "non l'ha mandato, non che HIRIS l'ha scartato. Mai nelle liste "
         "di un'area o di un dispositivo, dove sarebbe rumore su decine di "
         "cose alla volta. "
+        "Il dettaglio di UNA entita' sola porta anche `comandi`: COSA PUOI "
+        "CHIEDERLE, servizio per servizio, gia' filtrato su questa entita' "
+        "precisa. Sotto ogni servizio c'e' `parametri`, e ci sono SOLO i "
+        "parametri che Home Assistant dichiara applicabili a lei: se "
+        "`rgb_color` non c'e' sotto `light.turn_on`, quella luce non fa "
+        "colore e chiederlo verrebbe rifiutato. Ogni parametro puo' portare "
+        "`minimo`/`massimo`/`passo`/`unita` oppure `valori` (l'elenco di "
+        "quelli legali, tagliato con `altri_valori` quando e' lunghissimo), e "
+        "accanto `limiti_da`/`valori_da`, che dice da dove vengono: "
+        "«questa entita'» sono i limiti VERI del dispositivo, «il servizio» "
+        "sono quelli generici del cursore di Home Assistant, uguali per tutta "
+        "la casa -- quando ci sono entrambi vincono i primi, e sono quelli "
+        "scritti. Un parametro con `{}` esiste e non ha limiti noti: si puo' "
+        "usare. `parametri: {}` vuol dire che quel servizio non ne accetta "
+        "nessuno (`light.turn_off`); `parametri_non_letti: true` vuol dire "
+        "che il servizio c'e' ma i suoi parametri non si sono potuti leggere "
+        "-- non che non ne abbia. Guarda qui PRIMA di provare un parametro a "
+        "caso: e' l'unica risposta che tiene conto di cosa questa entita' sa "
+        "fare davvero. Ci sono solo i servizi del dominio dell'entita'. "
         "Le liste `entita` di un'area o di un dispositivo NON includono le entità che "
         "l'utente ha nascosto dalle proprie viste in Home Assistant: non proporle mai di "
         "tua iniziativa quando descrivi cosa c'è in una stanza o su un dispositivo. Se ce "
@@ -693,7 +716,14 @@ EXECUTE_TOOL_DEF = {
         "o l'etichetta che hai nominato non esistono, o se un "
         "parametro non appartiene a quel servizio, ricevi un errore che dice "
         "cosa esiste davvero -- usalo per correggerti invece di riprovare "
-        "uguale. Con un bersaglio risolto l'esito porta anche `bersaglio`, che "
+        "uguale. La verifica arriva fino alle CAPACITA' di quell'entita': un "
+        "parametro che il servizio ha ma che Home Assistant non offre a "
+        "questa entita' (il colore su una luce che fa solo acceso/spento, la "
+        "transizione su una che non la sa fare) viene rifiutato qui, con la "
+        "ragione detta. Per non arrivarci, guarda l'entita' con `view`: sotto "
+        "`comandi` c'e' cosa accetta davvero, coi limiti veri del "
+        "dispositivo. "
+        "Con un bersaglio risolto l'esito porta anche `bersaglio`, che "
         "dice cosa conteneva (`risolte`), su cosa la chiamata e' partita "
         "(`toccate`) e cosa e' rimasto fuori perche' di un altro dominio o "
         "senza stato: se `toccate` e' piu' corto di `risolte`, dillo all'utente "
@@ -1965,7 +1995,21 @@ class ToolDispatcher:
                                       reported_units=reported_units,
                                       reported_classes=reported_classes,
                                       reported_since_when=reported_since_when,
-                                      reported_attributes=reported_attributes)
+                                      reported_attributes=reported_attributes,
+                                      # Il registro dei servizi: con lui la
+                                      # vista di UNA entita' dice anche cosa
+                                      # le si puo' CHIEDERE, coi limiti veri
+                                      # -- quelli dell'entita', non quelli
+                                      # del cursore generico del servizio
+                                      # (spec §13). Non si scalda qui: e' gia'
+                                      # in memoria e si invalida da se' sugli
+                                      # eventi `service_registered`/
+                                      # `service_removed`, quindi questa
+                                      # vista non costa nessun giro di rete.
+                                      # `None` e' legittimo -- `guarda` resta
+                                      # una lettura, e non deve fallire
+                                      # perche' l'azione non e' cablata.
+                                      registry=self._registry)
         # Senza inventario leggibile ogni `stato: None` sarebbe ambiguo fra
         # «l'entita' non ha stato» e «non ho potuto guardare»: si dichiara.
         # Fix E1-③: `letto` (la lettura di QUESTA chiamata e' andata a buon
@@ -2009,7 +2053,7 @@ class ToolDispatcher:
         ci sono 22,4 gradi e non sapeva da quando -- non poteva nemmeno dire
         «e' fermo da tre ore». Costa un campo e zero chiamate a Home Assistant.
 
-        `attributi` e' entity_id -> le quattro ceste che
+        `attributi` e' entity_id -> le cinque ceste che
         `entity_cache.inherited_attributes` costruisce (cosa l'entita' puo'
         fare, com'e' adesso, cio' di cui nessuna fonte dichiara il
         significato, le credenziali) e che questo specchio buttava, su OGNI

@@ -92,6 +92,131 @@ def _fields(reading) -> dict | None:
     return piatti
 
 
+# --------------------------------------------------------------------------
+# IL `filter` DI HOME ASSISTANT: a quali entita' un parametro si applica
+# --------------------------------------------------------------------------
+#
+# Ogni campo di `/api/services` puo' portare un `filter`, ed e' **Home
+# Assistant a dichiarare a quali entita' quel parametro si applica** -- non lo
+# deduciamo noi. Due forme sole, e sono quelle che lo schema ammette
+# (`script/hassfest/services.py:57-66` al tag `2026.9.1`, `vol.Exclusive`):
+#
+#   filter: {attribute: {supported_color_modes: [color_temp, hs, ...]}}
+#   filter: {supported_features: [32]}
+#
+# Nello YAML del componente i valori sono NOMI (`light.LightEntityFeature.
+# EFFECT`); l'API li consegna gia' risolti in interi
+# (`homeassistant/helpers/service.py:156-181`, `validate_supported_feature`).
+# Misurato su questa casa il 07/09/2026: 52 campi con filtro su 604, 30 per
+# capacita' e 22 per attributo, e ogni valore un intero o una stringa -- mai
+# una forma composta.
+#
+# **La regola di confronto non e' inventata qui**: e' quella che il frontend
+# di Home Assistant applica per decidere se disegnare il campo
+# (`home-assistant/frontend`, tag `20260826.6`, `src/components/
+# ha-service-control.ts:386-424` `_filterField` e `:51-59` `attributeFilter`,
+# piu' `src/common/entity/supports-feature.ts`):
+#
+#   - capacita': `(attributi.supported_features & bit) !== 0` per almeno un
+#     bit dell'elenco -- una MASCHERA, non un'uguaglianza;
+#   - attributo: il nome dev'essere PRESENTE fra gli attributi, e il suo
+#     valore -- o, se e' un elenco, almeno un suo elemento -- dev'essere fra
+#     quelli ammessi. Un valore che e' un dizionario non corrisponde mai;
+#   - fra piu' entita' bersagliate basta che UNA lo accetti (`.some(...)`).
+#     Vale anche per il rifiuto: si dice di no solo quando NESSUNA lo accetta.
+#
+# **Perche' `field_applies` ha TRE esiti e non due.** `None` non e' «no»:
+# significa «non l'ho potuto misurare» -- il dettaglio non e' leggibile, il
+# filtro e' in una forma che non conosciamo, o dell'entita' non abbiamo nessun
+# attributo. E' la stessa disciplina che questo modulo usa gia' per `fields`
+# (`{}` e `None` non sono la stessa cosa) e che `action/verification.py`
+# dichiara per i parametri: **su cio' che non si e' potuto misurare non si
+# rifiuta**, perche' rifiutare una chiamata legittima e' peggio che lasciar
+# passare un valore che Home Assistant rigetta con un errore chiaro.
+
+
+def field_filter(reading) -> dict | None:
+    """Il `filter` di un campo, o `None` se non ne ha uno leggibile.
+
+    Sta qui e non nella verifica per la stessa ragione di `_fields`: questo
+    modulo e' l'unico posto in cui la forma di `/api/services` va capita. Chi
+    lo interroga riceve un dizionario o un `None`, mai una forma da
+    indovinare.
+    """
+    if not isinstance(reading, dict):
+        return None
+    reading = reading.get("filter")
+    return reading if isinstance(reading, dict) else None
+
+
+def _attribute_matches(admitted, value) -> bool:
+    """La regola di `attributeFilter` del frontend, trascritta.
+
+    Un elenco corrisponde se ALMENO UN suo elemento e' fra gli ammessi (una
+    luce `[color_temp, hs]` accetta un parametro che chiede `hs`); un valore
+    singolo corrisponde se e' lui stesso fra gli ammessi; un dizionario non
+    corrisponde mai -- e' la riga `return false` del sorgente, non una
+    dimenticanza.
+    """
+    if not isinstance(admitted, list):
+        return False
+    if isinstance(value, (list, tuple)):
+        return any(item in admitted for item in value)
+    if isinstance(value, dict):
+        return False
+    return value in admitted
+
+
+def field_applies(reading, attributes) -> bool | None:
+    """Se questo parametro si applica a un'entita' con QUESTI attributi.
+
+    `True` sempre quando il campo non dichiara nessun filtro: e' Home
+    Assistant a dire quando un parametro e' ristretto, e il silenzio significa
+    «vale per tutte».
+
+    `None` -- «non l'ho potuto misurare» -- in quattro casi, e nessuno dei
+    quattro e' un no:
+
+    1. il dettaglio del campo non e' un dizionario;
+    2. degli attributi dell'entita' non sappiamo niente (`attributes` vuoto o
+       non leggibile). E' il caso che protegge di piu': uno specchio che non
+       ha ancora visto quell'entita' non deve far dire «questa luce non fa
+       colore»;
+    3. il filtro non porta nessuna delle due chiavi note -- una forma futura
+       non deve poter far rifiutare cio' che oggi passa;
+    4. il filtro chiede una capacita' e l'entita' non dichiara nessun
+       `supported_features` leggibile. **Qui ci si scosta da Home Assistant di
+       proposito**: il frontend nasconderebbe il campo (`undefined & bit` vale
+       zero in JavaScript), noi non rifiutiamo -- nascondere un cursore e
+       negare un comando non costano la stessa cosa, e un'integrazione che non
+       manda quel numero non e' un'integrazione che non sa fare la cosa.
+    """
+    reading = field_filter(reading)
+    if reading is None:
+        return True
+    if not isinstance(attributes, dict) or not attributes:
+        return None
+    known = False
+    features = reading.get("supported_features")
+    if isinstance(features, list):
+        declared = attributes.get("supported_features")
+        # `bool` e' una sottoclasse di `int`: senza l'esclusione `True`
+        # passerebbe per una maschera di bit. Stessa guardia di
+        # `topology.decoded_capabilities`.
+        if isinstance(declared, int) and not isinstance(declared, bool):
+            known = True
+            if any(isinstance(bit, int) and not isinstance(bit, bool) and declared & bit
+                   for bit in features):
+                return True
+    per_attribute = reading.get("attribute")
+    if isinstance(per_attribute, dict):
+        known = True
+        for name, admitted in per_attribute.items():
+            if name in attributes and _attribute_matches(admitted, attributes[name]):
+                return True
+    return False if known else None
+
+
 def _detail(reading) -> dict:
     """Il dettaglio di un servizio, coi suoi `fields` gia' normalizzati.
 

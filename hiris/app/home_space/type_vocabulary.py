@@ -408,6 +408,16 @@ CAPABILITY_ATTRIBUTES_DROPPED = "capability_attributes_dropped"
 #: qui lo sono. Stessa forma, stessa regola: `nome -> ragione scritta`.
 CAPABILITY_ATTRIBUTES_ADDED = "capability_attributes_added"
 
+#: Attributi che Home Assistant classifica come capacita' e che dicono cosa
+#: quell'entita' puo' ASSUMERE, non cosa le si puo' IMPORRE. Stessa forma
+#: delle due sopra: `nome -> ragione scritta`.
+ASSUMABLE_ATTRIBUTES = "assumable_attributes"
+
+#: Per un parametro di servizio, quale attributo di QUESTA entita' porta il
+#: suo limite vero. Il valore e' `parametro -> {"min": ..., "max": ...}`
+#: oppure `parametro -> {"options": ...}`.
+PARAMETER_LIMITS = "parameter_limits"
+
 
 # --------------------------------------------------------------------------
 # La fonte dei campi importati.
@@ -1026,6 +1036,130 @@ _CAPABILITY_ATTRIBUTES_DROPPED: dict[str, dict[str, str]] = {
 }
 
 
+# «COSA PUO' ASSUMERE» NON E' «COSA LE SI PUO' IMPORRE» -- il terzo giudizio
+# nostro, e il piu' pericoloso dei tre perche' il nome non lo tradisce.
+#
+# `SensorEntityCapabilityAttribute.OPTIONS` e
+# `SelectEntityCapabilityAttribute.OPTIONS` si chiamano tutti e due `options`,
+# Home Assistant li classifica tutti e due come capacita', e finche' li si
+# legge sono davvero la stessa sfumatura. **Per chi comanda non lo sono
+# affatto**: su un `select` quei valori si impongono
+# (`select.select_option`), su un `sensor` descrivono soltanto cosa lo `state`
+# potra' valere -- e un sensore non si comanda, non esiste nessun servizio che
+# gli imponga niente.
+#
+# Si separa QUI, alla fonte, e non a valle: chi legge la cesta del campo di
+# manovra non deve sapere che su un dominio quella parola significa un'altra
+# cosa. La cesta e' un'altra (`entity_cache.ASSUMABLE`), il nome che il
+# modello legge e' un altro, e la trascrizione importata resta intatta -- come
+# per `_CAPABILITY_ATTRIBUTES_DROPPED`, il giudizio sta accanto alla fonte,
+# mai dentro.
+#
+# **Due voci e non una, perche' una regola applicata a un caso solo non e' una
+# regola** (la stessa lezione di `text.mode` accanto a `number.mode`). Il
+# criterio e' scritto e verificabile: sono i domini che **nessun servizio
+# comanda** -- `sensor` ha il solo `sensor.set_display_precision`, che tocca
+# la resa e non lo stato, e `event` non ha nessun servizio affatto (misurato
+# su `/api/services` di questa casa, 07/09/2026). Cio' che li' si chiama
+# «capacita'» non e' un campo di manovra: e' l'elenco di cio' che si potra'
+# leggere.
+_ASSUMABLE_ATTRIBUTES: dict[str, dict[str, str]] = {
+    "event": {
+        "event_types": (
+            "i tipi di evento che questa entita' potra' RIPORTARE, non quelli "
+            "che le si possono chiedere: il dominio `event` non ha nessun "
+            "servizio, quindi non c'e' niente da imporgli"),
+    },
+    "sensor": {
+        "options": (
+            "i valori che lo STATO di questo sensore puo' assumere, non quelli "
+            "che gli si possono imporre -- un sensore non si comanda. Stesso "
+            "nome di `select.options`, che invece si impone davvero con "
+            "`select.select_option`: e' la stessa parola per due domande, e "
+            "per chi comanda e' la differenza fra un'azione possibile e una "
+            "impossibile"),
+    },
+}
+
+
+# I LIMITI VERI SONO QUELLI DELL'ENTITA', NON QUELLI DEL SELETTORE.
+#
+# Misurato il 07/09/2026: il selettore che Home Assistant pubblica per
+# `light.turn_on.color_temp_kelvin` dichiara **2000-6500 K**, e
+# `light.alberello` dichiara `min_color_temp_kelvin: 1500`,
+# `max_color_temp_kelvin: 9000`. **Vince l'entita'**: il selettore descrive il
+# campo di un cursore generico -- lo stesso per ogni lampadina della casa --
+# non il dispositivo. Chi si fermasse al selettore negherebbe una temperatura
+# che quella lampadina sa fare davvero.
+#
+# Questa tabella dice, per un parametro di servizio, QUALE attributo
+# dell'entita' porta il limite vero. Due forme sole:
+#
+# - `{"min": ..., "max": ...}` -- un intervallo (`color_temp_kelvin`,
+#   `temperature`, `humidity`, `value`);
+# - `{"options": ...}` -- un elenco di valori legali (`effect`, `hvac_mode`,
+#   `option`, `source`).
+#
+# **Non e' una lista di nomi inventati, ed e' cio' che la rende sorvegliabile**:
+# ogni attributo nominato qui dev'essere una capacita' DICHIARATA da Home
+# Assistant per quel dominio (`_CAPABILITY_ATTRIBUTE_TABLES`), e una prova lo
+# verifica riga per riga. Un refuso non diventa un limite che non esiste: fa
+# arrossire.
+#
+# Provenienza `nostro` e non `importato`: HA pubblica gli attributi e pubblica
+# i selettori, ma non pubblica da nessuna parte QUALE attributo corrisponda a
+# quale parametro -- lo sa il codice del dominio, che clampa, e lo sa il
+# frontend, che riempie il cursore. Il collegamento e' un giudizio, e sta qui
+# dichiarato come tale.
+_PARAMETER_LIMITS: dict[str, dict[str, dict[str, str]]] = {
+    "climate": {
+        "temperature": {"min": "min_temp", "max": "max_temp"},
+        "target_temp_high": {"min": "min_temp", "max": "max_temp"},
+        "target_temp_low": {"min": "min_temp", "max": "max_temp"},
+        "humidity": {"min": "min_humidity", "max": "max_humidity"},
+        "hvac_mode": {"options": "hvac_modes"},
+        "fan_mode": {"options": "fan_modes"},
+        "preset_mode": {"options": "preset_modes"},
+        "swing_mode": {"options": "swing_modes"},
+        "swing_horizontal_mode": {"options": "swing_horizontal_modes"},
+    },
+    "fan": {
+        "preset_mode": {"options": "preset_modes"},
+    },
+    "humidifier": {
+        "humidity": {"min": "min_humidity", "max": "max_humidity"},
+        "mode": {"options": "available_modes"},
+    },
+    "light": {
+        "color_temp_kelvin": {"min": "min_color_temp_kelvin",
+                              "max": "max_color_temp_kelvin"},
+        "kelvin": {"min": "min_color_temp_kelvin",
+                   "max": "max_color_temp_kelvin"},
+        "effect": {"options": "effect_list"},
+    },
+    "media_player": {
+        "source": {"options": "source_list"},
+        "sound_mode": {"options": "sound_mode_list"},
+    },
+    "number": {
+        "value": {"min": "min", "max": "max"},
+    },
+    "select": {
+        "option": {"options": "options"},
+    },
+    "siren": {
+        "tone": {"options": "available_tones"},
+    },
+    "vacuum": {
+        "fan_speed": {"options": "fan_speed_list"},
+    },
+    "water_heater": {
+        "temperature": {"min": "min_temp", "max": "max_temp"},
+        "operation_mode": {"options": "operation_list"},
+    },
+}
+
+
 _STATE_ATTRIBUTE_TABLES: dict[str, frozenset[str]] = {
     "alarm_control_panel": frozenset({
         "code_format", "changed_by", "code_arm_required"}),
@@ -1108,7 +1242,8 @@ _STATE_ATTRIBUTE_TABLES: dict[str, frozenset[str]] = {
 
 
 for _domain in sorted(set(_CAPABILITY_ATTRIBUTE_TABLES)
-                      | set(_STATE_ATTRIBUTE_TABLES)):
+                      | set(_STATE_ATTRIBUTE_TABLES)
+                      | set(_ASSUMABLE_ATTRIBUTES) | set(_PARAMETER_LIMITS)):
     _new_fields: dict[str, Field] = {}
     if _domain in _CAPABILITY_ATTRIBUTE_TABLES:
         _new_fields[CAPABILITY_ATTRIBUTES] = Imported(
@@ -1123,6 +1258,10 @@ for _domain in sorted(set(_CAPABILITY_ATTRIBUTE_TABLES)
     if _domain in _CAPABILITY_ATTRIBUTES_DROPPED:
         _new_fields[CAPABILITY_ATTRIBUTES_DROPPED] = Ours(
             _CAPABILITY_ATTRIBUTES_DROPPED[_domain])
+    if _domain in _ASSUMABLE_ATTRIBUTES:
+        _new_fields[ASSUMABLE_ATTRIBUTES] = Ours(_ASSUMABLE_ATTRIBUTES[_domain])
+    if _domain in _PARAMETER_LIMITS:
+        _new_fields[PARAMETER_LIMITS] = Ours(_PARAMETER_LIMITS[_domain])
     if _vocabulary.row(_domain) is None:
         _vocabulary.add(_domain, **_new_fields)
     else:
@@ -1268,9 +1407,61 @@ def capability_attributes(domain: str) -> frozenset[str]:
     """
     own = _vocabulary.value(domain, None, CAPABILITY_ATTRIBUTES, frozenset())
     dropped = _vocabulary.value(domain, None, CAPABILITY_ATTRIBUTES_DROPPED, {})
-    return ((frozenset(own) - frozenset(dropped))
+    return ((frozenset(own) - frozenset(dropped) - assumable_attributes(domain))
             | UNIVERSAL_CAPABILITY_ATTRIBUTES.value
             | frozenset(UNIVERSAL_CAPABILITY_ATTRIBUTES_ADDED.value))
+
+
+def assumable_attributes(domain: str) -> frozenset[str]:
+    """**Metrica 4, terza meta'** -- i nomi degli attributi che, per questo
+    dominio, dicono cosa l'entita' puo' ASSUMERE: non un campo di manovra, ma
+    l'elenco di cio' che si potra' leggere.
+
+    Non e' una sfumatura di `capability_attributes`, e' il suo opposto per chi
+    comanda: `sensor.options` e `select.options` hanno lo stesso nome e sono
+    la differenza fra un'azione possibile e una impossibile. Vedi
+    `_ASSUMABLE_ATTRIBUTES` per la ragione, scritta voce per voce.
+    """
+    return frozenset(_vocabulary.value(domain, None, ASSUMABLE_ATTRIBUTES, {}))
+
+
+def declared_assumable_attributes() -> Mapping[str, Mapping[str, str]]:
+    """Gli attributi che Home Assistant chiama capacita' e che qui dicono
+    «cosa puo' assumere», **con la ragione scritta di ognuno**. Un'eccezione
+    senza ragione non passa la prova che legge questa vista."""
+    return MappingProxyType({
+        domain: _vocabulary.value(domain, None, ASSUMABLE_ATTRIBUTES)
+        for domain in sorted(_vocabulary.domains())
+        if _vocabulary.value(domain, None, ASSUMABLE_ATTRIBUTES) is not None})
+
+
+def parameter_limits(domain: str, parameter: str) -> Mapping[str, str] | None:
+    """**Metrica 5** -- quale attributo di QUESTA entita' porta il limite vero
+    di un parametro di servizio, o `None` se non lo sappiamo.
+
+    Due forme sole: `{"min": ..., "max": ...}` per un intervallo,
+    `{"options": ...}` per un elenco di valori legali. Vedi
+    `_PARAMETER_LIMITS`: **vince l'entita' sul selettore**, e il selettore
+    generico di `light.turn_on.color_temp_kelvin` (2000-6500 K) contro
+    l'Alberello (1500-9000 K) e' la misura che lo dice.
+
+    `None` e non un dizionario vuoto: «non lo so» e «so che non ne ha» sono
+    due fatti diversi, e su cio' che non si sa non si restringe niente.
+    """
+    per_domain = _vocabulary.value(domain, None, PARAMETER_LIMITS)
+    if per_domain is None:
+        return None
+    return per_domain.get(parameter)
+
+
+def declared_parameter_limits() -> Mapping[str, Mapping[str, Mapping[str, str]]]:
+    """Tutti i collegamenti parametro -> attributo, per la prova che verifica
+    che ogni attributo nominato sia una capacita' DICHIARATA da Home Assistant
+    per quel dominio. Un refuso non diventa un limite che non esiste."""
+    return MappingProxyType({
+        domain: _vocabulary.value(domain, None, PARAMETER_LIMITS)
+        for domain in sorted(_vocabulary.domains())
+        if _vocabulary.value(domain, None, PARAMETER_LIMITS) is not None})
 
 
 def state_attributes(domain: str) -> frozenset[str]:

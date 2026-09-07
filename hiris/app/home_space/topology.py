@@ -190,7 +190,7 @@ def live_mirror(rows) -> tuple[dict[str, str], dict[str, str], dict[str, str],
     sono 22,4 gradi e non sapeva da quando -- non poteva nemmeno dire «e'
     fermo da tre ore». Costa un campo e zero chiamate a Home Assistant.
 
-    `attributi` (entity_id -> le QUATTRO CESTE di `_to_minimal`, quando
+    `attributi` (entity_id -> le CINQUE CESTE di `_to_minimal`, quando
     l'entita' ne ha almeno una) e' il difetto misurato dal proprietario, fetta
     "attributi al modello" (2026-08-25): `entity_cache._to_minimal` raccoglieva
     gia' `hvac_action` e la temperatura di un termostato, e QUESTA funzione --

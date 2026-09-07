@@ -309,7 +309,7 @@ def _fingerprint(entry) -> dict | None:
     unit = entry.get("unit")
     if isinstance(unit, str) and unit.strip():
         fingerprint["unit"] = unit.strip()
-    # `disclosable_attributes` appiattisce le tre ceste che raccontano la
+    # `disclosable_attributes` appiattisce le quattro ceste che raccontano la
     # casa (`capabilities`/`values`/`uninterpreted`) e LASCIA FUORI le
     # credenziali. Non e' prudenza generica: un token di telecamera RUOTA, e
     # confrontarlo farebbe risultare «cambiata» ogni camera a ogni comando --

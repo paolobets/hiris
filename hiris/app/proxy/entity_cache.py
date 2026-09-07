@@ -116,7 +116,7 @@ _domain = domain_of
 
 # --------------------------------------------------------------------------
 # L'EREDITA': tutto cio' che Home Assistant espone di un'entita', separato in
-# quattro ceste invece di essere buttato in tre quarti.
+# cinque ceste invece di essere buttato in tre quarti.
 # --------------------------------------------------------------------------
 #
 # **Cosa c'era prima, e perche' non poteva funzionare.** Fino al 07/09/2026
@@ -150,7 +150,7 @@ _domain = domain_of
 #
 # **Quindi non c'e' piu' nessuna lista di ammessi qui**, e non ce ne puo'
 # tornare una: cio' che arriva viene ereditato per intero e SMISTATO. Le
-# quattro ceste rispondono a domande diverse, e tenerle separate e' la sola
+# cinque ceste rispondono a domande diverse, e tenerle separate e' la sola
 # cosa che questa funzione decide:
 #
 #   `capabilities`   cosa l'entita' PUO' fare -- il campo di manovra
@@ -324,19 +324,28 @@ def _sanitized(value):
     return value
 
 
-#: I nomi delle quattro ceste. Scritti una volta: una cesta cercata con una
+#: I nomi delle cinque ceste. Scritti una volta: una cesta cercata con una
 #: stringa sbagliata risponderebbe «vuota» invece di sbagliare.
 CAPABILITIES = "capabilities"
 VALUES = "values"
 UNINTERPRETED = "uninterpreted"
 CREDENTIALS = "credentials"
 
-#: L'ordine in cui si leggono le tre ceste che possono arrivare al modello.
-_DISCLOSABLE_BASKETS = (CAPABILITIES, VALUES, UNINTERPRETED)
+#: La quinta, nata con la fetta dell'azione (07/09/2026): cosa questa entita'
+#: puo' ASSUMERE, che non e' cosa le si puo' IMPORRE. `sensor.options` e
+#: `select.options` uscivano sotto la stessa etichetta ed erano gia' due cose
+#: diverse -- per chi legge una sfumatura, per chi comanda la differenza fra
+#: un'azione possibile e una impossibile. La separazione e' alla FONTE
+#: (`type_vocabulary.assumable_attributes`), non qui a valle: qui si legge
+#: soltanto il giudizio gia' preso.
+ASSUMABLE = "assumable"
+
+#: L'ordine in cui si leggono le quattro ceste che possono arrivare al modello.
+_DISCLOSABLE_BASKETS = (CAPABILITIES, ASSUMABLE, VALUES, UNINTERPRETED)
 
 
 def inherited_attributes(raw_attributes: dict, domain: str) -> dict[str, dict]:
-    """Gli attributi grezzi di un'entita' -> le quattro ceste.
+    """Gli attributi grezzi di un'entita' -> le cinque ceste.
 
     **Nessun attributo sparisce**: ognuno finisce in una cesta, oppure e' gia'
     uscito da una chiave propria di `_to_minimal` (`friendly_name` -> `name`,
@@ -349,6 +358,7 @@ def inherited_attributes(raw_attributes: dict, domain: str) -> dict[str, dict]:
     della casa.
     """
     capability_names = type_vocabulary.capability_attributes(domain)
+    assumable_names = type_vocabulary.assumable_attributes(domain)
     declared_values = type_vocabulary.state_attributes(domain)
     baskets: dict[str, dict] = {}
     for name, value in raw_attributes.items():
@@ -360,6 +370,14 @@ def inherited_attributes(raw_attributes: dict, domain: str) -> dict[str, dict]:
             basket = CREDENTIALS
         elif name in capability_names:
             basket = CAPABILITIES
+        # I due insiemi sono DISGIUNTI per costruzione -- e' l'anagrafe dei
+        # tipi a togliere dalle capacita' cio' che dichiara assumibile
+        # (`capability_attributes`), non l'ordine di questi rami. Un ordine
+        # che decidesse al posto della fonte renderebbe invisibile una
+        # sovrapposizione: la separazione sta in un posto solo, e qui si
+        # legge il giudizio gia' preso.
+        elif name in assumable_names:
+            basket = ASSUMABLE
         elif name in declared_values:
             basket = VALUES
         else:
@@ -369,11 +387,13 @@ def inherited_attributes(raw_attributes: dict, domain: str) -> dict[str, dict]:
 
 
 def disclosable_attributes(attributes) -> dict:
-    """Le tre ceste che possono arrivare al modello, in un dizionario piatto:
-    capacita', valori correnti e non interpretati. **Le credenziali no.**
+    """Le quattro ceste che possono arrivare al modello, in un dizionario
+    piatto: capacita', cio' che l'entita' puo' assumere, valori correnti e non
+    interpretati. **Le credenziali no.**
 
     Esiste perche' i lettori che devono CERCARE un attributo per nome --
-    `hvac_action` per lo stato leggibile, l'impronta di un'azione -- non
+    `hvac_action` per lo stato leggibile, `supported_color_modes` per sapere
+    se un parametro di servizio si applica, l'impronta di un'azione -- non
     debbano sapere in quale cesta sta: la cesta e' una distinzione per chi
     legge il risultato, non un labirinto per chi legge il codice.
 

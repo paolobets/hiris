@@ -48,9 +48,11 @@ corpo e' vuoto» (un fatto sulla casa: `corpo: {}` o simile).
 """
 from __future__ import annotations
 
+from ..action.registry import field_applies
 from ..memory.resolver import _normalize
 from ..proxy._sanitize import sanitize_text
 from ..proxy.entity_cache import (
+    ASSUMABLE,
     CAPABILITIES,
     UNINTERPRETED,
     VALUES,
@@ -72,6 +74,7 @@ from .topology import (
     labels_with_id,
     translate_state,
 )
+from .type_vocabulary import parameter_limits
 
 # I tipi di comportamento che `guarda` sa mostrare col loro corpo. Un
 # "automazione" e uno "script" sono voci dello stesso elenco
@@ -297,6 +300,13 @@ _RAW_ATTRIBUTES_WITH_THEIR_OWN_DOOR = frozenset({"supported_features", "assumed_
 # QUI, alla fonte del nome, non a valle.
 _BASKET_NAMES = {
     CAPABILITIES: "campo_di_manovra",
+    # «Cosa puo' assumere» non e' «cosa le si puo' imporre», e con una parola
+    # sola sarebbero la stessa cosa: `sensor.options` e `select.options` si
+    # chiamano uguale e Home Assistant li classifica uguale. La separazione e'
+    # alla FONTE (`type_vocabulary._ASSUMABLE_ATTRIBUTES`), qui si legge solo
+    # il nome che ne esce -- e non e' una sfumatura di `campo_di_manovra`, e'
+    # il suo opposto per chi comanda.
+    ASSUMABLE: "valori_che_puo_assumere",
     VALUES: "valori",
     UNINTERPRETED: "non_interpretati",
 }
@@ -386,7 +396,7 @@ def _enrich_entity(entity_detail: dict, entry: dict,
     # farlo condizionale.
     value = entity_detail.get("stato")
     # `disclosable_attributes` e non una lettura diretta: dalla fetta
-    # dell'eredita' (07/09/2026) lo specchio porta QUATTRO ceste
+    # dell'eredita' (07/09/2026) lo specchio porta CINQUE ceste
     # (`capabilities`/`values`/`uninterpreted`/`credentials`), e chi cerca un
     # attributo per nome non deve sapere in quale sta -- ne' inciampare nelle
     # credenziali, che di qui non passano mai.
@@ -683,13 +693,220 @@ def _view_area(home_space: dict, memories: list[dict], state: dict, reference,
     return detail
 
 
+# --------------------------------------------------------------------------
+# I COMANDI: cosa si puo' chiedere a QUESTA entita', e con quali limiti
+# --------------------------------------------------------------------------
+#
+# **Il buco che chiude** (spec §13.2, misurato il 07/09/2026): HIRIS ha il
+# registro dei servizi, lo tiene in memoria e lo invalida da se' sugli eventi
+# `service_registered`/`service_removed` -- **e lo usava solo per RIFIUTARE**.
+# Nessuna porta mostrava al modello i parametri di `light.turn_on`: lui li
+# scopriva sbagliando, un rifiuto alla volta. Sapevamo la risposta e la
+# usavamo solo per dire di no.
+#
+# **Perche' un campo di `view` e non uno strumento nuovo.** Erano le due forme
+# possibili, e la scelta ha tre ragioni misurabili:
+#
+# 1. **il filtro si risolve SU UN'ENTITA', non su un servizio.** Lo stesso
+#    `light.turn_on` accetta `rgb_color` sull'Alberello e non sulla luce della
+#    cucina -- e' Home Assistant a dirlo, guardando `supported_color_modes`.
+#    Uno strumento che rispondesse «i parametri di `light.turn_on`» senza
+#    un'entita' consegnerebbe l'elenco generico, cioe' proprio la conoscenza
+#    che fa sbagliare; uno che chiedesse l'entita' sarebbe questa stessa
+#    risposta, un turno piu' tardi;
+# 2. **i limiti veri sono quelli dell'entita'**, e stanno nell'oggetto che il
+#    modello ha gia' in mano: il campo di manovra dell'Alberello dice
+#    1500-9000 K una riga piu' su. Separarli in due strumenti significherebbe
+#    consegnare due meta' della stessa frase in due turni;
+# 3. **non costa un giro**: il registro e' gia' in memoria, e questa vista non
+#    chiede niente a nessuno.
+#
+# Solo sul dettaglio di UNA entita', come `attributi` e `regola`: un'area con
+# venti cose ripeterebbe l'elenco dei comandi di ogni dominio venti volte.
+#
+# **Solo i servizi del dominio dell'entita'.** `homeassistant.*` si applica a
+# qualunque dominio (`verification._DOMINI_UNIVERSALI`) e resta fuori
+# apposta: quel dominio contiene anche `restart`, `reload_all` e `stop`, e
+# metterli davanti al modello accanto a «accendi» sarebbe offrirglieli, non
+# descriverli.
+_COMMAND_PARAMETERS = "parametri"
+
+#: Quando il registro porta il servizio ma non ha saputo leggerne i parametri
+#: (`registry._fields` risponde `None`): «non l'ho letto» non e' «non ne ha».
+_COMMAND_PARAMETERS_UNREAD = "parametri_non_letti"
+
+#: Da dove vengono i limiti di un parametro. Due sole risposte, e la
+#: differenza e' l'intera ragione per cui questa vista esiste: il selettore
+#: descrive il campo di un cursore GENERICO (2000-6500 K per ogni lampadina
+#: della casa), l'entita' descrive se stessa (1500-9000 K per l'Alberello).
+#: **Vince l'entita'**, e chi legge deve poter vedere quale delle due gli e'
+#: stata data.
+_LIMITS_FROM_ENTITY = "questa entita'"
+_LIMITS_FROM_SERVICE = "il servizio"
+
+#: Oltre questo numero un elenco di valori legali non si scrive per intero:
+#: `color_name` ne porta 140. Si dice quanti ne restano, mai «questi sono
+#: tutti». Stessa soglia di `verification._list`.
+_MOST_VALUES = 12
+
+
+def _number(value):
+    """Un limite numerico, o `None` se quel che c'e' non lo e'.
+
+    `bool` escluso: e' una sottoclasse di `int`, e un `True` letto come
+    massimo direbbe «al piu' 1».
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return value
+
+
+def _values_seen(values: list) -> dict:
+    """Un elenco di valori legali, tagliato se e' lunghissimo."""
+    if len(values) <= _MOST_VALUES:
+        return {"valori": list(values)}
+    return {"valori": list(values[:_MOST_VALUES]),
+            "altri_valori": len(values) - _MOST_VALUES}
+
+
+def _limits_of_entity(domain: str, parameter: str, attributes: dict) -> dict:
+    """I limiti che l'ENTITA' dichiara per questo parametro, o `{}`.
+
+    Il collegamento parametro -> attributo vive nell'anagrafe dei tipi
+    (`type_vocabulary.parameter_limits`), dove ogni nome e' sorvegliato da una
+    prova che lo confronta con le capacita' che Home Assistant dichiara per
+    quel dominio: un refuso non diventa un limite che non esiste.
+
+    **Un intervallo si prende solo INTERO.** Con un estremo solo dall'entita'
+    e l'altro dal selettore la risposta direbbe «da 1500 a 6500», che non e'
+    ne' il cursore ne' la lampadina -- una terza cosa, vera di nessuno.
+    """
+    linked = parameter_limits(domain, parameter)
+    if not linked:
+        return {}
+    options_attribute = linked.get("options")
+    if options_attribute:
+        values = attributes.get(options_attribute)
+        if isinstance(values, (list, tuple)) and values:
+            return {**_values_seen(list(values)), "valori_da": _LIMITS_FROM_ENTITY}
+        return {}
+    lowest = _number(attributes.get(linked.get("min")))
+    highest = _number(attributes.get(linked.get("max")))
+    if lowest is None or highest is None:
+        return {}
+    return {"minimo": lowest, "massimo": highest, "limiti_da": _LIMITS_FROM_ENTITY}
+
+
+def _limits_of_selector(detail: dict) -> dict:
+    """I limiti che il SERVIZIO dichiara nel suo selettore, o `{}`.
+
+    Il ripiego, non la prima risposta: descrive un cursore uguale per tutta la
+    casa. Si leggono le tre sole forme che portano un limite vero -- `number`
+    e `color_temp` (minimo, massimo, passo, unita') e `select` (i valori) --
+    e di ogni altra forma non si dice niente invece di inventare un campo.
+    """
+    selector = detail.get("selector") if isinstance(detail, dict) else None
+    if not isinstance(selector, dict):
+        return {}
+    for kind in ("number", "color_temp"):
+        shape = selector.get(kind)
+        if not isinstance(shape, dict):
+            continue
+        limits = {}
+        lowest, highest = _number(shape.get("min")), _number(shape.get("max"))
+        if lowest is not None:
+            limits["minimo"] = lowest
+        if highest is not None:
+            limits["massimo"] = highest
+        step = _number(shape.get("step"))
+        if step is not None:
+            limits["passo"] = step
+        unit = shape.get("unit_of_measurement") or shape.get("unit")
+        if isinstance(unit, str) and unit.strip():
+            limits["unita"] = unit.strip()
+        if limits:
+            limits["limiti_da"] = _LIMITS_FROM_SERVICE
+        return limits
+    shape = selector.get("select")
+    if isinstance(shape, dict) and isinstance(shape.get("options"), list):
+        values = [o for o in shape["options"] if isinstance(o, str)]
+        if values:
+            return {**_values_seen(values), "valori_da": _LIMITS_FROM_SERVICE}
+    return {}
+
+
+def _command_parameters(domain: str, definition: dict, attributes: dict) -> dict:
+    """I parametri di UN servizio utilizzabili su un'entita' con questi
+    attributi, coi loro limiti.
+
+    Un parametro che Home Assistant dichiara non applicabile a questa entita'
+    non compare: e' la stessa regola con cui la verifica lo rifiuterebbe
+    (`registry.field_applies`), letta al contrario -- e le due non possono
+    divergere, perche' sono la stessa funzione. Un `None` («non l'ho potuto
+    misurare») lascia il parametro nell'elenco: e' un'informazione in meno,
+    non una capacita' in meno.
+
+    I limiti dell'entita' vincono su quelli del selettore, e da un'unita'
+    dichiarata solo dal selettore (`kelvin`, `%`) non si rinuncia: e' la sola
+    parte del cursore generico che descrive anche il dispositivo.
+    """
+    fields = definition.get("fields")
+    if fields is None:
+        return {_COMMAND_PARAMETERS_UNREAD: True}
+    if not isinstance(fields, dict):
+        return {_COMMAND_PARAMETERS: {}}
+    parameters: dict = {}
+    for name, detail in sorted(fields.items()):
+        if not isinstance(name, str) or field_applies(detail, attributes) is False:
+            continue
+        detail = detail if isinstance(detail, dict) else {}
+        limits = _limits_of_selector(detail)
+        own = _limits_of_entity(domain, name, attributes)
+        if own:
+            unit = limits.get("unita")
+            limits = dict(own)
+            if unit and "minimo" in limits:
+                limits["unita"] = unit
+        parameters[name] = limits
+    return {_COMMAND_PARAMETERS: parameters}
+
+
+def commands_for(entity_id: str, registry, attributes: dict) -> dict:
+    """Cosa si puo' chiedere a questa entita', servizio per servizio.
+
+    `{}` quando non c'e' un registro, o quando questa casa non dichiara
+    nessun servizio per il suo dominio: un `comandi: {}` su ogni sensore
+    sarebbe rumore in ogni risposta -- stessa disciplina di `unita`,
+    `capacita` e `categoria`.
+
+    Pura come tutto questo modulo: il registro glielo passa il chiamante
+    (`home_space/tools.py`), gia' scaldato, e qui dentro non si chiede niente
+    a nessuno.
+    """
+    if registry is None or not isinstance(attributes, dict):
+        return {}
+    domain = domain_of(entity_id)
+    services_for = getattr(registry, "services_for", None)
+    service = getattr(registry, "service", None)
+    if not callable(services_for) or not callable(service):
+        return {}
+    commands: dict = {}
+    for name in services_for(domain):
+        definition = service(domain, name)
+        if not isinstance(definition, dict):
+            continue
+        commands[f"{domain}.{name}"] = _command_parameters(domain, definition, attributes)
+    return commands
+
+
 def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
                    unavailable: tuple[str, ...] = (),
                    fallback_names: dict[str, str] | None = None,
                    reported_units: dict[str, str] | None = None,
                  reported_classes: dict[str, str] | None = None,
                  reported_since_when: dict[str, str] | None = None,
-                 reported_attributes: dict[str, dict] | None = None) -> dict:
+                 reported_attributes: dict[str, dict] | None = None,
+                 registry=None) -> dict:
     entity = next((e for e in home_space.get("entita") or [] if e.get("id") == reference), None)
     if entity is None:
         # CRITICAL ③: col registro "entita" caduto (`replace` parziale
@@ -793,6 +1010,23 @@ def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
             baskets[_WITHHELD_BASKET] = withheld
         if baskets:
             detail["attributi"] = baskets
+    # I COMANDI (`commands_for`, poco sopra): cosa si puo' CHIEDERE a questa
+    # entita', e con quali limiti -- l'altra meta' del requisito del
+    # proprietario (spec §13), accanto a cio' che l'entita' e'.
+    #
+    # Gli attributi che si passano sono quelli PIATTI e senza credenziali
+    # (`disclosable_attributes`, gia' calcolati da `_enrich_entity` con la
+    # stessa porta): il filtro di Home Assistant nomina l'attributo per nome
+    # -- `supported_color_modes` -- e chi lo confronta non deve sapere in
+    # quale cesta stia. Senza registro, o senza servizi per questo dominio,
+    # la chiave non compare affatto: `comandi: {}` su ogni sensore della casa
+    # sarebbe rumore, e per giunta indistinguibile da «questa entita' non si
+    # comanda».
+    commands = commands_for(entity["id"], registry,
+                            disclosable_attributes(
+                                (reported_attributes or {}).get(entity["id"])))
+    if commands:
+        detail["comandi"] = commands
     return detail
 
 
@@ -1157,7 +1391,8 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
            reported_units: dict[str, str] | None = None,
            reported_classes: dict[str, str] | None = None,
            reported_since_when: dict[str, str] | None = None,
-           reported_attributes: dict[str, dict] | None = None) -> dict:
+           reported_attributes: dict[str, dict] | None = None,
+           registry=None) -> dict:
     """Il dettaglio di UNA cosa sola -- l'area con le sue entita' e i loro
     stati, l'entita' col suo stato e la sua classe, l'automazione o lo
     script col loro corpo, il dispositivo con le sue entita', il ricordo
@@ -1245,7 +1480,7 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     stessa domanda non puo' avere due risposte diverse a seconda di quale
     ramo di `guarda` la porta).
 
-    `reported_attributes` (entity_id -> le QUATTRO CESTE dello specchio dello
+    `reported_attributes` (entity_id -> le CINQUE CESTE dello specchio dello
     stato, `proxy/entity_cache.inherited_attributes`: cosa l'entita' puo' fare,
     com'e' adesso, cio' di cui nessuna fonte dichiara il significato, e le
     credenziali che non escono di qui) alimenta DUE cose diverse, e non allo
@@ -1264,6 +1499,16 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
       singola cosa. Il dettaglio di UNA entita' e' il momento in cui il
       modello ha gia' chiesto quella cosa precisa, e l'informazione si paga
       solo li'.
+
+    `registry` (il registro dei servizi, `action/registry.ServiceRegistry`)
+    serve al SOLO ramo `entita`, e per la stessa ragione per cui il dizionario
+    `attributi` esce solo da li': e' il momento in cui il modello ha gia'
+    chiesto quella cosa precisa. Con lui la vista dice anche COSA SI PUO'
+    CHIEDERE a quell'entita' -- quali servizi, quali parametri, e i limiti
+    veri, che sono quelli dell'entita' e non quelli del cursore generico del
+    servizio (spec §13). `None` e' legittimo e non e' un guasto: chi non ce
+    l'ha riceve la stessa vista senza la chiave `comandi`, mai una chiave
+    vuota che direbbe «non c'e' niente da chiedere».
 
     Pura: legge `casa`/`comportamento`/`ricordi`/`stato` cosi' come arrivano
     dal chiamante (`HomeSpaceStore`, `MemoryStore`, lo stato vivo di Home
@@ -1287,7 +1532,7 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     if kind == "entita":
         return _view_entity(home_space, memories, state, reference, unavailable,
                               fallback_names, reported_units, reported_classes,
-                              reported_since_when, reported_attributes)
+                              reported_since_when, reported_attributes, registry)
     if kind == "dispositivo":
         return _view_device(home_space, memories, state, reference, unavailable,
                                    fallback_names, reported_units, reported_classes,

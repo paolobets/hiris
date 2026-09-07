@@ -504,7 +504,11 @@ codice:
    Sono **35 firme distinte per 2.349 caratteri** su un tetto di 6.000: ci stanno. E non
    contraddicono la decisione «la completezza va nel dettaglio» — una firma aggregata è **mappa**,
    non dettaglio. Si incrocia con la voce «Il nucleo è statico» del registro.
-2. **`sensor.options` e `select.options` escono sotto la stessa etichetta**, e non sono la stessa
-   cosa: *«cosa questa entità può assumere»* contro *«cosa le si può imporre»*. Per chi legge è una
-   sfumatura; **per chi comanda è la differenza fra un'azione possibile e una impossibile**. Va
-   sciolto nella fetta dell'azione (§13).
+2. ~~**`sensor.options` e `select.options` escono sotto la stessa etichetta**~~ — **CHIUSO dalla
+   fetta dell'azione, 07/09/2026.** Erano *«cosa questa entità può assumere»* contro *«cosa le si
+   può imporre»*: per chi legge una sfumatura, **per chi comanda la differenza fra un'azione
+   possibile e una impossibile**. Separati alla fonte
+   (`type_vocabulary._ASSUMABLE_ATTRIBUTES`, con la ragione scritta voce per voce), in due ceste
+   diverse — `campo_di_manovra` e `valori_che_puo_assumere` — e i due insiemi sono disgiunti per
+   costruzione, non per l'ordine con cui qualcuno li guarda. Rapporto:
+   `.superpowers/sdd/tipi-di-entita/fetta-azione-report.md`.
