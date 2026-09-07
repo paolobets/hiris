@@ -56,6 +56,18 @@ inventata da chi prova).
 **Deve**: coincidere. **Fallimento**: una rotta documentata che non esiste — è successo, ed è la
 ragione per cui questa prova c'è.
 
+### A4 — I campi di ogni pagina sono quelli documentati
+
+**Si fa**: si apre `#/settings` e si contano i campi veri mostrati a schermo; si confrontano col
+numero e coi nomi che il README dichiara per quella rotta.
+**Deve**: coincidere — oggi sono sette (nome, prompt di sistema, forma della risposta, budget di
+ragionamento, tetto di turni, giorni di conservazione, restrizione casa).
+**Fallimento**: un campo mostrato a schermo che il README non nomina, o viceversa — è la stessa
+famiglia di scostamento di A3 (il codice cambia, il documento resta indietro), ma su un contenuto
+che un cancello di **conta** non basta a vedere: A3 conta le rotte E ne confronta l'identità;
+qui il numero solo («sette») avrebbe già mascherato una volta la stessa divergenza («sei» campi
+elencati mentre il codice ne montava sette) — servono i **nomi**, non il conteggio.
+
 ---
 
 ## B · Le fonti che HIRIS legge

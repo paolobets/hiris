@@ -797,6 +797,83 @@ nome sostituito da **«Impegni»** nella v3.21.0.
 E' il residuo di una rinomina che ha toccato il codice e non il documento — verificato aprendo il
 pannello col browser e confrontando gli `href` veri con la tabella.
 
+### Il nome di un'automazione rotta e' gia' in memoria, e «cosa sto guardando» non lo usa
+
+`origine: review indipendente del fix per E2, 07/09/2026` · `nessun documento`
+
+E' l'**opposto simmetrico** del difetto appena chiuso in «"Cosa sto guardando" stampa i soggetti
+grezzi, gli episodi no» (sopra): li' un prefisso tecnico veniva stampato perche' nessuno sapeva
+tradurlo dal solo soggetto — qui il nome leggibile **esiste gia' in memoria** e non arriva alla
+pagina.
+
+`hiris/app/mind/watcher.py:148` (`self._marked_automations: dict[str, str | None]`) tiene, per
+ogni automazione che ha scattato almeno una volta, `entity_id -> nome amichevole` (il nome che
+`automation_triggered` ha dichiarato al primo scatto — vedi `mark_automation`, linea 229).
+`self._automation_faults` (linea 167, un `set[str]` dei soli `entity_id` con un errore aperto) e'
+un **sottoinsieme delle chiavi** dello stesso dizionario: ogni automazione guasta e' anche
+un'automazione marcata, e il suo nome amichevole e' li', pronto.
+
+Ma `watching()` (linea 868) costruisce il soggetto di un'automazione guasta cosi':
+
+```python
+automation = ({"soggetto": s, "gamba": "buono stato", "provenienza": "pavimento"}
+              for s in self._automation_faults)
+```
+
+`s` e' l'`entity_id` grezzo (poi prefissato `automazione:` da chi chiama) — `self.
+_marked_automations.get(s)` non viene mai consultato. Il frontend (`describeWatchedSubject`,
+`watcher-route.js`) rende quindi sempre `"Automazione: automation.spegni_luci_notte"`, mai il nome
+che il proprietario avrebbe letto in Home Assistant. Non e' un nome inventato — la legge di
+non-invenzione (§E2) e' rispettata — ma e' un nome **trattenuto**: disponibile a costo zero, mai
+passato.
+
+**Non toccato in questo giro**: la correzione tocca il contratto di `watching()` (un campo
+nuovo, o un soggetto arricchito) e i suoi due lettori (`describeWatchedSubject` **e**
+`protagonistName`, per coerenza con gli episodi guasto che citano un'automazione) — un cambio di
+forma dei dati, non una resa, e merita la sua fetta.
+
+
+### Il conteggio per aree perde le entita' senza area, e la vista di un'area e' troppo grande
+
+`origine: batteria di prove funzionali in chat sulla casa vera, 07/09/2026` · `nessun documento`
+
+Alla domanda «quante luci ho in casa, e quante sono accese adesso?» il modello ha risposto
+**«Totale luci in casa: 43»** — le luci sono **50** — e «accese ora: almeno 1», mentre erano **7**.
+
+**Due difetti, non uno.**
+
+**① Il totale e' detto come totale, ma e' un totale PARZIALE.** Il modello ha iterato **per area**,
+e le entita' **senza area** non appartengono a nessuna: sette luci sono rimaste fuori dal
+conteggio senza che niente lo dichiarasse. La frase «Totale luci in casa: 43» e' l'unico punto in
+cui quella risposta afferma piu' di quanto sapesse — tutto il resto era dichiarato con cura.
+Serve che chi conta per aree sappia **quante cose restano fuori dalle aree**, o che la via per
+contare una specie di entita' non passi dalle aree.
+
+**② La vista di un'area e' troppo grande perche' il modello la legga.** Parole sue: *«le 4 luci
+dell'area Telecamere non sono riuscito a verificarle in questo giro (**la risposta dello strumento
+per quell'area era troppo grande da leggere**)»*. E' la stessa famiglia della ripetizione della
+regola su un dispositivo con 53 sensori, corretta il 07/09 restringendo `regola` alla vista di una
+singola entita': **una vista d'insieme che cresce con la casa finche' non e' piu' usabile**.
+Va misurato quanto pesa `view` su un'area vera prima di decidere la cura.
+
+**Cio' che ha funzionato**, e va detto perche' e' meta' del reperto: il modello **non ha inventato
+niente**. Ha detto «almeno 1» invece di «1», ha dichiarato quante ne aveva verificate (39 su 43),
+ha nominato l'area che non e' riuscito a leggere **e il perche'**, e si e' offerto di ricontrollarla.
+
+### `classe: null` esce, `unita` assente no: due chiavi mute trattate in modo diverso
+
+`origine: batteria di prove funzionali in chat sulla casa vera, 07/09/2026` · `nessun documento`
+
+`view` su `sensor.persons` (il caso di chiusura dello sprint «la conoscenza prende una forma»)
+torna `classe: null` **esplicito**, mentre `unita` — assente allo stesso modo — **non compare**.
+
+La legge del prodotto e' che **le chiavi che non hanno niente da dire non escono**, ed e' stata
+fatta rispettare in tutta la fetta per `capacita`, `stato_presunto`, `luogo`, `descrizione`,
+`mute_da`, `non_letti`. Qui due chiavi nella stessa condizione escono in due modi: chi legge puo'
+concludere che `classe: null` **significhi** qualcosa (una classe dichiarata vuota?) mentre
+l'assenza di `unita` significhi un'altra. E' precedente alla fetta -- ma e' la stessa legge, e ora
+che le altre la rispettano l'eccezione si nota.
+
 
 ---
 
