@@ -175,7 +175,7 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
     store = request.app.get("memory_store")
     if store is None:
         return web.json_response(
-            {"error": "l'archivio della memoria non e' disponibile"}, status=503)
+            {"error": "l’archivio della memoria non e' disponibile"}, status=503)
     try:
         memory_id = int(request.match_info["id"])
     except (TypeError, ValueError):
@@ -325,7 +325,7 @@ async def handle_delete_memory(request: web.Request) -> web.Response:
     store = request.app.get("memory_store")
     if store is None:
         return web.json_response(
-            {"error": "l'archivio della memoria non e' disponibile"}, status=503)
+            {"error": "l’archivio della memoria non e' disponibile"}, status=503)
     try:
         memory_id = int(request.match_info["id"])
     except (TypeError, ValueError):

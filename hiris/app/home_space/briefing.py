@@ -75,7 +75,7 @@ _DOMAIN_NAMES = {
     # "aspirapolvere" resta "aspirapolvere", "analisi" resta "analisi" -- e
     # dedurlo produrrebbe "aspirapolveres".
     "ai_task": ("compito IA", "compiti IA"),
-    "air_quality": ("qualita' dell'aria", "qualita' dell'aria"),
+    "air_quality": ("qualita' dell’aria", "qualita' dell’aria"),
     "alarm_control_panel": ("pannello allarme", "pannelli allarme"),
     "assist_satellite": ("satellite vocale", "satelliti vocali"),
     "binary_sensor": ("sensore binario", "sensori binari"),
@@ -670,7 +670,7 @@ def _group_highlights(entries: list[dict]) -> list[tuple[int, str]]:
     counts: dict[tuple[str, str, str], int] = {}
     order: list[tuple[str, str, str]] = []
     for v in entries:
-        key = (v["area_nome"] or "Fuori da un'area nota", v["dominio"], v["stato_leggibile"])
+        key = (v["area_nome"] or "Fuori da un’area nota", v["dominio"], v["stato_leggibile"])
         if key not in counts:
             order.append(key)
         counts[key] = counts.get(key, 0) + 1
@@ -757,7 +757,7 @@ def _highlight_lines(home_space: dict, state: dict, floors: list[dict],
     if unreliable_state:
         return ([
             ("Stato non letto (o dichiarato non attendibile): non si puo' dire se in "
-            "questo momento c'e' qualcosa di notevole -- non e' lo stesso di "
+            "questo momento c’e' qualcosa di notevole -- non e' lo stesso di "
             "'niente di notevole'.")
         ], [1], False)
     area_per_entity = _area_per_entity(floors)
@@ -1170,7 +1170,7 @@ def _cited_entities(identifiers: list[str]) -> str:
     rest = len(identifiers) - len(cited)
     text = ", ".join(cited)
     if rest == 1:
-        text += ", e un'altra"
+        text += ", e un’altra"
     elif rest > 1:
         text += f", e altre {rest}"
     return text
@@ -1214,8 +1214,8 @@ def _comparison_notice(comparison: dict | None) -> str | None:
 
     error = str(comparison.get("errore") or "").strip()
     if error:
-        return ("il confronto fra l'albero della casa e Home Assistant non si e' "
-                f"potuto fare ({error}): qui non si sta dicendo che l'albero "
+        return ("il confronto fra l’albero della casa e Home Assistant non si e' "
+                f"potuto fare ({error}): qui non si sta dicendo che l’albero "
                 "combacia, si sta dicendo che non si e' potuto controllare.")
 
     checked = [g for g in comparison.get("guardate") or [] if isinstance(g, dict)]
@@ -1246,26 +1246,26 @@ def _comparison_notice(comparison: dict | None) -> str | None:
                             "piu' in Home Assistant")
             else:
                 entries.append(f"{g.get('nome')}: {_cited_entities(g.get('in_piu') or [])}")
-        count_phrase = _plural(len(entries), "un'area", f"{len(entries)} aree")
+        count_phrase = _plural(len(entries), "un’area", f"{len(entries)} aree")
         phrases.append(
-            f"In {count_phrase} l'albero di HIRIS afferma qualcosa che Home Assistant "
+            f"In {count_phrase} l’albero di HIRIS afferma qualcosa che Home Assistant "
             f"non conferma -- {'; '.join(entries)}. E' il caso peggiore dei due: "
             "e' cosi' che nasce una risposta sbagliata detta con sicurezza, e "
-            "finche' l'anagrafe non si ricostruisce quelle attribuzioni non "
+            "finche' l’anagrafe non si ricostruisce quelle attribuzioni non "
             "reggono.")
 
     if missing:
         entries = [f"{g.get('nome')}: {_cited_entities(g.get('mancanti') or [])}"
                 for g in missing]
-        count_phrase = _plural(len(entries), "un'area", f"{len(entries)} aree")
+        count_phrase = _plural(len(entries), "un’area", f"{len(entries)} aree")
         phrases.append(
-            f"In {count_phrase} Home Assistant riporta entita' che l'albero di HIRIS "
-            f"non ci attribuisce -- {'; '.join(entries)}. La replica dell'anagrafe "
+            f"In {count_phrase} Home Assistant riporta entita' che l’albero di HIRIS "
+            f"non ci attribuisce -- {'; '.join(entries)}. La replica dell’anagrafe "
             "e' piu' vecchia della casa, o un registro non ha risposto.")
 
     if not_loaded:
         entries = [f"{g.get('nome')} ({g.get('errore')})" for g in not_loaded]
-        count_phrase = _plural(len(entries), "un'area", f"{len(entries)} aree")
+        count_phrase = _plural(len(entries), "un’area", f"{len(entries)} aree")
         phrases.append(
             f"Su {count_phrase} il confronto non si e' potuto fare -- {'; '.join(entries)}: "
             "non si sta dicendo che quelle aree combaciano, si sta dicendo che "
@@ -1483,7 +1483,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
 
     if unavailable:
         notices.append(
-            "registri di Home Assistant che non hanno risposto all'ultima "
+            "registri di Home Assistant che non hanno risposto all’ultima "
             f"lettura: {', '.join(sorted(unavailable))}. "
             "Cio' che manca qui sotto potrebbe esistere lo stesso.")
 
@@ -1518,7 +1518,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
         entry = _plural(n, "entita' nascosta", "entita' nascoste")
         notices.append(
             f"{n} {entry} in Home Assistant: non entrano in «Notevole adesso» "
-            "perche' l'utente le ha nascoste, ma esistono e `view` le "
+            "perche' l’utente le ha nascoste, ma esistono e `view` le "
             "riporta se gliele chiedi.")
 
     # `entity_category`: fuori dalle gestioni, dentro la conoscenza -- stessa
@@ -1547,7 +1547,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
         notices.append(
             f"{n} entita' di servizio (config/diagnostic) in Home Assistant: "
             "non entrano in «Notevole adesso» "
-            "perche' l'integrazione le marca cosi', ma esistono e `view` le "
+            "perche' l’integrazione le marca cosi', ma esistono e `view` le "
             "riporta se gliele chiedi.")
 
     # IMPORTANT ④: si CONTA, non si elenca -- la stessa regola che il

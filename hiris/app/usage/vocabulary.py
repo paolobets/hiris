@@ -36,7 +36,7 @@ NOTE: dict[str, str] = {
     "openrouter": ("Costo dichiarato da OpenRouter: e' quanto e' stato "
                    "addebitato, non una stima."),
     "ollama": "Modelli in casa: nessun costo.",
-    "ponte": ("L'abbonamento non espone il prezzo del singolo turno. I token "
+    "ponte": ("L’abbonamento non espone il prezzo del singolo turno. I token "
               "si', e sono questi."),
 }
 

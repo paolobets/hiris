@@ -1343,7 +1343,7 @@ def _compare_area(area: dict | None, identifier: str, answer,
         # Il campione nasce dall'albero, quindi in produzione questo ramo
         # scatta solo se l'anagrafe si e' ricostruita fra la domanda e la
         # risposta. Non e' un combaciare: e' un confronto perso.
-        entry["errore"] = ("quest'area non e' piu' nell'albero: l'anagrafe si e' "
+        entry["errore"] = ("quest’area non e' piu' nell’albero: l’anagrafe si e' "
                           "ricostruita mentre la si confrontava")
         return entry
     if not isinstance(answer, dict):

@@ -344,7 +344,7 @@ def test_un_area_sparita_dall_albero_e_un_confronto_perso():
     combaciare: e' un confronto che non si e' potuto chiudere."""
     casa = _casa([])
     esito = _confronto(casa, {"salotto": _risposta([])})
-    assert "non e' piu' nell'albero" in esito["guardate"][0]["errore"]
+    assert "non e' piu' nell’albero" in esito["guardate"][0]["errore"]
 
 
 def test_gli_elenchi_lunghi_si_tagliano_dichiarando_il_resto():

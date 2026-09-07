@@ -497,7 +497,7 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
         queue.resolve_downgrade(job_id, {"reply": ""}, time.time())
         return web.json_response({
             "status": "error",
-            "message": ("Il Piano Claude Max non ha risposto in tempo, e non c'è "
+            "message": ("Il Piano Claude Max non ha risposto in tempo, e non c’è "
                         "nessun altro provider in catena a cui chiedere."),
         })
 
@@ -752,7 +752,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         # cronologia da solo (`server._submit_chat_reply`).
         if reasoning_queue.has_pending_chat():
             return web.json_response(
-                {"error": "C'è già una risposta in arrivo per questa conversazione."},
+                {"error": "C’è già una risposta in arrivo per questa conversazione."},
                 status=409,
             )
         if _subscription_reason:
@@ -810,10 +810,10 @@ async def handle_chat(request: web.Request) -> web.Response:
                 "Nessun provider AI configurato: HIRIS non ha ancora un modello a "
                 "cui chiedere. Apri Impostazioni → Add-on → HIRIS → Configurazione "
                 "e incolla una credenziale: col piano a forfait il token in "
-                "«Provider · Piano Claude Max — token», con l'API a consumo la "
+                "«Provider · Piano Claude Max — token», con l’API a consumo la "
                 "chiave in «Provider · Claude API — chiave». Poi, dentro HIRIS, "
                 "apri la pagina Modelli: col piano usa «Mettilo primo» nel riquadro "
-                "in cima, con l'API a consumo usa «Usa» sulla riga di Claude API. "
+                "in cima, con l’API a consumo usa «Usa» sulla riga di Claude API. "
                 "Un provider risponde se e solo se sta in catena."
             )},
             status=503,

@@ -34,7 +34,7 @@
      TESTO DI PAGINA -- il server manda lo stato, che e' il fatto. */
   var Word = {
     gratuito: 'Gratuito',
-    compreso: "Compreso nell'abbonamento",
+    compreso: "Compreso nell’abbonamento",
     non_noto: 'Prezzo sconosciuto'
   };
 

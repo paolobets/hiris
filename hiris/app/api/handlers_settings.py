@@ -338,7 +338,7 @@ async def handle_save_settings(request: web.Request) -> web.Response:
         )
         return web.json_response(
             {"error": "Non è stato possibile scrivere le impostazioni su disco. "
-                      "Controlla il log dell'add-on.", "field": ""},
+                      "Controlla il log dell’add-on.", "field": ""},
             status=500,
         )
 

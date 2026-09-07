@@ -194,7 +194,7 @@ async def test_second_enqueue_same_conversation_returns_409(tmp_path):
         second = await client.post("/api/chat", json={"message": "seconda"})
         assert second.status == 409
         body = await second.json()
-        assert body == {"error": "C'è già una risposta in arrivo per questa conversazione."}
+        assert body == {"error": "C’è già una risposta in arrivo per questa conversazione."}
 
 
 # fetta E4 Task 4 ("un bot solo"): test_409_guard_scoped_per_conversation_not_

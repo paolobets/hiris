@@ -45,11 +45,11 @@ def consiglia(intent: dict) -> dict:
         # ramo sull'innesco perche' una ricorrenza arriva spesso senza che il
         # modello abbia gia' composto il trigger orario.
         strutture.append("automazione")
-        reasons.append("una ricorrenza e' un'automazione di Home Assistant, non una "
-                      "promessa: le promesse servono per «fra un'ora, una volta»")
+        reasons.append("una ricorrenza e' un’automazione di Home Assistant, non una "
+                      "promessa: le promesse servono per «fra un’ora, una volta»")
     elif innesco:
         strutture.append("automazione")
-        reasons.append("c'e' un innesco, quindi e' un'automazione")
+        reasons.append("c’e' un innesco, quindi e' un’automazione")
 
     if parametri:
         if "script" not in strutture:
@@ -62,7 +62,7 @@ def consiglia(intent: dict) -> dict:
     elif riuso and passi and "automazione" in strutture:
         strutture.append("script")
         reasons.append("la sequenza si riusa anche altrove, quindi vive in uno script "
-                      "che l'automazione chiama")
+                      "che l’automazione chiama")
     elif passi and not strutture:
         strutture.append("script")
         reasons.append("e' una sequenza che lanci tu, senza innesco: e' uno script")
@@ -79,7 +79,7 @@ def consiglia(intent: dict) -> dict:
                 reasons.append("gli stati vengono ristabiliti in una scena che automazione "
                               "e script accendono insieme")
             elif "automazione" in strutture:
-                reasons.append("gli stati vengono ristabiliti in una scena che l'automazione "
+                reasons.append("gli stati vengono ristabiliti in una scena che l’automazione "
                               "accende")
             else:
                 reasons.append("gli stati vengono ristabiliti in una scena che lo script "

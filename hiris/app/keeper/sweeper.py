@@ -20,7 +20,7 @@ from .promise import TOLLERANZA_S, delay_reason
 logger = logging.getLogger(__name__)
 
 _SENZA_RECAPITO = ("avevo qualcosa da dirti e nessun modo per venire a cercarti: "
-                   "nessun canale di notifica era stato scelto quando l'hai chiesta.")
+                   "nessun canale di notifica era stato scelto quando l’hai chiesta.")
 
 
 class Sweeper:
@@ -121,7 +121,7 @@ class Sweeper:
                 actor="schedulatore")
             execution_id = occurrence.get("esecuzione_id")
             if not occurrence.get("eseguito"):
-                reason = ("te l'ho scritto qui ma la notifica non e' partita: %s"
+                reason = ("te l’ho scritto qui ma la notifica non e' partita: %s"
                           % (occurrence.get("errore") or "non so dire perche'."))
         elif avvisare:
             # Non si inventa un canale. La promessa e' mantenuta -- il testo

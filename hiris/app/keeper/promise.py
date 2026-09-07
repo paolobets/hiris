@@ -172,5 +172,5 @@ def delay_reason(delay_s: float) -> str:
     """
     minuti = int(delay_s // 60)
     if minuti < 1:
-        return "scaduta da meno di un minuto quando l'orologio l'ha vista -- non eseguita."
-    return f"scaduta da {minuti} minuti quando l'orologio l'ha vista -- non eseguita."
+        return "scaduta da meno di un minuto quando l’orologio l’ha vista -- non eseguita."
+    return f"scaduta da {minuti} minuti quando l’orologio l’ha vista -- non eseguita."

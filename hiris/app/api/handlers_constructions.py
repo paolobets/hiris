@@ -36,7 +36,7 @@ from .boundary import occurrence_out
 # Un solo testo per «quell'id non esiste», usato sia da chi legge sia da chi
 # agisce: due frasi diverse per lo stesso fatto sarebbero una piccola
 # incoerenza da mantenere sincronizzata a mano per sempre.
-_NOT_FOUND = "non ho nessuna costruzione con quell'identificatore."
+_NOT_FOUND = "non ho nessuna costruzione con quell’identificatore."
 
 
 def _store(request):

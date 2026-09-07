@@ -52,7 +52,7 @@ async def handle_delete_promise(request: web.Request) -> web.Response:
         return web.json_response({"error": "archivio non disponibile"}, status=503)
     ident = request.match_info["id"]
     if store.read(ident) is None:
-        return web.json_response({"error": "non ho nessuna promessa con quell'identificatore."},
+        return web.json_response({"error": "non ho nessuna promessa con quell’identificatore."},
                                  status=404)
     occurrence = store.cancel(ident, now=time.time())
     if "errore" in occurrence:
@@ -115,6 +115,6 @@ async def handle_get_execution(request: web.Request) -> web.Response:
     row = journal.read(ident)
     if row is None:
         return web.json_response(
-            {"error": "non ho nessuna esecuzione con quell'identificatore."},
+            {"error": "non ho nessuna esecuzione con quell’identificatore."},
             status=404)
     return web.json_response({"execution": row})

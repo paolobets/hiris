@@ -251,7 +251,7 @@ class ConstructionStore:
 
         Restituisce quante righe ha chiuso.
         """
-        reason = ("l'add-on si e' riavviato mentre la stavo applicando: non so "
+        reason = ("l’add-on si e' riavviato mentre la stavo applicando: non so "
                   "se la scrittura sia arrivata a Home Assistant.")
         with self._lock:
             cur = self._conn.execute(

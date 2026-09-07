@@ -1562,7 +1562,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             "chiusa senza il messaggio finale del modello: quello che e' "
             "arrivato non e' una risposta completa, e non te la presento come "
             "tale. Riprova; se succede a ogni turno, il formato della CLI e' "
-            "cambiato e va guardato il log dell'add-on.")
+            "cambiato e va guardato il log dell’add-on.")
         # Il pezzo grezzo resta nella reply, come faceva il vecchio ramo "JSON
         # non parsabile": e' l'unico modo di diagnosticare dall'interfaccia un
         # cambio di formato durante l'UAT. Compromesso dichiarato: e' brutto da

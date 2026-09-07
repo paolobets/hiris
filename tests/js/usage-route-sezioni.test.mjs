@@ -143,7 +143,7 @@ test('un modello gratuito dice «Gratuito», non «€ 0,00»', async () => {
 
 test("l'abbonamento dice «Compreso», che non e' ne' zero ne' sconosciuto", async () => {
   const { testo } = await monta();
-  assert.match(testo, /Compreso nell'abbonamento/);
+  assert.match(testo, /Compreso nell’abbonamento/);
 });
 
 test('il totale a cui manca un prezzo si dichiara un pavimento', async () => {

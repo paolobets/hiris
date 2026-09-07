@@ -213,7 +213,7 @@ async def test_get_esecuzione_inesistente_da_404_col_motivo_leggibile(client):
     risposta = await client.get("/api/executions/mai-esistita")
     assert risposta.status == 404
     corpo = await risposta.json()
-    assert corpo["error"] == "non ho nessuna esecuzione con quell'identificatore."
+    assert corpo["error"] == "non ho nessuna esecuzione con quell’identificatore."
 
 
 @pytest.mark.asyncio

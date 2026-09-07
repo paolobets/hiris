@@ -231,13 +231,13 @@ def test_ponte_acceso_senza_token_e_senza_catena_non_puo_rispondere_nessuno():
     assert d["chi"] is None
     assert d["frase"] == (
         "HIRIS non può rispondere: il ponte è acceso, manca il token del Piano "
-        "Claude Max, e sotto di lui non c'è nessuno."
+        "Claude Max, e sotto di lui non c’è nessuno."
     )
     guasti = [x for x in d["diagnosi"] if x["gravita"] == "guasto"]
     assert len(guasti) == 1
     assert guasti[0]["testo"] == (
         "Il ponte è acceso ma manca il token: nessun messaggio arriva al Piano "
-        "Claude Max, e in catena non c'è nessun altro a cui passarlo."
+        "Claude Max, e in catena non c’è nessun altro a cui passarlo."
     )
 
 
@@ -375,7 +375,7 @@ def test_la_catena_porta_posizione_nome_modello_e_natura():
                          # (add-on appena partito) e Claude e' PRIMO: la stessa
                          # assenza resta allarmante in prima posizione.
                          "esito": None,
-                         "stato_testo": "nessuna osservazione da quando l'add-on è partito",
+                         "stato_testo": "nessuna osservazione da quando l’add-on è partito",
                          "riordinabile": True}
 
 
@@ -513,7 +513,7 @@ def test_quando_manca_la_credenziale_il_payload_dice_QUALE():
     assert per_id["claude"]["manca"] == "manca la chiave"
     assert per_id["openrouter"]["manca"] == "manca la chiave"
     assert per_id["openai"]["manca"] == "manca la chiave"
-    assert per_id["ollama"]["manca"] == "manca l'indirizzo"
+    assert per_id["ollama"]["manca"] == "manca l’indirizzo"
 
 
 def test_chi_ha_la_credenziale_non_dice_che_ne_manca_una():
@@ -810,7 +810,7 @@ def test_senza_indirizzo_la_riga_dice_QUELLO_e_non_il_modello():
     _, fuori = compose_topology(chain_order=[], credentials=CRED,
                                  models={**MOD, "ollama": ""}, bridge_active=False)
     riga = {r["id"]: r for r in fuori}["ollama"]
-    assert riga["manca"] == "manca l'indirizzo"
+    assert riga["manca"] == "manca l’indirizzo"
     assert riga["nota"] == ""
     assert riga["riordinabile"] is True
 
@@ -864,7 +864,7 @@ def test_chi_non_e_stato_osservato_porta_esito_None_e_non_un_finto_successo():
     righe = {r["id"]: r for r in catena + fuori}
     assert righe["openrouter"]["esito"] is None
     assert righe["openrouter"]["stato_testo"] == (
-        "nessun ripiego servito da quando l'add-on è partito")
+        "nessun ripiego servito da quando l’add-on è partito")
 
 
 def test_mai_provato_dice_due_cose_diverse_in_prima_e_in_seconda_posizione():
@@ -879,8 +879,8 @@ def test_mai_provato_dice_due_cose_diverse_in_prima_e_in_seconda_posizione():
         chain_order=["claude", "openrouter"], credentials=CRED, models=MOD,
         bridge_active=False, now=ADESSO, occurrences={})
     assert [r["stato_testo"] for r in catena] == [
-        "nessuna osservazione da quando l'add-on è partito",
-        "nessun ripiego servito da quando l'add-on è partito"]
+        "nessuna osservazione da quando l’add-on è partito",
+        "nessun ripiego servito da quando l’add-on è partito"]
 
 
 def test_senza_credenziale_e_senza_osservazioni_la_riga_di_stato_tace():
@@ -909,7 +909,7 @@ def test_un_esito_sopravvive_alla_credenziale_tolta():
                                   codice=None, da_quante=2)})
     riga = {r["id"]: r for r in fuori}["openrouter"]
     assert riga["stato_testo"] == (
-        "non risponde all'indirizzo — ultimo tentativo 3 min fa")
+        "non risponde all’indirizzo — ultimo tentativo 3 min fa")
 
 
 def test_l_eta_della_riga_cresce_col_solo_passare_del_tempo():

@@ -1414,7 +1414,7 @@ async def test_la_scadenza_del_piano_finisce_nel_registro_degli_esiti(tmp_path):
     # aver cambiato mentre il turno era in volo.
     assert 298 < esito["durata_s"] < 302, esito["durata_s"]
     frase = occurrence_phrase(esito, position=1, now=esito["quando"] + 120)
-    assert frase == "non ha risposto in tempo — l'ultima richiesta, 2 min fa"
+    assert frase == "non ha risposto in tempo — l’ultima richiesta, 2 min fa"
     assert "rifiutato" not in frase
 
 

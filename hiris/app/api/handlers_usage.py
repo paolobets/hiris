@@ -40,10 +40,10 @@ from aiohttp import web
 from ..config import EUR_RATE as _EUR_RATE
 
 _NO_PROVIDER_MSG = (
-    "Nessun provider AI configurato e nessun consumo mai registrato: non c'è "
-    "ancora nessun modello che risponda, quindi non c'è nessun consumo da "
-    "misurare. Configura una chiave API o il token dell'abbonamento nelle "
-    "opzioni dell'add-on."
+    "Nessun provider AI configurato e nessun consumo mai registrato: non c’è "
+    "ancora nessun modello che risponda, quindi non c’è nessun consumo da "
+    "misurare. Configura una chiave API o il token dell’abbonamento nelle "
+    "opzioni dell’add-on."
 )
 
 # Quanti giorni di storia si danno quando nessuno chiede un intervallo.

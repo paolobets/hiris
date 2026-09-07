@@ -23,12 +23,12 @@ logger = logging.getLogger(__name__)
 # oggi il solo lettore di produzione e' `api/handlers_entities.py`, via
 # `unreadable_inventory_error()` sotto.
 NO_INVENTORY_ERROR = (
-    "Non sono riuscito a leggere lo stato della casa: l'inventario delle "
+    "Non sono riuscito a leggere lo stato della casa: l’inventario delle "
     "entità non è disponibile. Non posso dire che non ci sia nulla, solo che "
     "non ho potuto controllare."
 )
 INVENTORY_NOT_READY_ERROR = (
-    "Non sono riuscito a leggere lo stato della casa: l'inventario delle "
+    "Non sono riuscito a leggere lo stato della casa: l’inventario delle "
     "entità non è ancora pronto (la lettura iniziale da Home Assistant non è "
     "andata a buon fine o è ancora in corso). Riprova fra poco."
 )

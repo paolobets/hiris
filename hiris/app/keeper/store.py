@@ -228,7 +228,7 @@ class AgendaStore:
             return {"promessa": self.read(promise_id)}
         row = self.read(promise_id)
         if row is None:
-            return {"errore": "non ho nessuna promessa con quell'identificatore."}
+            return {"errore": "non ho nessuna promessa con quell’identificatore."}
         return {
             "errore": "quella promessa e' gia' {}: non si disdice, si legge.".format(row["stato"])
         }
@@ -259,12 +259,12 @@ class AgendaStore:
         non c'e'.
         """
         _REASON_FAI = (
-            "l'add-on si e' fermato mentre la manteneva: non l'ho ripetuta, "
+            "l’add-on si e' fermato mentre la manteneva: non l’ho ripetuta, "
             "perche' non so se fosse gia' partita.")
         _REASON_CHIEDI = (
-            "l'add-on si e' fermato mentre guardavo: non ho toccato niente in "
-            "casa, ma non so se la notifica fosse gia' partita. Non l'ho "
-            "ripetuta: l'ora che mi avevi dato e' passata, e una risposta "
+            "l’add-on si e' fermato mentre guardavo: non ho toccato niente in "
+            "casa, ma non so se la notifica fosse gia' partita. Non l’ho "
+            "ripetuta: l’ora che mi avevi dato e' passata, e una risposta "
             "fuori tempo sarebbe sbagliata.")
         with self._lock:
             cur = self._conn.execute(

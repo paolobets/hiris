@@ -168,7 +168,7 @@ async def interpreta_promise(app, promise: dict) -> dict:
 
     runner = app.get("llm_router") or app.get("claude_runner")
     if runner is None:
-        return {"errore": "non c'era nessun modello a cui chiedere."}
+        return {"errore": "non c’era nessun modello a cui chiedere."}
 
     dispatcher = PromiseDispatcher(create_tool_dispatcher(app))
     try:
@@ -259,7 +259,7 @@ def _downgrade_note(reason: str) -> str:
     fatto = _DOWNGRADE_REASONS.get(reason)
     if not fatto:
         return ""
-    return (f"Il Piano Claude Max {fatto}: questo turno l'ha mantenuto la catena, "
+    return (f"Il Piano Claude Max {fatto}: questo turno l’ha mantenuto la catena, "
             "a consumo.")
 
 

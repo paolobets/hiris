@@ -158,7 +158,7 @@ TOOL_LEAK_USER_MSG = (
     "Il modello selezionato non gestisce correttamente i tool tramite questo "
     "provider (la chiamata al tool è arrivata come testo invece che come "
     "tool_call). Cambia modello — preferisci quelli con tool use nativo "
-    "OpenAI — oppure disattiva i tool dell'agente."
+    "OpenAI — oppure disattiva i tool dell’agente."
 )
 
 
@@ -744,7 +744,7 @@ class OpenAICompatRunner:
                         )
                         raise RunnerBackendError(
                             f"Crediti OpenRouter insufficienti per max_tokens={max_tokens}. "
-                            f"Riduci max_tokens dell'agente sotto {affordable} "
+                            f"Riduci max_tokens dell’agente sotto {affordable} "
                             f"oppure aggiungi credito su openrouter.ai.",
                             family=error_family(retry_exc),
                             code=_status_code(retry_exc),
@@ -1015,7 +1015,7 @@ class OpenAICompatRunner:
                             )
                             err = (
                                 f"Crediti OpenRouter insufficienti per max_tokens={max_tokens}. "
-                                f"Riduci max_tokens dell'agente sotto {affordable} "
+                                f"Riduci max_tokens dell’agente sotto {affordable} "
                                 f"oppure aggiungi credito su openrouter.ai."
                             )
                             yield f'data: {json.dumps({"type": "error", "message": err})}\n\n'

@@ -776,7 +776,7 @@ def test_l_anteprima_usa_l_articolo_giusto_per_ogni_dominio(banco):
     ugualmente. Si guarda la FRASE, non solo l'articolo."""
     officina, _, _, _ = banco
     consiglio = {"motivo": None}
-    for dominio, atteso in (("automation", "un'automazione"),
+    for dominio, atteso in (("automation", "un’automazione"),
                             ("script", "uno script"),
                             ("scene", "una scena")):
         anteprima = officina._preview("crea", dominio, "1", {"alias": "X"}, None, None,
@@ -785,7 +785,7 @@ def test_l_anteprima_usa_l_articolo_giusto_per_ogni_dominio(banco):
         assert "un'script" not in anteprima
         assert "un'scena" not in anteprima
         assert "chiamata «X»" not in anteprima
-    for dominio, atteso in (("automation", "l'automazione"),
+    for dominio, atteso in (("automation", "l’automazione"),
                             ("script", "lo script"),
                             ("scene", "la scena")):
         anteprima = officina._preview("modifica", dominio, "1", {"alias": "X"},

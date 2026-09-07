@@ -166,7 +166,7 @@ class StateTranslations:
         key = (ha_version, language)
         if not language:
             return {"lette": False,
-                    "motivo": "la lingua della casa non e' nota: l'anagrafe non ha "
+                    "motivo": "la lingua della casa non e' nota: l’anagrafe non ha "
                               "ancora letto il sistema di riferimento di Home Assistant"}
         async with self._lock:
             # Il controllo della cache sta DENTRO il lock, e ce n'e' uno solo.

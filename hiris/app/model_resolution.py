@@ -103,7 +103,7 @@ MISSING_REASONS: dict[str, str] = {
     "claude": "manca la chiave",
     "openrouter": "manca la chiave",
     "openai": "manca la chiave",
-    "ollama": "manca l'indirizzo",
+    "ollama": "manca l’indirizzo",
 }
 
 # Cosa c'è dopo l'ultimo anello. È una frase sulla CATENA e non su una riga --
@@ -217,7 +217,7 @@ def _count(from_count: int) -> str:
     incidente, è lo stato. Nel caso del proprietario è la differenza fra «ah,
     un errore» e «ah, sto buttando via una chiamata a messaggio da settimane».
     """
-    return "l'ultima richiesta" if int(from_count) <= 1 else (
+    return "l’ultima richiesta" if int(from_count) <= 1 else (
         f"le ultime {int(from_count)} richieste")
 
 
@@ -275,8 +275,8 @@ def occurrence_phrase(occurrence: dict | None, *, position: int | None, now: flo
     """
     if occurrence is None:
         if position is None or int(position) <= 1:
-            return "nessuna osservazione da quando l'add-on è partito"
-        return "nessun ripiego servito da quando l'add-on è partito"
+            return "nessuna osservazione da quando l’add-on è partito"
+        return "nessun ripiego servito da quando l’add-on è partito"
 
     age = _age(float(now) - float(occurrence["quando"]))
     if occurrence["tipo"] == "risposto":
@@ -306,7 +306,7 @@ def occurrence_phrase(occurrence: dict | None, *, position: int | None, now: flo
     if family == "irraggiungibile":
         # Nessun codice, perché non c'è stata nessuna risposta da cui prenderlo:
         # «non risponde all'indirizzo» è tutto ciò che si è potuto vedere.
-        return "non risponde all'indirizzo — ultimo tentativo " + age
+        return "non risponde all’indirizzo — ultimo tentativo " + age
     if family == "credenziale":
         # Nessuna causa PREDEFINITA: se il codice non è fra quelli di cui
         # sappiamo il perché, si dice il numero e ci si ferma.
@@ -441,19 +441,19 @@ def compose_now(
     if who is None:
         if bridge_silent:
             phrase = ("HIRIS non può rispondere: il ponte è acceso, manca il "
-                      "token del Piano Claude Max, e sotto di lui non c'è nessuno.")
+                      "token del Piano Claude Max, e sotto di lui non c’è nessuno.")
             diagnosis.append({
                 "gravita": "guasto",
                 "testo": ("Il ponte è acceso ma manca il token: nessun "
                           "messaggio arriva al Piano Claude Max, e in catena "
-                          "non c'è nessun altro a cui passarlo."),
+                          "non c’è nessun altro a cui passarlo."),
                 "azione": None,
             })
         else:
             phrase = "HIRIS non può ancora rispondere: la catena è vuota."
             diagnosis.append({
                 "gravita": "guasto",
-                "testo": ("Non c'è nessun provider in catena: non c'è niente a "
+                "testo": ("Non c’è nessun provider in catena: non c’è niente a "
                           "cui chiedere una risposta."),
                 "azione": None,
             })
@@ -499,7 +499,7 @@ def compose_now(
             diagnosis.append({
                 "gravita": "guasto",
                 "testo": ("Il ponte è acceso e sotto il Piano Claude Max non "
-                          "c'è nessun altro: "
+                          "c’è nessun altro: "
                           f"se non risponde entro {int(bridge_deadline_min)} minuti, "
                           "il turno non ha dove andare."
                           ),
@@ -690,7 +690,7 @@ def compose_topology(
         parola qui rimanda LÌ e non a una pagina esterna.
         """
         if has_credential and without_model(pid):
-            return ("L'indirizzo c'è, il modello no: finché manca non c'è "
+            return ("L’indirizzo c’è, il modello no: finché manca non c’è "
                     "niente a cui chiedere, e in catena non ci può stare. Si "
                     "sceglie qui accanto.")
         if pid != "subscription":
@@ -825,7 +825,7 @@ def compose_topology(
 # lo stesso identico comportamento (misurato, progetto §0.4).
 SUBSCRIPTION_ALIAS: tuple[tuple[str, str], ...] = (
     ("haiku", "il più rapido"),
-    ("sonnet", "l'equilibrato"),
+    ("sonnet", "l’equilibrato"),
     ("opus", "il più capace"),
 )
 
@@ -907,7 +907,7 @@ def provenance(provider_id: str, source: str, *, address: str = "",
         # nascondere è comodo per chi capisce e crudele per chi non capisce
         # perché una cosa è sparita. La parola è la stessa della riga
         # (`MISSING_REASONS`), perché è lo stesso fatto detto nello stesso vocabolario.
-        return f"Non c'è nessun elenco da leggere: {missing_reason(provider_id)}."
+        return f"Non c’è nessun elenco da leggere: {missing_reason(provider_id)}."
     if source == "fissa":
         # Il piano. Non è un ripiego e non si chiama così: i tre alias non
         # possono invecchiare, perché non descrivono il catalogo di qualcun
@@ -942,7 +942,7 @@ def provenance(provider_id: str, source: str, *, address: str = "",
         # qui -- filtrarli renderebbe la riserva una lista diversa da quella
         # scritta nel sorgente, cioè una terza cosa -- si rende leggibile.
         row += (" E la casella «nascondi i gratuiti» qui non ha effetto: "
-                "l'elenco di riserva li contiene comunque.")
+                "l’elenco di riserva li contiene comunque.")
     return row
 
 
@@ -965,7 +965,7 @@ def explanation(provider_id: str) -> str:
         return ("Solo modelli che sanno usare gli strumenti: HIRIS manda "
                 "sempre il catalogo delle azioni, e gli altri rifiuterebbero "
                 "ogni richiesta. Qui ci sono quelli scelti da noi: per uno che "
-                "non c'è, incollane l'identificatore nel campo qui sopra.")
+                "non c’è, incollane l’identificatore nel campo qui sopra.")
     if provider_id == "ollama":
         return ("Sono i modelli scaricati su quella macchina: per averne un "
                 "altro si fa `ollama pull` di là, non da qui.")

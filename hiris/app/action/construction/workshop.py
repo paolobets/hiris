@@ -64,9 +64,9 @@ OPERATIONS = ("crea", "modifica", "cancella")
 # 7). La stessa distinzione (con l'apostrofo tipografico ’) vive in
 # `DOMAIN_ARTICLE`, `constructions-route.js`: non e' importata da li' (i due
 # lati non condividono un modulo), ma la scelta grammaticale e' la stessa.
-ARTICOLO_INDETERMINATIVO = {"automation": "un'automazione", "script": "uno script",
+ARTICOLO_INDETERMINATIVO = {"automation": "un’automazione", "script": "uno script",
                             "scene": "una scena"}
-ARTICOLO_DETERMINATIVO = {"automation": "l'automazione", "script": "lo script",
+ARTICOLO_DETERMINATIVO = {"automation": "l’automazione", "script": "lo script",
                           "scene": "la scena"}
 
 # Gli stati interni (snake_case) tradotti per una frase rivolta all'utente.
@@ -309,7 +309,7 @@ class Workshop:
         else:
             righe.append(f"Cancello {ARTICOLO_DETERMINATIVO.get(domain, domain)} "
                          f"«{(prima or {}).get('alias') or key}», "
-                         "che esiste già in casa tua. Conservo com'era.")
+                         "che esiste già in casa tua. Conservo com’era.")
         if intent.get("descrizione"):
             righe.append(f"A cosa serve: {intent['descrizione']}")
         for helper in intent.get("helper") or []:
@@ -329,7 +329,7 @@ class Workshop:
                       now: float) -> dict:
         proposal = self._store.read(proposal_id)
         if proposal is None:
-            return {"errore": "non ho nessuna proposta con quell'identificatore."}
+            return {"errore": "non ho nessuna proposta con quell’identificatore."}
         if proposal["stato"] != "in_attesa":
             return {"errore": f"quella proposta e' gia' {_readable_state(proposal['stato'])}."}
         cancello = self._cancello(proposal, actor, exchange)
@@ -345,7 +345,7 @@ class Workshop:
         claimed = self._store.claim(proposal_id, now=now)
         if "errore" in claimed:
             return {"errore": "quella proposta e' gia' stata presa in carico da "
-                              "un'altra richiesta."}
+                              "un’altra richiesta."}
 
         domain, key, operation = proposal["dominio"], proposal["chiave"], proposal["gesto"]
         nati: list[tuple[str, str]] = []
@@ -356,7 +356,7 @@ class Workshop:
             if "errore" in occurrence:
                 note = await self._disfa(nati, senza_id)
                 return self._fallita(proposal, now, actor,
-                                     f"non sono riuscito a creare l'helper: "
+                                     f"non sono riuscito a creare l’helper: "
                                      f"{occurrence['errore']}{note}")
             creato = occurrence.get("helper") or {}
             if creato.get("id"):
@@ -459,7 +459,7 @@ class Workshop:
             return ("non riesco a distinguere i turni, quindi non posso confermare da qui: "
                     "apri la pagina Costruzioni e conferma di la'.")
         if proposal["turno"] == exchange:
-            return ("questa proposta e' nata in questo stesso turno: te l'ho mostrata, "
+            return ("questa proposta e' nata in questo stesso turno: te l’ho mostrata, "
                     "ora dimmi tu se procedere.")
         return None
 
@@ -530,7 +530,7 @@ class Workshop:
         if disfatti:
             pezzi.append("ho tolto anche " + ", ".join(disfatti))
         if rimasti:
-            pezzi.append("l'helper " + ", ".join(rimasti) +
+            pezzi.append("l’helper " + ", ".join(rimasti) +
                          " e' rimasto in casa tua, toglilo a mano")
         for domain in senza_id or []:
             pezzi.append(f"un helper {domain} e' stato creato ma senza un id "
@@ -580,7 +580,7 @@ class Workshop:
             if attributes.get("id") == key or eid == f"{domain}.{key}":
                 trovate.append(eid)
         if not trovate:
-            return [], ("Home Assistant ha accettato la scrittura ma l'entita' non e' "
+            return [], ("Home Assistant ha accettato la scrittura ma l’entita' non e' "
                         "ancora comparsa: potrebbe servire un riavvio, o la ricarica "
                         "non e' andata a buon fine.")
         return trovate, None
@@ -638,10 +638,10 @@ class Workshop:
         """
         row = self._store.read(construction_id)
         if row is None:
-            return {"errore": "non ho nessuna costruzione con quell'identificatore."}
+            return {"errore": "non ho nessuna costruzione con quell’identificatore."}
         if row["stato"] != "applicata":
             return {"errore": "quella costruzione non e' mai stata applicata: "
-                              "non c'e' niente da rimettere."}
+                              "non c’e' niente da rimettere."}
         prima = row["prima"]
         domain, key = row["dominio"], row["chiave"]
         if prima is None:
@@ -651,8 +651,8 @@ class Workshop:
             intent_operation, dopo = "modifica", prima
             reason = await self._validate(domain, dopo)
             if reason is not None:
-                return {"errore": f"non posso rimettere com'era: {reason}"}
-        preview = (f"Rimetto l'oggetto {domain}.{key} com'era prima "
+                return {"errore": f"non posso rimettere com’era: {reason}"}
+        preview = (f"Rimetto l’oggetto {domain}.{key} com’era prima "
                      f"del {self._data(row['creata_ts'])}.")
         proposal = self._store.propose(
             operation=intent_operation, domain=domain, key=key, actor=actor,
@@ -757,6 +757,6 @@ def _translate_rejection(error: str, domain: str) -> str:
                "scene": "scene"}.get(domain, domain)
     if "404" in error or "not found" in error.lower():
         return (f"queste {plural} sono gestite a mano (o vivono in `packages/`): "
-                "l'API di configurazione di Home Assistant non le governa, e non posso "
+                "l’API di configurazione di Home Assistant non le governa, e non posso "
                 "scriverle. Posso mostrarti il pezzo corretto da incollare.")
     return error

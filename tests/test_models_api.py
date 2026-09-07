@@ -131,7 +131,7 @@ async def test_i_cinque_provider_ci_sono_tutti_e_stanno_in_una_lista_sola(client
     # del prodotto (decisione_modelli), non nella pagina.
     assert righe["subscription"]["manca"] == "manca il token"
     assert righe["openai"]["manca"] == "manca la chiave"
-    assert righe["ollama"]["manca"] == "manca l'indirizzo"
+    assert righe["ollama"]["manca"] == "manca l’indirizzo"
 
 
 @pytest.mark.asyncio
@@ -288,7 +288,7 @@ async def test_ollama_senza_modello_non_puo_entrare_in_catena_e_dice_perche(clie
 
     assert righe["ollama"]["ha_credenziale"] is True
     assert righe["ollama"]["manca"] == "", (
-        "la credenziale c'e': dire «manca l'indirizzo» sarebbe falso"
+        "la credenziale c'e': dire «manca l’indirizzo» sarebbe falso"
     )
     assert righe["ollama"]["riordinabile"] is False, (
         "«Usa» qui scriverebbe una PUT accettata e buttata via dal runtime"
@@ -802,9 +802,7 @@ async def test_un_pannello_chiesto_risponde_SEMPRE_anche_senza_credenziale(clien
         "un elenco dichiarato inesistente e disegnato lo stesso sarebbe la "
         "pagina che si contraddice in due righe"
     )
-    assert p["provenienza"] == (
-        "Non c'e' nessun elenco da leggere: manca la chiave.".replace("c'e'", "c'è")
-    )
+    assert p["provenienza"] == "Non c’è nessun elenco da leggere: manca la chiave."
     assert p["dove"] == ["provider_models", "openrouter"], (
         "resta scrivibile: preparare un provider prima di usarlo e' un uso "
         "legittimo, e il campo di testo del pannello e' l'unico modo di farlo"
@@ -981,7 +979,7 @@ async def test_senza_osservazioni_la_pagina_non_afferma_niente(client):
     body = await (await client.get("/api/models/config")).json()
     riga = {r["id"]: r for r in body["catena"]}["claude"]
     assert riga["esito"] is None
-    assert riga["stato_testo"] == "nessuna osservazione da quando l'add-on è partito"
+    assert riga["stato_testo"] == "nessuna osservazione da quando l’add-on è partito"
 
 
 @pytest.mark.asyncio
@@ -1006,12 +1004,12 @@ async def test_la_rotta_legge_l_orologio_e_l_eta_cresce_da_sola(client, monkeypa
 
     body = await (await client.get("/api/models/config")).json()
     assert {r["id"]: r for r in body["catena"]}["claude"]["stato_testo"] == (
-        "non risponde all'indirizzo — ultimo tentativo poco fa")
+        "non risponde all’indirizzo — ultimo tentativo poco fa")
 
     orologio[0] += 7200
     body = await (await client.get("/api/models/config")).json()
     assert {r["id"]: r for r in body["catena"]}["claude"]["stato_testo"] == (
-        "non risponde all'indirizzo — ultimo tentativo 2 h fa")
+        "non risponde all’indirizzo — ultimo tentativo 2 h fa")
 
 
 @pytest.mark.asyncio

@@ -128,7 +128,7 @@ def test_un_esito_vecchio_resta_vecchio_e_lo_dichiara():
     e = r.occurrence("claude")
     assert e["quando"] == 1000.0, "il registro non deve ringiovanire da solo"
     assert occurrence_phrase(e, position=1, now=adesso[0]) == (
-        "ha rifiutato l'ultima richiesta — credito esaurito (400), 2 h fa")
+        "ha rifiutato l’ultima richiesta — credito esaurito (400), 2 h fa")
 
 
 @pytest.mark.parametrize("codice,attesa", [
@@ -265,9 +265,9 @@ def test_un_orologio_che_va_all_indietro_non_produce_un_futuro():
 def test_le_frasi_dei_cinque_stati():
     a = 10_000.0
     assert occurrence_phrase(None, position=1, now=a) == (
-        "nessuna osservazione da quando l'add-on è partito")
+        "nessuna osservazione da quando l’add-on è partito")
     assert occurrence_phrase(None, position=3, now=a) == (
-        "nessun ripiego servito da quando l'add-on è partito")
+        "nessun ripiego servito da quando l’add-on è partito")
     assert occurrence_phrase({"tipo": "risposto", "famiglia": "", "codice": None,
                         "messaggio": "", "quando": a - 180, "da_quante": 1,
                         "durata_s": 0.0}, position=2, now=a) == "ha risposto 3 min fa"
@@ -282,7 +282,7 @@ def test_le_frasi_dei_cinque_stati():
     assert occurrence_phrase({"tipo": "rifiutato", "famiglia": "irraggiungibile", "codice": None,
                         "messaggio": "", "quando": a - 7200, "da_quante": 3,
                         "durata_s": 5.0}, position=3, now=a) == (
-        "non risponde all'indirizzo — ultimo tentativo 2 h fa")
+        "non risponde all’indirizzo — ultimo tentativo 2 h fa")
 
 
 def test_mai_provato_fuori_dalla_catena_non_e_un_ripiego_mancato():
@@ -290,7 +290,7 @@ def test_mai_provato_fuori_dalla_catena_non_e_un_ripiego_mancato():
     servito» direbbe che è un anello di riserva, e non lo è. Stesso fatto,
     la frase di chi non è mai stato osservato."""
     assert occurrence_phrase(None, position=None, now=10_000.0) == (
-        "nessuna osservazione da quando l'add-on è partito")
+        "nessuna osservazione da quando l’add-on è partito")
 
 
 def test_una_chiave_rifiutata_non_e_un_credito_esaurito():
@@ -306,9 +306,9 @@ def test_una_chiave_rifiutata_non_e_un_credito_esaurito():
                             "codice": codice, "messaggio": "", "quando": a - 180,
                             "da_quante": 1, "durata_s": 0.1}, position=1, now=a)
 
-    assert _f(402) == "ha rifiutato l'ultima richiesta — credito esaurito (402), 3 min fa"
-    assert _f(401) == "ha rifiutato l'ultima richiesta — la chiave non è accettata (401), 3 min fa"
-    assert _f(403) == "ha rifiutato l'ultima richiesta — la chiave non è accettata (403), 3 min fa"
+    assert _f(402) == "ha rifiutato l’ultima richiesta — credito esaurito (402), 3 min fa"
+    assert _f(401) == "ha rifiutato l’ultima richiesta — la chiave non è accettata (401), 3 min fa"
+    assert _f(403) == "ha rifiutato l’ultima richiesta — la chiave non è accettata (403), 3 min fa"
 
 
 def test_la_famiglia_di_scorta_dice_il_codice_e_non_lo_interpreta():
@@ -323,9 +323,9 @@ def test_la_famiglia_di_scorta_dice_il_codice_e_non_lo_interpreta():
                             "messaggio": "boom", "quando": a - 180, "da_quante": quante,
                             "durata_s": 0.1}, position=1, now=a)
 
-    assert _f(500) == "ha rifiutato l'ultima richiesta — errore 500, 3 min fa"
+    assert _f(500) == "ha rifiutato l’ultima richiesta — errore 500, 3 min fa"
     assert _f(429, quante=7) == "ha rifiutato le ultime 7 richieste — errore 429, 3 min fa"
-    assert _f(None) == "ha rifiutato l'ultima richiesta, 3 min fa"
+    assert _f(None) == "ha rifiutato l’ultima richiesta, 3 min fa"
 
 
 def test_il_modello_inesistente_non_conta_le_richieste():
