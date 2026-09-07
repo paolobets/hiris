@@ -42,40 +42,33 @@ voci non sa dire se il lavoro procede.
 
 ## Scelti — sprint in corso
 
-**Sprint aperto il 04/09/2026 — «la conoscenza prende una forma».**
+**Lo sprint «la conoscenza prende una forma» è CHIUSO con la v3.22.0 (07/09/2026).** Sette
+delle sue dieci voci sono passate in «Usciti», ognuna col suo commit: la piattaforma
+cercabile, la salute di un'integrazione, il soggetto e la durata di un guasto, i calendari,
+le tracce e il log, il vocabolario importato.
 
-Perimetro e strada decisi dal proprietario. La strada e' **una spina alla volta, verticale**:
-si prende l'appartenenza e la si porta fino in fondo attraverso tutti i lettori — anagrafe,
-ricerca, osservatore, briefing, strumenti — e solo dopo si passa oltre. Le tracce e il log
-stanno in coda **per conseguenza della strada**: sono una fonte nuova, e nascono sopra
-un'appartenenza gia' rifatta invece che accanto a una da rifare.
+**Correzione del 07/09**: l'intestazione precedente diceva *«Nessuna voce passa ancora in
+Usciti [...] il lavoro è su `master`, ma la casa non ce l'ha»*. Era vero il 04/09 e falso da
+tre rilasci. Un registro che resta indietro rispetto ai fatti è esattamente il difetto che
+questo documento dichiara di non voler avere — e ci è cascato lo stesso, per quattro giorni.
 
-**La prova che dice quando e' finito**, e non se ne discute:
+**Dello sprint chiuso restano qui tre voci lavorate in parte**, e due chiedono la stessa cosa:
+**`search` non distingue ancora un candidato UNICO da un candidato CERTO.**
+`memory/resolver.py:233` è ancora un conteggio, e la nozione di candidato *debole* non esiste
+da nessuna parte, né nel prodotto né nelle prove. È la **prova numero 3 delle undici** che la
+specifica dichiara necessarie a chiudere lo sprint (§11), e non è mai stata scritta. Non
+risulta nemmeno una decisione di rinunciarci: è lavoro rimasto indietro, non una scelta.
+Chiuderlo vuol dire prima **definire cosa rende debole un candidato** — è una definizione,
+non una correzione.
 
-> **«Quali entita' non rispondono, e di quale integrazione sono?»**
-> Oggi: 95 secondi, quindici chiamate, si ferma a 48 su 74, e il giardino resta invisibile.
-> Dopo: una chiamata, 74 su 74, e lo stato della casa nomina l'irrigazione ferma.
+**Lo sprint aperto oggi è un altro: i rilievi del collaudo di usabilità del 07/09**, sette
+voci, in fondo a questa sezione. Cinque sono già su `master` in locale e **non ancora
+rilasciate**: lo stato «Uscito» lo dà un rilascio, non un commit.
 
-**La specifica dello sprint è `docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`**: le voci qui sotto restano il
-registro (cosa e perché), la spec porta il disegno (come). Sono in ordine di lavorazione.
-
-**Stato al 04/09/2026 — il piano 1 «l'appartenenza» è su `master` (`eec94198`, CI verde.)**
-Ha chiuso: la ricerca trova per piattaforma; `view tipo: integrazione` risponde **in una
-chiamata** con quante entità non rispondono, quante hanno stato ignoto, quante sono disabilitate
-e da quando; il briefing non chiama più «integrazione» il titolo di una voce di configurazione;
-l'anagrafe ha il livello dell'istanza (migrazione 6 → 7).
-
-**Nessuna voce passa ancora in «Usciti», ed è deliberato: quello stato lo dà un RILASCIO**, e la
-versione non è stata toccata. È il momento in cui si vede perché i tre stati sono distinti — il
-lavoro è su `master`, ma la casa non ce l'ha.
-
-Resta al **piano 2**: il guasto nell'osservatore (nome, condizione, isteresi) e la regola del
-riavvio, sbloccata da `sensor.uptime` — vedi spec §4 ③.
-
-**Correzione del 05/09**: `get_error_log()` è passata in «Usciti» **senza che nessuno ci
-lavorasse**. Era già stata cancellata il 31/08 e rilasciata con la v3.15.0; la voce era nata da un
-ricordo che registrava la *decisione*, scambiata per lavoro da fare. È il primo caso in cui il
-registro si corregge da sé, ed è il motivo per cui ogni voce dichiara **da dove viene**.
+**Due dei sette rilievi non erano quello che dicevano**, e la misura lo ha mostrato prima che
+qualcuno ci lavorasse sopra: l'Albero non nasce lungo, e tre delle otto «parole nostre» non
+sono sullo schermo. In compenso la stessa misura ha trovato **205 entità che sparivano** da
+una pagina che esiste per non far sparire niente.
 
 ### La conoscenza non ha spina dorsale — le quattro mancanze
 
@@ -126,63 +119,6 @@ delle due frasi compare nel briefing (zero occorrenze di «regolar» e di «ness
 caratteri), e la seconda HIRIS non puo' saperla, perche' non legge le tracce. E ha taciuto la
 riga in cui il briefing dichiara se stesso incompleto: «Il nucleo superava il tetto di 6000
 caratteri: 3 elementi notevoli non inclusi».
-
-### La piattaforma non e' cercabile
-
-`origine: misurato sulla casa vera il 02/09/2026` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
-
-`view` restituisce gia' `"piattaforma": "hydrawise"`, ma `search` indicizza solo nome, area e
-dispositivo. Non si puo' chiedere «cosa espone l'integrazione Sonos», ne' «l'irrigazione funziona».
-Misurato: `search "sonos"` → **0 risultati**, mentre HA ha 13 entita' con piattaforma `sonos` — si
-chiamano «Sala da pranzo».
-
-### La salute di un'integrazione non e' il suo stato
-
-`origine: misurato sulla casa vera il 02/09/2026` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
-
-Un'integrazione `loaded` con **tutte** le entita' morte oggi e' invisibile. Sulla casa: 162 entita'
-su 827 (19,6%) sono `unavailable` o `unknown`, comprese tutte e 16 quelle dell'irrigazione
-(Hydrawise risponde 403, 40 errori nel log). Ma `hydrawise` e' `loaded`, quindi non compare fra i
-guasti, e il briefing non nomina mai «non disponibile». L'irrigazione e' ferma e HIRIS non lo
-direbbe. La salute di un'integrazione e' **quante delle sue entita' rispondono**, non il suo `state`.
-
-**Rimisurato il 04/09**, e i numeri di riferimento sono questi: **74 entita' non rispondono su
-1221**, e l'irrigazione ne porta **24** — verificato entita' per entita'
-(`binary_sensor.giardino_*_irrigazione` e `valve.giardino_*` sono `unavailable`,
-`piattaforma: hydrawise`). Il briefing dice «74 entita' non rispondono» e si ferma li': nessun
-nome, nessun raggruppamento, nessuna integrazione nominata.
-
-### Il soggetto di un guasto porta il nome e la condizione, non l'identificativo
-
-`origine: il proprietario, 04/09/2026, dopo la sonda sull'osservatore` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
-
-`mind/watcher.py:191` tiene solo l'`entry_id`: il soggetto scritto in archivio e'
-`integrazione:01K2CK4GG287VKK18M5J788MRQ`. Il dizionario dell'integrazione **ha** `domain`,
-`title` e `state`, e il codice li legge tre righe sopra per decidere se e' un guasto — poi li
-scarta. Non e' un dato che manca: e' un dato che si getta.
-
-Misurato sulla casa il 04/09: quel ULID e' **il protagonista piu' frequente dell'intero
-archivio**, 34 oggetti su 285 in nove giorni. Nessuno di quegli oggetti dice cosa si sia rotto,
-ne' se sia `setup_retry` o `setup_error` — che non sono la stessa cosa. Il corpo, per giunta,
-dice sempre `"stato": "aperto"` anche a episodio chiuso, perche' `facts.py:725` scrive quella
-costante alla nascita e `close()` la ricopia (`facts.py:712`).
-
-Sta nella stessa funzione dove va messa l'isteresi — vedi «Un episodio per condizione, non
-venticinque»: sono due correzioni nello stesso punto del codice, e senza questa le altre voci
-della fetta producono oggetti veri e comunque illeggibili.
-
-**Una domanda di disegno da sciogliere prima**: cambiare la forma del soggetto rompe la
-continuita' col grezzo gia' scritto (22 giorni di righe con la forma vecchia). Si migra, si
-convive, o il nome viaggia in una colonna accanto invece che dentro il soggetto?
-
-### Un episodio per condizione, non venticinque
-
-`origine: misurato sulla casa vera il 02/09/2026` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
-
-L'osservatore apre un episodio nuovo a ogni sfarfallio: **25 episodi di guasto per una sola
-integrazione** (`lifx / Abat-jour`, `setup_retry`), e cinque aperti contemporaneamente per la stessa
-cosa. Una condizione che va e viene dovrebbe essere un episodio finche' non finisce: il genere
-decide la forma, e la forma di una condizione e' la **durata**.
 
 ### Come HIRIS interpreta le entita' di Home Assistant — il caso `sensor.persons`
 
@@ -279,108 +215,125 @@ questi tre, non la causa, ed e' l'unico che il proprietario ha potuto vedere.
 Ha un legame stretto con «Come HIRIS interpreta le entita' di Home Assistant»: quella voce e' il
 caso che l'ha fatto emergere, questa e' la regola che ne esce.
 
-### I calendari si importano, e HIRIS li sa leggere
+### L'Osservatore mostra i nomi e gli stati di Home Assistant, non i nostri
 
-`origine: il proprietario, 04/09/2026` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
+**FATTA, non ancora rilasciata** — commit `e1bfe8da` (il nome si salva col cambio) e
+`b68bda11` (lo stato si rende alla lettura). Provata a secco su archivio e tabella veri:
+**69 righe su 69 oggi inglesi diventano italiane**.
 
-**Richiesta**: importare anche i calendari, e che HIRIS li possa leggere.
+`origine: revisione di usabilita' sull'interfaccia vera, casa vera, v3.22.1, 07/09/2026` · `documento: docs/collaudo.md`
 
-**Misurato sulla casa vera il 04/09, e il primo fatto è che la capacità c'era e l'abbiamo tolta.**
-`proxy/ha_client.py:1173-1180` lo dichiara per esteso: `get_calendars` e
-`get_calendar_events_range` sono **uscite** nella fetta «escono i trentaquattro» (E2, Task 8),
-orfane a cascata perché il loro unico chiamante — `tools/calendar_tools.get_calendar_events` —
-era uscito a sua volta. Il commento chiude con «nessuna garanzia persa», ed era vero allora:
-nessuno le chiamava. Adesso c'è chi le chiamerebbe.
+Le righe di «Cosa e' successo» portano l'`entity_id` grezzo e lo stato in inglese
+(`on`, `off`, `not_home`, `heat`). Il proprietario non chiama cosi' le sue cose: in HA
+ogni entita' ha un **nome amichevole**, e ogni stato ha una traduzione che HA stesso
+pubblica. Si leggono quelli.
 
-**Cosa c'è sulla casa**, e quanto poco HIRIS ne sa:
+**La trappola**: il nome amichevole puo' mancare. Quando manca si mostra l'`entity_id` e
+**si dice che e' quello** — non si inventa un nome, e non si tace la riga. E' la stessa
+distinzione che questo ramo ha gia' pagato quattro volte: «non c'e' un nome» e «non ho
+potuto leggerlo» sono due fatti diversi.
 
-| | |
-|---|---|
-| `calendar.famiglia` · `calendar.personale` | piattaforma `caldav`, due calendari veri |
-| `view calendar.famiglia` restituisce | `stato: "on"`, `stato_leggibile: **"acceso"**` |
-| `search "calendario"` · `"calendar"` · `"eventi"` · `"agenda"` | **zero risultati, tutte e quattro** |
+### La lunghezza dell'Albero su schermo stretto
 
-Due difetti distinti, e il secondo è più insidioso del primo:
+**RILIEVO CADUTO, e al suo posto ne è uscito uno vero.** Misurato: all'apertura la
+pagina è alta **1.784 px**, non 35.576 — quel numero era lo stato in cui il recensore
+l'aveva messa aprendo le aree. Ma la stessa misura ha scoperto che **205 entità su 1223
+non comparivano affatto**: chiuso con `60aa334c`. Resta **una decisione del proprietario,
+rinviata a dopo la verifica dal vivo** — vedi «Due aree dell'Albero sono enormi quando
+le si apre», in attesa.
 
-1. **Gli eventi non si leggono affatto.** Un calendario, per HIRIS, è una lampadina con due
-   stati. Non sa che c'è dentro, né quando, né per chi.
-2. **«Acceso» è una traduzione falsa.** Per Home Assistant un'entità `calendar` sta a `on`
-   quando **un evento è in corso**, non quando è «accesa». Dire «acceso» a un modello non è
-   generico: è **sbagliato**, e lo porta a ragionare su un interruttore invece che su un
-   impegno. È lo stesso difetto di `sensor.persons` letto come conteggio di presenza, e
-   ricadrà sotto il tema finale dello sprint (§7): **cosa significa uno stato va importato
-   dalla documentazione, non dedotto.**
+`origine: revisione di usabilita' sull'interfaccia vera, casa vera, v3.22.1, 07/09/2026` · `documento: docs/collaudo.md`
 
-E i due calendari sono raggiungibili **solo se sai già che si chiamano «Famiglia» e
-«Personale»** — la stessa lacuna delle persone, sul dominio invece che sulla piattaforma.
+**Misurato a 375 px: l'Albero e' alto 35.576 px** — quasi cento schermate da scorrere per
+arrivare in fondo. Tre cause, tutte viste: gli episodi ripetuti non sono raggruppati, non
+c'e' una ricerca, e nessuna sezione si chiude.
 
-**Dove sta nello sprint**: con «le tracce e il log», in coda. Sono la stessa forma di lavoro —
-una **fonte nuova** che nasce sopra un'appartenenza già rifatta — e vale anche qui la regola che
-il proprietario ha già dato per le tracce: **una fonte sola, due lettori**, lo strumento della
-chat *e* l'osservatore. Un calendario che sa dire «domani nessuno è in casa dalle 9 alle 18» è
-esattamente ciò che manca a un osservatore che oggi ha tre giorni di storia della presenza.
+E' un difetto della casa **vera**, non della casa di prova: cresce con il numero di
+entita', quindi peggiora da solo. Qualunque forma si scelga va provata su una casa piena,
+non su un campione.
 
-**Da decidere quando si progetta**: quanto avanti si guarda (un giorno? una settimana?), se gli
-eventi si conservano o si rileggono ogni volta, e come si dichiara ciò che il calendario **non**
-dice — un calendario vuoto non significa «nessuno ha impegni», significa «nessuno l'ha scritto».
+### Modelli e Consumi si contraddicono sull'abbonamento
 
-### Le tracce delle automazioni e il log di sistema
+**FATTA, non ancora rilasciata** — commit `84230ee0`. Misurato: Modelli mentiva. Il
+ponte non passa dal router, quindi nessuno scriveva mai un successo per `subscription`.
+Corretti **due** punti: il collegamento mancante, e la frase, che pronunciava un fatto
+sul mondo («non l'hai ancora usato») partendo da un'assenza di osservazione.
 
-`origine: deciso dal proprietario il 31/08/2026` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
+`origine: revisione di usabilita' sull'interfaccia vera, casa vera, v3.22.1, 07/09/2026` · `documento: docs/collaudo.md`
 
-Due fonti nuove di HA, e devono essere disponibili **a entrambi i lettori**: lo strumento della chat
-E l'osservatore. Una fonte sola, due lettori — l'osservatore «non apre un secondo rubinetto», perche'
-due sorgenti degli stessi eventi possono divergere. Le chiamate sono `trace/list`, `trace/get`,
-`trace/contexts` e `system_log/list`, tutte WS e tutte `require_admin`.
+La pagina **Modelli** dice del ponte «non l'hai ancora usato»; **Consumi**, nella stessa
+sessione e sullo stesso ponte, ne conta **98 turni**. Una delle due sbaglia, e il
+proprietario le vede tutte e due.
 
-Misurato sulla casa il 30-31/08: 72 tracce su 16 automazioni, 64 `finished`, 7 `failed_conditions`,
-1 `error` — e un'automazione rotta davvero, mai segnalata al proprietario; 17 voci di log, 11
-WARNING e 6 ERROR.
+**Prima si indaga, poi si corregge.** Non si sa ancora quale delle due fonti sia quella
+giusta: correggere quella sbagliata renderebbe *coerente una bugia*. La voce chiede una
+misura — chi scrive il contatore, chi lo legge, e perche' i due non si vedono — prima di
+chiedere una correzione.
 
-Due trappole gia' pagate, che decidono il lavoro e non si vedono nella documentazione:
-**le tracce hanno una finestra** (HA ne conserva 5 per automazione, poi la sesta cancella la prima —
-decide se si puo' guardare a cadenza o si devono seguire mentre accadono); e **il log arriva gia'
-giudicato**, perche' `system_log/list` consegna righe raggruppate da HA con `count` e
-`first_occurred`, il che rompe la legge dell'osservatore «scrivi il grezzo, giudica dopo».
+### Le parole nostre invece che le sue
 
-### Le specifiche di Home Assistant si importano dalla documentazione — il tema finale
+**FATTA IN PARTE** — commit `4e6b36ff`. Misurato: **tre delle otto parole non erano
+sullo schermo**. `ponte` è già «Abbonamento Claude», `view` e `casa ›` non esistono
+come testo, «Categorie» è vocabolario di Home Assistant e non nostro. Corrette `nucleo`
+→ «Cosa vede il modello a ogni turno», «Forza» → «Natura», «Grandezza» → «Cosa misura».
+**Resta**: «bersaglio» e i nomi degli strumenti vivono nei messaggi d'errore rivolti al
+MODELLO (`action/actuator.py`), che il modello può ripetere in chat. È un'altra cura,
+non un cambio di etichetta.
 
-`origine: il proprietario, 04/09/2026 — «questo e' il tema finale di questo sprint»` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
+`origine: revisione di usabilita' sull'interfaccia vera, casa vera, v3.22.1, 07/09/2026` · `documento: docs/collaudo.md`
 
-**Richiesta testuale**: «vanno importate e capite le specifiche di HA con la documentazione; per
-ogni stato va capito cosa rappresenta e se ci sono altri metadati o parametri che permettono di
-capire di piu'. Per migliorare i ragionamenti serve sapere cosa stiamo guardando in profondita' e
-capire bene per ogni oggetto le sue caratteristiche.»
+Escono sullo schermo parole che sono **nomi interni**, non parole del proprietario:
+`nucleo`, `view`, `ponte`, «Forza», «Grandezza», «bersaglio», «Categorie», e la briciola
+`casa ›`.
 
-E' la voce che chiude lo sprint perche' e' quella che lo rende **duraturo**: le altre otto
-correggono cio' che sbagliamo oggi, questa toglie la ragione per cui lo sbagliavamo. Vale la legge
-del progetto: **mai un'ipotesi su Home Assistant — prima la documentazione, poi le API vere**.
+Vale la regola gia' scritta nel glossario: **si rinomina per funzione, non si traduce**, e
+il metro e' la **prova del lettore nuovo**. E' lo stesso lavoro della rinomina chiusa con
+i sei rilasci 3.15.0→3.20.0, su cio' che quella non aveva raggiunto: l'interfaccia.
 
-**Misurato il 04/09: quanti campi che HA manda nel registro delle entita' il codice non nomina
-mai.** Conteggio delle occorrenze in tutto `hiris/app`:
+### Accessibilita': nessun titolo in otto rotte su nove, e bersagli sotto i 44 px
 
-| campo di HA | citazioni | cosa ci perdiamo |
-|---|---:|---|
-| `supported_features` | **0** | cosa un'entita' **sa fare** (una luce che cambia colore, una tapparella che si ferma a meta') |
-| `assumed_state` | **0** | HA dichiara «questo stato lo **suppongo**, non l'ho verificato» — ed e' la provenienza, che stiamo cercando altrove |
-| `options` | **0** | i valori ammessi di un `select` |
-| `config_entry_id` | **0** | l'appartenenza all'istanza (vedi la spina n. 1) |
-| `unique_id` · `has_entity_name` | **0** | |
-| `capabilities` · `entity_category` · `original_device_class` · `hidden_by` · `original_name` · `platform` | **1 ciascuno** | letti in un punto solo, non conservati come caratteristiche |
+**FATTA IN PARTE** — commit `4e6b36ff`. I titoli c'erano ma non erano marcati: 24
+`page-title` da `div` a `h1`, con una prova generica sulle rotte registrate che
+arrossisce se una rotta nuova se ne dimentica. **Restano i bersagli tattili sotto i
+44 px**, mai misurati uno per uno.
 
-`assumed_state` merita una riga sua: **Home Assistant dichiara gia' quando non e' sicuro di uno
-stato**, e HIRIS non lo legge mai. Stiamo progettando la certezza del dato mentre il fornitore ce
-la sta gia' mandando.
+`origine: revisione di usabilita' sull'interfaccia vera, casa vera, v3.22.1, 07/09/2026` · `documento: docs/collaudo.md`
 
-**Il precedente da seguire c'e' gia' in casa**: `briefing.py:69` porta un elenco «copiato da
-`homeassistant/generated/entity_platforms.py`», sorvegliato da `tests/test_domain_vocabulary.py`.
-Cioe' non si deduce e non si indovina: si importa, si dichiara da dove viene, e una prova si
-accorge quando diverge. Questa voce estende quel gesto dai domini a **stati, classi, categorie,
-capacita' e attributi**.
+**In otto rotte su nove non esiste nessun `h1`–`h4`.** Chi naviga con uno screen reader non
+ha nessuna struttura su cui saltare: la pagina e' un muro di testo senza appigli. E
+diversi bersagli tattili stanno **sotto i 44 px**, la soglia sotto la quale un dito non
+colpisce piu' quello che voleva.
 
-Da decidere quando si progetta: cosa si importa a mano e cosa si legge a runtime; dove vive
-(tabella generata nel repo o nell'anagrafe); e come si accorge di essere invecchiato quando HA
-cambia versione.
+Nessuna delle due cose si vede guardando lo schermo da seduti: si vedono misurando, ed
+entrambe sono state misurate.
+
+### La Memoria dichiara «Nessuna struttura riconosciuta» sopra la struttura che ha riconosciuto
+
+**FATTA, non ancora rilasciata** — commit `4e6b36ff`. Separata alla fonte la struttura
+stretta (grandezza + intervallo) da quella larga (+ ancore e condizioni): la frase resta
+vera guardando l'intera card.
+
+`origine: revisione di usabilita' sull'interfaccia vera, casa vera, v3.22.1, 07/09/2026` · `documento: docs/collaudo.md`
+
+Il pannello scrive di non aver riconosciuto niente, e subito sotto mostra cio' che ha
+riconosciuto. E' la forma gia' incontrata quattro volte in questo ramo — **due cose
+diverse dette con una parola sola** — e si cura come le altre: **separando alla fonte**,
+cioe' facendo etichettare il motivo a chi lo produce, invece di indovinarlo a valle.
+
+### Apostrofi ASCII nel testo composto dal server
+
+**DA FARE, e il perimetro non è quello che questa voce diceva.** Misurato: **513
+elisioni in 42 file** (esclusi i docstring), ma **204 stanno in `home_space/tools.py`**,
+che legge il MODELLO, non il proprietario. Il codice usa già `è` **477 volte** e `’`
+**mai una**: l'incoerenza è dentro la stessa frase. «Si corregge in un posto solo» è
+falso — il confine fra testo per il proprietario e testo per il modello va deciso file
+per file.
+
+`origine: revisione di usabilita' sull'interfaccia vera, casa vera, v3.22.1, 07/09/2026` · `documento: docs/collaudo.md`
+
+Il testo che il server compone usa `'` dove l'italiano vuole `’`. In interfaccia si legge
+come una svista tipografica **ripetuta**, e viene dal server, non dal frontend: e' li' che
+va corretto, in un posto solo.
 
 ---
 
@@ -480,7 +433,6 @@ La lingua del database, i valori di dominio e le chiavi dei record fra motore e 
 sola**, perche' sono la stessa cosa. Rinominare i fatti che ci sono costa la riscrittura di ogni
 query che li nomina — al contrario di aggiungere un fatto che manca, che costa una migrazione
 additiva e reversibile.
-
 
 **Decisione del proprietario, 04/09/2026, presa durante lo sprint dell'appartenenza:**
 «tutte le nuove colonne nei db vanno in inglese; poi migreremo tutto in inglese in uno
@@ -737,26 +689,6 @@ citare" senza un secondo consumatore reale sarebbe stata una porta nuova senza u
 attraversa davvero -- la stessa disciplina per cui `capacita'`/`stato_presunto` sono entrati SOLO
 quando la decodifica produceva qualcosa.
 
-### La CLI del ponte sale alla 2.1.263 nel prossimo rilascio
-
-`origine: decisione del proprietario, 07/09/2026` · `nessun documento`
-
-**Regola dichiarata dal proprietario**: un avanzamento **di patch** della CLI del ponte puo'
-viaggiare insieme a un aggiornamento; **quando il cancello lo segnala, entra nel rilascio
-successivo**. Non si alza al volo dentro un rilascio che parla d'altro.
-
-Il 07/09, durante il rilascio della **v3.22.0**, `scripts/verifica_componenti.py` ha fermato il
-push segnalando `@anthropic-ai/claude-code` **2.1.260 → 2.1.263** (`hiris/Dockerfile:76`). Il
-rilascio e' andato avanti con `HIRIS_COMPONENTI_OK=1`, dichiarato: quella v3.22.0 conteneva tre
-fette di prodotto, e far salire una dipendenza non provata sotto quel changelog avrebbe spedito un
-cambiamento che nessuno aveva verificato.
-
-**Cosa fare al prossimo rilascio**: `python scripts/verifica_componenti.py --aggiorna`, poi la
-suite intera, poi il rilascio. Il Dockerfile (`:38-70`) porta gia' la forma di questa annotazione
-per il salto precedente (2.1.251 → 2.1.260 del 04/09) **col piano di ripiego scritto accanto**: si
-segue quella, compresa la riga «se la nuova desse problemi si torna alla precedente».
-
-
 ### «Cosa sto guardando» stampa i soggetti grezzi, gli episodi no
 
 `origine: collaudo col browser della v3.22.1, 07/09/2026` · `nessun documento`
@@ -832,7 +764,6 @@ nuovo, o un soggetto arricchito) e i suoi due lettori (`describeWatchedSubject` 
 `protagonistName`, per coerenza con gli episodi guasto che citano un'automazione) — un cambio di
 forma dei dati, non una resa, e merita la sua fetta.
 
-
 ### Il conteggio per aree perde le entita' senza area, e la vista di un'area e' troppo grande
 
 `origine: batteria di prove funzionali in chat sulla casa vera, 07/09/2026` · `nessun documento`
@@ -874,90 +805,253 @@ concludere che `classe: null` **significhi** qualcosa (una classe dichiarata vuo
 l'assenza di `unita` significhi un'altra. E' precedente alla fetta -- ma e' la stessa legge, e ora
 che le altre la rispettano l'eccezione si nota.
 
+### Due aree dell'Albero sono enormi quando le si apre
 
-### L'Osservatore mostra i nomi e gli stati di Home Assistant, non i nostri
+`origine: misura del 07/09/2026 durante il collaudo` · `documento: indagine-albero-lungo.md (fuori da git)`
 
-`origine: revisione di usabilita' sull'interfaccia vera, casa vera, v3.22.1, 07/09/2026` · `documento: docs/collaudo.md`
+**Decisione rinviata dal proprietario**, che vuole guardarla dal vivo prima di scegliere.
 
-Le righe di «Cosa e' successo» portano l'`entity_id` grezzo e lo stato in inglese
-(`on`, `off`, `not_home`, `heat`). Il proprietario non chiama cosi' le sue cose: in HA
-ogni entita' ha un **nome amichevole**, e ogni stato ha una traduzione che HA stesso
-pubblica. Si leggono quelli.
+I numeri, riprodotti sui dati veri: la pagina all'apertura sta a **1.784 px**; con tutte e
+16 le aree aperte arriva a **81.941 px**, e due aree sole ne fanno il **56%** — «Telecamere»
+(288 righe) e «Senza area» (376). A 375 px il ritorno a capo quasi raddoppia il costo per
+riga (69,6 px contro 37,5), ma **non è la causa**: anche a 1280 px restano circa 140
+schermate di roba aperta. È quantità, non larghezza.
 
-**La trappola**: il nome amichevole puo' mancare. Quando manca si mostra l'`entity_id` e
-**si dice che e' quello** — non si inventa un nome, e non si tace la riga. E' la stessa
-distinzione che questo ramo ha gia' pagato quattro volte: «non c'e' un nome» e «non ho
-potuto leggerlo» sono due fatti diversi.
+Le forme possibili: un troncamento con «mostra altre» sulle sole aree oltre le ~100 righe,
+una ricerca lato client (i dati sono già tutti scaricati, zero chiamate in più), o niente.
+**Non è un difetto**: è una casa grande resa per intero.
 
-### La lunghezza dell'Albero su schermo stretto
+### Otto domini su dieci in `_OPERABLE` non possono arrivare
 
-`origine: revisione di usabilita' sull'interfaccia vera, casa vera, v3.22.1, 07/09/2026` · `documento: docs/collaudo.md`
+`origine: verifica del 07/09/2026, nata da un reperto laterale di un'indagine` · `nessun documento`
 
-**Misurato a 375 px: l'Albero e' alto 35.576 px** — quasi cento schermate da scorrere per
-arrivare in fondo. Tre cause, tutte viste: gli episodi ripetuti non sono raggruppati, non
-c'e' una ricerca, e nessuna sezione si chiude.
+`mind/facts.py:92-94` elenca dieci domini che «si accendono e si spengono», e accanto mantiene
+a mano la tabella dei loro stati di riposo. Ma `baseline.aspect()` — che decide **quali**
+entità entrano nell'archivio — ammette solo `person`, `lock`/`alarm_control_panel`/`siren`,
+`device_tracker` con `source_type: gps`, `climate`, `cover` e alcune classi di
+`binary_sensor`/`sensor`.
 
-E' un difetto della casa **vera**, non della casa di prova: cresce con il numero di
-entita', quindi peggiora da solo. Qualunque forma si scelga va provata su una casa piena,
-non su un campione.
+Dei dieci ne possono arrivare **due**: `climate` e `cover`. Gli altri otto — `switch`,
+`light`, `fan`, `media_player`, `vacuum`, `valve`, `humidifier`, `water_heater` — sono
+mantenuti per entità che non arriveranno mai.
 
-### Modelli e Consumi si contraddicono sull'abbonamento
+**La domanda non è tecnica**: o quella lista si pota, o il pavimento si allarga perché una
+luce accesa da sei ore è davvero qualcosa che il proprietario vuole sapere. La prima è
+pulizia, la seconda è prodotto — e la decide lui, non il codice.
 
-`origine: revisione di usabilita' sull'interfaccia vera, casa vera, v3.22.1, 07/09/2026` · `documento: docs/collaudo.md`
+### `_logga_uso` potrebbe contare come riuscito un turno fallito
 
-La pagina **Modelli** dice del ponte «non l'hai ancora usato»; **Consumi**, nella stessa
-sessione e sullo stesso ponte, ne conta **98 turni**. Una delle due sbaglia, e il
-proprietario le vede tutte e due.
+`origine: dubbio lasciato dall'implementer dell'abbonamento, 07/09/2026` · `documento: task-6-report.md (fuori da git)`
 
-**Prima si indaga, poi si corregge.** Non si sa ancora quale delle due fonti sia quella
-giusta: correggere quella sbagliata renderebbe *coerente una bugia*. La voce chiede una
-misura — chi scrive il contatore, chi lo legge, e perche' i due non si vedono — prima di
-chiedere una correzione.
+Il collegamento del successo del ponte al registro degli esiti è stato messo in
+`server.py::_submit_chat_reply`, **dopo** il filtro che scarta le cinque sentinelle d'errore —
+proprio perché `agent/runner.py::_logga_uso` gira **prima** del controllo su `rc`/`has_result`.
 
-### Le parole nostre invece che le sue
+Ne segue un sospetto che riguarda **Consumi**, non il ponte: se un turno fallisce ma porta
+comunque un `usage` non vuoto, `_logga_uso` lo conta lo stesso. In quel caso il numero dei
+turni di Consumi sarebbe gonfio.
 
-`origine: revisione di usabilita' sull'interfaccia vera, casa vera, v3.22.1, 07/09/2026` · `documento: docs/collaudo.md`
-
-Escono sullo schermo parole che sono **nomi interni**, non parole del proprietario:
-`nucleo`, `view`, `ponte`, «Forza», «Grandezza», «bersaglio», «Categorie», e la briciola
-`casa ›`.
-
-Vale la regola gia' scritta nel glossario: **si rinomina per funzione, non si traduce**, e
-il metro e' la **prova del lettore nuovo**. E' lo stesso lavoro della rinomina chiusa con
-i sei rilasci 3.15.0→3.20.0, su cio' che quella non aveva raggiunto: l'interfaccia.
-
-### Accessibilita': nessun titolo in otto rotte su nove, e bersagli sotto i 44 px
-
-`origine: revisione di usabilita' sull'interfaccia vera, casa vera, v3.22.1, 07/09/2026` · `documento: docs/collaudo.md`
-
-**In otto rotte su nove non esiste nessun `h1`–`h4`.** Chi naviga con uno screen reader non
-ha nessuna struttura su cui saltare: la pagina e' un muro di testo senza appigli. E
-diversi bersagli tattili stanno **sotto i 44 px**, la soglia sotto la quale un dito non
-colpisce piu' quello che voleva.
-
-Nessuna delle due cose si vede guardando lo schermo da seduti: si vedono misurando, ed
-entrambe sono state misurate.
-
-### La Memoria dichiara «Nessuna struttura riconosciuta» sopra la struttura che ha riconosciuto
-
-`origine: revisione di usabilita' sull'interfaccia vera, casa vera, v3.22.1, 07/09/2026` · `documento: docs/collaudo.md`
-
-Il pannello scrive di non aver riconosciuto niente, e subito sotto mostra cio' che ha
-riconosciuto. E' la forma gia' incontrata quattro volte in questo ramo — **due cose
-diverse dette con una parola sola** — e si cura come le altre: **separando alla fonte**,
-cioe' facendo etichettare il motivo a chi lo produce, invece di indovinarlo a valle.
-
-### Apostrofi ASCII nel testo composto dal server
-
-`origine: revisione di usabilita' sull'interfaccia vera, casa vera, v3.22.1, 07/09/2026` · `documento: docs/collaudo.md`
-
-Il testo che il server compone usa `'` dove l'italiano vuole `’`. In interfaccia si legge
-come una svista tipografica **ripetuta**, e viene dal server, non dal frontend: e' li' che
-va corretto, in un posto solo.
+**Non verificato**: accertarlo richiede un turno di chat vero, che costa denaro. E non si
+corregge un numero prima di aver misurato di quanto sbaglia.
 
 ---
 
 ## Usciti
+
+### La piattaforma non e' cercabile — **USCITA con la v3.22.0**
+
+`chiusa il 04/09/2026, commit 61c9a975 e 55405672, rilasciata in v3.22.0`
+
+`origine: misurato sulla casa vera il 02/09/2026` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
+
+`view` restituisce gia' `"piattaforma": "hydrawise"`, ma `search` indicizza solo nome, area e
+dispositivo. Non si puo' chiedere «cosa espone l'integrazione Sonos», ne' «l'irrigazione funziona».
+Misurato: `search "sonos"` → **0 risultati**, mentre HA ha 13 entita' con piattaforma `sonos` — si
+chiamano «Sala da pranzo».
+
+### La salute di un'integrazione non e' il suo stato — **USCITA con la v3.22.0**
+
+`chiusa il 04-05/09/2026, commit 681eeece, 3658ecf4, 1d9b55f0, f025e15a, a41dcd64, rilasciata in v3.22.0`
+
+`origine: misurato sulla casa vera il 02/09/2026` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
+
+Un'integrazione `loaded` con **tutte** le entita' morte oggi e' invisibile. Sulla casa: 162 entita'
+su 827 (19,6%) sono `unavailable` o `unknown`, comprese tutte e 16 quelle dell'irrigazione
+(Hydrawise risponde 403, 40 errori nel log). Ma `hydrawise` e' `loaded`, quindi non compare fra i
+guasti, e il briefing non nomina mai «non disponibile». L'irrigazione e' ferma e HIRIS non lo
+direbbe. La salute di un'integrazione e' **quante delle sue entita' rispondono**, non il suo `state`.
+
+**Rimisurato il 04/09**, e i numeri di riferimento sono questi: **74 entita' non rispondono su
+1221**, e l'irrigazione ne porta **24** — verificato entita' per entita'
+(`binary_sensor.giardino_*_irrigazione` e `valve.giardino_*` sono `unavailable`,
+`piattaforma: hydrawise`). Il briefing dice «74 entita' non rispondono» e si ferma li': nessun
+nome, nessun raggruppamento, nessuna integrazione nominata.
+
+### Il soggetto di un guasto porta il nome e la condizione, non l'identificativo — **USCITA con la v3.22.0**
+
+`chiusa il 05/09/2026, commit 570b43e5 e 143c9ab2, rilasciata in v3.22.0`
+
+`origine: il proprietario, 04/09/2026, dopo la sonda sull'osservatore` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
+
+`mind/watcher.py:191` tiene solo l'`entry_id`: il soggetto scritto in archivio e'
+`integrazione:01K2CK4GG287VKK18M5J788MRQ`. Il dizionario dell'integrazione **ha** `domain`,
+`title` e `state`, e il codice li legge tre righe sopra per decidere se e' un guasto — poi li
+scarta. Non e' un dato che manca: e' un dato che si getta.
+
+Misurato sulla casa il 04/09: quel ULID e' **il protagonista piu' frequente dell'intero
+archivio**, 34 oggetti su 285 in nove giorni. Nessuno di quegli oggetti dice cosa si sia rotto,
+ne' se sia `setup_retry` o `setup_error` — che non sono la stessa cosa. Il corpo, per giunta,
+dice sempre `"stato": "aperto"` anche a episodio chiuso, perche' `facts.py:725` scrive quella
+costante alla nascita e `close()` la ricopia (`facts.py:712`).
+
+Sta nella stessa funzione dove va messa l'isteresi — vedi «Un episodio per condizione, non
+venticinque»: sono due correzioni nello stesso punto del codice, e senza questa le altre voci
+della fetta producono oggetti veri e comunque illeggibili.
+
+**Una domanda di disegno da sciogliere prima**: cambiare la forma del soggetto rompe la
+continuita' col grezzo gia' scritto (22 giorni di righe con la forma vecchia). Si migra, si
+convive, o il nome viaggia in una colonna accanto invece che dentro il soggetto?
+
+### Un episodio per condizione, non venticinque — **USCITA con la v3.22.0**
+
+`chiusa il 05/09/2026, commit 805b1004, rilasciata in v3.22.0`
+
+`origine: misurato sulla casa vera il 02/09/2026` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
+
+L'osservatore apre un episodio nuovo a ogni sfarfallio: **25 episodi di guasto per una sola
+integrazione** (`lifx / Abat-jour`, `setup_retry`), e cinque aperti contemporaneamente per la stessa
+cosa. Una condizione che va e viene dovrebbe essere un episodio finche' non finisce: il genere
+decide la forma, e la forma di una condizione e' la **durata**.
+
+### I calendari si importano, e HIRIS li sa leggere — **USCITA con la v3.22.0**
+
+`chiusa il 05-06/09/2026, commit 1f9be22c, 8a6a5de8, 8f4d206a, fca730e4, 1c150795, ecfcaee3, rilasciata in v3.22.0`
+
+`origine: il proprietario, 04/09/2026` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
+
+**Richiesta**: importare anche i calendari, e che HIRIS li possa leggere.
+
+**Misurato sulla casa vera il 04/09, e il primo fatto è che la capacità c'era e l'abbiamo tolta.**
+`proxy/ha_client.py:1173-1180` lo dichiara per esteso: `get_calendars` e
+`get_calendar_events_range` sono **uscite** nella fetta «escono i trentaquattro» (E2, Task 8),
+orfane a cascata perché il loro unico chiamante — `tools/calendar_tools.get_calendar_events` —
+era uscito a sua volta. Il commento chiude con «nessuna garanzia persa», ed era vero allora:
+nessuno le chiamava. Adesso c'è chi le chiamerebbe.
+
+**Cosa c'è sulla casa**, e quanto poco HIRIS ne sa:
+
+| | |
+|---|---|
+| `calendar.famiglia` · `calendar.personale` | piattaforma `caldav`, due calendari veri |
+| `view calendar.famiglia` restituisce | `stato: "on"`, `stato_leggibile: **"acceso"**` |
+| `search "calendario"` · `"calendar"` · `"eventi"` · `"agenda"` | **zero risultati, tutte e quattro** |
+
+Due difetti distinti, e il secondo è più insidioso del primo:
+
+1. **Gli eventi non si leggono affatto.** Un calendario, per HIRIS, è una lampadina con due
+   stati. Non sa che c'è dentro, né quando, né per chi.
+2. **«Acceso» è una traduzione falsa.** Per Home Assistant un'entità `calendar` sta a `on`
+   quando **un evento è in corso**, non quando è «accesa». Dire «acceso» a un modello non è
+   generico: è **sbagliato**, e lo porta a ragionare su un interruttore invece che su un
+   impegno. È lo stesso difetto di `sensor.persons` letto come conteggio di presenza, e
+   ricadrà sotto il tema finale dello sprint (§7): **cosa significa uno stato va importato
+   dalla documentazione, non dedotto.**
+
+E i due calendari sono raggiungibili **solo se sai già che si chiamano «Famiglia» e
+«Personale»** — la stessa lacuna delle persone, sul dominio invece che sulla piattaforma.
+
+**Dove sta nello sprint**: con «le tracce e il log», in coda. Sono la stessa forma di lavoro —
+una **fonte nuova** che nasce sopra un'appartenenza già rifatta — e vale anche qui la regola che
+il proprietario ha già dato per le tracce: **una fonte sola, due lettori**, lo strumento della
+chat *e* l'osservatore. Un calendario che sa dire «domani nessuno è in casa dalle 9 alle 18» è
+esattamente ciò che manca a un osservatore che oggi ha tre giorni di storia della presenza.
+
+**Da decidere quando si progetta**: quanto avanti si guarda (un giorno? una settimana?), se gli
+eventi si conservano o si rileggono ogni volta, e come si dichiara ciò che il calendario **non**
+dice — un calendario vuoto non significa «nessuno ha impegni», significa «nessuno l'ha scritto».
+
+### Le tracce delle automazioni e il log di sistema — **USCITA con la v3.22.0**
+
+`chiusa il 05/09/2026, commit d499e767, 532e9d99, a832d856, 14a3f1f4, 6bf815f4, rilasciata in v3.22.0`
+
+`origine: deciso dal proprietario il 31/08/2026` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
+
+Due fonti nuove di HA, e devono essere disponibili **a entrambi i lettori**: lo strumento della chat
+E l'osservatore. Una fonte sola, due lettori — l'osservatore «non apre un secondo rubinetto», perche'
+due sorgenti degli stessi eventi possono divergere. Le chiamate sono `trace/list`, `trace/get`,
+`trace/contexts` e `system_log/list`, tutte WS e tutte `require_admin`.
+
+Misurato sulla casa il 30-31/08: 72 tracce su 16 automazioni, 64 `finished`, 7 `failed_conditions`,
+1 `error` — e un'automazione rotta davvero, mai segnalata al proprietario; 17 voci di log, 11
+WARNING e 6 ERROR.
+
+Due trappole gia' pagate, che decidono il lavoro e non si vedono nella documentazione:
+**le tracce hanno una finestra** (HA ne conserva 5 per automazione, poi la sesta cancella la prima —
+decide se si puo' guardare a cadenza o si devono seguire mentre accadono); e **il log arriva gia'
+giudicato**, perche' `system_log/list` consegna righe raggruppate da HA con `count` e
+`first_occurred`, il che rompe la legge dell'osservatore «scrivi il grezzo, giudica dopo».
+
+### Le specifiche di Home Assistant si importano dalla documentazione — il tema finale — **USCITA con la v3.22.0**
+
+`chiusa il 04-07/09/2026, commit f761b3c1 e 56d05989, rilasciata in v3.22.0`
+
+`origine: il proprietario, 04/09/2026 — «questo e' il tema finale di questo sprint»` · `documento: docs/design/2026-09-04-la-conoscenza-prende-una-forma.md`
+
+**Richiesta testuale**: «vanno importate e capite le specifiche di HA con la documentazione; per
+ogni stato va capito cosa rappresenta e se ci sono altri metadati o parametri che permettono di
+capire di piu'. Per migliorare i ragionamenti serve sapere cosa stiamo guardando in profondita' e
+capire bene per ogni oggetto le sue caratteristiche.»
+
+E' la voce che chiude lo sprint perche' e' quella che lo rende **duraturo**: le altre otto
+correggono cio' che sbagliamo oggi, questa toglie la ragione per cui lo sbagliavamo. Vale la legge
+del progetto: **mai un'ipotesi su Home Assistant — prima la documentazione, poi le API vere**.
+
+**Misurato il 04/09: quanti campi che HA manda nel registro delle entita' il codice non nomina
+mai.** Conteggio delle occorrenze in tutto `hiris/app`:
+
+| campo di HA | citazioni | cosa ci perdiamo |
+|---|---:|---|
+| `supported_features` | **0** | cosa un'entita' **sa fare** (una luce che cambia colore, una tapparella che si ferma a meta') |
+| `assumed_state` | **0** | HA dichiara «questo stato lo **suppongo**, non l'ho verificato» — ed e' la provenienza, che stiamo cercando altrove |
+| `options` | **0** | i valori ammessi di un `select` |
+| `config_entry_id` | **0** | l'appartenenza all'istanza (vedi la spina n. 1) |
+| `unique_id` · `has_entity_name` | **0** | |
+| `capabilities` · `entity_category` · `original_device_class` · `hidden_by` · `original_name` · `platform` | **1 ciascuno** | letti in un punto solo, non conservati come caratteristiche |
+
+`assumed_state` merita una riga sua: **Home Assistant dichiara gia' quando non e' sicuro di uno
+stato**, e HIRIS non lo legge mai. Stiamo progettando la certezza del dato mentre il fornitore ce
+la sta gia' mandando.
+
+**Il precedente da seguire c'e' gia' in casa**: `briefing.py:69` porta un elenco «copiato da
+`homeassistant/generated/entity_platforms.py`», sorvegliato da `tests/test_domain_vocabulary.py`.
+Cioe' non si deduce e non si indovina: si importa, si dichiara da dove viene, e una prova si
+accorge quando diverge. Questa voce estende quel gesto dai domini a **stati, classi, categorie,
+capacita' e attributi**.
+
+Da decidere quando si progetta: cosa si importa a mano e cosa si legge a runtime; dove vive
+(tabella generata nel repo o nell'anagrafe); e come si accorge di essere invecchiato quando HA
+cambia versione.
+
+### La CLI del ponte sale alla 2.1.263 nel prossimo rilascio — **USCITA con la v3.22.2**
+
+`chiusa il 07/09/2026, commit f98ce698, rilasciata in v3.22.2`
+
+`origine: decisione del proprietario, 07/09/2026` · `nessun documento`
+
+**Regola dichiarata dal proprietario**: un avanzamento **di patch** della CLI del ponte puo'
+viaggiare insieme a un aggiornamento; **quando il cancello lo segnala, entra nel rilascio
+successivo**. Non si alza al volo dentro un rilascio che parla d'altro.
+
+Il 07/09, durante il rilascio della **v3.22.0**, `scripts/verifica_componenti.py` ha fermato il
+push segnalando `@anthropic-ai/claude-code` **2.1.260 → 2.1.263** (`hiris/Dockerfile:76`). Il
+rilascio e' andato avanti con `HIRIS_COMPONENTI_OK=1`, dichiarato: quella v3.22.0 conteneva tre
+fette di prodotto, e far salire una dipendenza non provata sotto quel changelog avrebbe spedito un
+cambiamento che nessuno aveva verificato.
+
+**Cosa fare al prossimo rilascio**: `python scripts/verifica_componenti.py --aggiorna`, poi la
+suite intera, poi il rilascio. Il Dockerfile (`:38-70`) porta gia' la forma di questa annotazione
+per il salto precedente (2.1.251 → 2.1.260 del 04/09) **col piano di ripiego scritto accanto**: si
+segue quella, compresa la riga «se la nuova desse problemi si torna alla precedente».
 
 ### `get_error_log()` si cancella — **USCITA con la v3.15.0**
 
@@ -972,5 +1066,4 @@ Era nata da un ricordo del 31/08 che registrava la **decisione**; la decisione e
 eseguita lo stesso giorno. E' il primo caso in cui il registro corregge se stesso, ed e'
 il motivo per cui una voce dichiara sempre da dove viene: una decisione ricordata non e'
 un lavoro da fare.
-
 
