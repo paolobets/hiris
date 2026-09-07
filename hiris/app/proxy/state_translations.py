@@ -33,8 +33,6 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from ..home_space.ha_vocabulary import UNAVAILABLE_LABEL, UNKNOWN_LABEL
-
 logger = logging.getLogger(__name__)
 
 # La categoria che porta le traduzioni degli stati per DOMINIO. Non e' quella
@@ -42,15 +40,6 @@ logger = logging.getLogger(__name__)
 # (misurato dal vivo, 07/09/2026), e `category: "entity"` (134 KB) copre solo
 # le entita' con un `translation_key` proprio -- il primo gradino qui sotto.
 STATE_TRANSLATIONS_CATEGORY = "entity_component"
-
-# Gli stati che Home Assistant NON traduce mai: `async_translate_state` li
-# restituisce tali e quali PRIMA di ogni altro gradino
-# (`homeassistant/helpers/translation.py:469-470`), e il frontend li rende da
-# un bundle proprio che il backend non pubblica
-# (`compute_state_display.ts:94-101`). Sono l'unico buco che tocca a noi
-# riempire, ed e' un buco di HA, non nostro: le due etichette vivono nel
-# vocabolario, accanto alle spiegazioni lunghe che gia' ci stavano.
-_OUR_LABELS = {"unavailable": UNAVAILABLE_LABEL, "unknown": UNKNOWN_LABEL}
 
 
 def state_translation(state, *, domain, device_class=None, platform=None,
@@ -69,10 +58,10 @@ def state_translation(state, *, domain, device_class=None, platform=None,
     3. `component.{domain}.entity_component._.state.{state}` (`:487-489`);
     4. nessuna traduzione (`:491`).
 
-    **Due scostamenti dichiarati dal sorgente di HA, ed entrambi hanno un
-    perche' che vale piu' della fedelta' letterale.**
+    **Uno scostamento dichiarato dal sorgente di HA, e ha un perche' che vale
+    piu' della fedelta' letterale.**
 
-    **a. Il quarto gradino torna `None`, non il grezzo.** HA a `:491` fa
+    **Il quarto gradino torna `None`, non il grezzo.** HA a `:491` fa
     `return state`, e chi lo chiama non puo' piu' distinguere «tradotto» da
     «non traducibile» senza confrontare due stringhe. Qui il buco lo dichiara
     la FONTE, non lo indovina chi consuma: e' la stessa disciplina per cui
@@ -83,13 +72,22 @@ def state_translation(state, *, domain, device_class=None, platform=None,
     che il lettore vede: e' una DECISIONE di chi rende (il confine dell'API
     non emette nessun campo, e la pagina mostra `stato`), non un dato.
 
-    **b. `unavailable` e `unknown` prendono le NOSTRE etichette.** HA a
-    `:469-470` li restituisce grezzi, prima di ogni gradino, e il suo frontend
-    li rende da un bundle proprio che il backend non pubblica: per un add-on
-    quel buco non e' colmabile da HA. Le due etichette stanno in
-    `home_space/ha_vocabulary.py` (accanto a `UNAVAILABLE_MEANING`/
-    `UNKNOWN_MEANING`, che gia' c'erano), e sono in italiano FISSO -- vedi il
-    limite dichiarato li'.
+    **`unavailable`/`unknown` non arrivano mai qui.** HA a `:469-470` li
+    restituisce grezzi, prima di ogni gradino, e il suo frontend li rende da
+    un bundle proprio che il backend non pubblica -- per un add-on sarebbe
+    un buco da colmare. Ma l'UNICO chiamante di questa funzione
+    (`api/handlers_mind.py::_with_rendered_states`, dietro `/api/mind/facts`)
+    legge oggetti che `mind/facts.py::aggregate_day` ha gia' filtrato: quei
+    due stati non aprono ne' chiudono un episodio e sono scartati PRIMA che un
+    `corpo.stato` esista (`facts.py`, il filtro su `_UNKNOWN` in cima alla
+    funzione). Fino al 07/09/2026 questa funzione portava due etichette
+    proprie per quel caso (`_OUR_LABELS`, commit `b68bda11`): un ramo morto,
+    mai raggiungibile dal suo unico chiamante -- rimosso dalla revisione
+    indipendente del tratto (rilievo R5), insieme alla prova che costruiva a
+    mano un `corpo.stato` che l'archivio non produce mai. Se domani un
+    secondo chiamante rendesse `stato` per un oggetto NON filtrato da
+    `aggregate_day`, il posto giusto per le due etichette e' li' -- non qui,
+    dove sarebbero di nuovo irraggiungibili.
 
     `component_resources` e' obbligatorio ed e' il dizionario piatto di
     `category: "entity_component"`; `entity_resources` (`category: "entity"`)
@@ -99,9 +97,6 @@ def state_translation(state, *, domain, device_class=None, platform=None,
     """
     if not isinstance(state, str) or not state:
         return None
-    our_label = _OUR_LABELS.get(state)
-    if our_label is not None:
-        return our_label
     if not isinstance(domain, str) or not domain:
         return None
     if platform and translation_key and isinstance(entity_resources, dict):

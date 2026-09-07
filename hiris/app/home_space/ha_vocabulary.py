@@ -349,33 +349,22 @@ UNKNOWN_MEANING = (
     "dire. Il collegamento e' sano: manca solo il dato, non e' un guasto."
 )
 
-
-# Le stesse due voci, in ETICHETTA BREVE: quelle sopra sono spiegazioni da
-# leggere, queste sono cio' che sta in una riga accanto a un episodio
-# (`proxy/state_translations.py`, che le consuma; `api/handlers_mind.py`, che
-# le fa arrivare alla pagina «Cosa e' successo»). Due lunghezze dello stesso
-# fatto, non due fatti: la spiegazione dice PERCHE', l'etichetta dice COSA, e
-# tenerle in un modulo solo e' cio' che impedisce che divergano.
-#
-# **Perche' esistono affatto**: `helpers/translation.py:469-470` mostra che
-# `async_translate_state` restituisce questi due stati GREZZI prima di
-# guardare qualunque tabella, e `compute_state_display.ts:94-101` mostra che
-# il frontend di HA li rende da un bundle SUO, che il backend non pubblica --
-# quindi per un add-on non c'e' nessuna traduzione da chiedere a Home
-# Assistant. E' un buco di HA verso chi sta fuori, non nostro, e queste due
-# righe sono le uniche parole nostre in una resa che per tutto il resto e' di
-# HA.
-#
-# **Limite dichiarato: sono in italiano FISSO.** Tutto il resto della resa
-# arriva nella lingua della CASA (`hass.config.language`, che puo' non essere
-# l'italiano); queste due no, perche' l'interfaccia di HIRIS e' in italiano
-# fisso e queste sono parole di HIRIS. Su una casa in inglese la riga
-# mostrera' «Non raggiungibile» accanto a stati resi in inglese. Detto qui e
-# detto alla pagina, non nascosto: e' il prezzo di non lasciare un buco.
-UNAVAILABLE_LABEL = "Non raggiungibile"
-
-UNKNOWN_LABEL = "Valore non noto"
-
+# Le due ETICHETTE BREVI di queste voci (`UNAVAILABLE_LABEL`/`UNKNOWN_LABEL`,
+# fino al 07/09/2026) sono state rimosse dalla revisione indipendente del
+# tratto v3.22.2..HEAD (rilievo R5): `proxy/state_translations.py` le
+# consumava, ma il suo UNICO chiamante (`api/handlers_mind.py`, dietro
+# `/api/mind/facts`) legge solo oggetti che `mind/facts.py::aggregate_day` ha
+# gia' filtrato -- `unavailable`/`unknown` non aprono ne' chiudono un episodio
+# e sono scartati prima che un `corpo.stato` esista. Il ramo che le usava era
+# irraggiungibile fin dal commit che lo ha introdotto (`b68bda11`), e la
+# prova che lo provava (`tests/test_mind_api.py`) costruiva a mano un corpo
+# che l'archivio non produce mai -- codice morto con una prova che non poteva
+# fallire per una ragione vera (fondamenta 4: se nessuno puo' chiederlo, non
+# esiste). Le spiegazioni lunghe sopra (`UNAVAILABLE_MEANING`/
+# `UNKNOWN_MEANING`) restano: sono conoscenza per chi legge il codice o
+# interroga la casa a mano (vedi il docstring di testa del modulo), non un
+# dato che un confine deve rendere -- non hanno mai avuto un chiamante da
+# perdere.
 
 # --- cosa significa un `entity_category` -----------------------------------
 #

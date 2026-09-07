@@ -1489,21 +1489,56 @@ test('seam _rendiOggetti: un guasto col suo titolo non viene dichiarato identifi
 });
 
 test('seam _rendiOsservate: un entity_id nudo viene dichiarato per quello che è (l\'endpoint non porta nomi)', () => {
-  // Mutazione dichiarata, ESEGUITA: togliere la riga
-  // `if (d.technical) li.appendChild(...)` da `renderAspectGroup` fa arrossire
-  // `assert.match(riga.textContent, /identificatore/i)`.
+  // R4 (revisione del tratto v3.22.2..HEAD): quando OGNI voce del gruppo è
+  // tecnica (qui l'unica voce di "comfort") la dichiarazione vive una volta
+  // per il GRUPPO, non sulla riga -- la riga da sola, ripetuta su un elenco
+  // lungo, era il rumore che il rilievo segnala. Mutazione dichiarata,
+  // ESEGUITA: togliere il blocco `if (tutteTecniche) { ... }` da
+  // `renderAspectGroup` fa arrossire `assert.match(dettaglio.textContent,
+  // /identificatore/i)`.
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
   window.HirisWatcherRoute._rendiOsservate(corpo, [
     { soggetto: 'binary_sensor.movimento_cucina', gamba: 'comfort', provenienza: 'pavimento' },
   ]);
+  const dettaglio = corpo.querySelector('details');
+  assert.match(dettaglio.textContent, /identificatori tecnici/i,
+    '`/api/mind/watching` non porta nomi: il gruppo deve dirlo (una volta), non tacerlo');
   const riga = corpo.querySelector('ul > li');
-  assert.match(riga.textContent, /identificatore/i,
-    '`/api/mind/watching` non porta nomi: quello che si mostra è un id, e va detto');
   assert.match(riga.textContent, /binary_sensor\.movimento_cucina/,
-    'l\'id non si butta e non si tace: si mostra dichiarandolo');
+    'l\'id non si butta e non si tace: resta a schermo');
+  assert.doesNotMatch(riga.textContent, /identificatore/i,
+    'sul gruppo tutto tecnico la riga non ripete piu\' la dichiarazione: l\'ha già detta il gruppo');
   assert.doesNotMatch(riga.textContent, /Movimento Cucina/,
     'nessun nome dedotto dall\'id');
+});
+
+test('seam _rendiOsservate: un gruppo misto (entità + condizioni già nominate) porta il badge SOLO sulla riga tecnica', () => {
+  // R4: "buono stato" è l'unica gamba che può mescolare entità dirette
+  // (tecniche per costruzione) e condizioni di sistema già decodificate in
+  // un nome leggibile (`describeWatchedSubject`, `technical: false`). Qui
+  // la dichiarazione per-riga torna a distinguere davvero una voce
+  // dall'altra, quindi non deve sparire. Mutazione dichiarata, ESEGUITA:
+  // sostituire `if (d.technical && !tutteTecniche)` con `if (false)` fa
+  // arrossire il primo assert (il badge sparisce anche dove distingue).
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisWatcherRoute._rendiOsservate(corpo, [
+    { soggetto: 'lock.porta_garage', gamba: 'buono stato', provenienza: 'pavimento' },
+    { soggetto: 'problema:light.termostato_soggiorno', gamba: 'buono stato', provenienza: 'pavimento' },
+  ]);
+  const righe = Array.from(corpo.querySelectorAll('ul > li'));
+  assert.equal(righe.length, 2);
+  assert.match(righe[0].textContent, /identificatore/i,
+    'la voce tecnica del gruppo misto porta ancora la dichiarazione per-riga: qui distingue');
+  assert.doesNotMatch(righe[1].textContent, /identificatore/i,
+    'la voce già nominata (il "problema:") non è un identificatore nudo');
+  // Il gruppo è misto, non uniforme: la dichiarazione UNA-volta-per-gruppo
+  // (pensata per i gruppi tutti tecnici) non deve comparire qui, o la stessa
+  // informazione si direbbe due volte in due forme diverse.
+  const dettaglio = corpo.querySelector('details');
+  assert.doesNotMatch(dettaglio.textContent, /identificatori tecnici/i,
+    'un gruppo misto non porta anche l\'annuncio collettivo: solo il badge per-riga, dove distingue');
 });
 
 // ---------------------------------------------------------------------------

@@ -20,9 +20,7 @@ from hiris.app.home_space.ha_vocabulary import (
     DEVICE_CLASS_MEANING,
     ENTITY_CATEGORY_MEANING,
     STATE_CLASS_MEANING,
-    UNAVAILABLE_LABEL,
     UNAVAILABLE_MEANING,
-    UNKNOWN_LABEL,
     UNKNOWN_MEANING,
     VOCABULARY_HA_VERSION,
     VOCABULARY_SOURCE,
@@ -325,34 +323,23 @@ def test_unavailable_and_unknown_are_two_different_documented_facts():
     assert "none" in UNKNOWN_MEANING.lower() or "non" in UNKNOWN_MEANING.lower()
 
 
-def test_le_due_etichette_brevi_dicono_le_stesse_due_cose_delle_spiegazioni():
-    """Fetta «lo stato» (07/09/2026): la stessa distinzione, in una lunghezza
-    che sta in una riga accanto a un episodio. Sono DUE lunghezze di un fatto
-    solo, non due fatti: se le due etichette collassassero sulla stessa
-    parola, la pagina appiattirebbe cio' che le spiegazioni qui sopra
-    esistono per distinguere.
-
-    Mutazione ESEGUITA: `UNKNOWN_LABEL = UNAVAILABLE_LABEL` -- il test torna
-    rosso su `assert UNAVAILABLE_LABEL != UNKNOWN_LABEL`.
-    """
-    assert UNAVAILABLE_LABEL
-    assert UNKNOWN_LABEL
-    assert UNAVAILABLE_LABEL != UNKNOWN_LABEL
-    # Un'etichetta e' cio' che sta in una riga: se diventasse una frase,
-    # sarebbe un doppione della spiegazione qui sopra, non la sua forma breve.
-    assert len(UNAVAILABLE_LABEL) < 40
-    assert len(UNKNOWN_LABEL) < 40
-    assert UNAVAILABLE_LABEL != UNAVAILABLE_MEANING
-    assert UNKNOWN_LABEL != UNKNOWN_MEANING
+# Le due ETICHETTE BREVI (`UNAVAILABLE_LABEL`/`UNKNOWN_LABEL`) sono state
+# rimosse dalla revisione del tratto v3.22.2..HEAD (rilievo R5): il loro solo
+# consumatore (`proxy/state_translations.py`) era un ramo morto, mai
+# raggiungibile dall'unico chiamante (vedi il commento in `ha_vocabulary.py`
+# sopra `UNKNOWN_MEANING`). Le due spiegazioni lunghe restano, e restano
+# provate qui sotto.
 
 
-def test_la_fonte_dichiara_PERCHE_le_due_etichette_sono_nostre():
-    """Le due etichette esistono solo perche' Home Assistant non le manda, e
-    la prova di quel buco e' una riga di sorgente: `translation.py:469-470`,
-    dove `async_translate_state` restituisce `unavailable`/`unknown` grezzi
-    prima di guardare qualunque tabella. Senza questa citazione dentro
-    `VOCABULARY_SOURCE`, fra sei mesi le due etichette si leggerebbero come
-    una traduzione fatta a mano al posto di HA -- cioe' come un difetto.
+def test_la_fonte_dichiara_PERCHE_unavailable_e_unknown_sono_un_buco_di_ha():
+    """Le due spiegazioni lunghe (`UNAVAILABLE_MEANING`/`UNKNOWN_MEANING`)
+    esistono perche' Home Assistant non pubblica MAI la distinzione fra i due
+    stati verso un add-on, e la prova di quel buco e' una riga di sorgente:
+    `translation.py:469-470`, dove `async_translate_state` restituisce
+    `unavailable`/`unknown` grezzi prima di guardare qualunque tabella. Senza
+    questa citazione dentro `VOCABULARY_SOURCE`, fra sei mesi le due
+    spiegazioni si leggerebbero come conoscenza inventata, non importata da
+    una fonte verificabile.
 
     Mutazione ESEGUITA: togliere la citazione di `translation.py` da
     `VOCABULARY_SOURCE` -- il test torna rosso su

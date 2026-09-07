@@ -9,7 +9,6 @@ il 07/09/2026 (`frontend/get_translations`, `language: "it"`,
 """
 import pytest
 
-from hiris.app.home_space.ha_vocabulary import UNAVAILABLE_LABEL, UNKNOWN_LABEL
 from hiris.app.proxy.state_translations import StateTranslations, state_translation
 
 # Le chiavi e i testi sono quelli MISURATI sulla casa, non plausibili.
@@ -131,35 +130,28 @@ def test_senza_nessuna_risorsa_non_si_inventa_una_resa():
 
 
 # ---------------------------------------------------------------------------
-# Le due voci che Home Assistant non dara' mai
+# Le due voci che Home Assistant non dara' mai: qui NON arrivano (R5)
 # ---------------------------------------------------------------------------
 
-def test_unavailable_e_unknown_prendono_le_etichette_NOSTRE():
-    """`translation.py:469-470`: HA li restituisce grezzi PRIMA di ogni
-    gradino, e il suo frontend li rende da un bundle proprio che il backend
-    non pubblica (`compute_state_display.ts:94-101`). Per un add-on quel buco
-    non e' colmabile chiedendo a HA: le due etichette sono nostre.
+def test_unavailable_e_unknown_non_producono_una_resa_qui():
+    """Revisione del tratto v3.22.2..HEAD, rilievo R5: fino al 07/09/2026
+    `state_translation` portava due etichette proprie per questi due stati
+    (`_OUR_LABELS`, commit `b68bda11`) -- un ramo morto, perche' l'UNICO
+    chiamante (`api/handlers_mind.py::_with_rendered_states`, dietro
+    `/api/mind/facts`) legge solo oggetti che `mind/facts.py::aggregate_day`
+    ha gia' filtrato: quei due stati non aprono ne' chiudono un episodio e
+    sono scartati prima che un `corpo.stato` esista (vedi
+    `tests/test_mind_facts.py`, punto 2). Rimosso insieme alla prova che
+    costruiva a mano un corpo che l'archivio non produce mai
+    (`tests/test_mind_api.py`).
 
-    Sono anche le uniche due rese che NON dipendono dalla tabella: qui la
-    tabella e' vuota apposta.
-
-    Mutazione ESEGUITA: togliere il blocco `_OUR_LABELS` da
-    `state_translation` -- il test torna rosso su
-    `assert state_translation("unavailable", ...) == UNAVAILABLE_LABEL`
-    (ottiene `None`).
-    """
+    Senza risorse e senza un gradino che risponda, questi due stati sono
+    "senza traduzione" come qualunque altro: la funzione lo dichiara con
+    `None`, non con un'etichetta inventata qui dentro."""
     assert state_translation("unavailable", domain="climate",
-                             component_resources={}) == UNAVAILABLE_LABEL
+                             component_resources={}) is None
     assert state_translation("unknown", domain="climate",
-                             component_resources={}) == UNKNOWN_LABEL
-
-
-def test_le_due_etichette_non_sono_la_stessa_parola():
-    """«non raggiungibile» e «valore non noto» sono due guasti diversi (vedi
-    `UNAVAILABLE_MEANING`/`UNKNOWN_MEANING`): renderli con la stessa parola
-    li appiattirebbe, che e' esattamente cio' che il vocabolario esiste per
-    non fare."""
-    assert UNAVAILABLE_LABEL != UNKNOWN_LABEL
+                             component_resources={}) is None
 
 
 def test_uno_stato_vuoto_o_non_testuale_non_produce_una_resa():

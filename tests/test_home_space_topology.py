@@ -327,35 +327,58 @@ def test_il_gruppo_senza_area_nasce_anche_con_sole_disabilitate(archivio):
     assert aree["Senza area"]["entita"] == []
 
 
-def test_una_nascosta_col_dispositivo_non_risolvibile_non_conta_come_attiva(archivio):
-    """Il commento sul ciclo che riempie `unloaded_device` dichiara gia' la
-    regola -- "vale anche per le disabilitate e le nascoste: non risolvibili,
-    non tracciate nemmeno a parte" -- ma il codice filtrava solo
-    `disabilitata`: una nascosta col dispositivo non risolvibile finiva in
-    `unloaded_device`, cioe' dentro `entita`, la chiave che CONTA. Il codice
-    non faceva quello che il suo stesso commento diceva.
+def test_una_disabilitata_col_dispositivo_non_risolvibile_e_raggiungibile_a_parte(archivio):
+    """R3 (revisione del tratto v3.22.2..HEAD): "Dispositivi non letti" era
+    rimasta l'unica pseudo-area senza le chiavi parallele, con la
+    giustificazione "un dispositivo non letto rende l'intera area
+    indecidibile, quindi disabilitate e nascoste non sono tracciate nemmeno a
+    parte". L'argomento non regge alla propria premessa -- le entita' ATTIVE
+    nella stessa condizione sono altrettanto indecidibili quanto ad area, e
+    finiscono comunque in `entita`, in un gruppo che porta l'indecisione nel
+    proprio nome. Ora anche questo gruppo porta `entita_disabilitate` /
+    `entita_nascoste`, stessa forma delle altre tre pseudo-aree "fuori dalle
+    aree note".
 
-    Mutazione che uccide questa prova: `if not entity.get("disabilitata"):`
-    al posto di `if not entity.get("disabilitata") and not
-    entity.get("nascosta"):`. Verificato eseguendo: con la sola guardia su
-    `disabilitata`, `sensor.nascosta_dispositivo_ignoto` compare in
-    `entita` del gruppo "Dispositivi non letti" e il primo assert
-    arrossisce con `AssertionError: assert 'sensor.nascosta_dispositivo_ignoto'
-    not in [...]`."""
+    Mutazione che uccide questa prova: tornare alla guardia unica di prima
+    (`if not entity.get("disabilitata") and not entity.get("nascosta"):
+    unloaded_device.append(entity)`) al posto delle tre liste smistate.
+    Verificato eseguendo: con quella riga la chiave `entita_disabilitate` non
+    esiste piu' sul gruppo e l'assert sotto arrossisce con `KeyError:
+    'entita_disabilitate'`.
+
+    `_REGISTRI` porta gia' `sensor.spenta` (disabilitata, dispositivo `d1`,
+    senza area propria): col registro dei dispositivi caduto finisce anche
+    lei in questo gruppo, insieme alla nuova -- da qui l'insieme invece della
+    lista, l'ordine di smistamento non e' la garanzia in prova."""
+    registri = dict(_REGISTRI, entita=_REGISTRI["entita"] + [
+        {"entity_id": "sensor.disabilitata_dispositivo_ignoto", "device_id": "d1",
+         "area_id": None, "disabled_by": "user"}])
+    archivio.replace(registri, ["dispositivi"])
+    aree = _pseudo_aree(hierarchy(archivio.read(), ("dispositivi",)))
+    non_letti = aree["Dispositivi non letti"]
+    assert "sensor.disabilitata_dispositivo_ignoto" not in [e["id"] for e in non_letti["entita"]]
+    assert {e["id"] for e in non_letti["entita_disabilitate"]} == \
+        {"sensor.spenta", "sensor.disabilitata_dispositivo_ignoto"}
+
+
+def test_una_nascosta_col_dispositivo_non_risolvibile_e_raggiungibile_a_parte(archivio):
+    """Stessa causa del test sopra, sull'altra chiave parallela. Prima della
+    correzione R3 questa nascosta spariva del tutto: giustamente fuori da
+    `entita` (non e' attiva), ma anche fuori da `entita_nascoste`, che per
+    questo gruppo non esisteva proprio.
+
+    Mutazione che uccide questa prova: la stessa di sopra. Verificato
+    eseguendo: la chiave `entita_nascoste` non esiste e l'ultimo assert
+    arrossisce con `KeyError: 'entita_nascoste'`."""
     registri = dict(_REGISTRI, entita=_REGISTRI["entita"] + [
         {"entity_id": "sensor.nascosta_dispositivo_ignoto", "device_id": "d1",
          "area_id": None, "hidden_by": "user"}])
     archivio.replace(registri, ["dispositivi"])
     aree = _pseudo_aree(hierarchy(archivio.read(), ("dispositivi",)))
     non_letti = aree["Dispositivi non letti"]
-    found_entity_ids = [e["id"] for e in non_letti["entita"]]
-    assert "sensor.nascosta_dispositivo_ignoto" not in found_entity_ids
-    # E non e' nemmeno un'omissione con recupero: e' la scelta deliberata e
-    # documentata di non tracciarla neanche a parte (a differenza di
-    # "Senza area"/"Area sconosciuta"/"Aree non lette", che ora la
-    # tracciano). Un dispositivo non letto rende l'intera area indecidibile.
-    assert "entita_disabilitate" not in non_letti
-    assert "entita_nascoste" not in non_letti
+    assert "sensor.nascosta_dispositivo_ignoto" not in [e["id"] for e in non_letti["entita"]]
+    assert [e["id"] for e in non_letti["entita_nascoste"]] == \
+        ["sensor.nascosta_dispositivo_ignoto"]
 
 
 def test_ogni_entita_esce_esattamente_una_volta(archivio):
@@ -363,11 +386,14 @@ def test_ogni_entita_esce_esattamente_una_volta(archivio):
     prossima dimenticanza: ogni entita' che entra in `hierarchy()` deve
     ritrovarsi ESATTAMENTE una volta fra `entita`/`entita_disabilitate`/
     `entita_nascoste` di tutte le aree (vere o pseudo) di tutti i piani --
-    tranne il solo caso deliberato (`unloaded_device` + disabilitata/nascosta,
-    provato a parte sopra), qui tenuto fuori dal calcolo di proposito.
+    SENZA ECCEZIONI (R3, revisione del tratto v3.22.2..HEAD: il solo caso
+    escluso fin qui -- disabilitata/nascosta col dispositivo non risolvibile
+    -- non era piu' difendibile, ed e' proprio perche' questa prova lo teneva
+    fuori dal calcolo che il buco non arrossiva da solo).
 
     Copre le combinazioni che sparivano prima di questa fetta: disabilitata E
-    nascosta, sia senza area sia con un'area sconosciuta.
+    nascosta, sia senza area, sia con un'area sconosciuta, sia col
+    dispositivo non risolvibile (registro dei dispositivi caduto).
 
     Non fissa 1223/1018 (la misura di oggi di una casa che cambia): fissa
     l'invariante -- l'insieme delle entita' in ingresso e l'insieme di quelle
@@ -381,9 +407,13 @@ def test_ogni_entita_esce_esattamente_una_volta(archivio):
          "area_id": "area_fantasma_1", "disabled_by": "user"},
         {"entity_id": "sensor.nascosta_area_sconosciuta", "device_id": None,
          "area_id": "area_fantasma_2", "hidden_by": "user"},
+        {"entity_id": "sensor.disabilitata_dispositivo_ignoto", "device_id": "d1",
+         "area_id": None, "disabled_by": "user"},
+        {"entity_id": "sensor.nascosta_dispositivo_ignoto", "device_id": "d1",
+         "area_id": None, "hidden_by": "user"},
     ])
-    archivio.replace(registri)
-    piani = hierarchy(archivio.read())
+    archivio.replace(registri, ["dispositivi"])
+    piani = hierarchy(archivio.read(), ("dispositivi",))
 
     attese = {e["entity_id"] for e in registri["entita"]}
 

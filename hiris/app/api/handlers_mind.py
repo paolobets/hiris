@@ -127,9 +127,12 @@ def _with_rendered_states(facts: list[dict], report: dict) -> list[dict]:
     grezzo»; a `false`, significa «non l'abbiamo potuto chiedere», e il motivo
     e' li' accanto.
 
-    Le NOSTRE due etichette (`unavailable`, `unknown`) si applicano anche a
-    traduzioni non lette: non vengono da Home Assistant, quindi non c'e'
-    ragione che un guasto di rete le porti via.
+    `body.get("stato")` non e' mai `unavailable`/`unknown`: `facts` arriva da
+    `ObservationsStore.facts()`, che legge cio' che `mind/facts.py::
+    aggregate_day` ha scritto -- e quella funzione scarta i due stati prima
+    di aprire un episodio (revisione del tratto v3.22.2..HEAD, rilievo R5:
+    le due etichette nostre che questa funzione portava per quel caso erano
+    un ramo morto, mai raggiungibile da qui, rimosso insieme a loro).
     """
     resources = report.get("risorse")
     rendered = []

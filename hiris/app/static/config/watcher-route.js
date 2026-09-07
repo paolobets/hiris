@@ -248,6 +248,18 @@ window.HirisWatcherRoute = (function () {
       .map(function (g) { return { gamba: g, voci: groups[g] }; });
   }
 
+  // Rilievo R4 (revisione del tratto v3.22.2..HEAD): `/api/mind/watching` non
+  // porta MAI un nome (docstring di `describeWatchedSubject` sopra) -- e
+  // quattro delle sei gambe (`chi c'e'`, comfort, dispersione, energia,
+  // sicurezza) ricevono SOLO entita' dirette da `_watched` (watcher.py), mai
+  // una condizione di sistema o un'automazione: per queste `d.technical` e'
+  // vero su OGNI voce, sempre, per costruzione. Ripetere `identificatore:` su
+  // ognuna (~86 righe sulla casa vera, indagine-nomi-e-stati.md §3.4) non
+  // distingue niente -- e' la stessa noia gia' tolta dal rilievo 6b per
+  // "Pavimento — non si toglie": il rumore sano seppellisce la rotta. Solo
+  // "buono stato" puo' essere MISTA (entita' dirette insieme a condizioni/
+  // automazioni gia' nominate da `describeWatchedSubject`): li' il badge
+  // per-riga torna a distinguere davvero una voce dall'altra, e resta.
   function renderAspectGroup(body, group) {
     var det = el('details');
     det.open = false;
@@ -257,9 +269,19 @@ window.HirisWatcherRoute = (function () {
     summary.style.cssText = 'cursor:pointer;font-weight:500';
     det.appendChild(summary);
 
+    var descrizioni = group.voci.map(function (v) { return describeWatchedSubject(v.soggetto); });
+    var tutteTecniche = descrizioni.length > 0 && descrizioni.every(function (d) { return d.technical; });
+    if (tutteTecniche) {
+      // Detto UNA volta per il gruppo, non tace mai: chi legge deve
+      // continuare a sapere che quelle sotto non sono nomi.
+      var hint = el('p', 'field-hint', 'Le voci qui sotto sono ' + SUBJECT_IS_ID_PLURAL + '.');
+      hint.style.cssText = 'margin:4px 0 0';
+      det.appendChild(hint);
+    }
+
     var ul = el('ul');
     ul.style.cssText = 'margin:6px 0 4px;padding-left:18px';
-    group.voci.forEach(function (v) {
+    group.voci.forEach(function (v, i) {
       var li = el('li');
       li.style.cssText = 'margin-bottom:6px;font-size:var(--fs-13);overflow-wrap:anywhere;' +
         'display:flex;align-items:center;gap:8px;flex-wrap:wrap';
@@ -275,8 +297,14 @@ window.HirisWatcherRoute = (function () {
       // `entity_id`, e la riga lo DICE (`d.technical`) invece di lasciarlo
       // passare per un nome. Non si inventa niente dall'id, e non si tace
       // la riga: sono le due meta' della stessa regola.
-      var d = describeWatchedSubject(v.soggetto);
-      if (d.technical) li.appendChild(el('span', 'field-hint', SUBJECT_IS_ID));
+      //
+      // R4: quando OGNI voce del gruppo e' tecnica (`tutteTecniche`, sopra) la
+      // dichiarazione e' gia' stata detta una volta per il gruppo: ripeterla
+      // su ogni riga non distinguerebbe piu' niente. Quando il gruppo e'
+      // misto il badge per-riga resta, perche' li' la distinzione e' vera
+      // informazione: dice QUALE voce, fra le tante, e' un id nudo.
+      var d = descrizioni[i];
+      if (d.technical && !tutteTecniche) li.appendChild(el('span', 'field-hint', SUBJECT_IS_ID));
       li.appendChild(el('span', 'text-mono', d.primary));
       if (d.secondary) li.appendChild(el('span', 'text-mono field-hint', d.secondary));
       var b = provenanceBadge(v.provenienza);
@@ -582,6 +610,13 @@ window.HirisWatcherRoute = (function () {
      la riga deve restare leggibile anche quando si ripete su ogni voce di
      un elenco lungo. */
   var SUBJECT_IS_ID = 'identificatore:';
+
+  /* R4 (revisione del tratto v3.22.2..HEAD): la stessa dichiarazione, detta
+     UNA volta per un intero gruppo di «Cosa sto guardando» invece che su
+     ogni riga (`renderAspectGroup`, sopra) -- stessa parola («identificatore»)
+     delle due forme qui sopra, cosi' chi legge non impara un terzo
+     vocabolario per lo stesso fatto. */
+  var SUBJECT_IS_ID_PLURAL = 'identificatori tecnici, non nomi';
 
   /* Il rivelatore sincrono, estratto (correzione di questo giro): era
      duplicato letterale fra `detailsDisclosure` (comprimari/misure) e il

@@ -2,7 +2,6 @@
 import pytest
 
 from hiris.app.api.handlers_mind import handle_facts, handle_watching
-from hiris.app.home_space.ha_vocabulary import UNAVAILABLE_LABEL
 from hiris.app.home_space.store import HomeSpaceStore
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.mind.watcher import Watcher
@@ -350,23 +349,18 @@ async def test_la_tabella_delle_traduzioni_NON_viaggia_nella_risposta():
     assert "risorse" not in _corpo(r)["traduzioni"]
 
 
-@pytest.mark.asyncio
-async def test_unavailable_prende_l_etichetta_nostra_anche_a_traduzioni_non_lette():
-    """Le nostre due etichette non vengono da Home Assistant
-    (`helpers/translation.py:469-470`): non c'e' ragione che un guasto di rete
-    le porti via. Un buco al loro posto sarebbe la cosa peggiore -- lo stato
-    che dice «non lo so» reso come un vuoto.
-
-    Mutazione ESEGUITA: in `_with_rendered_states`, saltare la resa quando la
-    tabella manca (`if not isinstance(resources, dict): return facts`) -- il
-    test torna rosso su `assert corpo["stato_reso"] == UNAVAILABLE_LABEL`
-    (`KeyError: 'stato_reso'`).
-    """
-    r = await handle_facts(_richiesta(_app_for_facts(
-        {"stato": "unavailable"}, {"lette": False, "motivo": "rete giu'"})))
-    corpo = _corpo(r)["facts"][0]["corpo"]
-    assert corpo["stato"] == "unavailable"
-    assert corpo["stato_reso"] == UNAVAILABLE_LABEL
+# La prova che stava qui (`test_unavailable_prende_l_etichetta_nostra_anche_
+# a_traduzioni_non_lette`) e' stata rimossa dalla revisione del tratto
+# v3.22.2..HEAD (rilievo R5): costruiva a mano, con `_ArchivioConOggetto`, un
+# `corpo.stato: "unavailable"` che `ObservationsStore.facts()` VERA non
+# produce mai -- `mind/facts.py::aggregate_day` scarta `unavailable`/
+# `unknown` PRIMA di aprire un episodio (`tests/test_mind_facts.py`, punto
+# 2), quindi nessun oggetto reale arriva mai a questa funzione con quello
+# stato. Provava un caso che non succede, non una proprieta' di questa rotta.
+# La proprieta' vera -- che la funzione pura non produce piu' un'etichetta
+# per quei due stati -- e' provata dove appartiene, sulla funzione pura:
+# `tests/test_state_translations.py::
+# test_unavailable_e_unknown_non_producono_una_resa_qui`.
 
 
 @pytest.mark.asyncio
