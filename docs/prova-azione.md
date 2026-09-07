@@ -1,5 +1,13 @@
 # La prova sulla casa vera
 
+> **SUPERATO — non eseguire questo foglio.** Descrive al presente la **2.2**, ed e' rimasto
+> indietro di piu' di venti versioni: eseguirlo produce decine di scostamenti che **non sono
+> difetti**, e quelli veri ci si perdono in mezzo. Il foglio in vigore e'
+> [`docs/collaudo.md`](collaudo.md), scritto il 07/09/2026 per la 3.22.1.
+>
+> Resta qui perche' e' citato da altri documenti e dai commenti del codice, e perche' racconta
+> cosa si e' visto sulla casa vera in quei giorni — non perche' sia ancora valido.
+
 *Foglio scritto il 12 agosto 2026 per la **2.2.0**, la versione in cui HIRIS smette di
 sapere soltanto e comincia a fare. Si esegue in mezz'ora, su un impianto Home Assistant
 vero, e serve a decidere se questa versione è pubblicabile.*

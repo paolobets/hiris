@@ -1,5 +1,13 @@
 # Prova la 2.0
 
+> **SUPERATO — non eseguire questo foglio.** Descrive al presente la **2.0**, ed e' rimasto
+> indietro di piu' di venti versioni: eseguirlo produce decine di scostamenti che **non sono
+> difetti**, e quelli veri ci si perdono in mezzo. Il foglio in vigore e'
+> [`docs/collaudo.md`](collaudo.md), scritto il 07/09/2026 per la 3.22.1.
+>
+> Resta qui perche' e' citato da altri documenti e dai commenti del codice, e perche' racconta
+> cosa si e' visto sulla casa vera in quei giorni — non perche' sia ancora valido.
+
 *Foglio della prova aperta l'11 agosto 2026, **aggiornato il 12 agosto** per la build
 che riporta l'azione (§4, §5). Accompagna la build che ti è stata
 consegnata: si legge in dieci minuti, dice come si parte, cosa aspettarsi, cosa

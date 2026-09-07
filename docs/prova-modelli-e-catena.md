@@ -1,5 +1,13 @@
 # La prova sulla casa vera — la pagina Modelli e la catena
 
+> **SUPERATO — non eseguire questo foglio.** Descrive al presente la **2.5**, ed e' rimasto
+> indietro di piu' di venti versioni: eseguirlo produce decine di scostamenti che **non sono
+> difetti**, e quelli veri ci si perdono in mezzo. Il foglio in vigore e'
+> [`docs/collaudo.md`](collaudo.md), scritto il 07/09/2026 per la 3.22.1.
+>
+> Resta qui perche' e' citato da altri documenti e dai commenti del codice, e perche' racconta
+> cosa si e' visto sulla casa vera in quei giorni — non perche' sia ancora valido.
+
 *Foglio scritto il 14 agosto 2026 per la **2.5.0**, la versione in cui la pagina Modelli
 smette di essere vera riga per riga e falsa nel complesso, e il Piano Claude Max smette di
 essere un bivio per diventare il primo anello di una catena. Si esegue in un'ora, su un
