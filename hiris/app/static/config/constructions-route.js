@@ -572,7 +572,7 @@ window.HirisConstructions = (function () {
 
     if (!openBody || !historyBody) {
       clearEl(outlet);
-      outlet.appendChild(el('div', 'page-title', 'Proposte'));
+      outlet.appendChild(el('h1', 'page-title', 'Proposte'));
       outlet.appendChild(el('p', 'page-subtitle',
         'Le proposte di HIRIS per creare, modificare o cancellare automazioni, script e ' +
         'scene di questa casa — e cosa ne hai deciso.'));

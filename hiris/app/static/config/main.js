@@ -114,7 +114,7 @@
       HirisDashboard.mount();
     } else {
       document.getElementById('route-outlet').innerHTML =
-        '<div class="page-title">Cosa HIRIS sa</div><p class="page-subtitle">Caricamento…</p>';
+        '<h1 class="page-title">Cosa HIRIS sa</h1><p class="page-subtitle">Caricamento…</p>';
     }
   });
   /* Reperto 26: la faccia di `casa.piani` -- vedi config/tree-route.js
@@ -124,7 +124,7 @@
     if (window.HirisTreeRoute) {
       HirisTreeRoute.mount();
     } else {
-      document.getElementById('route-outlet').innerHTML = '<div class="page-title">Albero della casa</div>';
+      document.getElementById('route-outlet').innerHTML = '<h1 class="page-title">Albero della casa</h1>';
     }
   });
   /* fetta E5 Task 9: sostituisce il pannello Memoria della chat -- vedi
@@ -134,7 +134,7 @@
     if (window.HirisMemoryRoute) {
       HirisMemoryRoute.mount();
     } else {
-      document.getElementById('route-outlet').innerHTML = '<div class="page-title">Memoria</div>';
+      document.getElementById('route-outlet').innerHTML = '<h1 class="page-title">Memoria</h1>';
     }
   });
   /* fetta «lo schedulatore» Task 9: la pagina #/agenda -- vedi
@@ -147,7 +147,7 @@
     if (window.HirisAgendaRoute) {
       HirisAgendaRoute.mount();
     } else {
-      document.getElementById('route-outlet').innerHTML = '<div class="page-title">Impegni</div>';
+      document.getElementById('route-outlet').innerHTML = '<h1 class="page-title">Impegni</h1>';
     }
   });
   /* fetta «costruire» Task 11: la pagina #/constructions -- vedi
@@ -159,7 +159,7 @@
     if (window.HirisConstructions) {
       HirisConstructions.mount(document.getElementById('route-outlet'));
     } else {
-      document.getElementById('route-outlet').innerHTML = '<div class="page-title">Proposte</div>';
+      document.getElementById('route-outlet').innerHTML = '<h1 class="page-title">Proposte</h1>';
     }
   });
   /* fetta «l'osservatore» Task 7: la pagina #/watcher -- vedi
@@ -172,7 +172,7 @@
     if (window.HirisWatcherRoute) {
       HirisWatcherRoute.mount();
     } else {
-      document.getElementById('route-outlet').innerHTML = '<div class="page-title">L’osservatore</div>';
+      document.getElementById('route-outlet').innerHTML = '<h1 class="page-title">L’osservatore</h1>';
     }
   });
   HirisRouter.register(/^#\/usage\/?$/, function() {
@@ -180,7 +180,7 @@
     if (window.HirisUsageRoute) {
       HirisUsageRoute.mount();
     } else {
-      document.getElementById('route-outlet').innerHTML = '<div class="page-title">Consumi</div>';
+      document.getElementById('route-outlet').innerHTML = '<h1 class="page-title">Consumi</h1>';
     }
   });
   HirisRouter.register(/^#\/models\/?$/, function() {
@@ -188,7 +188,7 @@
     if (window.HirisModelsRoute) {
       HirisModelsRoute.mount();
     } else {
-      document.getElementById('route-outlet').innerHTML = '<div class="page-title">Modelli</div>';
+      document.getElementById('route-outlet').innerHTML = '<h1 class="page-title">Modelli</h1>';
     }
   });
   /* fetta "esce il documentale": qui era registrata la route #/history
@@ -204,7 +204,7 @@
       HirisSettingsRoute.mount();
     } else {
       document.getElementById('route-outlet').innerHTML =
-        '<div class="page-title">Impostazioni chat</div>';
+        '<h1 class="page-title">Impostazioni chat</h1>';
     }
   });
 

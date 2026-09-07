@@ -87,7 +87,7 @@ window.HirisSettingsRoute = (function () {
 
   function render(outlet, data) {
     outlet.innerHTML = '';
-    outlet.appendChild(el('div', 'page-title', 'Impostazioni chat'));
+    outlet.appendChild(el('h1', 'page-title', 'Impostazioni chat'));
     /* La dichiarazione che manca quasi ovunque in questo prodotto: cosa
        succede DOPO il salvataggio. Qui l'effetto e' immediato perche' il PUT
        riassegna app["chat_settings"] (api/handlers_settings.py), che
@@ -264,7 +264,7 @@ window.HirisSettingsRoute = (function () {
 
   function error(outlet, text) {
     outlet.innerHTML = '';
-    outlet.appendChild(el('div', 'page-title', 'Impostazioni chat'));
+    outlet.appendChild(el('h1', 'page-title', 'Impostazioni chat'));
     outlet.appendChild(el('p', 'page-subtitle', text));
   }
 
@@ -272,7 +272,7 @@ window.HirisSettingsRoute = (function () {
     var outlet = document.getElementById('route-outlet');
     if (!outlet) return;
     outlet.innerHTML = '';
-    outlet.appendChild(el('div', 'page-title', 'Impostazioni chat'));
+    outlet.appendChild(el('h1', 'page-title', 'Impostazioni chat'));
     outlet.appendChild(el('p', 'page-subtitle', 'Caricamento…'));
 
     /* Una lettura sola: le impostazioni. Il secondo `fetch` (GET api/models,

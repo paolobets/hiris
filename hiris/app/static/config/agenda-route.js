@@ -675,7 +675,7 @@ window.HirisAgendaRoute = (function () {
     var outlet = document.getElementById('route-outlet');
     if (!outlet) return;
     clearEl(outlet);
-    outlet.appendChild(el('div', 'page-title', 'Impegni'));
+    outlet.appendChild(el('h1', 'page-title', 'Impegni'));
     outlet.appendChild(el('p', 'page-subtitle',
       'Ciò che hai chiesto a HIRIS di fare o guardare più tardi, e com’è andata finora.'));
     var status = el('p', 'sc-desc', '');

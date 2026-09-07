@@ -101,7 +101,7 @@
 
   function section(s) {
     return '<section class="usage-provider">'
-      + '<div class="usec-head"><h3 class="usec-name">' + escHtml(s.label) + '</h3>'
+      + '<div class="usec-head"><h2 class="usec-name">' + escHtml(s.label) + '</h2>'
       + sectionTotal(s) + '</div>'
       + '<p class="sc-desc">' + escHtml(s.note) + '</p>'
       + s.models.map(function(m) { return modelRow(m, s.provider); }).join('')
@@ -270,7 +270,7 @@
          solo -- non e' mai stato usato niente e non c'e' niente che possa
          rispondere. Il pulsante non si mostra: non c'e' nessuna ancora da
          spostare. */
-      outlet.innerHTML = '<div class="page-title">Consumi</div>'
+      outlet.innerHTML = '<h1 class="page-title">Consumi</h1>'
         + '<p class="page-subtitle st-notice">'
         + escHtml(u.message || 'I consumi non si misurano su questa configurazione.')
         + '</p>';
@@ -281,7 +281,7 @@
       ? 'Giorni e orari nel fuso della casa (' + escHtml(u.timezone) + ').'
       : 'Il fuso della casa non è ancora noto: i giorni sono contati in UTC.';
 
-    outlet.innerHTML = '<div class="page-title">Consumi</div>'
+    outlet.innerHTML = '<h1 class="page-title">Consumi</h1>'
       + '<p class="page-subtitle">Quanto ha consumato ogni modello, e quanto è '
       + 'costato. ' + timezone + '</p>'
       + bar(u)
@@ -318,7 +318,7 @@
   function mount() {
     var outlet = document.getElementById('route-outlet');
     if (outlet && !outlet.innerHTML) {
-      outlet.innerHTML = '<div class="page-title">Consumi</div>'
+      outlet.innerHTML = '<h1 class="page-title">Consumi</h1>'
         + '<p class="page-subtitle">Carico…</p>';
     }
     /* Due domande, due rotte: il riepilogo e' leggero perche' lo richiama
@@ -339,7 +339,7 @@
       console.error('usage fetch failed', err);
       var outlet2 = document.getElementById('route-outlet');
       if (outlet2) {
-        outlet2.innerHTML = '<div class="page-title">Consumi</div>'
+        outlet2.innerHTML = '<h1 class="page-title">Consumi</h1>'
           + '<div class="proposals-error">Errore caricamento consumi.</div>';
       }
     });

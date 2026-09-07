@@ -187,7 +187,7 @@ window.HirisTreeRoute = (function () {
   function section(outlet, title, subtitle) {
     var card = el('section', 'section-card');
     var head = el('div', 'sc-header');
-    head.appendChild(el('div', 'sc-title', title));
+    head.appendChild(el('h2', 'sc-title', title));
     if (subtitle) head.appendChild(el('div', 'sc-desc', subtitle));
     card.appendChild(head);
     var body = el('div', 'sc-body');
@@ -509,7 +509,7 @@ window.HirisTreeRoute = (function () {
     var head = el('div');
     head.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap';
     var intro = el('div');
-    intro.appendChild(el('div', 'page-title', 'Albero della casa'));
+    intro.appendChild(el('h1', 'page-title', 'Albero della casa'));
     intro.appendChild(el('p', 'page-subtitle',
       'Come HIRIS vede piani, aree ed entità — non la dashboard di Home Assistant: la sua conoscenza.'));
     head.appendChild(intro);

@@ -115,7 +115,7 @@
     var outlet = document.getElementById('route-outlet');
     if (outlet) {
       outlet.innerHTML =
-        '<div class="page-title">Pagina non trovata</div>' +
+        '<h1 class="page-title">Pagina non trovata</h1>' +
         '<p class="page-subtitle">La pagina richiesta non esiste. <a href="#/">Torna a «Cosa HIRIS sa»</a></p>';
     }
   }

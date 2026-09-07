@@ -925,8 +925,17 @@
   margin: 0 auto;
 }
 .page-title {
+  /* Task A del collaudo 3.22.3: il div diventa <h1>, e un <h1> porta un
+     margine dal foglio del browser che un div non ha -- senza queste due
+     righe ogni pagina si sposterebbe in giu'. `display: block` neutralizza
+     anche la regola `h1 { display: flex; ... }` di hiris-config-override.css
+     (residuo di un vecchio header con logo, oggi senza alcun <h1> nel
+     markup finche' questa fetta non ne introduce di veri): questa classe
+     deve restare l'unica fonte di stile per il titolo di pagina. */
+  display: block;
   font-size: var(--fs-24); font-weight: 600;
   letter-spacing: -0.02em;
+  margin-top: 0;
   margin-bottom: var(--sp-2);
 }
 .page-subtitle {

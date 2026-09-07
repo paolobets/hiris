@@ -1073,7 +1073,7 @@ window.HirisWatcherRoute = (function () {
     if (!outlet) return;
     clearEl(outlet);
 
-    outlet.appendChild(el('div', 'page-title', 'L’osservatore'));
+    outlet.appendChild(el('h1', 'page-title', 'L’osservatore'));
     outlet.appendChild(el('p', 'page-subtitle',
       'Guarda la casa e ne ricava episodi. Non conclude niente, non parla, non tocca niente — ' +
       'è il materiale su cui domani ragionerà l’analista.'));

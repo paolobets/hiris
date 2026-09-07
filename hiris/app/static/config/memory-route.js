@@ -205,8 +205,16 @@ window.HirisMemoryRoute = (function () {
     scope.style.cssText = 'margin:0;font-size:var(--fs-12);color:var(--text-3)';
     wrap.appendChild(scope);
 
-    wrap.appendChild(field('Forza', modalitySelect));
-    wrap.appendChild(field('Grandezza (es. temperature, humidity — vocabolario di Home Assistant)', inpGrandezza));
+    /* Rilievo C del collaudo usabilita' 3.22.3: «Forza» e «Grandezza» erano
+       parole nostre sullo schermo -- il nome interno (`forza`/`grandezza`,
+       le chiavi del PATCH e dello schema REMEMBER_TOOL_DEF, docs/GLOSSARIO.md)
+       non cambia, cambia solo cio' che si legge. «Natura» riprende la stessa
+       definizione del glossario per `forza (memory)` -- «quale delle quattro
+       nature chiuse porta una lettura ricordata». «Cosa misura» dice la
+       funzione del campo invece del suo nome interno, che fuori da HIRIS non
+       si capisce da solo (e puo' leggersi come «dimensione»). */
+    wrap.appendChild(field('Natura', modalitySelect));
+    wrap.appendChild(field('Cosa misura (es. temperature, humidity — vocabolario di Home Assistant)', inpGrandezza));
     wrap.appendChild(field('Minimo', minInput));
     wrap.appendChild(field('Massimo', maxInput));
     wrap.appendChild(field('Unità', unitInput));
@@ -315,13 +323,25 @@ window.HirisMemoryRoute = (function () {
     phrase.style.cssText = 'font-size:var(--fs-15);font-weight:500;margin:0 0 8px';
     body.appendChild(phrase);
 
+    /* «struttura riconosciuta» copriva due insiemi diversi con una parola
+       sola (collaudo usabilita' 3.22.3, rilievo B): `interpretation` e' solo
+       lo stretto (grandezza + intervallo), ma la card mostra anche le ancore
+       e le condizioni, due righe piu' sotto -- anche loro struttura
+       riconosciuta a tutti gli effetti. Si separa alla fonte: la frase
+       «Nessuna struttura riconosciuta» resta vera solo quando la card non ha
+       NIENT'ALTRO da mostrare, ne' qui ne' sotto. Quando manca solo lo
+       stretto ma resta il largo, questa riga si omette — le ancore e le
+       condizioni parlano da sole, senza una riga sopra che le smentisce. */
     var interpretation = [];
     if (r.grandezza) interpretation.push(r.grandezza);
     var interval = formatInterval(r);
     if (interval) interpretation.push(interval);
-    body.appendChild(el('p', 'sc-desc', interpretation.length
-      ? 'HIRIS ha capito: ' + interpretation.join(' · ')
-      : 'Nessuna struttura riconosciuta — resta solo la frase.'));
+    var haStrutturaLarga = (r.ancore && r.ancore.length) || (r.condizioni && r.condizioni.length);
+    if (interpretation.length) {
+      body.appendChild(el('p', 'sc-desc', 'HIRIS ha capito: ' + interpretation.join(' · ')));
+    } else if (!haStrutturaLarga) {
+      body.appendChild(el('p', 'sc-desc', 'Nessuna struttura riconosciuta — resta solo la frase.'));
+    }
 
     if (r.ancore && r.ancore.length) renderTethers(body, r.ancore);
     if (r.condizioni && r.condizioni.length) {
@@ -449,7 +469,7 @@ window.HirisMemoryRoute = (function () {
     var outlet = document.getElementById('route-outlet');
     if (!outlet) return;
     clearEl(outlet);
-    outlet.appendChild(el('div', 'page-title', 'Memoria'));
+    outlet.appendChild(el('h1', 'page-title', 'Memoria'));
     outlet.appendChild(el('p', 'page-subtitle',
       'Ciò che hai detto a HIRIS, e cosa ne ha capito. Puoi correggere l’interpretazione — mai il ' +
       'testo — o cancellare un ricordo per sempre.'));

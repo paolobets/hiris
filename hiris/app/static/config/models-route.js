@@ -1067,7 +1067,7 @@
     state.loaded = false;
     var outlet = document.getElementById('route-outlet');
     clearEl(outlet);
-    outlet.appendChild(el('div', 'page-title', 'Modelli'));
+    outlet.appendChild(el('h1', 'page-title', 'Modelli'));
     outlet.appendChild(el('p', 'page-subtitle', 'Chi risponde alle tue domande, e in che ordine.'));
 
     var chainCard = buildSectionShell('01', 'chain', 'La catena',

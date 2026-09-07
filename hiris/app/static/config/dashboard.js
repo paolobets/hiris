@@ -76,7 +76,7 @@ window.HirisDashboard = (function () {
   function section(outlet, title, subtitle) {
     var card = el('section', 'section-card');
     var head = el('div', 'sc-header');
-    head.appendChild(el('div', 'sc-title', title));
+    head.appendChild(el('h2', 'sc-title', title));
     if (subtitle) head.appendChild(el('div', 'sc-desc', subtitle));
     card.appendChild(head);
     var body = el('div', 'sc-body');
@@ -368,7 +368,13 @@ window.HirisDashboard = (function () {
 
   function renderBriefing(outlet, briefing) {
     var summary = briefing.summary || {};
-    var body = section(outlet, 'Il nucleo, come lo vede il modello',
+    /* Rilievo C del collaudo usabilita' 3.22.3: «nucleo» era una parola
+       nostra sullo schermo (il nome interno, `briefing` in inglese e
+       `nucleo` in docs/GLOSSARIO.md, non cambia). Le cinque stringhe qui
+       sotto la sostituivano con «ciò che il modello vede/riceve» o «questo
+       testo», che e' esattamente la definizione del glossario -- capibile
+       da chi apre HIRIS per la prima volta senza sapere cos'e' un nucleo. */
+    var body = section(outlet, 'Cosa vede il modello a ogni turno',
       'Il testo esatto che HIRIS ha davanti a ogni turno di chat — non una sua descrizione, né un secondo conto.');
 
     var notices = summary.notices || [];
@@ -376,7 +382,7 @@ window.HirisDashboard = (function () {
     gapsTitle.style.cssText = 'font-weight:500;margin-bottom:4px';
     body.appendChild(gapsTitle);
     if (!notices.length) {
-      line(body, 'Il nucleo non dichiara nessuna lacuna.', TONE_CALM);
+      line(body, 'Nessuna lacuna dichiarata.', TONE_CALM);
     } else {
       list(body, notices);
     }
@@ -390,9 +396,9 @@ window.HirisDashboard = (function () {
       if (sotto) t.appendChild(el('div', 'st-delta', sotto));
       measurements.appendChild(t);
     }
-    measurement('Caratteri', String(summary.chars != null ? summary.chars : '—'), 'del nucleo');
+    measurement('Caratteri', String(summary.chars != null ? summary.chars : '—'), 'di questo testo');
     measurement('Troncato', summary.truncated ? 'Sì' : 'No', 'per il tetto di lunghezza');
-    measurement('Ricordi esclusi', String(summary.excluded_memories != null ? summary.excluded_memories : '—'), 'fuori dal nucleo');
+    measurement('Ricordi esclusi', String(summary.excluded_memories != null ? summary.excluded_memories : '—'), 'fuori da questo testo');
     body.appendChild(measurements);
 
     var pre = el('pre', null, briefing.text || '');
@@ -429,7 +435,7 @@ window.HirisDashboard = (function () {
     var head = el('div');
     head.style.cssText = 'display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap';
     var intro = el('div');
-    intro.appendChild(el('div', 'page-title', 'Cosa HIRIS sa'));
+    intro.appendChild(el('h1', 'page-title', 'Cosa HIRIS sa'));
     intro.appendChild(el('p', 'page-subtitle',
       'La conoscenza della tua casa che HIRIS ha davanti quando gli parli: ciò che ha letto, e ciò che dichiara di ignorare.'));
     head.appendChild(intro);
@@ -454,8 +460,8 @@ window.HirisDashboard = (function () {
         return function () { renderBriefing(outlet, briefing); };
       }, function (err) {
         return function () {
-          renderError(outlet, 'Il nucleo, come lo vede il modello',
-            'Non è stato possibile leggere il nucleo. Questo non significa che il nucleo sia vuoto: la richiesta non è andata a buon fine.', err);
+          renderError(outlet, 'Cosa vede il modello a ogni turno',
+            'Non è stato possibile leggere ciò che il modello vede. Questo non significa che sia vuoto: la richiesta non è andata a buon fine.', err);
         };
       })
     ]).then(function (results) {
