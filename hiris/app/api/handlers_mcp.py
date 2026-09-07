@@ -473,6 +473,16 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
         else:
             await sweeper.concludi_chiedi(
                 row, dispatcher.conclusione, now=time.time())
+            # Rilievo R1 della revisione indipendente sul tratto
+            # `v3.22.2..HEAD`: prima di questa riga nessun punto del
+            # prodotto registrava MAI un successo per una promessa mantenuta
+            # dal ponte -- il gemello di questo `.successo(...)` per la chat
+            # sta in `server.py::_submit_chat_reply`, ed e' l'unica altra
+            # strada per cui il piano puo' rispondere. Qui il modello HA
+            # concluso: e' un fatto gia' accertato, non un'ipotesi.
+            registry = request.app.get("occurrence_registry")
+            if registry is not None:
+                registry.successo("subscription")
 
     content: dict = {
         "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}],

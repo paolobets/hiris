@@ -99,7 +99,7 @@ async def test_un_turno_riuscito_del_ponte_lascia_una_traccia_nel_registro(
 
 
 @pytest.mark.asyncio
-async def test_un_sentinella_di_errore_del_ponte_non_e_un_successo(
+async def test_un_sentinella_di_errore_del_ponte_registra_un_fallimento(
     aiohttp_client, tmp_path,
 ):
     """Rovescio del test sopra: un job `kind="chat"` la cui `reply` e' uno dei
@@ -110,7 +110,16 @@ async def test_un_sentinella_di_errore_del_ponte_non_e_un_successo(
     la ragione per cui il collegamento sta DOPO il filtro di tossicita' di
     `_submit_chat_reply` (lo stesso filtro che oggi impedisce ai sentinella di
     finire in cronologia), e non prima, dove `handle_reasoning_submit` guarda
-    solo se `reply` e' non vuota."""
+    solo se `reply` e' non vuota.
+
+    Rilievo R1 della revisione indipendente sul tratto `v3.22.2..HEAD`: la
+    versione precedente di questo test asseriva `occurrence(...) is None`,
+    cioe' il FATTO «nessuna traccia» invece della PROPRIETA' «non e' un
+    successo» -- e un domani in cui qualcuno registrasse qui il fallimento
+    giusto avrebbe fatto arrossire proprio il test che doveva festeggiarlo.
+    Un turno del ponte che produce un sentinella e' un turno che HA PROVATO
+    ed E' FALLITO: un silenzio sul registro sarebbe la stessa bugia che il
+    Task 6 aveva chiuso per la chat riuscita, spostata sul fallimento."""
     data_dir = str(tmp_path / "data")
     registry = OccurrenceRegistry(clock=lambda: 999.0)
 
@@ -133,5 +142,12 @@ async def test_un_sentinella_di_errore_del_ponte_non_e_un_successo(
     })
     assert (await r.json()) == {"ok": True, "outcome": "chat_reply_recorded"}
 
-    assert registry.occurrence("subscription") is None, (
-        "un sentinella di errore del ponte e' stato registrato come successo")
+    esito = registry.occurrence("subscription")
+    assert esito is not None, (
+        "un turno del ponte finito con un sentinella d'errore non ha lasciato "
+        "traccia: il registro non distingue 'non l'ho interrogato' da "
+        "'ha fallito', e Modelli dira' 'nessuna osservazione' su un turno "
+        "che invece e' stato provato")
+    assert esito["tipo"] == "rifiutato", (
+        f"un sentinella di errore del ponte e' stato registrato come "
+        f"{esito['tipo']!r} invece che come fallimento")

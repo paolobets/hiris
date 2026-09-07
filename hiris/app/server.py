@@ -124,6 +124,18 @@ def _close_expired_promise(app, job: dict) -> None:
         ident, state="fallita", now=time.time(),
         reason=(f"ho aspettato il Piano Claude Max per {minuti} minuti e non ha "
                 "risposto: non so cosa dirti."))
+    # Rilievo R1 della revisione indipendente sul tratto `v3.22.2..HEAD`:
+    # terza strada delle promesse sul ponte, dopo il successo (`api/
+    # handlers_mcp`) e il turno finito senza «conclude» (`api/
+    # handlers_reasoning`). Stessa famiglia `scaduto` del ramo chat
+    # (`handlers_chat.py:477`): il piano non ha rifiutato, non ha risposto.
+    registry = app.get("occurrence_registry")
+    if registry is not None:
+        registry.fallimento(
+            "subscription", family="scaduto", code=None,
+            message="nessuna conclusione entro la scadenza del ponte (promessa)",
+            durata_s=float(job.get("deadline_ts", 0.0))
+            - float(job.get("created_ts", 0.0)))
     logger.warning(
         "promessa %s: il turno sul piano e' scaduto dopo %d minuti",
         ident, minuti)
@@ -3275,11 +3287,31 @@ async def _on_startup(app: web.Application) -> None:
         # piu' niente. Toglierla non cambia il testo persistito di un
         # carattere.
         if _is_toxic_chat_reply(reply_text):
-            # Drop silently, same as the sync path: the next turn must not
-            # inherit a poisoned/leaked history. There's no HTTP response
-            # here to carry a visible error (the caller already got a 202
-            # long ago) -- the poll route's chat_reply_skipped handling is
-            # the user-facing side of this.
+            # Drop silently from the history, same as the sync path: the next
+            # turn must not inherit a poisoned/leaked history. There's no
+            # HTTP response here to carry a visible error (the caller already
+            # got a 202 long ago) -- the poll route's chat_reply_skipped
+            # handling is the user-facing side of this.
+            #
+            # Rilievo R1 della revisione indipendente sul tratto
+            # `v3.22.2..HEAD`: la guardia sopra non deve tacere due volte.
+            # Fino a questa correzione un turno del ponte tornato con uno dei
+            # cinque sentinella d'errore (`chat_store.BRIDGE_SENTINELS`)
+            # spariva qui senza lasciare NIENTE nel registro degli esiti --
+            # non e' la stessa cosa di "non l'ho interrogato" (`occurrence()
+            # is None`): il ponte ha risposto, e ha risposto con un
+            # fallimento. Confondere le due e' la stessa contraddizione da
+            # cui e' nato il Task 6 (Modelli che diceva «non l'hai ancora
+            # usato» con turni riusciti in `consumo_giorno`), spostata dal
+            # successo al fallimento. Il testo del sentinella non e' una
+            # causa nota (nessun codice HTTP, nessuna credenziale, nessun
+            # modello) -- e' `family="altro"`, come ogni guasto che il
+            # prodotto misura senza inventarne il perche'.
+            registry = app.get("occurrence_registry")
+            if registry is not None:
+                registry.fallimento(
+                    "subscription", family="altro", code=None,
+                    message=reply_text, durata_s=0.0)
             return
         # Task 6 (collaudo-3.22, indagine-abbonamento.md): QUI, e non prima
         # -- e non in `agent/runner.py::_logga_uso`, dove parte gia' Consumi.

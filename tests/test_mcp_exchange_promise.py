@@ -234,6 +234,30 @@ async def test_concludi_dal_ponte_chiude_la_promessa_e_fa_partire_la_notifica(ro
 
 
 @pytest.mark.asyncio
+async def test_concludi_dal_ponte_lascia_un_successo_nel_registro(rotta):
+    """Rilievo R1 della revisione indipendente sul tratto `v3.22.2..HEAD`:
+    prima di questa correzione nessuna promessa mantenuta dal ponte lasciava
+    traccia in `OccurrenceRegistry` -- Modelli poteva dire «nessuna
+    osservazione da quando l'add-on e' partito» un attimo dopo che la
+    notifica di una promessa mantenuta era arrivata sul telefono."""
+    client, promesse, _porta = rotta
+    ident = _crea_in_corso(promesse)
+
+    await _jsonrpc(client, {
+        "jsonrpc": "2.0", "id": 9, "method": "tools/call",
+        "params": {"name": "conclude",
+                   "arguments": {"avvisare": False, "testo": "tutto fermo"}},
+    }, promessa=ident)
+
+    esito = client.app["occurrence_registry"].occurrence("subscription")
+    assert esito is not None, (
+        "una promessa conclusa dal ponte non ha lasciato traccia nel "
+        "registro degli esiti")
+    assert esito["tipo"] == "risposto", (
+        f"registrata come {esito['tipo']!r} invece che come successo")
+
+
+@pytest.mark.asyncio
 async def test_concludere_senza_avvisare_chiude_lo_stesso_e_non_notifica(rotta):
     """«La condizione non si e' verificata» e' un esito RIUSCITO, e resta
     scritto: e' cio' che rende il silenzio un fatto dichiarato."""

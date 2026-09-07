@@ -64,9 +64,27 @@ async def handle_reasoning_submit(request: web.Request) -> web.Response:
             # aver letto -- o peggio, farebbe partire una seconda notifica.
             outcome = "promessa_gia_conclusa"
         else:
+            now = _now(request)
             store.concludi(
-                ident, state="fallita", now=_now(request),
+                ident, state="fallita", now=now,
                 reason=_senza_conclusione(decision.get("reply")))
+            # Rilievo R1 della revisione indipendente sul tratto
+            # `v3.22.2..HEAD`: il registro degli esiti vedeva il successo
+            # della chat e la scadenza, e niente delle promesse. Una promessa
+            # mantenuta dal ponte si conclude altrove (`api/handlers_mcp`,
+            # dove sta il `.successo(...)` gemello di questa riga) -- questo
+            # e' il ramo in cui il turno E' finito e NON ha chiamato
+            # «conclude»: il piano ha risposto, e ha risposto senza seguire
+            # il protocollo. Non e' una scadenza (`family="scaduto"` e' per
+            # chi non risponde affatto, vedi `handlers_chat.py`) ne' un
+            # rifiuto con causa nota: e' `family="altro"`, come ogni guasto
+            # che si misura senza inventarne il perche'.
+            registry = request.app.get("occurrence_registry")
+            if registry is not None:
+                registry.fallimento(
+                    "subscription", family="altro", code=None,
+                    message="promessa sul ponte finita senza chiamare «conclude»",
+                    durata_s=now - float(job.get("created_ts", now)))
             outcome = "promessa_senza_conclusione"
         return web.json_response({"ok": True, "outcome": outcome})
 

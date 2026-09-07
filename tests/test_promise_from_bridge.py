@@ -29,6 +29,7 @@ import pytest_asyncio
 from hiris.app import server
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.keeper.store import AgendaStore
+from hiris.app.provider_occurrences import OccurrenceRegistry
 from hiris.app.reasoning.queue import ReasoningQueue
 
 TOKEN = "token-di-prova-della-consegna"
@@ -115,6 +116,31 @@ async def test_un_turno_che_finisce_senza_concludere_fa_fallire_la_promessa(cons
 
 
 @pytest.mark.asyncio
+async def test_un_turno_che_finisce_senza_concludere_lascia_un_fallimento_nel_registro(
+    consegna,
+):
+    """Rilievo R1 della revisione indipendente sul tratto `v3.22.2..HEAD`:
+    prima di questa correzione la consegna sopra faceva fallire la promessa
+    (si vede in `keeper/store.py`) ma non toccava mai `OccurrenceRegistry` --
+    Modelli avrebbe continuato a dire «nessuna osservazione da quando l'add-on
+    e' partito» un attimo dopo che il proprietario aveva letto in chiaro un
+    turno del ponte fallito."""
+    client, coda, promesse = consegna
+    ident = _promessa_in_corso(promesse)
+    job = _accoda_e_prendi(coda, ident)
+
+    await _consegna(client, job, {
+        "reply": "Ho letto le otto stanze, ma da qui non posso mandarti una notifica."})
+
+    esito = client.app["occurrence_registry"].occurrence("subscription")
+    assert esito is not None, (
+        "una promessa del ponte finita senza «conclude» non ha lasciato "
+        "traccia nel registro degli esiti")
+    assert esito["tipo"] == "rifiutato", (
+        f"registrata come {esito['tipo']!r} invece che come fallimento")
+
+
+@pytest.mark.asyncio
 async def test_se_concludi_e_gia_arrivato_la_consegna_non_riapre_niente(consegna):
     """`conclude` chiude SUBITO dalla rotta MCP (non aspetta la consegna):
     quando il job si chiude la promessa e' gia' mantenuta, e riaprirla
@@ -182,6 +208,56 @@ def test_un_turno_scaduto_sul_piano_fa_fallire_la_promessa(tmp_path):
         p = promesse.read(ident)
         assert p["stato"] == "fallita"
         assert "10 minuti" in p["motivo"]
+    finally:
+        promesse.close()
+
+
+def test_un_turno_scaduto_sul_piano_lascia_un_fallimento_nel_registro(tmp_path):
+    """Rilievo R1 della revisione indipendente sul tratto `v3.22.2..HEAD`: la
+    terza strada delle promesse sul ponte -- lo sweep che chiude una promessa
+    scaduta senza risposta -- non scriveva nel registro degli esiti quanto le
+    altre due. Stessa famiglia `scaduto` del ramo chat (`handlers_chat.py`,
+    `family="scaduto"`): il piano non ha rifiutato, non ha risposto."""
+    from hiris.app.server import _close_expired_promise
+
+    promesse = AgendaStore(str(tmp_path / "p.db"))
+    try:
+        ident = _promessa_in_corso(promesse)
+        registry = OccurrenceRegistry(clock=lambda: 999.0)
+        app = {"agenda": promesse, "occurrence_registry": registry,
+               "models_config": {"ponte": {"scadenza_min": 10}}}
+
+        _close_expired_promise(app, {"wake": {"promessa_id": ident},
+                                      "created_ts": 100.0, "deadline_ts": 700.0})
+
+        esito = registry.occurrence("subscription")
+        assert esito is not None, (
+            "una promessa scaduta sul ponte non ha lasciato traccia nel "
+            "registro degli esiti")
+        assert esito["tipo"] == "rifiutato"
+        assert esito["famiglia"] == "scaduto"
+    finally:
+        promesse.close()
+
+
+def test_una_promessa_gia_conclusa_dalla_scadenza_non_registra_un_secondo_esito(tmp_path):
+    """`conclude` puo' essere arrivato mentre il turno finiva: lo sweep non
+    deve scrivere un fallimento sopra un successo gia' registrato altrove."""
+    from hiris.app.server import _close_expired_promise
+
+    promesse = AgendaStore(str(tmp_path / "p.db"))
+    try:
+        ident = _promessa_in_corso(promesse)
+        promesse.concludi(ident, state="mantenuta", now=ADESSO + 20,
+                          text="tutto fermo", avvisare=False)
+        registry = OccurrenceRegistry(clock=lambda: 999.0)
+        registry.successo("subscription")
+
+        _close_expired_promise({"agenda": promesse, "occurrence_registry": registry,
+                                "models_config": {}},
+                               {"wake": {"promessa_id": ident}})
+
+        assert registry.occurrence("subscription")["tipo"] == "risposto"
     finally:
         promesse.close()
 
