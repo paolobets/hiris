@@ -757,6 +757,47 @@ per il salto precedente (2.1.251 → 2.1.260 del 04/09) **col piano di ripiego s
 segue quella, compresa la riga «se la nuova desse problemi si torna alla precedente».
 
 
+### «Cosa sto guardando» stampa i soggetti grezzi, gli episodi no
+
+`origine: collaudo col browser della v3.22.1, 07/09/2026` · `nessun documento`
+
+Nella pagina dell'osservatore le **due liste sono rese in due modi diversi**, e una sola e' stata
+corretta. `hiris/app/static/config/watcher-route.js:257` scrive `v.soggetto` **tale e quale**:
+
+```
+integrazione:01K2CK4GG287VKK18M5J788MRQ
+log:aioamazondevices@components/alexa_devices/coordinator.py:192
+log:homeassistant.components.hydrawise@helpers/update_coordinator.py:481
+```
+
+Le righe **826** e **885** della stessa pagina — gli **episodi** — passano invece da
+`protagonistName()`, la funzione corretta durante la fetta «le tracce e il log» proprio perche' un
+prefisso tecnico non resti a schermo. Due elenchi sulla stessa pagina, uno corretto e uno no: e' la
+forma ricorrente dell'**elenco incompleto**, e nessuna prova poteva vederlo — e' resa, e si vede
+solo aprendo il gruppo in un browser vero.
+
+**Il difetto e' precedente alla fetta, ma la fetta lo ha reso molto piu' visibile**: quel gruppo
+aveva due voci, ora ne ha **diciannove**, di cui **diciassette sono percorsi di file**.
+
+`protagonistName(o)` non si puo' riusare com'e': lavora su un episodio, che porta `titolo` e
+`dominio`; una voce di «cosa sto guardando» porta solo `{soggetto, gamba, provenienza}`. Serve una
+resa che parta dal **solo soggetto** — «registro: `aioamazondevices`», «un'integrazione non
+caricata» — e la si condivide con `protagonistName` invece di scriverne una seconda.
+
+### Il README documenta sei rotte che non esistono
+
+`origine: collaudo col browser della v3.22.1, 07/09/2026` · `nessun documento`
+
+`README.md:427-437` elenca nove rotte del pannello: sei hanno il **nome sbagliato**. Il prodotto
+vivo usa `#/tree`, `#/memory`, `#/agenda`, `#/constructions`, `#/watcher`, `#/settings`; il README
+dice `#/albero`, `#/memoria`, `#/promesse`, `#/costruzioni`, `#/osservatore`, `#/impostazioni`.
+Solo `#/`, `#/models` e `#/usage` combaciano. La riga di `#/promesse` parla inoltre di «promesse»,
+nome sostituito da **«Impegni»** nella v3.21.0.
+
+E' il residuo di una rinomina che ha toccato il codice e non il documento — verificato aprendo il
+pannello col browser e confrontando gli `href` veri con la tabella.
+
+
 ---
 
 ## Usciti
