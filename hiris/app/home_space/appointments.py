@@ -88,7 +88,15 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from functools import cache
 
-from hiris.app.home_space.historian import home_space_zone
+# Import RELATIVO, come ogni altro modulo del prodotto. Assoluto
+# (`from hiris.app...`) funziona nelle prove -- li' la radice del repo e' nel
+# percorso e `hiris` E' un pacchetto -- e muore nel container, dove l'add-on e'
+# installato sotto `/usr/lib/hiris/app/` e la radice del pacchetto si chiama
+# `app`: `ModuleNotFoundError: No module named 'hiris'`, all'avvio, prima di
+# qualunque riga di log. E' costato il guasto in produzione della v3.22.0
+# (07/09/2026); il cancello che lo impedisce e' in
+# `tests/test_import_boundary.py`.
+from .historian import home_space_zone
 
 
 def _stripped_text(value) -> str:

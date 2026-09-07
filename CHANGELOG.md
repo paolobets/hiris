@@ -1,5 +1,31 @@
 # HIRIS — Changelog
 
+## [3.22.1] — Un import che funzionava solo qui (2026-09-07)
+
+**Correzione urgente: la 3.22.0 non si avviava.**
+
+Una riga sola, in `home_space/appointments.py`, importava un altro modulo del prodotto col
+**nome del repository** (`from hiris.app...`) invece che col percorso **relativo** che usano tutti
+gli altri. Nel container l'add-on e' installato sotto `/usr/lib/hiris/app/` e girato come pacchetto
+`app`: il nome `hiris` **non esiste**, e l'importazione muore all'avvio — `ModuleNotFoundError`,
+prima di qualunque riga di log dell'applicazione. L'add-on partiva, moriva, e si fermava.
+
+**Perche' nessuna delle 3.465 prove l'ha visto.** Girano tutte dal repository, dove la radice e'
+nel percorso e `hiris` **e'** un pacchetto: li' quella riga funziona. Non era un difetto di
+comportamento — nessuna prova poteva coglierlo guardando cosa il codice **fa**. Era un difetto di
+**forma**, e andava guardato guardando la forma.
+
+Quindi non e' stata corretta solo la riga: **c'e' ora un cancello** (`tests/test_import_boundary.py`)
+che legge l'albero sintattico di ogni file del prodotto e rifiuta qualunque import di se stesso fatto
+col nome del repository. Ha due prove: una controlla il prodotto, e l'altra mette il cancello davanti
+alla forma vietata e a due forme lecite — perche' una prova che passa solo perche' non c'e' niente da
+trovare non dimostra di saper trovare.
+
+**Il ripiego che non e' servito**: si sospettava la migrazione dell'archivio dell'osservatore, che
+con questa versione girava per la prima volta su un archivio vero. Non era quella. Il log
+dell'add-on ha chiuso la diagnosi in una riga, dopo che due ipotesi ragionevoli — costruite sui
+sintomi invece che sui fatti — erano risultate sbagliate.
+
 ## [3.22.0] — HIRIS smette di indovinare (2026-09-07)
 
 **Tre fette insieme, e un filo solo che le tiene: dove prima HIRIS deduceva, adesso legge — e
