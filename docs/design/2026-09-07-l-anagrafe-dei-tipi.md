@@ -341,3 +341,64 @@ provenienza, e una prova verifica che non esistano stati orfani.
 
 **È una scelta, non un fatto**: la forma reggerebbe anche una riga «qualunque tipo». Si è preferito
 non inventare un tipo che non esiste per ospitare qualcosa che è di tutti.
+
+---
+
+## §12 · Il requisito del proprietario: HIRIS eredita TUTTO
+
+Dettato il 07/09/2026, dopo aver visto l'analisi degli attributi:
+
+> *«Vorrei che di un'entità vengano ereditati da HIRIS tutti gli attributi, per capire fino in
+> fondo cosa può fare e cosa sta facendo ora. A caratteri generali, proprio come HA può
+> riconoscere e gestire quel dispositivo. Questo è il mio obiettivo, e così deve essere come
+> requisito.»*
+
+**È un requisito, non una preferenza.** E supera ogni raccomandazione precedente di questo
+documento che vada in senso contrario.
+
+### Il metro di accettazione
+
+> **HIRIS deve poter capire di un dispositivo ciò che Home Assistant capisce, e poter fare ciò che
+> Home Assistant sa fare con lui.**
+
+È verificabile e non è un'opinione: si prende un'entità, si guarda cosa l'interfaccia di HA sa
+dirne e sa farci, e si controlla che HIRIS non sia più povero. Se lo è, il difetto è nostro.
+
+### La distinzione che rende il requisito realizzabile
+
+**«Ereditare» e «scrivere nel contesto del modello» sono due cose diverse**, e confonderle è ciò
+che aveva prodotto le tre esclusioni raccomandate dall'analisi:
+
+| | regola |
+|---|---|
+| **Cosa HIRIS eredita e conserva** | **tutto, senza eccezioni.** 121 KB per le 835 entità dell'intera casa: il volume non è mai stato il problema |
+| **Cosa finisce scritto nel testo che il modello riceve** | decisione a valle, che riguarda **una sola** famiglia |
+
+Delle tre famiglie che l'analisi proponeva di escludere, **due non erano perdite di
+informazione**: «ha già una porta propria» (il dato c'è, arriva da un'altra strada — era un
+anti-doppione) e «presentazione» (`icon`, `entity_picture`: grafica, non capacità).
+
+**La terza — credenziali e maniglie — è l'unica vera**, e nemmeno lei è un'eccezione al requisito:
+HIRIS le eredita e le può usare. Il punto è che **una trascrizione di chat viene salvata su disco
+e finisce nel registro**: un token della telecamera scritto lì dentro ci resta. Quindi nel testo
+che va al modello compare *«questa entità porta un token di accesso»* invece del token — **il
+fatto c'è, la chiave no**. È una scelta operativa, dichiarata, e il proprietario può ribaltarla.
+
+### Le conseguenze sul disegno
+
+1. **La lista degli ammessi per dominio (`_DOMAIN_ATTRS`) sparisce** come criterio di cosa
+   conservare. Nove domini su trenta, e per quei nove i soli valori correnti, è l'opposto del
+   requisito.
+2. **Capacità e valori restano due cose diverse** — ma non perché una si tiene e l'altra no:
+   perché HA stesso le separa (`<Dominio>EntityCapabilityAttribute` /
+   `<Dominio>EntityStateAttribute`, `StrEnum` per dominio a `2026.9.1`) e perché rispondono a due
+   domande diverse: *cosa può fare* e *com'è adesso*.
+3. **Gli attributi di cui non conosciamo il significato escono lo stesso**, sotto un'etichetta
+   loro. «Non so cosa sia» e «so cosa sia» non sono la stessa cosa, e nessuno dei due è «non
+   esiste». Vale per gli attributi del costruttore — `ave_window_state` su un termostato AVE vuol
+   dire «finestra aperta», ma **nessuna fonte pubblica lo dichiara**: l'integrazione non è in HA
+   core, non è su GitHub, e l'unica AVE pubblica emette nomi diversi a ogni versione. Quel
+   significato o lo dice il proprietario, o resta non interpretato — **mai indovinato**.
+4. **Un `null` non è un'assenza di capacità.** Misurato: `light.alberello` consegna oggi
+   `{'brightness': None}` — che si legge «questa luce non ha luminosità» mentre la luce è solo
+   spenta. È peggio di non dire niente.
