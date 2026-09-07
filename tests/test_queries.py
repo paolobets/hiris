@@ -1508,3 +1508,76 @@ def test_assumed_state_absent_does_not_come_out():
     torna rosso su `assert "stato_presunto" not in detail`."""
     detail = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "entita", "light.cucina_2")
     assert "stato_presunto" not in detail
+
+
+# --- Task 5 di "rifiutare e importare" (§6c): `view` porta la regola -----
+# accanto al segnale, e la cita -- non la inventa.
+#
+# Il caso che chiude lo sprint, misurato sulla casa il 06/09/2026 e
+# riverificato il 07/09/2026: `sensor.persons` e' `diagnostic` nel registro
+# (`categoria`, dato che HIRIS conserva gia' -- Task 3, §7①), ha
+# `state_class: total`, NESSUN `device_class`, NESSUNA unita'. La spec
+# aggiungeva "ferma da due giorni": FALSO il giorno della misura (cambiata
+# tre ore prima) -- quella gamba della catena non si usa, e la regola
+# resta la piu' corta e piu' onesta che i tre fatti gia' noti permettono di
+# dire: diagnostica + nessuna classe + nessuna unita'.
+
+
+def _house_with_diagnostic_sensor(device_class=None, unit=None,
+                                     category="diagnostic"):
+    return {
+        "piani": [{"id": "terra", "nome": "Piano terra", "livello": 0}],
+        "aree": [{"id": "sala", "nome": "Sala", "piano_id": "terra",
+                  "alias": [], "etichette": []}],
+        "dispositivi": [],
+        "entita": [
+            {"id": "sensor.persons", "nome": "Persone", "classe": device_class,
+             "unita": unit, "categoria": category, "area_id": "sala",
+             "dispositivo_id": None, "disabilitata": False},
+        ],
+    }
+
+
+def test_a_diagnostic_without_class_or_unit_carries_its_rule():
+    """Misurato sulla casa il 06/09/2026: `sensor.persons` e' `diagnostic`
+    nel registro, ha `state_class: total`, nessun `device_class`, nessuna
+    unita'. Che non sia una misura della casa oggi non e' scritto da nessuna
+    parte: il modello lo indovina, e a volte indovina male.
+
+    Mutazione: togliere la regola dalla vista -- il test torna rosso su
+    `assert "non e' una misura" in detail["regola"]`."""
+    detail = view(_house_with_diagnostic_sensor(), [], [],
+                  {"sensor.persons": "3"}, "entita", "sensor.persons")
+    assert "non e' una misura" in detail["regola"]
+
+
+def test_no_rule_means_silence_not_a_guess():
+    """Se il vocabolario non ha una regola per questo caso -- qui, una
+    `diagnostic` che ha GIA' un `device_class` (e quindi una misura
+    dichiarata: una percentuale di batteria) -- la vista NON dice niente:
+    non e' un buco, e' la legge -- non si afferma cio' che non si sa.
+
+    Mutazione: emettere una regola di ripiego -- il test torna rosso su
+    `assert "regola" not in detail`."""
+    detail = view(_house_with_diagnostic_sensor(device_class="battery", unit="%"),
+                  [], [], {"sensor.persons": "80"}, "entita", "sensor.persons")
+    assert "regola" not in detail
+
+
+def test_a_diagnostic_device_tracker_without_class_or_unit_stays_silent():
+    """`device_tracker` non ha MAI ne' `device_class` ne' unita' -- non e'
+    un concetto che Home Assistant dichiari per quel dominio (misurato il
+    07/09/2026: 68 `device_tracker` diagnostic su 68 senza classe ne'
+    unita', il 100%). Dire "non e' una misura" li' sarebbe una tautologia
+    sul DOMINIO, non una regola sul dato -- e la stessa chiave che scatta
+    quasi sempre e' il rumore che questo ramo ha gia' pagato una volta
+    (`supported_features`/11 su 13, misurato altrove in questo sprint): non
+    si ripete qui.
+
+    Mutazione: estendere la regola a ogni dominio invece che al solo
+    `sensor` -- il test torna rosso su `assert "regola" not in detail`."""
+    house = _house_with_diagnostic_sensor()
+    house["entita"][0]["id"] = "device_tracker.telefono"
+    detail = view(house, [], [], {"device_tracker.telefono": "home"},
+                  "entita", "device_tracker.telefono")
+    assert "regola" not in detail

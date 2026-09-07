@@ -278,6 +278,49 @@ def _find_area(floors: list[dict], reference) -> dict | None:
 _RAW_ATTRIBUTES_WITH_THEIR_OWN_DOOR = frozenset({"supported_features", "assumed_state"})
 
 
+# --- Task 5 di "rifiutare e importare" (§6c): la REGOLA che il caso
+# `sensor.persons` porta scoperta -----------------------------------------
+#
+# Misurato sulla casa il 06/09/2026 e riverificato il 07/09/2026:
+# `sensor.persons` e' `diagnostic` nel registro (`entry["categoria"]`, gia'
+# conservato dal Task 3 -- §7①), ha `state_class: total`, NESSUN
+# `device_class` e NESSUNA unita' -- e niente, in nessun punto della
+# conoscenza, dice al modello che quel numero non e' una misura della casa
+# (quante entita' `person` esistono in Home Assistant, non una grandezza
+# fisica dell'abitazione). Il capitolato aggiungeva "ferma da due giorni":
+# FALSO il giorno della misura (cambiata tre ore prima) -- quella gamba
+# della catena non regge, e la regola resta la piu' corta e piu' onesta che
+# i tre fatti gia' noti (categoria, classe, unita') permettono di dire.
+#
+# La fonte del significato di "diagnostic" e' Home Assistant stesso, non
+# un'invenzione di HIRIS: `EntityCategory` (`homeassistant/const.py`, tag
+# `2026.9.1` -- lo stesso gia' citato da `ha_vocabulary.VOCABULARY_SOURCE`,
+# verificato di nuovo il 07/09/2026) dichiara `DIAGNOSTIC` come "An entity
+# exposing some configuration parameter, or diagnostics of a device" -- un
+# dato SUL dispositivo o sul servizio, non una grandezza della casa che
+# quel dispositivo abita.
+#
+# Solo sui `sensor`: e' l'UNICO dominio, fra quelli con entita' `diagnostic`
+# misurate su questa casa, in cui sia `device_class` sia
+# `unit_of_measurement` sono concetti che Home Assistant dichiara davvero
+# (`ha_vocabulary.DEVICE_CLASS_MEANING`) -- un `device_tracker` non li porta
+# MAI (misurato il 07/09/2026: 68 `device_tracker` diagnostic su 68 senza
+# classe ne' unita', il 100%): dire "non e' una misura" li' sarebbe una
+# tautologia sul DOMINIO, non una regola sul DATO -- esattamente la forma
+# di rumore (una chiave che scatta quasi sempre) che questo sprint ha gia'
+# pagato una volta e non ripete. Sui `sensor` diagnostici la differenza e'
+# vera: 65 su 89 non hanno ne' classe ne' unita' (le altre 24 la portano --
+# voltage, current, battery, enum, timestamp -- e su quelle la regola tace,
+# correttamente).
+_DIAGNOSTIC_SENSOR_WITHOUT_CLASS_OR_UNIT_RULE = (
+    "diagnostica di servizio (`entity_category: diagnostic` -- Home "
+    "Assistant, `EntityCategory`, `homeassistant/const.py`, tag `2026.9.1`: "
+    "\"An entity exposing some configuration parameter, or diagnostics of "
+    "a device\"), senza `device_class` ne' unita' di misura dichiarate: "
+    "non e' una misura della casa, e' un dato tecnico sull'entita' stessa."
+)
+
+
 def _enrich_entity(entity_detail: dict, entry: dict,
                         fallback_names: dict[str, str] | None,
                         reported_units: dict[str, str] | None = None,
@@ -403,6 +446,17 @@ def _enrich_entity(entity_detail: dict, entry: dict,
     category = (entry.get("categoria") or "").strip()
     if category:
         entity_detail["categoria"] = category
+    # `regola`: la vista CITA il vocabolario (Task 4) invece di lasciare che
+    # il modello indovini dal nome. Oggi una sola regola e' citabile --
+    # `_DIAGNOSTIC_SENSOR_WITHOUT_CLASS_OR_UNIT_RULE`, sopra -- e solo
+    # quando tutti e tre i fatti che la sostengono sono veri insieme:
+    # dominio `sensor`, categoria `diagnostic`, nessuna classe e nessuna
+    # unita'. Su ogni altro caso il vocabolario non ha niente da dire, e
+    # `regola` non esce affatto: il silenzio non e' un buco, e' la legge --
+    # una regola di ripiego avrebbe l'autorita' di una regola vera.
+    if (category == "diagnostic" and not device_class and not unit
+            and domain_of(entity_id) == "sensor"):
+        entity_detail["regola"] = _DIAGNOSTIC_SENSOR_WITHOUT_CLASS_OR_UNIT_RULE
     _add_categories(entity_detail, entry, category_lookup or {})
     return _add_labels(entity_detail, entry, label_lookup or {})
 
