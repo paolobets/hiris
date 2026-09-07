@@ -67,13 +67,27 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 # RIPRODUCIBILITA', non che la versione funzioni -- ma adesso la differenza
 # fra le due si misura in un secondo, invece che aspettando il momento giusto.
 #
-# Se la 2.1.260 desse problemi si torna alla **2.1.251**, ed e' un ripiego
-# solido: e' uscita con la 3.21.0, ha girato su questa casa, e `ponte.cli`
-# l'ha confermata il 04/09. E' la prima versione di cui si possa dire davvero
-# «provata», la 2.1.234 compresa -- quella era solo l'ultima che qualcuno
-# avesse guardato girare di sfuggita.
+# **La 2.1.260 E' STATA VERIFICATA il 07/09/2026**, add-on sulla 3.22.1:
+# `GET /api/health` ha risposto `ponte.cli: "2.1.260"` (con
+# `apiKeySource: "none"`). La riga «resta da fare» qui sopra e' quindi saldata:
+# e' la seconda volta di fila che il pin viene letto dentro il container invece
+# che sperato.
+#
+# 7 settembre 2026 — alzata da 2.1.260 a 2.1.263 (due uscite: 261 e 263; la
+# 262 non e' mai stata pubblicata). Il cancello l'aveva segnalata durante il
+# rilascio della 3.22.0, e per la regola del proprietario -- «se la CLI aumenta
+# di una versione minima possiamo includerlo nell'aggiornamento; se il cancello
+# lo segnala, nel prossimo lo aggiorniamo» -- il salto e' stato tenuto fuori da
+# quel pacchetto ed entra qui, deciso PRIMA che la suite girasse.
+#
+# Resta da fare per la 2.1.263, e vale la stessa riga: dopo il rilascio, un
+# turno e una GET.
+#
+# Se la 2.1.263 desse problemi si torna alla **2.1.260**, ed e' il ripiego piu'
+# solido che questo file abbia mai avuto: e' uscita con la 3.22.0, ha girato su
+# questa casa per due rilasci, e `ponte.cli` l'ha confermata il 07/09.
 RUN apk add --no-cache nodejs npm libgcc libstdc++ ripgrep \
-    && npm install -g @anthropic-ai/claude-code@2.1.260 \
+    && npm install -g @anthropic-ai/claude-code@2.1.263 \
     && npm cache clean --force
 ENV USE_BUILTIN_RIPGREP=0
 

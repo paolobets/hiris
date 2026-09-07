@@ -875,6 +875,86 @@ l'assenza di `unita` significhi un'altra. E' precedente alla fetta -- ma e' la s
 che le altre la rispettano l'eccezione si nota.
 
 
+### L'Osservatore mostra i nomi e gli stati di Home Assistant, non i nostri
+
+`origine: revisione di usabilita' sull'interfaccia vera, casa vera, v3.22.1, 07/09/2026` · `documento: docs/collaudo.md`
+
+Le righe di «Cosa e' successo» portano l'`entity_id` grezzo e lo stato in inglese
+(`on`, `off`, `not_home`, `heat`). Il proprietario non chiama cosi' le sue cose: in HA
+ogni entita' ha un **nome amichevole**, e ogni stato ha una traduzione che HA stesso
+pubblica. Si leggono quelli.
+
+**La trappola**: il nome amichevole puo' mancare. Quando manca si mostra l'`entity_id` e
+**si dice che e' quello** — non si inventa un nome, e non si tace la riga. E' la stessa
+distinzione che questo ramo ha gia' pagato quattro volte: «non c'e' un nome» e «non ho
+potuto leggerlo» sono due fatti diversi.
+
+### La lunghezza dell'Albero su schermo stretto
+
+`origine: revisione di usabilita' sull'interfaccia vera, casa vera, v3.22.1, 07/09/2026` · `documento: docs/collaudo.md`
+
+**Misurato a 375 px: l'Albero e' alto 35.576 px** — quasi cento schermate da scorrere per
+arrivare in fondo. Tre cause, tutte viste: gli episodi ripetuti non sono raggruppati, non
+c'e' una ricerca, e nessuna sezione si chiude.
+
+E' un difetto della casa **vera**, non della casa di prova: cresce con il numero di
+entita', quindi peggiora da solo. Qualunque forma si scelga va provata su una casa piena,
+non su un campione.
+
+### Modelli e Consumi si contraddicono sull'abbonamento
+
+`origine: revisione di usabilita' sull'interfaccia vera, casa vera, v3.22.1, 07/09/2026` · `documento: docs/collaudo.md`
+
+La pagina **Modelli** dice del ponte «non l'hai ancora usato»; **Consumi**, nella stessa
+sessione e sullo stesso ponte, ne conta **98 turni**. Una delle due sbaglia, e il
+proprietario le vede tutte e due.
+
+**Prima si indaga, poi si corregge.** Non si sa ancora quale delle due fonti sia quella
+giusta: correggere quella sbagliata renderebbe *coerente una bugia*. La voce chiede una
+misura — chi scrive il contatore, chi lo legge, e perche' i due non si vedono — prima di
+chiedere una correzione.
+
+### Le parole nostre invece che le sue
+
+`origine: revisione di usabilita' sull'interfaccia vera, casa vera, v3.22.1, 07/09/2026` · `documento: docs/collaudo.md`
+
+Escono sullo schermo parole che sono **nomi interni**, non parole del proprietario:
+`nucleo`, `view`, `ponte`, «Forza», «Grandezza», «bersaglio», «Categorie», e la briciola
+`casa ›`.
+
+Vale la regola gia' scritta nel glossario: **si rinomina per funzione, non si traduce**, e
+il metro e' la **prova del lettore nuovo**. E' lo stesso lavoro della rinomina chiusa con
+i sei rilasci 3.15.0→3.20.0, su cio' che quella non aveva raggiunto: l'interfaccia.
+
+### Accessibilita': nessun titolo in otto rotte su nove, e bersagli sotto i 44 px
+
+`origine: revisione di usabilita' sull'interfaccia vera, casa vera, v3.22.1, 07/09/2026` · `documento: docs/collaudo.md`
+
+**In otto rotte su nove non esiste nessun `h1`–`h4`.** Chi naviga con uno screen reader non
+ha nessuna struttura su cui saltare: la pagina e' un muro di testo senza appigli. E
+diversi bersagli tattili stanno **sotto i 44 px**, la soglia sotto la quale un dito non
+colpisce piu' quello che voleva.
+
+Nessuna delle due cose si vede guardando lo schermo da seduti: si vedono misurando, ed
+entrambe sono state misurate.
+
+### La Memoria dichiara «Nessuna struttura riconosciuta» sopra la struttura che ha riconosciuto
+
+`origine: revisione di usabilita' sull'interfaccia vera, casa vera, v3.22.1, 07/09/2026` · `documento: docs/collaudo.md`
+
+Il pannello scrive di non aver riconosciuto niente, e subito sotto mostra cio' che ha
+riconosciuto. E' la forma gia' incontrata quattro volte in questo ramo — **due cose
+diverse dette con una parola sola** — e si cura come le altre: **separando alla fonte**,
+cioe' facendo etichettare il motivo a chi lo produce, invece di indovinarlo a valle.
+
+### Apostrofi ASCII nel testo composto dal server
+
+`origine: revisione di usabilita' sull'interfaccia vera, casa vera, v3.22.1, 07/09/2026` · `documento: docs/collaudo.md`
+
+Il testo che il server compone usa `'` dove l'italiano vuole `’`. In interfaccia si legge
+come una svista tipografica **ripetuta**, e viene dal server, non dal frontend: e' li' che
+va corretto, in un posto solo.
+
 ---
 
 ## Usciti
