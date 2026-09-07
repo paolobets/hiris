@@ -111,15 +111,25 @@
   /* ---- il riepilogo ------------------------------------------------- */
 
   function summary(u) {
-    var cost = (u.partial_cost ? '≥ ' : '') + fmtEuro(u.cost_eur, 2);
+    /* Collaudo 3.22 (C5): quando l'UNICO uso e' l'abbonamento, `cost_eur`
+       arriva 0.0 dal server -- nessun altro addendo -- e questa tessera
+       scriveva «€ 0,00» senza dire che quello zero non e' una misura, e' un
+       "qui non c'e' niente da sommare". `isSubscriptionOnly` (config/api.js)
+       legge `u.sections`, che questa risposta manda gia': niente di nuovo da
+       inventare. Nessun trattino (regola 2 qui sopra): la parola. */
+    var onlySub = isSubscriptionOnly(u.sections);
+    var cost = onlySub ? SUBSCRIPTION_ONLY_COST_LABEL
+      : (u.partial_cost ? '≥ ' : '') + fmtEuro(u.cost_eur, 2);
     /* Il simbolo da solo e' criptico per chi apre la pagina dal telefono: la
        frase lo accompagna SEMPRE. */
-    var note = u.partial_cost
+    var note = onlySub
+      ? '<div class="st-delta">non ha un costo di turno da sommare</div>'
+      : u.partial_cost
       ? '<div class="st-delta st-notice">cifra minima — manca il prezzo di almeno un modello</div>'
       : '';
     return '<div class="stat-grid" id="usage-summary">'
       + '<div class="stat-tile"><div class="st-label">Costo</div>'
-      + '<div class="st-value">' + cost + '</div>' + note + '</div>'
+      + '<div class="st-value' + (onlySub ? ' umr-included' : '') + '">' + cost + '</div>' + note + '</div>'
       + '<div class="stat-tile"><div class="st-label">Richieste</div>'
       + '<div class="st-value">' + u.total_requests + '</div></div>'
       + '<div class="stat-tile"><div class="st-label">Token IN</div>'
@@ -153,10 +163,18 @@
      il grafico che risponde a «quanto sto usando cosa» anche dove il costo
      non esiste. Nessun terzo grafico per i token: quel dettaglio vive gia' in
      ogni riga. */
-  function svgBarre(giorni, provider, key, title) {
+  function svgBarre(giorni, provider, key, title, emptyText) {
     var L = 640, A = 120, base = A - 18, left = 4;
-    if (!giorni.length) {
-      return '<p class="hint">Nessun consumo nel periodo scelto.</p>';
+    /* Collaudo 3.22 (C5, difetto di resa): un grafico senza giorni O senza
+       provider da disegnare -- il caso del costo quando l'unico uso e'
+       l'abbonamento -- prima arrivava fin qui e disegnava un SVG vuoto (zero
+       barre, solo l'asse): un'area bianca di ~150px, con la spiegazione
+       scritta SOTTO, fuori da quell'area. Ora la spiegazione sta DENTRO, in
+       un box della stessa forma (vedi .usage-chart-empty in
+       hiris-config.css), non un paragrafo separato dopo la legenda. */
+    if (!giorni.length || !provider.length) {
+      return '<div class="usage-chart-empty" role="img" aria-label="' + escHtml(title) + '">'
+        + '<p class="hint">' + escHtml(emptyText || 'Nessun consumo nel periodo scelto.') + '</p></div>';
     }
     var totali = giorni.map(function(g) {
       return provider.reduce(function(acc, p) {
@@ -216,10 +234,13 @@
 
     var giorni = (storia.days || []).slice(-state.giorni);
     var withCost = present.filter(function(p) { return p !== 'ponte'; });
-    var outside = present.indexOf('ponte') >= 0
-      ? '<p class="hint">L\'abbonamento non compare qui: non ha un costo da '
-        + 'impilare. I suoi turni sono nel grafico sotto.</p>'
-      : '';
+    /* La spiegazione del grafico vuoto ora e' un ARGOMENTO di svgBarre, non
+       un paragrafo composto e piazzato qui sotto -- vedi il commento su
+       svgBarre. */
+    var costEmptyText = present.indexOf('ponte') >= 0
+      ? 'L’abbonamento non ha un costo di turno da impilare qui: i suoi '
+        + 'turni sono nel grafico «Richieste al giorno» qui sotto.'
+      : 'Nessun consumo nel periodo scelto.';
 
     return '<div class="usage-charts">'
       + '<div class="usage-chart-head"><h3>Costo al giorno</h3>'
@@ -227,8 +248,8 @@
       + (state.giorni === 7 ? ' active' : '') + '" id="usage-7">7 giorni</button>'
       + '<button class="btn btn-ghost' + (state.giorni === 30 ? ' active' : '')
       + '" id="usage-30">30 giorni</button></div></div>'
-      + svgBarre(giorni, withCost, 'cost_eur', 'Costo al giorno per provider')
-      + legend(withCost, labels) + outside
+      + svgBarre(giorni, withCost, 'cost_eur', 'Costo al giorno per provider', costEmptyText)
+      + (withCost.length ? legend(withCost, labels) : '')
       + equivalentTable(giorni, withCost, 'cost_eur', labels)
       + '<h3>Richieste al giorno</h3>'
       + svgBarre(giorni, present, 'requests', 'Richieste al giorno per provider')

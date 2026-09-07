@@ -24,7 +24,13 @@ async def handle_get_chat_history(request: web.Request) -> web.Response:
     # ricadere sul default (90) del parametro qualunque cosa l'utente abbia
     # scelto in «Impostazioni chat».
     giorni = request.app["chat_settings"].retention_days
-    messages = load_history(data_dir, days=giorni)
+    # collaudo 3.22, C4: `include_timestamp=True` SOLO qui -- questa e' la
+    # rotta che disegna le bolle, e disegnarle con `new Date()` "al momento
+    # del disegno" (il client, prima di questa correzione) affermava un'ora
+    # falsa per ogni messaggio ripristinato. Il chiamante che nutre il
+    # modello (`handlers_chat.py`) non passa questo argomento: resta
+    # `{role, content}`, il formato che l'API del modello si aspetta.
+    messages = load_history(data_dir, days=giorni, include_timestamp=True)
     return web.json_response({"messages": messages})
 
 

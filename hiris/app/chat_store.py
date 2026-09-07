@@ -329,7 +329,9 @@ class ChatStore:
             )
             self._conn.commit()
 
-    def load_context(self, max_turns: int = 30, *, days: int = 90) -> list[dict]:
+    def load_context(
+        self, max_turns: int = 30, *, days: int = 90, include_timestamp: bool = False
+    ) -> list[dict]:
         """Return last max_turns pairs from the active (non-stale) session.
 
         `days` is the second job of `ChatSettings.retention_days`
@@ -338,7 +340,18 @@ class ChatStore:
         active session, are not read back into the model's context. `0`
         disables this (never filters), and the nightly pruning agrees on what
         `0` means -- `delete_old_messages` below writes the same rule the other
-        way round, `if retention_days <= 0: return 0`."""
+        way round, `if retention_days <= 0: return 0`.
+
+        `include_timestamp` (collaudo 3.22, C4 -- "la chat inventa l'ora dei
+        messaggi"): di default `False`, e il dizionario resta `{role, content}`
+        -- il formato che l'API del modello si aspetta, e che
+        `test_load_strips_timestamps_from_output` pinna. Il SOLO chiamante che
+        passa `True` e' `handlers_chat_history.handle_get_chat_history`: la
+        pagina disegnava ogni bolla ripristinata con `new Date()` **al momento
+        del disegno**, cioe' l'ora del ricaricamento -- non quella in cui il
+        messaggio era stato scritto. La cronologia porta gia' l'ora vera in
+        colonna (`timestamp`, scritta da `append()` a ogni turno): mancava
+        solo restituirla a chi la chiede, non inventare una seconda fonte."""
         with self._mu:
             sid = self._fresh_session_id()
             if not sid:
@@ -348,17 +361,20 @@ class ChatStore:
                     datetime.now(UTC) - timedelta(days=days)
                 ).strftime(_TS_FMT)
                 rows = self._conn.execute(
-                    "SELECT role, content FROM chat_messages "
+                    "SELECT role, content, timestamp FROM chat_messages "
                     "WHERE session_id = ? AND timestamp >= ? ORDER BY id",
                     (sid, cutoff),
                 ).fetchall()
             else:
                 rows = self._conn.execute(
-                    "SELECT role, content FROM chat_messages "
+                    "SELECT role, content, timestamp FROM chat_messages "
                     "WHERE session_id = ? ORDER BY id",
                     (sid,),
                 ).fetchall()
-            messages = [{"role": r["role"], "content": r["content"]} for r in rows]
+            messages = [
+                {"role": r["role"], "content": r["content"], "timestamp": r["timestamp"]}
+                for r in rows
+            ]
             # Strip toxic assistant turns (and their dangling user pair) before
             # the model ever sees them — protects against the leaked-tool-call
             # poisoning observed pre-v0.9.8 and against repeated synthetic
@@ -366,6 +382,8 @@ class ChatStore:
             messages = _purge_toxic_turns(messages)
             if len(messages) > max_turns * 2:
                 messages = messages[-(max_turns * 2):]
+            if not include_timestamp:
+                messages = [{"role": m["role"], "content": m["content"]} for m in messages]
             return messages
 
     def get_past_summaries(self, n: int = PAST_SESSIONS_LIMIT) -> list[dict]:
@@ -437,14 +455,20 @@ def _get_store(data_dir: str) -> ChatStore:
 # minus `chatbot_id` -- fetta E4 Task 5, "un bot solo": c'e' UNA cronologia)
 # ---------------------------------------------------------------------------
 
-def load_history(data_dir: str, *, days: int = 90) -> list[dict]:
+def load_history(
+    data_dir: str, *, days: int = 90, include_timestamp: bool = False
+) -> list[dict]:
     """Return [{role, content}] for the active session (Claude API format).
 
     `days` threads through to `ChatStore.load_context` -- see its docstring
     for why this is NOT a housekeeping knob. Production callers pass
     `chat_settings.giorni_conservazione` explicitly; the default here only
-    covers this repo's callers that don't have an opinion on retention."""
-    return _get_store(data_dir).load_context(days=days)
+    covers this repo's callers that don't have an opinion on retention.
+
+    `include_timestamp` threads through too -- see `ChatStore.load_context`.
+    Default `False`: the model-facing callers (`api/handlers_chat.py`) must
+    keep getting pure `{role, content}`, unchanged."""
+    return _get_store(data_dir).load_context(days=days, include_timestamp=include_timestamp)
 
 
 def append_messages(messages: list[dict], data_dir: str) -> None:

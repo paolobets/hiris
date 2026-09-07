@@ -95,7 +95,13 @@ def test_i_due_globali_privati_di_api_js_non_sono_dichiarati():
     assert "_setUsageText" not in globali
     assert "_mostraRigheConsumi" not in globali
     assert {"fmtNum", "HirisRouter"} <= globali
-    assert len(globali) == 25
+    # 25 -> 27 col collaudo 3.22 (C5): `isSubscriptionOnly` e
+    # `SUBSCRIPTION_ONLY_COST_LABEL` sono nomi nudi di config/api.js letti
+    # anche da config/usage-route.js (la tessera "Costo" quando l'unico uso
+    # e' l'abbonamento) -- stessa specie di `fmtNum`/`fmtEuro` qui sopra, non
+    # private come `_setUsageText`.
+    assert {"isSubscriptionOnly", "SUBSCRIPTION_ONLY_COST_LABEL"} <= globali
+    assert len(globali) == 27
 
 
 def test_la_suite_js_esce_anche_quando_un_cronometro_resta_appeso():

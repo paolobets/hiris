@@ -88,9 +88,12 @@ const FRASI_TUTTO_A_POSTO = [
 
 const NUCLEO_VUOTO = { text: '', summary: { chars: 0, truncated: false, excluded_memories: 0, notices: [] } };
 
-/* Monta la pagina con le due risposte date e restituisce il testo reso. */
+/* Monta la pagina con le due risposte date e restituisce il testo reso.
+   `config/api.js` PRIMA di `config/dashboard.js`, come fa davvero
+   config.html: dal collaudo 3.22 (A10) dashboard.js chiama `fmtDateTime`
+   (le tre "Letta/Letto/Lette il"), condivisa con la pagina Consumi. */
 async function rendi(casa, nucleo = NUCLEO_VUOTO) {
-  const ctx = loadScripts(['config/dashboard.js'], { html: HTML });
+  const ctx = loadScripts(['config/api.js', 'config/dashboard.js'], { html: HTML });
   const chiamate = [];
   ctx.window.fetch = (url) => {
     const u = String(url);
@@ -384,7 +387,7 @@ test('il nucleo mostra «ciò che HIRIS ignora» con gli avvisi reali del riepil
 });
 
 test('una fetch caduta lo DICHIARA: la sezione non resta muta né finge una casa vuota', async () => {
-  const ctx = loadScripts(['config/dashboard.js'], { html: HTML });
+  const ctx = loadScripts(['config/api.js', 'config/dashboard.js'], { html: HTML });
   const errori = [];
   const consoleVera = console.error;
   console.error = (...a) => errori.push(a.join(' '));
@@ -416,4 +419,31 @@ test('nessun link morto: la home non porta piu\' a #/nuovo ne\' a #/gateway', as
   for (const morto of ['#/nuovo', '#/gateway', '#/chatbots', '#/agentbots', '#/task', '#/proposte']) {
     assert.equal(sorgente.includes(morto), false, `il sorgente non deve nominare ${morto}`);
   }
+});
+
+test('collaudo 3.22 (A10): le TRE "Letta/Letto/Lette il" mostrano la data italiana, non l’ISO grezzo in UTC', async () => {
+  // Misurato dal vivo: «Letta il 2026-09-07T05:13:52+00:00.», due righe
+  // sopra «Adesso sono le 08:29... (fuso Europe/Rome)» nel nucleo -- la
+  // stessa distanza di due ore che l'Osservatore dichiara altrove.
+  // `fmtDateTime` (config/api.js) e' un global bare: si legge da
+  // `globalThis`, come gia' fa `globalThis.loadUsage()` in
+  // chat-usage-widget.test.mjs (il ponte di loadScripts() specchia su
+  // `window` solo le assegnazioni `window.X = ...`, non le dichiarazioni
+  // di funzione di primo livello).
+  const casa = casaLetta();
+  const { testo } = await rendi(casa);
+
+  const attesoAnagrafe = globalThis.fmtDateTime(casa.anagrafe_letta_il);
+  const attesoComportamento = globalThis.fmtDateTime(casa.comportamento.letto_il);
+  const attesoPlance = globalThis.fmtDateTime(casa.plance.lette_il);
+  assert.ok(attesoAnagrafe && attesoComportamento && attesoPlance,
+    'precondizione: fmtDateTime deve produrre qualcosa di leggibile per questa fixture');
+
+  assert.doesNotMatch(testo, /2026-08-10T09:00:00/, 'l’ISO grezzo dell’anagrafe non deve comparire');
+  assert.doesNotMatch(testo, /2026-08-10T09:01:00/, 'l’ISO grezzo del comportamento non deve comparire');
+  assert.doesNotMatch(testo, /2026-08-10T09:02:00/, 'l’ISO grezzo delle plance non deve comparire');
+
+  assert.ok(testo.indexOf('Letta il ' + attesoAnagrafe) >= 0, 'anagrafe: data formattata da fmtDateTime');
+  assert.ok(testo.indexOf('Letto il ' + attesoComportamento) >= 0, 'comportamento: data formattata da fmtDateTime');
+  assert.ok(testo.indexOf('Lette il ' + attesoPlance) >= 0, 'plance: data formattata da fmtDateTime');
 });

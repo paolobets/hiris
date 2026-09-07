@@ -10,6 +10,20 @@
     return new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
   }
 
+  /* Collaudo 3.22, C4 ("la chat inventa l'ora dei messaggi"): l'ora di una
+     bolla RIPRISTINATA dalla cronologia non e' "adesso" -- e' quella in cui
+     il messaggio e' stato scritto davvero, che il server adesso manda in
+     `timestamp` (`GET api/chat/history`, vedi chat_store.py). Se manca (una
+     cronologia che per qualunque ragione arrivasse senza quel campo -- non
+     succede oggi, ma questa funzione non deve indovinare comunque), l'ora
+     resta VUOTA: mai un `nowHHMM()` di ripiego, che sarebbe esattamente la
+     stessa bugia che questa fetta corregge, solo spostata di una riga. */
+  function fmtHistoryTime(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    return isNaN(d.getTime()) ? '' : d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  }
+
   function formatContent(text) {
     return esc(text)
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
@@ -17,11 +31,15 @@
       .replace(/\n/g, '<br>');
   }
 
-  function appendMsg(role, text) {
+  /* `isHistory`/`timestamp` esistono SOLO per chi ripristina la cronologia
+     (chat/agents.js::applyHistory): un invio vivo (chat/send.js) chiama
+     `appendMsg(role, text)` con due argomenti, e l'ora resta "adesso" --
+     legittimamente, perche' e' proprio adesso che quel messaggio nasce. */
+  function appendMsg(role, text, isHistory, timestamp) {
     if (!state.hasMessages) { state.els.welcome.style.display = 'none'; state.hasMessages = true; }
     var row = document.createElement('div');
     row.className = 'msg-row ' + role;
-    var time = nowHHMM();
+    var time = isHistory ? fmtHistoryTime(timestamp) : nowHHMM();
     var content = formatContent(text);
     if (role === 'assistant') {
       row.innerHTML =

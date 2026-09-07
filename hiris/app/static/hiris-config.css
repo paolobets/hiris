@@ -1855,6 +1855,19 @@
   margin: 18px 0 8px; text-transform: none; letter-spacing: 0;
 }
 .usage-chart { width: 100%; height: auto; display: block; }
+/* Collaudo 3.22 (C5): il rimpiazzo del grafico quando non c'e' niente da
+   disegnare (nessun provider con un costo di turno, o nessun giorno nel
+   periodo). Stessa proporzione del viewBox SVG (640x120, vedi svgBarre in
+   usage-route.js) cosi' la pagina non "salta" quando compare al posto delle
+   barre: prima quell'area restava comunque alta ~150px (un SVG di zero
+   barre), ma bianca e senza spiegazione dentro. */
+.usage-chart-empty {
+  aspect-ratio: 640 / 120;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center; padding: 0 16px;
+  border: 1px dashed var(--border); border-radius: var(--r-md);
+}
+.usage-chart-empty .hint { margin: 0; }
 .usage-legend {
   display: flex; flex-wrap: wrap; gap: 14px; margin-top: 6px;
   font-size: 12px; color: var(--text-2);

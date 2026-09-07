@@ -297,12 +297,16 @@ window.HirisTreeRoute = (function () {
     var disabled = (area.entita_disabilitate || []).length;
     var hidden = (area.entita_nascoste || []).length;
     var base = active + ' entità';
-    if (disabled) base += ', ' + disabled + ' disabilitata'.concat(disabled === 1 ? '' : 'e');
+    /* Collaudo 3.22 (A9): era `' disabilitata'.concat(disabled === 1 ? '' :
+       'e')`, che AGGIUNGE la "e" invece di SOSTITUIRE la "a" -- "9
+       disabilitatae", non "9 disabilitate". Il ternario intero, come fa gia'
+       il titolo di sezione qui sotto ("Entità disabilitate (32)"). */
+    if (disabled) base += ', ' + disabled + (disabled === 1 ? ' disabilitata' : ' disabilitate');
     /* Stessa disciplina delle disabilitate (fetta "nascoste fuori dagli
        elenchi", 2026-08-25): questa pagina esiste per non far sparire
        niente -- un'area con quattro luci nascoste e tre attive deve
        leggersi come "3 entità, 4 nascoste", non come "3 entità" secco. */
-    if (hidden) base += ', ' + hidden + ' nascosta'.concat(hidden === 1 ? '' : 'e');
+    if (hidden) base += ', ' + hidden + (hidden === 1 ? ' nascosta' : ' nascoste');
     return base;
   }
 
@@ -432,7 +436,10 @@ window.HirisTreeRoute = (function () {
       return;
     }
 
-    line(body, 'Letta il ' + home_space.anagrafe_letta_il + '.', TONE_CALM);
+    /* Collaudo 3.22 (A10, stessa correzione di dashboard.js::renderHomeSpace):
+       ISO grezzo in UTC -> fmtDateTime (config/api.js), non una seconda
+       funzione di formattazione. */
+    line(body, 'Letta il ' + fmtDateTime(home_space.anagrafe_letta_il) + '.', TONE_CALM);
 
     /* `non_disponibili` a tre stati: null = non si sa quali registri hanno
        risposto; [] = tutti hanno risposto; pieno = una lettura a metà, che

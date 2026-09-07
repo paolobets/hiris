@@ -17,7 +17,10 @@ import { loadScripts, tick } from './helpers/dom.mjs';
 const HTML = '<!doctype html><body><div id="route-outlet"></div></body>';
 
 function rendi(casa) {
-  const ctx = loadScripts(['config/tree-route.js'], { html: HTML });
+  // `config/api.js` PRIMA di `config/tree-route.js`, come fa davvero
+  // config.html: dal collaudo 3.22 (A10) tree-route.js chiama `fmtDateTime`,
+  // condivisa con la pagina Consumi -- non e' piu' un file isolato.
+  const ctx = loadScripts(['config/api.js', 'config/tree-route.js'], { html: HTML });
   const chiamate = [];
   ctx.window.fetch = (url) => {
     chiamate.push(String(url));
@@ -184,6 +187,36 @@ test('un\'entità nascosta compare SEMPRE, marcata, in una sezione propria (2026
     'un\'area con solo entità nascoste non è "nessuna entità": ce n\'è una, marcata');
 });
 
+test('collaudo 3.22 (A9): il plurale del riepilogo è «disabilitate»/«nascoste», non «disabilitatae»/«nascostae»', async () => {
+  // Il difetto era `' disabilitata'.concat(n === 1 ? '' : 'e')`: AGGIUNGE la
+  // "e" invece di SOSTITUIRE la "a" finale. Con n=1 il ramo `''` la nasconde
+  // per caso (singolare corretto per fortuna, non per costruzione) -- serve
+  // un conteggio ≥ 2 per farlo vedere, ed è esattamente il caso reale
+  // misurato ("Soggiorno — 57 entità, 32 disabilitatae, 5 nascostae").
+  const casa = casaCompleta();
+  casa.piani[0].aree[0].entita = [];
+  casa.piani[0].aree[0].entita_disabilitate = [
+    { id: 'sensor.vecchio1', nome: 'Vecchio sensore 1', piattaforma: 'zwave',
+      categoria: null, classe: null, unita: null, disabilitata: 1, nascosta: 0, alias: [], etichette: [] },
+    { id: 'sensor.vecchio2', nome: 'Vecchio sensore 2', piattaforma: 'zwave',
+      categoria: null, classe: null, unita: null, disabilitata: 1, nascosta: 0, alias: [], etichette: [] },
+  ];
+  casa.piani[0].aree[0].entita_nascoste = [
+    { id: 'light.nascosta1', nome: 'Nascosta 1', piattaforma: 'hue',
+      categoria: null, classe: null, unita: null, disabilitata: 0, nascosta: 1, alias: [], etichette: [] },
+    { id: 'light.nascosta2', nome: 'Nascosta 2', piattaforma: 'hue',
+      categoria: null, classe: null, unita: null, disabilitata: 0, nascosta: 1, alias: [], etichette: [] },
+  ];
+  const { document } = await rendi(casa);
+  const sommarioCucina = [...document.querySelectorAll('summary')]
+    .find((s) => s.textContent.indexOf('Cucina') === 0);
+  assert.ok(sommarioCucina, 'precondizione: l’area Cucina deve essere disegnata');
+  assert.match(sommarioCucina.textContent, /2 disabilitate\b/, 'plurale corretto delle disabilitate');
+  assert.match(sommarioCucina.textContent, /2 nascoste\b/, 'plurale corretto delle nascoste');
+  assert.doesNotMatch(sommarioCucina.textContent, /disabilitatae/, 'mai la "e" aggiunta invece che sostituita');
+  assert.doesNotMatch(sommarioCucina.textContent, /nascostae/, 'mai la "e" aggiunta invece che sostituita');
+});
+
 test('«non_disponibili» pieno: una casa letta a metà non sembra una casa piccola', async () => {
   const { testo } = await rendi(casaCompleta({ non_disponibili: ['aree', 'categorie:script'] }));
   assert.match(testo, /Registri che non hanno risposto all’ultima lettura/);
@@ -212,6 +245,27 @@ test('un\'anagrafe mai letta non si traveste da albero vuoto', async () => {
   assert.doesNotMatch(testo, /Letta il/);
   assert.equal(document.querySelectorAll('details').length, 0,
     'nessun piano/area disegnato su una lettura mai avvenuta -- niente albero vuoto spacciato per verità');
+});
+
+test('collaudo 3.22 (A10): «Letta il» mostra la data nel formato italiano, non l’ISO grezzo in UTC', async () => {
+  const { testo } = await rendi(casaCompleta());
+  // La stessa funzione che la pagina Consumi già usa (config/api.js) --
+  // non una seconda copia della formattazione. Il difetto misurato era
+  // «Letta il 2026-09-07T05:13:52+00:00.», due righe sopra un orario nel
+  // fuso di casa: la stessa distanza di due ore che l'Osservatore dichiara
+  // altrove.
+  // `fmtDateTime` e' un global BARE (api.js non e' un modulo, vedi il suo
+  // commento in cima): il ponte di loadScripts() lo specchia su `window`
+  // solo per le assegnazioni `window.X = ...`, non per le dichiarazioni di
+  // funzione di primo livello -- quindi si legge da `globalThis`, come fa
+  // gia' `globalThis.loadUsage()` in chat-usage-widget.test.mjs.
+  const atteso = globalThis.fmtDateTime(casaCompleta().anagrafe_letta_il);
+  assert.ok(atteso, 'precondizione: fmtDateTime deve produrre qualcosa di leggibile per questa fixture');
+  assert.match(testo, /Letta il/);
+  assert.doesNotMatch(testo, /Letta il 2026-08-17T09:00:00/,
+    'l’ISO grezzo non deve comparire a schermo');
+  assert.ok(testo.indexOf('Letta il ' + atteso) >= 0,
+    'deve comparire la data formattata da fmtDateTime, non l’ISO grezzo');
 });
 
 test('sistema di riferimento: presente si legge, assente lo dichiara (mai silenzio)', async () => {

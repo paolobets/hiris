@@ -55,6 +55,46 @@ def test_load_strips_timestamps_from_output(tmp_path):
     assert "timestamp" not in result[0]
 
 
+# ---------------------------------------------------------------------------
+# Collaudo 3.22, C4 ("la chat inventa l'ora dei messaggi"): la cronologia
+# porta gia' l'ora vera in colonna (`timestamp`), scritta da `append()` a
+# ogni turno. `include_timestamp=True` e' l'unico modo per farla uscire --
+# di default resta stretta (test sopra), perche' l'API del modello non deve
+# vederla.
+# ---------------------------------------------------------------------------
+
+def test_load_history_with_timestamp_returns_the_stored_value(tmp_path):
+    append_messages([{"role": "user", "content": "ciao"}], str(tmp_path))
+    result = load_history(str(tmp_path), include_timestamp=True)
+    assert len(result) == 1
+    assert result[0]["role"] == "user"
+    assert result[0]["content"] == "ciao"
+    # Formato di `ChatStore._now()`: "%Y-%m-%dT%H:%M:%SZ" -- UTC, mai
+    # inventato al momento della lettura.
+    import re
+    assert re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", result[0]["timestamp"])
+
+
+def test_load_history_with_timestamp_preserves_write_order_not_read_time(tmp_path):
+    """Mutazione che questa prova uccide: se `append()` scrivesse la stessa
+    colonna con l'ora di LETTURA invece che di SCRITTURA (o se il client
+    ignorasse comunque `timestamp` e ricalcolasse `now()` per ogni riga), due
+    messaggi scritti in istanti diversi finirebbero con lo STESSO timestamp
+    quando riletti in un secondo momento. Qui si scrivono due turni in due
+    chiamate separate a `append_messages` (ognuna prende `_now()` al momento
+    della SUA scrittura) e si verifica che la cronologia porti due valori
+    indipendenti, non un unico valore "di adesso" per tutti e due."""
+    append_messages([{"role": "user", "content": "primo turno"}], str(tmp_path))
+    append_messages([{"role": "assistant", "content": "risposta al primo"}], str(tmp_path))
+    result = load_history(str(tmp_path), include_timestamp=True)
+    assert len(result) == 2
+    # Entrambi i messaggi portano un timestamp non vuoto -- non e' l'assenza
+    # a essere provata qui, e' che ESISTA una colonna scritta al momento
+    # giusto (non un buco che il client dovrebbe rattoppare inventando).
+    assert result[0]["timestamp"]
+    assert result[1]["timestamp"]
+
+
 def test_append_accumulates(tmp_path):
     append_messages([{"role": "user", "content": "first"}], str(tmp_path))
     append_messages([{"role": "assistant", "content": "second"}], str(tmp_path))

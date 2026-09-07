@@ -272,6 +272,11 @@ window.HirisDashboard = (function () {
 
   /* ---------------------------------------------------------------- casa */
 
+  /* Collaudo 3.22 (A10): le tre "Letta/Letto/Lette il" qui sotto scrivevano
+     l'ISO grezzo che il server manda (`2026-09-07T05:13:52+00:00`, in UTC),
+     due righe sopra un orario nel fuso di casa ("Adesso sono le 08:29...").
+     `fmtDateTime` (config/api.js) e' la STESSA funzione che gia' usa la
+     pagina Consumi -- non se ne scrive una seconda. */
   function renderHomeSpace(outlet, home_space) {
     var body = section(outlet, 'L’anagrafe della casa',
       'Piani, aree, dispositivi ed entità come HIRIS li ha ricostruiti dai registri di Home Assistant.');
@@ -279,7 +284,7 @@ window.HirisDashboard = (function () {
     if (home_space.anagrafe_letta_il == null) {
       line(body, 'L’anagrafe non è ancora stata letta: qui non c’è una casa vuota, c’è una casa che HIRIS non ha ancora guardato.', TONE_UNKNOWN);
     } else {
-      line(body, 'Letta il ' + home_space.anagrafe_letta_il + '.', TONE_CALM);
+      line(body, 'Letta il ' + fmtDateTime(home_space.anagrafe_letta_il) + '.', TONE_CALM);
       tile(body, home_space.conteggi, NOMI_REGISTRI, unavailableRegisters(home_space.non_disponibili));
     }
 
@@ -297,7 +302,7 @@ window.HirisDashboard = (function () {
     if (comp.letto_il == null) {
       line(behaviorBody, 'Il comportamento non è ancora stato letto.', TONE_UNKNOWN);
     } else {
-      line(behaviorBody, 'Letto il ' + comp.letto_il + '.', TONE_CALM);
+      line(behaviorBody, 'Letto il ' + fmtDateTime(comp.letto_il) + '.', TONE_CALM);
       tile(behaviorBody, behaviorCounts(comp.conteggi), NOMI_COMPORTAMENTO,
               behaviorUnavailable(comp.file_non_letti, comp.conteggi),
               'il file non è stato letto');
@@ -342,7 +347,7 @@ window.HirisDashboard = (function () {
     if (dashboards.lette_il == null) {
       line(dashboardsBody, 'Le plance non sono ancora state lette.', TONE_UNKNOWN);
     } else {
-      line(dashboardsBody, 'Lette il ' + dashboards.lette_il + '.', TONE_CALM);
+      line(dashboardsBody, 'Lette il ' + fmtDateTime(dashboards.lette_il) + '.', TONE_CALM);
       var voci = dashboards.voci || [];
       line(dashboardsBody, voci.length === 1 ? '1 plancia letta.' : voci.length + ' plance lette.', TONE_CALM);
       if (voci.length) {

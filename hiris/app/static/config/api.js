@@ -54,6 +54,35 @@ function fmtDateTime(v) {
   return isNaN(d.getTime()) ? '' : d.toLocaleString('it-IT');
 }
 
+/* Collaudo 3.22 (C5): «Richieste 99 · Token input 7.20M · Costo € 0,00»
+   senza altra spiegazione -- misurato quando l'UNICO uso e' l'abbonamento
+   (`ponte`), che non ha un costo di turno da sommare (vedi
+   hiris/app/usage/vocabulary.py::cost_state_and_value, stato "compreso").
+   Il totale che il server manda (`cost_eur`) e' 0.0 per costruzione: nessun
+   altro addendo. Uno zero misurato e uno zero "non c'e' niente da misurare"
+   sono lo stesso zero a schermo, ed e' la stessa confusione a tre stati che
+   l'archivio della casa combatte ovunque -- rimessa dentro dalla porta del
+   riquadro Utilizzo.
+
+   Niente di nuovo da inventare: `sections[].provider` arriva gia' in ogni
+   risposta di `/api/usage` (handlers_usage.py), e la sezione dell'abbonamento
+   ha gia' il proprio nome, "ponte". Condivisa fra il riquadro della chat e
+   la pagina Consumi -- le DUE superfici che leggono lo stesso `cost_eur`,
+   per la stessa ragione per cui fmtEuro/fmtNum vivono qui e non in due
+   copie (vedi il commento sopra fmtNum). */
+function isSubscriptionOnly(sections) {
+  return !!(sections && sections.length
+    && sections.every(function(s) { return s.provider === 'ponte'; }));
+}
+
+/* La parola che sostituisce «€ 0,00» quando `isSubscriptionOnly()` e' vera.
+   NON un trattino: la pagina Consumi ha una regola esplicita contro di esso
+   proprio per il costo ("MAI UN TRATTINO PER UN COSTO", config/usage-route.js)
+   -- su quella pagina il trattino significa gia' "sto caricando", e uno
+   stesso simbolo per due fatti diversi sarebbe l'errore che questa fetta
+   toglie, spostato di un carattere. */
+var SUBSCRIPTION_ONLY_COST_LABEL = 'In abbonamento';
+
 /* Theme: localStorage > server config > system. */
 // global bare (nessun modulo): chiamata da chat/theme.js::init(), non da questo file.
 // Verificato con grep sull'intero repo (task-13); il contratto e' pinnato da
@@ -136,7 +165,7 @@ async function loadUsage() {
     _setUsageText('u-requests', d.total_requests != null ? d.total_requests : '—');
     _setUsageText('u-input', fmtNum(d.input_tokens));
     _setUsageText('u-output', fmtNum(d.output_tokens));
-    _setUsageText('u-cost', fmtEuro(d.cost_eur));
+    _setUsageText('u-cost', isSubscriptionOnly(d.sections) ? SUBSCRIPTION_ONLY_COST_LABEL : fmtEuro(d.cost_eur));
     var when = fmtDateTime(d.last_reset);
     /* «Conta da», non «Azzerato il»: dalla fetta «i consumi, per modello»
        il pulsante sposta un'ancora e non cancella piu' niente, e `last_reset`

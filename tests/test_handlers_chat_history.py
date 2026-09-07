@@ -1,4 +1,5 @@
 import json
+import re
 from unittest.mock import MagicMock
 
 import pytest
@@ -63,7 +64,31 @@ async def test_get_chat_history_returns_messages(tmp_path):
 
     resp = await handle_get_chat_history(request)
     data = json.loads(resp.body)
-    assert data["messages"] == [{"role": "user", "content": "ciao"}]
+    assert len(data["messages"]) == 1
+    assert data["messages"][0]["role"] == "user"
+    assert data["messages"][0]["content"] == "ciao"
+
+
+# Collaudo 3.22, C4 ("la chat inventa l'ora dei messaggi"): questa rotta è
+# l'UNICA che deve portare `timestamp` -- il client la usa per disegnare
+# l'ora vera della bolla invece di timbrarla con `new Date()` al momento del
+# disegno (chat/messages.js::appendMsg). La mutazione che questa prova
+# uccide: tornare a `load_history(data_dir, days=giorni)` senza
+# `include_timestamp=True` in handlers_chat_history.py -- il campo
+# sparirebbe e l'assert sotto arrossisce con un KeyError.
+@pytest.mark.asyncio
+async def test_get_chat_history_returns_the_real_timestamp_not_read_time(tmp_path):
+    from hiris.app.chat_store import append_messages
+    append_messages([{"role": "user", "content": "ciao"}], str(tmp_path))
+
+    app = _make_app(str(tmp_path))
+    request = make_mocked_request(
+        "GET", "/api/chat/history", app=app, match_info={},
+    )
+
+    resp = await handle_get_chat_history(request)
+    data = json.loads(resp.body)
+    assert re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", data["messages"][0]["timestamp"])
 
 
 @pytest.mark.asyncio

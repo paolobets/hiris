@@ -95,7 +95,15 @@ async function monta(usage = RISPOSTA, storia = STORIA) {
   const chiamate = [];
   ctx.window.fetch = (u, opzioni) => {
     chiamate.push({ url: String(u), opzioni: opzioni });
-    if (String(u).includes('storia')) return Promise.resolve(rispondi(storia));
+    // Era `.includes('storia')`, che non intercetta MAI la rotta vera
+    // (`api/usage/history`, config/usage-route.js): "history" non contiene
+    // la sottostringa "storia" ('history' = h-i-s-t-o-r-y, non ...-i-a).
+    // Il parametro `storia` di questa `monta()` non arrivava mai al
+    // grafico -- charts() riceveva la stessa RISPOSTA del riepilogo, priva
+    // di `.days`, e ogni test di questo file che non ispezionava il
+    // contenuto del grafico non se n'e' mai accorto. Trovato scrivendo i
+    // due test C5 sui grafici qui sotto, che DIPENDONO da una storia vera.
+    if (String(u).includes('api/usage/history')) return Promise.resolve(rispondi(storia));
     if (String(u).includes('reset')) return Promise.resolve(rispondi({ last_reset: 'x', deleted: false }));
     return Promise.resolve(rispondi(usage));
   };
@@ -153,6 +161,76 @@ test('senza righe ignote il totale non si scusa', async () => {
   const { testo } = await monta(usage);
 
   assert.doesNotMatch(testo, /cifra minima/i);
+});
+
+// ---------------------------------------------------------------------------
+// Collaudo 3.22, C5 ("€ 0,00 quando la verità è «non misurabile»"): la
+// tessera «COSTO» del riepilogo sommava anche la sezione dell'abbonamento
+// (`ponte`, `cost_usd: null`) come 0.0 -- quando l'abbonamento è l'UNICO
+// uso, il totale che il server manda è 0.0 per costruzione, e la tessera
+// scriveva «€ 0,00» invece di dire che qui non c'è niente da misurare.
+// ---------------------------------------------------------------------------
+
+const RISPOSTA_SOLO_ABBONAMENTO = {
+  measured: true,
+  total_requests: 99,
+  input_tokens: 7200000,
+  output_tokens: 500000,
+  cost_usd: 0.0,
+  cost_eur: 0,
+  partial_cost: false,
+  rate_limit_errors: 0,
+  last_reset: '2026-07-14T09:22:00Z',
+  timezone: 'Europe/Rome',
+  timezone_known: true,
+  sections: [{
+    provider: 'ponte', label: 'Abbonamento Claude',
+    note: "L'abbonamento non espone il prezzo del singolo turno.",
+    requests: 99, token_in: 7200000, token_out: 500000,
+    cache_read: 0, cache_write: 0,
+    cost_usd: null, cost_eur: null, partial_cost: false,
+    models: [{
+      model: 'sonnet (alias)', requests: 99,
+      token_in: 7200000, token_out: 500000, cache_read: 0, cache_write: 0,
+      cost_usd: null, cost_eur: null, cost_state: 'compreso',
+      rate_limit_errors: 0, first_use: '2026-08-04', last_use: '2026-08-21',
+    }],
+  }],
+};
+
+const STORIA_SOLO_ABBONAMENTO = {
+  da: '2026-07-23', a: '2026-08-21',
+  days: [{ day: '2026-08-21', per_provider: { ponte: { requests: 99 } } }],
+};
+
+test('collaudo 3.22 (C5): con il solo abbonamento la tessera «Costo» dice «In abbonamento», mai «€ 0,00»', async () => {
+  const { outlet, testo } = await monta(RISPOSTA_SOLO_ABBONAMENTO, STORIA_SOLO_ABBONAMENTO);
+  const tessera = [...outlet.querySelectorAll('#usage-summary .stat-tile')]
+    .find((t) => t.querySelector('.st-label').textContent === 'Costo');
+  assert.ok(tessera, 'precondizione: la tessera Costo deve esistere');
+  assert.equal(tessera.querySelector('.st-value').textContent, 'In abbonamento');
+  assert.doesNotMatch(testo, /€ 0,00/, 'lo zero che afferma non deve comparire da nessuna parte nella pagina');
+});
+
+test('collaudo 3.22 (C5, difetto di resa): il grafico del costo senza provider a consumo spiega DENTRO l\'area, non sotto', async () => {
+  const { outlet } = await monta(RISPOSTA_SOLO_ABBONAMENTO, STORIA_SOLO_ABBONAMENTO);
+  const grafici = outlet.querySelector('.usage-charts');
+  assert.ok(grafici, 'precondizione: il blocco dei grafici deve esistere');
+
+  // Il grafico del COSTO (il primo <svg>/placeholder dentro .usage-charts,
+  // prima del titolo "Richieste al giorno") non deve disegnare un SVG vuoto:
+  // deve essere rimpiazzato da un box con la spiegazione DENTRO.
+  const vuoto = grafici.querySelector('.usage-chart-empty');
+  assert.ok(vuoto, 'un grafico senza provider da impilare deve avere il suo box vuoto con la spiegazione dentro');
+  assert.match(vuoto.textContent, /abbonamento/i,
+    'la spiegazione (perche\' il costo non compare qui) deve stare DENTRO il box, non in un paragrafo separato dopo');
+
+  // Il grafico delle RICHIESTE, invece, ha davvero un provider (ponte) da
+  // disegnare: resta un <svg> vero, non il placeholder vuoto.
+  const titoli = [...grafici.querySelectorAll('h3')].map((h) => h.textContent);
+  assert.ok(titoli.includes('Richieste al giorno'), 'precondizione: il secondo grafico deve esistere');
+  assert.equal(grafici.querySelectorAll('.usage-chart-empty').length, 1,
+    'SOLO il grafico del costo e\' vuoto -- quello delle richieste ha il ponte da disegnare');
 });
 
 test('i rifiuti 429 compaiono solo se ce ne sono', async () => {

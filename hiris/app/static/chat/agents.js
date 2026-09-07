@@ -165,7 +165,10 @@
       var data = await r.json();
       var msgs = data.messages || [];
       msgs.forEach(function(m) {
-        window.HirisChatMessages.appendMsg(m.role === 'user' ? 'user' : 'assistant', m.content);
+        /* `true` = "e' cronologia, non un invio vivo": l'ora della bolla
+           viene da `m.timestamp` (collaudo 3.22, C4), mai da `new Date()`
+           al momento del disegno -- vedi chat/messages.js::appendMsg. */
+        window.HirisChatMessages.appendMsg(m.role === 'user' ? 'user' : 'assistant', m.content, true, m.timestamp);
       });
       state.turnCount = msgs.filter(function(m) { return m.role === 'user'; }).length;
       updateTurnCounter();

@@ -132,6 +132,29 @@ e se mancano **entrambe** le cose, la risposta le dice **tutte e due**.
 **Fallimento**: l'argomento ignoto viene ignorato in silenzio, e chi ha sbagliato il nome riceve
 una risposta come se avesse chiesto un'altra cosa.
 
+### C4 — La chat non inventa l'ora di un messaggio ripristinato
+
+**Si fa**: si manda un messaggio, si annota l'ora vera che compare sulla bolla, si ricarica la
+pagina **più tardi** (almeno un minuto dopo) e si guarda di nuovo la bolla dello stesso messaggio
+— compresa la primissima domanda della sessione.
+**Deve**: l'ora resti quella di prima, presa dal `timestamp` che `GET api/chat/history` porta per
+ogni messaggio — **non** l'ora del ricaricamento.
+**Fallimento**: tutte le bolle mostrano la stessa ora, quella di **adesso** — il sintomo misurato
+il 07/09/2026: alle 08:28 ogni bolla diceva «08:28», ricaricando alle 08:33 tutte dicevano «08:33»,
+compresa la domanda con cui la conversazione era iniziata molto prima.
+
+### C5 — Il costo non misurabile si dichiara, non si azzera
+
+**Si fa**: si guarda «Utilizzo» nella barra laterale della chat e la tessera «Costo» in `#/usage`
+in una casa dove l'unico uso registrato è l'abbonamento — nessun'altra sezione con un costo noto
+in `sections` (`GET api/usage`).
+**Deve**: comparire una dichiarazione esplicita («in abbonamento» o equivalente) al posto del
+numero — mai «€ 0,00». La stessa regola che una sezione già rispetta scrivendo «Compreso» invece
+di 0,00 per il singolo modello.
+**Fallimento**: «€ 0,00» senza nessuna spiegazione accanto — il sintomo misurato: *«Richieste 99 ·
+Token input 7.20M · Costo € 0,00»*. Si legge o come «gratis» o come «rotto», la stessa confusione
+a tre stati (misurato / zero vero / non misurabile) che l'archivio della casa combatte ovunque.
+
 ---
 
 ## D · Le specifiche di Home Assistant

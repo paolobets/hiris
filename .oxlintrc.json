@@ -23,10 +23,13 @@
   // che qualcuno verifica.
   "env": { "browser": true, "es2021": true },
 
-  // I 25 non sono scelti: sono i nomi che un file LEGGE senza dichiararli --
-  // 19 namespace pubblicati su `window` e 6 funzioni nude di `config/api.js`.
+  // I 27 non sono scelti: sono i nomi che un file LEGGE senza dichiararli --
+  // 19 namespace pubblicati su `window` e 8 nomi nudi di `config/api.js`
+  // (sette funzioni e una costante, `SUBSCRIPTION_ONLY_COST_LABEL`, dal
+  // collaudo 3.22 C5 -- `isSubscriptionOnly`/`SUBSCRIPTION_ONLY_COST_LABEL`
+  // sono lette da `config/usage-route.js`, non solo da chi le dichiara).
   //
-  // `config/api.js` ne dichiara OTTO di funzioni nude, ma `_setUsageText` e
+  // `config/api.js` ne dichiara DIECI di nomi nudi, ma `_setUsageText` e
   // `_mostraRigheConsumi` NON stanno qui, ed e' deliberato: nessun altro file
   // le legge, quindi restano sorvegliate dall'analisi di ambito. Aggiungerle
   // sarebbe un buco -- il giorno in cui qualcuno rinominasse la loro `function`
@@ -58,7 +61,9 @@
     "fmtDateTime": "readonly",
     "fmtEuro": "readonly",
     "fmtNum": "readonly",
-    "loadUsage": "readonly"
+    "isSubscriptionOnly": "readonly",
+    "loadUsage": "readonly",
+    "SUBSCRIPTION_ONLY_COST_LABEL": "readonly"
   },
   "rules": { "no-undef": "error" },
   "overrides": [
@@ -93,7 +98,9 @@
         "fmtDateTime": "writable",
         "fmtEuro": "writable",
         "fmtNum": "writable",
-        "loadUsage": "writable"
+        "isSubscriptionOnly": "writable",
+        "loadUsage": "writable",
+        "SUBSCRIPTION_ONLY_COST_LABEL": "writable"
       }
     }
   ]
