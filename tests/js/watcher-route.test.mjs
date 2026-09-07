@@ -292,6 +292,20 @@ test('seam _rendiOsservate: un prefisso tecnico grezzo (log:/integrazione:/probl
   assert.match(secondaria.textContent, /coordinator\.py:192/);
   assert.doesNotMatch(righe[1].querySelector('.text-mono:first-child').textContent, /coordinator\.py/,
     'il percorso del file non deve stare nel nome PRIMARIO della riga');
+
+  // Rilievo del revisore (07/09/2026): lo stesso vincolo, ma per
+  // `integrazione:` -- prima mancava un assert che leggesse il `.field-hint`
+  // di QUESTA riga, quindi `secondary: ''` in `describeWatchedSubject`
+  // sarebbe passato inosservato. Mutazione ESEGUITA per provarlo: rimettere
+  // `secondary: ''` al posto di `secondary: p.rest` per il caso
+  // `integrazione` fa arrossire `assert.ok` qui sotto (nessun `.field-hint`
+  // nella riga 0).
+  const secondariaIntegrazione = righe[0].querySelector('.field-hint');
+  assert.ok(secondariaIntegrazione,
+    'l\'id dell\'integrazione non deve sparire, solo passare in secondo piano (come il percorso del "log:")');
+  assert.match(secondariaIntegrazione.textContent, /01K2CK4GG287VKK18M5J788MRQ/);
+  assert.doesNotMatch(righe[0].querySelector('.text-mono:first-child').textContent, /01K2CK4GG287VKK18M5J788MRQ/,
+    'l\'id non deve stare nel nome PRIMARIO della riga (è opaco, non un nome)');
 });
 
 // ---------------------------------------------------------------------------
@@ -677,6 +691,26 @@ test('seam _rendiOggetti: un `automazione:` senza titolo diventa un nome leggibi
   }], null);
   assert.match(corpo.textContent, /Automazione: automation\.rotta/,
     'un protagonista "automazione:" senza titolo deve diventare un nome leggibile, non restare grezzo');
+});
+
+// Nit del revisore sul cancello E2 (07/09/2026): `watcher.py` scrive sempre
+// `<logger>@<file>:<riga>` per un `log:`, quindi un soggetto senza `@` non
+// capita OGGI -- ma la resa non deve dipendere da quella garanzia per essere
+// corretta. Mutazione ESEGUITA per provarlo: ripristinare
+// `p.logger + '@' + p.location` (senza il controllo `p.location ? ... : ''`)
+// fa tornare rosso l'`assert.doesNotMatch` qui sotto (il testo mostrerebbe
+// "loggersenzachiocciola@", con la "@" appesa e nulla dopo).
+test('seam _rendiOggetti: un `log:` senza `@` (nessun percorso) non lascia una "@" appesa al nome', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisWatcherRoute._rendiOggetti(corpo, [{
+    id: 1, genere: 'guasto', protagonista: 'log:loggersenzachiocciola',
+    inizio_ts: 1, fine_ts: null,
+    corpo: { stato: 'ERROR' },
+  }], null);
+  assert.match(corpo.textContent, /Voce del registro di Home Assistant: loggersenzachiocciola/);
+  assert.doesNotMatch(corpo.textContent, /loggersenzachiocciola@/,
+    'senza un percorso dopo la "@", la "@" non deve comparire da sola');
 });
 
 // Onda finale, rilievo 1 (revisione di ramo): dal Task 2 `corpo.stato` porta

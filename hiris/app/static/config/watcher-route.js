@@ -481,7 +481,17 @@ window.HirisWatcherRoute = (function () {
     var p = parseSubjectPrefix(o.protagonista || '');
     if (p.kind === 'problema') return 'Problema Home Assistant: ' + p.rest;
     if (p.kind === 'integrazione') return 'Integrazione non caricata: ' + p.rest;
-    if (p.kind === 'log') return 'Voce del registro di Home Assistant: ' + p.logger + '@' + p.location;
+    // `p.location` puo' essere vuoto solo se il soggetto non porta una `@`
+    // (oggi non capita mai: `watcher.py` scrive sempre `<logger>@<file>:<riga>`
+    // -- ma questa riga non deve dipendere da quella garanzia per essere
+    // corretta). Una `@` appesa senza nulla dopo sarebbe un artefatto della
+    // resa, non un dato: il nit del revisore, 07/09/2026.
+    // `p.location` puo' essere vuoto solo se il soggetto non porta una `@`
+    // (oggi non capita mai: `watcher.py` scrive sempre `<logger>@<file>:<riga>`
+    // -- ma questa riga non deve dipendere da quella garanzia per essere
+    // corretta). Una `@` appesa senza nulla dopo sarebbe un artefatto della
+    // resa, non un dato: il nit del revisore, 07/09/2026.
+    if (p.kind === 'log') return 'Voce del registro di Home Assistant: ' + p.logger + (p.location ? '@' + p.location : '');
     if (p.kind === 'automazione') return 'Automazione: ' + p.rest;
     return p.rest;
   }
