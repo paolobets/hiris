@@ -881,16 +881,67 @@ appena imparato a fare). Domini presenti in casa di cui **nessuna** delle tre li
 
 Gli otto domini orfani di `_OPERABLE` non erano un caso isolato: erano **il sintomo** di questo.
 
-**Il crinale del disegno, e non è tecnico.** Le tre liste decidono cose **diverse**. Due sono
-fatti di Home Assistant — cosa esiste, cosa sa fare — e vanno chiesti a lui. La terza no:
-*«questa entità serve all'obiettivo della casa»* è **un giudizio nostro**, e HA non potrà mai
-dircelo. Quella resta nostra, ma deve smettere di essere una lista dimenticabile.
+**Il disegno, corretto dal proprietario il 07/09** dopo che una ricognizione aveva
+raccomandato di tenere le liste separate:
+
+> *«Ma non possono essere una lista sola dove si accede con 3 metriche per evitare
+> sovrapposizioni? Ti ricordo le regole del progetto.»*
+
+**Ha ragione, e le fondamenta lo dicono in tre punti su quattro.** Oggi `light` vive in
+`_FEATURE_NAMES`, vive in `_OPERABLE` e **non** vive in `aspect()`: tre case per lo stesso
+soggetto (**nessun doppione**), tre forme da tre porte (**consistenza**), e nessuna che lo
+interpreti da sola (**atomicità**). La raccomandazione di tenerle separate scambiava **tre
+domande per tre case**: le domande restano tre — cosa esiste, cosa sa fare, se serve
+all'obiettivo — ma si rispondono da **una riga sola per dominio, con tre metriche per
+accedervi**.
+
+**E il guadagno non è solo di forma**: con una casa sola il censore diventa **uno** — un
+dominio pubblicato da HA che non ha una riga viene nominato, e basta. Con tre liste
+servirebbero tre censori, e il primo che qualcuno dimentica di scrivere ricrea il buco di oggi.
+
+**Una cosa sta dentro la riga, non fuori**: la riga mescola fatti **importati** da HA e
+**giudizi nostri** — *«questa entità serve all'obiettivo della casa»* HA non potrà mai dircelo.
+Quindi **ogni campo dichiara da dove viene**. Una casa sola, provenienza per campo: così un
+giudizio nostro non si può leggere come un fatto di Home Assistant.
 
 **Ed è questa la parte che rende la voce viva** invece di un file da aggiornare a mano: un
 dominio che HA ha e che **nessuna nostra lista ha mai classificato deve poter essere nominato**.
 Sapere che «la casa è più nuova del vocabolario» — cosa che `ha_vocabulary.py` sa già fare — non
 basta: non dice **cosa** è cambiato. La differenza è fra «le liste sono aggiornate» e «le liste
 non possono più derivare in silenzio».
+
+**Cosa la ricognizione del 07/09 ha misurato, e cambia le dimensioni del lavoro:**
+
+- **Le liste non sono tre: sono ventuno** nel prodotto, più tre copie fissate nei test.
+- **HA pubblica quasi tutto**, con un comando solo che la v3.22.3 già fa: 53 domini caricati,
+  stati canonici per dominio, `device_class` per dominio (62 su `sensor`, 58 su `number`, 28
+  su `binary_sensor`), valori legali di `state_class` — 801 chiavi, 63 KB, **41 ms**, già
+  tradotti nella lingua della casa.
+- **I nomi dei bit di `supported_features` no** — restano `IntFlag` nel sorgente — ma i
+  **valori numerici** li pubblica il registro dei servizi: abbastanza per **denunciare** un bit
+  che non sappiamo nominare, non per nominarlo.
+- **Un commento nel nostro codice è falso**: `facts.py:14-27` afferma che HA non dichiara da
+  nessuna parte quali domini si accendono e si spengono. Lo dichiara: `turn_on` +
+  `turn_off`/`toggle` nel registro dei servizi isolano **16 domini**. La derivazione non
+  coincide con `_OPERABLE` (perde `vacuum`, guadagna `automation`, `script`, `input_boolean`,
+  `camera`, `remote`, `siren`), quindi **sorveglia** invece di sostituire.
+- **Quattro tabelle di traduzione in `topology.py` vanno cancellate**: traducono a mano ciò che
+  ora scarichiamo già tradotto, e lo fanno peggio (`_STATE_TRANSLATION` è cieca al dominio,
+  `_READABLE_HVAC_ACTION` non ha `defrosting`).
+
+**E il censore, girato una volta sola il 07/09, ha già trovato difetti veri** — nessuno dei
+quali morde su questa casa, che non ha né boiler né serrature né tosaerba, ma tutti latenti:
+
+| difetto | conseguenza |
+|---|---|
+| 5 stati di `water_heater` (`eco`, `electric`, `gas`, `heat_pump`, `high_demand`) né fra i riposi né fra gli ignoti | un boiler in `eco` apre un episodio **che non si chiude mai** |
+| 3 stati di `lock` (`jammed`, `locking`, `unlocking`) nella stessa condizione | e `lock` l'archivio lo raggiunge davvero |
+| `_CLASS_MEANING["damper"]` irraggiungibile | `damper` è una classe di `cover`, non di `binary_sensor` |
+| 5 domini con bit di capacità e nessuna tabella | `ai_task`, `assist_satellite`, `humidifier`, `lawn_mower`, `lock` |
+
+È esattamente il difetto contro cui il commento di `facts.py` metteva in guardia — *«un dominio
+aggiunto a metà produce oggetti che non si chiudono mai»* — trovato da una macchina in un giro
+solo, dopo mesi in cui nessuna persona l'aveva visto.
 
 **La forma esiste già in casa**: `home_space/ha_vocabulary.py` importa le specifiche di HA
 dichiarando la fonte e la versione da cui vengono. Quello che manca è estenderla a tutto e
