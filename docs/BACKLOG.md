@@ -737,6 +737,26 @@ citare" senza un secondo consumatore reale sarebbe stata una porta nuova senza u
 attraversa davvero -- la stessa disciplina per cui `capacita'`/`stato_presunto` sono entrati SOLO
 quando la decodifica produceva qualcosa.
 
+### La CLI del ponte sale alla 2.1.263 nel prossimo rilascio
+
+`origine: decisione del proprietario, 07/09/2026` · `nessun documento`
+
+**Regola dichiarata dal proprietario**: un avanzamento **di patch** della CLI del ponte puo'
+viaggiare insieme a un aggiornamento; **quando il cancello lo segnala, entra nel rilascio
+successivo**. Non si alza al volo dentro un rilascio che parla d'altro.
+
+Il 07/09, durante il rilascio della **v3.22.0**, `scripts/verifica_componenti.py` ha fermato il
+push segnalando `@anthropic-ai/claude-code` **2.1.260 → 2.1.263** (`hiris/Dockerfile:76`). Il
+rilascio e' andato avanti con `HIRIS_COMPONENTI_OK=1`, dichiarato: quella v3.22.0 conteneva tre
+fette di prodotto, e far salire una dipendenza non provata sotto quel changelog avrebbe spedito un
+cambiamento che nessuno aveva verificato.
+
+**Cosa fare al prossimo rilascio**: `python scripts/verifica_componenti.py --aggiorna`, poi la
+suite intera, poi il rilascio. Il Dockerfile (`:38-70`) porta gia' la forma di questa annotazione
+per il salto precedente (2.1.251 → 2.1.260 del 04/09) **col piano di ripiego scritto accanto**: si
+segue quella, compresa la riga «se la nuova desse problemi si torna alla precedente».
+
+
 ---
 
 ## Usciti
