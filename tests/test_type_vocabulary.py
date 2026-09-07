@@ -180,25 +180,30 @@ def test_service_entities_are_counted_even_when_not_announced():
 
     Mutazione: non contare `service` (o non appenderlo a `notices`) -- il
     test torna rosso su
-    `assert "2 entita' di servizio" in lacune` (`AssertionError`, la
+    `assert "2 entita' di servizio" in gaps` (`AssertionError`, la
     sottostringa non compare)."""
-    entita, stato = [], {}
+    entities, state = [], {}
     for i in range(2):
-        entita.append(_voce(f"switch.servizio_{i}", f"Servizio {i}", categoria="diagnostic"))
-        stato[f"switch.servizio_{i}"] = "on"
-    text = _con(entita, stato)
+        entities.append(_voce(f"switch.servizio_{i}", f"Servizio {i}", categoria="diagnostic"))
+        state[f"switch.servizio_{i}"] = "on"
+    text = _con(entities, state)
 
     assert "Servizio 0" not in _sezione_notevole(text), (
         "il digesto rispetta la dichiarazione di Home Assistant")
-    lacune = _sezione_lacune(text)
-    assert "2 entita' di servizio" in lacune, (
+    gaps = _sezione_lacune(text)
+    assert "2 entita' di servizio" in gaps, (
         "ma il numero c'e', altrimenti la domanda «quante sono di servizio?» "
         "costerebbe una chiamata a `view` per ognuna")
 
 
 def test_without_service_entities_nothing_is_said():
     """Un avviso che compare sempre non e' un avviso -- stessa lezione delle
-    nascoste, stesso file."""
+    nascoste, stesso file.
+
+    Mutazione: l'avviso "N entita' di servizio" reso incondizionato (fuori
+    dall'`if service:` di `briefing.compose`) -- il test torna rosso su
+    `assert "servizio" not in _sezione_lacune(...)` (compare "0 entita' di
+    servizio...")."""
     assert "servizio" not in _sezione_lacune(
         compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)[0])
 

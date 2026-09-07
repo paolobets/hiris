@@ -601,13 +601,13 @@ async def test_a_stable_naming_gap_does_not_silence_nulla_riconosciuto(archivio_
     archivio_casa.replace({"entita": [
         {"entity_id": "light.senza", "name": None, "original_name": None}]}, [])
 
-    class _SpecchioSenzaQuestaVoce:
+    class _MirrorWithoutThisEntry:
         loaded = True
         def all_states(self):
             return [{"id": "light.altra", "state": "on", "name": "Un'altra luce"}]
 
     result = await ToolDispatcher(archivio_casa, memoria,
-                                   cache=_SpecchioSenzaQuestaVoce()).dispatch(
+                                   cache=_MirrorWithoutThisEntry()).dispatch(
         "search", {"testo": "abat-jour"})
     assert result["trovati"] == []
     assert result["nulla_riconosciuto"] is True
@@ -626,7 +626,7 @@ def test_search_description_names_the_nome_visto_comparison():
 
     Onesta' sulla prova (ri-review): e' un filo d'inciampo sulla PRESENZA
     della frase, non sul suo SIGNIFICATO -- ne' `assert "nome_visto" in
-    descrizione` ne' `assert "Confrontalo..." in descrizione` si accorgono
+    description` ne' `assert "Confrontalo..." in description` si accorgono
     se quella frase dicesse l'opposto (es. «se e' piu' corto, vale comunque
     per tutta la frase»): resterebbero verdi lo stesso. E' il massimo onesto
     per della prosa: custodisce che la spiegazione ESISTA, non che sia
@@ -635,13 +635,13 @@ def test_search_description_names_the_nome_visto_comparison():
     Mutazione che uccide: togliere la frase che nomina il confronto
     («Confrontalo con quello che hai chiesto...») dalla description di
     `SEARCH_TOOL_DEF` -- il test torna rosso su `assert "Confrontalo con
-    quello che hai chiesto" in descrizione` (il primo assert, su
+    quello che hai chiesto" in description` (il primo assert, su
     `"nome_visto"`, resta verde: quella parola compare anche nella frase
     precedente che introduce il campo; serve togliere l'INTERO paragrafo per
     far cadere anche quello)."""
-    descrizione = SEARCH_TOOL_DEF["description"]
-    assert "nome_visto" in descrizione
-    assert "Confrontalo con quello che hai chiesto" in descrizione
+    description = SEARCH_TOOL_DEF["description"]
+    assert "nome_visto" in description
+    assert "Confrontalo con quello che hai chiesto" in description
 
 
 # --- R2 (T7): `search` impara piani, automazioni e script -------------------

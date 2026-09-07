@@ -185,7 +185,13 @@ def test_pinned_bits_cover_every_entry_of_every_table_exactly():
 def test_pinned_bits_agree_with_the_implementation_domain_by_domain():
     """Stessa garanzia della prova sopra, ma leggibile domino per dominio se
     fallisce: un `assert` sull'insieme intero dice CHE differiscono, non
-    QUALE dominio."""
+    QUALE dominio.
+
+    Mutazione: scambiare due valori nella tabella implementativa (per
+    esempio `climate` 128<->256, la stessa gia' riprodotta dalla review
+    indipendente) -- il test torna rosso su `assert pinned_by_domain ==
+    _FEATURE_NAMES`, con il dominio sbagliato visibile nel diff di
+    pytest."""
     pinned_by_domain: dict[str, dict[int, str]] = {}
     for domain, bit, name in _PINNED_BITS:
         pinned_by_domain.setdefault(domain, {})[bit] = name

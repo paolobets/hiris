@@ -184,13 +184,13 @@ def test_the_nucleus_says_when_the_house_is_newer_than_the_vocabulary():
 
     Mutazione: in `briefing._reference_frame_lines`, non chiamare mai
     `_vocabulary_freshness_line` (o farla sempre restituire `""`) -- il
-    test torna rosso su `assert "vale la pena rileggere" in testo`.
+    test torna rosso su `assert "vale la pena rileggere" in text`.
     """
-    config_piu_nuova = dict(_CONFIG, version="2026.10.0")
-    testo = _nucleo(reference_frame(config_piu_nuova))
-    assert "2026.10.0" in testo
-    assert "2026.9.1" in testo, "la versione pinnata dal vocabolario deve comparire"
-    assert "vale la pena rileggere" in testo
+    newer_config = dict(_CONFIG, version="2026.10.0")
+    text = _nucleo(reference_frame(newer_config))
+    assert "2026.10.0" in text
+    assert "2026.9.1" in text, "la versione pinnata dal vocabolario deve comparire"
+    assert "vale la pena rileggere" in text
 
 
 def test_the_nucleus_stays_silent_when_the_vocabulary_is_still_current():
@@ -202,10 +202,10 @@ def test_the_nucleus_stays_silent_when_the_vocabulary_is_still_current():
     Mutazione: in `briefing._vocabulary_freshness_line`, togliere il
     controllo `if not freshness["vocabolario_piu_vecchio_della_casa"]:
     return ""` (dichiarare sempre) -- il test torna rosso su
-    `assert "vale la pena rileggere" not in testo`.
+    `assert "vale la pena rileggere" not in text`.
     """
-    testo = _nucleo(reference_frame(_CONFIG))
-    assert "vale la pena rileggere" not in testo
+    text = _nucleo(reference_frame(_CONFIG))
+    assert "vale la pena rileggere" not in text
 
 
 def test_il_nucleo_dichiara_l_istante_presente_nel_fuso_della_casa():

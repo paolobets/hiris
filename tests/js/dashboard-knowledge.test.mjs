@@ -331,8 +331,8 @@ test('e7: un file GENUINAMENTE assente e il cui conto è a zero dice «0», non 
     file_non_letti: { 'scripts.yaml': 'assente' },
   });
   const { document, testo } = await rendi(casaLetta({ comportamento: comp }));
-  const tessere = tessereDi(document);
-  const script = tessere.find((t) => t.etichetta === 'Script');
+  const tiles = tessereDi(document);
+  const script = tiles.find((t) => t.etichetta === 'Script');
   assert.equal(script.valore, '0',
     'file genuinamente assente: zero script è un fatto noto, non un limite di conoscenza');
   assert.equal(script.delta, '', 'nessun avviso «non letto» su un fatto che si conosce già');

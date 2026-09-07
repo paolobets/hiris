@@ -24,12 +24,15 @@ di `binary_sensor` (`motion`, `connectivity`, `running`, `occupancy`, `plug`
 `_CLASS_MEANING` (topology.py, verificato il 16/08/2026): un secondo
 dizionario che dicesse la stessa cosa sarebbe il doppione che le fondamenta
 vietano, quindi non compaiono qui. Restano in questo modulo le 27 coppie
-(dominio, classe) delle altre sei piattaforme misurate -- 168 entita' -- che
-non traducono ancora il proprio significato da nessuna parte:
+(dominio, classe) delle altre SETTE piattaforme misurate -- 168 entita' --
+che non traducono ancora il proprio significato da nessuna parte:
 `button` (22), `media_player` (6), `number` (4), `sensor` (105), `switch`
-(18), `update` (9). 33 + 168 fa 201: nessuna entita' misurata resta scoperta,
-nessuna coppia qui e' inventata (`tests/test_ha_vocabulary.py` pinna
-entrambe le direzioni).
+(18), `update` (9), `valve` (4). 22+6+4+105+18+9+4 fa 168, non 164: il
+conteggio sbagliava per un'assenza (`valve`, gia' in tabella a riga 302 e
+nelle 27 coppie della prova, solo non nominata qui), corretto in questo
+giro dalla review indipendente. 33 + 168 fa 201: nessuna entita' misurata
+resta scoperta, nessuna coppia qui e' inventata
+(`tests/test_ha_vocabulary.py` pinna entrambe le direzioni).
 
 Il capitolato cita anche `unit_of_measurement` (100 entita' misurate): non ha
 un proprio dizionario qui. Home Assistant CONVERTE l'unita' all'ingresso

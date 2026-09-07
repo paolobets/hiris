@@ -686,26 +686,31 @@ nessuno gli abbia detto che significa «non ho potuto controllare, potrebbe esis
 documentazione dello stesso genere che il Task 2 ha appena chiuso per gli altri campi nuovi
 (`nulla_riconosciuto`, `solo_una_parte`, poi tolto).
 
-### 8 entita' in due domini senza fonte per `supported_features`
+### 24 entita' in tre domini senza fonte per `supported_features`
 
 `origine: misurata dal Task 3 di «gli strumenti rifiutano invece di indovinare», 06/09/2026 --
-aggiornata lo stesso giorno dopo una review indipendente` · `nessun documento`
+aggiornata lo stesso giorno dopo una review indipendente, e di nuovo il 07/09/2026 (Task 5,
+review finale del ramo, per far tornare il rimando di `topology.py`)` · `nessun documento`
 
-**Aggiornamento (stessa giornata):** la voce nasceva come "22 entita' in otto domini senza fonte":
-una review indipendente ha misurato che CINQUE di quegli otto domini (`siren` 4, `todo` 4,
-`alarm_control_panel` 1, `calendar` 2, `remote` 2 -- 13 entita') hanno in realta' una fonte stabile
-e identica sui due tag (`2024.7.0`/`2026.9.1`) -- lo stesso lavoro delle altre tabelle, semplicemente
-non ancora fatto. Verificate e chiuse nella stessa fetta (`topology._FEATURE_NAMES`). Un sesto,
-`conversation` (1 entita'), e' un caso diverso -- il suo `ConversationEntityFeature` non esiste a
-`2024.7.0` e nasce prima di `2026.9.1` -- chiuso comunque, la nascita di un bit dentro la finestra
-supportata non e' un problema per la decodifica (vedi il commento in `topology.py`).
+**Aggiornamento (stessa giornata del Task 3):** la voce nasceva come "22 entita' in otto domini
+senza fonte": una review indipendente ha misurato che CINQUE di quegli otto domini (`siren` 4,
+`todo` 4, `alarm_control_panel` 1, `calendar` 2, `remote` 2 -- 13 entita') hanno in realta' una
+fonte stabile e identica sui due tag (`2024.7.0`/`2026.9.1`) -- lo stesso lavoro delle altre
+tabelle, semplicemente non ancora fatto. Verificate e chiuse nella stessa fetta
+(`topology._FEATURE_NAMES`). Un sesto, `conversation` (1 entita'), e' un caso diverso -- il suo
+`ConversationEntityFeature` non esiste a `2024.7.0` e nasce prima di `2026.9.1` -- chiuso comunque,
+la nascita di un bit dentro la finestra supportata non e' un problema per la decodifica (vedi il
+commento in `topology.py`).
 
 Restano FUORI, confermato su entrambi i tag (nessuna traccia di un `EntityFeature`, non "non ancora
-controllato"): `device_tracker` (4 entita') e `switch` (4 entita'). Diversamente dai sei chiusi
-sopra, per questi due non c'e' "lo stesso lavoro delle altre" da fare -- il dominio non ha bit da
+controllato"): `device_tracker` (4 entita'), `switch` (4 entita') e `button` (16 entita' --
+verificato fin dalla prima consegna del Task 3, `__init__.py`/`const.py` di entrambi i tag: nessun
+`ButtonEntityFeature` esiste, ne' a `2024.7.0` ne' a `2026.9.1`). Diversamente dai sei chiusi sopra,
+per questi tre non c'e' "lo stesso lavoro delle altre" da fare -- il dominio non ha bit da
 decodificare. Restano qui non perche' ci sia lavoro pendente, ma perche' un lettore futuro che si
-chiede "perche' `switch` non ha capacita'?" trovi la risposta gia' misurata invece di doverla
-rimisurare.
+chiede "perche' `switch` (o `button`) non ha capacita'?" trovi la risposta gia' misurata invece di
+doverla rimisurare -- ed e' la stessa ragione per cui `topology.py`, accanto al conteggio "24
+restano fuori per mancanza di fonte", rimanda proprio qui.
 
 ### `state_class` non arriva mai a `view` -- solo a `trend`
 

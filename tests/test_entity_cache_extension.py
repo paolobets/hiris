@@ -166,7 +166,11 @@ def test_to_minimal_keeps_supported_features_when_declared():
 def test_to_minimal_has_no_supported_features_key_when_absent():
     """653 entita' su 834 non lo dichiarano: nessuna chiave a `None` --
     stessa disciplina di `device_class`/`state_class`, ma qui la chiave
-    intera non compare, non solo il suo valore."""
+    intera non compare, non solo il suo valore.
+
+    Mutazione: `extra["supported_features"] = attrs.get("supported_features")`
+    incondizionato (fuori dall'`if isinstance(...)`) -- il test torna rosso
+    su `assert "supported_features" not in result.get("attributes", {})`."""
     raw = {"entity_id": "light.soggiorno", "state": "on", "attributes": {}}
     result = _to_minimal(raw)
     assert "supported_features" not in result.get("attributes", {})
@@ -226,7 +230,11 @@ def test_to_minimal_keeps_options_sanitized():
 
 def test_to_minimal_has_no_options_key_when_empty_or_absent():
     """Una lista vuota non ha niente da dire quanto una chiave assente --
-    stessa disciplina delle altre chiavi opzionali di questa proiezione."""
+    stessa disciplina delle altre chiavi opzionali di questa proiezione.
+
+    Mutazione: `if isinstance(options, list):` senza `and options` -- il
+    test torna rosso su `assert "options" not in result.get("attributes",
+    {})` (compare `{"options": []}`)."""
     raw = {"entity_id": "select.modalita", "state": "eco",
            "attributes": {"options": []}}
     result = _to_minimal(raw)

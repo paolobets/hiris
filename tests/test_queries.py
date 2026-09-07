@@ -1557,21 +1557,59 @@ def test_a_diagnostic_without_class_or_unit_carries_its_rule():
     assert "non e' una misura" in detail["regola"]
 
 
-def test_a_diagnostic_with_a_live_class_stays_silent():
-    """LA GAMBA VERA: su questa casa la classe e l'unita' arrivano SOLO
-    dallo specchio vivo (`reported_classes`/`reported_units`), mai dal
-    registro -- una `diagnostic` con una classe dichiarata li' (batteria,
-    tensione: 24 su 89 misurate il 07/09/2026) e' una misura vera, e la
-    regola deve tacere. Una prova che mettesse la classe nel REGISTRO
-    passerebbe anche se la vista ignorasse del tutto lo specchio vivo.
+def test_a_diagnostic_with_only_a_live_class_stays_silent():
+    """LA GAMBA VERA, isolata: su questa casa la classe arriva SOLO dallo
+    specchio vivo (`reported_classes`), mai dal registro -- una
+    `diagnostic` con una classe dichiarata li' (batteria, tensione: 24 su
+    89 misurate il 07/09/2026) e' una misura vera, e la regola deve
+    tacere. NESSUNA unita' qui (ne' viva ne' nel registro): una prova
+    precedente passava classe E unita' insieme, e ignorando UNA SOLA delle
+    due gambe l'altra bastava a far tacere la regola comunque -- due
+    mutazioni indipendenti del revisore restavano verdi contro quella
+    prova unica. Coprire due proprieta' con una prova sola non ne copre
+    nessuna delle due.
 
-    Mutazione: leggere la classe/unita' solo dal registro (ignorando
-    `reported_classes`/`reported_units`) -- il test torna rosso su
+    Mutazione: leggere `entity.get("classe")` (il registro, sempre vuoto
+    su questa casa) invece di `detail.get("classe")` (lo specchio vivo,
+    gia' risolto da `_enrich_entity`) -- il test torna rosso su
     `assert "regola" not in detail`."""
     detail = view(_house_with_sensor(), [], [], {"sensor.persons": "80"},
                   "entita", "sensor.persons",
-                  reported_classes={"sensor.persons": "battery"},
+                  reported_classes={"sensor.persons": "battery"})
+    assert "regola" not in detail
+
+
+def test_a_diagnostic_with_only_a_live_unit_stays_silent():
+    """Il gemello della prova sopra, sulla gamba opposta: unita' VIVA,
+    NESSUNA classe (ne' viva ne' nel registro). Stessa ragione: una prova
+    che passasse anche la classe non distinguerebbe "la vista legge
+    l'unita' viva" da "la vista legge la classe viva e l'unita' non
+    conta".
+
+    Mutazione: leggere `entity.get("unita")` (il registro, sempre vuoto)
+    invece di `detail.get("unita")` (lo specchio vivo) -- il test torna
+    rosso su `assert "regola" not in detail`."""
+    detail = view(_house_with_sensor(), [], [], {"sensor.persons": "80"},
+                  "entita", "sensor.persons",
                   reported_units={"sensor.persons": "%"})
+    assert "regola" not in detail
+
+
+def test_a_config_sensor_without_class_or_unit_stays_silent():
+    """`config`, non `diagnostic`: l'ALTRA categoria di servizio che
+    `EntityCategory` dichiara (`CONFIG` -- "cambia un parametro di
+    configurazione", un fatto diverso da "espone una diagnostica").
+    Allargare la guardia a `category in ("diagnostic", "config")`
+    affermerebbe lo stesso fatto sbagliato ("non e' una misura") su una
+    categoria per cui non e' stato verificato -- il vocabolario non ha
+    nessuna regola citabile per `config`, e deve tacere come per ogni
+    altro caso senza fonte.
+
+    Mutazione: allargare la guardia a `category in ("diagnostic",
+    "config")` -- il test torna rosso su `assert "regola" not in detail`.
+    """
+    detail = view(_house_with_sensor(category="config"), [], [],
+                  {"sensor.persons": "3"}, "entita", "sensor.persons")
     assert "regola" not in detail
 
 

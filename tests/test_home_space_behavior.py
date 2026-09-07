@@ -200,12 +200,12 @@ async def test_an_unreachable_folder_is_not_the_same_as_an_absent_file(tmp_path)
     `FOLDER_UNREACHABLE` -- il test torna rosso su `assert
     result["file_non_letti"]["automations.yaml"] == FOLDER_UNREACHABLE`
     (uscirebbe `"assente"`)."""
-    archivio = HomeSpaceStore(str(tmp_path / "casa.db"))
+    archive = HomeSpaceStore(str(tmp_path / "casa.db"))
     try:
-        cliente = _ClienteFinto()
-        result = await reread(cliente, archivio, None)
+        client = _ClienteFinto()
+        result = await reread(client, archive, None)
     finally:
-        archivio.close()
+        archive.close()
 
     assert result["file_non_letti"]["automations.yaml"] == FOLDER_UNREACHABLE
     assert result["file_non_letti"]["scripts.yaml"] == FOLDER_UNREACHABLE
