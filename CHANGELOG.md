@@ -1,5 +1,84 @@
 # HIRIS — Changelog
 
+## [3.22.3] — Misurare prima di correggere (2026-09-07)
+
+**Sette rilievi di usabilità da chiudere. Due sono caduti misurandoli — e la stessa misura ha
+trovato duecentocinque entità che sparivano da una pagina fatta apposta per non far sparire
+niente.**
+
+### L'Osservatore chiama le cose come le chiami tu
+
+Le righe di «Cosa è successo» portavano l'`entity_id` grezzo e lo stato in inglese — `not_home`,
+`heat`, `triggered`. Adesso portano il nome amichevole e lo stato in italiano, e le due cose
+seguono strade **opposte** per una ragione precisa:
+
+**Il nome si salva quando il fatto accade.** Un'entità può sparire dalla casa, e con lei il suo
+nome: un episodio di sei mesi fa su un dispositivo sostituito non avrebbe più niente da
+risolvere, e tornerebbe all'identificativo grezzo. Il difetto ricrescerebbe da solo, un pezzo
+alla volta, senza che nessuno se ne accorga.
+
+**Lo stato si traduce quando lo leggi.** Perché la traduzione **migliora**: una parola che oggi
+Home Assistant non traduce domani la traduce, e renderla al momento della lettura fa arrivare
+quel miglioramento anche alle righe vecchie. E la lingua è una tua preferenza, non una nostra
+decisione: congelarla vorrebbe dire congelare anche quella.
+
+Le traduzioni non ce le siamo inventate: **le pubblica Home Assistant**, e adesso HIRIS gliele
+chiede. Quando una traduzione non c'è, si legge la parola originale — e quando HIRIS **non ha
+potuto chiedere** le traduzioni, lo dice: sono due silenzi diversi, e confonderli sarebbe stato
+il solito difetto di dire due cose con una parola sola.
+
+Quando un nome non c'è, la riga mostra l'identificativo **dichiarando che è un identificativo**.
+Non lo inventa, e non tace la riga.
+
+### Duecentocinque entità che non c'erano
+
+Nessuno le cercava. Sono uscite misurando la lunghezza dell'Albero: Home Assistant ne dichiara
+1223, l'Albero ne mostrava **1018**.
+
+Le entità disabilitate e le nascoste **senza area** non finivano da nessuna parte. Dentro le aree
+vere erano raggiungibili a parte — fuori dai conteggi, ma raggiungibili; fuori dalle aree
+sparivano. La prova che ha chiuso il caso: il gruppo «Senza area» portava 376 entità attive e
+**zero** disabilitate, e quello zero non era una misura della casa — era la forma del codice.
+
+Adesso ogni entità che entra esce, contata una volta sola, e c'è una prova di conservazione che
+arrossisce da sola la prossima volta che qualcuno aggiunge uno smistamento e dimentica un ramo.
+
+### Modelli diceva «non l'hai ancora usato» a chi lo usava tutti i giorni
+
+La pagina Modelli negava l'abbonamento; la pagina Consumi, nello stesso momento, ne contava 105
+turni con l'ultimo **quel giorno stesso**. Una delle due mentiva, ed era Modelli.
+
+Il ponte non passa dal punto in cui gli altri quattro fornitori registrano il proprio esito:
+**nessuna riga, in tutto il prodotto, scriveva mai un successo per l'abbonamento.** Adesso ogni
+strada del ponte lascia una traccia dell'esito che ha avuto davvero — la chat riuscita, la chat
+fallita, la promessa mantenuta, la promessa scaduta.
+
+E la frase è cambiata per **tutti e cinque** i fornitori, non solo per il ponte: diceva un fatto
+sul mondo («non l'hai ancora usato») partendo da un'assenza di osservazione. Adesso dice ciò che
+sa — «nessuna osservazione da quando l'add-on è partito».
+
+### Le pagine hanno un titolo, e la Memoria non si contraddice più
+
+In tutto il pannello non esisteva **un solo** `h1`: i titoli c'erano, ma nessuno era marcato come
+titolo, e chi naviga con uno screen reader non aveva nessuna struttura su cui saltare.
+
+La Memoria scriveva «Nessuna struttura riconosciuta» e subito sotto mostrava le ancore e le
+condizioni che aveva riconosciuto: una parola sola per due insiemi diversi.
+
+E tre parole nostre hanno smesso di uscire sullo schermo: «nucleo» è diventato «cosa vede il
+modello a ogni turno», «Forza» è «Natura», «Grandezza» è «Cosa misura».
+
+### Quello che non era rotto
+
+Due dei sette rilievi sono caduti misurandoli, e vale la pena dirlo.
+
+**L'Albero non nasce lungo**: all'apertura è alto 1.784 px, non i 35.576 misurati — quel numero
+era lo stato in cui era stato messo aprendo le aree grandi. **E tre delle otto «parole nostre»
+non erano sullo schermo**: due erano già tradotte, una non compare in nessun testo.
+
+Un rilievo che si dissolve misurandolo vale quanto uno che si conferma: evita di correggere
+qualcosa che non è rotto.
+
 ## [3.22.2] — Le parole della porta d'ingresso (2026-09-07)
 
 **Un collaudo di usabilità sull'interfaccia vera, sulla casa vera, a tre larghezze — e le
