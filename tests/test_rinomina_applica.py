@@ -712,6 +712,11 @@ _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     # Il buco dello strumento resta (la forma `from . import X` non e'
     # protetta): e' scritto qui perche' il prossimo che ci inciampa lo sappia.
     ("home_space/tools.py", "home_space", frozenset()),
+    # `type_vocabulary.py` nasce il 07/09 gia' in inglese -- non e' un file
+    # convertito, e' un file scritto dopo la rinomina -- e entra qui lo stesso:
+    # un file nuovo che nessuno sorveglia e' esattamente il modo in cui il
+    # debito ricomincia a crescere dal giorno dopo che si e' finito di pagarlo.
+    ("home_space/type_vocabulary.py", "home_space", frozenset()),
 )
 
 

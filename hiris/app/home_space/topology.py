@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import logging
 
+from . import type_vocabulary
+
 logger = logging.getLogger(__name__)
 
 
@@ -560,216 +562,31 @@ def translate_state(value, device_class: str | None = None, domain: str | None =
     return _STATE_TRANSLATION.get(v, str(value))
 
 
-# `supported_features` -- COSA UN'ENTITA' SA FARE -- e' un intero A BIT il
-# cui significato dipende dal DOMINIO: Home Assistant lo dichiara come un
-# `IntFlag` per ognuno (`LightEntityFeature`, `UpdateEntityFeature`, ...).
-# Misurato sull'impianto del proprietario il 06/09/2026: 181 entita' su 834
-# lo dichiarano, e prima di questa fetta la conoscenza non lo citava in
-# NESSUN punto -- il fornitore dice cosa un'entita' sa fare, e HIRIS lo
-# buttava.
-#
-# CORREZIONE del 06/09/2026, misurata (non dedotta): la prima versione di
-# questa tabella copriva gli STESSI domini di
-# `proxy/entity_cache.py::_DOMAIN_ATTRS` (una lista fatta per un'ALTRA
-# ragione -- quali attributi di STATO mostrare, non quali domini dichiarano
-# `supported_features` qui) piu' `weather`. Dedurre da li' era dedurre, non
-# misurare -- e la deduzione era sbagliata: contate le 181 entita' vere per
-# dominio, la distribuzione e'
-#
-#     update 53, light 50, button 16, notify 11, camera 9, climate 8,
-#     media_player 7, valve 4, siren 4, device_tracker 4, switch 4,
-#     todo 4, remote 2, calendar 2, conversation 1, alarm_control_panel 1,
-#     weather 1
-#
-# -- e i quattro domini della prima versione (`cover`, `fan`,
-# `water_heater`, `vacuum`) valgono TUTTI zero su questa casa: tabelle
-# corrette, ma scelte guardando un elenco sbagliato, non questa casa.
-#
-# Ogni tabella qui sotto e' verificata sul SORGENTE di Home Assistant, non a
-# memoria e non su `dev`: ai DUE estremi della finestra che questo add-on
-# dichiara di supportare -- il tag piu' vecchio, `2024.7.0`
-# (`hiris/config.yaml: homeassistant`), e `2026.9.1`, il piu' recente
-# rilasciato al momento di questa fetta. Un dominio senza i due tag
-# verificati resta FUORI: non si inventa una tabella. `button` e' il caso
-# concreto: 16 entita' su questa casa dichiarano `supported_features`, ma
-# NESSUNA versione del sorgente (verificato `__init__.py` e `const.py` su
-# entrambi i tag) definisce un `ButtonEntityFeature` -- il dominio non ha
-# bit da decodificare, quindi resta fuori per MANCANZA DI FONTE, non per
-# dimenticanza. Lo stesso vale per `automation`.
-#
-# SECONDA CORREZIONE, stesso giorno: la review indipendente ha confermato le
-# dodici tabelle di allora bit per bit (fonte scaricata e confrontata contro
-# ogni `*EntityFeature`, zero voci in tabella assenti dalla fonte e zero
-# voci di fonte assenti dalla tabella) e ha misurato che CINQUE degli otto
-# domini rimasti fuori hanno in realta' una fonte stabile e identica sui due
-# tag -- lo stesso lavoro delle altre, semplicemente non ancora fatto:
-# `siren`, `todo`, `alarm_control_panel`, `calendar`, `remote`. Verificate
-# qui e aggiunte. Un sesto, `conversation`, e' un caso NUOVO e diverso: il
-# suo `ConversationEntityFeature` non esiste affatto a `2024.7.0` (nessuna
-# classe, verificato su `const.py`) e NASCE prima di `2026.9.1` (`CONTROL =
-# 1`) -- non rimosso, non rinominato, NATO dentro la finestra supportata.
-# Aggiunto comunque, con la stessa logica dei bit aggiunti piu' sotto: su
-# una casa ferma a `2024.7.0` quell'entita' non dichiarerebbe mai
-# `supported_features` per cominciare (la property di base torna `None`
-# finche' l'integrazione non imposta il bit), quindi non c'e' nessun valore
-# vecchio con cui `CONTROL=1` possa confliggere.
-#
-# Restano fuori per MANCANZA DI FONTE (verificato su entrambi i tag,
-# `__init__.py` e `const.py`, nessuna traccia di un `EntityFeature`):
-# `button`, `device_tracker`, `switch` -- e `automation`, gia' citato sopra.
-#
-# COPERTURA IN NUMERI -- TRE fatti diversi, misurati sulla casa vera
-# (`/api/states`) il 06/09/2026, non a parole e non confusi l'uno con
-# l'altro (il primo giro di questa fetta li aveva confusi: vedi git log):
-#
-#   181  entita' dichiarano `supported_features` -- il totale.
-#   157  (87%) sono in un dominio con una tabella qui sotto: update 53 +
-#        light 50 + notify 11 + camera 9 + climate 8 + media_player 7 +
-#        valve 4 + siren 4 + todo 4 + remote 2 + calendar 2 +
-#        conversation 1 + alarm_control_panel 1 + weather 1 = 157, piu' i
-#        quattro a zero entita' qui (`cover`/`fan`/`water_heater`/
-#        `vacuum`) che non aggiungono nulla al numeratore.
-#   104  producono DAVVERO una `capacita'` non vuota -- non 157: dei 157 in
-#        un dominio coperto, 53 hanno `supported_features == 0` (nessun bit
-#        acceso: light 44, notify 7, remote 2), quindi 157 - 53 = 104.
-#    24  restano fuori per MANCANZA DI FONTE (`button` 16,
-#        `device_tracker` 4, `switch` 4) -- tracciate in `docs/BACKLOG.md`.
-#
-# PERCHE' sono tre numeri e non uno: "dominio coperto" (157) dice se QUESTA
-# funzione sa leggere il dominio, "capacita' dette" (104) dice quante
-# entita' hanno DAVVERO ricevuto un bit da un'integrazione. Un
-# `supported_features == 0` non e' un dato mancante -- e' un'entita' che
-# DICHIARA di non saper fare niente di speciale, e la legge di questo
-# sprint (una chiave senza niente da dire non esce) lo rispetta lasciando
-# `capacita'` assente anche li'. Scambiare 157 con 104 -- o con 181 --
-# sarebbe la stessa confusione fra dichiarato e vero che questo sprint
-# combatte ovunque altrove; chi legge fra sei mesi deve trovare tutti e tre
-# scritti, non doverli dedurre o rimisurare.
-#
-# Due bit sono ESCLUSI di proposito, perche' il sorgente mostra che il loro
-# significato NON regge per l'intera finestra supportata -- rimossi fra i
-# due tag, non solo rinominati. **Rilevante per il Task 4** (un vocabolario
-# importato che invecchia): e' la prova, misurata e non ipotizzata, che «da
-# quale versione viene» un fatto su Home Assistant non e' una formalita' --
-# lo stesso bit (64) e' stato rimosso in DUE domini indipendenti fra
-# `2024.7.0` e `2026.9.1`:
-# - `ClimateEntityFeature.AUX_HEAT` (64): presente a `2024.7.0`
-#   (`components/climate/const.py`), sparito a `2026.9.1` (lo stesso file
-#   non lo dichiara piu');
-# - `VacuumEntityFeature.BATTERY` (64): stessa sorte, stesso file
-#   (`components/vacuum/const.py`, prima `__init__.py`).
-# Decodificare quei due bit avrebbe affermato un significato che il
-# fornitore, per meta' della finestra che HIRIS dichiara di supportare, non
-# garantisce piu' -- esattamente il difetto che questo sprint combatte.
-#
-# I bit aggiunti fra i due tag (`CoverEntityFeature.SPEED`,
-# `FanEntityFeature.TURN_ON`/`TURN_OFF`,
-# `ClimateEntityFeature.SWING_HORIZONTAL_MODE`,
-# `MediaPlayerEntityFeature.SEARCH_MEDIA`, `VacuumEntityFeature.CLEAN_AREA`)
-# restano DENTRO: non collidono con nessun valore piu' vecchio dello stesso
-# dominio (verificato riga per riga), quindi decodificarli non afferma
-# niente di falso su una casa ferma a `2024.7.0` -- semplicemente quel bit
-# non vi comparira' mai.
-_FEATURE_NAMES: dict[str, dict[int, str]] = {
-    # I due domini piu' numerosi su questa casa (53 + 50 = 103/181).
-    "update": {
-        1: "installazione", 2: "versione_specifica", 4: "avanzamento_installazione",
-        8: "backup", 16: "note_di_rilascio",
-    },
-    "light": {4: "effetti", 8: "flash", 32: "transizione"},
-    # `notify`/`camera`: prossimi per numero (11 + 9), verificati alla
-    # fonte come gli altri -- non "piccoli quindi meno importanti", solo
-    # dopo update/light nell'ordine di quante entita' li usano qui.
-    "notify": {1: "titolo"},
-    "camera": {1: "accensione", 2: "streaming"},
-    "climate": {
-        1: "temperatura_target", 2: "intervallo_temperatura",
-        4: "umidita_target", 8: "modo_ventola", 16: "preset",
-        32: "oscillazione", 128: "spegnimento", 256: "accensione",
-        512: "oscillazione_orizzontale",
-    },
-    "media_player": {
-        1: "pausa", 2: "avanzamento", 4: "volume", 8: "muto",
-        16: "traccia_precedente", 32: "traccia_successiva", 128: "accensione",
-        256: "spegnimento", 512: "riproduzione_media", 1024: "volume_a_passi",
-        2048: "selezione_sorgente", 4096: "stop", 8192: "svuota_playlist",
-        16384: "play", 32768: "shuffle", 65536: "modo_audio",
-        131072: "sfoglia_media", 262144: "ripeti", 524288: "raggruppamento",
-        1048576: "annuncio", 2097152: "accoda", 4194304: "ricerca_media",
-    },
-    # `valve`: 4 entita' su questa casa. `cover`, `fan`, `water_heater`,
-    # `vacuum` sotto: ZERO entita' su questa casa (misurato il 06/09/2026) --
-    # tabelle verificate e corrette, tenute perche' una casa diversa le avra',
-    # ma NON scelte guardando questa: il numero e' scritto qui apposta,
-    # cosi' chi legge sa che "zero" e' una misura, non una svista.
-    "valve": {1: "apertura", 2: "chiusura", 4: "posizione", 8: "stop"},
-    "cover": {  # 0/181 su questa casa, 06/09/2026
-        1: "apertura", 2: "chiusura", 4: "posizione", 8: "stop",
-        16: "apertura_lamelle", 32: "chiusura_lamelle", 64: "stop_lamelle",
-        128: "posizione_lamelle", 256: "velocita",
-    },
-    "fan": {  # 0/181 su questa casa, 06/09/2026
-        1: "velocita", 2: "oscillazione", 4: "direzione", 8: "preset",
-        16: "spegnimento", 32: "accensione",
-    },
-    "water_heater": {  # 0/181 su questa casa, 06/09/2026
-        1: "temperatura_target", 2: "modo_operativo", 4: "modo_assenza",
-        8: "accensione_spegnimento",
-    },
-    "vacuum": {  # 0/181 su questa casa, 06/09/2026
-        1: "accensione", 2: "spegnimento", 4: "pausa", 8: "stop",
-        16: "rientro_alla_base", 32: "velocita_aspirazione",
-        128: "stato_dettagliato", 256: "comando_diretto", 512: "localizzazione",
-        1024: "pulizia_puntuale", 2048: "mappa", 4096: "riporta_stato",
-        8192: "avvio", 16384: "pulizia_area",
-    },
-    "weather": {  # 1/181 su questa casa, 06/09/2026
-        1: "previsioni_giornaliere", 2: "previsioni_orarie",
-        4: "previsioni_due_volte_al_giorno",
-    },
-    # I cinque domini della seconda correzione: fonte stabile e identica sui
-    # due tag, stesso lavoro delle otto tabelle sopra.
-    "siren": {  # 4/181
-        1: "accensione", 2: "spegnimento", 4: "toni", 8: "volume", 16: "durata",
-    },
-    "todo": {  # 4/181
-        1: "crea_elemento", 2: "elimina_elemento", 4: "aggiorna_elemento",
-        8: "sposta_elemento", 16: "scadenza_data", 32: "scadenza_data_ora",
-        64: "descrizione_elemento",
-    },
-    "alarm_control_panel": {  # 1/181
-        1: "armato_in_casa", 2: "armato_fuori_casa", 4: "armato_notte",
-        8: "allarme", 16: "armato_bypass", 32: "armato_vacanza",
-    },
-    "calendar": {  # 2/181
-        1: "crea_evento", 2: "elimina_evento", 4: "aggiorna_evento",
-    },
-    "remote": {  # 2/181
-        1: "apprendimento_comando", 2: "elimina_comando", 4: "attivita",
-    },
-    # `conversation`: caso NUOVO, non nella misura degli otto domini fuori --
-    # `ConversationEntityFeature` non esiste a `2024.7.0`, nasce prima di
-    # `2026.9.1` (`CONTROL = 1`). Vedi il commento sopra `_FEATURE_NAMES` per
-    # il perche' e' comunque sicuro includerlo.
-    "conversation": {1: "controllo"},  # 1/181
-}
+# `supported_features` -- COSA UN'ENTITA' SA FARE -- e' un intero A BIT il cui
+# significato dipende dal DOMINIO. Le diciotto tabelle che lo decodificavano
+# (`_FEATURE_NAMES`) vivono dall'07/09/2026 nel vocabolario dei tipi
+# (`type_vocabulary.py`), con la loro provenienza dichiarata (`importato`: sono
+# `IntFlag` nel sorgente di Home Assistant, che nessuna API pubblica) e la
+# versione da cui vengono. Il commento che le giustificava -- la misura sulle
+# 181 entita', i due bit esclusi, i domini fuori per mancanza di fonte -- si e'
+# spostato con loro: qui resta il lettore.
 
 
 def decoded_capabilities(domain: str, supported_features) -> list[str]:
     """Cio' che un'entita' SA FARE, in parole -- non il numero grezzo.
 
     `supported_features` da solo non dice niente a chi legge: e' un intero a
-    bit il cui significato dipende dal dominio (vedi `_FEATURE_NAMES`).
-    Un dominio senza tabella verificata, o un valore che non e' un intero
-    (l'integrazione non lo manda, o manda `None`), torna una lista vuota --
-    MAI un'ipotesi su un bit che questa funzione non ha verificato alla
-    fonte.
+    bit il cui significato dipende dal dominio -- lo chiede all'anagrafe dei
+    tipi, metrica «capacita'». Un dominio senza tabella verificata, o un
+    valore che non e' un intero (l'integrazione non lo manda, o manda `None`),
+    torna una lista vuota -- MAI un'ipotesi su un bit che nessuno ha
+    verificato alla fonte.
 
     L'ordine e' quello del dizionario (crescente per bit), non quello di
     inserimento in Home Assistant: stabile e riproducibile, non un dettaglio
     di quale versione del sorgente e' stata letta per prima.
     """
-    table = _FEATURE_NAMES.get(domain)
+    table = type_vocabulary.capability_names(domain)
     # `bool` e' una sottoclasse di `int`: senza l'esclusione, `True`/`False`
     # passerebbero il controllo e `1 & True` non solleverebbe -- stessa
     # guardia di `entity_cache._to_minimal`, qui per difesa in profondita'

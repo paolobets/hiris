@@ -53,6 +53,17 @@ _view_entity` la chiama e cita cio' che ritorna nella chiave `regola`,
 sul dettaglio di UN'entita' sola. La fonte e la versione scritte qui sono
 cio' che permette a chi legge quella chiave di sapere se e' ancora valida.
 
+**Il confine con `type_vocabulary.py`, dal 07/09/2026.** Il modulo vicino
+porta il vocabolario dei TIPI: a quale gamba dell'obiettivo un tipo serve,
+se «si accende e si spegne», quali suoi stati valgono «a riposo», che nomi
+hanno i bit di `supported_features`. La regola che separa i due, scritta per
+intero nel docstring di quel modulo: **una frase che spiega cosa SIGNIFICA un
+valore sta qui; un giudizio su cosa un tipo SERVE o quando HA FINITO sta la'.**
+`DEVICE_CLASS_MEANING`, indicizzato per `(dominio, classe)`, e' indicizzato
+esattamente come un tipo: e' il candidato dichiarato a diventare un campo di
+quelle righe, con la sua provenienza `importato`, quando la fetta che collega i
+vocabolari arrivera'. Fino ad allora nessun fatto vive di qua e di la'.
+
 **Il pezzo che lo rende duraturo.** Il vocabolario porta scritto DA QUALE
 versione di Home Assistant viene (`VOCABULARY_HA_VERSION`), e
 `house_is_newer_than_vocabulary()` la confronta con `versione_ha` -- lo

@@ -1,4 +1,4 @@
-"""Ogni bit di `topology._FEATURE_NAMES`, pinnato contro la fonte -- non
+"""Ogni bit delle tabelle delle capacita', pinnato contro la fonte -- non
 contro se stesso.
 
 La review indipendente ha trovato che tre mutazioni sulle tabelle restavano
@@ -9,21 +9,28 @@ causa: le prove esistenti pinnavano quasi solo il BIT 1 di ogni tabella (un
 ventuno voci ne aveva una sola protetta.
 
 Questo file elenca OGNI (bit, nome) di OGNI tabella, COPIATO A MANO dalla
-fonte -- non importato da `_FEATURE_NAMES` -- cosi' una mutazione della
+fonte -- non importato dal vocabolario dei tipi -- cosi' una mutazione della
 tabella implementativa non puo' portarsi dietro anche il test che dovrebbe
 scoprirla (la stessa ragione per cui un test non deve derivare il proprio
 oracolo dalla stessa finta che sta verificando).
 
+Le tabelle vivevano in `topology._FEATURE_NAMES` fino al 07/09/2026; ora sono
+il campo `capability_names` delle righe del vocabolario dei tipi, con la loro
+provenienza dichiarata (`importato`) e la versione da cui vengono. Questo file
+non e' cambiato in cio' che pinna: e' cambiato il posto da cui legge il primo
+elenco, e resta il secondo.
+
 Fonte: sorgente vero di Home Assistant, tag `2024.7.0` e `2026.9.1`, mai
-`dev` -- vedi il commento sopra `_FEATURE_NAMES` in `topology.py` per la
-citazione file-per-file.
+`dev` -- vedi il commento sopra `_FEATURE_TABLES` in `type_vocabulary.py` per
+la citazione file-per-file.
 """
 import pytest
 
-from hiris.app.home_space.topology import _FEATURE_NAMES, decoded_capabilities
+from hiris.app.home_space.topology import decoded_capabilities
+from hiris.app.home_space.type_vocabulary import capability_tables
 
 # (dominio, bit, nome) -- una riga per OGNI voce di OGNI tabella verificata
-# su questa fetta. L'ordine ricalca quello di `_FEATURE_NAMES`, ma i valori
+# su questa fetta. L'ordine ricalca quello di `_FEATURE_TABLES`, ma i valori
 # sono scritti qui di nuovo: e' un secondo elenco che deve continuare a
 # essere d'accordo col primo, non una copia che lo scavalca.
 _PINNED_BITS = [
@@ -168,7 +175,7 @@ def test_every_bit_decodes_to_the_name_verified_at_the_source(domain, bit, name)
 
 def test_pinned_bits_cover_every_entry_of_every_table_exactly():
     """Non solo "ogni voce pinnata e' corretta" -- anche "ogni voce della
-    tabella e' pinnata": una voce aggiunta a `_FEATURE_NAMES` senza una riga
+    tabella e' pinnata": una voce aggiunta a una tabella senza una riga
     gemella qui sopra passerebbe questo file senza protezione, la stessa
     falsa sicurezza che ha lasciato passare le tre mutazioni della review.
 
@@ -176,7 +183,7 @@ def test_pinned_bits_cover_every_entry_of_every_table_exactly():
     64: "nuovo"}`) senza aggiungerlo a `_PINNED_BITS` -- il test torna
     rosso sulla differenza fra i due insiemi."""
     pinned = {(d, b) for d, b, _ in _PINNED_BITS}
-    implemented = {(d, b) for d, table in _FEATURE_NAMES.items() for b in table}
+    implemented = {(d, b) for d, table in capability_tables().items() for b in table}
     assert pinned == implemented, (
         f"pinnati ma non implementati: {pinned - implemented} -- "
         f"implementati ma non pinnati: {implemented - pinned}")
@@ -190,9 +197,9 @@ def test_pinned_bits_agree_with_the_implementation_domain_by_domain():
     Mutazione: scambiare due valori nella tabella implementativa (per
     esempio `climate` 128<->256, la stessa gia' riprodotta dalla review
     indipendente) -- il test torna rosso su `assert pinned_by_domain ==
-    _FEATURE_NAMES`, con il dominio sbagliato visibile nel diff di
+    capability_tables()`, con il dominio sbagliato visibile nel diff di
     pytest."""
     pinned_by_domain: dict[str, dict[int, str]] = {}
     for domain, bit, name in _PINNED_BITS:
         pinned_by_domain.setdefault(domain, {})[bit] = name
-    assert pinned_by_domain == _FEATURE_NAMES
+    assert pinned_by_domain == dict(capability_tables())

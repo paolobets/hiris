@@ -17,19 +17,36 @@ gamba`) deriva QUALI entita' da cio' che Home Assistant dichiara gia' --
 dominio, `device_class`, `source_type` (**non `state_class`**: correzione
 di parole della review, mandato «il bilancio dell'energia», punto 7,
 27/08/2026 -- dopo la correzione del 27/08, `baseline.aspect` non lo legge
-piu' per decidere nessuna gamba, vedi il suo docstring). **La seconda, invece, SI'**
-(correzione del giro di review, punto 9): `_OPERABLE` qui sotto e' una
-lista scritta a mano dei domini che si accendono e si spengono. Non c'e' modo
-di derivarla: Home Assistant non dichiara da nessuna parte «questo dominio
-funziona come un interruttore», quindi va mantenuta a mano e tenuta
-aggiornata quando un dominio nuovo lo fa -- la vecchia frase di questo
-docstring affermava il contrario, ed era falsa quanto una funzione sbagliata.
+piu' per decidere nessuna gamba, vedi il suo docstring). **La seconda, invece,
+e' un giudizio nostro**: quali tipi «si accendono e si spengono», e quali loro
+stati valgono «a riposo», nessuna API di Home Assistant lo dice.
+
+**Dal 07/09/2026 quel giudizio non vive piu' qui.** `_OPERABLE`, `_RESTING` e
+`_UNKNOWN` erano tre elenchi scritti a mano in questo modulo; sono diventati
+righe del **vocabolario dei tipi** (`home_space/type_vocabulary.py`), interrogate
+con la metrica «accendibile + riposi». Questo modulo resta il LETTORE:
+`genre_for` chiede se un tipo e' accendibile, `_is_on` chiede se uno stato e'
+un riposo, e il salto in cima ad `aggregate_day` chiede quali stati sono
+«non lo so». La regola che questo file portava in un commento -- «un tipo
+entra fra gli accendibili INSIEME al suo riposo, nella stessa modifica» -- e'
+diventata una condizione di costruzione del vocabolario: chi la viola non fa
+passare nemmeno un `import`. Spec:
+`docs/design/2026-09-07-l-anagrafe-dei-tipi.md`.
+
+**Una frase che questo docstring ha portato fino a oggi era falsa**, e vale la
+pena lasciarne traccia: diceva che Home Assistant «non dichiara da nessuna
+parte quale dominio funziona come un interruttore». Lo dichiara -- il registro
+dei servizi isola i domini con `turn_on` **e** `turn_off`, o `toggle` (spec
+§4, misurato sulla casa vera il 07/09/2026: 16 domini). La derivazione non
+coincide con il giudizio nostro e sbaglia in entrambi i versi, quindi non lo
+sostituisce: lo **sorveglia**, ed e' lavoro delle fette 3 e 4.
 """
 from __future__ import annotations
 
 from datetime import datetime, timedelta
 
 from ..home_space.historian import home_space_zone
+from ..home_space.type_vocabulary import is_operable, resting_states, unknown_states
 from .baseline import aspect
 
 # `aggregate_day` e' SINCRONA: non fa nessuna lettura di rete. I comprimari
@@ -71,101 +88,21 @@ GENRES = ("funzionamento", "presenza", "energia", "guasto", "sicurezza", "bilanc
 BALANCE_DIRECTIONS = ("produzione", "autoconsumo", "immissione",
                       "prelievo", "carica", "scarica", "consumo")
 
-# I domini che «funzionano»: si accendono e si spengono, si aprono e si
-# chiudono. Sono i protagonisti degli oggetti di funzionamento. **Lista
-# scritta a mano, dichiaratamente** (vedi il docstring del modulo): mancavano
-# `humidifier`, `vacuum`, `valve` e `media_player` -- domini comuni che
-# funzionano come gli altri sei, e che prima di questa correzione cadevano in
-# silenzio (nessun oggetto, nessun errore).
+# Le tre liste che vivevano qui -- `_OPERABLE` (i domini che «funzionano»),
+# `_RESTING` (gli stati che valgono «a riposo») e `_UNKNOWN` (gli stati «non lo
+# so») -- sono righe del vocabolario dei tipi dal 07/09/2026. Le tre funzioni che
+# le leggevano restano, con la stessa firma e lo stesso risultato: cambia da
+# dove viene la risposta, non quale sia.
 #
-# **LA REGOLA (spec, §6, corretta il 26 agosto): un dominio entra QUI
-# insieme al suo stato di riposo in `_RESTING` qui sotto, nella STESSA
-# modifica. Le due cose non si toccano separatamente.** E' la terza volta in
-# questa fetta che lo stesso difetto nasce dal separarle: l'allarme
-# rovesciato (punto 3b), l'energia che non chiudeva mai (punto 6), e questi
-# quattro domini aggiunti QUI, al giro precedente, senza guardare i LORO
-# riposi -- il vacuum che torna alla base (`docked`) e il media_player fermo
-# (`idle`, `standby`) restavano oggetti aperti per sempre (`fine_ts: None`).
-# Un dominio dimenticato cade in silenzio (nessun oggetto); un dominio
-# aggiunto a meta' produce oggetti che non si chiudono mai -- lo stesso
-# costo, dai due lati opposti dello stesso elenco.
-_OPERABLE = frozenset({"climate", "cover", "switch", "light", "fan",
-                         "water_heater", "humidifier", "vacuum", "valve",
-                         "media_player"})
-
-# Gli stati che valgono «a riposo»: chiudono un oggetto di funzionamento o di
-# sicurezza. Ogni dominio in `_OPERABLE` ha il SUO qui dentro -- e' la
-# regola scritta sopra. "off"/"closed" per i sei domini originali, "locked"
-# per la serratura, "armed_*" per il pannello dell'allarme (**"disarmed" e
-# "triggered" NO** -- correzione al rovesciamento della review, punto 3b: e'
-# controintuitivo per chi legge in fretta, ma un allarme si INSERISCE per
-# stare a riposo, non il contrario). Per i quattro domini aggiunti al giro
-# precedente, verificati sulla documentazione Home Assistant -- non
-# sull'elenco scritto a mano di un mandato, che e' precisamente il modo in
-# cui questo difetto e' nato due volte:
-# - `vacuum`: "docked" (in base, eventualmente in carica), "idle" (fermo,
-#   non in carica ne' in errore), "returning" (sta rientrando, non sta piu'
-#   pulendo), "error". Solo "cleaning" e' acceso.
-# - `media_player`: "idle" (acceso ma non riproduce nulla), "standby"
-#   (deprecato verso "off"/"idle" dalla 2026.8, ma ancora prodotto da alcune
-#   integrazioni -- questa casa ce l'ha). "on" resta acceso (nessun
-#   dettaglio sullo stato: trattato come gli altri domini semplici on/off)
-#   e cosi' "buffering" (sta per riprodurre, non e' un riposo).
-# - `humidifier`: solo "on"/"off", nessuno stato intermedio -- gia' coperto,
-#   nessuna aggiunta.
-# - `valve`: "open", "opening", "closing" sono TUTTI attivi, come per
-#   "cover" (con cui condivide "closed" come unico riposo) -- una valvola a
-#   meta' apertura non e' ferma, e "opening"/"closing" qui chiuderebbe
-#   l'oggetto a meta' transizione. Nessuna aggiunta.
-#
-# **"paused" NON e' qui, ne' per il vacuum ne' per il media_player** (giro
-# di pulizia del 26 agosto, punto 3 -- deciso ADESSO, contro il mandato
-# precedente che l'aveva messo fra i riposi). Un riposo e' «ha finito»: il
-# robot e' tornato alla base, la TV non riproduce piu' nulla. Una pausa e'
-# un'attivita' SOSPESA, non finita -- il film torna dove si era fermato, la
-# pulizia riprende da dove si era interrotta. Trattarla come un riposo
-# spezzava un episodio solo in due: un film in pausa cinque minuti diventava
-# due oggetti, una pulizia interrotta e ripresa diventava due pulizie -- e
-# la spec (§1) giudica gli oggetti da quanto si leggono, non solo da cosa
-# fa il codice. Un apparecchio lasciato in pausa a fine giornata produce
-# ora un oggetto ancora APERTO (`fine_ts: None`): e' la verita', non ha
-# finito.
-#
-# Un solo insieme, non due che si sovrappongono: `_RESTING` e' usato da piu'
-# rami (funzionamento e sicurezza). Non e' piu' un insieme esclusivo per
-# dominio in senso stretto -- "idle" chiude sia il vacuum sia il
-# media_player -- ma resta senza ambiguita': ogni valore ha lo stesso
-# significato («questo episodio e' finito») in qualunque dominio compaia.
-# **"unavailable"/"unknown" NON stanno qui** (vedi `_UNKNOWN` sotto, e la
-# correzione del punto 2): non sono un riposo, sono «non lo sappiamo» --
-# trattarli come riposo li faceva CHIUDERE un episodio in corso, e il
-# ritorno dello stato vero ne apriva un secondo.
-_RESTING = frozenset({"off", "closed", "none", "",
-                     "locked", "armed_home", "armed_away", "armed_night",
-                     "armed_vacation", "armed_custom_bypass",
-                     "docked", "returning", "error",
-                     "idle", "standby"})
-
-# Stati "non lo so", non stati della casa. Un riavvio di Home Assistant fa
-# attraversare questi due stati a OGNI entita'. **Non sono in `_RESTING`**
-# (correzione punto 2 del secondo giro di review): la versione precedente li
-# metteva li' dentro, e "funzionamento"/"sicurezza" li trattavano come
-# riposo -- un riavvio a episodio in corso CHIUDEVA l'oggetto, e il ritorno
-# dello stato vero ne APRIVA un secondo. Ogni riavvio spezzava in due un
-# riscaldamento acceso, o una casa lasciata disarmata. Il commento che
-# viveva qui prima diceva che il funzionamento «li tiene fuori, quindi non
-# apre niente»: era vero sul non aprire e taceva che chiudevano -- mezza
-# frase vera usata come prova di coerenza.
-#
-# La semantica giusta e' la TERZA, non «e' finito» ne' «e' cominciato»: una
-# riga con questo stato si SALTA, e l'episodio in corso resta aperto
-# ATTRAVERSO il buco -- che e' la verita', non sappiamo che sia finito. Il
-# salto vive in un punto solo, in cima ad `aggregate_day`, prima di ogni
-# ramo e prima delle misure (correzione punto 3: senza il salto in cima,
-# un'`unavailable` da riavvio a bordo giornata finiva come prima o ultima
-# lettura di un'energia) -- non piu' duplicato con una semantica diversa in
-# ogni ramo che lo tocca.
-_UNKNOWN = frozenset({"unavailable", "unknown"})
+# **Perche' l'unione e non il riposo del singolo tipo.** `_is_on` non sa a
+# quale dominio appartenga il valore che riceve -- lo riceve nudo -- e
+# `type_vocabulary.resting_states()` restituisce esattamente l'unione che
+# `_RESTING` era: un solo insieme, non due che si sovrappongono. Ogni valore
+# ha lo stesso significato («questo episodio e' finito») in qualunque tipo
+# compaia; cio' che il vocabolario aggiunge e' che ogni valore ha ora un tipo che
+# lo rivendica, invece di stare in un elenco piatto di cui nessuno sa piu' chi
+# vi abbia aggiunto cosa. Passare al riposo per-tipo sarebbe un cambio di
+# comportamento, non una rifattorizzazione, e questa fetta non ne fa nessuno.
 
 
 def genre_for(subject: str, aspect_: str | None) -> str | None:
@@ -196,11 +133,12 @@ def genre_for(subject: str, aspect_: str | None) -> str | None:
     `sensor` numerico della gamba sicurezza NON genera un oggetto.** Oggi
     l'unico caso raggiungibile e' il monossido misurato in concentrazione
     (`carbon_monoxide` su `sensor`, non su `binary_sensor`): una lettura come
-    "0.4" non e' mai in `_RESTING`, quindi userebbe `_is_on` per aprire un
-    oggetto che non chiuderebbe mai -- un guasto perennemente aperto al
-    giorno, per ogni sensore CO numerico della casa. Un sensore che MISURA
-    non e' un sensore che SCATTA: servirebbe una soglia per decidere quando
-    la concentrazione diventa una minaccia, e non ne abbiamo una onesta.
+    "0.4" non e' mai fra gli stati di riposo, quindi userebbe `_is_on` per
+    aprire un oggetto che non chiuderebbe mai -- un guasto perennemente
+    aperto al giorno, per ogni sensore CO numerico della casa. Un sensore che
+    MISURA non e' un sensore che SCATTA: servirebbe una soglia per decidere
+    quando la concentrazione diventa una minaccia, e non ne abbiamo una
+    onesta.
     **Restare fuori e' la decisione**, non una dimenticanza: il
     `binary_sensor` di monossido -- che scatta davvero, con uno stato on/off
     -- resta dentro senza bisogno di nessuna soglia.
@@ -208,7 +146,7 @@ def genre_for(subject: str, aspect_: str | None) -> str | None:
     if subject.startswith(("problema:", "integrazione:", "log:", "automazione:")):
         return "guasto"
     domain = subject.split(".")[0]
-    if domain in _OPERABLE:
+    if is_operable(domain):
         return "funzionamento"
     if domain in ("person", "device_tracker"):
         return "presenza"
@@ -293,7 +231,10 @@ def day_boundaries(day: str, timezone: str | None) -> tuple[float, float]:
 
 
 def _is_on(value) -> bool:
-    return str(value or "").strip().lower() not in _RESTING
+    """Se questo stato NON e' un riposo -- cioe' se l'episodio e' ancora in
+    corso. L'insieme dei riposi e' l'unione che il vocabolario dei tipi tiene:
+    `_RESTING` era esattamente quella, elencata a mano."""
+    return str(value or "").strip().lower() not in resting_states()
 
 
 def _difference(initial, final) -> float | None:
@@ -709,18 +650,20 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     entities_in_balance: set[str] = {e for b in valid_balances for e in (b.get("entita") or [])}
 
     # `unavailable`/`unknown` si saltano QUI, una volta sola, prima di ogni
-    # ramo e prima delle misure (`_UNKNOWN`, correzione dei punti 2 e 3 del
-    # secondo giro di review): un riavvio di Home Assistant li fa
-    # attraversare a OGNI entita'. Filtrarli a valle -- come prima, con
-    # `_RESTING` per funzionamento/sicurezza e un `if` locale per presenza --
-    # li faceva significare due cose diverse nello stesso modulo: riposo in
-    # un ramo (chiude un episodio in corso), salto nell'altro. La riga che
+    # ramo e prima delle misure (`type_vocabulary.unknown_states()`, correzione
+    # dei punti 2 e 3 del secondo giro di review): un riavvio di Home
+    # Assistant li fa attraversare a OGNI entita'. Filtrarli a valle -- come
+    # prima, con gli stati di riposo per funzionamento/sicurezza e un `if`
+    # locale per presenza -- li faceva significare due cose diverse nello
+    # stesso modulo: riposo in un ramo (chiude un episodio in corso), salto
+    # nell'altro. La riga che
     # si perde qui e' un buco nell'informazione, non un fatto sulla casa:
     # non deve ne' aprire ne' chiudere niente, in NESSUN ramo, e non deve
     # contaminare il riepilogo di un'energia (`misure`, sotto) con
     # "unavailable" come prima o ultima lettura del giorno.
+    ignored = unknown_states()
     rows = [r for r in rows
-             if str(r["a"] or "").strip().lower() not in _UNKNOWN]
+             if str(r["a"] or "").strip().lower() not in ignored]
 
     # Prima passata: le misure, per soggetto. Servono come contesto e non
     # generano oggetti da sole.
