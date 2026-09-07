@@ -707,6 +707,31 @@ decodificare. Restano qui non perche' ci sia lavoro pendente, ma perche' un lett
 chiede "perche' `switch` non ha capacita'?" trovi la risposta gia' misurata invece di doverla
 rimisurare.
 
+### `state_class` non arriva mai a `view` -- solo a `trend`
+
+`origine: misurata dal Task 5 di «rifiutare e importare», 07/09/2026, durante il giro di
+correzioni della review indipendente` · `nessun documento`
+
+`entity_cache._to_minimal` conserva `state_class` (`measurement`/`total`/`total_increasing`) come
+chiave DI PRIMO LIVELLO del dizionario minimale -- non dentro `attributes` (`_DOMAIN_ATTRS`) --
+per servire `historian.produces_statistics` (`tools.py::_trend`, che legge
+`self._state_readings()` direttamente). `topology.live_mirror`, il proiettore condiviso da
+`view`/`cerca`/il nucleo, NON porta questa chiave: il suo sesto dizionario (`attributi`) e'
+costruito solo da `e.get("attributes")`, e `state_class` non ci vive. Risultato: `view`
+(`queries.py`) non puo' mai citare `ha_vocabulary.STATE_CLASS_MEANING` su un'entita' -- quel
+vocabolario (Task 4) resta importato ma irraggiungibile da questa porta, mentre `_trend` lo
+consulta gia' (indirettamente, via `produces_statistics`) da un'altra.
+
+Non e' un buco nel comportamento di `_trend` (funziona, ed e' quello che il capitolato chiedeva
+di leggere): e' un buco di CONOSCENZA gemello a quelli che il Task 3 ha chiuso per
+`supported_features`/`assumed_state`/`entity_category` -- un fatto che Home Assistant dichiara e
+che una sola porta (`_trend`) legge, mentre l'altra (`view`) non puo'. Non l'ho chiuso di mia
+iniziativa nel Task 5: la regola che quel task doveva citare (diagnostica + nessuna classe +
+nessuna unita') non ha bisogno di `state_class`, e aggiungerlo a `live_mirror` solo per "poterlo
+citare" senza un secondo consumatore reale sarebbe stata una porta nuova senza un dato che la
+attraversa davvero -- la stessa disciplina per cui `capacita'`/`stato_presunto` sono entrati SOLO
+quando la decodifica produceva qualcosa.
+
 ---
 
 ## Usciti

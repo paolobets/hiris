@@ -51,6 +51,7 @@ from __future__ import annotations
 from ..memory.resolver import _normalize
 from ..proxy._sanitize import sanitize_text
 from .behavior import FILE_GENUINELY_ABSENT
+from .ha_vocabulary import entity_category_measure_rule
 from .historian import instant_epoch
 from .topology import (
     actual_class,
@@ -278,49 +279,6 @@ def _find_area(floors: list[dict], reference) -> dict | None:
 _RAW_ATTRIBUTES_WITH_THEIR_OWN_DOOR = frozenset({"supported_features", "assumed_state"})
 
 
-# --- Task 5 di "rifiutare e importare" (§6c): la REGOLA che il caso
-# `sensor.persons` porta scoperta -----------------------------------------
-#
-# Misurato sulla casa il 06/09/2026 e riverificato il 07/09/2026:
-# `sensor.persons` e' `diagnostic` nel registro (`entry["categoria"]`, gia'
-# conservato dal Task 3 -- §7①), ha `state_class: total`, NESSUN
-# `device_class` e NESSUNA unita' -- e niente, in nessun punto della
-# conoscenza, dice al modello che quel numero non e' una misura della casa
-# (quante entita' `person` esistono in Home Assistant, non una grandezza
-# fisica dell'abitazione). Il capitolato aggiungeva "ferma da due giorni":
-# FALSO il giorno della misura (cambiata tre ore prima) -- quella gamba
-# della catena non regge, e la regola resta la piu' corta e piu' onesta che
-# i tre fatti gia' noti (categoria, classe, unita') permettono di dire.
-#
-# La fonte del significato di "diagnostic" e' Home Assistant stesso, non
-# un'invenzione di HIRIS: `EntityCategory` (`homeassistant/const.py`, tag
-# `2026.9.1` -- lo stesso gia' citato da `ha_vocabulary.VOCABULARY_SOURCE`,
-# verificato di nuovo il 07/09/2026) dichiara `DIAGNOSTIC` come "An entity
-# exposing some configuration parameter, or diagnostics of a device" -- un
-# dato SUL dispositivo o sul servizio, non una grandezza della casa che
-# quel dispositivo abita.
-#
-# Solo sui `sensor`: e' l'UNICO dominio, fra quelli con entita' `diagnostic`
-# misurate su questa casa, in cui sia `device_class` sia
-# `unit_of_measurement` sono concetti che Home Assistant dichiara davvero
-# (`ha_vocabulary.DEVICE_CLASS_MEANING`) -- un `device_tracker` non li porta
-# MAI (misurato il 07/09/2026: 68 `device_tracker` diagnostic su 68 senza
-# classe ne' unita', il 100%): dire "non e' una misura" li' sarebbe una
-# tautologia sul DOMINIO, non una regola sul DATO -- esattamente la forma
-# di rumore (una chiave che scatta quasi sempre) che questo sprint ha gia'
-# pagato una volta e non ripete. Sui `sensor` diagnostici la differenza e'
-# vera: 65 su 89 non hanno ne' classe ne' unita' (le altre 24 la portano --
-# voltage, current, battery, enum, timestamp -- e su quelle la regola tace,
-# correttamente).
-_DIAGNOSTIC_SENSOR_WITHOUT_CLASS_OR_UNIT_RULE = (
-    "diagnostica di servizio (`entity_category: diagnostic` -- Home "
-    "Assistant, `EntityCategory`, `homeassistant/const.py`, tag `2026.9.1`: "
-    "\"An entity exposing some configuration parameter, or diagnostics of "
-    "a device\"), senza `device_class` ne' unita' di misura dichiarate: "
-    "non e' una misura della casa, e' un dato tecnico sull'entita' stessa."
-)
-
-
 def _enrich_entity(entity_detail: dict, entry: dict,
                         fallback_names: dict[str, str] | None,
                         reported_units: dict[str, str] | None = None,
@@ -446,17 +404,14 @@ def _enrich_entity(entity_detail: dict, entry: dict,
     category = (entry.get("categoria") or "").strip()
     if category:
         entity_detail["categoria"] = category
-    # `regola`: la vista CITA il vocabolario (Task 4) invece di lasciare che
-    # il modello indovini dal nome. Oggi una sola regola e' citabile --
-    # `_DIAGNOSTIC_SENSOR_WITHOUT_CLASS_OR_UNIT_RULE`, sopra -- e solo
-    # quando tutti e tre i fatti che la sostengono sono veri insieme:
-    # dominio `sensor`, categoria `diagnostic`, nessuna classe e nessuna
-    # unita'. Su ogni altro caso il vocabolario non ha niente da dire, e
-    # `regola` non esce affatto: il silenzio non e' un buco, e' la legge --
-    # una regola di ripiego avrebbe l'autorita' di una regola vera.
-    if (category == "diagnostic" and not device_class and not unit
-            and domain_of(entity_id) == "sensor"):
-        entity_detail["regola"] = _DIAGNOSTIC_SENSOR_WITHOUT_CLASS_OR_UNIT_RULE
+    # `regola` NON esce da questa porta -- review indipendente (Task 5,
+    # rigiro): questa funzione e' condivisa da `_view_area`/`_view_device`
+    # (elencano entita' a decine) E da `_view_entity` (una sola). Un
+    # dispositivo con 53 sensori diagnostici (misurato il 07/09/2026: "Home
+    # Assistant", 55 entita' vive) ripeterebbe la STESSA stringa 53 volte in
+    # un'unica vista -- ~18 KB, quasi 4.500 token identici che seppellirebbero
+    # il resto della vista. Stessa decisione, stessa ragione di `attributi`
+    # (sotto in `_view_entity`): solo sul dettaglio di UNA entita' sola.
     _add_categories(entity_detail, entry, category_lookup or {})
     return _add_labels(entity_detail, entry, label_lookup or {})
 
@@ -738,6 +693,27 @@ def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
     detail = _enrich_entity(detail, entity, fallback_names, reported_units,
                                     label_names(home_space), reported_classes,
                                     category_names(home_space), reported_attributes)
+    # `regola`: la vista CITA il vocabolario (Task 4, `ha_vocabulary.py`)
+    # invece di lasciare che il modello indovini dal nome -- SOLO qui, sul
+    # dettaglio di UNA entita' sola, stessa decisione e stessa ragione di
+    # `attributi` (poco sotto): un dispositivo con decine di sensori
+    # diagnostici ripeterebbe la STESSA stringa una volta a entita' (review
+    # indipendente, misurato il 07/09/2026: il dispositivo "Home Assistant"
+    # ne ha 53, ~18 KB di testo identico in un'unica vista) -- il capitolato
+    # stesso dice "la vista di UN'entita'".
+    #
+    # `classe`/`unita'` letti da `detail` (gia' risolti da `_enrich_entity`,
+    # specchio vivo sopra registro), NON da `entity["classe"]`/
+    # `entity["unita"]` -- il registro non li manda mai (docstring di
+    # `topology.live_mirror`), e leggerli da li' troverebbe sempre
+    # classe/unita' assenti anche su una diagnostica con una classe VIVA
+    # vera (batteria, tensione: 24 diagnostiche su 89 misurate il
+    # 07/09/2026) -- il difetto misurato dal revisore su questo stesso task.
+    rule = entity_category_measure_rule(
+        domain_of(entity["id"]), detail.get("categoria"),
+        detail.get("classe"), detail.get("unita"))
+    if rule:
+        detail["regola"] = rule
     # GLI ATTRIBUTI CURATI (`_DOMAIN_ATTRS`, `proxy/entity_cache.py`): solo
     # QUI, sul dettaglio di UNA entita' sola -- decisione del proprietario,
     # fetta "attributi al modello" (2026-08-25). `_view_area` e

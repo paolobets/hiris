@@ -18,13 +18,26 @@ file per file.
 """
 from hiris.app.home_space.ha_vocabulary import (
     DEVICE_CLASS_MEANING,
+    ENTITY_CATEGORY_MEANING,
     STATE_CLASS_MEANING,
     UNAVAILABLE_MEANING,
     UNKNOWN_MEANING,
     VOCABULARY_HA_VERSION,
     VOCABULARY_SOURCE,
+    entity_category_measure_rule,
     house_is_newer_than_vocabulary,
 )
+
+# Le due frasi di `EntityCategory` (`homeassistant/const.py`, tag `2026.9.1`)
+# ricopiate a mano dal sorgente scaricato davvero
+# (`raw.githubusercontent.com/home-assistant/core/2026.9.1/homeassistant/
+# const.py`, righe 1032-1037), non lette da `ENTITY_CATEGORY_MEANING` --
+# stessa disciplina delle liste sopra: una tabella che verifica se stessa
+# non verifica niente.
+_SOURCE_ENTITY_CATEGORY_MEANING = {
+    "config": "An entity which allows changing the configuration of a device.",
+    "diagnostic": "An entity exposing some configuration parameter, or diagnostics of a device.",
+}
 
 # Le 27 coppie (dominio, classe) misurate su questa casa il 07/09/2026 --
 # ricopiate a mano dal risultato della misura, non lette da
@@ -308,3 +321,64 @@ def test_unavailable_and_unknown_are_two_different_documented_facts():
     assert UNAVAILABLE_MEANING != UNKNOWN_MEANING
     assert "available" in UNAVAILABLE_MEANING.lower() or "raggiungibile" in UNAVAILABLE_MEANING
     assert "none" in UNKNOWN_MEANING.lower() or "non" in UNKNOWN_MEANING.lower()
+
+
+# --- `entity_category`: pinnato contro la fonte, non contro se stesso ------
+# (Task 5, §6c -- il primo consumatore a runtime del vocabolario)
+
+
+def test_entity_category_meaning_matches_the_source_word_for_word():
+    """`ENTITY_CATEGORY_MEANING` deve essere ESATTAMENTE cio' che il
+    sorgente dichiara -- non una parafrasi, non un riassunto.
+
+    Mutazione: cambiare una lettera in `ENTITY_CATEGORY_MEANING["diagnostic"]`
+    -- il test torna rosso su `assert ENTITY_CATEGORY_MEANING ==
+    _SOURCE_ENTITY_CATEGORY_MEANING`.
+    """
+    assert ENTITY_CATEGORY_MEANING == _SOURCE_ENTITY_CATEGORY_MEANING
+
+
+def test_entity_category_meaning_has_no_third_key():
+    """Il sorgente dichiara SOLO `config` e `diagnostic` -- una terza chiave
+    qui sarebbe una categoria che Home Assistant non conosce.
+
+    Mutazione: aggiungere una chiave `"altro"` a `ENTITY_CATEGORY_MEANING`
+    -- il test torna rosso su `assert set(ENTITY_CATEGORY_MEANING) ==
+    {"config", "diagnostic"}`.
+    """
+    assert set(ENTITY_CATEGORY_MEANING) == {"config", "diagnostic"}
+
+
+def test_the_measure_rule_fires_only_on_a_diagnostic_sensor_without_class_or_unit():
+    """Il caso vero (`sensor.persons`, misurato il 06/09/2026): dominio
+    `sensor`, categoria `diagnostic`, ne' classe ne' unita'.
+
+    Mutazione: `entity_category_measure_rule` che ritorna sempre `None` --
+    il test torna rosso su `assert rule is not None`."""
+    rule = entity_category_measure_rule("sensor", "diagnostic", None, None)
+    assert rule is not None
+    assert "non e' una misura" in rule
+    assert ENTITY_CATEGORY_MEANING["diagnostic"] in rule
+    assert VOCABULARY_HA_VERSION in rule
+
+
+def test_the_measure_rule_stays_silent_with_a_class_or_a_unit():
+    """Una diagnostica con classe O con unita' e' gia' una misura
+    dichiarata: la regola non ha niente da aggiungere.
+
+    Mutazione: ignorare `device_class` (o `unit`) nella guardia -- il test
+    torna rosso su uno dei due `assert ... is None`."""
+    assert entity_category_measure_rule("sensor", "diagnostic", "battery", None) is None
+    assert entity_category_measure_rule("sensor", "diagnostic", None, "%") is None
+
+
+def test_the_measure_rule_stays_silent_off_sensor_and_off_diagnostic():
+    """Fuori dal dominio `sensor` (tautologia strutturale, `device_tracker`
+    misurato: 68/68 senza classe/unita') e fuori da `diagnostic` (un
+    sensore primario senza classe/unita' non e' il caso misurato): in
+    entrambi i casi la funzione non ha una regola da citare.
+
+    Mutazione: allargare la guardia a un altro dominio o a un'altra
+    categoria -- il test torna rosso su uno dei due `assert ... is None`."""
+    assert entity_category_measure_rule("device_tracker", "diagnostic", None, None) is None
+    assert entity_category_measure_rule("sensor", None, None, None) is None

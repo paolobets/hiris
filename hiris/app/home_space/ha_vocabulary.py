@@ -39,13 +39,16 @@ decifrare -- e' un dato, non un significato nascosto. Il numero e' stato
 misurato lo stesso per verificare il metodo di misura, non perche' desse
 un proprio perimetro da importare.
 
-**Non e' consumato a runtime.** Nessun chiamante lo importa dal digesto o da
-`view`/`guarda`: e' conoscenza per chi legge il codice o interroga la casa a
-mano, non un fatto che il modello deve ricevere in ogni messaggio --
-diversamente da `_DOMAIN_NAMES`, che il digesto usa per contare a ogni turno.
-Se un domani qualcuno vorra' farlo consumare a runtime, la fonte e la
-versione scritte qui sono cio' che gli permette di sapere se e' ancora
-valido.
+**Il digesto non lo consuma -- `view` sì, da "rifiutare e importare" (Task
+5, §6c).** `STATE_CLASS_MEANING`/`DEVICE_CLASS_MEANING`/`UNAVAILABLE_MEANING`/
+`UNKNOWN_MEANING` restano conoscenza per chi legge il codice o interroga la
+casa a mano, non un fatto che il digesto ripete a ogni turno --
+diversamente da `_DOMAIN_NAMES`, che il digesto usa per contare a ogni
+turno. Ma `entity_category_measure_rule()` (sotto, insieme a
+`ENTITY_CATEGORY_MEANING`) e' il PRIMO consumatore vero a runtime: `queries.
+_view_entity` la chiama e cita cio' che ritorna nella chiave `regola`,
+sul dettaglio di UN'entita' sola. La fonte e la versione scritte qui sono
+cio' che permette a chi legge quella chiave di sapere se e' ancora valida.
 
 **Il pezzo che lo rende duraturo.** Il vocabolario porta scritto DA QUALE
 versione di Home Assistant viene (`VOCABULARY_HA_VERSION`), e
@@ -80,6 +83,7 @@ VOCABULARY_SOURCE = (
     "homeassistant/components/update/__init__.py (UpdateDeviceClass); "
     "homeassistant/components/media_player/const.py (MediaPlayerDeviceClass); "
     "homeassistant/components/valve/const.py (ValveDeviceClass); "
+    "homeassistant/const.py (EntityCategory); "
     "homeassistant/helpers/entity.py, Entity._stringify_state "
     "(la distinzione fra `unavailable` e `unknown`) -- "
     "e developers.home-assistant.io/docs/core/entity/"
@@ -335,3 +339,73 @@ UNKNOWN_MEANING = (
     "della prima lettura, o un valore che l'integrazione stessa non sa "
     "dire. Il collegamento e' sano: manca solo il dato, non e' un guasto."
 )
+
+
+# --- cosa significa un `entity_category` -----------------------------------
+#
+# Home Assistant manda `config`/`diagnostic` (o niente affatto, per la
+# maggioranza delle entita' primarie), mai la spiegazione. Le due frasi sono
+# quelle di `EntityCategory` (`homeassistant/const.py`, tag `2026.9.1`,
+# verificato scaricando il sorgente vero -- `raw.githubusercontent.com/
+# home-assistant/core/2026.9.1/homeassistant/const.py`, non a memoria):
+# citate cosi' come compaiono nei commenti che accompagnano le due voci
+# dell'enum, non riformulate.
+#
+# Gia' glossato altrove (`briefing.py`, la riga "entita' di servizio" --
+# citazione diversa, developers.home-assistant.io, sulla VISIBILITA'
+# nell'interfaccia; `topology._excluded_from_comparison`, un'etichetta breve)
+# SENZA questo dizionario: quei due punti ora rimandano qui invece di
+# ripetere il significato -- un secondo posto che lo dicesse a parole
+# proprie sarebbe il doppione che le fondamenta vietano.
+ENTITY_CATEGORY_MEANING = {
+    "config": "An entity which allows changing the configuration of a device.",
+    "diagnostic": "An entity exposing some configuration parameter, or diagnostics of a device.",
+}
+
+
+def entity_category_measure_rule(domain: str, category: str | None,
+                                  device_class: str | None,
+                                  unit: str | None) -> str | None:
+    """La REGOLA citabile per il caso che ha chiuso lo sprint
+    (`sensor.persons`, misurato il 06/09/2026 e riverificato il
+    07/09/2026): una diagnostica di servizio senza classe ne' unita' non e'
+    una misura della casa -- e' un dato tecnico sull'entita' o sul
+    dispositivo (`ENTITY_CATEGORY_MEANING["diagnostic"]`, sopra).
+
+    **Non un buco quando ritorna `None`: la legge.** Ritorna una stringa
+    SOLO quando tre fatti sono veri insieme -- `dominio == "sensor"`,
+    `categoria == "diagnostic"`, ne' `classe` ne' `unita'` -- e ritorna
+    `None` in ogni altro caso, perche' il vocabolario non ha nessuna regola
+    citabile li'. Una regola di ripiego sarebbe peggio del silenzio: avrebbe
+    l'autorita' di una regola vera.
+
+    **Perche' solo `sensor`.** E' l'UNICO dominio, fra quelli con entita'
+    `diagnostic` misurate su questa casa, in cui sia `device_class` sia
+    `unit_of_measurement` sono concetti che Home Assistant dichiara davvero
+    (`DEVICE_CLASS_MEANING`, sopra) -- un `device_tracker` non li porta MAI
+    (misurato il 07/09/2026: 68 `device_tracker` diagnostic su 68 senza
+    classe ne' unita', il 100%): dire "non e' una misura" li' sarebbe una
+    tautologia sul DOMINIO, non una regola sul DATO -- esattamente la forma
+    di rumore (una chiave che scatta quasi sempre) che questo sprint ha gia'
+    pagato una volta. Sui `sensor` diagnostici la differenza e' vera: 65 su
+    89 non hanno ne' classe ne' unita' (le altre 24 la portano -- voltage,
+    current, battery, enum, timestamp -- e su quelle questa funzione ritorna
+    `None`, correttamente).
+
+    `classe`/`unita'` vanno passati COSI' COME `queries._enrich_entity` li
+    ha gia' risolti (specchio vivo sopra il registro, `actual_class`/
+    `actual_unit`): il registro delle entita' non manda ne' l'uno ne'
+    l'altro (`topology.py`, il docstring di `live_mirror`), quindi una
+    chiamata che leggesse solo il registro troverebbe sempre classe/unita'
+    assenti, anche su una diagnostica che una VERA classe/unita' vive
+    dichiara -- il fatto misurato dal revisore su questo stesso task."""
+    if domain != "sensor" or category != "diagnostic" or device_class or unit:
+        return None
+    return (
+        "diagnostica di servizio (`entity_category: diagnostic` -- Home "
+        "Assistant, `EntityCategory`, `homeassistant/const.py`, tag "
+        f"`{VOCABULARY_HA_VERSION}`: "
+        f"\"{ENTITY_CATEGORY_MEANING['diagnostic']}\"), senza `device_class` "
+        "ne' unita' di misura dichiarate: non e' una misura della casa, e' "
+        "un dato tecnico sull'entita' stessa."
+    )

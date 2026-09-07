@@ -781,7 +781,9 @@ def _highlight_lines(home_space: dict, state: dict, floors: list[dict],
         # vista principale -- e' cio' che HIRIS dice senza che tu abbia chiesto.
         #
         # NON valgono per `view`/`search`: li' hai chiesto tu, e filtrare una
-        # risposta esplicita sarebbe nascondere.
+        # risposta esplicita sarebbe nascondere. (Il significato per esteso di
+        # "config"/"diagnostic" -- citato dal sorgente -- vive in
+        # `ha_vocabulary.ENTITY_CATEGORY_MEANING`, non ripetuto qui.)
         if e.get("categoria"):          # "config" o "diagnostic"
             continue
         if e.get("nascosta"):

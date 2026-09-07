@@ -1246,12 +1246,13 @@ def _excluded_from_comparison(entity: dict | None) -> bool:
       mano sul lato "nostre" -- non ci sono gia' -- ma resta l'unico modo di
       scartarle sul lato "loro" (`note`, letto dall'anagrafe grezza qui
       sotto, non dall'albero di `hierarchy()`);
-    - **di servizio** (`entity_category`, cioe' `config`/`diagnostic`): lo
-      stesso `_include_entry` le scarta quando `primary_entities_only` e'
-      vero, ed e' vero -- `extract_from_target` lo passa esplicito, perche'
-      cosi' fa una chiamata di servizio reale. Nell'anagrafe e' la colonna
-      `categoria`, da non confondere con `categorie` (la tassonomia
-      dell'utente);
+    - **di servizio** (`entity_category`, cioe' `config`/`diagnostic` --
+      significato per esteso in `ha_vocabulary.ENTITY_CATEGORY_MEANING`,
+      non ripetuto qui): lo stesso `_include_entry` le scarta quando
+      `primary_entities_only` e' vero, ed e' vero -- `extract_from_target`
+      lo passa esplicito, perche' cosi' fa una chiamata di servizio reale.
+      Nell'anagrafe e' la colonna `categoria`, da non confondere con
+      `categorie` (la tassonomia dell'utente);
     - **disabilitate**: HA le esclude quando l'entita' eredita l'area dal
       dispositivo (`get_entries_for_device_id` ha
       `include_disabled_entities=False` come predefinito) e le INCLUDE quando

@@ -1523,16 +1523,22 @@ def test_assumed_state_absent_does_not_come_out():
 # dire: diagnostica + nessuna classe + nessuna unita'.
 
 
-def _house_with_diagnostic_sensor(device_class=None, unit=None,
-                                     category="diagnostic"):
+def _house_with_sensor(category="diagnostic"):
+    """Nessuna classe ne' unita' nel REGISTRO -- su questa casa il registro
+    non le manda mai (`config/entity_registry/list` risponde con
+    `as_partial_dict`, verificato su `topology.py:180-183`): un test che le
+    mettesse li' dentro asserirebbe attraverso una gamba che in produzione
+    non porta mai un valore. Chi vuole una classe/unita' VIVA la passa a
+    `view()` con `reported_classes`/`reported_units`, come fa davvero la
+    catena (`entity_cache._to_minimal` -> `topology.live_mirror`)."""
     return {
         "piani": [{"id": "terra", "nome": "Piano terra", "livello": 0}],
         "aree": [{"id": "sala", "nome": "Sala", "piano_id": "terra",
                   "alias": [], "etichette": []}],
         "dispositivi": [],
         "entita": [
-            {"id": "sensor.persons", "nome": "Persone", "classe": device_class,
-             "unita": unit, "categoria": category, "area_id": "sala",
+            {"id": "sensor.persons", "nome": "Persone", "classe": None,
+             "unita": None, "categoria": category, "area_id": "sala",
              "dispositivo_id": None, "disabilitata": False},
         ],
     }
@@ -1546,21 +1552,41 @@ def test_a_diagnostic_without_class_or_unit_carries_its_rule():
 
     Mutazione: togliere la regola dalla vista -- il test torna rosso su
     `assert "non e' una misura" in detail["regola"]`."""
-    detail = view(_house_with_diagnostic_sensor(), [], [],
+    detail = view(_house_with_sensor(), [], [],
                   {"sensor.persons": "3"}, "entita", "sensor.persons")
     assert "non e' una misura" in detail["regola"]
 
 
-def test_no_rule_means_silence_not_a_guess():
-    """Se il vocabolario non ha una regola per questo caso -- qui, una
-    `diagnostic` che ha GIA' un `device_class` (e quindi una misura
-    dichiarata: una percentuale di batteria) -- la vista NON dice niente:
-    non e' un buco, e' la legge -- non si afferma cio' che non si sa.
+def test_a_diagnostic_with_a_live_class_stays_silent():
+    """LA GAMBA VERA: su questa casa la classe e l'unita' arrivano SOLO
+    dallo specchio vivo (`reported_classes`/`reported_units`), mai dal
+    registro -- una `diagnostic` con una classe dichiarata li' (batteria,
+    tensione: 24 su 89 misurate il 07/09/2026) e' una misura vera, e la
+    regola deve tacere. Una prova che mettesse la classe nel REGISTRO
+    passerebbe anche se la vista ignorasse del tutto lo specchio vivo.
 
-    Mutazione: emettere una regola di ripiego -- il test torna rosso su
+    Mutazione: leggere la classe/unita' solo dal registro (ignorando
+    `reported_classes`/`reported_units`) -- il test torna rosso su
     `assert "regola" not in detail`."""
-    detail = view(_house_with_diagnostic_sensor(device_class="battery", unit="%"),
-                  [], [], {"sensor.persons": "80"}, "entita", "sensor.persons")
+    detail = view(_house_with_sensor(), [], [], {"sensor.persons": "80"},
+                  "entita", "sensor.persons",
+                  reported_classes={"sensor.persons": "battery"},
+                  reported_units={"sensor.persons": "%"})
+    assert "regola" not in detail
+
+
+def test_a_non_diagnostic_sensor_without_class_or_unit_stays_silent():
+    """Un sensore PRIMARIO (nessuna `categoria`) senza classe ne' unita' non
+    e' il caso misurato: la regola parla di `diagnostic`, non di ogni
+    sensore povero di metadati -- estenderla a ogni sensore affermerebbe un
+    fatto (categoria di servizio) che qui non c'e'.
+
+    Mutazione: togliere il controllo su `categoria == "diagnostic"` -- il
+    test torna rosso su `assert "regola" not in detail`. Misurato: 52
+    sensori NON diagnostici di questa casa non hanno ne' classe ne' unita'
+    (07/09/2026), e riceverebbero la stessa affermazione falsa."""
+    detail = view(_house_with_sensor(category=None), [], [],
+                  {"sensor.persons": "3"}, "entita", "sensor.persons")
     assert "regola" not in detail
 
 
@@ -1576,8 +1602,25 @@ def test_a_diagnostic_device_tracker_without_class_or_unit_stays_silent():
 
     Mutazione: estendere la regola a ogni dominio invece che al solo
     `sensor` -- il test torna rosso su `assert "regola" not in detail`."""
-    house = _house_with_diagnostic_sensor()
+    house = _house_with_sensor()
     house["entita"][0]["id"] = "device_tracker.telefono"
     detail = view(house, [], [], {"device_tracker.telefono": "home"},
                   "entita", "device_tracker.telefono")
     assert "regola" not in detail
+
+
+def test_area_listing_a_diagnostic_sensor_does_not_repeat_the_rule():
+    """SOLO sul dettaglio di UNA entita' sola -- stessa decisione di
+    `attributi` (poche righe sotto in `_view_entity`, stessa ragione scritta
+    li'): un dispositivo con decine di sensori diagnostici ripeterebbe la
+    STESSA stringa una volta per entita' (misurato il 07/09/2026: il
+    dispositivo "Home Assistant" ne ha 53, ~18 KB di testo identico in
+    un'unica vista). Il capitolato stesso dice "la vista di UN'entita'".
+
+    Mutazione: spostare l'emissione di `regola` dentro `_enrich_entity`
+    (la porta condivisa da area/dispositivo/entita') -- il test torna rosso
+    su `assert "regola" not in entity`."""
+    detail = view(_house_with_sensor(), [], [], {"sensor.persons": "3"},
+                  "area", "sala")
+    entity = next(e for e in detail["entita"] if e["id"] == "sensor.persons")
+    assert "regola" not in entity
