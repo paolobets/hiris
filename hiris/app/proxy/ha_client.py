@@ -2005,6 +2005,47 @@ class HAClient:
 
         return by_entity
 
+    async def get_translations(self, language: str,
+                               category: str = "entity_component") -> dict:
+        """Le traduzioni che Home Assistant pubblica, per una lingua e una
+        categoria.
+
+        `{"risorse": {chiave: testo}}` oppure `{"errore": ...}` -- mai un
+        dizionario vuoto su guasto: un elenco vuoto direbbe «questa casa non
+        traduce niente», che e' un'altra cosa dal non aver potuto chiedere.
+        Stesso contratto di `problems()`/`system_log()` qui sopra, per la
+        stessa ragione.
+
+        Il comando e' `frontend/get_translations`
+        (`homeassistant/components/frontend/__init__.py:467`, tag `2026.9.1`),
+        `language` e `category` obbligatori (`:1007-1015`), risposta
+        `{"resources": {...}}` (`:1028-1030`). **Non ha `@require_admin`**
+        (`:1007-1019`): qualunque connessione autenticata puo' chiamarlo, e
+        il proxy del Supervisor non filtra il prefisso `frontend/`
+        (`supervisor/api/middleware/security.py:45-50` @ `2026.09.0`).
+
+        Qui si LEGGE soltanto: la scelta di quale categoria serva, e di come
+        si costruisce una chiave, sta in `proxy/state_translations.py` -- il
+        client non ha un'opinione su cosa della casa valga la pena tenere.
+        """
+        try:
+            msg = await self._ws_command(
+                "frontend/get_translations",
+                {"language": language, "category": category})
+        except Exception as e:
+            logger.debug("traduzioni non lette (%s/%s): %s", language, category, e)
+            return {"errore": "Home Assistant non ha risposto"}
+        if msg is None:
+            return {"errore": "Home Assistant non ha risposto"}
+        if msg.get("error"):
+            error = msg["error"]
+            return {"errore": error.get("message") or error.get("code") or "rifiutato"}
+        result = msg.get("result")
+        resources = result.get("resources") if isinstance(result, dict) else None
+        if not isinstance(resources, dict):
+            return {"errore": "risposta in forma inattesa"}
+        return {"risorse": resources}
+
     async def get_config(self) -> dict:
         """Il sistema di riferimento della casa, da `get_config` di HA.
 

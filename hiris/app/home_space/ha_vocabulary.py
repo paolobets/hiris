@@ -88,7 +88,13 @@ VOCABULARY_SOURCE = (
     "homeassistant/components/valve/const.py (ValveDeviceClass); "
     "homeassistant/const.py (EntityCategory); "
     "homeassistant/helpers/entity.py, Entity._stringify_state "
-    "(la distinzione fra `unavailable` e `unknown`) -- "
+    "(la distinzione fra `unavailable` e `unknown`); "
+    "homeassistant/helpers/translation.py:469-470, async_translate_state "
+    "(la PROVA che `unavailable`/`unknown` HA non li traduce mai: li "
+    "restituisce tali e quali prima di ogni gradino, e il suo frontend li "
+    "rende da un bundle proprio che il backend non pubblica -- "
+    "src/common/entity/compute_state_display.ts:94-101 @ frontend "
+    "20260826.6) -- "
     "e developers.home-assistant.io/docs/core/entity/"
     "{button,switch,media-player,update,valve,sensor}/ (le frasi che "
     "descrivono ogni classe, verificate il 07/09/2026)."
@@ -342,6 +348,33 @@ UNKNOWN_MEANING = (
     "della prima lettura, o un valore che l'integrazione stessa non sa "
     "dire. Il collegamento e' sano: manca solo il dato, non e' un guasto."
 )
+
+
+# Le stesse due voci, in ETICHETTA BREVE: quelle sopra sono spiegazioni da
+# leggere, queste sono cio' che sta in una riga accanto a un episodio
+# (`proxy/state_translations.py`, che le consuma; `api/handlers_mind.py`, che
+# le fa arrivare alla pagina «Cosa e' successo»). Due lunghezze dello stesso
+# fatto, non due fatti: la spiegazione dice PERCHE', l'etichetta dice COSA, e
+# tenerle in un modulo solo e' cio' che impedisce che divergano.
+#
+# **Perche' esistono affatto**: `helpers/translation.py:469-470` mostra che
+# `async_translate_state` restituisce questi due stati GREZZI prima di
+# guardare qualunque tabella, e `compute_state_display.ts:94-101` mostra che
+# il frontend di HA li rende da un bundle SUO, che il backend non pubblica --
+# quindi per un add-on non c'e' nessuna traduzione da chiedere a Home
+# Assistant. E' un buco di HA verso chi sta fuori, non nostro, e queste due
+# righe sono le uniche parole nostre in una resa che per tutto il resto e' di
+# HA.
+#
+# **Limite dichiarato: sono in italiano FISSO.** Tutto il resto della resa
+# arriva nella lingua della CASA (`hass.config.language`, che puo' non essere
+# l'italiano); queste due no, perche' l'interfaccia di HIRIS e' in italiano
+# fisso e queste sono parole di HIRIS. Su una casa in inglese la riga
+# mostrera' «Non raggiungibile» accanto a stati resi in inglese. Detto qui e
+# detto alla pagina, non nascosto: e' il prezzo di non lasciare un buco.
+UNAVAILABLE_LABEL = "Non raggiungibile"
+
+UNKNOWN_LABEL = "Valore non noto"
 
 
 # --- cosa significa un `entity_category` -----------------------------------

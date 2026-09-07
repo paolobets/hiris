@@ -68,6 +68,7 @@ from .model_resolution import subscription_has_token
 from .provider_occurrences import OccurrenceRegistry
 from .proxy.entity_cache import EntityCache, automation_config_id
 from .proxy.ha_client import HAClient
+from .proxy.state_translations import StateTranslations
 from .version import read_version
 
 logger = logging.getLogger(__name__)
@@ -2029,6 +2030,15 @@ async def _on_startup(app: web.Application) -> None:
         logger.warning("EntityCache load failed: %s", exc)
     ha_client.add_state_listener(entity_cache.on_state_changed)
     app["entity_cache"] = entity_cache
+
+    # Come si RENDE uno stato di Home Assistant (fetta «lo stato»,
+    # 07/09/2026). Costruito vuoto, come il registro dei servizi qui sopra: la
+    # prima lettura avviene alla prima pagina che ne ha bisogno, non al boot --
+    # allungherebbe l'avvio per una tabella che questa sessione potrebbe non
+    # chiedere mai, e fallirebbe in silenzio con un Home Assistant non ancora
+    # pronto. Poi resta in memoria finche' la casa non cambia versione o
+    # lingua.
+    app["state_translations"] = StateTranslations(ha_client)
 
     # I guasti che Home Assistant ha gia' diagnosticato. Qui la PRIMA lettura,
     # accanto all'inventario perche' e' la stessa specie di dato: una

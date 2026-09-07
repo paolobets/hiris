@@ -623,6 +623,15 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     HA non scrive l'attributo): mai un `nome: null`, e chi legge mostra
     allora l'identificatore DICENDO che e' un identificatore.
 
+    **Il corpo porta `classe`, quando il grezzo del giorno la portava**
+    (fetta «lo stato», 07/09/2026): la `device_class` che Home Assistant
+    dichiarava sull'entita' al momento del cambio. Non e' un dato in piu'
+    «per ogni evenienza»: e' il secondo dei quattro gradini con cui HA
+    traduce uno stato, e senza di lei un rilevatore di fumo scattato si
+    leggerebbe «Acceso» invece di «Rilevato» (misurato dal vivo il
+    07/09/2026). Tace come `nome` quando non c'e'. Vedi `close()` qui
+    sotto e `proxy/state_translations.py`.
+
     **L'energia e' un genere a parte** (correzione del giro di review,
     punto 6): non ha un "acceso"/"spento" -- un contatore sale e basta -- e
     non nasce da un ciclo apri/chiudi come gli altri generi. Un oggetto di
@@ -758,6 +767,28 @@ def aggregate_day(*, store, day: str, timezone: str | None,
         subject_name = names.get(subject)
         if subject_name:
             base_body["nome"] = subject_name
+        # La classe che Home Assistant dichiarava sull'entita' al momento del
+        # cambio (`device_class` nel grezzo, `classe` qui -- il nome italiano
+        # che l'anagrafe usa gia' ovunque per la stessa cosa). Non e' un
+        # doppione del grezzo: gli `oggetti` vivono piu' a lungo dei `cambi`
+        # (22 giorni), esattamente come per `nome`.
+        #
+        # **Perche' serve, e non e' un "per ogni evenienza"**: e' il SECONDO
+        # gradino con cui Home Assistant traduce uno stato
+        # (`helpers/translation.py:480-486`, trascritto in
+        # `proxy/state_translations.py`), e senza di lei quel gradino non
+        # potrebbe mai rispondere. Misurato dal vivo il 07/09/2026 sulla casa:
+        # `component.binary_sensor.entity_component.smoke.state.on` e'
+        # «Rilevato», mentre `..._.state.on` -- l'unico gradino raggiungibile
+        # senza classe -- e' «Acceso». Un rilevatore di fumo scattato
+        # leggerebbe «Acceso».
+        #
+        # Tace quando non c'e', come ogni altra chiave del corpo. Gli oggetti
+        # aggregati PRIMA di questa riga non la portano e non si riempiono a
+        # posteriori: cadono sul terzo gradino, che e' la verita' («di quella
+        # riga non sappiamo la classe»), non un'invenzione.
+        if o.get("classe"):
+            base_body["classe"] = o["classe"]
         # `dominio`/`titolo` esistono solo per un guasto (sopra), e solo
         # quando la riga che ha aperto l'episodio li portava: tacciono come
         # ogni altra chiave del corpo che non ha niente da dire, non
@@ -828,7 +859,7 @@ def aggregate_day(*, store, day: str, timezone: str | None,
             if _is_on(r["a"]):
                 if subject not in open_episodes:
                     open_episodes[subject] = {"genere": genre, "inizio": r["quando_ts"],
-                                        "stato": r["a"]}
+                                        "stato": r["a"], "classe": r.get("device_class")}
             else:
                 close(subject, r["quando_ts"])
             continue
@@ -854,13 +885,13 @@ def aggregate_day(*, store, day: str, timezone: str | None,
                 close(subject, r["quando_ts"])
             elif subject not in open_episodes:
                 open_episodes[subject] = {"genere": genre, "inizio": r["quando_ts"],
-                                    "stato": r["a"]}
+                                    "stato": r["a"], "classe": r.get("device_class")}
             continue
         if genre == "funzionamento":
             if _is_on(r["a"]):
                 if subject not in open_episodes:
                     open_episodes[subject] = {"genere": genre, "inizio": r["quando_ts"],
-                                        "stato": r["a"]}
+                                        "stato": r["a"], "classe": r.get("device_class")}
             else:
                 close(subject, r["quando_ts"])
             continue

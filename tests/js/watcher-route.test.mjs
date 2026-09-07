@@ -1505,3 +1505,114 @@ test('seam _rendiOsservate: un entity_id nudo viene dichiarato per quello che è
   assert.doesNotMatch(riga.textContent, /Movimento Cucina/,
     'nessun nome dedotto dall\'id');
 });
+
+// ---------------------------------------------------------------------------
+// Fetta «lo stato» (07/09/2026): la resa arriva ACCANTO al grezzo, e i due
+// silenzi (traduzioni non lette / stato senza traduzione) non si leggono
+// uguali.
+// ---------------------------------------------------------------------------
+
+const TRADOTTE = { lette: true, lingua: 'it' };
+
+function oggettoFunzionamento(corpo) {
+  return {
+    id: 1, genere: 'funzionamento', protagonista: 'climate.bagno_1p_t',
+    inizio_ts: 1755270600, fine_ts: 1755277500, corpo,
+  };
+}
+
+test('seam _rendiOggetti: lo stato reso è quello che si legge, non il grezzo inglese', () => {
+  // Mutazione dichiarata, ESEGUITA: togliere la riga
+  // `var shown = c.stato_reso != null ? c.stato_reso : c.stato;` da
+  // `mainPhrase` (tornando a `c.stato`) fa arrossire l'`assert.match` su
+  // /Riscaldamento/.
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisWatcherRoute._rendiOggetti(corpo, [
+    oggettoFunzionamento({ stato: 'heat', stato_reso: 'Riscaldamento', nome: 'Termostato Bagno' }),
+  ], null, TRADOTTE);
+  assert.match(corpo.textContent, /stato: Riscaldamento/,
+    'la resa esiste: è quella che il proprietario deve leggere');
+  assert.doesNotMatch(corpo.textContent, /stato: heat/,
+    'il grezzo inglese non si mostra quando una resa c\'è: era il rilievo');
+});
+
+test('seam _rendiOggetti: senza resa la riga mostra il grezzo, e non lo tace né lo inventa', () => {
+  // Mutazione dichiarata, ESEGUITA: scrivere `var shown = c.stato_reso;` in
+  // `mainPhrase` fa arrossire l'`assert.match` su /digitalfirst/ — la riga
+  // perderebbe lo stato invece di mostrarlo grezzo.
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisWatcherRoute._rendiOggetti(corpo, [
+    oggettoFunzionamento({ stato: 'digitalfirst', nome: 'Telecamera Ingresso' }),
+  ], null, TRADOTTE);
+  assert.match(corpo.textContent, /stato: digitalfirst/,
+    'Home Assistant stesso mostra il grezzo quando non ha traduzione: la riga non mente');
+  assert.doesNotMatch(corpo.textContent, /nessun dettaglio/);
+});
+
+test('seam _rendiOggetti: traduzioni NON LETTE lo dicono, col motivo', () => {
+  // Mutazione dichiarata, ESEGUITA: togliere la chiamata
+  // `translationsNote(body, translations);` da `renderFacts` fa arrossire
+  // entrambi gli `assert.match` qui sotto.
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisWatcherRoute._rendiOggetti(corpo, [
+    oggettoFunzionamento({ stato: 'heat' }),
+  ], null, { lette: false, motivo: 'Home Assistant non ha risposto' });
+  assert.match(corpo.textContent, /non si sono potute leggere/,
+    'gli stati restano in inglese per un GUASTO: va detto, non nascosto');
+  assert.match(corpo.textContent, /Home Assistant non ha risposto/,
+    'il motivo lo produce chi lo conosce e arriva fin qui');
+});
+
+test('seam _rendiOggetti: uno stato senza traduzione NON si annuncia come un guasto di lettura', () => {
+  // I due silenzi non si leggono uguali: è l'invariante di questa fetta.
+  // Mutazione dichiarata, ESEGUITA: far scrivere a `translationsNote` la
+  // stessa frase anche per `lette: true` fa arrossire il `doesNotMatch`.
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisWatcherRoute._rendiOggetti(corpo, [
+    oggettoFunzionamento({ stato: 'digitalfirst' }),
+  ], null, TRADOTTE);
+  assert.match(corpo.textContent, /stato: digitalfirst/);
+  assert.doesNotMatch(corpo.textContent, /non si sono potute leggere/,
+    'le traduzioni SONO state lette: questo stato semplicemente non ne ha una');
+});
+
+test('seam _rendiOggetti: una casa in un\'altra lingua lo dichiara, invece di far sembrare la resa sbagliata', () => {
+  // Mutazione dichiarata, ESEGUITA: togliere il ramo
+  // `if (t.lette === true && t.lingua && t.lingua !== 'it')` da
+  // `translationsNote` fa arrossire l'`assert.match` su /lingua della casa/.
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisWatcherRoute._rendiOggetti(corpo, [
+    oggettoFunzionamento({ stato: 'heat', stato_reso: 'Heating' }),
+  ], null, { lette: true, lingua: 'en' });
+  assert.match(corpo.textContent, /lingua della casa/,
+    'la lingua è quella che il proprietario ha scelto in HA, non l\'italiano per definizione');
+  assert.match(corpo.textContent, /stato: Heating/);
+});
+
+test('seam _rendiOggetti: una casa in italiano non si sente dire in che lingua legge', () => {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisWatcherRoute._rendiOggetti(corpo, [
+    oggettoFunzionamento({ stato: 'heat', stato_reso: 'Riscaldamento' }),
+  ], null, TRADOTTE);
+  assert.doesNotMatch(corpo.textContent, /lingua della casa/,
+    'l\'italiano è già la lingua della pagina: dirlo sarebbe rumore');
+});
+
+test('seam _rendiOggetti: un guasto continua a mostrare la sua condizione vera, senza resa', () => {
+  // Un `integrazione:` non passa dal vocabolario degli stati (il confine sta
+  // in `api/handlers_mind.py`): la riga non deve cambiare per questa fetta.
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisWatcherRoute._rendiOggetti(corpo, [{
+    id: 1, genere: 'guasto', protagonista: 'integrazione:01K2CK4GG287VKK18M5J788MRQ',
+    inizio_ts: 1755270600, fine_ts: null,
+    corpo: { stato: 'setup_retry', dominio: 'lifx', titolo: 'Abat-jour' },
+  }], null, TRADOTTE);
+  assert.match(corpo.textContent, /stato: setup_retry/);
+});

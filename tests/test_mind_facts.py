@@ -1350,3 +1350,65 @@ def test_il_giorno_dell_aggiornamento_il_primo_nome_NON_VUOTO_vince(archivio):
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
     corpo = archivio.facts(day=G)[0]["corpo"]
     assert corpo["nome"] == "Paolo"
+
+
+# ---------------------------------------------------------------------------
+# La classe entra nel corpo dell'oggetto (fetta «lo stato», 07/09/2026).
+# Non e' un dato «per ogni evenienza»: e' il SECONDO dei quattro gradini con
+# cui Home Assistant traduce uno stato, e senza di lei quel gradino non
+# potrebbe mai rispondere. Come il nome, viene dal GREZZO di quel giorno --
+# gli oggetti vivono piu' a lungo dei 22 giorni di grezzo.
+# ---------------------------------------------------------------------------
+
+def test_la_classe_del_grezzo_entra_nel_corpo_dell_oggetto(archivio):
+    """Mutazione ESEGUITA: togliere `"classe": r.get("device_class")`
+    dall'apertura del ramo `sicurezza` in `aggregate_day` (`mind/facts.py`) --
+    il test torna rosso su `assert corpo["classe"] == "smoke"`
+    (`KeyError: 'classe'`).
+    """
+    archivio.record(quando_ts=ts(15, 30), source="entita",
+                    subject="binary_sensor.fumo_cucina", da="off", a="on",
+                    device_class="smoke")
+    archivio.record(quando_ts=ts(17, 5), source="entita",
+                    subject="binary_sensor.fumo_cucina", da="on", a="off",
+                    device_class="smoke")
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+    corpo = archivio.facts(day=G)[0]["corpo"]
+    assert corpo["classe"] == "smoke"
+    # Lo stato GREZZO resta quello che era: la classe si aggiunge accanto,
+    # non lo sostituisce ne' lo riscrive.
+    assert corpo["stato"] == "on"
+
+
+def test_senza_classe_nel_grezzo_la_chiave_TACE_non_diventa_null(archivio):
+    """Stessa disciplina di `nome`/`dominio`/`titolo`: un `classe: null`
+    sarebbe un buco travestito da dato. Chi rende cade allora sul terzo
+    gradino, che e' la verita' -- «di quella riga non sappiamo la classe» --
+    non un'invenzione.
+
+    Mutazione ESEGUITA: scrivere `base_body["classe"] = o.get("classe")`
+    senza la guardia `if o.get("classe"):` (`mind/facts.py`, `close()`) -- il
+    test torna rosso su `assert "classe" not in corpo`.
+    """
+    archivio.record(quando_ts=ts(15, 30), source="entita",
+                    subject="climate.camera_t", da="off", a="heat")
+    archivio.record(quando_ts=ts(17, 5), source="entita",
+                    subject="climate.camera_t", da="heat", a="off")
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+    corpo = archivio.facts(day=G)[0]["corpo"]
+    assert "classe" not in corpo
+    assert corpo["stato"] == "heat"
+
+
+def test_una_condizione_di_sistema_non_porta_nessuna_classe(archivio):
+    """Un `integrazione:`/`problema:`/`log:` non e' un'entita' e non ha una
+    `device_class`: la chiave non deve comparire nemmeno vuota. E' lo stesso
+    confine che tiene fuori quei soggetti dal vocabolario degli stati al
+    confine dell'API."""
+    archivio.record(quando_ts=ts(9, 0), source="sistema",
+                    subject="integrazione:01ABC", da=None, a="setup_retry",
+                    domain="lifx", title="Abat-jour")
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+    corpo = archivio.facts(day=G)[0]["corpo"]
+    assert corpo["stato"] == "setup_retry"
+    assert "classe" not in corpo

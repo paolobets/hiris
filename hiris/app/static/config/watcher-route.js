@@ -42,6 +42,15 @@
    Ogni genere di episodio porta un
    `corpo` di forma diversa (`aggregate_day`): funzionamento/presenza/
    sicurezza/guasto portano `stato` (il valore che ha aperto l'episodio);
+   **e, dal 07/09/2026 (fetta «lo stato»), `stato_reso` accanto ad esso
+   QUANDO una resa esiste** -- lo stato GREZZO resta `stato`, la resa e' una
+   chiave in piu' aggiunta al confine dell'API (`api/handlers_mind.py`), mai
+   sopra il grezzo. Manca del tutto quando resa non ce n'e', come
+   `direzione`: e le due ragioni per cui puo' mancare le distingue
+   `corpo.traduzioni` della risposta, non questa chiave. Un episodio di
+   `guasto` non ne ha mai una (il suo `stato` non e' uno stato di Home
+   Assistant: e' `aperto`, `setup_retry`, parole nostre e della
+   configurazione);
    energia porta `valore_iniziale`/`valore_finale`/`differenza` -- una
    VARIAZIONE fra due letture, mai presentata come un consumo da sola: il
    genere copre anche l'energia PRODOTTA da un impianto fotovoltaico.
@@ -409,7 +418,15 @@ window.HirisWatcherRoute = (function () {
       if (c.stato === 'aperto') return aperto;
       return c.stato != null ? aperto + ' · stato: ' + c.stato : aperto;
     }
-    return c.stato != null ? 'stato: ' + c.stato : '(nessun dettaglio)';
+    /* Fetta «lo stato» (07/09/2026): `stato_reso` e' la resa che il confine
+       dell'API ha aggiunto ACCANTO al grezzo, mai al posto suo. Si legge la
+       resa se c'e', il grezzo se no -- e quando non c'e' non si inventa
+       niente: e' esattamente cio' che Home Assistant stesso mostra quando
+       nessuno dei suoi quattro gradini risponde. Il PERCHE' manchi (le
+       traduzioni non lette, oppure questo stato senza traduzione) lo dice
+       `translationsNote` una volta per pagina, non ogni riga. */
+    var shown = c.stato_reso != null ? c.stato_reso : c.stato;
+    return shown != null ? 'stato: ' + shown : '(nessun dettaglio)';
   }
 
   /* La provenienza della direzione -- non e' la stessa domanda della
@@ -1044,7 +1061,39 @@ window.HirisWatcherRoute = (function () {
     return box;
   }
 
-  function renderFacts(body, fact, dayFilter) {
+  /* I due silenzi, detti e non nascosti (fetta «lo stato», 07/09/2026).
+
+     `traduzioni` arriva da `GET /api/mind/facts` gia' ETICHETTATO da chi
+     l'ha prodotto (`proxy/state_translations.py`): questa funzione lo
+     TRASPORTA, non lo indovina confrontando stringhe.
+
+     - `lette: false` -> gli stati restano in inglese perche' non si e'
+       potuto chiedere a Home Assistant, e il motivo e' li' dentro. E'
+       un'altra cosa da «questo stato non ha traduzione», che invece non si
+       annuncia: HA stesso in quel caso mostra il grezzo, e non e' un
+       difetto nostro da spiegare riga per riga.
+     - `lingua` diversa da `it` -> gli stati sono resi nella lingua che il
+       PROPRIETARIO ha scelto in Home Assistant, mentre il resto di questa
+       pagina e' in italiano fisso. E' corretto -- e' la sua lingua -- ma le
+       due cose divergono a vista, e tacerlo lascerebbe pensare a una resa
+       fatta male. */
+  function translationsNote(body, translations) {
+    var t = translations || {};
+    if (t.lette === false) {
+      line(body, 'Gli stati qui sotto sono quelli grezzi di Home Assistant: le sue traduzioni ' +
+        'non si sono potute leggere' + (t.motivo ? ' (' + t.motivo + ')' : '') + '.', TONE_CALM);
+      return;
+    }
+    /* Nessun `t.lette === true` qui: il ramo di sopra e' gia' uscito per il
+       guasto, e ripeterlo sarebbe una condizione che nessuna mutazione puo'
+       vedere rossa (provata: toglierla lascia tutto verde). */
+    if (t.lingua && t.lingua !== 'it') {
+      line(body, 'Gli stati qui sotto sono resi nella lingua della casa (' + t.lingua +
+        '), quella scelta in Home Assistant; il resto della pagina è in italiano.', TONE_CALM);
+    }
+  }
+
+  function renderFacts(body, fact, dayFilter, translations) {
     if (!fact.length) {
       if (!dayFilter) {
         line(body, 'Non c’è ancora nessun episodio: l’aggregazione notturna gira una volta al giorno, alle 00:20.',
@@ -1066,6 +1115,7 @@ window.HirisWatcherRoute = (function () {
       line(body, text, TONE_CALM);
       return;
     }
+    translationsNote(body, translations);
     fact.forEach(function (o) { body.appendChild(factLine(o)); });
   }
 
@@ -1113,7 +1163,7 @@ window.HirisWatcherRoute = (function () {
       if (myGeneration !== factsGeneration) return; // superata da un cambio di giorno più recente
       clearEl(body);
       if (!occurrence.ok) { renderFactsError(body, occurrence.status, reload); return; }
-      renderFacts(body, occurrence.corpo.facts || [], day);
+      renderFacts(body, occurrence.corpo.facts || [], day, occurrence.corpo.traduzioni);
     }, function () {
       if (myGeneration !== factsGeneration) return;
       clearEl(body);
