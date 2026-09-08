@@ -1,5 +1,59 @@
 # HIRIS — Changelog
 
+## [3.23.1] — HIRIS si accorge da solo di quello che non sa (2026-09-08)
+
+**La 3.23.0 aveva insegnato a HIRIS cosa sanno fare le tue cose. Questa gli insegna due cose in
+più: a dirtelo prima che tu chieda, e ad accorgersi da solo quando Home Assistant aggiunge
+qualcosa che nessuno ha ancora classificato.**
+
+### Il modello sa di poter chiedere
+
+Prima, HIRIS sapeva rispondere sull'Alberello — ma solo se il modello pensava di guardarlo. Il
+riassunto che riceve a ogni messaggio non diceva niente delle capacità della casa, quindi sapeva
+rispondere ma **non sapeva di poter chiedere**.
+
+Adesso quel riassunto porta una riga su cosa si può chiedere alle cose di casa. Costa 671
+caratteri, e per farli stare **il tetto del riassunto è salito da 6.000 a 6.800**: non è un
+dettaglio, perché a 6.000 quella riga avrebbe cacciato fuori «Notevole adesso» per intero e sette
+voci di comportamento su venti. Adesso **«Notevole adesso» ha due righe in più di prima**, e il
+comportamento ci sta tutto.
+
+### Le parole sono quelle di Home Assistant, non più le nostre
+
+Quattro tabelle di traduzione scritte a mano sono state **cancellate**. Traducevano ciò che ormai
+HIRIS scarica già tradotto — e lo traducevano peggio: una di quelle rendeva `open` allo stesso modo
+su una serratura e su una tapparella, cosa che Home Assistant non fa.
+
+Si vede, e va guardato: le parole ora arrivano **maiuscole** («Acceso», «Aperto», «Bagnato»),
+perché sono quelle che pubblica Home Assistant nella lingua della casa. E il termostato adesso
+distingue *come l'hai impostato* da *cosa sta facendo* — «impostato su Riscaldamento, azione in
+corso: Inattivo» — perché in italiano Home Assistant rende `heat` e `heating` con la stessa parola,
+e senza nominare l'attributo quella distinzione sparirebbe.
+
+**Con una regola che non si piega**: se le traduzioni non si sono potute leggere, HIRIS **lo dice**.
+Non mostra un vuoto, e non ricade su una parola inventata. Una tabella scritta a mano non fallisce
+mai; la rete sì, e chi legge deve sapere quale dei due casi ha davanti.
+
+### Il controllo che si accorge da solo
+
+C'è ora un controllo che confronta ciò che Home Assistant pubblica con ciò che HIRIS dichiara di
+conoscere, e **nomina la differenza**. Non decide: obbliga a decidere.
+
+Girando per la prima volta ha nominato **181 voci**, e ne ha già trovate di vere — cinque stati di
+un boiler che avrebbero aperto un episodio senza mai chiuderlo, tre di una serratura nella stessa
+condizione, e una voce che descriveva una classe di sensore che in Home Assistant non esiste.
+
+**Sei sono state decise** e sono dentro. **Centoquindici restano aperte, nominate**: sono classi di
+sensori e di numeri su cui la domanda — *«questa serve a capire la casa?»* — è una scelta, non un
+calcolo. Restano visibili finché qualcuno non risponde, che è esattamente il loro mestiere.
+
+### E una sirena che tornava a essere un elettrodomestico
+
+Dichiarare che le sirene si accendono e si spengono aveva un effetto che nessuno cercava: **una
+sirena che suona** smetteva di essere un fatto di sicurezza e diventava un fatto di funzionamento,
+perché il codice si chiedeva prima «si accende?» e poi «riguarda la sicurezza?». La regola giusta
+era già scritta accanto, ed era il codice a smentirla.
+
 ## [3.23.0] — HIRIS sa cosa sanno fare le tue cose (2026-09-08)
 
 **Fino a ieri HIRIS sapeva che l'Alberello è una luce e che è spento. Non sapeva che si attenua,
