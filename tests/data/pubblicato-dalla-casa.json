@@ -1,0 +1,799 @@
+{
+  "letto_il": "2026-09-08",
+  "versione_ha": "2026.9.1",
+  "lingua": "it",
+  "domini": [
+    "alarm_control_panel",
+    "assist_satellite",
+    "automation",
+    "binary_sensor",
+    "button",
+    "calendar",
+    "camera",
+    "climate",
+    "conversation",
+    "counter",
+    "cover",
+    "date",
+    "datetime",
+    "device_tracker",
+    "event",
+    "fan",
+    "geo_location",
+    "group",
+    "humidifier",
+    "image",
+    "image_processing",
+    "infrared",
+    "input_boolean",
+    "input_button",
+    "input_datetime",
+    "input_number",
+    "input_select",
+    "input_text",
+    "lawn_mower",
+    "light",
+    "lock",
+    "media_player",
+    "notify",
+    "number",
+    "person",
+    "radio_frequency",
+    "remote",
+    "schedule",
+    "script",
+    "select",
+    "sensor",
+    "siren",
+    "sun",
+    "switch",
+    "tag",
+    "text",
+    "time",
+    "timer",
+    "todo",
+    "update",
+    "vacuum",
+    "valve",
+    "water_heater",
+    "weather",
+    "zone"
+  ],
+  "classi_per_dominio": {
+    "binary_sensor": [
+      "battery",
+      "battery_charging",
+      "carbon_monoxide",
+      "cold",
+      "connectivity",
+      "door",
+      "garage_door",
+      "gas",
+      "heat",
+      "light",
+      "lock",
+      "moisture",
+      "motion",
+      "moving",
+      "occupancy",
+      "opening",
+      "plug",
+      "power",
+      "presence",
+      "problem",
+      "running",
+      "safety",
+      "smoke",
+      "sound",
+      "tamper",
+      "update",
+      "vibration",
+      "window"
+    ],
+    "button": [
+      "identify",
+      "restart",
+      "update"
+    ],
+    "cover": [
+      "awning",
+      "blind",
+      "curtain",
+      "damper",
+      "door",
+      "garage",
+      "gate",
+      "shade",
+      "shutter",
+      "window"
+    ],
+    "event": [
+      "button",
+      "doorbell",
+      "motion"
+    ],
+    "humidifier": [
+      "dehumidifier",
+      "humidifier"
+    ],
+    "infrared": [
+      "emitter",
+      "receiver"
+    ],
+    "media_player": [
+      "projector",
+      "receiver",
+      "speaker",
+      "tv"
+    ],
+    "number": [
+      "absolute_humidity",
+      "apparent_power",
+      "aqi",
+      "area",
+      "atmospheric_pressure",
+      "battery",
+      "blood_glucose_concentration",
+      "carbon_dioxide",
+      "carbon_monoxide",
+      "conductivity",
+      "current",
+      "data_rate",
+      "data_size",
+      "distance",
+      "duration",
+      "energy",
+      "energy_distance",
+      "energy_storage",
+      "frequency",
+      "gas",
+      "humidity",
+      "illuminance",
+      "irradiance",
+      "moisture",
+      "monetary",
+      "nitrogen_dioxide",
+      "nitrogen_monoxide",
+      "nitrous_oxide",
+      "ozone",
+      "ph",
+      "pm1",
+      "pm10",
+      "pm25",
+      "pm4",
+      "power",
+      "power_factor",
+      "precipitation",
+      "precipitation_intensity",
+      "pressure",
+      "radon",
+      "reactive_energy",
+      "reactive_power",
+      "signal_strength",
+      "sound_pressure",
+      "speed",
+      "sulphur_dioxide",
+      "temperature",
+      "temperature_delta",
+      "volatile_organic_compounds",
+      "volatile_organic_compounds_parts",
+      "voltage",
+      "volume",
+      "volume_flow_rate",
+      "volume_storage",
+      "water",
+      "weight",
+      "wind_direction",
+      "wind_speed"
+    ],
+    "sensor": [
+      "absolute_humidity",
+      "apparent_power",
+      "aqi",
+      "area",
+      "atmospheric_pressure",
+      "battery",
+      "blood_glucose_concentration",
+      "carbon_dioxide",
+      "carbon_monoxide",
+      "conductivity",
+      "current",
+      "data_rate",
+      "data_size",
+      "date",
+      "distance",
+      "duration",
+      "energy",
+      "energy_distance",
+      "energy_storage",
+      "enum",
+      "frequency",
+      "gas",
+      "humidity",
+      "illuminance",
+      "irradiance",
+      "moisture",
+      "monetary",
+      "nitrogen_dioxide",
+      "nitrogen_monoxide",
+      "nitrous_oxide",
+      "ozone",
+      "ph",
+      "pm1",
+      "pm10",
+      "pm25",
+      "pm4",
+      "power",
+      "power_factor",
+      "precipitation",
+      "precipitation_intensity",
+      "pressure",
+      "radon",
+      "reactive_energy",
+      "reactive_power",
+      "signal_strength",
+      "sound_pressure",
+      "speed",
+      "sulphur_dioxide",
+      "temperature",
+      "temperature_delta",
+      "timestamp",
+      "uptime",
+      "volatile_organic_compounds",
+      "volatile_organic_compounds_parts",
+      "voltage",
+      "volume",
+      "volume_flow_rate",
+      "volume_storage",
+      "water",
+      "weight",
+      "wind_direction",
+      "wind_speed"
+    ],
+    "switch": [
+      "outlet",
+      "switch"
+    ],
+    "update": [
+      "firmware"
+    ],
+    "valve": [
+      "gas",
+      "water"
+    ]
+  },
+  "stati_per_tipo": {
+    "alarm_control_panel": {
+      "_": [
+        "armed",
+        "armed_away",
+        "armed_custom_bypass",
+        "armed_home",
+        "armed_night",
+        "armed_vacation",
+        "arming",
+        "disarmed",
+        "disarming",
+        "pending",
+        "triggered"
+      ]
+    },
+    "assist_satellite": {
+      "_": [
+        "idle",
+        "listening",
+        "processing",
+        "responding"
+      ]
+    },
+    "automation": {
+      "_": [
+        "off",
+        "on"
+      ]
+    },
+    "binary_sensor": {
+      "_": [
+        "off",
+        "on"
+      ],
+      "battery": [
+        "off",
+        "on"
+      ],
+      "battery_charging": [
+        "off",
+        "on"
+      ],
+      "carbon_monoxide": [
+        "off",
+        "on"
+      ],
+      "cold": [
+        "off",
+        "on"
+      ],
+      "connectivity": [
+        "off",
+        "on"
+      ],
+      "door": [
+        "off",
+        "on"
+      ],
+      "garage_door": [
+        "off",
+        "on"
+      ],
+      "gas": [
+        "off",
+        "on"
+      ],
+      "heat": [
+        "off",
+        "on"
+      ],
+      "light": [
+        "off",
+        "on"
+      ],
+      "lock": [
+        "off",
+        "on"
+      ],
+      "moisture": [
+        "off",
+        "on"
+      ],
+      "motion": [
+        "off",
+        "on"
+      ],
+      "moving": [
+        "off",
+        "on"
+      ],
+      "occupancy": [
+        "off",
+        "on"
+      ],
+      "opening": [
+        "off",
+        "on"
+      ],
+      "plug": [
+        "off",
+        "on"
+      ],
+      "power": [
+        "off",
+        "on"
+      ],
+      "presence": [
+        "off",
+        "on"
+      ],
+      "problem": [
+        "off",
+        "on"
+      ],
+      "running": [
+        "off",
+        "on"
+      ],
+      "safety": [
+        "off",
+        "on"
+      ],
+      "smoke": [
+        "off",
+        "on"
+      ],
+      "sound": [
+        "off",
+        "on"
+      ],
+      "tamper": [
+        "off",
+        "on"
+      ],
+      "update": [
+        "off",
+        "on"
+      ],
+      "vibration": [
+        "off",
+        "on"
+      ],
+      "window": [
+        "off",
+        "on"
+      ]
+    },
+    "calendar": {
+      "_": [
+        "off",
+        "on"
+      ]
+    },
+    "camera": {
+      "_": [
+        "idle",
+        "recording",
+        "streaming"
+      ]
+    },
+    "climate": {
+      "_": [
+        "auto",
+        "cool",
+        "dry",
+        "fan_only",
+        "heat",
+        "heat_cool",
+        "off"
+      ]
+    },
+    "cover": {
+      "_": [
+        "closed",
+        "closing",
+        "open",
+        "opening",
+        "stopped"
+      ]
+    },
+    "device_tracker": {
+      "_": [
+        "home",
+        "not_home"
+      ]
+    },
+    "fan": {
+      "_": [
+        "off",
+        "on"
+      ]
+    },
+    "group": {
+      "_": [
+        "closed",
+        "home",
+        "locked",
+        "not_home",
+        "off",
+        "ok",
+        "on",
+        "open",
+        "problem",
+        "unlocked"
+      ]
+    },
+    "humidifier": {
+      "_": [
+        "off",
+        "on"
+      ]
+    },
+    "input_boolean": {
+      "_": [
+        "off",
+        "on"
+      ]
+    },
+    "lawn_mower": {
+      "_": [
+        "docked",
+        "error",
+        "mowing",
+        "paused",
+        "returning"
+      ]
+    },
+    "light": {
+      "_": [
+        "off",
+        "on"
+      ]
+    },
+    "lock": {
+      "_": [
+        "jammed",
+        "locked",
+        "locking",
+        "open",
+        "opening",
+        "unlocked",
+        "unlocking"
+      ]
+    },
+    "media_player": {
+      "_": [
+        "buffering",
+        "idle",
+        "off",
+        "on",
+        "paused",
+        "playing",
+        "standby"
+      ]
+    },
+    "person": {
+      "_": [
+        "home",
+        "not_home"
+      ]
+    },
+    "remote": {
+      "_": [
+        "off",
+        "on"
+      ]
+    },
+    "schedule": {
+      "_": [
+        "off",
+        "on"
+      ]
+    },
+    "script": {
+      "_": [
+        "off",
+        "on"
+      ]
+    },
+    "sensor": {
+      "_": [
+        "off",
+        "on"
+      ]
+    },
+    "siren": {
+      "_": [
+        "off",
+        "on"
+      ]
+    },
+    "sun": {
+      "_": [
+        "above_horizon",
+        "below_horizon"
+      ]
+    },
+    "switch": {
+      "_": [
+        "off",
+        "on"
+      ],
+      "outlet": [
+        "off",
+        "on"
+      ],
+      "switch": [
+        "off",
+        "on"
+      ]
+    },
+    "timer": {
+      "_": [
+        "active",
+        "idle",
+        "paused"
+      ]
+    },
+    "update": {
+      "_": [
+        "off",
+        "on"
+      ]
+    },
+    "vacuum": {
+      "_": [
+        "cleaning",
+        "docked",
+        "error",
+        "idle",
+        "off",
+        "on",
+        "paused",
+        "returning"
+      ]
+    },
+    "valve": {
+      "_": [
+        "closed",
+        "closing",
+        "open",
+        "opening",
+        "stopped"
+      ]
+    },
+    "water_heater": {
+      "_": [
+        "eco",
+        "electric",
+        "gas",
+        "heat_pump",
+        "high_demand",
+        "off",
+        "performance"
+      ]
+    },
+    "weather": {
+      "_": [
+        "clear-night",
+        "cloudy",
+        "exceptional",
+        "fog",
+        "hail",
+        "lightning",
+        "lightning-rainy",
+        "partlycloudy",
+        "pouring",
+        "rainy",
+        "snowy",
+        "snowy-rainy",
+        "sunny",
+        "windy",
+        "windy-variant"
+      ]
+    }
+  },
+  "valori_di_state_class": [
+    "measurement",
+    "measurement_angle",
+    "total",
+    "total_increasing"
+  ],
+  "bit_per_dominio": {
+    "alarm_control_panel": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "assist_satellite": [
+      1,
+      2
+    ],
+    "button": [
+      2
+    ],
+    "calendar": [
+      1
+    ],
+    "climate": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32,
+      128,
+      256,
+      512
+    ],
+    "cover": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32,
+      64,
+      128,
+      256
+    ],
+    "fan": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "humidifier": [
+      1
+    ],
+    "lawn_mower": [
+      1,
+      2,
+      4
+    ],
+    "light": [
+      4,
+      8,
+      32
+    ],
+    "lock": [
+      1
+    ],
+    "media_player": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32,
+      128,
+      256,
+      512,
+      1024,
+      2048,
+      4096,
+      8192,
+      16384,
+      32768,
+      65536,
+      131072,
+      262144,
+      524288,
+      1048576,
+      2097152,
+      4194304
+    ],
+    "notify": [
+      1
+    ],
+    "remote": [
+      4
+    ],
+    "siren": [
+      1,
+      2,
+      4,
+      8,
+      16
+    ],
+    "todo": [
+      1,
+      2,
+      4,
+      16,
+      32,
+      64
+    ],
+    "update": [
+      8
+    ],
+    "vacuum": [
+      4,
+      8,
+      16,
+      512,
+      8192,
+      16384
+    ],
+    "valve": [
+      1,
+      2,
+      4,
+      8
+    ],
+    "weather": [
+      1,
+      2,
+      4
+    ]
+  },
+  "domini_accendibili": [
+    "automation",
+    "camera",
+    "climate",
+    "cover",
+    "fan",
+    "homeassistant",
+    "humidifier",
+    "input_boolean",
+    "light",
+    "media_player",
+    "remote",
+    "script",
+    "siren",
+    "switch",
+    "valve",
+    "water_heater"
+  ]
+}

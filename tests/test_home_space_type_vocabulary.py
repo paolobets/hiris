@@ -378,6 +378,14 @@ _ECCEZIONI_MOTIVATE: dict[tuple[str, tuple[str, ...]], str] = {
     # (§12) l'ha decisa nel verso opposto -- non «quali attributi conservare»
     # ma «tutti», e il dizionario che dice cosa significa ognuno vive adesso
     # nel vocabolario, importato dal sorgente di Home Assistant.
+    ("home_space/type_census.py", ("remote", "siren")):
+        "`type_census.OPEN_QUESTIONS`: non e' un vocabolario parallelo, e' il "
+        "contrario -- il CENSORE che nomina cio' che nessun vocabolario ha "
+        "deciso. I due domini stanno li' come SOGGETTO di una domanda aperta "
+        "per il proprietario («Home Assistant li dichiara accendibili, HIRIS "
+        "no: chi ha ragione?»), non come giudizio. Il giorno in cui la "
+        "risposta arriva, escono di li' ed entrano nel vocabolario -- che e' "
+        "esattamente il moto che questa prova esiste per non impedire.",
     ("home_space/behavior.py", ("automation", "script")):
         "`behavior._reread`: non e' un vocabolario di tipi, e' la GUARDIA che "
         "distingue «Home Assistant non ha ancora caricato le automazioni» da "

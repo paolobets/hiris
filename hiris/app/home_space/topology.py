@@ -471,7 +471,15 @@ _CLASS_MEANING: dict[str, tuple[str, str]] = {
     "window": ("aperto", "chiuso"),
     "garage_door": ("aperto", "chiuso"),
     "opening": ("aperto", "chiuso"),
-    "damper": ("aperto", "chiuso"),
+    # `damper` STAVA qui, e non poteva funzionare: `BinarySensorDeviceClass`
+    # non ha `DAMPER` -- e' una `CoverDeviceClass`, e infatti questa casa la
+    # pubblica su `cover`. La riga era irraggiungibile (nessun
+    # `binary_sensor` portera' mai `device_class: damper`) e faceva 29 voci
+    # per 28 classi vere: il conto tornava solo perche' nessuno lo faceva.
+    # E' il rovescio esatto della trappola `carbon_monoxide`/`co` qui sopra --
+    # la' una classe vera scritta col nome sbagliato taceva, qui un nome
+    # inesistente occupava una riga che sembrava verificata. Trovata dal
+    # censore girato una volta sola (08/09/2026).
     "lock": ("sbloccato", "bloccato"),
     # presenza e movimento
     "motion": ("movimento rilevato", "nessun movimento"),

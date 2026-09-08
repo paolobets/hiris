@@ -55,11 +55,21 @@ che spiega cosa significa un valore sta in `ha_vocabulary.py`; un giudizio su
 cosa un tipo serve o quando ha finito sta qui.** Chi si trova a scrivere una
 riga e non sa quale dei due, ha trovato il caso che scioglie la fetta 6.
 
-**Cosa questo modulo NON fa ancora.** Non chiede niente a Home Assistant: i
-campi `Asked` esisteranno quando la lettura viva entrera' (piano, fetta 3), e
-il censore che confronta cio' che HA pubblica con cio' che questo vocabolario
-rivendica arriva dopo (fetta 4). La forma li regge gia' entrambi; il contenuto
-no, ed e' dichiarato invece che simulato.
+**Cosa questo modulo NON fa, e chi lo fa al posto suo.** Non chiede niente a
+Home Assistant: la lettura viva sta in `proxy/state_translations.py` e in
+`action/registry.py` (piano, fetta 3), e **il censore che confronta cio' che HA
+pubblica con cio' che questo vocabolario rivendica sta in `type_census.py`**
+(fetta 4, 08/09/2026). Sono tre moduli e non uno apposta: un vocabolario che
+leggesse la rete congelerebbe all'import un dato che e' «di adesso» per
+definizione, e un censore dentro il vocabolario giudicherebbe se stesso.
+
+**Cosa il censore ha gia' cambiato qui**: le quattro tabelle di capacita' di
+`lock`, `humidifier`, `lawn_mower` e `assist_satellite` sono entrate perche'
+lui le ha nominate -- il registro dei servizi di questa casa dichiarava bit per
+domini che non avevano nessuna tabella. Cio' che il censore nomina e che NON e'
+nostro decidere resta aperto in `type_census.OPEN_QUESTIONS`, con la domanda
+scritta: sei stati di `water_heater`, tre di `lock`, quattro di `lawn_mower`,
+109 classi del dispositivo mai nominate.
 
 Spec: `docs/design/2026-09-07-l-anagrafe-dei-tipi.md`.
 """
@@ -715,6 +725,13 @@ UNKNOWN_STATES = Ours({"unavailable", "unknown"})
 # Restano fuori per MANCANZA DI FONTE (verificato su entrambi i tag,
 # `__init__.py` e `const.py`, nessuna traccia di un `EntityFeature`):
 # `button`, `device_tracker`, `switch` -- e `automation`, gia' citato sopra.
+# `button` e' quello che il censore continua a nominare, e la sua ragione va
+# letta fino in fondo: questa casa dichiara `supported_features: [2]` su
+# `button`, ma il bit non viene dal dominio -- viene da `reolink.ptz_move`,
+# un servizio di integrazione che BERSAGLIA `button`. Non esiste nessun
+# `ButtonEntityFeature` da cui prendere il nome di quel bit, quindi
+# decodificarlo vorrebbe dire inventarlo. Resta fuori, e l'eccezione e'
+# scritta in `type_census.py`.
 #
 # COPERTURA IN NUMERI -- TRE fatti diversi, misurati sulla casa vera
 # (`/api/states`) il 06/09/2026, non a parole e non confusi l'uno con
@@ -853,6 +870,29 @@ _FEATURE_TABLES: dict[str, dict[int, str]] = {
     # non dichiarerebbe mai `supported_features` per cominciare, quindi non
     # c'e' nessun valore vecchio con cui `CONTROL=1` possa confliggere.
     "conversation": {1: "controllo"},  # 1/181
+    # I QUATTRO domini della fetta del censore (08/09/2026). Non sono arrivati
+    # da una lettura del sorgente fatta per hobby: li ha NOMINATI il censore,
+    # confrontando i bit che questa casa dichiara nel registro dei servizi con
+    # i domini che avevano una tabella. Erano cinque; il quinto (`button`)
+    # resta fuori, e la sua ragione e' scritta piu' sotto.
+    #
+    # Zero entita' di questi domini su questa casa -- come `cover`, `fan`,
+    # `water_heater` e `vacuum` qui sopra: il numero e' scritto apposta perche'
+    # chi legge sappia che «zero» e' una misura, non una svista. Cio' che NON
+    # e' zero e' il registro dei servizi: Home Assistant dichiara quei bit
+    # anche senza un'entita' che li porti, ed e' da li' che il censore li vede.
+    "lock": {1: "apertura"},  # LockEntityFeature.OPEN, identica ai due tag
+    "humidifier": {1: "modi"},  # HumidifierEntityFeature.MODES, identica ai due tag
+    "lawn_mower": {  # LawnMowerEntityFeature, identica ai due tag
+        1: "avvio_taglio", 2: "pausa", 4: "rientro_alla_base",
+    },
+    # `assist_satellite`: caso NUOVO, lo stesso di `conversation` qui sopra --
+    # il componente non esiste affatto a `2024.7.0` (verificato: ne'
+    # `const.py` ne' `__init__.py`, 404 su entrambi), e nasce prima di
+    # `2026.9.1`. Su una casa ferma al tag vecchio non esiste nessuna entita'
+    # di questo dominio, quindi non c'e' nessun valore vecchio con cui questi
+    # due bit possano confliggere.
+    "assist_satellite": {1: "annuncio", 2: "avvio_conversazione"},
 }
 
 for _domain, _bits in _FEATURE_TABLES.items():
@@ -1379,6 +1419,22 @@ def capability_names(domain: str) -> Mapping[int, str] | None:
     fatti diversi, e questo vocabolario oggi puo' dire solo il primo.
     """
     return _vocabulary.value(domain, None, CAPABILITY_NAMES)
+
+
+def declared_domains() -> frozenset[str]:
+    """I domini per cui questo vocabolario ha una riga -- qualunque cosa quella
+    riga dica.
+
+    Serve al censore (`type_census.py`): «rivendicato» non vuol dire «giudicato
+    bene», vuol dire che questo vocabolario quel dominio l'ha guardato. Chi
+    vuole sapere COSA ne dice chiede il campo, non questa vista.
+    """
+    return _vocabulary.domains()
+
+
+def declared_pairs() -> frozenset[tuple[str, str]]:
+    """Le coppie (dominio, classe) per cui questo vocabolario ha una riga."""
+    return _vocabulary.pairs()
 
 
 def capability_tables() -> Mapping[str, Mapping[int, str]]:

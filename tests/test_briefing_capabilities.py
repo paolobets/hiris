@@ -8,8 +8,11 @@ capacita'. Sapeva rispondere, e non sapeva **di poter chiedere**.
 I numeri di questo file sono misurati sulla casa vera l'08/09/2026 (841
 entita'): 19 firme di capacita' distinte per 1.096 caratteri, ridotte dal
 tetto della sezione a **12 firme e 671 caratteri**, che coprono 196 entita'
-su 205. Il tetto del nucleo e' 6.000 e ne erano gia' occupati 5.676, con un
-taglio gia' in corso: e' il vincolo che decide la forma di questa sezione.
+su 205. Il tetto del nucleo era 6.000 e ne erano gia' occupati 5.676, con un
+taglio gia' in corso: e' il vincolo che ha deciso la forma di questa sezione.
+**Dall'08/09/2026 il tetto e' 6.800** (`briefing.DEFAULT_CEILING`), deciso dal
+proprietario proprio perche' a 6.000 questa sezione sfrattava «Notevole
+adesso» per intero -- vedi in fondo a questo file la prova che lo pinna.
 La suite gira senza la casa: qui gli attributi sono quelli letti allora,
 ridotti ai casi che decidono.
 """
@@ -291,3 +294,105 @@ def test_a_stato_non_letto_le_capacita_si_dichiarano_e_non_si_tagliano():
     testo, _ = compose(_CASA, [], [], _STATO, ceiling=900,
                        reliable_state=False, attributes=_attributi())
     assert "non si puo' dire cosa le cose di questa casa sanno fare" in testo
+
+
+# ---------------------------------------------------------------------------
+# IL TETTO: cosa il numero compra, misurato sulla casa vera
+# ---------------------------------------------------------------------------
+#
+# La casa qui sotto e' la casa del proprietario in miniatura, e le sue
+# proporzioni non sono scelte a occhio: 26 aree, 156 luci di cui quattro
+# accese, 36 automazioni, una firma di capacita' diversa per ogni luce. Con
+# queste, il nucleo pesa 6.178 caratteri -- fra i due tetti che questa prova
+# confronta -- e si comporta come si comporta quello vero:
+#
+#   a 6.000  «Notevole adesso» resta la sola intestazione (4 elementi fuori)
+#            e quattro automazioni su 36 non entrano;
+#   a 6.800  entrambe intere, la mappa delle capacita' pure, nessun taglio.
+#
+# Sulla casa vera, ricomposta in locale sugli ingressi veri l'08/09/2026:
+# a 6.000 «Notevole adesso» passava da quattro righe a ZERO e sette voci di
+# comportamento su venti restavano fuori; a 6.800 «Notevole adesso» sale a sei
+# righe e il comportamento esce completo (20 su 20).
+
+_AREE_TETTO = 26
+_LUCI_TETTO = 156
+_AUTOMAZIONI_TETTO = 36
+
+_CASA_TETTO = {
+    "piani": [{"id": "terra", "nome": "Piano terra", "livello": 0}],
+    "aree": [{"id": f"area{n}", "nome": f"Stanza numero {n}", "piano_id": "terra",
+              "alias": [], "etichette": []} for n in range(_AREE_TETTO)],
+    "dispositivi": [],
+    "entita": [{"id": f"light.luce{n}", "nome": f"Luce {n}",
+                "area_id": f"area{n % _AREE_TETTO}", "dispositivo_id": None,
+                "classe": None, "unita": None, "disabilitata": 0}
+               for n in range(_LUCI_TETTO)],
+    "etichette": [], "categorie": [], "integrazioni": [],
+}
+_STATO_TETTO = {f"light.luce{n}": ("on" if n < 4 else "off")
+                   for n in range(_LUCI_TETTO)}
+_ATTRIBUTI_TETTO = {f"light.luce{n}": {CAPABILITIES: {"effect_list": [f"effetto{n}"]}}
+                       for n in range(_LUCI_TETTO)}
+_COMPORTAMENTO_TETTO = [
+    {"id": f"automation.automazione_numero_{i}", "tipo": "automazione",
+     "nome": f"Automazione numero {i} con un nome di lunghezza realistica",
+     "corpo": {"trigger": []}, "origine": "file"}
+    for i in range(_AUTOMAZIONI_TETTO)]
+
+
+def _nucleo_tetto(ceiling=None):
+    extra = {} if ceiling is None else {"ceiling": ceiling}
+    return compose(_CASA_TETTO, _COMPORTAMENTO_TETTO, [], _STATO_TETTO,
+                   attributes=_ATTRIBUTI_TETTO, **extra)
+
+
+def test_a_seimila_le_capacita_sfrattavano_notevole_adesso_per_intero():
+    """La misura che ha fatto alzare il tetto, e sta qui perche' il numero
+    nuovo si legga insieme a cio' che il vecchio costava.
+
+    Non e' una prova sul passato: e' l'oracolo dell'altra. Senza di lei, la
+    prova qui sotto passerebbe anche su una casa che al tetto vecchio ci
+    stava comoda -- e non direbbe piu' niente sul tetto.
+    """
+    testo, riepilogo = _nucleo_tetto(ceiling=6000)
+    assert riepilogo["truncated"] is True
+    notevole = _sezione(testo, "## Notevole adesso").splitlines()
+    assert notevole[1:] == [], (
+        "a 6.000 «Notevole adesso» deve restare la sola intestazione: "
+        f"invece porta {len(notevole) - 1} righe")
+    automazioni = _sezione(testo, "## Cio' che la casa fa gia'").splitlines()[1:]
+    assert len(automazioni) < _AUTOMAZIONI_TETTO
+
+
+def test_al_tetto_di_adesso_notevole_adesso_e_il_comportamento_restano_interi():
+    """**Il tetto di default e' 6.800, e questa prova dice cosa compra.**
+    Senza chiamante che lo sovrascriva, e' questo numero a decidere quanto il
+    modello sa della casa a ogni turno.
+
+    Mutazione ESEGUITA: `DEFAULT_CEILING = 6000` in `briefing.py` --
+    «Notevole adesso» torna a zero righe e la prova arrossisce su
+    `assert 0 == 4`.
+    """
+    testo, riepilogo = _nucleo_tetto()
+    notevole = _sezione(testo, "## Notevole adesso").splitlines()[1:]
+    assert len(notevole) == 4, (
+        "al tetto di adesso le quattro luci accese devono entrare tutte: "
+        f"ne sono entrate {len(notevole)}")
+    automazioni = _sezione(testo, "## Cio' che la casa fa gia'").splitlines()[1:]
+    assert len(automazioni) == _AUTOMAZIONI_TETTO
+    assert "## Cosa si puo' chiedere" in testo
+    assert riepilogo["truncated"] is False
+
+
+def test_il_tetto_di_default_e_quello_che_compose_usa_davvero():
+    """Un default dichiarato in una costante e non usato nella firma sarebbe
+    una decisione scritta due volte, e la seconda potrebbe restare indietro.
+
+    Mutazione ESEGUITA: rimettere `ceiling: int = 6000` nella firma di
+    `compose()` lasciando `DEFAULT_CEILING = 6800` -- i due testi divergono e
+    la prova arrossisce.
+    """
+    predefinito, _ = _nucleo_tetto()
+    esplicito, _ = _nucleo_tetto(ceiling=briefing.DEFAULT_CEILING)
+    assert predefinito == esplicito

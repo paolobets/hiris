@@ -1540,8 +1540,33 @@ def _assemble(sections: list[tuple[str, list[str]]]) -> str:
     return "\n\n".join(blocks)
 
 
+#: Quanti caratteri il nucleo puo' pesare. **Nessun chiamante lo sovrascrive**
+#: (`handlers_home_space.compose_briefing` e' l'unico di produzione), quindi
+#: questo numero decide da solo quanto il modello sa della casa a ogni turno.
+#:
+#: **6.800 dall'08/09/2026, deciso dal proprietario**, e il numero viene da una
+#: misura sulla casa vera, non da un margine di sicurezza. A 6.000 il nucleo di
+#: quella casa pesava 5.676 e TRONCAVA gia' (nove elementi notevoli fuori);
+#: entrata la mappa delle capacita' (714 caratteri, la sezione «cosa si puo'
+#: chiedere»), lo stesso tetto sfrattava **«Notevole adesso» per intero** -- da
+#: quattro righe a zero -- e **sette voci di comportamento su venti**. A 6.800
+#: convivono tutte: 6.461 caratteri, «Notevole adesso» sale a sei righe (piu'
+#: di quante ne avesse prima), il comportamento esce completo (20 su 20), la
+#: mappa delle stanze non perde una riga. Ricomposto in locale sugli ingressi
+#: veri della casa il 08/09/2026; la ricostruzione e' verificata contro il
+#: nucleo vivo (5.676 caratteri, sezione per sezione).
+#:
+#: **Cosa NON risolve, e va detto qui perche' non si scopra fra sei mesi**: un
+#: tetto piu' alto non impedisce che la PROSSIMA sezione aggiunta sfratti di
+#: nuovo «Notevole adesso», e in silenzio. Solo un minimo garantito lo
+#: impedirebbe -- come gia' ce l'ha la mappa delle stanze
+#: (`_MIN_HOME_SPACE_LINES_RESERVE`). Non e' stato fatto: e' una scelta
+#: dichiarata (spec §15.1), non una dimenticanza.
+DEFAULT_CEILING = 6800
+
+
 def compose(home_space: dict, behavior: list[dict], memories: list[dict],
-            state: dict, ceiling: int = 6000,
+            state: dict, ceiling: int = DEFAULT_CEILING,
             unavailable: tuple[str, ...] = (),
             reliable_state: bool = True,
             behavior_problems: tuple[str, ...] = (),

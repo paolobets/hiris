@@ -159,6 +159,21 @@ _PINNED_BITS = [
     ("remote", 4, "attivita"),
     # conversation -- ConversationEntityFeature, nato prima di 2026.9.1
     ("conversation", 1, "controllo"),
+    # I quattro nominati dal censore (08/09/2026): il registro dei servizi di
+    # questa casa dichiarava bit per domini che non avevano nessuna tabella.
+    # lock -- LockEntityFeature, components/lock/__init__.py (identica ai due tag)
+    ("lock", 1, "apertura"),
+    # humidifier -- HumidifierEntityFeature, .../const.py (identica ai due tag)
+    ("humidifier", 1, "modi"),
+    # lawn_mower -- LawnMowerEntityFeature, .../const.py (identica ai due tag)
+    ("lawn_mower", 1, "avvio_taglio"),
+    ("lawn_mower", 2, "pausa"),
+    ("lawn_mower", 4, "rientro_alla_base"),
+    # assist_satellite -- AssistSatelliteEntityFeature, .../const.py: il
+    # componente NON esiste a 2024.7.0 (404 su entrambi i file), nasce prima
+    # di 2026.9.1 -- lo stesso caso di `conversation`.
+    ("assist_satellite", 1, "annuncio"),
+    ("assist_satellite", 2, "avvio_conversazione"),
 ]
 
 
