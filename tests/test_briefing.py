@@ -3,6 +3,7 @@ import re
 from hiris.app.home_space import briefing
 from hiris.app.home_space.behavior import FILE_GENUINELY_ABSENT
 from hiris.app.home_space.briefing import compose
+from tests._house_translations import house_translations
 
 _CASA = {
     "piani": [{"id": "terra", "nome": "Piano terra", "livello": 0}],
@@ -463,7 +464,7 @@ def test_il_notevole_raggruppato_tiene_insieme_le_aree():
                        "alias": [], "etichette": []},
                       {"id": "sala", "nome": "Sala", "piano_id": "terra",
                        "alias": [], "etichette": []}])
-    testo, _ = compose(casa, [], [], stato)
+    testo, _ = compose(casa, [], [], stato, translations=house_translations())
     sezione = testo.split("## Notevole adesso")[1].split("##")[0]
     aree_in_ordine = [r.split(":")[0].removeprefix("- ").strip()
                       for r in sezione.splitlines() if r.startswith("- ")]
@@ -581,7 +582,8 @@ def test_intestazione_dei_notevoli_raggruppati_torna_dopo_il_taglio():
          "corpo": {"trigger": []}, "origine": "file"}
         for i in range(20)
     ]
-    testo, riepilogo = compose(casa, comportamento, [], stato, ceiling=6000)
+    testo, riepilogo = compose(casa, comportamento, [], stato, ceiling=6000,
+                               translations=house_translations())
     assert riepilogo["truncated"] is True
     sezione = testo.split("## Notevole adesso")[1].split("## Cio' che la casa fa")[0]
     import re

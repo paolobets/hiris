@@ -146,16 +146,26 @@ def genre_for(subject: str, aspect_: str | None) -> str | None:
     if subject.startswith(("problema:", "integrazione:", "log:", "automazione:")):
         return "guasto"
     domain = subject.split(".")[0]
+    # **La gamba «sicurezza» viene PRIMA di «accendibile», e l'ordine e' il
+    # giudizio.** Fino all'08/09/2026 nessun tipo era insieme accendibile e di
+    # sicurezza, quindi l'ordine non si vedeva; quel giorno il proprietario ha
+    # dichiarato `siren` accendibile (nona domanda del censore) e una sirena che
+    # suona sarebbe diventata un oggetto di «funzionamento» -- cioe' l'evento
+    # piu' importante che questa casa possa produrre declassato a «una cosa si
+    # e' accesa», in silenzio, come effetto collaterale di una decisione che
+    # parlava d'altro. Il docstring qui sopra lo diceva gia' -- «`sicurezza` per
+    # tutta la gamba omonima, QUALUNQUE sia il dominio» -- e il codice lo
+    # smentiva.
+    if aspect_ == "sicurezza":
+        if domain == "sensor":
+            return None
+        return "sicurezza"
     if is_operable(domain):
         return "funzionamento"
     if domain in ("person", "device_tracker"):
         return "presenza"
     if domain == "sensor" and aspect_ == "energia":
         return "energia"
-    if aspect_ == "sicurezza":
-        if domain == "sensor":
-            return None
-        return "sicurezza"
     return None
 
 

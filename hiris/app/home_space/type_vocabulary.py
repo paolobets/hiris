@@ -63,13 +63,22 @@ pubblica con cio' che questo vocabolario rivendica sta in `type_census.py`**
 leggesse la rete congelerebbe all'import un dato che e' «di adesso» per
 definizione, e un censore dentro il vocabolario giudicherebbe se stesso.
 
-**Cosa il censore ha gia' cambiato qui**: le quattro tabelle di capacita' di
-`lock`, `humidifier`, `lawn_mower` e `assist_satellite` sono entrate perche'
-lui le ha nominate -- il registro dei servizi di questa casa dichiarava bit per
-domini che non avevano nessuna tabella. Cio' che il censore nomina e che NON e'
-nostro decidere resta aperto in `type_census.OPEN_QUESTIONS`, con la domanda
-scritta: sei stati di `water_heater`, tre di `lock`, quattro di `lawn_mower`,
-109 classi del dispositivo mai nominate.
+**Cosa il censore ha gia' cambiato qui.** Prima le quattro tabelle di
+capacita' di `lock`, `humidifier`, `lawn_mower` e `assist_satellite`, entrate
+perche' lui le ha nominate: il registro dei servizi di questa casa dichiarava
+bit per domini che non avevano nessuna tabella. Poi, l'08/09/2026, **le sei
+decisioni del proprietario** sulle nove domande che aveva lasciato aperte: i sei
+modi di `water_heater` sono funzionamento, lo `stopped` di `cover` e `valve` e'
+riposo, `locking`/`unlocking` di `lock` sono funzionamento, `lawn_mower` si
+tratta come `vacuum`, `remote` e `siren` sono accendibili con `off` a riposo, e
+quattro domini (`assist_satellite`, `camera`, `timer`, `group`) restano fuori
+con la ragione scritta nel censore.
+
+Cio' che il censore nomina e che NON e' nostro decidere resta aperto in
+`type_census.OPEN_QUESTIONS`, con la domanda scritta: **110 voci** -- 109 classi
+del dispositivo mai nominate, e `lock=jammed`, che ha la decisione presa (e' un
+GUASTO) e non ha ancora un posto dove scriverla, perche' il genere si decide
+per soggetto e non per stato.
 
 Spec: `docs/design/2026-09-07-l-anagrafe-dei-tipi.md`.
 """
@@ -398,6 +407,21 @@ OPERABLE = "operable"
 #: Gli stati che, per questo tipo, valgono «ha finito».
 RESTING_STATES = "resting_states"
 
+#: Gli stati che, per questo tipo, valgono «sta funzionando»: non un riposo,
+#: non un «non lo so». Il valore e' `stato -> ragione scritta`, come per gli
+#: attributi scartati -- un giudizio senza ragione non si dichiara.
+#:
+#: **Perche' esiste un campo, e non basta «tutto cio' che non e' riposo».**
+#: `_is_on` risponde gia' cosi', e continuera' a rispondere cosi': questo campo
+#: non cambia il comportamento di nessun lettore. Cambia **chi ha guardato**.
+#: Fino all'08/09/2026 sei stati di `water_heater` e tre di `lock` non erano ne'
+#: riposi ne' ignoti, e nessuno poteva dire se fosse una decisione o una
+#: dimenticanza: il censore li ha nominati proprio perche' nessuna riga li
+#: rivendicava. Dichiararli qui e' la risposta «li abbiamo guardati, e
+#: funzionano» -- l'altra meta' del riposo, senza la quale la metrica 2 sa dire
+#: soltanto quando una cosa ha finito.
+WORKING_STATES = "working_states"
+
 #: I nomi dei bit di `supported_features`, dominio per dominio.
 CAPABILITY_NAMES = "capability_names"
 
@@ -585,40 +609,123 @@ _vocabulary.add_all("sensor", ("energy", "power", "gas", "water"),
 # produce oggetti che non si chiudono mai -- lo stesso costo, dai due lati
 # opposti dello stesso elenco.
 #
-# **Cio' che questa regola NON copre ancora, e va detto invece che
-# sottinteso**: impone che un tipo accendibile abbia ALMENO un riposo, non che
-# TUTTI i suoi stati canonici siano classificati. `water_heater` e' il caso
-# vivo -- `eco`, `electric`, `gas`, `heat_pump`, `high_demand` non sono ne'
-# riposi ne' ignoti, e un boiler in `eco` aprirebbe un episodio che non si
-# chiude mai. Chiuderlo richiede l'enumerazione degli stati che HA pubblica
-# (provenienza `chiesto`, fetta 3) e il censore che la confronta con questa
-# vocabolario (fetta 4); deciderne il giudizio e' del proprietario, non di questa
-# fetta. Oggi non morde perche' `water_heater` non ha una gamba e non entra
-# nel pavimento -- ma «e' accendibile» e «entra nel pavimento» sono due
-# metriche diverse dello stesso tipo, e devono poter divergere: allargare il
-# pavimento per far tacere il censore sarebbe curare il sintomo sbagliato.
+# **Cio' che questa regola NON copriva, ed e' stato chiuso l'08/09/2026**: la
+# regola impone che un tipo accendibile abbia ALMENO un riposo, non che TUTTI i
+# suoi stati canonici siano classificati. `water_heater` era il caso vivo --
+# `eco`, `electric`, `gas`, `heat_pump`, `high_demand`, `performance` non erano
+# ne' riposi ne' ignoti, e un boiler in `eco` avrebbe aperto un episodio che non
+# si chiude mai. Il censore (fetta 4) li ha nominati, il proprietario li ha
+# decisi (fetta 5), e la risposta e' scritta sulla riga di `water_heater` qui
+# sotto: sono **funzionamento**, e il campo `working_states` e' il posto dove
+# «li abbiamo guardati» smette di essere indistinguibile da «nessuno ci ha mai
+# pensato».
+#
+# **Il riposo e il funzionamento sono le due meta' della stessa metrica.** Il
+# riposo cambia il comportamento (`_is_on` chiude un episodio); il funzionamento
+# no -- e' gia' cio' che `_is_on` risponde per esclusione. Dichiararlo lo stesso
+# non e' un doppione: e' cio' che distingue una decisione da un silenzio, ed e'
+# l'unica forma in cui il censore puo' vedere la differenza.
 #
 # `climate` e `cover` hanno gia' la loro riga sopra (portano una gamba): la
 # seconda metrica si aggiunge alla stessa riga, non ne apre una seconda.
 
-_vocabulary.extend("climate", operable=Ours(True), resting_states=Ours({"off"}))
-_vocabulary.extend("cover", operable=Ours(True), resting_states=Ours({"closed"}))
+# I sei modi operativi di un termostato acceso. Non sono sei riposi travestiti:
+# `heat_cool` e `auto` sono precisamente il termostato che LAVORA senza che
+# nessuno gli dica come. Il suo unico riposo resta `off`.
+_vocabulary.extend("climate", operable=Ours(True), resting_states=Ours({"off"}),
+                 working_states=Ours({
+                     "heat": "il termostato sta riscaldando o e' impostato per farlo",
+                     "cool": "il termostato sta raffrescando o e' impostato per farlo",
+                     "heat_cool": "decide da se' quale delle due: e' acceso, non fermo",
+                     "auto": "come `heat_cool` -- il modo automatico e' un modo, non una pausa",
+                     "dry": "sta deumidificando: e' un modo operativo, non una pausa",
+                     "fan_only": "muove aria e basta, ma il ventilatore gira",
+                 }))
+# `stopped` e' un RIPOSO -- decisione del proprietario dell'08/09/2026, e il
+# censore l'aveva trovato al primo giro (non era nel capitolato). Una tapparella
+# ferma a meta' corsa non si sta muovendo: mezza aperta e' uno stato, non un
+# guasto e non una corsa in sospeso. Prima di questa riga il suo unico riposo
+# era `closed`, quindi una tapparella lasciata a meta' teneva aperto per sempre
+# l'episodio cominciato quando si e' mossa.
+_vocabulary.extend("cover", operable=Ours(True),
+                 resting_states=Ours({"closed", "stopped"}),
+                 working_states=Ours({
+                     "open": "una tapparella aperta e' cio' che disperde: e' il fatto da osservare",
+                     "opening": "si sta muovendo: la corsa e' in atto, non finita",
+                     "closing": "si sta muovendo: la corsa e' in atto, non finita",
+                 }))
 _vocabulary.add("switch", operable=Ours(True), resting_states=Ours({"off"}))
 _vocabulary.add("light", operable=Ours(True), resting_states=Ours({"off"}))
 _vocabulary.add("fan", operable=Ours(True), resting_states=Ours({"off"}))
-_vocabulary.add("water_heater", operable=Ours(True), resting_states=Ours({"off"}))
+# **I sei modi del boiler sono FUNZIONAMENTO** -- decisione del proprietario,
+# 08/09/2026, sulla prima delle nove domande del censore. Sono modi OPERATIVI,
+# non pause: un boiler in `eco` scalda, solo con meno foga. Il suo unico riposo
+# resta `off`, ed e' l'unico stato in cui non sta facendo niente.
+_vocabulary.add("water_heater", operable=Ours(True), resting_states=Ours({"off"}),
+              working_states=Ours({
+                  "eco": "modo operativo a consumo ridotto: scalda, con meno foga",
+                  "gas": "sta scaldando a gas -- la fonte, non una pausa",
+                  "electric": "sta scaldando con la resistenza elettrica",
+                  "heat_pump": "sta scaldando con la pompa di calore",
+                  "high_demand": "modo per i grandi prelievi: scalda di piu', non di meno",
+                  "performance": "modo a piena potenza",
+              }))
 # `humidifier`: solo `on`/`off`, nessuno stato intermedio.
 _vocabulary.add("humidifier", operable=Ours(True), resting_states=Ours({"off"}))
 # `vacuum`: `docked` (in base, eventualmente in carica), `idle` (fermo, non in
 # carica ne' in errore), `returning` (sta rientrando, non sta piu' pulendo),
-# `error`. Solo `cleaning` e' acceso.
+# `error`, `off`. Solo `cleaning` e' acceso.
+#
+# `off` e' entrato l'08/09/2026 con la sparizione di `_STATE_TRANSLATION`: la
+# tabella cieca al dominio lo rivendicava per tutti, e quando e' sparita il
+# censore ha nominato `vacuum=off` -- un aspirapolvere spento e' fermo, e non
+# c'e' niente da decidere. Non cambia niente di osservabile (`off` era gia'
+# nell'unione dei riposi, che e' cio' che `_is_on` legge): cambia che adesso un
+# tipo lo rivendica.
 _vocabulary.add("vacuum", operable=Ours(True),
-              resting_states=Ours({"docked", "returning", "error", "idle"}))
+              resting_states=Ours({"docked", "returning", "error", "idle", "off"}),
+              working_states=Ours({
+                  "cleaning": "sta pulendo: e' l'unico stato in cui l'aspirapolvere lavora",
+                  "paused": "un'attivita' SOSPESA, non finita -- vedi `media_player` sotto",
+              }))
 # `valve`: `open`, `opening`, `closing` sono TUTTI attivi, come per `cover`
-# (con cui condivide `closed` come unico riposo) -- una valvola a meta'
-# apertura non e' ferma, e `opening`/`closing` fra i riposi chiuderebbe
-# l'oggetto a meta' transizione.
-_vocabulary.add("valve", operable=Ours(True), resting_states=Ours({"closed"}))
+# (con cui condivide `closed` fra i riposi) -- una valvola a meta' apertura non
+# e' ferma, e `opening`/`closing` fra i riposi chiuderebbe l'oggetto a meta'
+# transizione. `stopped` invece SI', dall'08/09/2026 e per la stessa decisione
+# del proprietario che l'ha dato a `cover`: fermata a meta' corsa e' uno stato,
+# non una corsa in sospeso.
+_vocabulary.add("valve", operable=Ours(True),
+              resting_states=Ours({"closed", "stopped"}),
+              working_states=Ours({
+                  "open": "una valvola aperta e' cio' che lascia passare: e' il fatto",
+                  "opening": "si sta muovendo: la corsa e' in atto, non finita",
+                  "closing": "si sta muovendo: la corsa e' in atto, non finita",
+              }))
+# `lawn_mower`: **si tratta come `vacuum`** -- decisione del proprietario
+# dell'08/09/2026, quarta delle nove domande. Stessa forma, stesso giudizio:
+# `docked` e' la base, `returning` non e' piu' taglio, `error` e' fermo, e solo
+# `mowing` e' acceso. Nessuna lista di questo prodotto lo aveva mai guardato:
+# l'ha nominato il censore.
+_vocabulary.add("lawn_mower", operable=Ours(True),
+              resting_states=Ours({"docked", "returning", "error"}),
+              working_states=Ours({
+                  "mowing": "sta tagliando: e' l'unico stato in cui il tosaerba lavora",
+                  "paused": "un taglio SOSPESO, non finito -- come la pausa del vacuum",
+              }))
+# `remote` e `siren`: **accendibili**, con `off` a riposo -- decisione del
+# proprietario dell'08/09/2026, nona delle nove domande. Home Assistant li
+# dichiara accendibili (`turn_on`+`turn_off`) e pubblica per entrambi `on`/`off`;
+# la spec §4 li metteva fra le sette esclusioni motivate da «li' `on` significa
+# 'abilitata', non 'accesa' -- il difetto che `briefing._EVENT_DOMAINS`
+# documenta di aver gia' pagato», e **per questi due quella frase era smentita
+# dal codice che citava**: `_EVENT_DOMAINS` li CONTIENE entrambi, cioe' il
+# prodotto quel `on` lo annunciava gia' come un'accensione mentre l'esclusione
+# affermava il contrario. L'esclusione cade.
+#
+# `siren` ha gia' la sua riga sopra (porta la gamba «sicurezza» e il riposo
+# `off`): qui si aggiunge la sola meta' che le mancava.
+_vocabulary.add("remote", operable=Ours(True), resting_states=Ours({"off"}))
+_vocabulary.extend("siren", operable=Ours(True))
 # `media_player`: `idle` (acceso ma non riproduce nulla), `standby` (deprecato
 # verso `off`/`idle` dalla 2026.8, ma ancora prodotto da alcune integrazioni --
 # questa casa ce l'ha). `on` resta acceso, e cosi' `buffering` (sta per
@@ -632,7 +739,55 @@ _vocabulary.add("valve", operable=Ours(True), resting_states=Ours({"closed"}))
 # riprende da dove si era interrotta. Trattarla come un riposo spezzava un
 # episodio solo in due.
 _vocabulary.add("media_player", operable=Ours(True),
-              resting_states=Ours({"off", "idle", "standby"}))
+              resting_states=Ours({"off", "idle", "standby"}),
+              working_states=Ours({
+                  "playing": "sta riproducendo: c'e' qualcosa in corso",
+                  "paused": "un'attivita' SOSPESA, non finita: il film riparte "
+                            "da dove si era fermato",
+                  "buffering": "sta per riprodurre -- chiuderlo spezzerebbe "
+                               "l'episodio di un film che sta per ripartire",
+                  "on": "acceso senza dire altro: non e' spento, ed e' tutto cio' che si sa",
+              }))
+
+# -- le due meta' del funzionamento su tipi che NON sono accendibili ---------
+#
+# `lock` e `alarm_control_panel` non sono dichiarati accendibili -- una
+# serratura non si «accende» -- ma portano la gamba «sicurezza», e la gamba
+# «sicurezza» apre e chiude episodi con la STESSA forma del funzionamento
+# (`mind/facts.py`, ramo `sicurezza`: «il genere e' diverso, la forma no»).
+# Quindi anche loro hanno stati che valgono «sta succedendo», e finche' nessuno
+# li dichiarava il censore non poteva distinguerli da una dimenticanza.
+#
+# **`locking` e `unlocking` sono FUNZIONAMENTO** -- decisione del proprietario
+# dell'08/09/2026, terza delle nove domande: la serratura si sta muovendo.
+# `open`/`opening` sono la stessa cosa per una serratura che sa aprire davvero
+# la porta (`LockEntityFeature.OPEN`).
+#
+# **`jammed` NON e' qui, ed e' una decisione presa e non ancora eseguibile.**
+# Il proprietario l'ha giudicato un GUASTO -- «e' inceppata, non sta
+# lavorando» -- e un guasto e' un GENERE, non uno stato di funzionamento. Il
+# genere oggi si decide per SOGGETTO (`facts.genre_for(soggetto, gamba)`, che
+# lo stato non lo riceve nemmeno), quindi non c'e' nessun posto in cui `jammed`
+# possa entrare senza mentire: metterlo qui direbbe «sta funzionando», che e'
+# esattamente cio' che il proprietario ha escluso. Resta **aperto e nominato**
+# in `type_census.OPEN_QUESTIONS`, con la decisione gia' presa e cio' che
+# manca per eseguirla scritto accanto. Meglio una voce aperta di una infilata
+# nel posto sbagliato.
+_vocabulary.extend("lock", working_states=Ours({
+    "unlocked": "sbloccata: e' il fatto che la gamba sicurezza esiste per osservare",
+    "locking": "si sta chiudendo: la serratura sta lavorando",
+    "unlocking": "si sta aprendo: la serratura sta lavorando",
+    "open": "aperta davvero, non solo sbloccata (`LockEntityFeature.OPEN`)",
+    "opening": "sta aprendo la porta, non solo il chiavistello",
+}))
+# `triggered` e' l'allarme SCATTATO: il solo stato di questo dominio che la
+# gamba «sicurezza» esiste per osservare. Non e' un riposo (i riposi sono gli
+# `armed_*`: «un allarme si INSERISCE per stare a riposo, non il contrario»), e
+# fino all'08/09/2026 lo rivendicava soltanto la tabella cieca al dominio che
+# questa fetta ha cancellato.
+_vocabulary.extend("alarm_control_panel", working_states=Ours({
+    "triggered": "l'allarme e' scattato: e' il fatto piu' notevole che questa casa possa produrre",
+}))
 
 
 #: Gli stati che valgono riposo per QUALUNQUE tipo, e per questo non stanno su
@@ -1404,6 +1559,32 @@ def resting_states() -> frozenset[str]:
     return frozenset(states)
 
 
+def working_states_of(domain: str, device_class: str | None = None) -> frozenset[str]:
+    """Gli stati che, per QUESTO tipo, valgono «sta funzionando».
+
+    L'altra meta' della metrica 2. Non cambia il comportamento di nessun
+    lettore -- `_is_on` risponde gia' per esclusione dai riposi -- e serve a
+    una cosa sola, che nessun'altra riga sa dire: **distinguere una decisione
+    da un silenzio**. Un tipo che non ne dichiara nessuno non e' un tipo i cui
+    stati sono tutti riposi: e' un tipo che nessuno ha ancora guardato, ed e'
+    esattamente cio' che il censore deve poter nominare.
+
+    Come per i riposi, una coppia che non ne dichiara di suoi eredita quelli
+    del dominio: si collega, non copia.
+    """
+    own = _vocabulary.value(domain, device_class, WORKING_STATES, {})
+    return frozenset(own)
+
+
+def declared_working_states() -> Mapping[str, Mapping[str, str]]:
+    """Dominio -> `stato -> ragione`, per la prova che boccia un giudizio
+    senza ragione scritta. Stessa forma di `dropped_capability_attributes`."""
+    return MappingProxyType({
+        domain: _vocabulary.value(domain, None, WORKING_STATES)
+        for domain in sorted(_vocabulary.domains())
+        if _vocabulary.value(domain, None, WORKING_STATES) is not None})
+
+
 def unknown_states() -> frozenset[str]:
     """Gli stati «non lo so»: non un riposo, non un fatto sulla casa. Una riga
     con questo stato si salta, e l'episodio in corso resta aperto attraverso il
@@ -1596,4 +1777,27 @@ def _verify_operable_types_bring_their_rest() -> None:
             "stessa modifica, non in quella dopo")
 
 
+def _verify_no_state_is_both_rest_and_work() -> None:
+    """Nessuno stato di un tipo vale insieme «ha finito» e «sta funzionando».
+
+    Gira all'importazione, come la regola qui sopra e per la stessa ragione: le
+    due meta' della metrica 2 si scrivono in due punti diversi del modulo, ed e'
+    esattamente la distanza in cui una contraddizione passa inosservata. Uno
+    stato in tutt'e due direbbe a `mind/facts.py` di chiudere l'episodio e al
+    censore che quel tipo lo tiene aperto -- due risposte alla stessa domanda,
+    che e' il difetto che questo vocabolario esiste per non avere.
+    """
+    contradictions = sorted(
+        f"{row.domain}={state}"
+        for row in _vocabulary.rows()
+        for state in (row.fields[WORKING_STATES].value if WORKING_STATES in row.fields else ())
+        if state in resting_states_of(row.domain, row.device_class))
+    if contradictions:
+        raise ValueError(
+            "stati dichiarati insieme a riposo e in funzionamento: "
+            f"{', '.join(contradictions)}. Un tipo non puo' rispondere due volte "
+            "alla stessa domanda")
+
+
 _verify_operable_types_bring_their_rest()
+_verify_no_state_is_both_rest_and_work()

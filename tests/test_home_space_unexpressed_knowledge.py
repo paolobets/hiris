@@ -26,6 +26,7 @@ from hiris.app.home_space.store import HomeSpaceStore
 from hiris.app.home_space.topology import actual_unit
 from hiris.app.memory.interpretation import deduci_unit
 from hiris.app.memory.resolver import costruisci_indice
+from tests._house_translations import house_translations
 
 _REGISTRI = {
     # `labels` porta i label_id (slug), MAI i nomi: e' cosi' che Home Assistant
@@ -261,23 +262,26 @@ def test_guarda_dice_cosa_significa_lo_stato_non_solo_il_valore():
     ], "aree": [{"id": "bagno", "nome": "Bagno"}]}
     stato = {"binary_sensor.perdita_lavatrice": "on"}
 
-    d = view(casa_perdita, [], [], stato, "entita", "binary_sensor.perdita_lavatrice")
+    d = view(casa_perdita, [], [], stato, "entita", "binary_sensor.perdita_lavatrice",
+               translations=house_translations())
     assert d["stato"] == "on"
-    assert d["stato_leggibile"] == "bagnato"
+    assert d["stato_leggibile"] == "Bagnato"
 
     # E dalla porta dell'area, che elenca: stessa entita', stessa forma.
-    a = view(casa_perdita, [], [], stato, "area", "bagno")
-    assert a["entita"][0]["stato_leggibile"] == "bagnato"
+    a = view(casa_perdita, [], [], stato, "area", "bagno",
+               translations=house_translations())
+    assert a["entita"][0]["stato_leggibile"] == "Bagnato"
 
 
 def test_una_luce_accesa_resta_accesa():
     """Il contrario della prova sopra, e serve quanto quella: senza, il rimedio
-    potrebbe tradurre tutto in «bagnato» e la prova di sopra passerebbe."""
+    potrebbe rendere tutto «Bagnato» e la prova di sopra passerebbe."""
     casa_luce = {"entita": [
         {"id": "light.cucina", "nome": "Cucina", "classe": None, "area_id": "c"},
     ], "aree": [{"id": "c", "nome": "Cucina"}]}
-    d = view(casa_luce, [], [], {"light.cucina": "on"}, "entita", "light.cucina")
-    assert d["stato_leggibile"] == "acceso"
+    d = view(casa_luce, [], [], {"light.cucina": "on"}, "entita", "light.cucina",
+               translations=house_translations())
+    assert d["stato_leggibile"] == "Acceso"
 
 
 def test_senza_stato_letto_non_si_traduce_il_nulla():

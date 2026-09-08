@@ -21,7 +21,7 @@ differenza di un'entita' sul totale e' il giorno passato fra le due misure,
 non un errore di conteggio). Delle 201 con `device_class`, CINQUE classi sono
 di `binary_sensor` (`motion`, `connectivity`, `running`, `occupancy`, `plug`
 -- 33 entita') e hanno GIA' il proprio significato acceso/spento in
-`_CLASS_MEANING` (topology.py, verificato il 16/08/2026): un secondo
+la resa che Home Assistant pubblica per quella classe: un secondo
 dizionario che dicesse la stessa cosa sarebbe il doppione che le fondamenta
 vietano, quindi non compaiono qui. Restano in questo modulo le 27 coppie
 (dominio, classe) delle altre SETTE piattaforme misurate -- 168 entita' --
@@ -218,7 +218,7 @@ STATE_CLASS_MEANING = {
 #
 # Le CINQUE classi di `binary_sensor` misurate su questa casa (`motion`,
 # `connectivity`, `running`, `occupancy`, `plug`) NON compaiono: hanno gia'
-# il proprio significato acceso/spento in `topology._CLASS_MEANING`
+# il proprio significato acceso/spento dalle traduzioni di Home Assistant
 # (verificato il 16/08/2026). Ripeterle qui sarebbe il doppione che le
 # fondamenta vietano.
 #

@@ -155,6 +155,13 @@ def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
         # `server.py`, mai una seconda apertura di `azioni.db`. Serve ad
         # `logbook` per attribuire a HIRIS cio' che ha fatto HIRIS.
         journal=app.get("journal"),
+        # Le parole con cui uno stato si rende, dall'08/09/2026 lette da Home
+        # Assistant e non piu' da quattro tabelle scritte a mano (spec §6). E'
+        # la STESSA istanza che legge il nucleo (`compose_briefing`) e la rotta
+        # dei fatti: una tabella sola, o `guarda` e il digesto direbbero la
+        # stessa entita' con parole diverse -- che e' esattamente la
+        # divergenza da cui e' nata la casa unica del vocabolario degli stati.
+        translations=app.get("state_translations"),
     )
 
 

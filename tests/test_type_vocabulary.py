@@ -25,10 +25,12 @@ import pytest
 
 from hiris.app.home_space import briefing, topology
 from hiris.app.home_space.briefing import compose
+from hiris.app.proxy import state_translations
 
 # Le finte vivono gia' in `test_briefing.py`: si riusano invece di riscriverle.
 # Due finte che fingono la stessa casa sono la seconda rappresentazione in
 # miniatura, e divergono come tutte le seconde rappresentazioni.
+from tests._house_translations import house_translations
 from tests.test_briefing import _CASA, _COMPORTAMENTO, _RICORDI, _STATO
 
 
@@ -38,7 +40,8 @@ def _sezione_notevole(testo: str) -> str:
 
 def _con(entita, stato_extra):
     casa = dict(_CASA, entita=_CASA["entita"] + entita)
-    return compose(casa, _COMPORTAMENTO, _RICORDI, dict(_STATO, **stato_extra))[0]
+    return compose(casa, _COMPORTAMENTO, _RICORDI, dict(_STATO, **stato_extra),
+                   translations=house_translations())[0]
 
 
 def _voce(eid, nome, **extra):
@@ -59,8 +62,11 @@ def test_un_allagamento_si_legge_bagnato_e_non_acceso():
         [_voce("binary_sensor.perdita", "Perdita bagno", classe="moisture")],
         {"binary_sensor.perdita": "on"}))
     assert "Perdita bagno" in sezione
-    assert "bagnato" in sezione
-    assert "Perdita bagno (acceso)" not in sezione
+    # La parola e' quella che Home Assistant pubblica per QUELLA classe
+    # (`component.binary_sensor.entity_component.moisture.state.on`), non piu'
+    # una tupla scritta a mano: dall'08/09/2026 `_CLASS_MEANING` non esiste.
+    assert "Bagnato" in sezione
+    assert "Perdita bagno (Acceso)" not in sezione
 
 
 # I nomi-stringa VERI, dalla sorgente di Home Assistant
@@ -68,13 +74,18 @@ def test_un_allagamento_si_legge_bagnato_e_non_acceso():
 # documentazione -- che elenca i NOMI DELLE COSTANTI e non i valori.
 # Tutte tranne una coincidono col nome in minuscolo. L'eccezione:
 # `BinarySensorDeviceClass.CO = "carbon_monoxide"`.
+#
+# **Le parole non sono piu' nostre, dall'08/09/2026**: sono quelle che questa
+# casa pubblica (`tests/_house_translations.py`, misurate). Nessuna di esse e'
+# «Acceso», che e' la parola del DOMINIO: e' quello il difetto che questa prova
+# sorveglia, e la classe e' cio' che lo evita.
 _ALLARMI = [
-    ("moisture", "bagnato"),
-    ("smoke", "fumo rilevato"),
-    ("gas", "gas rilevato"),
-    ("carbon_monoxide", "monossido rilevato"),
-    ("safety", "non sicuro"),
-    ("tamper", "manomissione rilevata"),
+    ("moisture", "Bagnato"),
+    ("smoke", "Rilevato"),
+    ("gas", "Rilevato"),
+    ("carbon_monoxide", "Rilevato"),
+    ("safety", "Non Sicuro"),
+    ("tamper", "Rilevata manomissione"),
 ]
 
 
@@ -95,18 +106,33 @@ def test_ogni_classe_di_allarme_entra_nel_digesto_e_si_legge_in_parole(classe, p
     assert f"Allarme {classe}" in sezione, (
         f"la classe {classe!r} non entra nel digesto: probabilmente non "
         f"combacia con nessuna voce di _CLASSI_EVENTO")
-    assert parola in sezione, (
-        f"la classe {classe!r} entra ma non si traduce: manca da "
-        f"_SIGNIFICATO_CLASSE, e si legge «acceso»")
+    assert f"({parola})" in sezione, (
+        f"la classe {classe!r} entra ma non si rende con la parola della sua "
+        f"classe: Home Assistant la pubblica, e senza di lei si leggerebbe "
+        f"«Acceso», cioe' la parola del dominio")
+    assert f"Allarme {classe} (Acceso)" not in sezione
 
 
 def test_ogni_classe_di_evento_ha_anche_un_significato():
-    """Le due tabelle non possono divergere: una classe che entra nel digesto e
-    non ha un significato si leggerebbe «acceso» -- cioe' rientrerebbe proprio
-    il difetto che questa fetta chiude, su una riga sola. `_EVENT_CLASSES` vive
-    in `nucleo`, `_CLASS_MEANING` nella sua unica casa, `anagrafe`."""
-    senza = sorted(briefing._EVENT_CLASSES - set(topology._CLASS_MEANING))
-    assert not senza, f"classi che entrano nel digesto senza significato: {senza}"
+    """Ogni classe che entra nel digesto ha, in questa casa, la COPPIA
+    acceso/spento pubblicata da Home Assistant -- non mezza.
+
+    Fino all'08/09/2026 questa prova confrontava `_EVENT_CLASSES` con
+    `topology._CLASS_MEANING`, cioe' una nostra tabella con un'altra nostra
+    tabella: diceva che due elenchi scritti a mano erano d'accordo, non che
+    fossero veri. Adesso il metro e' la casa, e la coppia si RICOSTRUISCE (non
+    si assume): una classe di cui HA pubblichi solo `on` si leggerebbe con una
+    parola sua per l'acceso e con la parola del DOMINIO per lo spento -- due
+    meta' di due tipi diversi presentate come un significato solo.
+
+    Mutazione: togliere `component.binary_sensor.entity_component.smoke.state.off`
+    dalle risorse -- questa prova nomina `smoke`."""
+    risorse = house_translations()["risorse"]
+    senza = sorted(
+        classe for classe in briefing._EVENT_CLASSES
+        if not state_translations.published_pair(
+            risorse, domain="binary_sensor", device_class=classe).get("letto"))
+    assert not senza, f"classi che entrano nel digesto senza la coppia: {senza}"
 
 
 def test_un_movimento_NON_entra_nel_digesto():
@@ -127,8 +153,9 @@ def test_porte_e_finestre_si_leggono_ancora_aperto_e_chiuso():
     vocabolario e aggiungergliene accanto un secondo."""
     assert not hasattr(briefing, "_CLASSI_APERTURA"), (
         "la tabella vecchia deve sparire, non restare accanto alla nuova")
-    sezione = _sezione_notevole(compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)[0])
-    assert "Porta" in sezione and "aperto" in sezione
+    sezione = _sezione_notevole(compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
+                                        translations=house_translations())[0])
+    assert "Porta" in sezione and "Aperto" in sezione
 
 
 def test_a_valve_opening_or_closing_is_not_a_dumb_on_off():
@@ -142,12 +169,44 @@ def test_a_valve_opening_or_closing_is_not_a_dumb_on_off():
     della spec, restava scoperto proprio li' (4 entita' `valve` su questa
     casa).
 
-    Mutazione: cancellare le due chiavi `"opening"`/`"closing"` da
-    `_STATE_TRANSLATION` -- il test torna rosso perche' `translate_state`
-    ripiega sulla stringa grezza (`"opening"` invece di `"in apertura"`).
+    Dall'08/09/2026 le parole le pubblica Home Assistant, e la prova e'
+    diventata piu' forte di com'era: non verifica piu' che una nostra tabella
+    abbia due voci, verifica che si stia chiedendo **al dominio giusto**.
+
+    Mutazione: rendere `readable_state` cieca al dominio (cercare sempre la
+    chiave di `light`) -- il test arrossisce, perche' `light` non pubblica
+    nessun `opening`.
     """
-    assert topology.translate_state("opening") == "in apertura"
-    assert topology.translate_state("closing") == "in chiusura"
+    traduzioni = house_translations()
+    assert topology.readable_state("opening", domain="valve",
+                                   translations=traduzioni)["valore"] == "In apertura"
+    assert topology.readable_state("closing", domain="valve",
+                                   translations=traduzioni)["valore"] == "In chiusura"
+
+
+def test_the_domain_decides_which_word_a_state_gets():
+    """**Il difetto che ha fatto cancellare `_STATE_TRANSLATION`**: era cieca al
+    dominio, e Home Assistant no.
+
+    Due casi misurati su questa casa, e nessuno dei due e' inventato per la
+    prova: `off` su un'entita' di aggiornamento si legge «Aggiornato», non
+    «Spento»; `returning` su un aspirapolvere e' «Ritornando alla base», su un
+    tosaerba «Ritornando». La tabella cancellata dava a tutti e quattro la
+    stessa parola -- o nessuna.
+
+    Mutazione: far cadere `readable_state` sul gradino del dominio sbagliato
+    (per esempio cercare sempre `light`) -- tutte e quattro le asserzioni
+    arrossiscono."""
+    traduzioni = house_translations()
+
+    def parola(stato, dominio):
+        return topology.readable_state(stato, domain=dominio,
+                                       translations=traduzioni)["valore"]
+
+    assert parola("off", "update") == "Aggiornato"
+    assert parola("off", "light") == "Spento"
+    assert parola("returning", "vacuum") == "Ritornando alla base"
+    assert parola("returning", "lawn_mower") == "Ritornando"
 
 
 # ── Cio' che Home Assistant dichiara non primario ──────────────────────────
@@ -338,7 +397,9 @@ def test_una_nascosta_DISABILITATA_non_si_conta_due_volte():
 # quando Home Assistant introduce un dominio o una device_class nuova) non
 # farebbe rosso nessun test -- lo stesso rischio gia' pagato con
 # `carbon_monoxide`/`co` (vedi in cima a questo file). `_CLASS_MEANING`
-# in topology.py aveva gia' avuto questo trattamento; qui lo stesso.
+# in topology.py aveva gia' avuto questo trattamento -- e dall'08/09/2026 non
+# esiste piu': le parole le pubblica Home Assistant, e cio' che resta scritto a
+# mano sono le TRE liste qui sotto.
 #
 # LIMITE DICHIARATO: briefing.py e' PURO e non installa Home Assistant (vedi
 # il suo docstring), quindi non c'e' un enum vero da importare e confrontare
@@ -382,7 +443,7 @@ def test_domini_evento_sono_tutte_piattaforme_vere_di_home_assistant():
     """Coerenza fra le liste: ogni dominio trattato come «evento» deve essere
     una piattaforma che Home Assistant riconosce davvero -- altrimenti
     l'eccezione descriverebbe un dominio che non esiste. Sottoinsieme, come
-    quello gia' pinnato fra `_EVENT_CLASSES` e `_CLASS_MEANING`."""
+    quello gia' pinnato fra `_EVENT_CLASSES` e cio' che la casa pubblica."""
     from tests.test_domain_vocabulary import _PIATTAFORME_HA
     sconosciuti = sorted(briefing._EVENT_DOMAINS - set(_PIATTAFORME_HA))
     assert not sconosciuti, f"domini che Home Assistant non ha: {sconosciuti}"

@@ -669,6 +669,41 @@ async def reread_ha_problems(app, ha_client) -> dict | None:
     return report
 
 
+async def prime_state_translations(app) -> dict:
+    """Scalda le traduzioni degli stati, e torna l'esito etichettato.
+
+    **Perche' esiste, dall'08/09/2026.** Fino a quel giorno la prima lettura
+    avveniva «alla prima pagina che ne ha bisogno», e la scelta era giusta:
+    era una tabella che quella sessione poteva non chiedere mai. Poi le quattro
+    tabelle scritte a mano di `home_space/topology.py` sono sparite (spec §6) e
+    quelle parole sono diventate cio' con cui il NUCLEO rende ogni stato
+    notevole -- cioe' qualcosa che serve a ogni turno di chat, dal primo. Una
+    tabella caricata pigramente e' una tabella che il primo lettore trova
+    vuota: e' la forma «stato condiviso caricato pigramente», e la domanda da
+    farsi e' chi lo riempie. Lo riempie questa funzione.
+
+    **Non solleva mai e non blocca l'avvio**: se Home Assistant non e' ancora
+    pronto, l'esito dice «non lette» col motivo, il nucleo lo DICHIARA e mostra
+    gli stati grezzi, e il giro periodico riprova. Un nucleo che dice «non ho
+    letto le traduzioni» e' onesto; un avvio che non parte per una tabella di
+    parole non lo sarebbe.
+    """
+    cache = app.get("state_translations")
+    if cache is None:
+        return {"lette": False,
+                "motivo": "la lettura delle traduzioni non e' collegata a questa istanza"}
+    store = app.get("home_space_store")
+    frame = store.reference_frame() if store is not None else {}
+    try:
+        report = await cache.read(ha_version=frame.get("versione_ha"),
+                                  language=frame.get("lingua"))
+    except Exception as exc:
+        report = {"lette": False, "motivo": f"{type(exc).__name__}: {exc}"}
+    if not report.get("lette"):
+        logger.info("traduzioni degli stati non lette: %s", report.get("motivo"))
+    return report
+
+
 async def watch_system_conditions(app, ha_client) -> int | None:
     """Le condizioni di sistema (problemi diagnosticati + integrazioni non
     caricate + voci del registro di errori) verso
@@ -2044,12 +2079,19 @@ async def _on_startup(app: web.Application) -> None:
     app["entity_cache"] = entity_cache
 
     # Come si RENDE uno stato di Home Assistant (fetta «lo stato»,
-    # 07/09/2026). Costruito vuoto, come il registro dei servizi qui sopra: la
-    # prima lettura avviene alla prima pagina che ne ha bisogno, non al boot --
-    # allungherebbe l'avvio per una tabella che questa sessione potrebbe non
-    # chiedere mai, e fallirebbe in silenzio con un Home Assistant non ancora
-    # pronto. Poi resta in memoria finche' la casa non cambia versione o
-    # lingua.
+    # 07/09/2026). Costruito vuoto, come il registro dei servizi qui sopra, e
+    # **scaldato piu' sotto** (`prime_state_translations`, subito dopo
+    # `app["home_space_store"]`, che e' dove la lingua della casa diventa
+    # leggibile).
+    #
+    # Fino all'08/09/2026 la prima lettura avveniva «alla prima pagina che ne
+    # ha bisogno», e la ragione scritta qui era buona: allungare l'avvio per
+    # una tabella che quella sessione poteva non chiedere mai. **Non vale
+    # piu'**: da quando le quattro tabelle scritte a mano non esistono (spec
+    # §6), queste parole sono cio' con cui il NUCLEO rende ogni stato notevole,
+    # a ogni turno e dal primo. La lettura pigra e' rimasta -- `read` continua
+    # a costare zero finche' la casa non cambia versione o lingua -- ma adesso
+    # c'e' qualcuno che la fa partire.
     app["state_translations"] = StateTranslations(ha_client)
 
     # I guasti che Home Assistant ha gia' diagnosticato. Qui la PRIMA lettura,
@@ -2271,6 +2313,21 @@ async def _on_startup(app: web.Application) -> None:
         logger.warning(
             "cervello: riaggregazione degli ultimi due giorni all'avvio "
             "fallita (%s: %s)", type(exc).__name__, exc)
+
+    # LE PAROLE DEGLI STATI, scaldate QUI e non accanto alla costruzione della
+    # cache: `prime_state_translations` legge `(versione_ha, lingua)` dal
+    # sistema di riferimento, che vive nell'anagrafe -- chiamarla piu' sopra,
+    # dove `home_space_store` non esiste ancora, avrebbe letto una lingua vuota
+    # e non avrebbe letto niente. Il sistema di riferimento e' gia' su disco
+    # dalle sessioni precedenti (`casa.db` sopravvive ai riavvii), quindi non
+    # serve aspettare `rebuild()`.
+    #
+    # E **dopo** la riparazione d'avvio, non in mezzo: quel blocco e' eseguito
+    # per davvero da una prova che ne estrae il sorgente
+    # (`test_mind_wiring.py::_estrai_blocco_riparazione_avvio`), e infilarci
+    # dentro una chiamata che quella prova non conosce l'avrebbe fatta fallire
+    # su un nome mancante invece che sull'ordine che sorveglia.
+    await prime_state_translations(app)
 
     # L'archivio dei consumi: l'UNICA casa di «quanto ho speso, e per cosa».
     # Nasce DOPO `home_space_store` perche' gli chiede il fuso -- a ogni
@@ -2879,6 +2936,24 @@ async def _on_startup(app: web.Application) -> None:
         _reread_problems,
         trigger="interval", minutes=5,
         id="hiris_ha_problems", replace_existing=True,
+        misfire_grace_time=300,
+    )
+
+    # Le parole degli stati. Cinque minuti come i problemi, e per una ragione
+    # che NON e' «la tabella cambia spesso»: non cambia quasi mai, e infatti
+    # `read` risponde dalla cache senza nemmeno chiamare finche' la casa non
+    # cambia versione o lingua. Il giro serve al caso opposto -- **la prima
+    # lettura fallita**: se all'avvio Home Assistant non era ancora pronto, il
+    # nucleo dice «traduzioni non lette» a ogni turno finche' qualcuno non
+    # riprova, e nessun altro lo farebbe. Cinque minuti e' quanto si accetta
+    # che duri.
+    async def _reread_state_translations() -> None:
+        await prime_state_translations(app)
+
+    scheduler.add_job(
+        _reread_state_translations,
+        trigger="interval", minutes=5,
+        id="hiris_state_translations", replace_existing=True,
         misfire_grace_time=300,
     )
 

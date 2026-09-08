@@ -27,8 +27,9 @@ sparito da Home Assistant: la modalita' e' lo `state`, non un attributo
 sorveglia e' identico: lo `state` da solo mente.
 """
 from hiris.app.home_space.queries import view
-from hiris.app.home_space.topology import live_mirror, translate_state
+from hiris.app.home_space.topology import live_mirror, readable_state
 from hiris.app.proxy.entity_cache import _to_minimal
+from tests._house_translations import house_translations
 
 # Lo stato grezzo COM'E' DAVVERO sull'impianto del proprietario: impostato su
 # riscaldamento (`hvac_mode`/`state` = "heat"), ma FERMO (`hvac_action`:
@@ -89,7 +90,8 @@ def test_c_guarda_su_un_entita_non_dice_piu_solo_heat():
     stato, nomi, unita, classi, da_quando, attributi = _specchio_del_termostato()
     dettaglio = view(_CASA, [], [], stato, "entita", "climate.matrimoniale",
                        fallback_names=nomi, reported_units=unita, reported_classes=classi,
-                       reported_since_when=da_quando, reported_attributes=attributi)
+                       reported_since_when=da_quando, reported_attributes=attributi,
+                       translations=house_translations())
     assert dettaglio["esiste"] is True
     assert dettaglio["stato"] == "heat"
     valori = dettaglio["attributi"]["valori"]
@@ -99,8 +101,12 @@ def test_c_guarda_su_un_entita_non_dice_piu_solo_heat():
     # Il cuore del difetto: lo stato_leggibile non deve poter essere letto
     # come "sta scaldando" quando il termostato e' fermo.
     assert dettaglio["stato_leggibile"] != "heat"
-    assert "fermo" in dettaglio["stato_leggibile"]
-    assert "sta scaldando" not in dettaglio["stato_leggibile"]
+    # Le PAROLE sono quelle di Home Assistant, non piu' due verbi scritti a
+    # mano: `hvac_action: idle` si rende «Inattivo», e il nome dell'attributo
+    # («Azione in corso») e' cio' che tiene separati i due fatti -- in italiano
+    # il modo `heat` e l'azione `heating` si rendono con la stessa parola.
+    assert dettaglio["stato_leggibile"] == (
+        "impostato su Riscaldamento, azione in corso: Inattivo")
 
 
 def test_d_guarda_su_un_termostato_che_sta_scaldando_lo_dice_diverso():
@@ -111,18 +117,26 @@ def test_d_guarda_su_un_termostato_che_sta_scaldando_lo_dice_diverso():
            "attributes": {**_RAW_TERMOSTATO["attributes"], "hvac_action": "heating"}}
     stato, _nomi, _unita, _classi, _da_quando, attributi = live_mirror([_to_minimal(raw)])
     dettaglio = view(_CASA, [], [], stato, "entita", "climate.matrimoniale",
-                       reported_attributes=attributi)
-    assert "sta scaldando" in dettaglio["stato_leggibile"]
-    assert "fermo" not in dettaglio["stato_leggibile"]
+                       reported_attributes=attributi,
+                       translations=house_translations())
+    assert dettaglio["stato_leggibile"] == (
+        "impostato su Riscaldamento, azione in corso: Riscaldamento")
+    assert "Inattivo" not in dettaglio["stato_leggibile"]
 
 
 def test_e_senza_hvac_action_non_si_inventa_un_funzionamento():
     """Un'integrazione che non manda `hvac_action` (o un attributo fuori
     vocabolario): lo stato_leggibile dichiara solo l'impostazione, non
     inventa "fermo" ne' "sta scaldando" -- nessuno dei due sarebbe vero."""
-    assert translate_state("heat", None, "climate", None) == "impostato su riscaldamento"
-    assert "fermo" not in translate_state("heat", None, "climate", None)
-    assert "sta scaldando" not in translate_state("heat", None, "climate", None)
+    reso = readable_state("heat", domain="climate", hvac_action=None,
+                          translations=house_translations())
+    assert reso == {"letto": True, "valore": "impostato su Riscaldamento"}
+    # Un valore FUORI dall'enumerazione di Home Assistant vale come nessun
+    # valore: non si compone una frase attorno a una parola che il fornitore
+    # non pubblica.
+    fuori = readable_state("heat", domain="climate", hvac_action="marziano",
+                           translations=house_translations())
+    assert fuori == {"letto": True, "valore": "impostato su Riscaldamento"}
 
 
 # --- il confine deciso: attributi SOLO sul dettaglio, mai nelle liste -----
@@ -146,9 +160,11 @@ def test_g_un_area_porta_comunque_lo_stato_leggibile_onesto():
     risposte diverse a seconda che si chiami `guarda('area', ...)` o
     `guarda('entita', ...)` (fondamenta 3)."""
     stato, _nomi, _unita, _classi, _da_quando, attributi = _specchio_del_termostato()
-    dettaglio = view(_CASA, [], [], stato, "area", "camera", reported_attributes=attributi)
+    dettaglio = view(_CASA, [], [], stato, "area", "camera", reported_attributes=attributi,
+                       translations=house_translations())
     entita = dettaglio["entita"][0]
-    assert entita["stato_leggibile"] == "impostato su riscaldamento, fermo"
+    assert entita["stato_leggibile"] == (
+        "impostato su Riscaldamento, azione in corso: Inattivo")
 
 
 def test_h_un_dispositivo_NON_porta_gli_attributi_ma_lo_stato_leggibile_si():
@@ -160,18 +176,21 @@ def test_h_un_dispositivo_NON_porta_gli_attributi_ma_lo_stato_leggibile_si():
                     "disabilitata": False}],
     }
     stato, _nomi, _unita, _classi, _da_quando, attributi = _specchio_del_termostato()
-    dettaglio = view(casa, [], [], stato, "dispositivo", "dev_t", reported_attributes=attributi)
+    dettaglio = view(casa, [], [], stato, "dispositivo", "dev_t", reported_attributes=attributi,
+                       translations=house_translations())
     entita = dettaglio["entita"][0]
     assert "attributi" not in entita
-    assert entita["stato_leggibile"] == "impostato su riscaldamento, fermo"
+    assert entita["stato_leggibile"] == (
+        "impostato su Riscaldamento, azione in corso: Inattivo")
 
 
 def test_i_senza_attributi_vivi_guarda_si_comporta_come_prima():
-    """Nessuna rottura per chi non passa `reported_attributes` (retrocompatibile):
-    niente chiave "attributi", e `readable_state` degrada onestamente
-    all'impostazione sola -- non torna "heat" nudo, che sarebbe il vecchio
-    difetto con un'altra faccia."""
+    """Nessuna rottura per chi non passa `reported_attributes`: niente chiave
+    "attributi", e lo stato in parole degrada onestamente all'impostazione
+    sola -- non torna "heat" nudo, che sarebbe il vecchio difetto con un'altra
+    faccia."""
     dettaglio = view(_CASA, [], [], {"climate.matrimoniale": "heat"},
-                       "entita", "climate.matrimoniale")
+                       "entita", "climate.matrimoniale",
+                       translations=house_translations())
     assert "attributi" not in dettaglio
-    assert dettaglio["stato_leggibile"] == "impostato su riscaldamento"
+    assert dettaglio["stato_leggibile"] == "impostato su Riscaldamento"

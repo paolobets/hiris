@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 
+from ..proxy import state_translations
 from . import type_vocabulary
 
 logger = logging.getLogger(__name__)
@@ -410,170 +411,122 @@ def categories_with_name(entry: dict, names: dict[tuple[str, str], str]) -> dict
 PROBLEM_SEVERITY = ("critical", "error", "warning")
 
 
-# --- il vocabolario degli stati -------------------------------------------
+# --- lo stato in parole -----------------------------------------------------
 #
-# Sta QUI e non in `briefing.py`, dov'era nato: il significato di uno stato e' un
-# fatto sulla casa, non una proprieta' del digesto. Finche' e' stato li' dentro,
-# il digesto traduceva «bagnato» e `guarda` -- l'altra porta, quella che il
-# modello usa quando la domanda e' precisa -- rispondeva «on». La stessa
-# perdita d'acqua aveva la forma di una lampadina accesa a seconda di chi la
-# chiedeva.
-
-_STATE_TRANSLATION = {
-    "on": "acceso", "off": "spento", "open": "aperta", "closed": "chiusa",
-    "home": "in casa", "not_home": "fuori casa", "unlocked": "sbloccata",
-    "locked": "bloccata", "playing": "in riproduzione", "paused": "in pausa",
-    "unavailable": "non disponibile", "detected": "rilevato",
-    "problem": "in problema", "triggered": "in allarme",
-    # "opening"/"closing": i due stati TRANSITORI di `ValveState`
-    # (components/valve/const.py, tag 2026.9.1 -- verificato alla fonte, non
-    # ipotizzato) mancavano qui pur essendo "open"/"closed" gia' presenti:
-    # trovato durante la revisione del vocabolario importato (task
-    # "rifiutare e importare" §7②), che cercava un doppione con
-    # `_CLASS_MEANING` per le tipologie del valve e ha trovato invece un
-    # buco vero -- "quali stati ha un dominio" (spec) restava scoperto
-    # proprio nell'esempio letterale citato dalla spec. Misurato: 4 entita'
-    # `valve` su questa casa.
-    "opening": "in apertura", "closing": "in chiusura",
-}
-
-# COSA SIGNIFICANO I VALORI, per classe.
+# **QUATTRO TABELLE SCRITTE A MANO SONO SPARITE QUI L'08/09/2026** (spec §6), e
+# vale la pena scrivere cosa ognuna sbagliava, perche' erano un doppione
+# PEGGIORE dell'originale e non un doppione qualunque:
 #
-# "on"/"off" non bastano per una porta o una finestra: "acceso"/"spento"
-# affermerebbe un'alimentazione che l'oggetto non ha. Il principio era gia'
-# scritto qui, e copriva CINQUE classi (`_CLASSI_APERTURA`) sul totale che
-# Home Assistant documenta (le stesse di `_CLASS_MEANING`, qui sotto):
-# per questo un allagamento si leggeva «1 sensore binario (acceso)»,
-# indistinguibile da una lampadina.
+#   `_STATE_TRANSLATION` (17 voci)  cieca al dominio: rendeva `open` allo
+#                                   stesso modo su `lock` e su `cover`, e `off`
+#                                   «spento» anche su un'entita' `update`, dove
+#                                   Home Assistant dice «Aggiornato».
+#   `_CLASS_MEANING` (28 classi)    tutte e 28 pubblicate da HA, con la coppia
+#                                   acceso/spento gia' fatta e gia' tradotta.
+#   `_READABLE_HVAC_MODE` (7)       le stesse sette, pubblicate.
+#   `_READABLE_HVAC_ACTION` (7)     HA ne pubblica NOVE: mancavano `defrosting`
+#                                   e `preheating`.
 #
-# I significati NON sono inventati: sono quelli dichiarati in
-# developers.home-assistant.io/docs/core/entity/binary-sensor/, verificati il
-# 16/08/2026. Dove HA dice «on means wet», qui c'e' «bagnato».
-_CLASS_MEANING: dict[str, tuple[str, str]] = {
-    # allarmi
-    "moisture": ("bagnato", "asciutto"),
-    "smoke": ("fumo rilevato", "nessun fumo"),
-    "gas": ("gas rilevato", "nessun gas"),
-    # ATTENZIONE: il valore-stringa e' `carbon_monoxide`, NON `co`. E' l'unica
-    # classe di `_CLASS_MEANING` in cui la stringa non e' il nome della
-    # costante in minuscolo (`BinarySensorDeviceClass.CO = "carbon_monoxide"`, verificato
-    # su homeassistant/components/binary_sensor/__init__.py). Scritto `co`,
-    # un allarme monossido non entra nel digesto e non viene tradotto: la
-    # classe piu' critica dell'elenco, muta.
-    "carbon_monoxide": ("monossido rilevato", "nessun monossido"),
-    "safety": ("non sicuro", "sicuro"),
-    "tamper": ("manomissione rilevata", "nessuna manomissione"),
-    "problem": ("problema rilevato", "nessun problema"),
-    "heat": ("caldo", "normale"),
-    "cold": ("freddo", "normale"),
-    # aperture (erano `_CLASSI_APERTURA`: assorbite qui, non affiancate)
-    "door": ("aperto", "chiuso"),
-    "window": ("aperto", "chiuso"),
-    "garage_door": ("aperto", "chiuso"),
-    "opening": ("aperto", "chiuso"),
-    # `damper` STAVA qui, e non poteva funzionare: `BinarySensorDeviceClass`
-    # non ha `DAMPER` -- e' una `CoverDeviceClass`, e infatti questa casa la
-    # pubblica su `cover`. La riga era irraggiungibile (nessun
-    # `binary_sensor` portera' mai `device_class: damper`) e faceva 29 voci
-    # per 28 classi vere: il conto tornava solo perche' nessuno lo faceva.
-    # E' il rovescio esatto della trappola `carbon_monoxide`/`co` qui sopra --
-    # la' una classe vera scritta col nome sbagliato taceva, qui un nome
-    # inesistente occupava una riga che sembrava verificata. Trovata dal
-    # censore girato una volta sola (08/09/2026).
-    "lock": ("sbloccato", "bloccato"),
-    # presenza e movimento
-    "motion": ("movimento rilevato", "nessun movimento"),
-    "occupancy": ("occupato", "libero"),
-    "presence": ("in casa", "fuori"),
-    "moving": ("in movimento", "fermo"),
-    "vibration": ("vibrazione rilevata", "nessuna vibrazione"),
-    # alimentazione e collegamento
-    "plug": ("collegato", "scollegato"),
-    "power": ("alimentato", "non alimentato"),
-    "connectivity": ("connesso", "disconnesso"),
-    "battery": ("carica bassa", "carica normale"),
-    "battery_charging": ("in carica", "non in carica"),
-    "running": ("in funzione", "fermo"),
-    # altro
-    "light": ("luce rilevata", "nessuna luce"),
-    "sound": ("suono rilevato", "nessun suono"),
-    "update": ("aggiornamento disponibile", "aggiornato"),
-}
-
-
-# Un termostato ha DUE fatti, non uno: `hvac_mode` (il valore di `stato`)
-# dice a cosa e' IMPOSTATO, `hvac_action` dice se sta FUNZIONANDO adesso.
-# `heat` da solo confonde i due -- e' esattamente il difetto misurato dal
-# proprietario (2026-08-25): due termostati impostati su riscaldamento e
-# FERMI (`hvac_action: idle`, target 17, temperatura reale 25) sono usciti
-# da `guarda` come «heat», e il modello ha letto «in modalita'
-# riscaldamento» come se stessero scaldando davvero.
+# E tutte e quattro erano in **italiano fisso**, mentre Home Assistant risponde
+# nella lingua della casa: un proprietario che passa all'inglese leggeva mezza
+# pagina tradotta e mezza no.
 #
-# I valori sono quelli veri di `ClimateEntityFeature`/`HVACMode`
-# (`components/climate/const.py`), verificati: il dominio non ha una
-# `device_class` propria (a differenza di sensori e binary_sensor), quindi
-# questa tabella si applica per DOMINIO, non per classe.
-_READABLE_HVAC_MODE = {
-    "off": "spento", "heat": "riscaldamento", "cool": "raffrescamento",
-    "heat_cool": "riscaldamento/raffrescamento", "auto": "automatica",
-    "dry": "deumidificazione", "fan_only": "sola ventilazione",
-}
-
-# `hvac_action`: cosa sta succedendo ADESSO, non cosa e' impostato. Un
-# termostato senza questo attributo (integrazioni che non lo mandano) resta
-# onesto per omissione -- vedi `_readable_climate_state` sotto, che senza
-# azione nota dice solo l'impostazione e non inventa un funzionamento.
-_READABLE_HVAC_ACTION = {
-    "heating": "sta scaldando", "cooling": "sta raffrescando",
-    "drying": "sta deumidificando", "fan": "sta ventilando",
-    "preheating": "sta preriscaldando", "idle": "fermo", "off": "spento",
-}
+# **La condizione della cancellazione, e non e' un contorno**: una tabella
+# scritta a mano non fallisce mai, la rete si'. Ogni lettore e' stato preparato
+# PRIMA (spec §8) a ricevere un «non lo so» -- `readable_state` qui sotto non
+# torna una stringa ma un ESITO ETICHETTATO, e chi lo legge dice «le traduzioni
+# di Home Assistant non sono state lette» invece di mostrare un vuoto. Un vuoto
+# su una pagina che il proprietario legge e' peggio di una traduzione
+# approssimativa.
 
 
-def _readable_climate_state(value, hvac_action: str | None) -> str:
+#: L'attributo che dice cosa un termostato sta facendo ADESSO, contro il suo
+#: stato che dice a cosa e' impostato. Scritto una volta: e' la chiave con cui
+#: si cerca sia il valore sia il nome, e due stringhe sparse sono due chiavi
+#: che possono divergere.
+HVAC_ACTION_ATTRIBUTE = "hvac_action"
+
+
+def _readable_climate_state(value, hvac_action, *, translations, resources) -> dict:
     """Lo stato di un termostato in parole, onesto sulla differenza fra
-    impostazione e funzionamento (vedi `_READABLE_HVAC_MODE`).
+    IMPOSTAZIONE e FUNZIONAMENTO.
 
-    Senza `hvac_action` (integrazione che non lo manda, o valore fuori
-    vocabolario) si dichiara solo l'impostazione -- «impostato su
-    riscaldamento» -- perche' e' l'unica cosa che si sa davvero: MEGLIO
-    un'informazione parziale dichiarata come tale che una frase che
-    suggerisce un funzionamento che nessuno ha confermato.
+    **Il difetto che questa funzione esiste per chiudere e' misurato**
+    (proprietario, 25/08/2026): due termostati impostati su riscaldamento e
+    FERMI (`hvac_action: idle`, obiettivo 17, temperatura vera 25) uscivano da
+    `guarda` come «heat», e il modello leggeva «in modalita' riscaldamento»
+    come se stessero scaldando davvero. Un termostato ha DUE fatti, non uno.
+
+    **Le parole sono tutte di Home Assistant, la frase e' nostra.** HA pubblica
+    il modo (`.state.heat`), il valore dell'azione
+    (`.state_attributes.hvac_action.state.heating`) e **il nome dell'attributo**
+    (`.state_attributes.hvac_action.name`, «Azione in corso»). Quest'ultimo non
+    e' un di piu': in italiano il modo `heat` e l'azione `heating` si rendono
+    con la STESSA parola («Riscaldamento»), quindi senza il nome dell'attributo
+    la frase composta direbbe due volte la stessa cosa e la distinzione fra
+    impostazione e funzionamento -- l'unica ragione per cui questa funzione
+    esiste -- tornerebbe a essere invisibile. La tabella cancellata aggirava il
+    problema con due verbi scritti a mano («sta scaldando»); qui la parola che
+    separa i due fatti la dice il fornitore, e se non la dice non si compone.
+
+    Senza azione nota (integrazione che non manda `hvac_action`, valore fuori
+    dall'enumerazione, nome dell'attributo non pubblicato) si dichiara **solo
+    l'impostazione**: meglio un'informazione parziale dichiarata come tale che
+    una frase che suggerisce un funzionamento che nessuno ha confermato.
     """
-    v = str(value).lower()
-    mode = _READABLE_HVAC_MODE.get(v)
-    if mode is None:
-        return str(value)
-    if v == "off":
+    mode = state_translations.rendered_state(
+        value, domain="climate", translations=translations)
+    if not mode.get("letto"):
         return mode
-    action = _READABLE_HVAC_ACTION.get(str(hvac_action).lower()) if hvac_action else None
-    if action:
-        return f"impostato su {mode}, {action}"
-    return f"impostato su {mode}"
+    if str(value).strip().lower() == "off":
+        return mode
+    if not hvac_action:
+        return state_translations.known(f"impostato su {mode['valore']}")
+    action = state_translations.attribute_value_translation(
+        str(hvac_action).strip().lower(), domain="climate",
+        attribute=HVAC_ACTION_ATTRIBUTE, component_resources=resources)
+    label = state_translations.attribute_name_translation(
+        domain="climate", attribute=HVAC_ACTION_ATTRIBUTE,
+        component_resources=resources)
+    if not action or not label:
+        return state_translations.known(f"impostato su {mode['valore']}")
+    return state_translations.known(
+        f"impostato su {mode['valore']}, {label.lower()}: {action}")
 
 
-def translate_state(value, device_class: str | None = None, domain: str | None = None,
-                    hvac_action: str | None = None) -> str:
-    """Il valore in parole. La CLASSE decide: `on` di un `moisture` e' «bagnato»,
-    `on` di un `door` e' «aperto», `on` di una luce e' «acceso». Vedi
-    `_CLASS_MEANING`, che porta i significati dichiarati da Home Assistant.
+def readable_state(value, *, domain, device_class=None, hvac_action=None,
+                   translations) -> dict:
+    """Il valore in parole, **come lo rende Home Assistant**, o il silenzio col
+    suo motivo.
 
-    `dominio` e `hvac_action` sono opzionali e servono a UN solo dominio,
-    `climate`: senza di loro un termostato traduce come qualunque altro stato
-    sconosciuto (la stringa grezza, `heat`), che e' esattamente il difetto che
-    questa firma esiste per chiudere -- vedi `_readable_climate_state`.
-    Chi non li passa (il nucleo, per scelta: e' testo pagato a ogni turno, e
-    il climate non entra mai in "Notevole adesso") si comporta come prima."""
-    if domain == "climate":
-        return _readable_climate_state(value, hvac_action)
-    v = str(value).lower()
-    meaning = _CLASS_MEANING.get(device_class or "")
-    if meaning:
-        if v == "on":
-            return meaning[0]
-        if v == "off":
-            return meaning[1]
-    return _STATE_TRANSLATION.get(v, str(value))
+    **Il dominio decide, e la classe di piu'**: `on` di un `moisture` e'
+    «Bagnato», `on` di un `door` e' «Aperto», `on` di una luce e' «Acceso»,
+    `off` di un `update` e' «Aggiornato». Non e' piu' un giudizio nostro: sono
+    le 801 chiavi che questa casa pubblica, gia' nella sua lingua, e la fonte
+    e' la stessa che il frontend di Home Assistant usa per scrivere le stesse
+    parole nella sua interfaccia.
+
+    `translations` e' l'esito etichettato della lettura
+    (`StateTranslations.read` / `.cached()`), **non il dizionario nudo**:
+    l'esito porta la differenza fra «non ho potuto chiedere» e «questo stato
+    non ha resa», e chi legge deve poterla dire.
+
+    Restituisce l'esito etichettato di `proxy/state_translations.py`:
+    `{"letto": True, "valore": "..."}` oppure `{"letto": False, "silenzio":
+    ..., "motivo": ...}`. **Non una stringa**: una stringa costringerebbe ogni
+    lettore a inventarsi cosa fare del caso in cui non c'e' -- ed e'
+    esattamente cio' che una tabella scritta a mano gli risparmiava mentendo,
+    perche' una tabella scritta a mano non fallisce mai.
+
+    `hvac_action` serve a UN solo dominio, `climate`, e a lui soltanto: senza,
+    un termostato dice cio' a cui e' impostato e non cio' che sta facendo.
+    """
+    resources = translations.get("risorse") if isinstance(translations, dict) else None
+    if domain == "climate" and isinstance(resources, dict) and resources:
+        return _readable_climate_state(value, hvac_action, translations=translations,
+                                       resources=resources)
+    return state_translations.rendered_state(
+        value, domain=domain, device_class=device_class, translations=translations)
 
 
 # `supported_features` -- COSA UN'ENTITA' SA FARE -- e' un intero A BIT il cui
@@ -709,8 +662,8 @@ def actual_class(declared: str | None, live: str | None) -> str | None:
     - `nucleo._is_event("binary_sensor", None, "on")` era sempre falso:
       NESSUN sensore binario e' mai entrato in «Notevole adesso». Un
       allagamento, un principio d'incendio, il monossido: muti;
-    - le voci di `_CLASS_MEANING` -- l'intera fetta 3.4.0, con
-      `carbon_monoxide` verificato una riga per volta -- erano irraggiungibili;
+    - le rese per CLASSE -- l'intera fetta 3.4.0, con `carbon_monoxide`
+      verificato una riga per volta -- erano irraggiungibili;
     - `guarda` prometteva la classe e rispondeva `null` su ogni entita'.
 
     E nessuna prova poteva accorgersene, perche' ogni finta scriveva

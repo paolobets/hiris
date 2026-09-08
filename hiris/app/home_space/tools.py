@@ -1521,7 +1521,8 @@ class ToolDispatcher:
     def __init__(self, home_space_store: HomeSpaceStore, memory_store: MemoryStore,
                  cache=None, actuator=None, lookup_cache: LookupCache | None = None,
                  ha=None, registry=None, agenda=None, workshop=None,
-                 exchange: str | None = None, journal=None) -> None:
+                 exchange: str | None = None, journal=None,
+                 translations=None) -> None:
         self._home_space = home_space_store
         self._memory = memory_store
         # Lo specchio dello stato vivo. E' la STESSA `entity_cache` da cui
@@ -1589,6 +1590,13 @@ class ToolDispatcher:
         # strumento risponde lo stesso, perdendo l'attribuzione e non la
         # risposta -- che e' una degradazione, non un guasto.
         self._journal = journal
+        # Le traduzioni degli stati di Home Assistant
+        # (`proxy/state_translations.StateTranslations`), la STESSA istanza che
+        # legge il nucleo: le parole con cui uno stato si rende sono una sola
+        # tabella, non una per porta. `None` e' legittimo -- `guarda` risponde
+        # lo stesso, con `stato_non_reso` al posto di `stato_leggibile` e il
+        # motivo dentro. E' una degradazione dichiarata, non un guasto.
+        self._translations = translations
 
     _RESOURCE_PER_TOOL: ClassVar[dict[str, tuple[str, ...]]] = {
         "search": ("casa",), "view": ("casa", "memoria"),
@@ -2013,6 +2021,14 @@ class ToolDispatcher:
         # ramo non guarda.
         if kind == "entita":
             await self._ensure_registry_fresh()
+        # Le parole degli stati, scaldate come il registro qui sopra e per la
+        # stessa ragione misurata: una tabella che si carica pigramente e' una
+        # tabella che il primo lettore trova vuota. Qui si puo' ASPETTARE (e'
+        # una coroutine, a differenza della composizione del nucleo), quindi
+        # `guarda` non si accontenta di cio' che c'e': lo va a prendere.
+        # Costa zero quando c'e' gia' -- `read` risponde dalla cache finche'
+        # la casa non cambia versione o lingua.
+        translations = await self._read_translations()
         detail = _view_detail(home_space, behavior, memories, state, kind, reference,
                                       unavailable=unavailable,
                                       unloaded_files=unloaded_files,
@@ -2034,7 +2050,8 @@ class ToolDispatcher:
                                       # `None` e' legittimo -- `guarda` resta
                                       # una lettura, e non deve fallire
                                       # perche' l'azione non e' cablata.
-                                      registry=self._registry)
+                                      registry=self._registry,
+                                      translations=translations)
         # Senza inventario leggibile ogni `stato: None` sarebbe ambiguo fra
         # «l'entita' non ha stato» e «non ho potuto guardare»: si dichiara.
         # Fix E1-③: `letto` (la lettura di QUESTA chiamata e' andata a buon
@@ -2276,6 +2293,30 @@ class ToolDispatcher:
         return await self._actuator.execute(arguments, actor="chat")
 
     # -- le promesse -----------------------------------------------------
+
+    async def _read_translations(self) -> dict:
+        """L'esito etichettato delle traduzioni, scaldandole se serve.
+
+        **Il motivo lo dichiara chi ha fallito.** Senza cache cablata, senza
+        sistema di riferimento (la casa non ha ancora detto la propria lingua)
+        o con la lettura caduta, si torna un esito «non lette» col motivo --
+        mai un dizionario vuoto che il chiamante dovrebbe interpretare.
+
+        La coppia `(versione_ha, lingua)` viene dal sistema di riferimento che
+        l'anagrafe ha gia' distillato da `Config.as_dict()`
+        (`home_space.topology.reference_frame`): non una seconda lettura verso
+        Home Assistant, e non una seconda idea di «lingua della casa».
+        """
+        if self._translations is None:
+            return {"lette": False,
+                    "motivo": "la lettura delle traduzioni non e' collegata a "
+                              "questo dispatcher"}
+        frame = self._home_space.reference_frame()
+        try:
+            return await self._translations.read(
+                ha_version=frame.get("versione_ha"), language=frame.get("lingua"))
+        except Exception as error:
+            return {"lette": False, "motivo": f"{type(error).__name__}: {error}"}
 
     async def _ensure_registry_fresh(self) -> None:
         """Scalda il registro dei servizi prima di leggerlo o di verificare.

@@ -316,6 +316,24 @@ def compose_briefing(app) -> tuple[str, dict]:
     # `compose()`, che sa distinguerlo da «guardato e combacia».
     comparison = app.get("tree_comparison")
 
+    # LE PAROLE CON CUI SI RENDE UNO STATO, e dall'08/09/2026 sono le sole:
+    # le quattro tabelle scritte a mano di `topology.py` non esistono piu'
+    # (spec §6). Si legge dalla cache **senza andare in rete** (`cached()`):
+    # questa funzione e' sincrona, la condividono `GET /api/briefing` e il
+    # contesto della chat, e renderla `async` per una tabella che
+    # `server._prime_state_translations` ha gia' letto allo startup avrebbe
+    # voluto dire cambiare la forma di mezzo prodotto.
+    #
+    # Un esito «non lette» non e' un guasto e non si nasconde: `compose()` lo
+    # DICHIARA in testa a «Notevole adesso» e mostra gli stati grezzi. E' la
+    # condizione che la spec pone alla cancellazione delle tabelle -- si
+    # cancella solo se il consumatore sa dire «traduzioni non lette».
+    translations_cache = app.get("state_translations")
+    translations = (translations_cache.cached() if translations_cache is not None
+                    else {"lette": False,
+                          "motivo": "la lettura delle traduzioni non e' collegata a "
+                                    "questa istanza"})
+
     # Affidabile SOLO se sappiamo sia quali entita' esistono (archivio della
     # casa) sia in che stato sono adesso (inventario vivo pronto). Una delle
     # due sole non basta: un archivio letto ma una cache non ancora caricata
@@ -334,6 +352,7 @@ def compose_briefing(app) -> tuple[str, dict]:
         problems=problems,
         comparison=comparison,
         attributes=attributes,
+        translations=translations,
         # L'orologio entra QUI, nell'unico compositore di produzione (chat
         # sincrona, ponte e GET /api/briefing passano tutti di qua), perche'
         # `compose` e' pura e non legge nulla da sola. Senza questa riga il

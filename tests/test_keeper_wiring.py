@@ -344,6 +344,14 @@ def test_costruisci_dispatcher_strumenti_riceve_registro_e_promesse():
 # automazione, ogni due minuti) -- dieci diventano undici, stessa
 # disciplina: README aggiornato insieme al codice.
 #
+# Fetta «le tabelle» (08/09/2026): un dodicesimo, `hiris_state_translations`
+# -- la rilettura delle parole con cui uno stato si rende. Non e' li' perche'
+# quella tabella cambi (non cambia quasi mai: `read` risponde dalla cache
+# finche' la casa non cambia versione o lingua), ma perche' la PRIMA lettura
+# puo' fallire con un Home Assistant non ancora pronto, e da quando le quattro
+# tabelle scritte a mano non esistono piu' il nucleo direbbe «traduzioni non
+# lette» a ogni turno finche' qualcuno non riprova.
+#
 # Questo test ancora quel numero al codice, non lo ripete a mano: se una
 # fetta futura aggiunge o toglie un `add_job`, questo test si rompe PRIMA
 # che la documentazione torni a mentire in silenzio -- lo stesso principio
@@ -351,10 +359,10 @@ def test_costruisci_dispatcher_strumenti_riceve_registro_e_promesse():
 # un conteggio che nessuno ancora ai fatti veri non e' un pavimento, e' una
 # frase che invecchia senza avvisare.
 
-def test_the_registered_periodic_jobs_are_eleven_as_the_readme_declares():
+def test_the_registered_periodic_jobs_are_twelve_as_the_readme_declares():
     src = inspect.getsource(server._on_startup)
     n = src.count("scheduler.add_job(")
-    assert n == 11, (
-        f"server.py registra {n} lavori periodici (scheduler.add_job), non 11: "
+    assert n == 12, (
+        f"server.py registra {n} lavori periodici (scheduler.add_job), non 12: "
         "il README (sezione «What HIRIS 2.0 is») dichiara un numero preciso "
         "e va aggiornato insieme al codice, non dopo.")

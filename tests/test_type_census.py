@@ -182,7 +182,7 @@ def test_il_censore_gira_anche_all_incontrario():
     Home Assistant non pubblica su quel dominio e' una riga irraggiungibile --
     nessuna entita' di nessuna casa potra' mai portarla.
 
-    Il caso vero era `_CLASS_MEANING["damper"]` fra le classi di
+    Il caso vero era la riga `damper` fra le classi di
     `binary_sensor`, mentre `damper` e' una `CoverDeviceClass`. Qui si
     riproduce togliendo `door` da cio' che l'istantaneo pubblica.
 
@@ -295,24 +295,49 @@ def test_il_censore_su_questa_casa_ha_trovato_davvero_qualcosa(casa):
     assert tutte[Subject.SWITCHABLE]
 
 
-def test_i_cinque_difetti_gia_misurati_sono_ancora_nominati(casa):
+def test_i_cinque_difetti_gia_misurati_sono_chiusi_e_nessuno_e_sparito(casa):
     """I cinque che la ricognizione aveva trovato girando il censore una volta
-    sola. Nessuno e' stato silenziato: quattro sono ancora nominati (e aperti o
-    eccettuati), il quinto -- `damper` -- e' stato chiuso cancellando la riga
-    irraggiungibile, ed e' per questo che NON compare piu'.
+    sola, **chiusi il giorno dopo** (08/09/2026) dalle decisioni del
+    proprietario.
 
-    Mutazione ESEGUITA: in `published_but_unclaimed`, sostituire con `pass` il
-    ramo degli stati -- i sei del boiler, i tre della serratura e i quattro del
-    tosaerba smettono di essere nominati e la prova arrossisce su
-    `assert 'water_heater=eco' in set()`.
+    E' la prova che il movimento funziona nei DUE versi: il censore li ha
+    nominati, qualcuno ha deciso, e adesso il vocabolario li rivendica -- non
+    li ha fatti sparire nascondendoli, che e' l'unico modo in cui questa prova
+    potrebbe passare per la ragione sbagliata. Per questo non basta guardare
+    che il censore taccia: si guarda **dove sono finiti**.
+
+    Mutazione ESEGUITA: togliere `working_states` da `claimed_states` -- i sei
+    del boiler e i due della serratura tornano fra i ritrovamenti, e le
+    asserzioni `not in` arrossiscono.
     """
+    from hiris.app.home_space.type_vocabulary import (
+        capability_tables,
+        resting_states_of,
+        working_states_of,
+    )
     stati = set(findings(casa)[Subject.STATE])
-    assert state_key("water_heater", None, "eco") in stati
-    assert state_key("lock", None, "jammed") in stati
-    assert state_key("lawn_mower", None, "mowing") in stati
+    # 1. i sei modi del boiler: FUNZIONAMENTO, e il vocabolario lo dice
+    assert state_key("water_heater", None, "eco") not in stati
+    assert "eco" in working_states_of("water_heater")
+    # 2. `stopped` di tapparella e valvola: RIPOSO
+    assert "stopped" in resting_states_of("cover")
+    assert "stopped" in resting_states_of("valve")
+    # 3. la serratura: due sono funzionamento, `jammed` resta APERTO -- e'
+    #    un guasto, e il genere oggi non dipende dallo stato
+    assert working_states_of("lock") >= {"locking", "unlocking"}
+    assert "jammed" not in working_states_of("lock")
+    assert "jammed" not in resting_states_of("lock")
+    assert (Subject.STATE, state_key("lock", None, "jammed")) in {
+        (q.subject, key) for q in type_census.OPEN_QUESTIONS for key in q.keys}
+    # 4. il tosaerba come l'aspirapolvere
+    assert "docked" in resting_states_of("lawn_mower")
+    assert state_key("lawn_mower", None, "mowing") not in stati
+    # 5. i quattro domini fuori, per voce e con la ragione
+    for domain in ("assist_satellite", "camera", "timer", "group"):
+        assert any(subject is Subject.STATE and name.startswith(f"{domain}=")
+                   for subject, name in EXCEPTIONS), domain
     # i cinque domini con bit e nessuna tabella: quattro hanno preso la loro
     # tabella (verificata alla fonte ai due tag), `button` ha la sua eccezione.
-    from hiris.app.home_space.type_vocabulary import capability_tables
     tabelle = capability_tables()
     for domain in ("lock", "humidifier", "lawn_mower", "assist_satellite"):
         assert domain in tabelle, f"«{domain}» aveva bit e nessuna tabella"
@@ -324,6 +349,66 @@ def test_i_cinque_difetti_gia_misurati_sono_ancora_nominati(casa):
 # ---------------------------------------------------------------------------
 # LE ECCEZIONI E LE DOMANDE: nessuna passa senza la sua ragione
 # ---------------------------------------------------------------------------
+
+def test_le_domande_chiuse_non_restano_scritte_fra_quelle_aperte():
+    """**`OPEN_QUESTIONS` e' l'elenco di cio' che e' ancora aperto, non un
+    verbale.** Sei delle nove domande hanno avuto risposta l'08/09/2026, e una
+    domanda con la risposta gia' data e' peggio di nessuna domanda: qualcuno la
+    riporra', e nel frattempo il numero delle voci aperte mente.
+
+    La prova guarda i SOGGETTI, non i testi: una domanda si chiude togliendo le
+    sue chiavi, e finche' una chiave e' li' dentro il censore la considera
+    «sistemata» e non la nomina piu' -- che e' il modo esatto in cui una
+    decisione mancata si nasconderebbe.
+
+    Mutazione ESEGUITA: rimettere fra le domande aperte la chiave
+    `water_heater=eco` -- la prova la nomina.
+    """
+    aperte = {(question.subject, key)
+              for question in OPEN_QUESTIONS for key in question.keys}
+    chiuse = [
+        (Subject.STATE, state_key("water_heater", None, "eco")),
+        (Subject.STATE, state_key("cover", None, "stopped")),
+        (Subject.STATE, state_key("valve", None, "stopped")),
+        (Subject.STATE, state_key("lock", None, "locking")),
+        (Subject.STATE, state_key("lock", None, "unlocking")),
+        (Subject.STATE, state_key("lawn_mower", None, "docked")),
+        (Subject.STATE, state_key("camera", None, "recording")),
+        (Subject.STATE, state_key("timer", None, "active")),
+        (Subject.STATE, state_key("group", None, "ok")),
+        (Subject.STATE, state_key("assist_satellite", None, "listening")),
+        (Subject.SWITCHABLE, "remote"),
+        (Subject.SWITCHABLE, "siren"),
+    ]
+    rimaste = [f"{subject.value}: {name}" for subject, name in chiuse
+               if (subject, name) in aperte]
+    assert not rimaste, (
+        "domande gia' decise dal proprietario e ancora scritte fra quelle "
+        "aperte: " + ", ".join(rimaste))
+
+
+def test_cio_che_resta_aperto_e_nominato_e_contato():
+    """Cio' che il proprietario non ha deciso resta aperto, e la prova lo CONTA:
+    un numero che nessuno ancora ai fatti veri invecchia senza avvisare.
+
+    Centodieci voci in quattro domande: le 109 classi del dispositivo (31 di
+    `sensor`, 57 di `number`, 21 di sei domini) e `lock=jammed`, che ha la
+    decisione presa e non un posto dove scriverla.
+
+    Mutazione ESEGUITA: cancellare la domanda su `lock=jammed` -- il conto
+    scende a 109 e la prova arrossisce; e il censore, che quella voce non la
+    vedrebbe piu' chiusa, la rimette fra cio' che resta da decidere.
+    """
+    voci = {(question.subject, key)
+            for question in OPEN_QUESTIONS for key in question.keys}
+    assert len(voci) == 110, f"le voci aperte sono {len(voci)}, non 110"
+    assert len(OPEN_QUESTIONS) == 4
+    per_materia = {subject: sum(1 for s, _ in voci if s is subject)
+                   for subject in {s for s, _ in voci}}
+    assert per_materia[Subject.DEVICE_CLASS] == 109
+    assert per_materia[Subject.STATE] == 1
+    assert (Subject.STATE, state_key("lock", None, "jammed")) in voci
+
 
 def test_ogni_eccezione_porta_la_sua_ragione_scritta():
     """«Un'eccezione senza motivo scritto non passa» -- e non e' un buon

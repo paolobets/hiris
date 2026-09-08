@@ -67,9 +67,9 @@ one of the sixteen tools below, lets a sentence you type now run later, at a
 time you name, with nobody in the chat when it happens — see the next
 paragraph for what that means in practice.
 
-Periodic work *does* run — the scheduler registers **eleven** APScheduler jobs
+Periodic work *does* run — the scheduler registers **twelve** APScheduler jobs
 at startup, not four, and one of them is not housekeeping: it is the reason
-the paragraph above needed the caveat. Ten are internal bookkeeping — none of
+the paragraph above needed the caveat. Eleven are internal bookkeeping — none of
 them speaks to you and none of them touches the house: the entity-inventory
 reload every 2 minutes (`server.py::_reload_inventory`), the reread of Home
 Assistant's own diagnosed issues every 5 minutes
@@ -97,7 +97,17 @@ same automation's next successful run. The 03:30 history compaction, the 04:00
 nightly digest and the Mayan document poll were removed in 2.1.0 together with
 the document integration and the knowledge archive they fed.
 
-The eleventh is the promise scheduler's heartbeat, every 15 seconds
+One more was added by "the tables" slice: the reread of the state
+translations Home Assistant publishes, every 5 minutes
+(`server.py::_reread_state_translations` →
+`proxy/state_translations.py`). It is not there because that table changes —
+it almost never does, and the read costs nothing while the house keeps the
+same version and language — but because the *first* read can fail against a
+Home Assistant that is not ready yet, and since the four hand-written
+translation tables were deleted those words are what the briefing renders
+every notable state with.
+
+The twelfth is the promise scheduler's heartbeat, every 15 seconds
 (`server.py::_battito` → `keeper/sweeper.py::Sweeper.batti`). A
 promise is created from a sentence in chat — "at 5pm, turn on the office",
 "in an hour, check the temperature and tell me if it went up" — and its

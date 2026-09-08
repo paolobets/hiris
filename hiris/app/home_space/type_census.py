@@ -37,18 +37,26 @@ gira solo quando la casa risponde, verifica che l'istantaneo non sia scaduto.
 
 **Il confronto gira anche all'incontrario.** Cio' che noi rivendichiamo e Home
 Assistant non pubblica e' l'altro difetto, e non e' teorico: e' cosi' che si e'
-scoperto che `_CLASS_MEANING["damper"]` era irraggiungibile -- `damper` e' una
+scoperto che la riga `damper` era irraggiungibile -- `damper` e' una
 `CoverDeviceClass`, non una di `binary_sensor`, e quella riga non poteva
 rispondere a nessuna entita' di nessuna casa.
 
-**Dove sta il limite di questo censore, dichiarato invece che scoperto fra sei
-mesi.** Il «rivendicato» degli stati include due tabelle CIECHE AL DOMINIO
-(`topology._STATE_TRANSLATION` e `briefing._ACTIVE_STATES`): per loro `open` e'
-rivendicato su `lock` esattamente come su `cover`, che e' il difetto che la
-fetta 5 esiste per chiudere. Finche' ci sono, il censore le conta come
-rivendicazioni -- e il giorno in cui spariranno il censore parlera' molto di
-piu'. **E' voluto**: un censore che le ignorasse oggi direbbe che il prodotto
-non sa niente di stati che invece rende da mesi.
+**Cos'e' successo il giorno in cui quelle tabelle sono sparite (08/09/2026,
+fetta 5).** La versione precedente di questo modulo dichiarava un limite: il
+«rivendicato» degli stati includeva due tabelle CIECHE AL DOMINIO
+(`topology._STATE_TRANSLATION` e `briefing._ACTIVE_STATES`), per cui `open` era
+rivendicato su `lock` esattamente come su `cover` -- e prevedeva che «il giorno
+in cui spariranno il censore parlera' molto di piu'». **E' successo, ed e' stato
+misurato**: 35 stati e 12 classi del dispositivo che nessuno aveva mai
+guardato, `alarm_control_panel=triggered` compreso. Nessuna e' stata silenziata:
+o e' entrata nel vocabolario col suo giudizio (`working_states`), o porta
+un'eccezione motivata qui sotto.
+
+**Il limite che RESTA**, e va detto invece che sottinteso: `briefing._ACTIVE_STATES`
+e' ancora cieco al dominio, e rivendica `on`/`open`/`unlocked`/`playing`/`cleaning`
+per qualunque tipo. Si vede in una sola eccezione -- quella di `group`, dove
+tre voci sono eccettuate proprio perche' quella rivendicazione non vale come
+giudizio.
 
 Spec: `docs/design/2026-09-07-l-anagrafe-dei-tipi.md` §5.
 """
@@ -57,7 +65,7 @@ from __future__ import annotations
 from enum import Enum
 from types import MappingProxyType
 
-from . import briefing, ha_vocabulary, historian, topology, type_vocabulary
+from . import briefing, ha_vocabulary, historian, type_vocabulary
 
 
 class Subject(Enum):
@@ -163,8 +171,6 @@ def claimed_device_classes() -> frozenset[str]:
     claimed |= {class_key(domain, device_class)
                 for domain, device_class in type_vocabulary.declared_pairs()}
     claimed |= {class_key("binary_sensor", device_class)
-                for device_class in topology._CLASS_MEANING}
-    claimed |= {class_key("binary_sensor", device_class)
                 for device_class in briefing._EVENT_CLASSES}
     return frozenset(claimed)
 
@@ -172,22 +178,30 @@ def claimed_device_classes() -> frozenset[str]:
 def claimed_states(domain: str, device_class: str | None) -> frozenset[str]:
     """Gli stati che, per questo tipo, qualcuno ha gia' guardato.
 
-    Quattro provenienze diverse, e la differenza fra loro conta:
+    Tre provenienze diverse, e la differenza fra loro conta:
 
-    - i **riposi** del vocabolario dei tipi -- l'unico giudizio per tipo;
+    - i **riposi** e i **funzionamenti** del vocabolario dei tipi -- le due
+      meta' dell'unico giudizio per tipo;
     - **`unavailable`/`unknown`** e le due forme dell'assenza, che attraversano
       ogni tipo e per questo non stanno su nessuna riga;
-    - gli **stati attivi** del nucleo e le **traduzioni** di `topology`, che
-      sono CIECHE AL DOMINIO (vedi il docstring in testa a questo modulo);
-    - i **modi** di un termostato, che valgono per `climate` e per nessun altro.
+    - gli **stati attivi** del nucleo, che sono CIECHI AL DOMINIO.
+
+    **Erano quattro fino all'08/09/2026**, e la quarta era la piu' larga:
+    `topology._STATE_TRANSLATION` (cieca al dominio) e `_READABLE_HVAC_MODE`
+    rivendicavano 24 stati per OGNI tipo, solo perche' qualcuno li traduceva.
+    Quelle tabelle non esistono piu' (spec §6, fetta 5): le parole le dice Home
+    Assistant. **Con loro e' caduta la rivendicazione, ed e' un guadagno, non
+    una perdita** -- «qualcuno lo traduce» non era mai stato «qualcuno lo ha
+    giudicato», e infatti la loro sparizione ha fatto emergere 35 stati che
+    nessuno aveva mai guardato, `alarm_control_panel=triggered` compreso. Ogni
+    voce e' stata chiusa: col giudizio nel vocabolario, o con un'eccezione
+    motivata qui sotto.
     """
     claimed = set(type_vocabulary.resting_states_of(domain, device_class))
+    claimed |= set(type_vocabulary.working_states_of(domain, device_class))
     claimed |= set(type_vocabulary.unknown_states())
     claimed |= set(type_vocabulary.ABSENT_STATE_FORMS.value)
     claimed |= set(briefing._ACTIVE_STATES)
-    claimed |= set(topology._STATE_TRANSLATION)
-    if domain == "climate":
-        claimed |= set(topology._READABLE_HVAC_MODE)
     return frozenset(claimed)
 
 
@@ -272,8 +286,13 @@ def claimed_but_unpublished(snapshot) -> dict[Subject, tuple[str, ...]]:
     entita' potra' mai raggiungere -- ed e' cosi' che si e' trovato `damper`.
     I bit no: il registro dei servizi dichiara solo i bit su cui FILTRA, e
     pretendere che li dichiari tutti farebbe gridare al buco su ogni tabella
-    corretta. Uno stato nemmeno: `_STATE_TRANSLATION` e' cieca al dominio per
-    costruzione, e il suo rovescio direbbe soltanto quello.
+    Uno stato nemmeno, e la ragione e' cambiata l'08/09/2026: fino a quel
+    giorno il rovescio avrebbe soltanto ripetuto che `_STATE_TRANSLATION` era
+    cieca al dominio; adesso i riposi e i funzionamenti sono giudizi NOSTRI su
+    tipi che possono benissimo non essere in questa casa (nessun boiler, nessun
+    tosaerba), e gridare al buco su ognuno di loro sarebbe chiedere di
+    cancellare un giudizio corretto perche' il dispositivo non e' ancora
+    arrivato.
 
     **E i domini accendibili**, dove il rovescio e' meta' del mandato: la spec
     §4 dice che la derivazione sbaglia in ENTRAMBI i versi, e `vacuum` -- che
@@ -349,6 +368,15 @@ EXCEPTIONS: dict[tuple[Subject, str], str] = {
         "`start`/`stop`/`return_to_base`, quindi la derivazione non lo vede. "
         "E' il caso che dimostra che il derivato non puo' sostituire il "
         "giudizio: sbaglia in ENTRAMBI i versi (spec §4)."),
+    (Subject.SWITCHABLE, "lawn_mower"): (
+        "Identica a `vacuum`, e non e' una coincidenza: il proprietario ha "
+        "deciso l'08/09/2026 che il tosaerba si tratta come l'aspirapolvere -- "
+        "stessa forma, `docked` a riposo. Home Assistant lo comanda allo stesso "
+        "modo (`start_mowing`/`pause`/`dock`, non `turn_on`/`turn_off`), quindi "
+        "la derivazione non lo vede, ed e' la SECONDA voce del verso opposto: "
+        "il derivato sbaglia in entrambi i sensi, e sbaglia per la stessa "
+        "ragione tutte le volte -- un apparecchio che si accende e si spegne "
+        "ma che HA comanda con verbi propri."),
 
     # -- i valori di `state_class`
     (Subject.STATE_CLASS, "measurement_angle"): (
@@ -366,12 +394,15 @@ EXCEPTIONS: dict[tuple[Subject, str], str] = {
         "che il fornitore non dichiara. Il bit arriva da `reolink.ptz_move`, "
         "un servizio di integrazione che BERSAGLIA `button`."),
 
-    # -- gli stati gia' giudicati altrove, con la ragione scritta li'
-    (Subject.STATE, "media_player=buffering"): (
-        "Gia' giudicato, e la ragione e' scritta nel vocabolario dei tipi: "
-        "«sta per riprodurre, non e' un riposo». Resta fuori dai riposi di "
-        "proposito -- metterlo dentro chiuderebbe l'episodio di un film che "
-        "sta per ripartire."),
+    # `media_player=buffering` STAVA qui, ed era gia' allora la voce piu'
+    # debole dell'elenco: la sua ragione diceva «gia' giudicato, e la ragione e'
+    # scritta nel vocabolario dei tipi» -- cioe' era un'eccezione che rimandava
+    # a un giudizio, non un'esclusione. Dall'08/09/2026 quel giudizio ha un
+    # campo dove stare (`type_vocabulary`, `working_states`: «sta per
+    # riprodurre, non e' un riposo»), quindi la voce e' rivendicata e non
+    # eccettuata. E' il movimento che il censore esiste per rendere possibile:
+    # una voce esce dalle eccezioni ed entra nel vocabolario il giorno in cui
+    # c'e' un posto per lei.
 }
 
 def _same_reason(subject: Subject, keys, reason: str) -> dict[tuple[Subject, str], str]:
@@ -415,6 +446,148 @@ EXCEPTIONS.update(_same_reason(
     "Stessa ragione di `weather`, e la stessa riga di commento la dichiara: "
     "dove sta il sole e' una misura dell'universo, non un fatto della casa."))
 
+# -- le classi del dispositivo lasciate fuori DI PROPOSITO, con la ragione
+#    scritta dov'e' stata presa la decisione.
+#
+# Emergono dall'08/09/2026, con la sparizione di `topology._CLASS_MEANING`
+# (spec §6): quella tabella le rivendicava tutte e ventotto, e la
+# rivendicazione era «qualcuno le traduce» -- non «qualcuno ha deciso se
+# servono». Adesso le parole le dice Home Assistant, e la domanda vera (spec
+# §7: serve a una delle sei gambe dell'obiettivo?) resta scoperta per le
+# dodici che nessuna gamba raccoglie. **La risposta era gia' scritta nel
+# prodotto**, sopra `briefing._EVENT_CLASSES`, ed e' quella: sono transitori e
+# manutenzione, si vanno a chiedere e non si annunciano.
+
+EXCEPTIONS.update(_same_reason(
+    Subject.DEVICE_CLASS,
+    (class_key("binary_sensor", device_class) for device_class in
+     ("light", "moving", "plug", "power", "running", "sound", "vibration")),
+    "Transitorio: dice com'e' un istante, non che sia successo qualcosa da "
+    "osservare o da annunciare. Deciso e scritto sopra `briefing._EVENT_CLASSES` "
+    "(«restano fuori i transitori»), e nessuna delle sei gambe dell'obiettivo lo "
+    "raccoglie: `chi c'e'` ha gia' `motion`/`occupancy`/`presence`, che sono la "
+    "stessa domanda posta bene."))
+
+EXCEPTIONS.update(_same_reason(
+    Subject.DEVICE_CLASS,
+    (class_key("binary_sensor", device_class) for device_class in
+     ("battery", "battery_charging", "connectivity", "update")),
+    "Manutenzione: e' la gamba «buono stato», che pero' HIRIS la osserva dove "
+    "il dato e' un NUMERO (`sensor.battery`, gia' nel vocabolario) e non dove e' "
+    "un si'/no. Un `binary_sensor.battery` dice «carica bassa» e basta: non c'e' "
+    "una soglia da confrontare ne' una tendenza da guardare, e annunciarlo "
+    "riempirebbe il nucleo di righe che non cambiano per settimane. Deciso e "
+    "scritto sopra `briefing._EVENT_CLASSES` («e la manutenzione»)."))
+
+EXCEPTIONS[(Subject.DEVICE_CLASS, class_key("binary_sensor", "lock"))] = (
+    "E' il DOPPIONE di un tipo che il vocabolario gia' porta: il dominio `lock` "
+    "ha la sua riga, con la gamba «sicurezza» e i suoi riposi. Un "
+    "`binary_sensor.lock` e' la stessa serratura vista da un'integrazione che "
+    "non implementa il dominio, e dargli una riga propria vorrebbe dire due "
+    "case per lo stesso soggetto. Se un giorno questa casa ne avesse uno, la "
+    "risposta giusta e' collegarlo a quella riga, non aprirne una seconda.")
+
+
+# -- gli stati emersi con la sparizione di `_STATE_TRANSLATION` (08/09/2026)
+#
+# Trentacinque voci, e nessuna e' nuova per Home Assistant: erano tutte
+# rivendicate da una tabella che le traduceva senza guardare il dominio. Sotto
+# ci sono quelle la cui decisione era GIA' PRESA e scritta altrove nel
+# prodotto; le altre sono entrate nel vocabolario col loro giudizio
+# (`type_vocabulary`, campo `working_states`).
+
+EXCEPTIONS.update(_same_reason(
+    Subject.STATE,
+    (state_key("automation", None, "off"), state_key("script", None, "off"),
+     state_key("input_boolean", None, "off"), state_key("schedule", None, "off")),
+    "`off` qui significa «disabilitata», non «spenta»: e' il rovescio esatto "
+    "dell'`on` per cui questi stessi domini sono esclusi dagli accendibili "
+    "(vedi le loro eccezioni qui sopra). Non c'e' nessun apparecchio che si "
+    "ferma, quindi non c'e' nessun episodio da chiudere. `schedule` non era "
+    "nell'elenco degli accendibili -- Home Assistant non gli da' "
+    "`turn_on`/`turn_off` -- ma e' la stessa famiglia e la stessa ragione."))
+
+EXCEPTIONS.update(_same_reason(
+    Subject.STATE,
+    # I nomi si scrivono UNO PER UNO e dentro `state_key`, non come tupla di
+    # domini: una tupla di domini letterale e' un vocabolario parallelo, e la
+    # prova «un tipo ha una casa sola» la vede e ha ragione a vederla. Qui il
+    # soggetto e' lo STATO di quel tipo, non il tipo.
+    (state_key("calendar", None, "off"), state_key("sensor", None, "off"),
+     state_key("update", None, "off")),
+    "Sono i tre domini che HIRIS non giudica per stato: un `sensor` MISURA, un "
+    "`calendar` dice se c'e' un evento in corso, un `update` se c'e' un "
+    "aggiornamento. Nessuno dei tre e' una cosa che si accende, e per tutti e "
+    "tre la decisione e' gia' scritta sopra `briefing._EVENT_DOMAINS`. **E "
+    "`update=off` e' il caso che dimostra perche' la tabella cieca al dominio "
+    "andava cancellata**: la rendeva «spento», mentre Home Assistant per quel "
+    "dominio dice «Aggiornato»."))
+
+EXCEPTIONS.update(_same_reason(
+    Subject.STATE,
+    (state_key("person", None, "home"), state_key("person", None, "not_home"),
+     state_key("device_tracker", None, "home"),
+     state_key("device_tracker", None, "not_home")),
+    "Gia' giudicati, e il giudizio e' il genere «presenza» di "
+    "`mind/facts.py::aggregate_day`: `home` E' il riposo (chiude l'episodio) e "
+    "l'oggetto e' l'ASSENZA -- «fuori casa dalle 8:10 alle 17:34» -- non il "
+    "rientro. Non stanno fra i riposi del vocabolario perche' quel ramo non "
+    "passa da `_is_on`: confronta `home` da se', ed e' l'unico genere che lo fa. "
+    "Il giorno in cui i due rami si unificassero, queste quattro voci "
+    "diventerebbero due righe di vocabolario."))
+
+
+# I quattro domini che il proprietario ha lasciato FUORI l'08/09/2026, quinta
+# delle nove domande del censore: nessuno dei quattro e' una cosa che si accende
+# nel senso che serve all'osservatore. **L'eccezione e' per VOCE, come tutte le
+# altre**: un dominio scusato per intero resterebbe muto il giorno in cui Home
+# Assistant gli aggiunge uno stato nuovo -- ed e' anche il motivo per cui i
+# quattro nomi non stanno in un elenco loro, che sarebbe un vocabolario dei
+# tipi parallelo a quello vero.
+
+EXCEPTIONS.update(_same_reason(
+    Subject.STATE,
+    (state_key("assist_satellite", None, state)
+     for state in ("idle", "listening", "processing", "responding")),
+    "FUORI, deciso dal proprietario l'08/09/2026: un satellite che ascolta o "
+    "risponde non e' una cosa che si accende nel senso che serve "
+    "all'osservatore. E' la conversazione in corso con HIRIS stesso, dura "
+    "secondi, e aprirci sopra un episodio riempirebbe la giornata di oggetti "
+    "che raccontano l'assistente invece della casa."))
+
+EXCEPTIONS.update(_same_reason(
+    Subject.STATE,
+    (state_key("camera", None, state)
+     for state in ("idle", "recording", "streaming")),
+    "FUORI, deciso dal proprietario l'08/09/2026, e coerente con l'esclusione "
+    "gia' scritta fra gli accendibili: `recording`/`streaming` dicono cosa fa "
+    "l'INTEGRAZIONE con quel flusso, non cosa fa un apparecchio di casa -- e "
+    "non c'e' nessun `off` da cui dedurre un riposo."))
+
+EXCEPTIONS.update(_same_reason(
+    Subject.STATE,
+    (state_key("timer", None, state) for state in ("active", "idle", "paused")),
+    "FUORI, deciso dal proprietario l'08/09/2026: un timer attivo e' un conto "
+    "alla rovescia che qualcuno ha impostato, non una cosa della casa che sta "
+    "funzionando. Il fatto interessante e' cosa succede quando SCADE, e quello "
+    "e' un evento dell'automazione che lo ascolta -- non uno stato di questo."))
+
+EXCEPTIONS.update(_same_reason(
+    Subject.STATE,
+    (state_key("group", None, state) for state in
+     ("closed", "home", "locked", "not_home", "off", "ok", "problem")),
+    "FUORI, deciso dal proprietario l'08/09/2026: un gruppo non e' una cosa, e' "
+    "un modo di guardarne molte -- il suo stato e' quello dei membri, gia' "
+    "osservati uno per uno, e osservarlo di nuovo qui conterebbe due volte lo "
+    "stesso fatto. **Sette dei dieci stati, non tutti**: `on`, `open` e "
+    "`unlocked` restano rivendicati da `briefing._ACTIVE_STATES`, che e' CIECO "
+    "AL DOMINIO -- l'ultimo residuo della stessa cecita' che questa fetta ha "
+    "tolto alle traduzioni. Non si possono eccettuare: una prova chiama "
+    "(giustamente) permesso-che-non-difende-niente un'eccezione su una voce "
+    "che il censore non nomina. Restano dentro per una rivendicazione che non "
+    "e' un giudizio, ed e' scritto qui perche' la fetta che togliera' quella "
+    "cecita' sappia dove tornare."))
+
 
 # --------------------------------------------------------------------------
 # LE DOMANDE APERTE: cio' che il censore nomina e NON tocca a noi decidere
@@ -450,55 +623,34 @@ class OpenQuestion:
 
 OPEN_QUESTIONS: tuple[OpenQuestion, ...] = (
     # -- gli stati -----------------------------------------------------------
+    #
+    # **Cinque domande su sei sono state chiuse dal proprietario l'08/09/2026**
+    # -- i sei modi di `water_heater`, lo `stopped` di `cover` e `valve`, il
+    # `lawn_mower` trattato come l'aspirapolvice, i quattro domini lasciati
+    # fuori, e `remote`/`siren` dichiarati accendibili. Le risposte non stanno
+    # qui: stanno dove valgono, cioe' nel vocabolario dei tipi e fra le
+    # eccezioni motivate qui sopra. **Questo elenco e' cio' che resta aperto,
+    # non un verbale di cio' che e' stato deciso**: una domanda che ha avuto
+    # risposta e resta scritta qui e' una domanda che qualcuno riporra'.
     OpenQuestion(
         Subject.STATE,
-        "Un boiler in `eco` (o `gas`, `electric`, `heat_pump`, `high_demand`, "
-        "`performance`) sta FUNZIONANDO -- e l'episodio resta aperto finche' "
-        "non va a `off` -- oppure quello e' il suo modo di stare fermo, e "
-        "l'episodio va chiuso? `water_heater` e' dichiarato accendibile e il "
-        "suo unico riposo e' `off`: se questi sei sono riposi vanno aggiunti, "
-        "se sono funzionamento non serve toccare niente ma la domanda va "
-        "chiusa. Oggi non morde (nessun boiler in questa casa), e mordera' il "
-        "giorno in cui ne arriva uno.",
-        {state_key("water_heater", None, state) for state in
-         ("eco", "electric", "gas", "heat_pump", "high_demand", "performance")}),
-    OpenQuestion(
-        Subject.STATE,
-        "Una tapparella (o una valvola) ferma a meta' corsa -- stato "
-        "`stopped` -- e' a riposo o in funzionamento? Sono due domini "
-        "dichiarati accendibili il cui unico riposo e' `closed`: oggi una "
-        "tapparella lasciata a meta' tiene aperto per sempre l'episodio "
-        "cominciato quando si e' mossa.",
-        {state_key("cover", None, "stopped"), state_key("valve", None, "stopped")}),
-    OpenQuestion(
-        Subject.STATE,
-        "Una serratura `jammed` (inceppata), `locking` o `unlocking` va "
-        "annunciata come si annuncia `unlocked`? `lock` e' gia' un dominio di "
-        "cui il nucleo annuncia lo stato attivo, e questi tre non sono ne' "
-        "attivi ne' riposi ne' ignoti: oggi passano senza che nessuno li "
-        "guardi. `jammed` in particolare e' un guasto.",
-        {state_key("lock", None, state) for state in ("jammed", "locking", "unlocking")}),
-    OpenQuestion(
-        Subject.STATE,
-        "`lawn_mower` e' il gemello di `vacuum` -- taglia, torna alla base, si "
-        "mette in pausa, va in errore -- ma non e' mai stato guardato da "
-        "nessuna lista. Va trattato come l'aspirapolvere (accendibile, con "
-        "`docked`/`returning`/`error` a riposo e `mowing` attivo), oppure "
-        "resta fuori?",
-        {state_key("lawn_mower", None, state) for state in
-         ("docked", "error", "mowing", "returning")}),
-    OpenQuestion(
-        Subject.STATE,
-        "Quattro domini che nessuna lista di questo prodotto ha mai guardato: "
-        "`assist_satellite` (sta ascoltando, sta rispondendo), `camera` (sta "
-        "registrando), `timer` (attivo), `group` (`ok`). Hanno stati che il "
-        "nucleo deve annunciare o su cui HIRIS deve aprire un episodio, o "
-        "restano fuori come `sensor` e `weather`?",
-        {state_key("assist_satellite", None, state) for state in
-         ("idle", "listening", "processing", "responding")}
-        | {state_key("camera", None, state) for state in ("idle", "recording", "streaming")}
-        | {state_key("timer", None, state) for state in ("active", "idle")}
-        | {state_key("group", None, "ok")}),
+        "Una serratura `jammed` (inceppata): il proprietario ha deciso l'08/09/2026 "
+        "che **e' un GUASTO** -- «e' inceppata, non sta lavorando» -- e quindi non "
+        "va ne' fra i riposi ne' fra i funzionamenti di `lock`, che sono gli unici "
+        "due posti che il vocabolario ha oggi. **La decisione c'e', il posto dove "
+        "scriverla no**: «guasto» in questo prodotto e' un GENERE "
+        "(`mind/facts.py::GENRES`), e il genere si decide per SOGGETTO -- "
+        "`genre_for(soggetto, gamba)` lo stato non lo riceve nemmeno, e un "
+        "soggetto ha un genere solo per tutta la giornata (`open_episodes` e' "
+        "indicizzato per soggetto: una serratura che si inceppa a episodio di "
+        "sicurezza aperto non potrebbe cambiare genere senza chiuderne uno e "
+        "aprirne un altro). Farlo entrare vuol dire un genere che dipende dallo "
+        "stato, ed e' un lavoro suo -- non una riga. Finche' non si fa, `jammed` "
+        "resta un funzionamento di fatto: apre un episodio di «sicurezza» che si "
+        "chiude quando la serratura torna a posto. **Serve una fetta per il "
+        "genere che dipende dallo stato, o si accetta che un guasto della "
+        "serratura si racconti come un fatto di sicurezza?**",
+        {state_key("lock", None, "jammed")}),
 
     # -- le classi del dispositivo ------------------------------------------
     OpenQuestion(
@@ -562,20 +714,6 @@ OPEN_QUESTIONS: tuple[OpenQuestion, ...] = (
         | {class_key("media_player", device_class) for device_class in
            ("projector", "receiver")}
         | {class_key("valve", "gas"), class_key("button", "update")}),
-
-    # -- i domini accendibili ------------------------------------------------
-    OpenQuestion(
-        Subject.SWITCHABLE,
-        "`remote` e `siren` Home Assistant li dichiara accendibili "
-        "(`turn_on`+`turn_off`) e pubblica per entrambi `on`/`off`; HIRIS li "
-        "tratta gia' come domini-evento -- `on` si annuncia -- ma non come "
-        "accendibili, quindi non apre nessun episodio su una sirena che suona "
-        "o su un telecomando acceso. Vanno dichiarati accendibili con `off` a "
-        "riposo, o l'esclusione va confermata? **La spec §4 li elenca fra le "
-        "sette esclusioni motivate da «`on` significa abilitata», e per questi "
-        "due quella frase non regge**: `_EVENT_DOMAINS` li contiene entrambi, "
-        "cioe' il prodotto quel `on` lo annuncia gia' come un'accensione.",
-        {"remote", "siren"}),
 )
 
 

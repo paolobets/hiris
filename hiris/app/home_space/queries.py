@@ -59,10 +59,12 @@ from ..proxy.entity_cache import (
     disclosable_attributes,
     withheld_credentials,
 )
+from ..proxy.state_translations import TABLE_MISSING_SILENCES
 from .behavior import FILE_GENUINELY_ABSENT
 from .ha_vocabulary import entity_category_measure_rule
 from .historian import instant_epoch
 from .topology import (
+    HVAC_ACTION_ATTRIBUTE,
     actual_class,
     actual_unit,
     categories_with_name,
@@ -72,7 +74,7 @@ from .topology import (
     hierarchy,
     label_names,
     labels_with_id,
-    translate_state,
+    readable_state,
 )
 from .type_vocabulary import parameter_limits
 
@@ -322,7 +324,8 @@ def _enrich_entity(entity_detail: dict, entry: dict,
                         label_lookup: dict[str, str] | None = None,
                         reported_classes: dict[str, str] | None = None,
                         category_lookup: dict[tuple[str, str], str] | None = None,
-                        reported_attributes: dict[str, dict] | None = None) -> dict:
+                        reported_attributes: dict[str, dict] | None = None,
+                        translations: dict | None = None) -> dict:
     """LA PORTA UNICA per tutto cio' che si aggiunge a un'entita'.
 
     Arricchisce `entity_detail` con cio' che lo SPECCHIO VIVO sa e il
@@ -380,18 +383,19 @@ def _enrich_entity(entity_detail: dict, entry: dict,
     # sovrascrivono (stessa disciplina di `nome`/`nome_dedotto`).
     #
     # Senza, `guarda` rispondeva `on` e basta: un allagamento aveva la forma di
-    # una lampadina accesa. Il digesto lo traduceva gia', ma `guarda` e' la
+    # una lampadina accesa. Il digesto lo rendeva gia', ma `guarda` e' la
     # porta che il modello usa quando la domanda e' PRECISA, o quando il
     # digesto ha tagliato, o quando l'entita' e' `config`/`diagnostic` e nel
-    # digesto non entra affatto. La tabella e' la stessa
-    # (`anagrafe._CLASS_MEANING`): due tabelle sarebbero due significati.
+    # digesto non entra affatto. **La fonte e' la stessa** -- le traduzioni che
+    # Home Assistant pubblica, lette una volta e tenute in cache: due tabelle
+    # sarebbero due significati, e fino all'08/09/2026 erano scritte a mano.
     #
     # Il DOMINIO e l'`hvac_action` (dallo specchio vivo, mai dal registro:
     # `anagrafe.actual_class` vale anche qui) alimentano il solo caso in
     # cui uno stato grezzo mente da solo -- un termostato IMPOSTATO su
     # riscaldamento e FERMO che si legge «heat» com'e' il difetto misurato dal
-    # proprietario (2026-08-25, `anagrafe.translate_state`). Passati anche
-    # quando l'entita' non e' un termostato: `translate_state` li ignora per
+    # proprietario (2026-08-25, `topology.readable_state`). Passati anche
+    # quando l'entita' non e' un termostato: `readable_state` li ignora per
     # ogni altro dominio, e ricalcolarli qui una volta e' piu' semplice che
     # farlo condizionale.
     value = entity_detail.get("stato")
@@ -402,9 +406,39 @@ def _enrich_entity(entity_detail: dict, entry: dict,
     # credenziali, che di qui non passano mai.
     attributes = disclosable_attributes((reported_attributes or {}).get(entity_id))
     if value is not None:
-        hvac_action = attributes.get("hvac_action")
-        entity_detail["stato_leggibile"] = translate_state(
-            value, entity_detail.get("classe"), domain_of(entity_id), hvac_action)
+        hvac_action = attributes.get(HVAC_ACTION_ATTRIBUTE)
+        rendered = readable_state(
+            value, domain=domain_of(entity_id),
+            device_class=entity_detail.get("classe"), hvac_action=hvac_action,
+            translations=translations)
+        if rendered.get("letto"):
+            entity_detail["stato_leggibile"] = rendered["valore"]
+        elif rendered.get("silenzio") in TABLE_MISSING_SILENCES:
+            # **Il vuoto non si consegna, il motivo si'.** Fino all'08/09/2026
+            # una tabella scritta a mano rispondeva sempre, quindi questo ramo
+            # non poteva esistere; adesso la fonte e' Home Assistant e puo'
+            # tacere -- e «non ho potuto leggere le traduzioni» e «questo stato
+            # non ha resa» sono due fatti diversi, che chi legge deve poter
+            # distinguere invece di trovarsi una chiave in meno e nessuna
+            # spiegazione. Lo `stato` grezzo resta dov'e': e' il fatto.
+            #
+            # **Solo i due silenzi che riguardano la TABELLA**, e il perche' e'
+            # misurato sulla casa vera (08/09/2026): con le traduzioni lette per
+            # intero, 431 entita' su 841 -- ogni `sensor`, ogni `number`, ogni
+            # `select` -- non hanno una resa e non devono averla, perche'
+            # MISURANO invece di stare in uno stato. Dichiararle una per una
+            # avrebbe messo 431 blocchi di scusa dentro le risposte di `guarda`
+            # per dire ogni volta la stessa cosa non-notizia, contro la legge di
+            # questo prodotto («una chiave senza niente da dire non esce»). La
+            # distinzione non si perde, e si legge come in
+            # `handlers_mind._with_rendered_states`: la chiave ASSENTE con lo
+            # `stato` grezzo significa «questo stato non ha resa, e Home
+            # Assistant stesso mostrerebbe il grezzo»; la chiave PRESENTE
+            # significa «non ho potuto chiedere», col motivo dentro.
+            entity_detail["stato_non_reso"] = {
+                "silenzio": rendered.get("silenzio"),
+                "motivo": rendered.get("motivo"),
+            }
     # L'integrazione che la fornisce (hue, zwave_js, template): dice perche'
     # una cosa non risponde e cosa le si puo' chiedere.
     platform = (entry.get("piattaforma") or "").strip()
@@ -591,7 +625,8 @@ def _entity_rows(entries: list[dict], state: dict, reported_since_when: dict[str
                   reported_units: dict[str, str] | None, label_lookup: dict[str, str],
                   reported_classes: dict[str, str] | None,
                   category_lookup: dict[tuple[str, str], str],
-                  reported_attributes: dict[str, dict] | None) -> list[dict]:
+                  reported_attributes: dict[str, dict] | None,
+                  translations: dict | None = None) -> list[dict]:
     """Un elenco grezzo di voci dell'anagrafe (`entita`/`entita_disabilitate`/
     `entita_nascoste` di `hierarchy()`) arricchito UNA riga alla volta con
     `_enrich_entity` -- il ciclo si scriveva tre volte in `_view_area`
@@ -608,7 +643,7 @@ def _entity_rows(entries: list[dict], state: dict, reported_since_when: dict[str
              "da_quando": (reported_since_when or {}).get(e["id"]),
              "disabilitata": disabled},
             e, fallback_names, reported_units, label_lookup, reported_classes,
-            category_lookup, reported_attributes)
+            category_lookup, reported_attributes, translations)
         for e in entries
     ]
 
@@ -619,7 +654,8 @@ def _view_area(home_space: dict, memories: list[dict], state: dict, reference,
                  reported_units: dict[str, str] | None = None,
                  reported_classes: dict[str, str] | None = None,
                  reported_since_when: dict[str, str] | None = None,
-                 reported_attributes: dict[str, dict] | None = None) -> dict:
+                 reported_attributes: dict[str, dict] | None = None,
+                 translations: dict | None = None) -> dict:
     # `non_disponibili` va PROPAGATO, non solo ricevuto: senza, `hierarchy()`
     # crede che sia andato tutto bene e un'entita' che eredita l'area dal
     # proprio dispositivo -- col registro dispositivi caduto -- finisce in
@@ -647,10 +683,10 @@ def _view_area(home_space: dict, memories: list[dict], state: dict, reference,
         # luce c'e' ma non funziona e' informazione, non rumore.
         _entity_rows(area["entita"], state, reported_since_when, False, fallback_names,
                      reported_units, label_lookup, reported_classes, category_lookup,
-                     reported_attributes)
+                     reported_attributes, translations)
         + _entity_rows(area.get("entita_disabilitate", []), state, reported_since_when, True,
                        fallback_names, reported_units, label_lookup, reported_classes,
-                       category_lookup, reported_attributes)
+                       category_lookup, reported_attributes, translations)
     )
     # Le NASCOSTE, invece, in una chiave A PARTE -- non marcate dentro
     # `entita` come le disabilitate qui sopra (fetta "nascoste fuori dagli
@@ -667,7 +703,8 @@ def _view_area(home_space: dict, memories: list[dict], state: dict, reference,
     # serviva gia' quando l'entita' si guarda da sola (`_view_entity`).
     hidden_entities = _entity_rows(area.get("entita_nascoste", []), state, reported_since_when,
                                     False, fallback_names, reported_units, label_lookup,
-                                    reported_classes, category_lookup, reported_attributes)
+                                    reported_classes, category_lookup, reported_attributes,
+                                    translations)
     # L'elenco puo' essere incompleto senza che si veda: si dichiara.
     incomplete = sorted(set(unavailable) & {"aree", "dispositivi", "entita"})
     detail = {
@@ -906,7 +943,8 @@ def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
                  reported_classes: dict[str, str] | None = None,
                  reported_since_when: dict[str, str] | None = None,
                  reported_attributes: dict[str, dict] | None = None,
-                 registry=None) -> dict:
+                 registry=None,
+                 translations: dict | None = None) -> dict:
     entity = next((e for e in home_space.get("entita") or [] if e.get("id") == reference), None)
     if entity is None:
         # CRITICAL ③: col registro "entita" caduto (`replace` parziale
@@ -941,7 +979,8 @@ def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
     # `nome`: dichiarato e dedotto restano due fatti (`_enrich_entity`).
     detail = _enrich_entity(detail, entity, fallback_names, reported_units,
                                     label_names(home_space), reported_classes,
-                                    category_names(home_space), reported_attributes)
+                                    category_names(home_space), reported_attributes,
+                                    translations)
     # `regola`: la vista CITA il vocabolario (Task 4, `ha_vocabulary.py`)
     # invece di lasciare che il modello indovini dal nome -- SOLO qui, sul
     # dettaglio di UNA entita' sola, stessa decisione e stessa ragione di
@@ -1036,7 +1075,8 @@ def _view_device(home_space: dict, memories: list[dict], state: dict, reference,
                         reported_units: dict[str, str] | None = None,
                  reported_classes: dict[str, str] | None = None,
                  reported_since_when: dict[str, str] | None = None,
-                 reported_attributes: dict[str, dict] | None = None) -> dict:
+                 reported_attributes: dict[str, dict] | None = None,
+                 translations: dict | None = None) -> dict:
     label_lookup = label_names(home_space)
     category_lookup = category_names(home_space)
     device = next(
@@ -1075,12 +1115,12 @@ def _view_device(home_space: dict, memories: list[dict], state: dict, reference,
              "da_quando": (reported_since_when or {}).get(e["id"]),
              "disabilitata": bool(e.get("disabilitata"))},
             e, fallback_names, reported_units, label_lookup, reported_classes,
-            category_lookup, reported_attributes)
+            category_lookup, reported_attributes, translations)
         for e in raw_visible
     ]
     device_hidden_entities = _entity_rows(
         raw_hidden, state, reported_since_when, False, fallback_names, reported_units,
-        label_lookup, reported_classes, category_lookup, reported_attributes)
+        label_lookup, reported_classes, category_lookup, reported_attributes, translations)
     detail = {
         "esiste": True, "tipo": "dispositivo", "id": device["id"],
         "nome": device.get("nome"),
@@ -1392,7 +1432,8 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
            reported_classes: dict[str, str] | None = None,
            reported_since_when: dict[str, str] | None = None,
            reported_attributes: dict[str, dict] | None = None,
-           registry=None) -> dict:
+           registry=None,
+           translations: dict | None = None) -> dict:
     """Il dettaglio di UNA cosa sola -- l'area con le sue entita' e i loro
     stati, l'entita' col suo stato e la sua classe, l'automazione o lo
     script col loro corpo, il dispositivo con le sue entita', il ricordo
@@ -1489,7 +1530,7 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     - `readable_state` lo legge SEMPRE, su ogni ramo che elenca entita'
       (dentro `_enrich_entity`), perche' e' un campo che gia' usciva
       ovunque e che per un termostato mentiva da solo -- vedi
-      `anagrafe.translate_state`. Il difetto misurato dal proprietario
+      `topology.readable_state`. Il difetto misurato dal proprietario
       (2026-08-25): `hvac_mode: heat` con `hvac_action: idle` usciva come
       «heat», indistinguibile da un termostato che sta scaldando davvero.
     - Il dizionario `attributi` INTERO esce solo dal ramo `entita` (decisione
@@ -1528,15 +1569,16 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     if kind == "area":
         return _view_area(home_space, memories, state, reference, unavailable,
                             fallback_names, reported_units, reported_classes,
-                            reported_since_when, reported_attributes)
+                            reported_since_when, reported_attributes, translations)
     if kind == "entita":
         return _view_entity(home_space, memories, state, reference, unavailable,
                               fallback_names, reported_units, reported_classes,
-                              reported_since_when, reported_attributes, registry)
+                              reported_since_when, reported_attributes, registry,
+                              translations)
     if kind == "dispositivo":
         return _view_device(home_space, memories, state, reference, unavailable,
                                    fallback_names, reported_units, reported_classes,
-                                   reported_since_when, reported_attributes)
+                                   reported_since_when, reported_attributes, translations)
     if kind in _BEHAVIOR_TYPES:
         return _view_behavior(behavior, memories, kind, reference, unloaded_files)
     if kind == "ricordo":

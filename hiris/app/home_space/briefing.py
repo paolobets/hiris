@@ -46,6 +46,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from ..proxy import state_translations
 from ..proxy.entity_cache import CAPABILITIES
 from .behavior import FILE_GENUINELY_ABSENT
 from .ha_vocabulary import house_is_newer_than_vocabulary
@@ -57,7 +58,7 @@ from .topology import (
     hierarchy,
     is_pseudo_area,
     name_with_id,
-    translate_state,
+    readable_state,
 )
 
 # Il TIPO di un'entita' si ricava dal dominio del suo entity_id (la parte
@@ -218,12 +219,14 @@ _EVENT_DOMAINS = {
 # `battery_charging`), che si vanno a chiedere e non si annunciano.
 #
 # Sottoinsieme DICHIARATO delle classi di
-# developers.home-assistant.io/docs/core/entity/binary-sensor/ -- la STESSA
-# fonte di `_CLASS_MEANING` in anagrafe.py (verificata il 16/08/2026):
-# ogni classe qui elencata deve comparire anche li', altrimenti si leggerebbe
-# «acceso» invece del suo significato -- e' l'incoerenza pinnata da
-# test_ogni_classe_di_evento_ha_anche_un_significato (sottoinsieme, piu'
-# forte di un elenco ricopiato). L'elenco stesso e' pinnato di suo (mutazione:
+# developers.home-assistant.io/docs/core/entity/binary-sensor/ (verificata il
+# 16/08/2026). **Il metro di quella prova e' cambiato l'08/09/2026, ed e'
+# migliorato**: fino a quel giorno ogni classe qui elencata doveva comparire
+# anche nella tabella dei significati scritta a mano, cioe' due nostri elenchi
+# dovevano essere d'accordo fra loro -- il che diceva che concordavano, non che
+# fossero veri. Adesso la prova chiede a Home Assistant se per quella classe
+# pubblica la COPPIA acceso/spento: senza, la classe si leggerebbe «Acceso»,
+# cioe' con la parola del dominio. L'elenco stesso e' pinnato di suo (mutazione:
 # toglierne una classe fa rosso) in tests/test_type_vocabulary.py; da
 # riguardare quando HA aggiunge una nuova device_class di allarme o apertura.
 _EVENT_CLASSES = {
@@ -682,9 +685,9 @@ def _group_highlights(entries: list[dict]) -> list[tuple[int, str]]:
     # o il modello nel prompt) di vedere una stanza per volta invece di
     # ricomporla a mente.
     lines = []
-    for area_name, domain, readable_state in sorted(order):
-        n = counts[(area_name, domain, readable_state)]
-        line = f"- {area_name}: {n} {_domain_name(domain, n)} ({readable_state})"
+    for area_name, domain, word in sorted(order):
+        n = counts[(area_name, domain, word)]
+        line = f"- {area_name}: {n} {_domain_name(domain, n)} ({word})"
         lines.append((n, line))
     return lines
 
@@ -739,7 +742,8 @@ def _unreliable_state(home_space: dict, state: dict, reliable_state: bool,
 
 def _highlight_lines(home_space: dict, state: dict, floors: list[dict],
                     unreliable_state: bool,
-                    reported_classes: dict[str, str] | None = None
+                    reported_classes: dict[str, str] | None = None,
+                    translations: dict | None = None
                     ) -> tuple[list[str], list[int], bool]:
     """Cio' che e' notevole ADESSO: acceso, aperto, in allarme scattato.
     Serve lo stato vivo, che arriva dal chiamante -- il nucleo non lo va a
@@ -766,11 +770,15 @@ def _highlight_lines(home_space: dict, state: dict, floors: list[dict],
     # (`anagrafe.actual_class`). Finche' si e' letta solo dal registro,
     # `_is_event` ha sempre ricevuto `None` per ogni sensore binario --
     # quindi nessun allagamento, nessun fumo, nessun monossido e' MAI entrato
-    # in questa sezione, e le voci di `_CLASS_MEANING` non sono mai
-    # state raggiunte.
+    # in questa sezione, e la parola della loro CLASSE non e' mai
+    # stata raggiunta.
     reported = reported_classes or {}
     entries = []
     unreachable = 0
+    # Il motivo per cui le traduzioni non ci sono, dichiarato da CHI HA
+    # FALLITO e non indovinato qui: si raccoglie mentre si rende, e si scrive
+    # UNA volta in testa alla sezione invece che su ogni riga.
+    untranslated: str | None = None
     for e in home_space.get("entita", []):
         if e.get("disabilitata"):
             continue
@@ -803,12 +811,36 @@ def _highlight_lines(home_space: dict, state: dict, floors: list[dict],
             domain_of(entity_id), actual_class(e.get("classe"), reported.get(entity_id)), value,
         ):
             continue
+        # **Il DOMINIO entra nella resa**, e prima dell'08/09/2026 non
+        # entrava: la tabella cancellata era cieca al dominio, quindi il nucleo
+        # non aveva niente da farsene. Adesso `off` di un `update` e' cio' che
+        # Home Assistant dice («Aggiornato»), non «spento».
+        rendered = readable_state(
+            value, domain=domain_of(entity_id),
+            device_class=actual_class(e.get("classe"), reported.get(entity_id)),
+            translations=translations)
+        if rendered.get("silenzio") in state_translations.TABLE_MISSING_SILENCES:
+            # **Il grezzo, e la sezione lo DICHIARA in testa.** Un vuoto su una
+            # pagina che il proprietario legge e' peggio di uno stato non
+            # tradotto: `on` e' comunque il fatto. Cio' che non si fa e' lasciar
+            # credere che quella sia la parola di Home Assistant.
+            #
+            # **Solo per i due silenzi che riguardano la TABELLA**, e la
+            # distinzione e' la fetta intera: «questo stato non ha una resa»
+            # (`ho chiesto e non c’e'`) non e' «non ho potuto chiedere». Il
+            # primo e' cio' che Home Assistant stesso fa -- il suo frontend a
+            # `compute_state_display.ts` commenta «We don't know! Return the raw
+            # state» -- e annunciarlo in testa alla sezione direbbe al
+            # proprietario che HIRIS non ha letto niente, mentre ha letto tutto
+            # e quel valore non e' fra cio' che quel tipo pubblica. Farli
+            # collassare in una riga sola sarebbe rimettere insieme due cose
+            # diverse sotto una parola sola, nel punto esatto in cui questa
+            # fetta le ha separate.
+            untranslated = untranslated or rendered.get("motivo")
         entries.append({
             "area_nome": area_per_entity.get(entity_id),
             "dominio": domain_of(entity_id),
-            "stato_leggibile": translate_state(
-                value, actual_class(e.get("classe"), reported.get(entity_id)),
-            ),
+            "stato_leggibile": rendered.get("valore", str(value)),
             "nome": e.get("nome") or entity_id,
         })
     # La riga delle irraggiungibili sta IN TESTA e pesa ZERO, e nessuna delle
@@ -819,6 +851,17 @@ def _highlight_lines(home_space: dict, state: dict, floors: list[dict],
     unreachable_line = ([f"- {unreachable} entità non rispondono."]
                 if unreachable else [])
     unreachable_weight = [0] if unreachable else []
+    # STESSA disciplina della riga delle irraggiungibili: in testa (il taglio
+    # morde dal fondo) e di peso ZERO (non e' un elemento notevole, e' cio' che
+    # si sa degli elementi notevoli). Senza questa riga gli stati grezzi
+    # sarebbero indistinguibili da parole di Home Assistant scelte male.
+    untranslated_line = (
+        [("- Le traduzioni di Home Assistant non sono state lette "
+          f"({untranslated}): gli stati qui sotto sono grezzi.")]
+        if untranslated else [])
+    untranslated_weight = [0] if untranslated else []
+    unreachable_line = untranslated_line + unreachable_line
+    unreachable_weight = untranslated_weight + unreachable_weight
 
     if not entries:
         # «Niente di notevole» resta vero anche con delle irraggiungibili: sono
@@ -1576,6 +1619,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
             problems: dict | None = None,
             comparison: dict | None = None,
             attributes: dict[str, dict] | None = None,
+            translations: dict | None = None,
             now: float | None = None) -> tuple[str, dict]:
     """Compone il nucleo: la stessa casa per chiunque ragioni.
 
@@ -1588,6 +1632,14 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     adesso, 3) cosa si puo' chiedere alle cose di casa, 4) cio' che la casa fa
     gia' da sola, 5) cio' che le persone hanno detto, 6) cio' che HIRIS ignora
     (incluso l'eventuale taglio).
+
+    `traduzioni` e' l'esito etichettato della lettura delle traduzioni di Home
+    Assistant (`proxy/state_translations.StateTranslations.cached`). `None`
+    significa «il chiamante non ha guardato», e vale come «non lette»: la
+    sezione «Notevole adesso» lo DICHIARA in testa e mostra gli stati grezzi,
+    invece di far credere che `on` sia la parola che Home Assistant userebbe.
+    Dall'08/09/2026 e' la sola fonte delle parole: le quattro tabelle scritte a
+    mano in `topology.py` non esistono piu' (spec §6).
 
     `attributi` sono le ceste degli attributi vivi, entita' per entita', come
     `topology.live_mirror` le consegna gia' al chiamante. Servono a una cosa
@@ -1829,7 +1881,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
             "attendibile: 'Notevole adesso' qui sotto non dice che va tutto bene, "
             "dice che non si e' potuto guardare.")
     highlight_lines, highlight_weights, grouped_highlight = _highlight_lines(
-        home_space, state, floors, unreliable, reported_classes)
+        home_space, state, floors, unreliable, reported_classes, translations)
     capability_lines, capability_weights, capabilities_are_countable = _capability_lines(
         attributes, unreliable)
     behavior_lines = _behavior_lines(behavior)

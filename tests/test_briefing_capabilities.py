@@ -19,6 +19,7 @@ ridotti ai casi che decidono.
 from hiris.app.home_space import briefing
 from hiris.app.home_space.briefing import compose
 from hiris.app.proxy.entity_cache import CAPABILITIES, UNINTERPRETED, VALUES
+from tests._house_translations import house_translations
 
 _PIANI = [{"id": "terra", "nome": "Piano terra", "livello": 0}]
 
@@ -343,8 +344,12 @@ _COMPORTAMENTO_TETTO = [
 
 def _nucleo_tetto(ceiling=None):
     extra = {} if ceiling is None else {"ceiling": ceiling}
+    # Le traduzioni ci sono: questa misura riguarda il TETTO, e un nucleo che
+    # dichiara «traduzioni non lette» porterebbe una riga in piu' che non
+    # c'entra niente col taglio -- e la falserebbe di un rigo.
     return compose(_CASA_TETTO, _COMPORTAMENTO_TETTO, [], _STATO_TETTO,
-                   attributes=_ATTRIBUTI_TETTO, **extra)
+                   attributes=_ATTRIBUTI_TETTO,
+                   translations=house_translations(), **extra)
 
 
 def test_a_seimila_le_capacita_sfrattavano_notevole_adesso_per_intero():

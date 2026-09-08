@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from hiris.app.home_space import topology
+from hiris.app.home_space import topology, type_vocabulary
 from hiris.app.home_space.type_vocabulary import (
     ABSENT_STATE_FORMS,
     ASPECT,
@@ -39,11 +39,13 @@ from hiris.app.home_space.type_vocabulary import (
     aspect_of,
     capability_names,
     capability_tables,
+    declared_working_states,
     is_operable,
     operable_domains,
     resting_states,
     resting_states_of,
     unknown_states,
+    working_states_of,
 )
 from hiris.app.mind import baseline, facts
 from hiris.app.proxy import entity_cache
@@ -294,10 +296,17 @@ def test_accendibile_e_pavimento_sono_due_metriche_diverse():
     elenchi sarebbe curare il sintomo sbagliato.
 
     Mutazione: dare una gamba a `water_heater` «per coerenza» -- la seconda
-    asserzione arrossisce, ed e' il punto."""
+    asserzione arrossisce, ed e' il punto.
+
+    **`siren` e' il terzo dall'08/09/2026**, e la sua entrata ha fatto emergere
+    un difetto vero: e' l'unico tipo insieme accendibile e della gamba
+    «sicurezza», e con l'ordine che `genre_for` aveva prima, una sirena che
+    suona sarebbe diventata un oggetto di «funzionamento» invece che di
+    «sicurezza». Il sovrapporsi delle due metriche non e' un errore da
+    appianare: e' cio' che ha reso visibile l'ordine sbagliato."""
     sovrapposti = {d for d in operable_domains()
                  if _vocabulary.value(d, None, ASPECT) is not None}
-    assert sovrapposti == {"climate", "cover"}
+    assert sovrapposti == {"climate", "cover", "siren"}
     assert aspect_of("water_heater.boiler", {}) is None
     assert is_operable("water_heater") is True
 
@@ -335,6 +344,155 @@ def test_gli_stati_ignoti_non_sono_riposi():
     assert UNKNOWN_STATES.provenance is Provenance.OURS
 
 
+# --- le sei decisioni del proprietario, 08/09/2026 ------------------------
+#
+# Il censore le aveva nominate come domande aperte; il proprietario ha
+# risposto. **Queste prove non guardano che le domande siano sparite** -- quello
+# lo farebbe passare anche chi le cancella -- ma che la risposta sia SCRITTA
+# dove vale, cioe' su una riga del vocabolario, con la sua ragione.
+
+def test_i_sei_modi_del_boiler_sono_funzionamento_e_non_riposi():
+    """Decisione 1. Un boiler in `eco` scalda: e' un modo operativo, non una
+    pausa. Il suo unico riposo resta `off`, ed e' l'unico stato in cui non sta
+    facendo niente.
+
+    Era il difetto misurato del capitolato: sei stati ne' riposi ne' ignoti su
+    un dominio dichiarato accendibile -- un boiler in `eco` avrebbe aperto un
+    episodio **che non si chiude mai**.
+
+    Mutazione ESEGUITA: spostare `eco` da `working_states` a `resting_states` --
+    la prima asserzione arrossisce, e il guardiano all'importazione
+    (`_verify_no_state_is_both_rest_and_work`) arrossisce prima ancora se lo si
+    mette in tutt'e due.
+    """
+    assert resting_states_of("water_heater") >= {"off"}
+    modi = {"eco", "gas", "electric", "heat_pump", "high_demand", "performance"}
+    assert working_states_of("water_heater") == modi
+    assert not (modi & resting_states_of("water_heater"))
+
+
+def test_una_tapparella_ferma_a_meta_corsa_e_a_riposo():
+    """Decisione 2, e l'aveva trovata il censore, non il capitolato: `stopped`
+    su `cover` e su `valve`. Mezza aperta e' uno stato, non una corsa in
+    sospeso -- prima di questa riga una tapparella lasciata a meta' teneva
+    aperto per sempre l'episodio cominciato quando si e' mossa.
+
+    Mutazione ESEGUITA: togliere `"stopped"` dai riposi di `cover` -- la prima
+    asserzione arrossisce; e `_is_on("stopped")` torna `True`, che e' il
+    comportamento vecchio.
+    """
+    assert "stopped" in resting_states_of("cover")
+    assert "stopped" in resting_states_of("valve")
+    assert "stopped" not in working_states_of("cover")
+    assert "stopped" not in working_states_of("valve")
+
+
+def test_la_serratura_che_si_muove_sta_funzionando_e_jammed_non_e_ne_l_uno_ne_l_altro():
+    """Decisione 3, ed e' quella che **non si e' potuta chiudere fino in
+    fondo**. `locking` e `unlocking` sono funzionamento: la serratura si sta
+    muovendo. `jammed` no -- il proprietario l'ha giudicato un GUASTO, e un
+    guasto in questo prodotto e' un GENERE (`mind/facts.GENRES`), non uno stato
+    di funzionamento. Il genere si decide per SOGGETTO, e `genre_for` lo stato
+    non lo riceve nemmeno: non c'e' nessun posto dove `jammed` possa entrare
+    senza affermare qualcosa che il proprietario ha escluso.
+
+    Resta quindi APERTO e nominato nel censore, con la decisione gia' presa e
+    cio' che manca per eseguirla scritto accanto. **Meglio una voce aperta di
+    una infilata nel posto sbagliato**: questa prova e' cio' che impedisce di
+    infilarla.
+
+    Mutazione ESEGUITA: aggiungere `"jammed"` a `working_states` di `lock` --
+    la terza asserzione arrossisce.
+    """
+    assert working_states_of("lock") >= {"locking", "unlocking"}
+    assert "locked" in resting_states_of("lock")
+    assert "jammed" not in working_states_of("lock")
+    assert "jammed" not in resting_states_of("lock")
+
+
+def test_il_tosaerba_si_tratta_come_l_aspirapolvere():
+    """Decisione 4, e la prova e' un CONFRONTO, non due elenchi ricopiati:
+    «stessa forma» e' cio' che il proprietario ha deciso, quindi e' cio' che
+    si verifica. Il tosaerba non ha `idle` ne' `off` (Home Assistant non li
+    pubblica per lui): il confronto guarda i tre stati che condividono.
+
+    Mutazione ESEGUITA: togliere `"docked"` dai riposi del tosaerba -- la prova
+    arrossisce, e un tosaerba tornato alla base terrebbe aperto l'episodio del
+    taglio.
+    """
+    comuni = {"docked", "returning", "error"}
+    assert resting_states_of("lawn_mower") >= comuni
+    assert resting_states_of("vacuum") >= comuni
+    assert is_operable("lawn_mower") is True
+    assert "mowing" in working_states_of("lawn_mower")
+    assert "mowing" not in resting_states_of("lawn_mower")
+
+
+def test_remote_e_siren_sono_accendibili_con_off_a_riposo():
+    """Decisione 9, e porta con se' la correzione di una ragione **smentita dal
+    proprio codice**: la spec §4 escludeva questi due con «li' `on` significa
+    'abilitata', non 'accesa' -- il difetto che `briefing._EVENT_DOMAINS`
+    documenta di aver gia' pagato», ma quel file li CONTIENE entrambi. Il
+    prodotto quell'`on` lo annunciava gia' come un'accensione mentre
+    l'esclusione affermava il contrario.
+
+    Mutazione ESEGUITA: togliere `operable` a `remote` -- il guardiano
+    all'importazione non dice niente (un tipo non accendibile non deve avere
+    riposi), e questa prova e' l'unica che se ne accorge.
+    """
+    assert is_operable("remote") is True
+    assert is_operable("siren") is True
+    assert "off" in resting_states_of("remote")
+    assert "off" in resting_states_of("siren")
+    assert {"remote", "siren"} <= operable_domains()
+
+
+def test_ogni_stato_di_funzionamento_porta_la_sua_ragione_scritta():
+    """Stessa regola degli attributi scartati, e per la stessa ragione: un
+    giudizio senza motivo scritto non si distingue da una riga copiata. La
+    soglia sulla lunghezza non e' estetica -- «si'» o «ovvio» passerebbero un
+    controllo di non-vuoto e non direbbero niente a chi legge fra sei mesi.
+
+    Mutazione ESEGUITA: mettere `""` come ragione di `water_heater=eco` -- la
+    prova nomina la voce.
+    """
+    mute = [f"{dominio}={stato}"
+            for dominio, tabella in declared_working_states().items()
+            for stato, ragione in tabella.items()
+            if not ragione or len(ragione.strip()) < 15]
+    assert not mute, f"stati di funzionamento senza una ragione scritta: {mute}"
+
+
+def test_nessuno_stato_vale_insieme_riposo_e_funzionamento():
+    """Le due meta' della metrica 2 si scrivono in due punti diversi del
+    modulo, ed e' esattamente la distanza in cui una contraddizione passa
+    inosservata. Il guardiano gira all'IMPORTAZIONE: chi la scrive non fa
+    passare nemmeno un `import`.
+
+    Mutazione ESEGUITA: aggiungere `"off"` a `working_states` di `light` --
+    `_verify_no_state_is_both_rest_and_work` solleva, e questa prova la
+    ripete su un vocabolario costruito a mano perche' il rosso sia leggibile
+    invece di essere un errore di importazione.
+    """
+    for dominio, tabella in declared_working_states().items():
+        contraddizioni = set(tabella) & resting_states_of(dominio)
+        assert not contraddizioni, (
+            f"«{dominio}» dichiara {sorted(contraddizioni)} insieme a riposo e "
+            "in funzionamento")
+
+    vocabolario = type_vocabulary.TypeVocabulary()
+    vocabolario.add("light", operable=Ours(True), resting_states=Ours({"off"}),
+                    working_states=Ours({"off": "una ragione lunga abbastanza"}))
+    originale = type_vocabulary._vocabulary
+    type_vocabulary._vocabulary = vocabolario
+    try:
+        with pytest.raises(ValueError) as errore:
+            type_vocabulary._verify_no_state_is_both_rest_and_work()
+    finally:
+        type_vocabulary._vocabulary = originale
+    assert "light=off" in str(errore.value)
+
+
 # --- un tipo ha una casa sola ---------------------------------------------
 
 _PRODOTTO = Path(__file__).resolve().parents[1] / "hiris" / "app"
@@ -363,9 +521,10 @@ _ECCEZIONI_MOTIVATE: dict[tuple[str, tuple[str, ...]], str] = {
       "moisture", "opening", "problem", "safety", "smoke", "tamper",
       "window")):
         "`briefing._EVENT_CLASSES`: gemella della precedente, sulle classi di "
-        "`binary_sensor`, e legata a `topology._CLASS_MEANING` da una prova "
-        "di sottoinsieme che la fetta 5 tocchera' insieme alle quattro "
-        "tabelle di traduzione.",
+        "`binary_sensor`, e legata dall'08/09/2026 a cio' che Home Assistant "
+        "PUBBLICA -- una prova verifica che per ognuna di queste classi la casa "
+        "porti la coppia acceso/spento, invece di confrontare due nostri "
+        "elenchi fra loro.",
     ("mind/facts.py", ("device_tracker", "person")):
         "`facts.genre_for`: scritto in linea dentro la condizione, ed e' il "
         "GENERE dell'oggetto, non una delle tre metriche di questa fetta. Il "
@@ -378,14 +537,13 @@ _ECCEZIONI_MOTIVATE: dict[tuple[str, tuple[str, ...]], str] = {
     # (§12) l'ha decisa nel verso opposto -- non «quali attributi conservare»
     # ma «tutti», e il dizionario che dice cosa significa ognuno vive adesso
     # nel vocabolario, importato dal sorgente di Home Assistant.
-    ("home_space/type_census.py", ("remote", "siren")):
-        "`type_census.OPEN_QUESTIONS`: non e' un vocabolario parallelo, e' il "
-        "contrario -- il CENSORE che nomina cio' che nessun vocabolario ha "
-        "deciso. I due domini stanno li' come SOGGETTO di una domanda aperta "
-        "per il proprietario («Home Assistant li dichiara accendibili, HIRIS "
-        "no: chi ha ragione?»), non come giudizio. Il giorno in cui la "
-        "risposta arriva, escono di li' ed entrano nel vocabolario -- che e' "
-        "esattamente il moto che questa prova esiste per non impedire.",
+    # `("home_space/type_census.py", ("remote", "siren"))` STAVA qui, ed e'
+    # sparito l'08/09/2026: i due domini erano il SOGGETTO di una domanda
+    # aperta, il proprietario ha risposto («accendibili, con `off` a riposo»),
+    # e sono entrati nel vocabolario. **La riga se n'e' andata con loro**, ed e'
+    # il moto che questa prova esiste per non impedire -- misurato: lasciarla
+    # avrebbe fatto rosso l'uguaglianza nell'altra direzione, che e'
+    # esattamente il permesso-che-nessuno-usa che quel controllo previene.
     ("home_space/behavior.py", ("automation", "script")):
         "`behavior._reread`: non e' un vocabolario di tipi, e' la GUARDIA che "
         "distingue «Home Assistant non ha ancora caricato le automazioni» da "

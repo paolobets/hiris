@@ -41,6 +41,12 @@ logger = logging.getLogger(__name__)
 # le entita' con un `translation_key` proprio -- il primo gradino qui sotto.
 STATE_TRANSLATIONS_CATEGORY = "entity_component"
 
+#: Il trattino basso con cui Home Assistant scrive «vale per il dominio, senza
+#: classe». Scritto una volta: e' una convenzione del fornitore, e ricopiarla a
+#: mano in ogni costruzione di chiave e' il modo in cui una delle copie
+#: diventerebbe un'altra cosa.
+NO_DEVICE_CLASS = "_"
+
 
 # --------------------------------------------------------------------------
 # I TRE SILENZI di una lettura da Home Assistant
@@ -181,6 +187,182 @@ def state_translation(state, *, domain, device_class=None, platform=None,
     return None
 
 
+def attribute_value_translation(value, *, domain, attribute, device_class=None,
+                                component_resources) -> str | None:
+    """La resa del VALORE di un attributo di stato, o `None`.
+
+    Stessa forma della resa di uno stato, un gradino piu' in basso nella
+    chiave:
+
+        component.{dominio}.entity_component.{classe|_}.state_attributes.
+        {attributo}.state.{valore}
+
+    Serve a un attributo solo, oggi -- `hvac_action` -- e serve **perche' un
+    termostato ha due fatti, non uno**: `hvac_mode` dice a cosa e' impostato,
+    `hvac_action` dice se sta funzionando adesso. Home Assistant li pubblica
+    tutti e due, con NOVE valori per il secondo (`defrosting` e `preheating`
+    compresi: due che la tabella scritta a mano non aveva).
+    """
+    if not isinstance(value, str) or not value:
+        return None
+    if not isinstance(domain, str) or not domain:
+        return None
+    if not isinstance(attribute, str) or not attribute:
+        return None
+    if not isinstance(component_resources, dict):
+        return None
+    for written_class in _class_steps(device_class):
+        key = (f"component.{domain}.entity_component.{written_class}."
+               f"state_attributes.{attribute}.state.{value}")
+        if key in component_resources:
+            return component_resources[key]
+    return None
+
+
+def attribute_name_translation(*, domain, attribute, device_class=None,
+                               component_resources) -> str | None:
+    """Come Home Assistant CHIAMA un attributo di stato -- «Azione in corso»
+    per `hvac_action`.
+
+    Stessa chiave della resa, con `.name` al posto di `.state.{valore}`. Serve
+    a non inventare la parola che tiene insieme le due meta' di un termostato:
+    l'impostazione e cio' che sta facendo adesso sono due fatti, e chi legge
+    deve sapere quale sta leggendo. La parola che li separa la dice HA.
+    """
+    if not isinstance(domain, str) or not domain or not isinstance(attribute, str):
+        return None
+    if not isinstance(component_resources, dict):
+        return None
+    for written_class in _class_steps(device_class):
+        key = (f"component.{domain}.entity_component.{written_class}."
+               f"state_attributes.{attribute}.name")
+        if key in component_resources:
+            return component_resources[key]
+    return None
+
+
+def _class_steps(device_class) -> tuple[str, ...]:
+    """I gradini di una chiave: prima la classe, poi il `_` del dominio.
+
+    E' l'ordine di `async_translate_state`, sceso di un gradino
+    (`state_attributes`): la classe e' piu' specifica del dominio, e un tipo
+    che non ne ha cade sul `_` -- che non e' una classe, e' la convenzione con
+    cui HA scrive «vale per il dominio intero».
+    """
+    return ((device_class, NO_DEVICE_CLASS) if device_class else (NO_DEVICE_CLASS,))
+
+
+#: I due silenzi che parlano della TABELLA, non di un singolo stato: senza
+#: traduzioni lette («non ho potuto chiedere») o con una categoria che Home
+#: Assistant non pubblica («ho chiesto una cosa che non esiste») nessuno stato
+#: si rende, e chi legge lo dichiara una volta sola. Il terzo -- «ho chiesto e
+#: non c’e'» -- riguarda quello stato soltanto, e si comporta come si comporta
+#: Home Assistant: mostra il grezzo, senza annunciare un guasto che non c'e'.
+#:
+#: Sta QUI e non in ciascun lettore perche' i lettori sono due (il nucleo e
+#: `guarda`) e devono trattarli allo stesso modo: due elenchi identici scritti
+#: in due file sono due elenchi che divergono.
+TABLE_MISSING_SILENCES = (SILENCE_UNREACHABLE, SILENCE_UNDEFINED)
+
+
+#: I due stati di cui una coppia si compone, **nell'ordine acceso-spento**. La
+#: coppia e' un oggetto con due meta', e cercarle con due stringhe sparse
+#: sarebbe il modo in cui una delle due smetterebbe di essere cercata.
+PAIR_STATES = ("on", "off")
+
+
+def published_pair(component_resources, *, domain, device_class=None) -> dict:
+    """La coppia acceso/spento di un tipo, **ricostruita** dalle due chiavi di
+    Home Assistant -- `("Bagnato", "Asciutto")` per `(binary_sensor, moisture)`.
+
+    **Va ricostruita, non assunta** (spec §6, secondo vincolo). E' l'unica cosa
+    che `topology._CLASS_MEANING` portava e che Home Assistant non da' gia'
+    fatta: la coppia TENUTA INSIEME. HA pubblica due chiavi indipendenti, e
+    fino all'08/09/2026 le due meta' stavano in una tupla scritta a mano --
+    dove non potevano divergere, e dove nessuna delle due poteva mancare.
+
+    **E fallisce dichiarandolo quando una delle due manca**, invece di
+    consegnare una coppia con dentro un buco. Meta' coppia e' peggio di
+    nessuna: renderebbe «Bagnato» per `on` e «Spento» -- la parola generica del
+    dominio -- per `off`, cioe' due meta' di due tipi diversi presentate come
+    un significato solo. Chi riceve il silenzio scende di un gradino
+    DICHIARANDOLO, e le due meta' restano dello stesso tipo.
+    """
+    if not isinstance(component_resources, dict) or not component_resources:
+        return unreachable("le traduzioni di Home Assistant non sono state lette: "
+                           "senza di loro nessuna coppia si puo' ricostruire")
+    written_class = device_class or NO_DEVICE_CLASS
+    words = {}
+    for state in PAIR_STATES:
+        key = f"component.{domain}.entity_component.{written_class}.state.{state}"
+        if key in component_resources:
+            words[state] = component_resources[key]
+    written = f"({domain}, {device_class})" if device_class else domain
+    if len(words) == len(PAIR_STATES):
+        return known(tuple(words[state] for state in PAIR_STATES))
+    if not words:
+        return absent(
+            f"il tipo {written} non pubblica ne' `.state.on` ne' `.state.off`: "
+            "non e' un tipo che sta acceso o spento")
+    present = next(state for state in PAIR_STATES if state in words)
+    missing = next(state for state in PAIR_STATES if state not in words)
+    return absent(
+        f"la coppia di {written} non si ricostruisce: Home Assistant pubblica "
+        f"«{words[present]}» per `{present}` e nessuna chiave `.state.{missing}`. "
+        "Meta' coppia non si consegna: sarebbe una parola di questo tipo "
+        "accanto a una parola di un altro")
+
+
+def rendered_state(state, *, domain, device_class=None, translations) -> dict:
+    """Lo stato in parole **secondo Home Assistant**, o il silenzio col motivo.
+
+    E' cio' che ha sostituito `topology._STATE_TRANSLATION` e
+    `topology._CLASS_MEANING` l'08/09/2026, e la differenza che conta e' una
+    sola: **il dominio decide**. La tabella cancellata era cieca al dominio --
+    rendeva `off` «spento» tanto su una luce quanto su un'entita' di
+    aggiornamento, dove Home Assistant dice «Aggiornato»; e rendeva `open`
+    «aperta» tanto su una tapparella quanto su una serratura, col genere
+    grammaticale scelto per una delle due.
+
+    `translations` e' l'esito etichettato di `StateTranslations.read` --
+    `{"lette": True, "risorse": {...}}` oppure `{"lette": False, "motivo":
+    ...}`. **Non si accetta il dizionario nudo delle risorse**: chi lo passasse
+    non avrebbe modo di distinguere «non ho potuto chiedere» da «questo stato
+    non ha resa», ed e' precisamente la distinzione che una tabella scritta a
+    mano non poteva avere e che questa fetta esiste per dare.
+
+    I tre esiti sono i tre silenzi del modulo, e arrivano al lettore separati.
+    """
+    if not isinstance(translations, dict) or not translations.get("lette"):
+        reason = translations.get("motivo") if isinstance(translations, dict) else None
+        return unreachable(reason or "le traduzioni di Home Assistant non sono "
+                                     "ancora state lette da questa casa")
+    resources = translations.get("risorse")
+    if not isinstance(resources, dict) or not resources:
+        return undefined(
+            "Home Assistant ha risposto senza errore e con zero chiavi: la "
+            "categoria chiesta non e' fra quelle che pubblica")
+    text = str(state)
+    if device_class and text in PAIR_STATES:
+        # **La coppia, non la sola meta' che serve adesso.** Un tipo con classe
+        # che pubblica una sola delle due chiavi non e' un tipo con una resa
+        # per `on`: e' un tipo di cui non sappiamo dire l'altra meta', e
+        # renderne una sola rimetterebbe insieme parole di due tipi diversi --
+        # cio' che la tupla scritta a mano impediva per costruzione. Si scende
+        # al gradino del dominio, che e' un tipo solo e ce l'ha tutta.
+        pair = published_pair(resources, domain=domain, device_class=device_class)
+        if pair.get("letto"):
+            return known(pair["valore"][PAIR_STATES.index(text)])
+        device_class = None
+    word = state_translation(text, domain=domain, device_class=device_class,
+                             component_resources=resources)
+    if word is None:
+        written = f"({domain}, {device_class})" if device_class else domain
+        return absent("Home Assistant non pubblica nessuna resa per lo stato "
+                      f"«{text}» del tipo {written}")
+    return known(word)
+
+
 # --------------------------------------------------------------------------
 # COSA QUESTA CASA PUBBLICA ADESSO, distillato dalle stesse 801 chiavi
 # --------------------------------------------------------------------------
@@ -257,7 +439,7 @@ def published_device_classes(resources) -> dict[str, frozenset[str]]:
         parts = _entity_component_key(key)
         if parts is None or len(parts) != 5 or parts[4] != "name":
             continue
-        if parts[3] == "_":
+        if parts[3] == NO_DEVICE_CLASS:
             continue
         per_domain.setdefault(parts[1], set()).add(parts[3])
     return {domain: frozenset(classes) for domain, classes in per_domain.items()}
@@ -278,7 +460,7 @@ def published_states(resources) -> dict[tuple[str, str | None], frozenset[str]]:
         parts = _entity_component_key(key)
         if parts is None or len(parts) < 6 or parts[4] != "state":
             continue
-        device_class = None if parts[3] == "_" else parts[3]
+        device_class = None if parts[3] == NO_DEVICE_CLASS else parts[3]
         # Lo stato e' TUTTO cio' che resta: un valore con un punto dentro non
         # si taglia a meta'. Prendere `parts[5]` e basta produrrebbe uno stato
         # che non esiste, senza che niente lo segnali.
@@ -474,6 +656,33 @@ class StateTranslations:
             logger.info("traduzioni degli stati lette da Home Assistant: %d chiavi (%s, HA %s)",
                         len(self._resources), language, ha_version)
         return {"lette": True, "lingua": language, "risorse": self._resources}
+
+    def cached(self) -> dict:
+        """Cio' che si ha **adesso, senza chiedere niente a nessuno** --
+        etichettato coi tre silenzi.
+
+        Esiste per un lettore preciso e per una ragione precisa: **il nucleo si
+        compone in una funzione sincrona** (`api/handlers_home_space.
+        compose_briefing`, condivisa con il contesto della chat), e da
+        quando le quattro tabelle scritte a mano non ci sono piu' quel testo ha
+        bisogno delle traduzioni a ogni turno. Renderla `async` avrebbe voluto
+        dire rendere `async` la composizione del nucleo e i suoi chiamanti --
+        cioe' cambiare la forma di mezzo prodotto per una lettura che
+        `_prime_state_translations` (allo `startup`) e il suo giro periodico
+        hanno gia' fatto.
+
+        **Non va in rete, mai.** Se nessuno ha ancora letto, risponde «non ho
+        potuto chiedere» col motivo -- e il lettore lo DICE, invece di mostrare
+        un vuoto. E' esattamente la condizione che la spec (§6) pone alla
+        cancellazione delle tabelle: si cancella solo se il consumatore sa dire
+        «traduzioni non lette».
+        """
+        if self._resources is None:
+            return {"lette": False,
+                    "motivo": "le traduzioni degli stati non sono ancora state "
+                              "lette da Home Assistant in questa sessione"}
+        return {"lette": True, "lingua": self._key[1] if self._key else None,
+                "risorse": self._resources}
 
     async def published(self, *, ha_version, language) -> dict:
         """Cio' che Home Assistant PUBBLICA sui tipi in questa casa, adesso --

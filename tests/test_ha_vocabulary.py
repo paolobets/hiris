@@ -44,7 +44,7 @@ _SOURCE_ENTITY_CATEGORY_MEANING = {
 # `DEVICE_CLASS_MEANING`. Le CINQUE classi di `binary_sensor` misurate sulla
 # stessa casa (`motion`, `connectivity`, `running`, `occupancy`, `plug` -- 33
 # entita') NON compaiono qui apposta: hanno gia' un significato in
-# `topology._CLASS_MEANING`, e questo vocabolario non le duplica (vedi il
+# le traduzioni pubblicate da HA, e questo vocabolario non le duplica (vedi il
 # docstring del modulo).
 _MEASURED_DEVICE_CLASS_PAIRS = (
     ("sensor", "timestamp"), ("sensor", "energy"), ("sensor", "temperature"),
@@ -234,7 +234,7 @@ def test_the_device_class_table_does_not_go_beyond_what_this_house_measured():
 
 def test_binary_sensor_meanings_are_not_duplicated_here():
     """Le classi di `binary_sensor` hanno gia' un significato in
-    `topology._CLASS_MEANING`: un doppione qui violerebbe la fondamenta
+    la resa che Home Assistant pubblica: un doppione qui violerebbe la fondamenta
     "nessun doppione" -- lo stesso fatto raccontato da due tabelle puo'
     divergere silenziosamente quando una delle due si aggiorna e l'altra no.
 
