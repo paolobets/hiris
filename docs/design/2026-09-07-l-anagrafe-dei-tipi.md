@@ -540,3 +540,61 @@ codice:
    diverse — `campo_di_manovra` e `valori_che_puo_assumere` — e i due insiemi sono disgiunti per
    costruzione, non per l'ordine con cui qualcuno li guarda. Rapporto:
    `.superpowers/sdd/tipi-di-entita/fetta-azione-report.md`.
+
+---
+
+## §16 · La fetta 6 riscritta: le sei liste non si ordinano, si SCIOLGONO
+
+**Correzione del proprietario, 08/09**, alla domanda «le sei liste, giusto che siano sei oppure
+violano le regole?»:
+
+Il piano diceva *«le liste rimaste, una per una»* — e avrebbe prodotto **sei liste ordinate invece
+di sei liste sciolte**, conservando la forma che questa fetta esiste per togliere. Nessuna delle
+sei ha diritto a una casa propria.
+
+### Il caso che chiude la discussione
+
+`briefing._ACTIVE_STATES` è cinque parole: `on`, `open`, `unlocked`, `playing`, `cleaning`.
+Il vocabolario dei tipi dichiara già, **per tipo**, quale sia il riposo: `lock → locked`,
+`vacuum → docked`, `media_player → off`.
+
+> `unlocked` è il complemento di `locked`. `open` di `closed`. `on` di `off`.
+> **È la stessa conoscenza, detta due volte, in due case, dai due lati opposti.**
+
+E quelle cinque parole sono **cieche al tipo**: `open` conta come «attivo» tanto per una tapparella
+quanto per una serratura — **esattamente il difetto per cui `_STATE_TRANSLATION` è stata cancellata
+il 08/09**, ricomparso in un altro file.
+
+### Dove va ciascuna
+
+| lista | destino |
+|---|---|
+| `briefing._ACTIVE_STATES` | **non esiste**: è il complemento dei riposi già nel vocabolario |
+| `briefing._EVENT_DOMAINS` | un **campo** della riga del tipo — *«merita un annuncio?»* |
+| `briefing._EVENT_CLASSES` | **la stessa domanda**, sulla riga della coppia (dominio, classe): è il motivo per cui il soggetto è il tipo e non il dominio |
+| `briefing._DOMAIN_NAMES` | un campo della riga, e per giunta **`chiesto`**: HA pubblica i nomi resi nella lingua della casa |
+| `historian.STATE_CLASSES_WITH_STATISTICS` | `ha_vocabulary` ha già una casa per `state_class`: quella |
+| `briefing._BROKEN_INTEGRATION_STATES` / `watcher._HEALTHY_INTEGRATION_STATES` | **soggetto diverso** — stati di *integrazione*, non tipi di entità: una riga loro è legittima. Ma **sono due e divergono**, e quello è il doppione da chiudere |
+
+**Nessuna lista nuova.** Quattro diventano campi della riga del tipo, una raggiunge un vocabolario
+che esiste, una si fonde col proprio gemello.
+
+### Il guadagno, che non è di forma
+
+`_EVENT_DOMAINS` e `_EVENT_CLASSES` rispondono **alla stessa domanda a due granularità**, e nessuno
+le tiene allineate. Diventate un campo solo sulla gerarchia dominio → coppia, **il censore le
+sorveglia entrambe con lo stesso conto**.
+
+### E la distinzione che decide la priorità
+
+Non tutte pesano uguale, e il criterio è **cosa succede quando una voce manca**:
+
+- **`_DOMAIN_NAMES` degrada in leggibilità**: un dominio assente esce grezzo (`_domain_name` torna
+  il dominio), quindi si legge «3 lawn_mower» invece di «3 tosaerba». Il modello capisce lo stesso:
+  è vocabolario di HA, che conosce meglio di noi.
+- **Le altre cinque degradano in VERITÀ**: uno stato fuori da `_ACTIVE_STATES` non viene contato, e
+  il nucleo dice «zero accesi». **Il modello riceve un conteggio, non il criterio con cui è stato
+  fatto**: non ha nessun modo di sospettare che sia sbagliato.
+
+> **Una parola mancante il modello la vede e la aggira; un conteggio sbagliato lo riceve e ci
+> ragiona sopra.** Le liste che producono numeri vanno sotto il censore per prime.
