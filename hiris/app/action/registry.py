@@ -44,6 +44,8 @@ test_un_servizio_senza_campi_non_ne_guadagna_uno_finto`).
 import logging
 import time
 
+from ..proxy.state_translations import absent, known, undefined, unreachable
+
 logger = logging.getLogger(__name__)
 
 
@@ -352,3 +354,210 @@ class ServiceRegistry:
         rispondesse una lista vuota lascerebbe questo `False`.
         """
         return self._caricato_a is None
+
+
+# --------------------------------------------------------------------------
+# COSA QUESTO REGISTRO DICE SUI TIPI, e non solo sui singoli servizi
+# --------------------------------------------------------------------------
+#
+# Il registro dei servizi non serve solo a verificare una chiamata: **e' la
+# seconda fonte viva dell'anagrafe dei tipi** (spec §4, C11 e C13), e costa
+# zero chiamate nuove -- e' gia' in memoria, e si invalida gia' da se' sugli
+# eventi `service_registered`/`service_removed` (`proxy/ha_client.py:68`).
+#
+# Due materie, misurate sulla casa vera l'08/09/2026 (HA `2026.9.1`, 84 domini
+# di servizio, 604 campi):
+#
+#   bit di capacita' per dominio   16 domini bersaglio, `media_player` 22
+#                                  valori distinti, `cover` 10
+#   domini che si accendono        16: automation, camera, climate, cover, fan,
+#                                  homeassistant, humidifier, input_boolean,
+#                                  light, media_player, remote, script, siren,
+#                                  switch, valve, water_heater
+#
+# **LA TRAPPOLA, ed e' misurata.** I valori che il registro porta sono
+# COMBINATI, non singoli: `cover.toggle` dichiara `supported_features: [3]`,
+# che e' `OPEN|CLOSE`; `media_player.media_play_pause` dichiara `[16385]`, che
+# e' `PLAY|PAUSE`; ci sono anche `[48]` (`OPEN_TILT|CLOSE_TILT`), `[384]`,
+# `[3]` su `siren` e su `valve`. Confrontarli tali e quali con una tabella di
+# bit singoli non trova NIENTE e non fallisce: dice «questo dominio non ha
+# capacita' che conosciamo» su un dominio che le ha tutte. **Si scompone
+# prima**, sempre, e la scomposizione sta qui -- non in ogni chiamante.
+#
+# **Il dominio giusto e' quello del BERSAGLIO, non quello del servizio**, e
+# anche questo e' misurato: `reolink.ptz_move` dichiara
+# `target.entity[0] = {integration: reolink, domain: [button],
+# supported_features: [2]}`. Attribuirlo a `reolink` -- che non e' un dominio
+# di entita' -- perderebbe l'unica capacita' che questa casa dichiara su
+# `button`, e la perderebbe in silenzio. Dove il bersaglio non dichiara nessun
+# dominio non si attribuisce a nessuno: sulla casa vera non capita mai (zero
+# casi su 604 campi), e indovinare il dominio del servizio sarebbe la stessa
+# bugia detta al contrario.
+
+#: I servizi che, presi insieme, dicono «questo dominio si accende e si
+#: spegne». Sono i nomi che Home Assistant registra, non una nostra idea di
+#: interruttore: `turn_on` **e** `turn_off`, oppure `toggle`.
+_SWITCH_SERVICES = ("turn_on", "turn_off")
+_TOGGLE_SERVICE = "toggle"
+
+
+def single_bits(value) -> frozenset[int]:
+    """Un valore di `supported_features` -> i bit che lo compongono.
+
+    `3` -> `{1, 2}`, `16385` -> `{1, 16384}`, `48` -> `{16, 32}`. Un bit solo
+    resta se stesso.
+
+    `bool` e' una sottoclasse di `int`: senza l'esclusione, `True` diventerebbe
+    il bit 1 e `False` un insieme vuoto -- la stessa guardia che
+    `field_applies` qui sopra e `topology.decoded_capabilities` gia' hanno, per
+    la stessa ragione. Zero e i negativi non portano nessun bit: Home Assistant
+    non ne emette, e inventarne uno sarebbe una capacita' che non esiste.
+    """
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        return frozenset()
+    return frozenset(1 << position for position in range(value.bit_length())
+                     if value >> position & 1)
+
+
+def _target_domains(detail) -> frozenset[str]:
+    """I domini di entita' che questo servizio dichiara di bersagliare."""
+    if not isinstance(detail, dict):
+        return frozenset()
+    target = detail.get("target")
+    if not isinstance(target, dict):
+        return frozenset()
+    entities = target.get("entity")
+    if isinstance(entities, dict):
+        entities = [entities]
+    if not isinstance(entities, list):
+        return frozenset()
+    domains: set[str] = set()
+    for entry in entities:
+        if not isinstance(entry, dict):
+            continue
+        declared = entry.get("domain")
+        if isinstance(declared, str):
+            domains.add(declared)
+        elif isinstance(declared, list):
+            domains.update(name for name in declared if isinstance(name, str))
+    return frozenset(domains)
+
+
+def _bits_declared_by(detail) -> frozenset[int]:
+    """I bit che questo servizio nomina, **gia' scomposti**, dalle due sedi in
+    cui Home Assistant li mette.
+
+    1. `target.entity[*].supported_features` -- «questo servizio si applica
+       alle entita' che sanno fare X»;
+    2. `fields[*].filter.supported_features` -- «questo PARAMETRO si applica
+       alle entita' che sanno fare X». `fields` e' gia' appiattito da
+       `_fields`, quindi le sezioni di Home Assistant >= 2024.6 sono gia'
+       aperte e nessun parametro avanzato si perde qui.
+    """
+    bits: set[int] = set()
+    if not isinstance(detail, dict):
+        return frozenset()
+    target = detail.get("target")
+    entities = target.get("entity") if isinstance(target, dict) else None
+    if isinstance(entities, dict):
+        entities = [entities]
+    for entry in entities if isinstance(entities, list) else ():
+        if not isinstance(entry, dict):
+            continue
+        declared = entry.get("supported_features")
+        for value in declared if isinstance(declared, list) else ():
+            bits |= single_bits(value)
+    fields = detail.get("fields")
+    for reading in fields.values() if isinstance(fields, dict) else ():
+        per_field = field_filter(reading)
+        declared = per_field.get("supported_features") if per_field else None
+        for value in declared if isinstance(declared, list) else ():
+            bits |= single_bits(value)
+    return frozenset(bits)
+
+
+def _capability_bits(registry) -> dict[str, frozenset[int]]:
+    """Dominio di entita' -> i bit di capacita' che questa casa dichiara.
+
+    Una vista sul registro, non un secondo elenco: si ricostruisce a ogni
+    domanda dalle stesse righe che `service()` restituisce, cosi' non puo'
+    restare indietro rispetto a un'integrazione installata cinque minuti fa.
+    """
+    per_domain: dict[str, set[int]] = {}
+    for service_domain in registry.domains():
+        for name in registry.services_for(service_domain):
+            detail = registry.service(service_domain, name)
+            bits = _bits_declared_by(detail)
+            if not bits:
+                continue
+            for domain in _target_domains(detail):
+                per_domain.setdefault(domain, set()).update(bits)
+    return {domain: frozenset(bits) for domain, bits in per_domain.items()}
+
+
+def capability_bits(registry) -> dict:
+    """I bit di capacita' per dominio, etichettati coi tre silenzi.
+
+    `unreachable` quando il registro non e' mai stato letto: un registro
+    assente e un registro senza bit rispondono uguale a chi guarda un
+    dizionario vuoto, e sono due fatti opposti -- lo stesso motivo per cui
+    `ServiceRegistry.empty()` esiste.
+    """
+    if registry is None:
+        return unreachable("il registro dei servizi non e' collegato a questa istanza")
+    if registry.empty():
+        return unreachable("il registro dei servizi non e' mai stato letto da "
+                           "Home Assistant")
+    return known(_capability_bits(registry))
+
+
+def capability_bits_of(registry, domain: str) -> dict:
+    """I bit di UN dominio, e i tre silenzi restano distinguibili fin qui.
+
+    - il registro non e' stato letto -> «non ho potuto chiedere»;
+    - questa casa non pubblica nessun servizio per quel dominio -> «ho chiesto
+      una cosa che non esiste»;
+    - i servizi ci sono e nessuno nomina un bit -> «ho chiesto e non c’e'», che
+      e' il caso comunissimo (`switch`, `button`, `sensor` non ne hanno).
+    """
+    report = capability_bits(registry)
+    if not report["letto"]:
+        return report
+    per_domain = report["valore"]
+    bits = per_domain.get(domain)
+    if bits:
+        return known(bits)
+    if domain in per_domain or domain in registry.domains():
+        return absent(f"i servizi di «{domain}» non nominano nessun bit di "
+                      "`supported_features`: questo dominio non distingue le sue "
+                      "entita' per capacita'")
+    return undefined(f"«{domain}» non e' fra i {len(registry.domains())} domini di "
+                     "servizio che questa casa pubblica")
+
+
+def switchable_domains(registry) -> dict:
+    """I domini che Home Assistant dichiara accendibili -- 16, misurati.
+
+    **E' una DERIVAZIONE, non un giudizio**, e non sostituisce il nostro: la
+    spec (§4) lo dice per esteso -- questa lista guadagna `automation`,
+    `script`, `input_boolean`, `camera`, `remote`, `siren` e `homeassistant`,
+    dove `on` significa «abilitata» e non «accesa», e perde `vacuum`, che Home
+    Assistant comanda con `start`/`stop`. Serve a SORVEGLIARE il giudizio, e
+    chi la legge come un elenco di interruttori riapre il difetto che
+    `briefing._EVENT_DOMAINS` documenta di aver gia' pagato.
+
+    **Sono domini di SERVIZIO**, non di entita': `homeassistant` sta qui e non
+    e' un dominio di entita'. E' un fatto della derivazione, non un difetto --
+    ed e' una delle sette eccezioni che il censore dovra' motivare.
+    """
+    if registry is None:
+        return unreachable("il registro dei servizi non e' collegato a questa istanza")
+    if registry.empty():
+        return unreachable("il registro dei servizi non e' mai stato letto da "
+                           "Home Assistant")
+    domains = set()
+    for domain in registry.domains():
+        names = set(registry.services_for(domain))
+        if _TOGGLE_SERVICE in names or set(_SWITCH_SERVICES) <= names:
+            domains.add(domain)
+    return known(frozenset(domains))

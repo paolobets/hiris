@@ -90,9 +90,10 @@ _FILE_PERMISSIONS = 0o600
 # Il riferimento alla "sezione CASA" e' uscito con l'imperativo: dal Task 1 di
 # questa fetta il contesto della chat non e' piu' una sezione sola ma il
 # NUCLEO INTERO (`compose_chat_context` -> `compose_briefing`), che compone
-# «## La casa», «## Notevole adesso», «## Cio' che la casa fa gia' da sola»,
-# «## Cio' che le persone hanno detto», «## Cio' che HIRIS ignora», piu' «##
-# Sessioni precedenti». Nominare una sola sezione maiuscola che non esiste
+# «## La casa», «## Notevole adesso», «## Cosa si puo' chiedere alle cose di
+# casa», «## Cio' che la casa fa gia' da sola», «## Cio' che le persone hanno
+# detto», «## Cio' che HIRIS ignora», piu' «## Sessioni precedenti».
+# Nominare una sola sezione maiuscola che non esiste
 # piu' con quel nome sarebbe la solita dichiarazione falsa al presente.
 #
 # COSA SUCCEDE SU UN'INSTALLAZIONE ESISTENTE (verificato, non presunto).

@@ -1703,12 +1703,13 @@ class ToolDispatcher:
         }[name]
         try:
             # `_execute`, `_related`, `_promise`, `_propose`, `_confirm`,
-            # `_trend`, `_happened`, `_system_log`, `_automation_trace` e
-            # `_calendar` sono coroutine (fanno rete, o -- `_promise` --
-            # possono scaldare il registro dei servizi prima di verificare);
-            # gli altri sei no. Si attende cio' che e' attendibile invece di
-            # rendere `async` anche i sei sincroni: cambiare la loro firma
-            # avrebbe toccato sedici gestori per un bisogno di dieci.
+            # `_trend`, `_happened`, `_system_log`, `_automation_trace`,
+            # `_calendar` e -- dall'08/09/2026 -- `_view` sono coroutine
+            # (fanno rete, o -- `_promise` e `_view` -- possono scaldare il
+            # registro dei servizi prima di verificarlo o di mostrarlo); gli
+            # altri cinque no. Si attende cio' che e' attendibile invece di
+            # rendere `async` anche i cinque sincroni: cambiare la loro firma
+            # avrebbe toccato sedici gestori per un bisogno di undici.
             # (`_legami` era il refuso del nome italiano di `_related`,
             # sopravvissuto alla fetta dei nomi degli strumenti del 02/09:
             # corretto qui, di passaggio, mentre questo commento si tocca
@@ -1952,7 +1953,25 @@ class ToolDispatcher:
 
     # -- guarda ----------------------------------------------------------
 
-    def _view(self, arguments: dict[str, Any]) -> dict:
+    async def _view(self, arguments: dict[str, Any]) -> dict:
+        """La vista di una cosa di casa.
+
+        **Coroutine dall'08/09/2026**, e per un motivo solo: il registro dei
+        servizi si carica PIGRAMENTE, e fino a quel giorno lo scaldava
+        soltanto chi ESEGUE un comando. Misurato dal vivo sulla 3.23.0, sette
+        minuti dopo l'aggiornamento: `view` su `light.alberello`, su un
+        termostato e su uno `switch` non portava la chiave `comandi` su
+        nessuno dei tre -- il modello poteva scoprire cosa chiedere **solo
+        dopo aver gia' chiesto qualcosa**, cioe' la conoscenza che esiste per
+        evitare un tentativo sbagliato arrivava dopo il tentativo. 3.648 prove
+        verdi non l'hanno vista, perche' nelle prove il registro finto e' gia'
+        pieno: e' la forma «stato condiviso caricato pigramente», dove la
+        domanda da farsi e' **chi lo riempie**.
+
+        Il costo e' quello dichiarato dal registro stesso: `ensure_fresh` va
+        in rete solo se il registro non e' fresco o e' stato invalidato --
+        **un giro per invalidazione, non uno per vista**.
+        """
         kind = arguments.get("tipo")
         reference = arguments.get("riferimento")
         # Il controllo «"tipo" e "riferimento" sono obbligatori» viveva QUI
@@ -1988,6 +2007,12 @@ class ToolDispatcher:
         # lei (chiave "id", non "entity_id").
         (state, reported_names, reported_units, reported_classes,
          reported_since_when, reported_attributes, loaded) = self._mirror()
+        # Solo per l'entita': e' l'UNICO ramo che legge il registro
+        # (`queries._view_entity` -> `commands_for`). Scaldarlo anche per un
+        # ricordo o per un'area sarebbe un giro di rete per un dato che quel
+        # ramo non guarda.
+        if kind == "entita":
+            await self._ensure_registry_fresh()
         detail = _view_detail(home_space, behavior, memories, state, kind, reference,
                                       unavailable=unavailable,
                                       unloaded_files=unloaded_files,
@@ -2001,11 +2026,11 @@ class ToolDispatcher:
                                       # le si puo' CHIEDERE, coi limiti veri
                                       # -- quelli dell'entita', non quelli
                                       # del cursore generico del servizio
-                                      # (spec §13). Non si scalda qui: e' gia'
-                                      # in memoria e si invalida da se' sugli
-                                      # eventi `service_registered`/
-                                      # `service_removed`, quindi questa
-                                      # vista non costa nessun giro di rete.
+                                      # (spec §13). Scaldato qui sopra: il
+                                      # commento che diceva «non si scalda
+                                      # qui, e' gia' in memoria» era FALSO --
+                                      # in memoria c'era un registro VUOTO
+                                      # finche' nessuno eseguiva un comando.
                                       # `None` e' legittimo -- `guarda` resta
                                       # una lettura, e non deve fallire
                                       # perche' l'azione non e' cablata.
@@ -2253,7 +2278,15 @@ class ToolDispatcher:
     # -- le promesse -----------------------------------------------------
 
     async def _ensure_registry_fresh(self) -> None:
-        """Scalda il registro dei servizi prima di verificare, se puo'.
+        """Scalda il registro dei servizi prima di leggerlo o di verificare.
+
+        **Due chiamanti, non uno**: `_promise` (che VERIFICA una chiamata
+        prima di prometterla) e `_view` (che MOSTRA i comandi di un'entita').
+        Il secondo e' arrivato l'08/09/2026, dopo che dal vivo si e' visto
+        `view` senza la chiave `comandi` su tutte le entita' di una casa
+        appena riavviata: chi legge ha lo stesso bisogno di chi esegue, e
+        farlo pagare solo al secondo significa che la conoscenza arriva dopo
+        il tentativo che doveva evitare.
 
         Stessa forma di `action/actuator.py::ActionActuator.execute` (righe ~598-604): un
         `try/except` attorno a `ensure_fresh`, perche' il registro si
@@ -2292,8 +2325,9 @@ class ToolDispatcher:
             await self._registry.ensure_fresh(channel)
         except Exception as error:
             logger.warning(
-                "promise: rinfresco del registro servizi fallito (%s: %s), "
-                "resta il rifiuto onesto", type(error).__name__, error)
+                "rinfresco del registro servizi fallito (%s: %s): chi verifica "
+                "degrada al rifiuto onesto, chi legge vede una vista senza "
+                "«comandi»", type(error).__name__, error)
 
     async def _promise(self, arguments: dict[str, Any]) -> dict:
         """Il modello propone, il codice restringe (spec §9.1).

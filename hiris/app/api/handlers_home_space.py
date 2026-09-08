@@ -265,14 +265,23 @@ def compose_briefing(app) -> tuple[str, dict]:
     # registro delle entita' non manda `device_class`, quindi senza queste
     # nessun allagamento e nessun allarme monossido entra in «Notevole adesso»
     # (vedi `anagrafe.actual_class`).
+    #
+    # `attributes` e' l'ultimo arrivato di questa stessa lettura, e non costa
+    # niente in piu': lo specchio lo produce gia'. Serve alla sezione «cosa si
+    # puo' chiedere alle cose di casa», che aggrega le CAPACITA' -- senza di
+    # lui il modello sapeva rispondere sull’Alberello e non sapeva di poter
+    # chiedere. Resta `None` quando lo specchio non si e' potuto leggere:
+    # «non ho guardato» e «non c’e' niente da chiedere» sono due fatti diversi,
+    # e `compose()` li dice diversi.
     state: dict[str, str] = {}
     reported_classes: dict[str, str] = {}
+    attributes: dict[str, dict] | None = None
     if cache is not None:
         try:
-            state, _names, _units, reported_classes, _since_when, _attributes = live_mirror(
+            state, _names, _units, reported_classes, _since_when, attributes = live_mirror(
                 cache.all_states())
         except Exception:
-            state, reported_classes = {}, {}
+            state, reported_classes, attributes = {}, {}, None
 
     # I guasti che Home Assistant ha gia' diagnosticato (`repairs/list_issues`).
     #
@@ -324,6 +333,7 @@ def compose_briefing(app) -> tuple[str, dict]:
         reported_classes=reported_classes,
         problems=problems,
         comparison=comparison,
+        attributes=attributes,
         # L'orologio entra QUI, nell'unico compositore di produzione (chat
         # sincrona, ponte e GET /api/briefing passano tutti di qua), perche'
         # `compose` e' pura e non legge nulla da sola. Senza questa riga il

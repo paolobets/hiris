@@ -40,7 +40,9 @@ from hiris.app.action.registry import ServiceRegistry, field_applies
 from hiris.app.action.verification import verification
 from hiris.app.home_space import type_vocabulary
 from hiris.app.home_space.queries import commands_for, view
+from hiris.app.home_space.tools import ToolDispatcher
 from hiris.app.home_space.topology import live_mirror
+from hiris.app.memory.store import MemoryStore
 from hiris.app.proxy.entity_cache import _to_minimal, disclosable_attributes
 
 # --------------------------------------------------------------------------
@@ -615,3 +617,100 @@ def test_un_limite_dell_entita_si_prende_solo_intero():
     from hiris.app.home_space.queries import _limits_of_entity
     assert _limits_of_entity("light", "color_temp_kelvin",
                              _attributes(meta)) == {}
+
+
+# --------------------------------------------------------------------------
+# IL REGISTRO FREDDO -- il difetto misurato dal vivo sulla 3.23.0
+# --------------------------------------------------------------------------
+#
+# Sette minuti dopo l'aggiornamento, `view` su `light.alberello`, su un
+# termostato e su uno `switch` non portava la chiave `comandi` su nessuno dei
+# tre. La causa non era il codice che COMPONE i comandi -- quello e' coperto
+# qui sopra e funziona: era che **nessuno scaldava il registro dei servizi sul
+# ramo che legge**. `_ensure_registry_fresh` aveva un solo chiamante, il ramo
+# che ESEGUE.
+#
+# Quindi il modello poteva scoprire cosa chiedere solo dopo aver gia' chiesto
+# qualcosa: la conoscenza che esiste per evitare un tentativo sbagliato
+# arrivava dopo il tentativo.
+#
+# **Perche' 3.648 prove verdi non l'hanno visto**: ogni prova costruisce il
+# registro e lo riempie (`_registro()` qui sopra fa esattamente questo, ed e'
+# giusto per cio' che vuole provare). E' la forma «stato condiviso caricato
+# pigramente»: nelle prove la finta lo popola sempre, dal vivo nessuno lo
+# riempie. La domanda che le smaschera e' una sola -- **chi lo riempie?** --
+# e la prova che la fa e' questa: parte da un registro MAI CARICATO e passa
+# dal dispatcher vero.
+
+class _CacheDellAlberello:
+    """La forma vera di `entity_cache.all_states()`, col payload vero."""
+
+    loaded = True
+
+    def all_states(self):
+        return [_to_minimal(LIGHT_ALBERELLO)]
+
+
+@pytest.mark.asyncio
+async def test_guardare_una_entita_scalda_il_registro_dei_servizi(tmp_path):
+    """**Chi legge ha lo stesso bisogno di chi esegue.** Il registro parte
+    freddo -- `empty()` vero, come su un add-on appena avviato -- e `view`
+    dev'essere lui a scaldarlo: se aspetta il primo comando, il modello non
+    sa cosa chiedere finche' non ha gia' chiesto.
+
+    Mutazione ESEGUITA: togliere `await self._ensure_registry_fresh()` da
+    `ToolDispatcher._view` (`home_space/tools.py`) -- `comandi` sparisce e la
+    prova arrossisce su `"comandi" in esito`, esattamente come e' successo
+    sulla casa vera.
+    """
+    from tests.test_knowledge_tools import _semina_casa
+
+    casa = _semina_casa(tmp_path, casa={
+        "piani": [], "aree": [{"id": "casa", "nome": "Casa", "piano_id": None}],
+        "entita": [{"id": "light.alberello", "nome": "Alberello", "area_id": "casa",
+                    "dispositivo_id": None, "classe": None, "unita": None,
+                    "disabilitata": 0}],
+    }, comportamento=[])
+    memoria = MemoryStore(str(tmp_path / "memoria.db"))
+    registro = ServiceRegistry()
+    assert registro.empty() is True, "questa prova parte da un registro MAI letto"
+    dispatcher = ToolDispatcher(casa, memoria, cache=_CacheDellAlberello(),
+                                ha=FintoClient(), registry=registro)
+    try:
+        esito = await dispatcher.dispatch(
+            "view", {"tipo": "entita", "riferimento": "light.alberello"})
+    finally:
+        memoria.close()
+        casa.close()
+    assert esito["esiste"] is True
+    assert "comandi" in esito, (
+        "il registro dei servizi era freddo e nessuno l'ha scaldato: «view» "
+        "dice cosa si puo' chiedere solo dopo che qualcosa e' gia' stato chiesto")
+    assert "light.turn_on" in esito["comandi"]
+    assert registro.empty() is False
+
+
+@pytest.mark.asyncio
+async def test_guardare_un_ricordo_non_scalda_niente(tmp_path):
+    """Il rovescio: solo il ramo dell'entita' legge il registro
+    (`queries._view_entity` -> `commands_for`). Scaldarlo per un ricordo
+    sarebbe un giro di rete per un dato che quel ramo non guarda.
+
+    Mutazione ESEGUITA: togliere il `if kind == "entita"` da `_view`, cosi'
+    che si scaldi sempre -- `registro.empty()` diventa falso e la prova
+    arrossisce.
+    """
+    from tests.test_knowledge_tools import _semina_casa
+
+    casa = _semina_casa(tmp_path, casa={"piani": [], "aree": [], "entita": []},
+                        comportamento=[])
+    memoria = MemoryStore(str(tmp_path / "memoria.db"))
+    registro = ServiceRegistry()
+    dispatcher = ToolDispatcher(casa, memoria, cache=_CacheDellAlberello(),
+                                ha=FintoClient(), registry=registro)
+    try:
+        await dispatcher.dispatch("view", {"tipo": "ricordo", "riferimento": 1})
+    finally:
+        memoria.close()
+        casa.close()
+    assert registro.empty() is True
