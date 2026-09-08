@@ -1,5 +1,70 @@
 # HIRIS — Changelog
 
+## [3.23.0] — HIRIS sa cosa sanno fare le tue cose (2026-09-08)
+
+**Fino a ieri HIRIS sapeva che l'Alberello è una luce e che è spento. Non sapeva che si attenua,
+che fa colore, che arriva a 9000 K e che conosce tre effetti — perché quelle righe, che Home
+Assistant pubblica, venivano buttate prima di arrivare a chiunque.**
+
+### Tutto quello che Home Assistant espone, adesso HIRIS lo eredita
+
+C'era una lista scritta a mano che decideva quali attributi conservare: **nove domini su trenta**,
+e per quei nove i soli **valori del momento**. Tutto il resto spariva.
+
+Ora non sparisce niente. Ogni attributo che Home Assistant espone finisce in uno di questi posti,
+e **nessuno in silenzio**:
+
+- il **campo di manovra** — cosa quella cosa sa fare, e fin dove;
+- i **valori** — com'è adesso;
+- i **non interpretati** — quelli di cui nessuna fonte pubblica dichiara il significato, che escono
+  lo stesso, marcati come tali: «non so cosa sia» non è «non esiste», e non è un invito a
+  indovinare;
+- i **trattenuti** — i token di accesso e gli indirizzi con dentro una chiave, che HIRIS eredita e
+  può usare ma non scrive nel testo di una conversazione, perché quella si salva su disco e ci
+  resta. Il fatto è dichiarato: si vede che qualcosa è stato trattenuto, e perché.
+
+**Misurato sulla casa vera: zero attributi persi su 837 entità, e le entità che sanno dire
+qualcosa passano da 51 a 556.**
+
+Adesso l'Alberello dice di sé che fa colore fra 1500 e 9000 K e conosce tre effetti; il termostato
+della camera dice che va da 5 a 40 gradi a passi di mezzo grado, e che sa anche raffrescare.
+
+### E il modello può usarlo
+
+Prima, per sapere se una luce accettasse un colore, il modello poteva solo provarci. Adesso, quando
+guarda un'entità, vede **cosa le si può chiedere**: i parametri di ogni comando, coi loro limiti e
+la ragione per cui si applicano — o non si applicano — proprio a lei.
+
+Con una conseguenza che si vede subito su questa casa, dove **quaranta luci su cinquanta sono
+soltanto accendi-spegni**: chiedere il colore a una di quelle quaranta adesso riceve un **no
+motivato da HIRIS**, che nomina cosa quella luce dichiara davvero, invece di un errore tecnico di
+Home Assistant dopo aver provato.
+
+E i limiti che valgono sono **quelli della tua lampadina**, non quelli del cursore generico: HA
+mostrerebbe un cursore fermo a 6500 K, ma l'Alberello arriva a 9000, e HIRIS lo lascia arrivare.
+
+### Il vocabolario dei tipi
+
+Sotto tutto questo c'è una cosa che non si vede e che regge il resto. Ciò che HIRIS sapeva delle
+**tipologie di cose** di Home Assistant — quali esistono, cosa sanno fare, quali si accendono e si
+spengono — viveva in **ventuno elenchi scritti a mano**, sparsi in sette moduli, che non si
+parlavano fra loro: `light` era scritto in due e mancava nel terzo.
+
+Adesso c'è **una casa sola**, con una riga per tipo, e ogni informazione dichiara **da dove viene**:
+letta da questa casa adesso, importata dal codice di Home Assistant con la versione da cui viene,
+oppure un giudizio nostro. Così un giudizio nostro non si può più leggere come un fatto di Home
+Assistant.
+
+**Il trasloco non ha cambiato una virgola di comportamento**, ed è stato dimostrato invece che
+sperato: 114.319 risposte confrontate prima e dopo, zero differenze.
+
+### Cosa non è ancora finito, e vale la pena saperlo
+
+Il modello sa rispondere sull'Alberello, ma **non sa ancora di poterlo chiedere**: il riassunto che
+riceve a ogni messaggio non porta ancora le capacità della casa. E restano da fare il controllo che
+si accorge da solo quando Home Assistant aggiunge qualcosa che nessuno ha classificato, e la
+cancellazione di quattro tabelle che traducono a mano ciò che ormai scarichiamo già tradotto.
+
 ## [3.22.3] — Misurare prima di correggere (2026-09-07)
 
 **Sette rilievi di usabilità da chiudere. Due sono caduti misurandoli — e la stessa misura ha
