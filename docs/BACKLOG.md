@@ -671,7 +671,7 @@ correzioni della review indipendente` · `nessun documento`
 
 `entity_cache._to_minimal` conserva `state_class` (`measurement`/`total`/`total_increasing`) come
 chiave DI PRIMO LIVELLO del dizionario minimale -- non dentro `attributes` (`_DOMAIN_ATTRS`) --
-per servire `historian.produces_statistics` (`tools.py::_trend`, che legge
+per servire `ha_vocabulary.produces_statistics` (`tools.py::_trend`, che legge
 `self._state_readings()` direttamente). `topology.live_mirror`, il proiettore condiviso da
 `view`/`cerca`/il nucleo, NON porta questa chiave: il suo sesto dizionario (`attributi`) e'
 costruito solo da `e.get("attributes")`, e `state_class` non ci vive. Risultato: `view`

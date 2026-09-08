@@ -598,3 +598,49 @@ Non tutte pesano uguale, e il criterio è **cosa succede quando una voce manca**
 
 > **Una parola mancante il modello la vede e la aggira; un conteggio sbagliato lo riceve e ci
 > ragiona sopra.** Le liste che producono numeri vanno sotto il censore per prime.
+
+
+---
+
+## §17 · Il §16 sbagliava in due punti, e l'esito e' migliore del disegno
+
+**Correzioni misurate durante l'esecuzione, 08/09.** Quattro liste su sei sono sciolte; due
+restano, **con la ragione misurata e scritta nel codice**, non nel rapporto di qualcuno.
+
+### Il complemento NON e' esatto — e la scoperta vale piu' della fusione
+
+Il §16 affermava che `_ACTIVE_STATES` fosse il complemento dei riposi. **Il verso grave regge**
+(nessuna delle cinque parole e' il riposo di un tipo che la puo' portare), **ma il verso leggero
+no**: **undici** stati che questa casa pubblica non sono riposi **e** non sono fra gli attivi —
+`cover`/`valve` in `opening`/`closing`, `lock` in `locking`/`unlocking`/`opening`/`jammed`,
+`media_player` in `paused`/`buffering`, `vacuum` in `paused`.
+
+> **Dieci degli undici il vocabolario li dichiara gia' «sta funzionando», con la ragione scritta.**
+> Quindi non e' un buco di conoscenza: e' un **disaccordo fra due giudizi del prodotto stesso**.
+> L'undicesimo e' `lock=jammed`, che il proprietario ha giudicato un **guasto**.
+
+Derivare `_ACTIVE_STATES` dai riposi li conterebbe **tutti e undici**, e cambierebbe i conteggi del
+nucleo: fetta sua, con il suo changelog. La misura e' pinnata da una prova che **arrossisce se il
+divario cambia**, invece di restare un'osservazione in un documento.
+
+**La domanda aperta, ed e' di prodotto**: annunciare una tapparella che si sta aprendo, un film in
+pausa, una serratura che si muove — si', o no?
+
+### `_DOMAIN_NAMES` non e' `chiesto`, e non si scioglie senza indebolire un cancello
+
+Il §16 diceva «per giunta `chiesto`: HA pubblica i nomi resi». **HA pubblica UN nome**, non la
+coppia singolare/plurale che il nucleo usa per contare: prenderlo da li' sarebbe un cambio di
+comportamento, non una fusione.
+
+E dare una riga a tutti e 63 i domini nominabili porta `domains()` da 41 a 63 — con quell'insieme
+allargato il cancello **«un tipo ha una casa sola» nomina sei elenchi che tipi non sono**: i generi
+che HIRIS costruisce, i due servizi di notifica, gli otto domini degli helper. Farla passare
+avrebbe richiesto **sei righe nuove nell'istantanea delle deroghe**, che e' vietato.
+
+**L'implementer ha disfatto invece di indebolire il cancello, ed e' la scelta giusta.** E' anche
+l'unica delle sei che degrada in **leggibilita'** e non in verita': il suo caso peggiore e'
+«3 lawn_mower» al posto di «3 tosaerba», e il modello capisce lo stesso.
+
+**La decisione che resta**: o quei sei elenchi diventano righe di qualcosa (i generi di costruzione
+hanno un soggetto proprio), oppure il cancello impara a distinguere «dominio **nominato**» da
+«tipo **giudicato**» — e la seconda e' un indebolimento, che non si prende da soli.
