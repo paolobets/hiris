@@ -84,6 +84,50 @@ def test_l_istantaneo_versionato_e_ancora_quello_di_questa_casa(casa_viva):
         "censore nomina di nuovo -- prima si rilegge, poi si decide.")
 
 
+def test_l_istantaneo_e_questa_fixture_nominano_gli_stessi_stati(casa_viva):
+    """R5 (revisione del tratto v3.23.0..HEAD, 08/09/2026): `tests/_house_
+    translations.py` affermava di «rigenerarsi con la casa» tramite
+    `scripts/istantaneo_pubblicato.py`. Non e' vero: quello script scrive
+    SOLO `tests/data/pubblicato-dalla-casa.json`, mai `_house_translations.py`,
+    e prima di questa prova nessuna verifica dal vivo confrontava le PAROLE
+    (o anche solo gli stati) di quella fixture con la casa vera -- la prova
+    qui sopra confronta le SEI MATERIE dell'istantaneo, che non portano
+    parole.
+
+    Questa prova chiude la meta' verificabile del limite: non le parole
+    italiane (`frontend/get_translations` non e' riletto qui, e non lo sara'
+    finche' nessuna prova ne ha bisogno per altro), ma la STRUTTURA -- quali
+    stati esistono, per quale tipo. Se Home Assistant aggiunge o toglie uno
+    stato a un dominio che questa fixture nomina, questa prova lo dice; se
+    Home Assistant cambia solo la PAROLA di uno stato esistente (misurato:
+    e' il caso reale che ha motivato R5, `triggered` -> «Scattato»), questa
+    prova resta verde e la fixture invecchia in silenzio -- limite dichiarato,
+    non chiuso.
+
+    Mutazione ESEGUITA: in `tests/_house_translations.derived_state_keys`,
+    aggiungere uno stato inventato (`"component.light.entity_component._.
+    state.sfarfallio": "Sfarfallio"`) a `PUBLISHED_STATE_WORDS` -- la prova
+    arrossisce nominando `light` e lo stato in piu' che l'istantaneo non ha.
+    """
+    from tests._house_translations import derived_state_keys
+
+    derivati = derived_state_keys()
+    live = casa_viva.get("stati_per_tipo") or {}
+    diverse = []
+    for domain, per_class in derivati.items():
+        for device_class, states in per_class.items():
+            live_states = set(live.get(domain, {}).get(device_class, []))
+            solo_fixture = set(states) - live_states
+            solo_casa = live_states - set(states)
+            if solo_fixture or solo_casa:
+                diverse.append(f"{domain}.{device_class}: solo fixture={sorted(solo_fixture)}, "
+                               f"solo casa={sorted(solo_casa)}")
+    assert not diverse, (
+        "gli stati di `_house_translations.py` non coincidono piu' con quelli "
+        "che la casa pubblica -- corregere la fixture a mano:\n  "
+        + "\n  ".join(diverse))
+
+
 def test_la_casa_e_la_stessa_versione_e_la_stessa_lingua(casa_viva):
     """Le due cose che fanno invecchiare una tabella di traduzioni, e che
     l'istantaneo porta con se' per la stessa ragione per cui `PublishedTypes`

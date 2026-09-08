@@ -44,7 +44,7 @@ test_un_servizio_senza_campi_non_ne_guadagna_uno_finto`).
 import logging
 import time
 
-from ..proxy.state_translations import absent, known, undefined, unreachable
+from ..proxy.state_translations import known, unreachable
 
 logger = logging.getLogger(__name__)
 
@@ -511,28 +511,13 @@ def capability_bits(registry) -> dict:
     return known(_capability_bits(registry))
 
 
-def capability_bits_of(registry, domain: str) -> dict:
-    """I bit di UN dominio, e i tre silenzi restano distinguibili fin qui.
-
-    - il registro non e' stato letto -> «non ho potuto chiedere»;
-    - questa casa non pubblica nessun servizio per quel dominio -> «ho chiesto
-      una cosa che non esiste»;
-    - i servizi ci sono e nessuno nomina un bit -> «ho chiesto e non c’e'», che
-      e' il caso comunissimo (`switch`, `button`, `sensor` non ne hanno).
-    """
-    report = capability_bits(registry)
-    if not report["letto"]:
-        return report
-    per_domain = report["valore"]
-    bits = per_domain.get(domain)
-    if bits:
-        return known(bits)
-    if domain in per_domain or domain in registry.domains():
-        return absent(f"i servizi di «{domain}» non nominano nessun bit di "
-                      "`supported_features`: questo dominio non distingue le sue "
-                      "entita' per capacita'")
-    return undefined(f"«{domain}» non e' fra i {len(registry.domains())} domini di "
-                     "servizio che questa casa pubblica")
+# `capability_bits_of` (i bit di UN dominio solo) e' stata cancellata (R6,
+# revisione del tratto v3.23.0..HEAD, 08/09/2026): nessun chiamante di
+# produzione la usava, solo le prove. `capability_bits()` qui sopra -- usata
+# da `scripts/istantaneo_pubblicato.py` -- resta la sola porta viva; chi
+# vuole i bit di un dominio solo fa `capability_bits(registro)["valore"].
+# get(dominio)` e distingue da se' «letto» da «non letto» sull'esito di
+# `capability_bits`, senza bisogno di una seconda funzione mai chiamata.
 
 
 def switchable_domains(registry) -> dict:

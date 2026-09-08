@@ -494,80 +494,6 @@ def published_state_classes(resources) -> frozenset[str]:
     return frozenset(values)
 
 
-class PublishedTypes:
-    """Cio' che Home Assistant pubblica sui tipi, in QUESTA casa e adesso.
-
-    **Ogni risposta e' etichettata coi tre silenzi**, e la distinzione arriva
-    fino a chi legge: `states("light")` su una casa senza `light` risponde
-    «ho chiesto una cosa che non esiste», su una casa CON `light` ma senza
-    enumerazione risponde «ho chiesto e non c’e'». Sono due fatti diversi, e
-    farli collassare in un insieme vuoto e' il difetto che questa classe
-    esiste per non commettere: il primo dice che la casa non ha quel tipo, il
-    secondo che quel tipo non ha stati enumerabili -- e infatti `sensor` non
-    ne ha, misura numeri.
-
-    Porta con se' `(versione_ha, lingua)`: una tabella che non sa di quale
-    casa e di quale lingua e' non si sa vecchia, ed e' la stessa disciplina
-    che il vocabolario dei tipi impone ai suoi campi importati.
-    """
-
-    __slots__ = ("_device_classes", "_domains", "_ha_version", "_language",
-                 "_state_classes", "_states")
-
-    def __init__(self, resources, *, ha_version, language) -> None:
-        self._domains = published_domains(resources)
-        self._device_classes = published_device_classes(resources)
-        self._states = published_states(resources)
-        self._state_classes = published_state_classes(resources)
-        self._ha_version = ha_version
-        self._language = language
-
-    @property
-    def ha_version(self):
-        return self._ha_version
-
-    @property
-    def language(self):
-        return self._language
-
-    def domains(self) -> dict:
-        """I domini caricati. Un elenco vuoto e' un silenzio, non una casa
-        senza domini: nessuna installazione di Home Assistant ne ha zero."""
-        if not self._domains:
-            return undefined(
-                "Home Assistant ha risposto senza errore e senza nessun dominio: "
-                "la categoria chiesta non e' fra quelle che pubblica")
-        return known(self._domains)
-
-    def device_classes(self, domain: str) -> dict:
-        if domain not in self._domains:
-            return undefined(f"il dominio «{domain}» non e' fra i {len(self._domains)} "
-                             "che questa casa ha caricato")
-        classes = self._device_classes.get(domain)
-        if not classes:
-            return absent(f"il dominio «{domain}» non pubblica nessuna `device_class`: "
-                          "le sue entita' non si distinguono per classe")
-        return known(classes)
-
-    def states(self, domain: str, device_class: str | None = None) -> dict:
-        if domain not in self._domains:
-            return undefined(f"il dominio «{domain}» non e' fra i {len(self._domains)} "
-                             "che questa casa ha caricato")
-        if device_class and device_class not in self._device_classes.get(domain, ()):
-            return undefined(f"«{device_class}» non e' fra le `device_class` che il "
-                             f"dominio «{domain}» pubblica")
-        states = self._states.get((domain, device_class))
-        if not states:
-            return absent(f"il tipo ({domain}, {device_class}) non enumera nessuno "
-                          "stato: e' un tipo che misura, non uno che sta in uno stato")
-        return known(states)
-
-    def state_classes(self) -> dict:
-        if not self._state_classes:
-            return absent("questa casa non pubblica nessun valore di `state_class`")
-        return known(self._state_classes)
-
-
 class StateTranslations:
     """La tabella delle traduzioni, letta da Home Assistant e tenuta in cache.
 
@@ -588,14 +514,22 @@ class StateTranslations:
     lette e uno stato senza traduzione sono due fatti diversi, e chi PRODUCE
     il motivo deve etichettarlo -- non chi lo consuma indovinarlo.
 
-    **Dalla fetta del derivato (08/09/2026) la stessa lettura risponde a una
-    seconda domanda**: `published()` distilla dalle stesse 801 chiavi cio' che
-    questa casa DICHIARA di avere -- 53 domini, gli stati per tipo, le
-    `device_class` per dominio, i quattro valori di `state_class`. Non e' una
-    seconda lettura e non e' un secondo modulo: e' la stessa risposta guardata
-    da un'altra parte, ed e' il motivo per cui i due esiti non possono
-    divergere. I due esiti etichettati diventano **tre**, coi tre silenzi in
-    cima a questo file.
+    **`published_domains`/`published_device_classes`/`published_states`/
+    `published_state_classes`** (sopra, in questo stesso modulo) distillano
+    dalle stesse chiavi cio' che una casa DICHIARA di avere -- non da questa
+    cache, che resta la sola lettura sincrona per rendere uno stato. Il
+    censore (`home_space/type_census.py`) e lo script che gli fa da fonte
+    (`scripts/istantaneo_pubblicato.py`) le chiamano direttamente sulle
+    risorse che leggono da soli, senza passare da qui: sono le due domande
+    diverse sulla stessa lettura di cui parla il loro modulo -- «come si rende
+    uno stato» qui dentro, «cosa questa casa dichiara di avere» li'.
+    (R6, revisione del tratto v3.23.0..HEAD, 08/09/2026: fino a questa
+    correzione questa classe portava anche `published()` e `PublishedTypes`,
+    un secondo wrapper con gli stessi tre silenzi ma NESSUN chiamante di
+    produzione -- il censore e lo script non li usavano mai. Codice vivo per
+    le prove e morto per il prodotto, cancellato: se un domani un consumatore
+    vero avesse bisogno della cache invece della lettura diretta, si
+    ricostruisce da queste quattro funzioni pure, che restano.)
     """
 
     def __init__(self, client, *, category: str = STATE_TRANSLATIONS_CATEGORY) -> None:
@@ -603,11 +537,6 @@ class StateTranslations:
         self._category = category
         self._key: tuple[str | None, str | None] | None = None
         self._resources: dict | None = None
-        # La distillazione delle stesse risorse (`PublishedTypes`), tenuta
-        # accanto a loro e invalidata con loro: e' la stessa tabella guardata
-        # da un'altra parte, non una seconda cache con una vita propria che
-        # potrebbe restare indietro.
-        self._published: PublishedTypes | None = None
         self._lock = asyncio.Lock()
 
     async def read(self, *, ha_version, language) -> dict:
@@ -650,9 +579,6 @@ class StateTranslations:
                 return {"lette": False, "motivo": reason}
             self._resources = report["risorse"]
             self._key = key
-            # La distillazione segue le risorse: quelle nuove non possono
-            # convivere con la lettura vecchia nemmeno per un turno.
-            self._published = None
             logger.info("traduzioni degli stati lette da Home Assistant: %d chiavi (%s, HA %s)",
                         len(self._resources), language, ha_version)
         return {"lette": True, "lingua": language, "risorse": self._resources}
@@ -683,44 +609,3 @@ class StateTranslations:
                               "lette da Home Assistant in questa sessione"}
         return {"lette": True, "lingua": self._key[1] if self._key else None,
                 "risorse": self._resources}
-
-    async def published(self, *, ha_version, language) -> dict:
-        """Cio' che Home Assistant PUBBLICA sui tipi in questa casa, adesso --
-        etichettato coi tre silenzi.
-
-        **Zero chiamate in piu' di `read`**: la stessa risposta, la stessa
-        cache, lo stesso lock. Chi vuole rendere uno stato chiama `read`; chi
-        vuole sapere cosa questa casa dichiara di avere chiama questa. Due
-        domande diverse sulla stessa lettura, non due letture.
-
-        I tre esiti, e sono i tre silenzi della spec (§4):
-
-        - la lettura non e' riuscita -> «non ho potuto chiedere», **col motivo
-          dichiarato da chi ha fallito** (il client, non indovinato qui);
-        - la lettura e' riuscita e non porta **nessuna** chiave -> «ho chiesto
-          una cosa che non esiste»: `frontend/get_translations` non valida
-          `category`, e a una categoria inventata risponde `success: true` con
-          zero chiavi (misurato). Senza questo ramo un refuso nella categoria
-          diventerebbe «questa casa non ha domini»;
-        - la lettura e' riuscita -> la tabella, e i «ho chiesto e non c’e'»
-          restano da chiedere tipo per tipo a `PublishedTypes`.
-
-        **Un guasto non invalida la tabella buona di prima**: questa funzione
-        non ha nessun ramo che azzeri `_resources` o `_published`, e a
-        `(versione_ha, lingua)` invariate `read` risponde dalla cache senza
-        nemmeno provare a chiamare. Una tabella che c'e' vale piu' di un vuoto
-        dichiarato fresco -- la stessa scelta di `topology.rebuild()`.
-        """
-        report = await self.read(ha_version=ha_version, language=language)
-        if not report.get("lette"):
-            return unreachable(report.get("motivo"))
-        resources = report.get("risorse")
-        if not resources:
-            return undefined(
-                f"la categoria «{self._category}» non e' fra quelle che Home "
-                "Assistant pubblica: ha risposto senza errore e con zero chiavi")
-        async with self._lock:
-            if self._published is None:
-                self._published = PublishedTypes(
-                    resources, ha_version=ha_version, language=language)
-        return known(self._published)

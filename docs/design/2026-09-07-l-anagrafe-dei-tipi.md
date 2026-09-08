@@ -507,12 +507,22 @@ codice:
    > **CORREZIONE del 08/09, e l'errore era di chi scrive.** Questo punto diceva *«35 firme
    > distinte per 2.349 caratteri su un tetto di 6.000: ci stanno»*. **Confrontava l'aggiunta col
    > TETTO invece che con lo SPAZIO LIBERO**, che è quasi zero: il nucleo della casa vera pesa
-   > **5.676 su 6.000** — misurato dal vivo — e **tronca già**, escludendo sette elementi notevoli.
+   > **5.676 su 6.000** — misurato dal vivo — e **tronca già**, escludendo nove elementi notevoli.
+   >
+   > **SECONDA CORREZIONE, R4 della revisione del tratto v3.23.0..HEAD (08/09/2026, poche ore
+   > dopo la prima)**: questo paragrafo diceva «sette elementi» e «~6 voci di comportamento su
+   > 21» — due numeri che la fetta successiva, con la ricostruzione verificata riga per riga
+   > contro il nucleo vivo del 3.23.0 (`.superpowers/sdd/tipi-di-entita/fetta-censore-report.md`
+   > §A.2-A.3), ha smentito: sono **nove**, non sette, e **venti** voci di comportamento (non
+   > 21), delle quali **sette** restano fuori. Il "~6 su 21" era la stima meno verificata delle
+   > due, presa poche ore prima di quella piu' accurata; questa correzione allinea la spec alla
+   > misura migliore, non il contrario.
    >
    > Ridotte a 671 caratteri (tenendo le enumerazioni e buttando i numeri: la firma è mappa, il
    > valore è dettaglio di `view`), le capacità entrano lo stesso — ma sfratterebbero **«Notevole
-   > adesso» per intero** e ~6 voci di comportamento su 21. **La mappa delle stanze non perde una
-   > riga**, perché le capacità stanno prima di `casa` nell'ordine di taglio e una prova lo inchioda.
+   > adesso» per intero** e sette voci di comportamento su venti. **La mappa delle stanze non
+   > perde una riga**, perché le capacità stanno prima di `casa` nell'ordine di taglio e una
+   > prova lo inchioda.
    >
    > **Deciso dal proprietario l'08/09: il tetto sale a 6.800**, così entrano entrambi e non si
    > perde niente. Costa ~200 token per turno, letti dalla cache — sul ponte, 5,6 milioni letti

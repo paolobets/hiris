@@ -196,6 +196,12 @@ _ACTIVE_STATES = {"on", "open", "unlocked", "playing", "cleaning"}
 #     riportano quando li chiedi -- e' la differenza fra un vocabolario e un
 #     filtro, ed e' pinnata in tests/test_type_vocabulary.py.
 #   - `sensor`/`number`/`weather`/`sun`: sono MISURE. Un numero non e' un evento.
+#   - `calendar`: dice se c'e' un evento in corso ADESSO, non se qualcuno lo ha
+#     acceso -- la stessa differenza di `weather`: e' cio' che la casa MISURA
+#     del calendario, non un apparecchio che qualcuno ha azionato (revisione
+#     del tratto v3.23.0..HEAD, R3b, 08/09/2026: prima di questa correzione
+#     l'eccezione del censore per `calendar=off` citava questa riga senza che
+#     `calendar` ci fosse scritto).
 #   - `button`/`event`/`tag`/`notify`/`image`: non hanno uno stato utile -- 57
 #     dei 72 `button` di questa casa sono `unknown` per costruzione.
 #
@@ -740,6 +746,33 @@ def _unreliable_state(home_space: dict, state: dict, reliable_state: bool,
     return True
 
 
+def _digest_visible_entity_ids(home_space: dict) -> frozenset[str]:
+    """Gli ID delle entita' che un DIGESTO -- una vista PRINCIPALE, quella che
+    HIRIS dice senza che tu l'abbia chiesta -- puo' contare da sola: presenti
+    in anagrafe, non disabilitate, non nascoste, non di servizio
+    (`categoria` = `config`/`diagnostic`).
+
+    **Nata dal rilievo R1** (revisione del tratto v3.23.0..HEAD, 08/09/2026):
+    `_highlight_lines` applicava gia' queste tre regole scrivendole a mano
+    riga per riga, e `_capability_lines` -- la sezione «Cosa si puo' chiedere
+    alle cose di casa», nata nello stesso tratto -- non le riceveva affatto:
+    iterava lo specchio INTERO della cache (`live_mirror`), quindi contava le
+    nascoste, le entita' di servizio, e perfino un'entita' presente in cache
+    ma assente dall'anagrafe (mai arrivata, o rimossa da Home Assistant). Sulla
+    casa del proprietario: quattro luci nascoste in piu' e 113 `config` + 66
+    `diagnostic` che «La casa» e «Notevole adesso» non contano, contate qui --
+    lo stesso testo che dava due totali diversi per la stessa parola. Una
+    funzione sola, usata da entrambe le sezioni, e' l'unico modo per cui le
+    due non possano tornare a divergere in silenzio: e' la terza fondamenta,
+    consistenza, dentro un'unica pagina."""
+    return frozenset(
+        e["id"] for e in home_space.get("entita", [])
+        if e.get("id")
+        and not e.get("disabilitata")
+        and not e.get("categoria")
+        and not e.get("nascosta"))
+
+
 def _highlight_lines(home_space: dict, state: dict, floors: list[dict],
                     unreliable_state: bool,
                     reported_classes: dict[str, str] | None = None,
@@ -779,25 +812,28 @@ def _highlight_lines(home_space: dict, state: dict, floors: list[dict],
     # FALLITO e non indovinato qui: si raccoglie mentre si rende, e si scrive
     # UNA volta in testa alla sezione invece che su ogni riga.
     untranslated: str | None = None
+    # Disabilitate, di servizio (`categoria`: "config"/"diagnostic") e
+    # nascoste: fuori da un digesto, perche' un digesto e' una vista
+    # PRINCIPALE -- cio' che HIRIS dice senza che tu l'abbia chiesta. La doc
+    # di HA dice che «diagnostic and config entities are typically hidden
+    # from primary UI displays»: qui vale lo stesso.
+    #
+    # NON valgono per `view`/`search`: li' hai chiesto tu, e filtrare una
+    # risposta esplicita sarebbe nascondere. (Il significato per esteso di
+    # "config"/"diagnostic" -- citato dal sorgente -- vive in
+    # `ha_vocabulary.ENTITY_CATEGORY_MEANING`, non ripetuto qui.)
+    #
+    # Sull'impianto del proprietario tolgono 179 elementi su 300: 113
+    # `config` + 66 `diagnostic`, piu' 10 nascoste a mano. **Una sola
+    # funzione** (`_digest_visible_entity_ids`, R1) decide chi resta: prima
+    # di questa correzione questi tre `if` stavano scritti a mano qui E MAI
+    # ricevuti da `_capability_lines`, che per questo contava una casa
+    # diversa nella stessa pagina.
+    visible = _digest_visible_entity_ids(home_space)
     for e in home_space.get("entita", []):
-        if e.get("disabilitata"):
+        entity_id = e.get("id")
+        if entity_id not in visible:
             continue
-        # I DUE CAMPI CHE HOME ASSISTANT DICHIARA, e che questo digesto
-        # ignorava. Sull'impianto del proprietario tolgono 179 elementi su 300:
-        # 113 `config` + 66 `diagnostic`, piu' 10 nascoste a mano. La doc di HA
-        # dice che «diagnostic and config entities are typically hidden from
-        # primary UI displays»: qui vale lo stesso, perche' un digesto e' una
-        # vista principale -- e' cio' che HIRIS dice senza che tu abbia chiesto.
-        #
-        # NON valgono per `view`/`search`: li' hai chiesto tu, e filtrare una
-        # risposta esplicita sarebbe nascondere. (Il significato per esteso di
-        # "config"/"diagnostic" -- citato dal sorgente -- vive in
-        # `ha_vocabulary.ENTITY_CATEGORY_MEANING`, non ripetuto qui.)
-        if e.get("categoria"):          # "config" o "diagnostic"
-            continue
-        if e.get("nascosta"):
-            continue
-        entity_id = e["id"]
         if entity_id not in state:
             continue
         value = state[entity_id]
@@ -895,7 +931,15 @@ _MAX_CAPABILITY_LIST_CHARS = 44
 # ginocchio di una curva misurata.**
 #
 # Il nucleo di questa casa pesa gia' 5.676 caratteri su 6.000 e tronca gia'
-# (7 elementi notevoli esclusi, misurato l'08/09/2026 su `GET /api/briefing`),
+# (nove elementi notevoli esclusi -- corretto R4, revisione del tratto
+# v3.23.0..HEAD, 08/09/2026: questo commento diceva "7", `DEFAULT_CEILING`
+# qui sotto diceva "nove" per la STESSA misura, 5.676 caratteri sulla STESSA
+# casa. «Nove» e' quello verificato riga per riga contro il nucleo vivo del
+# 3.23.0 -- vedi `.superpowers/sdd/tipi-di-entita/fetta-censore-report.md`
+# §A.2-A.3, che riconciliava una ricostruzione con la risposta reale della
+# casa PRIMA che la sezione capacita' esistesse, quando "GET /api/briefing"
+# stesso era ancora quella misura -- e "7" era rimasto scritto qui senza
+# essere aggiornato quando la misura piu' accurata l'ha corretto),
 # quindi qualunque aggiunta si paga con qualcos'altro: la domanda non e'
 # «quanto ci sta» ma «quanto vale cio' che entra, contro cio' che esce».
 # Le firme sono ordinate da quella che spiega piu' entita' alla piu' rara, e
@@ -963,7 +1007,8 @@ def _capability_signature(capabilities: dict) -> tuple[tuple[str, str | None], .
 
 
 def _capability_lines(attributes: dict[str, dict] | None,
-                      unreliable_state: bool) -> tuple[list[str], list[int], bool]:
+                      unreliable_state: bool,
+                      visible_entity_ids: frozenset[str]) -> tuple[list[str], list[int], bool]:
     """Cosa si puo' CHIEDERE alle cose di questa casa, aggregato per firma.
 
     Restituisce `(righe, pesi, aggregabile)`. `pesi` e' parallelo a `righe`:
@@ -988,7 +1033,15 @@ def _capability_lines(attributes: dict[str, dict] | None,
     correnti non collasserebbero -- `current_temperature` e' diverso per ogni
     termostato per definizione -- e infatti restano fuori dal nucleo, dove
     sono sempre stati.
-    """
+
+    `visible_entity_ids` (R1, revisione del tratto v3.23.0..HEAD, 08/09/2026):
+    prima di questa correzione questa funzione iterava `attributi` -- lo
+    specchio INTERO della cache -- senza ricevere l'anagrafe, quindi contava
+    nascoste, entita' di servizio (`categoria`) e perfino entita' presenti in
+    cache ma assenti dall'anagrafe. `_highlight_lines` filtrava gia' le prime
+    due, due righe piu' su nello stesso file: la stessa casa raccontava due
+    totali diversi per la stessa parola, nello stesso testo. Vedi
+    `_digest_visible_entity_ids`, l'unica fonte di questa regola ora."""
     if unreliable_state:
         return ([
             ("Stato non letto (o dichiarato non attendibile): non si puo' dire cosa "
@@ -1005,6 +1058,8 @@ def _capability_lines(attributes: dict[str, dict] | None,
         return ([], [], False)
     counted: dict[tuple[str, tuple], int] = {}
     for entity_id, baskets in attributes.items():
+        if entity_id not in visible_entity_ids:
+            continue
         if not isinstance(baskets, dict):
             continue
         capabilities = baskets.get(CAPABILITIES)
@@ -1037,10 +1092,23 @@ def _capability_lines(attributes: dict[str, dict] | None,
         # Il taglio della sezione si dichiara DENTRO la sezione, come il
         # taglio del nucleo si dichiara dentro il nucleo: un elenco accorciato
         # in silenzio e' un HIRIS che crede di sapere.
+        #
+        # **Il peso e' `left_out`, non zero** (R2, revisione del tratto
+        # v3.23.0..HEAD, 08/09/2026). Questa riga sta in CODA, e `compose()`
+        # taglia il pool "capacita'" dalla coda (`_pop`, "l'ultima voce e' la
+        # meno prioritaria"): se il tetto morde ANCHE questa sezione, questa
+        # riga e' la prima a cadere. Con peso zero cadeva senza che
+        # `excluded_per_pool["capacita"]` salisse di niente -- le `left_out`
+        # entita' che dichiarava sparivano da OGNI conteggio, testo e avviso
+        # insieme: misurato, con 60 firme rare e un tetto stretto l'avviso
+        # diceva "7 entita'" quando erano davvero 53. Col peso vero, se questa
+        # riga cade il taglio la conta come le firme vere che cadono con lei:
+        # l'avviso in fondo al nucleo (`_cut_notice`) resta giusto in
+        # ENTRAMBI i casi, che il rinvio sopravviva o no.
         entity = _plural(left_out, "entita'", "entita'")
         lines.append(f"- (altre {left_out} {entity} con capacita' rare non elencate qui: "
                      "chiedile con `view`.)")
-        weights.append(0)
+        weights.append(left_out)
     return (lines, weights, True)
 
 
@@ -1590,14 +1658,21 @@ def _assemble(sections: list[tuple[str, list[str]]]) -> str:
 #: **6.800 dall'08/09/2026, deciso dal proprietario**, e il numero viene da una
 #: misura sulla casa vera, non da un margine di sicurezza. A 6.000 il nucleo di
 #: quella casa pesava 5.676 e TRONCAVA gia' (nove elementi notevoli fuori);
-#: entrata la mappa delle capacita' (714 caratteri, la sezione «cosa si puo'
-#: chiedere»), lo stesso tetto sfrattava **«Notevole adesso» per intero** -- da
-#: quattro righe a zero -- e **sette voci di comportamento su venti**. A 6.800
-#: convivono tutte: 6.461 caratteri, «Notevole adesso» sale a sei righe (piu'
-#: di quante ne avesse prima), il comportamento esce completo (20 su 20), la
-#: mappa delle stanze non perde una riga. Ricomposto in locale sugli ingressi
-#: veri della casa il 08/09/2026; la ricostruzione e' verificata contro il
-#: nucleo vivo (5.676 caratteri, sezione per sezione).
+#: entrata la mappa delle capacita' (**671 caratteri** -- corretto R4,
+#: revisione del tratto v3.23.0..HEAD, 08/09/2026: questa riga diceva "714",
+#: la spec (§15.1) e il commit che ha introdotto la sezione dicevano entrambi
+#: "671" per la STESSA sezione. La misura dal vivo di quella fetta stessa,
+#: appena sopra `_CAPABILITY_SECTION_BUDGET` -- tetto 600, 12 firme, 671
+#: caratteri -- e' quella pinnata da una tabella misurata, non da un numero
+#: isolato: "714" era rimasto scritto senza aggiornarsi quando la sezione ha
+#: preso la sua forma definitiva), lo stesso tetto sfrattava **«Notevole
+#: adesso» per intero** -- da quattro righe a zero -- e **sette voci di
+#: comportamento su venti**. A 6.800 convivono tutte: 6.461 caratteri,
+#: «Notevole adesso» sale a sei righe (piu' di quante ne avesse prima), il
+#: comportamento esce completo (20 su 20), la mappa delle stanze non perde
+#: una riga. Ricomposto in locale sugli ingressi veri della casa il
+#: 08/09/2026; la ricostruzione e' verificata contro il nucleo vivo (5.676
+#: caratteri, sezione per sezione).
 #:
 #: **Cosa NON risolve, e va detto qui perche' non si scopra fra sei mesi**: un
 #: tetto piu' alto non impedisce che la PROSSIMA sezione aggiunta sfratti di
@@ -1883,7 +1958,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     highlight_lines, highlight_weights, grouped_highlight = _highlight_lines(
         home_space, state, floors, unreliable, reported_classes, translations)
     capability_lines, capability_weights, capabilities_are_countable = _capability_lines(
-        attributes, unreliable)
+        attributes, unreliable, _digest_visible_entity_ids(home_space))
     behavior_lines = _behavior_lines(behavior)
     memory_lines = _memory_lines(memories)
 

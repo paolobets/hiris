@@ -420,14 +420,39 @@ def _same_reason(subject: Subject, keys, reason: str) -> dict[tuple[Subject, str
 #: la ragione scritta dov'e' stata presa la decisione. Un dominio che nessuno
 #: ha mai guardato non sta qui: sta fra le domande aperte, ed e' esattamente la
 #: differenza fra un'esclusione e una dimenticanza.
-EXCEPTIONS.update(_same_reason(
-    Subject.STATE,
-    (state_key("alarm_control_panel", None, state) for state in
-     ("armed", "arming", "disarmed", "disarming", "pending")),
-    "Solo `triggered` e' notevole, e gli altri stati sono la routine "
-    "quotidiana: ci si arma e ci si disarma piu' volte al giorno, come si "
-    "accende e si spegne una luce. Non sono un'eccezione rispetto al riposo, "
-    "SONO il riposo -- deciso e scritto sopra `briefing._ACTIVE_STATES`."))
+# **Una sola voce, non cinque** (correzione R3a, revisione del tratto
+# v3.23.0..HEAD, 08/09/2026). La versione precedente eccettuava tutti e
+# cinque gli stati non-`triggered` con la stessa ragione ("SONO il riposo"),
+# ma `type_vocabulary.py` decide l'esatto opposto per `disarmed`: il
+# vocabolario dichiara riposi SOLO i cinque `armed_*` (`resting_states_of
+# ("alarm_control_panel") == {"armed_home", "armed_away", "armed_night",
+# "armed_vacation", "armed_custom_bypass"}`), col commento «un allarme si
+# INSERISCE per stare a riposo, non il contrario -- disarmed e triggered NON
+# sono riposi». Misurato: `_is_on("disarmed") is True`. La ragione citava un
+# codice che dice il contrario di quel che afferma.
+#
+# `armed` (senza suffisso) resta l'unica eccezione vera: non e' mai lo stato
+# reale di un'entita' -- `AlarmControlPanelState` (home-assistant/core,
+# `homeassistant/components/alarm_control_panel/const.py`, verificato dal
+# sorgente il 08/09/2026) non ha nessun membro bare `ARMED`, solo i cinque
+# `ARMED_*`. E' una chiave di traduzione generica che HA pubblica per altri
+# usi (`entity_component._.state.armed` = "Armed", `strings.json`), come lo
+# "state.alarm_control_panel.armed" usato per raggruppare gli eventi armati
+# nel logbook -- non un valore che una lettura di stato possa mai restituire.
+# Stessa forma di `button=2` qui sopra: irraggiungibile, non inventabile.
+#
+# `disarmed`, `arming`, `disarming`, `pending` NON hanno una ragione vera da
+# scrivere qui: sono transitori o duraturi quanto `armed_*`, ma il giudizio
+# su cosa siano (funzionamento come `lock.unlocked`/`locking`, o qualcos'altro)
+# e' un giudizio del prodotto sulla gamba «sicurezza» che nessuno ha ancora
+# preso -- vedi `OPEN_QUESTIONS`.
+EXCEPTIONS[(Subject.STATE, state_key("alarm_control_panel", None, "armed"))] = (
+    "Non e' mai lo stato reale di un'entita': `AlarmControlPanelState` non "
+    "ha un membro bare `ARMED` (verificato alla fonte), solo i cinque "
+    "`ARMED_*`. E' una chiave di traduzione generica che Home Assistant "
+    "pubblica per altri usi (raggruppare gli stati armati nel logbook, negli "
+    "automation trigger «armed» senza modo), non un valore che uno stato "
+    "possa avere. Stessa forma di `button=2`: irraggiungibile.")
 
 EXCEPTIONS.update(_same_reason(
     Subject.STATE,
@@ -513,15 +538,20 @@ EXCEPTIONS.update(_same_reason(
     # domini: una tupla di domini letterale e' un vocabolario parallelo, e la
     # prova «un tipo ha una casa sola» la vede e ha ragione a vederla. Qui il
     # soggetto e' lo STATO di quel tipo, non il tipo.
-    (state_key("calendar", None, "off"), state_key("sensor", None, "off"),
-     state_key("update", None, "off")),
-    "Sono i tre domini che HIRIS non giudica per stato: un `sensor` MISURA, un "
-    "`calendar` dice se c'e' un evento in corso, un `update` se c'e' un "
-    "aggiornamento. Nessuno dei tre e' una cosa che si accende, e per tutti e "
-    "tre la decisione e' gia' scritta sopra `briefing._EVENT_DOMAINS`. **E "
-    "`update=off` e' il caso che dimostra perche' la tabella cieca al dominio "
-    "andava cancellata**: la rendeva «spento», mentre Home Assistant per quel "
-    "dominio dice «Aggiornato»."))
+    #
+    # **Solo `calendar` e `sensor`**, non piu' tre (correzione R3b, revisione
+    # del tratto v3.23.0..HEAD, 08/09/2026): la versione precedente includeva
+    # anche `update=off` citando questa stessa decisione, ma `_EVENT_DOMAINS`
+    # non nomina ne' `calendar` ne' `update` -- solo `sensor` ci sta scritto
+    # davvero. `calendar` e' stato aggiunto a quella riga (vedi il commento
+    # sopra `briefing._EVENT_DOMAINS`), quindi per lui la citazione ora e'
+    # vera. `update=off` non ci sta piu': vedi `OPEN_QUESTIONS`, perche'
+    # `update=on` sfiora la gamba «buono stato» e nessuno lo ha mai deciso.
+    (state_key("calendar", None, "off"), state_key("sensor", None, "off")),
+    "Sono due domini che HIRIS non giudica per stato: un `sensor` MISURA, un "
+    "`calendar` dice se c'e' un evento in corso adesso. Nessuno dei due e' "
+    "una cosa che si accende, e per entrambi la decisione e' scritta sopra "
+    "`briefing._EVENT_DOMAINS`."))
 
 EXCEPTIONS.update(_same_reason(
     Subject.STATE,
@@ -651,6 +681,46 @@ OPEN_QUESTIONS: tuple[OpenQuestion, ...] = (
         "genere che dipende dallo stato, o si accetta che un guasto della "
         "serratura si racconti come un fatto di sicurezza?**",
         {state_key("lock", None, "jammed")}),
+
+    # Nata dalla correzione R3a (revisione del tratto v3.23.0..HEAD,
+    # 08/09/2026): questi quattro stati stavano in `EXCEPTIONS` con una
+    # ragione ("SONO il riposo") che il vocabolario smentisce -- `disarmed`
+    # e' dichiarato esplicitamente NON-riposo (`type_vocabulary.py`, commento
+    # sopra `alarm_control_panel`). Nessuna ragione vera prende il suo posto,
+    # perche' non c'e' ancora un giudizio: la domanda e' aperta, non chiusa
+    # per errore.
+    OpenQuestion(
+        Subject.STATE,
+        "Quattro stati di `alarm_control_panel` diversi da `triggered` e dai "
+        "cinque `armed_*` (che sono riposo): `disarmed`, `arming`, "
+        "`disarming`, `pending`. `disarmed` puo' durare giorni -- il "
+        "vocabolario lo dichiara gia' NON-riposo (`_is_on(\"disarmed\") is "
+        "True`, misurato), ma non gli ha ancora dato un genere: e' "
+        "FUNZIONAMENTO, come `lock.unlocked` (\"e' il fatto che la gamba "
+        "sicurezza esiste per osservare\")? `arming`/`disarming`/`pending` "
+        "sono transitori di pochi secondi, la stessa forma di "
+        "`lock.locking`/`unlocking` -- vanno trattati allo stesso modo? Chi "
+        "risponde decide se un impianto lasciato disarmato per ore apre un "
+        "episodio di sicurezza o resta silenzioso.",
+        {state_key("alarm_control_panel", None, state) for state in
+         ("disarmed", "arming", "disarming", "pending")}),
+
+    # Nata dalla correzione R3b (revisione del tratto v3.23.0..HEAD,
+    # 08/09/2026): `update=off` stava eccettuato insieme a `calendar`/`sensor`
+    # citando una decisione (`briefing._EVENT_DOMAINS`) che non nomina
+    # `update`. Il proprietario non ha mai deciso se un aggiornamento
+    # disponibile riguardi la gamba «buono stato».
+    OpenQuestion(
+        Subject.STATE,
+        "Un aggiornamento disponibile (`update=on`, 53 entita' di questa casa "
+        "misurate l'08/09/2026) sfiora la gamba «buono stato», e nessuno lo "
+        "ha mai deciso: oggi non e' notevole ne' osservato, semplicemente "
+        "perche' `update` non e' nell'elenco dei domini-evento. Si dichiara "
+        "notevole il giorno in cui un aggiornamento diventa disponibile, o "
+        "resta un fatto che si va a chiedere con `view`? `update=off` (nessun "
+        "aggiornamento) resta aperto con lui: e' la stessa domanda vista al "
+        "contrario, non una seconda domanda.",
+        {state_key("update", None, "off")}),
 
     # -- le classi del dispositivo ------------------------------------------
     OpenQuestion(

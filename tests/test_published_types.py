@@ -1,4 +1,6 @@
-"""Cosa questa casa PUBBLICA adesso, e i tre silenzi che non collassano.
+"""Cosa questa casa PUBBLICA adesso: le funzioni pure che il censore e lo
+script che lo alimenta chiamano davvero, piu' `StateTranslations` (la cache
+che rende uno stato) e il registro dei servizi (i bit di capacita').
 
 Le chiavi e i numeri di questo file non sono plausibili: sono stati **letti
 dalla casa vera** l'08/09/2026 (Home Assistant `2026.9.1`, lingua `it`) --
@@ -7,6 +9,14 @@ domini, 4 valori di `state_class`) e `GET /api/services` (84 domini di
 servizio, 16 accendibili, i valori combinati `cover: 3` e
 `media_player: 16385`). La suite pero' gira **senza la casa**: qui dentro non
 c’e' nessuna chiamata di rete, solo cio' che quella lettura ha misurato.
+
+**R6 (revisione del tratto v3.23.0..HEAD, 08/09/2026)**: questo file provava
+anche `PublishedTypes` e `StateTranslations.published()`, un wrapper con gli
+stessi tre silenzi ma senza nessun chiamante di produzione -- il censore legge
+l'istantaneo JSON, lo script chiama le funzioni pure sotto direttamente.
+Cancellati insieme al codice che provavano (vedi `proxy/state_translations.py`
+e `action/registry.py::capability_bits_of`, anch'essa cancellata per lo stesso
+motivo).
 """
 import asyncio
 
@@ -15,16 +25,12 @@ import pytest
 from hiris.app.action.registry import (
     ServiceRegistry,
     capability_bits,
-    capability_bits_of,
     single_bits,
     switchable_domains,
 )
 from hiris.app.proxy.state_translations import (
-    SILENCE_ABSENT,
-    SILENCE_UNDEFINED,
     SILENCE_UNREACHABLE,
     SILENCES,
-    PublishedTypes,
     StateTranslations,
     published_device_classes,
     published_domains,
@@ -104,83 +110,6 @@ def test_le_etichette_dei_silenzi_sono_tre_e_tutte_diverse():
     assert len(set(SILENCES)) == 3
 
 
-def test_non_ho_potuto_chiedere_porta_il_motivo_di_chi_ha_fallito():
-    """Silenzio 1. Il motivo **lo dichiara il client**, non lo indovina questo
-    modulo: e' la legge del prodotto, «chi produce il motivo lo etichetta».
-
-    Mutazione ESEGUITA: in `StateTranslations.published`, sostituire
-    `unreachable(report.get("motivo"))` con `unreachable("")` -- rosso su
-    `"Home Assistant non ha risposto" in esito["motivo"]`.
-    """
-    cache = StateTranslations(_ClienteFinto([{"errore": "Home Assistant non ha risposto"}]))
-    esito = asyncio.run(cache.published(ha_version="2026.9.1", language="it"))
-    assert esito["letto"] is False
-    assert esito["silenzio"] == SILENCE_UNREACHABLE
-    assert "Home Assistant non ha risposto" in esito["motivo"]
-
-
-def test_una_categoria_inesistente_non_diventa_una_casa_senza_domini():
-    """Silenzio 3, ed e' quello che si dimentica.
-
-    **Misurato sulla casa vera**: `frontend/get_translations` non valida
-    `category`, e a `categoria_che_non_esiste` risponde `success: true` con
-    **zero chiavi**. Letto come «letto», quel vuoto direbbe «questa casa non
-    ha domini» -- una bugia detta con sicurezza.
-
-    Mutazione ESEGUITA: togliere il ramo `if not resources` da
-    `StateTranslations.published` -- l'esito torna `letto: True` e la prova
-    arrossisce su `esito["silenzio"] == SILENCE_UNDEFINED`.
-    """
-    cache = StateTranslations(_ClienteFinto([{"risorse": {}}]),
-                              category="categoria_che_non_esiste")
-    esito = asyncio.run(cache.published(ha_version="2026.9.1", language="it"))
-    assert esito["letto"] is False
-    assert esito["silenzio"] == SILENCE_UNDEFINED
-    assert "categoria_che_non_esiste" in esito["motivo"]
-
-
-def test_i_tre_silenzi_non_collassano_sullo_stesso_soggetto():
-    """La prova che conta: **tre domande sullo stesso vocabolario, tre
-    risposte diverse**, e nessuna delle tre e' un insieme vuoto.
-
-    - `light` non pubblica nessuna `device_class` -> «ho chiesto e non c’e'»:
-      il dominio c'e', quella conoscenza su di lui no;
-    - `pippo` non e' un dominio di questa casa -> «ho chiesto una cosa che non
-      esiste»;
-    - una tabella vuota -> «ho chiesto una cosa che non esiste» sulla
-      categoria intera.
-
-    Mutazione ESEGUITA: in `PublishedTypes.device_classes`, sostituire il
-    ramo `undefined(...)` con lo stesso `absent(...)` del ramo sotto -- rosso
-    su `silenzi == {SILENCE_ABSENT, SILENCE_UNDEFINED}` diventato
-    `{SILENCE_ABSENT}`, cioe' due fatti diversi detti con una parola sola.
-    """
-    pubblicato = PublishedTypes(RISORSE, ha_version="2026.9.1", language="it")
-    dominio_muto = pubblicato.device_classes("light")
-    non_esiste = pubblicato.device_classes("pippo")
-    assert dominio_muto["silenzio"] == SILENCE_ABSENT
-    assert non_esiste["silenzio"] == SILENCE_UNDEFINED
-    silenzi = {dominio_muto["silenzio"], non_esiste["silenzio"]}
-    assert len(silenzi) == 2
-    # E il terzo, sulla categoria intera.
-    vuoto = PublishedTypes({}, ha_version="2026.9.1", language="it")
-    assert vuoto.domains()["silenzio"] == SILENCE_UNDEFINED
-
-
-def test_una_classe_che_il_dominio_non_pubblica_non_e_uno_stato_mancante():
-    """`(binary_sensor, smoke)` esiste e ha i suoi stati; `(binary_sensor,
-    inventata)` no -- e non e' la stessa cosa di un tipo senza enumerazione.
-
-    Mutazione ESEGUITA: togliere da `PublishedTypes.states` il controllo sulla
-    `device_class` -- «inventata» risponde `absent` invece di `undefined`, e
-    la prova arrossisce.
-    """
-    pubblicato = PublishedTypes(RISORSE, ha_version="2026.9.1", language="it")
-    assert pubblicato.states("binary_sensor", "smoke")["valore"] == frozenset({"on", "off"})
-    assert (pubblicato.states("binary_sensor", "inventata")["silenzio"]
-            == SILENCE_UNDEFINED)
-
-
 # ---------------------------------------------------------------------------
 # LA PRUDENZA: un guasto non invalida la tabella buona di prima
 # ---------------------------------------------------------------------------
@@ -214,45 +143,6 @@ def test_un_guasto_non_svuota_la_tabella_gia_letta():
     # E non e' stata chiesta una seconda volta a Home Assistant: la coppia non
     # e' cambiata, quindi la tabella si serve dalla memoria.
     assert cliente.chiamate == 2
-
-
-def test_un_guasto_non_svuota_nemmeno_la_distillazione():
-    """Lo stesso, un piano sopra: `published()` continua a rispondere con le
-    53 righe di prima invece che con un vuoto dichiarato fresco.
-
-    Mutazione ESEGUITA: la stessa di sopra (`self._resources = None` nel ramo
-    del guasto) -- qui arrossisce su `dopo["letto"] is True`.
-    """
-    cliente = _ClienteFinto([{"risorse": dict(RISORSE)}])
-    cache = StateTranslations(cliente)
-    prima = asyncio.run(cache.published(ha_version="2026.9.1", language="it"))
-    assert prima["letto"] is True
-    domini = prima["valore"].domains()["valore"]
-
-    asyncio.run(cache.published(ha_version="2026.9.2", language="it"))
-
-    dopo = asyncio.run(cache.published(ha_version="2026.9.1", language="it"))
-    assert dopo["letto"] is True
-    assert dopo["valore"].domains()["valore"] == domini
-
-
-def test_risorse_nuove_non_convivono_con_la_distillazione_vecchia():
-    """Il rovescio della prudenza: quando la lettura RIESCE con una tabella
-    diversa, la distillazione vecchia non puo' sopravviverle.
-
-    Mutazione ESEGUITA: togliere `self._published = None` da
-    `StateTranslations.read` -- la seconda lettura risponde ancora con i
-    domini della prima, e la prova arrossisce.
-    """
-    cliente = _ClienteFinto([
-        {"risorse": {"component.light.entity_component._.state.on": "Acceso"}},
-        {"risorse": {"component.cover.entity_component._.state.open": "Aperta"}},
-    ])
-    cache = StateTranslations(cliente)
-    prima = asyncio.run(cache.published(ha_version="2026.9.1", language="it"))
-    assert prima["valore"].domains()["valore"] == frozenset({"light"})
-    dopo = asyncio.run(cache.published(ha_version="2026.9.2", language="it"))
-    assert dopo["valore"].domains()["valore"] == frozenset({"cover"})
 
 
 # ---------------------------------------------------------------------------
@@ -421,23 +311,26 @@ def test_anche_il_filtro_di_un_campo_porta_i_suoi_bit():
     assert per_dominio["light"] == frozenset({32})
 
 
-def test_i_tre_silenzi_valgono_anche_per_il_registro_dei_servizi():
+def test_un_registro_mai_letto_non_e_un_registro_senza_bit():
     """Lo stesso contratto della lettura delle traduzioni, sull'altra fonte:
-    un registro mai letto, un dominio senza bit e un dominio che non esiste
-    sono tre fatti diversi.
+    un registro assente e uno mai letto rispondono «non ho potuto chiedere»,
+    non un dizionario vuoto -- sono due fatti diversi da un registro letto e
+    senza bit (`{}` e' un esito lecito di `known`, misurato altrove).
 
-    Mutazione ESEGUITA: in `capability_bits_of`, far tornare `absent(...)`
-    anche nel ramo finale -- il dominio inesistente e quello senza capacita'
-    diventano indistinguibili e la prova arrossisce.
+    (R6, revisione del tratto v3.23.0..HEAD, 08/09/2026: questa prova
+    copriva anche `capability_bits_of`, cancellata perche' senza chiamante di
+    produzione -- vedi `registry.py` sopra `switchable_domains`. Il pezzo che
+    resta, sul solo `capability_bits`, e' verificabile: nessun altro test
+    tocca i suoi rami `unreachable`.)
+
+    Mutazione ESEGUITA: in `capability_bits`, sostituire il primo `if
+    registry is None` con `if False` -- `capability_bits(None)` solleva
+    `AttributeError` invece di rispondere `unreachable`, e la prova
+    arrossisce.
     """
     mai_letto = ServiceRegistry()
     assert capability_bits(mai_letto)["silenzio"] == SILENCE_UNREACHABLE
     assert capability_bits(None)["silenzio"] == SILENCE_UNREACHABLE
-
-    registro = _registro(SERVIZI)
-    assert capability_bits_of(registro, "cover")["valore"] == frozenset({1, 2})
-    assert capability_bits_of(registro, "switch")["silenzio"] == SILENCE_ABSENT
-    assert capability_bits_of(registro, "pippo")["silenzio"] == SILENCE_UNDEFINED
 
 
 def test_i_domini_accendibili_si_derivano_e_non_si_scrivono():

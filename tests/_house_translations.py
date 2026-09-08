@@ -10,15 +10,33 @@ sarebbe rossa: sarebbe verde su una casa che non esiste.
 
 **La fonte.** `frontend/get_translations`, `category: "entity_component"`,
 lingua `it`, letto dalla casa vera l'08/09/2026 (Home Assistant `2026.9.1`).
-Delle 801 chiavi restano qui le 200 che rendono uno stato (`.state.{valore}`)
-piu' quelle di `hvac_action` -- le sole che un lettore di stati usa. Le altre
-(nomi delle classi, nomi degli attributi, altri attributi di stato) non sono
-tolte per opinione: nessuna prova le guarda, e una fixture che porta cio' che
-nessuno legge invecchia senza che nessuno se ne accorga.
+Delle 801 chiavi restano qui **191** che rendono uno stato (`.state.{valore}`)
+piu' le **9** di `hvac_action` (`.state_attributes.hvac_action.state.{valore}`,
+un'altra CESTA -- non uno stato) -- **200 chiavi in tutto** (corretto R4,
+revisione del tratto v3.23.0..HEAD, 08/09/2026: questo paragrafo diceva "200
+che rendono uno stato", contando l'hvac_action due volte; misurato:
+`len([k for k in PUBLISHED_STATE_WORDS if ".state." in k and "state_attributes"
+not in k]) == 191`). Le sole che un lettore di stati usa. Le altre (nomi delle
+classi, nomi degli attributi, altri attributi di stato) non sono tolte per
+opinione: nessuna prova le guarda, e una fixture che porta cio' che nessuno
+legge invecchia senza che nessuno se ne accorga.
 
-**Si rigenera con la casa**, non si corregge a mano:
-`scripts/istantaneo_pubblicato.py` legge le stesse chiavi per l'istantaneo del
-censore, e questo file viene dalla stessa lettura.
+**NON si rigenera da sola** (corretto R5, revisione del tratto
+v3.23.0..HEAD, 08/09/2026: questo paragrafo affermava una procedura che non
+esiste). `scripts/istantaneo_pubblicato.py` legge le STESSE chiavi HA per
+l'istantaneo del censore (`tests/data/pubblicato-dalla-casa.json`), ma non
+scrive MAI questo file: sono due letture indipendenti della stessa fonte, non
+una rigenerazione dell'una dall'altra, e nessuno strumento aggiorna
+`PUBLISHED_STATE_WORDS` in automatico. **Si corregge a mano**, quando la casa
+cambia parole -- e la sola verifica dal vivo che le due letture concordino e'
+`test_l_istantaneo_e_questa_fixture_nominano_gli_stessi_stati` in
+`test_type_census_live.py`, che confronta i TIPI derivabili da queste chiavi
+(`derived_state_keys()` sotto) con `stati_per_tipo` dell'istantaneo -- non le
+PAROLE: un `triggered` ridetto «Scattato» invece di «Innescato» da Home
+Assistant non farebbe arrossire quella prova, perche' nessuna prova dal vivo
+confronta le PAROLE di questo file con quelle che la casa dice oggi. Resta un
+limite dichiarato, non chiuso da questa correzione: solo la STRUTTURA (quali
+stati esistono per tipo) e' verificata dal vivo, il TESTO italiano no.
 """
 
 #: L'esito etichettato che i lettori si aspettano -- la stessa forma che
@@ -236,6 +254,31 @@ PUBLISHED_STATE_WORDS = {
     'component.weather.entity_component._.state.windy': 'Ventoso',
     'component.weather.entity_component._.state.windy-variant': 'Ventoso, nuvoloso',
 }
+
+
+def derived_state_keys() -> dict[str, dict[str, list[str]]]:
+    """`{dominio: {classe_o_"_": [stati]}}` derivato dalle chiavi di
+    `PUBLISHED_STATE_WORDS` -- la stessa FORMA di `stati_per_tipo`
+    nell'istantaneo del censore (`tests/data/pubblicato-dalla-casa.json`).
+
+    Serve alla sola verifica dal vivo che questa fixture puo' avere
+    (`test_type_census_live.py`): NON le parole -- questa funzione non le
+    tocca -- ma la STRUTTURA, cioe' quali stati esistono per quale tipo. Le
+    chiavi di `hvac_action` (`.state_attributes.hvac_action.state.*`) restano
+    fuori: sono un'altra cesta (l'attributo di uno stato), non lo stato di
+    un'entita', e l'istantaneo del censore non le porta in `stati_per_tipo`.
+    """
+    result: dict[str, dict[str, list[str]]] = {}
+    for key in PUBLISHED_STATE_WORDS:
+        if "state_attributes" in key:
+            continue
+        parts = key.split(".")
+        # component.<dominio>.entity_component.<classe>.state.<valore>
+        domain, device_class, value = parts[1], parts[3], parts[-1]
+        result.setdefault(domain, {}).setdefault(device_class, [])
+        if value not in result[domain][device_class]:
+            result[domain][device_class].append(value)
+    return result
 
 
 def house_translations(resources=None) -> dict:

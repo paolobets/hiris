@@ -265,8 +265,12 @@ def test_l_istantaneo_di_questa_casa_non_lascia_niente_senza_un_posto(casa):
     domanda aperta e formulata per il proprietario.
 
     Un elenco vuoto qui NON vuol dire «tutto deciso»: vuol dire che ogni voce
-    ha almeno un nome e un posto. Le 136 voci ancora aperte sono in
-    `OPEN_QUESTIONS`, e sono nove domande.
+    ha almeno un nome e un posto. Le 115 voci ancora aperte sono in
+    `OPEN_QUESTIONS`, e sono sei domande (misurato l'08/09/2026, dopo la
+    correzione R3 della revisione del tratto v3.23.0..HEAD: due domande in
+    piu' -- gli stati di `alarm_control_panel` diversi da `armed_*` e
+    `triggered`, e `update=off` -- sono nate da due eccezioni la cui ragione
+    citava un codice che diceva il contrario).
 
     Mutazione ESEGUITA: togliere da `EXCEPTIONS` la voce
     `(Subject.CAPABILITY_BIT, "button=2")` -- la prova arrossisce e il
@@ -280,7 +284,9 @@ def test_il_censore_su_questa_casa_ha_trovato_davvero_qualcosa(casa):
     """L'oracolo delle prove qui sopra: se l'istantaneo non contenesse niente
     da censurare, «niente da decidere» non direbbe niente di nessuno.
 
-    Sono 167 voci, in cinque materie su sei -- i domini sono l'unica materia
+    Sono 181 voci (121 classi del dispositivo, 51 stati, 1 valore di
+    `state_class`, 1 bit di capacita', 7 domini accendibili -- misurato
+    l'08/09/2026), in cinque materie su sei -- i domini sono l'unica materia
     coperta per intero, e lo e' perche' `_DOMAIN_NAMES` era gia' stata estesa
     a mano oltre le 45 piattaforme di Home Assistant.
 
@@ -391,23 +397,31 @@ def test_cio_che_resta_aperto_e_nominato_e_contato():
     """Cio' che il proprietario non ha deciso resta aperto, e la prova lo CONTA:
     un numero che nessuno ancora ai fatti veri invecchia senza avvisare.
 
-    Centodieci voci in quattro domande: le 109 classi del dispositivo (31 di
-    `sensor`, 57 di `number`, 21 di sei domini) e `lock=jammed`, che ha la
-    decisione presa e non un posto dove scriverla.
+    Centoquindici voci in sei domande (misurato l'08/09/2026, dopo la
+    correzione R3 -- revisione del tratto v3.23.0..HEAD): le 109 classi del
+    dispositivo (31 di `sensor`, 57 di `number`, 21 di sei domini), e sei
+    stati -- `lock=jammed` (decisione presa, nessun posto dove scriverla),
+    quattro di `alarm_control_panel` (`disarmed`/`arming`/`disarming`/
+    `pending`, la cui eccezione citava una ragione che il vocabolario
+    smentisce) e `update=off` (la cui eccezione citava una decisione che non
+    lo nominava).
 
     Mutazione ESEGUITA: cancellare la domanda su `lock=jammed` -- il conto
-    scende a 109 e la prova arrossisce; e il censore, che quella voce non la
+    scende a 114 e la prova arrossisce; e il censore, che quella voce non la
     vedrebbe piu' chiusa, la rimette fra cio' che resta da decidere.
     """
     voci = {(question.subject, key)
             for question in OPEN_QUESTIONS for key in question.keys}
-    assert len(voci) == 110, f"le voci aperte sono {len(voci)}, non 110"
-    assert len(OPEN_QUESTIONS) == 4
+    assert len(voci) == 115, f"le voci aperte sono {len(voci)}, non 115"
+    assert len(OPEN_QUESTIONS) == 6
     per_materia = {subject: sum(1 for s, _ in voci if s is subject)
                    for subject in {s for s, _ in voci}}
     assert per_materia[Subject.DEVICE_CLASS] == 109
-    assert per_materia[Subject.STATE] == 1
+    assert per_materia[Subject.STATE] == 6
     assert (Subject.STATE, state_key("lock", None, "jammed")) in voci
+    assert (Subject.STATE, state_key("update", None, "off")) in voci
+    for state in ("disarmed", "arming", "disarming", "pending"):
+        assert (Subject.STATE, state_key("alarm_control_panel", None, state)) in voci
 
 
 def test_ogni_eccezione_porta_la_sua_ragione_scritta():

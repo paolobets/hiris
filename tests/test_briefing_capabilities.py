@@ -401,3 +401,181 @@ def test_il_tetto_di_default_e_quello_che_compose_usa_davvero():
     predefinito, _ = _nucleo_tetto()
     esplicito, _ = _nucleo_tetto(ceiling=briefing.DEFAULT_CEILING)
     assert predefinito == esplicito
+
+
+# ---------------------------------------------------------------------------
+# R1 (revisione del tratto v3.23.0..HEAD, 08/09/2026): la sezione conta
+# l'ANAGRAFE, non lo specchio intero della cache -- «la casa» e «cosa si puo'
+# chiedere» devono raccontare lo stesso numero per la stessa parola.
+# ---------------------------------------------------------------------------
+
+_CASA_R1 = {
+    "piani": [{"id": "terra", "nome": "Piano terra", "livello": 0}],
+    "aree": [{"id": "sala", "nome": "Sala da pranzo", "piano_id": "terra",
+              "alias": [], "etichette": []}],
+    "dispositivi": [],
+    "entita": [
+        {"id": "light.visibile", "nome": "Visibile", "area_id": "sala",
+         "dispositivo_id": None, "classe": None, "unita": None, "disabilitata": 0},
+        # La nascosta: presente in anagrafe, tolta dalle viste dall'utente.
+        {"id": "light.nascosta", "nome": "Nascosta", "area_id": "sala",
+         "dispositivo_id": None, "classe": None, "unita": None, "disabilitata": 0,
+         "nascosta": 1},
+        # La `diagnostic`: entita' di servizio, stessa regola delle nascoste.
+        {"id": "number.config", "nome": "Soglia", "area_id": "sala",
+         "dispositivo_id": None, "classe": None, "unita": None, "disabilitata": 0,
+         "categoria": "diagnostic"},
+    ],
+    "etichette": [], "categorie": [], "integrazioni": [],
+}
+_STATO_R1 = {"light.visibile": "off", "light.nascosta": "off", "number.config": "5"}
+_ATTRIBUTI_R1 = {
+    "light.visibile": {CAPABILITIES: {"supported_color_modes": ["onoff"]}},
+    "light.nascosta": {CAPABILITIES: {"supported_color_modes": ["onoff"]}},
+    "number.config": {CAPABILITIES: {"min": 0, "max": 10, "step": 1}},
+    # La terza forma del difetto: presente SOLO in cache, mai arrivata
+    # nell'anagrafe (o rimossa da Home Assistant fra una lettura e l'altra).
+    "light.solo_cache": {CAPABILITIES: {"supported_color_modes": ["onoff"]}},
+}
+
+
+def test_r1_la_sezione_conta_come_la_casa_non_come_lo_specchio_della_cache():
+    """R1 (revisione del tratto v3.23.0..HEAD): prima di questa correzione
+    `_capability_lines` iterava lo specchio INTERO della cache
+    (`topology.live_mirror`) senza ricevere l'anagrafe -- contava una luce
+    nascosta, una luce presente solo in cache e le capacita' di un'entita' di
+    servizio (`categoria: diagnostic`) che «La casa» e «Notevole adesso» non
+    considerano. Sulla casa vera: quattro luci nascoste in piu' in sala da
+    pranzo e 113 `config` + 66 `diagnostic` in tutta la casa -- lo stesso
+    testo dava due totali diversi per la stessa parola, tre sezioni piu'
+    sotto ("1 luce" in «La casa», "3 luci" in «Cosa si puo' chiedere»).
+
+    **Questa casa ha una nascosta e una `diagnostic`** (spec della
+    revisione): la prova verifica che «La casa» e «Cosa si puo' chiedere»
+    concordino sul numero di luci -- una sola, la visibile -- e che
+    l'entita' di servizio non compaia affatto nella sezione delle capacita'.
+
+    Mutazione ESEGUITA: in `_capability_lines`, rimuovere il filtro `if
+    entity_id not in visible_entity_ids: continue` -- la sezione torna a
+    contare 3 luci (visibile + nascosta + solo-cache) invece di 1, e il
+    numero `diagnostic` vi ricompare: la prova arrossisce su entrambe le
+    asserzioni.
+    """
+    testo, _ = compose(_CASA_R1, [], [], _STATO_R1, attributes=_ATTRIBUTI_R1)
+    assert "Sala da pranzo (id: sala): 1 luce, 1 numero" in _sezione(testo, "## La casa")
+    sezione = _sezione(testo, "## Cosa si puo' chiedere")
+    # Concordanza: la STESSA "1 luce" che dice «La casa» -- non le tre della
+    # cache (visibile + nascosta + solo-cache).
+    assert sezione.splitlines()[1:] == ["- 1 luce: supported_color_modes=[onoff]"]
+    # L'entita' di servizio non compare affatto: le sue capacita' non sono
+    # "cio' che si puo' chiedere" in un digesto che non la annuncia.
+    assert "numero" not in sezione
+
+
+def test_r1_mutazione_senza_il_filtro_dell_anagrafe_i_due_totali_divergono():
+    """La stessa prova al CONTRARIO, per mostrare il rosso che la correzione
+    ha chiuso -- non un doppione della prova sopra: qui si ricostruisce a
+    mano il conteggio non filtrato (esattamente cio' che `_capability_lines`
+    faceva prima di R1) e si dimostra che diverge da «La casa».
+
+    Mutazione DICHIARATA e ESEGUITA dal vivo durante lo sviluppo di questa
+    correzione (vedi il rapporto della fetta): rimuovere il filtro in
+    `_capability_lines` faceva **arrossire**
+    `test_r1_la_sezione_conta_come_la_casa_non_come_lo_specchio_della_cache`
+    esattamente cosi': `sezione.splitlines()[1:]` diventava
+    `["- 3 luci: supported_color_modes=[onoff]", "- 1 numero: min, max, step"]`
+    contro l'"1 luce, 1 numero" di «La casa» -- due totali diversi per
+    "luce" nello stesso testo. Il file e' stato ripristinato riscrivendolo
+    (mai `git checkout`), e la prova sopra e' quella che resta a
+    dimostrarlo in CI.
+    """
+    conteggio_grezzo = {}
+    for entity_id, baskets in _ATTRIBUTI_R1.items():
+        capabilities = baskets.get(CAPABILITIES)
+        if not capabilities:
+            continue
+        from hiris.app.home_space.topology import domain_of
+        conteggio_grezzo[domain_of(entity_id)] = conteggio_grezzo.get(domain_of(entity_id), 0) + 1
+    assert conteggio_grezzo == {"light": 3, "number": 1}, (
+        "l'oracolo di questa prova: senza filtro dell'anagrafe la cache "
+        "porta 3 luci e 1 numero, non 1 e 1 come «La casa»")
+
+
+# ---------------------------------------------------------------------------
+# R2 (revisione del tratto v3.23.0..HEAD, 08/09/2026): il rinvio "altre N
+# entita'..." o sopravvive al taglio, o il suo peso entra nell'avviso -- mai
+# nessuno dei due.
+# ---------------------------------------------------------------------------
+
+def _attributi_firme_rare(n):
+    """`n` luci, `n` firme di capacita' DISTINTE: ognuna rara per costruzione,
+    cosi' il tetto interno della sezione (`_CAPABILITY_SECTION_BUDGET`) lascia
+    fuori un `left_out` misurabile con un solo rinvio a coda."""
+    return {f"light.luce{i}": {CAPABILITIES: {"effect_list": [f"effetto_raro_{i}"]}}
+            for i in range(n)}
+
+
+_AREE_R2 = [{"id": f"area{n}", "nome": f"Stanza {n}", "piano_id": "terra",
+             "alias": [], "etichette": []} for n in range(12)]
+_CASA_R2 = {
+    "piani": [{"id": "terra", "nome": "Piano terra", "livello": 0}],
+    "aree": _AREE_R2,
+    "dispositivi": [],
+    "entita": [_luce(n, f"area{n % 12}") for n in range(60)],
+    "etichette": [], "categorie": [], "integrazioni": [],
+}
+_STATO_R2 = {f"light.luce{n}": "off" for n in range(60)}
+
+
+def test_r2_il_rinvio_ha_peso_e_l_avviso_non_sottostima_quando_cade():
+    """R2 (revisione del tratto v3.23.0..HEAD): la riga «(altre N entita' con
+    capacita' rare non elencate qui...)» stava in CODA con peso ZERO. Il
+    taglio del nucleo (`_pop`) morde dalla coda, quindi con un tetto stretto
+    quella riga era la PRIMA a cadere -- e con peso zero cadeva senza far
+    salire `excluded_per_pool["capacita"]`: le entita' che dichiarava
+    sparivano da ogni conteggio, testo e avviso insieme.
+
+    **La prova**: 60 firme rare (una per luce) producono un `left_out`
+    interno alla sezione; un tetto abbastanza stretto da mordere anche il
+    pool "capacita'" dall'esterno fa cadere ulteriori firme vere. L'avviso
+    finale deve contare TUTTE le entita' senza capacita' dichiarate --
+    quelle gia' fuori dal budget interno della sezione PIU' quelle cadute nel
+    taglio esterno -- non solo le seconde.
+
+    Mutazione ESEGUITA: in `_capability_lines`, tornare a `weights.append(0)`
+    per la riga di rinvio -- l'avviso torna a contare solo le firme cadute
+    nel taglio ESTERNO, sottostimando il totale vero, e questa prova
+    arrossisce sul confronto fra l'avviso e il totale delle luci senza una
+    firma superstite.
+    """
+    attributi = _attributi_firme_rare(60)
+    # Tetto stretto: abbastanza per un pugno di firme, non per tutte e 60.
+    testo, riepilogo = compose(_CASA_R2, [], [], _STATO_R2, ceiling=1300,
+                               attributes=attributi)
+    assert riepilogo["truncated"] is True
+    sezione = _sezione(testo, "## Cosa si puo' chiedere")
+    firme_superstiti = [riga for riga in sezione.splitlines()[1:]
+                        if riga.startswith("- ") and "effetto_raro_" in riga]
+    n_superstiti = len(firme_superstiti)
+    # Il rinvio puo' essere sopravvissuto o no: in ENTRAMBI i casi l'avviso
+    # deve dire quante luci restano senza una firma nel testo.
+    attese_orfane = 60 - n_superstiti
+    avvisi = " ".join(riepilogo["notices"])
+    numeri_avviso = [int(tok) for tok in avvisi.replace(".", " ").split()
+                          if tok.isdigit()]
+    assert attese_orfane in numeri_avviso, (
+        f"l'avviso di taglio non nomina {attese_orfane} (le luci senza "
+        f"una firma nel testo, su 60): {avvisi!r}")
+
+
+def test_r2_il_rinvio_sopravvive_quando_non_serve_tagliare_oltre():
+    """Cio' che NON deve rompersi: quando il tetto ESTERNO non morde piu' il
+    pool "capacita'" (ci sta la sezione col suo taglio interno, non oltre),
+    il rinvio resta nel testo con la stessa cifra di prima -- il peso nuovo
+    non lo rende piu' fragile, perche' un peso non nullo non lo fa cadere
+    prima: lo fa contare correttamente SE cade."""
+    attributi = _attributi_firme_rare(60)
+    testo, riepilogo = compose(_CASA_R2, [], [], _STATO_R2, attributes=attributi)
+    sezione = _sezione(testo, "## Cosa si puo' chiedere")
+    assert "non elencate qui" in sezione
+    assert riepilogo["truncated"] is False
