@@ -161,7 +161,7 @@ from ..proxy.entity_cache import (
     inventory_is_readable,
     unreadable_inventory_error,
 )
-from . import historian
+from . import ha_vocabulary, historian
 from .appointments import read_appointment, sort_appointments
 from .behavior import FILE_GENUINELY_ABSENT
 from .queries import HA_LINK_TYPE
@@ -2755,12 +2755,14 @@ class ToolDispatcher:
         return await historian.trend(
             ha=self._ha_channel(), entity=entity, hours=arguments.get("ore"),
             unit=entry.get("unit") or None,
-            # `historian.produces_statistics`, non `bool(state_class)` (fix onda
-            # finale, F4): `measurement_angle` e' un `state_class` vero e
-            # proprio ma NON produce statistiche (spec §1) -- una banderuola
-            # interrogata oltre la soglia di grana finirebbe su un elenco
-            # vuoto invece che sul dettaglio, la superficie giusta per lei.
-            has_statistics=historian.produces_statistics(entry.get("state_class")),
+            # `ha_vocabulary.produces_statistics`, non `bool(state_class)`
+            # (fix onda finale, F4): `measurement_angle` e' un `state_class`
+            # vero e proprio ma NON produce statistiche (spec §1) -- una
+            # banderuola interrogata oltre la soglia di grana finirebbe su un
+            # elenco vuoto invece che sul dettaglio, la superficie giusta per
+            # lei.
+            has_statistics=ha_vocabulary.produces_statistics(
+                entry.get("state_class")),
             now_ts=_time.time(), timezone=self._timezone())
 
     async def _happened(self, arguments: dict[str, Any]) -> dict:

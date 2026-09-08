@@ -49,7 +49,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from ..proxy import state_translations
 from ..proxy.entity_cache import CAPABILITIES
 from .behavior import FILE_GENUINELY_ABSENT
-from .ha_vocabulary import house_is_newer_than_vocabulary
+from .ha_vocabulary import (
+    config_entry_is_broken,
+    house_is_newer_than_vocabulary,
+)
 from .queries import sanitized_memories
 from .topology import (
     PROBLEM_SEVERITY,
@@ -60,7 +63,26 @@ from .topology import (
     name_with_id,
     readable_state,
 )
+from .type_vocabulary import is_notable
 
+# **Perche' questa tabella e' rimasta qui mentre le altre traslocavano**
+# (08/09/2026). I nomi sono vocabolario di un tipo, e la loro casa naturale e'
+# la riga del tipo: la fetta che ha sciolto le altre liste ha provato a
+# spostarli, **e il cancello ha parlato**. Dare una riga del vocabolario a
+# tutti e 63 i domini nominabili allarga l'insieme che
+# `test_un_tipo_ha_una_casa_sola` considera «tipo», e con quell'insieme
+# allargato la prova ha nominato SEI elenchi che non sono tipi affatto -- i
+# tre generi che HIRIS sa costruire (`automation`/`scene`/`script`, in
+# `action/construction/workshop.py` e `proxy/ha_client.py`), i due servizi di
+# notifica (`action/verification.py`), gli otto domini degli helper
+# (`proxy/ha_client.py`). Farli passare avrebbe voluto dire aggiungere sei
+# righe all'istantanea delle deroghe per una fetta che non li tocca, cioe'
+# indebolire il cancello invece di usarlo. **Il costo di lasciarli qui e'
+# misurato ed e' il piu' basso delle sei**: se un nome manca, `_domain_name`
+# torna il dominio grezzo e si legge «3 lawn_mower» -- il modello capisce lo
+# stesso, e' vocabolario di Home Assistant. Le altre cinque, se avessero una
+# voce mancante, avrebbero sbagliato un CONTEGGIO.
+#
 # Il TIPO di un'entita' si ricava dal dominio del suo entity_id (la parte
 # prima del punto) -- lo dichiara Home Assistant nell'id stesso, non un
 # elenco nostro. Questa mappa serve solo a renderlo leggibile in italiano
@@ -151,27 +173,14 @@ _DOMAIN_NAMES = {
     "input_button": ("pulsante helper", "pulsanti helper"),
 }
 
-# Stati che rendono un'entita' NOTEVOLE adesso: acceso, aperto, in allarme
+
+# Gli stati che rendono un'entita' NOTEVOLE adesso: acceso, aperto, in allarme
 # SCATTATO. Il resto e' rumore in una casa da trecento entita' -- una
 # temperatura di 19.5 non e' notevole solo perche' e' un numero, uno stato
 # "on"/"open" lo e' perche' e' un'eccezione rispetto al riposo.
 #
-# Per l'allarme (`alarm_control_panel`) SOLO "triggered" e' notevole: e'
-# l'unico stato che significa "sta succedendo qualcosa adesso". Gli altri
-# stati veri di Home Assistant -- "armed_home", "armed_away", "armed_night",
-# "armed_vacation", "armed_custom_bypass", "arming", "pending", "disarmed" --
-# sono la routine quotidiana (si arma e si disarma piu' volte al giorno,
-# come si accende e si spegne una luce): non sono un'eccezione rispetto al
-# riposo, sono il riposo. (Il letterale "alarm" che stava qui non era MAI
-# stato uno stato reale di Home Assistant: era voce morta che affermava di
-# coprire un caso che non copriva.)
-# Gli stati ATTIVI dei domini in cui l'attivo e' un'eccezione (vedi
-# `_EVENT_DOMAINS`). Non basta piu' un insieme di stringhe: `on` su una luce e
-# `on` su un'automazione sono due fatti diversi, e fino alla fetta «il
-# vocabolario delle tipologie» erano la stessa riga.
-#
 # La fonte, stato per stato -- verificata su home-assistant/core il
-# 20/08/2026 (ramo `dev`, non un modulo installato: nucleo.py resta PURO,
+# 20/08/2026 (ramo `dev`, non un modulo installato: questo modulo resta PURO,
 # vedi il docstring in testa al file):
 #   "on"       -- STATE_ON,       homeassistant/const.py
 #   "open"     -- STATE_OPEN,     homeassistant/const.py
@@ -180,68 +189,31 @@ _DOMAIN_NAMES = {
 #   "cleaning" -- VacuumActivity.CLEANING, homeassistant/components/vacuum/const.py
 # Senza Home Assistant installato non c'e' un enum da importare e confrontare
 # a runtime: l'elenco e' ricopiato a mano e pinnato (con lo stesso limite
-# dichiarato) in tests/test_type_vocabulary.py. Da riguardare quando
-# `_EVENT_DOMAINS` guadagna un dominio nuovo -- porta con se' il proprio
-# stato "attivo" da aggiungere qui.
+# dichiarato) in tests/test_type_vocabulary.py.
+#
+# **E' l'ULTIMA delle sei liste rimasta qui, ed e' rimasta per una ragione
+# misurata, non per mancanza di tempo.** La fetta che ha sciolto le altre
+# cinque doveva scioglierla derivandola dai riposi che il vocabolario dei tipi
+# gia' dichiara -- `unlocked` e' il complemento di `locked`, `open` di
+# `closed`, `on` di `off`: la stessa conoscenza, detta due volte dai due lati
+# opposti. **Il complemento non e' esatto**, e la misura sta in
+# `tests/test_notable_states_complement.py`: sui tipi che meritano un annuncio,
+# UNDICI stati che questa casa PUBBLICA non sono riposi e non sono qui dentro --
+# `cover`/`valve` in `opening` e `closing`, `lock` in `locking`, `unlocking`,
+# `opening` e `jammed`, `media_player` in `paused` e `buffering`, `vacuum` in
+# `paused`. Derivare dai riposi li conterebbe tutti e undici, e cambierebbe i
+# conteggi del nucleo: una correzione, forse giusta, ma una correzione -- e va
+# fatta in una fetta sua, col suo changelog, non di straforo dentro una che si
+# era impegnata a non cambiare un solo numero.
+#
+# Il verso opposto invece TORNA: nessuna di queste cinque parole e' un riposo
+# per nessuno dei tipi che le puo' portare, e anche quello e' pinnato dalla
+# stessa prova. Il difetto che resta e' quindi uno solo, e ha un nome: queste
+# cinque parole sono CIECHE AL TIPO -- `open` conta come «attivo» tanto per una
+# tapparella quanto per una serratura -- ed e' lo stesso difetto per cui
+# `topology._STATE_TRANSLATION` e' stata cancellata l'08/09/2026.
 _ACTIVE_STATES = {"on", "open", "unlocked", "playing", "cleaning"}
 
-# I domini in cui l'attivo e' un'ECCEZIONE rispetto al riposo -- cioe' in cui
-# «acceso» significa che qualcuno o qualcosa lo ha acceso.
-#
-# Chi NON c'e', e perche' (misurato sull'impianto del proprietario, 845 entita'):
-#   - `automation`/`script`/`input_boolean`: `on` significa ABILITATA. Erano 18,
-#     ed erano riposo travestito da eccezione.
-#   - `device_tracker`/`person`: `home` e' una CONDIZIONE (un telefono a casa e'
-#     il riposo). Erano 49. Non sono esclusi dal prodotto: `view` e `search` li
-#     riportano quando li chiedi -- e' la differenza fra un vocabolario e un
-#     filtro, ed e' pinnata in tests/test_type_vocabulary.py.
-#   - `sensor`/`number`/`weather`/`sun`: sono MISURE. Un numero non e' un evento.
-#   - `calendar`: dice se c'e' un evento in corso ADESSO, non se qualcuno lo ha
-#     acceso -- la stessa differenza di `weather`: e' cio' che la casa MISURA
-#     del calendario, non un apparecchio che qualcuno ha azionato (revisione
-#     del tratto v3.23.0..HEAD, R3b, 08/09/2026: prima di questa correzione
-#     l'eccezione del censore per `calendar=off` citava questa riga senza che
-#     `calendar` ci fosse scritto).
-#   - `button`/`event`/`tag`/`notify`/`image`: non hanno uno stato utile -- 57
-#     dei 72 `button` di questa casa sono `unknown` per costruzione.
-#
-# Ognuno dei dieci e' una piattaforma vera di Home Assistant (sottoinsieme
-# dichiarato di `_PIATTAFORME_HA`, la stessa fonte -- homeassistant/generated/
-# entity_platforms.py -- copiata in tests/test_domain_vocabulary.py); QUALE
-# sottoinsieme merita il trattamento "evento" e' un giudizio del prodotto,
-# non qualcosa che HA dichiara da se'. Pinnato in
-# tests/test_type_vocabulary.py: da riguardare quando un dominio nuovo
-# entra nel prodotto e ha un proprio stato "attivo" degno di annuncio.
-_EVENT_DOMAINS = {
-    "light", "switch", "cover", "lock", "fan",
-    "media_player", "valve", "remote", "siren", "vacuum",
-}
-
-# Per `binary_sensor` il dominio non basta: e' la CLASSE a dire se `on` e' un
-# allagamento o il corridoio attraversato trenta secondi fa. Qui stanno gli
-# allarmi e le aperture; restano fuori i transitori (`motion`, `occupancy`,
-# `presence`, `sound`, `vibration`, `light`, `running`, `moving`, `power`,
-# `plug`) e la manutenzione (`battery`, `connectivity`, `update`,
-# `battery_charging`), che si vanno a chiedere e non si annunciano.
-#
-# Sottoinsieme DICHIARATO delle classi di
-# developers.home-assistant.io/docs/core/entity/binary-sensor/ (verificata il
-# 16/08/2026). **Il metro di quella prova e' cambiato l'08/09/2026, ed e'
-# migliorato**: fino a quel giorno ogni classe qui elencata doveva comparire
-# anche nella tabella dei significati scritta a mano, cioe' due nostri elenchi
-# dovevano essere d'accordo fra loro -- il che diceva che concordavano, non che
-# fossero veri. Adesso la prova chiede a Home Assistant se per quella classe
-# pubblica la COPPIA acceso/spento: senza, la classe si leggerebbe «Acceso»,
-# cioe' con la parola del dominio. L'elenco stesso e' pinnato di suo (mutazione:
-# toglierne una classe fa rosso) in tests/test_type_vocabulary.py; da
-# riguardare quando HA aggiunge una nuova device_class di allarme o apertura.
-_EVENT_CLASSES = {
-    # allarmi
-    "moisture", "smoke", "gas", "carbon_monoxide", "safety", "tamper", "problem",
-    "heat", "cold",
-    # aperture
-    "door", "window", "garage_door", "opening",
-}
 
 # Oltre questa quantita' di elementi notevoli, elencarli uno per uno
 # sfonderebbe il nucleo tanto quanto elencare le trecento entita' della casa
@@ -377,10 +349,18 @@ def _device_annotation(area_entities: list[dict], domain: str, count: int,
 
 
 def _domain_name(domain: str, n: int) -> str:
-    pair = _DOMAIN_NAMES.get(domain)
-    if pair is None:
+    """Il nome italiano del tipo, al numero giusto -- o il dominio grezzo.
+
+    Un dominio che non sappiamo nominare esce col proprio nome invece di
+    sparire -- si legge «3 lawn_mower», che il modello capisce lo stesso
+    perche' e' vocabolario di Home Assistant. E' anche la ragione per cui
+    `_DOMAIN_NAMES` e' la sola delle sei liste che poteva aspettare: vedi il
+    commento sopra la tabella.
+    """
+    names = _DOMAIN_NAMES.get(domain)
+    if names is None:
         return domain
-    singular, plural = pair
+    singular, plural = names
     return singular if n == 1 else plural
 
 
@@ -400,15 +380,25 @@ def _is_event(domain: str, device_class: str | None, value) -> bool:
     Fino alla fetta «il vocabolario delle tipologie» questa funzione non
     esisteva e al suo posto c'era un `in _STATI_NOTEVOLI` cieco al tipo: 300
     elementi su 845, e il dettaglio individuale perso sotto il raggruppamento.
+
+    **Chi merita un annuncio lo dice il vocabolario dei tipi**, non due elenchi
+    di questo modulo: `is_notable` risponde per il dominio e per la coppia con
+    lo stesso campo, che e' il motivo per cui `binary_sensor` puo' dire «no» in
+    generale e «si'» sulle tredici classi che lo meritano.
     """
     v = str(value).lower()
     if domain == "alarm_control_panel":
         # Solo "triggered": armato e disarmato sono la routine quotidiana, non
-        # un'eccezione. Regola gia' presente prima di questa fetta, conservata.
+        # un'eccezione -- si arma e si disarma piu' volte al giorno, come si
+        # accende e si spegne una luce: non sono un'eccezione rispetto al
+        # riposo, sono il riposo. Regola gia' presente prima di questa fetta,
+        # conservata. (Il letterale "alarm" che stava fra gli stati attivi non
+        # era MAI stato uno stato reale di Home Assistant: era voce morta che
+        # affermava di coprire un caso che non copriva.)
         return v == "triggered"
     if domain == "binary_sensor":
-        return v == "on" and device_class in _EVENT_CLASSES
-    if domain in _EVENT_DOMAINS:
+        return v == "on" and is_notable(domain, device_class)
+    if is_notable(domain):
         return v in _ACTIVE_STATES
     return False
 
@@ -1133,29 +1123,16 @@ def _behavior_lines(behavior: list[dict]) -> list[str]:
     return lines
 
 
-# Gli stati in cui un'integrazione di Home Assistant NON sta funzionando.
+# Quali condizioni di una voce di configurazione siano un guasto lo dice
+# `ha_vocabulary.config_entry_is_broken`: e' vocabolario di Home Assistant
+# (`ConfigEntryState`), e finche' l'elenco stava scritto qui ne esisteva un
+# gemello in `mind/watcher.py` che nessuno confrontava con questo.
 #
-# **`not_loaded` e' USCITO da questo elenco il 02/09, ed e' istruttivo perche'
-# il difetto non era nell'elenco: era nella DOMANDA a cui rispondeva.** Come
-# elenco di «non e' `loaded`» era giusto e completo; come elenco di «e' rotto»
-# era falso, e il commento di prima dichiarava «verificati» proprio la riga
-# sbagliata. La documentazione dice il contrario:
-#
-#   NOT_LOADED: «The config entry has not been loaded. **This is the initial
-#   state when a config entry is created or when Home Assistant is
-#   restarted.**»
-#   (developers.home-assistant.io/docs/config_entries_index/)
-#
-# Non e' uno stato di errore: e' lo stato iniziale. Il costo, misurato sulla
-# casa vera dal proprietario: il nucleo annunciava «9 integrazioni non stanno
-# funzionando» e quella vera era UNA (`lifx / Abat-jour`, `setup_retry`, col
-# suo motivo). Otto falsi allarmi su nove, letti ogni giorno.
-#
-# Restano i quattro stati di errore veri. `setup_in_progress` e
-# `unload_in_progress` non compaiono perche' sono momentanei del boot.
-_BROKEN_INTEGRATION_STATES = {
-    "setup_error", "setup_retry", "migration_error", "failed_unload",
-}
+# **`not_loaded` NON e' un guasto**, ed e' la lezione che quell'elenco aveva
+# gia' pagato: era lo stato INIZIALE preso per un errore, e il nucleo
+# annunciava «9 integrazioni non stanno funzionando» quando quella vera era
+# UNA. La ragione per esteso, con la citazione della documentazione, sta
+# accanto all'enumerazione in `ha_vocabulary.py`.
 
 # Il SECONDO discriminante, che il codice non guardava affatto: `source`.
 #
@@ -1200,7 +1177,7 @@ def _integrations_notice(integrations: list[dict]) -> str | None:
     la direbbe rotta -- vedi `_IGNORED_INTEGRATION_SOURCE`.
     """
     broken = [i for i in integrations or []
-             if (i.get("stato") or "") in _BROKEN_INTEGRATION_STATES
+             if config_entry_is_broken(i.get("stato"))
              and (i.get("origine") or "") != _IGNORED_INTEGRATION_SOURCE]
     if not broken:
         return None

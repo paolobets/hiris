@@ -145,7 +145,8 @@ def test_not_loaded_NON_e_un_guasto():
     Non e' uno stato di errore: e' lo stato iniziale. Dopo ogni riavvio di
     Home Assistant ci passano TUTTE le integrazioni della casa.
 
-    Mutazione: rimettere `not_loaded` in `_BROKEN_INTEGRATION_STATES` --
+    Mutazione: aggiungere `not_loaded` a
+    `ha_vocabulary.CONFIG_ENTRY_FAILURE_STATES` --
     questo test torna rosso e il nucleo ricomincia a chiamare guasto lo stato
     normale di ogni integrazione appena riavviata."""
     testo, riepilogo = _nucleo([

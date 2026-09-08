@@ -7,13 +7,13 @@ conosca la politica di conservazione del recorder di QUESTA casa.
 """
 import pytest
 
+from hiris.app.home_space.ha_vocabulary import produces_statistics
 from hiris.app.home_space.historian import (
     DEFAULT_HOURS,
     GRANULARITY_THRESHOLD_HOURS,
     MAX_WINDOW_HOURS,
     choose_surface,
     normalize_hours,
-    produces_statistics,
     window,
 )
 
@@ -89,7 +89,11 @@ def test_measurement_angle_does_not_produce_statistics():
     la direzione del vento) ma NON produce statistiche -- va trattato come
     le entita' senza classe. Un'appartenenza al vero insieme di HA
     (`measurement`, `total`, `total_increasing`), non un `bool(state_class)`
-    ne' un'esclusione della sola `measurement_angle`."""
+    ne' un'esclusione della sola `measurement_angle`.
+
+    **Vive in `ha_vocabulary` dall'08/09/2026**, non piu' in `historian`: e'
+    vocabolario di Home Assistant, e il vocabolario di Home Assistant ha una
+    casa sola. `choose_surface`, qui sopra, resta il consumatore."""
     assert produces_statistics("measurement_angle") is False
     assert produces_statistics("measurement") is True
     assert produces_statistics("total") is True

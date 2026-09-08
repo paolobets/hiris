@@ -529,7 +529,7 @@ def switchable_domains(registry) -> dict:
     dove `on` significa «abilitata» e non «accesa», e perde `vacuum`, che Home
     Assistant comanda con `start`/`stop`. Serve a SORVEGLIARE il giudizio, e
     chi la legge come un elenco di interruttori riapre il difetto che
-    `briefing._EVENT_DOMAINS` documenta di aver gia' pagato.
+    il campo `notable` di `type_vocabulary` documenta di aver gia' pagato.
 
     **Sono domini di SERVIZIO**, non di entita': `homeassistant` sta qui e non
     e' un dominio di entita'. E' un fatto della derivazione, non un difetto --

@@ -6,11 +6,10 @@ Un'entita' arriva con `device_class: "energy"` o `state_class:
 essere un guasto, che un pulsante `identify` fa segnalare il dispositivo, che
 `unavailable` e `unknown` sono due fatti diversi -- vive solo nella
 documentazione di Home Assistant e nel sorgente che la implementa, mai nella
-risposta che il fornitore manda. Questo modulo lo IMPORTA, come `_DOMAIN_NAMES`
-(briefing.py) importa i nomi delle piattaforme e `_FEATURE_NAMES`
-(topology.py) importa le tabelle di `supported_features`: stessa disciplina di
-"copiato dalla fonte, pinnato da una prova che si accorge quando diverge", non
-una seconda forma inventata accanto.
+risposta che il fornitore manda. Questo modulo lo IMPORTA, con la stessa
+disciplina con cui `type_vocabulary.py` importa i nomi dei bit di
+`supported_features`: "copiato dalla fonte, pinnato da una prova che si accorge
+quando diverge", non una seconda forma inventata accanto.
 
 **Non e' un elenco esaustivo di cio' che Home Assistant conosce.** E' il
 PERIMETRO che QUESTA casa usa davvero, misurato su
@@ -42,12 +41,16 @@ decifrare -- e' un dato, non un significato nascosto. Il numero e' stato
 misurato lo stesso per verificare il metodo di misura, non perche' desse
 un proprio perimetro da importare.
 
-**Il digesto non lo consuma -- `view` sì, da "rifiutare e importare" (Task
-5, §6c).** `STATE_CLASS_MEANING`/`DEVICE_CLASS_MEANING`/`UNAVAILABLE_MEANING`/
-`UNKNOWN_MEANING` restano conoscenza per chi legge il codice o interroga la
-casa a mano, non un fatto che il digesto ripete a ogni turno --
-diversamente da `_DOMAIN_NAMES`, che il digesto usa per contare a ogni
-turno. Ma `entity_category_measure_rule()` (sotto, insieme a
+**Le quattro tabelle di significati non le consuma il digesto -- `view` sì, da
+"rifiutare e importare" (Task 5, §6c).** `STATE_CLASS_MEANING`/
+`DEVICE_CLASS_MEANING`/`UNAVAILABLE_MEANING`/`UNKNOWN_MEANING` restano
+conoscenza per chi legge il codice o interroga la casa a mano, non un fatto che
+il digesto ripete a ogni turno. **Le tre voci arrivate l'08/09/2026 invece il
+digesto le usa**: `config_entry_is_broken` decide la riga degli avvisi,
+`config_entry_is_healthy` decide cosa l'osservatore scrive nell'archivio, e
+`produces_statistics` decide su quale superficie si legge un andamento. Sono
+qui perche' sono vocabolario del fornitore, non perche' nessuno le legga.
+Ma `entity_category_measure_rule()` (sotto, insieme a
 `ENTITY_CATEGORY_MEANING`) e' il PRIMO consumatore vero a runtime: `queries.
 _view_entity` la chiama e cita cio' che ritorna nella chiave `regola`,
 sul dettaglio di UN'entita' sola. La fonte e la versione scritte qui sono
@@ -98,6 +101,7 @@ VOCABULARY_SOURCE = (
     "homeassistant/components/media_player/const.py (MediaPlayerDeviceClass); "
     "homeassistant/components/valve/const.py (ValveDeviceClass); "
     "homeassistant/const.py (EntityCategory); "
+    "homeassistant/config_entries.py (ConfigEntryState); "
     "homeassistant/helpers/entity.py, Entity._stringify_state "
     "(la distinzione fra `unavailable` e `unknown`); "
     "homeassistant/helpers/translation.py:469-470, async_translate_state "
@@ -376,6 +380,111 @@ UNKNOWN_MEANING = (
 # interroga la casa a mano (vedi il docstring di testa del modulo), non un
 # dato che un confine deve rendere -- non hanno mai avuto un chiamante da
 # perdere.
+
+# --- in che condizione e' una voce di configurazione ------------------------
+#
+# `ConfigEntryState` (`homeassistant/config_entries.py`, tag `2026.9.1`,
+# verificato sul sorgente vero). E' vocabolario di Home Assistant come gli
+# altri di questo modulo, e come gli altri HA lo manda come stringa senza mai
+# dire cosa significhi.
+#
+# **Il soggetto e' l'INTEGRAZIONE, non il tipo di un'entita'**, quindi una casa
+# propria qui e' legittima e non e' una riga del vocabolario dei tipi. Cio' che
+# NON era legittimo -- ed e' il doppione che l'08/09/2026 si chiude -- erano le
+# **due** copie: `briefing._BROKEN_INTEGRATION_STATES` elencava i quattro stati
+# di guasto, `watcher._HEALTHY_INTEGRATION_STATES` i tre non-guasto piu'
+# `loaded` trattato a parte, e i due elenchi si tenevano in piedi a vicenda
+# senza che niente li confrontasse. Adesso il fatto e' uno: l'enumerazione, e
+# quali di quelle condizioni sono un guasto.
+#
+# **`not_loaded` NON e' un guasto**, ed e' l'errore che costava di piu':
+# «NOT_LOADED: The config entry has not been loaded. **This is the initial
+# state when a config entry is created or when Home Assistant is restarted.**»
+# (developers.home-assistant.io/docs/config_entries_index/). Misurato sulla
+# casa vera: il nucleo annunciava «9 integrazioni non stanno funzionando» e
+# quella vera era UNA (`lifx / Abat-jour`, `setup_retry`). Otto falsi allarmi
+# su nove, letti ogni giorno.
+#
+# `setup_in_progress` e `unload_in_progress` non sono guasti per la ragione
+# opposta: sono momentanei del boot.
+CONFIG_ENTRY_STATES = frozenset({
+    "loaded", "setup_error", "migration_error", "setup_retry", "not_loaded",
+    "failed_unload", "setup_in_progress", "unload_in_progress",
+})
+
+CONFIG_ENTRY_FAILURE_STATES = frozenset({
+    "setup_error", "setup_retry", "migration_error", "failed_unload",
+})
+
+
+def config_entry_is_broken(state: str | None) -> bool:
+    """Se questa condizione dichiara un guasto.
+
+    **Chi non e' elencato NON e' un guasto**, ed e' la prudenza del lettore: il
+    nucleo entra nel prompt di ogni messaggio, e una condizione che Home
+    Assistant aggiungesse domani verrebbe annunciata al proprietario come una
+    cosa rotta senza che nessuno l'abbia mai guardata. Meglio tacere di una
+    condizione nuova che gridare al guasto su una che non lo e' -- e' la stessa
+    lezione degli otto `not_loaded`.
+    """
+    return (state or "") in CONFIG_ENTRY_FAILURE_STATES
+
+
+def config_entry_is_healthy(state: str | None) -> bool:
+    """Se questa condizione dichiara che l'integrazione sta bene.
+
+    **Non e' il contrario esatto di `config_entry_is_broken`, e la differenza
+    e' voluta**: una condizione che questo modulo non conosce non e' ne' l'una
+    ne' l'altra, e i due lettori la trattano in modo opposto **perche' sbagliare
+    costa loro cose diverse**. Il nucleo tace (vedi sopra); l'osservatore, che
+    non parla a nessuno e SCRIVE NELL'ARCHIVIO, apre una condizione -- un
+    guasto non registrato e' perso per sempre, un falso positivo si legge e si
+    chiude. Fino all'08/09/2026 questa asimmetria esisteva gia', ma nasceva da
+    due elenchi scritti a mano in due moduli: era un caso, non una scelta.
+    """
+    return (state or "") in CONFIG_ENTRY_STATES - CONFIG_ENTRY_FAILURE_STATES
+
+
+# --- quali `state_class` producono statistiche a lungo termine --------------
+#
+# I soli valori di `SensorStateClass` che il recorder aggrega davvero in
+# statistiche a lungo termine, verificati alla fonte (non a memoria: e' la
+# stessa trappola di `carbon_monoxide`/`co` gia' pagata da questo progetto).
+# `measurement_angle` ESISTE come `state_class` (angoli, per esempio la
+# direzione del vento) ma NON produce statistiche -- lo documenta Home
+# Assistant, non e' un'omissione nostra.
+#
+# **Un'appartenenza, non un'esclusione della sola `measurement_angle`**: il
+# vocabolario di HA non si arrotonda, e domani potrebbe crescere di un'altra
+# classe che non aggrega.
+#
+# **Perche' qui e non accanto a chi lo consuma.** Fino all'08/09/2026 questo
+# insieme viveva in `home_space/historian.py`, dove `choose_surface` lo legge.
+# E' vocabolario di Home Assistant, e questo modulo e' la casa del vocabolario
+# di Home Assistant: `state_class` ce l'ha gia', due righe piu' su. Che le due
+# chiavi coincidano oggi con quelle di `STATE_CLASS_MEANING` NON le rende lo
+# stesso fatto -- «cosa significa» e «aggrega» sono due domande, e una classe
+# nuova puo' benissimo avere un significato e non produrre statistiche:
+# derivare l'uno dall'altro sarebbe un'identita' assunta, non misurata.
+STATE_CLASSES_WITH_STATISTICS = frozenset({
+    "measurement", "total", "total_increasing"})
+
+
+def produces_statistics(state_class) -> bool:
+    """Se questo `state_class` produce DAVVERO una statistica a lungo termine.
+
+    Non `bool(state_class)`: quel cablaggio manderebbe ANCHE
+    `measurement_angle` sul ramo statistiche, e una banderuola interrogata
+    oltre la soglia di grana riceverebbe un elenco vuoto -- «non e' mai
+    cambiata» -- mentre il dettaglio, la superficie giusta per lei, esiste.
+
+    Il nome e' diverso dal parametro `has_statistics` che `historian` passa in
+    giro (`trend`, `choose_surface`): quello e' gia' il booleano risolto,
+    questa e' la funzione che lo risolve dal vocabolario di HA -- due cose
+    diverse, non due nomi per la stessa.
+    """
+    return state_class in STATE_CLASSES_WITH_STATISTICS
+
 
 # --- cosa significa un `entity_category` -----------------------------------
 #

@@ -296,7 +296,8 @@ def test_not_loaded_NON_e_un_guasto(coppia):
     state when a config entry is created or when Home Assistant is restarted»
     (developers.home-assistant.io/docs/config_entries_index/).
 
-    Mutazione: togliere `not_loaded` da `_HEALTHY_INTEGRATION_STATES` --
+    Mutazione: aggiungere `not_loaded` a
+    `ha_vocabulary.CONFIG_ENTRY_FAILURE_STATES` --
     questo test torna rosso, e l'archivio riprende a registrare come guasto lo
     stato in cui OGNI integrazione si trova subito dopo un riavvio."""
     archivio, osservatore = coppia
@@ -341,9 +342,9 @@ def test_una_integrazione_in_setup_non_e_un_guasto(coppia):
 def test_una_integrazione_in_unload_non_e_un_guasto(coppia):
     """'unload_in_progress' e' l'altro stato transitorio del boot, gemello
     di 'setup_in_progress': nasce e sparisce da solo in pochi secondi.
-    Nessun test lo mandava finora -- toglierlo da
-    `_HEALTHY_INTEGRATION_STATES` restava verde. Mutazione: togliere
-    'unload_in_progress' dall'insieme -- scriverebbe un guasto di rumore
+    Nessun test lo mandava finora -- toglierlo dalle condizioni sane restava
+    verde. Mutazione: togliere 'unload_in_progress' da
+    `ha_vocabulary.CONFIG_ENTRY_STATES` -- scriverebbe un guasto di rumore
     per ogni integrazione in fase di ricarica."""
     archivio, osservatore = coppia
     scritti = osservatore.watch_system(

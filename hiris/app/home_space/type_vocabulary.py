@@ -14,8 +14,9 @@ come vuole la seconda fondamenta. Una coppia il cui dominio non ha una riga
 non si puo' costruire: e' un errore di costruzione, non un buco che si scopre
 leggendo.
 
-**Tre domande, una casa.** Le tre metriche non sono tre elenchi: sono tre modi
-di interrogare la stessa riga.
+**Quattro domande, una casa.** Le metriche non sono elenchi: sono modi di
+interrogare la stessa riga. Erano tre alla fetta 1; la quarta e' arrivata
+l'08/09/2026 con lo scioglimento delle sei liste sparse.
 
 1. «Serve all'obiettivo?» -> `aspect_of` -- la gamba dell'osservatore
    (`chi c'e'`, `comfort`, `dispersione`, `energia`, `buono stato`,
@@ -26,6 +27,11 @@ di interrogare la stessa riga.
    e `_UNKNOWN` in `mind/facts.py`.
 3. «Cosa sa fare?» -> `capability_names`. Prima era `_FEATURE_NAMES` in
    `home_space/topology.py`.
+4. «Merita un annuncio?» -> `is_notable`, `notable_types`. Prima erano
+   `_EVENT_DOMAINS` e `_EVENT_CLASSES` in `home_space/briefing.py`: DUE
+   elenchi per una domanda sola, uno per dominio e uno per coppia, che nessuno
+   teneva allineati. Qui sono un campo solo sulle due granularita' del tipo, ed
+   e' il caso che dimostra perche' il soggetto e' il tipo e non il dominio.
 
 **Ogni campo dichiara da dove viene, e non c'e' modo di scriverne uno che non
 lo dichiari** -- vedi `Field` qui sotto. Le provenienze sono tre e non di piu'
@@ -452,6 +458,21 @@ ASSUMABLE_ATTRIBUTES = "assumable_attributes"
 #: oppure `parametro -> {"options": ...}`.
 PARAMETER_LIMITS = "parameter_limits"
 
+#: Se un cambiamento di questo tipo MERITA UN ANNUNCIO: se cioe' il nucleo,
+#: trovandolo fuori dal riposo, lo dice invece di lasciarlo cercare.
+#:
+#: **E' un campo solo su DUE granularita', ed e' il motivo per cui il soggetto
+#: di questo vocabolario e' il tipo e non il dominio.** Fino all'08/09/2026 la
+#: stessa domanda viveva in due insiemi separati di `home_space/briefing.py`:
+#: `_EVENT_DOMAINS` per i dieci domini in cui «acceso» e' un'eccezione, e
+#: `_EVENT_CLASSES` per le tredici classi di `binary_sensor` in cui a dirlo e'
+#: la classe e non il dominio. Due elenchi, una domanda, e nessuno che li
+#: tenesse allineati. Qui sono un campo solo: la coppia lo dichiara di suo, il
+#: dominio lo dichiara per tutte le sue coppie, e la gerarchia di `field` fa il
+#: resto -- cosi' il censore li sorveglia con lo stesso conto.
+NOTABLE = "notable"
+
+
 
 # --------------------------------------------------------------------------
 # La fonte dei campi importati.
@@ -473,7 +494,7 @@ FEATURE_SOURCE = (
 # --------------------------------------------------------------------------
 #
 # L'ordine di dichiarazione non conta per la lettura (`field` risolve per
-# chiave, non per posizione): conta per chi legge, e segue le tre metriche.
+# chiave, non per posizione): conta per chi legge, e segue le metriche.
 
 _vocabulary = TypeVocabulary()
 
@@ -524,12 +545,12 @@ _vocabulary.add("cover", aspect=Ours("dispersione"))
 # peggiore possibile, sulla categoria di dati che conta piu' di tutte
 # (`docs/design/2026-08-26-l-osservatore.md` §4).
 #
-# Il vocabolario gemello vive in `home_space/briefing.py::_EVENT_DOMAINS` e
-# `_EVENT_CLASSES`, e resta fuori da questo vocabolario **dichiaratamente**
-# (piano, fetta 6): `briefing.py` risponde a «cosa e' notevole ADESSO» (un
-# evento da annunciare), il vocabolario a «cosa si osserva SEMPRE» -- due domande
-# i cui elenchi possono divergere per ragioni proprie. Chi tocca uno dei due
-# guardi anche l'altro.
+# Il vocabolario gemello viveva in `home_space/briefing.py` e da oggi e' la
+# metrica 4 di questo modulo (il campo `notable`): «cosa e' notevole ADESSO»
+# resta una domanda DIVERSA da «cosa si osserva SEMPRE» -- la gamba dice quali
+# entita' entrano nel pavimento dell'osservatore, il campo `notable` quali
+# cambiamenti meritano una riga del nucleo -- ma sono due domande sulla STESSA
+# riga, non due elenchi che possono divergere senza che nessuno se ne accorga.
 _vocabulary.add("lock", aspect=Ours("sicurezza"),
               resting_states=Ours({"locked"}))
 # «Un allarme si INSERISCE per stare a riposo, non il contrario» -- correzione
@@ -718,9 +739,9 @@ _vocabulary.add("lawn_mower", operable=Ours(True),
 # la spec §4 li metteva fra le sette esclusioni motivate da «li' `on` significa
 # 'abilitata', non 'accesa' -- il difetto che `briefing._EVENT_DOMAINS`
 # documenta di aver gia' pagato», e **per questi due quella frase era smentita
-# dal codice che citava**: `_EVENT_DOMAINS` li CONTIENE entrambi, cioe' il
-# prodotto quel `on` lo annunciava gia' come un'accensione mentre l'esclusione
-# affermava il contrario. L'esclusione cade.
+# dal codice che citava**: quell'elenco -- oggi la metrica 4 qui sotto -- li
+# CONTIENE entrambi, cioe' il prodotto quel `on` lo annunciava gia' come
+# un'accensione mentre l'esclusione affermava il contrario. L'esclusione cade.
 #
 # `siren` ha gia' la sua riga sopra (porta la gamba «sicurezza» e il riposo
 # `off`): qui si aggiunge la sola meta' che le mancava.
@@ -806,6 +827,79 @@ ABSENT_STATE_FORMS = Ours({"none", ""})
 #: la TERZA, non «e' finito» ne' «e' cominciato»: una riga con questo stato si
 #: SALTA, e l'episodio in corso resta aperto ATTRAVERSO il buco.
 UNKNOWN_STATES = Ours({"unavailable", "unknown"})
+
+
+# -- metrica 4: merita un annuncio? -----------------------------------------
+#
+# **La quarta domanda, e non e' la seconda travestita.** «Sta funzionando?»
+# guarda un episodio -- nasce, dura, finisce; «merita un annuncio?» guarda il
+# nucleo, cioe' il testo che il modello ha sempre davanti, e chiede se un
+# cambiamento di questo tipo vale le poche righe di «Notevole adesso» oppure e'
+# una cosa che si va a chiedere. Un telefono a casa e una temperatura di 19,5
+# si sanno benissimo e non si annunciano.
+#
+# Fino all'08/09/2026 la risposta viveva in due insiemi di `briefing.py`,
+# `_EVENT_DOMAINS` e `_EVENT_CLASSES`, che rispondevano alla stessa domanda a
+# due granularita' diverse senza che niente li tenesse allineati. Sono un campo
+# solo, dichiarato dove il tipo gia' abita.
+#
+# **Chi NON c'e', e perche'** (misurato sull'impianto del proprietario, 845
+# entita'; le ragioni vengono da `briefing.py`, dove sono nate):
+#   - `automation`/`script`/`input_boolean`: `on` significa ABILITATA. Erano 18,
+#     ed erano riposo travestito da eccezione.
+#   - `device_tracker`/`person`: `home` e' una CONDIZIONE (un telefono a casa e'
+#     il riposo). Erano 49. Non sono esclusi dal prodotto: `view` e `search` li
+#     riportano quando li chiedi -- e' la differenza fra un vocabolario e un
+#     filtro.
+#   - `sensor`/`number`/`weather`/`sun`: sono MISURE. Un numero non e' un evento.
+#   - `calendar`: dice se c'e' un evento in corso ADESSO, non se qualcuno lo ha
+#     acceso -- la stessa differenza di `weather`: e' cio' che la casa MISURA
+#     del calendario, non un apparecchio che qualcuno ha azionato.
+#   - `button`/`event`/`tag`/`notify`/`image`: non hanno uno stato utile -- 57
+#     dei 72 `button` di questa casa sono `unknown` per costruzione.
+#
+# QUALE sottoinsieme merita il trattamento «evento» resta un giudizio del
+# prodotto, non qualcosa che Home Assistant dichiara da se': provenienza
+# `nostro`, e il censore lo sorveglia come tutti gli altri.
+_vocabulary.extend("cover", notable=Ours(True))
+_vocabulary.extend("light", notable=Ours(True))
+_vocabulary.extend("switch", notable=Ours(True))
+_vocabulary.extend("lock", notable=Ours(True))
+_vocabulary.extend("fan", notable=Ours(True))
+_vocabulary.extend("media_player", notable=Ours(True))
+_vocabulary.extend("valve", notable=Ours(True))
+_vocabulary.extend("remote", notable=Ours(True))
+_vocabulary.extend("siren", notable=Ours(True))
+_vocabulary.extend("vacuum", notable=Ours(True))
+
+# Per `binary_sensor` il dominio non basta: e' la CLASSE a dire se `on` e' un
+# allagamento o il corridoio attraversato trenta secondi fa. Meritano un
+# annuncio gli allarmi e le aperture; restano fuori i transitori (`motion`,
+# `occupancy`, `presence`, `sound`, `vibration`, `light`, `running`, `moving`,
+# `power`, `plug`) e la manutenzione (`battery`, `connectivity`, `update`,
+# `battery_charging`), che si vanno a chiedere e non si annunciano.
+#
+# La riga del dominio `binary_sensor` NON dichiara questo campo, ed e' cio' che
+# rende vero il «restano fuori»: una classe senza giudizio proprio eredita dal
+# dominio, e il dominio qui non risponde.
+#
+# -- gli allarmi
+_vocabulary.extend("binary_sensor", "moisture", notable=Ours(True))
+_vocabulary.extend("binary_sensor", "smoke", notable=Ours(True))
+_vocabulary.extend("binary_sensor", "gas", notable=Ours(True))
+_vocabulary.extend("binary_sensor", "carbon_monoxide", notable=Ours(True))
+_vocabulary.extend("binary_sensor", "safety", notable=Ours(True))
+_vocabulary.extend("binary_sensor", "tamper", notable=Ours(True))
+_vocabulary.extend("binary_sensor", "problem", notable=Ours(True))
+_vocabulary.extend("binary_sensor", "heat", notable=Ours(True))
+_vocabulary.extend("binary_sensor", "cold", notable=Ours(True))
+# -- le aperture
+_vocabulary.extend("binary_sensor", "door", notable=Ours(True))
+_vocabulary.extend("binary_sensor", "window", notable=Ours(True))
+_vocabulary.extend("binary_sensor", "garage_door", notable=Ours(True))
+_vocabulary.extend("binary_sensor", "opening", notable=Ours(True))
+
+
 
 
 # -- metrica 3: cosa sa fare ------------------------------------------------
@@ -1466,7 +1560,7 @@ del _domain, _new_fields
 
 
 # --------------------------------------------------------------------------
-# LE TRE METRICHE, in forma di domanda
+# LE METRICHE, in forma di domanda
 # --------------------------------------------------------------------------
 
 def _text(value) -> str:
@@ -1590,6 +1684,29 @@ def unknown_states() -> frozenset[str]:
     con questo stato si salta, e l'episodio in corso resta aperto attraverso il
     buco -- che e' la verita', non sappiamo che sia finito."""
     return UNKNOWN_STATES.value
+
+
+def is_notable(domain: str, device_class: str | None = None) -> bool:
+    """**Metrica 4** -- se un cambiamento di questo tipo merita un annuncio nel
+    nucleo, invece di essere una cosa che si va a chiedere.
+
+    **Prima la coppia, poi il dominio da cui pende**, come per ogni altro
+    campo: e' cio' che permette a `binary_sensor` di rispondere «no» come
+    dominio e «si'» sulle tredici classi che lo meritano, senza due elenchi.
+    """
+    return bool(_vocabulary.value(domain, device_class, NOTABLE, False))
+
+
+def notable_types() -> frozenset[tuple[str, str | None]]:
+    """Le chiavi dei tipi che meritano un annuncio -- domini e coppie insieme.
+
+    Scritto una volta perche' una prova possa contarli **con lo stesso conto**:
+    finche' erano due insiemi in due punti di `briefing.py`, nessuna prova
+    poteva chiedere «sono ancora d'accordo?», perche' non c'era un accordo da
+    verificare -- c'erano due elenchi.
+    """
+    return frozenset(row.key for row in _vocabulary.rows()
+                     if NOTABLE in row.fields and row.fields[NOTABLE].value)
 
 
 def capability_names(domain: str) -> Mapping[int, str] | None:

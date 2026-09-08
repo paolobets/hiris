@@ -287,8 +287,8 @@ def test_il_censore_su_questa_casa_ha_trovato_davvero_qualcosa(casa):
     Sono 181 voci (121 classi del dispositivo, 51 stati, 1 valore di
     `state_class`, 1 bit di capacita', 7 domini accendibili -- misurato
     l'08/09/2026), in cinque materie su sei -- i domini sono l'unica materia
-    coperta per intero, e lo e' perche' `_DOMAIN_NAMES` era gia' stata estesa
-    a mano oltre le 45 piattaforme di Home Assistant.
+    coperta per intero, e lo e' perche' `briefing._DOMAIN_NAMES` era gia' stata
+    estesa a mano oltre le 45 piattaforme di Home Assistant.
 
     Mutazione ESEGUITA: svuotare `tests/data/pubblicato-dalla-casa.json` di
     `classi_per_dominio` -- la prova arrossisce su `assert 58 >= 100`.

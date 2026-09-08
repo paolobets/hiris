@@ -25,6 +25,7 @@ import pytest
 
 from hiris.app.home_space import briefing, topology
 from hiris.app.home_space.briefing import compose
+from hiris.app.home_space.type_vocabulary import notable_types
 from hiris.app.proxy import state_translations
 
 # Le finte vivono gia' in `test_briefing.py`: si riusano invece di riscriverle.
@@ -117,7 +118,7 @@ def test_ogni_classe_di_evento_ha_anche_un_significato():
     """Ogni classe che entra nel digesto ha, in questa casa, la COPPIA
     acceso/spento pubblicata da Home Assistant -- non mezza.
 
-    Fino all'08/09/2026 questa prova confrontava `_EVENT_CLASSES` con
+    Fino all'08/09/2026 questa prova confrontava `briefing._EVENT_CLASSES` con
     `topology._CLASS_MEANING`, cioe' una nostra tabella con un'altra nostra
     tabella: diceva che due elenchi scritti a mano erano d'accordo, non che
     fossero veri. Adesso il metro e' la casa, e la coppia si RICOSTRUISCE (non
@@ -129,7 +130,7 @@ def test_ogni_classe_di_evento_ha_anche_un_significato():
     dalle risorse -- questa prova nomina `smoke`."""
     risorse = house_translations()["risorse"]
     senza = sorted(
-        classe for classe in briefing._EVENT_CLASSES
+        classe for _, classe in classi_notevoli()
         if not state_translations.published_pair(
             risorse, domain="binary_sensor", device_class=classe).get("letto"))
     assert not senza, f"classi che entrano nel digesto senza la coppia: {senza}"
@@ -392,23 +393,38 @@ def test_una_nascosta_DISABILITATA_non_si_conta_due_volte():
 
 # ── R9: il vocabolario del nucleo pinnato alla fonte ───────────────────────
 #
-# `_ACTIVE_STATES`, `_EVENT_DOMAINS` e `_EVENT_CLASSES` sono scritte a mano in
-# briefing.py. Senza queste prove, togliere una voce (o non aggiungerne una
+# `briefing._ACTIVE_STATES` e il campo `notable` del vocabolario dei tipi sono
+# scritti a mano. Senza queste prove, togliere una voce (o non aggiungerne una
 # quando Home Assistant introduce un dominio o una device_class nuova) non
 # farebbe rosso nessun test -- lo stesso rischio gia' pagato con
 # `carbon_monoxide`/`co` (vedi in cima a questo file). `_CLASS_MEANING`
 # in topology.py aveva gia' avuto questo trattamento -- e dall'08/09/2026 non
-# esiste piu': le parole le pubblica Home Assistant, e cio' che resta scritto a
-# mano sono le TRE liste qui sotto.
+# esiste piu': le parole le pubblica Home Assistant.
 #
-# LIMITE DICHIARATO: briefing.py e' PURO e non installa Home Assistant (vedi
-# il suo docstring), quindi non c'e' un enum vero da importare e confrontare
-# a runtime -- come per `_PIATTAFORME_HA` in test_domain_vocabulary.py,
-# l'elenco sotto e' ricopiato A MANO dalla fonte (vedi i commenti sopra le
-# tre liste in briefing.py per dove ciascuna voce e' verificata). La prova non
-# si accorge se Home Assistant cambia la fonte da sola: va RIVISTA a mano
-# quando si aggiorna Home Assistant, o quando entra un dominio/classe nuova
-# nel prodotto.
+# **Le due liste-evento non sono piu' due liste, e queste prove lo mostrano.**
+# Dall'08/09/2026 `_EVENT_DOMAINS` e `_EVENT_CLASSES` sono lo STESSO campo --
+# `notable` -- sulle due granularita' del tipo: i due pin qui sotto
+# interrogano `notable_types()` e lo separano in domini e coppie, invece di
+# leggere due insiemi che nessuno teneva allineati.
+#
+# LIMITE DICHIARATO: il vocabolario dei tipi e briefing.py sono PURI e non
+# installano Home Assistant (vedi i loro docstring), quindi non c'e' un enum
+# vero da importare e confrontare a runtime -- come per `_PIATTAFORME_HA` in
+# test_domain_vocabulary.py, gli elenchi sotto sono ricopiati A MANO dalla
+# fonte (vedi i commenti accanto a ciascun giudizio per dove ogni voce e'
+# verificata). La prova non si accorge se Home Assistant cambia la fonte da
+# sola: va RIVISTA a mano quando si aggiorna Home Assistant, o quando entra un
+# dominio/classe nuova nel prodotto.
+
+
+def domini_notevoli() -> set[str]:
+    """I domini che il vocabolario dichiara degni di un annuncio."""
+    return {dominio for dominio, classe in notable_types() if classe is None}
+
+
+def classi_notevoli() -> set[tuple[str, str]]:
+    """Le coppie (dominio, classe) degne di un annuncio."""
+    return {chiave for chiave in notable_types() if chiave[1] is not None}
 
 _STATI_ATTIVI_HA = {"on", "open", "unlocked", "playing", "cleaning"}
 
@@ -430,10 +446,10 @@ _DOMINI_EVENTO_HA = {
 
 
 def test_domini_evento_e_pinnato_alla_fonte():
-    """Mutazione: togliere un dominio da `_EVENT_DOMAINS` deve far rosso
-    questo test."""
-    senza = sorted(_DOMINI_EVENTO_HA - briefing._EVENT_DOMAINS)
-    extra = sorted(briefing._EVENT_DOMAINS - _DOMINI_EVENTO_HA)
+    """Mutazione: togliere `notable` a un dominio del vocabolario deve far
+    rosso questo test."""
+    senza = sorted(_DOMINI_EVENTO_HA - domini_notevoli())
+    extra = sorted(domini_notevoli() - _DOMINI_EVENTO_HA)
     assert not senza and not extra, (
         f"_DOMINI_EVENTO e' cambiato senza aggiornare questo pin -- "
         f"mancanti: {senza}, in piu': {extra}")
@@ -443,9 +459,9 @@ def test_domini_evento_sono_tutte_piattaforme_vere_di_home_assistant():
     """Coerenza fra le liste: ogni dominio trattato come «evento» deve essere
     una piattaforma che Home Assistant riconosce davvero -- altrimenti
     l'eccezione descriverebbe un dominio che non esiste. Sottoinsieme, come
-    quello gia' pinnato fra `_EVENT_CLASSES` e cio' che la casa pubblica."""
+    quello gia' pinnato fra le classi notevoli e cio' che la casa pubblica."""
     from tests.test_domain_vocabulary import _PIATTAFORME_HA
-    sconosciuti = sorted(briefing._EVENT_DOMAINS - set(_PIATTAFORME_HA))
+    sconosciuti = sorted(domini_notevoli() - set(_PIATTAFORME_HA))
     assert not sconosciuti, f"domini che Home Assistant non ha: {sconosciuti}"
 
 
@@ -456,11 +472,18 @@ _CLASSI_EVENTO_HA = {
 
 
 def test_classi_evento_e_pinnato_alla_fonte():
-    """Mutazione: togliere una classe da `_EVENT_CLASSES` deve far rosso
-    questo test -- la mutazione che il brief della fetta chiede esplicitamente
-    («togliere una classe dall'elenco»)."""
-    senza = sorted(_CLASSI_EVENTO_HA - briefing._EVENT_CLASSES)
-    extra = sorted(briefing._EVENT_CLASSES - _CLASSI_EVENTO_HA)
+    """Mutazione: togliere `notable` a una coppia del vocabolario deve far
+    rosso questo test -- la mutazione che il brief della fetta chiede
+    esplicitamente («togliere una classe dall'elenco»).
+
+    **E tutte e tredici sono coppie di `binary_sensor`**: il campo `notable`
+    vive sulla riga del tipo, quindi la classe non e' piu' una stringa nuda
+    che qualcuno abbina al dominio giusto a mano."""
+    domini = {dominio for dominio, _ in classi_notevoli()}
+    assert domini == {"binary_sensor"}, domini
+    presenti = {classe for _, classe in classi_notevoli()}
+    senza = sorted(_CLASSI_EVENTO_HA - presenti)
+    extra = sorted(presenti - _CLASSI_EVENTO_HA)
     assert not senza and not extra, (
         f"_CLASSI_EVENTO e' cambiato senza aggiornare questo pin -- "
         f"mancanti: {senza}, in piu': {extra}")

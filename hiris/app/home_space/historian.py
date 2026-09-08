@@ -75,33 +75,11 @@ def normalize_hours(raw, *, ceiling: float = MAX_WINDOW_HOURS,
     return min(float(ceiling), max(1.0, number))
 
 
-# I soli state_class che Home Assistant traduce DAVVERO in statistiche a
-# lungo termine -- i valori di `sensor.const.SensorStateClass` che il
-# recorder aggrega, verificati alla fonte (non a memoria: e' la stessa
-# trappola di `carbon_monoxide`/`co` gia' pagata da questo progetto).
-# `measurement_angle` ESISTE come state_class (angoli, es. la direzione del
-# vento) ma NON produce statistiche -- e' documentato da Home Assistant, non
-# un'omissione nostra (spec §1). Un'appartenenza a questo insieme, non
-# un'esclusione della sola `measurement_angle`: il vocabolario di HA non si
-# arrotonda, e domani potrebbe crescere di un'altra classe che non aggrega.
-STATE_CLASSES_WITH_STATISTICS = frozenset({"measurement", "total", "total_increasing"})
-
-
-def produces_statistics(state_class) -> bool:
-    """Se questo `state_class` produce DAVVERO una statistica a lungo termine.
-
-    Non `bool(state_class)`: quel cablaggio manderebbe ANCHE
-    `measurement_angle` sul ramo statistiche, e una banderuola interrogata
-    oltre la soglia di grana riceverebbe un elenco vuoto -- «non e' mai
-    cambiata» -- mentre il dettaglio, la superficie giusta per lei, esiste.
-    Vive qui (pura, senza rete) accanto a `choose_surface`, che la
-    consuma: e' domanda di vocabolario HA, non di scelta della superficie.
-
-    Il nome e' diverso dal parametro `has_statistics` che questo modulo passa
-    in giro (`trend`, `choose_surface`): quello e' gia' il booleano
-    risolto, questa e' la funzione che lo risolve dal vocabolario di HA --
-    due cose diverse, non due nomi per la stessa."""
-    return state_class in STATE_CLASSES_WITH_STATISTICS
+# `STATE_CLASSES_WITH_STATISTICS` e `produces_statistics` vivevano qui fino
+# all'08/09/2026: sono vocabolario di Home Assistant, e il vocabolario di Home
+# Assistant ha una casa sola (`ha_vocabulary.py`, che per `state_class` ne
+# aveva gia' una). `choose_surface`, tre righe piu' sotto, resta il consumatore
+# -- la funzione si legge dal suo nome importato, non da una seconda copia.
 
 
 def choose_surface(*, hours: float, has_statistics: bool) -> str:

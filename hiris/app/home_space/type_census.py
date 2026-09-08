@@ -65,7 +65,7 @@ from __future__ import annotations
 from enum import Enum
 from types import MappingProxyType
 
-from . import briefing, ha_vocabulary, historian, type_vocabulary
+from . import briefing, ha_vocabulary, type_vocabulary
 
 
 class Subject(Enum):
@@ -144,24 +144,31 @@ def bit_key(domain: str, bit: int) -> str:
 # prodotto quel soggetto l'ha guardato. E' il metro giusto per un censore --
 # la domanda e' «e' mai stata posta?», non «e' stata posta bene?».
 #
-# Le liste qui sotto sono quelle che il piano (fetta 6) fara' sparire una per
-# una dentro il vocabolario dei tipi. Finche' esistono, il censore le legge
-# dove sono: leggerne meta' direbbe che il prodotto non sa cose che sa.
+# **Quattro delle sei liste sparse sono sparite l'08/09/2026**, e con loro i
+# termini che questo modulo aggiungeva per andarle a leggere dove stavano: i
+# domini-evento e le classi-evento sono UN campo solo sulle righe del
+# vocabolario (`notable`, dominio e coppia), i valori di `state_class` che
+# aggregano e le condizioni di una voce di configurazione sono in
+# `ha_vocabulary`. **Il conto non e' cambiato di una voce** -- erano tutti
+# sottoinsiemi di cio' che il vocabolario gia' rivendicava -- ed e'
+# esattamente cio' che rende visibile il guadagno: due elenchi che dicevano la
+# stessa cosa a due granularita' adesso la dicono una volta sola, e il censore
+# li sorveglia con lo STESSO conto.
 #
-# **Si leggono col loro nome privato, e non e' una svista.** Dare a ciascuna
-# una vista pubblica solo perche' il censore la guarda vorrebbe dire allargare
-# l'API di due moduli per una lista che due fette piu' avanti non esistera'
-# piu' -- e lasciarsi dietro una vista orfana e' esattamente il modo in cui in
-# questo prodotto nasce il codice morto. Il censore e' un lettore dichiarato:
-# quando la lista trasloca, trasloca anche questa riga.
+# **Restano due lettori col nome privato**, `briefing._DOMAIN_NAMES` e
+# `briefing._ACTIVE_STATES`, e per ciascuno la ragione e' scritta accanto alla
+# lista stessa: il primo perche' dare una riga a tutti e 63 i domini nominabili
+# allargherebbe il cancello `test_un_tipo_ha_una_casa_sola` fino a nominare sei
+# elenchi che tipi non sono, il secondo perche' il complemento dei riposi non e'
+# esatto (`tests/test_notable_states_complement.py`). Il censore e' un lettore
+# dichiarato: il giorno in cui una delle due trasloca, trasloca anche la riga
+# qui sotto.
 
 
 def claimed_domains() -> frozenset[str]:
-    """I domini che qualcuno ha guardato: il vocabolario dei tipi, i nomi
-    leggibili del nucleo, i domini-evento."""
-    return (type_vocabulary.declared_domains()
-            | frozenset(briefing._DOMAIN_NAMES)
-            | frozenset(briefing._EVENT_DOMAINS))
+    """I domini che qualcuno ha guardato: quelli che il vocabolario dei tipi
+    dichiara, piu' quelli che il nucleo sa nominare in italiano."""
+    return type_vocabulary.declared_domains() | frozenset(briefing._DOMAIN_NAMES)
 
 
 def claimed_device_classes() -> frozenset[str]:
@@ -170,8 +177,6 @@ def claimed_device_classes() -> frozenset[str]:
                for domain, device_class in ha_vocabulary.DEVICE_CLASS_MEANING}
     claimed |= {class_key(domain, device_class)
                 for domain, device_class in type_vocabulary.declared_pairs()}
-    claimed |= {class_key("binary_sensor", device_class)
-                for device_class in briefing._EVENT_CLASSES}
     return frozenset(claimed)
 
 
@@ -206,8 +211,12 @@ def claimed_states(domain: str, device_class: str | None) -> frozenset[str]:
 
 
 def claimed_state_classes() -> frozenset[str]:
+    """I valori di `state_class` che qualcuno ha guardato -- **due domande, non
+    una**: cosa quel valore SIGNIFICA, e se AGGREGA in statistiche a lungo
+    termine. Le due risposte coincidono oggi e possono divergere domani, quindi
+    si uniscono invece di derivarne una dall'altra."""
     return (frozenset(ha_vocabulary.STATE_CLASS_MEANING)
-            | frozenset(historian.STATE_CLASSES_WITH_STATISTICS))
+            | frozenset(ha_vocabulary.STATE_CLASSES_WITH_STATISTICS))
 
 
 def claimed_capability_bits(domain: str) -> frozenset[int]:
@@ -343,7 +352,7 @@ EXCEPTIONS: dict[tuple[Subject, str], str] = {
         "riposo di quella casa, non un funzionamento in corso. Misurato -- con "
         "`automation`, `script` e `input_boolean` dentro, 18 entita' di questa "
         "casa erano riposo travestito da eccezione, ed e' la ragione gia' "
-        "scritta in `briefing._EVENT_DOMAINS`."),
+        "scritta accanto al campo `notable` di `type_vocabulary`."),
     (Subject.SWITCHABLE, "script"): (
         "Come `automation`: `on` dice che lo script e' abilitato -- e per la "
         "manciata di secondi in cui gira, che sta girando. Dichiararlo "
@@ -380,8 +389,9 @@ EXCEPTIONS: dict[tuple[Subject, str], str] = {
 
     # -- i valori di `state_class`
     (Subject.STATE_CLASS, "measurement_angle"): (
-        "Escluso di proposito e gia' documentato in due punti "
-        "(`ha_vocabulary.STATE_CLASS_MEANING`, `historian`): zero entita' di "
+        "Escluso di proposito e gia' documentato accanto a entrambe le voci "
+        "di `ha_vocabulary` che lo riguardano (`STATE_CLASS_MEANING` e "
+        "`STATE_CLASSES_WITH_STATISTICS`): zero entita' di "
         "questa casa lo usano, e la regola di quel vocabolario e' «si importa "
         "cio' che la casa usa davvero», non «tutto cio' che esiste». Il giorno "
         "in cui un'entita' lo porta, il censore lo rinomina."),
@@ -462,7 +472,7 @@ EXCEPTIONS.update(_same_reason(
       "snowy-rainy", "sunny", "windy", "windy-variant")),
     "`weather` e' una MISURA, non un evento: `rainy` e' com'e' il tempo, non "
     "qualcosa che qualcuno ha acceso, e non apre ne' chiude niente. Deciso e "
-    "scritto sopra `briefing._EVENT_DOMAINS`, insieme a `sensor`, `number` e "
+    "scritto accanto al campo `notable` di `type_vocabulary`, insieme a `sensor`, `number` e "
     "`sun`."))
 
 EXCEPTIONS.update(_same_reason(
@@ -480,7 +490,7 @@ EXCEPTIONS.update(_same_reason(
 # servono». Adesso le parole le dice Home Assistant, e la domanda vera (spec
 # §7: serve a una delle sei gambe dell'obiettivo?) resta scoperta per le
 # dodici che nessuna gamba raccoglie. **La risposta era gia' scritta nel
-# prodotto**, sopra `briefing._EVENT_CLASSES`, ed e' quella: sono transitori e
+# prodotto**, accanto al campo `notable` di `type_vocabulary`, ed e' quella: sono transitori e
 # manutenzione, si vanno a chiedere e non si annunciano.
 
 EXCEPTIONS.update(_same_reason(
@@ -488,7 +498,7 @@ EXCEPTIONS.update(_same_reason(
     (class_key("binary_sensor", device_class) for device_class in
      ("light", "moving", "plug", "power", "running", "sound", "vibration")),
     "Transitorio: dice com'e' un istante, non che sia successo qualcosa da "
-    "osservare o da annunciare. Deciso e scritto sopra `briefing._EVENT_CLASSES` "
+    "osservare o da annunciare. Deciso e scritto accanto al campo `notable` di `type_vocabulary` "
     "(«restano fuori i transitori»), e nessuna delle sei gambe dell'obiettivo lo "
     "raccoglie: `chi c'e'` ha gia' `motion`/`occupancy`/`presence`, che sono la "
     "stessa domanda posta bene."))
@@ -502,7 +512,7 @@ EXCEPTIONS.update(_same_reason(
     "un si'/no. Un `binary_sensor.battery` dice «carica bassa» e basta: non c'e' "
     "una soglia da confrontare ne' una tendenza da guardare, e annunciarlo "
     "riempirebbe il nucleo di righe che non cambiano per settimane. Deciso e "
-    "scritto sopra `briefing._EVENT_CLASSES` («e la manutenzione»)."))
+    "scritto accanto al campo `notable` di `type_vocabulary` («e la manutenzione»)."))
 
 EXCEPTIONS[(Subject.DEVICE_CLASS, class_key("binary_sensor", "lock"))] = (
     "E' il DOPPIONE di un tipo che il vocabolario gia' porta: il dominio `lock` "
@@ -541,17 +551,17 @@ EXCEPTIONS.update(_same_reason(
     #
     # **Solo `calendar` e `sensor`**, non piu' tre (correzione R3b, revisione
     # del tratto v3.23.0..HEAD, 08/09/2026): la versione precedente includeva
-    # anche `update=off` citando questa stessa decisione, ma `_EVENT_DOMAINS`
+    # anche `update=off` citando questa stessa decisione, ma il campo `notable`
     # non nomina ne' `calendar` ne' `update` -- solo `sensor` ci sta scritto
     # davvero. `calendar` e' stato aggiunto a quella riga (vedi il commento
-    # sopra `briefing._EVENT_DOMAINS`), quindi per lui la citazione ora e'
+    # accanto al campo `notable` di `type_vocabulary`), quindi per lui la citazione ora e'
     # vera. `update=off` non ci sta piu': vedi `OPEN_QUESTIONS`, perche'
     # `update=on` sfiora la gamba «buono stato» e nessuno lo ha mai deciso.
     (state_key("calendar", None, "off"), state_key("sensor", None, "off")),
     "Sono due domini che HIRIS non giudica per stato: un `sensor` MISURA, un "
     "`calendar` dice se c'e' un evento in corso adesso. Nessuno dei due e' "
-    "una cosa che si accende, e per entrambi la decisione e' scritta sopra "
-    "`briefing._EVENT_DOMAINS`."))
+    "una cosa che si accende, e per entrambi la decisione e' scritta accanto "
+    "al campo `notable` di `type_vocabulary`."))
 
 EXCEPTIONS.update(_same_reason(
     Subject.STATE,
@@ -707,7 +717,7 @@ OPEN_QUESTIONS: tuple[OpenQuestion, ...] = (
 
     # Nata dalla correzione R3b (revisione del tratto v3.23.0..HEAD,
     # 08/09/2026): `update=off` stava eccettuato insieme a `calendar`/`sensor`
-    # citando una decisione (`briefing._EVENT_DOMAINS`) che non nomina
+    # citando una decisione (il campo `notable` di `type_vocabulary`) che non nomina
     # `update`. Il proprietario non ha mai deciso se un aggiornamento
     # disponibile riguardi la gamba «buono stato».
     OpenQuestion(

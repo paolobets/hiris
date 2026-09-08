@@ -509,22 +509,12 @@ _PRODOTTO = Path(__file__).resolve().parents[1] / "hiris" / "app"
 # Il nome della costante e' scritto accanto per chi legge, non per il
 # confronto.
 _ECCEZIONI_MOTIVATE: dict[tuple[str, tuple[str, ...]], str] = {
-    ("home_space/briefing.py",
-     ("cover", "fan", "light", "lock", "media_player", "remote", "siren",
-      "switch", "vacuum", "valve")):
-        "`briefing._EVENT_DOMAINS`: «cosa e' notevole ADESSO» non e' «cosa si "
-        "osserva SEMPRE» -- due domande i cui elenchi possono divergere per "
-        "ragioni proprie. Entra con la fetta 6 del piano, che le guarda una "
-        "per una.",
-    ("home_space/briefing.py",
-     ("carbon_monoxide", "cold", "door", "garage_door", "gas", "heat",
-      "moisture", "opening", "problem", "safety", "smoke", "tamper",
-      "window")):
-        "`briefing._EVENT_CLASSES`: gemella della precedente, sulle classi di "
-        "`binary_sensor`, e legata dall'08/09/2026 a cio' che Home Assistant "
-        "PUBBLICA -- una prova verifica che per ognuna di queste classi la casa "
-        "porti la coppia acceso/spento, invece di confrontare due nostri "
-        "elenchi fra loro.",
+    # `briefing._EVENT_DOMAINS` e `briefing._EVENT_CLASSES` stavano qui, e non
+    # ci sono piu': l'08/09/2026 sono diventate UN campo solo -- `notable` --
+    # sulle righe del vocabolario, il dominio per i dieci e la coppia per le
+    # tredici classi di `binary_sensor`. Erano il caso da manuale di questa
+    # istantanea: due elenchi che rispondevano alla stessa domanda a due
+    # granularita' diverse, e nessuno che li tenesse allineati.
     ("mind/facts.py", ("device_tracker", "person")):
         "`facts.genre_for`: scritto in linea dentro la condizione, ed e' il "
         "GENERE dell'oggetto, non una delle tre metriche di questa fetta. Il "
