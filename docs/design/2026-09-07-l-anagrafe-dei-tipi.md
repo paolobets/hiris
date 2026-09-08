@@ -501,9 +501,27 @@ codice:
 ## §15 · Cosa resta aperto dopo l'eredità
 
 1. **Il nucleo non riceve le capacità aggregate**, quindi il modello **non sa di poter chiedere**.
-   Sono **35 firme distinte per 2.349 caratteri** su un tetto di 6.000: ci stanno. E non
-   contraddicono la decisione «la completezza va nel dettaglio» — una firma aggregata è **mappa**,
-   non dettaglio. Si incrocia con la voce «Il nucleo è statico» del registro.
+   Una firma aggregata è **mappa**, non dettaglio, quindi non contraddice la decisione «la
+   completezza va nel dettaglio». Si incrocia con la voce «Il nucleo è statico» del registro.
+
+   > **CORREZIONE del 08/09, e l'errore era di chi scrive.** Questo punto diceva *«35 firme
+   > distinte per 2.349 caratteri su un tetto di 6.000: ci stanno»*. **Confrontava l'aggiunta col
+   > TETTO invece che con lo SPAZIO LIBERO**, che è quasi zero: il nucleo della casa vera pesa
+   > **5.676 su 6.000** — misurato dal vivo — e **tronca già**, escludendo sette elementi notevoli.
+   >
+   > Ridotte a 671 caratteri (tenendo le enumerazioni e buttando i numeri: la firma è mappa, il
+   > valore è dettaglio di `view`), le capacità entrano lo stesso — ma sfratterebbero **«Notevole
+   > adesso» per intero** e ~6 voci di comportamento su 21. **La mappa delle stanze non perde una
+   > riga**, perché le capacità stanno prima di `casa` nell'ordine di taglio e una prova lo inchioda.
+   >
+   > **Deciso dal proprietario l'08/09: il tetto sale a 6.800**, così entrano entrambi e non si
+   > perde niente. Costa ~200 token per turno, letti dalla cache — sul ponte, 5,6 milioni letti
+   > contro 662 freschi.
+   >
+   > **Resta un rischio dichiarato e non chiuso**: alzare il tetto non impedisce che la PROSSIMA
+   > sezione aggiunta sfratti «Notevole adesso» di nuovo, e in silenzio. Solo un minimo garantito
+   > lo impedirebbe — come già ce l'ha la mappa delle stanze. Non è stato fatto: è una scelta, non
+   > una dimenticanza.
 2. ~~**`sensor.options` e `select.options` escono sotto la stessa etichetta**~~ — **CHIUSO dalla
    fetta dell'azione, 07/09/2026.** Erano *«cosa questa entità può assumere»* contro *«cosa le si
    può imporre»*: per chi legge una sfumatura, **per chi comanda la differenza fra un'azione
