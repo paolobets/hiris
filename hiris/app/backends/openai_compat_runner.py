@@ -929,6 +929,12 @@ class OpenAICompatRunner:
         dispatcher: Any | None = None,
     ):
         """Vero streaming SSE: i token arrivano mentre il modello genera.
+
+        **Zero lettori di produzione oggi** (misurato il 09/09/2026, audit
+        delle fondamenta): stessa condizione di `ClaudeRunner.chat_stream`,
+        vedi il suo docstring per la misura e la decisione (collegare o
+        cancellare -- non presa in questo giro, tracciata in
+        `docs/BACKLOG.md`).
         Le iterazioni tool-call vengono risolte prima di cedere il controllo
         al loop successivo; il testo finale è streamato token per token.
 

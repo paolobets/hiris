@@ -1022,8 +1022,46 @@ class ClaudeRunner:
         rifare.md non lo elenca: non c'era nulla da riparare). fetta E5 Task
         5: la card e' uscita dal prodotto, quindi `chat_stream()` non ha
         oggi **nessun** lettore nel frontend -- la pagina chat resta sul
-        turno sincrono. Non e' codice morto (il ponte e i test lo usano), ma
-        e' una superficie senza superficie: dichiarato per il Task 10.
+        turno sincrono, ed e' lo stato che `docs/design/2026-08-05-mappa-
+        funzionalita.md` dichiara che TIENE ("Pagina chat: funziona, senza
+        streaming"). E' una superficie senza superficie: dichiarato per il
+        Task 10.
+
+        **Corretto il 09/09/2026 (audit delle fondamenta): «il ponte... lo
+        usa» era falso, non solo impreciso.** Misurato di nuovo: il ponte
+        (`server.py`, il canale della CLI di Claude Code) non passa MAI da
+        `LLMRouter.chat()` ne' da `chat_stream()` -- ha una strada sua,
+        `_invoca`, un sottoprocesso -- e l'unico chiamante di produzione di
+        questo metodo e' `api/handlers_chat.py::handle_chat`, dietro
+        `Accept: text/event-stream` o `{"stream": true}` nel corpo: nessun
+        file in `static/` manda ne' l'uno ne' l'altro (grep, zero
+        occorrenze). Vive per i test -- che sono 14 file, non solo
+        `tests/test_chat_sse.py` (`test_base_prompt_memory.py`,
+        `test_base_prompt_split.py`, `test_chat_briefing.py`,
+        `test_claude_runner.py`, `test_composition_order.py`,
+        `test_llm_router_policies.py`, `test_model_invariants.py`,
+        `test_openai_compat_runner.py`, `test_runner_catalog.py`,
+        `test_runner_parity.py` -- misurato il 09/09/2026, `grep -rl
+        chat_stream tests/`).
+
+        **Decisione (fondamenta 4: collegare o cancellare): NON cancellato
+        in questo giro, ed e' una scelta e non un rinvio senza ragione.**
+        Cancellarlo per bene vuol dire toccare quattordici file di prova
+        (non uno solo, com'era stato misurato prima di questa correzione) e
+        tre moduli di produzione (qui, `backends/openai_compat_runner.py`,
+        `llm_router.py`) sotto un cancello che deve restare verde -- un
+        lavoro suo, con la sua verifica, non l'effetto collaterale di una
+        correzione «sotto soglia». Collegarlo (dargli un lettore vero in
+        `static/`) sarebbe una funzionalita' NUOVA che il documento della
+        mappa dichiara esplicitamente di NON volere oggi, e per giunta
+        collegherebbe un percorso che oggi e' rotto se usato:
+        `LLMRouter.chat_stream` (`llm_router.py`) non ripiega su un secondo
+        provider come fa `chat()`, e non scrive nel registro degli esiti che
+        lo stesso modulo dichiara essere «l'unico scrittore» -- la pagina
+        Consumi mentirebbe su ogni turno in streaming. Tracciato in
+        `docs/BACKLOG.md`, «`chat_stream` vive solo per i test»: chi sceglie
+        questa voce per uno sprint decide fra le due strade con la sua
+        verifica, non a margine di un audit di prosa.
 
         fetta E4 Task 6, fix round 1 (Important 1 della review indipendente):
         `user_id` e' uscito anche lui da `chat()`/`chat_stream()` -- il suo

@@ -251,6 +251,22 @@ class LLMRouter:
         return last_friendly or "Tutti i provider AI non disponibili. Riprova tra poco."
 
     async def chat_stream(self, **kwargs):
+        """Zero lettori di produzione oggi (misurato il 09/09/2026, audit
+        delle fondamenta: vedi il docstring di `ClaudeRunner.chat_stream`
+        per la misura e la decisione, collegare o cancellare, non presa in
+        questo giro).
+
+        **Il gap che rende «collegare» piu' caro di quanto suoni**: a
+        differenza di `chat()` qui sopra, questo metodo non ripiega su un
+        secondo backend quando il primo fallisce (commento originale: "no
+        fallback in streaming (as today): just the first pick") e non
+        chiama mai `self._registry.successo(...)`/`.fallimento(...)` -- il
+        registro degli esiti che questo stesso modulo alimenta per ogni
+        turno sincrono. Collegarlo a un lettore vero senza chiudere anche
+        questo gap farebbe mentire la pagina Consumi su ogni turno in
+        streaming: non e' un difetto di questa fetta, ma la ragione per cui
+        «collegare» non e' un cambio di una riga.
+        """
         model = kwargs.get("model", "auto")
         if model == "auto":
             # no fallback in streaming (as today): just the first pick
