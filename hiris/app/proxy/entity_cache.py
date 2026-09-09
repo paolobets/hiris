@@ -506,9 +506,14 @@ def _to_minimal(raw: dict) -> dict:
 
 
 class EntityCache:
+    # `_by_domain` (entity_id per dominio) e' USCITO l'09/09/2026: era
+    # scritto in tre punti e letto in NESSUNO. Il commento che lo teneva in
+    # piedi diceva «lo popola e lo legge `_index`», e `_index` non esiste su
+    # HEAD -- il suo ultimo lettore era `get_by_domain`, uscito col censimento
+    # del 17/08/2026. Aggiungerne la manutenzione anche nel ramo della
+    # rimozione (sotto) sarebbe stato lavoro morto fatto da codice vivo.
     def __init__(self) -> None:
         self._states: dict[str, dict] = {}
-        self._by_domain: dict[str, list[str]] = {}
         # False finche' load() non ha completato almeno una volta. Serve a
         # distinguere "inventario non ancora pronto" da "casa senza entita'":
         # server.py logga e prosegue se il caricamento iniziale fallisce, e i
@@ -532,30 +537,57 @@ class EntityCache:
     async def load(self, ha_client) -> None:
         raw_states = await ha_client.get_states([])
         self._states = {}
-        self._by_domain = {}
         for raw in raw_states:
             eid = raw.get("entity_id")
             if not eid:
                 continue
             self._states[eid] = _to_minimal(raw)
-            dom = _domain(eid)
-            self._by_domain.setdefault(dom, []).append(eid)
         # Solo dopo che la lettura e' arrivata in fondo: se get_states solleva,
         # la cache resta dichiaratamente non pronta.
         self._loaded = True
 
     def on_state_changed(self, event_data: dict) -> None:
+        """L'unico rubinetto che tiene vivo lo specchio: `state_changed`.
+
+        **Un `new_state` assente e' una RIMOZIONE, non un evento da buttare**
+        (audit delle fondamenta, rilievo 7). Fonte, letta al tag `2026.9.1`:
+        `homeassistant/core.py::StateMachine.async_remove` toglie l'entita'
+        dalla macchina degli stati e emette `EVENT_STATE_CHANGED` con
+        `{"entity_id": ..., "old_state": <State>, "new_state": None}` -- e'
+        l'UNICO segnale che Home Assistant manda quando un'entita' sparisce, e
+        fino all'09/09/2026 HIRIS lo scartava con un `return` muto. Nessun
+        altro percorso toglieva una voce: `server.reload_entity_inventory`
+        rilegge solo se il caricamento iniziale era fallito, e la
+        riconnessione WS rifa' l'anagrafe e i servizi, non lo specchio.
+
+        Il danno non era solo un elenco piu' lungo del vero: `GET
+        /api/entities` continuava a mostrare l'ultimo stato di un'entita'
+        cancellata, `action/verification` la dichiarava esistente («guarda lo
+        specchio»), Home Assistant rispondeva 200 senza fare niente e
+        l'attuatore rileggeva lo stesso specchio prima e dopo, riferendo un
+        esito su un'entita' che non c'e'. Fondamenta 3: l'anagrafe dimentica
+        a ogni `entity_registry_updated`, lo specchio no -- due porte, due
+        case.
+
+        **Il residuo dichiarato**: gli eventi emessi mentre la connessione WS
+        era giu' non tornano (`ha_client._ws_loop` ricostruisce anagrafe,
+        servizi e plance a ogni riconnessione, lo specchio no). Una rimozione
+        avvenuta in quella finestra resta invisibile fino al riavvio
+        dell'add-on, esattamente come vi resta un cambio di stato.
+        """
         new_state = event_data.get("new_state")
         if not new_state:
+            # `entity_id` sta nell'evento, non nello stato: e' la sola chiave
+            # che una rimozione porta ancora (`old_state` c'e', ma prenderlo
+            # di la' significherebbe fidarsi di due posti per lo stesso dato).
+            eid = event_data.get("entity_id")
+            if eid:
+                self._states.pop(eid, None)
             return
         eid = new_state.get("entity_id")
         if not eid:
             return
-        minimal = _to_minimal(new_state)
-        if eid not in self._states:
-            dom = _domain(eid)
-            self._by_domain.setdefault(dom, []).append(eid)
-        self._states[eid] = minimal
+        self._states[eid] = _to_minimal(new_state)
 
     # fetta E3 Task 12 ("esce il ritratto"): `get_state` e' uscito -- ORFANO
     # DICHIARATO dal Task 9, il cui unico chiamante era
@@ -565,7 +597,8 @@ class EntityCache:
 
     # `get_minimal` e `get_by_domain` sono USCITI (censimento del 17/08/2026,
     # zero chiamanti di produzione: il secondo era l'unico lettore del primo).
-    # `_by_domain` resta: lo popola e lo legge `_index`.
+    # E con loro, l'09/09/2026, l'indice `_by_domain` che era rimasto a
+    # riempirsi per nessuno -- vedi la nota in cima alla classe.
 
     # fetta E3 Task 12 ("esce il ritratto"): `domain_counts` e' uscito --
     # ORFANO DICHIARATO dal Task 7 (viveva per la UI della gateway policy,

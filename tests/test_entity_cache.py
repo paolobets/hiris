@@ -49,7 +49,6 @@ def test_on_state_changed_updates_existing_entity():
     cache._states = {
         "light.a": {"id": "light.a", "state": "off", "name": "Luce", "unit": ""},
     }
-    cache._by_domain = {"light": ["light.a"]}
 
     cache.on_state_changed({
         "new_state": {
@@ -66,7 +65,6 @@ def test_on_state_changed_updates_existing_entity():
 def test_on_state_changed_adds_new_entity():
     cache = EntityCache()
     cache._states = {}
-    cache._by_domain = {}
 
     cache.on_state_changed({
         "new_state": {
@@ -78,20 +76,122 @@ def test_on_state_changed_adds_new_entity():
 
     assert "light.new" in cache._states
     assert cache._states["light.new"]["state"] == "on"
-    assert "light.new" in cache._by_domain.get("light", [])
+    assert [e["id"] for e in cache.all_states()] == ["light.new"]
 
 
-def test_on_state_changed_ignores_none_new_state():
+# --- La rimozione: l'unico segnale che Home Assistant manda ------------------
+#
+# Fonte, letta al tag `2026.9.1`: `homeassistant/core.py`,
+# `StateMachine.async_remove` -- toglie l'entita' dalla macchina degli stati e
+# emette `EVENT_STATE_CHANGED` con `{"entity_id", "old_state", "new_state":
+# None}`. La forma dell'evento in queste prove e' QUELLA, non una comoda: e'
+# la ragione per cui il difetto era invisibile (vedi il docstring sotto).
+
+def _removal_event(entity_id: str, ultimo_stato: str = "on") -> dict:
+    """L'evento che Home Assistant manda davvero quando un'entita' sparisce.
+
+    `old_state` c'e' e va costruito, anche se il codice non lo legge: una
+    finta che lo omettesse renderebbe verde un codice che ripiegasse su di
+    lui, ed e' proprio il tipo di comodita' che ha tenuto nascosto il
+    rilievo 7 dell'audit delle fondamenta.
+    """
+    return {"entity_id": entity_id,
+            "old_state": {"entity_id": entity_id, "state": ultimo_stato,
+                          "attributes": {"friendly_name": "Vecchia"}},
+            "new_state": None}
+
+
+def test_un_entita_rimossa_da_home_assistant_sparisce_dallo_specchio():
+    """Audit delle fondamenta, rilievo 7 (08/09/2026): `on_state_changed`
+    faceva `if not new_state: return`, e nessun altro metodo toglieva una
+    voce. Cancellata `light.vecchia` in Home Assistant, fino al riavvio
+    dell'add-on `GET /api/entities` la elencava con l'ultimo stato,
+    `action/verification` la dichiarava esistente (guarda SOLO lo specchio),
+    HA rispondeva 200 senza fare niente e l'attuatore riferiva un esito su
+    un'entita' che non c'e'.
+
+    **Perche' la prova che c'era prima non poteva fallire.**
+    `test_on_state_changed_ignores_none_new_state` mandava `{"new_state":
+    None}` a una cache VUOTA e asseriva `{}`: e' vero prima e dopo la
+    correzione, con qualunque implementazione, compresa quella che non fa
+    niente. Non toccava la proprieta' -- «cio' che Home Assistant ha tolto
+    sparisce da qui» -- perche' non c'era niente da togliere. Ed era scritta
+    guardando il codice (`if not new_state: return`) invece che il
+    fornitore: l'evento che quel ramo riceve davvero porta l'`entity_id` e
+    un `old_state`, e senza di loro la domanda giusta non si puo' nemmeno
+    porre."""
     cache = EntityCache()
-    cache._states = {}
+    cache._states = {
+        "light.vecchia": {"id": "light.vecchia", "state": "on", "name": "Vecchia",
+                          "unit": ""},
+        "light.viva": {"id": "light.viva", "state": "off", "name": "Viva", "unit": ""},
+    }
+
+    cache.on_state_changed(_removal_event("light.vecchia"))
+
+    assert "light.vecchia" not in cache._states
+    # Da OGNI porta, non solo dal dizionario: sono i lettori veri
+    # (`api/handlers_home_space`, l'inventario entita', `action/verification`).
+    assert [e["id"] for e in cache.all_states()] == ["light.viva"]
+    assert [e["id"] for e in cache.get_all()] == ["light.viva"]
+
+
+def test_dopo_una_rimozione_lo_specchio_dice_le_STESSE_entita_di_una_rilettura():
+    """La proprieta', non il fatto: uno specchio tenuto vivo dagli eventi deve
+    contenere gli stessi id di uno ricaricato da capo dalla casa com'e'
+    adesso. E' la domanda «chi lo riempie?» posta al contrario -- chi lo
+    SVUOTA -- e regge anche il giorno in cui l'evento di rimozione cambiasse
+    strada dentro `on_state_changed`."""
+    house_before = [
+        {"entity_id": "light.vecchia", "state": "on", "attributes": {}},
+        {"entity_id": "light.viva", "state": "off", "attributes": {}},
+        {"entity_id": "sensor.t", "state": "21", "attributes": {}},
+    ]
+    house_after = [r for r in house_before if r["entity_id"] != "light.vecchia"]
+
+    vivo = EntityCache()
+    for riga in house_before:
+        vivo.on_state_changed({"entity_id": riga["entity_id"], "old_state": None,
+                               "new_state": riga})
+    vivo.on_state_changed(_removal_event("light.vecchia"))
+
+    riletto = EntityCache()
+    for riga in house_after:
+        riletto.on_state_changed({"entity_id": riga["entity_id"], "old_state": None,
+                                  "new_state": riga})
+
+    assert (sorted(e["id"] for e in vivo.all_states())
+            == sorted(e["id"] for e in riletto.all_states()))
+
+
+def test_una_rimozione_di_un_entita_che_non_c_e_non_e_un_errore():
+    """Il confine: HA puo' emettere la rimozione di qualcosa che questo
+    specchio non ha mai avuto (caricamento iniziale fallito, entita' nata e
+    morta fra due letture). Non e' un guasto, e non deve sollevare."""
+    cache = EntityCache()
+    cache._states = {"light.viva": {"id": "light.viva", "state": "on",
+                                    "name": "Viva", "unit": ""}}
+
+    cache.on_state_changed(_removal_event("light.mai_vista"))
+
+    assert [e["id"] for e in cache.all_states()] == ["light.viva"]
+
+
+def test_un_evento_senza_new_state_E_senza_entity_id_non_solleva():
+    """L'altro confine, l'unica cosa che la vecchia prova copriva davvero: un
+    evento monco non deve rompere il rubinetto che tiene vivo lo specchio."""
+    cache = EntityCache()
+    cache._states = {"light.viva": {"id": "light.viva", "state": "on",
+                                    "name": "Viva", "unit": ""}}
+
     cache.on_state_changed({"new_state": None})
-    assert cache._states == {}
+
+    assert [e["id"] for e in cache.all_states()] == ["light.viva"]
 
 
 def test_on_state_changed_ignores_missing_entity_id():
     cache = EntityCache()
     cache._states = {}
-    cache._by_domain = {}
     cache.on_state_changed({
         "new_state": {
             "state": "on",

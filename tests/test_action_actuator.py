@@ -50,7 +50,11 @@ import pytest
 from hiris.app.action import actuator as porta_modulo
 from hiris.app.action.actuator import ActionActuator
 from hiris.app.action.registry import ServiceRegistry
-from hiris.app.proxy.entity_cache import _to_minimal, inherited_attributes
+from hiris.app.proxy.entity_cache import (
+    EntityCache,
+    _to_minimal,
+    inherited_attributes,
+)
 
 # La scadenza vera e' 2 secondi, e il perche' sta scritto accanto alla
 # costante (`porta.STATE_WAIT_S`). Qui si accorcia a 50 ms perche' cio' che
@@ -474,6 +478,71 @@ async def test_uno_specchio_non_ancora_pronto_non_nega_un_entita_che_esiste():
     assert "non esiste in questa casa" not in esito["errore"]
     assert "non vedo" in esito["errore"]
     assert client.chiamate == []
+
+
+class _StatesSource:
+    """Il minimo che serve a `EntityCache.load()`: la lista degli stati.
+
+    Serve alla cucitura qui sotto, che usa lo specchio VERO invece di
+    `FintaCache` -- una finta dello specchio non puo' dimostrare niente sul
+    comportamento dello specchio.
+    """
+
+    def __init__(self, stati):
+        self._stati = list(stati)
+
+    async def get_states(self, _ids):
+        return list(self._stati)
+
+
+@pytest.mark.asyncio
+async def test_un_entita_CANCELLATA_in_home_assistant_non_arriva_piu_a_HA():
+    """La cucitura del rilievo 7 dell'audit delle fondamenta, con lo specchio
+    VERO (`EntityCache`), non con `FintaCache`.
+
+    Prima della correzione lo specchio non toglieva mai una voce: cancellata
+    `light.salotto` in Home Assistant, la verifica «esiste» la trovava ancora
+    (`verification` guarda SOLO lo specchio), la chiamata partiva, HA
+    rispondeva 200 senza fare niente e l'attuatore rileggeva lo stesso
+    specchio prima e dopo -- riferendo un esito su un'entita' che non c'e'.
+
+    L'evento di cancellazione e' quello vero: `{"entity_id", "old_state",
+    "new_state": None}` (`homeassistant/core.py::StateMachine.async_remove`
+    @ `2026.9.1`). E il motivo del rifiuto conta: dev'essere «non esiste»,
+    non «non vedo» -- lo specchio HA guardato, ed e' proprio per questo che
+    sa che quell'entita' non c'e' piu'.
+    """
+    specchio = EntityCache()
+    await specchio.load(_StatesSource([
+        {"entity_id": "light.salotto", "state": "on",
+         "attributes": {"friendly_name": "Salotto"}},
+        {"entity_id": "light.cucina", "state": "off",
+         "attributes": {"friendly_name": "Cucina"}},
+    ]))
+    client = FintoClient()
+    registro = await _registro_pronto(client)
+    porta = ActionActuator(client, registro, specchio)
+
+    # Finche' c'e', il comando arriva davvero a Home Assistant.
+    primo = await porta.execute(SPEGNI_IL_SALOTTO, actor="chat")
+    assert primo["eseguito"] is True
+    assert len(client.chiamate) == 1
+
+    # Home Assistant la cancella: e' l'unico segnale che manda.
+    specchio.on_state_changed({
+        "entity_id": "light.salotto",
+        "old_state": {"entity_id": "light.salotto", "state": "off",
+                      "attributes": {"friendly_name": "Salotto"}},
+        "new_state": None,
+    })
+
+    esito = await porta.execute(SPEGNI_IL_SALOTTO, actor="chat")
+
+    assert esito["eseguito"] is False
+    assert "non esiste in questa casa" in esito["errore"]
+    assert len(client.chiamate) == 1, (
+        "la seconda chiamata non deve mai partire: HA risponderebbe 200 senza "
+        "fare niente e l'esito parlerebbe di un'entita' che non c'e'")
 
 
 @pytest.mark.asyncio
