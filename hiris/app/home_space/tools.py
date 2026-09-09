@@ -2653,18 +2653,44 @@ class ToolDispatcher:
         la promessa matura, fa si' che la risposta non arrivi a nessuno --
         il modo peggiore in cui una promessa puo' rompersi, perche' nessuno
         se ne accorge finche' non manca all'appuntamento.
+
+        **E fino all'08/09/2026 quel modo restava aperto** (audit delle
+        fondamenta, rilievo 1). Questa funzione chiedeva soltanto «il
+        servizio esiste?», mentre a scadenza lo schedulatore manda la
+        chiamata alla porta, che la passa a `verification()` -- e li' un
+        bersaglio vuoto passa SOLO se il servizio non dichiara un `target`.
+        Misurato sul registro vero (HA 2026.9.1): `notify.send_message`
+        dichiara `target={"entity": [{"domain": ["notify"]}]}` e risponde
+        `ok=False, «serve un bersaglio»`; `notify.mobile_app_*` e
+        `notify.notify` la chiave non ce l'hanno e passano. Il modello sceglie
+        col `search` che lo strumento gli suggerisce, la promessa nasce
+        «verificata adesso», e alle 17:00 la notifica non parte.
+
+        Adesso e' la STESSA domanda, non una piu' debole: si costruisce la
+        chiamata di recapito con `keeper.promise.delivery_call` -- l'unica
+        casa di quella forma, la stessa che usera' lo schedulatore -- e si
+        chiede a `verification()`, esattamente come fa `_verify_now` per un
+        `fai`. Due criteri diversi sullo stesso fatto erano il difetto; una
+        copia piu' furba del criterio sarebbe stata la sua seconda casa.
+
+        Lo specchio dello stato non e' una condizione: una chiamata di
+        recapito non nomina nessuna entita', quindi `verification()` non lo
+        guarda. Rifiutare qui per uno specchio cieco -- come fa `_verify_now`,
+        che le entita' le guarda eccome -- negherebbe una promessa
+        perfettamente legittima.
         """
+        from ..action.verification import verification
+        from ..keeper.promise import delivery_call
+
         if self._registry_not_ready():
             return ("non posso ancora prometterlo con questo recapito: non so "
                     "cosa questa casa sa fare, perche' il registro dei "
                     "servizi non e' pronto. Riprova fra un momento.")
-        if "." not in service:
-            return f"«{service}» non e' un servizio: serve «notify.qualcosa»."
-        domain, name = service.split(".", 1)
-        if self._registry.service(domain, name) is None:
-            return (f"«{service}» non esiste in questa casa: cerca un servizio notify "
-                    "vero prima di promettere di usarlo.")
-        return None
+        verdict = verification(delivery_call(service), self._registry,
+                               self._state_readings() or {})
+        if verdict.ok:
+            return None
+        return (f"non posso prometterlo con questo recapito: {verdict.reason}")
 
     def _snapshot(self, entities: list) -> list[dict]:
         """I valori di partenza, presi ADESSO, con la loro unita'.

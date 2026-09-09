@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 
-from .promise import TOLLERANZA_S, delay_reason
+from .promise import TOLLERANZA_S, delay_reason, delivery_call
 
 logger = logging.getLogger(__name__)
 
@@ -116,9 +116,7 @@ class Sweeper:
             # canale approvato alla nascita. Il modello ha prodotto un testo,
             # non una chiamata: non sceglie lui dove finisce.
             occurrence = await self._execute(
-                {"servizio": promise["recapito"], "bersaglio": {},
-                 "dati": {"message": text, "title": "HIRIS"}},
-                actor="schedulatore")
+                delivery_call(promise["recapito"], text), actor="schedulatore")
             execution_id = occurrence.get("esecuzione_id")
             if not occurrence.get("eseguito"):
                 reason = ("te l’ho scritto qui ma la notifica non e' partita: %s"

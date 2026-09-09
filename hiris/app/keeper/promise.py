@@ -82,6 +82,45 @@ _CHIAVI = (
 )
 
 
+# Il TITOLO con cui HIRIS si presenta in una notifica di promessa. Uno solo,
+# qui, perche' e' parte della forma della chiamata di recapito -- e la forma
+# vive in un posto solo (`delivery_call`).
+DELIVERY_TITLE = "HIRIS"
+
+
+def delivery_call(recipient: str, message: str = "") -> dict:
+    """La chiamata con cui una promessa arriva a chi l'ha chiesta.
+
+    **La sua UNICA casa**, e non e' un'astrazione di comodo: e' cio' che
+    permette alla verifica ALLA NASCITA e a quella A SCADENZA di fare la
+    stessa domanda invece di due domande diverse sullo stesso fatto (audit
+    delle fondamenta, rilievo 1).
+
+    Fino all'08/09/2026 questa forma esisteva scritta a mano in un punto solo
+    -- `sweeper.concludi_chiedi` -- e la nascita non la conosceva:
+    `_verify_recipient` controllava soltanto che il servizio esistesse nel
+    registro, mentre a scadenza `action/verification.verification` pretende un
+    bersaglio quando il servizio ne DICHIARA uno. Misurato sul registro vero
+    (HA 2026.9.1): `notify.send_message` dichiara `target={"entity":
+    [{"domain": ["notify"]}]}` e con bersaglio vuoto risponde «serve un
+    bersaglio»; `notify.mobile_app_*` e `notify.notify` la chiave non ce
+    l'hanno e passano. Lo strumento `promise` dice al modello «usa search per
+    trovare un servizio notify vero», `search` trova `send_message`, la
+    promessa nasce «verificata adesso» e alle 17:00 la notifica non parte --
+    il modo peggiore in cui una promessa puo' rompersi, perche' nessuno se ne
+    accorge finche' non manca all'appuntamento.
+
+    Il `bersaglio` e' vuoto per costruzione: **la notifica la manda lo
+    schedulatore, sul canale approvato alla nascita**, e il modello non
+    sceglie dove finisce. `message` e' vuoto quando si sta solo verificando:
+    la verifica guarda i NOMI dei parametri contro quelli che il servizio
+    dichiara, mai i loro valori, quindi la chiamata di prova e' la stessa
+    chiamata -- non una sua approssimazione.
+    """
+    return {"servizio": recipient, "bersaglio": {},
+            "dati": {"message": message, "title": DELIVERY_TITLE}}
+
+
 def validate(data: dict, *, now: float) -> str | None:
     """Il motivo per cui questa promessa non puo' nascere, o `None`.
 

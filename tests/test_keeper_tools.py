@@ -238,6 +238,63 @@ async def test_un_recapito_inesistente_e_rifiutato_alla_nascita(promesse):
 
 
 @pytest.mark.asyncio
+async def test_un_recapito_che_PRETENDE_un_bersaglio_e_rifiutato_alla_nascita(promesse):
+    """Audit delle fondamenta, rilievo 1 -- il modo peggiore in cui una
+    promessa puo' rompersi, ed era quello che il codice lasciava aperto.
+
+    `_verify_recipient` controllava soltanto che il servizio ESISTESSE. La
+    verifica vera -- quella che lo schedulatore attraversa a scadenza, con
+    `bersaglio: {}` -- pretende un bersaglio quando il servizio ne dichiara
+    uno. `notify.send_message` lo dichiara (misurato su HA 2026.9.1), esiste
+    su questa casa, e lo strumento `promise` dice al modello «usa search per
+    trovare un servizio notify vero»: la promessa nasceva «verificata adesso»,
+    alle 17:00 la notifica non partiva, e il proprietario lo leggeva in
+    Impegni DOPO l'appuntamento.
+    """
+    d = _dispatcher(promesse, registry=_RegistroFinto(), cache=_CacheFinta())
+    esito = await d.dispatch("promise", {
+        "specie": "chiedi", "frase": "x", "quando": _fra(60),
+        "domanda": "e' aumentata?", "recapito": "notify.send_message"})
+
+    assert "errore" in esito
+    assert "bersaglio" in esito["errore"], (
+        "il rifiuto deve dire cosa manca, o il modello sceglie di nuovo lo "
+        f"stesso servizio: {esito['errore']!r}")
+    assert promesse.list() == [], (
+        "una promessa che non si potra' mantenere non deve nascere")
+
+
+def test_la_nascita_fa_la_STESSA_domanda_della_scadenza(promesse):
+    """La cucitura fra i due lettori, senza finte in mezzo.
+
+    A scadenza `keeper/sweeper.concludi_chiedi` costruisce la chiamata con
+    `promise.delivery_call` e la manda alla porta, che la passa a
+    `action/verification.verification`. Alla nascita `_verify_recipient`
+    costruisce la STESSA chiamata e chiede alla STESSA funzione. Questo test
+    lega le due risposte: se divergessero su un solo servizio del registro,
+    tornerebbe rosso -- ed e' l'unica forma che questa prova puo' avere,
+    perche' il difetto non era una frase sbagliata, erano due criteri diversi
+    sullo stesso fatto.
+    """
+    from hiris.app.action.verification import verification
+    from hiris.app.keeper.promise import delivery_call
+
+    registry, cache = _RegistroFinto(), _CacheFinta()
+    d = _dispatcher(promesse, registry=registry, cache=cache)
+    states = {s["id"]: s for s in cache.all_states()}
+
+    for domain, name in _RegistroFinto._SERVIZI:
+        service = f"{domain}.{name}"
+        alla_nascita = d._verify_recipient(service)
+        alla_scadenza = verification(
+            delivery_call(service, "il testo della risposta"), registry, states)
+        assert (alla_nascita is None) is alla_scadenza.ok, (
+            f"«{service}»: alla nascita {alla_nascita!r}, a scadenza "
+            f"{alla_scadenza.reason!r}")
+
+
+
+@pytest.mark.asyncio
 async \
 def test_un_recapito_con_registro_presente_ma_mai_caricato_e_rifiutato_come_non_ancora_verificabile(
     promesse,
@@ -436,8 +493,31 @@ class _RegistroFinto:
     gestore di `ToolDispatcher` li chiama, e tenerli avrebbe continuato
     a dare l'illusione di un doppio completo senza che nulla li provasse.
     """
+    #: I due recapiti, nella forma MISURATA il 09/09/2026 su Home Assistant
+    #: 2026.9.1 (`GET /api/services`, casa del proprietario):
+    #:
+    #: - `notify.mobile_app_*` e `notify.notify`: chiavi `description`,
+    #:   `fields`, `name` -- `target` non c'e' affatto -- e `fields` porta
+    #:   `data`, `message`, `target`, `title`;
+    #: - `notify.send_message`: chiavi `fields` e `target`, con
+    #:   `target={"entity": [{"domain": ["notify"]}]}` e `fields` a
+    #:   `message`/`title`.
+    #:
+    #: Quella differenza e' il rilievo 1 intero: `send_message` esiste su
+    #: questa casa, `search` lo trova, e con bersaglio vuoto la verifica a
+    #: scadenza risponde «serve un bersaglio». Prima dell'audit questo doppio
+    #: dava `{}` a `mobile_app_x` -- un servizio che non dichiara NESSUN
+    #: parametro, cosa che nessun `notify` vero fa: una finta scritta
+    #: guardando il codice invece del fornitore.
     _SERVIZI: ClassVar[dict[tuple[str, str], dict]] = {
-        ("light", "turn_on"): {}, ("notify", "mobile_app_x"): {},
+        ("light", "turn_on"): {},
+        ("notify", "mobile_app_x"): {
+            "fields": {"data": {}, "message": {}, "target": {}, "title": {}},
+        },
+        ("notify", "send_message"): {
+            "target": {"entity": [{"domain": ["notify"]}]},
+            "fields": {"message": {}, "title": {}},
+        },
     }
 
     def domains(self):
@@ -496,7 +576,15 @@ class _HaConServizi:
         return [
             {"domain": "light", "services": {
                 "turn_on": {"target": {"entity": [{"domain": ["light"]}]}}}},
-            {"domain": "notify", "services": {"mobile_app_x": {}}},
+            # Nella forma MISURATA (vedi `_RegistroFinto._SERVIZI`): un
+            # `notify.*` vero dichiara i suoi `fields`. Con `{}` questo
+            # doppio diceva «non accetta parametri», e la notifica dello
+            # schedulatore sarebbe stata rifiutata a scadenza -- cioe' la
+            # finta rendeva verde un caso che in casa non funziona.
+            {"domain": "notify", "services": {
+                "mobile_app_x": {
+                    "fields": {"data": {}, "message": {}, "target": {},
+                               "title": {}}}}},
         ]
 
 

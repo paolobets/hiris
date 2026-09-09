@@ -4,7 +4,7 @@ import os
 import pytest
 
 from hiris.app.action.actuator import ActionActuator
-from hiris.app.keeper.promise import TOLLERANZA_S
+from hiris.app.keeper.promise import TOLLERANZA_S, delivery_call
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.keeper.sweeper import Sweeper
 from tests._contracts import assert_stessa_firma
@@ -202,6 +202,11 @@ async def test_un_chiedi_con_recapito_notifica_e_registra_cio_che_ha_detto(archi
     p = archivio.read(ident)
     assert (p["stato"], p["avvisare"], p["testo"]) == ("mantenuta", True, "e' salita di 2 gradi")
 
+    assert chiamata == delivery_call("notify.mobile_app_x", "e' salita di 2 gradi"), (
+        "la forma della chiamata di recapito ha UNA casa "
+        "(`keeper/promise.delivery_call`): e' quella che la verifica alla "
+        "NASCITA usa per fare la stessa domanda di questa qui")
+
 
 async def test_la_notifica_fallita_lascia_il_testo_e_dichiara_la_consegna_mancata(archivio):
     """Un recapito VALIDO il cui invio fallisce: non e' il caso "nessun canale"
@@ -278,9 +283,15 @@ async def test_un_turno_che_non_conclude_lascia_la_promessa_fallita(archivio):
 # "mantenuta" con un motivo onesto.
 
 class _ClientSoloNotifica:
-    """Home Assistant, ridotto al minimo che serve a questa cucitura: UN
-    servizio, `notify.mobile_app_x`, che come i `notify.*` veri non dichiara
-    un `target`. Nessun `add_state_listener`/`remove_state_listener`: la
+    """Home Assistant, ridotto al minimo che serve a questa cucitura: DUE
+    servizi, nella forma MISURATA il 09/09/2026 su HA 2026.9.1 (`GET
+    /api/services`, casa del proprietario). `notify.mobile_app_x` non
+    dichiara un `target`, come tutti i `notify.mobile_app_*` veri;
+    `notify.send_message` lo dichiara (`{"entity": [{"domain":
+    ["notify"]}]}`), ed e' il recapito che l'audit ha trovato: nasceva
+    verificato e a scadenza veniva rifiutato.
+
+    Nessun `add_state_listener`/`remove_state_listener`: la
     riparazione di `actuator.py` non deve aprirne uno per una chiamata senza
     bersaglio, e questo doppio lo dimostra non avendoli affatto -- se la
     porta provasse a chiamarli, la sospensione griderebbe `AttributeError`
@@ -291,7 +302,10 @@ class _ClientSoloNotifica:
 
     async def get_services(self):
         return [{"domain": "notify", "services": {
-            "mobile_app_x": {"fields": {"message": {}, "title": {}}}}}]
+            "mobile_app_x": {"fields": {"data": {}, "message": {},
+                                        "target": {}, "title": {}}},
+            "send_message": {"target": {"entity": [{"domain": ["notify"]}]},
+                             "fields": {"message": {}, "title": {}}}}}]
 
     async def call_service(self, domain, service, data):
         self.chiamate.append((domain, service, data))
@@ -332,6 +346,39 @@ async def test_la_notifica_dello_schedulatore_attraversa_la_verifica_vera(archiv
     assert p["motivo"] is None, (
         f"la notifica non e' partita, ed e' esattamente il difetto CRITICO "
         f"della review finale: {p['motivo']!r}")
+
+
+async def test_un_recapito_che_pretende_un_bersaglio_NON_arriva_a_scadenza(archivio):
+    """L'altra meta' del rilievo 1: cosa succede se una promessa cosi' nasce.
+
+    E' la cucitura vera, con la porta e il registro VERI. `notify.send_message`
+    dichiara un `target` (misurato), e la chiamata di recapito ha per
+    costruzione il bersaglio vuoto: la verifica la rifiuta, la notifica non
+    parte, e il proprietario legge il motivo in Impegni DOPO l'appuntamento.
+
+    Questo test non chiede di cambiare la scadenza -- il rifiuto qui e'
+    giusto, ed e' cio' che la nascita deve saper prevedere. E' la misura del
+    danno che la verifica alla nascita adesso impedisce, e la ragione per cui
+    quel rifiuto non e' una severita' in piu': e' la stessa risposta, data in
+    tempo utile."""
+    from hiris.app.action.registry import ServiceRegistry
+
+    ident = _crea_chiedi(archivio, quando=ADESSO + 10, recapito="notify.send_message")
+    client = _ClientSoloNotifica()
+    registro = ServiceRegistry()
+    await registro.refresh(client)
+    porta = ActionActuator(client, registro, _CasaMinima())
+    turno = TurnoFinto({"avvisare": True, "testo": "e' salita di 2 gradi"})
+
+    await Sweeper(archivio, execute=porta.execute, interpreta=turno).batti(ADESSO + 11)
+
+    assert client.chiamate == [], "niente e' partito verso Home Assistant"
+    p = archivio.read(ident)
+    assert p["stato"] == "mantenuta", (
+        "la risposta c'e' e si legge dalla pagina: e' la CONSEGNA a essere "
+        "mancata")
+    assert "bersaglio" in (p["motivo"] or ""), (
+        f"il motivo deve dire cosa e' mancato: {p['motivo']!r}")
 
 
 async def test_la_nota_del_ripiego_finisce_nel_motivo_della_promessa(archivio):
