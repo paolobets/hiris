@@ -159,7 +159,11 @@ SORVEGLIATO: dict[str, tuple[tuple[int, int], ...] | None] = {
     "backends/openai_compat_runner.py": (
         (157, 162),    # TOOL_LEAK_USER_MSG
         (785, 788),    # RunnerBackendError, 402 OpenRouter (non-stream)
-        (1056, 1059),  # err, 402 OpenRouter (stream)
+        # 1062-1065, non piu' 1056-1059: rinumerato il 09/09/2026 quando il
+        # docstring di `chat_stream` (audit delle fondamenta, rilievo 8) e'
+        # cresciuto di 6 righe sopra questo punto. Ancora per contenuto
+        # (`err = (` prima della f-string), non offset.
+        (1062, 1065),  # err, 402 OpenRouter (stream)
     ),
     "api/handlers_chat.py": (
         (498, 502),    # nessun altro provider dopo la scadenza del ponte
@@ -180,13 +184,20 @@ SORVEGLIATO: dict[str, tuple[tuple[int, int], ...] | None] = {
     # stata ritrovata per contenuto, non traslata a occhio -- e la prova qui
     # sotto (`..._la_guardia_vede_davvero_dentro_actuator_appena_allargata`)
     # e' esattamente cio' che scopre un intervallo rimasto indietro.
+    # Intervalli rinumerati il 09/09/2026 (rilievo 7 sotto soglia dell'audit
+    # delle fondamenta: `_not_seen`/`_no_change` guadagnano un ramo
+    # `listened=False`, +25 righe). ANCORE, non offset: ritrovate per
+    # contenuto (`grep` sulle costanti/funzioni nominate) e verificate
+    # iniettando un'elisione dritta DENTRO UNA STRINGA di ciascuno dei
+    # cinque intervalli, compreso `_not_seen` con ENTRAMBI i suoi rami --
+    # il cancello arrossisce in 5 casi su 5.
     "action/actuator.py": (
         (137, 139),    # _BLIND_MIRROR
         (150, 153),    # _NO_TARGET_RESOLVER
-        (184, 189),    # _not_seen
-        (202, 206),    # _CHANGED_NOT_SHOWABLE
-        (217, 219),    # _NO_STATE_TO_REREAD
-        (532, 534),    # _open_listen: l'annuncio di ascolto assente
+        (193, 205),    # _not_seen -- entrambi i rami, listened=False e =True
+        (227, 231),    # _CHANGED_NOT_SHOWABLE
+        (242, 244),    # _NO_STATE_TO_REREAD
+        (557, 559),    # _open_listen: l'annuncio di ascolto assente
     ),
 }
 
