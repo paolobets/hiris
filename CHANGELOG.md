@@ -1,5 +1,77 @@
 # HIRIS — Changelog
 
+## [3.23.2] — Ventuno difformità, chiuse (2026-09-09)
+
+**Un'analisi dell'intera codebase contro le regole del progetto ha trovato ventuno punti in cui
+HIRIS non le rispettava. Dieci pesavano, undici erano piccole. Il proprietario ha detto che vanno
+chiuse tutte, e questa versione le chiude.**
+
+Nessuna funzione nuova. Sono tutte cose che HIRIS **affermava** e che non erano vere.
+
+### Le cinque che si vedevano già
+
+**Una promessa che nasceva verificata e moriva rifiutata.** Quando HIRIS si impegnava a mandarti
+una notifica, controllava soltanto che il servizio esistesse. Alla scadenza, la verifica vera
+chiedeva anche un destinatario — e per uno dei servizi di questa casa quel destinatario serve.
+Risultato: la promessa nasceva «verificata», e alle 17:00 leggevi che la notifica non era partita.
+**Dopo** l'appuntamento. Adesso la domanda alla nascita è la stessa della scadenza.
+
+**Consumi diceva «sonnet», i conti dicevano «haiku».** Quando un turno usa più di un modello, HIRIS
+attribuiva tutto al primo dell'elenco. Su 111 turni ne aveva attribuiti 110 al modello sbagliato.
+Adesso ogni modello porta i suoi.
+
+**La stessa cosa aveva due nomi.** Il riassunto diceva «Soggiorno: `switch.smart_wi_fi_plug_2`»
+mentre ogni altra pagina diceva «Fuoco e tv»: **82 entità** di questa casa hanno un nome che il
+riassunto non riceveva. Adesso lo riceve.
+
+**Un consiglio che dissentiva da sé.** Chiedendo di costruire qualcosa, l'anteprima poteva dire
+«hai chiesto *un'automazione*, e secondo me qui serve un'automazione; dimmi tu». Succedeva perché
+il campo «cosa hai chiesto» è testo libero e veniva confrontato parola per parola con tre etichette.
+**È già successo, su una costruzione approvata.**
+
+**Uno zero che affermava.** La pagina dei consumi mostrava «0,00 misurato» quando il costo non è
+noto perché è compreso nell'abbonamento. E il totale «da sempre» dichiarava una cifra precisa e
+completa **tenendo fuori dalla somma 111 turni**. Un costo non noto non è zero.
+
+### Le cinque che aspettavano il giorno giusto
+
+**Un'entità cancellata in Home Assistant non spariva da HIRIS** fino al riavvio: restava
+comandabile, e HIRIS riferiva l'esito di un comando su una cosa che non c'era.
+
+**Il riassunto contava come «escluso» un cartello che diceva che non c'era niente.** La prima notte
+con tutte le luci spente avresti letto «1 elemento notevole non incluso» senza che ne esistesse
+nessuno.
+
+**I token risparmiati dalla cache di OpenAI** venivano letti da un campo che in quella libreria non
+esiste: uscivano sempre zero, e l'input già pagato veniva conteggiato a prezzo pieno.
+
+**L'etichetta che dice «questo l'ho creato io»** finiva su un identificatore **supposto** invece che
+letto: bastava un nome già usato perché l'oggetto nato restasse senza firma — e la firma è l'unico
+posto in cui quella paternità viveva.
+
+**«Oggi» era calcolato a Greenwich** mentre i conti sono tenuti nel fuso di casa: fra mezzanotte e
+le due, il giorno corrente spariva dal grafico.
+
+### E undici piccole, che sono la stessa malattia
+
+Quasi tutte erano **frasi scritte accanto al codice, vere quando furono scritte e non più**: un
+commento che dichiarava un unico lettore quando ne erano due, uno che diceva «nessuno l'ha ancora
+misurato» quando il dato c'era da settimane, uno che dichiarava di non essere codice morto mentre
+lo era diventato.
+
+Nessun controllo automatico le vede, perché **le prove verificano il codice e nessuno verifica le
+ragioni** — e questo prodotto ne scrive tantissime, che poi qualcuno legge per costruirci sopra.
+
+### Quello che si è imparato, e resta
+
+Dieci delle prove che avrebbero dovuto vedere questi difetti **non potevano fallire**: erano scritte
+guardando il nostro codice invece del fornitore. Una provava la cancellazione di un'entità su un
+elenco vuoto; un'altra costruiva la risposta di OpenAI nella forma che il codice si aspettava, non
+in quella che OpenAI usa davvero.
+
+Ora sono scritte sulla forma vera, misurata sulla casa e sulle librerie installate — e dove sono
+state riscritte, accanto c'è scritto **perché la vecchia non poteva fallire**.
+
 ## [3.23.1] — HIRIS si accorge da solo di quello che non sa (2026-09-08)
 
 **La 3.23.0 aveva insegnato a HIRIS cosa sanno fare le tue cose. Questa gli insegna due cose in
