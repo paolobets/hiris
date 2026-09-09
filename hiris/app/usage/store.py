@@ -213,12 +213,42 @@ class UsageStore:
         return list(per_provider.values())
 
     def totali(self, *, da: str = "", from_anchor: bool = False) -> dict:
+        """I contatori sommati su tutte le sezioni. `costo_usd` puo' essere
+        `None`, ed e' l'intero punto.
+
+        **Uno zero e' un'affermazione** (audit delle fondamenta, rilievo 6).
+        Prima questa funzione faceva `sum(costo_usd or 0.0)`: con 111
+        richieste tutte in abbonamento -- misurato sulla casa del proprietario
+        l'08/09/2026 -- la porta HTTP rispondeva `measured: true, cost_usd:
+        0.0, partial_cost: false`, cioe' «ho misurato, e non e' costato
+        niente». La sezione, un piano piu' sotto, diceva gia' `null`: lo
+        stesso fatto usciva in due forme dalle due porte, e la pagina lo
+        correggeva a valle mentre chiunque altro leggesse la rotta (il
+        gateway MCP) leggeva lo zero.
+
+        Le due regole, entrambe alla fonte:
+
+        - `costo_usd` e' `None` quando NESSUNA sezione porta un costo noto.
+          Appena una lo porta il totale torna un numero -- la somma di cio'
+          che si conosce.
+        - `costo_parziale` («questo totale e' un pavimento, scrivilo con
+          `>=`») si alza per due ragioni, non piu' per una sola: una sezione
+          che si dichiara gia' parziale (una riga `non_noto`), **oppure** una
+          sezione senza nessun costo noto -- l'abbonamento. Un turno
+          `compreso` un costo ce l'ha, e' l'abbonamento che non lo espone per
+          turno: escluderlo dalla somma senza dirlo faceva passare un minimo
+          per un totale.
+
+        `gratuito` non entra in nessuna delle due: Ollama in casa costa zero
+        DAVVERO, la sua sezione porta `0.0` (un costo noto), e il totale
+        resta esatto.
+        """
         sezioni = self.sezioni(da=da, from_anchor=from_anchor)
         fuori = {c: sum(s[c] for s in sezioni) for c in CAMPI}
-        fuori["costo_usd"] = sum(s["costo_usd"] or 0.0 for s in sezioni)
-        # Se anche un solo modello e' senza prezzo, il totale non e' il costo:
-        # e' un pavimento, e la pagina lo scrive con un «>=».
-        fuori["costo_parziale"] = any(s["costo_parziale"] for s in sezioni)
+        noti = [s["costo_usd"] for s in sezioni if s["costo_usd"] is not None]
+        fuori["costo_usd"] = sum(noti) if noti else None
+        fuori["costo_parziale"] = (any(s["costo_parziale"] for s in sezioni)
+                                   or len(noti) != len(sezioni))
         return fuori
 
     def storia(self, *, da: str, a: str) -> list[dict]:
@@ -302,11 +332,20 @@ class UsageStore:
                     model["costo_usd"] = max(0.0, model["costo_usd"] - s["costo_usd"])
         # I totali di sezione si RICALCOLANO dai modelli, non si correggono a
         # parte: due strade per lo stesso numero divergono al primo caso limite.
+        #
+        # `costo_usd` con la STESSA regola di `sezioni()`: `None` finche'
+        # nessun modello ne porta uno. Qui c'era la terza occorrenza dello
+        # zero che afferma (audit, rilievo 6), e proprio perche' era una
+        # SECONDA strada per lo stesso numero divergeva: con l'ancora spostata
+        # la sezione dell'abbonamento diceva `0.0`, senza ancora diceva
+        # `null`. Il commento qui sopra lo aveva previsto; la somma sotto non
+        # lo rispettava.
         for section in per_provider.values():
             for c in CAMPI:
                 section[c] = sum(m[c] for m in section["modelli"])
-            section["costo_usd"] = sum(m["costo_usd"] or 0.0
-                                       for m in section["modelli"])
+            noti = [m["costo_usd"] for m in section["modelli"]
+                    if m["costo_usd"] is not None]
+            section["costo_usd"] = sum(noti) if noti else None
 
     # -- i file di prima -----------------------------------------------
 

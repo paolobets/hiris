@@ -38,6 +38,7 @@ from datetime import UTC, datetime
 from aiohttp import web
 
 from ..config import EUR_RATE as _EUR_RATE
+from ..usage.vocabulary import local_day
 
 _NO_PROVIDER_MSG = (
     "Nessun provider AI configurato e nessun consumo mai registrato: non c’è "
@@ -53,6 +54,19 @@ _HISTORY_DAYS = 30
 def _euro(usd):
     """`None` resta `None`. Uno zero al suo posto sarebbe la bugia della fetta."""
     return None if usd is None else round(usd * _EUR_RATE, 6)
+
+
+def _house_timezone(app) -> str:
+    """Il fuso della casa, o `""` quando non si sa.
+
+    UNA casa per la domanda «in che giorno vive chi legge questa pagina?»:
+    la usano il riepilogo (per dichiarare `timezone`) e la storia (per
+    calcolare l'intervallo predefinito). L'aiutante di `server.py` si importa
+    QUI dentro per non chiudere il ciclo -- `server` importa gia'
+    `handle_usage` da questo modulo.
+    """
+    from ..server import _timezone_from_home_space_store
+    return _timezone_from_home_space_store(app.get("home_space_store")) or ""
 
 
 def _can_respond(app) -> bool:
@@ -164,15 +178,14 @@ async def handle_usage(request: web.Request) -> web.Response:
     # sembrerebbe una perdita di dati invece di un cambio di rappresentazione.
     input_tokens = (totals["token_in"] + totals["cache_lettura"]
                 + totals["cache_scrittura"])
-    # L'aiutante di `server.py` -- import locale per evitare il ciclo:
-    # `server` importa GIA' `handle_usage` da questo modulo (riparazione-
-    # impoverisce-brief.md, appendice punto 6). Prima di questa riga c'era
-    # una quarta copia a mano della stessa domanda («dov'e' il fuso della
-    # casa?»), con in piu' un primo ramo morto (`app["fuso_casa"]`, appendice
-    # punto 7): nessun codice di produzione scriveva quella chiave, la
-    # riempiva solo la finta di un test -- vedi `tests/test_usage_routes.py`.
-    from ..server import _timezone_from_home_space_store
-    timezone = _timezone_from_home_space_store(request.app.get("home_space_store")) or ""
+    # Il fuso della casa da `_house_timezone` -- l'aiutante di `server.py`,
+    # importato li' dentro per non chiudere il ciclo (riparazione-impoverisce-
+    # brief.md, appendice punto 6). Prima c'era una quarta copia a mano della
+    # stessa domanda («dov'e' il fuso della casa?»), con in piu' un primo ramo
+    # morto (`app["fuso_casa"]`, appendice punto 7): nessun codice di
+    # produzione scriveva quella chiave, la riempiva solo la finta di un test
+    # -- vedi `tests/test_usage_routes.py`.
+    timezone = _house_timezone(request.app)
 
     return web.json_response({
         "measured": True,
@@ -180,10 +193,17 @@ async def handle_usage(request: web.Request) -> web.Response:
         "input_tokens": input_tokens,
         "output_tokens": totals["token_out"],
         "total_tokens": input_tokens + totals["token_out"],
-        "cost_usd": round(totals["costo_usd"], 6),
+        # `None` attraversa, come per le sezioni: quando nessun modello ha un
+        # costo noto -- 111 turni in abbonamento, misurato l'08/09/2026 -- un
+        # `0.0` qui direbbe «misurato, e non e' costato niente». La pagina
+        # sapeva gia' correggerlo a valle; questa rotta la leggono anche
+        # altri, e mentivano a loro (audit delle fondamenta, rilievo 6).
+        "cost_usd": (None if totals["costo_usd"] is None
+                     else round(totals["costo_usd"], 6)),
         "cost_eur": _euro(totals["costo_usd"]),
-        # Se anche un solo modello e' senza prezzo, il totale NON e' il costo:
-        # e' un pavimento, e la pagina lo scrive con un «>=».
+        # Se anche un solo modello e' senza prezzo -- o un'intera sezione non
+        # ne ha nessuno, come l'abbonamento -- il totale NON e' il costo: e'
+        # un pavimento, e la pagina lo scrive con un «>=».
         "partial_cost": totals["costo_parziale"],
         "rate_limit_errors": totals["errori_rate_limit"],
         "last_reset": _iso(store.anchor()),
@@ -221,11 +241,23 @@ async def handle_usage_history(request: web.Request) -> web.Response:
     if store is None:
         return web.json_response({"days": [], "from": "", "to": ""})
 
-    today = datetime.fromtimestamp(time.time(), UTC)
-    to = request.query.get("to") or today.strftime("%Y-%m-%d")
-    since = request.query.get("from") or (
-        datetime.fromtimestamp(time.time() - _HISTORY_DAYS * 86400, UTC)
-        .strftime("%Y-%m-%d"))
+    # **Lo STESSO «giorno» dei secchielli.** `usage/store.log` li scrive con
+    # `local_day` (il fuso della casa); questa rotta calcolava `to` e `from`
+    # con `fromtimestamp(..., UTC)`, e le due definizioni divergevano per due
+    # ore ogni notte: alle 00:30 di Roma il turno appena fatto entra nel
+    # secchiello del giorno nuovo mentre l'intervallo predefinito finiva a
+    # quello vecchio, e il giorno corrente spariva da grafico e tabella
+    # (audit delle fondamenta, rilievo 10). La pagina chiama questa rotta
+    # senza parametri, quindi era il caso normale.
+    #
+    # `local_day` ripiega su UTC quando il fuso non si sa, e ripiega cosi'
+    # anche per i secchielli: una casa senza fuso resta contata in un modo
+    # solo, dichiarato, invece che in due.
+    timezone = _house_timezone(request.app)
+    now = time.time()
+    to = request.query.get("to") or local_day(now, timezone)
+    since = request.query.get("from") or local_day(
+        now - _HISTORY_DAYS * 86400, timezone)
 
     days = []
     for g in store.storia(da=since, a=to):

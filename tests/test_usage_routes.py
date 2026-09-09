@@ -14,6 +14,7 @@ import json
 
 import pytest
 
+from hiris.app.api import handlers_usage
 from hiris.app.api.handlers_usage import (
     handle_reset_usage,
     handle_usage,
@@ -208,6 +209,50 @@ def test_la_storia_senza_parametri_da_gli_ultimi_trenta_giorni(app):
     corpo = _corpo(_chiama(handle_usage_history, app))
     assert "from" in corpo and "to" in corpo
     assert isinstance(corpo["days"], list)
+
+
+def test_dopo_mezzanotte_il_giorno_CORRENTE_e_quello_della_casa(app, monkeypatch):
+    """Audit delle fondamenta, rilievo 10: due lettori, due definizioni di «giorno».
+
+    I secchielli si scrivono con `local_day` (il fuso della casa) e questa
+    rotta calcolava `to` e `from` con `datetime.fromtimestamp(..., UTC)`.
+    Alle 00:30 di Roma il turno appena fatto va nel secchiello del giorno
+    NUOVO e il `to` predefinito era ancora quello vecchio: il giorno corrente
+    spariva dal grafico e dalla tabella fra mezzanotte e le due (l'una
+    d'inverno). La pagina chiama questa rotta senza parametri
+    (`usage-route.js`), quindi e' il caso normale, non un caso limite.
+    """
+    mezzanotte_e_mezza = 1787351400.0  # 22/08/2026 00:30 a Roma = 21/08 22:30 UTC
+    app["usage"].log("claude", "claude-sonnet-4-6", token_in=7,
+                     cost_usd=0.1, cost_state="misurato", now=mezzanotte_e_mezza)
+    monkeypatch.setattr(handlers_usage.time, "time", lambda: mezzanotte_e_mezza)
+
+    corpo = _corpo(_chiama(handle_usage_history, app))
+
+    assert corpo["to"] == "2026-08-22", (
+        "a Roma e' gia' il 22: in UTC sarebbe il 21, e il secchiello di "
+        "stanotte resterebbe fuori dall'intervallo")
+    assert "2026-08-22" in [g["day"] for g in corpo["days"]], (
+        "il consumo appena registrato deve stare nel grafico che lo mostra")
+
+
+def test_senza_fuso_noto_la_storia_conta_in_UTC_e_non_inventa(tmp_path, monkeypatch):
+    """Il ripiego dichiarato di `local_day`: quando l'anagrafe non sa il fuso
+    si conta in UTC -- da entrambe le parti. Cio' che non deve succedere e'
+    che una parte ripieghi su UTC e l'altra sull'orologio del container."""
+    archivio = UsageStore(str(tmp_path / "c.db"), read_timezone=lambda: "")
+    try:
+        mezzanotte_e_mezza = 1787351400.0
+        archivio.log("claude", "m", cost_state="misurato", now=mezzanotte_e_mezza)
+        app = {"usage": archivio}
+        monkeypatch.setattr(handlers_usage.time, "time", lambda: mezzanotte_e_mezza)
+
+        corpo = _corpo(_chiama(handle_usage_history, app))
+
+        assert corpo["to"] == "2026-08-21", "in UTC e' ancora il 21"
+        assert [g["day"] for g in corpo["days"]] == ["2026-08-21"]
+    finally:
+        archivio.close()
 
 
 # ── l'ancora ────────────────────────────────────────────────────────────────

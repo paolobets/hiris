@@ -54,6 +54,29 @@ def test_l_ancora_vale_anche_sui_giorni_successivi(archivio):
     assert archivio.totali(from_anchor=True)["richieste"] == 3
 
 
+def test_dopo_l_ancora_l_abbonamento_non_afferma_ancora_zero(archivio):
+    """La SECONDA strada per il totale di sezione (audit, rilievo 6).
+
+    `_sottrai_saldo` ricalcola i totali di sezione dai modelli, e li
+    ricalcolava con `sum(costo_usd or 0.0)`: dopo un azzeramento la sezione
+    dell'abbonamento diceva `0.0` mentre senza ancora diceva `null` -- lo
+    stesso fatto in due forme a seconda di un pulsante. Il commento accanto
+    a quella somma dichiarava gia' il rischio («due strade per lo stesso
+    numero divergono al primo caso limite») e la somma non lo rispettava."""
+    archivio.log("ponte", "claude-haiku-4-5", token_in=80,
+                      cost_usd=None, cost_state="compreso", now=MATTINA)
+    archivio.sposta_anchor(POMERIGGIO)
+    archivio.log("ponte", "claude-haiku-4-5", token_in=40,
+                      cost_usd=None, cost_state="compreso", now=POMERIGGIO)
+
+    sezione = archivio.sezioni(from_anchor=True)[0]
+    assert sezione["token_in"] == 40, "l'ancora ha tolto il consumo di stamattina"
+    assert sezione["costo_usd"] is None, (
+        "l'abbonamento non ha un costo di turno: uno zero lo affermerebbe, "
+        "e lo affermerebbe SOLO dopo un azzeramento")
+    assert archivio.totali(from_anchor=True)["costo_parziale"] is True
+
+
 def test_senza_ancora_da_ancora_e_da_sempre_coincidono(archivio):
     archivio.log("claude", "m", richieste=4, cost_state="misurato", now=MATTINA)
     assert archivio.totali(from_anchor=True) == archivio.totali()

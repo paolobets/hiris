@@ -87,7 +87,15 @@ def test_una_sezione_senza_nessun_costo_NOTO_non_afferma_zero(tmp_path):
     E' lo zero che afferma, rientrato un piano piu' su di dove la fetta lo
     aveva tolto. La pagina lo nascondeva trattando il ponte a parte, il che
     rende il difetto peggiore e non migliore: l'API lo affermava lo stesso, a
-    chiunque altro lo leggesse."""
+    chiunque altro lo leggesse.
+
+    **E il TOTALE lo affermava ancora**, un piano piu' su della sezione
+    (audit delle fondamenta, rilievo 6, misurato il 08/09/2026 su 111
+    richieste tutte in abbonamento: `cost_usd: 0.0, partial_cost: false`).
+    La versione precedente di questa prova asseriva `totali()["costo_usd"]
+    == 0.0` -- il FATTO che il codice produceva -- e per questo non poteva
+    vedere il difetto che stava difendendo.
+    """
     a = UsageStore(str(tmp_path / "c.db"), read_timezone=lambda: ROMA)
     try:
         a.log("ponte", "claude-haiku-4-5", token_in=80, token_out=9,
@@ -96,9 +104,55 @@ def test_una_sezione_senza_nessun_costo_NOTO_non_afferma_zero(tmp_path):
         sezione = a.sezioni()[0]
         assert sezione["costo_usd"] is None, (
             "nessun costo noto: 0.0 direbbe «misurato, e non e' costato niente»")
-        assert a.totali()["costo_usd"] == 0.0, (
-            "il TOTALE resta un numero: e' la somma di cio' che si conosce, e "
-            "`partial_cost` dice che c'e' dell'altro")
+        totali = a.totali()
+        assert totali["costo_usd"] is None, (
+            "nessun costo noto in nessuna sezione: il totale non e' zero, "
+            "non si sa -- e uno zero qui e' la stessa affermazione che la "
+            "sezione ha appena smesso di fare")
+        assert totali["costo_parziale"] is True, (
+            "l'abbonamento un costo ce l'ha, e non lo espone per turno: il "
+            "totale e' un pavimento anche quando nessuna riga e' «non_noto»")
+    finally:
+        a.close()
+
+
+def test_il_totale_con_un_provider_a_pagamento_E_l_abbonamento_e_un_pavimento(tmp_path):
+    """Il caso che morde su questa casa: una sezione col prezzo e una senza.
+
+    Il totale resta un numero -- e' la somma di cio' che si conosce -- ma
+    non e' IL costo, perche' il turno dell'abbonamento non ci entra. Prima
+    dell'audit `costo_parziale` si alzava solo per lo stato `non_noto`, mai
+    per `compreso`: la porta HTTP diceva «misurato» di un numero che non
+    comprendeva l'unica cosa che il proprietario stava davvero usando."""
+    a = UsageStore(str(tmp_path / "c.db"), read_timezone=lambda: ROMA)
+    try:
+        a.log("claude", "claude-sonnet-4-6", cost_usd=2.0,
+                   cost_state="misurato", now=T21)
+        a.log("ponte", "claude-haiku-4-5", cost_usd=None,
+                   cost_state="compreso", now=T21)
+
+        totali = a.totali()
+        assert totali["costo_usd"] == 2.0
+        assert totali["costo_parziale"] is True, (
+            "c'e' una sezione senza nessun costo noto: il totale e' un minimo")
+    finally:
+        a.close()
+
+
+def test_un_costo_VERAMENTE_zero_non_rende_il_totale_parziale(tmp_path):
+    """`gratuito` non e' `compreso`: Ollama in casa costa zero DAVVERO.
+
+    E' il confine della cura: si distingue «non si sa» da «si sa, ed e'
+    zero». Senza questa prova, alzare `costo_parziale` su ogni sezione
+    senza costo sarebbe passato anche sui modelli locali, e la pagina
+    avrebbe scritto «>=» su una cifra esatta."""
+    a = UsageStore(str(tmp_path / "c.db"), read_timezone=lambda: ROMA)
+    try:
+        a.log("ollama", "llama3", cost_usd=0.0, cost_state="gratuito", now=T21)
+
+        totali = a.totali()
+        assert totali["costo_usd"] == 0.0
+        assert totali["costo_parziale"] is False
     finally:
         a.close()
 
