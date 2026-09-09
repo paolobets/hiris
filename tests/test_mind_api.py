@@ -369,9 +369,11 @@ async def test_una_condizione_di_sistema_non_passa_dal_vocabolario_degli_stati()
     stato di Home Assistant, e `automazione:automation.x` spaccato sul punto
     darebbe il dominio «automazione:automation», che non esiste su nessuna
     casa. Lo stesso confine, con le stesse quattro parole, e' gia' in
-    `facts.py::genre_for`.
+    `mind/facts.py::genre_for`: dal 09/09/2026 (audit delle fondamenta) e'
+    la STESSA tupla, `facts.NOT_ENTITY_PREFIXES`, importata qui -- non una
+    copia scritta a mano una terza volta.
 
-    Mutazione ESEGUITA: togliere il controllo su `_NOT_ENTITY_PREFIXES` da
+    Mutazione ESEGUITA: togliere il controllo su `NOT_ENTITY_PREFIXES` da
     `_with_rendered_states` -- il test torna rosso su
     `assert "stato_reso" not in corpo`.
     """

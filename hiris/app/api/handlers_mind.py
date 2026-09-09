@@ -9,8 +9,9 @@ qualcuno aggiunge un campo da una parte sola (fondamenta 3).
 **L'unica eccezione, e porta il suo perche' (fetta «lo stato», 07/09/2026):
 la RESA dello stato.** L'archivio continua a scrivere lo stato GREZZO --
 `heat`, `not_home`, `triggered` -- perche' e' quello il fatto, ed e' quello
-che `mind/facts.py` confronta con `_RESTING`/`_UNKNOWN` per aprire e chiudere
-gli episodi: scriverci «Riscaldamento» romperebbe l'aggregazione, e tenere
+che `mind/facts.py` confronta coi riposi e i «non lo so» del vocabolario dei
+tipi per aprire e chiudere gli episodi: scriverci «Riscaldamento»
+romperebbe l'aggregazione, e tenere
 entrambi in colonna sarebbe il doppione che le fondamenta vietano. La resa
 avviene qui, al confine, in un campo ACCANTO al grezzo e mai sopra -- la
 stessa disciplina di `nome`/`nome_dedotto` in `memory/resolver.py`. Non e'
@@ -31,6 +32,7 @@ from __future__ import annotations
 
 from aiohttp import web
 
+from ..mind.facts import NOT_ENTITY_PREFIXES
 from ..proxy.state_translations import state_translation
 
 # I soggetti che NON sono entita' di Home Assistant: una condizione di
@@ -39,9 +41,14 @@ from ..proxy.state_translations import state_translation
 # `chiuso`: parole di HIRIS e della configurazione, non del vocabolario degli
 # stati), e cercargli una traduzione vorrebbe dire spaccare `automazione:
 # automation.x` sul punto e chiedere a HA il dominio «automazione:automation»,
-# che non esiste su nessuna casa. Lo stesso confine, con le stesse quattro
-# parole, e' gia' scritto in `mind/facts.py::genre_for`.
-_NOT_ENTITY_PREFIXES = ("problema:", "integrazione:", "log:", "automazione:")
+# che non esiste su nessuna casa.
+#
+# **Corretto il 09/09/2026 (audit delle fondamenta): non e' piu' una tupla
+# scritta qui.** Fino a oggi lo stesso confine, con le stesse quattro parole,
+# viveva TRE volte -- qui, e due volte in `mind/facts.py` (`genre_for` e
+# `_reading_aspect`) -- ed era una fondamenta 2 vera: un quarto prefisso
+# aggiunto altrove sarebbe rimasto invisibile qui. La casa e'
+# `mind/facts.NOT_ENTITY_PREFIXES`; questo modulo si collega, non copia.
 
 
 async def handle_watching(request: web.Request) -> web.Response:
@@ -142,7 +149,7 @@ def _with_rendered_states(facts: list[dict], report: dict) -> list[dict]:
         if not isinstance(body, dict) or not isinstance(subject, str):
             rendered.append(fact)
             continue
-        if subject.startswith(_NOT_ENTITY_PREFIXES) or "." not in subject:
+        if subject.startswith(NOT_ENTITY_PREFIXES) or "." not in subject:
             rendered.append(fact)
             continue
         translated = state_translation(

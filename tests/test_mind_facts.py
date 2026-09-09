@@ -72,6 +72,32 @@ def test_a_log_subject_is_a_fault():
     assert genre_for("log:homeassistant.setup@setup.py:123", None) == "guasto"
 
 
+def test_i_prefissi_non_entita_sono_una_casa_sola():
+    """Audit delle fondamenta, «sotto la soglia dei dieci» n.10 (09/09/2026):
+    fino a oggi la stessa tupla a quattro elementi -- `("problema:",
+    "integrazione:", "log:", "automazione:")` -- era scritta a mano tre
+    volte: in `genre_for`, in `_reading_aspect` (qui sotto in `facts.py`) e
+    in `api/handlers_mind.py`. Un quinto prefisso aggiunto a due sedi su tre
+    sarebbe rimasto invisibile a qualunque test che non confrontasse gli
+    elenchi lettera per lettera.
+
+    La prova e' sull'IDENTITA' dell'oggetto, non sul suo contenuto: due
+    tuple con lo stesso contenuto ma scritte in due punti diversi
+    passerebbero un confronto per valore anche il giorno in cui una delle
+    due dimenticasse di aggiornarsi.
+
+    Mutazione ESEGUITA: rimessa `_NOT_ENTITY_PREFIXES = ("problema:",
+    "integrazione:", "log:", "automazione:")` scritta a mano in
+    `handlers_mind.py`, al posto dell'importazione da `mind.facts` -- questa
+    prova e' diventata rossa sul controllo `is`, perche' un valore copiato
+    non e' lo stesso oggetto anche quando il contenuto coincide ancora;
+    ripristinato riscrivendo il file.
+    """
+    from hiris.app.api import handlers_mind
+    from hiris.app.mind import facts
+    assert handlers_mind.NOT_ENTITY_PREFIXES is facts.NOT_ENTITY_PREFIXES
+
+
 def test_un_termostato_acceso_e_spento_diventa_UN_oggetto(archivio):
     archivio.record(quando_ts=ts(15, 30), source="entita",
                     subject="climate.camera_t", da="off", a="heat")

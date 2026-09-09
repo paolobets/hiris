@@ -88,6 +88,20 @@ GENRES = ("funzionamento", "presenza", "energia", "guasto", "sicurezza", "bilanc
 BALANCE_DIRECTIONS = ("produzione", "autoconsumo", "immissione",
                       "prelievo", "carica", "scarica", "consumo")
 
+#: I quattro prefissi con cui un `protagonista` NON e' un'entita' di Home
+#: Assistant, ma una condizione di sistema: una voce del registro di errori
+#: (`problema:`, `integrazione:`, `log:` -- Task 2 «le tracce e il log») o
+#: un'esecuzione di automazione in errore (`automazione:`, Task 4 dello
+#: stesso verticale). Scritto UNA volta perche' e' la stessa domanda posta da
+#: tre lettori diversi -- `genre_for` (qui sotto, decide il genere),
+#: `_reading_aspect` (qui sotto, decide la gamba) e
+#: `api/handlers_mind.py::_with_rendered_states` (decide se cercare una
+#: traduzione di stato) -- e fino al 09/09/2026 (audit delle fondamenta) la
+#: stessa tupla era scritta a mano in tutti e tre i posti: un quarto prefisso
+#: aggiunto a due su tre sarebbe stato invisibile a qualunque prova che non
+#: confrontasse i tre elenchi lettera per lettera.
+NOT_ENTITY_PREFIXES = ("problema:", "integrazione:", "log:", "automazione:")
+
 # Le tre liste che vivevano qui -- `_OPERABLE` (i domini che «funzionano»),
 # `_RESTING` (gli stati che valgono «a riposo») e `_UNKNOWN` (gli stati «non lo
 # so») -- sono righe del vocabolario dei tipi dal 07/09/2026. Le tre funzioni che
@@ -143,7 +157,7 @@ def genre_for(subject: str, aspect_: str | None) -> str | None:
     `binary_sensor` di monossido -- che scatta davvero, con uno stato on/off
     -- resta dentro senza bisogno di nessuna soglia.
     """
-    if subject.startswith(("problema:", "integrazione:", "log:", "automazione:")):
+    if subject.startswith(NOT_ENTITY_PREFIXES):
         return "guasto"
     domain = subject.split(".")[0]
     # **La gamba «sicurezza» viene PRIMA di «accendibile», e l'ordine e' il
@@ -206,7 +220,7 @@ def _reading_aspect(subject: str, row: dict) -> str | None:
     confine, in DUE funzioni diverse: qui decide la gamba (nessuna), la'
     decide il genere (`"guasto"`).
     """
-    if subject.startswith(("problema:", "integrazione:", "log:", "automazione:")):
+    if subject.startswith(NOT_ENTITY_PREFIXES):
         return None
     return aspect(subject, {
         "device_class": row.get("device_class"),
