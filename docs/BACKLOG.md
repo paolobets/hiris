@@ -791,7 +791,9 @@ Va misurato quanto pesa `view` su un'area vera prima di decidere la cura.
 niente**. Ha detto «almeno 1» invece di «1», ha dichiarato quante ne aveva verificate (39 su 43),
 ha nominato l'area che non e' riuscito a leggere **e il perche'**, e si e' offerto di ricontrollarla.
 
-### `classe: null` esce, `unita` assente no: due chiavi mute trattate in modo diverso
+### `classe: null` esce, `unita` assente no: due chiavi mute trattate in modo diverso — **CHIUSA**
+
+`chiusa il 09/09/2026, commit 200be41d`
 
 `origine: batteria di prove funzionali in chat sulla casa vera, 07/09/2026` · `nessun documento`
 
@@ -804,6 +806,14 @@ fatta rispettare in tutta la fetta per `capacita`, `stato_presunto`, `luogo`, `d
 concludere che `classe: null` **significhi** qualcosa (una classe dichiarata vuota?) mentre
 l'assenza di `unita` significhi un'altra. E' precedente alla fetta -- ma e' la stessa legge, e ora
 che le altre la rispettano l'eccezione si nota.
+
+**Chiusa dall'audit delle fondamenta (rilievo sotto soglia n.11).** La causa era il pre-seme:
+`_entity_rows`, `_view_entity` e i `device_entities` di `_view_device` (`home_space/queries.py`)
+costruivano il dizionario di partenza con `"classe": e.get("classe")` -- quasi sempre vuoto, perche'
+il registro delle entita' non manda la classe -- prima che `_enrich_entity` avesse la possibilita' di
+scriverla SOLO quando c'e' una classe vera (come gia' faceva per `unita`). Rimossi i tre pre-semi:
+`_enrich_entity` resta la porta unica che decide se la chiave compare, per `classe` come per
+`unita`, `categoria` e `nascosta`.
 
 ### Due aree dell'Albero sono enormi quando le si apre
 
@@ -1059,6 +1069,38 @@ che **la completezza va nel dettaglio di una entità, non nel nucleo** — altri
 che ci lavora la prende per caso.
 
 **Si incrocia con «L'analista»**: è lui che dovrebbe decidere *cosa* mettere in quell'appendice.
+
+### `chat_stream` vive solo per i test
+
+`origine: audit delle fondamenta, «sotto la soglia dei dieci» n.8, 09/09/2026` · `nessun documento`
+
+Tre metodi -- `ClaudeRunner.chat_stream`, `OpenAICompatRunner.chat_stream`, `LLMRouter.chat_stream`
+-- e la rotta SSE di `api/handlers_chat.py::handle_chat` (dietro `Accept: text/event-stream` o
+`{"stream": true}`) non hanno **nessun** lettore di produzione: nessun file in `static/` manda
+quell'header o quel campo (grep, zero occorrenze), il ponte (il canale della CLI di Claude Code)
+ha una strada sua e non passa mai da `LLMRouter.chat()`/`.chat_stream()`, e
+`docs/design/2026-08-05-mappa-funzionalita.md` dichiara che la pagina chat "funziona, senza
+streaming" e che questo TIENE. Vivono per i test: **14 file**, misurato il 09/09/2026 (`grep -rl
+chat_stream tests/`) -- `test_base_prompt_memory.py`, `test_base_prompt_split.py`,
+`test_chat_briefing.py`, `test_chat_sse.py`, `test_claude_runner.py`, `test_composition_order.py`,
+`test_llm_router_policies.py`, `test_model_invariants.py`, `test_openai_compat_runner.py`,
+`test_runner_catalog.py`, `test_runner_parity.py` e tre soli marginali.
+
+**La decisione (fondamenta 4) e' fra due strade, nessuna delle due presa qui:**
+
+1. **Cancellare** -- il metodo su tre runner, la rotta SSE, e i 14 file di prova che lo esercitano
+   (alcuni solo di striscio, altri -- `test_chat_sse.py`, `test_openai_compat_runner.py`,
+   `test_runner_catalog.py` -- a fondo). E' un lavoro con la sua verifica, non l'effetto
+   collaterale di una correzione sotto soglia.
+2. **Collegare** -- dargli un lettore vero (streaming reale nella pagina chat), che e' una
+   FUNZIONALITA' NUOVA contraria a quanto la mappa delle funzionalita' dichiara oggi, e che
+   richiederebbe prima di chiudere un gap reale: `LLMRouter.chat_stream` non ripiega su un secondo
+   backend come fa `chat()` (commento originale: "no fallback in streaming (as today)") e non
+   scrive mai nel registro degli esiti (`.successo`/`.fallimento`) che lo stesso modulo alimenta
+   per ogni turno sincrono -- collegarlo com'e' oggi farebbe mentire la pagina Consumi su ogni
+   turno in streaming.
+
+Chi sceglie questa voce per uno sprint decide fra le due, con la sua verifica.
 
 ---
 
