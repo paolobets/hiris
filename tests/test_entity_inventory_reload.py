@@ -58,7 +58,7 @@ async def test_ricarica_linventario_dopo_un_avvio_senza_home_assistant():
 
     assert ricaricato is True
     assert cache.loaded is True
-    assert [e["id"] for e in cache.get_all()] == ["light.cucina"]
+    assert [e["id"] for e in cache.all_states()] == ["light.cucina"]
 
 
 async def _get_entities_on_come_lo_strumento(cache):

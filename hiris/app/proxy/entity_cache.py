@@ -626,8 +626,16 @@ class EntityCache:
     # risposto. Due risposte alla stessa domanda, una delle quali sbagliata e
     # letta da nessuno: NESSUN DOPPIONE.
 
-    def get_all(self) -> list[dict]:
-        return list(self._states.values())
+    # `get_all` e' USCITO il 09/09/2026: portava lo STESSO corpo di
+    # `all_states` (sotto) -- `return list(self._states.values())`, la
+    # stessa riga in due metodi -- doppione misurato dall'audit delle
+    # fondamenta (fondamenta 2, "nessun doppione"). L'unico chiamante di
+    # produzione era `server.py::_retry_entity_inventory_if_needed`, dietro
+    # un `hasattr` difensivo per un log di ricarica: ripuntato su
+    # `all_states()`, il metodo vero che gia' leggono `ToolDispatcher`,
+    # `action/actuator.py::Porta` e le porte API (vedi il docstring di
+    # `_CacheFinta` in `tests/test_keeper_tools.py`, che documenta perche'
+    # e' questo -- non l'altro -- il nome che conta).
 
     # fetta E3 Task 12 ("esce il ritratto"): `get_all_states` (la forma a
     # dizionario, entity_id -> stato) e' uscito -- ORFANO DICHIARATO dal

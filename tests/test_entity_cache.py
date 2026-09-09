@@ -130,10 +130,10 @@ def test_un_entita_rimossa_da_home_assistant_sparisce_dallo_specchio():
     cache.on_state_changed(_removal_event("light.vecchia"))
 
     assert "light.vecchia" not in cache._states
-    # Da OGNI porta, non solo dal dizionario: sono i lettori veri
-    # (`api/handlers_home_space`, l'inventario entita', `action/verification`).
+    # Non solo dal dizionario: dal lettore vero (`api/handlers_home_space`,
+    # l'inventario entita', `action/verification`). `get_all()` -- un
+    # doppione di `all_states()`, stesso corpo -- e' uscito il 09/09/2026.
     assert [e["id"] for e in cache.all_states()] == ["light.viva"]
-    assert [e["id"] for e in cache.get_all()] == ["light.viva"]
 
 
 def test_dopo_una_rimozione_lo_specchio_dice_le_STESSE_entita_di_una_rilettura():
@@ -201,13 +201,16 @@ def test_on_state_changed_ignores_missing_entity_id():
     assert cache._states == {}
 
 
-def test_get_all_returns_all_states():
+def test_all_states_returns_every_cached_entity():
+    """`get_all()` portava lo stesso corpo -- doppione uscito il 09/09/2026
+    (audit delle fondamenta, fondamenta 2): questa prova resta su
+    `all_states()`, il nome che i lettori veri usano."""
     cache = EntityCache()
     cache._states = {
         "light.a": {"id": "light.a", "state": "on", "name": "A", "unit": ""},
         "button.b": {"id": "button.b", "state": "available", "name": "B", "unit": ""},
     }
-    assert len(cache.get_all()) == 2
+    assert len(cache.all_states()) == 2
 
 
 def test_on_state_changed_handles_none_attributes():

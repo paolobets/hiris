@@ -603,7 +603,7 @@ async def reload_entity_inventory(cache, ha_client) -> bool:
         return False
     logger.info(
         "Inventario entita' ricaricato: %d entita' (la lettura iniziale era fallita)",
-        len(cache.get_all()) if hasattr(cache, "get_all") else -1,
+        len(cache.all_states()) if hasattr(cache, "all_states") else -1,
     )
     # Qui c'erano due chiamate WebSocket per ricostruire una mappa area->entita'
     # che nessuno leggeva, e che sbagliava (per nome invece che per id, senza
