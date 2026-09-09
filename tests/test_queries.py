@@ -100,6 +100,50 @@ def test_guarda_un_entita_che_non_esiste_lo_dice():
     assert "classe" not in dettaglio
 
 
+def test_classe_assente_non_esce_come_null_ne_da_view_ne_da_area_ne_da_dispositivo():
+    """Audit delle fondamenta, «sotto la soglia dei dieci» n.11 (09/09/2026)
+    -- era anche `docs/BACKLOG.md`, «`classe: null` esce, `unita` assente
+    no» (voce tolta con questa correzione): `light.cucina_1` non ha classe
+    (ne' nel registro ne' dallo specchio, in questi fixture), esattamente
+    come non ha `unita'`. Le chiavi che non hanno niente da dire non escono
+    -- gia' vero per `unita'`, `categoria`, `nascosta` -- e ora e' vero anche
+    per `classe`, dalle TRE porte che elencano entita': `view("entita", ...)`
+    (`_view_entity`), `view("area", ...)` (`_entity_rows`) e
+    `view("dispositivo", ...)` (i `device_entities` di `_view_device`).
+
+    Mutazione ESEGUITA: rimessa `"classe": e.get("classe")` (o
+    `entity.get("classe")`) nei tre dizionari di partenza in
+    `home_space/queries.py` -- questa prova e' diventata rossa su
+    `assert "classe" not in ...` in tutti e tre i casi; ripristinato
+    riscrivendo il file.
+    """
+    dettaglio_entita = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
+                              "entita", "light.cucina_1")
+    assert dettaglio_entita["esiste"] is True
+    assert "classe" not in dettaglio_entita
+
+    dettaglio_area = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "area", "cucina")
+    per_id = {e["id"]: e for e in dettaglio_area["entita"]}
+    assert "classe" not in per_id["light.cucina_1"]
+    # Il controllo positivo, sullo stesso elenco: un'entita' che la classe la
+    # ha davvero (`sensor.cucina_t`) continua a mostrarla -- la correzione
+    # toglie la chiave muta, non la chiave vera.
+    assert per_id["sensor.cucina_t"]["classe"] == "temperature"
+
+    casa_dispositivo = dict(
+        _CASA,
+        dispositivi=[{"id": "d1", "nome": "Faretti", "area_id": "cucina"}],
+        entita=_CASA["entita"] + [
+            {"id": "light.faretto_extra", "nome": "Extra", "area_id": None,
+             "dispositivo_id": "d1", "classe": None, "unita": None,
+             "disabilitata": 0}])
+    dettaglio_dispositivo = view(
+        casa_dispositivo, _COMPORTAMENTO, _RICORDI,
+        {**_STATO, "light.faretto_extra": "off"}, "dispositivo", "d1")
+    per_id_dispositivo = {e["id"]: e for e in dettaglio_dispositivo["entita"]}
+    assert "classe" not in per_id_dispositivo["light.faretto_extra"]
+
+
 def test_guarda_un_entita_senza_nome_dichiara_il_nome_dedotto():
     """Stessa porta di `search` (B3/B4), qui su `view`: un'entita' senza
     nome nel registro non deve uscire con `nome: null` secco quando lo

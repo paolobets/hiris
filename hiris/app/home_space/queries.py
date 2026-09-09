@@ -635,10 +635,21 @@ def _entity_rows(entries: list[dict], state: dict, reported_since_when: dict[str
 
     `disabilitata` e' un valore FISSO per l'intero elenco, non letto dalla
     voce: chi chiama sa gia' da quale lista viene (le disabilitate hanno gia'
-    lasciato `per_area`/`per_area_hidden` in `hierarchy()`)."""
+    lasciato `per_area`/`per_area_hidden` in `hierarchy()`).
+
+    **Niente `classe` qui dentro** (corretto il 09/09/2026, audit delle
+    fondamenta -- era `docs/BACKLOG.md`, «`classe: null` esce, `unita`
+    assente no»): la stessa ragione per cui questo dizionario non porta
+    `unita` -- `_enrich_entity` la aggiunge dallo specchio vivo, e SOLO
+    quando c'e' -- vale identica per `classe`, che infatti `_enrich_entity`
+    scrive con lo stesso `if device_class: ...`. Pre-seminarla qui a
+    `e.get("classe")` (quasi sempre `None`: il registro delle entita' non la
+    manda affatto) la faceva uscire come chiave **esplicita**, mentre
+    `unita` -- assente nella stessa condizione -- non compariva: due chiavi
+    mute trattate in due modi dalla stessa porta."""
     return [
         _enrich_entity(
-            {"id": e["id"], "nome": e.get("nome"), "classe": e.get("classe"),
+            {"id": e["id"], "nome": e.get("nome"),
              "stato": state.get(e["id"]),
              "da_quando": (reported_since_when or {}).get(e["id"]),
              "disabilitata": disabled},
@@ -956,13 +967,16 @@ def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
         return _not_found_detail("entita", reference, "entita" in unavailable)
     detail = {
         "esiste": True, "tipo": "entita", "id": entity["id"], "nome": entity.get("nome"),
-        # `unita` NON viene da qui: `config/entity_registry/list` risponde con
-        # `as_partial_dict`, che non contiene ne' l'unita' ne' la classe ne'
-        # gli alias (verificato sul sorgente di HA). La aggiunge
-        # `_enrich_entity` dallo specchio vivo, che ce l'ha davvero -- e solo
-        # quando c'e'. Prima questa riga prometteva un campo che era sempre
-        # `null`: una promessa che non ha mai mantenuto niente.
-        "classe": entity.get("classe"),
+        # Ne' `unita` ne' `classe` vengono da qui: `config/entity_registry/
+        # list` risponde con `as_partial_dict`, che non contiene ne' l'una ne'
+        # l'altra ne' gli alias (verificato sul sorgente di HA). Le aggiunge
+        # `_enrich_entity` dallo specchio vivo, che ce le ha davvero -- e solo
+        # quando ci sono. Fino al 09/09/2026 (audit delle fondamenta,
+        # `docs/BACKLOG.md` -- «`classe: null` esce, `unita` assente no») la
+        # riga qui sotto pre-seminava `classe` col valore quasi sempre vuoto
+        # del registro: una promessa che non ha mai mantenuto niente, e che
+        # per giunta usciva come chiave ESPLICITA (`classe: null`) mentre
+        # `unita`, assente nella stessa identica condizione, non compariva.
         # Un'entita' disabilitata resta in anagrafe (e' in Home Assistant e
         # non funziona) ma sparisce dall'albero di `hierarchy()` -- questo
         # campo dice perche' `guarda` la trova comunque, senza far credere
@@ -1106,11 +1120,16 @@ def _view_device(home_space: dict, memories: list[dict], state: dict, reference,
                        if not (e.get("nascosta") and not e.get("disabilitata"))]
     device_entities = [
         _enrich_entity(
-            # `classe` e `stato` come dall'area: la stessa entita' e' la stessa
-            # cosa da tutte le porte. Senza lo stato, questa porta usciva con
+            # `stato` come dall'area: la stessa entita' e' la stessa cosa da
+            # tutte le porte. Senza lo stato, questa porta usciva con
             # `unita: "C"` e nessun valore -- un'unita' di misura di un numero
             # che non c'e', e il modello o dice "non lo so" o lo inventa.
-            {"id": e["id"], "nome": e.get("nome"), "classe": e.get("classe"),
+            #
+            # **Niente `classe` pre-seminata qui** (corretto il 09/09/2026,
+            # stessa correzione di `_entity_rows` e `_view_entity` qui sopra):
+            # `_enrich_entity` la scrive dallo specchio vivo, e solo quando
+            # c'e' -- esattamente come fa gia' per `unita`.
+            {"id": e["id"], "nome": e.get("nome"),
              "stato": state.get(e["id"]),
              "da_quando": (reported_since_when or {}).get(e["id"]),
              "disabilitata": bool(e.get("disabilitata"))},
