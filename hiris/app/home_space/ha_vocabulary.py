@@ -41,11 +41,16 @@ decifrare -- e' un dato, non un significato nascosto. Il numero e' stato
 misurato lo stesso per verificare il metodo di misura, non perche' desse
 un proprio perimetro da importare.
 
-**Le quattro tabelle di significati non le consuma il digesto -- `view` sì, da
-"rifiutare e importare" (Task 5, §6c).** `STATE_CLASS_MEANING`/
-`DEVICE_CLASS_MEANING`/`UNAVAILABLE_MEANING`/`UNKNOWN_MEANING` restano
-conoscenza per chi legge il codice o interroga la casa a mano, non un fatto che
-il digesto ripete a ogni turno. **Le tre voci arrivate l'08/09/2026 invece il
+**Le quattro tabelle di significati non le consuma il digesto, e non le
+consuma nemmeno `view`** (corretto il 09/09/2026: la frase precedente diceva
+il contrario, ed era falsa il giorno stesso in cui l'ha letta un revisore).
+`STATE_CLASS_MEANING`/`DEVICE_CLASS_MEANING` hanno oggi UN lettore --
+`type_census.py:177,218`, che le usa per elencare le coppie (dominio, classe)
+censite -- e `UNAVAILABLE_MEANING`/`UNKNOWN_MEANING` nessuno: restano
+conoscenza per chi legge il codice o interroga la casa a mano, pinnate solo
+dalla prova che le confronta con la fonte (`tests/test_ha_vocabulary.py`), non
+un fatto che il digesto o `view` ripetono a ogni turno. **Le tre voci arrivate
+l'08/09/2026 invece il
 digesto le usa**: `config_entry_is_broken` decide la riga degli avvisi,
 `config_entry_is_healthy` decide cosa l'osservatore scrive nell'archivio, e
 `produces_statistics` decide su quale superficie si legge un andamento. Sono
@@ -241,6 +246,19 @@ DEVICE_CLASS_MEANING = {
         "Un ISTANTE nel tempo (ISO 8601), non una durata: es. l'ultimo "
         "aggiornamento, l'ultimo avvio."
     ),
+    # ATTENZIONE (annotato il 09/09/2026, nessun lettore ne oggi risente):
+    # questa frase e' la trascrizione FEDELE di Home Assistant
+    # (`SensorDeviceClass.ENERGY`, `components/sensor/const.py:236-240` @
+    # 2026.9.1) -- non va corretta, sarebbe falsificare la fonte. Ma HA usa
+    # la stessa classe per l'energia PRODOTTA da un fotovoltaico e per quella
+    # PRELEVATA dalla rete, e su QUESTA casa il fotovoltaico produce:
+    # `type_vocabulary.py` (righe intorno a "le direzioni dell'energia",
+    # 27/08/2026) e CLAUDE.md lo dichiarano entrambi. Nessuno collega ancora
+    # questa tabella alle righe dei tipi (type_census.py e' l'unico lettore,
+    # e non la mostra): il giorno in cui qualcuno lo fara', un inverter
+    # letto da qui uscirebbe come "energia consumata". La cura e' su quel
+    # lettore futuro -- distinguere la direzione prima di citare questa
+    # frase -- non su questa riga.
     ("sensor", "energy"): (
         "Energia CONSUMATA, cumulata nel tempo (J, kJ, Wh, kWh, ...): "
         "cresce, non e' un valore istantaneo -- quello e' `power`."
