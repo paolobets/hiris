@@ -83,11 +83,26 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 # Resta da fare per la 2.1.263, e vale la stessa riga: dopo il rilascio, un
 # turno e una GET.
 #
-# Se la 2.1.263 desse problemi si torna alla **2.1.260**, ed e' il ripiego piu'
-# solido che questo file abbia mai avuto: e' uscita con la 3.22.0, ha girato su
-# questa casa per due rilasci, e `ponte.cli` l'ha confermata il 07/09.
+# 9 settembre 2026 — alzata da 2.1.263 a 2.1.266 (due uscite: 265 e 266; la
+# 264 non e' mai stata pubblicata). Il cancello l'aveva segnalata due volte --
+# durante il rilascio della 3.23.2 e al push successivo -- e per la regola del
+# proprietario il salto entra nel rilascio in preparazione (la 3.23.4),
+# deciso PRIMA che la suite girasse.
+#
+# **ATTENZIONE, e va letta prima di fidarsi del ripiego**: la 2.1.263 non e'
+# mai stata VISTA girare in questo container. Dal riavvio del 08/09
+# `GET /api/health` risponde `ponte: null` -- «non ancora visto», che non e'
+# «assente»: nessun turno di chat e' passato da allora. Quindi il passo 4 di
+# questa annotazione e' in sospeso da DUE salti, ed e' il motivo per cui il
+# ripiego qui sotto nomina la 2.1.260 e non la 2.1.263.
+#
+# Se la 2.1.266 desse problemi si torna alla **2.1.260**: e' l'ultima versione
+# di cui esista una lettura vera (`ponte.cli` il 07/09/2026), ha girato su
+# questa casa per due rilasci, ed e' uscita con la 3.22.0. La 2.1.263 sarebbe
+# piu' recente ma non e' mai stata confermata: un ripiego che non si e' mai
+# visto funzionare non e' un ripiego.
 RUN apk add --no-cache nodejs npm libgcc libstdc++ ripgrep \
-    && npm install -g @anthropic-ai/claude-code@2.1.263 \
+    && npm install -g @anthropic-ai/claude-code@2.1.266 \
     && npm cache clean --force
 ENV USE_BUILTIN_RIPGREP=0
 
