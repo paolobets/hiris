@@ -791,30 +791,6 @@ Va misurato quanto pesa `view` su un'area vera prima di decidere la cura.
 niente**. Ha detto «almeno 1» invece di «1», ha dichiarato quante ne aveva verificate (39 su 43),
 ha nominato l'area che non e' riuscito a leggere **e il perche'**, e si e' offerto di ricontrollarla.
 
-### `classe: null` esce, `unita` assente no: due chiavi mute trattate in modo diverso — **CHIUSA**
-
-`chiusa il 09/09/2026, commit 200be41d`
-
-`origine: batteria di prove funzionali in chat sulla casa vera, 07/09/2026` · `nessun documento`
-
-`view` su `sensor.persons` (il caso di chiusura dello sprint «la conoscenza prende una forma»)
-torna `classe: null` **esplicito**, mentre `unita` — assente allo stesso modo — **non compare**.
-
-La legge del prodotto e' che **le chiavi che non hanno niente da dire non escono**, ed e' stata
-fatta rispettare in tutta la fetta per `capacita`, `stato_presunto`, `luogo`, `descrizione`,
-`mute_da`, `non_letti`. Qui due chiavi nella stessa condizione escono in due modi: chi legge puo'
-concludere che `classe: null` **significhi** qualcosa (una classe dichiarata vuota?) mentre
-l'assenza di `unita` significhi un'altra. E' precedente alla fetta -- ma e' la stessa legge, e ora
-che le altre la rispettano l'eccezione si nota.
-
-**Chiusa dall'audit delle fondamenta (rilievo sotto soglia n.11).** La causa era il pre-seme:
-`_entity_rows`, `_view_entity` e i `device_entities` di `_view_device` (`home_space/queries.py`)
-costruivano il dizionario di partenza con `"classe": e.get("classe")` -- quasi sempre vuoto, perche'
-il registro delle entita' non manda la classe -- prima che `_enrich_entity` avesse la possibilita' di
-scriverla SOLO quando c'e' una classe vera (come gia' faceva per `unita`). Rimossi i tre pre-semi:
-`_enrich_entity` resta la porta unica che decide se la chiave compare, per `classe` come per
-`unita`, `categoria` e `nascosta`.
-
 ### Due aree dell'Albero sono enormi quando le si apre
 
 `origine: misura del 07/09/2026 durante il collaudo` · `documento: indagine-albero-lungo.md (fuori da git)`
@@ -1080,7 +1056,7 @@ Tre metodi -- `ClaudeRunner.chat_stream`, `OpenAICompatRunner.chat_stream`, `LLM
 quell'header o quel campo (grep, zero occorrenze), il ponte (il canale della CLI di Claude Code)
 ha una strada sua e non passa mai da `LLMRouter.chat()`/`.chat_stream()`, e
 `docs/design/2026-08-05-mappa-funzionalita.md` dichiara che la pagina chat "funziona, senza
-streaming" e che questo TIENE. Vivono per i test: **14 file**, misurato il 09/09/2026 (`grep -rl
+streaming" e che questo TIENE. Vivono per i test: **12 file** `.py`, rimisurato il 09/09/2026 (`grep -rl
 chat_stream tests/`) -- `test_base_prompt_memory.py`, `test_base_prompt_split.py`,
 `test_chat_briefing.py`, `test_chat_sse.py`, `test_claude_runner.py`, `test_composition_order.py`,
 `test_llm_router_policies.py`, `test_model_invariants.py`, `test_openai_compat_runner.py`,
@@ -1088,7 +1064,7 @@ chat_stream tests/`) -- `test_base_prompt_memory.py`, `test_base_prompt_split.py
 
 **La decisione (fondamenta 4) e' fra due strade, nessuna delle due presa qui:**
 
-1. **Cancellare** -- il metodo su tre runner, la rotta SSE, e i 14 file di prova che lo esercitano
+1. **Cancellare** -- il metodo su tre runner, la rotta SSE, e i 12 file di prova che lo esercitano
    (alcuni solo di striscio, altri -- `test_chat_sse.py`, `test_openai_compat_runner.py`,
    `test_runner_catalog.py` -- a fondo). E' un lavoro con la sua verifica, non l'effetto
    collaterale di una correzione sotto soglia.
@@ -1130,25 +1106,6 @@ sedia, non ciò che è tecnicamente «in funzionamento»*:
 **Costo**: piccolo. La misura del disaccordo è già pinnata da
 `tests/test_notable_states_complement.py`, che arrossisce se il divario cambia.
 
-### `chat_stream` non è collegato e non è cancellato — decisione motivata
-
-`origine: audit fondamenta 09/09/2026, rilievo sotto soglia n.8` · `documento: .superpowers/.../audit-fondamenta.md`
-
-`claude_runner.py` dichiarava *«non è codice morto: il ponte e i test lo usano»*. **Il ponte non lo
-chiama.** L'unico chiamante è `handlers_chat.py:951`, raggiungibile solo con
-`Accept: text/event-stream`, che **nessun file in `static/` manda**. Vive per le sue prove.
-
-La quarta fondamenta chiede di **collegare o cancellare**. Nessuna delle due è stata fatta, e la
-ragione è scritta nel codice:
-
-- **cancellare** tocca **quattordici** file di prova, non uno come stimato nel capitolato;
-- **collegare** sarebbe una funzionalità nuova non voluta oggi, e per giunta su un percorso rotto:
-  `LLMRouter.chat_stream` **non ripiega** e **non scrive nel registro degli esiti**, che si dichiara
-  «l'unico scrittore».
-
-**Quindi la voce resta qui, e il commento nel codice ora dice il vero** invece di affermare un uso
-che non c'è. Chi la prenderà in mano decide fra le due strade sapendo cosa costano.
-
 ### Una quarta sede dei prefissi «non è un'entità»
 
 `origine: trovata durante la chiusura del rilievo 10, 09/09/2026` · `nessun documento`
@@ -1163,6 +1120,31 @@ guarda. Lasciata aperta perché fuori dal perimetro di quella chiusura.
 ---
 
 ## Usciti
+
+### `classe: null` esce, `unita` assente no: due chiavi mute trattate in modo diverso — **USCITA con la v3.23.2**
+
+`chiusa il 09/09/2026, commit 200be41d`
+
+`origine: batteria di prove funzionali in chat sulla casa vera, 07/09/2026` · `nessun documento`
+
+`view` su `sensor.persons` (il caso di chiusura dello sprint «la conoscenza prende una forma»)
+torna `classe: null` **esplicito**, mentre `unita` — assente allo stesso modo — **non compare**.
+
+La legge del prodotto e' che **le chiavi che non hanno niente da dire non escono**, ed e' stata
+fatta rispettare in tutta la fetta per `capacita`, `stato_presunto`, `luogo`, `descrizione`,
+`mute_da`, `non_letti`. Qui due chiavi nella stessa condizione escono in due modi: chi legge puo'
+concludere che `classe: null` **significhi** qualcosa (una classe dichiarata vuota?) mentre
+l'assenza di `unita` significhi un'altra. E' precedente alla fetta -- ma e' la stessa legge, e ora
+che le altre la rispettano l'eccezione si nota.
+
+**Chiusa dall'audit delle fondamenta (rilievo sotto soglia n.11).** La causa era il pre-seme:
+`_entity_rows`, `_view_entity` e i `device_entities` di `_view_device` (`home_space/queries.py`)
+costruivano il dizionario di partenza con `"classe": e.get("classe")` -- quasi sempre vuoto, perche'
+il registro delle entita' non manda la classe -- prima che `_enrich_entity` avesse la possibilita' di
+scriverla SOLO quando c'e' una classe vera (come gia' faceva per `unita`). Rimossi i tre pre-semi:
+`_enrich_entity` resta la porta unica che decide se la chiave compare, per `classe` come per
+`unita`, `categoria` e `nascosta`.
+
 
 ### La piattaforma non e' cercabile — **USCITA con la v3.22.0**
 

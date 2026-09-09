@@ -49,11 +49,12 @@ il contrario, ed era falsa il giorno stesso in cui l'ha letta un revisore).
 censite -- e `UNAVAILABLE_MEANING`/`UNKNOWN_MEANING` nessuno: restano
 conoscenza per chi legge il codice o interroga la casa a mano, pinnate solo
 dalla prova che le confronta con la fonte (`tests/test_ha_vocabulary.py`), non
-un fatto che il digesto o `view` ripetono a ogni turno. **Le tre voci arrivate
-l'08/09/2026 invece il
-digesto le usa**: `config_entry_is_broken` decide la riga degli avvisi,
-`config_entry_is_healthy` decide cosa l'osservatore scrive nell'archivio, e
-`produces_statistics` decide su quale superficie si legge un andamento. Sono
+un fatto che il digesto o `view` ripetono a ogni turno. **Le tre voci
+arrivate l'08/09/2026 invece hanno
+un lettore vivo ciascuna, e non e' lo stesso**: `config_entry_is_broken` la
+usa il digesto, per la riga degli avvisi; `config_entry_is_healthy`
+l'osservatore, per decidere cosa scrive nell'archivio; `produces_statistics`
+`_trend`, per dire su quale superficie si legge un andamento. Sono
 qui perche' sono vocabolario del fornitore, non perche' nessuno le legga.
 Ma `entity_category_measure_rule()` (sotto, insieme a
 `ENTITY_CATEGORY_MEANING`) e' il PRIMO consumatore vero a runtime: `queries.

@@ -103,7 +103,7 @@ def test_guarda_un_entita_che_non_esiste_lo_dice():
 def test_classe_assente_non_esce_come_null_ne_da_view_ne_da_area_ne_da_dispositivo():
     """Audit delle fondamenta, «sotto la soglia dei dieci» n.11 (09/09/2026)
     -- era anche `docs/BACKLOG.md`, «`classe: null` esce, `unita` assente
-    no» (voce tolta con questa correzione): `light.cucina_1` non ha classe
+    no» (voce passata in «Usciti» con la v3.23.2): `light.cucina_1` non ha classe
     (ne' nel registro ne' dallo specchio, in questi fixture), esattamente
     come non ha `unita'`. Le chiavi che non hanno niente da dire non escono
     -- gia' vero per `unita'`, `categoria`, `nascosta` -- e ora e' vero anche

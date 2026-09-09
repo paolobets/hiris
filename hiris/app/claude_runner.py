@@ -1035,7 +1035,7 @@ class ClaudeRunner:
         questo metodo e' `api/handlers_chat.py::handle_chat`, dietro
         `Accept: text/event-stream` o `{"stream": true}` nel corpo: nessun
         file in `static/` manda ne' l'uno ne' l'altro (grep, zero
-        occorrenze). Vive per i test -- che sono 14 file, non solo
+        occorrenze). Vive per i test -- che sono 12 file .py, non solo
         `tests/test_chat_sse.py` (`test_base_prompt_memory.py`,
         `test_base_prompt_split.py`, `test_chat_briefing.py`,
         `test_claude_runner.py`, `test_composition_order.py`,
@@ -1046,7 +1046,7 @@ class ClaudeRunner:
 
         **Decisione (fondamenta 4: collegare o cancellare): NON cancellato
         in questo giro, ed e' una scelta e non un rinvio senza ragione.**
-        Cancellarlo per bene vuol dire toccare quattordici file di prova
+        Cancellarlo per bene vuol dire toccare dodici file di prova
         (non uno solo, com'era stato misurato prima di questa correzione) e
         tre moduli di produzione (qui, `backends/openai_compat_runner.py`,
         `llm_router.py`) sotto un cancello che deve restare verde -- un

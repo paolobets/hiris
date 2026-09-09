@@ -193,9 +193,10 @@ def _seconds(pending: float) -> str:
 def _not_seen(pending: float, *, listened: bool) -> str:
     if not listened:
         return ("la chiamata e' partita, ma non sono riuscito a rileggere lo "
-                "stato dopo: questo collegamento con Home Assistant non "
-                "annuncia i cambiamenti di stato, quindi non c’e' stata "
-                "nessuna attesa -- non avevo nessun annuncio da aspettare. La "
+                "stato dopo: non sono rimasto in ascolto dei cambiamenti -- o "
+                "questo collegamento con Home Assistant non li annuncia, o "
+                "l’ascolto non si e' aperto -- quindi non c’e' stata "
+                "nessuna attesa: non avevo nessun annuncio da aspettare. La "
                 "chiamata non ha riportato niente e l’inventario interno non "
                 "e' leggibile. Non so dire cosa sia cambiato")
     return ("la chiamata e' partita, ma non sono riuscito a rileggere lo stato "

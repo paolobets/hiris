@@ -112,7 +112,8 @@
 
   function summary(u) {
     /* Collaudo 3.22 (C5): quando l'UNICO uso e' l'abbonamento, `cost_eur`
-       arriva 0.0 dal server -- nessun altro addendo -- e questa tessera
+       arriva `null` dal server (fino al 09/09 arrivava 0.0, ed era lo zero
+       che afferma: vedi `usage/store.totali`) -- e questa tessera
        scriveva «€ 0,00» senza dire che quello zero non e' una misura, e' un
        "qui non c'e' niente da sommare". `isSubscriptionOnly` (config/api.js)
        legge `u.sections`, che questa risposta manda gia': niente di nuovo da

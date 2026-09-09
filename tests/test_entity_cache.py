@@ -216,7 +216,6 @@ def test_all_states_returns_every_cached_entity():
 def test_on_state_changed_handles_none_attributes():
     cache = EntityCache()
     cache._states = {}
-    cache._by_domain = {}
     cache.on_state_changed({
         "new_state": {
             "entity_id": "sensor.weird",
