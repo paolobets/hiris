@@ -598,10 +598,140 @@ def test_intestazione_dei_notevoli_raggruppati_torna_dopo_il_taglio():
         f"righe rimaste ({somma_righe}), non al totale di prima del taglio")
 
 
+# Quanti elementi l'avviso di taglio DICHIARA esclusi, sezione per sezione.
+# Legge le frasi di `_cut_notice` (`cut_labels` in `compose`), che sono
+# concordate al singolare e al plurale: si cercano tutte e due le forme,
+# altrimenti «1 elemento notevole non incluso» sfuggirebbe -- ed e'
+# esattamente il caso del rilievo 4.
+_ESCLUSI_RE = {
+    "notevole": re.compile(r"(\d+) element[oi] notevol[ei] non inclus"),
+    "comportamento": re.compile(r"(\d+) voc[ei] di comportamento non inclus"),
+}
+
+
+def _esclusi_dichiarati(riepilogo: dict) -> dict[str, int]:
+    avviso = next((a for a in riepilogo["notices"]
+                   if a.startswith("Il nucleo superava il tetto")), "")
+    trovati = {}
+    for sezione, regola in _ESCLUSI_RE.items():
+        match = regola.search(avviso)
+        trovati[sezione] = int(match.group(1)) if match else 0
+    return trovati
+
+
+def test_una_sezione_VUOTA_non_dichiara_un_elemento_escluso():
+    """Audit delle fondamenta, rilievo 4 (08/09/2026): la frase segnaposto
+    «Niente di notevole al momento.» pesava **1**, e quella di
+    «Nessuna automazione o script registrati.» pure. `_pop` somma il peso di
+    cio' che toglie e lo scrive nell'avviso, quindi una casa con niente di
+    notevole e nessuna automazione che sforava il tetto usciva con la
+    sezione vuota e l'avviso «1 elemento notevole non incluso; 1 voce di
+    comportamento non inclusa». Non c'era nessun elemento e nessuna
+    automazione: il modello leggeva che ne esiste uno che non vede.
+
+    Il caso e' quello misurato dall'audit -- una luce spenta, nessuna
+    automazione, 39 ricordi, tetto 2.500."""
+    casa = {
+        "piani": [{"id": "terra", "nome": "Piano terra", "livello": 0}],
+        "aree": [{"id": "cucina", "nome": "Cucina", "piano_id": "terra",
+                  "alias": [], "etichette": []}],
+        "dispositivi": [],
+        "entita": [{"id": "light.cucina_1", "nome": "Faretti", "area_id": "cucina",
+                    "dispositivo_id": None, "classe": None, "unita": None,
+                    "disabilitata": 0}],
+        "etichette": [], "categorie": [], "integrazioni": [],
+    }
+    ricordi = [{"id": i, "testo": f"ricordo numero {i} " + "x" * 120,
+                "detto_da": "paolo", "ancore": [], "condizioni": [],
+                "forza": "preferenza"}
+               for i in range(39)]
+
+    _testo, riepilogo = compose(casa, [], ricordi, {"light.cucina_1": "off"},
+                                ceiling=2500, translations=house_translations())
+
+    assert riepilogo["truncated"] is True, "il test presuppone che il tetto morda"
+    esclusi = _esclusi_dichiarati(riepilogo)
+    assert esclusi["notevole"] == 0, (
+        "non c'era nessun elemento notevole: l'avviso non puo' dichiararne uno escluso")
+    assert esclusi["comportamento"] == 0, (
+        "non c'era nessuna automazione: l'avviso non puo' dichiararne una esclusa")
+    # La sezione puo' restare VUOTA, ed e' voluto: «Notevole adesso» senza
+    # righe dice gia' cio' che la frase segnaposto diceva, e proteggerla dal
+    # taglio costerebbe una riga della mappa delle stanze (vedi il commento
+    # accanto al peso, in `_highlight_lines`). Cio' che non puo' succedere e'
+    # che l'avviso dichiari un elemento che non e' mai esistito -- e senza il
+    # tetto la frase c'e', come gli altri test di questo file gia' pinnano.
+    intero, riepilogo_intero = compose(casa, [], ricordi, {"light.cucina_1": "off"},
+                                       ceiling=100_000, translations=house_translations())
+    assert riepilogo_intero["truncated"] is False
+    assert "Niente di notevole al momento." in intero
+    assert "Nessuna automazione o script registrati." in intero
+
+
+def test_il_taglio_non_dichiara_MAI_piu_elementi_di_quanti_ne_esistano():
+    """La PROPRIETA', non il caso: qualunque casa, qualunque tetto, il numero
+    dichiarato escluso non puo' superare il numero di elementi che quella
+    sezione aveva davvero. E' la forma generale del rilievo 4 -- il difetto
+    nasceva da una riga che rappresentava ZERO elementi e ne dichiarava uno --
+    e sorveglia anche il peso di una riga futura, non solo le due segnaposto
+    di oggi.
+
+    Il contratto di `compose()` in una riga: il riepilogo non puo' mentire su
+    cio' che il testo non contiene."""
+    case = {
+        "vuota": (
+            {**_CASA, "entita": [_CASA["entita"][1]]},   # solo la luce spenta
+            {"light.cucina_2": "off"},
+            [],                                          # nessuna automazione
+        ),
+        "piena": (_CASA, _STATO, _COMPORTAMENTO),
+    }
+    ricordi = [{"id": i, "testo": f"ricordo numero {i} " + "x" * 120,
+                "detto_da": "paolo", "ancore": [], "condizioni": [],
+                "forza": "preferenza"}
+               for i in range(39)]
+    for nome, (casa, stato, comportamento) in case.items():
+        # Quanti elementi ci sono DAVVERO: quelli che il nucleo elenca quando
+        # il tetto non morde. Contarli riapplicando qui la regola di
+        # `_highlight_lines` sarebbe scriverla due volte, e la seconda copia
+        # direbbe sempre di si' al codice che deve sorvegliare.
+        intero, riepilogo_intero = compose(casa, comportamento, [], stato,
+                                           ceiling=100_000,
+                                           translations=house_translations())
+        assert riepilogo_intero["truncated"] is False
+        sezione = intero.split("## Notevole adesso")[1].split("## Cio' che")[0]
+        notevoli_veri = sum(1 for riga in sezione.strip().splitlines()
+                            if riga.startswith("- ") and "non rispondono" not in riga)
+        for tetto in (900, 1100, 1500, 2000, 2500, 4000):
+            _testo, riepilogo = compose(casa, comportamento, ricordi, stato,
+                                        ceiling=tetto,
+                                        translations=house_translations())
+            esclusi = _esclusi_dichiarati(riepilogo)
+            assert esclusi["notevole"] <= notevoli_veri, (
+                f"casa «{nome}», tetto {tetto}: dichiarati {esclusi['notevole']} "
+                f"elementi notevoli esclusi su {notevoli_veri} esistenti")
+            assert esclusi["comportamento"] <= len(comportamento), (
+                f"casa «{nome}», tetto {tetto}: dichiarate "
+                f"{esclusi['comportamento']} voci di comportamento escluse su "
+                f"{len(comportamento)} esistenti")
+
+
 def test_taglio_dei_notevoli_raggruppati_conta_elementi_non_righe():
     """IMPORTANT ⑤: una riga raggruppata rappresenta N entita' -- tagliarla
     deve dichiarare N elementi esclusi, non 1 riga. Sottostimare l'escluso
-    e' peggio di non dichiararlo: sembra onesto e non lo e'."""
+    e' peggio di non dichiararlo: sembra onesto e non lo e'.
+
+    **Perche' la vecchia forma di questa prova non poteva fallire sul
+    rilievo 4** (audit delle fondamenta, 08/09/2026): qui la casa ha 150
+    entita' accese, quindi c'e' SEMPRE qualcosa di vero da escludere, e il
+    `next(...)` qui sotto accetta l'avviso senza mai chiedersi se un
+    elemento ci fosse. Il difetto viveva nel caso opposto -- zero elementi e
+    un avviso che ne dichiarava uno -- che nessuna casa di prova di questo
+    file produceva: erano tutte case piene. La prova che mancava e' quella
+    sopra (`test_una_sezione_VUOTA_non_dichiara_un_elemento_escluso`), e la
+    proprieta' che la generalizza e' `test_il_taglio_non_dichiara_MAI_piu_
+    elementi_di_quanti_ne_esistano`. Questa resta perche' difende l'altra
+    meta' -- non SOTTOstimare -- che e' un difetto diverso."""
     casa = _casa_grande(30, 5)
     stato = {e["id"]: "on" for e in casa["entita"]}
     _testo, riepilogo = compose(casa, [], [], stato, ceiling=1500)

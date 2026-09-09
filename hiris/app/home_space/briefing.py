@@ -905,8 +905,35 @@ def _highlight_lines(home_space: dict, state: dict, floors: list[dict],
     if not entries:
         # «Niente di notevole» resta vero anche con delle irraggiungibili: sono
         # due frasi diverse e si dicono tutte e due.
+        #
+        # **Peso ZERO, e non e' un dettaglio** (audit delle fondamenta,
+        # rilievo 4, 08/09/2026). Il peso di una riga e' «quanti elementi
+        # questa riga rappresenta», e `_pop` lo somma in
+        # `excluded_per_pool` per scrivere l'avviso di taglio. Questa riga
+        # non rappresenta nessun elemento: rappresenta la loro ASSENZA.
+        # Con peso 1 -- come stava fino a qui -- una casa senza niente di
+        # notevole che sforasse il tetto perdeva la frase e l'avviso diceva
+        # «1 elemento notevole non incluso»: il modello leggeva che esiste
+        # un elemento che non vede, e non ne esisteva nessuno. E' la stessa
+        # disciplina della riga delle irraggiungibili qui sopra, per la
+        # stessa ragione: cio' che si SA degli elementi non e' un elemento.
+        # Il contratto di `compose()` in una riga: il riepilogo non puo'
+        # mentire su cio' che il testo non contiene.
+        #
+        # **E resta tagliabile, deliberatamente.** Una riserva che la
+        # tenesse fuori dal taglio e' stata scritta e tolta: costa 30
+        # caratteri a ogni casa senza niente di notevole, e a tetto stretto
+        # quei caratteri li paga la mappa delle stanze -- misurato, una
+        # riga d'area in meno (`test_briefing_capabilities.py::test_con_le_
+        # firme_dentro_il_nucleo_non_perde_nemmeno_un_area`). Il baratto e'
+        # sbagliato in entrambi i sensi: la sezione «Notevole adesso» VUOTA
+        # dice gia' esattamente cio' che questa frase dice -- «non c'e'
+        # niente» -- mentre l'area persa non la dice piu' nessuno. Il caso
+        # dello stato inattendibile e' diverso e resta fuori dal taglio piu'
+        # sotto (CRITICAL ②): li' la sezione vuota direbbe «va tutto bene»
+        # al posto di «non ho potuto guardare».
         return (unreachable_line + ["Niente di notevole al momento."],
-                unreachable_weight + [1], False)
+                unreachable_weight + [0], False)
     if len(entries) > _INDIVIDUAL_HIGHLIGHT_THRESHOLD:
         groups = _group_highlights(entries)
         return (unreachable_line + [line for _, line in groups],
@@ -1115,15 +1142,26 @@ def _capability_lines(attributes: dict[str, dict] | None,
     return (lines, weights, True)
 
 
-def _behavior_lines(behavior: list[dict]) -> list[str]:
+def _behavior_lines(behavior: list[dict]) -> tuple[list[str], list[int]]:
     """I NOMI di cio' che la casa fa gia' da sola, con l'id accanto (R1,
     stessa regola di `name_with_id` in `topology.py`: fetta "i riferimenti",
     incidente 2026-08-20) -- `view('automazione'/'script', ...)` pretende l'id
     esatto, e senza di qui il modello non aveva da dove prenderlo. Il corpo
     si va a chiedere -- per trecento automazioni non ci sta, e qui serve solo
-    sapere che esistono. Chi non ha il corpo lo dichiara in riga."""
+    sapere che esistono. Chi non ha il corpo lo dichiara in riga.
+
+    Restituisce `(righe, pesi)` come `_highlight_lines`, e il peso lo decide
+    QUI perche' e' qui che si sa cosa una riga rappresenta (audit delle
+    fondamenta, rilievo 4). Fino all'08/09/2026 i pesi si costruivano dal
+    di fuori con `[1] * len(righe)`: una regola scritta lontano da chi la
+    conosce, che contava anche la frase segnaposto come una voce vera.
+    """
     if not behavior:
-        return ["Nessuna automazione o script registrati."]
+        # Peso ZERO: la stessa ragione, parola per parola, di «Niente di
+        # notevole al momento.» in `_highlight_lines`. Non c'e' nessuna
+        # automazione, quindi tagliando questa riga non se ne esclude
+        # nessuna -- e l'avviso di `_pop` non deve dire il contrario.
+        return (["Nessuna automazione o script registrati."], [0])
     lines = []
     for v in behavior:
         id_ = v.get("id")
@@ -1133,7 +1171,7 @@ def _behavior_lines(behavior: list[dict]) -> list[str]:
         if v.get("corpo") is None:
             line += " -- corpo non disponibile, solo il nome"
         lines.append(line)
-    return lines
+    return (lines, [1] * len(lines))
 
 
 # Quali condizioni di una voce di configurazione siano un guasto lo dice
@@ -1962,7 +2000,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
         fallback_names)
     capability_lines, capability_weights, capabilities_are_countable = _capability_lines(
         attributes, unreliable, _digest_visible_entity_ids(home_space))
-    behavior_lines = _behavior_lines(behavior)
+    behavior_lines, behavior_weights = _behavior_lines(behavior)
     memory_lines = _memory_lines(memories)
 
     # Peso 0 al riferimento: l'intestazione somma i pesi per dire quante righe
@@ -1974,7 +2012,6 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     # occupa il riferimento, cosi' aggiungerlo non toglie in silenzio una riga
     # di casa a chi legge (IMPORTANT (6)).
     home_space_reserve = _MIN_HOME_SPACE_LINES_RESERVE + len(reference_frame_lines)
-    behavior_weights = [1] * len(behavior_lines)
     memory_weights = [1] * len(memory_lines)
 
     def _current_highlight_section() -> list[str]:
