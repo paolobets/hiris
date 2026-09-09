@@ -138,10 +138,17 @@ SORVEGLIATO: dict[str, tuple[tuple[int, int], ...] | None] = {
     ),
     "action/construction/revisions.py": ((254, 255),),     # risana (solo `reason`)
     "agent/runner.py": ((1612, 1618),),  # la frase "flusso incompleto" nella reply
+    # Intervalli rinumerati l'09/09/2026 (rilievo 8 dell'audit delle
+    # fondamenta: `_cache_counts` entra a livello di modulo, sopra la classe,
+    # e sposta di 40 righe tutto cio' che sta sotto). Sono ANCORE, non offset:
+    # ritrovate per contenuto e verificate una per una iniettando un'elisione
+    # dritta all'inizio di ciascun intervallo nuovo -- il cancello arrossisce
+    # in 3 casi su 3. Un intervallo rimasto indietro non fa rumore: perde la
+    # copertura in silenzio, ed e' il danno peggiore.
     "backends/openai_compat_runner.py": (
         (157, 162),    # TOOL_LEAK_USER_MSG
-        (745, 748),    # RunnerBackendError, 402 OpenRouter (non-stream)
-        (1016, 1019),  # err, 402 OpenRouter (stream)
+        (785, 788),    # RunnerBackendError, 402 OpenRouter (non-stream)
+        (1056, 1059),  # err, 402 OpenRouter (stream)
     ),
     "api/handlers_chat.py": (
         (498, 502),    # nessun altro provider dopo la scadenza del ponte

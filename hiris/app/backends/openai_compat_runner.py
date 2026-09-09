@@ -260,6 +260,46 @@ def parse_upstream_rate_limit(exc: Any) -> str | None:
     )
 
 
+def _cache_counts(usage: Any) -> tuple[int, int]:
+    """I token letti dalla cache e quelli scritti, presi DOVE stanno davvero.
+
+    **Misurato il 09/09/2026, due fonti che concordano.** In `openai` 3.1.0
+    (la versione installata) `CompletionUsage` non ha nessun `cached_tokens`
+    al primo livello: i due contatori vivono dentro `prompt_tokens_details`
+    (`openai.types.completion_usage.PromptTokensDetails`, campi
+    `cached_tokens` e `cache_write_tokens`) -- verificato istanziando il tipo,
+    con 80 token cachati un `getattr(usage, "cached_tokens", 0)` risponde 0.
+    OpenRouter documenta la stessa identica forma (Prompt Caching):
+    `usage.prompt_tokens_details.{cached_tokens, cache_write_tokens}`.
+
+    Fino all'09/09/2026 si leggevano dal primo livello, quindi `cache_read` e
+    `cache_write` uscivano SEMPRE zero e quello zero arrivava all'archivio dei
+    consumi marcato `misurato`: un numero mai misurato scritto come misurato
+    (audit delle fondamenta, rilievo 8).
+
+    `prompt_tokens_details` assente significa «il fornitore non ha dichiarato
+    niente sulla cache» -- Ollama, e OpenAI quando nessun prefisso e' stato
+    riusato. Zero e' la risposta giusta, ed e' l'unica che l'archivio dei
+    consumi sappia rappresentare: `UsageStore.log` prende due interi, non due
+    «forse».
+
+    **Cosa questa funzione NON corregge, ed e' scritto qui perche' non si
+    perda.** Il costo (`_track_usage`, poco sotto) moltiplica `prompt_tokens`
+    -- che secondo OpenAI COMPRENDE i token cachati -- per il prezzo pieno
+    dell'input, perche' `backends/pricing.PRICING` porta `cache_read`/
+    `cache_write` solo per i modelli Claude e non per i `gpt-*`. Non e' un
+    numero inventato, e' il listino che abbiamo applicato per intero; ma un
+    input cachato viene fatturato a prezzo pieno finche' quel listino non
+    impara le due tariffe. E' un debito della tabella dei prezzi, non di
+    questa lettura.
+    """
+    details = getattr(usage, "prompt_tokens_details", None)
+    if details is None:
+        return 0, 0
+    return (getattr(details, "cached_tokens", 0) or 0,
+            getattr(details, "cache_write_tokens", 0) or 0)
+
+
 class OpenAICompatRunner:
     """Agentic LLM runner for OpenAI-compatible APIs (OpenAI cloud + Ollama local)."""
 
@@ -387,10 +427,10 @@ class OpenAICompatRunner:
         state, cost = cost_state_and_value(self.provider_name, model,
                                      cost_dichiarato=declared,
                                      cost_da_listino=cost)
+        cache_read, cache_write = _cache_counts(usage)
         self._log_usage(
             self.provider_name, model, token_in=inp, token_out=out,
-            cache_read=getattr(usage, "cached_tokens", 0) or 0,
-            cache_write=getattr(usage, "cache_write_tokens", 0) or 0,
+            cache_read=cache_read, cache_write=cache_write,
             cost_usd=cost, cost_state=state, now=time.time())
 
     def _write_rejection(self, model: str) -> None:
