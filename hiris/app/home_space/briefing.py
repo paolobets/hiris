@@ -63,7 +63,7 @@ from .topology import (
     name_with_id,
     readable_state,
 )
-from .type_vocabulary import is_notable
+from .type_vocabulary import is_notable, working_states_of
 
 # **Perche' questa tabella e' rimasta qui mentre le altre traslocavano**
 # (08/09/2026). I nomi sono vocabolario di un tipo, e la loro casa naturale e'
@@ -385,17 +385,25 @@ def _is_event(domain: str, device_class: str | None, value) -> bool:
     di questo modulo: `is_notable` risponde per il dominio e per la coppia con
     lo stesso campo, che e' il motivo per cui `binary_sensor` puo' dire «no» in
     generale e «si'» sulle tredici classi che lo meritano.
+
+    **`alarm_control_panel` era una TERZA sede dello stesso fatto** (corretto
+    il 09/09/2026, audit delle fondamenta): fino a oggi questa funzione
+    portava un ramo scritto a mano, `if domain == "alarm_control_panel":
+    return v == "triggered"`, mentre il vocabolario dei tipi dichiara GIA' lo
+    stesso fatto -- `type_vocabulary.working_states_of("alarm_control_panel")
+    == {"triggered"}`, con la sua ragione scritta li' («e' il fatto piu'
+    notevole che questa casa possa produrre»). Il comportamento era giusto;
+    il valore che decide era scritto due volte. Non passa da `is_notable` +
+    `_ACTIVE_STATES` come gli altri domini accendibili, perche' l'allarme non
+    e' accendibile (`is_operable("alarm_control_panel")` e' falso: non si
+    "accende", si arma) e i suoi stati notevoli non sono il complemento dei
+    riposi che quelle cinque parole rappresentano -- e' la stessa distinzione
+    che tiene `_ACTIVE_STATES` fuori dal vocabolario (vedi la sua dichiarazione
+    qui sotto).
     """
     v = str(value).lower()
     if domain == "alarm_control_panel":
-        # Solo "triggered": armato e disarmato sono la routine quotidiana, non
-        # un'eccezione -- si arma e si disarma piu' volte al giorno, come si
-        # accende e si spegne una luce: non sono un'eccezione rispetto al
-        # riposo, sono il riposo. Regola gia' presente prima di questa fetta,
-        # conservata. (Il letterale "alarm" che stava fra gli stati attivi non
-        # era MAI stato uno stato reale di Home Assistant: era voce morta che
-        # affermava di coprire un caso che non copriva.)
-        return v == "triggered"
+        return v in working_states_of(domain)
     if domain == "binary_sensor":
         return v == "on" and is_notable(domain, device_class)
     if is_notable(domain):

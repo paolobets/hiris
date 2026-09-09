@@ -369,6 +369,51 @@ def test_allarme_scattato_e_notevole_armato_no():
     assert "Allarme" not in sezione_notevole
 
 
+def test_lallarme_notevole_lo_dice_il_vocabolario_non_un_letterale_qui():
+    """Audit delle fondamenta, «sotto la soglia dei dieci» n.1 (09/09/2026):
+    prima di questa correzione `_is_event` portava un ramo scritto a mano,
+    `if domain == "alarm_control_panel": return v == "triggered"` -- una
+    TERZA sede dello stesso fatto che `type_vocabulary.working_states_of(
+    "alarm_control_panel")` gia' dichiara (`{"triggered": "..."}`, con la sua
+    ragione scritta li'). Il test gemello sopra
+    (`test_allarme_scattato_e_notevole_armato_no`) prova il COMPORTAMENTO, ma
+    non poteva distinguere «letto dal vocabolario» da «scritto qui»: la
+    stessa uscita ("triggered" notevole, "armed_away" no) l'avrebbe prodotta
+    anche il vecchio letterale. Questo test guarda davvero il pannello
+    d'allarme cambiando la fonte, non il valore.
+
+    Mutazione ESEGUITA: rimesso `if domain == "alarm_control_panel": return v
+    == "triggered"` (letterale, cieco al vocabolario) al posto di `return v
+    in working_states_of(domain)` -- il monkeypatch qui sotto smette di
+    cambiare l'esito e questa prova diventa rossa; ripristinato riscrivendo
+    il file.
+    """
+    from hiris.app.home_space import type_vocabulary
+
+    assert briefing._is_event("alarm_control_panel", None, "triggered") is True
+    for stato in ("armed_home", "armed_away", "armed_night", "disarmed",
+                  "arming", "disarming", "pending"):
+        assert briefing._is_event("alarm_control_panel", None, stato) is False
+
+    def _stati_immaginati(domain, device_class=None):
+        assert domain == "alarm_control_panel"
+        return frozenset({"armed_home"})
+
+    original = type_vocabulary.working_states_of
+    briefing.working_states_of = _stati_immaginati
+    try:
+        assert briefing._is_event("alarm_control_panel", None, "armed_home") is True, (
+            "il valore che conta deve venire dal vocabolario: con "
+            "`working_states_of` sostituita, anche uno stato diverso da "
+            "\"triggered\" deve diventare notevole")
+        assert briefing._is_event("alarm_control_panel", None, "triggered") is False, (
+            "e il vecchio valore non deve restare notevole per un motivo "
+            "suo: se lo fosse, la funzione starebbe ancora leggendo un "
+            "letterale invece del vocabolario")
+    finally:
+        briefing.working_states_of = original
+
+
 def test_i_ricordi_tagliati_sono_ordinati_esplicitamente_dal_codice():
     """MINOR ④: se il chiamante li passasse in un ordine diverso da quello
     di `MemoryStore.fetch()` (che oggi e' gia' "il piu' recente
