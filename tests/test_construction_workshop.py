@@ -23,6 +23,28 @@ ADESSO = 1_756_000_000.0
 _CHIAVE_RE_FINTA = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
+def _slug(name: str) -> str:
+    """`slugify` ridotta a cio’ che questi test usano: minuscole, e tutto cio’
+    che non e’ alfanumerico diventa `_`. Non e’ la `slugify` di Home
+    Assistant per intero -- e non serve che lo sia: cio’ che queste prove
+    misurano non e’ come si normalizza un nome, ma che DUE identificatori
+    nascono da due conteggi diversi."""
+    fuori = "".join(c.lower() if c.isalnum() else "_" for c in name)
+    return re.sub(r"_+", "_", fuori).strip("_")
+
+
+def _libero(base: str, presi) -> str:
+    """`IDManager.generate_id`: `base`, poi `base_2`, `base_3`... finche’ non
+    e’ libero nell’insieme che gli si passa. La forma e’ quella del tag
+    `2026.9.1`, e l’insieme cambia a seconda di CHI conta -- ed e’ tutto il
+    rilievo 9."""
+    proposta, tentativo = base, 1
+    while proposta in presi:
+        tentativo += 1
+        proposta = f"{base}_{tentativo}"
+    return proposta
+
+
 class FintoHA:
     """Un Home Assistant che dice sempre di si', salvo istruzioni contrarie."""
 
@@ -37,6 +59,15 @@ class FintoHA:
         # assente -- ed e' cosi' che `_free_key` puo' dire «e' libera»
         # senza inventare.
         self.esistenti = {"1771"}
+        # Gli id di ARCHIVIO degli helper, per dominio (dominio -> lista), e le
+        # voci del registro delle ENTITA'. Sono due cose diverse apposta: e'
+        # la distinzione che il rilievo 9 dell’audit delle fondamenta ha
+        # scoperto mancante nel codice, e che una finta che non la modelli non
+        # puo' provare.
+        self.helper_ids: dict[str, list[str]] = dict(
+            override.get("helper_ids") or {})
+        self.registro_entita: list[dict] = [
+            dict(v) for v in (override.get("registro_entita") or [])]
         self.stati = [{"entity_id": "automation.tapparelle_all_alba",
                        "state": "on", "attributes": {"id": "1771"}}]
         self.CONFIGURABLE_DOMAINS = ("automation", "script", "scene")
@@ -98,16 +129,58 @@ class FintoHA:
         return {"assente": True}
 
     async def create_helper(self, domain, data):
+        """Nascita di un helper come la fa Home Assistant: DUE identificatori.
+
+        Fino all’ 09/09/2026 questa finta rendeva `{"helper": {"id":
+        "modalita_notte"}}` e basta, e il codice componeva l’entita' come
+        `input_boolean.modalita_notte`: la finta produceva esattamente l’id
+        che il codice supponeva, quindi la prova non poteva vedere il
+        difetto. Adesso i due identificatori si generano come al tag
+        `2026.9.1`, con i due insiemi di collisione VERI e distinti:
+
+        - l’id di ARCHIVIO (`helpers/collection.py::IDManager.generate_id`):
+          `slugify(nome)` + `_2` se e' gia' preso fra gli id di quel dominio
+          -- YAML e storage insieme, che si spartiscono un `IDManager`;
+        - l’`entity_id` (`helpers/entity_registry.py`): `dominio.slugify(nome)`
+          + `_2` se e' gia' preso fra gli `entity_id` del registro.
+
+        Coincidono quasi sempre, e mai per costruzione.
+        """
         if "crea_helper" in self._override:
             return self._override["crea_helper"]
         self.helper_creati.append((domain, data))
-        return {"helper": {"id": "modalita_notte"}}
+        base = _slug(data.get("name") or "")
+        archivio = self.helper_ids.setdefault(domain, [])
+        helper_id = _libero(base, archivio)
+        archivio.append(helper_id)
+        presi = [voce["entity_id"] for voce in self.registro_entita]
+        entity_id = f"{domain}." + _libero(base, [e.split(".", 1)[1] for e in presi
+                                                  if e.startswith(f"{domain}.")])
+        self.registro_entita.append({"entity_id": entity_id, "platform": domain,
+                                     "unique_id": helper_id})
+        return {"helper": {"id": helper_id}}
 
     async def delete_helper(self, domain, helper_id):
         if "cancella_helper" in self._override:
             return self._override["cancella_helper"]
         self.helper_cancellati.append((domain, helper_id))
+        if helper_id in self.helper_ids.get(domain, []):
+            self.helper_ids[domain].remove(helper_id)
+        self.registro_entita = [v for v in self.registro_entita
+                                if not (v["platform"] == domain
+                                        and v["unique_id"] == helper_id)]
         return {"cancellato": True}
+
+    async def read_registries(self):
+        """La porta unica dei registri (`HAClient.read_registries`): la coppia
+        `(registri, non_disponibili)`. Le voci di `entita` portano
+        `entity_id`, `platform` e `unique_id`, i tre campi che
+        `config/entity_registry/list` manda davvero -- misurati dal vivo il
+        09/09/2026 sulla casa del proprietario, 1.225 voci di cui 11 di
+        helper."""
+        if "registri" in self._override:
+            return self._override["registri"]
+        return ({"entita": [dict(v) for v in self.registro_entita]}, [])
 
     async def list_labels(self):
         return {"etichette": [{"label_id": "hiris", "name": "HIRIS"}]}
@@ -790,7 +863,18 @@ async def test_lo_helper_nato_riceve_l_etichetta_anche_durante_una_modifica(banc
     Prima di questa correzione `_reread` filtrava per `{dominio}.`, quindi
     l'helper non riceveva mai l'etichetta, e non esistendo un registro
     interno (la paternita' vive nel registro di HA, fondamenta 2) quella
-    paternita' non era da nessuna parte."""
+    paternita' non era da nessuna parte.
+
+    **Perche' questa prova non poteva fallire sul rilievo 9** (audit delle
+    fondamenta, 08/09/2026): asseriva `input_boolean.modalita_notte` mentre
+    la finta rendeva `{"helper": {"id": "modalita_notte"}}` -- cioe' proprio
+    l'id che il codice componeva. Finta e codice facevano lo stesso conto,
+    quindi l'asserzione confermava il conto invece di misurarlo, e il caso in
+    cui i due identificatori DIVERGONO non era nemmeno esprimibile. Adesso la
+    finta genera i due identificatori come al tag `2026.9.1`, con i due
+    insiemi di collisione veri; qui coincidono ancora, ed e' giusto che
+    coincidano -- la divergenza la prova
+    `test_l_etichetta_va_sull_entita_LETTA_non_su_quella_supposta`."""
     officina, ha, _, _ = banco
     intento = _intento(gesto="modifica", chiave="1771",
                        helper=[{"dominio": "input_boolean", "dati": {"name": "Modalita notte"}}])
@@ -800,6 +884,120 @@ async def test_lo_helper_nato_riceve_l_etichetta_anche_durante_una_modifica(banc
     # Contrasto: l'oggetto principale modificato NON prende l'etichetta
     # (spec §5 -- una modifica non rende suo cio' che HIRIS non ha creato).
     assert ("automation.tapparelle_all_alba", "hiris") not in ha.etichettate
+
+
+def _bench_for(ha, tmp_path):
+    """Lo stesso cablaggio della fixture `banco`, con un Home Assistant gia'
+    preparato -- serve alle prove che partono da una casa in cui QUALCOSA
+    esiste gia'."""
+    archivio = ConstructionStore(os.path.join(str(tmp_path), "costruzioni.db"))
+    cronaca = Journal(os.path.join(str(tmp_path), "azioni.db"))
+    return Workshop(ha, archivio, cronaca), archivio, cronaca
+
+
+@pytest.mark.asyncio
+async def test_l_etichetta_va_sull_entita_LETTA_non_su_quella_supposta(tmp_path):
+    """Audit delle fondamenta, rilievo 9: l'etichetta di paternita' andava su
+    `f"{dominio}.{id_di_archivio}"`, e sono due spazi di identificatori con
+    due insiemi di collisioni distinti.
+
+    Fonti lette al tag `2026.9.1`: `helpers/collection.py::IDManager.
+    generate_id` (l'id di archivio conta le collisioni fra gli id di quel
+    dominio), `input_boolean/__init__.py::from_storage` (non imposta nessun
+    `entity_id`), `helpers/entity_registry.py` (l'`entity_id` conta le
+    collisioni nel REGISTRO e nella macchina degli stati).
+
+    La casa di questa prova e' quella in cui divergono, e non e' esotica:
+    l'utente aveva gia' un helper «Vacanza» -- id di archivio `vacanza` --
+    e ne ha RINOMINATO l'entita' in `input_boolean.ferie`, cosa che Home
+    Assistant permette. Adesso l'id di archivio `vacanza` e' occupato e
+    l'`entity_id` `input_boolean.vacanza` e' libero: HIRIS crea «Vacanza»,
+    l'archivio gli da' `vacanza_2` e il registro gli da'
+    `input_boolean.vacanza`. Componendo, l'etichetta finiva su
+    `input_boolean.vacanza_2`, che non esiste."""
+    ha = FintoHA(helper_ids={"input_boolean": ["vacanza"]},
+                 registro_entita=[{"entity_id": "input_boolean.ferie",
+                                   "platform": "input_boolean",
+                                   "unique_id": "vacanza"}])
+    officina, _archivio, _cronaca = _bench_for(ha, tmp_path)
+    intento = _intento(helper=[{"dominio": "input_boolean",
+                                "dati": {"name": "Vacanza"}}])
+    p = await officina.propose(intento, actor="chat", exchange="t1", now=ADESSO)
+
+    esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
+                                 now=ADESSO + 60)
+
+    assert esito.get("applicata") is True
+    # I due identificatori sono davvero diversi: senza questo, la prova
+    # tornerebbe a misurare un caso in cui coincidono.
+    assert ha.helper_creati and ha.helper_ids["input_boolean"] == ["vacanza", "vacanza_2"]
+    assert ("input_boolean.vacanza", "hiris") in ha.etichettate
+    assert ("input_boolean.vacanza_2", "hiris") not in ha.etichettate, (
+        "l'etichetta e' finita sull'id COMPOSTO, che in questa casa non esiste")
+
+
+@pytest.mark.asyncio
+async def test_l_etichetta_di_ogni_helper_nato_va_sulla_SUA_entita(tmp_path):
+    """La proprieta', non il caso: qualunque sia la casa, ogni helper nato
+    deve ricevere l'etichetta sull'`entity_id` che il registro gli ha
+    assegnato -- ne' uno di piu', ne' uno di meno, ne' uno composto. Regge
+    anche il giorno in cui Home Assistant cambiasse il modo di generare uno
+    dei due identificatori."""
+    ha = FintoHA(helper_ids={"input_boolean": ["vacanza"], "counter": ["giri"]},
+                 registro_entita=[{"entity_id": "input_boolean.ferie",
+                                   "platform": "input_boolean",
+                                   "unique_id": "vacanza"},
+                                  {"entity_id": "counter.giri",
+                                   "platform": "counter", "unique_id": "giri"}])
+    officina, _archivio, _cronaca = _bench_for(ha, tmp_path)
+    intento = _intento(helper=[{"dominio": "input_boolean", "dati": {"name": "Vacanza"}},
+                               {"dominio": "counter", "dati": {"name": "Giri"}}])
+    p = await officina.propose(intento, actor="chat", exchange="t1", now=ADESSO)
+
+    await officina.apply(p["proposta_id"], actor="chat", exchange="t2", now=ADESSO + 60)
+
+    nati = [(v["platform"], v["unique_id"]) for v in ha.registro_entita
+            if (v["platform"], v["unique_id"]) not in
+            (("input_boolean", "vacanza"), ("counter", "giri"))]
+    attese = {v["entity_id"] for v in ha.registro_entita
+              if (v["platform"], v["unique_id"]) in nati}
+    assert len(attese) == 2, "il test presuppone due helper nati"
+    etichettate = {eid for eid, _ in ha.etichettate}
+    assert attese <= etichettate, (
+        f"ogni helper nato porta l'etichetta sulla SUA entita': mancano "
+        f"{attese - etichettate}")
+    composte = {f"{dominio}.{helper_id}" for dominio, helper_id in nati}
+    assert not (composte - attese) & etichettate, (
+        "nessuna etichetta puo' finire su un identificatore composto che il "
+        "registro non conferma")
+
+
+@pytest.mark.asyncio
+async def test_se_il_registro_non_risponde_l_etichetta_MANCATA_si_dichiara(tmp_path):
+    """Il confine, e il fatto che non si ripiega sull'ipotesi. Se il registro
+    delle entita' non si legge, l'helper e' nato lo stesso ma non porta
+    l'etichetta da nessuna parte -- e poiche' la paternita' vive SOLO li'
+    (fondamenta 2 e 4: la cronaca non elenca gli helper nati, `_reread`
+    filtra per `{dominio}.`), tacerlo lascerebbe l'archivio dire «e' tutto a
+    posto» su un oggetto che da HIRIS non risulta piu' suo."""
+    ha = FintoHA(registri=({"entita": []}, ["entita"]))
+    officina, archivio, _cronaca = _bench_for(ha, tmp_path)
+    intento = _intento(helper=[{"dominio": "input_boolean",
+                                "dati": {"name": "Modalita notte"}}])
+    p = await officina.propose(intento, actor="chat", exchange="t1", now=ADESSO)
+
+    esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
+                                 now=ADESSO + 60)
+
+    assert esito.get("applicata") is True
+    # L'automazione, letta da `_reread`, l'etichetta la prende: e' un'entita'
+    # VISTA. L'helper no -- nessuno ha confermato il suo identificatore.
+    assert ("automation.tapparelle_all_alba", "hiris") in ha.etichettate
+    assert not [eid for eid, _ in ha.etichettate if eid.startswith("input_boolean.")], (
+        "nessuna etichetta su un id che nessuno ha confermato")
+    assert "input_boolean.modalita_notte" in (esito.get("avviso") or "")
+    assert "etichetta HIRIS" in esito["avviso"]
+    assert archivio.read(p["proposta_id"])["stato"] == "applicata"
 
 
 def test_l_anteprima_usa_l_articolo_giusto_per_ogni_dominio(banco):

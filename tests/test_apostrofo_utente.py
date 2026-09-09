@@ -129,12 +129,19 @@ SORVEGLIATO: dict[str, tuple[tuple[int, int], ...] | None] = {
     "keeper/exchange.py": ((147, 211), (244, 263)),        # interpreta_promise, _downgrade_note
     "home_space/topology.py": ((1332, 1371),),             # _compare_area
     "action/construction/advisor.py": ((73, 123),),        # consiglia, dopo il primo ritorno
+    # Intervalli rinumerati l'09/09/2026 (rilievo 9 dell'audit delle
+    # fondamenta: `apply` cresce di 13 righe e `_helper_entities` ne aggiunge
+    # 77 sopra `_label`). ANCORE ritrovate per contenuto e verificate una per
+    # una con un'elisione dritta iniettata dentro ciascun intervallo nuovo --
+    # il cancello arrossisce in 5 casi su 5. `_helper_entities` resta FUORI:
+    # le sue uniche stringhe sono `logger.warning` con segnaposto, e la frase
+    # che il proprietario legge la compone `apply`, dentro il suo intervallo.
     "action/construction/workshop.py": (
         (64, 70),      # ARTICOLO_INDETERMINATIVO / ARTICOLO_DETERMINATIVO
         (288, 324),    # _preview
-        (328, 433),    # apply
-        (631, 680),    # restore
-        (764, 780),    # _translate_rejection
+        (328, 448),    # apply
+        (723, 773),    # restore
+        (856, 872),    # _translate_rejection
     ),
     "action/construction/revisions.py": ((254, 255),),     # risana (solo `reason`)
     "agent/runner.py": ((1612, 1618),),  # la frase "flusso incompleto" nella reply

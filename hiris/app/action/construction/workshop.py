@@ -413,8 +413,23 @@ class Workshop:
         # registro di Home Assistant e non in una tabella nostra (fondamenta
         # 2, spec §5), quella paternita' non esisteva da NESSUNA parte
         # (fondamenta 4: un dato che nessuno puo' chiedere non esiste).
-        for domain_helper, helper_id in nati:
-            await self._label(f"{domain_helper}.{helper_id}")
+        #
+        # E l'`entity_id` su cui va si LEGGE, non si compone da
+        # `{dominio}.{id di archivio}`: sono due spazi di identificatori con
+        # due insiemi di collisioni, e il perche' per esteso -- con le fonti
+        # di Home Assistant al tag -- sta in `_helper_entities`.
+        labelable, unmatched = await self._helper_entities(nati)
+        for entity_id in labelable:
+            await self._label(entity_id)
+        if unmatched:
+            # Si DICE, come si dice l’helper rimasto indietro in `_disfa`: la
+            # paternita' di quell'oggetto non esiste da nessuna parte, e un
+            # silenzio qui e' la stessa spazzatura invisibile.
+            lost = ", ".join(unmatched)
+            unlabelled = ("non ho trovato nel registro di Home Assistant "
+                          f"l’entita' nata da {lost}: quell’oggetto non porta "
+                          "l’etichetta HIRIS, e da qui non risulta mio.")
+            notice = f"{notice} {unlabelled}" if notice else unlabelled
 
         execution_id = self._journal.log_construction(
             actor=actor, operation=operation, domain=domain, key=key,
@@ -584,6 +599,83 @@ class Workshop:
                         "ancora comparsa: potrebbe servire un riavvio, o la ricarica "
                         "non e' andata a buon fine.")
         return trovate, None
+
+    async def _helper_entities(self, born: list[tuple[str, str]]) -> tuple[list[str], list[str]]:
+        """L’`entity_id` VERO di ogni helper appena nato, LETTO dal registro
+        delle entita'. Restituisce `(trovati, non trovati)`.
+
+        **Perche' non si compone.** Fino all' 09/09/2026 qui c'era
+        `f"{dominio}.{id_di_archivio}"`, e sono due spazi di identificatori
+        diversi che coincidono per fortuna, non per costruzione. Fonti lette
+        al tag `2026.9.1`:
+
+        - `helpers/collection.py::IDManager.generate_id` -- l'id di ARCHIVIO
+          e' `slugify(nome)` con un suffisso `_2` deciso guardando le
+          collezioni di quel dominio (YAML e storage insieme: si spartiscono
+          un `IDManager`);
+        - `input_boolean/__init__.py::from_storage` -- non imposta nessun
+          `entity_id`, a differenza di `from_yaml`;
+        - `helpers/entity_registry.py` -- l'`entity_id` lo genera il registro
+          come `dominio.slugify(nome)`, con un suffisso deciso guardando il
+          REGISTRO e la macchina degli stati.
+
+        Due basi uguali, due insiemi di collisione diversi. Basta un
+        `entity_id` rinominato a mano dall'utente perche' divergano: l'id di
+        archivio `vacanza` resta occupato, l'`input_boolean.vacanza` no, e
+        l'helper successivo nasce con id `vacanza_2` ed entita'
+        `input_boolean.vacanza`. L'etichetta sarebbe finita su un'entita'
+        inesistente -- o, peggio, su quella di qualcun altro.
+
+        **Come si legge.** Dal registro delle entita', per `platform` e
+        `unique_id`: per tutti e otto i domini di `HAClient.HELPER_DOMAINS`
+        `collection.sync_entity_lifecycle(hass, DOMAIN, DOMAIN, ...)` passa il
+        dominio come piattaforma, e l'entita' prende come `unique_id` l'id
+        della collezione (`config[CONF_ID]`) -- verificato al tag su tutti e
+        otto. Misurato dal vivo il 09/09/2026 sulla casa del proprietario
+        (sola lettura, `config/entity_registry/list`): 11 voci di helper, ognuna
+        con `platform` e `unique_id`, e `entity_id == platform.unique_id` su
+        tutte -- la coincidenza che l'audit chiama fortuna.
+
+        Si passa da `read_registries`, che e' la porta unica dei registri:
+        `get_entity_registry` era gia' uscita una volta perche' emetteva lo
+        stesso comando WS che quella manda gia' (review dei doppioni, 17/08).
+        Rifarne una seconda per un helper sarebbe la stessa fondamenta 2
+        violata due volte.
+        """
+        if not born:
+            return [], []
+        composti = [f"{domain}.{helper_id}" for domain, helper_id in born]
+        try:
+            registries, unavailable = await self._ha.read_registries()
+        except Exception as exc:
+            logger.warning("registro delle entita' non letto dopo la nascita di %s "
+                           "(%s: %s): nessuna etichetta applicata",
+                           composti, type(exc).__name__, exc)
+            return [], composti
+        if "entita" in (unavailable or []):
+            logger.warning("registro delle entita' non disponibile dopo la nascita "
+                           "di %s: nessuna etichetta applicata", composti)
+            return [], composti
+        per_unico: dict[tuple[str, str], str] = {}
+        for row in registries.get("entita") or []:
+            platform, unique = row.get("platform"), row.get("unique_id")
+            entity_id = row.get("entity_id")
+            if platform and unique is not None and entity_id:
+                per_unico[(platform, str(unique))] = entity_id
+        found: list[str] = []
+        missing: list[str] = []
+        for domain, helper_id in born:
+            entity_id = per_unico.get((domain, str(helper_id)))
+            if entity_id:
+                found.append(entity_id)
+            else:
+                # Non si ripiega sul composto: sarebbe rimettere in piedi
+                # l'ipotesi che questa funzione esiste per togliere.
+                logger.warning("helper %s.%s creato ma senza voce nel registro "
+                               "delle entita': etichetta non applicata",
+                               domain, helper_id)
+                missing.append(f"{domain}.{helper_id}")
+        return found, missing
 
     async def _label(self, entity_id: str) -> None:
         if self._label_id is None and not await self._resolve_label():
