@@ -1152,8 +1152,8 @@ def _logga_uso(occurrence: StreamOccurrence, job_id) -> None:
                    cost_usd=None, cost_state="compreso", now=now)
 
 
-# I conteggi di UN modello dentro `modelUsage`, a sinistra il nome nostro e a
-# destra quello della CLI. **Misurati il 09/09/2026** su un transcript vero di
+# I conteggi di UN modello dentro `modelUsage`, a sinistra il nome di HIRIS e
+# a destra quello della CLI. **Misurati il 09/09/2026** su un transcript vero di
 # Claude Code (`~/.claude/projects/**/*.jsonl`, l'evento che porta
 # `modelUsage`): le chiavi sono camelCase -- `inputTokens`, `outputTokens`,
 # `thinkingTokens`, `cacheReadInputTokens`, `cacheCreationInputTokens`,
@@ -1183,7 +1183,7 @@ _TURN_COUNTS = {
 
 
 def _counts(source: dict, names: dict[str, str]) -> dict[str, int]:
-    return {nostro: int(source.get(loro) or 0) for nostro, loro in names.items()}
+    return {ours: int(source.get(theirs) or 0) for ours, theirs in names.items()}
 
 
 def exchange_usages(occurrence: StreamOccurrence) -> list[tuple[str, dict]]:

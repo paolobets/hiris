@@ -125,19 +125,19 @@ SORVEGLIATO: dict[str, tuple[tuple[int, int], ...] | None] = {
     "api/handlers_constructions.py": WHOLE_FILE,
     "keeper/sweeper.py": WHOLE_FILE,
     "keeper/store.py": ((209, 234), (261, 268)),  # cancel, risana (solo REASON_FAI/CHIEDI)
-    "keeper/promise.py": ((167, 176),),                    # delay_reason
+    "keeper/promise.py": ((206, 215),),                    # delay_reason
     "keeper/exchange.py": ((147, 211), (244, 263)),        # interpreta_promise, _downgrade_note
     "home_space/topology.py": ((1332, 1371),),             # _compare_area
-    "action/construction/advisor.py": ((43, 93),),         # consiglia, dopo il primo ritorno
+    "action/construction/advisor.py": ((73, 123),),        # consiglia, dopo il primo ritorno
     "action/construction/workshop.py": (
         (64, 70),      # ARTICOLO_INDETERMINATIVO / ARTICOLO_DETERMINATIVO
         (288, 324),    # _preview
         (328, 433),    # apply
         (631, 680),    # restore
-        (746, 762),    # _translate_rejection
+        (764, 780),    # _translate_rejection
     ),
     "action/construction/revisions.py": ((254, 255),),     # risana (solo `reason`)
-    "agent/runner.py": ((1559, 1565),),  # la frase "flusso incompleto" nella reply
+    "agent/runner.py": ((1612, 1618),),  # la frase "flusso incompleto" nella reply
     "backends/openai_compat_runner.py": (
         (157, 162),    # TOOL_LEAK_USER_MSG
         (745, 748),    # RunnerBackendError, 402 OpenRouter (non-stream)

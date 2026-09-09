@@ -224,7 +224,7 @@ async def test_un_fai_valido_nasce(promesse):
 
 
 @pytest.mark.asyncio
-async def test_un_recapito_inesistente_e_rifiutato_alla_nascita(promesse):
+async def test_un_recapito_inesistente_e_rifiutato_at_birth(promesse):
     """Registro CARICO, recapito davvero inesistente: il rifiuto vero, non
     quello di «non lo so ancora» -- le due frasi restano distinte (review
     Task 7, Rilievo 1)."""
@@ -238,7 +238,7 @@ async def test_un_recapito_inesistente_e_rifiutato_alla_nascita(promesse):
 
 
 @pytest.mark.asyncio
-async def test_un_recapito_che_PRETENDE_un_bersaglio_e_rifiutato_alla_nascita(promesse):
+async def test_un_recapito_che_PRETENDE_un_bersaglio_e_rifiutato_at_birth(promesse):
     """Audit delle fondamenta, rilievo 1 -- il modo peggiore in cui una
     promessa puo' rompersi, ed era quello che il codice lasciava aperto.
 
@@ -285,12 +285,12 @@ def test_la_nascita_fa_la_STESSA_domanda_della_scadenza(promesse):
 
     for domain, name in _RegistroFinto._SERVIZI:
         service = f"{domain}.{name}"
-        alla_nascita = d._verify_recipient(service)
-        alla_scadenza = verification(
+        at_birth = d._verify_recipient(service)
+        at_maturity = verification(
             delivery_call(service, "il testo della risposta"), registry, states)
-        assert (alla_nascita is None) is alla_scadenza.ok, (
-            f"«{service}»: alla nascita {alla_nascita!r}, a scadenza "
-            f"{alla_scadenza.reason!r}")
+        assert (at_birth is None) is at_maturity.ok, (
+            f"«{service}»: alla nascita {at_birth!r}, a scadenza "
+            f"{at_maturity.reason!r}")
 
 
 
@@ -383,7 +383,7 @@ async def test_l_istantanea_si_prende_adesso_con_l_unita(promesse):
 
 
 @pytest.mark.asyncio
-async def test_un_da_confrontare_con_riferimento_inesistente_e_rifiutato_alla_nascita(promesse):
+async def test_un_da_confrontare_con_riferimento_inesistente_e_rifiutato_at_birth(promesse):
     """Il cuore della fetta R7: un `chiedi` che nomina un riferimento che lo
     specchio non conosce ("Soggiorno" invece di un entity_id vero, o
     qualunque id inventato) non nasce con `valore: null` e una nota che

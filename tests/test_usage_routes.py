@@ -222,10 +222,10 @@ def test_dopo_mezzanotte_il_giorno_CORRENTE_e_quello_della_casa(app, monkeypatch
     d'inverno). La pagina chiama questa rotta senza parametri
     (`usage-route.js`), quindi e' il caso normale, non un caso limite.
     """
-    mezzanotte_e_mezza = 1787351400.0  # 22/08/2026 00:30 a Roma = 21/08 22:30 UTC
+    just_after_midnight = 1787351400.0  # 22/08/2026 00:30 a Roma = 21/08 22:30 UTC
     app["usage"].log("claude", "claude-sonnet-4-6", token_in=7,
-                     cost_usd=0.1, cost_state="misurato", now=mezzanotte_e_mezza)
-    monkeypatch.setattr(handlers_usage.time, "time", lambda: mezzanotte_e_mezza)
+                     cost_usd=0.1, cost_state="misurato", now=just_after_midnight)
+    monkeypatch.setattr(handlers_usage.time, "time", lambda: just_after_midnight)
 
     corpo = _corpo(_chiama(handle_usage_history, app))
 
@@ -242,10 +242,10 @@ def test_senza_fuso_noto_la_storia_conta_in_UTC_e_non_inventa(tmp_path, monkeypa
     che una parte ripieghi su UTC e l'altra sull'orologio del container."""
     archivio = UsageStore(str(tmp_path / "c.db"), read_timezone=lambda: "")
     try:
-        mezzanotte_e_mezza = 1787351400.0
-        archivio.log("claude", "m", cost_state="misurato", now=mezzanotte_e_mezza)
+        just_after_midnight = 1787351400.0
+        archivio.log("claude", "m", cost_state="misurato", now=just_after_midnight)
         app = {"usage": archivio}
-        monkeypatch.setattr(handlers_usage.time, "time", lambda: mezzanotte_e_mezza)
+        monkeypatch.setattr(handlers_usage.time, "time", lambda: just_after_midnight)
 
         corpo = _corpo(_chiama(handle_usage_history, app))
 

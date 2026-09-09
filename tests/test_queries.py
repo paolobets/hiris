@@ -1119,16 +1119,16 @@ def test_un_entita_muta_ha_la_STESSA_forma_da_view_integrazione_e_da_view_entita
              "fallback_names": {"valve.giardino_1": "Aiuola nord"},
              "translations": house_translations()}
 
-    da_integrazione = view(house, [], [], states, "integrazione", "hydrawise", **extra)
-    da_entita = view(house, [], [], states, "entita", "valve.giardino_1", **extra)
+    from_integration = view(house, [], [], states, "integrazione", "hydrawise", **extra)
+    from_entity = view(house, [], [], states, "entita", "valve.giardino_1", **extra)
 
-    riga = da_integrazione["entita"][0]
-    comuni = set(riga) & set(da_entita)
+    riga = from_integration["entita"][0]
+    comuni = set(riga) & set(from_entity)
     assert "nome_dedotto" in comuni and "piattaforma" in comuni
     for chiave in comuni:
-        assert riga[chiave] == da_entita[chiave], (
+        assert riga[chiave] == from_entity[chiave], (
             f"«{chiave}» vale {riga[chiave]!r} da `integrazione` e "
-            f"{da_entita[chiave]!r} da `entita`: e' la stessa entita'")
+            f"{from_entity[chiave]!r} da `entita`: e' la stessa entita'")
 
 
 def test_a_missing_integration_says_so_without_inventing():
