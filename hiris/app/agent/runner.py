@@ -1139,45 +1139,98 @@ def _logga_uso(occurrence: StreamOccurrence, job_id) -> None:
     #
     # Il costo esce `compreso`, non zero: l'abbonamento non espone il prezzo
     # del singolo turno, e uno zero direbbe «gratis», che e' un'altra cosa.
-    if _log_usage is None or not uso:
-        # Senza `usage` non c'e' niente da contare, e una riga di zeri direbbe
-        # «questo modello ha risposto e non e' costato niente»: lo stesso zero
+    righe = exchange_usages(occurrence)
+    if _log_usage is None or not righe:
+        # Senza niente da contare non si scrive: una riga di zeri direbbe
+        # «questo modello ha risposto e non e' costato niente», lo stesso zero
         # che afferma da cui nasce l'intera fetta. Il log qui sopra dichiara
         # comunque il turno.
         return
-    _log_usage(
-        "ponte", exchange_model(occurrence),
-        richieste=1,
-        token_in=int(uso.get("input_tokens") or 0),
-        token_out=int(uso.get("output_tokens") or 0),
-        cache_read=int(uso.get("cache_read_input_tokens") or 0),
-        cache_write=int(uso.get("cache_creation_input_tokens") or 0),
-        cost_usd=None, cost_state="compreso", now=time.time())
+    now = time.time()
+    for model, counts in righe:
+        _log_usage("ponte", model, richieste=1, **counts,
+                   cost_usd=None, cost_state="compreso", now=now)
 
 
-def exchange_model(occurrence: StreamOccurrence) -> str:
-    """Il modello che ha davvero risposto a questo turno del ponte.
+# I conteggi di UN modello dentro `modelUsage`, a sinistra il nome nostro e a
+# destra quello della CLI. **Misurati il 09/09/2026** su un transcript vero di
+# Claude Code (`~/.claude/projects/**/*.jsonl`, l'evento che porta
+# `modelUsage`): le chiavi sono camelCase -- `inputTokens`, `outputTokens`,
+# `thinkingTokens`, `cacheReadInputTokens`, `cacheCreationInputTokens`,
+# `webSearchRequests`, `costUSD` -- e sono DIVERSE da quelle del blocco
+# `usage` di primo livello, che e' snake_case come l'API Anthropic.
+#
+# `thinkingTokens` e `costUSD` non entrano: del primo non e' misurato se sia
+# un dettaglio di `outputTokens` o un addendo, e sommarlo o ignorarlo sono
+# due numeri diversi che nessuno ha verificato; il secondo e' un costo
+# equivalente da listino, e per il ponte il costo resta `compreso` -- e' la
+# decisione della fetta «i consumi, per modello», non di questa correzione.
+_BRIDGE_COUNTS = {
+    "token_in": "inputTokens",
+    "token_out": "outputTokens",
+    "cache_read": "cacheReadInputTokens",
+    "cache_write": "cacheCreationInputTokens",
+}
 
-    La CLI puo' dichiararlo nell'evento `result` -- e' cio' che va creduto,
-    perche' e' cosa e' SUCCESSO. Se non lo dichiara si ripiega sull'alias che
-    HIRIS ha chiesto (`context["model"]`, «sonnet»/«opus»/«haiku»), e la
-    pagina lo mostrera' per quello che e': un alias, non un identificativo di
-    versione.
+# Gli stessi conteggi nel blocco `usage` del turno: la forma dell'API
+# Anthropic, che la CLI ripete di suo nell'evento `result`.
+_TURN_COUNTS = {
+    "token_in": "input_tokens",
+    "token_out": "output_tokens",
+    "cache_read": "cache_read_input_tokens",
+    "cache_write": "cache_creation_input_tokens",
+}
 
-    Il ripiego e' dichiarato e non silenzioso: `(alias)` in coda al nome dice
-    a chi legge che quel nome e' cio' che abbiamo CHIESTO, non cio' che
-    abbiamo misurato.
+
+def _counts(source: dict, names: dict[str, str]) -> dict[str, int]:
+    return {nostro: int(source.get(loro) or 0) for nostro, loro in names.items()}
+
+
+def exchange_usages(occurrence: StreamOccurrence) -> list[tuple[str, dict]]:
+    """Chi ha risposto a questo turno del ponte, e con QUALI conteggi -- una
+    voce per modello.
+
+    **Ogni modello porta i propri numeri.** `modelUsage` e', per la
+    documentazione di Claude Code, «a map of model name to per-model token
+    counts... useful when you run multiple models (for example, Haiku for
+    subagents and Opus for the main agent)». Fino all'audit delle fondamenta
+    (rilievo 2) questa funzione prendeva la PRIMA chiave con `next(iter(...))`
+    e le attaccava l'intero `usage` del turno: un'attribuzione sbagliata e una
+    somma sbagliata insieme, e con piu' di un modello i turni di uno finivano
+    tutti sull'altro. Misurato dal vivo l'08/09/2026 sulla casa del
+    proprietario: la pagina Modelli diceva «sonnet», la pagina Consumi
+    registrava 110 turni su 111 a `claude-haiku-4-5`.
+
+    Adesso si registrano TUTTE le chiavi, ognuna coi suoi conteggi, e nessuna
+    vince sulle altre. `richieste` resta 1 per voce, come e' sempre stato per
+    il ponte: il contatore non conta le chiamate all'API (il turno ne fa
+    quante ne servono, e il log qui sopra dichiara `num_turns` a parte), conta
+    i turni in cui quel modello ha risposto -- e con un modello solo e'
+    esattamente il numero di prima.
+
+    Senza `modelUsage` restano i due ripieghi di sempre, con i conteggi del
+    turno intero perche' non c'e' nient'altro: il modello dichiarato in
+    `result["model"]` -- cio' che e' SUCCESSO, e va creduto -- e, in sua
+    assenza, l'alias che HIRIS ha CHIESTO (`context["model"]`,
+    «sonnet»/«opus»/«haiku»). Il secondo ripiego e' dichiarato e non
+    silenzioso: `(alias)` in coda al nome dice a chi legge che quel nome non
+    e' stato misurato.
     """
     result = occurrence.result or {}
-    vero = result.get("model") or result.get("modelUsage")
-    if isinstance(vero, dict) and vero:
-        # `modelUsage` e' una mappa id-del-modello -> conteggi: il nome vero
-        # e' la sua chiave.
-        return str(next(iter(vero)))
-    if isinstance(vero, str) and vero.strip():
-        return vero.strip()
-    alias = (occurrence.usage or {}).get("model") or ""
-    return (f"{alias} (alias)") if alias else "sonnet (alias)"
+    per_model = result.get("modelUsage")
+    if isinstance(per_model, dict) and per_model:
+        return [(str(name),
+                 _counts(counts if isinstance(counts, dict) else {}, _BRIDGE_COUNTS))
+                for name, counts in per_model.items()]
+    uso = occurrence.usage or {}
+    if not uso:
+        return []
+    declared = result.get("model")
+    if isinstance(declared, str) and declared.strip():
+        return [(declared.strip(), _counts(uso, _TURN_COUNTS))]
+    alias = uso.get("model") or ""
+    return [((f"{alias} (alias)") if alias else "sonnet (alias)",
+             _counts(uso, _TURN_COUNTS))]
 
 
 def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
