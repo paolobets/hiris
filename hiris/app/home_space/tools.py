@@ -400,7 +400,18 @@ VIEW_TOOL_DEF = {
         "il significato: leggili come dati grezzi, non dedurne cosa "
         "vogliano dire) e `trattenuti` (nome e ragione delle credenziali "
         "che questa entita' porta -- token, indirizzi di rete, numeri di "
-        "serie: HIRIS le conserva e non le scrive in chat). Una cesta "
+        "serie: HIRIS le conserva e non le scrive in chat). Di cosa "
+        "un'entita' e' FATTA non sta li' dentro: un gruppo porta `membri`, "
+        "una chiave sua accanto a `capacita'`, con l'elenco delle entita' che "
+        "contiene -- l'appartenenza a un gruppo non e' una cosa che gli si "
+        "possa chiedere. E se il gruppo dichiara qualcosa che non tutti i "
+        "suoi membri sanno fare, `membri.capacita_non_di_tutti` lo dice: "
+        "Home Assistant su un gruppo dichiara l'UNIONE delle capacita' dei "
+        "membri, accetta il comando e lo applica SOLO a chi puo', in "
+        "silenzio -- chiedere il colore a un gruppo di tre luci di cui una "
+        "sola fa colore ne cambia una. `membri.non_letti` nomina i membri "
+        "che non ho potuto guardare: dove compare, i conteggi valgono sui "
+        "soli letti. Una cesta "
         "compare solo se ha qualcosa dentro, e una chiave senza valore non "
         "compare affatto: un attributo assente vuol dire che Home Assistant "
         "non l'ha mandato, non che HIRIS l'ha scartato. Mai nelle liste "
@@ -2106,10 +2117,11 @@ class ToolDispatcher:
         ci sono 22,4 gradi e non sapeva da quando -- non poteva nemmeno dire
         «e' fermo da tre ore». Costa un campo e zero chiamate a Home Assistant.
 
-        `attributi` e' entity_id -> le cinque ceste che
+        `attributi` e' entity_id -> le sei ceste che
         `entity_cache.inherited_attributes` costruisce (cosa l'entita' puo'
-        fare, com'e' adesso, cio' di cui nessuna fonte dichiara il
-        significato, le credenziali) e che questo specchio buttava, su OGNI
+        fare, di cosa e' fatta, cosa puo' assumere, com'e' adesso, cio' di cui
+        nessuna fonte dichiara il significato, le credenziali) e che questo
+        specchio buttava, su OGNI
         dominio, prima della fetta "attributi al modello" (2026-08-25) -- il
         difetto misurato dal proprietario: un termostato IMPOSTATO su
         riscaldamento e FERMO usciva da `view` come «heat» e basta.

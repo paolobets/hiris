@@ -346,6 +346,30 @@ va corretto, in un posto solo.
 > del repository e da cio' che e' stato misurato sulla casa vera. La lista del proprietario va
 > reinserita da lui, e queste voci vanno lette come un fondo di magazzino, non come una sua scelta.
 
+### L'avviso sul gruppo misto arriva solo a chi GUARDA il gruppo
+
+`origine: la fetta dei gruppi, 09/09/2026` · `.superpowers/sdd/tipi-di-entita/fetta-gruppi-report.md` §8.4
+
+Dalla fetta dei gruppi il dettaglio di un'entita' porta `membri`, e quando un gruppo dichiara una
+capacita' che non tutti i suoi membri hanno lo dice: `membri.capacita_non_di_tutti`. Home Assistant
+su un gruppo dichiara l'**unione** delle capacita' dei membri
+(`components/group/light.py:283-295`, `:263-273`, `:250-261`, `:319-328` al tag `2026.9.1`),
+accetta il comando e lo applica **solo a chi puo'**, in silenzio.
+
+**Il buco che resta**: quell'avviso esce **solo** da `guarda` sul dettaglio di quella entita' --
+stessa disciplina di `attributi` e di `comandi`, e per la stessa ragione (un'area con venti cose
+non deve portarsi dietro l'analisi di ognuna). Quindi se il modello chiede «cambia colore al
+lampadario» **senza guardarlo prima**, il comando parte, HA lo applica a una luce su tre, e la
+frase che l'avrebbe detto non l'ha letta nessuno.
+
+**Dove va chiuso**: nell'ESITO dell'azione (`action/actuator`), non nella vista -- e' il verso
+opposto della catena, quindi una fetta sua con il suo changelog. Il dato per farlo c'e' gia': i
+membri sono nella cesta `members` dello specchio, e `queries.group_membership` e' pura.
+
+**Sulla casa vera non morde oggi**: l'unico gruppo delle 841 entita'
+(`light.lampadario_sala_da_pranzo`) ha tre membri con capacita' identiche, misurato il 09/09/2026.
+Morde il giorno in cui il proprietario mette una luce a colore accanto a due prese.
+
 ### HIRIS per gli utenti non-admin di Home Assistant
 
 `origine: il proprietario, 05/09/2026, brainstorming` · `nessun documento`

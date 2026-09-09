@@ -1158,7 +1158,8 @@ for _domain, _bits in _FEATURE_TABLES.items():
 del _domain, _bits, _table
 
 
-# -- metrica 4: quali attributi dicono cosa puo' fare, e quali com'e' adesso -
+# -- metrica 4: quali attributi dicono cosa puo' fare, quali com'e' adesso,
+# -- e quali DI COSA e' fatta -----------------------------------------------
 #
 # **La separazione e' di Home Assistant, non nostra, e non c'era niente da
 # inventare.** `Entity` tiene le due meta' separate e le fonde in un
@@ -1229,19 +1230,55 @@ UNIVERSAL_CAPABILITY_ATTRIBUTES = Imported(
     ha_version=CAPABILITY_ATTRIBUTE_SOURCE_HA_VERSION,
     source=CAPABILITY_ATTRIBUTE_SOURCE)
 
-#: Il giudizio nostro accanto alla trascrizione, e non dentro di essa: a
-#: `2026.9.1` un gruppo esce ancora sotto `entity_id`, la forma vecchia, e
-#: `components/group/entity.py:43-45` le nomina ENTRAMBE nello stesso insieme
-#: (`_unrecorded_attributes = frozenset({ATTR_ENTITY_ID,
-#: EntityCapabilityAttribute.GROUP_ENTITIES})`). Misurato sulla casa vera il
-#: 07/09/2026: `light.lampadario_sala_da_pranzo` porta `entity_id`, non
-#: `group_entities`. Una tabella costruita solo dagli enum nuovi perderebbe
-#: quel gruppo IN SILENZIO.
-UNIVERSAL_CAPABILITY_ATTRIBUTES_ADDED = Ours({
+# L'APPARTENENZA A UN GRUPPO NON E' UN CAMPO DI MANOVRA.
+#
+# Home Assistant classifica `group_entities` fra le CAPACITA'
+# (`homeassistant/const.py:464-467`, `EntityCapabilityAttribute`), e la
+# trascrizione qui sopra lo riporta fedelmente. Ma cio' che quel nome porta
+# non e' qualcosa che si puo' CHIEDERE a una luce: e' l'elenco delle cose di
+# cui quella luce e' fatta. Consegnarlo fra le capacita' lo mette accanto a
+# `effect_list` e a `hvac_modes` -- cioe' accanto ai limiti entro cui si
+# comanda davvero -- e chi legge puo' crederlo un parametro.
+#
+# Misurato sulla casa vera il 09/09/2026, 837 entita' lette:
+# `light.lampadario_sala_da_pranzo` consegnava
+# `campo_di_manovra: {"entity_id": [tre luci]}`, e il nucleo ne scriveva
+# «entity_id=3 voci» in mezzo alle capacita'. **Una sola entita' su 837 lo
+# esponeva**, ed e' il motivo per cui e' sopravvissuto tanto: un difetto che
+# si vede su una riga in ottocento non lo trova nessuno rileggendo.
+#
+# **NON E' UNA LISTA NERA A VALLE**, ed e' la differenza che regge questa
+# scelta. E' la stessa forma gia' usata due volte in questo file --
+# `_CAPABILITY_ATTRIBUTES_DROPPED` per `number.mode`, `_ASSUMABLE_ATTRIBUTES`
+# per `sensor.options` -- e le sue tre proprieta' sono quelle che una lista
+# nera non ha: il giudizio sta ACCANTO alla trascrizione (che resta fedele
+# alla fonte, e la prova pinnata continua a riportarla al sorgente di HA);
+# ogni voce porta la sua RAGIONE scritta; e una prova legge quelle ragioni e
+# arrossisce se una voce ne resta senza
+# (`tests/test_group_membership.py`). Chi legge `capability_attributes` non
+# trova un `if` nascosto su un nome: trova una sottrazione dichiarata.
+#
+# `entity_id` sta qui ACCANTO a `group_entities`, non al posto suo: a
+# `2026.9.1` un gruppo esce ancora sotto la forma vecchia, e
+# `components/group/entity.py:43-45` le nomina ENTRAMBE nello stesso insieme
+# (`_unrecorded_attributes = frozenset({ATTR_ENTITY_ID,
+# EntityCapabilityAttribute.GROUP_ENTITIES})`). Una tabella costruita solo
+# dagli enum nuovi perderebbe quel gruppo IN SILENZIO.
+#
+# Provenienza `nostro` per intero, compreso `group_entities`: la CLASSIFICA
+# e' un giudizio: HA pubblica il nome e lo mette fra le capacita', ma non
+# pubblica da nessuna parte «questa e' composizione e non manovra».
+GROUP_MEMBERSHIP_ATTRIBUTES = Ours({
+    "group_entities": (
+        "composizione, non capacita': dice DI COSA questa entita' e' fatta, "
+        "non cosa le si puo' chiedere. Home Assistant lo classifica fra le "
+        "capacita' (homeassistant/const.py:464-467) ed esce di li' per "
+        "giudizio nostro, dichiarato qui invece che nascosto a valle"),
     "entity_id": (
-        "la forma vecchia di `group_entities`, che a 2026.9.1 e' ancora quella "
-        "che arriva davvero: `components/group/entity.py:43-45` nomina "
-        "entrambe, e sulla casa vera il gruppo esce solo sotto questo nome"),
+        "la forma vecchia di `group_entities`, che a 2026.9.1 e' ancora "
+        "quella che arriva davvero (`components/group/entity.py:43-45` nomina "
+        "entrambe, e sulla casa vera il gruppo esce solo sotto questo nome): "
+        "stessa composizione, stesso posto"),
 })
 
 #: Gli attributi di stato di QUALUNQUE entita': `homeassistant/const.py:470-483`,
@@ -1748,10 +1785,13 @@ def capability_attributes(domain: str) -> frozenset[str]:
     """**Metrica 4, prima meta'** -- i nomi degli attributi che, per questo
     dominio, dicono COSA L'ENTITA' PUO' FARE.
 
-    Le voci valide su ogni entita' (`group_entities`, piu' la forma vecchia
-    `entity_id` che il giudizio nostro aggiunge) ci sono sempre: un gruppo e'
-    un gruppo su qualunque dominio, e senza di loro la casa perderebbe il
-    gruppo di luci in silenzio.
+    **L'unica voce valida su OGNI entita' che Home Assistant dichiara
+    capacita' -- `group_entities` -- non esce di qui**, e nemmeno la sua forma
+    vecchia `entity_id`: dicono DI COSA un'entita' e' fatta, non cosa le si
+    puo' chiedere. Vanno alla metrica della composizione
+    (`group_membership_attributes`), e la sottrazione qui sotto e' scritta
+    apposta come sottrazione dichiarata invece che come un'assenza dalla
+    trascrizione -- che resta fedele alla fonte.
 
     Un insieme vuoto NON e' un'assenza di risposta: la maggior parte dei
     domini -- `switch`, `button`, `binary_sensor`, `camera`, `update`... --
@@ -1762,8 +1802,31 @@ def capability_attributes(domain: str) -> frozenset[str]:
     own = _vocabulary.value(domain, None, CAPABILITY_ATTRIBUTES, frozenset())
     dropped = _vocabulary.value(domain, None, CAPABILITY_ATTRIBUTES_DROPPED, {})
     return ((frozenset(own) - frozenset(dropped) - assumable_attributes(domain))
-            | UNIVERSAL_CAPABILITY_ATTRIBUTES.value
-            | frozenset(UNIVERSAL_CAPABILITY_ATTRIBUTES_ADDED.value))
+            | UNIVERSAL_CAPABILITY_ATTRIBUTES.value) - group_membership_attributes()
+
+
+def group_membership_attributes() -> frozenset[str]:
+    """**Metrica 4, quarta meta'** -- i nomi degli attributi che dicono DI
+    COSA questa entita' e' fatta: i membri di un gruppo.
+
+    Senza dominio, e non per pigrizia: un gruppo e' un gruppo su qualunque
+    dominio, e Home Assistant dichiara `group_entities` fra le capacita' di
+    OGNI entita' (`homeassistant/const.py:464-467`). Prendere un dominio qui
+    lascerebbe credere che la risposta ne dipenda.
+
+    E' l'opposto di `capability_attributes` per chi comanda, esattamente come
+    `assumable_attributes`: un gruppo di luci non ha un parametro che si
+    chiama `entity_id`, ha tre luci dentro. Vedi
+    `GROUP_MEMBERSHIP_ATTRIBUTES` per la ragione, scritta voce per voce.
+    """
+    return frozenset(GROUP_MEMBERSHIP_ATTRIBUTES.value)
+
+
+def declared_group_membership_attributes() -> Mapping[str, str]:
+    """I nomi della composizione **con la ragione scritta di ognuno**. Un
+    giudizio senza ragione non passa la prova che legge questa vista -- la
+    stessa disciplina di `declared_assumable_attributes`."""
+    return MappingProxyType(dict(GROUP_MEMBERSHIP_ATTRIBUTES.value))
 
 
 def assumable_attributes(domain: str) -> frozenset[str]:

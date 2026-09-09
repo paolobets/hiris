@@ -116,7 +116,7 @@ _domain = domain_of
 
 # --------------------------------------------------------------------------
 # L'EREDITA': tutto cio' che Home Assistant espone di un'entita', separato in
-# cinque ceste invece di essere buttato in tre quarti.
+# sei ceste invece di essere buttato in tre quarti.
 # --------------------------------------------------------------------------
 #
 # **Cosa c'era prima, e perche' non poteva funzionare.** Fino al 07/09/2026
@@ -150,10 +150,12 @@ _domain = domain_of
 #
 # **Quindi non c'e' piu' nessuna lista di ammessi qui**, e non ce ne puo'
 # tornare una: cio' che arriva viene ereditato per intero e SMISTATO. Le
-# cinque ceste rispondono a domande diverse, e tenerle separate e' la sola
+# sei ceste rispondono a domande diverse, e tenerle separate e' la sola
 # cosa che questa funzione decide:
 #
 #   `capabilities`   cosa l'entita' PUO' fare -- il campo di manovra
+#   `members`        DI COSA e' fatta -- i membri, quando e' un gruppo
+#   `assumable`      cosa puo' ASSUMERE, che non e' cosa le si puo' imporre
 #   `values`         com'e' ADESSO
 #   `uninterpreted`  cio' di cui nessuna fonte pubblica dichiara il significato
 #   `credentials`    token e maniglie: ereditate e usabili, mai scritte in chat
@@ -324,7 +326,7 @@ def _sanitized(value):
     return value
 
 
-#: I nomi delle cinque ceste. Scritti una volta: una cesta cercata con una
+#: I nomi delle sei ceste. Scritti una volta: una cesta cercata con una
 #: stringa sbagliata risponderebbe «vuota» invece di sbagliare.
 CAPABILITIES = "capabilities"
 VALUES = "values"
@@ -340,12 +342,26 @@ CREDENTIALS = "credentials"
 #: soltanto il giudizio gia' preso.
 ASSUMABLE = "assumable"
 
-#: L'ordine in cui si leggono le quattro ceste che possono arrivare al modello.
-_DISCLOSABLE_BASKETS = (CAPABILITIES, ASSUMABLE, VALUES, UNINTERPRETED)
+#: La sesta, nata il 09/09/2026: DI COSA questa entita' e' fatta -- i membri,
+#: quando e' un gruppo. Non e' una sfumatura del campo di manovra: e'
+#: un'altra domanda. `light.lampadario_sala_da_pranzo` consegnava i suoi tre
+#: membri sotto `entity_id` DENTRO le capacita', accanto a `effect_list` e a
+#: `supported_color_modes` -- cioe' accanto ai parametri veri di
+#: `light.turn_on` -- e chi legge poteva crederlo un parametro. La
+#: separazione e' alla FONTE (`type_vocabulary.group_membership_attributes`,
+#: con la ragione scritta voce per voce), non un `if` su un nome qui a valle.
+MEMBERS = "members"
+
+#: L'ordine in cui si leggono le cinque ceste che possono arrivare al modello.
+#: I membri ci sono dentro: non sono una credenziale, e chi cerca un attributo
+#: per nome -- l'impronta di un'azione, per dirne una -- deve trovarli. Un
+#: gruppo a cui si toglie una luce E' cambiato, e un'impronta che non lo
+#: vedesse direbbe «non e' successo niente».
+_DISCLOSABLE_BASKETS = (CAPABILITIES, MEMBERS, ASSUMABLE, VALUES, UNINTERPRETED)
 
 
 def inherited_attributes(raw_attributes: dict, domain: str) -> dict[str, dict]:
-    """Gli attributi grezzi di un'entita' -> le cinque ceste.
+    """Gli attributi grezzi di un'entita' -> le sei ceste.
 
     **Nessun attributo sparisce**: ognuno finisce in una cesta, oppure e' gia'
     uscito da una chiave propria di `_to_minimal` (`friendly_name` -> `name`,
@@ -358,6 +374,7 @@ def inherited_attributes(raw_attributes: dict, domain: str) -> dict[str, dict]:
     della casa.
     """
     capability_names = type_vocabulary.capability_attributes(domain)
+    membership_names = type_vocabulary.group_membership_attributes()
     assumable_names = type_vocabulary.assumable_attributes(domain)
     declared_values = type_vocabulary.state_attributes(domain)
     baskets: dict[str, dict] = {}
@@ -370,6 +387,12 @@ def inherited_attributes(raw_attributes: dict, domain: str) -> dict[str, dict]:
             basket = CREDENTIALS
         elif name in capability_names:
             basket = CAPABILITIES
+        # I MEMBRI, e non fra le capacita': «di cosa sono fatto» non e' «cosa
+        # mi si puo' chiedere». Anche questo insieme e' DISGIUNTO da quello
+        # delle capacita' per costruzione -- e' l'anagrafe a sottrarli
+        # (`capability_attributes`), non l'ordine di questi rami.
+        elif name in membership_names:
+            basket = MEMBERS
         # I due insiemi sono DISGIUNTI per costruzione -- e' l'anagrafe dei
         # tipi a togliere dalle capacita' cio' che dichiara assumibile
         # (`capability_attributes`), non l'ordine di questi rami. Un ordine
@@ -387,9 +410,9 @@ def inherited_attributes(raw_attributes: dict, domain: str) -> dict[str, dict]:
 
 
 def disclosable_attributes(attributes) -> dict:
-    """Le quattro ceste che possono arrivare al modello, in un dizionario
-    piatto: capacita', cio' che l'entita' puo' assumere, valori correnti e non
-    interpretati. **Le credenziali no.**
+    """Le cinque ceste che possono arrivare al modello, in un dizionario
+    piatto: capacita', membri, cio' che l'entita' puo' assumere, valori
+    correnti e non interpretati. **Le credenziali no.**
 
     Esiste perche' i lettori che devono CERCARE un attributo per nome --
     `hvac_action` per lo stato leggibile, `supported_color_modes` per sapere
@@ -411,6 +434,37 @@ def disclosable_attributes(attributes) -> dict:
         if isinstance(content, dict):
             flat.update(content)
     return flat
+
+
+def group_members(attributes) -> tuple[str, ...]:
+    """Gli id delle entita' di cui questa e' fatta, quando e' un gruppo.
+    Una tupla vuota quando non lo e'.
+
+    **Le due forme si fondono qui**, e non a valle: a `2026.9.1` Home
+    Assistant scrive i membri sotto `group_entities` oppure sotto la forma
+    vecchia `entity_id`, e `components/group/entity.py:43-45` le nomina
+    entrambe. Chi legge i membri non deve sapere quale delle due gli e'
+    arrivata -- e sulla casa vera, misurata il 09/09/2026, l'unico gruppo
+    delle 837 entita' porta la vecchia.
+
+    L'ordine e' quello che Home Assistant ha mandato, i doppioni cadono: un
+    membro nominato due volte e' un membro, e contarlo due volte
+    falserebbe ogni «uno dei tre» che si dice di quel gruppo.
+    """
+    if not isinstance(attributes, dict):
+        return ()
+    carried = attributes.get(MEMBERS)
+    if not isinstance(carried, dict):
+        return ()
+    members: list[str] = []
+    for name in sorted(carried):
+        value = carried[name]
+        if not isinstance(value, (list, tuple)):
+            continue
+        for member in value:
+            if isinstance(member, str) and member and member not in members:
+                members.append(member)
+    return tuple(members)
 
 
 def withheld_credentials(attributes) -> dict[str, str]:

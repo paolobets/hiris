@@ -41,12 +41,13 @@ giorno in cui spariscono, questa prova lo dice.
 import pytest
 
 from hiris.app.home_space.type_vocabulary import (
+    GROUP_MEMBERSHIP_ATTRIBUTES,
     UNIVERSAL_CAPABILITY_ATTRIBUTES,
-    UNIVERSAL_CAPABILITY_ATTRIBUTES_ADDED,
     UNIVERSAL_STATE_ATTRIBUTES,
     capability_attribute_tables,
     capability_attributes,
     dropped_capability_attributes,
+    group_membership_attributes,
     state_attribute_tables,
     state_attributes,
 )
@@ -223,17 +224,27 @@ def test_the_legacy_group_key_survives_and_it_is_declared_as_our_judgment():
     EntityCapabilityAttribute.GROUP_ENTITIES})`). Una tabella costruita solo
     dagli enum nuovi perderebbe `light.lampadario_sala_da_pranzo` IN SILENZIO.
 
-    E il nome aggiunto sta in un campo `Ours` separato, non dentro la
+    Il nome aggiunto sta in un campo `Ours` separato, non dentro la
     trascrizione: se l'avessi infilato in `UNIVERSAL_CAPABILITY_ATTRIBUTES`,
     la prova pinnata qui sopra avrebbe dovuto mentire con me.
 
-    Mutazione: togliere `entity_id` da `UNIVERSAL_CAPABILITY_ATTRIBUTES_ADDED`
-    -- il test torna rosso su `assert "entity_id" in capability_attributes(
-    "light")`."""
-    assert "entity_id" in UNIVERSAL_CAPABILITY_ATTRIBUTES_ADDED.value
+    **E dal 09/09/2026 non e' piu' una capacita'**, ne' lui ne'
+    `group_entities`: l'appartenenza a un gruppo e' composizione, e ha una
+    metrica sua. La trascrizione importata resta intatta -- Home Assistant lo
+    classifica ancora fra le capacita' e il test sopra continua a verificarlo
+    -- e la sottrazione e' dichiarata accanto, non nascosta a valle.
+
+    Mutazione: togliere `entity_id` da `GROUP_MEMBERSHIP_ATTRIBUTES` -- il
+    test torna rosso su `assert "entity_id" in group_membership_attributes()`,
+    e il gruppo della casa vera tornerebbe fra i non interpretati."""
+    assert "entity_id" in GROUP_MEMBERSHIP_ATTRIBUTES.value
     assert "entity_id" not in UNIVERSAL_CAPABILITY_ATTRIBUTES.value
-    assert "entity_id" in capability_attributes("light")
-    assert "entity_id" in capability_attributes("sensor")
+    assert "group_entities" in UNIVERSAL_CAPABILITY_ATTRIBUTES.value
+    assert "entity_id" in group_membership_attributes()
+    assert "group_entities" in group_membership_attributes()
+    assert "entity_id" not in capability_attributes("light")
+    assert "entity_id" not in capability_attributes("sensor")
+    assert "group_entities" not in capability_attributes("light")
 
 
 def test_number_mode_is_ours_to_drop_and_the_reason_travels_with_it():

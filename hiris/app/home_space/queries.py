@@ -57,6 +57,7 @@ from ..proxy.entity_cache import (
     UNINTERPRETED,
     VALUES,
     disclosable_attributes,
+    group_members,
     withheld_credentials,
 )
 from ..proxy.state_translations import TABLE_MISSING_SILENCES
@@ -947,6 +948,138 @@ def commands_for(entity_id: str, registry, attributes: dict) -> dict:
     return commands
 
 
+# I MEMBRI DI UN GRUPPO, e la frase che nessuno diceva.
+#
+# **Dove stavano prima, e perche' era il posto sbagliato.** Fino al 09/09/2026
+# `light.lampadario_sala_da_pranzo` consegnava i suoi tre membri dentro
+# `campo_di_manovra`, sotto `entity_id`, accanto a `effect_list` e a
+# `supported_color_modes` -- cioe' accanto ai parametri veri di
+# `light.turn_on`. L'appartenenza a un gruppo non e' una cosa che si puo'
+# chiedere a una luce: e' cio' DI CUI la luce e' fatta. Adesso esce da una
+# chiave sua, accanto a `capacita` e a `comandi` e non dentro `attributi`,
+# perche' il nome stesso della chiave dica di che fatto si tratta: chi legge
+# `membri: {entita: [...]}` non puo' scambiarlo per un parametro.
+#
+# **E il guadagno vero e' la seconda chiave.** Home Assistant, su un gruppo,
+# dichiara l'UNIONE delle capacita' dei membri -- misurato al tag `2026.9.1`,
+# `components/group/light.py:283-295` (`set().union(*all_supported_color_modes)`),
+# `:263-273` (gli effetti), `:250-261` (`reduce=min`/`max` sui kelvin),
+# `:319-328` (l'OR di `supported_features`). Quindi un gruppo di tre luci di
+# cui UNA sola sa fare colore dichiara «faccio colore», il controllo lo lascia
+# passare, e Home Assistant lo applica **solo a quella che puo'**, ignorando
+# le altre IN SILENZIO. Chi ha chiesto di cambiare colore a tre luci ne vede
+# cambiare una, e nessuno glielo dice.
+#
+# Non e' un difetto di Home Assistant e non e' nostro: e' una cosa che HIRIS
+# PUO' dire, e il dato per dirla e' esattamente quello che si e' spostato --
+# i membri. Con i loro id, le loro capacita' sono gia' nello specchio.
+#
+# **E quando non lo sono, lo si DICHIARA.** Un membro fuori dallo specchio
+# (un gruppo di gruppi, un'entita' che la cache non ha) non e' un membro
+# uguale agli altri: e' un membro che non ho guardato. I conteggi dicono
+# sempre «dei N membri letti», e i non letti escono con nome e ragione --
+# stessa disciplina di `attributi.trattenuti`. Se non ne ho letto NESSUNO, la
+# chiave delle capacita' non compare affatto: tacere sarebbe far leggere
+# «sono tutti uguali».
+_MEMBERS_KEY = "membri"
+_MEMBERS_LIST = "entita"
+_MEMBERS_NOT_SHARED = "capacita_non_di_tutti"
+_MEMBERS_UNREAD = "non_letti"
+_MEMBER_UNREAD_REASON = (
+    "non e' nello specchio: non ho potuto guardare cosa dichiara, e "
+    "«non l'ho guardato» non e' «e' uguale agli altri»")
+
+#: Sotto quale nome esce il disaccordo sui bit di `supported_features`. E' la
+#: stessa parola con cui il dettaglio li consegna gia' decodificati in verbi
+#: (`detail["capacita"]`), apposta: chi legge la riga sa dove andare a
+#: rileggere cosa il gruppo dichiarava.
+_DECODED_CAPABILITIES_KEY = "capacita"
+
+
+def _how_many_members(count: int, read: int) -> str:
+    """Quanti membri, sui letti. **Il denominatore dice «letti» sempre**,
+    anche quando li ho letti tutti: e' il numero su cui la frase e' vera, e
+    scriverlo solo quando qualcuno manca renderebbe la frase piena e quella
+    parziale indistinguibili a chi legge."""
+    if count == 0:
+        return f"nessuno dei {read} membri letti"
+    return f"{count} dei {read} membri letti"
+
+
+def _not_shared_by_all(declared, theirs: list) -> str | None:
+    """La frase per UNA capacita' che il gruppo dichiara e i membri non
+    condividono, o `None` quando la condividono tutti.
+
+    Due forme sole, e sono le due con cui Home Assistant costruisce un gruppo:
+    un ELENCO si unisce voce per voce (`supported_color_modes`, `effect_list`,
+    i verbi di `supported_features`), quindi si guarda voce per voce; un
+    valore SINGOLO si riduce (`min`/`max` sui kelvin), quindi si guarda per
+    intero. Un elenco confrontato per intero direbbe «diversi» di due membri
+    che condividono tutto tranne un effetto, che e' meno utile e piu' rumoroso.
+    """
+    read = len(theirs)
+    if not read:
+        return None
+    items = list(declared) if isinstance(declared, (list, tuple, set, frozenset)) else [declared]
+    missing = []
+    for item in items:
+        count = 0
+        for mine in theirs:
+            if isinstance(mine, (list, tuple, set, frozenset)):
+                count += 1 if item in mine else 0
+            else:
+                count += 1 if mine == item else 0
+        if count < read:
+            missing.append(f"«{item}»: {_how_many_members(count, read)}")
+    return "; ".join(missing) if missing else None
+
+
+def group_membership(entity_id: str, reported_attributes: dict | None) -> dict:
+    """Di cosa questa entita' e' fatta, e cosa di cio' che dichiara non e' di
+    tutti i suoi membri. `{}` quando non e' un gruppo.
+
+    Pura come tutto questo modulo: lo specchio glielo passa il chiamante, e
+    qui dentro non si chiede niente a nessuno.
+    """
+    mirror = reported_attributes if isinstance(reported_attributes, dict) else {}
+    baskets = mirror.get(entity_id)
+    members = group_members(baskets)
+    if not members:
+        return {}
+    view: dict = {_MEMBERS_LIST: list(members)}
+    unread = {member: _MEMBER_UNREAD_REASON for member in members
+              if not isinstance(mirror.get(member), dict)}
+    if unread:
+        view[_MEMBERS_UNREAD] = unread
+    read = [member for member in members if member not in unread]
+    if not read:
+        return view
+    declared = dict((baskets.get(CAPABILITIES) or {}) if isinstance(baskets, dict) else {})
+    theirs = [dict(mirror[member].get(CAPABILITIES) or {}) for member in read]
+    # I bit di `supported_features` entrano nel confronto come una capacita'
+    # in piu', decodificati in verbi: Home Assistant li unisce con un OR
+    # (`components/group/light.py:319-328`) esattamente come unisce gli
+    # elenchi, quindi il difetto e' lo stesso -- e lasciarli fuori avrebbe
+    # coperto meta' delle capacita' di un gruppo e taciuto sull'altra meta'.
+    domain = domain_of(entity_id)
+    own_features = decoded_capabilities(
+        domain, disclosable_attributes(baskets).get("supported_features"))
+    if own_features:
+        declared[_DECODED_CAPABILITIES_KEY] = own_features
+        for member, mine in zip(read, theirs):
+            mine[_DECODED_CAPABILITIES_KEY] = decoded_capabilities(
+                domain, disclosable_attributes(mirror[member]).get("supported_features"))
+    not_shared = {}
+    for name in sorted(declared):
+        phrase = _not_shared_by_all(declared[name],
+                                    [mine.get(name, ()) for mine in theirs])
+        if phrase:
+            not_shared[name] = phrase
+    if not_shared:
+        view[_MEMBERS_NOT_SHARED] = not_shared
+    return view
+
+
 def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
                    unavailable: tuple[str, ...] = (),
                    fallback_names: dict[str, str] | None = None,
@@ -1063,6 +1196,16 @@ def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
             baskets[_WITHHELD_BASKET] = withheld
         if baskets:
             detail["attributi"] = baskets
+    # I MEMBRI (`group_membership`, poco sopra): DI COSA questa entita' e'
+    # fatta, e cosa di cio' che dichiara non e' di tutti i suoi membri. Fuori
+    # da `attributi` di proposito -- e' composizione, non un attributo fra gli
+    # altri -- e solo qui, sul dettaglio di UNA entita' sola, per la stessa
+    # ragione di `attributi` e di `regola`. La chiave non compare su cio' che
+    # un gruppo non e': `membri: []` su ogni luce della casa sarebbe rumore in
+    # ogni risposta.
+    membership = group_membership(entity["id"], reported_attributes)
+    if membership:
+        detail[_MEMBERS_KEY] = membership
     # I COMANDI (`commands_for`, poco sopra): cosa si puo' CHIEDERE a questa
     # entita', e con quali limiti -- l'altra meta' del requisito del
     # proprietario (spec §13), accanto a cio' che l'entita' e'.
