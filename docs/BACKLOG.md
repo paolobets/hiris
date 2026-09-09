@@ -1141,6 +1141,33 @@ dall'audit: `hiris/app/static/config/watcher-route.js` li duplica.
 È un doppione **attraverso il confine dei linguaggi**, che nessuno dei due cancelli sui doppioni
 guarda. Lasciata aperta perché fuori dal perimetro di quella chiusura.
 
+### Il sapere di HIRIS — il catalogatore, il resoconto, le porzioni
+
+`origine: il proprietario, 09/09/2026, discutendo l'impianto solare` · `documento: docs/design/2026-09-09-il-sapere-di-hiris.md`
+
+**Sprint successivo, dichiarato fondamentale dal proprietario**, con il permesso esplicito di
+**distruggere e ricostruire** se il disegno lo richiede.
+
+**Il vincolo nuovo che cambia tutti gli altri: HIRIS verrà distribuito ad altri utenti.**
+
+Tre attori: il **catalogatore** (cos''e questa cosa — dedotto dal modello, verificato sulla
+documentazione di HA), l'**analista** (mi serve per la domanda dell'obiettivo?), l'**osservatore**
+(raccoglie ci'o che gli 'e stato detto — esiste gi'a e gira).
+
+**Le tre mancanze misurate il 09/09**: non c''e una casa per ci'o che HIRIS deduce (la quarta
+provenienza non ha un tetto); non esiste il **resoconto giornaliero** da cui nascono le tendenze;
+e HIRIS **non sa prendere porzioni** — il modello riceve un testo fisso di 6.800 caratteri, e sotto
+non c''e niente da cui pescare.
+
+**E il vocabolario dei tipi 'e un file nel repository**: non esiste nessun posto dove una singola
+casa scriva ci'o che HIRIS ha imparato. Su questa casa funziona perch'e il proprietario risponde;
+**quello non si distribuisce**.
+
+Il caso che ha fatto emergere tutto: **otto entit'a dell'impianto solare con otto ruoli diversi e
+un solo `device_class`** (`power`), indistinguibili dal consumo di una presa.
+
+Tutto il resto — misure, decisioni gi'a prese, domande in pausa, sospesi — sta nel documento.
+
 ---
 
 ## Usciti
