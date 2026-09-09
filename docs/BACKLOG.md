@@ -1102,6 +1102,64 @@ chat_stream tests/`) -- `test_base_prompt_memory.py`, `test_base_prompt_split.py
 
 Chi sceglie questa voce per uno sprint decide fra le due, con la sua verifica.
 
+### Gli undici stati che non sono né riposo né acceso
+
+`origine: il proprietario, 09/09/2026, dopo la misura della fetta «le sei liste»` · `documento: docs/design/2026-09-07-l-anagrafe-dei-tipi.md §17`
+
+**Il fatto misurato**: undici stati che questa casa pubblica non sono riposi **e** non sono fra
+quelli che il nucleo annuncia — `cover`/`valve` in `opening`/`closing`, `lock` in
+`locking`/`unlocking`/`opening`/`jammed`, `media_player` in `paused`/`buffering`, `vacuum` in
+`paused`. **Dieci degli undici il vocabolario li dichiara già «sta funzionando»**: non è un buco
+di conoscenza, è un disaccordo fra due giudizi del prodotto.
+
+**Deciso dal proprietario**: si annunciano **solo quelli che significano qualcosa**, tipo per tipo,
+con la ragione scritta. Non tutti (gonfierebbero un riassunto che tronca già) e non nessuno.
+
+**La selezione proposta e il criterio che la governa** — *si annuncia ciò che farebbe alzare dalla
+sedia, non ciò che è tecnicamente «in funzionamento»*:
+
+| stato | annuncio | perché |
+|---|---|---|
+| `lock` in `locking` / `unlocking` / `opening` | **sì** | vuol dire che **qualcuno è alla porta**: è una notizia mentre accade |
+| `vacuum` in `paused` | **sì** | un robot fermo a metà lavoro di solito è **bloccato**, non a riposo |
+| `cover` / `valve` in `opening` / `closing` | no | dura secondi: quando lo si legge è già finito, e l'archivio lo registra comunque |
+| `media_player` in `paused` | no | non è una notizia: è qualcuno andato in cucina |
+| `media_player` in `buffering` | no | rumore tecnico |
+| `lock` in `jammed` | **è un guasto** | deciso il 08/09; aspetta la fetta «il genere che dipende dallo stato» |
+
+**Costo**: piccolo. La misura del disaccordo è già pinnata da
+`tests/test_notable_states_complement.py`, che arrossisce se il divario cambia.
+
+### `chat_stream` non è collegato e non è cancellato — decisione motivata
+
+`origine: audit fondamenta 09/09/2026, rilievo sotto soglia n.8` · `documento: .superpowers/.../audit-fondamenta.md`
+
+`claude_runner.py` dichiarava *«non è codice morto: il ponte e i test lo usano»*. **Il ponte non lo
+chiama.** L'unico chiamante è `handlers_chat.py:951`, raggiungibile solo con
+`Accept: text/event-stream`, che **nessun file in `static/` manda**. Vive per le sue prove.
+
+La quarta fondamenta chiede di **collegare o cancellare**. Nessuna delle due è stata fatta, e la
+ragione è scritta nel codice:
+
+- **cancellare** tocca **quattordici** file di prova, non uno come stimato nel capitolato;
+- **collegare** sarebbe una funzionalità nuova non voluta oggi, e per giunta su un percorso rotto:
+  `LLMRouter.chat_stream` **non ripiega** e **non scrive nel registro degli esiti**, che si dichiara
+  «l'unico scrittore».
+
+**Quindi la voce resta qui, e il commento nel codice ora dice il vero** invece di affermare un uso
+che non c'è. Chi la prenderà in mano decide fra le due strade sapendo cosa costano.
+
+### Una quarta sede dei prefissi «non è un'entità»
+
+`origine: trovata durante la chiusura del rilievo 10, 09/09/2026` · `nessun documento`
+
+I quattro prefissi che dicono «questo soggetto non è un'entità» erano scritti in **tre** posti nel
+Python, ora unificati in `mind.facts.NOT_ENTITY_PREFIXES`. Ma ce n'è una **quarta**, mai nominata
+dall'audit: `hiris/app/static/config/watcher-route.js` li duplica.
+
+È un doppione **attraverso il confine dei linguaggi**, che nessuno dei due cancelli sui doppioni
+guarda. Lasciata aperta perché fuori dal perimetro di quella chiusura.
+
 ---
 
 ## Usciti
