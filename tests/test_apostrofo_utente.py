@@ -132,8 +132,12 @@ SORVEGLIATO: dict[str, tuple[tuple[int, int], ...] | None] = {
     # Intervalli rinumerati l'09/09/2026 (rilievo 9 dell'audit delle
     # fondamenta: `apply` cresce di 13 righe e `_helper_entities` ne aggiunge
     # 77 sopra `_label`). ANCORE ritrovate per contenuto e verificate una per
-    # una con un'elisione dritta iniettata dentro ciascun intervallo nuovo --
-    # il cancello arrossisce in 5 casi su 5. `_helper_entities` resta FUORI:
+    # una con un'elisione dritta iniettata DENTRO UNA STRINGA di ciascuno dei
+    # cinque intervalli -- anche i due non spostati, perche' «non l'ho
+    # toccato» e' un'ipotesi come le altre: il cancello arrossisce in 5 casi
+    # su 5. La mutazione va messa in una stringa e mai in un commento: li' e'
+    # inerte, e la verifica direbbe «coperto» senza aver verificato niente.
+    # `_helper_entities` resta FUORI:
     # le sue uniche stringhe sono `logger.warning` con segnaposto, e la frase
     # che il proprietario legge la compone `apply`, dentro il suo intervallo.
     "action/construction/workshop.py": (
