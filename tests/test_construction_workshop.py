@@ -148,6 +148,44 @@ def _intento(**kw):
 
 
 @pytest.mark.asyncio
+async def test_richiesto_accetta_solo_una_delle_tre_strutture(banco):
+    """La porta impone il vocabolario chiuso (audit delle fondamenta, rilievo 5).
+
+    `richiesto` risponde a «quale delle tre strutture hai chiesto»; «cosa ha
+    detto la persona» e' `frase`, e ha gia' un campo suo. Finche' i due fatti
+    stavano in una parola sola, il modello ci scriveva dentro la richiesta
+    dell'utente -- misurato sulla casa vera -- e il consigliere dissentiva da
+    se stesso in un'anteprima che il proprietario ha approvato.
+
+    Si rifiuta invece di normalizzare: una parola fuori vocabolario e' un
+    campo riempito male, e il motivo dice al modello dove va quel testo. Una
+    normalizzazione piu' furba sposterebbe il buco -- la frase misurata
+    CONTIENE la parola «automazione» e non e' una richiesta di struttura."""
+    officina, ha, archivio, _ = banco
+    esito = await officina.propose(
+        _intento(richiesto="correzione errori di configurazione "
+                           "dell'automazione esistente"),
+        actor="chat", exchange="t1", now=ADESSO)
+
+    assert "errore" in esito
+    assert "frase" in esito["errore"], (
+        "il rifiuto deve dire DOVE va il testo libero, o il modello riprova uguale")
+    assert ha.salvate == [] and archivio.list() == [], (
+        "un campo riempito male non fa nascere una proposta")
+
+
+@pytest.mark.asyncio
+async def test_richiesto_vuoto_resta_legittimo(banco):
+    """«Non me l'ha detto» e' un caso vero: la maggior parte delle richieste
+    non nomina una struttura, e il mestiere sceglie da solo senza dissentire
+    con nessuno."""
+    officina, _, _, _ = banco
+    esito = await officina.propose(_intento(richiesto=None), actor="chat",
+                                   exchange="t1", now=ADESSO)
+    assert "proposta_id" in esito
+
+
+@pytest.mark.asyncio
 async def test_proporre_non_scrive_niente_su_home_assistant(banco):
     officina, ha, _, _ = banco
     esito = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)

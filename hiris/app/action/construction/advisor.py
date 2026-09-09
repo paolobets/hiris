@@ -16,12 +16,42 @@ senza Home Assistant.
 """
 from __future__ import annotations
 
+# Le TRE strutture che Home Assistant sa costruire -- e l'UNICA casa del
+# vocabolario di `richiesto`. Non e' un elenco di comodo: e' cio' che rende
+# `richiesto` un campo CHIUSO invece di una frase.
+#
+# Il rilievo che l'ha fatta nascere (audit delle fondamenta, 08/09/2026):
+# `richiesto` era descritto al modello come «cosa ha chiesto l'utente», cioe'
+# testo libero, e confrontato qui sotto con un'appartenenza. Sulla casa vera
+# la costruzione applicata `automation.1784125482111029` porta scritto «hai
+# chiesto "correzione errori di configurazione dell'automazione esistente", e
+# secondo me qui serve automazione; dimmi tu»: il consigliere dissentiva da
+# se stesso, e la cronaca -- che esiste per MISURARE quanto il mestiere
+# sbaglia -- ha registrato un dissenso falso.
+#
+# Due cose diverse dette con una parola sola, e si separano ALLA FONTE:
+# «quale delle tre strutture» e' questo campo, «cosa ha detto la persona» e'
+# `frase`. Lo schema dello strumento dichiara l'enumerazione
+# (`home_space/tools.py`, PROPOSE_TOOL_DEF) e la porta la impone
+# (`workshop._invalid_form`): una normalizzazione di stringhe piu' furba
+# avrebbe spostato il buco -- «correzione errori ... dell'automazione
+# esistente» CONTIENE la parola giusta e non e' una richiesta di struttura.
+STRUCTURES: tuple[str, ...] = ("automazione", "script", "scena")
+
 
 def consiglia(intent: dict) -> dict:
     """`{"strutture": [...], "motivo": str, "dissenso": bool}`.
 
     `strutture` e' in ordine di composizione: quando sono due, l'automazione
     viene prima perche' e' lei a chiamare lo script.
+
+    `richiesto` e' una delle tre parole di `STRUCTURES`, o niente. Chi chiama
+    dalla produzione passa dalla porta, che rifiuta il resto; questa funzione
+    e' pura e non si fida lo stesso -- un valore fuori vocabolario non e' una
+    struttura, quindi non c'e' niente da cui dissentire. Tacere e' l'unica
+    risposta vera: inventare un disaccordo con una frase e' il difetto, e
+    provare a indovinare quale struttura quella frase intendesse sarebbe lo
+    stesso difetto con piu' passaggi.
     """
     innesco = intent.get("innesco") or []
     passi = intent.get("passi") or []
@@ -85,7 +115,7 @@ def consiglia(intent: dict) -> dict:
                 reasons.append("gli stati vengono ristabiliti in una scena che lo script "
                               "accende")
 
-    dissenso = bool(requested) and requested not in strutture
+    dissenso = requested in STRUCTURES and requested not in strutture
     if dissenso:
         reasons.append(f"hai chiesto «{requested}», e secondo me qui serve "
                       f"{' e '.join(strutture)}; dimmi tu")

@@ -39,7 +39,7 @@ import logging
 from ...home_space.historian import home_space_zone
 from ...proxy._sanitize import truncate_with_marker as _truncate
 from . import composer
-from .advisor import consiglia
+from .advisor import STRUCTURES, consiglia
 
 logger = logging.getLogger(__name__)
 
@@ -709,6 +709,24 @@ def _invalid_form(intent: dict) -> str | None:
     fields = intent.get("campi")
     if fields is not None and not isinstance(fields, dict):
         return f"«campi» deve essere un dizionario, non {type(fields).__name__}."
+    # **`richiesto` e' un vocabolario CHIUSO, non una frase** (audit delle
+    # fondamenta, rilievo 5). Risponde a «quale delle tre strutture ti ha
+    # chiesto», e «cosa ha detto la persona» ha gia' un campo suo, `frase`.
+    # Finche' i due fatti sono stati una parola sola, il modello ci ha scritto
+    # dentro la richiesta dell'utente -- misurato sulla casa vera, costruzione
+    # applicata `automation.1784125482111029` -- e il consigliere e' finito a
+    # dissentire da se stesso in un'anteprima che il proprietario ha
+    # approvato.
+    #
+    # Si RIFIUTA, non si normalizza: il motivo dice al modello dove va quel
+    # testo, e lui corregge. Una normalizzazione piu' furba sposterebbe il
+    # buco invece di chiuderlo -- la frase misurata contiene la parola
+    # «automazione» e non e' una richiesta di struttura.
+    requested = intent.get("richiesto")
+    if requested is not None and requested != "" and requested not in STRUCTURES:
+        return (f"«richiesto» accetta solo {', '.join(STRUCTURES)}: dice quale "
+                f"delle tre strutture ti ha chiesto l'utente, non cosa ti ha "
+                f"detto. La sua frase va in «frase».")
     for entry in intent.get("helper") or []:
         if not isinstance(entry, dict) or not isinstance(entry.get("dominio"), str):
             return "ogni helper deve essere un dizionario con un «dominio» testuale."

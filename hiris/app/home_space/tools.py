@@ -151,6 +151,7 @@ import re
 from datetime import datetime, timedelta
 from typing import Any, ClassVar
 
+from ..action.construction.advisor import STRUCTURES
 from ..memory.interpretation import VOCABULARY, validate
 from ..memory.lookup_cache import LookupCache
 from ..memory.resolver import STORE_KEY_PER_TYPE, costruisci_indice
@@ -966,10 +967,20 @@ PROPOSE_TOOL_DEF = {
             "ricorrente": {"type": "boolean",
                            "description": "true se e' una cosa che si ripete "
                                           "(«ogni giorno alle 7»)."},
-            "richiesto": {"type": "string",
-                          "description": "Cosa ha chiesto l'utente: automazione, "
-                                         "script o scena. Serve a dirti se non "
-                                         "sono d'accordo."},
+            # Vocabolario CHIUSO, e l'enumerazione viene dalla sua unica casa
+            # (`action/construction/advisor.STRUCTURES`). Questo campo dice
+            # QUALE delle tre strutture l'utente ha chiesto; cosa ha DETTO va
+            # in «frase». Finche' la descrizione diceva «cosa ha chiesto
+            # l'utente» il modello ci scriveva dentro la richiesta per esteso,
+            # e il consigliere dissentiva da se stesso -- misurato sulla casa
+            # vera (audit delle fondamenta, rilievo 5).
+            "richiesto": {"type": "string", "enum": list(STRUCTURES),
+                          "description": "Solo se l'utente ha nominato lui una "
+                                         "delle tre strutture, con quella "
+                                         "parola. Serve a dirti se non sono "
+                                         "d'accordo. La sua frase va in «frase», "
+                                         "non qui: se non ha nominato nessuna "
+                                         "struttura, ometti questo campo."},
             "helper": {"type": "array", "items": {"type": "object"},
                        "description": "Gli helper da creare insieme: ognuno con "
                                       "`dominio` e `dati`."},

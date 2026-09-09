@@ -1,5 +1,7 @@
 """Il mestiere: quale struttura serve, e perche'. La Legge I che diventa codice."""
-from hiris.app.action.construction.advisor import consiglia
+import pytest
+
+from hiris.app.action.construction.advisor import STRUCTURES, consiglia
 
 
 def _intento(**kw):
@@ -89,3 +91,55 @@ def test_soli_stati_rimangono_solo_scena():
     esito = consiglia(_intento(stati=[{"entity_id": "light.salotto", "state": "on"}]))
     assert esito["strutture"] == ["scena"]
     assert "scena" in esito["motivo"]
+
+
+# ── `richiesto` e' un vocabolario chiuso, non una frase ─────────────────────
+
+def test_le_tre_strutture_sono_quelle_che_il_consiglio_puo_produrre():
+    """`STRUCTURES` e' l'UNICA casa di «quali sono le tre strutture».
+
+    Il confronto del dissenso e' un'appartenenza a questo insieme: se qui
+    dentro comparisse una parola che `consiglia` non produce mai -- o ne
+    sparisse una che produce -- il dissenso direbbe il falso su un caso vero,
+    ed e' esattamente com'e' nato il rilievo."""
+    prodotte = set()
+    for intento in (
+        _intento(innesco=[{"trigger": "sun"}], passi=[{"action": "a"}]),
+        _intento(passi=[{"action": "a"}]),
+        _intento(stati=[{"entity_id": "light.x", "state": "on"}]),
+    ):
+        prodotte.update(consiglia(intento)["strutture"])
+    assert prodotte == set(STRUCTURES)
+
+
+@pytest.mark.parametrize("scritto", [
+    "Automazione",
+    "un'automazione",
+    "automation",
+    "correzione errori di configurazione dell'automazione esistente",
+])
+def test_una_frase_al_posto_della_struttura_NON_e_un_dissenso(scritto):
+    """Il difetto misurato sulla casa vera (audit delle fondamenta, rilievo 5).
+
+    `GET /api/constructions`, costruzione APPLICATA
+    `automation.1784125482111029`: «hai chiesto "correzione errori di
+    configurazione dell'automazione esistente", e secondo me qui serve
+    automazione; dimmi tu». Il consigliere dissentiva da se stesso, il
+    proprietario ha approvato un'anteprima che si contraddiceva, e la cronaca
+    -- che serve a MISURARE quanto il mestiere sbaglia -- ha registrato un
+    dissenso falso.
+
+    La cura sta alla fonte (`richiesto` e' un vocabolario chiuso, e la porta
+    lo impone): qui si prova che il consigliere, davanti a una parola che non
+    e' una delle tre, non inventa un disaccordo. Se la cura fosse una
+    normalizzazione di stringhe piu' furba, il quarto caso di questa lista --
+    una frase intera che CONTIENE la parola «automazione» -- la smentirebbe.
+    """
+    esito = consiglia(_intento(richiesto=scritto,
+                               innesco=[{"trigger": "sun", "event": "sunrise"}],
+                               passi=[{"action": "cover.open_cover"}]))
+    assert esito["strutture"] == ["automazione"]
+    assert esito["dissenso"] is False, (
+        f"«{scritto}» non nomina una delle tre strutture: non c'e' niente da "
+        "cui dissentire")
+    assert "hai chiesto" not in esito["motivo"]
