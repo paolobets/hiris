@@ -6,8 +6,11 @@ un'incoerenza -- sono due cose di natura diversa:
 
 - il nome puo' SPARIRE con l'entita', quindi si scrive quando lo si sa;
 - lo stato non sparisce mai (`heat` e' il fatto, ed e' quello che
-  `mind/facts.py` confronta con `_RESTING`/`_UNKNOWN` per aprire e chiudere
-  gli episodi), mentre la sua TRADUZIONE migliora: una voce che oggi manca
+  `mind/facts.py` confronta coi riposi e i «non lo so» dichiarati nel
+  vocabolario dei tipi -- `type_vocabulary.resting_states()`/
+  `unknown_states()`, non piu' `_RESTING`/`_UNKNOWN` scritti a mano dal
+  07/09/2026 -- per aprire e chiudere gli episodi), mentre la sua TRADUZIONE
+  migliora: una voce che oggi manca
   domani c'e'. Renderla alla lettura fa arrivare i miglioramenti anche alle
   righe vecchie; congelarla in colonna li perde per sempre. E la lingua e'
   una preferenza MUTABILE della casa (`hass.config.language`): congelare la
@@ -143,22 +146,35 @@ def state_translation(state, *, domain, device_class=None, platform=None,
     che il lettore vede: e' una DECISIONE di chi rende (il confine dell'API
     non emette nessun campo, e la pagina mostra `stato`), non un dato.
 
-    **`unavailable`/`unknown` non arrivano mai qui.** HA a `:469-470` li
-    restituisce grezzi, prima di ogni gradino, e il suo frontend li rende da
-    un bundle proprio che il backend non pubblica -- per un add-on sarebbe
-    un buco da colmare. Ma l'UNICO chiamante di questa funzione
-    (`api/handlers_mind.py::_with_rendered_states`, dietro `/api/mind/facts`)
-    legge oggetti che `mind/facts.py::aggregate_day` ha gia' filtrato: quei
-    due stati non aprono ne' chiudono un episodio e sono scartati PRIMA che un
-    `corpo.stato` esista (`facts.py`, il filtro su `_UNKNOWN` in cima alla
-    funzione). Fino al 07/09/2026 questa funzione portava due etichette
-    proprie per quel caso (`_OUR_LABELS`, commit `b68bda11`): un ramo morto,
-    mai raggiungibile dal suo unico chiamante -- rimosso dalla revisione
-    indipendente del tratto (rilievo R5), insieme alla prova che costruiva a
-    mano un `corpo.stato` che l'archivio non produce mai. Se domani un
-    secondo chiamante rendesse `stato` per un oggetto NON filtrato da
-    `aggregate_day`, il posto giusto per le due etichette e' li' -- non qui,
-    dove sarebbero di nuovo irraggiungibili.
+    **`unavailable`/`unknown` non hanno un gradino che risponda, e non ne
+    hanno bisogno.** HA a `:469-470` li restituisce grezzi, prima di ogni
+    gradino, e il suo frontend li rende da un bundle proprio che il backend
+    non pubblica -- per un add-on sarebbe un buco da colmare, ma nessuna
+    delle 801 chiavi lette da questa casa e' `entity_component.*.state.
+    (unavailable|unknown)`. Corretto il 09/09/2026: questa funzione NON ha
+    un solo chiamante. `api/handlers_mind.py::_with_rendered_states` (dietro
+    `/api/mind/facts`) legge oggetti che `mind/facts.py::aggregate_day` ha
+    gia' filtrato -- li' i due stati non arrivano mai, perche' non aprono ne'
+    chiudono un episodio e sono scartati prima che un `corpo.stato` esista.
+    Ma `rendered_state` (sotto, nello stesso modulo) chiama questa funzione
+    per conto di `topology.readable_state`, che `home_space/briefing.py` e
+    `home_space/queries.py` invocano sullo stato VIVO di un'entita' -- non
+    filtrato da `aggregate_day` -- per il nucleo e per `view`/`search`: un
+    dispositivo davvero irraggiungibile ci arriva con `stato: "unavailable"`.
+    Anche li' il risultato e' corretto senza bisogno di un ramo dedicato:
+    nessun gradino risponde, questa funzione torna `None` come per qualunque
+    altro stato senza resa, e chi chiama (`rendered_state`) lo dichiara col
+    silenzio «ho chiesto e non c'e'» -- la pagina mostra `stato` grezzo, che
+    e' il fatto. Fino al 07/09/2026 questa funzione portava due etichette
+    proprie per quel caso (`_OUR_LABELS`, commit `b68bda11`): erano un ramo
+    morto rispetto all'UNICO chiamante di allora
+    (`api/handlers_mind.py::_with_rendered_states`), rimosso dalla revisione
+    indipendente del tratto (rilievo R5) insieme alla prova che costruiva a
+    mano un `corpo.stato` che l'archivio non produce mai. La rimozione resta
+    giusta oggi: il secondo chiamante che il docstring di allora immaginava
+    come condizione futura (`rendered_state` su uno stato non filtrato)
+    esiste gia', e non ha bisogno delle due etichette -- gli basta il
+    silenzio generico.
 
     `component_resources` e' obbligatorio ed e' il dizionario piatto di
     `category: "entity_component"`; `entity_resources` (`category: "entity"`)

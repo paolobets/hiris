@@ -130,24 +130,29 @@ def test_senza_nessuna_risorsa_non_si_inventa_una_resa():
 
 
 # ---------------------------------------------------------------------------
-# Le due voci che Home Assistant non dara' mai: qui NON arrivano (R5)
+# Le due voci che Home Assistant non traduce mai qui: nessuna resa dedicata
 # ---------------------------------------------------------------------------
 
 def test_unavailable_e_unknown_non_producono_una_resa_qui():
     """Revisione del tratto v3.22.2..HEAD, rilievo R5: fino al 07/09/2026
     `state_translation` portava due etichette proprie per questi due stati
-    (`_OUR_LABELS`, commit `b68bda11`) -- un ramo morto, perche' l'UNICO
-    chiamante (`api/handlers_mind.py::_with_rendered_states`, dietro
-    `/api/mind/facts`) legge solo oggetti che `mind/facts.py::aggregate_day`
-    ha gia' filtrato: quei due stati non aprono ne' chiudono un episodio e
-    sono scartati prima che un `corpo.stato` esista (vedi
-    `tests/test_mind_facts.py`, punto 2). Rimosso insieme alla prova che
-    costruiva a mano un corpo che l'archivio non produce mai
+    (`_OUR_LABELS`, commit `b68bda11`) -- un ramo morto rispetto al chiamante
+    di allora (`api/handlers_mind.py::_with_rendered_states`, dietro
+    `/api/mind/facts`), che legge solo oggetti che `mind/facts.py::
+    aggregate_day` ha gia' filtrato: li' quei due stati non aprono ne'
+    chiudono un episodio e sono scartati prima che un `corpo.stato` esista
+    (vedi `tests/test_mind_facts.py`, punto 2). Rimosso insieme alla prova
+    che costruiva a mano un corpo che l'archivio non produce mai
     (`tests/test_mind_api.py`).
 
-    Senza risorse e senza un gradino che risponda, questi due stati sono
-    "senza traduzione" come qualunque altro: la funzione lo dichiara con
-    `None`, non con un'etichetta inventata qui dentro."""
+    **Non e' piu' l'unico chiamante** (corretto 09/09/2026): `rendered_state`
+    porta questi due stati anche dallo stato VIVO di un'entita' (nucleo,
+    `view`/`search`, via `topology.readable_state`), non filtrato da
+    `aggregate_day`. Non serve comunque un'etichetta dedicata: senza risorse
+    e senza un gradino che risponda, questi due stati sono "senza traduzione"
+    come qualunque altro, e la funzione lo dichiara con `None` -- chi chiama
+    lo traduce nel silenzio «ho chiesto e non c'e'», non in un'etichetta
+    inventata qui dentro."""
     assert state_translation("unavailable", domain="climate",
                              component_resources={}) is None
     assert state_translation("unknown", domain="climate",
