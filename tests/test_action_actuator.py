@@ -1126,6 +1126,52 @@ async def test_un_client_che_non_annuncia_non_blocca_e_non_rifiuta():
     assert durata < porta_modulo.STATE_WAIT_S
 
 
+@pytest.mark.asyncio
+async def test_un_client_sordo_non_dichiara_un_attesa_mai_fatta():
+    """Audit delle fondamenta, rilievo sotto soglia 7 (09/09/2026):
+    `_not_seen`/`_no_change` dicevano «ho aspettato N secondi» anche quando
+    `_open_listen` e' tornato `False` -- e in quel caso `execute` non chiama
+    MAI `listen.attendi(...)`, quindi non ha aspettato nessun secondo. E' la
+    stessa famiglia di difetto che la scadenza esiste per chiudere (vedi
+    `test_se_l_annuncio_non_arriva_entro_la_scadenza_l_avviso_lo_dichiara`):
+    un'attesa dichiarata e mai fatta, detta con sicurezza.
+
+    A differenza di `test_un_client_che_non_annuncia_non_blocca_e_non_rifiuta`
+    (dove la chiamata riporta il cambiamento e l'esito non arriva mai
+    all'avviso), qui la chiamata non riporta NIENTE (`cambiati=[]`) e lo
+    specchio non si muove da solo: e' il ramo `_no_change`, quello che
+    parlava di un'attesa inesistente.
+
+    Mutazione ESEGUITA: tolto `listened=listening` dalla chiamata a
+    `_no_change` in `actuator.py` (tornando a `_no_change(pending)` col
+    vecchio corpo che ignora `listened`) -- questa prova e' diventata rossa
+    su `"ho aspettato" not in avviso`, e ripristinata riscrivendo il file.
+    """
+    class ClientSordo(FintoClient):
+        add_state_listener = None
+        remove_state_listener = None
+
+    client = ClientSordo(cambiati=[])
+    registro = await _registro_pronto(client)
+    cache = FintaCache(SALOTTO_ACCESO)
+    porta = ActionActuator(client, registro, cache)
+
+    inizio = time.monotonic()
+    esito = await porta.execute(SPEGNI_IL_SALOTTO, actor="chat")
+    durata = time.monotonic() - inizio
+
+    assert esito["eseguito"] is True
+    assert esito["cambiato"] == []
+    avviso = esito["avviso"].lower()
+    assert "ho aspettato" not in avviso, (
+        "questo client non ha il rubinetto degli annunci: non ha aspettato "
+        "nessun secondo, e l'avviso non deve affermare un'attesa mai fatta")
+    assert "non annuncia i cambiamenti di stato" in avviso
+    assert durata < porta_modulo.STATE_WAIT_S, (
+        "nessuna attesa reale doveva accadere: la porta non ha nessun "
+        "annuncio da aspettare quando il client non lo sa dare")
+
+
 # --- la cronaca --------------------------------------------------------------
 #
 # Task 3 dello schedulatore: la fetta «comandare» aveva promesso «il registro

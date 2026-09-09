@@ -181,7 +181,23 @@ def _seconds(pending: float) -> str:
 # per TOT e non e' arrivato niente». Un avviso che tacesse il «per quanto»
 # racconterebbe meno di cio' che la porta ha davvero fatto -- e la differenza
 # fra le due frasi e' tutto cio' che questa correzione ha aggiunto.
-def _not_seen(pending: float) -> str:
+#
+# **`listened` non e' un dettaglio, e' corretto il 09/09/2026** (audit delle
+# fondamenta): quando `_open_listen` torna `False` -- il client non ha il
+# rubinetto degli annunci, o aprirlo e' fallito -- `execute` non chiama MAI
+# `listen.attendi(...)`, quindi non aspetta davvero nessun secondo. Prima di
+# questa correzione le due frasi dicevano «ho aspettato N secondi»
+# comunque, affermando un'attesa che non c'e' stata: la stessa famiglia di
+# difetto di «ho aspettato, e non e' arrivato niente» quando invece non si
+# era nemmeno guardato.
+def _not_seen(pending: float, *, listened: bool) -> str:
+    if not listened:
+        return ("la chiamata e' partita, ma non sono riuscito a rileggere lo "
+                "stato dopo: questo collegamento con Home Assistant non "
+                "annuncia i cambiamenti di stato, quindi non c’e' stata "
+                "nessuna attesa -- non avevo nessun annuncio da aspettare. La "
+                "chiamata non ha riportato niente e l’inventario interno non "
+                "e' leggibile. Non so dire cosa sia cambiato")
     return ("la chiamata e' partita, ma non sono riuscito a rileggere lo stato "
             f"dopo: ho aspettato {_seconds(pending)} secondi e Home Assistant non "
             "ha annunciato niente su queste entita', la chiamata non ha riportato "
@@ -189,7 +205,16 @@ def _not_seen(pending: float) -> str:
             "cambiato")
 
 
-def _no_change(pending: float) -> str:
+def _no_change(pending: float, *, listened: bool) -> str:
+    if not listened:
+        return ("la chiamata e' andata a buon fine, ma questo collegamento "
+                "con Home Assistant non annuncia i cambiamenti di stato: "
+                "nessuna attesa e' stata possibile -- non c’era un annuncio "
+                "da aspettare -- e nella chiamata Home Assistant non ha "
+                "riportato nessun cambiamento. E' un fatto su cio' che la "
+                "chiamata ha detto, non una diagnosi del dispositivo: puo' "
+                "voler dire che era gia' cosi', oppure che sta ancora "
+                "muovendosi")
     return ("la chiamata e' andata a buon fine, ho aspettato "
             f"{_seconds(pending)} secondi che Home Assistant annunciasse un "
             "cambiamento di stato su queste entita', e in quel tempo Home "
@@ -763,7 +788,7 @@ class ActionActuator:
         if preview is not None:
             occurrence["bersaglio"] = preview
         if non_viste:
-            occurrence["avviso"] = _not_seen(pending)
+            occurrence["avviso"] = _not_seen(pending, listened=listening)
         elif changed:
             pass  # il caso normale: c'e' una differenza, e `prima`/`dopo` la mostrano
         elif annunciate or riportate_qui:
@@ -779,12 +804,14 @@ class ActionActuator:
             # Cio' che si afferma e' solo cio' che si sa: che ENTRO LA
             # SCADENZA Home Assistant non ha riportato cambiamenti. Non che
             # la casa non sia cambiata, e tanto meno perche'.
-            occurrence["avviso"] = _no_change(pending)
+            occurrence["avviso"] = _no_change(pending, listened=listening)
         logger.info("azione eseguita [origine=%s] %s su %s -- cambiati: %s "
-                    "(annunciati %d, riportati dalla chiamata %d, attesi fino a %ss)",
+                    "(annunciati %d, riportati dalla chiamata %d, %s)",
                     actor, occurrence["servizio"], list(verdict.entity),
                     changed or ("sconosciuto" if non_viste else "nessuno"),
-                    len(annunciate), len(riportate_qui), _seconds(pending))
+                    len(annunciate), len(riportate_qui),
+                    f"attesi fino a {_seconds(pending)}s" if listening
+                    else "nessun ascolto disponibile, attesa zero")
         execution_id = self._record(
             actor=actor, service=occurrence["servizio"], entity=list(verdict.entity),
             executed=True, changed=changed, notice=occurrence.get("avviso"))
