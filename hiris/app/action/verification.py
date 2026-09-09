@@ -148,15 +148,27 @@ from .registry import field_applies, field_filter
 #
 # Stringerla e' possibile e non e' stato fatto: le definizioni dei servizi
 # portano un campo `target`, e un servizio che non ne dichiara nessuno non
-# guarda l'entita' che gli si passa. Ma `target` vive nella stessa risposta di
-# `/api/services` che nessuno ha ancora misurato -- la stessa da cui vengono
-# entrambi gli altri difetti chiusi in questa passata -- e se in una casa vera
-# quel campo mancasse anche dove serve, la restrizione rifiuterebbe
-# `homeassistant.turn_off`, cioe' proprio la chiamata che il foglio delle
-# prove dice che DEVE funzionare. Restringere al buio e' lo stesso difetto che
-# allargare al buio. La nota B di `docs/prova-azione.md` chiede ora ENTRAMBI i
-# versi, e chiede di guardare `target` nell'output della prova 1: con quel
-# dato in mano la decisione si prende misurata.
+# guarda l'entita' che gli si passa.
+#
+# **Corretto il 09/09/2026: il dato che questo commento diceva mancare c'e'.**
+# `target` vive nella stessa risposta di `/api/services` che `action/
+# registry.py` misura gia' (84 domini di servizio, 604 campi, 08/09/2026 --
+# vedi il suo docstring "COSA QUESTO REGISTRO DICE SUI TIPI"): non e' piu'
+# vero che «nessuno l'ha misurato». Misurato di nuovo, sulla casa vera,
+# proprio sui tre servizi che contano qui: `homeassistant.turn_off` dichiara
+# `target: {}` (bersaglio ammesso, anche vuoto), `homeassistant.restart` e
+# `homeassistant.reload_all` NON hanno la chiave affatto (nessun bersaglio
+# dichiarato). E' esattamente il dato che la nota B di
+# `docs/prova-azione.md` chiedeva di leggere dall'output della prova 1.
+#
+# **La restrizione resta non fatta**, ed e' una decisione, non una svista:
+# stringere `_DOMINI_UNIVERSALI` in base a questo dato e' un cambio di
+# comportamento su un percorso che tocca la casa vera (rifiuterebbe chiamate
+# oggi accettate), e la nota B lo affida al proprietario che legge il
+# `curl` a mano -- non a chi scrive un commento. Restringere al buio
+# sarebbe stato lo stesso difetto di allargare al buio; restringere ora che
+# il dato c'e', senza il suo giro di verifica, sarebbe lo stesso difetto
+# corso in fretta.
 _DOMINI_UNIVERSALI = frozenset({"homeassistant"})
 
 

@@ -543,16 +543,21 @@ dominio è l'unico contenimento strutturale che questa versione possiede.
 
 Stringerla si potrebbe: le definizioni dei servizi di Home Assistant portano un campo
 `target`, e un servizio che non ne dichiara nessuno non guarda l'entità che gli passi.
-**Non è stato fatto, e la ragione è la stessa di tutto questo foglio**: `target` vive
-nella stessa risposta di `/api/services` che nessuno ha ancora misurato, e se in una casa
-vera quel campo mancasse anche dove serve, la restrizione rifiuterebbe
-`homeassistant.turn_off` — cioè proprio la chiamata che la prova 4 dice che **deve
-funzionare**. Restringere al buio è lo stesso difetto che allargare al buio.
 
-**Cosa fare quindi, e costa dieci secondi**: nell'output del `curl` della prova 1, cerca
-la voce del dominio `homeassistant` e guarda se `turn_off` ha un `target` e se `restart`
-non ce l'ha. Se è così, la restrizione è decidibile con dei dati misurati e va fatta.
-Segnala le due voci per intero.
+**Aggiornato il 09/09/2026: il dato è arrivato**, misurato sulla casa vera (fuori da
+questo foglio, dall'audit delle fondamenta) — esattamente ciò che questa nota chiedeva di
+leggere dall'output del `curl` della prova 1: `homeassistant.turn_off` dichiara
+`target: {}` (bersaglio ammesso, anche vuoto); `homeassistant.restart` e
+`homeassistant.reload_all` **non hanno la chiave affatto**. La restrizione è quindi
+decidibile con dati misurati — resta però una decisione **del proprietario**, non presa
+qui: stringere `_DOMINI_UNIVERSALI` (`hiris/app/action/verification.py`) cambia il
+comportamento di un percorso che tocca la casa vera, e va fatta col suo giro di verifica,
+non incidentalmente mentre si corregge un commento.
+
+**Cosa fare quindi**: se vuoi procedere, conferma qui i due fatti misurati sopra (o
+rileggi il `curl` della prova 1 per controllarli tu) e segnala l'intenzione di stringere;
+altrimenti questa nota resta aperta col dato dentro, invece che con la richiesta di
+trovarlo.
 
 ---
 
