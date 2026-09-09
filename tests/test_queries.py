@@ -3,6 +3,7 @@ import pytest
 from hiris.app.home_space.queries import search, view
 from hiris.app.memory.resolver import costruisci_indice
 from hiris.app.proxy.entity_cache import inherited_attributes
+from tests._house_translations import house_translations
 from tests.test_briefing import _CASA, _COMPORTAMENTO, _RICORDI, _STATO
 
 # _CASA, _COMPORTAMENTO, _RICORDI, _STATO sono di tests/test_briefing.py,
@@ -1055,6 +1056,79 @@ def test_viewing_an_integration_counts_silent_entities_and_says_since_when():
     assert detail["entita_mute"] == 2
     assert detail["mute_da"] == "2026-09-04T14:00:17+00:00"
     assert {e["id"] for e in detail["entita"]} == {"valve.giardino", "sensor.giardino_minuti"}
+
+
+def test_le_entita_di_un_integrazione_passano_dalla_PORTA_UNICA():
+    """Audit delle fondamenta, rilievo 3 (seconda sede) -- la stessa entita'
+    con due forme a seconda della porta.
+
+    `_enrich_entity` si dichiara «LA PORTA UNICA per tutto cio' che si
+    aggiunge a un'entita'», e `_view_integration` costruiva le sue righe
+    FUORI. Misurato dal vivo l'08/09/2026: `view(integrazione, hydrawise)`
+    elencava 24 entita' mute con `{id, nome, stato, da_quando}` -- senza
+    `nome_dedotto` (otto valvole col registro muto), senza `stato_leggibile`,
+    `classe`, `piattaforma`, `categoria`, `nascosta` che le altre tre porte
+    portano -- e quattro voci si chiamavano tutte «Irrigazione».
+
+    E' la fondamenta 3 (consistenza) e la 2 insieme: una seconda casa per una
+    regola che ne ha gia' una.
+    """
+    house = {"entita": [
+        {"id": "valve.giardino_1", "nome": None, "piattaforma": "hydrawise",
+         "area_id": "esterno", "dispositivo_id": None, "classe": None,
+         "unita": None, "disabilitata": 0, "categorie": {}, "etichette": []},
+    ], "integrazioni": [
+        {"dominio": "hydrawise", "titolo": "Giardino", "stato": "loaded",
+         "motivo": None, "origine": "user"},
+    ], "aree": [], "piani": [], "dispositivi": [], "etichette": [], "categorie": []}
+    states = {"valve.giardino_1": "unavailable"}
+
+    detail = view(house, [], [], states, "integrazione", "hydrawise",
+                     reported_since_when={"valve.giardino_1": "2026-09-04T14:00:17+00:00"},
+                     fallback_names={"valve.giardino_1": "Aiuola nord"},
+                     translations=house_translations())
+
+    riga = detail["entita"][0]
+    assert riga["nome_dedotto"] == "Aiuola nord", (
+        "otto valvole senza nome nel registro si chiamavano tutte "
+        "«Irrigazione»: il nome vero e' nello specchio")
+    assert riga["piattaforma"] == "hydrawise", (
+        "«di chi e' questa entita'» usciva dalle altre tre porte e non da qui")
+    assert riga["disabilitata"] is False
+    assert {"id", "nome", "stato", "da_quando"} < set(riga), (
+        "le quattro chiavi di prima restano tutte: questa porta non perde "
+        "niente, ne guadagna")
+
+
+def test_un_entita_muta_ha_la_STESSA_forma_da_view_integrazione_e_da_view_entita():
+    """La consistenza detta come proprieta', non come elenco di campi.
+
+    Un campo aggiunto domani a `_enrich_entity` uscirebbe da tre porte su
+    quattro senza che niente diventasse rosso: e' esattamente com'e' nato
+    questo rilievo, e prima di lui il rilievo I1."""
+    house = {"entita": [
+        {"id": "valve.giardino_1", "nome": None, "piattaforma": "hydrawise",
+         "area_id": "esterno", "dispositivo_id": None, "classe": None,
+         "unita": None, "disabilitata": 0, "categorie": {}, "etichette": []},
+    ], "integrazioni": [
+        {"dominio": "hydrawise", "titolo": "Giardino", "stato": "loaded",
+         "motivo": None, "origine": "user"},
+    ], "aree": [], "piani": [], "dispositivi": [], "etichette": [], "categorie": []}
+    states = {"valve.giardino_1": "unavailable"}
+    extra = {"reported_since_when": {"valve.giardino_1": "2026-09-04T14:00:17+00:00"},
+             "fallback_names": {"valve.giardino_1": "Aiuola nord"},
+             "translations": house_translations()}
+
+    da_integrazione = view(house, [], [], states, "integrazione", "hydrawise", **extra)
+    da_entita = view(house, [], [], states, "entita", "valve.giardino_1", **extra)
+
+    riga = da_integrazione["entita"][0]
+    comuni = set(riga) & set(da_entita)
+    assert "nome_dedotto" in comuni and "piattaforma" in comuni
+    for chiave in comuni:
+        assert riga[chiave] == da_entita[chiave], (
+            f"«{chiave}» vale {riga[chiave]!r} da `integrazione` e "
+            f"{da_entita[chiave]!r} da `entita`: e' la stessa entita'")
 
 
 def test_a_missing_integration_says_so_without_inventing():

@@ -766,7 +766,8 @@ def _digest_visible_entity_ids(home_space: dict) -> frozenset[str]:
 def _highlight_lines(home_space: dict, state: dict, floors: list[dict],
                     unreliable_state: bool,
                     reported_classes: dict[str, str] | None = None,
-                    translations: dict | None = None
+                    translations: dict | None = None,
+                    fallback_names: dict[str, str] | None = None
                     ) -> tuple[list[str], list[int], bool]:
     """Cio' che e' notevole ADESSO: acceso, aperto, in allarme scattato.
     Serve lo stato vivo, che arriva dal chiamante -- il nucleo non lo va a
@@ -867,7 +868,19 @@ def _highlight_lines(home_space: dict, state: dict, floors: list[dict],
             "area_nome": area_per_entity.get(entity_id),
             "dominio": domain_of(entity_id),
             "stato_leggibile": rendered.get("valore", str(value)),
-            "nome": e.get("nome") or entity_id,
+            # Il nome DELLO SPECCHIO quando il registro tace, con la stessa
+            # disciplina di `queries._enrich_entity`: solo se `nome` e' vuoto,
+            # mai scritto sopra il dichiarato. Il registro delle entita' di
+            # Home Assistant non porta un nome finche' l'utente non lo cambia
+            # a mano -- su questa casa 82 entita' sono cosi' -- e senza questa
+            # riga il nucleo diceva «switch.smart_wi_fi_plug_2» mentre `view`
+            # e `search` dicevano «Fuoco e tv»: la stessa entita' con due nomi
+            # a seconda della porta (audit delle fondamenta, rilievo 3).
+            # L'identificatore resta l'ultimo ripiego, ed e' onesto: quando
+            # nemmeno lo specchio ha un `friendly_name` non c'e' altro di
+            # vero da scrivere.
+            "nome": (e.get("nome") or (fallback_names or {}).get(entity_id)
+                     or entity_id),
         })
     # La riga delle irraggiungibili sta IN TESTA e pesa ZERO, e nessuna delle
     # due cose e' estetica: `compose()` taglia dal fondo, quindi in coda
@@ -1672,6 +1685,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
             comparison: dict | None = None,
             attributes: dict[str, dict] | None = None,
             translations: dict | None = None,
+            fallback_names: dict[str, str] | None = None,
             now: float | None = None) -> tuple[str, dict]:
     """Compone il nucleo: la stessa casa per chiunque ragioni.
 
@@ -1699,6 +1713,17 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     CAPACITA' (mai i valori correnti -- vedi `_capability_lines`). `None`
     significa «il chiamante non ha guardato» e NON «nessuna entita' sa fare
     niente»: la sezione lo dichiara, come `problemi` e `confronto` qui sopra.
+
+    `fallback_names` sono i nomi dello SPECCHIO VIVO (entity_id ->
+    `friendly_name`), la stessa mappa che `topology.live_mirror` consegna gia'
+    al chiamante e che `view`/`search` ricevono come `nomi_di_ripiego`. Serve
+    a una cosa sola qui dentro, e non e' una comodita': il registro delle
+    entita' di Home Assistant NON porta un nome finche' l'utente non lo
+    cambia a mano -- su questa casa sono 82 entita' -- e senza questa mappa
+    «Notevole adesso» scriveva l'identificatore mentre ogni altra porta
+    scriveva il nome. La stessa entita' con due nomi a seconda di chi la
+    guarda e' la fondamenta 3 rotta nel testo che il modello ha SEMPRE
+    davanti (audit delle fondamenta, rilievo 3).
 
     `non_disponibili` sono i registri dell'anagrafe che non hanno risposto
     all'ultima lettura (`HomeSpaceStore.non_disponibili()`). Senza, ne' "La
@@ -1933,7 +1958,8 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
             "attendibile: 'Notevole adesso' qui sotto non dice che va tutto bene, "
             "dice che non si e' potuto guardare.")
     highlight_lines, highlight_weights, grouped_highlight = _highlight_lines(
-        home_space, state, floors, unreliable, reported_classes, translations)
+        home_space, state, floors, unreliable, reported_classes, translations,
+        fallback_names)
     capability_lines, capability_weights, capabilities_are_countable = _capability_lines(
         attributes, unreliable, _digest_visible_entity_ids(home_space))
     behavior_lines = _behavior_lines(behavior)

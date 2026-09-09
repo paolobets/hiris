@@ -1003,3 +1003,60 @@ def test_same_title_different_domains_stay_separate_not_merged():
     assert "integrazione shelly, voce «Studio»" in text
     assert "x2" not in text
     assert "2 voci di configurazione" in text
+
+
+def test_il_nucleo_chiama_un_entita_col_nome_che_le_danno_le_altre_porte():
+    """Audit delle fondamenta, rilievo 3 -- la stessa entita' con due nomi.
+
+    Misurato dal vivo l'08/09/2026: il nucleo diceva «Soggiorno:
+    switch.smart_wi_fi_plug_2 (Acceso)», mentre `view` e `search` sulla stessa
+    entita' rispondevano «Fuoco e tv». Su quella casa **82 entita'** hanno il
+    registro muto e un `friendly_name` vivo: il registro delle entita' non
+    porta un nome quando l'utente non lo ha cambiato a mano, e il nome vero
+    vive nello specchio dello stato.
+
+    `compose()` non lo riceveva affatto -- `handlers_home_space` scartava i
+    nomi dello specchio -- quindi il testo che il modello ha SEMPRE davanti
+    chiamava una cosa con l'identificatore, e ogni altra porta con il suo
+    nome.
+
+    Il difetto era invisibile perche' ogni casa di prova di questo file da'
+    un `nome` a tutte le entita': la prova nuova ha l'entita' col registro
+    muto, che e' il caso vero.
+    """
+    casa = {**_CASA, "entita": [
+        *_CASA["entita"],
+        {"id": "switch.smart_wi_fi_plug_2", "nome": None, "area_id": "sala",
+         "dispositivo_id": None, "classe": None, "unita": None, "disabilitata": 0},
+    ]}
+    stato = {**_STATO, "switch.smart_wi_fi_plug_2": "on"}
+
+    testo, _ = compose(casa, _COMPORTAMENTO, _RICORDI, stato,
+                       fallback_names={"switch.smart_wi_fi_plug_2": "Fuoco e tv"})
+
+    assert "Fuoco e tv" in testo
+    assert "switch.smart_wi_fi_plug_2" not in testo, (
+        "l'identificatore non e' un nome: `view` e `search` dicono «Fuoco e tv»")
+
+
+def test_senza_nome_da_nessuna_parte_il_nucleo_mostra_l_id_e_non_lo_inventa():
+    """Il confine: quando nemmeno lo specchio ha un `friendly_name`,
+    l'identificatore resta l'unica cosa vera che si puo' scrivere."""
+    casa = {**_CASA, "entita": [
+        *_CASA["entita"],
+        {"id": "switch.anonimo", "nome": None, "area_id": "sala",
+         "dispositivo_id": None, "classe": None, "unita": None, "disabilitata": 0},
+    ]}
+    testo, _ = compose(casa, _COMPORTAMENTO, _RICORDI,
+                       {**_STATO, "switch.anonimo": "on"}, fallback_names={})
+    assert "switch.anonimo" in testo
+
+
+def test_un_nome_dichiarato_batte_quello_dello_specchio():
+    """La stessa disciplina di `_enrich_entity`: il dedotto non si scrive mai
+    sopra il dichiarato -- sono due fatti diversi, e il primo e' quello che
+    l'utente ha scelto."""
+    testo, _ = compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
+                       fallback_names={"light.cucina_1": "Nome dello specchio"})
+    assert "Faretti" in testo
+    assert "Nome dello specchio" not in testo

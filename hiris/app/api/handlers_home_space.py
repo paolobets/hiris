@@ -276,12 +276,19 @@ def compose_briefing(app) -> tuple[str, dict]:
     state: dict[str, str] = {}
     reported_classes: dict[str, str] = {}
     attributes: dict[str, dict] | None = None
+    # I NOMI dello specchio non si scartano piu' (audit delle fondamenta,
+    # rilievo 3). `live_mirror` li produce gia' -- sono gli stessi
+    # `nomi_di_ripiego` che `guarda` e `cerca` ricevono -- e finche' questa
+    # riga li buttava via il nucleo chiamava «switch.smart_wi_fi_plug_2» cio'
+    # che le altre porte chiamavano «Fuoco e tv». Su questa casa 82 entita'
+    # hanno il registro muto e un `friendly_name` vivo.
+    fallback_names: dict[str, str] = {}
     if cache is not None:
         try:
-            state, _names, _units, reported_classes, _since_when, attributes = live_mirror(
-                cache.all_states())
+            state, fallback_names, _units, reported_classes, _since_when, attributes = (
+                live_mirror(cache.all_states()))
         except Exception:
-            state, reported_classes, attributes = {}, {}, None
+            state, fallback_names, reported_classes, attributes = {}, {}, {}, None
 
     # I guasti che Home Assistant ha gia' diagnosticato (`repairs/list_issues`).
     #
@@ -353,6 +360,7 @@ def compose_briefing(app) -> tuple[str, dict]:
         comparison=comparison,
         attributes=attributes,
         translations=translations,
+        fallback_names=fallback_names,
         # L'orologio entra QUI, nell'unico compositore di produzione (chat
         # sincrona, ponte e GET /api/briefing passano tutti di qua), perche'
         # `compose` e' pura e non legge nulla da sola. Senza questa riga il

@@ -1266,7 +1266,12 @@ _SYNCHRONY_WINDOW_SECONDS = 2.0
 
 def _view_integration(home_space: dict, state: dict, reference,
                       reported_since_when: dict[str, str] | None,
-                      unavailable: tuple[str, ...] = ()) -> dict:
+                      unavailable: tuple[str, ...] = (),
+                      fallback_names: dict[str, str] | None = None,
+                      reported_units: dict[str, str] | None = None,
+                      reported_classes: dict[str, str] | None = None,
+                      reported_attributes: dict[str, dict] | None = None,
+                      translations: dict | None = None) -> dict:
     """Un'integrazione con le sue entita' e quante di esse rispondono.
 
     **La salute di un'integrazione non e' il suo `stato`** (spec §4): sulla
@@ -1378,6 +1383,16 @@ def _view_integration(home_space: dict, state: dict, reference,
     diversamente da `entita_nascoste` nelle porte area/dispositivo, dove il
     modello deve poterle nominare), presente solo quando ce n'e' almeno una.
     Una cosa spenta dall'utente non e' una cosa che non risponde.
+
+    **Le righe delle entita' passano da `_enrich_entity`**, come quelle
+    dell'area, del dispositivo e dell'entita' singola. Fino all'08/09/2026
+    questa funzione se le costruiva in proprio -- `{id, nome, stato,
+    da_quando}` e basta -- ed era la seconda casa di una regola che ne ha
+    gia' una: `view(integrazione, hydrawise)` sulla casa vera elencava 24
+    entita' mute senza `nome_dedotto` (otto valvole col registro muto, quattro
+    righe intitolate tutte «Irrigazione»), senza `stato_leggibile`, `classe`,
+    `piattaforma`, `categoria`, `nascosta`. Fondamenta 3 e 2 insieme (audit
+    delle fondamenta, rilievo 3).
     """
     domain = _normalize(str(reference or ""))
     matching = [e for e in home_space.get("entita") or []
@@ -1397,10 +1412,13 @@ def _view_integration(home_space: dict, state: dict, reference,
         "voci": entries,
         "entita_totali": len(own),
         "entita_mute": len(mute),
-        "entita": [{"id": e["id"], "nome": e.get("nome"),
-                    "stato": state.get(e["id"]),
-                    "da_quando": (reported_since_when or {}).get(e["id"])}
-                   for e in mute],
+        # `disabilitata=False` non e' un'ipotesi: `mute` esce da `own`, che
+        # ha gia' tolto le disabilitate qualche riga sopra.
+        "entita": _entity_rows(mute, state, reported_since_when, False,
+                               fallback_names, reported_units,
+                               label_names(home_space), reported_classes,
+                               category_names(home_space), reported_attributes,
+                               translations),
     }
     if unknown:
         detail["entita_stato_ignoto"] = len(unknown)
@@ -1584,7 +1602,9 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     if kind == "ricordo":
         return _view_memory(memories, reference)
     if kind == "integrazione":
-        return _view_integration(home_space, state, reference, reported_since_when, unavailable)
+        return _view_integration(home_space, state, reference, reported_since_when,
+                                 unavailable, fallback_names, reported_units,
+                                 reported_classes, reported_attributes, translations)
     # Un tipo che non conosciamo non e' un errore da sollevare: e' lo
     # stesso caso di "non l'ho trovato", solo con una causa diversa (il
     # modello ha nominato un tipo che non esiste, non un riferimento che

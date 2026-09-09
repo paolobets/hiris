@@ -250,6 +250,45 @@ def test_il_nucleo_VERO_porta_l_orologio_e_non_solo_quello_di_prova(archivio):
     assert "(fuso Europe/Rome)" in testo
 
 
+def test_il_nucleo_VERO_porta_i_NOMI_dello_specchio_e_non_solo_gli_id(archivio):
+    """Chi lo riempie? La stessa domanda del test qui sopra, sull'altro campo.
+
+    `compose` sa gia' usare `nomi_di_ripiego`, ma il parametro vale zero se
+    l'unico compositore di produzione non glielo passa -- ed era esattamente
+    cosi': `compose_briefing` leggeva lo specchio e SCARTAVA i nomi
+    (`stato, _nomi, ...`). Misurato dal vivo l'08/09/2026: il nucleo diceva
+    «switch.smart_wi_fi_plug_2», `view` e `search` dicevano «Fuoco e tv»,
+    e su quella casa 82 entita' hanno il registro muto e un `friendly_name`
+    vivo (audit delle fondamenta, rilievo 3).
+    """
+    from hiris.app.api.handlers_home_space import compose_briefing
+
+    # La forma GREZZA del registro di Home Assistant, che e' cio' che
+    # `sostituisci` legge: `name` e `original_name` a `None` -- il registro
+    # muto, il caso di 82 entita' su questa casa.
+    archivio.replace(
+        {"entita": [{"entity_id": "switch.smart_wi_fi_plug_2", "device_id": None,
+                     "area_id": None, "platform": "tuya",
+                     "config_entry_id": None, "entity_category": None,
+                     "original_device_class": None, "unit_of_measurement": None,
+                     "disabled_by": None, "hidden_by": None, "name": None,
+                     "original_name": None, "aliases": [], "labels": []}]},
+        [], reference_frame=reference_frame(_CONFIG))
+    # `name` e' il `friendly_name` come `entity_cache._to_minimal` lo
+    # consegna: e' li' che vive il nome quando il registro tace.
+    specchio = _SpecchioFinto([
+        {"id": "switch.smart_wi_fi_plug_2", "state": "on", "name": "Fuoco e tv"},
+    ])
+
+    testo, _ = compose_briefing({"home_space_store": archivio,
+                                 "entity_cache": specchio})
+
+    assert "Fuoco e tv" in testo, (
+        "il nucleo di produzione non porta i nomi: il parametro c'e' e "
+        "nessuno lo riempie")
+    assert "switch.smart_wi_fi_plug_2" not in testo
+
+
 def test_senza_l_istante_il_nucleo_non_ne_inventa_uno():
     """Stessa disciplina del fuso: tacere e' meglio che affermare un'ora a
     caso. `compose` resta PURA -- non legge l'orologio, lo riceve."""
