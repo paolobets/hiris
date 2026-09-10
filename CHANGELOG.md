@@ -1,5 +1,26 @@
 # HIRIS — Changelog
 
+## [3.24.1] — Il bilancio nasce davvero (2026-09-10)
+
+**La 3.24.0 ha riparato meta' di cio' che prometteva, e si e' visto solo eseguendola.** Gli otto
+termostati hanno ricominciato a produrre fatti — otto oggetti al giorno, dove prima erano zero —
+ma il bilancio dell'energia era ancora assente.
+
+La riparazione che gira all'avvio leggeva l'anagrafe **prima** che HIRIS l'avesse letta da Home
+Assistant. Finche' la casa era replicata su disco non si vedeva: c'era la copia di ieri. Da
+quando si legge dal vivo, quella riparazione partiva da una casa vuota, non trovava una sola
+entita' di classe `energy`, e riscriveva i due giorni piu' recenti **senza** bilancio — sopra
+quelli buoni costruiti la notte.
+
+Adesso l'anagrafe si legge per prima, e la prova che sorvegliava quell'ordine non si accontenta
+piu' di vedere che l'archivio esista: controlla che sia stato **letto**.
+
+### Fixed
+- Il bilancio dell'energia, che nasceva di notte e veniva cancellato al riavvio successivo.
+
+### Changed
+- La CLI del ponte sale a 2.1.267.
+
 ## [3.24.0] — La casa non e' piu' una copia (2026-09-10)
 
 **HIRIS teneva una copia dell'anagrafe di Home Assistant, e la copia era piu' povera
