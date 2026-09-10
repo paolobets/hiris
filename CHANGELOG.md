@@ -1,5 +1,55 @@
 # HIRIS — Changelog
 
+## [3.24.0] — La casa non e' piu' una copia (2026-09-10)
+
+**HIRIS teneva una copia dell'anagrafe di Home Assistant, e la copia era piu' povera
+dell'originale.** Buttava via cio' che ogni integrazione dichiara di se', e soprattutto non poteva
+tenere la classe di un'entita' — il campo che dice se un sensore misura energia, temperatura o una
+percentuale di batteria. Non per un difetto: `config/entity_registry/list` quel campo **non lo
+manda affatto**. Misurato su questa casa: assente su 1.227 righe su 1.227, e `classe` nulla su
+**1.229 entita' su 1.229**.
+
+Da questa versione la casa **si legge dal vivo**, tutta intera, in una raffica sola.
+
+### Il bilancio dell'energia esisteva e non nasceva mai
+
+La fetta del 27/08 era stata costruita per unire i frammenti dell'inverter in **un oggetto solo**,
+con i sette totali del giorno. In produzione non ne ha prodotto **nemmeno uno**: cinque giorni su
+cinque a zero, e nessuna riga di log, perche' «nessun dispositivo da riassumere» e «non ho trovato
+la classe di nessuno» erano diventati la stessa risposta silenziosa. La causa e' quella colonna
+sempre vuota. Adesso la classe arriva da dove vive davvero — lo stato — e il bilancio nasce.
+
+### Otto termostati, 6.446 righe al giorno, zero fatti
+
+Home Assistant emette un evento anche quando cambia **solo un attributo**, e HIRIS lo scriveva come
+se fosse un cambio di stato: **6.503 righe al giorno su 29.227** che non dicevano niente. Peggio:
+quelle righe nascevano **datate al giorno dell'ultimo cambio vero**, quindi finivano fuori dalla
+finestra del giorno in cui erano state scritte, e nessuno le leggeva mai.
+
+E c'era il rovescio: un termostato acceso da quattro giorni **non compariva da nessuna parte**,
+perche' cio' che dura non ha cambi da raccontare dentro il giorno. Ora l'aggregazione chiede
+all'archivio in che stato era la casa a mezzanotte, e un fatto che dura e' un fatto di ogni giorno
+in cui dura — con la sua data d'inizio vera, non con la mezzanotte.
+
+### Changed
+- L'anagrafe (piani, aree, dispositivi, entita', etichette, categorie, integrazioni) si legge da
+  Home Assistant a ogni ricostruzione invece di essere replicata su disco. Porta ora anche
+  `translation_key`, `unique_id`, `original_name` e il nome che l'utente ha dato a un dispositivo.
+- Con Home Assistant irraggiungibile **al primo avvio**, HIRIS non risponde piu' sulla struttura
+  della casa: prima leggeva l'ultima copia buona. E' una scelta dichiarata — con HA giu' non puo'
+  comunque ne' guardare ne' agire — e «non l'ho ancora letta» resta distinguibile da «non ha aree».
+- Il fuso e il sistema di riferimento restano su disco: non sono una copia di un fatto di HA, sono
+  la cornice in cui e' scritto l'archivio delle osservazioni.
+
+### Removed
+- Le sette tabelle della copia dei registri escono da `casa.db`, e una migrazione le cancella dagli
+  archivi gia' installati.
+
+### Fixed
+- Il bilancio dell'energia, che non nasceva mai.
+- Gli oggetti di funzionamento, assenti in ogni giorno senza un cambio di stato.
+- Il ramo che deduce l'unita' di misura da un'area, inerte per la stessa ragione del bilancio.
+
 ## [3.23.2] — Ventuno difformità, chiuse (2026-09-09)
 
 **Un'analisi dell'intera codebase contro le regole del progetto ha trovato ventuno punti in cui
