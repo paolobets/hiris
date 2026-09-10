@@ -1529,6 +1529,57 @@ class HAClient:
         return await self._request_statistics(
             identifiers, {"start_time": from_iso, "end_time": to_iso, "period": "hour"})
 
+    #: Quale comando WebSocket porta la configurazione di un'entita', per
+    #: dominio. Verificato sul sorgente di Home Assistant al tag `2026.9.1`:
+    #: `components/automation/__init__.py` e `components/script/__init__.py`
+    #: registrano `<dominio>/config` con `@websocket_api.require_admin` e
+    #: tornano `raw_config` -- la configurazione dell'ENTITA', quindi anche
+    #: quella di un'automazione che vive in un pacchetto o in un `!include`.
+    #: Un dominio che non e' qui dentro non ha una configurazione da chiedere,
+    #: e non se ne inventa una.
+    _CONFIG_COMMAND_BY_DOMAIN = {"automation": "automation/config",
+                                 "script": "script/config"}
+
+    async def behavior_configs(self, entity_ids: list[str]) -> dict:
+        """Il corpo di automazioni e script, in **una raffica sola**.
+
+        Torna `{"configurazioni": {entity_id: corpo}}` oppure
+        `{"errore": str}` -- mai un dizionario vuoto, che direbbe «questa casa
+        non ha automazioni» anche col websocket giu' (stessa disciplina di
+        `related`, `problems` e `energy_directions`).
+
+        **Una voce che non risponde MANCA dalla mappa, e non vale `{}`**:
+        «non ho letto il corpo» e «il corpo e' vuoto» sono due fatti diversi --
+        il primo e' un limite di HIRIS, il secondo un fatto sulla casa -- e
+        chi archivia deve poterli distinguere per dichiarare il proprio punto
+        cieco.
+
+        Misurato sulla casa vera il 10/09/2026: 20 configurazioni in **18 ms**
+        su una connessione sola, 44 KB in tutto.
+
+        **La rotta HTTP `/api/config/automation/config/{id}` NON e'
+        equivalente**: legge solo `automations.yaml`, quindi non vedrebbe le
+        automazioni scritte nei pacchetti o negli `include` -- il punto cieco
+        che questa lettura esiste per chiudere.
+        """
+        wanted = [(eid, self._CONFIG_COMMAND_BY_DOMAIN.get(str(eid).split(".")[0]))
+                  for eid in entity_ids]
+        wanted = [(eid, command) for eid, command in wanted if command]
+        if not wanted:
+            return {"configurazioni": {}}
+        try:
+            replies = await self._ws_batch(
+                [(command, {"entity_id": eid}) for eid, command in wanted])
+        except Exception as error:
+            return {"errore": f"configurazioni non lette ({type(error).__name__}: {error})"}
+        configs: dict[str, dict] = {}
+        for (eid, _command), msg in zip(wanted, replies, strict=False):
+            result = msg.get("result") if isinstance(msg, dict) else None
+            body = result.get("config") if isinstance(result, dict) else None
+            if isinstance(body, dict):
+                configs[eid] = body
+        return {"configurazioni": configs}
+
     async def _request_statistics(self, identifiers: list[str],
                                   window: dict) -> dict:
         """`recorder/statistics_during_period` -> `{"serie": ...}` o
