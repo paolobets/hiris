@@ -557,10 +557,27 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
 
         # Idempotente (`replace_day`, non un doppio inserimento): un
         # secondo giro non deve raddoppiare gli oggetti dei due giorni.
+        #
+        # **Si confronta cio' che c'e', non un numero fisso.** Fino al
+        # 10/09/2026 la riga diceva `== 2`, e quel numero e' cambiato per una
+        # ragione giusta: `light.vecchio` e' acceso dal giorno 21 e non si e'
+        # piu' mosso, quindi da quando l'aggregazione semina cio' che era gia'
+        # in corso a mezzanotte compare -- correttamente -- in entrambi i
+        # giorni. Un conteggio fisso avrebbe fatto passare per regressione un
+        # difetto riparato.
+        prima = archivio.facts(limit=50)
         asyncio.run(server.reaggregate_last_two_days(
             {"home_space_store": None, "observations": archivio}, ha_client=_ClienteLegami(),
             now=lambda tz: oggi.astimezone(tz)))
-        assert len(archivio.facts(limit=10)) == 2
+        dopo = archivio.facts(limit=50)
+
+        def senza_id(oggetti):
+            return sorted(({k: v for k, v in o.items() if k != "id"} for o in oggetti),
+                          key=lambda o: (o["giorno"], o["protagonista"]))
+
+        assert senza_id(dopo) == senza_id(prima)
+        assert {o["protagonista"] for o in dopo} == {"light.vecchio", "light.l_altro_ieri",
+                                                     "light.ieri"}
     finally:
         archivio.close()
 

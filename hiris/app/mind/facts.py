@@ -714,6 +714,35 @@ def aggregate_day(*, store, day: str, timezone: str | None,
             names[r["soggetto"]] = name
 
     open_episodes: dict[str, dict] = {}
+    # **Cio' che era gia' in corso quando il giorno e' cominciato.** Un fatto
+    # che DURA non ha cambi dentro il giorno: comincia prima. Leggere solo la
+    # finestra del giorno lo rende invisibile, e non e' un caso di scuola --
+    # misurato sulla casa vera il 10/09/2026, gli otto termostati hanno
+    # prodotto otto oggetti il 06/09 (il loro ultimo cambio vero) e **zero**
+    # il 07, l'08 e il 09, mentre erano accesi tutto il tempo.
+    #
+    # L'episodio nasce con la sua data d'inizio **vera**, non con la
+    # mezzanotte: dire che il riscaldamento e' partito alle 00:00 sarebbe una
+    # bugia sul quando, ed e' proprio il quando che l'analista guarda.
+    #
+    # Solo i generi che aprono e chiudono (`funzionamento`, `sicurezza`,
+    # `presenza`): l'energia e' un riepilogo di letture DENTRO il giorno, e
+    # una lettura di ieri non ne fa parte. Il `guasto` ha gia' il suo
+    # meccanismo attraverso i riavvii (`watcher.rebuild_conditions`), e
+    # riseminarlo anche qui sarebbero due risposte alla stessa domanda.
+    for r in store.last_before(from_ts):
+        subject = r["soggetto"]
+        genre = genre_for(subject, _reading_aspect(subject, r))
+        state = str(r["a"] or "").strip().lower()
+        if genre not in ("funzionamento", "sicurezza", "presenza") or state in ignored:
+            continue
+        in_corso = (state != "home") if genre == "presenza" else _is_on(state)
+        if in_corso:
+            open_episodes[subject] = {
+                "genere": genre, "inizio": r["quando_ts"], "stato": r["a"],
+                "classe": r.get("device_class")}
+            if r.get("friendly_name") and subject not in names:
+                names[subject] = r["friendly_name"]
     # Gli episodi: inizio/fine di ogni oggetto, SENZA ancora i comprimari.
     # Si separano dal corpo apposta (vedi sotto): il limite superiore delle
     # misure di un comprimario dipende dal PROSSIMO episodio dello stesso

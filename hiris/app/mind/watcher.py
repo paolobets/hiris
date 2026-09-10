@@ -187,6 +187,34 @@ class Watcher:
             if which is None:
                 return False
             old_state = event.get("old_state")
+            # **Il soggetto si segna PRIMA di decidere se la riga vale.** Sta
+            # guardando questa cosa anche quando questo evento non dice
+            # niente: un termostato acceso da giorni non produce cambi di
+            # stato, e sparirebbe dalla pagina che dichiara cosa si osserva --
+            # cioe' proprio cio' che sta fermo.
+            self._watched[str(eid)] = which
+            da = old_state.get("state") if isinstance(old_state, dict) else None
+            a = new_state.get("state")
+            # **Non si scrive una riga dove `da == a`.** Home Assistant emette
+            # `state_changed` anche per il cambio di un solo ATTRIBUTO, e
+            # quella riga non dice niente su cosa e' successo in casa: lo
+            # stato di partenza e quello d'arrivo sono lo stesso. Misurato
+            # sulla casa vera il 10/09/2026: **6.503 righe al giorno su
+            # 29.227**, di cui 6.446 dei soli otto termostati -- che di cambi
+            # veri ne fanno **otto**, uno ciascuno in 24 ore.
+            #
+            # E sotto c'e' un secondo guasto, che questo filtro chiude per
+            # forza: `last_changed` **non si muove** per un evento di solo
+            # attributo (misurato: il 10/09 tutti e otto i termostati
+            # portavano quello del 06/09), quindi quelle righe nascevano
+            # datate a giorni prima e cadevano fuori dalla finestra del
+            # giorno -- scritte, e mai lette da nessuno.
+            #
+            # Gli attributi non si perdono qui: non sono mai stati raccolti.
+            # Il grezzo ne conserva tre, scelti a mano; **quali valgano la pena
+            # lo dira' la ricetta**, dispositivo per dispositivo (spec §5.4).
+            if da == a:
+                return False
             # L'istante e' quello del CAMBIO, non della scrittura: `last_changed`
             # dice quando la casa e' cambiata, il nostro orologio quando l'abbiamo
             # saputo. Annotare il secondo sposterebbe ogni oggetto di quel tanto.
@@ -205,8 +233,7 @@ class Watcher:
                 when = self._now()
             self._store.record(
                 quando_ts=when, source="entita", subject=str(eid),
-                da=old_state.get("state") if isinstance(old_state, dict) else None,
-                a=new_state.get("state"),
+                da=da, a=a,
                 device_class=_text_or_none(attributes.get("device_class")),
                 state_class=_text_or_none(attributes.get("state_class")),
                 source_type=_text_or_none(attributes.get("source_type")),
@@ -220,7 +247,6 @@ class Watcher:
                 # `entity_registry.py:592-603` @ `2026.9.1`), non una
                 # ricomposta da noi da `name`/`original_name`/dispositivo.
                 friendly_name=_text_or_none(attributes.get("friendly_name")))
-            self._watched[str(eid)] = which
             return True
         except Exception as error:
             logger.warning("osservatore: evento non annotato (%s: %s)",

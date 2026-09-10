@@ -361,6 +361,33 @@ class ObservationsStore:
             rows = self._conn.execute(sql, tuple(args)).fetchall()
         return [_reading_row(r) for r in rows]
 
+    def last_before(self, ts: float, *, source: str = "entita") -> list[dict]:
+        """L'ultima riga PRIMA di un istante, **una per soggetto**.
+
+        Risponde a *«in che stato era la casa quando questo giorno e'
+        cominciato?»*, ed e' cio' che permette all'aggregazione di sapere che
+        un termostato acceso da quattro giorni e' acceso anche oggi. Senza,
+        un giorno vede solo cio' che e' cambiato dentro di se': misurato sulla
+        casa vera il 10/09/2026, gli otto termostati hanno prodotto otto
+        oggetti il 06/09 -- il giorno del loro ultimo cambio vero -- e **zero**
+        nei tre giorni successivi, in cui erano accesi tutto il tempo.
+
+        `fonte = "entita"` di proposito: le condizioni di sistema hanno gia'
+        un meccanismo che le tiene aperte fra i riavvii
+        (`watcher.rebuild_conditions`), e riseminarle anche da qui sarebbero
+        due risposte alla stessa domanda.
+
+        Nessun tetto e nessuna finestra all'indietro: la potatura tiene il
+        grezzo a 22 giorni, e il `ROW_NUMBER()` fa il lavoro nel motore invece
+        di portare in Python centomila righe per tenerne una manciata.
+        """
+        sql = ("SELECT * FROM (SELECT *, ROW_NUMBER() OVER "
+               "(PARTITION BY soggetto ORDER BY quando_ts DESC, id DESC) AS rn "
+               "FROM cambi WHERE quando_ts < ? AND fonte = ?) WHERE rn = 1")
+        with self._lock:
+            rows = self._conn.execute(sql, (float(ts), source)).fetchall()
+        return [_reading_row(r) for r in rows]
+
     def prune(self, now_ts: float) -> int:
         """Butta i cambi oltre la conservazione. **Non tocca gli oggetti**: le
         due tabelle hanno due vite, e una potatura che si portasse via cio' che

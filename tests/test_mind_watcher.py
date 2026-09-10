@@ -1325,3 +1325,48 @@ def test_un_nome_amichevole_non_testuale_non_entra_nel_grezzo(coppia):
     assert osservatore.watch_reading(
         _evento("climate.strana", "off", "heat", {"friendly_name": []})) is True
     assert archivio.annotati[0]["friendly_name"] is None
+
+
+def test_un_evento_di_solo_attributo_non_scrive_una_riga(coppia):
+    """**Regola di scrittura §5.3.2 della spec dei tre attori.** Home Assistant
+    emette `state_changed` anche quando cambia solo un ATTRIBUTO: lo stato di
+    partenza e quello d'arrivo sono lo stesso, e la riga non dice niente su
+    cosa e' successo in casa.
+
+    Misurato sulla casa vera il 10/09/2026: gli otto termostati producono
+    **6.446 righe al giorno, di cui 8 vere** -- un solo cambio di stato
+    ciascuno in 24 ore. Su tutta la casa sono **6.503 righe al giorno** su
+    29.227.
+
+    E c'e' un secondo guasto sotto il primo, misurato: `last_changed` **non si
+    muove** per un evento di solo attributo, quindi quelle righe nascono
+    datate all'ultimo cambio VERO -- il 10/09 tutti e otto i termostati
+    portavano `last_changed` del 06/09. Finivano fuori dalla finestra del
+    giorno, e l'aggregazione non le vedeva mai.
+
+    Mutazione che la uccide: togliere il confronto `da != a`.
+    """
+    archivio, osservatore = coppia
+    osservatore.watch_reading(_evento("climate.camera_t", "off", "heat"))
+    osservatore.watch_reading(_evento("climate.camera_t", "heat", "heat",
+                                      {"hvac_action": "heating"}))
+    osservatore.watch_reading(_evento("climate.camera_t", "heat", "heat",
+                                      {"hvac_action": "idle"}))
+
+    assert [r["a"] for r in archivio.annotati] == ["heat"]
+
+
+def test_un_soggetto_che_cambia_solo_attributi_resta_fra_quelli_guardati(coppia):
+    """Il filtro toglie una RIGA, non un soggetto. Un termostato acceso da
+    giorni non produce cambi di stato, ma l'osservatore lo sta guardando
+    eccome -- e la pagina che dichiara cosa guarda deve dirlo, o sparirebbe
+    proprio cio' che sta fermo (ed e' il secondo innesco dell'analista:
+    «qualcosa e' stabile e costa»).
+
+    Mutazione che la uccide: mettere il filtro PRIMA di `self._watched[...]`.
+    """
+    _archivio, osservatore = coppia
+    osservatore.watch_reading(_evento("climate.camera_t", "heat", "heat",
+                                      {"hvac_action": "heating"}))
+
+    assert [g["soggetto"] for g in osservatore.watching()] == ["climate.camera_t"]

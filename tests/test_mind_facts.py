@@ -692,16 +692,37 @@ def test_comprimari_riceve_il_soggetto_giusto_non_uno_qualunque(archivio):
         "sensor.soggiorno_temperatura"]
 
 
-def test_il_confine_di_inizio_esclude_l_istante_prima_di_mezzanotte(archivio):
-    """MEZZANOTTE - 1 e' l'ultimo istante del giorno che finisce: deve
-    restare FUORI da G. Mutazione: `from_ts - 1` dentro `day_boundaries` ("per
-    stare sicuri") -- l'istante entrerebbe in G per errore, e il conteggio
-    di G tornerebbe 1 invece di 0."""
+def test_il_confine_di_inizio_esclude_l_istante_prima_di_mezzanotte():
+    """MEZZANOTTE - 1 e' l'ultimo istante del giorno che finisce: deve restare
+    FUORI da G. La finestra e' semi-aperta -- `[inizio, fine)` -- ed e' quello
+    che fa combaciare due giorni adiacenti senza sovrapporli.
+
+    **La prova guarda la finestra, non il conteggio degli oggetti.** Fino al
+    10/09/2026 asseriva «G produce zero oggetti», e quella spia ha smesso di
+    dire cio' che sembrava: da quando l'aggregazione semina cio' che era gia'
+    in corso a mezzanotte, un termostato acceso un secondo prima **e' un fatto
+    di G** -- acceso lo era. Il confine non e' cambiato; era la spia a
+    misurare un'altra cosa.
+
+    Mutazione: `from_ts - 1` dentro `day_boundaries` ("per stare sicuri").
+    """
+    da_ts, a_ts = day_boundaries(G, "Europe/Rome")
+    assert da_ts == MEZZANOTTE
+    assert a_ts == MEZZANOTTE + 24 * 3600
+    assert day_boundaries("2026-08-23", "Europe/Rome")[1] == da_ts
+
+
+def test_un_cambio_di_un_secondo_prima_appartiene_al_giorno_che_finisce(archivio):
+    """Lo stesso confine, visto dagli oggetti: il CAMBIO e' del 23 (e' li' che
+    e' successo), e in G quel termostato risulta acceso **dall'istante vero**,
+    non da mezzanotte."""
     archivio.record(quando_ts=MEZZANOTTE - 1, source="entita",
                     subject="climate.camera_t", da="off", a="heat")
-    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 0
+
     assert aggregate_day(store=archivio, day="2026-08-23",
-                          timezone="Europe/Rome") == 1
+                         timezone="Europe/Rome") == 1
+    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
+    assert archivio.facts(day=G)[0]["inizio_ts"] == MEZZANOTTE - 1
 
 
 def test_gas_sensor_e_gas_rilevatore_non_si_confondono(archivio):
@@ -1438,3 +1459,56 @@ def test_una_condizione_di_sistema_non_porta_nessuna_classe(archivio):
     corpo = archivio.facts(day=G)[0]["corpo"]
     assert corpo["stato"] == "setup_retry"
     assert "classe" not in corpo
+
+
+def test_un_episodio_gia_aperto_prima_del_giorno_esiste_anche_oggi(archivio):
+    """**Il difetto misurato in produzione il 10/09/2026.** Un termostato
+    acceso il 06/09 e mai piu' cambiato ha prodotto otto oggetti quel giorno e
+    **zero** il 07, l'08 e il 09 -- eppure era acceso tutto il tempo.
+
+    L'aggregazione leggeva solo i cambi DENTRO il giorno, e un fatto che dura
+    non ha cambi dentro il giorno: comincia prima. Lo stato in cui la casa era
+    a mezzanotte si chiede all'archivio (`last_before`), e l'episodio nasce
+    aperto con la sua data d'inizio VERA -- non con la mezzanotte, che
+    direbbe una bugia su quando e' cominciato.
+
+    Mutazione che la uccide: togliere la semina dallo stato precedente --
+    zero oggetti, esattamente cio' che la casa vera produceva.
+    """
+    ieri = MEZZANOTTE - 8 * 3600
+    archivio.record(quando_ts=ieri, source="entita", subject="climate.camera_t",
+                    da="off", a="heat")
+
+    quanti = aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+
+    assert quanti == 1
+    oggetto = archivio.facts(day=G)[0]
+    assert oggetto["genere"] == "funzionamento"
+    assert oggetto["protagonista"] == "climate.camera_t"
+    assert oggetto["inizio_ts"] == ieri      # la data vera, non la mezzanotte
+    assert oggetto["fine_ts"] is None        # ancora in corso a fine giornata
+
+
+def test_cio_che_era_spento_prima_del_giorno_non_apre_niente(archivio):
+    """La semina porta lo stato, non un episodio: se a mezzanotte era spento,
+    non c'e' niente in corso da raccontare."""
+    archivio.record(quando_ts=MEZZANOTTE - 8 * 3600, source="entita",
+                    subject="climate.camera_t", da="heat", a="off")
+
+    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 0
+
+
+def test_un_episodio_cominciato_ieri_e_finito_oggi_si_chiude_con_l_inizio_vero(archivio):
+    """Prima, il cambio che CHIUDE non trovava niente di aperto e si perdeva:
+    l'accensione era in un altro giorno. Ora chiude l'episodio giusto, e la
+    durata e' quella vera."""
+    ieri = MEZZANOTTE - 3 * 3600
+    archivio.record(quando_ts=ieri, source="entita", subject="light.cucina",
+                    da="off", a="on")
+    archivio.record(quando_ts=ts(7), source="entita", subject="light.cucina",
+                    da="on", a="off")
+
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+
+    oggetto = archivio.facts(day=G)[0]
+    assert (oggetto["inizio_ts"], oggetto["fine_ts"]) == (ieri, ts(7))

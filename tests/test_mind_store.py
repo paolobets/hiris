@@ -526,3 +526,43 @@ def test_migration_5_adds_friendly_name_to_an_old_archive(tmp_path):
         assert nuova["friendly_name"] == "Paolo"
     finally:
         store.close()
+
+
+def test_l_ultima_riga_prima_di_un_istante_c_e_una_per_soggetto(archivio):
+    """Lo stato in cui un soggetto ERA quando il giorno e' cominciato.
+
+    Senza, l'aggregazione di un giorno vede solo cio' che e' cambiato DENTRO
+    quel giorno, e un termostato acceso da quattro giorni non esiste: misurato
+    sulla casa vera il 10/09/2026, gli otto termostati hanno prodotto otto
+    oggetti il 06/09 (il giorno del loro ultimo cambio vero) e **zero** il 07,
+    l'08 e il 09.
+
+    Mutazione che la uccide: togliere il `ROW_NUMBER()`/`rn = 1` e tornare
+    tutte le righe -- il soggetto comparirebbe con la sua riga piu' VECCHIA,
+    cioe' con lo stato sbagliato.
+    """
+    archivio.record(quando_ts=100.0, source="entita", subject="climate.camera",
+                    da="off", a="heat")
+    archivio.record(quando_ts=200.0, source="entita", subject="climate.camera",
+                    da="heat", a="cool")
+    archivio.record(quando_ts=150.0, source="entita", subject="light.cucina",
+                    da="off", a="on")
+    archivio.record(quando_ts=900.0, source="entita", subject="light.cucina",
+                    da="on", a="off")
+
+    ultime = archivio.last_before(500.0)
+
+    assert {r["soggetto"]: r["a"] for r in ultime} == {
+        "climate.camera": "cool", "light.cucina": "on"}
+
+
+def test_l_ultima_riga_prima_non_guarda_le_condizioni_di_sistema(archivio):
+    """Le condizioni di sistema (`problema:`, `integrazione:`, `log:`) hanno
+    gia' un meccanismo loro che le tiene aperte fra i riavvii
+    (`watcher.rebuild_conditions`): riseminarle anche da qui vorrebbe dire due
+    risposte alla stessa domanda, e la prima a divergere e' quella che nessuno
+    guarda."""
+    archivio.record(quando_ts=100.0, source="sistema",
+                    subject="integrazione:abc", da=None, a="setup_error")
+
+    assert archivio.last_before(500.0) == []
