@@ -9,7 +9,7 @@ as_partial_dict`). Una finta che lo scrivesse li' dentro sarebbe una finta che
 non sa produrre il difetto: e' esattamente cosi' che il bilancio dell'energia
 e' rimasto a zero per quindici giorni senza che nessuna prova se ne accorgesse.
 """
-from hiris.app.home_space.reader import build_home_space
+from hiris.app.home_space.reader import HomeSpace, build_home_space
 from hiris.app.home_space.store import HomeSpaceStore
 
 # Misurata il 10/09/2026 su `sensor.ze1es030n5e528_energia_prodotta_oggi`:
@@ -200,3 +200,46 @@ def test_il_dispositivo_dice_se_e_stato_rinominato_dall_utente():
         {"dispositivi": [{"id": "d2", "name": "Sun", "name_by_user": None}]})
     assert mai_rinominato["dispositivi"][0]["nome"] == "Sun"
     assert mai_rinominato["dispositivi"][0]["nome_utente"] is None
+
+
+def test_l_anagrafe_tenuta_a_memoria_risponde_come_rispondeva_dal_disco(tmp_path):
+    """`HomeSpace` tiene l'ultima lettura e la serve dalla stessa superficie che
+    i suoi chiamanti gia' usano -- `read()`, `reference_frame()`,
+    `unavailable()`, `updated_at()`. Nessun chiamante cambia.
+
+    Mutazione che la uccide: far tornare a `read()` un dizionario vuoto invece
+    di quello tenuto.
+    """
+    casa = HomeSpace(str(tmp_path / "casa.db"))
+    try:
+        anagrafe = build_home_space(_REGISTRI_COMPLETI)
+        casa.hold(anagrafe, ["etichette"], reference_frame={"fuso": "Europe/Rome"})
+
+        assert casa.read() == anagrafe
+        assert casa.unavailable() == ["etichette"]
+        assert casa.reference_frame() == {"fuso": "Europe/Rome"}
+        assert casa.updated_at() is not None
+    finally:
+        casa.close()
+
+
+def test_prima_della_prima_lettura_la_casa_dice_di_non_esserci_non_di_essere_vuota(tmp_path):
+    """**Cio' che si perde con la copia, dichiarato invece che scoperto.**
+    Finche' Home Assistant non ha risposto nemmeno una volta, HIRIS non sa
+    com'e' fatta la casa -- e prima teneva l'ultima copia buona su disco.
+
+    Le due cose non devono confondersi: `updated_at()` a `None` dice «non l'ho
+    ancora letta», e una casa senza aree direbbe `[]` con una data accanto. Chi
+    legge deve poterle distinguere, o mostrera' «nessuna area» a chi ha
+    quindici stanze.
+
+    Mutazione che la uccide: far nascere `HomeSpace` con una data di
+    aggiornamento (es. l'istante della costruzione).
+    """
+    casa = HomeSpace(str(tmp_path / "casa.db"))
+    try:
+        assert casa.updated_at() is None
+        assert casa.read() == {}
+        assert casa.reference_frame() == {}
+    finally:
+        casa.close()

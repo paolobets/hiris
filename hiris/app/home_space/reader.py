@@ -26,7 +26,10 @@ punto del flusso, un posto solo.
 """
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from ..proxy._sanitize import sanitize_ha_free_text, sanitize_ha_value
+from .store import HomeSpaceStore
 from .topology import actual_class, actual_unit
 
 
@@ -226,3 +229,103 @@ def build_home_space(registries: dict[str, list[dict]], *,
                       if c.get("category_id")],
         "integrazioni": [_integration(i) for i in registries.get("integrazioni", [])],
     }
+
+
+class HomeSpace:
+    """L'anagrafe viva: tiene l'ultima lettura e la serve dalla superficie che
+    i suoi chiamanti gia' usano — `read()`, `reference_frame()`,
+    `unavailable()`, `updated_at()`. Nessuno di loro cambia una riga.
+
+    **Cosa si perde, ed e' una scelta dichiarata** (spec §4). Prima l'anagrafe
+    sopravviveva ai riavvii su disco, e con Home Assistant irraggiungibile
+    HIRIS rispondeva ancora sulla struttura leggendo l'ultima copia buona.
+    Senza copia non risponde: `updated_at()` resta `None` finche' una lettura
+    non riesce. Vale poco — con HA giu' non puo' ne' guardare ne' agire — ma e'
+    una scelta, non una scoperta, ed e' per questo che `updated_at()` a `None`
+    e una casa vuota **non si confondono**: chi legge deve poter distinguere
+    «non l'ho ancora letta» da «non ha aree».
+
+    **L'anagrafe che `read()` restituisce e' di sola lettura**: e' l'oggetto
+    tenuto, non una copia — copiarne 1.229 righe a ogni lettura costerebbe a
+    ogni richiesta cio' che la lettura intera dei registri costa una volta.
+    Verificato il 10/09/2026 con una ricerca su tutto `hiris/app`: **nessun
+    chiamante la modifica**, tutti i lettori (`hierarchy`, `queries`,
+    `briefing`) costruiscono dizionari nuovi.
+
+    **Il vecchio archivio resta qui dentro, e per una ragione sola**:
+    `comportamento` e `plance` non vengono dai registri di Home Assistant
+    (vengono da `automations.yaml`/`scripts.yaml` e dalle plance) e non sono
+    ancora state portate dal vivo. Sono l'unica ragione per cui `casa.db`
+    esiste ancora. **Questa delega muore con la Fetta 1-bis**, e con lei il
+    file.
+    """
+
+    def __init__(self, db_path: str = "/data/casa.db") -> None:
+        self._behavior = HomeSpaceStore(db_path)
+        self._home_space: dict[str, list[dict]] = {}
+        self._unavailable: list[str] = []
+        self._reference_frame: dict = {}
+        self._updated_at: str | None = None
+
+    def hold(self, home_space: dict[str, list[dict]],
+             unavailable: list[str] | None = None,
+             reference_frame: dict | None = None) -> None:
+        """Prende in consegna l'anagrafe appena letta.
+
+        `reference_frame` vuoto o assente **non cancella quello di prima**:
+        il fuso di ieri e' ancora il fuso giusto, e un riferimento cancellato
+        farebbe leggere ogni temperatura senza sapere in che scala.
+
+        `unavailable` sono i registri che non hanno risposto: si conservano
+        accanto ai dati perche' una casa senza piani e un registro dei piani
+        caduto producono la stessa lista vuota.
+        """
+        self._home_space = home_space
+        self._unavailable = list(unavailable or [])
+        if reference_frame:
+            self._reference_frame = reference_frame
+        self._updated_at = datetime.now(UTC).isoformat(timespec="seconds")
+
+    def read(self) -> dict[str, list[dict]]:
+        """L'anagrafe intera. `{}` finche' nessuna lettura e' riuscita."""
+        return self._home_space
+
+    def updated_at(self) -> str | None:
+        return self._updated_at
+
+    def reference_frame(self) -> dict:
+        return self._reference_frame
+
+    def unavailable(self) -> list[str]:
+        return list(self._unavailable)
+
+    def close(self) -> None:
+        self._behavior.close()
+
+    # -- Il comportamento e le plance: delega pura, in uscita con la Fetta 1-bis.
+    def replace_behavior(self, *args, **kwargs):
+        return self._behavior.replace_behavior(*args, **kwargs)
+
+    def behavior(self):
+        return self._behavior.behavior()
+
+    def behavior_loaded_at(self):
+        return self._behavior.behavior_loaded_at()
+
+    def behavior_problems(self):
+        return self._behavior.behavior_problems()
+
+    def unloaded_files(self):
+        return self._behavior.unloaded_files()
+
+    def replace_dashboards(self, *args, **kwargs):
+        return self._behavior.replace_dashboards(*args, **kwargs)
+
+    def dashboards(self):
+        return self._behavior.dashboards()
+
+    def dashboards_loaded_at(self):
+        return self._behavior.dashboards_loaded_at()
+
+    def unavailable_dashboards(self):
+        return self._behavior.unavailable_dashboards()
