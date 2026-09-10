@@ -1,7 +1,6 @@
 import re
 
 from hiris.app.home_space import briefing
-from hiris.app.home_space.behavior import FILE_GENUINELY_ABSENT
 from hiris.app.home_space.briefing import compose
 from tests._house_translations import house_translations
 
@@ -560,42 +559,28 @@ def test_avviso_corpi_mancanti_conta_non_elenca():
     assert "Scena importata" not in sezione_lacune
 
 
-def test_a_genuinely_absent_behavior_file_is_not_a_gap_in_knowledge():
-    """Verifica finale sul Task 2 «rifiutare e importare» (sesto giro): un
-    file GENUINAMENTE assente (`FILE_GENUINELY_ABSENT` -- la cartella di
-    Home Assistant si raggiunge, il file no) non nasconde niente -- non c'e'
-    contenuto scritto da poter mancare -- quindi non e' un LIMITE DI CIO'
-    CHE HIRIS SA (il docstring del modulo definisce cosi' questa sezione).
-    Misurato: prima di questa correzione una casa senza `scripts.yaml`
-    (l'assenza piu' comune, non un'eccezione) mostrava questa riga a OGNI
-    turno, nel posto piu' letto del prodotto -- il modello leggeva
-    un'ignoranza che non ha.
+def test_un_corpo_non_letto_resta_un_limite_di_cio_che_hiris_sa():
+    """Il nucleo e' il posto piu' letto del prodotto: cio' che dichiara di non
+    sapere, il modello lo legge a ogni turno. Un corpo non letto e' un limite
+    VERO -- di quell'automazione HIRIS conosce il nome e non cosa fa -- e
+    l'avviso deve comparire.
 
-    Mutazione che uccide: togliere il filtro su `FILE_GENUINELY_ABSENT`
-    (tornare a `if unloaded_behavior_files:` sull'elenco intero, non
-    filtrato) -- il test torna rosso su `assert not any(...)` (l'avviso
-    comparirebbe)."""
-    text, summary = compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
-                             unloaded_behavior_files={"scripts.yaml": FILE_GENUINELY_ABSENT})
-    assert not any("file di comportamento non letti" in a for a in summary["notices"])
-    gaps_section = text.split("## Cio' che HIRIS ignora")[1]
-    assert "scripts.yaml" not in gaps_section
+    **La prova gemella e' uscita il 10/09/2026 con la sua premessa.** Diceva
+    che un file genuinamente assente NON e' un limite (non c'era contenuto
+    scritto da poter mancare) ed esisteva perche' una casa senza
+    `scripts.yaml` leggeva «file di comportamento non letti» a ogni turno --
+    un'ignoranza dichiarata che HIRIS non aveva. Con la lettura dal vivo quel
+    caso non esiste: il soggetto e' un'entita' che Home Assistant ha caricato
+    davvero.
 
-
-def test_an_unreadable_behavior_file_is_still_a_gap_in_knowledge():
-    """Il gemello del test sopra, sul verso opposto: un file ROTTO o una
-    cartella irraggiungibile nascondono davvero cio' che potrebbe esserci
-    scritto -- resta un limite VERO di cio' che HIRIS sa, e l'avviso deve
-    comparire come prima.
-
-    Mutazione che uccide: allargare il filtro per escludere ANCHE i motivi
-    diversi da `FILE_GENUINELY_ABSENT` -- il test torna rosso su `assert
-    any(...)` (`StopIteration`, l'avviso non comparirebbe piu')."""
+    Mutazione che la uccide: non passare `unread_bodies` a `compose` -- il
+    nucleo tacerebbe, e il modello crederebbe di sapere cosa fanno tutte le
+    automazioni della casa."""
     _, summary = compose(
         _CASA, _COMPORTAMENTO, _RICORDI, _STATO,
-        unloaded_behavior_files={"scripts.yaml": "illeggibile: yaml non valido"})
-    notice = next(a for a in summary["notices"] if "file di comportamento non letti" in a)
-    assert "scripts.yaml" in notice
+        unread_bodies={"script.muto": "configurazione non letta da Home Assistant"})
+    notice = next(a for a in summary["notices"] if "non conosco il corpo" in a)
+    assert "1" in notice
 
 
 def test_rete_di_sicurezza_taglia_anche_senza_ricordi_da_tagliare():

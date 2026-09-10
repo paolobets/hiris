@@ -38,7 +38,7 @@ def _semina_casa(tmp_path, casa=_CASA, comportamento=_COMPORTAMENTO):
     archivio = HomeSpace(str(tmp_path / "casa.db"))
     archivio.hold(casa, [], reference_frame={"fuso": "Europe/Rome"})
     if comportamento:
-        archivio.replace_behavior(comportamento)
+        archivio.hold_behavior(comportamento)
     return archivio
 
 
@@ -676,18 +676,14 @@ async def test_un_automazione_rinominata_invalida_la_cache_dell_indice(archivio_
     assert any(c["riferimento"] == "automation.sveglia"
               for t in prima["trovati"] for c in t["candidati"])
 
-    archivio_casa.replace_behavior([
+    archivio_casa.hold_behavior([
         {"id": "automation.sveglia", "tipo": "automazione", "nome": "Risveglio mattutino",
-         "corpo": {"trigger": []}, "origine": "file"},
+         "corpo": {"trigger": []}},
     ])
-    # Stesso accorgimento di test_cambia_l_anagrafe_e_cerca_vede_la_nuova_entita:
-    # `replace_behavior` marca la data col secondo corrente, e due
-    # chiamate nello stesso secondo di orologio darebbero la stessa stringa.
-    # Il comportamento vive ancora su disco (esce con la Fetta 1-bis): la
-    # sentinella si forza li'.
-    archivio_casa._behavior._conn.execute(
-        "UPDATE meta SET valore = 'sentinella-2' WHERE chiave = 'comportamento_letto_il'")
-    archivio_casa._behavior._conn.commit()
+    # `hold_behavior` marca la data col secondo corrente, e due consegne nello
+    # stesso secondo di orologio darebbero la stessa stringa: la sentinella si
+    # forza, cosi' il test non dipende dalla velocita' della macchina.
+    archivio_casa._behavior_loaded_at = "sentinella-2"
 
     dopo = await d.dispatch("search", {"testo": "sveglia"})
     assert dopo["trovati"] == [], "il nome vecchio non deve piu' risultare trovabile"
@@ -1090,121 +1086,29 @@ async def test_cerca_dichiara_il_registro_etichette_caduto(archivio_casa, memori
 
 
 @pytest.mark.asyncio
-async def test_cerca_dichiara_i_file_di_comportamento_non_letti(archivio_casa, memoria):
-    """Fix finale ①: il comportamento (automazioni/script) non passa affatto
-    da `non_disponibili()` -- la sua fonte e' `automations.yaml`/
-    `scripts.yaml`, col proprio segnale di incompletezza
-    (`HomeSpaceStore.file_non_letti()`, la stessa lettura che gia' fa
-    `_view` per lo stesso motivo). Prima del fix `_search` non lo leggeva
-    mai: un file di comportamento non letto restituiva 'trovati': [] nudo
-    per un nome di automazione/script che potrebbe essere scritto proprio
-    li'.
+async def test_cerca_dichiara_i_corpi_non_letti(archivio_casa, memoria):
+    """Il comportamento non passa da `non_disponibili()`: ha un segnale di
+    incompletezza suo. Fino al 10/09/2026 era «questo FILE non l'ho letto»,
+    con l'eccezione del file genuinamente assente -- che non nascondeva niente,
+    perche' non c'era contenuto scritto da poter mancare. Adesso il soggetto e'
+    un'entita' che Home Assistant ha caricato davvero: se non se ne conosce il
+    corpo, cio' che fa e' nascosto **sempre**, e l'eccezione non serve piu'.
 
-    Terzo giro di ri-review (Task 2): usa `"illeggibile: ..."`, non piu'
-    `FILE_GENUINELY_ABSENT` -- un file davvero assente non nasconde niente
-    (nessun contenuto scritto da poter mancare), quindi da questa correzione
-    in poi non produce piu' questa dichiarazione (vedi il test dedicato
-    subito sotto). Un file ROTTO invece nasconde davvero cio' che c'e'
-    scritto: e' il caso vero per cui questo test esiste."""
-    archivio_casa.replace_behavior(
-        [], unloaded_files={"automations.yaml": "illeggibile: yaml non valido"})
+    Senza questa dichiarazione, una ricerca senza esito su un nome che poteva
+    stare dentro quel corpo tornerebbe `trovati: []` nudo."""
+    archivio_casa.hold_behavior(
+        [{"id": "automation.muta", "tipo": "automazione", "nome": "Muta", "corpo": None}],
+        unread_bodies={"automation.muta": "configurazione non letta da Home Assistant"})
     esito = await ToolDispatcher(archivio_casa, memoria).dispatch(
         "search", {"testo": "una automazione che non esiste per niente"})
     assert esito["trovati"] == []
     assert "non_ho_potuto_guardare" in esito
-    assert any("automations.yaml" in m for m in esito["non_ho_potuto_guardare"])
-
-
-@pytest.mark.asyncio
-async def test_a_genuinely_absent_file_hides_nothing_so_nulla_riconosciuto_still_fires(
-        archivio_casa, memoria):
-    """Il quarto motivo, trovato dal revisore leggendo `behavior.reread()`
-    (non solo dove `_blind_spots` compila): un file davvero assente (la
-    cartella di Home Assistant si raggiunge, il file no) non nasconde
-    NIENTE -- non c'e' contenuto scritto da poter mancare, quindi non e'
-    affatto un punto cieco per `search`. Prima di questa correzione la
-    stessa etichetta di `unloaded_files` ("assente") copriva anche il caso
-    "cartella irraggiungibile" (vedi il test gemello sotto), e trattarli
-    uguali spegneva `nulla_riconosciuto` PER SEMPRE su una casa senza
-    `scripts.yaml` -- misurato dal revisore.
-
-    Mutazione che uccide: togliere il filtro su `FILE_GENUINELY_ABSENT` in
-    `ToolDispatcher._blind_spots` (contare `unloaded_files` cosi' com'e',
-    senza escludere i file davvero assenti) -- il test torna rosso su
-    `assert result["nulla_riconosciuto"] is True` (`KeyError:
-    'nulla_riconosciuto'`, perche' il file assente tornerebbe a contare come
-    guasto di adesso e spegnerebbe la dichiarazione)."""
-    archivio_casa.replace_behavior(
-        [], unloaded_files={"scripts.yaml": "assente"})
-    result = await ToolDispatcher(archivio_casa, memoria).dispatch(
-        "search", {"testo": "xyzzy qwerty"})
-    assert result["trovati"] == []
-    assert result["nulla_riconosciuto"] is True
-    assert result.get("suggerimento")
-    assert "non_ho_potuto_guardare" not in result
-
-
-@pytest.mark.asyncio
-async def test_an_unreachable_folder_silences_nulla_riconosciuto(archivio_casa, memoria):
-    """Il gemello del test sopra, sul verso opposto: la cartella di Home
-    Assistant stessa non raggiungibile (`ha_folder is None` in
-    `behavior.reread()`, tipicamente il Supervisor che non l'ha ancora
-    montata) NON e' un'assenza -- i due file POTREBBERO esserci ed essere
-    scritti, HIRIS non ha potuto nemmeno controllare. E' un guasto DI
-    ADESSO, quindi `nulla_riconosciuto` deve tacere -- il suggerimento
-    "riprova con il nome esatto" sarebbe una strada cieca finche' la
-    cartella resta irraggiungibile.
-
-    Questo test copre il consumo in `ToolDispatcher._blind_spots`, non la
-    produzione della stringa in `behavior.reread()` (che ha il proprio test
-    dedicato, `test_an_unreachable_folder_is_not_the_same_as_an_absent_file`
-    in `test_home_space_behavior.py`): qui l'unloaded_files e' costruito a
-    mano, apposta per isolare la classificazione dal ramo che la produce.
-
-    Mutazione che uccide: allargare il filtro di `_blind_spots` per
-    escludere ANCHE `FOLDER_UNREACHABLE` (non solo `FILE_GENUINELY_ABSENT`)
-    dai motivi che contano -- il test torna rosso su `assert
-    "nulla_riconosciuto" not in result` (tornerebbe a comparire, perche' la
-    cartella irraggiungibile smetterebbe di contare come guasto di adesso)."""
-    archivio_casa.replace_behavior(
-        [], unloaded_files={"automations.yaml": "cartella non raggiungibile",
-                             "scripts.yaml": "cartella non raggiungibile"})
-    result = await ToolDispatcher(archivio_casa, memoria).dispatch(
-        "search", {"testo": "xyzzy qwerty"})
-    assert result["trovati"] == []
-    assert "nulla_riconosciuto" not in result
-    assert "suggerimento" not in result
-    assert "non_ho_potuto_guardare" in result
-    assert any("automations.yaml" in m and "scripts.yaml" in m
-               for m in result["non_ho_potuto_guardare"])
-
-
-def test_uno_specchio_che_solleva_non_restituisce_nomi_a_meta(archivio_casa, memoria):
-    """Fix E1-(3), esteso ai nomi: meta' dei nomi e' peggio di nessuno,
-    perche' le entita' mancanti sembrerebbero non esistere."""
-    class _Rotta:
-        """Cade A META' LETTURA, non prima: una finta che solleva senza aver
-        prodotto niente lascia `stato` e `nomi` vuoti comunque, e quindi non
-        sa distinguere «restituisco ({}, {}, False)» da «restituisco quello
-        che ho raccolto finora». Il difetto che questo test esiste per
-        impedire e' proprio il secondo, e una finta che non sa produrlo non
-        prova niente."""
-        loaded = True
-        def all_states(self):
-            yield {"id": "light.a", "state": "on", "name": "Luce A", "unit": "lx"}
-            raise RuntimeError("boom")
-    stato, nomi, unita, classi, da_quando, attributi, letto = ToolDispatcher(
-        archivio_casa, memoria, cache=_Rotta())._mirror()
-    # Anche le UNITA' (e l'ISTANTE) raccolti a meta' si buttano: mezzo
-    # dizionario farebbe apparire senza unita'/istante proprio le entita' che
-    # la lettura non ha raggiunto -- lo stesso difetto dei nomi, sui campi nuovi.
-    assert (stato, nomi, unita, classi, da_quando, attributi, letto) == (
-        {}, {}, {}, {}, {}, {}, False)
-
-
-def test_senza_cache_lo_specchio_e_vuoto_ma_non_dichiara_un_guasto(archivio_casa, memoria):
-    assert ToolDispatcher(
-        archivio_casa, memoria, cache=None)._mirror() == ({}, {}, {}, {}, {}, {}, True)
+    assert any("non si conosce il corpo" in m for m in esito["non_ho_potuto_guardare"])
+    # E «nulla_riconosciuto» TACE: la casa non e' stata guardata per intero,
+    # quindi dire «non esiste niente con quel nome» sarebbe falso. E' la
+    # proprieta' che le due prove sul file assente/cartella irraggiungibile
+    # difendevano dall'altro lato, e che sopravvive alla loro fonte.
+    assert "nulla_riconosciuto" not in esito
 
 
 @pytest.mark.asyncio

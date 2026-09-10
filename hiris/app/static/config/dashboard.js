@@ -94,54 +94,27 @@ window.HirisDashboard = (function () {
   }
 
   /* Il comportamento ha DUE tipi fissi, e nessuno dei due puo' sparire.
-     `conteggi` (handlers_home_space.py) si costruisce contando le voci lette: una
-     casa con dodici automazioni e zero script produce `{automazione: 12}` e
+     `conteggi` (handlers_home_space.py) si costruisce contando le voci lette:
+     una casa con dodici automazioni e zero script produce `{automazione: 12}` e
      la tessera «Script» non veniva disegnata affatto -- ne' «0» ne' «non
      letto», proprio niente. Qui i due tipi ci sono sempre.
 
-     Il terzo stato lo porta `file_non_letti`, che pero' mappa il NOME DEL
-     FILE ("automations.yaml") alla ragione, non il tipo di voce
-     ("automazione"): senza questa traduzione il quarto argomento di
-     `tessere()` non veniva passato affatto, ed era il Minor e7.
-
-     Attenzione a cosa significa davvero un file non letto: le voci arrivano
-     dai file E dallo stato di Home Assistant (`home_space/behavior.reread`),
-     quindi con `automations.yaml` assente HIRIS puo' comunque conoscere per
-     NOME dodici automazioni prese dallo stato -- e `senza_corpo` dice gia'
-     di quante non conosce il corpo. Marcare quella tessera «non letto»
-     nasconderebbe dodici voci vere. Un tipo si dichiara non letto solo
-     quando il suo file non si e' letto E il conto e' a zero -- MA non ogni
-     ragione conta uguale (verifica finale sul Task 2 «rifiutare e
-     importare», premessa smentita da questa stessa fetta lato Python,
-     `behavior.py::reread`, e riportata qui): un file GENUINAMENTE assente
-     (`FILE_GENUINELY_ABSENT`, sotto -- la cartella di Home Assistant si
-     raggiunge, il file no) non nasconde NIENTE, quindi zero script e
-     "assente" NON sono indistinguibili -- sono la STESSA verita' detta due
-     volte. Misurato: senza questa distinzione la tessera diceva «Script:
-     non letto» tre righe sopra l'elenco che diceva «scripts.yaml --
-     assente», due frasi adiacenti che si smentivano a vicenda su una casa
-     senza script. Resta indistinguibile da «non ho guardato» SOLO quando la
-     ragione e' un guasto vero (`"illeggibile: ..."` o la cartella stessa
-     irraggiungibile) -- li' il conto a zero potrebbe davvero nascondere
-     qualcosa. */
-  var FILE_BY_TYPE = { automazione: 'automations.yaml', script: 'scripts.yaml' };
-
-  /* Stessa costante del backend (`behavior.FILE_GENUINELY_ABSENT`,
-     hiris/app/home_space/behavior.py): un file che davvero non c'e' (la
-     cartella si raggiunge, il file no) non e' un punto cieco -- non c'e'
-     contenuto scritto da poter mancare. Letterale e non importata: questo
-     file non ha un bundler che condivida costanti col backend Python, e la
-     stringa e' un valore di dominio (una delle tre RAGIONI di
-     `file_non_letti`), non un dettaglio d'implementazione che rischia di
-     driftare in silenzio -- lo stesso genere di duplicazione dichiarata gia'
-     accettato altrove in questo file (`NOMI_COMPORTAMENTO`/`FILE_BY_TYPE`
-     rispecchiano un vocabolario Python senza importarlo). */
-  var FILE_GENUINELY_ABSENT = 'assente';
+     **Il terzo stato non esiste piu' (10/09/2026).** Lo portava
+     `file_non_letti`, che mappava il NOME DI UN FILE alla ragione per cui non
+     si era letto -- e serviva un'intera traduzione da file a tipo di voce, piu'
+     l'eccezione del file genuinamente assente (che non nascondeva niente: zero
+     script e "assente" erano la stessa verita' detta due volte, e senza quella
+     distinzione la pagina diceva «Script: non letto» tre righe sopra
+     «scripts.yaml -- assente»). Da quando il comportamento si legge da Home
+     Assistant non ci sono piu' file: un tipo con zero voci e' un tipo che
+     questa casa non ha, punto. Cio' che puo' mancare e' il CORPO di una singola
+     voce, e lo dice `senza_corpo` qui sotto -- che c'era gia'. */
+  var TIPI_COMPORTAMENTO = ['automazione', 'script'];
 
   function behaviorCounts(counts) {
     var loaded = counts || {};
     var occurrence = {};
-    Object.keys(FILE_BY_TYPE).forEach(function (type) {
+    TIPI_COMPORTAMENTO.forEach(function (type) {
       occurrence[type] = loaded[type] != null ? loaded[type] : 0;
     });
     /* Un tipo nuovo del backend deve comparire, non sparire: stessa regola
@@ -150,20 +123,6 @@ window.HirisDashboard = (function () {
       if (occurrence[type] == null) occurrence[type] = loaded[type];
     });
     return occurrence;
-  }
-
-  function behaviorUnavailable(unloadedFiles, counts) {
-    if (!unloadedFiles) return null;   // null = non si sa, diverso da nessuno
-    var loaded = counts || {};
-    return Object.keys(FILE_BY_TYPE).filter(function (type) {
-      var file = FILE_BY_TYPE[type];
-      // Un file GENUINAMENTE assente non conta: vedi il commento sopra
-      // `FILE_BY_TYPE` per il perche' -- zero voci e "assente" sono la
-      // stessa verita', non due fatti che il "non letto" deve riconciliare.
-      return Object.prototype.hasOwnProperty.call(unloadedFiles, file)
-          && unloadedFiles[file] !== FILE_GENUINELY_ABSENT
-          && !loaded[type];
-    });
   }
 
   /* Un conteggio per chiave, in tessere. Chiamata SOLO quando la lettura
@@ -303,9 +262,7 @@ window.HirisDashboard = (function () {
       line(behaviorBody, 'Il comportamento non è ancora stato letto.', TONE_UNKNOWN);
     } else {
       line(behaviorBody, 'Letto il ' + fmtDateTime(comp.letto_il) + '.', TONE_CALM);
-      tile(behaviorBody, behaviorCounts(comp.conteggi), NOMI_COMPORTAMENTO,
-              behaviorUnavailable(comp.file_non_letti, comp.conteggi),
-              'il file non è stato letto');
+      tile(behaviorBody, behaviorCounts(comp.conteggi), NOMI_COMPORTAMENTO);
     }
 
     /* `senza_corpo` e' il numero che dice quanto HIRIS sa DAVVERO: le voci di
@@ -333,10 +290,10 @@ window.HirisDashboard = (function () {
       pieno: 'Incongruenze nelle voci lette, che HIRIS non ha potuto sciogliere con certezza:'
     });
 
-    threeStates(behaviorBody, onlyIfLoaded(comp.letto_il, comp.file_non_letti), {
-      ignoto: 'Non si sa quali file di automazioni e script siano stati letti.',
-      vuoto: 'Tutti i file di automazioni e script sono stati letti.',
-      pieno: 'File non letti, con la ragione:'
+    threeStates(behaviorBody, onlyIfLoaded(comp.letto_il, comp.corpi_non_letti), {
+      ignoto: 'Non si sa di quali voci HIRIS non conosca il corpo: la lettura non è avvenuta.',
+      vuoto: 'Di ogni voce letta HIRIS ha potuto leggere anche il corpo.',
+      pieno: 'Voci di cui HIRIS non conosce il corpo, con la ragione:'
     }, dictToEntries);
 
     /* Plance */

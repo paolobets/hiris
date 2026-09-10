@@ -736,8 +736,8 @@ def aggregate_day(*, store, day: str, timezone: str | None,
         state = str(r["a"] or "").strip().lower()
         if genre not in ("funzionamento", "sicurezza", "presenza") or state in ignored:
             continue
-        in_corso = (state != "home") if genre == "presenza" else _is_on(state)
-        if in_corso:
+        still_open = (state != "home") if genre == "presenza" else _is_on(state)
+        if still_open:
             open_episodes[subject] = {
                 "genere": genre, "inizio": r["quando_ts"], "stato": r["a"],
                 "classe": r.get("device_class")}

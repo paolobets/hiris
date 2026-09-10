@@ -79,7 +79,7 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
             # combacia», e qui non si e' confrontato niente.
             "confronto": None,
             "comportamento": {"letto_il": None, "conteggi": {}, "senza_corpo": None,
-                              "problemi": None, "file_non_letti": None, "voci": []},
+                              "problemi": None, "corpi_non_letti": None, "voci": []},
             "plance": {"lette_il": None, "non_disponibili": None, "voci": []},
         })
     home_space = store.read()
@@ -166,7 +166,7 @@ async def handle_get_home_space(request: web.Request) -> web.Response:
             # cura da comportamento.compose()/reread() -- prima morivano in
             # una riga di log, invisibili a chi guarda solo /api/home-space.
             "problemi": store.behavior_problems(),
-            "file_non_letti": store.unloaded_files(),
+            "corpi_non_letti": store.unread_bodies(),
             "voci": behavior_entries,
         },
         "plance": {
@@ -224,7 +224,7 @@ def compose_briefing(app) -> tuple[str, dict]:
         unavailable: tuple[str, ...] = ()
         behavior: list[dict] = []
         behavior_problems: tuple[str, ...] = ()
-        unloaded_behavior_files: dict[str, str] = {}
+        unread_bodies: dict[str, str] = {}
         reference_frame: dict = {}
     else:
         home_space = home_space_store.read()
@@ -235,7 +235,7 @@ def compose_briefing(app) -> tuple[str, dict]:
         # modello -- `/api/home-space` li espone gia', `compose()` non aveva un
         # parametro per riceverli.
         behavior_problems = tuple(home_space_store.behavior_problems())
-        unloaded_behavior_files = home_space_store.unloaded_files()
+        unread_bodies = home_space_store.unread_bodies()
         # Unita', fuso, valuta, lingua: senza, il modello legge "72" senza
         # sapere in che scala e "alle 8" senza sapere in che fuso.
         reference_frame = home_space_store.reference_frame()
@@ -353,7 +353,7 @@ def compose_briefing(app) -> tuple[str, dict]:
         unavailable=unavailable,
         reliable_state=reliable_state,
         behavior_problems=behavior_problems,
-        unloaded_behavior_files=unloaded_behavior_files,
+        unread_bodies=unread_bodies,
         reference_frame=reference_frame,
         reported_classes=reported_classes,
         problems=problems,

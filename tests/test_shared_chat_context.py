@@ -72,24 +72,28 @@ def test_con_archivi_seminati_contiene_nucleo_e_sessioni_precedenti(tmp_path):
 # test_chat_briefing.py::test_un_archivio_guasto_non_fa_rispondere_500_alla_chat).
 # ---------------------------------------------------------------------------
 
-def test_archivio_guasto_non_solleva_e_restituisce_il_testo_di_guasto(tmp_path):
-    archivio_casa = _semina_casa(tmp_path)
-    archivio_casa.close()  # la connessione sotto e' chiusa: ogni query solleva
+def test_un_archivio_chiuso_non_ferma_piu_il_nucleo(tmp_path):
+    """**Cio' che la fetta del 10/09/2026 ha comprato, misurato qui.**
+
+    Prima l'anagrafe viveva su disco: chiudere la connessione voleva dire
+    nucleo non componibile, e la prova verificava che almeno lo DICESSE invece
+    di sollevare. Adesso l'anagrafe e il comportamento si tengono a memoria, e
+    un archivio chiuso -- che ormai custodisce solo le plance e la cornice --
+    non ha piu' niente da rompere: il nucleo si compone lo stesso, con la casa
+    dentro.
+
+    Mutazione che la uccide: rimettere la lettura dell'anagrafe dietro
+    l'archivio (il nucleo tornerebbe a essere il testo di guasto).
+    """
+    home_space = _semina_casa(tmp_path)
+    home_space.close()  # la connessione sotto e' chiusa: ogni query SQL solleva
     data_dir = str(tmp_path)
 
-    app = {"home_space_store": archivio_casa}
+    app = {"home_space_store": home_space}
     contesto = compose_chat_context(app, data_dir)  # non deve sollevare
 
-    assert "nucleo non si e' potuto comporre" in contesto
-    assert "Non e' una casa vuota -- e' un guasto" in contesto
-
-
-# ---------------------------------------------------------------------------
-# ③ L'invariante su cui il Task 2 costruisce: mai la stringa vuota, nemmeno
-# con un'app completamente vuota (nessun archivio wired) -- una stringa
-# vuota il modello la leggerebbe come "casa vuota", non come "non ho potuto
-# guardare".
-# ---------------------------------------------------------------------------
+    assert "nucleo non si e' potuto comporre" not in contesto
+    assert "Cucina" in contesto
 
 def test_non_restituisce_mai_la_stringa_vuota_con_app_vuota(tmp_path):
     app: dict = {}

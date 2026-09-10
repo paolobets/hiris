@@ -1732,106 +1732,78 @@ def schedule_dashboards_reread(client, store, delay: float = 3.0):
     return trigger
 
 
-# Sentinella per distinguere, dentro `behavior_sentinel`, «non ho
-# ancora letto nulla» da «ho letto e l'impronta e' None» (cartella di Home
-# Assistant assente). Con `None` come valore iniziale le due cose sarebbero
-# indistinguibili: senza cartella l'impronta resta sempre `None`, e
-# `guarda()` rileggerebbe a ogni chiamata invece che una volta sola.
-_NEVER_READ = object()
+def behavior_reader(client, home_space, ha_folder: Path | None, find_folder=None):
+    """Restituisce `look()`: rilegge il comportamento da Home Assistant.
 
+    **Non c'e' piu' niente da sorvegliare, e per questo non e' piu' una
+    sentinella.** Fino al 10/09/2026 il comportamento veniva dai due file, e
+    l'unico segnale di cambiamento era il loro `mtime`: per gli script Home
+    Assistant non emette ALCUN evento di ricarica, quindi due `stat()` per giro
+    erano il modo piu' economico di non rileggere a vuoto. Adesso la fonte e'
+    Home Assistant, e l'impronta di quei file non dice piu' niente su cio' che
+    HA ha caricato -- un'automazione dentro un pacchetto non li tocca affatto.
 
-def behavior_sentinel(client, store, ha_folder: Path | None,
-                      find_folder=None):
-    """Restituisce `guarda()`: rilegge il comportamento solo se i file sono cambiati.
+    Quindi si rilegge e basta: **misurato il 10/09/2026, venti configurazioni
+    costano 66 ms** su una connessione sola. A cinque minuti di cadenza sono
+    venti secondi di traffico al giorno -- lo stesso rumore di fondo dei
+    registri, che si rileggono per intero in 80 ms.
 
-    L'mtime di `automations.yaml` e `scripts.yaml` e' l'unico segnale che
-    esiste per gli script: Home Assistant, per gli script, non emette ALCUN
-    evento di ricarica -- il servizio non accetta un id e il gestore non
-    spara niente. Un solo meccanismo per automazioni e script, invece di due
-    percorsi di cui uno incompleto. Costa due `stat()` per chiamata.
+    **La cartella si cerca ancora, e per una ragione sola**: `secrets.yaml`.
+    E' la dichiarazione del proprietario su cosa sia segreto, non la espone
+    nessuna API, e senza di essa i corpi non si archiviano (vedi
+    `home_space/redaction.py`). Finche' non c'e' la si ricerca a ogni giro:
+    l'add-on puo' partire prima che il Supervisor l'abbia montata, e
+    risolverla una volta sola all'avvio significherebbe restare convinti per
+    sempre che non ci sia niente da leggere.
 
-    Finche' la cartella non c'e', la si **ricerca a ogni giro**: l'add-on puo'
-    partire prima che il Supervisor abbia finito di montarla, e risolverla una
-    volta sola all'avvio significherebbe restare convinti per sempre che non ci
-    sia niente da leggere -- con `/api/home-space` che racconta lo stantio come
-    stato attuale, in silenzio.
-
-    L'mtime dei due file non basta da solo: un'automazione tolta o aggiunta
-    dentro un PACCHETTO (o una cartella inclusa) non tocca `automations.yaml`,
-    quindi non cambia l'impronta -- resterebbe in `/api/home-space` come fantasma
-    (o invisibile, per un'aggiunta) finche' nessuno tocca a mano i due file
-    "principali". `guarda(force=True)` bypassa il confronto sull'impronta:
-    e' quanto usa `schedule_behavior_reread`, agganciata allo stesso
-    evento di registro entita' (TOPOLOGY_EVENTS) che gia' fa ricostruire
-    l'anagrafe -- aggiungere o togliere un'automazione CAMBIA quel registro.
-
-    Restituisce `True` se ha riletto, `False` se non serviva o se la
-    rilettura e' fallita.
+    Restituisce `True` se ha riletto, `False` se la rilettura e' fallita.
     """
-    ultimo: dict[str, object] = {"impronta": _NEVER_READ}
-    state: dict[str, Path | None] = {"cartella": ha_folder}
+    found: dict[str, Path | None] = {"folder": ha_folder}
     _find = find_folder if find_folder is not None else _find_ha_config_dir
 
     def _folder() -> Path | None:
-        if state["cartella"] is None:
-            trovata = _find()
-            if trovata:
-                state["cartella"] = Path(trovata)
+        if found["folder"] is None:
+            appeared = _find()
+            if appeared:
+                found["folder"] = Path(appeared)
                 logger.info("cartella di Home Assistant comparsa dopo l'avvio: %s",
-                            state["cartella"])
-        return state["cartella"]
+                            found["folder"])
+        return found["folder"]
 
-    def _fingerprint():
-        folder = _folder()
-        if folder is None:
-            return None
-        marche = []
-        for name in ("automations.yaml", "scripts.yaml"):
-            try:
-                marche.append((name, (folder / name).stat().st_mtime_ns))
-            except OSError:
-                marche.append((name, None))
-        return tuple(marche)
-
-    async def guarda(force: bool = False) -> bool:
-        now = _fingerprint()
-        if not force and ultimo["impronta"] is not _NEVER_READ and now == ultimo["impronta"]:
-            return False
+    async def look(force: bool = False) -> bool:
+        """`force` resta nella firma e non fa piu' niente: i due inneschi --
+        la cadenza e l'evento di registro -- rileggono entrambi, e distinguerli
+        avrebbe senso solo se ci fosse un confronto da scavalcare. Toglierlo
+        cambierebbe la firma a `schedule_behavior_reread`, che e' il gemello di
+        `schedule_registry_rebuild` e non ha nessun motivo di divergere."""
         try:
-            await reread(client, store, state["cartella"])
+            await reread(client, home_space, _folder())
         except Exception as exc:
-            # NON si memorizza l'impronta qui: se lo si facesse prima di aver
-            # letto davvero, un guasto passeggero (Home Assistant che si
-            # riavvia) congelerebbe il comportamento fino al prossimo tocco
-            # dei file -- potenzialmente per settimane, senza che nessuno lo
-            # sappia. Si riprova al giro successivo, tocco o non tocco.
             logger.warning("rilettura del comportamento fallita: %s", exc)
             return False
-        ultimo["impronta"] = now
         return True
 
-    return guarda
+    return look
 
 
-def schedule_behavior_reread(guarda, delay: float = 3.0):
+def schedule_behavior_reread(look, delay: float = 3.0):
     """Restituisce `trigger(event_type)`: rilegge il comportamento FORZANDO
     il confronto sull'impronta, una volta sola per raffica.
 
     Gemello di `schedule_registry_rebuild` -- stesso antirimbalzo,
     stessa tolleranza ai guasti, stesso evento (TOPOLOGY_EVENTS, via
     `add_topology_listener`: nessun meccanismo nuovo). Aggiungere o togliere
-    un'automazione cambia il registro delle entita', ma NON tocca sempre
-    `automations.yaml` -- un'automazione dentro un pacchetto no. Senza questo
-    innesco, quel cambiamento resterebbe invisibile a `/api/home-space` finche'
-    qualcuno non tocca a mano i due file "principali" (vedi
-    `behavior_sentinel`).
+    un'automazione cambia il registro delle entita', e questo innesco fa
+    rileggere subito invece di aspettare i cinque minuti della cadenza. Non
+    e' un doppione di quella: e' la differenza fra vedere la propria
+    automazione nuova adesso e vederla fra cinque minuti.
     """
     state: dict[str, asyncio.Task | None] = {"attesa": None}
 
     async def _fra_poco():
         try:
             await asyncio.sleep(delay)
-            await guarda(force=True)
+            await look(force=True)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -2377,19 +2349,18 @@ async def _on_startup(app: web.Application) -> None:
     except Exception as exc:
         logger.warning("primo confronto dell'albero non riuscito: %s", exc)
 
-    # Task 4 SDD casa: il comportamento (il corpo di automazioni e script)
-    # segue lo stesso principio -- prima lettura all'avvio senza poter
-    # impedire il boot -- ma un meccanismo diverso: il comportamento cambia
-    # con una cadenza di giorni, e per gli script non esiste ALCUN evento di
-    # ricarica (il servizio non accetta un id), quindi lo tiene aggiornato
-    # una sentinella periodica sull'mtime dei due file (vedi sotto, job
-    # "hiris_behavior_sentinel"). Un evento di registro entita' esiste
-    # pero' (TOPOLOGY_EVENTS) e aggiungere/togliere un'automazione lo emette:
-    # lo si aggancia qui sotto per forzare una rilettura anche quando l'mtime
-    # non basta -- un'automazione tolta o messa in un PACCHETTO non tocca
-    # `automations.yaml` (vedi `schedule_behavior_reread`).
+    # Il comportamento (il corpo di automazioni e script) segue lo stesso
+    # principio dell'anagrafe -- prima lettura all'avvio senza poter impedire
+    # il boot -- e dal 10/09/2026 la stessa fonte: Home Assistant. Due
+    # inneschi, non uno: la cadenza di cinque minuti (sotto, job
+    # "hiris_behavior_reader") e l'evento di registro entita', che scatta
+    # quando un'automazione nasce o sparisce e fa rileggere subito.
+    #
+    # La cartella di Home Assistant serve ancora, per `secrets.yaml`: e' la
+    # dichiarazione del proprietario su cosa sia segreto, e senza di essa i
+    # corpi non si archiviano.
     ha_config_dir = _find_ha_config_dir()
-    watch_behavior = behavior_sentinel(
+    watch_behavior = behavior_reader(
         ha_client, home_space_store, Path(ha_config_dir) if ha_config_dir else None
     )
     try:
@@ -2988,12 +2959,12 @@ async def _on_startup(app: web.Application) -> None:
 
     # Task 4 SDD casa: la sentinella dell'mtime, registrata come lavoro
     # periodico come gli altri qui sopra. Cinque minuti: il comportamento
-    # cambia con una cadenza di giorni, non serve un giro piu' stretto, e il
-    # costo di un giro a vuoto sono solo due `stat()`.
+    # cambia con una cadenza di giorni, non serve un giro piu' stretto, e un
+    # giro costa 66 ms misurati -- venti secondi di traffico al giorno.
     scheduler.add_job(
         watch_behavior,
         trigger="interval", minutes=5,
-        id="hiris_behavior_sentinel", replace_existing=True,
+        id="hiris_behavior_reader", replace_existing=True,
         misfire_grace_time=300,
     )
 

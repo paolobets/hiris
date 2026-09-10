@@ -164,7 +164,6 @@ from ..proxy.entity_cache import (
 )
 from . import ha_vocabulary, historian
 from .appointments import read_appointment, sort_appointments
-from .behavior import FILE_GENUINELY_ABSENT
 from .queries import HA_LINK_TYPE
 from .queries import related as _readable_links
 from .queries import sanitized_memories as _sanitized_memories
@@ -1893,53 +1892,44 @@ class ToolDispatcher:
         stessa irraggiungibile) e "illeggibile: ..." producono una voce dal
         ramo sui file di comportamento, sotto."""
         entries: list[tuple[str, bool]] = []
-        # Fix finale ① (2026-08-20): `STORE_KEY_PER_TYPE` e' apposta
-        # SENZA "etichette" (non e' un tipo di ancora, vedi il commento su
-        # `_ARCHIVI` in memory/resolver.py -- allargarla rifarebbe il
-        # secondo vocabolario che R9 denuncia). Ma "etichette" e' comunque
-        # una tabella vera di `_TABELLE` (home_space/store.py) che PUO' cadere
-        # in `non_disponibili()`, e da T8 (R2) `search` indicizza le
-        # etichette stesse come candidati: un registro etichette caduto
-        # merita lo stesso motivo dei registri di `STORE_KEY_PER_TYPE`,
-        # aggiunta qui invece che nella mappa che serve a un altro scopo.
+        # `STORE_KEY_PER_TYPE` e' apposta SENZA "etichette" (non e' un tipo di
+        # ancora -- allargarla rifarebbe il secondo vocabolario che R9
+        # denuncia). Ma "etichette" e' comunque un registro vero che PUO'
+        # cadere in `non_disponibili()`, e `search` indicizza le etichette
+        # stesse come candidati: un registro etichette caduto merita lo stesso
+        # motivo degli altri, aggiunto qui invece che dentro una mappa che
+        # serve a un altro scopo.
         fallen_stores = sorted(set(self._home_space.unavailable())
-                        & (set(STORE_KEY_PER_TYPE.values()) | {"etichette"}))
+                               & (set(STORE_KEY_PER_TYPE.values()) | {"etichette"}))
         if fallen_stores:
             message = (
                 f"registri non letti all'ultima ricostruzione dell'anagrafe: "
-                f"{', '.join(fallen_stores)}. Cio' che sta li' dentro non e' cercabile adesso, "
-                "e potrebbe esistere lo stesso.")
+                f"{', '.join(fallen_stores)}. Cio' che sta li' dentro non e' cercabile "
+                "adesso, e potrebbe esistere lo stesso.")
             entries.append((message, False))
-        # Fix finale ① (2026-08-20): il comportamento (automazioni/script)
-        # non passa MAI da `non_disponibili()` -- la sua fonte e' un file
-        # YAML riletto a una cadenza propria (`HomeSpaceStore.comportamento()`),
-        # non un registro dell'anagrafe, col proprio segnale di
-        # incompletezza (`file_non_letti()`). `_view` lo legge gia' per lo
-        # stesso motivo (vedi `_view` qui sotto, `_not_found_detail`
-        # in domande.py); `_search` non lo leggeva affatto, quindi un file di
-        # comportamento non letto restituiva 'trovati': [] nudo per un nome
-        # di automazione/script che poteva essere scritto proprio li'.
-        # Terzo giro di ri-review sul Task 2: il "quarto motivo", trovato
-        # leggendo `behavior.reread()` (non solo dove compila). Qui dentro
-        # NON tutti i file di `unloaded_files()` sono un guasto di adesso --
-        # `FILE_GENUINELY_ABSENT` (il file davvero non c'e', la cartella si
-        # raggiunge) non nasconde NIENTE: non c'e' contenuto scritto da
-        # poter mancare, quindi non e' affatto un punto cieco per `search`.
-        # Includerlo qui spegneva `nulla_riconosciuto` per SEMPRE su una
-        # casa senza `scripts.yaml` (misurato) -- lo stesso fianco appena
-        # chiuso su `unnamed_even_live` qui sotto, un livello piu' in basso:
-        # un genere di motivo diverso infilato nello stesso elenco. Restano
-        # invece guasti di adesso, e quindi dentro: `FOLDER_UNREACHABLE` (la
-        # cartella stessa non si raggiunge -- i file potrebbero esserci) e
-        # `"illeggibile: ..."` (il file c'e' ed e' rotto).
-        hidden_files = {name: reason for name, reason in self._home_space.unloaded_files().items()
-                        if reason != FILE_GENUINELY_ABSENT}
-        if hidden_files:
+        # Il comportamento non passa MAI da `non_disponibili()` -- la sua
+        # fonte non e' un registro dell'anagrafe, e ha un segnale di
+        # incompletezza suo: `unread_bodies()`, le entita' di cui non si
+        # conosce il corpo. Senza questo ramo, un'automazione il cui corpo non
+        # si e' letto restituiva `trovati: []` nudo per un nome che poteva
+        # esserci scritto dentro.
+        #
+        # **Ogni voce qui e' un guasto di adesso.** Fino al 10/09/2026 la
+        # fonte era un FILE, e uno dei suoi tre esiti -- il file genuinamente
+        # assente -- non nascondeva niente: non c'era contenuto scritto da
+        # poter mancare, e includerlo spegneva `nulla_riconosciuto` per sempre
+        # su una casa senza `scripts.yaml`. Quell'eccezione e' uscita con la
+        # fonte: un'entita' di cui non si e' letto il corpo nasconde SEMPRE
+        # cio' che quell'automazione fa, sia che HA non abbia risposto, sia
+        # che i segreti non si siano potuti controllare.
+        unread_bodies = self._home_space.unread_bodies()
+        if unread_bodies:
             message = (
-                f"file di automazioni/script non letti: "
-                f"{', '.join(sorted(hidden_files))}. Cio' che c'e' scritto li' dentro "
-                "non e' cercabile adesso, e potrebbe esistere lo stesso.")
+                f"di {len(unread_bodies)} fra automazioni e script non si conosce "
+                "il corpo: cosa fanno non e' cercabile adesso, e potrebbe "
+                "riguardare proprio cio' che stai cercando.")
             entries.append((message, False))
+
 
         unnamed = [e for e in home_space.get("entita") or []
                      if not (e.get("nome") or "").strip() and not e.get("disabilitata")]
@@ -2026,7 +2016,7 @@ class ToolDispatcher:
         home_space = self._home_space.read()
         unavailable = tuple(self._home_space.unavailable())
         behavior = self._home_space.behavior()
-        unloaded_files = self._home_space.unloaded_files()
+        unread_bodies = self._home_space.unread_bodies()
         # Tutti i ricordi, non solo gli ultimi venti (il default di
         # `fetch()`): un ricordo vecchio ancorato a QUESTA cosa non deve
         # sparire dal suo stesso dettaglio solo perche' non e' fra i piu'
@@ -2053,7 +2043,7 @@ class ToolDispatcher:
         translations = await self._read_translations()
         detail = _view_detail(home_space, behavior, memories, state, kind, reference,
                                       unavailable=unavailable,
-                                      unloaded_files=unloaded_files,
+                                      unread_bodies=unread_bodies,
                                       fallback_names=reported_names,
                                       reported_units=reported_units,
                                       reported_classes=reported_classes,

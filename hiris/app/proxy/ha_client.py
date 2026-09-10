@@ -1537,8 +1537,8 @@ class HAClient:
     #: quella di un'automazione che vive in un pacchetto o in un `!include`.
     #: Un dominio che non e' qui dentro non ha una configurazione da chiedere,
     #: e non se ne inventa una.
-    _CONFIG_COMMAND_BY_DOMAIN = {"automation": "automation/config",
-                                 "script": "script/config"}
+    _CONFIG_COMMAND_BY_DOMAIN: ClassVar[dict[str, str]] = {
+        "automation": "automation/config", "script": "script/config"}
 
     async def behavior_configs(self, entity_ids: list[str]) -> dict:
         """Il corpo di automazioni e script, in **una raffica sola**.

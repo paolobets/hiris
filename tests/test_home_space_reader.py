@@ -420,3 +420,44 @@ def test_il_lettore_dichiara_il_taglio_di_un_motivo_oltre_il_tetto_libero(anagra
     motivo = anagrafe.read()["integrazioni"][0]["motivo"]
     assert len(motivo) == 500
     assert motivo.endswith(" [troncato]")
+
+
+def test_il_comportamento_tenuto_porta_con_se_problemi_e_corpi_non_letti(anagrafe):
+    """I due segnali di incompletezza si tengono ACCANTO alle voci, non in un
+    posto a parte: chi legge il comportamento deve poter sapere, dalla stessa
+    porta, cosa non si e' potuto concludere.
+
+    `senza_corpo` non e' piu' un campo suo: si deriva da `corpi_non_letti`.
+    Due campi per lo stesso fatto sono due campi che possono divergere.
+
+    Mutazione che la uccide: far tornare a `unread_bodies()` un dizionario
+    vuoto.
+    """
+    anagrafe.hold_behavior(
+        [{"id": "automation.a", "tipo": "automazione", "nome": "A", "corpo": None}],
+        problems=["un problema dichiarato"],
+        unread_bodies={"automation.a": "configurazione non letta"})
+
+    assert anagrafe.behavior_problems() == ["un problema dichiarato"]
+    assert anagrafe.unread_bodies() == {"automation.a": "configurazione non letta"}
+    assert anagrafe.behavior_loaded_at() is not None
+
+
+def test_il_comportamento_non_accumula(anagrafe):
+    """`hold_behavior` sostituisce, non aggiunge: due letture di fila non
+    devono raddoppiare le automazioni della casa."""
+    voci = [{"id": "automation.a", "tipo": "automazione", "nome": "A", "corpo": {}},
+            {"id": "script.b", "tipo": "script", "nome": "B", "corpo": {}}]
+    anagrafe.hold_behavior(voci)
+    anagrafe.hold_behavior(voci[:1])
+
+    assert len(anagrafe.behavior()) == 1
+
+
+def test_prima_della_prima_lettura_il_comportamento_non_c_e(anagrafe):
+    """Come per l'anagrafe: `behavior_loaded_at()` a `None` dice «non l'ho
+    ancora letto», che non e' «questa casa non ha automazioni». La guardia di
+    `behavior.reread` si regge su questa differenza."""
+    assert anagrafe.behavior() == []
+    assert anagrafe.behavior_loaded_at() is None
+    assert anagrafe.unread_bodies() == {}

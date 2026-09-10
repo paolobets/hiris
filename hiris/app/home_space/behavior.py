@@ -1,14 +1,31 @@
 """Cosa la casa fa gia' da sola: il corpo delle automazioni e degli script.
 
-Il file dice cosa c'e' SCRITTO; lo stato dice cosa ESISTE davvero. Le due cose
-non coincidono, e la differenza e' informazione: le automazioni scritte a mano
-non stanno in `automations.yaml` — vivono nei pacchetti o in cartelle incluse —
-e di quelle HIRIS conosce il nome e non il corpo. Deve saperlo e dirlo, invece
-di credere che non esistano o che siano vuote.
+**La fonte e' Home Assistant, non il file** (dal 10/09/2026). Prima si leggevano
+`automations.yaml` e `scripts.yaml`, e il prodotto dichiarava il proprio punto
+cieco: *«le automazioni scritte a mano non stanno in automations.yaml -- vivono
+nei pacchetti o in cartelle incluse -- e di quelle HIRIS conosce il nome e non
+il corpo»*. Il comando `automation/config` torna `raw_config` dell'ENTITA',
+quindi quel punto cieco si chiude: qualunque sia l'origine, il corpo arriva.
+
+**Cosa si perde, ed e' dichiarato.** Il file diceva cosa c'e' SCRITTO, lo stato
+dice cosa ESISTE. Un'automazione scritta e rotta -- che Home Assistant non ha
+caricato -- prima si vedeva (`solo_file`), adesso no: HIRIS conosce cio' che HA
+ha caricato, e HA quella la segnala per conto suo. Con la fonte sono usciti i
+tre valori di `origine` (`file`/`solo_stato`/`solo_file`), `id_reale` (ogni id
+e' ora un `entity_id` vero) e le tre ragioni di `file_non_letti`.
+
+**Cosa resta, e cambia soggetto**: la dichiarazione di punto cieco. Non e' piu'
+«questo FILE non l'ho letto» ma «di QUESTA automazione non conosco il corpo, e
+per questa ragione» -- piu' precisa, e alla fonte giusta.
+
+**I segreti si oscurano al confine** (`redaction.SecretSeal`): il YAML che HA
+restituisce e' gia' risolto, mentre il lettore di file non risolveva `!secret`
+affatto. Se `secrets.yaml` non si legge, il corpo **non si archivia** e lo si
+dichiara: non si pubblica cio' che non si e' potuto controllare.
 
 Senza tutto questo la Legge I resta sulla carta: HIRIS proporrebbe
 un'automazione per una cosa che la casa gia' fa, e non potrebbe mai dire la
-frase piu' utile che esista — «non serve, ce l'hai gia', si chiama cosi'».
+frase piu' utile che esista -- «non serve, ce l'hai gia', si chiama cosi'».
 """
 from __future__ import annotations
 
@@ -16,13 +33,16 @@ import logging
 import re
 from pathlib import Path
 
+from .reader import clean_name
+from .redaction import SecretSeal
 from .topology import domain_of
-from .yaml_loader import load_file
 
 logger = logging.getLogger(__name__)
 
-_AUTOMATIONS = "automations.yaml"
-_SCRIPT = "scripts.yaml"
+#: Il file dei segreti: l'unica cosa che HIRIS legge ancora dal disco di
+#: Home Assistant, perche' e' la dichiarazione del proprietario su cosa
+#: sia segreto -- e nessuna API la espone.
+_SECRETS = "secrets.yaml"
 
 # Le RAGIONI di `file_non_letti` (`reread()`, sotto). Pubbliche perche' chi
 # consuma quella mappa per decidere se dichiarare un punto cieco
@@ -78,291 +98,104 @@ _ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 _ABSENT = object()
 
 
-def compose(automation_yaml, script_yaml, states: list[dict]) -> tuple[list[dict], list[str]]:
-    """Incrocia i file con lo stato e produce l'elenco del comportamento.
+#: I due domini che portano un comportamento. Le scene non entrano in questa
+#: fetta: `scene/config` esiste, ma il vocabolario di `tipo` ha due valori e
+#: allargarlo tocca la pagina, il nucleo e le ricerche -- si fa quando serve,
+#: non "gia' che ci siamo".
+_BEHAVIOR_DOMAINS = {"automation": "automazione", "script": "script"}
 
-    `automation_yaml`/`script_yaml` a `None` significano «non ho letto il
-    file»: le voci vive restano, marcate `solo_stato`. Una lista vuota
-    significa invece «il file c'e' e non contiene niente», ed e' un fatto
-    diverso.
+#: Le due ragioni per cui un corpo puo' mancare. Sono due, non una: la prima e'
+#: un guasto di adesso (Home Assistant non ha risposto per quella voce), la
+#: seconda una scelta nostra (non si pubblica cio' che non si e' potuto
+#: controllare contro i segreti). Chiedono cose opposte -- riprovare, oppure
+#: sistemare `secrets.yaml` -- e chi legge deve poterle distinguere.
+BODY_NOT_READ = "configurazione non letta da Home Assistant"
+SECRETS_UNCHECKABLE = "segreti non controllabili: il corpo non si archivia"
 
-    Restituisce `(entries, problems)`. `problems` e' un elenco di frasi in
-    italiano leggibile su cio' che NON si e' potuto concludere con certezza
-    — id duplicati, script vuoti, file mal formati. Un silenzio non
-    dichiarato e' indistinguibile da un'assenza di problemi: se questi casi
-    non finissero qui, il chiamante li scambierebbe per dati buoni.
+
+async def reread(client, home_space, ha_folder: Path | None) -> dict:
+    """Rilegge il comportamento da Home Assistant e lo consegna all'anagrafe.
+
+    Restituisce `{"conteggi": {...}, "senza_corpo": n, "corpi_non_letti":
+    {...}, "problemi": [...]}`. `senza_corpo` non e' un dettaglio: dice di
+    quante automazioni HIRIS vede il nome senza poter dire cosa fanno, ed e'
+    l'unica misura onesta di quanto sa davvero. **Adesso e' derivato da
+    `corpi_non_letti`**, non contato a parte: due campi per lo stesso fatto
+    sono due campi che possono divergere.
+
+    **La guardia dello stato resta, e cambia termine di paragone.** Se lo stato
+    non porta nessuna entita' `automation.*`/`script.*` mentre la replica
+    precedente ne aveva, non e' un fatto sulla casa: e' quasi certamente Home
+    Assistant ripartito senza aver ancora caricato le automazioni (riavvio,
+    safe mode dopo un `configuration.yaml` rotto). `get_states` risponde lo
+    stesso -- e' un successo, non un errore -- e sostituire trasformerebbe
+    dodici automazioni vive in zero. Una replica vecchia e dichiarata stantia
+    e' meglio di una vuota e falsa.
     """
-    problems: list[str] = []
-    automation_yaml = automation_yaml or []
-
-    # Un trattino residuo in coda ("- id: '1'\n  alias: X\n-\n") o un valore
-    # scalare al posto di una mappa sono entrambi YAML VALIDO: il parser non
-    # solleva, quindi `file_non_letti` resterebbe vuoto e il guasto sarebbe
-    # invisibile finche' non arriva qui sotto e fa esplodere `.get()` su
-    # `None` o su una stringa. Si scarta PRIMA di tutto il resto — id,
-    # conteggi, aggancio allo stato — cosi' nessuno di quei passaggi vede mai
-    # una voce che non e' un dizionario.
-    valid_automations: list[dict] = []
-    for index, v in enumerate(automation_yaml):
-        if not isinstance(v, dict):
-            problems.append(
-                f"{_AUTOMATIONS}: voce #{index + 1} non e' un dizionario "
-                f"(trovato {type(v).__name__}) — scartata"
-            )
-            continue
-        valid_automations.append(v)
-    automation_yaml = valid_automations
-
-    # Un id usato da piu' voci non e' una chiave: prima si conta, poi si
-    # decide chi entra nella mappa. Tenerla "l'ultima vince" (il bug
-    # originale) marcherebbe come "file" — dato certo — l'entita' viva che
-    # per caso corrisponde all'id duplicato, con il corpo sbagliato.
-    id_counts: dict[str, int] = {}
-    for v in automation_yaml:
-        if v.get("id") is not None:
-            key = str(v.get("id"))
-            id_counts[key] = id_counts.get(key, 0) + 1
-    ambiguous = {key for key, n in id_counts.items() if n > 1}
-    for key in sorted(ambiguous):
-        problems.append(f"{_AUTOMATIONS}: id {key} usato da {id_counts[key]} voci")
-
-    by_automation_id: dict[str, dict] = {}
-    without_id: list[dict] = []
-    for v in automation_yaml:
-        raw_id = v.get("id")
-        if raw_id is None:
-            # Scritta a mano, senza passare dall'interfaccia: non si puo'
-            # agganciare a nessuna entita' viva, ma non per questo sparisce.
-            without_id.append(v)
-            continue
-        key = str(raw_id)
-        if key not in ambiguous:
-            by_automation_id[key] = v
-
-    if script_yaml is None:
-        scripts_by_key: dict = {}
-    elif isinstance(script_yaml, dict):
-        scripts_by_key = dict(script_yaml)
-    else:
-        # Abitudine presa da automations.yaml: scripts.yaml scritto come
-        # lista. `dict(script_yaml)` non solleva subito e produce un
-        # dizionario spurio; l'errore arriverebbe piu' tardi, incoerente.
-        scripts_by_key = {}
-        problems.append(
-            f"{_SCRIPT}: atteso un dizionario di script, trovato un oggetto di tipo "
-            f"{type(script_yaml).__name__} — nessuno script letto dal file"
-        )
-
-    # Stessa difesa della lista sopra, per gli script: la chiave e' una mappa
-    # attesa (`saluta:\n  alias: ...`), ma niente nello YAML impedisce
-    # `saluta: 'ciao'` — uno scalare al posto della mappa. Prima si scartano i
-    # valori che non sono ne' `None` (assente-e-nullo, gia' gestito) ne' un
-    # dizionario, cosi' il `.get("alias")` piu' sotto non vede mai altro.
-    valid_scripts: dict = {}
-    for key, value in scripts_by_key.items():
-        if value is None:
-            problems.append(f"{_SCRIPT}: script '{key}' presente nel file ma vuoto")
-            valid_scripts[key] = None
-        elif isinstance(value, dict):
-            valid_scripts[key] = value
-        else:
-            problems.append(
-                f"{_SCRIPT}: script '{key}' non e' un dizionario "
-                f"(trovato {type(value).__name__}) — scartato"
-            )
-    scripts_by_key = valid_scripts
-
-    entries: list[dict] = []
-    seen_automations: set[str] = set()
-    seen_scripts: set[str] = set()
-
-    for state in states:
-        entity_id = state.get("entity_id", "")
-        domain, _, object_id = entity_id.partition(".")
-        attributes = state.get("attributes") or {}
-        name = attributes.get("friendly_name") or object_id
-
-        if domain == "automation":
-            # `None` e' l'unica assenza: un id intero `0` (numerazione a
-            # mano da zero) e' un id vero, non un id mancante.
-            attribute_id = attributes.get("id")
-            key = str(attribute_id) if attribute_id is not None else ""
-            if key and key in ambiguous:
-                entries.append({
-                    "id": entity_id, "tipo": "automazione", "nome": name,
-                    "corpo": None, "origine": "ambiguo", "id_reale": True,
-                })
-                continue
-            body = by_automation_id.get(key) if key else None
-            if body is not None:
-                seen_automations.add(key)
-            entries.append({
-                "id": entity_id, "tipo": "automazione", "nome": name,
-                "corpo": body, "origine": "file" if body is not None else "solo_stato",
-                "id_reale": True,
-            })
-        elif domain == "script":
-            body = scripts_by_key.get(object_id, _ABSENT)
-            if body is not _ABSENT:
-                # Conosciuta anche se vuota: non deve ripresentarsi come
-                # solo_file piu' sotto.
-                seen_scripts.add(object_id)
-            else:
-                body = None
-            entries.append({
-                "id": entity_id, "tipo": "script", "nome": name,
-                "corpo": body, "origine": "file" if body is not None else "solo_stato",
-                "id_reale": True,
-            })
-
-    # Cio' che sta nel file e non nello stato e' scritto ma NON caricato:
-    # un'automazione disabilitata all'origine, o una configurazione con un
-    # errore. E' un fatto sulla casa, e va visto invece che scartato.
-    for key, body in by_automation_id.items():
-        if key not in seen_automations:
-            entries.append({
-                "id": f"automation.__non_caricata_{key}", "tipo": "automazione",
-                "nome": body.get("alias") or key, "corpo": body,
-                # Questo id e' sintetico (combacia comunque con la forma
-                # dominio.oggetto di un entity_id vero — vedi _ENTITY_ID_RE):
-                # senza questo campo un consumatore lo passerebbe a un
-                # servizio come se l'entita' esistesse davvero.
-                "origine": "solo_file", "id_reale": False,
-            })
-    for index, body in enumerate(without_id):
-        name = body.get("alias") or f"automazione senza id #{index + 1}"
-        entries.append({
-            "id": f"automation.__senza_id_{index}", "tipo": "automazione",
-            "nome": name, "corpo": body, "origine": "solo_file", "id_reale": False,
-        })
-        problems.append(
-            f"{_AUTOMATIONS}: automazione '{name}' senza id, non collegabile a nessuna entita'"
-        )
-    for key, body in scripts_by_key.items():
-        if key not in seen_scripts:
-            # Id sintetico prefissato, simmetrico a quello delle automazioni
-            # sopra: due rami dello stesso codice non devono avere due
-            # convenzioni diverse per «scritto ma non caricato».
-            entries.append({
-                "id": f"script.__non_caricato_{key}", "tipo": "script",
-                "nome": (body or {}).get("alias") or key, "corpo": body,
-                "origine": "solo_file", "id_reale": False,
-            })
-
-    return entries, problems
-
-
-async def reread(client, store, ha_folder: Path | None) -> dict:
-    """Rilegge i due file e li incrocia con lo stato, poi sostituisce.
-
-    Restituisce
-    `{"conteggi": {...}, "senza_corpo": n, "file_non_letti": {...}, "problemi": [...]}`.
-    `senza_corpo` non e' un dettaglio: dice quante automazioni HIRIS vede senza
-    poter dire cosa fanno, ed e' l'unica misura onesta di quanto sa davvero.
-
-    `file_non_letti` mappa il nome del file alla RAGIONE per cui non e' stato
-    letto, e sono TRE, non due (ri-review sul Task 2 «rifiutare e
-    importare», secondo giro di correzioni -- il fianco era proprio qui):
-
-    - `FILE_GENUINELY_ABSENT` (`"assente"`): la cartella e' raggiungibile e
-      il file non c'e' -- va CREATO. Non nasconde niente: non c'e' contenuto
-      scritto da poter mancare, quindi per chi cerca qualcosa non e' affatto
-      un punto cieco.
-    - `"illeggibile: <motivo>"`: il file c'e' ed e' rotto -- va RIPARATO. Un
-      guasto DI ADESSO: il contenuto esiste ma non si legge in questo
-      momento, e potrebbe nascondere qualcosa.
-    - `FOLDER_UNREACHABLE` (`"cartella non raggiungibile"`): non sappiamo
-      NEMMENO se i file esistono -- la cartella stessa non si raggiunge
-      (`ha_folder is None`, tipicamente perche' il Supervisor non l'ha
-      ancora montata: vedi `server.py::behavior_sentinel`, che la ricerca a
-      ogni giro apposta per questo). Anche questo e' un guasto DI ADESSO,
-      MAI un'assenza: i due file potrebbero esserci ed essere scritti,
-      semplicemente HIRIS non ha potuto controllare -- prima di questa
-      correzione usava la STESSA stringa di `FILE_GENUINELY_ABSENT`,
-      spegnendo per sempre la dichiarazione di punto cieco su una casa dove
-      la cartella non si raggiunge mai (misurato: `nulla_riconosciuto`
-      moriva silenziosamente).
-
-    Le prime due chiedono interventi opposti (creare contro riparare), e un
-    elenco unico dei "mancanti" le rendeva indistinguibili -- ed e' per
-    questo che sono nate come due stringhe diverse. La terza e' nata
-    confusa con la prima (stessa stringa, motivo opposto): questa fetta le
-    separa.
-    """
-    automations = script = None
-    unloaded: dict[str, str] = {}
-    if ha_folder is not None:
-        for name, attribute in ((_AUTOMATIONS, "automazioni"), (_SCRIPT, "script")):
-            try:
-                content = load_file(ha_folder / name)
-            except Exception as exc:
-                logger.warning("%s non leggibile: %s", name, exc)
-                content = None
-                unloaded[name] = f"illeggibile: {exc}"
-            else:
-                if content is None:
-                    unloaded[name] = FILE_GENUINELY_ABSENT
-            if attribute == "automazioni":
-                automations = content
-            else:
-                script = content
-    else:
-        unloaded = {_AUTOMATIONS: FOLDER_UNREACHABLE, _SCRIPT: FOLDER_UNREACHABLE}
-
-    # `[]` significa «tutte»: e' la convenzione di HAClient.get_states, che
-    # richiede l'argomento. Gli altri sei chiamanti fanno cosi'.
+    # `[]` significa «tutte»: e' la convenzione di `HAClient.get_states`.
     states = await client.get_states([]) or []
+    behavior_states = [s for s in states
+                       if domain_of(s.get("entity_id", "")) in _BEHAVIOR_DOMAINS]
 
-    # Guardia sulla gamba dello stato, stessa forma di quella dell'anagrafe
-    # (anagrafe.ricostruisci, anagrafe.py:40-43): se lo stato NON porta
-    # nessuna entita' automation.*/script.* mentre i file ne contengono, non
-    # e' un fatto sulla casa — e' quasi certamente Home Assistant ripartito
-    # senza avere ancora caricato le automazioni (riavvio, safe mode dopo un
-    # configuration.yaml rotto). `/api/states` risponde 200: e' un successo,
-    # non un errore, e senza questa guardia sarebbe indistinguibile da una
-    # casa che ha DAVVERO cancellato tutte le sue automazioni. Sostituire
-    # comunque trasformerebbe ogni automazione viva in "solo_file" — scritta
-    # ma NON caricata: qualcosa non va — un'affermazione positiva e FALSA, e
-    # farebbe sparire del tutto quelle scritte a mano (solo_stato). Una
-    # replica vecchia e dichiarata stantia e' meglio di una fresca e falsa.
-    behavior_domains = {"automation", "script"}
-    state_has_behavior = any(
-        domain_of(s.get("entity_id", "")) in behavior_domains for s in states
-    )
-    files_have_entries = bool(automations) or bool(script)
-    if not state_has_behavior and files_have_entries:
+    if not behavior_states and home_space.behavior():
         message = (
-            "nessuna entita' automation.*/script.* nello stato mentre i file "
-            "ne contengono voci: Home Assistant probabilmente non ha ancora "
-            "caricato le automazioni (riavvio, safe mode) — comportamento NON "
+            "nessuna entita' automation.*/script.* nello stato mentre la replica "
+            "precedente ne aveva: Home Assistant probabilmente non ha ancora "
+            "caricato le automazioni (riavvio, safe mode) - comportamento NON "
             "sostituito, mantenuta la replica precedente"
         )
         logger.warning("comportamento: %s", message)
-        current_entries = store.behavior()
-        current_counts: dict[str, int] = {}
-        for v in current_entries:
-            current_counts[v["tipo"]] = current_counts.get(v["tipo"], 0) + 1
-        return {
-            "conteggi": current_counts,
-            "senza_corpo": sum(1 for v in current_entries if v["corpo"] is None),
-            "file_non_letti": unloaded, "problemi": [message],
-        }
+        current = home_space.behavior()
+        counts: dict[str, int] = {}
+        for v in current:
+            counts[v["tipo"]] = counts.get(v["tipo"], 0) + 1
+        unread = home_space.unread_bodies()
+        return {"conteggi": counts, "senza_corpo": len(unread),
+                "corpi_non_letti": unread, "problemi": [message]}
 
-    entries, problems = compose(automations, script, states)
-    store.replace_behavior(entries, problems=problems, unloaded_files=unloaded)
+    seal = (SecretSeal.from_file(ha_folder / _SECRETS) if ha_folder is not None
+            else SecretSeal({}, readable=False))
+    report = await client.behavior_configs([s["entity_id"] for s in behavior_states])
+    configs = report.get("configurazioni") or {}
+    failure = report.get("errore")
 
-    counts: dict[str, int] = {}
+    entries: list[dict] = []
+    unread: dict[str, str] = {}
+    problems: list[str] = []
+    if behavior_states and not seal.readable:
+        problems.append(
+            "«" + _SECRETS + "» non letto: i corpi non si archiviano, perche' un "
+            "segreto risolto da Home Assistant finirebbe in chiaro nell'archivio "
+            "e nel contesto del modello")
+    for state in behavior_states:
+        entity_id = state["entity_id"]
+        body = configs.get(entity_id)
+        if body is None:
+            unread[entity_id] = failure or BODY_NOT_READ
+        elif not seal.readable:
+            unread[entity_id] = SECRETS_UNCHECKABLE
+            body = None
+        else:
+            body = seal.redact(body)
+        entries.append({
+            "id": entity_id,
+            "tipo": _BEHAVIOR_DOMAINS[domain_of(entity_id)],
+            # Il nome amichevole e' quello che Home Assistant mostra: la
+            # sanificazione sta dove sta sempre, al confine (`clean_name`).
+            "nome": clean_name((state.get("attributes") or {}).get("friendly_name")),
+            "corpo": body,
+        })
+
+    home_space.hold_behavior(entries, problems=problems, unread_bodies=unread)
+
+    counts = {}
     for v in entries:
         counts[v["tipo"]] = counts.get(v["tipo"], 0) + 1
-    without_body = sum(1 for v in entries if v["corpo"] is None)
-    if without_body:
-        logger.info("comportamento: %d voci di cui %d senza corpo", len(entries), without_body)
-    if problems:
-        logger.warning("comportamento: %d problemi nella lettura: %s", len(problems), problems)
-    return {
-        "conteggi": counts, "senza_corpo": without_body,
-        "file_non_letti": unloaded, "problemi": problems,
-    }
+    if unread:
+        logger.info("comportamento: %d voci di cui %d senza corpo",
+                    len(entries), len(unread))
+    return {"conteggi": counts, "senza_corpo": len(unread),
+            "corpi_non_letti": unread, "problemi": problems}
 
 
 def _entities_in(config) -> list[str]:

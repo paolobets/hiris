@@ -515,6 +515,16 @@ _ECCEZIONI_MOTIVATE: dict[tuple[str, tuple[str, ...]], str] = {
     # tredici classi di `binary_sensor`. Erano il caso da manuale di questa
     # istantanea: due elenchi che rispondevano alla stessa domanda a due
     # granularita' diverse, e nessuno che li tenesse allineati.
+    ("proxy/ha_client.py", ("automation", "script")):
+        "`HAClient._CONFIG_COMMAND_BY_DOMAIN`: non e' un giudizio su un tipo, "
+        "e' la mappa fra un dominio e il COMANDO WebSocket che ne porta la "
+        "configurazione -- `automation/config` e `script/config`, verificati "
+        "sul sorgente di Home Assistant al tag 2026.9.1. Il vocabolario dei "
+        "tipi dice cosa un tipo E'; questa dice come si parla con Home "
+        "Assistant, ed e' un fatto del PONTE. Metterla nel vocabolario "
+        "significherebbe far dipendere il significato di un tipo dal protocollo "
+        "con cui lo si interroga. Un dominio che non e' qui dentro non ha una "
+        "configurazione da chiedere, e il codice non se ne inventa una.",
     ("mind/facts.py", ("device_tracker", "person")):
         "`facts.genre_for`: scritto in linea dentro la condizione, ed e' il "
         "GENERE dell'oggetto, non una delle tre metriche di questa fetta. Il "

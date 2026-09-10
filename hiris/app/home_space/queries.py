@@ -61,7 +61,6 @@ from ..proxy.entity_cache import (
     withheld_credentials,
 )
 from ..proxy.state_translations import TABLE_MISSING_SILENCES
-from .behavior import FILE_GENUINELY_ABSENT
 from .ha_vocabulary import entity_category_measure_rule
 from .historian import instant_epoch
 from .topology import (
@@ -1311,7 +1310,7 @@ def _view_device(home_space: dict, memories: list[dict], state: dict, reference,
 
 def _view_behavior(behavior: list[dict], memories: list[dict],
                            kind: str, reference,
-                           unloaded_files: dict[str, str] | None = None) -> dict:
+                           unread_bodies: dict[str, str] | None = None) -> dict:
     entry = next(
         (v for v in behavior if v.get("id") == reference and v.get("tipo") == kind), None)
     if entry is None:
@@ -1332,30 +1331,18 @@ def _view_behavior(behavior: list[dict], memories: list[dict],
         # NOME al posto dell'id e' un errore possibile anche qui: merita lo
         # stesso `suggerimento` degli altri tre rami, con la stessa frase.
         #
-        # Ma non OGNI motivo di `unloaded_files` merita `non_disponibile`
-        # (ri-review sul Task 2, quinto giro -- la stessa conflazione appena
-        # chiusa su `ToolDispatcher._blind_spots`, a una chiamata di
-        # distanza): un file GENUINAMENTE assente
-        # (`behavior.FILE_GENUINELY_ABSENT` -- la cartella si raggiunge, il
-        # file no) non nasconde NIENTE, perche' non c'e' contenuto scritto
-        # da poter mancare. Dire `non_disponibile: True` per quel motivo
-        # affermerebbe un'incertezza che il caso genuino non ha: uno
-        # script il cui file semplicemente non c'e' (e che nemmeno
-        # `compose()` ha potuto popolare da uno stato vivo, altrimenti
-        # `entry` non sarebbe `None`) NON esiste, punto -- la stessa mezza
-        # verita' che il resto di questa fetta ha tolto da `search`. Solo un
-        # motivo che non e' `FILE_GENUINELY_ABSENT` (`FOLDER_UNREACHABLE` --
-        # la cartella stessa irraggiungibile -- o "illeggibile: ...") merita
-        # il dubbio.
-        unavailable_files = any(
-            reason != FILE_GENUINELY_ABSENT for reason in (unloaded_files or {}).values())
-        return _not_found_detail(kind, reference, unavailable_files)
+        # **Ogni voce di `unread_bodies` conta.** Fino al 10/09/2026 la fonte
+        # era un file, e il file genuinamente assente non nascondeva niente --
+        # non c'era contenuto scritto da poter mancare. Adesso il soggetto e'
+        # un'entita' che Home Assistant ha caricato per davvero: se non se ne
+        # conosce il corpo, cio' che fa e' nascosto, sempre.
+        return _not_found_detail(kind, reference, bool(unread_bodies))
     return {
         "esiste": True, "tipo": kind, "id": entry["id"], "nome": entry.get("nome"),
-        # `corpo` passa cosi' com'e': `None` (HIRIS non l'ha, `origine` lo
-        # dichiara) e un corpo vuoto ma presente sono due valori diversi, e
-        # questa funzione non li confonde riscrivendoli.
-        "corpo": entry.get("corpo"), "origine": entry.get("origine"),
+        # `corpo` passa cosi' com'e': `None` (HIRIS non l'ha -- e
+        # `unread_bodies` dice perche') e un corpo vuoto ma presente sono due
+        # valori diversi, e questa funzione non li confonde riscrivendoli.
+        "corpo": entry.get("corpo"),
         "ricordi": _tethered_memories(memories, kind, reference),
     }
 
@@ -1606,7 +1593,7 @@ def _view_integration(home_space: dict, state: dict, reference,
 def view(home_space: dict, behavior: list[dict], memories: list[dict], state: dict,
            kind: str, reference,
            unavailable: tuple[str, ...] = (),
-           unloaded_files: dict[str, str] | None = None,
+           unread_bodies: dict[str, str] | None = None,
            fallback_names: dict[str, str] | None = None,
            reported_units: dict[str, str] | None = None,
            reported_classes: dict[str, str] | None = None,
@@ -1760,7 +1747,7 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
                                    fallback_names, reported_units, reported_classes,
                                    reported_since_when, reported_attributes, translations)
     if kind in _BEHAVIOR_TYPES:
-        return _view_behavior(behavior, memories, kind, reference, unloaded_files)
+        return _view_behavior(behavior, memories, kind, reference, unread_bodies)
     if kind == "ricordo":
         return _view_memory(memories, reference)
     if kind == "integrazione":

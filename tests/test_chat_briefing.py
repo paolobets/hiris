@@ -315,9 +315,17 @@ async def test_se_il_nucleo_non_si_compone_la_chat_lo_dice(aiohttp_client, tmp_p
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_un_archivio_guasto_non_fa_rispondere_500_alla_chat(aiohttp_client, tmp_path):
+async def test_un_archivio_chiuso_non_toglie_piu_la_casa_alla_chat(aiohttp_client, tmp_path):
+    """**Cio' che la fetta del 10/09/2026 ha comprato.** Prima l'anagrafe stava
+    su disco: un archivio guasto voleva dire chat senza contesto, e la prova
+    verificava che il modello almeno lo SAPESSE invece di ricevere un vuoto da
+    scambiare per una casa vuota. Adesso anagrafe e comportamento si tengono a
+    memoria, e un archivio chiuso -- che custodisce solo le plance e la
+    cornice -- non toglie piu' niente alla chat: la casa c'e'.
+
+    La chat continua a non rispondere 500, che era e resta il punto."""
     archivio_casa = _semina_casa(tmp_path)
-    archivio_casa.close()  # la connessione sotto e' chiusa: ogni query solleva
+    archivio_casa.close()  # la connessione sotto e' chiusa: ogni query SQL solleva
     client, mock_runner = await _build_chat_client(
         aiohttp_client, tmp_path, archivio_casa=archivio_casa,
     )
@@ -326,12 +334,8 @@ async def test_un_archivio_guasto_non_fa_rispondere_500_alla_chat(aiohttp_client
     assert resp.status == 200  # non 500: la chat risponde comunque
 
     context_str = mock_runner.chat.call_args.kwargs["context_str"]
-    # Il modello deve SAPERE che non ha il contesto -- non riceverne uno
-    # vuoto che scambierebbe per una casa vuota (diverso dal test sopra:
-    # qui l'archivio C'E', solo guasto, quindi non e' lo stesso testo di
-    # "nessun archivio wired").
-    assert "nucleo non si e' potuto comporre" in context_str
-    assert "Non e' una casa vuota" in context_str
+    assert "nucleo non si e' potuto comporre" not in context_str
+    assert "Cucina" in context_str
 
 
 

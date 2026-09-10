@@ -27,7 +27,7 @@ test('dashboard.js: "nucleo" non compare piu\' in nessuna stringa visibile', asy
   const NUCLEO_VUOTO = { text: '', summary: { chars: 0, truncated: false, excluded_memories: 0, notices: [] } };
   const CASA_VUOTA = {
     anagrafe_letta_il: null, non_disponibili: null, conteggi: {}, piani: [],
-    comportamento: { letto_il: null, conteggi: {}, senza_corpo: 0, problemi: [], file_non_letti: {}, voci: [] },
+    comportamento: { letto_il: null, conteggi: {}, senza_corpo: 0, problemi: [], corpi_non_letti: {}, voci: [] },
     plance: { lette_il: null, non_disponibili: null, voci: [] },
   };
   ctx.window.fetch = (url) => Promise.resolve({

@@ -1,16 +1,18 @@
 """Cio' che resta di `casa.db`: il comportamento, le plance, e la cornice.
 
-**L'anagrafe non e' piu' qui.** Piani, aree, dispositivi, entita', etichette,
+**Ne' l'anagrafe ne' il comportamento sono piu' qui.** Piani, aree, dispositivi, entita', etichette,
 categorie e integrazioni erano la copia dei registri di Home Assistant, e la
 copia era piu' povera dell'originale -- buttava `translation_key`,
 `unique_id`, `original_name`, e non poteva tenere la `classe`, che quel
-comando non manda affatto. Si leggono dal vivo: `home_space/reader.py`.
+comando non manda affatto. Si leggono dal vivo: `home_space/reader.py`. Il comportamento
+(automazioni e script) e' uscito lo stesso giorno per la stessa ragione: il
+file diceva cosa c'e' SCRITTO, Home Assistant dice cosa ESISTE.
 
 Restano tre cose che dai registri non vengono:
 
-- il **comportamento** (`automations.yaml`/`scripts.yaml`) e le **plance**,
-  che hanno un'altra fonte e un altro ciclo di vita. **Escono con la Fetta
-  1-bis**, e con loro questo file;
+- le **plance**, che hanno un'altra fonte e un altro ciclo di vita -- e che
+  gia' si leggono dal vivo: qui c'e' solo dove si tengono. **Escono con la
+  fetta in corso**, e con loro questo file;
 - il **sistema di riferimento** (`remember_reference_frame`), che non e' una
   copia di un fatto di HA ma la cornice in cui e' scritto il nostro archivio.
 
@@ -29,15 +31,10 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
     chiave TEXT PRIMARY KEY, valore TEXT
 );
-CREATE TABLE IF NOT EXISTS comportamento (
-    id TEXT PRIMARY KEY, tipo TEXT NOT NULL, nome TEXT,
-    corpo TEXT, origine TEXT NOT NULL
-);
 CREATE TABLE IF NOT EXISTS plance (
     percorso TEXT PRIMARY KEY, titolo TEXT, modalita TEXT,
     config TEXT, entita TEXT NOT NULL DEFAULT '[]'
 );
-CREATE INDEX IF NOT EXISTS idx_comportamento_tipo ON comportamento(tipo);
 """
 
 
@@ -46,16 +43,17 @@ CREATE INDEX IF NOT EXISTS idx_comportamento_tipo ON comportamento(tipo);
 #: gia' esistono: toglierle dallo schema non le toglie da un file gia' creato,
 #: e resterebbero a occupare spazio e a mentire a chi apre il database.
 _REGISTRY_TABLES = ("piani", "aree", "dispositivi", "entita", "etichette",
-                    "categorie", "integrazioni")
+                    "categorie", "integrazioni", "comportamento")
 
 
 def _migration_8_registries_out(conn) -> None:
-    """L'anagrafe esce da `casa.db`: si legge dal vivo (`home_space/reader.py`).
+    """L'anagrafe e il comportamento escono da `casa.db`: si leggono dal vivo
+    (`home_space/reader.py`, `home_space/behavior.py`).
 
     `DROP TABLE IF EXISTS` e non un `DELETE`: non e' un travaso, e' una casa
     che cambia padrone. Gli indici cadono con le loro tabelle.
 
-    Le migrazioni 2-7 non esistono piu': toccavano tutte e sole queste sette
+    Le migrazioni 2-7 non esistono piu': toccavano tutte e sole queste otto
     tabelle (una colonna `motivo`, le entita' di riferimento di un'area, le
     categorie, l'identita' di una categoria, l'origine di un'integrazione,
     l'appartenenza a un'istanza). Un archivio fermo a una versione vecchia le
@@ -154,120 +152,6 @@ class HomeSpaceStore:
             "VALUES ('sistema_di_riferimento', ?)",
             (json.dumps(frame, ensure_ascii=False),))
         self._conn.commit()
-
-    def replace_behavior(self, entries: list[dict], problems: list[str] | None = None,
-                                  unloaded_files: dict[str, str] | None = None) -> None:
-        """Rimpiazza cio' che la casa sa fare da sola. Tutto o niente.
-
-        Separato da `replace()` perche' cambia con una cadenza diversa
-        (giorni contro mesi) e da una fonte diversa (i file di configurazione
-        contro i registri): rileggere i registri perche' e' cambiata
-        un'automazione sarebbe uno spreco, e viceversa.
-
-        `problems` e `unloaded_files` si archiviano ACCANTO ai dati, non solo
-        nei log: sono costruiti con cura da `comportamento.compose()`/`reread()`
-        proprio per dire a chi guarda perche' qualcosa manca o e' incerto —
-        conservarli solo in una riga di log li rende invisibili a chiunque non
-        stia leggendo il log in quel momento (vedi `non_disponibili` sopra,
-        stesso principio).
-
-        N2 (review indipendente 25/08/2026): `nome` e `corpo` hanno DUE fonti
-        diverse e vanno trattati diversamente. `corpo` viene dal file YAML
-        (`automations.yaml`/`scripts.yaml`) che il proprietario di casa
-        scrive di persona -- resta cosi' com'e', nessuna sanificazione, come
-        gia' deciso per `home_space/behavior.py` in generale. Ma `nome` NON
-        viene dal file: e' il `friendly_name` letto da `get_states([])`
-        (`comportamento.reread()`), una lettura di rete GREZZA che non
-        passa da `entity_cache._to_minimal` -- lo stesso genere di testo
-        controllabile da chi non e' il proprietario che C-2 sanifica
-        ovunque arrivi cosi'. Sanificato qui con `_name()`, lo stesso
-        pattern di `replace()` qui sopra: un punto solo per fonte, non
-        un cablaggio dimenticato perche' "e' un file locale" -- quella
-        ragione copre il corpo, non il nome.
-        """
-        c = self._conn
-        try:
-            c.execute("BEGIN")
-            c.execute("DELETE FROM comportamento")
-            for v in entries:
-                body = v.get("corpo")
-                c.execute("INSERT INTO comportamento (id, tipo, nome, corpo, origine) "
-                          "VALUES (?,?,?,?,?)",
-                          (v["id"], v["tipo"], _name(v.get("nome")),
-                           # `None` resta `None`: «non ho il corpo» e «il corpo
-                           # e' vuoto» sono due cose diverse.
-                           None if body is None else json.dumps(body, ensure_ascii=False),
-                           v.get("origine", "file")))
-            c.execute("INSERT OR REPLACE INTO meta (chiave, valore) "
-                      "VALUES ('comportamento_letto_il', ?)",
-                      (datetime.now(UTC).isoformat(timespec="seconds"),))
-            c.execute("INSERT OR REPLACE INTO meta (chiave, valore) "
-                      "VALUES ('comportamento_problemi', ?)",
-                      (json.dumps(list(problems or []), ensure_ascii=False),))
-            c.execute("INSERT OR REPLACE INTO meta (chiave, valore) "
-                      "VALUES ('comportamento_file_non_letti', ?)",
-                      (json.dumps(dict(unloaded_files or {}), ensure_ascii=False),))
-            c.commit()
-        except Exception:
-            c.rollback()
-            raise
-
-    def behavior(self) -> list[dict]:
-        """Cio' che la casa sa fare da sola, coi corpi gia' sciolti."""
-        entries = []
-        for row in self._conn.execute("SELECT * FROM comportamento ORDER BY id").fetchall():
-            v = dict(row)
-            if v.get("corpo") is not None:
-                try:
-                    v["corpo"] = json.loads(v["corpo"])
-                except (TypeError, ValueError):
-                    v["corpo"] = None
-            # Derivato da `origine`, non una colonna propria: le due cose
-            # sono la STESSA informazione (solo `solo_file` genera un id
-            # sintetico — vedi comportamento.compose()) e duplicarla in una
-            # colonna aprirebbe la porta a farle disallineare. Dichiarato qui
-            # comunque, cosi' chi legge /api/home-space non deve dedurlo da una
-            # convenzione di prefisso sull'id.
-            v["id_reale"] = v.get("origine") != "solo_file"
-            entries.append(v)
-        return entries
-
-    def behavior_loaded_at(self) -> str | None:
-        """Quando il comportamento e' stato riletto l'ultima volta -- data
-        propria, diversa da `aggiornata_il()` (quella e' dell'anagrafe):
-        cadenze e fonti diverse, vedi `replace_behavior`."""
-        row = self._conn.execute(
-            "SELECT valore FROM meta WHERE chiave = 'comportamento_letto_il'").fetchone()
-        return row["valore"] if row else None
-
-    def behavior_problems(self) -> list[str]:
-        """Le frasi su cio' che l'ultima rilettura del comportamento NON ha
-        potuto concludere con certezza (id duplicati, script vuoti, file mal
-        formati). Vedi `comportamento.compose()`."""
-        row = self._conn.execute(
-            "SELECT valore FROM meta WHERE chiave = 'comportamento_problemi'").fetchone()
-        if not row:
-            return []
-        try:
-            value = json.loads(row["valore"])
-        except (TypeError, ValueError):
-            return []
-        return value if isinstance(value, list) else []
-
-    def unloaded_files(self) -> dict[str, str]:
-        """Il nome di ogni file di comportamento non letto, con la RAGIONE --
-        tre forme, non due (`"assente"`, `"illeggibile: <motivo>"`, o
-        `"cartella non raggiungibile"`), vedi `behavior.reread()` per il
-        perche' sono tre e non vanno confuse fra loro."""
-        row = self._conn.execute(
-            "SELECT valore FROM meta WHERE chiave = 'comportamento_file_non_letti'").fetchone()
-        if not row:
-            return {}
-        try:
-            value = json.loads(row["valore"])
-        except (TypeError, ValueError):
-            return {}
-        return value if isinstance(value, dict) else {}
 
     def replace_dashboards(self, entries: list[dict],
                            unavailable: list[str] | None = None) -> None:

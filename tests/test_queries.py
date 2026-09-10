@@ -67,7 +67,10 @@ def test_guarda_un_automazione_senza_corpo_lo_dice():
     dettaglio = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
                        "script", "script.buonanotte")
     assert dettaglio["corpo"] is None
-    assert dettaglio["origine"] == "solo_stato"
+    # `origine` non c'e' piu' (usciva dal crocevia col file, che non esiste
+    # piu'): il PERCHE' del corpo mancante vive in `unread_bodies`, alla fonte
+    # giusta -- l'entita', non il file.
+    assert "origine" not in dettaglio
 
 
 def test_guarda_qualcosa_che_non_esiste_lo_dice():
@@ -384,32 +387,29 @@ def test_guarda_un_automazione_non_trovata_dichiara_i_file_non_letti():
     c'e' scritto: e' il caso vero per cui questo test esiste."""
     dettaglio = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
                        "script", "script.scritto_a_mano",
-                       unloaded_files={"scripts.yaml": "illeggibile: yaml non valido"})
+                       unread_bodies={"scripts.yaml": "illeggibile: yaml non valido"})
     assert dettaglio["esiste"] is False
     assert dettaglio["non_disponibile"] is True
 
 
-def test_a_not_found_automation_with_an_absent_file_does_not_invent_uncertainty():
-    """La stessa conflazione appena chiusa su `ToolDispatcher._blind_spots`
-    (Task 2, quarto giro), a una chiamata di distanza: `bool(unloaded_files)`
-    trattava un file GENUINAMENTE assente (`FILE_GENUINELY_ABSENT` --
-    la cartella si raggiunge, il file no) come lo stesso guasto di un file
-    illeggibile o di una cartella irraggiungibile. Non lo e': un file che
-    non c'e' non nasconde NIENTE (nessun contenuto scritto da poter
-    mancare), quindi `view` di uno script che non esiste in questo caso deve
-    restare un `esiste: False` CONFIDENTE (col `suggerimento` normale a
-    riprovare `search`), non un `non_disponibile` che promette
-    un'incertezza che il caso genuino non ha.
+def test_uno_script_che_non_esiste_con_un_corpo_non_letto_dichiara_l_incertezza():
+    """`view` di uno script che non si trova deve dire se la casa e' stata
+    guardata per intero. Fino al 10/09/2026 c'era un caso da escludere -- il
+    file genuinamente assente, che non nascondeva niente perche' non c'era
+    contenuto scritto da poter mancare. Adesso il soggetto e' un'entita' che
+    Home Assistant ha caricato davvero: un corpo non letto nasconde **sempre**
+    cio' che quello script fa, e l'eccezione non esiste piu'.
 
-    Mutazione che uccide: tornare a `bool(unloaded_files)` invece del
-    filtro su `FILE_GENUINELY_ABSENT` in `_view_behavior` -- il test torna
-    rosso su `assert "non_disponibile" not in detail` (comparirebbe)."""
-    detail = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
-                    "script", "script.scritto_a_mano",
-                    unloaded_files={"scripts.yaml": "assente"})
-    assert detail["esiste"] is False
-    assert "non_disponibile" not in detail
-    assert "suggerimento" in detail
+    Mutazione che la uccide: ignorare `unread_bodies` in `_view_behavior` --
+    `non_disponibile` sparirebbe, e chi legge crederebbe che quello script non
+    esista.
+    """
+    dettaglio = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
+                     "script", "script.mai_visto",
+                     unread_bodies={"script.buonanotte": "configurazione non letta"})
+
+    assert dettaglio["esiste"] is False
+    assert dettaglio["non_disponibile"] is True
 
 
 def test_a_not_found_automation_with_an_unreachable_folder_declares_uncertainty():
@@ -424,7 +424,7 @@ def test_a_not_found_automation_with_an_unreachable_folder_declares_uncertainty(
     detail["non_disponibile"] is True` (`KeyError: 'non_disponibile'`)."""
     detail = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
                     "script", "script.scritto_a_mano",
-                    unloaded_files={"scripts.yaml": "cartella non raggiungibile"})
+                    unread_bodies={"scripts.yaml": "cartella non raggiungibile"})
     assert detail["esiste"] is False
     assert detail["non_disponibile"] is True
 

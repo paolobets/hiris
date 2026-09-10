@@ -30,7 +30,7 @@ function casaLetta(modifiche = {}) {
       conteggi: { automazione: 12, script: 3 },
       senza_corpo: 0,
       problemi: [],
-      file_non_letti: {},
+      corpi_non_letti: {},
       voci: [],
     },
     plance: { lette_il: '2026-08-10T09:02:00', non_disponibili: [], voci: [] },
@@ -48,7 +48,7 @@ const CASA_ARCHIVIO_ASSENTE = {
   anagrafe_letta_il: null, non_disponibili: null, conteggi: {}, piani: [],
   comportamento: {
     letto_il: null, conteggi: {}, senza_corpo: null,
-    problemi: null, file_non_letti: null, voci: [],
+    problemi: null, corpi_non_letti: null, voci: [],
   },
   plance: { lette_il: null, non_disponibili: null, voci: [] },
 };
@@ -58,7 +58,7 @@ const CASA_ARCHIVIO_ASSENTE = {
        `sum()` su zero voci, cioe' `0`:
          non_disponibili()        -> []   (archivio.py:173-183)
          problemi_comportamento() -> []   (:256-268)
-         file_non_letti()         -> {}   (:270-281)
+         corpi_non_letti()         -> {}   (:270-281)
          non_disponibili_plance() -> []   (:332-344)
          senza_corpo              -> 0    (handlers_home_space.py:75)
        E' lo stato che `server.py:723-733` dichiara per iscritto come ATTESO:
@@ -69,7 +69,7 @@ const CASA_ARCHIVIO_VUOTO = {
   anagrafe_letta_il: null, non_disponibili: [], conteggi: {}, piani: [],
   comportamento: {
     letto_il: null, conteggi: {}, senza_corpo: 0,
-    problemi: [], file_non_letti: {}, voci: [],
+    problemi: [], corpi_non_letti: {}, voci: [],
   },
   plance: { lette_il: null, non_disponibili: [], voci: [] },
 };
@@ -82,7 +82,7 @@ const FRASI_TUTTO_A_POSTO = [
   /Tutti i registri hanno risposto/,
   /Di ogni voce HIRIS conosce anche il corpo/,
   /Nelle voci lette non c’è nessuna incongruenza/,
-  /Tutti i file di automazioni e script sono stati letti/,
+  /Di ogni voce letta HIRIS ha potuto leggere anche il corpo/,
   /Tutte le plance hanno risposto/,
 ];
 
@@ -212,7 +212,7 @@ test('archivio esistente ma mai riempito: NESSUNA frase «tutto a posto» su una
   assert.match(testo, /Non si sa quali registri abbiano risposto/);
   assert.match(testo, /Non si sa di quante voci HIRIS conosca solo il nome/);
   assert.match(testo, /Non si sa se nelle voci lette ci siano incongruenze/);
-  assert.match(testo, /Non si sa quali file di automazioni e script/);
+  assert.match(testo, /Non si sa di quali voci HIRIS non conosca il corpo/);
   assert.match(testo, /Non si sa quali plance abbiano risposto/);
 });
 
@@ -247,24 +247,24 @@ test("`senza_corpo: null` non diventa «0», e `0` non diventa «non si sa»", a
   assert.doesNotMatch(zero.testo, /Non si sa di quante voci/);
 });
 
-test("`problemi` e `file_non_letti` a null non affermano «nessun problema»", async () => {
+test("`problemi` e `corpi_non_letti` a null non affermano «nessun problema»", async () => {
   const { testo } = await rendi(casaLetta({
-    comportamento: Object.assign(casaLetta().comportamento, { problemi: null, file_non_letti: null }),
+    comportamento: Object.assign(casaLetta().comportamento, { problemi: null, corpi_non_letti: null }),
   }));
   assert.doesNotMatch(testo, /Nelle voci lette non c’è nessuna incongruenza/);
-  assert.doesNotMatch(testo, /Tutti i file di automazioni e script sono stati letti/);
+  assert.doesNotMatch(testo, /Di ogni voce letta HIRIS ha potuto leggere anche il corpo/);
   assert.match(testo, /Non si sa se nelle voci lette ci siano incongruenze/);
-  assert.match(testo, /Non si sa quali file/);
+  assert.match(testo, /Non si sa di quali voci HIRIS non conosca il corpo/);
 });
 
-test('i file non letti si mostrano con la loro RAGIONE, non solo col nome', async () => {
+test('i corpi non letti si mostrano con la loro RAGIONE, non solo col nome', async () => {
   const { testo } = await rendi(casaLetta({
     comportamento: Object.assign(casaLetta().comportamento, {
-      file_non_letti: { 'automations.yaml': 'assente' },
+      corpi_non_letti: { 'automation.muta': 'configurazione non letta da Home Assistant' },
     }),
   }));
-  assert.match(testo, /automations\.yaml/);
-  assert.match(testo, /assente/);
+  assert.match(testo, /automation\.muta/);
+  assert.match(testo, /configurazione non letta da Home Assistant/);
 });
 
 /* ---------------------------------------------------------------------------
@@ -293,59 +293,6 @@ test('e7: «Script» non sparisce quando la casa non ne ha nessuno — dice 0', 
   assert.equal(script.valore, '0', 'i file sono stati letti: «zero script» è un fatto, e si dice');
 });
 
-test('e7: un file ROTTO e il cui conto è a zero dice «non letto», non «0»', async () => {
-  /* Verifica finale sul Task 2 (settimo giro): questa prova usava
-     `'assente'`, ma un file GENUINAMENTE assente non nasconde niente -- vedi
-     il test gemello subito sotto, che copre esattamente quel caso col verso
-     opposto. Qui la ragione è un guasto VERO (il file c'è ed è rotto): il
-     conto a zero potrebbe davvero nascondere qualcosa, ed è il caso per cui
-     questo test esiste. */
-  const comp = Object.assign(casaLetta().comportamento, {
-    conteggi: { automazione: 12 },
-    file_non_letti: { 'scripts.yaml': 'illeggibile: yaml non valido' },
-  });
-  const { document, testo } = await rendi(casaLetta({ comportamento: comp }));
-  const tessere = tessereDi(document);
-  const script = tessere.find((t) => t.etichetta === 'Script');
-  assert.equal(script.valore, 'non letto',
-    'file rotto e conto a zero: «non c’è niente» e «non ho guardato» sono indistinguibili');
-  assert.match(script.delta, /il file non è stato letto/);
-  /* e la ragione resta comunque nell'elenco sotto, con il nome del file */
-  assert.match(testo, /scripts\.yaml/);
-});
-
-test('e7: un file GENUINAMENTE assente e il cui conto è a zero dice «0», non «non letto»', async () => {
-  /* Verifica finale sul Task 2 «rifiutare e importare» (settimo giro):
-     misurato prima di questa correzione con node, `{ 'scripts.yaml':
-     'assente' }` e zero script produceva la tessera «Script: non letto — il
-     file non è stato letto», mentre TRE RIGHE PIÙ SOTTO, sulla stessa
-     pagina, l'elenco diceva «scripts.yaml — assente»: due frasi adiacenti
-     che si smentivano. Un file davvero assente non nasconde niente -- non
-     c'è contenuto scritto da poter mancare -- quindi zero script e
-     «assente» sono la STESSA verità detta due volte, non due fatti da
-     riconciliare col «non letto».
-
-     Mutazione che uccide: togliere il confronto con `FILE_GENUINELY_ABSENT`
-     in `behaviorUnavailable` (tornare a marcare «non letto» per QUALUNQUE
-     ragione con conto zero) -- il test torna rosso su `assert.equal(
-     script.valore, '0', ...)` (uscirebbe «non letto»). */
-  const comp = Object.assign(casaLetta().comportamento, {
-    conteggi: { automazione: 12 },
-    file_non_letti: { 'scripts.yaml': 'assente' },
-  });
-  const { document, testo } = await rendi(casaLetta({ comportamento: comp }));
-  const tiles = tessereDi(document);
-  const script = tiles.find((t) => t.etichetta === 'Script');
-  assert.equal(script.valore, '0',
-    'file genuinamente assente: zero script è un fatto noto, non un limite di conoscenza');
-  assert.equal(script.delta, '', 'nessun avviso «non letto» su un fatto che si conosce già');
-  /* la ragione resta comunque nell'elenco diagnostico sotto, coerente col
-     resto della pagina -- non e' questo elenco a doversi zittire, e' la
-     tessera a non doversi contraddire con lui. */
-  assert.match(testo, /scripts\.yaml/);
-  assert.match(testo, /assente/);
-});
-
 test('e7: un file non letto NON cancella le voci che HIRIS conosce comunque dallo stato', async () => {
   /* Le voci arrivano dai file E dallo stato di Home Assistant: con
      automations.yaml assente HIRIS conosce lo stesso dodici automazioni per
@@ -354,25 +301,13 @@ test('e7: un file non letto NON cancella le voci che HIRIS conosce comunque dall
      ugualmente falso. */
   const comp = Object.assign(casaLetta().comportamento, {
     conteggi: { automazione: 12, script: 3 },
-    file_non_letti: { 'automations.yaml': 'assente' },
+    corpi_non_letti: { 'automation.muta': 'configurazione non letta da Home Assistant' },
     senza_corpo: 12,
   });
   const { document } = await rendi(casaLetta({ comportamento: comp }));
   const automazioni = tessereDi(document).find((t) => t.etichetta === 'Automazioni');
   assert.equal(automazioni.valore, '12',
     'dodici automazioni note per nome restano dodici: non si nascondono dietro un «non letto»');
-});
-
-test('e7: «niente in sospeso» non compare più una riga sopra l’elenco dei file NON letti', async () => {
-  const comp = Object.assign(casaLetta().comportamento, {
-    problemi: [],
-    file_non_letti: { 'automations.yaml': 'assente' },
-  });
-  const { testo } = await rendi(casaLetta({ comportamento: comp }));
-  assert.doesNotMatch(testo, /non ha lasciato niente in sospeso/,
-    'si smentiva con la riga successiva, che elenca i file non letti');
-  assert.match(testo, /Nelle voci lette non c’è nessuna incongruenza/);
-  assert.match(testo, /File non letti, con la ragione:/);
 });
 
 test('il nucleo mostra «ciò che HIRIS ignora» con gli avvisi reali del riepilogo', async () => {

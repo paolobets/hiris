@@ -278,6 +278,10 @@ class HomeSpace:
         # `HomeSpaceStore.remember_reference_frame`.
         self._reference_frame: dict = self._behavior.reference_frame()
         self._updated_at: str | None = None
+        self._behavior_entries: list[dict] = []
+        self._behavior_problems: list[str] = []
+        self._unread_bodies: dict[str, str] = {}
+        self._behavior_loaded_at: str | None = None
 
     def hold(self, home_space: dict[str, list[dict]],
              unavailable: list[str] | None = None,
@@ -329,21 +333,45 @@ class HomeSpace:
     def close(self) -> None:
         self._behavior.close()
 
-    # -- Il comportamento e le plance: delega pura, in uscita con la Fetta 1-bis.
-    def replace_behavior(self, *args, **kwargs):
-        return self._behavior.replace_behavior(*args, **kwargs)
+    # -- Il comportamento: tenuto a memoria come l'anagrafe, dal 10/09/2026.
+    def hold_behavior(self, entries: list[dict], *, problems: list[str] | None = None,
+                      unread_bodies: dict[str, str] | None = None) -> None:
+        """Prende in consegna il comportamento appena letto da Home Assistant.
 
-    def behavior(self):
-        return self._behavior.behavior()
+        **`unread_bodies` sostituisce `file_non_letti`, e non e' una
+        rinomina.** Quello mappava il NOME DI UN FILE alla ragione per cui non
+        si era letto; questo mappa l'ENTITA' alla ragione per cui non se ne
+        conosce il corpo -- e sono la stessa domanda («cosa mi sta
+        sfuggendo?») posta alla fonte giusta. Con la lettura dal vivo un file
+        non c'e' piu': quello che puo' mancare e' il corpo di una singola
+        automazione, e adesso si sa **quale**.
 
-    def behavior_loaded_at(self):
-        return self._behavior.behavior_loaded_at()
+        Da qui viene anche `senza_corpo`, che prima era un conteggio a parte
+        ricavato dai corpi nulli: due campi per un fatto solo sono due campi
+        che possono divergere.
+        """
+        self._behavior_entries = list(entries)
+        self._behavior_problems = list(problems or [])
+        self._unread_bodies = dict(unread_bodies or {})
+        self._behavior_loaded_at = datetime.now(UTC).isoformat(timespec="seconds")
 
-    def behavior_problems(self):
-        return self._behavior.behavior_problems()
+    def behavior(self) -> list[dict]:
+        return self._behavior_entries
 
-    def unloaded_files(self):
-        return self._behavior.unloaded_files()
+    def behavior_loaded_at(self) -> str | None:
+        return self._behavior_loaded_at
+
+    def behavior_problems(self) -> list[str]:
+        return list(self._behavior_problems)
+
+    def unread_bodies(self) -> dict[str, str]:
+        """Le entita' di cui HIRIS non conosce il corpo, e **perche'**.
+
+        E' la dichiarazione di punto cieco che il prodotto fa al modello: chi
+        cerca un'automazione per nome deve poter sapere che cio' che quella
+        automazione FA potrebbe esistere senza essere cercabile adesso.
+        """
+        return dict(self._unread_bodies)
 
     def replace_dashboards(self, *args, **kwargs):
         return self._behavior.replace_dashboards(*args, **kwargs)

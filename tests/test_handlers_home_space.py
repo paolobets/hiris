@@ -71,7 +71,7 @@ async def test_api_casa_senza_anagrafe_risponde_lo_stesso(aiohttp_client):
     # non un fatto finto. `conteggi`/`voci` sono contenitori naturali.
     assert corpo["comportamento"] == {
         "letto_il": None, "conteggi": {}, "senza_corpo": None,
-        "problemi": None, "file_non_letti": None, "voci": [],
+        "problemi": None, "corpi_non_letti": None, "voci": [],
     }
     assert corpo["plance"] == {"lette_il": None, "non_disponibili": None, "voci": []}
 
@@ -79,7 +79,7 @@ async def test_api_casa_senza_anagrafe_risponde_lo_stesso(aiohttp_client):
 @pytest.mark.asyncio
 async def test_api_casa_mostra_il_comportamento_e_quanto_non_sa(aiohttp_client, tmp_path):
     archivio = HomeSpace(str(tmp_path / "casa.db"))
-    archivio.replace_behavior(
+    archivio.hold_behavior(
         [
             {"id": "automation.sveglia", "tipo": "automazione", "nome": "Sveglia",
              "corpo": {"trigger": []}, "origine": "file"},
@@ -89,7 +89,7 @@ async def test_api_casa_mostra_il_comportamento_e_quanto_non_sa(aiohttp_client, 
              "corpo": {}, "origine": "file"},
         ],
         problems=["automations.yaml: id 42 usato da 2 voci"],
-        unloaded_files={"scripts.yaml": "assente"},
+        unread_bodies={"scripts.yaml": "assente"},
     )
     app = web.Application()
     app["home_space_store"] = archivio
@@ -110,7 +110,7 @@ async def test_api_casa_mostra_il_comportamento_e_quanto_non_sa(aiohttp_client, 
     # Le dichiarazioni costruite da comportamento.compose()/reread() devono
     # arrivare fin qui, non morire in un log (Important 3).
     assert comportamento["problemi"] == ["automations.yaml: id 42 usato da 2 voci"]
-    assert comportamento["file_non_letti"] == {"scripts.yaml": "assente"}
+    assert comportamento["corpi_non_letti"] == {"scripts.yaml": "assente"}
     per_id = {v["id"]: v for v in comportamento["voci"]}
     assert per_id["automation.a_mano"]["corpo"] is None
     assert per_id["script.vuoto"]["corpo"] == {}
@@ -285,31 +285,27 @@ async def test_api_nucleo_non_tronca_i_ricordi_al_default_di_richiama(aiohttp_cl
 
 
 @pytest.mark.asyncio
-async def test_api_nucleo_riceve_i_problemi_e_i_file_non_letti_del_comportamento(
+async def test_api_nucleo_riceve_i_problemi_e_i_corpi_non_letti_del_comportamento(
         aiohttp_client, tmp_path):
-    """IMPORTANT ⑧: `/api/home-space` espone gia' `problemi`/`file_non_letti` del
-    comportamento, ma `compose()` non aveva un parametro per riceverli --
-    con un `automations.yaml` malformato, il PERCHE' non arrivava mai al
-    modello attraverso `/api/briefing`.
+    """`/api/home-space` espone gia' `problemi`/`corpi_non_letti` del
+    comportamento, ma `compose()` non aveva un parametro per riceverli -- e il
+    PERCHE' non arrivava mai al modello attraverso `/api/briefing`.
 
-    Verifica finale sul Task 2 (sesto giro): usa `"illeggibile: ..."`, non
-    piu' `"assente"` -- un file GENUINAMENTE assente non nasconde niente
-    (nessun contenuto scritto da poter mancare) e da questa correzione in poi
-    non produce piu' l'avviso «file di comportamento non letti» nel nucleo
-    (vedi `test_briefing.py::test_a_genuinely_absent_behavior_file_is_not_a_gap_in_knowledge`
-    per il caso dedicato). Un file ROTTO invece nasconde davvero cio' che c'e'
-    scritto: e' il caso vero per cui questo test esiste."""
+    Dal 10/09/2026 il soggetto non e' piu' un file ma l'ENTITA' di cui non si
+    conosce il corpo: l'avviso dice quante sono, non quali file mancano. E non
+    c'e' piu' un caso da escludere -- un corpo non letto nasconde sempre cio'
+    che quell'automazione fa."""
     archivio_casa = HomeSpace(str(tmp_path / "casa.db"))
     archivio_casa.hold_registries({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
         "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],
         "dispositivi": [], "entita": [], "etichette": [], "categorie": [], "integrazioni": [],
     })
-    archivio_casa.replace_behavior(
+    archivio_casa.hold_behavior(
         [{"id": "automation.sveglia", "tipo": "automazione", "nome": "Sveglia",
-          "corpo": {"trigger": []}, "origine": "file"}],
+          "corpo": {"trigger": []}}],
         problems=["automations.yaml: id 42 usato da 2 voci"],
-        unloaded_files={"scripts.yaml": "illeggibile: yaml non valido"},
+        unread_bodies={"script.muto": "configurazione non letta da Home Assistant"},
     )
     app = web.Application()
     app["home_space_store"] = archivio_casa
@@ -323,7 +319,7 @@ async def test_api_nucleo_riceve_i_problemi_e_i_file_non_letti_del_comportamento
     corpo = await resp.json()
     avvisi = corpo["summary"]["notices"]
     assert any("problema" in a and "comportamento" in a for a in avvisi)
-    assert any("scripts.yaml" in a for a in avvisi)
+    assert any("non conosco il corpo" in a for a in avvisi)
     archivio_casa.close()
 
 

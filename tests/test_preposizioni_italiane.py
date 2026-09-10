@@ -410,7 +410,7 @@ _NOTE_ITALIANE = frozenset({
     "app_con", "app_senza", "ascoltatori_durante_la_chiamata", "avvolte_da_rete", "body_con",
     "body_senza", "casa_con_orfana", "casa_senza",
     "chiamata_dello_schedulatore", "chiamato_con", "chiavi_che_parlano_del_ponte",
-    "claude_con_elenco", "client_con", "client_senza", "cliente_su", "col_token",
+    "claude_con_elenco", "client_con", "client_senza", "col_token",
     "col_token_del_piano", "come_stringa", "commenti_di", "con_free", "con_gratuiti",
     "con_registro_caduto", "corpo_ricevuto_dal_modello", "cost_da_listino", "da_anchor",
     "da_http", "da_iso", "da_quando", "da_quante", "da_risolvere", "da_run_sh", "da_salvare",

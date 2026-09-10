@@ -693,7 +693,6 @@ _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     ("usage", "usage", frozenset()),
     ("mind", "mind", frozenset()),
     ("action", "action", frozenset({Path("construction/composer.py")})),
-    ("home_space/yaml_loader.py", "home_space", frozenset()),
     ("home_space/behavior.py", "home_space", frozenset()),
     ("home_space/store.py", "home_space", frozenset()),
     ("home_space/historian.py", "home_space", frozenset()),
@@ -1098,7 +1097,7 @@ _MUTE_PROVVISORIE = {
     # `semina_modello_del_piano -> seed_subscription_model` era il suo ultimo
     # portatore in un ambito che la scrive. Il senso *subscription* resta
     # irraggiungibile per costruzione, com'e' scritto accanto alla sua riga.
-    ("fuori", "radice"), ("guarda", "radice"), ("riga", "radice"),
+    ("fuori", "radice"), ("riga", "radice"),
 }
 
 _MUTE_NOTE = _MUTE_VOLUTE | _MUTE_PROVVISORIE

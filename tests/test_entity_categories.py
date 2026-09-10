@@ -287,6 +287,7 @@ def test_l_anagrafe_esce_dall_archivio_di_una_casa_gia_installata(tmp_path):
         "CREATE TABLE etichette (id TEXT PRIMARY KEY, nome TEXT);"
         "CREATE TABLE categorie (id TEXT, nome TEXT, ambito TEXT);"
         "CREATE TABLE integrazioni (entry_id TEXT, dominio TEXT);"
+        "CREATE TABLE comportamento (id TEXT PRIMARY KEY, tipo TEXT);"
         "INSERT INTO entita (id, nome) VALUES ('light.vecchia', 'Vecchia');"
         "PRAGMA user_version = 7;")
     vecchio.commit()
@@ -296,7 +297,7 @@ def test_l_anagrafe_esce_dall_archivio_di_una_casa_gia_installata(tmp_path):
     try:
         rimaste = {r[0] for r in casa._behavior._conn.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table'")}
-        assert rimaste == {"meta", "comportamento", "plance"}
+        assert rimaste == {"meta", "plance"}
         assert casa._behavior._conn.execute("PRAGMA user_version").fetchone()[0] == 8
     finally:
         casa.close()
