@@ -103,14 +103,17 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 # dentro la 3.24.1, e non di rimandarla ancora. Decisa PRIMA che la suite
 # girasse, come chiede la regola.
 #
-# Resta da fare per la 2.1.266 e la 2.1.267, e vale la stessa riga: dopo il
-# rilascio, un turno e una GET.
+# **La 2.1.267 E' STATA VERIFICATA il 10/09/2026 alle 20:21**, add-on sulla
+# 3.24.1: `GET /api/health` ha risposto `ponte.cli: "2.1.267"` (con
+# `apiKeySource: "none"`, cioe' abbonamento). Il passo 4 e' saldato **lo stesso
+# giorno** in cui il pin e' salito -- non «al prossimo giro», che e' il modo in
+# cui questa nota e' rimasta in sospeso per due salti di fila.
 #
 # Se la 2.1.267 desse problemi si torna alla **2.1.263**: e' l'ultima versione
-# di cui esista una lettura vera dentro questo container (`ponte.cli` il
-# 09/09/2026), ed e' uscita con la 3.23.0. La 2.1.266 sarebbe piu' recente ma
-# non e' mai stata confermata: un ripiego che non si e' mai visto funzionare
-# non e' un ripiego.
+# PRECEDENTE di cui esista una lettura vera dentro questo container
+# (`ponte.cli` il 09/09/2026), ed e' uscita con la 3.23.0. La 2.1.266 non e'
+# mai stata confermata -- e' stata scavalcata prima di girare -- e un ripiego
+# che non si e' mai visto funzionare non e' un ripiego.
 RUN apk add --no-cache nodejs npm libgcc libstdc++ ripgrep \
     && npm install -g @anthropic-ai/claude-code@2.1.267 \
     && npm cache clean --force

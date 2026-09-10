@@ -51,10 +51,12 @@ successivo». Il proprietario ha poi deciso di alzarla **subito**, dentro la v3.
 annotazione nel `Dockerfile` (data, uscite, piano di ripiego) e suite intera, nell'ordine che la
 regola chiede.
 
-**Resta il passo 4, e non e' formale**: dopo il rilascio, un turno di chat e un
-`GET /api/health` per leggere `ponte.cli` dentro il container. E' in sospeso per la 2.1.266 e
-per la 2.1.267. La 2.1.263 invece **e' stata letta** il 09/09/2026 alle 18:02 sull'add-on
-3.23.2, ed e' per questo che il ripiego dichiarato nel `Dockerfile` adesso nomina lei.
+**Anche il passo 4 e' saldato, lo stesso giorno.** `GET /api/health` il 10/09/2026 alle 20:21,
+add-on sulla 3.24.1, ha risposto `ponte.cli: "2.1.267"`: il pin arriva davvero dentro il
+container. E' la prima volta che la verifica non slitta «al prossimo giro» -- era rimasta in
+sospeso per due salti di fila. Il ripiego dichiarato nel `Dockerfile` resta la **2.1.263**,
+l'ultima versione precedente di cui esista una lettura vera; la 2.1.266 e' stata scavalcata
+prima di girare e non si nomina come ripiego.
 
 **Lo sprint «la conoscenza prende una forma» è CHIUSO con la v3.22.0 (07/09/2026).** Sette
 delle sue dieci voci sono passate in «Usciti», ognuna col suo commit: la piattaforma
