@@ -21,7 +21,7 @@ import textwrap
 from datetime import UTC
 
 from hiris.app import server
-from hiris.app.home_space.store import HomeSpaceStore
+from hiris.app.home_space.reader import HomeSpace
 from hiris.app.mind.store import READING_RETENTION_S
 from hiris.app.mind.watcher import Watcher
 from hiris.app.proxy.entity_cache import _to_minimal
@@ -457,9 +457,9 @@ class _ArchivioCasaCheSolleva:
         raise RuntimeError("sqlite del sistema di riferimento irraggiungibile")
 
 
-# Se `HomeSpaceStore.reference_frame` cambia firma, questa riga cade invece
+# Se `HomeSpace.reference_frame` cambia firma, questa riga cade invece
 # di lasciare che il finto imiti un contratto che non esiste piu'.
-assert_stessa_firma(HomeSpaceStore.reference_frame, _ArchivioCasaCheSolleva.reference_frame,
+assert_stessa_firma(HomeSpace.reference_frame, _ArchivioCasaCheSolleva.reference_frame,
                      nome="reference_frame")
 
 
@@ -907,7 +907,7 @@ def _estrai_blocco_riparazione_avvio() -> str:
     inizio)` solleva `ValueError` -- un rosso esplicito sull'estrazione
     stessa, non un'asserzione che potrebbe passare per la ragione sbagliata."""
     src = inspect.getsource(server._on_startup)
-    marcatore_inizio = 'home_space_store = HomeSpaceStore(os.path.join(data_dir, "casa.db"))'
+    marcatore_inizio = 'home_space_store = HomeSpace(os.path.join(data_dir, "casa.db"))'
     marcatore_fine = '"fallita (%s: %s)", type(exc).__name__, exc)'
     inizio = src.index(marcatore_inizio)
     # Dall'INIZIO DELLA RIGA, non dal marcatore: altrimenti la prima riga
@@ -937,7 +937,7 @@ def test_la_riparazione_di_avvio_riceve_home_space_store_gia_costruito(tmp_path)
 
     Mutazione ESEGUITA: spostando a mano la chiamata alla riparazione (e il
     suo blocco di commento) di nuovo sopra la riga `home_space_store =
-    HomeSpaceStore(...)`, com'era prima di questo giro -- `_estrai_blocco_
+    HomeSpace(...)`, com'era prima di questo giro -- `_estrai_blocco_
     riparazione_avvio` solleva `ValueError: substring not found`, perche' il
     marcatore di fine non compare piu' dopo quello di inizio. Rosso,
     esplicito. Ripristinato subito dopo."""
@@ -949,7 +949,7 @@ def test_la_riparazione_di_avvio_riceve_home_space_store_gia_costruito(tmp_path)
         ricevuto["home_space_store"] = app.get("home_space_store")
 
     namespace = {
-        "os": os_reale, "data_dir": str(tmp_path), "HomeSpaceStore": server.HomeSpaceStore,
+        "os": os_reale, "data_dir": str(tmp_path), "HomeSpace": server.HomeSpace,
         "app": {}, "ha_client": None,
         "reaggregate_last_two_days": _spia,
         "logger": logging.getLogger("test_riparazione_riceve_home_space_store"),
@@ -961,7 +961,7 @@ def test_la_riparazione_di_avvio_riceve_home_space_store_gia_costruito(tmp_path)
     try:
         asyncio.run(namespace["_check"]())
         assert ricevuto.get("home_space_store") is not None
-        assert isinstance(ricevuto["home_space_store"], server.HomeSpaceStore)
+        assert isinstance(ricevuto["home_space_store"], server.HomeSpace)
         assert ricevuto["home_space_store"] is namespace["app"]["home_space_store"]
     finally:
         namespace["app"]["home_space_store"].close()
@@ -993,7 +993,7 @@ def test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti(tmp_path)
     `casa.db`: `reference_frame()` legge il fuso PERSISTITO dalle
     sessioni precedenti, esattamente come lo leggerebbe un vero riavvio
     dell'add-on (`casa.db` sopravvive ai riavvii). Il file si semina una
-    volta, PRIMA di eseguire l'estratto, con una `HomeSpaceStore` separata che
+    volta, PRIMA di eseguire l'estratto, con una `HomeSpace` separata che
     viene chiusa subito dopo: l'estratto ne apre una sua, fresca, sullo
     stesso percorso.
 
@@ -1016,7 +1016,7 @@ def test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti(tmp_path)
     from datetime import datetime, timedelta
     from zoneinfo import ZoneInfo
 
-    from hiris.app.home_space.store import HomeSpaceStore
+    from hiris.app.home_space.reader import HomeSpace
     from hiris.app.mind.store import ObservationsStore
 
     roma = ZoneInfo("Europe/Rome")
@@ -1029,8 +1029,8 @@ def test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti(tmp_path)
     casa_db = str(tmp_path / "casa.db")
     osservazioni_db = str(tmp_path / "osservazioni.db")
 
-    seme = HomeSpaceStore(casa_db)
-    seme.replace({}, [], reference_frame={"fuso": "Europe/Rome"})
+    seme = HomeSpace(casa_db)
+    seme.hold_registries({}, [], reference_frame={"fuso": "Europe/Rome"})
     seme.close()
 
     archivio = ObservationsStore(osservazioni_db)
@@ -1064,7 +1064,7 @@ def test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti(tmp_path)
         import os as os_reale
         cliente = _ClienteLegami()
         namespace = {
-            "os": os_reale, "data_dir": str(tmp_path), "HomeSpaceStore": server.HomeSpaceStore,
+            "os": os_reale, "data_dir": str(tmp_path), "HomeSpace": server.HomeSpace,
             "app": {"observations": archivio}, "ha_client": cliente,
             "reaggregate_last_two_days": server.reaggregate_last_two_days,
             "logger": logging.getLogger("test_due_porte"),
@@ -1351,13 +1351,13 @@ def test_la_riparazione_chiede_le_direzioni_una_volta_per_i_due_giorni(tmp_path)
 # --------------------------------------------------------------------------
 
 def _casa_con_un_dispositivo(tmp_path, *, fuso="Europe/Rome"):
-    """Un `HomeSpaceStore` reale con un dispositivo e una sua entita' di
+    """Un `HomeSpace` reale con un dispositivo e una sua entita' di
     energia -- il minimo che `build_balances` ha bisogno di leggere dal
     registro (fedele al contratto vero, non una finta a parte)."""
-    from hiris.app.home_space.store import HomeSpaceStore
+    from hiris.app.home_space.reader import HomeSpace
 
-    casa = HomeSpaceStore(str(tmp_path / "casa.db"))
-    casa.replace(
+    casa = HomeSpace(str(tmp_path / "casa.db"))
+    casa.hold_registries(
         {"dispositivi": [{"id": "dev1", "name": "Inverter"}],
          "entita": [{"entity_id": "sensor.energia_prodotta_oggi",
                     "device_id": "dev1", "device_class": "energy"}]},

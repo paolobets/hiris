@@ -10,7 +10,7 @@ import pytest
 from aiohttp import web
 
 from hiris.app.api.handlers_home_space import handle_get_briefing, handle_get_home_space
-from hiris.app.home_space.store import HomeSpaceStore
+from hiris.app.home_space.reader import HomeSpace
 from hiris.app.memory.store import MemoryStore
 
 
@@ -29,8 +29,8 @@ class _CacheFinta:
 
 @pytest.mark.asyncio
 async def test_api_casa_restituisce_la_gerarchia(aiohttp_client, tmp_path):
-    archivio = HomeSpaceStore(str(tmp_path / "casa.db"))
-    archivio.replace({
+    archivio = HomeSpace(str(tmp_path / "casa.db"))
+    archivio.hold_registries({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
         "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],
         "dispositivi": [], "entita": [], "etichette": [], "categorie": [],
@@ -78,7 +78,7 @@ async def test_api_casa_senza_anagrafe_risponde_lo_stesso(aiohttp_client):
 
 @pytest.mark.asyncio
 async def test_api_casa_mostra_il_comportamento_e_quanto_non_sa(aiohttp_client, tmp_path):
-    archivio = HomeSpaceStore(str(tmp_path / "casa.db"))
+    archivio = HomeSpace(str(tmp_path / "casa.db"))
     archivio.replace_behavior(
         [
             {"id": "automation.sveglia", "tipo": "automazione", "nome": "Sveglia",
@@ -119,7 +119,7 @@ async def test_api_casa_mostra_il_comportamento_e_quanto_non_sa(aiohttp_client, 
 
 @pytest.mark.asyncio
 async def test_api_casa_mostra_le_plance_compresa_la_predefinita(aiohttp_client, tmp_path):
-    archivio = HomeSpaceStore(str(tmp_path / "casa.db"))
+    archivio = HomeSpace(str(tmp_path / "casa.db"))
     archivio.replace_dashboards([
         {"url_path": None, "title": "Principale", "mode": "storage",
          "config": {"views": []}, "entita": ["light.cucina"]},
@@ -155,8 +155,8 @@ async def test_api_casa_mostra_le_plance_compresa_la_predefinita(aiohttp_client,
 async def test_api_nucleo_mostra_il_testo_e_il_riepilogo(aiohttp_client, tmp_path):
     """`/api/briefing` mostra il testo ESATTO che il modello ha davanti, e il
     riepilogo (caratteri, troncato, ricordi esclusi) e' coerente col testo."""
-    archivio_casa = HomeSpaceStore(str(tmp_path / "casa.db"))
-    archivio_casa.replace({
+    archivio_casa = HomeSpace(str(tmp_path / "casa.db"))
+    archivio_casa.hold_registries({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
         "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],
         "dispositivi": [],
@@ -217,8 +217,8 @@ async def test_api_nucleo_propaga_i_registri_non_disponibili(aiohttp_client, tmp
     dire "Senza area", un'affermazione che non abbiamo il diritto di fare)
     sia nel riepilogo -- mai inghiottito da un modulo che lo riceve e non
     lo passa oltre."""
-    archivio_casa = HomeSpaceStore(str(tmp_path / "casa.db"))
-    archivio_casa.replace({
+    archivio_casa = HomeSpace(str(tmp_path / "casa.db"))
+    archivio_casa.hold_registries({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
         "aree": [], "dispositivi": [],
         "entita": [{"entity_id": "light.orfana", "name": "Orfana", "area_id": None}],
@@ -250,8 +250,8 @@ async def test_api_nucleo_non_tronca_i_ricordi_al_default_di_richiama(aiohttp_cl
     casa con 180 ricordi invisibili. Qui si verifica che TUTTI i ricordi
     arrivino a `compose()` (usando `count()`), lasciando al taglio -- che
     dichiara sempre -- decidere cosa non entra."""
-    archivio_casa = HomeSpaceStore(str(tmp_path / "casa.db"))
-    archivio_casa.replace({
+    archivio_casa = HomeSpace(str(tmp_path / "casa.db"))
+    archivio_casa.hold_registries({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
         "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],
         "dispositivi": [], "entita": [], "etichette": [], "categorie": [], "integrazioni": [],
@@ -299,8 +299,8 @@ async def test_api_nucleo_riceve_i_problemi_e_i_file_non_letti_del_comportamento
     (vedi `test_briefing.py::test_a_genuinely_absent_behavior_file_is_not_a_gap_in_knowledge`
     per il caso dedicato). Un file ROTTO invece nasconde davvero cio' che c'e'
     scritto: e' il caso vero per cui questo test esiste."""
-    archivio_casa = HomeSpaceStore(str(tmp_path / "casa.db"))
-    archivio_casa.replace({
+    archivio_casa = HomeSpace(str(tmp_path / "casa.db"))
+    archivio_casa.hold_registries({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
         "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],
         "dispositivi": [], "entita": [], "etichette": [], "categorie": [], "integrazioni": [],
@@ -337,8 +337,8 @@ async def test_api_casa_manda_i_NOMI_delle_etichette(aiohttp_client, tmp_path):
     Esce la MAPPA, una volta, non il nome ripetuto su ogni entita' etichettata:
     li' e' lo stesso fatto scritto mille volte.
     """
-    casa = HomeSpaceStore(str(tmp_path / "casa.db"))
-    casa.replace({
+    casa = HomeSpace(str(tmp_path / "casa.db"))
+    casa.hold_registries({
         "aree": [{"area_id": "cucina", "name": "Cucina", "labels": ["da_controllare"]}],
         "etichette": [{"label_id": "da_controllare", "name": "Da controllare"}],
         "entita": [],
@@ -371,8 +371,8 @@ async def test_api_casa_manda_i_nomi_delle_categorie_per_AMBITO(aiohttp_client, 
     questa porta -- la stessa categoria usciva col nome dallo strumento e con
     l'id grezzo dalla pagina.
     """
-    casa = HomeSpaceStore(str(tmp_path / "casa.db"))
-    casa.replace({
+    casa = HomeSpace(str(tmp_path / "casa.db"))
+    casa.hold_registries({
         "aree": [], "entita": [],
         "categorie": [
             {"category_id": "c1", "name": "Vacanza", "ambito": "automation"},

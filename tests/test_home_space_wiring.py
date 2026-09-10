@@ -4,7 +4,8 @@ from unittest.mock import AsyncMock
 import aiohttp
 import pytest
 
-from hiris.app.home_space.store import HomeSpaceStore
+from hiris.app.home_space.reader import HomeSpace
+from hiris.app.proxy.entity_cache import EntityCache
 from hiris.app.proxy.ha_client import HAClient
 from hiris.app.server import schedule_behavior_reread, schedule_registry_rebuild
 
@@ -21,9 +22,18 @@ _VUOTI = {"piani": [], "aree": [], "dispositivi": [], "entita": [],
           "etichette": [], "categorie": [], "integrazioni": []}
 
 
+def _specchio_caricato():
+    """Uno specchio dello stato VERO gia' caricato: senza `loaded`, `rebuild`
+    dichiara `specchio_vivo` fra i non disponibili (vedi il suo docstring)."""
+    cache = EntityCache()
+    cache._states = {}
+    cache._loaded = True
+    return cache
+
+
 @pytest.fixture
 def archivio(tmp_path):
-    a = HomeSpaceStore(str(tmp_path / "casa.db"))
+    a = HomeSpace(str(tmp_path / "casa.db"))
     yield a
     a.close()
 
@@ -33,7 +43,7 @@ async def test_una_raffica_di_eventi_ricostruisce_una_volta_sola(archivio):
     client = AsyncMock()
     client.read_registries = AsyncMock(return_value=(_VUOTI, []))
     client.get_config = AsyncMock(return_value=_CONFIG)
-    innesca = schedule_registry_rebuild(client, archivio, delay=0.05)
+    innesca = schedule_registry_rebuild(client, archivio, _specchio_caricato(), delay=0.05)
     for _ in range(10):
         innesca("area_registry_updated")
     await asyncio.sleep(0.2)
@@ -45,7 +55,7 @@ async def test_due_raffiche_distanti_ricostruiscono_due_volte(archivio):
     client = AsyncMock()
     client.read_registries = AsyncMock(return_value=(_VUOTI, []))
     client.get_config = AsyncMock(return_value=_CONFIG)
-    innesca = schedule_registry_rebuild(client, archivio, delay=0.05)
+    innesca = schedule_registry_rebuild(client, archivio, _specchio_caricato(), delay=0.05)
     innesca("floor_registry_updated")
     await asyncio.sleep(0.2)
     innesca("floor_registry_updated")
@@ -62,7 +72,7 @@ async def test_una_ricostruzione_fallita_non_uccide_l_ascoltatore(archivio):
     client = AsyncMock()
     client.read_registries = AsyncMock(side_effect=[OSError("HA giu'"), (_VUOTI, [])])
     client.get_config = AsyncMock(return_value=_CONFIG)
-    innesca = schedule_registry_rebuild(client, archivio, delay=0.05)
+    innesca = schedule_registry_rebuild(client, archivio, _specchio_caricato(), delay=0.05)
     innesca("area_registry_updated")
     await asyncio.sleep(0.2)
     innesca("area_registry_updated")

@@ -42,7 +42,7 @@ from aiohttp import web
 
 from hiris.app.api.handlers_home_space import compose_briefing, handle_get_home_space
 from hiris.app.home_space.briefing import compose
-from hiris.app.home_space.store import HomeSpaceStore
+from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.topology import (
     choose_sample,
     compare_with_home_assistant,
@@ -382,8 +382,8 @@ class _ClienteFinto:
 
 
 def _archivio_con_una_casa(tmp_path, entita=(), aree=("cucina", "bagno", "sala")):
-    archivio = HomeSpaceStore(str(tmp_path / "casa.db"))
-    archivio.replace({
+    archivio = HomeSpace(str(tmp_path / "casa.db"))
+    archivio.hold_registries({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
         "aree": [{"area_id": a, "name": a.capitalize(), "floor_id": "terra"}
                  for a in aree],

@@ -85,11 +85,11 @@ class _SpiaReasoningQueue:
 
 
 def test_la_reasoning_queue_riceve_leggi_fuso_e_legge_il_fuso_della_casa(tmp_path):
-    from hiris.app.home_space.store import HomeSpaceStore
+    from hiris.app.home_space.reader import HomeSpace
 
-    archivio_casa = HomeSpaceStore(str(tmp_path / "casa.db"))
+    archivio_casa = HomeSpace(str(tmp_path / "casa.db"))
     try:
-        archivio_casa.replace({}, [], reference_frame={"fuso": "Europe/Rome"})
+        archivio_casa.hold_registries({}, [], reference_frame={"fuso": "Europe/Rome"})
 
         check = _estrai_costruzione_reasoning_queue()
         app: dict = {}

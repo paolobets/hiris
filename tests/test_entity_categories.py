@@ -29,7 +29,7 @@ import sqlite3
 import pytest
 
 from hiris.app.home_space.queries import view
-from hiris.app.home_space.store import HomeSpaceStore
+from hiris.app.home_space.reader import HomeSpace, build_home_space
 from hiris.app.home_space.topology import category_names
 from hiris.app.memory.resolver import costruisci_indice
 
@@ -73,8 +73,8 @@ _REGISTRI = {
 
 @pytest.fixture
 def casa(tmp_path):
-    a = HomeSpaceStore(str(tmp_path / "casa.db"))
-    a.replace(_REGISTRI, [])
+    a = HomeSpace(str(tmp_path / "casa.db"))
+    a.hold_registries(_REGISTRI, [])
     letta = a.read()
     a.close()
     return letta
@@ -227,9 +227,9 @@ def test_un_archivio_gia_esistente_guadagna_la_colonna(tmp_path):
     vecchio.commit()
     vecchio.close()
 
-    a = HomeSpaceStore(percorso)
+    a = HomeSpace(percorso)
     try:
-        a.replace(_REGISTRI, [])
+        a.hold_registries(_REGISTRI, [])
         letta = a.read()
     finally:
         a.close()
@@ -239,109 +239,64 @@ def test_un_archivio_gia_esistente_guadagna_la_colonna(tmp_path):
         "automation": "Luci esterne"}
 
 
-def test_una_riga_illeggibile_ripiega_su_un_dizionario(tmp_path):
+def test_un_valore_storto_dal_registro_ripiega_su_un_dizionario():
     """Il ripiego deve avere la FORMA del valore buono: su `[]` -- il ripiego
     di `alias` ed `etichette` -- chiunque faccia `.items()` solleverebbe, e su
-    una porta sola, cioe' proprio dove non lo si prova."""
-    percorso = str(tmp_path / "storta.db")
-    a = HomeSpaceStore(percorso)
-    try:
-        a.replace(_REGISTRI, [])
-        a._conn.execute("UPDATE entita SET categorie = 'non json' WHERE id = ?",
-                        ("light.faretto",))
-        a._conn.commit()
-        letta = a.read()
-    finally:
-        a.close()
-    voce = next(e for e in letta["entita"] if e["id"] == "light.faretto")
-    assert voce["categorie"] == {}
-    assert "categorie" not in view(letta, [], [], {}, "entita", "light.faretto")
+    una porta sola, cioe' proprio dove non lo si prova.
 
+    **Il rischio si e' spostato, e la prova lo segue.** Fino al 10/09/2026 il
+    valore storto arrivava da una riga di `casa.db` con dentro un JSON
+    illeggibile. L'anagrafe non passa piu' da un archivio: il valore storto
+    ora arriva **dalla rete**, dove Home Assistant e' l'unico a decidere cosa
+    manda -- e una lista al posto di un dizionario e' esattamente cio' che
+    `.items()` non sopravvive.
 
-def test_due_ambiti_con_lo_stesso_id_non_fanno_saltare_la_casa(tmp_path):
-    """Il difetto che questa fetta ha scoperchiato, e che vale piu' della
-    fetta stessa.
-
-    `categorie.id` era `TEXT PRIMARY KEY`: un'unicita' GLOBALE che Home
-    Assistant non promette. Il registro e' `dict[scope, dict[category_id,
-    ...]]` (verificato in `helpers/category_registry.py`) e garantisce
-    l'unicita' dentro l'ambito -- perfino i nomi sono verificati per ambito.
-
-    E siccome `replace` e' tutto-o-niente, un id ripetuto non perdeva una
-    riga: faceva rotolare indietro la ricostruzione INTERA della casa. La casa
-    restava quella di prima, senza che nessuno lo dicesse.
+    Mutazione che la uccide: in `reader.clean_categories`, ripiegare su `[]`
+    invece che su `{}`.
     """
-    a = HomeSpaceStore(str(tmp_path / "casa.db"))
-    try:
-        a.replace(_REGISTRI, [])
-        letta = a.read()
-    finally:
-        a.close()
-    coppie = {(c["ambito"], c["id"]): c["nome"] for c in letta["categorie"]}
-    assert coppie[("automation", "01luci")] == "Luci esterne"
-    assert coppie[("scene", "01luci")] == "Atmosfere"
-    assert letta["aree"], "la ricostruzione e' passata per intero, non solo a meta'"
+    registri = dict(_REGISTRI, entita=[
+        dict(_REGISTRI["entita"][0], categories=["non un dizionario"])])
+
+    letta = build_home_space(registri)
+
+    voce = next(e for e in letta["entita"] if e["id"] == _REGISTRI["entita"][0]["entity_id"])
+    assert voce["categorie"] == {}
+    assert "categorie" not in view(letta, [], [], {}, "entita", voce["id"])
 
 
-def test_un_archivio_con_la_vecchia_chiave_risale(tmp_path):
-    """Una PRIMARY KEY non si cambia con un `ALTER TABLE`: senza la migrazione
-    5 un archivio gia' esistente terrebbe la chiave sbagliata per sempre, e il
-    difetto sopra resterebbe aperto proprio sulle case gia' installate -- le
-    uniche che contano."""
-    percorso = str(tmp_path / "vecchio.db")
-    vecchio = sqlite3.connect(percorso)
-    vecchio.executescript(
-        "CREATE TABLE categorie (id TEXT PRIMARY KEY, nome TEXT NOT NULL, ambito TEXT);"
-        "INSERT INTO categorie (id, nome, ambito) VALUES ('01luci', 'Luci esterne', "
-        "'automation');")
-    vecchio.commit()
-    vecchio.close()
+def test_l_anagrafe_esce_dall_archivio_di_una_casa_gia_installata(tmp_path):
+    """Il percorso VERO dell'aggiornamento, non un archivio nuovo.
 
-    a = HomeSpaceStore(percorso)
-    try:
-        a.replace(_REGISTRI, [])
-        letta = a.read()
-    finally:
-        a.close()
-    coppie = {(c["ambito"], c["id"]) for c in letta["categorie"]}
-    assert ("automation", "01luci") in coppie
-    assert ("scene", "01luci") in coppie
+    Le case gia' installate hanno le sette tabelle della copia dei registri e
+    una `user_version` vecchia. Toglierle dallo schema non le toglie da un file
+    che esiste gia': resterebbero li' a occupare spazio e a mentire a chi apre
+    il database -- una copia dell'anagrafe **ferma al giorno
+    dell'aggiornamento**, che e' la forma peggiore di doppione. La migrazione 8
+    le cancella.
 
-
-def test_l_archivio_di_una_casa_gia_installata_risale_dalla_versione_3(tmp_path):
-    """Il percorso VERO dell'aggiornamento, non un archivio senza versione.
-
-    Le case gia' installate hanno `user_version = 3`: `init_schema` salta le
-    migrazioni 2 e 3 e parte dalla 4. Le altre due prove di migrazione qui
-    sopra entrano dal ramo «archivio senza versione» (baseline a 1), che
-    esercita un ordine diverso -- e una casa vera non passa di li'.
+    Mutazione che la uccide: togliere `_migration_8_registries_out` da
+    `_MIGRATIONS` -- le tabelle restano, e l'assert le trova.
     """
     percorso = str(tmp_path / "installata.db")
-    a = HomeSpaceStore(percorso)
-    a.close()
-    # Si riporta indietro l'archivio a com'era prima di questa fetta: la
-    # colonna via, la vecchia chiave, e la versione che dichiarava tutto cio'.
     vecchio = sqlite3.connect(percorso)
     vecchio.executescript(
-        "ALTER TABLE entita DROP COLUMN categorie;"
-        "DROP TABLE categorie;"
-        "CREATE TABLE categorie (id TEXT PRIMARY KEY, nome TEXT NOT NULL, ambito TEXT);"
-        "PRAGMA user_version = 3;")
+        "CREATE TABLE entita (id TEXT PRIMARY KEY, nome TEXT);"
+        "CREATE TABLE aree (id TEXT PRIMARY KEY, nome TEXT);"
+        "CREATE TABLE piani (id TEXT PRIMARY KEY, nome TEXT);"
+        "CREATE TABLE dispositivi (id TEXT PRIMARY KEY, nome TEXT);"
+        "CREATE TABLE etichette (id TEXT PRIMARY KEY, nome TEXT);"
+        "CREATE TABLE categorie (id TEXT, nome TEXT, ambito TEXT);"
+        "CREATE TABLE integrazioni (entry_id TEXT, dominio TEXT);"
+        "INSERT INTO entita (id, nome) VALUES ('light.vecchia', 'Vecchia');"
+        "PRAGMA user_version = 7;")
     vecchio.commit()
     vecchio.close()
 
-    a = HomeSpaceStore(percorso)
+    casa = HomeSpace(percorso)
     try:
-        # 7 dal 04/09 (`entita.config_entry_id` / `integrazioni.entry_id`): la
-        # versione la fissa lo schema, e questa riga la insegue -- e' l'unico
-        # modo in cui una migrazione nuova fa arrossire il test che prova la
-        # CATENA delle migrazioni.
-        assert a._conn.execute("PRAGMA user_version").fetchone()[0] == 7
-        a.replace(_REGISTRI, [])
-        letta = a.read()
+        rimaste = {r[0] for r in casa._behavior._conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'")}
+        assert rimaste == {"meta", "comportamento", "plance"}
+        assert casa._behavior._conn.execute("PRAGMA user_version").fetchone()[0] == 8
     finally:
-        a.close()
-    voce = next(e for e in letta["entita"] if e["id"] == "automation.luci_giardino")
-    assert voce["categorie"] == {"automation": "01luci"}
-    assert {(c["ambito"], c["id"]) for c in letta["categorie"]} == {
-        ("automation", "01luci"), ("scene", "01luci"), ("helpers", "01vac")}
+        casa.close()

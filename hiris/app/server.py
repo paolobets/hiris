@@ -41,7 +41,7 @@ from .home_space.behavior import reread, reread_dashboards
 from .home_space.historian import home_space_zone, instant_epoch
 from .home_space.queries import HA_LINK_TYPE
 from .home_space.queries import related as _legami_leggibili
-from .home_space.store import HomeSpaceStore
+from .home_space.reader import HomeSpace
 from .home_space.topology import (
     AREAS_PER_ROUND,
     choose_sample,
@@ -1669,7 +1669,7 @@ def should_start_agent_worker(bridge_active: bool) -> bool:
     return bridge_active and subscription_has_token()
 
 
-def schedule_registry_rebuild(client, store, delay: float = 3.0):
+def schedule_registry_rebuild(client, store, entity_cache, delay: float = 3.0):
     """Restituisce `trigger(event_type)`: ricostruisce l'anagrafe, una volta sola.
 
     Riorganizzare la casa in Home Assistant produce una raffica di eventi —
@@ -1686,7 +1686,7 @@ def schedule_registry_rebuild(client, store, delay: float = 3.0):
     async def _fra_poco():
         try:
             await asyncio.sleep(delay)
-            await rebuild(client, store)
+            await rebuild(client, store, entity_cache)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -2264,7 +2264,7 @@ async def _on_startup(app: web.Application) -> None:
     # Home Assistant non ancora pronto lascia l'anagrafe vuota con un avviso
     # nel log, non fa fallire l'add-on -- il primo evento di registro la
     # ricostruira' comunque.
-    home_space_store = HomeSpaceStore(os.path.join(data_dir, "casa.db"))
+    home_space_store = HomeSpace(os.path.join(data_dir, "casa.db"))
     app["home_space_store"] = home_space_store
 
     # La riparazione di avvio (task-5-fix-brief.md, punto 2b): riaggrega gli
@@ -2339,10 +2339,11 @@ async def _on_startup(app: web.Application) -> None:
         os.path.join(data_dir, "consumi.db"),
         read_timezone=lambda: _timezone_from_home_space_store(home_space_store))
     try:
-        await rebuild(ha_client, home_space_store)
+        await rebuild(ha_client, home_space_store, entity_cache)
     except Exception as exc:
         logger.warning("costruzione iniziale dell'anagrafe fallita: %s", exc)
-    ha_client.add_topology_listener(schedule_registry_rebuild(ha_client, home_space_store))
+    ha_client.add_topology_listener(
+        schedule_registry_rebuild(ha_client, home_space_store, entity_cache))
 
     # La verifica dell'albero: `hierarchy()` smette di essere un'affermazione
     # che nessuno controlla. Costruita QUI, subito dopo l'anagrafe, perche' e'

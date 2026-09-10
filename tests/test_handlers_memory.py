@@ -13,7 +13,7 @@ from hiris.app.api.handlers_memory import (
     handle_get_memories,
     handle_patch_memory,
 )
-from hiris.app.home_space.store import HomeSpaceStore
+from hiris.app.home_space.reader import HomeSpace
 from hiris.app.memory.store import MemoryStore
 
 _PHRASE = "d'inverno la sala da pranzo la preferisco fra 19 e 20 gradi quando sono a casa"
@@ -31,8 +31,8 @@ def _app(archivio_memoria=None, archivio_casa=None) -> web.Application:
 
 @pytest.mark.asyncio
 async def test_api_memoria_mostra_la_frase_e_cosa_hiris_ha_capito(aiohttp_client, tmp_path):
-    home_space = HomeSpaceStore(str(tmp_path / "casa.db"))
-    home_space.replace({
+    home_space = HomeSpace(str(tmp_path / "casa.db"))
+    home_space.hold_registries({
         "piani": [], "dispositivi": [], "entita": [], "etichette": [], "categorie": [],
         "integrazioni": [],
         "aree": [{"area_id": "sala_pranzo", "name": "Sala da pranzo"}],
@@ -119,8 +119,8 @@ async def test_correggere_cambia_l_interpretazione_e_non_il_testo(aiohttp_client
 
 @pytest.mark.asyncio
 async def test_una_correzione_con_un_ancora_inesistente_viene_rifiutata(aiohttp_client, tmp_path):
-    home_space = HomeSpaceStore(str(tmp_path / "casa.db"))
-    home_space.replace({
+    home_space = HomeSpace(str(tmp_path / "casa.db"))
+    home_space.hold_registries({
         "piani": [], "dispositivi": [], "entita": [], "etichette": [], "categorie": [],
         "integrazioni": [], "aree": [{"area_id": "cucina", "name": "Cucina"}],
     })
@@ -186,7 +186,7 @@ async def test_una_correzione_con_ancore_e_anagrafe_mai_letta_dice_la_ragione_ve
     None` -- Home Assistant non ancora pronto all'avvio), il rifiuto resta
     fail-closed, ma la ragione non deve essere "non esiste nell'anagrafe":
     e' falso, non si e' potuto nemmeno guardare."""
-    home_space = HomeSpaceStore(str(tmp_path / "casa.db"))       # mai .sostituisci()-ata
+    home_space = HomeSpace(str(tmp_path / "casa.db"))       # mai .sostituisci()-ata
     memory = MemoryStore(str(tmp_path / "memoria.db"))
     ident = memory.remember("mi piace il caffe' forte", detto_da="paolo")
     app = _app(archivio_memoria=memory, archivio_casa=home_space)
@@ -211,7 +211,7 @@ async def test_get_con_anagrafe_mai_letta_non_dichiara_le_ancore_sparite(
     letta deve restare `esiste: None` ("non ho potuto controllare"), non
     `False` ("ho controllato, non c'e' piu'") -- altrimenti ogni avvio in
     cui Home Assistant non era ancora pronto farebbe sparire ogni ancora."""
-    home_space = HomeSpaceStore(str(tmp_path / "casa.db"))       # mai .sostituisci()-ata
+    home_space = HomeSpace(str(tmp_path / "casa.db"))       # mai .sostituisci()-ata
     memory = MemoryStore(str(tmp_path / "memoria.db"))
     memory.remember(_PHRASE, detto_da="paolo",
                     ancore=[{"tipo": "area", "riferimento": "sala_pranzo",
@@ -327,8 +327,8 @@ async def test_correggere_la_grandezza_ridedduce_l_unita(aiohttp_client, tmp_pat
     """Correggere `grandezza` senza toccare `unita` non deve lasciare
     l'unita' vecchia: "umidita' 19-20 °C" sarebbe la stessa deriva che le
     ancore evitano gia'."""
-    home_space = HomeSpaceStore(str(tmp_path / "casa.db"))
-    home_space.replace({
+    home_space = HomeSpace(str(tmp_path / "casa.db"))
+    home_space.hold_registries({
         "piani": [], "dispositivi": [], "etichette": [], "categorie": [], "integrazioni": [],
         "aree": [{"area_id": "sala_pranzo", "name": "Sala da pranzo"}],
         "entita": [{"entity_id": "sensor.umidita_sala", "name": "Umidita' sala",

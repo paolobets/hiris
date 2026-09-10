@@ -81,12 +81,12 @@ async def test_un_entita_senza_alias_non_ne_guadagna_uno_vuoto():
 async def test_gli_alias_arrivano_fino_alla_ricerca(tmp_path):
     """La prova che conta: dall'anagrafe fino a `cerca`. Senza, l'alias
     sarebbe letto e salvato e non porterebbe a niente -- la fondamenta 4."""
-    from hiris.app.home_space.store import HomeSpaceStore
+    from hiris.app.home_space.reader import HomeSpace
     from hiris.app.memory.resolver import costruisci_indice
 
-    a = HomeSpaceStore(str(tmp_path / "casa.db"))
+    a = HomeSpace(str(tmp_path / "casa.db"))
     try:
-        a.replace({"entita": [
+        a.hold_registries({"entita": [
             {"entity_id": "light.salotto", "name": "Piantana",
              "aliases": ["lampada della nonna"]},
         ]}, [])

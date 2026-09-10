@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from hiris.app.home_space.store import HomeSpaceStore
+from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.tools import (
     EXECUTE_TOOL_DEF,
     KNOWLEDGE_TOOLS,
@@ -26,28 +26,17 @@ from tests.test_briefing import _CASA, _COMPORTAMENTO
 
 
 def _semina_casa(tmp_path, casa=_CASA, comportamento=_COMPORTAMENTO):
-    archivio = HomeSpaceStore(str(tmp_path / "casa.db"))
-    conn = archivio._conn  # unico modo per seminare la forma "letta" senza duplicare sostituisci()
-    conn.execute("BEGIN")
-    for piano in casa["piani"]:
-        conn.execute("INSERT INTO piani (id, nome, livello) VALUES (?,?,?)",
-                     (piano["id"], piano["nome"], piano.get("livello")))
-    for area in casa["aree"]:
-        conn.execute(
-            "INSERT INTO aree (id, nome, piano_id, alias, etichette) VALUES (?,?,?,?,?)",
-            (area["id"], area["nome"], area.get("piano_id"), "[]", "[]"))
-    for entita in casa["entita"]:
-        conn.execute(
-            "INSERT INTO entita (id, nome, area_id, dispositivo_id, classe, unita, "
-            "disabilitata, alias, etichette) VALUES (?,?,?,?,?,?,?,?,?)",
-            (entita["id"], entita.get("nome"), entita.get("area_id"),
-             entita.get("dispositivo_id"), entita.get("classe"), entita.get("unita"),
-             1 if entita.get("disabilitata") else 0, "[]", "[]"))
-    conn.execute(
-        "INSERT OR REPLACE INTO meta (chiave, valore) VALUES ('aggiornata_il', '2026-01-01')"
-    )
-    conn.execute("INSERT OR REPLACE INTO meta (chiave, valore) VALUES ('non_disponibili', '[]')")
-    conn.commit()
+    """Semina l'anagrafe nella forma LETTA, che e' anche quella tenuta.
+
+    Prima passava dal `_conn` privato -- "l'unico modo di seminare la forma
+    letta senza duplicare `replace()`" -- perche' la forma letta nasceva da
+    una `SELECT` e non c'era modo di consegnarla. Con la casa tenuta a
+    memoria quella ragione e' caduta: `hold()` prende esattamente il
+    dizionario che `read()` restituisce, e la finta smette di conoscere lo
+    schema SQL di un archivio che non c'e' piu'.
+    """
+    archivio = HomeSpace(str(tmp_path / "casa.db"))
+    archivio.hold(casa, [], reference_frame={"fuso": "Europe/Rome"})
     if comportamento:
         archivio.replace_behavior(comportamento)
     return archivio
@@ -540,7 +529,7 @@ async def test_a_platform_recognised_alone_is_not_nothing_recognised(archivio_ca
     Mutazione che uccide: calcolare `nulla_riconosciuto` da "nessun candidato
     in nessuna voce" invece che da "`trovati` vuoto" -- il test torna rosso
     su `assert "nulla_riconosciuto" not in result` (diventerebbe presente)."""
-    archivio_casa.replace({"entita": [
+    archivio_casa.hold_registries({"entita": [
         {"entity_id": "sensor.giardino_minuti", "name": "Minuti", "platform": "hydrawise"}]}, [])
     d = ToolDispatcher(archivio_casa, memoria)
     result = await d.dispatch("search", {"testo": "hydrawise"})
@@ -569,7 +558,7 @@ async def test_a_fallen_registry_is_not_the_same_as_nothing_recognised(archivio_
     Mutazione che uccide: tornare alla guardia `if not found:` (senza il
     controllo sui motivi "guasto DI ADESSO") in `ToolDispatcher._search` --
     il test torna rosso su `assert "nulla_riconosciuto" not in result`."""
-    archivio_casa.replace({"aree": [], "entita": []}, ["entita"])
+    archivio_casa.hold_registries({"aree": [], "entita": []}, ["entita"])
     result = await ToolDispatcher(archivio_casa, memoria).dispatch(
         "search", {"testo": "il bagno"})
     assert result["trovati"] == []
@@ -598,7 +587,7 @@ async def test_a_stable_naming_gap_does_not_silence_nulla_riconosciuto(archivio_
     blind_spots:` (l'intero elenco, non solo i motivi non stabili) --
     il test torna rosso su `assert result["nulla_riconosciuto"] is True`
     (`KeyError: 'nulla_riconosciuto'`)."""
-    archivio_casa.replace({"entita": [
+    archivio_casa.hold_registries({"entita": [
         {"entity_id": "light.senza", "name": None, "original_name": None}]}, [])
 
     class _MirrorWithoutThisEntry:
@@ -694,9 +683,11 @@ async def test_un_automazione_rinominata_invalida_la_cache_dell_indice(archivio_
     # Stesso accorgimento di test_cambia_l_anagrafe_e_cerca_vede_la_nuova_entita:
     # `replace_behavior` marca la data col secondo corrente, e due
     # chiamate nello stesso secondo di orologio darebbero la stessa stringa.
-    archivio_casa._conn.execute(
+    # Il comportamento vive ancora su disco (esce con la Fetta 1-bis): la
+    # sentinella si forza li'.
+    archivio_casa._behavior._conn.execute(
         "UPDATE meta SET valore = 'sentinella-2' WHERE chiave = 'comportamento_letto_il'")
-    archivio_casa._conn.commit()
+    archivio_casa._behavior._conn.commit()
 
     dopo = await d.dispatch("search", {"testo": "sveglia"})
     assert dopo["trovati"] == [], "il nome vecchio non deve piu' risultare trovabile"
@@ -819,7 +810,7 @@ def test_lo_specchio_restituisce_stato_nomi_unita_e_classi_in_una_lettura(archiv
 @pytest.mark.asyncio
 async def test_cerca_trova_un_entita_senza_nome_grazie_al_friendly_name(archivio_casa, memoria):
     """Le abat-jour, dal vivo: quattro giri di `search` diventano uno."""
-    archivio_casa.replace({"entita": [
+    archivio_casa.hold_registries({"entita": [
         {"entity_id": "light.abat_jour_1", "name": None, "original_name": None}]}, [])
     d = ToolDispatcher(archivio_casa, memoria, cache=_CacheConNomi())
     esito = await d.dispatch("search", {"testo": "accendi l'abat-jour"})
@@ -839,7 +830,7 @@ async def test_guarda_un_entita_senza_nome_dichiara_il_nome_dedotto_dal_dispatch
     cache che porta un `friendly_name` si prova che il collegamento c'e'
     davvero (mutazione che uccide: togliere `nomi_di_ripiego=nomi_vivi`
     dalla chiamata a `_guarda_dettaglio` in `strumenti._view`)."""
-    archivio_casa.replace({"entita": [
+    archivio_casa.hold_registries({"entita": [
         {"entity_id": "light.abat_jour_1", "name": None, "original_name": None}]}, [])
     d = ToolDispatcher(archivio_casa, memoria, cache=_CacheConNomi())
     esito = await d.dispatch("view", {"tipo": "entita", "riferimento": "light.abat_jour_1"})
@@ -859,7 +850,7 @@ async def test_guarda_un_area_dichiara_il_nome_dedotto_delle_sue_entita_dal_disp
     `_view_area`. Solo passando da `dispatch()` con una cache vera si prova
     il collegamento (mutazione che uccide: togliere l'inoltro su QUESTO
     ramo, lasciando intatto quello di `_view_entity`)."""
-    archivio_casa.replace({
+    archivio_casa.hold_registries({
         "aree": [{"area_id": "giardino", "name": "Giardino"}],
         "entita": [{"entity_id": "light.abat_jour_1", "area_id": "giardino",
                     "name": None, "original_name": None}],
@@ -880,7 +871,7 @@ async def test_guarda_un_dispositivo_dichiara_il_nome_dedotto_delle_sue_entita_d
     dell'irrigazione: 'guarda' su un dispositivo trovato). Mutazione che
     uccide: togliere l'inoltro su QUESTO ramo, lasciando intatti gli altri
     due."""
-    archivio_casa.replace({
+    archivio_casa.hold_registries({
         "dispositivi": [{"id": "dev_irr", "name": "Irrigazione"}],
         "entita": [{"entity_id": "light.abat_jour_1", "device_id": "dev_irr",
                     "name": None, "original_name": None}],
@@ -909,7 +900,7 @@ def test_nome_dedotto_e_documentato_in_tutti_gli_strumenti_che_lo_restituiscono(
 @pytest.mark.asyncio
 async def test_cerca_dichiara_un_registro_caduto_invece_di_restituire_una_lista_vuota_muta(
         archivio_casa, memoria):
-    archivio_casa.replace({"aree": [], "entita": []}, ["entita"])
+    archivio_casa.hold_registries({"aree": [], "entita": []}, ["entita"])
     esito = await ToolDispatcher(archivio_casa, memoria).dispatch(
         "search", {"testo": "il bagno"})
     assert esito["trovati"] == []
@@ -921,7 +912,7 @@ async def test_cerca_dichiara_lo_specchio_illeggibile_quando_ci_sono_entita_senz
         archivio_casa, memoria):
     """Mutazione uccisa: dichiarare lo specchio illeggibile SEMPRE. Su una
     casa in cui tutti hanno un nome, non c'e' niente da dichiarare."""
-    archivio_casa.replace({"entita": [
+    archivio_casa.hold_registries({"entita": [
         {"entity_id": "light.senza", "name": None, "original_name": None}]}, [])
 
     class _NonPronta:
@@ -935,7 +926,7 @@ async def test_cerca_dichiara_lo_specchio_illeggibile_quando_ci_sono_entita_senz
 
 @pytest.mark.asyncio
 async def test_su_una_casa_intera_con_lo_specchio_giu_cerca_non_si_lamenta(archivio_casa, memoria):
-    archivio_casa.replace({"entita": [
+    archivio_casa.hold_registries({"entita": [
         {"entity_id": "light.c", "name": "Luce cucina"}]}, [])
 
     class _NonPronta:
@@ -957,7 +948,7 @@ async def test_cerca_dichiara_le_entita_senza_nome_anche_a_specchio_leggibile(
     entita' -- ma non sa come si chiama proprio questa: senza dichiararlo,
     'trovati': [] e' indistinguibile da 'nessuna cosa con quel nome', il
     difetto che ha gia' bruciato quattro giri di `search` sulle abat-jour."""
-    archivio_casa.replace({"entita": [
+    archivio_casa.hold_registries({"entita": [
         {"entity_id": "light.senza", "name": None, "original_name": None}]}, [])
 
     class _SpecchioSenzaQuestaVoce:
@@ -1001,7 +992,7 @@ async def test_cerca_non_dichiara_cecita_permanente_su_una_ricerca_riuscita(arch
     quello che cercava. Senza il fix, un modello riceve questa riserva a
     OGNI turno, comprese le risposte giuste -- l'invariante 4 applicata bene
     ma rivoltata contro se stessa (esitazione sistematica)."""
-    archivio_casa.replace({"entita": [
+    archivio_casa.hold_registries({"entita": [
         {"entity_id": "light.c", "name": "Luce cucina"},
         {"entity_id": "light.senza", "name": None, "original_name": None}]}, [])
 
@@ -1040,7 +1031,7 @@ async def test_cerca_dichiara_caduti_e_specchio_ma_non_il_ramo_strutturale_su_ri
     piu' naturale da fare guardando quel codice -- le prime due asserzioni
     cadrebbero mentre 'light.c' continuerebbe a essere trovato: qui sta la
     rete che il test B3/N2 non aveva ancora steso."""
-    archivio_casa.replace({"entita": [
+    archivio_casa.hold_registries({"entita": [
         {"entity_id": "light.c", "name": "Luce cucina"},
         {"entity_id": "light.senza", "name": None, "original_name": None}]},
         ["dispositivi"])  # registro "dispositivi" caduto; "entita"/"aree" letti bene
@@ -1072,7 +1063,7 @@ async def test_cerca_non_conta_un_entita_disabilitata_senza_nome_come_cecita(
     """Mutazione uccisa: contare fra le «senza nome» anche le entita'
     disabilitate. Una disabilitata senza nome non e' cercabile per scelta
     dell'utente, non per un limite di HIRIS -- non deve produrre una scusa."""
-    archivio_casa.replace({"entita": [
+    archivio_casa.hold_registries({"entita": [
         {"entity_id": "light.c", "name": "Luce cucina"},
         {"entity_id": "light.disabilitata", "name": None, "original_name": None,
          "disabled_by": "user"}]}, [])
@@ -1090,7 +1081,7 @@ async def test_cerca_dichiara_il_registro_etichette_caduto(archivio_casa, memori
     (deliberatamente: non e' un tipo di ancora, vedi il commento su
     `_ARCHIVI`). Un registro etichette caduto restituiva 'trovati': []
     nudo -- indistinguibile da 'nessuna etichetta con quel nome'."""
-    archivio_casa.replace({"aree": [], "entita": []}, ["etichette"])
+    archivio_casa.hold_registries({"aree": [], "entita": []}, ["etichette"])
     esito = await ToolDispatcher(archivio_casa, memoria).dispatch(
         "search", {"testo": "da controllare"})
     assert esito["trovati"] == []
@@ -1338,14 +1329,12 @@ async def test_cambia_l_anagrafe_e_cerca_vede_la_nuova_entita_anche_con_la_cache
     prima = await d.dispatch("search", {"testo": "frullatore"})
     assert prima["trovati"] == []
 
-    archivio_casa.replace({"entita": [
+    archivio_casa.hold_registries({"entita": [
         {"entity_id": "light.frullatore", "name": "Frullatore", "area_id": "cucina"}]}, [])
-    # `replace()` marca `aggiornata_il` col secondo corrente: forzare un
-    # valore diverso da quello di prima garantisce che il test non dipenda
-    # dal caso di due chiamate nello stesso secondo di orologio.
-    archivio_casa._conn.execute(
-        "UPDATE meta SET valore = 'sentinella-2' WHERE chiave = 'aggiornata_il'")
-    archivio_casa._conn.commit()
+    # `hold()` marca l'aggiornamento col secondo corrente: forzare un valore
+    # diverso da quello di prima garantisce che il test non dipenda dal caso
+    # di due consegne nello stesso secondo di orologio.
+    archivio_casa._updated_at = "sentinella-2"
 
     dopo = await d.dispatch("search", {"testo": "frullatore"})
     riferimenti = [c["riferimento"] for v in dopo["trovati"] for c in v["candidati"]]
@@ -1358,7 +1347,7 @@ async def test_cambiano_i_nomi_vivi_e_cerca_vede_il_nuovo_ripiego_anche_con_la_c
     """Stessa anagrafe, stesso `aggiornata_il`: solo il friendly_name dello
     specchio dello stato cambia. Una chiave che non catturasse i nomi vivi
     servirebbe un indice senza quell'entita' per sempre."""
-    archivio_casa.replace({"entita": [
+    archivio_casa.hold_registries({"entita": [
         {"entity_id": "light.abat_jour_1", "name": None, "original_name": None}]}, [])
 
     class _CacheMutevole:
@@ -1407,12 +1396,12 @@ async def test_ricorda_con_anagrafe_mai_letta_non_si_confonde_con_anagrafe_letta
     `problemi` non vuoti comunque, un test sul risultato non basterebbe)."""
     chiamate = _conta_costruzioni(monkeypatch)
     # Nessun `replace()` ancora: `aggiornata_il()` e' `None` davvero.
-    vuoto = HomeSpaceStore(str(tmp_path / "vuota.db"))
+    vuoto = HomeSpace(str(tmp_path / "vuota.db"))
     d = ToolDispatcher(vuoto, memoria, lookup_cache=LookupCache())
     await d.dispatch("remember", {"testo": "prima, anagrafe non letta"})
     assert len(chiamate) == 1
 
-    vuoto.replace({"aree": [], "entita": []}, [])  # ora aggiornata_il() e' un valore vero
+    vuoto.hold_registries({"aree": [], "entita": []}, [])  # ora aggiornata_il() e' un valore vero
     await d.dispatch("remember", {"testo": "dopo, anagrafe letta (vuota)"})
     assert len(chiamate) == 2  # non riusato: il ramo e' cambiato davvero
 

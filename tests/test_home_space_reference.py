@@ -18,10 +18,11 @@ from unittest.mock import create_autospec
 import pytest
 
 from hiris.app.home_space.briefing import compose
-from hiris.app.home_space.store import HomeSpaceStore
+from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.tools import ToolDispatcher
 from hiris.app.home_space.topology import rebuild, reference_frame
 from hiris.app.memory.store import MemoryStore
+from hiris.app.proxy.entity_cache import EntityCache
 from hiris.app.proxy.ha_client import TOPOLOGY_EVENTS, HAClient
 
 # La risposta vera di `get_config` di Home Assistant, ridotta ai campi che
@@ -42,9 +43,21 @@ _CONFIG = {
 }
 
 
+async def _specchio(stati=()):
+    """Uno specchio dello stato VERO (`EntityCache`), caricato come in
+    produzione: `load()` alza `loaded`, e senza quella bandiera `rebuild`
+    dichiara `specchio_vivo` fra i non disponibili -- vedi il suo docstring.
+    """
+    cache = EntityCache()
+    client = create_autospec(HAClient, instance=True)
+    client.get_states.return_value = list(stati)
+    await cache.load(client)
+    return cache
+
+
 @pytest.fixture
 def archivio(tmp_path):
-    a = HomeSpaceStore(str(tmp_path / "casa.db"))
+    a = HomeSpace(str(tmp_path / "casa.db"))
     yield a
     a.close()
 
@@ -91,12 +104,12 @@ def test_una_config_a_meta_porta_solo_cio_che_c_e():
 # --- l'archivio: dove vive ------------------------------------------------
 
 def test_l_archivio_conserva_e_restituisce_il_riferimento(archivio):
-    archivio.replace({}, [], reference_frame=reference_frame(_CONFIG))
+    archivio.hold_registries({}, [], reference_frame=reference_frame(_CONFIG))
     assert archivio.reference_frame()["fuso"] == "Europe/Rome"
 
 
 def test_senza_riferimento_l_archivio_lo_dice_vuoto(archivio):
-    archivio.replace({}, [])
+    archivio.hold_registries({}, [])
     assert archivio.reference_frame() == {}
 
 
@@ -104,8 +117,8 @@ def test_una_lettura_fallita_non_cancella_il_riferimento_buono(archivio):
     """Stessa dottrina dell'anagrafe intera: una replica vecchia e' meglio di
     un vuoto spacciato per fresco. Se HA non ha risposto, il fuso di ieri e'
     ancora quello giusto."""
-    archivio.replace({}, [], reference_frame=reference_frame(_CONFIG))
-    archivio.replace({}, ["sistema_di_riferimento"], reference_frame={})
+    archivio.hold_registries({}, [], reference_frame=reference_frame(_CONFIG))
+    archivio.hold_registries({}, ["sistema_di_riferimento"], reference_frame={})
     assert archivio.reference_frame()["fuso"] == "Europe/Rome"
 
 
@@ -128,7 +141,7 @@ def _client(registries=None, unavailable=(), config=_CONFIG,
 @pytest.mark.asyncio
 async def test_ricostruisci_legge_anche_il_riferimento(archivio):
     client = _client()
-    esito = await rebuild(client, archivio)
+    esito = await rebuild(client, archivio, await _specchio())
     assert esito["non_disponibili"] == []
     assert archivio.reference_frame()["valuta"] == "EUR"
 
@@ -138,7 +151,7 @@ async def test_un_riferimento_non_letto_si_dichiara(archivio):
     """Non si ingoia: finisce nella stessa lista con cui l'anagrafe dichiara
     ogni altro silenzio -- niente meccanismo nuovo per dire la stessa cosa."""
     client = _client(get_config_error=OSError("HA muto"))
-    esito = await rebuild(client, archivio)
+    esito = await rebuild(client, archivio, await _specchio())
     assert "sistema_di_riferimento" in esito["non_disponibili"]
 
 
@@ -240,7 +253,7 @@ def test_il_nucleo_VERO_porta_l_orologio_e_non_solo_quello_di_prova(archivio):
     e il modello continua a indovinare l'ora esattamente come prima."""
     from hiris.app.api.handlers_home_space import compose_briefing
 
-    archivio.replace({}, [], reference_frame=reference_frame(_CONFIG))
+    archivio.hold_registries({}, [], reference_frame=reference_frame(_CONFIG))
 
     testo, _ = compose_briefing({"home_space_store": archivio})
 
@@ -266,7 +279,7 @@ def test_il_nucleo_VERO_porta_i_NOMI_dello_specchio_e_non_solo_gli_id(archivio):
     # La forma GREZZA del registro di Home Assistant, che e' cio' che
     # `sostituisci` legge: `name` e `original_name` a `None` -- il registro
     # muto, il caso di 82 entita' su questa casa.
-    archivio.replace(
+    archivio.hold_registries(
         {"entita": [{"entity_id": "switch.smart_wi_fi_plug_2", "device_id": None,
                      "area_id": None, "platform": "tuya",
                      "config_entry_id": None, "entity_category": None,
@@ -343,10 +356,10 @@ async def test_le_unita_della_casa_non_diventano_l_unita_di_un_entita(tmp_path):
     Mutazione che la fa fallire: in `domande._con_nome_dedotto`, ripiegare
     sull'unita' della casa quando `unita_vive` non ne ha una.
     """
-    archivio = HomeSpaceStore(str(tmp_path / "casa.db"))
+    archivio = HomeSpace(str(tmp_path / "casa.db"))
     memoria = MemoryStore(str(tmp_path / "memoria.db"))
     try:
-        archivio.replace(
+        archivio.hold_registries(
             {"aree": [{"area_id": "cucina", "name": "Cucina"}],
              "entita": [
                  # un indice: un numero senza unita', il caso da proteggere

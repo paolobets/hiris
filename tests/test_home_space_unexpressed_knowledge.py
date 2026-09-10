@@ -22,7 +22,7 @@ un modo per chiederlo, non e' conoscenza, e' zavorra.
 import pytest
 
 from hiris.app.home_space.queries import view
-from hiris.app.home_space.store import HomeSpaceStore
+from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.topology import actual_unit
 from hiris.app.memory.interpretation import deduci_unit
 from hiris.app.memory.resolver import costruisci_indice
@@ -58,8 +58,8 @@ _REGISTRI = {
 
 @pytest.fixture
 def casa(tmp_path):
-    a = HomeSpaceStore(str(tmp_path / "casa.db"))
-    a.replace(_REGISTRI, [])
+    a = HomeSpace(str(tmp_path / "casa.db"))
+    a.hold_registries(_REGISTRI, [])
     letta = a.read()
     a.close()
     return letta
@@ -217,8 +217,8 @@ async def test_correggere_un_ricordo_dalla_pagina_deduce_la_stessa_unita(
     from hiris.app.api.handlers_memory import handle_patch_memory
     from hiris.app.memory.store import MemoryStore
 
-    casa_archivio = HomeSpaceStore(str(tmp_path / "casa.db"))
-    casa_archivio.replace(_REGISTRI, [])
+    casa_archivio = HomeSpace(str(tmp_path / "casa.db"))
+    casa_archivio.hold_registries(_REGISTRI, [])
     memoria = MemoryStore(str(tmp_path / "memoria.db"))
     id_ricordo = memoria.remember(
         "il frigo lo tengo fra 3 e 5", detto_da="paolo",

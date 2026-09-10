@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from hiris.app.home_space.store import HomeSpaceStore
+from hiris.app.home_space.reader import HomeSpace
 from hiris.app.mind.facts import day_boundaries
 from hiris.app.server import build_balances
 from tests.test_mind_companions import _ClienteLegami
@@ -19,8 +19,8 @@ def _casa(tmp_path, *, entita, dispositivi):
     """Un `HomeSpaceStore` reale, seminato coi registri GREZZI (chiavi
     inglesi, come li manderebbe `HAClient.read_registries()`): fedele al
     contratto vero di `HomeSpaceStore.replace`, non una finta a parte."""
-    a = HomeSpaceStore(str(tmp_path / "casa.db"))
-    a.replace({"dispositivi": dispositivi, "entita": entita}, [],
+    a = HomeSpace(str(tmp_path / "casa.db"))
+    a.hold_registries({"dispositivi": dispositivi, "entita": entita}, [],
                  reference_frame={"fuso": "Europe/Rome"})
     return a
 

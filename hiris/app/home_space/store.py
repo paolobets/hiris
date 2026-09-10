@@ -1,71 +1,31 @@
-"""L'archivio della casa — la REPLICA di cio' che Home Assistant dichiara.
+"""Cio' che resta di `casa.db`: il comportamento, le plance, e la cornice.
 
-Non contiene niente di irripetibile: si cancella e si ricostruisce da HA in
-pochi secondi. Per questo non si aggiorna per pezzi, si SOSTITUISCE per intero
-dentro una transazione — rattoppare per id aprirebbe una classe di derive
-silenziose in cambio di un risparmio di qualche decimo di secondo.
+**L'anagrafe non e' piu' qui.** Piani, aree, dispositivi, entita', etichette,
+categorie e integrazioni erano la copia dei registri di Home Assistant, e la
+copia era piu' povera dell'originale -- buttava `translation_key`,
+`unique_id`, `original_name`, e non poteva tenere la `classe`, che quel
+comando non manda affatto. Si leggono dal vivo: `home_space/reader.py`.
 
-La memoria, che invece non si ricostruisce da nessuna parte, vive in un altro
+Restano tre cose che dai registri non vengono:
+
+- il **comportamento** (`automations.yaml`/`scripts.yaml`) e le **plance**,
+  che hanno un'altra fonte e un altro ciclo di vita. **Escono con la Fetta
+  1-bis**, e con loro questo file;
+- il **sistema di riferimento** (`remember_reference_frame`), che non e' una
+  copia di un fatto di HA ma la cornice in cui e' scritto il nostro archivio.
+
+La memoria, che non si ricostruisce da nessuna parte, vive in un altro
 archivio: vedi docs/design/2026-08-05-la-conoscenza-di-hiris.md, §1.
 """
 from __future__ import annotations
 
 import json
-import sqlite3
-from contextlib import suppress
 from datetime import UTC, datetime
 
-from ..proxy._sanitize import sanitize_ha_free_text, sanitize_ha_value
+from ..proxy._sanitize import sanitize_ha_value
 from ..storage import connect, init_schema
 
 _SCHEMA = """
-CREATE TABLE IF NOT EXISTS piani (
-    id TEXT PRIMARY KEY, nome TEXT NOT NULL, livello INTEGER, icona TEXT
-);
-CREATE TABLE IF NOT EXISTS aree (
-    id TEXT PRIMARY KEY, nome TEXT NOT NULL, piano_id TEXT, icona TEXT,
-    alias TEXT NOT NULL DEFAULT '[]', etichette TEXT NOT NULL DEFAULT '[]',
-    entita_temperatura TEXT, entita_umidita TEXT
-);
-CREATE TABLE IF NOT EXISTS dispositivi (
-    id TEXT PRIMARY KEY, nome TEXT, produttore TEXT, modello TEXT,
-    area_id TEXT, disabilitato INTEGER NOT NULL DEFAULT 0,
-    etichette TEXT NOT NULL DEFAULT '[]'
-);
--- Le colonne NUOVE si scrivono in inglese (decisione del proprietario,
--- 04/09/2026): `config_entry_id` segue questa regola, non fa eccezione. Le
--- colonne italiane qui accanto (`piattaforma`, `dispositivo_id`, `classe`,
--- `unita`, `disabilitata`, `nascosta`...) sono debito -- nate prima della
--- regola, non un modello da imitare -- e migreranno in inglese in uno
--- sprint dedicato futuro.
-CREATE TABLE IF NOT EXISTS entita (
-    id TEXT PRIMARY KEY, nome TEXT, area_id TEXT, dispositivo_id TEXT,
-    piattaforma TEXT, config_entry_id TEXT, categoria TEXT, classe TEXT, unita TEXT,
-    disabilitata INTEGER NOT NULL DEFAULT 0, nascosta INTEGER NOT NULL DEFAULT 0,
-    alias TEXT NOT NULL DEFAULT '[]', etichette TEXT NOT NULL DEFAULT '[]',
-    categorie TEXT NOT NULL DEFAULT '{}'
-);
-CREATE TABLE IF NOT EXISTS etichette (
-    id TEXT PRIMARY KEY, nome TEXT NOT NULL, colore TEXT, icona TEXT
-);
--- L'identita' di una categoria e' la COPPIA (ambito, id), non l'id.
--- Home Assistant tiene il registro come `dict[scope, dict[category_id, ...]]`
--- (`helpers/category_registry.py`, verificato): l'unicita' che garantisce e'
--- DENTRO l'ambito, e la stessa verifica vale per i nomi
--- (`_async_ensure_name_is_available(scope, name)`) -- due categorie omonime in
--- ambiti diversi sono esplicitamente ammesse. Un `id TEXT PRIMARY KEY`
--- affermava un'unicita' globale che la fonte non promette, e siccome
--- `replace` e' tutto-o-niente il primo id ripetuto avrebbe fatto rotolare
--- indietro la ricostruzione INTERA della casa, non solo la riga.
-CREATE TABLE IF NOT EXISTS categorie (
-    id TEXT NOT NULL, nome TEXT NOT NULL, ambito TEXT NOT NULL DEFAULT '',
-    PRIMARY KEY (ambito, id)
-);
--- `entry_id`: stesso caso di `config_entry_id` sopra, stessa ragione -- un id
--- opaco di HA, non un concetto da tradurre.
-CREATE TABLE IF NOT EXISTS integrazioni (
-    entry_id TEXT, dominio TEXT NOT NULL, titolo TEXT, stato TEXT, motivo TEXT, origine TEXT
-);
 CREATE TABLE IF NOT EXISTS meta (
     chiave TEXT PRIMARY KEY, valore TEXT
 );
@@ -77,14 +37,39 @@ CREATE TABLE IF NOT EXISTS plance (
     percorso TEXT PRIMARY KEY, titolo TEXT, modalita TEXT,
     config TEXT, entita TEXT NOT NULL DEFAULT '[]'
 );
-CREATE INDEX IF NOT EXISTS idx_entita_area ON entita(area_id);
-CREATE INDEX IF NOT EXISTS idx_entita_dispositivo ON entita(dispositivo_id);
-CREATE INDEX IF NOT EXISTS idx_aree_piano ON aree(piano_id);
 CREATE INDEX IF NOT EXISTS idx_comportamento_tipo ON comportamento(tipo);
 """
 
-_TABLES = ["piani", "aree", "dispositivi", "entita", "etichette",
-            "categorie", "integrazioni"]
+
+#: Le sette tabelle della copia dei registri, uscite il 10/09/2026. Il nome
+#: resta qui perche' la migrazione deve poterle CANCELLARE dagli archivi che
+#: gia' esistono: toglierle dallo schema non le toglie da un file gia' creato,
+#: e resterebbero a occupare spazio e a mentire a chi apre il database.
+_REGISTRY_TABLES = ("piani", "aree", "dispositivi", "entita", "etichette",
+                    "categorie", "integrazioni")
+
+
+def _migration_8_registries_out(conn) -> None:
+    """L'anagrafe esce da `casa.db`: si legge dal vivo (`home_space/reader.py`).
+
+    `DROP TABLE IF EXISTS` e non un `DELETE`: non e' un travaso, e' una casa
+    che cambia padrone. Gli indici cadono con le loro tabelle.
+
+    Le migrazioni 2-7 non esistono piu': toccavano tutte e sole queste sette
+    tabelle (una colonna `motivo`, le entita' di riferimento di un'area, le
+    categorie, l'identita' di una categoria, l'origine di un'integrazione,
+    l'appartenenza a un'istanza). Un archivio fermo a una versione vecchia le
+    salta e arriva qui, dove le tabelle che quelle migrazioni riparavano
+    vengono cancellate: riparare una tabella per poi cancellarla sarebbe
+    lavoro per nessuno.
+    """
+    for table in _REGISTRY_TABLES:
+        conn.execute(f"DROP TABLE IF EXISTS {table}")
+
+
+_MIGRATIONS = {8: _migration_8_registries_out}
+
+
 
 # La plancia predefinita di Home Assistant ha `url_path` nullo. SQLite non
 # considera due NULL uguali (NULL != NULL): usarlo come chiave primaria non
@@ -100,13 +85,12 @@ def _list(value) -> str:
 def _name(value) -> str | None:
     """Un nome/alias/titolo destinato all'anagrafe, sanificato al confine.
 
-    C-2 (L1-sicurezza.md): `replace` e' l'UNICO scrittore dell'anagrafe --
-    ogni riga che entra qui viene da un registro di Home Assistant, e un
-    nome/alias/titolo e' testo che HIRIS non controlla (un dispositivo
-    di rete ostile, un'integrazione compromessa, un ospite che rinomina
-    qualcosa). Sanificare QUI, e non a valle, significa che ogni lettore
-    dell'anagrafe (`read()`, il nucleo, `guarda`, `cerca`, la pagina) eredita
-    la difesa senza doverla ripetere -- un punto solo, non cinque.
+    C-2 (L1-sicurezza.md): il `nome` di un'automazione e' il `friendly_name`
+    letto da Home Assistant, cioe' testo che HIRIS non controlla. Sanificare
+    al confine, e non a valle, significa che ogni lettore eredita la difesa
+    senza doverla ripetere -- un punto solo, non cinque. Il gemello per
+    l'anagrafe vive ora in `reader.clean_name`, che e' la stessa decisione
+    nello stesso punto del flusso: la costruzione.
 
     `None`/non-stringa passano invariati: un campo assente non deve
     diventare una stringa vuota che afferma "questo nome c'e' ed e' vuoto".
@@ -117,343 +101,14 @@ def _name(value) -> str | None:
     return sanitize_ha_value(value) if isinstance(value, str) else value
 
 
-def _reason(value) -> str | None:
-    """Il `motivo` per cui un'integrazione non e' partita, sanificato al
-    confine come `_name()` -- stessa fonte (un registro di HA), stesso
-    rischio -- ma con un tetto DIVERSO.
-
-    M2 (audit-2026-08-25, minori): prima usava `_name()`/`sanitize_ha_value`
-    (255, il tetto vero di uno `state`). `motivo` non e' uno `state`: e' la
-    spiegazione di un guasto (`error_reason_translation_key`/`reason` di HA),
-    HA non gli impone nessun tetto, e un motivo vero -- il riassunto di
-    un'eccezione -- puo' onestamente superare 255 senza essere un attacco.
-    Usa `sanitize_ha_free_text` (tetto 500): vedi il suo docstring in
-    `_sanitize.py` per il perche' del numero."""
-    return sanitize_ha_free_text(value) if isinstance(value, str) else value
-
-
-def _sanitized_list(value) -> str:
-    """Come `_list`, ma ogni voce stringa passa dal sanitizzatore -- per gli
-    ALIAS (testo scelto dall'utente o dall'integrazione), MAI per le liste di
-    id (`labels`, slug che Home Assistant genera e che l'anagrafe risolve
-    altrove, dalla tabella `etichette` -- gia' sanificata alla propria
-    sorgente)."""
-    if not isinstance(value, list):
-        return "[]"
-    return json.dumps([_name(v) for v in value], ensure_ascii=False)
-
-
-def _dict(value) -> str:
-    """Come `_list`, per i campi che Home Assistant manda come dizionario.
-
-    L'assegnazione delle categorie e' `{ambito: category_id}` -- non una lista
-    -- perche' un'entita' puo' stare in UNA categoria per ambito
-    (`RegistryEntry.categories: dict[str, str]`, verificato in
-    `helpers/entity_registry.py`). Appiattirla in una lista di id avrebbe
-    buttato via l'ambito, che fa parte dell'identita' della categoria: due
-    categorie omonime in ambiti diversi sono due cose diverse.
-
-    Chiavi e valori si costringono a stringa e le voci vuote cadono: cio' che
-    entra qui viene dalla rete, e una chiave non-stringa renderebbe la riga
-    illeggibile a `json.loads` dall'altro capo.
-    """
-    if not isinstance(value, dict):
-        return "{}"
-    cleaned = {str(k).strip(): str(v).strip() for k, v in value.items()
-              if str(k).strip() and str(v).strip()}
-    return json.dumps(cleaned, ensure_ascii=False)
-
-
-def _migration_2_integration_reason(conn) -> None:
-    """`integrazioni.motivo`: il perche' un'integrazione non e' partita.
-
-    Serve una migrazione e non basta il `CREATE TABLE IF NOT EXISTS`: quello
-    non tocca una tabella che esiste gia', quindi su un'installazione
-    aggiornata la colonna non comparirebbe e il primo `replace` fallirebbe
-    -- cioe' la casa smetterebbe di ricostruirsi, in silenzio, dal momento
-    dell'aggiornamento.
-
-    Idempotente per costruzione: `init_schema` la chiama una volta sola, alla
-    transizione 1 -> 2. Il `try` copre il caso di un archivio gia' ritoccato a
-    mano, dove la colonna c'e' gia'.
-    """
-    with suppress(sqlite3.OperationalError):
-        conn.execute("ALTER TABLE integrazioni ADD COLUMN motivo TEXT")
-
-
-def _migration_3_area_reference_entities(conn) -> None:
-    """`aree.entita_temperatura` / `aree.entita_umidita`.
-
-    Stessa ragione della migrazione 2: `CREATE TABLE IF NOT EXISTS` non tocca
-    una tabella che esiste gia', e senza queste colonne il primo `replace`
-    dopo l'aggiornamento fallirebbe -- la casa smetterebbe di ricostruirsi, in
-    silenzio.
-    """
-    for column in ("entita_temperatura", "entita_umidita"):
-        with suppress(sqlite3.OperationalError):
-            conn.execute(f"ALTER TABLE aree ADD COLUMN {column} TEXT")
-
-
-def _migration_4_entity_categories(conn) -> None:
-    """`entita.categorie`: in quale categoria l'utente ha messo questa cosa.
-
-    Stessa ragione delle migrazioni 2 e 3: `CREATE TABLE IF NOT EXISTS` non
-    tocca una tabella che esiste gia', e senza questa colonna il primo
-    `replace` dopo l'aggiornamento fallirebbe -- la casa smetterebbe di
-    ricostruirsi, in silenzio.
-
-    Il predefinito e' `'{}'` e non `'[]'`: e' un dizionario ambito -> id, non
-    una lista (vedi `_dict`). Una riga vecchia che non ha mai visto le
-    categorie dice cosi' «nessuna categoria», che e' vero.
-    """
-    with suppress(sqlite3.OperationalError):
-        conn.execute("ALTER TABLE entita ADD COLUMN categorie TEXT NOT NULL DEFAULT '{}'")
-
-
-def _migration_5_category_identity(conn) -> None:
-    """La chiave di `categorie` diventa la coppia (ambito, id).
-
-    Non si puo' cambiare una PRIMARY KEY con un `ALTER TABLE`: si ricostruisce
-    la tabella e ci si ricopia dentro cio' che c'era. `INSERT OR IGNORE`
-    perche' un archivio vecchio, se anche avesse due righe che collidono sulla
-    nuova chiave, non deve poter impedire l'aggiornamento: la tabella e' una
-    replica che il primo `replace` riscrive per intero.
-
-    `ambito` diventa NOT NULL con predefinito vuoto: NULL non e' uguale a
-    NULL in SQLite, quindi lasciarlo nullabile dentro una chiave primaria
-    avrebbe rimesso in piedi il buco che la chiave serve a chiudere.
-    """
-    with suppress(sqlite3.OperationalError):
-        conn.executescript(
-            "CREATE TABLE categorie_nuova ("
-            " id TEXT NOT NULL, nome TEXT NOT NULL, ambito TEXT NOT NULL DEFAULT '',"
-            " PRIMARY KEY (ambito, id));"
-            "INSERT OR IGNORE INTO categorie_nuova (id, nome, ambito)"
-            " SELECT id, nome, COALESCE(ambito, '') FROM categorie;"
-            "DROP TABLE categorie;"
-            "ALTER TABLE categorie_nuova RENAME TO categorie;")
-
-
-def _migration_6_integration_source(conn) -> None:
-    """`integrazioni.origine`: il `source` del config entry di Home Assistant.
-
-    Serve a distinguere un guasto da una DECISIONE del proprietario. Quando
-    qualcuno usa «ignora» su un'integrazione scoperta, Home Assistant scrive
-    `source: "ignore"` e quella voce non si caricherà mai più -- per scelta,
-    non per rottura. Senza questa colonna il nucleo non ha modo di saperlo, e
-    infatti annunciava otto integrazioni ignorate come otto guasti.
-
-    Stessa ragione della migrazione 2 per cui serve un `ALTER TABLE` e non
-    basta il `CREATE TABLE IF NOT EXISTS`: quello non tocca una tabella che
-    esiste gia', quindi su un'installazione aggiornata la colonna non
-    comparirebbe e il primo `replace` fallirebbe -- cioe' la casa smetterebbe
-    di ricostruirsi, in silenzio, dal momento dell'aggiornamento.
-    """
-    with suppress(sqlite3.OperationalError):
-        conn.execute("ALTER TABLE integrazioni ADD COLUMN origine TEXT")
-
-
-def _migration_7_instance_membership(conn) -> None:
-    """`CREATE TABLE IF NOT EXISTS` non tocca una tabella che esiste gia':
-    senza queste due colonne il primo `replace` dopo l'aggiornamento
-    fallirebbe, e la casa smetterebbe di ricostruirsi.
-
-    L'appartenenza all'ISTANZA non esisteva: `config_entry_id` non era citato
-    da nessuna parte in tutto `hiris/app` (spec §2.10), e `integrazioni` non
-    aveva nessuna chiave -- dieci lampadine LIFX erano dieci righe con lo
-    stesso dominio.
-    """
-    for table, column in (("entita", "config_entry_id"), ("integrazioni", "entry_id")):
-        with suppress(sqlite3.OperationalError):
-            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
-
-
-_MIGRATIONS = {
-    2: _migration_2_integration_reason,
-    3: _migration_3_area_reference_entities,
-    4: _migration_4_entity_categories,
-    5: _migration_5_category_identity,
-    6: _migration_6_integration_source,
-    7: _migration_7_instance_membership,
-}
-
 
 class HomeSpaceStore:
     def __init__(self, db_path: str = "/data/casa.db") -> None:
         self._conn = connect(db_path)
-        init_schema(self._conn, _SCHEMA, version=7, migrations=_MIGRATIONS)
+        init_schema(self._conn, _SCHEMA, version=8, migrations=_MIGRATIONS)
 
     def close(self) -> None:
         self._conn.close()
-
-    def replace(self, registries: dict[str, list[dict]],
-                    unavailable: list[str] | None = None,
-                    reference_frame: dict | None = None) -> None:
-        """Rimpiazza l'intera anagrafe. O passa tutta, o non passa niente.
-
-        `riferimento` e' il sistema di riferimento della casa (unita', fuso,
-        valuta, lingua, versione di HA) distillato da
-        `anagrafe.sistema_di_riferimento`. Sta qui e non in una tabella o in
-        un file suo perche' e' una proprieta' della CASA come le sue aree: un
-        secondo posto da tenere aggiornato sarebbe un secondo posto da cui
-        leggere una versione diversa della stessa verita'.
-
-        Vuoto o assente NON cancella quello di prima: e' la stessa dottrina
-        con cui `anagrafe.rebuild` non sostituisce la casa quando tutti i
-        registri sono caduti. Il fuso di ieri e' ancora il fuso giusto; un
-        riferimento cancellato farebbe leggere ogni temperatura senza sapere
-        in che scala.
-
-        `non_disponibili` sono i registri che non hanno risposto: si conservano
-        accanto ai dati perche' una casa senza piani e un registro dei piani
-        caduto producono la stessa lista vuota, e chi guarda l'anagrafe deve
-        poterli distinguere anche a ore di distanza dalla lettura.
-
-        Il `BEGIN` esplicito e' quello che rende vera la promessa: se una riga
-        malformata solleva a meta' strada, la casa vecchia resta intatta invece
-        di restare monca — e una casa monca e' peggio di una vecchia, perche'
-        non si distingue da una casa che e' davvero cambiata.
-        """
-        c = self._conn
-        try:
-            c.execute("BEGIN")
-            for table in _TABLES:
-                c.execute(f"DELETE FROM {table}")
-
-            for p in registries.get("piani", []):
-                c.execute("INSERT INTO piani (id, nome, livello, icona) VALUES (?,?,?,?)",
-                          (p["floor_id"], _name(p.get("name")) or p["floor_id"],
-                           p.get("level"), p.get("icon")))
-
-            for a in registries.get("aree", []):
-                # `temperature_entity_id`/`humidity_entity_id`: QUALE entita' e'
-                # LA temperatura di quella stanza, dichiarata dall'utente in
-                # Home Assistant. Arrivavano gia' dentro questa risposta e si
-                # buttavano, e senza di esse HIRIS deve INDOVINARE fra tutti i
-                # sensori dell'area quale intende chi chiede se fa caldo in
-                # soggiorno. E' il significato piu' dichiarato che esista, e
-                # costava zero chiamate.
-                c.execute("INSERT INTO aree (id, nome, piano_id, icona, alias, etichette, "
-                          " entita_temperatura, entita_umidita) VALUES (?,?,?,?,?,?,?,?)",
-                          (a["area_id"], _name(a.get("name")) or a["area_id"], a.get("floor_id"),
-                           a.get("icon"), _sanitized_list(a.get("aliases")),
-                           _list(a.get("labels")),
-                           a.get("temperature_entity_id"), a.get("humidity_entity_id")))
-
-            for d in registries.get("dispositivi", []):
-                c.execute("INSERT INTO dispositivi "
-                          "(id, nome, produttore, modello, area_id, disabilitato, etichette) "
-                          "VALUES (?,?,?,?,?,?,?)",
-                          (d["id"], _name(d.get("name_by_user") or d.get("name")),
-                           _name(d.get("manufacturer")), _name(d.get("model")), d.get("area_id"),
-                           1 if d.get("disabled_by") else 0, _list(d.get("labels"))))
-
-            for e in registries.get("entita", []):
-                # `categories` -- IN QUALE CATEGORIA l'utente ha messo questa
-                # cosa -- arrivava gia' dentro questa stessa risposta
-                # (`RegistryEntry.as_partial_dict`, verificato sul sorgente di
-                # HA) e si buttava. E' la stessa tassonomia scritta a mano
-                # delle etichette, dall'altro capo: il registro delle
-                # categorie era letto con quattro comandi WS a ogni
-                # ricostruzione e l'assegnazione, che costa zero, no.
-                #
-                # ATTENZIONE alla vicinanza dei nomi: `categoria` (singolare)
-                # e' l'`entity_category` di Home Assistant -- `config` o
-                # `diagnostic`, deciso dall'INTEGRAZIONE -- e non c'entra
-                # niente con `categorie` (plurale), che e' la tassonomia
-                # dell'UTENTE. Due fatti diversi, due colonne diverse.
-                c.execute("INSERT INTO entita "
-                          "(id, nome, area_id, dispositivo_id, piattaforma, config_entry_id, "
-                          " categoria, classe, unita, disabilitata, nascosta, alias, etichette, "
-                          " categorie) "
-                          "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                          (e["entity_id"],
-                           # Il nome scelto dall'utente vince su quello che
-                           # l'integrazione ha proposto: e' il primo posto in cui
-                           # HIRIS deve chiamare le cose come le chiama lui.
-                           _name(e.get("name") or e.get("original_name")),
-                           e.get("area_id"), e.get("device_id"), e.get("platform"),
-                           # `config_entry_id` -- QUALE istanza di
-                           # un'integrazione possiede questa entita'. Sta in
-                           # `RegistryEntry.as_partial_dict` (verificato sul
-                           # sorgente di HA, `helpers/entity_registry.py`):
-                           # arriva gia' su ogni entita' senza una chiamata in
-                           # piu', come `platform` due righe sopra. Senza,
-                           # dieci lampadine LIFX restano dieci righe
-                           # indistinguibili con lo stesso `piattaforma`.
-                           e.get("config_entry_id"),
-                           e.get("entity_category"),
-                           e.get("device_class") or e.get("original_device_class"),
-                           e.get("unit_of_measurement"),
-                           1 if e.get("disabled_by") else 0,
-                           1 if e.get("hidden_by") else 0,
-                           _sanitized_list(e.get("aliases")), _list(e.get("labels")),
-                           _dict(e.get("categories"))))
-
-            for et in registries.get("etichette", []):
-                c.execute("INSERT INTO etichette (id, nome, colore, icona) VALUES (?,?,?,?)",
-                          (et["label_id"], _name(et.get("name")) or et["label_id"],
-                           et.get("color"), et.get("icon")))
-
-            for ca in registries.get("categorie", []):
-                # `ambito` lo mette leggi_registri: Home Assistant partiziona le
-                # categorie per ambito e non lo riporta nelle righe, quindi due
-                # categorie omonime in ambiti diversi sarebbero indistinguibili.
-                # `ambito` a stringa vuota e mai NULL: e' meta' della chiave
-                # primaria, e in SQLite NULL non e' uguale a NULL -- due righe
-                # con ambito nullo non sarebbero considerate doppie.
-                c.execute("INSERT INTO categorie (id, nome, ambito) VALUES (?,?,?)",
-                          (ca["category_id"], _name(ca.get("name")) or ca["category_id"],
-                           ca.get("ambito") or ""))
-
-            for i in registries.get("integrazioni", []):
-                # `reason` -- il MOTIVO per cui un'integrazione non e' partita
-                # -- arrivava dentro la stessa risposta e si buttava. E' la
-                # risposta a «perche' la telecamera del giardino non risponde?»,
-                # che HIRIS poteva solo non sapere.
-                # `source` -- COME la voce e' nata -- e' il secondo discriminante,
-                # e si buttava come si buttava `reason`. Non descrive un guasto:
-                # descrive una decisione. `source: "ignore"` significa che il
-                # proprietario ha usato «ignora» sulla scoperta di quella
-                # integrazione, e Home Assistant lo documenta cosi': «users will
-                # have the option to ignore the discovery of your config entry,
-                # so they won't be bothered about it anymore»
-                # (developers.home-assistant.io/docs/config_entries_config_flow_handler/).
-                # Non passa dal sanificatore, e per la stessa ragione di `stato`:
-                # e' un vocabolario chiuso di Home Assistant, non testo libero --
-                # e a differenza di `stato` non finisce nemmeno nel testo che il
-                # modello legge, serve solo a filtrare.
-                c.execute("INSERT INTO integrazioni "
-                          "(entry_id, dominio, titolo, stato, motivo, origine) "
-                          "VALUES (?,?,?,?,?,?)",
-                          # `entry_id` -- la CHIAVE che a questa tabella mancava:
-                          # dieci lampadine LIFX sono dieci righe con lo stesso
-                          # `dominio` e `titolo` diversi, e senza `entry_id` non
-                          # si puo' dire QUALE LIFX e' rotta. E' lo stesso campo
-                          # gia' letto altrove su questa stessa risposta
-                          # (`mind/watcher.py`, `config_entries/get`).
-                          (i.get("entry_id"), i.get("domain", ""), _name(i.get("title")),
-                           i.get("state"),
-                           _reason(i.get("reason") or i.get("error_reason_translation_key")),
-                           i.get("source")))
-
-            c.execute("INSERT OR REPLACE INTO meta (chiave, valore) VALUES ('aggiornata_il', ?)",
-                      (datetime.now(UTC).isoformat(timespec="seconds"),))
-            c.execute("INSERT OR REPLACE INTO meta (chiave, valore) "
-                      "VALUES ('non_disponibili', ?)", (_list(list(unavailable or [])),))
-            if reference_frame:
-                c.execute("INSERT OR REPLACE INTO meta (chiave, valore) "
-                          "VALUES ('sistema_di_riferimento', ?)",
-                          (json.dumps(reference_frame, ensure_ascii=False),))
-            c.commit()
-        except Exception:
-            c.rollback()
-            raise
-
-    def updated_at(self) -> str | None:
-        row = self._conn.execute(
-            "SELECT valore FROM meta WHERE chiave = 'aggiornata_il'").fetchone()
-        return row["valore"] if row else None
 
     def reference_frame(self) -> dict:
         """Il sistema di riferimento della casa: `{fuso, valuta, lingua,
@@ -474,17 +129,31 @@ class HomeSpaceStore:
             return {}
         return value if isinstance(value, dict) else {}
 
-    def unavailable(self) -> list[str]:
-        """I registri che non avevano risposto all'ultima ricostruzione."""
-        row = self._conn.execute(
-            "SELECT valore FROM meta WHERE chiave = 'non_disponibili'").fetchone()
-        if not row:
-            return []
-        try:
-            value = json.loads(row["valore"])
-        except (TypeError, ValueError):
-            return []
-        return value if isinstance(value, list) else []
+    def remember_reference_frame(self, frame: dict | None) -> None:
+        """Scrive il sistema di riferimento, e **solo quello**.
+
+        E' l'unica cosa dell'anagrafe che sopravvive ai riavvii da quando la
+        casa si legge dal vivo (`reader.HomeSpace`), e non e' un'eccezione
+        arbitraria: il fuso non e' una copia di un fatto di Home Assistant, e'
+        **la cornice in cui e' scritto il nostro archivio**. I 22 giorni di
+        grezzo sono istanti; senza il fuso non si sanno nemmeno dividere in
+        giorni, e la riparazione d'avvio -- che gira prima che HA abbia
+        risposto -- attribuirebbe gli episodi notturni al giorno sbagliato.
+        Misurato: e' il difetto per cui esiste
+        `test_mind_wiring.py::test_le_due_porte_sullo_stesso_grezzo_producono_
+        gli_stessi_oggetti`.
+
+        Vuoto o assente NON cancella quello di prima: il fuso di ieri e'
+        ancora il fuso giusto, e un riferimento cancellato farebbe leggere
+        ogni temperatura senza sapere in che scala.
+        """
+        if not frame:
+            return
+        self._conn.execute(
+            "INSERT OR REPLACE INTO meta (chiave, valore) "
+            "VALUES ('sistema_di_riferimento', ?)",
+            (json.dumps(frame, ensure_ascii=False),))
+        self._conn.commit()
 
     def replace_behavior(self, entries: list[dict], problems: list[str] | None = None,
                                   unloaded_files: dict[str, str] | None = None) -> None:
@@ -687,30 +356,3 @@ class HomeSpaceStore:
             entries.append(v)
         return entries
 
-    def read(self) -> dict[str, list[dict]]:
-        """L'anagrafe intera, con le liste JSON gia' sciolte."""
-        home_space: dict[str, list[dict]] = {}
-        for table in _TABLES:
-            rows = self._conn.execute(f"SELECT * FROM {table}").fetchall()
-            home_space[table] = [self._unpack(dict(r)) for r in rows]
-        return home_space
-
-    @staticmethod
-    def _unpack(row: dict) -> dict:
-        for field in ("alias", "etichette"):
-            if field in row:
-                try:
-                    row[field] = json.loads(row[field])
-                except (TypeError, ValueError):
-                    row[field] = []
-        # `categorie` e' un DIZIONARIO ambito -> category_id, non una lista:
-        # ripiegare su `[]` come sopra darebbe a chi legge una forma che il
-        # campo non ha mai (`.items()` su una lista solleva), e il ripiego
-        # deve avere la stessa forma del valore buono.
-        if "categorie" in row:
-            try:
-                unpacked = json.loads(row["categorie"])
-            except (TypeError, ValueError):
-                unpacked = None
-            row["categorie"] = unpacked if isinstance(unpacked, dict) else {}
-        return row

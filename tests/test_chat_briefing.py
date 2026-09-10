@@ -54,7 +54,7 @@ from hiris.app.action.actuator import ActionActuator
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import _TS_FMT, _get_store, close_all_stores
 from hiris.app.claude_runner import ClaudeRunner
-from hiris.app.home_space.store import HomeSpaceStore
+from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.memory.store import MemoryStore
 from hiris.app.server import create_app
@@ -122,9 +122,9 @@ async def _build_chat_client(aiohttp_client, tmp_path, *, archivio_casa=None,
     return client, mock_runner
 
 
-def _semina_casa(tmp_path) -> HomeSpaceStore:
-    archivio = HomeSpaceStore(str(tmp_path / "casa.db"))
-    archivio.replace({
+def _semina_casa(tmp_path) -> HomeSpace:
+    archivio = HomeSpace(str(tmp_path / "casa.db"))
+    archivio.hold_registries({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
         "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],
         "dispositivi": [],

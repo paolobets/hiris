@@ -32,6 +32,12 @@ from ..proxy._sanitize import sanitize_ha_free_text, sanitize_ha_value
 from .store import HomeSpaceStore
 from .topology import actual_class, actual_unit
 
+#: Le sette tabelle che l'anagrafe espone, sempre tutte e sette. Chi legge ci
+#: conta -- `hierarchy()` cerca `dispositivi` per risolvere le aree ereditate --
+#: e una chiave mancante non e' una lista vuota: e' un `KeyError`.
+TABLES = ("piani", "aree", "dispositivi", "entita", "etichette", "categorie",
+          "integrazioni")
+
 
 def clean_name(value):
     """Un nome/alias/titolo destinato all'anagrafe, sanificato al confine.
@@ -264,7 +270,13 @@ class HomeSpace:
         self._behavior = HomeSpaceStore(db_path)
         self._home_space: dict[str, list[dict]] = {}
         self._unavailable: list[str] = []
-        self._reference_frame: dict = {}
+        # **L'unica cosa dell'anagrafe che sopravvive ai riavvii**, e non e'
+        # un'eccezione arbitraria: il fuso e' la cornice in cui e' scritto il
+        # NOSTRO archivio, non una copia di un fatto di HA. La riparazione
+        # d'avvio gira prima che Home Assistant abbia risposto, e senza il fuso
+        # attribuirebbe gli episodi notturni al giorno sbagliato -- vedi
+        # `HomeSpaceStore.remember_reference_frame`.
+        self._reference_frame: dict = self._behavior.reference_frame()
         self._updated_at: str | None = None
 
     def hold(self, home_space: dict[str, list[dict]],
@@ -280,11 +292,26 @@ class HomeSpace:
         accanto ai dati perche' una casa senza piani e un registro dei piani
         caduto producono la stessa lista vuota.
         """
-        self._home_space = home_space
+        self._home_space = {table: list(home_space.get(table, ())) for table in TABLES}
         self._unavailable = list(unavailable or [])
         if reference_frame:
             self._reference_frame = reference_frame
+            self._behavior.remember_reference_frame(reference_frame)
         self._updated_at = datetime.now(UTC).isoformat(timespec="seconds")
+
+    def hold_registries(self, registries: dict[str, list[dict]],
+                        unavailable: list[str] | None = None,
+                        reference_frame: dict | None = None, *,
+                        live_classes: dict[str, str] | None = None,
+                        live_units: dict[str, str] | None = None) -> None:
+        """Costruisce l'anagrafe dai registri appena letti e la prende in
+        consegna. **E' l'unica porta**: la ricostruzione vera e ogni prova
+        passano di qui, quindi una finta non puo' seminare una casa che il
+        lettore non saprebbe produrre.
+        """
+        self.hold(build_home_space(registries, live_classes=live_classes,
+                                   live_units=live_units),
+                  unavailable, reference_frame)
 
     def read(self) -> dict[str, list[dict]]:
         """L'anagrafe intera. `{}` finche' nessuna lettura e' riuscita."""
