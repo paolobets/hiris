@@ -89,20 +89,30 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 # proprietario il salto entra nel rilascio in preparazione (la 3.23.4),
 # deciso PRIMA che la suite girasse.
 #
-# **ATTENZIONE, e va letta prima di fidarsi del ripiego**: la 2.1.263 non e'
-# mai stata VISTA girare in questo container. Dal riavvio del 08/09
-# `GET /api/health` risponde `ponte: null` -- «non ancora visto», che non e'
-# «assente»: nessun turno di chat e' passato da allora. Quindi il passo 4 di
-# questa annotazione e' in sospeso da DUE salti, ed e' il motivo per cui il
-# ripiego qui sotto nomina la 2.1.260 e non la 2.1.263.
+# **La 2.1.263 E' STATA VISTA, e la nota qui sopra e' saldata.** L'annotazione
+# precedente diceva «non e' mai stata VISTA girare in questo container»: era
+# vera quando fu scritta e ha smesso di esserlo il **09/09/2026 alle 18:02**,
+# quando `GET /api/health` sull'add-on 3.23.2 ha risposto
+# `ponte.cli: "2.1.263"` (con `apiKeySource: "none"`, cioe' abbonamento).
+# Riletta il 10/09/2026: il passo 4 non e' piu' in sospeso da due salti, ne
+# resta in sospeso uno solo.
 #
-# Se la 2.1.266 desse problemi si torna alla **2.1.260**: e' l'ultima versione
-# di cui esista una lettura vera (`ponte.cli` il 07/09/2026), ha girato su
-# questa casa per due rilasci, ed e' uscita con la 3.22.0. La 2.1.263 sarebbe
-# piu' recente ma non e' mai stata confermata: un ripiego che non si e' mai
-# visto funzionare non e' un ripiego.
+# 10 settembre 2026 — alzata da 2.1.266 a 2.1.267 (un'uscita sola). Il cancello
+# l'aveva segnalata durante il rilascio della 3.24.0, che e' uscita con
+# `HIRIS_COMPONENTI_OK=1`; il proprietario ha poi deciso di alzarla **subito**,
+# dentro la 3.24.1, e non di rimandarla ancora. Decisa PRIMA che la suite
+# girasse, come chiede la regola.
+#
+# Resta da fare per la 2.1.266 e la 2.1.267, e vale la stessa riga: dopo il
+# rilascio, un turno e una GET.
+#
+# Se la 2.1.267 desse problemi si torna alla **2.1.263**: e' l'ultima versione
+# di cui esista una lettura vera dentro questo container (`ponte.cli` il
+# 09/09/2026), ed e' uscita con la 3.23.0. La 2.1.266 sarebbe piu' recente ma
+# non e' mai stata confermata: un ripiego che non si e' mai visto funzionare
+# non e' un ripiego.
 RUN apk add --no-cache nodejs npm libgcc libstdc++ ripgrep \
-    && npm install -g @anthropic-ai/claude-code@2.1.266 \
+    && npm install -g @anthropic-ai/claude-code@2.1.267 \
     && npm cache clean --force
 ENV USE_BUILTIN_RIPGREP=0
 

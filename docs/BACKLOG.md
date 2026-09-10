@@ -42,15 +42,19 @@ voci non sa dire se il lavoro procede.
 
 ## Scelti — sprint in corso
 
-### La CLI del ponte sale alla 2.1.267 — rimandata dalla v3.24.0
+### La CLI del ponte e' salita alla 2.1.267 — CHIUSA il 10/09/2026
 
-**Rimandata il 10/09/2026, per la regola del proprietario del 07/09.** Il cancello
-(`scripts/verifica_componenti.py`) ha segnalato `2.1.266 -> 2.1.267` a rilascio in corso: la
-v3.24.0 e' uscita con `HIRIS_COMPONENTI_OK=1`, **dichiarandolo qui**, e il salto entra nel
-rilascio successivo. Chi lo alza esegue `python scripts/verifica_componenti.py --aggiorna`, poi
-la suite intera, e segue la forma dell'annotazione che il `Dockerfile` gia' porta — data, uscite
-saltate, e il piano di ripiego.
+**Aperta e chiusa nello stesso giorno.** Il cancello
+(`scripts/verifica_componenti.py`) ha segnalato `2.1.266 -> 2.1.267` durante il rilascio della
+v3.24.0, che e' uscita con `HIRIS_COMPONENTI_OK=1`; questa voce diceva «entra nel rilascio
+successivo». Il proprietario ha poi deciso di alzarla **subito**, dentro la v3.24.1: pin,
+annotazione nel `Dockerfile` (data, uscite, piano di ripiego) e suite intera, nell'ordine che la
+regola chiede.
 
+**Resta il passo 4, e non e' formale**: dopo il rilascio, un turno di chat e un
+`GET /api/health` per leggere `ponte.cli` dentro il container. E' in sospeso per la 2.1.266 e
+per la 2.1.267. La 2.1.263 invece **e' stata letta** il 09/09/2026 alle 18:02 sull'add-on
+3.23.2, ed e' per questo che il ripiego dichiarato nel `Dockerfile` adesso nomina lei.
 
 **Lo sprint «la conoscenza prende una forma» è CHIUSO con la v3.22.0 (07/09/2026).** Sette
 delle sue dieci voci sono passate in «Usciti», ognuna col suo commit: la piattaforma
