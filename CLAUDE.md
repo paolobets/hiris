@@ -239,12 +239,13 @@ Verificala con `ls hiris/app/` — questa lista deriva dal codice, non da un pia
 hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
 └── app/
     ├── main.py           # factory aiohttp + run_app
-    ├── server.py         # 3.570 righe: registrazione rotte E gran parte del wiring
+    ├── server.py         # 4.340 righe: registrazione rotte E gran parte del wiring
     ├── claude_runner.py  # loop agentico Claude + orchestrazione tool
     ├── llm_router.py · chat_store.py · chat_settings.py · model_activation.py
     ├── config.py · storage.py · env_util.py · version.py
     ├── api/        (16 file) handlers_* — la superficie HTTP
-    ├── casa/       (8)       anagrafe, archivio, comportamento, nucleo, domande, strumenti
+    ├── casa/       (9)       lettore (l'anagrafe dal vivo), comportamento, nucleo,
+    │                         domande, strumenti — `casa.db` tiene solo comportamento e plance
     ├── azione/     (5)       porta.py — i SERVIZI, l'unica porta sul canale — verifica.py,
     │                         registro.py, cronaca.py; costruzione/ (4) — officina.py, l'unica
     │                         porta sul canale della CONFIGURAZIONE — composer.py, mestiere.py,
@@ -259,7 +260,7 @@ hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
 ```
 
 `server.py` era dichiarato «~1.900 righe» — già falso prima della fetta «l'osservatore» (2026-08-26),
-di più dopo. Misurato con `wc -l hiris/app/server.py` il 26 agosto: **3.570**. Verifica di nuovo
+di più dopo. Misurato con `wc -l hiris/app/server.py` il 10 settembre: **4.340**. Verifica di nuovo
 prima di fidartene: è un numero che invecchia da solo, non un fatto che questo file possa custodire.
 
 **Non esistono più** (li citano vecchi documenti e i commenti storici del codice):
@@ -287,8 +288,8 @@ sono uscite con le fette E2 ed E3.
 
 ### Test
 ```bash
-python -m pytest -q          # 2.413 test + 1 skip
-npm test                     # 242 test frontend: node --test + jsdom
+python -m pytest -q          # 3.806 test + 4 skip (misurato 10/09/2026)
+npm test                     # 389 test frontend: node --test + jsdom
 ```
 Il frontend ha **test comportamentali reali**, non solo `node --check`. Il `Dockerfile` copia solo
 `app/`, `config.yaml` e `run.sh`: `package.json` e `node_modules` **non** entrano nell'immagine.

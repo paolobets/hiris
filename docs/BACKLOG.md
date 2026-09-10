@@ -42,6 +42,16 @@ voci non sa dire se il lavoro procede.
 
 ## Scelti — sprint in corso
 
+### La CLI del ponte sale alla 2.1.267 — rimandata dalla v3.24.0
+
+**Rimandata il 10/09/2026, per la regola del proprietario del 07/09.** Il cancello
+(`scripts/verifica_componenti.py`) ha segnalato `2.1.266 -> 2.1.267` a rilascio in corso: la
+v3.24.0 e' uscita con `HIRIS_COMPONENTI_OK=1`, **dichiarandolo qui**, e il salto entra nel
+rilascio successivo. Chi lo alza esegue `python scripts/verifica_componenti.py --aggiorna`, poi
+la suite intera, e segue la forma dell'annotazione che il `Dockerfile` gia' porta — data, uscite
+saltate, e il piano di ripiego.
+
+
 **Lo sprint «la conoscenza prende una forma» è CHIUSO con la v3.22.0 (07/09/2026).** Sette
 delle sue dieci voci sono passate in «Usciti», ognuna col suo commit: la piattaforma
 cercabile, la salute di un'integrazione, il soggetto e la durata di un guasto, i calendari,
