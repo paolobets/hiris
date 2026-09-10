@@ -1,14 +1,26 @@
 import pytest
 
+from hiris.app.home_space.reader import build_home_space
 from hiris.app.memory.interpretation import VOCABULARY, validate
 from hiris.app.memory.resolver import costruisci_indice
 
-_HOME_SPACE = {
-    "aree": [{"id": "sala_pranzo", "nome": "Sala da pranzo", "alias": [], "piano_id": None}],
-    "entita": [{"id": "climate.sala", "nome": "Termostato", "alias": [],
-                "area_id": "sala_pranzo", "classe": "temperature", "unita": "°C"}],
-    "dispositivi": [], "piani": [], "etichette": [], "categorie": [], "integrazioni": [],
-}
+# L'anagrafe si costruisce col LETTORE VERO, dai registri come Home Assistant
+# li manda: `device_class` e `unit_of_measurement` **non sono nella riga del
+# registro** (`RegistryEntry.as_partial_dict` non li contiene -- misurato sulla
+# casa vera il 10/09/2026, assenti su 1.227 righe su 1.227), vivono nello
+# specchio dello stato.
+#
+# Scriverli a mano dentro l'anagrafe, come faceva questa finta fino al
+# 10/09/2026, nascondeva un difetto vivo: `deduci_unit` confronta
+# `entita["classe"]` con la grandezza, e in produzione quella colonna era
+# `None` su OGNI entita' di OGNI casa -- quindi il ramo «unita' da un'ancora di
+# area» **non trovava mai niente**, e nessuna prova poteva accorgersene.
+_HOME_SPACE = build_home_space(
+    {"aree": [{"area_id": "sala_pranzo", "name": "Sala da pranzo"}],
+     "entita": [{"entity_id": "climate.sala", "device_id": None,
+                 "area_id": "sala_pranzo", "original_name": "Termostato"}]},
+    live_classes={"climate.sala": "temperature"},
+    live_units={"climate.sala": "°C"})
 
 
 @pytest.fixture

@@ -16,12 +16,28 @@ G = "2026-08-24"
 
 
 def _casa(tmp_path, *, entita, dispositivi):
-    """Un `HomeSpaceStore` reale, seminato coi registri GREZZI (chiavi
-    inglesi, come li manderebbe `HAClient.read_registries()`): fedele al
-    contratto vero di `HomeSpaceStore.replace`, non una finta a parte."""
+    """Una `HomeSpace` reale, seminata come la semina Home Assistant.
+
+    **`device_class` NON viaggia nella riga del registro, e questo aiutante lo
+    sposta dove sta davvero.** `config/entity_registry/list` risponde con
+    `RegistryEntry.as_partial_dict`, che quel campo non ce l'ha -- misurato
+    sulla casa vera il 10/09/2026: assente su 1.227 righe su 1.227. La classe
+    vive **solo** nello specchio dello stato.
+
+    Non e' un dettaglio di comodo: fino al 10/09/2026 queste prove scrivevano
+    `device_class` dentro la riga di registro, e per quello **non potevano
+    fallire** mentre in produzione `build_balances` non trovava un solo
+    candidato e il bilancio dell'energia restava a zero -- cinque giorni su
+    cinque, senza una riga di log. Le prove dichiarano la classe come prima;
+    e' qui che prende la strada giusta.
+    """
+    live_classes = {e["entity_id"]: e["device_class"] for e in entita
+                    if e.get("device_class")}
+    registri = [{k: v for k, v in e.items() if k != "device_class"} for e in entita]
     a = HomeSpace(str(tmp_path / "casa.db"))
-    a.hold_registries({"dispositivi": dispositivi, "entita": entita}, [],
-                 reference_frame={"fuso": "Europe/Rome"})
+    a.hold_registries({"dispositivi": dispositivi, "entita": registri}, [],
+                      reference_frame={"fuso": "Europe/Rome"},
+                      live_classes=live_classes)
     return a
 
 
