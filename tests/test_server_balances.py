@@ -34,7 +34,7 @@ def _casa(tmp_path, *, entita, dispositivi):
     live_classes = {e["entity_id"]: e["device_class"] for e in entita
                     if e.get("device_class")}
     registri = [{k: v for k, v in e.items() if k != "device_class"} for e in entita]
-    a = HomeSpace(str(tmp_path / "casa.db"))
+    a = HomeSpace(str(tmp_path))
     a.hold_registries({"dispositivi": dispositivi, "entita": registri}, [],
                       reference_frame={"fuso": "Europe/Rome"},
                       live_classes=live_classes)

@@ -926,7 +926,7 @@ def _estrai_blocco_riparazione_avvio() -> str:
     inizio)` solleva `ValueError` -- un rosso esplicito sull'estrazione
     stessa, non un'asserzione che potrebbe passare per la ragione sbagliata."""
     src = inspect.getsource(server._on_startup)
-    marcatore_inizio = 'home_space_store = HomeSpace(os.path.join(data_dir, "casa.db"))'
+    marcatore_inizio = 'home_space_store = HomeSpace(data_dir)'
     marcatore_fine = '"fallita (%s: %s)", type(exc).__name__, exc)'
     inizio = src.index(marcatore_inizio)
     # Dall'INIZIO DELLA RIGA, non dal marcatore: altrimenti la prima riga
@@ -1072,10 +1072,9 @@ def test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti(tmp_path)
     giorno_bersaglio_data = datetime.now(roma).date() - timedelta(days=2)
     giorno_bersaglio = giorno_bersaglio_data.strftime("%Y-%m-%d")
 
-    casa_db = str(tmp_path / "casa.db")
     osservazioni_db = str(tmp_path / "osservazioni.db")
 
-    seme = HomeSpace(casa_db)
+    seme = HomeSpace(str(tmp_path))
     seme.hold_registries({}, [], reference_frame={"fuso": "Europe/Rome"})
     seme.close()
 
@@ -1404,7 +1403,7 @@ def _casa_con_un_dispositivo(tmp_path, *, fuso="Europe/Rome"):
     registro (fedele al contratto vero, non una finta a parte)."""
     from hiris.app.home_space.reader import HomeSpace
 
-    casa = HomeSpace(str(tmp_path / "casa.db"))
+    casa = HomeSpace(str(tmp_path))
     casa.hold_registries(
         {"dispositivi": [{"id": "dev1", "name": "Inverter"}],
          "entita": [{"entity_id": "sensor.energia_prodotta_oggi",

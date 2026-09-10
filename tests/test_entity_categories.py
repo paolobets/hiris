@@ -73,7 +73,7 @@ _REGISTRI = {
 
 @pytest.fixture
 def casa(tmp_path):
-    a = HomeSpace(str(tmp_path / "casa.db"))
+    a = HomeSpace(str(tmp_path))
     a.hold_registries(_REGISTRI, [])
     letta = a.read()
     a.close()
@@ -264,40 +264,3 @@ def test_un_valore_storto_dal_registro_ripiega_su_un_dizionario():
     assert "categorie" not in view(letta, [], [], {}, "entita", voce["id"])
 
 
-def test_l_anagrafe_esce_dall_archivio_di_una_casa_gia_installata(tmp_path):
-    """Il percorso VERO dell'aggiornamento, non un archivio nuovo.
-
-    Le case gia' installate hanno le sette tabelle della copia dei registri e
-    una `user_version` vecchia. Toglierle dallo schema non le toglie da un file
-    che esiste gia': resterebbero li' a occupare spazio e a mentire a chi apre
-    il database -- una copia dell'anagrafe **ferma al giorno
-    dell'aggiornamento**, che e' la forma peggiore di doppione. La migrazione 8
-    le cancella.
-
-    Mutazione che la uccide: togliere `_migration_8_registries_out` da
-    `_MIGRATIONS` -- le tabelle restano, e l'assert le trova.
-    """
-    percorso = str(tmp_path / "installata.db")
-    vecchio = sqlite3.connect(percorso)
-    vecchio.executescript(
-        "CREATE TABLE entita (id TEXT PRIMARY KEY, nome TEXT);"
-        "CREATE TABLE aree (id TEXT PRIMARY KEY, nome TEXT);"
-        "CREATE TABLE piani (id TEXT PRIMARY KEY, nome TEXT);"
-        "CREATE TABLE dispositivi (id TEXT PRIMARY KEY, nome TEXT);"
-        "CREATE TABLE etichette (id TEXT PRIMARY KEY, nome TEXT);"
-        "CREATE TABLE categorie (id TEXT, nome TEXT, ambito TEXT);"
-        "CREATE TABLE integrazioni (entry_id TEXT, dominio TEXT);"
-        "CREATE TABLE comportamento (id TEXT PRIMARY KEY, tipo TEXT);"
-        "INSERT INTO entita (id, nome) VALUES ('light.vecchia', 'Vecchia');"
-        "PRAGMA user_version = 7;")
-    vecchio.commit()
-    vecchio.close()
-
-    casa = HomeSpace(percorso)
-    try:
-        rimaste = {r[0] for r in casa._behavior._conn.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'table'")}
-        assert rimaste == {"meta", "plance"}
-        assert casa._behavior._conn.execute("PRAGMA user_version").fetchone()[0] == 8
-    finally:
-        casa.close()

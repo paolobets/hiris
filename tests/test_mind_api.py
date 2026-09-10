@@ -2,7 +2,7 @@
 import pytest
 
 from hiris.app.api.handlers_mind import handle_facts, handle_watching
-from hiris.app.home_space.store import HomeSpaceStore
+from hiris.app.home_space.reader import HomeSpace
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.mind.watcher import Watcher
 from hiris.app.proxy.state_translations import StateTranslations
@@ -260,7 +260,7 @@ class _ArchivioConOggetto:
 
 
 assert_stessa_firma(StateTranslations.read, _FinteTraduzioni.read, nome="read")
-assert_stessa_firma(HomeSpaceStore.reference_frame, _FintaAnagrafe.reference_frame,
+assert_stessa_firma(HomeSpace.reference_frame, _FintaAnagrafe.reference_frame,
                     nome="reference_frame")
 assert_stessa_firma(ObservationsStore.facts, _ArchivioConOggetto.facts, nome="facts")
 

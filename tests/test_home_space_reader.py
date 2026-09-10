@@ -207,7 +207,7 @@ def test_l_anagrafe_tenuta_a_memoria_risponde_come_rispondeva_dal_disco(tmp_path
     Mutazione che la uccide: far tornare a `read()` un dizionario vuoto invece
     di quello tenuto.
     """
-    casa = HomeSpace(str(tmp_path / "casa.db"))
+    casa = HomeSpace(str(tmp_path))
     try:
         anagrafe = build_home_space(_REGISTRI_COMPLETI)
         casa.hold(anagrafe, ["etichette"], reference_frame={"fuso": "Europe/Rome"})
@@ -233,7 +233,7 @@ def test_prima_della_prima_lettura_la_casa_dice_di_non_esserci_non_di_essere_vuo
     Mutazione che la uccide: far nascere `HomeSpace` con una data di
     aggiornamento (es. l'istante della costruzione).
     """
-    casa = HomeSpace(str(tmp_path / "casa.db"))
+    casa = HomeSpace(str(tmp_path))
     try:
         assert casa.updated_at() is None
         assert casa.read() == {}
@@ -254,7 +254,7 @@ def test_la_casa_tenuta_ha_sempre_le_sette_tabelle(tmp_path):
     Mutazione che la uccide: in `hold`, tenere il dizionario cosi' com'e'
     arriva.
     """
-    casa = HomeSpace(str(tmp_path / "casa.db"))
+    casa = HomeSpace(str(tmp_path))
     try:
         casa.hold({"entita": [{"id": "light.cucina"}]})
 
@@ -325,7 +325,7 @@ _MOTIVO_LUNGO_LEGITTIMO = (
 
 @pytest.fixture
 def anagrafe(tmp_path):
-    a = HomeSpace(str(tmp_path / "casa.db"))
+    a = HomeSpace(str(tmp_path))
     yield a
     a.close()
 

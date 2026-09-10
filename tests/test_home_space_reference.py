@@ -57,7 +57,7 @@ async def _specchio(stati=()):
 
 @pytest.fixture
 def archivio(tmp_path):
-    a = HomeSpace(str(tmp_path / "casa.db"))
+    a = HomeSpace(str(tmp_path))
     yield a
     a.close()
 
@@ -356,7 +356,7 @@ async def test_le_unita_della_casa_non_diventano_l_unita_di_un_entita(tmp_path):
     Mutazione che la fa fallire: in `domande._con_nome_dedotto`, ripiegare
     sull'unita' della casa quando `unita_vive` non ne ha una.
     """
-    archivio = HomeSpace(str(tmp_path / "casa.db"))
+    archivio = HomeSpace(str(tmp_path))
     memoria = MemoryStore(str(tmp_path / "memoria.db"))
     try:
         archivio.hold_registries(

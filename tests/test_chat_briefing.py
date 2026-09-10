@@ -123,7 +123,7 @@ async def _build_chat_client(aiohttp_client, tmp_path, *, archivio_casa=None,
 
 
 def _semina_casa(tmp_path) -> HomeSpace:
-    archivio = HomeSpace(str(tmp_path / "casa.db"))
+    archivio = HomeSpace(str(tmp_path))
     archivio.hold_registries({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
         "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],

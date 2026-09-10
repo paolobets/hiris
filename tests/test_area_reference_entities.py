@@ -27,7 +27,7 @@ _REGISTRI = {
 
 
 def _casa(tmp_path):
-    a = HomeSpace(str(tmp_path / "casa.db"))
+    a = HomeSpace(str(tmp_path))
     try:
         a.hold_registries(_REGISTRI, [])
         return a.read()

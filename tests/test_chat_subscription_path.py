@@ -896,7 +896,7 @@ async def test_job_context_porta_il_nucleo_identico_al_ramo_sincrono(tmp_path):
     app, q, _runner, _impostazioni, data_dir = _make_app(
         tmp_path, ponte_attivo=True, with_queue=True)
 
-    archivio_casa = HomeSpace(str(tmp_path / "casa.db"))
+    archivio_casa = HomeSpace(str(tmp_path))
     archivio_casa.hold_registries({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
         "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],

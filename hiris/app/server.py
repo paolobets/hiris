@@ -2236,7 +2236,7 @@ async def _on_startup(app: web.Application) -> None:
     # Home Assistant non ancora pronto lascia l'anagrafe vuota con un avviso
     # nel log, non fa fallire l'add-on -- il primo evento di registro la
     # ricostruira' comunque.
-    home_space_store = HomeSpace(os.path.join(data_dir, "casa.db"))
+    home_space_store = HomeSpace(data_dir)
     app["home_space_store"] = home_space_store
 
     # **L'anagrafe si legge SUBITO, prima di chi la usa.** Da quando la casa

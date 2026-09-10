@@ -694,7 +694,6 @@ _SORVEGLIATI: tuple[tuple[str, str, frozenset], ...] = (
     ("mind", "mind", frozenset()),
     ("action", "action", frozenset({Path("construction/composer.py")})),
     ("home_space/behavior.py", "home_space", frozenset()),
-    ("home_space/store.py", "home_space", frozenset()),
     ("home_space/historian.py", "home_space", frozenset()),
     ("home_space/topology.py", "home_space", frozenset()),
     ("home_space/queries.py", "home_space", frozenset()),

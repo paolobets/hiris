@@ -35,7 +35,7 @@ def _semina_casa(tmp_path, casa=_CASA, comportamento=_COMPORTAMENTO):
     dizionario che `read()` restituisce, e la finta smette di conoscere lo
     schema SQL di un archivio che non c'e' piu'.
     """
-    archivio = HomeSpace(str(tmp_path / "casa.db"))
+    archivio = HomeSpace(str(tmp_path))
     archivio.hold(casa, [], reference_frame={"fuso": "Europe/Rome"})
     if comportamento:
         archivio.hold_behavior(comportamento)

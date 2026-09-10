@@ -84,7 +84,7 @@ async def test_gli_alias_arrivano_fino_alla_ricerca(tmp_path):
     from hiris.app.home_space.reader import HomeSpace
     from hiris.app.memory.resolver import costruisci_indice
 
-    a = HomeSpace(str(tmp_path / "casa.db"))
+    a = HomeSpace(str(tmp_path))
     try:
         a.hold_registries({"entita": [
             {"entity_id": "light.salotto", "name": "Piantana",

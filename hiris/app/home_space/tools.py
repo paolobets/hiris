@@ -169,7 +169,7 @@ from .queries import related as _readable_links
 from .queries import sanitized_memories as _sanitized_memories
 from .queries import search as _search_candidates
 from .queries import view as _view_detail
-from .store import HomeSpaceStore
+from .reader import HomeSpace
 from .topology import live_mirror
 
 # I tipi di ancora che la memoria conosce, DERIVATI da
@@ -1539,7 +1539,7 @@ class ToolDispatcher:
     modello -- mai un'eccezione che gli spezza il turno.
     """
 
-    def __init__(self, home_space_store: HomeSpaceStore, memory_store: MemoryStore,
+    def __init__(self, home_space_store: HomeSpace, memory_store: MemoryStore,
                  cache=None, actuator=None, lookup_cache: LookupCache | None = None,
                  ha=None, registry=None, agenda=None, workshop=None,
                  exchange: str | None = None, journal=None,
@@ -1769,7 +1769,7 @@ class ToolDispatcher:
             return {"errore": "«search» richiede un «testo» non vuoto."}
         home_space = self._home_space.read()
         # T7 (R2): automazioni e script, dalla stessa fonte che alimenta
-        # `view` (`HomeSpaceStore.comportamento()`), non dall'anagrafe --
+        # `view` (`HomeSpace.behavior()`), non dall'anagrafe --
         # senza indicizzarli qui, nessuna sequenza di chiamate produceva mai
         # il loro id, e `view("automazione", ...)` restava irraggiungibile
         # per chi partiva da un nome. Letto eagerly come `casa`: `_search`
@@ -2184,7 +2184,7 @@ class ToolDispatcher:
             # PIGRA apposta (fix review indipendente, Task B7): la chiave
             # basta a decidere un colpo a segno SENZA leggere l'anagrafe --
             # su un hit questa funzione non viene mai chiamata, e la lettura
-            # SQL vera (+ json.loads per riga di `HomeSpaceStore.leggi()`) non
+            # SQL vera (+ json.loads per riga, quando l'anagrafe era su disco) non
             # si paga. A differenza di `_search`, dove `casa` serve comunque a
             # `_blind_spots()` piu' sotto e non c'e' niente da rimandare.
             return self._home_space.read() if topology_loaded else {}
@@ -2761,7 +2761,7 @@ class ToolDispatcher:
     def _timezone(self) -> str | None:
         """Il fuso della casa, dalla stessa fonte del nucleo.
 
-        `HomeSpaceStore.sistema_di_riferimento()` (`home_space/store.py`) e' l'UNICO
+        `HomeSpace.reference_frame()` (`home_space/reader.py`) e' l'UNICO
         accessore: rileggere `get_config` per conto proprio qui sarebbe un
         secondo posto che sa lo stesso fatto, e i due potrebbero divergere il
         giorno in cui uno dei due cambia. Senza `home_space_store` (i test che

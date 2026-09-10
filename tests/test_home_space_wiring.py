@@ -33,7 +33,7 @@ def _specchio_caricato():
 
 @pytest.fixture
 def archivio(tmp_path):
-    a = HomeSpace(str(tmp_path / "casa.db"))
+    a = HomeSpace(str(tmp_path))
     yield a
     a.close()
 

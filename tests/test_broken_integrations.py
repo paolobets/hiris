@@ -16,7 +16,7 @@ def _nucleo(integrazioni):
 
 
 def test_il_motivo_del_guasto_si_conserva(tmp_path):
-    a = HomeSpace(str(tmp_path / "casa.db"))
+    a = HomeSpace(str(tmp_path))
     try:
         a.hold_registries({"integrazioni": [
             {"domain": "reolink", "title": "Reolink", "state": "setup_retry",
@@ -215,7 +215,7 @@ def test_la_casa_vera_del_02_09_nove_voci_una_sola_rotta():
 def test_l_origine_si_conserva_nell_anagrafe(tmp_path):
     """Il filtro puo' esistere solo se il dato arriva: `source` si buttava
     esattamente come si buttava `reason` prima della fetta di agosto."""
-    a = HomeSpace(str(tmp_path / "casa.db"))
+    a = HomeSpace(str(tmp_path))
     try:
         a.hold_registries({"integrazioni": [
             {"domain": "fritz", "title": "Fritz-esterno", "state": "not_loaded",

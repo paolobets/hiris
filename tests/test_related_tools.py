@@ -23,7 +23,7 @@ import hashlib
 import pytest
 
 from hiris.app.home_space.queries import LINK_NAME, related, view
-from hiris.app.home_space.store import HomeSpaceStore
+from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.tools import ToolDispatcher
 from hiris.app.memory.store import MemoryStore
 from hiris.app.proxy.ha_client import HAClient
@@ -58,7 +58,7 @@ def memoria(tmp_path):
 
 @pytest.fixture
 def casa(tmp_path):
-    a = HomeSpaceStore(str(tmp_path / "casa.db"))
+    a = HomeSpace(str(tmp_path / "casa.db"))
     yield a
     a.close()
 
@@ -228,12 +228,13 @@ async def test_i_legami_non_finiscono_in_nessun_archivio(tmp_path, memoria):
     restare identico per un pezzo -- una scrittura vera sarebbe passata
     inosservata. E si guarda anche la cartella, cosi' nemmeno un archivio
     NUOVO nato di fianco puo' sfuggire."""
-    archivio = HomeSpaceStore(str(tmp_path / "casa.db"))
+    archivio = HomeSpace(str(tmp_path))
     try:
         def _impronta():
-            dump = "\n".join(archivio._conn.iterdump())
+            tenuto = (archivio.read(), archivio.behavior(), archivio.dashboards(),
+                      archivio.reference_frame(), archivio.unread_bodies())
             attorno = sorted((f.name, f.stat().st_size) for f in tmp_path.iterdir())
-            return hashlib.sha256(f"{dump}{attorno}".encode()).hexdigest()
+            return hashlib.sha256(f"{tenuto}{attorno}".encode()).hexdigest()
 
         prima = _impronta()
         ha = _ClienteLegami(default={"automation": ["automation.a"], "scene": ["scene.sera"]})

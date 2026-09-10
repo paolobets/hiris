@@ -58,7 +58,7 @@ _REGISTRI = {
 
 @pytest.fixture
 def casa(tmp_path):
-    a = HomeSpace(str(tmp_path / "casa.db"))
+    a = HomeSpace(str(tmp_path))
     a.hold_registries(_REGISTRI, [])
     letta = a.read()
     a.close()
@@ -217,7 +217,7 @@ async def test_correggere_un_ricordo_dalla_pagina_deduce_la_stessa_unita(
     from hiris.app.api.handlers_memory import handle_patch_memory
     from hiris.app.memory.store import MemoryStore
 
-    casa_archivio = HomeSpace(str(tmp_path / "casa.db"))
+    casa_archivio = HomeSpace(str(tmp_path))
     casa_archivio.hold_registries(_REGISTRI, [])
     memoria = MemoryStore(str(tmp_path / "memoria.db"))
     id_ricordo = memoria.remember(

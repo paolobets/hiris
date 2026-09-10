@@ -62,7 +62,7 @@ class _ClienteFinto:
 
 @pytest.fixture
 def casa(tmp_path):
-    a = HomeSpace(str(tmp_path / "casa.db"))
+    a = HomeSpace(str(tmp_path))
     yield a
     a.close()
 

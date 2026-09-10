@@ -29,8 +29,25 @@ panel_icon: mdi:home-automation
 panel_title: HIRIS
 startup: services
 init: false
+# La cartella di configurazione di Home Assistant, in SOLA LETTURA (dal
+# 10/09/2026). Fino a quel giorno era `config:rw`, e HIRIS poteva scrivere
+# nell'intera configurazione della casa: un permesso che non usava, perche' le
+# costruzioni passano dall'API di Home Assistant e non dal disco (`Non si
+# scrive mai automations.yaml in proprio`, CLAUDE.md).
+#
+# **La lettura resta per un file solo: `secrets.yaml`.** E' la dichiarazione
+# del proprietario su cosa sia segreto, nessuna API la espone, e senza di essa
+# i corpi delle automazioni non si archiviano -- Home Assistant li restituisce
+# col `!secret` GIA' RISOLTO (verificato sul sorgente di `annotatedyaml`), e
+# oscurarli al confine ha bisogno di sapere quali valori lo sono.
+#
+# `homeassistant_config` e non `config`: e' il nome dichiarativo del Supervisor
+# per la cartella di HA. `read_only` e' anche il suo predefinito, ed e' scritto
+# lo stesso -- un permesso che si legge nel manifest non si deve dedurre da un
+# default.
 map:
-  - config:rw
+  - type: homeassistant_config
+    read_only: true
 hassio_api: true
 homeassistant_api: true
 # v0.10.11: porta 8099 esponibile via HA UI per debug remoto (sviluppo,

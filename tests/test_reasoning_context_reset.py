@@ -207,7 +207,7 @@ async def test_un_ricordo_seminato_non_si_ritrova_piu_nel_file_dopo_la_risoluzio
     app["data_dir"] = data_dir
     app["bridge_active"] = True
 
-    archivio_casa = HomeSpace(str(tmp_path / "casa.db"))
+    archivio_casa = HomeSpace(str(tmp_path))
     archivio_casa.hold_registries({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
         "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],

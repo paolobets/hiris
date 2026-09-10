@@ -233,7 +233,7 @@ def _entities_in(config) -> list[str]:
     return sorted(found)
 
 
-async def reread_dashboards(client, store) -> dict:
+async def reread_dashboards(client, home_space) -> dict:
     """Rilegge le plance da HA (compresa la predefinita) e sostituisce.
 
     Se NESSUNA plancia risulta leggibile (`config` a `None` su tutte, o
@@ -269,8 +269,17 @@ async def reread_dashboards(client, store) -> dict:
             unavailable)
         return {"conteggi": {"plance": 0}, "non_disponibili": unavailable}
 
-    entries = [{**p, "entita": _entities_in(p.get("config"))} for p in dashboards]
-    store.replace_dashboards(entries, unavailable=unavailable)
+    # **La forma e' quella dell'anagrafe, non quella di Home Assistant.** Le
+    # chiavi inglesi (`url_path`, `title`, `mode`) sono il vocabolario del
+    # sistema esterno e si traducono al confine, come ogni altra cosa che entra:
+    # chi legge le plance -- la pagina, `view`, il nucleo -- conosce
+    # `percorso`/`titolo`/`modalita` da sempre, e una seconda forma sarebbe la
+    # stessa cosa detta in due modi (fondamenta 3).
+    entries = [{"percorso": p.get("url_path"), "titolo": p.get("title"),
+                "modalita": p.get("mode"), "config": p.get("config"),
+                "entita": _entities_in(p.get("config"))}
+               for p in dashboards]
+    home_space.hold_dashboards(entries, unavailable=unavailable)
     if unavailable:
         logger.info("plance: %d lette, %d non disponibili (%s)",
                     len(entries), len(unavailable), unavailable)

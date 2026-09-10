@@ -74,15 +74,6 @@ SERVICE_EVENTS = ("service_registered", "service_removed")
 # un'altra cosa — le plance hanno un proprio ascoltatore.
 DASHBOARD_EVENT = "lovelace_updated"
 
-# Deve restare identica a `_MAIN_DASHBOARD_KEY` in home_space/store.py: e'
-# la chiave sotto cui la predefinita finisce nell'archivio (percorso vero
-# `None` -> questa stringa li'). Duplicata invece di importata per non far
-# dipendere il client HA dallo storage — stesso principio per cui DASHBOARD_EVENT
-# e' referenziato per commento (mai importato) dall'altro verso in archivio.py.
-# leggi_plance() la usa per rifiutare una plancia vera il cui url_path collide
-# con la chiave sentinella, invece di lasciarla scontrarsi in scrittura.
-_MAIN_DASHBOARD_KEY = "__principale__"
-
 # L'evento che segna l'INIZIO delle azioni di un'automazione scattata (Task 4
 # di «le tracce e il log»). Verificato alla fonte sui tag RILASCIATI che
 # delimitano la finestra che `hiris/config.yaml:22` dichiara supportata
@@ -878,10 +869,6 @@ class HAClient:
         for d in listing:
             p = d.get("url_path")
             if p is None:
-                continue
-            if p == _MAIN_DASHBOARD_KEY:
-                unavailable.append(
-                    f"{p} (collide con la chiave della plancia predefinita, ignorata)")
                 continue
             if p in seen:
                 unavailable.append(f"{p} (duplicata nell'elenco, ignorata)")

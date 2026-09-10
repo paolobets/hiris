@@ -20,7 +20,7 @@ from hiris.app.api.handlers_usage import (
     handle_usage,
     handle_usage_history,
 )
-from hiris.app.home_space.store import HomeSpaceStore
+from hiris.app.home_space.reader import HomeSpace
 from hiris.app.usage.store import UsageStore
 from tests._contracts import assert_stessa_firma
 
@@ -52,10 +52,10 @@ class _ArchivioCasaFinto:
         return {"fuso": self._fuso}
 
 
-# Se `HomeSpaceStore.reference_frame` cambia firma, questa riga cade invece
+# Se `HomeSpace.reference_frame` cambia firma, questa riga cade invece
 # di lasciare che il finto imiti un contratto che non esiste piu' (fetta «la
 # rinomina», Task 8 -- la stessa classe di difetto gia' misurata nel Task 7).
-assert_stessa_firma(HomeSpaceStore.reference_frame, _ArchivioCasaFinto.reference_frame,
+assert_stessa_firma(HomeSpace.reference_frame, _ArchivioCasaFinto.reference_frame,
                      nome="reference_frame")
 
 

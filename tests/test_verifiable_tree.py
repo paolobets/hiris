@@ -382,7 +382,7 @@ class _ClienteFinto:
 
 
 def _archivio_con_una_casa(tmp_path, entita=(), aree=("cucina", "bagno", "sala")):
-    archivio = HomeSpace(str(tmp_path / "casa.db"))
+    archivio = HomeSpace(str(tmp_path))
     archivio.hold_registries({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
         "aree": [{"area_id": a, "name": a.capitalize(), "floor_id": "terra"}

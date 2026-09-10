@@ -26,10 +26,12 @@ punto del flusso, un posto solo.
 """
 from __future__ import annotations
 
+import json
+import logging
+import os
 from datetime import UTC, datetime
 
 from ..proxy._sanitize import sanitize_ha_free_text, sanitize_ha_value
-from .store import HomeSpaceStore
 from .topology import actual_class, actual_unit
 
 #: Le sette tabelle che l'anagrafe espone, sempre tutte e sette. Chi legge ci
@@ -37,6 +39,15 @@ from .topology import actual_class, actual_unit
 #: e una chiave mancante non e' una lista vuota: e' un `KeyError`.
 TABLES = ("piani", "aree", "dispositivi", "entita", "etichette", "categorie",
           "integrazioni")
+
+logger = logging.getLogger(__name__)
+
+#: Il sistema di riferimento della casa e' l'unica cosa che sopravvive ai
+#: riavvii, e sta in un file suo invece che in un archivio: e' un dizionario di
+#: sei campi che si scrive tutto insieme, e per quello SQLite era un motore
+#: acceso per niente. Il nome e' inglese perche' e' un file nuovo (regola del
+#: 04/09/2026); il suo contenuto parla la lingua dell'anagrafe, come sempre.
+REFERENCE_FRAME_FILE = "reference_frame.json"
 
 
 def clean_name(value):
@@ -266,8 +277,8 @@ class HomeSpace:
     file.
     """
 
-    def __init__(self, db_path: str = "/data/casa.db") -> None:
-        self._behavior = HomeSpaceStore(db_path)
+    def __init__(self, data_dir: str = "/data") -> None:
+        self._frame_path = os.path.join(data_dir, REFERENCE_FRAME_FILE)
         self._home_space: dict[str, list[dict]] = {}
         self._unavailable: list[str] = []
         # **L'unica cosa dell'anagrafe che sopravvive ai riavvii**, e non e'
@@ -276,12 +287,52 @@ class HomeSpace:
         # d'avvio gira prima che Home Assistant abbia risposto, e senza il fuso
         # attribuirebbe gli episodi notturni al giorno sbagliato -- vedi
         # `HomeSpaceStore.remember_reference_frame`.
-        self._reference_frame: dict = self._behavior.reference_frame()
+        self._reference_frame: dict = self._read_reference_frame()
         self._updated_at: str | None = None
         self._behavior_entries: list[dict] = []
         self._behavior_problems: list[str] = []
         self._unread_bodies: dict[str, str] = {}
         self._behavior_loaded_at: str | None = None
+        self._dashboard_entries: list[dict] = []
+        self._unavailable_dashboards: list[str] = []
+        self._dashboards_loaded_at: str | None = None
+
+    def _read_reference_frame(self) -> dict:
+        """La cornice, dal file suo. `{}` se non c'e' o non si legge: chi legge
+        deve poter fare `.get("fuso")` senza sapere prima se c'e' mai stata una
+        lettura, e il «non lo so» si dichiara con la chiave che manca."""
+        try:
+            with open(self._frame_path, encoding="utf-8") as f:
+                value = json.load(f)
+        except FileNotFoundError:
+            return {}
+        except Exception as error:
+            logger.warning("sistema di riferimento non letto (%s: %s)",
+                           type(error).__name__, error)
+            return {}
+        return value if isinstance(value, dict) else {}
+
+    def _write_reference_frame(self, frame: dict) -> None:
+        """Scrive la cornice, e **solo quella**.
+
+        E' l'unica cosa dell'anagrafe che sopravvive ai riavvii, e non e'
+        un'eccezione arbitraria: il fuso non e' la copia di un fatto di Home
+        Assistant, e' **la cornice in cui e' scritto il nostro archivio**. I
+        22 giorni di grezzo sono istanti; senza il fuso non si sanno nemmeno
+        dividere in giorni.
+
+        Si scrive di fianco e si sposta: un riavvio a meta' scrittura
+        lascerebbe altrimenti un file troncato, e un fuso illeggibile e' peggio
+        di un fuso vecchio.
+        """
+        temporary = self._frame_path + ".tmp"
+        try:
+            with open(temporary, "w", encoding="utf-8") as f:
+                json.dump(frame, f, ensure_ascii=False)
+            os.replace(temporary, self._frame_path)
+        except Exception as error:
+            logger.warning("sistema di riferimento non scritto (%s: %s)",
+                           type(error).__name__, error)
 
     def hold(self, home_space: dict[str, list[dict]],
              unavailable: list[str] | None = None,
@@ -300,7 +351,7 @@ class HomeSpace:
         self._unavailable = list(unavailable or [])
         if reference_frame:
             self._reference_frame = reference_frame
-            self._behavior.remember_reference_frame(reference_frame)
+            self._write_reference_frame(reference_frame)
         self._updated_at = datetime.now(UTC).isoformat(timespec="seconds")
 
     def hold_registries(self, registries: dict[str, list[dict]],
@@ -329,9 +380,6 @@ class HomeSpace:
 
     def unavailable(self) -> list[str]:
         return list(self._unavailable)
-
-    def close(self) -> None:
-        self._behavior.close()
 
     # -- Il comportamento: tenuto a memoria come l'anagrafe, dal 10/09/2026.
     def hold_behavior(self, entries: list[dict], *, problems: list[str] | None = None,
@@ -373,14 +421,26 @@ class HomeSpace:
         """
         return dict(self._unread_bodies)
 
-    def replace_dashboards(self, *args, **kwargs):
-        return self._behavior.replace_dashboards(*args, **kwargs)
+    # -- Le plance: gia' lette dal vivo (`behavior.reread_dashboards`), da
+    # oggi anche tenute a memoria come l'anagrafe e il comportamento.
+    def hold_dashboards(self, entries: list[dict],
+                        unavailable: list[str] | None = None) -> None:
+        self._dashboard_entries = list(entries)
+        self._unavailable_dashboards = list(unavailable or [])
+        self._dashboards_loaded_at = datetime.now(UTC).isoformat(timespec="seconds")
 
-    def dashboards(self):
-        return self._behavior.dashboards()
+    def dashboards(self) -> list[dict]:
+        return self._dashboard_entries
 
-    def dashboards_loaded_at(self):
-        return self._behavior.dashboards_loaded_at()
+    def dashboards_loaded_at(self) -> str | None:
+        return self._dashboards_loaded_at
 
-    def unavailable_dashboards(self):
-        return self._behavior.unavailable_dashboards()
+    def unavailable_dashboards(self) -> list[str]:
+        return list(self._unavailable_dashboards)
+
+    def close(self) -> None:
+        """Non c'e' piu' niente da chiudere: l'anagrafe, il comportamento e le
+        plance vivono in memoria, e la cornice e' un file che si apre e si
+        chiude a ogni scrittura. Il metodo resta perche' i suoi chiamanti sono
+        decine e non hanno nessuna ragione di sapere che l'archivio sotto non
+        c'e' piu'."""

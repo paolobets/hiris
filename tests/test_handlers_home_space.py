@@ -29,12 +29,12 @@ class _CacheFinta:
 
 @pytest.mark.asyncio
 async def test_api_casa_restituisce_la_gerarchia(aiohttp_client, tmp_path):
-    archivio = HomeSpace(str(tmp_path / "casa.db"))
+    archivio = HomeSpace(str(tmp_path))
     archivio.hold_registries({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
         "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],
         "dispositivi": [], "entita": [], "etichette": [], "categorie": [],
-        "integrazioni": [{"domain": "mqtt", "title": "MQTT", "state": "loaded"}],
+        "integrazioni": [{"domain": "mqtt", "titolo": "MQTT", "state": "loaded"}],
     })
     app = web.Application()
     app["home_space_store"] = archivio
@@ -78,7 +78,7 @@ async def test_api_casa_senza_anagrafe_risponde_lo_stesso(aiohttp_client):
 
 @pytest.mark.asyncio
 async def test_api_casa_mostra_il_comportamento_e_quanto_non_sa(aiohttp_client, tmp_path):
-    archivio = HomeSpace(str(tmp_path / "casa.db"))
+    archivio = HomeSpace(str(tmp_path))
     archivio.hold_behavior(
         [
             {"id": "automation.sveglia", "tipo": "automazione", "nome": "Sveglia",
@@ -119,11 +119,11 @@ async def test_api_casa_mostra_il_comportamento_e_quanto_non_sa(aiohttp_client, 
 
 @pytest.mark.asyncio
 async def test_api_casa_mostra_le_plance_compresa_la_predefinita(aiohttp_client, tmp_path):
-    archivio = HomeSpace(str(tmp_path / "casa.db"))
-    archivio.replace_dashboards([
-        {"url_path": None, "title": "Principale", "mode": "storage",
+    archivio = HomeSpace(str(tmp_path))
+    archivio.hold_dashboards([
+        {"percorso": None, "titolo": "Principale", "modalita": "storage",
          "config": {"views": []}, "entita": ["light.cucina"]},
-        {"url_path": "cucina", "title": "Cucina", "mode": "storage",
+        {"percorso": "cucina", "titolo": "Cucina", "modalita": "storage",
          "config": None, "entita": []},
     ])
     app = web.Application()
@@ -155,7 +155,7 @@ async def test_api_casa_mostra_le_plance_compresa_la_predefinita(aiohttp_client,
 async def test_api_nucleo_mostra_il_testo_e_il_riepilogo(aiohttp_client, tmp_path):
     """`/api/briefing` mostra il testo ESATTO che il modello ha davanti, e il
     riepilogo (caratteri, troncato, ricordi esclusi) e' coerente col testo."""
-    archivio_casa = HomeSpace(str(tmp_path / "casa.db"))
+    archivio_casa = HomeSpace(str(tmp_path))
     archivio_casa.hold_registries({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
         "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],
@@ -217,7 +217,7 @@ async def test_api_nucleo_propaga_i_registri_non_disponibili(aiohttp_client, tmp
     dire "Senza area", un'affermazione che non abbiamo il diritto di fare)
     sia nel riepilogo -- mai inghiottito da un modulo che lo riceve e non
     lo passa oltre."""
-    archivio_casa = HomeSpace(str(tmp_path / "casa.db"))
+    archivio_casa = HomeSpace(str(tmp_path))
     archivio_casa.hold_registries({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
         "aree": [], "dispositivi": [],
@@ -250,7 +250,7 @@ async def test_api_nucleo_non_tronca_i_ricordi_al_default_di_richiama(aiohttp_cl
     casa con 180 ricordi invisibili. Qui si verifica che TUTTI i ricordi
     arrivino a `compose()` (usando `count()`), lasciando al taglio -- che
     dichiara sempre -- decidere cosa non entra."""
-    archivio_casa = HomeSpace(str(tmp_path / "casa.db"))
+    archivio_casa = HomeSpace(str(tmp_path))
     archivio_casa.hold_registries({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
         "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],
@@ -295,7 +295,7 @@ async def test_api_nucleo_riceve_i_problemi_e_i_corpi_non_letti_del_comportament
     conosce il corpo: l'avviso dice quante sono, non quali file mancano. E non
     c'e' piu' un caso da escludere -- un corpo non letto nasconde sempre cio'
     che quell'automazione fa."""
-    archivio_casa = HomeSpace(str(tmp_path / "casa.db"))
+    archivio_casa = HomeSpace(str(tmp_path))
     archivio_casa.hold_registries({
         "piani": [{"floor_id": "terra", "name": "Piano terra", "level": 0}],
         "aree": [{"area_id": "cucina", "name": "Cucina", "floor_id": "terra"}],
@@ -333,7 +333,7 @@ async def test_api_casa_manda_i_NOMI_delle_etichette(aiohttp_client, tmp_path):
     Esce la MAPPA, una volta, non il nome ripetuto su ogni entita' etichettata:
     li' e' lo stesso fatto scritto mille volte.
     """
-    casa = HomeSpace(str(tmp_path / "casa.db"))
+    casa = HomeSpace(str(tmp_path))
     casa.hold_registries({
         "aree": [{"area_id": "cucina", "name": "Cucina", "labels": ["da_controllare"]}],
         "etichette": [{"label_id": "da_controllare", "name": "Da controllare"}],
@@ -367,7 +367,7 @@ async def test_api_casa_manda_i_nomi_delle_categorie_per_AMBITO(aiohttp_client, 
     questa porta -- la stessa categoria usciva col nome dallo strumento e con
     l'id grezzo dalla pagina.
     """
-    casa = HomeSpace(str(tmp_path / "casa.db"))
+    casa = HomeSpace(str(tmp_path))
     casa.hold_registries({
         "aree": [], "entita": [],
         "categorie": [
