@@ -1168,6 +1168,16 @@ un solo `device_class`** (`power`), indistinguibili dal consumo di una presa.
 
 Tutto il resto — misure, decisioni gi'a prese, domande in pausa, sospesi — sta nel documento.
 
+**AGGIORNAMENTO 10/09/2026 — il disegno e' cambiato, la spec e'
+`docs/design/2026-09-10-i-tre-attori.md`.** Misurando sulla casa vera e' emerso che **il problema non
+e' il riconoscimento**: Home Assistant dichiara gia' quasi tutto (100% delle entita' ha un
+`unique_id`, 64% un `translation_key`, il 99% dei dispositivi il produttore), e il difetto e' che
+`casa.db` ne conserva una **copia impoverita** che butta `translation_key`, `unique_id`,
+`original_name` e il dispositivo come oggetto. Di conseguenza: il catalogatore **non sopravvive come
+attore** (restano due attori e una lettura), **gambe e pavimento escono**, e nascono il **registro
+delle operazioni**, le **ricette** e il **resoconto giornaliero**. Il documento del 09/09 resta
+valido come cronaca di come ci si e' arrivati; **la specifica e' quella del 10/09**.
+
 ---
 
 ## Usciti
