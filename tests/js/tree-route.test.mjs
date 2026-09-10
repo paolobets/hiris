@@ -363,3 +363,48 @@ test('wiring: la rotta #/tree e lo script sono registrati nella SPA', () => {
   assert.ok(mainJs.includes('HirisTreeRoute.mount()'),
     'la rotta registrata deve montare HirisTreeRoute');
 });
+
+/* `translation_key` (fetta «il comportamento dal vivo», 10/09/2026): e' cio'
+   che l'INTEGRAZIONE dichiara di se' su quell'entita' -- `energy_generating_
+   today`, `battery_soc`, `carbon_monoxide` -- ed e' il campo su cui si regge
+   lo sprint: e' quello che permette di capire che «Potenza autoconsumata» e'
+   la produzione fotovoltaica e non il consumo di una presa.
+
+   Fino a questa fetta l'anagrafe lo buttava via. Misurato sulla casa vera:
+   presente su 526 delle 804 entita' visibili nell'albero. */
+
+test('il translation_key sta su una riga sua, non impastato coi dettagli tecnici', async () => {
+  const { document } = await rendi({
+    anagrafe_letta_il: '2026-09-10T17:00:00+00:00', non_disponibili: [], etichette: {},
+    piani: [{ id: 'terra', nome: 'Terra', aree: [{ id: 'cucina', nome: 'Cucina', entita: [
+      { id: 'sensor.solare', nome: 'Energia prodotta', piattaforma: 'zcsazzurro',
+        classe: 'energy', unita: 'kWh', translation_key: 'energy_generating_today' },
+    ] }] }],
+  });
+  const righe = [...document.querySelectorAll('#route-outlet li')]
+    .map((li) => [...li.querySelectorAll('div')].map((d) => d.textContent));
+  const [dettagli] = righe.filter((r) => r.some((t) => t.includes('classe energy')));
+
+  /* La riga a «·» raccoglie fatti di classificazione -- vocabolari chiusi,
+     valori brevi. `translation_key` e' l'autodichiarazione semantica
+     dell'integrazione: un genere diverso, e fino a 37 caratteri misurati.
+     Impastarli sarebbe due cose diverse dette con lo stesso trattamento. */
+  const riga = dettagli.find((t) => t.includes('classe energy'));
+  assert.doesNotMatch(riga, /energy_generating_today/,
+    'la chiave non va dentro la riga dei dettagli separati da «·»');
+  assert.ok(dettagli.some((t) => t.includes('translation_key energy_generating_today')),
+    'la chiave sta su una riga sua, con la sua etichetta non tradotta');
+});
+
+test('dove il translation_key non c’è, la riga non compare affatto', async () => {
+  const { testo } = await rendi({
+    anagrafe_letta_il: '2026-09-10T17:00:00+00:00', non_disponibili: [], etichette: {},
+    piani: [{ id: 'terra', nome: 'Terra', aree: [{ id: 'cucina', nome: 'Cucina', entita: [
+      { id: 'light.lampadario', nome: 'Lampadario', piattaforma: 'ave_domina' },
+    ] }] }],
+  });
+  /* Su 331 entita' di questa casa il campo non c'e'. Un «translation_key: —»
+     su ognuna sarebbe rumore che copre le 526 che dicono qualcosa: si tace,
+     come gia' fanno alias ed etichette. */
+  assert.doesNotMatch(testo, /translation_key/);
+});

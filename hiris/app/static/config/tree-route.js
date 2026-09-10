@@ -264,6 +264,39 @@ window.HirisTreeRoute = (function () {
       li.appendChild(n);
     }
 
+    /* `translation_key` su una riga SUA, e non dentro la riga a «·» qui
+       sotto. Quella riga raccoglie fatti di CLASSIFICAZIONE -- piattaforma,
+       categoria, classe, unita': vocabolari chiusi, valori di poche lettere,
+       che dicono COME l'entita' e' cablata. Questo e' un fatto di genere
+       diverso: e' l'AUTODICHIARAZIONE dell'integrazione, cosa l'entita' E'.
+       Impastarli sarebbe due cose diverse col medesimo trattamento visivo --
+       e ci sono due tell pratici: fino a 37 caratteri misurati contro i 5-8
+       degli altri (spezzerebbe il ritmo della riga), ed e' l'unico valore che
+       varia vistosamente in lunghezza da un'entita' all'altra.
+
+       Sta SOTTO l'id e SOPRA alias/etichette: lo dichiara il fornitore (Home
+       Assistant), con lo stesso peso d'autorita' dell'id -- gli alias e le
+       etichette invece li scrive il proprietario.
+
+       Monospazio come l'id, e per la stessa ragione: dice con la forma, non
+       con una spiegazione, che e' un nome tecnico e non un giudizio.
+
+       **Nome non tradotto**: e' un identificatore nativo di Home Assistant, e
+       il suo VALORE resta inglese comunque (`energy_generating_today`).
+       Vestirlo di italiano lo farebbe sembrare contenuto leggibile.
+
+       E dove non c'e', **non si scrive niente**: su questa casa manca su 331
+       entita' su 1.229, e un «translation_key: —» ripetuto trecento volte
+       coprirebbe le 898 che dicono qualcosa. E' la legge che questa pagina
+       gia' applica ad alias ed etichette. */
+    if (e.translation_key) {
+      var tk = el('div', null, 'translation_key ' + e.translation_key);
+      tk.style.cssText = 'font-size:var(--fs-12);color:var(--text-3);'
+        + 'font-family:var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace);'
+        + 'overflow-wrap:anywhere';
+      li.appendChild(tk);
+    }
+
     var details = [];
     if (e.piattaforma) details.push('piattaforma ' + e.piattaforma);
     if (e.categoria) details.push('categoria ' + e.categoria);

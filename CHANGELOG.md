@@ -1,5 +1,64 @@
 # HIRIS — Changelog
 
+## [3.25.0] — Il comportamento dal vivo, e `casa.db` sparisce (2026-09-10)
+
+**HIRIS leggeva le automazioni da due file, e lo dichiarava come un limite
+proprio**: *«le automazioni scritte a mano non stanno in `automations.yaml` —
+vivono nei pacchetti o in cartelle incluse — e di quelle HIRIS conosce il nome e
+non il corpo»*. Da questa versione il corpo lo chiede a Home Assistant, che lo
+restituisce **qualunque sia la sua origine**. Misurato su questa casa: venti
+automazioni e script, letti in **66 millisecondi**.
+
+Con quella lettura se ne va l'ultima ragione per cui esisteva `casa.db`: **non
+c'e' piu' nessuna copia della casa su disco.** Restano in memoria l'anagrafe, il
+comportamento e le plance — che si rileggono da Home Assistant quando serve — e
+sopravvive un file solo, il sistema di riferimento (fuso, valuta, lingua): non e'
+la copia di un fatto di Home Assistant, e' la cornice in cui e' scritto
+l'archivio delle osservazioni.
+
+### I segreti non escono in chiaro
+
+Il lettore di file non risolveva `!secret`: al suo posto scriveva un segnaposto.
+Home Assistant invece lo risolve, e il valore vero sarebbe arrivato fino
+all'archivio e al contesto del modello. Adesso lo oscura HIRIS, **al confine**,
+con lo stesso segnaposto di prima — e sa quali valori siano segreti perche' lo
+legge da `secrets.yaml`, dove l'hai dichiarato tu, invece di indovinarlo dai nomi
+delle chiavi. Se quel file non si legge, i corpi **non si archiviano** e HIRIS
+lo dice.
+
+### L'add-on non puo' piu' scrivere nella configurazione di Home Assistant
+
+Aveva quel permesso e non lo usava: le automazioni le scrive attraverso l'API di
+Home Assistant, mai toccando i file. Ora la cartella e' montata in **sola
+lettura**, e serve per un file soltanto — `secrets.yaml`.
+
+### Added
+- **«Albero della casa» mostra il `translation_key`**, cioe' cio' che ogni
+  integrazione dichiara di se': `energy_generating_today`, `battery_soc`,
+  `carbon_monoxide`. E' il campo su cui si regge lo sprint -- e' quello che
+  permette di capire che «Potenza autoconsumata» e' la produzione fotovoltaica
+  e non il consumo di una presa -- e fino a ieri l'anagrafe lo buttava via. Su
+  questa casa ce l'hanno **526 delle 804 entita' visibili**; dove non c'e', la
+  riga non compare affatto.
+
+### Changed
+- «Di quale automazione non conosco il corpo» prende il posto di «quale file non
+  ho letto»: piu' preciso, e alla fonte giusta. Con il file se ne vanno i tre
+  valori di `origine` e le tre ragioni dei file non letti.
+- Un archivio rotto non toglie piu' la casa alla chat ne' al riassunto: non
+  dipendono piu' da un file che si puo' rompere.
+
+### Removed
+- `casa.db`, `home_space/store.py` e il lettore YAML dei file di configurazione.
+  Il vecchio `casa.db` resta sul disco delle installazioni esistenti: nessuno lo
+  legge piu', e si puo' cancellare a mano.
+
+### Cosa si perde, dichiarato
+- Un'automazione **scritta ma rotta**, che Home Assistant non ha caricato, prima
+  compariva come «scritta, non caricata». Adesso no: HIRIS conosce cio' che Home
+  Assistant ha caricato davvero, e quel guasto lo segnala Home Assistant per
+  conto suo.
+
 ## [3.24.1] — Il bilancio nasce davvero (2026-09-10)
 
 **La 3.24.0 ha riparato meta' di cio' che prometteva, e si e' visto solo eseguendola.** Gli otto
