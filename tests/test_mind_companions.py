@@ -136,6 +136,24 @@ class _ClienteLegami:
         self.direzioni_chieste = 0
         self.statistiche_chieste: list[tuple[list[str], str, str]] = []
 
+    # **Cresciuta il 10/09/2026** (fetta «il lettore»), stessa disciplina
+    # "una sola finta per `HAClient`": da quando l'anagrafe si legge dal vivo,
+    # la fetta d'avvio che i test eseguono per davvero passa da `rebuild()`, e
+    # `rebuild` chiede questi tre. Una casa minima ma VERA nella forma:
+    # `read_registries` torna `(registri, non_disponibili)` e le righe delle
+    # entita' NON portano `device_class` -- il registro non lo manda.
+    async def read_registries(self):
+        return ({"piani": [], "aree": [], "dispositivi": [],
+                 "entita": [], "etichette": [], "categorie": [],
+                 "integrazioni": []}, [])
+
+    async def get_config(self):
+        return {"time_zone": "Europe/Rome"}
+
+    def add_topology_listener(self, callback):
+        self.ascoltatori_topologia = getattr(self, "ascoltatori_topologia", [])
+        self.ascoltatori_topologia.append(callback)
+
     async def related(self, item_type, identifier):
         self.chiesti.append((item_type, identifier))
         if item_type not in HAClient.RELATED_ITEM_TYPES:

@@ -19,12 +19,14 @@ import logging
 import re
 import textwrap
 from datetime import UTC
+from unittest.mock import create_autospec
 
 from hiris.app import server
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.mind.store import READING_RETENTION_S
 from hiris.app.mind.watcher import Watcher
-from hiris.app.proxy.entity_cache import _to_minimal
+from hiris.app.proxy.entity_cache import EntityCache, _to_minimal
+from hiris.app.proxy.ha_client import HAClient
 from hiris.app.server import watch_system_conditions
 from tests._contracts import assert_stessa_firma
 from tests.test_mind_companions import _ClienteLegami
@@ -963,11 +965,25 @@ def test_la_riparazione_di_avvio_riceve_home_space_store_gia_costruito(tmp_path)
     ricevuto: dict = {}
 
     async def _spia(app, ha_client):
-        ricevuto["home_space_store"] = app.get("home_space_store")
+        casa = app.get("home_space_store")
+        ricevuto["home_space_store"] = casa
+        ricevuto["anagrafe"] = casa.read() if casa is not None else None
+
+    cliente = create_autospec(HAClient, instance=True)
+    cliente.read_registries.return_value = (
+        {"entita": [{"entity_id": "sensor.frigo", "device_id": "d1"}],
+         "dispositivi": [{"id": "d1", "name": "Frigo"}],
+         "piani": [], "aree": [], "etichette": [], "categorie": [], "integrazioni": []},
+        [])
+    cliente.get_config.return_value = {"time_zone": "Europe/Rome"}
+    specchio = EntityCache()
+    specchio._loaded = True
 
     namespace = {
         "os": os_reale, "data_dir": str(tmp_path), "HomeSpace": server.HomeSpace,
-        "app": {}, "ha_client": None,
+        "app": {}, "ha_client": cliente, "entity_cache": specchio,
+        "rebuild": server.rebuild,
+        "schedule_registry_rebuild": lambda *a, **k: (lambda *_: None),
         "reaggregate_last_two_days": _spia,
         "logger": logging.getLogger("test_riparazione_riceve_home_space_store"),
     }
@@ -980,6 +996,16 @@ def test_la_riparazione_di_avvio_riceve_home_space_store_gia_costruito(tmp_path)
         assert ricevuto.get("home_space_store") is not None
         assert isinstance(ricevuto["home_space_store"], server.HomeSpace)
         assert ricevuto["home_space_store"] is namespace["app"]["home_space_store"]
+        # **E l'anagrafe dev'essere gia' LETTA, non solo costruita.** Misurato
+        # dal vivo il 10/09/2026 sulla v3.24.0: la riparazione girava prima di
+        # `rebuild`, quindi leggeva una casa vuota -- e `build_balances`, che
+        # cerca le entita' con classe `energy`, non trovava un solo candidato.
+        # Risultato: i due giorni riparati all'avvio nascevano SENZA bilancio,
+        # e `replace_day` li sostituiva a quelli buoni della notte. Finche'
+        # l'anagrafe stava su disco il difetto non si vedeva: c'era la copia di
+        # ieri.
+        assert ricevuto["anagrafe"].get("entita"), (
+            "la riparazione ha ricevuto un'anagrafe vuota: gira prima di rebuild")
     finally:
         namespace["app"]["home_space_store"].close()
 
@@ -1005,14 +1031,17 @@ def test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti(tmp_path)
     punto, e `home_space_store` nasce dentro l'estratto, esattamente come nasce
     nel sorgente vero.
 
-    Il fuso arriva a `home_space_store` non da una chiamata di rete (il finto
-    `ha_client` non la sa fare), ma da cio' che e' gia' scritto su
-    `casa.db`: `reference_frame()` legge il fuso PERSISTITO dalle
-    sessioni precedenti, esattamente come lo leggerebbe un vero riavvio
-    dell'add-on (`casa.db` sopravvive ai riavvii). Il file si semina una
-    volta, PRIMA di eseguire l'estratto, con una `HomeSpace` separata che
-    viene chiusa subito dopo: l'estratto ne apre una sua, fresca, sullo
-    stesso percorso.
+    **Il fuso arriva per DUE strade, ed e' voluto.** L'estratto esegue ora
+    anche `rebuild()`, che lo legge dal finto `ha_client` -- la strada di
+    produzione dal 10/09/2026, da quando l'anagrafe non e' piu' replicata su
+    disco. E il file si semina lo stesso, prima, con una `HomeSpace` separata
+    chiusa subito dopo: il sistema di riferimento e' l'unica cosa
+    dell'anagrafe che sopravvive ai riavvii
+    (`HomeSpaceStore.remember_reference_frame`), ed e' cio' che tiene in piedi
+    la riparazione quando Home Assistant non risponde. Se una delle due strade
+    si rompesse, il fuso resterebbe `None` e l'episodio notturno tornerebbe a
+    finire nel giorno sbagliato -- che e' esattamente cio' che questo test
+    misura.
 
     **Provato eseguendo** (revisore, 26/08/2026, ripetuto qui): un
     riscaldamento acceso 00:30-01:30 ora di Roma (CEST, UTC+2 in agosto --
@@ -1083,6 +1112,8 @@ def test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti(tmp_path)
         namespace = {
             "os": os_reale, "data_dir": str(tmp_path), "HomeSpace": server.HomeSpace,
             "app": {"observations": archivio}, "ha_client": cliente,
+            "entity_cache": None, "rebuild": server.rebuild,
+            "schedule_registry_rebuild": server.schedule_registry_rebuild,
             "reaggregate_last_two_days": server.reaggregate_last_two_days,
             "logger": logging.getLogger("test_due_porte"),
         }

@@ -2267,6 +2267,23 @@ async def _on_startup(app: web.Application) -> None:
     home_space_store = HomeSpace(os.path.join(data_dir, "casa.db"))
     app["home_space_store"] = home_space_store
 
+    # **L'anagrafe si legge SUBITO, prima di chi la usa.** Da quando la casa
+    # non e' piu' replicata su disco, `read()` torna `{}` finche' una lettura
+    # non e' riuscita -- e la riparazione d'avvio, qui sotto, ne ha bisogno:
+    # `build_balances` cerca le entita' di classe `energy` per capire quali
+    # dispositivi hanno un bilancio, e su una casa vuota non ne trova
+    # nessuna. **Misurato dal vivo sulla v3.24.0**: i due giorni riparati
+    # all'avvio nascevano senza bilancio, e `replace_day` li sostituiva a
+    # quelli buoni della notte -- l'esatto impoverimento che l'asimmetria fra
+    # le due porte esiste per impedire. Finche' la copia stava su disco il
+    # difetto non si vedeva: la riparazione leggeva quella di ieri.
+    try:
+        await rebuild(ha_client, home_space_store, entity_cache)
+    except Exception as exc:
+        logger.warning("costruzione iniziale dell'anagrafe fallita: %s", exc)
+    ha_client.add_topology_listener(
+        schedule_registry_rebuild(ha_client, home_space_store, entity_cache))
+
     # La riparazione di avvio (task-5-fix-brief.md, punto 2b): riaggrega gli
     # ultimi due giorni pieni, COI comprimari (riparazione-impoverisce-brief.md)
     # -- vedi il docstring di `reaggregate_last_two_days` per il perche'
@@ -2318,9 +2335,11 @@ async def _on_startup(app: web.Application) -> None:
     # cache: `prime_state_translations` legge `(versione_ha, lingua)` dal
     # sistema di riferimento, che vive nell'anagrafe -- chiamarla piu' sopra,
     # dove `home_space_store` non esiste ancora, avrebbe letto una lingua vuota
-    # e non avrebbe letto niente. Il sistema di riferimento e' gia' su disco
-    # dalle sessioni precedenti (`casa.db` sopravvive ai riavvii), quindi non
-    # serve aspettare `rebuild()`.
+    # e non avrebbe letto niente. Qui `rebuild()` e' gia' passata; e anche
+    # quando non riesce, il sistema di riferimento e' l'unica cosa
+    # dell'anagrafe che resta su disco fra un riavvio e l'altro
+    # (`HomeSpaceStore.remember_reference_frame`, e il suo docstring dice
+    # perche' proprio quella).
     #
     # E **dopo** la riparazione d'avvio, non in mezzo: quel blocco e' eseguito
     # per davvero da una prova che ne estrae il sorgente
@@ -2338,12 +2357,6 @@ async def _on_startup(app: web.Application) -> None:
     app["usage"] = UsageStore(
         os.path.join(data_dir, "consumi.db"),
         read_timezone=lambda: _timezone_from_home_space_store(home_space_store))
-    try:
-        await rebuild(ha_client, home_space_store, entity_cache)
-    except Exception as exc:
-        logger.warning("costruzione iniziale dell'anagrafe fallita: %s", exc)
-    ha_client.add_topology_listener(
-        schedule_registry_rebuild(ha_client, home_space_store, entity_cache))
 
     # La verifica dell'albero: `hierarchy()` smette di essere un'affermazione
     # che nessuno controlla. Costruita QUI, subito dopo l'anagrafe, perche' e'
