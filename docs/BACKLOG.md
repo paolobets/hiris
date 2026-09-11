@@ -362,6 +362,65 @@ va corretto, in un posto solo.
 > del repository e da cio' che e' stato misurato sulla casa vera. La lista del proprietario va
 > reinserita da lui, e queste voci vanno lette come un fondo di magazzino, non come una sua scelta.
 
+### La persona e il suo telefono sono lo stesso fatto, scritto due volte
+
+`origine: misurato sulla casa vera l'11/09/2026, durante la verifica dal vivo della 3.26.0` · `nessun documento`
+
+**Il fatto, contato.** Sui 15 giorni con episodi di presenza (27/08 -> 10/09) l'osservatore ha
+prodotto **108 episodi** di genere `presenza`: **54 da `person.*` e 54 da `device_tracker.*`**. Le
+coppie con lo **stesso inizio e la stessa fine** sono **54 su 54 -- il 100%**. Lo scarto fra i due
+istanti ha mediana **0,000 s** e massimo **0,001 s**: e' lo stesso fatto scritto due volte, e quel
+millisecondo e' il momento in cui Home Assistant riscrive la persona dopo il suo tracciatore.
+
+Esempio vero del 10/09: `person.marta` 16:21:15 -> 17:13:57 «Fuori casa», e
+`device_tracker.iphone_di_marta` 16:21:15 -> 17:13:57 «Fuori casa».
+
+**Home Assistant lo dichiara, e non va dedotto da nessun nome.** `components/person/__init__.py`
+(HA `2026.9.1`, versione letta dalla casa vera) alle righe `632-652` mette su ogni entita' `person`
+l'attributo **`device_trackers`** -- l'elenco dei suoi tracciatori -- e **`source`**, quale di essi
+sta fornendo la posizione adesso. Alle righe `520-577` la persona **si iscrive** ai cambi di stato
+dei propri tracker e ne ricalcola il proprio: **il tracciatore e' l'ingresso, la persona e' il
+fatto.** Sulla casa vera l'attributo e' valorizzato su **2 entita' `person` su 2**
+(`person.marta` -> `["device_tracker.iphone_di_marta"]`; `person.paolo_bettinelli` ->
+`["device_tracker.iphone_bet", "device_tracker.ipad_mini"]`).
+
+Nei **registri** il legame non c'e': `person.marta` ha `device_id: null` e nessuna voce di
+dispositivo lo nomina. Vive solo negli attributi dello stato -- che e' esattamente la fonte
+dichiarativa di cui parla il corollario di `CLAUDE.md`: *quando HA ha una fonte dichiarativa, quella
+e' la risposta*.
+
+**Dove HIRIS lo perde, e il punto in cui fa piu' male.** `server.py::build_companions` interroga
+`search/related` con `item_type="entity"`. Chiesto su `person.marta`, Home Assistant **non**
+risponde il tracciatore (asimmetria verificata nel sorgente: `components/search/__init__.py:396-401`
+risolve «esiste anche come persona» solo quando `entry_point=False`). Ma chiesto **sul
+tracciatore**, HA risponde `{"person": ["person.marta"]}` (`:415-416`) -- **e HIRIS lo scarta**,
+perche' `_COMPANION_TYPES` elenca `entita`, `automazione`, `scena`, `script` e non `persona`. Il
+legame arriva, una volta, dal verso giusto, e viene buttato sulla soglia.
+
+Il grezzo non lo porta (`mind/watcher.py:248-260` conserva quattro attributi scelti a mano, e
+`device_trackers`/`source` non sono fra loro) e l'anagrafe nemmeno: nel payload di
+`GET /api/home-space` -- 649 KB -- le occorrenze di `device_trackers` sono **0**.
+
+**Perche' non basta lasciarlo allo scope.** Con lo scope attivo il doppione sparira'
+probabilmente da solo, ma **per la ragione sbagliata**: Home Assistant marca
+`device_tracker.iphone_di_marta` come `entity_category: diagnostic`, e le entita' di servizio
+restano fuori per decisione del proprietario del 10/09. Sparirebbe perche' «di servizio», non
+perche' HIRIS abbia capito che e' l'ingresso della persona -- e su una casa dove il tracciatore non
+fosse marcato cosi', tornerebbe intero.
+
+**Perche' non e' materia del sapere (§8) ne' delle ricette (§7).** Non e' una deduzione da
+archiviare: e' un attributo che HA mantiene, e copiarlo in una riga di sapere sarebbe la seconda
+fondamenta violata di nuovo. E le ricette raggruppano **per dispositivo**, mentre `person.marta`
+un dispositivo non ce l'ha.
+
+**La cosa piu' piccola che lo chiuderebbe**, da valutare quando la voce si sceglie: il lettore
+porta sulla riga `person` dell'anagrafe il campo `tracciatori`, letto da
+`attributes.device_trackers` dello specchio vivo -- **la stessa porta da cui arrivano gia' `classe`
+e `unita`** (`home_space/reader.py`, `topology.actual_class`/`actual_unit`) -- e
+`facts.aggregate_day` non fa protagonista di un episodio di `presenza` un `device_tracker` che
+compaia fra i tracciatori di una persona. Una fonte sola, risolta a ogni lettura e mai copiata;
+nessun archivio nuovo, nessuna chiamata di rete in piu', nessuna deduzione del modello.
+
 ### L'avviso sul gruppo misto arriva solo a chi GUARDA il gruppo
 
 `origine: la fetta dei gruppi, 09/09/2026` · `.superpowers/sdd/tipi-di-entita/fetta-gruppi-report.md` §8.4
