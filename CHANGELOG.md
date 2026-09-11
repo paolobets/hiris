@@ -1,5 +1,45 @@
 # HIRIS — Changelog
 
+## [3.28.0] — La campagna corre, e il freno guarda la versione (2026-09-11)
+
+**Due attriti visti dal vivo mentre la 3.27.1 girava**, e la domanda del
+proprietario che li ha fatti emergere: *«non si poteva ciclare sul primo turno
+invece di attendere dieci minuti per lotto?»*.
+
+### La casa intera in cinque minuti invece di quaranta
+
+HIRIS si chiede «e' ora di ripensare la casa?» ogni minuto invece che ogni
+dieci. Non e' la cadenza di riconsiderazione -- quella resta misurata sulla
+memoria di Home Assistant e sta sulle ore -- e' solo ogni quanto si pone la
+domanda, che costa due letture del suo archivio.
+
+Dieci minuti andavano bene finche' una riconsiderazione era un giro solo. Da
+quando e' una **campagna di quattro lotti**, quel passo la faceva durare
+quaranta minuti: e al primo avvio, con lo scope ancora vuoto, sono quaranta
+minuti in cui HIRIS non registra niente della casa. Adesso ne bastano cinque.
+Fuori da una campagna non cambia nulla -- e un'entita' installata stamattina
+smette di aspettare dieci minuti per essere vista.
+
+Ciclare tutti i lotti dentro un giro solo era l'altra strada, ed e' stata
+scartata: il ponte serve un turno per volta, e terrebbe la chat in coda per
+tutta la campagna invece di lasciarla passare fra un lotto e l'altro.
+
+### Riparare qualcosa non fa piu' aspettare la riparazione
+
+Il freno che rallenta i tentativi dopo un guasto adesso **conta solo i
+fallimenti della versione in esecuzione**. Oggi e' successo il contrario:
+quattro fallimenti della 3.27.0 hanno tenuto fermo l'osservatore per ottanta
+minuti dopo l'aggiornamento che li riparava. Un aggiornamento e' un fatto
+nuovo, e quei guasti riguardavano un altro programma.
+
+### Una stima corretta da una misura
+
+Cento entita' costano **15.852 token di risposta e due minuti di lavoro** --
+misurato alle 18:13 del giorno stesso, sul primo turno dell'osservatore
+arrivato in fondo su questa casa. Non i ~2.000 token che c'erano scritti: su
+381 entita' sarebbero stati ~60.000, cioe' non un turno lento ma un muro. Il
+lotto non e' prudenza: e' la condizione perche' la domanda abbia una risposta.
+
 ## [3.27.1] — La domanda si spezza, perche' la risposta non ci stava (2026-09-11)
 
 **La 3.27.0 ha portato l'osservatore sul Piano Claude Max, e li' ha trovato un
