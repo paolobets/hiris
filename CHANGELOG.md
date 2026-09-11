@@ -1,5 +1,78 @@
 # HIRIS — Changelog
 
+## [3.27.0] — L'osservatore chiede a chi risponde davvero (2026-09-11)
+
+**Su questa casa HIRIS ha smesso di osservare per quaranta minuti, e nessuna
+pagina lo diceva.** E' successo stamattina, alla prima verifica dal vivo della
+3.26.0: l'osservatore provava a ripensare la casa ogni dieci minuti e falliva
+ogni volta, perche' chiedeva a un modello a consumo mentre l'unico fornitore
+che su questa casa risponde — il **Piano Claude Max** — gli era irraggiungibile.
+Nel frattempo, siccome cio' che HIRIS registra e' esattamente cio' che
+l'osservatore ha deciso di guardare, **non veniva registrata una riga.** E la
+pagina dell'osservatore diceva soltanto: *«Non e' mai stata fatta»* — vero alla
+lettera, falso come racconto.
+
+### L'osservatore usa il piano che paghi
+
+Adesso l'osservatore si fa la **stessa domanda** che si fanno la chat e le
+promesse — *«chi risponde a questo turno?»* — e la fa alla stessa funzione. Se
+il piano e' acceso e puo' rispondere, il turno va li'; altrimenti scende alla
+catena dei provider a consumo, com'e' sempre stato.
+
+Non e' una funzione nuova: e' una regola che il prodotto si era gia' dato il 22
+agosto, quando lo stesso difetto era stato trovato sulle promesse. Allora era
+stato scritto che *«una terza porta che nascesse domani non potrebbe
+inventarsene una terza senza accorgersene»*. La terza porta e' nata il 10
+settembre — l'osservatore — e se n'era inventata una.
+
+**Un turno del piano non risponde subito**: la domanda parte, e la risposta
+viene raccolta al giro successivo. Nel frattempo HIRIS non ne accoda un
+secondo.
+
+### «Sta funzionando?» e' una domanda che adesso ha una risposta
+
+La pagina dell'osservatore guadagna una sesta parte, **I tentativi**: gli ultimi
+giri, riusciti o no, dal piu' recente. In una riga dice quale dei quattro casi
+sia — nessuno ci ha mai provato, sta aspettando una risposta, l'ultimo e'
+riuscito, oppure **sta fallendo da quaranta minuti** — e in quest'ultimo caso
+l'elenco si apre da solo, perche' un guasto in corso non si va a cercare.
+
+E' l'altra meta' della riparazione, e vale piu' della prima: la prima toglie
+*questo* guasto, la seconda fa in modo che il prossimo si veda il giorno stesso.
+Un tentativo fallito **non** conta come una riconsiderazione, quindi non fa
+scadere la cadenza come se la casa fosse stata ripensata davvero.
+
+### Un osservatore che fallisce non ti svuota il piano
+
+Se il modello non risponde, HIRIS **non riprova ogni dieci minuti per sempre**:
+aspetta, e l'attesa raddoppia a ogni fallimento di fila fino a un tetto di sei
+ore. Senza questo freno un guasto stabile avrebbe accodato fino a 144 turni al
+giorno, esaurendo da solo il tetto giornaliero del piano — e da li' in poi
+anche la chat sarebbe passata ai provider a pagamento, in silenzio.
+
+E quando un turno passa davvero dal forfait al consumo, **HIRIS lo dice**:
+finisce nel log e accanto al tentativo, dove lo leggi. Era gia' la regola per
+la chat; adesso vale anche qui.
+
+### Sotto il cofano
+
+- La coda del ragionamento serve una **terza specie** di turno (`scope`),
+  accanto a `chat` e `promessa`. Lo stesso macchinario, un contenuto diverso.
+- Il turno dell'osservatore **non riceve gli strumenti**: sulla catena non li
+  ha mai avuti, e sul ponte li stava per ricevere tutti — `execute` compreso,
+  cioe' la porta con cui HIRIS accende e spegne. Un osservatore che deve solo
+  giudicare non tocca la casa.
+- Il turno porta il **proprio contratto di risposta**: l'istruzione che il
+  ponte aggiunge a ogni chat vieta il JSON, e l'osservatore chiede esattamente
+  un array JSON.
+- L'archivio dell'osservatore ha una tabella nuova per i tentativi: si aggiunge
+  da sola sugli archivi che esistono gia', senza toccare cio' che c'e' dentro.
+- La misura della memoria di Home Assistant si paga quando la domanda parte e
+  viaggia insieme al turno fino alla risposta: non si rimisura e non si perde.
+- Un turno scaduto senza risposta lascia scritto che e' scaduto, invece di
+  restare «in attesa» per sempre.
+- Verificato dal vivo: la CLI del ponte nel container e' la **2.1.268**.
+
 ## [3.26.0] — HIRIS decide cosa guardare, e lo dice (2026-09-11)
 
 **Fino a ieri HIRIS guardava le cose per categoria.** Dentro c'era un elenco
