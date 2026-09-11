@@ -1,5 +1,47 @@
 # HIRIS — Changelog
 
+## [3.27.1] — La domanda si spezza, perche' la risposta non ci stava (2026-09-11)
+
+**La 3.27.0 ha portato l'osservatore sul Piano Claude Max, e li' ha trovato un
+muro.** Verificato dal vivo poche ore dopo il rilascio: chiedere in un turno
+solo il giudizio su 381 entita' significa chiedere ~30.000 caratteri di
+risposta, e la CLI del piano viene **uccisa dal tetto di cinque minuti** prima
+di finire. Due volte di fila, alle 15:44:12 esatte -- trecento secondi netti
+dopo la domanda. Nessun consumo addebitato, perche' il turno non arrivava mai
+in fondo.
+
+### Adesso l'osservatore chiede a lotti
+
+Cento entita' per volta invece di tutte insieme: circa un minuto di lavoro
+invece di piu' di cinque. **Una riconsiderazione diventa una campagna di piu'
+giri** -- quattro, su questa casa, in una quarantina di minuti -- e i giri
+successivi partono da soli, senza riaspettare la cadenza.
+
+Questo e' il punto che non si vede e conta: se ogni lotto contasse come una
+riconsiderazione, dopo il primo la cadenza risulterebbe soddisfatta e gli altri
+tre non partirebbero mai. Si rigiudicherebbe un quarto di casa ogni volta, e la
+casa intera in quattro cadenze -- **oltre i sette giorni di memoria di Home
+Assistant**, cioe' oltre la garanzia che la cadenza esiste per tenere.
+
+### Cio' che il modello non sa giudicare non resta in sospeso
+
+La domanda dice: *«un'entita' su cui davvero non sai decidere: omettila»*. Con
+i lotti quell'omissione diventa visibile, e se restasse muta la campagna non
+finirebbe mai -- l'osservatore richiederebbe al piano ogni dieci minuti, per
+sempre. Adesso si annota per quello che e': **guardata, e non giudicata**.
+Resta fuori, con la ragione scritta accanto, e la rimetti dentro dalla pagina
+con un gesto.
+
+### Sotto il cofano
+
+- Il lotto viaggia nella sveglia del turno: chi raccoglie la risposta minuti
+  dopo sa di che cosa era stata fatta la domanda, e puo' accorgersi di cosa
+  manca.
+- La riconsiderazione porta l'istante in cui la campagna e' **cominciata**, non
+  quello in cui il primo lotto e' tornato: col secondo, i giudizi appena
+  scritti risulterebbero «da rifare» e la campagna girerebbe sul primo lotto
+  per sempre.
+
 ## [3.27.0] — L'osservatore chiede a chi risponde davvero (2026-09-11)
 
 **Su questa casa HIRIS ha smesso di osservare per quaranta minuti, e nessuna
