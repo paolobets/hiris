@@ -70,7 +70,8 @@ VOCABOLARIO_FRONTEND: dict[str, str] = {}
 # tre cancelli sono andati rossi insieme (`node --check`, oxlint, la suite), il
 # che e' un buon segno, ma un'ora prima la stessa parola sarebbe passata in un
 # file che nessun test carica. La stessa classe era gia' costata un guasto nel
-# Python (`mind/baseline.py`, `class = _text(...)`, trovato solo da
+# Python (`mind/baseline.py` -- cancellato l'11/09/2026, il fatto storico
+# resta -- `class = _text(...)`, trovato solo da
 # `py_compile`): li' esiste `_pericoloso`, qui mancava.
 #
 # Due insiemi, e la distinzione conta. Le PAROLE RISERVATE non si possono usare

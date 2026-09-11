@@ -12,11 +12,11 @@ guardia -- vedi `archivio.READING_RETENTION_S`), uno preso in scrittura non
 si corregge piu'.
 
 **L'obiettivo sceglie QUALI entita', la natura decide CHE TIPO di oggetto ne
-esce.** La prima non e' una lista scritta a mano: il pavimento (`baseline.
+esce.** La prima non e' una lista scritta a mano: lo scope (`mind/watcher.py`, `store.is_watched`
 gamba`) deriva QUALI entita' da cio' che Home Assistant dichiara gia' --
 dominio, `device_class`, `source_type` (**non `state_class`**: correzione
 di parole della review, mandato «il bilancio dell'energia», punto 7,
-27/08/2026 -- dopo la correzione del 27/08, `baseline.aspect` non lo legge
+27/08/2026 -- dopo la correzione del 27/08, `type_vocabulary.aspect_of` non lo legge
 piu' per decidere nessuna gamba, vedi il suo docstring). **La seconda, invece,
 e' un giudizio nostro**: quali tipi «si accendono e si spengono», e quali loro
 stati valgono «a riposo», nessuna API di Home Assistant lo dice.
@@ -46,8 +46,12 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from ..home_space.historian import home_space_zone
-from ..home_space.type_vocabulary import is_operable, resting_states, unknown_states
-from .baseline import aspect
+from ..home_space.type_vocabulary import (
+    aspect_of,
+    is_operable,
+    resting_states,
+    unknown_states,
+)
 
 # `aggregate_day` e' SINCRONA: non fa nessuna lettura di rete. I comprimari
 # arrivano gia' risolti dal chiamante (vedi il Task 6), proprio perche' una
@@ -190,14 +194,14 @@ def _reading_aspect(subject: str, row: dict) -> str | None:
     presenza, tutto cio' che cambierebbe il giudizio) ma porta, da questa
     correzione, le tre classi che Home Assistant dichiara sull'entita' --
     `device_class`, `state_class`, `source_type` -- perche' sono grezzo per
-    definizione, non un giudizio nostro. **`baseline.aspect()` legge solo
+    definizione, non un giudizio nostro. **`type_vocabulary.aspect_of()` legge solo
     `device_class` e `source_type`** per decidere la gamba di `sensor` e
     `binary_sensor` (correzione di parole della review, mandato «il
     bilancio dell'energia», punto 7, 27/08/2026: prima di questa
     correzione questo docstring diceva che le leggeva tutte e tre --
     `state_class` NON e' fra i criteri, dalla correzione del 27/08 sul
     traffico di rete, vedi il docstring di `gamba`). Resta comunque nel
-    grezzo, non e' tolta dallo schema: e' `baseline.aspect()` che non la
+    grezzo, non e' tolta dallo schema: e' `type_vocabulary.aspect_of()` che non la
     legge, non `store.py` che smette di conservarla -- i 22 giorni di
     grezzo permettono di rifare il giudizio anche se un domani tornasse a
     servire.
@@ -211,7 +215,7 @@ def _reading_aspect(subject: str, row: dict) -> str | None:
     **`log:` e `automazione:` sono un terzo e un quarto prefisso senza
     gamba, non due volte lo stesso controllo.** Una voce del registro di
     errori (Task 2) o un'esecuzione di automazione in errore (Task 4) non
-    sono un'entita': cercarne la gamba con `baseline.aspect()` andrebbe a
+    sono un'entita': cercarne la gamba con `type_vocabulary.aspect_of()` andrebbe a
     leggere `subject` come se fosse un `entity_id` (`sensor.qualcosa`) che
     non e' -- per `automazione:automation.x` in particolare, spaccarlo su
     `"."` darebbe il dominio `"automazione:automation"`, che non e' un
@@ -222,7 +226,7 @@ def _reading_aspect(subject: str, row: dict) -> str | None:
     """
     if subject.startswith(NOT_ENTITY_PREFIXES):
         return None
-    return aspect(subject, {
+    return aspect_of(subject, {
         "device_class": row.get("device_class"),
         "state_class": row.get("state_class"),
         "source_type": row.get("source_type"),
@@ -615,11 +619,11 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     fra un mese non legge piu' nessuno.
 
     **Secondo debito, dichiarato il 26/08/2026, CHIUSO il 27/08/2026**
-    (mandato «le direzioni dell'energia» -- vedi `baseline.py::_ENERGIA`
+    (mandato «le direzioni dell'energia» -- vedi le righe `energia` del vocabolario dei tipi
     per la storia): il riepilogo qui sotto era lo STESSO per un contatore
     che PRODUCE e uno che PRELEVA, entrambi `device_class: energy`/`power`.
     La GAMBA resta "energia" (non si sdoppia: e' vera per tutti e 17 i
-    sensori dell'inverter, produzione compresa -- `baseline.py`), ma il
+    sensori dell'inverter, produzione compresa -- `home_space/type_vocabulary.py`), ma il
     CORPO di un episodio di energia ora porta `direzione`/`provenienza`
     quando `directions()`, sopra, le sa dire -- lette da `energy/get_prefs`
     (la dashboard Energia, dichiarata) e da `translation_key` (dedotta

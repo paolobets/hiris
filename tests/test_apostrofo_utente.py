@@ -77,8 +77,19 @@ fuori registro degli altri 31 file (stessa regex, fuori da `SORVEGLIATO`):
 sono log con segnaposto (`%s`/`%r`/`%d`), prompt di sistema, o `{"errore":
 ...}` che torna al modello attraverso `ToolDispatcher` -- **nessun'altra**
 raggiunge uno schermo. `mind/baseline.py` (`"chi c'e'"`, quattro occorrenze)
-resta fuori per la stessa ragione gia' scritta sopra: la pagina lo rende con
-`ASPECT_LABEL` (`watcher-route.js:136`, «Chi c'è»), mai verbatim.
+restava fuori perche' la pagina dell'osservatore lo rendeva con
+`ASPECT_LABEL` («Chi c'è»), mai verbatim.
+
+**Aggiornato l'11/09/2026, e la ragione e' cambiata due volte in un giorno.**
+`mind/baseline.py` e' stato cancellato col pavimento, e le quattro occorrenze
+di `"chi c'e'"` vivono adesso in `home_space/type_vocabulary.py`. E
+`ASPECT_LABEL` **non esiste piu'**: la pagina non raggruppa piu' per gamba --
+mostra cosa si guarda, perche' e chi l'ha deciso (`watcher-route.js`, sezione
+01). Quelle stringhe **non arrivano piu' su nessuno schermo**: sono il valore
+interno di una metrica del vocabolario dei tipi, che oggi legge solo
+`facts.genre_for`. Restano fuori da questa prova per una ragione piu' forte di
+prima, non per inerzia -- e quando la Fetta 5 rifondera' i sei generi
+usciranno del tutto.
 
 **Il limite dichiarato.** Questa lista e' stata costruita leggendo il
 codice l'8/09/2026, non derivata da un criterio che il codice esponga: non

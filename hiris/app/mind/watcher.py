@@ -16,9 +16,15 @@ import time
 
 from ..home_space.ha_vocabulary import config_entry_is_healthy
 from ..home_space.historian import instant_epoch
-from .baseline import aspect
 
 logger = logging.getLogger(__name__)
+
+#: Il perche' di cio' che non e' un'entita': un problema di Home Assistant,
+#: un'integrazione caduta, una voce del registro di errori, un'automazione in
+#: errore. Non e' una decisione dell'osservatore -- e' la natura della cosa --
+#: e sta scritto una volta perche' la pagina abbia una frase da mostrare
+#: accanto a quelle righe come ne ha una accanto alle entita'.
+_SYSTEM_REASON = "una condizione di sistema aperta si guarda finche' dura"
 
 # Quali condizioni di una voce di configurazione NON siano un guasto lo dice
 # `ha_vocabulary.config_entry_is_healthy`: e' vocabolario di Home Assistant
@@ -99,10 +105,6 @@ class Watcher:
     def __init__(self, store, *, now=time.time) -> None:
         self._store = store
         self._now = now
-        # Cosa sta guardando, e per quale gamba. Si riempie osservando: e'
-        # cio' che la pagina mostra, e non una lista dichiarata a mano che
-        # potrebbe divergere da cio' che succede davvero.
-        self._watched: dict[str, str] = {}
         # Le condizioni di sistema aperte all'ultimo giro. Serve a scrivere un
         # cambio quando NASCONO e quando FINISCONO, invece di riscriverle a
         # ogni passaggio del lavoro periodico. Vive solo in RAM: al riavvio
@@ -183,16 +185,25 @@ class Watcher:
                 return False
             attributes = new_state.get("attributes")
             attributes = attributes if isinstance(attributes, dict) else {}
-            which = aspect(eid, attributes)
-            if which is None:
+            # **Il cancello e' lo scope, non piu' il pavimento** (11/09/2026,
+            # spec 5.1). Fino a ieri qui si chiedeva al vocabolario dei tipi a
+            # quale gamba servisse l'entita': un giudizio scritto a mano una
+            # volta, uguale per ogni casa, che nessuno rivedeva mai. Adesso si
+            # chiede a cio' che l'osservatore ha DECISO per questa casa, con il
+            # perche' scritto accanto e la possibilita' di ricredersi alla
+            # cadenza di riconsiderazione (`mind/cadence.py`).
+            #
+            # **Chi non e' nello scope e' fuori**, che sia stato escluso o che
+            # nessuno l'abbia mai considerato: in nessuno dei due casi qualcuno
+            # ha deciso che pesa. Il contrario farebbe passare tutta la casa al
+            # primo avvio, quando lo scope e' ancora vuoto.
+            #
+            # Costa **24 us** a evento (misurato l'11/09 su uno scope di 833
+            # righe): una riga per chiave primaria, non un insieme da
+            # ricostruire -- vedi `store.is_watched`.
+            if not self._store.is_watched(str(eid)):
                 return False
             old_state = event.get("old_state")
-            # **Il soggetto si segna PRIMA di decidere se la riga vale.** Sta
-            # guardando questa cosa anche quando questo evento non dice
-            # niente: un termostato acceso da giorni non produce cambi di
-            # stato, e sparirebbe dalla pagina che dichiara cosa si osserva --
-            # cioe' proprio cio' che sta fermo.
-            self._watched[str(eid)] = which
             da = old_state.get("state") if isinstance(old_state, dict) else None
             a = new_state.get("state")
             # **Non si scrive una riga dove `da == a`.** Home Assistant emette
@@ -868,33 +879,43 @@ class Watcher:
     # -- la pagina -----------------------------------------------------
 
     def watching(self) -> list[dict]:
-        """Cosa sta guardando, e perche'.
+        """Cosa sta guardando, **perche'**, e **chi l'ha deciso**.
 
-        `provenienza` distingue cio' che e' nel **pavimento** (e non si toglie)
-        da cio' che l'**obiettivo** ha aggiunto (e si puo' togliere). Oggi tutto
-        e' pavimento: il prompt dell'obiettivo entra nella fetta successiva, e
-        la terza provenienza -- «me l'ha chiesto l'analista» -- con lui.
+        Sono le tre cose da cui il proprietario puo' togliere qualcosa
+        (spec 5.1 e 11, che non sono due pagine). `motivo` e' la ragione
+        scritta quando la decisione e' stata presa; `autore` dice se e' stato
+        l'osservatore, l'analista o il proprietario, ed e' cio' che rende la
+        decisione rivedibile invece che subita.
 
-        **Una fonte per famiglia, non una fonte sola per fatto.** Le entita'
-        vengono da `_watched`, le condizioni di sistema (`problema:`/
-        `integrazione:`/`log:`) da `_conditions`, le automazioni rotte
-        (`automazione:`) da `_automation_faults` -- **tre insiemi, dal Task
-        4**, non uno: `_automation_faults` e' separato apposta da
-        `_conditions` (vedi il commento in `__init__` e il docstring di
-        `watch_automation_outcome`), e un'automazione con un errore aperto
-        e' cosa sta guardando l'osservatore tanto quanto un'integrazione
-        rotta -- ometterla da questa pagina la renderebbe invisibile
-        proprio dove un lettore la cerca. Non si semina `_watched` con
-        nessuno dei due per rattoppare: sarebbe tenere in vita un doppione,
-        e due risposte alla stessa domanda divergono (dopo un riavvio un
-        guasto ricostruito sparirebbe da qui per sempre; all'opposto, una
-        condizione chiusa scritta anche qui non verrebbe mai tolta).
+        **Le entita' vengono dallo SCOPE, non da cio' che si e' visto
+        passare.** Fino all'11/09/2026 questo elenco si riempiva osservando, e
+        aveva un difetto che nessuno vedeva: un termostato acceso da giorni non
+        produce cambi di stato e spariva dalla pagina che dichiara cosa si
+        osserva -- cioe' proprio cio' che sta fermo. La decisione, invece, c'e'
+        da prima dell'evento. Tenere anche il vecchio elenco accanto sarebbe un
+        doppione che diverge alla prima entita' silenziosa.
+
+        **Una fonte per famiglia, non una fonte sola per fatto.** Le condizioni
+        di sistema (`problema:`/`integrazione:`/`log:`) vengono da
+        `_conditions`, le automazioni rotte (`automazione:`) da
+        `_automation_faults` -- separati apposta (vedi il commento in
+        `__init__` e il docstring di `watch_automation_outcome`), e
+        un'automazione con un errore aperto e' cosa sta guardando l'osservatore
+        tanto quanto un'integrazione rotta.
+
+        **Nessuna delle due famiglie di sistema passa dallo scope, e non e' una
+        dimenticanza**: non sono entita', l'osservatore non le ha mai giudicate,
+        e non c'e' niente da togliere -- una condizione aperta si guarda finche'
+        dura. Il loro `autore` e' `None`: dire «observer» attribuirebbe a
+        qualcuno una decisione che non ha preso.
         """
-        entity = ({"soggetto": s, "gamba": g, "provenienza": "pavimento"}
-                  for s, g in self._watched.items())
-        system = ({"soggetto": s, "gamba": "buono stato", "provenienza": "pavimento"}
-                   for s in self._conditions)
-        automation = ({"soggetto": s, "gamba": "buono stato", "provenienza": "pavimento"}
+        entity = ({"soggetto": s, "motivo": v["motivo"], "autore": v["autore"],
+                   "da_quando_ts": v["deciso_ts"]}
+                  for s, v in self._store.scope().items() if v["dentro"])
+        system = ({"soggetto": s, "motivo": _SYSTEM_REASON,
+                   "autore": None, "da_quando_ts": None}
+                  for s in self._conditions)
+        automation = ({"soggetto": s, "motivo": _SYSTEM_REASON,
+                       "autore": None, "da_quando_ts": None}
                       for s in self._automation_faults)
-        return sorted([*entity, *system, *automation],
-                      key=lambda o: (o["gamba"], o["soggetto"]))
+        return sorted([*entity, *system, *automation], key=lambda o: o["soggetto"])

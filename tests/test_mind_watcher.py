@@ -1,8 +1,16 @@
-"""L'osservatore al rubinetto: filtra col pavimento e annota, senza giudicare.
+"""L'osservatore al rubinetto: filtra con lo SCOPE e annota, senza giudicare.
 
 Il rubinetto e' lo STESSO che alimenta lo specchio delle entita'
 (`HAClient.add_state_listener`): non se ne apre un secondo, per la stessa
 ragione per cui non si apre un secondo canale verso Home Assistant.
+
+**Il filtro non e' piu' il pavimento** (11/09/2026, spec §5.1-5.2). Fino a
+ieri passava cio' che aveva una gamba -- un giudizio scritto a mano nel
+vocabolario dei tipi, uguale per ogni casa, che nessuno rivedeva mai. Adesso
+passa cio' che **l'osservatore ha deciso di guardare**, soggetto per soggetto,
+con il perche' scritto accanto e la possibilita' di ricredersi alla cadenza di
+riconsiderazione (`mind/cadence.py`). La garanzia non e' piu' «queste cose si
+guardano comunque», e' «si puo' cambiare idea finche' il grezzo e' ancora li'».
 """
 import pytest
 
@@ -21,12 +29,25 @@ class _FintoArchivio:
     che non puo' fallire, e non avrebbe potuto sorvegliare D1."""
 
     def __init__(self, cambi_esistenti=None, *, cambi_solleva=False,
-                 annota_solleva=False, annota_solleva_per=None):
+                 annota_solleva=False, annota_solleva_per=None, scope=None):
         self.annotati = []
+        # Cio' che l'osservatore ha deciso: `soggetto -> dentro`. La finta NON
+        # dice di si' a tutto -- il rubinetto E' un filtro, e una finta che
+        # passa qualunque cosa non potrebbe mai vederlo rotto. Chi non c'e' e'
+        # fuori, esattamente come nell'archivio vero.
+        self._scope = dict(scope or {})
         self._cambi = list(cambi_esistenti or [])
         self._cambi_solleva = cambi_solleva
         self._annota_solleva = annota_solleva
         self._annota_solleva_per = set(annota_solleva_per or [])
+
+    def is_watched(self, subject):
+        return bool(self._scope.get(subject))
+
+    def scope(self):
+        return {s: {"dentro": dentro, "motivo": f"motivo di {s}",
+                    "autore": "observer", "deciso_ts": 1787000000.0}
+                for s, dentro in self._scope.items()}
 
     def record(self, **kw):
         if self._annota_solleva or kw.get("subject") in self._annota_solleva_per:
@@ -59,13 +80,29 @@ def _cambio(ts, fonte, soggetto, da, a):
     return {"quando_ts": ts, "fonte": fonte, "soggetto": soggetto, "da": da, "a": a}
 
 
+#: Lo scope che quasi tutte le prove di questo file danno per deciso. Non e'
+#: un pavimento travestito: e' cio' che un osservatore avrebbe scelto su
+#: questa casa finta, e le prove che provano IL FILTRO lo dicono esplicito.
+_SCOPE_DECISO = {
+    "climate.camera_t": True,
+    "person.marta": True,
+    "binary_sensor.fumo_cucina": True,
+    "sensor.solare": True,
+    "climate.bagno_1p_t_bagno_1p_t": True,
+    "climate.senza_nome": True,
+    "climate.strana": True,
+    "light.lampadario": False,       # deciso, e lasciato fuori
+    "device_tracker.nvr": False,
+}
+
+
 @pytest.fixture()
 def coppia():
-    a = _FintoArchivio()
+    a = _FintoArchivio(scope=_SCOPE_DECISO)
     return a, Watcher(a, now=lambda: 1787572800.0)
 
 
-def test_una_cosa_del_pavimento_si_annota(coppia):
+def test_una_cosa_dentro_lo_scope_si_annota(coppia):
     archivio, osservatore = coppia
     assert osservatore.watch_reading(
         _evento("climate.camera_t", "off", "heat")) is True
@@ -122,19 +159,26 @@ def test_guarda_cambio_scrive_none_per_attributi_non_testuali(coppia):
     assert riga["source_type"] is None
 
 
-def test_una_cosa_fuori_dal_pavimento_NON_si_annota(coppia):
+def test_una_cosa_ESCLUSA_dallo_scope_NON_si_annota(coppia):
+    """L'osservatore ha guardato questo soggetto e ha deciso che non pesa. La
+    riga non si scrive: e' meta' della promessa del -83%."""
     archivio, osservatore = coppia
     assert osservatore.watch_reading(_evento("light.lampadario", "on", "off")) is False
     assert archivio.annotati == []
 
 
-def test_il_tracker_del_router_non_entra_dal_rubinetto(coppia):
-    """La misura del 26/08: e' la classe piu' numerosa fra quelle escluse, e
-    passa proprio da qui."""
-    _archivio, osservatore = coppia
+def test_un_soggetto_su_cui_NESSUNO_ha_deciso_non_entra(coppia):
+    """**Il default e' fuori, ed e' una cosa diversa dall'esclusione.** Al
+    primo avvio lo scope e' vuoto: se il rubinetto passasse cio' su cui nessuno
+    si e' pronunciato, passerebbe **tutta la casa** -- 833 entita' -- proprio
+    nel momento in cui l'osservatore non ha ancora parlato.
+
+    Mutazione che la uccide: far passare il soggetto sconosciuto.
+    """
+    archivio, osservatore = coppia
     assert osservatore.watch_reading(
-        _evento("device_tracker.nvr", "home", "not_home",
-                {"source_type": "router"})) is False
+        _evento("sensor.mai_considerato", "1", "2")) is False
+    assert archivio.annotati == []
 
 
 def test_l_istante_e_quello_del_CAMBIO_non_quello_della_scrittura(coppia):
@@ -356,16 +400,27 @@ def test_una_integrazione_in_unload_non_e_un_guasto(coppia):
 
 
 def test_osservate_dice_cosa_guarda_e_PERCHE(coppia):
-    """La pagina deve poter distinguere cio' che e' nel pavimento (e non si
-    toglie) da cio' che l'obiettivo ha aggiunto (e si toglie). Un elenco che
-    non li distingue non si puo' usare per decidere."""
+    """La pagina dice cosa si guarda, **perche'**, e **chi l'ha deciso**: sono
+    le tre cose da cui il proprietario puo' togliere qualcosa (spec §5.1/§11).
+    Il perche' viene dallo scope, non da un'etichetta di categoria.
+
+    **E non si aspetta un evento per comparire.** Prima l'elenco si riempiva
+    osservando: un termostato acceso da giorni non produce cambi, e spariva
+    dalla pagina che dichiara cosa si osserva -- cioe' proprio cio' che sta
+    fermo. Adesso la fonte e' la decisione, che c'e' da prima dell'evento.
+
+    Mutazione che la uccide: costruire l'elenco dai soggetti gia' visti.
+    """
     _archivio, osservatore = coppia
-    osservatore.watch_reading(_evento("climate.camera_t", "off", "heat"))
-    osservatore.watch_reading(_evento("person.marta", "home", "not_home"))
+
     v = {o["soggetto"]: o for o in osservatore.watching()}
-    assert v["climate.camera_t"]["gamba"] == "comfort"
-    assert v["climate.camera_t"]["provenienza"] == "pavimento"
-    assert v["person.marta"]["gamba"] == "chi c'e'"
+
+    assert v["climate.camera_t"]["motivo"] == "motivo di climate.camera_t"
+    assert v["climate.camera_t"]["autore"] == "observer"
+    assert v["climate.camera_t"]["da_quando_ts"] == 1787000000.0
+    assert "person.marta" in v
+    assert "light.lampadario" not in v      # deciso FUORI: non lo si guarda
+    assert "gamba" not in v["climate.camera_t"]
 
 
 # -- Correzione 5: `_watched` e `_conditions` sono UNA fonte sola per fatto ---
@@ -375,7 +430,7 @@ def test_osservate_mostra_una_condizione_dopo_guarda_sistema(coppia):
     p = [{"domain": "sonos", "issue_id": "subscriptions_failed", "severity": "error"}]
     osservatore.watch_system(problems=p, integrations=[], log_entries=[])
     v = {o["soggetto"]: o for o in osservatore.watching()}
-    assert v["problema:sonos.subscriptions_failed"]["gamba"] == "buono stato"
+    assert v["problema:sonos.subscriptions_failed"]["autore"] is None
 
 
 def test_osservate_non_mostra_piu_una_condizione_chiusa(coppia):
@@ -413,7 +468,7 @@ def test_osservate_include_una_condizione_ricostruita_al_riavvio():
     osservatore = Watcher(archivio, now=lambda: 1787572800.0)
     osservatore.rebuild_conditions()
     soggetti = {o["soggetto"]: o for o in osservatore.watching()}
-    assert soggetti["problema:sonos.subscriptions_failed"]["gamba"] == "buono stato"
+    assert soggetti["problema:sonos.subscriptions_failed"]["autore"] is None
 
 
 # -- Correzione 6: `watch_system` aggiorna la memoria in modo incrementale
@@ -1264,8 +1319,7 @@ def test_watching_shows_an_open_automation_fault(coppia):
     assert aperto is True
     soggetti = {o["soggetto"]: o for o in osservatore.watching()}
     assert "automazione:automation.rotta" in soggetti
-    assert soggetti["automazione:automation.rotta"]["gamba"] == "buono stato"
-    assert soggetti["automazione:automation.rotta"]["provenienza"] == "pavimento"
+    assert soggetti["automazione:automation.rotta"]["autore"] is None
 
 
 # -- Il nome amichevole: la quarta chiave dello STESSO dizionario -----------
@@ -1357,16 +1411,23 @@ def test_un_evento_di_solo_attributo_non_scrive_una_riga(coppia):
 
 
 def test_un_soggetto_che_cambia_solo_attributi_resta_fra_quelli_guardati(coppia):
-    """Il filtro toglie una RIGA, non un soggetto. Un termostato acceso da
-    giorni non produce cambi di stato, ma l'osservatore lo sta guardando
-    eccome -- e la pagina che dichiara cosa guarda deve dirlo, o sparirebbe
-    proprio cio' che sta fermo (ed e' il secondo innesco dell'analista:
-    «qualcosa e' stabile e costa»).
+    """Il filtro `da != a` toglie una RIGA, non un soggetto. Un termostato
+    acceso da giorni non produce cambi di stato, ma l'osservatore lo sta
+    guardando eccome -- e la pagina che dichiara cosa guarda deve dirlo, o
+    sparirebbe proprio cio' che sta fermo (ed e' il secondo innesco
+    dell'analista: «qualcosa e' stabile e costa»).
 
-    Mutazione che la uccide: mettere il filtro PRIMA di `self._watched[...]`.
+    **Dall'11/09/2026 la proprieta' e' strutturale, non piu' un ordine di
+    righe.** Prima dipendeva dal segnare il soggetto PRIMA del filtro dentro
+    `watch_reading`; adesso la pagina legge lo scope, e un soggetto deciso c'e'
+    anche se non e' mai passato un evento. Qui si guarda che le due cose
+    convivano: la riga non si scrive, il soggetto resta.
     """
-    _archivio, osservatore = coppia
-    osservatore.watch_reading(_evento("climate.camera_t", "heat", "heat",
-                                      {"hvac_action": "heating"}))
+    archivio, osservatore = coppia
 
-    assert [g["soggetto"] for g in osservatore.watching()] == ["climate.camera_t"]
+    assert osservatore.watch_reading(
+        _evento("climate.camera_t", "heat", "heat",
+                {"hvac_action": "heating"})) is False
+
+    assert archivio.annotati == []
+    assert "climate.camera_t" in {g["soggetto"] for g in osservatore.watching()}

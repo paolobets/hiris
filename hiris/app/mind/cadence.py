@@ -136,18 +136,80 @@ def cadence_from(window_s: float | None) -> float | None:
 
 
 def due(*, last_ts: float | None, cadence_s: float | None, now: float) -> bool:
-    """Se e' ora di riconsiderare tutta la casa.
+    """Se **la cadenza** e' scaduta. Una delle quattro cause, non la domanda
+    intera: quella la pone `reason_to_reconsider` qui sotto.
 
     Mai riconsiderato e' sempre «si'»: al primo avvio l'osservatore non ha
     ancora deciso niente, e senza scope non guarda nulla.
 
-    **Senza cadenza misurata si dice di no.** La domanda non ha risposta, e
-    delle due bugie possibili questa e' quella che si vede: dire di si'
-    farebbe rileggere l'intera casa al modello a ogni giro del lavoro
-    periodico, per sempre, senza che nessuno se ne accorga.
+    **Senza cadenza misurata si dice di no.** Questa domanda non ha risposta, e
+    delle due bugie possibili questa e' quella che si vede: dire di si' farebbe
+    rileggere l'intera casa al modello a ogni giro del lavoro periodico, per
+    sempre, senza che nessuno se ne accorga. Le altre tre cause restano in
+    piedi lo stesso -- una casa che cresce non deve aspettare che una sonda
+    torni a rispondere.
     """
     if not cadence_s:
         return False
     if last_ts is None:
         return True
     return now - last_ts >= cadence_s
+
+
+def _hours(seconds: float) -> str:
+    """Ore, senza decimali inutili: «84», non «84.0»."""
+    hours = seconds / 3600
+    return f"{hours:.0f}" if abs(hours - round(hours)) < 0.05 else f"{hours:.1f}"
+
+
+def _days(seconds: float) -> str:
+    days = seconds / DAY
+    return f"{days:.0f}" if abs(days - round(days)) < 0.05 else f"{days:.1f}"
+
+
+def reason_to_reconsider(*, last: dict | None, cadence_s: float | None,
+                         objective_ts: float | None, undecided: list[str],
+                         now: float) -> str | None:
+    """**Perche'** l'osservatore dovrebbe ripensare tutta la casa adesso, o
+    `None` se non deve.
+
+    Le quattro cause della spec §5.1 -- il primo avvio, l'obiettivo cambiato,
+    qualcosa di nuovo in casa, la cadenza -- sono **una domanda sola**, e
+    tenerle in quattro controlli sparsi fra chi chiama sarebbe il modo di
+    dimenticarne una senza accorgersene.
+
+    **Torna una ragione, non un `True`.** Finisce accanto alla riconsiderazione
+    nell'archivio e nella pagina che il proprietario legge: un booleano
+    costringerebbe la pagina a reinventare la frase, e la reinventerebbe
+    diversa da quella che l'ha davvero provocata.
+
+    **L'ordine delle cause non e' casuale: e' quello della forza.** L'obiettivo
+    cambiato viene prima di tutto il resto perche' lo scope e' una risposta a
+    una domanda, e cambiata la domanda ogni risposta data prima e' sospetta --
+    comprese quelle che escludevano. Le cose nuove vengono prima della cadenza
+    perche' non possono aspettare: cio' che non e' osservato non esiste piu', e
+    i giorni mancanti non tornano.
+    """
+    if last is None:
+        return "non e' mai stata fatta: l'osservatore non ha ancora deciso niente"
+
+    if objective_ts is not None and last["quando_ts"] < objective_ts:
+        return "l'obiettivo e' cambiato dopo l'ultima riconsiderazione"
+
+    if undecided:
+        # Si NOMINANO: «ci sono cose nuove» non e' una frase su cui il
+        # proprietario possa fare niente. Tre bastano a riconoscere di cosa si
+        # parla senza che la ragione diventi un elenco di 400 righe il giorno
+        # in cui si installa un'integrazione nuova.
+        first = ", ".join(undecided[:3])
+        tail = ", e altri" if len(undecided) > 3 else ""
+        return (f"{len(undecided)} soggetti in casa su cui nessuno ha ancora "
+                f"deciso: {first}{tail}")
+
+    if due(last_ts=last["quando_ts"], cadence_s=cadence_s, now=now):
+        return (f"sono passate {_hours(now - last['quando_ts'])} ore dall'ultima "
+                f"volta, e la cadenza e' {_hours(cadence_s)} -- meta' dei "
+                f"{_days(last['finestra_s'] or cadence_s * 2)} giorni di memoria "
+                f"misurati su Home Assistant")
+
+    return None

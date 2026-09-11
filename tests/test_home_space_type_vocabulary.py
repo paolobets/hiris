@@ -8,7 +8,7 @@ collega invece di copiare), non quelle che ricopiano il contenuto e si
 autoconfermano.
 
 Le prove di comportamento dei tre lettori restano dove erano
-(`test_mind_baseline.py`, `test_mind_facts.py`, `test_decoded_capabilities.py`,
+(`test_home_space_gamba.py`, `test_mind_facts.py`, `test_decoded_capabilities.py`,
 `test_feature_tables_pinned_to_source.py`): la fetta non cambia cosa fanno, e
 spostarle qui avrebbe dato l'impressione che sia nato un comportamento nuovo.
 """
@@ -47,7 +47,7 @@ from hiris.app.home_space.type_vocabulary import (
     unknown_states,
     working_states_of,
 )
-from hiris.app.mind import baseline, facts
+from hiris.app.mind import facts
 from hiris.app.proxy import entity_cache
 
 # --- la provenienza: un campo senza non deve poter esistere ---------------
@@ -655,12 +655,17 @@ def test_le_undici_liste_non_esistono_piu():
     non piu' letto sarebbe codice morto che il prossimo lettore crederebbe
     vivo.
 
+    **Otto delle undici sono sparite due volte** (11/09/2026): stavano in
+    `mind/baseline.py`, e quel file non esiste piu' -- il pavimento e' stato
+    sostituito dallo scope (`mind/watcher.py`, spec §5.1). Qui restano le tre
+    di `facts` e quella di `topology`, che vivono ancora; la sparizione delle
+    otto la sorveglia adesso l'assenza del MODULO, che nessun `hasattr`
+    potrebbe piu' interrogare -- ed e' una guardia piu' forte, non piu'
+    debole: una riesumazione del file arrossirebbe qui.
+
     Mutazione: ridichiarare una qualunque delle undici nel suo modulo --
     arrossisce sul nome."""
     sparite = {
-        baseline: ("_PRESENZA", "_APERTURA", "_COMFORT", "_QUALITA_ARIA",
-                   "_ENERGIA", "_DOMINI_SICUREZZA", "_SICUREZZA_BINARIA",
-                   "_SICUREZZA_SENSORE"),
         facts: ("_OPERABLE", "_RESTING", "_UNKNOWN"),
         topology: ("_FEATURE_NAMES",),
     }
@@ -668,18 +673,24 @@ def test_le_undici_liste_non_esistono_piu():
                for modulo, nomi in sparite.items() for nome in nomi
                if hasattr(modulo, nome)]
     assert rimaste == [], f"liste che dovevano sparire: {rimaste}"
-    assert sum(len(n) for n in sparite.values()) == 12  # 11 liste + `aspect()`
+
+    import importlib
+    with pytest.raises(ModuleNotFoundError):
+        importlib.import_module("hiris.app.mind.baseline")
 
 
 def test_le_sei_gambe_vivono_in_un_posto_solo():
-    """`ASPECTS` sta con le righe che assegna: `baseline` la ri-esporta, non la
-    ricopia. Un secondo elenco delle sei gambe sarebbe la fondamenta 2 violata
-    nel modulo scritto per rispettarla.
+    """`ASPECTS` sta con le righe che assegna, e da nessun'altra parte.
 
-    Mutazione: riscrivere la tupla in `baseline.py` invece di importarla -- la
-    seconda asserzione (identita', non uguaglianza) arrossisce."""
-    assert baseline.ASPECTS == ASPECTS
-    assert baseline.ASPECTS is ASPECTS
+    Fino all'11/09/2026 c'era una riesportazione in `mind/baseline.py`, e
+    questa prova guardava che fosse la STESSA tupla e non una copia. Il file
+    e' stato cancellato col pavimento: adesso l'unica difesa e' che nessuno
+    la ridichiari, ed e' quella che si guarda qui.
+
+    Mutazione: ricopiare la tupla in `mind/facts.py` e importarla da li'."""
+    assert ASPECTS == ("chi c'e'", "comfort", "dispersione", "energia",
+                       "buono stato", "sicurezza")
+    assert not hasattr(facts, "ASPECTS")
 
 
 # --- le tre metriche, dalla porta del vocabolario ---------------------------
@@ -754,7 +765,7 @@ def test_le_letture_del_prodotto_passano_dall_vocabolario():
     -- la prova `test_un_tipo_ha_una_casa_sola` arrossisce, e questa resta
     verde: e' voluto, sorvegliano due cose diverse. La mutazione di QUESTA e'
     far ritornare `[]` a `topology.decoded_capabilities` per ogni dominio."""
-    assert baseline.aspect("sensor.presa", {"device_class": "energy"}) == "energia"
+    assert aspect_of("sensor.presa", {"device_class": "energy"}) == "energia"
     assert facts.genre_for("light.cucina", None) == "funzionamento"
     assert topology.decoded_capabilities("light", 4 | 32) == ["effetti", "transizione"]
     assert entity_cache is not None  # importato per il vocabolario dichiarato sopra

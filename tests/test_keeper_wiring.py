@@ -359,10 +359,10 @@ def test_costruisci_dispatcher_strumenti_riceve_registro_e_promesse():
 # un conteggio che nessuno ancora ai fatti veri non e' un pavimento, e' una
 # frase che invecchia senza avvisare.
 
-def test_the_registered_periodic_jobs_are_twelve_as_the_readme_declares():
+def test_the_registered_periodic_jobs_are_thirteen_as_the_readme_declares():
     src = inspect.getsource(server._on_startup)
     n = src.count("scheduler.add_job(")
-    assert n == 12, (
-        f"server.py registra {n} lavori periodici (scheduler.add_job), non 12: "
+    assert n == 13, (
+        f"server.py registra {n} lavori periodici (scheduler.add_job), non 13: "
         "il README (sezione «What HIRIS 2.0 is») dichiara un numero preciso "
         "e va aggiornato insieme al codice, non dopo.")

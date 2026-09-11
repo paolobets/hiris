@@ -38,6 +38,7 @@ from .backends.embeddings import build_embedding_provider
 from .chat_settings import ChatSettings, file_lacks_retention_days
 from .env_util import env_bool
 from .home_space.behavior import reread, reread_dashboards
+from .home_space.briefing import digest_visible_entity_ids
 from .home_space.historian import home_space_zone, instant_epoch
 from .home_space.queries import HA_LINK_TYPE
 from .home_space.queries import related as _legami_leggibili
@@ -56,12 +57,14 @@ from .keeper.store import AgendaStore
 from .keeper.sweeper import Sweeper
 from .memory.lookup_cache import LookupCache
 from .memory.store import MemoryStore
+from .mind.cadence import cadence_from, measure_memory_window, reason_to_reconsider
 from .mind.facts import (
     BALANCE_DIRECTIONS,
     aggregate_day,
     build_balance_body,
     day_boundaries,
 )
+from .mind.observer import reconsider as observer_reconsider
 from .mind.store import READING_RETENTION_S, ObservationsStore
 from .mind.watcher import Watcher
 from .model_resolution import subscription_has_token
@@ -1732,6 +1735,66 @@ def schedule_dashboards_reread(client, store, delay: float = 3.0):
     return trigger
 
 
+async def reconsideration_round(app, ha_client) -> dict | None:
+    """L'anello dell'osservatore: **«è ora di ripensare la casa? e allora
+    fallo»**. Torna il resoconto del giro, o `None` se non c'era da farlo.
+
+    I quattro inneschi della spec §5.1 -- il primo avvio, l'obiettivo cambiato,
+    qualcosa di nuovo in casa, la cadenza di riconsiderazione -- li pone tutti
+    `cadence.reason_to_reconsider`: qui non se ne decide nessuno, o sarebbero
+    due posti da cui dimenticarne uno.
+
+    **La domanda «è ora?» deve costare zero.** Questo giro scatta ogni dieci
+    minuti; misurare la memoria di Home Assistant a ogni passaggio sarebbero
+    144 misure al giorno -- 80 MB di traffico -- per rispondere «no». Quindi si
+    usa la cadenza **dell'ultimo giro**, scritta accanto a quello, e la finestra
+    si **rimisura solo quando si gira davvero**: e' anche piu' giusta, perche'
+    il proprietario puo' aver cambiato il recorder nel frattempo.
+
+    **L'impronta si chiede sulle stesse entita' che si mostrano al modello.**
+    L'osservatore non giudica le entita' di servizio e le nascoste (decisione
+    del proprietario, 10/09/2026): nessuna di esse finisce mai nello scope,
+    quindi chiederle all'impronta le farebbe risultare «nuove» a ogni giro --
+    452 su questa casa -- e l'osservatore girerebbe ogni dieci minuti per
+    sempre.
+
+    Non solleva mai: gira per sempre, e un avvio a meta' -- il modello non
+    ancora costruito, l'anagrafe non ancora letta -- non deve fermare lo
+    schedulatore.
+    """
+    store = app.get("observations")
+    home_space_store = app.get("home_space_store")
+    runner = app.get("llm_router") or app.get("claude_runner")
+    if store is None or home_space_store is None or runner is None:
+        return None
+    try:
+        home_space = home_space_store.read()
+        candidates = sorted(digest_visible_entity_ids(home_space))
+        last = store.last_reconsideration()
+        objective = store.objective()
+        why = reason_to_reconsider(
+            last=last,
+            cadence_s=last["cadenza_s"] if last else None,
+            objective_ts=objective.get("scritto_ts"),
+            undecided=store.undecided(candidates),
+            now=time.time())
+        if why is None:
+            return None
+
+        logger.info("osservatore: riconsidero la casa -- %s", why)
+        window_s = await measure_memory_window(
+            ha_client, sorted(e["id"] for e in home_space.get("entita", []) if e.get("id")))
+        outcome = await observer_reconsider(
+            runner, store, home_space, reason=why,
+            window_s=window_s, cadence_s=cadence_from(window_s))
+        logger.info("osservatore: giro finito -- %s", outcome)
+        return outcome
+    except Exception as exc:
+        logger.warning("osservatore: giro di riconsiderazione fallito (%s: %s)",
+                       type(exc).__name__, exc)
+        return None
+
+
 def behavior_reader(client, home_space, ha_folder: Path | None, find_folder=None):
     """Restituisce `look()`: rilegge il comportamento da Home Assistant.
 
@@ -3036,6 +3099,27 @@ async def _on_startup(app: web.Application) -> None:
         trigger="interval", minutes=2,
         id="hiris_mind_automation_traces", replace_existing=True,
         misfire_grace_time=120,
+    )
+
+    # L'anello dell'osservatore (fetta «i tre attori», §5.1), ogni DIECI
+    # minuti. Non e' la cadenza di riconsiderazione -- quella e' misurata e sta
+    # sulle ORE (84 sulla casa vera): questi dieci minuti sono ogni quanto ci
+    # si CHIEDE se sia ora, e la domanda e' locale e costa due letture
+    # dell'archivio. La misura della memoria di Home Assistant, che costa un
+    # secondo e mezzo MB, si paga solo quando il giro parte davvero (vedi
+    # `reconsideration_round`).
+    #
+    # Dieci minuti e non un'ora perche' due dei quattro inneschi non possono
+    # aspettare: un'entita' nuova installata stamattina resterebbe invisibile
+    # fino al giro dopo, e cio' che non e' osservato non esiste piu'.
+    async def _reconsider() -> None:
+        await reconsideration_round(app, ha_client)
+
+    scheduler.add_job(
+        _reconsider,
+        trigger="interval", minutes=10,
+        id="hiris_mind_reconsideration", replace_existing=True,
+        misfire_grace_time=600,
     )
 
     # L'aggregazione notturna: costruisce gli oggetti del giorno appena

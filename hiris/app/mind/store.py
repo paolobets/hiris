@@ -78,11 +78,11 @@ def _migration_2(conn) -> None:
     mandato «il bilancio dell'energia», punto 4, 27/08/2026 -- falsa al
     presente: era vera ed era stata dichiarata fuori scope quando scritta
     il 26/08, la scelta giusta allora). Dopo la correzione del 27/08 sul
-    traffico di rete (`baseline.py::aspect`, il suo docstring), `pavimento.
-    aspect()` legge solo `device_class` e `source_type` per decidere la
+    traffico di rete (`type_vocabulary.aspect_of`, il suo docstring), quella funzione
+    legge solo `device_class` e `source_type` per decidere la
     gamba di `sensor` e `binary_sensor` -- `state_class` NON e' piu' fra i
     criteri. Resta comunque QUI, nel grezzo: non e' tolta dallo schema, e'
-    `baseline.aspect()` che ha smesso di leggerla per decidere la gamba, non
+    `type_vocabulary.aspect_of()` che ha smesso di leggerla per decidere la gamba, non
     `store.py` che smette di conservarla -- i 22 giorni di grezzo
     permettono di rifare il giudizio anche se un domani tornasse a servire.
 
@@ -272,11 +272,22 @@ CREATE TABLE IF NOT EXISTS scope (
 -- avvio. La riga si scrive con la misura mancante DICHIARATA, invece di non
 -- scriverla: senza, la pagina direbbe «mai riconsiderato» di una casa appena
 -- riconsiderata.
+-- `reason` porta la CAUSA: quale delle quattro (primo avvio, obiettivo
+-- cambiato, qualcosa di nuovo in casa, cadenza scaduta) ha fatto girare
+-- l'osservatore quella volta. Senza, di una riconsiderazione resterebbe solo
+-- una data, e la pagina non potrebbe dire «l'ultima e' stata il 9, perche'
+-- era comparso un termostato nuovo».
+--
+-- **Nessuna migrazione, e si puo' verificare**: questa tabella e' nata in
+-- questa stessa fetta e non e' mai stata rilasciata -- l'ultima versione
+-- pubblicata (3.25.0) non la contiene affatto -- quindi non esiste nessun
+-- archivio in cui manchi solo questa colonna.
 CREATE TABLE IF NOT EXISTS reconsideration (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     done_ts REAL NOT NULL,
     window_s REAL,
-    cadence_s REAL
+    cadence_s REAL,
+    reason TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_reconsideration_done ON reconsideration(done_ts);
 """
@@ -345,7 +356,7 @@ class ObservationsStore:
 
         `device_class`, `state_class` e `source_type` sono le tre classi che
         Home Assistant dichiara sull'entita' -- **grezzo per definizione**, non
-        un giudizio nostro: e' cio' che serve a `baseline.aspect()` per
+        un giudizio nostro: e' cio' che serve a `type_vocabulary.aspect_of()` per
         decidere la gamba di `sensor` e `binary_sensor` quando l'aggregazione
         rilegge la riga, giorni dopo che l'evento e' passato. Tutti e tre
         annullabili: le condizioni di sistema non li portano, e una riga
@@ -390,6 +401,35 @@ class ObservationsStore:
                  device_class, state_class, source_type, domain, title, friendly_name,
                  None if first_occurred is None else str(float(first_occurred))))
             self._conn.commit()
+
+    def readings_count(self, *, from_ts: float, to_ts: float,
+                       source: str | None = None) -> int:
+        """Quante righe grezze sono state scritte in questa finestra.
+
+        **E' un numero del prodotto, non una diagnostica.** La spec dei tre
+        attori promette **-83%** di grezzo -- da 29.227 a 4.951 righe al giorno,
+        misurate sulla casa vera il 10/09/2026 -- e quella promessa e' la
+        contropartita onesta dello scope: si guarda meno, e questo e' quanto
+        costa cio' che si guarda. La pagina «cosa guardo e perche'» lo dice
+        accanto all'elenco.
+
+        **Si conta in SQL.** `readings()` qui sotto tronca a 200.000 righe:
+        contare la lunghezza della lista che torna darebbe il numero giusto
+        finche' il tetto non scatta, e uno sbagliato **in silenzio** proprio
+        sulla giornata piu' rumorosa -- quella che si guarda per capire se il
+        filtro funziona.
+
+        Stessa finestra semi-aperta di `readings()`, `[from_ts, to_ts)`, per la
+        stessa ragione: due estremi inclusivi conterebbero due volte il cambio
+        di mezzanotte, e i giorni adiacenti non tornerebbero mai.
+        """
+        sql = "SELECT count(*) AS n FROM cambi WHERE quando_ts >= ? AND quando_ts < ?"
+        args: list = [float(from_ts), float(to_ts)]
+        if source is not None:
+            sql += " AND fonte = ?"
+            args.append(source)
+        with self._lock:
+            return int(self._conn.execute(sql, args).fetchone()["n"])
 
     def readings(self, *, from_ts: float, to_ts: float, subject: str | None = None,
               source: str | None = None, limit: int = 200_000) -> list[dict]:
@@ -462,7 +502,7 @@ class ObservationsStore:
         Chi e' stato escluso resta qui con la sua ragione: e' la trasparenza, ed
         e' da questa mappa che la pagina disegna sia «cosa guardo» sia «cosa ho
         lasciato fuori, e perche'». Per il filtro vero c'e'
-        `watched_subjects()`.
+        `is_watched()`.
         """
         with self._lock:
             rows = self._conn.execute(
@@ -471,13 +511,54 @@ class ObservationsStore:
                                "autore": r["author"], "deciso_ts": r["decided_ts"]}
                 for r in rows}
 
-    def watched_subjects(self) -> set[str]:
-        """I soli soggetti DENTRO: e' la domanda che il rubinetto pone a ogni
-        evento, e deve costare una lettura sola."""
+    def is_watched(self, subject: str) -> bool:
+        """Se questo soggetto e' dentro lo scope. **La domanda che il rubinetto
+        pone a ogni evento della casa**, quindi una riga per chiave primaria e
+        non un insieme da ricostruire.
+
+        Misurato l'11/09/2026 su uno scope di 833 righe (381 dentro): **24 us**
+        a evento cosi', **1.084 us** tornando l'insieme intero -- 0,7 secondi
+        di lavoro al giorno contro 32, sui 29.227 eventi misurati.
+
+        **Chi non c'e' e' fuori.** Non esser mai stati considerati e l'esser
+        stati esclusi sono, per il rubinetto, la stessa cosa: in nessuno dei
+        due casi qualcuno ha deciso che quel soggetto pesa. Il contrario
+        rimetterebbe dentro tutta la casa proprio quando lo scope e' vuoto --
+        al primo avvio, prima che l'osservatore abbia parlato.
+        """
         with self._lock:
-            rows = self._conn.execute(
-                "SELECT subject FROM scope WHERE inside = 1").fetchall()
-        return {r["subject"] for r in rows}
+            row = self._conn.execute(
+                "SELECT inside FROM scope WHERE subject = ?", (subject,)).fetchone()
+        return bool(row["inside"]) if row is not None else False
+
+    def undecided(self, subjects: list[str]) -> list[str]:
+        """Quali di questi soggetti **non sono ancora stati giudicati**: ne'
+        dentro ne' fuori.
+
+        **E' l'impronta**, e non ce n'e' una seconda da costruire. «Questa
+        entita' e' nuova?» non e' una domanda a cui Home Assistant sappia
+        rispondere (spec §4): si sa solo confrontando con com'era. Lo scope
+        *e'* com'era -- una struttura in piu' che tenesse la stessa verita'
+        divergerebbe al primo disallineamento fra le due scritture -- ed e'
+        anche piu' esatta di un'anagrafe di ieri, che direbbe «esisteva gia'»
+        anche di un'entita' su cui l'osservatore non ha mai aperto bocca.
+
+        **Chi e' stato ESCLUSO non e' nuovo.** E' stato guardato e giudicato:
+        ripresentarlo farebbe girare l'osservatore per sempre sulle stesse 452
+        entita' di servizio, e ogni giro costa una lettura dell'intera casa al
+        modello.
+
+        Si chiede fra i soggetti **di adesso** e si risponde nel loro ordine,
+        senza ripetizioni: l'elenco finisce in un prompt e in una pagina, e un
+        ordine che cambia a ogni giro rende due risposte impossibili da
+        confrontare.
+        """
+        decided = set(self.scope())
+        out: list[str] = []
+        for subject in subjects:
+            if subject not in decided and subject not in out:
+                out.append(subject)
+        return out
 
     def decide_scope(self, subject: str, *, inside: bool, reason: str,
                      author: str, when_ts: float | None = None) -> bool:
@@ -524,26 +605,31 @@ class ObservationsStore:
         """
         with self._lock:
             row = self._conn.execute(
-                "SELECT done_ts, window_s, cadence_s FROM reconsideration "
+                "SELECT done_ts, window_s, cadence_s, reason FROM reconsideration "
                 "ORDER BY done_ts DESC, id DESC LIMIT 1").fetchone()
         if row is None:
             return None
         return {"quando_ts": row["done_ts"],
                 "finestra_s": row["window_s"],
-                "cadenza_s": row["cadence_s"]}
+                "cadenza_s": row["cadence_s"],
+                "motivo": row["reason"]}
 
     def record_reconsideration(self, *, when_ts: float | None = None,
-                             window_s: float | None,
-                             cadence_s: float | None) -> None:
-        """Annota una riconsiderazione avvenuta. Si ACCODA: quante volte e con
-        quale memoria di Home Assistant e' la cronaca di come la cadenza si e'
-        adattata alla casa, e una riga sola non la direbbe."""
+                               window_s: float | None,
+                               cadence_s: float | None,
+                               reason: str | None = None) -> None:
+        """Annota una riconsiderazione avvenuta, con la **causa** che l'ha
+        provocata. Si ACCODA: quante volte, con quale memoria di Home Assistant
+        e per quale ragione e' la cronaca di come la cadenza si e' adattata
+        alla casa, e una riga sola non la direbbe."""
         with self._lock:
             self._conn.execute(
-                "INSERT INTO reconsideration (done_ts, window_s, cadence_s) VALUES (?,?,?)",
+                "INSERT INTO reconsideration (done_ts, window_s, cadence_s, reason) "
+                "VALUES (?,?,?,?)",
                 (float(when_ts if when_ts is not None else _time.time()),
                  None if window_s is None else float(window_s),
-                 None if cadence_s is None else float(cadence_s)))
+                 None if cadence_s is None else float(cadence_s),
+                 reason))
             self._conn.commit()
 
     # -- L'obiettivo -------------------------------------------------------

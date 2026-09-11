@@ -20,8 +20,9 @@ l'08/09/2026 con lo scioglimento delle sei liste sparse.
 
 1. «Serve all'obiettivo?» -> `aspect_of` -- la gamba dell'osservatore
    (`chi c'e'`, `comfort`, `dispersione`, `energia`, `buono stato`,
-   `sicurezza`) o niente. Prima viveva in `mind/baseline.py::aspect` e nelle
-   sue otto costanti satellite.
+   `sicurezza`) o niente. Prima viveva in `mind/baseline.py::aspect`
+   (cancellato l'11/09/2026 col pavimento) e nelle sue otto costanti
+   satellite.
 2. «Si accende e si spegne, e qual e' il suo riposo?» -> `is_operable`,
    `resting_states_of`, `resting_states`. Prima erano `_OPERABLE`, `_RESTING`
    e `_UNKNOWN` in `mind/facts.py`.

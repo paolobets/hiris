@@ -743,7 +743,7 @@ def _unreliable_state(home_space: dict, state: dict, reliable_state: bool,
     return True
 
 
-def _digest_visible_entity_ids(home_space: dict) -> frozenset[str]:
+def digest_visible_entity_ids(home_space: dict) -> frozenset[str]:
     """Gli ID delle entita' che un DIGESTO -- una vista PRINCIPALE, quella che
     HIRIS dice senza che tu l'abbia chiesta -- puo' contare da sola: presenti
     in anagrafe, non disabilitate, non nascoste, non di servizio
@@ -761,7 +761,15 @@ def _digest_visible_entity_ids(home_space: dict) -> frozenset[str]:
     lo stesso testo che dava due totali diversi per la stessa parola. Una
     funzione sola, usata da entrambe le sezioni, e' l'unico modo per cui le
     due non possano tornare a divergere in silenzio: e' la terza fondamenta,
-    consistenza, dentro un'unica pagina."""
+    consistenza, dentro un'unica pagina.
+
+    **Pubblica dall'11/09/2026**, e per la stessa ragione per cui lo divento'
+    `historian.home_space_zone`: l'osservatore (`mind/observer.py`) applica la
+    STESSA legge quando compone la casa da mandare al modello -- e' la
+    decisione del proprietario del 10/09, *«le entita' di servizio e le
+    nascoste non entrano di default»*. Un nome privato attraversato da fuori,
+    o ricopiato, e' esattamente il modo in cui questa regola tornerebbe a
+    esistere in due esemplari."""
     return frozenset(
         e["id"] for e in home_space.get("entita", [])
         if e.get("id")
@@ -823,11 +831,11 @@ def _highlight_lines(home_space: dict, state: dict, floors: list[dict],
     #
     # Sull'impianto del proprietario tolgono 179 elementi su 300: 113
     # `config` + 66 `diagnostic`, piu' 10 nascoste a mano. **Una sola
-    # funzione** (`_digest_visible_entity_ids`, R1) decide chi resta: prima
+    # funzione** (`digest_visible_entity_ids`, R1) decide chi resta: prima
     # di questa correzione questi tre `if` stavano scritti a mano qui E MAI
     # ricevuti da `_capability_lines`, che per questo contava una casa
     # diversa nella stessa pagina.
-    visible = _digest_visible_entity_ids(home_space)
+    visible = digest_visible_entity_ids(home_space)
     for e in home_space.get("entita", []):
         entity_id = e.get("id")
         if entity_id not in visible:
@@ -1078,7 +1086,7 @@ def _capability_lines(attributes: dict[str, dict] | None,
     cache ma assenti dall'anagrafe. `_highlight_lines` filtrava gia' le prime
     due, due righe piu' su nello stesso file: la stessa casa raccontava due
     totali diversi per la stessa parola, nello stesso testo. Vedi
-    `_digest_visible_entity_ids`, l'unica fonte di questa regola ora."""
+    `digest_visible_entity_ids`, l'unica fonte di questa regola ora."""
     if unreliable_state:
         return ([
             ("Stato non letto (o dichiarato non attendibile): non si puo' dire cosa "
@@ -1999,7 +2007,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
         home_space, state, floors, unreliable, reported_classes, translations,
         fallback_names)
     capability_lines, capability_weights, capabilities_are_countable = _capability_lines(
-        attributes, unreliable, _digest_visible_entity_ids(home_space))
+        attributes, unreliable, digest_visible_entity_ids(home_space))
     behavior_lines, behavior_weights = _behavior_lines(behavior)
     memory_lines = _memory_lines(memories)
 

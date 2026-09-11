@@ -67,16 +67,16 @@ one of the sixteen tools below, lets a sentence you type now run later, at a
 time you name, with nobody in the chat when it happens — see the next
 paragraph for what that means in practice.
 
-Periodic work *does* run — the scheduler registers **twelve** APScheduler jobs
+Periodic work *does* run — the scheduler registers **thirteen** APScheduler jobs
 at startup, not four, and one of them is not housekeeping: it is the reason
-the paragraph above needed the caveat. Eleven are internal bookkeeping — none of
+the paragraph above needed the caveat. Twelve are internal bookkeeping — none of
 them speaks to you and none of them touches the house: the entity-inventory
 reload every 2 minutes (`server.py::_reload_inventory`), the reread of Home
 Assistant's own diagnosed issues every 5 minutes
 (`server.py::_reread_problems`), the tree-vs-Home-Assistant comparison
-sample every 15 minutes (`server.py::tree_comparison_round`), the `mtime` sentinel
-over `automations.yaml`/`scripts.yaml` every 5 minutes
-(`server.py::behavior_sentinel`), chat-history retention at 03:00, the
+sample every 15 minutes (`server.py::tree_comparison_round`), the reread of
+automation and script bodies straight from Home Assistant every 5 minutes
+(`server.py::behavior_reader`), chat-history retention at 03:00, the
 reasoning-queue sweep every 2 minutes, and four more added by the "the
 observer" slice (`hiris/app/mind/`) and its follow-up, "the traces and the
 log": the system-conditions read — the same diagnosed issues plus the
@@ -107,7 +107,22 @@ Home Assistant that is not ready yet, and since the four hand-written
 translation tables were deleted those words are what the briefing renders
 every notable state with.
 
-The twelfth is the promise scheduler's heartbeat, every 15 seconds
+The twelfth was added by "the three actors" slice: the observer's loop,
+every 10 minutes (`server.py::reconsideration_round`). Ten minutes is not the
+reconsideration cadence — that one is *measured*, and on the owner's house it
+is 84 hours, half of the seven days Home Assistant's recorder still remembers.
+Ten minutes is how often HIRIS *asks itself* whether it is time, and the
+question is local: two reads of its own archive. The expensive part — probing
+how far back Home Assistant remembers, then reading the whole house to the
+model — is paid only when a run actually starts, which happens on the first
+boot, when the objective changes, when an entity appears that nobody has
+judged yet, or when the measured cadence has elapsed. It does not speak to you
+and does not touch the house — but unlike the other eleven it *spends*: one
+whole-house read to the model, about 11,500 tokens, every time it runs. The
+page it feeds says both what it decided and what that costs per day.
+
+The thirteenth — the one that is not housekeeping — is the promise
+scheduler's heartbeat, every 15 seconds
 (`server.py::_battito` → `keeper/sweeper.py::Sweeper.batti`). A
 promise is created from a sentence in chat — "at 5pm, turn on the office",
 "in an hour, check the temperature and tell me if it went up" — and its

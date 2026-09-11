@@ -284,7 +284,8 @@ def _pericoloso(parola: str) -> bool:
     caso non lo vede nessun cancello finche' qualcosa non lo chiama
     davvero, perche' `flake8-builtins` non e' nel set di regole attive.
     Misurato dal vivo (Task 6): il glossario decide `classe -> class`,
-    applicato a un identificatore nudo in `mind/baseline.py` ha
+    applicato a un identificatore nudo in `mind/baseline.py` (file poi
+    cancellato l'11/09/2026, la cronaca resta vera) ha
     prodotto `class = _text(...)`, trovato solo da `py_compile`. Non e' un
     giudizio sulla parola decisa -- resta decisa cosi' -- e' una guardia
     sulla FORMA nuda dell'applicazione, la stessa disciplina gia' in vigore

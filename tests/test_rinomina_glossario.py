@@ -195,7 +195,7 @@ def test_se_l_intestazione_della_tabella_alias_cambia_il_lettore_se_ne_accorge(t
 def test_una_keyword_python_non_si_applica_da_sola():
     """`classe -> class`: applicato a un identificatore nudo produrrebbe
     `class = ...`, un SyntaxError. Misurato dal vivo su
-    `mind/baseline.py` (Task 6)."""
+    `mind/baseline.py` (Task 6; file cancellato l'11/09/2026)."""
     gf = rinomina.Glossario(mappa={"classe": "class"})
     esito = rinomina.classifica("classe", gf, "qualunque")
     assert isinstance(esito, rinomina.Proposta), (

@@ -1,14 +1,31 @@
-"""Il pavimento: cosa l'osservatore guarda comunque.
+"""La gamba: a quale delle sei domande dell'obiettivo serve un'entita'.
 
-Non e' una lista scritta a mano: si deriva da cio' che Home Assistant dichiara
-gia' su ogni entita'. I casi qui sotto sono MISURATI sulla casa vera il 26
-agosto 2026 (spec §9), non inventati -- ed e' la misura che ha corretto due
-volte la prima stesura della spec, e una terza (la sesta gamba, "sicurezza")
-la review del primo task.
+I casi qui sotto sono MISURATI sulla casa vera il 26 agosto 2026 (spec §9),
+non inventati -- ed e' la misura che ha corretto due volte la prima stesura
+della spec, e una terza (la sesta gamba, "sicurezza") la review del primo
+task.
+
+**Questo file si chiamava `test_mind_baseline.py` fino all'11/09/2026.** Il
+pavimento -- il filtro che lasciava passare solo cio' che aveva una gamba --
+e' stato cancellato con `mind/baseline.py`: al suo posto il rubinetto chiede
+allo SCOPE, cioe' a cio' che l'osservatore ha deciso per questa casa
+(`mind/watcher.py`, spec §5.1). Con esso e' sparita `in_baseline` e la prova
+che la sorvegliava: non aveva piu' nessun chiamante.
+
+**La gamba invece e' ancora viva, e per questo le prove restano.** E' cio' che
+`facts.genre_for` riceve in ingresso per decidere il genere di un oggetto --
+`sicurezza` ed `energia` non hanno nessun altro criterio -- e muore **con i sei
+generi, nella Fetta 5**, non prima. Cancellarle adesso toglierebbe la
+copertura a un meccanismo che gira ancora tutte le notti.
+
+`baseline.aspect` era una riesportazione di `type_vocabulary.aspect_of`: le
+prove chiamano adesso l'originale, senza passare da un modulo che non esiste
+piu'.
 """
 import pytest
 
-from hiris.app.mind.baseline import ASPECTS, aspect, in_baseline
+from hiris.app.home_space.type_vocabulary import ASPECTS
+from hiris.app.home_space.type_vocabulary import aspect_of as aspect
 
 
 @pytest.mark.parametrize("eid, attributi, atteso", [
@@ -142,7 +159,7 @@ def test_total_increasing_da_solo_non_basta_piu_per_energia():
     `state_class: total_increasing`, ed era archiviato come energia --
     producendo un episodio di energia ogni notte per un dato che non lo e'.
 
-    Non e' restringere il pavimento: `state_class: total_increasing` da solo
+    Non e' restringere la gamba: `state_class: total_increasing` da solo
     non e' una classe di energia DICHIARATA, e un contatore che sale e basta
     non e' automaticamente energia (potrebbe essere litri, richieste HTTP,
     qualunque cosa che HA conta). Un contatore che porta ANCHE una classe di
@@ -161,43 +178,6 @@ def test_total_increasing_da_solo_non_basta_piu_per_energia():
                  {"device_class": "data_size", "state_class": "total_increasing"}) is None
 
 
-def test_nel_pavimento_e_la_stessa_domanda_di_gamba():
-    """Due funzioni che rispondono alla stessa domanda devono non poter
-    divergere: la seconda si deriva dalla prima. La divergenza puo' nascere
-    sia sui rami decisi dal DOMINIO sia su quelli decisi dagli ATTRIBUTI
-    (`device_class`, `state_class`, `source_type`): entrambi vanno provati."""
-    # Rami decisi dal dominio da soli.
-    assert in_baseline("person.marta", {}) is True
-    assert in_baseline("light.lampadario", {}) is False
-    assert in_baseline("lock.porta_ingresso", {}) is True
-    assert in_baseline("alarm_control_panel.centrale", {}) is True
-
-    # Rami decisi da `device_class` su `binary_sensor`.
-    assert in_baseline("binary_sensor.movimento", {"device_class": "occupancy"}) is True
-    assert in_baseline("binary_sensor.porta", {"device_class": "door"}) is True
-    assert in_baseline("binary_sensor.fumo", {"device_class": "smoke"}) is True
-    assert in_baseline("binary_sensor.rumore", {"device_class": "sound"}) is False
-
-    # Rami decisi da `device_class` su `sensor`.
-    assert in_baseline("sensor.temp", {"device_class": "temperature"}) is True
-    assert in_baseline("sensor.aria", {"device_class": "pm25"}) is True
-    assert in_baseline("sensor.co", {"device_class": "carbon_monoxide"}) is True
-    assert in_baseline("sensor.batteria", {"device_class": "battery"}) is True
-    assert in_baseline("sensor.energia", {"device_class": "energy"}) is True
-    assert in_baseline("sensor.uptime", {"device_class": "timestamp"}) is False
-
-    # Un `total_increasing` SENZA una classe di energia dichiarata resta
-    # fuori (27/08/2026, mandato «il bilancio dell'energia» punto 5): vedi
-    # `test_total_increasing_da_solo_non_basta_piu_per_energia` qui sotto.
-    assert in_baseline("sensor.contatore", {"state_class": "total_increasing"}) is False
-    assert in_baseline("sensor.istantaneo", {"state_class": "measurement"}) is False
-
-    # Rami decisi da `source_type` su `device_tracker`.
-    assert in_baseline("device_tracker.iphone", {"source_type": "gps"}) is True
-    assert in_baseline("device_tracker.nvr", {"source_type": "router"}) is False
-    assert in_baseline("device_tracker.ipad", {}) is False
-
-
 @pytest.mark.parametrize("attributi, atteso", [
     ({}, None),
     ({"device_class": None}, None),
@@ -209,6 +189,6 @@ def test_attributi_malformati_non_sollevano(attributi, atteso):
     """Gli attributi arrivano da Home Assistant: possono mancare o avere tipi
     inattesi. Un'eccezione qui fermerebbe l'osservatore su un evento solo --
     ma "non solleva" non basta: nessuno di questi valori malformati descrive
-    una classe o un tipo che il pavimento riconosce, quindi il risultato
+    una classe o un tipo che il vocabolario riconosce, quindi il risultato
     corretto e' sempre e soltanto `None`, non uno qualsiasi fra piu' esiti."""
     assert aspect("sensor.x", attributi) is atteso

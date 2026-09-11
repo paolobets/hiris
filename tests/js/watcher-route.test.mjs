@@ -13,7 +13,12 @@ import { loadScripts, tick } from './helpers/dom.mjs';
    e `_rendiOggetti` erano una seam PROMESSA da un commento ("seam di test: la
    resa va pinnata senza passare da fetch") e mai usata da nessun test -- oltre
    quattrocento righe di resa senza nessuna rete. Le sezioni "seam:" qui sotto
-   chiudono quel buco usando esattamente quelle due funzioni. */
+   chiudono quel buco usando esattamente quelle due funzioni.
+
+   Dal 11/09/2026 (fetta «i tre attori») `_rendiOsservate(corpo, elenco)` e'
+   diventata `_rendiScope(corpo, payload)`: la sezione 01 non rende piu' un
+   elenco di voci per gamba, rende le cinque parti di `GET /api/mind/watching`
+   (obiettivo, cosa si guarda, lasciato fuori, riconsiderazione, volume). */
 
 const CONFIG_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'hiris', 'app', 'static', 'config');
 const SORGENTE = readFileSync(join(CONFIG_DIR, 'watcher-route.js'), 'utf8');
@@ -28,6 +33,34 @@ function jsonResponse(body, status) {
   return { ok: (status || 200) < 400, status: status || 200, json: async () => body };
 }
 
+/* Il payload nuovo di `GET /api/mind/watching` (fetta «i tre attori»,
+   11/09/2026): cinque parti in una risposta sola. `paginaScope()` è la
+   forma «archivio collegato, niente ancora deciso»; ogni prova sovrascrive
+   la parte che le serve. Le date sono epoch in secondi (float), come
+   `da_quando_ts`/`deciso_ts`/`scritto_ts`/`quando_ts` sul filo -- MAI
+   confrontate con una stringa fissa nei test: la resa è nel fuso del
+   browser di chi fa girare la suite. */
+const OBIETTIVO_DI_PROVA = { testo: 'ottimizzare la casa e renderla confortevole', scritto_ts: 1787000000 };
+const RICONSIDERAZIONE_DI_PROVA = { quando_ts: 1787000000, finestra_s: 604800, cadenza_s: 302400 };
+
+function paginaScope(extra) {
+  return Object.assign({
+    watching: [], fuori: [], obiettivo: OBIETTIVO_DI_PROVA,
+    riconsiderazione: RICONSIDERAZIONE_DI_PROVA, volume: [],
+  }, extra || {});
+}
+
+// Una voce decisa dallo scope (un'entità), e una condizione di sistema --
+// che `Watcher.watching` (watcher.py) manda con `autore: null` e
+// `da_quando_ts: null`, per costruzione.
+function voce(soggetto, extra) {
+  return Object.assign({ soggetto, motivo: 'scalda la casa', autore: 'observer', da_quando_ts: 1787000000 }, extra || {});
+}
+
+function condizione(soggetto) {
+  return { soggetto, motivo: 'una condizione di sistema aperta si guarda finche\' dura', autore: null, da_quando_ts: null };
+}
+
 /* Il finto server: distingue le due rotte per prefisso, come fa la pagina
    vera (`api/mind/watching`, `api/mind/facts[?day=...]`). */
 function montaConServer(opts = {}) {
@@ -39,7 +72,7 @@ function montaConServer(opts = {}) {
     if (u.indexOf('api/mind/watching') === 0) {
       if (opts.osservateRotto) throw new Error('rete giu\'');
       return jsonResponse(
-        opts.watching !== undefined ? opts.watching : { watching: [] },
+        opts.watching !== undefined ? opts.watching : paginaScope(),
         opts.osservateStatus);
     }
     if (u.indexOf('api/mind/facts') === 0) {
@@ -165,108 +198,333 @@ test('mount: il sottotitolo usa è, non e’, e chiama il materiale "episodi"', 
 });
 
 // ---------------------------------------------------------------------------
-// Il badge di provenienza: «di serie», non «Pavimento — non si toglie»
-// (rilievo 6b) — l'etichetta cambia, il valore interno no
+// Fetta «i tre attori» (11/09/2026, spec §5.1 e §11): il pavimento non
+// esiste più. `GET /api/mind/watching` porta cinque parti in una risposta
+// sola -- obiettivo, cosa si guarda (motivo + autore), lasciato fuori,
+// riconsiderazione, volume -- e la seam è `_rendiScope(corpo, payload)`,
+// non più `_rendiOsservate(corpo, elenco)`. Ogni prova qui sotto dichiara
+// quale mutazione della produzione la farebbe arrossire.
 // ---------------------------------------------------------------------------
 
-test('seam _rendiOsservate: la voce "pavimento" porta il badge «Di serie», non «Pavimento»', () => {
+function rendiScope(payload) {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
-  window.HirisWatcherRoute._rendiOsservate(corpo, [
-    { soggetto: 'light.cucina', gamba: 'comfort', provenienza: 'pavimento' },
-  ]);
-  const badge = corpo.querySelector('.agent-badge');
-  assert.equal(badge.textContent, 'Di serie');
-  assert.doesNotMatch(corpo.textContent, /Pavimento/,
-    'la parola "pavimento" non deve comparire nel testo utente (resta un valore interno)');
+  window.HirisWatcherRoute._rendiScope(corpo, payload);
+  return { window, document, corpo };
+}
+
+// Un `details` per gruppo: si cerca per il testo del suo `summary`.
+function gruppo(corpo, testoSommario) {
+  return Array.from(corpo.querySelectorAll('details')).find((d) =>
+    d.querySelector('summary') && d.querySelector('summary').textContent.indexOf(testoSommario) === 0);
+}
+
+function sommari(corpo) {
+  return Array.from(corpo.querySelectorAll('details > summary')).map((s) => s.textContent);
+}
+
+function titoli(corpo) {
+  return Array.from(corpo.querySelectorAll('h3')).map((h) => h.textContent);
+}
+
+const DATA_ORA = /\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}/;
+
+// -- 1. L'obiettivo ---------------------------------------------------------
+
+test('seam _rendiScope: l\'obiettivo è la prima cosa, col suo testo e quando è stato scritto', () => {
+  // Mutazione che la uccide: togliere `renderObjective(body, p.obiettivo)`
+  // da `renderScope` (il testo dell'obiettivo sparisce), oppure spostarla
+  // dopo `renderWatched` (il primo h3 non è più «L’obiettivo»).
+  const { corpo } = rendiScope(paginaScope({ obiettivo: { testo: 'tenere la casa calda e spendere poco', scritto_ts: 1787000000 } }));
+  assert.equal(titoli(corpo)[0], 'L’obiettivo', 'senza la domanda le scelte sono illeggibili: viene prima');
+  const citazione = corpo.querySelector('blockquote');
+  assert.ok(citazione, 'il testo dell\'obiettivo è una citazione del proprietario, non un paragrafo qualunque');
+  assert.equal(citazione.textContent, 'tenere la casa calda e spendere poco');
+  assert.match(corpo.textContent, /Scritto il \d{2}\/\d{2}\/\d{4} \d{2}:\d{2}/,
+    'è datato, e la sua storia conta (spec §11): la data porta l\'anno');
 });
 
-test('seam _rendiOsservate: una voce "obiettivo" resta distinguibile e dice che si può togliere', () => {
-  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
-  const corpo = document.createElement('div');
-  window.HirisWatcherRoute._rendiOsservate(corpo, [
-    { soggetto: 'light.cucina', gamba: 'comfort', provenienza: 'obiettivo' },
-  ]);
-  assert.match(corpo.textContent, /si può togliere/);
+test('seam _rendiScope: un obiettivo mai scritto (scritto_ts null) si dice «di fabbrica», non si spaccia per scritto', () => {
+  // Mutazione: sostituire `objective.scritto_ts == null ? ... : ...` col solo
+  // ramo «Scritto il»: `fmtWhenFull(null)` torna null e la pagina direbbe
+  // «Scritto il null.» -- questo assert lo vede.
+  const { corpo } = rendiScope(paginaScope({ obiettivo: { testo: 'ottimizzare la casa e renderla confortevole', scritto_ts: null } }));
+  assert.match(corpo.textContent, /Obiettivo di fabbrica: nessuno l’ha ancora scritto/);
+  assert.doesNotMatch(corpo.textContent, /Scritto il/);
 });
 
-test('mount: la descrizione della sezione 01 spiega «di serie» invece di ripeterlo su ogni riga', async () => {
-  const { window, document } = montaConServer({
-    watching: { watching: [{ soggetto: 'light.cucina', gamba: 'comfort', provenienza: 'pavimento' }] },
+// -- I tre stati: archivio scollegato ≠ vuoto ≠ pieno --------------------------
+
+test('seam _rendiScope: con l\'archivio scollegato (obiettivo null) niente è inventato: né il default, né «niente escluso», né «mai riconsiderato»', () => {
+  // È il ramo `store is None` di `handle_watching` (handlers_mind.py):
+  // `obiettivo: null`, `fuori: []`, `riconsiderazione: null`, `volume: []`.
+  // Mutazione: `var archiveMissing = false;` in `renderScope` -- la pagina
+  // direbbe «Niente è stato lasciato fuori» e «Non è mai stata fatta», due
+  // affermazioni che nessuno ha verificato, e i tre `doesNotMatch` sotto
+  // arrossiscono.
+  const { corpo } = rendiScope({
+    watching: [voce('climate.camera_t')], fuori: [], obiettivo: null, riconsiderazione: null, volume: [],
   });
-  window.HirisWatcherRoute.mount();
-  await tick(20);
-
-  const desc = document.querySelector('.sc-desc').textContent;
-  assert.match(desc, /di serie/);
-  assert.match(desc, /non si tolgono/);
-  assert.match(desc, /obiettivo/);
+  const testo = corpo.textContent;
+  assert.match(testo, /L’obiettivo non si può leggere/);
+  assert.doesNotMatch(testo, /ottimizzare la casa/, 'il default di fabbrica NON si mostra: non si sa quale sia');
+  assert.match(testo, /Non si può sapere cosa è stato lasciato fuori/);
+  assert.doesNotMatch(testo, /Niente è stato lasciato fuori/);
+  assert.match(testo, /Non si può sapere quando la casa è stata riconsiderata/);
+  assert.doesNotMatch(testo, /mai stata fatta/);
+  assert.match(testo, /Non si può contare/);
+  assert.doesNotMatch(testo, /Nessun conteggio disponibile/);
+  // Ciò che si guarda, invece, c'è (l'osservatore risponde anche senza archivio).
+  assert.match(testo, /climate\.camera_t/);
 });
 
-// ---------------------------------------------------------------------------
-// Le gambe: etichette leggibili, non chiavi grezze (rilievo 8a)
-// ---------------------------------------------------------------------------
+// -- 2. Cosa si guarda: motivo e chi ha deciso ---------------------------------
 
-test('seam _rendiOsservate: l\'intestazione di gamba mostra un\'etichetta leggibile, non la chiave grezza', () => {
-  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
-  const corpo = document.createElement('div');
-  window.HirisWatcherRoute._rendiOsservate(corpo, [
-    { soggetto: 'device_tracker.paolo', gamba: "chi c'e'", provenienza: 'pavimento' },
+test('seam _rendiScope: le voci si raggruppano per chi ha deciso, nell\'ordine tu / analista / osservatore, e ogni riga porta il suo motivo', () => {
+  // Mutazione: invertire `AUTHOR_ORDER` (l'ordine dei sommari cambia), o
+  // togliere `AUTHOR_LABEL[autore] ||` da `authorPhrase` (i sommari
+  // diventano «Deciso da «owner»»), o `sayReason` forzato a false in
+  // `decisionRow` (i motivi spariscono dalle righe).
+  const { corpo } = rendiScope(paginaScope({
+    watching: [
+      voce('climate.camera_t', { motivo: 'scalda la casa, e il riscaldamento è la voce più pesante', autore: 'observer' }),
+      voce('light.cucina', { motivo: 'me l’hai chiesto tu', autore: 'owner' }),
+      voce('sensor.co2_soggiorno', { motivo: 'serve al resoconto sull’aria', autore: 'analyst' }),
+    ],
+  }));
+  assert.deepEqual(sommari(corpo), [
+    'Deciso da te — 1 voce',
+    'Deciso dall’analista — 1 voce',
+    'Deciso dall’osservatore — 1 voce',
   ]);
-  const sommario = corpo.querySelector('summary').textContent;
-  assert.match(sommario, /Chi c’è/, 'la chiave grezza "chi c\'e\'" deve diventare l\'etichetta "Chi c’è"');
-  assert.doesNotMatch(sommario, /chi c'e'/);
+  const tuo = gruppo(corpo, 'Deciso da te');
+  assert.match(tuo.textContent, /light\.cucina/);
+  assert.match(tuo.textContent, /me l’hai chiesto tu/, 'il motivo sta accanto alla voce: è da lì che si toglie');
+  assert.match(tuo.textContent, /dal \d{2}\/\d{2}\/\d{4} \d{2}:\d{2}/, '«da quando» si dice, con l\'anno');
+  const osservatore = gruppo(corpo, 'Deciso dall’osservatore');
+  assert.match(osservatore.textContent, /il riscaldamento è la voce più pesante/);
 });
 
-test('seam _rendiOsservate: una gamba sconosciuta finisce in coda col suo nome grezzo, e non sparisce', () => {
-  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
-  const corpo = document.createElement('div');
-  window.HirisWatcherRoute._rendiOsservate(corpo, [
-    { soggetto: 'sensor.nuovo', gamba: 'una gamba mai vista', provenienza: 'pavimento' },
-    { soggetto: 'lock.porta', gamba: 'sicurezza', provenienza: 'pavimento' },
-  ]);
-  const sommari = Array.from(corpo.querySelectorAll('summary')).map((s) => s.textContent);
-  assert.equal(sommari.length, 2);
-  assert.match(sommari[0], /Sicurezza/, 'l\'ordine noto (pavimento.GAMBE) viene prima della coda');
-  assert.match(sommari[1], /una gamba mai vista/, 'una gamba ignota non sparisce: va in coda col nome grezzo');
+test('seam _rendiScope: una condizione di sistema (autore null) non è attribuita a nessuno e non porta un «dal»', () => {
+  // `Watcher.watching` (watcher.py): le condizioni di sistema non passano
+  // dallo scope, nessuno le ha decise, `autore: None`, `da_quando_ts: None`.
+  // Mutazione: `var k = v.autore == null ? '' : ...` -> `var k = v.autore ||
+  // 'observer'` in `groupByAuthor`: la condizione finirebbe sotto «Deciso
+  // dall’osservatore», e il primo assert la vede. Mutazione sul «dal»:
+  // `ts != null ? ... : null` -> sempre `opts.whenPrefix + ' ' +
+  // fmtWhenFull(ts)`: comparirebbe «dal null».
+  const { corpo } = rendiScope(paginaScope({
+    watching: [
+      condizione('problema:sonos.subscriptions_failed'),
+      voce('climate.camera_t', { autore: 'observer' }),
+    ],
+  }));
+  assert.deepEqual(sommari(corpo), [
+    'Deciso dall’osservatore — 1 voce',
+    'Condizioni di sistema aperte — 1 voce',
+  ], 'le condizioni di sistema chiudono, in un gruppo proprio, senza autore');
+  const sistema = gruppo(corpo, 'Condizioni di sistema aperte');
+  assert.match(sistema.textContent, /Nessuno le ha decise/);
+  assert.match(sistema.textContent, /Problema Home Assistant: sonos\.subscriptions_failed/,
+    'il prefisso tecnico passa da describeWatchedSubject, come prima');
+  assert.doesNotMatch(sistema.textContent, /\bdal\b/, 'da_quando_ts è null per costruzione: nessuna data inventata');
+  assert.doesNotMatch(sistema.textContent, /null/);
+  const osservatore = gruppo(corpo, 'Deciso dall’osservatore');
+  assert.doesNotMatch(osservatore.textContent, /sonos/, 'la condizione non finisce sotto l\'osservatore');
+});
+
+test('seam _rendiScope: un autore che la pagina non conosce non sparisce: ha il suo gruppo, col valore grezzo', () => {
+  // Stessa regola di `GENRE_LABEL`. Mutazione: in `groupByAuthor` togliere
+  // il ciclo `seen.forEach(...)` che accoda gli autori fuori da
+  // `AUTHOR_ORDER` -- la voce sparirebbe dalla pagina.
+  const { corpo } = rendiScope(paginaScope({
+    watching: [voce('switch.pompa', { autore: 'gardener' })],
+  }));
+  assert.deepEqual(sommari(corpo), ['Deciso da «gardener» — 1 voce']);
+  assert.match(gruppo(corpo, 'Deciso da «gardener»').textContent, /switch\.pompa/);
+});
+
+test('seam _rendiScope: un motivo identico su ogni riga del gruppo si dice una volta, non trenta', () => {
+  // Le ~30 condizioni di sistema portano tutte `_SYSTEM_REASON`
+  // (watcher.py). Mutazione: `var sharedReason = false;` in
+  // `renderDecisionGroup` -- il motivo torna su ogni riga e il conteggio
+  // sale a 3. Mutazione opposta (dire sempre «per tutte» anche con motivi
+  // diversi): il secondo gruppo qui sotto perderebbe uno dei due motivi.
+  const MOTIVO = 'una condizione di sistema aperta si guarda finche\' dura';
+  const { corpo } = rendiScope(paginaScope({
+    watching: [
+      condizione('problema:sonos.subscriptions_failed'),
+      condizione('integrazione:01K2CK4GG287VKK18M5J788MRQ'),
+      condizione('automazione:automation.spegni_luci_notte'),
+      voce('climate.camera_t', { motivo: 'scalda la casa' }),
+      voce('light.cucina', { motivo: 'la luce che accendi di più' }),
+    ],
+  }));
+  const sistema = gruppo(corpo, 'Condizioni di sistema aperte');
+  const occorrenze = sistema.textContent.split(MOTIVO).length - 1;
+  assert.equal(occorrenze, 1, 'il motivo condiviso compare una volta sola nel gruppo');
+  assert.match(sistema.textContent, /Motivo, per tutte: /);
+  const osservatore = gruppo(corpo, 'Deciso dall’osservatore');
+  assert.match(osservatore.textContent, /scalda la casa/);
+  assert.match(osservatore.textContent, /la luce che accendi di più/);
+  assert.doesNotMatch(osservatore.textContent, /Motivo, per tutte/, 'motivi diversi: ognuna porta il suo');
+});
+
+// -- 3. Lasciato fuori ----------------------------------------------------------
+
+test('seam _rendiScope: ciò che è stato lasciato fuori ha la sua parte, con motivo, autore e quando; e la frase su chi non è stato considerato', () => {
+  // Mutazione: togliere il ciclo `groupByAuthor(leftOut).forEach(...)` da
+  // `renderLeftOut` -- `sensor.uptime` e il suo motivo spariscono. Mutazione
+  // sulla frase: toglierla lascia leggere «lasciato fuori» come «tutto il
+  // resto della casa».
+  const { corpo } = rendiScope(paginaScope({
+    fuori: [{ soggetto: 'sensor.uptime', motivo: 'di servizio, non dice niente sulla casa', autore: 'observer', deciso_ts: 1787000001 }],
+  }));
+  assert.ok(titoli(corpo).indexOf('Lasciato fuori') > titoli(corpo).indexOf('Cosa guardo'),
+    'l\'altra metà della trasparenza viene DOPO cosa si guarda');
+  const fuori = gruppo(corpo, 'Lasciato fuori dall’osservatore');
+  assert.ok(fuori, 'sommari trovati: ' + sommari(corpo).join(' | '));
+  assert.match(fuori.querySelector('summary').textContent, /— 1 voce$/);
+  assert.match(fuori.textContent, /sensor\.uptime/);
+  assert.match(fuori.textContent, /di servizio, non dice niente sulla casa/);
+  // Si legge lo span del «quando», non `textContent` (che incolla gli span
+  // senza spazi -- «sensor.uptimeil 17/08/2026» -- e un `\b` non ci starebbe).
+  const quando = Array.from(fuori.querySelectorAll('.field-hint')).map((s) => s.textContent)
+    .find((s) => /^(il|dal) /.test(s));
+  assert.ok(quando, 'deciso_ts deve comparire come «quando» accanto alla voce');
+  assert.match(quando, /^il \d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/, 'deciso_ts si mostra come «il ...», non «dal ...»');
+  assert.match(corpo.textContent, /non è stato escluso — non è stato considerato/);
+});
+
+test('seam _rendiScope: con l\'archivio collegato e nessuna esclusione si dice «niente lasciato fuori» (non «non si può sapere»)', () => {
+  // Mutazione: `if (archiveMissing)` -> `if (archiveMissing || !leftOut.length)`
+  // in `renderLeftOut`: un'assenza vera verrebbe raccontata come un buco di
+  // lettura.
+  const { corpo } = rendiScope(paginaScope({ fuori: [] }));
+  assert.match(corpo.textContent, /Niente è stato lasciato fuori con una ragione scritta/);
+  assert.doesNotMatch(corpo.textContent, /Non si può sapere cosa è stato lasciato fuori/);
+});
+
+// -- 4. La riconsiderazione: tutti e tre i numeri ----------------------------
+
+test('seam _rendiScope: la riconsiderazione mostra quando, la memoria misurata in giorni e la cadenza in ore — tutti e tre', () => {
+  // Mutazione: togliere la tessera «Memoria di Home Assistant, misurata» da
+  // `tiles` in `renderReconsideration` -- «ogni 84 ore» resterebbe da
+  // credere sulla parola, e `/7 giorni/` arrossisce. Mutazione su
+  // `fmtHours`: dividere per 86400 invece di 3600 darebbe «3,5 ore».
+  const { corpo } = rendiScope(paginaScope({ riconsiderazione: { quando_ts: 1787000000, finestra_s: 604800, cadenza_s: 302400 } }));
+  const tessere = Array.from(corpo.querySelectorAll('.stat-tile')).map((t) =>
+    [t.querySelector('.st-label').textContent, t.querySelector('.st-value').textContent]);
+  assert.equal(tessere.length, 3);
+  assert.equal(tessere[0][0], 'Ultima volta');
+  assert.match(tessere[0][1], DATA_ORA);
+  assert.deepEqual(tessere[1], ['Memoria di Home Assistant, misurata', '7 giorni']);
+  assert.deepEqual(tessere[2], ['Cadenza', 'ogni 84 ore']);
+  assert.match(corpo.textContent, /La cadenza è la metà della memoria misurata/,
+    'il legame fra i due numeri (mind/cadence.py::cadence_from) si dice');
+});
+
+test('seam _rendiScope: riconsiderazione mai fatta (null, archivio collegato) si dice tale, senza tessere', () => {
+  // Mutazione: `if (!r)` tolto in `renderReconsideration` -- `r.quando_ts`
+  // lancerebbe su null, oppure (con `r || {}`) comparirebbero tre tessere
+  // «data non disponibile / non misurata / nessuna» per una riconsiderazione
+  // che non è mai avvenuta.
+  const { corpo } = rendiScope(paginaScope({ riconsiderazione: null }));
+  assert.match(corpo.textContent, /Non è mai stata fatta/);
+  assert.equal(corpo.querySelectorAll('.stat-tile').length, 0);
+});
+
+test('seam _rendiScope: finestra non misurata dentro una riconsiderazione avvenuta: «non misurata», «nessuna», e la conseguenza detta', () => {
+  // `record_reconsideration` (mind/store.py) accetta `window_s=None`, e
+  // `cadence_from(None)` (mind/cadence.py) dà None; `due()` senza cadenza
+  // risponde di no. Mutazione: togliere il ramo `if (r.finestra_s == null ||
+  // r.cadenza_s == null)` -- la pagina direbbe «la cadenza è la metà della
+  // memoria misurata» sotto a una tessera «non misurata».
+  const { corpo } = rendiScope(paginaScope({ riconsiderazione: { quando_ts: 1787000000, finestra_s: null, cadenza_s: null } }));
+  const valori = Array.from(corpo.querySelectorAll('.stat-tile .st-value')).map((v) => v.textContent);
+  assert.equal(valori[1], 'non misurata');
+  assert.equal(valori[2], 'nessuna');
+  assert.match(corpo.textContent, /non riconsidera la casa da solo finché non riesce a misurarla/);
+  assert.doesNotMatch(corpo.textContent, /La cadenza è la metà/);
+});
+
+// -- 5. Quanto scrive al giorno ---------------------------------------------------
+
+test('seam _rendiScope: il volume è una barra per giorno, nell\'ordine del payload, larga in proporzione al giorno più alto, col numero scritto', () => {
+  // Mutazione: `volume.sort(...)` o `.reverse()` prima del ciclo in
+  // `renderVolume` (l'ordine dei giorni cambia); `pct` calcolato su una
+  // costante invece che su `max` (le larghezze non tornano); `fmtCount`
+  // sostituito da `String(n)` («4951» invece di «4.951»); `if (r.righe)
+  // return` per saltare i giorni a zero (la settima riga sparisce).
+  const { corpo } = rendiScope(paginaScope({
+    volume: [
+      { giorno: '2026-09-04', righe: 29227 },
+      { giorno: '2026-09-05', righe: 4951 },
+      { giorno: '2026-09-06', righe: 0 },
+    ],
+  }));
+  const righe = Array.from(corpo.querySelectorAll('ul > li'));
+  assert.equal(righe.length, 3);
+  assert.deepEqual(righe.map((li) => li.querySelector('.field-hint').textContent),
+    ['04/09/2026', '05/09/2026', '06/09/2026'], 'dal più vecchio: una tendenza si legge in avanti');
+  assert.deepEqual(righe.map((li) => li.querySelector('.text-mono').textContent),
+    ['29.227 righe', '4.951 righe', '0 righe']);
+  // Il CSSOM RISERIALIZZA il valore letto («100.0%» -> «100%», «0.0%» ->
+  // «0%»; stesso comportamento gia' misurato per `display:flex` piu' sopra):
+  // si confronta il numero, non la stringa scritta dalla pagina.
+  const larghezze = righe.map((li) => parseFloat(li.querySelector('[aria-hidden="true"] > div').style.width));
+  assert.equal(larghezze[0], 100, 'il giorno piu\' alto e\' il metro: barra piena');
+  assert.equal(larghezze[1], Number((4951 / 29227 * 100).toFixed(1)));
+  assert.equal(larghezze[2], 0, 'un giorno a zero resta una barra vuota, non sparisce');
+  assert.equal(corpo.querySelectorAll('canvas, svg').length, 0, 'barre CSS, niente canvas/SVG per sette numeri');
+});
+
+// -- Le cinque parti, in quest'ordine, e niente pavimento ---------------------------
+
+test('seam _rendiScope: le cinque parti sono titoli veri (h3), nell\'ordine della spec, e il pavimento non affiora più', () => {
+  // Mutazione: scambiare due chiamate in `renderScope` (l'ordine cambia);
+  // `el('p', ...)` al posto di `el('h3', ...)` in `subheading` (un lettore
+  // di schermo non salta più di parte in parte).
+  const { corpo } = rendiScope(paginaScope({ watching: [voce('climate.camera_t')] }));
+  assert.deepEqual(titoli(corpo), ['L’obiettivo', 'Cosa guardo', 'Lasciato fuori', 'La riconsiderazione', 'Quanto scrive al giorno']);
+  assert.doesNotMatch(corpo.textContent, /pavimento|Di serie|gamba/i,
+    'le parole del vecchio filtro non devono comparire nel testo utente');
+  assert.equal(corpo.querySelectorAll('.agent-badge').length, 0,
+    'nessun badge di provenienza per riga: chi ha deciso sta sul gruppo');
 });
 
 // ---------------------------------------------------------------------------
 // Cancello del collaudo E2 (07/09/2026, BACKLOG.md «"Cosa sto guardando"
-// stampa i soggetti grezzi, gli episodi no»): renderAspectGroup scriveva
+// stampa i soggetti grezzi, gli episodi no»): la vecchia resa scriveva
 // `v.soggetto` tale e quale, mentre gli episodi (renderFacts, la sezione
 // gemella della stessa pagina) passavano gia' da `protagonistName`. Col
 // gruppo passato da due a diciannove voci, diciassette delle quali percorsi
 // di file, il difetto -- gia' presente prima -- e' diventato visibile.
+// Portato sul payload nuovo (11/09/2026): le condizioni di sistema arrivano
+// con `autore: null`, e la resa passa da `decisionRow`.
 // ---------------------------------------------------------------------------
 
-test('seam _rendiOsservate: un prefisso tecnico grezzo (log:/integrazione:/problema:/automazione:) non resta mai a schermo (collaudo E2, 07/09/2026)', () => {
-  // Mutazione dichiarata, ESEGUITA per provarla (transcript nel rapporto):
-  // ripristinare in renderAspectGroup `li.appendChild(el('span', 'text-mono',
-  // v.soggetto));` al posto delle due righe che passano da
-  // `describeWatchedSubject` fa arrossire `assert.doesNotMatch` qui sotto,
-  // sulle voci `log:` e `integrazione:` -- il soggetto grezzo torna a
-  // comparire tale e quale (verificato eseguendo la suite con la mutazione
-  // applicata, poi ripristinata).
-  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
-  const corpo = document.createElement('div');
-  // Le stesse quattro righe misurate sulla casa vera (docs/BACKLOG.md), piu'
-  // un `problema:`/`automazione:` sintetici: la prova copre tutti e quattro
-  // i prefissi che l'archivio scrive, non solo i due che il collaudo ha
-  // trovato per caso.
-  window.HirisWatcherRoute._rendiOsservate(corpo, [
-    { soggetto: 'integrazione:01K2CK4GG287VKK18M5J788MRQ', gamba: 'buono stato', provenienza: 'pavimento' },
-    { soggetto: 'log:aioamazondevices@components/alexa_devices/coordinator.py:192', gamba: 'buono stato', provenienza: 'pavimento' },
-    { soggetto: 'log:homeassistant.components.hydrawise@helpers/update_coordinator.py:481', gamba: 'buono stato', provenienza: 'pavimento' },
-    { soggetto: 'log:custom_components.zcsazzurro.api@custom_components/zcsazzurro/api.py:202', gamba: 'buono stato', provenienza: 'pavimento' },
-    { soggetto: 'problema:light.termostato_soggiorno', gamba: 'buono stato', provenienza: 'pavimento' },
-    { soggetto: 'automazione:automation.spegni_luci_notte', gamba: 'buono stato', provenienza: 'pavimento' },
-  ]);
+test('seam _rendiScope: un prefisso tecnico grezzo (log:/integrazione:/problema:/automazione:) non resta mai a schermo (collaudo E2, 07/09/2026)', () => {
+  // Mutazione dichiarata: in `decisionRow` sostituire
+  // `el('span', 'text-mono', described.primary)` con
+  // `el('span', 'text-mono', v.soggetto)` fa arrossire `assert.doesNotMatch`
+  // qui sotto, sulle voci `log:` e `integrazione:` -- il soggetto grezzo
+  // torna a comparire tale e quale.
+  const { corpo } = rendiScope(paginaScope({
+    watching: [
+      condizione('integrazione:01K2CK4GG287VKK18M5J788MRQ'),
+      condizione('log:aioamazondevices@components/alexa_devices/coordinator.py:192'),
+      condizione('log:homeassistant.components.hydrawise@helpers/update_coordinator.py:481'),
+      condizione('log:custom_components.zcsazzurro.api@custom_components/zcsazzurro/api.py:202'),
+      condizione('problema:light.termostato_soggiorno'),
+      condizione('automazione:automation.spegni_luci_notte'),
+    ],
+  }));
 
   // Il nome leggibile e' sempre il PRIMO `.text-mono` di ogni riga (la resa
-  // scrive prima `d.primary`, poi -- solo se c'e' -- `d.secondary`).
-  const primary = Array.from(corpo.querySelectorAll('li > .text-mono:first-child'))
-    .map((span) => span.textContent);
+  // scrive prima `primary`, poi -- solo se c'e' -- `secondary`).
+  const righe = Array.from(corpo.querySelectorAll('ul > li'));
+  const primary = righe.map((li) => li.querySelector('.text-mono').textContent);
   assert.equal(primary.length, 6, 'una riga per soggetto, come le sei voci passate');
 
   primary.forEach((text, i) => {
@@ -274,8 +532,6 @@ test('seam _rendiOsservate: un prefisso tecnico grezzo (log:/integrazione:/probl
       `riga ${i}: un prefisso tecnico e' rimasto a schermo tale e quale: "${text}"`);
   });
 
-  // La legge del capitolato: non si inventa un titolo che non c'e', ma
-  // "cosa" e' quella voce si dice sempre -- mai un identificatore nudo.
   assert.match(primary[0], /integrazione non caricata/i,
     'senza titolo, un id opaco (ULID) non e\' risolvibile: si dice cosa e\', non l\'id da solo');
   assert.match(primary[1], /Registro: aioamazondevices/,
@@ -284,27 +540,22 @@ test('seam _rendiOsservate: un prefisso tecnico grezzo (log:/integrazione:/probl
   assert.match(primary[3], /Registro: custom_components\.zcsazzurro\.api/);
 
   // Il percorso del file NON si butta (distingue due errori dello stesso
-  // logger): resta a schermo, ma in secondo piano (`.field-hint`), mai come
-  // primo testo della riga.
-  const righe = Array.from(corpo.querySelectorAll('ul > li'));
-  const secondaria = righe[1].querySelector('.field-hint');
+  // logger): resta a schermo, ma in secondo piano (`.text-mono.field-hint`),
+  // mai come primo testo della riga.
+  const secondaria = righe[1].querySelector('.text-mono.field-hint');
   assert.ok(secondaria, 'il riferimento tecnico del "log:" non deve sparire, solo passare in secondo piano');
   assert.match(secondaria.textContent, /coordinator\.py:192/);
-  assert.doesNotMatch(righe[1].querySelector('.text-mono:first-child').textContent, /coordinator\.py/,
-    'il percorso del file non deve stare nel nome PRIMARIO della riga');
+  assert.doesNotMatch(primary[1], /coordinator\.py/, 'il percorso del file non deve stare nel nome PRIMARIO della riga');
 
-  // Rilievo del revisore (07/09/2026): lo stesso vincolo, ma per
-  // `integrazione:` -- prima mancava un assert che leggesse il `.field-hint`
-  // di QUESTA riga, quindi `secondary: ''` in `describeWatchedSubject`
-  // sarebbe passato inosservato. Mutazione ESEGUITA per provarlo: rimettere
-  // `secondary: ''` al posto di `secondary: p.rest` per il caso
-  // `integrazione` fa arrossire `assert.ok` qui sotto (nessun `.field-hint`
-  // nella riga 0).
-  const secondariaIntegrazione = righe[0].querySelector('.field-hint');
+  // Lo stesso vincolo per `integrazione:` (rilievo del revisore,
+  // 07/09/2026): mutazione ESEGUITA allora -- rimettere `secondary: ''` al
+  // posto di `secondary: p.rest` per il caso `integrazione` in
+  // `describeWatchedSubject` fa arrossire `assert.ok` qui sotto.
+  const secondariaIntegrazione = righe[0].querySelector('.text-mono.field-hint');
   assert.ok(secondariaIntegrazione,
     'l\'id dell\'integrazione non deve sparire, solo passare in secondo piano (come il percorso del "log:")');
   assert.match(secondariaIntegrazione.textContent, /01K2CK4GG287VKK18M5J788MRQ/);
-  assert.doesNotMatch(righe[0].querySelector('.text-mono:first-child').textContent, /01K2CK4GG287VKK18M5J788MRQ/,
+  assert.doesNotMatch(primary[0], /01K2CK4GG287VKK18M5J788MRQ/,
     'l\'id non deve stare nel nome PRIMARIO della riga (è opaco, non un nome)');
 });
 
@@ -1488,19 +1739,17 @@ test('seam _rendiOggetti: un guasto col suo titolo non viene dichiarato identifi
   assert.doesNotMatch(corpo.textContent, /identificatore/i);
 });
 
-test('seam _rendiOsservate: un entity_id nudo viene dichiarato per quello che è (l\'endpoint non porta nomi)', () => {
+test('seam _rendiScope: un entity_id nudo viene dichiarato per quello che è (l\'endpoint non porta nomi)', () => {
   // R4 (revisione del tratto v3.22.2..HEAD): quando OGNI voce del gruppo è
-  // tecnica (qui l'unica voce di "comfort") la dichiarazione vive una volta
-  // per il GRUPPO, non sulla riga -- la riga da sola, ripetuta su un elenco
-  // lungo, era il rumore che il rilievo segnala. Mutazione dichiarata,
-  // ESEGUITA: togliere il blocco `if (tutteTecniche) { ... }` da
-  // `renderAspectGroup` fa arrossire `assert.match(dettaglio.textContent,
-  // /identificatore/i)`.
-  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
-  const corpo = document.createElement('div');
-  window.HirisWatcherRoute._rendiOsservate(corpo, [
-    { soggetto: 'binary_sensor.movimento_cucina', gamba: 'comfort', provenienza: 'pavimento' },
-  ]);
+  // tecnica (qui l'unica voce dell'osservatore) la dichiarazione vive una
+  // volta per il GRUPPO, non sulla riga -- la riga da sola, ripetuta su un
+  // elenco di ~380 entità, era il rumore che il rilievo segnala. Mutazione
+  // dichiarata: togliere il blocco `if (allTechnical) { ... }` da
+  // `renderDecisionGroup` fa arrossire `assert.match(dettaglio.textContent,
+  // /identificatori tecnici/i)`.
+  const { corpo } = rendiScope(paginaScope({
+    watching: [voce('binary_sensor.movimento_cucina')],
+  }));
   const dettaglio = corpo.querySelector('details');
   assert.match(dettaglio.textContent, /identificatori tecnici/i,
     '`/api/mind/watching` non porta nomi: il gruppo deve dirlo (una volta), non tacerlo');
@@ -1513,20 +1762,21 @@ test('seam _rendiOsservate: un entity_id nudo viene dichiarato per quello che è
     'nessun nome dedotto dall\'id');
 });
 
-test('seam _rendiOsservate: un gruppo misto (entità + condizioni già nominate) porta il badge SOLO sulla riga tecnica', () => {
-  // R4: "buono stato" è l'unica gamba che può mescolare entità dirette
-  // (tecniche per costruzione) e condizioni di sistema già decodificate in
-  // un nome leggibile (`describeWatchedSubject`, `technical: false`). Qui
-  // la dichiarazione per-riga torna a distinguere davvero una voce
-  // dall'altra, quindi non deve sparire. Mutazione dichiarata, ESEGUITA:
-  // sostituire `if (d.technical && !tutteTecniche)` con `if (false)` fa
-  // arrossire il primo assert (il badge sparisce anche dove distingue).
-  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
-  const corpo = document.createElement('div');
-  window.HirisWatcherRoute._rendiOsservate(corpo, [
-    { soggetto: 'lock.porta_garage', gamba: 'buono stato', provenienza: 'pavimento' },
-    { soggetto: 'problema:light.termostato_soggiorno', gamba: 'buono stato', provenienza: 'pavimento' },
-  ]);
+test('seam _rendiScope: un gruppo misto (entità + condizioni già nominate) porta la dichiarazione SOLO sulla riga tecnica', () => {
+  // Col payload nuovo un gruppo misto non nasce dal filo (`Watcher.watching`
+  // mette le condizioni di sistema sotto `autore: null`, le entità sotto un
+  // autore), ma `renderDecisionGroup` non deve dipendere da quella
+  // garanzia per essere corretta: un `problema:` con un autore -- domani,
+  // se l'analista chiedesse di guardarne uno -- cadrebbe qui. Mutazione
+  // dichiarata: sostituire `!allTechnical` con `false` nella chiamata a
+  // `decisionRow` fa arrossire il primo assert (la dichiarazione sparisce
+  // anche dove distingue).
+  const { corpo } = rendiScope(paginaScope({
+    watching: [
+      voce('lock.porta_garage', { autore: 'analyst' }),
+      voce('problema:light.termostato_soggiorno', { autore: 'analyst' }),
+    ],
+  }));
   const righe = Array.from(corpo.querySelectorAll('ul > li'));
   assert.equal(righe.length, 2);
   assert.match(righe[0].textContent, /identificatore/i,
@@ -1538,7 +1788,7 @@ test('seam _rendiOsservate: un gruppo misto (entità + condizioni già nominate)
   // informazione si direbbe due volte in due forme diverse.
   const dettaglio = corpo.querySelector('details');
   assert.doesNotMatch(dettaglio.textContent, /identificatori tecnici/i,
-    'un gruppo misto non porta anche l\'annuncio collettivo: solo il badge per-riga, dove distingue');
+    'un gruppo misto non porta anche l\'annuncio collettivo: solo la dichiarazione per-riga, dove distingue');
 });
 
 // ---------------------------------------------------------------------------

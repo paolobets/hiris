@@ -30,9 +30,12 @@ Entrambe le rotte sono GET, quindi nessun `csrf_middleware` da rispettare
 (sono metodi "safe", stessa esenzione di `GET /api/agenda`)."""
 from __future__ import annotations
 
+from datetime import datetime, timedelta
+
 from aiohttp import web
 
-from ..mind.facts import NOT_ENTITY_PREFIXES
+from ..home_space.historian import home_space_zone
+from ..mind.facts import NOT_ENTITY_PREFIXES, day_boundaries
 from ..proxy.state_translations import state_translation
 
 # I soggetti che NON sono entita' di Home Assistant: una condizione di
@@ -51,18 +54,92 @@ from ..proxy.state_translations import state_translation
 # `mind/facts.NOT_ENTITY_PREFIXES`; questo modulo si collega, non copia.
 
 
-async def handle_watching(request: web.Request) -> web.Response:
-    """Cosa sta guardando l'osservatore, e da dove viene ogni voce.
+#: Quanti giorni di volume la pagina mostra. **Non e' la durata del grezzo**
+#: (22 giorni, `store.READING_RETENTION_S`): e' quanto serve a vedere se il
+#: filtro dello scope sta funzionando -- una settimana, cioe' abbastanza da
+#: distinguere un giorno storto da una tendenza.
+VOLUME_DAYS = 7
 
-    `Watcher.watching()` porta gia' `provenienza` per ciascuna voce --
-    oggi sempre `"pavimento"` -- che e' cio' che dice alla pagina se una
-    voce si puo' togliere (spec §7). Non si ricalcola qui.
+
+async def handle_watching(request: web.Request) -> web.Response:
+    """La pagina dello scope: **cosa guardo, perche', da quando, e quanto costa**.
+
+    Spec §5.1 e §11 **non sono due pagine**: l'elenco di cio' che si guarda e'
+    anche la prova che l'obiettivo e' stato capito. Per questo la rotta porta
+    tutte e cinque le parti in una risposta sola -- chi legge deve poter
+    confrontare le scelte con la domanda a cui rispondono senza cambiare
+    schermata:
+
+    - `watching` -- cio' che si guarda, col **motivo** e l'**autore** di ogni
+      voce (`Watcher.watching()`, che le prende dallo scope);
+    - `fuori` -- cio' che e' stato **lasciato fuori**, con la sua ragione. E'
+      l'altra meta' della trasparenza, ed e' da li' che si rimette dentro una
+      delle escluse: un elenco di sole cose guardate non direbbe se un'entita'
+      manca perche' esclusa o perche' mai considerata;
+    - `obiettivo` -- la domanda rispetto a cui si e' deciso;
+    - `riconsiderazione` -- quando si e' ripensata tutta la casa, la **finestra
+      di memoria misurata** e la **cadenza** che ne esce. Tutti e tre, o
+      «ogni 84 ore» sarebbe da credere sulla parola;
+    - `volume` -- **quante righe grezze al giorno**. E' la contropartita onesta
+      dello scope, e la spec promette -83%: fino all'11/09/2026 nessuna porta
+      lo esponeva, e la promessa non era verificabile da fuori.
+
+    **Le parti che mancano si dichiarano `None`/`[]`, non si inventano.**
+    L'osservatore puo' esserci e l'archivio no (avvio a meta', o un guasto): un
+    obiettivo di fabbrica e un volume a zero sarebbero due affermazioni che
+    nessuno ha verificato.
     """
     watcher = request.app.get("watcher")
     if watcher is None:
         return web.json_response(
             {"watching": [], "error": "osservatore non disponibile"}, status=503)
-    return web.json_response({"watching": watcher.watching()})
+    store = request.app.get("observations")
+    return web.json_response({
+        "watching": watcher.watching(),
+        "fuori": _left_out(store),
+        "obiettivo": store.objective() if store is not None else None,
+        "riconsiderazione": store.last_reconsideration() if store is not None else None,
+        "volume": _volume(request.app, store),
+    })
+
+
+def _left_out(store) -> list[dict]:
+    """Cio' su cui qualcuno ha deciso **di no**, con la ragione e l'autore.
+
+    Chi non e' nello scope affatto non compare: non e' stato lasciato fuori,
+    non e' stato considerato -- e dirlo di 452 entita' riempirebbe la pagina di
+    righe senza ragione accanto, che e' il contrario di cio' che serve.
+    """
+    if store is None:
+        return []
+    return sorted(
+        ({"soggetto": subject, "motivo": v["motivo"], "autore": v["autore"],
+          "deciso_ts": v["deciso_ts"]}
+         for subject, v in store.scope().items() if not v["dentro"]),
+        key=lambda v: v["soggetto"])
+
+
+def _volume(app, store) -> list[dict]:
+    """Quante righe grezze per ciascuno degli ultimi giorni, **dal piu'
+    vecchio**: si legge come una tendenza, e una tendenza si legge in avanti.
+
+    I confini sono quelli del giorno LOCALE (`facts.day_boundaries` col fuso
+    della casa), gli stessi che usa l'aggregazione notturna: un conteggio su
+    giorni UTC direbbe numeri che non combaciano con nessun'altra pagina.
+    """
+    if store is None:
+        return []
+    from ..server import _timezone_from_home_space_store
+
+    timezone = _timezone_from_home_space_store(app.get("home_space_store"))
+    today = datetime.now(home_space_zone(timezone)).date()
+    volume = []
+    for back in range(VOLUME_DAYS - 1, -1, -1):
+        day = (today - timedelta(days=back)).isoformat()
+        from_ts, to_ts = day_boundaries(day, timezone)
+        volume.append({"giorno": day,
+                       "righe": store.readings_count(from_ts=from_ts, to_ts=to_ts)})
+    return volume
 
 
 async def handle_facts(request: web.Request) -> web.Response:
