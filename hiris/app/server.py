@@ -1806,14 +1806,31 @@ async def reconsideration_round(app, ha_client) -> dict | None:
         candidates = sorted(digest_visible_entity_ids(home_space))
         last = store.last_reconsideration()
         objective = store.objective()
-        why = reason_to_reconsider(
-            last=last,
-            cadence_s=last["cadenza_s"] if last else None,
-            objective_ts=objective.get("scritto_ts"),
-            undecided=store.undecided(candidates),
-            now=time.time())
-        if why is None:
-            return None
+        # **Una riconsiderazione e' una CAMPAGNA di piu' lotti.** La domanda
+        # si spezza perche' 381 giudizi in un turno solo uccidono la CLI del
+        # piano (misurato l'11/09/2026, vedi `SCOPE_BATCH`), e la campagna
+        # prosegue ai giri successivi finche' la casa e' coperta -- **senza
+        # riaspettare la cadenza**, che altrimenti sarebbe gia' soddisfatta e
+        # i lotti dal secondo in poi non partirebbero mai.
+        restano = _to_judge(store, candidates, last)
+        in_corso = last is not None and bool(restano)
+        if in_corso:
+            why = (f"la campagna prosegue: restano {len(restano)} soggetti "
+                   "da giudicare")
+        else:
+            why = reason_to_reconsider(
+                last=last,
+                cadence_s=last["cadenza_s"] if last else None,
+                objective_ts=objective.get("scritto_ts"),
+                undecided=store.undecided(candidates),
+                now=time.time())
+            if why is None:
+                return None
+            # La campagna comincia ADESSO: i soggetti da rigiudicare sono
+            # tutti, e l'istante si prende PRIMA delle decisioni cosi' che
+            # quelle del primo lotto risultino gia' dentro la campagna.
+            restano = list(candidates)
+        lotto = set(restano[:SCOPE_BATCH])
 
         # **La stessa domanda che si fanno la chat e le promesse, dalla stessa
         # funzione.** Fino all'11/09/2026 questo giro non se la faceva affatto
@@ -1849,15 +1866,20 @@ async def reconsideration_round(app, ha_client) -> dict | None:
                 "osservatore: il piano non puo' servire questo giro (%s): si "
                 "scende alla catena. Il costo cambia -- dal forfait al consumo.",
                 downgrade)
-        logger.info("osservatore: riconsidero la casa (%s) -- %s", route, why)
+        logger.info("osservatore: riconsidero la casa (%s), lotto di %d -- %s",
+                    route, len(lotto), why)
+        campagna_ts = time.time()
         window_s = await measure_memory_window(
             ha_client, sorted(e["id"] for e in home_space.get("entita", []) if e.get("id")))
         if route == "ponte":
-            return _enqueue_scope_turn(app, store, home_space,
-                                       reason=why, window_s=window_s)
+            return _enqueue_scope_turn(app, store, home_space, reason=why,
+                                       window_s=window_s, lotto=lotto,
+                                       annota=not in_corso,
+                                       campagna_ts=campagna_ts)
         outcome = await observer_reconsider(
             runner, store, home_space, reason=why,
-            window_s=window_s, cadence_s=cadence_from(window_s))
+            window_s=window_s, cadence_s=cadence_from(window_s),
+            only=lotto, record=not in_corso, campaign_ts=campagna_ts)
         _record_attempt(store, outcome, route="catena", downgrade=downgrade)
         logger.info("osservatore: giro finito -- %s", outcome)
         return outcome
@@ -1928,6 +1950,19 @@ def _scope_turn_in_flight(app) -> bool:
 #: Assistant ricorda. Il primo gradino e' il giro stesso: un guasto isolato --
 #: un turno storto, una raffica persa -- si riprova subito, e solo l'insistenza
 #: costa attesa.
+#: Quante entita' si chiedono in un turno solo. **Misurato dal vivo
+#: l'11/09/2026**: 381 giudizi in una domanda sola producono ~30 KB di
+#: risposta (~8.000 token) e la CLI del piano viene uccisa dal tetto di 300
+#: secondi del sottoprocesso -- `claude non eseguibile: TimeoutExpired`, due
+#: volte, l'ultima alle 15:44:12 esatte, 300 secondi netti dopo
+#: l'accodamento. Nessun consumo registrato, perche' il turno non finisce mai.
+#:
+#: Cento righe sono ~2.000 token in uscita, cioe' meno di un quinto del tetto:
+#: il margine e' li' apposta, perche' una casa piu' loquace della nostra non
+#: debba scoprire questo limite da sola. Quattro lotti coprono questa casa in
+#: quaranta minuti.
+SCOPE_BATCH = 100
+
 RETRY_BASE_S = 600.0
 RETRY_MAX_S = 6 * 3600.0
 
@@ -1959,6 +1994,23 @@ def _retry_hold(store, *, now: float) -> bool:
         return False
     wait = min(RETRY_BASE_S * 2 ** (consecutive - 1), RETRY_MAX_S)
     return now - attempts[0]["quando_ts"] < wait
+
+
+def _to_judge(store, candidates: list[str], last: dict | None) -> list[str]:
+    """I soggetti che questa campagna deve ancora giudicare, **dal piu'
+    vecchio**: prima quelli su cui nessuno ha mai deciso, poi quelli decisi
+    prima che la campagna cominciasse.
+
+    L'ordine non e' estetico: e' cio' che garantisce che quattro lotti da cento
+    coprano la casa invece di ripescare sempre gli stessi.
+    """
+    scope = store.scope()
+    mai = [c for c in candidates if c not in scope]
+    vecchi = [c for c in candidates
+              if c in scope and last is not None
+              and (scope[c]["deciso_ts"] or 0) <= last["quando_ts"]]
+    vecchi.sort(key=lambda c: scope[c]["deciso_ts"] or 0)
+    return mai + vecchi
 
 
 def _collect_scope_turn(app, store, home_space: dict) -> tuple[dict | None, bool]:
@@ -2009,10 +2061,14 @@ def _collect_scope_turn(app, store, home_space: dict) -> tuple[dict | None, bool
         return None, False
     reply = (turn.get("decision") or {}).get("reply") or ""
     wake = turn.get("wake") or {}
+    lotto = wake.get("lotto")
     outcome = observer_apply_answer(
         store, home_space, reply,
         reason=wake.get("motivo") or "il piano ha risposto",
-        window_s=wake.get("finestra_s"), cadence_s=wake.get("cadenza_s"))
+        window_s=wake.get("finestra_s"), cadence_s=wake.get("cadenza_s"),
+        asked=set(lotto) if lotto else None,
+        record=bool(wake.get("annota", True)),
+        campaign_ts=wake.get("campagna_ts"))
     _record_attempt(store, outcome)
     # **Il registro degli esiti e' il solo posto in cui HIRIS osserva come si
     # comporta un fornitore davvero**, e la terza strada del piano non ci
@@ -2036,7 +2092,8 @@ def _collect_scope_turn(app, store, home_space: dict) -> tuple[dict | None, bool
 
 
 def _enqueue_scope_turn(app, store, home_space: dict, *, reason: str,
-                        window_s: float | None) -> dict:
+                        window_s: float | None, lotto: set[str],
+                        annota: bool, campagna_ts: float) -> dict:
     """Accoda al piano il turno dell'osservatore, e torna subito.
 
     La scadenza viene dall'ARCHIVIO (`ponte.scadenza_min`), come per la chat e
@@ -2050,9 +2107,15 @@ def _enqueue_scope_turn(app, store, home_space: dict, *, reason: str,
     now = time.time()
     app["reasoning_queue"].enqueue(
         SCOPE_TURN_KIND,
+        # **La sveglia porta anche il LOTTO e se questo turno apre la
+        # campagna.** Il ponte risponde minuti dopo, da un altro processo: chi
+        # raccoglie deve sapere di che cosa era stata fatta la domanda, o non
+        # potrebbe ne' accorgersi delle omissioni ne' decidere se annotare la
+        # riconsiderazione. `submit` azzera il contesto e **non** la sveglia.
         {"motivo": reason, "finestra_s": window_s,
-         "cadenza_s": cadence_from(window_s)},
-        observer_bridge_turn(store, home_space),
+         "cadenza_s": cadence_from(window_s),
+         "lotto": sorted(lotto), "annota": annota, "campagna_ts": campagna_ts},
+        observer_bridge_turn(store, home_space, lotto),
         now + deadline_min * 60,
         now=now)
     # **«Ho chiesto e sto aspettando» e' il terzo stato**, e la pagina deve

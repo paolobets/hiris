@@ -424,7 +424,8 @@ def test_le_decisioni_si_SCRIVONO_da_una_risposta_qualunque_sia_arrivata(archivi
         reason="il ponte ha risposto", window_s=604800.0, cadence_s=302400.0,
         now=1000.0)
 
-    assert esito == {"decise": 1, "rifiutate": 0, "ignorate": 0, "candidate": 2}
+    assert esito == {"decise": 1, "rifiutate": 0, "ignorate": 0, "omesse": 0,
+                     "candidate": 2}
     assert archivio.scope()["climate.camera_t"]["autore"] == OBSERVER
     ultima = archivio.last_reconsideration()
     assert ultima["motivo"] == "il ponte ha risposto"
@@ -464,3 +465,79 @@ def test_il_turno_del_ponte_porta_il_CONTRATTO_di_risposta(archivio):
     assert "array JSON" in turno["istruzione"]
     assert "dentro" in turno["istruzione"], (
         "il contratto porta anche la forma di ogni voce, non solo «JSON»")
+
+
+# -- il lotto: la domanda si spezza, perche' la risposta non ci sta ----------
+#
+# Misurato dal vivo l'11/09/2026, due volte: un turno che chiede 381 giudizi
+# produce ~30 KB di risposta (~8.000 token) e la CLI del piano viene uccisa dal
+# tetto di 300 secondi del sottoprocesso -- `claude non eseguibile:
+# TimeoutExpired` alle 15:44:12, esattamente 300 secondi dopo l'accodamento
+# delle 15:39:12. Nessun consumo registrato, perche' il turno non finisce mai.
+
+
+def test_si_chiede_SOLO_del_lotto_quando_glielo_si_dice(archivio):
+    """Mutazione che la uccide: ignorare `only` e comporre su tutta la casa."""
+    righe = observer.house_lines(_casa(), only={"climate.camera_t"})
+
+    assert [r.split(" · ")[0] for r in righe] == ["climate.camera_t"]
+
+
+def test_il_lotto_non_puo_far_entrare_cio_che_NON_compete_all_osservatore(archivio):
+    """`only` restringe, non allarga: un'entita' di servizio chiesta per nome
+    resta fuori lo stesso, perche' la legge di cosa compete all'osservatore e'
+    una sola e non la decide chi compone il lotto.
+
+    Mutazione che la uccide: filtrare su `only` invece che intersecare con la
+    regola del nucleo.
+    """
+    righe = observer.house_lines(_casa(), only={"sensor.wifi_signal"})
+
+    assert righe == []
+
+
+def test_il_turno_del_ponte_chiede_solo_del_suo_lotto(archivio):
+    turno = observer.bridge_turn(archivio, _casa(), only={"climate.camera_t"})
+
+    assert "climate.camera_t" in turno["history"][0]["content"]
+    assert "sensor.presa_energia" not in turno["history"][0]["content"]
+
+
+def test_cio_che_si_e_chiesto_e_il_modello_ha_OMESSO_non_resta_in_sospeso(archivio):
+    """**Il buco che il lotto porta a galla.** La domanda dice: «un'entita' su
+    cui davvero non sai decidere: omettila». Un'omissione lascia il soggetto
+    NON deciso, e l'innesco «ci sono soggetti su cui nessuno ha deciso» lo
+    riproporrebbe al giro dopo, e a quello dopo ancora: la campagna non
+    finirebbe mai e l'osservatore chiederebbe al piano ogni dieci minuti per
+    sempre.
+
+    Si annota per quello che e': **guardata, e non giudicata** -- fuori, con la
+    ragione scritta, quindi visibile nella pagina e rimettibile dentro con un
+    gesto. Non e' una decisione inventata: e' il fatto vero.
+
+    Mutazione che la uccide: non passare `asked`, e lasciare che l'omissione
+    resti silenzio.
+    """
+    esito = observer.apply_answer(
+        archivio, _casa(),
+        '[{"id": "climate.camera_t", "dentro": true, "motivo": "scalda la casa"}]',
+        asked={"climate.camera_t", "sensor.presa_energia"}, now=1000.0)
+
+    scope = archivio.scope()
+    assert scope["climate.camera_t"]["dentro"] is True
+    assert scope["sensor.presa_energia"]["dentro"] is False
+    assert "non ha saputo decidere" in scope["sensor.presa_energia"]["motivo"]
+    assert esito["omesse"] == 1
+
+
+def test_senza_sapere_cosa_si_e_chiesto_non_si_inventa_nessuna_omissione(archivio):
+    """`asked` assente vuol dire «non si sa cosa fosse nel lotto»: allora non
+    si annota niente per nessuno. Dedurre l'insieme chiesto dalla casa di ADESSO
+    attribuirebbe un'omissione a un'entita' comparsa dopo la domanda."""
+    esito = observer.apply_answer(
+        archivio, _casa(),
+        '[{"id": "climate.camera_t", "dentro": true, "motivo": "scalda"}]',
+        now=1000.0)
+
+    assert "sensor.presa_energia" not in archivio.scope()
+    assert esito["omesse"] == 0

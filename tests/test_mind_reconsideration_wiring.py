@@ -6,6 +6,7 @@ quattro (`cadence.reason_to_reconsider`). Qui si prova che il giro periodico
 la interroghi davvero e agisca di conseguenza: le prove dei singoli inneschi
 stanno in `test_mind_impronta.py`, quelle del giro in `test_mind_observer.py`.
 """
+import json
 import os
 
 import pytest
@@ -76,7 +77,8 @@ async def test_al_primo_avvio_l_osservatore_gira_e_lascia_traccia(archivio):
 
     esito = await reconsideration_round(_app(archivio, anagrafe, modello), _Ponte())
 
-    assert esito == {"decise": 1, "rifiutate": 0, "ignorate": 0, "candidate": 1}
+    assert esito == {"decise": 1, "rifiutate": 0, "ignorate": 0, "omesse": 0,
+                     "candidate": 1}
     assert modello.chiamate == 1
     assert archivio.scope()["climate.x"]["dentro"] is True
     ultima = archivio.last_reconsideration()
@@ -118,9 +120,13 @@ async def test_se_non_e_ora_NON_si_paga_ne_il_modello_ne_la_sonda(archivio):
     Mutazione che la uccide: misurare la finestra prima di chiedersi se e' ora.
     """
     import time
-    archivio.decide_scope("climate.x", inside=True, reason="pesa", author=OBSERVER)
-    archivio.record_reconsideration(when_ts=time.time(), window_s=7 * GIORNO,
+    # **L'ordine e' quello vero**: la riconsiderazione segna l'INIZIO della
+    # campagna, e le decisioni che ne escono portano un istante successivo.
+    # Seminare al contrario descriverebbe uno stato che la produzione non
+    # produce -- e farebbe risultare la casa «da rigiudicare» appena finita.
+    archivio.record_reconsideration(when_ts=time.time() - 60, window_s=7 * GIORNO,
                                     cadence_s=3.5 * GIORNO, reason="fatta")
+    archivio.decide_scope("climate.x", inside=True, reason="pesa", author=OBSERVER)
     modello = _Modello()
     ponte = _Ponte()
 
@@ -138,9 +144,13 @@ async def test_un_entita_NUOVA_fa_girare_senza_aspettare_la_cadenza(archivio):
     giovedi': cio' che non e' osservato non esiste piu', e i giorni mancanti
     non tornano."""
     import time
-    archivio.decide_scope("climate.x", inside=True, reason="pesa", author=OBSERVER)
-    archivio.record_reconsideration(when_ts=time.time(), window_s=7 * GIORNO,
+    # **L'ordine e' quello vero**: la riconsiderazione segna l'INIZIO della
+    # campagna, e le decisioni che ne escono portano un istante successivo.
+    # Seminare al contrario descriverebbe uno stato che la produzione non
+    # produce -- e farebbe risultare la casa «da rigiudicare» appena finita.
+    archivio.record_reconsideration(when_ts=time.time() - 60, window_s=7 * GIORNO,
                                     cadence_s=3.5 * GIORNO, reason="fatta")
+    archivio.decide_scope("climate.x", inside=True, reason="pesa", author=OBSERVER)
     modello = _Modello('[{"id": "light.nuova", "dentro": true, "motivo": "si accende"}]')
     anagrafe = _Anagrafe([_entita("climate.x"), _entita("light.nuova")])
 
@@ -164,9 +174,13 @@ async def test_le_entita_di_servizio_non_sono_MAI_novita(archivio):
     Mutazione che la uccide: passare tutte le entita' a `undecided`.
     """
     import time
-    archivio.decide_scope("climate.x", inside=True, reason="pesa", author=OBSERVER)
-    archivio.record_reconsideration(when_ts=time.time(), window_s=7 * GIORNO,
+    # **L'ordine e' quello vero**: la riconsiderazione segna l'INIZIO della
+    # campagna, e le decisioni che ne escono portano un istante successivo.
+    # Seminare al contrario descriverebbe uno stato che la produzione non
+    # produce -- e farebbe risultare la casa «da rigiudicare» appena finita.
+    archivio.record_reconsideration(when_ts=time.time() - 60, window_s=7 * GIORNO,
                                     cadence_s=3.5 * GIORNO, reason="fatta")
+    archivio.decide_scope("climate.x", inside=True, reason="pesa", author=OBSERVER)
     modello = _Modello()
     anagrafe = _Anagrafe([_entita("climate.x"),
                           _entita("sensor.wifi", categoria="diagnostic"),
@@ -296,7 +310,8 @@ async def test_la_risposta_del_ponte_si_raccoglie_al_giro_dopo(
 
     esito = await reconsideration_round(app, _Ponte())
 
-    assert esito == {"decise": 1, "rifiutate": 0, "ignorate": 0, "candidate": 1}
+    assert esito == {"decise": 1, "rifiutate": 0, "ignorate": 0, "omesse": 0,
+                     "candidate": 1}
     assert archivio.scope()["climate.x"]["dentro"] is True
     assert archivio.last_reconsideration() is not None
 
@@ -635,3 +650,108 @@ async def test_il_piano_che_serve_l_osservatore_finisce_nel_REGISTRO_degli_esiti
     await reconsideration_round(app, _Ponte())
 
     assert registro.occurrence("subscription")["tipo"] == "risposto"
+
+
+# ── La campagna: una riconsiderazione e' PIU' lotti ─────────────────────────
+#
+# Misurato dal vivo l'11/09/2026: un turno che chiede 381 giudizi produce
+# ~30 KB di risposta e la CLI del piano viene uccisa dal tetto di 300 secondi
+# (`claude non eseguibile: TimeoutExpired`, due volte, alle 15:44:12 esatte).
+# La domanda si spezza in lotti.
+#
+# **E la riconsiderazione si annota quando la campagna PARTE, non a ogni
+# lotto.** Annotarla a ogni lotto soddisferebbe la cadenza dopo il primo, e gli
+# altri non partirebbero mai: a ogni cadenza si rigiudicherebbe un quarto di
+# casa, e la casa intera in quattro cadenze -- oltre la memoria di Home
+# Assistant, cioe' la garanzia che la cadenza esiste per tenere (spec §5.2).
+
+
+def _entita_molte(quante):
+    return [_entita(f"light.n{n}") for n in range(quante)]
+
+
+@pytest.mark.asyncio
+async def test_si_chiede_un_LOTTO_per_volta_non_la_casa_intera(archivio, coda,
+                                                               piano_acceso):
+    """Mutazione che la uccide: mandare al piano tutte le candidate."""
+    from hiris.app.server import SCOPE_BATCH
+
+    anagrafe = _Anagrafe(_entita_molte(SCOPE_BATCH + 50))
+    app = _app_ponte_acceso(archivio, anagrafe, _Modello(), coda)
+
+    await reconsideration_round(app, _Ponte())
+
+    chiesto = coda.latest("scope")["context"]["history"][0]["content"]
+    righe = [r for r in chiesto.splitlines() if r.startswith("light.n")]
+    assert len(righe) == SCOPE_BATCH
+
+
+@pytest.mark.asyncio
+async def test_i_lotti_successivi_partono_SENZA_aspettare_la_cadenza(
+        archivio, coda, piano_acceso):
+    """La campagna prosegue ai giri successivi finche' la casa e' coperta.
+
+    Mutazione che la uccide: far dipendere anche i lotti successivi dalla
+    cadenza -- con la riconsiderazione gia' annotata, non partirebbero mai.
+    """
+    from hiris.app.server import SCOPE_BATCH
+
+    anagrafe = _Anagrafe(_entita_molte(SCOPE_BATCH + 3))
+    app = _app_ponte_acceso(archivio, anagrafe, _Modello(), coda)
+    await _lotto_servito(app, coda, archivio)
+
+    esito = await reconsideration_round(app, _Ponte())
+
+    assert esito == {"accodata": True}
+    chiesto = coda.latest("scope")["context"]["history"][0]["content"]
+    assert len([r for r in chiesto.splitlines() if r.startswith("light.n")]) == 3
+
+
+@pytest.mark.asyncio
+async def test_la_riconsiderazione_si_annota_UNA_volta_per_campagna(
+        archivio, coda, piano_acceso):
+    """Mutazione che la uccide: annotare a ogni lotto -- la cadenza risulterebbe
+    soddisfatta dopo il primo e la casa non verrebbe mai coperta."""
+    from hiris.app.server import SCOPE_BATCH
+
+    anagrafe = _Anagrafe(_entita_molte(SCOPE_BATCH + 3))
+    app = _app_ponte_acceso(archivio, anagrafe, _Modello(), coda)
+    await _lotto_servito(app, coda, archivio)
+    prima = archivio.last_reconsideration()["quando_ts"]
+    await _lotto_servito(app, coda, archivio)
+
+    assert archivio.last_reconsideration()["quando_ts"] == prima
+
+
+@pytest.mark.asyncio
+async def test_coperta_la_casa_la_campagna_si_ferma(archivio, coda, piano_acceso):
+    """Finita la campagna non si chiede piu' niente finche' la cadenza non
+    scade: senza questa fermata l'osservatore chiederebbe al piano ogni dieci
+    minuti per sempre."""
+    from hiris.app.server import SCOPE_BATCH
+
+    anagrafe = _Anagrafe(_entita_molte(SCOPE_BATCH - 10))
+    app = _app_ponte_acceso(archivio, anagrafe, _Modello(), coda)
+    await _lotto_servito(app, coda, archivio)
+
+    assert await reconsideration_round(app, _Ponte()) is None
+
+
+async def _lotto_servito(app, coda, archivio):
+    """Un giro intero: si accoda, il piano risponde su tutto il lotto, si
+    raccoglie."""
+    await reconsideration_round(app, _Ponte())
+    preso = coda.claim(now=_orologio())
+    chiesti = [r.split(" · ")[0] for r in
+               preso["context"]["history"][0]["content"].splitlines()
+               if r.startswith("light.n")]
+    risposta = json.dumps([{"id": e, "dentro": True, "motivo": "la prova dice si"}
+                           for e in chiesti])
+    coda.submit(preso["job_id"], preso["nonce"], {"reply": risposta},
+                now=_orologio())
+    return await reconsideration_round(app, _Ponte())
+
+
+def _orologio():
+    import time
+    return time.time()
