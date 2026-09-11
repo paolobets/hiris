@@ -73,6 +73,11 @@ def _load_real_reasoning_sweep(reasoning_queue, *, ponte_attivo=True,
         "logger": logging.getLogger("test_reasoning_sweep_chat_skip"),
         "reasoning_queue": reasoning_queue,
         "SCOPE_TURN_KIND": server.SCOPE_TURN_KIND,
+        # `read_version` entra con la colonna `version` dei tentativi: il
+        # freno conta solo i fallimenti della versione in esecuzione, e un
+        # turno scaduto va annotato con la sua. Simbolo importabile di
+        # `server.py`, come gli altri: legarlo e' esatto.
+        "read_version": server.read_version,
         # Task 14: la spazzata legge anche `app["models_config"]`, per sapere
         # dopo quanto un ripiego preso in carico e mai finito e' uno schianto.
         # Il confine e' il DOPPIO della scadenza, perche' il ripiego COMINCIA

@@ -508,7 +508,7 @@ def test_cio_che_si_e_chiesto_e_il_modello_ha_OMESSO_non_resta_in_sospeso(archiv
     cui davvero non sai decidere: omettila». Un'omissione lascia il soggetto
     NON deciso, e l'innesco «ci sono soggetti su cui nessuno ha deciso» lo
     riproporrebbe al giro dopo, e a quello dopo ancora: la campagna non
-    finirebbe mai e l'osservatore chiederebbe al piano ogni dieci minuti per
+    finirebbe mai e l'osservatore chiederebbe al piano a ogni passaggio, per
     sempre.
 
     Si annota per quello che e': **guardata, e non giudicata** -- fuori, con la

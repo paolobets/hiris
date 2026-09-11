@@ -308,10 +308,37 @@ CREATE TABLE IF NOT EXISTS scope_attempt (
     tried_ts REAL NOT NULL,
     outcome TEXT NOT NULL CHECK(outcome IN
         ('accodata', 'riuscito', 'non_riuscito', 'scaduta')),
-    detail TEXT
+    detail TEXT,
+    version TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_scope_attempt_tried ON scope_attempt(tried_ts);
 """
+
+def _migration_6(conn) -> None:
+    """v5 -> v6: `scope_attempt.version`, la versione di HIRIS su cui il
+    tentativo e' avvenuto.
+
+    **Un aggiornamento e' un fatto nuovo**, e senza questa colonna il freno che
+    rallenta i tentativi (`server._retry_hold`) conta i fallimenti di una
+    versione gia' riparata. Misurato l'11/09/2026: quattro fallimenti sulla
+    3.27.0 hanno tenuto fermo l'osservatore per ottanta minuti DOPO
+    l'aggiornamento alla 3.27.1, cioe' hanno ritardato la verifica della loro
+    stessa riparazione.
+
+    Le righe scritte prima rileggono `None`: e' vero, quella versione non
+    l'hanno mai portata, e riempirla oggi attribuirebbe a ieri un fatto di
+    adesso.
+    """
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(scope_attempt)")}
+    if "version" not in existing:
+        conn.execute("ALTER TABLE scope_attempt ADD COLUMN version TEXT")
+
+
+#: A che versione sta lo schema di questo archivio. Vive qui perche' chi lo
+#: prova non debba ricopiarne il numero: un letterale in una prova e' un
+#: doppione che mente al primo schema nuovo, e questa riga esiste perche' e'
+#: successo (`test_migration_5...` inchiodava il 5).
+SCHEMA_VERSION = 6
 
 #: L'obiettivo di fabbrica, deciso dal proprietario il 25/08/2026. Non e' un
 #: ripiego: e' il criterio con cui l'osservatore decide cosa guardare su una
@@ -368,9 +395,9 @@ class ObservationsStore:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=5,
+        init_schema(self._conn, _SCHEMA, version=SCHEMA_VERSION,
                     migrations={2: _migration_2, 3: _migration_3, 4: _migration_4,
-                                5: _migration_5})
+                                5: _migration_5, 6: _migration_6})
 
     def close(self) -> None:
         with self._lock:
@@ -687,21 +714,24 @@ class ObservationsStore:
         """
         with self._lock:
             rows = self._conn.execute(
-                "SELECT tried_ts, outcome, detail FROM scope_attempt "
+                "SELECT tried_ts, outcome, detail, version FROM scope_attempt "
                 "ORDER BY tried_ts DESC, id DESC LIMIT ?", (int(limit),)).fetchall()
         return [{"quando_ts": r["tried_ts"], "esito": r["outcome"],
-                 "dettaglio": r["detail"]} for r in rows]
+                 "dettaglio": r["detail"], "versione": r["version"]}
+                for r in rows]
 
     def record_attempt(self, *, when_ts: float | None = None, outcome: str,
-                       detail: str | None = None) -> None:
+                       detail: str | None = None,
+                       version: str | None = None) -> None:
         """Annota un tentativo. Si ACCODA, come le riconsiderazioni: tre
         fallimenti di fila e uno solo sono due storie diverse, e una riga sola
         non le distinguerebbe."""
         with self._lock:
             self._conn.execute(
-                "INSERT INTO scope_attempt (tried_ts, outcome, detail) VALUES (?,?,?)",
+                "INSERT INTO scope_attempt (tried_ts, outcome, detail, version) "
+                "VALUES (?,?,?,?)",
                 (float(when_ts if when_ts is not None else _time.time()),
-                 outcome, detail))
+                 outcome, detail, version))
             self._conn.commit()
 
     # -- L'obiettivo -------------------------------------------------------

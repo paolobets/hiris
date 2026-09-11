@@ -114,8 +114,9 @@ async def test_la_finestra_si_MISURA_al_giro_e_finisce_nella_traccia(archivio):
 @pytest.mark.asyncio
 async def test_se_non_e_ora_NON_si_paga_ne_il_modello_ne_la_sonda(archivio):
     """**Il costo di non fare niente deve essere zero.** Questo giro scatta
-    ogni dieci minuti: una misura della memoria a ogni passaggio sarebbero 144
-    misure al giorno -- 80 MB di traffico -- per rispondere «non e' ora».
+    ogni minuto: una misura della memoria a ogni passaggio sarebbero 1.440
+    misure al giorno -- centinaia di MB di traffico -- per rispondere «non e'
+    ora».
 
     Mutazione che la uccide: misurare la finestra prima di chiedersi se e' ora.
     """
@@ -166,7 +167,7 @@ async def test_le_entita_di_servizio_non_sono_MAI_novita(archivio):
     non giudica le entita' di servizio e le nascoste (decisione del
     proprietario, 10/09/2026): quindi nessuna di esse finisce mai nello scope,
     quindi sarebbero «nuove» a ogni singolo giro -- 452 su questa casa -- e
-    l'osservatore girerebbe ogni dieci minuti per sempre.
+    l'osservatore girerebbe a ogni passaggio, per sempre.
 
     L'impronta si chiede sulle stesse entita' che si mostrano al modello, non
     sull'anagrafe intera.
@@ -194,7 +195,7 @@ async def test_le_entita_di_servizio_non_sono_MAI_novita(archivio):
 
 @pytest.mark.asyncio
 async def test_senza_modello_o_senza_archivio_il_giro_non_solleva(archivio):
-    """Gira ogni dieci minuti per sempre: un'eccezione su un avvio a meta'
+    """Gira a ogni passaggio per sempre: un'eccezione su un avvio a meta'
     fermerebbe lo schedulatore, non solo questo giro."""
     anagrafe = _Anagrafe([_entita("climate.x")])
 
@@ -553,7 +554,7 @@ async def test_la_stessa_risposta_storta_non_si_annota_due_volte(
 
 @pytest.mark.asyncio
 async def test_l_attesa_fra_un_tentativo_e_l_altro_CRESCE_coi_fallimenti(
-        archivio, coda, piano_acceso):
+        archivio, coda, piano_acceso, monkeypatch):
     """Due fallimenti di fila non si riprovano al giro dopo: il freno raddoppia
     l'attesa, e senza di lui il tetto giornaliero del piano si svuota in un
     pomeriggio.
@@ -561,10 +562,16 @@ async def test_l_attesa_fra_un_tentativo_e_l_altro_CRESCE_coi_fallimenti(
     Mutazione che la uccide: togliere il freno (`_retry_hold`).
     """
     import time
+
+    from hiris.app import server as srv
+    # La versione va scritta: il freno conta solo i fallimenti di QUESTA, e
+    # una semina senza versione descriverebbe righe di un archivio piu'
+    # vecchio della colonna.
+    monkeypatch.setattr(srv, "read_version", lambda: "3.99.9")
     archivio.record_attempt(when_ts=time.time() - 60, outcome="non_riuscito",
-                            detail="x")
+                            detail="x", version="3.99.9")
     archivio.record_attempt(when_ts=time.time() - 30, outcome="non_riuscito",
-                            detail="x")
+                            detail="x", version="3.99.9")
     app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]),
                             _Modello(), coda)
 
@@ -755,3 +762,65 @@ async def _lotto_servito(app, coda, archivio):
 def _orologio():
     import time
     return time.time()
+
+
+# ── Il freno guarda i fallimenti di QUESTA versione ─────────────────────────
+#
+# Misurato l'11/09/2026: quattro fallimenti sulla 3.27.0 hanno tenuto fermo
+# l'osservatore per ottanta minuti DOPO l'aggiornamento alla 3.27.1 che li
+# riparava -- il freno ha ritardato la verifica della propria riparazione.
+# Un aggiornamento e' un fatto nuovo: quei guasti riguardavano un altro
+# programma.
+
+
+@pytest.mark.asyncio
+async def test_il_freno_NON_conta_i_fallimenti_di_una_versione_precedente(
+        archivio, coda, piano_acceso, monkeypatch):
+    """Mutazione che la uccide: contare i fallimenti senza guardare la
+    versione."""
+    import time
+
+    from hiris.app import server as srv
+    monkeypatch.setattr(srv, "read_version", lambda: "3.27.1")
+    for n in range(4):
+        archivio.record_attempt(when_ts=time.time() - 60 + n, outcome="non_riuscito",
+                                detail="il vecchio difetto", version="3.27.0")
+    app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]),
+                            _Modello(), coda)
+
+    esito = await reconsideration_round(app, _Ponte())
+
+    assert esito == {"accodata": True}
+
+
+@pytest.mark.asyncio
+async def test_il_freno_conta_eccome_i_fallimenti_di_QUESTA_versione(
+        archivio, coda, piano_acceso, monkeypatch):
+    """L'altra meta': azzerare al cambio di versione non deve diventare
+    «azzerare sempre», o il freno non esisterebbe piu'."""
+    import time
+
+    from hiris.app import server as srv
+    monkeypatch.setattr(srv, "read_version", lambda: "3.27.1")
+    for n in range(2):
+        archivio.record_attempt(when_ts=time.time() - 60 + n, outcome="non_riuscito",
+                                detail="guasto vivo", version="3.27.1")
+    app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]),
+                            _Modello(), coda)
+
+    assert await reconsideration_round(app, _Ponte()) is None
+
+
+@pytest.mark.asyncio
+async def test_ogni_tentativo_annota_la_versione_su_cui_e_avvenuto(
+        archivio, coda, piano_acceso, monkeypatch):
+    """Senza, il freno non potrebbe distinguere niente: la colonna serve a
+    essere letta, non a esserci."""
+    from hiris.app import server as srv
+    monkeypatch.setattr(srv, "read_version", lambda: "3.27.1")
+    app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]),
+                            _Modello(), coda)
+
+    await reconsideration_round(app, _Ponte())
+
+    assert archivio.recent_attempts()[0]["versione"] == "3.27.1"

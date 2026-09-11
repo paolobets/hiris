@@ -13,6 +13,7 @@ import pytest
 from hiris.app.mind.store import (
     ATTEMPTS_SHOWN,
     READING_RETENTION_S,
+    SCHEMA_VERSION,
     ObservationsStore,
 )
 
@@ -505,7 +506,8 @@ def test_migration_5_adds_friendly_name_to_an_old_archive(tmp_path):
         columns = [r[1] for r in store._conn.execute("PRAGMA table_info(cambi)")]
         assert "friendly_name" in columns
         assert columns.count("friendly_name") == 1
-        assert store._conn.execute("PRAGMA user_version").fetchone()[0] == 5
+        assert (store._conn.execute("PRAGMA user_version").fetchone()[0]
+                == SCHEMA_VERSION)
 
         # La riga vecchia si rilegge intera, e il suo nome e' ASSENTE -- non
         # riempito a posteriori.
@@ -694,3 +696,59 @@ def test_i_tentativi_recenti_si_fermano_al_tetto(archivio):
     # tre, e il numero copiato a mano sarebbe il doppione che il commento
     # della pagina si vanta di non avere (rilievo della review indipendente).
     assert len(archivio.recent_attempts()) == ATTEMPTS_SHOWN
+
+
+def test_un_tentativo_porta_la_VERSIONE_su_cui_e_avvenuto(archivio):
+    """**Un aggiornamento e' un fatto nuovo**: i fallimenti di prima
+    riguardavano un altro programma. Senza la versione accanto, il freno che
+    rallenta i tentativi conterebbe i guasti di una versione riparata e
+    ritarderebbe la verifica della riparazione di ore (misurato l'11/09/2026:
+    quattro fallimenti sulla 3.27.0 tenevano fermo l'osservatore per ottanta
+    minuti dopo l'aggiornamento alla 3.27.1).
+
+    Mutazione che la uccide: non scrivere la versione.
+    """
+    archivio.record_attempt(when_ts=1000.0, outcome="non_riuscito",
+                            detail="x", version="3.27.0")
+
+    assert archivio.recent_attempts()[0]["versione"] == "3.27.0"
+
+
+def test_un_tentativo_di_un_archivio_VECCHIO_non_ha_versione_e_non_mente(archivio):
+    """Le righe scritte prima della colonna rileggono `None`: e' vero, quella
+    versione non l'hanno mai portata. Non si riempie a posteriori con quella di
+    oggi -- sarebbe attribuire a ieri un fatto di adesso."""
+    archivio.record_attempt(when_ts=1000.0, outcome="riuscito", detail="x")
+
+    assert archivio.recent_attempts()[0]["versione"] is None
+
+
+def test_migrazione_6_aggiunge_la_versione_a_un_archivio_gia_scritto(tmp_path):
+    """L'archivio della 3.27.0 ha `scope_attempt` SENZA la colonna: senza
+    migrazione il primo `record_attempt` dopo l'aggiornamento fallirebbe, e
+    l'osservatore smetterebbe di annotare i propri tentativi -- cioe' proprio
+    la porta che serve a vedere se sta funzionando.
+
+    Mutazione ESEGUITA l'11/09/2026, vista rossa e ripristinata: togliere
+    `6: _migration_6` dal dizionario passato a `init_schema`.
+    """
+    path = str(tmp_path / "oss.db")
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        "CREATE TABLE scope_attempt (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " tried_ts REAL NOT NULL, outcome TEXT NOT NULL, detail TEXT);"
+        "INSERT INTO scope_attempt(tried_ts,outcome,detail)"
+        " VALUES(900.0,'non_riuscito','di prima');"
+        "PRAGMA user_version = 5;")
+    conn.commit()
+    conn.close()
+
+    archivio = ObservationsStore(path)
+    try:
+        archivio.record_attempt(when_ts=1000.0, outcome="riuscito",
+                                detail="dopo", version="3.27.1")
+        esiti = archivio.recent_attempts()
+        assert [e["versione"] for e in esiti] == ["3.27.1", None]
+        assert esiti[1]["dettaglio"] == "di prima"
+    finally:
+        archivio.close()

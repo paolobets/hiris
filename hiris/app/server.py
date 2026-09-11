@@ -1759,7 +1759,7 @@ async def reconsideration_round(app, ha_client) -> dict | None:
     L'osservatore non giudica le entita' di servizio e le nascoste (decisione
     del proprietario, 10/09/2026): nessuna di esse finisce mai nello scope,
     quindi chiederle all'impronta le farebbe risultare «nuove» a ogni giro --
-    452 su questa casa -- e l'osservatore girerebbe ogni dieci minuti per
+    452 su questa casa -- e l'osservatore girerebbe a ogni passaggio, per
     sempre.
 
     **Il giro ha DUE tempi, e non e' una complicazione gratuita** (fetta
@@ -1795,10 +1795,10 @@ async def reconsideration_round(app, ha_client) -> dict | None:
             # a pagamento.
             return None
         if _scope_turn_in_flight(app):
-            # Questo giro scatta ogni dieci minuti e un turno del piano puo'
-            # durarne parecchi: senza questa guardia la casa accodarebbe un
-            # turno ogni dieci minuti, ciascuno con 11.500 token di casa
-            # dentro, e il tetto giornaliero si svuoterebbe in un pomeriggio.
+            # Questo giro scatta ogni minuto e un turno del piano ne dura
+            # parecchi: senza questa guardia la casa accodarebbe un turno al
+            # minuto, ciascuno col suo lotto di casa dentro, e il tetto
+            # giornaliero del piano si svuoterebbe in mezz'ora.
             return None
         if _retry_hold(store, now=time.time()):
             return None
@@ -1852,7 +1852,8 @@ async def reconsideration_round(app, ha_client) -> dict | None:
             store.record_attempt(
                 outcome="non_riuscito",
                 detail=f"non c'era nessun modello a cui chiedere ({downgrade})"
-                if downgrade else "non c'era nessun modello a cui chiedere")
+                if downgrade else "non c'era nessun modello a cui chiedere",
+                version=read_version())
             return None
 
         # **Il passaggio dal forfait al consumo si annuncia ogni volta**
@@ -1911,10 +1912,12 @@ def _record_attempt(store, outcome: dict, *, route: str = "ponte",
     porta = f" [{route}{', ripiego: ' + downgrade if downgrade else ''}]"
     error = outcome.get("errore")
     if error:
-        store.record_attempt(outcome="non_riuscito", detail=error + porta)
+        store.record_attempt(outcome="non_riuscito", detail=error + porta,
+                             version=read_version())
     else:
         store.record_attempt(outcome="riuscito",
-                             detail=_attempt_detail(outcome) + porta)
+                             detail=_attempt_detail(outcome) + porta,
+                             version=read_version())
 
 
 def _attempt_detail(outcome: dict) -> str:
@@ -1957,10 +1960,16 @@ def _scope_turn_in_flight(app) -> bool:
 #: volte, l'ultima alle 15:44:12 esatte, 300 secondi netti dopo
 #: l'accodamento. Nessun consumo registrato, perche' il turno non finisce mai.
 #:
-#: Cento righe sono ~2.000 token in uscita, cioe' meno di un quinto del tetto:
-#: il margine e' li' apposta, perche' una casa piu' loquace della nostra non
-#: debba scoprire questo limite da sola. Quattro lotti coprono questa casa in
-#: quaranta minuti.
+#: **Cento righe, misurate dal vivo l'11/09/2026 alle 18:13:27**: 15.852 token
+#: in uscita e **2 minuti e 5 secondi** di CLI -- il primo turno
+#: dell'osservatore arrivato in fondo su questa casa. Sono ~158 token a
+#: entita', non i ~20 che avevo stimato: su 381 sarebbero stati ~60.000 token,
+#: cioe' non un turno lento ma un muro. Il lotto non e' prudenza, e' la
+#: condizione perche' la domanda abbia una risposta.
+#:
+#: Restano due minuti e mezzo di margine sul tetto. Non e' molto, e il numero
+#: giusto dipende da quanto e' prolisso il modello: se una casa lo vedesse
+#: scadere, questo e' il primo valore da abbassare.
 SCOPE_BATCH = 100
 
 RETRY_BASE_S = 600.0
@@ -1971,8 +1980,8 @@ def _retry_hold(store, *, now: float) -> bool:
     """Se il freno e' tirato: **si e' appena fallito, e si aspetta**.
 
     Nasce dal conto della review indipendente (11/09/2026): senza, un
-    osservatore che fallisce stabilmente chiede al piano ogni dieci minuti per
-    sempre -- fino a 144 turni al giorno da ~11.500 token -- e siccome
+    osservatore che fallisce stabilmente chiede al piano a ogni passaggio, per
+    sempre -- e siccome
     `count_exchanges_today` conta ogni specie contro un tetto di 150, **svuota
     da solo il tetto giornaliero**: da li' in poi anche la chat scende ai
     provider a pagamento. Il freno non spegne niente, rallenta: un guasto che
@@ -1981,7 +1990,15 @@ def _retry_hold(store, *, now: float) -> bool:
     Si legge dai tentativi, che sono gia' l'archivio di questo fatto: un
     contatore a parte sarebbe un doppione che il primo riavvio azzera.
     """
-    attempts = store.recent_attempts()
+    # **Un aggiornamento e' un fatto nuovo.** I fallimenti di una versione
+    # precedente riguardavano un altro programma, e contarli fa ritardare la
+    # verifica della riparazione che li ha tolti: misurato l'11/09/2026,
+    # quattro fallimenti sulla 3.27.0 hanno tenuto fermo l'osservatore per
+    # ottanta minuti dopo l'aggiornamento alla 3.27.1. Le righe piu' vecchie
+    # della colonna portano `None` e non contano: e' vero, non si sa su quale
+    # versione siano avvenute.
+    versione = read_version()
+    attempts = [a for a in store.recent_attempts() if a["versione"] == versione]
     consecutive = 0
     for attempt in attempts:
         if attempt["esito"] == "accodata":
@@ -2119,11 +2136,12 @@ def _enqueue_scope_turn(app, store, home_space: dict, *, reason: str,
         now + deadline_min * 60,
         now=now)
     # **«Ho chiesto e sto aspettando» e' il terzo stato**, e la pagina deve
-    # poterlo dire: senza, dieci minuti di attesa legittima sono
+    # poterlo dire: senza, qualche minuto di attesa legittima e'
     # indistinguibili da un guasto -- che e' precisamente la confusione da cui
     # questa fetta nasce.
     store.record_attempt(when_ts=now, outcome="accodata",
-                         detail=f"chiesto al piano: {reason}")
+                         detail=f"chiesto al piano: {reason}",
+                         version=read_version())
     logger.info("osservatore: turno accodato al piano (scadenza %d min) -- %s",
                 deadline_min, reason)
     return {"accodata": True}
@@ -3435,23 +3453,30 @@ async def _on_startup(app: web.Application) -> None:
         misfire_grace_time=120,
     )
 
-    # L'anello dell'osservatore (fetta «i tre attori», §5.1), ogni DIECI
-    # minuti. Non e' la cadenza di riconsiderazione -- quella e' misurata e sta
-    # sulle ORE (84 sulla casa vera): questi dieci minuti sono ogni quanto ci
-    # si CHIEDE se sia ora, e la domanda e' locale e costa due letture
-    # dell'archivio. La misura della memoria di Home Assistant, che costa un
-    # secondo e mezzo MB, si paga solo quando il giro parte davvero (vedi
-    # `reconsideration_round`).
+    # L'anello dell'osservatore (fetta «i tre attori», §5.1), ogni MINUTO.
+    # Non e' la cadenza di riconsiderazione -- quella e' misurata e sta sulle
+    # ORE (84 sulla casa vera): questo e' ogni quanto ci si CHIEDE se sia ora,
+    # e la domanda e' locale e costa due letture dell'archivio. La misura della
+    # memoria di Home Assistant, che costa un secondo e mezzo MB, si paga solo
+    # quando il giro parte davvero (vedi `reconsideration_round`).
     #
-    # Dieci minuti e non un'ora perche' due dei quattro inneschi non possono
-    # aspettare: un'entita' nuova installata stamattina resterebbe invisibile
-    # fino al giro dopo, e cio' che non e' osservato non esiste piu'.
+    # **Era dieci minuti, ed e' sceso a uno l'11/09/2026** perche' dalla fetta
+    # dei lotti una riconsiderazione non e' piu' un giro solo: e' una CAMPAGNA
+    # di quattro turni, e a dieci minuti l'uno la casa intera ci metteva
+    # quaranta minuti a essere giudicata -- quaranta minuti in cui, al primo
+    # avvio, lo scope e' vuoto e HIRIS non registra niente. A un minuto ci
+    # mette cinque. Fuori da una campagna non cambia niente: la risposta resta
+    # «non e' ora» e costa quanto costava.
+    #
+    # E migliora anche l'innesco che non puo' aspettare: un'entita' installata
+    # stamattina passa da dieci minuti d'attesa a uno, e cio' che non e'
+    # osservato non esiste piu'.
     async def _reconsider() -> None:
         await reconsideration_round(app, ha_client)
 
     scheduler.add_job(
         _reconsider,
-        trigger="interval", minutes=10,
+        trigger="interval", minutes=1,
         id="hiris_mind_reconsideration", replace_existing=True,
         misfire_grace_time=600,
     )
@@ -3936,7 +3961,8 @@ async def _on_startup(app: web.Application) -> None:
                     attesa = max(0.0, job.get("deadline_ts", 0) - job.get("created_ts", 0))
                     store.record_attempt(
                         outcome="scaduta",
-                        detail=f"il piano non ha risposto entro {attesa / 60:.0f} minuti")
+                        detail=f"il piano non ha risposto entro {attesa / 60:.0f} minuti",
+                        version=read_version())
                 logger.warning(
                     "osservatore: il turno %s e' scaduto senza risposta dal piano",
                     job.get("job_id"))
