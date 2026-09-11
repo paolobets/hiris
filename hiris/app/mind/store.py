@@ -30,6 +30,7 @@ import threading
 import time as _time
 
 from ..storage import connect, init_schema
+from .scope import may_overwrite
 
 # 22 giorni, non 21: i 21 sono la promessa (tre mercoledi'), il 22esimo e' la
 # guardia che la rende vera al bordo. Una soglia in secondi assoluti non
@@ -237,6 +238,25 @@ CREATE TABLE IF NOT EXISTS objective (
     written_ts REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_objective_written ON objective(written_ts);
+
+-- LO SCOPE: cosa si guarda, perche', e CHI l'ha deciso.
+--
+-- Una riga per soggetto, non una cronaca: la domanda che questa tabella deve
+-- saper rispondere in fretta e' «questo soggetto lo guardo?», e la pone il
+-- rubinetto degli eventi a ogni cambio di stato della casa. La storia di chi
+-- ha cambiato idea la porta gia' `deciso_ts` insieme all'autore -- e cio' che
+-- serve al proprietario («da quando guardo questa cosa») e' esattamente quello.
+--
+-- `author` non e' un dettaglio: senza, la decisione dell'analista non saprebbe
+-- di essere una revisione di quella dell'osservatore, e verrebbe cancellata al
+-- giro dopo da chi ha meno informazione (vedi `mind/scope.py`).
+CREATE TABLE IF NOT EXISTS scope (
+    subject TEXT PRIMARY KEY,
+    inside INTEGER NOT NULL,
+    reason TEXT NOT NULL,
+    author TEXT NOT NULL,
+    decided_ts REAL NOT NULL
+);
 """
 
 #: L'obiettivo di fabbrica, deciso dal proprietario il 25/08/2026. Non e' un
@@ -411,6 +431,65 @@ class ObservationsStore:
         with self._lock:
             rows = self._conn.execute(sql, (float(ts), source)).fetchall()
         return [_reading_row(r) for r in rows]
+
+    # -- Lo scope ----------------------------------------------------------
+
+    def scope(self) -> dict[str, dict]:
+        """Tutto cio' su cui qualcuno ha deciso, **dentro e fuori**.
+
+        Chi e' stato escluso resta qui con la sua ragione: e' la trasparenza, ed
+        e' da questa mappa che la pagina disegna sia «cosa guardo» sia «cosa ho
+        lasciato fuori, e perche'». Per il filtro vero c'e'
+        `watched_subjects()`.
+        """
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT subject, inside, reason, author, decided_ts FROM scope").fetchall()
+        return {r["subject"]: {"dentro": bool(r["inside"]), "motivo": r["reason"],
+                               "autore": r["author"], "deciso_ts": r["decided_ts"]}
+                for r in rows}
+
+    def watched_subjects(self) -> set[str]:
+        """I soli soggetti DENTRO: e' la domanda che il rubinetto pone a ogni
+        evento, e deve costare una lettura sola."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT subject FROM scope WHERE inside = 1").fetchall()
+        return {r["subject"] for r in rows}
+
+    def decide_scope(self, subject: str, *, inside: bool, reason: str,
+                     author: str, when_ts: float | None = None) -> bool:
+        """Registra una decisione. Torna `False` se non ha scritto niente.
+
+        **Due rifiuti, due ragioni diverse.**
+
+        Una decisione **senza motivo** non si scrive: e' la stessa disciplina di
+        `type_vocabulary.Field`, che non si puo' costruire senza provenienza.
+        Una scelta senza ragione non e' rivedibile da nessuno -- ne'
+        dall'analista ne' dal proprietario -- e la pagina esiste proprio per far
+        vedere le ragioni.
+
+        Una decisione di **chi ha meno informazione** non sovrascrive quella di
+        chi ne ha di piu' (`scope.may_overwrite`): senza questa guardia
+        l'analista rimette dentro, l'osservatore al giro successivo ritoglie, e
+        la casa oscilla per sempre senza che nessuno lo veda.
+        """
+        clean = (reason or "").strip()
+        if not clean:
+            return False
+        standing = self.scope().get(subject)
+        if not may_overwrite(author, standing["autore"] if standing else None):
+            return False
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO scope (subject, inside, reason, author, decided_ts) "
+                "VALUES (?,?,?,?,?) ON CONFLICT(subject) DO UPDATE SET "
+                "inside = excluded.inside, reason = excluded.reason, "
+                "author = excluded.author, decided_ts = excluded.decided_ts",
+                (subject, 1 if inside else 0, clean, author,
+                 float(when_ts if when_ts is not None else _time.time())))
+            self._conn.commit()
+        return True
 
     # -- L'obiettivo -------------------------------------------------------
 
