@@ -114,8 +114,16 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 # (`ponte.cli` il 09/09/2026), ed e' uscita con la 3.23.0. La 2.1.266 non e'
 # mai stata confermata -- e' stata scavalcata prima di girare -- e un ripiego
 # che non si e' mai visto funzionare non e' un ripiego.
+#
+# 11 settembre 2026 — alzata da 2.1.267 a **2.1.268** (un'uscita sola), col
+# rilascio della 3.26.0, come chiede la regola: il cancello ha parlato durante
+# questa fetta e il pin sale col rilascio in cui ha parlato, non al giro dopo.
+# **Non ancora verificata dal vivo**: il passo 4 di questo salto resta in
+# sospeso finche' `GET /api/health` non avra' risposto `ponte.cli: "2.1.268"`
+# dall'add-on aggiornato. Se desse problemi il ripiego e' la **2.1.267**, che
+# e' stata letta davvero dentro questo container il 10/09/2026 alle 20:21.
 RUN apk add --no-cache nodejs npm libgcc libstdc++ ripgrep \
-    && npm install -g @anthropic-ai/claude-code@2.1.267 \
+    && npm install -g @anthropic-ai/claude-code@2.1.268 \
     && npm cache clean --force
 ENV USE_BUILTIN_RIPGREP=0
 

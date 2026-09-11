@@ -1,5 +1,67 @@
 # HIRIS — Changelog
 
+## [3.26.0] — HIRIS decide cosa guardare, e lo dice (2026-09-11)
+
+**Fino a ieri HIRIS guardava le cose per categoria.** Dentro c'era un elenco
+scritto a mano — i termostati, le persone, le serrature, i contatori — uguale
+per ogni casa, deciso una volta e mai piu' rivisto: se la tua casa aveva
+qualcosa che quell'elenco non prevedeva, non veniva osservato, e nessuno te lo
+diceva.
+
+**Adesso HIRIS guarda la tua casa con il tuo obiettivo davanti e decide da se'
+cosa pesa** — entita' per entita', con il *perche'* scritto accanto. E c'e' una
+pagina dove lo leggi: cosa guarda, perche', da quando, cosa ha lasciato fuori e
+per quale ragione.
+
+### L'obiettivo e' l'unica manopola, ed e' datato
+
+Il testo dell'obiettivo — di fabbrica *«ottimizzare la casa e renderla
+confortevole»* — e' la domanda rispetto a cui HIRIS decide tutto il resto. Se
+lo cambi, HIRIS **conserva anche quello di prima con la sua data**: chi legge
+trenta giorni di misure deve sapere che al ventesimo la domanda e' cambiata, o
+legge una tendenza dove c'e' un cambio di domanda. E quando lo cambi, HIRIS
+ripensa l'intera casa senza aspettare.
+
+### Ogni decisione porta chi l'ha presa
+
+Osservatore, analista o tu. Serve perche' **per togliere qualcosa
+dall'osservazione servono due attori**: l'osservatore puo' escludere, ma
+l'analista — che decide dopo aver letto i resoconti, cioe' sapendo come la casa
+si e' comportata davvero — puo' far rientrare. Chi sa di piu' non viene
+scavalcato da chi sa di meno, o la casa oscillerebbe per sempre senza che
+nessuno lo veda. Tu resti sopra tutti e due.
+
+### HIRIS ripensa la casa piu' spesso di quanto Home Assistant ricordi
+
+Se HIRIS scarta qualcosa e poi si ricrede, quei dati sono recuperabili solo
+finche' Home Assistant li ha ancora. Quindi la cadenza con cui ci ripensa sta
+**sotto** quella finestra — e la finestra non e' un numero scritto nel codice:
+**si misura**, chiedendolo a Home Assistant. Su questa casa sono **7 giorni**,
+e la cadenza che ne esce e' **ogni 84 ore**. Se cambi la configurazione del
+*recorder*, la cadenza si adegua da sola.
+
+HIRIS ripensa la casa anche quando **compare qualcosa di nuovo**: una
+lampadina installata stamattina non aspetta giovedi'.
+
+### La pagina dice anche quanto costa
+
+Accanto a cosa guarda e perche', la pagina dell'osservatore mostra **quante
+righe scrive al giorno**. E' la contropartita onesta di ogni esclusione: si
+guarda meno, e quello e' quanto costa cio' che si guarda. Fino a ieri quel
+numero non usciva da nessuna porta.
+
+### Sotto il cofano
+
+- `mind/baseline.py` — il «pavimento», il vecchio filtro per categoria — e'
+  stato **cancellato**. Con lui la pagina non raggruppa piu' per categoria:
+  raggruppa per chi ha deciso.
+- Le entita' **di servizio e nascoste** non entrano nel giudizio (sono 452 su
+  questa casa, e valevano 15.000 token a ogni giro): e' la stessa legge che
+  HIRIS applica gia' quando ti descrive la casa in chat.
+- Tredicesimo lavoro periodico: l'anello dell'osservatore, ogni dieci minuti.
+  Dieci minuti non e' la cadenza — e' ogni quanto HIRIS *si chiede* se sia ora,
+  e la domanda costa due letture del suo archivio.
+
 ## [3.25.0] — Il comportamento dal vivo, e `casa.db` sparisce (2026-09-10)
 
 **HIRIS leggeva le automazioni da due file, e lo dichiarava come un limite
