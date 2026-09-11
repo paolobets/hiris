@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time as _time
 
 from ..storage import connect, init_schema
 
@@ -220,7 +221,30 @@ CREATE TABLE IF NOT EXISTS oggetti (
     corpo_json TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_oggetti_giorno ON oggetti(giorno, inizio_ts);
+
+-- L'OBIETTIVO, con la sua storia. Vive qui e non in un archivio suo perche' e'
+-- cio' che governa quel che l'osservatore raccoglie, e il resoconto giornaliero
+-- dovra' mettere accanto a ogni giornata l'obiettivo che valeva allora: stesso
+-- file, una query sola -- e `ATTACH` in questo prodotto non compare mai.
+--
+-- Si ACCODA, non si sostituisce: se l'obiettivo cambia, i resoconti scritti
+-- prima rispondono a un'altra domanda, e chi legge trenta giorni di misure deve
+-- saperlo o legge una tendenza dove c'e' un cambio di domanda (spec §11).
+-- Colonne in inglese: tabella nuova (regola del 04/09/2026).
+CREATE TABLE IF NOT EXISTS objective (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    text TEXT NOT NULL,
+    written_ts REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_objective_written ON objective(written_ts);
 """
+
+#: L'obiettivo di fabbrica, deciso dal proprietario il 25/08/2026. Non e' un
+#: ripiego: e' il criterio con cui l'osservatore decide cosa guardare su una
+#: casa appena installata, e senza di esso la domanda al modello non avrebbe
+#: un rispetto-a-cosa. Un obiettivo vuoto sarebbe una manopola girata a zero,
+#: non una manopola assente.
+DEFAULT_OBJECTIVE = "ottimizzare la casa e renderla confortevole"
 
 
 def _reading_row(r) -> dict:
@@ -387,6 +411,73 @@ class ObservationsStore:
         with self._lock:
             rows = self._conn.execute(sql, (float(ts), source)).fetchall()
         return [_reading_row(r) for r in rows]
+
+    # -- L'obiettivo -------------------------------------------------------
+
+    def objective(self) -> dict:
+        """L'obiettivo che vale adesso: `{"testo", "scritto_ts"}`.
+
+        `scritto_ts` a `None` dice che nessuno l'ha mai scritto e vale quello di
+        fabbrica -- che non e' la stessa cosa di «l'ha scritto qualcuno e per
+        caso coincide col default».
+        """
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT text, written_ts FROM objective "
+                "ORDER BY written_ts DESC, id DESC LIMIT 1").fetchone()
+        if row is None:
+            return {"testo": DEFAULT_OBJECTIVE, "scritto_ts": None}
+        return {"testo": row["text"], "scritto_ts": row["written_ts"]}
+
+    def set_objective(self, text: str, *, when_ts: float | None = None) -> bool:
+        """Scrive un obiettivo nuovo. Torna `False` se non ha scritto niente.
+
+        **Un testo vuoto si rifiuta**: e' l'unica manopola del prodotto, e un
+        campo svuotato per errore non deve poter lasciare l'osservatore senza
+        criterio. Stessa dottrina del sistema di riferimento, che vuoto non
+        cancella quello di prima.
+
+        **Riscrivere lo stesso testo non e' un cambio d'obiettivo** e non
+        sporca la storia: la pagina dice «da quando guardo questa cosa», e
+        direbbe che tutto e' cambiato ogni volta che qualcuno preme «salva»
+        senza aver toccato niente.
+        """
+        clean = (text or "").strip()
+        if not clean:
+            return False
+        if self.objective()["testo"] == clean:
+            return False
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO objective (text, written_ts) VALUES (?,?)",
+                (clean, float(when_ts if when_ts is not None else _time.time())))
+            self._conn.commit()
+        return True
+
+    def objective_history(self) -> list[dict]:
+        """Tutti gli obiettivi, **dal piu' recente**: e' una cronaca, e una
+        cronaca si legge da adesso all'indietro."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT text, written_ts FROM objective "
+                "ORDER BY written_ts DESC, id DESC").fetchall()
+        return [{"testo": r["text"], "scritto_ts": r["written_ts"]} for r in rows]
+
+    def objective_at(self, ts: float) -> dict:
+        """L'obiettivo che valeva a quell'istante -- la domanda che il resoconto
+        porra' a ogni giornata che rilegge.
+
+        Il confine e' incluso: un obiettivo scritto alle 14:00 vale per le
+        14:00. Prima del primo scritto vale quello di fabbrica: la casa c'era
+        comunque, e l'osservatore guardava.
+        """
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT text, written_ts FROM objective WHERE written_ts <= ? "
+                "ORDER BY written_ts DESC, id DESC LIMIT 1", (float(ts),)).fetchone()
+        if row is None:
+            return {"testo": DEFAULT_OBJECTIVE, "scritto_ts": None}
+        return {"testo": row["text"], "scritto_ts": row["written_ts"]}
 
     def prune(self, now_ts: float) -> int:
         """Butta i cambi oltre la conservazione. **Non tocca gli oggetti**: le
