@@ -1056,6 +1056,65 @@ class HAClient:
             series[entity_id] = points[-MAX_HISTORY_POINTS:]
         return {"serie": series, "troncato": truncated}
 
+    async def recorded_changes(self, entity_ids: list[str],
+                               windows: list[tuple[float, float]]) -> list[int | None]:
+        """Per ogni finestra, quante righe Home Assistant ha ancora REGISTRATO
+        li' dentro. `None` dove la domanda non ha ricevuto risposta.
+
+        Serve a una cosa sola: sapere **quanto indietro arriva la memoria di
+        Home Assistant**, che nessuna porta dichiara. Verificato dal vivo
+        l'11/09/2026: `recorder/info` risponde e non la contiene
+        (`backlog`, `db_in_default_location`, `max_backlog`,
+        `migration_in_progress`, `migration_is_live`, `recording`,
+        `thread_running`); `recorder/config` e `recorder/statistics_info` non
+        esistono affatto (`unknown_command`). Resta il modo diretto: calare una
+        sonda e guardare se torna su con qualcosa.
+
+        **Si contano solo le righe DENTRO la finestra.**
+        `history/history_during_period` antepone per ogni entita' lo stato che
+        aveva **all'inizio** della finestra -- una riga piu' vecchia della
+        finestra stessa. Contarla direbbe «qui c'e' ancora memoria» proprio dove
+        la memoria e' finita, e la cadenza di riconsiderazione (spec §5.2)
+        diventerebbe piu' lunga della memoria che deve stare sotto.
+
+        **`None` non e' zero**: zero afferma «Home Assistant qui non ricorda
+        niente», e non lo si sa quando la domanda non e' arrivata. Stessa
+        disciplina di `history()` qui sopra, che non rimanda una serie vuota
+        quando e' la rete ad aver ceduto.
+
+        Tutte le finestre partono in **una raffica sola**: sono la scala di una
+        misura, non letture indipendenti (casa vera: dieci profondita' in
+        264 ms).
+        """
+        if not windows:
+            return []
+        commands = [
+            ("history/history_during_period", {
+                "start_time": datetime.fromtimestamp(start, UTC).isoformat(),
+                "end_time": datetime.fromtimestamp(end, UTC).isoformat(),
+                "entity_ids": list(entity_ids),
+                "minimal_response": True,
+                "no_attributes": True,
+                "significant_changes_only": True,
+            })
+            for start, end in windows
+        ]
+        replies = await self._ws_batch(commands)
+        counts: list[int | None] = []
+        for (start, _end), msg in zip(windows, replies, strict=True):
+            series = msg.get("result") if msg and msg.get("success") else None
+            if not isinstance(series, dict):
+                counts.append(None)
+                continue
+            counts.append(sum(
+                1
+                for points in series.values() if isinstance(points, list)
+                for point in points if isinstance(point, dict)
+                and isinstance(point.get("lu") or point.get("lc"), int | float)
+                and (point.get("lu") or point.get("lc")) > start
+            ))
+        return counts
+
     async def logbook(self, entity: str | None, hours: int) -> dict:
         """Cronologia eventi via GET /api/logbook/<ISO start>.
 

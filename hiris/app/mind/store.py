@@ -257,6 +257,28 @@ CREATE TABLE IF NOT EXISTS scope (
     author TEXT NOT NULL,
     decided_ts REAL NOT NULL
 );
+
+-- LA RICONSIDERAZIONE: quando l'osservatore ha ripensato tutta la casa, e con
+-- quale misura in mano.
+--
+-- Non basta «l'ho fatto il 9». La pagina deve poter dire **perche' ogni 84
+-- ore**, e quel numero viene da una misura della memoria di Home Assistant
+-- (`mind/cadence.py`) che cambia se il proprietario cambia il recorder:
+-- scritta accanto alla riconsiderazione, resta vera per QUELLA
+-- riconsiderazione anche quando la misura successiva dara' altro.
+--
+-- `window_s` e `cadence_s` ammettono NULL: la memoria puo' non essere
+-- misurabile -- Home Assistant muto -- e l'osservatore gira lo stesso al primo
+-- avvio. La riga si scrive con la misura mancante DICHIARATA, invece di non
+-- scriverla: senza, la pagina direbbe «mai riconsiderato» di una casa appena
+-- riconsiderata.
+CREATE TABLE IF NOT EXISTS reconsideration (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    done_ts REAL NOT NULL,
+    window_s REAL,
+    cadence_s REAL
+);
+CREATE INDEX IF NOT EXISTS idx_reconsideration_done ON reconsideration(done_ts);
 """
 
 #: L'obiettivo di fabbrica, deciso dal proprietario il 25/08/2026. Non e' un
@@ -490,6 +512,39 @@ class ObservationsStore:
                  float(when_ts if when_ts is not None else _time.time())))
             self._conn.commit()
         return True
+
+    # -- La riconsiderazione -----------------------------------------------
+
+    def last_reconsideration(self) -> dict | None:
+        """L'ultima volta che l'osservatore ha ripensato tutta la casa, con la
+        misura che aveva in mano allora. `None` se non e' mai successo.
+
+        Si ordina per `done_ts` **decrescente**: la domanda e' «quand'e'
+        l'ultima volta?», e la prima riga della tabella e' la piu' vecchia.
+        """
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT done_ts, window_s, cadence_s FROM reconsideration "
+                "ORDER BY done_ts DESC, id DESC LIMIT 1").fetchone()
+        if row is None:
+            return None
+        return {"quando_ts": row["done_ts"],
+                "finestra_s": row["window_s"],
+                "cadenza_s": row["cadence_s"]}
+
+    def record_reconsideration(self, *, when_ts: float | None = None,
+                             window_s: float | None,
+                             cadence_s: float | None) -> None:
+        """Annota una riconsiderazione avvenuta. Si ACCODA: quante volte e con
+        quale memoria di Home Assistant e' la cronaca di come la cadenza si e'
+        adattata alla casa, e una riga sola non la direbbe."""
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO reconsideration (done_ts, window_s, cadence_s) VALUES (?,?,?)",
+                (float(when_ts if when_ts is not None else _time.time()),
+                 None if window_s is None else float(window_s),
+                 None if cadence_s is None else float(cadence_s)))
+            self._conn.commit()
 
     # -- L'obiettivo -------------------------------------------------------
 
