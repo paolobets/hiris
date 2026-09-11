@@ -3,7 +3,7 @@ import pytest
 
 from hiris.app.api.handlers_mind import handle_facts, handle_watching
 from hiris.app.home_space.reader import HomeSpace
-from hiris.app.mind.store import ObservationsStore
+from hiris.app.mind.store import ATTEMPTS_SHOWN, ObservationsStore
 from hiris.app.mind.watcher import Watcher
 from hiris.app.proxy.state_translations import StateTranslations
 from tests._contracts import assert_stessa_firma
@@ -55,6 +55,13 @@ class _FintoArchivioScope:
     def last_reconsideration(self):
         return self._ultima
 
+    def recent_attempts(self, limit=ATTEMPTS_SHOWN):
+        """**Vuoto e' un esito**: nessuno ci ha ancora provato. La finta lo
+        porta perche' l'archivio vero lo porta -- una finta costruita nella
+        forma che il codice si aspetta, invece che in quella del fornitore,
+        e' il difetto n.3 di questo progetto."""
+        return []
+
     def readings_count(self, *, from_ts, to_ts, source=None):
         self.finestre.append((from_ts, to_ts, source))
         return int(to_ts - from_ts)      # una riga al secondo: distingue i giorni
@@ -78,6 +85,8 @@ def _richiesta(app, query=None):
 
 assert_stessa_firma(ObservationsStore.facts, _FintoArchivio.facts, nome="facts")
 assert_stessa_firma(Watcher.watching, _FintoOsservatore.watching, nome="watching")
+assert_stessa_firma(ObservationsStore.recent_attempts,
+                    _FintoArchivioScope.recent_attempts, nome="recent_attempts")
 for _nome in ("scope", "objective", "last_reconsideration", "readings_count"):
     assert_stessa_firma(getattr(ObservationsStore, _nome),
                         getattr(_FintoArchivioScope, _nome), nome=_nome)
@@ -679,3 +688,60 @@ async def test_sulla_strada_vera_la_CLASSE_sceglie_la_resa_giusta(tmp_path):
         assert oggetto["corpo"]["stato_reso"] == "Rilevato"
     finally:
         archivio.close()
+
+
+# ── I tentativi: «sta funzionando?» e' una domanda diversa da «quand'e'
+#    l'ultima volta che ha ripensato la casa» ─────────────────────────────────
+#
+# Misurato sulla casa vera l'11/09/2026: l'osservatore ha provato e fallito
+# quattro volte in quaranta minuti, HIRIS ha smesso di registrare qualunque
+# cosa (il cancello di `watcher.watch_reading` **e'** lo scope), e la pagina
+# diceva soltanto «non e' mai stata fatta» -- vero alla lettera, falso come
+# racconto. Questo modulo dichiara da sempre la regola che quel silenzio
+# violava: **un guasto non si appiattisce su un'assenza.**
+
+
+class _ArchivioCoiTentativi(_FintoArchivioScope):
+    def __init__(self, tentativi, **kw):
+        super().__init__(**kw)
+        self._tentativi = tentativi
+
+    def recent_attempts(self, limit=ATTEMPTS_SHOWN):
+        return self._tentativi[:limit]
+
+
+@pytest.mark.asyncio
+async def test_la_pagina_porta_i_TENTATIVI_non_solo_i_giri_riusciti():
+    """Mutazione che la uccide: mandare solo `riconsiderazione`."""
+    tentativi = [
+        {"quando_ts": 1789117844.0, "esito": "accodata",
+         "dettaglio": "chiesto al piano: non e' mai stata fatta"},
+        {"quando_ts": 1789117244.0, "esito": "non_riuscito",
+         "dettaglio": "il modello non ha risposto: RuntimeError"},
+    ]
+    archivio = _ArchivioCoiTentativi(tentativi)
+
+    corpo = _corpo(await handle_watching(_richiesta(_pagina(observations=archivio))))
+
+    assert corpo["tentativi"] == tentativi
+    assert corpo["riconsiderazione"] is None, (
+        "un tentativo fallito non e' una riconsiderazione: se lo fosse, la "
+        "cadenza scadrebbe come se la casa fosse stata ripensata davvero")
+
+
+@pytest.mark.asyncio
+async def test_senza_archivio_i_tentativi_sono_NULL_come_le_sorelle():
+    """**Un elenco vuoto direbbe «nessuno ci ha mai provato», e senza archivio
+    non si SA.** Nello stesso payload `obiettivo` e `riconsiderazione` sono
+    gia' `None` per questa ragione: un `[]` qui sarebbe la fondamenta 3 rotta
+    dentro una risposta sola, e la pagina si salverebbe solo perche' legge
+    l'assenza da un altro campo (rilievo della review indipendente,
+    11/09/2026 -- la prima stesura di questa prova asseriva `[]` e il suo
+    docstring difendeva l'errore).
+
+    Mutazione che la uccide: tornare `[]` senza archivio.
+    """
+    corpo = _corpo(await handle_watching(_richiesta(_pagina(observations=None))))
+
+    assert corpo["tentativi"] is None
+    assert corpo["obiettivo"] is None and corpo["riconsiderazione"] is None

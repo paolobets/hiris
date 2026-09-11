@@ -290,6 +290,27 @@ CREATE TABLE IF NOT EXISTS reconsideration (
     reason TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_reconsideration_done ON reconsideration(done_ts);
+
+-- **Il tentativo, che non e' la riconsiderazione.** `reconsideration` conserva
+-- i giri RIUSCITI: e' la cronaca di come la cadenza si e' adattata alla casa.
+-- Un giro FALLITO non e' una riconsiderazione e non puo' finire li' dentro --
+-- farebbe scadere la cadenza come se la casa fosse stata ripensata -- ma
+-- nemmeno puo' sparire, e fino all'11/09/2026 spariva: la pagina dello scope
+-- diceva «non e' mai stata fatta», vero alla lettera e falso come racconto.
+--
+-- Misurato sulla casa vera l'11/09/2026: l'osservatore ha provato e fallito
+-- ogni dieci minuti per quaranta minuti, il cancello di `watch_reading` e' lo
+-- scope e quindi HIRIS **non registrava piu' una riga sulla casa**, e nessuna
+-- porta lo diceva. E' la distinzione a tre stati che questo prodotto difende
+-- ovunque: **un guasto non si appiattisce su un'assenza.**
+CREATE TABLE IF NOT EXISTS scope_attempt (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tried_ts REAL NOT NULL,
+    outcome TEXT NOT NULL CHECK(outcome IN
+        ('accodata', 'riuscito', 'non_riuscito', 'scaduta')),
+    detail TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_scope_attempt_tried ON scope_attempt(tried_ts);
 """
 
 #: L'obiettivo di fabbrica, deciso dal proprietario il 25/08/2026. Non e' un
@@ -298,6 +319,23 @@ CREATE INDEX IF NOT EXISTS idx_reconsideration_done ON reconsideration(done_ts);
 #: un rispetto-a-cosa. Un obiettivo vuoto sarebbe una manopola girata a zero,
 #: non una manopola assente.
 DEFAULT_OBJECTIVE = "ottimizzare la casa e renderla confortevole"
+
+#: Quanti tentativi mostra la pagina. Abbastanza da distinguere «e' andata
+#: male una volta» da «sta fallendo da un'ora» -- con un giro ogni dieci
+#: minuti, dieci righe sono l'ultima ora e mezza -- e non tanti da far
+#: diventare un elenco la risposta a «sta funzionando?».
+ATTEMPTS_SHOWN = 10
+
+#: I quattro esiti di un tentativo, e **vivono qui**. Il `CHECK` accanto alla
+#: colonna e' il cancello: `cambi.fonte` ce l'ha da sempre, e senza, un refuso
+#: in un `record_attempt` scriverebbe un esito che nessuna pagina sa rendere
+#: -- e la pagina, prima della correzione della review indipendente
+#: dell'11/09/2026, su un esito ignoto moriva del tutto.
+ATTEMPT_QUEUED = "accodata"
+ATTEMPT_DONE = "riuscito"
+ATTEMPT_FAILED = "non_riuscito"
+ATTEMPT_EXPIRED = "scaduta"
+ATTEMPT_OUTCOMES = (ATTEMPT_QUEUED, ATTEMPT_DONE, ATTEMPT_FAILED, ATTEMPT_EXPIRED)
 
 
 def _reading_row(r) -> dict:
@@ -630,6 +668,40 @@ class ObservationsStore:
                  None if window_s is None else float(window_s),
                  None if cadence_s is None else float(cadence_s),
                  reason))
+            self._conn.commit()
+
+    def recent_attempts(self, limit: int = ATTEMPTS_SHOWN) -> list[dict]:
+        """Gli ultimi tentativi, **dal piu' recente**.
+
+        **La domanda vera non e' «com'e' andata l'ultima volta», e' «sta
+        funzionando?»** -- e un tentativo solo non la distingue: fra un
+        fallimento e il successivo il giro riaccoda, quindi l'ultimo esito
+        torna a essere «accodata» e il guasto sparirebbe dalla vista mentre
+        continua. Misurato l'11/09/2026: quattro fallimenti di fila in quaranta
+        minuti, con la casa che intanto non veniva registrata affatto. Questa
+        e' la riga che serviva, e non esisteva.
+
+        **Serve anche al freno**: `server._retry_hold` conta da qui quanti
+        fallimenti di fila ci sono stati, invece di tenere un contatore suo che
+        il primo riavvio azzererebbe.
+        """
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT tried_ts, outcome, detail FROM scope_attempt "
+                "ORDER BY tried_ts DESC, id DESC LIMIT ?", (int(limit),)).fetchall()
+        return [{"quando_ts": r["tried_ts"], "esito": r["outcome"],
+                 "dettaglio": r["detail"]} for r in rows]
+
+    def record_attempt(self, *, when_ts: float | None = None, outcome: str,
+                       detail: str | None = None) -> None:
+        """Annota un tentativo. Si ACCODA, come le riconsiderazioni: tre
+        fallimenti di fila e uno solo sono due storie diverse, e una riga sola
+        non le distinguerebbe."""
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO scope_attempt (tried_ts, outcome, detail) VALUES (?,?,?)",
+                (float(when_ts if when_ts is not None else _time.time()),
+                 outcome, detail))
             self._conn.commit()
 
     # -- L'obiettivo -------------------------------------------------------

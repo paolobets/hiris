@@ -419,7 +419,8 @@ def build_chat_messages(system_prompt: str, history: list, *,
                         contesto: str = "",
                         active_tools: bool = False,
                         restrict_to_home: bool = False,
-                        response_mode: str = "") -> tuple[str, str]:
+                        response_mode: str = "",
+                        istruzione: str = "") -> tuple[str, str]:
     """Chat-via-abbonamento: separa il SYSTEM prompt (BASE + persona HIRIS +
     guida + contesto della casa) dal prompt UTENTE (trascritto conversazione +
     istruzione formato). Il system va passato al CLI via --system-prompt
@@ -501,12 +502,22 @@ def build_chat_messages(system_prompt: str, history: list, *,
         system_parts.append(COMPACT_PROMPT)
     elif response_mode == "minimal":
         system_parts.append(MINIMAL_PROMPT)
-    guida = _GUIDE_WITH_TOOLS if active_tools else _GUIDE_WITHOUT_TOOLS
+    # **Un turno che porta la propria istruzione porta anche il proprio
+    # materiale**, e la cornice della chat non lo riguarda (fetta
+    # «l'osservatore chiede a chi risponde davvero», 11/09/2026). La coppia
+    # guida/contesto parla al modello di una conversazione e di una
+    # fotografia della casa: per il turno dell'osservatore la fotografia e'
+    # **dentro la domanda** -- 381 righe di entita' con classe, unita', area e
+    # chiave di traduzione -- e `_CONTESTO_ASSENTE` gli direbbe il falso
+    # («non hai nemmeno la fotografia della casa») invitandolo per giunta a
+    # rifiutare invece di rispondere.
     contesto = (contesto or "").strip()
-    system_parts.append(
-        guida + "\n" + (_CONTESTO_PRESENTE if contesto else _CONTESTO_ASSENTE))
-    if contesto:
-        system_parts.append(contesto)
+    if not istruzione:
+        guida = _GUIDE_WITH_TOOLS if active_tools else _GUIDE_WITHOUT_TOOLS
+        system_parts.append(
+            guida + "\n" + (_CONTESTO_PRESENTE if contesto else _CONTESTO_ASSENTE))
+        if contesto:
+            system_parts.append(contesto)
     system = "\n\n".join(system_parts)
 
     lines = ["Conversazione finora:"]
@@ -516,6 +527,10 @@ def build_chat_messages(system_prompt: str, history: list, *,
         speaker = "Assistente" if role == "assistant" else "Utente"
         lines.append(f"{speaker}: {content}")
     lines.append("")
-    lines.append(_CHAT_INSTRUCTION)
+    # L'istruzione di chiusura della chat impone testo semplice e vieta
+    # esplicitamente il JSON; l'osservatore chiede **un solo array JSON**. Il
+    # contratto di risposta appartiene a chi pone la domanda, non alla porta
+    # che la trasporta.
+    lines.append(istruzione or _CHAT_INSTRUCTION)
     user = "\n".join(lines)
     return system, user

@@ -80,6 +80,16 @@ async def handle_watching(request: web.Request) -> web.Response:
     - `riconsiderazione` -- quando si e' ripensata tutta la casa, la **finestra
       di memoria misurata** e la **cadenza** che ne esce. Tutti e tre, o
       «ogni 84 ore» sarebbe da credere sulla parola;
+    - `tentativi` -- gli ultimi giri **riusciti o no**, dal piu' recente. E'
+      l'altra domanda, e non e' la stessa: `riconsiderazione` risponde a
+      «quand'e' l'ultima volta che la casa e' stata ripensata», `tentativi` a
+      **«sta funzionando?»**. Misurato sulla casa vera l'11/09/2026:
+      l'osservatore ha provato e fallito quattro volte in quaranta minuti,
+      HIRIS ha smesso di registrare qualunque cosa -- il cancello di
+      `watcher.watch_reading` **e'** lo scope -- e questa pagina diceva
+      soltanto «non e' mai stata fatta». Vero alla lettera, falso come
+      racconto: e' la regola che questo modulo dichiara in cima al file,
+      violata dalla pagina che la dichiarava;
     - `volume` -- **quante righe grezze al giorno**. E' la contropartita onesta
       dello scope, e la spec promette -83%: fino all'11/09/2026 nessuna porta
       lo esponeva, e la promessa non era verificabile da fuori.
@@ -99,6 +109,7 @@ async def handle_watching(request: web.Request) -> web.Response:
         "fuori": _left_out(store),
         "obiettivo": store.objective() if store is not None else None,
         "riconsiderazione": store.last_reconsideration() if store is not None else None,
+        "tentativi": store.recent_attempts() if store is not None else None,
         "volume": _volume(request.app, store),
     })
 

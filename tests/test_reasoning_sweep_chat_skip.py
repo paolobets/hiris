@@ -49,7 +49,7 @@ from hiris.app.reasoning.queue import ReasoningQueue
 
 
 def _load_real_reasoning_sweep(reasoning_queue, *, ponte_attivo=True,
-                               scadenza_min=None):
+                               scadenza_min=None, archivio=None):
     src = inspect.getsource(server._on_startup)
     start = src.index("    async def _reasoning_sweep() -> None:")
     end_marker = "reasoning_queue.prune(_time.time() - 7 * 86400)"
@@ -63,18 +63,26 @@ def _load_real_reasoning_sweep(reasoning_queue, *, ponte_attivo=True,
     # sicurezza e' deliberato ed e' la virtu' di questo file: se qualcuno
     # rimettesse una derivazione dentro la spazzata, l'exec fallirebbe con un
     # NameError rumoroso invece di passare su un valore di comodo.
+    # `SCOPE_TURN_KIND` entra con la fetta «l'osservatore chiede a chi
+    # risponde davvero» (11/09/2026): la spazzata ha un ramo suo per il turno
+    # dell'osservatore scaduto, che annota il guasto invece di lasciarlo
+    # passare per un job orfano. E' un simbolo importabile di `server.py`, non
+    # uno stato per istanza: legarlo e' esatto, non una supposizione.
     namespace = {
         "_time": _time,
         "logger": logging.getLogger("test_reasoning_sweep_chat_skip"),
         "reasoning_queue": reasoning_queue,
+        "SCOPE_TURN_KIND": server.SCOPE_TURN_KIND,
         # Task 14: la spazzata legge anche `app["models_config"]`, per sapere
         # dopo quanto un ripiego preso in carico e mai finito e' uno schianto.
         # Il confine e' il DOPPIO della scadenza, perche' il ripiego COMINCIA
         # alla scadenza: il margine e' il tempo che la catena ha per
         # rispondere. `app` e' un dizionario perche' e' cosi' che la spazzata
         # lo usa (`app.get(...)`), non perche' sia comodo.
-        "app": ({"bridge_active": ponte_attivo} if scadenza_min is None else {
+        "app": ({"bridge_active": ponte_attivo, "observations": archivio}
+                if scadenza_min is None else {
             "bridge_active": ponte_attivo,
+            "observations": archivio,
             "models_config": {"ponte": {"scadenza_min": scadenza_min}},
         }),
     }
@@ -248,3 +256,40 @@ async def test_il_confine_dello_schianto_viene_dalla_scadenza_configurata(tmp_pa
     await _load_real_reasoning_sweep(q, scadenza_min=5)()
     assert q.get("j")["status"] == "failed"
     q.close()
+
+
+@pytest.mark.asyncio
+async def test_un_turno_di_scope_scaduto_lascia_scritto_che_e_scaduto(tmp_path):
+    """**Il piano che non risponde MAI deve distinguersi da un'attesa.**
+
+    Senza questo ramo l'ultimo tentativo resta «accodata» per sempre: la
+    pagina dell'osservatore dice «in corso da N minuti» mentre nessuna
+    risposta arrivera' -- un worker fermo con un token buono diventa
+    indistinguibile da un turno che sta ancora pensando. E' il gemello di
+    `_close_expired_promise`, ed e' un rilievo della review indipendente
+    dell'11/09/2026.
+
+    Mutazione che la uccide: togliere il ramo `SCOPE_TURN_KIND` dalla
+    spazzata -- il turno ricade fra i job orfani, che si loggano e basta.
+    """
+    import os
+
+    from hiris.app.mind.store import ObservationsStore
+
+    archivio = ObservationsStore(os.path.join(str(tmp_path), "osservazioni.db"))
+    coda = ReasoningQueue(str(tmp_path / "r.db"))
+    try:
+        adesso = _time.time()
+        coda.enqueue(server.SCOPE_TURN_KIND, {}, {}, deadline_ts=adesso - 1,
+                     job_id="S1", now=adesso - 601)
+        spazzata = _load_real_reasoning_sweep(coda, archivio=archivio)
+
+        await spazzata()
+
+        ultimo = archivio.recent_attempts()[0]
+        assert ultimo["esito"] == "scaduta"
+        assert "non ha risposto" in ultimo["dettaglio"]
+        assert coda.get("S1")["status"] == "expired"
+    finally:
+        coda.close()
+        archivio.close()

@@ -11,6 +11,7 @@ import sqlite3
 import pytest
 
 from hiris.app.mind.store import (
+    ATTEMPTS_SHOWN,
     READING_RETENTION_S,
     ObservationsStore,
 )
@@ -566,3 +567,130 @@ def test_l_ultima_riga_prima_non_guarda_le_condizioni_di_sistema(archivio):
                     subject="integrazione:abc", da=None, a="setup_error")
 
     assert archivio.last_before(500.0) == []
+
+
+# ── Il tentativo: «ci ho provato, ed e' andata cosi'» ───────────────────────
+#
+# Fetta «l'osservatore chiede a chi risponde davvero» (11/09/2026). La tabella
+# `reconsideration` conserva i giri RIUSCITI; quelli falliti non lasciavano
+# traccia da nessuna parte, e la pagina dello scope diceva «non e' mai stata
+# fatta» -- vero alla lettera, e falso come racconto. Misurato sulla casa vera
+# l'11/09: l'osservatore aveva provato e fallito ogni dieci minuti per
+# quaranta minuti, HIRIS non registrava piu' una riga sulla casa, e nessuna
+# porta lo diceva.
+#
+# E' la distinzione a tre stati che questo prodotto difende ovunque e che
+# `api/handlers_mind.py` dichiara per iscritto: **un guasto non si appiattisce
+# su un'assenza.**
+
+
+def test_un_tentativo_fallito_lascia_la_sua_traccia(archivio):
+    """Prima di questa riga il fallimento era indistinguibile dal «non ancora
+    successo»: due stati diversi appiattiti su un `null`.
+
+    Mutazione che la uccide: non scrivere il dettaglio.
+    """
+    archivio.record_attempt(when_ts=1000.0, outcome="non_riuscito",
+                            detail="il modello non ha risposto: RuntimeError")
+
+    ultimo = archivio.recent_attempts()[0]
+    assert ultimo["quando_ts"] == 1000.0
+    assert ultimo["esito"] == "non_riuscito"
+    assert ultimo["dettaglio"] == "il modello non ha risposto: RuntimeError"
+
+
+def test_l_ultimo_tentativo_e_l_ULTIMO(archivio):
+    """La domanda e' «com'e' andata l'ultima volta», e la prima riga della
+    tabella e' la piu' vecchia -- stessa regola di `last_reconsideration`.
+
+    Mutazione che la uccide: ordinare crescente.
+    """
+    archivio.record_attempt(when_ts=1000.0, outcome="non_riuscito", detail="vecchio")
+    archivio.record_attempt(when_ts=2000.0, outcome="riuscito", detail="nuovo")
+
+    assert archivio.recent_attempts()[0]["dettaglio"] == "nuovo"
+
+
+def test_senza_nessun_tentativo_e_None_non_un_esito_finto(archivio):
+    """`None` e' «nessuno ci ha mai provato». Un esito di fabbrica sarebbe
+    un'affermazione che nessuno ha verificato."""
+    assert archivio.recent_attempts() == []
+
+
+def test_l_archivio_del_proprietario_prende_la_tabella_nuova_riaprendosi(tmp_path):
+    """**Non e' una formalita': e' l'archivio vero, con 22 giorni di grezzo
+    dentro.** Un archivio scritto dalla 3.26.0 non ha `scope_attempt`. Se non
+    comparisse all'apertura, la pagina dello scope morirebbe su «no such
+    table» proprio sulla casa che ha gia' una storia -- cioe' su tutte quelle
+    che contano.
+
+    Mutazione ESEGUITA l'11/09/2026, vista rossa e ripristinata: togliere
+    `CREATE TABLE IF NOT EXISTS scope_attempt` da `_SCHEMA`; il test fallisce
+    con `sqlite3.OperationalError: no such table: scope_attempt`.
+
+    La `PRAGMA user_version` e' **5**, quella che la 3.26.0 scrive davvero
+    (`init_schema(..., version=5)`): la prima stesura ne dichiarava 6, una
+    versione mai esistita che `init_schema` avrebbe comunque retrocesso --
+    rilievo della review indipendente, 11/09/2026.
+    """
+    path = str(tmp_path / "oss.db")
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        "CREATE TABLE cambi (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " quando_ts REAL NOT NULL,"
+        " fonte TEXT NOT NULL CHECK(fonte IN ('entita', 'sistema')),"
+        " soggetto TEXT NOT NULL, da TEXT, a TEXT,"
+        " device_class TEXT, state_class TEXT, source_type TEXT,"
+        " domain TEXT, title TEXT, first_occurred TEXT, friendly_name TEXT);"
+        "CREATE TABLE reconsideration (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        " done_ts REAL NOT NULL, window_s REAL, cadence_s REAL, reason TEXT);"
+        "INSERT INTO reconsideration(done_ts,window_s,cadence_s,reason)"
+        " VALUES(900.0, 604800.0, 302400.0, 'mai fatta');"
+        "PRAGMA user_version = 5;")
+    conn.commit()
+    conn.close()
+
+    archivio = ObservationsStore(path)
+    try:
+        assert archivio.recent_attempts() == [], (
+            "nessun tentativo annotato non e' un guasto: e' un archivio che "
+            "viene da prima che i tentativi si annotassero")
+        archivio.record_attempt(when_ts=1000.0, outcome="non_riuscito",
+                                detail="il piano non ha risposto")
+        assert archivio.recent_attempts()[0]["esito"] == "non_riuscito"
+        # La storia che c'era resta dov'era: la tabella nuova si aggiunge, non
+        # sostituisce.
+        assert archivio.last_reconsideration()["motivo"] == "mai fatta"
+    finally:
+        archivio.close()
+
+
+def test_i_tentativi_recenti_raccontano_se_sta_fallendo_da_un_po(archivio):
+    """**La domanda vera del proprietario non e' «com'e' andata l'ultima
+    volta», e' «sta funzionando?».** Un tentativo solo non la distingue: dopo
+    un fallimento il giro richiede subito, quindi l'ultimo esito e' sempre
+    «accodata» e il guasto sparirebbe dalla vista in pochi secondi.
+
+    Misurato l'11/09/2026: l'osservatore ha fallito quattro volte di fila in
+    quaranta minuti. Quella e' la riga che serviva, e non esisteva.
+
+    Mutazione che la uccide: tornare il piu' vecchio invece del piu' recente.
+    """
+    archivio.record_attempt(when_ts=1000.0, outcome="non_riuscito", detail="primo")
+    archivio.record_attempt(when_ts=2000.0, outcome="non_riuscito", detail="secondo")
+    archivio.record_attempt(when_ts=3000.0, outcome="accodata", detail="terzo")
+
+    assert [t["dettaglio"] for t in archivio.recent_attempts()] == [
+        "terzo", "secondo", "primo"]
+
+
+def test_i_tentativi_recenti_si_fermano_al_tetto(archivio):
+    """La pagina ne mostra una manciata: la storia intera di una casa accesa
+    da mesi sarebbe migliaia di righe per rispondere a «sta funzionando?»."""
+    for n in range(ATTEMPTS_SHOWN + 2):
+        archivio.record_attempt(when_ts=float(n), outcome="riuscito")
+
+    # `== ATTEMPTS_SHOWN`, non `<= 10`: un `<=` passa anche con un tetto di
+    # tre, e il numero copiato a mano sarebbe il doppione che il commento
+    # della pagina si vanta di non avere (rilievo della review indipendente).
+    assert len(archivio.recent_attempts()) == ATTEMPTS_SHOWN

@@ -40,6 +40,13 @@ logger = logging.getLogger(__name__)
 #: JSON rotto che si butta intero.
 MAX_ANSWER_TOKENS = 16000
 
+#: Come si chiama, nella coda del ragionamento, un turno dell'osservatore.
+#: Le altre due specie sono `chat` (`api/handlers_chat.py`) e `promessa`
+#: (`keeper/exchange.py`), e come loro il nome vive **dove il turno nasce**:
+#: chi lo serve -- `agent/runner.reason` -- dichiara per conto suo quali
+#: specie sa ragionare, che e' un'affermazione sua e non una copia di questa.
+SCOPE_TURN_KIND = "scope"
+
 SYSTEM = """Sei l'osservatore di HIRIS, un sistema che guarda una casa domotica.
 
 Il tuo mestiere e' UNO: decidere, entita' per entita', se quello che fa merita
@@ -97,24 +104,45 @@ def house_lines(home_space: dict) -> list[str]:
     return lines
 
 
-def build_question(objective: str, lines: list[str]) -> str:
-    """La domanda: l'obiettivo, la casa, e la forma della risposta.
+#: **Il contratto di risposta, e vive una volta sola.** Le due porte lo
+#: mettono in due posti diversi -- la catena in coda alla domanda, il ponte
+#: come istruzione di chiusura del turno (`agent/prompts.build_chat_messages`,
+#: dove l'ultima riga del messaggio e' quella che il modello segue) -- ma il
+#: TESTO e' lo stesso, e due copie divergerebbero alla prima correzione fatta
+#: da una parte sola.
+#:
+#: **Il motivo si chiede esplicitamente**, e non e' una cortesia: l'archivio
+#: rifiuta una decisione senza ragione (`store.decide_scope`), quindi un
+#: contratto che non lo chiedesse si farebbe buttare meta' delle risposte al
+#: confine senza che nessuno capisca perche'.
+ANSWER_CONTRACT = (
+    "Rispondi con un SOLO array JSON, un oggetto per entita':\n"
+    '  {"id": "<identificatore>", "dentro": true|false, "motivo": "<una riga in italiano>"}\n'
+    "Nessun testo fuori dall'array. Un'entita' su cui davvero non sai "
+    "decidere: omettila, invece di inventarti una ragione."
+)
 
-    **Il motivo si chiede esplicitamente**, e non e' una cortesia: l'archivio
-    rifiuta una decisione senza ragione (`store.decide_scope`), quindi una
-    domanda che non lo chiedesse si farebbe buttare meta' delle risposte al
-    confine senza che nessuno capisca perche'.
+
+def build_question(objective: str, lines: list[str]) -> str:
+    """La domanda intera: l'obiettivo, la casa, e il contratto di risposta.
+
+    E' la forma che serve alla **catena**, dove tutto viaggia in un messaggio
+    solo. Il ponte usa gli stessi due pezzi montati diversamente (vedi
+    `bridge_turn`): la domanda in cronologia, il contratto come istruzione di
+    chiusura.
     """
+    return build_house_question(objective, lines) + "\n" + ANSWER_CONTRACT
+
+
+def build_house_question(objective: str, lines: list[str]) -> str:
+    """L'obiettivo e la casa, **senza** il contratto di risposta."""
     return (
         f"L'obiettivo di questa casa e':\n\n  {objective}\n\n"
         f"Queste sono le {len(lines)} entita' che ti competono. Ogni riga e':\n"
         "identificatore · nome · classe · unita' · area · chiave di traduzione\n"
         "(i campi che mancano sono assenti, non vuoti).\n\n"
         + "\n".join(lines)
-        + "\n\nRispondi con un SOLO array JSON, un oggetto per entita':\n"
-        '  {"id": "<identificatore>", "dentro": true|false, "motivo": "<una riga in italiano>"}\n'
-        "Nessun testo fuori dall'array. Un'entita' su cui davvero non sai "
-        "decidere: omettila, invece di inventarti una ragione."
+        + "\n"
     )
 
 
@@ -165,13 +193,49 @@ def read_decisions(answer: str) -> tuple[list[dict], str | None]:
     return decisions, None
 
 
-async def reconsider(runner, store, home_space: dict, *, reason: str,
-                     window_s: float | None = None, cadence_s: float | None = None,
-                     model: str = "auto", now: float | None = None) -> dict:
-    """Un giro intero: guarda la casa, chiede, scrive le decisioni, annota.
+def bridge_turn(store, home_space: dict) -> dict:
+    """Il turno da accodare al ponte: **la stessa domanda, per un'altra porta**.
 
-    Torna il resoconto del giro -- `{"decise", "rifiutate", "ignorate"}` -- o
-    `{"errore": ...}` se non si e' potuto fare.
+    Il ponte gira altrove e non ha gli archivi: cio' che non entra nel job non
+    esiste per lui (vedi `keeper/exchange._accoda_al_ponte`, che fa lo stesso
+    per una promessa). Le due chiavi sono quelle che il turno del ponte legge
+    davvero -- `agent/runner._reason_chat` -> `prompts.build_chat_messages`.
+
+    **La domanda non si ricompone qui.** Si chiamano `house_lines` e
+    `build_house_question`, le stesse che il giro sincrono usa dentro
+    `build_question`: due composizioni della stessa domanda sarebbero due
+    verita' libere di divergere, e la prima volta che qualcuno aggiunge un
+    campo alla riga della casa da una parte sola il ponte e la catena
+    giudicherebbero case diverse senza che nessuna pagina lo dica
+    (fondamenta 2).
+    """
+    return {
+        "history": [{"role": "user",
+                     "content": build_house_question(store.objective()["testo"],
+                                                     house_lines(home_space))}],
+        "system_prompt": SYSTEM,
+        # **Senza questa chiave il ponte gli impone il contrario.** L'istruzione
+        # che chiude ogni turno di chat dice «usa testo semplice: niente
+        # blocchi di codice o JSON» (`agent/prompts._CHAT_INSTRUCTION`), e
+        # l'osservatore chiede esattamente un array JSON: la risposta sarebbe
+        # tornata in prosa e `read_decisions` l'avrebbe dichiarata illeggibile
+        # -- lo stesso esito del guasto che questa fetta ripara, per un'altra
+        # causa. Trovato leggendo il codice l'11/09/2026, prima di rilasciare.
+        "istruzione": ANSWER_CONTRACT,
+    }
+
+
+def apply_answer(store, home_space: dict, answer: str, *, reason: str,
+                 window_s: float | None = None, cadence_s: float | None = None,
+                 now: float | None = None) -> dict:
+    """Cosa si fa di una risposta, **da qualunque porta sia arrivata**.
+
+    E' la seconda meta' del giro, separata dalla prima perche' le due meta'
+    non avvengono piu' sempre insieme: sulla catena la risposta torna dentro
+    la stessa chiamata, sul ponte torna **minuti dopo, da un altro processo**,
+    e il giro che la raccoglie e' un altro. Senza questa separazione la
+    scrittura delle decisioni esisterebbe in due copie, e la seconda sarebbe
+    rimasta indietro alla prima correzione fatta di qua.
 
     **Un giro fallito non si annota come fatto.** Annotarlo farebbe aspettare
     la cadenza intera -- 84 ore sulla casa vera -- prima di riprovare, su una
@@ -183,21 +247,6 @@ async def reconsider(runner, store, home_space: dict, *, reason: str,
     osservata.
     """
     lines = house_lines(home_space)
-    objective = store.objective()["testo"]
-    question = build_question(objective, lines)
-    try:
-        # `user_message=` per nome e non posizionale: `LLMRouter.chat` --
-        # il runner vero, quello con la catena di ripiego -- prende `**kwargs`
-        # e basta, e un posizionale ci morirebbe sopra al primo giro in
-        # produzione senza che nessuna finta lo veda.
-        answer = await runner.chat(user_message=question, system_prompt=SYSTEM,
-                                   model=model, agent_type="observer",
-                                   max_tokens=MAX_ANSWER_TOKENS)
-    except Exception as error:
-        logger.warning("osservatore: il giro non e' partito (%s: %s)",
-                       type(error).__name__, error)
-        return {"errore": f"il modello non ha risposto: {type(error).__name__}"}
-
     decisions, failure = read_decisions(answer)
     if failure is not None:
         logger.warning("osservatore: %s", failure)
@@ -220,3 +269,37 @@ async def reconsider(runner, store, home_space: dict, *, reason: str,
                                  cadence_s=cadence_s, reason=reason)
     return {"decise": decided, "rifiutate": refused, "ignorate": ignored,
             "candidate": len(lines)}
+
+
+async def reconsider(runner, store, home_space: dict, *, reason: str,
+                     window_s: float | None = None, cadence_s: float | None = None,
+                     model: str = "auto", now: float | None = None) -> dict:
+    """Un giro intero **sulla catena**: guarda la casa, chiede, e consegna la
+    risposta ad `apply_answer`.
+
+    Torna il resoconto del giro -- `{"decise", "rifiutate", "ignorate"}` -- o
+    `{"errore": ...}` se non si e' potuto fare.
+
+    **Questa e' la porta della catena, non l'unica porta.** Chi decide fra le
+    due e' `steering.who_answers`, dalla stessa funzione che lo decide per la
+    chat e per le promesse; quando risponde «ponte», il giro passa da
+    `bridge_turn` e questa funzione non viene chiamata affatto.
+    """
+    lines = house_lines(home_space)
+    objective = store.objective()["testo"]
+    question = build_question(objective, lines)
+    try:
+        # `user_message=` per nome e non posizionale: `LLMRouter.chat` --
+        # il runner vero, quello con la catena di ripiego -- prende `**kwargs`
+        # e basta, e un posizionale ci morirebbe sopra al primo giro in
+        # produzione senza che nessuna finta lo veda.
+        answer = await runner.chat(user_message=question, system_prompt=SYSTEM,
+                                   model=model, agent_type="observer",
+                                   max_tokens=MAX_ANSWER_TOKENS)
+    except Exception as error:
+        logger.warning("osservatore: il giro non e' partito (%s: %s)",
+                       type(error).__name__, error)
+        return {"errore": f"il modello non ha risposto: {type(error).__name__}"}
+
+    return apply_answer(store, home_space, answer, reason=reason,
+                        window_s=window_s, cadence_s=cadence_s, now=now)

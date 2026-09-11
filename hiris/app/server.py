@@ -64,6 +64,9 @@ from .mind.facts import (
     build_balance_body,
     day_boundaries,
 )
+from .mind.observer import SCOPE_TURN_KIND
+from .mind.observer import apply_answer as observer_apply_answer
+from .mind.observer import bridge_turn as observer_bridge_turn
 from .mind.observer import reconsider as observer_reconsider
 from .mind.store import READING_RETENTION_S, ObservationsStore
 from .mind.watcher import Watcher
@@ -72,6 +75,7 @@ from .provider_occurrences import OccurrenceRegistry
 from .proxy.entity_cache import EntityCache, automation_config_id
 from .proxy.ha_client import HAClient
 from .proxy.state_translations import StateTranslations
+from .steering import who_answers
 from .version import read_version
 
 logger = logging.getLogger(__name__)
@@ -1758,17 +1762,47 @@ async def reconsideration_round(app, ha_client) -> dict | None:
     452 su questa casa -- e l'osservatore girerebbe ogni dieci minuti per
     sempre.
 
+    **Il giro ha DUE tempi, e non e' una complicazione gratuita** (fetta
+    «l'osservatore chiede a chi risponde davvero», 11/09/2026). Chi risponde
+    lo decide `steering.who_answers`, la stessa funzione che lo decide per la
+    chat e per le promesse; quando risponde «ponte», il turno si **accoda** e
+    la risposta torna minuti dopo, da un altro processo. Quindi ogni
+    passaggio prima guarda se c'e' una risposta da raccogliere, e solo dopo si
+    chiede se sia ora di domandare ancora.
+
     Non solleva mai: gira per sempre, e un avvio a meta' -- il modello non
     ancora costruito, l'anagrafe non ancora letta -- non deve fermare lo
     schedulatore.
     """
     store = app.get("observations")
     home_space_store = app.get("home_space_store")
-    runner = app.get("llm_router") or app.get("claude_runner")
-    if store is None or home_space_store is None or runner is None:
+    if store is None or home_space_store is None:
         return None
     try:
         home_space = home_space_store.read()
+        collected, letto = _collect_scope_turn(app, store, home_space)
+        if collected is not None:
+            return collected
+        if letto:
+            # **Una raccolta fallita chiude il passaggio: non si richiede
+            # subito.** La prima stesura riaccodava nello stesso giro, e la
+            # review indipendente ha fatto il conto: con la scadenza a dieci
+            # minuti e il giro ogni dieci, un guasto stabile produce fino a
+            # **144 turni al giorno** da ~11.500 token l'uno. `count_exchanges_
+            # today` conta ogni specie e il tetto di fabbrica e' 150: un
+            # osservatore rotto svuoterebbe da solo il tetto del piano, e da
+            # li' in poi ogni turno -- chat compresa -- passerebbe ai provider
+            # a pagamento.
+            return None
+        if _scope_turn_in_flight(app):
+            # Questo giro scatta ogni dieci minuti e un turno del piano puo'
+            # durarne parecchi: senza questa guardia la casa accodarebbe un
+            # turno ogni dieci minuti, ciascuno con 11.500 token di casa
+            # dentro, e il tetto giornaliero si svuoterebbe in un pomeriggio.
+            return None
+        if _retry_hold(store, now=time.time()):
+            return None
+
         candidates = sorted(digest_visible_entity_ids(home_space))
         last = store.last_reconsideration()
         objective = store.objective()
@@ -1781,18 +1815,255 @@ async def reconsideration_round(app, ha_client) -> dict | None:
         if why is None:
             return None
 
-        logger.info("osservatore: riconsidero la casa -- %s", why)
+        # **La stessa domanda che si fanno la chat e le promesse, dalla stessa
+        # funzione.** Fino all'11/09/2026 questo giro non se la faceva affatto
+        # e andava dritto al router -- dove il ponte non e' un anello
+        # (`llm_router._VALID_BACKEND_NAMES`). Misurato sulla casa vera l'11/09
+        # alle 11:00:44: l'osservatore cadeva su un modello OpenRouter
+        # «batch-only» (404) e su una chiave Claude senza credito (400) mentre
+        # l'abbonamento, li' accanto, serviva la chat. E' il difetto che
+        # `steering.py` dichiara chiuso il 22/08 per le promesse, con la frase
+        # «una terza porta che nascesse domani non potrebbe inventarsene una
+        # terza senza accorgersene»: la terza porta era questa.
+        route, downgrade = who_answers(app)
+        runner = app.get("llm_router") or app.get("claude_runner")
+        if route == "catena" and runner is None:
+            # **Anche il silenzio si annota.** Senza token del piano e senza
+            # nessun provider in catena l'osservatore taceva per sempre, con
+            # la faccia di «nessuno ha ancora provato» (rilievo della review
+            # indipendente, 11/09/2026).
+            store.record_attempt(
+                outcome="non_riuscito",
+                detail=f"non c'era nessun modello a cui chiedere ({downgrade})"
+                if downgrade else "non c'era nessun modello a cui chiedere")
+            return None
+
+        # **Il passaggio dal forfait al consumo si annuncia ogni volta**
+        # (decisione del proprietario, 13/08/2026, che `steering.py` dichiara
+        # nel suo docstring): un prelievo silenzioso si scopre a fine mese. Il
+        # motivo e' una chiave di `model_resolution._DOWNGRADE_REASONS`, e
+        # finisce anche nel tentativo, cosi' la pagina puo' dire da quale
+        # porta e' passato quel giro.
+        if downgrade:
+            logger.warning(
+                "osservatore: il piano non puo' servire questo giro (%s): si "
+                "scende alla catena. Il costo cambia -- dal forfait al consumo.",
+                downgrade)
+        logger.info("osservatore: riconsidero la casa (%s) -- %s", route, why)
         window_s = await measure_memory_window(
             ha_client, sorted(e["id"] for e in home_space.get("entita", []) if e.get("id")))
+        if route == "ponte":
+            return _enqueue_scope_turn(app, store, home_space,
+                                       reason=why, window_s=window_s)
         outcome = await observer_reconsider(
             runner, store, home_space, reason=why,
             window_s=window_s, cadence_s=cadence_from(window_s))
+        _record_attempt(store, outcome, route="catena", downgrade=downgrade)
         logger.info("osservatore: giro finito -- %s", outcome)
         return outcome
     except Exception as exc:
         logger.warning("osservatore: giro di riconsiderazione fallito (%s: %s)",
                        type(exc).__name__, exc)
         return None
+
+
+def _record_attempt(store, outcome: dict, *, route: str = "ponte",
+                    downgrade: str = "") -> None:
+    """Annota com'e' andato il tentativo, **riuscito o no**.
+
+    Prima dell'11/09/2026 un giro fallito non lasciava traccia da nessuna
+    parte: la pagina dello scope mostrava «non e' mai stata fatta», che era
+    vero alla lettera -- nessuna riconsiderazione era avvenuta -- e falso come
+    racconto, perche' ci si era provato quattro volte in quaranta minuti
+    mentre HIRIS non registrava piu' una riga sulla casa. Un guasto non si
+    appiattisce su un'assenza.
+
+    Non si scrive in `reconsideration`: un tentativo fallito non e' una
+    riconsiderazione, e metterlo li' farebbe scadere la cadenza come se la
+    casa fosse stata ripensata davvero.
+    """
+    # **Da quale porta e' passato il giro**, e se e' stato un ripiego: senza,
+    # la pagina non puo' distinguere un giro servito dal piano da uno pagato a
+    # consumo, e il prelievo resta invisibile (rilievo della review
+    # indipendente, 11/09/2026; regola del proprietario del 13/08/2026).
+    porta = f" [{route}{', ripiego: ' + downgrade if downgrade else ''}]"
+    error = outcome.get("errore")
+    if error:
+        store.record_attempt(outcome="non_riuscito", detail=error + porta)
+    else:
+        store.record_attempt(outcome="riuscito",
+                             detail=_attempt_detail(outcome) + porta)
+
+
+def _attempt_detail(outcome: dict) -> str:
+    """Il riassunto di un giro riuscito, nella lingua della pagina."""
+    return (f"{outcome.get('decise', 0)} decisioni su "
+            f"{outcome.get('candidate', 0)} entita' guardate")
+
+
+def _scope_turn_in_flight(app) -> bool:
+    """Se un turno di scope sta gia' aspettando una risposta dal piano.
+
+    **La coda e' l'unico posto in cui questo fatto vive.** Tenere il `job_id`
+    anche altrove -- su `app`, in un archivio -- sarebbe un doppione ai sensi
+    della fondamenta 2, e per giunta uno che non sopravvive a un riavvio,
+    mentre il job si'.
+
+    Uno scaduto NON e' in volo: se lo fosse, il giro aspetterebbe per sempre
+    una risposta che nessuno dara' piu', e la casa non sarebbe mai osservata.
+    """
+    queue = app.get("reasoning_queue")
+    if queue is None:
+        return False
+    turn = queue.latest(SCOPE_TURN_KIND)
+    if turn is None:
+        return False
+    return (turn["status"] in ("pending", "claimed")
+            and turn["deadline_ts"] > time.time())
+
+
+#: Quanto si aspetta prima di riprovare, dopo un fallimento. Raddoppia a ogni
+#: fallimento di fila e si ferma alla cadenza di riconsiderazione, che e' il
+#: tempo oltre il quale aspettare ancora significherebbe perdere cio' che Home
+#: Assistant ricorda. Il primo gradino e' il giro stesso: un guasto isolato --
+#: un turno storto, una raffica persa -- si riprova subito, e solo l'insistenza
+#: costa attesa.
+RETRY_BASE_S = 600.0
+RETRY_MAX_S = 6 * 3600.0
+
+
+def _retry_hold(store, *, now: float) -> bool:
+    """Se il freno e' tirato: **si e' appena fallito, e si aspetta**.
+
+    Nasce dal conto della review indipendente (11/09/2026): senza, un
+    osservatore che fallisce stabilmente chiede al piano ogni dieci minuti per
+    sempre -- fino a 144 turni al giorno da ~11.500 token -- e siccome
+    `count_exchanges_today` conta ogni specie contro un tetto di 150, **svuota
+    da solo il tetto giornaliero**: da li' in poi anche la chat scende ai
+    provider a pagamento. Il freno non spegne niente, rallenta: un guasto che
+    passa da solo dev'essere comunque scoperto.
+
+    Si legge dai tentativi, che sono gia' l'archivio di questo fatto: un
+    contatore a parte sarebbe un doppione che il primo riavvio azzera.
+    """
+    attempts = store.recent_attempts()
+    consecutive = 0
+    for attempt in attempts:
+        if attempt["esito"] == "accodata":
+            continue
+        if attempt["esito"] in ("non_riuscito", "scaduta"):
+            consecutive += 1
+            continue
+        break
+    if not consecutive:
+        return False
+    wait = min(RETRY_BASE_S * 2 ** (consecutive - 1), RETRY_MAX_S)
+    return now - attempts[0]["quando_ts"] < wait
+
+
+def _collect_scope_turn(app, store, home_space: dict) -> tuple[dict | None, bool]:
+    """La risposta che il piano ha dato al turno di scope, e **se si e'
+    letta**: `(esito, letto)`.
+
+    Il secondo valore non e' una comodita': distingue «non c'era niente da
+    raccogliere» da «si e' raccolto e non si e' potuto usare». Il secondo caso
+    chiude il passaggio -- si riprova al giro dopo, col freno -- e senza questa
+    distinzione il chiamante riaccodarebbe subito, che e' il difetto che la
+    review indipendente ha misurato in turni al giorno.
+
+    **La misura viaggia nella sveglia del job.** La sonda della memoria di
+    Home Assistant si cala quando la domanda parte; la riconsiderazione si
+    scrive quando la risposta torna, e fra i due momenti ci sono minuti e un
+    altro processo. `submit` azzera il contesto (che porta la casa intera) e
+    **non** la sveglia: e' li' che il numero aspetta, invece di essere
+    rimisurato -- pagando due volte una cosa che non e' cambiata -- o perso,
+    lasciando una finestra «non misurata» indistinguibile da una casa che non
+    ricorda niente.
+
+    **Un turno gia' letto non si rilegge**, e il confronto e' con **due**
+    tracce, non una: la riconsiderazione, che una raccolta riuscita scrive, e
+    il tentativo, che si scrive in ogni caso. La seconda serve proprio quando
+    la prima manca -- una risposta inservibile non produce nessuna
+    riconsiderazione, quindi guardando solo quella lo stesso turno storto
+    verrebbe riletto e riannotato a ogni giro, gonfiando il «sta fallendo da...»
+    con tentativi fantasma tutti sulla stessa risposta (rilievo della review
+    indipendente, 11/09/2026).
+    """
+    queue = app.get("reasoning_queue")
+    if queue is None:
+        return None, False
+    turn = queue.latest(SCOPE_TURN_KIND)
+    if turn is None or turn["status"] != "decided":
+        return None, False
+    last = store.last_reconsideration()
+    if last is not None and last["quando_ts"] >= turn["created_ts"]:
+        return None, False
+    # Si guarda l'ultimo tentativo che **non** sia un accodamento: «accodata»
+    # si scrive quando la domanda parte, cioe' sempre PRIMA della risposta, e
+    # confrontarlo con l'istante della risposta direbbe sempre di no. Cio' che
+    # risponde davvero a «questa risposta l'ho gia' letta?» e' l'esito della
+    # lettura.
+    decided_ts = turn.get("decided_ts")
+    letti = [a for a in store.recent_attempts() if a["esito"] != "accodata"]
+    if decided_ts is not None and letti and letti[0]["quando_ts"] >= decided_ts:
+        return None, False
+    reply = (turn.get("decision") or {}).get("reply") or ""
+    wake = turn.get("wake") or {}
+    outcome = observer_apply_answer(
+        store, home_space, reply,
+        reason=wake.get("motivo") or "il piano ha risposto",
+        window_s=wake.get("finestra_s"), cadence_s=wake.get("cadenza_s"))
+    _record_attempt(store, outcome)
+    # **Il registro degli esiti e' il solo posto in cui HIRIS osserva come si
+    # comporta un fornitore davvero**, e la terza strada del piano non ci
+    # finiva: la pagina Modelli non avrebbe mai saputo che l'abbonamento ha
+    # servito -- o mancato -- un turno dell'osservatore (rilievo della review
+    # indipendente, 11/09/2026). La chat lo fa in `_submit_chat_reply`, la
+    # promessa nella rotta MCP.
+    registry = app.get("occurrence_registry")
+    if registry is not None:
+        if "errore" in outcome:
+            registry.fallimento("subscription", family="altro", code=None,
+                                message=outcome["errore"], durata_s=0.0)
+        else:
+            registry.successo("subscription")
+    if "errore" in outcome:
+        logger.warning("osservatore: la risposta del piano non si e' potuta "
+                       "usare (%s) -- si riprova al giro dopo", outcome["errore"])
+        return None, True
+    logger.info("osservatore: giro finito dal piano -- %s", outcome)
+    return outcome, True
+
+
+def _enqueue_scope_turn(app, store, home_space: dict, *, reason: str,
+                        window_s: float | None) -> dict:
+    """Accoda al piano il turno dell'osservatore, e torna subito.
+
+    La scadenza viene dall'ARCHIVIO (`ponte.scadenza_min`), come per la chat e
+    per le promesse: quella che l'utente cambia dev'essere quella che il turno
+    subisce, e una terza fonte per lo stesso numero sarebbe la terza che
+    diverge.
+    """
+    from .api.handlers_models import _STORE_DEFAULTS
+    deadline_min = int((app.get("models_config") or {}).get("ponte", {}).get(
+        "scadenza_min", _STORE_DEFAULTS["ponte"]["scadenza_min"]))
+    now = time.time()
+    app["reasoning_queue"].enqueue(
+        SCOPE_TURN_KIND,
+        {"motivo": reason, "finestra_s": window_s,
+         "cadenza_s": cadence_from(window_s)},
+        observer_bridge_turn(store, home_space),
+        now + deadline_min * 60,
+        now=now)
+    # **«Ho chiesto e sto aspettando» e' il terzo stato**, e la pagina deve
+    # poterlo dire: senza, dieci minuti di attesa legittima sono
+    # indistinguibili da un guasto -- che e' precisamente la confusione da cui
+    # questa fetta nasce.
+    store.record_attempt(when_ts=now, outcome="accodata",
+                         detail=f"chiesto al piano: {reason}")
+    logger.info("osservatore: turno accodato al piano (scadenza %d min) -- %s",
+                deadline_min, reason)
+    return {"accodata": True}
 
 
 def behavior_reader(client, home_space, ha_folder: Path | None, find_folder=None):
@@ -3587,6 +3858,25 @@ async def _on_startup(app: web.Application) -> None:
                 # una fallita: `risana()` la chiuderebbe solo al prossimo
                 # riavvio, cioe' forse mai.
                 _close_expired_promise(app, job)
+                continue
+            if job.get("kind") == SCOPE_TURN_KIND:
+                # **Un turno dell'osservatore scaduto deve lasciare traccia**
+                # (correzione della review indipendente, 11/09/2026). Senza,
+                # l'ultimo tentativo resta «accodata» per sempre e la pagina
+                # dice «in corso da N minuti» mentre il piano non rispondera'
+                # mai: un worker fermo con un token buono diventa
+                # indistinguibile da un'attesa legittima -- lo stesso guasto
+                # appiattito su un'assenza che questa fetta esiste per togliere.
+                # E' il gemello di `_close_expired_promise` qui sopra.
+                store = app.get("observations")
+                if store is not None:
+                    attesa = max(0.0, job.get("deadline_ts", 0) - job.get("created_ts", 0))
+                    store.record_attempt(
+                        outcome="scaduta",
+                        detail=f"il piano non ha risposto entro {attesa / 60:.0f} minuti")
+                logger.warning(
+                    "osservatore: il turno %s e' scaduto senza risposta dal piano",
+                    job.get("job_id"))
                 continue
             if job.get("kind") != "chat":
                 logger.warning(

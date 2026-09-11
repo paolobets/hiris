@@ -211,3 +211,427 @@ async def test_una_memoria_non_misurabile_non_ferma_il_primo_giro(archivio):
     ultima = archivio.last_reconsideration()
     assert ultima["finestra_s"] is None
     assert ultima["cadenza_s"] is None
+
+
+# ── Il giro passa dal PONTE quando e' il ponte a rispondere ─────────────────
+#
+# Fetta «l'osservatore chiede a chi risponde davvero» (11/09/2026). Fino a
+# oggi questo giro andava dritto a `llm_router`, dove il Piano Claude Max
+# **non e' un anello** (`llm_router._VALID_BACKEND_NAMES`). Misurato sulla
+# casa vera l'11/09 alle 11:00:44: l'osservatore cadeva su un modello
+# OpenRouter «batch-only» (404) e su una chiave Claude senza credito (400),
+# mentre l'abbonamento -- 140 richieste su 140 nella storia di questa casa --
+# rispondeva benissimo alla chat, li' accanto. E' lo stesso difetto che
+# `steering.py` dichiara di aver chiuso il 22/08 per le promesse, con la frase
+# «una terza porta che nascesse domani non potrebbe inventarsene una terza
+# senza accorgersene».
+#
+# Il turno del ponte non torna dentro la stessa chiamata: si accoda, e si
+# raccoglie a un giro successivo. Da cui le due meta' provate qui sotto.
+
+from hiris.app.model_resolution import SUBSCRIPTION_TOKEN_VAR
+from hiris.app.reasoning.queue import ReasoningQueue
+
+
+@pytest.fixture
+def coda(tmp_path):
+    c = ReasoningQueue(str(tmp_path / "reasoning.db"))
+    yield c
+    c.close()
+
+
+@pytest.fixture
+def piano_acceso(monkeypatch):
+    """Una casa che gira sul Piano Claude Max -- come quella vera."""
+    monkeypatch.setenv(SUBSCRIPTION_TOKEN_VAR, "un-token-qualunque")
+
+
+def _app_ponte_acceso(archivio, anagrafe, modello, coda):
+    app = _app(archivio, anagrafe, modello)
+    app["reasoning_queue"] = coda
+    app["bridge_active"] = True
+    app["models_config"] = {"ponte": {"tetto_giornaliero": 150, "scadenza_min": 10}}
+    return app
+
+
+@pytest.mark.asyncio
+async def test_piano_acceso_acceso_il_giro_ACCODA_invece_di_chiamare_la_catena(
+        archivio, coda, piano_acceso):
+    """**Il difetto misurato in produzione l'11/09/2026.** L'osservatore aveva
+    una porta sua sul modello, e quella porta non passava dal piano.
+
+    Mutazione che la uccide: chiamare `runner.chat` senza chiedere prima a
+    `who_answers`.
+    """
+    modello = _Modello()
+    anagrafe = _Anagrafe([_entita("climate.x")])
+
+    esito = await reconsideration_round(
+        _app_ponte_acceso(archivio, anagrafe, modello, coda), _Ponte())
+
+    assert modello.chiamate == 0, "la catena non doveva essere consultata"
+    assert esito == {"accodata": True}
+    turno = coda.latest("scope")
+    assert turno["status"] == "pending"
+    assert "climate.x" in turno["context"]["history"][0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_la_risposta_del_ponte_si_raccoglie_al_giro_dopo(
+        archivio, coda, piano_acceso):
+    """Il ponte risponde da un altro processo, minuti dopo. Chi raccoglie e'
+    il giro periodico successivo, e la coda e' l'unico posto in cui il turno
+    lo aspetta -- tenerne il `job_id` altrove sarebbe un doppione che non
+    sopravvive a un riavvio.
+
+    Mutazione che la uccide: non guardare la coda all'inizio del giro.
+    """
+    app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]), _Modello(), coda)
+    await reconsideration_round(app, _Ponte())
+
+    preso = coda.claim(now=1.0)
+    coda.submit(preso["job_id"], preso["nonce"],
+                {"reply": '[{"id": "climate.x", "dentro": true, "motivo": "scalda"}]'},
+                now=2.0)
+
+    esito = await reconsideration_round(app, _Ponte())
+
+    assert esito == {"decise": 1, "rifiutate": 0, "ignorate": 0, "candidate": 1}
+    assert archivio.scope()["climate.x"]["dentro"] is True
+    assert archivio.last_reconsideration() is not None
+
+
+@pytest.mark.asyncio
+async def test_la_finestra_MISURATA_alla_domanda_arriva_alla_raccolta(
+        archivio, coda, piano_acceso):
+    """La sonda si cala quando la domanda parte; la riconsiderazione si scrive
+    quando la risposta torna. Fra i due momenti, sul ponte, ci sono minuti e un
+    altro processo: il numero viaggia nella **sveglia** del job, che `submit`
+    non azzera.
+
+    Senza quel passaggio si rimisurerebbe (pagando due volte una cosa che non
+    e' cambiata) o si scriverebbe `None` su una finestra misurata davvero --
+    indistinguibile da una casa che non ricorda niente.
+
+    Mutazione che la uccide: raccogliere con `window_s=None`.
+    """
+    app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]), _Modello(), coda)
+    ponte = _Ponte(memoria_s=7 * GIORNO)
+    await reconsideration_round(app, ponte)
+
+    preso = coda.claim(now=1.0)
+    coda.submit(preso["job_id"], preso["nonce"], {"reply": "[]"}, now=2.0)
+    await reconsideration_round(app, ponte)
+
+    ultima = archivio.last_reconsideration()
+    assert 6.5 * GIORNO <= ultima["finestra_s"] <= 7 * GIORNO
+    assert ultima["cadenza_s"] == pytest.approx(ultima["finestra_s"] / 2)
+
+
+@pytest.mark.asyncio
+async def test_mentre_un_turno_e_in_volo_non_se_ne_accoda_un_secondo(
+        archivio, coda, piano_acceso):
+    """Questo giro scatta ogni dieci minuti e un turno del piano puo' durarne
+    parecchi. Senza questa guardia la casa accumulerebbe un turno ogni dieci
+    minuti, ciascuno con 11.500 token di casa dentro, e il tetto giornaliero
+    si svuoterebbe in un pomeriggio.
+
+    Mutazione che la uccide: accodare senza guardare se ce n'e' gia' uno.
+    """
+    app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]), _Modello(), coda)
+
+    await reconsideration_round(app, _Ponte())
+    esito = await reconsideration_round(app, _Ponte())
+
+    assert esito is None
+    assert coda.count_exchanges_today() == 1
+
+
+@pytest.mark.asyncio
+async def test_un_turno_SCADUTO_non_blocca_l_osservatore_per_sempre(
+        archivio, coda, piano_acceso):
+    """Il piano puo' non rispondere. Se il turno scaduto restasse «l'ultimo
+    turno di scope», il giro lo aspetterebbe per sempre e la casa non sarebbe
+    mai osservata -- un guasto silenzioso identico a quello che questa fetta
+    ripara.
+
+    Mutazione che la uccide: trattare 'expired' come un turno ancora in volo.
+    """
+    import time
+    app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]), _Modello(), coda)
+    await reconsideration_round(app, _Ponte())
+    coda.sweep_expired(now=time.time() + 3600)
+
+    esito = await reconsideration_round(app, _Ponte())
+
+    assert esito == {"accodata": True}
+    assert coda.count_exchanges_today() == 2
+
+
+@pytest.mark.asyncio
+async def test_una_risposta_del_ponte_gia_raccolta_non_si_riscrive_ogni_giro(
+        archivio, coda, piano_acceso):
+    """Il turno resta nella coda dopo essere stato raccolto -- e' li' che la
+    contabilita' e la potatura lo trovano. Riapplicarlo a ogni giro
+    riscriverebbe le stesse decisioni per sempre e, peggio, sposterebbe avanti
+    la riconsiderazione a ogni passaggio: la cadenza non scadrebbe mai.
+
+    Mutazione che la uccide: raccogliere ogni turno 'decided' senza guardare
+    se la riconsiderazione e' gia' piu' recente della sua domanda.
+    """
+    app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]), _Modello(), coda)
+    await reconsideration_round(app, _Ponte())
+    preso = coda.claim(now=1.0)
+    coda.submit(preso["job_id"], preso["nonce"],
+                {"reply": '[{"id": "climate.x", "dentro": true, "motivo": "scalda"}]'},
+                now=2.0)
+    await reconsideration_round(app, _Ponte())
+    prima = archivio.last_reconsideration()["quando_ts"]
+
+    esito = await reconsideration_round(app, _Ponte())
+
+    assert esito is None
+    assert archivio.last_reconsideration()["quando_ts"] == prima
+
+
+# ── Il tentativo si annota SEMPRE, riuscito o no ────────────────────────────
+#
+# La seconda meta' del difetto dell'11/09/2026, e quella che l'ha reso lungo
+# da trovare: il giro falliva ogni dieci minuti e **nessuna porta lo diceva**.
+# La pagina dello scope mostrava «non e' mai stata fatta» -- vero alla lettera
+# (nessuna riconsiderazione era avvenuta) e falso come racconto: ci si era
+# provato quattro volte. Un guasto non si appiattisce su un'assenza.
+
+
+@pytest.mark.asyncio
+async def test_un_giro_fallito_sulla_catena_LASCIA_DETTO_che_e_fallito(archivio):
+    """Mutazione che la uccide: annotare il tentativo solo quando riesce."""
+    modello = _Modello("non sono un JSON")
+
+    await reconsideration_round(
+        _app(archivio, _Anagrafe([_entita("climate.x")]), modello), _Ponte())
+
+    assert archivio.last_reconsideration() is None, (
+        "un giro fallito non e' una riconsiderazione: annotarlo come tale "
+        "farebbe scadere la cadenza come se la casa fosse stata ripensata")
+    tentativo = archivio.recent_attempts()[0]
+    assert tentativo["esito"] == "non_riuscito"
+    assert "JSON" in tentativo["dettaglio"]
+
+
+@pytest.mark.asyncio
+async def test_un_turno_accodato_al_piano_si_annota_come_IN_ATTESA(
+        archivio, coda, piano_acceso):
+    """«Ho chiesto e sto aspettando» e' il terzo stato, e la pagina deve poterlo
+    dire: senza, dieci minuti di attesa legittima sono indistinguibili da un
+    guasto.
+
+    Mutazione che la uccide: annotare l'accodamento come riuscito.
+    """
+    app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]),
+                            _Modello(), coda)
+
+    await reconsideration_round(app, _Ponte())
+
+    assert archivio.recent_attempts()[0]["esito"] == "accodata"
+
+
+@pytest.mark.asyncio
+async def test_un_turno_raccolto_si_annota_come_RIUSCITO(
+        archivio, coda, piano_acceso):
+    app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]),
+                            _Modello(), coda)
+    await reconsideration_round(app, _Ponte())
+    preso = coda.claim(now=1.0)
+    coda.submit(preso["job_id"], preso["nonce"],
+                {"reply": '[{"id": "climate.x", "dentro": true, "motivo": "scalda"}]'},
+                now=2.0)
+
+    await reconsideration_round(app, _Ponte())
+
+    assert archivio.recent_attempts()[0]["esito"] == "riuscito"
+
+
+@pytest.mark.asyncio
+async def test_una_risposta_del_piano_inservibile_si_annota_come_FALLITA(
+        archivio, coda, piano_acceso):
+    """Il piano ha risposto, ma cio' che ha detto non si e' potuto usare. E'
+    un guasto, e va detto con le parole di quel guasto -- non con «non e' mai
+    stata fatta».
+
+    Mutazione che la uccide: tacere quando la raccolta non produce decisioni.
+    """
+    app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]),
+                            _Modello(), coda)
+    await reconsideration_round(app, _Ponte())
+    preso = coda.claim(now=1.0)
+    coda.submit(preso["job_id"], preso["nonce"], {"reply": "mi spiace, non posso"},
+                now=2.0)
+
+    await reconsideration_round(app, _Ponte())
+
+    # Il fallimento resta scritto **in cima**, e il passaggio si chiude li':
+    # non si richiede nello stesso giro (vedi il freno, sotto). Se il guasto
+    # si limitasse a far ripartire il giro, quaranta minuti di guasto
+    # sarebbero di nuovo indistinguibili da quaranta minuti di attesa -- il
+    # difetto da cui questa fetta nasce.
+    esiti = [t["esito"] for t in archivio.recent_attempts()]
+    assert esiti[:2] == ["non_riuscito", "accodata"]
+    assert "JSON" in archivio.recent_attempts()[0]["dettaglio"]
+
+
+# ── Il freno: un osservatore che fallisce non svuota il tetto del piano ─────
+#
+# Rilievo della review indipendente (11/09/2026), col conto fatto: con la
+# scadenza a 10 minuti e il giro ogni 10 minuti, una raccolta fallita che
+# riaccoda nello stesso passaggio produce fino a **144 turni al giorno**,
+# ciascuno con ~11.500 token di casa dentro. `count_exchanges_today` conta
+# **ogni specie**, e il tetto di fabbrica e' 150: un osservatore che fallisce
+# sistematicamente **svuota da solo il tetto giornaliero**, la chat perde il
+# piano per il resto della giornata, e da li' in poi ogni turno passa ai
+# provider a pagamento.
+
+
+@pytest.mark.asyncio
+async def test_dopo_una_raccolta_fallita_NON_si_richiede_nello_stesso_giro(
+        archivio, coda, piano_acceso):
+    """Il passaggio si chiude annotando il guasto; si richiede al giro dopo,
+    quando il freno lo consente.
+
+    Mutazione che la uccide: riaccodare subito dopo la raccolta fallita.
+    """
+    app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]),
+                            _Modello(), coda)
+    await reconsideration_round(app, _Ponte())
+    preso = coda.claim(now=1.0)
+    coda.submit(preso["job_id"], preso["nonce"], {"reply": "non un JSON"}, now=2.0)
+
+    await reconsideration_round(app, _Ponte())
+
+    assert coda.count_exchanges_today() == 1, "il secondo turno non doveva partire"
+    assert archivio.recent_attempts()[0]["esito"] == "non_riuscito"
+
+
+@pytest.mark.asyncio
+async def test_la_stessa_risposta_storta_non_si_annota_due_volte(
+        archivio, coda, piano_acceso):
+    """Un turno gia' letto e trovato inservibile non si rilegge: annotarlo a
+    ogni giro gonfierebbe il «sta fallendo da...» con tentativi fantasma, tutti
+    sulla stessa risposta.
+
+    Mutazione che la uccide: guardare solo la riconsiderazione, che una
+    raccolta fallita non scrive mai.
+    """
+    app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]),
+                            _Modello(), coda)
+    await reconsideration_round(app, _Ponte())
+    preso = coda.claim(now=1.0)
+    coda.submit(preso["job_id"], preso["nonce"], {"reply": "non un JSON"}, now=2.0)
+    await reconsideration_round(app, _Ponte())
+
+    await reconsideration_round(app, _Ponte())
+    await reconsideration_round(app, _Ponte())
+
+    falliti = [t for t in archivio.recent_attempts() if t["esito"] == "non_riuscito"]
+    assert len(falliti) == 1
+
+
+@pytest.mark.asyncio
+async def test_l_attesa_fra_un_tentativo_e_l_altro_CRESCE_coi_fallimenti(
+        archivio, coda, piano_acceso):
+    """Due fallimenti di fila non si riprovano al giro dopo: il freno raddoppia
+    l'attesa, e senza di lui il tetto giornaliero del piano si svuota in un
+    pomeriggio.
+
+    Mutazione che la uccide: togliere il freno (`_retry_hold`).
+    """
+    import time
+    archivio.record_attempt(when_ts=time.time() - 60, outcome="non_riuscito",
+                            detail="x")
+    archivio.record_attempt(when_ts=time.time() - 30, outcome="non_riuscito",
+                            detail="x")
+    app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]),
+                            _Modello(), coda)
+
+    esito = await reconsideration_round(app, _Ponte())
+
+    assert esito is None
+    assert coda.count_exchanges_today() == 0
+
+
+@pytest.mark.asyncio
+async def test_passato_il_freno_si_riprova(archivio, coda, piano_acceso):
+    """Il freno rallenta, non spegne: un guasto che passa deve poter essere
+    scoperto."""
+    import time
+    archivio.record_attempt(when_ts=time.time() - 10 * 86400,
+                            outcome="non_riuscito", detail="vecchio")
+    app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]),
+                            _Modello(), coda)
+
+    esito = await reconsideration_round(app, _Ponte())
+
+    assert esito == {"accodata": True}
+
+
+@pytest.mark.asyncio
+async def test_il_giro_annota_da_quale_PORTA_e_passato(archivio):
+    """Un giro servito dal piano e uno pagato a consumo non sono la stessa
+    cosa, e la pagina deve poterli distinguere: *«un passaggio silenzioso a un
+    provider a pagamento si scopre a fine mese»* (proprietario, 13/08/2026,
+    citato nel docstring di `steering.py`).
+
+    Mutazione che la uccide: scrivere il dettaglio senza la porta.
+    """
+    modello = _Modello('[{"id": "climate.x", "dentro": true, "motivo": "scalda"}]')
+
+    await reconsideration_round(
+        _app(archivio, _Anagrafe([_entita("climate.x")]), modello), _Ponte())
+
+    assert "catena" in archivio.recent_attempts()[0]["dettaglio"]
+
+
+@pytest.mark.asyncio
+async def test_senza_nessun_modello_a_cui_chiedere_lo_dice(archivio):
+    """Il silenzio annotato: senza token del piano e senza nessun provider in
+    catena l'osservatore taceva per sempre, con la faccia di «nessuno ha ancora
+    provato».
+
+    Mutazione che la uccide: tornare `None` senza annotare.
+    """
+    app = {"observations": archivio,
+           "home_space_store": _Anagrafe([_entita("climate.x")])}
+
+    esito = await reconsideration_round(app, _Ponte())
+
+    assert esito is None
+    assert archivio.recent_attempts()[0]["esito"] == "non_riuscito"
+    assert "nessun modello" in archivio.recent_attempts()[0]["dettaglio"]
+
+
+@pytest.mark.asyncio
+async def test_il_piano_che_serve_l_osservatore_finisce_nel_REGISTRO_degli_esiti(
+        archivio, coda, piano_acceso):
+    """Il registro degli esiti e' il solo posto in cui HIRIS osserva come si
+    comporta un fornitore davvero, e la pagina Modelli lo legge. La terza
+    strada del piano non ci finiva: l'abbonamento poteva servire dieci turni
+    dell'osservatore e la pagina avrebbe detto «nessuna osservazione da quando
+    l'add-on e' partito».
+
+    Mutazione che la uccide: non toccare il registro nella raccolta.
+    """
+    from hiris.app.provider_occurrences import OccurrenceRegistry
+
+    registro = OccurrenceRegistry()
+    app = _app_ponte_acceso(archivio, _Anagrafe([_entita("climate.x")]),
+                            _Modello(), coda)
+    app["occurrence_registry"] = registro
+    await reconsideration_round(app, _Ponte())
+    preso = coda.claim(now=1.0)
+    coda.submit(preso["job_id"], preso["nonce"],
+                {"reply": '[{"id": "climate.x", "dentro": true, "motivo": "scalda"}]'},
+                now=2.0)
+
+    await reconsideration_round(app, _Ponte())
+
+    assert registro.occurrence("subscription")["tipo"] == "risposto"

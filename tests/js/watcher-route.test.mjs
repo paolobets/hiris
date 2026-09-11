@@ -479,14 +479,18 @@ test('seam _rendiScope: il volume è una barra per giorno, nell\'ordine del payl
   assert.equal(corpo.querySelectorAll('canvas, svg').length, 0, 'barre CSS, niente canvas/SVG per sette numeri');
 });
 
-// -- Le cinque parti, in quest'ordine, e niente pavimento ---------------------------
+// -- Le sei parti, in quest'ordine, e niente pavimento ------------------------------
+//
+// Erano cinque fino all'11/09/2026. La sesta, «I tentativi», e' entrata perche'
+// le altre cinque, tutte insieme, non sapevano dire che l'osservatore stava
+// fallendo da quaranta minuti mentre la casa non veniva piu' registrata.
 
-test('seam _rendiScope: le cinque parti sono titoli veri (h3), nell\'ordine della spec, e il pavimento non affiora più', () => {
+test('seam _rendiScope: le sei parti sono titoli veri (h3), nell\'ordine della spec, e il pavimento non affiora più', () => {
   // Mutazione: scambiare due chiamate in `renderScope` (l'ordine cambia);
   // `el('p', ...)` al posto di `el('h3', ...)` in `subheading` (un lettore
   // di schermo non salta più di parte in parte).
   const { corpo } = rendiScope(paginaScope({ watching: [voce('climate.camera_t')] }));
-  assert.deepEqual(titoli(corpo), ['L’obiettivo', 'Cosa guardo', 'Lasciato fuori', 'La riconsiderazione', 'Quanto scrive al giorno']);
+  assert.deepEqual(titoli(corpo), ['L’obiettivo', 'Cosa guardo', 'Lasciato fuori', 'La riconsiderazione', 'I tentativi', 'Quanto scrive al giorno']);
   assert.doesNotMatch(corpo.textContent, /pavimento|Di serie|gamba/i,
     'le parole del vecchio filtro non devono comparire nel testo utente');
   assert.equal(corpo.querySelectorAll('.agent-badge').length, 0,
@@ -1900,4 +1904,160 @@ test('seam _rendiOggetti: un guasto continua a mostrare la sua condizione vera, 
     corpo: { stato: 'setup_retry', dominio: 'lifx', titolo: 'Abat-jour' },
   }], null, TRADOTTE);
   assert.match(corpo.textContent, /stato: setup_retry/);
+});
+
+// -- 6. I tentativi ---------------------------------------------------------
+//
+// Il difetto misurato sulla casa vera l'11/09/2026: l'osservatore ha provato
+// e fallito quattro volte in quaranta minuti, HIRIS ha smesso di registrare
+// qualunque cosa (il cancello di cio' che si registra E' lo scope), e questa
+// pagina diceva soltanto «Non e' mai stata fatta». Vero alla lettera, falso
+// come racconto. La regola che il prodotto si e' dato -- e che questa pagina
+// violava -- e' che **un guasto non si appiattisce su un'assenza**.
+
+function tentativo(esito, quandoFa, dettaglio) {
+  return { quando_ts: Math.floor(Date.now() / 1000) - quandoFa, esito: esito,
+           dettaglio: dettaglio };
+}
+
+test('seam _rendiScope: senza nessun tentativo lo dice, e non tace', () => {
+  // Mutazione che la uccide: saltare la sezione quando l'elenco e' vuoto --
+  // e' proprio il silenzio da cui questa fetta nasce.
+  const { corpo } = rendiScope(paginaScope({ tentativi: [] }));
+  assert.ok(titoli(corpo).includes('I tentativi'),
+    'la sezione esiste anche quando non c\'e' + '’' + ' niente da mostrare');
+  assert.match(corpo.textContent, /Nessuno ha ancora provato a ripensare la casa/);
+});
+
+test('seam _rendiScope: un turno in attesa NON si confonde con un guasto', () => {
+  // Dieci minuti di attesa legittima e quaranta di guasto avevano la stessa
+  // faccia: nessuna. Mutazione che la uccide: rendere «accodata» con lo
+  // stesso tono del fallimento.
+  const { corpo } = rendiScope(paginaScope({
+    tentativi: [tentativo('accodata', 180, 'chiesto al piano: non è mai stata fatta')] }));
+  assert.match(corpo.textContent, /In corso da 3 minuti/);
+  assert.equal(corpo.innerHTML.indexOf('--err-ink'), -1,
+    'aspettare non è un guasto: nessun rosso');
+});
+
+test("seam _rendiScope: un giro riuscito dice quanto ha deciso NELLA FRASE, non solo nell'elenco", () => {
+  // **Questa prova e' nata verde e non poteva fallire.** La prima stesura
+  // asseriva `/31 decisioni su 381/` su tutto il testo della sezione -- e
+  // quel dettaglio compare ANCHE dentro l'elenco richiudibile, quindi
+  // toglierlo dalla frase a colpo d'occhio la lasciava verde. Mutazione
+  // ESEGUITA l'11/09/2026 (`line(...)` senza `last.dettaglio`): verde.
+  // Riscritta per legare le due meta' in UNA frase, la stessa mutazione la
+  // fa arrossire. E' il difetto n.1 di questo progetto, trovato su se stesso.
+  const { corpo } = rendiScope(paginaScope({
+    tentativi: [tentativo('riuscito', 7200, "31 decisioni su 381 entita' guardate")] }));
+  assert.match(corpo.textContent, /L’ultimo tentativo è riuscito, 2 ore fa: 31 decisioni su 381/,
+    "a colpo d'occhio si deve leggere quanto ha deciso, senza aprire niente");
+});
+
+test('seam _rendiScope: una serie di fallimenti si vede, e dice DA QUANTO', () => {
+  // **Questa e' la prova del difetto dell'11/09/2026.** Quattro fallimenti di
+  // fila in quaranta minuti erano indistinguibili da un avvio appena fatto.
+  // Mutazione che la uccide: mostrare solo l'ultimo tentativo invece della
+  // serie -- il testo perde «4 tentativi di fila» e il «da 40 minuti».
+  // Il giro riuscito in fondo e' cio' che rende la durata SAPUTA: la serie
+  // finisce li', e non c'e' niente da dire con «almeno».
+  const { corpo } = rendiScope(paginaScope({
+    tentativi: [
+      tentativo('non_riuscito', 120, 'il modello non ha risposto: RuntimeError'),
+      tentativo('non_riuscito', 720, 'il modello non ha risposto: RuntimeError'),
+      tentativo('non_riuscito', 1320, 'il modello non ha risposto: RuntimeError'),
+      tentativo('non_riuscito', 2400, 'il modello non ha risposto: RuntimeError'),
+      tentativo('riuscito', 3000, "31 decisioni su 381 entita' guardate"),
+    ] }));
+  assert.match(corpo.textContent, /Sta fallendo da 40 minuti/);
+  assert.match(corpo.textContent, /4 tentativi di fila/);
+  assert.ok(corpo.innerHTML.indexOf('--err-ink') !== -1,
+    'un guasto in corso costa dati veri, per sempre: si vede');
+});
+
+test('seam _rendiScope: con l\'elenco pieno di fallimenti si dice «almeno», non un numero preciso', () => {
+  // L'elenco arriva a dieci: se sono dieci fallimenti, da quanto duri non si
+  // SA. Un numero preciso su un fatto troncato e' un dato dedotto spacciato
+  // per uno letto -- il difetto n.4 di questo progetto.
+  // Mutazione che la uccide: togliere il ramo «almeno».
+  const tentativi = [];
+  for (let n = 0; n < 10; n++) tentativi.push(tentativo('non_riuscito', 120 + n * 600, 'niente da fare'));
+  const { corpo } = rendiScope(paginaScope({ tentativi: tentativi }));
+  assert.match(corpo.textContent, /almeno 10 tentativi di fila/);
+  assert.match(corpo.textContent, /più indietro di così non si vede/,
+    "la pagina non nomina «dieci»: il tetto vive nell'archivio, e ricopiarlo "
+    + 'qui sarebbe un doppione destinato a mentire quando cambia');
+});
+
+test('seam _rendiScope: quando sta fallendo la storia è già APERTA, altrimenti no', () => {
+  // Le altre rivelazioni di questa pagina nascono chiuse perche' sono un
+  // DETTAGLIO -- «i dati sono gia' nel payload, chi vuole apre»; questa nasce
+  // aperta per URGENZA, che e' un'altra ragione e vale solo nel caso brutto.
+  // (La prima stesura citava «un'area con 1.224 entita'»: quel numero vive in
+  // `tree-route.js:348`, parla di una CASA e riguarda un'altra pagina --
+  // motivazione falsa, trovata dalla review indipendente dell'11/09/2026.)
+  // Mutazione che la uccide: passare sempre `false` a `openByDefault`.
+  const rotto = rendiScope(paginaScope({
+    tentativi: [tentativo('non_riuscito', 120, 'x'), tentativo('non_riuscito', 720, 'x')] }));
+  const sano = rendiScope(paginaScope({
+    tentativi: [tentativo('riuscito', 120, '3 decisioni su 4 entita\' guardate')] }));
+
+  const apertoRotto = Array.from(rotto.corpo.querySelectorAll('button[aria-expanded]'))
+    .some((b) => b.getAttribute('aria-expanded') === 'true');
+  const apertoSano = Array.from(sano.corpo.querySelectorAll('button[aria-expanded]'))
+    .some((b) => b.getAttribute('aria-expanded') === 'true');
+
+  assert.ok(apertoRotto, 'un guasto in corso non si va a cercare: si trova aperto');
+  assert.ok(!apertoSano, 'quando va tutto bene la storia è rumore: resta chiusa');
+});
+
+test('seam _rendiScope: un turno in attesa DOPO una serie di fallimenti non nasconde la serie', () => {
+  // **Il difetto che la review ha trovato, ed e' quello da cui nasce la
+  // fetta, ricostruito dalla pagina nuova.** Dopo un fallimento il giro
+  // riaccoda, quindi la sequenza VERA che l'archivio produce ha «accodata» in
+  // cima e i fallimenti sotto: contando la serie dall'indice 0 il conto
+  // finiva a zero, e quaranta minuti di guasto tornavano ad avere la faccia
+  // di un'attesa di un minuto -- calma, elenco chiuso.
+  // Mutazione che la uccide: contare i fallimenti dall'indice 0 invece che
+  // dalla prima voce che non sia «accodata».
+  const { corpo } = rendiScope(paginaScope({
+    tentativi: [
+      tentativo('accodata', 30, 'chiesto al piano'),
+      tentativo('non_riuscito', 600, 'il modello non ha risposto: RuntimeError'),
+      tentativo('non_riuscito', 1200, 'il modello non ha risposto: RuntimeError'),
+      tentativo('non_riuscito', 1800, 'il modello non ha risposto: RuntimeError'),
+      tentativo('riuscito', 2400, '31 decisioni su 381 entita\' guardate'),
+    ] }));
+  assert.match(corpo.textContent, /3 tentativi di fila non sono riusciti/);
+  assert.ok(corpo.innerHTML.indexOf('--err-ink') !== -1,
+    'sta ancora fallendo: l\'attesa in corso non cancella la serie sotto');
+});
+
+test('seam _rendiScope: un esito che la pagina non conosce non la fa esplodere', () => {
+  // **Questa prova e' nata verde per la ragione sbagliata.** La prima stesura
+  // usava «scaduta», che pero' e' un esito CONOSCIUTO e conta fra i guasti: il
+  // ramo della serie lo copriva e la guardia non veniva mai toccata. Mutazione
+  // ESEGUITA l'11/09/2026 (`run > 1` -> `run >= 0`, che toglie la guardia):
+  // verde. Riscritta con un esito che la pagina non conosce davvero.
+  //
+  // Senza guardia, `tentativi[inizio + run - 1]` con `run === 0` legge
+  // `tentativi[-1]` -- `undefined` -- e l'eccezione porta via TUTTE E SEI le
+  // parti della sezione: la pagina che deve dire «sta funzionando?» muore.
+  const { corpo } = rendiScope(paginaScope({
+    tentativi: [tentativo('boh', 120, 'un esito che questa pagina non conosce'),
+                tentativo('non_riuscito', 720, 'x')] }));
+  assert.ok(titoli(corpo).includes('Quanto scrive al giorno'),
+    "la sezione dopo esiste ancora: niente e' esploso");
+  assert.match(corpo.textContent, /un esito che questa pagina non conosce/);
+});
+
+test('seam _rendiScope: un tentativo di un mese fa si dice in giorni, non in 840 ore', () => {
+  // Su una casa SANA i tentativi avvengono alla cadenza -- 84 ore su questa
+  // casa -- quindi dieci righe sono piu' di un mese. Il commento diceva «per
+  // costruzione sono recenti»: falso.
+  // Mutazione che la uccide: togliere la soglia dei giorni da `fmtDuration`.
+  const { corpo } = rendiScope(paginaScope({
+    tentativi: [tentativo('riuscito', 35 * 86400, '31 decisioni su 381 entita\' guardate')] }));
+  assert.doesNotMatch(corpo.textContent, /\d{3,} ore/);
+  assert.match(corpo.textContent, /giorni fa/);
 });

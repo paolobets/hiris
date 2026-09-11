@@ -301,3 +301,70 @@ def test_il_giorno_del_tetto_non_sfora_di_un_ora_al_cambio_ora(tmp_path):
         "il turno delle 00:30 del 30/03 appartiene a domani: un day_end "
         "calcolato come day_start + 86400 secondi lo conterebbe ancora "
         "dentro il 29/03, un giorno che quell'anno dura solo 23 ore")
+
+
+# ── `latest(kind)`: la coda sa dire qual e' l'ultimo turno di una specie ────
+#
+# Nasce dalla fetta «l'osservatore chiede a chi risponde davvero» (11/09/2026):
+# un turno accodato al ponte non torna subito, e chi l'ha chiesto deve poterlo
+# ritrovare al giro dopo. La domanda «c'e' un turno di scope in volo, e se e'
+# finito com'e' andato?» ha bisogno di UNA risposta sola, e l'unico che la sa
+# e' la coda -- tenere il `job_id` in un secondo posto sarebbe il doppione che
+# la fondamenta 2 vieta, e non sopravvivrebbe a un riavvio.
+
+def test_latest_torna_l_ultimo_turno_di_quella_specie(q):
+    """**L'ultimo per creazione, non il primo.** Un giro che ne accodasse due
+    (il primo scaduto, il secondo in volo) troverebbe altrimenti sempre quello
+    vecchio, e aspetterebbe per sempre una risposta gia' persa.
+
+    Mutazione che la uccide: ordinare `created_ts ASC` invece di `DESC`.
+    """
+    q.enqueue("scope", {}, {}, deadline_ts=100.0, job_id="VECCHIO", now=1.0)
+    q.enqueue("scope", {}, {}, deadline_ts=200.0, job_id="NUOVO", now=2.0)
+
+    assert q.latest("scope")["job_id"] == "NUOVO"
+
+
+def test_latest_non_confonde_le_specie(q):
+    """Un turno di chat non e' un turno di scope. Senza il filtro, il giro
+    dell'osservatore leggerebbe la risposta di una conversazione e proverebbe a
+    ricavarne delle decisioni.
+
+    Mutazione che la uccide: togliere `WHERE kind=?`.
+    """
+    q.enqueue("chat", {}, {}, deadline_ts=100.0, job_id="C", now=5.0)
+    q.enqueue("scope", {}, {}, deadline_ts=100.0, job_id="S", now=1.0)
+
+    assert q.latest("scope")["job_id"] == "S"
+    assert q.latest("promessa") is None
+
+
+def test_latest_porta_la_decisione_e_la_sveglia(q):
+    """Le due cose che servono a chi raccoglie: **la risposta** e **cio' che
+    era stato misurato quando la domanda e' partita**.
+
+    La misura della memoria di Home Assistant si paga al momento della
+    domanda; la riconsiderazione si scrive minuti dopo, quando la risposta
+    arriva. Senza un posto dove quel numero aspetti, o si rimisura (e si paga
+    due volte una cosa che non e' cambiata) o si scrive `None` su una finestra
+    che era stata misurata davvero. La `sveglia` e' quel posto, e **`submit`
+    non la azzera** -- azzera il contesto, che porta il nucleo.
+
+    Mutazione che la uccide: azzerare `wake_json` insieme a `context_json`
+    dentro `submit`.
+    """
+    q.enqueue("scope", {"finestra_s": 604800.0}, {"history": []},
+              deadline_ts=100.0, job_id="S", now=1.0)
+    preso = q.claim(now=10.0)
+    q.submit("S", preso["nonce"], {"reply": "[]"}, now=11.0)
+
+    ultimo = q.latest("scope")
+    assert ultimo["decision"] == {"reply": "[]"}
+    assert ultimo["wake"] == {"finestra_s": 604800.0}
+    assert ultimo["status"] == "decided"
+
+
+def test_latest_e_None_quando_non_ce_n_e_nessuno(q):
+    """`None` e' «nessuno ha mai chiesto», e non si confonde con «ha chiesto e
+    non ha ricevuto»: il secondo e' un job con uno stato."""
+    assert q.latest("scope") is None

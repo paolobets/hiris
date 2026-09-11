@@ -5,6 +5,8 @@ import time
 
 from aiohttp import web
 
+from ..mind.observer import SCOPE_TURN_KIND
+
 logger = logging.getLogger(__name__)
 
 
@@ -129,8 +131,18 @@ async def handle_reasoning_submit(request: web.Request) -> web.Response:
     # scaduto/legacy: non tace (il silenzio non e' distinguibile da
     # un'assenza di problemi), ma non attua piu' nulla -- resta "recorded",
     # com'era gia' il default anche quando l'hook esisteva-ma-non-cablato.
-    logger.warning(
-        "reasoning submit: nessun execute_decision wired -- l'attuazione "
-        "remota della revisione olistica non esiste piu' (job_id=%s, kind=%s), "
-        "decisione solo registrata", job_id, (job or {}).get("kind"))
+    # **Un turno dell'osservatore consegnato non e' un job legacy.** La sua
+    # risposta se la va a prendere il giro periodico (`server.
+    # _collect_scope_turn`, che legge la coda): qui non c'e' niente da
+    # attuare, e non c'e' niente da dichiarare. Senza questo ramo ogni
+    # consegna dell'osservatore -- cioe' il caso normale, piu' volte al giorno
+    # -- scriveva nel log che «l'attuazione remota della revisione olistica
+    # non esiste piu'», una frase su un meccanismo uscito mesi fa che con
+    # questo turno non c'entra niente (rilievo della review indipendente,
+    # 11/09/2026).
+    if (job or {}).get("kind") != SCOPE_TURN_KIND:
+        logger.warning(
+            "reasoning submit: nessun execute_decision wired -- l'attuazione "
+            "remota della revisione olistica non esiste piu' (job_id=%s, kind=%s), "
+            "decisione solo registrata", job_id, (job or {}).get("kind"))
     return web.json_response({"ok": True, "outcome": outcome})

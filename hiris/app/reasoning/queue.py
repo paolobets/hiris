@@ -240,6 +240,44 @@ class ReasoningQueue:
             self._conn.commit()
             return cur.rowcount
 
+    def latest(self, kind: str) -> dict | None:
+        """L'ultimo turno accodato di quella specie, con la sua decisione.
+
+        **Perche' esiste, e perche' sta qui.** Un turno instradato sul ponte
+        non torna subito: chi l'ha chiesto se ne va, e lo ritrova al giro dopo
+        (fetta «l'osservatore chiede a chi risponde davvero», 11/09/2026).
+        Ritrovarlo vuol dire conoscerne il `job_id`, e l'unico posto in cui
+        quel fatto vive gia' e' questa tabella. Tenerlo anche altrove -- un
+        campo su un altro archivio, una variabile sull'app -- sarebbe un
+        doppione ai sensi della fondamenta 2, e per giunta uno che **non
+        sopravvive a un riavvio**, mentre il job si'.
+
+        **L'ULTIMO, non il primo.** Chi accoda due volte -- il primo turno
+        scaduto senza risposta, il secondo appena partito -- deve trovare il
+        secondo: leggendo il primo aspetterebbe per sempre una risposta che
+        nessuno dara' piu'.
+
+        La forma e' quella di `get()`, `decision` compresa: sono la stessa
+        riga letta con due chiavi diverse, e due forme diverse per la stessa
+        riga sarebbero la fondamenta 3 rotta dentro un file solo.
+        """
+        with self._lock:
+            r = self._conn.execute(
+                "SELECT * FROM reasoning_jobs WHERE kind=? "
+                "ORDER BY created_ts DESC, id DESC LIMIT 1", (kind,)).fetchone()
+        if r is None:
+            return None
+        out = _row(r)
+        out["decision"] = json.loads(r["decision_json"]) if r["decision_json"] else None
+        # **Quando la risposta e' arrivata**, non quando la domanda e' partita.
+        # Serve a chi raccoglie per sapere se ha gia' letto QUESTA risposta:
+        # una raccolta fallita non scrive nessuna riconsiderazione, quindi
+        # senza questo istante lo stesso turno storto verrebbe riletto e
+        # riannotato a ogni giro (rilievo della review indipendente,
+        # 11/09/2026).
+        out["decided_ts"] = r["decided_ts"]
+        return out
+
     def get(self, job_id: str) -> dict | None:
         with self._lock:
             r = self._conn.execute(

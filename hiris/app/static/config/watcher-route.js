@@ -517,8 +517,13 @@ window.HirisWatcherRoute = (function () {
       return;
     }
     if (!r) {
+      // La frase si ferma qui, e fino all'11/09/2026 era l'UNICA cosa che la
+      // pagina diceva mentre l'osservatore falliva ogni dieci minuti: vera
+      // alla lettera, e falsa come racconto. Il rinvio non e' una cortesia --
+      // e' cio' che distingue «non e' ancora successo» da «non ci si riesce».
       line(body, 'Non è mai stata fatta: al primo avvio l’osservatore non ha ancora ripensato la casa ' +
-        'intera, e finché non lo fa non c’è una cadenza da dichiarare.', TONE_CALM);
+        'intera, e finché non lo fa non c’è una cadenza da dichiarare. Se ci ha già provato, lo dice ' +
+        'qui sotto, in «I tentativi».', TONE_CALM);
       return;
     }
     var grid = el('div', 'stat-grid');
@@ -546,6 +551,171 @@ window.HirisWatcherRoute = (function () {
     }
     line(body, 'La cadenza è la metà della memoria misurata: così tutto ciò che era stato scartato è ' +
       'ancora recuperabile quando l’osservatore ci ripensa, anche se un giro salta.', TONE_CALM);
+  }
+
+  /* Secondi -> «3 minuti» / «2 ore» / «35 giorni». E' una DURATA, non un
+     istante: `fmtWhenFull` risponde a «che giorno era», qui la domanda e' «da
+     quanto». Stessa famiglia di `fmtHours`/`fmtDays` qui sopra, stessa virgola
+     italiana.
+
+     **Arriva fino ai giorni, e non e' zelo** (correzione della review
+     indipendente, 11/09/2026): questo commento diceva che i tentativi «per
+     costruzione sono recenti -- al massimo dieci, e il turno scade in dieci
+     minuti», ed era falso due volte. La scadenza del piano e' configurabile
+     fino a **120 minuti** (`api/handlers_models.py`), e soprattutto su una
+     casa SANA un tentativo avviene a ogni CADENZA -- 84 ore su questa casa --
+     quindi dieci righe sono piu' di un mese. Senza la soglia, la pagina
+     scriveva «840 ore fa». */
+  function fmtDuration(seconds) {
+    if (seconds < 60) return 'meno di un minuto';
+    if (seconds < 3600) {
+      var minutes = Math.round(seconds / 60);
+      return minutes + (minutes === 1 ? ' minuto' : ' minuti');
+    }
+    if (seconds < 48 * 3600) return fmtHours(seconds);
+    return fmtDays(seconds);
+  }
+
+  function fmtAgo(ts) {
+    return fmtDuration(Math.max(0, Date.now() / 1000 - ts)) + ' fa';
+  }
+
+  /* «da 40 minuti», oppure niente quando la serie arriva in fondo all'elenco:
+     li' da quanto duri non si SA, e un numero preciso su un fatto troncato
+     sarebbe un dato dedotto spacciato per uno letto. */
+  function _sinceWhen(tentativi, inizio, run) {
+    if (inizio + run === tentativi.length) return ' — più indietro di così non si vede';
+    return ', da ' + fmtDuration(
+      Math.max(0, Date.now() / 1000 - tentativi[inizio + run - 1].quando_ts));
+  }
+
+  var ATTEMPT_LABEL = {
+    accodata: 'In attesa', riuscito: 'Riuscito', non_riuscito: 'Non riuscito',
+    scaduta: 'Scaduta'
+  };
+  /* Le stesse tre pastiglie di `agenda-route.js` (`STATE_BADGE`): lo stesso
+     vocabolario visivo per lo stesso genere di fatto, invece di un semaforo
+     nuovo che questa pagina non ha mai avuto. */
+  /* I due esiti che sono un GUASTO, e contano nella serie. «Scaduta» e' il
+     piano che non ha risposto entro la scadenza; «non riuscito» e' una
+     risposta che non si e' potuta usare, o un modello che non ha risposto
+     affatto. Sono cause diverse e la pagina le nomina diverse, ma per la
+     domanda «sta funzionando?» pesano uguale. */
+  var FAILED = { non_riuscito: true, scaduta: true };
+
+  var ATTEMPT_BADGE = {
+    accodata: 'badge-off', riuscito: 'badge-on', non_riuscito: 'badge-err',
+    scaduta: 'badge-err'
+  };
+
+  /* 6. I tentativi: **«sta funzionando?»**, che NON e' la domanda del blocco
+     qui sopra. `riconsiderazione` dice quand'e' l'ultima volta che la casa e'
+     stata ripensata DAVVERO; questo dice com'e' andata l'ultima volta che ci
+     si e' provato, riuscita o no.
+
+     Le due divergono esattamente nel caso che conta, ed e' successo:
+     misurato sulla casa vera l'11/09/2026, l'osservatore ha provato e fallito
+     quattro volte in quaranta minuti, HIRIS ha smesso di registrare
+     qualunque cosa (il cancello di cio' che si registra **e'** lo scope) e
+     questa pagina diceva soltanto «Non e' mai stata fatta» -- vero alla
+     lettera, falso come racconto. Un guasto non si appiattisce su
+     un'assenza.
+
+     **La frase si calcola sulla SERIE, non sull'ultimo.** Fra un fallimento e
+     il tentativo successivo l'ultimo esito torna a essere «accodata»:
+     guardando solo quello, quaranta minuti di guasto sarebbero di nuovo
+     invisibili. Vale per il ponte, dove il turno si accoda; sulla catena un
+     fallimento resta l'ultimo esito finche' non si riprova.
+
+     **E quando la serie arriva in fondo all'elenco si dice «almeno».** Da
+     quanto duri davvero non si SA: la pagina vede solo i tentativi che la
+     porta le ha mandato, e non puo' sapere se prima ce ne fossero altri. Un
+     numero preciso su un fatto troncato sarebbe un dato dedotto spacciato
+     per uno letto -- e per la stessa ragione la frase non nomina «dieci»: il
+     tetto vive in `mind/store.ATTEMPTS_SHOWN` e ricopiarlo qui sarebbe un
+     doppione destinato a mentire il giorno in cui cambia. */
+  function renderAttempts(body, tentativi, archiveMissing) {
+    subheading(body, 'I tentativi');
+    if (archiveMissing) {
+      line(body, 'Non si può sapere se l’osservatore ci stia provando: l’archivio non è collegato.',
+        TONE_UNKNOWN);
+      return;
+    }
+    if (!tentativi.length) {
+      line(body, 'Nessuno ha ancora provato a ripensare la casa: non c’è alcun tentativo registrato.',
+        TONE_CALM);
+      return;
+    }
+
+    var last = tentativi[0];
+    // **La serie si conta saltando le attese in cima, e non e' un dettaglio.**
+    // Dopo un fallimento il giro riaccoda, quindi la sequenza che l'archivio
+    // produce davvero ha «accodata» in testa e i fallimenti sotto: contando
+    // dall'indice 0 il conto finiva a ZERO, il primo ramo vinceva, e quaranta
+    // minuti di guasto tornavano ad avere la faccia di un'attesa di un minuto
+    // -- calma, elenco chiuso. Cioe' esattamente il difetto da cui questa
+    // fetta nasce, ricostruito dalla pagina che doveva toglierlo (trovato
+    // dalla review indipendente dell'11/09/2026, eseguendo).
+    var inizio = 0;
+    while (inizio < tentativi.length && tentativi[inizio].esito === 'accodata') inizio += 1;
+    var run = 0;
+    while (inizio + run < tentativi.length
+           && FAILED[tentativi[inizio + run].esito]) run += 1;
+    var attesa = last.esito === 'accodata';
+
+    if (attesa && run === 0) {
+      line(body, 'In corso da ' + fmtDuration(Math.max(0, Date.now() / 1000 - last.quando_ts)) +
+        ': la domanda è partita verso il piano, e la risposta non è ancora arrivata.', TONE_CALM);
+    } else if (attesa) {
+      line(body, 'In corso da ' + fmtDuration(Math.max(0, Date.now() / 1000 - last.quando_ts)) +
+        ', ma i ' + run + ' tentativi di fila non sono riusciti' +
+        _sinceWhen(tentativi, inizio, run) + '. L’ultimo fallito: ' +
+        (tentativi[inizio].dettaglio || 'senza dettagli') + '.', TONE_PROBLEM);
+    } else if (last.esito === 'riuscito') {
+      line(body, 'L’ultimo tentativo è riuscito, ' + fmtAgo(last.quando_ts) + ': ' +
+        (last.dettaglio || 'senza dettagli') + '.', TONE_CALM);
+    } else if (run === 1) {
+      line(body, 'L’ultimo tentativo non è riuscito, ' + fmtAgo(last.quando_ts) + ': ' +
+        (last.dettaglio || 'senza dettagli') + '.', TONE_PROBLEM);
+    } else if (run > 1) {
+      var troncato = inizio + run === tentativi.length;
+      var almeno = troncato ? 'almeno ' : '';
+      line(body, 'Sta fallendo da ' + almeno +
+        fmtDuration(Math.max(0, Date.now() / 1000 - tentativi[inizio + run - 1].quando_ts)) +
+        ': ' + almeno + run + ' tentativi di fila non sono riusciti' +
+        (troncato ? ' — più indietro di così non si vede' : '') + '. L’ultimo, ' +
+        fmtAgo(last.quando_ts) + ': ' + (last.dettaglio || 'senza dettagli') + '.', TONE_PROBLEM);
+    } else {
+      // **Un esito che questa pagina non conosce non la fa esplodere.** Prima
+      // di questa guardia si finiva nel ramo della serie con `run` a zero,
+      // si leggeva `tentativi[-1]` -- `undefined` -- e l'eccezione portava via
+      // tutte e sei le parti della sezione: la pagina che deve dire «sta
+      // funzionando?» moriva. Basta un esito nuovo, e `scaduta` e' arrivato
+      // con questa stessa fetta.
+      line(body, 'L’ultimo tentativo, ' + fmtAgo(last.quando_ts) + ': ' +
+        (ATTEMPT_LABEL[last.esito] || last.esito) + ' — ' +
+        (last.dettaglio || 'senza dettagli') + '.', TONE_PROBLEM);
+    }
+
+    body.appendChild(createDisclosure(
+      'Vedi gli ultimi tentativi', 'Nascondi gli ultimi tentativi',
+      function (panel) {
+        var list = el('ul');
+        list.style.cssText = 'list-style:none;margin:6px 0 0;padding:0';
+        tentativi.forEach(function (t) {
+          var item = el('li');
+          item.style.cssText = 'display:flex;align-items:baseline;gap:8px;' +
+            'margin-bottom:6px;font-size:var(--fs-13);flex-wrap:wrap';
+          item.appendChild(el('span', 'agent-badge ' + (ATTEMPT_BADGE[t.esito] || 'badge-off'),
+            ATTEMPT_LABEL[t.esito] || t.esito));
+          item.appendChild(el('span', 'field-hint',
+            fmtWhenFull(t.quando_ts) + ' · ' + fmtAgo(t.quando_ts)));
+          item.appendChild(el('span', null, t.dettaglio || ''));
+          list.appendChild(item);
+        });
+        panel.appendChild(list);
+      },
+      run >= 2));
   }
 
   /* 5. Quanto scrive al giorno: barre in CSS puro (`div` con `style.width`),
@@ -601,6 +771,7 @@ window.HirisWatcherRoute = (function () {
     renderWatched(body, p.watching || []);
     renderLeftOut(body, p.fuori || [], archiveMissing);
     renderReconsideration(body, p.riconsiderazione, archiveMissing);
+    renderAttempts(body, p.tentativi || [], archiveMissing);
     renderVolume(body, p.volume || [], archiveMissing);
   }
 
@@ -903,15 +1074,27 @@ window.HirisWatcherRoute = (function () {
      sono gia' nel payload" (mandato Task 7). Un secondo copia-incolla qui
      sarebbe il doppione che le fondamenta di questo prodotto vietano.
      `fillPanel(pannello)` scrive il contenuto specifico di ogni
-     chiamante dentro il pannello gia' creato, chiuso, con lo stile giusto. */
-  function createDisclosure(closedText, openText, fillPanel) {
+     chiamante dentro il pannello gia' creato, chiuso, con lo stile giusto.
+
+     `openByDefault` (11/09/2026) e' l'eccezione, e porta la sua ragione. La
+     disciplina qui sopra -- «chiuso di default, i dati sono gia' nel payload»
+     -- risponde alla domanda «questo va mostrato subito?» con «no, e' un
+     dettaglio che chi vuole apre». Per i tentativi la risposta cambia, e non
+     per capriccio: una serie di fallimenti e' un guasto IN CORSO che costa
+     dati veri e per sempre (il cancello di cio' che HIRIS registra e' lo
+     scope), e chi apre la pagina non deve andarselo a cercare. Resta chiuso
+     in tutti gli altri casi, dove e' davvero un dettaglio. Un secondo
+     rivelatore scritto apposta sarebbe il doppione che questa funzione esiste
+     per togliere. */
+  function createDisclosure(closedText, openText, fillPanel, openByDefault) {
     var wrap = el('div', 'field-group');
-    var btn = el('button', 'btn btn-ghost btn-sm', closedText);
+    var aperto = openByDefault === true;
+    var btn = el('button', 'btn btn-ghost btn-sm', aperto ? openText : closedText);
     btn.type = 'button';
-    btn.setAttribute('aria-expanded', 'false');
+    btn.setAttribute('aria-expanded', aperto ? 'true' : 'false');
 
     var panel = el('div');
-    panel.hidden = true;
+    panel.hidden = !aperto;
     panel.style.cssText = 'margin-top:6px';
     fillPanel(panel);
 

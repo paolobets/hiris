@@ -346,3 +346,121 @@ async def test_l_osservatore_si_dichiara_al_conto_dei_consumi(archivio):
     await observer.reconsider(modello, archivio, _casa(), reason="x", now=1000.0)
 
     assert modello.chiamate[0]["tipo"] == "observer"
+
+
+# -- il turno del ponte: la stessa domanda, per un'altra porta ---------------
+#
+# Fetta «l'osservatore chiede a chi risponde davvero» (11/09/2026). Il giro
+# dell'osservatore andava dritto a `llm_router`, dove il ponte **non e' un
+# anello** (`llm_router._VALID_BACKEND_NAMES`: claude, openai, openrouter,
+# ollama). Su una casa che gira interamente sul Piano Claude Max -- questa --
+# l'osservatore non poteva usare l'unico fornitore che risponde, ed e'
+# esattamente il difetto che `steering.py` dichiara di aver chiuso il
+# 22/08/2026 per le promesse, con la frase *«una terza porta che nascesse
+# domani non potrebbe inventarsene una terza senza accorgersene»*. La terza
+# porta e' nata il 11/09 e se n'e' inventata una.
+
+
+def test_il_turno_del_ponte_porta_la_STESSA_domanda_del_giro_sincrono(archivio):
+    """**Una domanda sola, composta una volta.** Due composizioni della stessa
+    domanda sono due verita' libere di divergere: la prima volta che qualcuno
+    aggiunge un campo alla riga della casa da una parte sola, il ponte e la
+    catena giudicherebbero case diverse senza che nessuna pagina lo dica.
+
+    La prova confronta **byte per byte** cio' che il giro sincrono manda al
+    modello con cio' che il turno del ponte compone: la domanda in cronologia
+    piu' il contratto di risposta, che sul ponte viaggia a parte perche' li'
+    l'istruzione di chiusura va in fondo al messaggio (`agent/prompts.
+    build_chat_messages`). Le due porte mandano lo stesso testo, non un testo
+    equivalente.
+
+    Mutazione che la uccide: ricomporre la domanda dentro `bridge_turn`
+    invece di chiamare `build_house_question`.
+    """
+    import asyncio
+
+    casa = _casa()
+    modello = _Modello("[]")
+    asyncio.run(observer.reconsider(modello, archivio, casa, reason="x", now=1000.0))
+
+    turno = observer.bridge_turn(archivio, casa)
+
+    assert (turno["history"][0]["content"] + chr(10) + turno["istruzione"]
+            == modello.chiamate[0]["domanda"])
+
+
+def test_il_turno_del_ponte_porta_lo_STESSO_mestiere(archivio):
+    """Il prompt di sistema e' quello che dice all'osservatore qual e' il suo
+    mestiere: se il ponte ne ricevesse un altro, sarebbe un secondo
+    osservatore, non lo stesso che risponde da un'altra porta.
+
+    **Mutazione eseguita l'11/09/2026, vista rossa e ripristinata**: scrivere
+    in `bridge_turn` un prompt di sistema abbreviato a mano, invece di
+    passare `SYSTEM`.
+    """
+    turno = observer.bridge_turn(archivio, _casa())
+
+    assert turno["system_prompt"] == observer.SYSTEM
+
+
+def test_le_decisioni_si_SCRIVONO_da_una_risposta_qualunque_sia_arrivata(archivio):
+    """La scrittura non appartiene alla chiamata al modello: appartiene alla
+    risposta. E' cio' che permette al ponte -- che risponde minuti dopo, da un
+    altro processo -- di far finire il giro senza una seconda copia di questo
+    codice.
+
+    **Mutazione eseguita l'11/09/2026, vista rossa e ripristinata**: scrivere
+    `window_s=None, cadence_s=None` nella riconsiderazione. E' il
+    peggioramento vero che questa separazione rende possibile -- la misura
+    della memoria di Home Assistant si paga quando la domanda parte e si
+    scrive quando la risposta torna, e fra i due momenti, sul ponte, ci sono
+    minuti e un altro processo. Un numero perso per strada diventerebbe una
+    finestra «non misurata» indistinguibile da una casa che non ricorda
+    niente.
+    """
+    esito = observer.apply_answer(
+        archivio, _casa(),
+        '[{"id": "climate.camera_t", "dentro": true, "motivo": "scalda la casa"}]',
+        reason="il ponte ha risposto", window_s=604800.0, cadence_s=302400.0,
+        now=1000.0)
+
+    assert esito == {"decise": 1, "rifiutate": 0, "ignorate": 0, "candidate": 2}
+    assert archivio.scope()["climate.camera_t"]["autore"] == OBSERVER
+    ultima = archivio.last_reconsideration()
+    assert ultima["motivo"] == "il ponte ha risposto"
+    assert ultima["finestra_s"] == 604800.0
+    assert ultima["cadenza_s"] == 302400.0
+
+
+def test_una_risposta_illeggibile_dal_ponte_non_annota_NIENTE(archivio):
+    """Stessa legge del giro sincrono: un giro fallito non si annota come
+    fatto, o si aspetterebbe la cadenza intera -- 84 ore su questa casa --
+    prima di riprovare, su una casa di cui non si e' deciso niente.
+
+    Mutazione che la uccide: annotare la riconsiderazione prima di aver
+    letto le decisioni.
+    """
+    esito = observer.apply_answer(archivio, _casa(), "non sono un JSON",
+                                  reason="il ponte ha risposto", now=1000.0)
+
+    assert "errore" in esito
+    assert archivio.last_reconsideration() is None
+    assert archivio.scope() == {}
+
+
+def test_il_turno_del_ponte_porta_il_CONTRATTO_di_risposta(archivio):
+    """**Senza, il ponte gli impone il contrario.** L'istruzione che il ponte
+    aggiunge in coda a ogni turno di chat dice «usa testo semplice: niente
+    blocchi di codice o JSON», e l'osservatore chiede esattamente un array
+    JSON. Trovato leggendo il codice l'11/09/2026, prima di rilasciare: sarebbe
+    tornata prosa, `read_decisions` l'avrebbe dichiarata illeggibile, e
+    l'osservatore avrebbe continuato a fallire per un'altra causa con lo stesso
+    esito.
+
+    Mutazione che la uccide: non mettere `istruzione` nel turno.
+    """
+    turno = observer.bridge_turn(archivio, _casa())
+
+    assert "array JSON" in turno["istruzione"]
+    assert "dentro" in turno["istruzione"], (
+        "il contratto porta anche la forma di ogni voce, non solo «JSON»")

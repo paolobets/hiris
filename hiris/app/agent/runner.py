@@ -1277,6 +1277,16 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # non solo in un log che nessuno legge.
     if "contesto" in context:
         contesto = context.get("contesto") or ""
+    elif job.get("kind") == _SCOPE_KIND:
+        # **Un turno dell'osservatore non porta il nucleo, ed e' giusto cosi'.**
+        # La casa e' gia' dentro la sua domanda, composta apposta per il
+        # giudizio (`mind/observer.house_lines`): aggiungere il nucleo sarebbe
+        # una seconda descrizione della stessa casa nello stesso prompt, cioe'
+        # due verita' libere di divergere. Nessun log di degrado: non manca
+        # niente (rilievo della review indipendente, 11/09/2026 -- questo ramo
+        # lo dichiarava «accodato PRIMA di questo deploy», che per un turno di
+        # scope e' falso).
+        contesto = ""
     else:
         log.warning(
             "job di chat senza la chiave 'contesto' (job_id=%s): accodato PRIMA "
@@ -1322,7 +1332,18 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # e di che raggiungerli: senza client o senza base_url non c'e' nessun
     # `/api/mcp` da mettere nella mcp-config, quindi non c'e' nessun guasto da
     # dichiarare -- e' il vecchio comportamento, non un degrado nuovo.
-    awaited = client is not None and bool(base_url)
+    # **Un turno dell'osservatore non ha strumenti, e non e' un degrado.**
+    # Sulla catena lo stesso turno chiama `runner.chat` senza `tools`: qui
+    # deve dare la stessa cosa, o «la stessa domanda per un'altra porta» e'
+    # falso. E senza questa riga sarebbe peggio che diverso: un job di scope
+    # non porta `promessa_id`, quindi la sonda girava col catalogo della CHAT
+    # -- `execute` compreso, la porta con cui HIRIS accende, spegne e chiama
+    # un servizio -- e `BASE_TOOL_RULES` gli ordinava pure di usarli.
+    # L'osservatore, che deve solo giudicare delle righe di anagrafe, avrebbe
+    # potuto **agire sulla casa** senza che nessun si' lo autorizzasse
+    # (rilievo della review indipendente, 11/09/2026).
+    awaited = (client is not None and bool(base_url)
+               and job.get("kind") != _SCOPE_KIND)
     intestazioni = headers if headers is not None else build_headers()
     if awaited:
         tools, _reason = probe_tools(client, base_url, intestazioni,
@@ -1454,7 +1475,15 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         system, user = prompts.build_chat_messages(
             system_prompt, history, contesto=contesto,
             active_tools=active_tools,
-            restrict_to_home=restrict_to_home, response_mode=response_mode)
+            restrict_to_home=restrict_to_home, response_mode=response_mode,
+            # **Il contratto di risposta appartiene a chi pone la domanda.**
+            # Un turno di chat e uno di promessa non ne portano uno e
+            # ricevono quello della chat, che impone testo semplice e vieta il
+            # JSON; il turno dell'osservatore chiede un solo array JSON e
+            # senza questa riga riceverebbe l'ordine opposto (fetta
+            # «l'osservatore chiede a chi risponde davvero», 11/09/2026).
+            istruzione=(context.get("istruzione") or "")
+            if isinstance(context, dict) else "")
         argv = _chat_claude_args(system, user, model,
                                  active_tools=active_tools,
                                  mcp_config=mcp_config,
@@ -1638,27 +1667,53 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         return _reply(f"{MISSING_TOOLS_NOTICE}\n\n{text}")
     return _reply(text)
 
+#: Le specie di turno che il ponte sa servire. E' un'affermazione **di questo
+#: modulo su se stesso** -- «questi so ragionarli» -- non una copia dei nomi
+#: che i produttori si danno: `api/handlers_chat.py` accoda `chat`,
+#: `keeper/exchange.py` accoda `promessa`, `mind/observer.SCOPE_TURN_KIND`
+#: accoda `scope`. Tutti e tre finiscono in `_reason_chat`, perche' un turno
+#: e' un turno: cambia il CONTENUTO (la domanda, il prompt di sistema,
+#: l'intestazione MCP), e il contenuto arriva tutto dal contesto del job.
+#:
+#: `scope` entra l'11/09/2026, con la fetta «l'osservatore chiede a chi
+#: risponde davvero». Prima l'osservatore non poteva arrivare qui affatto:
+#: chiedeva a `llm_router`, dove il piano non e' un anello.
+#: Il nome della specie dell'osservatore, usato anche fuori dal dispaccio (la
+#: sonda degli strumenti, il ramo del contesto): un letterale ripetuto in tre
+#: punti di questo file sarebbe un refuso che non fallisce, solo cambia
+#: comportamento in silenzio.
+_SCOPE_KIND = "scope"
+
+RAGIONABILI = ("chat", "promessa", _SCOPE_KIND)
+
+
 def reason(job: dict, mode: str, *, client=None, base_url: str = "",
            headers: dict | None = None) -> dict:
-    """Il runner del ponte ragiona SOLO i job di chat.
+    """Il runner del ponte ragiona le specie dichiarate in `RAGIONABILI`.
 
     fetta E4 Task 8 ("un bot solo"): il ramo olistico e' uscito, con lui
     `prompts.build_holistic_prompt`/`_SYSTEM` e l'intero apparato che ne
     interpretava la risposta (`Decision`, `VERDICT_*`, `_parse_decision`,
     `parse_decision`). Il motivo e' che nessuno puo' piu' produrre un job
-    diverso da "chat": l'unico `enqueue` del repo e' `kind="chat"`
-    (api/handlers_chat.py), e il produttore dei job olistici
+    diverso da quelli in `RAGIONABILI`; il produttore dei job olistici
     (`_holistic_reason`) e' uscito alla fetta E3 Task 4.
 
-    Silenzio dichiarato: un job non-chat puo' arrivare qui SOLO da un
-    reasoning.db lasciato da un'installazione precedente questo deploy.
+    **Non piu' «solo i job di chat»** (correzione della review indipendente,
+    11/09/2026): il docstring diceva anche che «l'unico `enqueue` del repo e'
+    `kind="chat"`», falso da due fette -- `keeper/exchange.py` accoda
+    `promessa` dal 22/08/2026 e `mind/observer` accoda `scope` dall'11/09.
+    Tre produttori, tre specie, un ramo solo.
+
+    Silenzio dichiarato: un job di una specie che non e' in `RAGIONABILI` puo'
+    arrivare qui SOLO da un reasoning.db lasciato da un'installazione
+    precedente questo deploy.
     Non lo si ignora in silenzio -- un pass muto sarebbe indistinguibile da
     un'assenza di problemi: un log esplicito lo dichiara e la decisione
     restituita e' VUOTA (nessun verdetto, nessuna azione). A valle,
     `handle_reasoning_submit` (api/handlers_reasoning.py) la registra e
     basta: non attua piu' nulla da fetta E3 Task 9."""
     kind = (job or {}).get("kind")
-    if kind in ("chat", "promessa"):
+    if kind in RAGIONABILI:
         # Un turno di promessa E' un turno: stessa sonda degli strumenti,
         # stesso ritentativo, stessa `verify_init`, stessa redazione. Cio'
         # che cambia e' il CONTENUTO -- la domanda al posto della
