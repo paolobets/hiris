@@ -15,6 +15,7 @@ import argparse
 import ast
 import collections
 import functools
+import importlib.util
 import io
 import re
 import sys
@@ -32,9 +33,11 @@ TESTS = ROOT / "tests"
 _VERDE = "\033[32m"
 _GIALLO = "\033[33m"
 _GRIGIO = "\033[90m"
+_ROSSO = "\033[31m"
 _RESET = "\033[0m"
 
 COPERTURA_SIMBOLI: dict[str, int] = {}
+COPERTURA_SCRITTURE: dict[str, int] = {}
 
 @dataclass
 class Reperto:
@@ -50,6 +53,9 @@ _TITOLI: dict[str, str] = {
     "tabella-scritta-mai-letta": "Tabelle scritte e mai lette",
     "tabella-letta-mai-scritta": "Tabelle lette e mai scritte",
     "tabella-non-concludibile": "Tabelle su cui il rilevatore non puo' concludere",
+    "scrittura-fuori-schema":    "Scritture verso tabelle che il file non dichiara",
+    "scrittura-non-concludibile": "Scritture con il nome di tabella composto a runtime",
+    "operazione-fuori-dal-registro": "Operazioni del registro re-implementate altrove",
     "opzione-mai-letta":         "Opzioni dell'add-on che nessun codice legge",
     "envvar-mai-esportata":      "Variabili d'ambiente lette e mai esportate da run.sh",
     "rotta-senza-chiamanti":     "Rotte HTTP che nessuno chiama",
@@ -220,6 +226,155 @@ def censisci_tabelle(files: list[Path]) -> list[Reperto]:
         else:
             reperti.append(Reperto("tabella-letta-mai-scritta", nome, dove,
                                    "la si interroga e nessuno la riempie"))
+    return reperti
+
+
+# ── Scritture fuori dalle tabelle del proprio modulo ────────────────────────
+# La regola che questa sezione rende eseguibile (spec §15): **un modulo scrive
+# solo nelle tabelle che dichiara nel proprio schema**. `mind/store.py` possiede
+# `cambi` e `oggetti`, `reasoning/queue.py` possiede `reasoning_jobs`: una INSERT
+# verso la tabella di un altro e' un padrone in piu' per quell'archivio, e la
+# quarta fondamenta (autonomia) smette di valere il giorno che succede.
+#
+# Cosa questo controllo NON puo' vedere, e perche':
+#   - un nome di tabella composto a runtime (f"INSERT INTO {tabella}"): il pezzo
+#     letterale finisce prima del nome. Non si tace: si segnala come scrittura
+#     non concludibile, come gia' fanno le tabelle;
+#   - una query costruita per concatenazione con `+` o `%`: i due pezzi sono due
+#     letterali distinti e il nome puo' cadere nel secondo. Misurato su questa
+#     codebase: zero casi (ogni scrittura vista sta in un letterale solo);
+#   - chi scrive senza SQL — un ORM, un `executemany` su una query che arriva da
+#     fuori il file. Questo prodotto non ne ha, e il giorno che ne avesse il
+#     controllo tacerebbe: e' il limite, non una promessa.
+#
+# Il perimetro e' `hiris/app/` e basta: i test scrivono apposta nelle tabelle
+# altrui per prepararsi lo stato, e gli script di manutenzione anche.
+
+_RE_SCRITTURA_DINAMICA = re.compile(
+    r"(?:(?:INSERT|REPLACE)(?:\s+OR\s+\w+)?\s+INTO|UPDATE|DELETE\s+FROM)\s*$"
+)
+
+
+def _letterali_codice(albero: ast.Module) -> list[ast.Constant]:
+    """I letterali di stringa di un albero, **docstring escluse**.
+
+    Le docstring si tolgono per la stessa ragione di `_senza_docstring`, e qui
+    il caso e' misurato: il docstring di `mind/store.py` spiega a parole che
+    «`CREATE TABLE IF NOT EXISTS` non tocca una tabella che esiste gia'», e
+    letto come schema dichiara una tabella di nome `if`. Una dichiarazione
+    fantasma non produce un falso positivo da sola — ne assolve uno, che e'
+    peggio: rende il controllo muto proprio sul file che possiede sei tabelle.
+
+    La concatenazione implicita non e' un problema da risolvere qui: Python
+    fonde `"INSERT INTO "  "cambi"` in UN solo `ast.Constant` gia' in fase di
+    parsing, quindi il testo che si analizza e' quello ricomposto. E' la
+    ragione per cui questo controllo non guarda le righe del sorgente: una
+    query spezzata su piu' righe non ha, riga per riga, nessuna forma valida.
+    """
+    docstring: set[int] = set()
+    for nodo in ast.walk(albero):
+        if not isinstance(nodo, (ast.Module, ast.ClassDef,
+                                 ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        corpo = getattr(nodo, "body", None)
+        if not corpo:
+            continue
+        primo = corpo[0]
+        if (isinstance(primo, ast.Expr)
+                and isinstance(primo.value, ast.Constant)
+                and isinstance(primo.value.value, str)):
+            docstring.add(id(primo.value))
+    return [n for n in ast.walk(albero)
+            if isinstance(n, ast.Constant) and isinstance(n.value, str)
+            and id(n) not in docstring]
+
+
+# **`scritte` e' indicizzata per TABELLA, e il numero che ne esce si chiama
+# come quello che conta** (correzione della revisione indipendente,
+# 12/09/2026): `setdefault(tabella, riga)` tiene la PRIMA scrittura di ogni
+# tabella in ogni file, quindi due `INSERT` sulla stessa tabella nello stesso
+# file sono una voce sola. Il rapporto diceva «N scritture SQL esaminate», che
+# e' un numero diverso da quello calcolato -- l'etichetta sbagliata su un conto
+# giusto, dentro il programma che esiste per trovarne. Adesso dice «tabelle
+# scritte viste», che e' cio' che la struttura misura davvero.
+def _schema_scritture(
+    testo: str,
+) -> tuple[set[str], dict[str, int], list[int]] | None:
+    """Cosa un file dichiara, cosa scrive, e cosa non si riesce a leggere.
+
+    Restituisce `(dichiarate, scritte, dinamiche)` — le tabelle del suo schema,
+    le tabelle su cui scrive con la riga della prima scrittura, e le righe delle
+    scritture il cui nome di tabella e' composto a runtime. `None` se il file
+    non e' parsabile: un file illeggibile non e' un file pulito, e le due cose
+    non devono avere la stessa faccia.
+    """
+    try:
+        albero = ast.parse(testo)
+    except SyntaxError:
+        return None
+
+    dichiarate: set[str] = set()
+    scritte: dict[str, int] = {}
+    for nodo in _letterali_codice(albero):
+        for m in _RE_CREATE.finditer(nodo.value):
+            dichiarate.add(m.group(1).lower())
+        for rx in (_RE_INSERT, _RE_UPDATE, _RE_DELETE):
+            for m in rx.finditer(nodo.value):
+                scritte.setdefault(m.group(1).lower(), nodo.lineno)
+
+    # Le f-string: il pezzo letterale che precede un segnaposto e' un
+    # `ast.Constant` che finisce con la parola chiave e basta. Si riconoscono
+    # da li', invece di sparire.
+    dinamiche: list[int] = []
+    for nodo in ast.walk(albero):
+        if not isinstance(nodo, ast.JoinedStr):
+            continue
+        for pezzo in nodo.values:
+            if (isinstance(pezzo, ast.Constant)
+                    and isinstance(pezzo.value, str)
+                    and _RE_SCRITTURA_DINAMICA.search(pezzo.value)):
+                dinamiche.append(nodo.lineno)
+                break
+    return dichiarate, scritte, dinamiche
+
+
+def censisci_scritture(file_app: list[Path]) -> list[Reperto]:
+    """Scritture SQL verso tabelle che il file che le esegue non dichiara."""
+    reperti: list[Reperto] = []
+    schema_atteso = 0
+    scritture = 0
+    dinamiche = 0
+    illeggibili = 0
+
+    for f in file_app:
+        letto = _schema_scritture(_leggi(f))
+        if letto is None:
+            illeggibili += 1
+            continue
+        dichiarate, scritte, righe_dinamiche = letto
+        if dichiarate:
+            schema_atteso += 1
+        scritture += len(scritte)
+        dinamiche += len(righe_dinamiche)
+
+        for riga in sorted(set(righe_dinamiche)):
+            reperti.append(Reperto(
+                "scrittura-non-concludibile", "?", f"{_rel(f)}:{riga}",
+                "il nome della tabella si compone a runtime: "
+                "il rilevatore non puo' dire di chi sia"))
+        for tabella, riga in sorted(scritte.items()):
+            if tabella in dichiarate:
+                continue
+            reperti.append(Reperto(
+                "scrittura-fuori-schema", tabella, f"{_rel(f)}:{riga}",
+                "questo file scrive una tabella che non dichiara: "
+                + (f"il suo schema e' {sorted(dichiarate)}"
+                   if dichiarate else "non ha nessuno schema")))
+
+    COPERTURA_SCRITTURE.update(
+        schema_atteso=schema_atteso, scritture=scritture,
+        dinamiche=dinamiche, illeggibili=illeggibili,
+    )
     return reperti
 
 
@@ -538,6 +693,152 @@ def censisci_simboli(file_app: list[Path], file_test: list[Path]) -> list[Repert
     return reperti
 
 
+# ── Il registro delle operazioni ────────────────────────────────────────────
+# La regola che questa sezione rende eseguibile (spec §15): **l'implementazione
+# di un'operazione vive in un posto solo**, `mind/operations.py`. Un doppione
+# altrove non e' un refuso di stile: il registro esiste perche' una ricetta
+# possa essere rifiutata PRIMA di eseguirla, e una seconda implementazione con
+# lo stesso nome e un'altra logica rende quel rifiuto una bugia.
+#
+# Si guardano le definizioni con l'AST, non con una regex: su 43.000 righe una
+# regex `def somma_periodo` combacia dentro una docstring che cita la firma,
+# dentro un commento che la ricorda e dentro una stringa di esempio. Uno
+# strumento che va creduto non puo' permettersi di segnalare la propria
+# documentazione.
+#
+# Cosa questo controllo NON puo' vedere:
+#   - un doppione con un NOME DIVERSO. La regola e' sui nomi, e un doppione
+#     battezzato altrimenti passa: lo trova la review, non il censimento;
+#   - le operazioni che il registro non ha ancora. Il registro si sta
+#     costruendo e puo' essere vuoto: in quel caso il controllo non fallisce e
+#     non trova niente — ma il numero di operazioni esaminate si stampa sempre,
+#     o un registro vuoto darebbe «nessun reperto» con la stessa faccia di un
+#     registro pulito.
+
+REGISTRO_PY = APP / "mind" / "operations.py"
+
+COPERTURA_REGISTRO: dict[str, object] = {}
+
+
+def _nomi_registro(percorso: Path) -> dict[str, str] | None:
+    """I nomi cercabili del registro, o None se non si e' potuto leggerlo.
+
+    Sono DUE per operazione, e servono tutti e due: il nome di dominio
+    (`somma_periodo`, quello che il proprietario pronuncia e che sta nella
+    chiave del registro) e il nome della funzione che la esegue (`_sum_period`,
+    inglese come tutto il codice dell'ambito `mind`). Cercare solo il primo
+    lascerebbe passare il doppione piu' probabile -- qualcuno che riscrive quel
+    conto altrove lo chiamera' in inglese, come il resto del suo file.
+
+    Si carica il modulo dal suo percorso invece di importarlo per pacchetto:
+    il censimento non deve dipendere dal fatto che `hiris.app` sia importabile
+    da dove lo si lancia, e `mind/operations.py` non ha import relativi.
+    Caricarlo lo ESEGUE — e' un modulo di sole definizioni, ma il costo va
+    detto invece che nascosto.
+
+    Torna `{nome cercabile: nome dell'operazione}`, perche' il rapporto deve
+    poter dire QUANTE operazioni ci sono -- e i nomi cercabili sono il doppio.
+    Contare quelli darebbe un registro grande il doppio del vero: un numero
+    non misurato scritto come misurato, nel programma che esiste per trovarli.
+
+    `None` (non leggibile) e `{}` (registro vuoto) sono due esiti diversi e
+    restano distinti fino al rapporto: entrambi producono zero reperti, e
+    confonderli e' esattamente il difetto che questo strumento insegue.
+    """
+    if not percorso.exists():
+        return None
+    etichetta = "_censimento_registro_operazioni"
+    try:
+        spec = importlib.util.spec_from_file_location(etichetta, percorso)
+        if spec is None or spec.loader is None:
+            return None
+        modulo = importlib.util.module_from_spec(spec)
+        sys.modules[etichetta] = modulo
+        try:
+            spec.loader.exec_module(modulo)
+        finally:
+            sys.modules.pop(etichetta, None)
+    except Exception:
+        return None  # un registro rotto non deve fermare il censimento
+    registro = getattr(modulo, "REGISTRY", None)
+    if registro is None:
+        return None
+    try:
+        nomi = {str(n): str(n) for n in registro}
+        for nome, operazione in registro.items():
+            esecutore = getattr(getattr(operazione, "run", None), "__name__", "")
+            if esecutore:
+                nomi[esecutore] = str(nome)
+        return nomi
+    except AttributeError:
+        return None
+
+
+def _funzioni(testo: str) -> list[tuple[str, int]] | None:
+    """Le funzioni definite in un file — metodi compresi — con la loro riga.
+
+    Diverso da `_definizioni`: niente classi (una classe omonima non e'
+    un'implementazione dell'operazione) e i dunder non si saltano, perche' un
+    nome di operazione non e' mai un dunder e il filtro sarebbe rumore.
+    """
+    try:
+        albero = ast.parse(testo)
+    except SyntaxError:
+        return None
+    return [(n.name, n.lineno) for n in ast.walk(albero)
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+
+
+def censisci_operazioni(
+    file_app: list[Path], percorso_registro: Path = REGISTRO_PY
+) -> list[Reperto]:
+    """Funzioni che portano il nome di un'operazione del registro, fuori da esso.
+
+    Si cercano il nome di dominio e il nome dell'esecutore (vedi
+    `_nomi_registro`), ciascuno **in entrambe le forme, nuda e con
+    l'underscore**: `somma_periodo` e `_somma_periodo`, `sum_period` e
+    `_sum_period`. L'esecutore del registro e' privato, ma un doppione altrove
+    puo' benissimo essere pubblico -- ed e' il caso peggiore, perche' qualcuno
+    lo importa.
+    """
+    nomi = _nomi_registro(percorso_registro)
+    COPERTURA_REGISTRO["leggibile"] = nomi is not None
+    COPERTURA_REGISTRO["operazioni"] = len(set(nomi.values())) if nomi else 0
+    if not nomi:
+        return []
+
+    cercati: dict[str, str] = {}
+    for nome, operazione in nomi.items():
+        nudo = nome.lstrip("_")
+        cercati[nudo] = operazione
+        cercati[f"_{nudo}"] = operazione
+
+    try:
+        registro_risolto = percorso_registro.resolve()
+    except OSError:  # pragma: no cover - percorso patologico
+        registro_risolto = percorso_registro
+
+    reperti: list[Reperto] = []
+    for f in file_app:
+        try:
+            if f.resolve() == registro_risolto:
+                continue  # il registro non denuncia se stesso
+        except OSError:  # pragma: no cover - percorso patologico
+            pass
+        funzioni = _funzioni(_leggi_pulito(f))
+        if funzioni is None:
+            continue  # gia' contato fra gli illeggibili dai simboli
+        for nome, riga in funzioni:
+            operazione = cercati.get(nome)
+            if operazione is None:
+                continue
+            reperti.append(Reperto(
+                "operazione-fuori-dal-registro", nome, f"{_rel(f)}:{riga}",
+                f"«{operazione}» e' nel registro: l'implementazione "
+                f"vive in {_rel(percorso_registro)} e in un posto solo"))
+    return reperti
+
+
 # ── Report ──────────────────────────────────────────────────────────────────
 
 def stampa(reperti: list[Reperto]) -> None:
@@ -566,6 +867,26 @@ def stampa(reperti: list[Reperto]) -> None:
               f"{ingressi} punto{'i' if ingressi != 1 else ''} d'ingresso, "
               f"{illeggibili} file illeggibili.{_RESET}")
 
+    if COPERTURA_SCRITTURE:
+        print(f"\n{_GRIGIO}Copertura delle scritture: "
+              f"{COPERTURA_SCRITTURE.get('scritture', 0)} tabelle scritte viste in "
+              f"{COPERTURA_SCRITTURE.get('schema_atteso', 0)} file con uno schema,\n  "
+              f"{COPERTURA_SCRITTURE.get('dinamiche', 0)} con il nome di tabella composto "
+              f"a runtime, {COPERTURA_SCRITTURE.get('illeggibili', 0)} file illeggibili.{_RESET}")
+
+    # Il registro puo' essere VUOTO mentre lo si costruisce, e un registro vuoto
+    # produce zero reperti esattamente come un registro pulito: senza questo
+    # numero le due cose avrebbero la stessa faccia.
+    if COPERTURA_REGISTRO:
+        if not COPERTURA_REGISTRO.get("leggibile"):
+            print(f"\n{_GRIGIO}Registro delle operazioni: NON LEGGIBILE "
+                  f"({_rel(REGISTRO_PY)}). Il controllo non ha cercato niente.{_RESET}")
+        else:
+            quante = COPERTURA_REGISTRO.get("operazioni", 0)
+            vuoto = " -- il registro e' VUOTO" if not quante else ""
+            print(f"\n{_GRIGIO}Registro delle operazioni: {quante} operazion"
+                  f"{'e esaminata' if quante == 1 else 'i esaminate'}{vuoto}.{_RESET}")
+
     print(f"\n{_GRIGIO}I limiti di questo strumento, dichiarati:")
     print("  - i nomi definiti in piu' punti si saltano: contare le occorrenze di un nome")
     print("    omonimo non direbbe niente. Quanti siano lo dice la riga di copertura;")
@@ -577,6 +898,14 @@ def stampa(reperti: list[Reperto]) -> None:
     print("  - le rotte sono indicizzate per percorso, non per metodo: un POST morto su un")
     print("    percorso il cui GET e' vivo non viene visto;")
     print("  - il frontend non viene analizzato: solo le rotte che nomina;")
+    print("  - una scrittura SQL si vede solo se il nome della tabella sta nello stesso")
+    print("    letterale della parola chiave: f\"INSERT INTO {tabella}\" finisce fra le")
+    print("    scritture non concludibili, e una query montata con + o % puo' sparire;")
+    print("  - i doppioni di un'operazione si cercano PER NOME (nudo o con underscore):")
+    print("    una seconda implementazione battezzata altrimenti non si vede;")
+    print("  - il SQL nelle docstring non conta ne' come schema ne' come scrittura: e'")
+    print("    documentazione, e mind/store.py ne cita uno che dichiarerebbe una tabella")
+    print("    fantasma di nome «if»;")
     print("  - le variabili d'ambiente lette con env_bool() si vedono solo se il nome e'")
     print("    passato come stringa letterale: env_bool(env_var) con un nome indiretto")
     print(f"    (vedi handlers_models.py) resta invisibile allo strumento.{_RESET}")
@@ -584,24 +913,60 @@ def stampa(reperti: list[Reperto]) -> None:
     print(f"\nTotale reperti: {len(reperti)}")
 
 
-def run() -> int:
+#: Le due categorie che **fermano** un rilascio, e non sono tutte le altre.
+#:
+#: Il resto del censimento esce sempre 0 ed e' giusto cosi': e' uno strumento
+#: di lettura, e far fallire un rilascio per un simbolo senza chiamanti
+#: fermerebbe il progetto ogni settimana, finche' qualcuno non imparasse a
+#: passargli accanto -- e uno strumento che si aggira non serve a niente.
+#:
+#: Queste due sono di un'altra specie: non dicono «qui c'e' del disordine»,
+#: dicono che una regola STRUTTURALE e' rotta. Un modulo che scrive nelle
+#: tabelle di un altro e un'operazione re-implementata fuori dal registro sono
+#: esattamente cio' che la spec §15 chiede a qualcuno di DIFENDERE, e il piano
+#: cita la lezione che l'ha insegnato: *«una disciplina scritta non e' una
+#: disciplina eseguita»* -- tre release hanno ignorato il pin del Dockerfile
+#: prima che qualcuno lo rendesse un passo che fallisce.
+CATEGORIE_FERMANTI = ("scrittura-fuori-schema", "operazione-fuori-dal-registro")
+
+
+def run(*, cancello: bool = False) -> int:
     file_app = _file_py(APP)
     reperti = censisci_tabelle(file_app)
+    reperti += censisci_scritture(file_app)
     reperti += censisci_configurazione(
         ROOT / "hiris" / "config.yaml", ROOT / "hiris" / "run.sh", file_app
     )
     reperti += censisci_rotte(file_app, _file_frontend(), _file_py(TESTS))
     reperti += censisci_simboli(file_app, _file_py(TESTS))
+    reperti += censisci_operazioni(file_app)
     stampa(reperti)
-    return 0
+    if not cancello:
+        return 0
+    fermanti = [r for r in reperti if r.categoria in CATEGORIE_FERMANTI]
+    if fermanti:
+        print(file=sys.stderr)
+        print(f"{_ROSSO}CANCELLO: {len(fermanti)} violazioni strutturali. "
+              f"Non e' disordine da sistemare con calma: e' una regola rotta.{_RESET}",
+              file=sys.stderr)
+        for r in fermanti:
+            print(f"  {r.categoria}  {r.nome}  ({r.dove})", file=sys.stderr)
+    return 1 if fermanti else 0
 
 
 def main() -> None:
-    argparse.ArgumentParser(
+    parser = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
-    ).parse_args()
-    sys.exit(run())
+    )
+    parser.add_argument(
+        "--cancello", action="store_true",
+        help="esce 1 se una regola STRUTTURALE e' rotta (scritture fuori dallo "
+             "schema del proprio modulo, operazioni re-implementate fuori dal "
+             "registro). Senza, il censimento resta uno strumento di lettura e "
+             "esce sempre 0.")
+    args = parser.parse_args()
+    sys.exit(run(cancello=args.cancello))
 
 
 if __name__ == "__main__":

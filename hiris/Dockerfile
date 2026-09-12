@@ -128,8 +128,23 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 #
 # Se la 2.1.268 desse problemi il ripiego e' la **2.1.267**, che e' stata letta
 # davvero dentro questo container il 10/09/2026 alle 20:21.
+#
+# 12 settembre 2026 — alzata da 2.1.268 a **2.1.269** (un'uscita sola), col
+# rilascio della 3.29.0: il cancello dei componenti ha parlato durante la fetta
+# delle operazioni e il pin sale col rilascio in cui ha parlato, non al giro
+# dopo.
+#
+# **Il passo 4 di questa nota e' APERTO**: la 2.1.269 non e' ancora stata letta
+# dentro il container. Si salda alla prima verifica dal vivo della 3.29.0,
+# leggendo `ponte.cli` da `GET /api/health` dopo un turno di chat. Finche' quel
+# numero non e' stato letto davvero, questa riga dice «pin alzato», non
+# «versione verificata»: sono due fatti diversi, e confonderli e' come questa
+# nota e' rimasta in sospeso per due salti di fila.
+#
+# Se la 2.1.269 desse problemi il ripiego e' la **2.1.268**, verificata
+# l'11/09/2026 alle 11:03 (vedi sopra).
 RUN apk add --no-cache nodejs npm libgcc libstdc++ ripgrep \
-    && npm install -g @anthropic-ai/claude-code@2.1.268 \
+    && npm install -g @anthropic-ai/claude-code@2.1.269 \
     && npm cache clean --force
 ENV USE_BUILTIN_RIPGREP=0
 

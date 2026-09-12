@@ -362,6 +362,58 @@ va corretto, in un posto solo.
 > del repository e da cio' che e' stato misurato sulla casa vera. La lista del proprietario va
 > reinserita da lui, e queste voci vanno lette come un fondo di magazzino, non come una sua scelta.
 
+### I due rifiuti della spec §6 non li sa dire nessuna operazione
+
+`origine: revisione indipendente della fetta 3, 12/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §6
+
+**Il fatto.** La spec elenca fra i «rifiuta se» di un'operazione due casi: *«l'entita' non ha
+statistiche»* e *«il periodo e' fuori dalla memoria disponibile»*. Nessuna delle diciotto voci di
+`hiris/app/mind/operations.py` li dichiara, e nessuna li produce: il registro sa rifiutare per
+copertura, per unita' incompatibili, per troppi pochi punti — **non per un periodo che l'archivio
+non copre affatto**.
+
+**Perche' non entra nella fetta 3.** Tutti e due chiedono di sapere fin dove arriva la memoria:
+i 22 giorni del grezzo (`archivio.READING_RETENTION_S`) e le statistiche che Home Assistant tiene
+per quell'entita' (`ha_vocabulary.produces_statistics`). E' conoscenza della casa, e il registro
+deve saper calcolare e basta — la stessa ragione per cui `quando_succede` riceve il fuso gia'
+risolto e `raggruppa_per` riceve la chiave da fuori.
+
+**Cosa costa oggi.** La domanda vera del proprietario *«dammi il totale delle ore irrigate tra
+maggio e settembre»* riceve il rifiuto giusto **solo se chi compone la ricetta lo costruisce a
+mano**. Se qualcuno dimentica il controllo, il registro somma le tre settimane che ha e le
+consegna come cinque mesi: e' il difetto fondativo di questa fetta, lasciato fuori dal cancello.
+`tests/test_mind_operations.py::test_domanda_5_...` lo dichiara nel suo docstring.
+
+**Cosa servirebbe.** Un ingresso comune — il periodo chiesto e l'orizzonte davvero disponibile per
+quell'entita' — che il chiamante risolve e che un'operazione (o un controllo all'ingresso della
+ricetta, fetta 4) confronta prima di calcolare qualunque cosa.
+
+### Il grezzo butta l'unita' di misura, e l'oggetto di energia resta senza
+
+`origine: misurato leggendo il codice il 12/09/2026, durante l'estrazione delle operazioni (fetta 3)` · `docs/design/2026-09-10-i-tre-attori.md`
+
+**Il fatto.** La tabella `cambi` (`hiris/app/mind/store.py`) registra di ogni cambio
+`device_class`, `state_class`, `source_type`, `domain`, `title`, `friendly_name` — e **non**
+`unit_of_measurement`, che Home Assistant dichiara per ogni entita' e che HIRIS legge gia' altrove
+(`home_space/reader.py`, colonna `unita`). E' la tesi della spec dei tre attori applicata a un
+attributo che nessuna fetta ha ancora raccolto: *«Home Assistant dichiara gia' tutto, la copia lo
+butta»*.
+
+**Cosa costa oggi.** L'oggetto di genere `energia` che `mind/facts.aggregate_day` scrive ogni notte
+porta `valore_iniziale`, `valore_finale` e `differenza` — **tre numeri senza unita'**. Il corpo tace
+invece di inventare (difeso da
+`tests/test_mind_facts.py::test_un_energia_NON_dichiara_un_unita_che_nessuno_ha_registrato`, e il
+registro delle operazioni riceve `UNKNOWN_UNIT`), ma tacere e' la risposta meno peggio, non quella
+giusta: quel contatore puo' essere in Wh, in kWh o in m3, e chi legge l'oggetto fra tre settimane
+non ha modo di saperlo. La prima fondamenta lo dice alla lettera — *«un valore senza la sua unita'
+non e' un oggetto: e' un frammento»*.
+
+**Cosa servirebbe.** Una colonna `unit` sul grezzo (in inglese, come le altre nuove), scritta
+dall'osservatore al momento del cambio come si fa gia' per `friendly_name` — **non risolta dopo
+dall'anagrafe**, per la stessa ragione del nome: gli oggetti vivono piu' a lungo dei cambi, e
+un'entita' rinominata o sparita non direbbe piu' niente. Poi l'oggetto di energia la porta, e il
+registro riceve l'unita' vera al posto della sentinella.
+
 ### La persona e il suo telefono sono lo stesso fatto, scritto due volte
 
 `origine: misurato sulla casa vera l'11/09/2026, durante la verifica dal vivo della 3.26.0` · `nessun documento`

@@ -52,6 +52,7 @@ from ..home_space.type_vocabulary import (
     resting_states,
     unknown_states,
 )
+from .operations import REGISTRY, UNKNOWN_UNIT
 
 # `aggregate_day` e' SINCRONA: non fa nessuna lettura di rete. I comprimari
 # arrivano gia' risolti dal chiamante (vedi il Task 6), proprio perche' una
@@ -265,52 +266,18 @@ def _is_on(value) -> bool:
     return str(value or "").strip().lower() not in resting_states()
 
 
-def _difference(initial, final) -> float | None:
-    """`finale - iniziale`, o `None` se uno dei due non si legge come numero.
+def _as_number(value) -> float | None:
+    """Una lettura del grezzo -> un numero, o `None` se non lo e'.
 
-    Un contatore scrive stringhe (`"1234.5"`). `None` e non zero quando la
-    lettura fallisce: zero direbbe «variazione nulla» per un valore che non
-    si e' nemmeno potuto interpretare, e sarebbe un fatto falso travestito
-    da dato. **La parola resta neutra apposta** (correzione del 26/08/2026,
-    gamba "consumo" -> "energia"): questa differenza serve anche ai
-    contatori di energia PRODOTTA, e "consumo" per una lettura di
-    produzione sarebbe di nuovo la frase falsa che questa correzione toglie.
-
-    **Arrotondata a 2 decimali** (mandato «il bilancio dell'energia»,
-    27/08/2026, punto 6 -- misurato: la pagina mostra oggi `+0.
-    010000000000000009`). Il valore sbagliato e' gia' nel dato -- la
-    sottrazione fra due `float` letti da stringhe HA porta rumore di
-    virgola mobile ben sotto il centesimo -- quindi si arrotonda QUI, dove
-    il numero nasce, non nella pagina che lo mostra. 2 decimali (0,01):
-    la gamba energia copre kWh, m^3 e litri con la stessa funzione, e i
-    contatori di questa casa non scrivono mai piu' di due cifre dopo la
-    virgola (misurato: `0.27`, `3.11`, `23.8`...).
+    **E' il confine, non un calcolo**: un contatore scrive stringhe
+    (`"1234.5"`), e il registro delle operazioni parla numeri. La traduzione
+    fra i due mondi vive dove i due si toccano, cioe' qui.
     """
     try:
-        return round(float(final) - float(initial), 2)
+        return float(value)
     except (TypeError, ValueError):
         return None
 
-
-# ── Il bilancio: undici frammenti diventano un oggetto solo ────────────────
-#
-# E' IL GENERE che decide la forma (spec §3): l'episodio -- protagonista,
-# inizio, fine -- e' lo stampo giusto per «riscaldamento acceso 15:30 ->
-# 17:05», sbagliato per «com'e' andata l'energia della casa ieri», che e'
-# una QUANTITA' CON UNA FORMA, un giorno intero, non un apri/chiudi. E OGNI
-# GENERE PORTA CON SE' LA SUA FONTE (spec §4): qui non e' il grezzo -- e'
-# `HAClient.hourly_statistics()`, che HA gia' tiene, corretta per gli
-# azzeramenti dei contatori, e conservata piu' a lungo dei nostri 22 giorni.
-#
-# Le funzioni qui sotto sono PURE (nessuna lettura di rete, nessun accesso
-# all'archivio): prendono le statistiche GIA' lette e tradotte
-# (`HAClient._request_statistics`, chiavi italiane) e i collegamenti
-# dispositivo/direzione GIA' risolti, e tornano il corpo di un bilancio.
-# Chi legge la rete e chi risolve il dispositivo e' `server.py::
-# costruisci_bilanci` -- stessa separazione di `companions`/`directions`
-# sopra: la rete sta fuori, il giudizio sta qui, dove i 21 giorni di grezzo
-# (o, per il bilancio, le settimane di statistiche che HA conserva)
-# permettono di rifarlo.
 
 def _kwh(value) -> float | None:
     """Un numero della gamba energia -> kWh arrotondati a 2 decimali.
@@ -321,7 +288,8 @@ def _kwh(value) -> float | None:
     lo strumento non ha, e il difetto misurato in pagina (`+0.
     010000000000000009`) e' rumore di virgola mobile ben sotto quella
     soglia. `None` -- non zero -- quando il valore manca o non e' un
-    numero: e' la stessa distinzione di `_difference` sopra.
+    numero: e' la stessa distinzione che `primo_ultimo_differenza` fa nel
+    registro delle operazioni (`mind/operations.py`).
     """
     if value is None:
         return None
@@ -348,45 +316,6 @@ def _percent(value) -> float | None:
         return None
 
 
-def _share(numerator, denominator) -> float | None:
-    """Un rapporto -> frazione fra 0 e 1, arrotondata a 3 decimali.
-
-    3 decimali (0,712): un RAPPORTO merita piu' cifre di un kWh -- 71,2% e
-    71,3% sono un fatto leggibile, non rumore. `None` se il denominatore
-    manca o e' zero: zero produzione non significa «zero autoconsumo», e'
-    «non lo so» (mandato, «cosa NON si salva» -- mai uno zero al posto di un
-    dato che non si puo' calcolare).
-
-    **Mai negativa** (correzione ALTO della review, mandato «il bilancio
-    dell'energia», punto 3, 27/08/2026): il nome e il docstring
-    promettevano gia' «fra 0 e 1», ma nessun codice lo garantiva. Il caso
-    misurato e' `self_sufficiency_share` (`_balance_moments` sotto),
-    calcolata come `(consumo - prelievo) / consumo`: il prelievo PUO'
-    superare il consumo di casa quando la batteria si carica dalla rete --
-    quell'energia importata va a caricare, non e' consumo della casa, e la
-    sottrazione va sotto zero. Oggi su questa casa il prelievo e' minimo e
-    il caso non si vede; d'inverno, o con una tariffa che carica di notte,
-    si'.
-
-    **Non si CLAMPA a zero**: zero affermerebbe «zero autosufficienza», e
-    non lo sappiamo -- l'eccedenza del prelievo (andata a caricare) puo'
-    convivere con un'ottima autoproduzione nel resto della giornata, che
-    quei due numeri soli non dicono. Quando il rapporto uscirebbe negativo,
-    si torna `None`: «non lo so», non un numero inventato su nessuno dei
-    due lati -- ne' quello sbagliato di prima ne' un floor che affermerebbe
-    il contrario.
-    """
-    if not denominator:
-        return None
-    try:
-        value = float(numerator) / float(denominator)
-    except (TypeError, ValueError, ZeroDivisionError):
-        return None
-    if value < 0:
-        return None
-    return round(value, 3)
-
-
 def _dimension_points(series: dict[str, list[dict]], subject: str | None) -> list[dict]:
     """I punti orari di un'entita', ridotti a `{"inizio","fine","valore"}` --
     `valore` e' il `cambio` di quell'ora (il delta GIA' calcolato da HA,
@@ -404,10 +333,18 @@ def _dimension_points(series: dict[str, list[dict]], subject: str | None) -> lis
 
 
 def _balance_moments(points_per_dimension: dict[str, list[dict]],
-                      totals: dict[str, dict]) -> dict:
-    """I momenti derivati dalla forma e dai totali -- vedi
+                      measures: dict[str, object]) -> dict:
+    """I momenti derivati dalla forma e dalle misure -- vedi
     `build_balance_body` per il contratto completo. Separata per
     restare leggibile: ogni momento e' un piccolo giudizio a se'.
+
+    **Prende le MISURE del registro, non i numeri gia' spogliati** (correzione
+    della revisione indipendente, 12/09/2026): le quote si calcolano
+    componendo operazioni -- `quota(differenza_fra(consumo, prelievo),
+    consumo)`, che e' letteralmente la ricetta della spec §7 -- e cosi' la
+    copertura dei totali arriva fino alla quota invece di perdersi. Prima di
+    questa correzione una quota calcolata su un totale coperto all'80%
+    usciva dichiarando copertura piena.
     """
     moments: dict = {}
 
@@ -424,10 +361,12 @@ def _balance_moments(points_per_dimension: dict[str, list[dict]],
     if active_scarica:
         moments["fine_scarica_batteria"] = active_scarica[-1]["fine"]
 
-    autoconsumo_share = _share(totals.get("autoconsumo", {}).get("valore"),
-                               totals.get("produzione", {}).get("valore"))
-    if autoconsumo_share is not None:
-        moments["quota_autoconsumo"] = autoconsumo_share
+    autoconsumo = measures.get("autoconsumo")
+    produzione = measures.get("produzione")
+    if autoconsumo is not None and produzione is not None:
+        autoconsumo_share = REGISTRY["quota"].run(autoconsumo, produzione)
+        if autoconsumo_share.computable:
+            moments["quota_autoconsumo"] = autoconsumo_share.value
 
     # **Correzione ALTO della review (mandato «il bilancio dell'energia»,
     # punto 1, 27/08/2026): NON PIU' `autoconsumo/(autoconsumo+prelievo)`.**
@@ -443,12 +382,13 @@ def _balance_moments(points_per_dimension: dict[str, list[dict]],
     # 14,72, prelievo 0,22 -> 0,985 (il numero vero; la vecchia formula
     # diceva 0,964). Senza il consumo misurato, niente quota: mai un
     # numero dedotto al posto di uno letto.
-    consumo = totals.get("consumo", {}).get("valore")
-    prelievo = totals.get("prelievo", {}).get("valore")
+    consumo = measures.get("consumo")
+    prelievo = measures.get("prelievo")
     if consumo is not None and prelievo is not None:
-        self_sufficiency_share = _share(consumo - prelievo, consumo)
-        if self_sufficiency_share is not None:
-            moments["quota_autosufficienza"] = self_sufficiency_share
+        self_produced = REGISTRY["differenza_fra"].run(consumo, prelievo)
+        self_sufficiency_share = REGISTRY["quota"].run(self_produced, consumo)
+        if self_sufficiency_share.computable:
+            moments["quota_autosufficienza"] = self_sufficiency_share.value
 
     return moments
 
@@ -456,7 +396,8 @@ def _balance_moments(points_per_dimension: dict[str, list[dict]],
 def build_balance_body(*, series: dict[str, list[dict]],
                               entity_per_dimension: dict[str, str],
                               provenance_per_dimension: dict[str, str],
-                              battery_entity: str | None = None) -> dict:
+                              battery_entity: str | None = None,
+                              expected_hours: int | None = None) -> dict:
     """Il corpo di un bilancio, dalle statistiche orarie GIA' lette e tradotte.
 
     **Pura**: nessuna lettura di rete. `serie` arriva gia' risolta dal
@@ -475,8 +416,10 @@ def build_balance_body(*, series: dict[str, list[dict]],
 
     Il totale di una dimensione e' la somma delle ore CONOSCIUTE (quelle con
     `cambio` non nullo): un'ora mancante non azzera il totale, ma zero ore
-    conosciute tolgono la dimensione per intero -- e' la stessa regola gia'
-    presa da `_difference` per una sola lettura nel giorno.
+    conosciute tolgono la dimensione per intero. **Dal 12/09/2026 la regola
+    non vive piu' qui**: il totale passa da `somma_periodo` del registro
+    (`mind/operations.py`), che rifiuta sotto la copertura minima invece di
+    sommare le poche ore note con la faccia di un totale completo.
 
     Ritorna `{"totali": {dimensione: {"valore","provenienza"}}, "forma":
     {dimensione: [{"ora","valore"}, ...]}, "momenti": {...},
@@ -514,15 +457,50 @@ def build_balance_body(*, series: dict[str, list[dict]],
     totals: dict[str, dict] = {}
     form: dict[str, list] = {}
     points_per_dimension: dict[str, list[dict]] = {}
+    # Le misure intere, non solo il loro numero: servono ai momenti, che
+    # compongono operazioni fra loro e hanno bisogno della copertura.
+    measures: dict[str, object] = {}
 
+    # **Il totale e la forma passano dal REGISTRO** (fetta «le operazioni»,
+    # 12/09/2026): erano un `sum()` e una lista costruiti qui, e adesso sono
+    # `somma_periodo` e `per_ora` -- gli stessi conti, in un posto solo, e la
+    # copertura, che prima non si calcolava affatto, adesso esce nel corpo.
+    #
+    # **Cambia un comportamento, e va dichiarato**: una dimensione con pochi
+    # punti conosciuti veniva sommata lo stesso e il totale aveva la faccia di
+    # uno completo. Adesso, sotto la copertura minima, `somma_periodo` rifiuta
+    # e la dimensione non compare -- che e' la stessa regola gia' applicata
+    # qui a «zero ore conosciute», estesa a «troppo poche».
+    #
+    # **`expected_hours` e' il denominatore della copertura, e senza di lui
+    # quel numero mentirebbe**: Home Assistant OMETTE le ore senza dati dalle
+    # statistiche (fatto gia' scritto piu' sopra, correzione del 27/08/2026),
+    # quindi contare i punti ricevuti darebbe copertura 100% a un giorno che
+    # ne ha consegnate tre. Chi chiama lo sa davvero -- `server.py` lo ricava
+    # da `day_boundaries`, che porta anche le giornate da 23 e 25 ore del
+    # cambio d'ora. Quando non arriva, la copertura parla del campione e il
+    # registro lo dichiara nel suo docstring.
     for dimension in BALANCE_DIRECTIONS:
         points = _dimension_points(series, entity_per_dimension.get(dimension))
-        known = [p["valore"] for p in points if p["valore"] is not None]
-        if not known:
+        total = REGISTRY["somma_periodo"].run(
+            points, unit="kWh", expected_parts=expected_hours)
+        if not total.computable:
             continue
+        profile = REGISTRY["per_ora"].run(
+            points, unit="kWh", expected_parts=expected_hours)
         points_per_dimension[dimension] = points
-        form[dimension] = [{"ora": p["inizio"], "valore": p["valore"]} for p in points]
-        totals[dimension] = {"valore": round(sum(known), 2),
+        measures[dimension] = total
+        form[dimension] = profile.value
+        # **`copertura` viaggia col totale** (correzione della revisione
+        # indipendente, 12/09/2026): prima il registro la calcolava e
+        # `build_balance_body` la buttava, quindi «con la copertura che prima
+        # non usciva» era una frase falsa scritta accanto al codice. La spec
+        # (§9) vuole che ogni misura del resoconto porti anche la sua
+        # copertura; la pagina non la mostra ancora -- quello e' lavoro della
+        # fetta del resoconto -- ma il dato c'e' e si puo' chiedere, che e'
+        # cio' che la quarta fondamenta richiede.
+        totals[dimension] = {"valore": total.value,
+                              "copertura": total.coverage,
                               "provenienza": provenance_per_dimension.get(dimension)}
 
     body: dict = {}
@@ -530,7 +508,7 @@ def build_balance_body(*, series: dict[str, list[dict]],
         body["totali"] = totals
     if form:
         body["forma"] = form
-    moments = _balance_moments(points_per_dimension, totals)
+    moments = _balance_moments(points_per_dimension, measures)
     if moments:
         body["momenti"] = moments
 
@@ -923,17 +901,36 @@ def aggregate_day(*, store, day: str, timezone: str | None,
         points = measurements.get(subject, [])
         if not points:
             continue
-        initial, final = points[0][1], points[-1][1]
+        # **Iniziale, finale e differenza parlano delle STESSE due letture.**
+        # Il registro salta i punti che non si leggono come numero (li conta
+        # sulla copertura, non li inventa): se `valore_iniziale` restasse la
+        # prima riga grezza, un contatore con una lettura illeggibile a bordo
+        # giornata scriverebbe «iniziale: garbage, finale: 115, differenza:
+        # 15» -- tre campi che non stanno insieme. Trovato dalla revisione
+        # indipendente del 12/09/2026. Se NIENTE si legge come numero restano
+        # le righe grezze: sono comunque cio' che si e' visto, e la differenza
+        # sara' assente.
+        readable = [(when, v) for when, v in points if _as_number(v) is not None]
+        edges = readable or points
+        initial, final = edges[0][1], edges[-1][1]
         # Una sola lettura nel giorno non dice quanto e' cambiato: e'
         # "non lo sappiamo" -- la stessa distinzione del punto 2, e il
-        # codice la fa gia' altrove restituendo `None` quando `_difference`
-        # non riesce a leggere un valore come numero (pulizia del secondo
-        # giro di review). Con un solo punto, iniziale e finale sono la
-        # STESSA riga: il conto tornerebbe 0.0, il fatto falso "non e'
-        # cambiato niente" travestito da dato. **La parola resta neutra**
+        # codice la fa gia' altrove restituendo `None` quando un valore non
+        # si legge come numero (pulizia del secondo giro di review). Con un
+        # solo punto, iniziale e finale sono la STESSA riga: il conto
+        # tornerebbe 0.0, il fatto falso "non e' cambiato niente" travestito
+        # da dato. **La parola resta neutra**
         # (26/08/2026): "consumato" sarebbe falso per la meta' dei sensori
         # di un impianto fotovoltaico con accumulo, che PRODUCONO.
-        difference = _difference(initial, final) if len(points) > 1 else None
+        # Il conto passa dal registro: la guardia «un punto solo» vive li'
+        # dentro, con la sua ragione scritta, invece di essere un `if` qui.
+        # L'unita' non e' una dimenticanza: la tabella `cambi` non ce l'ha
+        # (vedi `UNKNOWN_UNIT`). Inventare `kWh` qui sarebbe una
+        # motivazione falsa su un contatore che potrebbe essere in Wh o in m3.
+        rise = REGISTRY["primo_ultimo_differenza"].run(
+            [{"valore": _as_number(v)} for _, v in points],
+            unit=UNKNOWN_UNIT)
+        difference = rise.value if rise.computable else None
         # Stessa regola di `close()` (il nome dal grezzo del giorno, il
         # campo tace quando non c'e'): l'energia nasce da un'altra strada,
         # non da un'altra legge.

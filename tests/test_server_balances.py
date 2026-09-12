@@ -58,6 +58,23 @@ def _punto(cambio, ora=6):
             "minimo": None, "massimo": None, "media": None, "cambio": cambio}
 
 
+def _giornata(cambi: dict[int, float]):
+    """Una giornata INTERA: ventiquattro punti orari, i valori dichiarati alle
+    ore dette e uno zero MISURATO nelle altre -- che e' cio' che un contatore
+    manda per un'ora in cui non e' successo niente.
+
+    Serve dal 12/09/2026, da quando il totale passa da `somma_periodo` del
+    registro (`mind/operations.py`), che rifiuta sotto la copertura minima. Le
+    prove qui sotto difendono l'IDRAULICA -- che un dispositivo con una
+    direzione utile diventi un bilancio, che la lettura sia una sola, che i
+    membri siano quelli giusti -- e un campione da un'ora sola la nascondeva
+    dietro un totale che oggi il registro non firmerebbe. Il caso «poche ore»
+    ha la sua prova dedicata in `test_mind_balance.py`, dove e' il soggetto e
+    non lo sfondo.
+    """
+    return [_punto(cambi.get(ora, 0.0), ora=ora) for ora in range(24)]
+
+
 @pytest.mark.asyncio
 async def test_senza_archivio_casa_niente_bilanci_niente_rete():
     cliente = _ClienteLegami()
@@ -93,7 +110,7 @@ async def test_un_dispositivo_con_una_direzione_utile_diventa_un_bilancio(tmp_pa
                 "device_class": "energy"}])
     try:
         cliente = _ClienteLegami(statistiche={
-            "sensor.energia_prodotta_oggi": [_punto(1.0), _punto(2.0)]})
+            "sensor.energia_prodotta_oggi": _giornata({6: 1.0, 7: 2.0})})
         bilanci, falliti = await build_balances(
             cliente, casa, day=G, timezone="Europe/Rome",
             energy_subjects=["sensor.energia_prodotta_oggi"],
@@ -133,7 +150,7 @@ async def test_il_consumo_da_solo_ora_basta_e_diventa_un_candidato(tmp_path):
                 "device_class": "energy"}])
     try:
         cliente = _ClienteLegami(statistiche={
-            "sensor.energia_consumata_oggi": [_punto(14.72)]})
+            "sensor.energia_consumata_oggi": _giornata({6: 14.72})})
         bilanci, falliti = await build_balances(
             cliente, casa, day=G, timezone="Europe/Rome",
             energy_subjects=["sensor.energia_consumata_oggi"],
@@ -206,7 +223,7 @@ async def test_la_batteria_dello_stesso_dispositivo_entra_nella_lettura(tmp_path
         ])
     try:
         cliente = _ClienteLegami(statistiche={
-            "sensor.energia_prodotta_oggi": [_punto(1.0)],
+            "sensor.energia_prodotta_oggi": _giornata({6: 1.0}),
             "sensor.batteria": [{"inizio": "2026-08-24T06:00:00+00:00",
                                  "fine": "2026-08-24T07:00:00+00:00", "minimo": None,
                                  "massimo": None, "media": 55.0, "cambio": None}],
@@ -261,8 +278,8 @@ async def test_due_dispositivi_candidati_una_connessione_sola(tmp_path):
         ])
     try:
         cliente = _ClienteLegami(statistiche={
-            "sensor.dev1_produzione": [_punto(1.0)],
-            "sensor.dev2_prelievo": [_punto(2.0)],
+            "sensor.dev1_produzione": _giornata({6: 1.0}),
+            "sensor.dev2_prelievo": _giornata({6: 2.0}),
         })
         bilanci, falliti = await build_balances(
             cliente, casa, day=G, timezone="Europe/Rome",
@@ -330,7 +347,7 @@ async def test_i_membri_del_bilancio_sono_solo_i_soggetti_con_una_direzione_vera
         ])
     try:
         cliente = _ClienteLegami(statistiche={
-            "sensor.energia_prodotta_oggi": [_punto(1.0)]})
+            "sensor.energia_prodotta_oggi": _giornata({6: 1.0})})
         bilanci, falliti = await build_balances(
             cliente, casa, day=G, timezone="Europe/Rome",
             energy_subjects=["sensor.energia_prodotta_oggi", "switch.inverter_relay"],

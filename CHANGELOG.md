@@ -1,5 +1,111 @@
 # HIRIS — Changelog
 
+## [3.29.0] — Il registro delle operazioni (2026-09-12)
+
+**HIRIS sapeva fare conti, ma non sapeva DIRE quali sa fare.** La somma di un
+periodo, una quota, la differenza fra due letture: erano funzioni private
+sparse dentro `mind/facts.py`, ciascuna col suo modo di dire «non lo so» e
+nessuna capace di dichiararsi. Da questa versione sono **diciotto operazioni
+in un registro chiuso**, ognuna che dichiara cosa prende, cosa rende e
+**quando rifiuta**.
+
+### Un conto non torna mai un numero nudo
+
+Ogni risultato e' **o una misura, o un rifiuto motivato**. Una misura porta con
+se' il valore, l'unita' e la **copertura** — quanta parte del periodo si e'
+davvero letta. Non sono tre valori accanto: senza unita' e senza copertura
+l'oggetto non nasce affatto, e la prima fondamenta lo chiede alla lettera —
+*«un valore senza la sua unita' e senza il suo significato non e' un oggetto:
+e' un frammento»*.
+
+Un rifiuto porta la sua ragione, sempre. «Non calcolabile» senza il perche' e'
+un silenzio, non una risposta: `NotComputable("")` solleva un errore.
+
+La copertura **arriva nel corpo del bilancio**, accanto a ogni totale: la
+pagina non la mostra ancora, ma il dato c'e' e si puo' chiedere. E si propaga
+componendo: l'autosufficienza di una giornata letta a meta' non si presenta
+piu' come una certezza.
+
+### Il bilancio dell'energia dice di no quando non sa abbastanza
+
+**Cambia un comportamento in produzione, e va detto.** Una dimensione del
+bilancio con poche ore conosciute veniva sommata lo stesso, e il totale aveva
+la faccia di uno completo: «3,0 kWh prodotti» per una giornata di cui HIRIS
+aveva visto un'ottava parte. Adesso, sotto tre quarti di copertura, la
+dimensione **non compare** — la stessa regola gia' applicata a «zero ore
+conosciute», estesa a «troppo poche».
+
+La soglia e' **scelta, non misurata**, e il codice lo dichiara dove vive. La
+distribuzione misurata sulla casa vera l'11/09/2026 e' netta agli estremi: 32
+serie su 35 complete (24 ore su 24), una al 79%, due a zero. Non c'e' nessun
+punto naturale dove tagliare fra il 79% e il 100%, quindi il numero e' una
+decisione — e chiamarla misura sarebbe il difetto che questa fetta esiste per
+non fare.
+
+**Il denominatore di quella copertura e' il periodo, non il campione.** Home
+Assistant *omette* le ore senza dati: contare i punti ricevuti darebbe 100% a
+una giornata che ne ha consegnate tre. Le ore attese arrivano dal chiamante,
+che le sa davvero — comprese le giornate da 23 e 25 ore del cambio d'ora.
+
+### Le sette domande del proprietario sono il cancello
+
+Il registro non si dimensiona a preventivo. Si chiude con una prova: **e'
+abbastanza ricco quando le domande vere del proprietario si esprimono tutte
+senza aggiungerne una**, e nessuna operazione resta orfana. Le domande sono
+sue, raccolte con le sue parole
+(`docs/design/2026-09-11-le-domande-del-proprietario.md`): il riscaldamento e
+chi c'era in casa, la produzione mese per mese, l'irrigazione e il prato, il
+comfort quando conta, le ore irrigate fra maggio e settembre, la CO2 del piano
+terra, i problemi emersi.
+
+Il cancello ha gia' lavorato in tutte e due le direzioni: due operazioni
+stavano per essere cancellate come orfane e sono state salvate da due domande;
+e la domanda sulle ore irrigate — cinque mesi, con ventidue giorni di memoria —
+e' quella che prova che il registro sappia **dire di no** invece di consegnare
+tre settimane spacciate per cinque mesi.
+
+### Una revisione indipendente, e cosa ha trovato
+
+Il registro e' passato per una revisione fatta da un altro modello, con il
+mandato di cercare le motivazioni false e le prove che non possono fallire.
+Ne sono uscite quattro correzioni che valeva la pena fare prima del rilascio:
+
+- **«La CO2 di tutto il piano terra» rispondeva 900 ppm**, sommando 400 e 500.
+  La somma di due concentrazioni non e' una concentrazione: il raggruppamento
+  adesso pretende che chi chiede dica **come** si riduce un gruppo, e nessuna
+  delle due risposte -- sommare o mediare -- e' quella per difetto.
+- **La copertura era calcolata e buttata via**, mentre accanto al codice stava
+  scritto che usciva. Adesso esce davvero.
+- **Il cancello delle domande cercava una stringa nel proprio sorgente**:
+  difendeva «il testo lo nomina», non «una domanda lo esegue». Adesso le
+  domande si eseguono e si guarda quali operazioni hanno girato.
+- **«Il registro sa dire di no» era scritto e non era vero** per il caso che
+  lo motivava: i due rifiuti che la spec chiede -- l'entita' senza statistiche,
+  il periodo fuori dalla memoria -- nessuna operazione li sa produrre, perche'
+  tutti e due chiedono di sapere fin dove arriva l'archivio. E' a backlog col
+  disegno, e il docstring adesso lo dice.
+
+### La pulizia
+
+`_difference` e `_share` sono **cancellate** da `mind/facts.py`, non lasciate
+come seconda copia ne' come rimando: il conto vive in un posto solo. Restano
+le funzioni di confine — l'arrotondamento in kWh e in percento — dove il
+confine e' il loro mestiere.
+
+Il **censimento** (`scripts/censimento.py`) guadagna due controlli eseguibili e
+il modo `--cancello`, che esce diverso da zero quando una regola e' rotta
+invece di limitarsi a elencare. Uno dei due cerca le implementazioni doppie di
+un'operazione: cerca il nome di dominio **e** quello della funzione che la
+esegue, perche' chi riscrive quel conto altrove lo chiamera' in inglese come
+il resto del suo file.
+
+### Quello che ancora non sappiamo dire
+
+L'oggetto di energia scrive tre numeri **senza unita'**, e il corpo tace
+invece di inventarne una: il grezzo non registra `unit_of_measurement`, che
+pure Home Assistant dichiara per ogni entita'. Quel contatore puo' essere in
+Wh, in kWh o in m3. E' a backlog, con la forma della correzione.
+
 ## [3.28.0] — La campagna corre, e il freno guarda la versione (2026-09-11)
 
 **Due attriti visti dal vivo mentre la 3.27.1 girava**, e la domanda del

@@ -1355,7 +1355,12 @@ async def build_balances(
         body = build_balance_body(
             series=series, entity_per_dimension=c["entita_per_dimensione"],
             provenance_per_dimension=c["provenienza_per_dimensione"],
-            battery_entity=c["entita_batteria"])
+            battery_entity=c["entita_batteria"],
+            # Le ore che il giorno DOVEVA avere -- 24, o 23/25 al cambio
+            # d'ora. E' il denominatore della copertura: Home Assistant
+            # omette le ore senza dati, e contare i punti ricevuti darebbe
+            # 100% a una giornata che ne ha consegnate tre.
+            expected_hours=round((a_ts - da_ts) / 3600))
         if not body.get("totali"):
             # **Correzione MEDIA della review (mandato, punto 3,
             # 27/08/2026): una serie vuota dove ci si aspettava un bilancio

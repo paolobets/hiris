@@ -1809,8 +1809,8 @@ def test_i_campi_di_una_dataclass_sono_parole_chiave_che_nessuna_def_dichiara():
     keyword argument 'giorni_conservazione'`.
 
     E' la stessa forma gia' curata per `__init__` e il nome della classe, e
-    per questo il nome chiamato e' la CLASSE. Il perimetro e' misurato: dodici
-    `@dataclass` e 57 campi in tutto il repo, quindi niente rumore.
+    per questo il nome chiamato e' la CLASSE. Il perimetro e' misurato: tredici
+    `@dataclass` e 62 campi in tutto il repo, quindi niente rumore.
 
     Provato per mutazione: tolto il giro su `campi_dataclass` da
     `parametri_def_rinominati`, il primo assert va rosso; tolto da
@@ -1833,16 +1833,21 @@ def test_una_classe_senza_dataclass_non_porta_parole_chiave():
                                              "", coppie=coppie) == {}
 
 
-def test_le_dataclass_del_prodotto_sono_dodici_e_i_campi_cinquantasette():
+def test_le_dataclass_del_prodotto_sono_tredici_e_i_campi_sessantadue():
     """Il perimetro si misura come il contenuto. E' il conto che ha deciso di
     scrivere questa rete invece di dichiararla scoperta, come si e' fatto col
-    criterio largo dell'ottava (1.424 occorrenze): dodici classi si leggono."""
+    criterio largo dell'ottava (1.424 occorrenze): tredici classi si leggono.
+
+    **Dodici e 57 fino all'11/09/2026**; la tredicesima e' `Operation`
+    (`mind/operations.py`, fetta «le operazioni», 12/09/2026) coi suoi cinque
+    campi -- `name`, `inputs`, `returns`, `refuses_when`, `run` -- che sono la
+    dichiarazione di cosa un'operazione prende, rende e rifiuta."""
     classi = campi = 0
     for f in rinomina.file_py(rinomina.ROOT):
         trovate = rinomina.campi_dataclass(rinomina._leggi_grezzo(f))
         classi += len(trovate)
         campi += sum(len(c) for c in trovate.values())
-    assert (classi, campi) == (12, 57), (classi, campi)
+    assert (classi, campi) == (13, 62), (classi, campi)
 
 
 def _repo_finto(tmp_path, prima: dict, dopo: dict) -> None:

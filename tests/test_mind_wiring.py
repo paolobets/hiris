@@ -1412,6 +1412,21 @@ def _casa_con_un_dispositivo(tmp_path, *, fuso="Europe/Rome"):
     return casa
 
 
+def _giornata_bilancio(cambi: dict[int, float]):
+    """Una giornata INTERA di punti orari: i valori alle ore dette, uno zero
+    MISURATO nelle altre.
+
+    Dal 12/09/2026 il totale di una dimensione passa da `somma_periodo` del
+    registro (`mind/operations.py`), che rifiuta sotto la copertura minima. Un
+    solo punto su ventiquattro ore non e' piu' un bilancio, ed e' giusto cosi':
+    queste prove di CABLAGGIO -- che il bilancio nasca, si scriva, si riapplichi
+    alla riparazione -- non devono poggiare su un totale che il registro non
+    firmerebbe. Il caso «poche ore» ha la sua prova dove e' il soggetto,
+    in `test_mind_balance.py`.
+    """
+    return [_punto_bilancio(cambi.get(ora, 0.0), ora=ora) for ora in range(24)]
+
+
 def _punto_bilancio(cambio, ora=6):
     """Un punto orario tradotto, con istanti VERI -- non `"x"`/`"y"`
     (correzione del mandato «il bilancio dell'energia», punto 1, secondo
@@ -1455,8 +1470,8 @@ def test_l_aggregazione_notturna_costruisce_e_scrive_il_bilancio(tmp_path):
         cliente = _ClienteLegami(
             direzioni={"sensor.energia_prodotta_oggi":
                       {"direzione": "produzione", "provenienza": "dichiarata"}},
-            statistiche={"sensor.energia_prodotta_oggi": [
-                _punto_bilancio(1.0), _punto_bilancio(2.0)]})
+            statistiche={"sensor.energia_prodotta_oggi":
+                         _giornata_bilancio({6: 1.0, 7: 2.0})})
         logger_test = logging.getLogger("test_aggrega_ieri_bilancio")
         job = _carica_funzione_innestata("_aggrega_ieri", {
             "app": {"home_space_store": casa, "observations": archivio},
@@ -1551,7 +1566,8 @@ def test_la_riparazione_all_avvio_applica_i_bilanci(tmp_path):
         cliente = _ClienteLegami(
             direzioni={"sensor.energia_prodotta_oggi":
                       {"direzione": "produzione", "provenienza": "dichiarata"}},
-            statistiche={"sensor.energia_prodotta_oggi": [_punto_bilancio(4.0)]})
+            statistiche={"sensor.energia_prodotta_oggi":
+                         _giornata_bilancio({6: 4.0})})
         asyncio.run(server.reaggregate_last_two_days(
             {"home_space_store": casa, "observations": archivio}, ha_client=cliente,
             now=lambda tz: oggi.astimezone(tz)))
@@ -1704,9 +1720,10 @@ def test_la_riparazione_legge_le_statistiche_GIUSTE_per_ciascun_giorno(tmp_path)
                       {"direzione": "produzione", "provenienza": "dichiarata"}},
             statistiche_per_finestra={
                 _finestra_iso(l_altro_ieri): {
-                    "sensor.energia_prodotta_oggi": [_punto_bilancio(3.0)]
+                    "sensor.energia_prodotta_oggi": _giornata_bilancio({6: 3.0})
                 },
-                _finestra_iso(ieri): {"sensor.energia_prodotta_oggi": [_punto_bilancio(7.0)]},
+                _finestra_iso(ieri): {
+                    "sensor.energia_prodotta_oggi": _giornata_bilancio({6: 7.0})},
             })
         asyncio.run(server.reaggregate_last_two_days(
             {"home_space_store": casa, "observations": archivio}, ha_client=cliente,

@@ -635,6 +635,68 @@ def test_un_energia_si_chiude_e_porta_iniziale_finale_e_differenza(archivio):
     assert o["corpo"]["differenza"] == pytest.approx(30.5)
 
 
+def test_iniziale_finale_e_differenza_parlano_delle_STESSE_due_letture(archivio):
+    """**Trovato dalla revisione indipendente del 12/09/2026.**
+
+    Il conto passa dal registro, che salta i punti non leggibili come numero
+    e li conta sulla copertura. Se `valore_iniziale` fosse rimasto la prima
+    riga grezza, un contatore con una lettura sporca a bordo giornata avrebbe
+    scritto «iniziale: `disconnected`, finale: `115.0`, differenza: 15,0» --
+    tre campi che non stanno insieme, e un lettore che non ha modo di
+    accorgersene.
+
+    `disconnected` non e' uno stato «non lo so» del vocabolario (quelli sono
+    gia' filtrati in cima al ciclo, vedi la prova sulle letture
+    `unavailable`): e' un valore qualunque che non si legge come numero.
+
+    Mutazione ESEGUITA: rimettere `initial, final = points[0][1],
+    points[-1][1]` -- rossa, con `valore_iniziale` a `disconnected`.
+    """
+    archivio.record(quando_ts=ts(1), source="entita", subject="sensor.contatore",
+                    da=None, a="disconnected", device_class="energy")
+    archivio.record(quando_ts=ts(6), source="entita", subject="sensor.contatore",
+                    da=None, a="100.0", device_class="energy")
+    archivio.record(quando_ts=ts(23), source="entita", subject="sensor.contatore",
+                    da=None, a="115.0", device_class="energy")
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+
+    corpo = archivio.facts(day=G)[0]["corpo"]
+
+    assert corpo["valore_iniziale"] == "100.0"
+    assert corpo["valore_finale"] == "115.0"
+    assert corpo["differenza"] == pytest.approx(15.0)
+
+
+def test_un_energia_NON_dichiara_un_unita_che_nessuno_ha_registrato(archivio):
+    """**Il numero c'e', l'unita' no -- e il corpo non la inventa.**
+
+    La tabella `cambi` (`mind/store.py`) registra `device_class`, `state_class`,
+    `source_type`, `domain`, `title`, `friendly_name`, e **non** l'unita' di
+    misura, che pure Home Assistant dichiara per ogni entita'. Quel contatore
+    puo' essere in Wh, in kWh o in m3: scrivere `kWh` nel corpo sarebbe un
+    fatto inventato, ed e' il difetto piu' caro di questo progetto -- la
+    ragione plausibile al posto del «non lo so». Finche' il grezzo non porta
+    l'unita' (a backlog, 12/09/2026), il corpo **tace**, che e' la stessa
+    regola gia' applicata a `nome` e a `classe` qui sopra.
+
+    Mutazione che la uccide: aggiungere `energy_body["unita"] = "kWh"` in
+    `aggregate_day`. Serve perche' la mutazione gemella -- passare `unit="kWh"`
+    invece di `UNKNOWN_UNIT` al registro -- **esce VERDE**: quell'unita' non
+    lascia traccia nel corpo, quindi nessuna prova poteva vederla. Questa
+    difende cio' che si vede davvero, cioe' il corpo scritto.
+    """
+    archivio.record(quando_ts=ts(1), source="entita", subject="sensor.acqua",
+                    da=None, a="100.0", device_class="energy")
+    archivio.record(quando_ts=ts(12), source="entita", subject="sensor.acqua",
+                    da=None, a="115.0", device_class="energy")
+    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
+
+    corpo = archivio.facts(day=G)[0]["corpo"]
+
+    assert corpo["differenza"] == pytest.approx(15.0)
+    assert "unita" not in corpo
+
+
 # -- Punto 7: un sensor numerico di monossido non genera un guasto perenne --
 
 def test_un_sensore_co_numerico_non_genera_un_oggetto_di_sicurezza(archivio):

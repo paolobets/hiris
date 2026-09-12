@@ -50,7 +50,13 @@ def test_le_sette_dimensioni_note_diventano_totali_e_forma():
 
     **`forma[d]` porta l'ORA di ogni punto** (correzione MEDIA, punto 2 del
     mandato): non piu' `[1.0, 2.0]`, ma `[{"ora","valore"}, ...]` -- la
-    chiave nuova che la pagina deve conoscere e' `ora`."""
+    chiave nuova che la pagina deve conoscere e' `ora`.
+
+    **`copertura` e' la terza chiave del totale, dal 12/09/2026**: il registro
+    la calcola e da questa versione arriva nel corpo invece di essere buttata.
+    Qui vale 1,0 perche' non si dichiarano ore attese, quindi la copertura
+    parla del campione -- e la prova lo asserisce ESATTO, non con un `in`: una
+    chiave in piu' comparsa per sbaglio deve far arrossire."""
     serie = {f"sensor.{d}": [_punto(6, 1.0), _punto(7, 2.0)] for d in BALANCE_DIRECTIONS}
     entita = {d: f"sensor.{d}" for d in BALANCE_DIRECTIONS}
     provenienza = {d: "dichiarata" for d in BALANCE_DIRECTIONS}
@@ -62,7 +68,8 @@ def test_le_sette_dimensioni_note_diventano_totali_e_forma():
         "produzione", "autoconsumo", "immissione", "prelievo", "carica",
         "scarica", "consumo"}
     for d in BALANCE_DIRECTIONS:
-        assert corpo["totali"][d] == {"valore": 3.0, "provenienza": "dichiarata"}
+        assert corpo["totali"][d] == {"valore": 3.0, "copertura": 1.0,
+                                      "provenienza": "dichiarata"}
         assert corpo["forma"][d] == [
             {"ora": "2026-08-24T06:00:00+00:00", "valore": 1.0},
             {"ora": "2026-08-24T07:00:00+00:00", "valore": 2.0},
@@ -96,23 +103,132 @@ def test_zero_ore_conosciute_toglie_la_dimensione_per_intero():
     assert corpo == {}
 
 
+def _giorno_intero(valori: dict[int, float | None]):
+    """Ventiquattro punti orari: i valori dichiarati alle ore dette, uno zero
+    MISURATO nelle altre -- cio' che un contatore manda per un'ora tranquilla.
+    Un `None` esplicito resta un'ora SENZA dato, che e' un'altra cosa."""
+    return [_punto(ora, valori.get(ora, 0.0)) for ora in range(24)]
+
+
 def test_un_ora_mancante_non_azzera_il_totale():
-    """Mutazione ESEGUITA: in `build_balance_body`, `conosciuti = [p[
-    "valore"] for p in punti]` (senza filtrare i `None`) al posto del
-    filtro vero -- arrossisce, perche' `sum([1.0, None, 3.0])` solleva
-    `TypeError` invece di tornare 4.0. Ripristinato subito dopo (verificato
-    a mano, non lasciato nel codice)."""
-    serie = {"sensor.produzione": [_punto(6, 1.0), _punto(7, None), _punto(8, 3.0)]}
+    """Mutazione ESEGUITA quando il filtro viveva in `build_balance_body`:
+    `conosciuti = [p["valore"] for p in punti]` senza scartare i `None` --
+    `sum([1.0, None, 3.0])` solleva `TypeError` invece di tornare 4.0. Oggi
+    quel filtro vive in `mind/operations._known_points` e la mutazione
+    equivalente e' li' (`known = [p for p in points if isinstance(p, dict)]`,
+    eseguita il 12/09/2026: rossa).
+
+    **Riscritta il 12/09/2026**: il conto passa da `somma_periodo` del
+    registro, che rifiuta sotto la copertura minima. La versione precedente
+    dava tre ore in tutto, una vuota -- una copertura del 67% che oggi e' un
+    rifiuto giusto, e la prova non parlava piu' della sua regola. Adesso la
+    giornata e' intera e l'ora mancante e' una su ventiquattro: il totale
+    delle altre ventitre esce, che e' esattamente cio' che il nome promette.
+    """
+    serie = {"sensor.produzione": _giorno_intero({6: 1.0, 7: None, 8: 3.0})}
     corpo = build_balance_body(
         series=serie, entity_per_dimension={"produzione": "sensor.produzione"},
-        provenance_per_dimension={"produzione": "dichiarata"})
+        provenance_per_dimension={"produzione": "dichiarata"},
+        expected_hours=24)
 
     assert corpo["totali"]["produzione"]["valore"] == 4.0
-    assert corpo["forma"]["produzione"] == [
+    assert corpo["forma"]["produzione"][6:9] == [
         {"ora": "2026-08-24T06:00:00+00:00", "valore": 1.0},
         {"ora": "2026-08-24T07:00:00+00:00", "valore": None},
         {"ora": "2026-08-24T08:00:00+00:00", "valore": 3.0},
     ]
+
+
+def test_la_copertura_del_totale_ARRIVA_nel_corpo_col_suo_numero_vero():
+    """**La correzione della revisione indipendente del 12/09/2026.**
+
+    Il registro calcolava la copertura, `build_balance_body` la buttava via, e
+    accanto al codice stava scritto «con la copertura che prima non usciva»:
+    una ragione smentita dal file che la ospitava. Adesso il numero arriva nel
+    corpo, e non e' un 1,0 di cortesia -- venti ore conosciute su ventiquattro
+    fanno 0,833.
+
+    La pagina non lo mostra ancora (e' lavoro della fetta del resoconto): il
+    punto qui e' che il dato **esista e si possa chiedere**, che e' cio' che
+    la quarta fondamenta richiede.
+
+    Mutazione ESEGUITA: togliere `"copertura": total.coverage` dal totale --
+    rossa.
+    """
+    valori = {ora: 1.0 for ora in range(20)}
+    valori.update({20: None, 21: None, 22: None, 23: None})
+    serie = {"sensor.produzione": _giorno_intero(valori)}
+
+    corpo = build_balance_body(
+        series=serie, entity_per_dimension={"produzione": "sensor.produzione"},
+        provenance_per_dimension={"produzione": "dichiarata"},
+        expected_hours=24)
+
+    assert corpo["totali"]["produzione"]["valore"] == 20.0
+    assert corpo["totali"]["produzione"]["copertura"] == pytest.approx(20 / 24)
+
+
+def test_la_quota_EREDITA_la_copertura_dei_totali_da_cui_nasce():
+    """Una quota non e' piu' solida del suo termine piu' debole.
+
+    Prima del 12/09/2026 `_balance_moments` passava a `quota` due numeri
+    spogliati (`totali[...]["valore"]`), e la quota rispondeva sempre con
+    copertura piena: la pagina del bilancio poteva mostrare
+    un'autosufficienza calcolata su mezza giornata con la faccia di una
+    calcolata su tutta. Adesso i momenti compongono operazioni --
+    `quota(differenza_fra(consumo, prelievo), consumo)`, la ricetta della spec
+    §7 -- e la copertura viaggia con loro.
+
+    Qui il consumo e' noto per 18 ore su 24 e il prelievo per tutte e 24: la
+    quota esce comunque (il suo valore e' un fatto), e il corpo dichiara sul
+    consumo la copertura vera.
+
+    Mutazione ESEGUITA: rimettere `.value` nei due ingressi di `quota` --
+    `TypeError`, perche' l'operazione oggi vuole risultati.
+    """
+    consumo = {ora: 1.0 for ora in range(18)}
+    consumo.update({ora: None for ora in range(18, 24)})
+    serie = {"sensor.consumo": _giorno_intero(consumo),
+             "sensor.prelievo": _giorno_intero({0: 2.0})}
+
+    corpo = build_balance_body(
+        series=serie,
+        entity_per_dimension={"consumo": "sensor.consumo",
+                              "prelievo": "sensor.prelievo"},
+        provenance_per_dimension={"consumo": "dichiarata",
+                                  "prelievo": "dichiarata"},
+        expected_hours=24)
+
+    assert corpo["momenti"]["quota_autosufficienza"] == pytest.approx(16 / 18, abs=1e-3)
+    assert corpo["totali"]["consumo"]["copertura"] == pytest.approx(18 / 24)
+
+
+def test_tre_ore_su_ventiquattro_NON_sono_un_totale_del_giorno():
+    """**Il comportamento cambiato dalla fetta delle operazioni, dichiarato.**
+
+    Prima del 12/09/2026 tre ore conosciute su ventiquattro producevano un
+    `totali.produzione` indistinguibile da uno completo: il proprietario
+    leggeva «3,0 kWh prodotti» per una giornata di cui HIRIS aveva visto
+    un'ottava parte. Adesso `somma_periodo` rifiuta e la dimensione non
+    compare -- la stessa regola gia' applicata a «zero ore conosciute»,
+    estesa a «troppo poche».
+
+    **Le ore che Home Assistant NON manda sono il punto**: la serie qui ne ha
+    tre, tutte con un valore, e contando solo i punti ricevuti la copertura
+    direbbe 100%. E' `expected_hours` a dire quante ne doveva avere.
+
+    Mutazione ESEGUITA: togliere `expected_parts=expected_hours` dalla
+    chiamata a `somma_periodo` in `build_balance_body` -- il totale torna, con
+    la faccia di uno completo, e questa prova arrossisce.
+    """
+    serie = {"sensor.produzione": [_punto(6, 1.0), _punto(7, 1.0), _punto(8, 1.0)]}
+
+    corpo = build_balance_body(
+        series=serie, entity_per_dimension={"produzione": "sensor.produzione"},
+        provenance_per_dimension={"produzione": "dichiarata"},
+        expected_hours=24)
+
+    assert corpo == {}
 
 
 def test_forma_porta_l_ora_vera_anche_su_una_giornata_bucata():
