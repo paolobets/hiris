@@ -2000,27 +2000,22 @@ class HAClient:
             return {"errore": "risposta in forma inattesa"}
         return {"traccia": result}
 
-    # Le sette direzioni, dedotte da `translation_key` -- tabella ESPLICITA,
-    # non una regex sui nomi. Misurata sulla casa vera il 27/08/2026,
-    # sull'integrazione `zcsazzurro`: quattordici chiavi, sette direzioni,
-    # ciascuna con la coppia energia/potenza. **Nessun suffisso `_today` sul
-    # gemello di potenza** -- trappola misurata, non dedotta dal pattern
-    # dell'energia (`power_generating`, non `power_generating_today`). E'
-    # un ARRICCHIMENTO specifico di questa integrazione: su un impianto con
-    # un altro inverter nessuna di queste chiavi comparira' mai, e non deve
-    # rompere niente -- `energy_directions`, sotto, lo tratta come «non
-    # trovato», non come un guasto.
-    _DIRECTION_BY_TRANSLATION_KEY: ClassVar[dict[str, str]] = {
-        "energy_generating_today": "produzione", "power_generating": "produzione",
-        "energy_importing_today": "prelievo", "power_importing": "prelievo",
-        "energy_exporting_today": "immissione", "power_exporting": "immissione",
-        "energy_charging_today": "carica", "power_charging": "carica",
-        "energy_discharging_today": "scarica", "power_discharging": "scarica",
-        "energy_consuming_today": "consumo", "power_consuming": "consumo",
-        "energy_autoconsuming_today": "autoconsumo", "power_autoconsuming": "autoconsumo",
-    }
+    # Le quattordici righe che stavano QUI sono uscite il 12/09/2026 (fetta
+    # «il sapere e le ricette»): erano una tabella `translation_key ->
+    # direzione` scritta nel codice, e per correggerne una serviva un
+    # rilascio. Adesso sono righe del sapere (`mind/seed.py`), col loro
+    # soggetto (l'integrazione `zcsazzurro`), la loro provenienza (`dedotto`)
+    # e le loro prove -- si leggono, si correggono a caldo, e si esportano a
+    # chiunque abbia lo stesso inverter.
+    #
+    # **Questo lettore non sa piu' cosa voglia dire `energy_generating_today`,
+    # ed e' giusto cosi'**: sa leggere il registro delle entita' di Home
+    # Assistant, non sa che quella chiave significhi «produzione». Quel salto
+    # e' un giudizio, e arriva da fuori come parametro -- la stessa disciplina
+    # con cui `mind/operations.episodio` riceve `is_on` invece di sapere quali
+    # stati siano un riposo.
 
-    async def energy_directions(self) -> dict:
+    async def energy_directions(self, *, direction_by_translation_key: dict) -> dict:
         """Le direzioni dell'energia: chi produce, chi preleva, chi immette,
         chi carica, chi scarica -- lette da dove Home Assistant le dichiara,
         mai indovinate dal nome del sensore (`CLAUDE.md`, «su Home Assistant
@@ -2032,10 +2027,19 @@ class HAClient:
           dall'utente, vale per qualunque integrazione. Copre, su questa
           casa, 6 delle 17 entita' dell'inverter -- **vince sempre**.
         - **`config/entity_registry/list`**, campo `translation_key`:
-          **dedotta**, scritta dall'integrazione (`_DIREZIONE_DA_TRANSLATION_
-          KEY` sopra). Copre tutte le direzioni, ma solo su questa
-          integrazione (`zcsazzurro`) -- un altro inverter usera' chiavi sue.
-          Si applica SOLO dove la dichiarata tace.
+          **dedotta**, scritta dall'integrazione e interpretata con la mappa
+          che il chiamante consegna (`direction_by_translation_key`, che
+          viene dal sapere -- `mind/seed.directions_by_translation_key`).
+          Copre tutte le direzioni, ma solo sulle integrazioni di cui il
+          sapere ha righe -- un altro inverter usera' chiavi sue, e finche'
+          nessuno gliele insegna quella mappa per lui e' vuota. Si applica
+          SOLO dove la dichiarata tace.
+
+        **La mappa e' obbligatoria, e un dizionario vuoto e' una risposta
+        legittima.** Non ha un valore per difetto proprio perche' un difetto
+        silenzioso qui vorrebbe dire perdere la meta' dedotta senza che
+        nessuno se ne accorga: chi chiama deve dire cosa sa, anche quando non
+        sa niente.
 
         Torna `entity_id -> {"direzione": ..., "provenienza": "dichiarata" |
         "dedotta"}`.
@@ -2096,7 +2100,8 @@ class HAClient:
             eid = row.get("entity_id")
             if not isinstance(eid, str) or eid in by_entity:
                 continue  # la dichiarata vince sempre: la dedotta tace qui
-            direction = self._DIRECTION_BY_TRANSLATION_KEY.get(row.get("translation_key"))
+            direction = (direction_by_translation_key or {}).get(
+                row.get("translation_key"))
             if direction:
                 by_entity[eid] = {"direzione": direction, "provenienza": "dedotta"}
 

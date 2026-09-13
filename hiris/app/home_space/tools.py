@@ -1543,9 +1543,14 @@ class ToolDispatcher:
                  cache=None, actuator=None, lookup_cache: LookupCache | None = None,
                  ha=None, registry=None, agenda=None, workshop=None,
                  exchange: str | None = None, journal=None,
-                 translations=None) -> None:
+                 translations=None, knowledge=None) -> None:
         self._home_space = home_space_store
         self._memory = memory_store
+        # Il sapere (`mind/knowledge.py`): cio' che HIRIS ha capito, con la
+        # provenienza. Oggi ne esce il SIGNIFICATO della classe di un'entita'
+        # sul dettaglio di `guarda` -- la porta che rende interrogabile
+        # l'archivio importato dalla fetta 4. `None` e' legittimo.
+        self._knowledge = knowledge
         # Lo specchio dello stato vivo. E' la STESSA `entity_cache` da cui
         # il nucleo prende "notevole adesso": una sola fonte, un solo
         # specchio. La cache resta in SOLA LETTURA anche adesso che `execute`
@@ -2063,7 +2068,14 @@ class ToolDispatcher:
                                       # una lettura, e non deve fallire
                                       # perche' l'azione non e' cablata.
                                       registry=self._registry,
-                                      translations=translations)
+                                      translations=translations,
+                                      # Il sapere: da li' `guarda` dice cosa
+                                      # significa la classe di un'entita'.
+                                      # `None` e' legittimo come per gli
+                                      # altri archivi -- il dispatcher e'
+                                      # SEMPRE costruibile, e senza sapere il
+                                      # dettaglio tace su quel campo.
+                                      knowledge=self._knowledge)
         # Senza inventario leggibile ogni `stato: None` sarebbe ambiguo fra
         # «l'entita' non ha stato» e «non ho potuto guardare»: si dichiara.
         # Fix E1-③: `letto` (la lettura di QUESTA chiamata e' andata a buon

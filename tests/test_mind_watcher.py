@@ -110,7 +110,8 @@ def test_una_cosa_dentro_lo_scope_si_annota(coppia):
                                   "subject": "climate.camera_t",
                                   "da": "off", "a": "heat", "device_class": None,
                                   "state_class": None, "source_type": None,
-                                  "friendly_name": None}]
+                                  "friendly_name": None,
+                                  "attributes": None}]
 
 
 # -- Correzione 0: il grezzo porta le tre classi che il pavimento legge -----

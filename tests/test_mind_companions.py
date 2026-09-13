@@ -98,6 +98,8 @@ class _ClienteLegami:
                 ) = None,
                 ):
         self._mappa = mappa or {}
+        #: Le mappe con cui `energy_directions` e' stata chiamata, in ordine.
+        self.direzioni_mappe: list[dict] = []
         self._default = {} if default is None else default
         self._direzioni = direzioni or {}
         self._direzioni_errore = direzioni_errore
@@ -160,7 +162,16 @@ class _ClienteLegami:
             return {"errore": f"tipo non riconosciuto da Home Assistant: {item_type}"}
         return self._mappa.get(identifier, self._default)
 
-    async def energy_directions(self):
+    async def energy_directions(self, *, direction_by_translation_key):
+        # Il parametro e' OBBLIGATORIO anche nella finta, e la finta se lo
+        # ANNOTA: dal 12/09/2026 la mappa `translation_key -> direzione` non
+        # vive piu' dentro `HAClient`, arriva dal sapere -- e una finta che
+        # accettasse la chiamata senza il parametro lascerebbe passare un
+        # chiamante che ha smesso di leggerlo (memoria
+        # `hiris_runner_signature_contract`: un kwarg nuovo lo accettano
+        # TUTTI i finti di quella firma, o la prova difende un contratto che
+        # in produzione non esiste piu').
+        self.direzioni_mappe.append(dict(direction_by_translation_key or {}))
         self.direzioni_chieste += 1
         if self._direzioni_errore is not None:
             return {"errore": self._direzioni_errore}

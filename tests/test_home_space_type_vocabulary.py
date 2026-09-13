@@ -525,6 +525,18 @@ _ECCEZIONI_MOTIVATE: dict[tuple[str, tuple[str, ...]], str] = {
         "significherebbe far dipendere il significato di un tipo dal protocollo "
         "con cui lo si interroga. Un dominio che non e' qui dentro non ha una "
         "configurazione da chiedere, e il codice non se ne inventa una.",
+    ("mind/seed.py", ("climate", "humidifier", "water_heater")):
+        "`seed._WANTED_ATTRIBUTES`: non dice cosa un tipo E', dice **quali "
+        "suoi ATTRIBUTI valga la pena tenere nel grezzo** (spec §5.4). E' un "
+        "giudizio di natura diversa da quelli del vocabolario -- non «a quale "
+        "gamba serve», non «quando ha finito», ma «cosa di lui va scritto per "
+        "poter rispondere dopo». Il vocabolario dei tipi risponde alla prima "
+        "domanda; questa tabella alla seconda, e sono indipendenti: un tipo "
+        "puo' servire a una gamba senza avere nessun attributo utile, e "
+        "viceversa. **E' anche destinata a non restare nel codice**: dalla "
+        "fetta 4 queste righe sono un SEME del sapere (`mind/knowledge.py`), "
+        "e la casa ci scrive sopra -- il giorno in cui una ricetta le decide "
+        "da sola, questo letterale sparisce e questa riga con lui.",
     ("mind/facts.py", ("device_tracker", "person")):
         "`facts.genre_for`: scritto in linea dentro la condizione, ed e' il "
         "GENERE dell'oggetto, non una delle tre metriche di questa fetta. Il "

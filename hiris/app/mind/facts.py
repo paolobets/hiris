@@ -43,6 +43,7 @@ sostituisce: lo **sorveglia**, ed e' lavoro delle fette 3 e 4.
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta
 
 from ..home_space.historian import home_space_zone
@@ -53,6 +54,7 @@ from ..home_space.type_vocabulary import (
     unknown_states,
 )
 from .operations import REGISTRY, UNKNOWN_UNIT
+from .recipes import Recipe, balance_recipe
 
 # `aggregate_day` e' SINCRONA: non fa nessuna lettura di rete. I comprimari
 # arrivano gia' risolti dal chiamante (vedi il Task 6), proprio perche' una
@@ -333,18 +335,22 @@ def _dimension_points(series: dict[str, list[dict]], subject: str | None) -> lis
 
 
 def _balance_moments(points_per_dimension: dict[str, list[dict]],
-                      measures: dict[str, object]) -> dict:
-    """I momenti derivati dalla forma e dalle misure -- vedi
+                      esiti: dict) -> dict:
+    """I momenti derivati dalla forma e dagli esiti della ricetta -- vedi
     `build_balance_body` per il contratto completo. Separata per
     restare leggibile: ogni momento e' un piccolo giudizio a se'.
 
-    **Prende le MISURE del registro, non i numeri gia' spogliati** (correzione
-    della revisione indipendente, 12/09/2026): le quote si calcolano
-    componendo operazioni -- `quota(differenza_fra(consumo, prelievo),
-    consumo)`, che e' letteralmente la ricetta della spec §7 -- e cosi' la
-    copertura dei totali arriva fino alla quota invece di perdersi. Prima di
-    questa correzione una quota calcolata su un totale coperto all'80%
-    usciva dichiarando copertura piena.
+    **Le due quote NON si calcolano qui**: sono passi della ricetta
+    (`mind/seed.balance_recipe`), e qui si leggono i loro esiti. Ricalcolarle
+    sarebbe una seconda copia dello stesso conto, ed e' esattamente cio' che
+    questa fetta esiste per togliere -- la prova storica e' il 27/08/2026,
+    quando quel conto viveva solo qui e per correggerlo e' servito un
+    rilascio.
+
+    Cio' che resta qui e' cio' che **non e' un'operazione del registro**: il
+    primo e l'ultimo istante di produzione, il picco, la fine della scarica.
+    Sono letture della forma, non conti -- e inventare un'operazione per
+    ciascuna sarebbe il modo in cui un registro «chiuso» smette di esserlo.
     """
     moments: dict = {}
 
@@ -361,12 +367,9 @@ def _balance_moments(points_per_dimension: dict[str, list[dict]],
     if active_scarica:
         moments["fine_scarica_batteria"] = active_scarica[-1]["fine"]
 
-    autoconsumo = measures.get("autoconsumo")
-    produzione = measures.get("produzione")
-    if autoconsumo is not None and produzione is not None:
-        autoconsumo_share = REGISTRY["quota"].run(autoconsumo, produzione)
-        if autoconsumo_share.computable:
-            moments["quota_autoconsumo"] = autoconsumo_share.value
+    autoconsumo_share = esiti.get("quota_autoconsumo")
+    if autoconsumo_share is not None and autoconsumo_share.computable:
+        moments["quota_autoconsumo"] = autoconsumo_share.value
 
     # **Correzione ALTO della review (mandato «il bilancio dell'energia»,
     # punto 1, 27/08/2026): NON PIU' `autoconsumo/(autoconsumo+prelievo)`.**
@@ -382,13 +385,9 @@ def _balance_moments(points_per_dimension: dict[str, list[dict]],
     # 14,72, prelievo 0,22 -> 0,985 (il numero vero; la vecchia formula
     # diceva 0,964). Senza il consumo misurato, niente quota: mai un
     # numero dedotto al posto di uno letto.
-    consumo = measures.get("consumo")
-    prelievo = measures.get("prelievo")
-    if consumo is not None and prelievo is not None:
-        self_produced = REGISTRY["differenza_fra"].run(consumo, prelievo)
-        self_sufficiency_share = REGISTRY["quota"].run(self_produced, consumo)
-        if self_sufficiency_share.computable:
-            moments["quota_autosufficienza"] = self_sufficiency_share.value
+    self_sufficiency_share = esiti.get("quota_autosufficienza")
+    if self_sufficiency_share is not None and self_sufficiency_share.computable:
+        moments["quota_autosufficienza"] = self_sufficiency_share.value
 
     return moments
 
@@ -480,15 +479,39 @@ def build_balance_body(*, series: dict[str, list[dict]],
     # da `day_boundaries`, che porta anche le giornate da 23 e 25 ore del
     # cambio d'ora. Quando non arriva, la copertura parla del campione e il
     # registro lo dichiara nel suo docstring.
+    # **Il conto passa da una RICETTA** (fetta «il sapere e le ricette»,
+    # 12/09/2026): non e' piu' un ciclo scritto qui, e' una sequenza di passi
+    # con nomi che si legge, si valida e si rifiuta prima di eseguirla
+    # (`mind/recipes.py`). La ricetta la compone `mind/seed.balance_recipe`
+    # dalla mappa direzione -> entita' che il chiamante ha gia' risolto.
+    #
+    # **Perche' conta, con una prova storica.** Il 27/08/2026 la quota di
+    # autosufficienza era sbagliata: `autoconsumo/(autoconsumo + prelievo)`
+    # vale solo su certe integrazioni -- misurato 0,964 invece di 0,985. Era
+    # una ricetta specifica di un'integrazione scritta dentro questo motore, e
+    # per correggerla e' servito un rilascio.
+    ricetta = Recipe(balance_recipe(entity_per_dimension,
+                                    order=BALANCE_DIRECTIONS,
+                                    expected_hours=expected_hours))
+    # **Nessun passo = nessun bilancio, non un'eccezione** (revisione
+    # indipendente, 13/09/2026). Un dispositivo senza nemmeno una direzione
+    # utile produce una ricetta vuota, e una ricetta vuota `run()` la rifiuta
+    # sollevando -- giustamente, perche' per lei e' una ricetta che nessuno ha
+    # finito di scrivere. Ma questa funzione promette un dizionario vuoto in
+    # quel caso, e il suo chiamante cicla sui dispositivi senza `try`: un solo
+    # dispositivo sfortunato avrebbe fatto saltare i bilanci di tutti gli altri.
+    if not ricetta.steps:
+        return {}
+    punti_per_entita = {e: _dimension_points(series, e) for e in ricetta.entities()}
+    esiti = ricetta.run(series=punti_per_entita)
+
     for dimension in BALANCE_DIRECTIONS:
-        points = _dimension_points(series, entity_per_dimension.get(dimension))
-        total = REGISTRY["somma_periodo"].run(
-            points, unit="kWh", expected_parts=expected_hours)
-        if not total.computable:
+        total = esiti.get(dimension)
+        if total is None or not total.computable:
             continue
-        profile = REGISTRY["per_ora"].run(
-            points, unit="kWh", expected_parts=expected_hours)
-        points_per_dimension[dimension] = points
+        profile = esiti[f"forma_{dimension}"]
+        points_per_dimension[dimension] = punti_per_entita[
+            entity_per_dimension[dimension]]
         measures[dimension] = total
         form[dimension] = profile.value
         # **`copertura` viaggia col totale** (correzione della revisione
@@ -508,7 +531,7 @@ def build_balance_body(*, series: dict[str, list[dict]],
         body["totali"] = totals
     if form:
         body["forma"] = form
-    moments = _balance_moments(points_per_dimension, measures)
+    moments = _balance_moments(points_per_dimension, esiti)
     if moments:
         body["momenti"] = moments
 
@@ -731,6 +754,14 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     # protagonista, che a meta' del ciclo non e' ancora noto.
     episodes: list[dict] = []
     energy_subjects: set[str] = set()
+    # I cambi di ATTRIBUTO del giorno, per soggetto: `[(istante, {nome:
+    # valore}), ...]` in ordine cronologico. Sono le righe che l'osservatore
+    # scrive quando cambia un attributo che il sapere ha dichiarato utile
+    # (`mind/watcher.py`, spec §5.4) -- e senza di loro l'esempio fondativo
+    # del cervello non e' rispondibile: lo stato di un termostato e' `heat` e
+    # resta `heat`, mentre `hvac_action` dice quando la casa e' arrivata in
+    # temperatura.
+    attribute_changes: dict[str, list[tuple[float, dict]]] = {}
 
     def close(subject: str, when: float | None) -> None:
         o = open_episodes.pop(subject, None)
@@ -775,6 +806,23 @@ def aggregate_day(*, store, day: str, timezone: str | None,
             base_body["dominio"] = o["dominio"]
         if o.get("titolo"):
             base_body["titolo"] = o["titolo"]
+        # **Cosa hanno fatto gli attributi MENTRE l'episodio durava.** E'
+        # il lettore della colonna `attributes` del grezzo, e la ragione per
+        # cui quella colonna esiste: un episodio di riscaldamento che porta
+        # `hvac_action: heating -> idle alle 16:30` risponde alla domanda
+        # fondativa del cervello, che prima di oggi non era rispondibile.
+        #
+        # Dentro la finestra dell'episodio, estremi compresi a sinistra e
+        # esclusi a destra -- la stessa convenzione di
+        # `mind/operations.Period.contains`, una sola in tutto il prodotto.
+        # Un episodio ancora aperto (`when is None`) prende tutto cio' che
+        # viene dopo il suo inizio.
+        during = [(instant, values)
+                  for instant, values in attribute_changes.get(subject, [])
+                  if instant >= o["inizio"] and (when is None or instant < when)]
+        if during:
+            base_body["attributi"] = [
+                {"quando_ts": instant, "valori": values} for instant, values in during]
         # `comparso_ts`: SOLO una voce di log lo porta (`_reading_row`
         # rilegge `None` per un `problema:`/`integrazione:`/`automazione:`,
         # che non lo dichiarano mai). Non e' `inizio`: `inizio` e' quando NOI l'abbiamo
@@ -792,6 +840,22 @@ def aggregate_day(*, store, day: str, timezone: str | None,
 
     for r in rows:
         subject = r["soggetto"]
+        # **La riga di solo attributo si raccoglie PRIMA di ogni giudizio di
+        # genere**, e poi non prosegue: non apre e non chiude niente -- lo
+        # stato di partenza e quello d'arrivo sono lo stesso -- ma dice cosa
+        # ha fatto la grandezza mentre l'episodio durava (spec §5.4). Senza
+        # questa raccolta la colonna `attributes` del grezzo sarebbe scritta
+        # e non letta da nessuno.
+        if r["da"] == r["a"] and r.get("attributes"):
+            try:
+                values = json.loads(r["attributes"])
+            except (TypeError, ValueError):
+                # Una riga vecchia o storta non ferma la giornata: si salta.
+                values = None
+            if isinstance(values, dict) and values:
+                attribute_changes.setdefault(subject, []).append(
+                    (r["quando_ts"], values))
+            continue
         genre = genre_for(subject, _reading_aspect(subject, r))
         if genre is None:
             continue

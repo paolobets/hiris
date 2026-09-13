@@ -35,6 +35,7 @@ def test_un_cambio_si_rilegge_intero(archivio):
                       "soggetto": "climate.camera_t", "da": "off", "a": "heat",
                       "device_class": None, "state_class": None, "source_type": None,
                       "domain": None, "title": None, "friendly_name": None,
+                      "attributes": None,
                       "first_occurred": None}]
 
 
@@ -750,5 +751,46 @@ def test_migrazione_6_aggiunge_la_versione_a_un_archivio_gia_scritto(tmp_path):
         esiti = archivio.recent_attempts()
         assert [e["versione"] for e in esiti] == ["3.27.1", None]
         assert esiti[1]["dettaglio"] == "di prima"
+    finally:
+        archivio.close()
+
+
+def test_una_base_dati_VECCHIA_prende_la_colonna_degli_attributi(tmp_path):
+    """**La migrazione v6 -> v7, provata su una base dati vecchia vera.**
+
+    Una nuova nasce gia' completa (`init_schema` timbra la versione e non
+    esegue nessuna migrazione): provare solo quella lascerebbe la migrazione
+    non esercitata, ed e' il caso che gira sull'installazione del
+    proprietario -- dove `osservazioni.db` esiste da settimane.
+
+    Si controlla anche che la riga scritta PRIMA resti leggibile e legga
+    `None`: e' vero, quella riga quegli attributi non li aveva.
+
+    Mutazione ESEGUITA: togliere `7: _migration_7` dalla mappa delle
+    migrazioni -- rossa, `KeyError: 'attributes'` alla rilettura.
+    """
+    from hiris.app.storage import connect
+
+    db = str(tmp_path / "vecchia.db")
+    vecchia = connect(db)
+    vecchia.executescript("""
+CREATE TABLE cambi (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, quando_ts REAL NOT NULL,
+    fonte TEXT NOT NULL CHECK(fonte IN ('entita','sistema')), soggetto TEXT NOT NULL,
+    da TEXT, a TEXT, device_class TEXT, state_class TEXT, source_type TEXT,
+    domain TEXT, title TEXT, first_occurred TEXT, friendly_name TEXT);
+""")
+    vecchia.execute("INSERT INTO cambi(quando_ts,fonte,soggetto,da,a) "
+                    "VALUES(1,'entita','climate.x','off','heat')")
+    vecchia.execute("PRAGMA user_version = 6")
+    vecchia.commit()
+    vecchia.close()
+
+    archivio = ObservationsStore(db)
+    try:
+        [riga] = archivio.readings(from_ts=0, to_ts=2e9)
+        assert riga["soggetto"] == "climate.x"
+        assert riga["attributes"] is None
+        assert archivio._conn.execute("PRAGMA user_version").fetchone()[0] == 7
     finally:
         archivio.close()

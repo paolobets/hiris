@@ -362,6 +362,73 @@ va corretto, in un posto solo.
 > del repository e da cio' che e' stato misurato sulla casa vera. La lista del proprietario va
 > reinserita da lui, e queste voci vanno lette come un fondo di magazzino, non come una sua scelta.
 
+### La ricetta del bilancio non vive ancora nel sapere
+
+`origine: revisione indipendente della fetta 4, 13/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §7
+
+**Il fatto.** La spec e' esplicita: *«Dove vive [la ricetta]: **nel sapere** (§8), con provenienza e
+prove»*. Oggi `mind/recipes.balance_recipe()` e' una funzione Python che **ricompone la ricetta a
+ogni aggregazione**: non viene mai scritta nell'archivio ne' mai riletta da li'.
+
+**Cosa costa.** L'argomento che giustifica tutta la fetta — il 27/08/2026 la quota di
+autosufficienza era sbagliata (0,964 invece di 0,985) *«ed era una ricetta specifica di
+un'integrazione scritta dentro il motore: per correggerla e' servito un rilascio»* — **vale ancora
+oggi**: per cambiare quella formula serve ancora un rilascio. Cio' che si e' guadagnato e' reale ma
+e' un'altra cosa, e i docstring adesso lo dicono: il conto si legge tutto, si valida, si rifiuta
+prima di eseguirlo, e le due quote si calcolano in un posto solo invece che in due.
+
+**Cosa servirebbe, e la domanda aperta.** Scrivere la ricetta nel sapere al primo giro e rileggerla
+da li'. Il nodo da sciogliere e' il **soggetto**: i tre generi sono `tipo`, `integrazione`,
+`entita`, e una ricetta del bilancio nomina le entita' di QUESTA casa — quindi non e' universale e
+non puo' avere per soggetto l'integrazione, ma non e' nemmeno di una entita' sola. Le strade:
+un genere `dispositivo` (che la spec esclude apposta, perche' sarebbe un `ambito` travestito), o
+una ricetta universale per `integrazione` che nomina **direzioni** invece di entita', con la casa
+che lega direzione → entita'. La seconda e' piu' fedele alla spec e va misurata prima di scegliere.
+
+### Il vocabolario dei tipi non e' ancora un seme del sapere
+
+`origine: fetta 4 «il sapere e le ricette», 12-13/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §8
+
+**Il fatto.** La spec dice: *«Il repo diventa il seme. Le 76 righe del vocabolario dei tipi e le 14
+delle direzioni si caricano all'avvio con la loro provenienza.»* Le 14 direzioni si caricano
+(`mind/seed.direction_seed`), le righe del vocabolario dei tipi **no**.
+
+**Perche' non e' stato fatto, e non e' una dimenticanza.** Seminarle senza spostare anche i LETTORI
+produrrebbe un doppione: la stessa cosa in `home_space/type_vocabulary.py` e nel sapere, con nessuno
+che legge la seconda copia. E' precisamente cio' che la seconda fondamenta vieta, e il seme
+diventerebbe un file che nessuno interroga.
+
+**Cosa servirebbe.** Spostare i lettori — `mind/facts.genre_for`, `mind/watcher`, `home_space/
+type_census` — a interrogare il sapere invece del letterale, e solo allora seminare. E' una fetta
+sua, e non piccola: quelle righe decidono il genere di ogni oggetto e il perimetro dello scope,
+cioe' due delle cose piu' load-bearing del prodotto.
+
+**Cosa si guadagna quando si fa.** La casa potra' scrivere sopra il giudizio del repo — «da me
+questo tipo si comporta cosi'» — che e' l'intera promessa del §8, e oggi vale solo per le direzioni
+e per i significati.
+
+### I tre attributi fissi del grezzo non sono usciti
+
+`origine: fetta 4, 13/09/2026, misurato leggendo il codice` · `docs/design/2026-09-12-il-sapere-e-le-ricette.md` misura 6
+
+**Il fatto.** Il piano prevedeva che `device_class`, `state_class` e `source_type` uscissero dal
+grezzo con questa fetta. Non sono usciti: `device_class` e `source_type` li legge
+`mind/facts._reading_aspect` per derivare la **gamba** di ogni `sensor` e `binary_sensor`, e
+`device_class` finisce nel corpo di ogni episodio. Toglierli significherebbe che un rilevatore di
+fumo scattato torna a leggersi «Acceso».
+
+**La spec si contraddice su questo punto**: §5.3 dice che lo scope *deriva* da dominio,
+`device_class` e `source_type`; §5.4 dice che quei tre escono. Non possono valere entrambe, e
+vince §5.3 perche' descrive codice vivo e misurato.
+
+**Cosa e' cambiato lo stesso**: il grezzo non conserva piu' *solo* tre attributi scelti a mano.
+Conserva quelli che il sapere dice valgano la pena per quel tipo, e il cambio di uno di quelli fa
+nascere una riga anche quando lo stato non si muove.
+
+**Cosa resta da decidere.** `state_class` non lo legge nessuno dal 27/08/2026. Resta nel grezzo con
+una ragione scritta («i 22 giorni permettono di rifare il giudizio se un domani tornasse a
+servire»): o quella ragione si conferma e la voce si chiude, o la colonna esce.
+
 ### I due rifiuti della spec §6 non li sa dire nessuna operazione
 
 `origine: revisione indipendente della fetta 3, 12/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §6

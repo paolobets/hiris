@@ -162,6 +162,10 @@ def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
         # stessa entita' con parole diverse -- che e' esattamente la
         # divergenza da cui e' nata la casa unica del vocabolario degli stati.
         translations=app.get("state_translations"),
+        # Il sapere: `guarda` ne legge il significato della classe di
+        # un'entita'. STESSA istanza di quella che l'osservatore scrive --
+        # una casa sola per cio' che HIRIS ha capito, o le due divergono.
+        knowledge=app.get("knowledge"),
     )
 
 

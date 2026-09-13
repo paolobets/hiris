@@ -1079,6 +1079,30 @@ def group_membership(entity_id: str, reported_attributes: dict | None) -> dict:
     return view
 
 
+def _class_meaning(knowledge, domain: str, device_class) -> str | None:
+    """Cosa significa questa classe, secondo il sapere. `None` se non si sa.
+
+    **Non solleva mai.** Il dettaglio di un'entita' e' una lettura del
+    prodotto: un archivio irraggiungibile deve togliere una riga, non far
+    fallire la risposta.
+    """
+    if knowledge is None or not device_class:
+        return None
+    # `type_subject` e `MEANING_FIELD` si IMPORTANO, non si riscrivono:
+    # `mind/knowledge.type_subject` porta scritto «un posto solo dove si
+    # compone, perche' due composizioni divergono al primo dominio con un
+    # punto nel nome» -- e finche' questo lettore ricomponeva a mano, quella
+    # garanzia non esisteva (revisione indipendente, 13/09/2026).
+    from ..mind.knowledge import MEANING_FIELD, type_subject
+
+    try:
+        fact = knowledge.get("tipo", type_subject(domain, device_class),
+                             MEANING_FIELD)
+    except Exception:  # pragma: no cover - archivio irraggiungibile
+        return None
+    return fact.value if fact is not None else None
+
+
 def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
                    unavailable: tuple[str, ...] = (),
                    fallback_names: dict[str, str] | None = None,
@@ -1087,7 +1111,8 @@ def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
                  reported_since_when: dict[str, str] | None = None,
                  reported_attributes: dict[str, dict] | None = None,
                  registry=None,
-                 translations: dict | None = None) -> dict:
+                 translations: dict | None = None,
+                 knowledge=None) -> dict:
     entity = next((e for e in home_space.get("entita") or [] if e.get("id") == reference), None)
     if entity is None:
         # CRITICAL ③: col registro "entita" caduto (`replace` parziale
@@ -1148,6 +1173,25 @@ def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
         detail.get("classe"), detail.get("unita"))
     if rule:
         detail["regola"] = rule
+    # COSA SIGNIFICA LA CLASSE, dal sapere (fetta «il sapere e le ricette»,
+    # 12/09/2026). E' il lettore che rende vero quell'archivio: fino a ieri il
+    # significato di una classe viveva in una tabella a mano di 27 voci, e
+    # delle altre HIRIS non sapeva dire niente -- misurate il 12/09, 44 classi
+    # di `sensor` su 62 e 28 su 28 di `binary_sensor`.
+    #
+    # **Dal sapere e non dalle traduzioni**, che pure sono gia' qui: le due
+    # cose non coincidono. Home Assistant pubblica un NOME («Potenza»), il
+    # repo dove ha guardato porta una frase che dice cosa quel valore E' («la
+    # potenza ISTANTANEA, non un'energia»), e il sapere tiene la piu' ricca.
+    # Leggere le traduzioni direttamente da qui perderebbe proprio quella.
+    #
+    # **Tace quando non sa**, come `regola` qui sopra: nessuna chiave, mai una
+    # stringa vuota. E non chiede niente per un'entita' senza classe -- sarebbe
+    # una domanda su una riga che non puo' esistere, ripetuta per la
+    # maggioranza delle entita' di questa casa.
+    meaning = _class_meaning(knowledge, domain_of(entity["id"]), detail.get("classe"))
+    if meaning:
+        detail["significato"] = meaning
     # GLI ATTRIBUTI EREDITATI (`proxy/entity_cache.inherited_attributes`): solo
     # QUI, sul dettaglio di UNA entita' sola -- decisione del proprietario,
     # fetta "attributi al modello" (2026-08-25). `_view_area` e
@@ -1600,7 +1644,8 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
            reported_since_when: dict[str, str] | None = None,
            reported_attributes: dict[str, dict] | None = None,
            registry=None,
-           translations: dict | None = None) -> dict:
+           translations: dict | None = None,
+           knowledge=None) -> dict:
     """Il dettaglio di UNA cosa sola -- l'area con le sue entita' e i loro
     stati, l'entita' col suo stato e la sua classe, l'automazione o lo
     script col loro corpo, il dispositivo con le sue entita', il ricordo
@@ -1741,7 +1786,7 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
         return _view_entity(home_space, memories, state, reference, unavailable,
                               fallback_names, reported_units, reported_classes,
                               reported_since_when, reported_attributes, registry,
-                              translations)
+                              translations, knowledge)
     if kind == "dispositivo":
         return _view_device(home_space, memories, state, reference, unavailable,
                                    fallback_names, reported_units, reported_classes,

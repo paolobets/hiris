@@ -64,10 +64,17 @@ from .mind.facts import (
     build_balance_body,
     day_boundaries,
 )
+from .mind.knowledge import KnowledgeStore, directions_by_translation_key
 from .mind.observer import SCOPE_TURN_KIND
 from .mind.observer import apply_answer as observer_apply_answer
 from .mind.observer import bridge_turn as observer_bridge_turn
 from .mind.observer import reconsider as observer_reconsider
+from .mind.seed import (
+    attribute_seed,
+    direction_seed,
+    meaning_seed,
+    meanings_from_translations,
+)
 from .mind.store import READING_RETENTION_S, ObservationsStore
 from .mind.watcher import Watcher
 from .model_resolution import subscription_has_token
@@ -708,6 +715,27 @@ async def prime_state_translations(app) -> dict:
         report = {"lette": False, "motivo": f"{type(exc).__name__}: {exc}"}
     if not report.get("lette"):
         logger.info("traduzioni degli stati non lette: %s", report.get("motivo"))
+        return report
+    # **Il significato di ogni classe entra nel sapere, da qui.** E' lo stesso
+    # dizionario che il nucleo usa per rendere gli stati: nessuna lettura di
+    # rete in piu', e nessuna seconda tabella. Misurato il 12/09/2026: il repo
+    # scriveva a mano il significato di 18 classi di `sensor` su 62 e di ZERO
+    # su 28 di `binary_sensor` -- le altre non erano «meno importanti», erano
+    # quelle di cui HIRIS non sapeva dire niente.
+    #
+    # Si scrivono con `seed`, non con `write`: dove il repo ha una FRASE
+    # («la potenza ISTANTANEA, non un'energia») quella resta, e il NOME che HA
+    # pubblica («Potenza») non la schiaccia.
+    sapere = app.get("knowledge")
+    if sapere is not None:
+        scritte = sapere.seed(meanings_from_translations(
+            report.get("risorse") or {},
+            ha_version=frame.get("versione_ha") or "sconosciuta",
+            language=report.get("lingua") or frame.get("lingua") or ""))
+        if scritte:
+            logger.info(
+                "sapere: %d significati di classe importati dalle traduzioni "
+                "di questa installazione", scritte)
     return report
 
 
@@ -1572,7 +1600,9 @@ async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None
         # guasto di rete (stesso contratto di `legami`/`problemi`: torna
         # `{"errore": ...}`) -- il `try` resta comunque, difesa in
         # profondita', per lo stesso motivo del commento sotto.
-        directions_map = await ha_client.energy_directions()
+        directions_map = await ha_client.energy_directions(
+            direction_by_translation_key=directions_by_translation_key(
+                app["knowledge"]))
     except Exception as error:
         # Difesa in profondita': un guasto di RETE o di Home Assistant e'
         # gia' contenuto dentro `build_companions` (mette `[]`, conta un
@@ -2515,7 +2545,26 @@ async def _on_startup(app: web.Application) -> None:
     # perche' e' il suo unico ingresso.
     app["observations"] = ObservationsStore(
         os.path.join(data_dir, "osservazioni.db"))
-    app["watcher"] = Watcher(app["observations"])
+    # Il sapere: cio' che HIRIS ha capito, con la provenienza e le prove
+    # (fetta «il sapere e le ricette», 12/09/2026, spec §8).
+    #
+    # **Il file e' `sapere.db`, NON `knowledge.db`**: quel nome e' gia'
+    # occupato su disco da un archivio documentale morto, dichiarato piu'
+    # sotto in questo stesso avvio. Aprirlo qui troverebbe le sue tabelle, e
+    # il `CREATE TABLE IF NOT EXISTS` non direbbe niente.
+    app["knowledge"] = KnowledgeStore(os.path.join(data_dir, "sapere.db"))
+    # Il seme del repo scrive solo cio' che ancora non c'e': la casa scrive
+    # sopra, e un riavvio non cancella cio' che ha imparato.
+    _seminate = app["knowledge"].seed(
+        direction_seed() + meaning_seed() + attribute_seed())
+    if _seminate:
+        logger.info("sapere: %d righe del seme scritte (le altre c'erano gia')",
+                    _seminate)
+    # L'osservatore riceve il sapere: da li' legge **quali attributi valga la
+    # pena tenere** per un tipo (spec §5.4). Senza, scriverebbe come prima e
+    # l'esempio fondativo del cervello -- «il riscaldamento parte alle 15:30,
+    # la casa e' calda alle 16:30» -- resterebbe non rispondibile.
+    app["watcher"] = Watcher(app["observations"], knowledge=app["knowledge"])
     # Rilegge dall'archivio le condizioni di sistema gia' aperte prima di
     # QUESTO avvio (task-5-correzioni.md, punto B): senza, ogni riavvio
     # dell'add-on -- che succede a ogni aggiornamento -- riscriverebbe
@@ -3518,7 +3567,9 @@ async def _on_startup(app: web.Application) -> None:
             # episodio senza `direzione` e' comunque meglio di nessun
             # episodio. La riparazione all'avvio, che SOSTITUISCE, non
             # tollera invece nessun guasto (vedi il suo docstring).
-            directions_map = await ha_client.energy_directions()
+            directions_map = await ha_client.energy_directions(
+                direction_by_translation_key=directions_by_translation_key(
+                    app["knowledge"]))
             if "errore" in directions_map:
                 directions_map = {}
             # I bilanci, stessa disciplina (mandato «il bilancio
@@ -4341,6 +4392,12 @@ async def _on_cleanup(app: web.Application) -> None:
     # senza chiuderlo il file sqlite resterebbe bloccato al riavvio.
     if "observations" in app:
         app["observations"].close()
+    # Il sapere (`mind/knowledge.py`, fetta «il sapere e le ricette»): stessa
+    # disciplina e stesso meccanismo dell'archivio qui sopra -- un secondo modo
+    # di fare la stessa cosa, accanto al primo, e' un invito al copia-incolla
+    # sbagliato la prossima volta.
+    if "knowledge" in app:
+        app["knowledge"].close()
     # fetta E4 Task 4: lo scheduler non e' piu' ospitato da un
     # `engine.stop()` -- l'entita' Chatbot (e l'engine che lo portava) e'
     # uscita per intero. `wait=False`, stessa disciplina di

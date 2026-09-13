@@ -608,3 +608,75 @@ def test_senza_bilanci_il_comportamento_e_identico_a_prima(archivio):
     oggetti = archivio.facts(day=G)
     assert quanti == 1
     assert oggetti[0]["genere"] == "energia"
+
+
+# -- la ricetta come dato ---------------------------------------------------
+
+def test_il_bilancio_e_una_RICETTA_e_si_puo_leggere_prima_di_eseguirla():
+    """**Il pezzo che la spec §7 nomina per primo.** «Come si calcola il
+    bilancio di questo dispositivo» non e' piu' un ciclo dentro il motore: e'
+    una sequenza di passi con nomi, che si legge, si valida e si rifiuta
+    prima di eseguirla.
+
+    Qui si guarda che la ricetta dica **la riga della spec §7**:
+    `quota(differenza_fra(consumo, prelievo), consumo)` -- quella che il
+    27/08/2026 era sbagliata (0,964 invece di 0,985) e viveva dentro il motore.
+
+    **Attenzione a cosa prova questa prova**: che il conto sia un dato
+    leggibile e composto di operazioni del registro. NON che sia correggibile
+    senza un rilascio -- per quello la ricetta dovrebbe stare nel sapere, e
+    non ci sta ancora (a backlog, 13/09/2026).
+    """
+    from hiris.app.mind.recipes import balance_recipe
+
+    ricetta = balance_recipe({"consumo": "sensor.c", "prelievo": "sensor.p"},
+                             order=BALANCE_DIRECTIONS, expected_hours=24)
+
+    passi = {s["name"]: s for s in ricetta["steps"]}
+    assert passi["autoprodotto"]["operation"] == "differenza_fra"
+    assert passi["autoprodotto"]["inputs"] == ["$consumo", "$prelievo"]
+    assert passi["quota_autosufficienza"]["operation"] == "quota"
+    assert passi["quota_autosufficienza"]["inputs"] == ["$autoprodotto", "$consumo"]
+    assert ricetta["why"]
+
+
+def test_la_ricetta_NON_nomina_le_direzioni_che_il_dispositivo_non_ha():
+    """Un inverter senza accumulo non ha «carica» ne' «scarica». Una ricetta
+    che le nominasse verrebbe RIFIUTATA dalla validazione (entita'
+    inesistente) -- giustamente, e per questo i passi si generano dalle
+    direzioni che ci sono davvero.
+
+    Mutazione che la uccide: generare un passo per ogni direzione di
+    `BALANCE_DIRECTIONS` invece che per quelle presenti.
+    """
+    from hiris.app.mind.recipes import Recipe, balance_recipe
+
+    dati = balance_recipe({"produzione": "sensor.p"},
+                          order=BALANCE_DIRECTIONS, expected_hours=24)
+
+    assert Recipe(dati).entities() == {"sensor.p"}
+    assert Recipe(dati).validate(entities={"sensor.p"}).valid
+    assert "quota_autosufficienza" not in {s["name"] for s in dati["steps"]}
+
+
+def test_le_due_quote_si_calcolano_UNA_VOLTA_SOLA_e_vengono_dalla_ricetta():
+    """**Nessun doppione**: prima del 12/09/2026 le quote erano un conto in
+    `_balance_moments`; adesso sono passi della ricetta, e i momenti leggono
+    il loro esito invece di rifarlo.
+
+    Mutazione ESEGUITA: togliere i due passi delle quote da `balance_recipe`
+    -- rossa, i momenti spariscono dal corpo. (E' la prova che non c'e' una
+    seconda copia che li ricalcolerebbe lo stesso.)
+    """
+    serie = {"sensor.consumo": _giorno_intero({o: 1.0 for o in range(24)}),
+             "sensor.prelievo": _giorno_intero({o: 0.25 for o in range(24)})}
+
+    corpo = build_balance_body(
+        series=serie,
+        entity_per_dimension={"consumo": "sensor.consumo",
+                              "prelievo": "sensor.prelievo"},
+        provenance_per_dimension={"consumo": "dichiarata",
+                                  "prelievo": "dichiarata"},
+        expected_hours=24)
+
+    assert corpo["momenti"]["quota_autosufficienza"] == 0.75

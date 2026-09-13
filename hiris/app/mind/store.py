@@ -172,6 +172,24 @@ def _migration_5(conn) -> None:
     _add_missing_columns(conn, ("friendly_name",))
 
 
+def _migration_7(conn) -> None:
+    """v6 -> v7: `attributes`, gli attributi che la ricetta chiede (spec §5.4).
+
+    **Il fatto vive spesso in un attributo, non nello stato.** Lo stato di un
+    termostato e' `heat` e resta `heat`; `hvac_action` dice `idle`/`heating`,
+    `current_temperature` dice dove si e'. Senza questa colonna l'esempio
+    fondativo del cervello -- *«il riscaldamento parte alle 15:30, la casa e'
+    calda alle 16:30»* -- non e' rispondibile, e non lo sarebbe mai stato,
+    perche' il grezzo e' l'unica cosa che si puo' rileggere.
+
+    Le righe scritte prima rileggono `None`, ed e' vero: quegli attributi non
+    li avevano. **Non si riempiono a posteriori** dallo specchio di oggi --
+    sarebbe attribuire a ieri lo stato di adesso, la stessa ragione gia'
+    scritta per `friendly_name`.
+    """
+    _add_missing_columns(conn, ("attributes",))
+
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS cambi (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -207,7 +225,24 @@ CREATE TABLE IF NOT EXISTS cambi (
     -- `problema:`/`integrazione:`/`log:`/`automazione:` non e' un'entita' e
     -- non ne porta uno) e per le entita' su cui HA non scrive l'attributo.
     -- Vedi `_migration_5`.
-    friendly_name TEXT
+    friendly_name TEXT,
+    -- Gli attributi che qualcuno ha deciso valga la pena tenere PER QUESTO
+    -- TIPO (fetta «il sapere e le ricette», 12/09/2026, spec §5.4), come
+    -- JSON. **Non sono tutti**: tenerli tutti rimetterebbe nel grezzo le
+    -- 6.503 righe al giorno di soli attributi che il filtro `da == a` ha
+    -- tolto. Quali valgano la pena lo dice il sapere (`mind/knowledge.py`,
+    -- campo `attributi:<tipo>`), non una lista qui.
+    --
+    -- **Perche' una colonna JSON e non una per attributo.** Gli attributi
+    -- utili cambiano per dispositivo e cambiano nel tempo: una colonna
+    -- ciascuno vorrebbe dire una migrazione a ogni ricetta nuova, cioe' un
+    -- rilascio per ogni cosa imparata -- esattamente cio' che questa fetta
+    -- esiste per togliere. Il costo e' che non si possono interrogare in SQL;
+    -- chi li legge e' `mind/facts.py`, che rilegge la riga intera comunque.
+    --
+    -- NULL per le righe scritte prima di questa colonna, per le condizioni
+    -- di sistema, e per ogni entita' di cui nessuno ha ancora deciso niente.
+    attributes TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_cambi_quando ON cambi(quando_ts);
 CREATE INDEX IF NOT EXISTS idx_cambi_soggetto ON cambi(soggetto, quando_ts);
@@ -338,7 +373,7 @@ def _migration_6(conn) -> None:
 #: prova non debba ricopiarne il numero: un letterale in una prova e' un
 #: doppione che mente al primo schema nuovo, e questa riga esiste perche' e'
 #: successo (`test_migration_5...` inchiodava il 5).
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 #: L'obiettivo di fabbrica, deciso dal proprietario il 25/08/2026. Non e' un
 #: ripiego: e' il criterio con cui l'osservatore decide cosa guardare su una
@@ -378,6 +413,11 @@ def _reading_row(r) -> dict:
             "source_type": r["source_type"],
             "domain": r["domain"], "title": r["title"],
             "friendly_name": r["friendly_name"],
+            # Il JSON resta una STRINGA fino a chi lo legge: una riga vecchia
+            # potrebbe portare qualcosa che non si legge come JSON, e farlo
+            # esplodere qui fermerebbe l'intera lettura del giorno invece di
+            # una riga. Chi lo apre e' `mind/facts.py`, che sa cosa farsene.
+            "attributes": r["attributes"],
             "first_occurred": None if first_occurred is None else float(first_occurred)}
 
 
@@ -397,7 +437,8 @@ class ObservationsStore:
         self._lock = threading.Lock()
         init_schema(self._conn, _SCHEMA, version=SCHEMA_VERSION,
                     migrations={2: _migration_2, 3: _migration_3, 4: _migration_4,
-                                5: _migration_5, 6: _migration_6})
+                                5: _migration_5, 6: _migration_6,
+                                7: _migration_7})
 
     def close(self) -> None:
         with self._lock:
@@ -411,7 +452,8 @@ class ObservationsStore:
                source_type: str | None = None,
                domain: str | None = None, title: str | None = None,
                friendly_name: str | None = None,
-               first_occurred: float | None = None) -> None:
+               first_occurred: float | None = None,
+               attributes: str | None = None) -> None:
         """Un cambio, cosi' com'e'. **Nessun giudizio in scrittura**: e' la
         condizione da cui dipende tutto il resto -- una decisione presa qui non
         si corregge piu', una presa in aggregazione si'.
@@ -459,12 +501,14 @@ class ObservationsStore:
         with self._lock:
             self._conn.execute(
                 "INSERT INTO cambi(quando_ts,fonte,soggetto,da,a,device_class,"
-                "state_class,source_type,domain,title,friendly_name,first_occurred) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                "state_class,source_type,domain,title,friendly_name,first_occurred,"
+                "attributes) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (float(quando_ts), source, subject,
                  None if da is None else str(da), None if a is None else str(a),
                  device_class, state_class, source_type, domain, title, friendly_name,
-                 None if first_occurred is None else str(float(first_occurred))))
+                 None if first_occurred is None else str(float(first_occurred)),
+                 attributes))
             self._conn.commit()
 
     def readings_count(self, *, from_ts: float, to_ts: float,

@@ -21,6 +21,8 @@ import textwrap
 from datetime import UTC
 from unittest.mock import create_autospec
 
+import pytest
+
 from hiris.app import server
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.mind.store import READING_RETENTION_S
@@ -494,6 +496,7 @@ def test_l_aggregazione_notturna_logga_col_prefisso_cervello_anche_se_il_fuso_no
         "day_boundaries": server.day_boundaries,
         "build_companions": server.build_companions,
         "build_balances": server.build_balances,
+        "directions_by_translation_key": server.directions_by_translation_key,
         "_timezone_from_home_space_store": server._timezone_from_home_space_store,
     })
 
@@ -547,7 +550,8 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
                             subject=f"light.{soggetto}", da="off", a="on")
 
         asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": None, "observations": archivio}, ha_client=_ClienteLegami(),
+            {"home_space_store": None, "observations": archivio,
+             "knowledge": _sapere(tmp_path)}, ha_client=_ClienteLegami(),
             now=lambda tz: oggi.astimezone(tz)))
 
         giorni_scritti = {o["giorno"] for o in archivio.facts(limit=10)}
@@ -569,7 +573,8 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
         # difetto riparato.
         prima = archivio.facts(limit=50)
         asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": None, "observations": archivio}, ha_client=_ClienteLegami(),
+            {"home_space_store": None, "observations": archivio,
+             "knowledge": _sapere(tmp_path)}, ha_client=_ClienteLegami(),
             now=lambda tz: oggi.astimezone(tz)))
         dopo = archivio.facts(limit=50)
 
@@ -608,7 +613,8 @@ def test_la_riparazione_all_avvio_costruisce_i_comprimari(tmp_path):
 
         cliente = _ClienteLegami({"light.principale": {"entity": ["light.secondario"]}})
         asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": None, "observations": archivio}, ha_client=cliente,
+            {"home_space_store": None, "observations": archivio,
+             "knowledge": _sapere(tmp_path)}, ha_client=cliente,
             now=lambda tz: oggi.astimezone(tz)))
 
         ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
@@ -672,7 +678,8 @@ def test_se_i_comprimari_non_si_costruiscono_l_archivio_resta_intatto(tmp_path):
         prima = {g: archivio.facts(day=g) for g in (l_altro_ieri, ieri)}
 
         asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": None, "observations": archivio},
+            {"home_space_store": None, "observations": archivio,
+             "knowledge": _sapere(tmp_path)},
             ha_client=_ClienteLegami(default={"errore": "Home Assistant non ha risposto"}),
             now=lambda tz: oggi.astimezone(tz)))
 
@@ -736,7 +743,8 @@ def test_una_risposta_malformata_ferma_la_riparazione_senza_scrivere(tmp_path, c
         cliente = _ClienteLegami({"light.principale": {"entity": 5}})
         with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
             asyncio.run(server.reaggregate_last_two_days(
-                {"home_space_store": None, "observations": archivio}, ha_client=cliente,
+                {"home_space_store": None, "observations": archivio,
+             "knowledge": _sapere(tmp_path)}, ha_client=cliente,
                 now=lambda tz: oggi.astimezone(tz)))
 
         dopo = {g: archivio.facts(day=g) for g in (l_altro_ieri, ieri)}
@@ -781,7 +789,8 @@ def test_un_guasto_parziale_dei_comprimari_non_tocca_l_archivio(tmp_path):
             "light.rotto": {"errore": "Home Assistant non ha risposto"},
             "light.buono": {"entity": ["sensor.buono"]}})
         asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": None, "observations": archivio},
+            {"home_space_store": None, "observations": archivio,
+             "knowledge": _sapere(tmp_path)},
             ha_client=cliente,
             now=lambda tz: oggi.astimezone(tz)))
 
@@ -819,7 +828,8 @@ def test_il_salto_per_falliti_logga_il_messaggio_preciso(tmp_path, caplog):
         cliente = _ClienteLegami(default={"errore": "Home Assistant non ha risposto"})
         with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
             asyncio.run(server.reaggregate_last_two_days(
-                {"home_space_store": None, "observations": archivio}, ha_client=cliente,
+                {"home_space_store": None, "observations": archivio,
+             "knowledge": _sapere(tmp_path)}, ha_client=cliente,
                 now=lambda tz: oggi.astimezone(tz)))
 
         assert any(
@@ -862,7 +872,8 @@ def test_l_aggregazione_notturna_prosegue_con_lo_stesso_guasto_parziale(tmp_path
             "light.rotto": {"errore": "Home Assistant non ha risposto"},
             "light.buono": {"entity": ["sensor.buono"]}})
         job = _carica_funzione_innestata("_aggrega_ieri", {
-            "app": {"home_space_store": None, "observations": archivio},
+            "app": {"home_space_store": None, "observations": archivio,
+                    "knowledge": _sapere(tmp_path)},
             "ha_client": cliente,
             "logger": logger_test,
             "aggregate_day": server.aggregate_day, "datetime": server.datetime,
@@ -870,6 +881,7 @@ def test_l_aggregazione_notturna_prosegue_con_lo_stesso_guasto_parziale(tmp_path
             "day_boundaries": server.day_boundaries,
             "build_companions": server.build_companions,
             "build_balances": server.build_balances,
+            "directions_by_translation_key": server.directions_by_translation_key,
             "_timezone_from_home_space_store": server._timezone_from_home_space_store,
         })
 
@@ -1110,7 +1122,12 @@ def test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti(tmp_path)
         cliente = _ClienteLegami()
         namespace = {
             "os": os_reale, "data_dir": str(tmp_path), "HomeSpace": server.HomeSpace,
-            "app": {"observations": archivio}, "ha_client": cliente,
+            # `knowledge` c'e' perche' in PRODUZIONE c'e': l'avvio vero crea
+            # il sapere prima di chiamare la riparazione, e la prova
+            # `test_il_sapere_nasce_PRIMA_della_riparazione_all_avvio` lo
+            # difende sul sorgente invece che sulla fiducia.
+            "app": {"observations": archivio, "knowledge": _sapere(tmp_path)},
+            "ha_client": cliente,
             "entity_cache": None, "rebuild": server.rebuild,
             "schedule_registry_rebuild": server.schedule_registry_rebuild,
             "reaggregate_last_two_days": server.reaggregate_last_two_days,
@@ -1220,13 +1237,15 @@ def test_l_aggregazione_notturna_chiede_le_direzioni_una_volta(tmp_path):
             "sensor.energia_prodotta": {"direzione": "produzione", "provenienza": "dichiarata"}})
         logger_test = logging.getLogger("test_aggrega_ieri_direzioni")
         job = _carica_funzione_innestata("_aggrega_ieri", {
-            "app": {"home_space_store": None, "observations": archivio},
+            "app": {"home_space_store": None, "observations": archivio,
+                    "knowledge": _sapere(tmp_path)},
             "ha_client": cliente, "logger": logger_test,
             "aggregate_day": server.aggregate_day, "datetime": server.datetime,
             "timedelta": server.timedelta, "home_space_zone": server.home_space_zone,
             "day_boundaries": server.day_boundaries,
             "build_companions": server.build_companions,
             "build_balances": server.build_balances,
+            "directions_by_translation_key": server.directions_by_translation_key,
             "_timezone_from_home_space_store": server._timezone_from_home_space_store,
         })
 
@@ -1263,13 +1282,15 @@ def test_l_aggregazione_notturna_prosegue_se_le_direzioni_non_si_leggono(tmp_pat
         cliente = _ClienteLegami(direzioni_errore="Home Assistant non ha risposto")
         logger_test = logging.getLogger("test_aggrega_ieri_direzioni_guasto")
         job = _carica_funzione_innestata("_aggrega_ieri", {
-            "app": {"home_space_store": None, "observations": archivio},
+            "app": {"home_space_store": None, "observations": archivio,
+                    "knowledge": _sapere(tmp_path)},
             "ha_client": cliente, "logger": logger_test,
             "aggregate_day": server.aggregate_day, "datetime": server.datetime,
             "timedelta": server.timedelta, "home_space_zone": server.home_space_zone,
             "day_boundaries": server.day_boundaries,
             "build_companions": server.build_companions,
             "build_balances": server.build_balances,
+            "directions_by_translation_key": server.directions_by_translation_key,
             "_timezone_from_home_space_store": server._timezone_from_home_space_store,
         })
 
@@ -1303,7 +1324,8 @@ def test_la_riparazione_all_avvio_applica_le_direzioni(tmp_path):
         cliente = _ClienteLegami(direzioni={
             "sensor.energia_prelievo": {"direzione": "prelievo", "provenienza": "dichiarata"}})
         asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": None, "observations": archivio}, ha_client=cliente,
+            {"home_space_store": None, "observations": archivio,
+             "knowledge": _sapere(tmp_path)}, ha_client=cliente,
             now=lambda tz: oggi.astimezone(tz)))
 
         ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
@@ -1355,7 +1377,8 @@ def test_la_riparazione_all_avvio_si_ferma_se_le_direzioni_non_si_leggono(tmp_pa
 
         cliente = _ClienteLegami(direzioni_errore="Home Assistant non ha risposto")
         asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": None, "observations": archivio}, ha_client=cliente,
+            {"home_space_store": None, "observations": archivio,
+             "knowledge": _sapere(tmp_path)}, ha_client=cliente,
             now=lambda tz: oggi.astimezone(tz)))
 
         dopo = {g: archivio.facts(day=g) for g in (l_altro_ieri, ieri)}
@@ -1382,7 +1405,8 @@ def test_la_riparazione_chiede_le_direzioni_una_volta_per_i_due_giorni(tmp_path)
 
         cliente = _ClienteLegami()
         asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": None, "observations": archivio}, ha_client=cliente,
+            {"home_space_store": None, "observations": archivio,
+             "knowledge": _sapere(tmp_path)}, ha_client=cliente,
             now=lambda tz: oggi.astimezone(tz)))
 
         assert cliente.direzioni_chieste == 1
@@ -1425,6 +1449,38 @@ def _giornata_bilancio(cambi: dict[int, float]):
     in `test_mind_balance.py`.
     """
     return [_punto_bilancio(cambi.get(ora, 0.0), ora=ora) for ora in range(24)]
+
+
+#: I sapere aperti dalle prove, chiusi alla fine della sessione.
+_SAPERI_APERTI = []
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _chiusura_saperi():
+    yield
+    for sapere in _SAPERI_APERTI:
+        sapere.close()
+    _SAPERI_APERTI.clear()
+
+
+def _sapere(tmp_path):
+    """Il sapere, seminato come fa l'avvio vero.
+
+    Le prove di cablaggio costruiscono un'app a mano: se quella e' piu' povera
+    di quella che gira davvero, difendono un cablaggio che non esiste. Dal
+    12/09/2026 `reaggregate_last_two_days` legge le direzioni dal sapere, e
+    un'app senza sapere non e' una semplificazione -- e' un'altra app.
+    """
+    from hiris.app.mind.knowledge import KnowledgeStore
+    from hiris.app.mind.seed import direction_seed
+
+    sapere = KnowledgeStore(str(tmp_path / "sapere.db"))
+    sapere.seed(direction_seed(1787572800.0))
+    # Si annota per chiuderlo a fine sessione: quindici prove che aprono un
+    # sqlite e non lo chiudono lasciano quindici descrittori aperti, e su
+    # Windows il file resta bloccato (revisione indipendente, 13/09/2026).
+    _SAPERI_APERTI.append(sapere)
+    return sapere
 
 
 def _punto_bilancio(cambio, ora=6):
@@ -1474,13 +1530,15 @@ def test_l_aggregazione_notturna_costruisce_e_scrive_il_bilancio(tmp_path):
                          _giornata_bilancio({6: 1.0, 7: 2.0})})
         logger_test = logging.getLogger("test_aggrega_ieri_bilancio")
         job = _carica_funzione_innestata("_aggrega_ieri", {
-            "app": {"home_space_store": casa, "observations": archivio},
+            "app": {"home_space_store": casa, "observations": archivio,
+                    "knowledge": _sapere(tmp_path)},
             "ha_client": cliente, "logger": logger_test,
             "aggregate_day": server.aggregate_day, "datetime": server.datetime,
             "timedelta": server.timedelta, "home_space_zone": server.home_space_zone,
             "day_boundaries": server.day_boundaries,
             "build_companions": server.build_companions,
             "build_balances": server.build_balances,
+            "directions_by_translation_key": server.directions_by_translation_key,
             "_timezone_from_home_space_store": server._timezone_from_home_space_store,
         })
 
@@ -1526,13 +1584,15 @@ def test_l_aggregazione_notturna_prosegue_se_le_statistiche_del_bilancio_fallisc
             statistiche_errore="Home Assistant non ha risposto")
         logger_test = logging.getLogger("test_aggrega_ieri_bilancio_guasto")
         job = _carica_funzione_innestata("_aggrega_ieri", {
-            "app": {"home_space_store": casa, "observations": archivio},
+            "app": {"home_space_store": casa, "observations": archivio,
+                    "knowledge": _sapere(tmp_path)},
             "ha_client": cliente, "logger": logger_test,
             "aggregate_day": server.aggregate_day, "datetime": server.datetime,
             "timedelta": server.timedelta, "home_space_zone": server.home_space_zone,
             "day_boundaries": server.day_boundaries,
             "build_companions": server.build_companions,
             "build_balances": server.build_balances,
+            "directions_by_translation_key": server.directions_by_translation_key,
             "_timezone_from_home_space_store": server._timezone_from_home_space_store,
         })
 
@@ -1569,7 +1629,8 @@ def test_la_riparazione_all_avvio_applica_i_bilanci(tmp_path):
             statistiche={"sensor.energia_prodotta_oggi":
                          _giornata_bilancio({6: 4.0})})
         asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": casa, "observations": archivio}, ha_client=cliente,
+            {"home_space_store": casa, "observations": archivio,
+             "knowledge": _sapere(tmp_path)}, ha_client=cliente,
             now=lambda tz: oggi.astimezone(tz)))
 
         ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
@@ -1624,7 +1685,8 @@ def test_la_riparazione_all_avvio_si_ferma_se_le_statistiche_del_bilancio_fallis
                       {"direzione": "produzione", "provenienza": "dichiarata"}},
             statistiche_errore="Home Assistant non ha risposto")
         asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": casa, "observations": archivio}, ha_client=cliente,
+            {"home_space_store": casa, "observations": archivio,
+             "knowledge": _sapere(tmp_path)}, ha_client=cliente,
             now=lambda tz: oggi.astimezone(tz)))
 
         dopo = {g: archivio.facts(day=g) for g in (l_altro_ieri, ieri)}
@@ -1671,7 +1733,8 @@ def test_la_riparazione_all_avvio_si_ferma_anche_se_la_serie_torna_vuota_senza_e
                       {"direzione": "produzione", "provenienza": "dichiarata"}},
             statistiche={})  # riesce, ma non c'e' niente -- nessun `errore`
         asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": casa, "observations": archivio}, ha_client=cliente,
+            {"home_space_store": casa, "observations": archivio,
+             "knowledge": _sapere(tmp_path)}, ha_client=cliente,
             now=lambda tz: oggi.astimezone(tz)))
 
         dopo = {g: archivio.facts(day=g) for g in (l_altro_ieri, ieri)}
@@ -1726,7 +1789,8 @@ def test_la_riparazione_legge_le_statistiche_GIUSTE_per_ciascun_giorno(tmp_path)
                     "sensor.energia_prodotta_oggi": _giornata_bilancio({6: 7.0})},
             })
         asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": casa, "observations": archivio}, ha_client=cliente,
+            {"home_space_store": casa, "observations": archivio,
+             "knowledge": _sapere(tmp_path)}, ha_client=cliente,
             now=lambda tz: oggi.astimezone(tz)))
 
         [b_altro_ieri] = [o for o in archivio.facts(day=l_altro_ieri)
@@ -2332,3 +2396,165 @@ def test_rereading_a_fixed_error_then_finished_window_stays_at_two_writes():
     second_round = asyncio.run(server.watch_automation_outcomes(app, client))
     assert second_round == 0
     assert store.count == 2
+
+
+def test_il_sapere_nasce_PRIMA_della_riparazione_all_avvio():
+    """**Un ordine di costruzione, difeso sul sorgente.**
+
+    Dal 12/09/2026 la riparazione all'avvio legge le direzioni dal sapere
+    (`app["knowledge"]`). Se qualcuno spostasse la creazione del sapere sotto
+    la riparazione, quest'ultima prenderebbe `KeyError`, e il suo `except`
+    largo lo inghiottirebbe: nel log comparirebbe «comprimari non costruiti,
+    riparazione saltata» -- un messaggio che parla di un'ALTRA cosa, e due
+    giorni di oggetti non si rifarebbero senza che nessuno capisca perche'.
+
+    E' la stessa forma del controllo gia' in questo file su
+    `home_space_store`, e nasce dalla stessa lezione: un ordine che vive solo
+    nella testa di chi ha scritto il file non e' un ordine.
+
+    Mutazione ESEGUITA: spostare `app["knowledge"] = KnowledgeStore(...)`
+    sotto la chiamata a `reaggregate_last_two_days` -- rossa.
+    """
+    sorgente = inspect.getsource(server)
+
+    assert (sorgente.index('app["knowledge"] = KnowledgeStore(')
+            < sorgente.index("reaggregate_last_two_days(app, ha_client)"))
+
+
+# --------------------------------------------------------------------------
+# Il sapere: i significati entrano da dove le traduzioni si leggono gia'
+# --------------------------------------------------------------------------
+
+class _CacheTraduzioni:
+    """La finta di `StateTranslations`: un esito etichettato, come il vero."""
+
+    def __init__(self, esito):
+        self.esito = esito
+        self.letture = 0
+
+    async def read(self, *, ha_version, language):
+        self.letture += 1
+        return dict(self.esito)
+
+
+class _CasaConFuso:
+    def __init__(self, versione="2026.9.1", lingua="it"):
+        self._frame = {"versione_ha": versione, "lingua": lingua}
+
+    def reference_frame(self):
+        return dict(self._frame)
+
+
+def test_i_significati_delle_classi_entrano_nel_sapere_dalle_TRADUZIONI(tmp_path):
+    """**Nessuna lettura di rete in piu', e nessuna seconda tabella.**
+
+    Le traduzioni si leggono gia' all'avvio per rendere gli stati: i
+    significati delle classi escono da quello stesso dizionario. Misurato il
+    12/09/2026: il repo ne scriveva a mano 18 su 62 per `sensor` e zero su 28
+    per `binary_sensor`.
+
+    Mutazione ESEGUITA: togliere il blocco `sapere.seed(...)` da
+    `prime_state_translations` -- rossa, il significato non arriva.
+    """
+    from hiris.app.mind.knowledge import KnowledgeStore
+
+    sapere = KnowledgeStore(str(tmp_path / "sapere.db"))
+    try:
+        app = {
+            "knowledge": sapere,
+            "home_space_store": _CasaConFuso(),
+            "state_translations": _CacheTraduzioni({
+                "lette": True, "lingua": "it", "risorse": {
+                    "component.binary_sensor.entity_component.gas.name": "Gas"}}),
+        }
+
+        asyncio.run(server.prime_state_translations(app))
+
+        riga = sapere.get("tipo", "binary_sensor.gas", "significato")
+        assert riga.value == "Gas"
+        assert riga.provenance == "importato"
+        assert "2026.9.1" in riga.source and "it" in riga.source
+    finally:
+        sapere.close()
+
+
+def test_se_le_traduzioni_NON_si_leggono_il_sapere_resta_com_era(tmp_path):
+    """Un guasto non scrive righe vuote: «non ho potuto leggere» non e'
+    «questa classe non significa niente»."""
+    from hiris.app.mind.knowledge import KnowledgeStore
+
+    sapere = KnowledgeStore(str(tmp_path / "sapere.db"))
+    try:
+        app = {"knowledge": sapere, "home_space_store": _CasaConFuso(),
+               "state_translations": _CacheTraduzioni(
+                   {"lette": False, "motivo": "HA non ha risposto"})}
+
+        asyncio.run(server.prime_state_translations(app))
+
+        assert sapere.count() == 0
+    finally:
+        sapere.close()
+
+
+def test_senza_sapere_la_lettura_delle_traduzioni_non_si_rompe(tmp_path):
+    """L'avvio costruisce il sapere prima, ma la funzione non deve dipendere
+    da un ordine che nessuno le garantisce: senza `knowledge` legge e basta."""
+    app = {"home_space_store": _CasaConFuso(),
+           "state_translations": _CacheTraduzioni(
+               {"lette": True, "lingua": "it", "risorse": {}})}
+
+    esito = asyncio.run(server.prime_state_translations(app))
+
+    assert esito["lette"] is True
+
+
+def test_l_osservatore_riceve_il_sapere_e_nasce_DOPO_di_lui():
+    """L'osservatore legge dal sapere quali attributi tenere (spec §5.4): se
+    nascesse prima, prenderebbe `KeyError` all'avvio.
+
+    Mutazione ESEGUITA: spostare `app["watcher"] = Watcher(...)` sopra la
+    creazione del sapere -- rossa.
+    """
+    sorgente = inspect.getsource(server)
+
+    assert 'Watcher(app["observations"], knowledge=app["knowledge"])' in sorgente
+    assert (sorgente.index('app["knowledge"] = KnowledgeStore(')
+            < sorgente.index('app["watcher"] = Watcher('))
+
+
+def test_la_mappa_delle_direzioni_ARRIVA_DAVVERO_dal_sapere_al_lettore(tmp_path):
+    """**La catena che nessuna prova guardava** (revisione indipendente,
+    13/09/2026). La finta annotava la mappa con cui veniva chiamata e nessuno
+    la asseriva: se `directions_by_translation_key(app["knowledge"])` tornasse
+    `{}` -- seme non eseguito, prefisso cambiato, archivio vuoto -- tutte le
+    prove di cablaggio sarebbero rimaste verdi, e la casa avrebbe perso la
+    meta' DEDOTTA delle direzioni **in silenzio**. E' letteralmente il rischio
+    descritto nel docstring di `HAClient.energy_directions`.
+
+    Mutazione ESEGUITA: passare `direction_by_translation_key={}` dal
+    chiamante -- rossa.
+    """
+    from datetime import datetime, timedelta
+
+    from hiris.app.mind.store import ObservationsStore
+
+    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
+    sapere = _sapere(tmp_path)
+    try:
+        oggi = datetime(2026, 8, 24, tzinfo=UTC)
+        archivio.record(quando_ts=(oggi - timedelta(days=1)).replace(hour=10).timestamp(),
+                        source="entita", subject="light.x", da="off", a="on")
+        cliente = _ClienteLegami()
+
+        asyncio.run(server.reaggregate_last_two_days(
+            {"home_space_store": None, "observations": archivio,
+             "knowledge": sapere},
+            ha_client=cliente, now=lambda tz: oggi.astimezone(tz)))
+
+        assert cliente.direzioni_mappe, "il lettore non e' stato chiamato affatto"
+        mappa = cliente.direzioni_mappe[0]
+        assert mappa["energy_generating_today"] == "produzione"
+        assert len(mappa) == 14
+    finally:
+        archivio.close()
+        sapere.close()

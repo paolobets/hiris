@@ -1,5 +1,116 @@
 # HIRIS — Changelog
 
+## [3.30.0] — Il sapere, e le ricette (2026-09-12)
+
+**Cio' che HIRIS ha capito della casa smette di essere codice.** Fino a questa
+versione viveva sparso in tre posti: una tabella a mano dentro il lettore di
+Home Assistant per le direzioni dell'energia, una nel vocabolario per il
+significato delle classi, la ricetta dell'inverter dentro il motore di
+aggregazione. Tre forme, nessuna provenienza, e per correggerne una serviva un
+rilascio.
+
+Adesso e' un archivio: **una riga per `(genere, soggetto, campo)`**, con **da
+dove viene** e **cosa ha detto il controllo** tenuti separati. Un campo
+«nostro» -- un giudizio che Home Assistant non puo' darci -- non puo' portare
+una verifica, e il costruttore lo impedisce: dire «confermata» su un giudizio
+nostro affermerebbe che qualcuno la' fuori ce l'ha confermato.
+
+### Una ricetta e' un dato, e si rifiuta invece di correggerla
+
+«Come si calcola il bilancio di questo dispositivo» e' diventato una sequenza
+di passi con nomi: ogni passo nomina un'operazione del registro, puo' leggere
+il risultato dei passi **precedenti** e nient'altro. Niente cicli, niente
+condizioni. E' cio' che permette di leggerla tutta, provarla e **rifiutarla
+prima di eseguirla** -- e il rifiuto elenca tutti i problemi insieme, non uno
+per volta.
+
+La prova storica: il 27/08 la quota di autosufficienza di questa casa era
+sbagliata -- misurato **0,964 invece di 0,985**, e con piu' ciclo d'accumulo
+**0,167 invece di 0,41**. Era una ricetta specifica di un'integrazione scritta
+dentro il motore, e per correggerla e' servito un rilascio.
+
+### Le 44 classi di cui HIRIS non sapeva dire niente
+
+Misurato sulla casa vera: il repo scriveva a mano il significato di **18
+classi di `sensor` su 62** e di **zero su 28** di `binary_sensor`. Le altre
+non erano meno importanti: erano quelle di cui HIRIS non sapeva dire niente.
+
+Adesso il significato arriva da dove Home Assistant lo pubblica gia', nella
+lingua dell'utente, con la versione scritta accanto -- e **senza una lettura
+di rete in piu'**, perche' e' lo stesso dizionario con cui il nucleo rende gli
+stati. Dove il repo aveva scritto una frase vera («la potenza ISTANTANEA, non
+un'energia») quella resta: il nome pubblicato non la schiaccia.
+
+E si vede: **il dettaglio di un'entita' in `guarda` dice cosa significa la sua
+classe**. Un archivio che nessuno interroga non e' conoscenza -- e' un file.
+
+### Il riscaldamento che parte alle 15:30
+
+**L'esempio fondativo di tutto il cervello non era rispondibile**, e la
+ragione era semplice: lo stato di un termostato e' `heat` e resta `heat`.
+Quello che cambia sono gli attributi -- `hvac_action` dice se sta davvero
+scaldando, `current_temperature` dice dove si e' arrivati.
+
+Il grezzo ne conservava tre, scelti a mano. Adesso conserva **quelli che il
+sapere dice valgano la pena per quel tipo**, e il cambio di uno di quelli fa
+nascere una riga anche quando lo stato non si muove. Gli altri -- l'icona, il
+resto -- continuano a non far nascere niente: il guadagno misurato il 10/09
+(6.446 righe al giorno dei soli otto termostati) resta.
+
+### La revisione indipendente, e cosa ha trovato
+
+La revisione dovuta su Fable 5.1 non e' partita -- limite settimanale
+esaurito -- e ne e' girata una **sostitutiva su un altro modello**, dichiarata
+come tale. Quella su Fable resta da fare.
+
+Ha trovato quattro cose gravi, tutte vere, tutte chiuse:
+
+- **L'esempio fondativo non era rispondibile lo stesso.** La riga che nasce dal
+  cambio di un attributo veniva datata con `last_changed`, che per un evento di
+  solo attributo **non si muove**: sarebbe nata datata a giorni prima e sarebbe
+  caduta fuori dalla finestra del giorno. Cioe' il guasto che il filtro
+  chiudeva, riaperto sulle stesse entita'. E la prova non poteva vederlo,
+  perche' la sua fabbrica di eventi inventava un `last_changed` fresco: un
+  evento che Home Assistant non manda mai.
+- **La colonna degli attributi era scritta e non la leggeva nessuno**, mentre
+  accanto c'era scritto il contrario. Adesso l'oggetto di un episodio porta
+  cosa hanno fatto gli attributi mentre durava, ed e' quel lettore a rendere
+  vera la frase.
+- **Il seme non poteva correggersi.** Con un inserimento che ignora i
+  conflitti, una riga sbagliata del repo sarebbe rimasta congelata per sempre
+  su ogni casa gia' avviata: prima serviva un rilascio, dopo non sarebbe
+  bastato nemmeno quello. Adesso il seme corregge le righe che sono **ancora
+  sue**, e si ferma appena qualcun altro ci ha scritto sopra.
+- **«Correggibile senza un rilascio» non era vero** per la ricetta del
+  bilancio, che e' generata e non ancora scritta nel sapere. I docstring
+  adesso dicono cosa questa fetta ha davvero ottenuto, e la meta' che manca e'
+  a backlog con la sua forma.
+
+Fra i rilievi medi, uno vale da solo il giro: `current_temperature` era fra gli
+attributi «che valgono la pena», ed e' una grandezza **continua** -- tenerla
+avrebbe riaperto il flusso di righe che il filtro aveva chiuso, in misura che
+nessuno aveva contato. La domanda fondativa la risponde `hvac_action`, che
+passa a `idle` **quando** la casa e' arrivata in temperatura: un cambio per
+episodio, non uno per decimo di grado.
+
+### Quello che il piano prevedeva e non e' successo
+
+Due cose, dette qui perche' un piano disatteso in silenzio e' peggio di un
+piano cambiato.
+
+- **I tre attributi fissi non sono usciti.** `device_class` e `source_type` li
+  legge l'aggregazione per decidere il genere di ogni oggetto: toglierli
+  significherebbe che un rilevatore di fumo scattato torna a leggersi
+  «Acceso». La spec si contraddice su questo punto, e ha ragione il paragrafo
+  che descrive codice vivo.
+- **Il censore dei tipi non si e' chiuso «da se'».** Cambiare la sua fonte lo
+  avrebbe reso un cancello che non puo' arrossire mai, perche' avrebbe
+  confrontato un insieme con se stesso. «Home Assistant lo documenta» non e'
+  «qualcuno l'ha guardato», e il censore continua a chiedere la seconda cosa.
+
+Tutte e due con la misura accanto, in
+`docs/design/2026-09-12-il-sapere-e-le-ricette.md`.
+
 ## [3.29.0] — Il registro delle operazioni (2026-09-12)
 
 **HIRIS sapeva fare conti, ma non sapeva DIRE quali sa fare.** La somma di un

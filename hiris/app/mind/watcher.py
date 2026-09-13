@@ -10,12 +10,14 @@ Tutto il giudizio sta nell'aggregazione (`facts.py`), che e' rifacibile per
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
 
 from ..home_space.ha_vocabulary import config_entry_is_healthy
 from ..home_space.historian import instant_epoch
+from .knowledge import attributes_wanted_for
 
 logger = logging.getLogger(__name__)
 
@@ -102,9 +104,31 @@ class Watcher:
     toccare il modulo `time`.
     """
 
-    def __init__(self, store, *, now=time.time) -> None:
+    def __init__(self, store, *, now=time.time, knowledge=None) -> None:
         self._store = store
         self._now = now
+        # Il sapere dice **quali attributi valga la pena tenere** per un tipo
+        # (spec §5.4). E' FACOLTATIVO: senza, l'osservatore scrive come ha
+        # sempre scritto e non tiene attributi. Un componente che si rompe
+        # quando un altro manca non e' autonomo (quarta fondamenta), e questo
+        # e' anche il caso vero di ogni prova che costruisce un osservatore
+        # minimale.
+        self._knowledge = knowledge
+        # `(dominio, classe) -> attributi voluti`, tenuto in RAM.
+        #
+        # **Perche' una memoria e non due `SELECT` per evento.** La domanda si
+        # farebbe PRIMA del filtro `da == a`, quindi anche sulle ~6.500 righe
+        # al giorno che verranno scartate: due letture di sqlite ciascuna, per
+        # una risposta che non cambia mai dentro un avvio. Il cancello
+        # precedente -- `store.is_watched` -- ha il suo costo misurato accanto
+        # (24 us su uno scope di 833 righe); questo non lo aveva, ed e' la
+        # ragione per cui la memoria c'e' (revisione indipendente, 13/09/2026).
+        #
+        # Vive quanto l'osservatore: una riga del sapere cambiata a caldo si
+        # legge al prossimo riavvio. E' la stessa sorte di `self._conditions`
+        # qui sotto, ed e' accettabile perche' «quali attributi contano per un
+        # tipo» e' un giudizio che cambia con una fetta, non con un turno.
+        self._wanted_cache: dict[tuple[str, str | None], tuple[str, ...]] = {}
         # Le condizioni di sistema aperte all'ultimo giro. Serve a scrivere un
         # cambio quando NASCONO e quando FINISCONO, invece di riscriverle a
         # ogni passaggio del lavoro periodico. Vive solo in RAM: al riavvio
@@ -221,15 +245,53 @@ class Watcher:
             # datate a giorni prima e cadevano fuori dalla finestra del
             # giorno -- scritte, e mai lette da nessuno.
             #
-            # Gli attributi non si perdono qui: non sono mai stati raccolti.
-            # Il grezzo ne conserva tre, scelti a mano; **quali valgano la pena
-            # lo dira' la ricetta**, dispositivo per dispositivo (spec §5.4).
-            if da == a:
+            # **Dal 12/09/2026 il filtro ha un'eccezione, ed e' il punto della
+            # spec §5.4**: se cambia un attributo che qualcuno ha deciso VALGA
+            # LA PENA, quella riga dice qualcosa e va scritta. Lo stato di un
+            # termostato e' `heat` e resta `heat` tutto il pomeriggio, mentre
+            # `hvac_action` passa da `heating` a `idle` quando la casa e'
+            # arrivata in temperatura -- ed e' esattamente il fatto che
+            # l'esempio fondativo del cervello chiede.
+            #
+            # **Il guadagno misurato resta**: passa solo cio' che qualcuno ha
+            # deciso che conta. Gli altri attributi -- l'icona, i
+            # `supported_features`, il resto -- continuano a non far nascere
+            # niente, e i 6.446 cambi al giorno degli otto termostati restano
+            # fuori.
+            wanted = self._wanted_attributes(str(eid), attributes)
+            old_attributes = (old_state.get("attributes")
+                              if isinstance(old_state, dict) else None)
+            kept = {k: attributes[k] for k in wanted if k in attributes}
+            if da == a and not self._wanted_changed(wanted, old_attributes, attributes):
                 return False
             # L'istante e' quello del CAMBIO, non della scrittura: `last_changed`
             # dice quando la casa e' cambiata, il nostro orologio quando l'abbiamo
             # saputo. Annotare il secondo sposterebbe ogni oggetto di quel tanto.
-            when = instant_epoch(new_state.get("last_changed"))
+            #
+            # **Tranne quando il cambio E' l'attributo**, e qui il difetto era
+            # grave (trovato dalla revisione indipendente, 13/09/2026):
+            # `last_changed` NON si muove per un evento di solo attributo --
+            # e' scritto dieci righe sopra, misurato il 10/09, e vale anche
+            # per l'eccezione nuova. Una riga nata dal passaggio di
+            # `hvac_action` da `heating` a `idle` sarebbe nata datata
+            # all'ultimo cambio di STATO, giorni prima, e sarebbe caduta fuori
+            # dalla finestra del giorno: scritta, e mai letta da nessuno.
+            # Cioe' esattamente il guasto che il filtro chiudeva «per forza»,
+            # riaperto sulle stesse entita'.
+            #
+            # Per quelle righe l'istante giusto e' `last_updated`, che **si
+            # muove anche per un attributo** (`proxy/entity_cache.py:518-520`,
+            # dove questa stessa differenza e' gia' scritta per la ragione
+            # opposta). Non e' «l'orologio della scrittura»: e' l'istante che
+            # Home Assistant dichiara per QUEL cambio.
+            solo_attributo = da == a
+            when = instant_epoch(new_state.get(
+                "last_updated" if solo_attributo else "last_changed"))
+            if when is None and solo_attributo:
+                # Ripiego dichiarato: se `last_updated` mancasse, `last_changed`
+                # e' comunque meglio dell'orologio -- sbaglia di giorni, ma
+                # resta un istante che HA ha dichiarato.
+                when = instant_epoch(new_state.get("last_changed"))
             if when is None:
                 # Ripiego muto fino a qui: se HA cambiasse formato di
                 # `last_changed`, ogni cambio slitterebbe all'istante in cui
@@ -257,12 +319,53 @@ class Watcher:
                 # Assistant ha GIA' composto (`helpers/entity.py:1161` ->
                 # `entity_registry.py:592-603` @ `2026.9.1`), non una
                 # ricomposta da noi da `name`/`original_name`/dispositivo.
-                friendly_name=_text_or_none(attributes.get("friendly_name")))
+                friendly_name=_text_or_none(attributes.get("friendly_name")),
+                # Gli attributi voluti, come JSON. `None` -- non `"{}"` --
+                # quando non ce n'e' nessuno: un dizionario vuoto scritto
+                # direbbe «li abbiamo guardati e non c'erano», che e' un'altra
+                # cosa dal non averli mai chiesti.
+                attributes=json.dumps(kept, ensure_ascii=False) if kept else None)
             return True
         except Exception as error:
             logger.warning("osservatore: evento non annotato (%s: %s)",
                            type(error).__name__, error)
             return False
+
+    def _wanted_attributes(self, entity_id: str, attributes: dict) -> tuple[str, ...]:
+        """Quali attributi tenere per questa entita', secondo il sapere.
+
+        Il tipo si compone dal dominio dell'`entity_id` e dalla `device_class`
+        che l'entita' dichiara: e' la stessa coppia con cui il vocabolario dei
+        tipi indicizza tutto il resto.
+        """
+        if self._knowledge is None:
+            return ()
+        domain = entity_id.split(".", 1)[0]
+        device_class = _text_or_none(attributes.get("device_class"))
+        cached = self._wanted_cache.get((domain, device_class))
+        if cached is not None:
+            return cached
+        try:
+            wanted = attributes_wanted_for(
+                self._knowledge, domain=domain, device_class=device_class)
+        except Exception as error:  # pragma: no cover - archivio irraggiungibile
+            logger.debug("osservatore: attributi voluti non letti per %s (%s)",
+                         entity_id, error)
+            return ()
+        self._wanted_cache[(domain, device_class)] = wanted
+        return wanted
+
+    @staticmethod
+    def _wanted_changed(wanted, old_attributes, new_attributes) -> bool:
+        """Se uno degli attributi VOLUTI e' cambiato fra le due letture.
+
+        Solo quelli: confrontarli tutti farebbe nascere una riga per ogni
+        icona che cambia, e il guadagno misurato del filtro tornerebbe
+        indietro per intero.
+        """
+        if not wanted or not isinstance(old_attributes, dict):
+            return False
+        return any(old_attributes.get(k) != new_attributes.get(k) for k in wanted)
 
     # -- le automazioni --------------------------------------------------
 

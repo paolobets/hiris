@@ -21,6 +21,8 @@ Stessa disciplina di `legami`/`problemi` (`test_ha_client_related_problems.py`):
 «nessuna direzione esiste»."""
 import pytest
 
+from hiris.app.mind.knowledge import DIRECTION_FIELD_PREFIX
+from hiris.app.mind.seed import direction_seed
 from hiris.app.proxy.ha_client import HAClient
 
 
@@ -49,6 +51,20 @@ def _client(finto):
     return c
 
 
+#: La mappa `translation_key -> direzione` che dal 12/09/2026 arriva **da
+#: fuori**: non e' piu' una tabella dentro `HAClient`, sono righe del sapere,
+#: e qui le prove la consegnano come fa il chiamante vero.
+#:
+#: **Si costruisce dal SEME, non si ricopia** (revisione indipendente,
+#: 13/09/2026): una copia a mano resterebbe verde anche il giorno in cui il
+#: seme cambiasse una chiave, e queste prove difenderebbero una mappa che in
+#: produzione non esiste piu'.
+DIREZIONI = {
+    f.field[len(DIRECTION_FIELD_PREFIX):]: f.value
+    for f in direction_seed(1789000000.0)
+}
+
+
 def _prefs(*sorgenti):
     return {"result": {"energy_sources": list(sorgenti)}}
 
@@ -66,7 +82,7 @@ def _riga(entity_id, translation_key=None, platform="zcsazzurro"):
 @pytest.mark.asyncio
 async def test_manda_i_due_comandi_giusti_su_una_connessione_sola():
     finto = _Finto([_prefs(), _registro()])
-    await _client(finto).energy_directions()
+    await _client(finto).energy_directions(direction_by_translation_key=DIREZIONI)
     assert finto.comandi == [("energy/get_prefs", None),
                              ("config/entity_registry/list", None)]
 
@@ -83,7 +99,7 @@ async def test_grid_produce_prelievo_e_immissione_dai_campi_scalari():
                     "stat_energy_from": "sensor.ze1_energia_importata_oggi",
                     "stat_energy_to": "sensor.ze1_energia_esportata_oggi"})
     finto = _Finto([prefs, _registro()])
-    esito = await _client(finto).energy_directions()
+    esito = await _client(finto).energy_directions(direction_by_translation_key=DIREZIONI)
     assert esito["sensor.ze1_energia_importata_oggi"] == {
         "direzione": "prelievo", "provenienza": "dichiarata"}
     assert esito["sensor.ze1_energia_esportata_oggi"] == {
@@ -99,7 +115,7 @@ async def test_solar_produce_produzione_sia_da_energia_sia_da_potenza():
                     "stat_energy_from": "sensor.ze1_energia_prodotta_oggi",
                     "stat_rate": "sensor.ze1_potenza_prodotta"})
     finto = _Finto([prefs, _registro()])
-    esito = await _client(finto).energy_directions()
+    esito = await _client(finto).energy_directions(direction_by_translation_key=DIREZIONI)
     assert esito["sensor.ze1_energia_prodotta_oggi"] == {
         "direzione": "produzione", "provenienza": "dichiarata"}
     assert esito["sensor.ze1_potenza_prodotta"] == {
@@ -112,7 +128,7 @@ async def test_battery_produce_scarica_da_from_e_carica_da_to():
                     "stat_energy_from": "sensor.ze1_energia_scarica_oggi",
                     "stat_energy_to": "sensor.ze1_energia_carica_oggi"})
     finto = _Finto([prefs, _registro()])
-    esito = await _client(finto).energy_directions()
+    esito = await _client(finto).energy_directions(direction_by_translation_key=DIREZIONI)
     assert esito["sensor.ze1_energia_scarica_oggi"] == {
         "direzione": "scarica", "provenienza": "dichiarata"}
     assert esito["sensor.ze1_energia_carica_oggi"] == {
@@ -130,7 +146,7 @@ async def test_le_tre_sorgenti_insieme_come_misurato_sulla_casa_vera():
         {"type": "battery", "stat_energy_from": "sensor.scar", "stat_energy_to": "sensor.car"},
     )
     finto = _Finto([prefs, _registro()])
-    esito = await _client(finto).energy_directions()
+    esito = await _client(finto).energy_directions(direction_by_translation_key=DIREZIONI)
     assert len(esito) == 6
     assert {v["direzione"] for v in esito.values()} == {
         "prelievo", "immissione", "produzione", "scarica", "carica"}
@@ -142,7 +158,7 @@ async def test_una_dashboard_non_configurata_non_e_un_guasto():
     """`energy_sources: []` e' un esito legittimo (nessuna dashboard), non un
     errore -- come un elenco di legami vuoto per un'entita' senza legami."""
     finto = _Finto([_prefs(), _registro()])
-    esito = await _client(finto).energy_directions()
+    esito = await _client(finto).energy_directions(direction_by_translation_key=DIREZIONI)
     assert esito == {}
     assert "errore" not in esito
 
@@ -160,7 +176,7 @@ async def test_la_dedotta_riempie_dove_la_dichiarata_non_arriva():
         _riga("sensor.ze1_energia_autoconsumata_oggi", "energy_autoconsuming_today"),
     )
     finto = _Finto([_prefs(), registro])
-    esito = await _client(finto).energy_directions()
+    esito = await _client(finto).energy_directions(direction_by_translation_key=DIREZIONI)
     assert esito["sensor.ze1_potenza_consumata"] == {
         "direzione": "consumo", "provenienza": "dedotta"}
     assert esito["sensor.ze1_energia_consumata_oggi"] == {
@@ -193,7 +209,7 @@ async def test_le_sette_direzioni_dedotte_al_completo():
         righe.append(_riga(f"sensor.{chiave_potenza}_power", chiave_potenza))
         righe.append(_riga(f"sensor.{chiave_energia}_energy", chiave_energia))
     finto = _Finto([_prefs(), _registro(*righe)])
-    esito = await _client(finto).energy_directions()
+    esito = await _client(finto).energy_directions(direction_by_translation_key=DIREZIONI)
     assert len(esito) == 14
     for chiave_potenza, chiave_energia, direzione in coppie:
         assert esito[f"sensor.{chiave_potenza}_power"]["direzione"] == direzione
@@ -212,7 +228,7 @@ async def test_un_translation_key_non_riconosciuto_non_produce_niente():
         _riga("sensor.altro_3", "power", platform="tuya"),
     )
     finto = _Finto([_prefs(), registro])
-    esito = await _client(finto).energy_directions()
+    esito = await _client(finto).energy_directions(direction_by_translation_key=DIREZIONI)
     assert esito == {}
 
 
@@ -228,7 +244,7 @@ async def test_la_dichiarata_vince_sempre_anche_se_la_dedotta_direbbe_altro():
     prefs = _prefs({"type": "solar", "stat_energy_from": entity_id})
     registro = _registro(_riga(entity_id, "energy_consuming_today"))
     finto = _Finto([prefs, registro])
-    esito = await _client(finto).energy_directions()
+    esito = await _client(finto).energy_directions(direction_by_translation_key=DIREZIONI)
     assert esito[entity_id] == {"direzione": "produzione", "provenienza": "dichiarata"}
 
 
@@ -245,5 +261,57 @@ async def test_la_dichiarata_vince_sempre_anche_se_la_dedotta_direbbe_altro():
     (_Finto([_prefs(), {"result": "non una lista"}]), "registro in forma inattesa"),
 ])
 async def test_un_guasto_non_diventa_un_dizionario_vuoto(finto, perche):
-    esito = await _client(finto).energy_directions()
+    esito = await _client(finto).energy_directions(direction_by_translation_key=DIREZIONI)
     assert "errore" in esito, perche
+
+
+# --- la mappa arriva da fuori, e non ha un valore per difetto --------------
+
+@pytest.mark.asyncio
+async def test_senza_la_mappa_il_lettore_NON_indovina_e_la_meta_dedotta_sparisce():
+    """**La prova che il parametro conta.** Dal 12/09/2026 la tabella
+    `translation_key -> direzione` non vive piu' qui: e' sapere, e arriva da
+    fuori. Con una mappa vuota -- una casa che non ha mai imparato quelle
+    righe -- la meta' DEDOTTA sparisce, e la dichiarata resta.
+
+    E' il comportamento giusto: questo lettore sa leggere un registro di
+    entita', non sa che `energy_generating_today` voglia dire «produzione».
+    Indovinarlo sarebbe la forma esatta del difetto che la spec chiama
+    «smettere di copiare».
+
+    Mutazione ESEGUITA: rimettere un valore per difetto al parametro --
+    questa prova resta verde e nessuna delle altre si accorge di niente, che
+    e' proprio perche' il parametro e' OBBLIGATORIO invece che facoltativo.
+    """
+    finto = _Finto([
+        _prefs({"type": "solar", "stat_energy_from": "sensor.dichiarata"}),
+        _registro(_riga("sensor.dedotta", "energy_generating_today"))])
+
+    esito = await _client(finto).energy_directions(direction_by_translation_key={})
+
+    assert esito == {"sensor.dichiarata": {"direzione": "produzione",
+                                           "provenienza": "dichiarata"}}
+
+
+@pytest.mark.asyncio
+async def test_con_la_mappa_del_sapere_la_meta_dedotta_torna():
+    """L'altra meta': la stessa casa, con le righe del sapere caricate."""
+    finto = _Finto([
+        _prefs({"type": "solar", "stat_energy_from": "sensor.dichiarata"}),
+        _registro(_riga("sensor.dedotta", "energy_generating_today"))])
+
+    esito = await _client(finto).energy_directions(
+        direction_by_translation_key=DIREZIONI)
+
+    assert esito["sensor.dedotta"] == {"direzione": "produzione",
+                                       "provenienza": "dedotta"}
+
+
+@pytest.mark.asyncio
+async def test_la_mappa_e_OBBLIGATORIA_e_dimenticarla_non_compila():
+    """Non ha un valore per difetto, e non e' pedanteria: un difetto
+    silenzioso qui vorrebbe dire perdere la meta' dedotta senza che nessuno
+    se ne accorga -- il numero uscirebbe piu' piccolo, non sbagliato, e
+    nessuna prova lo vedrebbe."""
+    with pytest.raises(TypeError):
+        await _client(_Finto([_prefs(), _registro()])).energy_directions()
