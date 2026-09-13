@@ -46,16 +46,26 @@ from ..storage import connect, init_schema
 
 logger = logging.getLogger(__name__)
 
-#: I tre generi di soggetto di cui il sapere puo' parlare. Tre, non quattro:
-#: un «dispositivo» sarebbe un `ambito` travestito da genere.
+#: I generi di soggetto di cui il sapere puo' parlare.
+#:
+#: **Erano tre fino al 13/09/2026**, e il quarto -- `dispositivo` -- e' nato
+#: con le ricette che l'osservatore chiede al modello (`mind/recipe_turn.py`,
+#: spec §7). Non contraddice la spec: quello che §8 esclude e' una colonna
+#: `ambito`, perche' sarebbe un doppione del genere. Il genere continua a dire
+#: da solo se una riga e' universale -- `tipo` e `integrazione` lo sono,
+#: `entita` e `dispositivo` sono di questa casa -- e l'invariante regge.
+#:
+#: **Una ricetta non ha nessun altro soggetto onesto**: non e'
+#: dell'integrazione (nomina entita' che un'altra casa non ha) e non e' di
+#: un'entita' sola (ne mette insieme sette).
 #:
 #: **Il genere dice anche cosa puo' uscire di casa**, e per questo `ambito` non
 #: e' una colonna: `tipo` e `integrazione` sono universali per natura -- «un
 #: inverter zcsazzurro si misura cosi'» vale per chiunque ne abbia uno --
-#: mentre `entita` e' di questa casa e non si esporta. La porta che esporta
+#: mentre `entita` e `dispositivo` sono di questa casa e non si esportano. La porta che esporta
 #: non c'e' ancora (spec §12, a backlog): quando arrivera', la regola si legge
 #: da qui e non da un campo in piu' che potrebbe divergere.
-SUBJECT_KINDS = ("tipo", "integrazione", "entita")
+SUBJECT_KINDS = ("tipo", "integrazione", "entita", "dispositivo")
 
 #: Da dove viene un campo. **Non dice se e' vero**: quello lo dice l'altro asse.
 #:
@@ -145,7 +155,7 @@ class Fact:
         if self.subject_kind not in SUBJECT_KINDS:
             raise ValueError(
                 f"genere di soggetto sconosciuto: {self.subject_kind!r}. "
-                f"Sono tre, e sono {', '.join(SUBJECT_KINDS)}")
+                f"Sono {', '.join(SUBJECT_KINDS)}")
         if not str(self.subject or "").strip():
             raise ValueError("un soggetto senza nome non e' un soggetto")
         if not str(self.field or "").strip():

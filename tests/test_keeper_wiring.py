@@ -359,10 +359,18 @@ def test_costruisci_dispatcher_strumenti_riceve_registro_e_promesse():
 # un conteggio che nessuno ancora ai fatti veri non e' un pavimento, e' una
 # frase che invecchia senza avvisare.
 
-def test_the_registered_periodic_jobs_are_thirteen_as_the_readme_declares():
+def test_the_registered_periodic_jobs_are_fourteen_as_the_readme_declares():
+    """**Il quattordicesimo e' l'anello delle ricette** (13/09/2026, spec §7):
+    ogni dieci minuti chiede al modello come si misura UN dispositivo che pesa
+    e di cui non si sa ancora niente, e poi smette -- una ricetta scritta, o un
+    rifiuto registrato, non si richiede mai piu'.
+
+    Il numero sta qui perche' un lavoro periodico e' una cosa che gira per
+    sempre e costa per sempre: aggiungerne uno senza accorgersene e' il modo
+    in cui una casa comincia a fare rumore di notte."""
     src = inspect.getsource(server._on_startup)
     n = src.count("scheduler.add_job(")
-    assert n == 13, (
-        f"server.py registra {n} lavori periodici (scheduler.add_job), non 13: "
+    assert n == 14, (
+        f"server.py registra {n} lavori periodici (scheduler.add_job), non 14: "
         "il README (sezione «What HIRIS 2.0 is») dichiara un numero preciso "
         "e va aggiornato insieme al codice, non dopo.")

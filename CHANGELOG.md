@@ -1,5 +1,62 @@
 # HIRIS — Changelog
 
+## [3.31.0] — L'osservatore chiede come si misura un dispositivo (2026-09-13)
+
+**Il registro delle operazioni e il motore delle ricette c'erano, ma nessuno
+scriveva ricette nuove.** Il repo ne portava una -- il bilancio dell'energia --
+e basta. Misurato sulla casa vera il 13/09: il resoconto giornaliero, che e' la
+fetta successiva, avrebbe avuto **~6 misure al giorno** (tutte dello stesso
+inverter) contro ~28 fatti di cronaca. Tutti e tre gli inneschi dell'analista
+lavorano sulle misure: gliene sarebbe arrivato il 18%.
+
+Da questa versione l'osservatore, quando un dispositivo **pesa** e nessuno sa
+ancora come si misura, **lo chiede al modello** -- mostrandogli il dispositivo
+con **tutte le sue entita' insieme** e l'obiettivo della casa. Viste insieme,
+le sette misure di un inverter si spiegano da sole; viste una alla volta sono
+sette indovinelli.
+
+### Una volta, non ogni giorno — e il conto dice perche'
+
+Un dispositivo per giro, ogni dieci minuti. Trenta dispositivi che pesano sono
+trenta turni del modello: chiesti insieme svuoterebbero da soli il tetto
+giornaliero del piano, e da li' in poi ogni turno -- chat compresa --
+passerebbe ai provider a pagamento. Uno alla volta copre trenta dispositivi in
+cinque ore, e poi **smette**: una ricetta scritta non si richiede mai piu'.
+
+**E nemmeno un rifiuto.** Se il modello non sa cosa valga la pena misurare, la
+risposta si scrive com'e', col suo perche'. Senza quella riga la stessa domanda
+tornerebbe ogni notte per sempre, e il proprietario non saprebbe mai che quel
+dispositivo non e' stato capito.
+
+### Si rifiuta, e non si corregge
+
+Una ricetta che nomina un'operazione inesistente o un'entita' che non c'e' non
+si aggiusta indovinando cosa intendeva chi l'ha scritta: si scarta, e il
+rifiuto porta l'elenco dei problemi. E' la stessa disciplina del registro --
+un costruttore che non lascia nascere la cosa sbagliata.
+
+### La ricetta del bilancio vive finalmente nel sapere
+
+La spec §7 promette *«come dato sarebbe correggibile senza un rilascio»*.
+Finche' la ricetta del bilancio si ricomponeva a ogni giro dentro il motore,
+quella frase era falsa: per cambiare quel conto serviva un rilascio,
+esattamente come il 27/08/2026 quando l'autosufficienza era sbagliata. Adesso
+il repo la genera dalle direzioni e la **semina** una volta; da li' in poi e'
+una riga che si legge, si corregge a mano, e che il seme non tocca piu'.
+
+E' anche cio' che impedisce all'anello nuovo di chiedere una seconda ricetta
+per un dispositivo che ne ha gia' una: due ricette per lo stesso dispositivo
+sarebbero due verita' libere di divergere.
+
+### Il quarto genere del sapere
+
+Una ricetta non ha nessun altro soggetto onesto: non e' dell'integrazione
+(nomina entita' che un'altra casa non ha) e non e' di un'entita' sola (ne mette
+insieme sette). Il genere `dispositivo` non contraddice la spec §8 -- quello
+che §8 esclude e' una colonna `ambito`, e il genere continua a dire da solo se
+una riga e' universale (`tipo`, `integrazione`) o di questa casa (`entita`,
+`dispositivo`).
+
 ## [3.30.1] — La revisione dovuta, e cosa ha trovato (2026-09-13)
 
 La revisione della fetta 4 doveva girare su Fable 5.1 e non era partita --

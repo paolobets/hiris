@@ -362,29 +362,6 @@ va corretto, in un posto solo.
 > del repository e da cio' che e' stato misurato sulla casa vera. La lista del proprietario va
 > reinserita da lui, e queste voci vanno lette come un fondo di magazzino, non come una sua scelta.
 
-### La ricetta del bilancio non vive ancora nel sapere
-
-`origine: revisione indipendente della fetta 4, 13/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §7
-
-**Il fatto.** La spec e' esplicita: *«Dove vive [la ricetta]: **nel sapere** (§8), con provenienza e
-prove»*. Oggi `mind/recipes.balance_recipe()` e' una funzione Python che **ricompone la ricetta a
-ogni aggregazione**: non viene mai scritta nell'archivio ne' mai riletta da li'.
-
-**Cosa costa.** L'argomento che giustifica tutta la fetta — il 27/08/2026 la quota di
-autosufficienza era sbagliata (0,964 invece di 0,985) *«ed era una ricetta specifica di
-un'integrazione scritta dentro il motore: per correggerla e' servito un rilascio»* — **vale ancora
-oggi**: per cambiare quella formula serve ancora un rilascio. Cio' che si e' guadagnato e' reale ma
-e' un'altra cosa, e i docstring adesso lo dicono: il conto si legge tutto, si valida, si rifiuta
-prima di eseguirlo, e le due quote si calcolano in un posto solo invece che in due.
-
-**Cosa servirebbe, e la domanda aperta.** Scrivere la ricetta nel sapere al primo giro e rileggerla
-da li'. Il nodo da sciogliere e' il **soggetto**: i tre generi sono `tipo`, `integrazione`,
-`entita`, e una ricetta del bilancio nomina le entita' di QUESTA casa — quindi non e' universale e
-non puo' avere per soggetto l'integrazione, ma non e' nemmeno di una entita' sola. Le strade:
-un genere `dispositivo` (che la spec esclude apposta, perche' sarebbe un `ambito` travestito), o
-una ricetta universale per `integrazione` che nomina **direzioni** invece di entita', con la casa
-che lega direzione → entita'. La seconda e' piu' fedele alla spec e va misurata prima di scegliere.
-
 ### Il vocabolario dei tipi non e' ancora un seme del sapere
 
 `origine: fetta 4 «il sapere e le ricette», 12-13/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §8

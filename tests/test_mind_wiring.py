@@ -2558,3 +2558,51 @@ def test_la_mappa_delle_direzioni_ARRIVA_DAVVERO_dal_sapere_al_lettore(tmp_path)
     finally:
         archivio.close()
         sapere.close()
+
+
+def test_la_ricetta_del_bilancio_SI_SEMINA_nel_sapere_al_primo_giro(tmp_path):
+    """**La meta' che mancava alla promessa della spec §7.**
+
+    Finche' la ricetta si ricomponeva a ogni giro dentro il motore, la frase
+    «come dato sarebbe correggibile senza un rilascio» era falsa: per cambiare
+    quel conto serviva ancora un rilascio, esattamente come il 27/08/2026.
+
+    Adesso il repo la genera dalle direzioni e la **semina**: da li' in poi e'
+    una riga del sapere, e chi la corregge non aspetta nessuno. E' anche cio'
+    che impedisce all'anello delle ricette di chiederne una seconda per lo
+    stesso dispositivo -- due ricette per un dispositivo solo sarebbero la
+    seconda fondamenta rotta.
+
+    Mutazione ESEGUITA: togliere la `seed` da `_balance_recipe_for` -- rossa,
+    e il dispositivo tornerebbe fra quelli da chiedere al modello.
+    """
+    from hiris.app.mind.recipe_turn import RECIPE_FIELD, recipe_for
+
+    sapere = _sapere(tmp_path)
+    ricetta = server._balance_recipe_for(
+        sapere, "dev1", {"produzione": "sensor.p", "consumo": "sensor.c"}, 24)
+
+    assert [p["name"] for p in ricetta["steps"]][:2] == ["produzione", "forma_produzione"]
+    assert sapere.get("dispositivo", "dev1", RECIPE_FIELD) is not None
+    assert recipe_for(sapere, "dev1")["why"]
+
+
+def test_una_ricetta_GIA_SCRITTA_vince_su_quella_del_repo(tmp_path):
+    """Se qualcuno ha corretto la ricetta -- a mano, o il modello -- il repo
+    non la schiaccia: e' il senso di averla messa nel sapere."""
+    import json
+
+    from hiris.app.mind.knowledge import Fact
+    from hiris.app.mind.recipe_turn import RECIPE_FIELD
+
+    sapere = _sapere(tmp_path)
+    sua = {"why": "corretta a mano", "steps": []}
+    sapere.write(Fact(subject_kind="dispositivo", subject="dev1",
+                      field=RECIPE_FIELD, value=json.dumps(sua),
+                      provenance="chiesto", who="proprietario",
+                      when_ts=1789000000.0))
+
+    ricetta = server._balance_recipe_for(
+        sapere, "dev1", {"produzione": "sensor.p"}, 24)
+
+    assert ricetta["why"] == "corretta a mano"

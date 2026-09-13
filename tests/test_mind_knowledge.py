@@ -33,15 +33,20 @@ def test_una_riga_del_sapere_porta_i_due_assi_separati():
 
 
 def test_un_genere_di_soggetto_inventato_NON_nasce():
-    """Tre generi, non quattro: `tipo`, `integrazione`, `entita`. Un quarto
-    genere sarebbe un `ambito` travestito, e la spec lo esclude apposta --
-    `tipo` e `integrazione` sono universali per natura, `entita` e' di questa
-    casa, e non serve una colonna per dirlo.
+    """Quattro generi: `tipo`, `integrazione`, `entita`, `dispositivo`. Non e'
+    un elenco aperto -- cio' che la spec §8 esclude e' una colonna `ambito`,
+    perche' il genere dice gia' da solo se una riga e' universale (`tipo` e
+    `integrazione`) o di questa casa (`entita` e `dispositivo`).
+
+    Il quarto e' nato il 13/09/2026 con le ricette che l'osservatore chiede al
+    modello: una ricetta non ha nessun altro soggetto onesto -- non e'
+    dell'integrazione (nomina entita' che un'altra casa non ha) e non e' di
+    un'entita' sola (ne mette insieme sette).
 
     Mutazione che la uccide: togliere il controllo su `SUBJECT_KINDS`.
     """
     with pytest.raises(ValueError, match="genere"):
-        _riga(subject_kind="dispositivo")
+        _riga(subject_kind="stanza")
 
 
 def test_una_provenienza_inventata_NON_nasce():

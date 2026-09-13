@@ -419,7 +419,8 @@ def build_balance_body(*, series: dict[str, list[dict]],
                               entity_per_dimension: dict[str, str],
                               provenance_per_dimension: dict[str, str],
                               battery_entity: str | None = None,
-                              expected_hours: int | None = None) -> dict:
+                              expected_hours: int | None = None,
+                              recipe: dict | None = None) -> dict:
     """Il corpo di un bilancio, dalle statistiche orarie GIA' lette e tradotte.
 
     **Pura**: nessuna lettura di rete. `serie` arriva gia' risolta dal
@@ -513,9 +514,15 @@ def build_balance_body(*, series: dict[str, list[dict]],
     # vale solo su certe integrazioni -- misurato 0,964 invece di 0,985. Era
     # una ricetta specifica di un'integrazione scritta dentro questo motore, e
     # per correggerla e' servito un rilascio.
-    ricetta = Recipe(balance_recipe(entity_per_dimension,
-                                    order=BALANCE_DIRECTIONS,
-                                    expected_hours=expected_hours))
+    # **La ricetta arriva da fuori quando c'e'**, e quella del repo e' il
+    # ripiego (13/09/2026): il chiamante la legge dal sapere, dove puo' essere
+    # stata corretta a mano o riscritta dal modello. E' la meta' che mancava
+    # alla promessa della spec §7 -- *«come dato sarebbe stata correggibile
+    # senza un rilascio»* -- e finche' la ricetta si ricomponeva qui a ogni
+    # giro quella frase era falsa.
+    ricetta = Recipe(recipe if recipe is not None else balance_recipe(
+        entity_per_dimension, order=BALANCE_DIRECTIONS,
+        expected_hours=expected_hours))
     # **Nessun passo = nessun bilancio, non un'eccezione** (revisione
     # indipendente, 13/09/2026). Un dispositivo senza nemmeno una direzione
     # utile produce una ricetta vuota, e una ricetta vuota `run()` la rifiuta

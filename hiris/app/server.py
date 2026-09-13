@@ -2,6 +2,7 @@
 import asyncio
 import contextlib
 import hashlib
+import json
 import logging
 import os
 import re
@@ -57,6 +58,7 @@ from .keeper.store import AgendaStore
 from .keeper.sweeper import Sweeper
 from .memory.lookup_cache import LookupCache
 from .memory.store import MemoryStore
+from .mind import recipe_turn
 from .mind.cadence import cadence_from, measure_memory_window, reason_to_reconsider
 from .mind.facts import (
     BALANCE_DIRECTIONS,
@@ -64,7 +66,7 @@ from .mind.facts import (
     build_balance_body,
     day_boundaries,
 )
-from .mind.knowledge import KnowledgeStore, directions_by_translation_key
+from .mind.knowledge import Fact, KnowledgeStore, directions_by_translation_key
 from .mind.observer import SCOPE_TURN_KIND
 from .mind.observer import apply_answer as observer_apply_answer
 from .mind.observer import bridge_turn as observer_bridge_turn
@@ -72,7 +74,9 @@ from .mind.observer import reconsider as observer_reconsider
 from .mind.seed import (
     HOUSE_PRIORITY,
     REPO_PRIORITY,
+    SEED_AUTHOR,
     attribute_seed,
+    balance_recipe,
     direction_seed,
     meaning_seed,
     meanings_from_translations,
@@ -1256,7 +1260,8 @@ async def build_companions(
 
 async def build_balances(
         ha_client, home_space_store, *, day: str, timezone: str | None,
-        energy_subjects: list[str], directions: dict) -> tuple[list[dict], int]:
+        energy_subjects: list[str], directions: dict,
+        knowledge=None) -> tuple[list[dict], int]:
     """I bilanci del giorno, uno per dispositivo -- mandato «il bilancio
     dell'energia», 27/08/2026. Torna `(bilanci, falliti)`: stessa forma di
     `build_companions` sopra, per la stessa ragione -- il chiamante
@@ -1395,15 +1400,25 @@ async def build_balances(
     bilanci: list[dict] = []
     failed = 0
     for device_id, c in candidates.items():
+        # **La ricetta del bilancio vive nel sapere**, una per dispositivo
+        # (13/09/2026). Il repo la genera dalle direzioni e la SEMINA la prima
+        # volta; da li' in poi e' un dato: si legge, si corregge a mano, e il
+        # seme non la tocca piu' (`KnowledgeStore.seed`). E' anche cio' che
+        # impedisce all'anello delle ricette di chiederne una seconda per lo
+        # stesso dispositivo -- due ricette per un dispositivo solo sarebbero
+        # la seconda fondamenta rotta.
+        ore_attese = round((a_ts - da_ts) / 3600)
+        ricetta = _balance_recipe_for(
+            knowledge, device_id, c["entita_per_dimensione"], ore_attese)
         body = build_balance_body(
             series=series, entity_per_dimension=c["entita_per_dimensione"],
             provenance_per_dimension=c["provenienza_per_dimensione"],
-            battery_entity=c["entita_batteria"],
+            battery_entity=c["entita_batteria"], recipe=ricetta,
             # Le ore che il giorno DOVEVA avere -- 24, o 23/25 al cambio
             # d'ora. E' il denominatore della copertura: Home Assistant
             # omette le ore senza dati, e contare i punti ricevuti darebbe
             # 100% a una giornata che ne ha consegnate tre.
-            expected_hours=round((a_ts - da_ts) / 3600))
+            expected_hours=ore_attese)
         if not body.get("totali"):
             # **Correzione MEDIA della review (mandato, punto 3,
             # 27/08/2026): una serie vuota dove ci si aspettava un bilancio
@@ -1672,7 +1687,8 @@ async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None
         for day in days:
             bilanci, failed_balances = await build_balances(
                 ha_client, app.get("home_space_store"), day=day, timezone=timezone,
-                energy_subjects=sorted(subjects), directions=directions_map)
+                energy_subjects=sorted(subjects), directions=directions_map,
+                knowledge=app.get("knowledge"))
             if failed_balances:
                 logger.warning(
                     "cervello: statistiche del bilancio non lette per %s "
@@ -1938,6 +1954,176 @@ async def reconsideration_round(app, ha_client) -> dict | None:
         logger.warning("osservatore: giro di riconsiderazione fallito (%s: %s)",
                        type(exc).__name__, exc)
         return None
+
+
+
+def _balance_recipe_for(sapere, device_id: str, entity_per_dimension: dict,
+                        expected_hours: int | None) -> dict | None:
+    """La ricetta del bilancio di un dispositivo, dal sapere.
+
+    Se il sapere ne ha una -- scritta dal repo, corretta a mano o proposta dal
+    modello -- vince quella. Se non ce n'e', il repo la genera dalle direzioni
+    e la **semina**: da li' in poi e' un dato, e chi la corregge non deve piu'
+    aspettare un rilascio.
+
+    `None` quando non c'e' sapere collegato: `build_balance_body` genera la sua
+    e il bilancio esce lo stesso -- un componente che si rompe quando un altro
+    manca non e' autonomo.
+    """
+    if sapere is None:
+        return None
+    scritta = recipe_turn.recipe_for(sapere, device_id)
+    if scritta is not None:
+        return scritta
+    generata = balance_recipe(entity_per_dimension,
+                              order=BALANCE_DIRECTIONS,
+                              expected_hours=expected_hours)
+    sapere.seed([Fact(
+        subject_kind="dispositivo", subject=device_id,
+        field=recipe_turn.RECIPE_FIELD,
+        value=json.dumps(generata, ensure_ascii=False),
+        provenance="nostro", who=SEED_AUTHOR, when_ts=time.time())],
+        priority=REPO_PRIORITY)
+    return generata
+
+
+async def recipe_round(app) -> dict | None:
+    """L'anello delle ricette: **«c'e' un dispositivo che pesa e non ho ancora
+    capito come si misura? e allora chiedilo»** (spec §7).
+
+    Torna il resoconto del giro, o `None` se non c'era da farlo.
+
+    **Perche' esiste, col numero.** Il registro delle operazioni e il motore
+    delle ricette sono arrivati con la fetta 4, ma nessuno scriveva ricette
+    nuove: il repo ne porta una, quella del bilancio. Misurato sulla casa vera
+    il 13/09/2026, il resoconto giornaliero avrebbe avuto **~6 misure al
+    giorno** -- tutte dello stesso inverter -- contro ~28 fatti di cronaca, e
+    tutti e tre gli inneschi dell'analista lavorano sulle misure.
+
+    **Uno per volta, e non e' prudenza generica.** Trenta dispositivi che
+    pesano sono trenta turni del modello: chiesti insieme, svuoterebbero da
+    soli il tetto giornaliero del piano (`count_exchanges_today`, tetto di
+    fabbrica 150) e da li' in poi ogni turno -- chat compresa -- passerebbe ai
+    provider a pagamento. Uno per giro, ogni dieci minuti, copre trenta
+    dispositivi in cinque ore e non si vede nella bolletta. E' anche la
+    ragione per cui `devices_to_ask` guarda **tutti e due** i campi: un
+    dispositivo che il modello non ha saputo leggere non si richiede mai piu'.
+
+    **Dalla stessa porta dello scope**: chi risponde lo decide
+    `steering.who_answers`, la stessa funzione che lo decide per la chat, per
+    le promesse e per l'osservatore. Una quarta porta che nascesse domani non
+    potrebbe inventarsene una quarta senza accorgersene.
+
+    Non solleva mai: gira per sempre, e un avvio a meta' non deve fermare lo
+    schedulatore.
+    """
+    store = app.get("observations")
+    sapere = app.get("knowledge")
+    home_space_store = app.get("home_space_store")
+    if store is None or sapere is None or home_space_store is None:
+        return None
+    try:
+        home_space = home_space_store.read()
+        collected = _collect_recipe_turn(app, sapere, home_space)
+        if collected is not None:
+            return collected
+        if _recipe_turn_in_flight(app):
+            return None
+
+        watched = {s for s, riga in (store.scope() or {}).items()
+                   if riga.get("dentro")}
+        to_ask = recipe_turn.devices_to_ask(sapere, home_space, watched)
+        if not to_ask:
+            return None
+        device_id = to_ask[0]
+        objective = store.objective()["testo"]
+
+        route, downgrade = who_answers(app)
+        runner = app.get("llm_router") or app.get("claude_runner")
+        if route == "ponte":
+            return _enqueue_recipe_turn(app, home_space, device_id,
+                                        objective=objective)
+        if runner is None:
+            logger.info("ricette: nessun modello a cui chiedere (%s)", downgrade)
+            return None
+        if downgrade:
+            logger.warning(
+                "ricette: il piano non puo' servire questo giro (%s): si "
+                "scende alla catena. Il costo cambia -- dal forfait al consumo.",
+                downgrade)
+        logger.info("ricette: chiedo come si misura «%s» (%s)", device_id, route)
+        esito = await recipe_turn.ask(
+            runner, sapere, home_space, device_id, objective=objective,
+            who=f"modello ({route})", when_ts=time.time())
+        logger.info("ricette: giro finito -- %s", esito)
+        return esito
+    except Exception as exc:
+        logger.warning("ricette: giro fallito (%s: %s)", type(exc).__name__, exc)
+        return None
+
+
+def _recipe_turn_in_flight(app) -> bool:
+    """Se c'e' gia' un turno di ricetta in volo. Stessa guardia dello scope:
+    senza, si accoderebbe un turno a ogni passaggio."""
+    queue = app.get("reasoning_queue")
+    if queue is None:
+        return False
+    turn = queue.latest(recipe_turn.RECIPE_TURN_KIND)
+    if turn is None:
+        return False
+    return (turn["status"] in ("pending", "claimed")
+            and turn["deadline_ts"] > time.time())
+
+
+def _enqueue_recipe_turn(app, home_space: dict, device_id: str, *,
+                         objective: str) -> dict | None:
+    """Accoda al piano la domanda su un dispositivo, e torna subito."""
+    from .api.handlers_models import _STORE_DEFAULTS
+    job = recipe_turn.bridge_turn(objective, home_space, device_id)
+    if job is None:
+        return None
+    deadline_min = int((app.get("models_config") or {}).get("ponte", {}).get(
+        "scadenza_min", _STORE_DEFAULTS["ponte"]["scadenza_min"]))
+    now = time.time()
+    app["reasoning_queue"].enqueue(
+        recipe_turn.RECIPE_TURN_KIND,
+        # **Nella sveglia va il dispositivo**: il ponte risponde minuti dopo,
+        # da un altro processo, e chi raccoglie deve sapere di CHI era la
+        # domanda. `submit` azzera il contesto e non la sveglia.
+        {"dispositivo": device_id},
+        job, now + deadline_min * 60, now=now)
+    logger.info("ricette: turno accodato al piano per «%s» (scadenza %d min)",
+                device_id, deadline_min)
+    return {"accodata": True, "dispositivo": device_id}
+
+
+def _collect_recipe_turn(app, sapere, home_space: dict) -> dict | None:
+    """La risposta che il piano ha dato alla domanda su un dispositivo.
+
+    **Un turno gia' letto non si rilegge**, e qui la traccia e' il sapere
+    stesso: se il dispositivo ha gia' una ricetta o un rifiuto scritto dopo
+    che il turno e' stato deciso, quella risposta e' gia' stata applicata.
+    """
+    queue = app.get("reasoning_queue")
+    if queue is None:
+        return None
+    turn = queue.latest(recipe_turn.RECIPE_TURN_KIND)
+    if turn is None or turn["status"] != "decided":
+        return None
+    device_id = (turn.get("wake") or {}).get("dispositivo")
+    if not device_id:
+        return None
+    decided_ts = turn.get("decided_ts") or turn.get("created_ts") or 0
+    for campo in (recipe_turn.RECIPE_FIELD, recipe_turn.UNDERSTOOD_FIELD):
+        riga = sapere.get("dispositivo", device_id, campo)
+        if riga is not None and riga.when_ts >= decided_ts:
+            return None
+    reply = (turn.get("decision") or {}).get("reply") or ""
+    esito = recipe_turn.apply_recipe(sapere, home_space, device_id, reply,
+                                     who="modello (ponte)", when_ts=time.time())
+    logger.info("ricette: risposta del piano applicata per «%s» -- %s",
+                device_id, esito)
+    return esito
 
 
 def _record_attempt(store, outcome: dict, *, route: str = "ponte",
@@ -3551,6 +3737,27 @@ async def _on_startup(app: web.Application) -> None:
         misfire_grace_time=600,
     )
 
+    # L'anello delle ricette (spec §7), ogni DIECI minuti e **un dispositivo
+    # per volta**. Non e' la cadenza dell'osservatore: quella decide COSA
+    # guardare, questa decide COME si misura cio' che si guarda.
+    #
+    # Dieci minuti e non uno, e uno per volta, per una ragione di costo che si
+    # vede solo facendo il conto: trenta dispositivi che pesano sono trenta
+    # turni del modello, e il tetto giornaliero del piano e' 150 -- chiesti
+    # insieme lo svuoterebbero da soli, e da li' in poi ogni turno (chat
+    # compresa) passerebbe ai provider a pagamento. Uno ogni dieci minuti
+    # copre trenta dispositivi in cinque ore, e poi **smette**: una ricetta
+    # scritta -- o un rifiuto registrato -- non si richiede mai piu'.
+    async def _anello_ricette() -> None:
+        await recipe_round(app)
+
+    scheduler.add_job(
+        _anello_ricette,
+        trigger="interval", minutes=10,
+        id="hiris_mind_recipes", replace_existing=True,
+        misfire_grace_time=600,
+    )
+
     # L'aggregazione notturna: costruisce gli oggetti del giorno appena
     # finito (`mind/facts.py::aggregate_day`). Gira alle 00:20 e non a
     # mezzanotte: aggregare a mezzanotte esatta prenderebbe un giorno ancora
@@ -3599,7 +3806,8 @@ async def _on_startup(app: web.Application) -> None:
             # nessun guasto (vedi il suo docstring).
             bilanci, _ = await build_balances(
                 ha_client, app.get("home_space_store"), day=ieri, timezone=timezone,
-                energy_subjects=subjects, directions=directions_map)
+                energy_subjects=subjects, directions=directions_map,
+                knowledge=app.get("knowledge"))
             count = aggregate_day(
                 store=app["observations"], day=ieri, timezone=timezone,
                 companions=lambda s: mappa.get(s, []),
