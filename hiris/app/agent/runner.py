@@ -1277,7 +1277,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # non solo in un log che nessuno legge.
     if "contesto" in context:
         contesto = context.get("contesto") or ""
-    elif job.get("kind") == _SCOPE_KIND:
+    elif job.get("kind") in _SELF_CONTAINED_KINDS:
         # **Un turno dell'osservatore non porta il nucleo, ed e' giusto cosi'.**
         # La casa e' gia' dentro la sua domanda, composta apposta per il
         # giudizio (`mind/observer.house_lines`): aggiungere il nucleo sarebbe
@@ -1343,7 +1343,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # potuto **agire sulla casa** senza che nessun si' lo autorizzasse
     # (rilievo della review indipendente, 11/09/2026).
     awaited = (client is not None and bool(base_url)
-               and job.get("kind") != _SCOPE_KIND)
+               and job.get("kind") not in _SELF_CONTAINED_KINDS)
     intestazioni = headers if headers is not None else build_headers()
     if awaited:
         tools, _reason = probe_tools(client, base_url, intestazioni,
@@ -1684,7 +1684,34 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
 #: comportamento in silenzio.
 _SCOPE_KIND = "scope"
 
-RAGIONABILI = ("chat", "promessa", _SCOPE_KIND)
+#: La specie del turno che chiede una RICETTA per un dispositivo
+#: (`mind/recipe_turn.RECIPE_TURN_KIND`), dal 13/09/2026.
+#:
+#: **Trovata dal vivo, non leggendo.** Il giro delle ricette e' partito alle
+#: 19:58 del 13/09 e ha accodato il suo primo turno; due secondi dopo il ponte
+#: ha scritto «nessun ramo lo ragiona piu'» e ha restituito una decisione
+#: vuota. Il docstring di `SCOPE_TURN_KIND` lo diceva in anticipo -- *«chi lo
+#: serve dichiara per conto suo quali specie sa ragionare»* -- ed e' stato
+#: letto e non applicato.
+_RECIPE_KIND = "ricetta"
+
+#: Le specie la cui DOMANDA porta gia' tutto, e che non devono poter agire.
+#: Il nome e' inglese come il resto del codice: «senza nucleo» descriveva solo
+#: meta' di cio' che fanno, e portava una preposizione italiana in un
+#: identificatore (cancello `test_preposizioni_italiane.py`).
+#:
+#: Due conseguenze, e la seconda e' di sicurezza. Non ricevono il nucleo: la
+#: casa (o il dispositivo) e' gia' dentro la domanda, e aggiungerlo sarebbe una
+#: seconda descrizione della stessa cosa nello stesso prompt. E **non ricevono
+#: gli strumenti**: senza questa riga la sonda girerebbe col catalogo della
+#: chat, `execute` compreso -- la porta con cui HIRIS accende, spegne e chiama
+#: un servizio -- e un turno che deve solo giudicare delle righe d'anagrafe
+#: potrebbe agire sulla casa senza che nessun si' lo autorizzi. E' il rilievo
+#: che la review indipendente aveva chiuso per lo scope l'11/09/2026, e che il
+#: turno delle ricette avrebbe riaperto.
+_SELF_CONTAINED_KINDS = (_SCOPE_KIND, _RECIPE_KIND)
+
+RAGIONABILI = ("chat", "promessa", _SCOPE_KIND, _RECIPE_KIND)
 
 
 def reason(job: dict, mode: str, *, client=None, base_url: str = "",

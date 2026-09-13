@@ -2121,6 +2121,10 @@ def _collect_recipe_turn(app, sapere, home_space: dict) -> dict | None:
     reply = (turn.get("decision") or {}).get("reply") or ""
     esito = recipe_turn.apply_recipe(sapere, home_space, device_id, reply,
                                      who="modello (ponte)", when_ts=time.time())
+    if not esito.get("risposta"):
+        # Il ponte ha restituito una decisione vuota: non e' una risposta, e
+        # non si scrive niente. Il giro successivo richiede.
+        return esito
     logger.info("ricette: risposta del piano applicata per «%s» -- %s",
                 device_id, esito)
     return esito

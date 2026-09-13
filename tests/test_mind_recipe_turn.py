@@ -203,3 +203,110 @@ def test_si_chiede_solo_per_i_dispositivi_che_PESANO(sapere):
     """
     assert rt.devices_to_ask(sapere, CASA, {"sensor.prodotta"}) == ["dev1"]
     assert rt.devices_to_ask(sapere, CASA, set()) == []
+
+
+# -- una risposta che non c'e' non e' un «non capito» -----------------------
+
+def test_una_risposta_VUOTA_non_si_scrive_e_non_consuma_il_colpo(sapere):
+    """**Il difetto trovato dal vivo il 13/09/2026 alle 19:58.**
+
+    Il ponte non sapeva ragionare la specie di turno «ricetta»: restituiva una
+    decisione VUOTA, e questa funzione la scriveva come `non_capito` -- cioe'
+    un'affermazione sulla comprensione di un modello che non era mai stato
+    interpellato. E siccome un rifiuto vale come risposta data, quel
+    dispositivo non sarebbe stato chiesto **mai piu'**.
+
+    «Il modello non ha capito» e «nessuno ha chiesto al modello» sono due cose,
+    e scriverle con la stessa parola e' il difetto che questo progetto insegue
+    per mestiere.
+
+    Mutazione ESEGUITA: togliere la guardia sulla risposta vuota -- rossa, il
+    dispositivo sparisce da quelli da chiedere.
+    """
+    esito = rt.apply_recipe(sapere, CASA, "dev1", "   ",
+                            who="modello (ponte)", when_ts=1789000000.0)
+
+    assert not esito["scritta"]
+    assert esito["risposta"] is False
+    assert sapere.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD) is None
+    # E il colpo non e' consumato: il giro dopo si richiede.
+    assert rt.devices_to_ask(sapere, CASA, {"sensor.prodotta"}) == ["dev1"]
+
+
+def test_una_risposta_VERA_ma_illeggibile_SI_scrive(sapere):
+    """L'altra meta': se il modello **ha** risposto e la sua risposta non si
+    legge, quello si' e' un «non capito» -- e va scritto, o la stessa domanda
+    tornerebbe ogni giorno."""
+    esito = rt.apply_recipe(sapere, CASA, "dev1", "mi dispiace, non saprei",
+                            who="modello (ponte)", when_ts=1789000000.0)
+
+    assert esito["risposta"] is True
+    assert sapere.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD) is not None
+
+
+def test_i_rifiuti_scritti_da_un_ponte_MUTO_escono_con_la_migrazione(tmp_path):
+    """**Ogni riga di `ricetta_non_capita` esistente era una falsa
+    affermazione**, e si puo' dire con certezza: quel campo e' nato con la
+    3.31.0 e il suo unico scrittore era rotto dal primo minuto.
+
+    Non sono dati dell'utente -- sono righe che questo programma ha scritto su
+    se stesso, sbagliando -- e lasciarle sarebbe lasciare una bugia in un
+    archivio che esiste per non dirne.
+
+    Mutazione ESEGUITA: togliere `3: _migration_3` dalla mappa -- rossa, la
+    riga sopravvive e il dispositivo non viene chiesto mai piu'.
+    """
+    from hiris.app.mind.knowledge import KnowledgeStore
+    from hiris.app.storage import connect
+
+    db = str(tmp_path / "sapere.db")
+    vecchio = KnowledgeStore(db)
+    rt.apply_recipe(vecchio, CASA, "dev1", "non saprei", who="x",
+                    when_ts=1789000000.0)
+    assert vecchio.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD) is not None
+    vecchio.close()
+    # Si riporta l'archivio alla versione di prima della correzione.
+    conn = connect(db)
+    conn.execute("PRAGMA user_version = 2")
+    conn.commit()
+    conn.close()
+
+    nuovo = KnowledgeStore(db)
+    try:
+        assert nuovo.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD) is None
+        assert rt.devices_to_ask(nuovo, CASA, {"sensor.prodotta"}) == ["dev1"]
+    finally:
+        nuovo.close()
+
+
+def test_IL_PONTE_dichiara_di_saper_ragionare_questa_specie():
+    """**La prova che mancava, e che il difetto del 13/09 ha reso necessaria.**
+
+    Chi produce un turno e chi lo serve sono due moduli diversi, e il secondo
+    dichiara per conto suo quali specie sa ragionare (`agent/runner.RAGIONABILI`).
+    Accodarne una che lui non conosce non fallisce: produce una decisione vuota
+    e un avviso nel log -- cioe' un guasto silenzioso che si vede solo dal vivo,
+    ed e' cosi' che questo e' stato trovato.
+
+    Mutazione ESEGUITA: togliere `_RECIPE_KIND` da `RAGIONABILI` -- rossa.
+    """
+    from hiris.app.agent.runner import RAGIONABILI
+
+    assert rt.RECIPE_TURN_KIND in RAGIONABILI
+
+
+def test_un_turno_di_ricetta_NON_riceve_gli_strumenti():
+    """**E' una questione di sicurezza, non di eleganza.** Senza questa riga la
+    sonda girerebbe col catalogo della chat -- `execute` compreso, la porta con
+    cui HIRIS accende, spegne e chiama un servizio -- e un turno che deve solo
+    proporre dei conti potrebbe agire sulla casa senza che nessun si' lo
+    autorizzi.
+
+    E' il rilievo che la review indipendente aveva chiuso per lo scope
+    l'11/09/2026, e che il turno delle ricette avrebbe riaperto.
+
+    Mutazione ESEGUITA: togliere `_RECIPE_KIND` da `_SELF_CONTAINED_KINDS` -- rossa.
+    """
+    from hiris.app.agent.runner import _SELF_CONTAINED_KINDS
+
+    assert rt.RECIPE_TURN_KIND in _SELF_CONTAINED_KINDS

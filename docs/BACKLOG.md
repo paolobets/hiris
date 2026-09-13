@@ -362,6 +362,30 @@ va corretto, in un posto solo.
 > del repository e da cio' che e' stato misurato sulla casa vera. La lista del proprietario va
 > reinserita da lui, e queste voci vanno lette come un fondo di magazzino, non come una sua scelta.
 
+### Il sapere non ha una porta: il proprietario non puo' vedere cosa HIRIS ha capito
+
+`origine: verifica dal vivo della 3.31.0, 13/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §8
+
+**Il fatto.** Il sapere (`sapere.db`) contiene le direzioni dell'energia, ~177 significati di
+classe, gli attributi che valgono la pena e le ricette dei dispositivi. Si legge da tre posti --
+`energy_directions` (le direzioni), `guarda` sul dettaglio di un'entita' (il significato),
+l'osservatore (gli attributi) -- e da **nessuna pagina**. Non c'e' nessuna rotta HTTP che lo
+serva.
+
+**Perche' conta.** La quarta fondamenta dice che *«se un dato c'e' e nessuno puo' chiederlo, non
+esiste»*. Qui il dato si puo' chiedere alla chat, e non e' poco, ma «cosa HIRIS ha capito della mia
+casa, con quale provenienza, e cosa non ha capito» e' esattamente la domanda che il proprietario si
+fa guardando la pagina dell'Osservatore -- e oggi quella pagina mostra solo cosa HIRIS GUARDA, non
+cosa ha CAPITO.
+
+**Cosa costa non farlo.** Le righe `verifica = non_capito` -- i dispositivi di cui il modello non
+ha saputo scrivere una ricetta -- sono invisibili. Sono precisamente cio' che il proprietario
+potrebbe risolvere in dieci secondi («quello e' il contatore dell'acqua»), e nessuno gliele mostra.
+
+**Cosa servirebbe.** Una rotta che serva il sapere raggruppato per soggetto, e una sezione della
+pagina che lo renda con la provenienza accanto a ogni riga. E' piccola, e va fatta insieme alla
+resa del resoconto (fetta 5), che tocca la stessa pagina.
+
 ### Il vocabolario dei tipi non e' ancora un seme del sapere
 
 `origine: fetta 4 «il sapere e le ricette», 12-13/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §8

@@ -1,5 +1,47 @@
 # HIRIS — Changelog
 
+## [3.31.1] — Il ponte non sapeva ragionare le ricette (2026-09-13)
+
+**Trovato dal vivo venti minuti dopo il rilascio della 3.31.0**, e non
+leggendo: alle 19:58 il giro delle ricette ha accodato il suo primo turno, e
+due secondi dopo il ponte ha scritto *«nessun ramo lo ragiona piu'»* e ha
+restituito una decisione vuota.
+
+Chi produce un turno e chi lo serve sono due moduli diversi, e il secondo
+**dichiara per conto suo** quali specie sa ragionare. Accodarne una che non
+conosce non fallisce: produce una decisione vuota e un avviso nel log, cioe' un
+guasto silenzioso che si vede solo guardando la casa girare. Il docstring
+dell'osservatore lo diceva in anticipo, con queste parole esatte -- ed era
+stato letto e non applicato.
+
+### Il difetto peggiore era il secondo
+
+Quella risposta inesistente veniva scritta nel sapere come **«non capito»** --
+un'affermazione sulla comprensione di un modello che non era mai stato
+interpellato. E siccome un rifiuto vale come risposta data, quel dispositivo
+non sarebbe stato chiesto **mai piu'**.
+
+«Il modello non ha capito» e «nessuno ha chiesto al modello» sono due cose, e
+scriverle con la stessa parola e' il difetto che questo progetto insegue per
+mestiere. Adesso una risposta vuota non si scrive affatto: non consuma il
+colpo, e il giro successivo richiede. Non serve un freno -- quando il ponte
+rifiuta una specie lo fa in millisecondi, senza chiamare nessun modello.
+
+Le righe gia' scritte da quel percorso **escono con una migrazione**. Si puo'
+dire con certezza che erano tutte false: quel campo e' nato con la 3.31.0 e il
+suo unico scrittore era rotto dal primo minuto. Non sono dati dell'utente --
+sono righe che questo programma ha scritto su se stesso, sbagliando.
+
+### E una porta che stava per riaprirsi
+
+Un turno di ricetta **non riceve gli strumenti**, come gia' quello
+dell'osservatore. Senza quella riga la sonda avrebbe girato col catalogo della
+chat, `execute` compreso -- la porta con cui HIRIS accende, spegne e chiama un
+servizio -- e un turno che deve solo proporre dei conti avrebbe potuto agire
+sulla casa senza che nessun si' lo autorizzasse. E' il rilievo che una review
+indipendente aveva chiuso per lo scope l'11/09, e che questa fetta avrebbe
+riaperto.
+
 ## [3.31.0] — L'osservatore chiede come si misura un dispositivo (2026-09-13)
 
 **Il registro delle operazioni e il motore delle ricette c'erano, ma nessuno

@@ -237,7 +237,32 @@ def _migration_2(conn) -> None:
             conn.execute(f"ALTER TABLE knowledge ADD COLUMN {column} {kind}")
 
 
-_SCHEMA_VERSION = 2
+def _migration_3(conn) -> None:
+    """v2 -> v3: si tolgono i rifiuti di ricetta scritti da un ponte muto.
+
+    **Ogni riga di `ricetta_non_capita` esistente e' una falsa affermazione**,
+    e si puo' dire con certezza perche' quel campo e' nato con la 3.31.0, il
+    13/09/2026, e il suo unico scrittore era rotto dal primo minuto: il ponte
+    non sapeva ragionare la specie di turno «ricetta», restituiva una decisione
+    VUOTA, e quella risposta inesistente veniva registrata come «il modello non
+    ha capito questo dispositivo». Un'affermazione sulla comprensione di un
+    modello che non e' mai stato interpellato -- e siccome un rifiuto vale come
+    risposta data, quel dispositivo non sarebbe stato chiesto mai piu'.
+
+    **Si cancella, e non e' un'eccezione alla regola «mai dati dell'utente».**
+    Non sono dati dell'utente: sono righe che questo programma ha scritto su se
+    stesso, sbagliando. Lasciarle sarebbe lasciare una bugia in un archivio che
+    esiste per non dirne.
+    """
+    cur = conn.execute("DELETE FROM knowledge WHERE field = 'ricetta_non_capita'")
+    if cur.rowcount:
+        logger.info(
+            "sapere: %d rifiuti di ricetta tolti -- erano stati scritti da un "
+            "ponte che non sapeva ragionare quel turno, e dicevano «non "
+            "capito» di un modello mai interpellato", cur.rowcount)
+
+
+_SCHEMA_VERSION = 3
 
 _COLUMNS = ("subject_kind", "subject", "field", "value", "provenance",
             "verification", "evidence", "source", "who", "when_ts")
@@ -281,7 +306,7 @@ class KnowledgeStore:
         self._lock = threading.Lock()
         self._conn = connect(db_path)
         init_schema(self._conn, _SCHEMA, version=_SCHEMA_VERSION,
-                    migrations={2: _migration_2})
+                    migrations={2: _migration_2, 3: _migration_3})
 
     def close(self) -> None:
         with self._lock:

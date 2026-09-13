@@ -75,7 +75,7 @@ _PAROLE_DOMINIO = frozenset({
     "volte", "caso", "casi", "regola", "regole", "classe", "classi", "tipo",
     "tipi", "stato", "stati", "quando", "quanto", "solo", "sola", "tutte",
     "tutti", "tutto", "altro", "altra", "altre", "altri", "nomi", "scope",
-    "problemi", "problema", "risposta", "domanda",
+    "problemi", "problema", "risposta", "domanda", "data",
 })
 
 #: I file guardati: l'ambito dove le rinomine meccaniche sono avvenute.

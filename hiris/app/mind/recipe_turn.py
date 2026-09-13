@@ -222,7 +222,28 @@ def apply_recipe(store, home_space: dict, device_id: str, answer: str, *,
     **Si rifiuta, non si corregge** (spec §7). E il rifiuto **si scrive**
     (spec §8): senza quella riga la stessa domanda tornerebbe ogni notte, e il
     proprietario non saprebbe mai che quel dispositivo non e' stato capito.
+
+    **Ma «il modello non ha capito» e «nessuno ha chiesto al modello» sono due
+    cose**, e questa funzione ha scritto la prima al posto della seconda per
+    un'ora intera, il 13/09/2026. Il ponte non sapeva ragionare la specie di
+    turno, restituiva una decisione VUOTA, e quella risposta inesistente
+    veniva scritta come `non_capito` -- un'affermazione sulla comprensione di
+    un modello che non era mai stato interpellato. E siccome un rifiuto vale
+    come risposta data, quel dispositivo non sarebbe stato chiesto **mai
+    piu'**.
+
+    Quindi: una risposta **vuota** non si scrive affatto. Non consuma il
+    colpo, e il giro successivo richiede. Non c'e' bisogno di un freno --
+    quando il ponte rifiuta una specie lo fa in millisecondi, senza chiamare
+    nessun modello: il giro a vuoto costa zero.
     """
+    if not str(answer or "").strip():
+        logger.warning(
+            "ricette: nessuna risposta per «%s» -- non si scrive niente, si "
+            "richiede al giro dopo (una risposta che non c'e' non e' un «non "
+            "capito»)", device_id)
+        return {"scritta": False, "problemi": ["il modello non ha risposto"],
+                "risposta": False}
     entities = {str(e.get("id")) for e in _device_entities(home_space, device_id)}
     data, reason = read_recipe(answer)
     problems = [reason] if reason else []
@@ -237,14 +258,14 @@ def apply_recipe(store, home_space: dict, device_id: str, answer: str, *,
                 evidence=("il dispositivo con le sue " f"{len(entities)} entita', "
                           "mostrate insieme al modello con l'obiettivo della casa"),
                 who=who, when_ts=when_ts))
-            return {"scritta": True, "problemi": []}
+            return {"scritta": True, "problemi": [], "risposta": True}
     store.write(Fact(
         subject_kind="dispositivo", subject=device_id, field=UNDERSTOOD_FIELD,
         value=" · ".join(problems) or "il modello non ha proposto nessun passo",
         provenance="dedotto",
         evidence="la risposta del modello, validata contro il registro delle operazioni",
         verification="non_capito", who=who, when_ts=when_ts))
-    return {"scritta": False, "problemi": problems}
+    return {"scritta": False, "problemi": problems, "risposta": True}
 
 
 def devices_to_ask(store, home_space: dict, watched: set[str]) -> list[str]:
