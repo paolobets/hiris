@@ -70,6 +70,8 @@ from .mind.observer import apply_answer as observer_apply_answer
 from .mind.observer import bridge_turn as observer_bridge_turn
 from .mind.observer import reconsider as observer_reconsider
 from .mind.seed import (
+    HOUSE_PRIORITY,
+    REPO_PRIORITY,
     attribute_seed,
     direction_seed,
     meaning_seed,
@@ -701,6 +703,13 @@ async def prime_state_translations(app) -> dict:
     gli stati grezzi, e il giro periodico riprova. Un nucleo che dice «non ho
     letto le traduzioni» e' onesto; un avvio che non parte per una tabella di
     parole non lo sarebbe.
+
+    **E SCRIVE NEL SAPERE**, il che non e' cio' che il nome promette e va detto
+    (Fable 5.1, 13/09/2026): quando la lettura riesce, i significati delle
+    classi che l'installazione pubblica entrano nell'archivio del sapere. Sta
+    qui e non altrove perche' e' lo stesso dizionario -- nessuna lettura di
+    rete in piu' -- e il giro periodico che richiama questa funzione ogni
+    cinque minuti ripete una `seed`, che dopo la prima volta non scrive niente.
     """
     cache = app.get("state_translations")
     if cache is None:
@@ -728,10 +737,16 @@ async def prime_state_translations(app) -> dict:
     # pubblica («Potenza») non la schiaccia.
     sapere = app.get("knowledge")
     if sapere is not None:
+        # **B2: senza versione o lingua non si importa niente.** La fonte di
+        # una riga deve dire da quale versione e in che lingua viene: scrivere
+        # «sconosciuta» sarebbe una citazione che non permette di controllare
+        # nulla, cioe' la forma della motivazione falsa dentro il campo che
+        # esiste per impedirla.
+        versione = frame.get("versione_ha")
+        lingua = report.get("lingua") or frame.get("lingua")
         scritte = sapere.seed(meanings_from_translations(
-            report.get("risorse") or {},
-            ha_version=frame.get("versione_ha") or "sconosciuta",
-            language=report.get("lingua") or frame.get("lingua") or ""))
+            report.get("risorse") or {}, ha_version=versione, language=lingua),
+            priority=HOUSE_PRIORITY) if versione and lingua else 0
         if scritte:
             logger.info(
                 "sapere: %d significati di classe importati dalle traduzioni "
@@ -2556,7 +2571,8 @@ async def _on_startup(app: web.Application) -> None:
     # Il seme del repo scrive solo cio' che ancora non c'e': la casa scrive
     # sopra, e un riavvio non cancella cio' che ha imparato.
     _seminate = app["knowledge"].seed(
-        direction_seed() + meaning_seed() + attribute_seed())
+        direction_seed() + meaning_seed() + attribute_seed(),
+        priority=REPO_PRIORITY)
     if _seminate:
         logger.info("sapere: %d righe del seme scritte (le altre c'erano gia')",
                     _seminate)

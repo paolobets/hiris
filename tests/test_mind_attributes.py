@@ -1,10 +1,14 @@
 """Gli attributi: il fatto vive spesso fuori dallo stato (spec §5.4).
 
-**L'esempio fondativo del cervello oggi non e' rispondibile**, e la spec dice
+**L'esempio fondativo del cervello non era rispondibile**, e la spec dice
 perche': *«lo stato di un termostato e' `heat` e resta `heat`; `hvac_action`
-dice `idle`/`heating`, `temperature` dice l'obiettivo, `current_temperature`
-dice dove si e'»*. «Il riscaldamento parte alle 15:30, la casa e' calda alle
-16:30» chiede tutte e tre quelle cose, e il grezzo non ne conservava nessuna.
+dice `idle`/`heating`»*. Il grezzo non conservava nessuno di quegli attributi.
+
+**Non ne servono tre.** La spec ne cita anche `current_temperature`, che pero'
+e' una grandezza CONTINUA: tenerla fra i voluti riaprirebbe il flusso di righe
+che il filtro `da == a` ha chiuso. «La casa e' calda alle 16:30» lo dice
+`hvac_action` passando a `idle` -- un cambio per episodio, non uno per decimo
+di grado (Fable 5.1 e la revisione del 13/09/2026).
 
 Il grezzo ne teneva **tre, scelti a mano** (`device_class`, `state_class`,
 `source_type`). **Quali valgano la pena dipende dal dispositivo**, e lo dice il
@@ -207,11 +211,14 @@ def test_la_riga_nata_da_un_ATTRIBUTO_porta_l_istante_giusto(archivio, sapere):
     scritta, e mai letta da nessuno. Cioe' il guasto che il filtro `da == a`
     chiudeva «per forza», riaperto dall'eccezione nuova sulle stesse entita'.
 
-    Per quelle righe l'istante e' `last_updated`, che si muove anche per un
-    attributo.
+    L'istante e' `last_updated`, che si muove anche per un attributo -- e
+    basta lui, senza rami: per un cambio di stato vero Home Assistant muove
+    tutti e due insieme. La prima correzione ne aveva scritti due, e la prova
+    che li distingueva non poteva fallire perche' costruiva un evento che HA
+    non manda mai (Fable 5.1, 13/09/2026).
 
-    Mutazione ESEGUITA: leggere sempre `last_changed` -- rossa, la riga
-    torna datata al 6 settembre.
+    Mutazione ESEGUITA: leggere `last_changed` -- rossa, la riga torna datata
+    al 6 settembre.
     """
     from hiris.app.home_space.historian import instant_epoch
 
@@ -221,22 +228,6 @@ def test_la_riga_nata_da_un_ATTRIBUTO_porta_l_istante_giusto(archivio, sapere):
         vecchio_stato="heat", nuovo_stato="heat",
         vecchi_attributi={"hvac_action": "heating"},
         attributi={"hvac_action": "idle"}))
-
-    [riga] = archivio.readings(from_ts=0, to_ts=2e9)
-    assert riga["quando_ts"] == instant_epoch(QUANDO_CAMBIO_ATTRIBUTO)
-
-
-def test_la_riga_nata_da_uno_STATO_porta_ancora_last_changed(archivio, sapere):
-    """L'altra meta': per un cambio di stato vero `last_changed` e'
-    l'istante giusto, e resta -- «da quando e' accesa» non deve diventare «da
-    quando qualcuno ne ha toccato la luminosita'»."""
-    from hiris.app.home_space.historian import instant_epoch
-
-    osservatore = Watcher(archivio, knowledge=sapere)
-
-    osservatore.watch_reading(_evento(
-        vecchio_stato="off", nuovo_stato="heat",
-        attributi={"hvac_action": "heating"}))
 
     [riga] = archivio.readings(from_ts=0, to_ts=2e9)
     assert riga["quando_ts"] == instant_epoch(QUANDO_CAMBIO_ATTRIBUTO)
@@ -285,8 +276,12 @@ def test_L_ESEMPIO_FONDATIVO_il_riscaldamento_parte_e_la_casa_si_scalda(
 
     [oggetto] = archivio.facts(day="2026-09-12")
     assert oggetto["genere"] == "funzionamento"
-    [cambio] = oggetto["corpo"]["attributi"]
-    assert cambio["valori"] == {"hvac_action": "idle"}
-    # Le 16:30 di Roma, non le 15:30 dell'accensione: e' il momento in cui la
-    # casa e' arrivata in temperatura.
-    assert cambio["quando_ts"] == 1789223400.0
+    apertura, arrivo = oggetto["corpo"]["attributi"]
+    # **Tutte e due le voci**: la foto d'apertura (15:30, sta scaldando) e il
+    # momento in cui la casa e' arrivata in temperatura (16:30). Senza la
+    # prima, meta' della colonna `attributes` del grezzo resterebbe scritta e
+    # non letta da nessuno (Fable 5.1, 13/09/2026).
+    assert apertura["valori"] == {"hvac_action": "heating"}
+    assert apertura["quando_ts"] == 1789219800.0
+    assert arrivo["valori"] == {"hvac_action": "idle"}
+    assert arrivo["quando_ts"] == 1789223400.0

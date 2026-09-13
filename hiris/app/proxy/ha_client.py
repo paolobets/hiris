@@ -2029,7 +2029,7 @@ class HAClient:
         - **`config/entity_registry/list`**, campo `translation_key`:
           **dedotta**, scritta dall'integrazione e interpretata con la mappa
           che il chiamante consegna (`direction_by_translation_key`, che
-          viene dal sapere -- `mind/seed.directions_by_translation_key`).
+          viene dal sapere -- `mind/knowledge.directions_by_translation_key`).
           Copre tutte le direzioni, ma solo sulle integrazioni di cui il
           sapere ha righe -- un altro inverter usera' chiavi sue, e finche'
           nessuno gliele insegna quella mappa per lui e' vuota. Si applica

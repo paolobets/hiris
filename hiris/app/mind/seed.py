@@ -9,8 +9,14 @@ git -- e la casa scrive sopra.»*
 dizionari dentro `proxy/ha_client.py`: per correggerne una serviva un
 rilascio, nessuno poteva vederle, e non c'era modo di dire da dove venissero
 ne' se qualcuno le avesse mai verificate. Come righe del sapere hanno una
-provenienza, si leggono, si correggono a caldo e -- quelle universali -- si
-esportano a chiunque abbia la stessa integrazione.
+provenienza, si leggono e si correggono senza toccare il codice.
+
+**«A caldo» vale per chi le rilegge a ogni giro, non per tutte** (Fable 5.1,
+13/09/2026): le direzioni si rileggono a ogni aggregazione, il significato di
+una classe a ogni dettaglio chiesto. Gli **attributi voluti** no --
+l'osservatore li tiene in memoria per non interrogare l'archivio due volte per
+evento, e una riga corretta si legge al riavvio successivo. Il costo della
+memoria e la sua sorte stanno scritti accanto (`mind/watcher.py`).
 
 **Il seme non schiaccia la casa**: `KnowledgeStore.seed` scrive solo cio' che
 ancora non c'e'. Se sovrascrivesse, ogni riavvio cancellerebbe cio' che la
@@ -27,6 +33,7 @@ from .knowledge import (
     now_ts,
     type_subject,
 )
+from .recipes import ENTITY_MARK, STEP_MARK
 
 #: Chi ha scritto le righe del seme: il repo stesso, non un modello e non il
 #: proprietario. Serve perche' `Fact` pretende un autore, e «il repo» e' la
@@ -37,6 +44,18 @@ from .knowledge import (
 #: nomi diversi, o l'uno correggerebbe le righe dell'altro credendole sue.
 SEED_AUTHOR = "seme del repo"
 
+#: La precedenza del repo fra i semi. **Il repo batte l'installazione**: porta
+#: una frase che dice cosa un valore E', mentre l'installazione porta il nome
+#: che Home Assistant pubblica. Senza una precedenza esplicita vincerebbe chi
+#: arriva prima, e su una casa che ha gia' importato «Indice AQI» la frase piu'
+#: ricca aggiunta da un rilascio successivo non atterrerebbe mai (Fable 5.1,
+#: 13/09/2026).
+#:
+#: **Cambiare `SEED_AUTHOR` non e' piu' pericoloso**: la regola del seme si
+#: legge dal valore seminato, non dall'autore. `who` resta cio' che dice a chi
+#: legge da dove viene la riga.
+REPO_PRIORITY = 2
+
 #: Chi scrive le righe che arrivano dall'installazione di questa casa. E' un
 #: autore DIVERSO dal repo, e la differenza morde: con lo stesso nome, il nome
 #: pubblicato da Home Assistant («Potenza») schiaccerebbe la frase piu' ricca
@@ -44,9 +63,12 @@ SEED_AUTHOR = "seme del repo"
 #: `test_il_NOME_della_casa_non_schiaccia_la_FRASE_del_repo` difende.
 HOUSE_AUTHOR = "l'installazione di questa casa"
 
+#: La precedenza dell'installazione: sotto il repo. Vedi `REPO_PRIORITY`.
+HOUSE_PRIORITY = 1
+
 #: Le quattordici chiavi di `zcsazzurro`, misurate sulla casa vera il
 #: 27/08/2026 e ri-misurate il 12/09/2026 (tutte e quattordici hanno ancora un
-#: name tradotto vivo dentro l'installazione, vedi
+#: nome tradotto vivo dentro l'installazione, vedi
 #: `docs/design/2026-09-12-il-sapere-e-le-ricette.md`).
 #:
 #: **Nessun suffisso `_today` sul gemello di potenza** -- trappola misurata,
@@ -55,9 +77,11 @@ HOUSE_AUTHOR = "l'installazione di questa casa"
 #:
 #: **La provenienza e' `dedotto`, e le prove sono il `translation_key`.**
 #: Home Assistant dichiara il NOME («Energia prodotta oggi»), non la
-#: direzione: il salto fra le due cose e' un giudizio nostro sulla chiave che
-#: l'integrazione scrive, e chiamarlo `importato` sarebbe dire che qualcuno
-#: la' fuori ce l'ha detto.
+#: direzione: il salto fra le due cose l'ha fatto un modello leggendo le
+#: chiavi che l'integrazione scrive -- che e' esattamente cio' che `dedotto`
+#: significa nel vocabolario del sapere. Non `importato` (nessuno la' fuori ce
+#: l'ha detto) e non `nostro` (quello e' un giudizio che nessuna fonte
+#: potrebbe darci, e qui la fonte c'e': la chiave).
 _ZCSAZZURRO_DIRECTIONS = {
     "energy_generating_today": "produzione", "power_generating": "produzione",
     "energy_importing_today": "prelievo", "power_importing": "prelievo",
@@ -69,9 +93,11 @@ _ZCSAZZURRO_DIRECTIONS = {
 }
 
 _DIRECTION_EVIDENCE = (
-    "il translation_key che l'integrazione scrive nel registro delle entita', "
-    "misurato sulla casa vera il 27/08/2026 e ri-visto il 12/09/2026 "
-    "(frontend/get_translations, categoria «entity»)"
+    "il translation_key che l'integrazione scrive nel registro delle entita' "
+    "(config/entity_registry/list), misurato sulla casa vera il 27/08/2026. Il "
+    "12/09/2026 si e' ri-visto che tutte e quattordici le chiavi hanno ancora "
+    "un nome pubblicato (frontend/get_translations, categoria «entity») -- il "
+    "che prova che la chiave esiste, non che la direzione sia quella"
 )
 
 
@@ -98,11 +124,11 @@ def meaning_seed(when_ts: float | None = None) -> list[Fact]:
 
     Sono le ventisette coppie di `home_space/ha_vocabulary.DEVICE_CLASS_MEANING`,
     copiate dai sorgenti di Home Assistant al tag dichiarato. Il docstring di
-    quel modulo lo aveva gia' previsto per name: *«e' il candidato dichiarato a
+    quel modulo lo aveva gia' previsto per nome: *«e' il candidato dichiarato a
     diventare un campo di quelle righe, con la sua provenienza `importato`,
     quando la fetta che collega i vocabolari arrivera'»*. E' questa.
 
-    **La provenienza e' `importato` e la fonte e' la citation col tag**: non
+    **La provenienza e' `importato` e la fonte e' la citazione col tag**: non
     sono giudizi nostri, sono frasi lette nel sorgente di Home Assistant, e chi
     legge la riga fra sei mesi deve poter sapere da quale versione.
 
@@ -123,7 +149,7 @@ def meaning_seed(when_ts: float | None = None) -> list[Fact]:
     return [
         Fact(subject_kind="tipo", subject=type_subject(domain, device_class),
              field=MEANING_FIELD, value=meaning,
-             provenance="importato", evidence=citation,
+             provenance="importato", source=citation,
              who=SEED_AUTHOR, when_ts=when)
         for (domain, device_class), meaning in sorted(DEVICE_CLASS_MEANING.items())
     ]
@@ -146,9 +172,11 @@ def meanings_from_translations(resources, *, ha_version: str, language: str,
     schiacciano** quelle del seme -- si scrivono con `seed`, che tocca solo
     cio' che manca -- e dove il repo ha scritto una frase vera quella resta.
 
-    `verification` e' `confermata` e la fonte e' il comando con la versione
-    di Home Assistant: e' l'installazione stessa a dirlo, non una nostra
-    deduzione.
+    **`verification` resta vuota anche qui**, e la ragione e' la stessa del
+    seme del repo (Fable 5.1, 13/09/2026): il «controllo» sarebbe la stessa
+    fonte da cui viene la provenienza, cioe' la provenienza riscritta due
+    volte. `confermata` si riserva a un controllo fatto contro una fonte
+    DIVERSA -- che e' l'unica cosa per cui avere due assi serva a qualcosa.
     """
     from ..proxy.state_translations import published_device_classes
 
@@ -165,8 +193,7 @@ def meanings_from_translations(resources, *, ha_version: str, language: str,
             facts.append(Fact(
                 subject_kind="tipo", subject=type_subject(domain, device_class),
                 field=MEANING_FIELD, value=name, provenance="importato",
-                verification="confermata", source=citation,
-                who=HOUSE_AUTHOR, when_ts=when))
+                source=citation, who=HOUSE_AUTHOR, when_ts=when))
     return facts
 
 
@@ -218,3 +245,79 @@ def attribute_seed(when_ts: float | None = None) -> list[Fact]:
              who=SEED_AUTHOR, when_ts=when)
         for domain, attributes in sorted(_WANTED_ATTRIBUTES.items())
     ]
+
+
+# -- la ricetta del bilancio ------------------------------------------------
+
+def balance_recipe(entity_per_dimension: dict[str, str], *, order,
+                   expected_hours: int | None = None) -> dict:
+    """La ricetta del bilancio dell'energia, **come dato**.
+
+    **Sta fra i SEMI e non nel motore** (Fable 5.1, 13/09/2026): `recipes.py`
+    e' l'esecutore generico e non deve sapere cosa sono i kWh, l'autoconsumo o
+    il prelievo. Questa funzione invece e' cio' che il REPO sa di un bilancio,
+    destinato a diventare una riga del sapere quando la ricetta ci vivra'
+    davvero -- esattamente come le direzioni e i significati qui sopra.
+
+    **E' il pezzo che la spec §7 nomina per primo.** Da qui in avanti il
+    bilancio e' una sequenza di passi con nomi: si legge tutta, si valida, si
+    rifiuta prima di eseguirla, e le due quote si calcolano in un posto solo
+    invece che in due (erano un conto a se' dentro `_balance_moments`).
+
+    **Non e' ancora scritta nel sapere**, quindi correggerla vuole ancora un
+    rilascio: la meta' che manca e' a backlog. Vedi il docstring del modulo.
+
+    **Perche' il repo la genera invece di averla scritta a mano.** I passi
+    dipendono da quali direzioni questo dispositivo ha davvero: un inverter
+    senza accumulo non ha «carica» ne' «scarica», e una ricetta con passi che
+    nominano entita' inesistenti verrebbe **rifiutata** dalla validazione --
+    giustamente. La ricetta e' un dato generato da un altro dato (la mappa
+    direzione -> entita', che il chiamante risolve), non un letterale da
+    tenere aggiornato a mano per ogni forma d'impianto.
+
+    **L'ordine arriva da chi possiede l'elenco delle direzioni**, e non e'
+    estetica: un passo puo' leggere solo quelli PRIMA di lui, quindi i totali
+    devono venire prima delle quote che li compongono, e l'ordine fra i totali
+    dev'essere stabile o due giri della stessa casa produrrebbero due ricette
+    diverse. La prima stesura ne teneva una copia qui (`_BALANCE_ORDER`),
+    identica lettera per lettera a `mind/facts.BALANCE_DIRECTIONS`: una
+    direzione aggiunta a una sola delle due sarebbe sparita dal bilancio
+    **senza un errore e senza un log** (revisione indipendente, 13/09/2026).
+
+    I passi:
+
+    - un totale per ogni direzione presente (`somma_periodo`);
+    - la quota di autoconsumo sulla produzione, quando ci sono entrambe;
+    - l'autosufficienza come **la ricetta della spec §7 la scrive**:
+      `quota(differenza_fra(consumo, prelievo), consumo)`.
+    """
+    steps = []
+    present = [d for d in order if entity_per_dimension.get(d)]
+    for dimension in present:
+        given_entity = f"{ENTITY_MARK}{entity_per_dimension[dimension]}"
+        steps.append({
+            "name": dimension, "operation": "somma_periodo",
+            "inputs": [given_entity],
+            "params": {"unit": "kWh", "expected_parts": expected_hours},
+        })
+        steps.append({
+            "name": f"forma_{dimension}", "operation": "per_ora",
+            "inputs": [given_entity],
+            "params": {"unit": "kWh", "expected_parts": expected_hours},
+        })
+    if "autoconsumo" in present and "produzione" in present:
+        steps.append({"name": "quota_autoconsumo", "operation": "quota",
+                      "inputs": [f"{STEP_MARK}autoconsumo",
+                                 f"{STEP_MARK}produzione"]})
+    if "consumo" in present and "prelievo" in present:
+        steps.append({"name": "autoprodotto", "operation": "differenza_fra",
+                      "inputs": [f"{STEP_MARK}consumo", f"{STEP_MARK}prelievo"]})
+        steps.append({"name": "quota_autosufficienza", "operation": "quota",
+                      "inputs": [f"{STEP_MARK}autoprodotto",
+                                 f"{STEP_MARK}consumo"]})
+    return {
+        "why": ("il bilancio dell'energia di questo dispositivo: quanto ha "
+                "prodotto, consumato, prelevato, e quanta parte del consumo "
+                "non e' venuta dalla rete"),
+        "steps": steps,
+    }

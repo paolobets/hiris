@@ -10,6 +10,7 @@ pubblica tutti, nella lingua dell'utente.
 """
 import pytest
 
+from hiris.app.home_space.ha_vocabulary import VOCABULARY_HA_VERSION
 from hiris.app.mind import seed
 from hiris.app.mind.knowledge import (
     KnowledgeStore,
@@ -74,7 +75,10 @@ def test_il_seme_del_repo_dichiara_da_dove_viene_SENZA_dirsi_confermato():
     affermerebbe che Home Assistant la dice cosi', e non e' vero: e' la forma
     esatta della motivazione falsa, dentro il campo che esiste per impedirla.
 
-    Da dove viene sta in `evidence` -- *«cosa e' stato letto»* -- col tag.
+    Da dove viene sta in `source`, col tag -- **una colonna sola per tutte le
+    righe `importato`**, o chi vuole sapere da quale versione viene una riga
+    dovrebbe guardare in due posti a seconda di chi l'ha scritta (Fable 5.1,
+    13/09/2026).
 
     Mutazione che la uccide: rimettere `verification="confermata"`.
     """
@@ -83,7 +87,7 @@ def test_il_seme_del_repo_dichiara_da_dove_viene_SENZA_dirsi_confermato():
     assert righe, "il seme dei significati e' vuoto"
     assert all(r.provenance == "importato" for r in righe)
     assert all(r.verification is None for r in righe)
-    assert all("2026.9.1" in r.evidence for r in righe)
+    assert all(VOCABULARY_HA_VERSION in r.source for r in righe)
     assert all(r.subject_kind == "tipo" for r in righe)
 
 
@@ -116,19 +120,21 @@ def test_il_NOME_della_casa_non_schiaccia_la_FRASE_del_repo(sapere):
     pubblica un NOME («Potenza»); il repo, dove ha guardato, porta una frase
     che dice cosa quel valore E' («la potenza ISTANTANEA, non un'energia»).
 
-    Sono due cose diverse, e quella piu' ricca non si perde: le righe della
-    casa si scrivono con `seed`, che tocca solo cio' che manca.
+    Sono due cose diverse, e quella piu' ricca non si perde: **il repo ha una
+    precedenza esplicita sull'installazione**, quindi vince a prescindere
+    dall'ordine in cui arrivano (la prova gemella, in
+    `test_mind_knowledge.py`, copre l'ordine sfortunato).
 
-    Mutazione ESEGUITA: scrivere i significati della casa con `write` invece
-    che con `seed` -- rossa, la frase del repo sparisce sostituita da una
-    parola.
+    Mutazione ESEGUITA: dare all'installazione la stessa priorita' del repo --
+    rossa, la frase sparisce sostituita da una parola.
     """
-    sapere.seed(seed.meaning_seed(1789000000.0))
+    sapere.seed(seed.meaning_seed(1789000000.0), priority=seed.REPO_PRIORITY)
     prima = sapere.get("tipo", "sensor.power", "significato").value
 
     sapere.seed(seed.meanings_from_translations(
         _risorse(("sensor", "power", "Potenza")),
-        ha_version="2026.9.1", language="it", when_ts=1789000001.0))
+        ha_version="2026.9.1", language="it", when_ts=1789000001.0),
+        priority=seed.HOUSE_PRIORITY)
 
     assert sapere.get("tipo", "sensor.power", "significato").value == prima
     assert len(prima) > len("Potenza"), "il repo qui ha una frase, non un nome"
@@ -156,3 +162,6 @@ def test_la_fonte_della_casa_dice_il_comando_la_lingua_e_la_versione():
     assert "frontend/get_translations" in riga.source
     assert "it" in riga.source
     assert "2026.9.1" in riga.source
+    assert riga.verification is None, (
+        "il «controllo» sarebbe la stessa fonte della provenienza: e' la "
+        "provenienza riscritta due volte, non una verifica")

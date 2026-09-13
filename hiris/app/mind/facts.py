@@ -54,7 +54,8 @@ from ..home_space.type_vocabulary import (
     unknown_states,
 )
 from .operations import REGISTRY, UNKNOWN_UNIT
-from .recipes import Recipe, balance_recipe
+from .recipes import Recipe
+from .seed import balance_recipe
 
 # `aggregate_day` e' SINCRONA: non fa nessuna lettura di rete. I comprimari
 # arrivano gia' risolti dal chiamante (vedi il Task 6), proprio perche' una
@@ -266,6 +267,28 @@ def _is_on(value) -> bool:
     corso. L'insieme dei riposi e' l'unione che il vocabolario dei tipi tiene:
     `_RESTING` era esattamente quella, elencata a mano."""
     return str(value or "").strip().lower() not in resting_states()
+
+
+def _opening_attributes(row: dict):
+    """La foto degli attributi voluti al momento in cui l'episodio si apre.
+
+    E' la riga del cambio di STATO, che l'osservatore scrive gia' con gli
+    attributi che il sapere vuole (`mind/watcher.py`, spec §5.4). Senza di
+    lei il corpo dell'episodio comincerebbe dal primo cambio SUCCESSIVO, e
+    meta' della colonna `attributes` del grezzo resterebbe scritta e non letta
+    da nessuno (Fable 5.1, 13/09/2026).
+
+    Lista vuota quando non c'e' niente: mai una voce con un dizionario vuoto,
+    che direbbe «li abbiamo guardati e non c'erano».
+    """
+    raw_attributes = row.get("attributes")
+    if not raw_attributes:
+        return []
+    try:
+        values = json.loads(raw_attributes)
+    except (TypeError, ValueError):
+        return []
+    return [(row["quando_ts"], values)] if isinstance(values, dict) and values else []
 
 
 def _as_number(value) -> float | None:
@@ -502,6 +525,15 @@ def build_balance_body(*, series: dict[str, list[dict]],
     # dispositivo sfortunato avrebbe fatto saltare i bilanci di tutti gli altri.
     if not ricetta.steps:
         return {}
+    # **Il perimetro della validazione e' costruito dalla ricetta stessa, e
+    # questo va detto** (Fable 5.1, 13/09/2026): il rifiuto «questa entita' non
+    # e' fra quelle consegnate» non puo' scattare da qui, perche' le serie si
+    # costruiscono dai nomi che la ricetta nomina. Non e' un difetto nascosto:
+    # un'entita' che Home Assistant non ha restituito diventa una serie vuota,
+    # quindi una dimensione **non calcolabile** -- che e' l'esito giusto per il
+    # prodotto (la dimensione non compare) e un esito diverso da «ricetta
+    # rifiutata». Il controllo sulle entita' serve a chi scrivera' una ricetta
+    # a mano, cioe' alla fetta in cui le ricette arrivano dal modello.
     punti_per_entita = {e: _dimension_points(series, e) for e in ricetta.entities()}
     esiti = ricetta.run(series=punti_per_entita)
 
@@ -817,9 +849,22 @@ def aggregate_day(*, store, day: str, timezone: str | None,
         # `mind/operations.Period.contains`, una sola in tutto il prodotto.
         # Un episodio ancora aperto (`when is None`) prende tutto cio' che
         # viene dopo il suo inizio.
-        during = [(instant, values)
-                  for instant, values in attribute_changes.get(subject, [])
-                  if instant >= o["inizio"] and (when is None or instant < when)]
+        # **La foto d'apertura c'e', e senza di lei meta' della colonna
+        # `attributes` restava scritta e non letta** (Fable 5.1, 13/09/2026):
+        # la riga del cambio di STATO porta gia' gli attributi voluti -- il
+        # `hvac_action: heating` delle 15:30 -- e quel primo istante spariva
+        # dal corpo, che cominciava dal primo cambio successivo.
+        #
+        # **La forma e' una FOTO, non un delta**, e va detto: ogni voce porta
+        # tutti gli attributi voluti di quel momento, non il solo che si e'
+        # mosso. Chi legge due voci vicine vede cosa e' cambiato confrontandole;
+        # chi ne legge una sola sa lo stato di tutti. Il delta sarebbe piu'
+        # compatto e meno leggibile da solo, e questa e' la cronaca di un
+        # giorno, non un flusso da ricostruire.
+        during = list(o.get("attributi_apertura") or [])
+        during += [(instant, values)
+                   for instant, values in attribute_changes.get(subject, [])
+                   if instant > o["inizio"] and (when is None or instant < when)]
         if during:
             base_body["attributi"] = [
                 {"quando_ts": instant, "valori": values} for instant, values in during]
@@ -901,7 +946,8 @@ def aggregate_day(*, store, day: str, timezone: str | None,
             if _is_on(r["a"]):
                 if subject not in open_episodes:
                     open_episodes[subject] = {"genere": genre, "inizio": r["quando_ts"],
-                                        "stato": r["a"], "classe": r.get("device_class")}
+                                        "stato": r["a"], "classe": r.get("device_class"),
+                                        "attributi_apertura": _opening_attributes(r)}
             else:
                 close(subject, r["quando_ts"])
             continue
@@ -927,13 +973,15 @@ def aggregate_day(*, store, day: str, timezone: str | None,
                 close(subject, r["quando_ts"])
             elif subject not in open_episodes:
                 open_episodes[subject] = {"genere": genre, "inizio": r["quando_ts"],
-                                    "stato": r["a"], "classe": r.get("device_class")}
+                                    "stato": r["a"], "classe": r.get("device_class"),
+                                    "attributi_apertura": _opening_attributes(r)}
             continue
         if genre == "funzionamento":
             if _is_on(r["a"]):
                 if subject not in open_episodes:
                     open_episodes[subject] = {"genere": genre, "inizio": r["quando_ts"],
-                                        "stato": r["a"], "classe": r.get("device_class")}
+                                        "stato": r["a"], "classe": r.get("device_class"),
+                                        "attributi_apertura": _opening_attributes(r)}
             else:
                 close(subject, r["quando_ts"])
             continue

@@ -268,29 +268,33 @@ class Watcher:
             # dice quando la casa e' cambiata, il nostro orologio quando l'abbiamo
             # saputo. Annotare il secondo sposterebbe ogni oggetto di quel tanto.
             #
-            # **Tranne quando il cambio E' l'attributo**, e qui il difetto era
-            # grave (trovato dalla revisione indipendente, 13/09/2026):
-            # `last_changed` NON si muove per un evento di solo attributo --
-            # e' scritto dieci righe sopra, misurato il 10/09, e vale anche
-            # per l'eccezione nuova. Una riga nata dal passaggio di
-            # `hvac_action` da `heating` a `idle` sarebbe nata datata
-            # all'ultimo cambio di STATO, giorni prima, e sarebbe caduta fuori
-            # dalla finestra del giorno: scritta, e mai letta da nessuno.
-            # Cioe' esattamente il guasto che il filtro chiudeva «per forza»,
-            # riaperto sulle stesse entita'.
+            # **E' `last_updated`, non `last_changed`, e la differenza morde
+            # su una riga sola** (difetto trovato il 13/09/2026, e la sua
+            # correzione semplificata dalla revisione su Fable lo stesso
+            # giorno). `last_changed` NON si muove per un evento di solo
+            # attributo -- e' scritto dieci righe sopra, misurato il 10/09 --
+            # quindi una riga nata dal passaggio di `hvac_action` da `heating`
+            # a `idle` nascerebbe datata all'ultimo cambio di STATO, giorni
+            # prima, e cadrebbe fuori dalla finestra del giorno: scritta, e mai
+            # letta da nessuno. Cioe' il guasto che il filtro chiudeva «per
+            # forza», riaperto sulle stesse entita'.
             #
-            # Per quelle righe l'istante giusto e' `last_updated`, che **si
-            # muove anche per un attributo** (`proxy/entity_cache.py:518-520`,
-            # dove questa stessa differenza e' gia' scritta per la ragione
-            # opposta). Non e' «l'orologio della scrittura»: e' l'istante che
-            # Home Assistant dichiara per QUEL cambio.
-            solo_attributo = da == a
-            when = instant_epoch(new_state.get(
-                "last_updated" if solo_attributo else "last_changed"))
-            if when is None and solo_attributo:
-                # Ripiego dichiarato: se `last_updated` mancasse, `last_changed`
-                # e' comunque meglio dell'orologio -- sbaglia di giorni, ma
-                # resta un istante che HA ha dichiarato.
+            # **Non serve un ramo**: per un cambio di stato vero Home Assistant
+            # muove tutti e due insieme (`last_changed` si stacca da
+            # `last_updated` solo quando cambia il solo attributo), quindi
+            # `last_updated` e' l'istante giusto in entrambi i casi. La prima
+            # correzione ne aveva scritti due, e la prova che li distingueva
+            # non poteva fallire: costruiva un evento con i due istanti diversi
+            # su un cambio di stato, che HA non manda mai.
+            #
+            # `proxy/entity_cache.py:518-520` sceglie il contrario per la
+            # ragione opposta, e vale la pena leggerlo accanto a questo: li'
+            # si vuole «da quando e' accesa», che un attributo non deve
+            # spostare.
+            when = instant_epoch(new_state.get("last_updated"))
+            if when is None:
+                # Ripiego dichiarato: `last_changed` sbaglia di giorni su una
+                # riga di solo attributo, ma resta un istante che HA dichiara.
                 when = instant_epoch(new_state.get("last_changed"))
             if when is None:
                 # Ripiego muto fino a qui: se HA cambiasse formato di

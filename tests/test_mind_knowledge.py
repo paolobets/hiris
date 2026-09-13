@@ -248,13 +248,12 @@ def test_il_seme_CORREGGE_le_righe_che_sono_ancora_SUE(sapere):
 
 
 def test_il_seme_NON_tocca_una_riga_su_cui_qualcun_altro_ha_scritto(sapere):
-    """L'altra meta', ed e' quella che conta di piu': appena il proprietario o
-    il modello scrivono sopra, `who` cambia e il seme si ferma. Senza questa
-    regola la correzione appena aggiunta cancellerebbe a ogni riavvio cio' che
-    la casa ha imparato.
+    """L'altra meta', ed e' quella che conta di piu': appena qualcuno scrive
+    sopra, il seme si ferma. Senza questa regola la correzione cancellerebbe a
+    ogni riavvio cio' che la casa ha imparato.
 
-    Mutazione ESEGUITA: togliere `WHERE knowledge.who = excluded.who` --
-    rossa, il seme schiaccia la decisione del proprietario.
+    Mutazione ESEGUITA: togliere `knowledge.value IS knowledge.seeded_value`
+    dal `WHERE` -- rossa, il seme schiaccia la decisione del proprietario.
     """
     sapere.seed([_riga(value="produzione", provenance="nostro",
                        verification=None, evidence=None, who="seme del repo")])
@@ -298,3 +297,65 @@ def test_una_riga_STORTA_sul_disco_non_fa_cadere_la_lettura(sapere, caplog):
 
     assert [r.field for r in righe] == ["buona"]
     assert any("storta" in r.getMessage() for r in caplog.records)
+
+
+def test_una_correzione_A_MANO_non_torna_indietro_al_riavvio(sapere):
+    """**Il difetto che Fable 5.1 ha trovato il 13/09/2026.**
+
+    L'archivio dichiara di essere fatto per essere corretto a mano. Chi lo
+    corregge con un `UPDATE` **non cambia `who`** -- nessuno glielo ha detto --
+    e con la regola letta dall'autore quella correzione tornava indietro al
+    riavvio successivo, in silenzio, contata nel log come «una riga del seme
+    scritta».
+
+    «Nessuno l'ha toccata» si legge dal VALORE, non dall'autore.
+
+    Mutazione ESEGUITA: rimettere `WHERE knowledge.who = excluded.who` al
+    posto del confronto col valore seminato -- rossa, la correzione sparisce.
+    """
+    sapere.seed([_riga(value="produzione", provenance="nostro",
+                       verification=None, evidence=None, who="seme del repo")])
+    sapere._conn.execute(
+        "UPDATE knowledge SET value = 'consumo_lordo' WHERE field = ?",
+        ("direzione:energy_generating_today",))
+    sapere._conn.commit()
+
+    sapere.seed([_riga(value="produzione", provenance="nostro",
+                       verification=None, evidence=None, who="seme del repo")])
+
+    [riga] = sapere.read(subject_kind="integrazione", subject="zcsazzurro")
+    assert riga.value == "consumo_lordo", "il seme ha schiacciato una correzione a mano"
+
+
+def test_un_seme_di_PRIORITA_ALTA_corregge_uno_di_priorita_bassa(sapere):
+    """**Il repo batte l'installazione, e non per ordine d'arrivo.**
+
+    Senza una precedenza esplicita vinceva chi arrivava prima: su una casa che
+    aveva gia' importato il nome pubblicato da Home Assistant («Indice AQI»),
+    la frase piu' ricca aggiunta da un rilascio successivo non sarebbe
+    atterrata mai. E' l'ordine sfortunato, che la prova gemella non copriva.
+
+    Mutazione ESEGUITA: togliere il confronto fra le priorita' -- rossa.
+    """
+    sapere.seed([_riga(value="Indice AQI", provenance="importato",
+                       evidence=None, who="l'installazione")], priority=1)
+
+    sapere.seed([_riga(value="l'indice di qualita' dell'aria, non una misura",
+                       provenance="importato", evidence=None,
+                       who="seme del repo")], priority=2)
+
+    [riga] = sapere.read(subject_kind="integrazione", subject="zcsazzurro")
+    assert riga.value.startswith("l'indice")
+
+
+def test_un_seme_di_PRIORITA_BASSA_non_tocca_quello_del_repo(sapere):
+    """L'altra direzione: il nome pubblicato non schiaccia la frase, nemmeno
+    quando arriva dopo."""
+    sapere.seed([_riga(value="la frase del repo", provenance="importato",
+                       evidence=None, who="seme del repo")], priority=2)
+
+    sapere.seed([_riga(value="Nome", provenance="importato",
+                       evidence=None, who="l'installazione")], priority=1)
+
+    [riga] = sapere.read(subject_kind="integrazione", subject="zcsazzurro")
+    assert riga.value == "la frase del repo"

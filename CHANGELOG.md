@@ -1,6 +1,65 @@
 # HIRIS — Changelog
 
-## [3.30.0] — Il sapere, e le ricette (2026-09-12)
+## [3.30.1] — La revisione dovuta, e cosa ha trovato (2026-09-13)
+
+La revisione della fetta 4 doveva girare su Fable 5.1 e non era partita --
+limite settimanale esaurito. E' girata dopo, sullo stesso codice gia'
+rilasciato, e ha trovato quattro cose gravi. Nessuna e' un difetto nuovo:
+sono tutte cose che erano nella 3.30.0 e che adesso non ci sono piu'.
+
+### Il seme non poteva essere corretto a mano
+
+L'archivio del sapere dichiara di essere fatto per essere corretto a mano. Chi
+lo correggeva con una scrittura diretta **non cambiava l'autore** -- nessuno
+glielo aveva detto -- e la regola «il seme tocca solo cio' che e' suo», letta
+dall'autore, rimetteva il valore del repo al riavvio successivo. In silenzio.
+
+Adesso «nessuno l'ha toccata» si legge **dal valore**: il seme ricorda cosa ha
+scritto, e si ferma appena quel valore e' cambiato. E' anche la fine di un
+secondo difetto: cambiare il nome dell'autore del seme non rende piu' orfane
+tutte le sue righe per sempre.
+
+E i due semi hanno una **precedenza**: il repo batte l'installazione. Senza,
+vinceva chi arrivava prima -- e su una casa che aveva gia' importato «Indice
+AQI» la frase piu' ricca aggiunta da un rilascio successivo non sarebbe
+atterrata mai.
+
+### Una prova che non poteva fallire, e il ramo che non distingueva niente
+
+La correzione di ieri sull'istante di una riga nata da un attributo aveva
+scritto DUE rami -- `last_updated` per l'attributo, `last_changed` per lo
+stato -- e una prova per distinguerli. Ma per un cambio di stato Home
+Assistant muove tutti e due insieme: quella prova costruiva un evento che HA
+non manda mai, e nessuna mutazione poteva farla arrossire. Un ramo solo, piu'
+semplice e uguale.
+
+### Meta' della colonna degli attributi era ancora scritta e non letta
+
+Il corpo di un episodio cominciava dal primo cambio di attributo SUCCESSIVO
+all'accensione: la foto del momento in cui l'episodio si apre -- «alle 15:30
+sta scaldando» -- non la leggeva nessuno. Adesso c'e', e la forma del campo e'
+dichiarata: ogni voce e' una foto di tutti gli attributi voluti, non il delta.
+
+### Quattro citazioni diventate false spostando i moduli
+
+Tre commenti nominavano funzioni che nel frattempo erano traslocate, e uno
+descriveva una forma del sapere che la revisione precedente aveva gia'
+corretto. Sono la forma piu' pura del difetto che questo progetto insegue: una
+ragione scritta accanto al codice, smentita dal file che cita.
+
+### Un cancello nuovo, perche' e' successo tre volte
+
+Tre volte in due giorni una rinomina fatta con un'espressione regolare ha
+toccato la **prosa** dei commenti invece del solo codice: «la temperatura e'
+salita» diventata «la temperatura e' rise», «il settimo totale» diventato «il
+settimo total», «i 22 giorni di grezzo» diventati «i 22 giorni di
+raw_attributes». Tutte e tre le volte l'ha trovata una rilettura a mano.
+
+Adesso c'e' una prova che lo vieta: un identificatore nudo dentro una frase
+italiana e' quasi sempre il residuo di una sostituzione meccanica, perche' in
+questo progetto il codice citato nella prosa sta fra backtick.
+
+## [3.30.0] — Il sapere, e le ricette (2026-09-13)
 
 **Cio' che HIRIS ha capito della casa smette di essere codice.** Fino a questa
 versione viveva sparso in tre posti: una tabella a mano dentro il lettore di

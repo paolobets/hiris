@@ -44,9 +44,12 @@ un proprio perimetro da importare.
 **Le quattro tabelle di significati non le consuma il digesto, e non le
 consuma nemmeno `view`** (corretto il 09/09/2026: la frase precedente diceva
 il contrario, ed era falsa il giorno stesso in cui l'ha letta un revisore).
-`STATE_CLASS_MEANING`/`DEVICE_CLASS_MEANING` hanno oggi UN lettore --
-`type_census.py:177,218`, che le usa per elencare le coppie (dominio, classe)
-censite -- e `UNAVAILABLE_MEANING`/`UNKNOWN_MEANING` nessuno: restano
+`STATE_CLASS_MEANING` ha oggi UN lettore -- `type_census.py`, che lo usa per
+elencare le coppie (dominio, classe) censite. `DEVICE_CLASS_MEANING` ne ha
+**due dal 12/09/2026**: quello e `mind/seed.meaning_seed`, che ne fa il SEME
+del sapere (la fetta «il sapere e le ricette»). Sono due domande diverse sulla
+stessa tabella -- «cosa il repo rivendica» e «cosa significa» -- e per questo
+non sono un doppione. -- e `UNAVAILABLE_MEANING`/`UNKNOWN_MEANING` nessuno: restano
 conoscenza per chi legge il codice o interroga la casa a mano, pinnate solo
 dalla prova che le confronta con la fonte (`tests/test_ha_vocabulary.py`), non
 un fatto che il digesto o `view` ripetono a ogni turno. **Le tre voci
@@ -69,9 +72,12 @@ hanno i bit di `supported_features`. La regola che separa i due, scritta per
 intero nel docstring di quel modulo: **una frase che spiega cosa SIGNIFICA un
 valore sta qui; un giudizio su cosa un tipo SERVE o quando HA FINITO sta la'.**
 `DEVICE_CLASS_MEANING`, indicizzato per `(dominio, classe)`, e' indicizzato
-esattamente come un tipo: e' il candidato dichiarato a diventare un campo di
-quelle righe, con la sua provenienza `importato`, quando la fetta che collega i
-vocabolari arrivera'. Fino ad allora nessun fatto vive di qua e di la'.
+esattamente come un tipo: era **il candidato dichiarato** a diventare un campo
+di quelle righe, e la fetta e' arrivata il 12/09/2026. Oggi quel fatto vive in
+due posti -- questo dizionario e `sapere.db` -- **ma non e' un doppione
+divergente**: il dizionario e' il SEME, il sapere e' cio' che la casa ne ha
+fatto, e il seme corregge solo le righe che nessuno ha toccato. E' la forma che
+la spec §8 chiede («il repo diventa il seme»).
 
 **Il pezzo che lo rende duraturo.** Il vocabolario porta scritto DA QUALE
 versione di Home Assistant viene (`VOCABULARY_HA_VERSION`), e

@@ -756,12 +756,16 @@ def test_migrazione_6_aggiunge_la_versione_a_un_archivio_gia_scritto(tmp_path):
 
 
 def test_una_base_dati_VECCHIA_prende_la_colonna_degli_attributi(tmp_path):
-    """**La migrazione v6 -> v7, provata su una base dati vecchia vera.**
+    """**La migrazione v6 -> v7, provata su una base dati alla versione 6.**
 
-    Una nuova nasce gia' completa (`init_schema` timbra la versione e non
-    esegue nessuna migrazione): provare solo quella lascerebbe la migrazione
-    non esercitata, ed e' il caso che gira sull'installazione del
-    proprietario -- dove `osservazioni.db` esiste da settimane.
+    La base dati e' COSTRUITA QUI con lo schema di prima -- non e' una copia di
+    quella del proprietario, e la parola «vera» che stava in questa riga era
+    imprecisa (Fable 5.1, 13/09/2026). Quello che prova e' comunque il caso che
+    conta: una nuova nasce gia' completa (`init_schema` timbra la versione e
+    non esegue nessuna migrazione), quindi provare solo quella lascerebbe la
+    migrazione non esercitata -- mentre e' il ramo che gira
+    sull'installazione del proprietario, dove `osservazioni.db` esiste da
+    settimane.
 
     Si controlla anche che la riga scritta PRIMA resti leggibile e legga
     `None`: e' vero, quella riga quegli attributi non li aveva.

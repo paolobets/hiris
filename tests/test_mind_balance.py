@@ -627,7 +627,7 @@ def test_il_bilancio_e_una_RICETTA_e_si_puo_leggere_prima_di_eseguirla():
     senza un rilascio -- per quello la ricetta dovrebbe stare nel sapere, e
     non ci sta ancora (a backlog, 13/09/2026).
     """
-    from hiris.app.mind.recipes import balance_recipe
+    from hiris.app.mind.seed import balance_recipe
 
     ricetta = balance_recipe({"consumo": "sensor.c", "prelievo": "sensor.p"},
                              order=BALANCE_DIRECTIONS, expected_hours=24)
@@ -649,7 +649,8 @@ def test_la_ricetta_NON_nomina_le_direzioni_che_il_dispositivo_non_ha():
     Mutazione che la uccide: generare un passo per ogni direzione di
     `BALANCE_DIRECTIONS` invece che per quelle presenti.
     """
-    from hiris.app.mind.recipes import Recipe, balance_recipe
+    from hiris.app.mind.recipes import Recipe
+    from hiris.app.mind.seed import balance_recipe
 
     dati = balance_recipe({"produzione": "sensor.p"},
                           order=BALANCE_DIRECTIONS, expected_hours=24)

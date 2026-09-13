@@ -176,11 +176,18 @@ def _migration_7(conn) -> None:
     """v6 -> v7: `attributes`, gli attributi che la ricetta chiede (spec §5.4).
 
     **Il fatto vive spesso in un attributo, non nello stato.** Lo stato di un
-    termostato e' `heat` e resta `heat`; `hvac_action` dice `idle`/`heating`,
-    `current_temperature` dice dove si e'. Senza questa colonna l'esempio
-    fondativo del cervello -- *«il riscaldamento parte alle 15:30, la casa e'
-    calda alle 16:30»* -- non e' rispondibile, e non lo sarebbe mai stato,
-    perche' il grezzo e' l'unica cosa che si puo' rileggere.
+    termostato e' `heat` e resta `heat`; `hvac_action` dice `idle`/`heating`.
+    Senza questa colonna l'esempio fondativo del cervello -- *«il riscaldamento
+    parte alle 15:30, la casa e' calda alle 16:30»* -- non e' rispondibile, e
+    non lo sarebbe mai stato, perche' il grezzo e' l'unica cosa che si puo'
+    rileggere.
+
+    **`current_temperature` NON e' fra gli attributi voluti**, e vale la pena
+    dirlo qui perche' la prima stesura di questa colonna lo citava come
+    motivazione: e' una grandezza continua, e tenerla riaprirebbe il flusso di
+    righe che il filtro `da == a` ha chiuso. La domanda la risponde
+    `hvac_action`, che passa a `idle` QUANDO la casa e' arrivata in
+    temperatura. Vedi `mind/seed._WANTED_ATTRIBUTES`.
 
     Le righe scritte prima rileggono `None`, ed e' vero: quegli attributi non
     li avevano. **Non si riempiono a posteriori** dallo specchio di oggi --
@@ -231,7 +238,7 @@ CREATE TABLE IF NOT EXISTS cambi (
     -- JSON. **Non sono tutti**: tenerli tutti rimetterebbe nel grezzo le
     -- 6.503 righe al giorno di soli attributi che il filtro `da == a` ha
     -- tolto. Quali valgano la pena lo dice il sapere (`mind/knowledge.py`,
-    -- campo `attributi:<tipo>`), non una lista qui.
+    -- campo `attributi` sul soggetto del tipo), non una lista qui.
     --
     -- **Perche' una colonna JSON e non una per attributo.** Gli attributi
     -- utili cambiano per dispositivo e cambiano nel tempo: una colonna

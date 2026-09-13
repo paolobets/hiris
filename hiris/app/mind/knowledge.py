@@ -79,7 +79,7 @@ VERIFICATIONS = ("confermata", "non_confermabile", "non_capito")
 # importarli da li', cioe' a dipendere da chi scrive per poter leggere.
 
 #: Il campo sotto cui vive una direzione dell'energia. Il soggetto e'
-#: l'integrazione, il resto del name e' il `translation_key` a cui la riga si
+#: l'integrazione, il resto del nome e' il `translation_key` a cui la riga si
 #: riferisce: `direzione:energy_generating_today`.
 DIRECTION_FIELD_PREFIX = "direzione:"
 
@@ -94,7 +94,7 @@ def type_subject(domain: str, device_class: str | None = None) -> str:
     """Il soggetto di un tipo: `sensor`, oppure `sensor.power`.
 
     Un posto solo dove si compone, perche' due composizioni divergono al
-    primo dominio con un punto nel name.
+    primo dominio con un punto nel nome.
     """
     return f"{domain}.{device_class}" if device_class else domain
 
@@ -190,11 +190,44 @@ CREATE TABLE IF NOT EXISTS knowledge (
     source       TEXT,
     who          TEXT NOT NULL,
     when_ts      REAL NOT NULL,
+    -- Cosa il SEME aveva scritto l'ultima volta, e con quale precedenza.
+    --
+    -- **Serve perche' `who` non basta** (revisione indipendente su Fable 5.1,
+    -- 13/09/2026): questo archivio e' fatto per essere corretto a mano, e chi
+    -- corregge una riga con un `UPDATE` non cambia `who` -- nessuno glielo ha
+    -- detto. Con la regola «il seme tocca solo cio' che e' suo» letta da
+    -- `who`, quella correzione tornava indietro al riavvio successivo, in
+    -- silenzio. Confrontare il valore con cio' che il seme aveva scritto
+    -- risponde alla domanda vera: «l'ha toccata qualcuno?».
+    --
+    -- E risolve un secondo difetto: se il nome dell'autore del seme cambiasse,
+    -- con la regola su `who` tutte le sue righe diventerebbero orfane per
+    -- sempre -- ne' inseribili (chiave primaria) ne' aggiornabili.
+    seeded_value    TEXT,
+    seeded_priority INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (subject_kind, subject, field)
 );
-CREATE INDEX IF NOT EXISTS idx_knowledge_field ON knowledge(field);
+-- Nessun indice su `field`: l'unico accesso per campo e' `by_field_prefix`,
+-- che usa `substr(field, 1, ?)` -- una funzione sulla colonna, che l'indice non
+-- puo' servire. Un indice che nessuna query puo' usare costa scritture e non
+-- fa risparmiare nessuna lettura (Fable 5.1, 13/09/2026).
 """
-_SCHEMA_VERSION = 1
+def _migration_2(conn) -> None:
+    """v1 -> v2: `seeded_value` e `seeded_priority` (13/09/2026).
+
+    Le righe scritte prima rileggono `NULL` e `0`: e' vero, il seme di allora
+    non si ricordava cosa avesse scritto. Una riga con `seeded_value` nullo non
+    e' piu' correggibile dal seme -- il che e' il comportamento prudente:
+    «non so se qualcuno l'ha toccata» si tratta come «qualcuno l'ha toccata».
+    """
+    for column, kind in (("seeded_value", "TEXT"),
+                         ("seeded_priority", "INTEGER NOT NULL DEFAULT 0")):
+        esistenti = {r[1] for r in conn.execute("PRAGMA table_info(knowledge)")}
+        if column not in esistenti:
+            conn.execute(f"ALTER TABLE knowledge ADD COLUMN {column} {kind}")
+
+
+_SCHEMA_VERSION = 2
 
 _COLUMNS = ("subject_kind", "subject", "field", "value", "provenance",
             "verification", "evidence", "source", "who", "when_ts")
@@ -237,7 +270,8 @@ class KnowledgeStore:
     def __init__(self, db_path: str) -> None:
         self._lock = threading.Lock()
         self._conn = connect(db_path)
-        init_schema(self._conn, _SCHEMA, version=_SCHEMA_VERSION)
+        init_schema(self._conn, _SCHEMA, version=_SCHEMA_VERSION,
+                    migrations={2: _migration_2})
 
     def close(self) -> None:
         with self._lock:
@@ -258,7 +292,7 @@ class KnowledgeStore:
                 tuple(getattr(fact, c) for c in _COLUMNS))
             self._conn.commit()
 
-    def seed(self, facts) -> int:
+    def seed(self, facts, *, priority: int = 0) -> int:
         """Il seme del repo: scrive **solo cio' che ancora non c'e'**.
 
         *«Il repo diventa il seme»* (spec §8): le righe scritte, riviste,
@@ -268,18 +302,28 @@ class KnowledgeStore:
         invisibile, perche' il valore tornerebbe semplicemente a essere quello
         scritto nel repo, che sembra giusto.
 
-        **Ma il seme corregge le righe che sono ANCORA SUE**, e senza questo
-        un difetto del repo sarebbe irreparabile (trovato dalla revisione
-        indipendente, 13/09/2026): con un `INSERT OR IGNORE` nudo, il giorno
-        in cui si scoprisse che `power_autoconsuming` non significa
-        «autoconsumo», correggerlo nel repo **non riparerebbe nessuna
-        installazione che ha gia' avviato una volta** -- prima serviva un
-        rilascio, dopo non basterebbe nemmeno quello.
+        **Ma il seme corregge le righe che NESSUNO HA TOCCATO**, e senza questo
+        un difetto del repo sarebbe irreparabile: con un `INSERT OR IGNORE`
+        nudo, il giorno in cui si scoprisse che `power_autoconsuming` non
+        significa «autoconsumo», correggerlo nel repo non riparerebbe nessuna
+        installazione gia' avviata -- prima serviva un rilascio, dopo non
+        basterebbe nemmeno quello.
 
-        La regola si legge dalla riga stessa: si aggiorna **solo se chi c'e'
-        scritto e' lo stesso che sta scrivendo adesso**. Appena il
-        proprietario o il modello scrivono sopra, `who` cambia e il seme non
-        la tocca piu'.
+        **«Nessuno l'ha toccata» si legge dal VALORE, non da `who`** (Fable
+        5.1, 13/09/2026). La prima stesura guardava l'autore, e sbagliava due
+        volte: chi corregge una riga a mano con un `UPDATE` non cambia `who`
+        -- nessuno glielo ha detto -- e si vedeva la correzione tornare
+        indietro al riavvio, in silenzio; e il giorno in cui il nome
+        dell'autore del seme cambiasse, tutte le sue righe sarebbero diventate
+        orfane per sempre. Adesso il confronto e' fra il valore di adesso e
+        quello che **il seme stesso** aveva scritto l'ultima volta.
+
+        **`priority` decide chi vince fra due semi.** Il repo (priorita' alta)
+        porta una frase che dice cosa un valore E'; l'installazione (priorita'
+        bassa) porta il nome che Home Assistant pubblica. Senza una priorita'
+        esplicita vinceva **chi arrivava prima**: su una casa che aveva gia'
+        importato «Indice AQI», la frase piu' ricca aggiunta da un rilascio
+        successivo non sarebbe atterrata mai.
 
         Torna quante righe ha davvero scritto o corretto.
         """
@@ -287,16 +331,22 @@ class KnowledgeStore:
         with self._lock:
             for fact in facts:
                 cur = self._conn.execute(
-                    f"INSERT INTO knowledge ({', '.join(_COLUMNS)}) "
-                    f"VALUES ({', '.join('?' * len(_COLUMNS))}) "
+                    f"INSERT INTO knowledge ({', '.join(_COLUMNS)}, "
+                    "seeded_value, seeded_priority) "
+                    f"VALUES ({', '.join('?' * (len(_COLUMNS) + 2))}) "
                     "ON CONFLICT(subject_kind, subject, field) DO UPDATE SET "
                     "value=excluded.value, provenance=excluded.provenance, "
                     "verification=excluded.verification, evidence=excluded.evidence, "
-                    "source=excluded.source, when_ts=excluded.when_ts "
-                    "WHERE knowledge.who = excluded.who "
+                    "source=excluded.source, who=excluded.who, "
+                    "when_ts=excluded.when_ts, seeded_value=excluded.seeded_value, "
+                    "seeded_priority=excluded.seeded_priority "
+                    "WHERE knowledge.seeded_value IS NOT NULL "
+                    "  AND knowledge.value IS knowledge.seeded_value "
+                    "  AND excluded.seeded_priority >= knowledge.seeded_priority "
                     "  AND (knowledge.value IS NOT excluded.value "
                     "       OR knowledge.source IS NOT excluded.source)",
-                    tuple(getattr(fact, c) for c in _COLUMNS))
+                    tuple(getattr(fact, c) for c in _COLUMNS)
+                    + (fact.value, int(priority)))
                 written += cur.rowcount or 0
             self._conn.commit()
         return written
