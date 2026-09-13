@@ -310,3 +310,56 @@ def test_un_turno_di_ricetta_NON_riceve_gli_strumenti():
     from hiris.app.agent.runner import _SELF_CONTAINED_KINDS
 
     assert rt.RECIPE_TURN_KIND in _SELF_CONTAINED_KINDS
+
+
+# -- i rifiuti sono importanti, e non sono definitivi -----------------------
+
+def test_un_rifiuto_SCADE_quando_il_registro_cresce(sapere):
+    """**Decisione del proprietario, 13/09/2026: «i rifiuti sono importanti».**
+
+    Un dispositivo che oggi il modello non sa misurare puo' diventare
+    misurabile domani per una ragione che non ha niente a che vedere con lui:
+    il registro delle operazioni cresce. Il giorno in cui arriva il mattone che
+    mancava, ogni «non capito» deciso contro un registro piu' povero e' un
+    giudizio da rifare, non un verdetto.
+
+    E' anche il primo LETTORE di `VERSIONE_REGISTRO`, che fino a oggi era un
+    numero scritto e mai interrogato.
+
+    Mutazione ESEGUITA: far tornare `_ancora_valido` sempre `True` -- rossa,
+    il dispositivo resta condannato per sempre.
+    """
+    from hiris.app.mind.knowledge import Fact
+
+    sapere.write(Fact(
+        subject_kind="dispositivo", subject="dev1", field=rt.UNDERSTOOD_FIELD,
+        value="non ci riesco", provenance="dedotto", evidence="x",
+        source=f"{rt.REFUSAL_SOURCE}0",  # un registro piu' vecchio
+        verification="non_capito", who="x", when_ts=1789000000.0))
+
+    assert rt.devices_to_ask(sapere, CASA, {"sensor.prodotta"}) == ["dev1"]
+
+
+def test_un_rifiuto_del_registro_CORRENTE_vale_ancora(sapere):
+    """L'altra meta': finche' il registro e' quello, la domanda e' gia' stata
+    fatta e non si ripete."""
+    rt.apply_recipe(sapere, CASA, "dev1", "non saprei", who="x",
+                    when_ts=1789000000.0)
+
+    assert rt.devices_to_ask(sapere, CASA, {"sensor.prodotta"}) == []
+
+
+def test_un_rifiuto_porta_COSA_HA_DETTO_il_modello(sapere):
+    """Senza, il proprietario legge «l'entita' non e' fra quelle consegnate» e
+    non puo' sapere se il modello avesse capito il dispositivo e sbagliato un
+    identificatore, o non avesse capito niente. Sono due cose diverse, e la
+    seconda la risolve lui in dieci secondi.
+
+    Mutazione ESEGUITA: rimettere `evidence` a una frase generica -- rossa.
+    """
+    rt.apply_recipe(sapere, CASA, "dev1",
+                    "credo sia un contatore dell'acqua ma non ne sono sicuro",
+                    who="x", when_ts=1789000000.0)
+
+    riga = sapere.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD)
+    assert "contatore dell'acqua" in riga.evidence

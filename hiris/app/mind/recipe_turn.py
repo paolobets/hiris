@@ -44,6 +44,7 @@ import logging
 import re
 
 from .knowledge import Fact
+from .operations import REGISTRY_VERSION
 from .recipes import Recipe
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,22 @@ RECIPE_FIELD = "ricetta"
 #: diverse a seconda di un altro campo -- e chi legge senza guardare l'altro
 #: eseguirebbe un elenco di problemi come se fosse una sequenza di passi.
 UNDERSTOOD_FIELD = "ricetta_non_capita"
+
+#: Contro quale registro il rifiuto e' stato deciso.
+#:
+#: **I rifiuti sono importanti, e per questo non sono definitivi** (decisione
+#: del proprietario, 13/09/2026). Un dispositivo che oggi il modello non sa
+#: misurare potrebbe diventare misurabile domani, per una ragione che non ha
+#: niente a che vedere con lui: il registro delle operazioni cresce. Il giorno
+#: in cui arriva `correlazione` -- o qualunque altro mattone che mancava --
+#: ogni «non capito» deciso contro un registro piu' povero e' un giudizio da
+#: rifare, non un verdetto.
+#:
+#: Quindi il rifiuto porta la versione del registro contro cui e' stato preso,
+#: e vale finche' quella versione e' quella corrente. E' anche cio' che
+#: finalmente da' un LETTORE a `VERSIONE_REGISTRO`, che fino a oggi era un
+#: numero scritto e mai interrogato.
+REFUSAL_SOURCE = "registro delle operazioni v"
 
 #: Il tetto della risposta. Una ricetta e' una decina di passi: 4.000 token
 #: sono larghi il doppio del necessario, e un tetto largo costa solo quando
@@ -259,11 +276,17 @@ def apply_recipe(store, home_space: dict, device_id: str, answer: str, *,
                           "mostrate insieme al modello con l'obiettivo della casa"),
                 who=who, when_ts=when_ts))
             return {"scritta": True, "problemi": [], "risposta": True}
+    # **Il rifiuto porta cosa il modello ha DETTO**, non solo cosa non andava.
+    # Senza, il proprietario legge «l'entita' non e' fra quelle consegnate» e
+    # non puo' sapere se il modello avesse capito il dispositivo e sbagliato un
+    # identificatore, o non avesse capito niente. Sono due cose diverse, e la
+    # seconda la risolve lui in dieci secondi.
     store.write(Fact(
         subject_kind="dispositivo", subject=device_id, field=UNDERSTOOD_FIELD,
         value=" · ".join(problems) or "il modello non ha proposto nessun passo",
         provenance="dedotto",
-        evidence="la risposta del modello, validata contro il registro delle operazioni",
+        evidence=f"il modello ha risposto: {str(answer).strip()[:1500]}",
+        source=f"{REFUSAL_SOURCE}{REGISTRY_VERSION}",
         verification="non_capito", who=who, when_ts=when_ts))
     return {"scritta": False, "problemi": problems, "risposta": True}
 
@@ -280,6 +303,12 @@ def devices_to_ask(store, home_space: dict, watched: set[str]) -> list[str]:
     scritta, oppure un rifiuto gia' registrato. Guardarne uno solo farebbe
     richiedere ogni notte, per sempre, i dispositivi che il modello non ha
     saputo leggere.
+
+    **Ma un rifiuto NON e' definitivo** (decisione del proprietario,
+    13/09/2026): vale finche' vale il registro contro cui e' stato deciso. Il
+    giorno in cui il registro delle operazioni cresce, ogni «non capito» preso
+    con un registro piu' povero torna una domanda aperta -- perche' il
+    dispositivo non e' cambiato, e' cambiato cio' che sappiamo calcolare.
     """
     to_ask = []
     for device in home_space.get("dispositivi") or []:
@@ -289,11 +318,25 @@ def devices_to_ask(store, home_space: dict, watched: set[str]) -> list[str]:
         entities = {str(e.get("id")) for e in _device_entities(home_space, device_id)}
         if not entities & watched:
             continue
-        if (store.get("dispositivo", device_id, RECIPE_FIELD) is not None
-                or store.get("dispositivo", device_id, UNDERSTOOD_FIELD) is not None):
+        if store.get("dispositivo", device_id, RECIPE_FIELD) is not None:
+            continue
+        rejection = store.get("dispositivo", device_id, UNDERSTOOD_FIELD)
+        if rejection is not None and _still_valid(rejection):
             continue
         to_ask.append(device_id)
     return to_ask
+
+
+def _still_valid(rejection) -> bool:
+    """Se un rifiuto vale ancora, cioe' se il registro non e' cambiato.
+
+    Un rifiuto senza la versione scritta e' di prima di questa regola: vale
+    come scaduto, e il dispositivo torna fra quelli da chiedere. E' la scelta
+    prudente nel verso giusto -- chiedere una volta di piu' costa un turno,
+    non chiedere mai piu' costa un dispositivo.
+    """
+    expected = f"{REFUSAL_SOURCE}{REGISTRY_VERSION}"
+    return (rejection.source or "") == expected
 
 
 def recipe_for(store, device_id: str) -> dict | None:

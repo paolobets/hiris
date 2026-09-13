@@ -1,5 +1,41 @@
 # HIRIS — Changelog
 
+## [3.31.2] — I rifiuti sono importanti (2026-09-13)
+
+**Decisione del proprietario**, dopo aver visto tre dispositivi condannati per
+un guasto del ponte: un rifiuto non e' uno scarto, e non deve essere
+definitivo.
+
+### Un «non capito» scade quando il registro cresce
+
+Un dispositivo che oggi il modello non sa misurare puo' diventare misurabile
+domani per una ragione che non ha niente a che vedere con lui: **il registro
+delle operazioni cresce**. Il giorno in cui arriva il mattone che mancava, ogni
+rifiuto deciso contro un registro piu' povero e' un giudizio da rifare, non un
+verdetto.
+
+Adesso il rifiuto porta la versione del registro contro cui e' stato preso, e
+vale finche' quella versione e' quella corrente. E' anche il primo **lettore**
+di `VERSIONE_REGISTRO`, che fino a oggi era un numero scritto e mai
+interrogato.
+
+### E porta cosa il modello ha detto
+
+Prima il rifiuto diceva solo cosa non andava («l'entita' non e' fra quelle
+consegnate»), e da li' non si capiva se il modello avesse inteso il dispositivo
+e sbagliato un identificatore, o non avesse inteso niente. Sono due cose
+diverse, e la seconda il proprietario la risolve in dieci secondi.
+
+### La promessa «si richiede al giro dopo» adesso e' vera
+
+Trovata dal vivo alle 21:05, dieci minuti dopo aver rilasciato la correzione
+che quella promessa la scriveva: un turno finito a vuoto veniva ri-raccolto
+ogni dieci minuti, sempre vuoto, e non se ne accodava mai uno nuovo. Adesso se
+ne accoda uno -- **non prima di un'ora**, perche' con un ponte che sa ragionare
+quella specie una risposta vuota vuol dire che la CLI non ha risposto, e quel
+giro e' costato. Il conto: a ogni passaggio sarebbero 144 turni al giorno, e il
+tetto di fabbrica del piano e' 150.
+
 ## [3.31.1] — Il ponte non sapeva ragionare le ricette (2026-09-13)
 
 **Trovato dal vivo venti minuti dopo il rilascio della 3.31.0**, e non

@@ -2025,7 +2025,15 @@ async def recipe_round(app) -> dict | None:
     try:
         home_space = home_space_store.read()
         collected = _collect_recipe_turn(app, sapere, home_space)
-        if collected is not None:
+        if collected is not None and collected.get("risposta"):
+            return collected
+        # **Una risposta che non c'e' non chiude il giro**, e senza questa riga
+        # la promessa scritta in `apply_recipe` -- «non consuma il colpo, il
+        # giro successivo richiede» -- era falsa: il turno vecchio veniva
+        # ri-raccolto ogni dieci minuti, sempre vuoto, e non se ne accodava mai
+        # uno nuovo. Trovato dal vivo il 13/09/2026 alle 21:05, dieci minuti
+        # dopo aver rilasciato la correzione che quella promessa la scriveva.
+        if collected is not None and _troppo_presto_per_richiedere(app):
             return collected
         if _recipe_turn_in_flight(app):
             return None
@@ -2060,6 +2068,32 @@ async def recipe_round(app) -> dict | None:
     except Exception as exc:
         logger.warning("ricette: giro fallito (%s: %s)", type(exc).__name__, exc)
         return None
+
+
+#: Quanto si aspetta prima di richiedere, dopo una risposta vuota.
+#:
+#: **Un'ora, e il numero viene da un conto.** Una risposta vuota da un ponte
+#: che SA ragionare quella specie non e' piu' un rifiuto istantaneo: vuol dire
+#: che la CLI non ha risposto, e quel giro e' costato. Richiedere a ogni
+#: passaggio dell'anello sarebbero **144 turni al giorno**, e il tetto di
+#: fabbrica del piano e' 150: un ponte rotto svuoterebbe da solo la quota, e da
+#: li' in poi ogni turno -- chat compresa -- passerebbe ai provider a
+#: pagamento. E' lo stesso conto che la review indipendente aveva fatto
+#: sull'osservatore l'11/09/2026.
+#:
+#: Un'ora sono 24 tentativi al giorno nel caso peggiore, e un solo giro di
+#: attesa quando il guasto e' passato.
+RECIPE_RETRY_HOLD_S = 3600.0
+
+
+def _troppo_presto_per_richiedere(app) -> bool:
+    """Se l'ultimo turno di ricetta e' finito a vuoto da meno di un'ora."""
+    queue = app.get("reasoning_queue")
+    turn = queue.latest(recipe_turn.RECIPE_TURN_KIND) if queue else None
+    if turn is None:
+        return False
+    deciso = turn.get("decided_ts") or turn.get("created_ts") or 0
+    return (time.time() - deciso) < RECIPE_RETRY_HOLD_S
 
 
 def _recipe_turn_in_flight(app) -> bool:
