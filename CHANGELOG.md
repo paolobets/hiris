@@ -1,5 +1,27 @@
 # HIRIS — Changelog
 
+## [3.33.4] — Una riparazione che solleva lo dice lo stesso (2026-09-14)
+
+Con la 3.33.2 installata sulla casa vera, `GET /api/health` rispondeva
+**`riparazione: null`** — cioè «non è girata». Falso: era girata, ed era
+morta prima di arrivare a una delle cinque uscite che scrivono l'esito.
+
+La lettura del fuso è la **prima riga** della riparazione e la sua query SQL
+non è protetta — il docstring della funzione lo dice da mesi. Qualunque cosa
+sollevi lì, o nella raccolta dei soggetti subito dopo, risaliva al chiamante,
+che la ingoia in un warning nel log dell'add-on. E il log dell'add-on è
+esattamente ciò che da fuori non si legge: la domanda che avevo appena aggiunto
+per non restare cieco **restava cieca sullo stesso punto**.
+
+Ora l'esito si scrive anche in quel caso, con il tipo e il testo
+dell'eccezione, e **l'eccezione continua a propagare**: il contratto col
+chiamante non cambia, è lui a decidere se contenerla.
+
+Da qui in avanti `riparazione: null` vuol dire una cosa sola e vera: la
+riparazione non è stata nemmeno chiamata.
+
+Mutazione dichiarata ed **eseguita**: uccisa. 4142 prove verdi.
+
 ## [3.33.3] — Le stelle nella barra laterale (2026-09-14)
 
 `panel_icon` passa da `mdi:home-automation` a **`mdi:creation`**: le tre stelle
