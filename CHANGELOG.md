@@ -1,5 +1,56 @@
 # HIRIS — Changelog
 
+## [3.39.0] — L'obiettivo si può finalmente scrivere (2026-09-14)
+
+**«Ma come lo scrivo io?»** — la domanda del proprietario, e la risposta
+misurata era: **non puoi.**
+
+`store.set_objective` esisteva dall'11/09, provata da dieci prove, e **nessun
+codice di produzione la chiamava**: nessuna rotta, nessun campo nella pagina,
+nessuno strumento in chat. Solo i test. Sulla casa vera l'obiettivo era ancora
+quello di fabbrica — `scritto_ts: null` — e l'osservatore decideva cosa
+guardare contro una frase generica, mentre la spec lo chiama *«obiettivo =
+prompt»*: da quella riga dipendono cosa si guarda, quali ricette il modello
+propone e cosa l'analista andrà a cercare.
+
+Il docstring di `set_objective` parla perfino del bottone «salva». Non
+esisteva.
+
+### La porta
+
+`POST /api/mind/objective` e un campo nella sezione 01, col suo bottone. Tre
+regole, e ognuna ha la sua ragione:
+
+- **il campo parte da quello di adesso**, non vuoto: un obiettivo si corregge,
+  non si riscrive da zero, e un campo vuoto invita a cancellare la sola cosa
+  che tiene in piedi il criterio;
+- **un testo vuoto è un 400**, non un 200 silenzioso — è la sola manopola del
+  prodotto, e chi ha premuto salva deve sapere che non è stato scritto niente.
+  Su un rifiuto **il campo non si svuota e la sezione non si ricarica**: la
+  frase appena scritta è il danno peggiore da perdere;
+- **riscrivere lo stesso testo non è un errore**: è `scritto: false`, e la
+  pagina dice «era già questo». Dirlo come un guasto insegnerebbe a diffidare
+  dei guasti veri.
+
+### E l'obiettivo entra nel resoconto (§11)
+
+`store.objective_at(ts)` esisteva, e il suo docstring diceva *«la domanda che
+il resoconto porrà a ogni giornata che rilegge»*. **Nessuno la chiamava.** Una
+motivazione scritta accanto al codice che il codice smentiva.
+
+Ora ogni resoconto porta l'obiettivo che valeva **alla fine di quel giorno** —
+non quello di oggi, e `None` resta `None` per i resoconti nati prima della
+riga. Chi legge trenta giorni di misure in serie deve sapere se in mezzo la
+domanda è cambiata, o legge una tendenza dove c'è un cambio d'obiettivo. È
+esattamente il modo in cui l'analista le leggerà.
+
+Migrazione v9 dell'archivio: i diciannove giorni già scritti lo prendono
+dall'archivio stesso, senza inventare niente. Un resoconto che ce l'ha già non
+si tocca — può portarne uno diverso, ed è il suo.
+
+Dodici mutazioni dichiarate ed **eseguite**, tutte uccise. 4188 prove Python,
+423 JS, ruff, oxlint, censimento, componenti.
+
 ## [3.38.0] — Cinquantasei entità che le ricette non vedevano (2026-09-14)
 
 Su un giorno pieno, **21 misure su 32 rifiutavano**. Non a caso: tutte
