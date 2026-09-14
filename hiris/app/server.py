@@ -1710,11 +1710,27 @@ async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None
         return
 
     for day in days:
+        # **Anche il RESOCONTO, non solo gli oggetti.** Difetto trovato dal
+        # vivo il 14/09/2026, aggiornando la casa vera alla 3.33.0: questa
+        # riparazione passava `recipes=None`, e quel ramo di `aggregate_day`
+        # salta la scrittura del resoconto -- quindi `GET /api/mind/report`
+        # tornava `{"resoconti": []}` e ogni giorno 404, e il primo resoconto
+        # sarebbe comparso solo alle 00:20 del giorno dopo.
+        #
+        # Il ramo esisteva per una ragione vera -- un resoconto scritto senza
+        # le ricette avrebbe meta' delle misure vuota per un motivo che non
+        # riguarda la casa -- e la cura non e' toglierla, e' **portare le
+        # ricette anche qui**: le stesse che porta l'aggregazione notturna,
+        # dalla stessa funzione. Ricette vuote restano un fatto vero su
+        # quella casa, e si scrivono.
+        ricette, serie, nomi = await _report_ingredients(
+            app, ha_client, giorno=day, timezone=timezone)
         count = aggregate_day(
             store=app["observations"], day=day, timezone=timezone,
             companions=lambda s, mappa=mappa: mappa.get(s, []),
             directions=lambda s, m=directions_map: m.get(s),
-            balances=balances_by_day[day])
+            balances=balances_by_day[day],
+            recipes=ricette, series=serie, names=nomi)
         logger.info(
             "cervello: riaggregati %s oggetti per %s (riparazione all'avvio)",
             count, day)

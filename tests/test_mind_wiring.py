@@ -2675,3 +2675,47 @@ def test_SENZA_ricette_l_aggregazione_non_scrive_nessun_resoconto(tmp_path):
         assert archivio.report("2026-08-24") is None
     finally:
         archivio.close()
+
+def test_la_riparazione_all_avvio_riscrive_anche_il_RESOCONTO_dei_due_giorni(tmp_path):
+    """**Difetto trovato dal vivo il 14/09/2026**, aggiornando la casa vera
+    alla 3.33.0: `GET /api/mind/report` tornava `{"resoconti": []}` e ogni
+    giorno 404. La riparazione all'avvio rifaceva gli oggetti dei due giorni
+    e **non** il loro resoconto -- passava `recipes=None`, e quel ramo
+    saltava la scrittura -- quindi il primo resoconto sarebbe comparso solo
+    alle 00:20 del giorno dopo.
+
+    Con gli `oggetti` fuori (spec §13) lo stesso ramo non scriverebbe
+    **niente**: il giorno sparirebbe, e «quel giorno non e' successo niente»
+    e «quel giorno non l'abbiamo guardato» tornerebbero a essere la stessa
+    cosa.
+
+    Mutazione: rimettere la chiamata senza gli ingredienti del resoconto
+    (`aggregate_day(..., )` senza `recipes=`) -- rossa su
+    `assert archivio.report("2026-08-23") is not None`.
+    """
+    from datetime import datetime, timedelta
+
+    from hiris.app.mind.store import ObservationsStore
+
+    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
+    try:
+        oggi = datetime(2026, 8, 24, tzinfo=UTC)
+        for delta, soggetto in ((2, "l_altro_ieri"), (1, "ieri"), (0, "oggi")):
+            quando = (oggi - timedelta(days=delta)).replace(hour=10)
+            archivio.record(quando_ts=quando.timestamp(), source="entita",
+                            subject=f"light.{soggetto}", da="off", a="on")
+
+        asyncio.run(server.reaggregate_last_two_days(
+            {"home_space_store": None, "observations": archivio,
+             "knowledge": _sapere(tmp_path)}, ha_client=_ClienteLegami(),
+            now=lambda tz: oggi.astimezone(tz)))
+
+        for giorno in ("2026-08-22", "2026-08-23"):
+            scritto = archivio.report(giorno)
+            assert scritto is not None, f"il resoconto di {giorno} manca"
+            assert scritto["giorno"] == giorno
+        # E OGGI no: non e' finito, e un resoconto di mezza giornata direbbe
+        # il falso su cio' che quel giorno e' stato.
+        assert archivio.report("2026-08-24") is None
+    finally:
+        archivio.close()
