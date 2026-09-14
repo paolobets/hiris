@@ -486,3 +486,250 @@ def test_il_documento_scrive_l_obiettivo_sotto_il_titolo():
     righe = documento.split("\n")
     assert righe[0].startswith("# Resoconto del")
     assert "spendere meno di sera" in "\n".join(righe[:4]), documento[:200]
+
+# ── Le misure in SERIE: la forma in cui l'analista le legge (§10) ───────────
+#
+# Misurato sulla casa vera il 15/09/2026, sui venti giorni archiviati:
+# i resoconti come sono, trenta giorni, pesano ~47.600 token -- quattro volte
+# il giro dell'osservatore, ogni giorno. Pivotati per misura: ~6.700. Sette
+# volte meno, e non e' un'ottimizzazione: e' la frase della spec presa alla
+# lettera, «le misure si leggono in serie, molti giorni insieme», ed e' l'unica
+# forma su cui si puo' calcolare lo scostamento contro la storia di quel dato.
+
+
+def _giorno(giorno, misure):
+    return {"giorno": giorno, "obiettivo": None, "misure": misure,
+            "forme": [], "cronaca": []}
+
+
+def test_le_misure_si_leggono_in_serie_una_riga_per_misura():
+    """Una riga per (soggetto, misura), coi suoi valori nell'ordine dei giorni.
+    Il soggetto, l'operazione e l'unita' si scrivono **una volta**, non trenta.
+
+    Mutazione: tornare una riga per giorno -- rossa.
+    """
+    serie = rep.series_of_measures([
+        _giorno("2026-09-13", [{"soggetto": "dev1", "nome": "Inverter",
+                                "misura": "produzione", "operazione": "somma_periodo",
+                                "valore": 23.31, "unita": "kWh", "copertura": 1.0}]),
+        _giorno("2026-09-12", [{"soggetto": "dev1", "nome": "Inverter",
+                                "misura": "produzione", "operazione": "somma_periodo",
+                                "valore": 21.47, "unita": "kWh", "copertura": 1.0}]),
+    ])
+
+    assert serie["giorni"] == ["2026-09-12", "2026-09-13"], "dal piu' vecchio"
+    assert len(serie["serie"]) == 1
+    riga = serie["serie"][0]
+    assert riga["soggetto"] == "dev1"
+    assert riga["nome"] == "Inverter"
+    assert riga["misura"] == "produzione"
+    assert riga["unita"] == "kWh"
+    assert riga["valori"] == [21.47, 23.31]
+    assert riga["coperture"] == [1.0, 1.0]
+
+
+def test_un_valore_composto_diventa_TRE_serie_non_una_scelta_nascosta():
+    """`media_min_max` torna `{media, minimo, massimo}`. Mettere in serie \u00abla
+    media\u00bb sarebbe una regola che nessuno ha dichiarato -- e sarebbe sbagliata:
+    media, minimo e massimo sono **tre storie diverse**, e \u00abil massimo di
+    rumore e' salito\u00bb vale quanto \u00abla media e' salita\u00bb.
+
+    Mutazione: prendere solo `media` -- rossa.
+    """
+    serie = rep.series_of_measures([
+        _giorno("2026-09-13", [{"soggetto": "dev1", "misura": "rumore",
+                                "operazione": "media_min_max", "unita": "dB",
+                                "valore": {"media": 44.8, "minimo": 39.0,
+                                           "massimo": 71.0}, "copertura": 1.0}]),
+    ])
+
+    chiavi = [r["chiave"] for r in serie["serie"]]
+    assert chiavi == ["media", "minimo", "massimo"]
+    assert [r["misura"] for r in serie["serie"]] == ["rumore"] * 3
+    assert [r["valori"][0] for r in serie["serie"]] == [44.8, 39.0, 71.0]
+
+
+def test_un_giorno_in_cui_la_misura_NON_c_era_resta_un_buco_col_suo_perche():
+    """**Il terzo innesco.** Saltare i giorni senza valore renderebbe invisibile
+    proprio cio' che l'analista deve vedere: «la copertura crolla», «una misura
+    smette di essere calcolabile». Il caso vero e' `bilancio` a zero per cinque
+    giorni su cinque, e nessuno se n'e' accorto.
+
+    Il posto nella serie resta, col suo `None`, e il perche' si conserva.
+
+    Mutazione: saltare i giorni senza valore -- rossa su `[None, 2.0]`.
+    """
+    serie = rep.series_of_measures([
+        _giorno("2026-09-13", [{"soggetto": "dev1", "misura": "consumo",
+                                "operazione": "somma_periodo", "valore": 2.0,
+                                "unita": "kWh", "copertura": 1.0}]),
+        _giorno("2026-09-12", [{"soggetto": "dev1", "misura": "consumo",
+                                "operazione": "somma_periodo",
+                                "non_calcolabile": "la serie e' vuota"}]),
+    ])
+
+    riga = serie["serie"][0]
+    assert riga["valori"] == [None, 2.0]
+    assert riga["coperture"] == [None, 1.0]
+    assert riga["perche"] == [{"dal": "2026-09-12", "al": "2026-09-12",
+                              "ragione": "la serie e' vuota"}]
+
+
+def test_una_misura_che_esiste_solo_da_IERI_non_finge_una_storia():
+    """Una ricetta scritta ieri non ha trenta giorni alle spalle, e la sua
+    serie deve dirlo: i giorni prima sono `None`, non assenti. \u00abLa base e'
+    sottile\u00bb e' un vincolo della spec, e si vede da qui.
+
+    Mutazione: allineare la serie solo ai giorni in cui la misura c'era --
+    rossa.
+    """
+    serie = rep.series_of_measures([
+        _giorno("2026-09-13", [{"soggetto": "dev1", "misura": "nuova",
+                                "operazione": "somma_periodo", "valore": 1.0,
+                                "unita": "kWh", "copertura": 1.0}]),
+        _giorno("2026-09-12", []),
+        _giorno("2026-09-11", []),
+    ])
+
+    riga = serie["serie"][0]
+    assert riga["valori"] == [None, None, 1.0]
+    assert riga["perche"] == [], "un giorno in cui non c'era proprio non ha un perche'"
+
+
+def test_le_serie_tornano_in_ordine_STABILE():
+    """Due letture della stessa storia devono dare lo stesso ordine, o un
+    modello che le rilegge vedrebbe un cambiamento dove non c'e'.
+
+    Mutazione: iterare su un `set` -- rossa (a volte).
+    """
+    giorni = [_giorno("2026-09-13", [
+        {"soggetto": "b", "misura": "x", "operazione": "somma_periodo",
+         "valore": 1.0, "unita": "kWh", "copertura": 1.0},
+        {"soggetto": "a", "misura": "y", "operazione": "somma_periodo",
+         "valore": 2.0, "unita": "kWh", "copertura": 1.0}])]
+    prima = [(r["soggetto"], r["misura"]) for r in rep.series_of_measures(giorni)["serie"]]
+    dopo = [(r["soggetto"], r["misura"]) for r in rep.series_of_measures(giorni)["serie"]]
+    assert prima == dopo == [("a", "y"), ("b", "x")]
+
+def test_una_misura_composta_che_un_giorno_RIFIUTA_resta_tre_serie_non_quattro():
+    """Il caso vero: `co2_tendenza` si calcola il 13 e rifiuta il 12. Il valore
+    e' composto, quindi il giorno buono produce tre serie -- e il giorno del
+    rifiuto non ne deve produrre una quarta, senza chiave, con il perche'
+    staccato dai valori.
+
+    Il perche' va su **tutte e tre**: quel giorno mancano tutte e tre, e chi
+    guarda la storia del massimo deve vedere il buco nella SUA serie.
+
+    Mutazione: attaccare il rifiuto a una riga senza chiave -- rossa (quattro
+    serie invece di tre).
+    """
+    serie = rep.series_of_measures([
+        _giorno("2026-09-13", [{"soggetto": "dev1", "misura": "co2",
+                                "operazione": "media_min_max", "unita": "ppm",
+                                "valore": {"media": 700.0, "minimo": 638.0,
+                                           "massimo": 750.0}, "copertura": 1.0}]),
+        _giorno("2026-09-12", [{"soggetto": "dev1", "misura": "co2",
+                                "operazione": "media_min_max",
+                                "non_calcolabile": "la serie e' vuota"}]),
+    ])
+
+    assert len(serie["serie"]) == 3, [r["chiave"] for r in serie["serie"]]
+    for riga in serie["serie"]:
+        assert riga["valori"][0] is None, riga["chiave"]
+        assert riga["perche"] == [{"dal": "2026-09-12", "al": "2026-09-12",
+                                   "ragione": "la serie e' vuota"}], riga["chiave"]
+    assert [r["valori"][1] for r in serie["serie"]] == [700.0, 638.0, 750.0]
+
+
+def test_una_misura_che_rifiuta_SEMPRE_ha_comunque_la_sua_riga():
+    """`bilancio` a zero per cinque giorni su cinque, e nessuno se n'e'
+    accorto: e' il caso che ha fatto nascere il terzo innesco. Una misura che
+    non si calcola **mai** deve avere la sua riga, tutta vuota, coi suoi
+    perche' -- sparire sarebbe il modo esatto in cui quel difetto e' rimasto
+    invisibile.
+
+    Mutazione: creare la riga solo quando c'e' almeno un valore -- rossa.
+    """
+    serie = rep.series_of_measures([
+        _giorno("2026-09-13", [{"soggetto": "dev1", "misura": "bilancio",
+                                "operazione": "somma_periodo",
+                                "non_calcolabile": "statistiche non lette"}]),
+        _giorno("2026-09-12", [{"soggetto": "dev1", "misura": "bilancio",
+                                "operazione": "somma_periodo",
+                                "non_calcolabile": "statistiche non lette"}]),
+    ])
+
+    assert len(serie["serie"]) == 1
+    riga = serie["serie"][0]
+    assert riga["valori"] == [None, None]
+    assert len(riga["perche"]) == 1, riga["perche"]
+
+def test_i_perche_uguali_di_giorni_contigui_diventano_UN_tratto():
+    """**Misurato il 15/09/2026 sui venti giorni veri**: i `perche` erano il
+    **66%** del peso della serie, ed erano ripetizioni -- 36 serie ripetevano
+    la stessa frase 17 volte, tre la ripetevano 20. Raggruppando i tratti
+    contigui: 18.150 token per trenta giorni invece di 44.163.
+
+    E non e' solo il peso. \u00abNon si calcola dal 26/08 all'11/09, per questa
+    ragione\u00bb e' il terzo innesco detto bene; diciassette righe identiche lo
+    seppelliscono.
+
+    Mutazione: tornare a una voce per giorno -- rossa.
+    """
+    giorni = [_giorno(g, [{"soggetto": "dev1", "misura": "co2",
+                           "operazione": "media_min_max",
+                           "non_calcolabile": "la serie e' vuota"}])
+              for g in ("2026-09-10", "2026-09-11", "2026-09-12")]
+    giorni.append(_giorno("2026-09-13", [
+        {"soggetto": "dev1", "misura": "co2", "operazione": "media_min_max",
+         "valore": 700.0, "unita": "ppm", "copertura": 1.0}]))
+
+    riga = rep.series_of_measures(giorni)["serie"][0]
+    assert riga["perche"] == [{"dal": "2026-09-10", "al": "2026-09-12",
+                               "ragione": "la serie e' vuota"}]
+    assert riga["valori"] == [None, None, None, 700.0]
+
+
+def test_due_ragioni_DIVERSE_restano_due_tratti():
+    """Raggruppare e' comprimere, non appiattire: due ragioni diverse sono due
+    fatti diversi, e fonderli direbbe il falso su uno dei due.
+
+    Mutazione: raggruppare per contiguita' ignorando la ragione -- rossa.
+    """
+    giorni = [
+        _giorno("2026-09-11", [{"soggetto": "d", "misura": "x",
+                                "operazione": "somma_periodo",
+                                "non_calcolabile": "la serie e' vuota"}]),
+        _giorno("2026-09-12", [{"soggetto": "d", "misura": "x",
+                                "operazione": "somma_periodo",
+                                "non_calcolabile": "copertura 8%"}]),
+    ]
+    assert rep.series_of_measures(giorni)["serie"][0]["perche"] == [
+        {"dal": "2026-09-11", "al": "2026-09-11", "ragione": "la serie e' vuota"},
+        {"dal": "2026-09-12", "al": "2026-09-12", "ragione": "copertura 8%"},
+    ]
+
+
+def test_un_buco_che_si_riapre_dopo_un_giorno_buono_e_un_tratto_NUOVO():
+    """Se in mezzo la misura si e' calcolata, sono due assenze distinte -- e
+    l'analista deve vedere che era tornata e se n'e' andata di nuovo, non un
+    unico buco lungo che non c'e' mai stato.
+
+    Mutazione: chiudere il tratto solo al cambio di ragione -- rossa (un
+    tratto invece di due).
+    """
+    giorni = [
+        _giorno("2026-09-11", [{"soggetto": "d", "misura": "x",
+                                "operazione": "somma_periodo",
+                                "non_calcolabile": "vuota"}]),
+        _giorno("2026-09-12", [{"soggetto": "d", "misura": "x",
+                                "operazione": "somma_periodo", "valore": 1.0,
+                                "unita": "kWh", "copertura": 1.0}]),
+        _giorno("2026-09-13", [{"soggetto": "d", "misura": "x",
+                                "operazione": "somma_periodo",
+                                "non_calcolabile": "vuota"}]),
+    ]
+    tratti = rep.series_of_measures(giorni)["serie"][0]["perche"]
+    assert len(tratti) == 2, tratti
+    assert tratti[0]["al"] == "2026-09-11"
+    assert tratti[1]["dal"] == "2026-09-13"

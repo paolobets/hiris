@@ -193,6 +193,178 @@ def _entry(episode: dict) -> dict:
     return entry
 
 
+# -- le misure IN SERIE ------------------------------------------------------
+
+
+def series_of_measures(reports) -> dict:
+    """I resoconti pivotati: **una riga per misura**, coi suoi valori nei giorni.
+
+    Torna `{"giorni": [...], "serie": [{soggetto, nome, misura, chiave,
+    operazione, unita, valori, coperture, perche}]}`.
+
+    **Perche' esiste, col numero.** Misurato sulla casa vera il 15/09/2026 sui
+    venti giorni archiviati: i resoconti **come sono**, portati a trenta
+    giorni, pesano ~47.600 token -- quattro volte il giro dell'osservatore,
+    ogni giorno. Pivotati per misura: **~6.700**. Sette volte meno, perche' il
+    soggetto, l'operazione e l'unita' si scrivono una volta invece di trenta.
+
+    E non e' un'ottimizzazione: e' la frase della spec §9 presa alla lettera --
+    *«le misure si leggono in serie, molti giorni insieme»* -- ed e' l'unica
+    forma su cui si puo' calcolare cio' che l'analista deve calcolare: *«lo
+    scostamento contro la storia di quel dato, non contro una soglia
+    inventata»* (§10).
+
+    **Un valore composto diventa PIU' serie, non una scelta nascosta.**
+    `media_min_max` torna `{media, minimo, massimo}`: mettere in serie «la
+    media» sarebbe una regola che nessuno ha dichiarato, e sarebbe sbagliata --
+    media, minimo e massimo sono tre storie diverse, e «il massimo di rumore e'
+    salito» vale quanto «la media e' salita». Ogni chiave prende la sua riga,
+    e `chiave` dice quale; per un valore gia' numerico `chiave` e' `None`.
+
+    **Un giorno senza quella misura resta un BUCO, non sparisce.** E' il terzo
+    innesco: «la copertura crolla», «una misura smette di essere calcolabile».
+    Il caso vero e' `bilancio` a zero per cinque giorni su cinque, e nessuno
+    se n'e' accorto. Il posto nella serie resta col suo `None`, e quando il
+    resoconto diceva **perche'** quel perche' si conserva.
+
+    **I giorni senza valore si raccolgono in tratti** (`{dal, al, ragione}`),
+    non uno per giorno: vedi `_runs`, col numero che lo giustifica.
+
+    **Ordine stabile**, per soggetto e misura: due letture della stessa storia
+    devono dare lo stesso ordine, o un modello che le rilegge vedrebbe un
+    cambiamento dove non c'e'.
+    """
+    ordered = sorted(reports or [], key=lambda r: str(r.get("giorno") or ""))
+    days = [str(r.get("giorno") or "") for r in ordered]
+    index = {day: i for i, day in enumerate(days)}
+
+    # **Due passate, e la prima serve.** Quali chiavi ha una misura lo dice il
+    # giorno in cui si e' calcolata, e un giorno in cui ha rifiutato non lo sa:
+    # con una passata sola, `co2` (che si calcola il 13 e rifiuta il 12)
+    # produrrebbe QUATTRO serie -- media, minimo, massimo, e una quarta senza
+    # chiave col perche' staccato dai valori. Il rifiuto va su tutte e tre:
+    # quel giorno mancano tutte e tre, e chi guarda la storia del massimo deve
+    # vedere il buco nella SUA serie.
+    keys: dict[tuple, list] = {}
+    for report in ordered:
+        for line in report.get("misure") or []:
+            if not isinstance(line, dict):
+                continue
+            where = (line.get("soggetto"), line.get("misura"))
+            for key, value in _split_value(line):
+                if value is _MISSING:
+                    keys.setdefault(where, [])
+                    continue
+                known = keys.setdefault(where, [])
+                if key not in known:
+                    known.append(key)
+
+    rows: dict[tuple, dict] = {}
+
+    def _slot(line, key):
+        where = (line.get("soggetto"), line.get("misura"), key)
+        found = rows.get(where)
+        if found is None:
+            found = {"soggetto": line.get("soggetto"), "nome": line.get("nome"),
+                     "misura": line.get("misura"), "chiave": key,
+                     "operazione": line.get("operazione"), "unita": line.get("unita"),
+                     "valori": [None] * len(days), "coperture": [None] * len(days),
+                     "perche": {}}
+            rows[where] = found
+        if line.get("nome"):
+            found["nome"] = line.get("nome")
+        if line.get("unita") is not None:
+            found["unita"] = line.get("unita")
+        return found
+
+    for report in ordered:
+        day = str(report.get("giorno") or "")
+        for line in report.get("misure") or []:
+            if not isinstance(line, dict):
+                continue
+            wanted = keys.get((line.get("soggetto"), line.get("misura"))) or [None]
+            for key, value in _split_value(line):
+                if value is _MISSING:
+                    # Il rifiuto vale per OGNI chiave di quella misura.
+                    reason = line.get("non_calcolabile")
+                    for each in wanted:
+                        slot = _slot(line, each)
+                        if reason:
+                            slot["perche"][day] = reason
+                    continue
+                slot = _slot(line, key)
+                slot["valori"][index[day]] = value
+                slot["coperture"][index[day]] = line.get("copertura")
+
+    for slot in rows.values():
+        slot["perche"] = _runs(days, slot["perche"])
+    ordinate = sorted(rows.values(),
+                      key=lambda r: (str(r["soggetto"] or ""), str(r["misura"] or ""),
+                                     _KEY_ORDER.get(r["chiave"], 9), str(r["chiave"] or "")))
+    return {"giorni": days, "serie": ordinate}
+
+
+def _runs(days: list[str], reasons: dict) -> list[dict]:
+    """I giorni senza valore, raccolti in **tratti**: `{dal, al, ragione}`.
+
+    **Misurato il 15/09/2026 sui venti giorni veri**: i `perche` erano il 66%
+    del peso della serie, ed erano ripetizioni -- 36 serie ripetevano la stessa
+    frase 17 volte, tre la ripetevano 20. Raggruppati: 18.150 token per trenta
+    giorni invece di 44.163.
+
+    E non e' solo il peso. «Non si calcola dal 26/08 all'11/09, per questa
+    ragione» e' il terzo innesco detto bene; diciassette righe identiche lo
+    seppelliscono.
+
+    **Due ragioni diverse restano due tratti** -- raggruppare e' comprimere,
+    non appiattire -- e **un buco che si riapre dopo un giorno buono e' un
+    tratto nuovo**: l'analista deve vedere che la misura era tornata e se n'e'
+    andata di nuovo, non un unico buco lungo che non c'e' mai stato.
+    """
+    out: list[dict] = []
+    open_run: dict | None = None
+    for day in days:
+        reason = reasons.get(day)
+        if reason is None:
+            open_run = None
+            continue
+        if open_run is not None and open_run["ragione"] == reason:
+            open_run["al"] = day
+            continue
+        open_run = {"dal": day, "al": day, "ragione": reason}
+        out.append(open_run)
+    return out
+
+
+#: Il segnaposto di «quel giorno quella misura non aveva un valore». Non e'
+#: `None`: `None` e' un valore legittimo dentro una serie gia' allineata, e
+#: confonderli renderebbe indistinguibile un buco da uno zero letto davvero.
+_MISSING = object()
+
+#: L'ordine in cui le chiavi di un valore composto si leggono. Scritto, non
+#: alfabetico: «media, minimo, massimo» e' come l'operazione le racconta, e
+#: alfabeticamente uscirebbe «massimo, media, minimo» -- lo stesso dato, detto
+#: in un ordine che nessuno userebbe parlando.
+_KEY_ORDER = {"media": 0, "minimo": 1, "massimo": 2,
+              "verso": 0, "pendenza": 1, "punti": 2,
+              "differenza": 0, "variazione": 1}
+
+
+def _split_value(line: dict):
+    """Le coppie `(chiave, valore)` di una riga di misura.
+
+    Una sola, con `chiave` a `None`, quando il valore e' gia' un numero; una
+    per chiave quando e' composto; una sola col segnaposto quando quel giorno
+    la misura non si e' potuta calcolare.
+    """
+    if "valore" not in line:
+        return [(None, _MISSING)]
+    value = line["valore"]
+    if isinstance(value, dict):
+        return [(k, value[k]) for k in sorted(
+            value, key=lambda k: (_KEY_ORDER.get(k, 9), str(k)))]
+    return [(None, value)]
+
 # -- il documento -----------------------------------------------------------
 
 #: I titoli delle sezioni. Sono l'indice che l'analista scorre, e la porzione
