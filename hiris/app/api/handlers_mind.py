@@ -36,6 +36,7 @@ from aiohttp import web
 
 from ..home_space.historian import home_space_zone
 from ..mind.facts import NOT_ENTITY_PREFIXES, day_boundaries
+from ..mind.report import as_document
 from ..proxy.state_translations import state_translation
 
 # I soggetti che NON sono entita' di Home Assistant: una condizione di
@@ -183,6 +184,43 @@ async def handle_facts(request: web.Request) -> web.Response:
     facts = _with_rendered_states(store.facts(day=day), report)
     declared = {key: value for key, value in report.items() if key != "risorse"}
     return web.json_response({"facts": facts, "traduzioni": declared})
+
+
+async def handle_report(request: web.Request) -> web.Response:
+    """Il resoconto di un giorno, o la serie degli ultimi (spec §9).
+
+    Tre forme, e la differenza fra loro e' il meccanismo delle **porzioni**:
+
+    - `?day=2026-09-13` -- il resoconto di un giorno, com'e' archiviato;
+    - `?day=...&formato=documento` -- lo stesso, reso in markdown: un terzo
+      dei byte a parita' di contenuto (misurato il 13/09/2026: 146 KB contro
+      46, su trenta giorni);
+    - senza `day` -- **le misure degli ultimi giorni**, che e' la lettura che
+      serve all'analista: due dei suoi tre inneschi sono confronti nel tempo,
+      e con la cronaca dentro non ci starebbero in un prompt.
+
+    **Un giorno mai aggregato torna 404, non un resoconto vuoto**: «quel
+    giorno non e' successo niente» e «quel giorno non l'abbiamo guardato» sono
+    due cose diverse, e l'analista deve poterle distinguere.
+    """
+    store = request.app.get("observations")
+    if store is None:
+        return web.json_response({"errore": "archivio non disponibile"},
+                                 status=503)
+    day = request.query.get("day") or None
+    if day is None:
+        # Solo le misure: la cronaca si chiede un giorno alla volta.
+        serie = [{"giorno": r.get("giorno"), "misure": r.get("misure") or []}
+                 for r in store.reports(limit=30)]
+        return web.json_response({"resoconti": serie})
+    resoconto = store.report(day)
+    if resoconto is None:
+        return web.json_response(
+            {"errore": f"il giorno {day} non e' stato aggregato"}, status=404)
+    if request.query.get("formato") == "documento":
+        return web.Response(text=as_document(resoconto),
+                            content_type="text/markdown", charset="utf-8")
+    return web.json_response({"resoconto": resoconto})
 
 
 async def _translations_report(app) -> dict:

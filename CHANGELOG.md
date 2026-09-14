@@ -1,5 +1,58 @@
 # HIRIS — Changelog
 
+## [3.32.0] — Il resoconto giornaliero (2026-09-14)
+
+**Due strati, non tre.** Il grezzo scade dopo 22 giorni; il resoconto **resta**.
+Rifare un giorno costa un giorno, non tutto -- che e' la promessa da cui nasce
+tutto il cervello.
+
+### A cosa serve, perche' da li' viene la struttura
+
+Il resoconto **non e' fatto per un umano**. Serve all'analista, e i suoi tre
+inneschi guardano tutti dei numeri: *«qualcosa e' cambiato e non e' spiegato»*,
+*«qualcosa e' stabile e costa»*, *«qualcosa non c'e' piu'»*. Il terzo e' quello
+che ha lasciato il bilancio a zero per cinque giorni senza che nessuno se ne
+accorgesse.
+
+Quindi **le misure** -- ciascuna col suo valore, la sua unita', la sua
+**copertura**, e quelle che non si sono potute calcolare **col loro perche'** --
+si leggono in serie, molti giorni insieme. E **la cronaca e' un indice**:
+quando, chi, cosa. Si scorre, si trova, e poi si scava -- in Home Assistant
+finche' ricorda, nel nostro grezzo fino al ventiduesimo giorno.
+
+Misurato sui 200 fatti veri della casa: un episodio intero pesa **622 byte**,
+una riga d'indice **109**. Su trenta giorni sono **521 KB contro 92** -- e con
+la cronaca intera l'analista puo' guardare solo il giorno che ha gia' deciso di
+guardare, mentre per sapere quale dovrebbe averlo gia' guardato.
+
+### L'indice porta un'ancora
+
+Cio' che dopo non si recupera piu' perche' dipende da com'era la casa
+**allora**: il nome che l'entita' aveva, la sua classe, gli attributi
+raccolti. Home Assistant, richiesto domani, risponde con quelli di domani --
+e' la lezione gia' pagata dal nome amichevole, che si salva nel grezzo invece
+di risolverlo dopo. Costa 27 byte a voce, e toglie l'unico difetto
+irreversibile che un indice nudo avrebbe.
+
+### Il documento si deriva, non si scrive
+
+Lo stesso resoconto reso in markdown costa **un terzo** del JSON (146 KB
+contro 46, su trenta giorni), e le sue sezioni sono le porzioni: si consegna
+`## Le misure` di trenta giorni, poi `## La cronaca` del solo giorno saltato
+fuori, poi si scava. **Cosa non si sa** ha una sezione sua, perche' in fondo a
+una tabella di numeri buoni non salterebbe all'occhio.
+
+Non si archivia: si genera quando serve. Un documento salvato accanto ai dati
+sarebbe una seconda copia che invecchia -- e derivandolo, migliorare il modo di
+raccontare un giorno vale anche per i giorni gia' passati.
+
+### La porta
+
+`GET /api/mind/report?day=...` per un giorno, `&formato=documento` per la resa,
+e senza `day` **le misure degli ultimi trenta giorni** -- la lettura che serve
+all'analista. Un giorno mai aggregato risponde 404 e non un resoconto vuoto:
+«non e' successo niente» e «non l'abbiamo guardato» sono due cose diverse.
+
 ## [3.31.2] — I rifiuti sono importanti (2026-09-13)
 
 **Decisione del proprietario**, dopo aver visto tre dispositivi condannati per

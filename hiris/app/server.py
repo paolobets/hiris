@@ -71,6 +71,7 @@ from .mind.observer import SCOPE_TURN_KIND
 from .mind.observer import apply_answer as observer_apply_answer
 from .mind.observer import bridge_turn as observer_bridge_turn
 from .mind.observer import reconsider as observer_reconsider
+from .mind.recipes import Recipe
 from .mind.seed import (
     HOUSE_PRIORITY,
     REPO_PRIORITY,
@@ -1987,6 +1988,63 @@ def _balance_recipe_for(sapere, device_id: str, entity_per_dimension: dict,
     return generata
 
 
+async def _report_ingredients(app, ha_client, *, giorno: str,
+                                     timezone: str | None):
+    """Le ricette, le serie e i nomi che servono al resoconto di un giorno.
+
+    Torna `(ricette, serie, nomi)`. Ricette vuote -- nessun dispositivo ne ha
+    una, o il sapere non e' collegato -- fanno un resoconto con la meta' delle
+    misure vuota, ed e' un fatto vero su quella casa: si scrive.
+
+    **Una lettura di rete sola per tutte le ricette**, come per i bilanci: le
+    entita' che ogni ricetta nomina si raccolgono prima, e le statistiche si
+    chiedono una volta. Una richiesta per dispositivo sarebbe una connessione
+    per dispositivo, ogni notte.
+    """
+    sapere = app.get("knowledge")
+    casa = app.get("home_space_store")
+    if sapere is None or casa is None:
+        return {}, {}, {}
+    home_space = casa.read()
+    nomi = {str(d.get("id")): d.get("nome")
+            for d in home_space.get("dispositivi") or [] if d.get("id")}
+    ricette = {}
+    for device_id in nomi:
+        scritta = recipe_turn.recipe_for(sapere, device_id)
+        if scritta is not None:
+            ricette[device_id] = scritta
+    if not ricette:
+        return {}, {}, nomi
+    entita = sorted({e for r in ricette.values() for e in Recipe(r).entities()})
+    da_ts, a_ts = day_boundaries(giorno, timezone)
+    report = await ha_client.hourly_statistics(
+        entita, datetime.fromtimestamp(da_ts, tz=UTC).isoformat(),
+        datetime.fromtimestamp(a_ts, tz=UTC).isoformat())
+    if "errore" in report:
+        # **Un guasto delle statistiche non e' un resoconto senza misure.** Si
+        # scrivono le ricette senza serie: ogni misura esce «non calcolabile»
+        # con la sua ragione, che e' la verita' -- e l'analista la vede
+        # sparire, che e' il suo terzo innesco.
+        logger.warning("resoconto: statistiche non lette per %s (%s)",
+                       giorno, report["errore"])
+        return ricette, {}, nomi
+    serie = {e: _punti_orari(report["serie"].get(e) or [])
+             for e in entita}
+    return ricette, serie, nomi
+
+
+def _punti_orari(punti) -> list[dict]:
+    """Le statistiche orarie nella forma che le operazioni leggono.
+
+    E' la stessa traduzione di `mind/facts._dimension_points` -- il `cambio`
+    dell'ora, mai uno zero inventato dove il dato manca -- e vive qui perche'
+    quella e' privata del bilancio e questa serve a qualunque ricetta.
+    """
+    return [{"inizio": p.get("inizio"), "fine": p.get("fine"),
+             "valore": p.get("cambio")}
+            for p in punti if isinstance(p, dict)]
+
+
 async def recipe_round(app) -> dict | None:
     """L'anello delle ricette: **«c'e' un dispositivo che pesa e non ho ancora
     capito come si misura? e allora chiedilo»** (spec §7).
@@ -3846,11 +3904,17 @@ async def _on_startup(app: web.Application) -> None:
                 ha_client, app.get("home_space_store"), day=ieri, timezone=timezone,
                 energy_subjects=subjects, directions=directions_map,
                 knowledge=app.get("knowledge"))
+            # **IL RESOCONTO** (spec §9): le ricette dal sapere, e le serie
+            # delle entita' che nominano lette in UNA connessione sola --
+            # stessa disciplina dei bilanci qui sopra, per la stessa ragione
+            # (una lettura per giro, non una per dispositivo).
+            ricette, serie, nomi = await _report_ingredients(
+                app, ha_client, giorno=ieri, timezone=timezone)
             count = aggregate_day(
                 store=app["observations"], day=ieri, timezone=timezone,
                 companions=lambda s: mappa.get(s, []),
                 directions=lambda s: directions_map.get(s),
-                balances=bilanci)
+                balances=bilanci, recipes=ricette, series=serie, names=nomi)
             logger.info("cervello: %s oggetti costruiti per %s", count, ieri)
         except Exception as error:
             logger.warning("cervello: aggregazione notturna fallita (%s: %s)",
@@ -4979,9 +5043,12 @@ def create_app() -> web.Application:
     # oggetti che l'aggregazione notturna ha costruito. Due GET, come
     # /api/home-space e /api/memories qui sopra: nessuna scrittura, quindi nessun
     # `csrf_middleware` da rispettare.
-    from .api.handlers_mind import handle_facts, handle_watching
+    from .api.handlers_mind import handle_facts, handle_report, handle_watching
     app.router.add_get("/api/mind/watching", handle_watching)
     app.router.add_get("/api/mind/facts", handle_facts)
+    # Il resoconto (spec §9): un giorno, lo stesso giorno come documento, o le
+    # misure degli ultimi trenta. Tre forme, un archivio.
+    app.router.add_get("/api/mind/report", handle_report)
 
     return app
 

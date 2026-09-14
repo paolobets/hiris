@@ -254,6 +254,22 @@ CREATE TABLE IF NOT EXISTS cambi (
 CREATE INDEX IF NOT EXISTS idx_cambi_quando ON cambi(quando_ts);
 CREATE INDEX IF NOT EXISTS idx_cambi_soggetto ON cambi(soggetto, quando_ts);
 
+-- IL RESOCONTO DEL GIORNO (spec §9, fetta 5). Una riga per giorno, e **resta**:
+-- il grezzo scade, il resoconto no.
+--
+-- **Una colonna JSON e non due tabelle**, e la ragione e' che le due parti si
+-- leggono insieme o non si leggono affatto: l'analista scorre le misure di
+-- trenta giorni e poi chiede la cronaca di UNO -- due letture, non due
+-- tabelle. E la forma delle due parti cambiera' ancora (le ricette crescono,
+-- l'ancora della cronaca puo' stringersi): una colonna per campo vorrebbe dire
+-- una migrazione a ogni cosa imparata, che e' cio' che questa fetta esiste per
+-- togliere.
+CREATE TABLE IF NOT EXISTS resoconto (
+    giorno       TEXT PRIMARY KEY,
+    corpo_json   TEXT NOT NULL,
+    scritto_ts   REAL NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS oggetti (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     giorno TEXT NOT NULL,
@@ -517,6 +533,49 @@ class ObservationsStore:
                  None if first_occurred is None else str(float(first_occurred)),
                  attributes))
             self._conn.commit()
+
+    # -- il resoconto --------------------------------------------------
+
+    def replace_report(self, day: str, report: dict) -> None:
+        """Scrive il resoconto di un giorno, **sostituendo** quello che c'era.
+
+        Stessa disciplina di `replace_day`: rifare un giorno lo sostituisce e
+        non lo accoda. Sbagliare un resoconto costa **un giorno**, e solo
+        finche' il grezzo di quel giorno esiste -- e' la promessa dei due
+        strati, e senza la sostituzione non sarebbe vera.
+        """
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO resoconto(giorno, corpo_json, scritto_ts) "
+                "VALUES(?,?,?) ON CONFLICT(giorno) DO UPDATE SET "
+                "corpo_json=excluded.corpo_json, scritto_ts=excluded.scritto_ts",
+                (day, json.dumps(report, ensure_ascii=False), _time.time()))
+            self._conn.commit()
+
+    def report(self, day: str) -> dict | None:
+        """Il resoconto di un giorno, o `None` se quel giorno non e' mai stato
+        aggregato. **Non e' un resoconto vuoto**: «non e' successo niente» e
+        «non l'abbiamo guardato» sono due cose diverse."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT corpo_json FROM resoconto WHERE giorno = ?",
+                (day,)).fetchone()
+        return json.loads(row["corpo_json"]) if row else None
+
+    def reports(self, *, limit: int = 30) -> list[dict]:
+        """Gli ultimi resoconti, dal piu' recente.
+
+        E' la lettura che serve all'analista: **le misure di molti giorni
+        insieme**, che e' il modo in cui due dei suoi tre inneschi si pongono.
+        Il tetto e' un mese perche' e' la finestra in cui uno scostamento ha
+        senso su una casa -- e perche' oltre, per l'84% delle entita', non c'e'
+        piu' niente con cui scavare.
+        """
+        with self._lock:
+            righe = self._conn.execute(
+                "SELECT corpo_json FROM resoconto ORDER BY giorno DESC LIMIT ?",
+                (int(max(1, limit)),)).fetchall()
+        return [json.loads(r["corpo_json"]) for r in righe]
 
     def readings_count(self, *, from_ts: float, to_ts: float,
                        source: str | None = None) -> int:

@@ -497,6 +497,7 @@ def test_l_aggregazione_notturna_logga_col_prefisso_cervello_anche_se_il_fuso_no
         "build_companions": server.build_companions,
         "build_balances": server.build_balances,
         "directions_by_translation_key": server.directions_by_translation_key,
+        "_report_ingredients": server._report_ingredients,
         "_timezone_from_home_space_store": server._timezone_from_home_space_store,
     })
 
@@ -882,6 +883,7 @@ def test_l_aggregazione_notturna_prosegue_con_lo_stesso_guasto_parziale(tmp_path
             "build_companions": server.build_companions,
             "build_balances": server.build_balances,
             "directions_by_translation_key": server.directions_by_translation_key,
+            "_report_ingredients": server._report_ingredients,
             "_timezone_from_home_space_store": server._timezone_from_home_space_store,
         })
 
@@ -1246,6 +1248,7 @@ def test_l_aggregazione_notturna_chiede_le_direzioni_una_volta(tmp_path):
             "build_companions": server.build_companions,
             "build_balances": server.build_balances,
             "directions_by_translation_key": server.directions_by_translation_key,
+            "_report_ingredients": server._report_ingredients,
             "_timezone_from_home_space_store": server._timezone_from_home_space_store,
         })
 
@@ -1291,6 +1294,7 @@ def test_l_aggregazione_notturna_prosegue_se_le_direzioni_non_si_leggono(tmp_pat
             "build_companions": server.build_companions,
             "build_balances": server.build_balances,
             "directions_by_translation_key": server.directions_by_translation_key,
+            "_report_ingredients": server._report_ingredients,
             "_timezone_from_home_space_store": server._timezone_from_home_space_store,
         })
 
@@ -1539,6 +1543,7 @@ def test_l_aggregazione_notturna_costruisce_e_scrive_il_bilancio(tmp_path):
             "build_companions": server.build_companions,
             "build_balances": server.build_balances,
             "directions_by_translation_key": server.directions_by_translation_key,
+            "_report_ingredients": server._report_ingredients,
             "_timezone_from_home_space_store": server._timezone_from_home_space_store,
         })
 
@@ -1593,6 +1598,7 @@ def test_l_aggregazione_notturna_prosegue_se_le_statistiche_del_bilancio_fallisc
             "build_companions": server.build_companions,
             "build_balances": server.build_balances,
             "directions_by_translation_key": server.directions_by_translation_key,
+            "_report_ingredients": server._report_ingredients,
             "_timezone_from_home_space_store": server._timezone_from_home_space_store,
         })
 
@@ -2606,3 +2612,66 @@ def test_una_ricetta_GIA_SCRITTA_vince_su_quella_del_repo(tmp_path):
         sapere, "dev1", {"produzione": "sensor.p"}, 24)
 
     assert ricetta["why"] == "corretta a mano"
+
+
+def test_L_AGGREGAZIONE_NOTTURNA_scrive_anche_il_RESOCONTO(tmp_path):
+    """**La fetta 5 cablata**: gli stessi episodi che producono gli oggetti
+    scrivono anche il resoconto del giorno. Non e' una seconda lettura del
+    grezzo ne' un secondo giudizio -- e' un'altra forma dello stesso lavoro, e
+    farne due passate sarebbe aprire la porta a due verita' sullo stesso
+    giorno.
+
+    Mutazione ESEGUITA: togliere il blocco `store.replace_report(...)` da
+    `aggregate_day` -- rossa.
+    """
+    from datetime import datetime
+
+    from hiris.app.mind.store import ObservationsStore
+
+    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
+    try:
+        giorno = "2026-08-24"
+        base = datetime(2026, 8, 24, 10, tzinfo=UTC)
+        archivio.record(quando_ts=base.timestamp(), source="entita",
+                        subject="light.cucina", da="off", a="on")
+        archivio.record(quando_ts=base.timestamp() + 3600, source="entita",
+                        subject="light.cucina", da="on", a="off")
+
+        server.aggregate_day(store=archivio, day=giorno, timezone="Europe/Rome",
+                             recipes={}, series={}, names={})
+
+        resoconto = archivio.report(giorno)
+        assert resoconto["giorno"] == giorno
+        assert resoconto["misure"] == []
+        [voce] = resoconto["cronaca"]
+        assert voce["chi"] == "light.cucina"
+        assert voce["cosa"] == "on"
+    finally:
+        archivio.close()
+
+
+def test_SENZA_ricette_l_aggregazione_non_scrive_nessun_resoconto(tmp_path):
+    """`recipes is None` significa «questo chiamante non porta le ricette»: si
+    scrivono gli oggetti e basta. Un resoconto scritto senza le ricette avrebbe
+    la meta' delle misure vuota **per una ragione che non riguarda la casa**, e
+    resterebbe li' a dire il falso finche' qualcuno non rifa' quel giorno.
+
+    Mutazione ESEGUITA: scrivere il resoconto anche con `recipes=None` --
+    rossa.
+    """
+    from datetime import datetime
+
+    from hiris.app.mind.store import ObservationsStore
+
+    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
+    try:
+        base = datetime(2026, 8, 24, 10, tzinfo=UTC)
+        archivio.record(quando_ts=base.timestamp(), source="entita",
+                        subject="light.cucina", da="off", a="on")
+
+        server.aggregate_day(store=archivio, day="2026-08-24",
+                             timezone="Europe/Rome")
+
+        assert archivio.report("2026-08-24") is None
+    finally:
+        archivio.close()

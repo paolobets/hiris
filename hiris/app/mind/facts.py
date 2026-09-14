@@ -55,6 +55,7 @@ from ..home_space.type_vocabulary import (
 )
 from .operations import REGISTRY, UNKNOWN_UNIT
 from .recipes import Recipe
+from .report import build_report
 from .seed import balance_recipe
 
 # `aggregate_day` e' SINCRONA: non fa nessuna lettura di rete. I comprimari
@@ -591,7 +592,8 @@ def build_balance_body(*, series: dict[str, list[dict]],
 
 
 def aggregate_day(*, store, day: str, timezone: str | None,
-                         companions=None, directions=None, balances=None) -> int:
+                         companions=None, directions=None, balances=None,
+                         recipes=None, series=None, names=None) -> int:
     """Costruisce gli oggetti di un giorno. Torna quanti ne ha scritti.
 
     **Idempotente**: rifare un giorno lo SOSTITUISCE, non lo accoda. Gli
@@ -1123,5 +1125,22 @@ def aggregate_day(*, store, day: str, timezone: str | None,
             "corpo": {**b["corpo"], "dispositivo": b.get("nome"),
                      "entita": sorted(b.get("entita") or [])},
         })
+
+    # **IL RESOCONTO DEL GIORNO** (spec §9, fetta 5), scritto dagli STESSI
+    # episodi che hanno appena prodotto gli oggetti: non e' una seconda lettura
+    # del grezzo ne' un secondo giudizio, e' un'altra forma dello stesso
+    # lavoro. Fare due passate sarebbe aprire la porta a due verita' sullo
+    # stesso giorno.
+    #
+    # `recipes is None` significa «questo chiamante non porta le ricette»
+    # (molte prove, e la riparazione di un giorno solo): si scrivono gli
+    # oggetti e basta, come prima. Un resoconto scritto senza le ricette
+    # avrebbe la meta' delle misure vuota **per una ragione che non riguarda
+    # la casa**, e resterebbe li' a dire il falso finche' qualcuno non rifa'
+    # quel giorno.
+    if recipes is not None:
+        store.replace_report(day, build_report(
+            day=day, episodes=episodes, series=series or {},
+            recipes=recipes, names=names or {}))
 
     return store.replace_day(day, built)

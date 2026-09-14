@@ -1,4 +1,6 @@
 """Le due rotte della pagina dell'osservatore."""
+import json
+
 import pytest
 
 from hiris.app.api.handlers_mind import handle_facts, handle_watching
@@ -745,3 +747,87 @@ async def test_senza_archivio_i_tentativi_sono_NULL_come_le_sorelle():
 
     assert corpo["tentativi"] is None
     assert corpo["obiettivo"] is None and corpo["riconsiderazione"] is None
+
+
+# -- la porta del resoconto (spec §9) ---------------------------------------
+
+class _ArchivioConResoconto:
+    """L'archivio, ridotto a cio' che la rotta del resoconto usa."""
+
+    def __init__(self, per_giorno=None):
+        self._per_giorno = per_giorno or {}
+
+    def report(self, day):
+        return self._per_giorno.get(day)
+
+    def reports(self, *, limit=30):
+        return [self._per_giorno[g] for g in sorted(self._per_giorno, reverse=True)][:limit]
+
+
+_RESOCONTO = {
+    "giorno": "2026-09-13",
+    "misure": [{"soggetto": "dev1", "nome": "Inverter", "misura": "prodotta",
+                "operazione": "somma_periodo", "valore": 23.71,
+                "unita": "kWh", "copertura": 1.0}],
+    "cronaca": [{"quando_ts": 1789219800.0, "fine_ts": None,
+                 "chi": "climate.soggiorno", "cosa": "heat",
+                 "nome": "Termostato Soggiorno"}],
+}
+
+
+@pytest.mark.asyncio
+async def test_il_resoconto_di_un_giorno_si_chiede_per_data():
+    from hiris.app.api.handlers_mind import handle_report
+
+    app = {"observations": _ArchivioConResoconto({"2026-09-13": _RESOCONTO})}
+    r = await handle_report(_richiesta(app, query={"day": "2026-09-13"}))
+
+    assert json.loads(r.text)["resoconto"]["misure"][0]["valore"] == 23.71
+
+
+@pytest.mark.asyncio
+async def test_un_giorno_MAI_AGGREGATO_e_404_non_un_resoconto_vuoto():
+    """«Quel giorno non e' successo niente» e «quel giorno non l'abbiamo
+    guardato» sono due cose diverse, e l'analista deve poterle distinguere.
+    Rispondere con un resoconto vuoto le appiattirebbe.
+
+    Mutazione ESEGUITA: tornare `{"resoconto": {...vuoto}}` invece del 404 --
+    rossa.
+    """
+    from hiris.app.api.handlers_mind import handle_report
+
+    app = {"observations": _ArchivioConResoconto()}
+    r = await handle_report(_richiesta(app, query={"day": "2026-01-01"}))
+
+    assert r.status == 404
+
+
+@pytest.mark.asyncio
+async def test_SENZA_giorno_tornano_le_MISURE_di_molti_giorni_senza_cronaca():
+    """**E' la lettura che serve all'analista**: due dei suoi tre inneschi sono
+    confronti nel tempo, e con la cronaca dentro trenta giorni non
+    starebbero in un prompt (misurato: 521 KB contro 92).
+
+    Mutazione ESEGUITA: includere anche `cronaca` nella serie -- rossa.
+    """
+    from hiris.app.api.handlers_mind import handle_report
+
+    app = {"observations": _ArchivioConResoconto({"2026-09-13": _RESOCONTO})}
+    r = await handle_report(_richiesta(app))
+
+    [giorno] = json.loads(r.text)["resoconti"]
+    assert giorno["giorno"] == "2026-09-13"
+    assert giorno["misure"]
+    assert "cronaca" not in giorno
+
+
+@pytest.mark.asyncio
+async def test_lo_stesso_giorno_si_puo_chiedere_come_DOCUMENTO():
+    from hiris.app.api.handlers_mind import handle_report
+
+    app = {"observations": _ArchivioConResoconto({"2026-09-13": _RESOCONTO})}
+    r = await handle_report(_richiesta(
+        app, query={"day": "2026-09-13", "formato": "documento"}))
+
+    assert r.content_type == "text/markdown"
+    assert "## Le misure" in r.text
