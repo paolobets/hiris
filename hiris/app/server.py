@@ -1541,6 +1541,34 @@ async def _write_missing_reports(app, ha_client, days, timezone) -> list[str]:
 
 
 async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None:
+    """La riparazione d'avvio, **che dice sempre com'e' andata**.
+
+    Il corpo vero e' `_reaggregate_days` qui sotto: questa e' la sola cosa che
+    gli sta attorno, e c'e' per una ragione misurata. Le cinque uscite
+    dichiarate scrivevano gia' il loro esito, ma **una cosa che solleva prima
+    di arrivarci** -- la lettura del fuso e' la prima riga e la sua query SQL
+    non e' protetta, come il docstring del corpo dice da mesi -- risaliva al
+    chiamante, che la ingoia in un warning, e `GET /api/health` restava a
+    `riparazione: null`. Cioe' «non e' girata»: **falso**, ed era proprio la
+    domanda che doveva rispondere.
+
+    Misurato sulla casa vera il 14/09/2026, con la 3.33.2 gia' installata.
+
+    **L'eccezione continua a propagare**: il contratto col chiamante non
+    cambia, e' lui a decidere se contenerla. Qui si aggiunge solo la memoria
+    di cio' che e' successo.
+    """
+    try:
+        await _reaggregate_days(app, ha_client, now=now)
+    except Exception as error:
+        app["ultima_riparazione"] = {
+            "oggetti": "sollevata",
+            "perche": f"{type(error).__name__}: {error}",
+            "giorni": [], "resoconti_scritti": []}
+        raise
+
+
+async def _reaggregate_days(app, ha_client, *, now=datetime.now) -> None:
     """All'avvio, riaggrega i due giorni pieni piu' recenti (oggi escluso:
     non e' ancora finito) **con gli stessi comprimari che costruirebbe
     l'aggregazione notturna** -- non piu' senza. Non torna niente: chi la

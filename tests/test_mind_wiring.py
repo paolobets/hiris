@@ -2838,3 +2838,34 @@ def test_la_riparazione_DICE_com_e_andata_e_la_salute_lo_riporta(tmp_path):
         assert esito["resoconti_scritti"] == ["2026-08-22", "2026-08-23"]
     finally:
         archivio.close()
+
+def test_una_riparazione_che_SOLLEVA_lo_dice_lo_stesso(tmp_path):
+    """**`riparazione: null` sulla casa vera, con la 3.33.2 gia' installata.**
+
+    Misurato il 14/09/2026: l'esito si scriveva nelle cinque uscite
+    dichiarate, ma se qualcosa solleva **prima** di arrivarci -- la lettura
+    del fuso e' la prima riga e la sua query SQL non e' protetta, e il
+    docstring di questa stessa funzione lo dice da mesi -- l'eccezione
+    risaliva al chiamante, che la ingoia in un warning, e la salute restava
+    muta: `null`, cioe' «non e' girata», che era **falso**.
+
+    Ora l'esito si scrive anche in quel caso, e l'eccezione continua a
+    propagare: il chiamante decide se contenerla, come prima.
+
+    Mutazione: togliere il `except ... raise` che registra -- rossa su
+    `assert app["ultima_riparazione"]["oggetti"] == "sollevata"`.
+    """
+    class _ArchivioRotto:
+        def readings(self, **_):
+            raise RuntimeError("sqlite del grezzo irraggiungibile")
+
+    app = {"home_space_store": None, "observations": _ArchivioRotto(),
+           "knowledge": _sapere(tmp_path)}
+    with pytest.raises(RuntimeError):
+        asyncio.run(server.reaggregate_last_two_days(
+            app, ha_client=_ClienteLegami()))
+
+    esito = app["ultima_riparazione"]
+    assert esito["oggetti"] == "sollevata"
+    assert "RuntimeError" in esito["perche"]
+    assert "sqlite del grezzo" in esito["perche"]
