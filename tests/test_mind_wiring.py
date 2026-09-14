@@ -2971,3 +2971,29 @@ def test_il_recupero_NON_va_oltre_il_grezzo(tmp_path):
             now=lambda tz: oggi.astimezone(tz))) == "2026-08-23"
     finally:
         archivio.close()
+
+def test_i_punti_orari_NON_buttano_media_minimo_e_massimo():
+    """**La frase fondativa della spec, dentro il codice nuovo.** Il client
+    legge gia' `mean`/`min`/`max` di Home Assistant e li traduce in
+    `media`/`minimo`/`massimo`; `_punti_orari` teneva solo `cambio` e buttava
+    gli altri tre. Le ricette ricevevano una serie di `None` e rifiutavano
+    dicendo «la serie e' vuota»: misurato sulla casa vera il 14/09/2026,
+    **21 misure su 32 in un giorno solo**, tutte su temperatura, umidita',
+    CO2, rumore, segnale e potenza -- le **56** entita' della casa che hanno
+    una statistica di tipo `measurement` e nessun `change`.
+
+    Mutazione: tornare a tenere il solo `cambio` -- rossa.
+    """
+    punti = server._punti_orari([
+        {"inizio": 0.0, "fine": 3600.0, "media": 25.2, "minimo": 25.1,
+         "massimo": 25.3},
+        {"inizio": 3600.0, "fine": 7200.0, "cambio": 1.4},
+    ])
+    istantanea, contatore = punti
+    assert istantanea["media"] == 25.2
+    assert istantanea["minimo"] == 25.1
+    assert istantanea["massimo"] == 25.3
+    assert istantanea["valore"] is None, "una misura istantanea non ha un cambio"
+    # E il contatore resta com'era: `valore` e' il cambio, niente media.
+    assert contatore["valore"] == 1.4
+    assert contatore["media"] is None

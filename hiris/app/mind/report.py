@@ -104,6 +104,10 @@ def _measurements(series: dict, recipes: dict,
     il grezzo scade a 22 giorni e le statistiche di Home Assistant non tornano
     indietro all'infinito, quindi rifarla dopo non si puo'.
 
+    **Una LISTA e' una forma; tutto il resto e' una misura** -- anche un
+    dizionario di tre numeri come `{media, minimo, massimo}`: cio' che pesa
+    sono le serie, non i valori composti.
+
     **Un rifiuto resta fra le MISURE**, anche se non ha un numero: e' dove
     l'analista guarda cio' che manca (`as_document` ne fa «cosa non si sa»), e
     spostarlo fra le forme lo nasconderebbe.
@@ -141,11 +145,20 @@ def _measurements(series: dict, recipes: dict,
                 row["valore"] = outcome.value
                 row["unita"] = outcome.unit
                 row["copertura"] = outcome.coverage
-                # `bool` e' un `int` in Python, e un vero/falso non e' una
-                # grandezza: si controlla prima, o finirebbe fra le misure
-                # come se fosse 1.
-                if isinstance(outcome.value, bool) or not isinstance(
-                        outcome.value, (int, float)):
+                # **Una LISTA e' una forma; tutto il resto e' una misura.**
+                # Il criterio della prima stesura era «non e' un numero», e
+                # sarebbe stato sbagliato: `media_min_max`, `tendenza` e
+                # `confronto_periodi` tornano un dizionario di due o tre
+                # numeri, e sono proprio le operazioni che rispondono a «com'e'
+                # stata la temperatura» e «di quanto e' cambiato» -- il primo
+                # innesco dell'analista. Mandarle fra le forme le toglieva
+                # dalle misure che si leggono in serie.
+                #
+                # Il criterio giusto e' quello che la misura diceva dall'inizio
+                # (14/09/2026): cio' che pesa sono le SERIE -- venticinque
+                # punti orari, il 75% dei byte -- non il fatto che un valore
+                # abbia piu' di un numero dentro.
+                if isinstance(outcome.value, list):
                     shapes.append(row)
                     continue
             else:

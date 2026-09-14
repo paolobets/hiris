@@ -404,3 +404,39 @@ def test_cio_che_non_si_e_potuto_calcolare_resta_fra_le_MISURE():
 
     assert resoconto["forme"] == []
     assert "non_calcolabile" in resoconto["misure"][0]
+
+def test_media_min_max_e_una_MISURA_non_una_forma():
+    """**Difetto trovato prima che facesse danno, il 14/09/2026.**
+
+    Il criterio della 3.36.0 era «non e' un numero -> e' una forma», e
+    `media_min_max` torna un DIZIONARIO -- `{media, minimo, massimo}`. Con quel
+    criterio finiva fra le forme, cioe' **fuori dalle misure che l'analista
+    legge in serie**: e' esattamente l'operazione che risponde a «com'e' stata
+    la temperatura», il primo innesco. Stessa sorte per `tendenza` e
+    `confronto_periodi`.
+
+    Non aveva ancora fatto danno solo perche' tutte e tre rifiutavano: sarebbero
+    diventate sbagliate nel momento esatto in cui le misure istantanee si
+    sbloccano.
+
+    Il criterio vero e' quello che la misura diceva dall'inizio: **una LISTA e'
+    una forma** -- venticinque punti orari, il 75% dei byte -- e tutto il resto
+    e' una misura, anche quando e' fatto di tre numeri invece che di uno.
+
+    Mutazione: tornare a `isinstance(valore, (int, float))` -- rossa.
+    """
+    serie = [{"inizio": float(h * 3600), "fine": float((h + 1) * 3600),
+              "valore": 20.0 + h} for h in range(4)]
+    resoconto = rep.build_report(
+        day="2026-09-13", episodes=[], series={"sensor.t": serie},
+        recipes={"dev1": {"why": "com'e' stata la stanza", "steps": [
+            {"name": "temperatura", "operation": "media_min_max",
+             "inputs": ["@sensor.t"], "params": {"unit": "\u00b0C"}},
+            {"name": "profilo", "operation": "per_ora",
+             "inputs": ["@sensor.t"], "params": {"unit": "\u00b0C"}}]}},
+        names={"dev1": "Soggiorno"})
+
+    assert [m["misura"] for m in resoconto["misure"]] == ["temperatura"]
+    assert [f["misura"] for f in resoconto["forme"]] == ["profilo"]
+    assert resoconto["misure"][0]["valore"] == {
+        "media": 21.5, "minimo": 20.0, "massimo": 23.0}

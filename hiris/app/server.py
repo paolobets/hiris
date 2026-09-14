@@ -2222,7 +2222,23 @@ def _punti_orari(punti) -> list[dict]:
     quella e' privata del bilancio e questa serve a qualunque ricetta.
     """
     return [{"inizio": p.get("inizio"), "fine": p.get("fine"),
-             "valore": p.get("cambio")}
+             "valore": p.get("cambio"),
+             # **Home Assistant manda gia' anche questi, e noi li buttavamo.**
+             # Le sue statistiche orarie sono di due generi: un CONTATORE porta
+             # `change` (il nostro `cambio`), una MISURA ISTANTANEA porta
+             # `mean`/`min`/`max`. Misurato sulla casa vera il 14/09/2026: 74
+             # contatori e **56 misure istantanee** -- ogni temperatura,
+             # umidita', CO2, rumore, segnale e potenza. Tenendo solo il
+             # `cambio`, quelle 56 arrivavano alle ricette come una serie di
+             # `None`, e ogni misura su di loro rifiutava con «la serie e'
+             # vuota»: 21 su 32 in un giorno solo.
+             #
+             # E' la frase da cui nasce tutta la spec -- «Home Assistant
+             # dichiara gia' tutto, e la copia lo butta» -- che stava
+             # succedendo dentro il codice nuovo.
+             "media": p.get("media"),
+             "minimo": p.get("minimo"),
+             "massimo": p.get("massimo")}
             for p in punti if isinstance(p, dict)]
 
 

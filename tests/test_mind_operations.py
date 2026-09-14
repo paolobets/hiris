@@ -1139,3 +1139,88 @@ def test_IL_CANCELLO_nessuna_operazione_del_registro_e_ORFANA():
         f"operazioni che nessuna domanda del proprietario esegue: {orfane}. "
         "Per la regola della spec non devono esistere: si tolgono, oppure si "
         "chiede al proprietario la domanda che le giustifica")
+
+# ── Le misure istantanee: 56 entita' che le ricette non vedevano ────────────
+#
+# Misurato sulla casa vera il 14/09/2026 chiedendo a Home Assistant:
+#
+#   statistiche con SOMMA (contatori):    74
+#   statistiche con MEDIA (measurement):  56
+#   campi di una measurement: start, end, min, max, mean, last_reset
+#
+# Le 56 non hanno un `change`: hanno `mean`, `min`, `max`. Il nostro client li
+# legge e li traduce gia' (`media`/`minimo`/`massimo`), e poi `_punti_orari`
+# teneva SOLO `cambio` e buttava gli altri tre. Le ricette ricevevano una serie
+# di `None` e rifiutavano dicendo «la serie e' vuota»: 21 misure su 32, in un
+# giorno solo, tutte su temperatura, umidita', CO2, rumore, segnale, potenza.
+#
+# E' la frase fondativa della spec che succede dentro il codice nuovo: «Home
+# Assistant dichiara gia' tutto, e la copia lo butta».
+
+
+def _ore_istantanee(valori):
+    """Ore di una statistica `measurement`, come le manda Home Assistant: media,
+    minimo e massimo, e NESSUN cambio."""
+    return [{"inizio": float(h * 3600), "fine": float((h + 1) * 3600),
+             "valore": None, "media": m, "minimo": mi, "massimo": ma}
+            for h, (m, mi, ma) in enumerate(valori)]
+
+
+def test_media_min_max_usa_i_VERI_estremi_dell_ora_non_il_minimo_delle_medie():
+    """Home Assistant manda gia' il minimo e il massimo di ogni ora: il minimo
+    del giorno e' il piu' piccolo di QUELLI, non il piu' piccolo delle medie.
+    Una stanza che scende a 14 gradi alle sei del mattino ha una media oraria
+    di 16: prendere il minimo delle medie direbbe 16, e nasconderebbe proprio
+    cio' che si va a cercare -- il docstring dell'operazione lo dice gia'.
+
+    Mutazione: calcolare `min`/`max` sulle medie -- rossa (18.0 invece di 14.0).
+    """
+    serie = _ore_istantanee([(16.0, 14.0, 18.0), (20.0, 19.0, 21.0)])
+    r = ops.REGISTRY["media_min_max"].run(serie, unit="\u00b0C", expected_parts=2)
+    assert r.computable, getattr(r, "reason", None)
+    assert r.value == {"media": 18.0, "minimo": 14.0, "massimo": 21.0}
+    assert r.coverage == 1.0
+
+
+def test_media_min_max_su_un_CONTATORE_continua_a_leggere_il_cambio():
+    """La media oraria di un consumo resta una domanda legittima: se l'ora non
+    porta una media -- perche' e' un contatore -- si legge il cambio, come
+    prima. Una cosa nuova non deve togliere quella vecchia.
+
+    Mutazione: leggere solo `media` -- rossa.
+    """
+    serie = [{"inizio": 0.0, "fine": 3600.0, "valore": 2.0},
+             {"inizio": 3600.0, "fine": 7200.0, "valore": 4.0}]
+    r = ops.REGISTRY["media_min_max"].run(serie, unit="kWh", expected_parts=2)
+    assert r.computable
+    assert r.value == {"media": 3.0, "minimo": 2.0, "massimo": 4.0}
+
+
+def test_tendenza_legge_le_medie_orarie_di_una_misura_istantanea():
+    """«La temperatura sta salendo?» e' una domanda su una misura istantanea, e
+    fino al 14/09/2026 rifiutava sempre con «servono almeno 3 punti, ce ne sono
+    0».
+
+    Mutazione: lasciare `tendenza` sul solo `valore` -- rossa.
+    """
+    serie = _ore_istantanee([(16.0, 15.0, 17.0), (18.0, 17.0, 19.0),
+                             (20.0, 19.0, 21.0)])
+    r = ops.REGISTRY["tendenza"].run(serie, unit="\u00b0C")
+    assert r.computable, getattr(r, "reason", None)
+    assert r.value["verso"] == "in salita", r.value
+    assert r.value["punti"] == 3
+
+
+def test_somma_periodo_su_una_misura_istantanea_RIFIUTA_dicendo_perche():
+    """Sommare le temperature di ventiquattro ore non e' un numero: e' un
+    errore. Prima rifiutava con «la serie e' vuota» -- vero e inutile, perche'
+    la serie non e' vuota affatto: e' di un ALTRO tipo. Il rifiuto lo dice, o
+    il modello riscrive la stessa ricetta.
+
+    Mutazione: togliere il ramo del rifiuto dedicato -- rossa.
+    """
+    serie = _ore_istantanee([(16.0, 15.0, 17.0), (18.0, 17.0, 19.0)])
+    r = ops.REGISTRY["somma_periodo"].run(serie, unit="\u00b0C", expected_parts=2)
+    assert not r.computable
+    assert "ISTANTANEA" in r.reason, r.reason
+    assert "contatore" in r.reason, r.reason

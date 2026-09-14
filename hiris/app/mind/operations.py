@@ -458,6 +458,61 @@ def _known_points(series, expected_parts: int | None = None) -> tuple[list, floa
     return known, (len(known) / expected if expected else 0.0)
 
 
+def _instant_points(series, expected_parts: int | None = None) -> tuple[list, float]:
+    """I punti di una misura **istantanea**, e la copertura che ne esce.
+
+    Home Assistant distingue due generi di statistica oraria, e li manda con
+    campi diversi: un **contatore** porta `change` (il nostro `valore`), una
+    **misura istantanea** porta `mean`/`min`/`max` (`media`/`minimo`/
+    `massimo`). Misurato sulla casa vera il 14/09/2026: 74 contatori e **56
+    misure istantanee** -- ogni temperatura, umidita', CO2, rumore, segnale e
+    potenza della casa.
+
+    Ogni punto qui torna col suo `valore` messo alla MEDIA dell'ora, e i veri
+    estremi dell'ora accanto. Un contatore non ha una media: allora `valore`
+    resta quello che gia' era, e gli estremi sono il valore stesso -- cosi' «la
+    media oraria del consumo» resta una domanda legittima invece di diventare
+    un rifiuto.
+    """
+    points = []
+    for p in list(series or []):
+        if not isinstance(p, dict):
+            continue
+        middle = p.get("media")
+        if middle is None:
+            middle = p.get("valore")
+        if middle is None:
+            continue
+        low = p.get("minimo")
+        high = p.get("massimo")
+        points.append({"valore": middle,
+                       "minimo": middle if low is None else low,
+                       "massimo": middle if high is None else high})
+    expected = expected_parts if expected_parts else len(list(series or []))
+    return points, (len(points) / expected if expected else 0.0)
+
+
+def _looks_instantaneous(series) -> bool:
+    """Se la serie e' fatta di ore che portano una MEDIA e nessun cambio.
+
+    Si guarda la forma del dato, non un'etichetta: l'unica cosa che distingue i
+    due generi e' quali campi Home Assistant ha mandato, e quella e' li' da
+    leggere.
+    """
+    return any(isinstance(p, dict) and p.get("media") is not None
+               and p.get("valore") is None for p in series or [])
+
+
+#: Cosa si risponde a chi prova a sommare una misura istantanea. Prima usciva
+#: «la serie e' vuota»: vero e inutile, perche' la serie non e' vuota affatto
+#: -- e' di un ALTRO genere, e il modello riscriverebbe la stessa ricetta.
+_INSTANTANEOUS_REASON = (
+    "questa e' una misura ISTANTANEA (Home Assistant ne manda media, minimo e "
+    "massimo per ogni ora), non un contatore con un cambio da sommare: "
+    "sommarla darebbe la somma delle temperature di ventiquattro ore"
+)
+
+
 def _reject_for_coverage(coverage: float, known: int) -> NotComputable | None:
     """Il rifiuto motivato, con **il numero dentro la frase**: «copertura 8%»
     dice a chi legge quanto mancava, mentre «non calcolabile» lo lascerebbe
@@ -492,6 +547,8 @@ def _sum_period(series, *, unit: str, expected_parts: int | None = None) -> Resu
     ventiquattro aveva la stessa faccia di uno completo.
     """
     known, coverage = _known_points(series, expected_parts)
+    if not known and _looks_instantaneous(series):
+        return NotComputable(_INSTANTANEOUS_REASON)
     refusal = _reject_for_coverage(coverage, len(known))
     if refusal is not None:
         return refusal
@@ -610,13 +667,19 @@ def _average_min_max(series, *, unit: str,
     nasconde proprio cio' che si va a cercare -- una stanza che sta bene in
     media e tocca i 14 gradi alle sei del mattino.
     """
-    known, coverage = _known_points(series, expected_parts)
+    known, coverage = _instant_points(series, expected_parts)
     refusal = _reject_for_coverage(coverage, len(known))
     if refusal is not None:
         return refusal
     values = [p["valore"] for p in known]
+    # **Il minimo del giorno e' il piu' piccolo dei minimi ORARI, non il piu'
+    # piccolo delle medie.** Home Assistant li manda gia' tutti e due, e il
+    # docstring qui sopra dice perche' conta: una stanza che scende a 14 gradi
+    # alle sei del mattino ha una media oraria di 16, e prendere il minimo
+    # delle medie direbbe 16 -- nascondendo esattamente cio' che si cercava.
     return Measurement({"media": round(sum(values) / len(values), 2),
-                   "minimo": min(values), "massimo": max(values)},
+                   "minimo": min(p["minimo"] for p in known),
+                   "massimo": max(p["massimo"] for p in known)},
                   unit=unit, coverage=coverage)
 
 
@@ -930,7 +993,10 @@ def _trend_line(series, *, unit: str) -> Result:
     **Due punti non sono una tendenza**: fanno sempre una retta perfetta, e
     chiamarla tendenza sarebbe un numero plausibile al posto di un «non lo so».
     """
-    known, coverage = _known_points(series)
+    # Una tendenza si chiede soprattutto a una misura istantanea -- «la
+    # temperatura sta salendo?» -- e quelle non hanno un `cambio`: prima
+    # dell'14/09/2026 rifiutavano sempre, «ce ne sono 0».
+    known, coverage = _instant_points(series)
     if len(known) < 3:
         return NotComputable(
             f"servono almeno 3 punti per una tendenza, ce ne sono {len(known)}: "
