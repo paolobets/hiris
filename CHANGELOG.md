@@ -1,5 +1,23 @@
 # HIRIS — Changelog
 
+## [3.33.3] — Le stelle nella barra laterale (2026-09-14)
+
+`panel_icon` passa da `mdi:home-automation` a **`mdi:creation`**: le tre stelle
+a quattro punte, l'icona che ormai vuol dire «qui dentro ragiona un modello».
+È la verità su cosa HIRIS è diventato — l'ingranaggio della domotica lo
+confondeva con le decine di integrazioni che stanno sotto di lui, e lui non ne
+è una: le guarda.
+
+Verificato sul catalogo MDI e non dedotto: `creation` esiste dalla **1.7.12**,
+quindi c'è in qualunque Home Assistant — e i suoi alias dichiarati sono
+`auto-awesome`, `sparkles`, `stars`, `shimmer`, cioè esattamente la cosa
+chiesta. La variante `creation-outline` esiste dalla 7.2.96: più leggera, ma
+alla dimensione della barra laterale le tre stelle piene si distinguono
+meglio.
+
+L'icona della barra la legge il **Supervisor** da `config.yaml`, quindi cambia
+con l'aggiornamento dell'add-on, non al riavvio.
+
 ## [3.33.2] — Il resoconto assente è peggio del resoconto parziale (2026-09-14)
 
 La 3.33.1 non è bastata: aggiornata la casa vera e chiesto di nuovo,
