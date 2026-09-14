@@ -1479,6 +1479,69 @@ def _timezone_from_home_space_store(home_space_store) -> str | None:
     return home_space_store.reference_frame().get("fuso") if home_space_store else None
 
 
+async def backfill_one_missing_report(app, ha_client, *,
+                                      now=datetime.now) -> str | None:
+    """Il resoconto di **un** giorno che non ce l'ha. Torna quale, o `None`.
+
+    **Perche' esiste, col numero.** Misurato sulla casa vera il 14/09/2026,
+    appena il resoconto ha cominciato a nascere: esistevano quello del 12 e
+    quello del 13, e basta. Il 7, l'8, il 9, il 10 e l'11 avevano oggetti e
+    grezzo e **nessun resoconto** -- la riparazione d'avvio guarda solo gli
+    ultimi due giorni pieni, e l'aggregazione notturna solo ieri. Nessuno dei
+    due percorsi arriva indietro, e per l'analista quei giorni non esistono:
+    una misura letta su due giorni non e' una serie.
+
+    **Un giorno per giro.** Le statistiche di Home Assistant si chiedono una
+    volta per giorno: ventidue richieste all'avvio ritarderebbero la partenza
+    per un lavoro che non ha nessuna fretta. E' la stessa disciplina di
+    `recipe_round` -- uno per volta, e in qualche ora si e' coperto tutto.
+
+    **Dal piu' VECCHIO.** E' quello che sta per scadere: il suo grezzo sparisce
+    per primo (22 giorni), e dopo non si rifa' piu'. Partire dal piu' recente
+    vorrebbe dire perdere proprio i giorni per cui questo lavoro esiste.
+
+    **Non oltre il grezzo.** Un giorno si rifa' solo finche' il suo grezzo
+    esiste (spec §9). Andare piu' indietro scriverebbe resoconti VUOTI per
+    giorni in cui era successo di tutto, e un resoconto vuoto dice «non e'
+    successo niente»: una bugia archiviata, nell'archivio che esiste per non
+    dirne.
+
+    **Solo i mancanti**, mai una sovrascrittura: stessa asimmetria di
+    `_write_missing_reports` e di `store._migration_8`.
+
+    Non solleva: gira per sempre, e un giorno che non si e' potuto rifare non
+    deve fermare gli altri.
+    """
+    archivio = app["observations"]
+    first_ts = archivio.oldest_reading_ts()
+    if first_ts is None:
+        return None
+    timezone = _timezone_from_home_space_store(app.get("home_space_store"))
+    zone = home_space_zone(timezone)
+    today = now(zone).date()
+    first_day = datetime.fromtimestamp(first_ts, tz=zone).date()
+
+    day = first_day
+    while day < today:
+        as_text = day.strftime("%Y-%m-%d")
+        if archivio.report(as_text) is None:
+            try:
+                ricette, serie, nomi = await _report_ingredients(
+                    app, ha_client, giorno=as_text, timezone=timezone)
+                aggregate_day(store=archivio, day=as_text, timezone=timezone,
+                              recipes=ricette, series=serie, names=nomi,
+                              report_only=True)
+            except Exception as error:
+                logger.warning(
+                    "cervello: resoconto di %s non recuperato (%s: %s)",
+                    as_text, type(error).__name__, error)
+                return None
+            logger.info("cervello: recuperato il resoconto di %s", as_text)
+            return as_text
+        day += timedelta(days=1)
+    return None
+
+
 async def _record_repair(app, ha_client, days, timezone, *, why: str) -> None:
     """La riparazione degli oggetti si e' saltata: si DICE perche', e si
     scrivono comunque i resoconti mancanti.
@@ -3970,6 +4033,32 @@ async def _on_startup(app: web.Application) -> None:
         trigger="interval", minutes=10,
         id="hiris_mind_recipes", replace_existing=True,
         misfire_grace_time=600,
+    )
+
+    # Il recupero dei resoconti mancanti: un giorno per giro, dal piu' vecchio.
+    # Nasce da una misura del 14/09/2026 -- sulla casa vera esistevano i
+    # resoconti del 12 e del 13 e basta, mentre cinque giorni prima avevano
+    # oggetti e grezzo e nessun resoconto: nessuno dei due scrittori (la
+    # riparazione d'avvio, due giorni; la notturna, ieri) arriva indietro.
+    #
+    # Ogni cinque minuti perche' e' un lavoro che non ha nessuna fretta e
+    # costa una richiesta di statistiche a giro: ventidue giorni si coprono in
+    # meno di due ore, e finito il recupero il giro non fa piu' niente e non
+    # lo dice -- un lavoro che stampa «niente da fare» per sempre e' rumore
+    # sano che seppellisce cio' che e' rotto.
+    async def _recupero_resoconti() -> None:
+        try:
+            await backfill_one_missing_report(app, ha_client)
+        except Exception as error:
+            logger.warning(
+                "cervello: recupero dei resoconti fallito (%s: %s) -- "
+                "si riprova al giro dopo", type(error).__name__, error)
+
+    scheduler.add_job(
+        _recupero_resoconti,
+        trigger="interval", minutes=5,
+        id="hiris_mind_backfill", replace_existing=True,
+        misfire_grace_time=300,
     )
 
     # L'aggregazione notturna: costruisce gli oggetti del giorno appena

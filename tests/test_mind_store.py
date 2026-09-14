@@ -798,3 +798,17 @@ CREATE TABLE cambi (
         assert archivio._conn.execute("PRAGMA user_version").fetchone()[0] == 7
     finally:
         archivio.close()
+
+def test_il_grezzo_dice_da_quando_comincia(tmp_path):
+    """Il recupero dei resoconti mancanti deve sapere **fin dove indietro ha
+    senso andare**: non oltre il grezzo, perche' un giorno si rifa' solo
+    finche' il suo grezzo esiste. E' l'archivio a saperlo, non chi lo usa.
+
+    Mutazione: tornare `MAX(quando_ts)` invece di `MIN` -- rossa.
+    """
+    store = ObservationsStore(str(tmp_path / "oss.db"))
+    assert store.oldest_reading_ts() is None, "un archivio vuoto non ha un primo giorno"
+    store.record(quando_ts=2000.0, source="entita", subject="light.a", da="off", a="on")
+    store.record(quando_ts=1000.0, source="entita", subject="light.b", da="off", a="on")
+    assert store.oldest_reading_ts() == 1000.0
+    store.close()

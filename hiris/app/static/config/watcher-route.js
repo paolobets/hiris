@@ -1683,6 +1683,26 @@ window.HirisWatcherRoute = (function () {
       body.appendChild(grid);
     }
 
+    /* **Le forme orarie si DICONO, non si stampano.** Misurato sulla casa vera
+       il 14/09/2026: otto serie orarie pesavano il 75% delle misure del
+       giorno, e stampate in una griglia diventavano una riga di
+       «[object Object],[object Object],...» -- il contrario di leggibile. Qui
+       si dice che ci sono e quanto sono fitte; il dato resta nell'archivio e
+       si chiede quando serve. La sezione compare solo se c'e' qualcosa: un
+       titolo sopra il vuoto e' rumore. */
+    var forme = report.forme || [];
+    if (forme.length) {
+      subheading(body, 'Le forme del giorno');
+      forme.forEach(function (f) {
+        var punti = (f.valore || []).length;
+        var riga = el('div', 'sc-row');
+        riga.appendChild(el('div', 'sc-row-title', (f.nome || f.soggetto) + ' · ' + f.misura));
+        riga.appendChild(el('div', 'sc-row-why',
+          fmtCount(punti) + (punti === 1 ? ' punto orario' : ' punti orari')
+          + (f.unita ? ' in ' + f.unita : '')));
+        body.appendChild(riga);
+      });
+    }
     subheading(body, 'La cronaca');
     if (!cronaca.length) {
       line(body, 'Nessun fatto: quel giorno non è cambiato niente di ciò che si guarda.', TONE_CALM);

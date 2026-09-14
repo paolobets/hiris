@@ -2120,7 +2120,7 @@ test('seam _rendiScope: un tentativo di un mese fa si dice in giorni, non in 840
    si deriva invece di essere archiviato. */
 
 function resoconto(extra) {
-  return Object.assign({ giorno: '2026-09-13', misure: [], cronaca: [] }, extra || {});
+  return Object.assign({ giorno: '2026-09-13', misure: [], forme: [], cronaca: [] }, extra || {});
 }
 
 function misura(extra) {
@@ -2299,4 +2299,31 @@ test('mount: un giorno senza resoconto (404) lo SPIEGA, e non dice che non è su
   const card3 = document.querySelectorAll('.section-card')[2];
   assert.match(card3.textContent, /non c’è ancora un resoconto/);
   assert.match(card3.textContent, /00:20/);
+});
+
+test('seam _rendiResoconto: le forme orarie si DICONO, non si stampano', () => {
+  // Misurato sulla casa vera il 14/09/2026: otto serie orarie pesavano il 75%
+  // delle misure del giorno. Stampate in una griglia diventavano una riga di
+  // «[object Object],[object Object],…» -- il contrario di leggibile. Si dice
+  // che ci sono, con quanti punti, e il dato resta nell'archivio.
+  // Mutazione che la uccide: non rendere affatto `forme`.
+  const { corpo } = rendiResoconto(resoconto({
+    misure: [misura()],
+    forme: [{ soggetto: 'dev1', nome: 'Inverter', misura: 'forma_produzione',
+              operazione: 'per_ora', unita: 'kWh', copertura: 1,
+              valore: [{ ora: 'x', valore: 1 }, { ora: 'y', valore: 2 }] }],
+  }));
+
+  const testo = corpo.textContent;
+  assert.match(testo, /forma_produzione/);
+  assert.match(testo, /2 punti orari/);
+  assert.doesNotMatch(testo, /\[object Object\]/,
+    'una serie non si stampa: si dice');
+});
+
+test('seam _rendiResoconto: un giorno senza forme non apre la sezione', () => {
+  // Un titolo sopra il vuoto e' rumore: la sezione compare solo se c'e'.
+  // Mutazione che la uccide: rendere il titolo sempre.
+  const { corpo } = rendiResoconto(resoconto({ misure: [misura()] }));
+  assert.doesNotMatch(corpo.textContent, /Le forme del giorno/);
 });

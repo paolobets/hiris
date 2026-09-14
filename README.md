@@ -67,9 +67,9 @@ one of the sixteen tools below, lets a sentence you type now run later, at a
 time you name, with nobody in the chat when it happens — see the next
 paragraph for what that means in practice.
 
-Periodic work *does* run — the scheduler registers **thirteen** APScheduler jobs
+Periodic work *does* run — the scheduler registers **fifteen** APScheduler jobs
 at startup, not four, and one of them is not housekeeping: it is the reason
-the paragraph above needed the caveat. Twelve are internal bookkeeping — none of
+the paragraph above needed the caveat. Fourteen are internal bookkeeping — none of
 them speaks to you and none of them touches the house: the entity-inventory
 reload every 2 minutes (`server.py::_reload_inventory`), the reread of Home
 Assistant's own diagnosed issues every 5 minutes
@@ -137,6 +137,23 @@ did what you told it to, when you told it to. But it is real, unattended
 action on your house and a real message that can arrive while you are asleep,
 and a sentence that says otherwise would be exactly the kind of claim this
 README has already had to walk back once (see above).
+
+The fourteenth and fifteenth were added by "the knowledge and the recipes" and
+"the daily report" slices. The fourteenth asks the model, every 10 minutes, how
+**one** device that weighs is measured, and then stops for that device: a recipe
+written, or a refusal recorded, is never asked again
+(`server.py::recipe_round`). One at a time is not generic caution — thirty
+devices asked together would empty the plan's daily ceiling on their own, and
+from there every turn, chat included, would fall through to the paid providers.
+The fifteenth writes the daily report of **one** day that does not have one yet,
+oldest first, every 5 minutes (`server.py::backfill_one_missing_report`). It
+exists because of a measurement taken on the owner's house on 14/09/2026: the
+reports for the 12th and the 13th existed and nothing else did, while the 7th
+through the 11th had raw state changes and objects and no report — neither
+writer reaches backwards, and for the analyst those days did not exist. It stops
+when nothing is missing, and it never goes further back than the raw itself: a
+day can only be redone while its raw still exists.
+
 
 2.0 is a reduction to the core. Version 1.x shipped a much wider surface
 (autonomous agents, a proactive brain, proposals, an action gate); most of it

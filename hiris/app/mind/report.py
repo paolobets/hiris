@@ -80,15 +80,36 @@ def build_report(*, day: str, episodes, series: dict, recipes: dict,
     «quel giorno non e' successo niente» e «quel giorno non l'abbiamo
     guardato» sono due cose diverse, e l'analista deve poterle distinguere.
     """
-    return {"giorno": day,
-            "misure": _measurements(series, recipes, names),
+    measured, shapes = _measurements(series, recipes, names)
+    return {"giorno": day, "misure": measured, "forme": shapes,
             "cronaca": [_entry(e) for e in episodes or []]}
 
 
-def _measurements(series: dict, recipes: dict, names: dict) -> list[dict]:
-    """Una riga per numero, e una anche per ogni numero che non si e' potuto
-    fare -- col suo perche'."""
+def _measurements(series: dict, recipes: dict,
+                  names: dict) -> tuple[list[dict], list[dict]]:
+    """Le misure e le **forme**, separate: `(misure, forme)`.
+
+    Una riga per numero, una per ogni numero che non si e' potuto fare -- col
+    suo perche' -- e a parte quelle il cui risultato **non e' un numero**.
+
+    **Perche' separate, col numero.** Misurato sulla casa vera il 14/09/2026:
+    le misure di un giorno pesavano 17.399 byte, e 13.055 -- il **75%** --
+    erano otto serie orarie finite dentro `valore`. La spec §9 promette che le
+    misure si leggano *in serie, molti giorni insieme*, e che trenta giorni
+    stiano in un prompt: con quei numeri erano **522 KB**, e non erano piu'
+    decine di numeri -- erano quattro numeri e otto serie.
+
+    Una forma oraria non e' una misura da leggere in serie: e' un **dettaglio
+    del giorno**, come la cronaca, e si consegna a richiesta. Non si butta --
+    il grezzo scade a 22 giorni e le statistiche di Home Assistant non tornano
+    indietro all'infinito, quindi rifarla dopo non si puo'.
+
+    **Un rifiuto resta fra le MISURE**, anche se non ha un numero: e' dove
+    l'analista guarda cio' che manca (`as_document` ne fa «cosa non si sa»), e
+    spostarlo fra le forme lo nasconderebbe.
+    """
     out: list[dict] = []
+    shapes: list[dict] = []
     for subject in sorted(recipes or {}):
         recipe = Recipe(recipes[subject])
         base = {"soggetto": subject}
@@ -120,10 +141,17 @@ def _measurements(series: dict, recipes: dict, names: dict) -> list[dict]:
                 row["valore"] = outcome.value
                 row["unita"] = outcome.unit
                 row["copertura"] = outcome.coverage
+                # `bool` e' un `int` in Python, e un vero/falso non e' una
+                # grandezza: si controlla prima, o finirebbe fra le misure
+                # come se fosse 1.
+                if isinstance(outcome.value, bool) or not isinstance(
+                        outcome.value, (int, float)):
+                    shapes.append(row)
+                    continue
             else:
                 row["non_calcolabile"] = outcome.reason
             out.append(row)
-    return out
+    return out, shapes
 
 
 def _entry(episode: dict) -> dict:

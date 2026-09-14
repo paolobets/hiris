@@ -2869,3 +2869,105 @@ def test_una_riparazione_che_SOLLEVA_lo_dice_lo_stesso(tmp_path):
     assert esito["oggetti"] == "sollevata"
     assert "RuntimeError" in esito["perche"]
     assert "sqlite del grezzo" in esito["perche"]
+
+def test_il_recupero_scrive_UN_giorno_mancante_per_giro_partendo_dal_piu_vecchio(tmp_path):
+    """**Misurato dal vivo il 14/09/2026**: sulla casa vera esistevano i
+    resoconti del 12 e del 13 e basta. Il 7, l'8, il 9, il 10 e l'11 avevano
+    oggetti e grezzo e **nessun resoconto**, perche' la riparazione d'avvio
+    guarda solo gli ultimi due giorni pieni e la notturna solo ieri.
+
+    Un giorno per giro, dal piu' vecchio: le statistiche di Home Assistant si
+    chiedono una volta per giorno, e ventidue richieste all'avvio
+    ritarderebbero la partenza per un lavoro che non ha nessuna fretta. Dal
+    piu' vecchio perche' e' quello che sta per scadere: il suo grezzo sparisce
+    per primo.
+
+    Mutazione: partire dal piu' recente -- rossa su
+    `assert scritto == "2026-08-22"`.
+    """
+    from datetime import datetime, timedelta
+
+    from hiris.app.mind.store import ObservationsStore
+
+    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
+    try:
+        oggi = datetime(2026, 8, 25, tzinfo=UTC)
+        for delta in (3, 2, 1):
+            quando = (oggi - timedelta(days=delta)).replace(hour=10)
+            archivio.record(quando_ts=quando.timestamp(), source="entita",
+                            subject=f"light.g{delta}", da="off", a="on")
+        archivio.replace_report("2026-08-24", {"giorno": "2026-08-24",
+                                               "misure": [], "forme": [],
+                                               "cronaca": []})
+        app = {"home_space_store": None, "observations": archivio,
+               "knowledge": _sapere(tmp_path)}
+
+        scritto = asyncio.run(server.backfill_one_missing_report(
+            app, ha_client=_ClienteLegami(), now=lambda tz: oggi.astimezone(tz)))
+        assert scritto == "2026-08-22", scritto
+        assert archivio.report("2026-08-22") is not None
+
+        # Il giro dopo prende il successivo, e salta quello gia' scritto.
+        assert asyncio.run(server.backfill_one_missing_report(
+            app, ha_client=_ClienteLegami(),
+            now=lambda tz: oggi.astimezone(tz))) == "2026-08-23"
+    finally:
+        archivio.close()
+
+
+def test_il_recupero_TACE_quando_non_manca_piu_niente(tmp_path):
+    """Finito il recupero, il giro non deve fare niente e non deve dirlo: un
+    lavoro che stampa «niente da fare» ogni cinque minuti per sempre e' rumore
+    sano che seppellisce cio' che e' rotto.
+
+    Mutazione: tornare il giorno anche quando c'e' gia' -- rossa.
+    """
+    from datetime import datetime, timedelta
+
+    from hiris.app.mind.store import ObservationsStore
+
+    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
+    try:
+        oggi = datetime(2026, 8, 25, tzinfo=UTC)
+        quando = (oggi - timedelta(days=1)).replace(hour=10)
+        archivio.record(quando_ts=quando.timestamp(), source="entita",
+                        subject="light.a", da="off", a="on")
+        archivio.replace_report("2026-08-24", {"giorno": "2026-08-24",
+                                               "misure": [], "forme": [],
+                                               "cronaca": []})
+        app = {"home_space_store": None, "observations": archivio,
+               "knowledge": _sapere(tmp_path)}
+
+        assert asyncio.run(server.backfill_one_missing_report(
+            app, ha_client=_ClienteLegami(), now=lambda tz: oggi.astimezone(tz))) is None
+    finally:
+        archivio.close()
+
+
+def test_il_recupero_NON_va_oltre_il_grezzo(tmp_path):
+    """Un giorno si rifa' solo finche' il suo grezzo esiste. Andare piu'
+    indietro scriverebbe resoconti **vuoti** per giorni in cui era successo di
+    tutto -- e un resoconto vuoto dice «non e' successo niente», che sarebbe
+    una bugia archiviata.
+
+    Mutazione: partire da `oggi - 22 giorni` invece che dal primo grezzo --
+    rossa: scriverebbe un giorno prima del 22.
+    """
+    from datetime import datetime, timedelta
+
+    from hiris.app.mind.store import ObservationsStore
+
+    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
+    try:
+        oggi = datetime(2026, 8, 25, tzinfo=UTC)
+        quando = (oggi - timedelta(days=2)).replace(hour=10)
+        archivio.record(quando_ts=quando.timestamp(), source="entita",
+                        subject="light.a", da="off", a="on")
+        app = {"home_space_store": None, "observations": archivio,
+               "knowledge": _sapere(tmp_path)}
+
+        assert asyncio.run(server.backfill_one_missing_report(
+            app, ha_client=_ClienteLegami(),
+            now=lambda tz: oggi.astimezone(tz))) == "2026-08-23"
+    finally:
+        archivio.close()

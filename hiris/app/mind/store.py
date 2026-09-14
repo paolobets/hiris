@@ -577,6 +577,22 @@ class ObservationsStore:
                 (int(max(1, limit)),)).fetchall()
         return [json.loads(r["corpo_json"]) for r in righe]
 
+    def oldest_reading_ts(self) -> float | None:
+        """L'istante della riga piu' vecchia del grezzo, o `None` se non ce
+        n'e' nessuna.
+
+        Serve a sapere **fin dove indietro ha senso rifare un giorno**: un
+        giorno si rifa' solo finche' il suo grezzo esiste (spec §9), e oltre
+        questo istante non c'e' piu' niente da rileggere. Lo sa l'archivio, non
+        chi lo usa: chiederlo altrove vorrebbe dire ricostruire la potatura a
+        mano, e una copia del ragionamento che diverge alla prima modifica
+        della conservazione.
+        """
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT MIN(quando_ts) AS primo FROM cambi").fetchone()
+        return None if row is None or row["primo"] is None else float(row["primo"])
+
     def readings_count(self, *, from_ts: float, to_ts: float,
                        source: str | None = None) -> int:
         """Quante righe grezze sono state scritte in questa finestra.

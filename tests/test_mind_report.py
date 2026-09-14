@@ -197,12 +197,12 @@ def test_una_chiave_che_non_ha_niente_da_dire_TACE():
 
 # -- il resoconto intero ----------------------------------------------------
 
-def test_il_resoconto_porta_il_suo_giorno_e_le_due_parti():
+def test_il_resoconto_porta_il_suo_giorno_e_le_tre_parti():
     r = rep.build_report(day="2026-09-13", episodes=EPISODI, series=SERIE,
                          recipes={"dev1": RICETTA}, names={})
 
     assert r["giorno"] == "2026-09-13"
-    assert set(r) == {"giorno", "misure", "cronaca"}
+    assert set(r) == {"giorno", "misure", "forme", "cronaca"}
 
 
 def test_un_giorno_SENZA_NIENTE_e_un_resoconto_vuoto_non_un_errore():
@@ -212,7 +212,8 @@ def test_un_giorno_SENZA_NIENTE_e_un_resoconto_vuoto_non_un_errore():
     r = rep.build_report(day="2026-09-13", episodes=[], series={},
                          recipes={}, names={})
 
-    assert r == {"giorno": "2026-09-13", "misure": [], "cronaca": []}
+    assert r == {"giorno": "2026-09-13", "misure": [], "forme": [],
+                 "cronaca": []}
 
 
 # -- il documento: DERIVATO, mai scritto ------------------------------------
@@ -331,3 +332,75 @@ def test_il_rifiuto_di_una_ricetta_dice_TUTTI_i_problemi_insieme():
     # E il parametro obbligatorio mancante.
     assert "PERCHE' esiste" in perche, perche
     assert "unit" in perche, perche
+
+def test_una_misura_che_non_e_un_NUMERO_non_sta_fra_le_misure():
+    """**Misurato sulla casa vera il 14/09/2026**: le misure del giorno
+    pesavano 17.399 byte, e **13.055 -- il 75% -- erano otto serie orarie**
+    finite dentro `valore` (`forma_produzione`, `illuminamento_profilo_orario`,
+    ...). La spec §9 dice che le misure si leggono **in serie, molti giorni
+    insieme**, e che trenta giorni stanno in un prompt: con quei numeri erano
+    522 KB, e non erano piu' decine di numeri -- erano quattro numeri e otto
+    serie.
+
+    Una forma oraria non e' una misura da leggere in serie: e' un **dettaglio
+    del giorno**, come la cronaca. Sta in `forme`, e si consegna a richiesta.
+
+    Mutazione: rimettere le liste fra le misure -- rossa.
+    """
+    resoconto = rep.build_report(
+        day="2026-09-13", episodes=[],
+        series={"sensor.p": [{"inizio": 0.0, "fine": 3600.0, "valore": 2.0},
+                             {"inizio": 3600.0, "fine": 7200.0, "valore": 3.0}]},
+        recipes={"dev1": {"why": "la produzione", "steps": [
+            {"name": "totale", "operation": "somma_periodo",
+             "inputs": ["@sensor.p"], "params": {"unit": "kWh"}},
+            {"name": "forma", "operation": "per_ora",
+             "inputs": ["@sensor.p"], "params": {"unit": "kWh"}}]}},
+        names={"dev1": "Inverter"})
+
+    misure = [m["misura"] for m in resoconto["misure"]]
+    forme = [f["misura"] for f in resoconto["forme"]]
+    assert misure == ["totale"], misure
+    assert forme == ["forma"], forme
+    assert isinstance(resoconto["forme"][0]["valore"], list)
+
+
+def test_una_forma_porta_il_suo_nome_e_la_sua_unita_come_una_misura():
+    """Non e' un ripostiglio: una forma resta una riga completa -- soggetto,
+    nome, operazione, unita', copertura -- perche' chi la chiede deve poterla
+    leggere senza tornare a chiedere altro.
+
+    Mutazione: scrivere in `forme` solo il valore -- rossa.
+    """
+    resoconto = rep.build_report(
+        day="2026-09-13", episodes=[],
+        series={"sensor.p": [{"inizio": 0.0, "fine": 3600.0, "valore": 2.0}]},
+        recipes={"dev1": {"why": "la forma", "steps": [
+            {"name": "forma", "operation": "per_ora",
+             "inputs": ["@sensor.p"], "params": {"unit": "kWh"}}]}},
+        names={"dev1": "Inverter"})
+
+    riga = resoconto["forme"][0]
+    assert riga["nome"] == "Inverter"
+    assert riga["operazione"] == "per_ora"
+    assert riga["unita"] == "kWh"
+    assert riga["copertura"] == 1.0
+
+
+def test_cio_che_non_si_e_potuto_calcolare_resta_fra_le_MISURE():
+    """Un rifiuto non ha una forma: sta dove l'analista guarda cio' che manca,
+    cioe' fra le misure -- da cui `as_document` costruisce «cosa non si sa».
+    Spostarlo in `forme` lo nasconderebbe.
+
+    Mutazione: mandare in `forme` tutto cio' che non ha un valore numerico,
+    rifiuti compresi -- rossa.
+    """
+    resoconto = rep.build_report(
+        day="2026-09-13", episodes=[], series={"sensor.vuoto": []},
+        recipes={"dev1": {"why": "il totale", "steps": [
+            {"name": "totale", "operation": "somma_periodo",
+             "inputs": ["@sensor.vuoto"], "params": {"unit": "kWh"}}]}},
+        names={})
+
+    assert resoconto["forme"] == []
+    assert "non_calcolabile" in resoconto["misure"][0]

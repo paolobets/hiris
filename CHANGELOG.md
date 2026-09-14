@@ -1,5 +1,61 @@
 # HIRIS — Changelog
 
+## [3.36.0] — Le forme escono dalle misure, e i giorni indietro si recuperano (2026-09-14)
+
+**Il resoconto è vivo sulla casa vera**, e la prima lettura ha detto due cose.
+
+### Le misure non erano piu' decine di numeri
+
+Misurato il 14/09/2026 sul resoconto del 13:
+
+| | byte |
+|---|---:|
+| misure del giorno | 17.399 |
+| **di cui otto serie orarie** | **13.055 — il 75%** |
+| cronaca del giorno | 9.272 |
+
+La spec §9 promette che le misure si leggano *in serie, molti giorni insieme*,
+e che trenta giorni stiano in un prompt. Con quei numeri erano **522 KB**, e
+non erano piu' decine di numeri: erano quattro numeri e otto serie orarie
+(`forma_produzione`, `illuminamento_profilo_orario`, …) finite dentro `valore`.
+
+Una forma oraria **non è una misura da leggere in serie**: è un dettaglio del
+giorno, come la cronaca. Ora sta in `forme`, la terza parte del resoconto, e si
+consegna a richiesta. Non si butta — il grezzo scade a 22 giorni e le
+statistiche di Home Assistant non tornano indietro all'infinito. Le misure
+scendono a ~4,3 KB al giorno: **130 KB su trenta giorni**, dentro un prompt.
+
+**Un rifiuto resta fra le misure** anche se non ha un numero: è dove l'analista
+guarda ciò che manca, e spostarlo fra le forme lo nasconderebbe.
+
+Sulla pagina le forme **si dicono**, non si stampano: «2 punti orari in kWh» al
+posto di una riga di `[object Object]` — che è ciò che la griglia stampava
+davvero.
+
+### Cinque giorni che per l'analista non esistevano
+
+Esistevano i resoconti del 12 e del 13, e basta. Il 7, l'8, il 9, il 10 e l'11
+avevano grezzo e oggetti e **nessun resoconto**: la riparazione d'avvio guarda
+gli ultimi due giorni pieni, la notturna solo ieri, e nessuno dei due arriva
+indietro. Una misura letta su due giorni non è una serie.
+
+Il **quindicesimo lavoro periodico** scrive il resoconto di **un** giorno che
+non ce l'ha, ogni cinque minuti, **dal più vecchio** — è quello che sta per
+scadere, il suo grezzo sparisce per primo. Non va mai oltre il grezzo: più
+indietro scriverebbe resoconti vuoti per giorni in cui era successo di tutto, e
+un resoconto vuoto dice «non è successo niente» — una bugia archiviata.
+Finito, tace.
+
+### E il README dichiarava tredici lavori da due slice
+
+La prova che sorveglia il numero asseriva il conteggio del sorgente **e citava
+il README senza leggerlo**: quando è entrato il quattordicesimo, il numero
+nella prova è salito e il README no. Ora la prova legge il file che cita, e
+sono quindici in tutt'e due.
+
+Otto mutazioni dichiarate ed **eseguite**, tutte uccise. 4166 prove Python, 419
+JS, ruff, oxlint, censimento, componenti.
+
 ## [3.35.0] — Le operazioni dichiarano la FORMA di ciò che prendono (2026-09-14)
 
 La 3.34.0 ha chiuso i nomi, i parametri e il numero di ingressi. La casa,
