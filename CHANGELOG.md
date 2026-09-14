@@ -1,5 +1,30 @@
 # HIRIS — Changelog
 
+## [3.33.1] — Il resoconto non arrivava mai (2026-09-14)
+
+**Difetto trovato dal vivo**, aggiornando la casa vera alla 3.33.0 e andando a
+guardare: `GET /api/mind/report` tornava `{"resoconti": []}`, e ogni giorno
+404. Due rilasci di resoconto, e sulla casa non ce n'era nemmeno uno.
+
+La riparazione all'avvio rifaceva gli oggetti degli ultimi due giorni pieni e
+**non** il loro resoconto: passava `recipes=None`, e quel ramo di
+`aggregate_day` salta la scrittura. L'unico scrittore restava l'aggregazione
+notturna delle 00:20 — quindi il primo resoconto sarebbe comparso il giorno
+dopo l'aggiornamento, e i giorni già aggregati da una versione precedente non
+l'avrebbero mai avuto.
+
+**Il ramo non era sbagliato, era incompleto.** La sua ragione è vera: un
+resoconto scritto senza le ricette avrebbe metà delle misure vuota *per un
+motivo che non riguarda la casa*, e resterebbe lì a dire il falso. La cura non
+è toglierla — è portare le ricette **anche** alla riparazione, dalla stessa
+funzione da cui le prende l'aggregazione notturna. Ricette vuote restano un
+fatto vero su quella casa, e si scrivono.
+
+Una prova nuova, con la sua mutazione **eseguita** e uccisa. Vale anche per la
+fetta dopo: con gli `oggetti` fuori, quel ramo non avrebbe scritto **niente**,
+e «quel giorno non è successo niente» e «quel giorno non l'abbiamo guardato»
+sarebbero tornate a essere la stessa cosa.
+
 ## [3.33.0] — Il resoconto si vede (2026-09-14)
 
 La 3.32.0 ha scritto il resoconto e l'ha messo su una rotta. Questa lo mette
