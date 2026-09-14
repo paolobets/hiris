@@ -1,5 +1,72 @@
 # HIRIS — Changelog
 
+## [3.35.0] — Le operazioni dichiarano la FORMA di ciò che prendono (2026-09-14)
+
+La 3.34.0 ha chiuso i nomi, i parametri e il numero di ingressi. La casa,
+riaperta subito dopo, ha risposto:
+
+```
+riparazione: {"oggetti": "sollevata",
+              "perche": "AttributeError: 'list' object has no attribute 'windows'"}
+```
+
+**Restava la forma.** `tempo_in_stato` vuole un `Period`; la ricetta gli
+consegnava la serie di un'entità — una lista. Il validatore diceva di sì (un
+ingresso, nessun parametro obbligatorio) e il motore moriva un passo dopo.
+
+### Il vocabolario delle forme
+
+Ogni voce del registro dichiara ora `takes`: la forma di ciascun ingresso, da
+un vocabolario **chiuso** — `serie`, `misura`, `letture`, `periodo`, `elenco di
+misure`, `mappa di misure`. Due cancelli lo tengono onesto: tante forme quanti
+sono gli ingressi che `run` prende per posizione, e nessuna forma fuori dal
+vocabolario (un refuso come `"peridoo"` non combacerebbe mai, e l'operazione
+sarebbe rifiutata sempre, in silenzio).
+
+**Il punto non è l'elenco: è cosa una ricetta sa PRODURRE.** Dentro una
+ricetta esistono due sole sorgenti — `@entita` dà una serie, `$passo` dà una
+misura. Tutto il resto nessuna ricetta lo sa scrivere.
+
+### Nove operazioni su diciotto, e detto
+
+Da qui il catalogo offre solo ciò che è **raggiungibile**: nove. Le altre nove
+restano nel registro — il codice dell'aggregazione le usa — ma fuori
+dall'elenco mostrato al modello, perché offrirle sarebbe metterle lì perché le
+usi e farle rifiutare sempre.
+
+Non è una perdita nuova: **non erano mai state usabili**. Prima non lo diceva
+nessuno, e il modello ci è cascato al primo tentativo. Le due mancanze della
+lingua delle ricette — il periodo che non attraversa i passi, e l'elenco di
+misure che non si sa scrivere — sono in `docs/BACKLOG.md` col loro costo.
+
+### Il cancello più forte: si esegue
+
+Per **ogni** operazione offerta si costruisce la ricetta minima che la usa e la
+si fa girare con dati finti. Non deve sollevare: né `TypeError` (firma), né
+`AttributeError` (forma). Un «non calcolabile» va benissimo — è un esito, non
+un guasto.
+
+Ragionare su quali forme si incastrano non basta: è esattamente ciò che ho
+fatto arrivando alla 3.34.0, e il difetto successivo era già lì ad aspettare.
+Questa prova non ragiona, **prova**.
+
+### E due prove che non potevano fallire
+
+- il catalogo si controllava solo su `episodio`, che era già escluso per un
+  altro motivo: filtrare su `in_recipes` invece che su `offerable` restava
+  verde;
+- il controllo delle forme si fermava al primo ingresso senza che niente se ne
+  accorgesse: la ricetta veniva rifiutata lo stesso, per metà della ragione,
+  e il proprietario avrebbe corretto un errore per volta.
+
+Le ha trovate la mutazione, non la lettura. Otto mutazioni dichiarate ed
+**eseguite**: sei uccise subito, due sopravvissute e uccise dopo la
+riscrittura.
+
+Migrazione v5 del sapere: si rifa' la pulizia della v4 con il registro più
+severo — la ricetta che consegnava la forma sbagliata, la v4 non sapeva
+vederla.
+
 ## [3.34.0] — Il registro offriva ciò che il motore non sa eseguire (2026-09-14)
 
 **La domanda nuova ha risposto al primo colpo.** Aggiornata la casa alla
