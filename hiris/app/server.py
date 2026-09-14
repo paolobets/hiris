@@ -1479,6 +1479,67 @@ def _timezone_from_home_space_store(home_space_store) -> str | None:
     return home_space_store.reference_frame().get("fuso") if home_space_store else None
 
 
+async def _record_repair(app, ha_client, days, timezone, *, why: str) -> None:
+    """La riparazione degli oggetti si e' saltata: si DICE perche', e si
+    scrivono comunque i resoconti mancanti.
+
+    **Perche' l'esito si conserva.** Il difetto del 14/09/2026 e' stato
+    invisibile per due rilasci per una ragione sola: le quattro uscite
+    anticipate scrivevano il loro warning nel log dell'add-on, che da fuori
+    non si legge. La casa rispondeva «nessun resoconto» e non c'era nessuna
+    domanda che dicesse quale uscita fosse scattata. Ora `/api/health` lo
+    riporta, e la prossima volta la diagnosi costa una richiesta.
+    """
+    app["ultima_riparazione"] = {
+        "oggetti": "saltata", "perche": why, "giorni": days,
+        "resoconti_scritti": await _write_missing_reports(
+            app, ha_client, days, timezone)}
+
+
+async def _write_missing_reports(app, ha_client, days, timezone) -> list[str]:
+    """Il resoconto dei giorni che **non ne hanno uno**, e solo quelli.
+
+    La riparazione d'avvio ha quattro uscite anticipate, tutte per la regola
+    *«chi SOSTITUISCE non tollera il parziale»*: scrivere oggetti poveri sopra
+    oggetti ricchi e' un impoverimento, non una riparazione. La regola e'
+    giusta per gli oggetti.
+
+    **Per il resoconto e' il contrario, e si e' misurato dal vivo il
+    14/09/2026**: sulla casa vera non esisteva nessun resoconto, perche' una
+    di quelle uscite scattava a ogni avvio e l'unico altro scrittore e'
+    l'aggregazione delle 00:20. Un resoconto sa dire cio' che non ha potuto
+    calcolare -- «non calcolabile, e perche'», che e' il terzo innesco
+    dell'analista; un resoconto che non c'e' non dice niente, e non si
+    distingue da un giorno in cui non e' successo nulla.
+
+    **Ma l'asimmetria resta, spostata**: si scrivono solo i giorni che un
+    resoconto non ce l'hanno. Uno gia' scritto dalla notte ha anche le misure,
+    e sostituirlo con una cronaca nuda perche' stamattina la rete era giu'
+    sarebbe lo stesso impoverimento, su un altro strato. E' la stessa regola
+    di `store._migration_8` per gli oggetti storici.
+
+    Non solleva: e' una consolazione, non il lavoro principale, e non deve
+    poter far fallire un avvio.
+    """
+    archivio = app["observations"]
+    scritti: list[str] = []
+    for day in days:
+        try:
+            if archivio.report(day) is not None:
+                continue
+            ricette, serie, nomi = await _report_ingredients(
+                app, ha_client, giorno=day, timezone=timezone)
+            aggregate_day(
+                store=archivio, day=day, timezone=timezone,
+                recipes=ricette, series=serie, names=nomi, report_only=True)
+            scritti.append(day)
+        except Exception as error:
+            logger.warning(
+                "cervello: resoconto di %s non scritto durante la riparazione "
+                "(%s: %s)", day, type(error).__name__, error)
+    return scritti
+
+
 async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None:
     """All'avvio, riaggrega i due giorni pieni piu' recenti (oggi escluso:
     non e' ancora finito) **con gli stessi comprimari che costruirebbe
@@ -1647,6 +1708,8 @@ async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None
             "cervello: comprimari non costruiti, riparazione all'avvio "
             "saltata -- si riprova al prossimo riavvio (%s: %s)",
             type(error).__name__, error)
+        await _record_repair(app, ha_client, days, timezone,
+                             why=f"comprimari non costruiti ({type(error).__name__})")
         return
     if failed:
         # QUESTA funzione SOSTITUISCE (`replace_day`), non costruisce
@@ -1660,6 +1723,8 @@ async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None
             "cervello: comprimari parziali (%d falliti), riparazione "
             "all'avvio saltata per intero -- si riprova al prossimo riavvio",
             failed)
+        await _record_repair(app, ha_client, days, timezone,
+                             why=f"comprimari parziali ({failed} falliti)")
         return
     if "errore" in directions_map:
         # STESSA regola dei comprimari, e per la STESSA ragione (mandato,
@@ -1670,6 +1735,8 @@ async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None
             "cervello: direzioni dell'energia non lette, riparazione "
             "all'avvio saltata per intero -- si riprova al prossimo riavvio "
             "(%s)", directions_map["errore"])
+        await _record_repair(app, ha_client, days, timezone,
+                             why="direzioni dell'energia non lette")
         return
 
     # I bilanci -- **l'asimmetria dichiarata dal mandato**: «chi costruisce
@@ -1696,6 +1763,9 @@ async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None
                     "(%d dispositivi), riparazione all'avvio saltata per "
                     "intero -- si riprova al prossimo riavvio",
                     day, failed_balances)
+                await _record_repair(
+                    app, ha_client, days, timezone,
+                    why=f"bilanci non letti per {day} ({failed_balances} dispositivi)")
                 return
             balances_by_day[day] = bilanci
     except Exception as error:
@@ -1707,6 +1777,8 @@ async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None
             "cervello: bilanci non costruiti, riparazione all'avvio "
             "saltata -- si riprova al prossimo riavvio (%s: %s)",
             type(error).__name__, error)
+        await _record_repair(app, ha_client, days, timezone,
+                             why=f"bilanci non costruiti ({type(error).__name__})")
         return
 
     for day in days:
@@ -1734,6 +1806,8 @@ async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None
         logger.info(
             "cervello: riaggregati %s oggetti per %s (riparazione all'avvio)",
             count, day)
+    app["ultima_riparazione"] = {"oggetti": "fatta", "perche": None,
+                                 "giorni": days, "resoconti_scritti": []}
 
 
 def should_start_agent_worker(bridge_active: bool) -> bool:
@@ -5189,6 +5263,14 @@ async def _handle_health(request: web.Request) -> web.Response:
     # con una chiave a consumo (`apiKeySource: none` = abbonamento). E' `null`
     # finche' nessun turno e' passato: «non ancora visto» non e' «assente».
     from .agent.runner import last_bridge_init
+    # `riparazione` porta l'esito della riaggregazione d'avvio: se e' saltata,
+    # PERCHE', e quali resoconti ha scritto lo stesso. E' `null` finche' non e'
+    # girata. Nasce da un difetto rimasto invisibile per due rilasci
+    # (14/09/2026): le uscite anticipate scrivevano nel log dell'add-on, che da
+    # fuori non si legge, e la casa poteva solo dire «nessun resoconto» senza
+    # dire perche'. Stessa legge di `ponte` qui sopra -- un fatto che nessun
+    # file del repository puo' dire.
     return web.json_response({"status": "ok", "version": read_version(),
                               "build": request.app.get("build_stamp", ""),
-                              "ponte": last_bridge_init()})
+                              "ponte": last_bridge_init(),
+                              "riparazione": request.app.get("ultima_riparazione")})

@@ -62,6 +62,13 @@ async def test_health_endpoint(client):
     data = await resp.json()
     assert data["status"] == "ok"
     assert data["version"] == _cfg_version()
+    # `riparazione`: null finche' la riaggregazione d'avvio non e' girata --
+    # «non ancora vista» non e' «andata bene», la stessa legge di `ponte`.
+    # La CHIAVE dev'esserci comunque: e' la domanda che il 14/09/2026 non si
+    # poteva fare, e un `null` dice gia' qualcosa (non e' girata).
+    # Mutazione: togliere la chiave da `_handle_health` -- rossa.
+    assert "riparazione" in data
+    assert data["riparazione"] is None
 
 
 # fetta E4 Task 4 ("un bot solo"): test_status_endpoint esercitava

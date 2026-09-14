@@ -593,7 +593,8 @@ def build_balance_body(*, series: dict[str, list[dict]],
 
 def aggregate_day(*, store, day: str, timezone: str | None,
                          companions=None, directions=None, balances=None,
-                         recipes=None, series=None, names=None) -> int:
+                         recipes=None, series=None, names=None,
+                         report_only: bool = False) -> int:
     """Costruisce gli oggetti di un giorno. Torna quanti ne ha scritti.
 
     **Idempotente**: rifare un giorno lo SOSTITUISCE, non lo accoda. Gli
@@ -1142,5 +1143,21 @@ def aggregate_day(*, store, day: str, timezone: str | None,
         store.replace_report(day, build_report(
             day=day, episodes=episodes, series=series or {},
             recipes=recipes, names=names or {}))
+
+    # **`report_only`: si scrive il resoconto e si lasciano stare gli
+    # oggetti.** Serve alla riparazione d'avvio, che ha quattro uscite
+    # anticipate -- comprimari falliti, direzioni non lette, bilanci non letti
+    # -- tutte per la regola «chi SOSTITUISCE non tollera il parziale».
+    # Quella regola e' giusta per gli oggetti e SBAGLIATA per il resoconto:
+    # misurato dal vivo il 14/09/2026, sulla casa vera non esisteva nessun
+    # resoconto perche' una di quelle uscite scattava a ogni avvio. Un
+    # resoconto sa dire cio' che non ha potuto calcolare; uno che non c'e'
+    # non dice niente, e non si distingue da un giorno in cui non e' successo
+    # nulla.
+    #
+    # **Muore con gli `oggetti`** (spec §13): tolto quello strato non c'e'
+    # piu' niente da NON toccare, e questo parametro non ha piu' un contrario.
+    if report_only:
+        return len(episodes)
 
     return store.replace_day(day, built)

@@ -2719,3 +2719,122 @@ def test_la_riparazione_all_avvio_riscrive_anche_il_RESOCONTO_dei_due_giorni(tmp
         assert archivio.report("2026-08-24") is None
     finally:
         archivio.close()
+
+def test_comprimari_falliti_saltano_gli_OGGETTI_ma_NON_il_resoconto(tmp_path):
+    """**La regola delle uscite anticipate vale per gli oggetti, non per il
+    resoconto.**
+
+    Trovato dal vivo il 14/09/2026: sulla casa vera, dopo l'aggiornamento alla
+    3.33.1, `GET /api/mind/report` tornava ancora `{"resoconti": []}`. La
+    riparazione ha quattro uscite -- comprimari falliti, direzioni non lette,
+    bilanci non letti -- e tutte tornano PRIMA di scrivere. Sono giuste per
+    gli oggetti («chi sostituisce non tollera il parziale»); per il resoconto
+    significano che su quella casa non ne sarebbe mai nato nessuno.
+
+    Mutazione: togliere la scrittura dei resoconti mancanti dal ramo dei
+    comprimari falliti -- rossa su `assert archivio.report(...) is not None`.
+    """
+    from datetime import datetime, timedelta
+
+    from hiris.app.mind.store import ObservationsStore
+
+    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
+    try:
+        oggi = datetime(2026, 8, 24, tzinfo=UTC)
+        for delta, soggetto in ((2, "l_altro_ieri"), (1, "ieri")):
+            quando = (oggi - timedelta(days=delta)).replace(hour=10)
+            archivio.record(quando_ts=quando.timestamp(), source="entita",
+                            subject=f"light.{soggetto}", da="off", a="on")
+
+        # Ogni soggetto fallisce: `build_companions` li conta tutti come
+        # falliti, e la riparazione degli oggetti si salta per intero.
+        rotto = _ClienteLegami(default={"errore": "rete giu'"})
+        asyncio.run(server.reaggregate_last_two_days(
+            {"home_space_store": None, "observations": archivio,
+             "knowledge": _sapere(tmp_path)}, ha_client=rotto,
+            now=lambda tz: oggi.astimezone(tz)))
+
+        # Gli oggetti NON si scrivono: la regola regge.
+        assert archivio.facts(limit=10) == []
+        # Il resoconto SI'.
+        for giorno in ("2026-08-22", "2026-08-23"):
+            scritto = archivio.report(giorno)
+            assert scritto is not None, f"il resoconto di {giorno} manca"
+    finally:
+        archivio.close()
+
+
+def test_un_resoconto_che_c_e_gia_NON_si_sostituisce_con_uno_povero(tmp_path):
+    """La stessa asimmetria, applicata al resoconto: un giorno che ha gia' il
+    suo -- scritto dalla notte, con le misure -- non si riscrive con una
+    cronaca nuda perche' stamattina la rete era giu'. E' la regola che usa
+    anche `_migration_8` per gli oggetti storici.
+
+    Mutazione: scrivere sempre invece che solo i mancanti -- rossa su
+    `assert scritto["cronaca"][0]["chi"] == "gia-scritto"`.
+    """
+    from datetime import datetime, timedelta
+
+    from hiris.app.mind.store import ObservationsStore
+
+    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
+    try:
+        oggi = datetime(2026, 8, 24, tzinfo=UTC)
+        for delta, soggetto in ((2, "l_altro_ieri"), (1, "ieri")):
+            quando = (oggi - timedelta(days=delta)).replace(hour=10)
+            archivio.record(quando_ts=quando.timestamp(), source="entita",
+                            subject=f"light.{soggetto}", da="off", a="on")
+        archivio.replace_report("2026-08-22", {
+            "giorno": "2026-08-22", "misure": [{"soggetto": "x", "misura": "y",
+                                                "valore": 1, "unita": "kWh",
+                                                "copertura": 1.0}],
+            "cronaca": [{"chi": "gia-scritto"}]})
+
+        rotto = _ClienteLegami(default={"errore": "rete giu'"})
+        asyncio.run(server.reaggregate_last_two_days(
+            {"home_space_store": None, "observations": archivio,
+             "knowledge": _sapere(tmp_path)}, ha_client=rotto,
+            now=lambda tz: oggi.astimezone(tz)))
+
+        scritto = archivio.report("2026-08-22")
+        assert scritto["cronaca"][0]["chi"] == "gia-scritto"
+        assert scritto["misure"], "le misure del resoconto vero non si perdono"
+    finally:
+        archivio.close()
+
+
+def test_la_riparazione_DICE_com_e_andata_e_la_salute_lo_riporta(tmp_path):
+    """**Il difetto e' stato invisibile per due rilasci perche' non c'era modo
+    di chiederlo.** La riparazione scriveva i suoi quattro warning nel log
+    dell'add-on, che da fuori non si legge: la casa rispondeva «nessun
+    resoconto» e non c'era niente che dicesse perche'.
+
+    Ora l'esito resta in `app["ultima_riparazione"]`, e `/api/health` lo
+    riporta: una domanda sola, e si sa quale uscita e' scattata.
+
+    Mutazione: non scrivere `app["ultima_riparazione"]` nel ramo dei
+    comprimari falliti -- rossa.
+    """
+    from datetime import datetime, timedelta
+
+    from hiris.app.mind.store import ObservationsStore
+
+    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
+    try:
+        oggi = datetime(2026, 8, 24, tzinfo=UTC)
+        quando = (oggi - timedelta(days=1)).replace(hour=10)
+        archivio.record(quando_ts=quando.timestamp(), source="entita",
+                        subject="light.ieri", da="off", a="on")
+        app = {"home_space_store": None, "observations": archivio,
+               "knowledge": _sapere(tmp_path)}
+
+        asyncio.run(server.reaggregate_last_two_days(
+            app, ha_client=_ClienteLegami(default={"errore": "rete giu'"}),
+            now=lambda tz: oggi.astimezone(tz)))
+
+        esito = app["ultima_riparazione"]
+        assert esito["oggetti"] == "saltata"
+        assert "comprimari" in esito["perche"]
+        assert esito["resoconti_scritti"] == ["2026-08-22", "2026-08-23"]
+    finally:
+        archivio.close()

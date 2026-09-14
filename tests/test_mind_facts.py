@@ -1574,3 +1574,58 @@ def test_un_episodio_cominciato_ieri_e_finito_oggi_si_chiude_con_l_inizio_vero(a
 
     oggetto = archivio.facts(day=G)[0]
     assert (oggetto["inizio_ts"], oggetto["fine_ts"]) == (ieri, ts(7))
+
+def test_report_only_scrive_il_resoconto_e_NON_tocca_gli_oggetti(archivio):
+    """**Il resoconto assente e' peggio del resoconto parziale.**
+
+    La riparazione all'avvio ha quattro uscite anticipate -- comprimari
+    falliti, direzioni non lette, bilanci non letti -- e tutte e quattro
+    esistono per una regola sola: *chi SOSTITUISCE non tollera il parziale*,
+    perche' scrivere oggetti poveri sopra oggetti ricchi e' un
+    impoverimento. La regola e' giusta **per gli oggetti**.
+
+    Per il resoconto e' il contrario, e si e' visto dal vivo il 14/09/2026:
+    sulla casa vera non esisteva **nessun** resoconto, perche' una di quelle
+    uscite scattava a ogni avvio. Un resoconto ha gia' le parole per dire cio'
+    che non ha potuto calcolare -- «non calcolabile, e perche'» -- mentre un
+    resoconto che non c'e' non dice niente, e l'analista non puo' distinguerlo
+    da un giorno in cui non e' successo nulla.
+
+    Quindi: si scrive il resoconto **senza** toccare gli oggetti.
+
+    Mutazione: far scrivere anche gli oggetti a `report_only` (togliere il
+    ramo) -- rossa su `assert archivio.facts(day=G) == []`.
+    """
+    archivio.record(quando_ts=ts(15, 30), source="entita",
+                    subject="climate.camera_t", da="off", a="heat")
+    archivio.record(quando_ts=ts(17, 5), source="entita",
+                    subject="climate.camera_t", da="heat", a="off")
+
+    quanti = aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
+                           recipes={}, series={}, names={}, report_only=True)
+
+    assert quanti == 1, "torna le voci di cronaca, come il giro normale"
+    assert archivio.facts(day=G) == [], "gli oggetti NON si toccano"
+    scritto = archivio.report(G)
+    assert scritto is not None
+    assert scritto["cronaca"][0]["chi"] == "climate.camera_t"
+    assert scritto["cronaca"][0]["cosa"] == "heat"
+
+
+def test_report_only_senza_ricette_non_scrive_niente(archivio):
+    """`recipes=None` resta «questo chiamante non porta le ricette», e in quel
+    caso non c'e' niente da scrivere: un resoconto con meta' delle misure
+    vuota per una ragione che non riguarda la casa direbbe il falso. Con
+    `report_only` non c'e' nemmeno l'oggetto a fare da consolazione, quindi la
+    combinazione non deve scrivere -- non deve scrivere un resoconto MUTO.
+
+    Mutazione: scrivere comunque quando `recipes is None` -- rossa.
+    """
+    archivio.record(quando_ts=ts(15, 30), source="entita",
+                    subject="climate.camera_t", da="off", a="heat")
+
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
+                  report_only=True)
+
+    assert archivio.report(G) is None
+    assert archivio.facts(day=G) == []
