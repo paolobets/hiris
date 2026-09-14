@@ -1,5 +1,59 @@
 # HIRIS — Changelog
 
+## [3.40.0] — Le misure in serie, la forma in cui l'analista legge (2026-09-15)
+
+Il primo pezzo dell'analista (§10), e comincia da una **misura che mi ha
+smentito due volte**.
+
+### Il costo, misurato e poi corretto
+
+I resoconti sono organizzati **per giorno**; l'analista legge **per misura**.
+Sui venti giorni veri della casa:
+
+| forma | 30 giorni |
+|---|---:|
+| i resoconti come sono | ~47.600 token |
+| pivotati per misura | 44.163 token |
+| **più i «perché» raggruppati** | **18.150 token** |
+
+La mia prima stima diceva 6.700, e **era sbagliata**: ignorava i `perché`. La
+misura vera ha detto che **sono il 66% del peso**, ed erano ripetizioni — 36
+serie ripetevano la stessa frase 17 volte, tre la ripetevano 20.
+
+E non è solo peso: *«non si calcola dal 26/08 all'11/09, per questa ragione»*
+è il terzo innesco detto bene; diciassette righe identiche lo seppelliscono.
+
+### Tre scelte, e nessuna nascosta
+
+- **Un valore composto diventa PIÙ serie.** `media_min_max` torna `{media,
+  minimo, massimo}`: mettere in serie «la media» sarebbe una regola che
+  nessuno ha dichiarato, e sarebbe sbagliata — media, minimo e massimo sono
+  tre storie diverse, e «il massimo di rumore è salito» vale quanto «la media
+  è salita».
+- **Un giorno senza quella misura resta un BUCO**, non sparisce: è il terzo
+  innesco, ed è esattamente il modo in cui «`bilancio` a zero per cinque
+  giorni» è rimasto invisibile.
+- **Due ragioni diverse restano due tratti**, e un buco che si riapre dopo un
+  giorno buono è un tratto **nuovo**: raggruppare è comprimere, non
+  appiattire.
+
+### Verificato sui dati veri
+
+```
+co2_stats.media (ppm): 3/20 giorni
+    buco 2026-08-26 → 2026-09-11: «la serie è vuota»
+```
+
+Una riga sola, e quel buco che si chiude il 12/09 **è la fetta delle 56
+entità che atterra**. La serie racconta da sé la storia di ieri.
+
+Otto mutazioni dichiarate ed **eseguite**, tutte uccise. 4198 prove Python,
+423 JS, ruff, oxlint, censimento.
+
+**Cancello dei componenti**: la CLI del ponte segnala 2.1.270 → 2.1.271.
+Dichiarato e rimandato al rilascio successivo, per la regola del proprietario
+— una patch della CLI non si alza al volo dentro un rilascio che parla d'altro.
+
 ## [3.39.0] — L'obiettivo si può finalmente scrivere (2026-09-14)
 
 **«Ma come lo scrivo io?»** — la domanda del proprietario, e la risposta
