@@ -149,16 +149,62 @@ class Recipe:
                     "un riferimento a quel nome sarebbe ambiguo, e l'ambiguita' "
                     "non si risolve indovinando")
             operation = str(step.get("operation") or "").strip()
-            if operation not in REGISTRY:
-                problems.append(
-                    f"il passo «{name or number}» nomina l'operazione "
-                    f"«{operation}», che non esiste nel registro")
+            problems.extend(self._problemi_operazione(
+                operation, name or str(number), step.get("params"),
+                step.get("inputs")))
             for given in step.get("inputs") or []:
                 problems.extend(self._problemi_ingresso(
                     given, name or str(number), seen, entities))
             if name:
                 seen.add(name)
         return Validation(problems)
+
+    @staticmethod
+    def _problemi_operazione(operation: str, step_name: str, params,
+                             inputs) -> list[str]:
+        """Quattro domande sull'operazione di un passo, e si fanno **tutte**.
+
+        1. **esiste?** -- un nome fuori dal registro;
+        2. **si puo' scrivere in una ricetta?** -- il registro e' il
+           vocabolario del prodotto, e ne contiene voci che un dato non puo'
+           portare: `episodio` vuole `is_on`, che e' una funzione. Prima del
+           14/09/2026 questo controllo non c'era, il catalogo mostrava tutto al
+           modello, e la prima ricetta che il modello abbia mai scritto ha
+           ucciso la riaggregazione di due giorni con un `TypeError`;
+        3. **ha i parametri obbligatori?** -- `somma_periodo` senza `unit`
+           solleverebbe a meta' giornata invece di essere rifiutata prima di
+           eseguire, che e' l'unica cosa che rende una ricetta un dato invece
+           che codice;
+        4. **quanti ingressi?** -- `quota` prende due cose; con tre, di nuovo
+           `TypeError`.
+
+        Le tre risposte che dipendono dalla forma di `run` si leggono dalla
+        FIRMA (`required_params`, `input_range`), mai da un elenco scritto a
+        mano accanto a essa: quello diverge al primo ritocco, ed e' la classe
+        di difetto che questo progetto ha gia' pagato piu' volte.
+        """
+        if operation not in REGISTRY:
+            return [(f"il passo «{step_name}» nomina l'operazione "
+                     f"«{operation}», che non esiste nel registro")]
+        entry = REGISTRY[operation]
+        if not entry.in_recipes:
+            return [(f"il passo «{step_name}» nomina l'operazione "
+                     f"«{operation}», che **non si puo' scrivere in una ricetta**: "
+                     "vuole un valore che un dato non sa portare (una funzione, o "
+                     "un periodo da calcolare). Esiste nel registro perche' la usa "
+                     "il codice dell'aggregazione, non una ricetta")]
+        given_params = params if isinstance(params, dict) else {}
+        found = [f"il passo «{step_name}» non da' il parametro obbligatorio "
+                    f"«{n}», che «{operation}» pretende"
+                 for n in entry.required_params if n not in given_params]
+        least, most = entry.input_range
+        given_count = len(inputs) if isinstance(inputs, (list, tuple)) else 0
+        if not (least <= given_count <= most):
+            wanted = (f"{least}" if least == most else f"da {least} a {most}")
+            found.append(
+                f"il passo «{step_name}» consegna {given_count} ingressi a "
+                f"«{operation}», che ne vuole {wanted}")
+        return found
 
     @staticmethod
     def _problemi_ingresso(given, step_name: str, seen: set[str],

@@ -363,3 +363,41 @@ def test_un_rifiuto_porta_COSA_HA_DETTO_il_modello(sapere):
 
     riga = sapere.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD)
     assert "contatore dell'acqua" in riga.evidence
+
+def test_il_catalogo_NON_offre_al_modello_cio_che_una_ricetta_non_puo_scrivere():
+    """Il modello ha scritto la sua prima ricetta il 14/09/2026 usando
+    `episodio`, e non e' colpa sua: gliel'avevamo messa nell'elenco. Offrire
+    un'operazione che il validatore rifiutera' sempre brucia un giro e lascia
+    il dispositivo senza ricetta per sempre (`devices_to_ask` non richiede chi
+    una risposta l'ha gia' data).
+
+    Mutazione: togliere il filtro `in_recipes` da `_operations_catalogue` --
+    rossa.
+    """
+    catalogo = rt._operations_catalogue()
+    assert "episodio" not in catalogo
+    assert "somma_periodo" in catalogo
+
+
+def test_il_catalogo_DICE_quali_parametri_sono_obbligatori():
+    """Elencare l'operazione senza dire cosa pretende e' meta' informazione: il
+    modello scrive `somma_periodo` senza `unit`, il validatore rifiuta, e il
+    giro e' bruciato lo stesso. I parametri si leggono dalla FIRMA, quindi
+    l'elenco non puo' divergere da cio' che il motore chiede davvero.
+
+    Mutazione: non scrivere i parametri obbligatori nel catalogo -- rossa.
+    """
+    catalogo = rt._operations_catalogue()
+    riga = [r for r in catalogo.splitlines() if r.startswith("- `somma_periodo`")]
+    assert riga, catalogo
+    # **`"unit" in riga` NON basta, e la mutazione l'ha dimostrato**: la riga
+    # contiene gia' «l'unita' del contatore» fra gli ingressi, e `unit` ne e'
+    # un pezzo. Il test passava anche togliendo del tutto i parametri dal
+    # catalogo -- un test che non puo' fallire. Si asserisce la FRASE che li
+    # annuncia e il nome fra backtick, che e' la forma in cui li scriviamo.
+    assert "parametri obbligatori" in riga[0], riga[0]
+    assert "`unit`" in riga[0], riga[0]
+    # E un'operazione senza parametri obbligatori non si porta dietro una
+    # formula vuota: sarebbe rumore su diciassette righe su diciotto.
+    riga_quota = [r for r in catalogo.splitlines() if r.startswith("- `quota`")]
+    assert "parametri obbligatori" not in riga_quota[0], riga_quota

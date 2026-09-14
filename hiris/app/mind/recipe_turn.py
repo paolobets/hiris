@@ -172,8 +172,26 @@ def _operations_catalogue() -> str:
 
     lines = []
     for name, operation in REGISTRY.items():
-        lines.append(f"- `{name}`: prende {', '.join(operation.inputs)}; "
-                     f"restituisce {operation.returns}")
+        # **Solo cio' che una ricetta puo' davvero scrivere.** Il registro e' il
+        # vocabolario del prodotto e contiene voci che un dato non sa portare
+        # (`episodio` vuole `is_on`, una funzione). Offrirle qui e' una trappola:
+        # il modello le usa, il validatore le rifiuta sempre, il giro e' bruciato
+        # e il dispositivo resta senza ricetta per sempre -- `devices_to_ask` non
+        # richiede a chi una risposta l'ha gia' data. Misurato dal vivo il
+        # 14/09/2026: la prima ricetta che il modello abbia mai scritto.
+        if not operation.in_recipes:
+            continue
+        entry = (f"- `{name}`: prende {', '.join(operation.inputs)}; "
+                f"restituisce {operation.returns}")
+        # E si dice cosa PRETENDE. Elencare l'operazione senza i suoi parametri
+        # obbligatori e' meta' informazione: il modello scrive `somma_periodo`
+        # senza `unit`, il validatore rifiuta, e il giro e' bruciato lo stesso.
+        # Si leggono dalla firma di `run`, quindi non possono divergere da cio'
+        # che il motore chiede davvero.
+        if operation.required_params:
+            entry += ("; vuole i parametri obbligatori "
+                     + ", ".join(f"`{n}`" for n in operation.required_params))
+        lines.append(entry)
     return "\n".join(lines)
 
 

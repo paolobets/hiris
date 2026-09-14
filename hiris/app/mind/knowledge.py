@@ -37,6 +37,7 @@ colonna in piu' potrebbe divergere da lui.
 """
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time as _time
@@ -262,7 +263,69 @@ def _migration_3(conn) -> None:
             "capito» di un modello mai interpellato", cur.rowcount)
 
 
-_SCHEMA_VERSION = 3
+def _migration_4(conn) -> None:
+    """v3 -> v4: si tolgono le ricette che il registro **non sa piu' eseguire**.
+
+    **La prima ricetta che il modello abbia mai scritto era ineseguibile, e non
+    per colpa sua.** Il catalogo che le si mostrava elencava ogni voce del
+    registro, `episodio` compresa -- e `episodio` vuole `is_on`, che e' una
+    FUNZIONE, che nessun dato puo' portare. La validazione di allora guardava
+    solo che il nome esistesse: accettata, scritta, e il resoconto l'ha
+    eseguita. Misurato sulla casa vera il 14/09/2026:
+
+        riparazione: {"oggetti": "sollevata",
+                      "perche": "TypeError: _episode() missing 2 required
+                                 keyword-only arguments: 'is_on' and 'period_end'"}
+
+    e la riaggregazione moriva a ogni riavvio, portandosi via oggetti e
+    resoconti di due giorni.
+
+    La validazione nuova la rifiuta, quindi il giorno non muore piu'. Ma la
+    riga resterebbe li' per sempre: `devices_to_ask` non richiede a chi una
+    risposta l'ha gia' data, e quel dispositivo non avrebbe una ricetta mai
+    piu'. Si toglie, e il giro dopo lo richiede -- con un catalogo che non
+    offre piu' cio' che non si puo' scrivere.
+
+    **Si guarda solo cio' che non dipende dalla casa.** La validazione completa
+    vuole le entita' del dispositivo, che una migrazione non ha; consegnandole
+    quelle che la ricetta stessa nomina restano in piedi esattamente i
+    controlli sull'operazione -- esiste, si puo' scrivere, ha i parametri, ha
+    gli ingressi giusti -- che sono quelli che questa riparazione riguarda. Una
+    ricetta che nomina un'entita' sparita non si cancella: quella e' una
+    domanda sulla casa di oggi, non sul registro.
+
+    Non e' un'eccezione alla regola «mai dati dell'utente», per la stessa
+    ragione di `_migration_3`: sono righe che questo programma ha scritto su se
+    stesso, sbagliando.
+    """
+    from .recipes import Recipe
+
+    # Il nome del campo e' scritto qui e non importato da `recipe_turn`: quel
+    # modulo importa questo, e una migrazione deve dire fra due anni la stessa
+    # cosa che dice adesso -- anche se quella costante venisse rinominata.
+    rows = conn.execute(
+        "SELECT rowid, subject, value FROM knowledge WHERE field = 'ricetta'"
+    ).fetchall()
+    doomed = []
+    for row in rows:
+        try:
+            data = json.loads(row["value"])
+        except (TypeError, ValueError):
+            doomed.append((row["rowid"], row["subject"], "non e' JSON"))
+            continue
+        recipe = Recipe(data)
+        outcome = recipe.validate(entities=recipe.entities())
+        if not outcome.valid:
+            doomed.append((row["rowid"], row["subject"],
+                           " \u00b7 ".join(outcome.problems)))
+    for rowid, subject, why in doomed:
+        conn.execute("DELETE FROM knowledge WHERE rowid = ?", (rowid,))
+        logger.info(
+            "sapere: ricetta di %s tolta -- il registro non sa eseguirla: %s",
+            subject, why)
+
+
+_SCHEMA_VERSION = 4
 
 _COLUMNS = ("subject_kind", "subject", "field", "value", "provenance",
             "verification", "evidence", "source", "who", "when_ts")
@@ -306,7 +369,8 @@ class KnowledgeStore:
         self._lock = threading.Lock()
         self._conn = connect(db_path)
         init_schema(self._conn, _SCHEMA, version=_SCHEMA_VERSION,
-                    migrations={2: _migration_2, 3: _migration_3})
+                    migrations={2: _migration_2, 3: _migration_3,
+                                4: _migration_4})
 
     def close(self) -> None:
         with self._lock:

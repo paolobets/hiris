@@ -7,6 +7,8 @@ gia' pagato sei volte, e il modo di non rifarlo non e' ricordarselo: e' un
 costruttore che non lascia nascere una riga sbagliata -- la disciplina di
 `home_space/type_vocabulary.Field`, che non si costruisce senza provenienza.
 """
+import json
+
 import pytest
 
 from hiris.app.mind import knowledge as sap
@@ -364,3 +366,82 @@ def test_un_seme_di_PRIORITA_BASSA_non_tocca_quello_del_repo(sapere):
 
     [riga] = sapere.read(subject_kind="integrazione", subject="zcsazzurro")
     assert riga.value == "la frase del repo"
+
+def test_migration_4_toglie_le_ricette_che_il_registro_rifiuta(tmp_path):
+    """**La prima ricetta che il modello abbia mai scritto era ineseguibile**,
+    e non per colpa sua: gliel'avevamo offerta noi. Il 14/09/2026 la casa vera
+    rispondeva
+
+        riparazione: {"oggetti": "sollevata",
+                      "perche": "TypeError: _episode() missing 2 required
+                                 keyword-only arguments: 'is_on' and 'period_end'"}
+
+    e la riaggregazione moriva a ogni riavvio.
+
+    La validazione nuova la rifiuta, quindi il resoconto non muore piu'. Ma la
+    riga resterebbe nel sapere per sempre, e `devices_to_ask` non richiede a chi
+    una risposta l'ha gia' data: quel dispositivo non avrebbe una ricetta mai
+    piu'. **Si toglie**, e il giro successivo lo richiede -- stavolta con un
+    catalogo che non offre cio' che non si puo' scrivere.
+
+    Non e' un'eccezione alla regola «mai dati dell'utente», per la stessa
+    ragione di `_migration_3`: e' una riga che questo programma ha scritto su se
+    stesso, sbagliando.
+
+    Mutazione: togliere `4: _migration_4` dal dizionario `migrations` -- il
+    test torna rosso su `assert rimaste == ["dev_buono"]`.
+    """
+    percorso = str(tmp_path / "sapere.db")
+    sapere = sap.KnowledgeStore(percorso)
+    buona = {"why": "quanto ha prodotto", "steps": [
+        {"name": "totale", "operation": "somma_periodo",
+         "inputs": ["@sensor.p"], "params": {"unit": "kWh"}}]}
+    storta = {"why": "quanto e' stato acceso", "steps": [
+        {"name": "acceso", "operation": "episodio", "inputs": ["@climate.x"]}]}
+    for soggetto, dati in (("dev_buono", buona), ("dev_storto", storta)):
+        sapere.write(sap.Fact(subject_kind="dispositivo", subject=soggetto,
+                          field="ricetta", value=json.dumps(dati),
+                          provenance="dedotto",
+                          evidence="il dispositivo con le sue entita'",
+                          who="modello", when_ts=1.0))
+    # Si riporta lo schema indietro, come farebbe l'archivio del proprietario
+    # prima dell'aggiornamento.
+    sapere._conn.execute("PRAGMA user_version = 3")
+    sapere._conn.commit()
+    sapere.close()
+
+    riaperto = sap.KnowledgeStore(percorso)
+    rimaste = sorted(r["subject"] for r in riaperto._conn.execute(
+        "SELECT subject FROM knowledge WHERE field = 'ricetta'").fetchall())
+    assert rimaste == ["dev_buono"]
+    riaperto.close()
+
+
+def test_migration_4_non_tocca_una_ricetta_che_si_puo_ancora_eseguire(tmp_path):
+    """Il contrario della precedente, detto da solo: una ricetta valida resta,
+    con il suo contenuto intatto. Cancellare il sapere buono per riguadagnare
+    cio' che c'era gia' sarebbe il danno peggiore dei due.
+
+    Mutazione: cancellare tutte le righe `ricetta` invece delle sole rifiutate
+    -- rossa.
+    """
+    percorso = str(tmp_path / "sapere.db")
+    sapere = sap.KnowledgeStore(percorso)
+    buona = {"why": "quanto ha prodotto", "steps": [
+        {"name": "totale", "operation": "somma_periodo",
+         "inputs": ["@sensor.p"], "params": {"unit": "kWh"}}]}
+    sapere.write(sap.Fact(subject_kind="dispositivo", subject="dev_buono",
+                      field="ricetta", value=json.dumps(buona),
+                      provenance="dedotto",
+                      evidence="il dispositivo con le sue entita'",
+                      who="modello", when_ts=1.0))
+    sapere._conn.execute("PRAGMA user_version = 3")
+    sapere._conn.commit()
+    sapere.close()
+
+    riaperto = sap.KnowledgeStore(percorso)
+    righe = riaperto._conn.execute(
+        "SELECT value FROM knowledge WHERE subject = 'dev_buono'").fetchall()
+    assert len(righe) == 1
+    assert json.loads(righe[0]["value"]) == buona
+    riaperto.close()

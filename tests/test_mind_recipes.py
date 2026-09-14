@@ -228,3 +228,129 @@ def test_le_entita_che_la_ricetta_NOMINA_si_leggono_senza_eseguirla():
         {"name": "c", "operation": "differenza_fra", "inputs": ["$a", "$b"]}]})
 
     assert r.entities() == {"sensor.prodotta", "sensor.consumata"}
+
+# ── Il difetto del 14/09/2026: il registro offriva ciò che il motore non sa
+#    eseguire ──────────────────────────────────────────────────────────────
+#
+# Trovato dal vivo. `GET /api/health` diceva:
+#
+#   riparazione: {"oggetti": "sollevata",
+#                 "perche": "TypeError: _episode() missing 2 required
+#                            keyword-only arguments: 'is_on' and 'period_end'"}
+#
+# La catena, quattro anelli:
+#
+# 1. il catalogo mostrato al modello elencava OGNI voce del registro, `episodio`
+#    compresa -- e `is_on` e' una FUNZIONE, che nessun JSON puo' portare;
+# 2. il modello ha scritto la sua prima ricetta usando `episodio`;
+# 3. `validate()` controllava solo che il nome fosse nel registro: accettata,
+#    e scritta nel sapere;
+# 4. il resoconto la eseguiva senza validarla: `TypeError`, che nessuno
+#    catturava, e l'intera riaggregazione moriva -- oggetti e resoconti di due
+#    giorni, a ogni riavvio, per sempre.
+
+
+def test_una_ricetta_che_nomina_un_operazione_NON_scrivibile_si_rifiuta():
+    """`episodio` resta nel registro -- `aggregate_day` lo usa -- ma non e'
+    scrivibile in una ricetta: `is_on` e' una funzione, e un dato non porta
+    funzioni. Il rifiuto dice PERCHE', o il modello riproverebbe.
+
+    Mutazione: togliere il controllo su `in_recipes` da `validate` -- rossa.
+    """
+    ricetta = ric.Recipe({"why": "quanto e' stato acceso",
+                      "steps": [{"name": "acceso", "operation": "episodio",
+                                 "inputs": ["@climate.x"]}]})
+    esito = ricetta.validate(entities={"climate.x"})
+    assert not esito.valid
+    assert any("episodio" in p and "non si puo' scrivere in una ricetta" in p
+               for p in esito.problems), esito.problems
+
+
+def test_una_ricetta_che_non_da_un_parametro_OBBLIGATORIO_si_rifiuta():
+    """`somma_periodo` vuole `unit`: senza, il motore solleverebbe `TypeError`
+    a meta' giornata invece di rifiutare prima di eseguire -- che e' l'unica
+    cosa che rende le ricette un dato invece che codice.
+
+    Mutazione: togliere il controllo sui parametri obbligatori -- rossa.
+    """
+    ricetta = ric.Recipe({"why": "il totale", "steps": [
+        {"name": "totale", "operation": "somma_periodo", "inputs": ["@sensor.x"]}]})
+    esito = ricetta.validate(entities={"sensor.x"})
+    assert not esito.valid
+    assert any("unit" in p for p in esito.problems), esito.problems
+
+
+def test_i_parametri_facoltativi_non_si_pretendono():
+    """`expected_parts` ha un valore di fabbrica: pretenderlo trasformerebbe
+    il cancello in rumore, e un cancello che grida sempre si spegne.
+
+    Mutazione: pretendere anche i parametri con un default -- rossa.
+    """
+    ricetta = ric.Recipe({"why": "il totale", "steps": [
+        {"name": "totale", "operation": "somma_periodo", "inputs": ["@sensor.x"],
+         "params": {"unit": "kWh"}}]})
+    assert ricetta.validate(entities={"sensor.x"}).valid
+
+
+def test_tutte_le_operazioni_OFFERTE_al_modello_sono_eseguibili_da_una_ricetta():
+    """**Il cancello della classe.** Il difetto non e' stato «`episodio` era
+    nel catalogo»: e' stato che nessuno verificava che catalogo ed esecutore
+    dicessero la stessa cosa. Un'operazione offerta al modello i cui parametri
+    obbligatori un JSON non sa portare e' una trappola che aspetta.
+
+    Un parametro obbligatorio e' portabile da una ricetta solo se il suo valore
+    e' un letterale JSON. Una funzione (`is_on`) non lo e'; un `Period` neanche
+    -- va calcolato da un passo, e i passi si passano come `inputs`
+    POSIZIONALI, non come parametri.
+
+    Mutazione: rimettere `in_recipes=True` su `episodio` -- rossa.
+    """
+    import inspect
+
+    from hiris.app.mind.operations import REGISTRY
+
+    valori_esclusi = {"is_on", "period", "period_end"}
+    colpevoli = []
+    for name, operation in REGISTRY.items():
+        if not operation.in_recipes:
+            continue
+        firma = inspect.signature(operation.run)
+        for p in firma.parameters.values():
+            if (p.kind is p.KEYWORD_ONLY and p.default is p.empty
+                    and p.name in valori_esclusi):
+                colpevoli.append(f"{name}.{p.name}")
+    assert colpevoli == [], (
+        "offerte al modello ma non eseguibili da una ricetta: " + ", ".join(colpevoli))
+
+def test_una_ricetta_con_TROPPI_ingressi_si_rifiuta():
+    """Stessa classe del difetto del 14/09: `quota` prende due cose, e con tre
+    il motore solleverebbe `TypeError` a meta' giornata. Il conto degli
+    ingressi si legge dalla FIRMA, come i parametri.
+
+    Mutazione: togliere il controllo sul numero di ingressi -- rossa.
+    """
+    r = ric.Recipe({"why": "x", "steps": [
+        {"name": "a", "operation": "somma_periodo", "inputs": ["@sensor.x"],
+         "params": {"unit": "kWh"}},
+        {"name": "b", "operation": "somma_periodo", "inputs": ["@sensor.y"],
+         "params": {"unit": "kWh"}},
+        {"name": "c", "operation": "somma_periodo", "inputs": ["@sensor.z"],
+         "params": {"unit": "kWh"}},
+        {"name": "q", "operation": "quota", "inputs": ["#a", "#b", "#c"]}]})
+    esito = r.validate(entities={"sensor.x", "sensor.y", "sensor.z"})
+    assert not esito.valid
+    assert any("tre" in p or "3" in p for p in esito.problems), esito.problems
+
+
+def test_una_ricetta_con_TROPPO_POCHI_ingressi_si_rifiuta():
+    """E l'altro capo: `quota` con un ingresso solo.
+
+    Mutazione: controllare solo il massimo e non il minimo -- rossa.
+    """
+    r = ric.Recipe({"why": "x", "steps": [
+        {"name": "a", "operation": "somma_periodo", "inputs": ["@sensor.x"],
+         "params": {"unit": "kWh"}},
+        {"name": "q", "operation": "quota", "inputs": ["#a"]}]})
+    esito = r.validate(entities={"sensor.x"})
+    assert not esito.valid
+    assert any("quota" in p for p in esito.problems), esito.problems

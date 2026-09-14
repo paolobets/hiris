@@ -281,3 +281,53 @@ def test_una_sezione_che_non_esiste_torna_VUOTO_non_un_errore():
                          recipes={}, names={})
 
     assert rep.section(rep.as_document(r), "Le ricette") == ""
+
+def test_una_ricetta_che_il_registro_rifiuta_NON_fa_morire_il_giorno():
+    """**Il difetto del 14/09/2026, dalla parte del resoconto.**
+
+    Il resoconto eseguiva le ricette **senza validarle**: una ricetta scritta
+    contro un registro piu' vecchio, o corretta male a mano, arrivava dritta a
+    `run()`. La prima che il modello abbia scritto nominava `episodio`, e il
+    `TypeError` che ne e' uscito non lo catturava nessuno: e' morta l'intera
+    riaggregazione di due giorni, oggetti e resoconti, a ogni riavvio.
+
+    Si valida prima, e il rifiuto diventa una riga di «cosa non si sa» col suo
+    perche' -- che e' il posto dove l'analista guarda cio' che manca.
+
+    Mutazione ESEGUITA: togliere la validazione da `_measurements` -- rossa
+    con `TypeError`, che il test non cattura.
+    """
+    resoconto = rep.build_report(
+        day="2026-09-13", episodes=[],
+        series={"climate.x": []},
+        recipes={"dev1": {"why": "quanto e' stato acceso", "steps": [
+            {"name": "acceso", "operation": "episodio",
+             "inputs": ["@climate.x"]}]}},
+        names={"dev1": "Termostato"})
+
+    righe = resoconto["misure"]
+    assert len(righe) == 1
+    assert "valore" not in righe[0]
+    assert righe[0]["nome"] == "Termostato"
+    assert "episodio" in righe[0]["non_calcolabile"]
+
+
+def test_il_rifiuto_di_una_ricetta_dice_TUTTI_i_problemi_insieme():
+    """Legge delle ricette (spec §7): «tutti i problemi si dicono insieme».
+    Dirne uno per giro costringerebbe il proprietario a correggere, rieseguire
+    la notte, e scoprirne un altro.
+
+    Mutazione: tenere solo il primo problema -- rossa.
+    """
+    resoconto = rep.build_report(
+        day="2026-09-13", episodes=[], series={},
+        recipes={"dev1": {"why": "", "steps": [
+            {"name": "totale", "operation": "somma_periodo",
+             "inputs": ["@sensor.mai_vista"]}]}},
+        names={})
+
+    perche = resoconto["misure"][0]["non_calcolabile"]
+    # Due problemi diversi, tutti e due nella stessa riga: il `why` mancante
+    # E il parametro obbligatorio mancante.
+    assert "PERCHE' esiste" in perche, perche
+    assert "unit" in perche, perche

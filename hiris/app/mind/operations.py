@@ -286,6 +286,56 @@ class Operation:
     returns: str
     refuses_when: tuple[str, ...]
     run: Callable[..., Result]
+    #: Se una RICETTA puo' nominare questa operazione.
+    #:
+    #: **Il registro e le ricette non sono la stessa cosa.** Il registro e' il
+    #: vocabolario del prodotto: `mind/facts.aggregate_day` ne usa voci che una
+    #: ricetta non potrebbe mai portare, perche' vogliono un valore che il JSON
+    #: non sa scrivere -- `episodio` vuole `is_on`, che e' una FUNZIONE.
+    #:
+    #: **Costava un difetto vero, il 14/09/2026.** Il catalogo mostrato al
+    #: modello elencava ogni voce del registro; il modello ha scritto la sua
+    #: prima ricetta con `episodio`; `validate()` guardava solo che il nome
+    #: esistesse, e l'ha accettata; il resoconto l'ha eseguita e `TypeError` ha
+    #: ucciso la riaggregazione di due giorni interi, a ogni riavvio.
+    #:
+    #: Niente valore di fabbrica, come gli altri campi: la spec §6 dice «ogni
+    #: operazione dichiara, e non si puo' costruire senza», e un default
+    #: `True` avrebbe rifatto esattamente il difetto alla prossima voce nuova.
+    in_recipes: bool
+
+    @property
+    def required_params(self) -> tuple[str, ...]:
+        """I parametri che una ricetta DEVE dare, letti dalla firma di `run`.
+
+        **Derivati, non dichiarati**: un elenco scritto a mano accanto alla
+        firma diverge dalla firma al primo ritocco, ed e' la classe di difetto
+        che questo progetto ha gia' pagato piu' volte -- la ragione scritta
+        accanto al codice smentita dal codice che cita.
+        """
+        import inspect
+
+        return tuple(
+            name for name, p in inspect.signature(self.run).parameters.items()
+            if p.kind is p.KEYWORD_ONLY and p.default is p.empty)
+
+    @property
+    def input_range(self) -> tuple[int, int]:
+        """Quanti ingressi accetta: `(minimo, massimo)`.
+
+        Gli **ingressi** sono cio' che `run` prende per posizione -- le entita'
+        e i passi che la ricetta consegna nell'ordine. `quota` ne prende due: con
+        tre il motore solleverebbe `TypeError` a meta' giornata, che e'
+        esattamente cio' che rifiutare-prima-di-eseguire esiste per impedire.
+
+        Letti dalla firma, come `required_params`, e per la stessa ragione.
+        """
+        import inspect
+
+        by_position = [p for p in inspect.signature(self.run).parameters.values()
+                       if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
+        needed = sum(1 for p in by_position if p.default is p.empty)
+        return needed, len(by_position)
 
 
 #: Quale versione del registro. Le ricette vivranno piu' a lungo del registro
@@ -394,6 +444,7 @@ _register(Operation(
     returns="il totale delle parti conosciute, con la sua unita' e la sua copertura",
     refuses_when=("la serie non ha nessun punto con un valore",
                 "la copertura sta sotto il minimo"),
+    in_recipes=True,
     run=_sum_period,
 ))
 
@@ -447,6 +498,7 @@ _register(Operation(
              "un rapporto non e' piu' solido del suo termine piu' debole"),
     refuses_when=("una delle due non e' calcolabile", "il denominatore e' nullo",
                   "il rapporto sarebbe negativo"),
+    in_recipes=True,
     run=_ratio,
 ))
 
@@ -480,6 +532,7 @@ _register(Operation(
     inputs=("una misura", "un'altra misura della stessa unita'"),
     returns="la loro differenza, con la copertura peggiore delle due",
     refuses_when=("una delle due non e' calcolabile", "le unita' sono diverse"),
+    in_recipes=True,
     run=_difference,
 ))
 
@@ -508,6 +561,7 @@ _register(Operation(
               "quante parti il periodo doveva avere, quando chi chiama lo sa"),
     returns="media, minimo e massimo insieme",
     refuses_when=("la serie e' vuota", "la copertura sta sotto il minimo"),
+    in_recipes=True,
     run=_average_min_max,
 ))
 
@@ -538,6 +592,7 @@ _register(Operation(
               "quante parti il periodo doveva avere, quando chi chiama lo sa"),
     returns="il profilo, ogni punto con la sua ora",
     refuses_when=("la serie non ha nessun punto",),
+    in_recipes=True,
     run=_per_hour,
 ))
 
@@ -572,6 +627,7 @@ _register(Operation(
     inputs=("la serie di un contatore nel periodo", "l'unita' del contatore"),
     returns="di quanto e' salito fra la prima e l'ultima",
     refuses_when=("non c'e' nessuna lettura con un valore", "ce n'e' una sola"),
+    in_recipes=True,
     run=_first_last_difference,
 ))
 
@@ -624,6 +680,10 @@ _register(Operation(
               "la fine del periodo"),
     returns="le finestre in cui era acceso, come un periodo",
     refuses_when=("non si e' mai acceso nel periodo",),
+    # `is_on` e' una FUNZIONE: nessun JSON la porta, quindi nessuna
+    # ricetta puo' nominare questa operazione. Resta nel registro perche'
+    # `mind/facts.aggregate_day` la usa dall'interno.
+    in_recipes=False,
     run=_episode,
 ))
 
@@ -643,6 +703,7 @@ _register(Operation(
     inputs=("un periodo",),
     returns="la durata totale, in secondi",
     refuses_when=("il periodo non esiste: `Period` rifiuta un elenco vuoto",),
+    in_recipes=True,
     run=_time_in_state,
 ))
 
@@ -662,6 +723,7 @@ _register(Operation(
     inputs=("un periodo",),
     returns="quante volte e' cominciato",
     refuses_when=("il periodo non esiste",),
+    in_recipes=True,
     run=_how_many_times,
 ))
 
@@ -694,11 +756,12 @@ _register(Operation(
     inputs=("un periodo", "il fuso della casa, gia' risolto in un oggetto"),
     returns="le ore del giorno in cui comincia",
     refuses_when=("il periodo non esiste",),
+    in_recipes=True,
     run=_when_it_happens,
 ))
 
 
-def _measurements_in_period(readings, *, period: Period, unit: str) -> Result:
+def _measurements_in_period(readings, period: Period, *, unit: str) -> Result:
     """Cosa ha fatto una grandezza **mentre** il periodo durava: la serie
     ristretta a quelle finestre.
 
@@ -714,6 +777,10 @@ def _measurements_in_period(readings, *, period: Period, unit: str) -> Result:
     e' salita) e la 4 `media_min_max` (com'e' stata mentre c'era qualcuno) --
     ed e' la stessa composizione, non due.
     """
+    # `period` e' POSIZIONALE e non un parametro: un `Period` lo calcola un
+    # passo precedente, e i passi si consegnano come `inputs` -- posizionali.
+    # Come parametro non sarebbe scrivibile in nessuna ricetta, e l'operazione
+    # sarebbe stata un nome nel catalogo che nessuno poteva usare.
     inside = [(t, v) for t, v in (readings or []) if period.contains(float(t))]
     if not inside:
         return NotComputable(
@@ -737,6 +804,7 @@ _register(Operation(
     returns="la serie ristretta alle finestre del periodo",
     refuses_when=("non c'e' nessuna misura dentro le finestre",
                 "le misure non sono numeri"),
+    in_recipes=True,
     run=_measurements_in_period,
 ))
 
@@ -772,6 +840,7 @@ _register(Operation(
     inputs=("la misura di un periodo", "la misura di un altro periodo"),
     returns="di quanto e' cambiato, e in che proporzione quando ha senso",
     refuses_when=("una delle due non e' calcolabile", "le unita' sono diverse"),
+    in_recipes=True,
     run=_period_comparison,
 ))
 
@@ -809,6 +878,7 @@ _register(Operation(
     inputs=("una serie di punti", "l'unita' dei valori"),
     returns="il verso, la pendenza e su quanti punti si e' detto",
     refuses_when=("i punti con un valore sono meno di tre",),
+    in_recipes=True,
     run=_trend_line,
 ))
 
@@ -858,6 +928,7 @@ _register(Operation(
                  "possa produrre"),
     refuses_when=("le serie hanno lunghezza diversa", "le coppie sono meno di tre",
                 "una delle due non varia affatto"),
+    in_recipes=True,
     run=_correlation,
 ))
 
@@ -905,6 +976,7 @@ _register(Operation(
     returns="il loro totale, con la copertura che paga chi manca",
     refuses_when=("non c'e' nessuna entita'", "nessuna e' calcolabile",
                 "le unita' sono diverse"),
+    in_recipes=True,
     run=_sum_entities,
 ))
 
@@ -947,6 +1019,7 @@ _register(Operation(
     returns="la loro media, con la copertura che paga chi manca",
     refuses_when=("non c'e' nessuna entita'", "nessuna e' calcolabile",
                 "le unita' sono diverse"),
+    in_recipes=True,
     run=_average_entities,
 ))
 
@@ -1000,6 +1073,7 @@ _register(Operation(
              "e la copertura paga chi non aveva chiave"),
     refuses_when=("nessuna entita' ha una chiave",
                   "l'operazione che dovrebbe ridurre i gruppi non esiste"),
+    in_recipes=True,
     run=_group_by,
 ))
 
@@ -1039,5 +1113,6 @@ _register(Operation(
     inputs=("un periodo", "il periodo a cui restringerlo"),
     returns="il pezzo del primo che cade dentro il secondo, come un periodo",
     refuses_when=("i due periodi non si sovrappongono mai",),
+    in_recipes=True,
     run=_within,
 ))
