@@ -1,5 +1,44 @@
 # HIRIS — Changelog
 
+## [3.33.2] — Il resoconto assente è peggio del resoconto parziale (2026-09-14)
+
+La 3.33.1 non è bastata: aggiornata la casa vera e chiesto di nuovo,
+`GET /api/mind/report` tornava **ancora** `{"resoconti": []}`.
+
+**La causa vera.** La riparazione d'avvio ha **quattro uscite anticipate** —
+comprimari non costruiti, comprimari parziali, direzioni dell'energia non
+lette, bilanci non letti — e tutte tornano *prima* di scrivere. Esistono per
+una regola sola e giusta: *«chi SOSTITUISCE non tollera il parziale»*, perché
+scrivere oggetti poveri sopra oggetti ricchi è un impoverimento, non una
+riparazione. Su questa casa una di quelle uscite scattava a ogni avvio, e
+l'unico altro scrittore è l'aggregazione delle 00:20: **nessun resoconto è
+mai nato.**
+
+**La regola vale per gli oggetti, non per il resoconto.** Un resoconto sa dire
+ciò che non ha potuto calcolare — «non calcolabile, e perché», che è il terzo
+innesco dell'analista. Un resoconto che non c'è non dice niente, e non si
+distingue da un giorno in cui non è successo nulla — la distinzione per cui
+il resoconto esiste.
+
+Quindi i resoconti **mancanti** si scrivono comunque, senza toccare gli
+oggetti (`aggregate_day(report_only=True)`). **L'asimmetria resta, spostata**:
+solo i giorni che un resoconto non ce l'hanno. Uno già scritto dalla notte ha
+anche le misure, e sostituirlo con una cronaca nuda perché stamattina la rete
+era giù sarebbe lo stesso impoverimento su un altro strato.
+
+### E il motivo per cui è rimasto invisibile due rilasci
+
+Le quattro uscite scrivevano il loro warning nel **log dell'add-on, che da
+fuori non si legge**. La casa poteva solo rispondere «nessun resoconto», e non
+c'era nessuna domanda che dicesse *quale* uscita fosse scattata.
+
+`GET /api/health` ora porta **`riparazione`**: se è saltata, **perché**, su
+quali giorni, e quali resoconti ha scritto lo stesso. È `null` finché non è
+girata — «non ancora vista» non è «andata bene», la stessa legge di `ponte`.
+La prossima diagnosi costa una richiesta.
+
+Cinque mutazioni dichiarate ed **eseguite**, tutte uccise. 4141 prove verdi.
+
 ## [3.33.1] — Il resoconto non arrivava mai (2026-09-14)
 
 **Difetto trovato dal vivo**, aggiornando la casa vera alla 3.33.0 e andando a
