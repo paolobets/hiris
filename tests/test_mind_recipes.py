@@ -497,8 +497,51 @@ def test_le_forme_dichiarate_sono_quelle_del_vocabolario_chiuso():
     """
     from hiris.app.mind import operations as ops
 
-    vocabolario = {ops.SHAPE_SERIES, ops.SHAPE_RESULT, ops.SHAPE_READINGS,
-                   ops.SHAPE_PERIOD, ops.SHAPE_MEASURES, ops.SHAPE_MEASURE_MAP}
+    vocabolario = {ops.SHAPE_SERIES, ops.SHAPE_COUNTER, ops.SHAPE_RESULT,
+                   ops.SHAPE_READINGS, ops.SHAPE_PERIOD, ops.SHAPE_MEASURES,
+                   ops.SHAPE_MEASURE_MAP}
     fuori = [(n, f) for n, o in ops.REGISTRY.items() for f in o.takes
              if f not in vocabolario]
     assert fuori == [], fuori
+
+def test_primo_ultimo_differenza_NON_si_puo_scrivere_in_una_ricetta():
+    """**Un numero SBAGLIATO, misurato sulla casa vera il 14/09/2026**: il
+    resoconto del 26/08 portava `energia_consumata = -0,98 kWh`. Energia
+    consumata negativa.
+
+    La causa non e' del modello, e' nostra. `primo_ultimo_differenza` risponde
+    a *«quanto e' salito un CONTATORE: ultima meno prima»*, e vuole le letture
+    cumulate. Ma dentro una ricetta `@entita` consegna le **statistiche orarie**
+    di Home Assistant, dove ogni punto e' il `cambio` di quell'ora: fare
+    `ultima - prima` su quelle calcola la variazione della variazione, che non
+    e' niente -- e sull'ora giusta esce negativa.
+
+    Due cose diverse dette con una parola sola (`serie`), e si separano alla
+    fonte: `SHAPE_COUNTER` e' le letture cumulate, e dentro una ricetta nessuno
+    le sa produrre.
+
+    Mutazione: rimettere `SHAPE_SERIES` su `primo_ultimo_differenza` -- rossa.
+    """
+    from hiris.app.mind.operations import REGISTRY, SHAPE_COUNTER
+
+    voce = REGISTRY["primo_ultimo_differenza"]
+    assert voce.takes == (SHAPE_COUNTER,)
+    assert not voce.offerable
+    # E resta nel registro: `mind/facts.aggregate_day` la usa sul grezzo, dove
+    # le letture SONO cumulate.
+    assert voce.in_recipes
+
+
+def test_una_ricetta_che_da_una_serie_oraria_a_un_contatore_si_rifiuta():
+    """Il rifiuto dice le due forme, cosi' chi legge capisce **perche'** e non
+    riprova con la stessa.
+
+    Mutazione: togliere `SHAPE_COUNTER` dal vocabolario e rimetterlo uguale a
+    `SHAPE_SERIES` -- rossa.
+    """
+    r = ric.Recipe({"why": "quanto ha consumato", "steps": [
+        {"name": "consumo", "operation": "primo_ultimo_differenza",
+         "inputs": ["@sensor.contatore"], "params": {"unit": "kWh"}}]})
+    esito = r.validate(entities={"sensor.contatore"})
+    assert not esito.valid
+    assert any("primo_ultimo_differenza" in p for p in esito.problems), esito.problems

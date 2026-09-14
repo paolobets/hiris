@@ -357,7 +357,28 @@ def _migration_5(conn) -> None:
     _drop_unrunnable_recipes(conn)
 
 
-_SCHEMA_VERSION = 5
+def _migration_6(conn) -> None:
+    """v5 -> v6: si rifa' la pulizia con le FORME separate al punto giusto.
+
+    La v5 controllava gia' le forme, e non bastava: `serie` diceva **due cose
+    diverse** -- le statistiche orarie di Home Assistant, dove ogni punto e' il
+    cambio di quell'ora, e le letture cumulate di un contatore. Con una parola
+    sola per due cose, una ricetta che dava le prime a `primo_ultimo_differenza`
+    -- che vuole le seconde -- passava la validazione e calcolava la variazione
+    della variazione.
+
+    **Il numero sbagliato era gia' sulla casa vera**, misurato il 14/09/2026:
+    `energia_consumata = -0,98 kWh` nel resoconto del 26/08. Energia consumata
+    negativa.
+
+    Separata la forma, quella ricetta e' rifiutata e questa migrazione la
+    trova. (I numeri gia' archiviati li disinnesca `store._migration_8`: sono
+    due archivi diversi, e ciascuno ripara il suo.)
+    """
+    _drop_unrunnable_recipes(conn)
+
+
+_SCHEMA_VERSION = 6
 
 _COLUMNS = ("subject_kind", "subject", "field", "value", "provenance",
             "verification", "evidence", "source", "who", "when_ts")
@@ -402,7 +423,8 @@ class KnowledgeStore:
         self._conn = connect(db_path)
         init_schema(self._conn, _SCHEMA, version=_SCHEMA_VERSION,
                     migrations={2: _migration_2, 3: _migration_3,
-                                4: _migration_4, 5: _migration_5})
+                                4: _migration_4, 5: _migration_5,
+                                6: _migration_6})
 
     def close(self) -> None:
         with self._lock:

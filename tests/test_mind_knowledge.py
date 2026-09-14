@@ -445,3 +445,38 @@ def test_migration_4_non_tocca_una_ricetta_che_si_puo_ancora_eseguire(tmp_path):
     assert len(righe) == 1
     assert json.loads(righe[0]["value"]) == buona
     riaperto.close()
+
+def test_migration_6_toglie_la_ricetta_che_solo_le_FORME_separate_rifiutano(tmp_path):
+    """La v5 aveva gia' il controllo delle forme, e non bastava: `serie` diceva
+    **due cose** -- le statistiche orarie di Home Assistant e le letture
+    cumulate di un contatore. Una ricetta che dava le prime a
+    `primo_ultimo_differenza` -- che vuole le seconde -- passava, e calcolava
+    la variazione della variazione: `energia_consumata = -0,98 kWh` sulla casa
+    vera, il 26/08.
+
+    Separata la forma, quella ricetta e' rifiutata: questa migrazione la trova
+    anche negli archivi gia' arrivati alla v5.
+
+    Mutazione: togliere `6: _migration_6` dal dizionario `migrations` -- rossa
+    su `assert rimaste == []`.
+    """
+    percorso = str(tmp_path / "sapere.db")
+    sapere = sap.KnowledgeStore(percorso)
+    storta = {"why": "quanto ha consumato", "steps": [
+        {"name": "energia_consumata", "operation": "primo_ultimo_differenza",
+         "inputs": ["@sensor.contatore"], "params": {"unit": "kWh"}}]}
+    sapere.write(sap.Fact(
+        subject_kind="dispositivo", subject="dev_storto", field="ricetta",
+        value=json.dumps(storta), provenance="dedotto",
+        evidence="il dispositivo con le sue entita'", who="modello", when_ts=1.0))
+    # L'archivio del proprietario dopo la 3.35.0: gia' alla v5, con la ricetta
+    # dentro, perche' la v5 non sapeva vederla.
+    sapere._conn.execute("PRAGMA user_version = 5")
+    sapere._conn.commit()
+    sapere.close()
+
+    riaperto = sap.KnowledgeStore(percorso)
+    rimaste = [r["subject"] for r in riaperto._conn.execute(
+        "SELECT subject FROM knowledge WHERE field = 'ricetta'").fetchall()]
+    assert rimaste == []
+    riaperto.close()

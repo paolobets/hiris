@@ -26,6 +26,7 @@ primo.
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import time as _time
 
@@ -41,6 +42,9 @@ from .scope import may_overwrite
 # 17:30. Il 22esimo giorno copre con margine l'ora dell'ora legale, senza far
 # entrare il fuso orario nell'archivio.
 READING_RETENTION_S = 22 * 86400
+
+
+logger = logging.getLogger(__name__)
 
 
 def _add_missing_columns(conn, columns: tuple[str, ...]) -> None:
@@ -195,6 +199,71 @@ def _migration_7(conn) -> None:
     scritta per `friendly_name`.
     """
     _add_missing_columns(conn, ("attributes",))
+
+
+#: Cosa si scrive al posto di un numero calcolato con un'operazione che il
+#: registro non sa piu' eseguire dentro una ricetta. Sta qui accanto alla
+#: migrazione, come `_MIGRATED_REASON`, perche' una migrazione deve dire fra
+#: due anni la stessa cosa che dice adesso.
+_WITHDRAWN_REASON = (
+    "calcolata con \u00ab{operazione}\u00bb, che il registro non sa piu' eseguire "
+    "dentro una ricetta: il numero non e' attendibile e non si rifa'")
+
+
+def _migration_8(conn) -> None:
+    """v7 -> v8: si **disinnescano** i numeri calcolati con un'operazione
+    ritirata dalle ricette.
+
+    **Un numero sbagliato gia' archiviato**, misurato sulla casa vera il
+    14/09/2026: il resoconto del 26/08 portava `energia_consumata = -0,98 kWh`.
+    `primo_ultimo_differenza` risponde a «quanto e' salito un contatore: ultima
+    meno prima» e vuole le letture cumulate; dentro una ricetta riceveva le
+    statistiche orarie, dove ogni punto e' il CAMBIO di quell'ora. La ricetta
+    esce dal sapere con la sua migrazione, ma **il numero resta scritto qui**, e
+    nessuno lo rifa': un giorno si rifa' solo finche' il suo grezzo esiste, e
+    l'analista legge i resoconti, non le ricette.
+
+    La riga diventa un **«non calcolabile» col suo perche'** -- il posto dove
+    l'analista guarda cio' che manca -- e resta al suo posto, col suo nome:
+    sparire sarebbe peggio, perche' «non c'e' mai stato» e «c'era e non
+    vale» sono due cose diverse.
+
+    **La cronaca non si tocca, e il resoconto non si cancella.** Per un giorno
+    il cui grezzo e' scaduto quello e' l'unica copia rimasta.
+
+    **Solo i resoconti toccati si riscrivono**: una migrazione che riscrive
+    cio' che non deve e' peggio del difetto che ripara.
+    """
+    from .operations import REGISTRY
+
+    rows = conn.execute("SELECT giorno, corpo_json FROM resoconto").fetchall()
+    for row in rows:
+        try:
+            body = json.loads(row["corpo_json"])
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(body, dict):
+            continue
+        changed = False
+        for section in ("misure", "forme"):
+            for line in body.get(section) or []:
+                if not isinstance(line, dict) or "valore" not in line:
+                    continue
+                used = str(line.get("operazione") or "")
+                entry = REGISTRY.get(used)
+                if entry is not None and entry.offerable:
+                    continue
+                line.pop("valore", None)
+                line.pop("unita", None)
+                line.pop("copertura", None)
+                line["non_calcolabile"] = _WITHDRAWN_REASON.format(operazione=used)
+                changed = True
+        if changed:
+            conn.execute("UPDATE resoconto SET corpo_json = ? WHERE giorno = ?",
+                         (json.dumps(body, ensure_ascii=False), row["giorno"]))
+            logger.info(
+                "resoconto di %s: numeri calcolati con un'operazione ritirata "
+                "disinnescati", row["giorno"])
 
 
 _SCHEMA = """
@@ -396,7 +465,7 @@ def _migration_6(conn) -> None:
 #: prova non debba ricopiarne il numero: un letterale in una prova e' un
 #: doppione che mente al primo schema nuovo, e questa riga esiste perche' e'
 #: successo (`test_migration_5...` inchiodava il 5).
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 #: L'obiettivo di fabbrica, deciso dal proprietario il 25/08/2026. Non e' un
 #: ripiego: e' il criterio con cui l'osservatore decide cosa guardare su una
@@ -461,7 +530,7 @@ class ObservationsStore:
         init_schema(self._conn, _SCHEMA, version=SCHEMA_VERSION,
                     migrations={2: _migration_2, 3: _migration_3, 4: _migration_4,
                                 5: _migration_5, 6: _migration_6,
-                                7: _migration_7})
+                                7: _migration_7, 8: _migration_8})
 
     def close(self) -> None:
         with self._lock:

@@ -372,7 +372,22 @@ class Operation:
 #: nessuna ricetta lo sa scrivere, e un'operazione che lo pretende non e'
 #: offribile al modello: gliela si metterebbe nell'elenco perche' la usi, e il
 #: validatore la rifiuterebbe sempre.
-SHAPE_SERIES = "serie"
+SHAPE_SERIES = "serie del periodo"
+#: **Le letture CUMULATE di un contatore**, non i cambi orari. Due cose diverse
+#: dette con una parola sola, separate alla fonte il 14/09/2026 dopo aver letto
+#: un numero sbagliato sulla casa vera: il resoconto del 26/08 portava
+#: `energia_consumata = -0,98 kWh`. Energia consumata negativa.
+#:
+#: `primo_ultimo_differenza` risponde a «quanto e' salito un contatore: ultima
+#: meno prima» e vuole le letture cumulate; dentro una ricetta `@entita`
+#: consegna le statistiche orarie di Home Assistant, dove ogni punto e' il
+#: CAMBIO di quell'ora. Fare `ultima - prima` su quelle calcola la variazione
+#: della variazione -- che non e' niente, e sull'ora giusta esce negativa.
+#:
+#: Dentro una ricetta nessuna sorgente produce questa forma: l'operazione resta
+#: nel registro perche' `mind/facts.aggregate_day` la usa sul GREZZO, dove le
+#: letture sono davvero cumulate.
+SHAPE_COUNTER = "letture cumulate di un contatore"
 SHAPE_RESULT = "misura"
 SHAPE_READINGS = "letture"
 SHAPE_PERIOD = "periodo"
@@ -679,7 +694,7 @@ _register(Operation(
     inputs=("la serie di un contatore nel periodo", "l'unita' del contatore"),
     returns="di quanto e' salito fra la prima e l'ultima",
     refuses_when=("non c'e' nessuna lettura con un valore", "ce n'e' una sola"),
-    takes=(SHAPE_SERIES,),
+    takes=(SHAPE_COUNTER,),
     in_recipes=True,
     run=_first_last_difference,
 ))

@@ -795,7 +795,8 @@ CREATE TABLE cambi (
         [riga] = archivio.readings(from_ts=0, to_ts=2e9)
         assert riga["soggetto"] == "climate.x"
         assert riga["attributes"] is None
-        assert archivio._conn.execute("PRAGMA user_version").fetchone()[0] == 7
+        assert (archivio._conn.execute("PRAGMA user_version").fetchone()[0]
+                == SCHEMA_VERSION)
     finally:
         archivio.close()
 
@@ -812,3 +813,90 @@ def test_il_grezzo_dice_da_quando_comincia(tmp_path):
     store.record(quando_ts=1000.0, source="entita", subject="light.b", da="off", a="on")
     assert store.oldest_reading_ts() == 1000.0
     store.close()
+
+def test_migration_8_disinnesca_i_numeri_calcolati_con_un_operazione_ritirata(tmp_path):
+    """**Un numero sbagliato, gia' archiviato sulla casa vera**: il resoconto
+    del 26/08 portava `energia_consumata = -0,98 kWh`, calcolata con
+    `primo_ultimo_differenza` su una serie di cambi orari invece che sulle
+    letture cumulate di un contatore.
+
+    La ricetta si toglie dal sapere (migrazione del sapere), ma **il numero
+    resta scritto nel resoconto** e nessuno lo rifa': un giorno si rifa' solo
+    finche' il suo grezzo esiste, e l'analista legge i resoconti, non le
+    ricette. Un numero sbagliato che vive per sempre in un archivio che esiste
+    per non dirne.
+
+    Quindi la riga diventa un **«non calcolabile» col suo perche'** -- il posto
+    dove l'analista guarda cio' che manca -- e la cronaca **non si tocca**:
+    cancellare il resoconto perderebbe l'unica copia di un giorno il cui grezzo
+    e' scaduto.
+
+    Mutazione: togliere `8: _migration_8` dal dizionario `migrations` -- rossa
+    su `assert "valore" not in riga`.
+    """
+    percorso = str(tmp_path / "oss.db")
+    store = ObservationsStore(percorso)
+    store.replace_report("2026-08-26", {
+        "giorno": "2026-08-26",
+        "misure": [
+            {"soggetto": "dev1", "misura": "energia_consumata",
+             "operazione": "primo_ultimo_differenza", "valore": -0.98,
+             "unita": "kWh", "copertura": 1.0},
+            {"soggetto": "dev2", "misura": "produzione",
+             "operazione": "somma_periodo", "valore": 23.8,
+             "unita": "kWh", "copertura": 1.0}],
+        "forme": [],
+        "cronaca": [{"chi": "light.x", "cosa": "on"}]})
+    store._conn.execute("PRAGMA user_version = 7")
+    store._conn.commit()
+    store.close()
+
+    riaperto = ObservationsStore(percorso)
+    scritto = riaperto.report("2026-08-26")
+    ritirata, buona = scritto["misure"]
+    assert "valore" not in ritirata
+    assert "primo_ultimo_differenza" in ritirata["non_calcolabile"]
+    assert ritirata["misura"] == "energia_consumata", "la riga resta al suo posto"
+    # Cio' che si calcola ancora non si tocca.
+    assert buona["valore"] == 23.8
+    # E la cronaca nemmeno: e' l'unica copia di quel giorno.
+    assert scritto["cronaca"] == [{"chi": "light.x", "cosa": "on"}]
+    riaperto.close()
+
+
+def test_migration_8_non_tocca_un_resoconto_tutto_buono(tmp_path):
+    """Una migrazione che riscrive cio' che non deve e' peggio del difetto che
+    ripara: un resoconto sano resta **il byte che era**.
+
+    **La prima stesura di questa prova non poteva fallire**, e l'ha detto la
+    mutazione: confrontava `scritto_ts`, che la migrazione non tocca nemmeno
+    quando riscrive -- quindi `if changed:` -> `if True:` restava verde. E
+    confrontare il dizionario riletto non servirebbe: `json.dumps` dello stesso
+    dizionario da' sempre gli stessi byte, quindi una riscrittura sarebbe
+    invisibile.
+
+    Si scrive la riga a mano con una **spaziatura sua**: se la migrazione la
+    riscrive, la normalizza, e il confronto cade. E' l'unica differenza che
+    sopravvive a un giro completo di `json`.
+
+    Mutazione: riscrivere ogni resoconto invece dei soli toccati -- rossa.
+    """
+    percorso = str(tmp_path / "oss.db")
+    store = ObservationsStore(percorso)
+    grezzo = ('{"giorno": "2026-09-13",   "misure": [{"soggetto": "dev2", '
+              '"misura": "produzione", "operazione": "somma_periodo", '
+              '"valore": 23.31, "unita": "kWh", "copertura": 1.0}], '
+              '"forme": [],   "cronaca": []}')
+    store._conn.execute(
+        "INSERT INTO resoconto(giorno,corpo_json,scritto_ts) VALUES(?,?,?)",
+        ("2026-09-13", grezzo, 1.0))
+    store._conn.execute("PRAGMA user_version = 7")
+    store._conn.commit()
+    store.close()
+
+    riaperto = ObservationsStore(percorso)
+    dopo = riaperto._conn.execute(
+        "SELECT corpo_json FROM resoconto WHERE giorno = '2026-09-13'"
+    ).fetchone()["corpo_json"]
+    assert dopo == grezzo, "un resoconto sano non si riscrive"
+    riaperto.close()
