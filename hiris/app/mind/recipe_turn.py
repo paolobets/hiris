@@ -174,12 +174,13 @@ def _operations_catalogue() -> str:
     for name, operation in REGISTRY.items():
         # **Solo cio' che una ricetta puo' davvero scrivere.** Il registro e' il
         # vocabolario del prodotto e contiene voci che un dato non sa portare
-        # (`episodio` vuole `is_on`, una funzione). Offrirle qui e' una trappola:
+        # (`episodio` vuole `is_on`, una funzione; `tempo_in_stato` vuole un periodo,
+        # che dentro una ricetta nessuno sa produrre). Offrirle qui e' una trappola:
         # il modello le usa, il validatore le rifiuta sempre, il giro e' bruciato
         # e il dispositivo resta senza ricetta per sempre -- `devices_to_ask` non
         # richiede a chi una risposta l'ha gia' data. Misurato dal vivo il
         # 14/09/2026: la prima ricetta che il modello abbia mai scritto.
-        if not operation.in_recipes:
+        if not operation.offerable:
             continue
         entry = (f"- `{name}`: prende {', '.join(operation.inputs)}; "
                 f"restituisce {operation.returns}")

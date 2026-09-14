@@ -66,7 +66,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from dataclasses import field as _field
 
-from .operations import REGISTRY, Result
+from .operations import (
+    REGISTRY,
+    SHAPE_RESULT,
+    SHAPE_SERIES,
+    Result,
+)
 
 #: Il carattere che dice «questa e' un'entita' della casa».
 ENTITY_MARK = "@"
@@ -88,6 +93,23 @@ class Validation:
     @property
     def valid(self) -> bool:
         return not self.problems
+
+
+def _shape_of(given) -> str:
+    """La forma di cio' che un ingresso consegna.
+
+    Dentro una ricetta esistono **due sole sorgenti**: `@entita` da' la serie
+    del periodo, `#passo` da' la misura di un passo precedente. Un letterale
+    non e' ne' l'una ne' l'altra, e nessuna operazione del registro ne prende
+    uno: dirlo con un nome suo fa uscire un rifiuto leggibile invece di un
+    confronto che non torna mai.
+    """
+    if isinstance(given, str):
+        if given.startswith(ENTITY_MARK):
+            return SHAPE_SERIES
+        if given.startswith(STEP_MARK):
+            return SHAPE_RESULT
+    return "un valore scritto a mano"
 
 
 class Recipe:
@@ -198,12 +220,26 @@ class Recipe:
                     f"«{n}», che «{operation}» pretende"
                  for n in entry.required_params if n not in given_params]
         least, most = entry.input_range
-        given_count = len(inputs) if isinstance(inputs, (list, tuple)) else 0
+        listed = list(inputs) if isinstance(inputs, (list, tuple)) else []
+        given_count = len(listed)
         if not (least <= given_count <= most):
             wanted = (f"{least}" if least == most else f"da {least} a {most}")
             found.append(
                 f"il passo «{step_name}» consegna {given_count} ingressi a "
                 f"«{operation}», che ne vuole {wanted}")
+            return found
+        # 5. **di che FORMA sono?** L'ultimo anello, e il piu' silenzioso:
+        #    `tempo_in_stato` vuole un periodo, una ricetta gli consegnava la
+        #    serie di un'entita', e il motore moriva un passo dopo con
+        #    `AttributeError: 'list' object has no attribute 'windows'`.
+        #    Misurato sulla casa vera il 14/09/2026, dopo che la 3.34.0 aveva
+        #    gia' chiuso nomi, parametri e numero di ingressi.
+        for given, wanted_shape in zip(listed, entry.takes):
+            actual = _shape_of(given)
+            if actual != wanted_shape:
+                found.append(
+                    f"il passo «{step_name}» consegna {actual} dove "
+                    f"«{operation}» vuole {wanted_shape}")
         return found
 
     @staticmethod

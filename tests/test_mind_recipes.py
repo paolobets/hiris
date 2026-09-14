@@ -354,3 +354,151 @@ def test_una_ricetta_con_TROPPO_POCHI_ingressi_si_rifiuta():
     esito = r.validate(entities={"sensor.x"})
     assert not esito.valid
     assert any("quota" in p for p in esito.problems), esito.problems
+
+# ── Il secondo anello, trovato dal vivo il 14/09/2026 ────────────────────────
+#
+#   riparazione: {"oggetti": "sollevata",
+#                 "perche": "AttributeError: 'list' object has no attribute
+#                            'windows'"}
+#
+# La 3.34.0 aveva chiuso i nomi, i parametri e il numero di ingressi. Restava
+# la FORMA: `tempo_in_stato` vuole un `Period`, e una ricetta gli consegnava la
+# serie di un'entita' -- una lista. Il validatore diceva di si' (un ingresso,
+# nessun parametro obbligatorio) e il motore moriva un passo dopo.
+
+
+def test_ogni_operazione_OFFERTA_si_esegue_davvero_dentro_una_ricetta():
+    """**Il cancello piu' forte che questo registro possa avere: si ESEGUE.**
+
+    Per ogni operazione che il catalogo offre al modello si costruisce la
+    ricetta minima che la usa e la si fa girare con dati finti. Non deve
+    sollevare: ne' `TypeError` (firma), ne' `AttributeError` (forma). Un
+    \u00abnon calcolabile\u00bb va benissimo -- e' un esito, non un guasto.
+
+    Ragionare su quali forme si incastrano non basta: e' esattamente cio' che
+    ho fatto il 14/09 arrivando alla 3.34.0, e il difetto successivo era gia'
+    li' ad aspettare. Questa prova non ragiona, prova.
+
+    Mutazione: rimettere `tempo_in_stato` fra le offerte (cioe' togliere il
+    controllo di raggiungibilita' da `offerable`) -- rossa con
+    `AttributeError: 'Measurement' object has no attribute 'duration_s'`.
+    """
+    from hiris.app.mind.operations import REGISTRY, SHAPE_RESULT, SHAPE_SERIES
+
+    serie = [{"inizio": 0.0, "fine": 3600.0, "valore": 1.0},
+             {"inizio": 3600.0, "fine": 7200.0, "valore": 2.0}]
+    guai = []
+    for name, operation in REGISTRY.items():
+        if not operation.offerable:
+            continue
+        passi, ingressi, contatore = [], [], 0
+        for forma in operation.takes:
+            if forma == SHAPE_SERIES:
+                contatore += 1
+                ingressi.append(f"{ric.ENTITY_MARK}sensor.finto{contatore}")
+            else:
+                assert forma == SHAPE_RESULT, (name, forma)
+                contatore += 1
+                passi.append({"name": f"prima{contatore}",
+                              "operation": "somma_periodo",
+                              "inputs": [f"{ric.ENTITY_MARK}sensor.finto{contatore}"],
+                              "params": {"unit": "kWh"}})
+                ingressi.append(f"{ric.STEP_MARK}prima{contatore}")
+        parametri = {n: _parametro_finto(n) for n in operation.required_params}
+        passi.append({"name": "sotto_prova", "operation": name,
+                      "inputs": ingressi, "params": parametri})
+        dati = {"why": f"la prova di {name}", "steps": passi}
+
+        entita = {f"sensor.finto{i}": list(serie) for i in range(1, contatore + 1)}
+        ricetta = ric.Recipe(dati)
+        esito = ricetta.validate(entities=set(entita))
+        assert esito.valid, (name, esito.problems)
+        try:
+            ricetta.run(series=entita)
+        except Exception as error:  # prendere TUTTO e' il punto della prova
+            guai.append(f"{name}: {type(error).__name__}: {error}")
+    assert guai == [], "offerte al modello ma non eseguibili: " + " \u00b7 ".join(guai)
+
+
+def _parametro_finto(name: str):
+    """Un valore plausibile per ogni parametro obbligatorio del registro.
+
+    Se un'operazione nuova ne porta uno che non e' qui, la prova si ferma con
+    un messaggio che dice cosa aggiungere -- meglio di un finto `None` che
+    passerebbe per caso.
+    """
+    valori = {"unit": "kWh", "zone": "Europe/Rome",
+              "key": "classe", "reduce": "somma_entita"}
+    assert name in valori, (
+        f"parametro obbligatorio nuovo: \u00ab{name}\u00bb. Aggiungi qui un valore "
+        "plausibile, o la prova non puo' eseguire l'operazione che lo vuole.")
+    return valori[name]
+
+def test_una_ricetta_che_consegna_la_FORMA_sbagliata_si_rifiuta():
+    """Il caso vero del 14/09/2026, dopo la 3.34.0: `tempo_in_stato` vuole un
+    periodo, la ricetta gli consegnava la serie di un'entita', e il motore
+    moriva un passo dopo con
+    `AttributeError: 'list' object has no attribute 'windows'`.
+
+    Mutazione: togliere il controllo delle forme da `_problemi_operazione` --
+    rossa.
+    """
+    r = ric.Recipe({"why": "quanto e' stato acceso", "steps": [
+        {"name": "acceso", "operation": "tempo_in_stato",
+         "inputs": ["@climate.x"]}]})
+    esito = r.validate(entities={"climate.x"})
+    assert not esito.valid
+    assert any("tempo_in_stato" in p for p in esito.problems), esito.problems
+
+
+def test_una_serie_dove_si_vuole_una_misura_si_rifiuta():
+    """L'altro verso, che e' il piu' facile da scrivere per sbaglio: `quota`
+    vuole due misure gia' calcolate, non due serie grezze.
+
+    **Si contano i problemi, e sono due.** Asserire solo `not valid`
+    lascerebbe passare un controllo che guarda il PRIMO ingresso e si ferma:
+    la ricetta sarebbe rifiutata lo stesso, per meta' della ragione, e il
+    proprietario correggerebbe un errore per volta.
+
+    Mutazione: fermarsi al primo ingresso (`zip(listed[:1], entry.takes)`) --
+    rossa, un problema invece di due.
+    """
+    r = ric.Recipe({"why": "la quota", "steps": [
+        {"name": "q", "operation": "quota",
+         "inputs": ["@sensor.a", "@sensor.b"]}]})
+    esito = r.validate(entities={"sensor.a", "sensor.b"})
+    assert not esito.valid
+    assert len(esito.problems) == 2, esito.problems
+
+
+def test_ogni_operazione_dichiara_una_forma_per_ogni_ingresso():
+    """Il cancello della dichiarazione: tante forme quanti sono gli ingressi
+    che `run` prende per posizione. Una in meno lascerebbe un ingresso **non
+    controllato**, ed e' esattamente il buco da cui e' passato il difetto del
+    14/09/2026.
+
+    Mutazione: togliere una forma da una qualunque delle diciotto voci --
+    rossa.
+    """
+    from hiris.app.mind.operations import REGISTRY
+
+    storte = [(n, len(o.takes), o.input_range[1])
+              for n, o in REGISTRY.items() if len(o.takes) != o.input_range[1]]
+    assert storte == [], storte
+
+
+def test_le_forme_dichiarate_sono_quelle_del_vocabolario_chiuso():
+    """E sono quelle, non una stringa qualunque: un refuso in una forma
+    (`"peridoo"`) non farebbe combaciare niente, e l'operazione sarebbe
+    rifiutata sempre, in silenzio -- la stessa forma di guasto che questo giro
+    esiste per chiudere.
+
+    Mutazione: scrivere una forma inventata in una voce -- rossa.
+    """
+    from hiris.app.mind import operations as ops
+
+    vocabolario = {ops.SHAPE_SERIES, ops.SHAPE_RESULT, ops.SHAPE_READINGS,
+                   ops.SHAPE_PERIOD, ops.SHAPE_MEASURES, ops.SHAPE_MEASURE_MAP}
+    fuori = [(n, f) for n, o in ops.REGISTRY.items() for f in o.takes
+             if f not in vocabolario]
+    assert fuori == [], fuori

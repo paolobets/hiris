@@ -298,6 +298,16 @@ def _migration_4(conn) -> None:
     ragione di `_migration_3`: sono righe che questo programma ha scritto su se
     stesso, sbagliando.
     """
+    _drop_unrunnable_recipes(conn)
+
+
+def _drop_unrunnable_recipes(conn) -> None:
+    """Toglie le righe `ricetta` che la validazione di oggi rifiuta.
+
+    Condivisa fra `_migration_4` e `_migration_5`: la seconda rifa' il lavoro
+    della prima con un registro piu' severo, e due copie di questo ciclo
+    avrebbero potuto divergere sul significato di «non eseguibile».
+    """
     from .recipes import Recipe
 
     # Il nome del campo e' scritto qui e non importato da `recipe_turn`: quel
@@ -325,7 +335,29 @@ def _migration_4(conn) -> None:
             subject, why)
 
 
-_SCHEMA_VERSION = 4
+def _migration_5(conn) -> None:
+    """v4 -> v5: si rifa' la pulizia della v4, con il controllo delle FORME.
+
+    La v4 ha tolto le ricette che il registro non sapeva eseguire, e non
+    bastava: controllava i nomi, i parametri e il numero di ingressi, non la
+    **forma** di ciascuno. La casa vera, riaperta subito dopo, ha risposto
+
+        riparazione: {"oggetti": "sollevata",
+                      "perche": "AttributeError: 'list' object has no
+                                 attribute 'windows'"}
+
+    -- una ricetta che consegnava la serie di un'entita' a un'operazione che
+    voleva un periodo. La v4 l'aveva lasciata li' perche' non sapeva vederla.
+
+    **La stessa funzione, un registro piu' severo**: la validazione di oggi la
+    rifiuta, quindi questa migrazione la trova. Rifarla non costa niente su un
+    sapere gia' pulito, e una migrazione che si puo' ripetere senza danno e'
+    preferibile a una che si deve indovinare.
+    """
+    _drop_unrunnable_recipes(conn)
+
+
+_SCHEMA_VERSION = 5
 
 _COLUMNS = ("subject_kind", "subject", "field", "value", "provenance",
             "verification", "evidence", "source", "who", "when_ts")
@@ -370,7 +402,7 @@ class KnowledgeStore:
         self._conn = connect(db_path)
         init_schema(self._conn, _SCHEMA, version=_SCHEMA_VERSION,
                     migrations={2: _migration_2, 3: _migration_3,
-                                4: _migration_4})
+                                4: _migration_4, 5: _migration_5})
 
     def close(self) -> None:
         with self._lock:

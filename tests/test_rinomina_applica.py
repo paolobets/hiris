@@ -1810,7 +1810,7 @@ def test_i_campi_di_una_dataclass_sono_parole_chiave_che_nessuna_def_dichiara():
 
     E' la stessa forma gia' curata per `__init__` e il nome della classe, e
     per questo il nome chiamato e' la CLASSE. Il perimetro e' misurato: quindici
-    `@dataclass` e 74 campi in tutto il repo, quindi niente rumore.
+    `@dataclass` e 75 campi in tutto il repo, quindi niente rumore.
 
     Provato per mutazione: tolto il giro su `campi_dataclass` da
     `parametri_def_rinominati`, il primo assert va rosso; tolto da
@@ -1833,7 +1833,7 @@ def test_una_classe_senza_dataclass_non_porta_parole_chiave():
                                              "", coppie=coppie) == {}
 
 
-def test_le_dataclass_del_prodotto_sono_quindici_e_i_campi_settantaquattro():
+def test_le_dataclass_del_prodotto_sono_quindici_e_i_campi_settantacinque():
     """Il perimetro si misura come il contenuto. E' il conto che ha deciso di
     scrivere questa rete invece di dichiararla scoperta, come si e' fatto col
     criterio largo dell'ottava (1.424 occorrenze): tredici classi si leggono.
@@ -1852,13 +1852,18 @@ def test_le_dataclass_del_prodotto_sono_quindici_e_i_campi_settantaquattro():
     `in_recipes` -- se una RICETTA puo' nominarla. Non e' una raffinatezza:
     senza, il catalogo offriva al modello anche `episodio`, che vuole una
     funzione, e la prima ricetta che il modello abbia mai scritto ha ucciso la
-    riaggregazione di due giorni con un `TypeError`."""
+    riaggregazione di due giorni con un `TypeError`.
+
+    **Quindici e 75 lo stesso giorno**: il settimo campo, `takes` -- la FORMA
+    di ogni ingresso. Senza, restava aperto l'anello dopo: una ricetta che
+    consegnava la serie di un'entita' dove si voleva un periodo passava la
+    validazione e moriva un passo dopo."""
     classi = campi = 0
     for f in rinomina.file_py(rinomina.ROOT):
         trovate = rinomina.campi_dataclass(rinomina._leggi_grezzo(f))
         classi += len(trovate)
         campi += sum(len(c) for c in trovate.values())
-    assert (classi, campi) == (15, 74), (classi, campi)
+    assert (classi, campi) == (15, 75), (classi, campi)
 
 
 def _repo_finto(tmp_path, prima: dict, dopo: dict) -> None:

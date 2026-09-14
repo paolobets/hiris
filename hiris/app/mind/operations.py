@@ -303,6 +303,25 @@ class Operation:
     #: operazione dichiara, e non si puo' costruire senza», e un default
     #: `True` avrebbe rifatto esattamente il difetto alla prossima voce nuova.
     in_recipes: bool
+    #: La FORMA di ogni ingresso, nell'ordine -- vedi le `SHAPE_*` qui sopra.
+    #: Tante quante sono le cose che `run` prende per posizione, e un cancello
+    #: lo verifica: una forma in meno lascerebbe un ingresso non controllato,
+    #: che e' esattamente il buco da cui e' passato il difetto del
+    #: 14/09/2026.
+    takes: tuple[str, ...]
+
+    @property
+    def offerable(self) -> bool:
+        """Se il catalogo puo' offrirla al modello.
+
+        Non basta che una ricetta possa NOMINARLA (`in_recipes`): deve anche
+        poterle consegnare cio' che vuole. Un'operazione che pretende un
+        `Period`, le letture grezze o un elenco di misure non ha nessuna
+        sorgente dentro una ricetta -- offrirla sarebbe metterla nell'elenco
+        perche' il modello la usi e il validatore la rifiuti sempre, bruciando
+        il giro e lasciando il dispositivo senza ricetta per sempre.
+        """
+        return self.in_recipes and all(f in RECIPE_SHAPES for f in self.takes)
 
     @property
     def required_params(self) -> tuple[str, ...]:
@@ -336,6 +355,34 @@ class Operation:
                        if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
         needed = sum(1 for p in by_position if p.default is p.empty)
         return needed, len(by_position)
+
+
+#: **Le FORME**, cioe' cosa un'operazione si aspetta in ciascun ingresso.
+#:
+#: Nascono da un difetto misurato dal vivo il 14/09/2026. La 3.34.0 aveva
+#: chiuso i nomi, i parametri e il numero di ingressi; restava la forma:
+#: `tempo_in_stato` vuole un `Period`, una ricetta gli consegnava la serie di
+#: un'entita' -- una lista -- e il motore moriva con
+#: `AttributeError: 'list' object has no attribute 'windows'`.
+#:
+#: **Il punto non e' l'elenco, e' cosa una ricetta sa PRODURRE.** Dentro una
+#: ricetta esistono due sole sorgenti: `@entita` da' la serie del periodo,
+#: `#passo` da' il risultato di un passo precedente. Tutto il resto --
+#: le letture grezze, un `Period` nudo, un elenco o una mappa di misure --
+#: nessuna ricetta lo sa scrivere, e un'operazione che lo pretende non e'
+#: offribile al modello: gliela si metterebbe nell'elenco perche' la usi, e il
+#: validatore la rifiuterebbe sempre.
+SHAPE_SERIES = "serie"
+SHAPE_RESULT = "misura"
+SHAPE_READINGS = "letture"
+SHAPE_PERIOD = "periodo"
+SHAPE_MEASURES = "elenco di misure"
+SHAPE_MEASURE_MAP = "mappa di misure"
+
+#: Le due forme che una ricetta sa consegnare. Un'operazione che ne vuole altre
+#: resta nel registro -- il codice dell'aggregazione la usa -- ma fuori dal
+#: catalogo.
+RECIPE_SHAPES = (SHAPE_SERIES, SHAPE_RESULT)
 
 
 #: Quale versione del registro. Le ricette vivranno piu' a lungo del registro
@@ -444,6 +491,7 @@ _register(Operation(
     returns="il totale delle parti conosciute, con la sua unita' e la sua copertura",
     refuses_when=("la serie non ha nessun punto con un valore",
                 "la copertura sta sotto il minimo"),
+    takes=(SHAPE_SERIES,),
     in_recipes=True,
     run=_sum_period,
 ))
@@ -498,6 +546,7 @@ _register(Operation(
              "un rapporto non e' piu' solido del suo termine piu' debole"),
     refuses_when=("una delle due non e' calcolabile", "il denominatore e' nullo",
                   "il rapporto sarebbe negativo"),
+    takes=(SHAPE_RESULT, SHAPE_RESULT),
     in_recipes=True,
     run=_ratio,
 ))
@@ -532,6 +581,7 @@ _register(Operation(
     inputs=("una misura", "un'altra misura della stessa unita'"),
     returns="la loro differenza, con la copertura peggiore delle due",
     refuses_when=("una delle due non e' calcolabile", "le unita' sono diverse"),
+    takes=(SHAPE_RESULT, SHAPE_RESULT),
     in_recipes=True,
     run=_difference,
 ))
@@ -561,6 +611,7 @@ _register(Operation(
               "quante parti il periodo doveva avere, quando chi chiama lo sa"),
     returns="media, minimo e massimo insieme",
     refuses_when=("la serie e' vuota", "la copertura sta sotto il minimo"),
+    takes=(SHAPE_SERIES,),
     in_recipes=True,
     run=_average_min_max,
 ))
@@ -592,6 +643,7 @@ _register(Operation(
               "quante parti il periodo doveva avere, quando chi chiama lo sa"),
     returns="il profilo, ogni punto con la sua ora",
     refuses_when=("la serie non ha nessun punto",),
+    takes=(SHAPE_SERIES,),
     in_recipes=True,
     run=_per_hour,
 ))
@@ -627,6 +679,7 @@ _register(Operation(
     inputs=("la serie di un contatore nel periodo", "l'unita' del contatore"),
     returns="di quanto e' salito fra la prima e l'ultima",
     refuses_when=("non c'e' nessuna lettura con un valore", "ce n'e' una sola"),
+    takes=(SHAPE_SERIES,),
     in_recipes=True,
     run=_first_last_difference,
 ))
@@ -683,6 +736,7 @@ _register(Operation(
     # `is_on` e' una FUNZIONE: nessun JSON la porta, quindi nessuna
     # ricetta puo' nominare questa operazione. Resta nel registro perche'
     # `mind/facts.aggregate_day` la usa dall'interno.
+    takes=(SHAPE_READINGS,),
     in_recipes=False,
     run=_episode,
 ))
@@ -703,6 +757,7 @@ _register(Operation(
     inputs=("un periodo",),
     returns="la durata totale, in secondi",
     refuses_when=("il periodo non esiste: `Period` rifiuta un elenco vuoto",),
+    takes=(SHAPE_PERIOD,),
     in_recipes=True,
     run=_time_in_state,
 ))
@@ -723,6 +778,7 @@ _register(Operation(
     inputs=("un periodo",),
     returns="quante volte e' cominciato",
     refuses_when=("il periodo non esiste",),
+    takes=(SHAPE_PERIOD,),
     in_recipes=True,
     run=_how_many_times,
 ))
@@ -756,6 +812,7 @@ _register(Operation(
     inputs=("un periodo", "il fuso della casa, gia' risolto in un oggetto"),
     returns="le ore del giorno in cui comincia",
     refuses_when=("il periodo non esiste",),
+    takes=(SHAPE_PERIOD,),
     in_recipes=True,
     run=_when_it_happens,
 ))
@@ -804,6 +861,7 @@ _register(Operation(
     returns="la serie ristretta alle finestre del periodo",
     refuses_when=("non c'e' nessuna misura dentro le finestre",
                 "le misure non sono numeri"),
+    takes=(SHAPE_READINGS, SHAPE_PERIOD),
     in_recipes=True,
     run=_measurements_in_period,
 ))
@@ -840,6 +898,7 @@ _register(Operation(
     inputs=("la misura di un periodo", "la misura di un altro periodo"),
     returns="di quanto e' cambiato, e in che proporzione quando ha senso",
     refuses_when=("una delle due non e' calcolabile", "le unita' sono diverse"),
+    takes=(SHAPE_RESULT, SHAPE_RESULT),
     in_recipes=True,
     run=_period_comparison,
 ))
@@ -878,6 +937,7 @@ _register(Operation(
     inputs=("una serie di punti", "l'unita' dei valori"),
     returns="il verso, la pendenza e su quanti punti si e' detto",
     refuses_when=("i punti con un valore sono meno di tre",),
+    takes=(SHAPE_SERIES,),
     in_recipes=True,
     run=_trend_line,
 ))
@@ -928,6 +988,7 @@ _register(Operation(
                  "possa produrre"),
     refuses_when=("le serie hanno lunghezza diversa", "le coppie sono meno di tre",
                 "una delle due non varia affatto"),
+    takes=(SHAPE_SERIES, SHAPE_SERIES),
     in_recipes=True,
     run=_correlation,
 ))
@@ -976,6 +1037,7 @@ _register(Operation(
     returns="il loro totale, con la copertura che paga chi manca",
     refuses_when=("non c'e' nessuna entita'", "nessuna e' calcolabile",
                 "le unita' sono diverse"),
+    takes=(SHAPE_MEASURES,),
     in_recipes=True,
     run=_sum_entities,
 ))
@@ -1019,6 +1081,7 @@ _register(Operation(
     returns="la loro media, con la copertura che paga chi manca",
     refuses_when=("non c'e' nessuna entita'", "nessuna e' calcolabile",
                 "le unita' sono diverse"),
+    takes=(SHAPE_MEASURES,),
     in_recipes=True,
     run=_average_entities,
 ))
@@ -1073,6 +1136,7 @@ _register(Operation(
              "e la copertura paga chi non aveva chiave"),
     refuses_when=("nessuna entita' ha una chiave",
                   "l'operazione che dovrebbe ridurre i gruppi non esiste"),
+    takes=(SHAPE_MEASURE_MAP,),
     in_recipes=True,
     run=_group_by,
 ))
@@ -1113,6 +1177,7 @@ _register(Operation(
     inputs=("un periodo", "il periodo a cui restringerlo"),
     returns="il pezzo del primo che cade dentro il secondo, come un periodo",
     refuses_when=("i due periodi non si sovrappongono mai",),
+    takes=(SHAPE_PERIOD, SHAPE_PERIOD),
     in_recipes=True,
     run=_within,
 ))

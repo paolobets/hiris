@@ -362,6 +362,79 @@ va corretto, in un posto solo.
 > del repository e da cio' che e' stato misurato sulla casa vera. La lista del proprietario va
 > reinserita da lui, e queste voci vanno lette come un fondo di magazzino, non come una sua scelta.
 
+### Le due mancanze della lingua delle ricette: il periodo e l'elenco di misure
+
+`origine: verifica dal vivo della 3.34.0, 14/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §6-§7
+
+**Il fatto, misurato.** Delle diciotto operazioni del registro, **nove non sono raggiungibili da
+una ricetta** (dalla 3.35.0 lo dichiarano, e il catalogo non le offre più). Non per un divieto: per
+una mancanza della lingua. Dentro una ricetta esistono due sole sorgenti — `@entita` dà una serie,
+`$passo` dà una misura — e quelle nove ne vogliono altre.
+
+| chi resta fuori | cosa vuole |
+|---|---|
+| `episodio` | le letture grezze, e `is_on` (una funzione) |
+| `tempo_in_stato` · `quante_volte` · `quando_succede` · `dentro` | un `Period` |
+| `misure_durante` | letture **e** un `Period` |
+| `somma_entita` · `media_entita` | un **elenco** di misure in un solo ingresso |
+| `raggruppa_per` | una **mappa** di misure |
+
+**Le due mancanze, separate perché hanno cure diverse.**
+
+**(1) Il periodo non attraversa i passi.** `episodio` *produce* un periodo, ma lo restituisce
+dentro un `Measurement` — e `$passo` consegna il `Measurement`, non il `Period` che sta dentro.
+Quindi anche se `episodio` diventasse scrivibile (voce sua, qui sopra), `tempo_in_stato($acceso)`
+riceverebbe una misura e morirebbe su `.duration_s`. Da decidere: se un ingresso `$passo` debba
+consegnare il **valore** invece del risultato, e allora cosa ne è della copertura; oppure se le
+operazioni che oggi prendono un `Period` nudo debbano prendere un `Result` e spacchettarlo loro.
+La seconda è più piccola e non tocca la lingua.
+
+**(2) Un elenco di misure non si sa scrivere.** `somma_entita` vuole *molte* misure come **un**
+ingresso; una ricetta sa scrivere `inputs: ["$a", "$b"]`, che il motore consegna come **due**
+argomenti posizionali. Serve una forma per dire «questi, tutti insieme»: un ingresso che sia una
+lista di riferimenti, o un'operazione `insieme($a, $b, ...)` che ne faccia un elenco.
+
+**Cosa costa non farlo.** «Il totale di tutte le zone d'irrigazione», «quanto è stato acceso»,
+«quante volte è partito», «succede di notte?» — sono le domande 1, 3 e 5 della spec §7, e **nessuna
+ricetta le sa esprimere**. Il modello può chiedere solo somme, medie, quote e tendenze su serie.
+
+**Nota di metodo.** Questa voce esiste perché il registro ha smesso di mentire, non perché
+qualcosa si sia rotto: le nove non erano mai state usabili, e prima non lo diceva nessuno. Il
+modello ci è cascato al primo tentativo.
+
+### «Quanto è stato acceso» nessuna ricetta la sa chiedere: `episodio` resta fuori
+
+`origine: verifica dal vivo della 3.33.4, 14/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §6-§7
+
+**Il fatto.** `episodio` è nel registro delle operazioni e **non si può scrivere in una ricetta**
+(`in_recipes=False`, dalla 3.34.0): vuole `is_on`, cioè una **funzione** che dice quali stati siano
+riposo, e un dato non porta funzioni. Con lei restano fuori dalla portata delle ricette anche le
+tre operazioni che le stanno sopra — `tempo_in_stato`, `quante_volte`, `dentro` — perché prendono
+un `Period`, e l'unica cosa che produce un `Period` è `episodio`.
+
+**Perché conta.** Sono quattro operazioni su diciotto, e non quattro qualunque: rispondono a
+*«quanto è stato acceso»*, *«quante volte è partito»*, *«succede di notte?»*. Il modello le ha
+volute subito — la **prima ricetta che abbia mai scritto**, il 14/09/2026, nominava `episodio` —
+e non è un caso: per un termostato o una pompa è la domanda naturale. Oggi il catalogo non gliele
+offre più, quindi non le sbaglia più; ma non le può nemmeno chiedere.
+
+**Cosa costa non farlo.** Ogni dispositivo che si misura a tempo acceso (termostati, pompe,
+ventole, la lavatrice) resta senza misure nel resoconto: ha una cronaca — l'episodio c'è — ma
+nessun numero che si legga in serie su trenta giorni. E i tre inneschi dell'analista lavorano
+**tutti** sulle misure.
+
+**Cosa servirebbe.** Rendere `is_on` esprimibile come dato. Il riposo non è un giudizio nostro: il
+vocabolario dei tipi lo sa già per ogni classe, ed è quello che `aggregate_day` interroga oggi. Una
+ricetta potrebbe scrivere `params: {"soggetto": "climate.x"}` e lasciare che il motore risolva il
+riposo dal vocabolario — cioè la stessa strada già percorsa per le direzioni dell'energia, che
+erano codice e sono diventate righe del sapere. Da decidere: se il riposo lo porti il parametro,
+il sapere, o l'entità stessa; e cosa fa una ricetta su un tipo di cui il riposo non si conosce
+(rifiutare, immagino: è l'unica risposta onesta).
+
+**Attenzione a non riaprire il buco.** Qualunque sia la strada, `in_recipes` deve restare una
+dichiarazione **senza valore di fabbrica**: è ciò che ha impedito al difetto del 14/09 di tornare
+alla prossima operazione nuova.
+
 ### Il sapere non ha una porta: il proprietario non puo' vedere cosa HIRIS ha capito
 
 `origine: verifica dal vivo della 3.31.0, 13/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §8
