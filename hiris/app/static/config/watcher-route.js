@@ -1626,6 +1626,111 @@ window.HirisWatcherRoute = (function () {
     retryButton(body, reload);
   }
 
+
+  /* ------------------------------------------------------- il resoconto (§9) */
+
+  /* La resa del resoconto per UN UMANO.
+
+     Il resoconto non e' fatto per un umano -- serve all'analista, e il suo
+     documento markdown e' pensato per stare in un prompt. Qui si rende lo
+     STESSO dato con l'idioma di questa pagina: stesso archivio, due rese, che
+     e' la ragione per cui il documento si deriva invece di essere archiviato.
+
+     **«Cosa non si sa» viene PRIMA.** In fondo a una tabella di numeri buoni
+     non salterebbe all'occhio, ed e' la parte su cui il proprietario puo'
+     fare qualcosa: una misura che sparisce e' il terzo innesco dell'analista,
+     e sulla casa vera e' quello che ha lasciato il bilancio a zero per cinque
+     giorni senza che nessuno se ne accorgesse. */
+  function renderReport(body, report) {
+    /* **Il giorno si DICE.** La sezione 03 mostra sempre UN giorno solo,
+       mentre la 02 -- che condivide lo stesso selettore -- col bottone «vedi
+       i piu' recenti» ne mostra molti insieme: senza la data scritta qui, chi
+       ha appena premuto quel bottone leggerebbe dei numeri senza sapere a
+       quando si riferiscono, accanto a un elenco che copre altri giorni. */
+    if (report.giorno) line(body, 'Il resoconto di ' + ggMmAaaa(report.giorno) + '.', TONE_CALM);
+    var misure = (report.misure || []).filter(function (m) { return 'valore' in m; });
+    var ignote = (report.misure || []).filter(function (m) { return !('valore' in m); });
+    var cronaca = report.cronaca || [];
+
+    if (ignote.length) {
+      subheading(body, 'Cosa non si sa');
+      ignote.forEach(function (m) {
+        var riga = el('div', 'sc-row');
+        riga.appendChild(el('div', 'sc-row-title', (m.nome || m.soggetto) + ' · ' + m.misura));
+        riga.appendChild(el('div', 'sc-row-why', m.non_calcolabile || ''));
+        body.appendChild(riga);
+      });
+    }
+
+    subheading(body, 'Le misure');
+    if (!misure.length) {
+      line(body, 'Nessuna misura per questo giorno: nessun dispositivo ha ancora una ricetta, ' +
+        'oppure nessuna ha potuto calcolarsi.', TONE_CALM);
+    } else {
+      var grid = el('div', 'stat-grid');
+      misure.forEach(function (m) {
+        var tile = el('div', 'stat-tile');
+        tile.appendChild(el('div', 'st-label', (m.nome || m.soggetto) + ' · ' + m.misura));
+        tile.appendChild(el('div', 'st-value', m.valore + ' ' + (m.unita || '')));
+        /* La copertura si dice SOLO quando non e' piena: «100%» accanto a ogni
+           numero sarebbe rumore su cui l'occhio smette di fermarsi, ed e'
+           proprio quando NON e' piena che deve fermarsi. */
+        if (typeof m.copertura === 'number' && m.copertura < 1) {
+          tile.appendChild(el('div', 'st-delta', 'su ' + fmtPercent(m.copertura) + ' del giorno'));
+        }
+        grid.appendChild(tile);
+      });
+      body.appendChild(grid);
+    }
+
+    subheading(body, 'La cronaca');
+    if (!cronaca.length) {
+      line(body, 'Nessun fatto: quel giorno non è cambiato niente di ciò che si guarda.', TONE_CALM);
+      return;
+    }
+    cronaca.forEach(function (v) { body.appendChild(chronicleLine(v)); });
+  }
+
+  /* Una riga della cronaca: quando, chi, cosa -- e quanti attributi si sono
+     mossi mentre durava, che e' la meta' che rende rispondibile «il
+     riscaldamento parte alle 15:30, la casa e' calda alle 16:30». */
+  function chronicleLine(v) {
+    var riga = el('div', 'sc-row');
+    var quando = fmtTime(v.quando_ts) + (v.fine_ts ? ' → ' + fmtTime(v.fine_ts) : ' → in corso');
+    /* `describeWatchedSubject` torna un OGGETTO (primary/secondary/technical),
+       non una stringa: concatenarlo scriverebbe «[object Object]» nella riga.
+       `technical` significa che il nome amichevole non c'era -- lo si
+       DICHIARA, con la stessa etichetta della sezione 01, invece di spacciare
+       un `entity_id` nudo per un nome. */
+    var d = describeWatchedSubject(v.chi || '', v.nome);
+    var titolo = el('div', 'sc-row-title', quando + ' · ' + d.primary);
+    if (d.technical) titolo.appendChild(el('span', 'field-hint', ' ' + SUBJECT_IS_ID));
+    riga.appendChild(titolo);
+    var cosa = v.cosa || '';
+    var attributi = v.attributi || [];
+    if (attributi.length) {
+      cosa += ' — ' + fmtCount(attributi.length) + (attributi.length === 1
+        ? ' cambio di attributo' : ' cambi di attributo');
+    }
+    riga.appendChild(el('div', 'sc-row-why', cosa));
+    return riga;
+  }
+
+  function renderReportError(body, status, reload) {
+    if (status === 404) {
+      line(body, 'Per questo giorno non c’è ancora un resoconto. Non è un errore: ' +
+        'il resoconto di una giornata si scrive la notte successiva, alle 00:20.', TONE_CALM);
+      return;
+    }
+    if (status === 503) {
+      line(body, 'L’archivio dei resoconti non è disponibile in questo momento. ' +
+        'Non è un resoconto vuoto — è l’archivio stesso ad essere fermo.', TONE_PROBLEM);
+    } else {
+      line(body, 'Non è stato possibile leggere il resoconto. Riprova più tardi.', TONE_PROBLEM);
+    }
+    retryButton(body, reload);
+  }
+
   /* ------------------------------------------------------------------------ mount */
 
   function loadWatching(body) {
@@ -1664,6 +1769,26 @@ window.HirisWatcherRoute = (function () {
       if (myGeneration !== factsGeneration) return;
       clearEl(body);
       renderFactsError(body, null, reload);
+    });
+  }
+
+  var reportGeneration = 0;
+
+  function loadReport(body, day) {
+    var myGeneration = ++reportGeneration;
+    clearEl(body);
+    line(body, 'Caricamento…', TONE_CALM);
+    function reload() { return loadReport(body, day); }
+    var giorno = day || ieriLocale();
+    return read('api/mind/report?day=' + encodeURIComponent(giorno)).then(function (occurrence) {
+      if (myGeneration !== reportGeneration) return;
+      clearEl(body);
+      if (!occurrence.ok) { renderReportError(body, occurrence.status, reload); return; }
+      renderReport(body, occurrence.corpo.resoconto || {});
+    }, function () {
+      if (myGeneration !== reportGeneration) return;
+      clearEl(body);
+      renderReportError(body, null, reload);
     });
   }
 
@@ -1740,14 +1865,32 @@ window.HirisWatcherRoute = (function () {
       loadFacts(factsBody, null);
     });
 
+    /* Sezione 03: il resoconto del giorno (spec §9). Segue lo STESSO giorno
+       della 02 -- due selettori per la stessa data sarebbero due verita' su
+       cosa si sta guardando -- e senza filtro mostra IERI, che e' l'ultimo
+       giorno che ha un resoconto scritto (l'aggregazione gira alle 00:20). */
+    var reportBody = section(outlet, '03', 'Il resoconto del giorno',
+      'Cosa si è misurato, cosa non si è potuto misurare e perché, e l’indice ' +
+      'di cosa è successo. È il materiale su cui ragiona l’analista: resta anche quando ' +
+      'il grezzo di quel giorno sarà scaduto.');
+
+    dayInput.addEventListener('change', function () {
+      loadReport(reportBody, dayInput.value || null);
+    });
+    recentBtn.addEventListener('click', function () {
+      loadReport(reportBody, null);
+    });
+
     loadWatching(watchingBody);
     loadFacts(factsBody, dayInput.value);
+    loadReport(reportBody, dayInput.value);
   }
 
   return {
     mount: mount,
     /* Seam di test: la resa e' pura DOM + dati, va pinnata senza passare da fetch. */
     _rendiScope: renderScope,
-    _rendiOggetti: renderFacts
+    _rendiOggetti: renderFacts,
+    _rendiResoconto: renderReport
   };
 })();

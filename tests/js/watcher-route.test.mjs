@@ -81,6 +81,18 @@ function montaConServer(opts = {}) {
         opts.facts !== undefined ? opts.facts : { facts: [] },
         opts.oggettiStatus);
     }
+    /* La terza rotta, dal 14/09/2026 (sezione 03). Prima di questa correzione
+       `montaConServer` SOLLEVAVA su `api/mind/report` -- e la pagina lo
+       inghiottiva nel ramo d'errore di `loadReport`, quindi tutte le prove di
+       mount restavano verdi con la sezione 03 muta. La chiave `resoconto` è
+       quella vera di `handlers_mind.handle_report`, ed è PINNATA qui: se una
+       delle due parti la rinomina, questa prova cade. */
+    if (u.indexOf('api/mind/report') === 0) {
+      if (opts.resocontoRotto) throw new Error('rete giu\'');
+      return jsonResponse(
+        opts.resoconto !== undefined ? opts.resoconto : { resoconto: resoconto() },
+        opts.resocontoStatus);
+    }
     throw new Error('url inatteso: ' + u);
   };
   return Object.assign(ctx, { chiamate });
@@ -139,9 +151,26 @@ const VECCHIO = giornoFa(40); // sicuramente né oggi né ieri, qualunque sia la
 // verificato (grep) che oggi nessun modulo di config/ contiene "e’ "
 // preceduto da una lettera, quindi togliere il filtro non introduce falsi
 // positivi sul codice reale.
+// Dal 14/09/2026 la guardia non cerca piu' SOLO "e’ ": cerca la CLASSE del
+// refuso -- una vocale accentata scritta con l'apostrofo tipografico. Il caso
+// che l'ha allargata e' «sara’ scaduto» nel cappello della sezione 03: la
+// vecchia forma non poteva vederlo, e nessun'altra prova guardava quella
+// stringa. L'elisione vera (l’indice, un’integrazione) ha l'apostrofo
+// SEGUITO da una lettera, quindi non entra; i troncamenti legittimi
+// dell'italiano (un po’, a mo’ di, be’, e gli imperativi da’/di’/fa’/sta’/
+// va’) sono l'unica lista di eccezioni, ed e' corta perche' sono nove parole
+// in tutto.
+// Verificato eseguendo su TUTTI i moduli di config/: un solo rilievo, il
+// refuso vero. Nessun falso positivo da togliere a mano.
+const TRONCAMENTI_LEGITTIMI = new Set(['po', 'mo', 'be', 'da', 'di', 'fa', 'sta', 'va']);
+const REFUSO_ACCENTO = /([A-Za-zÀ-ÿ]*[aeiouAEIOU])’(?=[\s.,;:)\]!?»"]|$)/g;
+
 function trovaRefusiApostrofo(testo) {
   const trovati = [];
-  for (const m of testo.matchAll(/[eE]’ /g)) trovati.push(m.index);
+  for (const m of testo.matchAll(REFUSO_ACCENTO)) {
+    if (TRONCAMENTI_LEGITTIMI.has(m[1].toLowerCase())) continue;
+    trovati.push(m.index);
+  }
   return trovati;
 }
 
@@ -175,6 +204,26 @@ test('rilievo 3: la guardia del refuso cattura "perche’ " e "cioe’ ", non so
 
 test('rilievo 3: la guardia del refuso cattura anche la maiuscola "E’ "', () => {
   assert.equal(trovaRefusiApostrofo('E’ vero, non funzionava.').length, 1);
+});
+
+test('la guardia cattura la CLASSE del refuso, non solo "e’": «sara’», «perche’», «piu’»', () => {
+  // Il caso vero, pagato il 14/09/2026: «il grezzo di quel giorno sara’
+  // scaduto» nel cappello della sezione 03. La vecchia guardia cercava
+  // `[eE]’ ` e non poteva vederlo.
+  // Mutazione che la uccide: rimettere la vecchia espressione.
+  assert.equal(trovaRefusiApostrofo('il grezzo sara’ scaduto').length, 1, '«sara’»');
+  assert.equal(trovaRefusiApostrofo('piu’ tardi').length, 1, '«piu’»');
+  assert.equal(trovaRefusiApostrofo('a fine riga: cosi’').length, 1, 'anche a fine stringa');
+  assert.equal(trovaRefusiApostrofo('la citta’, e poi').length, 1, 'anche prima di una virgola');
+});
+
+test("la guardia NON grida sull’elisione vera né sui troncamenti dell’italiano", () => {
+  // Se gridasse su `l’indice` il cancello diventerebbe rumore, e un cancello
+  // che grida sempre si spegne. Mutazione che la uccide: togliere il
+  // lookahead, o svuotare TRONCAMENTI_LEGITTIMI.
+  assert.deepEqual(trovaRefusiApostrofo('l’indice di un’integrazione'), []);
+  assert.deepEqual(trovaRefusiApostrofo('ci vuole un po’ di tempo'), []);
+  assert.deepEqual(trovaRefusiApostrofo('a mo’ di esempio, va’ avanti'), []);
 });
 
 test('mount: "Non sto guardando ancora niente" usa è, non e’', async () => {
@@ -2060,4 +2109,194 @@ test('seam _rendiScope: un tentativo di un mese fa si dice in giorni, non in 840
     tentativi: [tentativo('riuscito', 35 * 86400, '31 decisioni su 381 entita\' guardate')] }));
   assert.doesNotMatch(corpo.textContent, /\d{3,} ore/);
   assert.match(corpo.textContent, /giorni fa/);
+});
+
+/* ---------------------------------------------------------- il resoconto (§9)
+
+   La sezione 03 rende il resoconto del giorno PER UN UMANO. Il resoconto non è
+   fatto per un umano — serve all'analista, e il suo documento markdown è
+   pensato per stare in un prompt — ma la pagina rende lo STESSO dato con
+   l'idioma suo: stesso archivio, due rese. È la ragione per cui il documento
+   si deriva invece di essere archiviato. */
+
+function resoconto(extra) {
+  return Object.assign({ giorno: '2026-09-13', misure: [], cronaca: [] }, extra || {});
+}
+
+function misura(extra) {
+  return Object.assign({
+    soggetto: 'dev1', nome: 'Inverter', misura: 'prodotta',
+    operazione: 'somma_periodo', valore: 23.71, unita: 'kWh', copertura: 1,
+  }, extra || {});
+}
+
+/* Una misura che NON si e' potuta fare: `valore` va **tolta**, non messa a
+   `undefined` -- la pagina (come `as_document`) separa le due liste con
+   `'valore' in m`, e una chiave presente a `undefined` sarebbe «calcolata». */
+function nonCalcolabile(nome, perche) {
+  const m = misura({ misura: nome, non_calcolabile: perche });
+  delete m.valore;
+  delete m.unita;
+  delete m.copertura;
+  return m;
+}
+
+function rendiResoconto(payload) {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisWatcherRoute._rendiResoconto(corpo, payload);
+  return { window, document, corpo };
+}
+
+test('seam _rendiResoconto: «cosa non si sa» viene PRIMA delle misure', () => {
+  // Mutazione che la uccide: spostare il blocco `ignote` dopo la griglia.
+  const { corpo } = rendiResoconto(resoconto({
+    misure: [misura(), nonCalcolabile('autosufficienza',
+      'copertura 8%, sotto il minimo del 75%')],
+  }));
+
+  const testo = corpo.textContent;
+  assert.ok(testo.indexOf('Cosa non si sa') >= 0, 'la sezione c\'e\'');
+  assert.ok(testo.indexOf('Cosa non si sa') < testo.indexOf('Le misure'),
+    'in fondo a una tabella di numeri buoni non salterebbe all\'occhio, ed e\' la ' +
+    'parte su cui il proprietario puo\' fare qualcosa');
+  assert.match(testo, /copertura 8%/);
+});
+
+test('seam _rendiResoconto: la copertura si dice solo quando NON e\' piena', () => {
+  // Mutazione che la uccide: togliere `&& m.copertura < 1` dalla guardia.
+  const piena = rendiResoconto(resoconto({ misure: [misura()] }));
+  assert.doesNotMatch(piena.corpo.textContent, /del giorno/,
+    '«su 100% del giorno» accanto a ogni numero e\' rumore su cui l\'occhio smette ' +
+    'di fermarsi, ed e\' proprio quando non e\' piena che deve fermarsi');
+
+  const parziale = rendiResoconto(resoconto({ misure: [misura({ copertura: 0.83 })] }));
+  assert.match(parziale.corpo.textContent, /83% del giorno/);
+});
+
+test('seam _rendiResoconto: la cronaca dice quando, chi, cosa — e i cambi di attributo', () => {
+  // Mutazione che la uccide: non appendere la coda dei cambi di attributo.
+  const { corpo } = rendiResoconto(resoconto({
+    cronaca: [{
+      quando_ts: 1789219800, fine_ts: null, chi: 'climate.soggiorno',
+      nome: 'Termostato Soggiorno', cosa: 'heat',
+      attributi: [{ quando_ts: 1789223400, valori: { hvac_action: 'idle' } }],
+    }],
+  }));
+
+  const testo = corpo.textContent;
+  assert.match(testo, /Termostato Soggiorno/);
+  assert.match(testo, /in corso/, '«ancora in corso» e\' un fatto, non un buco');
+  assert.match(testo, /1 cambio di attributo/);
+});
+
+test('seam _rendiResoconto: un giorno senza niente lo DICE, e non tace', () => {
+  // «quel giorno non e' successo niente» e «quel giorno non l'abbiamo
+  // guardato» sono due cose diverse: la pagina deve dire la prima.
+  // Mutazione che la uccide: tornare presto quando misure e cronaca sono vuote.
+  const { corpo } = rendiResoconto(resoconto());
+
+  assert.match(corpo.textContent, /Nessuna misura per questo giorno/);
+  assert.match(corpo.textContent, /Nessun fatto/);
+});
+
+/* --------------------------------------- il resoconto, montato sulla pagina
+
+   Le prove qui sopra pinnano la RESA. Queste pinnano il FILO: la chiave che
+   la rotta usa, e il fatto che il giorno sia uno solo per le due sezioni. È
+   la classe di difetto che nessuna prova di resa può vedere -- `corpo.fatti`
+   al posto di `corpo.resoconto` renderebbe una sezione vuota, in silenzio,
+   con la suite tutta verde. */
+
+test('mount: la sezione 03 legge la chiave «resoconto» della rotta, e rende la misura', async () => {
+  // Mutazione che la uccide: in `loadReport`, `occurrence.corpo.risultato`
+  // (o qualunque altro nome) al posto di `occurrence.corpo.resoconto`.
+  const { window, document } = montaConServer({
+    resoconto: { resoconto: resoconto({ misure: [misura()] }) },
+  });
+  window.HirisWatcherRoute.mount();
+  await tick(20);
+
+  const card3 = document.querySelectorAll('.section-card')[2];
+  assert.ok(card3, 'la sezione 03 deve esistere sulla pagina');
+  assert.match(card3.textContent, /Inverter/);
+  assert.match(card3.textContent, /23\.71 kWh/);
+});
+
+test('mount: il giorno è UNO, e comanda tutte e due le sezioni', async () => {
+  // Due selettori per la stessa data sarebbero due verità su cosa si sta
+  // guardando. Mutazione che la uccide: togliere il listener `change` che
+  // ricarica il resoconto.
+  const ctx = montaConServer();
+  ctx.window.HirisWatcherRoute.mount();
+  await tick(20);
+
+  const input = ctx.document.querySelector('input[type="date"]');
+  assert.ok(input, 'il selettore di giorno deve esistere');
+  input.value = VECCHIO;
+  input.dispatchEvent(new ctx.window.Event('change'));
+  await tick(20);
+
+  const chieste = ctx.chiamate.filter((u) => u.indexOf(VECCHIO) !== -1);
+  assert.ok(chieste.some((u) => u.indexOf('api/mind/facts') === 0),
+    'la 02 deve seguire il giorno scelto');
+  assert.ok(chieste.some((u) => u.indexOf('api/mind/report') === 0),
+    'e la 03 pure -- ' + JSON.stringify(ctx.chiamate));
+});
+
+test('mount: la pagina apre su IERI — OGGI non ha ancora un resoconto (si scrive alle 00:20)', async () => {
+  // Il selettore nasce su ieri, e sono LE DUE sezioni a seguirlo. Chiedere
+  // OGGI darebbe un 404 a ogni apertura della pagina, su tutt'e due.
+  // Mutazione che la uccide: `dayInput.value = localToday()`.
+  const ctx = montaConServer();
+  ctx.window.HirisWatcherRoute.mount();
+  await tick(20);
+
+  const report = ctx.chiamate.filter((u) => u.indexOf('api/mind/report') === 0);
+  assert.equal(report.length, 1, 'una sola richiesta all\u2019apertura');
+  assert.ok(report[0].indexOf(IERI) !== -1,
+    'deve chiedere ieri (' + IERI + '), ha chiesto: ' + report[0]);
+  assert.ok(report[0].indexOf(OGGI) === -1, 'e non oggi');
+});
+
+test('mount: «vedi i più recenti» toglie il filtro alla 02, ma la 03 resta su UN giorno — e DICE quale', async () => {
+  // Un resoconto «senza filtro» non esiste: è per definizione di un giorno
+  // solo. Premuto quel bottone, la 02 mostra molti giorni insieme e la 03
+  // resta sull'ultimo che ha un resoconto scritto -- quindi la data va
+  // SCRITTA, o quei numeri non si sa a quando si riferiscono.
+  // Mutazione che la uccide: togliere la riga `Il resoconto di ...`.
+  const ctx = montaConServer({
+    resoconto: { resoconto: resoconto({ giorno: IERI, misure: [misura()] }) },
+  });
+  ctx.window.HirisWatcherRoute.mount();
+  await tick(20);
+
+  const recenti = bottone(ctx.document, 'Vedi i più recenti, senza filtro');
+  assert.ok(recenti, 'il bottone deve esistere');
+  recenti.click();
+  await tick(20);
+
+  const fatti = ctx.chiamate.filter((u) => u.indexOf('api/mind/facts') === 0);
+  assert.equal(fatti[fatti.length - 1], 'api/mind/facts',
+    'la 02 chiede senza filtro di giorno');
+  const report = ctx.chiamate.filter((u) => u.indexOf('api/mind/report') === 0);
+  assert.ok(report[report.length - 1].indexOf(IERI) !== -1,
+    'la 03 resta su ieri: un resoconto senza giorno non esiste');
+
+  const card3 = ctx.document.querySelectorAll('.section-card')[2];
+  assert.ok(card3.textContent.indexOf('Il resoconto di ' + ggmmaaaa(IERI)) !== -1,
+    'la data del resoconto va scritta: ' + card3.textContent.slice(0, 120));
+});
+
+test('mount: un giorno senza resoconto (404) lo SPIEGA, e non dice che non è successo niente', async () => {
+  // «non c'è ancora» e «non è successo niente» sono due cose diverse, e la
+  // seconda al posto della prima sarebbe una bugia tranquillizzante.
+  // Mutazione che la uccide: togliere il ramo `status === 404`.
+  const { window, document } = montaConServer({ resocontoStatus: 404 });
+  window.HirisWatcherRoute.mount();
+  await tick(20);
+
+  const card3 = document.querySelectorAll('.section-card')[2];
+  assert.match(card3.textContent, /non c’è ancora un resoconto/);
+  assert.match(card3.textContent, /00:20/);
 });
