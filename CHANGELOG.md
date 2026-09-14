@@ -1,5 +1,64 @@
 # HIRIS — Changelog
 
+## [3.33.0] — Il resoconto si vede (2026-09-14)
+
+La 3.32.0 ha scritto il resoconto e l'ha messo su una rotta. Questa lo mette
+**sulla pagina**: sezione 03 dell'osservatore, sullo stesso selettore di giorno
+della sezione 02, così i due si guardano insieme.
+
+**È lo stesso dato reso due volte, e lo è apposta.** Il documento markdown
+(`as_document`) è pensato per stare in un prompt; la pagina è pensata per un
+umano che scorre. Nessuna delle due è archiviata: tutt'e due si derivano dal
+resoconto, che è l'unico originale — la ragione per cui il documento non si
+scrive a mano.
+
+### Tre scelte, e la misura che le regge
+
+- **«Cosa non si sa» viene PRIMA delle misure.** È il terzo innesco
+  dell'analista, ed è l'unica parte su cui il proprietario può fare qualcosa:
+  in fondo a una tabella di numeri buoni non salterebbe all'occhio.
+- **La copertura si dice solo quando NON è piena.** «su 100% del giorno»
+  accanto a ogni numero è rumore su cui l'occhio smette di fermarsi, ed è
+  proprio quando non è piena che deve fermarsi.
+- **Un giorno vuoto lo DICE.** «Quel giorno non è successo niente» e «quel
+  giorno non l'abbiamo guardato» sono due cose diverse: la prima si scrive, la
+  seconda è un 404 che spiega che il resoconto si scrive la notte dopo.
+
+### Il giorno si dice
+
+La 03 mostra sempre **un giorno solo**, e condivide il selettore con la 02 --
+che col bottone «vedi i più recenti» ne mostra molti insieme. Senza la data
+scritta in cima, chi avesse appena premuto quel bottone leggerebbe dei numeri
+senza sapere a quando si riferiscono, accanto a un elenco che copre altri
+giorni. Uscito da una mutazione **sopravvissuta**: la prova diceva «chiede
+ieri» e in realtà provava il valore di fabbrica del selettore, non il
+comportamento. Riscritta sulla proprietà vera, e la resa corretta.
+
+### Quattro difetti usciti dai cancelli e dalle mutazioni, non dalla lettura
+
+- `describeWatchedSubject` torna un **oggetto** (`primary`/`secondary`/
+  `technical`), non una stringa: concatenarlo scriveva `[object Object]` al
+  posto del nome in ogni riga della cronaca. Ora la riga usa `primary` e, quando
+  il nome amichevole non c'era, **dichiara** che quello è un identificatore —
+  con la stessa etichetta della sezione 01.
+- Il refuso `e’` al posto di `è` in due righe del cappello della sezione: preso
+  dal cancello della prosa, che esiste per questo.
+- E **un terzo che il cancello non poteva vedere**: `sara’` al posto di `sarà`.
+  La guardia cercava la stringa `e’ `, non la CLASSE del refuso. Ora cerca una
+  vocale seguita dall'apostrofo tipografico e da uno spazio o una
+  punteggiatura, con l'unica eccezione dei nove troncamenti legittimi
+  dell'italiano (`po’`, `mo’`, `be’`, e gli imperativi). Eseguita su tutti i
+  moduli di `config/`: un solo rilievo, il refuso vero, **nessun falso
+  positivo**.
+- La sezione 03 era montata e **non provata**: il finto server della suite
+  sollevava su `api/mind/report`, e la pagina inghiottiva l'eccezione nel ramo
+  d'errore -- tutte le prove di mount restavano verdi con la sezione muta. Ora
+  il finto server conosce la terza rotta, e la chiave `resoconto` è pinnata da
+  una prova che cade se una delle due parti la rinomina.
+
+Undici mutazioni dichiarate ed **eseguite**: dieci uccise, una sopravvissuta
+e corretta (sopra). 417 prove JS verdi, cancelli compresi.
+
 ## [3.32.0] — Il resoconto giornaliero (2026-09-14)
 
 **Due strati, non tre.** Il grezzo scade dopo 22 giorni; il resoconto **resta**.
