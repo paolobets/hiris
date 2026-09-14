@@ -1,5 +1,78 @@
 # HIRIS — Changelog
 
+## [3.34.0] — Il registro offriva ciò che il motore non sa eseguire (2026-09-14)
+
+**La domanda nuova ha risposto al primo colpo.** Aggiornata la casa alla
+3.33.4, `GET /api/health` ha detto:
+
+```
+riparazione: {"oggetti": "sollevata",
+              "perche": "TypeError: _episode() missing 2 required
+                         keyword-only arguments: 'is_on' and 'period_end'"}
+```
+
+Non era il fuso, non erano le direzioni, non erano i bilanci: quei tre cancelli
+**passavano**. Era il resoconto stesso.
+
+### La catena, quattro anelli
+
+1. il **catalogo** mostrato al modello elencava ogni voce del registro,
+   `episodio` compresa — e `is_on` è una **funzione**, che nessun JSON porta;
+2. il modello ha scritto **la sua prima ricetta** usando `episodio`. Non è
+   colpa sua: gliel'avevamo messa nell'elenco;
+3. `validate()` controllava solo che il nome fosse nel registro: **accettata**,
+   e scritta nel sapere;
+4. il resoconto l'ha eseguita. `TypeError`, che nessuno catturava, e l'intera
+   riaggregazione è morta — oggetti **e** resoconti di due giorni, a ogni
+   riavvio, per sempre.
+
+Quattro anelli, e sarebbe bastato spezzarne uno. Ora si spezzano tutti.
+
+### Il registro dichiara, e la validazione controlla
+
+`Operation` prende il sesto campo, **`in_recipes`** — se una ricetta può
+nominarla. Senza valore di fabbrica, come gli altri cinque: la spec §6 dice
+*«ogni operazione dichiara, e non si può costruire senza»*, e un default `True`
+avrebbe rifatto il difetto alla prossima voce nuova.
+
+`validate()` fa ora **quattro** domande su ogni passo, e le fa tutte insieme:
+esiste? si può scrivere in una ricetta? ha i parametri obbligatori? consegna il
+numero giusto di ingressi? Le ultime tre si leggono dalla **firma** di `run`
+(`required_params`, `input_range`), mai da un elenco scritto a mano accanto a
+essa — quello diverge al primo ritocco.
+
+Il catalogo offre solo ciò che si può scrivere, e **dice cosa pretende**:
+elencare `somma_periodo` senza dire che vuole `unit` è metà informazione, e il
+giro si brucia lo stesso.
+
+E `misure_durante` è stata **riparata, non esclusa**: voleva il suo periodo
+come parametro, cioè da nessuna parte — un `Period` lo calcola un passo, e i
+passi si consegnano per posizione. Ora è posizionale, e l'operazione è
+finalmente usabile.
+
+### E la ricetta già scritta si toglie
+
+Migrazione v4 del sapere. La validazione nuova la rifiuta, quindi il giorno non
+muore più — ma la riga resterebbe lì per sempre, e `devices_to_ask` non
+richiede a chi una risposta l'ha già data: quel dispositivo non avrebbe una
+ricetta **mai più**. Si toglie, e il giro dopo lo richiede, con un catalogo che
+non offre più ciò che non si può scrivere.
+
+Si guardano solo i controlli che non dipendono dalla casa: una ricetta che
+nomina un'entità sparita **non** si cancella — quella è una domanda sulla casa
+di oggi, non sul registro.
+
+### Un test che non poteva fallire
+
+`assert "unit" in riga` sul catalogo passava anche togliendo del tutto i
+parametri: la riga contiene già «l'unità del contatore» fra gli ingressi, e
+`unit` ne è un pezzo. L'ha trovato la mutazione, non la lettura. Riscritto
+sulla frase che li annuncia e sul nome fra backtick.
+
+Dieci mutazioni dichiarate ed **eseguite**: nove uccise subito, una
+sopravvissuta — quella — e uccisa dopo la riscrittura. 4154 prove Python, 417
+JS, ruff, oxlint, censimento, componenti.
+
 ## [3.33.4] — Una riparazione che solleva lo dice lo stesso (2026-09-14)
 
 Con la 3.33.2 installata sulla casa vera, `GET /api/health` rispondeva
