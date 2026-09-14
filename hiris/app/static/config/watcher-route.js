@@ -187,6 +187,22 @@ window.HirisWatcherRoute = (function () {
     return body;
   }
 
+  /* Una scrittura: stessa forma di `read`, piu' l'intestazione che il
+     prodotto usa gia' per le sue POST (`X-Requested-With`). Torna sempre
+     l'esito letto, anche su un 400: e' li' che vive la ragione del rifiuto,
+     e chi ha premuto salva deve leggerla. */
+  function write(path, payload) {
+    return fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' },
+      body: JSON.stringify(payload),
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (body) {
+        return { ok: r.ok, status: r.status, corpo: body };
+      });
+    });
+  }
+
   function read(path) {
     return fetch(path).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (body) {
@@ -360,6 +376,60 @@ window.HirisWatcherRoute = (function () {
     body.appendChild(el('p', 'field-hint', objective.scritto_ts == null
       ? 'Obiettivo di fabbrica: nessuno l’ha ancora scritto.'
       : 'Scritto il ' + fmtWhenFull(objective.scritto_ts) + '.'));
+
+    /* **E si può scrivere.** Fino al 14/09/2026 `set_objective` non aveva
+       nessun chiamante -- né rotta, né campo, né strumento in chat -- e sulla
+       casa vera l'obiettivo era ancora quello di fabbrica. È la sola manopola
+       del prodotto: da questa frase l'osservatore decide cosa guardare, il
+       modello propone le ricette e l'analista sceglie cosa cercare.
+
+       Il campo parte da quello di ADESSO, non vuoto: un obiettivo si corregge,
+       non si riscrive da zero, e un campo vuoto invita a cancellare la sola
+       cosa che tiene in piedi il criterio. */
+    var campo = el('textarea');
+    campo.value = objective.testo || '';
+    campo.rows = 2;
+    campo.setAttribute('aria-label', 'L’obiettivo della casa');
+    campo.style.cssText = 'display:block;width:100%;box-sizing:border-box;margin:10px 0 6px;' +
+      'padding:8px;border-radius:8px;font:inherit;overflow-wrap:anywhere';
+    body.appendChild(campo);
+
+    var esito = el('p', 'sc-desc');
+    var salva = el('button', 'btn btn-sm', 'Salva l’obiettivo');
+    salva.type = 'button';
+    salva.addEventListener('click', function () {
+      salva.disabled = true;
+      esito.textContent = 'Salvo…';
+      write('api/mind/objective', { testo: campo.value }).then(function (occurrence) {
+        salva.disabled = false;
+        if (occurrence.status === 400) {
+          /* **Il campo NON si svuota e la sezione non si ricarica.** Il
+             proprietario ha appena scritto una frase: perderla sarebbe il
+             danno peggiore dei due. */
+          esito.textContent = (occurrence.corpo && occurrence.corpo.errore)
+            || 'Questo obiettivo non si può scrivere.';
+          return;
+        }
+        if (!occurrence.ok) {
+          esito.textContent = 'Non è stato possibile salvare. Riprova.';
+          return;
+        }
+        if (occurrence.corpo && occurrence.corpo.scritto === false) {
+          /* `scritto: false` vuol dire «c'era già», non «non ha funzionato»:
+             dirlo come un guasto insegnerebbe a diffidare dei guasti veri. */
+          esito.textContent = 'L’obiettivo era già questo: non è cambiato niente.';
+          return;
+        }
+        /* Scritto: la sezione si rilegge intera, perche' l'obiettivo nuovo
+           cambia anche «da quando» e la riconsiderazione. */
+        loadWatching(body);
+      }, function () {
+        salva.disabled = false;
+        esito.textContent = 'Non è stato possibile salvare. Riprova.';
+      });
+    });
+    body.appendChild(salva);
+    body.appendChild(esito);
   }
 
   /* Una riga di decisione, per «cosa guardo» e per «lasciato fuori» insieme:

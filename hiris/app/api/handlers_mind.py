@@ -288,3 +288,52 @@ def _with_rendered_states(facts: list[dict], report: dict) -> list[dict]:
             continue
         rendered.append({**fact, "corpo": {**body, "stato_reso": translated}})
     return rendered
+
+async def handle_set_objective(request) -> web.Response:
+    """Scrive l'obiettivo della casa. **La sola manopola del prodotto.**
+
+    Torna `{"obiettivo": {...}, "scritto": bool}`.
+
+    **Perche' questa rotta e' nata il 14/09/2026, col suo numero.**
+    `store.set_objective` esisteva dal giorno 11, provata da dieci prove, e
+    nessun codice di produzione la chiamava: nessuna rotta, nessun campo nella
+    pagina, nessuno strumento in chat. Misurato sulla casa vera quel giorno,
+    l'obiettivo era ancora quello **di fabbrica** -- `scritto_ts: null` -- e
+    l'osservatore decideva cosa guardare contro una frase generica, mentre la
+    spec lo chiama «obiettivo = prompt». Il docstring di `set_objective` parla
+    perfino del bottone «salva»: una motivazione scritta accanto al codice che
+    il codice smentiva.
+
+    **`scritto: false` non e' un errore.** Riscrivere lo stesso testo non e' un
+    cambio d'obiettivo e non deve sporcare la storia -- la pagina dice «da
+    quando guardo questa cosa», e direbbe che tutto e' cambiato ogni volta che
+    qualcuno preme «salva» senza aver toccato niente. La regola vive
+    nell'archivio, in un posto solo; qui si riporta soltanto cosa ha deciso.
+
+    **Un testo vuoto e' un 400, non un 200 silenzioso.** E' l'unica manopola:
+    un campo svuotato per sbaglio non deve poter lasciare l'osservatore senza
+    criterio, e chi ha premuto salva deve sapere che non e' stato scritto
+    niente.
+    """
+    store = request.app.get("observations")
+    if store is None:
+        return web.json_response({"errore": "archivio non disponibile"},
+                                 status=503)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"errore": "corpo non leggibile"}, status=400)
+    text = body.get("testo") if isinstance(body, dict) else None
+    if not isinstance(text, str):
+        return web.json_response(
+            {"errore": "serve un campo `testo` con la frase dell'obiettivo."},
+            status=400)
+    if not text.strip():
+        return web.json_response(
+            {"errore": "un obiettivo vuoto non si scrive: e' la sola manopola "
+                       "del prodotto, e senza criterio l'osservatore non sa "
+                       "piu' cosa guardare."},
+            status=400)
+    written = store.set_objective(text)
+    return web.json_response({"obiettivo": store.objective(),
+                              "scritto": bool(written)})

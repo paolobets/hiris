@@ -25,6 +25,7 @@ primo.
 """
 from __future__ import annotations
 
+import datetime as dt
 import json
 import logging
 import threading
@@ -266,6 +267,64 @@ def _migration_8(conn) -> None:
                 "disinnescati", row["giorno"])
 
 
+def _migration_9(conn) -> None:
+    """v8 -> v9: l'**obiettivo** sui resoconti gia' archiviati (spec §11).
+
+    Chi legge trenta giorni di misure in serie deve sapere se in mezzo la
+    domanda e' cambiata, o legge una tendenza dove c'e' un cambio d'obiettivo.
+    La riga e' nata il 14/09/2026, dopo i diciannove giorni gia' scritti sulla
+    casa vera (26/08 -> 13/09): quelli non ce l'hanno.
+
+    **Si puo' scrivere senza inventare niente**, perche' l'obiettivo vive
+    nella stessa base dati: si cerca quello che valeva alla FINE di quel
+    giorno -- lo stesso istante che usa `aggregate_day`, o due strade sullo
+    stesso giorno darebbero risposte diverse.
+
+    **Un resoconto che ce l'ha gia' non si tocca**: puo' portare un obiettivo
+    DIVERSO da quello di adesso, ed e' il suo; sovrascriverlo direbbe che quel
+    giorno rispondeva a una domanda che non era la sua.
+
+    La query dell'obiettivo e' ricopiata qui invece di chiamare
+    `objective_at`: una migrazione deve dire fra due anni la stessa cosa che
+    dice adesso, anche se quel metodo cambiasse.
+    """
+    rows = conn.execute("SELECT giorno, corpo_json FROM resoconto").fetchall()
+    for row in rows:
+        try:
+            body = json.loads(row["corpo_json"])
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(body, dict) or body.get("obiettivo") is not None:
+            continue
+        end = _end_of_day_ts(row["giorno"])
+        if end is None:
+            continue
+        aim = conn.execute(
+            "SELECT text, written_ts FROM objective WHERE written_ts <= ? "
+            "ORDER BY written_ts DESC, id DESC LIMIT 1", (end,)).fetchone()
+        body["obiettivo"] = (
+            {"testo": DEFAULT_OBJECTIVE, "scritto_ts": None} if aim is None
+            else {"testo": aim["text"], "scritto_ts": aim["written_ts"]})
+        conn.execute("UPDATE resoconto SET corpo_json = ? WHERE giorno = ?",
+                     (json.dumps(body, ensure_ascii=False), row["giorno"]))
+
+
+def _end_of_day_ts(day: str) -> float | None:
+    """La mezzanotte che chiude quel giorno, in UTC.
+
+    **Il fuso non si puo' sapere qui**, e va bene: l'obiettivo cambia qualche
+    volta all'anno, non qualche volta all'ora, e due ore di scarto sul confine
+    sceglierebbero lo stesso obiettivo in ogni caso reale. Inventare un fuso
+    sarebbe peggio: sarebbe un'affermazione, e questa e' un'approssimazione
+    dichiarata.
+    """
+    try:
+        pieces = [int(n) for n in str(day).split("-")]
+        return dt.datetime(pieces[0], pieces[1], pieces[2], tzinfo=dt.UTC).timestamp() + 86400.0
+    except (ValueError, IndexError, TypeError):
+        return None
+
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS cambi (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -465,7 +524,7 @@ def _migration_6(conn) -> None:
 #: prova non debba ricopiarne il numero: un letterale in una prova e' un
 #: doppione che mente al primo schema nuovo, e questa riga esiste perche' e'
 #: successo (`test_migration_5...` inchiodava il 5).
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 #: L'obiettivo di fabbrica, deciso dal proprietario il 25/08/2026. Non e' un
 #: ripiego: e' il criterio con cui l'osservatore decide cosa guardare su una
@@ -530,7 +589,8 @@ class ObservationsStore:
         init_schema(self._conn, _SCHEMA, version=SCHEMA_VERSION,
                     migrations={2: _migration_2, 3: _migration_3, 4: _migration_4,
                                 5: _migration_5, 6: _migration_6,
-                                7: _migration_7, 8: _migration_8})
+                                7: _migration_7, 8: _migration_8,
+                                9: _migration_9})
 
     def close(self) -> None:
         with self._lock:

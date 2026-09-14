@@ -883,7 +883,11 @@ def test_migration_8_non_tocca_un_resoconto_tutto_buono(tmp_path):
     """
     percorso = str(tmp_path / "oss.db")
     store = ObservationsStore(percorso)
-    grezzo = ('{"giorno": "2026-09-13",   "misure": [{"soggetto": "dev2", '
+    # `obiettivo` c'e' gia': cosi' nemmeno `_migration_9` ha ragione di
+    # toccarlo, e resta in piedi la proprieta' che questa prova sorveglia --
+    # un resoconto SANO non si riscrive.
+    grezzo = ('{"giorno": "2026-09-13",   "obiettivo": {"testo": "x", '
+              '"scritto_ts": 1.0},   "misure": [{"soggetto": "dev2", '
               '"misura": "produzione", "operazione": "somma_periodo", '
               '"valore": 23.31, "unita": "kWh", "copertura": 1.0}], '
               '"forme": [],   "cronaca": []}')
@@ -899,4 +903,53 @@ def test_migration_8_non_tocca_un_resoconto_tutto_buono(tmp_path):
         "SELECT corpo_json FROM resoconto WHERE giorno = '2026-09-13'"
     ).fetchone()["corpo_json"]
     assert dopo == grezzo, "un resoconto sano non si riscrive"
+    riaperto.close()
+
+def test_migration_9_scrive_l_obiettivo_sui_resoconti_gia_archiviati(tmp_path):
+    """I 19 giorni gia' archiviati sulla casa vera (26/08 -> 13/09, misurati il
+    14/09/2026) non portano l'obiettivo: la riga e' nata dopo di loro. Ma
+    l'archivio sa ancora quale valeva -- `objective_at` legge la stessa base
+    dati -- quindi si puo' scrivere senza inventare niente.
+
+    **Si legge alla fine del giorno**, la stessa istante che usa
+    `aggregate_day`: due strade sullo stesso giorno devono dare la stessa
+    risposta.
+
+    Mutazione: togliere `9: _migration_9` dal dizionario `migrations` -- rossa.
+    """
+    percorso = str(tmp_path / "oss.db")
+    store = ObservationsStore(percorso)
+    store.set_objective("la domanda di allora", when_ts=1787000000.0)
+    store.replace_report("2026-09-13", {
+        "giorno": "2026-09-13", "misure": [], "forme": [], "cronaca": []})
+    store._conn.execute("PRAGMA user_version = 8")
+    store._conn.commit()
+    store.close()
+
+    riaperto = ObservationsStore(percorso)
+    scritto = riaperto.report("2026-09-13")
+    assert scritto["obiettivo"]["testo"] == "la domanda di allora"
+    riaperto.close()
+
+
+def test_migration_9_non_tocca_un_resoconto_che_l_obiettivo_ce_l_ha_gia(tmp_path):
+    """Un resoconto scritto dopo porta gia' il suo, e puo' essere DIVERSO da
+    quello di adesso: sovrascriverlo con l'obiettivo di oggi sarebbe dire che
+    quel giorno rispondeva a una domanda che non era la sua.
+
+    Mutazione: riscrivere sempre -- rossa.
+    """
+    percorso = str(tmp_path / "oss.db")
+    store = ObservationsStore(percorso)
+    store.set_objective("quella di adesso", when_ts=1787000000.0)
+    store.replace_report("2026-09-13", {
+        "giorno": "2026-09-13",
+        "obiettivo": {"testo": "quella di allora", "scritto_ts": 1.0},
+        "misure": [], "forme": [], "cronaca": []})
+    store._conn.execute("PRAGMA user_version = 8")
+    store._conn.commit()
+    store.close()
+
+    riaperto = ObservationsStore(percorso)
+    assert riaperto.report("2026-09-13")["obiettivo"]["testo"] == "quella di allora"
     riaperto.close()

@@ -5266,12 +5266,20 @@ def create_app() -> web.Application:
     # oggetti che l'aggregazione notturna ha costruito. Due GET, come
     # /api/home-space e /api/memories qui sopra: nessuna scrittura, quindi nessun
     # `csrf_middleware` da rispettare.
-    from .api.handlers_mind import handle_facts, handle_report, handle_watching
+    from .api.handlers_mind import (
+        handle_facts,
+        handle_report,
+        handle_set_objective,
+        handle_watching,
+    )
     app.router.add_get("/api/mind/watching", handle_watching)
     app.router.add_get("/api/mind/facts", handle_facts)
     # Il resoconto (spec §9): un giorno, lo stesso giorno come documento, o le
     # misure degli ultimi trenta. Tre forme, un archivio.
     app.router.add_get("/api/mind/report", handle_report)
+    # La sola manopola del prodotto: fino al 14/09/2026 l'obiettivo si
+    # poteva solo LEGGERE, e sulla casa vera era ancora quello di fabbrica.
+    app.router.add_post("/api/mind/objective", handle_set_objective)
 
     return app
 

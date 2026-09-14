@@ -69,7 +69,7 @@ _ANCHOR = ("nome", "classe", "attributi")
 
 
 def build_report(*, day: str, episodes, series: dict, recipes: dict,
-                 names: dict) -> dict:
+                 names: dict, objective: dict | None = None) -> dict:
     """Il resoconto di un giorno: `{giorno, misure, cronaca}`.
 
     **Puro**: nessuna lettura di rete e nessun archivio. Le serie arrivano gia'
@@ -79,10 +79,21 @@ def build_report(*, day: str, episodes, series: dict, recipes: dict,
     Un giorno vuoto produce un resoconto vuoto, e **va scritto lo stesso**:
     «quel giorno non e' successo niente» e «quel giorno non l'abbiamo
     guardato» sono due cose diverse, e l'analista deve poterle distinguere.
+
+    **`objective` e' la domanda a cui quel giorno risponde** (spec §11), e
+    arriva gia' letta da chi chiama -- `store.objective_at(fine del giorno)`.
+    Chi legge trenta giorni di misure in serie deve sapere se in mezzo la
+    domanda e' cambiata, o legge una tendenza dove c'e' un cambio d'obiettivo:
+    e' proprio il modo in cui l'analista le legge.
+
+    **`None` resta `None`**: un resoconto scritto prima che questa riga
+    esistesse non deve spacciare l'obiettivo di OGGI per quello di allora --
+    la stessa legge gia' pagata da `friendly_name` e dall'ancora della
+    cronaca.
     """
     measured, shapes = _measurements(series, recipes, names)
-    return {"giorno": day, "misure": measured, "forme": shapes,
-            "cronaca": [_entry(e) for e in episodes or []]}
+    return {"giorno": day, "obiettivo": objective, "misure": measured,
+            "forme": shapes, "cronaca": [_entry(e) for e in episodes or []]}
 
 
 def _measurements(series: dict, recipes: dict,
@@ -205,6 +216,12 @@ def as_document(report: dict) -> str:
     chronicle = report.get("cronaca") or []
 
     lines = [f"# Resoconto del {report.get('giorno')}", ""]
+    # **L'obiettivo sta in cima**, prima dei numeri: e' la domanda a cui quel
+    # giorno risponde, e chi legge la serie di trenta giorni deve incontrarla
+    # prima di leggere una tendenza che potrebbe essere un cambio di domanda.
+    aim = (report.get("obiettivo") or {}).get("testo")
+    if aim:
+        lines += [f"*La domanda di quel giorno: {aim}*", ""]
     lines += [f"## {SEZIONE_MISURE}", ""]
     if measurements:
         lines += ["| chi | misura | valore | copertura |",

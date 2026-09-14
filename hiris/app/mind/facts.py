@@ -1140,9 +1140,14 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     # la casa**, e resterebbe li' a dire il falso finche' qualcuno non rifa'
     # quel giorno.
     if recipes is not None:
+        # **L'obiettivo che valeva ALLORA**, non quello di oggi (spec §11).
+        # Si legge a `to_ts` -- la fine del giorno -- perche' e' la domanda
+        # con cui quel giorno si e' chiuso; e si legge qui, dove l'archivio
+        # c'e' gia', per tenere `build_report` puro come promette.
         store.replace_report(day, build_report(
             day=day, episodes=episodes, series=series or {},
-            recipes=recipes, names=names or {}))
+            recipes=recipes, names=names or {},
+            objective=store.objective_at(to_ts)))
 
     # **`report_only`: si scrive il resoconto e si lasciano stare gli
     # oggetti.** Serve alla riparazione d'avvio, che ha quattro uscite

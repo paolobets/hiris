@@ -197,12 +197,12 @@ def test_una_chiave_che_non_ha_niente_da_dire_TACE():
 
 # -- il resoconto intero ----------------------------------------------------
 
-def test_il_resoconto_porta_il_suo_giorno_e_le_tre_parti():
+def test_il_resoconto_porta_il_suo_giorno_la_domanda_e_le_tre_parti():
     r = rep.build_report(day="2026-09-13", episodes=EPISODI, series=SERIE,
                          recipes={"dev1": RICETTA}, names={})
 
     assert r["giorno"] == "2026-09-13"
-    assert set(r) == {"giorno", "misure", "forme", "cronaca"}
+    assert set(r) == {"giorno", "obiettivo", "misure", "forme", "cronaca"}
 
 
 def test_un_giorno_SENZA_NIENTE_e_un_resoconto_vuoto_non_un_errore():
@@ -212,8 +212,8 @@ def test_un_giorno_SENZA_NIENTE_e_un_resoconto_vuoto_non_un_errore():
     r = rep.build_report(day="2026-09-13", episodes=[], series={},
                          recipes={}, names={})
 
-    assert r == {"giorno": "2026-09-13", "misure": [], "forme": [],
-                 "cronaca": []}
+    assert r == {"giorno": "2026-09-13", "obiettivo": None, "misure": [],
+                 "forme": [], "cronaca": []}
 
 
 # -- il documento: DERIVATO, mai scritto ------------------------------------
@@ -440,3 +440,49 @@ def test_media_min_max_e_una_MISURA_non_una_forma():
     assert [f["misura"] for f in resoconto["forme"]] == ["profilo"]
     assert resoconto["misure"][0]["valore"] == {
         "media": 21.5, "minimo": 20.0, "massimo": 23.0}
+
+def test_il_resoconto_porta_l_OBIETTIVO_che_valeva_quel_giorno():
+    """**Spec §11**: chi legge trenta giorni di misure in serie deve sapere se
+    in mezzo la domanda e' cambiata, o legge una tendenza dove c'e' un cambio
+    d'obiettivo. E' l'analista a leggerle cosi', quindi la riga deve esserci
+    prima di lui.
+
+    La funzione che serve esiste da giorni -- `store.objective_at(ts)`, il cui
+    docstring dice *«la domanda che il resoconto porra' a ogni giornata che
+    rilegge»* -- e **nessun codice di produzione la chiamava**: una motivazione
+    scritta accanto al codice che il codice smentiva.
+
+    Mutazione: togliere `obiettivo` dal resoconto -- rossa.
+    """
+    r = rep.build_report(day="2026-09-13", episodes=[], series={}, recipes={},
+                         names={}, objective={"testo": "spendere meno di sera",
+                                              "scritto_ts": 1787000000.0})
+    assert r["obiettivo"] == {"testo": "spendere meno di sera",
+                              "scritto_ts": 1787000000.0}
+
+
+def test_un_resoconto_senza_obiettivo_dichiarato_non_ne_inventa_uno():
+    """`None` resta `None`: un resoconto vecchio, scritto prima che questa riga
+    esistesse, non deve spacciare l'obiettivo di **oggi** per quello di allora
+    -- e' la stessa legge gia' pagata da `friendly_name` e dall'ancora della
+    cronaca.
+
+    Mutazione: mettere l'obiettivo di fabbrica come valore di ripiego -- rossa.
+    """
+    r = rep.build_report(day="2026-09-13", episodes=[], series={}, recipes={},
+                         names={})
+    assert r["obiettivo"] is None
+
+
+def test_il_documento_scrive_l_obiettivo_sotto_il_titolo():
+    """E' la domanda a cui quel giorno risponde: sta in cima, dove chi legge la
+    incontra prima dei numeri.
+
+    Mutazione: non scriverlo nel documento -- rossa.
+    """
+    documento = rep.as_document(rep.build_report(
+        day="2026-09-13", episodes=[], series={}, recipes={}, names={},
+        objective={"testo": "spendere meno di sera", "scritto_ts": 1.0}))
+    righe = documento.split("\n")
+    assert righe[0].startswith("# Resoconto del")
+    assert "spendere meno di sera" in "\n".join(righe[:4]), documento[:200]

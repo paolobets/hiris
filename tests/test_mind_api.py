@@ -3,7 +3,11 @@ import json
 
 import pytest
 
-from hiris.app.api.handlers_mind import handle_facts, handle_watching
+from hiris.app.api.handlers_mind import (
+    handle_facts,
+    handle_set_objective,
+    handle_watching,
+)
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.mind.store import ATTEMPTS_SHOWN, ObservationsStore
 from hiris.app.mind.watcher import Watcher
@@ -831,3 +835,120 @@ async def test_lo_stesso_giorno_si_puo_chiedere_come_DOCUMENTO():
 
     assert r.content_type == "text/markdown"
     assert "## Le misure" in r.text
+
+# ── L'obiettivo si puo' finalmente SCRIVERE ──────────────────────────────────
+#
+# `store.set_objective` esisteva dal 11/09/2026, provata da dieci prove, e
+# **nessun codice di produzione la chiamava**: nessuna rotta, nessun campo
+# nella pagina, nessuno strumento in chat. Misurato sulla casa vera il
+# 14/09/2026, l'obiettivo era ancora quello di fabbrica -- `scritto_ts: null`
+# -- e l'osservatore decideva cosa guardare contro una frase generica, mentre
+# la spec lo chiama «obiettivo = prompt».
+#
+# Il docstring di `set_objective` parla perfino del bottone «salva»: una
+# motivazione scritta accanto al codice che il codice smentiva.
+
+
+def _richiesta_scritta(app, corpo):
+    class _R:
+        def __init__(self):
+            self.app = app
+            self.query = {}
+
+        async def json(self):
+            if corpo is _ILLEGGIBILE:
+                raise ValueError("corpo non leggibile")
+            return corpo
+    return _R()
+
+
+_ILLEGGIBILE = object()
+
+
+@pytest.mark.asyncio
+async def test_si_puo_scrivere_l_obiettivo(tmp_path):
+    """Mutazione: far tornare a `handle_set_objective` il solo `obiettivo`
+    senza chiamare `set_objective` -- rossa."""
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        r = await handle_set_objective(_richiesta_scritta(
+            {"observations": archivio}, {"testo": "spendere meno di sera"}))
+        assert r.status == 200
+        corpo = json.loads(r.text)
+        assert corpo["scritto"] is True
+        assert corpo["obiettivo"]["testo"] == "spendere meno di sera"
+        assert corpo["obiettivo"]["scritto_ts"] is not None
+        # E si rilegge da dove lo legge l'osservatore.
+        assert archivio.objective()["testo"] == "spendere meno di sera"
+    finally:
+        archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_un_obiettivo_vuoto_si_RIFIUTA_e_non_cancella_quello_di_prima(tmp_path):
+    """E' l'unica manopola del prodotto: un campo svuotato per errore non deve
+    poter lasciare l'osservatore senza criterio. La regola vive gia' in
+    `set_objective`; la rotta la riporta a chi chiama con un 400 invece di dire
+    «fatto» senza aver fatto niente.
+
+    Mutazione: rispondere 200 su un testo vuoto -- rossa.
+    """
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        await handle_set_objective(_richiesta_scritta(
+            {"observations": archivio}, {"testo": "quello buono"}))
+        r = await handle_set_objective(_richiesta_scritta(
+            {"observations": archivio}, {"testo": "   "}))
+        assert r.status == 400
+        assert "vuoto" in json.loads(r.text)["errore"]
+        assert archivio.objective()["testo"] == "quello buono"
+    finally:
+        archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_riscrivere_lo_STESSO_obiettivo_non_e_un_cambio(tmp_path):
+    """Non sporca la storia: la pagina dice «da quando guardo questa cosa», e
+    direbbe che tutto e' cambiato ogni volta che qualcuno preme «salva» senza
+    aver toccato niente. La rotta lo dice con `scritto: false`, e **non e' un
+    errore**: il campo contiene davvero quello che l'utente voleva.
+
+    Mutazione: tornare `scritto: true` sempre -- rossa.
+    """
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        await handle_set_objective(_richiesta_scritta(
+            {"observations": archivio}, {"testo": "uguale"}))
+        r = await handle_set_objective(_richiesta_scritta(
+            {"observations": archivio}, {"testo": "uguale"}))
+        assert r.status == 200
+        corpo = json.loads(r.text)
+        assert corpo["scritto"] is False
+        assert corpo["obiettivo"]["testo"] == "uguale"
+    finally:
+        archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_un_corpo_storto_e_un_400_non_un_500(tmp_path):
+    """Mutazione: leggere `body["testo"]` senza controllarne il tipo -- 500."""
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        for corpo in ({}, {"testo": 12}, {"altro": "x"}, [], _ILLEGGIBILE):
+            r = await handle_set_objective(_richiesta_scritta(
+                {"observations": archivio}, corpo))
+            assert r.status == 400, corpo
+    finally:
+        archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_senza_archivio_e_un_503_e_non_si_perde_niente():
+    """L'avvio a meta': l'archivio non c'e' ancora. Stessa dottrina delle altre
+    rotte del cervello -- 503, non 500, perche' e' un «riprova», non un guasto
+    della richiesta.
+
+    Mutazione: togliere la guardia -- 500.
+    """
+    r = await handle_set_objective(_richiesta_scritta({}, {"testo": "x"}))
+    assert r.status == 503

@@ -66,9 +66,18 @@ function condizione(soggetto) {
 function montaConServer(opts = {}) {
   const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const chiamate = [];
-  ctx.window.fetch = async (url) => {
+  const corpiInviati = [];
+  ctx.window.fetch = async (url, init) => {
     const u = String(url);
     chiamate.push(u);
+    if (init && init.body) corpiInviati.push(String(init.body));
+    if (u.indexOf('api/mind/objective') === 0) {
+      if (opts.obiettivoRotto) throw new Error('rete giu\'');
+      return jsonResponse(
+        opts.obiettivo !== undefined ? opts.obiettivo
+          : { obiettivo: OBIETTIVO_DI_PROVA, scritto: true },
+        opts.obiettivoStatus);
+    }
     if (u.indexOf('api/mind/watching') === 0) {
       if (opts.osservateRotto) throw new Error('rete giu\'');
       return jsonResponse(
@@ -95,7 +104,7 @@ function montaConServer(opts = {}) {
     }
     throw new Error('url inatteso: ' + u);
   };
-  return Object.assign(ctx, { chiamate });
+  return Object.assign(ctx, { chiamate, corpiInviati });
 }
 
 function bottone(document, testo, entro) {
@@ -2326,4 +2335,78 @@ test('seam _rendiResoconto: un giorno senza forme non apre la sezione', () => {
   // Mutazione che la uccide: rendere il titolo sempre.
   const { corpo } = rendiResoconto(resoconto({ misure: [misura()] }));
   assert.doesNotMatch(corpo.textContent, /Le forme del giorno/);
+});
+
+/* ------------------------------------------- l'obiettivo si SCRIVE (§11)
+
+   Misurato sulla casa vera il 14/09/2026: l'obiettivo era ancora quello di
+   fabbrica, `scritto_ts: null`, perché `set_objective` non aveva NESSUN
+   chiamante — né rotta, né campo, né strumento in chat. L'osservatore
+   decideva cosa guardare contro una frase generica, e la spec lo chiama
+   «obiettivo = prompt». */
+
+test('seam _rendiScope: l’obiettivo si può scrivere, e il campo parte da quello di adesso', () => {
+  // Mutazione che la uccide: rendere l'obiettivo di sola lettura.
+  const { corpo } = rendiScope(paginaScope());
+  const campo = corpo.querySelector('textarea');
+  assert.ok(campo, 'ci deve essere un campo per scriverlo');
+  assert.equal(campo.value, OBIETTIVO_DI_PROVA.testo,
+    'parte da quello di adesso: si corregge, non si riscrive da zero');
+  assert.ok(bottone(corpo, 'Salva l’obiettivo'), 'e un bottone per salvarlo');
+});
+
+test('mount: salvare l’obiettivo lo manda alla rotta, col testo scritto', async () => {
+  // Mutazione che la uccide: mandare il testo vecchio invece di quello nel campo.
+  const ctx = montaConServer();
+  ctx.window.HirisWatcherRoute.mount();
+  await tick(20);
+
+  const campo = ctx.document.querySelector('textarea');
+  campo.value = 'spendere meno di sera';
+  bottone(ctx.document, 'Salva l’obiettivo').click();
+  await tick(20);
+
+  const scritte = ctx.chiamate.filter((u) => u.indexOf('api/mind/objective') === 0);
+  assert.equal(scritte.length, 1, JSON.stringify(ctx.chiamate));
+  assert.equal(ctx.corpiInviati[0], JSON.stringify({ testo: 'spendere meno di sera' }));
+});
+
+test('mount: un obiettivo rifiutato DICE perché, e non svuota il campo', async () => {
+  // Il proprietario ha appena scritto una frase: perderla sarebbe il danno
+  // peggiore dei due.
+  // Mutazione che la uccide: ricaricare la sezione anche quando la rotta rifiuta.
+  const ctx = montaConServer({
+    obiettivoStatus: 400,
+    obiettivo: { errore: 'un obiettivo vuoto non si scrive: è la sola manopola' },
+  });
+  ctx.window.HirisWatcherRoute.mount();
+  await tick(20);
+
+  const campo = ctx.document.querySelector('textarea');
+  campo.value = '   ';
+  bottone(ctx.document, 'Salva l’obiettivo').click();
+  await tick(20);
+
+  assert.match(ctx.document.getElementById('route-outlet').textContent,
+    /sola manopola/);
+  assert.equal(ctx.document.querySelector('textarea').value, '   ',
+    'il campo resta com’era: la frase appena scritta non si butta');
+});
+
+test('mount: riscrivere lo STESSO obiettivo non è un errore, e lo dice', async () => {
+  // `scritto: false` vuol dire «c'era già», non «non ha funzionato»: dirlo
+  // come un guasto insegnerebbe a diffidare dei guasti veri.
+  // Mutazione che la uccide: trattare `scritto: false` come un errore.
+  const ctx = montaConServer({
+    obiettivo: { obiettivo: OBIETTIVO_DI_PROVA, scritto: false },
+  });
+  ctx.window.HirisWatcherRoute.mount();
+  await tick(20);
+
+  bottone(ctx.document, 'Salva l’obiettivo').click();
+  await tick(20);
+
+  const testo = ctx.document.getElementById('route-outlet').textContent;
+  assert.match(testo, /era già questo/);
+  assert.doesNotMatch(testo, /non è stato possibile/i);
 });

@@ -1629,3 +1629,27 @@ def test_report_only_senza_ricette_non_scrive_niente(archivio):
 
     assert archivio.report(G) is None
     assert archivio.facts(day=G) == []
+
+def test_aggregate_day_scrive_nel_resoconto_l_obiettivo_di_QUEL_giorno(archivio):
+    """**L'obiettivo che valeva allora, non quello di oggi** (spec §11). Chi
+    legge trenta giorni di misure in serie deve sapere se in mezzo la domanda
+    e' cambiata, o legge una tendenza dove c'e' un cambio d'obiettivo.
+
+    Si scrive un obiettivo PRIMA del giorno e uno DOPO: quello che finisce nel
+    resoconto dev'essere il primo, o la riga starebbe dicendo che il giorno
+    rispondeva a una domanda che ancora non esisteva.
+
+    Mutazione ESEGUITA: passare `objective=None` in `aggregate_day` -- rossa
+    su `assert scritto["obiettivo"]["testo"] == "quella di allora"`.
+    """
+    da_ts, a_ts = day_boundaries(G, "Europe/Rome")
+    archivio.set_objective("quella di allora", when_ts=da_ts - 3600.0)
+    archivio.set_objective("quella di dopo", when_ts=a_ts + 3600.0)
+    archivio.record(quando_ts=ts(15, 30), source="entita",
+                    subject="climate.camera_t", da="off", a="heat")
+
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
+                  recipes={}, series={}, names={})
+
+    scritto = archivio.report(G)
+    assert scritto["obiettivo"]["testo"] == "quella di allora"
