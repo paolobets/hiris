@@ -1,5 +1,62 @@
 # HIRIS — Changelog
 
+## [3.38.0] — Cinquantasei entità che le ricette non vedevano (2026-09-14)
+
+Su un giorno pieno, **21 misure su 32 rifiutavano**. Non a caso: tutte
+`media_min_max` e `tendenza` su temperatura, umidità, CO2, rumore, segnale,
+potenza. Il modello aveva scritto le domande giuste — `temperatura_stats`,
+`umidita_stats`, `co2_stats` — e non ne rispondeva **nessuna**.
+
+Chiesto a Home Assistant perché:
+
+```
+statistiche con SOMMA (contatori):     74
+statistiche con MEDIA (measurement):   56
+campi di una measurement: start, end, min, max, mean, last_reset
+```
+
+**Cinquantasei entità della casa non hanno un `change`**: hanno `mean`, `min`,
+`max`. Il nostro client li legge e li traduce già in `media`/`minimo`/
+`massimo`… e `_punti_orari` teneva **solo `cambio`** e buttava gli altri tre.
+Le ricette ricevevano una serie di `None` e rifiutavano con «la serie è
+vuota».
+
+È la frase da cui nasce tutta la spec — *«Home Assistant dichiara già tutto, e
+la copia lo butta»* — che stava succedendo **dentro il codice nuovo**. E
+faceva male due volte, perché `media_min_max` vuole esattamente i tre campi che
+scartavamo.
+
+### Cosa cambia
+
+- `_punti_orari` tiene tutto ciò che Home Assistant manda.
+- `media_min_max` e `tendenza` leggono la **media oraria**, e ricadono sul
+  `cambio` quando la media non c'è: «la media oraria del consumo» resta una
+  domanda legittima.
+- **Il minimo del giorno è il più piccolo dei minimi ORARI**, non il più
+  piccolo delle medie. Home Assistant li manda già tutti e due, e conta: una
+  stanza che scende a 14 gradi alle sei del mattino ha una media oraria di 16,
+  e il minimo delle medie direbbe 16 — nascondendo esattamente ciò che si
+  cercava. Il docstring dell'operazione lo prometteva già dal 12/09.
+- `somma_periodo` su una misura istantanea **dice perché** rifiuta invece di
+  «la serie è vuota»: la serie non è vuota affatto, è di un altro genere, e
+  sommare ventiquattro temperature non è un numero.
+
+### E un difetto mio, latente da ieri, preso prima che facesse danno
+
+Il criterio della 3.36.0 era «non è un numero → è una forma». Ma
+`media_min_max`, `tendenza` e `confronto_periodi` tornano un **dizionario**, e
+con quel criterio finivano fra le forme — cioè **fuori dalle misure che
+l'analista legge in serie**, e sono proprio quelle che rispondono a «com'è
+stata la temperatura» e «di quanto è cambiato».
+
+Non aveva ancora fatto danno **solo perché tutte e tre rifiutavano**: sarebbero
+diventate sbagliate nel momento esatto in cui queste 56 entità si sbloccavano.
+Il criterio vero è quello che la misura diceva dall'inizio: **una lista è una
+forma**, tutto il resto è una misura, anche quando è fatta di tre numeri.
+
+Sei mutazioni dichiarate ed **eseguite**, tutte uccise. 4177 prove Python, 419
+JS, ruff, oxlint, censimento, componenti.
+
 ## [3.37.0] — Energia consumata negativa (2026-09-14)
 
 Il recupero dei resoconti ha funzionato: **otto giorni** archiviati, dal 26/08
