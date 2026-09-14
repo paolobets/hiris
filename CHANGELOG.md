@@ -1,5 +1,58 @@
 # HIRIS — Changelog
 
+## [3.37.0] — Energia consumata negativa (2026-09-14)
+
+Il recupero dei resoconti ha funzionato: **otto giorni** archiviati, dal 26/08
+in avanti, uno ogni cinque minuti. E leggendo il più vecchio — quello che
+sarebbe scaduto per primo — c'era un numero sbagliato:
+
+```
+energia_consumata = -0,98 kWh
+```
+
+**Energia consumata negativa**, con copertura 100%, già archiviata.
+
+### Due cose diverse dette con una parola sola
+
+`primo_ultimo_differenza` risponde a *«quanto è salito un contatore: ultima
+meno prima»* e vuole le **letture cumulate**. Dentro una ricetta `@entita`
+consegna le **statistiche orarie** di Home Assistant, dove ogni punto è il
+`cambio` di quell'ora: `ultima - prima` su quelle calcola la variazione della
+variazione — che non è niente, e sull'ora giusta esce negativa.
+
+La colpa non è del modello: gliel'avevamo offerta. `serie` diceva **due cose**,
+e la 3.35.0 aveva separato le forme fermandosi un gradino prima.
+
+Ora `SHAPE_COUNTER` è una forma sua, e dentro una ricetta nessuna sorgente la
+produce: l'operazione resta nel registro — `aggregate_day` la usa sul grezzo,
+dove le letture sono davvero cumulate — ma il catalogo non la offre più. **Otto
+operazioni offerte su diciotto.**
+
+### E il numero già scritto si disinnesca
+
+La ricetta esce dal sapere (migrazione v6 del sapere), ma **il numero resta nel
+resoconto** e nessuno lo rifa': un giorno si rifà solo finché il suo grezzo
+esiste, e l'analista legge i resoconti, non le ricette.
+
+Migrazione v8 dell'archivio: ogni riga calcolata con un'operazione ritirata
+diventa un **«non calcolabile» col suo perché**, e resta al suo posto col suo
+nome — «non c'è mai stato» e «c'era e non vale» sono due cose diverse. **La
+cronaca non si tocca e il resoconto non si cancella**: per un giorno il cui
+grezzo è scaduto quella è l'unica copia rimasta. E si riscrivono **solo** i
+resoconti toccati.
+
+### Una prova che non poteva fallire
+
+Quella che sorvegliava «un resoconto sano non si riscrive» confrontava
+`scritto_ts`, che la migrazione non tocca nemmeno quando riscrive. E
+confrontare il dizionario riletto non serviva: `json.dumps` dello stesso
+dizionario dà sempre gli stessi byte. Ora la riga si scrive a mano **con una
+spaziatura sua**: se la migrazione la riscrive, la normalizza, e il confronto
+cade. L'ha trovata la mutazione.
+
+Sei mutazioni dichiarate ed **eseguite**, tutte uccise. 4171 prove Python, 419
+JS, ruff, oxlint, censimento, componenti.
+
 ## [3.36.0] — Le forme escono dalle misure, e i giorni indietro si recuperano (2026-09-14)
 
 **Il resoconto è vivo sulla casa vera**, e la prima lettura ha detto due cose.
