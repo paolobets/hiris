@@ -1902,6 +1902,26 @@ def _punti_orari(punti) -> list[dict]:
             for p in punti if isinstance(p, dict)]
 
 
+def _device_names(app) -> dict:
+    """I nomi dei dispositivi **di adesso**, per l'analista.
+
+    Servono a riempire i buchi della serie, non a riscrivere i resoconti: un
+    giorno che il nome ce l'ha porta quello di ALLORA, e vince. E' la stessa
+    distinzione dell'ancora della cronaca, dalla parte opposta -- la' si
+    conserva cio' che dopo non si recupera, qui si recupera cio' che non era
+    stato conservato.
+
+    Misurato sulla casa vera il 15/09/2026: 242 dispositivi, **zero senza
+    nome**, e i venti giorni archiviati non ne portavano nessuno.
+    """
+    casa = app.get("home_space_store")
+    if casa is None:
+        return {}
+    return {str(d.get("id")): d.get("nome")
+            for d in (casa.read() or {}).get("dispositivi") or []
+            if d.get("id") and d.get("nome")}
+
+
 async def analyst_round(app) -> dict | None:
     """L'anello dell'analista: **«leggi le misure di molti giorni e di' cosa si
     potrebbe fare»** (spec §10).
@@ -1940,7 +1960,8 @@ async def analyst_round(app) -> dict | None:
             return None
 
         series = analyst.with_deviation(
-            report.series_of_measures(store.reports(limit=ANALYST_DAYS)))
+            report.series_of_measures(store.reports(limit=ANALYST_DAYS),
+                                      names=_device_names(app)))
         if not (series.get("serie") or []):
             return None
 
@@ -2043,7 +2064,8 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
         return None
     reply = (turn.get("decision") or {}).get("reply") or ""
     series = analyst.with_deviation(
-        report.series_of_measures(store.reports(limit=ANALYST_DAYS)))
+        report.series_of_measures(store.reports(limit=ANALYST_DAYS),
+                                  names=_device_names(app)))
     esito = analyst_turn.apply_analysis(series, reply)
     if not esito.get("risposta"):
         # Il ponte ha restituito una decisione vuota: non e' una risposta, e

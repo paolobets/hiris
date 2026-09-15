@@ -1,5 +1,39 @@
 # HIRIS — Changelog
 
+## [3.44.1] — L'archivio dice ciò che sapeva, il lettore risolve ciò che può (2026-09-15)
+
+La 3.44.0 ha corretto i nomi dei dispositivi, e verificandola dal vivo il
+numero **non è cambiato**: zero misure su 73 con un nome. La ragione era
+giusta — i resoconti del 13 e del 14 erano già scritti, e non si riscrivono —
+ma così l'analista avrebbe letto **venti giorni di esadecimale e uno con i
+nomi**.
+
+Chiesto a Home Assistant: **242 dispositivi, zero senza nome**, e `513a6661`
+si chiama «SOLARE». La correzione era giusta, mancava solo un resoconto
+scritto dopo.
+
+**Riscrivere i venti giorni sarebbe stato inventare cosa sapevamo allora** —
+la lezione di `friendly_name`. Ma la **serie** che l'analista legge non è un
+archivio: è una **vista**. Risolvere lì il nome non afferma niente sul
+passato, e li nomina tutti insieme.
+
+La regola, in una riga: **l'archivio dice ciò che sapeva; il lettore risolve
+ciò che può oggi.** Un resoconto che il nome ce l'ha porta quello di *allora*,
+ed è più vero di quello di adesso — un dispositivo si può rinominare. E un
+dispositivo di cui non sappiamo il nome resta senza: chi legge vede
+l'identificatore, che è la verità, non un buco.
+
+### E una prova che non poteva fallire
+
+Quella su «senza nomi non se ne inventano» passava `names=None`, e il ramo non
+girava mai: la mutazione «metti il soggetto come ripiego» sopravviveva. Ora
+passa una mappa che c'è e che quel soggetto non ha — la condizione vera, che
+la casa produce ogni volta che un dispositivo esce dal registro e i suoi
+resoconti restano.
+
+Tre mutazioni dichiarate ed **eseguite**, tutte uccise. 4139 prove Python, 374
+JS.
+
 ## [3.44.0] — L'analista si vede, e i dispositivi hanno un nome (2026-09-15)
 
 La prima analisi vera è arrivata, e leggendola sono usciti due difetti.

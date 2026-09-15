@@ -780,3 +780,62 @@ def test_i_giorni_senza_obiettivo_dichiarato_non_ne_inventano_uno():
     ])
 
     assert [t["dal"] for t in serie["obiettivi"]] == ["2026-09-11", "2026-09-13"]
+
+def test_la_serie_risolve_i_nomi_che_il_resoconto_non_aveva():
+    """**L'archivio dice cio' che sapeva; il lettore risolve cio' che puo'
+    oggi.** I venti giorni archiviati sulla casa vera prima del 15/09/2026 non
+    portano il nome del dispositivo -- lo cancellava un difetto -- e riscriverli
+    sarebbe inventare cosa sapevamo allora.
+
+    La serie invece e' una **vista**, non un archivio: risolvere il nome qui
+    non afferma niente sul passato, e all'analista arriva «SOLARE · prelievo»
+    invece di «513a6661 · prelievo» su tutti i giorni insieme.
+
+    Mutazione: ignorare `names` -- rossa.
+    """
+    serie = rep.series_of_measures([
+        {"giorno": "2026-09-13", "obiettivo": None, "forme": [], "cronaca": [],
+         "misure": [{"soggetto": "dev1", "misura": "prelievo",
+                     "operazione": "somma_periodo", "valore": 1.0,
+                     "unita": "kWh", "copertura": 1.0}]},
+    ], names={"dev1": "SOLARE"})
+
+    assert serie["serie"][0]["nome"] == "SOLARE"
+
+
+def test_il_nome_ARCHIVIATO_vince_su_quello_di_oggi():
+    """Se il resoconto un nome ce l'ha, quello e' il nome che il dispositivo
+    aveva **allora**, ed e' piu' vero di quello di adesso: un dispositivo si
+    puo' rinominare, e la serie non deve riscrivere il passato col presente.
+
+    Mutazione: far vincere `names` -- rossa.
+    """
+    serie = rep.series_of_measures([
+        {"giorno": "2026-09-13", "obiettivo": None, "forme": [], "cronaca": [],
+         "misure": [{"soggetto": "dev1", "nome": "come si chiamava allora",
+                     "misura": "prelievo", "operazione": "somma_periodo",
+                     "valore": 1.0, "unita": "kWh", "copertura": 1.0}]},
+    ], names={"dev1": "come si chiama adesso"})
+
+    assert serie["serie"][0]["nome"] == "come si chiamava allora"
+
+
+def test_senza_nomi_la_serie_non_ne_inventa():
+    """Un dispositivo di cui **non sappiamo** il nome resta senza: chi legge
+    vede l'identificatore, che e' la verita', non un buco.
+
+    **La prima stesura passava `names=None`, e il ramo non girava mai**: la
+    mutazione «metti il soggetto come nome di ripiego» sopravviveva. Si passa
+    una mappa che c'e' e che quel soggetto non ce l'ha -- e' la condizione
+    vera, e la casa vera la produce ogni volta che un dispositivo esce dal
+    registro e i suoi resoconti restano.
+
+    Mutazione: mettere il soggetto come nome di ripiego -- rossa.
+    """
+    serie = rep.series_of_measures([
+        {"giorno": "2026-09-13", "obiettivo": None, "forme": [], "cronaca": [],
+         "misure": [{"soggetto": "dev1", "misura": "prelievo",
+                     "operazione": "somma_periodo", "valore": 1.0,
+                     "unita": "kWh", "copertura": 1.0}]},
+    ], names={"un_altro_dispositivo": "SOLARE"})
+    assert serie["serie"][0]["nome"] is None

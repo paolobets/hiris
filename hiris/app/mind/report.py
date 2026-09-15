@@ -211,7 +211,7 @@ def _entry(episode: dict) -> dict:
 # -- le misure IN SERIE ------------------------------------------------------
 
 
-def series_of_measures(reports) -> dict:
+def series_of_measures(reports, names: dict | None = None) -> dict:
     """I resoconti pivotati: **una riga per misura**, coi suoi valori nei giorni.
 
     Torna `{"giorni": [...], "obiettivi": [...], "serie": [{soggetto, nome,
@@ -286,8 +286,18 @@ def series_of_measures(reports) -> dict:
                      "valori": [None] * len(days), "coperture": [None] * len(days),
                      "perche": {}}
             rows[where] = found
+        # **L'archivio dice cio' che sapeva; il lettore risolve cio' che puo'
+        # oggi.** Un resoconto che il nome ce l'ha porta quello di ALLORA, ed
+        # e' piu' vero di quello di adesso -- un dispositivo si puo'
+        # rinominare, e la serie non riscrive il passato col presente. Ma dove
+        # il nome manca (i venti giorni archiviati prima del 15/09/2026, che
+        # un difetto lasciava senza) risolverlo qui non afferma niente sul
+        # passato: la serie e' una VISTA, non un archivio, e all'analista
+        # arriva «SOLARE · prelievo» invece di «513a6661 · prelievo».
         if line.get("nome"):
             found["nome"] = line.get("nome")
+        elif found.get("nome") is None and names:
+            found["nome"] = names.get(line.get("soggetto"))
         if line.get("unita") is not None:
             found["unita"] = line.get("unita")
         return found
