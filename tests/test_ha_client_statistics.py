@@ -155,3 +155,51 @@ async def test_statistiche_e_statistiche_orarie_condividono_la_traduzione(monkey
     b = await ha.hourly_statistics(["sensor.x"], "2026-08-26T00:00:00+00:00",
                                     "2026-08-27T00:00:00+00:00")
     assert a["serie"] == b["serie"]
+
+
+# --------------------------------------------------------------------------
+# Quali entita' abbiano statistiche, spec §6: «rifiuta se l'entita' non ha
+# statistiche». Misurato sulla casa vera il 15/09/2026: 130 su 1206.
+# --------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_le_entita_con_statistiche_si_sanno_chiedere(monkeypatch):
+    """Il registro delle statistiche di Home Assistant, per nome.
+
+    Serve a dire il primo dei due «rifiuta se» della spec §6: una serie vuota
+    puo' voler dire «quel giorno niente» oppure «questa entita' non ne
+    produrra' mai», e senza questa lettura le due sono indistinguibili.
+
+    Mutazione ESEGUITA: tornare i messaggi interi invece dei soli nomi --
+    rossa.
+    """
+    ha = HAClient("http://ha.local:8123", "tok")
+    captured = {}
+
+    async def fake_ws_request(msg_type, extra=None, timeout=10.0):
+        captured["msg_type"] = msg_type
+        return [{"statistic_id": "sensor.energia", "unit_of_measurement": "kWh"},
+                {"statistic_id": "sensor.potenza", "unit_of_measurement": "W"}]
+
+    monkeypatch.setattr(ha, "_ws_request", fake_ws_request)
+    out = await ha.statistic_ids()
+    assert captured["msg_type"] == "recorder/list_statistic_ids"
+    assert out == {"sensor.energia", "sensor.potenza"}
+
+
+@pytest.mark.asyncio
+async def test_un_guasto_NON_dice_che_nessuna_entita_ha_statistiche(monkeypatch):
+    """`None`, non l'insieme vuoto. Un insieme vuoto direbbe «nessuna entita'
+    di questa casa ha statistiche», e con quella affermazione **ogni misura
+    del resoconto rifiuterebbe**. Stessa regola di `statistics` qui sopra: un
+    guasto e' un guasto, non un dato.
+
+    Mutazione ESEGUITA: tornare `set()` quando il websocket tace -- rossa.
+    """
+    ha = HAClient("http://ha.local:8123", "tok")
+
+    async def fake_ws_request(msg_type, extra=None, timeout=10.0):
+        return None
+
+    monkeypatch.setattr(ha, "_ws_request", fake_ws_request)
+    assert await ha.statistic_ids() is None

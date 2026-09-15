@@ -213,13 +213,31 @@ def _operations_catalogue() -> str:
     return "\n".join(lines)
 
 
-def build_device_question(objective: str, home_space: dict,
-                          device_id: str) -> str | None:
+def build_device_question(objective: str, home_space: dict, device_id: str,
+                          *, with_series: set[str] | None = None) -> str | None:
     """La domanda intera per un dispositivo, o `None` se non c'e' da chiedere.
 
     `None` quando il dispositivo non ha entita': non ci sarebbe niente da
     mostrare al modello, e la domanda costerebbe un giro per una risposta che
     non puo' esistere.
+
+    **`with_series` dice quali entita' sanno produrre una serie**, ed e' la
+    cosa che mancava. Home Assistant tiene statistiche orarie solo per le
+    entita' che dichiarano uno `state_class` -- misurato sulla casa vera il
+    15/09/2026, **130 su 1206, tutte `sensor`** -- e il modello non ha nessun
+    modo di dedurlo dalla riga di un'entita'. Senza, scrive «quanto e' stata
+    accesa la lavastoviglie»: la domanda giusta sul dispositivo giusto, contro
+    una fonte che per quell'entita' non esiste. Nel resoconto del 14/09/2026
+    erano **18 rifiuti su 28**.
+
+    Il fatto si dice **una volta, a parte**, e non dentro la riga
+    dell'entita': quella riga e' la stessa di `observer.house_lines`
+    (`device_lines` qui sopra), e due forme della stessa riga sarebbero due
+    verita' libere di divergere.
+
+    `None` -- e non l'insieme vuoto -- vuol dire «non l'abbiamo potuto
+    chiedere»: allora non si dice niente, invece di affermare che nessuna
+    entita' ha una serie.
     """
     lines = device_lines(home_space, device_id)
     if not lines:
@@ -231,10 +249,39 @@ def build_device_question(objective: str, home_space: dict,
         "identificatore · nome · classe · unita'\n"
         "(i campi che mancano sono assenti, non vuoti).\n\n"
         + "\n".join(lines)
+        + _series_block(home_space, device_id, with_series)
         + "\n\nLe operazioni che sai chiedere sono queste, e nessun'altra:\n\n"
         + _operations_catalogue()
         + "\n" + ANSWER_CONTRACT
     )
+
+
+def _series_block(home_space: dict, device_id: str,
+                 with_series: set[str] | None) -> str:
+    """Quali entita' del dispositivo hanno una serie, e quali non l'avranno.
+
+    Vuota quando non lo sappiamo: vedi `build_device_question`.
+    """
+    if with_series is None:
+        return ""
+    ids = [str(e.get("id") or "") for e in _device_entities(home_space, device_id)]
+    con = [i for i in ids if i in with_series]
+    mute = [i for i in ids if i and i not in with_series]
+    if not mute:
+        return ("\n\nTutte queste entita' hanno una serie oraria: puoi "
+                "chiedere qualunque operazione su ciascuna.")
+    parts = [("\n\n**Solo alcune di queste entita' hanno una SERIE.** Home "
+             "Assistant tiene statistiche orarie soltanto per chi dichiara uno "
+             "`state_class`: sulle altre ogni operazione rifiuterebbe, oggi e "
+             "sempre.")]
+    parts.append("Hanno una serie: "
+                 + (", ".join(con) if con else "nessuna di queste entita'") + ".")
+    parts.append("NON ne hanno, e non chiederle: " + ", ".join(mute) + ".")
+    if not con:
+        parts.append("Se nessuna entita' di questo dispositivo ha una serie, "
+                     "rispondi con `steps: []` e scrivi nel `why` che non c'e' "
+                     "niente da misurare: e' una risposta giusta, non una resa.")
+    return "\n".join(parts)
 
 
 def read_recipe(answer: str) -> tuple[dict | None, str | None]:
@@ -421,14 +468,16 @@ def recipe_for(store, device_id: str) -> dict | None:
         return None
 
 
-def bridge_turn(objective: str, home_space: dict, device_id: str) -> dict | None:
+def bridge_turn(objective: str, home_space: dict, device_id: str,
+                *, with_series: set[str] | None = None) -> dict | None:
     """Il turno da accodare al ponte, o `None` se non c'e' da chiedere.
 
     Stessa forma di `observer.bridge_turn`, e per le stesse ragioni: il ponte
     gira altrove e non ha gli archivi, e `istruzione` serve perche' altrimenti
     l'istruzione di chiusura della chat gli vieta il JSON che qui si chiede.
     """
-    question = build_device_question(objective, home_space, device_id)
+    question = build_device_question(objective, home_space, device_id,
+                                     with_series=with_series)
     if question is None:
         return None
     return {"history": [{"role": "user", "content": question}],
@@ -438,14 +487,16 @@ def bridge_turn(objective: str, home_space: dict, device_id: str) -> dict | None
 
 async def ask(runner, store, home_space: dict, device_id: str, *,
               objective: str, who: str, when_ts: float,
-              model: str = "auto") -> dict:
+              model: str = "auto",
+              with_series: set[str] | None = None) -> dict:
     """Un giro intero sulla catena: mostra il dispositivo, chiede, applica.
 
     **Questa e' la porta della catena, non l'unica porta**: quando
     `steering.who_answers` risponde «ponte», il giro passa da `bridge_turn` e
     questa funzione non viene chiamata affatto.
     """
-    question = build_device_question(objective, home_space, device_id)
+    question = build_device_question(objective, home_space, device_id,
+                                     with_series=with_series)
     if question is None:
         return {"scritta": False, "problemi": ["il dispositivo non ha entita'"]}
     try:

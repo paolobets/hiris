@@ -70,6 +70,7 @@ from .operations import (
     REGISTRY,
     SHAPE_RESULT,
     SHAPE_SERIES,
+    NotComputable,
     Result,
 )
 
@@ -262,7 +263,8 @@ class Recipe:
 
     # -- l'esecuzione ------------------------------------------------------
 
-    def run(self, *, series: dict[str, list]) -> dict[str, Result]:
+    def run(self, *, series: dict[str, list],
+            without_statistics: set[str] | None = None) -> dict[str, Result]:
         """Esegue i passi in ordine e torna `{nome del passo: risultato}`.
 
         **Valida prima**, e se la ricetta non e' valida non esegue niente: una
@@ -273,16 +275,48 @@ class Recipe:
         **Un «non lo so» non ferma la ricetta**: e' un risultato come un
         altro, e i passi che lo leggono lo ereditano -- e' il registro a
         propagarlo, con la sua ragione (vedi `operations.Result`).
+
+        **`without_statistics` porta il primo dei due «rifiuta se» della spec
+        §6**: le entita' per cui Home Assistant non tiene statistiche affatto.
+        Il registro lo dichiara (`Operation.refuses_when`) e qui si produce,
+        perche' e' qui che il fatto arriva: un'operazione riceve una lista di
+        punti e non puo' distinguere *«quel giorno non e' arrivato niente»* da
+        *«questa entita' non produrra' mai niente»*. Sono due cose, e dirle
+        con una parola sola manda a cercare un buco nei dati che non c'e' --
+        e soprattutto **non lo dice al modello**, a cui il rifiuto torna.
+
+        Misurato sulla casa vera il 15/09/2026 (`recorder/list_statistic_ids`):
+        **130 entita' su 1206 hanno statistiche, tutte `sensor`**. Nel
+        resoconto del 14, **18 rifiuti su 28** erano di questa specie e
+        dicevano «la serie e' vuota».
+
+        `None` -- e non l'insieme vuoto -- vuol dire **«non lo so»**: chi non
+        ha potuto chiedere a Home Assistant quali entita' abbiano statistiche
+        non deve affermare che non ne hanno. Stessa regola con cui
+        `ha_client._request_statistics` torna `{"errore"}` e mai `{}`.
         """
         outcome = self.validate(entities=set(series))
         if not outcome.valid:
             raise ValueError(
                 "ricetta non valida, non eseguita: " + " · ".join(outcome.problems))
 
+        mute = set(without_statistics or ())
         results: dict[str, Result] = {}
         for step in self._steps:
             name = str(step["name"]).strip()
             operation = REGISTRY[str(step["operation"]).strip()]
+            mute_here = [str(i)[1:] for i in step.get("inputs") or []
+                     if isinstance(i, str) and i.startswith(ENTITY_MARK)
+                     and str(i)[1:] in mute]
+            if mute_here:
+                # Il rifiuto e' del PASSO, non della ricetta: gli altri passi
+                # valgono, e mezzo resoconto e' meglio di nessuno.
+                results[name] = NotComputable(
+                    f"{' e '.join(mute_here)} non ha statistiche in Home Assistant: "
+                    "le tiene solo per le entita' che dichiarano uno "
+                    "`state_class`, e da questa non si puo' ricavare nessuna "
+                    "serie -- non oggi e non un altro giorno")
+                continue
             given_values = [self._resolve(i, series, results)
                         for i in step.get("inputs") or []]
             params_of_step = dict(step.get("params") or {})

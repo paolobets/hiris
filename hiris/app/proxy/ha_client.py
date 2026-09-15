@@ -1550,6 +1550,32 @@ class HAClient:
         return await self._request_statistics(
             identifiers, {"start_time": start, "period": period})
 
+    async def statistic_ids(self) -> set[str] | None:
+        """Le entita' per cui Home Assistant TIENE statistiche, per nome.
+
+        Home Assistant calcola statistiche di lungo periodo solo per le entita'
+        che dichiarano uno `state_class`. Misurato sulla casa vera il
+        15/09/2026: **130 entita' su 1206, tutte `sensor`** -- nessuno
+        `switch`, `light`, `valve`, `binary_sensor`.
+
+        Serve a dire il primo dei due «rifiuta se» della spec §6 (`docs/design/
+        2026-09-10-i-tre-attori.md`): una serie vuota puo' voler dire *«quel
+        giorno non e' arrivato niente»* oppure *«questa entita' non ne
+        produrra' mai»*, e senza questa lettura le due sono indistinguibili.
+        Nel resoconto del 14/09/2026, **18 rifiuti su 28** erano della seconda
+        specie e dicevano la prima.
+
+        **`None` e non `set()` quando la lettura fallisce.** Un insieme vuoto
+        affermerebbe «nessuna entita' di questa casa ha statistiche», e con
+        quella affermazione ogni misura del resoconto rifiuterebbe. Stessa
+        disciplina di `_request_statistics`, che torna `{"errore"}` e mai `{}`.
+        """
+        raw = await self._ws_request("recorder/list_statistic_ids")
+        if not isinstance(raw, list):
+            return None
+        return {str(r["statistic_id"]) for r in raw
+                if isinstance(r, dict) and r.get("statistic_id")}
+
     async def hourly_statistics(self, identifiers: list[str],
                                 from_iso: str, to_iso: str) -> dict:
         """Le statistiche ORARIE di una finestra ESPLICITA -- nata per il

@@ -202,6 +202,74 @@ def test_un_passo_NON_CALCOLABILE_non_ferma_la_ricetta_e_si_propaga():
     assert "copertura" in esiti["quanta"].reason
 
 
+def test_un_passo_su_un_entita_SENZA_STATISTICHE_dice_QUELLO():
+    """**Il primo dei due «rifiuta se» della spec §6**, mai implementato fino
+    al 15/09/2026.
+
+    Una serie vuota puo' voler dire due cose: *«quel giorno non e' arrivato
+    niente»* e *«quell'entita' non produce statistiche, e non ne produrra'
+    mai»*. Home Assistant tiene statistiche orarie solo per le entita' con uno
+    `state_class`: misurato sulla casa vera, **130 entita' su 1206, tutte
+    `sensor`** -- nessuno `switch`, `light`, `valve`.
+
+    Dirle nello stesso modo manda a cercare un buco nei dati, e soprattutto
+    **non lo dice al modello**, a cui il rifiuto torna: lui riscriverebbe la
+    stessa ricetta.
+
+    Mutazione ESEGUITA: ignorare l'insieme e rifiutare per copertura -- rossa.
+    """
+    r = ric.Recipe({"why": "x", "steps": [
+        {"name": "acceso", "operation": "somma_periodo",
+         "inputs": ["@switch.lavastoviglie"], "params": {"unit": "h"}}]})
+
+    esiti = r.run(series={"switch.lavastoviglie": []},
+                  without_statistics={"switch.lavastoviglie"})
+
+    assert not esiti["acceso"].computable
+    assert "switch.lavastoviglie" in esiti["acceso"].reason
+    assert "non ha statistiche" in esiti["acceso"].reason
+    assert "vuota" not in esiti["acceso"].reason
+
+
+def test_senza_l_insieme_una_serie_vuota_resta_una_serie_vuota():
+    """Il confine: chi non sa quali entita' abbiano statistiche non deve
+    affermare che non ne hanno. **Un archivio muto non e' un archivio vuoto**
+    -- e' la stessa regola con cui `_request_statistics` torna `{"errore"}` e
+    mai `{}`.
+
+    Mutazione ESEGUITA: trattare l'assenza dell'insieme come «nessuna
+    statistica» -- rossa, ogni misura della casa rifiuterebbe.
+    """
+    r = ric.Recipe({"why": "x", "steps": [
+        {"name": "acceso", "operation": "somma_periodo",
+         "inputs": ["@sensor.prodotta"], "params": {"unit": "kWh"}}]})
+
+    esiti = r.run(series={"sensor.prodotta": []})
+
+    assert not esiti["acceso"].computable
+    assert "non ha statistiche" not in esiti["acceso"].reason
+
+
+def test_un_passo_che_NON_tocca_l_entita_muta_si_calcola_lo_stesso():
+    """Il rifiuto e' del passo che nomina quell'entita', non della ricetta:
+    gli altri passi valgono, e un resoconto a meta' e' meglio di nessuno.
+
+    Mutazione ESEGUITA: rifiutare l'intera ricetta -- rossa.
+    """
+    r = ric.Recipe({"why": "x", "steps": [
+        {"name": "muta", "operation": "somma_periodo",
+         "inputs": ["@switch.lavastoviglie"], "params": {"unit": "h"}},
+        {"name": "buona", "operation": "somma_periodo",
+         "inputs": ["@sensor.prodotta"], "params": {"unit": "kWh",
+                                                    "expected_parts": 24}}]})
+
+    esiti = r.run(series={"switch.lavastoviglie": [], **CASA},
+                  without_statistics={"switch.lavastoviglie"})
+
+    assert not esiti["muta"].computable
+    assert esiti["buona"].computable, getattr(esiti["buona"], "reason", None)
+
+
 def test_una_ricetta_NON_VALIDA_non_si_esegue_affatto():
     """**Si rifiuta PRIMA di eseguirla**, non a meta'. Una ricetta che scrive
     tre passi e poi scopre il quarto rotto avrebbe gia' consumato tre conti e

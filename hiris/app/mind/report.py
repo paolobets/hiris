@@ -78,7 +78,8 @@ _ANCHOR = ("nome", "classe", "attributi", "dominio", "titolo", "comparso_ts")
 
 
 def build_report(*, day: str, episodes, series: dict, recipes: dict,
-                 names: dict, objective: dict | None = None) -> dict:
+                 names: dict, objective: dict | None = None,
+                 without_statistics: set[str] | None = None) -> dict:
     """Il resoconto di un giorno: `{giorno, misure, cronaca}`.
 
     **Puro**: nessuna lettura di rete e nessun archivio. Le serie arrivano gia'
@@ -99,14 +100,21 @@ def build_report(*, day: str, episodes, series: dict, recipes: dict,
     esistesse non deve spacciare l'obiettivo di OGGI per quello di allora --
     la stessa legge gia' pagata da `friendly_name` e dall'ancora della
     cronaca.
+
+    **`without_statistics`** porta le entita' per cui Home Assistant non tiene
+    statistiche affatto (spec §6, primo «rifiuta se»): le loro misure escono
+    «non calcolabile» dicendo QUELLO, invece di «la serie e' vuota». `None`
+    vuol dire «non l'abbiamo potuto chiedere», e allora non si afferma niente.
     """
-    measured, shapes = _measurements(series, recipes, names)
+    measured, shapes = _measurements(series, recipes, names,
+                                     without_statistics)
     return {"giorno": day, "obiettivo": objective, "misure": measured,
             "forme": shapes, "cronaca": [_entry(e) for e in episodes or []]}
 
 
-def _measurements(series: dict, recipes: dict,
-                  names: dict) -> tuple[list[dict], list[dict]]:
+def _measurements(series: dict, recipes: dict, names: dict,
+                  without_statistics: set[str] | None = None
+                  ) -> tuple[list[dict], list[dict]]:
     """Le misure e le **forme**, separate: `(misure, forme)`.
 
     Una riga per numero, una per ogni numero che non si e' potuto fare -- col
@@ -141,7 +149,8 @@ def _measurements(series: dict, recipes: dict,
             base["nome"] = names[subject]
         needed = {e: series.get(e) or [] for e in recipe.entities()}
         try:
-            outcomes = recipe.run(series=needed)
+            outcomes = recipe.run(series=needed,
+                                  without_statistics=without_statistics)
         except ValueError as error:
             # **Una ricetta storta non fa perdere il giorno intero.** Puo'
             # essere stata corretta male a mano, o scritta da un modello che ha

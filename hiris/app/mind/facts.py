@@ -591,7 +591,8 @@ def build_balance_body(*, series: dict[str, list[dict]],
 
 
 def aggregate_day(*, store, day: str, timezone: str | None,
-                         recipes=None, series=None, names=None) -> int:
+                         recipes=None, series=None, names=None,
+                         without_statistics=None) -> int:
     """Costruisce gli oggetti di un giorno. Torna quanti ne ha scritti.
 
     **Idempotente**: rifare un giorno lo SOSTITUISCE, non lo accoda. Gli
@@ -1052,6 +1053,7 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     store.replace_report(day, build_report(
         day=day, episodes=episodes, series=series or {},
         recipes=recipes or {}, names=names or {},
+        without_statistics=without_statistics,
         objective=store.objective_at(to_ts)))
 
     # **Torna quante voci di cronaca ha scritto.** Prima tornava quanti

@@ -90,6 +90,46 @@ def test_ogni_misura_porta_valore_unita_e_COPERTURA():
     assert prodotta["nome"] == "Inverter"
 
 
+def test_il_resoconto_dice_quali_entita_NON_AVRANNO_MAI_una_serie():
+    """Il primo dei due «rifiuta se» della spec §6, fino in fondo al
+    resoconto.
+
+    Misurato sulla casa vera il 15/09/2026: **18 rifiuti su 28** nel resoconto
+    del 14 erano su entita' per cui Home Assistant non tiene statistiche
+    affatto, e dicevano «la serie e' vuota» -- vero, e inutile: chi legge va a
+    cercare un buco nei dati, e il modello riscrive la stessa ricetta.
+
+    Mutazione ESEGUITA: non passare l'insieme alla ricetta -- rossa.
+    """
+    r = rep.build_report(day="2026-09-13", episodes=[], series=SERIE,
+                         recipes={"dev1": RICETTA}, names={},
+                         without_statistics={"sensor.prodotta"})
+
+    prodotta = next(m for m in r["misure"] if m["misura"] == "prodotta")
+    assert "valore" not in prodotta
+    assert "non ha statistiche" in prodotta["non_calcolabile"]
+    # E le altre misure dello stesso dispositivo restano calcolate.
+    consumata = next(m for m in r["misure"] if m["misura"] == "consumata")
+    assert "valore" in consumata
+
+
+def test_senza_l_insieme_il_resoconto_non_afferma_niente_sulle_statistiche():
+    """Chi non ha potuto chiedere a Home Assistant quali entita' abbiano
+    statistiche non deve dire che non ne hanno: direbbe una cosa che non sa, e
+    **ogni misura della casa rifiuterebbe**.
+
+    Mutazione ESEGUITA: trattare l'assenza come insieme vuoto — verde (non
+    cambia niente: un insieme vuoto non muta nessuna entita'). La prova vale
+    contro l'altro verso, cioe' contro chi in futuro facesse dell'assenza un
+    «nessuna entita' ha statistiche»: e' il verso che romperebbe la casa.
+    """
+    r = rep.build_report(day="2026-09-13", episodes=[], series=SERIE,
+                         recipes={"dev1": RICETTA}, names={})
+
+    prodotta = next(m for m in r["misure"] if m["misura"] == "prodotta")
+    assert "valore" in prodotta
+
+
 def test_una_misura_NON_CALCOLABILE_dice_perche_e_resta_nel_resoconto():
     """**E' il terzo innesco dell'analista, e il caso vero che l'ha fatto
     nascere**: `bilancio` a zero per cinque giorni su cinque, e nessuno se n'e'

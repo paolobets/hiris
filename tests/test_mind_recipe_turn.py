@@ -70,6 +70,54 @@ def test_la_domanda_mostra_il_dispositivo_con_TUTTE_le_sue_entita():
     assert "ottimizzare la casa" in domanda
 
 
+def test_la_domanda_DICE_quali_entita_hanno_una_serie():
+    """**Il modello non puo' indovinarlo, e senza non smette di sbagliare.**
+
+    Home Assistant tiene statistiche orarie solo per le entita' con uno
+    `state_class`: misurato il 15/09/2026, **130 su 1206, tutte `sensor`**. Il
+    catalogo gli mostrava il dispositivo con tutte le sue entita' e nessuna
+    indicazione su quali sapessero produrre una serie -- e lui scriveva «quanto
+    e' stata accesa la lavastoviglie», la domanda giusta sul dispositivo
+    giusto, contro una fonte che per quell'entita' non esiste. Nel resoconto
+    del 14/09: **18 rifiuti su 28** cosi'.
+
+    Mutazione ESEGUITA: non dire quali -- rossa.
+    """
+    domanda = rt.build_device_question(
+        "risparmiare", CASA, "dev1", with_series={"sensor.prodotta"})
+
+    assert "sensor.prodotta" in domanda
+    # Dice quale ce l'ha e quale no, per nome: un elenco solo non basterebbe
+    # a chi legge in fretta.
+    testa = domanda.split("Le operazioni che sai chiedere", 1)[0]
+    assert "serie" in testa
+    assert "sensor.consumata" in testa
+
+
+def test_senza_l_insieme_la_domanda_NON_afferma_niente_sulle_serie():
+    """Chi non ha potuto chiedere a Home Assistant quali entita' abbiano
+    statistiche non lo dice al modello: gli direbbe una cosa che non sa, e il
+    modello ci costruirebbe sopra.
+
+    **La prima stesura di questa prova non poteva fallire**: cercava la frase
+    «non ha statistiche», che quel blocco non scrive mai -- lui scrive «NON ne
+    hanno, e non chiederle». L'ha detto la mutazione, che restava verde
+    trattando l'assenza come insieme vuoto. Si asserisce la proprieta' vera:
+    **senza l'insieme, delle serie non si parla affatto**.
+
+    Mutazione ESEGUITA: `with_series = set()` invece di non dire niente --
+    rossa, il modello si sentirebbe dire che nessuna entita' ha una serie.
+    """
+    domanda = rt.build_device_question("risparmiare", CASA, "dev1")
+    testa = domanda.split("Le operazioni che sai chiedere", 1)[0]
+
+    assert "SERIE" not in testa
+    assert "serie oraria" not in testa
+    assert "non chiederle" not in testa
+    # E le entita' ci sono comunque: e' la domanda di prima, non una monca.
+    assert "sensor.prodotta" in testa
+
+
 def test_la_domanda_NON_mostra_le_entita_di_un_altro_dispositivo():
     """Un dispositivo per volta: mescolarli produrrebbe una ricetta che nomina
     entita' che non gli appartengono."""

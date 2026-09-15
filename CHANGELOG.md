@@ -1,5 +1,52 @@
 # HIRIS — Changelog
 
+## [3.47.0] — «Questa entità non avrà mai una serie» (2026-09-15)
+
+Il primo dei due «rifiuta se» della spec §6, scritto il 10/09 e mai fatto:
+*«l'entità non ha statistiche»*. È la causa, misurata, di **18 rifiuti su 28**
+nel resoconto del 14 — e finché non lo si diceva, ogni notte la stessa misura
+falliva con «la serie è vuota», che è vero e inutile.
+
+Home Assistant tiene statistiche orarie solo per le entità che dichiarano uno
+`state_class`. Misurato con `recorder/list_statistic_ids`: **130 entità su
+1206, tutte `sensor`** — nessuno `switch`, `light`, `valve`, `binary_sensor`.
+Una serie vuota diceva due cose diverse con una parola sola: *«quel giorno non
+è arrivato niente»* e *«questa entità non produrrà mai niente»*.
+
+### Si chiude dai due lati insieme
+
+- **Il rifiuto dice la verità**: `HAClient.statistic_ids()` legge il registro
+  delle statistiche, `Recipe.run(without_statistics=…)` rifiuta **il passo**
+  che nomina quell'entità — non l'intera ricetta, così le altre misure dello
+  stesso dispositivo restano — e otto operazioni lo dichiarano in
+  `refuses_when`, che è ciò che la spec §6 chiede a ciascuna.
+- **Il modello lo sa prima di scrivere**: la domanda gli dice quali entità
+  abbiano una serie e quali no, e che se non ne ha nessuna può rispondere
+  `steps: []` — «è una risposta giusta, non una resa». Senza, scriveva «quanto
+  è stata accesa la lavastoviglie»: la domanda giusta sul dispositivo giusto,
+  contro una fonte che per quell'entità non esiste.
+
+`None` e non insieme vuoto quando la lettura fallisce, in tutte e tre le
+porte: affermare «nessuna entità ha statistiche» farebbe rifiutare l'intero
+resoconto, e un archivio muto non è un archivio vuoto.
+
+### Il secondo «rifiuta se» non si fa: si decide
+
+*«Il periodo è fuori dalla memoria disponibile»* ha **zero occorrenze
+misurate**, per due ragioni indipendenti: HIRIS non chiede mai un giorno prima
+del suo grezzo, e le statistiche di lungo periodo di Home Assistant non si
+potano come gli stati. Ciò che sembrava quel caso erano **tre entità iscritte
+al registro delle statistiche che non hanno mai registrato niente** — l'albero
+di Natale, le luci di Natale, la gestione carichi — e per loro «la serie è
+vuota» è già la frase giusta. La decisione — costruirlo o scrivere nella spec
+che non si applica a questa fonte — è del proprietario, ed è nel backlog.
+
+### E un buco della 3.46.0, chiuso
+
+Il collettore del turno del ponte guardava due campi su tre: dalla 3.46.0 una
+risposta può finire anche in `ricetta_non_serve`, e lo stesso turno poteva
+essere applicato due volte.
+
 ## [3.46.0] — Quello che la porta ha visto (2026-09-15)
 
 La porta del sapere è stata aperta ieri sera. **In poche ore ha mostrato tre

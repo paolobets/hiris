@@ -442,6 +442,16 @@ il sapere, o l'entità stessa; e cosa fa una ricetta su un tipo di cui il riposo
 dichiarazione **senza valore di fabbrica**: è ciò che ha impedito al difetto del 14/09 di tornare
 alla prossima operazione nuova.
 
+### ~~Le ricette si scrivono su entità che non possono avere statistiche~~ — CHIUSA il 15/09/2026 (3.47.0)
+
+**Chiusa dai due lati insieme**, come la voce diceva che andava fatto: il rifiuto ora dice la sua
+vera ragione, e la domanda al modello dice **prima** quali entità abbiano una serie — cosi' le
+ricette nuove non nascono piu' contro una fonte che non esiste. Resta da vedere dal vivo quante
+delle 31 ricette gia' scritte cambino esito: quelle vecchie restano dove sono, e le loro misure
+diranno la ragione giusta invece di «la serie e' vuota».
+
+**Com'era scritta quando era aperta:**
+
 ### Le ricette si scrivono su entità che non possono avere statistiche: 18 rifiuti al giorno, per sempre
 
 `origine: verifica dal vivo della 3.46.0, 15/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §6-§7
@@ -545,6 +555,27 @@ type_census` — a interrogare il sapere invece del letterale, e solo allora sem
 sua, e non piccola: quelle righe decidono il genere di ogni oggetto e il perimetro dello scope,
 cioe' due delle cose piu' load-bearing del prodotto.
 
+**Quanto e' grande, misurato il 15/09/2026 chiudendo lo sprint.** `type_vocabulary` non ha tre
+lettori: ne ha **sette moduli** (`action/verification`, `home_space/briefing`, `home_space/queries`,
+`home_space/topology`, `home_space/type_census`, `mind/facts`, piu' `action/registry` che lo cita) e
+espone **undici porte** — `capability_names`, `is_notable`, `working_states_of`,
+`resting_states_of`, `unknown_states`, `declared_domains`, `declared_pairs`, `parameter_limits`,
+`aspect_of`, `operable_domains`, `ABSENT_STATE_FORMS`. Il file e' di **1984 righe**.
+
+**Due disegni possibili, e la scelta e' del proprietario:**
+
+1. **Spostare i lettori** (quello che questa voce diceva): sette moduli cambiano, e per un po'
+   convivono due verita'. E' la strada pulita e la piu' cara.
+2. **Fare del modulo stesso il confine**: `type_vocabulary` legge il sapere dove una riga c'e' e il
+   letterale dove non c'e'. Nessun lettore cambia, nessun doppione senza lettore, e la casa puo'
+   scrivere sopra il giudizio del repo — che e' l'intera promessa del §8. Il prezzo e' che un
+   modulo oggi **puro** prenderebbe una dipendenza da un archivio, cioe' esattamente lo «stato
+   condiviso caricato pigramente» che ci ha gia' morso altrove.
+
+**Perche' non e' stato fatto nello sprint che la chiedeva**: seminare senza decidere fra le due
+lascerebbe un archivio che nessuno interroga, e il §8 esiste per il contrario. La fetta e' pronta
+per essere pianificata, non per essere improvvisata a fine giornata.
+
 **Cosa si guadagna quando si fa.** La casa potra' scrivere sopra il giudizio del repo — «da me
 questo tipo si comporta cosi'» — che e' l'intera promessa del §8, e oggi vale solo per le direzioni
 e per i significati.
@@ -571,7 +602,7 @@ nascere una riga anche quando lo stato non si muove.
 una ragione scritta («i 22 giorni permettono di rifare il giudizio se un domani tornasse a
 servire»): o quella ragione si conferma e la voce si chiude, o la colonna esce.
 
-### I due rifiuti della spec §6 non li sa dire nessuna operazione
+### ~~I due rifiuti della spec §6~~ — il PRIMO chiuso il 15/09/2026, il secondo da DECIDERE
 
 `origine: revisione indipendente della fetta 3, 12/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §6
 
@@ -580,6 +611,28 @@ statistiche»* e *«il periodo e' fuori dalla memoria disponibile»*. Nessuna de
 `hiris/app/mind/operations.py` li dichiara, e nessuna li produce: il registro sa rifiutare per
 copertura, per unita' incompatibili, per troppi pochi punti — **non per un periodo che l'archivio
 non copre affatto**.
+
+**CHIUSO il 15/09/2026 (3.47.0) il primo dei due: «l'entita' non ha statistiche».** Otto
+operazioni lo dichiarano (`Operation.refuses_when`), `HAClient.statistic_ids()` legge il registro
+delle statistiche di Home Assistant, `Recipe.run(without_statistics=...)` lo produce per il passo
+che nomina quell'entita' -- non per l'intera ricetta -- e la domanda al modello dice **prima** di
+scrivere quali entita' abbiano una serie e quali no. `None` e non insieme vuoto quando la lettura
+fallisce: affermare «nessuna entita' ha statistiche» farebbe rifiutare tutto il resoconto.
+
+**IL SECONDO RESTA, e non e' piu' una svista: e' una decisione da prendere.** «Il periodo e' fuori
+dalla memoria disponibile» ha **zero occorrenze misurate** su questa casa, e per due ragioni
+indipendenti: (a) HIRIS non chiede mai un giorno prima del suo grezzo — `_write_missing_reports`
+si ferma a `oldest_reading_ts()`, e la ragione e' scritta li'; (b) le statistiche di lungo periodo
+di Home Assistant non si potano come gli stati. Misurato il 15/09/2026 su questa casa: le
+statistiche piu' vecchie sono di **luglio 2026**, e cio' che sembrava «periodo fuori memoria» era
+in realta' **tre entita' iscritte al registro delle statistiche che non hanno mai registrato
+niente** (l'albero di Natale, le luci di Natale, la gestione carichi) — che e' un terzo caso
+ancora, e «la serie e' vuota» lo dice gia' bene.
+
+**Da decidere dal proprietario**: costruire un rifiuto per un caso che non accade (e che
+costerebbe una lettura per entita' a ogni giro, per sapere quando comincia la sua memoria), oppure
+scrivere nella spec §6 che il secondo «rifiuta se» non si applica a questa fonte e perche'. Non lo
+decido io: e' una riga della specifica.
 
 **AGGIORNAMENTO 15/09/2026 — il primo dei due ha adesso un numero, misurato sulla casa vera.**
 Home Assistant tiene statistiche orarie per **130 entita' su 1206, tutte `sensor`**

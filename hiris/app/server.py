@@ -165,7 +165,7 @@ def _bridge_active(store: dict | None) -> bool:
 
     Fino alla 2.3.1 questa funzione si chiamava `_chat_subscription_active` ed
     era un AND fra DUE opzioni dell'add-on (`chat_via_subscription` e
-    `bridge_enabled`). L'AND era il fail-safe numero uno del rilascio: senza,
+    `bridge_enabled`). L'AND era il fail-safe numero uno del rilascio: without,
     si poteva instradare la chat in una coda che nessuno spazzava, e i
     messaggi restavano pendenti per sempre.
 
@@ -229,7 +229,7 @@ def _bridge_notices(bridge_active: bool, token_presente: bool) -> list[str]:
       versione B toglie l'implicazione (vedi `_bridge_active`), e la copia
       d'archivio della 2.5.0 aveva copiato l'OPZIONE `ponte.attivo`, non lo
       stato effettivo. Il ponte si spegne, e questa riga e' cio' che rende la
-      cosa rumorosa invece che silenziosa: senza, la chat tornerebbe a pagare
+      cosa rumorosa invece che silenziosa: without, la chat tornerebbe a pagare
       a consumo senza dirlo.
     """
     if bridge_active and not token_presente:
@@ -285,7 +285,7 @@ def _chain_as_it_was(strategia: str, credentials: dict, bridge: bool) -> list[st
     **E va DECISA, non ereditata** (G3 della revisione): non e' piu' una
     migrazione che si esaurisce, si esegue su ogni installazione nuova finche'
     qualcuno non decide che catena deve trovare chi installa HIRIS oggi. La
-    fetta successiva non puo' limitarsi a cancellarla: senza, un'installazione
+    fetta successiva non puo' limitarsi a cancellarla: without, un'installazione
     nuova nasce con la catena vuota e la chat muta.
 
     Il piano non e' un membro della catena: entra solo se il ponte e' acceso, e
@@ -1418,10 +1418,11 @@ async def backfill_one_missing_report(app, ha_client, *,
         as_text = day.strftime("%Y-%m-%d")
         if archivio.report(as_text) is None:
             try:
-                ricette, serie, nomi = await _report_ingredients(
+                ricette, serie, nomi, without = await _report_ingredients(
                     app, ha_client, giorno=as_text, timezone=timezone)
                 aggregate_day(store=archivio, day=as_text, timezone=timezone,
-                              recipes=ricette, series=serie, names=nomi)
+                              recipes=ricette, series=serie, names=nomi,
+                              without_statistics=without)
             except Exception as error:
                 logger.warning(
                     "cervello: resoconto di %s non recuperato (%s: %s)",
@@ -1481,11 +1482,12 @@ async def _write_missing_reports(app, ha_client, days, timezone) -> list[str]:
         try:
             if archivio.report(day) is not None:
                 continue
-            ricette, serie, nomi = await _report_ingredients(
+            ricette, serie, nomi, without = await _report_ingredients(
                 app, ha_client, giorno=day, timezone=timezone)
             aggregate_day(
                 store=archivio, day=day, timezone=timezone,
-                recipes=ricette, series=serie, names=nomi)
+                recipes=ricette, series=serie, names=nomi,
+                without_statistics=without)
             scritti.append(day)
         except Exception as error:
             logger.warning(
@@ -1833,7 +1835,7 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
                                      timezone: str | None):
     """Le ricette, le serie e i nomi che servono al resoconto di un giorno.
 
-    Torna `(ricette, serie, nomi)`. Ricette vuote -- nessun dispositivo ne ha
+    Torna `(ricette, serie, nomi, senza_statistiche)`. Ricette vuote -- nessun dispositivo ne ha
     una, o il sapere non e' collegato -- fanno un resoconto con la meta' delle
     misure vuota, ed e' un fatto vero su quella casa: si scrive.
 
@@ -1845,7 +1847,7 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
     sapere = app.get("knowledge")
     casa = app.get("home_space_store")
     if sapere is None or casa is None:
-        return {}, {}, {}
+        return {}, {}, {}, None
     home_space = casa.read()
     nomi = {str(d.get("id")): d.get("nome")
             for d in home_space.get("dispositivi") or [] if d.get("id")}
@@ -1855,7 +1857,7 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
         if scritta is not None:
             ricette[device_id] = scritta
     if not ricette:
-        return {}, {}, nomi
+        return {}, {}, nomi, None
     entita = sorted({e for r in ricette.values() for e in Recipe(r).entities()})
     da_ts, a_ts = day_boundaries(giorno, timezone)
     report = await ha_client.hourly_statistics(
@@ -1868,10 +1870,23 @@ async def _report_ingredients(app, ha_client, *, giorno: str,
         # sparire, che e' il suo terzo innesco.
         logger.warning("resoconto: statistiche non lette per %s (%s)",
                        giorno, report["errore"])
-        return ricette, {}, nomi
+        return ricette, {}, nomi, None
     serie = {e: _punti_orari(report["serie"].get(e) or [])
              for e in entita}
-    return ricette, serie, nomi
+    # **Quali di queste entita' non avranno MAI una serie** (spec §6, primo
+    # «rifiuta se»). Una lettura sola per giro, come le statistiche: il
+    # registro di Home Assistant e' un elenco di nomi, non una serie.
+    # `None` -- non l'insieme vuoto -- se non si e' potuto leggere: affermare
+    # «nessuna entita' ha statistiche» farebbe rifiutare tutto il resoconto.
+    with_statistics = await ha_client.statistic_ids()
+    without = (None if with_statistics is None
+             else {e for e in entita if e not in with_statistics})
+    if without:
+        logger.info(
+            "resoconto: %d entita' su %d nominate dalle ricette non hanno "
+            "statistiche in Home Assistant -- le loro misure lo diranno",
+            len(without), len(entita))
+    return ricette, serie, nomi, without
 
 
 def _punti_orari(punti) -> list[dict]:
@@ -2133,12 +2148,22 @@ async def recipe_round(app) -> dict | None:
             return None
         device_id = to_ask[0]
         objective = store.objective()["testo"]
+        # **Quali entita' sanno produrre una serie**, per non far scrivere al
+        # modello la domanda giusta contro una fonte che non esiste (spec §6,
+        # primo «rifiuta se»). Una lettura per giro, e un giro chiede UN
+        # dispositivo: `None` se non si e' potuto leggere, e allora al modello
+        # non si dice niente invece di dirgli una cosa che non sappiamo.
+        with_series = None
+        cliente = app.get("ha_client")
+        if cliente is not None:
+            with_series = await cliente.statistic_ids()
 
         route, downgrade = who_answers(app)
         runner = app.get("llm_router") or app.get("claude_runner")
         if route == "ponte":
             return _enqueue_recipe_turn(app, home_space, device_id,
-                                        objective=objective)
+                                        objective=objective,
+                                        with_series=with_series)
         if runner is None:
             logger.info("ricette: nessun modello a cui chiedere (%s)", downgrade)
             return None
@@ -2150,7 +2175,8 @@ async def recipe_round(app) -> dict | None:
         logger.info("ricette: chiedo come si misura «%s» (%s)", device_id, route)
         esito = await recipe_turn.ask(
             runner, sapere, home_space, device_id, objective=objective,
-            who=f"modello ({route})", when_ts=time.time())
+            who=f"modello ({route})", when_ts=time.time(),
+            with_series=with_series)
         logger.info("ricette: giro finito -- %s", esito)
         return esito
     except Exception as exc:
@@ -2186,7 +2212,7 @@ def _troppo_presto_per_richiedere(app) -> bool:
 
 def _recipe_turn_in_flight(app) -> bool:
     """Se c'e' gia' un turno di ricetta in volo. Stessa guardia dello scope:
-    senza, si accoderebbe un turno a ogni passaggio."""
+    without, si accoderebbe un turno a ogni passaggio."""
     queue = app.get("reasoning_queue")
     if queue is None:
         return False
@@ -2198,10 +2224,12 @@ def _recipe_turn_in_flight(app) -> bool:
 
 
 def _enqueue_recipe_turn(app, home_space: dict, device_id: str, *,
-                         objective: str) -> dict | None:
+                         objective: str,
+                         with_series: set[str] | None = None) -> dict | None:
     """Accoda al piano la domanda su un dispositivo, e torna subito."""
     from .api.handlers_models import _STORE_DEFAULTS
-    job = recipe_turn.bridge_turn(objective, home_space, device_id)
+    job = recipe_turn.bridge_turn(objective, home_space, device_id,
+                                  with_series=with_series)
     if job is None:
         return None
     deadline_min = int((app.get("models_config") or {}).get("ponte", {}).get(
@@ -2236,7 +2264,11 @@ def _collect_recipe_turn(app, sapere, home_space: dict) -> dict | None:
     if not device_id:
         return None
     decided_ts = turn.get("decided_ts") or turn.get("created_ts") or 0
-    for campo in (recipe_turn.RECIPE_FIELD, recipe_turn.UNDERSTOOD_FIELD):
+    # **Tutti e tre i campi**: dalla 3.46.0 una risposta puo' finire anche in
+    # `ricetta_non_serve` (il rifiuto ragionato), e guardarne due su tre
+    # avrebbe fatto riapplicare lo stesso turno del ponte una seconda volta.
+    for campo in (recipe_turn.RECIPE_FIELD, recipe_turn.UNDERSTOOD_FIELD,
+                  recipe_turn.DECLINED_FIELD):
         riga = sapere.get("dispositivo", device_id, campo)
         if riga is not None and riga.when_ts >= decided_ts:
             return None
@@ -2267,7 +2299,7 @@ def _record_attempt(store, outcome: dict, *, route: str = "ponte",
     riconsiderazione, e metterlo li' farebbe scadere la cadenza come se la
     casa fosse stata ripensata davvero.
     """
-    # **Da quale porta e' passato il giro**, e se e' stato un ripiego: senza,
+    # **Da quale porta e' passato il giro**, e se e' stato un ripiego: without,
     # la pagina non puo' distinguere un giro servito dal piano da uno pagato a
     # consumo, e il prelievo resta invisibile (rilievo della review
     # indipendente, 11/09/2026; regola del proprietario del 13/08/2026).
@@ -2341,7 +2373,7 @@ RETRY_MAX_S = 6 * 3600.0
 def _retry_hold(store, *, now: float) -> bool:
     """Se il freno e' tirato: **si e' appena fallito, e si aspetta**.
 
-    Nasce dal conto della review indipendente (11/09/2026): senza, un
+    Nasce dal conto della review indipendente (11/09/2026): without, un
     osservatore che fallisce stabilmente chiede al piano a ogni passaggio, per
     sempre -- e siccome
     `count_exchanges_today` conta ogni specie contro un tetto di 150, **svuota
@@ -2498,7 +2530,7 @@ def _enqueue_scope_turn(app, store, home_space: dict, *, reason: str,
         now + deadline_min * 60,
         now=now)
     # **«Ho chiesto e sto aspettando» e' il terzo stato**, e la pagina deve
-    # poterlo dire: senza, qualche minuto di attesa legittima e'
+    # poterlo dire: without, qualche minuto di attesa legittima e'
     # indistinguibili da un guasto -- che e' precisamente la confusione da cui
     # questa fetta nasce.
     store.record_attempt(when_ts=now, outcome="accodata",
@@ -2894,7 +2926,7 @@ async def _on_startup(app: web.Application) -> None:
     # la casa e' calda alle 16:30» -- resterebbe non rispondibile.
     app["watcher"] = Watcher(app["observations"], knowledge=app["knowledge"])
     # Rilegge dall'archivio le condizioni di sistema gia' aperte prima di
-    # QUESTO avvio (task-5-correzioni.md, punto B): senza, ogni riavvio
+    # QUESTO avvio (task-5-correzioni.md, punto B): without, ogni riavvio
     # dell'add-on -- che succede a ogni aggiornamento -- riscriverebbe
     # "aperto" per ogni guasto gia' aperto, come se fosse nato in quel
     # momento, e l'oggetto «guasto» perderebbe la sua unica informazione
@@ -2939,7 +2971,7 @@ async def _on_startup(app: web.Application) -> None:
 
     # La prima lettura delle condizioni di sistema (problemi diagnosticati +
     # integrazioni non caricate; task-5-correzioni.md, punto A), qui accanto
-    # per lo stesso motivo di `reread_ha_problems` piu' sopra: senza,
+    # per lo stesso motivo di `reread_ha_problems` piu' sopra: without,
     # l'osservatore vedrebbe le condizioni gia' aperte solo al primo giro del
     # lavoro periodico, fino a dieci minuti dopo l'avvio. A differenza di
     # quella lettura, questa PUO' sollevare (`Watcher.watch_system`, se
@@ -3965,11 +3997,12 @@ async def _on_startup(app: web.Application) -> None:
             # delle entita' che nominano lette in UNA connessione sola --
             # stessa disciplina dei bilanci qui sopra, per la stessa ragione
             # (una lettura per giro, non una per dispositivo).
-            ricette, serie, nomi = await _report_ingredients(
+            ricette, serie, nomi, without = await _report_ingredients(
                 app, ha_client, giorno=ieri, timezone=timezone)
             count = aggregate_day(
                 store=app["observations"], day=ieri, timezone=timezone,
-                recipes=ricette, series=serie, names=nomi)
+                recipes=ricette, series=serie, names=nomi,
+                without_statistics=without)
             logger.info("cervello: %s voci di cronaca per %s", count, ieri)
         except Exception as error:
             logger.warning("cervello: aggregazione notturna fallita (%s: %s)",
@@ -3982,7 +4015,7 @@ async def _on_startup(app: web.Application) -> None:
         misfire_grace_time=3600,
     )
 
-    # La potatura del grezzo: senza, l'archivio dei cambi cresce per sempre.
+    # La potatura del grezzo: without, l'archivio dei cambi cresce per sempre.
     # Il numero di giorni non si scrive a mano -- si deriva dalla costante
     # dell'archivio (`mind/store.READING_RETENTION_S`, 22 giorni: 21
     # di promessa, il 22esimo la guardia che la rende vera al bordo), cosi'
