@@ -1,5 +1,85 @@
 # HIRIS — Changelog
 
+## [3.46.0] — Quello che la porta ha visto (2026-09-15)
+
+La porta del sapere è stata aperta ieri sera. **In poche ore ha mostrato tre
+difetti**, e nessuno dei tre si sarebbe visto leggendo il codice: si sono
+visti guardando 246 righe di sapere vero.
+
+### 1. Diciotto rifiuti ragionati archiviati come «non capito»
+
+Delle 21 righe marcate `non_capito` sulla casa, **18** portavano una frase
+**nostra** — «la ricetta non ha nessun passo: non è una ricetta che non
+calcola niente, è una ricetta che nessuno ha finito di scrivere» — e le prove
+archiviate nel campo accanto la smentivano tutte e 18. Il modello aveva
+risposto col contratto in mano, `steps: []` e un `why` pieno:
+
+> «Una luce ha solo stato acceso/spento: non c'è una misura di comfort o
+> efficienza che valga la pena calcolare da un'unica entità on/off.»
+
+Aveva capito, e aveva detto di no. Il proprietario avrebbe letto **ventuno
+problemi da risolvere dove ce n'erano tre**.
+
+Si separa alla fonte, non a valle: il campo nuovo `ricetta_non_serve` porta il
+rifiuto ragionato **con le parole del modello**, `verification` nulla — quella
+colonna dice cosa ha detto il *controllo*, e il controllo non aveva niente da
+ridire. `ricetta_non_capita` resta per chi non ha capito davvero. Tutti e due
+scadono quando il registro delle operazioni cresce: «non c'è niente da
+misurare» è vero **contro un registro**.
+
+La migrazione **recupera invece di ricomprare**: il `why` è già dentro le
+prove, e 18/18 si rileggono. Cancellarle sarebbe costato 18 giri del ponte per
+farsi ridire le stesse parole. Una riga le cui prove non si sanno rileggere si
+cancella — non si indovina e non si tiene — e il dispositivo torna una domanda
+aperta.
+
+### 2. I nomi risolti da una porta su quattro
+
+Cercando la causa del primo difetto: `GET /api/mind/analysis?day=…` rispondeva
+«SOLARE», `GET /api/mind/analysis` rispondeva `null` per le stesse cinque
+osservazioni. E il resoconto del 14 aveva **73 misure senza nome** mentre la
+sua cronaca ne portava 39 su 44 — lo stesso dispositivo, due sezioni della
+stessa pagina, due lingue.
+
+Il changelog della 3.44.2 affermava che quella rotta risolveva i nomi: era
+vero su una forma su due. Ora la regola è **una sola funzione** e vale per
+tutte e quattro le porte. Chi il nome ce l'ha tiene il suo: è quello di
+allora, ed è più vero.
+
+### 3. Il riassunto lungo quanto il dato
+
+Su 19 righe di riassunto, **14 erano direzioni dell'energia da una riga
+ciascuna**. `direzione:power_importing` e `direzione:energy_exporting_today`
+sono lo stesso campo con dentro la cosa di cui parlano: il riassunto li taglia
+ai due punti e ne conta quattordici. Il dettaglio resta dove è sempre stato,
+in `by_field_prefix`.
+
+### E un rifiuto che mandava a cercare un buco inesistente
+
+Delle 28 misure rifiutate nel resoconto del 14, **27 dicevano «nessun punto
+con un valore nel periodo: la serie è vuota»**. Chiesta a Home Assistant la
+storia di `light.abat_jour_sinistra` per quel giorno: i punti c'erano,
+**cinque**. Non erano numeri — una luce sta su «on» e «off». Adesso il rifiuto
+distingue le due cose, com'era già stato fatto per le misure istantanee.
+
+### Cosa è stato chiuso nei documenti
+
+- la spec §15 dichiarava da verificare «`bilancio` è a zero in cinque giorni
+  su cinque»: **misurato, undici misure di bilancio su undici calcolate** il
+  14/09, e l'analista ci ha costruito sopra due osservazioni su cinque;
+- il glossario definiva `comprimari` nel senso dell'osservatore, **cancellato
+  con lo strato degli oggetti**: resta solo quello delle promesse;
+- il backlog di «quanto è stato acceso» ha il suo numero: `tempo_acceso` 0 su
+  4, `tempo_irrigazione_totale` 0 su 4, e un modello che scrive di voler
+  misurare «quanto resta accesa» e non può.
+
+### Il ponte
+
+CLI del ponte **2.1.270 → 2.1.272**. Il cancello ne aveva parlato durante la
+3.45.0, che parlava d'altro: il pin sale nel rilascio successivo, e questo è
+quello. Il passo 4 della 2.1.270 è **saldato** (letta dal vivo il 14/09) e
+torna aperto per la 2.1.272.
+
 ## [3.45.0] — La porta del sapere (2026-09-15)
 
 Il sapere raccoglie da settimane quello che Home Assistant dichiara — i

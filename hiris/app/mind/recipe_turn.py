@@ -66,6 +66,23 @@ RECIPE_FIELD = "ricetta"
 #: eseguirebbe un elenco di problemi come se fosse una sequenza di passi.
 UNDERSTOOD_FIELD = "ricetta_non_capita"
 
+#: Il campo che porta il rifiuto **RAGIONATO**: il modello ha capito, e dice
+#: che non c'e' niente che valga la pena misurare.
+#:
+#: **Tre campi e non due, per la stessa ragione per cui erano due e non uno.**
+#: «Non ho capito questo dispositivo» e «ho capito, e non c'e' una misura da
+#: ricavarne» sono due fatti diversi: il primo e' un lavoro per il
+#: proprietario, il secondo e' una risposta completa. Misurato sulla casa vera
+#: il 15/09/2026, il giorno in cui la porta del sapere si e' aperta: **18
+#: righe su 21** marcate «non capito» erano rifiuti ragionati, e portavano una
+#: frase nostra -- «nessuno ha finito di scrivere» -- che le prove archiviate
+#: accanto smentivano parola per parola. Il proprietario avrebbe letto
+#: ventuno problemi dove ce n'erano tre.
+#:
+#: La `verification` resta NULLA, non `non_capito`: quella colonna dice cosa
+#: ha detto il CONTROLLO (spec §8), e qui il controllo non ha niente da ridire.
+DECLINED_FIELD = "ricetta_non_serve"
+
 #: Contro quale registro il rifiuto e' stato deciso.
 #:
 #: **I rifiuti sono importanti, e per questo non sono definitivi** (decisione
@@ -295,6 +312,23 @@ def apply_recipe(store, home_space: dict, device_id: str, answer: str, *,
                           "mostrate insieme al modello con l'obiettivo della casa"),
                 who=who, when_ts=when_ts))
             return {"scritta": True, "problemi": [], "risposta": True}
+        # **Il rifiuto ragionato si separa QUI, alla fonte.** Il modello ha
+        # usato il contratto: un `why` pieno e `steps` esplicitamente vuoto.
+        # Non e' una ricetta monca, e' una risposta -- «questo dispositivo non
+        # ha niente che valga la pena misurare» -- e va archiviata come tale,
+        # con LE SUE parole. Separarla a valle (leggendo le prove e cercando
+        # un `why` dentro il testo della risposta) vorrebbe dire ricostruire
+        # per indovinelli cio' che qui si sa con certezza.
+        if _is_declined(data):
+            store.write(Fact(
+                subject_kind="dispositivo", subject=device_id,
+                field=DECLINED_FIELD, value=str(data.get("why")).strip(),
+                provenance="dedotto",
+                evidence=f"il modello ha risposto: {str(answer).strip()[:1500]}",
+                source=f"{REFUSAL_SOURCE}{REGISTRY_VERSION}",
+                who=who, when_ts=when_ts))
+            return {"scritta": False, "problemi": problems, "risposta": True,
+                    "declinata": True}
     # **Il rifiuto porta cosa il modello ha DETTO**, non solo cosa non andava.
     # Senza, il proprietario legge «l'entita' non e' fra quelle consegnate» e
     # non puo' sapere se il modello avesse capito il dispositivo e sbagliato un
@@ -308,6 +342,22 @@ def apply_recipe(store, home_space: dict, device_id: str, answer: str, *,
         source=f"{REFUSAL_SOURCE}{REGISTRY_VERSION}",
         verification="non_capito", who=who, when_ts=when_ts))
     return {"scritta": False, "problemi": problems, "risposta": True}
+
+
+def _is_declined(data: dict) -> bool:
+    """Se la risposta e' un rifiuto **ragionato** e non una ricetta monca.
+
+    Due condizioni, e servono tutte e due: il `why` c'e' e non e' vuoto, e
+    `steps` e' una lista **esplicitamente vuota**. Una risposta senza `why`
+    non ha detto «non serve»: ha smesso di parlare a meta', e quella resta un
+    «non capito» -- il confine e' provato da
+    `test_una_risposta_senza_passi_e_SENZA_perche_resta_NON_CAPITA`.
+    """
+    if not isinstance(data, dict):
+        return False
+    steps = data.get("steps")
+    return (isinstance(steps, list) and not steps
+            and bool(str(data.get("why") or "").strip()))
 
 
 def devices_to_ask(store, home_space: dict, watched: set[str]) -> list[str]:
@@ -339,8 +389,9 @@ def devices_to_ask(store, home_space: dict, watched: set[str]) -> list[str]:
             continue
         if store.get("dispositivo", device_id, RECIPE_FIELD) is not None:
             continue
-        rejection = store.get("dispositivo", device_id, UNDERSTOOD_FIELD)
-        if rejection is not None and _still_valid(rejection):
+        risposte = (store.get("dispositivo", device_id, UNDERSTOOD_FIELD),
+                    store.get("dispositivo", device_id, DECLINED_FIELD))
+        if any(r is not None and _still_valid(r) for r in risposte):
             continue
         to_ask.append(device_id)
     return to_ask

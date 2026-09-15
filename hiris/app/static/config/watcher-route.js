@@ -1417,6 +1417,28 @@ window.HirisWatcherRoute = (function () {
 
   /* ------------------------------------------------------------- il sapere (§8) */
 
+  /* I campi del sapere, detti come li direbbe una persona.
+
+     La traduzione avviene al confine, e il confine è questa pagina: nel
+     sapere il campo si chiama `ricetta_non_serve` perché è una colonna, qui
+     si legge «niente da misurare» perché è una frase. Senza, la piastrella
+     più grossa della sezione -- 18 dispositivi su 52, sulla casa vera --
+     sembrerebbe un guasto, mentre è il contrario: il modello ha guardato e ha
+     detto che non c'è niente che valga la pena. Un campo che non è in questa
+     mappa esce col suo nome: meglio una parola tecnica che una inventata. */
+  var KNOWLEDGE_FIELDS = {
+    ricetta: 'ricette',
+    ricetta_non_serve: 'niente da misurare',
+    ricetta_non_capita: 'ricette non capite',
+    significato: 'significati',
+    attributi: 'attributi che contano',
+    direzione: 'direzioni dell’energia'
+  };
+
+  function knowledgeFieldLabel(campo) {
+    return KNOWLEDGE_FIELDS[campo] || campo;
+  }
+
   function renderKnowledge(body, sapere) {
     var nonCapito = (sapere && sapere.non_capito) || [];
 
@@ -1455,7 +1477,8 @@ window.HirisWatcherRoute = (function () {
     var grid = el('div', 'stat-grid');
     righe.forEach(function (r) {
       var tile = el('div', 'stat-tile');
-      tile.appendChild(el('div', 'st-label', r.campo + ' · ' + r.specie));
+      tile.appendChild(el('div', 'st-label',
+        knowledgeFieldLabel(r.campo) + ' · ' + r.specie));
       tile.appendChild(el('div', 'st-value', fmtCount(r.quante)));
       tile.appendChild(el('div', 'st-delta', r.provenienza));
       grid.appendChild(tile);

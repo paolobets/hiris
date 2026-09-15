@@ -159,8 +159,21 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 # vivo della 3.30.0, leggendo `ponte.cli` dopo un turno di chat. Finche' quel
 # numero non e' stato letto, queste righe dicono «pin alzato», non «versione
 # verificata»: sono due fatti diversi.
+#
+# **14 settembre 2026 — il passo 4 e' SALDATO**: `ponte.cli` letto da
+# `GET /api/health` sulla casa vera, **2.1.270**. Il debito di due pin non
+# verificati e' chiuso, e da qui il ripiego torna a essere l'ultima versione
+# davvero letta girare.
+#
+# 15 settembre 2026 — alzata da 2.1.270 a **2.1.272**, col rilascio della
+# 3.46.0. Il cancello ne aveva parlato durante la 3.45.0, che parlava d'altro:
+# **il pin sale nel rilascio successivo a quello in cui il cancello parla**, e
+# questo e' quello. Ripiego: la **2.1.270**, l'ultima letta dentro il
+# container. Il passo 4 torna APERTO per la 2.1.272 e si salda al primo turno
+# di chat dopo l'aggiornamento -- a add-on appena riavviato `ponte` e' `null`,
+# perche' quel numero nasce da un turno, non dall'avvio.
 RUN apk add --no-cache nodejs npm libgcc libstdc++ ripgrep \
-    && npm install -g @anthropic-ai/claude-code@2.1.270 \
+    && npm install -g @anthropic-ai/claude-code@2.1.272 \
     && npm cache clean --force
 ENV USE_BUILTIN_RIPGREP=0
 

@@ -378,7 +378,82 @@ def _migration_6(conn) -> None:
     _drop_unrunnable_recipes(conn)
 
 
-_SCHEMA_VERSION = 6
+def _migration_7(conn) -> None:
+    """v6 -> v7: i rifiuti RAGIONATI escono da «non capito», col loro perche'.
+
+    **La porta del sapere, aperta il 15/09/2026, ha mostrato per prima cosa
+    una bugia scritta da noi.** Delle 21 righe marcate `non_capito` sulla casa
+    vera, **18** portavano questa frase nostra -- «la ricetta non ha nessun
+    passo: ... nessuno ha finito di scrivere» -- e le prove archiviate accanto
+    la smentivano tutte e 18: il modello aveva risposto col contratto in mano,
+    `steps: []` e un `why` pieno («*Una luce ha solo stato acceso/spento: non
+    c'e' una misura di comfort o efficienza che valga la pena calcolare da
+    un'unica entita' on/off*»). Aveva finito, e aveva detto di no.
+
+    Il proprietario avrebbe letto **ventuno problemi da risolvere dove ce
+    n'erano tre**.
+
+    **Si recupera invece di ricomprare.** Il `why` e' gia' li', dentro le
+    prove: leggerlo e spostarlo costa zero, cancellare le righe costerebbe 18
+    giri del ponte per farsi ridire le stesse parole. Una riga le cui prove
+    non si sanno rileggere si cancella -- non si indovina e non si tiene -- e
+    il dispositivo torna una domanda aperta.
+
+    Da qui in avanti la separazione e' alla fonte
+    (`recipe_turn._is_declined`), e questa migrazione non ha piu' niente da
+    fare: vale per cio' che era gia' scritto.
+    """
+    spostate = cancellate = 0
+    rows = conn.execute(
+        "SELECT subject, value, evidence FROM knowledge "
+        "WHERE field = 'ricetta_non_capita' AND value LIKE '%nessun passo%'"
+    ).fetchall()
+    for row in rows:
+        why = _why_from_evidence(row["evidence"])
+        if why:
+            conn.execute(
+                "UPDATE knowledge SET field = ?, value = ?, verification = NULL "
+                "WHERE subject_kind = 'dispositivo' AND subject = ? "
+                "AND field = 'ricetta_non_capita'",
+                ("ricetta_non_serve", why, row["subject"]))
+            spostate += 1
+        else:
+            conn.execute(
+                "DELETE FROM knowledge WHERE subject_kind = 'dispositivo' "
+                "AND subject = ? AND field = 'ricetta_non_capita'",
+                (row["subject"],))
+            cancellate += 1
+    if spostate or cancellate:
+        logger.info(
+            "sapere: %d rifiuti ragionati spostati in «ricetta_non_serve» col "
+            "perche' del modello, %d righe illeggibili tolte -- dicevano «non "
+            "capito» di un modello che aveva capito e risposto",
+            spostate, cancellate)
+
+
+def _why_from_evidence(evidence: str | None) -> str:
+    """Il `why` del modello dentro le prove, o la stringa vuota.
+
+    Le prove sono `il modello ha risposto: <la risposta>`, e la risposta e'
+    il JSON del contratto -- eventualmente troncato a 1500 caratteri, che e'
+    la ragione per cui **non si pretende che l'intero JSON sia valido**: si
+    cerca il solo campo che serve. Se non c'e', non c'e': chi chiama cancella.
+    """
+    text = str(evidence or "")
+    start = text.find('"why"')
+    if start < 0:
+        return ""
+    try:
+        # `raw_decode` da dove il valore comincia: legge UNA stringa JSON e si
+        # ferma, senza chiedere che cio' che segue sia valido.
+        quote = text.index('"', text.index(":", start) + 1)
+        value, _ = json.JSONDecoder().raw_decode(text[quote:])
+    except (ValueError, json.JSONDecodeError):
+        return ""
+    return value.strip() if isinstance(value, str) else ""
+
+
+_SCHEMA_VERSION = 7
 
 _COLUMNS = ("subject_kind", "subject", "field", "value", "provenance",
             "verification", "evidence", "source", "who", "when_ts")
@@ -424,7 +499,8 @@ class KnowledgeStore:
         init_schema(self._conn, _SCHEMA, version=_SCHEMA_VERSION,
                     migrations={2: _migration_2, 3: _migration_3,
                                 4: _migration_4, 5: _migration_5,
-                                6: _migration_6})
+                                6: _migration_6,
+                                7: _migration_7})
 
     def close(self) -> None:
         with self._lock:
@@ -566,13 +642,23 @@ class KnowledgeStore:
         """
         with self._lock:
             rows = self._conn.execute(
-                "SELECT subject_kind, field, provenance, COUNT(*) AS quante "
-                "FROM knowledge GROUP BY subject_kind, field, provenance "
-                "ORDER BY subject_kind, field, provenance").fetchall()
-        righe = [{"specie": r["subject_kind"], "campo": r["field"],
-                  "provenienza": r["provenance"], "quante": r["quante"]}
-                 for r in rows]
-        return {"totale": sum(r["quante"] for r in righe), "righe": righe}
+                # **Il campo si taglia ai due punti.** `direzione:power_importing`
+                # e `direzione:energy_exporting_today` sono lo stesso campo con
+                # dentro la cosa di cui parlano -- e' cosi' che
+                # `by_field_prefix` li cerca. Senza il taglio il riassunto
+                # sarebbe lungo quanto il dato: misurato il 15/09/2026, 14
+                # righe da uno su 19 totali.
+                "SELECT subject_kind, "
+                "       CASE WHEN instr(field, ':') > 0 "
+                "            THEN substr(field, 1, instr(field, ':') - 1) "
+                "            ELSE field END AS campo, "
+                "       provenance, COUNT(*) AS quante "
+                "FROM knowledge GROUP BY subject_kind, campo, provenance "
+                "ORDER BY subject_kind, campo, provenance").fetchall()
+        counted = [{"specie": r["subject_kind"], "campo": r["campo"],
+                    "provenienza": r["provenance"], "quante": r["quante"]}
+                   for r in rows]
+        return {"totale": sum(r["quante"] for r in counted), "righe": counted}
 
     def not_understood(self) -> list[Fact]:
         """Le righe che il modello **non ha capito**, dalla piu' recente.

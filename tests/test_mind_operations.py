@@ -1211,6 +1211,41 @@ def test_tendenza_legge_le_medie_orarie_di_una_misura_istantanea():
     assert r.value["punti"] == 3
 
 
+def test_una_serie_di_NON_NUMERI_non_si_rifiuta_dicendo_che_e_vuota():
+    """**«Non c'e' niente» e «c'e', ma non e' un numero» sono due cose.**
+
+    Misurato sulla casa vera il 15/09/2026: 27 delle 28 misure rifiutate nel
+    resoconto del 14 dicevano «nessun punto con un valore nel periodo: la
+    serie e' vuota». Chiesta a Home Assistant la storia di
+    `light.abat_jour_sinistra` per quel giorno, i punti c'erano: **cinque**.
+    Non erano numeri -- una luce sta su «on» e «off» -- e la frase mandava a
+    cercare un buco nei dati dove il buco non c'era.
+
+    E' lo stesso rimedio gia' applicato alle misure istantanee poche righe
+    piu' su, applicato all'altro modo di sbagliare bersaglio.
+
+    Mutazione ESEGUITA: tornare alla frase unica -- rossa.
+    """
+    serie = [{"inizio": "2026-09-14T08:00:00", "valore": None, "stato": "on"},
+             {"inizio": "2026-09-14T09:00:00", "valore": None, "stato": "off"}]
+    r = ops.REGISTRY["somma_periodo"].run(serie, unit="kWh", expected_parts=2)
+    assert not r.computable
+    assert "2 punti" in r.reason, r.reason
+    assert "vuota" not in r.reason, (
+        "la serie non e' vuota: e' piena di cose che non sono numeri")
+
+
+def test_una_serie_DAVVERO_vuota_lo_dice_ancora():
+    """Il confine dalla parte opposta: zero punti resta zero punti.
+
+    Mutazione ESEGUITA: dire «non sono numeri» anche quando non c'e' niente
+    -- rossa, si manderebbe a cercare dati che non sono mai arrivati.
+    """
+    r = ops.REGISTRY["somma_periodo"].run([], unit="kWh", expected_parts=24)
+    assert not r.computable
+    assert "vuota" in r.reason, r.reason
+
+
 def test_somma_periodo_su_una_misura_istantanea_RIFIUTA_dicendo_perche():
     """Sommare le temperature di ventiquattro ore non e' un numero: e' un
     errore. Prima rifiutava con «la serie e' vuota» -- vero e inutile, perche'

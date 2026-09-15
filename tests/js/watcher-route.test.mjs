@@ -1467,9 +1467,9 @@ test('seam _rendiSapere: dice cosa ha capito, per specie e provenienza', () => {
   const { corpo } = rendiSapere(sapereFinto());
   const testo = corpo.textContent;
   assert.match(testo, /177/);
-  assert.match(testo, /significato/);
+  assert.match(testo, /significati/);
   assert.match(testo, /importato/);
-  assert.match(testo, /ricetta/);
+  assert.match(testo, /ricette/);
 });
 
 test('seam _rendiSapere: ciò che NON ha capito viene prima, con chi e quando', () => {
@@ -1493,6 +1493,20 @@ test('seam _rendiSapere: se ha capito tutto lo DICE, e non tace', () => {
   // Mutazione che la uccide: non scrivere niente quando non c’è niente.
   const { corpo } = rendiSapere(sapereFinto());
   assert.match(corpo.textContent, /niente che non abbia capito/);
+});
+
+test('seam _rendiSapere: «non serve una ricetta» si legge in italiano, non in nome di colonna', () => {
+  // Sulla casa vera sono 18 dispositivi su 52: la piastrella più grossa della
+  // sezione. `ricetta_non_serve · dispositivo` si legge come un guasto, ed è
+  // il contrario — è il modello che ha guardato e ha detto che non c'è niente
+  // da misurare. La traduzione avviene al confine, che è questa pagina.
+  // Mutazione che la uccide: stampare il nome del campo così com'è.
+  const { corpo } = rendiSapere(sapereFinto({ conteggi: { totale: 18, righe: [
+    { specie: 'dispositivo', campo: 'ricetta_non_serve', provenienza: 'dedotto',
+      quante: 18 },
+  ] } }));
+  assert.match(corpo.textContent, /niente da misurare/);
+  assert.doesNotMatch(corpo.textContent, /ricetta_non_serve/);
 });
 
 test('mount: la sezione 04 legge il sapere dalla sua rotta', () => {

@@ -515,6 +515,31 @@ def test_il_sapere_sa_DIRE_cosa_contiene(sapere):
     assert per[("dispositivo", "ricetta", "dedotto")] == 1
 
 
+def test_il_riassunto_RAGGRUPPA_i_campi_che_portano_un_valore_nel_nome(sapere):
+    """`direzione:power_importing` e `direzione:energy_exporting_today` sono
+    **lo stesso campo**, con dentro la cosa di cui parlano.
+
+    Misurato sulla casa vera il 15/09/2026, appena aperta la porta: su 19
+    righe di riassunto, **14 erano direzioni da una riga ciascuna** -- un
+    elenco lungo quanto il dato che doveva riassumere. Chi legge vuole sapere
+    che di direzioni ce ne sono quattordici, non vederle una per una: per
+    quello c'e' `by_field_prefix`.
+
+    Mutazione ESEGUITA: raggruppare sul campo intero -- rossa.
+    """
+    for verso in ("power_importing", "power_exporting", "energy_charging"):
+        _fatto(sapere, subject_kind="integrazione", subject="zcsazzurro",
+               field=f"direzione:{verso}", value=verso, provenance="dedotto",
+               evidence="il nome dell'entita'")
+    _fatto(sapere, subject_kind="tipo", field="significato")
+
+    righe = {(r["specie"], r["campo"]): r["quante"]
+             for r in sapere.summary()["righe"]}
+    assert righe[("integrazione", "direzione")] == 3
+    assert righe[("tipo", "significato")] == 1
+    assert sapere.summary()["totale"] == 4, "si raggruppa, non si perde niente"
+
+
 def test_il_riassunto_torna_in_un_ordine_DICHIARATO(sapere):
     """Specie, poi campo, poi provenienza -- **scritto**, non quello che
     SQLite si trova in mano.

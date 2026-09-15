@@ -672,6 +672,86 @@ async def test_l_analisi_risolve_i_nomi_che_non_aveva(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_le_analisi_SENZA_giorno_risolvono_i_nomi_come_quella_col_giorno(tmp_path):
+    """**La stessa porta non puo' rispondere due cose diverse sullo stesso
+    fatto.**
+
+    Misurato sulla casa vera il 15/09/2026: `GET /api/mind/analysis?day=...`
+    tornava «SOLARE», `GET /api/mind/analysis` tornava `null` per le stesse
+    cinque osservazioni. La forma senza giorno passava dall'archivio alla
+    risposta senza toccare i nomi, e il changelog della 3.44.2 affermava che
+    quella rotta li risolveva: vero su una forma su due.
+
+    Mutazione ESEGUITA: risolvere solo la forma col giorno -- rossa.
+    """
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    casa = _FintaCasa({"dispositivi": [{"id": "dev1", "nome": "SOLARE"}]})
+    try:
+        archivio.replace_analysis("2026-09-15", {"osservazioni": [
+            {"soggetto": "dev1", "nome": None, "misura": "prelievo"}]})
+        r = await handle_analysis(_richiesta(
+            {"observations": archivio, "home_space_store": casa}))
+        elenco = json.loads(r.text)["analisi"]
+        assert elenco[0]["osservazioni"][0]["nome"] == "SOLARE"
+    finally:
+        archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_le_MISURE_di_un_resoconto_portano_il_nome_come_la_cronaca(tmp_path):
+    """**Stessa pagina, stesso dispositivo, una lingua sola.**
+
+    Misurato sulla casa vera il 15/09/2026, resoconto del 14: **73 misure,
+    zero col nome**, mentre la cronaca dello stesso giorno ne aveva 39 su 44.
+    Il proprietario leggeva «SOLARE» nella sezione dell'analista e
+    «513a6661274641ecf291c1be4121d9fa» in quella del resoconto -- lo stesso
+    dispositivo, due righe piu' su.
+
+    Mutazione ESEGUITA: lasciare le misure come stanno -- rossa.
+    """
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    casa = _FintaCasa({"dispositivi": [{"id": "dev1", "nome": "SOLARE"}]})
+    try:
+        archivio.replace_report("2026-09-14", {
+            "giorno": "2026-09-14", "obiettivo": None,
+            "misure": [{"soggetto": "dev1", "misura": "prelievo", "valore": 1.0},
+                       {"soggetto": "ignoto", "misura": "x", "valore": 2.0}],
+            "forme": [], "cronaca": []})
+        r = await handle_report(_richiesta(
+            {"observations": archivio, "home_space_store": casa},
+            {"day": "2026-09-14"}))
+        misure = json.loads(r.text)["resoconto"]["misure"]
+        assert misure[0]["nome"] == "SOLARE"
+        assert misure[1].get("nome") is None, (
+            "un dispositivo che l'anagrafe non conosce resta senza nome")
+    finally:
+        archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_anche_la_SERIE_dei_resoconti_porta_i_nomi(tmp_path):
+    """La quarta porta. Le tre forme del resoconto e le due dell'analisi
+    rispondono con la stessa regola, o la pagina cambia lingua a seconda di
+    dove guarda.
+
+    Mutazione ESEGUITA: risolvere solo la forma col giorno -- rossa.
+    """
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    casa = _FintaCasa({"dispositivi": [{"id": "dev1", "nome": "SOLARE"}]})
+    try:
+        archivio.replace_report("2026-09-14", {
+            "giorno": "2026-09-14", "obiettivo": None,
+            "misure": [{"soggetto": "dev1", "misura": "prelievo", "valore": 1.0}],
+            "forme": [], "cronaca": []})
+        r = await handle_report(_richiesta(
+            {"observations": archivio, "home_space_store": casa}))
+        serie = json.loads(r.text)["resoconti"]
+        assert serie[0]["misure"][0]["nome"] == "SOLARE"
+    finally:
+        archivio.close()
+
+
+@pytest.mark.asyncio
 async def test_senza_anagrafe_l_analisi_si_legge_lo_stesso(tmp_path):
     """L'avvio a meta': l'anagrafe non c'e' ancora. L'analisi si legge com'e'
     -- un nome mancante e' meno grave di un 503 su un dato che c'e'.

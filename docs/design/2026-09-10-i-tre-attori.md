@@ -613,9 +613,15 @@ poterlo limitare. `consumi.db` e la pagina dei consumi esistono già; manca il l
 
 **Da verificare prima di costruirci sopra:**
 
-- **`bilancio` è a zero in cinque giorni su cinque.** La fetta del 27/08 esiste per unire i 17
+- ~~**`bilancio` è a zero in cinque giorni su cinque.** La fetta del 27/08 esiste per unire i 17
   frammenti in un oggetto e in produzione non ne produce nessuno. Va capito **perché**, prima che il
-  resoconto ci si appoggi.
+  resoconto ci si appoggi.~~
+  **CHIUSA, misurata sulla casa vera il 15/09/2026**: nel resoconto del 14 le undici misure di
+  bilancio — produzione, autoconsumo, immissione, prelievo, carica, scarica, consumo, autoprodotto,
+  quota di autoconsumo, quota di autosufficienza — sono **calcolate tutte e undici**. Il resoconto ci
+  si appoggia già, e l'analista ci ha costruito sopra due delle sue cinque osservazioni. Ciò che le
+  ha sbloccate non è stata una fetta del bilancio: è stata la separazione di `SHAPE_COUNTER`
+  (3.37.0) e il recupero di `media`/`minimo`/`massimo` nei punti orari (3.38.0).
 
 **Da decidere in implementazione:**
 

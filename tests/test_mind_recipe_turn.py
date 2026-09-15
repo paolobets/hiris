@@ -18,7 +18,7 @@ import json
 import pytest
 
 from hiris.app.mind import recipe_turn as rt
-from hiris.app.mind.knowledge import KnowledgeStore
+from hiris.app.mind.knowledge import Fact, KnowledgeStore
 
 CASA = {
     "dispositivi": [{"id": "dev1", "nome": "Inverter ZCS"},
@@ -168,6 +168,101 @@ def test_un_rifiuto_SI_SCRIVE_col_suo_perche(sapere):
     assert riga.value
 
 
+# -- il rifiuto ragionato, che non e' un «non capito» -----------------------
+
+#: Cosa risponde il modello quando il dispositivo non ha niente da misurare.
+#: **Copiata dalla casa vera** (`sapere`, 15/09/2026): il `why` e' quello che
+#: il modello ha davvero scritto per una delle 18 luci.
+RIFIUTO_RAGIONATO = {
+    "why": ("Una luce ha solo stato acceso/spento: non c'e' una misura di "
+            "comfort o efficienza che valga la pena calcolare da un'unica "
+            "entita' on/off."),
+    "steps": [],
+}
+
+
+def test_un_rifiuto_RAGIONATO_non_si_scrive_come_NON_CAPITO(sapere):
+    """**«Ho capito, e non c'e' niente da misurare» non e' «non ho capito».**
+
+    Misurato sulla casa vera il 15/09/2026, appena aperta la porta del sapere:
+    **18 righe su 21** marcate `non_capito` erano rifiuti ragionati -- il
+    modello aveva risposto col contratto in mano, un `why` pieno e `steps: []`
+    -- e portavano una frase NOSTRA, «nessuno ha finito di scrivere», smentita
+    dalle prove archiviate un campo piu' in la'.
+
+    Mutazione ESEGUITA: scrivere il rifiuto ragionato nel campo del non
+    capito -- rossa.
+    """
+    rt.apply_recipe(sapere, CASA, "dev1", json.dumps(RIFIUTO_RAGIONATO),
+                    who="claude-opus-5", when_ts=1789000000.0)
+
+    assert sapere.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD) is None
+    riga = sapere.get("dispositivo", "dev1", rt.DECLINED_FIELD)
+    assert riga is not None, "un rifiuto ragionato si scrive, o si richiede per sempre"
+    assert riga.verification is None, (
+        "la verifica dice cosa ha detto il CONTROLLO, e il controllo non ha "
+        "niente da ridire: la risposta era completa")
+
+
+def test_un_rifiuto_ragionato_porta_il_perche_DEL_MODELLO(sapere):
+    """Non la nostra frase: la sua.
+
+    Mutazione ESEGUITA: scrivere i problemi del validatore invece del `why` --
+    rossa, tornerebbe «nessuno ha finito di scrivere» su una risposta finita.
+    """
+    rt.apply_recipe(sapere, CASA, "dev1", json.dumps(RIFIUTO_RAGIONATO),
+                    who="claude-opus-5", when_ts=1789000000.0)
+
+    riga = sapere.get("dispositivo", "dev1", rt.DECLINED_FIELD)
+    assert riga.value == RIFIUTO_RAGIONATO["why"]
+    assert "nessun passo" not in riga.value
+
+
+def test_una_risposta_senza_passi_e_SENZA_perche_resta_NON_CAPITA(sapere):
+    """Il confine, dalla parte opposta: senza il `why` il modello non ha usato
+    il contratto, e «non c'e' niente da misurare» non l'ha detto nessuno.
+
+    Mutazione ESEGUITA: trattare ogni `steps: []` come rifiuto ragionato --
+    rossa, una risposta monca diventerebbe una decisione.
+    """
+    rt.apply_recipe(sapere, CASA, "dev1", json.dumps({"steps": []}),
+                    who="claude-opus-5", when_ts=1789000000.0)
+
+    assert sapere.get("dispositivo", "dev1", rt.DECLINED_FIELD) is None
+    assert sapere.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD) is not None
+
+
+def test_un_dispositivo_che_ha_DECLINATO_non_si_richiede(sapere):
+    """Un rifiuto ragionato vale come risposta data, esattamente come gli
+    altri due campi: guardarne due su tre lo richiederebbe ogni notte.
+
+    Mutazione ESEGUITA: togliere il campo nuovo da `devices_to_ask` -- rossa.
+    """
+    rt.apply_recipe(sapere, CASA, "dev1", json.dumps(RIFIUTO_RAGIONATO),
+                    who="x", when_ts=1789000000.0)
+
+    assert rt.devices_to_ask(sapere, CASA, {"sensor.prodotta"}) == []
+
+
+def test_un_rifiuto_ragionato_SCADE_quando_il_registro_cresce(sapere):
+    """Stessa regola del «non capito» (decisione del proprietario, 13/09):
+    «non c'e' niente da misurare» e' vero **contro un registro**. Il giorno in
+    cui `tempo_in_stato` diventa scrivibile in una ricetta, «una luce on/off
+    non ha niente da misurare» smette di essere vero.
+
+    Mutazione ESEGUITA: non guardare la versione del registro sul campo nuovo
+    -- rossa, il rifiuto diventerebbe eterno.
+    """
+    sapere.write(Fact(
+        subject_kind="dispositivo", subject="dev1", field=rt.DECLINED_FIELD,
+        value="una luce on/off non ha niente da misurare", provenance="dedotto",
+        evidence="il modello ha risposto: {\"why\": \"...\", \"steps\": []}",
+        source=f"{rt.REFUSAL_SOURCE}un-registro-di-ieri",
+        who="x", when_ts=1789000000.0))
+
+    assert rt.devices_to_ask(sapere, CASA, {"sensor.prodotta"}) == ["dev1"]
+
+
 # -- una volta, non ogni giorno --------------------------------------------
 
 def test_un_dispositivo_che_HA_GIA_una_ricetta_non_si_richiede(sapere):
@@ -274,6 +369,96 @@ def test_i_rifiuti_scritti_da_un_ponte_MUTO_escono_con_la_migrazione(tmp_path):
     nuovo = KnowledgeStore(db)
     try:
         assert nuovo.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD) is None
+        assert rt.devices_to_ask(nuovo, CASA, {"sensor.prodotta"}) == ["dev1"]
+    finally:
+        nuovo.close()
+
+
+def test_le_diciotto_righe_GIA_SCRITTE_si_spostano_col_perche_del_modello(tmp_path):
+    """La migrazione recupera cio' che c'e', invece di ricomprarlo.
+
+    **Le 18 righe sulla casa vera portano gia' dentro la risposta del
+    modello**, `why` compreso: leggerla e spostarla costa zero, cancellarle
+    costerebbe 18 giri del ponte per farsi ridire le stesse parole.
+
+    Mutazione ESEGUITA: togliere `7: _migration_7` dalla mappa -- rossa.
+    """
+    from hiris.app.mind.knowledge import KnowledgeStore
+    from hiris.app.storage import connect
+
+    db = str(tmp_path / "sapere.db")
+    vecchio = KnowledgeStore(db)
+    # Come stava archiviata, parola per parola, il 15/09/2026.
+    vecchio.write(Fact(
+        subject_kind="dispositivo", subject="dev1", field=rt.UNDERSTOOD_FIELD,
+        value=("la ricetta non ha nessun passo: non e' una ricetta che non "
+               "calcola niente, e' una ricetta che nessuno ha finito di scrivere"),
+        provenance="dedotto",
+        evidence=('il modello ha risposto: {"why": "Una luce ha solo stato '
+                  'acceso/spento: nessuna misura di comfort da ricavarne.", '
+                  '"steps": []}'),
+        source=f"{rt.REFUSAL_SOURCE}{rt.REGISTRY_VERSION}",
+        verification="non_capito", who="modello (ponte)", when_ts=1789000000.0))
+    # E una che il modello NON aveva capito davvero: deve restare dov'e'.
+    vecchio.write(Fact(
+        subject_kind="dispositivo", subject="dev2", field=rt.UNDERSTOOD_FIELD,
+        value="la risposta non e' un JSON leggibile", provenance="dedotto",
+        evidence="il modello ha risposto: ecco la ricetta!",
+        source=f"{rt.REFUSAL_SOURCE}{rt.REGISTRY_VERSION}",
+        verification="non_capito", who="modello (ponte)", when_ts=1789000000.0))
+    vecchio.close()
+    conn = connect(db)
+    conn.execute("PRAGMA user_version = 6")
+    conn.commit()
+    conn.close()
+
+    nuovo = KnowledgeStore(db)
+    try:
+        spostata = nuovo.get("dispositivo", "dev1", rt.DECLINED_FIELD)
+        assert spostata is not None, "il rifiuto ragionato cambia campo"
+        assert spostata.value.startswith("Una luce ha solo stato acceso/spento")
+        assert spostata.verification is None
+        assert nuovo.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD) is None
+        # **Quella vera resta**: la migrazione sposta i rifiuti ragionati, non
+        # svuota il campo.
+        assert nuovo.get("dispositivo", "dev2", rt.UNDERSTOOD_FIELD) is not None
+        # E nessuno dei due torna fra i da chiedere: entrambi hanno risposto.
+        assert rt.devices_to_ask(nuovo, CASA, {"sensor.prodotta"}) == []
+    finally:
+        nuovo.close()
+
+
+def test_una_riga_che_NON_si_sa_rileggere_torna_una_domanda(tmp_path):
+    """Il caso storto: prove senza un `why` leggibile.
+
+    **Non si indovina e non si tiene.** Si cancella, e il dispositivo torna
+    fra quelli da chiedere: un giro del ponte costa meno di una riga che
+    afferma qualcosa che nessuno puo' piu' verificare.
+
+    Mutazione ESEGUITA: tenerla dov'e' -- rossa, resterebbe la frase falsa.
+    """
+    from hiris.app.mind.knowledge import KnowledgeStore
+    from hiris.app.storage import connect
+
+    db = str(tmp_path / "sapere.db")
+    vecchio = KnowledgeStore(db)
+    vecchio.write(Fact(
+        subject_kind="dispositivo", subject="dev1", field=rt.UNDERSTOOD_FIELD,
+        value="la ricetta non ha nessun passo: non e' una ricetta che non "
+              "calcola niente, e' una ricetta che nessuno ha finito di scrivere",
+        provenance="dedotto", evidence="il modello ha risposto: ",
+        source=f"{rt.REFUSAL_SOURCE}{rt.REGISTRY_VERSION}",
+        verification="non_capito", who="modello (ponte)", when_ts=1789000000.0))
+    vecchio.close()
+    conn = connect(db)
+    conn.execute("PRAGMA user_version = 6")
+    conn.commit()
+    conn.close()
+
+    nuovo = KnowledgeStore(db)
+    try:
+        assert nuovo.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD) is None
+        assert nuovo.get("dispositivo", "dev1", rt.DECLINED_FIELD) is None
         assert rt.devices_to_ask(nuovo, CASA, {"sensor.prodotta"}) == ["dev1"]
     finally:
         nuovo.close()

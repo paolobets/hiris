@@ -423,6 +423,13 @@ ventole, la lavatrice) resta senza misure nel resoconto: ha una cronaca — l'ep
 nessun numero che si legga in serie su trenta giorni. E i tre inneschi dell'analista lavorano
 **tutti** sulle misure.
 
+**Quanto costa, misurato.** Sulla casa vera il 15/09/2026, col sapere finalmente
+interrogabile: dei **52 dispositivi** che pesano, **18** hanno ricevuto un rifiuto ragionato del
+modello, e in almeno uno il modello dice esattamente questo — *«una luce ha senso da misurare per
+capire quanto resta accesa e con quale intensità»*: **voleva** misurarlo, e la lingua delle ricette
+non gliel'ha permesso. Nel resoconto del 14 le misure a tempo acceso rifiutano tutte: `tempo_acceso`
+0 su 4, `tempo_irrigazione_totale` 0 su 4. Non è una mancanza teorica.
+
 **Cosa servirebbe.** Rendere `is_on` esprimibile come dato. Il riposo non è un giudizio nostro: il
 vocabolario dei tipi lo sa già per ogni classe, ed è quello che `aggregate_day` interroga oggi. Una
 ricetta potrebbe scrivere `params: {"soggetto": "climate.x"}` e lasciare che il motore risolva il
@@ -434,6 +441,20 @@ il sapere, o l'entità stessa; e cosa fa una ricetta su un tipo di cui il riposo
 **Attenzione a non riaprire il buco.** Qualunque sia la strada, `in_recipes` deve restare una
 dichiarazione **senza valore di fabbrica**: è ciò che ha impedito al difetto del 14/09 di tornare
 alla prossima operazione nuova.
+
+### ~~Il sapere non ha una porta~~ — CHIUSA il 15/09/2026 (3.45.0), e ha trovato tre cose
+
+`origine: verifica dal vivo della 3.45.0, 15/09/2026`
+
+La porta (`GET /api/mind/knowledge`, sezione 04 dell'osservatore) è viva. **Nelle prime ore ha
+mostrato tre difetti**, tutti chiusi nella 3.46.0 e tutti invisibili finché nessuno poteva
+chiedere: 18 rifiuti ragionati archiviati come «non capito» con una frase nostra che le prove
+accanto smentivano; il riassunto lungo quanto il dato (14 righe da uno su 19); e — cercando la
+causa — i nomi dei dispositivi risolti da una porta del cervello su quattro.
+
+**Nota di metodo.** Nessuno dei tre si sarebbe visto leggendo il codice: si sono visti guardando
+246 righe di sapere vero. È la ragione per cui la porta viene prima della fetta che ci lavora
+sopra.
 
 ### Il sapere non ha una porta: il proprietario non puo' vedere cosa HIRIS ha capito
 

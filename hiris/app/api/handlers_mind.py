@@ -185,14 +185,18 @@ async def handle_report(request: web.Request) -> web.Response:
         # domanda e' cambiata, o legge una tendenza dove c'e' un cambio di
         # domanda. Costa una frase per giorno; la cronaca e le forme restano
         # fuori, e si chiedono un giorno alla volta.
+        names = _device_names(request.app)
         serie = [{"giorno": r.get("giorno"), "obiettivo": r.get("obiettivo"),
-                  "misure": r.get("misure") or []}
+                  "misure": _named(names, r.get("misure"))}
                  for r in store.reports(limit=30)]
         return web.json_response({"resoconti": serie})
     resoconto = store.report(day)
     if resoconto is None:
         return web.json_response(
             {"errore": f"il giorno {day} non e' stato aggregato"}, status=404)
+    resoconto = {**resoconto,
+                 "misure": _named(_device_names(request.app),
+                                  resoconto.get("misure"))}
     if request.query.get("formato") == "documento":
         return web.Response(text=as_document(resoconto),
                             content_type="text/markdown", charset="utf-8")
@@ -284,12 +288,57 @@ async def handle_analysis(request) -> web.Response:
                                  status=503)
     day = (request.query.get("day") or "").strip()
     if not day:
-        return web.json_response({"analisi": store.analyses(limit=30)})
+        names = _device_names(request.app)
+        return web.json_response({"analisi": [
+            {**a, "osservazioni": _named(names, a.get("osservazioni"))}
+            for a in store.analyses(limit=30)]})
     found = store.analysis(day)
     if found is None:
         return web.json_response(
             {"errore": f"il giorno {day} non e' stato analizzato"}, status=404)
     return web.json_response({"analisi": _with_device_names(request.app, found)})
+
+
+def _device_names(app) -> dict:
+    """I nomi dei dispositivi di **adesso**, o `{}` se l'anagrafe non c'e'.
+
+    Un posto solo: prima questa mappa si ricostruiva dentro
+    `_with_device_names`, e le altre tre forme delle rotte del cervello non la
+    costruivano affatto.
+    """
+    casa = app.get("home_space_store")
+    if casa is None:
+        return {}
+    return {str(d.get("id")): d.get("nome")
+            for d in (casa.read() or {}).get("dispositivi") or []
+            if d.get("id") and d.get("nome")}
+
+
+def _named(names: dict, lines) -> list:
+    """Le righe con **il nome del soggetto risolto dove manca**.
+
+    **La regola e' una sola, e vale per ogni porta del cervello.** L'archivio
+    dice cio' che sapeva; chi legge risolve cio' che puo' oggi. Una riga che
+    il nome ce l'ha tiene il suo -- e' quello di ALLORA, ed e' piu' vero: un
+    dispositivo si puo' rinominare. Un soggetto che l'anagrafe non conosce
+    resta senza: chi legge vede l'identificatore, che e' la verita', non un
+    buco.
+
+    Misurato sulla casa vera il 15/09/2026, prima che questa funzione
+    esistesse: delle cinque porte del cervello **una sola** risolveva i nomi.
+    Il resoconto del 14 aveva 73 misure senza nome e 39 righe di cronaca col
+    nome -- lo stesso dispositivo, due sezioni della stessa pagina, due
+    lingue.
+    """
+    if not names:
+        return list(lines or [])
+    seen = []
+    for line in lines or []:
+        if isinstance(line, dict) and not line.get("nome"):
+            found = names.get(line.get("soggetto"))
+            line = {**line, "nome": found} if found else line
+        seen.append(line)
+    return seen
 
 
 def _with_device_names(app, analysis: dict) -> dict:
@@ -308,21 +357,10 @@ def _with_device_names(app, analysis: dict) -> dict:
 
     E' la stessa regola di `report.series_of_measures`, un piano piu' in la'.
     """
-    casa = app.get("home_space_store")
-    if casa is None:
-        return analysis
-    names = {str(d.get("id")): d.get("nome")
-             for d in (casa.read() or {}).get("dispositivi") or []
-             if d.get("id") and d.get("nome")}
+    names = _device_names(app)
     if not names:
         return analysis
-    seen = []
-    for line in analysis.get("osservazioni") or []:
-        if isinstance(line, dict) and not line.get("nome"):
-            found_name = names.get(line.get("soggetto"))
-            line = {**line, "nome": found_name} if found_name else line
-        seen.append(line)
-    return {**analysis, "osservazioni": seen}
+    return {**analysis, "osservazioni": _named(names, analysis.get("osservazioni"))}
 
 async def handle_knowledge(request) -> web.Response:
     """Il **sapere**: cosa HIRIS ha capito della casa, e cosa non ha capito.

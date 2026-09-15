@@ -513,11 +513,24 @@ _INSTANTANEOUS_REASON = (
 )
 
 
-def _reject_for_coverage(coverage: float, known: int) -> NotComputable | None:
+def _reject_for_coverage(coverage: float, known: int,
+                         *, points: int | None = None) -> NotComputable | None:
     """Il rifiuto motivato, con **il numero dentro la frase**: «copertura 8%»
     dice a chi legge quanto mancava, mentre «non calcolabile» lo lascerebbe
-    a indovinare."""
+    a indovinare.
+
+    **E «vuota» si dice solo quando e' vuota.** `points` e' quanti punti la
+    serie portava in tutto: se ce n'erano e nessuno era un numero, la serie
+    non e' vuota affatto -- e' di cose che non si sommano. Misurato sulla casa
+    vera il 15/09/2026: 27 delle 28 misure rifiutate quel giorno dicevano «la
+    serie e' vuota», e per `light.abat_jour_sinistra` Home Assistant aveva
+    cinque punti. Mandava a cercare un buco nei dati dove il buco non c'era.
+    """
     if not known:
+        if points:
+            return NotComputable(
+                f"la serie ha {points} punti nel periodo ma nessuno porta un "
+                "numero: e' una successione di stati, non di misure")
         return NotComputable(
             "nessun punto con un valore nel periodo: la serie e' vuota")
     if coverage > 1.0:
@@ -549,7 +562,8 @@ def _sum_period(series, *, unit: str, expected_parts: int | None = None) -> Resu
     known, coverage = _known_points(series, expected_parts)
     if not known and _looks_instantaneous(series):
         return NotComputable(_INSTANTANEOUS_REASON)
-    refusal = _reject_for_coverage(coverage, len(known))
+    refusal = _reject_for_coverage(coverage, len(known),
+                                   points=len(series or []))
     if refusal is not None:
         return refusal
     return Measurement(round(sum(p["valore"] for p in known), 2),
@@ -668,7 +682,8 @@ def _average_min_max(series, *, unit: str,
     media e tocca i 14 gradi alle sei del mattino.
     """
     known, coverage = _instant_points(series, expected_parts)
-    refusal = _reject_for_coverage(coverage, len(known))
+    refusal = _reject_for_coverage(coverage, len(known),
+                                   points=len(series or []))
     if refusal is not None:
         return refusal
     values = [p["valore"] for p in known]
