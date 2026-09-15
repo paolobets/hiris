@@ -4,6 +4,7 @@ import json
 import pytest
 
 from hiris.app.api.handlers_mind import (
+    handle_analysis,
     handle_facts,
     handle_report,
     handle_set_objective,
@@ -999,5 +1000,54 @@ async def test_la_serie_NON_porta_la_cronaca_ne_le_forme(tmp_path):
         r = await handle_report(_richiesta({"observations": archivio}))
         riga = json.loads(r.text)["resoconti"][0]
         assert set(riga) == {"giorno", "obiettivo", "misure"}
+    finally:
+        archivio.close()
+
+@pytest.mark.asyncio
+async def test_l_analisi_si_puo_chiedere(tmp_path):
+    """La quarta fondamenta: se un dato c'e' e nessuno puo' chiederlo, non
+    esiste. L'analista scrive ogni notte, e senza questa rotta il proprietario
+    non lo leggerebbe mai.
+
+    Mutazione: togliere la rotta -- rossa.
+    """
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        archivio.replace_analysis("2026-09-15", {"osservazioni": [
+            {"cosa": "il prelievo e' salito", "innesco": 1}]})
+        r = await handle_analysis(_richiesta({"observations": archivio},
+                                             {"day": "2026-09-15"}))
+        assert r.status == 200
+        assert json.loads(r.text)["analisi"]["osservazioni"][0]["innesco"] == 1
+    finally:
+        archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_un_giorno_MAI_analizzato_e_un_404_non_un_silenzio(tmp_path):
+    """\u00abNon ho guardato\u00bb e \u00abho guardato e non c'era niente\u00bb sono due cose
+    diverse: la seconda e' un'analisi con zero osservazioni, la prima non c'e'.
+
+    Mutazione: tornare `{"osservazioni": []}` quando manca -- rossa.
+    """
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        r = await handle_analysis(_richiesta({"observations": archivio},
+                                             {"day": "2026-09-15"}))
+        assert r.status == 404
+    finally:
+        archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_senza_giorno_tornano_le_ultime_analisi(tmp_path):
+    """Mutazione: tornare solo l'ultima -- rossa."""
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        for g in ("2026-09-14", "2026-09-15"):
+            archivio.replace_analysis(g, {"osservazioni": []})
+        r = await handle_analysis(_richiesta({"observations": archivio}))
+        assert [a["giorno"] for a in json.loads(r.text)["analisi"]] == [
+            "2026-09-15", "2026-09-14"]
     finally:
         archivio.close()

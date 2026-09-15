@@ -953,3 +953,54 @@ def test_migration_9_non_tocca_un_resoconto_che_l_obiettivo_ce_l_ha_gia(tmp_path
     riaperto = ObservationsStore(percorso)
     assert riaperto.report("2026-09-13")["obiettivo"]["testo"] == "quella di allora"
     riaperto.close()
+
+def test_l_analisi_di_un_giorno_si_scrive_e_si_rilegge(tmp_path):
+    """L'analista produce una cosa al giorno, e si sostituisce come il
+    resoconto: rifare un giorno lo rifa', non lo accoda.
+
+    Mutazione: `INSERT` nudo invece di `INSERT OR REPLACE` -- rossa sul
+    secondo `replace_analysis`.
+    """
+    store = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        assert store.analysis("2026-09-15") is None
+        store.replace_analysis("2026-09-15", {"osservazioni": [{"cosa": "x"}]})
+        assert store.analysis("2026-09-15")["osservazioni"] == [{"cosa": "x"}]
+        store.replace_analysis("2026-09-15", {"osservazioni": []})
+        assert store.analysis("2026-09-15")["osservazioni"] == []
+    finally:
+        store.close()
+
+
+def test_il_SILENZIO_si_scrive_e_non_si_confonde_col_non_aver_girato(tmp_path):
+    """*\u00abIl silenzio e' un esito legittimo\u00bb* (spec §10). Ma \u00abho guardato e non
+    c'era niente da dire\u00bb e \u00abnon ho guardato\u00bb sono due cose diverse, ed e' la
+    stessa legge del resoconto vuoto: la prima si scrive.
+
+    Mutazione: non scrivere quando l'elenco e' vuoto -- rossa (`None` invece
+    di un'analisi con zero osservazioni).
+    """
+    store = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        store.replace_analysis("2026-09-15", {"osservazioni": []})
+        scritta = store.analysis("2026-09-15")
+        assert scritta is not None, "il silenzio si archivia"
+        assert scritta["osservazioni"] == []
+    finally:
+        store.close()
+
+
+def test_le_analisi_tornano_dalla_piu_recente(tmp_path):
+    """Una cronaca si legge da adesso all'indietro, come gli obiettivi e i
+    resoconti.
+
+    Mutazione: ordinare crescente -- rossa.
+    """
+    store = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        for g in ("2026-09-13", "2026-09-15", "2026-09-14"):
+            store.replace_analysis(g, {"osservazioni": []})
+        assert [a["giorno"] for a in store.analyses(limit=10)] == [
+            "2026-09-15", "2026-09-14", "2026-09-13"]
+    finally:
+        store.close()

@@ -392,6 +392,18 @@ CREATE INDEX IF NOT EXISTS idx_cambi_soggetto ON cambi(soggetto, quando_ts);
 -- l'ancora della cronaca puo' stringersi): una colonna per campo vorrebbe dire
 -- una migrazione a ogni cosa imparata, che e' cio' che questa fetta esiste per
 -- togliere.
+-- L'ANALISI di un giorno (spec §10): cosa l'analista ha visto, e perche'.
+-- Una per giorno, sostituibile come il resoconto: rifare un giorno lo rifa'.
+--
+-- **Il silenzio si archivia.** «Ho guardato e non c'era niente da dire» e «non
+-- ho guardato» sono due cose diverse, ed e' la stessa legge del resoconto
+-- vuoto: un'analisi con zero osservazioni e' una riga, non un'assenza.
+CREATE TABLE IF NOT EXISTS analisi (
+    giorno       TEXT PRIMARY KEY,
+    corpo_json   TEXT NOT NULL,
+    scritto_ts   REAL NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS resoconto (
     giorno       TEXT PRIMARY KEY,
     corpo_json   TEXT NOT NULL,
@@ -1055,6 +1067,54 @@ class ObservationsStore:
         if row is None:
             return {"testo": DEFAULT_OBJECTIVE, "scritto_ts": None}
         return {"testo": row["text"], "scritto_ts": row["written_ts"]}
+
+    # -- l'analisi (spec §10) ------------------------------------------
+
+    def replace_analysis(self, day: str, analysis: dict) -> None:
+        """Scrive l'analisi di un giorno, sostituendo quella che c'era.
+
+        Stessa disciplina di `replace_report`: rifare un giorno lo RIFA', non
+        lo accoda -- e un'analisi accodata darebbe due verita' sullo stesso
+        giorno, che e' il difetto che «costruire» ha gia' pagato.
+        """
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO analisi(giorno,corpo_json,scritto_ts) "
+                "VALUES(?,?,?)",
+                (day, json.dumps(analysis, ensure_ascii=False), _time.time()))
+            self._conn.commit()
+
+    def analysis(self, day: str) -> dict | None:
+        """L'analisi di quel giorno, o `None` se non ne ha una.
+
+        `None` significa **non e' girata**, e non «non aveva niente da dire»:
+        il silenzio e' una riga con zero osservazioni, e si distingue.
+        """
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT corpo_json FROM analisi WHERE giorno = ?", (day,)).fetchone()
+        if row is None:
+            return None
+        try:
+            return json.loads(row["corpo_json"])
+        except (TypeError, ValueError):
+            return None
+
+    def analyses(self, *, limit: int = 30) -> list[dict]:
+        """Le analisi, **dalla piu' recente**: una cronaca si legge da adesso
+        all'indietro, come gli obiettivi e i resoconti."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT giorno, corpo_json FROM analisi "
+                "ORDER BY giorno DESC LIMIT ?", (int(limit),)).fetchall()
+        out = []
+        for row in rows:
+            try:
+                body = json.loads(row["corpo_json"])
+            except (TypeError, ValueError):
+                continue
+            out.append({**body, "giorno": row["giorno"]})
+        return out
 
     def prune(self, now_ts: float) -> int:
         """Butta i cambi oltre la conservazione. **Non tocca gli oggetti**: le

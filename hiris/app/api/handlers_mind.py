@@ -346,3 +346,26 @@ async def handle_set_objective(request) -> web.Response:
     written = store.set_objective(text)
     return web.json_response({"obiettivo": store.objective(),
                               "scritto": bool(written)})
+
+async def handle_analysis(request) -> web.Response:
+    """L'analisi di un giorno, o le ultime (spec §10).
+
+    - `?day=2026-09-15` -- l'analisi di quel giorno;
+    - senza `day` -- le ultime, dalla piu' recente.
+
+    **Un giorno mai analizzato torna 404, non un'analisi vuota**: «ho guardato
+    e non c'era niente da dire» e «non ho guardato» sono due cose diverse, e
+    la prima e' una riga con zero osservazioni. Stessa legge del resoconto.
+    """
+    store = request.app.get("observations")
+    if store is None:
+        return web.json_response({"errore": "archivio non disponibile"},
+                                 status=503)
+    day = (request.query.get("day") or "").strip()
+    if not day:
+        return web.json_response({"analisi": store.analyses(limit=30)})
+    found = store.analysis(day)
+    if found is None:
+        return web.json_response(
+            {"errore": f"il giorno {day} non e' stato analizzato"}, status=404)
+    return web.json_response({"analisi": found})

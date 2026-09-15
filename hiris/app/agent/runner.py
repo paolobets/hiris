@@ -1695,6 +1695,13 @@ _SCOPE_KIND = "scope"
 #: letto e non applicato.
 _RECIPE_KIND = "ricetta"
 
+#: La specie del turno dell'analista (spec §10, 15/09/2026). Entra qui sotto
+#: **insieme** al modulo che la produce, e non dopo: il 13/09 il turno delle
+#: ricette fu accodato a un ponte che non sapeva ragionarlo -- «job non-chat in
+#: coda: nessun ramo lo ragiona piu'» -- e la decisione vuota che ne usci' fu
+#: scritta come «non capito» di un modello mai interpellato.
+_ANALYSIS_KIND = "analisi"
+
 #: Le specie la cui DOMANDA porta gia' tutto, e che non devono poter agire.
 #: Il nome e' inglese come il resto del codice: «senza nucleo» descriveva solo
 #: meta' di cio' che fanno, e portava una preposizione italiana in un
@@ -1709,9 +1716,10 @@ _RECIPE_KIND = "ricetta"
 #: potrebbe agire sulla casa senza che nessun si' lo autorizzi. E' il rilievo
 #: che la review indipendente aveva chiuso per lo scope l'11/09/2026, e che il
 #: turno delle ricette avrebbe riaperto.
-_SELF_CONTAINED_KINDS = (_SCOPE_KIND, _RECIPE_KIND)
+_SELF_CONTAINED_KINDS = (_SCOPE_KIND, _RECIPE_KIND, _ANALYSIS_KIND)
 
-RAGIONABILI = ("chat", "promessa", _SCOPE_KIND, _RECIPE_KIND)
+RAGIONABILI = ("chat", "promessa", _SCOPE_KIND, _RECIPE_KIND,
+               _ANALYSIS_KIND)
 
 
 def reason(job: dict, mode: str, *, client=None, base_url: str = "",

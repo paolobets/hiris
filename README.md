@@ -67,7 +67,7 @@ one of the sixteen tools below, lets a sentence you type now run later, at a
 time you name, with nobody in the chat when it happens — see the next
 paragraph for what that means in practice.
 
-Periodic work *does* run — the scheduler registers **fifteen** APScheduler jobs
+Periodic work *does* run — the scheduler registers **sixteen** APScheduler jobs
 at startup, not four, and one of them is not housekeeping: it is the reason
 the paragraph above needed the caveat. Fourteen are internal bookkeeping — none of
 them speaks to you and none of them touches the house: the entity-inventory
@@ -153,6 +153,23 @@ through the 11th had raw state changes and objects and no report — neither
 writer reaches backwards, and for the analyst those days did not exist. It stops
 when nothing is missing, and it never goes further back than the raw itself: a
 day can only be redone while its raw still exists.
+
+
+The sixteenth is the analyst (spec §10), every hour
+(`server.py::analyst_round`). It reads the measures of many days — pivoted so
+that one line is one measure across thirty days — and says **what could be
+done**: what it saw, which of the three triggers it is, whether it is already
+explained, and what would change against the objective. It is the third of the
+jobs that *spends*, and the most expensive of them: measured on the owner's
+house on 15/09/2026, with twenty days archived and 146 series, the question is
+about **35,000 tokens** — three times the observer's whole-house read. Hourly
+is not the cadence of the work: a day has exactly one analysis, and once it has
+one the round does nothing and says nothing. Silence is a legitimate outcome
+and it is **written**: "I looked and there was nothing worth saying" and "I did
+not look" are two different things, and the archive keeps them apart. And the
+model never writes a number — it names which measure, and the code attaches
+value, coverage, deviation and base from the series, so that a wrong number
+inside an authoritative-looking report is impossible.
 
 
 2.0 is a reduction to the core. Version 1.x shipped a much wider surface

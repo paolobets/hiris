@@ -58,7 +58,7 @@ from .keeper.store import AgendaStore
 from .keeper.sweeper import Sweeper
 from .memory.lookup_cache import LookupCache
 from .memory.store import MemoryStore
-from .mind import recipe_turn
+from .mind import analyst, analyst_turn, recipe_turn, report
 from .mind.cadence import cadence_from, measure_memory_window, reason_to_reconsider
 from .mind.facts import (
     BALANCE_DIRECTIONS,
@@ -2242,6 +2242,157 @@ def _punti_orari(punti) -> list[dict]:
             for p in punti if isinstance(p, dict)]
 
 
+async def analyst_round(app) -> dict | None:
+    """L'anello dell'analista: **«leggi le misure di molti giorni e di' cosa si
+    potrebbe fare»** (spec §10).
+
+    Torna il resoconto del giro, o `None` se non c'era da farlo.
+
+    **Una volta al giorno, e non e' prudenza generica.** Misurato sulla casa
+    vera il 15/09/2026, con venti giorni archiviati e 146 serie: la domanda
+    pesa **~35.000 token** -- tre volte il giro dell'osservatore. Farla a ogni
+    giro dello schedulatore svuoterebbe il tetto giornaliero del piano da sola.
+    Un giorno ha una analisi sola, e quando ce l'ha il giro non fa niente.
+
+    **Il silenzio si archivia**, e non e' un giro sprecato: «ho guardato e non
+    c'era niente da dire» e «non ho guardato» sono due cose diverse, ed e' la
+    stessa legge del resoconto vuoto.
+
+    **Dalla stessa porta dello scope e delle ricette**: chi risponde lo decide
+    `steering.who_answers`.
+
+    Non solleva mai: gira per sempre, e un giro andato storto non deve fermare
+    lo schedulatore.
+    """
+    store = app.get("observations")
+    if store is None:
+        return None
+    try:
+        timezone = _timezone_from_home_space_store(app.get("home_space_store"))
+        today = datetime.now(home_space_zone(timezone)).date().strftime("%Y-%m-%d")
+
+        collected = _collect_analyst_turn(app, store, today)
+        if collected is not None and collected.get("risposta"):
+            return collected
+        if store.analysis(today) is not None:
+            return None
+        if _analyst_turn_in_flight(app):
+            return None
+
+        series = analyst.with_deviation(
+            report.series_of_measures(store.reports(limit=ANALYST_DAYS)))
+        if not (series.get("serie") or []):
+            return None
+
+        route, downgrade = who_answers(app)
+        runner = app.get("llm_router") or app.get("claude_runner")
+        if route == "ponte":
+            return _enqueue_analyst_turn(app, series, today)
+        if runner is None:
+            logger.info("analista: nessun modello collegato, si riprova al giro dopo")
+            return None
+        if downgrade:
+            logger.info("analista: il giro passa dalla catena (%s)", downgrade)
+
+        question = analyst_turn.build_question(series)
+        if question is None:
+            return None
+        answer = await runner.chat(user_message=question,
+                                   system_prompt=analyst_turn.SYSTEM)
+        esito = analyst_turn.apply_analysis(series, answer)
+        _write_analysis(store, today, esito)
+        return esito
+    except Exception as error:
+        logger.warning("analista: giro fallito (%s: %s) -- si riprova al giro "
+                       "dopo", type(error).__name__, error)
+        return None
+
+
+#: Quanti giorni di misure si consegnano all'analista. Trenta e' il numero
+#: della spec §9 -- «trenta giorni di misure stanno in un prompt» -- e
+#: misurato sulla casa vera sono ~35.000 token.
+ANALYST_DAYS = 30
+
+
+def _write_analysis(store, day: str, esito: dict) -> None:
+    """Scrive l'analisi, o dice perche' non l'ha scritta.
+
+    **Una risposta rifiutata non si archivia**: un'analisi con dentro dei
+    problemi non e' un'analisi, e scriverla direbbe che quel giorno e' stato
+    analizzato. Il giro dopo riprova, perche' `analysis(giorno)` resta `None`.
+    """
+    analysis = esito.get("analisi")
+    if analysis is None:
+        if esito.get("problemi"):
+            logger.warning("analista: risposta rifiutata per %s -- %s",
+                           day, " \u00b7 ".join(esito["problemi"]))
+        return
+    store.replace_analysis(day, analysis)
+    logger.info("analista: analisi di %s scritta (%d osservazioni)",
+                day, len(analysis.get("osservazioni") or []))
+
+
+def _analyst_turn_in_flight(app) -> bool:
+    """Se c'e' gia' una domanda dell'analista in attesa sul piano."""
+    queue = app.get("reasoning_queue")
+    if queue is None:
+        return False
+    turn = queue.latest(analyst_turn.ANALYSIS_TURN_KIND)
+    return bool(turn and not (turn.get("decision") or {}).get("reply"))
+
+
+def _enqueue_analyst_turn(app, series: dict, day: str) -> dict | None:
+    """Accoda al piano la domanda dell'analista, e torna subito."""
+    from .api.handlers_models import _STORE_DEFAULTS
+    job = analyst_turn.bridge_turn(series)
+    if job is None:
+        return None
+    deadline_min = int((app.get("models_config") or {}).get("ponte", {}).get(
+        "scadenza_min", _STORE_DEFAULTS["ponte"]["scadenza_min"]))
+    now = time.time()
+    # **Nella sveglia va il giorno**: il ponte risponde minuti dopo, da un
+    # altro processo, e chi raccoglie deve sapere di QUALE giorno era la
+    # domanda -- e con quali serie confrontarla.
+    app["reasoning_queue"].enqueue(
+        analyst_turn.ANALYSIS_TURN_KIND, {"giorno": day}, job,
+        now + deadline_min * 60, now=now)
+    logger.info("analista: turno accodato al piano per %s (scadenza %d min)",
+                day, deadline_min)
+    return {"accodata": True, "giorno": day}
+
+
+def _collect_analyst_turn(app, store, today: str) -> dict | None:
+    """La risposta che il piano ha dato alla domanda dell'analista.
+
+    **Un turno gia' letto non si rilegge**, e la traccia e' l'analisi stessa:
+    se quel giorno ne ha gia' una, la risposta e' gia' stata applicata.
+
+    **Le serie si rileggono adesso, non si conservano.** Il ponte risponde
+    minuti dopo e potrebbe averlo fatto dopo un'aggregazione: i numeri che
+    l'osservazione portera' devono essere quelli che l'archivio ha ORA, o
+    direbbero una cosa che nessuno puo' piu' verificare.
+    """
+    queue = app.get("reasoning_queue")
+    if queue is None:
+        return None
+    turn = queue.latest(analyst_turn.ANALYSIS_TURN_KIND)
+    if not turn:
+        return None
+    day = (turn.get("wake") or {}).get("giorno")
+    if not day or store.analysis(day) is not None:
+        return None
+    reply = (turn.get("decision") or {}).get("reply") or ""
+    series = analyst.with_deviation(
+        report.series_of_measures(store.reports(limit=ANALYST_DAYS)))
+    esito = analyst_turn.apply_analysis(series, reply)
+    if not esito.get("risposta"):
+        # Il ponte ha restituito una decisione vuota: non e' una risposta, e
+        # non si scrive niente. Il giro successivo richiede.
+        return esito
+    _write_analysis(store, day, esito)
+    return esito
+
+
 async def recipe_round(app) -> dict | None:
     """L'anello delle ricette: **«c'e' un dispositivo che pesa e non ho ancora
     capito come si misura? e allora chiedilo»** (spec §7).
@@ -4070,6 +4221,21 @@ async def _on_startup(app: web.Application) -> None:
                 "cervello: recupero dei resoconti fallito (%s: %s) -- "
                 "si riprova al giro dopo", type(error).__name__, error)
 
+    # L'anello dell'analista: legge le misure di molti giorni e dice cosa si
+    # potrebbe fare (spec §10). Ogni ora, non ogni dieci minuti: la domanda
+    # pesa ~35.000 token -- misurato sulla casa vera il 15/09/2026, venti
+    # giorni e 146 serie -- e un giorno ha UNA analisi sola. Quando ce l'ha,
+    # il giro non fa niente e non lo dice.
+    async def _anello_analista() -> None:
+        await analyst_round(app)
+
+    scheduler.add_job(
+        _anello_analista,
+        trigger="interval", minutes=60,
+        id="hiris_mind_analyst", replace_existing=True,
+        misfire_grace_time=1800,
+    )
+
     scheduler.add_job(
         _recupero_resoconti,
         trigger="interval", minutes=5,
@@ -5267,6 +5433,7 @@ def create_app() -> web.Application:
     # /api/home-space e /api/memories qui sopra: nessuna scrittura, quindi nessun
     # `csrf_middleware` da rispettare.
     from .api.handlers_mind import (
+        handle_analysis,
         handle_facts,
         handle_report,
         handle_set_objective,
@@ -5277,6 +5444,7 @@ def create_app() -> web.Application:
     # Il resoconto (spec §9): un giorno, lo stesso giorno come documento, o le
     # misure degli ultimi trenta. Tre forme, un archivio.
     app.router.add_get("/api/mind/report", handle_report)
+    app.router.add_get("/api/mind/analysis", handle_analysis)
     # La sola manopola del prodotto: fino al 14/09/2026 l'obiettivo si
     # poteva solo LEGGERE, e sulla casa vera era ancora quello di fabbrica.
     app.router.add_post("/api/mind/objective", handle_set_objective)
