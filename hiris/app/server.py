@@ -41,8 +41,6 @@ from .env_util import env_bool
 from .home_space.behavior import reread, reread_dashboards
 from .home_space.briefing import digest_visible_entity_ids
 from .home_space.historian import home_space_zone, instant_epoch
-from .home_space.queries import HA_LINK_TYPE
-from .home_space.queries import related as _legami_leggibili
 from .home_space.reader import HomeSpace
 from .home_space.topology import (
     AREAS_PER_ROUND,
@@ -66,7 +64,7 @@ from .mind.facts import (
     build_balance_body,
     day_boundaries,
 )
-from .mind.knowledge import Fact, KnowledgeStore, directions_by_translation_key
+from .mind.knowledge import Fact, KnowledgeStore
 from .mind.observer import SCOPE_TURN_KIND
 from .mind.observer import apply_answer as observer_apply_answer
 from .mind.observer import bridge_turn as observer_bridge_turn
@@ -1139,124 +1137,18 @@ def tree_comparison_round(app, ha_client, count: int = AREAS_PER_ROUND):
 _COMPANION_TYPES = ("entita", "automazione", "scena", "script")
 
 
-async def build_companions(
-        ha_client, subjects: list[str]) -> tuple[dict[str, list[str]], int]:
-    """Per ogni protagonista, chi sta con lui. **Una lettura per soggetto.**
-
-    Non si indovina dal nome: e' il caso misurato del lampadario, dove tre
-    lampade LIFX, il loro gruppo e l'interruttore fisico che le comanda sono
-    un sistema solo, e solo `legami` lo sa dire.
-
-    **Il contratto vero di `HAClient.related`, non quello immaginato**
-    (correzione trovata dalla review de «l'osservatore», 26/08/2026 --
-    prima di questa correzione questa funzione era INERTE in produzione:
-    zero chiamate di rete, `mappa` sempre vuota, e nessuna riga di log lo
-    diceva). `HAClient.related(tipo, id)` (`proxy/ha_client.py`) valida `tipo`
-    contro `RELATED_ITEM_TYPES`, che ha i valori INGLESI di Home Assistant
-    (`"entity"`, non `"entita"`); un tipo che non riconosce lo rifiuta con
-    `{"errore": ...}` **prima di toccare la rete**. E la risposta buona non
-    porta una busta `{"legami": {...}}`: e' il dizionario grezzo di
-    `search/related`, a chiavi inglesi (`"entity"`, `"automation"`, ...). La
-    traduzione -- tipo in ingresso, chiavi in uscita -- e' un fatto gia'
-    codificato altrove (`home_space/queries.py::LINK_NAME`/`HA_LINK_TYPE`, e la
-    funzione pura `home_space/queries.py::legami` che la applica): si usano quelle,
-    non se ne scrive una terza copia -- sarebbe il doppione che questo
-    progetto insegue da una notte intera.
-
-    **Un guasto di `legami`, per un soggetto, costa i comprimari di QUEL
-    soggetto, non la giornata**: `mappa[soggetto] = []`, e si prosegue con
-    gli altri -- QUI DENTRO, per QUESTA funzione, che costruisce sempre da
-    zero. Ma il guasto **lascia traccia**: non e' un «non c'e' niente»
-    (`home_space/queries.py::legami`, stessa regola), e chi rilegge il log deve
-    poter distinguere «questa entita' non ha comprimari» da «non si e'
-    potuto saperlo». Un warning per soggetto sarebbe rumore su una casa da
-    88 entita' col wifi debole; un riepilogo a fine giro, se almeno uno e'
-    fallito, e' la stessa disciplina di `watch_system_conditions` qui
-    sopra.
-
-    **Il ritorno e' una coppia, `(mappa, falliti)`, non piu' solo `mappa`**
-    (correzione del CRITICAL «il grilletto non lo preme nessuno», review de
-    «l'osservatore», 26/08/2026). Il contatore dei falliti esisteva gia' --
-    serviva solo al warning qui sopra -- ma moriva dentro questa funzione: un
-    chiamante che decidesse «mi fermo se questa funzione solleva» non poteva
-    fidarsi di quel segnale da solo. Il segnale vero, per il caso ORDINARIO,
-    e' questo numero, ed e' compito del chiamante deciderne il peso:
-
-    **Cosa e' contenuto qui dentro, e cosa no** (corretto in questo stesso
-    giro, review de «l'osservatore», 26/08/2026 -- qui c'era scritto «nessuna
-    `Exception` esce mai da qui», falso). Un guasto di RETE o di Home
-    Assistant -- `HAClient.related` che rifiuta il `tipo` o non risponde -- e'
-    contenuto per intero, sempre: e' il `try/except` qui sopra, che mette
-    `mappa[soggetto] = []` e conta un fallito. La TRADUZIONE di una risposta
-    BUONA (`_legami_leggibili`, cioe' `home_space/queries.py::legami`, chiamata
-    subito dopo quel `try/except`) NON e' contenuta: e' fuori da ogni `try`
-    di questa funzione. Home Assistant vero non manda mai una chiave che non
-    porti una lista, ma nessun contratto lo impedisce a un client rotto o a
-    una versione futura -- e in quel caso una vera `Exception` (tipicamente
-    `TypeError`) esce da QUESTA funzione, non contenuta. Un chiamante che si
-    fida di «non solleva mai» per decidere se fermarsi non si fermerebbe MAI
-    per il primo guasto (serve il numero, sotto), ma si fermerebbe ancora
-    per il secondo -- i due casi non sono lo stesso rischio.
-
-    **chi costruisce dal nulla (questa funzione, e chi la chiama di notte)
-    tollera il parziale -- un oggetto con qualche comprimare mancante e'
-    meglio di nessun oggetto, e si prosegue, come sopra; chi SOSTITUISCE cio'
-    che gia' c'e' (la riparazione all'avvio, `riaggrega_gli_ultimi_due_
-    giorni`) no -- un oggetto con qualche comprimare mancante e' PEGGIO di
-    quello che rimpiazzerebbe, e deve fermarsi anche per un solo fallito.**
-    Questa funzione non sa quale dei due casi sia: restituisce il numero,
-    non la decisione.
-    """
-    mappa: dict[str, list[str]] = {}
-    failed = 0
-    ha_type = HA_LINK_TYPE["entita"]  # sempre "entity": i soggetti che
-    # arrivano qui sono protagonisti di oggetti, cioe' entita' di Home
-    # Assistant -- mai un'area, un dispositivo o un'altra delle 14 cose che
-    # `search/related` sa collegare.
-    for subject in subjects:
-        # I quattro prefissi delle condizioni di sistema (`problema:`,
-        # `integrazione:`, `log:`, Task 2 di «le tracce e il log»;
-        # `automazione:`, Task 4 dello stesso verticale) non sono entita' di
-        # Home Assistant: chiederle a `legami` produrrebbe una chiamata di
-        # rete inutile per ognuna, ad ogni aggregazione -- HA tornerebbe
-        # `{}` per un `item_id` che non esiste, ma la correttezza non deve
-        # poggiare su quella tolleranza. `log:` conteneva un punto (il
-        # logger, es. `homeassistant.components.hydrawise`), quindi il
-        # controllo `"." not in subject` da solo NON lo scartava: misurato
-        # dalla review indipendente, non dedotto. `automazione:` contiene
-        # SEMPRE un punto (l'`entity_id` che porta con se', `automation.x`),
-        # per la stessa ragione: senza il prefisso in questa tupla il
-        # controllo da solo non basterebbe a scartarlo.
-        if subject in mappa or "." not in subject or subject.startswith(
-                ("problema:", "integrazione:", "log:", "automazione:")):
-            continue
-        try:
-            raw = await ha_client.related(ha_type, subject)
-        except Exception as error:
-            logger.debug("cervello: comprimari di %s non letti (%s: %s)",
-                        subject, type(error).__name__, error)
-            mappa[subject] = []
-            failed += 1
-            continue
-        report = _legami_leggibili(raw, "entita", subject)
-        if "errore" in report:
-            logger.debug("cervello: comprimari di %s non letti (%s)",
-                        subject, report["errore"])
-            mappa[subject] = []
-            failed += 1
-            continue
-        related = report.get("legami") or {}
-        insieme: list[str] = []
-        for link_type in _COMPANION_TYPES:
-            for other in related.get(link_type) or []:
-                if isinstance(other, str) and other != subject and other not in insieme:
-                    insieme.append(other)
-        mappa[subject] = insieme
-    if failed:
-        logger.warning(
-            "cervello: comprimari non letti per %d soggetti su %d -- il "
-            "contesto di questo giro e' parziale", failed, len(mappa))
-    return mappa, failed
+# **`build_companions` e' uscito** (15/09/2026, con gli oggetti). Chiedeva
+# a Home Assistant, un soggetto alla volta, chi stava con chi, e il suo
+# unico lettore era il corpo di un oggetto: «cosa ha fatto la temperatura
+# mentre il riscaldamento andava». Misurato sulla casa vera prima di
+# cancellarlo: **zero comprimari su 200 oggetti**, il campo `misure` vuoto
+# in tutti. Erano centinaia di chiamate di rete a giro per un campo che
+# nessuno ha mai visto pieno.
+#
+# Con lui e' uscita la lettura delle direzioni dell'energia da qui dentro
+# (`energy_directions`): riempiva `direzione` sull'episodio di energia, e
+# quell'episodio non c'e' piu'. Il metodo del client resta, e lo usa
+# `build_balances` qui sotto per decidere i candidati.
 
 
 async def build_balances(
@@ -1529,8 +1421,7 @@ async def backfill_one_missing_report(app, ha_client, *,
                 ricette, serie, nomi = await _report_ingredients(
                     app, ha_client, giorno=as_text, timezone=timezone)
                 aggregate_day(store=archivio, day=as_text, timezone=timezone,
-                              recipes=ricette, series=serie, names=nomi,
-                              report_only=True)
+                              recipes=ricette, series=serie, names=nomi)
             except Exception as error:
                 logger.warning(
                     "cervello: resoconto di %s non recuperato (%s: %s)",
@@ -1594,7 +1485,7 @@ async def _write_missing_reports(app, ha_client, days, timezone) -> list[str]:
                 app, ha_client, giorno=day, timezone=timezone)
             aggregate_day(
                 store=archivio, day=day, timezone=timezone,
-                recipes=ricette, series=serie, names=nomi, report_only=True)
+                recipes=ricette, series=serie, names=nomi)
             scritti.append(day)
         except Exception as error:
             logger.warning(
@@ -1632,274 +1523,43 @@ async def reaggregate_last_two_days(app, ha_client, *, now=datetime.now) -> None
 
 
 async def _reaggregate_days(app, ha_client, *, now=datetime.now) -> None:
-    """All'avvio, riaggrega i due giorni pieni piu' recenti (oggi escluso:
-    non e' ancora finito) **con gli stessi comprimari che costruirebbe
-    l'aggregazione notturna** -- non piu' senza. Non torna niente: chi la
-    chiama vuole solo l'effetto, o il fallimento. Se i comprimari non si
-    riescono a costruire la riparazione si salta per intero (vedi piu'
-    sotto): non e' piu' incondizionata.
+    """All'avvio, scrive il resoconto degli ultimi due giorni pieni che non ce
+    l'hanno (oggi escluso: non e' ancora finito).
 
-    **La cura vera al buco del punto 2 (task-5-fix-brief.md).** `_aggrega_
-    ieri`, qui sotto, aggrega **solo** «ieri», ogni notte alle 00:20. Se
-    quella notte `reference_frame()` solleva -- la sua query SQL non
-    e' protetta -- l'aggregazione salta, e poiche' il lavoro notturno guarda
-    sempre e solo «ieri», quel giorno **non viene piu' aggregato da nessun
-    percorso**: il grezzo per rifarlo resta li' fino alla potatura (22
-    giorni dopo), e nessuno lo rifa'. Muovere `fuso`/`ieri` dentro il try di
-    `_aggrega_ieri` (fatto in questo stesso giro) sistema il LOG, non il
-    buco: la notte salta comunque.
+    **Era molto piu' grande, e il 15/09/2026 e' diventata questa.** Con gli
+    oggetti (spec §13) e' uscita tutta la macchina che li proteggeva: due
+    letture di rete per giornata -- i comprimari e le direzioni dell'energia --
+    e **quattro uscite anticipate**, tutte per la regola *«chi SOSTITUISCE non
+    tollera il parziale»*, perche' scrivere oggetti poveri sopra oggetti ricchi
+    era un impoverimento.
 
-    **Perche' due giorni fissi, e non «i giorni senza oggetti».** Un giorno
-    SENZA oggetti e' un esito legittimo -- puo' non essere successo niente
-    in casa -- e distinguerlo da un giorno MAI aggregato richiederebbe un
-    registro di cio' che e' stato fatto: uno stato in piu' che puo'
-    divergere da quello vero, lo stesso genere di doppione che questo
-    progetto ha gia' pagato altrove. Due giorni fissi non hanno stato:
-    guariscono da soli una notte saltata, al costo di rifare un lavoro che
-    il piu' delle volte non serviva -- un costo che si puo' permettere
-    perche' `replace_day` (`mind/store.py`) e' **idempotente**:
-    rifare un giorno gia' fatto lo sostituisce con lo stesso risultato, non
-    lo raddoppia.
+    Quella regola non ha piu' oggetto: **il resoconto non si sostituisce mai**,
+    si scrive solo dove manca. L'asimmetria e' rimasta, spostata dentro
+    `_write_missing_reports`, che e' l'unica cosa che questa funzione fa
+    adesso. E le quattro uscite erano proprio cio' che, fino alla 3.33.2,
+    impediva a qualunque resoconto di nascere su quella casa.
 
-    **Il limite di questa cura, e perche' "due" e' sicuro mentre un domani
-    "venti" non lo sarebbe.** Riaggregare SOSTITUISCE gli oggetti del
-    giorno (`replace_day`): non puo' distruggere comprensione finche'
-    il grezzo per rifarlo esiste ancora, e i due giorni bersaglio hanno al
-    massimo due giorni e qualche ora, ben dentro la potatura a
-    `READING_RETENTION_S` (22 giorni). L'ECCEZIONE, solo teorica: un
-    avvio con l'orologio di SISTEMA arretrato di venti giorni o piu'
-    rispetto all'ultima potatura riaggregherebbe giorni il cui grezzo la
-    potatura ha gia' cancellato -- `aggregate_day` troverebbe meno cambi
-    di quanti l'oggetto esistente ne raccontasse (o nessuno), e li
-    sostituirebbe con MENO oggetti, non con gli stessi. Non e' un caso da
-    difendere con codice (un orologio di sistema cosi' indietro e' un
-    guasto che precede questo problema), ma chi un giorno vorra' allargare
-    la finestra da due giorni a venti deve trovare qui la ragione per cui
-    due erano sicuri e venti no: senza questa riga l'allargamento
-    sembrerebbe innocuo.
+    **Perche' esiste ancora, accanto al recupero periodico.** Il recupero
+    (`backfill_one_missing_report`) scrive un giorno ogni cinque minuti dal
+    piu' vecchio: gli ultimi due arriverebbero per ultimi, ore dopo l'avvio.
+    Questa li mette davanti subito, che e' cio' che il proprietario guarda
+    quando riapre la pagina.
 
-    **SOSTITUISCE, quindi non deve mai produrre meno di quello che trova**
-    (CRITICAL trovato dalla review de «l'osservatore», 26/08/2026 --
-    riparazione-impoverisce-brief.md). La prima stesura di questa funzione
-    chiamava `aggregate_day(..., companions=None)` col ragionamento che «un
-    oggetto senza comprimari e' comunque infinitamente meglio di nessun
-    oggetto» -- vero quando l'oggetto NON C'E'. E' falso qui: l'aggregazione
-    notturna, la notte prima, ha gia' costruito quel giorno CON i comprimari,
-    e questa funzione lo SOSTITUISCE, non lo aggiunge. Rimpiazzare un oggetto
-    ricco con uno povero a ogni riavvio dell'add-on -- che succede a ogni
-    aggiornamento -- e' un danno, non una riparazione: e' esattamente lo
-    scenario che il paragrafo qui sopra («SOSTITUISCE, non puo' distruggere
-    comprensione») credeva impossibile, assumendo che le due strade
-    producessero lo stesso risultato. Da quando la notte costruisce i
-    comprimari e questa funzione no, non lo producono piu'.
+    **L'eccezione si lascia propagare**, come prima: e' il chiamante a
+    decidere se contenerla.
 
-    **Se i comprimari non si riescono a costruire, la riparazione si salta
-    per intero -- non si scrive niente, ne' per l'altro ieri ne' per ieri.**
-    La scelta non e' «riaggrego senza»: sostituire oggetti ricchi con oggetti
-    poveri e' un danno, mentre non ripararli e' solo un'attesa fino al
-    prossimo riavvio. Stessa regola gia' presa per il giro delle condizioni
-    di sistema (`watch_system_conditions`, qui sopra): **meglio un buco
-    nella storia che una bugia nella storia.**
-
-    **Il salto vero legge `falliti`, non un `except`** (CRITICAL «il
-    grilletto non lo preme nessuno», review de «l'osservatore», 26/08/2026 --
-    grilletto-brief.md). La prima stesura di questa cura avvolgeva la
-    chiamata a `build_companions` in un `try/except` e saltava solo se
-    SOLLEVAVA -- ma `HAClient.related` (`proxy/ha_client.py`) non solleva mai
-    su un guasto di rete: lo CONTIENE e torna `{"errore": ...}`, e
-    `build_companions` fa lo stesso con quella risposta (mette `[]`,
-    conta un fallito, non rilancia). Il `try/except` avvolgeva quindi una
-    funzione che di fatto non puo' sollevare, e il salto era irraggiungibile
-    dal collaboratore vero -- proprio nel caso normale, non in un limite: un
-    riavvio dell'add-on con Home Assistant non ancora sveglio (i due
-    partono insieme). Il segnale giusto e' il contatore dei falliti che
-    `build_companions` gia' costruiva per il proprio warning e ora
-    restituisce: se **anche un solo soggetto** e' fallito, questa funzione si
-    ferma, perche' quel soggetto verrebbe riscritto con `[]` mentre la
-    notte l'aveva letto -- e' l'asimmetria vera, e va detta per intero:
-
-    > Chi costruisce dal nulla tollera il parziale; chi sostituisce no.
-    >
-    > L'aggregazione notturna (`_aggrega_ieri`, e `build_companions`
-    > stessa) costruisce da zero: un oggetto con qualche comprimare mancante
-    > e' meglio di nessun oggetto, e va avanti -- e' la regola del suo
-    > docstring. Questa funzione SOSTITUISCE cio' che c'e': un oggetto con
-    > qualche comprimare mancante e' PEGGIO di quello che sta rimpiazzando,
-    > e deve fermarsi. La stessa regola letta come «tollera sempre» sarebbe
-    > vera per la notte e falsa qui -- ed e' esattamente l'errore che questo
-    > CRITICAL correggeva.
-
-    Il `try/except` attorno alla chiamata resta, come difesa in profondita'
-    contro il guasto REALE che puo' far sollevare `build_companions` per
-    davvero -- una risposta malformata che la sua traduzione non contiene,
-    vedi il suo docstring, corretto in questo stesso giro: non e' un bug
-    futuro ipotetico -- ma il segnale di cui questa funzione si fida per il
-    caso ORDINARIO e' `falliti`, non l'assenza di un'eccezione.
-
-    **Perche' e' `async`, e la frase falsa che c'era prima.** Chiama
-    `build_companions`, che legge la rete verso Home Assistant (una
-    `legami` per soggetto): va attesa. Qui c'era scritto che questa
-    riparazione «gira SINCRONA, prima ancora che l'event loop dell'add-on sia
-    in piedi per davvero» -- non era vero: il chiamante e' `_on_startup`, una
-    coroutine di avvio di aiohttp, e quando gira l'event loop c'e' ed e' in
-    esecuzione. La sincronia era un vincolo dei TEST di questa funzione (non
-    passavano da `asyncio.run`), non della produzione, ed e' stata scambiata
-    per un vincolo tecnico -- ed e' la ragione per cui il difetto sopra e'
-    nato: se costruire i comprimari fosse stato davvero impossibile qui,
-    ometterli sarebbe sembrata l'unica scelta. Non lo e': basta attenderla,
-    come fa gia' `_aggrega_ieri` qui sotto.
-
-    **Chi la chiama la mette DOPO la ricostruzione delle condizioni, la
-    attende, e la mette in un try/except che non blocca l'avvio** (in
-    `_on_startup`, subito sotto): un cervello che non parte perche' non e'
-    riuscito a rifare l'altro ieri sarebbe peggio del buco che questa
-    funzione chiude. Qui dentro l'eccezione **si lascia propagare** (tranne
-    quella di `build_companions`, contenuta sopra apposta): e' il
-    chiamante a decidere se e come contenerla, come per
-    `watch_system_conditions` qui sopra.
-
-    `adesso` e' iniettabile per i test, come `Watcher.__init__`: nella
-    vita vera nessuno lo passa, ed e' `datetime.now` (col fuso della casa) a
-    dire cos'e' «oggi».
+    `adesso` e' iniettabile per i test, come `Watcher.__init__`: nella vita
+    vera nessuno lo passa.
     """
     timezone = _timezone_from_home_space_store(app.get("home_space_store"))
     today = now(home_space_zone(timezone)).date()
     days = [(today - timedelta(days=delta)).strftime("%Y-%m-%d") for delta in (2, 1)]
-
-    # I comprimari si leggono UNA volta per i due giorni insieme, come fa
-    # `_aggrega_ieri` per uno solo (Task 6, `build_companions`): una
-    # chiamata di rete per cambio farebbe migliaia di richieste.
-    subjects: set[str] = set()
-    for day in days:
-        da_ts, a_ts = day_boundaries(day, timezone)
-        subjects.update(r["soggetto"] for r
-                        in app["observations"].readings(from_ts=da_ts, to_ts=a_ts))
-    try:
-        mappa, failed = await build_companions(ha_client, sorted(subjects))
-        # Le direzioni dell'energia si leggono UNA volta per i due giorni
-        # insieme, come i comprimari qui sopra (mandato «le direzioni
-        # dell'energia», 27/08/2026): una connessione sola, non una per
-        # giorno. `HAClient.energy_directions()` non solleva mai per un
-        # guasto di rete (stesso contratto di `legami`/`problemi`: torna
-        # `{"errore": ...}`) -- il `try` resta comunque, difesa in
-        # profondita', per lo stesso motivo del commento sotto.
-        directions_map = await ha_client.energy_directions(
-            direction_by_translation_key=directions_by_translation_key(
-                app["knowledge"]))
-    except Exception as error:
-        # Difesa in profondita': un guasto di RETE o di Home Assistant e'
-        # gia' contenuto dentro `build_companions` (mette `[]`, conta un
-        # fallito -- il vero segnale, sotto, e' `falliti`). Ma la sua
-        # TRADUZIONE (`_legami_leggibili`, dentro `build_companions`,
-        # vedi il suo docstring) non lo e': una risposta malformata fa
-        # uscire un `TypeError` per davvero, non un bug ipotetico. Qui non
-        # deve poter scrivere oggetti poveri sopra oggetti ricchi solo
-        # perche' l'eccezione non era quella prevista.
-        logger.warning(
-            "cervello: comprimari non costruiti, riparazione all'avvio "
-            "saltata -- si riprova al prossimo riavvio (%s: %s)",
-            type(error).__name__, error)
-        await _record_repair(app, ha_client, days, timezone,
-                             why=f"comprimari non costruiti ({type(error).__name__})")
-        return
-    if failed:
-        # QUESTA funzione SOSTITUISCE (`replace_day`), non costruisce
-        # da zero: qualunque fallito -- anche uno solo su cento soggetti --
-        # riscriverebbe un oggetto che la notte aveva letto con `[]`. Il
-        # warning che conta e' gia' partito dentro `build_companions`;
-        # qui basta fermarsi. Non e' un buco peggiore di quello che c'era
-        # prima di questa cura: la notte prossima, o il riavvio successivo,
-        # ci riprovano.
-        logger.warning(
-            "cervello: comprimari parziali (%d falliti), riparazione "
-            "all'avvio saltata per intero -- si riprova al prossimo riavvio",
-            failed)
-        await _record_repair(app, ha_client, days, timezone,
-                             why=f"comprimari parziali ({failed} falliti)")
-        return
-    if "errore" in directions_map:
-        # STESSA regola dei comprimari, e per la STESSA ragione (mandato,
-        # punto 3): la notte prima puo' aver gia' scritto episodi di energia
-        # CON `direzione`. Sostituirli con episodi senza -- perche' questa
-        # lettura e' fallita -- sarebbe un impoverimento, non una riparazione.
-        logger.warning(
-            "cervello: direzioni dell'energia non lette, riparazione "
-            "all'avvio saltata per intero -- si riprova al prossimo riavvio "
-            "(%s)", directions_map["errore"])
-        await _record_repair(app, ha_client, days, timezone,
-                             why="direzioni dell'energia non lette")
-        return
-
-    # I bilanci -- **l'asimmetria dichiarata dal mandato**: «chi costruisce
-    # dal nulla tollera il parziale; chi sostituisce no». La notte
-    # (`_aggrega_ieri`) costruisce da zero e ignora `falliti`; QUESTA
-    # funzione sostituisce, quindi UN SOLO dispositivo le cui statistiche
-    # non si leggono ferma l'intera riparazione -- per ENTRAMBI i giorni,
-    # non solo per quello colpito: si calcolano prima i bilanci di tutti e
-    # due i giorni bersaglio, e solo se ENTRAMBI riescono si scrive
-    # (`aggregate_day`, sotto). Altrimenti la notte precedente potrebbe
-    # aver gia' scritto un bilancio che questa riparazione sostituirebbe con
-    # undici frammenti tornati individuali -- l'esatto impoverimento che
-    # l'asimmetria esiste per impedire.
-    try:
-        balances_by_day: dict[str, list[dict]] = {}
-        for day in days:
-            bilanci, failed_balances = await build_balances(
-                ha_client, app.get("home_space_store"), day=day, timezone=timezone,
-                energy_subjects=sorted(subjects), directions=directions_map,
-                knowledge=app.get("knowledge"))
-            if failed_balances:
-                logger.warning(
-                    "cervello: statistiche del bilancio non lette per %s "
-                    "(%d dispositivi), riparazione all'avvio saltata per "
-                    "intero -- si riprova al prossimo riavvio",
-                    day, failed_balances)
-                await _record_repair(
-                    app, ha_client, days, timezone,
-                    why=f"bilanci non letti per {day} ({failed_balances} dispositivi)")
-                return
-            balances_by_day[day] = bilanci
-    except Exception as error:
-        # Difesa in profondita', stessa ragione del blocco comprimari sopra:
-        # `home_space_store.leggi()` e' una lettura SQLite locale che non ci si
-        # aspetta sollevi, ma se lo fa non deve poter scrivere oggetti
-        # poveri sopra oggetti ricchi.
-        logger.warning(
-            "cervello: bilanci non costruiti, riparazione all'avvio "
-            "saltata -- si riprova al prossimo riavvio (%s: %s)",
-            type(error).__name__, error)
-        await _record_repair(app, ha_client, days, timezone,
-                             why=f"bilanci non costruiti ({type(error).__name__})")
-        return
-
-    for day in days:
-        # **Anche il RESOCONTO, non solo gli oggetti.** Difetto trovato dal
-        # vivo il 14/09/2026, aggiornando la casa vera alla 3.33.0: questa
-        # riparazione passava `recipes=None`, e quel ramo di `aggregate_day`
-        # salta la scrittura del resoconto -- quindi `GET /api/mind/report`
-        # tornava `{"resoconti": []}` e ogni giorno 404, e il primo resoconto
-        # sarebbe comparso solo alle 00:20 del giorno dopo.
-        #
-        # Il ramo esisteva per una ragione vera -- un resoconto scritto senza
-        # le ricette avrebbe meta' delle misure vuota per un motivo che non
-        # riguarda la casa -- e la cura non e' toglierla, e' **portare le
-        # ricette anche qui**: le stesse che porta l'aggregazione notturna,
-        # dalla stessa funzione. Ricette vuote restano un fatto vero su
-        # quella casa, e si scrivono.
-        ricette, serie, nomi = await _report_ingredients(
-            app, ha_client, giorno=day, timezone=timezone)
-        count = aggregate_day(
-            store=app["observations"], day=day, timezone=timezone,
-            companions=lambda s, mappa=mappa: mappa.get(s, []),
-            directions=lambda s, m=directions_map: m.get(s),
-            balances=balances_by_day[day],
-            recipes=ricette, series=serie, names=nomi)
-        logger.info(
-            "cervello: riaggregati %s oggetti per %s (riparazione all'avvio)",
-            count, day)
+    written = await _write_missing_reports(app, ha_client, days, timezone)
     app["ultima_riparazione"] = {"oggetti": "fatta", "perche": None,
-                                 "giorni": days, "resoconti_scritti": []}
-
+                                 "giorni": days, "resoconti_scritti": written}
+    if written:
+        logger.info("cervello: resoconti scritti all'avvio per %s",
+                    ", ".join(written))
 
 def should_start_agent_worker(bridge_active: bool) -> bool:
     """Gate worker del ponte in-addon: il ponte e' acceso, E il token c'e'.
@@ -4259,39 +3919,25 @@ async def _on_startup(app: web.Application) -> None:
             timezone = _timezone_from_home_space_store(app.get("home_space_store"))
             ieri = (datetime.now(home_space_zone(timezone))
                     - timedelta(days=1)).strftime("%Y-%m-%d")
-            # I comprimari si leggono UNA volta per giornata, prima: dentro il
-            # ciclo dell'aggregazione una chiamata di rete per cambio farebbe
-            # migliaia di richieste (Task 6, `build_companions`).
+            # **I comprimari e le direzioni sono usciti con gli oggetti**
+            # (15/09/2026). Erano due letture di rete per giornata, e
+            # servivano a riempire il corpo di un oggetto: i comprimari a
+            # dire cosa aveva fatto la temperatura mentre l'episodio durava,
+            # le direzioni a mettere `direzione` sull'energia. Misurato prima
+            # di cancellarli: i comprimari erano **zero su 200 oggetti**.
+            #
+            # **I bilanci restano, per una ragione sola**: `build_balances`
+            # SEMINA nel sapere la ricetta del bilancio di ogni dispositivo
+            # che ne ha uno (`_balance_recipe_for`). Il suo risultato non si
+            # usa piu' -- i numeri del bilancio arrivano al resoconto dalla
+            # ricetta, come tutti gli altri -- ma senza questa chiamata un
+            # dispositivo nuovo non avrebbe mai la sua.
             da_ts, a_ts = day_boundaries(ieri, timezone)
             subjects = sorted({r["soggetto"] for r
                                in app["observations"].readings(from_ts=da_ts, to_ts=a_ts)})
-            # Il conteggio dei falliti si ignora apposta (`_`): questo giro
-            # COSTRUISCE il giorno da zero, non sostituisce niente -- tollera
-            # il parziale, come dice il docstring di `build_companions`.
-            mappa, _ = await build_companions(ha_client, subjects)
-            # Le direzioni dell'energia, stessa disciplina (mandato «le
-            # direzioni dell'energia», 27/08/2026): questo giro costruisce
-            # da zero, quindi tollera anche un `{"errore": ...}` -- un
-            # episodio senza `direzione` e' comunque meglio di nessun
-            # episodio. La riparazione all'avvio, che SOSTITUISCE, non
-            # tollera invece nessun guasto (vedi il suo docstring).
-            directions_map = await ha_client.energy_directions(
-                direction_by_translation_key=directions_by_translation_key(
-                    app["knowledge"]))
-            if "errore" in directions_map:
-                directions_map = {}
-            # I bilanci, stessa disciplina (mandato «il bilancio
-            # dell'energia», 27/08/2026): questo giro COSTRUISCE il giorno
-            # da zero, quindi tollera un guasto delle statistiche -- `_`
-            # ignora `falliti` apposta, come per i comprimari sopra. Un
-            # dispositivo senza bilancio stanotte non e' un buco: le sue
-            # entita' tornano semplicemente a produrre il loro episodio
-            # individuale, esattamente come prima di questa fetta. La
-            # riparazione all'avvio, che SOSTITUISCE, non tollera invece
-            # nessun guasto (vedi il suo docstring).
-            bilanci, _ = await build_balances(
+            await build_balances(
                 ha_client, app.get("home_space_store"), day=ieri, timezone=timezone,
-                energy_subjects=subjects, directions=directions_map,
+                energy_subjects=subjects, directions={},
                 knowledge=app.get("knowledge"))
             # **IL RESOCONTO** (spec §9): le ricette dal sapere, e le serie
             # delle entita' che nominano lette in UNA connessione sola --
@@ -4301,10 +3947,8 @@ async def _on_startup(app: web.Application) -> None:
                 app, ha_client, giorno=ieri, timezone=timezone)
             count = aggregate_day(
                 store=app["observations"], day=ieri, timezone=timezone,
-                companions=lambda s: mappa.get(s, []),
-                directions=lambda s: directions_map.get(s),
-                balances=bilanci, recipes=ricette, series=serie, names=nomi)
-            logger.info("cervello: %s oggetti costruiti per %s", count, ieri)
+                recipes=ricette, series=serie, names=nomi)
+            logger.info("cervello: %s voci di cronaca per %s", count, ieri)
         except Exception as error:
             logger.warning("cervello: aggregazione notturna fallita (%s: %s)",
                            type(error).__name__, error)
@@ -5434,13 +5078,13 @@ def create_app() -> web.Application:
     # `csrf_middleware` da rispettare.
     from .api.handlers_mind import (
         handle_analysis,
-        handle_facts,
         handle_report,
         handle_set_objective,
         handle_watching,
     )
     app.router.add_get("/api/mind/watching", handle_watching)
-    app.router.add_get("/api/mind/facts", handle_facts)
+    # `/api/mind/facts` e' uscita col suo strato (spec §13, 15/09/2026):
+    # gli episodi vivono dentro `/api/mind/report`, e la pagina li legge da li'.
     # Il resoconto (spec §9): un giorno, lo stesso giorno come documento, o le
     # misure degli ultimi trenta. Tre forme, un archivio.
     app.router.add_get("/api/mind/report", handle_report)

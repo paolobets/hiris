@@ -31,6 +31,21 @@ def archivio(tmp_path):
     a.close()
 
 
+def cronaca(archivio, giorno=None):
+    """Le voci di cronaca di un giorno: dove le prove leggevano gli OGGETTI.
+
+    Lo strato degli oggetti e' uscito il 15/09/2026 (spec §13) e gli episodi
+    vivono dentro il resoconto. Le prove non si sono cancellate: si sono
+    **tradotte**, perche' una prova tradotta e' una proprieta' che resta --
+    `protagonista` e' diventato `chi`, `inizio_ts` e' `quando_ts`, e
+    `corpo.stato` e' `cosa`. Quelle che verificavano i comprimari e le loro
+    misure sono uscite davvero: misurato sulla casa vera prima di cancellare,
+    i comprimari erano **zero su 200 oggetti**.
+    """
+    scritto = archivio.report(giorno or G)
+    return (scritto or {}).get("cronaca") or []
+
+
 def test_il_genere_discende_dalla_natura():
     assert genre_for("climate.camera_t", "comfort") == "funzionamento"
     assert genre_for("cover.tapparella", "dispersione") == "funzionamento"
@@ -72,67 +87,24 @@ def test_a_log_subject_is_a_fault():
     assert genre_for("log:homeassistant.setup@setup.py:123", None) == "guasto"
 
 
-def test_i_prefissi_non_entita_sono_una_casa_sola():
-    """Audit delle fondamenta, «sotto la soglia dei dieci» n.10 (09/09/2026):
-    fino a oggi la stessa tupla a quattro elementi -- `("problema:",
-    "integrazione:", "log:", "automazione:")` -- era scritta a mano tre
-    volte: in `genre_for`, in `_reading_aspect` (qui sotto in `facts.py`) e
-    in `api/handlers_mind.py`. Un quinto prefisso aggiunto a due sedi su tre
-    sarebbe rimasto invisibile a qualunque test che non confrontasse gli
-    elenchi lettera per lettera.
-
-    La prova e' sull'IDENTITA' dell'oggetto, non sul suo contenuto: due
-    tuple con lo stesso contenuto ma scritte in due punti diversi
-    passerebbero un confronto per valore anche il giorno in cui una delle
-    due dimenticasse di aggiornarsi.
-
-    Mutazione ESEGUITA: rimessa `_NOT_ENTITY_PREFIXES = ("problema:",
-    "integrazione:", "log:", "automazione:")` scritta a mano in
-    `handlers_mind.py`, al posto dell'importazione da `mind.facts` -- questa
-    prova e' diventata rossa sul controllo `is`, perche' un valore copiato
-    non e' lo stesso oggetto anche quando il contenuto coincide ancora;
-    ripristinato riscrivendo il file.
-    """
-    from hiris.app.api import handlers_mind
-    from hiris.app.mind import facts
-    assert handlers_mind.NOT_ENTITY_PREFIXES is facts.NOT_ENTITY_PREFIXES
-
-
 def test_un_termostato_acceso_e_spento_diventa_UN_oggetto(archivio):
     archivio.record(quando_ts=ts(15, 30), source="entita",
                     subject="climate.camera_t", da="off", a="heat")
     archivio.record(quando_ts=ts(17, 5), source="entita",
                     subject="climate.camera_t", da="heat", a="off")
     assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
-    o = archivio.facts(day=G)[0]
+    o = cronaca(archivio)[0]
     assert o["genere"] == "funzionamento"
-    assert o["protagonista"] == "climate.camera_t"
-    assert o["inizio_ts"] == ts(15, 30)
+    assert o["chi"] == "climate.camera_t"
+    assert o["quando_ts"] == ts(15, 30)
     assert o["fine_ts"] == ts(17, 5)
-
-
-def test_l_oggetto_porta_cosa_ha_fatto_la_temperatura_mentre_durava(archivio):
-    """E' il senso dell'esempio fondativo: «la casa e' calda alle 16:30» non e'
-    un fatto sul termostato ne' sul sensore -- e' il legame fra i due."""
-    archivio.record(quando_ts=ts(15, 30), source="entita",
-                    subject="climate.camera_t", da="off", a="heat")
-    for ora, valore in ((15, "18.2"), (16, "20.1"), (17, "21.0")):
-        archivio.record(quando_ts=ts(ora, 45), source="entita",
-                        subject="sensor.camera_temperatura", da=None, a=valore)
-    archivio.record(quando_ts=ts(17, 5), source="entita",
-                    subject="climate.camera_t", da="heat", a="off")
-    aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
-                         companions=lambda s: ["sensor.camera_temperatura"])
-    corpo = archivio.facts(day=G)[0]["corpo"]
-    assert corpo["comprimari"] == ["sensor.camera_temperatura"]
-    assert corpo["misure"]["sensor.camera_temperatura"] == {"da": "18.2", "a": "21.0"}
 
 
 def test_una_cosa_ancora_in_corso_a_mezzanotte_resta_aperta(archivio):
     archivio.record(quando_ts=ts(22, 0), source="entita",
                     subject="climate.camera_t", da="off", a="heat")
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
-    assert archivio.facts(day=G)[0]["fine_ts"] is None
+    assert cronaca(archivio)[0]["fine_ts"] is None
 
 
 def test_un_assenza_e_un_oggetto(archivio):
@@ -141,9 +113,9 @@ def test_un_assenza_e_un_oggetto(archivio):
     archivio.record(quando_ts=ts(17, 34), source="entita",
                     subject="person.paolo", da="not_home", a="home")
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
-    o = archivio.facts(day=G)[0]
+    o = cronaca(archivio)[0]
     assert o["genere"] == "presenza"
-    assert o["corpo"]["stato"] == "not_home"
+    assert o["cosa"] == "not_home"
 
 
 def test_un_cambio_di_zona_a_meta_assenza_non_riapre_l_oggetto(archivio):
@@ -166,18 +138,18 @@ def test_un_cambio_di_zona_a_meta_assenza_non_riapre_l_oggetto(archivio):
     archivio.record(quando_ts=ts(17, 34), source="entita",
                     subject="person.paolo", da="ufficio", a="home")
     assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
-    o = archivio.facts(day=G)[0]
+    o = cronaca(archivio)[0]
     assert o["genere"] == "presenza"
-    assert o["inizio_ts"] == ts(8, 10)
+    assert o["quando_ts"] == ts(8, 10)
     assert o["fine_ts"] == ts(17, 34)
-    assert o["corpo"]["stato"] == "not_home"
+    assert o["cosa"] == "not_home"
 
 
 def test_un_guasto_di_sistema_e_un_oggetto(archivio):
     archivio.record(quando_ts=ts(9, 0), source="sistema",
                     subject="problema:sonos.subscriptions_failed", da=None, a="aperto")
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
-    o = archivio.facts(day=G)[0]
+    o = cronaca(archivio)[0]
     assert o["genere"] == "guasto"
     assert o["fine_ts"] is None
 
@@ -189,7 +161,7 @@ def test_a_fault_body_says_which_condition_not_the_word_open(archivio):
     che gli stanno accanto.
 
     Mutazione: rimettere la costante `"aperto"` al posto di `r["a"]` -- il
-    test torna rosso su `assert corpo["stato"] == "setup_retry"`.
+    test torna rosso su `assert corpo["cosa"] == "setup_retry"`.
     """
     archivio.record(quando_ts=ts(9, 0), source="sistema",
                     subject="integrazione:01ABC", da=None, a="setup_retry",
@@ -197,11 +169,11 @@ def test_a_fault_body_says_which_condition_not_the_word_open(archivio):
     archivio.record(quando_ts=ts(11, 30), source="sistema",
                     subject="integrazione:01ABC", da="setup_retry", a="chiuso")
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
-    o = archivio.facts(day=G)[0]
+    o = cronaca(archivio)[0]
     assert o["genere"] == "guasto"
     assert o["fine_ts"] is not None
-    corpo = o["corpo"]
-    assert corpo["stato"] == "setup_retry"
+    corpo = o
+    assert corpo["cosa"] == "setup_retry"
     assert corpo["dominio"] == "lifx"
     assert corpo["titolo"] == "Abat-jour"
 
@@ -213,17 +185,17 @@ def test_an_old_row_saying_open_still_opens_an_episode(archivio):
     superflua la convivenza che la spec ipotizzava.
 
     Mutazione: chiudere su qualunque valore diverso da una condizione nota
-    -- nessun oggetto nasce: `archivio.facts(day=G)` e' vuoto, e il test
+    -- nessun oggetto nasce: `cronaca(archivio)` e' vuoto, e il test
     torna rosso su un `IndexError` nell'indicizzare `[0]`, prima di
     arrivare a nessuno degli `assert`.
     """
     archivio.record(quando_ts=ts(9, 0), source="sistema",
                     subject="integrazione:01OLD", da=None, a="aperto")
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
-    o = archivio.facts(day=G)[0]
+    o = cronaca(archivio)[0]
     assert o["genere"] == "guasto"
-    assert o["corpo"]["stato"] == "aperto"
-    assert o["corpo"].get("dominio") is None
+    assert o["cosa"] == "aperto"
+    assert o.get("dominio") is None
 
 
 def test_a_fault_still_open_at_midnight_keeps_its_condition_and_domain(archivio):
@@ -243,11 +215,11 @@ def test_a_fault_still_open_at_midnight_keeps_its_condition_and_domain(archivio)
                     subject="integrazione:01XYZ", da=None, a="setup_error",
                     domain="lifx", title="Abat-jour")
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
-    o = archivio.facts(day=G)[0]
+    o = cronaca(archivio)[0]
     assert o["genere"] == "guasto"
     assert o["fine_ts"] is None
-    corpo = o["corpo"]
-    assert corpo["stato"] == "setup_error"
+    corpo = o
+    assert corpo["cosa"] == "setup_error"
     assert corpo["dominio"] == "lifx"
     assert corpo["titolo"] == "Abat-jour"
 
@@ -266,7 +238,7 @@ def test_a_log_entry_becomes_a_fault_object(archivio):
     dichiarato, non taciuto. Una prima mutazione che UCCIDE questo test e'
     nella tupla di prefissi di `genre_for`: senza `"log:"` il soggetto non
     produce nessun genere, `aggregate_day` non apre nessun episodio, e
-    `archivio.facts(day=G)` torna vuoto -- il test torna rosso su
+    `cronaca(archivio)` torna vuoto -- il test torna rosso su
     `IndexError` nell'indicizzare `[0]`.
 
     Una seconda, indipendente, e' su `comparso_ts` (la colonna nuova del
@@ -284,11 +256,11 @@ def test_a_log_entry_becomes_a_fault_object(archivio):
                     subject="log:homeassistant.components.hydrawise@hydrawise/coordinator.py:88",
                     da="ERROR", a="chiuso")
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
-    o = archivio.facts(day=G)[0]
+    o = cronaca(archivio)[0]
     assert o["genere"] == "guasto"
     assert o["fine_ts"] is not None
-    corpo = o["corpo"]
-    assert corpo["stato"] == "ERROR"
+    corpo = o
+    assert corpo["cosa"] == "ERROR"
     assert corpo["dominio"] == "homeassistant.components.hydrawise"
     assert corpo["titolo"] == "403 Forbidden"
     assert corpo["comparso_ts"] == ts(9, 0) - 3 * 86400
@@ -302,15 +274,15 @@ def test_comparso_ts_is_absent_for_repairs_and_integrations(archivio):
 
     Mutazione: scrivere sempre `base_body["comparso_ts"] = o.get("comparso_ts")`
     senza il controllo `is not None` -- il test torna rosso su
-    `assert "comparso_ts" not in o["corpo"]`.
+    `assert "comparso_ts" not in o`.
     """
     archivio.record(quando_ts=ts(9, 0), source="sistema",
                     subject="integrazione:01XYZ", da=None, a="setup_error",
                     domain="lifx", title="Abat-jour")
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
-    o = archivio.facts(day=G)[0]
+    o = cronaca(archivio)[0]
     assert o["genere"] == "guasto"
-    assert "comparso_ts" not in o["corpo"]
+    assert "comparso_ts" not in o
 
 
 def test_watch_system_writes_a_log_condition_that_aggregate_day_can_see(archivio):
@@ -324,7 +296,7 @@ def test_watch_system_writes_a_log_condition_that_aggregate_day_can_see(archivio
     Mutazione: in `watcher.py::watch_system`, scrivere `quando_ts=
     first_occurred` (la prima stesura, prima della correzione) invece di
     `quando_ts=now` sempre -- il test torna rosso su `IndexError`
-    nell'indicizzare `archivio.facts(day=G)[0]`, perche' la riga di apertura
+    nell'indicizzare `cronaca(archivio)[0]`, perche' la riga di apertura
     finirebbe tre giorni prima della finestra che `aggregate_day` legge.
     """
     osservatore = Watcher(archivio, now=lambda: ts(9, 0))
@@ -335,10 +307,10 @@ def test_watch_system_writes_a_log_condition_that_aggregate_day_can_see(archivio
              "message": ["Timeout leggendo l'inverter"]}
     osservatore.watch_system(problems=[], integrations=[], log_entries=[entry])
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
-    o = archivio.facts(day=G)[0]
+    o = cronaca(archivio)[0]
     assert o["genere"] == "guasto"
-    assert o["inizio_ts"] == ts(9, 0)
-    assert o["corpo"]["comparso_ts"] == tre_giorni_fa
+    assert o["quando_ts"] == ts(9, 0)
+    assert o["comparso_ts"] == tre_giorni_fa
 
 
 def test_i_sensori_da_soli_NON_generano_oggetti(archivio):
@@ -358,7 +330,7 @@ def test_rifare_un_giorno_non_raddoppia(archivio):
                     subject="climate.camera_t", da="off", a="heat")
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
-    assert len(archivio.facts(day=G)) == 1
+    assert len(cronaca(archivio)) == 1
 
 
 def test_il_giorno_e_quello_della_CASA_non_UTC(archivio):
@@ -436,9 +408,9 @@ def test_una_sirena_che_suona_e_rientra_e_un_oggetto_di_sicurezza(archivio):
     archivio.record(quando_ts=ts(3, 20), source="entita",
                     subject="siren.sirena_esterna", da="on", a="off")
     assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
-    o = archivio.facts(day=G)[0]
+    o = cronaca(archivio)[0]
     assert o["genere"] == "sicurezza"
-    assert o["inizio_ts"] == ts(3, 15)
+    assert o["quando_ts"] == ts(3, 15)
     assert o["fine_ts"] == ts(3, 20)
 
 
@@ -451,9 +423,9 @@ def test_una_serratura_sbloccata_e_richiusa_e_un_oggetto_di_sicurezza(archivio):
     archivio.record(quando_ts=ts(22, 5), source="entita",
                     subject="lock.porta_ingresso", da="unlocked", a="locked")
     assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
-    o = archivio.facts(day=G)[0]
+    o = cronaca(archivio)[0]
     assert o["genere"] == "sicurezza"
-    assert o["inizio_ts"] == ts(22, 0)
+    assert o["quando_ts"] == ts(22, 0)
     assert o["fine_ts"] == ts(22, 5)
 
 
@@ -475,21 +447,9 @@ def test_un_binary_sensor_di_fumo_diventa_un_oggetto_di_sicurezza(archivio):
                     subject="binary_sensor.fumo_cucina", da="off", a="on",
                     device_class="smoke")
     assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
-    o = archivio.facts(day=G)[0]
+    o = cronaca(archivio)[0]
     assert o["genere"] == "sicurezza"
-    assert o["protagonista"] == "binary_sensor.fumo_cucina"
-
-
-def test_un_sensor_di_energia_diventa_un_oggetto_di_energia(archivio):
-    """Il genere `energia` non nasceva mai (punto 0 del mandato): stessa
-    mutazione del test gemello sul fumo, sul dominio `sensor`."""
-    archivio.record(quando_ts=ts(2, 0), source="entita",
-                    subject="sensor.energia_casa", da=None, a="1234.5",
-                    device_class="energy")
-    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
-    o = archivio.facts(day=G)[0]
-    assert o["genere"] == "energia"
-    assert o["protagonista"] == "sensor.energia_casa"
+    assert o["chi"] == "binary_sensor.fumo_cucina"
 
 
 def test_riga_senza_le_tre_colonne_non_fa_sollevare_l_aggregazione(archivio):
@@ -544,160 +504,14 @@ def test_l_allarme_disinserito_per_otto_ore_apre_un_oggetto(archivio):
                     subject="alarm_control_panel.casa", da="disarmed",
                     a="armed_home")
     assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
-    o = archivio.facts(day=G)[0]
+    o = cronaca(archivio)[0]
     assert o["genere"] == "sicurezza"
-    assert o["inizio_ts"] == ts(1, 0)
+    assert o["quando_ts"] == ts(1, 0)
     assert o["fine_ts"] == ts(9, 0)
 
 
 # -- Punto 5: le misure non sconfinano nel prossimo episodio, ne' partono --
 # -- prima dell'inizio dell'oggetto -----------------------------------------
-
-def test_le_misure_non_sconfinano_nel_prossimo_episodio_dello_stesso_protagonista(archivio):
-    """Riscaldamento acceso 15:30-17:05 e di nuovo 19:00-20:00, temperature
-    misurate fino alle 23:00: il PRIMO episodio non deve riportare come
-    temperatura finale quella delle 23:00 -- e' il clima del secondo
-    episodio e oltre. Il limite superiore vero e' l'inizio del prossimo
-    oggetto dello STESSO protagonista, non la fine della giornata.
-    Mutazione: usare sempre `to_ts` come limite superiore -- il primo
-    episodio finirebbe con "a": "17.0" invece di "19.0"."""
-    archivio.record(quando_ts=ts(15, 30), source="entita",
-                    subject="climate.camera_t", da="off", a="heat")
-    archivio.record(quando_ts=ts(16, 0), source="entita",
-                    subject="sensor.camera_temperatura", da=None, a="19.0")
-    archivio.record(quando_ts=ts(17, 5), source="entita",
-                    subject="climate.camera_t", da="heat", a="off")
-    archivio.record(quando_ts=ts(19, 0), source="entita",
-                    subject="climate.camera_t", da="off", a="heat")
-    archivio.record(quando_ts=ts(19, 30), source="entita",
-                    subject="sensor.camera_temperatura", da=None, a="20.5")
-    archivio.record(quando_ts=ts(20, 0), source="entita",
-                    subject="climate.camera_t", da="heat", a="off")
-    archivio.record(quando_ts=ts(23, 0), source="entita",
-                    subject="sensor.camera_temperatura", da=None, a="17.0")
-    aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
-                   companions=lambda s: ["sensor.camera_temperatura"])
-    oggetti = sorted(archivio.facts(day=G), key=lambda o: o["inizio_ts"])
-    assert len(oggetti) == 2
-    primo, secondo = oggetti
-    assert primo["corpo"]["misure"]["sensor.camera_temperatura"] == {
-        "da": "19.0", "a": "19.0"}
-    assert secondo["corpo"]["misure"]["sensor.camera_temperatura"] == {
-        "da": "20.5", "a": "17.0"}
-
-
-def test_le_misure_non_includono_letture_precedenti_all_inizio_dell_oggetto(archivio):
-    """Una misura delle 14:00, prima che il riscaldamento si accenda alle
-    15:30, non deve finire come valore INIZIALE dell'episodio: e' il clima
-    di prima, non quello di mentre l'oggetto durava. Mutazione: togliere il
-    confine inferiore (`e["inizio"] <= t`) -- la misura delle 14:00
-    entrerebbe e "da" diventerebbe "14.0" invece di "18.2"."""
-    archivio.record(quando_ts=ts(14, 0), source="entita",
-                    subject="sensor.camera_temperatura", da=None, a="14.0")
-    archivio.record(quando_ts=ts(15, 30), source="entita",
-                    subject="climate.camera_t", da="off", a="heat")
-    archivio.record(quando_ts=ts(16, 0), source="entita",
-                    subject="sensor.camera_temperatura", da=None, a="18.2")
-    archivio.record(quando_ts=ts(17, 5), source="entita",
-                    subject="climate.camera_t", da="heat", a="off")
-    aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
-                   companions=lambda s: ["sensor.camera_temperatura"])
-    o = archivio.facts(day=G)[0]
-    assert o["corpo"]["misure"]["sensor.camera_temperatura"] == {
-        "da": "18.2", "a": "18.2"}
-
-
-# -- Punto 6: un'energia si CHIUDE e porta iniziale/finale/differenza ------
-
-def test_un_energia_si_chiude_e_porta_iniziale_finale_e_differenza(archivio):
-    """Prima di questa correzione un contatore apriva un oggetto al primo
-    cambio e non lo chiudeva MAI dentro la giornata: un oggetto
-    perennemente aperto, con dentro solo la prima lettura, per ognuno dei
-    29 contatori della casa. Mutazione: tornare al vecchio ramo "apri se non
-    gia' aperto, mai chiudere" -- `fine_ts` tornerebbe `None` e il corpo
-    non porterebbe piu' "valore_iniziale"/"valore_finale"/"differenza"."""
-    archivio.record(quando_ts=ts(1), source="entita",
-                    subject="sensor.energia_casa", da=None, a="100.0",
-                    device_class="energy")
-    archivio.record(quando_ts=ts(12), source="entita",
-                    subject="sensor.energia_casa", da=None, a="115.0",
-                    device_class="energy")
-    archivio.record(quando_ts=ts(23), source="entita",
-                    subject="sensor.energia_casa", da=None, a="130.5",
-                    device_class="energy")
-    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
-    o = archivio.facts(day=G)[0]
-    assert o["genere"] == "energia"
-    assert o["inizio_ts"] == ts(1)
-    assert o["fine_ts"] == ts(23)
-    assert o["corpo"]["valore_iniziale"] == "100.0"
-    assert o["corpo"]["valore_finale"] == "130.5"
-    assert o["corpo"]["differenza"] == pytest.approx(30.5)
-
-
-def test_iniziale_finale_e_differenza_parlano_delle_STESSE_due_letture(archivio):
-    """**Trovato dalla revisione indipendente del 12/09/2026.**
-
-    Il conto passa dal registro, che salta i punti non leggibili come numero
-    e li conta sulla copertura. Se `valore_iniziale` fosse rimasto la prima
-    riga grezza, un contatore con una lettura sporca a bordo giornata avrebbe
-    scritto «iniziale: `disconnected`, finale: `115.0`, differenza: 15,0» --
-    tre campi che non stanno insieme, e un lettore che non ha modo di
-    accorgersene.
-
-    `disconnected` non e' uno stato «non lo so» del vocabolario (quelli sono
-    gia' filtrati in cima al ciclo, vedi la prova sulle letture
-    `unavailable`): e' un valore qualunque che non si legge come numero.
-
-    Mutazione ESEGUITA: rimettere `initial, final = points[0][1],
-    points[-1][1]` -- rossa, con `valore_iniziale` a `disconnected`.
-    """
-    archivio.record(quando_ts=ts(1), source="entita", subject="sensor.contatore",
-                    da=None, a="disconnected", device_class="energy")
-    archivio.record(quando_ts=ts(6), source="entita", subject="sensor.contatore",
-                    da=None, a="100.0", device_class="energy")
-    archivio.record(quando_ts=ts(23), source="entita", subject="sensor.contatore",
-                    da=None, a="115.0", device_class="energy")
-    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
-
-    corpo = archivio.facts(day=G)[0]["corpo"]
-
-    assert corpo["valore_iniziale"] == "100.0"
-    assert corpo["valore_finale"] == "115.0"
-    assert corpo["differenza"] == pytest.approx(15.0)
-
-
-def test_un_energia_NON_dichiara_un_unita_che_nessuno_ha_registrato(archivio):
-    """**Il numero c'e', l'unita' no -- e il corpo non la inventa.**
-
-    La tabella `cambi` (`mind/store.py`) registra `device_class`, `state_class`,
-    `source_type`, `domain`, `title`, `friendly_name`, e **non** l'unita' di
-    misura, che pure Home Assistant dichiara per ogni entita'. Quel contatore
-    puo' essere in Wh, in kWh o in m3: scrivere `kWh` nel corpo sarebbe un
-    fatto inventato, ed e' il difetto piu' caro di questo progetto -- la
-    ragione plausibile al posto del «non lo so». Finche' il grezzo non porta
-    l'unita' (a backlog, 12/09/2026), il corpo **tace**, che e' la stessa
-    regola gia' applicata a `nome` e a `classe` qui sopra.
-
-    Mutazione che la uccide: aggiungere `energy_body["unita"] = "kWh"` in
-    `aggregate_day`. Serve perche' la mutazione gemella -- passare `unit="kWh"`
-    invece di `UNKNOWN_UNIT` al registro -- **esce VERDE**: quell'unita' non
-    lascia traccia nel corpo, quindi nessuna prova poteva vederla. Questa
-    difende cio' che si vede davvero, cioe' il corpo scritto.
-    """
-    archivio.record(quando_ts=ts(1), source="entita", subject="sensor.acqua",
-                    da=None, a="100.0", device_class="energy")
-    archivio.record(quando_ts=ts(12), source="entita", subject="sensor.acqua",
-                    da=None, a="115.0", device_class="energy")
-    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
-
-    corpo = archivio.facts(day=G)[0]["corpo"]
-
-    assert corpo["differenza"] == pytest.approx(15.0)
-    assert "unita" not in corpo
-
-
-# -- Punto 7: un sensor numerico di monossido non genera un guasto perenne --
 
 def test_un_sensore_co_numerico_non_genera_un_oggetto_di_sicurezza(archivio):
     """Un `sensor` MISURA, non SCATTA: senza una soglia onesta, una
@@ -723,35 +537,6 @@ def _comprimari_per_soggetto(soggetto):
         "climate.camera_t": ["sensor.camera_temperatura"],
         "climate.soggiorno_t": ["sensor.soggiorno_temperatura"],
     }.get(soggetto, [])
-
-
-def test_comprimari_riceve_il_soggetto_giusto_non_uno_qualunque(archivio):
-    """Se `aggregate_day` chiamasse `comprimari` con un soggetto sbagliato,
-    i due oggetti scambierebbero i comprimari: questa finta lo scoprirebbe
-    perche' torna elenchi DIVERSI per soggetti diversi, dove una finta
-    costante (`lambda s: [...]`) non lo scoprirebbe mai. Mutazione provata:
-    dentro `aggregate_day`, chiamare `companions(subject)` passando sempre
-    la stringa fissa "climate.camera_t" invece di `e["protagonista"]` --
-    l'oggetto di "climate.soggiorno_t" riceverebbe i comprimari sbagliati."""
-    archivio.record(quando_ts=ts(10), source="entita",
-                    subject="climate.camera_t", da="off", a="heat")
-    archivio.record(quando_ts=ts(10, 30), source="entita",
-                    subject="sensor.camera_temperatura", da=None, a="20.0")
-    archivio.record(quando_ts=ts(11), source="entita",
-                    subject="climate.camera_t", da="heat", a="off")
-    archivio.record(quando_ts=ts(12), source="entita",
-                    subject="climate.soggiorno_t", da="off", a="heat")
-    archivio.record(quando_ts=ts(12, 30), source="entita",
-                    subject="sensor.soggiorno_temperatura", da=None, a="22.0")
-    archivio.record(quando_ts=ts(13), source="entita",
-                    subject="climate.soggiorno_t", da="heat", a="off")
-    aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
-                   companions=_comprimari_per_soggetto)
-    oggetti = {o["protagonista"]: o for o in archivio.facts(day=G)}
-    assert oggetti["climate.camera_t"]["corpo"]["comprimari"] == [
-        "sensor.camera_temperatura"]
-    assert oggetti["climate.soggiorno_t"]["corpo"]["comprimari"] == [
-        "sensor.soggiorno_temperatura"]
 
 
 def test_il_confine_di_inizio_esclude_l_istante_prima_di_mezzanotte():
@@ -784,7 +569,7 @@ def test_un_cambio_di_un_secondo_prima_appartiene_al_giorno_che_finisce(archivio
     assert aggregate_day(store=archivio, day="2026-08-23",
                          timezone="Europe/Rome") == 1
     assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
-    assert archivio.facts(day=G)[0]["inizio_ts"] == MEZZANOTTE - 1
+    assert cronaca(archivio)[0]["quando_ts"] == MEZZANOTTE - 1
 
 
 def test_gas_sensor_e_gas_rilevatore_non_si_confondono(archivio):
@@ -802,9 +587,14 @@ def test_gas_sensor_e_gas_rilevatore_non_si_confondono(archivio):
     archivio.record(quando_ts=ts(6, 5), source="entita",
                     subject="binary_sensor.gas_cucina", da="on", a="off",
                     device_class="gas")
-    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 2
-    oggetti = {o["protagonista"]: o for o in archivio.facts(day=G)}
-    assert oggetti["sensor.gas_contatore"]["genere"] == "energia"
+    # **Uno, non due** (15/09/2026): il CONTATORE del gas non produce piu'
+    # un episodio -- l'energia e' un numero, e i numeri stanno fra le misure.
+    # Il RILEVATORE si', ed e' il punto della prova: le due classi `gas` si
+    # chiamano uguale e non sono la stessa cosa.
+    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
+    oggetti = {o["chi"]: o for o in cronaca(archivio)}
+    assert "sensor.gas_contatore" not in oggetti, (
+        "un contatore non e' un episodio: il suo numero sta fra le misure")
     assert oggetti["binary_sensor.gas_cucina"]["genere"] == "sicurezza"
 
 
@@ -850,7 +640,7 @@ def test_un_robot_che_torna_alla_base_chiude_il_suo_oggetto(archivio):
     archivio.record(quando_ts=ts(10, 45), source="entita",
                     subject="vacuum.robot_soggiorno", da="cleaning", a="docked")
     assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
-    o = archivio.facts(day=G)[0]
+    o = cronaca(archivio)[0]
     assert o["genere"] == "funzionamento"
     assert o["fine_ts"] == ts(10, 45)
 
@@ -866,7 +656,7 @@ def test_una_tv_che_va_in_idle_chiude_il_suo_oggetto(archivio):
     archivio.record(quando_ts=ts(23, 10), source="entita",
                     subject="media_player.tv_soggiorno", da="playing", a="idle")
     assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
-    o = archivio.facts(day=G)[0]
+    o = cronaca(archivio)[0]
     assert o["genere"] == "funzionamento"
     assert o["fine_ts"] == ts(23, 10)
 
@@ -898,7 +688,7 @@ def test_gli_altri_riposi_dei_domini_nuovi_chiudono_anche_loro(archivio):
         archivio.record(quando_ts=ts(i, 30), source="entita",
                         subject=soggetto, da=acceso, a=riposo)
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
-    oggetti = archivio.facts(day=G)
+    oggetti = cronaca(archivio)
     assert len(oggetti) == len(casi)
     assert all(o["fine_ts"] is not None for o in oggetti)
 
@@ -928,8 +718,8 @@ def test_un_film_in_pausa_resta_un_solo_oggetto(archivio):
     archivio.record(quando_ts=ts(23, 10), source="entita",
                     subject="media_player.tv_soggiorno", da="playing", a="idle")
     assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
-    o = archivio.facts(day=G)[0]
-    assert o["inizio_ts"] == ts(21, 0)
+    o = cronaca(archivio)[0]
+    assert o["quando_ts"] == ts(21, 0)
     assert o["fine_ts"] == ts(23, 10)
 
 
@@ -944,7 +734,7 @@ def test_un_apparecchio_lasciato_in_pausa_a_fine_giornata_resta_aperto(archivio)
     archivio.record(quando_ts=ts(22, 30), source="entita",
                     subject="vacuum.robot_soggiorno", da="cleaning", a="paused")
     assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
-    o = archivio.facts(day=G)[0]
+    o = cronaca(archivio)[0]
     assert o["fine_ts"] is None
 
 
@@ -965,8 +755,8 @@ def test_una_valvola_che_si_apre_o_chiude_non_genera_falsi_riposi(archivio):
     archivio.record(quando_ts=ts(8, 1), source="entita",
                     subject="valve.giardino", da="closing", a="closed")
     assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
-    o = archivio.facts(day=G)[0]
-    assert o["inizio_ts"] == ts(6, 0)
+    o = cronaca(archivio)[0]
+    assert o["quando_ts"] == ts(6, 0)
     assert o["fine_ts"] == ts(8, 1)
 
 
@@ -1024,8 +814,8 @@ def test_un_riavvio_di_ha_non_spezza_un_riscaldamento_acceso(archivio):
     archivio.record(quando_ts=ts(20, 0), source="entita",
                     subject="climate.camera_t", da="heat", a="off")
     assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
-    o = archivio.facts(day=G)[0]
-    assert o["inizio_ts"] == ts(15, 30)
+    o = cronaca(archivio)[0]
+    assert o["quando_ts"] == ts(15, 30)
     assert o["fine_ts"] == ts(20, 0)
 
 
@@ -1065,301 +855,13 @@ def test_un_riavvio_di_ha_non_spezza_un_allarme_disinserito(archivio):
                     subject="alarm_control_panel.casa", da="disarmed",
                     a="armed_home")
     assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
-    o = archivio.facts(day=G)[0]
-    assert o["inizio_ts"] == ts(1, 0)
+    o = cronaca(archivio)[0]
+    assert o["quando_ts"] == ts(1, 0)
     assert o["fine_ts"] == ts(9, 0)
 
 
 # -- Punto 3: il riepilogo dell'energia non deve ingerire un 'unavailable' -
 # -- da riavvio a bordo giornata.
-
-def test_il_riepilogo_dell_energia_salta_le_letture_unavailable(archivio):
-    """Un riavvio di Home Assistant a bordo giornata scrive 'unavailable'
-    come prima o ultima lettura del contatore: il riepilogo deve ignorarla
-    e usare la prima/ultima lettura VERA, non uscire con
-    `valore_finale: "unavailable"` e `differenza: None` su ogni contatore
-    della casa a ogni riavvio. Mutazione: filtrare `_UNKNOWN` solo nel ramo
-    presenza (com'era prima di questa correzione) invece che in cima al
-    ciclo, prima di costruire `misure` -- `valore_iniziale` tornerebbe
-    'unavailable' e `differenza` None."""
-    archivio.record(quando_ts=ts(0, 1), source="entita",
-                    subject="sensor.energia_casa", da=None, a="unavailable",
-                    device_class="energy")
-    archivio.record(quando_ts=ts(1), source="entita",
-                    subject="sensor.energia_casa", da=None, a="100.0",
-                    device_class="energy")
-    archivio.record(quando_ts=ts(23), source="entita",
-                    subject="sensor.energia_casa", da=None, a="130.5",
-                    device_class="energy")
-    archivio.record(quando_ts=ts(23, 59), source="entita",
-                    subject="sensor.energia_casa", da=None, a="unavailable",
-                    device_class="energy")
-    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
-    o = archivio.facts(day=G)[0]
-    assert o["corpo"]["valore_iniziale"] == "100.0"
-    assert o["corpo"]["valore_finale"] == "130.5"
-    assert o["corpo"]["differenza"] == pytest.approx(30.5)
-
-
-# -- Punto 4: la quinta finta -- il limite superiore delle misure deve
-# -- guardare il protagonista, non gli inizi di TUTTI gli episodi.
-
-def test_il_limite_superiore_rispetta_il_protagonista_non_ignora_gli_altri(archivio):
-    """Due protagonisti con episodi intrecciati nel tempo: `climate.
-    soggiorno_t` (9:15-14:00) si accende PRIMA che il primo episodio di
-    `climate.camera_t` (9:00-9:30) finisca il suo intervallo di misura, e
-    molto prima del secondo episodio di camera_t (15:00-15:30). Il limite
-    superiore delle misure del primo episodio di camera_t deve essere
-    l'inizio del SUO prossimo episodio (15:00), non l'inizio dell'episodio
-    di soggiorno_t (9:15) solo perche' capita prima. Mutazione: raccogliere
-    gli inizi di TUTTI gli episodi in un'unica lista invece che per
-    protagonista (`next_starts` indicizzato senza il protagonista) --
-    il limite del primo episodio di camera_t crollerebbe a 9:15 e la
-    misura delle 10:00 sparirebbe dal suo corpo (nessun punto in
-    [9:00, 9:15))."""
-    archivio.record(quando_ts=ts(9, 0), source="entita",
-                    subject="climate.camera_t", da="off", a="heat")
-    archivio.record(quando_ts=ts(9, 30), source="entita",
-                    subject="climate.camera_t", da="heat", a="off")
-    archivio.record(quando_ts=ts(9, 15), source="entita",
-                    subject="climate.soggiorno_t", da="off", a="heat")
-    archivio.record(quando_ts=ts(14, 0), source="entita",
-                    subject="climate.soggiorno_t", da="heat", a="off")
-    archivio.record(quando_ts=ts(15, 0), source="entita",
-                    subject="climate.camera_t", da="off", a="heat")
-    archivio.record(quando_ts=ts(15, 30), source="entita",
-                    subject="climate.camera_t", da="heat", a="off")
-    archivio.record(quando_ts=ts(10, 0), source="entita",
-                    subject="sensor.camera_temperatura", da=None, a="19.5")
-    aggregate_day(
-        store=archivio, day=G, timezone="Europe/Rome",
-        companions=lambda s: (["sensor.camera_temperatura"]
-                              if s == "climate.camera_t" else []))
-    oggetti = [o for o in archivio.facts(day=G)
-              if o["protagonista"] == "climate.camera_t"]
-    primo = min(oggetti, key=lambda o: o["inizio_ts"])
-    assert primo["inizio_ts"] == ts(9, 0)
-    assert primo["corpo"]["misure"]["sensor.camera_temperatura"] == {
-        "da": "19.5", "a": "19.5"}
-
-
-# -- Giro di pulizia (26 agosto), punto 1: il PROSSIMO episodio non e' -----
-# -- l'ULTIMO -- sesta occorrenza della stessa forma in questa fetta: un
-# -- parametro che nessun test distingueva da un altro possibile.
-
-def test_il_limite_superiore_e_il_prossimo_episodio_non_l_ultimo(archivio):
-    """Nessun test, finora, aveva TRE episodi dello stesso protagonista:
-    con solo due, `min(later)` e `max(later)` tornano lo stesso
-    valore, e niente distingue "il prossimo" da "l'ultimo". Con tre
-    accensioni del riscaldamento, il limite superiore delle misure del
-    PRIMO episodio deve fermarsi al SECONDO (il prossimo), non sconfinare
-    fino al TERZO. Mutazione: `min` -> `max` in `upper_limit` -- la
-    misura delle 13:00, che sta nella finestra del secondo episodio (non
-    dentro la sua durata, ma prima del terzo), finirebbe attribuita anche al
-    primo, e "a" diventerebbe "22.0" invece di "20.0"."""
-    archivio.record(quando_ts=ts(9, 0), source="entita",
-                    subject="climate.camera_t", da="off", a="heat")
-    archivio.record(quando_ts=ts(9, 15), source="entita",
-                    subject="sensor.camera_temperatura", da=None, a="20.0")
-    archivio.record(quando_ts=ts(9, 30), source="entita",
-                    subject="climate.camera_t", da="heat", a="off")
-    archivio.record(quando_ts=ts(12, 0), source="entita",
-                    subject="climate.camera_t", da="off", a="heat")
-    archivio.record(quando_ts=ts(12, 30), source="entita",
-                    subject="climate.camera_t", da="heat", a="off")
-    archivio.record(quando_ts=ts(13, 0), source="entita",
-                    subject="sensor.camera_temperatura", da=None, a="22.0")
-    archivio.record(quando_ts=ts(15, 0), source="entita",
-                    subject="climate.camera_t", da="off", a="heat")
-    archivio.record(quando_ts=ts(15, 30), source="entita",
-                    subject="climate.camera_t", da="heat", a="off")
-    aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
-                   companions=lambda s: (["sensor.camera_temperatura"]
-                                         if s == "climate.camera_t" else []))
-    oggetti = sorted(archivio.facts(day=G), key=lambda o: o["inizio_ts"])
-    assert len(oggetti) == 3
-    primo = oggetti[0]
-    assert primo["corpo"]["misure"]["sensor.camera_temperatura"] == {
-        "da": "20.0", "a": "20.0"}
-
-
-# -- Giro di pulizia (26 agosto), punto 4: i confini delle misure ----------
-
-def test_il_confine_inferiore_delle_misure_include_l_istante_di_inizio_dell_oggetto(archivio):
-    """Una misura presa nello STESSO istante in cui l'oggetto comincia e' il
-    caso FREQUENTE: e' lo stesso istante dell'evento che apre l'episodio.
-    Deve starci nel corpo. Mutazione: `<=` -> `<` sul limite inferiore --
-    la misura delle 15:30 sparirebbe dal corpo (nessun punto in
-    [15:30, 17:05))."""
-    archivio.record(quando_ts=ts(15, 30), source="entita",
-                    subject="climate.camera_t", da="off", a="heat")
-    archivio.record(quando_ts=ts(15, 30), source="entita",
-                    subject="sensor.camera_temperatura", da=None, a="18.2")
-    archivio.record(quando_ts=ts(17, 5), source="entita",
-                    subject="climate.camera_t", da="heat", a="off")
-    aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
-                   companions=lambda s: ["sensor.camera_temperatura"])
-    o = archivio.facts(day=G)[0]
-    assert o["corpo"]["misure"]["sensor.camera_temperatura"] == {
-        "da": "18.2", "a": "18.2"}
-
-
-def test_il_confine_superiore_delle_misure_esclude_l_inizio_del_prossimo_episodio(archivio):
-    """Una misura esattamente all'inizio del PROSSIMO episodio non appartiene
-    a QUESTO oggetto: e' gia' il clima del prossimo. Mutazione: `<` -> `<=`
-    sul limite superiore -- la misura delle 12:00 finirebbe attribuita anche
-    al primo episodio, e "a" diventerebbe "99.9" invece di "20.0"."""
-    archivio.record(quando_ts=ts(9, 0), source="entita",
-                    subject="climate.camera_t", da="off", a="heat")
-    archivio.record(quando_ts=ts(9, 15), source="entita",
-                    subject="sensor.camera_temperatura", da=None, a="20.0")
-    archivio.record(quando_ts=ts(9, 30), source="entita",
-                    subject="climate.camera_t", da="heat", a="off")
-    archivio.record(quando_ts=ts(12, 0), source="entita",
-                    subject="sensor.camera_temperatura", da=None, a="99.9")
-    archivio.record(quando_ts=ts(12, 0), source="entita",
-                    subject="climate.camera_t", da="off", a="heat")
-    archivio.record(quando_ts=ts(12, 30), source="entita",
-                    subject="climate.camera_t", da="heat", a="off")
-    aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
-                   companions=lambda s: (["sensor.camera_temperatura"]
-                                         if s == "climate.camera_t" else []))
-    oggetti = sorted(archivio.facts(day=G), key=lambda o: o["inizio_ts"])
-    primo = oggetti[0]
-    assert primo["corpo"]["misure"]["sensor.camera_temperatura"] == {
-        "da": "20.0", "a": "20.0"}
-
-
-# -- Punto 6, pulizia 2: una sola lettura non sa dire la differenza --------
-
-def test_un_energia_con_una_sola_lettura_non_sa_dire_la_differenza(archivio):
-    """Una sola lettura nel giorno non permette di sapere quanto e'
-    cambiato: la verita' e' 'non lo sappiamo', non 'zero' -- la stessa
-    distinzione del punto 2, e il codice altrove la fa gia' restituendo
-    `None` quando il valore non si legge come numero (`_difference`). Con
-    una sola lettura, iniziale e finale sono la STESSA riga: il conto
-    tornerebbe 0.0, che direbbe il fatto falso "non e' cambiato niente".
-    Mutazione: calcolare comunque `_difference(iniziale, finale)` anche con
-    un solo punto -- `differenza` tornerebbe 0.0 invece di `None`."""
-    archivio.record(quando_ts=ts(12), source="entita",
-                    subject="sensor.energia_casa", da=None, a="100.0",
-                    device_class="energy")
-    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
-    o = archivio.facts(day=G)[0]
-    assert o["corpo"]["valore_iniziale"] == "100.0"
-    assert o["corpo"]["valore_finale"] == "100.0"
-    assert o["corpo"]["differenza"] is None
-
-
-# -- Le direzioni dell'energia: come i comprimari, mai nel grezzo -----------
-#
-# `aggregate_day` riceve `directions(subject) -> dict | None` dal chiamante,
-# esattamente come riceve `companions(subject) -> list[str]` (mandato
-# "le direzioni dell'energia", punto 2). Non si scrive nel grezzo: la
-# direzione e' una CONFIGURAZIONE (la dashboard Energia dell'utente puo'
-# cambiare), e congelarla in scrittura la renderebbe irrecuperabile per i 21
-# giorni in cui il grezzo permette di rifare il giudizio -- la stessa
-# ragione per cui non si salva la gamba gia' calcolata.
-
-def test_un_episodio_di_energia_porta_direzione_e_provenienza_quando_note(archivio):
-    """Il caso base: `direzioni()` sa dire la direzione del protagonista, e il
-    corpo dell'episodio di energia la porta per intero -- `direzione` E
-    `provenienza`, non solo una delle due."""
-    archivio.record(quando_ts=ts(1), source="entita",
-                    subject="sensor.energia_prodotta", da=None, a="10.0",
-                    device_class="energy")
-    archivio.record(quando_ts=ts(20), source="entita",
-                    subject="sensor.energia_prodotta", da=None, a="25.0",
-                    device_class="energy")
-    aggregate_day(
-        store=archivio, day=G, timezone="Europe/Rome",
-        directions=lambda s: {"direzione": "produzione", "provenienza": "dichiarata"}
-        if s == "sensor.energia_prodotta" else None)
-    o = archivio.facts(day=G)[0]
-    assert o["corpo"]["direzione"] == "produzione"
-    assert o["corpo"]["provenienza"] == "dichiarata"
-
-
-def test_senza_direzioni_il_campo_non_c_e_mai_una_sconosciuta_travestita(archivio):
-    """Mandato: «quando la direzione non si conosce, il campo non c'e' -- non
-    un "sconosciuta" travestito da dato.» Senza passare `direzioni` affatto
-    (come ogni test precedente in questo file, che non lo conoscevano ancora),
-    il corpo di un episodio di energia non deve avere NESSUNA delle due
-    chiavi."""
-    archivio.record(quando_ts=ts(2), source="entita",
-                    subject="sensor.energia_casa", da=None, a="5.0",
-                    device_class="energy")
-    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
-    o = archivio.facts(day=G)[0]
-    assert "direzione" not in o["corpo"]
-    assert "provenienza" not in o["corpo"]
-
-
-def test_direzioni_passata_ma_ignota_per_questo_soggetto_non_scrive_niente(archivio):
-    """`direzioni` c'e' (non e' `None`) ma torna `None` per QUESTO soggetto --
-    la dashboard Energia non lo copre e nessun `translation_key` lo riconosce.
-    Il campo resta assente, non una stringa vuota o "sconosciuta".
-    Mutazione ESEGUITA: `if info:` sostituito con `if True:` nel corpo di
-    `aggregate_day` -- arrossisce, perche' `corpo["direzione"]` diventerebbe
-    la chiave di un dizionario `None` (`TypeError`) o (con una guardia diversa)
-    scriverebbe `None` come valore invece di omettere la chiave. Ripristinato
-    subito dopo."""
-    archivio.record(quando_ts=ts(2), source="entita",
-                    subject="sensor.energia_senza_fonte", da=None, a="5.0",
-                    device_class="energy")
-    aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
-                   directions=lambda s: None)
-    o = archivio.facts(day=G)[0]
-    assert "direzione" not in o["corpo"]
-    assert "provenienza" not in o["corpo"]
-
-
-def test_la_direzione_non_finisce_su_un_genere_che_non_e_energia(archivio):
-    """Difesa contro un `direzioni` troppo permissivo, o un refuso nel ramo
-    che lo applica: un `funzionamento` non deve MAI portare `direzione`,
-    anche se il chiamante (per errore, o per un `lambda` scritto troppo
-    largo) risponderebbe per qualunque soggetto."""
-    archivio.record(quando_ts=ts(15, 30), source="entita",
-                    subject="climate.camera_t", da="off", a="heat")
-    archivio.record(quando_ts=ts(17, 5), source="entita",
-                    subject="climate.camera_t", da="heat", a="off")
-    aggregate_day(
-        store=archivio, day=G, timezone="Europe/Rome",
-        directions=lambda s: {"direzione": "produzione", "provenienza": "dichiarata"})
-    o = archivio.facts(day=G)[0]
-    assert o["genere"] == "funzionamento"
-    assert "direzione" not in o["corpo"]
-    assert "provenienza" not in o["corpo"]
-
-
-def test_direzioni_si_chiede_una_volta_per_protagonista_non_per_riga_del_grezzo(archivio):
-    """Come i comprimari (docstring di `aggregate_day`, Task 6): la mappa
-    delle direzioni si costruisce una volta per giro di aggregazione da chi
-    chiama, ma QUI dentro -- nel ciclo che costruisce il corpo -- si chiede
-    UNA volta per episodio, non per ogni riga del grezzo che ha contribuito
-    alla lettura iniziale/finale. Con tre letture per lo stesso contatore
-    (un solo episodio di energia), la lambda deve essere invocata una sola
-    volta per quel protagonista."""
-    chiesti = []
-
-    def direzioni(soggetto):
-        chiesti.append(soggetto)
-        return {"direzione": "prelievo", "provenienza": "dichiarata"}
-
-    for ora, valore in ((1, "10.0"), (12, "20.0"), (23, "30.0")):
-        archivio.record(quando_ts=ts(ora), source="entita",
-                        subject="sensor.energia_prelievo", da=None, a=valore,
-                        device_class="energy")
-    aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
-                   directions=direzioni)
-    assert chiesti == ["sensor.energia_prelievo"]
-
-
-# ---------------------------------------------------------------------------
-# Il nome amichevole entra nel corpo dell'oggetto (fetta «il nome»,
-# 07/09/2026). Il nome viene dal GREZZO di quel giorno, mai dall'anagrafe
-# di oggi: un oggetto sopravvive ai 22 giorni del grezzo e all'entita' stessa.
-# ---------------------------------------------------------------------------
 
 def test_il_nome_salvato_nel_grezzo_entra_nel_corpo_dell_oggetto(archivio):
     """Mutazione ESEGUITA: togliere le tre righe `nome = names.get(subject)` /
@@ -1374,11 +876,11 @@ def test_il_nome_salvato_nel_grezzo_entra_nel_corpo_dell_oggetto(archivio):
                     subject="climate.camera_t", da="heat", a="off",
                     friendly_name="Termostato Camera")
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
-    corpo = archivio.facts(day=G)[0]["corpo"]
+    corpo = cronaca(archivio)[0]
     assert corpo["nome"] == "Termostato Camera"
     # L'identificatore NON si perde: il nome si aggiunge accanto al grezzo,
     # non al suo posto -- e' cio' che distingue due entita' omonime.
-    assert archivio.facts(day=G)[0]["protagonista"] == "climate.camera_t"
+    assert cronaca(archivio)[0]["chi"] == "climate.camera_t"
 
 
 def test_senza_nome_nel_grezzo_la_chiave_TACE_non_diventa_null(archivio):
@@ -1395,27 +897,9 @@ def test_senza_nome_nel_grezzo_la_chiave_TACE_non_diventa_null(archivio):
     archivio.record(quando_ts=ts(17, 5), source="entita",
                     subject="climate.senza_nome", da="heat", a="off")
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
-    corpo = archivio.facts(day=G)[0]["corpo"]
+    corpo = cronaca(archivio)[0]
     assert "nome" not in corpo
-    assert corpo["stato"] == "heat"
-
-
-def test_anche_un_oggetto_di_energia_porta_il_nome(archivio):
-    """L'energia nasce dall'altra strada (il riepilogo delle misure, non il
-    ciclo apri/chiudi): stessa regola, non una seconda legge.
-
-    Mutazione ESEGUITA: togliere le tre righe che aggiungono `nome` a
-    `energy_body` (`mind/facts.py`) -- il test torna rosso su
-    `assert corpo["nome"] == "Presa Forno"` (`KeyError: 'nome'`).
-    """
-    for ora, valore in ((7, "12.5"), (20, "15.0")):
-        archivio.record(quando_ts=ts(ora), source="entita",
-                        subject="sensor.presa_forno", da=None, a=valore,
-                        device_class="energy", friendly_name="Presa Forno")
-    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
-    corpo = archivio.facts(day=G)[0]["corpo"]
-    assert corpo["nome"] == "Presa Forno"
-    assert corpo["valore_iniziale"] == "12.5"
+    assert corpo["cosa"] == "heat"
 
 
 def test_una_condizione_di_sistema_non_porta_un_nome_amichevole(archivio):
@@ -1430,7 +914,7 @@ def test_una_condizione_di_sistema_non_porta_un_nome_amichevole(archivio):
                     subject="integrazione:01ABC", da=None, a="setup_retry",
                     domain="lifx", title="Abat-jour")
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
-    corpo = archivio.facts(day=G)[0]["corpo"]
+    corpo = cronaca(archivio)[0]
     assert "nome" not in corpo
     assert corpo["titolo"] == "Abat-jour"
 
@@ -1457,7 +941,7 @@ def test_il_giorno_dell_aggiornamento_il_primo_nome_NON_VUOTO_vince(archivio):
                     subject="person.paolo", da="not_home", a="home",
                     friendly_name="Paolo")
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
-    corpo = archivio.facts(day=G)[0]["corpo"]
+    corpo = cronaca(archivio)[0]
     assert corpo["nome"] == "Paolo"
 
 
@@ -1482,11 +966,11 @@ def test_la_classe_del_grezzo_entra_nel_corpo_dell_oggetto(archivio):
                     subject="binary_sensor.fumo_cucina", da="on", a="off",
                     device_class="smoke")
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
-    corpo = archivio.facts(day=G)[0]["corpo"]
+    corpo = cronaca(archivio)[0]
     assert corpo["classe"] == "smoke"
     # Lo stato GREZZO resta quello che era: la classe si aggiunge accanto,
     # non lo sostituisce ne' lo riscrive.
-    assert corpo["stato"] == "on"
+    assert corpo["cosa"] == "on"
 
 
 def test_senza_classe_nel_grezzo_la_chiave_TACE_non_diventa_null(archivio):
@@ -1504,9 +988,9 @@ def test_senza_classe_nel_grezzo_la_chiave_TACE_non_diventa_null(archivio):
     archivio.record(quando_ts=ts(17, 5), source="entita",
                     subject="climate.camera_t", da="heat", a="off")
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
-    corpo = archivio.facts(day=G)[0]["corpo"]
+    corpo = cronaca(archivio)[0]
     assert "classe" not in corpo
-    assert corpo["stato"] == "heat"
+    assert corpo["cosa"] == "heat"
 
 
 def test_una_condizione_di_sistema_non_porta_nessuna_classe(archivio):
@@ -1518,8 +1002,8 @@ def test_una_condizione_di_sistema_non_porta_nessuna_classe(archivio):
                     subject="integrazione:01ABC", da=None, a="setup_retry",
                     domain="lifx", title="Abat-jour")
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
-    corpo = archivio.facts(day=G)[0]["corpo"]
-    assert corpo["stato"] == "setup_retry"
+    corpo = cronaca(archivio)[0]
+    assert corpo["cosa"] == "setup_retry"
     assert "classe" not in corpo
 
 
@@ -1544,10 +1028,10 @@ def test_un_episodio_gia_aperto_prima_del_giorno_esiste_anche_oggi(archivio):
     quanti = aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
 
     assert quanti == 1
-    oggetto = archivio.facts(day=G)[0]
+    oggetto = cronaca(archivio)[0]
     assert oggetto["genere"] == "funzionamento"
-    assert oggetto["protagonista"] == "climate.camera_t"
-    assert oggetto["inizio_ts"] == ieri      # la data vera, non la mezzanotte
+    assert oggetto["chi"] == "climate.camera_t"
+    assert oggetto["quando_ts"] == ieri      # la data vera, non la mezzanotte
     assert oggetto["fine_ts"] is None        # ancora in corso a fine giornata
 
 
@@ -1572,63 +1056,8 @@ def test_un_episodio_cominciato_ieri_e_finito_oggi_si_chiude_con_l_inizio_vero(a
 
     aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
 
-    oggetto = archivio.facts(day=G)[0]
-    assert (oggetto["inizio_ts"], oggetto["fine_ts"]) == (ieri, ts(7))
-
-def test_report_only_scrive_il_resoconto_e_NON_tocca_gli_oggetti(archivio):
-    """**Il resoconto assente e' peggio del resoconto parziale.**
-
-    La riparazione all'avvio ha quattro uscite anticipate -- comprimari
-    falliti, direzioni non lette, bilanci non letti -- e tutte e quattro
-    esistono per una regola sola: *chi SOSTITUISCE non tollera il parziale*,
-    perche' scrivere oggetti poveri sopra oggetti ricchi e' un
-    impoverimento. La regola e' giusta **per gli oggetti**.
-
-    Per il resoconto e' il contrario, e si e' visto dal vivo il 14/09/2026:
-    sulla casa vera non esisteva **nessun** resoconto, perche' una di quelle
-    uscite scattava a ogni avvio. Un resoconto ha gia' le parole per dire cio'
-    che non ha potuto calcolare -- «non calcolabile, e perche'» -- mentre un
-    resoconto che non c'e' non dice niente, e l'analista non puo' distinguerlo
-    da un giorno in cui non e' successo nulla.
-
-    Quindi: si scrive il resoconto **senza** toccare gli oggetti.
-
-    Mutazione: far scrivere anche gli oggetti a `report_only` (togliere il
-    ramo) -- rossa su `assert archivio.facts(day=G) == []`.
-    """
-    archivio.record(quando_ts=ts(15, 30), source="entita",
-                    subject="climate.camera_t", da="off", a="heat")
-    archivio.record(quando_ts=ts(17, 5), source="entita",
-                    subject="climate.camera_t", da="heat", a="off")
-
-    quanti = aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
-                           recipes={}, series={}, names={}, report_only=True)
-
-    assert quanti == 1, "torna le voci di cronaca, come il giro normale"
-    assert archivio.facts(day=G) == [], "gli oggetti NON si toccano"
-    scritto = archivio.report(G)
-    assert scritto is not None
-    assert scritto["cronaca"][0]["chi"] == "climate.camera_t"
-    assert scritto["cronaca"][0]["cosa"] == "heat"
-
-
-def test_report_only_senza_ricette_non_scrive_niente(archivio):
-    """`recipes=None` resta «questo chiamante non porta le ricette», e in quel
-    caso non c'e' niente da scrivere: un resoconto con meta' delle misure
-    vuota per una ragione che non riguarda la casa direbbe il falso. Con
-    `report_only` non c'e' nemmeno l'oggetto a fare da consolazione, quindi la
-    combinazione non deve scrivere -- non deve scrivere un resoconto MUTO.
-
-    Mutazione: scrivere comunque quando `recipes is None` -- rossa.
-    """
-    archivio.record(quando_ts=ts(15, 30), source="entita",
-                    subject="climate.camera_t", da="off", a="heat")
-
-    aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
-                  report_only=True)
-
-    assert archivio.report(G) is None
-    assert archivio.facts(day=G) == []
+    oggetto = cronaca(archivio)[0]
+    assert (oggetto["quando_ts"], oggetto["fine_ts"]) == (ieri, ts(7))
 
 def test_aggregate_day_scrive_nel_resoconto_l_obiettivo_di_QUEL_giorno(archivio):
     """**L'obiettivo che valeva allora, non quello di oggi** (spec §11). Chi

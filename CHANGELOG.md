@@ -1,5 +1,68 @@
 # HIRIS — Changelog
 
+## [3.43.0] — Gli oggetti escono (2026-09-15)
+
+Lo strato degli `oggetti` è cancellato (spec §13). Gli episodi vivono dentro il
+resoconto, dove erano già da tre giorni.
+
+**−5.654 righe**, e la metà non era il codice: erano prove di cose che non
+esistono più. Quelle traducibili sono state **tradotte, non cancellate** — una
+prova tradotta è una proprietà che resta.
+
+### Le tre misure prese PRIMA di cancellare
+
+| | |
+|---|---|
+| **i comprimari** | **zero su 200 oggetti** — il campo `misure` vuoto in tutti. La perdita che temevo non esisteva |
+| **i giorni** | oggetti dal 26/08 al 14/09; **ognuno aveva già il suo resoconto**. Nessuna migrazione di conversione serviva |
+| **i tre contatori** | l'unica cosa che la cronaca non conservava. Tutti e tre già coperti da una ricetta |
+
+Il terzo merita una riga: il dispositivo che aveva una ricetta storta è tornato
+in coda quando la migrazione l'ha tolta, e **il modello ne ha scritta una
+giusta** — `energia_totale_periodo` con `somma_periodo`, 0,73 kWh. Il buco si
+è chiuso da solo, e la `counter_recipe` che avevo parcheggiato non è servita.
+
+### Cosa se n'è andato dietro
+
+`build_companions` (centinaia di chiamate di rete a giro per un campo mai
+visto pieno), la lettura delle direzioni dall'aggregazione, l'episodio di
+energia (un contatore non ha uno stato, ha un numero), `store.facts()`,
+`replace_day()`, la tabella, la rotta `/api/mind/facts`, e **520 righe di resa
+per genere** dalla pagina.
+
+E la riparazione d'avvio, che aveva **quattro uscite anticipate** per proteggere
+oggetti ricchi da oggetti poveri, è diventata **sei righe**: scrive il
+resoconto dei giorni che non ce l'hanno. Quelle quattro uscite erano ciò che,
+fino alla 3.33.2, impediva a qualunque resoconto di nascere.
+
+### Tre cose sono ENTRATE, e ognuna per un motivo misurato
+
+- **il genere nella cronaca**: è la differenza fra «una porta si è aperta» e
+  «un'integrazione si è rotta», costa dodici byte, e viveva solo nell'oggetto;
+- **`dominio`, `titolo`, `comparso_ts` nell'ancora**: «quale integrazione si è
+  rotta» non si recupera dopo — una voce di configurazione fra tre settimane
+  può non esistere più. Stessa ragione di `friendly_name`;
+- **il resoconto si scrive SEMPRE**, anche senza ricette: la vecchia regola
+  reggeva finché c'erano gli oggetti a tenere il giorno. Senza, non scrivere
+  vuol dire perdere il giorno.
+
+### E due cancelli che hanno fatto il loro mestiere
+
+- Il cancello del CSS era **cieco**: un accoppiamento di `/* */` inghiottiva le
+  righe del resoconto quando il test toglie i commenti. La cancellazione ha
+  rotto quell'accoppiamento e il cancello ha ricominciato a vedere: `sc-row`,
+  `sc-row-title` e `sc-row-why` erano **scritte dalla pagina e vestite da
+  niente**, dalla 3.33.0. Aggiunte le regole.
+- E scrivendole ho messo `display: flex` su `.sc-row`, riaprendo il difetto che
+  `constructions-route.test.mjs` sorveglia — una dichiarazione d'autore su
+  `display` batte `[hidden]`, e un pannello «chiuso» si vedeva lo stesso. La
+  prova l'ha preso mentre lo scrivevo.
+
+4135 prove Python, 367 JS, ruff, oxlint, censimento.
+
+**Cancello dei componenti**: CLI del ponte 2.1.270 → 2.1.271, dichiarato e
+rimandato — non si alza al volo dentro un rilascio che parla d'altro.
+
 ## [3.42.0] — L'analista parla (2026-09-15)
 
 Il terzo attore è vivo. Legge le misure di trenta giorni e dice **cosa si

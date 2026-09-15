@@ -31,7 +31,6 @@ from hiris.app.proxy.entity_cache import EntityCache, _to_minimal
 from hiris.app.proxy.ha_client import HAClient
 from hiris.app.server import watch_system_conditions
 from tests._contracts import assert_stessa_firma
-from tests.test_mind_companions import _ClienteLegami
 
 # --------------------------------------------------------------------------
 # Il cablaggio dichiarato dal mandato (task-5-brief.md, Step 1)
@@ -494,9 +493,7 @@ def test_l_aggregazione_notturna_logga_col_prefisso_cervello_anche_se_il_fuso_no
         "aggregate_day": server.aggregate_day, "datetime": server.datetime,
         "timedelta": server.timedelta, "home_space_zone": server.home_space_zone,
         "day_boundaries": server.day_boundaries,
-        "build_companions": server.build_companions,
         "build_balances": server.build_balances,
-        "directions_by_translation_key": server.directions_by_translation_key,
         "_report_ingredients": server._report_ingredients,
         "_timezone_from_home_space_store": server._timezone_from_home_space_store,
     })
@@ -516,7 +513,7 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
     senza oggetti' (un giorno senza oggetti e' un esito legittimo, vedi il
     mandato). Si popola il grezzo di QUATTRO giorni, OGGI compreso, e si
     verifica che solo i due piu' recenti FRA I FINITI vengano scritti come
-    oggetti. Qui `ha_client=_ClienteLegami()`: senza `mappa`, ogni `legami`
+    oggetti. Qui `ha_client=_ClienteStatistiche()`: senza `mappa`, ogni `legami`
     torna vuoto (nessun legame, non un guasto -- vedi il suo docstring),
     quindi nessun soggetto fallisce e la riparazione gira per intero come se
     fosse incondizionata. Deliberatamente non e' `ha_client=None`: con
@@ -552,15 +549,15 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
 
         asyncio.run(server.reaggregate_last_two_days(
             {"home_space_store": None, "observations": archivio,
-             "knowledge": _sapere(tmp_path)}, ha_client=_ClienteLegami(),
+             "knowledge": _sapere(tmp_path)}, ha_client=_ClienteStatistiche(),
             now=lambda tz: oggi.astimezone(tz)))
 
-        giorni_scritti = {o["giorno"] for o in archivio.facts(limit=10)}
+        giorni_scritti = {o["giorno"] for o in _cronaca_intera(archivio)}
         assert giorni_scritti == {"2026-08-22", "2026-08-23"}
         # Esplicito, non solo dedotto dall'uguaglianza sopra: oggi
         # ("2026-08-24") non deve avere NESSUN oggetto, nonostante il grezzo
         # per costruirlo ci sia.
-        assert archivio.facts(day="2026-08-24") == []
+        assert ((archivio.report("2026-08-24") or {}).get("cronaca") or []) == []
 
         # Idempotente (`replace_day`, non un doppio inserimento): un
         # secondo giro non deve raddoppiare gli oggetti dei due giorni.
@@ -572,330 +569,20 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
         # in corso a mezzanotte compare -- correttamente -- in entrambi i
         # giorni. Un conteggio fisso avrebbe fatto passare per regressione un
         # difetto riparato.
-        prima = archivio.facts(limit=50)
+        prima = _cronaca_intera(archivio)
         asyncio.run(server.reaggregate_last_two_days(
             {"home_space_store": None, "observations": archivio,
-             "knowledge": _sapere(tmp_path)}, ha_client=_ClienteLegami(),
+             "knowledge": _sapere(tmp_path)}, ha_client=_ClienteStatistiche(),
             now=lambda tz: oggi.astimezone(tz)))
-        dopo = archivio.facts(limit=50)
+        dopo = _cronaca_intera(archivio)
 
         def senza_id(oggetti):
             return sorted(({k: v for k, v in o.items() if k != "id"} for o in oggetti),
-                          key=lambda o: (o["giorno"], o["protagonista"]))
+                          key=lambda o: (o["giorno"], o["chi"]))
 
         assert senza_id(dopo) == senza_id(prima)
-        assert {o["protagonista"] for o in dopo} == {"light.vecchio", "light.l_altro_ieri",
+        assert {o["chi"] for o in dopo} == {"light.vecchio", "light.l_altro_ieri",
                                                      "light.ieri"}
-    finally:
-        archivio.close()
-
-
-def test_la_riparazione_all_avvio_costruisce_i_comprimari(tmp_path):
-    """CRITICAL, punto 1 del mandato (riparazione-impoverisce-brief.md): la
-    riparazione all'avvio costruisce i comprimari come fa la notte -- non
-    piu' `comprimari=None`.
-
-    Mutazione ESEGUITA: rimettere `comprimari=None` al posto della lambda
-    che legge `mappa`, nel corpo di `reaggregate_last_two_days`.
-    Arrossisce: `corpo["comprimari"]` di `light.principale` torna `[]`
-    invece di `["light.secondario"]`."""
-    from datetime import datetime, timedelta
-
-    from hiris.app.mind.store import ObservationsStore
-
-    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
-    try:
-        oggi = datetime(2026, 8, 24, tzinfo=UTC)
-        quando = (oggi - timedelta(days=1)).replace(hour=10)
-        archivio.record(quando_ts=quando.timestamp(), source="entita",
-                        subject="light.principale", da="off", a="on")
-        archivio.record(quando_ts=quando.timestamp(), source="entita",
-                        subject="light.secondario", da="off", a="on")
-
-        cliente = _ClienteLegami({"light.principale": {"entity": ["light.secondario"]}})
-        asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": None, "observations": archivio,
-             "knowledge": _sapere(tmp_path)}, ha_client=cliente,
-            now=lambda tz: oggi.astimezone(tz)))
-
-        ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
-        [oggetto] = [o for o in archivio.facts(day=ieri)
-                    if o["protagonista"] == "light.principale"]
-        assert oggetto["corpo"]["comprimari"] == ["light.secondario"]
-    finally:
-        archivio.close()
-
-
-def test_se_i_comprimari_non_si_costruiscono_l_archivio_resta_intatto(tmp_path):
-    """CRITICAL, punto 2 del mandato -- **il test che conta**: e' l'unico che
-    distingue «non guarisco» da «peggioro». Si semina il grezzo di ieri e
-    l'altro ieri, si scrive PRIMA un oggetto ricco (con comprimari, come
-    farebbe la notte) per entrambi i giorni -- poi si riaggrega con un
-    client che risponde SEMPRE `{"errore": ...}`, non uno che solleva. Gli
-    oggetti di prima devono restare ESATTAMENTE com'erano: quando i
-    comprimari non si riescono a costruire, la riparazione non deve toccare
-    l'archivio.
-
-    **Correzione del CRITICAL vero (grilletto-brief.md).** La versione
-    precedente di questo test monkeypatchava `build_companions` per
-    farla sollevare -- ma la funzione vera CONTIENE ogni guasto di `legami`
-    (mette `[]`, conta un fallito, non rilancia mai), quindi quel ramo
-    `except` in `reaggregate_last_two_days` era irraggiungibile dal
-    collaboratore vero. Il test passava per un motivo che la produzione non
-    incontra mai. Qui si usa `_ClienteLegami(default={"errore": ...})`, che
-    risponde come risponde Home Assistant quando non c'e' davvero per
-    QUALUNQUE soggetto, e nessun monkeypatch: la catena e' quella vera,
-    `legami` -> `build_companions` -> il contatore dei falliti che ora
-    torna al chiamante.
-
-    Mutazione ESEGUITA: nel corpo di `reaggregate_last_two_days`, il
-    controllo `if falliti:` sostituito con `if False:` (ignorare il
-    contatore, come prima della correzione). Arrossisce: gli oggetti ricchi
-    vengono sostituiti da oggetti senza comprimari -- `dopo != prima` --
-    esattamente il peggioramento che il mandato descrive. Ripristinato
-    subito dopo."""
-    from datetime import datetime, timedelta
-
-    from hiris.app.mind.store import ObservationsStore
-
-    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
-    try:
-        oggi = datetime(2026, 8, 24, tzinfo=UTC)
-        l_altro_ieri = (oggi - timedelta(days=2)).strftime("%Y-%m-%d")
-        ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
-        for giorno, delta in ((l_altro_ieri, 2), (ieri, 1)):
-            quando = (oggi - timedelta(days=delta)).replace(hour=10)
-            archivio.record(quando_ts=quando.timestamp(), source="entita",
-                            subject="light.principale", da="off", a="on")
-
-        # Il "gia' fatto dalla notte": un oggetto CON comprimari, per
-        # entrambi i giorni bersaglio.
-        ricco = [{"genere": "funzionamento", "protagonista": "light.principale",
-                  "inizio_ts": 0.0, "fine_ts": 1.0,
-                  "corpo": {"stato": "on", "comprimari": ["light.secondario"],
-                           "misure": {}}}]
-        archivio.replace_day(l_altro_ieri, ricco)
-        archivio.replace_day(ieri, ricco)
-        prima = {g: archivio.facts(day=g) for g in (l_altro_ieri, ieri)}
-
-        asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": None, "observations": archivio,
-             "knowledge": _sapere(tmp_path)},
-            ha_client=_ClienteLegami(default={"errore": "Home Assistant non ha risposto"}),
-            now=lambda tz: oggi.astimezone(tz)))
-
-        dopo = {g: archivio.facts(day=g) for g in (l_altro_ieri, ieri)}
-        assert dopo == prima
-    finally:
-        archivio.close()
-
-
-def test_una_risposta_malformata_ferma_la_riparazione_senza_scrivere(tmp_path, caplog):
-    """Punto 1 (difesa-profondita-brief.md): il ramo protettivo di «difesa in
-    profondita'» attorno alla chiamata a `build_companions`, dentro
-    `reaggregate_last_two_days`, non lo sorvegliava nessun test. Una
-    mutazione che lo facesse proseguire con `mappa` vuota e `falliti == 0` --
-    esattamente il peggioramento che il ramo esiste per impedire -- restava
-    verde in tutta la suite.
-
-    **L'innesco e' producibile SENZA monkeypatch.** Un client che risponde
-    `{"entity": 5}` -- un intero al posto della lista che Home Assistant
-    manda sempre -- fa uscire un `TypeError` VERO dalla catena vera: non da
-    `build_companions` (che CONTIENE solo il guasto di `HAClient.related`
-    stesso, non la forma della sua risposta buona), ma da
-    `home_space/queries.py::legami` (`_legami_leggibili`, chiamata da
-    `build_companions` FUORI dal suo `try/except` interno): `list(5)`
-    solleva mentre traduce le chiavi. E' il controesempio del punto 2: la
-    frase «nessuna `Exception` esce mai da qui» era falsa esattamente per
-    questo caso, corretta in questo stesso giro.
-
-    Mutazione ESEGUITA: nel corpo di `reaggregate_last_two_days`, il
-    blocco `except Exception as errore: logger.warning(...); return`
-    sostituito con `except Exception: mappa, falliti = {}, 0` (proseguire con
-    la mappa vuota invece di fermarsi, come se il guasto non fosse successo).
-    Arrossisce su entrambi gli assert: l'oggetto ricco viene sostituito da un
-    oggetto senza comprimari (`dopo != prima`), e il messaggio atteso non
-    compare piu' nel log. Ripristinato subito dopo."""
-    from datetime import datetime, timedelta
-
-    from hiris.app.mind.store import ObservationsStore
-
-    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
-    try:
-        oggi = datetime(2026, 8, 24, tzinfo=UTC)
-        l_altro_ieri = (oggi - timedelta(days=2)).strftime("%Y-%m-%d")
-        ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
-        for giorno, delta in ((l_altro_ieri, 2), (ieri, 1)):
-            quando = (oggi - timedelta(days=delta)).replace(hour=10)
-            archivio.record(quando_ts=quando.timestamp(), source="entita",
-                            subject="light.principale", da="off", a="on")
-
-        # Il "gia' fatto dalla notte": un oggetto CON comprimari, per
-        # entrambi i giorni bersaglio.
-        ricco = [{"genere": "funzionamento", "protagonista": "light.principale",
-                  "inizio_ts": 0.0, "fine_ts": 1.0,
-                  "corpo": {"stato": "on", "comprimari": ["light.secondario"],
-                           "misure": {}}}]
-        archivio.replace_day(l_altro_ieri, ricco)
-        archivio.replace_day(ieri, ricco)
-        prima = {g: archivio.facts(day=g) for g in (l_altro_ieri, ieri)}
-
-        # La risposta MALFORMATA: un intero al posto della lista.
-        cliente = _ClienteLegami({"light.principale": {"entity": 5}})
-        with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
-            asyncio.run(server.reaggregate_last_two_days(
-                {"home_space_store": None, "observations": archivio,
-             "knowledge": _sapere(tmp_path)}, ha_client=cliente,
-                now=lambda tz: oggi.astimezone(tz)))
-
-        dopo = {g: archivio.facts(day=g) for g in (l_altro_ieri, ieri)}
-        assert dopo == prima
-
-        assert any(
-            r.getMessage() == "cervello: comprimari non costruiti, riparazione "
-                              "all'avvio saltata -- si riprova al prossimo riavvio "
-                              "(TypeError: 'int' object is not iterable)"
-            for r in caplog.records)
-    finally:
-        archivio.close()
-
-
-def test_un_guasto_parziale_dei_comprimari_non_tocca_l_archivio(tmp_path):
-    """Rilievo n.2 del referto (grilletto-brief.md): **quanto parziale e'
-    troppo, per la riparazione, e' qualunque.** Un soggetto su due fallisce,
-    l'altro riesce -- ma quel soggetto verrebbe comunque riscritto con `[]`
-    mentre la notte l'aveva letto. La riparazione deve fermarsi lo stesso,
-    non solo sul guasto totale provato sopra."""
-    from datetime import datetime, timedelta
-
-    from hiris.app.mind.store import ObservationsStore
-
-    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
-    try:
-        oggi = datetime(2026, 8, 24, tzinfo=UTC)
-        ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
-        quando = (oggi - timedelta(days=1)).replace(hour=10)
-        for subject in ("light.buono", "light.rotto"):
-            archivio.record(quando_ts=quando.timestamp(), source="entita",
-                            subject=subject, da="off", a="on")
-
-        ricco = [{"genere": "funzionamento", "protagonista": "light.rotto",
-                  "inizio_ts": 0.0, "fine_ts": 1.0,
-                  "corpo": {"stato": "on", "comprimari": ["light.secondario"],
-                           "misure": {}}}]
-        archivio.replace_day(ieri, ricco)
-        prima = archivio.facts(day=ieri)
-
-        cliente = _ClienteLegami({
-            "light.rotto": {"errore": "Home Assistant non ha risposto"},
-            "light.buono": {"entity": ["sensor.buono"]}})
-        asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": None, "observations": archivio,
-             "knowledge": _sapere(tmp_path)},
-            ha_client=cliente,
-            now=lambda tz: oggi.astimezone(tz)))
-
-        assert archivio.facts(day=ieri) == prima
-    finally:
-        archivio.close()
-
-
-def test_il_salto_per_falliti_logga_il_messaggio_preciso(tmp_path, caplog):
-    """Punto 3 (difesa-profondita-brief.md): il warning che avvisa che la
-    riparazione e' stata saltata per `falliti` (non per un'eccezione: quello
-    e' il test gemello sopra) e' l'unica traccia visibile all'operatore di un
-    mancato recupero -- storpiarlo lascerebbe tutto verde, e nessun test in
-    tutta la codebase lo asserisce ancora sul testo preciso. Stesso schema
-    gia' chiuso per `_aggrega_ieri` (vedi il test omonimo piu' sopra, che
-    assertava solo `startswith` prima della sua correzione): chiuderlo su un
-    messaggio e lasciarlo aperto sul suo gemello sarebbe la fondamenta della
-    consistenza, rotta fra due righe vicine.
-
-    Mutazione ESEGUITA: nel corpo di `reaggregate_last_two_days`, tolte
-    le parole "per intero" dal testo del warning nel ramo `if falliti:`.
-    Arrossisce: nessun record col testo atteso in `caplog`. Ripristinato
-    subito dopo."""
-    from datetime import datetime, timedelta
-
-    from hiris.app.mind.store import ObservationsStore
-
-    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
-    try:
-        oggi = datetime(2026, 8, 24, tzinfo=UTC)
-        quando = (oggi - timedelta(days=1)).replace(hour=10)
-        archivio.record(quando_ts=quando.timestamp(), source="entita",
-                        subject="light.rotto", da="off", a="on")
-
-        cliente = _ClienteLegami(default={"errore": "Home Assistant non ha risposto"})
-        with caplog.at_level(logging.WARNING, logger="hiris.app.server"):
-            asyncio.run(server.reaggregate_last_two_days(
-                {"home_space_store": None, "observations": archivio,
-             "knowledge": _sapere(tmp_path)}, ha_client=cliente,
-                now=lambda tz: oggi.astimezone(tz)))
-
-        assert any(
-            r.getMessage() == "cervello: comprimari parziali (1 falliti), "
-                              "riparazione all'avvio saltata per intero -- "
-                              "si riprova al prossimo riavvio"
-            for r in caplog.records)
-    finally:
-        archivio.close()
-
-
-def test_l_aggregazione_notturna_prosegue_con_lo_stesso_guasto_parziale(tmp_path):
-    """L'altra meta' della regola (grilletto-brief.md): **chi costruisce dal
-    nulla tollera il parziale.** Nello STESSO scenario del test sopra (un
-    soggetto su due fallisce), l'aggregazione notturna (`_aggrega_ieri`) non
-    deve fermarsi -- costruisce l'oggetto del giorno da zero, e un oggetto
-    con un comprimare mancante e' meglio di nessun oggetto. Senza questo
-    test, la correzione del CRITICAL potrebbe fermare anche la notte insieme
-    alla riparazione all'avvio -- lo stesso `if falliti:` messo nel punto
-    sbagliato lo farebbe.
-
-    `_aggrega_ieri` legge `datetime.now()` per davvero (non e' iniettabile
-    come `adesso` di `reaggregate_last_two_days`): il grezzo si semina
-    per "ieri" vero, rispetto all'orologio reale del test."""
-    from datetime import datetime, timedelta
-
-    from hiris.app.mind.store import ObservationsStore
-
-    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
-    try:
-        adesso_reale = datetime.now(UTC)
-        ieri = adesso_reale - timedelta(days=1)
-        quando = ieri.replace(hour=10, minute=0, second=0, microsecond=0)
-        for subject in ("light.buono", "light.rotto"):
-            archivio.record(quando_ts=quando.timestamp(), source="entita",
-                            subject=subject, da="off", a="on")
-
-        logger_test = logging.getLogger("test_aggrega_ieri_parziale")
-        cliente = _ClienteLegami({
-            "light.rotto": {"errore": "Home Assistant non ha risposto"},
-            "light.buono": {"entity": ["sensor.buono"]}})
-        job = _carica_funzione_innestata("_aggrega_ieri", {
-            "app": {"home_space_store": None, "observations": archivio,
-                    "knowledge": _sapere(tmp_path)},
-            "ha_client": cliente,
-            "logger": logger_test,
-            "aggregate_day": server.aggregate_day, "datetime": server.datetime,
-            "timedelta": server.timedelta, "home_space_zone": server.home_space_zone,
-            "day_boundaries": server.day_boundaries,
-            "build_companions": server.build_companions,
-            "build_balances": server.build_balances,
-            "directions_by_translation_key": server.directions_by_translation_key,
-            "_report_ingredients": server._report_ingredients,
-            "_timezone_from_home_space_store": server._timezone_from_home_space_store,
-        })
-
-        asyncio.run(job())
-
-        ieri_str = ieri.strftime("%Y-%m-%d")
-        oggetti = archivio.facts(day=ieri_str)
-        assert {o["protagonista"] for o in oggetti} == {"light.buono", "light.rotto"}
-        rotto = next(o for o in oggetti if o["protagonista"] == "light.rotto")
-        assert rotto["corpo"]["comprimari"] == []
-        buono = next(o for o in oggetti if o["protagonista"] == "light.buono")
-        assert buono["corpo"]["comprimari"] == ["sensor.buono"]
     finally:
         archivio.close()
 
@@ -1024,138 +711,6 @@ def test_la_riparazione_di_avvio_riceve_home_space_store_gia_costruito(tmp_path)
         namespace["app"]["home_space_store"].close()
 
 
-def test_le_due_porte_sullo_stesso_grezzo_producono_gli_stessi_oggetti(tmp_path):
-    """Fondamenta n.3 (cancello-rilascio-brief.md, punto 1, CRITICAL -- la
-    terza volta che questa fondamenta si rompe sulla stessa funzione): le due
-    porte che aggregano il grezzo in oggetti -- l'aggregazione notturna
-    (mimata qui chiamando `aggregate_day` col fuso letto da `home_space_store`,
-    come fa `_aggrega_ieri`) e la riparazione all'avvio -- devono produrre GLI
-    STESSI oggetti dato lo STESSO grezzo.
-
-    **La porta 2 non chiama `reaggregate_last_two_days` a mano**: esegue
-    la fetta VERA di `_on_startup` (`_estrai_blocco_riparazione_avvio`, sopra)
-    con la funzione VERA -- non una finta, non un `app` costruito a mano con
-    `home_space_store` gia' dentro. E' la differenza che conta: un `app`
-    preparato a mano da questo test "sa" gia' come va a finire, e non
-    avrebbe potuto vedere il difetto del punto 1 (la chiamata era 87 righe
-    PRIMA che `home_space_store` esistesse in `app`) -- sarebbe stato un test
-    che non puo' fallire per la ragione sbagliata, esattamente il vizio che
-    ha lasciato vivere questo difetto per due giri precedenti. Qui `app`
-    parte con solo `"osservazioni"`, come nel vero `_on_startup` in quel
-    punto, e `home_space_store` nasce dentro l'estratto, esattamente come nasce
-    nel sorgente vero.
-
-    **Il fuso arriva per DUE strade, ed e' voluto.** L'estratto esegue ora
-    anche `rebuild()`, che lo legge dal finto `ha_client` -- la strada di
-    produzione dal 10/09/2026, da quando l'anagrafe non e' piu' replicata su
-    disco. E il file si semina lo stesso, prima, con una `HomeSpace` separata
-    chiusa subito dopo: il sistema di riferimento e' l'unica cosa
-    dell'anagrafe che sopravvive ai riavvii
-    (`HomeSpaceStore.remember_reference_frame`), ed e' cio' che tiene in piedi
-    la riparazione quando Home Assistant non risponde. Se una delle due strade
-    si rompesse, il fuso resterebbe `None` e l'episodio notturno tornerebbe a
-    finire nel giorno sbagliato -- che e' esattamente cio' che questo test
-    misura.
-
-    **Provato eseguendo** (revisore, 26/08/2026, ripetuto qui): un
-    riscaldamento acceso 00:30-01:30 ora di Roma (CEST, UTC+2 in agosto --
-    che in UTC ricade nella sera del giorno PRIMA) piu' un ciclo pomeridiano
-    nello stesso giorno di Roma. Prima della correzione del punto 1, la
-    notte produceva 2 oggetti per quel giorno e la riparazione (che leggeva
-    sempre `fuso=None`, cioe' UTC, perche' `home_space_store` non esisteva
-    ancora in `app` nel punto vero della chiamata) ne produceva 1: l'episodio
-    notturno spariva dal giorno a cui appartiene davvero.
-
-    Mutazione ESEGUITA: rimettendo a mano, in `server.py`, la chiamata alla
-    riparazione dov'era prima di questo giro (87 righe piu' in alto, prima
-    della creazione di `home_space_store`) -- questo test arrossisce con
-    `ValueError: substring not found` dentro `_estrai_blocco_riparazione_
-    avvio` (lo stesso rosso di `test_la_riparazione_di_avvio_riceve_
-    home_space_store_gia_costruito`, verificato li' per esteso). Verificato a
-    mano anche qui, ripristinato subito dopo."""
-    from datetime import datetime, timedelta
-    from zoneinfo import ZoneInfo
-
-    from hiris.app.home_space.reader import HomeSpace
-    from hiris.app.mind.store import ObservationsStore
-
-    roma = ZoneInfo("Europe/Rome")
-    # Due giorni fa: e' uno dei due bersagli della riparazione all'avvio
-    # (`giorni = [oggi-2, oggi-1]`), e resta stabile anche se il test
-    # attraversa la mezzanotte fra la semina e l'esecuzione.
-    giorno_bersaglio_data = datetime.now(roma).date() - timedelta(days=2)
-    giorno_bersaglio = giorno_bersaglio_data.strftime("%Y-%m-%d")
-
-    osservazioni_db = str(tmp_path / "osservazioni.db")
-
-    seme = HomeSpace(str(tmp_path))
-    seme.hold_registries({}, [], reference_frame={"fuso": "Europe/Rome"})
-    seme.close()
-
-    archivio = ObservationsStore(osservazioni_db)
-    try:
-        base = datetime(giorno_bersaglio_data.year, giorno_bersaglio_data.month,
-                        giorno_bersaglio_data.day, tzinfo=roma)
-        cambi = [
-            (base.replace(hour=0, minute=30), "off", "heat"),
-            (base.replace(hour=1, minute=30), "heat", "off"),
-            (base.replace(hour=15, minute=0), "off", "heat"),
-            (base.replace(hour=16, minute=0), "heat", "off"),
-        ]
-        for quando, da, a in cambi:
-            archivio.record(quando_ts=quando.timestamp(), source="entita",
-                            subject="climate.soggiorno", da=da, a=a)
-
-        # Porta 1 -- la notte: fuso letto da `home_space_store` gia' presente,
-        # come farebbe `_aggrega_ieri` alle 00:20.
-        server.aggregate_day(store=archivio, day=giorno_bersaglio,
-                              timezone="Europe/Rome", companions=lambda s: [])
-        oggetti_notte = archivio.facts(day=giorno_bersaglio)
-        assert len(oggetti_notte) == 2
-
-        # Si riparte dal grezzo puro: la riparazione deve arrivare allo
-        # STESSO risultato per conto suo, non ereditare il lavoro della notte.
-        archivio.replace_day(giorno_bersaglio, [])
-
-        # Porta 2 -- la riparazione all'avvio, per DAVVERO: la fetta vera del
-        # sorgente, con la funzione vera. `app` parte senza `home_space_store`,
-        # come nel vero `_on_startup` in quel punto.
-        import os as os_reale
-        cliente = _ClienteLegami()
-        namespace = {
-            "os": os_reale, "data_dir": str(tmp_path), "HomeSpace": server.HomeSpace,
-            # `knowledge` c'e' perche' in PRODUZIONE c'e': l'avvio vero crea
-            # il sapere prima di chiamare la riparazione, e la prova
-            # `test_il_sapere_nasce_PRIMA_della_riparazione_all_avvio` lo
-            # difende sul sorgente invece che sulla fiducia.
-            "app": {"observations": archivio, "knowledge": _sapere(tmp_path)},
-            "ha_client": cliente,
-            "entity_cache": None, "rebuild": server.rebuild,
-            "schedule_registry_rebuild": server.schedule_registry_rebuild,
-            "reaggregate_last_two_days": server.reaggregate_last_two_days,
-            "logger": logging.getLogger("test_due_porte"),
-        }
-        corpo = _estrai_blocco_riparazione_avvio()
-        func_src = "async def _check():\n" + textwrap.indent(corpo, "    ")
-        exec(compile(func_src, "<_on_startup riparazione avvio -- due porte>", "exec"),
-            namespace)
-        try:
-            asyncio.run(namespace["_check"]())
-        finally:
-            namespace["app"]["home_space_store"].close()
-
-        oggetti_riparazione = archivio.facts(day=giorno_bersaglio)
-
-        def _normalizza(elenco):
-            return sorted(
-                ({k: v for k, v in o.items() if k != "id"} for o in elenco),
-                key=lambda o: (o["protagonista"], o["inizio_ts"]))
-
-        assert _normalizza(oggetti_notte) == _normalizza(oggetti_riparazione)
-    finally:
-        archivio.close()
-
-
 def test_se_la_riaggregazione_solleva_l_avvio_prosegue(caplog):
     """Comportamento, non testo: si esegue il VERO try/except del punto di
     chiamata, con `reaggregate_last_two_days` sostituita da una finta
@@ -1217,214 +772,6 @@ def test_se_la_riaggregazione_solleva_l_avvio_prosegue(caplog):
 # parziale, chi sostituisce (`reaggregate_last_two_days`) no.
 # --------------------------------------------------------------------------
 
-def test_l_aggregazione_notturna_chiede_le_direzioni_una_volta(tmp_path):
-    """`_aggrega_ieri` chiama `ha_client.energy_directions()` -- una volta
-    sola per il giro, non per soggetto -- e la usa per gli episodi di
-    energia del giorno."""
-    from datetime import datetime, timedelta
-
-    from hiris.app.mind.store import ObservationsStore
-
-    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
-    try:
-        adesso_reale = datetime.now(UTC)
-        ieri = adesso_reale - timedelta(days=1)
-        for ora, valore in ((1, "10.0"), (20, "25.0")):
-            quando = ieri.replace(hour=ora, minute=0, second=0, microsecond=0)
-            archivio.record(quando_ts=quando.timestamp(), source="entita",
-                            subject="sensor.energia_prodotta", da=None, a=valore,
-                            device_class="energy")
-
-        cliente = _ClienteLegami(direzioni={
-            "sensor.energia_prodotta": {"direzione": "produzione", "provenienza": "dichiarata"}})
-        logger_test = logging.getLogger("test_aggrega_ieri_direzioni")
-        job = _carica_funzione_innestata("_aggrega_ieri", {
-            "app": {"home_space_store": None, "observations": archivio,
-                    "knowledge": _sapere(tmp_path)},
-            "ha_client": cliente, "logger": logger_test,
-            "aggregate_day": server.aggregate_day, "datetime": server.datetime,
-            "timedelta": server.timedelta, "home_space_zone": server.home_space_zone,
-            "day_boundaries": server.day_boundaries,
-            "build_companions": server.build_companions,
-            "build_balances": server.build_balances,
-            "directions_by_translation_key": server.directions_by_translation_key,
-            "_report_ingredients": server._report_ingredients,
-            "_timezone_from_home_space_store": server._timezone_from_home_space_store,
-        })
-
-        asyncio.run(job())
-
-        assert cliente.direzioni_chieste == 1
-        ieri_str = ieri.strftime("%Y-%m-%d")
-        [oggetto] = archivio.facts(day=ieri_str)
-        assert oggetto["corpo"]["direzione"] == "produzione"
-        assert oggetto["corpo"]["provenienza"] == "dichiarata"
-    finally:
-        archivio.close()
-
-
-def test_l_aggregazione_notturna_prosegue_se_le_direzioni_non_si_leggono(tmp_path):
-    """**Chi costruisce dal nulla tollera il parziale**, identico alla regola
-    gia' presa per i comprimari (vedi i test gemelli piu' sopra): un guasto
-    di `energy_directions()` non deve fermare la notte. L'episodio nasce
-    comunque, senza `direzione`/`provenienza` -- non un oggetto in meno,
-    solo un oggetto piu' povero."""
-    from datetime import datetime, timedelta
-
-    from hiris.app.mind.store import ObservationsStore
-
-    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
-    try:
-        adesso_reale = datetime.now(UTC)
-        ieri = adesso_reale - timedelta(days=1)
-        quando = ieri.replace(hour=10, minute=0, second=0, microsecond=0)
-        archivio.record(quando_ts=quando.timestamp(), source="entita",
-                        subject="sensor.energia_x", da=None, a="5.0",
-                        device_class="energy")
-
-        cliente = _ClienteLegami(direzioni_errore="Home Assistant non ha risposto")
-        logger_test = logging.getLogger("test_aggrega_ieri_direzioni_guasto")
-        job = _carica_funzione_innestata("_aggrega_ieri", {
-            "app": {"home_space_store": None, "observations": archivio,
-                    "knowledge": _sapere(tmp_path)},
-            "ha_client": cliente, "logger": logger_test,
-            "aggregate_day": server.aggregate_day, "datetime": server.datetime,
-            "timedelta": server.timedelta, "home_space_zone": server.home_space_zone,
-            "day_boundaries": server.day_boundaries,
-            "build_companions": server.build_companions,
-            "build_balances": server.build_balances,
-            "directions_by_translation_key": server.directions_by_translation_key,
-            "_report_ingredients": server._report_ingredients,
-            "_timezone_from_home_space_store": server._timezone_from_home_space_store,
-        })
-
-        asyncio.run(job())  # non deve sollevare
-
-        ieri_str = ieri.strftime("%Y-%m-%d")
-        [oggetto] = archivio.facts(day=ieri_str)
-        assert oggetto["genere"] == "energia"
-        assert "direzione" not in oggetto["corpo"]
-        assert "provenienza" not in oggetto["corpo"]
-    finally:
-        archivio.close()
-
-
-def test_la_riparazione_all_avvio_applica_le_direzioni(tmp_path):
-    """Simmetrico al test dei comprimari (`test_la_riparazione_all_avvio_
-    costruisce_i_comprimari`): quando la lettura riesce, gli episodi di
-    energia riscritti dalla riparazione portano `direzione`/`provenienza`."""
-    from datetime import datetime, timedelta
-
-    from hiris.app.mind.store import ObservationsStore
-
-    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
-    try:
-        oggi = datetime(2026, 8, 24, tzinfo=UTC)
-        quando = (oggi - timedelta(days=1)).replace(hour=10)
-        archivio.record(quando_ts=quando.timestamp(), source="entita",
-                        subject="sensor.energia_prelievo", da=None, a="12.0",
-                        device_class="energy")
-
-        cliente = _ClienteLegami(direzioni={
-            "sensor.energia_prelievo": {"direzione": "prelievo", "provenienza": "dichiarata"}})
-        asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": None, "observations": archivio,
-             "knowledge": _sapere(tmp_path)}, ha_client=cliente,
-            now=lambda tz: oggi.astimezone(tz)))
-
-        ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
-        [oggetto] = archivio.facts(day=ieri)
-        assert oggetto["corpo"]["direzione"] == "prelievo"
-        assert oggetto["corpo"]["provenienza"] == "dichiarata"
-    finally:
-        archivio.close()
-
-
-def test_la_riparazione_all_avvio_si_ferma_se_le_direzioni_non_si_leggono(tmp_path):
-    """**Il test che conta, gemello di `test_se_i_comprimari_non_si_
-    costruiscono_l_archivio_resta_intatto`**: qui i COMPRIMARI si leggono
-    benissimo (`falliti == 0`), ma le DIREZIONI no. La riparazione SOSTITUISCE
-    -- e un episodio di energia riscritto senza `direzione` sarebbe piu'
-    povero di quello che la notte aveva gia' scritto CON `direzione`. Deve
-    fermarsi lo stesso, per la stessa asimmetria gia' decisa per i comprimari:
-    chi sostituisce non tollera nessun guasto, nemmeno uno dei due letture.
-
-    Mutazione ESEGUITA: nel corpo di `reaggregate_last_two_days`, il
-    controllo sull'esito di `energy_directions()` sostituito con un `pass`
-    (ignorare il guasto). Arrossisce: l'oggetto ricco (con `direzione`) viene
-    sostituito da uno senza -- `dopo != prima`. Ripristinato subito dopo."""
-    from datetime import datetime, timedelta
-
-    from hiris.app.mind.store import ObservationsStore
-
-    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
-    try:
-        oggi = datetime(2026, 8, 24, tzinfo=UTC)
-        l_altro_ieri = (oggi - timedelta(days=2)).strftime("%Y-%m-%d")
-        ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
-        for giorno, delta in ((l_altro_ieri, 2), (ieri, 1)):
-            quando = (oggi - timedelta(days=delta)).replace(hour=10)
-            archivio.record(quando_ts=quando.timestamp(), source="entita",
-                            subject="sensor.energia_prelievo", da=None, a="12.0",
-                            device_class="energy")
-
-        # Il "gia' fatto dalla notte": un episodio di energia CON direzione,
-        # per entrambi i giorni bersaglio.
-        ricco = [{"genere": "energia", "protagonista": "sensor.energia_prelievo",
-                  "inizio_ts": 0.0, "fine_ts": 1.0,
-                  "corpo": {"valore_iniziale": "1.0", "valore_finale": "2.0",
-                           "differenza": 1.0, "comprimari": [], "misure": {},
-                           "direzione": "prelievo", "provenienza": "dichiarata"}}]
-        archivio.replace_day(l_altro_ieri, ricco)
-        archivio.replace_day(ieri, ricco)
-        prima = {g: archivio.facts(day=g) for g in (l_altro_ieri, ieri)}
-
-        cliente = _ClienteLegami(direzioni_errore="Home Assistant non ha risposto")
-        asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": None, "observations": archivio,
-             "knowledge": _sapere(tmp_path)}, ha_client=cliente,
-            now=lambda tz: oggi.astimezone(tz)))
-
-        dopo = {g: archivio.facts(day=g) for g in (l_altro_ieri, ieri)}
-        assert dopo == prima
-    finally:
-        archivio.close()
-
-
-def test_la_riparazione_chiede_le_direzioni_una_volta_per_i_due_giorni(tmp_path):
-    """Come i comprimari (Task 6): una connessione sola per l'intero giro
-    della riparazione, non una per giorno."""
-    from datetime import datetime, timedelta
-
-    from hiris.app.mind.store import ObservationsStore
-
-    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
-    try:
-        oggi = datetime(2026, 8, 24, tzinfo=UTC)
-        for delta in (2, 1):
-            quando = (oggi - timedelta(days=delta)).replace(hour=10)
-            archivio.record(quando_ts=quando.timestamp(), source="entita",
-                            subject="sensor.energia_prelievo", da=None, a="12.0",
-                            device_class="energy")
-
-        cliente = _ClienteLegami()
-        asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": None, "observations": archivio,
-             "knowledge": _sapere(tmp_path)}, ha_client=cliente,
-            now=lambda tz: oggi.astimezone(tz)))
-
-        assert cliente.direzioni_chieste == 1
-    finally:
-        archivio.close()
-
-
-# --------------------------------------------------------------------------
-# Il bilancio dell'energia (mandato 27/08/2026): un dispositivo con una
-# direzione utile diventa UN oggetto di genere "bilancio" e la sua entita'
-# smette di produrre l'episodio individuale -- e la STESSA asimmetria gia'
-# decisa per comprimari e direzioni: la notte tollera, la riparazione no.
-# --------------------------------------------------------------------------
-
 def _casa_con_un_dispositivo(tmp_path, *, fuso="Europe/Rome"):
     """Un `HomeSpace` reale con un dispositivo e una sua entita' di
     energia -- il minimo che `build_balances` ha bisogno di leggere dal
@@ -1467,6 +814,36 @@ def _chiusura_saperi():
     _SAPERI_APERTI.clear()
 
 
+def _cronaca_intera(archivio):
+    """Le voci di cronaca di tutti i giorni archiviati.
+
+    Sostituisce `archivio.facts(limit=...)`: lo strato degli oggetti e' uscito
+    (spec §13, 15/09/2026) e gli episodi vivono dentro i resoconti.
+    """
+    return [{**v, "giorno": r["giorno"]}
+            for r in archivio.reports(limit=50) for v in (r.get("cronaca") or [])]
+
+
+class _ClienteStatistiche:
+    """La finta di `HAClient` che la riparazione d'avvio usa adesso.
+
+    Era `_ClienteLegami`, ed e' uscita coi comprimari (15/09/2026): la
+    riparazione non chiede piu' `legami` a nessuno. Le resta `hourly_
+    statistics`, che `_report_ingredients` chiama solo quando c'e' un'anagrafe
+    -- e in queste prove `home_space_store` e' `None`, quindi non ci arriva
+    mai. La finta c'e' lo stesso perche' `None` non e' un client: passarlo
+    nasconderebbe un `AttributeError` dietro un `except`.
+    """
+
+    async def hourly_statistics(self, identifiers: list[str],
+                                from_iso: str, to_iso: str) -> dict:
+        # La firma e' quella VERA, non `*args`: il cancello dei contratti
+        # (`test_ha_client_contract.py`) non accetta una finta che accetti
+        # qualunque cosa -- una finta piu' permissiva del vero nasconde
+        # proprio i difetti che sta li' a prendere.
+        return {"serie": {}}
+
+
 def _sapere(tmp_path):
     """Il sapere, seminato come fa l'avvio vero.
 
@@ -1500,321 +877,6 @@ def _punto_bilancio(cambio, ora=6):
             "fine": f"2026-08-24T{ora + 1:02d}:00:00+00:00",
             "minimo": None, "massimo": None, "media": None, "cambio": cambio}
 
-
-def test_l_aggregazione_notturna_costruisce_e_scrive_il_bilancio(tmp_path):
-    """`_aggrega_ieri` chiama `build_balances` e passa il risultato ad
-    `aggregate_day`: l'entita' del dispositivo smette di produrre il suo
-    episodio individuale, e nasce un oggetto di genere "bilancio"."""
-    from datetime import datetime, timedelta
-
-    from hiris.app.mind.store import ObservationsStore
-
-    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
-    casa = _casa_con_un_dispositivo(tmp_path)
-    try:
-        # `_aggrega_ieri` calcola "ieri" nel fuso della CASA
-        # (`home_space_zone(fuso)`, Europe/Rome qui), non in UTC: usare UTC per
-        # seminare il dato produce un giorno diverso da quello che il job
-        # interroga davvero nella finestra (tipicamente due ore, DST) in
-        # cui Roma e' gia' nel giorno successivo mentre l'UTC no --
-        # trovato dal vivo (review indipendente, fetta «la rinomina»,
-        # Task 7): un test che dipende dall'orologio reale non deve
-        # dipendere da un FUSO diverso da quello che il codice usa.
-        adesso_reale = datetime.now(server.home_space_zone("Europe/Rome"))
-        ieri = adesso_reale - timedelta(days=1)
-        quando = ieri.replace(hour=10, minute=0, second=0, microsecond=0)
-        archivio.record(quando_ts=quando.timestamp(), source="entita",
-                        subject="sensor.energia_prodotta_oggi", da=None, a="5.0",
-                        device_class="energy")
-
-        cliente = _ClienteLegami(
-            direzioni={"sensor.energia_prodotta_oggi":
-                      {"direzione": "produzione", "provenienza": "dichiarata"}},
-            statistiche={"sensor.energia_prodotta_oggi":
-                         _giornata_bilancio({6: 1.0, 7: 2.0})})
-        logger_test = logging.getLogger("test_aggrega_ieri_bilancio")
-        job = _carica_funzione_innestata("_aggrega_ieri", {
-            "app": {"home_space_store": casa, "observations": archivio,
-                    "knowledge": _sapere(tmp_path)},
-            "ha_client": cliente, "logger": logger_test,
-            "aggregate_day": server.aggregate_day, "datetime": server.datetime,
-            "timedelta": server.timedelta, "home_space_zone": server.home_space_zone,
-            "day_boundaries": server.day_boundaries,
-            "build_companions": server.build_companions,
-            "build_balances": server.build_balances,
-            "directions_by_translation_key": server.directions_by_translation_key,
-            "_report_ingredients": server._report_ingredients,
-            "_timezone_from_home_space_store": server._timezone_from_home_space_store,
-        })
-
-        asyncio.run(job())
-
-        ieri_str = ieri.strftime("%Y-%m-%d")
-        oggetti = archivio.facts(day=ieri_str)
-        assert {o["genere"] for o in oggetti} == {"bilancio"}
-        [bilancio] = oggetti
-        assert bilancio["protagonista"] == "dev1"
-        assert bilancio["corpo"]["dispositivo"] == "Inverter"
-        assert bilancio["corpo"]["totali"]["produzione"]["valore"] == 3.0
-    finally:
-        archivio.close()
-        casa.close()
-
-
-def test_l_aggregazione_notturna_prosegue_se_le_statistiche_del_bilancio_falliscono(tmp_path):
-    """**Chi costruisce dal nulla tollera il parziale**, identica alla
-    regola gia' presa per comprimari e direzioni: un guasto di
-    `hourly_statistics()` non deve fermare la notte -- l'entita' torna
-    semplicemente a produrre il suo episodio individuale, come se questa
-    fetta non esistesse."""
-    from datetime import datetime, timedelta
-
-    from hiris.app.mind.store import ObservationsStore
-
-    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
-    casa = _casa_con_un_dispositivo(tmp_path)
-    try:
-        # Stessa correzione del test gemello sopra: "ieri" nel fuso
-        # della casa, non in UTC (vedi la nota li').
-        adesso_reale = datetime.now(server.home_space_zone("Europe/Rome"))
-        ieri = adesso_reale - timedelta(days=1)
-        quando = ieri.replace(hour=10, minute=0, second=0, microsecond=0)
-        archivio.record(quando_ts=quando.timestamp(), source="entita",
-                        subject="sensor.energia_prodotta_oggi", da=None, a="5.0",
-                        device_class="energy")
-
-        cliente = _ClienteLegami(
-            direzioni={"sensor.energia_prodotta_oggi":
-                      {"direzione": "produzione", "provenienza": "dichiarata"}},
-            statistiche_errore="Home Assistant non ha risposto")
-        logger_test = logging.getLogger("test_aggrega_ieri_bilancio_guasto")
-        job = _carica_funzione_innestata("_aggrega_ieri", {
-            "app": {"home_space_store": casa, "observations": archivio,
-                    "knowledge": _sapere(tmp_path)},
-            "ha_client": cliente, "logger": logger_test,
-            "aggregate_day": server.aggregate_day, "datetime": server.datetime,
-            "timedelta": server.timedelta, "home_space_zone": server.home_space_zone,
-            "day_boundaries": server.day_boundaries,
-            "build_companions": server.build_companions,
-            "build_balances": server.build_balances,
-            "directions_by_translation_key": server.directions_by_translation_key,
-            "_report_ingredients": server._report_ingredients,
-            "_timezone_from_home_space_store": server._timezone_from_home_space_store,
-        })
-
-        asyncio.run(job())  # non deve sollevare
-
-        ieri_str = ieri.strftime("%Y-%m-%d")
-        oggetti = archivio.facts(day=ieri_str)
-        assert {o["genere"] for o in oggetti} == {"energia"}
-        assert oggetti[0]["protagonista"] == "sensor.energia_prodotta_oggi"
-    finally:
-        archivio.close()
-        casa.close()
-
-
-def test_la_riparazione_all_avvio_applica_i_bilanci(tmp_path):
-    """Simmetrico al test dei comprimari e delle direzioni: quando le
-    statistiche si leggono, la riparazione scrive il bilancio."""
-    from datetime import datetime, timedelta
-
-    from hiris.app.mind.store import ObservationsStore
-
-    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
-    casa = _casa_con_un_dispositivo(tmp_path)
-    try:
-        oggi = datetime(2026, 8, 24, tzinfo=UTC)
-        quando = (oggi - timedelta(days=1)).replace(hour=10)
-        archivio.record(quando_ts=quando.timestamp(), source="entita",
-                        subject="sensor.energia_prodotta_oggi", da=None, a="5.0",
-                        device_class="energy")
-
-        cliente = _ClienteLegami(
-            direzioni={"sensor.energia_prodotta_oggi":
-                      {"direzione": "produzione", "provenienza": "dichiarata"}},
-            statistiche={"sensor.energia_prodotta_oggi":
-                         _giornata_bilancio({6: 4.0})})
-        asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": casa, "observations": archivio,
-             "knowledge": _sapere(tmp_path)}, ha_client=cliente,
-            now=lambda tz: oggi.astimezone(tz)))
-
-        ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
-        oggetti = archivio.facts(day=ieri)
-        assert {o["genere"] for o in oggetti} == {"bilancio"}
-        assert oggetti[0]["corpo"]["totali"]["produzione"]["valore"] == 4.0
-    finally:
-        archivio.close()
-        casa.close()
-
-
-def test_la_riparazione_all_avvio_si_ferma_se_le_statistiche_del_bilancio_falliscono(tmp_path):
-    """**Il test che conta, gemello di quelli su comprimari e direzioni**:
-    qui comprimari E direzioni si leggono benissimo, ma le statistiche del
-    bilancio no. La riparazione SOSTITUISCE -- e un giorno riscritto SENZA
-    bilancio sopra un giorno che la notte aveva gia' costruito CON un
-    bilancio sarebbe un impoverimento puro. Deve fermarsi lo stesso, per
-    ENTRAMBI i giorni bersaglio (non solo quello che la mutazione tocca).
-
-    Mutazione ESEGUITA: nel corpo di `reaggregate_last_two_days`, il
-    controllo `if failed_balances:` nel ciclo dei bilanci sostituito con
-    `if False:` (ignorare il guasto) -- arrossisce: l'oggetto ricco (col
-    bilancio) viene sostituito da uno senza (l'episodio individuale torna)
-    -- `dopo != prima`. Ripristinato subito dopo."""
-    from datetime import datetime, timedelta
-
-    from hiris.app.mind.store import ObservationsStore
-
-    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
-    casa = _casa_con_un_dispositivo(tmp_path)
-    try:
-        oggi = datetime(2026, 8, 24, tzinfo=UTC)
-        l_altro_ieri = (oggi - timedelta(days=2)).strftime("%Y-%m-%d")
-        ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
-        for giorno, delta in ((l_altro_ieri, 2), (ieri, 1)):
-            quando = (oggi - timedelta(days=delta)).replace(hour=10)
-            archivio.record(quando_ts=quando.timestamp(), source="entita",
-                            subject="sensor.energia_prodotta_oggi", da=None, a="5.0",
-                            device_class="energy")
-
-        # Il "gia' fatto dalla notte": un bilancio, per entrambi i giorni.
-        ricco = [{"genere": "bilancio", "protagonista": "dev1",
-                  "inizio_ts": 0.0, "fine_ts": 1.0,
-                  "corpo": {"dispositivo": "Inverter", "entita": ["sensor.energia_prodotta_oggi"],
-                           "totali": {"produzione": {"valore": 9.9, "provenienza": "dichiarata"}}}}]
-        archivio.replace_day(l_altro_ieri, ricco)
-        archivio.replace_day(ieri, ricco)
-        prima = {g: archivio.facts(day=g) for g in (l_altro_ieri, ieri)}
-
-        cliente = _ClienteLegami(
-            direzioni={"sensor.energia_prodotta_oggi":
-                      {"direzione": "produzione", "provenienza": "dichiarata"}},
-            statistiche_errore="Home Assistant non ha risposto")
-        asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": casa, "observations": archivio,
-             "knowledge": _sapere(tmp_path)}, ha_client=cliente,
-            now=lambda tz: oggi.astimezone(tz)))
-
-        dopo = {g: archivio.facts(day=g) for g in (l_altro_ieri, ieri)}
-        assert dopo == prima
-    finally:
-        archivio.close()
-        casa.close()
-
-
-def test_la_riparazione_all_avvio_si_ferma_anche_se_la_serie_torna_vuota_senza_errore(tmp_path):
-    """**Gemello del test sopra per il punto 3 del mandato (MEDIO,
-    27/08/2026)**: qui `HAClient.hourly_statistics()` NON solleva nessun
-    `errore` -- la richiesta riesce, ma la serie torna vuota per il
-    dispositivo candidato (identificatori rinominati, recorder ripartito).
-    Prima di questa correzione `failed_balances` restava a zero e la
-    riparazione avrebbe sostituito il bilancio della notte con undici
-    frammenti individuali -- l'esatto impoverimento misurato dalla review."""
-    from datetime import datetime, timedelta
-
-    from hiris.app.mind.store import ObservationsStore
-
-    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
-    casa = _casa_con_un_dispositivo(tmp_path)
-    try:
-        oggi = datetime(2026, 8, 24, tzinfo=UTC)
-        l_altro_ieri = (oggi - timedelta(days=2)).strftime("%Y-%m-%d")
-        ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
-        for giorno, delta in ((l_altro_ieri, 2), (ieri, 1)):
-            quando = (oggi - timedelta(days=delta)).replace(hour=10)
-            archivio.record(quando_ts=quando.timestamp(), source="entita",
-                            subject="sensor.energia_prodotta_oggi", da=None, a="5.0",
-                            device_class="energy")
-
-        ricco = [{"genere": "bilancio", "protagonista": "dev1",
-                  "inizio_ts": 0.0, "fine_ts": 1.0,
-                  "corpo": {"dispositivo": "Inverter", "entita": ["sensor.energia_prodotta_oggi"],
-                           "totali": {"produzione": {"valore": 9.9, "provenienza": "dichiarata"}}}}]
-        archivio.replace_day(l_altro_ieri, ricco)
-        archivio.replace_day(ieri, ricco)
-        prima = {g: archivio.facts(day=g) for g in (l_altro_ieri, ieri)}
-
-        cliente = _ClienteLegami(
-            direzioni={"sensor.energia_prodotta_oggi":
-                      {"direzione": "produzione", "provenienza": "dichiarata"}},
-            statistiche={})  # riesce, ma non c'e' niente -- nessun `errore`
-        asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": casa, "observations": archivio,
-             "knowledge": _sapere(tmp_path)}, ha_client=cliente,
-            now=lambda tz: oggi.astimezone(tz)))
-
-        dopo = {g: archivio.facts(day=g) for g in (l_altro_ieri, ieri)}
-        assert dopo == prima
-    finally:
-        archivio.close()
-        casa.close()
-
-
-def test_la_riparazione_legge_le_statistiche_GIUSTE_per_ciascun_giorno(tmp_path):
-    """**Punto 4 del mandato (MEDIO, 27/08/2026), provato per mutazione**:
-    `_ClienteLegami.hourly_statistics` accettava la finestra `da_iso`/
-    `a_iso` e la ignorava -- la registrava soltanto. Nessun test di
-    cablaggio rileggeva la finestra per i due giorni della riparazione, e
-    la mutazione "leggi sempre il primo giorno per entrambi" produceva un
-    archivio byte-identico a quello corretto.
-
-    Qui i due giorni hanno statistiche DIVERSE (`statistiche_per_finestra`,
-    chiave = `(da_iso, a_iso)` del giorno) -- se la riparazione leggesse la
-    finestra sbagliata (es. sempre quella dell'altro ieri), i due bilanci
-    coinciderebbero, e non devono."""
-    from datetime import datetime, timedelta
-
-    from hiris.app.mind.facts import day_boundaries
-    from hiris.app.mind.store import ObservationsStore
-
-    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
-    casa = _casa_con_un_dispositivo(tmp_path)
-    try:
-        oggi = datetime(2026, 8, 24, tzinfo=UTC)
-        l_altro_ieri = (oggi - timedelta(days=2)).strftime("%Y-%m-%d")
-        ieri = (oggi - timedelta(days=1)).strftime("%Y-%m-%d")
-        for giorno, delta in ((l_altro_ieri, 2), (ieri, 1)):
-            quando = (oggi - timedelta(days=delta)).replace(hour=10)
-            archivio.record(quando_ts=quando.timestamp(), source="entita",
-                            subject="sensor.energia_prodotta_oggi", da=None, a="5.0",
-                            device_class="energy")
-
-        def _finestra_iso(giorno):
-            da_ts, a_ts = day_boundaries(giorno, "Europe/Rome")
-            return (datetime.fromtimestamp(da_ts, tz=UTC).isoformat(),
-                    datetime.fromtimestamp(a_ts, tz=UTC).isoformat())
-
-        cliente = _ClienteLegami(
-            direzioni={"sensor.energia_prodotta_oggi":
-                      {"direzione": "produzione", "provenienza": "dichiarata"}},
-            statistiche_per_finestra={
-                _finestra_iso(l_altro_ieri): {
-                    "sensor.energia_prodotta_oggi": _giornata_bilancio({6: 3.0})
-                },
-                _finestra_iso(ieri): {
-                    "sensor.energia_prodotta_oggi": _giornata_bilancio({6: 7.0})},
-            })
-        asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": casa, "observations": archivio,
-             "knowledge": _sapere(tmp_path)}, ha_client=cliente,
-            now=lambda tz: oggi.astimezone(tz)))
-
-        [b_altro_ieri] = [o for o in archivio.facts(day=l_altro_ieri)
-                          if o["genere"] == "bilancio"]
-        [b_ieri] = [o for o in archivio.facts(day=ieri) if o["genere"] == "bilancio"]
-        assert b_altro_ieri["corpo"]["totali"]["produzione"]["valore"] == 3.0
-        assert b_ieri["corpo"]["totali"]["produzione"]["valore"] == 7.0
-    finally:
-        archivio.close()
-        casa.close()
-
-
-# --------------------------------------------------------------------------
-# Punto 5 del mandato: il doppione con `hiris_ha_problems` (`repairs/
-# list_issues` letto due volte, per conto proprio) NON si unifica -- ma
-# resta documentato accanto al lavoro del cervello, o la seconda lettura
-# sembra una svista a chi legge dopo.
-# --------------------------------------------------------------------------
 
 def test_il_doppione_con_hiris_ha_problems_e_documentato():
     sorgente = inspect.getsource(server)
@@ -2528,44 +1590,6 @@ def test_l_osservatore_riceve_il_sapere_e_nasce_DOPO_di_lui():
             < sorgente.index('app["watcher"] = Watcher('))
 
 
-def test_la_mappa_delle_direzioni_ARRIVA_DAVVERO_dal_sapere_al_lettore(tmp_path):
-    """**La catena che nessuna prova guardava** (revisione indipendente,
-    13/09/2026). La finta annotava la mappa con cui veniva chiamata e nessuno
-    la asseriva: se `directions_by_translation_key(app["knowledge"])` tornasse
-    `{}` -- seme non eseguito, prefisso cambiato, archivio vuoto -- tutte le
-    prove di cablaggio sarebbero rimaste verdi, e la casa avrebbe perso la
-    meta' DEDOTTA delle direzioni **in silenzio**. E' letteralmente il rischio
-    descritto nel docstring di `HAClient.energy_directions`.
-
-    Mutazione ESEGUITA: passare `direction_by_translation_key={}` dal
-    chiamante -- rossa.
-    """
-    from datetime import datetime, timedelta
-
-    from hiris.app.mind.store import ObservationsStore
-
-    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
-    sapere = _sapere(tmp_path)
-    try:
-        oggi = datetime(2026, 8, 24, tzinfo=UTC)
-        archivio.record(quando_ts=(oggi - timedelta(days=1)).replace(hour=10).timestamp(),
-                        source="entita", subject="light.x", da="off", a="on")
-        cliente = _ClienteLegami()
-
-        asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": None, "observations": archivio,
-             "knowledge": sapere},
-            ha_client=cliente, now=lambda tz: oggi.astimezone(tz)))
-
-        assert cliente.direzioni_mappe, "il lettore non e' stato chiamato affatto"
-        mappa = cliente.direzioni_mappe[0]
-        assert mappa["energy_generating_today"] == "produzione"
-        assert len(mappa) == 14
-    finally:
-        archivio.close()
-        sapere.close()
-
-
 def test_la_ricetta_del_bilancio_SI_SEMINA_nel_sapere_al_primo_giro(tmp_path):
     """**La meta' che mancava alla promessa della spec §7.**
 
@@ -2650,32 +1674,6 @@ def test_L_AGGREGAZIONE_NOTTURNA_scrive_anche_il_RESOCONTO(tmp_path):
         archivio.close()
 
 
-def test_SENZA_ricette_l_aggregazione_non_scrive_nessun_resoconto(tmp_path):
-    """`recipes is None` significa «questo chiamante non porta le ricette»: si
-    scrivono gli oggetti e basta. Un resoconto scritto senza le ricette avrebbe
-    la meta' delle misure vuota **per una ragione che non riguarda la casa**, e
-    resterebbe li' a dire il falso finche' qualcuno non rifa' quel giorno.
-
-    Mutazione ESEGUITA: scrivere il resoconto anche con `recipes=None` --
-    rossa.
-    """
-    from datetime import datetime
-
-    from hiris.app.mind.store import ObservationsStore
-
-    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
-    try:
-        base = datetime(2026, 8, 24, 10, tzinfo=UTC)
-        archivio.record(quando_ts=base.timestamp(), source="entita",
-                        subject="light.cucina", da="off", a="on")
-
-        server.aggregate_day(store=archivio, day="2026-08-24",
-                             timezone="Europe/Rome")
-
-        assert archivio.report("2026-08-24") is None
-    finally:
-        archivio.close()
-
 def test_la_riparazione_all_avvio_riscrive_anche_il_RESOCONTO_dei_due_giorni(tmp_path):
     """**Difetto trovato dal vivo il 14/09/2026**, aggiornando la casa vera
     alla 3.33.0: `GET /api/mind/report` tornava `{"resoconti": []}` e ogni
@@ -2707,7 +1705,7 @@ def test_la_riparazione_all_avvio_riscrive_anche_il_RESOCONTO_dei_due_giorni(tmp
 
         asyncio.run(server.reaggregate_last_two_days(
             {"home_space_store": None, "observations": archivio,
-             "knowledge": _sapere(tmp_path)}, ha_client=_ClienteLegami(),
+             "knowledge": _sapere(tmp_path)}, ha_client=_ClienteStatistiche(),
             now=lambda tz: oggi.astimezone(tz)))
 
         for giorno in ("2026-08-22", "2026-08-23"):
@@ -2719,156 +1717,6 @@ def test_la_riparazione_all_avvio_riscrive_anche_il_RESOCONTO_dei_due_giorni(tmp
         assert archivio.report("2026-08-24") is None
     finally:
         archivio.close()
-
-def test_comprimari_falliti_saltano_gli_OGGETTI_ma_NON_il_resoconto(tmp_path):
-    """**La regola delle uscite anticipate vale per gli oggetti, non per il
-    resoconto.**
-
-    Trovato dal vivo il 14/09/2026: sulla casa vera, dopo l'aggiornamento alla
-    3.33.1, `GET /api/mind/report` tornava ancora `{"resoconti": []}`. La
-    riparazione ha quattro uscite -- comprimari falliti, direzioni non lette,
-    bilanci non letti -- e tutte tornano PRIMA di scrivere. Sono giuste per
-    gli oggetti («chi sostituisce non tollera il parziale»); per il resoconto
-    significano che su quella casa non ne sarebbe mai nato nessuno.
-
-    Mutazione: togliere la scrittura dei resoconti mancanti dal ramo dei
-    comprimari falliti -- rossa su `assert archivio.report(...) is not None`.
-    """
-    from datetime import datetime, timedelta
-
-    from hiris.app.mind.store import ObservationsStore
-
-    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
-    try:
-        oggi = datetime(2026, 8, 24, tzinfo=UTC)
-        for delta, soggetto in ((2, "l_altro_ieri"), (1, "ieri")):
-            quando = (oggi - timedelta(days=delta)).replace(hour=10)
-            archivio.record(quando_ts=quando.timestamp(), source="entita",
-                            subject=f"light.{soggetto}", da="off", a="on")
-
-        # Ogni soggetto fallisce: `build_companions` li conta tutti come
-        # falliti, e la riparazione degli oggetti si salta per intero.
-        rotto = _ClienteLegami(default={"errore": "rete giu'"})
-        asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": None, "observations": archivio,
-             "knowledge": _sapere(tmp_path)}, ha_client=rotto,
-            now=lambda tz: oggi.astimezone(tz)))
-
-        # Gli oggetti NON si scrivono: la regola regge.
-        assert archivio.facts(limit=10) == []
-        # Il resoconto SI'.
-        for giorno in ("2026-08-22", "2026-08-23"):
-            scritto = archivio.report(giorno)
-            assert scritto is not None, f"il resoconto di {giorno} manca"
-    finally:
-        archivio.close()
-
-
-def test_un_resoconto_che_c_e_gia_NON_si_sostituisce_con_uno_povero(tmp_path):
-    """La stessa asimmetria, applicata al resoconto: un giorno che ha gia' il
-    suo -- scritto dalla notte, con le misure -- non si riscrive con una
-    cronaca nuda perche' stamattina la rete era giu'. E' la regola che usa
-    anche `_migration_8` per gli oggetti storici.
-
-    Mutazione: scrivere sempre invece che solo i mancanti -- rossa su
-    `assert scritto["cronaca"][0]["chi"] == "gia-scritto"`.
-    """
-    from datetime import datetime, timedelta
-
-    from hiris.app.mind.store import ObservationsStore
-
-    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
-    try:
-        oggi = datetime(2026, 8, 24, tzinfo=UTC)
-        for delta, soggetto in ((2, "l_altro_ieri"), (1, "ieri")):
-            quando = (oggi - timedelta(days=delta)).replace(hour=10)
-            archivio.record(quando_ts=quando.timestamp(), source="entita",
-                            subject=f"light.{soggetto}", da="off", a="on")
-        archivio.replace_report("2026-08-22", {
-            "giorno": "2026-08-22", "misure": [{"soggetto": "x", "misura": "y",
-                                                "valore": 1, "unita": "kWh",
-                                                "copertura": 1.0}],
-            "cronaca": [{"chi": "gia-scritto"}]})
-
-        rotto = _ClienteLegami(default={"errore": "rete giu'"})
-        asyncio.run(server.reaggregate_last_two_days(
-            {"home_space_store": None, "observations": archivio,
-             "knowledge": _sapere(tmp_path)}, ha_client=rotto,
-            now=lambda tz: oggi.astimezone(tz)))
-
-        scritto = archivio.report("2026-08-22")
-        assert scritto["cronaca"][0]["chi"] == "gia-scritto"
-        assert scritto["misure"], "le misure del resoconto vero non si perdono"
-    finally:
-        archivio.close()
-
-
-def test_la_riparazione_DICE_com_e_andata_e_la_salute_lo_riporta(tmp_path):
-    """**Il difetto e' stato invisibile per due rilasci perche' non c'era modo
-    di chiederlo.** La riparazione scriveva i suoi quattro warning nel log
-    dell'add-on, che da fuori non si legge: la casa rispondeva «nessun
-    resoconto» e non c'era niente che dicesse perche'.
-
-    Ora l'esito resta in `app["ultima_riparazione"]`, e `/api/health` lo
-    riporta: una domanda sola, e si sa quale uscita e' scattata.
-
-    Mutazione: non scrivere `app["ultima_riparazione"]` nel ramo dei
-    comprimari falliti -- rossa.
-    """
-    from datetime import datetime, timedelta
-
-    from hiris.app.mind.store import ObservationsStore
-
-    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
-    try:
-        oggi = datetime(2026, 8, 24, tzinfo=UTC)
-        quando = (oggi - timedelta(days=1)).replace(hour=10)
-        archivio.record(quando_ts=quando.timestamp(), source="entita",
-                        subject="light.ieri", da="off", a="on")
-        app = {"home_space_store": None, "observations": archivio,
-               "knowledge": _sapere(tmp_path)}
-
-        asyncio.run(server.reaggregate_last_two_days(
-            app, ha_client=_ClienteLegami(default={"errore": "rete giu'"}),
-            now=lambda tz: oggi.astimezone(tz)))
-
-        esito = app["ultima_riparazione"]
-        assert esito["oggetti"] == "saltata"
-        assert "comprimari" in esito["perche"]
-        assert esito["resoconti_scritti"] == ["2026-08-22", "2026-08-23"]
-    finally:
-        archivio.close()
-
-def test_una_riparazione_che_SOLLEVA_lo_dice_lo_stesso(tmp_path):
-    """**`riparazione: null` sulla casa vera, con la 3.33.2 gia' installata.**
-
-    Misurato il 14/09/2026: l'esito si scriveva nelle cinque uscite
-    dichiarate, ma se qualcosa solleva **prima** di arrivarci -- la lettura
-    del fuso e' la prima riga e la sua query SQL non e' protetta, e il
-    docstring di questa stessa funzione lo dice da mesi -- l'eccezione
-    risaliva al chiamante, che la ingoia in un warning, e la salute restava
-    muta: `null`, cioe' «non e' girata», che era **falso**.
-
-    Ora l'esito si scrive anche in quel caso, e l'eccezione continua a
-    propagare: il chiamante decide se contenerla, come prima.
-
-    Mutazione: togliere il `except ... raise` che registra -- rossa su
-    `assert app["ultima_riparazione"]["oggetti"] == "sollevata"`.
-    """
-    class _ArchivioRotto:
-        def readings(self, **_):
-            raise RuntimeError("sqlite del grezzo irraggiungibile")
-
-    app = {"home_space_store": None, "observations": _ArchivioRotto(),
-           "knowledge": _sapere(tmp_path)}
-    with pytest.raises(RuntimeError):
-        asyncio.run(server.reaggregate_last_two_days(
-            app, ha_client=_ClienteLegami()))
-
-    esito = app["ultima_riparazione"]
-    assert esito["oggetti"] == "sollevata"
-    assert "RuntimeError" in esito["perche"]
-    assert "sqlite del grezzo" in esito["perche"]
 
 def test_il_recupero_scrive_UN_giorno_mancante_per_giro_partendo_dal_piu_vecchio(tmp_path):
     """**Misurato dal vivo il 14/09/2026**: sulla casa vera esistevano i
@@ -2903,13 +1751,13 @@ def test_il_recupero_scrive_UN_giorno_mancante_per_giro_partendo_dal_piu_vecchio
                "knowledge": _sapere(tmp_path)}
 
         scritto = asyncio.run(server.backfill_one_missing_report(
-            app, ha_client=_ClienteLegami(), now=lambda tz: oggi.astimezone(tz)))
+            app, ha_client=_ClienteStatistiche(), now=lambda tz: oggi.astimezone(tz)))
         assert scritto == "2026-08-22", scritto
         assert archivio.report("2026-08-22") is not None
 
         # Il giro dopo prende il successivo, e salta quello gia' scritto.
         assert asyncio.run(server.backfill_one_missing_report(
-            app, ha_client=_ClienteLegami(),
+            app, ha_client=_ClienteStatistiche(),
             now=lambda tz: oggi.astimezone(tz))) == "2026-08-23"
     finally:
         archivio.close()
@@ -2939,7 +1787,7 @@ def test_il_recupero_TACE_quando_non_manca_piu_niente(tmp_path):
                "knowledge": _sapere(tmp_path)}
 
         assert asyncio.run(server.backfill_one_missing_report(
-            app, ha_client=_ClienteLegami(), now=lambda tz: oggi.astimezone(tz))) is None
+            app, ha_client=_ClienteStatistiche(), now=lambda tz: oggi.astimezone(tz))) is None
     finally:
         archivio.close()
 
@@ -2967,7 +1815,7 @@ def test_il_recupero_NON_va_oltre_il_grezzo(tmp_path):
                "knowledge": _sapere(tmp_path)}
 
         assert asyncio.run(server.backfill_one_missing_report(
-            app, ha_client=_ClienteLegami(),
+            app, ha_client=_ClienteStatistiche(),
             now=lambda tz: oggi.astimezone(tz))) == "2026-08-23"
     finally:
         archivio.close()

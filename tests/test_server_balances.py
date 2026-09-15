@@ -10,7 +10,7 @@ import pytest
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.mind.facts import day_boundaries
 from hiris.app.server import build_balances
-from tests.test_mind_companions import _ClienteLegami
+from tests._ha_fakes import _ClienteLegami
 
 G = "2026-08-24"
 

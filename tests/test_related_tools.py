@@ -27,10 +27,10 @@ from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.tools import ToolDispatcher
 from hiris.app.memory.store import MemoryStore
 from hiris.app.proxy.ha_client import HAClient
-from tests.test_mind_companions import _ClienteLegami
+from tests._ha_fakes import _ClienteLegami
 
 # La finta di `HAClient.related` usata qui e' `_ClienteLegami`, importata da
-# `test_mind_companions.py` -- l'UNICA del progetto (vedi il suo
+# `tests/_ha_fakes.py` -- l'UNICA del progetto (vedi il suo
 # docstring). Prima di questa correzione questo file ne aveva una propria
 # (`_FintoHA`), che accettava QUALUNQUE `tipo` e rispondeva sempre la stessa
 # mappa: la nona finta dello stesso contratto, la stessa infedelta' che ha

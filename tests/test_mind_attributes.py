@@ -274,9 +274,9 @@ def test_L_ESEMPIO_FONDATIVO_il_riscaldamento_parte_e_la_casa_si_scalda(
 
     aggregate_day(store=archivio, day="2026-09-12", timezone="Europe/Rome")
 
-    [oggetto] = archivio.facts(day="2026-09-12")
+    [oggetto] = ((archivio.report("2026-09-12") or {}).get("cronaca") or [])
     assert oggetto["genere"] == "funzionamento"
-    apertura, arrivo = oggetto["corpo"]["attributi"]
+    apertura, arrivo = oggetto["attributi"]
     # **Tutte e due le voci**: la foto d'apertura (15:30, sta scaldando) e il
     # momento in cui la casa e' arrivata in temperatura (16:30). Senza la
     # prima, meta' della colonna `attributes` del grezzo resterebbe scritta e

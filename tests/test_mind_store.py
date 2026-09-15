@@ -110,114 +110,6 @@ def test_la_potatura_non_tocca_la_riga_esattamente_alla_soglia(archivio):
     assert [r["a"] for r in righe] == ["soglia"]
 
 
-def test_la_potatura_NON_tocca_gli_oggetti(archivio):
-    """Le due tabelle hanno due vite: il grezzo si butta, cio' che si e' capito
-    resta. Una potatura che si portasse via gli oggetti cancellerebbe mesi di
-    osservazione per liberare qualche megabyte."""
-    archivio.replace_day("2026-07-01", [
-        {"genere": "funzionamento", "protagonista": "climate.camera_t",
-         "inizio_ts": ADESSO - 60 * 86400, "fine_ts": ADESSO - 60 * 86400 + 3600,
-         "corpo": {"nota": "vecchissimo"}},
-    ])
-    archivio.prune(ADESSO)
-    assert len(archivio.facts()) == 1
-
-
-def test_un_oggetto_si_rilegge_col_suo_corpo(archivio):
-    archivio.replace_day("2026-08-24", [
-        {"genere": "funzionamento", "protagonista": "climate.camera_t",
-         "inizio_ts": ADESSO, "fine_ts": ADESSO + 5700,
-         "corpo": {"comprimari": ["sensor.camera_temperatura"],
-                   "misure": {"temperatura": {"da": 18.2, "a": 21.0}}}},
-    ])
-    o = archivio.facts(day="2026-08-24")[0]
-    assert isinstance(o["id"], int)
-    assert o["protagonista"] == "climate.camera_t"
-    assert o["corpo"]["misure"]["temperatura"]["a"] == 21.0
-    assert o["fine_ts"] == ADESSO + 5700
-
-
-def test_un_oggetto_ancora_aperto_non_ha_fine(archivio):
-    """A mezzanotte una cosa puo' essere ancora in corso. `None` dice «non e'
-    finita», che e' un fatto -- zero direbbe «e' finita subito»."""
-    archivio.replace_day("2026-08-24", [
-        {"genere": "guasto", "protagonista": "integrazione:sonos",
-         "inizio_ts": ADESSO, "fine_ts": None, "corpo": {}},
-    ])
-    assert archivio.facts()[0]["fine_ts"] is None
-
-
-def test_oggetti_tornano_dal_PIU_RECENTE(archivio):
-    """Il docstring lo afferma: con al piu' una riga per giorno la mutazione
-    DESC->ASC non si nota. Ci vogliono piu' righe nello stesso giorno."""
-    archivio.replace_day("2026-08-24", [
-        {"genere": "funzionamento", "protagonista": protagonista,
-         "inizio_ts": ts, "fine_ts": None, "corpo": {}}
-        for protagonista, ts in (("primo", ADESSO), ("terzo", ADESSO + 200),
-                                 ("secondo", ADESSO + 100))
-    ])
-    assert [o["protagonista"] for o in archivio.facts(day="2026-08-24")] == \
-        ["terzo", "secondo", "primo"]
-
-
-def test_sostituisci_giorno_sostituisce_non_accoda(archivio):
-    """Un INSERT nudo, ripetuto sullo stesso giorno, accoderebbe una seconda
-    copia senza errore. `replace_day` e' l'operazione che rifa' un
-    giorno per intero, in una transazione sola, e deve lasciare UNA copia,
-    non due."""
-    archivio.replace_day("2026-08-24", [
-        {"genere": "funzionamento", "protagonista": "vecchio",
-         "inizio_ts": ADESSO, "fine_ts": None, "corpo": {}},
-    ])
-    archivio.replace_day("2026-08-24", [
-        {"genere": "funzionamento", "protagonista": "nuovo",
-         "inizio_ts": ADESSO, "fine_ts": None, "corpo": {}},
-    ])
-    righe = archivio.facts(day="2026-08-24")
-    assert len(righe) == 1
-    assert righe[0]["protagonista"] == "nuovo"
-
-
-def test_sostituisci_giorno_NON_tocca_gli_altri_giorni(archivio):
-    """La cancellazione dentro `replace_day` deve essere circoscritta
-    al giorno che si rifa'.
-
-    Senza questo test una DELETE allargata per errore spazzerebbe via TUTTI
-    gli oggetti -- mesi di comprensione, che oltre la ritenzione del grezzo non
-    si rifanno piu' -- e la suite resterebbe verde.
-    """
-    archivio.replace_day("2026-08-23", [
-        {"genere": "funzionamento", "protagonista": "l-altro-giorno",
-         "inizio_ts": ADESSO, "fine_ts": None, "corpo": {}},
-    ])
-    archivio.replace_day("2026-08-24", [
-        {"genere": "funzionamento", "protagonista": "il-giorno-rifatto",
-         "inizio_ts": ADESSO, "fine_ts": None, "corpo": {}},
-    ])
-    assert ([o["protagonista"] for o in archivio.facts(day="2026-08-23")]
-            == ["l-altro-giorno"])
-
-
-def test_sostituisci_giorno_fallito_a_meta_non_lascia_il_giorno_mezzo_scritto(archivio):
-    """Se l'inserimento fallisce a meta' (un oggetto che rompe davvero
-    l'INSERT: `genere` NOT NULL violato), il giorno deve restare quello di
-    prima -- non mezzo riscritto e non svuotato."""
-    archivio.replace_day("2026-08-24", [
-        {"genere": "funzionamento", "protagonista": "originale",
-         "inizio_ts": ADESSO, "fine_ts": None, "corpo": {}},
-    ])
-    with pytest.raises(sqlite3.IntegrityError):
-        archivio.replace_day("2026-08-24", [
-            {"genere": "funzionamento", "protagonista": "primo-scritto",
-             "inizio_ts": ADESSO, "fine_ts": None, "corpo": {}},
-            {"genere": None, "protagonista": "rompe-insert",
-             "inizio_ts": ADESSO, "fine_ts": None, "corpo": {}},
-        ])
-    righe = archivio.facts(day="2026-08-24")
-    assert len(righe) == 1
-    assert righe[0]["protagonista"] == "originale"
-
-
 def test_fonte_invalida_solleva(archivio):
     """Un refuso dello scrittore futuro ('sistemi' per 'sistema') non deve
     entrare in silenzio: l'aggregazione lo perderebbe senza dirlo."""
@@ -495,9 +387,16 @@ def test_migration_5_adds_friendly_name_to_an_old_archive(tmp_path):
         " inizio_ts REAL NOT NULL, fine_ts REAL, corpo_json TEXT NOT NULL);"
         "INSERT INTO cambi(quando_ts,fonte,soggetto,da,a,device_class)"
         " VALUES(900.0,'entita','climate.vecchio','off','heat','temperature');"
-        "INSERT INTO oggetti(giorno,genere,protagonista,inizio_ts,fine_ts,corpo_json)"
-        " VALUES('2026-09-01','funzionamento','climate.vecchio',900.0,950.0,"
-        "'{\"stato\": \"heat\"}');"
+        # Dal 15/09/2026 l'archivio vecchio porta un RESOCONTO, non un
+        # oggetto: la tabella e' uscita con la migrazione 10, e la prova
+        # verifica la stessa cosa -- una riga scritta prima della colonna
+        # `friendly_name` non prende il nome di oggi.
+        "CREATE TABLE IF NOT EXISTS resoconto (giorno TEXT PRIMARY KEY,"
+        " corpo_json TEXT NOT NULL, scritto_ts REAL NOT NULL);"
+        "INSERT INTO resoconto(giorno,corpo_json,scritto_ts)"
+        " VALUES('2026-09-01',"
+        "'{\"giorno\": \"2026-09-01\", \"cronaca\": "
+        "[{\"chi\": \"climate.vecchio\", \"cosa\": \"heat\"}]}', 1.0);"
         "PRAGMA user_version = 4;")
     conn.commit()
     conn.close()
@@ -519,9 +418,11 @@ def test_migration_5_adds_friendly_name_to_an_old_archive(tmp_path):
 
         # E l'oggetto scritto prima della colonna si rilegge ancora: la
         # migrazione aggiunge una colonna a `cambi`, non tocca `oggetti`.
-        oggetto = store.facts(day="2026-09-01")[0]
-        assert oggetto["corpo"] == {"stato": "heat"}
-        assert "nome" not in oggetto["corpo"]
+        voce = (store.report("2026-09-01") or {})["cronaca"][0]
+        assert voce["cosa"] == "heat"
+        assert "nome" not in voce, (
+            "una riga scritta prima della colonna `friendly_name` non prende "
+            "il nome di oggi: non si riempie a posteriori dall'anagrafe")
 
         # E la scrittura NUOVA, col nome, funziona sullo stesso archivio.
         store.record(quando_ts=1000.0, source="entita", subject="person.paolo",

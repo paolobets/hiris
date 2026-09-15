@@ -35,9 +35,8 @@ from datetime import datetime, timedelta
 from aiohttp import web
 
 from ..home_space.historian import home_space_zone
-from ..mind.facts import NOT_ENTITY_PREFIXES, day_boundaries
+from ..mind.facts import day_boundaries
 from ..mind.report import as_document
-from ..proxy.state_translations import state_translation
 
 # I soggetti che NON sono entita' di Home Assistant: una condizione di
 # sistema, una voce del registro di errori, un'esecuzione di automazione. Il
@@ -154,38 +153,6 @@ def _volume(app, store) -> list[dict]:
     return volume
 
 
-async def handle_facts(request: web.Request) -> web.Response:
-    """Gli oggetti costruiti dall'aggregazione, filtrabili per giorno.
-
-    `giorno` arriva dalla query cosi' com'e' -- una stringa o `None` -- e va
-    all'archivio senza essere interpretato qui: e' `ObservationsStore.
-    facts()` a sapere cosa significa "nessun filtro" (`giorno=None`, gli
-    oggetti piu' recenti di ogni giorno). Un formato malformato non solleva:
-    l'archivio confronta per uguaglianza esatta, e una data che non
-    combacia con nessuna riga torna semplicemente un elenco vuoto -- non un
-    errore, perche' "nessun oggetto per quel giorno" e' un esito legittimo
-    (un giorno in cui la casa non ha fatto niente di osservabile), non un
-    guasto.
-
-    **Il corpo porta anche `traduzioni`**, e non e' un di piu': *«non ho
-    potuto leggere le traduzioni»* e *«questo stato non ha traduzione»* sono
-    DUE FATTI DIVERSI, e produrre la stessa riga per entrambi sarebbe far
-    indovinare a chi legge. Chi produce il motivo lo etichetta
-    (`proxy/state_translations.StateTranslations.read`), la rotta lo
-    trasporta, la pagina lo dice. La tabella vera (801 chiavi, 65 KB) NON
-    viaggia: resta in cache dentro l'add-on.
-    """
-    store = request.app.get("observations")
-    if store is None:
-        return web.json_response(
-            {"facts": [], "error": "archivio non disponibile"}, status=503)
-    day = request.query.get("day") or None
-    report = await _translations_report(request.app)
-    facts = _with_rendered_states(store.facts(day=day), report)
-    declared = {key: value for key, value in report.items() if key != "risorse"}
-    return web.json_response({"facts": facts, "traduzioni": declared})
-
-
 async def handle_report(request: web.Request) -> web.Response:
     """Il resoconto di un giorno, o la serie degli ultimi (spec §9).
 
@@ -251,52 +218,6 @@ async def _translations_report(app) -> dict:
     return await cache.read(ha_version=frame.get("versione_ha"),
                             language=frame.get("lingua"))
 
-
-def _with_rendered_states(facts: list[dict], report: dict) -> list[dict]:
-    """Gli stessi oggetti, con `corpo.stato_reso` accanto a `corpo.stato`
-    dove una resa esiste.
-
-    **Il grezzo non si tocca mai.** `stato` resta esattamente quello che
-    l'archivio ha scritto -- e' il fatto, e la pagina deve poterlo mostrare
-    quando non c'e' altro da mostrare.
-
-    **`stato_reso` TACE quando non c'e' resa**, come ogni altra chiave del
-    corpo che non ha niente da dire: uno `stato_reso: null` sarebbe un buco
-    travestito da dato, e una copia del grezzo sarebbe peggio ancora --
-    direbbe «tradotto» di uno stato che HA non traduce. Chi legge distingue i
-    due silenzi guardando `traduzioni.lette`: a `true`, la chiave assente
-    significa «questo stato non ha traduzione, e HA stesso mostrerebbe il
-    grezzo»; a `false`, significa «non l'abbiamo potuto chiedere», e il motivo
-    e' li' accanto.
-
-    `body.get("stato")` non e' mai `unavailable`/`unknown`: `facts` arriva da
-    `ObservationsStore.facts()`, che legge cio' che `mind/facts.py::
-    aggregate_day` ha scritto -- e quella funzione scarta i due stati prima
-    di aprire un episodio (revisione del tratto v3.22.2..HEAD, rilievo R5:
-    le due etichette nostre che questa funzione portava per quel caso erano
-    un ramo morto, mai raggiungibile da qui, rimosso insieme a loro).
-    """
-    resources = report.get("risorse")
-    rendered = []
-    for fact in facts:
-        body = fact.get("corpo")
-        subject = fact.get("protagonista")
-        if not isinstance(body, dict) or not isinstance(subject, str):
-            rendered.append(fact)
-            continue
-        if subject.startswith(NOT_ENTITY_PREFIXES) or "." not in subject:
-            rendered.append(fact)
-            continue
-        translated = state_translation(
-            body.get("stato"),
-            domain=subject.split(".")[0],
-            device_class=body.get("classe"),
-            component_resources=resources if isinstance(resources, dict) else {})
-        if translated is None:
-            rendered.append(fact)
-            continue
-        rendered.append({**fact, "corpo": {**body, "stato_reso": translated}})
-    return rendered
 
 async def handle_set_objective(request) -> web.Response:
     """Scrive l'obiettivo della casa. **La sola manopola del prodotto.**

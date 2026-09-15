@@ -119,11 +119,6 @@ window.HirisWatcherRoute = (function () {
      -- non sparisce mai, stessa regola di `NOMI_REGISTRI` in tree-route.js.
      E' la regola di tutte le mappe di resa di questo file (`DIRECTION_LABEL`,
      `AUTHOR_LABEL`). */
-  var GENRE_LABEL = {
-    funzionamento: 'Funzionamento', presenza: 'Presenza / assenza',
-    energia: 'Energia', guasto: 'Guasto', sicurezza: 'Sicurezza',
-    bilancio: 'Bilancio'
-  };
 
   /* Le sette direzioni dell'energia (mandato «le direzioni dell'energia»,
      27/08/2026) -- letterali, identiche a quelle che
@@ -131,12 +126,6 @@ window.HirisWatcherRoute = (function () {
      direzione non in questa mappa (un genere futuro che il backend sapesse
      dire e questa pagina non ancora) mostra comunque la sua parola grezza,
      mai "undefined" -- stessa regola di `GENRE_LABEL`/`AUTHOR_LABEL`. */
-  var DIRECTION_LABEL = {
-    produzione: 'Produzione', prelievo: 'Prelievo dalla rete',
-    immissione: 'Immissione in rete', carica: 'Carica della batteria',
-    scarica: 'Scarica della batteria', consumo: 'Consumo della casa',
-    autoconsumo: 'Autoconsumo (prodotto e consumato sul posto)'
-  };
 
   /* Le SETTE dimensioni di un bilancio, in quest'ordine -- letterale,
      identico a `BALANCE_DIRECTIONS` in `mind/facts.py` (contato nel
@@ -153,7 +142,6 @@ window.HirisWatcherRoute = (function () {
      rete"/"prelevato dalla rete"/"consumo della casa" gia' usato dagli
      episodi di energia -- il mandato chiede di riusare le stesse parole,
      non inventarne di nuove. */
-  var BALANCE_DIRECTION_ORDER = ['produzione', 'autoconsumo', 'immissione', 'prelievo', 'carica', 'scarica', 'consumo'];
 
   function el(tag, cls, text) {
     var e = document.createElement(tag);
@@ -884,9 +872,6 @@ window.HirisWatcherRoute = (function () {
     d.setDate(d.getDate() - 1);
     return isoData(d);
   }
-
-  function localToday() { return isoData(new Date()); }
-
   /* Date sempre in gg/mm/aaaa nel testo (rilievo 5): `isoDay` arriva dal
      valore di `<input type=date>`, sempre `AAAA-MM-GG` per specifica HTML. */
   function ggMmAaaa(isoDay) {
@@ -902,79 +887,9 @@ window.HirisWatcherRoute = (function () {
       pad2(d.getHours()) + ':' + pad2(d.getMinutes());
   }
 
-  function period(o) {
-    var start = fmtTime(o.inizio_ts);
-    var fine = fmtTime(o.fine_ts);
-    /* «in corso a fine giornata», non «ancora in corso» (cancello-rilascio-
-       brief.md, punto 2): l'aggregazione e' per giornata, e un oggetto senza
-       fine non e' un oggetto che questo istante sa ancora essere aperto --
-       e' un oggetto che NON HA MAI RIVISTO una chiusura da quando la
-       giornata in cui e' nato e' stata aggregata. Se l'episodio attraversa
-       la mezzanotte, la sua vera fine (se c'e') e' scartata in silenzio
-       dall'aggregazione del giorno dopo (spec §6): questa pagina non deve
-       promettere una continuita' che l'aggregazione non tiene. */
-    if (fine == null) return 'dalle ' + start + ', in corso a fine giornata';
-    return start + ' → ' + fine;
-  }
-
   /* La frase che apre la riga: cosa e' successo, per genere -- il corpo ha
      forma diversa per ciascuno (vedi il commento di testa). Nessuna frase
      generica: campi reali o niente. */
-  function mainPhrase(o) {
-    var c = o.corpo || {};
-    if (o.genere === 'energia') {
-      var base;
-      if (c.differenza == null) {
-        base = 'da ' + c.valore_iniziale + ' a ' + c.valore_finale + ' (non calcolabile: una sola lettura, o un valore non numerico)';
-      } else {
-        var flag = c.differenza >= 0 ? '+' : '';
-        base = 'da ' + c.valore_iniziale + ' a ' + c.valore_finale + ' (' + flag + c.differenza + ')';
-      }
-      /* La direzione (mandato «le direzioni dell'energia», 27/08/2026): il
-         campo non c'e' affatto quando non si conosce (ne' la dichiarata ne'
-         la dedotta la sanno dire) -- niente "sconosciuta" nel testo. */
-      if (c.direzione) {
-        base += ' · ' + (DIRECTION_LABEL[c.direzione] || c.direzione);
-      }
-      return base;
-    }
-    if (o.genere === 'guasto') {
-      /* Correzione onda finale, rilievo 1: "in corso" si decide da
-         `fine_ts` (come gia' fa `period()` qui sopra), non da `c.stato`.
-         Dal Task 2 `stato` porta la condizione VERA (`setup_retry`,
-         `setup_error`, ...), che per un'integrazione non vale mai
-         "aperto" nemmeno a episodio aperto -- e per un `problema:` resta
-         "aperto" anche a episodio chiuso (spec §2.3). Le due domande sono
-         indipendenti: questa riga risponde alla prima con `fine_ts`, poi
-         mostra sempre la condizione come tale, mai come sinonimo di
-         aperto/chiuso. */
-      var aperto = o.fine_ts == null ? 'ancora aperto' : 'chiuso';
-      /* Collaudo usabilita' 3.22, rilievo 2: un `problema:` porta
-         `corpo.stato === 'aperto'` per costruzione (spec §2.3), a episodio
-         aperto E a episodio chiuso -- e' la STESSA parola che questa riga ha
-         appena scritto sotto un'altra forma («chiuso»/«ancora aperto»), mai
-         un'informazione in piu'. Misurato: «chiuso · stato: aperto», due
-         parole opposte a tre centimetri di distanza -- non e' l'episodio ad
-         essere ambiguo, e' la ripetizione letterale di "aperto" a leggersi
-         come una contraddizione quando l'episodio e' chiuso. Si toglie SOLO
-         quando `stato` vale letteralmente "aperto": gli altri valori
-         (`setup_retry`, `ERROR`, ...) restano, perche' sono condizioni vere
-         e non sinonimi di aperto/chiuso -- il nome dell'episodio ("Guasto")
-         insieme ad "ancora aperto"/"chiuso" dice gia' tutto cio' che
-         "stato: aperto" ripeteva. */
-      if (c.stato === 'aperto') return aperto;
-      return c.stato != null ? aperto + ' · stato: ' + c.stato : aperto;
-    }
-    /* Fetta «lo stato» (07/09/2026): `stato_reso` e' la resa che il confine
-       dell'API ha aggiunto ACCANTO al grezzo, mai al posto suo. Si legge la
-       resa se c'e', il grezzo se no -- e quando non c'e' non si inventa
-       niente: e' esattamente cio' che Home Assistant stesso mostra quando
-       nessuno dei suoi quattro gradini risponde. Il PERCHE' manchi (le
-       traduzioni non lette, oppure questo stato senza traduzione) lo dice
-       `translationsNote` una volta per pagina, non ogni riga. */
-    var shown = c.stato_reso != null ? c.stato_reso : c.stato;
-    return shown != null ? 'stato: ' + shown : '(nessun dettaglio)';
-  }
 
   /* La provenienza della direzione -- non e' la stessa domanda di «chi ha
      deciso» nella sezione 01 (`AUTHOR_LABEL`: osservatore/analista/
@@ -986,15 +901,6 @@ window.HirisWatcherRoute = (function () {
      differenza fra un dubbio e una caccia. Due stili di `.agent-badge` gia'
      in hiris-config.css (`badge-off` per l'autorevole, `badge-warn` per
      l'arricchimento) -- non un componente nuovo. */
-  function provenanceDirectionBadge(provenance) {
-    if (provenance === 'dichiarata') {
-      return { cls: 'badge-off', testo: 'Dichiarata — dalla dashboard Energia' };
-    }
-    if (provenance === 'dedotta') {
-      return { cls: 'badge-warn', testo: 'Dedotta — dall’integrazione' };
-    }
-    return { cls: 'badge-warn', testo: provenance || 'provenienza sconosciuta' };
-  }
 
   /* `problema:dominio.id` / `integrazione:entry_id` / `log:logger@file:riga` /
      `automazione:entity_id` -> un nome leggibile. Stessa idea di
@@ -1058,22 +964,6 @@ window.HirisWatcherRoute = (function () {
       return { kind: 'automazione', rest: s.slice('automazione:'.length) };
     }
     return { kind: null, rest: s };
-  }
-
-  function protagonistName(o) {
-    var c = o.corpo || {};
-    if (c.titolo) return c.dominio ? c.titolo + ' (' + c.dominio + ')' : c.titolo;
-    var p = parseSubjectPrefix(o.protagonista || '');
-    if (p.kind === 'problema') return 'Problema Home Assistant: ' + p.rest;
-    if (p.kind === 'integrazione') return 'Integrazione non caricata: ' + p.rest;
-    // `p.location` puo' essere vuoto solo se il soggetto non porta una `@`
-    // (oggi non capita mai: `watcher.py` scrive sempre `<logger>@<file>:<riga>`
-    // -- ma questa riga non deve dipendere da quella garanzia per essere
-    // corretta). Una `@` appesa senza nulla dopo sarebbe un artefatto della
-    // resa, non un dato: il nit del revisore, 07/09/2026.
-    if (p.kind === 'log') return 'Voce del registro di Home Assistant: ' + p.logger + (p.location ? '@' + p.location : '');
-    if (p.kind === 'automazione') return 'Automazione: ' + p.rest;
-    return p.rest;
   }
 
   /* Il gemello di `protagonistName` per «cosa sto guardando» (rilievo del
@@ -1180,39 +1070,10 @@ window.HirisWatcherRoute = (function () {
     return wrap;
   }
 
-  function detailsDisclosure(o) {
-    var companions = (o.corpo && o.corpo.comprimari) || [];
-    var measurements = (o.corpo && o.corpo.misure) || {};
-    var chiaviMisure = Object.keys(measurements);
-    if (!companions.length && !chiaviMisure.length) return null;
-
-    /* Rilievo 8c: «Nascondi» da solo perde il referente quando piu' righe
-       sono aperte insieme -- lo stesso principio di "Nascondi i dettagli
-       tecnici" in constructions-route.js e "Nascondi il dettaglio" in
-       agenda-route.js. */
-    return createDisclosure('Chi c’era intorno', 'Nascondi chi c’era intorno', function (panel) {
-      if (companions.length) {
-        line(panel, 'Insieme a: ' + companions.join(', '), 'font-size:var(--fs-12);' + TONE_CALM);
-      }
-      chiaviMisure.forEach(function (k) {
-        var m = measurements[k];
-        line(panel, k + ': da ' + m.da + ' a ' + m.a, 'font-size:var(--fs-12);' + TONE_CALM);
-      });
-    });
-  }
-
   /* ----------------------------------------------------- «il bilancio dell'energia»
      Mandato «il bilancio dell'energia», 27/08/2026. Vedi il commento di
      testa del file per il perche' (una quantita' con una forma, non un
      episodio) e per il contratto esatto del corpo. */
-
-  var SVG_NS = 'http://www.w3.org/2000/svg';
-
-  function svgEl(tag, attrs) {
-    var e = document.createElementNS(SVG_NS, tag);
-    Object.keys(attrs || {}).forEach(function (k) { e.setAttribute(k, attrs[k]); });
-    return e;
-  }
 
   /* Un valore della gamba energia -> "24,5 kWh", virgola italiana. Il
      backend ha gia' arrotondato a 2 decimali (`build_balance_body`,
@@ -1220,10 +1081,6 @@ window.HirisWatcherRoute = (function () {
      FORMATTA, non si arrotonda una seconda volta -- `maximumFractionDigits:
      2` e' un tetto che non taglia nessuna cifra vera, `minimumFractionDigits:
      1` evita "24" secco per un numero che e' comunque una misura continua. */
-  function fmtKwh(v) {
-    if (v == null) return null;
-    return v.toLocaleString('it-IT', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) + ' kWh';
-  }
 
   /* Una quota 0..1 (`_share`, 3 decimali nel backend) -> percentuale con un
      decimale e virgola italiana: "71,2%". */
@@ -1252,20 +1109,6 @@ window.HirisWatcherRoute = (function () {
      punto, derivando sia l'ora (piazzamento) sia il testo (etichetta) dalla
      stessa `Date` -- il secondo `oraLocaleDalPunto` non serve piu' ed e'
      stato tolto (nessun doppione morto in giro). */
-  function localDateFromPoint(iso) {
-    if (!iso) return null;
-    var d = new Date(iso);
-    return isNaN(d.getTime()) ? null : d;
-  }
-
-  function formatHourFromDate(d) {
-    return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
-  }
-
-  function fmtIsoHour(iso) {
-    var d = localDateFromPoint(iso);
-    return d ? formatHourFromDate(d) : null;
-  }
 
   /* Punto 1 del brief, "in ordine di importanza": la riga che risponde a
      «com'e' andata ieri», leggibile senza aprire niente. Riusa `.stat-grid`/
@@ -1279,30 +1122,6 @@ window.HirisWatcherRoute = (function () {
      compaiono solo per un dispositivo con batteria; il consumo (settima
      dimensione, letta non dedotta -- correzione ALTA della review, mandato
      «la pagina del bilancio», punto 1, 27/08/2026) chiude l'elenco. */
-  function rendiTotaliBilancio(box, totali) {
-    if (!totali) return;
-    var present = BALANCE_DIRECTION_ORDER.filter(function (d) { return totali[d]; });
-    if (!present.length) return;
-
-    var grid = el('div', 'stat-grid');
-    present.forEach(function (d) {
-      var t = totali[d];
-      var tile = el('div', 'stat-tile');
-      tile.appendChild(el('div', 'st-label', DIRECTION_LABEL[d] || d));
-      tile.appendChild(el('div', 'st-value', fmtKwh(t.valore)));
-      // Punto 4 del brief: la provenienza della direzione, STESSO meccanismo
-      // gia' usato dagli episodi di energia -- niente badge quando non si
-      // conosce (mai una "sconosciuta" travestita da dato).
-      if (t.provenienza) {
-        var badge = provenanceDirectionBadge(t.provenienza);
-        var delta = el('div', 'st-delta');
-        delta.appendChild(el('span', 'agent-badge ' + badge.cls, badge.testo));
-        tile.appendChild(delta);
-      }
-      grid.appendChild(tile);
-    });
-    box.appendChild(grid);
-  }
 
   /* Punto 2 del brief-pagina: «Ventiquattro valori per piu' serie non si
      leggono come tabella. Serve una curva.» -- SVG scritto a mano, STESSO
@@ -1352,87 +1171,6 @@ window.HirisWatcherRoute = (function () {
      qualunque ora. Non si corregge qui: la cura vera e' che la rotta mandi
      il fuso della CASA e che questa pagina lo usi OVUNQUE (qui e in
      `fmtIsoHour` sopra) al posto di quello del browser -- una fetta a se'. */
-  var HOURS_IN_DAY = 24;
-
-  function renderBalanceCurve(box, form, hasMoments) {
-    if (!form) return;
-    var series = [];
-    if (form.produzione) {
-      series.push({ punti: form.produzione, colore: 'var(--bilancio-produzione)', etichetta: DIRECTION_LABEL.produzione });
-    }
-    if (form.prelievo) {
-      series.push({ punti: form.prelievo, colore: 'var(--bilancio-prelievo)', etichetta: DIRECTION_LABEL.prelievo });
-    }
-    if (!series.length) return;
-    var hasPoints = series.some(function (s) { return s.punti && s.punti.length; });
-    if (!hasPoints) return;
-
-    var maximum = 0;
-    series.forEach(function (s) {
-      s.punti.forEach(function (p) { if (p.valore != null && p.valore > maximum) maximum = p.valore; });
-    });
-    if (maximum <= 0) maximum = 0.000001; // niente divisione per zero: un giorno tutto a zero resta piatto, non rotto
-
-    var L = 640, A = 140, base = A - 20, left = 4;
-    var passo = (L - left * 2) / HOURS_IN_DAY;
-    var barWidth = Math.max(1, (passo - 2) / series.length);
-
-    var svg = svgEl('svg', {
-      class: 'bil-chart', viewBox: '0 0 ' + L + ' ' + A, role: 'img',
-      'aria-label': 'Produzione e prelievo, ora per ora'
-    });
-    var title = document.createElementNS(SVG_NS, 'title');
-    title.textContent = 'Produzione e prelievo, ora per ora';
-    svg.appendChild(title);
-    var descrizione = document.createElementNS(SVG_NS, 'desc');
-    // Punto 3 del brief-pagina: la vecchia frase ("gli stessi numeri, con la
-    // loro ora vera, sono nei momenti qui sotto") era falsa nel caso
-    // generale -- i momenti portano orari e percentuali, non gli stessi
-    // kWh della curva -- e orfana quando i momenti mancano. Si dice il
-    // vero (un'ora senza barra e' un'ora senza dato), e la frase sui
-    // momenti compare SOLO quando i momenti ci sono.
-    descrizione.textContent = 'Barre allineate all’ora del giorno: un’ora senza barra è un’ora senza dato, non uno zero.' +
-      (hasMoments ? ' Il picco e gli altri momenti notevoli sono qui sotto, con la loro ora vera.' : '');
-    svg.appendChild(descrizione);
-
-    series.forEach(function (s, si) {
-      s.punti.forEach(function (p) {
-        var v = p.valore;
-        if (v == null || v <= 0) return;
-        // Un solo parsing per punto (punto 4 del brief-dodicesima): il
-        // piazzamento (`ora`) e l'etichetta (`formatHourFromDate`) derivano
-        // dalla STESSA `Date`, non da due `new Date(p.ora)` separate.
-        var d = localDateFromPoint(p.ora);
-        if (d == null) return; // mai un'ora inventata: niente ora leggibile, niente barra
-        var hour = d.getHours();
-        var h = (v / maximum) * (base - 6);
-        var x = left + hour * passo + si * barWidth;
-        var y = base - h;
-        var rect = svgEl('rect', {
-          x: x.toFixed(1), y: y.toFixed(1),
-          width: barWidth.toFixed(1), height: h.toFixed(1),
-          fill: s.colore
-        });
-        var barTitle = document.createElementNS(SVG_NS, 'title');
-        barTitle.textContent = s.etichetta + ' — ' + formatHourFromDate(d) + ': ' + fmtKwh(v);
-        rect.appendChild(barTitle);
-        svg.appendChild(rect);
-      });
-    });
-    svg.appendChild(svgEl('line', { x1: 0, y1: base, x2: L, y2: base, stroke: 'var(--border)' }));
-    box.appendChild(svg);
-
-    var legend = el('div', 'bil-legend');
-    series.forEach(function (s) {
-      var entry = el('span', 'ulg');
-      var dot = el('i');
-      dot.style.background = s.colore;
-      entry.appendChild(dot);
-      entry.appendChild(document.createTextNode(s.etichetta));
-      legend.appendChild(entry);
-    });
-    box.appendChild(legend);
-  }
 
   /* Punto 3 del brief: «I momenti derivati ... come dati secchi accanto alla
      curva, non come frasi.» -- una lista etichetta/valore (`.bil-moments`,
@@ -1450,65 +1188,10 @@ window.HirisWatcherRoute = (function () {
      tornerebbe a rendere la frase orfana (lo stesso difetto del punto 3 del
      brief-pagina, chiuso sopra per la frase "gli stessi numeri"). Un solo
      elenco di chiavi note, letto da entrambi. */
-  function vociMomenti(moments) {
-    var voci = [];
-    if (!moments) return voci;
-    if (moments.prima_ora_produzione) {
-      voci.push(['Prima ora di produzione', fmtIsoHour(moments.prima_ora_produzione)]);
-    }
-    if (moments.ultima_ora_produzione) {
-      voci.push(['Ultima ora di produzione', fmtIsoHour(moments.ultima_ora_produzione)]);
-    }
-    if (moments.picco_produzione) {
-      voci.push(['Picco di produzione',
-        fmtKwh(moments.picco_produzione.valore) + ' alle ' + fmtIsoHour(moments.picco_produzione.ora)]);
-    }
-    if (moments.fine_scarica_batteria) {
-      voci.push(['Fine scarica della batteria', fmtIsoHour(moments.fine_scarica_batteria)]);
-    }
-    if (moments.quota_autoconsumo != null) {
-      voci.push(['Quota di autoconsumo', fmtPercent(moments.quota_autoconsumo)]);
-    }
-    if (moments.quota_autosufficienza != null) {
-      voci.push(['Quota di autosufficienza', fmtPercent(moments.quota_autosufficienza)]);
-    }
-    return voci;
-  }
-
-  function renderBalanceMoments(box, moments) {
-    var voci = vociMomenti(moments);
-    if (!voci.length) return;
-
-    var dl = el('dl', 'bil-moments');
-    voci.forEach(function (v) {
-      // Punto 2 del brief-pagina (MEDIO): dt e dd erano celle INDIPENDENTI
-      // della griglia -- a 1200px `auto-fit` puo' calcolare un numero
-      // DISPARI di colonne, e con dt/dd alternati piatti una coppia si
-      // spezza a fine riga (misurato dal revisore: «Picco di produzione»
-      // chiudeva una riga, il suo valore ne apriva un'altra accanto a
-      // «Fine scarica della batteria»). Un `<div>` che raggruppa dt+dd e'
-      // contenuto valido dentro un `<dl>` (HTML5: i gruppi nome/valore
-      // possono stare avvolti in un div) e diventa l'UNICO elemento di
-      // griglia per quella coppia -- una coppia non puo' piu' spezzarsi, a
-      // nessuna larghezza (verificato dal vivo a 1200px con Playwright,
-      // vedi il rapporto). `.bil-moment` in hiris-config.css.
-      var pair = el('div', 'bil-moment');
-      pair.appendChild(el('dt', null, v[0]));
-      pair.appendChild(el('dd', null, v[1]));
-      dl.appendChild(pair);
-    });
-    box.appendChild(dl);
-  }
 
   /* Le entita' che compongono il bilancio (trasparenza, spec §7): STESSO
      rivelatore sincrono di `detailsDisclosure`, riusato via `createDisclosure`
      -- non un secondo componente. */
-  function balanceEntityDisclosure(entity) {
-    if (!entity || !entity.length) return null;
-    return createDisclosure('Quali sensori', 'Nascondi quali sensori', function (panel) {
-      line(panel, entity.join(', '), 'font-size:var(--fs-12);' + TONE_CALM);
-    });
-  }
 
   /* Il bilancio NON passa da `period()`/`mainPhrase()`: quelle due
      funzioni presuppongono la forma dell'episodio (un `inizio_ts`/`fine_ts`
@@ -1518,114 +1201,12 @@ window.HirisWatcherRoute = (function () {
      (sempre chiuso, mai `fine_ts: None`: `aggregate_day`), non l'apertura e
      la chiusura di un evento: mostrarli con la freccia di `period()`
      rifarebbe esattamente lo stampo sbagliato che il mandato vieta. */
-  function balanceLine(o) {
-    var c = o.corpo || {};
-    var box = el('div');
-    box.style.cssText = 'border-top:1px solid var(--border);padding:var(--sp-3) 0;' +
-      'display:flex;flex-direction:column;gap:8px';
-
-    var head = el('div');
-    head.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap';
-    head.appendChild(el('span', 'agent-badge badge-off', GENRE_LABEL.bilancio));
-    head.appendChild(el('span', 'text-mono field-hint', o.protagonista || ''));
-    box.appendChild(head);
-
-    // Il nome leggibile del dispositivo (`corpo.dispositivo`) e' il
-    // CONTENUTO, non l'identificatore tecnico (`protagonista`, il
-    // `dispositivo_id` opaco di HA, gia' nel monospazio sopra) -- stessa
-    // gerarchia contenuto/riferimento del rilievo 7 (vedi `factLine`).
-    var title = el('p', null, c.dispositivo || protagonistName(o));
-    title.style.cssText = 'font-size:var(--fs-15);font-weight:600;margin:0;overflow-wrap:anywhere';
-    box.appendChild(title);
-
-    rendiTotaliBilancio(box, c.totali);
-    // `vociMomenti(c.momenti).length` (non `!!c.momenti`): la frase
-    // accessibile della curva deve sapere se la sezione dei momenti
-    // renderà davvero qualcosa, non solo se il campo esiste (punto 4 del
-    // brief-dodicesima, vedi il commento sopra `vociMomenti`).
-    renderBalanceCurve(box, c.forma, vociMomenti(c.momenti).length > 0);
-    renderBalanceMoments(box, c.momenti);
-
-    // Difensivo: l'invariante di scrittura garantisce sempre almeno un
-    // totale (`aggregate_day`: "un bilancio senza nemmeno un totale ...
-    // NON si scrive"), ma un payload malformato non deve tornare a
-    // "(nessun dettaglio)" -- lo stesso buco che questa fetta chiude.
-    if (!c.totali && !c.forma && !c.momenti) {
-      line(box, '(nessun dato per questo bilancio)', TONE_CALM);
-    }
-
-    var entityDisclosure = balanceEntityDisclosure(c.entita);
-    if (entityDisclosure) box.appendChild(entityDisclosure);
-
-    return box;
-  }
 
   /* Rilievo 7 della review: la gerarchia era rovesciata -- l'identificatore
      era il testo piu' in evidenza, il fatto («25/08 15:30 → 17:05 · da 18,2
      a 21,0») stava nella classe delle note a margine. L'occhio cerca il
      contrario: il COSA E' SUCCESSO e' il contenuto, l'identificatore e' il
      riferimento -- stessa gerarchia gia' in tree-route.js, il metro. */
-  function factLine(o) {
-    // Il bilancio e' un genere a parte, con una forma diversa dall'episodio
-    // (vedi il commento di testa del file): esce subito verso `balanceLine`,
-    // che NON riusa `period()`/`mainPhrase()` -- quelle presuppongono
-    // un "da → a" che il bilancio non ha.
-    if (o.genere === 'bilancio') return balanceLine(o);
-
-    var c = o.corpo || {};
-    var box = el('div');
-    box.style.cssText = 'border-top:1px solid var(--border);padding:var(--sp-3) 0;' +
-      'display:flex;flex-direction:column;gap:4px';
-
-    var head = el('div');
-    head.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap';
-    head.appendChild(el('span', 'agent-badge badge-off', GENRE_LABEL[o.genere] || o.genere));
-    // La provenienza della direzione (mandato, punto 4): un secondo badge,
-    // SOLO quando `corpo.direzione` c'e' -- niente badge per un episodio di
-    // energia la cui direzione non si conosce, che e' l'esito onesto, non
-    // un guasto della resa.
-    if (o.genere === 'energia' && o.corpo && o.corpo.direzione) {
-      var directionBadge = provenanceDirectionBadge(o.corpo.provenienza);
-      head.appendChild(el('span', 'agent-badge ' + directionBadge.cls, directionBadge.testo));
-    }
-    // Identificatore: monospaziato, piccolo, attenuato -- il riferimento, non
-    // il contenuto. `.text-mono`/`.field-hint` portano gia' `overflow-wrap:
-    // anywhere` (hiris-config.css) e lo span e' protetto da `.section-card
-    // span { min-width: 0 }` (hiris-config.css, rilievo 1): senza, un
-    // identificatore da 93 caratteri dentro questa riga flessibile
-    // sfonderebbe lo schermo di un telefono.
-    // Fetta «il nome» (07/09/2026): `describeWatchedSubject` e' il posto
-    // unico che decide se cio' che segue e' un nome o un identificatore --
-    // `protagonistName` sa gia' rendere un titolo di guasto e i quattro
-    // prefissi tecnici, ma non sa DIRE quando quello che restituisce e' un
-    // `entity_id` nudo. Le righe scritte prima della colonna
-    // `friendly_name` cadono qui, ed e' voluto (`mind/store.py::
-    // _migration_5`): non si riempiono a posteriori dall'anagrafe di oggi.
-    var d = describeWatchedSubject(o.protagonista || '', c.nome);
-    if (d.technical) head.appendChild(el('span', 'field-hint', SUBJECT_IS_ID));
-    head.appendChild(el('span', 'text-mono field-hint', protagonistName(o)));
-    box.appendChild(head);
-
-    // Il nome amichevole e' il CONTENUTO, l'identificatore il riferimento
-    // (gia' nel monospazio attenuato sopra) -- stessa gerarchia di
-    // `balanceLine` con `corpo.dispositivo`, e stesso stile. Non quando
-    // c'e' un `titolo`: li' `protagonistName` ha gia' scritto il nome
-    // leggibile, e ripeterlo sarebbe la stessa cosa due volte.
-    if (c.nome && !c.titolo) {
-      var nameLine = el('p', null, c.nome);
-      nameLine.style.cssText = 'font-size:var(--fs-15);font-weight:600;margin:0;overflow-wrap:anywhere';
-      box.appendChild(nameLine);
-    }
-
-    var content = el('p', null, period(o) + ' · ' + mainPhrase(o));
-    content.style.cssText = 'font-size:var(--fs-15);font-weight:500;margin:0;overflow-wrap:anywhere';
-    box.appendChild(content);
-
-    var details = detailsDisclosure(o);
-    if (details) box.appendChild(details);
-
-    return box;
-  }
 
   /* I due silenzi, detti e non nascosti (fetta «lo stato», 07/09/2026).
 
@@ -1643,58 +1224,6 @@ window.HirisWatcherRoute = (function () {
        pagina e' in italiano fisso. E' corretto -- e' la sua lingua -- ma le
        due cose divergono a vista, e tacerlo lascerebbe pensare a una resa
        fatta male. */
-  function translationsNote(body, translations) {
-    var t = translations || {};
-    if (t.lette === false) {
-      line(body, 'Gli stati qui sotto sono quelli grezzi di Home Assistant: le sue traduzioni ' +
-        'non si sono potute leggere' + (t.motivo ? ' (' + t.motivo + ')' : '') + '.', TONE_CALM);
-      return;
-    }
-    /* Nessun `t.lette === true` qui: il ramo di sopra e' gia' uscito per il
-       guasto, e ripeterlo sarebbe una condizione che nessuna mutazione puo'
-       vedere rossa (provata: toglierla lascia tutto verde). */
-    if (t.lingua && t.lingua !== 'it') {
-      line(body, 'Gli stati qui sotto sono resi nella lingua della casa (' + t.lingua +
-        '), quella scelta in Home Assistant; il resto della pagina è in italiano.', TONE_CALM);
-    }
-  }
-
-  function renderFacts(body, fact, dayFilter, translations) {
-    if (!fact.length) {
-      if (!dayFilter) {
-        line(body, 'Non c’è ancora nessun episodio: l’aggregazione notturna gira una volta al giorno, alle 00:20.',
-          TONE_CALM);
-        return;
-      }
-      /* Rilievo 5: il giorno dell'aggiornamento (e ogni "ieri"/"oggi") e' lo
-         STATO NORMALE, non un caso limite -- il messaggio deve dire QUANDO
-         tornare, non seminare il dubbio che la casa non abbia fatto niente
-         (con ~14.600 cambi al giorno misurati, quasi impossibile). Per un
-         giorno piu' vecchio l'ipotesi doppia attuale resta corretta. */
-      var dataItaliana = ggMmAaaa(dayFilter);
-      var text = (dayFilter === localToday() || dayFilter === ieriLocale())
-        ? 'Nessun episodio per il ' + dataItaliana + '. Non è un errore: gli episodi di ogni giornata ' +
-          'vengono scritti la notte successiva, alle 00:20 — nel frattempo guarda «Cosa sto guardando» ' +
-          'qui sopra.'
-        : 'Nessun episodio per il ' + dataItaliana + '. Non è un errore: quel giorno la casa potrebbe ' +
-          'non aver fatto niente di osservabile, oppure l’aggregazione notturna non è ancora passata.';
-      line(body, text, TONE_CALM);
-      return;
-    }
-    translationsNote(body, translations);
-    fact.forEach(function (o) { body.appendChild(factLine(o)); });
-  }
-
-  function renderFactsError(body, status, reload) {
-    if (status === 503) {
-      line(body,
-        'L’archivio degli episodi non è disponibile in questo momento. Non è una lista vuota — è l’archivio stesso ad essere fermo.',
-        TONE_PROBLEM);
-    } else {
-      line(body, 'Non è stato possibile leggere gli episodi. Riprova più tardi.', TONE_PROBLEM);
-    }
-    retryButton(body, reload);
-  }
 
 
   /* ------------------------------------------------------- il resoconto (§9) */
@@ -1842,25 +1371,6 @@ window.HirisWatcherRoute = (function () {
      sbagliato. Un contatore di generazione, incrementato ad ogni chiamata:
      solo l'ultima "vince" la resa, qualunque ordine di arrivo prendano le
      risposte. */
-  var factsGeneration = 0;
-
-  function loadFacts(body, day) {
-    var myGeneration = ++factsGeneration;
-    clearEl(body);
-    line(body, 'Caricamento…', TONE_CALM);
-    function reload() { return loadFacts(body, day); }
-    var path = 'api/mind/facts' + (day ? '?day=' + encodeURIComponent(day) : '');
-    return read(path).then(function (occurrence) {
-      if (myGeneration !== factsGeneration) return; // superata da un cambio di giorno più recente
-      clearEl(body);
-      if (!occurrence.ok) { renderFactsError(body, occurrence.status, reload); return; }
-      renderFacts(body, occurrence.corpo.facts || [], day, occurrence.corpo.traduzioni);
-    }, function () {
-      if (myGeneration !== factsGeneration) return;
-      clearEl(body);
-      renderFactsError(body, null, reload);
-    });
-  }
 
   var reportGeneration = 0;
 
@@ -1903,25 +1413,10 @@ window.HirisWatcherRoute = (function () {
       'soggetto — con il motivo scritto e chi l’ha deciso, nessuna lista nel codice. Da qui si vede ' +
       'se l’obiettivo è stato capito: le scelte stanno accanto alla domanda a cui rispondono.');
 
-    /* Sezione 02 costruita a mano (non con `sezione()`): a differenza della
-       01, questa porta un blocco di controlli (data + bottone) fra il
-       sottotitolo e il corpo, e `sezione()` non lo prevede. */
-    var card2 = el('section', 'section-card');
-    var head2 = el('div', 'sc-header');
-    head2.appendChild(el('span', 'sc-num', '02'));
-    head2.appendChild(el('h2', 'sc-title', 'Cosa è successo'));
-    card2.appendChild(head2);
-    /* Rilievo 12: la vecchia frase dichiarava "un'ora" di differenza fra i
-       due fusi -- una cifra non misurata (e' quella FRA I DUE FUSI, non
-       fissa: zero a Roma, sei ore da New York). Il caso peggiore e' vicino
-       alla mezzanotte, non "un'ora": si dice il vero senza inventare un
-       numero. */
-    card2.appendChild(el('p', 'sc-desc',
-      'Gli episodi che l’aggregazione notturna ha costruito dai cambi grezzi di un giorno — ' +
-      'scritti alle 00:20, sul fuso della CASA. Il giorno qui sotto è calcolato sul fuso di ' +
-      'questo browser: possono differire di un giorno, vicino alla mezzanotte, se guardi da un altro ' +
-      'fuso orario.'));
-
+    /* **La sezione 02 e' uscita** (spec §13, 15/09/2026): gli episodi non
+       vivono piu' in uno strato loro, vivono nella cronaca del resoconto, e
+       la 03 li mostra. Il selettore del giorno, che era suo, resta qui: ora
+       comanda la 03, che e' l'unica che legge un giorno. */
     var controls = el('div');
     controls.style.cssText = 'display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:12px';
     var dayField = el('div');
@@ -1938,41 +1433,27 @@ window.HirisWatcherRoute = (function () {
     dayField.appendChild(dayInput);
     controls.appendChild(dayField);
 
-    var recentBtn = el('button', 'btn btn-ghost btn-sm', 'Vedi i più recenti, senza filtro');
+    var recentBtn = el('button', 'btn btn-ghost btn-sm', 'Vedi il giorno più recente');
     recentBtn.type = 'button';
     controls.appendChild(recentBtn);
-    card2.appendChild(controls);
 
-    var factsBody = el('div', 'sc-body');
-    card2.appendChild(factsBody);
-    outlet.appendChild(card2);
-
-    dayInput.addEventListener('change', function () {
-      loadFacts(factsBody, dayInput.value || null);
-    });
-    recentBtn.addEventListener('click', function () {
-      dayInput.value = '';
-      loadFacts(factsBody, null);
-    });
-
-    /* Sezione 03: il resoconto del giorno (spec §9). Segue lo STESSO giorno
-       della 02 -- due selettori per la stessa data sarebbero due verita' su
-       cosa si sta guardando -- e senza filtro mostra IERI, che e' l'ultimo
-       giorno che ha un resoconto scritto (l'aggregazione gira alle 00:20). */
-    var reportBody = section(outlet, '03', 'Il resoconto del giorno',
+    /* Sezione 02: il resoconto del giorno (spec §9). Era la 03 finche' gli
+       oggetti avevano la loro. */
+    var reportBody = section(outlet, '02', 'Il resoconto del giorno',
       'Cosa si è misurato, cosa non si è potuto misurare e perché, e l’indice ' +
       'di cosa è successo. È il materiale su cui ragiona l’analista: resta anche quando ' +
       'il grezzo di quel giorno sarà scaduto.');
+    reportBody.parentNode.insertBefore(controls, reportBody);
 
     dayInput.addEventListener('change', function () {
       loadReport(reportBody, dayInput.value || null);
     });
     recentBtn.addEventListener('click', function () {
+      dayInput.value = ieriLocale();
       loadReport(reportBody, null);
     });
 
     loadWatching(watchingBody);
-    loadFacts(factsBody, dayInput.value);
     loadReport(reportBody, dayInput.value);
   }
 
@@ -1980,7 +1461,6 @@ window.HirisWatcherRoute = (function () {
     mount: mount,
     /* Seam di test: la resa e' pura DOM + dati, va pinnata senza passare da fetch. */
     _rendiScope: renderScope,
-    _rendiOggetti: renderFacts,
     _rendiResoconto: renderReport
   };
 })();

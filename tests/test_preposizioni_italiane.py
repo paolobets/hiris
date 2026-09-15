@@ -130,7 +130,7 @@ una parola comunissima -- avrebbe segnalato `all_bands`, `all_states`,
 `get_all`, `show_all`, `close_all_stores`, cioe' cinque nomi inglesi
 corretti, di cui uno (`all_bands`) e' la CORREZIONE che la misura stessa
 prescrive. Con la condizione quei cinque non li segnala piu', e continua a
-segnalare `dall_area`, `nell_argv`, `_ARCHIVIO_DELL_UTENTE`, `l_altro_ieri`.
+segnalare `dall_area`, `nell_argv`, `_ARCHIVIO_DELL_UTENTE`.
 
 **`all` ha UN falso positivo misurato, ed e' il primo: `all_occurrences`**
 (`esiti_provider.py`, lotto di `radice`). La condizione sulle vocali non lo
@@ -141,7 +141,7 @@ segnala zero») e' diventata falsa in quel momento, ed e' corretta ora.
 
 **La regola RESTA, e il conto e' questo**: cinque nomi inglesi corretti salvati
 dalla condizione contro uno che le sfugge, piu' i quattro veri positivi
-(`dall_area`, `nell_argv`, `_ARCHIVIO_DELL_UTENTE`, `l_altro_ieri`). Il costo
+(`dall_area`, `nell_argv`, `_ARCHIVIO_DELL_UTENTE`). Il costo
 del falso positivo e' stato nullo -- il nome finale, `occurrences`, e' anche
 piu' semplice -- ma **il costo di non contarlo non lo sarebbe**: accettare un
 falso positivo come una presa e' il modo in cui un cancello smette di essere
@@ -420,7 +420,7 @@ _NOTE_ITALIANE = frozenset({
     "fra_parentesi",
     "grave_piu_un_taciuto",
     "i_non_letta", "ids_da_leggere", "il_piano_puo_rispondere",
-    "in_fuori", "kwargs_con", "kwargs_senza", "l_altro_ieri", "legami_a_self_ha",
+    "in_fuori", "kwargs_con", "kwargs_senza", "legami_a_self_ha",
     "mezzanotte_e_mezza_a_roma", "mezzanotte_e_mezza_roma", "modello_di",
     "nei_preset", "nei_test", "nel_prompt", "nell_argv",
     "nomi_di_ripiego", "non_c_e", "non_chiesto", "non_disponibili", "non_esiste", "non_letti",

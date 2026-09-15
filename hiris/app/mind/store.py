@@ -325,6 +325,22 @@ def _end_of_day_ts(day: str) -> float | None:
         return None
 
 
+def _migration_10(conn) -> None:
+    """v9 -> v10: la tabella degli **oggetti** esce (spec §13).
+
+    **Misurato sulla casa vera prima di cancellarla**, il 15/09/2026: 200
+    oggetti dal 26/08 al 14/09, e ognuno di quei giorni aveva gia' il suo
+    resoconto -- la storia era gia' salva nella forma che resta. I comprimari,
+    l'unica cosa che l'oggetto portava e la cronaca no, erano **zero su 200**:
+    il campo `misure` vuoto in tutti.
+
+    Quindi **niente conversione**: non c'era niente da convertire che non fosse
+    gia' scritto altrove. Si cancella, e con lei escono `facts()` e
+    `replace_day()`.
+    """
+    conn.execute("DROP TABLE IF EXISTS oggetti")
+
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS cambi (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -409,17 +425,6 @@ CREATE TABLE IF NOT EXISTS resoconto (
     corpo_json   TEXT NOT NULL,
     scritto_ts   REAL NOT NULL
 );
-
-CREATE TABLE IF NOT EXISTS oggetti (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    giorno TEXT NOT NULL,
-    genere TEXT NOT NULL,
-    protagonista TEXT NOT NULL,
-    inizio_ts REAL NOT NULL,
-    fine_ts REAL,
-    corpo_json TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_oggetti_giorno ON oggetti(giorno, inizio_ts);
 
 -- L'OBIETTIVO, con la sua storia. Vive qui e non in un archivio suo perche' e'
 -- cio' che governa quel che l'osservatore raccoglie, e il resoconto giornaliero
@@ -536,7 +541,7 @@ def _migration_6(conn) -> None:
 #: prova non debba ricopiarne il numero: un letterale in una prova e' un
 #: doppione che mente al primo schema nuovo, e questa riga esiste perche' e'
 #: successo (`test_migration_5...` inchiodava il 5).
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 #: L'obiettivo di fabbrica, deciso dal proprietario il 25/08/2026. Non e' un
 #: ripiego: e' il criterio con cui l'osservatore decide cosa guardare su una
@@ -602,7 +607,8 @@ class ObservationsStore:
                     migrations={2: _migration_2, 3: _migration_3, 4: _migration_4,
                                 5: _migration_5, 6: _migration_6,
                                 7: _migration_7, 8: _migration_8,
-                                9: _migration_9})
+                                9: _migration_9,
+                                10: _migration_10})
 
     def close(self) -> None:
         with self._lock:
@@ -1126,66 +1132,9 @@ class ObservationsStore:
             self._conn.commit()
             return cur.rowcount or 0
 
-    # -- gli oggetti ---------------------------------------------------
-
-    def facts(self, *, day: str | None = None, limit: int = 200) -> list[dict]:
-        """Gli oggetti, dal piu' recente."""
-        sql = "SELECT * FROM oggetti"
-        args: list = []
-        if day is not None:
-            sql += " WHERE giorno = ?"
-            args.append(day)
-        sql += " ORDER BY inizio_ts DESC, id DESC LIMIT ?"
-        args.append(int(max(1, limit)))
-        with self._lock:
-            rows = self._conn.execute(sql, tuple(args)).fetchall()
-        return [_fact_row(r) for r in rows]
-
-    # `salva_oggetto` (un INSERT nudo) e `dimentica_oggetti` (un DELETE nudo)
-    # sono uscite qui (giro di correzioni, task-5-fix-brief.md punto 4):
-    # nessun chiamante di produzione le usava -- `aggregate_day` scrive
-    # SEMPRE attraverso `replace_day`, l'unica via transazionale, e i
-    # mandati dei task 6 e 7 non le reclamano (cercato in tutto `hiris/`,
-    # non solo nel cervello). Lasciarle accanto a quella transazionale era un
-    # invito a usarle in sequenza -- ed e' esattamente il difetto che
-    # `replace_day` esiste per chiudere: un crash fra un DELETE e
-    # l'INSERT che lo segue lascia il giorno vuoto o mezzo scritto, e
-    # nessuno se ne accorge finche' non serve rileggerlo. Se la
-    # cancellazione utente della spec (§8, "dimentica un giorno") tornera'
-    # a servire, si riscrivera' allora, con i suoi test e la sua
-    # transazione.
-    def replace_day(self, day: str, facts: list[dict]) -> int:
-        """Rifa' un giorno per intero, in **una sola transazione**: cancella
-        gli oggetti esistenti di `giorno` e inserisce quelli nuovi.
-
-        E' la correzione al difetto che questo prodotto ha gia' pagato una
-        volta -- nella fetta «costruire» il vecchio accodava invece di
-        sostituire, e le ancore YAML lo nascondevano. Un INSERT nudo,
-        ripetuto sullo stesso giorno, accoderebbe una seconda copia senza
-        errore. E se lo svuotamento e il reinserimento fossero due commit
-        separati, un crash a meta' lascia un giorno mezzo scritto,
-        indistinguibile da uno completo.
-
-        Se un inserimento fallisce (es. un dato che rompe un vincolo di
-        schema), **l'intera transazione va indietro**: il giorno resta quello
-        di prima, mai mezzo riscritto.
-
-        Ogni elemento di `facts` e' un dict con le chiavi `genere`,
-        `protagonista`, `inizio_ts`, `fine_ts`, `corpo` -- meno `giorno` che
-        qui e' comune a tutti.
-        """
-        with self._lock:
-            try:
-                self._conn.execute("DELETE FROM oggetti WHERE giorno = ?", (day,))
-                for o in facts:
-                    self._conn.execute(
-                        "INSERT INTO oggetti(giorno,genere,protagonista,inizio_ts,fine_ts,"
-                        "corpo_json) VALUES(?,?,?,?,?,?)",
-                        (day, o["genere"], o["protagonista"], float(o["inizio_ts"]),
-                         None if o.get("fine_ts") is None else float(o["fine_ts"]),
-                         json.dumps(o["corpo"], ensure_ascii=False)))
-                self._conn.commit()
-            except Exception:
-                self._conn.rollback()
-                raise
-            return len(facts)
+    # **Gli OGGETTI sono usciti** (spec §13, 15/09/2026), e con loro
+    # `facts()` e `replace_day()`. La tabella la lascia cadere
+    # `_migration_10`; il docstring di `prune` qui sopra, che prometteva
+    # di non toccarli, parla ormai di una cosa che non c'e' piu' -- resta
+    # perche' la ragione ("due vite, due tabelle") vale ancora per il
+    # grezzo contro i resoconti.

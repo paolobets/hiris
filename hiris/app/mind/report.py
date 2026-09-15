@@ -62,10 +62,19 @@ from .recipes import Recipe
 
 logger = logging.getLogger(__name__)
 
-#: Le chiavi del corpo di un episodio che entrano nell'indice. Tutto il resto
-#: -- i comprimari, il clima mentre durava, il contesto ricco -- **non entra**,
+#: Le chiavi del corpo di un episodio che entrano nell'indice: **cio' che
+#: dopo non si recupera piu'**, perche' dipende da com'era la casa allora.
+#:
+#: `nome`, `classe` e `attributi` per un'entita'. `dominio`, `titolo` e
+#: `comparso_ts` per una condizione di sistema -- aggiunti il 15/09/2026, con
+#: l'uscita degli oggetti: «quale integrazione si e' rotta» viveva solo li'
+#: dentro, e una voce di configurazione fra tre settimane puo' non esistere
+#: piu'. E' la stessa ragione di `friendly_name`, applicata all'altro genere
+#: di soggetto.
+#:
+#: Tutto il resto -- il clima mentre durava, il contesto ricco -- **non entra**,
 #: e si va a prendere quando serve.
-_ANCHOR = ("nome", "classe", "attributi")
+_ANCHOR = ("nome", "classe", "attributi", "dominio", "titolo", "comparso_ts")
 
 
 def build_report(*, day: str, episodes, series: dict, recipes: dict,
@@ -183,10 +192,16 @@ def _entry(episode: dict) -> dict:
 
     `fine_ts` a `None` resta `None` e non sparisce: «ancora in corso» e' un
     fatto, e toglierlo lo confonderebbe con «finito subito».
+
+    **Il genere c'e'** (dal 15/09/2026, quando gli oggetti sono usciti): e' la
+    differenza fra «una porta si e' aperta» e «un'integrazione si e' rotta», e
+    l'analista le trattera' in modo diverso. Costa dodici byte a voce ed e'
+    gia' calcolato -- prima viveva solo nell'oggetto, e sarebbe uscito con lui.
     """
     body = episode.get("corpo_base") or {}
     entry = {"quando_ts": episode.get("inizio"), "fine_ts": episode.get("fine"),
-            "chi": episode.get("protagonista"), "cosa": body.get("stato")}
+            "chi": episode.get("protagonista"), "genere": episode.get("genere"),
+            "cosa": body.get("stato")}
     for key in _ANCHOR:
         if body.get(key) is not None:
             entry[key] = body[key]

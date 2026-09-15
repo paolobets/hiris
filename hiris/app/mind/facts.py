@@ -53,7 +53,6 @@ from ..home_space.type_vocabulary import (
     resting_states,
     unknown_states,
 )
-from .operations import REGISTRY, UNKNOWN_UNIT
 from .recipes import Recipe
 from .report import build_report
 from .seed import balance_recipe
@@ -592,9 +591,7 @@ def build_balance_body(*, series: dict[str, list[dict]],
 
 
 def aggregate_day(*, store, day: str, timezone: str | None,
-                         companions=None, directions=None, balances=None,
-                         recipes=None, series=None, names=None,
-                         report_only: bool = False) -> int:
+                         recipes=None, series=None, names=None) -> int:
     """Costruisce gli oggetti di un giorno. Torna quanti ne ha scritti.
 
     **Idempotente**: rifare un giorno lo SOSTITUISCE, non lo accoda. Gli
@@ -713,12 +710,12 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     from_ts, to_ts = day_boundaries(day, timezone)
     rows = store.readings(from_ts=from_ts, to_ts=to_ts)
 
-    # Solo i bilanci VALIDI (con almeno un totale) sopprimono i loro membri
-    # -- vedi il docstring di `balances` sopra: un bilancio vuoto sarebbe un
-    # peggioramento puro (undici frammenti in meno, zero fatti in piu').
-    valid_balances = [b for b in (balances or [])
-                      if isinstance(b, dict) and (b.get("corpo") or {}).get("totali")]
-    entities_in_balance: set[str] = {e for b in valid_balances for e in (b.get("entita") or [])}
+    # **I bilanci non entrano piu' qui** (15/09/2026). Servivano a due cose:
+    # diventare un oggetto, e sopprimere gli episodi individuali dei loro
+    # membri. La prima e' uscita con gli oggetti; la seconda non ha piu'
+    # oggetto, perche' gli episodi di energia sono usciti anche loro -- un
+    # contatore e' un numero, e i numeri stanno fra le misure, dove il
+    # bilancio arriva per la sua ricetta.
 
     # `unavailable`/`unknown` si saltano QUI, una volta sola, prima di ogni
     # ramo e prima delle misure (`type_vocabulary.unknown_states()`, correzione
@@ -795,7 +792,6 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     # misure di un comprimario dipende dal PROSSIMO episodio dello stesso
     # protagonista, che a meta' del ciclo non e' ancora noto.
     episodes: list[dict] = []
-    energy_subjects: set[str] = set()
     # I cambi di ATTRIBUTO del giorno, per soggetto: `[(istante, {nome:
     # valore}), ...]` in ordine cronologico. Sono le righe che l'osservatore
     # scrive quando cambia un attributo che il sapere ha dichiarato utile
@@ -995,174 +991,59 @@ def aggregate_day(*, store, day: str, timezone: str | None,
             else:
                 close(subject, r["quando_ts"])
             continue
-        # Nessun apri/chiudi qui: si annota solo CHE il soggetto e' un
-        # contatore visto oggi. Il riepilogo (prima lettura, ultima,
-        # differenza) si costruisce dopo il ciclo, da `misure`, che gia'
-        # tiene ogni lettura del giorno in ordine cronologico.
-        #
-        # **Un soggetto dentro un bilancio VALIDO non produce il suo
-        # episodio individuale** (mandato «il bilancio dell'energia»,
-        # punto principale + punto 4): il bilancio lo sostituisce. Senza
-        # questo salto avremmo undici frammenti PIU' l'oggetto -- peggio
-        # di adesso, non meglio.
-        if genre == "energia" and subject not in entities_in_balance:
-            energy_subjects.add(subject)
+        # **Un contatore non apre niente.** Fino al 15/09/2026 qui si
+        # annotava che il soggetto era un contatore, per costruirgli dopo
+        # un episodio di energia; quell'episodio e' uscito, perche' un
+        # contatore non ha uno stato, ha un numero -- e i numeri stanno
+        # fra le misure, dove la ricetta li porta con la copertura che
+        # l'episodio non aveva.
 
     # Cio' che a fine giornata e' ancora in corso resta APERTO: `fine_ts` a
     # `None` e' un fatto, zero direbbe «finita subito».
     for subject in list(open_episodes):
         close(subject, None)
-
-    # Le energie si costruiscono ora, dal riepilogo delle misure: un
-    # oggetto di energia del giorno SI CHIUDE sempre (mai `fine_ts: None`,
-    # e' gia' cio' che si sa a fine giornata) e porta valore iniziale,
-    # finale e la differenza -- non la prima lettura sola con un oggetto
-    # perennemente aperto, che era il difetto misurato su 29 contatori
-    # della casa.
-    for subject in sorted(energy_subjects):
-        points = measurements.get(subject, [])
-        if not points:
-            continue
-        # **Iniziale, finale e differenza parlano delle STESSE due letture.**
-        # Il registro salta i punti che non si leggono come numero (li conta
-        # sulla copertura, non li inventa): se `valore_iniziale` restasse la
-        # prima riga grezza, un contatore con una lettura illeggibile a bordo
-        # giornata scriverebbe «iniziale: garbage, finale: 115, differenza:
-        # 15» -- tre campi che non stanno insieme. Trovato dalla revisione
-        # indipendente del 12/09/2026. Se NIENTE si legge come numero restano
-        # le righe grezze: sono comunque cio' che si e' visto, e la differenza
-        # sara' assente.
-        readable = [(when, v) for when, v in points if _as_number(v) is not None]
-        edges = readable or points
-        initial, final = edges[0][1], edges[-1][1]
-        # Una sola lettura nel giorno non dice quanto e' cambiato: e'
-        # "non lo sappiamo" -- la stessa distinzione del punto 2, e il
-        # codice la fa gia' altrove restituendo `None` quando un valore non
-        # si legge come numero (pulizia del secondo giro di review). Con un
-        # solo punto, iniziale e finale sono la STESSA riga: il conto
-        # tornerebbe 0.0, il fatto falso "non e' cambiato niente" travestito
-        # da dato. **La parola resta neutra**
-        # (26/08/2026): "consumato" sarebbe falso per la meta' dei sensori
-        # di un impianto fotovoltaico con accumulo, che PRODUCONO.
-        # Il conto passa dal registro: la guardia «un punto solo» vive li'
-        # dentro, con la sua ragione scritta, invece di essere un `if` qui.
-        # L'unita' non e' una dimenticanza: la tabella `cambi` non ce l'ha
-        # (vedi `UNKNOWN_UNIT`). Inventare `kWh` qui sarebbe una
-        # motivazione falsa su un contatore che potrebbe essere in Wh o in m3.
-        rise = REGISTRY["primo_ultimo_differenza"].run(
-            [{"valore": _as_number(v)} for _, v in points],
-            unit=UNKNOWN_UNIT)
-        difference = rise.value if rise.computable else None
-        # Stessa regola di `close()` (il nome dal grezzo del giorno, il
-        # campo tace quando non c'e'): l'energia nasce da un'altra strada,
-        # non da un'altra legge.
-        energy_body = {"valore_iniziale": initial, "valore_finale": final,
-                       "differenza": difference}
-        subject_name = names.get(subject)
-        if subject_name:
-            energy_body["nome"] = subject_name
-        episodes.append({"genere": "energia", "protagonista": subject,
-                        "inizio": points[0][0], "fine": points[-1][0],
-                        "corpo_base": energy_body})
-
-    # Il limite superiore delle misure di un comprimario e' l'inizio del
-    # PROSSIMO episodio dello STESSO protagonista, e la fine della giornata
-    # SOLO se non ce n'e' uno (correzione del giro di review, punto 5). Prima
-    # di questa correzione il limite era sempre `to_ts`: un riscaldamento
-    # acceso 15:30-17:05 e di nuovo 19:00-20:00, con la temperatura misurata
-    # fino alle 23:00, faceva riportare al PRIMO episodio come temperatura
-    # finale quella delle 23:00 -- il clima del secondo episodio e oltre.
-    next_starts: dict[str, list[float]] = {}
-    for e in episodes:
-        next_starts.setdefault(e["protagonista"], []).append(e["inizio"])
-
-    def upper_limit(protagonist: str, start: float) -> float:
-        later = [i for i in next_starts.get(protagonist, []) if i > start]
-        return min(later) if later else to_ts
-
-    built: list[dict] = []
-    for e in episodes:
-        upper_bound = upper_limit(e["protagonista"], e["inizio"])
-        body = {**e["corpo_base"], "comprimari": [], "misure": {}}
-        if e["genere"] == "energia":
-            # Solo l'energia porta una direzione (mandato, punto 2): un
-            # `directions` troppo largo, o un refuso nel confronto del
-            # genere, non deve poter far comparire `direzione` su un
-            # funzionamento o una presenza.
-            info = directions(e["protagonista"]) if directions else None
-            if info:
-                body["direzione"] = info["direzione"]
-                body["provenienza"] = info["provenienza"]
-        for other in (companions(e["protagonista"]) if companions else []):
-            # Il limite INFERIORE e' l'inizio dell'oggetto: una misura presa
-            # PRIMA che l'episodio cominciasse non e' cio' che si sapeva
-            # della grandezza collegata mentre l'oggetto durava, e' il clima
-            # di prima. Il limite SUPERIORE e' il prossimo episodio dello
-            # stesso protagonista (sopra), o la fine della giornata se non ce
-            # n'e' uno: cio' che si sapeva della grandezza mentre l'oggetto
-            # durava e subito dopo, prima del prossimo episodio DI QUESTO
-            # protagonista -- non del prossimo cambio di un argomento
-            # qualunque.
-            points = [(t, v) for t, v in measurements.get(other, [])
-                     if e["inizio"] <= t < upper_bound]
-            body["comprimari"].append(other)
-            if points:
-                body["misure"][other] = {"da": points[0][1], "a": points[-1][1]}
-        built.append({"genere": e["genere"], "protagonista": e["protagonista"],
-                          "inizio_ts": e["inizio"], "fine_ts": e["fine"],
-                          "corpo": body})
-
-    # I bilanci: un oggetto al giorno per dispositivo, protagonista =
-    # `dispositivo_id` (stabile nel registro di HA -- non l'entita', che il
-    # bilancio riassume, ne' il nome, che l'utente puo' cambiare: si
-    # RISOLVE in aggregazione, non si congela nel grezzo, la stessa ragione
-    # di `companions`/`directions`). Si CHIUDE sempre dentro la giornata (mai
-    # `fine_ts: None`, come l'energia individuale sopra): e' gia' cio' che
-    # si sa a fine giornata.
-    for b in valid_balances:
-        built.append({
-            "genere": "bilancio", "protagonista": b["dispositivo_id"],
-            "inizio_ts": from_ts, "fine_ts": to_ts,
-            "corpo": {**b["corpo"], "dispositivo": b.get("nome"),
-                     "entita": sorted(b.get("entita") or [])},
-        })
-
-    # **IL RESOCONTO DEL GIORNO** (spec §9, fetta 5), scritto dagli STESSI
-    # episodi che hanno appena prodotto gli oggetti: non e' una seconda lettura
-    # del grezzo ne' un secondo giudizio, e' un'altra forma dello stesso
-    # lavoro. Fare due passate sarebbe aprire la porta a due verita' sullo
-    # stesso giorno.
+    # **L'energia non e' un EPISODIO** (15/09/2026, con gli oggetti).
+    # Qui si costruiva un episodio per ogni contatore -- valore iniziale,
+    # finale, differenza -- e il suo unico lettore era l'oggetto. Nella
+    # cronaca quella voce direbbe «quando, chi, genere: energia, cosa:
+    # niente»: un contatore non ha uno stato, ha un numero, e un numero
+    # sta fra le MISURE. Lo dice gia' il commento qui sopra: «l'energia e'
+    # un riepilogo di letture DENTRO il giorno».
     #
-    # `recipes is None` significa «questo chiamante non porta le ricette»
-    # (molte prove, e la riparazione di un giorno solo): si scrivono gli
-    # oggetti e basta, come prima. Un resoconto scritto senza le ricette
-    # avrebbe la meta' delle misure vuota **per una ragione che non riguarda
-    # la casa**, e resterebbe li' a dire il falso finche' qualcuno non rifa'
-    # quel giorno.
-    if recipes is not None:
-        # **L'obiettivo che valeva ALLORA**, non quello di oggi (spec §11).
-        # Si legge a `to_ts` -- la fine del giorno -- perche' e' la domanda
-        # con cui quel giorno si e' chiuso; e si legge qui, dove l'archivio
-        # c'e' gia', per tenere `build_report` puro come promette.
-        store.replace_report(day, build_report(
-            day=day, episodes=episodes, series=series or {},
-            recipes=recipes, names=names or {},
-            objective=store.objective_at(to_ts)))
+    # **Verificato dal vivo prima di toglierlo**: i tre contatori della
+    # casa che avevano un episodio di energia sono tutti coperti da una
+    # ricetta -- `energia_totale_periodo` (somma_periodo) per la presa,
+    # `potenza_media_min_max` per la potenza, il bilancio per l'inverter.
+    # I numeri non si perdono: cambiano posto, e prendono la copertura che
+    # l'episodio non aveva.
 
-    # **`report_only`: si scrive il resoconto e si lasciano stare gli
-    # oggetti.** Serve alla riparazione d'avvio, che ha quattro uscite
-    # anticipate -- comprimari falliti, direzioni non lette, bilanci non letti
-    # -- tutte per la regola «chi SOSTITUISCE non tollera il parziale».
-    # Quella regola e' giusta per gli oggetti e SBAGLIATA per il resoconto:
-    # misurato dal vivo il 14/09/2026, sulla casa vera non esisteva nessun
-    # resoconto perche' una di quelle uscite scattava a ogni avvio. Un
-    # resoconto sa dire cio' che non ha potuto calcolare; uno che non c'e'
-    # non dice niente, e non si distingue da un giorno in cui non e' successo
-    # nulla.
+    # **Gli OGGETTI sono usciti** (spec §13, 15/09/2026): qui si costruiva
+    # un secondo strato -- episodio piu' comprimari piu' misure -- che viveva
+    # accanto al resoconto e diceva le stesse cose in un'altra forma.
     #
-    # **Muore con gli `oggetti`** (spec §13): tolto quello strato non c'e'
-    # piu' niente da NON toccare, e questo parametro non ha piu' un contrario.
-    if report_only:
-        return len(episodes)
+    # **Misurato sulla casa vera prima di cancellarlo**: 200 oggetti, e i
+    # comprimari erano **zero su 200** -- il campo `misure` vuoto in tutti.
+    # La perdita che si temeva non esisteva: non c'era niente da perdere.
+    # E ogni giorno che aveva oggetti (26/08 -> 14/09) aveva gia' il suo
+    # resoconto, quindi nemmeno la storia si e' persa.
 
-    return store.replace_day(day, built)
+    # **IL RESOCONTO DEL GIORNO** (spec §9), scritto dagli stessi episodi che
+    # questa funzione ha appena costruito -- una lettura sola del grezzo, un
+    # giudizio solo.
+    #
+    # **Si scrive SEMPRE, anche senza ricette.** Fino al 15/09/2026 un
+    # chiamante che non portava le ricette non faceva scrivere niente, e la
+    # ragione era buona: un resoconto con meta' delle misure vuota per un
+    # motivo che non riguarda la casa resterebbe li' a dire il falso. Ma quella
+    # ragione reggeva finche' c'erano gli OGGETTI a tenere il giorno; tolti
+    # quelli, non scrivere vuol dire **perdere il giorno**, e «non e' successo
+    # niente» tornerebbe a confondersi con «non l'abbiamo guardato» -- la
+    # distinzione per cui il resoconto esiste.
+    store.replace_report(day, build_report(
+        day=day, episodes=episodes, series=series or {},
+        recipes=recipes or {}, names=names or {},
+        objective=store.objective_at(to_ts)))
+
+    # **Torna quante voci di cronaca ha scritto.** Prima tornava quanti
+    # oggetti aveva salvato: e' lo stesso numero detto nella lingua che resta.
+    return len(episodes)

@@ -11,7 +11,7 @@ import os
 
 import pytest
 
-from hiris.app.mind.facts import BALANCE_DIRECTIONS, aggregate_day, build_balance_body
+from hiris.app.mind.facts import BALANCE_DIRECTIONS, build_balance_body
 from hiris.app.mind.store import ObservationsStore
 
 G = "2026-08-24"
@@ -496,118 +496,6 @@ def _bilancio_valido(dispositivo_id="dev1", nome="Inverter", entita=None):
         "sensor.potenza_prodotta", "sensor.totale_energia_prodotta"]
     return {"dispositivo_id": dispositivo_id, "nome": nome, "entita": entita,
             "corpo": {"totali": {"produzione": {"valore": 12.3, "provenienza": "dichiarata"}}}}
-
-
-def test_un_giorno_con_l_impianto_produce_un_bilancio_e_zero_episodi_per_i_suoi_membri(archivio):
-    """**Il test richiesto dal mandato, provato per mutazione**: un giorno
-    con l'impianto (quattro entita' dello stesso dispositivo, tre delle
-    quali senza nemmeno una direzione utile -- come `totale_energia_
-    prodotta`, il contatore di vita) produce UN bilancio e ZERO episodi di
-    energia per le entita' che vi sono dentro; un'entita' di energia FUORI
-    da ogni bilancio continua a produrre il suo episodio.
-
-    Mutazione ESEGUITA: in `aggregate_day`, `if subject not in
-    entities_in_balance:` sostituito con `if True:` (ignorare la
-    soppressione) -- arrossisce, perche' tornano 4 episodi di energia
-    individuali oltre al bilancio invece di 0. Ripristinato subito dopo."""
-    membri = ["sensor.energia_prodotta_oggi", "sensor.energia_autoconsumata_oggi",
-             "sensor.potenza_prodotta", "sensor.totale_energia_prodotta"]
-    for soggetto in membri:
-        archivio.record(quando_ts=ts(6), source="entita", subject=soggetto,
-                        da=None, a="1.0", device_class="energy")
-        archivio.record(quando_ts=ts(12), source="entita", subject=soggetto,
-                        da=None, a="5.0", device_class="energy")
-    # Un'entita' di energia FUORI dal bilancio (un altro dispositivo, o
-    # nessuno): deve continuare a produrre il suo episodio come prima.
-    archivio.record(quando_ts=ts(7), source="entita", subject="sensor.altro_contatore",
-                    da=None, a="2.0", device_class="energy")
-    archivio.record(quando_ts=ts(20), source="entita", subject="sensor.altro_contatore",
-                    da=None, a="9.0", device_class="energy")
-
-    quanti = aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
-                            balances=[_bilancio_valido(entita=membri)])
-
-    oggetti = archivio.facts(day=G)
-    assert quanti == len(oggetti)
-
-    bilanci_scritti = [o for o in oggetti if o["genere"] == "bilancio"]
-    assert len(bilanci_scritti) == 1
-    assert bilanci_scritti[0]["protagonista"] == "dev1"
-
-    energie_scritte = [o for o in oggetti if o["genere"] == "energia"]
-    assert {o["protagonista"] for o in energie_scritte} == {"sensor.altro_contatore"}
-
-    assert len(oggetti) == 2  # un bilancio + un episodio (l'entita' fuori)
-
-
-def test_il_bilancio_porta_il_nome_del_dispositivo_e_i_suoi_membri(archivio):
-    membri = ["sensor.energia_prodotta_oggi"]
-    for soggetto in membri:
-        archivio.record(quando_ts=ts(6), source="entita", subject=soggetto,
-                        da=None, a="1.0", device_class="energy")
-        archivio.record(quando_ts=ts(12), source="entita", subject=soggetto,
-                        da=None, a="5.0", device_class="energy")
-
-    aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
-                   balances=[_bilancio_valido(entita=membri)])
-
-    [o] = [x for x in archivio.facts(day=G) if x["genere"] == "bilancio"]
-    assert o["corpo"]["dispositivo"] == "Inverter"
-    assert o["corpo"]["entita"] == membri
-    assert o["corpo"]["totali"]["produzione"]["valore"] == 12.3
-
-
-def test_il_bilancio_si_chiude_sempre_dentro_la_giornata(archivio):
-    """Come l'energia individuale: mai `fine_ts: None`, e' gia' cio' che si
-    sa a fine giornata, non qualcosa ancora in corso."""
-    archivio.record(quando_ts=ts(6), source="entita", subject="sensor.x",
-                    da=None, a="1.0", device_class="energy")
-    aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
-                   balances=[_bilancio_valido(entita=["sensor.x"])])
-
-    [o] = [x for x in archivio.facts(day=G) if x["genere"] == "bilancio"]
-    from hiris.app.mind.facts import day_boundaries
-    da_ts, a_ts = day_boundaries(G, "Europe/Rome")
-    assert o["inizio_ts"] == da_ts
-    assert o["fine_ts"] == a_ts
-
-
-def test_un_bilancio_senza_totali_non_sopprime_niente_e_non_si_scrive(archivio):
-    """La stessa regola gia' presa per `direzioni`: mai un oggetto vuoto al
-    posto di quello che c'era. Un bilancio senza nemmeno un totale (le
-    statistiche non hanno detto niente per nessuna dimensione) non
-    sopprime i suoi membri -- se lo facesse, undici frammenti diventerebbero
-    ZERO oggetti, il peggioramento peggiore possibile."""
-    archivio.record(quando_ts=ts(6), source="entita", subject="sensor.x",
-                    da=None, a="1.0", device_class="energy")
-    archivio.record(quando_ts=ts(12), source="entita", subject="sensor.x",
-                    da=None, a="5.0", device_class="energy")
-
-    bilancio_vuoto = {"dispositivo_id": "dev1", "nome": "Inverter",
-                      "entita": ["sensor.x"], "corpo": {}}
-    quanti = aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
-                            balances=[bilancio_vuoto])
-
-    oggetti = archivio.facts(day=G)
-    assert quanti == 1
-    assert len(oggetti) == 1
-    assert oggetti[0]["genere"] == "energia"
-    assert oggetti[0]["protagonista"] == "sensor.x"
-
-
-def test_senza_bilanci_il_comportamento_e_identico_a_prima(archivio):
-    """`balances=None` (il default): nessuna soppressione, nessun oggetto di
-    genere bilancio -- il comportamento di sempre, invariato."""
-    archivio.record(quando_ts=ts(6), source="entita", subject="sensor.x",
-                    da=None, a="1.0", device_class="energy")
-    archivio.record(quando_ts=ts(12), source="entita", subject="sensor.x",
-                    da=None, a="5.0", device_class="energy")
-
-    quanti = aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
-
-    oggetti = archivio.facts(day=G)
-    assert quanti == 1
-    assert oggetti[0]["genere"] == "energia"
 
 
 # -- la ricetta come dato ---------------------------------------------------

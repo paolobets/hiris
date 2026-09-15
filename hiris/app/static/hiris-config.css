@@ -1983,3 +1983,37 @@
   .usage-bar { flex-direction: column; gap: 10px; }
   .umr-top { flex-direction: column; gap: 2px; }
 }
+
+/* Una riga del resoconto: la cronaca, le forme e «cosa non si sa» hanno tutte
+   e tre questa forma -- un titolo e, sotto, il perche' in tono attenuato.
+
+   **Queste regole mancavano da quando la sezione e' nata (3.33.0), e nessuno
+   se n'e' accorto per un motivo preciso**: il cancello `test_css_classes.py`
+   non le vedeva, perche' un accoppiamento di `/* */` piu' in alto nel sorgente
+   inghiottiva quelle righe quando il test toglie i commenti. La cancellazione
+   dello strato degli oggetti (15/09/2026) ha ridotto il file di 520 righe, ha
+   rotto quell'accoppiamento, e il cancello ha ricominciato a vedere: tre
+   classi scritte dalla pagina e vestite da niente. Il cancello aveva ragione
+   dal primo giorno; era cieco, non indulgente. */
+.section-card .sc-row {
+  /* **Nessun `display` qui, ed e' una scelta.** Due div si impilano da soli;
+     una dichiarazione d'autore su `display` batterebbe `[hidden]` e
+     riaprirebbe il difetto che `constructions-route.test.mjs` sorveglia --
+     un pannello che nasce «chiuso» e si vede lo stesso. La prova l'ha preso
+     mentre scrivevo queste righe. */
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--border-2);
+}
+.section-card .sc-row:last-child { border-bottom: 0; }
+.section-card .sc-row-title {
+  margin-bottom: 2px;
+  font-size: var(--fs-15);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.section-card .sc-row-why {
+  font-size: var(--fs-13);
+  color: var(--text-3);
+  line-height: var(--lh-snug);
+  overflow-wrap: anywhere;
+}
