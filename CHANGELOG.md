@@ -1,5 +1,74 @@
 # HIRIS — Changelog
 
+## [3.41.0] — Lo scostamento contro la storia, e nessuna soglia (2026-09-15)
+
+Il secondo pezzo dell'analista (§10), più un difetto trovato dalla live review
+della 3.40.0.
+
+### Il difetto: l'obiettivo messo nel resoconto e tolto dove serve
+
+La migrazione aveva riempito l'obiettivo su tutti e venti i giorni archiviati
+— un giorno chiesto da solo lo portava — e la rotta della **serie** lo
+buttava: teneva `giorno` e `misure` e basta. Ed è la serie la lettura per cui
+§11 esiste: *«chi legge trenta giorni di misure deve saperlo, o legge una
+tendenza dove c'è un cambio di domanda»*.
+
+Ora la serie porta l'obiettivo di ogni giorno, e la forma pivotata porta
+**quando la domanda è cambiata** — raggruppata in tratti, come i buchi: un
+obiettivo cambia qualche volta all'anno, ripeterlo trenta volte sarebbe la
+ripetizione che i «perché» hanno già pagato.
+
+### Lo scostamento
+
+***«Non si inventa una soglia: si archivia e si interpreta.»*** Il codice non
+classifica: niente «alto», «anomalo», «preoccupante». Escono i numeri —
+ultimo, mediana, scarto, quanti scarti, base — e sceglie il modello.
+
+- **Mediana e scarto assoluto mediano**, non media e deviazione standard: con
+  venti punti un solo giorno storto sposta la media e nasconde tutto il resto.
+- **`base` c'è sempre**, anche quando il conto riesce: *«con 28 giorni di
+  storia va detto che la base è sottile»* è un numero da consegnare, non una
+  soglia da applicare.
+- **Un buco non è uno zero**: i giorni senza valore non entrano nella storia.
+
+### E due rifiuti che sono inneschi
+
+Quando la storia non varia, lo scarto è zero e il numero non si può dividere.
+Ma sono **due fatti diversi**, e confonderli direbbe il contrario di quello che
+è successo:
+
+- la storia è identica **e oggi anche**: è il **secondo innesco**, *«qualcosa
+  è stabile e costa»* — la batteria satura al 90% mentre l'impianto produce
+  ancora 3.000 W;
+- la storia è identica **e oggi no**: è il **primo**, il segnale più forte che
+  esista. Rifiutarlo con «non varia mai» sarebbe stato il contrario della
+  verità. (Difetto di disegno preso durante la scrittura, non dopo.)
+
+### Verificato sulla casa vera
+
+Le cinque misure più fuori dalla loro storia il 14/09, su 19 giorni di base:
+
+| misura | ieri | mediana | scarti |
+|---|---:|---:|---:|
+| quota_autosufficienza | 0,946 | 0,98 | **−3,4** |
+| autoprodotto | 12,87 kWh | 14,18 | −2,79 |
+| prelievo | 0,74 kWh | 0,30 | **+2,75** |
+| consumo | 13,61 kWh | 14,50 | −2,34 |
+
+Coerenti fra loro: la casa ha prelevato più del solito e l'autosufficienza è
+scesa. E il resto lo **dice** invece di tacerlo: 90 serie su 146 hanno meno di
+tre giorni di storia — le ricette del modello sono nuove — e 45 non sono
+numeri.
+
+### Una prova che non poteva fallire
+
+Quella sulla storia troppo corta asseriva `"storia" in ragione`, e anche
+l'altra ragione contiene «la storia è identica»: restava verde togliendo del
+tutto la guardia. Ora asserisce il numero. L'ha trovata la mutazione.
+
+Tredici mutazioni dichiarate ed **eseguite**, tutte uccise. 4211 prove Python,
+423 JS, ruff, oxlint, censimento.
+
 ## [3.40.0] — Le misure in serie, la forma in cui l'analista legge (2026-09-15)
 
 Il primo pezzo dell'analista (§10), e comincia da una **misura che mi ha
