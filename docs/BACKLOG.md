@@ -469,6 +469,14 @@ per le entità non numeriche, che è la **storia** (`history/period`), non le st
 storia HIRIS la legge già, per la cronaca: misurato lo stesso giorno,
 `light.abat_jour_sinistra` aveva cinque punti di storia per il 14/09.
 
+**Questa voce e la voce «I due rifiuti della spec §6» sono lo stesso problema da due lati.** La
+spec §6 elenca fra i «rifiuta se» di un'operazione proprio *«l'entità non ha statistiche»*, e
+nessuna delle diciotto operazioni lo dichiara: è a backlog dal 12/09/2026, prima che la casa
+producesse un solo numero. Se ci fosse, i 18 rifiuti di oggi direbbero **la loro vera ragione**
+invece di «la serie è vuota» — e il modello, a cui il rifiuto torna, saprebbe di aver puntato una
+fonte che per quell'entità non esiste. **Le due voci si fanno insieme, o la seconda riscrive la
+prima.**
+
 **Da decidere.** Se dire al modello quali entità abbiano una serie (il sapere lo saprebbe: è un
 fatto che HA dichiara, come le unità), oppure se il motore debba scegliere la fonte in base
 all'entità — statistiche dove ci sono, storia dove no. La seconda risponde anche alla voce qui
@@ -494,7 +502,8 @@ causa — i nomi dei dispositivi risolti da una porta del cervello su quattro.
 246 righe di sapere vero. È la ragione per cui la porta viene prima della fetta che ci lavora
 sopra.
 
-### Il sapere non ha una porta: il proprietario non puo' vedere cosa HIRIS ha capito
+**Com'era scritta quando era aperta** (13/09/2026), che e' cio' contro cui si e' misurata:
+
 
 `origine: verifica dal vivo della 3.31.0, 13/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §8
 
@@ -571,6 +580,15 @@ statistiche»* e *«il periodo e' fuori dalla memoria disponibile»*. Nessuna de
 `hiris/app/mind/operations.py` li dichiara, e nessuna li produce: il registro sa rifiutare per
 copertura, per unita' incompatibili, per troppi pochi punti — **non per un periodo che l'archivio
 non copre affatto**.
+
+**AGGIORNAMENTO 15/09/2026 — il primo dei due ha adesso un numero, misurato sulla casa vera.**
+Home Assistant tiene statistiche orarie per **130 entita' su 1206, tutte `sensor`**
+(`recorder/list_statistic_ids`): nessuno `switch`, `light`, `valve`, `binary_sensor`. Nel resoconto
+del 14/09, **18 rifiuti su 28** sono su dieci dispositivi che non hanno nemmeno un'entita' con
+statistiche, e dicono «la serie e' vuota» — vero, e inutile: non dice a chi legge (ne' al modello,
+a cui il rifiuto torna) che quella fonte per quell'entita' **non esistera' mai**. Vedi la voce
+«Le ricette si scrivono su entita' che non possono avere statistiche»: e' lo stesso problema visto
+dal lato del dato.
 
 **Perche' non entra nella fetta 3.** Tutti e due chiedono di sapere fin dove arriva la memoria:
 i 22 giorni del grezzo (`archivio.READING_RETENTION_S`) e le statistiche che Home Assistant tiene
@@ -806,7 +824,15 @@ un altro strato dallo stesso problema, e si convertono qui.
 32 entita' di irrigazione, **zero osservate**. La gamba e' progettata e non fatta: `valve`+`water` e
 `sensor`+`water` — che oggi finirebbe nell'energia, ed e' una risorsa diversa.
 
-### Il prompt dell'obiettivo dell'osservatore
+### ~~Il prompt dell'obiettivo dell'osservatore~~ — CHIUSA il 15/09/2026
+
+**Chiusa dallo sprint «i tre attori», e la sua premessa non esiste più.** L'obiettivo è il prompt:
+`mind/observer.build_question(objective, lines)` glielo mette davanti, `mind/cadence` fa
+riconsiderare lo scope quando cambia, il resoconto di ogni giorno porta quello di ALLORA, e
+l'analista lo legge. E **il pavimento — «fisso», che questa voce voleva allargare — è stato
+cancellato l'11/09/2026**: al suo posto c'è la cadenza (spec §5.2). Resta aperta la voce sua, «Otto
+domini su dieci in `_OPERABLE` non possono arrivare», che parla di un'altra cosa.
+
 
 `origine: dichiarata nella spec dell'osservatore, mai fatta` · `documento: docs/design/2026-08-26-l-osservatore.md`
 
@@ -1040,7 +1066,13 @@ citare" senza un secondo consumatore reale sarebbe stata una porta nuova senza u
 attraversa davvero -- la stessa disciplina per cui `capacita'`/`stato_presunto` sono entrati SOLO
 quando la decodifica produceva qualcosa.
 
-### «Cosa sto guardando» stampa i soggetti grezzi, gli episodi no
+### ~~«Cosa sto guardando» stampa i soggetti grezzi, gli episodi no~~ — CHIUSA il 15/09/2026
+
+**Chiusa dalla riscrittura della pagina dell'osservatore.** `describeWatchedSubject` esiste, è
+condivisa, e la lista di «cosa sto guardando» ci passa (`watcher-route.js:407`) come già facevano
+gli episodi — con in più un avviso per il gruppo, detto una volta, quando tutte le voci sotto sono
+identificatori e non nomi.
+
 
 `origine: collaudo col browser della v3.22.1, 07/09/2026` · `nessun documento`
 
@@ -1287,7 +1319,14 @@ renderla capace di accorgersi.
 **Una legge da rispettare nel disegno**: quando la lettura da HA non riesce, *«non ho potuto
 chiedere»* e *«non c'è»* sono **due fatti diversi**, e chi produce il motivo lo etichetta.
 
-### L'analista — chi trasforma le osservazioni in qualcosa di funzionale
+### ~~L'analista — chi trasforma le osservazioni in qualcosa di funzionale~~ — CHIUSA il 15/09/2026
+
+**Fatta dallo sprint «i tre attori»** (spec del 10/09, §10). L'analista gira, legge trenta giorni
+di misure, e sulla casa vera ha prodotto **cinque osservazioni** con i tre inneschi della spec, il
+perché di ciascuna e cosa cambierebbe. Non scrive numeri: nomina la misura, e il codice ci attacca
+il valore — è ciò che impedisce a un modello di inventare una cifra. Resta sotto, come voce sua,
+il testo con cui il proprietario l'ha chiesta.
+
 
 `origine: il proprietario, 07/09/2026` · `nessun documento`
 
@@ -1468,7 +1507,16 @@ dall'audit: `hiris/app/static/config/watcher-route.js` li duplica.
 È un doppione **attraverso il confine dei linguaggi**, che nessuno dei due cancelli sui doppioni
 guarda. Lasciata aperta perché fuori dal perimetro di quella chiusura.
 
-### Il sapere di HIRIS — il catalogatore, il resoconto, le porzioni
+### ~~Il sapere di HIRIS — il catalogatore, il resoconto, le porzioni~~ — CHIUSA il 15/09/2026
+
+**Fatta, nella forma che la misura ha imposto.** Il disegno del 09/09 è stato sostituito il 10/09
+(`docs/design/2026-09-10-i-tre-attori.md`): il catalogatore non sopravvive come attore, gambe e
+pavimento escono, e nascono il registro delle operazioni, le ricette e il resoconto giornaliero.
+Tutte e tre vivono in produzione, col sapere interrogabile da una pagina. Le tre mancanze del
+09/09 sono chiuse: la casa per ciò che HIRIS deduce è `sapere.db`, il resoconto giornaliero
+esiste e ne nascono le tendenze, e le porzioni sono le tre forme di `GET /api/mind/report`.
+Il testo originale resta sotto: è la cronaca di come ci si è arrivati.
+
 
 `origine: il proprietario, 09/09/2026, discutendo l'impianto solare` · `documento: docs/design/2026-09-09-il-sapere-di-hiris.md`
 
