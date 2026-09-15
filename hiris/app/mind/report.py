@@ -199,8 +199,8 @@ def _entry(episode: dict) -> dict:
 def series_of_measures(reports) -> dict:
     """I resoconti pivotati: **una riga per misura**, coi suoi valori nei giorni.
 
-    Torna `{"giorni": [...], "serie": [{soggetto, nome, misura, chiave,
-    operazione, unita, valori, coperture, perche}]}`.
+    Torna `{"giorni": [...], "obiettivi": [...], "serie": [{soggetto, nome,
+    misura, chiave, operazione, unita, valori, coperture, perche}]}`.
 
     **Perche' esiste, col numero.** Misurato sulla casa vera il 15/09/2026 sui
     venti giorni archiviati: i resoconti **come sono**, portati a trenta
@@ -301,7 +301,44 @@ def series_of_measures(reports) -> dict:
     ordinate = sorted(rows.values(),
                       key=lambda r: (str(r["soggetto"] or ""), str(r["misura"] or ""),
                                      _KEY_ORDER.get(r["chiave"], 9), str(r["chiave"] or "")))
-    return {"giorni": days, "serie": ordinate}
+    return {"giorni": days, "obiettivi": _objective_runs(ordered),
+            "serie": ordinate}
+
+
+def _objective_runs(reports) -> list[dict]:
+    """Quando la domanda e' cambiata: un tratto per obiettivo.
+
+    **Il vincolo della spec §11, nella forma che l'analista legge.** Senza,
+    leggerebbe una tendenza dove invece e' cambiata la domanda: trenta giorni
+    di «autosufficienza in calo» possono essere un impianto che peggiora o un
+    obiettivo riscritto a meta'.
+
+    Si raggruppa come i buchi, e per la stessa ragione: l'obiettivo cambia
+    qualche volta all'anno, non ogni giorno, e ripeterlo trenta volte sarebbe
+    la ripetizione che i `perche` hanno gia' pagato -- il 66% del peso, quando
+    si misuro'.
+
+    **Un giorno senza obiettivo dichiarato interrompe il tratto**, e non lo
+    eredita da chi gli sta accanto: attribuirgli l'obiettivo del giorno dopo
+    direbbe che rispondeva a una domanda che non era la sua -- la stessa legge
+    dell'ancora della cronaca e di `friendly_name`.
+    """
+    out: list[dict] = []
+    open_run: dict | None = None
+    for report in reports:
+        day = str(report.get("giorno") or "")
+        aim = report.get("obiettivo")
+        if not isinstance(aim, dict) or not aim.get("testo"):
+            open_run = None
+            continue
+        if (open_run is not None and open_run["testo"] == aim.get("testo")
+                and open_run["scritto_ts"] == aim.get("scritto_ts")):
+            open_run["al"] = day
+            continue
+        open_run = {"dal": day, "al": day, "testo": aim.get("testo"),
+                    "scritto_ts": aim.get("scritto_ts")}
+        out.append(open_run)
+    return out
 
 
 def _runs(days: list[str], reasons: dict) -> list[dict]:

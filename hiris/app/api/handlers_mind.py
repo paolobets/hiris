@@ -210,7 +210,16 @@ async def handle_report(request: web.Request) -> web.Response:
     day = request.query.get("day") or None
     if day is None:
         # Solo le misure: la cronaca si chiede un giorno alla volta.
-        serie = [{"giorno": r.get("giorno"), "misure": r.get("misure") or []}
+        # **E l'obiettivo di ogni giorno** (spec §11). Trovato dalla live
+        # review del 15/09/2026: la migrazione lo aveva riempito su tutti e
+        # venti i giorni archiviati, un giorno chiesto da solo lo portava, e
+        # QUI si buttava -- proprio nella lettura per cui quella riga esiste.
+        # Chi legge trenta giorni di misure in serie deve sapere se in mezzo la
+        # domanda e' cambiata, o legge una tendenza dove c'e' un cambio di
+        # domanda. Costa una frase per giorno; la cronaca e le forme restano
+        # fuori, e si chiedono un giorno alla volta.
+        serie = [{"giorno": r.get("giorno"), "obiettivo": r.get("obiettivo"),
+                  "misure": r.get("misure") or []}
                  for r in store.reports(limit=30)]
         return web.json_response({"resoconti": serie})
     resoconto = store.report(day)

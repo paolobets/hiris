@@ -5,6 +5,7 @@ import pytest
 
 from hiris.app.api.handlers_mind import (
     handle_facts,
+    handle_report,
     handle_set_objective,
     handle_watching,
 )
@@ -952,3 +953,51 @@ async def test_senza_archivio_e_un_503_e_non_si_perde_niente():
     """
     r = await handle_set_objective(_richiesta_scritta({}, {"testo": "x"}))
     assert r.status == 503
+
+@pytest.mark.asyncio
+async def test_la_SERIE_dei_resoconti_porta_l_obiettivo_di_ogni_giorno(tmp_path):
+    """**Difetto trovato dalla live review del 15/09/2026.** La migrazione
+    aveva riempito l'obiettivo su tutti e venti i giorni archiviati -- un
+    giorno chiesto da solo lo portava -- e la rotta della SERIE lo buttava:
+    teneva `giorno` e `misure` e basta.
+
+    E la serie e' **esattamente** la lettura per cui \u00a711 esiste: «chi legge
+    trenta giorni di misure in serie deve saperlo, o legge una tendenza dove
+    c'e' un cambio di domanda». L'obiettivo era stato messo nel resoconto e
+    tolto proprio dove serve.
+
+    Mutazione: togliere `obiettivo` dalla riga della serie -- rossa.
+    """
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        archivio.replace_report("2026-09-13", {
+            "giorno": "2026-09-13",
+            "obiettivo": {"testo": "spendere meno di sera", "scritto_ts": 1.0},
+            "misure": [], "forme": [], "cronaca": []})
+        r = await handle_report(_richiesta({"observations": archivio}))
+        serie = json.loads(r.text)["resoconti"]
+        assert serie[0]["obiettivo"] == {"testo": "spendere meno di sera",
+                                         "scritto_ts": 1.0}
+    finally:
+        archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_la_serie_NON_porta_la_cronaca_ne_le_forme(tmp_path):
+    """L'obiettivo si aggiunge, il resto resta fuori: la cronaca e le forme si
+    chiedono un giorno alla volta, ed e' la ragione per cui la serie sta in un
+    prompt. Una riga d'obiettivo costa una frase; una cronaca costa migliaia
+    di byte per giorno.
+
+    Mutazione: mandare il resoconto intero -- rossa.
+    """
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        archivio.replace_report("2026-09-13", {
+            "giorno": "2026-09-13", "obiettivo": None, "misure": [],
+            "forme": [{"misura": "forma"}], "cronaca": [{"chi": "x"}]})
+        r = await handle_report(_richiesta({"observations": archivio}))
+        riga = json.loads(r.text)["resoconti"][0]
+        assert set(riga) == {"giorno", "obiettivo", "misure"}
+    finally:
+        archivio.close()

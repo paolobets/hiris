@@ -733,3 +733,50 @@ def test_un_buco_che_si_riapre_dopo_un_giorno_buono_e_un_tratto_NUOVO():
     assert len(tratti) == 2, tratti
     assert tratti[0]["al"] == "2026-09-11"
     assert tratti[1]["dal"] == "2026-09-13"
+
+def test_la_serie_dice_QUANDO_la_domanda_e_cambiata():
+    """**Il vincolo della spec §11, nella forma che l'analista legge.** Senza,
+    leggerebbe una tendenza dove invece \u00e8 cambiata la domanda: trenta giorni
+    di \u00abautosufficienza in calo\u00bb possono essere un impianto che peggiora o un
+    obiettivo riscritto a met\u00e0.
+
+    Si raggruppa come i buchi -- un tratto per ogni obiettivo -- perch\u00e9
+    l'obiettivo cambia qualche volta all'anno, non ogni giorno: ripeterlo
+    trenta volte sarebbe la stessa ripetizione che i `perche` hanno gi\u00e0
+    pagato.
+
+    Mutazione: non mettere `obiettivi` nella serie -- rossa.
+    """
+    serie = rep.series_of_measures([
+        {"giorno": "2026-09-11", "obiettivo": {"testo": "prima", "scritto_ts": 1.0},
+         "misure": [], "forme": [], "cronaca": []},
+        {"giorno": "2026-09-12", "obiettivo": {"testo": "prima", "scritto_ts": 1.0},
+         "misure": [], "forme": [], "cronaca": []},
+        {"giorno": "2026-09-13", "obiettivo": {"testo": "dopo", "scritto_ts": 2.0},
+         "misure": [], "forme": [], "cronaca": []},
+    ])
+
+    assert serie["obiettivi"] == [
+        {"dal": "2026-09-11", "al": "2026-09-12", "testo": "prima", "scritto_ts": 1.0},
+        {"dal": "2026-09-13", "al": "2026-09-13", "testo": "dopo", "scritto_ts": 2.0},
+    ]
+
+
+def test_i_giorni_senza_obiettivo_dichiarato_non_ne_inventano_uno():
+    """Un resoconto nato prima che la riga esistesse porta `None`, e resta
+    `None`: attribuirgli l'obiettivo del giorno dopo sarebbe dire che quel
+    giorno rispondeva a una domanda che non era la sua.
+
+    Mutazione: far proseguire il tratto sopra i giorni senza obiettivo --
+    rossa.
+    """
+    serie = rep.series_of_measures([
+        {"giorno": "2026-09-11", "obiettivo": {"testo": "x", "scritto_ts": 1.0},
+         "misure": [], "forme": [], "cronaca": []},
+        {"giorno": "2026-09-12", "obiettivo": None,
+         "misure": [], "forme": [], "cronaca": []},
+        {"giorno": "2026-09-13", "obiettivo": {"testo": "x", "scritto_ts": 1.0},
+         "misure": [], "forme": [], "cronaca": []},
+    ])
+
+    assert [t["dal"] for t in serie["obiettivi"]] == ["2026-09-11", "2026-09-13"]
