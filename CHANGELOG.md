@@ -1,5 +1,66 @@
 # HIRIS — Changelog
 
+## [3.42.0] — L'analista parla (2026-09-15)
+
+Il terzo attore è vivo. Legge le misure di trenta giorni e dice **cosa si
+potrebbe fare**.
+
+### La regola che regge tutto
+
+**Il modello indica QUALE misura, e non scrive il numero.** Valore, copertura,
+scostamento e base li attacca il codice, letti dalla serie. Così un numero
+inventato dentro un rapporto che sembra autorevole è **impossibile** — ed è
+*«il codice calcola, il modello sceglie»* preso alla lettera invece che come
+slogan.
+
+Se un numero lo scrive lo stesso, la risposta si **rifiuta**: ignorarlo in
+silenzio nasconderebbe che ha letto male, sostituirlo col nostro sarebbe
+correggere invece di rifiutare. Stessa dottrina delle ricette.
+
+### Cosa deve avere un'osservazione
+
+Le quattro cose della spec: **cosa** ha visto, **quale dei tre inneschi**, **se
+è spiegato**, **cosa cambierebbe** rispetto all'obiettivo. Senza l'ultima è una
+constatazione, e l'analista esiste per dire cosa si potrebbe fare. Tutti i
+problemi si dicono insieme.
+
+### Il silenzio
+
+*«Il silenzio è un esito legittimo.»* Zero osservazioni non è un errore e **si
+archivia**: «ho guardato e non c'era niente da dire» e «non ho guardato» sono
+due cose diverse. Ma una risposta **vuota** — il modello che non ha risposto
+affatto — non è silenzio: è un giro da rifare, e non si scrive niente. È il
+difetto già pagato dalle ricette il 13/09.
+
+### Il costo, misurato
+
+Sulla casa vera con venti giorni archiviati e 146 serie: **~35.000 token a
+domanda**, tre volte il giro dell'osservatore. Per questo un giorno ha **una**
+analisi sola, e quando ce l'ha il giro non fa niente e non lo dice.
+
+E la copertura piena non si ripete trenta volte: era il **18%** del prompt. È
+la stessa regola già scritta per la pagina — «100% accanto a ogni numero è
+rumore su cui l'attenzione smette di fermarsi» — e vale per il modello quanto
+per l'occhio. Ma se la copertura **cambia** si scrive per intero: quello è il
+terzo innesco.
+
+### E il ponte lo sa ragionare, stavolta prima
+
+`_ANALYSIS_KIND` entra in `RAGIONABILI` **insieme** al modulo che lo produce, e
+in `_SELF_CONTAINED_KINDS`: niente nucleo e **niente strumenti**. Il 13/09 il
+turno delle ricette fu accodato a un ponte che non sapeva ragionarlo, e la
+decisione vuota che ne uscì fu scritta come «non capito» di un modello mai
+interpellato. E senza la seconda riga il turno girerebbe con `execute` in mano
+— un turno che deve solo leggere numeri e scrivere frasi potrebbe accendere
+qualcosa.
+
+`GET /api/mind/analysis` per leggerla: un giorno mai analizzato è un **404**,
+non un'analisi vuota.
+
+Ventidue mutazioni dichiarate ed **eseguite**, tutte uccise. 4235 prove Python,
+423 JS, ruff, oxlint, censimento. Il sedicesimo lavoro periodico, dichiarato
+anche nel README.
+
 ## [3.41.0] — Lo scostamento contro la storia, e nessuna soglia (2026-09-15)
 
 Il secondo pezzo dell'analista (§10), più un difetto trovato dalla live review
