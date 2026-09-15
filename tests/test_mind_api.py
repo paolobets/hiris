@@ -5,11 +5,13 @@ import pytest
 
 from hiris.app.api.handlers_mind import (
     handle_analysis,
+    handle_knowledge,
     handle_report,
     handle_set_objective,
     handle_watching,
 )
 from hiris.app.home_space.reader import HomeSpace
+from hiris.app.mind import knowledge as sap
 from hiris.app.mind.store import ATTEMPTS_SHOWN, ObservationsStore
 from hiris.app.mind.watcher import Watcher
 from hiris.app.proxy.state_translations import StateTranslations
@@ -686,3 +688,68 @@ async def test_senza_anagrafe_l_analisi_si_legge_lo_stesso(tmp_path):
         assert json.loads(r.text)["analisi"]["osservazioni"][0]["nome"] is None
     finally:
         archivio.close()
+
+class _FintoSapere:
+    def __init__(self, riassunto=None, unexplained=None):
+        self._riassunto = riassunto or {"totale": 0, "righe": []}
+        self._unexplained = unexplained or []
+
+    def summary(self):
+        return self._riassunto
+
+    def not_understood(self):
+        return list(self._unexplained)
+
+
+@pytest.mark.asyncio
+async def test_il_sapere_si_puo_finalmente_CHIEDERE():
+    """**La quarta fondamenta**: se un dato c'e' e nessuno puo' chiederlo, non
+    esiste. Il sapere contiene le direzioni dell'energia, i significati delle
+    classi, gli attributi che valgono la pena e le ricette dei dispositivi --
+    e fino al 15/09/2026 si leggeva da tre punti del codice e da **nessuna
+    pagina**.
+
+    Mutazione: togliere la rotta -- 404.
+    """
+    sapere = _FintoSapere(riassunto={"totale": 3, "righe": [
+        {"specie": "tipo", "campo": "significato", "provenienza": "importato",
+         "quante": 2},
+        {"specie": "dispositivo", "campo": "ricetta", "provenienza": "dedotto",
+         "quante": 1}]})
+    r = await handle_knowledge(_richiesta({"knowledge": sapere}))
+    assert r.status == 200
+    corpo = json.loads(r.text)
+    assert corpo["conteggi"]["totale"] == 3
+    assert corpo["conteggi"]["righe"][0]["quante"] == 2
+
+
+@pytest.mark.asyncio
+async def test_le_righe_NON_CAPITE_viaggiano_con_chi_e_quando():
+    """Sono cio' che il proprietario risolverebbe in dieci secondi, e la
+    pagina deve poterle mostrare con la loro data: una riga di tre settimane
+    fa puo' riguardare un dispositivo che nel frattempo e' cambiato.
+
+    Mutazione: mandare solo il valore -- rossa.
+    """
+    fatto = sap.Fact(subject_kind="dispositivo", subject="dev1",
+                     field="ricetta_non_capita", value="non ho capito cosa misura",
+                     provenance="dedotto", evidence="le entita' del dispositivo",
+                     verification="non_capito", who="modello (ponte)",
+                     when_ts=1787000000.0)
+    r = await handle_knowledge(_richiesta({"knowledge": _FintoSapere(unexplained=[fatto])}))
+    riga = json.loads(r.text)["non_capito"][0]
+    assert riga["soggetto"] == "dev1"
+    assert riga["valore"] == "non ho capito cosa misura"
+    assert riga["chi"] == "modello (ponte)"
+    assert riga["quando_ts"] == 1787000000.0
+
+
+@pytest.mark.asyncio
+async def test_senza_sapere_e_un_503_non_un_sapere_vuoto():
+    """«L'archivio non e' collegato» e «il sapere e' vuoto» sono due cose
+    diverse: la seconda direbbe che HIRIS non ha capito niente della casa.
+
+    Mutazione: tornare `{"conteggi": {"totale": 0}}` -- rossa.
+    """
+    r = await handle_knowledge(_richiesta({}))
+    assert r.status == 503

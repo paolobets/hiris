@@ -5100,6 +5100,7 @@ def create_app() -> web.Application:
     # `csrf_middleware` da rispettare.
     from .api.handlers_mind import (
         handle_analysis,
+        handle_knowledge,
         handle_report,
         handle_set_objective,
         handle_watching,
@@ -5111,6 +5112,8 @@ def create_app() -> web.Application:
     # misure degli ultimi trenta. Tre forme, un archivio.
     app.router.add_get("/api/mind/report", handle_report)
     app.router.add_get("/api/mind/analysis", handle_analysis)
+    # La porta del sapere: cosa HIRIS ha capito, e cosa NON ha capito.
+    app.router.add_get("/api/mind/knowledge", handle_knowledge)
     # La sola manopola del prodotto: fino al 14/09/2026 l'obiettivo si
     # poteva solo LEGGERE, e sulla casa vera era ancora quello di fabbrica.
     app.router.add_post("/api/mind/objective", handle_set_objective)

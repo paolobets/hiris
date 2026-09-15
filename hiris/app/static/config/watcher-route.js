@@ -1414,6 +1414,79 @@ window.HirisWatcherRoute = (function () {
     });
   }
 
+
+  /* ------------------------------------------------------------- il sapere (§8) */
+
+  function renderKnowledge(body, sapere) {
+    var nonCapito = (sapere && sapere.non_capito) || [];
+
+    /* **Ciò che non ha capito viene PRIMA.** È l'unica parte su cui il
+       proprietario può fare qualcosa -- «quello è il contatore dell'acqua» --
+       e in fondo a un elenco di conteggi non salterebbe all'occhio. Stessa
+       regola di «cosa non si sa» nel resoconto. */
+    subheading(body, 'Cosa non ha capito');
+    if (!nonCapito.length) {
+      line(body, 'Non c’è niente che non abbia capito. Quando il modello non riesce ' +
+        'a leggere un dispositivo lo scrive qui, e basta una parola tua per risolverlo.',
+        TONE_CALM);
+    } else {
+      nonCapito.forEach(function (r) {
+        var riga = el('div', 'sc-row');
+        riga.appendChild(el('div', 'sc-row-title',
+          describeWatchedSubject(r.soggetto || '', null).primary));
+        riga.appendChild(el('div', 'sc-row-why', r.valore || ''));
+        var coda = [];
+        if (r.chi) coda.push('L’ha scritto ' + r.chi + '.');
+        if (r.quando_ts) coda.push('Il ' + fmtWhenFull(r.quando_ts) + '.');
+        if (coda.length) riga.appendChild(el('div', 'field-hint', coda.join(' ')));
+        body.appendChild(riga);
+      });
+    }
+
+    subheading(body, 'Cosa ha capito');
+    var righe = (sapere && sapere.conteggi && sapere.conteggi.righe) || [];
+    if (!righe.length) {
+      line(body, 'Il sapere è vuoto: nessuna riga, di nessuna specie.', TONE_UNKNOWN);
+      return;
+    }
+    /* **Per specie e provenienza, non un totale solo**: «177 significati
+       importati da Home Assistant» e «tre ricette dedotte dal modello» sono
+       due fatti diversi, e il secondo è quello che il modello ha aggiunto. */
+    var grid = el('div', 'stat-grid');
+    righe.forEach(function (r) {
+      var tile = el('div', 'stat-tile');
+      tile.appendChild(el('div', 'st-label', r.campo + ' · ' + r.specie));
+      tile.appendChild(el('div', 'st-value', fmtCount(r.quante)));
+      tile.appendChild(el('div', 'st-delta', r.provenienza));
+      grid.appendChild(tile);
+    });
+    body.appendChild(grid);
+  }
+
+  function renderKnowledgeError(body, status, reload) {
+    if (status === 503) {
+      line(body, 'Il sapere non è collegato in questo momento. Non è vuoto — ' +
+        'è che non si può leggere.', TONE_PROBLEM);
+    } else {
+      line(body, 'Non è stato possibile leggere il sapere. Riprova più tardi.', TONE_PROBLEM);
+    }
+    retryButton(body, reload);
+  }
+
+  function loadKnowledge(body) {
+    clearEl(body);
+    line(body, 'Caricamento…', TONE_CALM);
+    function reload() { return loadKnowledge(body); }
+    return read('api/mind/knowledge').then(function (occurrence) {
+      clearEl(body);
+      if (!occurrence.ok) { renderKnowledgeError(body, occurrence.status, reload); return; }
+      renderKnowledge(body, occurrence.corpo);
+    }, function () {
+      clearEl(body);
+      renderKnowledgeError(body, null, reload);
+    });
+  }
+
   function mount() {
     var outlet = document.getElementById('route-outlet');
     if (!outlet) return;
@@ -1481,9 +1554,18 @@ window.HirisWatcherRoute = (function () {
       'perché lo dice, se è già spiegato, e cosa cambierebbe rispetto all’obiettivo. ' +
       'Il silenzio è un esito legittimo.');
 
+    /* Sezione 04: il sapere (spec §8). «Se un dato c'e' e nessuno puo'
+       chiederlo, non esiste»: fino al 15/09/2026 si leggeva da tre punti del
+       codice e da nessuna pagina. */
+    var knowledgeBody = section(outlet, '04', 'Cosa ho capito della casa',
+      'Le direzioni dell’energia, i significati delle classi, gli attributi che ' +
+      'valgono la pena e le ricette dei dispositivi — con la loro provenienza. ' +
+      'E soprattutto ciò che non si è capito: è lì che una tua parola vale di più.');
+
     loadWatching(watchingBody);
     loadReport(reportBody, dayInput.value);
     loadAnalysis(analysisBody, null);
+    loadKnowledge(knowledgeBody);
   }
 
   return {
@@ -1491,6 +1573,7 @@ window.HirisWatcherRoute = (function () {
     /* Seam di test: la resa e' pura DOM + dati, va pinnata senza passare da fetch. */
     _rendiScope: renderScope,
     _rendiResoconto: renderReport,
-    _rendiAnalisi: renderAnalysis
+    _rendiAnalisi: renderAnalysis,
+    _rendiSapere: renderKnowledge
   };
 })();

@@ -96,6 +96,13 @@ function montaConServer(opts = {}) {
        mount restavano verdi con la sezione 03 muta. La chiave `resoconto` è
        quella vera di `handlers_mind.handle_report`, ed è PINNATA qui: se una
        delle due parti la rinomina, questa prova cade. */
+    if (u.indexOf('api/mind/knowledge') === 0) {
+      if (opts.sapereRotto) throw new Error('rete interrotta');
+      return jsonResponse(
+        opts.sapere !== undefined ? opts.sapere
+          : { conteggi: { totale: 0, righe: [] }, non_capito: [] },
+        opts.sapereStatus);
+    }
     if (u.indexOf('api/mind/analysis') === 0) {
       if (opts.analisiRotta) throw new Error('rete interrotta');
       return jsonResponse(
@@ -1427,5 +1434,74 @@ test('mount: un giorno mai analizzato (404) lo SPIEGA', () => {
     const testo = ctx.document.querySelectorAll('.section-card')[2].textContent;
     assert.match(testo, /non ha ancora guardato/);
     assert.doesNotMatch(testo, /niente da segnalare/);
+  });
+});
+
+/* -------------------------------------------- il sapere sulla pagina (§8)
+
+   «Se un dato c'è e nessuno può chiederlo, non esiste»: il sapere si leggeva
+   da tre punti del codice e da nessuna pagina. E le righe che il modello non
+   ha capito sono precisamente quelle che il proprietario risolverebbe in
+   dieci secondi. */
+
+function sapereFinto(extra) {
+  return Object.assign({
+    conteggi: { totale: 180, righe: [
+      { specie: 'tipo', campo: 'significato', provenienza: 'importato', quante: 177 },
+      { specie: 'dispositivo', campo: 'ricetta', provenienza: 'dedotto', quante: 3 },
+    ] },
+    non_capito: [],
+  }, extra || {});
+}
+
+function rendiSapere(payload) {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisWatcherRoute._rendiSapere(corpo, payload);
+  return { window, document, corpo };
+}
+
+test('seam _rendiSapere: dice cosa ha capito, per specie e provenienza', () => {
+  // «177 significati importati» e «tre ricette dedotte dal modello» sono due
+  // fatti diversi. Mutazione che la uccide: stampare il solo totale.
+  const { corpo } = rendiSapere(sapereFinto());
+  const testo = corpo.textContent;
+  assert.match(testo, /177/);
+  assert.match(testo, /significato/);
+  assert.match(testo, /importato/);
+  assert.match(testo, /ricetta/);
+});
+
+test('seam _rendiSapere: ciò che NON ha capito viene prima, con chi e quando', () => {
+  // È l’unica parte su cui il proprietario può fare qualcosa: in fondo a un
+  // elenco di conteggi non salterebbe all’occhio — stessa regola di «cosa non
+  // si sa» nel resoconto.
+  // Mutazione che la uccide: metterlo dopo i conteggi.
+  const { corpo } = rendiSapere(sapereFinto({ non_capito: [
+    { specie: 'dispositivo', soggetto: 'dev1', campo: 'ricetta_non_capita',
+      valore: 'non ho capito cosa misura', provenienza: 'dedotto',
+      chi: 'modello (ponte)', quando_ts: 1787000000 },
+  ] }));
+  const testo = corpo.textContent;
+  assert.ok(testo.indexOf('non ho capito cosa misura') < testo.indexOf('177'),
+    'ciò su cui si può agire viene prima');
+  assert.match(testo, /modello \(ponte\)/);
+});
+
+test('seam _rendiSapere: se ha capito tutto lo DICE, e non tace', () => {
+  // Un elenco vuoto senza una parola sembrerebbe una sezione rotta.
+  // Mutazione che la uccide: non scrivere niente quando non c’è niente.
+  const { corpo } = rendiSapere(sapereFinto());
+  assert.match(corpo.textContent, /niente che non abbia capito/);
+});
+
+test('mount: la sezione 04 legge il sapere dalla sua rotta', () => {
+  // Mutazione che la uccide: leggere `corpo.sapere` invece della busta vera.
+  const ctx = montaConServer({ sapere: sapereFinto() });
+  ctx.window.HirisWatcherRoute.mount();
+  return tick(20).then(function () {
+    const card4 = ctx.document.querySelectorAll('.section-card')[3];
+    assert.ok(card4, 'la sezione 04 deve esistere');
+    assert.match(card4.textContent, /177/);
   });
 });

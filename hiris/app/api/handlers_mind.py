@@ -323,3 +323,38 @@ def _with_device_names(app, analysis: dict) -> dict:
             line = {**line, "nome": found_name} if found_name else line
         seen.append(line)
     return {**analysis, "osservazioni": seen}
+
+async def handle_knowledge(request) -> web.Response:
+    """Il **sapere**: cosa HIRIS ha capito della casa, e cosa non ha capito.
+
+    Torna `{"conteggi": {...}, "non_capito": [...]}`.
+
+    **La quarta fondamenta**: se un dato c'e' e nessuno puo' chiederlo, non
+    esiste. Il sapere contiene le direzioni dell'energia, i significati delle
+    classi che Home Assistant pubblica, gli attributi che valgono la pena e le
+    ricette dei dispositivi -- e fino al 15/09/2026 si leggeva da tre punti
+    del codice e da **nessuna pagina**.
+
+    **Il riassunto e' per specie e provenienza, non un numero solo**: «177
+    significati importati da Home Assistant» e «tre ricette dedotte dal
+    modello» sono due fatti diversi.
+
+    **E le righe che il modello non ha capito viaggiano intere**, con chi e
+    quando: sono cio' che il proprietario risolverebbe in dieci secondi --
+    «quello e' il contatore dell'acqua» -- e una riga di tre settimane fa puo'
+    riguardare un dispositivo che nel frattempo e' cambiato.
+
+    **Senza archivio e' un 503, non un sapere vuoto**: «non e' collegato» e
+    «non ha capito niente della casa» sono due cose diverse.
+    """
+    sapere = request.app.get("knowledge")
+    if sapere is None:
+        return web.json_response({"errore": "il sapere non e' disponibile"},
+                                 status=503)
+    unexplained = [{"specie": f.subject_kind, "soggetto": f.subject,
+                   "campo": f.field, "valore": f.value,
+                   "provenienza": f.provenance, "prove": f.evidence,
+                   "chi": f.who, "quando_ts": f.when_ts}
+                  for f in sapere.not_understood()]
+    return web.json_response({"conteggi": sapere.summary(),
+                              "non_capito": unexplained})

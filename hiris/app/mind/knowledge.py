@@ -548,6 +548,54 @@ class KnowledgeStore:
                 (len(prefix), prefix)).fetchall()
         return _facts(rows)
 
+    def summary(self) -> dict:
+        """Cosa contiene il sapere: `{"totale": n, "righe": [...]}`.
+
+        Una riga per (specie, campo, provenienza), col suo conteggio.
+        **Non tutto insieme**: «177 significati importati da Home Assistant» e
+        «tre ricette dedotte dal modello» sono due fatti diversi, e chi legge
+        deve poterli distinguere senza scorrere duemila righe.
+
+        **La quarta fondamenta**: se un dato c'e' e nessuno puo' chiederlo,
+        non esiste. Fino al 15/09/2026 il sapere si leggeva da tre punti del
+        codice e da **nessuna pagina**.
+
+        Ordine stabile, per specie e campo: due letture dello stesso sapere
+        devono dare lo stesso ordine, o la pagina sembrerebbe cambiare quando
+        non e' cambiato niente.
+        """
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT subject_kind, field, provenance, COUNT(*) AS quante "
+                "FROM knowledge GROUP BY subject_kind, field, provenance "
+                "ORDER BY subject_kind, field, provenance").fetchall()
+        righe = [{"specie": r["subject_kind"], "campo": r["field"],
+                  "provenienza": r["provenance"], "quante": r["quante"]}
+                 for r in rows]
+        return {"totale": sum(r["quante"] for r in righe), "righe": righe}
+
+    def not_understood(self) -> list[Fact]:
+        """Le righe che il modello **non ha capito**, dalla piu' recente.
+
+        Sono precisamente cio' che il proprietario risolverebbe in dieci
+        secondi -- «quello e' il contatore dell'acqua» -- e fino al
+        15/09/2026 non gliele mostrava nessuno. Il caso vero: un dispositivo
+        di cui il modello non ha saputo scrivere una ricetta **non viene
+        richiesto mai piu'**, perche' un rifiuto vale come risposta data.
+
+        Portano CHI e QUANDO: una riga di tre settimane fa puo' riguardare un
+        dispositivo che nel frattempo e' cambiato, e chi legge deve poterlo
+        dire senza indovinare.
+        """
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT {', '.join(_COLUMNS)} FROM knowledge "
+                "WHERE verification = 'non_capito' "
+                # Niente `id`: questa tabella non ne ha uno (la chiave e'
+                # soggetto+campo). A pari istante l'ordine si chiude sul
+                # soggetto, che e' stabile e leggibile.
+                "ORDER BY when_ts DESC, subject").fetchall()
+        return _facts(rows)
     def count(self) -> int:
         with self._lock:
             return self._conn.execute("SELECT count(*) FROM knowledge").fetchone()[0]

@@ -480,3 +480,101 @@ def test_migration_6_toglie_la_ricetta_che_solo_le_FORME_separate_rifiutano(tmp_
         "SELECT subject FROM knowledge WHERE field = 'ricetta'").fetchall()]
     assert rimaste == []
     riaperto.close()
+
+def _fatto(sapere, **extra):
+    base = {"subject_kind": "tipo", "subject": "sensor:temperature",
+            "field": "significato", "value": "la temperatura",
+            "provenance": "importato", "who": "repo", "when_ts": 1.0}
+    base.update(extra)
+    sapere.write(sap.Fact(**base))
+
+
+def test_il_sapere_sa_DIRE_cosa_contiene(sapere):
+    """**La quarta fondamenta**: se un dato c'e' e nessuno puo' chiederlo, non
+    esiste. Il sapere contiene le direzioni dell'energia, i significati delle
+    classi, gli attributi che valgono la pena e le ricette dei dispositivi --
+    e fino al 15/09/2026 si leggeva **da nessuna pagina**.
+
+    Il riassunto e' per specie e per provenienza: «177 significati importati»
+    e «tre ricette dedotte dal modello» sono due fatti diversi, e il
+    proprietario deve poterli distinguere senza scorrere duemila righe.
+
+    Mutazione: contare tutto insieme -- rossa.
+    """
+    _fatto(sapere)
+    _fatto(sapere, subject="sensor:humidity")
+    _fatto(sapere, subject_kind="dispositivo", subject="dev1", field="ricetta",
+           value="{}", provenance="dedotto", evidence="le entita' del dispositivo",
+           who="modello")
+
+    riassunto = sapere.summary()
+    assert riassunto["totale"] == 3
+    per = {(r["specie"], r["campo"], r["provenienza"]): r["quante"]
+           for r in riassunto["righe"]}
+    assert per[("tipo", "significato", "importato")] == 2
+    assert per[("dispositivo", "ricetta", "dedotto")] == 1
+
+
+def test_il_riassunto_torna_in_un_ordine_DICHIARATO(sapere):
+    """Specie, poi campo, poi provenienza -- **scritto**, non quello che
+    SQLite si trova in mano.
+
+    **La prima stesura confrontava due letture di fila**, e non poteva
+    fallire: senza `ORDER BY` la stessa base dati restituisce lo stesso ordine
+    due volte di seguito. L'ha detto la mutazione. Si asserisce l'ordine VERO,
+    che e' cio' che la pagina si aspetta di leggere.
+
+    Mutazioni, misurate il 15/09/2026:
+    - invertire l'ordine (`... DESC`) -- **rossa**, e' cio' che questa prova
+      protegge;
+    - togliere `ORDER BY` del tutto -- **verde, e resta verde**. Il `GROUP BY`
+      di SQLite oggi emette gia' in quell'ordine, quindi nessuna prova a
+      questo livello puo' ucciderla. L'`ORDER BY` sta li' perche' l'ordine sia
+      **dichiarato** e non incidentale: il giorno che un indice o un motore
+      diverso cambiasse quel caso, la pagina non cambierebbe sotto i piedi.
+    """
+    _fatto(sapere, subject_kind="tipo", field="significato")
+    _fatto(sapere, subject_kind="dispositivo", subject="d1", field="ricetta",
+           value="{}", provenance="dedotto", evidence="le entita'")
+    _fatto(sapere, subject_kind="dispositivo", subject="d2", field="attributi",
+           value="[]", provenance="nostro")
+
+    assert [(r["specie"], r["campo"]) for r in sapere.summary()["righe"]] == [
+        ("dispositivo", "attributi"), ("dispositivo", "ricetta"),
+        ("tipo", "significato")]
+
+
+def test_si_possono_chiedere_le_righe_che_il_modello_NON_HA_CAPITO(sapere):
+    """**Sono precisamente cio' che il proprietario risolverebbe in dieci
+    secondi** -- «quello e' il contatore dell'acqua» -- e nessuno gliele
+    mostra. Il caso vero: un dispositivo di cui il modello non ha saputo
+    scrivere una ricetta non viene richiesto mai piu'.
+
+    Mutazione: tornare tutte le righe -- rossa.
+    """
+    _fatto(sapere)
+    _fatto(sapere, subject_kind="dispositivo", subject="dev1",
+           field="ricetta_non_capita", value="non ho capito cosa misura",
+           provenance="dedotto", evidence="le entita' del dispositivo",
+           who="modello", verification="non_capito")
+
+    righe = sapere.not_understood()
+    assert len(righe) == 1
+    assert righe[0].subject == "dev1"
+    assert righe[0].value == "non ho capito cosa misura"
+
+
+def test_le_righe_non_capite_portano_CHI_e_QUANDO(sapere):
+    """Chi legge deve poter dire se il rifiuto e' di ieri o di tre settimane
+    fa, e chi l'ha scritto: una riga vecchia puo' riguardare un dispositivo
+    che nel frattempo e' cambiato.
+
+    Mutazione: tornare solo il valore -- rossa.
+    """
+    _fatto(sapere, subject_kind="dispositivo", subject="dev1",
+           field="ricetta_non_capita", value="x", provenance="dedotto",
+           evidence="le entita'", who="modello (ponte)", when_ts=1787000000.0,
+           verification="non_capito")
+    riga = sapere.not_understood()[0]
+    assert riga.who == "modello (ponte)"
+    assert riga.when_ts == 1787000000.0
