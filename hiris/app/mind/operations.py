@@ -521,10 +521,25 @@ def _reject_for_coverage(coverage: float, known: int,
 
     **E «vuota» si dice solo quando e' vuota.** `points` e' quanti punti la
     serie portava in tutto: se ce n'erano e nessuno era un numero, la serie
-    non e' vuota affatto -- e' di cose che non si sommano. Misurato sulla casa
-    vera il 15/09/2026: 27 delle 28 misure rifiutate quel giorno dicevano «la
-    serie e' vuota», e per `light.abat_jour_sinistra` Home Assistant aveva
-    cinque punti. Mandava a cercare un buco nei dati dove il buco non c'era.
+    non e' vuota affatto -- e' di ore che Home Assistant ha mandato senza
+    dato, ed e' la stessa distinzione gia' fatta per le misure istantanee
+    poche righe piu' su.
+
+    **Questa distinzione non ha ancora mai fatto la differenza sulla casa
+    vera, e va detto.** Nasce il 15/09/2026 da una diagnosi SBAGLIATA: le 28
+    misure rifiutate del 14 dicevano «la serie e' vuota», e `light.abat_jour_
+    sinistra` aveva cinque punti nella STORIA di Home Assistant -- da cui la
+    conclusione, affrettata, che l'operazione li ricevesse. Non li riceve: le
+    ricette leggono `HAClient.hourly_statistics()`, e le statistiche esistono
+    solo per le entita' che dichiarano uno `state_class`. Misurato lo stesso
+    giorno con `recorder/list_statistic_ids`: **130 entita' con statistiche
+    sulla casa, tutte `sensor`** -- nessuno `switch`, `light`, `valve`. Per
+    quelle la serie e' vuota davvero.
+
+    Il ramo resta perche' il caso esiste (Home Assistant OMETTE le ore senza
+    dato, ma nulla garantisce che non ne mandi con `valore` nullo) e perche'
+    dire «vuota» di una serie piena sarebbe falso. Ma **zero occorrenze
+    misurate**: non e' questo che spiega i rifiuti di questa casa.
     """
     if not known:
         if points:

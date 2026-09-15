@@ -442,6 +442,44 @@ il sapere, o l'entità stessa; e cosa fa una ricetta su un tipo di cui il riposo
 dichiarazione **senza valore di fabbrica**: è ciò che ha impedito al difetto del 14/09 di tornare
 alla prossima operazione nuova.
 
+### Le ricette si scrivono su entità che non possono avere statistiche: 18 rifiuti al giorno, per sempre
+
+`origine: verifica dal vivo della 3.46.0, 15/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §6-§7
+
+**Il fatto, misurato.** Le ricette leggono **solo** `HAClient.hourly_statistics()`
+(`server.py::_report_ingredients`), e Home Assistant produce statistiche orarie solo per le entità
+che dichiarano uno `state_class`. Chiesto a Home Assistant il 15/09/2026 con
+`recorder/list_statistic_ids`: **130 entità con statistiche su 1206, tutte `sensor`** — nessuno
+`switch`, `light`, `valve`, `binary_sensor`.
+
+Nel resoconto del 14/09, **18 rifiuti su 28 sono su 10 dispositivi che non hanno nemmeno
+un'entità con statistiche**: lavastoviglie, abat-jour, l'irrigazione, uno Shelly. Per loro il
+modello ha scritto una ricetta valida, il motore la esegue ogni notte, e ogni notte la serie
+arriva vuota. Non è un caso limite: è **il 64% dei rifiuti** del giorno.
+
+**Perché il modello ci casca.** Il catalogo gli mostra il dispositivo con tutte le sue entità e le
+operazioni disponibili. **Non gli dice quali entità sappiano produrre una serie.** Vede
+`switch.lavastoviglie` e scrive «quanto è stata accesa»: è la domanda giusta sul dispositivo
+giusto, contro una fonte che per quell'entità non esiste.
+
+**Attenzione — questo cambia la voce «quanto è stato acceso» qui sopra.** Rendere `episodio`
+scrivibile in una ricetta **non basterebbe**: anche con la lingua a posto, `@switch.lavastoviglie`
+non porta niente da leggere. Servono tutte e due le cose — l'operazione esprimibile *e* una fonte
+per le entità non numeriche, che è la **storia** (`history/period`), non le statistiche. Quella
+storia HIRIS la legge già, per la cronaca: misurato lo stesso giorno,
+`light.abat_jour_sinistra` aveva cinque punti di storia per il 14/09.
+
+**Da decidere.** Se dire al modello quali entità abbiano una serie (il sapere lo saprebbe: è un
+fatto che HA dichiara, come le unità), oppure se il motore debba scegliere la fonte in base
+all'entità — statistiche dove ci sono, storia dove no. La seconda risponde anche alla voce qui
+sopra; la prima è più piccola e si può fare subito.
+
+**Nota di metodo, scomoda.** Questa voce esiste perché la prima diagnosi era **sbagliata**: avevo
+letto la *storia* di quella luce, visto cinque punti, e concluso che l'operazione ricevesse punti
+non numerici. Storia e statistiche sono due fonti diverse e solo la seconda viene letta. La
+correzione in `operations._reject_for_coverage` resta — dire «vuota» di una serie piena sarebbe
+falso — ma ha **zero occorrenze** su questa casa, e la sua docstring lo dichiara.
+
 ### ~~Il sapere non ha una porta~~ — CHIUSA il 15/09/2026 (3.45.0), e ha trovato tre cose
 
 `origine: verifica dal vivo della 3.45.0, 15/09/2026`

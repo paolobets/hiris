@@ -54,13 +54,30 @@ sono lo stesso campo con dentro la cosa di cui parlano: il riassunto li taglia
 ai due punti e ne conta quattordici. Il dettaglio resta dove è sempre stato,
 in `by_field_prefix`.
 
-### E un rifiuto che mandava a cercare un buco inesistente
+### E un rifiuto che distingue due cose (con una diagnosi sbagliata dietro)
 
 Delle 28 misure rifiutate nel resoconto del 14, **27 dicevano «nessun punto
-con un valore nel periodo: la serie è vuota»**. Chiesta a Home Assistant la
-storia di `light.abat_jour_sinistra` per quel giorno: i punti c'erano,
-**cinque**. Non erano numeri — una luce sta su «on» e «off». Adesso il rifiuto
-distingue le due cose, com'era già stato fatto per le misure istantanee.
+con un valore nel periodo: la serie è vuota»**. Adesso il rifiuto distingue
+una serie vuota da una che porta punti senza valore, com'era già stato fatto
+per le misure istantanee.
+
+**La ragione che avevo scritto per questa correzione era sbagliata, e la
+verifica dal vivo l'ha smentita il giorno stesso.** Avevo letto la *storia* di
+`light.abat_jour_sinistra` — cinque punti — e concluso che l'operazione li
+ricevesse. Non li riceve: le ricette leggono solo le **statistiche** orarie,
+che Home Assistant produce per le sole entità con uno `state_class`. Misurato
+con `recorder/list_statistic_ids`: **130 entità con statistiche, tutte
+`sensor`**. Per uno `switch` la serie è vuota davvero.
+
+La correzione resta — dire «vuota» di una serie piena sarebbe falso — ma ha
+**zero occorrenze** su questa casa, e la sua docstring lo dichiara invece di
+lasciarlo intuire.
+
+**La causa vera è un'altra, ed è nel backlog:** 18 dei 28 rifiuti sono su 10
+dispositivi che non hanno **nemmeno un'entità con statistiche**. Il modello
+scrive «quanto è stata accesa la lavastoviglie» — la domanda giusta sul
+dispositivo giusto — contro una fonte che per quell'entità non esiste, perché
+il catalogo non gli dice quali entità sappiano produrre una serie.
 
 ### Cosa è stato chiuso nei documenti
 

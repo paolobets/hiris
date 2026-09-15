@@ -1214,15 +1214,18 @@ def test_tendenza_legge_le_medie_orarie_di_una_misura_istantanea():
 def test_una_serie_di_NON_NUMERI_non_si_rifiuta_dicendo_che_e_vuota():
     """**«Non c'e' niente» e «c'e', ma non e' un numero» sono due cose.**
 
-    Misurato sulla casa vera il 15/09/2026: 27 delle 28 misure rifiutate nel
-    resoconto del 14 dicevano «nessun punto con un valore nel periodo: la
-    serie e' vuota». Chiesta a Home Assistant la storia di
-    `light.abat_jour_sinistra` per quel giorno, i punti c'erano: **cinque**.
-    Non erano numeri -- una luce sta su «on» e «off» -- e la frase mandava a
-    cercare un buco nei dati dove il buco non c'era.
+    Home Assistant omette le ore senza dato, ma una serie che porta punti
+    senza valore non e' vuota: dirlo sarebbe falso, ed e' lo stesso rimedio
+    gia' applicato alle misure istantanee poche righe piu' su.
 
-    E' lo stesso rimedio gia' applicato alle misure istantanee poche righe
-    piu' su, applicato all'altro modo di sbagliare bersaglio.
+    **Questa prova nasce da una diagnosi sbagliata, e la nota resta.** Il
+    15/09/2026 le 28 misure rifiutate del 14 dicevano «la serie e' vuota», e
+    nella STORIA di Home Assistant `light.abat_jour_sinistra` aveva cinque
+    punti: ne avevo concluso che l'operazione li ricevesse. Non li riceve --
+    le ricette leggono le STATISTICHE orarie, che esistono solo per le entita'
+    con uno `state_class`: 130 sulla casa, tutte `sensor`. Il caso qui provato
+    e' reale ma **non e' successo ancora**; la causa dei 18 rifiuti veri e'
+    un'altra, ed e' scritta nel backlog.
 
     Mutazione ESEGUITA: tornare alla frase unica -- rossa.
     """
