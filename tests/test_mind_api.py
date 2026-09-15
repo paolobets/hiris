@@ -1,12 +1,18 @@
 """Le due rotte della pagina dell'osservatore."""
+import json
 
 import pytest
 
 from hiris.app.api.handlers_mind import (
+    handle_analysis,
+    handle_report,
+    handle_set_objective,
     handle_watching,
 )
+from hiris.app.home_space.reader import HomeSpace
 from hiris.app.mind.store import ATTEMPTS_SHOWN, ObservationsStore
 from hiris.app.mind.watcher import Watcher
+from hiris.app.proxy.state_translations import StateTranslations
 from tests._contracts import assert_stessa_firma
 
 
@@ -63,6 +69,16 @@ def _decidi(archivio, *soggetti):
     for soggetto in soggetti or ("climate.bagno_1p_t_bagno_1p_t",):
         archivio.decide_scope(soggetto, inside=True,
                               reason="la prova la guarda", author="observer")
+
+
+class _FintaCasa:
+    """L'anagrafe dal lato di chi legge i nomi: una  e basta."""
+
+    def __init__(self, home_space):
+        self._home_space = home_space
+
+    def read(self):
+        return self._home_space
 
 
 def _richiesta(app, query=None):
@@ -205,3 +221,468 @@ def _corpo(response):
 
 
 # ---------------------------------------------------------------------------
+# La strada vera, per intero: l'evento di Home Assistant -> `Watcher` ->
+# l'archivio SQLite -> l'aggregazione -> `GET /api/mind/facts`. Nessuna
+# finta in mezzo: e' la prova che il nome ARRIVA alla riga che il
+# proprietario legge, non che un pezzo isolato lo sappia trasportare.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Lo stato reso (fetta «lo stato», 07/09/2026). Il grezzo resta nell'archivio,
+# la resa nasce QUI, al confine -- e i due silenzi («non ho potuto leggere le
+# traduzioni» e «questo stato non ha traduzione») non producono la stessa
+# risposta.
+# ---------------------------------------------------------------------------
+
+# Le chiavi sono quelle MISURATE sulla casa vera il 07/09/2026
+# (`frontend/get_translations`, `language: "it"`, `category:
+# "entity_component"`), non plausibili.
+_RISORSE = {
+    "component.climate.entity_component._.state.heat": "Riscaldamento",
+    "component.person.entity_component._.state.not_home": "Fuori casa",
+    "component.binary_sensor.entity_component.smoke.state.on": "Rilevato",
+    "component.binary_sensor.entity_component._.state.on": "Acceso",
+}
+
+
+class _FinteTraduzioni:
+    """La cache, con lo stesso contratto della vera: un esito ETICHETTATO."""
+
+    def __init__(self, esito):
+        self.esito = esito
+        self.chiesto = None
+
+    async def read(self, *, ha_version, language):
+        self.chiesto = {"versione_ha": ha_version, "lingua": language}
+        return self.esito
+
+
+class _FintaAnagrafe:
+    def __init__(self, frame):
+        self._frame = frame
+
+    def reference_frame(self):
+        return self._frame
+
+
+class _ClientCheNonRisponde:
+    async def get_translations(self, language, category="entity_component"):
+        raise AssertionError("senza lingua non si deve chiedere niente a Home Assistant")
+
+
+# **La sezione della rotta `api/mind/facts` e' uscita** (spec §13,
+# 15/09/2026) insieme allo strato che serviva: gli episodi vivono nella
+# cronaca del resoconto, e le prove della resa degli stati sono morte con
+# la resa. Restano le due firme qui sotto, che riguardano l'anagrafe e le
+# traduzioni -- cose vive, che con gli oggetti non c'entravano.
+assert_stessa_firma(StateTranslations.read, _FinteTraduzioni.read, nome="read")
+assert_stessa_firma(HomeSpace.reference_frame, _FintaAnagrafe.reference_frame,
+                    nome="reference_frame")
+
+# ── I tentativi: «sta funzionando?» e' una domanda diversa da «quand'e'
+#    l'ultima volta che ha ripensato la casa» ─────────────────────────────────
+#
+# Misurato sulla casa vera l'11/09/2026: l'osservatore ha provato e fallito
+# quattro volte in quaranta minuti, HIRIS ha smesso di registrare qualunque
+# cosa (il cancello di `watcher.watch_reading` **e'** lo scope), e la pagina
+# diceva soltanto «non e' mai stata fatta» -- vero alla lettera, falso come
+# racconto. Questo modulo dichiara da sempre la regola che quel silenzio
+# violava: **un guasto non si appiattisce su un'assenza.**
+
+
+class _ArchivioCoiTentativi(_FintoArchivioScope):
+    def __init__(self, tentativi, **kw):
+        super().__init__(**kw)
+        self._tentativi = tentativi
+
+    def recent_attempts(self, limit=ATTEMPTS_SHOWN):
+        return self._tentativi[:limit]
+
+
+@pytest.mark.asyncio
+async def test_la_pagina_porta_i_TENTATIVI_non_solo_i_giri_riusciti():
+    """Mutazione che la uccide: mandare solo `riconsiderazione`."""
+    tentativi = [
+        {"quando_ts": 1789117844.0, "esito": "accodata",
+         "dettaglio": "chiesto al piano: non e' mai stata fatta"},
+        {"quando_ts": 1789117244.0, "esito": "non_riuscito",
+         "dettaglio": "il modello non ha risposto: RuntimeError"},
+    ]
+    archivio = _ArchivioCoiTentativi(tentativi)
+
+    corpo = _corpo(await handle_watching(_richiesta(_pagina(observations=archivio))))
+
+    assert corpo["tentativi"] == tentativi
+    assert corpo["riconsiderazione"] is None, (
+        "un tentativo fallito non e' una riconsiderazione: se lo fosse, la "
+        "cadenza scadrebbe come se la casa fosse stata ripensata davvero")
+
+
+@pytest.mark.asyncio
+async def test_senza_archivio_i_tentativi_sono_NULL_come_le_sorelle():
+    """**Un elenco vuoto direbbe «nessuno ci ha mai provato», e senza archivio
+    non si SA.** Nello stesso payload `obiettivo` e `riconsiderazione` sono
+    gia' `None` per questa ragione: un `[]` qui sarebbe la fondamenta 3 rotta
+    dentro una risposta sola, e la pagina si salverebbe solo perche' legge
+    l'assenza da un altro campo (rilievo della review indipendente,
+    11/09/2026 -- la prima stesura di questa prova asseriva `[]` e il suo
+    docstring difendeva l'errore).
+
+    Mutazione che la uccide: tornare `[]` senza archivio.
+    """
+    corpo = _corpo(await handle_watching(_richiesta(_pagina(observations=None))))
+
+    assert corpo["tentativi"] is None
+    assert corpo["obiettivo"] is None and corpo["riconsiderazione"] is None
+
+
+# -- la porta del resoconto (spec §9) ---------------------------------------
+
+class _ArchivioConResoconto:
+    """L'archivio, ridotto a cio' che la rotta del resoconto usa."""
+
+    def __init__(self, per_giorno=None):
+        self._per_giorno = per_giorno or {}
+
+    def report(self, day):
+        return self._per_giorno.get(day)
+
+    def reports(self, *, limit=30):
+        return [self._per_giorno[g] for g in sorted(self._per_giorno, reverse=True)][:limit]
+
+
+_RESOCONTO = {
+    "giorno": "2026-09-13",
+    "misure": [{"soggetto": "dev1", "nome": "Inverter", "misura": "prodotta",
+                "operazione": "somma_periodo", "valore": 23.71,
+                "unita": "kWh", "copertura": 1.0}],
+    "cronaca": [{"quando_ts": 1789219800.0, "fine_ts": None,
+                 "chi": "climate.soggiorno", "cosa": "heat",
+                 "nome": "Termostato Soggiorno"}],
+}
+
+
+@pytest.mark.asyncio
+async def test_il_resoconto_di_un_giorno_si_chiede_per_data():
+    from hiris.app.api.handlers_mind import handle_report
+
+    app = {"observations": _ArchivioConResoconto({"2026-09-13": _RESOCONTO})}
+    r = await handle_report(_richiesta(app, query={"day": "2026-09-13"}))
+
+    assert json.loads(r.text)["resoconto"]["misure"][0]["valore"] == 23.71
+
+
+@pytest.mark.asyncio
+async def test_un_giorno_MAI_AGGREGATO_e_404_non_un_resoconto_vuoto():
+    """«Quel giorno non e' successo niente» e «quel giorno non l'abbiamo
+    guardato» sono due cose diverse, e l'analista deve poterle distinguere.
+    Rispondere con un resoconto vuoto le appiattirebbe.
+
+    Mutazione ESEGUITA: tornare `{"resoconto": {...vuoto}}` invece del 404 --
+    rossa.
+    """
+    from hiris.app.api.handlers_mind import handle_report
+
+    app = {"observations": _ArchivioConResoconto()}
+    r = await handle_report(_richiesta(app, query={"day": "2026-01-01"}))
+
+    assert r.status == 404
+
+
+@pytest.mark.asyncio
+async def test_SENZA_giorno_tornano_le_MISURE_di_molti_giorni_senza_cronaca():
+    """**E' la lettura che serve all'analista**: due dei suoi tre inneschi sono
+    confronti nel tempo, e con la cronaca dentro trenta giorni non
+    starebbero in un prompt (misurato: 521 KB contro 92).
+
+    Mutazione ESEGUITA: includere anche `cronaca` nella serie -- rossa.
+    """
+    from hiris.app.api.handlers_mind import handle_report
+
+    app = {"observations": _ArchivioConResoconto({"2026-09-13": _RESOCONTO})}
+    r = await handle_report(_richiesta(app))
+
+    [giorno] = json.loads(r.text)["resoconti"]
+    assert giorno["giorno"] == "2026-09-13"
+    assert giorno["misure"]
+    assert "cronaca" not in giorno
+
+
+@pytest.mark.asyncio
+async def test_lo_stesso_giorno_si_puo_chiedere_come_DOCUMENTO():
+    from hiris.app.api.handlers_mind import handle_report
+
+    app = {"observations": _ArchivioConResoconto({"2026-09-13": _RESOCONTO})}
+    r = await handle_report(_richiesta(
+        app, query={"day": "2026-09-13", "formato": "documento"}))
+
+    assert r.content_type == "text/markdown"
+    assert "## Le misure" in r.text
+
+# ── L'obiettivo si puo' finalmente SCRIVERE ──────────────────────────────────
+#
+# `store.set_objective` esisteva dal 11/09/2026, provata da dieci prove, e
+# **nessun codice di produzione la chiamava**: nessuna rotta, nessun campo
+# nella pagina, nessuno strumento in chat. Misurato sulla casa vera il
+# 14/09/2026, l'obiettivo era ancora quello di fabbrica -- `scritto_ts: null`
+# -- e l'osservatore decideva cosa guardare contro una frase generica, mentre
+# la spec lo chiama «obiettivo = prompt».
+#
+# Il docstring di `set_objective` parla perfino del bottone «salva»: una
+# motivazione scritta accanto al codice che il codice smentiva.
+
+
+def _richiesta_scritta(app, corpo):
+    class _R:
+        def __init__(self):
+            self.app = app
+            self.query = {}
+
+        async def json(self):
+            if corpo is _ILLEGGIBILE:
+                raise ValueError("corpo non leggibile")
+            return corpo
+    return _R()
+
+
+_ILLEGGIBILE = object()
+
+
+@pytest.mark.asyncio
+async def test_si_puo_scrivere_l_obiettivo(tmp_path):
+    """Mutazione: far tornare a `handle_set_objective` il solo `obiettivo`
+    senza chiamare `set_objective` -- rossa."""
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        r = await handle_set_objective(_richiesta_scritta(
+            {"observations": archivio}, {"testo": "spendere meno di sera"}))
+        assert r.status == 200
+        corpo = json.loads(r.text)
+        assert corpo["scritto"] is True
+        assert corpo["obiettivo"]["testo"] == "spendere meno di sera"
+        assert corpo["obiettivo"]["scritto_ts"] is not None
+        # E si rilegge da dove lo legge l'osservatore.
+        assert archivio.objective()["testo"] == "spendere meno di sera"
+    finally:
+        archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_un_obiettivo_vuoto_si_RIFIUTA_e_non_cancella_quello_di_prima(tmp_path):
+    """E' l'unica manopola del prodotto: un campo svuotato per errore non deve
+    poter lasciare l'osservatore senza criterio. La regola vive gia' in
+    `set_objective`; la rotta la riporta a chi chiama con un 400 invece di dire
+    «fatto» senza aver fatto niente.
+
+    Mutazione: rispondere 200 su un testo vuoto -- rossa.
+    """
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        await handle_set_objective(_richiesta_scritta(
+            {"observations": archivio}, {"testo": "quello buono"}))
+        r = await handle_set_objective(_richiesta_scritta(
+            {"observations": archivio}, {"testo": "   "}))
+        assert r.status == 400
+        assert "vuoto" in json.loads(r.text)["errore"]
+        assert archivio.objective()["testo"] == "quello buono"
+    finally:
+        archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_riscrivere_lo_STESSO_obiettivo_non_e_un_cambio(tmp_path):
+    """Non sporca la storia: la pagina dice «da quando guardo questa cosa», e
+    direbbe che tutto e' cambiato ogni volta che qualcuno preme «salva» senza
+    aver toccato niente. La rotta lo dice con `scritto: false`, e **non e' un
+    errore**: il campo contiene davvero quello che l'utente voleva.
+
+    Mutazione: tornare `scritto: true` sempre -- rossa.
+    """
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        await handle_set_objective(_richiesta_scritta(
+            {"observations": archivio}, {"testo": "uguale"}))
+        r = await handle_set_objective(_richiesta_scritta(
+            {"observations": archivio}, {"testo": "uguale"}))
+        assert r.status == 200
+        corpo = json.loads(r.text)
+        assert corpo["scritto"] is False
+        assert corpo["obiettivo"]["testo"] == "uguale"
+    finally:
+        archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_un_corpo_storto_e_un_400_non_un_500(tmp_path):
+    """Mutazione: leggere `body["testo"]` senza controllarne il tipo -- 500."""
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        for corpo in ({}, {"testo": 12}, {"altro": "x"}, [], _ILLEGGIBILE):
+            r = await handle_set_objective(_richiesta_scritta(
+                {"observations": archivio}, corpo))
+            assert r.status == 400, corpo
+    finally:
+        archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_senza_archivio_e_un_503_e_non_si_perde_niente():
+    """L'avvio a meta': l'archivio non c'e' ancora. Stessa dottrina delle altre
+    rotte del cervello -- 503, non 500, perche' e' un «riprova», non un guasto
+    della richiesta.
+
+    Mutazione: togliere la guardia -- 500.
+    """
+    r = await handle_set_objective(_richiesta_scritta({}, {"testo": "x"}))
+    assert r.status == 503
+
+@pytest.mark.asyncio
+async def test_la_SERIE_dei_resoconti_porta_l_obiettivo_di_ogni_giorno(tmp_path):
+    """**Difetto trovato dalla live review del 15/09/2026.** La migrazione
+    aveva riempito l'obiettivo su tutti e venti i giorni archiviati -- un
+    giorno chiesto da solo lo portava -- e la rotta della SERIE lo buttava:
+    teneva `giorno` e `misure` e basta.
+
+    E la serie e' **esattamente** la lettura per cui \u00a711 esiste: «chi legge
+    trenta giorni di misure in serie deve saperlo, o legge una tendenza dove
+    c'e' un cambio di domanda». L'obiettivo era stato messo nel resoconto e
+    tolto proprio dove serve.
+
+    Mutazione: togliere `obiettivo` dalla riga della serie -- rossa.
+    """
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        archivio.replace_report("2026-09-13", {
+            "giorno": "2026-09-13",
+            "obiettivo": {"testo": "spendere meno di sera", "scritto_ts": 1.0},
+            "misure": [], "forme": [], "cronaca": []})
+        r = await handle_report(_richiesta({"observations": archivio}))
+        serie = json.loads(r.text)["resoconti"]
+        assert serie[0]["obiettivo"] == {"testo": "spendere meno di sera",
+                                         "scritto_ts": 1.0}
+    finally:
+        archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_la_serie_NON_porta_la_cronaca_ne_le_forme(tmp_path):
+    """L'obiettivo si aggiunge, il resto resta fuori: la cronaca e le forme si
+    chiedono un giorno alla volta, ed e' la ragione per cui la serie sta in un
+    prompt. Una riga d'obiettivo costa una frase; una cronaca costa migliaia
+    di byte per giorno.
+
+    Mutazione: mandare il resoconto intero -- rossa.
+    """
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        archivio.replace_report("2026-09-13", {
+            "giorno": "2026-09-13", "obiettivo": None, "misure": [],
+            "forme": [{"misura": "forma"}], "cronaca": [{"chi": "x"}]})
+        r = await handle_report(_richiesta({"observations": archivio}))
+        riga = json.loads(r.text)["resoconti"][0]
+        assert set(riga) == {"giorno", "obiettivo", "misure"}
+    finally:
+        archivio.close()
+
+@pytest.mark.asyncio
+async def test_l_analisi_si_puo_chiedere(tmp_path):
+    """La quarta fondamenta: se un dato c'e' e nessuno puo' chiederlo, non
+    esiste. L'analista scrive ogni notte, e senza questa rotta il proprietario
+    non lo leggerebbe mai.
+
+    Mutazione: togliere la rotta -- rossa.
+    """
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        archivio.replace_analysis("2026-09-15", {"osservazioni": [
+            {"cosa": "il prelievo e' salito", "innesco": 1}]})
+        r = await handle_analysis(_richiesta({"observations": archivio},
+                                             {"day": "2026-09-15"}))
+        assert r.status == 200
+        assert json.loads(r.text)["analisi"]["osservazioni"][0]["innesco"] == 1
+    finally:
+        archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_un_giorno_MAI_analizzato_e_un_404_non_un_silenzio(tmp_path):
+    """\u00abNon ho guardato\u00bb e \u00abho guardato e non c'era niente\u00bb sono due cose
+    diverse: la seconda e' un'analisi con zero osservazioni, la prima non c'e'.
+
+    Mutazione: tornare `{"osservazioni": []}` quando manca -- rossa.
+    """
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        r = await handle_analysis(_richiesta({"observations": archivio},
+                                             {"day": "2026-09-15"}))
+        assert r.status == 404
+    finally:
+        archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_senza_giorno_tornano_le_ultime_analisi(tmp_path):
+    """Mutazione: tornare solo l'ultima -- rossa."""
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        for g in ("2026-09-14", "2026-09-15"):
+            archivio.replace_analysis(g, {"osservazioni": []})
+        r = await handle_analysis(_richiesta({"observations": archivio}))
+        assert [a["giorno"] for a in json.loads(r.text)["analisi"]] == [
+            "2026-09-15", "2026-09-14"]
+    finally:
+        archivio.close()
+
+@pytest.mark.asyncio
+async def test_l_analisi_risolve_i_nomi_che_non_aveva(tmp_path):
+    """**La stessa regola della serie, un piano piu' in la'.** L'analisi di un
+    giorno si scrive una volta sola, e quella del 15/09/2026 e' nata prima che
+    i nomi dei dispositivi arrivassero: porta `nome: null`, e riscriverla
+    costerebbe 35.000 token per cambiare un'etichetta.
+
+    L'archivio dice cio' che sapeva; **chi legge risolve cio' che puo' oggi**.
+    Un'osservazione che il nome ce l'ha tiene il suo -- e' quello di allora, ed
+    e' piu' vero.
+
+    Mutazione: non risolvere -- rossa.
+    """
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    casa = _FintaCasa({"dispositivi": [{"id": "dev1", "nome": "SOLARE"},
+                                       {"id": "dev2", "nome": "Termostato"}]})
+    try:
+        archivio.replace_analysis("2026-09-15", {"osservazioni": [
+            {"soggetto": "dev1", "nome": None, "misura": "prelievo"},
+            {"soggetto": "dev2", "nome": "come si chiamava allora",
+             "misura": "comfort"},
+            {"soggetto": "sconosciuto", "nome": None, "misura": "x"},
+        ]})
+        r = await handle_analysis(_richiesta(
+            {"observations": archivio, "home_space_store": casa},
+            {"day": "2026-09-15"}))
+        oss = json.loads(r.text)["analisi"]["osservazioni"]
+        assert oss[0]["nome"] == "SOLARE", "il buco si riempie con quello di oggi"
+        assert oss[1]["nome"] == "come si chiamava allora", "quello archiviato vince"
+        assert oss[2]["nome"] is None, (
+            "un dispositivo che non si conosce resta senza nome: "
+            "l'identificatore e' la verita', non un buco")
+    finally:
+        archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_senza_anagrafe_l_analisi_si_legge_lo_stesso(tmp_path):
+    """L'avvio a meta': l'anagrafe non c'e' ancora. L'analisi si legge com'e'
+    -- un nome mancante e' meno grave di un 503 su un dato che c'e'.
+
+    Mutazione: sollevare, o tornare 503 -- rossa.
+    """
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        archivio.replace_analysis("2026-09-15", {"osservazioni": [
+            {"soggetto": "dev1", "nome": None, "misura": "prelievo"}]})
+        r = await handle_analysis(_richiesta({"observations": archivio},
+                                             {"day": "2026-09-15"}))
+        assert r.status == 200
+        assert json.loads(r.text)["analisi"]["osservazioni"][0]["nome"] is None
+    finally:
+        archivio.close()

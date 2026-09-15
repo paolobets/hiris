@@ -1,5 +1,33 @@
 # HIRIS — Changelog
 
+## [3.44.2] — Anche l'analisi risolve i nomi, e diciotto prove tornano (2026-09-15)
+
+Verificata la 3.44.1 dal vivo: la **serie** ha i nomi, ma **l'analisi già
+scritta** no — un giorno ha una analisi sola, e quella di oggi è nata prima
+della correzione. Riscriverla costerebbe 35.000 token per cambiare
+un'etichetta.
+
+Stessa regola, un piano più in là: `GET /api/mind/analysis` risolve i nomi che
+mancano, tiene quello archiviato quando c'è — è di **allora**, ed è più vero
+— e lascia senza nome i dispositivi che l'anagrafe non conosce. Senza
+anagrafe l'analisi si legge lo stesso: un nome mancante è meno grave di un 503
+su un dato che c'è.
+
+### E un errore mio, rimediato
+
+La cancellazione degli oggetti aveva tolto **una trentina di prove legittime**
+da `test_mind_api.py`: una rimozione in blocco per espressione regolare aveva
+inghiottito le vicine. Se n'erano andate quelle dell'**obiettivo**, del
+**resoconto**, dell'**analisi** e dei **tentativi** — niente a che vedere con
+lo strato uscito.
+
+Riprese dal tag, e tolte a mano solo le venti che riguardavano davvero
+`api/mind/facts`: **da 11 a 27 prove** in quel file. Le prove non si cancellano
+in blocco.
+
+Sei mutazioni dichiarate ed **eseguite**, tutte uccise. 4157 prove Python, 374
+JS, ruff, oxlint, censimento.
+
 ## [3.44.1] — L'archivio dice ciò che sapeva, il lettore risolve ciò che può (2026-09-15)
 
 La 3.44.0 ha corretto i nomi dei dispositivi, e verificandola dal vivo il

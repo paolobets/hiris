@@ -289,4 +289,37 @@ async def handle_analysis(request) -> web.Response:
     if found is None:
         return web.json_response(
             {"errore": f"il giorno {day} non e' stato analizzato"}, status=404)
-    return web.json_response({"analisi": found})
+    return web.json_response({"analisi": _with_device_names(request.app, found)})
+
+
+def _with_device_names(app, analysis: dict) -> dict:
+    """L'analisi con i nomi dei dispositivi **risolti adesso**, dove mancano.
+
+    **L'archivio dice cio' che sapeva; chi legge risolve cio' che puo' oggi.**
+    Un'analisi si scrive una volta sola -- un giorno ne ha una -- e quella del
+    15/09/2026 e' nata prima che i nomi dei dispositivi arrivassero: porta
+    `nome: null`, e riscriverla costerebbe 35.000 token per cambiare
+    un'etichetta.
+
+    **Un'osservazione che il nome ce l'ha tiene il suo**: e' quello di allora,
+    ed e' piu' vero di quello di adesso -- un dispositivo si puo' rinominare.
+    E un dispositivo che l'anagrafe non conosce **resta senza**: chi legge vede
+    l'identificatore, che e' la verita', non un buco.
+
+    E' la stessa regola di `report.series_of_measures`, un piano piu' in la'.
+    """
+    casa = app.get("home_space_store")
+    if casa is None:
+        return analysis
+    names = {str(d.get("id")): d.get("nome")
+             for d in (casa.read() or {}).get("dispositivi") or []
+             if d.get("id") and d.get("nome")}
+    if not names:
+        return analysis
+    seen = []
+    for line in analysis.get("osservazioni") or []:
+        if isinstance(line, dict) and not line.get("nome"):
+            found_name = names.get(line.get("soggetto"))
+            line = {**line, "nome": found_name} if found_name else line
+        seen.append(line)
+    return {**analysis, "osservazioni": seen}
