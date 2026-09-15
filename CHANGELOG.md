@@ -1,5 +1,46 @@
 # HIRIS — Changelog
 
+## [3.45.0] — La porta del sapere (2026-09-15)
+
+Il sapere raccoglie da settimane quello che Home Assistant dichiara — i
+significati dei tipi, gli attributi dei dispositivi, le ricette dedotte — e
+fino a ieri si leggeva da **tre punti del codice e da nessuna pagina**. La
+quarta fondamenta dice che un dato che nessuno può chiedere non esiste: questo
+rilascio apre la porta.
+
+`GET /api/mind/knowledge` risponde due cose, non un totale solo:
+
+- **cosa c'è**, una riga per specie × campo × provenienza, perché «177
+  significati importati da Home Assistant» e «tre ricette dedotte dal modello»
+  sono fatti diversi, e chi legge deve distinguerli;
+- **cosa non è stato capito**, le righe marcate `non_capito` dalla più
+  recente, con chi le ha scritte e quando: sono precisamente quelle che il
+  proprietario risolverebbe in dieci secondi guardandole.
+
+Senza sapere disponibile la porta risponde 503 e lo **dice**; la pagina
+dell'osservatore mostra il rifiuto con un pulsante per riprovare, invece di
+restare vuota. I rifiuti sono importanti.
+
+### Una mutazione che resta verde, e perché lo scriviamo
+
+Cinque mutazioni sulla porta, quattro morte. La quinta — togliere `ORDER BY`
+dal riassunto — **resta verde e resterà verde**: il `GROUP BY` di SQLite oggi
+emette già in quell'ordine, quindi nessuna prova a questo livello può
+ucciderla. L'`ORDER BY` sta lì perché l'ordine sia *dichiarato* e non
+incidentale. Sta scritto nella docstring della prova, misurato, non dedotto.
+
+La prima stesura di quella prova confrontava due letture di fila e non poteva
+fallire; è stata riscritta per asserire l'ordine vero, e quella riscrittura
+uccide la mutazione che inverte l'ordine.
+
+### E un errore mio
+
+Applicata una mutazione a mano su `mind/knowledge.py`, l'ho ripristinata con
+`git checkout` invece che con l'editor: il comando ha buttato via anche il
+lavoro non ancora committato di quel file, `summary()` e `not_understood()`.
+Ricostruite. La regola esisteva già ed era scritta: le mutazioni si
+ripristinano con l'editor, mai con `git checkout`.
+
 ## [3.44.2] — Anche l'analisi risolve i nomi, e diciotto prove tornano (2026-09-15)
 
 Verificata la 3.44.1 dal vivo: la **serie** ha i nomi, ma **l'analisi già
