@@ -1,112 +1,38 @@
 /* HIRIS · Configurazione · «L'osservatore» (route #/watcher)
 
-   La prima fetta del cervello nuovo (docs/design/2026-08-26-l-osservatore.md).
-   Guarda la casa e ne ricava oggetti -- non conclude niente, non parla, non
-   tocca niente. Questa pagina e' la sola faccia che ha oggi: due GET,
-   `api/mind/watching` e `api/mind/facts?day=...`
-   (`hiris/app/api/handlers_mind.py`).
+   La faccia dei tre attori (docs/design/2026-09-10-i-tre-attori.md). Tre
+   sezioni, e ognuna e' un attore:
 
-   -- Trasparenza al posto del permesso (spec §7; poi «i tre attori»,
-      docs/design/2026-09-10-i-tre-attori.md §5.1 e §11) --
+     01  cosa si guarda, da quando, perche' -- e **l'obiettivo**, che si
+         scrive da qui: e' la sola manopola del prodotto, e da quella frase
+         dipendono cosa l'osservatore guarda, quali ricette il modello
+         propone e cosa l'analista va a cercare;
+     02  il resoconto di un giorno: le misure, le forme, la cronaca;
+     03  cosa l'analista ha visto, e cosa si potrebbe fare.
+
+   -- Trasparenza al posto del permesso (spec §7, §5.1 e §11) --
    L'osservatore non chiede il permesso di guardare qualcosa: si deve poter
-   vedere in ogni momento COSA sta guardando, DA QUANDO e PERCHE'. **Dal
-   11/09/2026 il pavimento non esiste piu'** (`mind/baseline.py` cancellato
-   insieme alle sei «gambe» e al badge di provenienza che valeva sempre
-   «Di serie»): l'osservatore guarda tutta la casa con l'obiettivo davanti e
-   decide SOGGETTO PER SOGGETTO, col perche' scritto e chi l'ha deciso
-   (`Watcher.watching()`, che legge lo scope di `ObservationsStore.scope()`).
-   La sezione 01 rende quindi cinque cose in una risposta sola
-   (`handle_watching`, `hiris/app/api/handlers_mind.py`): l'obiettivo,
-   cosa si guarda, cosa e' stato lasciato fuori, la riconsiderazione e il
-   volume scritto al giorno -- vedi il commento sopra `renderScope` per il
-   perche' di ciascuna e per i tre stati (assente / vuoto / non leggibile)
-   che ognuna distingue. Nessun bottone «togli» ancora: le due rotte di
-   `handlers_mind.py` sono GET, e un controllo senza rotta dietro sarebbe un
-   controllo che non controlla niente -- arrivera' con la sua rotta.
+   vedere in ogni momento COSA sta guardando, DA QUANDO e PERCHE'.
 
-   -- Due sezioni separate, mai una dentro l'altra (mandato Task 7) --
-   «Cosa sto guardando» (lo scope vivo, `Watcher.watching()`) e «Cosa e'
-   successo» (gli episodi che l'aggregazione notturna ha scritto,
-   `ObservationsStore.facts()`) rispondono a due domande diverse -- la
-   prima e' una decisione, la seconda e' la memoria che ne esce -- e la spec
-   le tiene separate apposta (§7 e' la pagina, §1-6 sono gli episodi).
-
-   -- I SEI generi (`mind/facts.py::GENRES`, contati nel sorgente
-      Python, non ricopiati -- correzione del giro «la pagina del bilancio»,
-      punto 7, 27/08/2026: questa riga diceva "cinque", e da quando
-      `bilancio` e' entrato in GENERI sono sei) --
-   Cinque sono EPISODIO: funzionamento, presenza, energia, guasto, sicurezza.
-   Ogni genere di episodio porta un
-   `corpo` di forma diversa (`aggregate_day`): funzionamento/presenza/
-   sicurezza/guasto portano `stato` (il valore che ha aperto l'episodio);
-   **e, dal 07/09/2026 (fetta «lo stato»), `stato_reso` accanto ad esso
-   QUANDO una resa esiste** -- lo stato GREZZO resta `stato`, la resa e' una
-   chiave in piu' aggiunta al confine dell'API (`api/handlers_mind.py`), mai
-   sopra il grezzo. Manca del tutto quando resa non ce n'e', come
-   `direzione`: e le due ragioni per cui puo' mancare le distingue
-   `corpo.traduzioni` della risposta, non questa chiave. Un episodio di
-   `guasto` non ne ha mai una (il suo `stato` non e' uno stato di Home
-   Assistant: e' `aperto`, `setup_retry`, parole nostre e della
-   configurazione);
-   energia porta `valore_iniziale`/`valore_finale`/`differenza` -- una
-   VARIAZIONE fra due letture, mai presentata come un consumo da sola: il
-   genere copre anche l'energia PRODOTTA da un impianto fotovoltaico.
-   **Dal 27/08/2026 (mandato «le direzioni dell'energia») un episodio di
-   energia porta anche `direzione`/`provenienza`, QUANDO si conoscono**
-   (`HAClient.energy_directions`, `energy/get_prefs` + `translation_key`):
-   il campo manca del tutto se non si conosce, mai una "sconosciuta"
-   travestita da dato -- `mainPhrase`/`provenanceDirectionBadge` sotto
-   lo mostrano solo quando c'e'. Il genere resta "energia": la direzione
-   vive nell'EPISODIO, non e' un genere nuovo. Tutti e
-   cinque portano `comprimari` (chi altro c'era, dal caso del lampadario) e
-   `misure` (cosa hanno fatto le grandezze collegate mentre l'episodio
-   durava) -- mostrati dietro un rivelatore SINCRONO (stesso principio di
-   constructions-route.js §3: sono gia' nel payload, nasconderli dietro un
-   fetch sarebbe la trappola che la guida degli Impegni vieta).
-
-   -- Il SESTO genere, `bilancio`, e' un'ALTRA FORMA (mandato «il bilancio
-      dell'energia», 27/08/2026 -- docs/design/2026-08-27-il-bilancio-dell-
-      energia.md §3, .superpowers/sdd/2026-08-27-il-bilancio/brief-pagina.md) --
-   un bilancio non e' una cosa accaduta fra due istanti, e' una QUANTITA' CON
-   UNA FORMA, un giorno intero: renderlo con lo stampo dell'episodio («da X a
-   Y», la freccia di `period()`) rifarebbe in pagina esattamente l'errore
-   che il giro dei dati ha appena tolto dall'archivio (undici frammenti di
-   energia per lo stesso dispositivo). Il suo `corpo` (`costruisci_corpo_
-   bilancio` in mind/facts.py) non ha ne' `stato` ne' `valore_iniziale`/
-   `valore_finale`: ha `totali` (SETTE dimensioni al massimo -- il consumo e'
-   la settima, LETTA non dedotta: correzione ALTA della review, mandato «la
-   pagina del bilancio», punto 1, 27/08/2026, vedi il commento sopra
-   `BALANCE_DIRECTIONS` nel sorgente Python -- ognuna `{valore,provenienza}`),
-   `forma` (le stesse dimensioni, un elenco di `{"ora","valore"}` per punto --
-   **l'asse orario e' ARRIVATO il 27/08/2026** (mandato «la pagina del
-   bilancio», punto 6): prima di questa correzione era una lista POSIZIONALE
-   NUDA (l'indice non era l'ora, perche' HA omette le ore senza dati); ora
-   ogni punto porta la SUA ora, `ora` e' lo stesso nome gia' usato da
-   `picco_produzione` sotto -- vedi il contratto completo nel docstring di
-   `build_balance_body`, mind/facts.py), `momenti` (fatti
-   derivati -- prima/ultima ora di produzione, il picco, le quote, tutti con
-   l'istante VERO), piu' `dispositivo` (nome leggibile) ed `entita` (i
-   sensori che lo compongono, aggiunti da `aggregate_day`). `balanceLine`
-   sotto lo rende per conto suo, SENZA passare da `mainPhrase`/
-   `period()`: sono funzioni che presuppongono la forma dell'episodio, e
-   usarle per un bilancio le forzerebbe fuori dal loro contratto.
-
-   -- Il giorno di default (mandato Task 7, verifiche dal vivo #1) --
+   -- Il giorno --
    L'aggregazione notturna scrive «ieri» alle 00:20 (`server.py::
-   _aggrega_ieri`): il giorno di oggi, quasi sempre, non ha ancora nessun
-   oggetto. Il selettore nasce sul giorno di ieri (calcolato nel fuso del
-   BROWSER, non quello della casa -- e' scritto nel testo accanto al campo).
-   Rilievo 12 della review: i due fusi possono differire di un GIORNO intero
+   _aggrega_ieri`): il giorno di oggi, quasi sempre, non ha ancora un
+   resoconto. Il selettore nasce su ieri, calcolato nel fuso del BROWSER e
+   non in quello della casa -- i due possono differire di un GIORNO intero
    (non "un'ora", cifra non misurata) vicino alla mezzanotte, se si guarda da
-   un fuso diverso da quello della casa -- nel caso reale (casa e utente
-   nello stesso fuso) l'errore e' zero a qualunque ora. Un bottone accanto
-   toglie il filtro e mostra i più recenti, senza indovinare quale giorno
-   guardare.
+   un fuso diverso; nel caso reale, casa e utente nello stesso fuso, l'errore
+   e' zero a qualunque ora.
+
+   -- Cosa e' uscito, e quando (15/09/2026) --
+   La sezione «cosa e' successo» e le sue cinquecento righe di resa per
+   genere sono uscite con lo strato degli `oggetti` (spec §13): gli episodi
+   vivono nella cronaca del resoconto, che la 02 mostra. Con loro e' uscita
+   la rotta `api/mind/facts`.
 
    Sicurezza: testi via textContent/createElement, MAI innerHTML su dati del
-   server -- stessa disciplina di tree-route.js/memory-route.js. Nessuna
-   POST in questa pagina: le due rotte sono GET, quindi nessun
-   `X-Requested-With` da portare (non passano dal `csrf_middleware`). */
+   server -- stessa disciplina di tree-route.js/memory-route.js. L'unica POST
+   e' quella dell'obiettivo, e porta `X-Requested-With` perche' passa dal
+   `csrf_middleware`. */
 window.HirisWatcherRoute = (function () {
   'use strict';
 
@@ -1350,6 +1276,102 @@ window.HirisWatcherRoute = (function () {
     retryButton(body, reload);
   }
 
+
+  /* ---------------------------------------------------------- l'analista (§10) */
+
+  /* I tre inneschi, **a parole**. «1» non vuol dire niente per chi legge: la
+     spec da' a ciascuno un nome, ed e' quello che va in pagina. Vivono qui in
+     un posto solo perche' il numero arriva dal modello e la parola e' nostra:
+     due elenchi divergerebbero al primo ritocco. */
+  var TRIGGER_WORDS = {
+    1: 'è cambiato, e non è spiegato',
+    2: 'è stabile e costa',
+    3: 'non c’è più',
+  };
+
+  function renderAnalysis(body, analysis) {
+    var seen = (analysis && analysis.osservazioni) || [];
+    if (!seen.length) {
+      /* **Il silenzio e' un esito legittimo** (spec §10), e va detto: «ho
+         guardato e non c'era niente da dire» non e' un guasto, ed e' diverso
+         da «non ho guardato» -- che e' il 404, gestito altrove. */
+      line(body, 'Ha guardato e non c’è niente da segnalare. Se una cosa funziona ' +
+        'non va detta: otto giorni al 99% non sono una notizia.', TONE_CALM);
+      return;
+    }
+    seen.forEach(function (o) {
+      var riga = el('div', 'sc-row');
+      var titolo = (o.nome || o.soggetto) + ' · ' + o.misura
+        + (o.chiave ? '.' + o.chiave : '');
+      riga.appendChild(el('div', 'sc-row-title', titolo));
+
+      /* Il numero e la sua storia, sulla riga sua: «non si inventa una
+         soglia» vuol dire che chi legge deve vedere **contro cosa** e' stato
+         misurato, e su quanti giorni. «La base e' sottile» e' un fatto da
+         leggere, non una cosa che decidiamo noi. */
+      var numeri = [];
+      if (o.valore !== null && o.valore !== undefined) {
+        numeri.push(String(o.valore) + (o.unita ? ' ' + o.unita : ''));
+      }
+      if (o.mediana !== null && o.mediana !== undefined) {
+        numeri.push('di solito ' + o.mediana);
+      }
+      if (o.quanti_scarti !== null && o.quanti_scarti !== undefined) {
+        numeri.push(o.quanti_scarti + ' scarti');
+      }
+      if (o.base !== null && o.base !== undefined) {
+        numeri.push('su ' + fmtCount(o.base) + ' giorni');
+      }
+      if (typeof o.copertura === 'number' && o.copertura < 1) {
+        numeri.push('copertura ' + fmtPercent(o.copertura));
+      }
+      if (numeri.length) riga.appendChild(el('div', 'field-hint', numeri.join(' · ')));
+
+      riga.appendChild(el('div', 'sc-row-why', o.cosa || ''));
+
+      var coda = [];
+      var parola = TRIGGER_WORDS[o.innesco];
+      if (parola) coda.push('Perché lo dice: ' + parola + '.');
+      /* **Cio' che e' spiegato si distingue da cio' che non lo e'**: e' la
+         differenza fra una scoperta e una conferma, e la spec la chiede. */
+      if (o.spiegato) coda.push('È spiegato: ' + o.spiegato + '.');
+      if (o.cosa_cambierebbe) coda.push('Cosa cambierebbe: ' + o.cosa_cambierebbe);
+      if (coda.length) riga.appendChild(el('div', 'sc-row-why', coda.join(' ')));
+      body.appendChild(riga);
+    });
+  }
+
+  function renderAnalysisError(body, status, reload) {
+    if (status === 404) {
+      /* «Non ho guardato» non e' «ho guardato e non c'era niente»: la prima
+         e' questa, la seconda e' un elenco vuoto. */
+      line(body, 'L’analista non ha ancora guardato questo giorno. Gira una volta ' +
+        'all’ora, e un giorno ha una analisi sola.', TONE_CALM);
+      return;
+    }
+    line(body, 'Non è stato possibile leggere l’analisi. Riprova più tardi.', TONE_PROBLEM);
+    retryButton(body, reload);
+  }
+
+  function loadAnalysis(body, day) {
+    clearEl(body);
+    line(body, 'Caricamento…', TONE_CALM);
+    function reload() { return loadAnalysis(body, day); }
+    var giorno = day || localOggi();
+    return read('api/mind/analysis?day=' + encodeURIComponent(giorno)).then(function (occurrence) {
+      clearEl(body);
+      if (!occurrence.ok) { renderAnalysisError(body, occurrence.status, reload); return; }
+      renderAnalysis(body, occurrence.corpo.analisi || {});
+    }, function () {
+      clearEl(body);
+      renderAnalysisError(body, null, reload);
+    });
+  }
+
+  /* L'analisi e' di OGGI, non di ieri: legge i resoconti fino a ieri e parla
+     adesso. Il selettore del giorno governa il resoconto, non lei. */
+  function localOggi() { return isoData(new Date()); }
+
   /* ------------------------------------------------------------------------ mount */
 
   function loadWatching(body) {
@@ -1399,8 +1421,8 @@ window.HirisWatcherRoute = (function () {
 
     outlet.appendChild(el('h1', 'page-title', 'L’osservatore'));
     outlet.appendChild(el('p', 'page-subtitle',
-      'Guarda la casa e ne ricava episodi. Non conclude niente, non parla, non tocca niente — ' +
-      'è il materiale su cui domani ragionerà l’analista.'));
+      'Guarda la casa, ne ricava misure, e dice cosa si potrebbe fare. ' +
+      'Non tocca niente: decidi tu.'));
 
     /* La descrizione dice COME si e' deciso (tutta la casa, l'obiettivo
        davanti, soggetto per soggetto), una volta sola: chi ha deciso e
@@ -1433,9 +1455,11 @@ window.HirisWatcherRoute = (function () {
     dayField.appendChild(dayInput);
     controls.appendChild(dayField);
 
-    var recentBtn = el('button', 'btn btn-ghost btn-sm', 'Vedi il giorno più recente');
-    recentBtn.type = 'button';
-    controls.appendChild(recentBtn);
+    /* **Il bottone «senza filtro» e' uscito** (15/09/2026). Serviva alla
+       sezione degli oggetti, che poteva mostrarne molti giorni insieme; un
+       RESOCONTO e' per definizione di un giorno solo, e quel bottone finiva
+       per rifare esattamente cio' che la pagina fa gia' aprendosi. Un
+       comando che non ha un contrario non e' un comando. */
 
     /* Sezione 02: il resoconto del giorno (spec §9). Era la 03 finche' gli
        oggetti avevano la loro. */
@@ -1448,19 +1472,25 @@ window.HirisWatcherRoute = (function () {
     dayInput.addEventListener('change', function () {
       loadReport(reportBody, dayInput.value || null);
     });
-    recentBtn.addEventListener('click', function () {
-      dayInput.value = ieriLocale();
-      loadReport(reportBody, null);
-    });
+
+    /* Sezione 03: l'analista (spec §10). Non ha selettore: legge i resoconti
+       fino a ieri e parla di OGGI -- il giorno qui sopra governa il resoconto,
+       non lei. */
+    var analysisBody = section(outlet, '03', 'Cosa si potrebbe fare',
+      'Quello che l’analista ha visto leggendo le misure di trenta giorni: cosa, ' +
+      'perché lo dice, se è già spiegato, e cosa cambierebbe rispetto all’obiettivo. ' +
+      'Il silenzio è un esito legittimo.');
 
     loadWatching(watchingBody);
     loadReport(reportBody, dayInput.value);
+    loadAnalysis(analysisBody, null);
   }
 
   return {
     mount: mount,
     /* Seam di test: la resa e' pura DOM + dati, va pinnata senza passare da fetch. */
     _rendiScope: renderScope,
-    _rendiResoconto: renderReport
+    _rendiResoconto: renderReport,
+    _rendiAnalisi: renderAnalysis
   };
 })();

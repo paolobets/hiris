@@ -96,6 +96,12 @@ function montaConServer(opts = {}) {
        mount restavano verdi con la sezione 03 muta. La chiave `resoconto` è
        quella vera di `handlers_mind.handle_report`, ed è PINNATA qui: se una
        delle due parti la rinomina, questa prova cade. */
+    if (u.indexOf('api/mind/analysis') === 0) {
+      if (opts.analisiRotta) throw new Error('rete interrotta');
+      return jsonResponse(
+        opts.analisi !== undefined ? opts.analisi : { analisi: { osservazioni: [] } },
+        opts.analisiStatus);
+    }
     if (u.indexOf('api/mind/report') === 0) {
       if (opts.resocontoRotto) throw new Error('rete giu\'');
       return jsonResponse(
@@ -199,14 +205,18 @@ test('mount: "Non sto guardando ancora niente" usa è, non e’', async () => {
   assert.match(testo, /è normale/);
 });
 
-test('mount: il sottotitolo usa è, non e’, e chiama il materiale "episodi"', async () => {
+test('mount: il sottotitolo dice i TRE attori, e non rimanda l’analista a domani', async () => {
   const { window, document } = montaConServer();
   window.HirisWatcherRoute.mount();
   await tick(20);
 
   const sottotitolo = document.querySelector('.page-subtitle').textContent;
-  assert.match(sottotitolo, /è il materiale/);
-  assert.match(sottotitolo, /ricava episodi/);
+  assert.equal(trovaRefusiApostrofo(sottotitolo).length, 0,
+    'nessun accento scritto con l’apostrofo');
+  assert.match(sottotitolo, /cosa si potrebbe fare/,
+    'il terzo attore c’è: la pagina non lo rimanda più a domani');
+  assert.doesNotMatch(sottotitolo, /domani/,
+    'l’analista ha gia’ parlato: prometterlo per domani sarebbe falso');
 });
 
 // ---------------------------------------------------------------------------
@@ -1102,6 +1112,13 @@ function nonCalcolabile(nome, perche) {
   return m;
 }
 
+function rendiAnalisi(payload) {
+  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  const corpo = document.createElement('div');
+  window.HirisWatcherRoute._rendiAnalisi(corpo, payload.analisi);
+  return { window, document, corpo };
+}
+
 function rendiResoconto(payload) {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
@@ -1313,4 +1330,102 @@ test('mount: riscrivere lo STESSO obiettivo non è un errore, e lo dice', async 
   const testo = ctx.document.getElementById('route-outlet').textContent;
   assert.match(testo, /era già questo/);
   assert.doesNotMatch(testo, /non è stato possibile/i);
+});
+
+/* ------------------------------------------------- l'analista sulla pagina
+
+   Il terzo attore parla dal 15/09/2026, e per un giorno la sua voce e'
+   esistita solo su una rotta: la pagina prometteva «domani ragionera'
+   l'analista» mentre l'analista aveva gia' parlato. Un dato che nessuno puo'
+   chiedere non esiste — e questo si poteva chiedere solo con curl. */
+
+function analisi(osservazioni) {
+  return { analisi: { osservazioni: osservazioni || [] } };
+}
+
+function osservazione(extra) {
+  return Object.assign({
+    soggetto: 'dev1', nome: 'Inverter', misura: 'prelievo', chiave: null,
+    unita: 'kWh', innesco: 1, cosa: 'il prelievo dalla rete è salito',
+    spiegato: null, cosa_cambierebbe: 'spostare i consumi sulle ore di sole',
+    valore: 0.74, copertura: 1, quanti_scarti: 2.75, mediana: 0.3, base: 19,
+  }, extra || {});
+}
+
+test('seam _rendiAnalisi: ogni osservazione dice cosa, perché, e cosa cambierebbe', () => {
+  // Le quattro cose che la spec §10 elenca. Mutazione che la uccide: non
+  // rendere `cosa_cambierebbe`.
+  const { corpo } = rendiAnalisi(analisi([osservazione()]));
+  const testo = corpo.textContent;
+  assert.match(testo, /Inverter/);
+  assert.match(testo, /il prelievo dalla rete è salito/);
+  assert.match(testo, /spostare i consumi sulle ore di sole/);
+  assert.match(testo, /0\.74 kWh/);
+});
+
+test('seam _rendiAnalisi: l’innesco si dice a parole, non col numero', () => {
+  // «1» non vuol dire niente per chi legge: i tre inneschi hanno un nome
+  // nella spec, ed è quello che va in pagina.
+  // Mutazione che la uccide: stampare `o.innesco`.
+  const { corpo } = rendiAnalisi(analisi([
+    osservazione({ innesco: 1 }),
+    osservazione({ innesco: 2, misura: 'batteria' }),
+    osservazione({ innesco: 3, misura: 'bilancio' }),
+  ]));
+  const testo = corpo.textContent;
+  assert.match(testo, /è cambiato/);
+  assert.match(testo, /stabile e costa/);
+  assert.match(testo, /non c’è più/);
+  assert.doesNotMatch(testo, /innesco 1/);
+});
+
+test('seam _rendiAnalisi: ciò che è SPIEGATO si distingue da ciò che non lo è', () => {
+  // È la differenza fra una scoperta e una conferma, e la spec la chiede
+  // esplicitamente. Mutazione che la uccide: non rendere `spiegato`.
+  const { corpo } = rendiAnalisi(analisi([
+    osservazione({ spiegato: 'coerente con il prelievo dello stesso giorno' }),
+  ]));
+  assert.match(corpo.textContent, /coerente con il prelievo/);
+});
+
+test('seam _rendiAnalisi: lo scostamento si dice col suo numero e con la base', () => {
+  // «Non si inventa una soglia»: il numero c’è, e con quanti giorni di storia
+  // è stato calcolato — «la base è sottile» è un fatto da leggere.
+  // Mutazione che la uccide: non rendere `base`.
+  const { corpo } = rendiAnalisi(analisi([osservazione()]));
+  const testo = corpo.textContent;
+  assert.match(testo, /2\.75/);
+  assert.match(testo, /19 giorni/);
+});
+
+test('seam _rendiAnalisi: il SILENZIO si dice, e non sembra un guasto', () => {
+  // «Il silenzio è un esito legittimo»: zero osservazioni vuol dire che ha
+  // guardato e non c’era niente da dire.
+  // Mutazione che la uccide: lasciare la sezione vuota.
+  const { corpo } = rendiAnalisi(analisi([]));
+  assert.match(corpo.textContent, /niente da segnalare/);
+});
+
+test('mount: la sezione 03 legge la chiave «analisi» della rotta', () => {
+  // Mutazione che la uccide: `corpo.osservazioni` al posto di `corpo.analisi`.
+  const ctx = montaConServer({ analisi: analisi([osservazione()]) });
+  ctx.window.HirisWatcherRoute.mount();
+  return tick(20).then(function () {
+    const card3 = ctx.document.querySelectorAll('.section-card')[2];
+    assert.ok(card3, 'la sezione 03 deve esistere');
+    assert.match(card3.textContent, /Inverter/);
+  });
+});
+
+test('mount: un giorno mai analizzato (404) lo SPIEGA', () => {
+  // «Non ho guardato» e «ho guardato e non c’era niente» sono due cose
+  // diverse, e la pagina deve dirle diverse.
+  // Mutazione che la uccide: mostrare «niente da segnalare» anche sul 404.
+  const ctx = montaConServer({ analisiStatus: 404, analisi: { errore: 'x' } });
+  ctx.window.HirisWatcherRoute.mount();
+  return tick(20).then(function () {
+    const testo = ctx.document.querySelectorAll('.section-card')[2].textContent;
+    assert.match(testo, /non ha ancora guardato/);
+    assert.doesNotMatch(testo, /niente da segnalare/);
+  });
 });

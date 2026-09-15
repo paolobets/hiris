@@ -1,5 +1,49 @@
 # HIRIS — Changelog
 
+## [3.44.0] — L'analista si vede, e i dispositivi hanno un nome (2026-09-15)
+
+La prima analisi vera è arrivata, e leggendola sono usciti due difetti.
+
+### «Ti sta parlando in esadecimale»
+
+L'analista diceva «**513a6661** · prelievo» invece di «Inverter · prelievo».
+Misurato sul resoconto del giorno: **zero misure su 73** portavano un nome.
+
+`aggregate_day` riceve `names` — i nomi dei **dispositivi**, per chiave l'id
+del dispositivo — e poi **riusa la stessa variabile** per i nomi delle
+**entità** letti dal grezzo, per chiave l'`entity_id`. Due cose diverse dette
+con una parola sola: la seconda cancellava la prima, e nessuna prova guardava.
+Ora sono due nomi, e la cronaca continua ad avere il suo.
+
+### E la pagina prometteva un analista che non c'era
+
+Il sottotitolo diceva *«il materiale su cui **domani** ragionerà l'analista»*
+mentre l'analista aveva già parlato — e non c'era **nessun posto** dove
+leggerlo: avevo fatto la rotta e non la sezione. Un dato che si può chiedere
+solo con `curl` è un dato che il proprietario non ha.
+
+**Sezione 03, «Cosa si potrebbe fare»**, con le quattro cose della spec §10 e
+tre regole:
+
+- **l'innesco si dice a parole**, non col numero: «1» non vuol dire niente per
+  chi legge;
+- **il numero porta la sua storia**: valore, mediana, scarti, e **su quanti
+  giorni** — «la base è sottile» è un fatto da leggere, non una soglia che
+  decidiamo noi;
+- **il silenzio si dice**, e non somiglia a un guasto: «ha guardato e non c'è
+  niente da segnalare». Un giorno mai analizzato è un'altra frase.
+
+### Due pulizie che la cancellazione aveva lasciato indietro
+
+L'intestazione del file descriveva per ottanta righe uno strato che non esiste
+più. E il bottone «Vedi il giorno più recente» serviva alla sezione degli
+oggetti, che poteva mostrarne molti giorni insieme: un **resoconto** è per
+definizione di un giorno solo, e quel bottone rifaceva ciò che la pagina fa
+già aprendosi. Un comando che non ha un contrario non è un comando.
+
+Otto mutazioni dichiarate ed **eseguite**, tutte uccise. 4136 prove Python,
+374 JS, ruff, oxlint, censimento.
+
 ## [3.43.0] — Gli oggetti escono (2026-09-15)
 
 Lo strato degli `oggetti` è cancellato (spec §13). Gli episodi vivono dentro il

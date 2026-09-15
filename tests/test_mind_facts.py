@@ -1082,3 +1082,36 @@ def test_aggregate_day_scrive_nel_resoconto_l_obiettivo_di_QUEL_giorno(archivio)
 
     scritto = archivio.report(G)
     assert scritto["obiettivo"]["testo"] == "quella di allora"
+
+def test_il_nome_del_DISPOSITIVO_arriva_alle_misure(archivio):
+    """**Difetto trovato leggendo la prima analisi vera, il 15/09/2026**:
+    l'analista parlava al proprietario in esadecimale -- «513a6661 ·
+    prelievo» invece di «Inverter · prelievo». Misurato sul resoconto del
+    giorno: **zero misure su 73 portavano un nome**.
+
+    La causa: `aggregate_day` riceve `names` -- i nomi dei DISPOSITIVI, per
+    chiave l'id del dispositivo -- e poi riusa la stessa variabile per i nomi
+    delle ENTITA' letti dal grezzo, per chiave l'`entity_id`. Due cose diverse
+    dette con una parola sola: la seconda cancellava la prima, e nessuna prova
+    guardava.
+
+    Mutazione: rimettere una variabile sola -- rossa.
+    """
+    archivio.record(quando_ts=ts(15, 30), source="entita",
+                    subject="climate.camera_t", da="off", a="heat",
+                    friendly_name="Termostato Camera")
+
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome",
+                  recipes={"dev1": {"why": "la produzione", "steps": [
+                      {"name": "totale", "operation": "somma_periodo",
+                       "inputs": ["@sensor.p"], "params": {"unit": "kWh"}}]}},
+                  series={"sensor.p": [{"inizio": 0.0, "fine": 3600.0,
+                                        "valore": 2.0}]},
+                  names={"dev1": "Inverter"})
+
+    scritto = archivio.report(G)
+    assert scritto["misure"][0]["nome"] == "Inverter", "il nome del dispositivo"
+    # E il nome dell'ENTITA' continua ad arrivare alla cronaca: sono due
+    # strade diverse, e questa correzione non deve chiuderne una per aprire
+    # l'altra.
+    assert scritto["cronaca"][0]["nome"] == "Termostato Camera"

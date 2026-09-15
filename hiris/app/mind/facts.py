@@ -750,12 +750,22 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     # giorno dell'aggiornamento: i cambi scritti prima della colonna non lo
     # portano, quelli scritti dopo si', e il proprietario legge la pagina
     # proprio quel giorno.
-    names: dict[str, str] = {}
+    # **`entity_names`, non `names`: sono due cose diverse.** Qui vivono i
+    # nomi amichevoli delle ENTITA', letti dal grezzo e per chiave
+    # l'`entity_id`; il parametro `names` porta i nomi dei DISPOSITIVI, per
+    # chiave l'id del dispositivo, e serve alle misure.
+    #
+    # Fino al 15/09/2026 si chiamavano tutt'e due `names`, e questa riga
+    # cancellava il parametro. Il risultato si e' letto nella prima analisi
+    # vera: l'analista parlava al proprietario in esadecimale -- «513a6661 ·
+    # prelievo» -- e sul resoconto del giorno **zero misure su 73** portavano
+    # un nome.
+    entity_names: dict[str, str] = {}
     for r in rows:
         measurements.setdefault(r["soggetto"], []).append((r["quando_ts"], r["a"]))
         name = r.get("friendly_name")
-        if name and r["soggetto"] not in names:
-            names[r["soggetto"]] = name
+        if name and r["soggetto"] not in entity_names:
+            entity_names[r["soggetto"]] = name
 
     open_episodes: dict[str, dict] = {}
     # **Cio' che era gia' in corso quando il giorno e' cominciato.** Un fatto
@@ -785,8 +795,8 @@ def aggregate_day(*, store, day: str, timezone: str | None,
             open_episodes[subject] = {
                 "genere": genre, "inizio": r["quando_ts"], "stato": r["a"],
                 "classe": r.get("device_class")}
-            if r.get("friendly_name") and subject not in names:
-                names[subject] = r["friendly_name"]
+            if r.get("friendly_name") and subject not in entity_names:
+                entity_names[subject] = r["friendly_name"]
     # Gli episodi: inizio/fine di ogni oggetto, SENZA ancora i comprimari.
     # Si separano dal corpo apposta (vedi sotto): il limite superiore delle
     # misure di un comprimario dipende dal PROSSIMO episodio dello stesso
@@ -811,7 +821,7 @@ def aggregate_day(*, store, day: str, timezone: str | None,
         # sarebbe un buco travestito da dato, e la pagina ha gia' la sua
         # regola per quando il nome manca (mostra l'identificatore DICENDO
         # che e' un identificatore, mai un nome dedotto dall'`entity_id`).
-        subject_name = names.get(subject)
+        subject_name = entity_names.get(subject)
         if subject_name:
             base_body["nome"] = subject_name
         # La classe che Home Assistant dichiarava sull'entita' al momento del
