@@ -399,6 +399,12 @@ def _migration_7(conn) -> None:
     non si sanno rileggere si cancella -- non si indovina e non si tiene -- e
     il dispositivo torna una domanda aperta.
 
+    **Se la riga nuova esiste gia'** -- questo archivio e' fatto per essere
+    corretto a mano -- quella del proprietario vince e la vecchia si cancella:
+    la chiave primaria e' `(genere, soggetto, campo)`, e un `UPDATE` che
+    collide solleverebbe dentro `init_schema`, che non cattura. L'add-on non
+    partirebbe piu'. Trovato dalla revisione indipendente il 15/09/2026.
+
     Da qui in avanti la separazione e' alla fonte
     (`recipe_turn._is_declined`), e questa migrazione non ha piu' niente da
     fare: vale per cio' che era gia' scritto.
@@ -410,7 +416,11 @@ def _migration_7(conn) -> None:
     ).fetchall()
     for row in rows:
         why = _why_from_evidence(row["evidence"])
-        if why:
+        gia = conn.execute(
+            "SELECT 1 FROM knowledge WHERE subject_kind = 'dispositivo' "
+            "AND subject = ? AND field = 'ricetta_non_serve'",
+            (row["subject"],)).fetchone()
+        if why and gia is None:
             conn.execute(
                 "UPDATE knowledge SET field = ?, value = ?, verification = NULL "
                 "WHERE subject_kind = 'dispositivo' AND subject = ? "
@@ -444,10 +454,19 @@ def _why_from_evidence(evidence: str | None) -> str:
     if start < 0:
         return ""
     try:
-        # `raw_decode` da dove il valore comincia: legge UNA stringa JSON e si
-        # ferma, senza chiedere che cio' che segue sia valido.
-        quote = text.index('"', text.index(":", start) + 1)
-        value, _ = json.JSONDecoder().raw_decode(text[quote:])
+        # **Si decodifica il VALORE della chiave, dov'e'** -- subito dopo i due
+        # punti, saltati gli spazi. Prima si cercava il primo apice successivo:
+        # con `{"why": null, "steps": []}` quell'apice e' quello della chiave
+        # SEGUENTE, e questa funzione tornava la stringa «steps». Trovato dalla
+        # revisione indipendente il 15/09/2026.
+        #
+        # `raw_decode` legge UN valore JSON e si ferma, senza chiedere che cio'
+        # che segue sia valido: le prove sono troncate a 1500 caratteri, quindi
+        # il JSON intero puo' non esserci.
+        at = text.index(":", start) + 1
+        while at < len(text) and text[at].isspace():
+            at += 1
+        value, _ = json.JSONDecoder().raw_decode(text, at)
     except (ValueError, json.JSONDecodeError):
         return ""
     return value.strip() if isinstance(value, str) else ""
@@ -682,6 +701,23 @@ class KnowledgeStore:
                 # soggetto, che e' stabile e leggibile.
                 "ORDER BY when_ts DESC, subject").fetchall()
         return _facts(rows)
+    def forget(self, subject_kind: str, subject: str, field: str) -> bool:
+        """Toglie una riga. Torna `True` se c'era.
+
+        **Esiste per le righe che questo programma ha scritto su se stesso,
+        sbagliando** -- e' la stessa ragione delle migrazioni 3, 4 e 7, portata
+        dove serve a runtime: una ricetta scritta contro una fonte che per
+        quell'entita' non esiste blocca il dispositivo per sempre, perche'
+        `devices_to_ask` salta chi una ricetta ce l'ha. Non e' un'eccezione
+        alla regola «mai dati dell'utente»: quelle righe non sono dell'utente.
+        """
+        with self._lock:
+            cur = self._conn.execute(
+                "DELETE FROM knowledge WHERE subject_kind = ? AND subject = ? "
+                "AND field = ?", (subject_kind, subject, field))
+            self._conn.commit()
+        return bool(cur.rowcount)
+
     def count(self) -> int:
         with self._lock:
             return self._conn.execute("SELECT count(*) FROM knowledge").fetchone()[0]

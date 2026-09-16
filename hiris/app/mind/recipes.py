@@ -100,7 +100,7 @@ def _shape_of(given) -> str:
     """La forma di cio' che un ingresso consegna.
 
     Dentro una ricetta esistono **due sole sorgenti**: `@entita` da' la serie
-    del periodo, `#passo` da' la misura di un passo precedente. Un letterale
+    del periodo, `$passo` da' la misura di un passo precedente. Un letterale
     non e' ne' l'una ne' l'altra, e nessuna operazione del registro ne prende
     uno: dirlo con un nome suo fa uscire un rifiuto leggibile invece di un
     confronto che non torna mai.

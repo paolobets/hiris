@@ -480,30 +480,37 @@ test('seam _rendiScope: finestra non misurata dentro una riconsiderazione avvenu
 // -- 5. Quanto scrive al giorno ---------------------------------------------------
 
 test('seam _rendiScope: il volume è una barra per giorno, nell\'ordine del payload, larga in proporzione al giorno più alto, col numero scritto', () => {
-  // Mutazione: `volume.sort(...)` o `.reverse()` prima del ciclo in
-  // `renderVolume` (l'ordine dei giorni cambia); `pct` calcolato su una
-  // costante invece che su `max` (le larghezze non tornano); `fmtCount`
-  // sostituito da `String(n)` («4951» invece di «4.951»); `if (r.righe)
-  // return` per saltare i giorni a zero (la settima riga sparisce).
+  // Mutazione: `.reverse()` prima del ciclo in `renderVolume` (l'ordine dei
+  // giorni cambia); `pct` calcolato su una costante invece che su `max` (le
+  // larghezze non tornano); `fmtCount` sostituito da `String(n)` («4951»
+  // invece di «4.951»); `if (r.righe) return` per saltare i giorni a zero (la
+  // riga a zero sparisce).
+  //
+  // **I giorni arrivano NON ordinati, ed è voluto** (15/09/2026): col payload
+  // già crescente un `volume.sort(...)` era un no-op e la mutazione restava
+  // verde — la prova dimostrava «crescente», non «nell'ordine del payload»
+  // come dice il titolo. L'ha detto una mutazione eseguita dalla revisione
+  // indipendente.
   const { corpo } = rendiScope(paginaScope({
     volume: [
-      { giorno: '2026-09-04', righe: 29227 },
       { giorno: '2026-09-05', righe: 4951 },
+      { giorno: '2026-09-04', righe: 29227 },
       { giorno: '2026-09-06', righe: 0 },
     ],
   }));
   const righe = Array.from(corpo.querySelectorAll('ul > li'));
   assert.equal(righe.length, 3);
   assert.deepEqual(righe.map((li) => li.querySelector('.field-hint').textContent),
-    ['04/09/2026', '05/09/2026', '06/09/2026'], 'dal più vecchio: una tendenza si legge in avanti');
+    ['05/09/2026', '04/09/2026', '06/09/2026'],
+    "nell'ordine in cui il server li manda: chi ordina e' `_volume`, non la pagina");
   assert.deepEqual(righe.map((li) => li.querySelector('.text-mono').textContent),
-    ['29.227 righe', '4.951 righe', '0 righe']);
+    ['4.951 righe', '29.227 righe', '0 righe']);
   // Il CSSOM RISERIALIZZA il valore letto («100.0%» -> «100%», «0.0%» ->
   // «0%»; stesso comportamento gia' misurato per `display:flex` piu' sopra):
   // si confronta il numero, non la stringa scritta dalla pagina.
   const larghezze = righe.map((li) => parseFloat(li.querySelector('[aria-hidden="true"] > div').style.width));
-  assert.equal(larghezze[0], 100, 'il giorno piu\' alto e\' il metro: barra piena');
-  assert.equal(larghezze[1], Number((4951 / 29227 * 100).toFixed(1)));
+  assert.equal(larghezze[1], 100, 'il giorno piu\' alto e\' il metro: barra piena');
+  assert.equal(larghezze[0], Number((4951 / 29227 * 100).toFixed(1)));
   assert.equal(larghezze[2], 0, 'un giorno a zero resta una barra vuota, non sparisce');
   assert.equal(corpo.querySelectorAll('canvas, svg').length, 0, 'barre CSS, niente canvas/SVG per sette numeri');
 });

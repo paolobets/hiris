@@ -18,8 +18,11 @@ Una serie vuota diceva due cose diverse con una parola sola: *«quel giorno non
 - **Il rifiuto dice la verità**: `HAClient.statistic_ids()` legge il registro
   delle statistiche, `Recipe.run(without_statistics=…)` rifiuta **il passo**
   che nomina quell'entità — non l'intera ricetta, così le altre misure dello
-  stesso dispositivo restano — e otto operazioni lo dichiarano in
-  `refuses_when`, che è ciò che la spec §6 chiede a ciascuna.
+  stesso dispositivo restano — e **sei** operazioni lo dichiarano in
+  `refuses_when`, che è ciò che la spec §6 chiede a ciascuna. (Erano otto: la
+  revisione indipendente ha trovato che `episodio` e `misure_durante` leggono
+  le **letture del grezzo**, che esistono proprio per le entità senza
+  statistiche — su quelle due la dichiarazione diceva il contrario del vero.)
 - **Il modello lo sa prima di scrivere**: la domanda gli dice quali entità
   abbiano una serie e quali no, e che se non ne ha nessuna può rispondere
   `steps: []` — «è una risposta giusta, non una resa». Senza, scriveva «quanto
@@ -40,6 +43,87 @@ al registro delle statistiche che non hanno mai registrato niente** — l'albero
 di Natale, le luci di Natale, la gestione carichi — e per loro «la serie è
 vuota» è già la frase giusta. La decisione — costruirlo o scrivere nella spec
 che non si applica a questa fonte — è del proprietario, ed è nel backlog.
+
+### La revisione totale, e cosa ha trovato addosso a questo rilascio
+
+Tre revisori indipendenti su Fable 5.1 — correttezza, prove, coerenza fra
+spec, codice e casa. **Ciò che hanno trovato è stato riparato qui dentro**,
+prima del push, perché una parte era nata con questo stesso rilascio.
+
+- **Dieci frasi italiane corrotte in `server.py`**: rinominando la variabile
+  `senza` → `without` una regex ha toccato anche la prosa. «Il fail-safe
+  numero uno del rilascio: **without**, la chat tornerebbe a pagare». Il
+  cancello della prosa non la vede: sorveglia parole *italiane* dentro il
+  codice, non parole *inglesi* dentro la prosa.
+- **Dire la verità nel rifiuto non bastava.** I dieci dispositivi con una
+  ricetta scritta contro entità mute restavano bloccati per sempre —
+  `devices_to_ask` salta chi una ricetta ce l'ha. Ora
+  `drop_recipes_without_series` la toglie quando **nessuna** delle sue entità
+  ha una serie (una sola buona e la ricetta resta: una misura certa vale più
+  di una possibile), e il dispositivo torna una domanda aperta con la domanda
+  nuova. `KnowledgeStore.forget()` è il gesto che mancava.
+- **`REGISTRY_VERSION` era ancora 1** mentre il registro era cambiato tre
+  volte: quindi la decisione del proprietario del 13/09 — «i rifiuti scadono
+  quando il registro cresce» — **non è mai scattata**. Ora è 2, e una prova
+  nuova lega la versione all'**impronta di ciò che il modello può chiedere**:
+  cambiare il catalogo senza alzarla è rosso, alzarla senza guardare cosa è
+  cambiato pure.
+- **Due `refuses_when` falsi**: `episodio` e `misure_durante` leggono le
+  letture del grezzo, che esistono proprio per le entità senza statistiche.
+  Le operazioni che lo dichiarano sono **sei**, non otto.
+- **`_why_from_evidence` con `"why": null` tornava la parola «steps»** —
+  cercava il primo apice dopo i due punti e trovava quello della chiave
+  seguente. Un dispositivo sarebbe stato archiviato come «rifiutato
+  ragionatamente» con una ragione che non è una ragione.
+- **La migrazione 7 poteva impedire l'avvio**: spostare una riga su una chiave
+  già occupata solleva dentro `init_schema`, che non cattura. Ora la riga
+  scritta a mano vince e la vecchia si cancella.
+- **I nomi risolti sulle misure ma non sulle forme**, dentro la stessa
+  risposta: lo stesso difetto che la 3.46.0 dichiara di aver chiuso.
+- **`_device_names` viveva in due copie**, e una delle due aveva scritto nel
+  docstring «Un posto solo».
+
+### Le prove che non mordevano
+
+Sei, trovate con **18 mutazioni eseguite**. Tre docstring dichiaravano rossa
+una mutazione che è **verde** — la colpa più grave, perché è una ragione falsa
+scritta accanto al codice:
+
+- il seme a priorità alta: seminava 1 poi 2, ordine in cui «vince l'ultimo» e
+  «vince la priorità» danno lo stesso fatto. Ora il seme basso torna una terza
+  volta, ed è l'unico ordine in cui le due regole si separano;
+- gli ingressi troppo pochi: l'ingresso era scritto `#a`, che non è un
+  marcatore della lingua, quindi rifiutava comunque per le forme;
+- la migrazione 4: togliere `4:` la lascia verde perché la 5 e la 6 rifanno la
+  stessa pulizia. Scritto nella docstring, così nessuno ci ricasca.
+
+E **la porta si poteva cancellare senza che una sola prova arrossisse**: tutte
+chiamavano il gestore, nessuna il router. Adesso una prova guarda che le
+cinque rotte del cervello siano registrate.
+
+### E il secondo giro, sulle cose che la revisione aveva lasciato aperte
+
+- **Un dispositivo non può essere «non capito» e avere una ricetta che gira.**
+  `apply_recipe` scriveva il suo campo e lasciava gli altri due: il giorno in
+  cui un rifiuto scade e il modello risponde bene, la riga vecchia restava e
+  la porta del sapere continuava a elencarlo fra le cose da risolvere. Adesso
+  una risposta nuova cancella quelle vecchie.
+- **Una migrazione mancante non passa più in silenzio.** `init_schema` faceva
+  `migrations.get(target)` e saltava: chi scrive `7:` come `8:` otteneva un
+  archivio che si dichiara migrato e non lo è, senza una riga di log. Ora
+  solleva, e dice cosa fare.
+- **La prova del volume dimostra il proprio titolo.** Diceva «nell'ordine del
+  payload» e gli passava giorni già ordinati, quindi un `sort` era un no-op:
+  adesso arrivano disordinati, ed è la pagina a doverli lasciare stare.
+- **Cinque punti della spec annotati con ciò che la misura dice oggi**: il
+  −83% promesso (misurato: il triplo delle righe, e la regola 1 non è mai
+  stata scritta), le quindici operazioni (sono diciotto, e otto raggiungibili
+  da una ricetta), il soggetto `integrazione` delle ricette (non esiste, e il
+  codice dichiara il contrario), le 76 righe del vocabolario come seme (se ne
+  caricano 44 di altre), e la tabella di §13 riga per riga — **gambe e sei
+  generi girano ogni notte mentre la spec li dà per cancellati**.
+- Due testate di modulo che nominavano uno strato e un metodo cancellati
+  nella 3.43.0, e tre conteggi sbagliati nel backlog.
 
 ### E un buco della 3.46.0, chiuso
 
@@ -103,8 +187,11 @@ in `by_field_prefix`.
 
 ### E un rifiuto che distingue due cose (con una diagnosi sbagliata dietro)
 
-Delle 28 misure rifiutate nel resoconto del 14, **27 dicevano «nessun punto
-con un valore nel periodo: la serie è vuota»**. Adesso il rifiuto distingue
+Delle 28 misure rifiutate nel resoconto del 14, **27 rifiutano per assenza di
+punti** — 18 con le parole «nessun punto con un valore nel periodo: la serie è
+vuota», 9 con «servono almeno 3 punti per una tendenza, ce ne sono 0», 1 con
+«nessun punto nel periodo». (Prima questa riga diceva che 27 usavano la prima
+frase: falso, contato il 15/09.) Adesso il rifiuto distingue
 una serie vuota da una che porta punti senza valore, com'era già stato fatto
 per le misure istantanee.
 
@@ -129,8 +216,9 @@ il catalogo non gli dice quali entità sappiano produrre una serie.
 ### Cosa è stato chiuso nei documenti
 
 - la spec §15 dichiarava da verificare «`bilancio` è a zero in cinque giorni
-  su cinque»: **misurato, undici misure di bilancio su undici calcolate** il
+  su cinque»: **misurato, dieci misure di bilancio su dieci calcolate** il
   14/09, e l'analista ci ha costruito sopra due osservazioni su cinque;
+  (qui c'era scritto «undici» su un elenco di dieci: corretto contandole)
 - il glossario definiva `comprimari` nel senso dell'osservatore, **cancellato
   con lo strato degli oggetti**: resta solo quello delle promesse;
 - il backlog di «quanto è stato acceso» ha il suo numero: `tempo_acceso` 0 su

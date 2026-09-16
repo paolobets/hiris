@@ -366,8 +366,10 @@ va corretto, in un posto solo.
 
 `origine: verifica dal vivo della 3.34.0, 14/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §6-§7
 
-**Il fatto, misurato.** Delle diciotto operazioni del registro, **nove non sono raggiungibili da
-una ricetta** (dalla 3.35.0 lo dichiarano, e il catalogo non le offre più). Non per un divieto: per
+**Il fatto, misurato.** Delle diciotto operazioni del registro, **dieci non sono raggiungibili da
+una ricetta** (dalla 3.35.0 lo dichiarano, e il catalogo non le offre più). Erano nove:
+`primo_ultimo_differenza` è uscita da `RECIPE_SHAPES` con la 3.37.0 e nessuno aveva aggiornato il
+conto — ricontate il 15/09/2026. Non per un divieto: per
 una mancanza della lingua. Dentro una ricetta esistono due sole sorgenti — `@entita` dà una serie,
 `$passo` dà una misura — e quelle nove ne vogliono altre.
 
@@ -536,6 +538,60 @@ potrebbe risolvere in dieci secondi («quello e' il contatore dell'acqua»), e n
 **Cosa servirebbe.** Una rotta che serva il sapere raggruppato per soggetto, e una sezione della
 pagina che lo renda con la provenienza accanto a ogni riga. E' piccola, e va fatta insieme alla
 resa del resoconto (fetta 5), che tocca la stessa pagina.
+
+### La regola 1 della spec §5.3 non e' mai stata scritta: il grezzo e' il triplo di quanto promesso
+
+`origine: revisione indipendente dello sprint, 15/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §5.3
+
+**Il fatto, misurato oggi.** La spec §5.3 dichiara due regole di scrittura. La seconda (`da != a`)
+c'e' (`mind/watcher.py:265`). **La prima non esiste**: *«chi ha `state_class` non si registra a
+campione»* -- cioe' non copiamo nel grezzo le entita' per cui Home Assistant tiene gia' le
+statistiche. `watcher.py:315` scrive `state_class` nella riga e **non filtra mai su di esso**.
+
+**Cosa costa, col numero.** La spec promette un calo dell'**83%**, «da 29.227 a 4.951 righe al
+giorno», e lo scrive due volte (§5.3 e §14). Dal vivo (`GET /api/mind/watching`, volume):
+
+| giorno | righe |
+|---|---|
+| 09/09 | 22.905 |
+| 11/09 | 11.544 |
+| 13/09 | 18.520 |
+| 14/09 | 16.677 |
+| 15/09 | 13.945 |
+
+Cioe' **−43% ÷ −60%**, non −83%: circa **tre volte** le righe promesse, ogni giorno, sul disco
+dell'utente. E `api/handlers_mind.py:98` dice ancora «la spec promette −83%».
+
+**Perche' non e' stato fatto.** Il piano la rimandava «alla Fetta 5»
+(`docs/superpowers/plans/2026-09-10-i-tre-attori.md:758`). La Fetta 5 e' uscita con la 3.32.0
+**senza**, il piano non ha un «Fetta 5 — ESITO», e fino a oggi non ne esisteva nemmeno una voce di
+backlog: era sparita fra le maglie.
+
+**Attenzione prima di farla.** Le entita' con `state_class` sono quelle che il resoconto legge
+dalle statistiche -- non dal grezzo -- quindi toglierle dal grezzo non dovrebbe togliere nessuna
+misura. Ma la **cronaca** nasce dal grezzo (`mind/facts.aggregate_day`): va misurato **prima** cosa
+sparirebbe dalla cronaca, o si scopre dopo il rilascio di aver reso muto qualcosa che si vedeva.
+
+### §13 dice di cancellare le gambe e i sei generi, e girano ancora ogni notte
+
+`origine: revisione indipendente dello sprint, 15/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §13
+
+**Il fatto.** La spec §13 elenca fra cio' che si distrugge **le gambe** (`ASPECTS`, `aspect_of` e le
+loro righe) e **`genre_for` coi sei generi**. Nessuno dei due e' uscito:
+`home_space/type_vocabulary.py:520` e `:1614` per le gambe, `mind/facts.py:69` e `:130` per i
+generi, invocati dentro `aggregate_day` a ogni aggregazione notturna. Perfino una prova lo dava per
+fatto: `tests/test_home_space_gamba.py:15-19` dice «muore con i sei generi, nella Fetta 5».
+
+**Perche' sono ancora li', e non e' una dimenticanza.** `mind/facts._reading_aspect` usa
+`device_class` e `source_type` per derivare la gamba di ogni `sensor` e `binary_sensor`, e la gamba
+decide il **genere** dell'episodio, che decide come si legge la cronaca. Toglierli senza un
+sostituto vorrebbe dire che un rilevatore di fumo scattato torna a leggersi «Acceso» -- e' la
+stessa ragione gia' scritta nella voce «I tre attributi fissi del grezzo non sono usciti».
+
+**Da decidere dal proprietario, ed e' una riga di specifica:** o si costruisce il sostituto (il
+genere dal sapere invece che dalla gamba, che e' parente stretto della voce del vocabolario-seme
+qui sotto), **oppure la §13 va corretta** per dire che gambe e generi RESTANO, e perche'. Oggi la
+spec dichiara distrutto cio' che gira, ed e' una bugia scritta accanto al codice.
 
 ### Il vocabolario dei tipi non e' ancora un seme del sapere
 
@@ -1375,8 +1431,9 @@ chiedere»* e *«non c'è»* sono **due fatti diversi**, e chi produce il motivo
 ### ~~L'analista — chi trasforma le osservazioni in qualcosa di funzionale~~ — CHIUSA il 15/09/2026
 
 **Fatta dallo sprint «i tre attori»** (spec del 10/09, §10). L'analista gira, legge trenta giorni
-di misure, e sulla casa vera ha prodotto **cinque osservazioni** con i tre inneschi della spec, il
-perché di ciascuna e cosa cambierebbe. Non scrive numeri: nomina la misura, e il codice ci attacca
+di misure, e sulla casa vera ha prodotto **cinque osservazioni** con gli inneschi 1 e 3 della spec
+— il secondo, «stabile e costa», non è mai comparso, ed è l'esempio che la spec porta come il più
+prezioso — il perché di ciascuna e cosa cambierebbe. Non scrive numeri: nomina la misura, e il codice ci attacca
 il valore — è ciò che impedisce a un modello di inventare una cifra. Resta sotto, come voce sua,
 il testo con cui il proprietario l'ha chiesta.
 
@@ -1562,9 +1619,14 @@ guarda. Lasciata aperta perché fuori dal perimetro di quella chiusura.
 
 ### ~~Il sapere di HIRIS — il catalogatore, il resoconto, le porzioni~~ — CHIUSA il 15/09/2026
 
-**Fatta, nella forma che la misura ha imposto.** Il disegno del 09/09 è stato sostituito il 10/09
-(`docs/design/2026-09-10-i-tre-attori.md`): il catalogatore non sopravvive come attore, gambe e
-pavimento escono, e nascono il registro delle operazioni, le ricette e il resoconto giornaliero.
+**Fatta a metà, e va detto quale metà.** Il disegno del 09/09 è stato sostituito il 10/09
+(`docs/design/2026-09-10-i-tre-attori.md`): il catalogatore non sopravvive come attore, **il
+pavimento esce** (`mind/baseline.py` cancellato con la 3.26.0), e nascono il registro delle
+operazioni, le ricette e il resoconto giornaliero. **Le gambe NON sono uscite**: `ASPECTS` e
+`aspect_of` vivono in `home_space/type_vocabulary.py`, `GENRES` e `genre_for` in `mind/facts.py`, e
+girano ogni notte dentro `aggregate_day`. Quando ho marcato questa voce chiusa, il 15/09, ho
+ripetuto «gambe e pavimento escono» come se fosse un fatto: non lo era, e l'ha trovato la revisione
+indipendente lo stesso giorno. Vedi la voce nuova «§13 dice di cancellare le gambe e i generi».
 Tutte e tre vivono in produzione, col sapere interrogabile da una pagina. Le tre mancanze del
 09/09 sono chiuse: la casa per ciò che HIRIS deduce è `sapere.db`, il resoconto giornaliero
 esiste e ne nascono le tendenze, e le porzioni sono le tre forme di `GET /api/mind/report`.

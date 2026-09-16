@@ -413,15 +413,25 @@ def test_una_ricetta_con_TROPPI_ingressi_si_rifiuta():
 def test_una_ricetta_con_TROPPO_POCHI_ingressi_si_rifiuta():
     """E l'altro capo: `quota` con un ingresso solo.
 
-    Mutazione: controllare solo il massimo e non il minimo -- rossa.
+    **La prima stesura non poteva fallire**, e l'ha detto una mutazione
+    eseguita il 15/09/2026. Scriveva l'ingresso come `#a` -- che non e' un
+    marcatore della lingua delle ricette (`$` e' il passo, `@` l'entita') --
+    quindi anche togliendo il controllo sul minimo la ricetta veniva rifiutata
+    lo stesso, dal controllo delle FORME, con un messaggio che conteneva la
+    parola «quota». La prova asserisce ora il numero, che e' la proprieta' che
+    questo controllo produce, e l'ingresso e' scritto bene cosi' che nessun
+    altro controllo abbia niente da dire.
+
+    Mutazione ESEGUITA: `if not (least <= given_count <= most)` diventa
+    `if not (given_count <= most)` -- rossa.
     """
     r = ric.Recipe({"why": "x", "steps": [
         {"name": "a", "operation": "somma_periodo", "inputs": ["@sensor.x"],
          "params": {"unit": "kWh"}},
-        {"name": "q", "operation": "quota", "inputs": ["#a"]}]})
+        {"name": "q", "operation": "quota", "inputs": ["$a"]}]})
     esito = r.validate(entities={"sensor.x"})
     assert not esito.valid
-    assert any("quota" in p for p in esito.problems), esito.problems
+    assert any("1 ingressi" in p and "2" in p for p in esito.problems), esito.problems
 
 # ── Il secondo anello, trovato dal vivo il 14/09/2026 ────────────────────────
 #

@@ -313,6 +313,23 @@ def read_recipe(answer: str) -> tuple[dict | None, str | None]:
     return parsed, None
 
 
+def _only_answer(store, device_id: str, kept: str) -> None:
+    """Cancella le risposte VECCHIE di questo dispositivo, tenendo `kept`.
+
+    **Un dispositivo non puo' essere «non capito» e avere una ricetta che gira
+    ogni notte.** `apply_recipe` scriveva il suo campo e lasciava gli altri
+    dov'erano: il giorno in cui un rifiuto scade e il modello risponde bene,
+    la riga vecchia resta, e la **porta del sapere** continua a elencare quel
+    dispositivo fra i «non capiti» -- cioe' fra le cose su cui il proprietario
+    dovrebbe intervenire -- mentre non c'e' piu' niente da fare.
+    `devices_to_ask` era corretto; era la pagina a mentire. Trovato dalla
+    revisione indipendente il 15/09/2026.
+    """
+    for field in (RECIPE_FIELD, UNDERSTOOD_FIELD, DECLINED_FIELD):
+        if field != kept:
+            store.forget("dispositivo", device_id, field)
+
+
 def apply_recipe(store, home_space: dict, device_id: str, answer: str, *,
                  who: str, when_ts: float) -> dict:
     """Cosa si fa della risposta: si valida, e si scrive cio' che ne esce.
@@ -358,6 +375,7 @@ def apply_recipe(store, home_space: dict, device_id: str, answer: str, *,
                 evidence=("il dispositivo con le sue " f"{len(entities)} entita', "
                           "mostrate insieme al modello con l'obiettivo della casa"),
                 who=who, when_ts=when_ts))
+            _only_answer(store, device_id, RECIPE_FIELD)
             return {"scritta": True, "problemi": [], "risposta": True}
         # **Il rifiuto ragionato si separa QUI, alla fonte.** Il modello ha
         # usato il contratto: un `why` pieno e `steps` esplicitamente vuoto.
@@ -374,6 +392,7 @@ def apply_recipe(store, home_space: dict, device_id: str, answer: str, *,
                 evidence=f"il modello ha risposto: {str(answer).strip()[:1500]}",
                 source=f"{REFUSAL_SOURCE}{REGISTRY_VERSION}",
                 who=who, when_ts=when_ts))
+            _only_answer(store, device_id, DECLINED_FIELD)
             return {"scritta": False, "problemi": problems, "risposta": True,
                     "declinata": True}
     # **Il rifiuto porta cosa il modello ha DETTO**, non solo cosa non andava.
@@ -388,6 +407,7 @@ def apply_recipe(store, home_space: dict, device_id: str, answer: str, *,
         evidence=f"il modello ha risposto: {str(answer).strip()[:1500]}",
         source=f"{REFUSAL_SOURCE}{REGISTRY_VERSION}",
         verification="non_capito", who=who, when_ts=when_ts))
+    _only_answer(store, device_id, UNDERSTOOD_FIELD)
     return {"scritta": False, "problemi": problems, "risposta": True}
 
 
@@ -415,10 +435,10 @@ def devices_to_ask(store, home_space: dict, watched: set[str]) -> list[str]:
     nessuno guarda sarebbe un giro del modello per un numero che nessuno
     leggera'.
 
-    «Non ha ancora una risposta» guarda **tutti e due** i campi: una ricetta
-    scritta, oppure un rifiuto gia' registrato. Guardarne uno solo farebbe
-    richiedere ogni notte, per sempre, i dispositivi che il modello non ha
-    saputo leggere.
+    «Non ha ancora una risposta» guarda **tutti e tre** i campi: una ricetta
+    scritta, un rifiuto ragionato, oppure un «non capito» gia' registrato.
+    Guardarne uno solo farebbe richiedere ogni notte, per sempre, i
+    dispositivi che il modello non ha saputo leggere.
 
     **Ma un rifiuto NON e' definitivo** (decisione del proprietario,
     13/09/2026): vale finche' vale il registro contro cui e' stato deciso. Il
@@ -436,12 +456,59 @@ def devices_to_ask(store, home_space: dict, watched: set[str]) -> list[str]:
             continue
         if store.get("dispositivo", device_id, RECIPE_FIELD) is not None:
             continue
-        risposte = (store.get("dispositivo", device_id, UNDERSTOOD_FIELD),
-                    store.get("dispositivo", device_id, DECLINED_FIELD))
-        if any(r is not None and _still_valid(r) for r in risposte):
+        answers = (store.get("dispositivo", device_id, UNDERSTOOD_FIELD),
+                   store.get("dispositivo", device_id, DECLINED_FIELD))
+        if any(r is not None and _still_valid(r) for r in answers):
             continue
         to_ask.append(device_id)
     return to_ask
+
+
+def drop_recipes_without_series(store, home_space: dict,
+                               *, with_series: set[str] | None) -> int:
+    """Toglie le ricette le cui entita' **non hanno nessuna serie**, e torna
+    quante ne ha tolte.
+
+    **Dire la verita' nel rifiuto non bastava.** Dalla 3.47.0 una misura su
+    un'entita' senza statistiche dice perche'; ma il dispositivo ha una
+    ricetta, e `devices_to_ask` salta chi una risposta l'ha gia' data: quelle
+    ricette avrebbero prodotto lo stesso nulla ogni notte, per sempre, solo
+    con una frase migliore. Misurato sulla casa vera il 15/09/2026: **dieci
+    dispositivi**, 18 misure rifiutate al giorno.
+
+    Tolta la riga, il dispositivo torna fra quelli da chiedere -- e stavolta
+    la domanda gli dice quali entita' abbiano una serie, cosi' puo' rispondere
+    `steps: []` col suo perche', che e' la risposta giusta.
+
+    **Solo quando NESSUNA entita' della ricetta ha una serie.** Una ricetta
+    con un passo buono e uno muto porta ancora un numero vero: toglierla
+    costerebbe una misura certa per una possibile.
+
+    **`None` non e' l'insieme vuoto**: se non si e' potuto chiedere a Home
+    Assistant quali entita' abbiano statistiche non si cancella niente. Con
+    l'insieme vuoto si cancellerebbero tutte le ricette della casa al primo
+    guasto del websocket.
+    """
+    if with_series is None:
+        return 0
+    dropped = 0
+    for device in home_space.get("dispositivi") or []:
+        device_id = str(device.get("id") or "")
+        if not device_id:
+            continue
+        written = recipe_for(store, device_id)
+        if written is None:
+            continue
+        named = Recipe(written).entities()
+        if named and not (named & with_series):
+            store.forget("dispositivo", device_id, RECIPE_FIELD)
+            dropped += 1
+            logger.info(
+                "ricette: tolta la ricetta di «%s» -- nessuna delle sue %d "
+                "entita' ha statistiche in Home Assistant, quindi non poteva "
+                "produrre nemmeno un numero. Torna fra quelle da chiedere",
+                device_id, len(named))
+    return dropped
 
 
 def _still_valid(rejection) -> bool:

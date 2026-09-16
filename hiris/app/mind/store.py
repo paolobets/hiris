@@ -1,8 +1,13 @@
-"""L'archivio dell'osservatore: i cambi e gli oggetti.
+"""L'archivio dell'osservatore: i cambi, i resoconti, le analisi.
 
-**Due tabelle, due vite.** I cambi grezzi vivono 22 giorni; gli oggetti --
-cio' che di quei cambi si e' capito -- restano finche' l'utente non li
-cancella.
+**Due vite, non due tabelle.** I cambi grezzi vivono 22 giorni; cio' che di
+quei cambi si e' capito -- il resoconto di ogni giorno e l'analisi -- resta
+finche' l'utente non lo cancella.
+
+Lo strato degli **oggetti** e' uscito con la 3.43.0 (`_migration_10`, DROP
+TABLE), dopo aver misurato che i comprimari erano zero su 200 oggetti e che
+ogni giorno-oggetto aveva gia' un resoconto: questa testata lo nominava ancora
+il 15/09/2026, e l'ha trovato la revisione indipendente.
 
 **Perche' 21 giorni e non una notte.** La proprieta' che rende buono lo schema
 a due strati e' che sbagliare l'aggregazione costa un GIORNO, non tutto: finche'

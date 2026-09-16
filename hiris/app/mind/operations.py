@@ -404,12 +404,25 @@ RECIPE_SHAPES = (SHAPE_SERIES, SHAPE_RESULT)
 #: che le esegue: senza un numero, una ricetta scritta oggi e riletta fra sei
 #: mesi non saprebbe dire se le operazioni che nomina siano ancora quelle.
 #:
-#: **Oggi nessuno lo legge, ed e' voluto**: le ricette sono la fetta 4, e il
-#: numero esiste perche' la prima ricetta scritta possa gia' dichiarare contro
-#: quale registro e' stata scritta. Un numero introdotto insieme al primo
-#: lettore sarebbe arrivato dopo le ricette che avrebbe dovuto datare. Se la
-#: fetta 4 non lo legge, questa costante e' codice morto e si cancella.
-REGISTRY_VERSION = 1
+#: **Lo legge `recipe_turn._still_valid`**, ed e' cio' che rende un rifiuto
+#: non definitivo (decisione del proprietario, 13/09/2026): un dispositivo che
+#: oggi il modello non sa misurare torna una domanda aperta il giorno in cui
+#: il registro cambia. La riga che diceva «oggi nessuno lo legge, ed e'
+#: voluto» e' rimasta qui dopo che il lettore era nato: falsa, corretta il
+#: 15/09/2026 dalla revisione indipendente.
+#:
+#: **SI ALZA QUANDO CAMBIA CIO' CHE IL MODELLO PUO' CHIEDERE O SAPERE.** Non a
+#: ogni rilascio: quando cambia il catalogo, le forme che una ricetta sa
+#: consegnare, i rifiuti dichiarati, o le informazioni che la domanda porta.
+#:
+#: - **1** (12/09/2026) -- il registro nasce.
+#: - **2** (15/09/2026) -- tre cambi, e nessuno dei tre aveva alzato il
+#:   numero: `in_recipes` toglie dal catalogo cio' che una ricetta non puo'
+#:   scrivere (3.34.0); le forme si separano e `primo_ultimo_differenza` esce
+#:   dal catalogo (3.37.0); e la domanda dice **quali entita' abbiano una
+#:   serie** (3.47.0). I 21 rifiuti archiviati erano stati decisi senza saperlo,
+#:   e restavano validi per sempre: alzando il numero tornano domande aperte.
+REGISTRY_VERSION = 2
 
 _REGISTRY: dict[str, Operation] = {}
 
@@ -844,8 +857,7 @@ _register(Operation(
     inputs=("le letture di un soggetto", "come si riconosce un riposo",
               "la fine del periodo"),
     returns="le finestre in cui era acceso, come un periodo",
-    refuses_when=("l'entita' non ha statistiche in Home Assistant",
-                   "non si e' mai acceso nel periodo",),
+    refuses_when=("non si e' mai acceso nel periodo",),
     # `is_on` e' una FUNZIONE: nessun JSON la porta, quindi nessuna
     # ricetta puo' nominare questa operazione. Resta nel registro perche'
     # `mind/facts.aggregate_day` la usa dall'interno.
@@ -972,8 +984,7 @@ _register(Operation(
     name="misure_durante",
     inputs=("le letture di una grandezza", "un periodo", "l'unita'"),
     returns="la serie ristretta alle finestre del periodo",
-    refuses_when=("l'entita' non ha statistiche in Home Assistant",
-                   "non c'e' nessuna misura dentro le finestre",
+    refuses_when=("non c'e' nessuna misura dentro le finestre",
                 "le misure non sono numeri"),
     takes=(SHAPE_READINGS, SHAPE_PERIOD),
     in_recipes=True,

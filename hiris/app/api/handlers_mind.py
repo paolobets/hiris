@@ -1,10 +1,14 @@
-"""Le due rotte della pagina dell'osservatore (fetta «l'osservatore», Task 7:
-docs/design/2026-08-26-l-osservatore.md §7).
+"""Le rotte del cervello, che la pagina dell'osservatore legge.
 
-Non serializzano niente per conto proprio. `Watcher.watching()` e
-`ObservationsStore.facts()` gia' tornano la forma che la pagina mostra --
-una seconda forma costruita qui la farebbe divergere il primo giorno in cui
-qualcuno aggiunge un campo da una parte sola (fondamenta 3).
+Cinque: `watching`, `report`, `analysis`, `knowledge` e la POST `objective`.
+Nate come due (fetta «l'osservatore», `docs/design/2026-08-26-l-osservatore.md`
+§7), cresciute con la spec dei tre attori (§8, §9, §10, §11).
+
+Non serializzano niente per conto proprio. `Watcher.watching()` e gli archivi
+gia' tornano la forma che la pagina mostra -- una seconda forma costruita qui
+la farebbe divergere il primo giorno in cui qualcuno aggiunge un campo da una
+parte sola (fondamenta 3). (`ObservationsStore.facts()`, citato qui fino al
+15/09/2026, e' uscito con lo strato degli oggetti nella 3.43.0.)
 
 **L'unica eccezione, e porta il suo perche' (fetta «lo stato», 07/09/2026):
 la RESA dello stato.** L'archivio continua a scrivere lo stato GREZZO --
@@ -91,8 +95,13 @@ async def handle_watching(request: web.Request) -> web.Response:
       racconto: e' la regola che questo modulo dichiara in cima al file,
       violata dalla pagina che la dichiarava;
     - `volume` -- **quante righe grezze al giorno**. E' la contropartita onesta
-      dello scope, e la spec promette -83%: fino all'11/09/2026 nessuna porta
-      lo esponeva, e la promessa non era verificabile da fuori.
+      dello scope: fino all'11/09/2026 nessuna porta lo esponeva, e la
+      promessa della spec non era verificabile da fuori. **Adesso lo e', e la
+      smentisce**: la spec §5.3 promette -83% (da 29.227 a 4.951 righe), e
+      questa porta ha risposto 13.945 il 15/09/2026 -- circa il triplo. La
+      prima delle due regole di scrittura, «chi ha `state_class` non si
+      registra a campione», non e' mai stata scritta. E' a backlog, con questi
+      numeri.
 
     **Le parti che mancano si dichiarano `None`/`[]`, non si inventano.**
     L'osservatore puo' esserci e l'archivio no (avvio a meta', o un guasto): un
@@ -194,9 +203,14 @@ async def handle_report(request: web.Request) -> web.Response:
     if resoconto is None:
         return web.json_response(
             {"errore": f"il giorno {day} non e' stato aggregato"}, status=404)
+    # **Misure E forme**: portano lo stesso `soggetto`, e risolverne uno solo
+    # rifarebbe -- dentro la stessa risposta JSON -- il difetto che la 3.46.0
+    # dichiara di aver chiuso fra le misure e la cronaca. Trovato dalla
+    # revisione indipendente il 15/09/2026.
+    names = _device_names(request.app)
     resoconto = {**resoconto,
-                 "misure": _named(_device_names(request.app),
-                                  resoconto.get("misure"))}
+                 "misure": _named(names, resoconto.get("misure")),
+                 "forme": _named(names, resoconto.get("forme"))}
     if request.query.get("formato") == "documento":
         return web.Response(text=as_document(resoconto),
                             content_type="text/markdown", charset="utf-8")
@@ -302,9 +316,11 @@ async def handle_analysis(request) -> web.Response:
 def _device_names(app) -> dict:
     """I nomi dei dispositivi di **adesso**, o `{}` se l'anagrafe non c'e'.
 
-    Un posto solo: prima questa mappa si ricostruiva dentro
-    `_with_device_names`, e le altre tre forme delle rotte del cervello non la
-    costruivano affatto.
+    **Un posto solo, e adesso e' vero.** Prima questa mappa si ricostruiva
+    dentro `_with_device_names`, e le altre tre forme delle rotte del cervello
+    non la costruivano affatto. Il 15/09/2026 la revisione indipendente ha
+    trovato che «un posto solo» era falso mentre lo scrivevo: una copia
+    identica viveva anche in `server.py`, che ora importa questa.
     """
     casa = app.get("home_space_store")
     if casa is None:

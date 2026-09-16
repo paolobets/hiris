@@ -86,12 +86,21 @@ def test_la_domanda_DICE_quali_entita_hanno_una_serie():
     domanda = rt.build_device_question(
         "risparmiare", CASA, "dev1", with_series={"sensor.prodotta"})
 
-    assert "sensor.prodotta" in domanda
-    # Dice quale ce l'ha e quale no, per nome: un elenco solo non basterebbe
-    # a chi legge in fretta.
     testa = domanda.split("Le operazioni che sai chiedere", 1)[0]
-    assert "serie" in testa
-    assert "sensor.consumata" in testa
+    # **Si guarda DENTRO le due righe, non se il nome compare da qualche
+    # parte**: ogni entita' del dispositivo compare comunque nell'elenco che
+    # apre la domanda, quindi `"sensor.consumata" in testa` non poteva
+    # fallire. L'ha detto la mutazione che toglieva la riga «NON ne hanno» e
+    # restava verde: il modello smetteva di sentirsi dire quali entita'
+    # evitare -- il fatto per cui questa prova esiste -- e nessuno se ne
+    # accorgeva.
+    hanno = testa.split("Hanno una serie:", 1)[1].split("NON ne hanno", 1)[0]
+    evitare = testa.split("NON ne hanno", 1)[1]
+
+    assert "sensor.prodotta" in hanno
+    assert "sensor.consumata" not in hanno
+    assert "sensor.consumata" in evitare
+    assert "sensor.prodotta" not in evitare
 
 
 def test_senza_l_insieme_la_domanda_NON_afferma_niente_sulle_serie():
@@ -510,6 +519,198 @@ def test_una_riga_che_NON_si_sa_rileggere_torna_una_domanda(tmp_path):
         assert rt.devices_to_ask(nuovo, CASA, {"sensor.prodotta"}) == ["dev1"]
     finally:
         nuovo.close()
+
+
+def test_un_perche_NULLO_non_diventa_la_parola_steps(tmp_path):
+    """**Il difetto che la revisione indipendente ha trovato leggendo il
+    codice, il 15/09/2026.** `_why_from_evidence` cercava il primo apice dopo
+    i due punti di `"why"`: con `{"why": null, "steps": []}` quell'apice e'
+    quello della chiave SEGUENTE, e la funzione tornava la stringa `steps`.
+
+    Una riga sarebbe finita in `ricetta_non_serve` col perche' **«steps»**: un
+    dispositivo dichiarato «rifiutato ragionatamente» con una ragione che non
+    e' una ragione, e mai piu' richiesto.
+
+    Mutazione ESEGUITA: tornare al `find` dell'apice -- rossa.
+    """
+    from hiris.app.mind.knowledge import KnowledgeStore, _why_from_evidence
+    from hiris.app.storage import connect
+
+    assert _why_from_evidence(
+        'il modello ha risposto: {"why": null, "steps": []}') == ""
+    assert _why_from_evidence(
+        'il modello ha risposto: {"why": 42, "steps": []}') == ""
+    assert _why_from_evidence(
+        'il modello ha risposto: {"why": "perche si", "steps": []}') == "perche si"
+
+    # E fino in fondo: una riga cosi' non si sposta, si cancella.
+    db = str(tmp_path / "sapere.db")
+    vecchio = KnowledgeStore(db)
+    vecchio.write(Fact(
+        subject_kind="dispositivo", subject="dev1", field=rt.UNDERSTOOD_FIELD,
+        value="la ricetta non dice PERCHE esiste - la ricetta non ha nessun passo",
+        provenance="dedotto",
+        evidence='il modello ha risposto: {"why": null, "steps": []}',
+        source=f"{rt.REFUSAL_SOURCE}{rt.REGISTRY_VERSION}",
+        verification="non_capito", who="modello (ponte)", when_ts=1789000000.0))
+    vecchio.close()
+    conn = connect(db)
+    conn.execute("PRAGMA user_version = 6")
+    conn.commit()
+    conn.close()
+
+    nuovo = KnowledgeStore(db)
+    try:
+        assert nuovo.get("dispositivo", "dev1", rt.DECLINED_FIELD) is None
+        assert nuovo.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD) is None
+    finally:
+        nuovo.close()
+
+
+def test_la_migrazione_non_uccide_l_avvio_se_la_riga_nuova_ESISTE_GIA(tmp_path):
+    """Chiave primaria `(genere, soggetto, campo)`: spostare una riga da
+    `ricetta_non_capita` a `ricetta_non_serve` **collide** se la seconda c'e'
+    gia' -- e `init_schema` non cattura, quindi `KnowledgeStore()` solleva e
+    l'add-on **non parte**.
+
+    Non e' il percorso normale (chi viene dalla 3.45 non puo' avere la riga
+    nuova), ma questo archivio e' fatto per essere corretto a mano, e una
+    migrazione che uccide l'avvio per una chiave duplicata non e' accettabile.
+
+    Mutazione ESEGUITA: togliere la guardia -- rossa, `IntegrityError`.
+    """
+    from hiris.app.mind.knowledge import KnowledgeStore
+    from hiris.app.storage import connect
+
+    db = str(tmp_path / "sapere.db")
+    vecchio = KnowledgeStore(db)
+    for campo, valore in ((rt.UNDERSTOOD_FIELD, "la ricetta non ha nessun passo"),
+                          (rt.DECLINED_FIELD, "gia declinata, a mano")):
+        vecchio.write(Fact(
+            subject_kind="dispositivo", subject="dev1", field=campo,
+            value=valore, provenance="dedotto",
+            evidence='il modello ha risposto: {"why": "niente da misurare", "steps": []}',
+            source=f"{rt.REFUSAL_SOURCE}{rt.REGISTRY_VERSION}",
+            who="modello (ponte)", when_ts=1789000000.0))
+    vecchio.close()
+    conn = connect(db)
+    conn.execute("PRAGMA user_version = 6")
+    conn.commit()
+    conn.close()
+
+    nuovo = KnowledgeStore(db)   # non deve sollevare
+    try:
+        # Quella scritta a mano vince: e' del proprietario, non nostra.
+        assert nuovo.get("dispositivo", "dev1", rt.DECLINED_FIELD).value == "gia declinata, a mano"
+        assert nuovo.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD) is None
+    finally:
+        nuovo.close()
+
+
+def test_una_ricetta_su_entita_MUTE_si_toglie_e_il_dispositivo_torna_una_domanda(sapere):
+    """**Il difetto che restava aperto dopo la 3.47.0**, trovato dalla
+    revisione indipendente: dire la verita' nel rifiuto non cambia l'esito.
+
+    Il 14/09 il modello ha scritto ricette valide su entita' che non possono
+    avere statistiche -- misurato: **10 dispositivi**, 18 rifiuti al giorno.
+    `devices_to_ask` salta chi **ha** una ricetta, e nessuna migrazione la
+    toglie: quei dieci non sarebbero stati richiesti mai piu', e ogni notte
+    avrebbero prodotto lo stesso nulla, solo con una frase piu' bella.
+
+    **Si toglie la ricetta**, e il dispositivo torna una domanda aperta -- con
+    la domanda nuova, che dice quali entita' abbiano una serie. Non e'
+    un'eccezione alla regola «mai dati dell'utente»: e' una riga che questo
+    programma ha scritto su se stesso, contro una fonte che non esiste.
+
+    **Solo quando NESSUNA delle sue entita' ha una serie.** Una ricetta con un
+    passo buono e uno muto porta ancora un numero, e toglierla costerebbe una
+    misura vera per guadagnarne una possibile.
+
+    Mutazione ESEGUITA: non togliere niente -- rossa.
+    """
+    rt.apply_recipe(sapere, CASA, "dev1", json.dumps(RICETTA_BUONA),
+                    who="x", when_ts=1789000000.0)
+    assert rt.devices_to_ask(sapere, CASA, {"sensor.prodotta"}) == []
+
+    quante = rt.drop_recipes_without_series(sapere, CASA, with_series=set())
+
+    assert quante == 1
+    assert rt.recipe_for(sapere, "dev1") is None
+    assert rt.devices_to_ask(sapere, CASA, {"sensor.prodotta"}) == ["dev1"]
+
+
+def test_una_ricetta_con_UN_SOLO_passo_buono_NON_si_toglie(sapere):
+    """Il confine: basta un'entita' con una serie e la ricetta resta.
+
+    Mutazione ESEGUITA: togliere quando ANCHE UNA SOLA entita' e' muta --
+    rossa, si perderebbero misure vere.
+    """
+    rt.apply_recipe(sapere, CASA, "dev1", json.dumps(RICETTA_BUONA),
+                    who="x", when_ts=1789000000.0)
+
+    quante = rt.drop_recipes_without_series(
+        sapere, CASA, with_series={"sensor.prodotta"})
+
+    assert quante == 0
+    assert rt.recipe_for(sapere, "dev1") is not None
+
+
+def test_senza_sapere_quali_entita_abbiano_una_serie_non_si_toglie_NIENTE(sapere):
+    """`None` vuol dire «non l'abbiamo potuto chiedere», e su quel silenzio non
+    si cancella nessuna ricetta della casa.
+
+    Mutazione ESEGUITA: trattare `None` come insieme vuoto -- rossa, si
+    cancellerebbero TUTTE le ricette al primo guasto del websocket.
+    """
+    rt.apply_recipe(sapere, CASA, "dev1", json.dumps(RICETTA_BUONA),
+                    who="x", when_ts=1789000000.0)
+
+    assert rt.drop_recipes_without_series(sapere, CASA, with_series=None) == 0
+    assert rt.recipe_for(sapere, "dev1") is not None
+
+
+def test_una_risposta_nuova_CANCELLA_quella_vecchia(sapere):
+    """**Un dispositivo non puo' essere «non capito» e avere una ricetta che
+    gira ogni notte.**
+
+    Trovato dalla revisione indipendente il 15/09/2026: `apply_recipe`
+    scriveva il suo campo e lasciava gli altri due dov'erano. Il giorno in cui
+    un rifiuto scade e il modello risponde bene, la riga vecchia resta -- e la
+    **porta del sapere** continua a elencare quel dispositivo fra i «non
+    capiti», cioe' fra le cose su cui il proprietario dovrebbe intervenire,
+    mentre non c'e' piu' niente da fare.
+
+    `devices_to_ask` era corretto (la ricetta vince); era la pagina a mentire.
+
+    Mutazione ESEGUITA: non cancellare le risposte vecchie -- rossa.
+    """
+    rt.apply_recipe(sapere, CASA, "dev1", "non saprei", who="x",
+                    when_ts=1789000000.0)
+    assert sapere.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD) is not None
+
+    rt.apply_recipe(sapere, CASA, "dev1", json.dumps(RICETTA_BUONA),
+                    who="x", when_ts=1789000100.0)
+
+    assert rt.recipe_for(sapere, "dev1") is not None
+    assert sapere.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD) is None, (
+        "un dispositivo capito non resta fra i «non capiti» della pagina")
+
+
+def test_un_rifiuto_ragionato_cancella_il_NON_CAPITO_di_prima(sapere):
+    """L'altro verso: il modello aveva sbagliato la risposta, ora dice
+    ragionatamente che non c'e' niente da misurare. Restano due righe che
+    dicono due cose diverse dello stesso dispositivo.
+
+    Mutazione ESEGUITA: cancellare solo quando si scrive una ricetta -- rossa.
+    """
+    rt.apply_recipe(sapere, CASA, "dev1", "non saprei", who="x",
+                    when_ts=1789000000.0)
+
+    rt.apply_recipe(sapere, CASA, "dev1", json.dumps(RIFIUTO_RAGIONATO),
+                    who="x", when_ts=1789000100.0)
+
+    assert sapere.get("dispositivo", "dev1", rt.DECLINED_FIELD) is not None
+    assert sapere.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD) is None
 
 
 def test_IL_PONTE_dichiara_di_saper_ragionare_questa_specie():

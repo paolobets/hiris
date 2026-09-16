@@ -118,10 +118,14 @@ def test_senza_l_insieme_il_resoconto_non_afferma_niente_sulle_statistiche():
     statistiche non deve dire che non ne hanno: direbbe una cosa che non sa, e
     **ogni misura della casa rifiuterebbe**.
 
-    Mutazione ESEGUITA: trattare l'assenza come insieme vuoto — verde (non
-    cambia niente: un insieme vuoto non muta nessuna entita'). La prova vale
-    contro l'altro verso, cioe' contro chi in futuro facesse dell'assenza un
-    «nessuna entita' ha statistiche»: e' il verso che romperebbe la casa.
+    **La mutazione che la uccide e' l'altra, e va nominata quella.**
+    Trattare l'assenza come insieme vuoto la lascia verde -- un insieme vuoto
+    non muta nessuna entita' -- e scriverlo come «la mutazione» sarebbe
+    nominare un colpo che non arriva.
+
+    Mutazione ESEGUITA: `mute = set(series) if without_statistics is None` --
+    cioe' l'assenza letta come «nessuna entita' ha statistiche» -- **rossa**,
+    ed e' il verso che romperebbe la casa: ogni misura rifiuterebbe.
     """
     r = rep.build_report(day="2026-09-13", episodes=[], series=SERIE,
                          recipes={"dev1": RICETTA}, names={})

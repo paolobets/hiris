@@ -342,7 +342,15 @@ def test_un_seme_di_PRIORITA_ALTA_corregge_uno_di_priorita_bassa(sapere):
     la frase piu' ricca aggiunta da un rilascio successivo non sarebbe
     atterrata mai. E' l'ordine sfortunato, che la prova gemella non copriva.
 
-    Mutazione ESEGUITA: togliere il confronto fra le priorita' -- rossa.
+    **La prima stesura non poteva fallire, e l'ha detto una mutazione
+    eseguita il 15/09/2026**: seminava priorita' 1 e poi 2, e con quell'ordine
+    «vince chi arriva dopo» e «vince la priorita' piu' alta» producono lo
+    stesso fatto. Togliendo il confronto fra le priorita' la prova restava
+    verde. Adesso il seme basso torna **una terza volta**, dopo quello alto:
+    e' l'unico ordine in cui le due regole si separano.
+
+    Mutazione ESEGUITA: togliere `excluded.seeded_priority >=
+    knowledge.seeded_priority` dal `WHERE` di `seed` -- rossa.
     """
     sapere.seed([_riga(value="Indice AQI", provenance="importato",
                        evidence=None, who="l'installazione")], priority=1)
@@ -350,6 +358,11 @@ def test_un_seme_di_PRIORITA_ALTA_corregge_uno_di_priorita_bassa(sapere):
     sapere.seed([_riga(value="l'indice di qualita' dell'aria, non una misura",
                        provenance="importato", evidence=None,
                        who="seme del repo")], priority=2)
+
+    # E il seme basso ci riprova, DOPO: se vincesse l'ordine d'arrivo, adesso
+    # la frase del repo sparirebbe.
+    sapere.seed([_riga(value="Indice AQI", provenance="importato",
+                       evidence=None, who="l'installazione")], priority=1)
 
     [riga] = sapere.read(subject_kind="integrazione", subject="zcsazzurro")
     assert riga.value.startswith("l'indice")
@@ -388,8 +401,16 @@ def test_migration_4_toglie_le_ricette_che_il_registro_rifiuta(tmp_path):
     ragione di `_migration_3`: e' una riga che questo programma ha scritto su se
     stesso, sbagliando.
 
-    Mutazione: togliere `4: _migration_4` dal dizionario `migrations` -- il
-    test torna rosso su `assert rimaste == ["dev_buono"]`.
+    **Attenzione a quale mutazione la uccide, misurato il 15/09/2026.**
+    Togliere `4: _migration_4` dal dizionario la lascia **VERDE**: la 5 e la 6
+    chiamano la stessa `_drop_unrunnable_recipes`, e `storage.init_schema`
+    salta in silenzio una chiave mancante. Questa prova protegge **che la
+    pulizia avvenga**, non che avvenga al passo 4 -- e va bene cosi', perche'
+    e' la pulizia a contare.
+
+    Mutazione ESEGUITA: togliere `_drop_unrunnable_recipes` da tutte e tre
+    (4, 5, 6) -- rossa. Togliere solo la 6 -- rossa. Togliere solo la 4 --
+    verde, ed e' scritto qui perche' nessuno ci ricaschi.
     """
     percorso = str(tmp_path / "sapere.db")
     sapere = sap.KnowledgeStore(percorso)

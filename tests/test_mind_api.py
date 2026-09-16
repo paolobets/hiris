@@ -716,12 +716,18 @@ async def test_le_MISURE_di_un_resoconto_portano_il_nome_come_la_cronaca(tmp_pat
             "giorno": "2026-09-14", "obiettivo": None,
             "misure": [{"soggetto": "dev1", "misura": "prelievo", "valore": 1.0},
                        {"soggetto": "ignoto", "misura": "x", "valore": 2.0}],
-            "forme": [], "cronaca": []})
+            "forme": [{"soggetto": "dev1", "misura": "profilo", "valore": []}],
+            "cronaca": []})
         r = await handle_report(_richiesta(
             {"observations": archivio, "home_space_store": casa},
             {"day": "2026-09-14"}))
-        misure = json.loads(r.text)["resoconto"]["misure"]
+        resoconto = json.loads(r.text)["resoconto"]
+        misure = resoconto["misure"]
         assert misure[0]["nome"] == "SOLARE"
+        # **E le forme, che portano lo stesso soggetto**: risolverne una sola
+        # rifarebbe dentro la stessa risposta il difetto chiuso fra misure e
+        # cronaca. Mutazione ESEGUITA: non risolvere le forme -- rossa.
+        assert resoconto["forme"][0]["nome"] == "SOLARE"
         assert misure[1].get("nome") is None, (
             "un dispositivo che l'anagrafe non conosce resta senza nome")
     finally:
@@ -833,3 +839,40 @@ async def test_senza_sapere_e_un_503_non_un_sapere_vuoto():
     """
     r = await handle_knowledge(_richiesta({}))
     assert r.status == 503
+
+# ---------------------------------------------------------------------------
+# Le porte esistono DAVVERO, cioe' sono registrate sul router
+# ---------------------------------------------------------------------------
+
+def test_le_porte_del_cervello_sono_REGISTRATE_non_solo_scritte():
+    """**La quarta fondamenta protetta dove si rompe davvero.**
+
+    Trovato dalla revisione indipendente del 15/09/2026, con la mutazione
+    eseguita: si poteva **cancellare** `app.router.add_get("/api/mind/
+    knowledge", ...)` da `server.py` e l'intera suite restava verde. Tutte le
+    prove di questo file chiamano la funzione del gestore direttamente, senza
+    passare dal router: provano che il gestore risponde, non che qualcuno lo
+    possa chiamare. «Un dato che nessuno puo' chiedere non esiste» era
+    esattamente la proprieta' non protetta.
+
+    Si legge il sorgente e non si costruisce l'applicazione: `create_app()`
+    apre archivi, semina e parla con Home Assistant -- qui serve sapere una
+    cosa sola, e va saputa senza montare il mondo.
+
+    Mutazione ESEGUITA: togliere una qualunque delle cinque registrazioni --
+    rossa.
+    """
+    import pathlib
+
+    from hiris.app import server
+
+    sorgente = pathlib.Path(server.__file__).read_text(encoding="utf-8")
+    for rotta, gestore in (("/api/mind/watching", "handle_watching"),
+                           ("/api/mind/report", "handle_report"),
+                           ("/api/mind/analysis", "handle_analysis"),
+                           ("/api/mind/knowledge", "handle_knowledge")):
+        assert f'add_get("{rotta}", {gestore})' in sorgente, (
+            f"la porta {rotta} non e' registrata: il gestore esiste ma "
+            "nessuno puo' chiamarlo")
+    assert 'add_post("/api/mind/objective", handle_set_objective)' in sorgente, (
+        "senza questa, l'obiettivo si puo' leggere e non scrivere")

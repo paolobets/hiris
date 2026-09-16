@@ -275,6 +275,13 @@ E la finestra **non si assume: si misura** — si chiede a HA quanto indietro ar
 
 **Insieme: da 29.227 a 4.951 righe al giorno (−83%), e da 74 a 12,5 MB sui 22 giorni.**
 
+> **STATO al 15/09/2026, misurato dal vivo — la promessa non è mantenuta.** La regola 2 c'è
+> (`mind/watcher.py`). **La regola 1 non è mai stata scritta**: `watcher.py` scrive `state_class`
+> nella riga e non filtra mai su di esso. `GET /api/mind/watching` risponde 16.677 righe il 14/09 e
+> 13.945 il 15/09: **−43% ÷ −60%, circa il triplo delle 4.951 promesse**. Il piano la rimandava
+> «alla Fetta 5», la Fetta 5 è uscita senza, e fino al 15/09 non ne esisteva una voce di backlog.
+> Ora c'è, con questi numeri.
+
 ### 5.4 Gli attributi
 
 **Il fatto vive spesso in un attributo, non nello stato.** Lo stato di un termostato è `heat` e resta
@@ -336,6 +343,16 @@ aggiungerne una.* Provato su quelle domande, sono **quindici**:
 **Nove su quindici esistono già**, implicite dentro `mind/facts.py`. Le sei nuove nascono ciascuna
 da una domanda posta davvero, non da un preventivo.
 
+> **STATO al 15/09/2026, contato nel registro.** Le operazioni sono **diciotto**, non quindici
+> (`somma_entita` e `raggruppa_per` si sono separate, e sono nate `media_entita` e `dentro`), e
+> **tutte** quelle segnate «no» esistono. Ma **solo otto sono offribili a una ricetta**
+> (`Operation.offerable`): fuori restano `episodio`, `tempo_in_stato`, `quante_volte`,
+> `quando_succede`, `misure_durante` — che questa tabella chiama «la più potente» —, `somma_entita`,
+> `media_entita`, `raggruppa_per`, `dentro` e `primo_ultimo_differenza`. Quindi la frase qui sotto
+> («il set si chiude quando le quattro domande si esprimono senza aggiungerne una») **è smentita**:
+> «quanto è stato acceso», «quante volte è partito» e «succede di notte?» non si sanno scrivere in
+> una ricetta. Sono due voci di backlog, con la misura.
+
 ---
 
 ## §7 · Le ricette
@@ -371,6 +388,10 @@ precedente della disciplina è `type_vocabulary.Field`, che non si può costruir
 
 **Dove vive: nel sapere** (§8), con provenienza e prove.
 - *«Un inverter `zcsazzurro` si misura così»* → soggetto **integrazione**, **universale**, si esporta.
+  > **STATO al 15/09/2026 — non fatto, e il disegno è cambiato senza dirlo qui.** Nessuna ricetta
+  > ha soggetto `integrazione`: il bilancio dell'inverter è seminato come `dispositivo`/`nostro`, e
+  > `mind/knowledge.py` dichiara esplicitamente che una ricetta «non è dell'integrazione». Va
+  > deciso quale delle due verità tenere: questa riga, o quella scritta accanto al codice.
 - *«In questa casa il contatore generale è `sensor.gestione_carichi_power`»* → soggetto **entità**,
   **locale**, non esce.
 
@@ -572,6 +593,20 @@ stessa cosa.
 | `home_space/store.py::replace()` che cancella tutto | non serve più |
 | l'assenza del filtro `da != a` | filtro aggiunto (**−22%** da solo) |
 
+> **STATO al 15/09/2026, riga per riga, misurato nel codice.** **Fatte**: `casa.db`, il pavimento
+> (`mind/baseline.py` cancellato con la 3.26.0), gli `oggetti` (3.43.0, `DROP TABLE`),
+> `_DIRECTION_BY_TRANSLATION_KEY` (14 righe di sapere, vive), `replace()`, il filtro `da != a`.
+> **NON fatte**: le **gambe** (`ASPECTS` e `aspect_of` in `home_space/type_vocabulary.py`) e
+> `genre_for` coi sei **generi** (`mind/facts.py`) — girano dentro `aggregate_day` a ogni
+> aggregazione notturna, perché il genere dell'episodio dipende ancora dalla gamba, e toglierla
+> senza un sostituto farebbe tornare un rilevatore di fumo scattato a leggersi «Acceso». **A
+> metà**: `DEVICE_CLASS_MEANING` (le traduzioni si importano, il dizionario resta e il censore lo
+> interroga ancora) e `type_vocabulary.py` come seme (le 76 righe **non** si caricano: all'avvio se
+> ne seminano 14 + 27 + 3).
+>
+> Finché restano, **questa tabella dichiara distrutto ciò che gira**: o si costruisce il sostituto,
+> o la riga va corretta. È a backlog, con la misura, e la decisione è del proprietario.
+
 **E i test si smontano insieme a ciò che testavano** — è la regola della review totale, e qui vale
 in pieno: le asserzioni che difendono gambe, pavimento e generi difenderebbero ciò che abbiamo
 deciso di togliere.
@@ -616,9 +651,11 @@ poterlo limitare. `consumi.db` e la pagina dei consumi esistono già; manca il l
 - ~~**`bilancio` è a zero in cinque giorni su cinque.** La fetta del 27/08 esiste per unire i 17
   frammenti in un oggetto e in produzione non ne produce nessuno. Va capito **perché**, prima che il
   resoconto ci si appoggi.~~
-  **CHIUSA, misurata sulla casa vera il 15/09/2026**: nel resoconto del 14 le undici misure di
+  **CHIUSA, misurata sulla casa vera il 15/09/2026**: nel resoconto del 14 le **dieci** misure di
   bilancio — produzione, autoconsumo, immissione, prelievo, carica, scarica, consumo, autoprodotto,
-  quota di autoconsumo, quota di autosufficienza — sono **calcolate tutte e undici**. Il resoconto ci
+  quota di autoconsumo, quota di autosufficienza — sono **calcolate tutte e dieci**. (Prima qui
+  c'era scritto «undici», e l'elenco ne nominava dieci: un numero non misurato scritto come
+  misurato, corretto contandole il 15/09 — `BALANCE_DIRECTIONS` sono sette piu' tre derivate.) Il resoconto ci
   si appoggia già, e l'analista ci ha costruito sopra due delle sue cinque osservazioni. Ciò che le
   ha sbloccate non è stata una fetta del bilancio: è stata la separazione di `SHAPE_COUNTER`
   (3.37.0) e il recupero di `media`/`minimo`/`massimo` nei punti orari (3.38.0).

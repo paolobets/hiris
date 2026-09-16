@@ -1,3 +1,5 @@
+import pytest
+
 from hiris.app.storage import connect, init_schema
 
 
@@ -67,4 +69,29 @@ def test_init_schema_idempotent(tmp_path):
     init_schema(conn, _SCHEMA_V1, version=2, migrations={2: lambda c: calls.append(1)})
     assert calls == []  # fresh DB at v2 never runs the migration (schema already latest)
     assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
+    conn.close()
+
+
+def test_una_migrazione_MANCANTE_non_passa_in_silenzio(tmp_path):
+    """**Un refuso nel numero di una migrazione la fa sparire, e nessuno se ne
+    accorge.** Trovato dalla revisione indipendente il 15/09/2026, come nota a
+    margine di un'altra prova: `migrations.get(target)` saltava in silenzio
+    ogni gradino senza una funzione, e l'archivio veniva timbrato alla
+    versione nuova lo stesso. Chi scrive `7: _migration_7` come `8:
+    _migration_7` ottiene un archivio che si dichiara migrato e non lo e'.
+
+    Il gradino **deve** esistere: se una versione non ha niente da fare, lo si
+    scrive con una funzione vuota e la sua ragione, non lasciando un buco.
+
+    Mutazione ESEGUITA: tornare a `.get(target)` che salta -- rossa.
+    """
+    p = str(tmp_path / "buco.db")
+    conn = connect(p)
+    init_schema(conn, _SCHEMA_V1, version=1, migrations={})
+    conn.close()
+
+    conn = connect(p)
+    with pytest.raises(ValueError, match="2"):
+        init_schema(conn, _SCHEMA_V1, version=3,
+                    migrations={3: lambda c: None})     # manca la 2
     conn.close()

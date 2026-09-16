@@ -54,9 +54,19 @@ def init_schema(conn: sqlite3.Connection, schema_sql: str, *, version: int,
     if current == 0:
         current = version if pre_tables == 0 else 1
     for target in range(current + 1, version + 1):
-        mig = (migrations or {}).get(target)
-        if mig is not None:
-            mig(conn)
+        # **Un gradino mancante non passa in silenzio.** Prima si saltava, e
+        # l'archivio veniva timbrato alla versione nuova lo stesso: chi scrive
+        # `7: _migration_7` come `8: _migration_7` otteneva un archivio che si
+        # dichiara migrato e non lo e', senza una riga di log. Trovato dalla
+        # revisione indipendente il 15/09/2026. Se una versione non ha niente
+        # da fare, si dichiara con una funzione vuota e la sua ragione.
+        if target not in (migrations or {}):
+            raise ValueError(
+                f"manca la migrazione per la versione {target}: l'archivio e' "
+                f"alla {current} e si vuole portarlo alla {version}. Una "
+                "versione senza migrazione si dichiara con una funzione vuota, "
+                "non si lascia come un buco nel dizionario")
+        migrations[target](conn)
     conn.execute(f"PRAGMA user_version = {int(version)}")
     conn.commit()
     return version

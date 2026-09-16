@@ -1262,3 +1262,61 @@ def test_somma_periodo_su_una_misura_istantanea_RIFIUTA_dicendo_perche():
     assert not r.computable
     assert "ISTANTANEA" in r.reason, r.reason
     assert "contatore" in r.reason, r.reason
+
+# ---------------------------------------------------------------------------
+# Il cancello della versione del registro
+# ---------------------------------------------------------------------------
+
+#: L'impronta di CIO' CHE IL MODELLO PUO' CHIEDERE, per la versione qui sotto.
+#: Nomi, ingressi, resa, parametri obbligatori, forme e rifiuti dichiarati --
+#: delle sole operazioni offribili. Cambia con `REGISTRY_VERSION`, mai da sola.
+CATALOGUE_FINGERPRINT = {2: "bc902cb7f8ce6c78"}
+
+
+def _impronta() -> str:
+    import hashlib
+    import json as _json
+
+    voci = []
+    for nome in sorted(ops.REGISTRY):
+        o = ops.REGISTRY[nome]
+        if not o.offerable:
+            continue
+        voci.append([nome, list(o.inputs), o.returns, list(o.required_params),
+                     list(o.takes or ()), list(o.refuses_when)])
+    return hashlib.sha256(_json.dumps(voci, ensure_ascii=False,
+                                      sort_keys=True).encode()).hexdigest()[:16]
+
+
+def test_il_catalogo_che_CAMBIA_alza_la_versione_del_registro():
+    """**La costante che nessuno faceva salire.**
+
+    `REGISTRY_VERSION` decide se un rifiuto vale ancora
+    (`recipe_turn._still_valid`): un dispositivo che il modello non ha saputo
+    misurare torna una domanda aperta **il giorno in cui il registro cambia**.
+    E' una decisione del proprietario del 13/09/2026.
+
+    Misurato dalla revisione indipendente il 15/09/2026: il registro era
+    cambiato **tre volte** nello sprint -- `in_recipes`, le forme separate, i
+    rifiuti dichiarati -- e il numero era rimasto **1**. Quindi la decisione
+    non era mai scattata, e i 21 rifiuti archiviati erano eterni.
+
+    Un numero che si alza a mano si dimentica. Questa prova lega la versione
+    all'**impronta di cio' che il modello puo' chiedere**: cambiare il
+    catalogo senza alzare la versione la fa arrossire, e alzare la versione
+    obbliga a scrivere l'impronta nuova -- cioe' a guardare cosa e' cambiato.
+
+    Mutazione ESEGUITA: aggiungere un parametro obbligatorio a un'operazione
+    offribile senza toccare la versione -- rossa.
+    """
+    attesa = CATALOGUE_FINGERPRINT.get(ops.REGISTRY_VERSION)
+    assert attesa is not None, (
+        f"REGISTRY_VERSION e' {ops.REGISTRY_VERSION} e nessuno ha scritto "
+        "l'impronta del catalogo per quella versione: si aggiunge una riga a "
+        "CATALOGUE_FINGERPRINT col valore che questa prova stampa quando "
+        "fallisce")
+    assert _impronta() == attesa, (
+        f"il catalogo e' cambiato ma REGISTRY_VERSION e' ancora "
+        f"{ops.REGISTRY_VERSION}: i rifiuti gia' archiviati resterebbero "
+        f"validi contro un registro che non esiste piu'. Impronta nuova: "
+        f"{_impronta()}")
