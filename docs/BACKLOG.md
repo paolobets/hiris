@@ -539,6 +539,21 @@ potrebbe risolvere in dieci secondi («quello e' il contatore dell'acqua»), e n
 pagina che lo renda con la provenienza accanto a ogni riga. E' piccola, e va fatta insieme alla
 resa del resoconto (fetta 5), che tocca la stessa pagina.
 
+### ~~La regola 1 della spec §5.3~~ — SCRITTA il 16/09/2026
+
+**Chiusa lo stesso giorno in cui e' nata questa voce.** Il filtro c'e'
+(`mind/watcher.py`): un `sensor` con `state_class` non si registra piu' a campione. Due
+precisazioni che la misura ha imposto: vale per il **solo dominio `sensor`** (Home Assistant
+calcola le statistiche di lungo periodo per quello soltanto -- 130 entita', tutte `sensor`), e
+scatta **dopo** il controllo degli attributi della §5.4, perche' le statistiche portano il numero
+e non gli attributi. Quattro mutazioni eseguite, quattro uccise.
+
+**Cosa si perde: niente di leggibile** -- dei 146 soggetti guardati 42 hanno statistiche, e zero
+delle 44 voci di cronaca del 14/09 venivano da loro. **Il numero nuovo del volume si misura dal
+vivo al primo giorno pieno dopo il rilascio**: finche' non e' misurato, qui non si scrive.
+
+**Com'era scritta quando era aperta:**
+
 ### La regola 1 della spec §5.3 non e' mai stata scritta: il grezzo e' il triplo di quanto promesso
 
 `origine: revisione indipendente dello sprint, 15/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §5.3
@@ -572,7 +587,27 @@ dalle statistiche -- non dal grezzo -- quindi toglierle dal grezzo non dovrebbe 
 misura. Ma la **cronaca** nasce dal grezzo (`mind/facts.aggregate_day`): va misurato **prima** cosa
 sparirebbe dalla cronaca, o si scopre dopo il rilascio di aver reso muto qualcosa che si vedeva.
 
-### §13 dice di cancellare le gambe e i sei generi, e girano ancora ogni notte
+### Il genere di un episodio nasce ancora dalla gamba, e finche' e' cosi' gambe e generi restano
+
+`origine: revisione indipendente dello sprint, 15/09/2026; decisa il 16/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §13
+
+**Deciso il 16/09/2026, e la spec e' stata corretta di conseguenza**: §13 dichiarava distrutte le
+gambe e i sei generi, e girano ogni notte. La misura dice perche' non si possono togliere adesso:
+`mind/facts._reading_aspect` ricava la **gamba** da `device_class`/`source_type`, e dalla gamba
+nasce il **genere** dell'episodio. Senza un sostituto, un rilevatore di fumo scattato torna a
+leggersi «Acceso» -- cioe' la cronaca perde proprio cio' che la rende leggibile.
+
+La riga di §13 era vera per meta': il giudizio di **rilevanza** e' passato all'osservatore, come
+prometteva. Il secondo lavoro delle gambe -- dare un genere -- quella riga non l'aveva visto.
+
+**Cosa servirebbe per toglierle davvero:** che il genere nasca dal **sapere**, come e' successo
+alle direzioni dell'energia (erano codice, sono righe). E' parente stretto della voce qui sotto sul
+vocabolario-seme, e va fatta con quella: sono lo stesso movimento -- il giudizio del repo diventa
+una riga che la casa puo' correggere.
+
+**Nel frattempo la spec non mente piu'**: le due righe di §13 dicono «RESTANO», con la ragione.
+
+### ~~§13 dice di cancellare le gambe e i sei generi~~ — com'era scritta quando era aperta
 
 `origine: revisione indipendente dello sprint, 15/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §13
 
@@ -658,7 +693,7 @@ nascere una riga anche quando lo stato non si muove.
 una ragione scritta («i 22 giorni permettono di rifare il giudizio se un domani tornasse a
 servire»): o quella ragione si conferma e la voce si chiude, o la colonna esce.
 
-### ~~I due rifiuti della spec §6~~ — il PRIMO chiuso il 15/09/2026, il secondo da DECIDERE
+### ~~I due rifiuti della spec §6~~ — CHIUSA il 16/09/2026: il primo fatto, il secondo dichiarato non applicabile
 
 `origine: revisione indipendente della fetta 3, 12/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §6
 
@@ -685,10 +720,12 @@ in realta' **tre entita' iscritte al registro delle statistiche che non hanno ma
 niente** (l'albero di Natale, le luci di Natale, la gestione carichi) — che e' un terzo caso
 ancora, e «la serie e' vuota» lo dice gia' bene.
 
-**Da decidere dal proprietario**: costruire un rifiuto per un caso che non accade (e che
-costerebbe una lettura per entita' a ogni giro, per sapere quando comincia la sua memoria), oppure
-scrivere nella spec §6 che il secondo «rifiuta se» non si applica a questa fonte e perche'. Non lo
-decido io: e' una riga della specifica.
+**DECISO il 16/09/2026: si scrive nella spec, non si costruisce.** La §6 ora porta l'annotazione
+col numero -- zero occorrenze, le due ragioni indipendenti, e il terzo caso (tre entita' iscritte
+al registro che non hanno mai registrato niente) per cui «la serie e' vuota» e' gia' la frase
+giusta. Costruire un rifiuto per un caso che non accade costerebbe una lettura per entita' a ogni
+giro: **non si fa finche' una misura non lo chiede**. Se il proprietario la vede diversamente, e'
+una riga di specifica da riscrivere, non codice da disfare.
 
 **AGGIORNAMENTO 15/09/2026 — il primo dei due ha adesso un numero, misurato sulla casa vera.**
 Home Assistant tiene statistiche orarie per **130 entita' su 1206, tutte `sensor`**

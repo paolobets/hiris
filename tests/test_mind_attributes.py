@@ -18,7 +18,7 @@ import json
 
 import pytest
 
-from hiris.app.mind.knowledge import KnowledgeStore, attributes_wanted_for
+from hiris.app.mind.knowledge import Fact, KnowledgeStore, attributes_wanted_for
 from hiris.app.mind.seed import attribute_seed
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.mind.watcher import Watcher
@@ -38,6 +38,8 @@ def archivio(tmp_path):
     a.decide_scope("climate.soggiorno", inside=True,
                    reason="il termostato del soggiorno pesa sul comfort",
                    author="prova")
+    a.decide_scope("sensor.solare", inside=True,
+                   reason="l'inverter pesa sul risparmio", author="prova")
     yield a
     a.close()
 
@@ -124,6 +126,57 @@ def test_gli_attributi_VOLUTI_finiscono_nel_grezzo(archivio, sapere):
     tenuti = json.loads(riga["attributes"])
     assert tenuti["hvac_action"] == "heating"
     assert tenuti["temperature"] == 21.0
+
+
+def test_un_ATTRIBUTO_che_conta_passa_anche_su_un_sensore_RIASSUNTO(archivio, sapere):
+    """**L'eccezione della §5.4 sopravvive alla regola 1 della §5.3**, scritta
+    il 16/09/2026: un `sensor` con `state_class` non si registra piu' a
+    campione, perche' Home Assistant ne tiene le statistiche -- ma le
+    statistiche portano il NUMERO, non gli attributi.
+
+    Se cambia un attributo che qualcuno ha deciso valga la pena, quella riga
+    dice qualcosa che nessuna statistica direbbe, e va scritta lo stesso.
+
+    Mutazione ESEGUITA: mettere il filtro delle statistiche PRIMA del
+    controllo sugli attributi -- rossa.
+    """
+    sapere.write(Fact(
+        subject_kind="tipo", subject="sensor", field="attributi",
+        value="modalita", provenance="nostro",
+        evidence=None, who="la prova", when_ts=1789000000.0))
+    osservatore = Watcher(archivio, knowledge=sapere)
+    evento = {
+        "entity_id": "sensor.solare",
+        "old_state": {"state": "100",
+                      "attributes": {"state_class": "measurement",
+                                     "modalita": "rete"}},
+        "new_state": {"state": "120",
+                      "attributes": {"state_class": "measurement",
+                                     "modalita": "batteria"},
+                      "last_changed": QUANDO_CAMBIO_ATTRIBUTO,
+                      "last_updated": QUANDO_CAMBIO_ATTRIBUTO}}
+
+    assert osservatore.watch_reading(evento) is True
+    [riga] = archivio.readings(from_ts=0, to_ts=2e9)
+    assert json.loads(riga["attributes"])["modalita"] == "batteria"
+
+
+def test_un_sensore_riassunto_SENZA_attributi_che_contano_non_si_registra(archivio, sapere):
+    """L'altro verso, ed e' il guadagno: la stessa entita', senza un attributo
+    che valga la pena, non lascia nessuna riga.
+
+    Mutazione ESEGUITA: togliere il filtro -- rossa.
+    """
+    osservatore = Watcher(archivio, knowledge=sapere)
+    evento = {
+        "entity_id": "sensor.solare",
+        "old_state": {"state": "100", "attributes": {"state_class": "measurement"}},
+        "new_state": {"state": "120", "attributes": {"state_class": "measurement"},
+                      "last_changed": QUANDO_CAMBIO_ATTRIBUTO,
+                      "last_updated": QUANDO_CAMBIO_ATTRIBUTO}}
+
+    assert osservatore.watch_reading(evento) is False
+    assert archivio.readings(from_ts=0, to_ts=2e9) == []
 
 
 def test_gli_attributi_NON_voluti_non_entrano(archivio, sapere):

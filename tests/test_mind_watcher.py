@@ -114,6 +114,63 @@ def test_una_cosa_dentro_lo_scope_si_annota(coppia):
                                   "attributes": None}]
 
 
+# -- La regola 1 della spec §5.3, scritta il 16/09/2026 ---------------------
+#
+# «Cio' che Home Assistant riassume gia' (`state_class`) non si registra a
+# campione: si legge dalle statistiche.» Dichiarata il 10/09, rimandata «alla
+# Fetta 5», e la Fetta 5 e' uscita senza. Misurato il 15/09: il grezzo era il
+# TRIPLO di quanto la spec prometteva -- 13.945 righe al giorno contro 4.951.
+
+
+def test_un_sensore_che_HA_RIASSUME_GIA_non_si_registra(coppia):
+    """**La prima delle due regole di scrittura.** Un `sensor` con
+    `state_class` ha le statistiche orarie di Home Assistant: piu' corrette
+    (gestiscono gli azzeramenti) e piu' durature dei nostri 22 giorni.
+    Copiarne ogni lettura e' scrivere due volte lo stesso fatto, e la copia e'
+    la peggiore delle due.
+
+    Misurato sulla casa vera il 15/09/2026: **42 dei 146 soggetti guardati**
+    hanno statistiche, e sono i piu' loquaci della casa.
+
+    Mutazione ESEGUITA: togliere il filtro -- rossa.
+    """
+    archivio, osservatore = coppia
+    ev = _evento("sensor.solare", "100", "120", {"state_class": "measurement"})
+
+    assert osservatore.watch_reading(ev) is False
+    assert archivio.annotati == []
+
+
+def test_un_sensore_SENZA_state_class_si_registra_come_prima(coppia):
+    """Il confine: senza `state_class` Home Assistant non tiene statistiche, e
+    se non lo registriamo noi quel dato non esiste per nessuno.
+
+    Mutazione ESEGUITA: filtrare ogni `sensor` -- rossa.
+    """
+    archivio, osservatore = coppia
+    assert osservatore.watch_reading(
+        _evento("sensor.solare", "100", "120")) is True
+    assert archivio.annotati
+
+
+def test_il_filtro_vale_SOLO_per_il_dominio_sensor(coppia):
+    """**Home Assistant calcola le statistiche di lungo periodo per il solo
+    dominio `sensor`** -- misurato il 15/09/2026 con
+    `recorder/list_statistic_ids`: **130 entita', tutte `sensor`**. Un
+    `binary_sensor` che dichiari `state_class` non ne ha nessuna: filtrarlo lo
+    farebbe sparire da tutte e due le parti.
+
+    Mutazione ESEGUITA: guardare il solo `state_class`, senza il dominio --
+    rossa, un rilevatore di fumo smetterebbe di lasciare traccia.
+    """
+    archivio, osservatore = coppia
+    ev = _evento("binary_sensor.fumo_cucina", "off", "on",
+                 {"device_class": "smoke", "state_class": "measurement"})
+
+    assert osservatore.watch_reading(ev) is True
+    assert archivio.annotati
+
+
 # -- Correzione 0: il grezzo porta le tre classi che il pavimento legge -----
 
 def test_guarda_cambio_scrive_le_tre_classi_quando_ci_sono(coppia):

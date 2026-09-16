@@ -1,5 +1,53 @@
 # HIRIS — Changelog
 
+## [3.48.0] — La regola che mancava da sei giorni (2026-09-16)
+
+La spec §5.3 dichiara **due** regole di scrittura del grezzo. La seconda c'era
+dal 12/09. **La prima non è mai stata scritta**, e nessuno se n'era accorto
+finché la revisione totale non ha confrontato la promessa col volume vero:
+
+> *«Ciò che Home Assistant riassume già (`state_class`) non si registra a
+> campione: si legge dalle statistiche.»*
+
+La spec prometteva **da 29.227 a 4.951 righe al giorno (−83%)**. Misurato il
+15/09: **13.945**. Circa il triplo, ogni giorno, sul disco dell'utente — e il
+piano la rimandava «alla Fetta 5», che è uscita senza.
+
+Adesso c'è. Con due precisazioni che la misura ha imposto al testo della
+regola:
+
+- **solo il dominio `sensor`.** Home Assistant calcola le statistiche di lungo
+  periodo per quello soltanto — `recorder/list_statistic_ids`: **130 entità,
+  tutte `sensor`**. Un `binary_sensor` che dichiarasse `state_class` non ne ha
+  nessuna, e filtrarlo lo farebbe sparire da tutte e due le parti;
+- **dopo il controllo degli attributi**, non prima: le statistiche portano il
+  numero, non gli attributi. L'eccezione della §5.4 resta intera — se cambia
+  un attributo che qualcuno ha deciso valga la pena, quella riga dice qualcosa
+  che nessuna statistica direbbe.
+
+**Cosa si perde: niente di leggibile.** Dei 146 soggetti guardati **42** hanno
+statistiche, e **zero delle 44 voci di cronaca** del 14/09 venivano da loro.
+Il numero nuovo del volume si misura dal vivo al primo giorno pieno: finché
+non è misurato, non si scrive da nessuna parte.
+
+### E due voci chiuse scrivendo, non costruendo
+
+- **Il secondo «rifiuta se» della §6** — «il periodo è fuori dalla memoria
+  disponibile» — **non si costruisce**: zero occorrenze misurate, per due
+  ragioni indipendenti (HIRIS non chiede mai un giorno prima del proprio
+  grezzo, e le statistiche di lungo periodo di HA non si potano come gli
+  stati). Ciò che sembrava quel caso erano tre entità iscritte al registro che
+  non hanno mai registrato niente. La spec adesso lo dice, col numero.
+- **Le gambe e i sei generi RESTANO**, e §13 è stata corretta. Quella riga era
+  vera per metà: il giudizio di *rilevanza* è passato all'osservatore come
+  prometteva, ma le gambe facevano un secondo lavoro che nessuno aveva visto —
+  da loro nasce il **genere** di ogni episodio, e senza un sostituto un
+  rilevatore di fumo scattato torna a leggersi «Acceso». Restano finché il
+  genere non nascerà dal sapere, come è successo alle direzioni dell'energia.
+
+**La spec non dichiara più distrutto ciò che gira, né promesso ciò che non
+c'è.**
+
 ## [3.47.0] — «Questa entità non avrà mai una serie» (2026-09-15)
 
 Il primo dei due «rifiuta se» della spec §6, scritto il 10/09 e mai fatto:

@@ -264,6 +264,36 @@ class Watcher:
             kept = {k: attributes[k] for k in wanted if k in attributes}
             if da == a and not self._wanted_changed(wanted, old_attributes, attributes):
                 return False
+            # **La prima delle due regole di scrittura della spec §5.3**,
+            # dichiarata il 10/09/2026 e scritta il 16: *«cio' che Home
+            # Assistant riassume gia' (`state_class`) non si registra a
+            # campione: si legge dalle statistiche»*. Sono piu' corrette
+            # (gestiscono gli azzeramenti) e durano piu' dei nostri 22 giorni;
+            # copiarne ogni lettura e' scrivere due volte lo stesso fatto, e
+            # la copia e' la peggiore delle due.
+            #
+            # **Misurato sulla casa vera il 15/09/2026**: il grezzo era il
+            # TRIPLO di quanto la spec prometteva -- 13.945 righe al giorno
+            # contro 4.951 -- perche' questa regola non c'era. Dei 146
+            # soggetti guardati, **42 hanno statistiche**, e sono i piu'
+            # loquaci. E **zero delle 44 voci di cronaca** del 14/09 venivano
+            # da loro: non si perde niente di leggibile.
+            #
+            # **Solo il dominio `sensor`, e non e' un dettaglio.** Home
+            # Assistant calcola le statistiche di lungo periodo per quel
+            # dominio soltanto: misurato con `recorder/list_statistic_ids`,
+            # **130 entita', tutte `sensor`**. Un `binary_sensor` che
+            # dichiarasse `state_class` non ne avrebbe nessuna, e filtrarlo lo
+            # farebbe sparire da tutte e due le parti.
+            #
+            # **Dopo il controllo degli attributi, non prima**: le statistiche
+            # portano il NUMERO, non gli attributi (spec §5.4). Un attributo
+            # che qualcuno ha deciso valga la pena dice qualcosa che nessuna
+            # statistica direbbe, e passa anche qui.
+            if (str(eid).startswith("sensor.")
+                    and attributes.get("state_class")
+                    and not self._wanted_changed(wanted, old_attributes, attributes)):
+                return False
             # L'istante e' quello del CAMBIO, non della scrittura: `last_changed`
             # dice quando la casa e' cambiata, il nostro orologio quando l'abbiamo
             # saputo. Annotare il secondo sposterebbe ogni oggetto di quel tanto.

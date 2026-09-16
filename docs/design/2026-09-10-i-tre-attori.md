@@ -275,12 +275,22 @@ E la finestra **non si assume: si misura** — si chiede a HA quanto indietro ar
 
 **Insieme: da 29.227 a 4.951 righe al giorno (−83%), e da 74 a 12,5 MB sui 22 giorni.**
 
-> **STATO al 15/09/2026, misurato dal vivo — la promessa non è mantenuta.** La regola 2 c'è
-> (`mind/watcher.py`). **La regola 1 non è mai stata scritta**: `watcher.py` scrive `state_class`
-> nella riga e non filtra mai su di esso. `GET /api/mind/watching` risponde 16.677 righe il 14/09 e
-> 13.945 il 15/09: **−43% ÷ −60%, circa il triplo delle 4.951 promesse**. Il piano la rimandava
-> «alla Fetta 5», la Fetta 5 è uscita senza, e fino al 15/09 non ne esisteva una voce di backlog.
-> Ora c'è, con questi numeri.
+> **STATO — la regola 1 è stata scritta il 16/09/2026, sei giorni dopo questa riga.**
+> Fino ad allora `watcher.py` scriveva `state_class` nella riga e non filtrava mai su di esso:
+> `GET /api/mind/watching` rispondeva 16.677 righe il 14/09 e 13.945 il 15/09 — **circa il triplo
+> delle 4.951 promesse qui sopra**. Il piano la rimandava «alla Fetta 5», la Fetta 5 è uscita
+> senza, e nessuno se n'era accorto finché la revisione totale non ha confrontato la promessa col
+> volume vero.
+>
+> **Due precisazioni che la misura ha imposto al testo della regola.** Il filtro vale per il solo
+> dominio `sensor`: Home Assistant calcola le statistiche di lungo periodo per quello soltanto
+> (`recorder/list_statistic_ids`, 15/09: **130 entità, tutte `sensor`**), e un `binary_sensor` che
+> dichiarasse `state_class` sparirebbe da tutte e due le parti. E il filtro scatta **dopo** il
+> controllo degli attributi della §5.4: le statistiche portano il numero, non gli attributi.
+>
+> **Cosa si perde: niente di leggibile.** Dei 146 soggetti guardati, 42 hanno statistiche — e
+> **zero delle 44 voci di cronaca** del 14/09 venivano da loro. Il numero nuovo del volume si
+> misura dal vivo al primo giorno pieno dopo il rilascio.
 
 ### 5.4 Gli attributi
 
@@ -312,6 +322,20 @@ ingressi       entita (una o piu', stessa unita') · periodo
 restituisce    un numero · la sua UNITA' · la COPERTURA (quanta parte del periodo aveva dati)
 rifiuta se     l'entita' non ha statistiche · il periodo e' fuori dalla memoria disponibile
 ```
+
+> **STATO al 16/09/2026.** Il primo è **fatto** (3.47.0): sei operazioni lo dichiarano,
+> `HAClient.statistic_ids()` legge il registro delle statistiche e `Recipe.run` rifiuta il passo
+> che nomina quell'entità.
+>
+> Il secondo **non si costruisce, e questa riga dice perché** — misurato il 15/09/2026, zero
+> occorrenze su questa casa. Due ragioni indipendenti: HIRIS non chiede mai un giorno prima del
+> proprio grezzo (`_write_missing_reports` si ferma a `oldest_reading_ts()`), e le statistiche di
+> lungo periodo di Home Assistant **non si potano come gli stati**. Ciò che sembrava quel caso
+> erano tre entità iscritte al registro delle statistiche che non hanno mai registrato niente —
+> l'albero di Natale, le luci di Natale, la gestione carichi — e per loro «la serie è vuota» è già
+> la frase giusta. Costruire un rifiuto per un caso che non accade costerebbe una lettura per
+> entità a ogni giro, per sapere quando comincia la sua memoria: **non si fa finché una misura non
+> lo chiede.**
 
 **La copertura rende il set onesto.** Sotto una soglia di copertura il risultato diventa **«non
 calcolabile, e perché»** — mai un numero plausibile. Il precedente è già stato pagato: `_difference`
@@ -583,10 +607,10 @@ stessa cosa.
 | esce | dove va |
 |---|---|
 | `casa.db` | **cancellato** — l'anagrafe si legge dal vivo, e più ricca |
-| le **gambe** (`ASPECTS`, `aspect_of`, le 42 righe che le assegnano) | il giudizio di rilevanza passa all'osservatore, contro l'obiettivo |
+| ~~le **gambe** (`ASPECTS`, `aspect_of`, le 42 righe che le assegnano)~~ **RESTANO** (16/09/2026) | il giudizio di **rilevanza** è passato all'osservatore, come previsto — ma le gambe facevano anche un secondo lavoro che questa riga non aveva visto: `mind/facts._reading_aspect` ne ricava il **genere** di ogni episodio, e senza un sostituto un rilevatore di fumo scattato torna a leggersi «Acceso». Restano finché il genere non nasce dal sapere: è a backlog, misurato |
 | il **pavimento** (`baseline.in_baseline`, `baseline.aspect`) | sostituito dalla **cadenza di riconsiderazione** |
 | gli **`oggetti`** come strato separato | episodi dentro il resoconto giornaliero |
-| `genre_for` e i sei **generi** | il resoconto nasce dalle ricette, non da un elenco fisso |
+| ~~`genre_for` e i sei **generi**~~ **RESTANO** (16/09/2026) | vero per le **misure**, che nascono dalle ricette — ma la **cronaca** no: il genere di un episodio viene ancora da qui, e gira dentro `aggregate_day` ogni notte. Stessa voce di backlog delle gambe: si cancellano insieme, o non si cancellano |
 | `_DIRECTION_BY_TRANSLATION_KEY` (`ha_client.py:1916`) | 14 righe di sapere, soggetto `integrazione` |
 | `DEVICE_CLASS_MEANING` (27 voci) | letto da `frontend/get_translations` |
 | `type_vocabulary.py` come **casa** | resta come **seme**: 76 righe caricate all'avvio |
