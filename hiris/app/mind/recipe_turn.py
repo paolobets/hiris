@@ -464,6 +464,28 @@ def devices_to_ask(store, home_space: dict, watched: set[str]) -> list[str]:
     return to_ask
 
 
+def who_to_ask(to_ask: list[str], turn: int) -> tuple[str | None, int]:
+    """A chi chiedere in questo giro, e il contatore per il prossimo.
+
+    **Chiedere sempre al primo della lista e' una trappola.** Se la risposta
+    non arriva -- il modello solleva, il ponte torna una decisione vuota --
+    non si scrive niente, e il giro dopo ripesca lo stesso dispositivo. Per
+    sempre: gli altri non vengono chiesti mai. Il freno che esiste rallenta a
+    un giro all'ora, non cambia dispositivo.
+
+    Trovata dalla revisione indipendente il 15/09/2026, e diventata attuale il
+    giorno dopo: alzando la versione del registro sono tornati **31
+    dispositivi** da chiedere in una volta.
+
+    Il contatore vive in memoria e riparte da capo al riavvio. Non e' una
+    promessa di equita' perfetta -- e' la garanzia che nessuno resti dietro a
+    uno rotto.
+    """
+    if not to_ask:
+        return None, turn
+    return to_ask[turn % len(to_ask)], turn + 1
+
+
 def drop_recipes_without_series(store, home_space: dict,
                                *, with_series: set[str] | None) -> int:
     """Toglie le ricette le cui entita' **non hanno nessuna serie**, e torna

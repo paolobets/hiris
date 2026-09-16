@@ -713,6 +713,40 @@ def test_un_rifiuto_ragionato_cancella_il_NON_CAPITO_di_prima(sapere):
     assert sapere.get("dispositivo", "dev1", rt.UNDERSTOOD_FIELD) is None
 
 
+def test_a_chi_chiedere_RUOTA_e_un_dispositivo_storto_non_affama_gli_altri():
+    """**Chiedere sempre al primo della lista e' una trappola**, trovata dalla
+    revisione indipendente il 15/09/2026 e diventata attuale il giorno dopo:
+    con 31 dispositivi in coda, se al primo la risposta non arriva -- il
+    modello solleva, il ponte torna una decisione vuota -- non si scrive
+    niente, e il giro successivo ripesca **lo stesso**. Per sempre. Gli altri
+    trenta non vengono chiesti mai.
+
+    Il freno che esiste (`_troppo_presto_per_richiedere`) guarda solo la coda
+    del ponte: rallenta a un giro all'ora, non cambia dispositivo.
+
+    Si ruota. Il contatore vive in memoria e riparte da capo al riavvio: non e'
+    una promessa di equita' perfetta, e' la garanzia che **nessuno resti
+    dietro a uno rotto**.
+
+    Mutazione ESEGUITA: tornare a `to_ask[0]` -- rossa.
+    """
+    coda = ["dev1", "dev2", "dev3"]
+
+    chiesti = [rt.who_to_ask(coda, giro)[0] for giro in range(6)]
+
+    assert chiesti == ["dev1", "dev2", "dev3", "dev1", "dev2", "dev3"]
+
+
+def test_la_rotazione_regge_una_coda_che_si_accorcia():
+    """I dispositivi escono dalla coda man mano che rispondono, e il contatore
+    non torna indietro: si prende il resto, non l'indice.
+
+    Mutazione ESEGUITA: `to_ask[giro]` senza il modulo -- rossa, `IndexError`.
+    """
+    assert rt.who_to_ask(["dev1"], 7) == ("dev1", 8)
+    assert rt.who_to_ask([], 7) == (None, 7)
+
+
 def test_IL_PONTE_dichiara_di_saper_ragionare_questa_specie():
     """**La prova che mancava, e che il difetto del 13/09 ha reso necessaria.**
 

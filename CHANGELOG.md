@@ -1,5 +1,21 @@
 # HIRIS — Changelog
 
+## [3.48.1] — Un dispositivo storto non affama gli altri trenta (2026-09-16)
+
+`recipe_round` chiedeva sempre al **primo** della lista. Se la risposta non
+arriva — il modello solleva, il ponte torna una decisione vuota — non si
+scrive niente, e il giro dopo ripesca lo stesso dispositivo. Per sempre: gli
+altri non vengono chiesti mai. Il freno che esiste guarda solo la coda del
+ponte, quindi rallenta a un giro all'ora senza cambiare dispositivo.
+
+Trovata dalla revisione indipendente ieri come **rischio plausibile**, e
+diventata attuale oggi: alzando la versione del registro sono tornati **31
+dispositivi da chiedere in una volta**, e uno solo di quelli poteva bloccarli
+tutti.
+
+Adesso si ruota. Il contatore vive in memoria e riparte da capo al riavvio:
+non è equità perfetta, è la garanzia che nessuno resti dietro a uno rotto.
+
 ## [3.48.0] — La regola che mancava da sei giorni (2026-09-16)
 
 La spec §5.3 dichiara **due** regole di scrittura del grezzo. La seconda c'era

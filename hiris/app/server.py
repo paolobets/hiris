@@ -2158,7 +2158,12 @@ async def recipe_round(app) -> dict | None:
         to_ask = recipe_turn.devices_to_ask(sapere, home_space, watched)
         if not to_ask:
             return None
-        device_id = to_ask[0]
+        # A chi chiedere: **si ruota**, o un dispositivo che non risponde
+        # affama tutti gli altri (vedi `recipe_turn.who_to_ask`).
+        device_id, app["recipe_turn_cursor"] = recipe_turn.who_to_ask(
+            to_ask, int(app.get("recipe_turn_cursor") or 0))
+        if device_id is None:
+            return None
         objective = store.objective()["testo"]
 
         route, downgrade = who_answers(app)
