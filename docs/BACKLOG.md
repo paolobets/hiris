@@ -917,10 +917,73 @@ che lo scope 2.0 dichiara assorbite.
 
 `origine: deciso dal proprietario il 04/09/2026` · `documento: docs/design/2026-09-04-i-comandi-verso-home-assistant.md`
 
+> **16/09/2026 — questo sprint e' la SECONDA meta' di quello in corso.** Il proprietario ha deciso
+> l'ordine: prima si chiude §8/§13 della spec dei tre attori (il vocabolario come seme e il genere
+> dal sapere), poi si apre questo. E questo sprint porta dentro una richiesta nuova, che ha una
+> voce sua qui sotto: **HIRIS come assistente vocale di Home Assistant**.
+
 Colmare i buchi di scrittura verso HA emersi dallo studio di `ha-mcp`: plance, categorie, etichette
 (update e delete), aree e piani, zone, calendari con ricorrenze, gruppi e liste, i 17 helper a
 config-flow, blueprint. Lo studio porta la chiamata esatta di ognuno, letta nel loro sorgente. **Non
 e' una specifica**: il perimetro non e' stato scelto.
+
+### HIRIS come assistente VOCALE di Home Assistant
+
+`origine: deciso dal proprietario il 16/09/2026` · `entra nello sprint dei comandi, e vuole un'analisi sua`
+
+**Cosa ha chiesto il proprietario:** che HIRIS sia disponibile come **assistente vocale di Home
+Assistant**. E' una feature nuova e importante, e **prima di progettarla serve un'analisi
+approfondita**: entra nello sprint dei comandi (qui sopra), non lo sostituisce.
+
+**Cosa e' gia' misurato, il 16/09/2026, e cosa no.** Sulla casa vera (`GET /api/states`, 850
+entita'):
+
+| | |
+|---|---|
+| entita' `conversation` | **1** -- `conversation.home_assistant`, l'agente integrato. Nessun agente personalizzato |
+| `assist_satellite` · `tts` · `stt` · `wake_word` | **0 ciascuno** |
+| `media_player` | 7, fra cui **Echo Cucina**: oggi la voce di questa casa passa da Alexa, non da Assist |
+
+E dal lato nostro: il vocabolario dei tipi **conosce gia'** `conversation` (col bit `CONTROL = 1`,
+letto dal sorgente di HA `2026.9.1`) e `assist_satellite`; non conosce `stt` ne' `tts`.
+
+**La domanda che l'analisi deve sciogliere per prima, e non si indovina.** HIRIS e' un **add-on**:
+un container separato che parla con Home Assistant dalle API. Gli agenti di conversazione di HA,
+per quanto ne sappiamo oggi, sono **integrazioni** (custom component) che registrano un'entita'
+`conversation`. **Se un add-on possa esporre un agente di conversazione, e con quale meccanismo, e'
+esattamente cio' che va verificato sulla documentazione e sul sorgente PRIMA di disegnare
+qualunque cosa** -- e' la regola «mai ipotesi su Home Assistant: prima la doc, poi le API vere», e
+qui la risposta cambia l'intera forma della fetta:
+
+- se serve un **custom component** accanto all'add-on, nasce un secondo artefatto da distribuire,
+  aggiornare e versionare, ed e' una decisione di prodotto prima che tecnica;
+- se basta il **websocket** (registrare un agente, o intercettare le frasi di
+  `conversation.process`), resta tutto dentro l'add-on;
+- se nessuna delle due, la strada e' un'altra ancora (una `intent_script`? un `sentence trigger`
+  che chiama HIRIS?) e va misurata.
+
+**Le altre cose da stabilire nell'analisi, nessuna delle quali si indovina:**
+
+1. **Cosa risponde.** Il cervello di HIRIS oggi ragiona per turni lunghi (l'analista scrive cinque
+   osservazioni su trenta giorni). Una risposta vocale ha un budget di **secondi**. Va deciso se
+   l'assistente vocale sia una porta sul sapere gia' calcolato -- che e' veloce -- o un turno di
+   modello, che non lo e'.
+2. **Chi parla.** Su questa casa non ci sono satelliti: senza un `assist_satellite` o un
+   `tts`/`stt` configurato, un agente di conversazione si puo' provare solo dalla chat di Assist.
+   Va misurato **prima** se il proprietario voglia comprare un satellite, usare il telefono
+   (l'app companion ha Assist), o passare da Alexa -- perche' la terza strada e' un'altra fetta
+   ancora.
+3. **Cosa puo' FARE.** Un assistente vocale che risponde e basta e' meta' prodotto; uno che
+   comanda ricade dentro lo sprint dei comandi e **dentro la sicurezza** (lo sprint dopo): oggi
+   cio' che rende irraggiungibili i servizi pericolosi e' un accidente di forma, non una difesa.
+   Una voce che comanda senza quella difesa e' la combinazione peggiore.
+4. **Le frasi.** HA ha un suo vocabolario di intenti gia' fatto. Va stabilito se HIRIS lo estenda
+   o lo sostituisca: sostituirlo vorrebbe dire rifare cose che HA fa gia' bene, ed e' la prima
+   legge del prodotto (sussidiarieta').
+
+**Da NON fare prima dell'analisi:** scrivere codice. Questa voce esiste perche' la richiesta non
+vada persa, non perche' il perimetro sia chiaro -- come per la voce dei comandi qui sopra, **il
+perimetro non e' ancora stato scelto**.
 
 ### La sicurezza
 
