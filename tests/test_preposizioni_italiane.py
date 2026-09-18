@@ -367,6 +367,22 @@ _NOTE_ITALIANE = frozenset({
                             # esiste in inglese davanti a un aggettivo. E' l'unico
                             # `non` inglese misurato oggi su 24 -- vedi il
                             # docstring per il conto che ha deciso di tenerlo
+    # -- il campo `da_sapere_subito`, nato in italiano di proposito -----------
+    # Spec `2026-09-18-da-sapere-subito.md` §2: il glossario vuole che una riga
+    # nasca con l'italiano e che l'inglese si scelga in un passaggio successivo
+    # -- decidere un nome inglese ora salterebbe proprio la regola che questa
+    # eccezione documenta. Quando l'inglese sara' scelto, la rinomina e' un
+    # commit di sola rinomina e questi sei nomi escono da qui, insieme.
+    "DA_SAPERE_SUBITO", "DA_SAPERE_SUBITO_FIELD", "da_sapere_subito",
+    "stato_da_sapere_subito",  # `TypeJudgments.stato_da_sapere_subito` (Task 2
+                            # della stessa fetta): la regola del §3, stesso nome
+                            # italiano di proposito, stessa rinomina rinviata.
+    "_parse_da_sapere_subito",  # il lettore delle TRE forme del valore
+    "_DA_SAPERE_SUBITO_FORME",  # il messaggio che le elenca a chi sbaglia
+                            # (decisione del proprietario, 18/09/2026: `si`,
+                            # `no`, oppure l'elenco degli stati). Portano il
+                            # nome del campo perche' sono il campo: rinominarli
+                            # prima di lui creerebbe due nomi per una cosa sola.
     # -- il resto: debito italiano vero, e cala --------------------------------
     "ACCENDI_LE_ABAT_JOUR", "ANNUNCIA_IL_CLIMA_A_21",
     "ANNUNCIA_IL_SALOTTO_SPENTO", "ANNUNCIA_LE_ABAT_JOUR_ACCESE",

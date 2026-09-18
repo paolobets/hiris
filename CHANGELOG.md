@@ -1,5 +1,99 @@
 # HIRIS — Changelog
 
+## [3.50.0] — Il sapere impara a dire «questo lo devi sapere subito» (2026-09-18)
+
+La pagina nuova dell'osservatore voleva mettere in cima «ciò che esce dal solito», e la decisione
+del proprietario è che **il criterio lo dice il sapere**, non il codice. La parola che sembrava
+già servire, `notevole`, dice un'altra cosa: risponde a *«vale la pena raccontarlo nel
+riassunto?»* (`home_space/briefing._is_event`), non a *«il proprietario deve saperlo nel momento in
+cui succede?»*. Misurato contro la cronaca vera del 17/09 (75 voci): leggendo il criterio come
+«stato di lavoro oppure tipo `notevole: si`» finiscono in banda **71 voci su 75**, e **35 sono
+accensioni di luce** — perché 10 dei 23 `notevole: si` del seme sono domini interi (`light`,
+`switch`, `cover`, `fan`, `lock`, `media_player`, `remote`, `siren`, `vacuum`, `valve`). Un allarme
+scattato è la prima cosa da sapere; una luce accesa è la seconda, non la prima. **Questa fetta non
+tocca `notevole`**: gli affianca un giudizio nuovo. La separazione dentro `notevole` stesso resta a
+backlog, con la sua migrazione.
+
+**Il giudizio nuovo: `da_sapere_subito`.** Si/no, l'assenza vale no. Il seme porta **sedici tipi**
+(decisione del proprietario) — i dodici di genere `sicurezza` più i quattro sensori di apertura:
+`alarm_control_panel`, `lock`, `siren`, `binary_sensor.smoke`, `binary_sensor.gas`,
+`binary_sensor.carbon_monoxide`, `binary_sensor.heat`, `binary_sensor.cold`,
+`binary_sensor.moisture`, `binary_sensor.tamper`, `binary_sensor.problem`, `binary_sensor.safety`,
+`binary_sensor.door`, `binary_sensor.window`, `binary_sensor.opening`,
+`binary_sensor.garage_door`. Il seme sale da **99 a 115 celle**.
+
+**Il valore ha TRE forme, non due: `si`, `no`, oppure l'elenco degli stati che contano.** Delle
+sedici righe del seme quindici stanno bene col solo `si` — l'allarme ha un `lavoro` di **un solo**
+stato (`triggered`), i tredici `binary_sensor` e la sirena non dichiarano nessun `lavoro` e la
+regola usa il loro riposo. **La serratura no**: per `lock`, `lavoro` significa «sta operando»
+(`locking`, `opening`, `unlocking`, `unlocked`, `open`) e `jammed` non è né un lavoro né il riposo
+(`locked`). Col solo `si`, **ogni sblocco sarebbe stato la prima riga e l'inceppamento no** —
+l'esatto contrario di ciò che serve. Il seme porta quindi `lock` → `da_sapere_subito: ["jammed"]`.
+
+Quando il valore è un elenco, entra in banda **solo** uno di quegli stati e nient'altro: è il primo
+ramo della regola, e lavoro, riposo e ripiego non si applicano. Un elenco vuoto si rifiuta (direbbe
+`no` in un secondo modo) e le forme dell'assenza non ci stanno dentro, come non stanno in un
+`riposo`. In pagina si legge «solo: jammed»: **gli stati si citano, non si traducono**, finché non
+esiste la fetta che li rende nella lingua della casa.
+
+**È la malattia di questa fetta trovata una seconda volta**, e stavolta dentro `lavoro`: per
+l'allarme quella parola vuol dire «è successo», per la serratura «si sta muovendo». Qui non la si
+cura — `lavoro` ha un secondo lettore, la ragione italiana che la cronaca mostra, e separarla è una
+fetta sua, a backlog accanto a `notevole` — **si smette di appoggiarcisi dove non deve**.
+
+**Indecidibile vale no, e la porta lo spiega.** Un `si` su un tipo che non ha né un `riposo` né un
+`lavoro` è indecidibile — il ripiego «non è un riposo» su un riposo vuoto trasformerebbe in notizia
+ogni stato non assente, spegnimento compreso. **La regola stessa risponde `no`** in quel caso: è la
+cura alla fonte, perché il solo rifiuto alla porta non protegge l'invariante (si scrive il riposo,
+poi il `si`, poi si toglie il riposo, e resta un `si` orfano per cui ogni stato — anche lo
+spegnimento — sarebbe una notizia). La porta continua a rifiutare, come cortesia che spiega il
+problema a chi scrive, e chiede di scrivere prima `riposo` o `lavoro`.
+
+**La regola legge anche il riposo dell'entità.** `riposo` si corregge per entità e la cronaca lo
+onora; la regola della banda chiedeva il riposo solo al tipo, e sullo stesso fatto la cronaca
+diceva «riposo» mentre la regola diceva «notizia». Ora `stato_da_sapere_subito` accetta l'entità e
+la consulta prima del tipo, come fa `resting_of`. Per il resto la porta tratta il campo
+come gli altri: livelli coppia e dominio, ritorno al seme con `value: null`.
+
+**L'impronta non si muove, e quindi nessun giorno si rifà.** `da_sapere_subito` non entra
+nell'insieme `CHRONICLE_FIELDS` (resta `genere, riposo`): la banda che lo userà si calcola in
+lettura, non scrivendo la cronaca. Verificato: l'impronta del seme resta `9692e12830c90fd0`, la
+stessa di prima di questa fetta — il rilascio non fa rifare nessun giorno di storia.
+
+**Il valore si scrive dalla rotta; il ritorno al seme è già in pagina.** Il campo compare nella
+sezione 04 del sapere con la sua riga e il suo gruppo, e ogni riga corretta — di qualunque campo,
+`da_sapere_subito` compreso — porta già il comando «Torna al seme» a due passi. Quello che la
+pagina non fa ancora è **scrivere un valore nuovo**: l'editor in riga tocca solo `genere` fino alla
+fetta della pagina dell'osservatore, che da questa dipende. Limite dichiarato, non un difetto — a
+backlog insieme alla separazione di `notevole`, alla cura delle citazioni per numero di riga (tre
+scivolate in un giorno solo, misurato scrivendo questa stessa voce) e al controllo di completezza
+n. 1 del glossario, che **solleva `IndexError` e non si esegue** come e' scritto: il suo numero e'
+stato misurato con una versione tollerante, e il documento adesso lo dichiara invece di scrivere
+«eseguito».
+
+**La riga di una correzione dice quale campo è, e non promette più giorni che non si rifanno.**
+Le due frasi della sezione 04 sulla cronaca che «si rifà da sola» valgono solo per i campi
+dell'impronta (`genere` e `riposo`): su `da_sapere_subito` — che con la cronaca non c'entra per
+costruzione — la pagina prometteva a chi corregge una ricostruzione che non avviene, e «Torna al
+seme» annunciava due ore di lavoro che nessuno paga. Ora sono condizionate, e ogni riga di «Le tue
+correzioni» porta il nome del suo campo: `lock · no · Corretto da te` non distingueva `notevole` da
+`da_sapere_subito`.
+
+**Il glossario riceve la riga con l'inglese vuoto**, come la sua regola prescrive per un concetto
+appena nato: `da sapere subito` in «I concetti», seconda eccezione dichiarata e datata al
+controllo di completezza, che passa da 12 a **13** righe vuote.
+
+Rimisurato dal vivo dopo la terza forma, sugli stessi otto giorni: **gli stessi identici numeri**,
+37 righe su 387 voci, tutte guasti. La ragione va detta perché il numero uguale non venga letto come
+«non serviva»: in quegli otto giorni **non c'è una sola voce di `lock`** — le uniche voci dei domini
+«da sapere subito» sono otto `alarm_control_panel disarmed`, correttamente fuori banda. La forma
+nuova si giudica sul ragionamento, non su questo campione.
+
+Prove: **4309** Python (erano 4271), 4 skipped · **417** JavaScript (erano 407) · ruff pulito ·
+censimento **40** reperti — il reperto in più è `stato_da_sapere_subito`
+(`home_space/type_judgments.py`), che oggi chiama solo la prova: il chiamante di produzione arriva
+con la fetta della pagina dell'osservatore.
+
 ## [3.49.0] — Il giudizio sui tipi esce dal codice, e la casa lo può correggere (2026-09-17)
 
 Finora **che genere di fatto** nascesse da una cosa della casa lo decideva il codice: la «gamba»

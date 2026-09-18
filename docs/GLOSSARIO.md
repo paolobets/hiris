@@ -11,9 +11,13 @@ diceva il contrario e nessuno l'aveva piu' aggiornata dopo il Task 9): l'elenco 
 colonne sono decise.** «I concetti», «Le parole ordinarie» e «I nomi degli strumenti» hanno tutte
 e tre le colonne piene su ogni riga -- nessuna vuota per dimenticanza, nessuna in sospeso. Fa
 eccezione, dichiarata e non silenziosa, «I valori di dominio»: vedi la nota di rinvio in quella
-sezione, in fondo al documento. Una riga di una qualunque tabella con una cella vuota, se mai ne
-ricomparira' una in futuro, significa «non ancora deciso», non «dimenticato» -- ma oggi, salvo
-quella sezione, non ce n'e' nessuna.
+sezione, in fondo al documento. **Seconda eccezione, dal 18/09/2026: la riga `da sapere subito` in
+«I concetti» nasce con l'inglese vuoto**, come questo stesso documento prescrive per un concetto
+appena nato — non e' una dimenticanza, ed e' l'unica riga in quello stato. Si chiude quando qualcuno
+sceglie il candidato inglese e il passo 3 del controllo di collisione scatta su di lui. Una riga di
+una qualunque tabella con una cella vuota, se mai ne ricomparira' un'altra in futuro, significa «non
+ancora deciso», non «dimenticato» -- ma oggi, salvo queste due eccezioni dichiarate, non ce n'e'
+nessuna.
 
 **Aggiornato il 28/08 durante l'esecuzione, dopo una review:** la prima stesura aveva tre insiemi.
 La review ha trovato un quarto insieme che la spec non aveva visto (`genere` e altre parole che
@@ -779,6 +783,7 @@ che lo classifica (`genere`) e' un concetto e vive qui.
 | condizioni | quando una lettura ricordata o un'automazione vale, nello stesso vocabolario che Home Assistant gia' usa per i propri inneschi e le proprie regole -- ora, giorno, presenza, sole, meteo -- con una sola voce aggiunta da HIRIS perche' Home Assistant non ce l'ha | conditions | ✓ arriva |
 | costruzione | il sottosistema che compone e scrive su Home Assistant nuovi oggetti di configurazione -- automazioni, script, scene, helper -- attraverso un ciclo di proposta, approvazione umana e scrittura, con la possibilita' di disfare cio' che ha appena creato e di tornare indietro | construction | ~ parziale |
 | cronaca | il registro unico e leggibile di ogni tentativo che ha gia' superato i controlli -- un comando o una scrittura di configurazione, riuscito o fallito -- con chi l'ha chiesto, cosa e' successo e quando, interrogabile a prescindere da chi ha agito | journal | ✓ arriva |
+| da sapere subito | il giudizio che dice se, quando una cosa di quel tipo esce dal suo riposo, chi abita la casa deve saperlo nel momento in cui succede -- distinto dal giudizio che dice se vale la pena raccontarlo dopo, in un riassunto: un allarme scattato e' la prima cosa, una luce accesa e' la seconda |  | ~ parziale |
 | decisione | il risultato gia' calcolato di chi rispondera' al prossimo messaggio e perche', composto da fatti gia' misurati -- non dagli ingredienti grezzi di configurazione -- cosicche' la pagina che lo mostra si limiti a disegnarlo invece di ricalcolare la stessa regola per conto suo | resolution | ~ parziale |
 | direzione | classifica in quale verso si muove un valore fisico del bilancio energetico osservato -- prodotto, autoconsumato, immesso, prelevato, caricato, scaricato, consumato. **`energy_directions -> energy_directions` e' un nome deciso a mano, e `energia` NON prende una riga**: nuda si applicherebbe a `mind/baseline.py::_ENERGIA`, ambito stabile, che questa fetta non ha mandato di toccare -- un nome di una parola sola si applica DA SOLO, senza passare da una proposta. **La mappa che `proxy/ha_client.py::energy_directions` costruisce si chiama `by_entity`, non `map`, e `mappa` NON prende una riga**: una riga nuda `mappa -> map` si applicherebbe anche a `memory/resolver.py`, ambito stabile con un residuo dichiarato, e una riga qualificata `(proxy)` renderebbe `mappa` muta in `memoria` (dove e' usata) senza guadagnarci nulla. Il nome dice come la mappa e' INDICIZZATA -- per entity_id -- come `by_path` e `_DIRECTION_BY_TRANSLATION_KEY` nello stesso file | direction | ✓ arriva |
 | dispatcher | collega ciascuno dei sedici nomi che il modello puo' invocare alla sua implementazione concreta -- gli archivi, l'attuatore, l'officina, il canale verso Home Assistant -- attraverso un solo punto d'ingresso che non solleva mai: un nome sconosciuto, argomenti mancanti o un guasto imprevisto diventano tutti un dizionario leggibile con la chiave dell'errore, mai un'eccezione che interrompe il turno | dispatcher | ✓ arriva |
@@ -3553,8 +3558,8 @@ questa sezione esistesse (righe ~99 e ~1256) -- corretto scrivendola, non toglie
 perche' i controlli sono reali e vale la pena poterli rifare invece di fidarsi.** Tre controlli
 meccanici, eseguibili da chiunque:
 
-**1. Nessuna cella vuota, in nessuna tabella del documento** (salvo l'eccezione dichiarata in
-«I valori di dominio», sopra):
+**1. Nessuna cella vuota, in nessuna tabella del documento** (salvo le due eccezioni dichiarate:
+«I valori di dominio», sopra, e la riga `da sapere subito` in «I concetti», temporanea e datata):
 
 ```bash
 python - <<'PY'
@@ -3576,10 +3581,24 @@ print(vuote or "nessuna riga vuota")
 PY
 ```
 
-Eseguito ora: 12 righe vuote, tutte in «I valori di dominio», colonna «valori — inglese» -- **e
-non un'altra**. E' esattamente l'eccezione dichiarata in cima a quella sezione: se questo comando
-restituisse anche una sola riga vuota FUORI da quella tabella, sarebbe una riga dimenticata da
-decidere, non l'eccezione nota.
+Misurato il 18/09/2026: **13** righe vuote — 12 in «I valori di dominio», colonna «valori —
+inglese», e **una** in «I concetti» (`da sapere subito`, eccezione dichiarata in testa al
+documento) — e non un'altra.
+
+> **Il numero e' stato misurato con una versione TOLLERANTE di questo comando, non col comando
+> qui sopra, che cosi' com'e' scritto solleva `IndexError` e non arriva mai in fondo.** Lo ferma
+> una riga preesistente di «Parole scartate durante l'estrazione», `` | `compreso` | 2 | ``, che
+> per via di uno spazio finale produce **tre** celle contro le **due** dell'intestazione di quella
+> tabella: sulla terza cella, vuota, `header[i]` va fuori indice. La tolleranza consisteva
+> nell'ignorare le celle oltre l'intestazione. **Va detto perche' «eseguito» qui sarebbe falso nel
+> metodo pur essendo vero nel numero**, e perche' un controllo che si rompe alla riga ~718 di un
+> documento di ~3700 tace su tutto cio' che viene dopo: come scritto, non ha mai visto quattro
+> quinti del glossario. La cura e' a backlog («Il controllo di completezza n. 1 del GLOSSARIO non
+> si esegue»), e **non e' togliere quello spazio**: e' rendere il controllo robusto alla larghezza
+> delle righe. Finche' non arriva, chi rifa' la misura sappia che deve renderlo tollerante — e che
+> il numero che legge qui viene da li'. Sono esattamente le due eccezioni dichiarate: se questo comando
+restituisse anche una sola riga vuota FUORI da queste due, sarebbe una riga dimenticata da
+decidere, non un'eccezione nota.
 
 **2. Nessun inglese usato due volte per due concetti diversi.** Confronta ogni parola inglese
 decisa contro l'italiano di provenienza, su tutte le tabelle:

@@ -23,6 +23,17 @@ import { loadScripts, tick } from './helpers/dom.mjs';
 const CONFIG_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'hiris', 'app', 'static', 'config');
 const SORGENTE = readFileSync(join(CONFIG_DIR, 'watcher-route.js'), 'utf8');
 
+/* IMPORTANT 2 (revisione Fable, giro di correzioni 1): `JUDGMENT_FIELD_GROUPS`
+   qui sotto ripete -- di proposito, forma approvata task 9 -- l'elenco dei
+   campi che `home_space/type_judgments.py::JUDGMENT_FIELD_NAMES` dichiara.
+   E' esattamente il vocabolario a due lati di `agenda-route-vocabulary.test.mjs`
+   (Python di un lato, JavaScript dell'altro, legati SOLO da una prova che
+   legge entrambi i sorgenti): senza una prova cosi', un campo nuovo in Python
+   (come `da_sapere_subito`, Task 1) puo' non comparire mai qui, ed e' successo
+   davvero -- il giro 1 lo ha trovato a mano, non con una prova. */
+const TYPE_JUDGMENTS_PY = readFileSync(
+  join(CONFIG_DIR, '..', '..', 'home_space', 'type_judgments.py'), 'utf8');
+
 function fixtureHtml() {
   return '<!doctype html><body><div id="route-outlet"></div></body>';
 }
@@ -1588,7 +1599,8 @@ test('mount: la sezione 04 legge il sapere dalla sua rotta', () => {
    Forma approvata dal proprietario il 17/09/2026
    (.superpowers/sdd/2026-09-16-il-giudizio-dei-tipi/task-9-ux-approvata.md):
    «Cosa non ha capito» -> «Le tue correzioni» (righe `proprietario`+`altro`,
-   modulo di aggiunta in testa) -> «I giudizi del seme» (sei gruppi chiusi)
+   modulo di aggiunta in testa) -> «I giudizi del seme» (sette gruppi chiusi:
+   i sei approvati il 17/09/2026 piu' `da_sapere_subito`, 3.50.0)
    -> «Le domande aperte» (sei, chiuse) -> «Cosa ha capito». */
 
 test('seam _rendiSapere: con solo giudizi «dal seme» non c’è «Torna al seme»', () => {
@@ -2139,4 +2151,318 @@ test('seam _rendiSapere: «Torna al seme» c\'è anche sulle righe «da: altro»
   assert.ok(riga, 'la riga «altro» compare in «Le tue correzioni»');
   assert.ok(Array.from(riga.querySelectorAll('button')).some((b) => b.textContent === 'Torna al seme'),
     'anche una riga modificata a mano si può rimettere al seme');
+});
+
+/* Giro di correzioni 1 (revisione Fable, IMPORTANT 2): i due elenchi dei
+   campi dei giudizi, Python e JavaScript, legati da una prova sola --
+   stesso pattern di `agenda-route-vocabulary.test.mjs`. Mutazione che deve
+   far diventare rosso questo file: aggiungere un settimo... ottavo campo a
+   `JUDGMENT_FIELD_NAMES` (`type_judgments.py`) senza il suo gruppo in
+   `JUDGMENT_FIELD_GROUPS` (`watcher-route.js`) -- o il contrario. */
+
+// `NOME_FIELD = "valore"`: costruisce nome-costante -> valore-stringa, per
+// risolvere gli identificatori che `JUDGMENT_FIELD_NAMES` elenca (il
+// frozenset porta nomi di costanti Python, non i valori).
+function costantiCampoPython(sorgente) {
+  const mappa = {};
+  for (const m of sorgente.matchAll(/^(\w+_FIELD) = "([a-z_]+)"$/gm)) {
+    mappa[m[1]] = m[2];
+  }
+  return mappa;
+}
+
+test('i campi dei giudizi: lo stesso insieme in type_judgments.py (JUDGMENT_FIELD_NAMES) e in watcher-route.js (JUDGMENT_FIELD_GROUPS)', () => {
+  const mappa = costantiCampoPython(TYPE_JUDGMENTS_PY);
+
+  const blocco = TYPE_JUDGMENTS_PY.match(/JUDGMENT_FIELD_NAMES = frozenset\(\{([\s\S]*?)\}\)/);
+  assert.ok(blocco, 'JUDGMENT_FIELD_NAMES non trovata in type_judgments.py '
+    + '(e\' cambiata forma sotto questo test?)');
+  const nomiCostanti = blocco[1].split(',').map((s) => s.trim()).filter(Boolean);
+  assert.ok(nomiCostanti.length >= 7, 'attesi almeno sette campi (erano sei prima '
+    + 'del Task 1 di «da sapere subito»): ' + nomiCostanti.join(', '));
+
+  const python = new Set(nomiCostanti.map((nome) => {
+    assert.ok(mappa[nome], 'costante non risolta: ' + nome
+      + ' (manca una riga `' + nome + ' = "..."` in type_judgments.py?)');
+    return mappa[nome];
+  }));
+
+  const m = SORGENTE.match(/var JUDGMENT_FIELD_GROUPS = \[([\s\S]*?)\];/);
+  assert.ok(m, 'JUDGMENT_FIELD_GROUPS non trovata in watcher-route.js');
+  const js = new Set(Array.from(m[1].matchAll(/campo:\s*'([a-z_]+)'/g)).map((mm) => mm[1]));
+
+  assert.deepEqual(js, python,
+    'JUDGMENT_FIELD_GROUPS (JavaScript) deve elencare esattamente gli stessi campi di '
+    + 'JUDGMENT_FIELD_NAMES (Python): un campo nuovo da un lato solo sparisce dalla pagina '
+    + 'del sapere in silenzio -- e\' successo davvero a `da_sapere_subito` (Task 1, giro 1)');
+});
+
+test('JUDGMENT_FIELD_GROUPS: ogni gruppo porta un\'etichetta italiana non vuota', () => {
+  // Un campo che compare nell'insieme (prova sopra) ma con un'etichetta vuota
+  // renderebbe una riga muta in «I giudizi del seme» -- distinto di proposito
+  // dalla prova sull'insieme, cosi' chi legge il rosso sa subito quale delle
+  // due cose e' storta.
+  const m = SORGENTE.match(/var JUDGMENT_FIELD_GROUPS = \[([\s\S]*?)\];/);
+  assert.ok(m, 'JUDGMENT_FIELD_GROUPS non trovata in watcher-route.js');
+  const gruppi = Array.from(m[1].matchAll(/\{\s*campo:\s*'([a-z_]+)',\s*etichetta:\s*'([^']*)'\s*\}/g));
+  assert.ok(gruppi.length >= 7, 'attesi almeno sette gruppi');
+  for (const [, campo, etichetta] of gruppi) {
+    assert.ok(etichetta.trim().length > 0, 'etichetta vuota per il campo: ' + campo);
+  }
+});
+
+/* Revisione finale, I-3: le due prove qui sopra leggono i SORGENTI -- nessuna
+   DISEGNA la sezione e cerca il campo nuovo. Il revisore ha disegnato solo i
+   primi sei gruppi (`JUDGMENT_FIELD_GROUPS.slice(0, 6)` in `renderSeedGroups`)
+   e **nessuna prova e' arrossita**: i due elenchi restavano identici, e la
+   pagina non mostrava «Da sapere subito». Questa prova monta la sezione e
+   guarda il DOM. */
+
+test('seam _rendiSapere: la sezione DISEGNA un gruppo per OGNI campo dichiarato, «Da sapere subito» compreso', () => {
+  /* Mutazione ESEGUITA: `JUDGMENT_FIELD_GROUPS.slice(0, 6).forEach(...)` in
+     `renderSeedGroups` -- rossa qui («gruppo del seme non disegnato:
+     da_sapere_subito»), verde su tutto il resto del file; ripristinata con
+     l'editor.
+
+     Si asserisce la PROPRIETA' (ogni gruppo dichiarato e' disegnato), non il
+     solo fatto del settimo campo: cosi' anche l'ottavo, il giorno che
+     arrivera', non potra' restare fuori dalla pagina in silenzio. */
+  const m = SORGENTE.match(/var JUDGMENT_FIELD_GROUPS = \[([\s\S]*?)\];/);
+  assert.ok(m, 'JUDGMENT_FIELD_GROUPS non trovata in watcher-route.js');
+  const dichiarati = Array.from(m[1].matchAll(/\{\s*campo:\s*'([a-z_]+)',\s*etichetta:\s*'([^']*)'\s*\}/g))
+    .map(([, campo, etichetta]) => ({ campo, etichetta }));
+  assert.ok(dichiarati.some((g) => g.campo === 'da_sapere_subito'),
+    'il campo di questa fetta deve essere fra i gruppi dichiarati');
+
+  // Una riga di seme per ogni campo dichiarato: cosi' nessun gruppo puo'
+  // mancare dal DOM per mancanza di dati invece che per un difetto di resa.
+  const giudizi = dichiarati.map((g) => giudizio({
+    campo: g.campo, da: 'seme', soggetto_genere: 'tipo', soggetto: 'binary_sensor.' + g.campo,
+  }));
+  const { corpo } = rendiSapere(sapereFinto({ giudizi }));
+  const bottoni = Array.from(corpo.querySelectorAll('button')).map((b) => b.textContent);
+  for (const g of dichiarati) {
+    assert.ok(bottoni.some((t) => t.indexOf(g.etichetta + ' ·') === 0),
+      'gruppo del seme non disegnato: ' + g.campo + ' («' + g.etichetta + '»). '
+      + 'Bottoni trovati: ' + JSON.stringify(bottoni));
+  }
+
+  // E il gruppo nuovo porta davvero la sua riga dentro, non solo il titolo.
+  const gruppoNuovo = Array.from(corpo.querySelectorAll('.field-group')).find((w) => {
+    const b = w.querySelector('button');
+    return b && b.textContent.indexOf('Da sapere subito ·') === 0;
+  });
+  assert.ok(gruppoNuovo, 'il gruppo «Da sapere subito» esiste nel DOM');
+  const riga = gruppoNuovo.querySelector('.jr-row .jr-subject');
+  assert.ok(riga, 'il gruppo «Da sapere subito» disegna la sua riga');
+  assert.equal(riga.textContent, 'binary_sensor.da_sapere_subito');
+});
+
+/* Revisione finale, I-4: la pagina diceva il FALSO a chi corregge
+   `da_sapere_subito`. Due frasi promettono che la cronaca si rifa' -- «La
+   cronaca dei giorni passati si rifà da sola» accanto al badge, e «Anche questo
+   rifà la cronaca degli ultimi 22 giorni» dentro «Torna al seme» -- ma la
+   cronaca si rifa' solo per i campi che entrano nell'IMPRONTA
+   (`type_judgments.CHRONICLE_FIELDS`: `genere` e `riposo`). Per `notevole`,
+   `accendibile`, `lavoro`, `limiti_parametri` e `da_sapere_subito` quelle due
+   frasi erano una promessa che nessuno mantiene. */
+
+/* I due elenchi si leggono dal SORGENTE e diventano il dato della prova: i
+   campi dichiarati (`JUDGMENT_FIELD_GROUPS`) e quelli dell'impronta
+   (`CHRONICLE_JUDGMENT_FIELDS`). **Non si elencano a mano qui.** Una prova che
+   scrivesse «genere e riposo si', da_sapere_subito no» asserirebbe il FATTO di
+   oggi; queste asseriscono la PROPRIETA' -- la frase compare per tutti e soli
+   i campi dell'impronta -- e restano vere il giorno in cui l'impronta cambia. */
+function campiDichiarati() {
+  const m = SORGENTE.match(/var JUDGMENT_FIELD_GROUPS = \[([\s\S]*?)\];/);
+  assert.ok(m, 'JUDGMENT_FIELD_GROUPS non trovata in watcher-route.js');
+  return Array.from(m[1].matchAll(/campo:\s*'([a-z_]+)'/g)).map((mm) => mm[1]);
+}
+
+function campiDellImpronta() {
+  const m = SORGENTE.match(/var CHRONICLE_JUDGMENT_FIELDS = \{([^}]*)\};/);
+  assert.ok(m, 'CHRONICLE_JUDGMENT_FIELDS non trovata in watcher-route.js');
+  return new Set(Array.from(m[1].matchAll(/([a-z_]+):\s*true/g)).map((mm) => mm[1]));
+}
+
+// Un valore che la riga di QUEL campo sa mostrare, cosi' che la prova giri su
+// tutti i campi senza inventare forme che il server non manderebbe mai.
+const VALORE_PER_CAMPO = {
+  genere: 'presenza',
+  riposo: '["off"]',
+  lavoro: '{"on": "acceso"}',
+  limiti_parametri: '{"brightness": {"min": "a", "max": "b"}}',
+  notevole: 'si',
+  accendibile: 'si',
+  da_sapere_subito: 'no',
+};
+
+test('seam _rendiSapere: la frase sulla cronaca compare per TUTTI e SOLI i campi dell\'impronta', () => {
+  /* Mutazione ESEGUITA (la stessa del revisore): `rifaLaCronaca` riscritta
+     come `return campo !== 'da_sapere_subito'`, che ignora del tutto la
+     costante. **Con la stesura precedente di questa prova restava verde su
+     417 prove**, perche' quella asseriva i due casi di oggi invece della
+     proprieta' che li produce -- il difetto n. 1 del progetto, in casa nostra.
+     Ora e' rossa su `notevole`. Ripristinata con l'editor.
+
+     Cosa lasciava passare: il giorno in cui qualcuno corregge `notevole`, la
+     pagina gli rimostrerebbe la frase falsa e nessuna prova lo direbbe. */
+  const impronta = campiDellImpronta();
+  assert.ok(impronta.size > 0, 'l\'impronta ha almeno un campo');
+  const fuori = campiDichiarati().filter((c) => !impronta.has(c));
+  assert.ok(fuori.length > 0,
+    'servono campi FUORI dall\'impronta, o questa prova non avrebbe un lato negativo');
+
+  const frase = /La cronaca dei giorni passati si rifà da sola/;
+  for (const campo of campiDichiarati()) {
+    const { corpo } = rendiSapere(sapereFinto({
+      giudizi: [giudizio({
+        da: 'proprietario', campo, soggetto: 'light.a', soggetto_genere: 'entita',
+        valore: VALORE_PER_CAMPO[campo] || 'x',
+      })],
+    }));
+    assert.match(corpo.textContent, /Corretto da te il/, 'il badge c\'e\' per ogni campo: ' + campo);
+    if (impronta.has(campo)) {
+      assert.match(corpo.textContent, frase,
+        '`' + campo + '` entra nell\'impronta: la cronaca si rifa\' davvero, e va detto');
+    } else {
+      assert.doesNotMatch(corpo.textContent, frase,
+        '`' + campo + '` NON entra nell\'impronta: promettere che la cronaca si rifa\' e\' falso');
+    }
+  }
+});
+
+test('seam _rendiSapere: «Torna al seme» avvisa del costo della cronaca per TUTTI e SOLI i campi dell\'impronta', () => {
+  /* Stessa correzione della prova qui sopra, e per la stessa ragione: le due
+     frasi escono dalla STESSA funzione (`rifaLaCronaca`), quindi una mutazione
+     su quella deve arrossire tutt'e due. Mutazione ESEGUITA: la stessa
+     (`campo !== 'da_sapere_subito'`) -- rossa su `notevole`; ripristinata con
+     l'editor. */
+  const impronta = campiDellImpronta();
+  const costo = /rifà la cronaca degli ultimi/;
+  for (const campo of campiDichiarati()) {
+    const { corpo } = rendiSapere(sapereFinto({
+      giudizi: [giudizio({
+        da: 'proprietario', campo, soggetto: 'light.a', soggetto_genere: 'entita',
+        valore: VALORE_PER_CAMPO[campo] || 'x',
+      })],
+    }));
+    assert.match(corpo.textContent, /il sapere riprende il valore del seme/,
+      'il resto dell\'avviso c\'e\' sempre: tornare al seme cancella comunque la correzione ('
+      + campo + ')');
+    if (impronta.has(campo)) {
+      assert.match(corpo.textContent, costo, '`' + campo + '` fa rifare i giorni: va avvisato');
+    } else {
+      assert.doesNotMatch(corpo.textContent, costo,
+        '`' + campo + '` non fa rifare nessun giorno: annunciare due ore di lavoro e\' falso');
+    }
+  }
+});
+
+test('seam _rendiSapere: in «Le tue correzioni» ogni riga dice QUALE campo è', () => {
+  /* Senza, due righe dello stesso soggetto sono indistinguibili: «lock · no ·
+     Corretto da te» vale identica per `notevole` e per `da_sapere_subito`.
+     Mutazione che la uccide: togliere il campo dalla riga. */
+  const { corpo } = rendiSapere(sapereFinto({
+    giudizi: [
+      giudizio({ da: 'proprietario', campo: 'notevole', soggetto: 'lock', soggetto_genere: 'tipo', valore: 'no' }),
+      giudizio({ da: 'proprietario', campo: 'da_sapere_subito', soggetto: 'lock', soggetto_genere: 'tipo', valore: 'no' }),
+    ],
+  }));
+  const campi = Array.from(corpo.querySelectorAll('.jr-row .jr-field')).map((n) => n.textContent);
+  assert.deepEqual(campi.slice().sort(), ['Da sapere subito', 'Notevole'],
+    'le due righe dello stesso soggetto si distinguono per campo');
+});
+
+/* I due elenchi dei campi che rifanno la cronaca, Python e JavaScript, legati
+   da una prova sola -- stesso pattern di `JUDGMENT_FIELD_GROUPS` qui sopra.
+   Senza, il giorno che un campo entra (o esce) da `CHRONICLE_FIELDS` la pagina
+   continuerebbe a promettere -- o a tacere -- la cosa sbagliata, e nessuno se
+   ne accorgerebbe. */
+test('i campi che rifanno la cronaca: gli stessi in type_judgments.py (CHRONICLE_FIELDS) e in watcher-route.js (CHRONICLE_JUDGMENT_FIELDS)', () => {
+  const mappa = costantiCampoPython(TYPE_JUDGMENTS_PY);
+  const blocco = TYPE_JUDGMENTS_PY.match(/^CHRONICLE_FIELDS = \(([^)]*)\)$/m);
+  assert.ok(blocco, 'CHRONICLE_FIELDS non trovata in type_judgments.py');
+  const python = new Set(blocco[1].split(',').map((s) => s.trim()).filter(Boolean).map((nome) => {
+    assert.ok(mappa[nome], 'costante non risolta: ' + nome);
+    return mappa[nome];
+  }));
+
+  const m = SORGENTE.match(/var CHRONICLE_JUDGMENT_FIELDS = \{([^}]*)\};/);
+  assert.ok(m, 'CHRONICLE_JUDGMENT_FIELDS non trovata in watcher-route.js');
+  const js = new Set(Array.from(m[1].matchAll(/([a-z_]+):\s*true/g)).map((mm) => mm[1]));
+
+  assert.deepEqual(js, python,
+    'CHRONICLE_JUDGMENT_FIELDS (JavaScript) deve elencare esattamente i campi di CHRONICLE_FIELDS '
+    + '(Python): sono i soli per cui «la cronaca dei giorni passati si rifà da sola» è vero');
+});
+
+/* La TERZA forma del valore di `da_sapere_subito` (decisione del proprietario,
+   18/09/2026): `si`, `no`, oppure l'elenco JSON degli stati che contano --
+   `lock` porta `["jammed"]`. Reso in pagina come «solo: jammed», con lo stato
+   CITATO e non tradotto: finche' non esiste la fetta che rende gli stati nella
+   lingua della casa, «inceppata» sarebbe una traduzione decisa qui, in un file
+   di resa, cioe' esattamente dove non si decide il vocabolario. */
+
+test('seam _rendiSapere: un `da_sapere_subito` a ELENCO si legge «solo: jammed», non come JSON grezzo', () => {
+  /* Mutazione ESEGUITA: tolto il ramo dell'elenco da `judgmentValueNode` --
+     rossa (il valore resta il testo `["jammed"]`); ripristinata con l'editor. */
+  const { corpo } = rendiSapere(sapereFinto({
+    giudizi: [giudizio({
+      campo: 'da_sapere_subito', da: 'seme', soggetto_genere: 'tipo', soggetto: 'lock',
+      valore: '["jammed"]',
+    })],
+  }));
+  const riga = Array.from(corpo.querySelectorAll('.jr-row')).find((r) => {
+    const s = r.querySelector('.jr-subject');
+    return s && s.textContent === 'lock';
+  });
+  assert.ok(riga, 'la riga di `lock` esiste');
+  assert.match(riga.textContent, /solo: jammed/);
+  assert.doesNotMatch(riga.textContent, /\[/, 'niente JSON grezzo in pagina');
+  // Lo stato si CITA: sta in un nodo monospazio, come gli altri valori tecnici.
+  assert.ok(riga.querySelector('.jr-value-states'),
+    'gli stati stanno in un nodo loro, citati e non tradotti');
+});
+
+test('seam _rendiSapere: un elenco di PIÙ stati li separa con la virgola', () => {
+  const { corpo } = rendiSapere(sapereFinto({
+    giudizi: [giudizio({
+      campo: 'da_sapere_subito', da: 'seme', soggetto_genere: 'tipo', soggetto: 'vacuum',
+      valore: '["error", "stuck"]',
+    })],
+  }));
+  assert.match(corpo.textContent, /solo: error, stuck/);
+});
+
+test('seam _rendiSapere: `si` e `no` restano quello che sono', () => {
+  /* Il ramo nuovo non deve mangiarsi le altre due forme del valore.
+
+     **Si guarda il NODO DEL VALORE, non tutto il corpo.** La prima stesura
+     faceva `assert.match(corpo.textContent, /si/)`, che combacia con «**si**ren»
+     -- cioe' col nome del soggetto della riga stessa: la mutazione che svuota
+     il valore di `da_sapere_subito` non la arrossiva. Era una prova che non
+     poteva fallire.
+
+     Mutazione ESEGUITA: `judgmentValueNode` che torna un valore vuoto per
+     `da_sapere_subito` -- rossa qui (`'' != 'si'`); ripristinata con l'editor. */
+  const { corpo } = rendiSapere(sapereFinto({
+    giudizi: [
+      giudizio({
+        campo: 'da_sapere_subito', da: 'seme', soggetto_genere: 'tipo', soggetto: 'siren',
+        valore: 'si',
+      }),
+      giudizio({
+        campo: 'da_sapere_subito', da: 'seme', soggetto_genere: 'tipo', soggetto: 'update',
+        valore: 'no',
+      }),
+    ],
+  }));
+  assert.doesNotMatch(corpo.textContent, /solo:/, 'niente «solo:» dove il valore non e\' un elenco');
+  const valori = {};
+  for (const riga of corpo.querySelectorAll('.jr-row')) {
+    valori[riga.querySelector('.jr-subject').textContent] =
+      riga.querySelector('.jr-value').textContent;
+  }
+  assert.deepEqual(valori, { siren: 'si', update: 'no' });
 });

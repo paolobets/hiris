@@ -1965,6 +1965,167 @@ attore** (restano due attori e una lettura), **gambe e pavimento escono**, e nas
 delle operazioni**, le **ricette** e il **resoconto giornaliero**. Il documento del 09/09 resta
 valido come cronaca di come ci si e' arrivati; **la specifica e' quella del 10/09**.
 
+### Separare `notevole` nei suoi due sensi: «vale la pena raccontarlo» e «e' da sapere subito»
+
+`origine: la fetta «da sapere subito», 18/09/2026` · `documento: docs/design/2026-09-18-da-sapere-subito.md §1`
+
+**Il fatto.** `notevole` risponde oggi a una sola domanda -- *«vale la pena raccontarlo nel
+riassunto?»* (`home_space/briefing._is_event`) -- e il nome non lo dice: sembra rispondere anche a
+*«e' una cosa da sapere subito?»*. Misurato il 18/09/2026 contro la cronaca vera del 17/09 (75
+voci): leggendo il criterio come «stato di lavoro oppure tipo `notevole: si`» finiscono in banda
+**71 voci su 75**, e **35 sono accensioni di luce** -- perche' 10 dei 23 `notevole: si` del seme
+sono domini interi (`light`, `switch`, `cover`, `fan`, `lock`, `media_player`, `remote`, `siren`,
+`vacuum`, `valve`).
+
+**Questa fetta non ha toccato `notevole`**: ha aggiunto un giudizio nuovo, `da_sapere_subito`, che
+risponde alla seconda domanda, e ha lasciato `notevole` esattamente dove stava -- resta la parola
+del riassunto. Separare i due sensi **alla fonte**, dentro `notevole` stesso, e' un lavoro suo, con
+la sua migrazione: le 23 righe del seme che oggi portano `notevole: si` andrebbero riesaminate una
+per una, non travasate in blocco su un nome nuovo.
+
+### Separare `lavoro` nei suoi due sensi: «e' successo» e «si sta muovendo»
+
+`origine: la fetta «da sapere subito», 18/09/2026 — trovata decidendo la terza forma del valore` · `documento: docs/design/2026-09-18-da-sapere-subito.md §2`
+
+**Il fatto.** E' la stessa malattia della voce qui sopra, trovata una seconda volta nella stessa
+giornata e dentro un'altra parola. `lavoro` dice **due cose diverse** a seconda del tipo:
+
+- per `alarm_control_panel`, `lavoro: {"triggered": ...}` significa **«e' successo»** -- un solo
+  stato, il fatto che si vuole sapere;
+- per `lock`, `lavoro: {"locking", "opening", "unlocking", "unlocked", "open"}` significa **«sta
+  operando»** -- cinque stati, di cui quattro sono transizioni e nessuno e' il guasto. Il guasto
+  della serratura, `jammed`, **non e' un lavoro**, e non e' nemmeno il riposo (`locked`).
+
+Misurato: chi legge `lavoro` come «il fatto notevole» -- ed e' cosi' che la regola di
+`da_sapere_subito` lo leggeva nella sua prima stesura -- fa entrare in banda **ogni sblocco di
+serratura** e lascia fuori **l'inceppamento**.
+
+**Cosa ha fatto questa fetta, e cosa NON ha fatto.** Ha smesso di **appoggiarsi** a `lavoro` dove
+non doveva: `da_sapere_subito` porta ora una terza forma del valore, l'elenco degli stati che
+contano, e `lock` la usa (`["jammed"]`). **Non ha curato `lavoro`**, e non poteva: quella parola ha
+un secondo lettore, la **ragione italiana** che la cronaca mostra accanto all'episodio
+(`working_of(...)[stato]`), e le nove righe del seme andrebbero riesaminate una per una -- non
+travasate in blocco, esattamente come per `notevole`.
+
+**Cosa servirebbe.** Decidere se «sta operando» e' un giudizio suo (un campo separato, come questa
+fetta ha fatto per «da sapere subito») oppure se le due letture convivono per costruzione, e in tal
+caso scriverlo dove oggi non e' scritto. Prima si misura quante righe del seme sono di che genere:
+oggi sono nove in tutto.
+
+### Normalizzare gli stati ALLA SCRITTURA (elenco e riposo): `["Jammed"]` non avvisa mai, e nessuno lo dice
+
+`origine: la ri-revisione finale della fetta «da sapere subito», 18/09/2026 — misurato eseguendo` · `documento: docs/design/2026-09-18-da-sapere-subito.md §3`
+
+**Il fatto, misurato.** Gli stati si confrontano **normalizzando quello che arriva** (`.strip()
+.lower()`, `TypeJudgments.stato_da_sapere_subito` e `mind/facts._is_on`) e lasciando **com'e'
+scritto** l'elenco dell'archivio. Chi scrive una maiuscola ottiene una riga che non morde:
+
+| riga scritta | cosa succede |
+|---|---|
+| `da_sapere_subito: ["Jammed"]` su `lock` | `jammed` → **False**: l'inceppamento non avvisa MAI |
+| `riposo: ["Off"]` su `light` (con `da_sapere_subito: si`) | `off` → **True**: lo spegnimento entra in banda |
+
+**La differenza e' il punto, ed e' la ragione per cui vale la pena curarlo.** Nel riposo la svista
+fallisce **forte**: uno stato di troppo entra in prima pagina, chi guarda lo vede e si chiede
+perche'. Nell'elenco fallisce **muta**: la cosa che si voleva sapere subito non arriva, e nessuno
+puo' accorgersi di cio' che non e' successo. In piu' **la pagina la mostra come giusta** -- «solo:
+Jammed» si legge esattamente come «solo: jammed».
+
+**Perche' oggi e' cosi'.** Non e' una svista: e' coerenza deliberata col riposo (dichiarata nel
+docstring della regola). Un elenco normalizzato e un riposo non normalizzato sarebbero **due modi di
+trattare la stessa cosa**, cioe' lo scostamento che questa fetta esiste per evitare. Per questo la
+cura non e' «normalizzare l'elenco»: e' **normalizzare tutti e due, e alla scrittura**.
+
+**Cosa servirebbe.** Abbassare gli stati a minuscole in `_parse` (riposo, lavoro, elenco del campo
+nuovo) -- oppure rifiutare una maiuscola alla porta con una ragione, che e' la scelta piu' onesta
+perche' non cambia in silenzio cio' che il proprietario ha scritto. Da decidere insieme, perche'
+tocca tre campi e le righe gia' scritte nell'archivio.
+
+### Una cortesia in meno alla porta: `da_sapere_subito: ["locked"]` su `lock` si scrive, e il RIPOSO diventa notizia
+
+`origine: la ri-revisione finale della fetta «da sapere subito», 18/09/2026 — misurato eseguendo` · `documento: docs/design/2026-09-18-da-sapere-subito.md §2`
+
+**Il fatto, misurato.** Il riposo di `lock` e' `["locked"]`. Scrivendo `da_sapere_subito:
+["locked"]` la porta **accetta**, e `stato_da_sapere_subito("lock", None, "locked")` torna **True**:
+lo stato di riposo del tipo diventa una notizia. E' l'opposto della domanda a cui il campo risponde
+-- *«quando una cosa di questo tipo esce dal suo riposo»* -- scritto in una riga che nessuno ferma.
+
+**Perche' non e' un difetto di questa fetta.** Nessun elenco del seme lo fa, la regola e' coerente
+con se stessa (l'elenco dice cosa conta, e chi l'ha scritto ha detto `locked`) e la porta non ha mai
+avuto il compito di impedire una correzione *sbagliata*, solo una *incoerente*. E' esattamente la
+stessa classe del rifiuto «`si` senza riposo ne' lavoro»: **una cortesia**, non una garanzia.
+
+**Cosa servirebbe.** Una riga in `mind/judgments._check`: se l'elenco interseca il `riposo` gia'
+dichiarato per quel soggetto, rifiuto motivato («`locked` e' il riposo di `lock`: non puo' essere
+anche cio' che ti fa sapere subito»). **Da valutare nella fetta della pagina**, insieme all'editor
+in riga: e' li' che il proprietario scrivera' questo campo per la prima volta con le mani, ed e' li'
+che una cortesia serve davvero -- oggi ci si arriva solo da `curl`.
+
+### Correggere `da_sapere_subito` dalla pagina del sapere, non solo dalla rotta
+
+`origine: la fetta «da sapere subito», 18/09/2026 — limite dichiarato in perimetro, spec §5` · `documento: docs/design/2026-09-18-da-sapere-subito.md §5`
+
+**Il fatto.** Il giudizio nuovo compare nella pagina del sapere (sezione 04) con la sua riga e il
+suo gruppo, e **il ritorno al seme si fa gia' dalla pagina**: il comando «Torna al seme» vale per
+qualunque riga corretta, di qualunque campo. Cio' che manca e' **scrivere un valore nuovo**, che
+oggi si fa **solo dalla rotta** (`POST /api/mind/judgment`, a mano o da script): l'editor in riga
+della sezione 04 tocca solo `genere`. Non e' un difetto di questa fetta: e' un limite dichiarato
+finche' la pagina dell'osservatore non lo dispone.
+
+**Cosa servirebbe.** Estendere l'editor in riga della sezione 04 a `da_sapere_subito` (il ritorno
+al seme c'e' gia'). Arriva naturalmente con la fetta della pagina
+dell'osservatore (`docs/superpowers/plans/2026-09-18-la-pagina-dell-osservatore.md`), che da questa
+dipende.
+
+### Le citazioni per numero di riga marciscono: si cita per nome
+
+`origine: la fetta «da sapere subito», 18/09/2026, misurato durante il Task 4` · `nessun documento`
+
+**Il fatto.** In una sola giornata, tre citazioni per numero di riga sono scivolate: una nel
+README — **localizzata col `grep` durante la revisione finale**, perche' una voce sulle citazioni non
+verificabili non puo' contenerne una: e' `hiris/app/model_activation.py:37-78` (sezione «AI
+providers», sull'ordine della catena), e quel file **ha 51 righe in tutto**; la funzione che intende
+citare e' `providers_in_chain`. E' la citazione piu' marcia possibile, quella che punta oltre la
+fine del file, e nessun cancello la vede — e la spec di questa stessa fetta (§6) **due volte** — la
+prima quando il documento e' nato
+citando `chronicle_fingerprint` a `:261`, la seconda perche' il numero vero, verificato con `grep`
+durante il Task 4, e' `:277`: il file si e' spostato sotto la citazione senza che nessuno la
+riguardasse. La seconda volta e' la piu' significativa: **e' scivolata dentro il giro che la stava
+correggendo**, perche' una riga scritta a mano non si autoverifica e nessun cancello la controlla.
+
+**La cura proposta.** Citare per **nome** — funzione, costante, prova — e lasciare il numero di
+riga solo dove il nome non basta (un intervallo, una regione senza un nome proprio). Un nome
+sopravvive a un refactor che sposta il codice; un numero no. Non e' una regola nuova nel merito — il
+glossario gia' segue «Le citazioni fra backtick seguono il codice» — e' la sua estensione ai numeri
+di riga, che oggi nessuna sezione del genere dichiara.
+
+### Il controllo di completezza n. 1 del GLOSSARIO non si esegue: `IndexError` su una riga piu' larga della sua intestazione
+
+`origine: la fetta «da sapere subito», 18/09/2026 — scoperto dall'implementer del Task 4, riaperto dalla revisione finale (I-5)` · `documento: docs/GLOSSARIO.md, «Controlli di completezza», controllo n. 1`
+
+**Il fatto.** Il primo dei tre controlli meccanici del glossario — «nessuna cella vuota, in nessuna
+tabella del documento» — **solleva `IndexError` e non arriva mai in fondo**. Il documento pero'
+dichiara il numero come «eseguito il 18/09/2026», e il numero e' vero: e' stato misurato con una
+versione tollerante dello stesso comando, non con quello scritto.
+
+La riga che lo ferma e' in «Parole scartate durante l'estrazione»: `` | `compreso` | 2 | `` (con uno
+spazio finale). `r.strip('|').split('|')` ne ricava **tre** celle -- l'ultima vuota, prodotta dallo
+spazio -- mentre l'intestazione di quella tabella ne ha **due**, e `header[i]` va fuori indice sulla
+cella vuota. E' una riga **preesistente**, non di questa fetta: il controllo non e' mai stato
+eseguito cosi' com'e' scritto da quando quella riga esiste.
+
+**Perche' conta piu' del suo IndexError.** Un controllo che si rompe a meta' non e' un controllo che
+avvisa: e' un controllo che **tace su tutto cio' che viene dopo il punto in cui si e' rotto**. La
+tabella incriminata sta alla riga ~718 di un documento di ~3700: il comando, come scritto, non ha
+mai visto quattro quinti del glossario. E il documento dichiarava «eseguito» — la motivazione
+scritta accanto al numero era vera nella sostanza e falsa nel metodo.
+
+**La cura proposta.** Non toccare la riga (togliere lo spazio farebbe passare *quel* caso e
+lascerebbe il difetto): rendere il controllo **robusto** alla larghezza -- ignorare le celle oltre
+l'intestazione, oppure nominarle `colonna N` -- e, gia' che si e' li', farlo **fallire con un
+messaggio** invece che con una traccia, dicendo riga e tabella. Vale anche per i controlli n. 2 e
+n. 3, che spezzano le righe allo stesso modo. Fetta piccola, tutta dentro il glossario.
+
 ---
 
 ## Usciti

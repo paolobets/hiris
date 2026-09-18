@@ -227,8 +227,10 @@ CREATE TABLE IF NOT EXISTS knowledge (
 -- (`mind/judgments.write_judgment`, spec 2026-09-16 §4) e a ogni lettura della
 -- pagina del sapere: mai nel percorso caldo. Sulla casa del
 -- proprietario la tabella aveva 241 righe il 16/09/2026 (spec 2026-09-16 §1
--- misura 6), a cui il seme dei giudizi aggiunge 99 righe (conteggio di
--- `judgment_seed_rows()` il 17/09/2026). Un indice costa a ogni scrittura
+-- misura 6), a cui il seme dei giudizi aggiunge 115 righe (conteggio di
+-- `judgment_seed_rows()` il 18/09/2026, dopo il campo `da_sapere_subito`
+-- della fetta 2026-09-18-da-sapere-subito.md: erano 99 il 17/09/2026). Un
+-- indice costa a ogni scrittura
 -- per risparmiare su una lettura rara di qualche centinaio di righe.
 """
 def _migration_2(conn) -> None:

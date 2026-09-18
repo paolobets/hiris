@@ -144,6 +144,62 @@ async def test_scrittura_non_in_vigore_409(tmp_path):
         s.close()
 
 
+@pytest.mark.asyncio
+async def test_da_sapere_subito_compare_in_giudizi_e_la_rotta_lo_scrive(tmp_path):
+    """Task 3, spec §5: il campo esce da `GET /api/mind/knowledge` dentro
+    `giudizi` come gli altri (le 16 righe del seme), e la rotta di scrittura
+    lo aggiorna -- **nessun'altra riga**: e' la stessa `handle_set_judgment`
+    che scrive `genere` o `riposo`.
+
+    **`giudizi` viene dall'ARCHIVIO, non dall'istantanea**: `handle_knowledge`
+    chiama `judgment_listing(sapere)`, che legge `knowledge.judgment_rows()`
+    (`field IN (...)` su `JUDGMENT_FIELD_NAMES`, `knowledge.py:735`) -- non
+    `app["type_judgments"]`. Questa prova non sorveglia la ricostruzione
+    dell'istantanea (per quella vedi `test_scrivere_giudizio_200_impronta_nuova`
+    piu' sopra): sorveglia che (1) il campo passi ancora dal filtro
+    dell'archivio come gli altri e (2) che la `POST` scriva davvero
+    (`knowledge.write`, non un successo finto) e con l'origine giusta (`da`
+    passa da «seme» a «proprietario»).
+
+    Mutazione ESEGUITA: togliere `DA_SAPERE_SUBITO_FIELD` da
+    `JUDGMENT_FIELD_NAMES` (`home_space/type_judgments.py`) -- rossa, ma non
+    con un `assert` di questa prova: lo stesso elenco costruisce
+    `REPO_JUDGMENTS` dal seme (`type_vocabulary.py`, import-time), e le 16
+    righe del seme che portano il campo smettono di validare -- `JudgmentError`
+    alla COLLEZIONE di ogni modulo che importa `hiris.app`, questo compreso.
+    E' la prova che nessuna delle due letture (l'istantanea all'avvio, la
+    riga dell'archivio qui) ha un elenco proprio: condividono lo stesso."""
+    s, app = _app_seminata(tmp_path)
+    try:
+        r = await handle_knowledge(_richiesta(app))
+        giudizi_seminati = {(g["soggetto_genere"], g["soggetto"], g["campo"]): g
+                            for g in json.loads(r.text)["giudizi"]}
+        # `lock` porta la TERZA forma del valore, l'elenco degli stati
+        # (decisione del proprietario, 18/09/2026): la rotta lo consegna alla
+        # pagina come testo JSON, cosi' com'e' scritto nell'archivio.
+        seminata = giudizi_seminati[("tipo", "lock", "da_sapere_subito")]
+        assert (seminata["valore"], seminata["da"]) == ('["jammed"]', "seme")
+        # E una riga `si` accanto, per dire che le due forme convivono.
+        sirena = giudizi_seminati[("tipo", "siren", "da_sapere_subito")]
+        assert (sirena["valore"], sirena["da"]) == ("si", "seme")
+
+        r = await handle_set_judgment(_richiesta(app, {
+            "soggetto_genere": "tipo", "soggetto": "lock",
+            "campo": "da_sapere_subito", "valore": "no"}))
+        assert r.status == 200, r.text
+        corpo = json.loads(r.text)
+        assert corpo["riga"]["campo"] == "da_sapere_subito"
+        assert corpo["riga"]["valore"] == "no"
+
+        r = await handle_knowledge(_richiesta(app))
+        giudizi_corretti = {(g["soggetto_genere"], g["soggetto"], g["campo"]): g
+                            for g in json.loads(r.text)["giudizi"]}
+        corretta = giudizi_corretti[("tipo", "lock", "da_sapere_subito")]
+        assert (corretta["valore"], corretta["da"]) == ("no", "proprietario")
+    finally:
+        s.close()
+
+
 def test_rotta_REGISTRATA():
     """Mutazione: togliere la registrazione da `server.py` -- rossa."""
     sorgente = pathlib.Path(server.__file__).read_text(encoding="utf-8")

@@ -17,6 +17,7 @@ import sqlite3
 import time as _time
 
 from ..home_space.type_judgments import (
+    DA_SAPERE_SUBITO_FIELD,
     GENRE_FIELD,
     JUDGMENT_FIELD_NAMES,
     NOTABLE_FIELD,
@@ -48,15 +49,19 @@ JUDGMENT_AUTHOR = "proprietario"
 
 #: A quale livello di soggetto ogni campo e' CONSULTATO da `TypeJudgments`
 #: (le sue domande, lette nel codice il 17/09/2026): `genre_of` e `resting_of`
-#: salgono entita' -> coppia -> dominio; `working_of` e `is_notable` coppia ->
-#: dominio; `operable_domains` e `parameter_limits` solo il dominio. Una riga
-#: a un livello che nessuna domanda legge non si scrive: il proprietario la
-#: vedrebbe accettata e la casa non cambierebbe.
+#: salgono entita' -> coppia -> dominio; `working_of`, `is_notable` e
+#: `da_sapere_subito` coppia -> dominio (spec `2026-09-18-da-sapere-subito.md`
+#: §2: stessa forma di `is_notable`, per la stessa ragione -- `binary_sensor`
+#: dice «no» in generale e «si'» sulle classi che lo meritano, mai su
+#: un'entita' singola); `operable_domains` e `parameter_limits` solo il
+#: dominio. Una riga a un livello che nessuna domanda legge non si scrive: il
+#: proprietario la vedrebbe accettata e la casa non cambierebbe.
 _LEVELS = {
     GENRE_FIELD: frozenset({"entita", "coppia", "dominio"}),
     RESTING_FIELD: frozenset({"entita", "coppia", "dominio"}),
     WORKING_FIELD: frozenset({"coppia", "dominio"}),
     NOTABLE_FIELD: frozenset({"coppia", "dominio"}),
+    DA_SAPERE_SUBITO_FIELD: frozenset({"coppia", "dominio"}),
     OPERABLE_FIELD: frozenset({"dominio"}),
     PARAMETER_LIMITS_FIELD: frozenset({"dominio"}),
 }
@@ -226,7 +231,7 @@ def judgment_listing(knowledge) -> list[dict]:
     return listing
 
 
-def _check(subject_kind: str, subject: str, field: str, value) -> None:
+def _check(subject_kind: str, subject: str, field: str, value, current: TypeJudgments) -> None:
     if subject_kind not in ("tipo", "entita") or not subject:
         raise JudgmentRefused("serve un soggetto: un tipo o un'entita'")
     if field not in JUDGMENT_FIELD_NAMES:
@@ -256,6 +261,38 @@ def _check(subject_kind: str, subject: str, field: str, value) -> None:
                                 genres=CHRONICLE_GENRES, absent_forms=ABSENT_STATE_FORMS.value)
     except JudgmentError as error:
         raise JudgmentRefused("; ".join(error.reasons)) from error
+    if field == DA_SAPERE_SUBITO_FIELD and value == "si":
+        # **`== "si"` e non «il campo e' scritto»**, e la differenza e'
+        # sostanziale (decisione del proprietario, 18/09/2026): il valore ha
+        # TRE forme, e per un ELENCO di stati questa domanda non ha senso --
+        # l'elenco dice gia' quali stati contano, e non c'e' niente da
+        # decidere. Il rifiuto riguarda il solo `si`, che senza riposo ne'
+        # lavoro non sa a cosa appoggiarsi.
+        #
+        # Ruling del controller (giro di correzioni 1, IMPORTANT 2): un tipo
+        # `da_sapere_subito: si` senza `riposo` ne' `lavoro` e' un caso
+        # indecidibile per `stato_da_sapere_subito` -- il suo ripiego «non e'
+        # un riposo» su un riposo vuoto renderebbe notizia ogni stato non
+        # assente, `off` compreso. Per sapere quando una cosa esce dal suo
+        # riposo bisogna sapere qual e' il riposo: un rifiuto e' piu' onesto
+        # di un «si» che trasforma in notizia anche lo spegnimento.
+        #
+        # **Questo rifiuto e' una cortesia, NON la garanzia** (revisione
+        # finale, I-1): non protegge l'invariante, perche' si puo' scrivere il
+        # riposo, poi il `si`, poi togliere il riposo -- tornando al seme,
+        # oppure con `riposo: '[]'`, che `_parse` accetta -- e restare con un
+        # `si` orfano. La garanzia sta alla fonte, in
+        # `TypeJudgments.stato_da_sapere_subito`: senza lavoro ne' riposo la
+        # regola risponde `False` («indecidibile vale no»). Qui si spiega il
+        # problema a chi scrive, quando lo si puo' ancora spiegare.
+        domain, _, device_class = subject.partition(".")
+        device_class = device_class or None
+        if not current.resting_of(domain, device_class) and not current.working_of(
+                domain, device_class):
+            raise JudgmentRefused(
+                f"`{DA_SAPERE_SUBITO_FIELD}` su `{subject}` senza un riposo ne' un lavoro: per "
+                "sapere quando una cosa esce dal suo riposo bisogna prima sapere qual e' il "
+                "riposo -- scrivi prima `riposo` o `lavoro`")
 
 
 def write_judgment(app, *, subject_kind: str, subject: str, field: str, value: str | None,
@@ -280,7 +317,7 @@ def write_judgment(app, *, subject_kind: str, subject: str, field: str, value: s
     if knowledge is None:
         raise JudgmentRefused("il sapere non e' disponibile")
     subject = str(subject or "").strip()
-    _check(subject_kind, subject, field, value)
+    _check(subject_kind, subject, field, value, app.get("type_judgments", REPO_JUDGMENTS))
     if value is None:
         seeded = _seed_values().get((subject_kind, subject, field))
         fact = None if seeded is None else Fact(

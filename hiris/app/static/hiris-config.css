@@ -2041,6 +2041,38 @@
 .section-card .jr-meta {
   display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;
 }
+/* Il valore di una riga dei giudizi, in tutte le sue forme (testo, JSON,
+   «solo: jammed»). La classe nasce perché una prova potesse guardare IL VALORE
+   invece del testo dell'intera sezione — `/si/` combaciava con «siren», il
+   nome del soggetto della riga accanto, e la prova non poteva fallire. Qui
+   porta anche la sua parte di forma: il valore non si spezza a metà di una
+   parola se non deve (`.jr-value-states`, sotto, dichiara il contrario per gli
+   stati citati, che sono lunghi e senza spazi). */
+.section-card .jr-value { overflow-wrap: break-word; }
+
+/* Gli stati di un `da_sapere_subito` a elenco («solo: jammed»): citati, non
+   tradotti, quindi monospazio come ogni altro valore tecnico della pagina —
+   `.text-mono` porta già il carattere.
+
+   `overflow-wrap: anywhere` **permette** di andare a capo dentro il nome di
+   uno stato, e lo si vuole: un nome lungo e senza spazi (`carbon_monoxide`,
+   `armed_custom_bypass`) in una colonna stretta non si spezzerebbe da solo e
+   sfonderebbe la riga sotto i 768px. Preferiamo un nome spezzato a una griglia
+   rotta — è la stessa scelta, con la stessa regola, già fatta per
+   `.jr-subject` qui sopra. */
+.section-card .jr-value-states { overflow-wrap: anywhere; }
+
+/* Revisione finale, I-4: il nome del campo sulle righe di «Le tue
+   correzioni», dove righe di campi diversi stanno mescolate. E' un'etichetta
+   di classificazione, non il valore: sta in secondo piano rispetto al valore
+   che le sta accanto. */
+.section-card .jr-field {
+  color: var(--text-2);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
 .section-card .jr-actions {
   display: flex; gap: var(--sp-2); justify-content: flex-end; flex-wrap: wrap;
 }

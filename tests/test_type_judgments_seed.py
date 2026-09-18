@@ -94,14 +94,138 @@ def test_i_fatti_di_HA_non_entrano_nel_seme():
     assert "attributi_assumibili" not in campi  # D1: resta codice
 
 
-def test_il_seme_conta_99_celle_campo_per_campo():
-    """Contato eseguendo il 16/09/2026 sulla 3.48.1 (spec §2). Mutazione:
-    dimenticare le due righe `home` -- rossa su `riposo`."""
+def test_il_seme_conta_115_celle_campo_per_campo():
+    """Contato ESEGUENDO il 18/09/2026 (Task 0, passo 1), non a mano: 99 celle
+    prima della fetta «da sapere subito», 16 righe nuove, 115.
+
+    Mutazione: dimenticare una delle sedici righe -- rossa su `da_sapere_subito`
+    e sul totale.
+    """
     import collections
     per_campo = collections.Counter(field for _, _, field, _ in tv.judgment_seed_rows())
     assert per_campo == {"genere": 26, "notevole": 23, "riposo": 18, "accendibile": 13,
-                         "limiti_parametri": 10, "lavoro": 9}
-    assert sum(per_campo.values()) == 99
+                         "limiti_parametri": 10, "lavoro": 9, "da_sapere_subito": 16}
+    assert sum(per_campo.values()) == 115
+
+
+def test_l_impronta_del_seme_vero_e_QUESTA():
+    """Fix round 1 (revisione Fable, MINOR 7). L'impronta della cronaca di
+    `REPO_JUDGMENTS` -- il seme vero, non uno costruito per la prova -- e'
+    stata misurata il 18/09/2026, dopo la fetta «da sapere subito» (Task 1):
+    `9692e12830c90fd0`. Fissarla qui per VALORE, non solo per uguaglianza fra
+    due istantanee (le prove sopra e in `test_type_judgments.py` lo fanno
+    gia'): il giorno in cui qualcuno tocca un valore di `genere` o `riposo`
+    del seme -- gli unici due campi in `CHRONICLE_FIELDS` -- questa riga grida
+    in CI invece di lasciare che il rilascio lo scopra dal vivo rifacendo
+    silenziosamente la cronaca.
+
+    Se il valore che si misura ESEGUENDO differisse da quello scritto qui, la
+    regola e' non scriverlo a mano: fermarsi e dirlo -- e' esattamente il
+    controllo che questa prova costituisce.
+
+    Mutazione: cambiare un valore di `riposo` di un tipo qualunque del seme
+    (es. aggiungere uno stato al riposo di `light`) -- rossa, l'impronta si
+    sposta."""
+    assert tv.REPO_JUDGMENTS.chronicle_fingerprint() == "9692e12830c90fd0"
+
+
+def test_i_sedici_tipi_da_sapere_subito_sono_QUESTI():
+    """Decisione del proprietario, 18/09/2026 (spec §2): i dodici di genere
+    `sicurezza` piu' i quattro sensori di apertura. L'elenco si fissa per NOME,
+    non per numero: un conteggio giusto con un tipo sbagliato passerebbe.
+
+    Mutazione ESEGUITA: messo `da_sapere_subito` anche su `light` -- rossa qui,
+    sull'`assert soggetti == [...]` qui sotto (`'light' != 'lock'` nell'elenco
+    ordinato), e sulla prova sorella
+    `test_da_sapere_subito_NON_e_notevole_e_i_due_elenchi_DIVERGONO`, sulla sua
+    asserzione `'light' in notevoli and 'light' not in subito`. Ripristinata
+    con l'editor, verificato con `git diff`.
+
+    **Citata per nome, non per numero di riga** (backlog, «Le citazioni per
+    numero di riga marciscono»): le due righe indicate qui prima -- 124 e 142 --
+    erano gia' scivolate il giorno dopo.
+    """
+    # **Non si filtra su `v == "si"`**: dal 18/09/2026 il valore ha TRE forme e
+    # `lock` porta l'elenco `["jammed"]`. Un filtro sul solo `si` avrebbe fatto
+    # sparire la serratura da questo elenco in silenzio -- cioe' avrebbe smesso
+    # di sorvegliare proprio la riga piu' interessante. Si esclude `no`, che e'
+    # l'unico valore che dice davvero «non va saputo subito».
+    soggetti = sorted(s for _, s, f, v in tv.judgment_seed_rows()
+                      if f == "da_sapere_subito" and v != "no")
+    assert soggetti == sorted([
+        "alarm_control_panel", "lock", "siren",
+        "binary_sensor.carbon_monoxide", "binary_sensor.cold", "binary_sensor.door",
+        "binary_sensor.garage_door", "binary_sensor.gas", "binary_sensor.heat",
+        "binary_sensor.moisture", "binary_sensor.opening", "binary_sensor.problem",
+        "binary_sensor.safety", "binary_sensor.smoke", "binary_sensor.tamper",
+        "binary_sensor.window"])
+
+
+def test_da_sapere_subito_NON_e_notevole_e_i_due_elenchi_DIVERGONO():
+    """La ragione per cui questa fetta esiste, scritta come prova: `notevole`
+    sta su 23 soggetti fra cui `light`, `switch`, `cover`, `media_player`;
+    `da_sapere_subito` su 16, e una luce accesa non c'e'. Se i due elenchi
+    coincidessero, il campo nuovo sarebbe un doppione -- ed e' esattamente cio'
+    che questa prova sorveglia.
+    """
+    notevoli = {s for _, s, f, v in tv.judgment_seed_rows() if f == "notevole" and v == "si"}
+    # `v != "no"` e non `v == "si"`: `lock` porta l'elenco `["jammed"]` (vedi la
+    # prova sopra), e con un filtro sul solo `si` questo confronto avrebbe
+    # taciuto su di lei.
+    subito = {s for _, s, f, v in tv.judgment_seed_rows()
+              if f == "da_sapere_subito" and v != "no"}
+    assert "light" in notevoli and "light" not in subito
+    assert "switch" in notevoli and "switch" not in subito
+    assert "alarm_control_panel" in subito and "alarm_control_panel" not in notevoli
+    assert notevoli != subito
+
+
+def test_OGNI_tipo_da_sapere_subito_HA_un_riposo_O_un_lavoro():
+    """Ruling del controller (giro di correzioni 1, IMPORTANT 2b). Un tipo
+    `da_sapere_subito: si` SENZA `riposo` ne' `lavoro` e' un caso **indecidibile**
+    per `stato_da_sapere_subito` (spec `2026-09-18-da-sapere-subito.md` §3): non
+    c'e' modo di dire quando una cosa esce da un riposo che nessuno ha
+    dichiarato.
+
+    Chi lo protegge, oggi, sono TRE cose diverse, e vale la pena non
+    confonderle:
+
+    - **la regola** risponde `no` ("indecidibile vale no", revisione finale,
+      I-1): e' la sola garanzia, perche' e' l'unica che regge anche su un `si`
+      orfano gia' scritto nell'archivio;
+    - **la porta** (`mind/judgments._check`) rifiuta di scriverlo, spiegando
+      perche': una cortesia a chi scrive, non una garanzia -- il `si` orfano si
+      ottiene comunque scrivendo prima il riposo e togliendolo dopo;
+    - **questa prova** sorveglia che il SEME non lo semini mai. Oggi le
+      **quindici** righe `si` ce l'hanno tutte; la sedicesima, `lock`, porta un
+      elenco di stati e questa domanda non la riguarda (l'elenco dice gia' cosa
+      conta).
+
+    Mutazione ESEGUITA: tolto `resting_states=...` dalla `_vocabulary.add` di
+    `alarm_control_panel` e la sua riga `_vocabulary.extend` che da'
+    `working_states` (entrambe in `home_space/type_vocabulary.py`, citate per
+    soggetto e non per numero di riga: vedi la voce di backlog «Le citazioni per
+    numero di riga marciscono»). Prima provato su `siren`, ma `siren` e'
+    dichiarato accendibile (`operable=Ours(True)`) e un'altra guardia del
+    modulo (`_verify_operable_types_bring_their_rest`) rifiuta l'import prima
+    ancora che questa prova giri; `alarm_control_panel` non e' accendibile e
+    arriva alla prova. Rossa su questo file: `assert ['alarm_control_panel']
+    == []`. Ripristinate entrambe le righe con l'editor, verificato con
+    `git diff` che il file torna identico a prima.
+    """
+    # Solo le righe `si`: per un ELENCO di stati la domanda non si pone -- e'
+    # l'elenco stesso a dire cosa conta, e non c'e' niente da decidere (vedi
+    # `stato_da_sapere_subito`, primo ramo).
+    subito = sorted(s for _, s, f, v in tv.judgment_seed_rows()
+                    if f == "da_sapere_subito" and v == "si")
+    senza = []
+    for soggetto in subito:
+        dominio, _, classe = soggetto.partition(".")
+        classe = classe or None
+        if not tv.REPO_JUDGMENTS.resting_of(dominio, classe) and not dict(
+                tv.REPO_JUDGMENTS.working_of(dominio, classe)):
+            senza.append(soggetto)
+    assert senza == []
 
 
 def test_il_seme_si_rilegge_in_un_istantanea_identica():
@@ -122,3 +246,31 @@ def test_il_seme_si_rilegge_in_un_istantanea_identica():
     rifatta = TypeJudgments.from_rows(tv.judgment_seed_rows(), genres=tv.CHRONICLE_GENRES,
                                       absent_forms=tv.ABSENT_STATE_FORMS.value)
     assert rifatta.rows() == tv.REPO_JUDGMENTS.rows()
+
+
+def test_la_SERRATURA_porta_un_ELENCO_e_le_altre_quindici_un_SI():
+    """Decisione del proprietario, 18/09/2026 (spec §2, terza forma del
+    valore). Fissato per NOME e per VALORE: un conteggio giusto con la riga
+    sbagliata passerebbe.
+
+    **Perche' proprio `lock`, e nessun'altra delle sedici.** Misurato: l'allarme
+    ha un `lavoro` di UN solo stato (`triggered`), i tredici `binary_sensor` e
+    la sirena non dichiarano nessun `lavoro` e la regola usa il loro riposo.
+    Per `lock`, `lavoro` vuol dire «sta operando» (`locking`, `opening`,
+    `unlocking`, `unlocked`, `open`) e `jammed` non e' ne' lavoro ne' riposo:
+    col solo `si` sarebbe entrato in banda ogni sblocco e non l'inceppamento.
+
+    Mutazione ESEGUITA: rimesso `Ours(True)` su `lock` in
+    `type_vocabulary.py` -- rossa su questo file (`'si' != '["jammed"]'`) e su
+    `test_type_judgments.py::test_una_SERRATURA_INCEPPATA_va_saputa_subito_e_una_SBLOCCATA_no`
+    (`unlocked` torna in banda, `jammed` ne esce). Ripristinata con l'editor,
+    verificato che il conteggio del seme resta 115 e l'impronta
+    `9692e12830c90fd0`.
+    """
+    valori = {s: v for _, s, f, v in tv.judgment_seed_rows() if f == "da_sapere_subito"}
+    assert valori["lock"] == '["jammed"]'
+    altri = sorted(s for s, v in valori.items() if s != "lock")
+    assert len(altri) == 15
+    assert {valori[s] for s in altri} == {"si"}
+    # E l'elenco si legge come un insieme, non come testo.
+    assert tv.REPO_JUDGMENTS.da_sapere_subito("lock") == frozenset({"jammed"})

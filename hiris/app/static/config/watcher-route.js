@@ -1445,8 +1445,10 @@ window.HirisWatcherRoute = (function () {
      .superpowers/sdd/2026-09-16-il-giudizio-dei-tipi/task-9-ux-approvata.md):
      «Cosa non ha capito» (sopra, invariata) -> «Le tue correzioni» (righe
      `proprietario`+`altro`, e il modulo di aggiunta in testa) -> «I giudizi
-     del seme» (sei gruppi chiusi, uno per campo) -> «Le domande aperte»
-     (sei, chiuse) -> «Cosa ha capito» (sotto, invariata).
+     del seme» (sette gruppi chiusi, uno per campo -- sei approvati il
+     17/09/2026 piu' `da_sapere_subito`, spec 2026-09-18-da-sapere-subito.md
+     §5) -> «Le domande aperte» (sei, chiuse) -> «Cosa ha capito» (sotto,
+     invariata).
 
      **Una riga vive in un posto solo** (fondamenta HIRIS): chi ha corretto
      un giudizio del seme sparisce dal SUO gruppo e vive solo in «Le tue
@@ -1457,22 +1459,59 @@ window.HirisWatcherRoute = (function () {
      portano backtick e `**`, e si costruiscono nodo per nodo (vedi
      `appendMarkedText`). */
 
-  /* I sei campi, nell'ordine approvato -- letterale, identico a
+  /* I sette campi, nell'ordine approvato -- letterale, identico a
      GENRE_FIELD/RESTING_FIELD/NOTABLE_FIELD/OPERABLE_FIELD/
-     PARAMETER_LIMITS_FIELD/WORKING_FIELD di home_space/type_judgments.py
-     (contati nel sorgente Python, non ricopiati da una variabile). */
+     PARAMETER_LIMITS_FIELD/WORKING_FIELD/DA_SAPERE_SUBITO_FIELD di
+     home_space/type_judgments.py (contati nel sorgente Python, non
+     ricopiati da una variabile). Fix round 1 (revisione Fable, IMPORTANT 2):
+     `da_sapere_subito` (Task 1, spec 2026-09-18-da-sapere-subito.md §2) era
+     un settimo campo nel sapere senza il suo settimo qui -- non compariva
+     mai nella pagina. Resta fuori da `EDITABLE_JUDGMENT_FIELD` (sotto): la
+     spec §5 dichiara fuori da questa fetta la SCRITTURA di un valore nuovo
+     dalla pagina -- il ritorno al seme, invece, la pagina lo fa gia' per
+     qualunque riga corretta di qualunque campo (`revertToSeedControl`). */
   var JUDGMENT_FIELD_GROUPS = [
     { campo: 'genere', etichetta: 'Genere' },
     { campo: 'riposo', etichetta: 'Riposo' },
     { campo: 'notevole', etichetta: 'Notevole' },
     { campo: 'accendibile', etichetta: 'Accendibile' },
     { campo: 'limiti_parametri', etichetta: 'Limiti dei parametri' },
-    { campo: 'lavoro', etichetta: 'Lavoro' }
+    { campo: 'lavoro', etichetta: 'Lavoro' },
+    { campo: 'da_sapere_subito', etichetta: 'Da sapere subito' }
   ];
 
   /* Solo `genere` si corregge sul posto in v1 (forma approvata, punto 3 e
-     "cosa la v1 non fa"): gli altri cinque restano in sola lettura da qui. */
+     "cosa la v1 non fa"): gli altri sei restano in sola lettura da qui. */
   var EDITABLE_JUDGMENT_FIELD = 'genere';
+
+  /* I campi che entrano nell'IMPRONTA della cronaca -- letterale, identico a
+     `CHRONICLE_FIELDS = (GENRE_FIELD, RESTING_FIELD)` di
+     home_space/type_judgments.py, e legato a quello da una prova che legge
+     entrambi i sorgenti (`tests/js/watcher-route.test.mjs`).
+
+     **Solo per questi la pagina può promettere che «la cronaca dei giorni
+     passati si rifà da sola»** (revisione finale, I-4): l'impronta non
+     comprende `notevole`, `accendibile`, `lavoro`, `limiti_parametri` né
+     `da_sapere_subito`, e correggere uno di quelli non fa rifare nessun
+     giorno. Prometterlo lo stesso era la pagina che diceva il falso proprio a
+     chi corregge il campo di questa fetta. */
+  var CHRONICLE_JUDGMENT_FIELDS = { genere: true, riposo: true };
+
+  function rifaLaCronaca(campo) {
+    return CHRONICLE_JUDGMENT_FIELDS[campo] === true;
+  }
+
+  /* L'etichetta italiana di un campo, dall'elenco qui sopra: serve alla riga di
+     «Le tue correzioni», dove righe di campi diversi stanno mescolate e
+     «lock · no · Corretto da te» non distingue `notevole` da
+     `da_sapere_subito` (revisione finale, I-4). Un campo sconosciuto torna
+     com'è scritto: meglio il nome tecnico che il silenzio. */
+  function judgmentFieldLabel(campo) {
+    for (var i = 0; i < JUDGMENT_FIELD_GROUPS.length; i += 1) {
+      if (JUDGMENT_FIELD_GROUPS[i].campo === campo) return JUDGMENT_FIELD_GROUPS[i].etichetta;
+    }
+    return String(campo || '');
+  }
 
   /* Valori JSON (liste/mappe), non tradotti -- `.text-mono` (forma
      approvata, punto 2). Gli altri campi portano un valore già leggibile. */
@@ -1690,9 +1729,14 @@ window.HirisWatcherRoute = (function () {
     var confirmBox = el('div');
     confirmBox.hidden = true;
     confirmBox.style.cssText = 'margin-top:6px;display:flex;flex-direction:column;gap:6px;max-width:340px';
-    var warn = el('p', 'field-hint',
-      'Cancella la tua correzione: il sapere riprende il valore del seme, o nessuna riga se il ' +
-      'seme non ne ha. Anche questo ' + chronicleCostPhrase() + '.');
+    /* La seconda frase vale solo per i campi dell'impronta (revisione finale,
+       I-4): tornare al seme su `da_sapere_subito` non fa rifare nessun giorno,
+       e annunciare due ore di ricostruzione a chi non le pagherà è un avviso
+       falso -- che per di più scoraggia una correzione che non costa niente. */
+    var testoWarn = 'Cancella la tua correzione: il sapere riprende il valore del seme, o ' +
+      'nessuna riga se il seme non ne ha.';
+    if (rifaLaCronaca(g.campo)) testoWarn += ' Anche questo ' + chronicleCostPhrase() + '.';
+    var warn = el('p', 'field-hint', testoWarn);
     var actions = el('div');
     actions.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap';
     var yes = el('button', 'btn btn-ghost btn-ghost-danger', 'Sì, torna al seme');
@@ -1737,12 +1781,20 @@ window.HirisWatcherRoute = (function () {
      giorni passati si rifà da sola» -- mancava del tutto. Sta qui, accanto
      al badge, perché è una proprietà della riga finché resta `proprietario`
      (non una notifica che sparisce al primo ricaricamento): chi rivede la
-     pagina domani deve rileggerla, non solo chi l'ha appena scritta. */
+     pagina domani deve rileggerla, non solo chi l'ha appena scritta.
+
+     **Revisione finale, I-4**: la frase era incondizionata ed è vera solo per
+     i campi dell'impronta (`CHRONICLE_JUDGMENT_FIELDS`). Su `da_sapere_subito`
+     -- il campo che questa fetta aggiunge, e che con la cronaca non c'entra
+     per costruzione (spec §6) -- la pagina prometteva a chi corregge una
+     ricostruzione che non avviene. */
   function provenanceNode(g) {
     if (g.da === 'proprietario') {
       var wrap = el('span', 'jr-provenance');
       wrap.appendChild(el('span', 'agent-badge badge-on', 'Corretto da te il ' + (fmtDateOnly(g.quando_ts) || '—')));
-      wrap.appendChild(el('span', 'field-hint', 'La cronaca dei giorni passati si rifà da sola.'));
+      if (rifaLaCronaca(g.campo)) {
+        wrap.appendChild(el('span', 'field-hint', 'La cronaca dei giorni passati si rifà da sola.'));
+      }
       return wrap;
     }
     if (g.da === 'altro') {
@@ -1752,18 +1804,67 @@ window.HirisWatcherRoute = (function () {
     return el('span', 'field-hint', 'dal seme');
   }
 
+  /* `da_sapere_subito` porta TRE forme (decisione del proprietario,
+     18/09/2026): `si`, `no`, oppure l'elenco JSON degli stati che contano --
+     `lock` porta `["jammed"]`, perché per lei `lavoro` vuol dire «sta
+     operando» e l'inceppamento non è né lavoro né riposo.
+
+     In pagina l'elenco si legge «solo: jammed»: il «solo» è la regola detta in
+     italiano (entra quello stato e nient'altro), **gli stati si CITANO e non
+     si traducono**. Scelta dichiarata: «inceppata» sarebbe una traduzione
+     decisa qui, in un file di resa, cioè esattamente dove il vocabolario della
+     casa non si decide — e finché non esiste la fetta che rende gli stati
+     nella lingua della casa, mostrare il nome vero è ciò che permette a chi
+     legge di ritrovarlo in Home Assistant. Gli stati stanno in un nodo loro
+     (`.jr-value-states`, monospazio) come gli altri valori tecnici.
+
+     Un valore che NON si interpreta si mostra com'è: mai un errore muto. */
+  function judgmentStateList(valore) {
+    if (typeof valore !== 'string' || valore.charAt(0) !== '[') return null;
+    var stati;
+    // Un valore che non si interpreta non e' un errore da gridare: si ricade
+    // sulla resa grezza, che almeno mostra cosa c'e' scritto nell'archivio.
+    try { stati = JSON.parse(valore); } catch { return null; }
+    if (!Array.isArray(stati) || !stati.length) return null;
+    for (var i = 0; i < stati.length; i += 1) {
+      if (typeof stati[i] !== 'string') return null;
+    }
+    return stati;
+  }
+
   function judgmentValueNode(g) {
-    var cls = JSON_JUDGMENT_FIELDS[g.campo] ? 'text-mono' : null;
+    if (g.campo === 'da_sapere_subito') {
+      var stati = judgmentStateList(g.valore);
+      if (stati) {
+        var wrap = el('span', 'jr-value');
+        wrap.appendChild(document.createTextNode('solo: '));
+        wrap.appendChild(el('span', 'jr-value-states text-mono', stati.join(', ')));
+        return wrap;
+      }
+    }
+    /* `.jr-value` su OGNI forma del valore, non solo qui: senza, una prova che
+       volesse guardare il valore di una riga non ha altro appiglio che il testo
+       dell'intera sezione -- e `/si/` combacia con «siren», cioe' con il nome
+       del soggetto della riga accanto. E' una prova che non puo' fallire, il
+       difetto n. 1 di questo progetto, reso possibile da una classe mancante. */
+    var cls = JSON_JUDGMENT_FIELDS[g.campo] ? 'jr-value text-mono' : 'jr-value';
     return el('span', cls, g.valore == null ? '—' : g.valore);
   }
 
   /* Una riga: `soggetto | valore | provenienza | azioni` (forma approvata,
      punto 6), a griglia larga e impilata sotto i 768px -- mai una
-     `<table>` (CSS: `.jr-row` in hiris-config.css). */
-  function judgmentRow(g, outerBody) {
+     `<table>` (CSS: `.jr-row` in hiris-config.css).
+
+     `mostraCampo` (revisione finale, I-4): in «Le tue correzioni» righe di
+     campi diversi stanno mescolate, e senza il nome del campo «lock · no ·
+     Corretto da te» vale identica per `notevole` e per `da_sapere_subito` --
+     chi legge non sa cosa ha corretto. Dentro «I giudizi del seme» il campo è
+     già il titolo del gruppo e ripeterlo su ogni riga sarebbe rumore. */
+  function judgmentRow(g, outerBody, mostraCampo) {
     var riga = el('div', 'sc-row jr-row');
     riga.appendChild(el('div', 'jr-subject text-mono', g.soggetto));
     var meta = el('div', 'jr-meta');
+    if (mostraCampo === true) meta.appendChild(el('span', 'jr-field', judgmentFieldLabel(g.campo)));
     meta.appendChild(judgmentValueNode(g));
     meta.appendChild(provenanceNode(g));
     riga.appendChild(meta);
@@ -1860,11 +1961,11 @@ window.HirisWatcherRoute = (function () {
       line(body, 'Nessuna correzione ancora: le righe che scrivi da qui vivono da sole.', TONE_CALM);
       return heading;
     }
-    corrette.forEach(function (g) { body.appendChild(judgmentRow(g, outerBody)); });
+    corrette.forEach(function (g) { body.appendChild(judgmentRow(g, outerBody, true)); });
     return heading;
   }
 
-  /* «I giudizi del seme» (forma approvata, punto 2): sei gruppi chiusi, uno
+  /* «I giudizi del seme» (forma approvata, punto 2): sette gruppi chiusi, uno
      per campo, ordinati per soggetto dentro. Il conteggio si calcola dai
      dati -- mai scritto a mano -- e porta anche le correzioni tolte da qui
      («25 dal seme · 1 corretta da te»): la riga vive solo in «Le tue

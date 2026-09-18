@@ -117,6 +117,7 @@ from enum import Enum
 from types import MappingProxyType
 
 from .type_judgments import (
+    DA_SAPERE_SUBITO_FIELD,
     GENRE_FIELD,
     NOTABLE_FIELD,
     OPERABLE_FIELD,
@@ -495,6 +496,13 @@ PARAMETER_LIMITS = "parameter_limits"
 #: dominio lo dichiara per tutte le sue coppie, e la gerarchia di `field` fa il
 #: resto -- cosi' il censore li sorveglia con lo stesso conto.
 NOTABLE = "notable"
+
+#: Il campo `da_sapere_subito` (spec `2026-09-18-da-sapere-subito.md`). **In
+#: italiano anche qui**, e non per svista: il glossario vuole che una riga nasca
+#: con l'italiano e che l'inglese si scelga in un passaggio successivo -- un
+#: `must_know` inventato adesso salterebbe proprio il controllo che quella
+#: regola esiste per far scattare.
+DA_SAPERE_SUBITO = "da_sapere_subito"
 
 #: Il genere di un episodio: a quale forma della cronaca appartiene. Sostituisce
 #: la gamba (spec 2026-09-16 §5): e' la sola cosa che la gamba decideva davvero.
@@ -914,6 +922,46 @@ _vocabulary.extend("binary_sensor", "door", notable=Ours(True))
 _vocabulary.extend("binary_sensor", "window", notable=Ours(True))
 _vocabulary.extend("binary_sensor", "garage_door", notable=Ours(True))
 _vocabulary.extend("binary_sensor", "opening", notable=Ours(True))
+
+# «Da sapere subito»: i dodici tipi di genere `sicurezza` piu' i quattro sensori
+# di apertura (decisione del proprietario, 18/09/2026). **Non coincide con
+# `notable` qui sopra, ed e' il punto**: una luce accesa vale la pena
+# raccontarla nel riassunto e non e' una cosa da sapere subito.
+_vocabulary.extend("alarm_control_panel", da_sapere_subito=Ours(True))
+# **La serratura porta un ELENCO, non un `si`** (decisione del proprietario,
+# 18/09/2026, dopo la revisione finale). Delle sedici righe di questo giudizio
+# quindici stanno bene col `si`: l'allarme ha un `lavoro` di UN solo stato
+# (`triggered`), i tredici `binary_sensor` e la sirena non dichiarano nessun
+# `lavoro` e la regola usa il loro riposo. Per `lock`, invece, `lavoro`
+# significa «sta operando» -- `locking`, `opening`, `unlocking`, `unlocked`,
+# `open` -- e `jammed` non e' ne' un lavoro ne' il riposo (`locked`). Col solo
+# `si`, la regola avrebbe fatto entrare in banda **ogni sblocco** e lasciato
+# fuori **l'inceppamento**: l'esatto contrario di cio' che serve. E' la stessa
+# malattia che questa fetta esiste per curare -- una parola che dice due cose --
+# trovata dentro `lavoro`.
+_vocabulary.extend("lock", da_sapere_subito=Ours(("jammed",)))
+_vocabulary.extend("siren", da_sapere_subito=Ours(True))
+# Fix round 1 (revisione Fable, MINOR 4): un ciclo qui e' un'eccezione (il
+# resto del modulo, `notable` incluso, dichiara una riga per chiamata) e va
+# giustificato, non lasciato all'abitudine. La ragione: le tredici classi qui
+# sotto NON hanno la sotto-distinzione che `notable` ha (li' «allarmi» e
+# «aperture» sono due gruppi commentati a parte, perche' un lettore potrebbe
+# chiedersi perche' l'uno e non l'altro); qui sono tutte e sole le classi di
+# apertura piu' i rilevatori di pericolo del genere `sicurezza`, la STESSA
+# ragione gia' scritta nel commento qui sopra, ripetuta tredici volte
+# identica. Un ciclo la scrive una volta: tredici chiamate uguali non
+# impedirebbero da sole un `Ours(False)` scritto per errore su una riga o una
+# classe persa nella lista, e il ciclo rende quell'errore piu' difficile,
+# non solo piu' corto da leggere.
+#
+# `_device_class`, non `_classe`: `home_space/` e' un ambito che la rinomina ha
+# gia' chiuso all'inglese (`scripts/rinomina.py`), e un nome italiano nuovo qui
+# sarebbe la regressione che `test_gli_ambiti_chiusi_restano_idempotenti`
+# sorveglia -- misurato applicando lo strumento a una copia del file.
+for _device_class in ("smoke", "gas", "carbon_monoxide", "heat", "cold", "moisture",
+                      "tamper", "problem", "safety", "door", "window", "opening",
+                      "garage_door"):
+    _vocabulary.extend("binary_sensor", _device_class, da_sapere_subito=Ours(True))
 
 
 
@@ -1869,6 +1917,7 @@ JUDGMENT_FIELDS = MappingProxyType({
     GENRE: GENRE_FIELD, RESTING_STATES: RESTING_FIELD, WORKING_STATES: WORKING_FIELD,
     NOTABLE: NOTABLE_FIELD, OPERABLE: OPERABLE_FIELD,
     PARAMETER_LIMITS: PARAMETER_LIMITS_FIELD,
+    DA_SAPERE_SUBITO: DA_SAPERE_SUBITO_FIELD,
 })
 
 
@@ -1877,6 +1926,13 @@ def _seed_value(name: str, value) -> str:
         return value
     if name in (NOTABLE, OPERABLE):
         return "si" if value else "no"
+    if name == DA_SAPERE_SUBITO:
+        # Tre forme, non due (spec §2): `si`, `no`, oppure l'elenco degli stati
+        # che contano -- scritto come il riposo, JSON ordinato, cosi' che due
+        # letterali equivalenti non producano due righe diverse.
+        if isinstance(value, bool):
+            return "si" if value else "no"
+        return json.dumps(sorted(value), ensure_ascii=False)
     if name == RESTING_STATES:
         return json.dumps(sorted(value), ensure_ascii=False)
     return json.dumps(_plain(value), ensure_ascii=False, sort_keys=True)

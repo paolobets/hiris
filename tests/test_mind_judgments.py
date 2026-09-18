@@ -7,6 +7,7 @@ import pytest
 
 from hiris.app import server
 from hiris.app.home_space import type_vocabulary as tv
+from hiris.app.home_space.type_judgments import JUDGMENT_FIELD_NAMES
 from hiris.app.mind.facts import genre_for
 from hiris.app.mind.judgments import (
     JUDGMENT_AUTHOR,
@@ -338,6 +339,48 @@ def test_porta_RIFIUTA_fatto_ha_genere_inventato_ARCHIVIO_intatto(tmp_path):
         s.close()
 
 
+def test_porta_RIFIUTA_da_sapere_subito_SENZA_riposo_ne_lavoro(tmp_path):
+    """Ruling del controller (giro di correzioni 1, IMPORTANT 2): un tipo con
+    `da_sapere_subito: si` e SENZA `riposo` ne' `lavoro` e' indecidibile -- per
+    sapere quando una cosa esce dal suo riposo bisogna sapere qual e' il
+    riposo. La porta lo rifiuta **spiegando perche'**, invece di accettare in
+    silenzio una riga che chi la scrive crede di aver capito.
+
+    **Questa prova sorveglia la CORTESIA, non la garanzia** (revisione finale,
+    I-1): la garanzia e' nella regola, che senza lavoro ne' riposo risponde
+    `no` -- e si prova in
+    `test_type_judgments.py::test_un_SI_ORFANO_senza_riposo_ne_lavoro_NON_rende_notizia_ogni_stato`.
+    Il rifiuto da solo non basterebbe: il `si` orfano si ottiene scrivendo
+    prima il riposo, poi il `si`, poi togliendo il riposo -- una sequenza di
+    tre scritture che questa porta accetta tutte, una per una.
+
+    Vista rossa PRIMA di scrivere il rifiuto in `_check`: la scrittura veniva
+    accettata in silenzio (nessun `pytest.raises` scattava, `s.get(...)`
+    tornava la riga scritta).
+
+    Mutazione da ESEGUIRE: togliere il nuovo controllo da `_check` -- rossa,
+    la scrittura torna ad essere accettata.
+    """
+    s, app = _app_seminata(tmp_path)
+    try:
+        righe = [(f.subject_kind, f.subject, f.field, f.value, f.who) for f in s.judgment_rows()]
+        with pytest.raises(JudgmentRefused, match="riposo"):
+            write_judgment(app, subject_kind="tipo", subject="update", field="da_sapere_subito",
+                           value="si")
+        assert s.get("tipo", "update", "da_sapere_subito") is None
+        assert [(f.subject_kind, f.subject, f.field, f.value, f.who)
+                for f in s.judgment_rows()] == righe
+        # Con un riposo dichiarato PRIMA, la stessa riga passa: il rifiuto
+        # segue lo stato del sapere, non un elenco scritto a mano.
+        write_judgment(app, subject_kind="tipo", subject="update", field="riposo",
+                       value='["off"]')
+        write_judgment(app, subject_kind="tipo", subject="update", field="da_sapere_subito",
+                       value="si")
+        assert app["type_judgments"].da_sapere_subito("update") is True
+    finally:
+        s.close()
+
+
 def test_porta_RIFIUTA_guasto(tmp_path):
     """`guasto` e' un genere con una forma, ma quella forma e' delle condizioni
     di sistema (`problema:`, `integrazione:`...: spec §5) e legge `a` come
@@ -385,6 +428,11 @@ _LIVELLI_MUTI = [
     ("entita", "climate.x", "limiti_parametri", '{"x": {"options": "y"}}'),
     ("tipo", "sensor.power", "accendibile", "si"),
     ("tipo", "climate.hvac", "limiti_parametri", '{"x": {"options": "y"}}'),
+    # D1 della fetta 2026-09-18: `_LEVELS` dichiara i livelli a cui
+    # `da_sapere_subito` e' davvero CONSULTATO -- coppia e dominio, come
+    # `notevole`. Una riga su un'entita' sarebbe accettata e non letta da
+    # nessuno: il proprietario la vedrebbe scritta e la casa non cambierebbe.
+    ("entita", "alarm_control_panel.ingresso", "da_sapere_subito", "si"),
     # forme di soggetto che nessuna chiave di ricerca costruisce
     ("entita", "light", "genere", "sicurezza"),
     ("entita", "light.", "genere", "sicurezza"),
@@ -652,3 +700,190 @@ def test_tornare_al_seme_su_un_campo_che_non_esiste_e_RIFIUTATO(tmp_path):
         assert s.get("entita", "light.salotto", "lavoro") is None
     finally:
         s.close()
+
+
+# -- «da sapere subito»: la porta di scrittura (Task 3, spec 2026-09-18-da-sapere-subito.md §5) --
+#
+# Il rifiuto su un'entita' non ha una prova sua qui: e' gia' la riga
+# `("entita", "alarm_control_panel.ingresso", "da_sapere_subito", "si")` in
+# `_LIVELLI_MUTI` (sopra, col commento D1), parametrizzata su
+# `test_livello_MUTO_rifiutato` -- che verifica in piu' che l'archivio resti
+# intatto. Una seconda prova identica, allo stesso livello e con lo stesso
+# `match`, sarebbe un doppione.
+
+def test_la_porta_scrive_da_sapere_subito_su_un_dominio_e_su_una_coppia(tmp_path):
+    """Spec §5: la porta lo accetta come gli altri campi, senza nessuna riga
+    nuova nella porta oltre al livello dichiarato in `_LEVELS`
+    (`DA_SAPERE_SUBITO_FIELD: frozenset({"coppia", "dominio"})`) -- che quella
+    riga sia OBBLIGATORIA, e non un elenco a parte, lo dimostra
+    `test_ogni_giudizio_ha_i_suoi_livelli_dichiarati` qui sotto (`_LEVELS` e
+    `JUDGMENT_FIELD_NAMES` devono avere le stesse chiavi)."""
+    s, app = _app_seminata(tmp_path)
+    try:
+        esito = write_judgment(app, subject_kind="tipo", subject="binary_sensor.motion",
+                               field="da_sapere_subito", value="si", now=lambda: 5.0)
+        assert esito["riga"]["campo"] == "da_sapere_subito"
+        assert esito["riga"]["chi"] == JUDGMENT_AUTHOR
+        assert app["type_judgments"].da_sapere_subito("binary_sensor", "motion") is True
+        write_judgment(app, subject_kind="tipo", subject="light",
+                       field="da_sapere_subito", value="si", now=lambda: 6.0)
+        assert app["type_judgments"].da_sapere_subito("light") is True
+    finally:
+        s.close()
+
+
+def test_il_SI_basta_il_LAVORO_da_solo_senza_riposo(tmp_path):
+    """**Il rifiuto era provato per meta'** (ri-revisione finale, punto 3). La
+    condizione e' «senza riposo NE' lavoro»: chi ha solo il lavoro passa, perche'
+    il lavoro basta a dire quali stati sono il fatto -- la regola non tocca
+    nemmeno il riposo, in quel caso.
+
+    Nessuna prova lo diceva, e il seme non poteva dirlo: tutti e nove i tipi che
+    dichiarano un `lavoro` dichiarano **anche** un riposo. La mutazione «il `si`
+    esige il riposo e ignora il lavoro» restava quindi VERDE su 117 prove --
+    cioe' meta' della condizione non era sorvegliata da niente.
+
+    Mutazione ESEGUITA: `if not current.resting_of(...)` al posto di
+    `if not current.resting_of(...) and not current.working_of(...)` -- rossa
+    qui (`JudgmentRefused` sulla scrittura del `si`), verde su tutto il resto
+    della suite, com'era prima di questa prova. Ripristinata con l'editor.
+
+    `update` e' il tipo che nel seme non ha ne' riposo ne' lavoro: gli si
+    scrive PRIMA un lavoro, poi il `si`.
+    """
+    s, app = _app_seminata(tmp_path)
+    try:
+        assert not app["type_judgments"].resting_of("update")
+        assert not app["type_judgments"].working_of("update")
+        write_judgment(app, subject_kind="tipo", subject="update", field="lavoro",
+                       value='{"installing": "sta installando un aggiornamento"}',
+                       now=lambda: 5.0)
+        assert not app["type_judgments"].resting_of("update")  # il riposo resta assente
+        write_judgment(app, subject_kind="tipo", subject="update",
+                       field="da_sapere_subito", value="si", now=lambda: 6.0)
+        assert app["type_judgments"].da_sapere_subito("update") is True
+        # E la regola usa il lavoro, senza nessun riposo da consultare.
+        assert app["type_judgments"].stato_da_sapere_subito(
+            "update", None, "installing") is True
+        assert app["type_judgments"].stato_da_sapere_subito("update", None, "off") is False
+    finally:
+        s.close()
+
+
+def test_la_porta_scrive_un_ELENCO_di_stati_e_NON_chiede_riposo_ne_lavoro(tmp_path):
+    """Terza forma del valore (decisione del proprietario, 18/09/2026): la
+    porta la accetta come le altre due, e **il rifiuto «senza riposo ne'
+    lavoro» non le si applica**. Per un elenco quella domanda non ha senso:
+    l'elenco dice gia' quali stati contano, e non c'e' niente da decidere --
+    il rifiuto esiste per il solo `si`, che senza riposo ne' lavoro non sa a
+    cosa appoggiarsi.
+
+    `update` e' il tipo usato dalla prova del rifiuto qui sopra proprio perche'
+    il seme non gli da' ne' riposo ne' lavoro: con `si` la porta lo respinge,
+    con l'elenco lo scrive.
+
+    Mutazione ESEGUITA: allargato il rifiuto di `_check` da `value == "si"` a
+    qualunque valore del campo (`value is not None`) -- rossa qui
+    (`JudgmentRefused` sulla scrittura dell'elenco), verde sul resto del file.
+    Ripristinata con l'editor.
+    """
+    s, app = _app_seminata(tmp_path)
+    try:
+        assert not app["type_judgments"].resting_of("update")
+        assert not app["type_judgments"].working_of("update")
+        esito = write_judgment(app, subject_kind="tipo", subject="update",
+                               field="da_sapere_subito", value='["failed"]', now=lambda: 5.0)
+        assert esito["riga"]["valore"] == '["failed"]'
+        assert app["type_judgments"].da_sapere_subito("update") == frozenset({"failed"})
+        assert app["type_judgments"].stato_da_sapere_subito("update", None, "failed") is True
+        assert app["type_judgments"].stato_da_sapere_subito("update", None, "idle") is False
+    finally:
+        s.close()
+
+
+def test_la_porta_RIFIUTA_un_elenco_di_stati_STORTO(tmp_path):
+    """L'elenco vuoto, l'elenco di numeri, l'elenco con una forma dell'assenza:
+    la porta li respinge **prima di toccare l'archivio**, con la ragione che
+    `_parse_da_sapere_subito` scrive -- nessun ramo nuovo qui, e' la stessa
+    `TypeJudgments.from_rows` su una riga sola che valida gli altri campi.
+
+    Mutazione ESEGUITA: tolto il controllo sul vuoto da
+    `_parse_da_sapere_subito` -- rossa sulla prima asserzione (nessun
+    `JudgmentRefused`: `[]` veniva scritto), e rossa anche su
+    `test_type_judgments.py::test_un_elenco_VUOTO_di_stati_da_sapere_subito_si_RIFIUTA`.
+    Ripristinata con l'editor.
+    """
+    s, app = _app_seminata(tmp_path)
+    try:
+        righe = [(f.subject_kind, f.subject, f.field, f.value) for f in s.judgment_rows()]
+        with pytest.raises(JudgmentRefused, match="vuoto"):
+            write_judgment(app, subject_kind="tipo", subject="lock",
+                           field="da_sapere_subito", value="[]")
+        with pytest.raises(JudgmentRefused, match="si/no"):
+            write_judgment(app, subject_kind="tipo", subject="lock",
+                           field="da_sapere_subito", value="[3]")
+        with pytest.raises(JudgmentRefused, match="assenza"):
+            write_judgment(app, subject_kind="tipo", subject="lock",
+                           field="da_sapere_subito", value='["jammed", "none"]')
+        assert [(f.subject_kind, f.subject, f.field, f.value)
+                for f in s.judgment_rows()] == righe
+    finally:
+        s.close()
+
+
+def test_da_sapere_subito_torna_al_seme_come_gli_altri(tmp_path):
+    """`valore: null` rimette la riga del seme se il seme ce l'ha (i sedici
+    tipi), la cancella se non ce l'ha. Nessun ramo nuovo: e'
+    `knowledge.forget_and_seed`, la stessa transazione sola degli altri campi.
+    """
+    s, app = _app_seminata(tmp_path)
+    try:
+        # Un tipo DEL SEME, corretto e poi rimesso: torna «si», non sparisce.
+        write_judgment(app, subject_kind="tipo", subject="alarm_control_panel",
+                       field="da_sapere_subito", value="no", now=lambda: 5.0)
+        assert app["type_judgments"].da_sapere_subito("alarm_control_panel") is False
+        write_judgment(app, subject_kind="tipo", subject="alarm_control_panel",
+                       field="da_sapere_subito", value=None, now=lambda: 6.0)
+        assert app["type_judgments"].da_sapere_subito("alarm_control_panel") is True
+        # Un tipo che il seme NON ha: il ritorno al seme la cancella.
+        write_judgment(app, subject_kind="tipo", subject="light",
+                       field="da_sapere_subito", value="si", now=lambda: 7.0)
+        esito = write_judgment(app, subject_kind="tipo", subject="light",
+                               field="da_sapere_subito", value=None, now=lambda: 8.0)
+        assert esito["riga"] is None
+        assert app["type_judgments"].da_sapere_subito("light") is False
+    finally:
+        s.close()
+
+
+def test_una_correzione_di_da_sapere_subito_NON_cambia_l_impronta(tmp_path):
+    """Spec §6: il campo non entra nella cronaca, quindi correggerlo non fa
+    rifare nessun giorno -- a differenza di `genere` e `riposo`, che costano
+    fino a due ore di ricostruzione. E' la differenza che la pagina dichiara a
+    chi corregge.
+
+    Mutazione da ESEGUIRE: aggiungere il campo a `CHRONICLE_FIELDS` -- rossa
+    (ed e' la stessa mutazione del Task 1, vista da un'altra porta: qui
+    arrossisce sull'`impronta` che la porta RESTITUISCE).
+    """
+    s, app = _app_seminata(tmp_path)
+    try:
+        prima = app["type_judgments_status"]["impronta"]
+        esito = write_judgment(app, subject_kind="tipo", subject="light",
+                               field="da_sapere_subito", value="si", now=lambda: 5.0)
+        assert esito["impronta"] == prima
+        # E il contro-caso, che rende la prova discriminante: `genere` la muove.
+        dopo = write_judgment(app, subject_kind="tipo", subject="light",
+                              field="genere", value="nessuno", now=lambda: 6.0)
+        assert dopo["impronta"] != prima
+    finally:
+        s.close()
+
+
+def test_ogni_giudizio_ha_i_suoi_livelli_dichiarati():
+    """Un campo nuovo in `JUDGMENT_FIELD_NAMES` senza la sua riga in `_LEVELS`
+    non e' un rifiuto motivato: e' un KeyError, cioe' un 500 col corpo HTML che
+    la pagina non sa leggere. Mutazione ESEGUITA: togliere una riga da
+    `_LEVELS` -- rossa."""
+    from hiris.app.mind.judgments import _LEVELS
+    assert set(_LEVELS) == JUDGMENT_FIELD_NAMES
