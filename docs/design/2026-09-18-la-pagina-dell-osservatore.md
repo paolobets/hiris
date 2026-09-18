@@ -33,7 +33,9 @@ misurato, lo si dice.
    `/api/mind/watching` 86 KB, `/api/mind/knowledge` 27 KB, il resoconto del giorno, le analisi.
 2. **Cosa sto guardando: 153 soggetti** — 49 `sensor`, 35 `light`, 9 `switch`, 8 `climate`, 5
    `button`, 3 `binary_sensor`, 2 `person`, 2 `automation`, 1 `weather`, e **39 soggetti tecnici**
-   (`log:…` e un `integrazione:…`).
+   (`log:…` e un `integrazione:…`), che vengono da **30 logger distinti** — 23 integrazioni una
+   volta raggruppati. (La prima stesura di questa spec diceva «6 integrazioni»: numero mai
+   misurato, corretto il 18/09 contandoli.)
 3. **Lasciato fuori: 280 soggetti**, con **128 motivi distinti** scritti in prosa dal modello
    («Comando PTZ di una telecamera, non riguarda energia o comfort»). **Non si raggruppano per
    motivo**: si raggruppano per tipo di cosa — i primi otto tipi coprono 226 dei 280
@@ -109,9 +111,24 @@ Il modulo, su un giorno, aggiunge alle voci di cronaca:
 - **`nome`, sempre.** Per un soggetto `log:` si ricava dal `dominio` che la voce già porta
   (`homeassistant.components.hydrawise` → «Hydrawise»); per un'entità, il nome vivo. **Nessuna
   pagina inventa un nome.**
-- **`notevole`** con **`perche_notevole`** (`guasto`, `avviso`, `allarme`, `assenza`): la banda non
-  è un elenco di generi cablato nel JavaScript, e aggiungere «batteria scarica» domani è una riga in
-  un posto solo.
+- **`notevole_in_banda`** — il marchio, con **`specie_notevole`** (la famiglia: `guasto`, `avviso`,
+  `da_sapere_subito`) e **`perche_notevole`** (la ragione scritta nel giudizio, oppure niente). Due
+  campi e non uno: se la stessa chiave portasse ora una parola chiusa e ora una frase libera, la
+  pagina dovrebbe **riconoscere** quale delle due ha in mano, cioè tornare a decidere.
+
+  **Il criterio lo dice il sapere, con un giudizio suo** (decisione del proprietario, 18/09/2026,
+  dopo che la misura ha smentito due stesure di questa spec): il campo si chiama
+  **`da_sapere_subito`**, nasce nella fetta `2026-09-18-da-sapere-subito.md` e vale su 16 tipi. La
+  regola completa, con il caso dell'allarme `disarmed` che ha fatto scartare la stesura precedente,
+  sta nel §3 di quella spec. Qui basta sapere che **questa pagina non contiene nessun criterio**: lo
+  legge.
+
+  Misurato su otto giorni (10-17/09): da **0 a 10 righe** al giorno, due giorni con «niente da
+  dire». Con la stesura precedente di questa spec sarebbero state 71 righe su 75 il solo 17/09.
+
+Il vantaggio non è solo l'onestà: **il criterio vive nei giudizi, quindi il proprietario può
+  correggerlo** dalla scheda «Cosa ho capito», senza toccare il codice. La banda non è un elenco di
+  generi cablato nel JavaScript, e nemmeno nel Python.
 - **il raggruppamento dei soggetti tecnici** per integrazione, con `volte` e **la finestra** a cui
   quel numero si riferisce: un numero di volte senza finestra non significa niente.
 
@@ -126,24 +143,31 @@ funzionare.
 
 *Com'è andata la casa?*
 
-1. Titolo, e **quale giorno**, in chiaro: «Ieri, mercoledì 17 settembre — resoconto scritto alle
-   00:20», col selettore per cambiarlo (etichetta legata al campo).
+1. Titolo, e **quale giorno**, in chiaro: «Ieri, mercoledì 17 settembre», col selettore per
+   cambiarlo (etichetta legata al campo). **Non** si scrive «resoconto scritto alle 00:20»: il
+   contratto del resoconto **non porta nessun istante di scrittura** (misurato il 18/09; la prima
+   stesura lo prometteva). Se lo si vorrà dire, prima serve il campo.
 2. **«Fuori dal solito»**, sempre visibile. Ordine: sicurezza e presenza, poi guasti, poi avvisi.
    Al massimo cinque righe, il resto dietro «Vedi tutti (N)».
    - **riga di guasto**: `Hydrawise — Timeout fetching hydrawise data` e sotto, in grigio, `Guasto ·
      6 volte · l'ultima alle 14:32`. Il `titolo` è una **citazione**: resta nella lingua in cui Home
      Assistant l'ha scritto, non si traduce. Aprendo la riga: dominio intero, primo istante,
      identificativo grezzo.
-   - **riga di sicurezza o presenza**: `Allarme del corridoio — è scattato alle 03:12`, `Marta —
-     fuori casa dalle 22:40, non è rientrata`. Il soggetto è **sempre il nome**.
+   - **riga di un episodio notevole**: il soggetto è **sempre il nome**, e lo stato si **cita**, non
+     si interpreta: `Allarme piano terra — triggered · dalle 03:12 alle 03:19`. Scrivere «è
+     scattato» sarebbe una traduzione che oggi nessuno fa: rendere gli stati nella lingua della casa
+     è una fetta sua, e finché non c'è si cita.
    - **niente da dire** (il caso più frequente): una riga sola, neutra — «Nessun guasto e nessun
      allarme nelle 75 voci di ieri.» Il numero è la prova che ha guardato. **Non** si scrive «tutto
      a posto»: la pagina custodisce, non giudica.
    - **non si può sapere** (resoconto assente, archivio scollegato): «Il resoconto di ieri non è
      stato scritto: non si può sapere cosa è uscito dal solito.»
 3. **«Cosa non si sa»**, che compare solo se ha qualcosa da dire.
-4. **«Le misure» (67)**: riassunto con le poche che chiedono attenzione — scelte con un criterio
-   dichiarato («le 3 non aggiornate»), mai «le prime tre».
+4. **«Le misure» (67)**: riassunto con un criterio **dichiarato in didascalia**. Misurato il 18/09:
+   **47 misure hanno copertura piena e 20 non sono calcolabili**, e nessuna porta una freschezza —
+   quindi «le 3 non aggiornate» della prima stesura **non esiste nei dati**. Il criterio è «le 5 con
+   la copertura più bassa»; quando sono tutte piene lo si dice, invece di mostrare un elenco vuoto.
+   Le 20 non calcolabili vivono in «Cosa non si sa» e **non** si ripetono qui.
 5. **«Le forme» (8)**: chiuse.
 6. **«La cronaca» (75)**: in fondo, chiusa. Aperta: ordine cronologico con intestazioni d'ora, e le
    voci notevoli con lo stesso aspetto che hanno nella banda.
