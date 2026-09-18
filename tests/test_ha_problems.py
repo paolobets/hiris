@@ -334,6 +334,79 @@ def test_senza_la_chiave_il_nucleo_non_afferma_che_la_casa_e_sana():
     assert "Riparazioni" not in testo
 
 
+def test_compose_briefing_passa_l_istantanea_dei_giudizi_a_compose():
+    """Fix round 1 (revisione Fable), rilievo MINOR 4: stessa domanda di
+    `test_il_nucleo_legge_i_problemi_dalla_memoria_dell_app` sopra, ma
+    sull'istantanea dei giudizi invece che sui problemi -- se
+    `compose_briefing` non la inoltra, `GET /api/briefing` e la chat
+    sincrona userebbero silenziosamente il solo seme anche quando
+    `app["type_judgments"]` porta una correzione viva del proprietario.
+
+    Spia leggera su `compose` stesso (nessuna casa vera necessaria: il testo
+    che ne uscirebbe con una casa vera lo guarda gia' end-to-end
+    `tests/test_briefing.py::
+    test_una_correzione_su_notevole_arriva_dal_nucleo_intero_non_solo_da_is_event`)
+    -- qui basta il KEYWORD ricevuto.
+
+    Mutazione ESEGUITA: cambiato `judgments=judgments` in
+    `judgments=REPO_JUDGMENTS` (letterale, ignorando quanto letto da `app`)
+    nella chiamata `compose(` dentro `compose_briefing` -- rossa;
+    ripristinato con l'editor.
+    """
+    from hiris.app.api import handlers_home_space
+
+    catturato = {}
+    originale = handlers_home_space.compose
+
+    def spia(*args, **kwargs):
+        catturato.update(kwargs)
+        return ("", {})
+
+    handlers_home_space.compose = spia
+    try:
+        giudizi_finti = object()
+        handlers_home_space.compose_briefing({"type_judgments": giudizi_finti})
+    finally:
+        handlers_home_space.compose = originale
+    assert catturato.get("judgments") is giudizi_finti
+
+
+def test_compose_briefing_SENZA_la_chiave_compone_col_SOLO_SEME():
+    """Giro di correzioni 1, punto 5: la ricaduta si SCEGLIE e si fissa.
+
+    `compose_briefing` legge `app.get("type_judgments")` e, se manca, mette
+    `REPO_JUDGMENTS`. La prova strutturale D3 guarda il **keyword** passato a
+    `compose(`, non il valore: quella ricaduta non era fissata da nessuna
+    prova, ed e' la forma di ricaduta silenziosa che la spec §8 vieta. Qui si
+    dichiara cosa deve fare -- il solo seme del repo, mai `None` -- e la
+    ragione del `.get` resta scritta accanto al codice: la funzione accetta
+    anche un `app` finto, come fanno tre file di prove passando `{}`.
+
+    In produzione il ramo non scatta mai: l'avvio scrive sempre la chiave,
+    anche col sapere chiuso (`server._open_knowledge`).
+
+    Mutazione ESEGUITA: `app["type_judgments"]` al posto del `.get` col
+    ripiego -- rossa (`KeyError: 'type_judgments'`, e con lei cadono anche le
+    prove che passano `{}`); ripristinato con l'editor.
+    """
+    from hiris.app.api import handlers_home_space
+    from hiris.app.home_space.type_vocabulary import REPO_JUDGMENTS
+
+    catturato = {}
+    originale = handlers_home_space.compose
+
+    def spia(*args, **kwargs):
+        catturato.update(kwargs)
+        return ("", {})
+
+    handlers_home_space.compose = spia
+    try:
+        handlers_home_space.compose_briefing({})
+    finally:
+        handlers_home_space.compose = originale
+    assert catturato.get("judgments") is REPO_JUDGMENTS
+
+
 def test_rileggi_problemi_mette_la_fotografia_in_ram():
     """Vive in RAM e non in archivio: un `repair` e' momentaneo, e un archivio
     riletto solo sugli eventi dei registri -- che il registro dei problemi NON

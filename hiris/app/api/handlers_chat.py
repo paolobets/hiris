@@ -166,6 +166,17 @@ def create_tool_dispatcher(app, exchange: str | None = None) -> ToolDispatcher:
         # un'entita'. STESSA istanza di quella che l'osservatore scrive --
         # una casa sola per cio' che HIRIS ha capito, o le due divergono.
         knowledge=app.get("knowledge"),
+        # L'istantanea dei giudizi sui tipi (spec 2026-09-16 §3, D3): il
+        # dispatcher nasce a ogni turno (vedi il docstring qui sopra), e ogni
+        # turno riceve l'istantanea corrente, non un fornitore -- una
+        # correzione della casa scritta un attimo prima deve arrivare al
+        # turno di adesso. `.get()` e non l'indice diretto per la STESSA
+        # ragione di `compose_briefing` (`handlers_home_space.py`): questa
+        # funzione e' chiamata anche con un `app` finto nei test
+        # (`tests/test_execute_tool.py`), e `ToolDispatcher.__init__` ricade
+        # gia' sul solo seme se riceve `None` -- in una vera richiesta questo
+        # ramo non degrada mai, perche' l'avvio scrive sempre la chiave.
+        judgments=app.get("type_judgments"),
     )
 
 

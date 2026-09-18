@@ -43,6 +43,7 @@ import threading
 import time as _time
 from dataclasses import dataclass
 
+from ..home_space.type_judgments import JUDGMENT_FIELD_NAMES
 from ..storage import connect, init_schema
 
 logger = logging.getLogger(__name__)
@@ -218,10 +219,17 @@ CREATE TABLE IF NOT EXISTS knowledge (
     seeded_priority INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (subject_kind, subject, field)
 );
--- Nessun indice su `field`: l'unico accesso per campo e' `by_field_prefix`,
+-- Nessun indice su `field`. Gli accessi per campo sono due: `by_field_prefix`,
 -- che usa `substr(field, 1, ?)` -- una funzione sulla colonna, che l'indice non
--- puo' servire. Un indice che nessuna query puo' usare costa scritture e non
--- fa risparmiare nessuna lettura (Fable 5.1, 13/09/2026).
+-- puo' servire (Fable 5.1, 13/09/2026) -- e `judgment_rows` (fetta «il
+-- giudizio dei tipi», 16/09/2026), `field IN (...)`, che un indice servirebbe
+-- ma che gira all'avvio, a ogni scrittura di un giudizio dalla porta unica
+-- (`mind/judgments.write_judgment`, spec 2026-09-16 §4) e a ogni lettura della
+-- pagina del sapere: mai nel percorso caldo. Sulla casa del
+-- proprietario la tabella aveva 241 righe il 16/09/2026 (spec 2026-09-16 §1
+-- misura 6), a cui il seme dei giudizi aggiunge 99 righe (conteggio di
+-- `judgment_seed_rows()` il 17/09/2026). Un indice costa a ogni scrittura
+-- per risparmiare su una lettura rara di qualche centinaio di righe.
 """
 def _migration_2(conn) -> None:
     """v1 -> v2: `seeded_value` e `seeded_priority` (13/09/2026).
@@ -493,15 +501,34 @@ def _facts(rows) -> list[Fact]:
     Quindi: si salta e si dichiara nel registro. La riga resta sul disco --
     non si cancella mai niente dell'utente -- e chi guarda il log sa quale.
     """
-    facts = []
+    return _facts_and_skipped(rows)[0]
+
+
+def _facts_and_skipped(rows) -> tuple[list[Fact], list[str]]:
+    """Come `_facts`, ma dice anche **quali** righe ha saltato.
+
+    Il registro dell'add-on da fuori non si legge, ed e' la stessa lezione del
+    difetto del 14/09/2026 (`server._record_repair`): un esito scritto solo
+    nel log e' un esito perso. Chi ha bisogno di **mostrare** le righe saltate
+    -- la porta dei giudizi, che le porta in `/api/health` (giro di correzioni
+    1, punto 6) -- chiede questa, e non ripete ne' la query ne' il ciclo:
+    `_facts` e' questa funzione senza la seconda meta'.
+
+    Ogni riga saltata si nomina `genere/soggetto/campo: perche'`, la stessa
+    forma del registro: chi legge la salute e chi legge il log leggono la
+    stessa frase.
+    """
+    facts, skipped = [], []
     for row in rows:
         try:
             facts.append(Fact(**dict(row)))
         except (ValueError, TypeError) as error:
+            skipped.append(
+                f"{row['subject_kind']}/{row['subject']}/{row['field']}: {error}")
             logger.warning(
                 "sapere: riga saltata perche' non si regge (%s/%s/%s): %s",
                 row["subject_kind"], row["subject"], row["field"], error)
-    return facts
+    return facts, skipped
 
 
 class KnowledgeStore:
@@ -539,6 +566,71 @@ class KnowledgeStore:
                 "source=excluded.source, who=excluded.who, when_ts=excluded.when_ts",
                 tuple(getattr(fact, c) for c in _COLUMNS))
             self._conn.commit()
+
+    def _delete(self, subject_kind: str, subject: str, field: str) -> int:
+        """La cancellazione di una terna, **senza lock e senza commit**: e' la
+        meta' che `forget` e `forget_and_seed` hanno in comune, e sta qui una
+        volta sola perche' due copie della stessa `DELETE` divergono."""
+        cur = self._conn.execute(
+            "DELETE FROM knowledge WHERE subject_kind = ? AND subject = ? "
+            "AND field = ?", (subject_kind, subject, field))
+        return cur.rowcount or 0
+
+    def _seed_one(self, fact: Fact, priority: int) -> int:
+        """Una riga del seme, **senza lock e senza commit**. La disciplina --
+        scrive cio' che non c'e', corregge cio' che nessuno ha toccato, e
+        `priority` decide fra due semi -- e' spiegata per esteso in `seed`."""
+        cur = self._conn.execute(
+            f"INSERT INTO knowledge ({', '.join(_COLUMNS)}, "
+            "seeded_value, seeded_priority) "
+            f"VALUES ({', '.join('?' * (len(_COLUMNS) + 2))}) "
+            "ON CONFLICT(subject_kind, subject, field) DO UPDATE SET "
+            "value=excluded.value, provenance=excluded.provenance, "
+            "verification=excluded.verification, evidence=excluded.evidence, "
+            "source=excluded.source, who=excluded.who, "
+            "when_ts=excluded.when_ts, seeded_value=excluded.seeded_value, "
+            "seeded_priority=excluded.seeded_priority "
+            "WHERE knowledge.seeded_value IS NOT NULL "
+            "  AND knowledge.value IS knowledge.seeded_value "
+            "  AND excluded.seeded_priority >= knowledge.seeded_priority "
+            "  AND (knowledge.value IS NOT excluded.value "
+            "       OR knowledge.source IS NOT excluded.source)",
+            tuple(getattr(fact, c) for c in _COLUMNS) + (fact.value, int(priority)))
+        return cur.rowcount or 0
+
+    def forget_and_seed(self, subject_kind: str, subject: str, field: str,
+                        facts, *, priority: int = 0) -> bool:
+        """Toglie una terna e rimette il seme **in una transazione sola**.
+        Torna `True` se la riga tolta c'era.
+
+        **E' l'atomicita', prima fondamenta** (giro di correzioni 1, punto 8).
+        «Torna al seme» era `forget()` e poi `seed()`: due transazioni, e un
+        guasto dell'archivio fra l'una e l'altra -- disco pieno, `database is
+        locked` oltre il `busy_timeout` -- lasciava il sapere **senza nessuna
+        delle due righe**. Il proprietario chiedeva di tornare al valore
+        normale e si ritrovava quel valore sparito, in silenzio: la peggiore
+        delle tre uscite possibili, e l'unica che nessuno avrebbe potuto
+        indovinare guardando la pagina.
+
+        `facts` puo' essere vuoto: una terna che il seme del repo non ha
+        (un'entita' corretta dal proprietario) si toglie e basta, e allora
+        questa e' una `forget` con un nome piu' lungo -- che va bene, perche'
+        chi legge la porta vede **una** operazione dove il proprietario ne ha
+        chiesta una.
+        """
+        with self._lock:
+            try:
+                existed = self._delete(subject_kind, subject, field)
+                for fact in facts:
+                    self._seed_one(fact, priority)
+                self._conn.commit()
+            except Exception:
+                # Senza il `rollback` la `DELETE` resterebbe nella transazione
+                # aperta e la prima scrittura riuscita dopo di lei la
+                # confermerebbe: il guasto sarebbe differito, non evitato.
+                self._conn.rollback()
+                raise
+        return bool(existed)
 
     def seed(self, facts, *, priority: int = 0) -> int:
         """Il seme del repo: scrive **solo cio' che ancora non c'e'**.
@@ -578,24 +670,7 @@ class KnowledgeStore:
         written = 0
         with self._lock:
             for fact in facts:
-                cur = self._conn.execute(
-                    f"INSERT INTO knowledge ({', '.join(_COLUMNS)}, "
-                    "seeded_value, seeded_priority) "
-                    f"VALUES ({', '.join('?' * (len(_COLUMNS) + 2))}) "
-                    "ON CONFLICT(subject_kind, subject, field) DO UPDATE SET "
-                    "value=excluded.value, provenance=excluded.provenance, "
-                    "verification=excluded.verification, evidence=excluded.evidence, "
-                    "source=excluded.source, who=excluded.who, "
-                    "when_ts=excluded.when_ts, seeded_value=excluded.seeded_value, "
-                    "seeded_priority=excluded.seeded_priority "
-                    "WHERE knowledge.seeded_value IS NOT NULL "
-                    "  AND knowledge.value IS knowledge.seeded_value "
-                    "  AND excluded.seeded_priority >= knowledge.seeded_priority "
-                    "  AND (knowledge.value IS NOT excluded.value "
-                    "       OR knowledge.source IS NOT excluded.source)",
-                    tuple(getattr(fact, c) for c in _COLUMNS)
-                    + (fact.value, int(priority)))
-                written += cur.rowcount or 0
+                written += self._seed_one(fact, priority)
             self._conn.commit()
         return written
 
@@ -642,6 +717,27 @@ class KnowledgeStore:
                 "WHERE substr(field, 1, ?) = ? ORDER BY subject, field",
                 (len(prefix), prefix)).fetchall()
         return _facts(rows)
+
+    def judgment_rows(self) -> list[Fact]:
+        """Le righe dei giudizi su tipi ed entita' (spec 2026-09-16 §3)."""
+        return self.judgment_rows_and_skipped()[0]
+
+    def judgment_rows_and_skipped(self) -> tuple[list[Fact], list[str]]:
+        """Le righe dei giudizi, **e quali l'archivio ha dovuto saltare**.
+
+        Una sola query per le due meta' (giro di correzioni 1, punto 6): la
+        porta dei giudizi ha bisogno di entrambe -- le righe buone per
+        costruire l'istantanea, le saltate per dirlo in `/api/health` -- e due
+        letture darebbero due elenchi che possono gia' divergere fra loro.
+        """
+        names = sorted(JUDGMENT_FIELD_NAMES)
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT {', '.join(_COLUMNS)} FROM knowledge "
+                "WHERE subject_kind IN ('tipo', 'entita') "
+                f"AND field IN ({', '.join('?' * len(names))}) "
+                "ORDER BY subject_kind, subject, field", names).fetchall()
+        return _facts_and_skipped(rows)
 
     def summary(self) -> dict:
         """Cosa contiene il sapere: `{"totale": n, "righe": [...]}`.
@@ -712,11 +808,9 @@ class KnowledgeStore:
         alla regola «mai dati dell'utente»: quelle righe non sono dell'utente.
         """
         with self._lock:
-            cur = self._conn.execute(
-                "DELETE FROM knowledge WHERE subject_kind = ? AND subject = ? "
-                "AND field = ?", (subject_kind, subject, field))
+            deleted = self._delete(subject_kind, subject, field)
             self._conn.commit()
-        return bool(cur.rowcount)
+        return bool(deleted)
 
     def count(self) -> int:
         with self._lock:

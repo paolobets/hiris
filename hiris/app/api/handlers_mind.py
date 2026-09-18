@@ -1,6 +1,7 @@
 """Le rotte del cervello, che la pagina dell'osservatore legge.
 
-Cinque: `watching`, `report`, `analysis`, `knowledge` e la POST `objective`.
+Sei: `watching`, `report`, `analysis`, `knowledge` e le POST `objective` e
+`judgment` (la rotta dei giudizi sui tipi, spec 2026-09-16 §4).
 Nate come due (fetta «l'osservatore», `docs/design/2026-08-26-l-osservatore.md`
 §7), cresciute con la spec dei tre attori (§8, §9, §10, §11).
 
@@ -30,8 +31,9 @@ senza di lui). E' la stessa distinzione a tre stati che il resto del prodotto
 difende ovunque (`casa.non_disponibili`, `casa.etichette`, eccetera): un
 guasto non si appiattisce su un'assenza.
 
-Entrambe le rotte sono GET, quindi nessun `csrf_middleware` da rispettare
-(sono metodi "safe", stessa esenzione di `GET /api/agenda`)."""
+Le rotte GET non hanno `csrf_middleware` da rispettare (sono metodi "safe",
+stessa esenzione di `GET /api/agenda`); le due POST ci passano, come ogni
+scrittura su `/api/`."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -39,24 +41,16 @@ from datetime import datetime, timedelta
 from aiohttp import web
 
 from ..home_space.historian import home_space_zone
+from ..home_space.type_census import OPEN_QUESTIONS
 from ..mind.facts import day_boundaries
+from ..mind.judgments import (
+    JudgmentNotInEffect,
+    JudgmentRefused,
+    JudgmentStoreFailed,
+    judgment_listing,
+    write_judgment,
+)
 from ..mind.report import as_document
-
-# I soggetti che NON sono entita' di Home Assistant: una condizione di
-# sistema, una voce del registro di errori, un'esecuzione di automazione. Il
-# loro `corpo.stato` non e' uno stato di HA (`aperto`, `setup_retry`,
-# `chiuso`: parole di HIRIS e della configurazione, non del vocabolario degli
-# stati), e cercargli una traduzione vorrebbe dire spaccare `automazione:
-# automation.x` sul punto e chiedere a HA il dominio «automazione:automation»,
-# che non esiste su nessuna casa.
-#
-# **Corretto il 09/09/2026 (audit delle fondamenta): non e' piu' una tupla
-# scritta qui.** Fino a oggi lo stesso confine, con le stesse quattro parole,
-# viveva TRE volte -- qui, e due volte in `mind/facts.py` (`genre_for` e
-# `_reading_aspect`) -- ed era una fondamenta 2 vera: un quarto prefisso
-# aggiunto altrove sarebbe rimasto invisibile qui. La casa e'
-# `mind/facts.NOT_ENTITY_PREFIXES`; questo modulo si collega, non copia.
-
 
 #: Quanti giorni di volume la pagina mostra. **Non e' la durata del grezzo**
 #: (22 giorni, `store.READING_RETENTION_S`): e' quanto serve a vedere se il
@@ -212,7 +206,10 @@ async def handle_report(request: web.Request) -> web.Response:
                  "misure": _named(names, resoconto.get("misure")),
                  "forme": _named(names, resoconto.get("forme"))}
     if request.query.get("formato") == "documento":
-        return web.Response(text=as_document(resoconto),
+        # Il documento confronta l'impronta della cronaca con quella dei giudizi
+        # di adesso, e dice quando e' diversa (spec 2026-09-16 §6).
+        current = request.app["type_judgments"].chronicle_fingerprint()
+        return web.Response(text=as_document(resoconto, current_fingerprint=current),
                             content_type="text/markdown", charset="utf-8")
     return web.json_response({"resoconto": resoconto})
 
@@ -285,6 +282,71 @@ async def handle_set_objective(request) -> web.Response:
     written = store.set_objective(text)
     return web.json_response({"obiettivo": store.objective(),
                               "scritto": bool(written)})
+
+
+_JUDGMENT_TEXT_KEYS = ("soggetto_genere", "soggetto", "campo")
+
+
+async def handle_set_judgment(request) -> web.Response:
+    """Scrive un giudizio su un tipo o un'entita' (spec 2026-09-16 §4).
+
+    Corpo: `{"soggetto_genere", "soggetto", "campo", "valore"}`; `valore: null`
+    torna al seme. Torna l'esito di `mind/judgments.write_judgment`:
+    `{"riga": {...} | null, "impronta": ..., "provenienza_istantanea": "sapere"}`
+    -- **non** `da`, che in `giudizi` e' l'origine della riga e qui sarebbe la
+    provenienza dell'istantanea: due cose, due parole (giro di correzioni 1,
+    punto 3).
+
+    **Un `valore` MANCANTE e' un 400, non un ritorno al seme**: un campo
+    dimenticato da chi chiama cancellerebbe in silenzio una correzione.
+
+    **409 se la riga e' scritta ma non vale**: l'istantanea ricostruita e'
+    tornata al solo seme per un'altra riga dell'archivio che non si interpreta.
+    Non e' un rifiuto (l'archivio e' cambiato) e non e' un successo.
+
+    **503 anche quando il sapere c'e' ma non si lascia scrivere** (giro di
+    correzioni 1, punto 8): disco pieno, base occupata oltre il `busy_timeout`.
+    Stessa risposta del sapere assente -- per chi guarda e' la stessa cosa, e
+    il rimedio e' lo stesso -- con la ragione vera nel corpo.
+
+    E' una scrittura: passa dal `csrf_middleware` come l'obiettivo.
+    """
+    if request.app.get("knowledge") is None:
+        return web.json_response({"errore": "il sapere non e' disponibile"},
+                                 status=503)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"errore": "corpo non leggibile"}, status=400)
+    if (not isinstance(body, dict) or "valore" not in body
+            or not all(isinstance(body.get(key), str) for key in _JUDGMENT_TEXT_KEYS)):
+        return web.json_response(
+            {"errore": "servono `soggetto_genere`, `soggetto` e `campo` come testo, e "
+                       "`valore` (testo, oppure null per tornare al seme)."},
+            status=400)
+    try:
+        outcome = write_judgment(
+            request.app, subject_kind=body["soggetto_genere"], subject=body["soggetto"],
+            field=body["campo"], value=body["valore"])
+    except JudgmentRefused as refused:
+        return web.json_response({"errore": str(refused)}, status=400)
+    except JudgmentStoreFailed as failed:
+        # **503 come il sapere assente** (giro di correzioni 1, punto 8):
+        # l'archivio c'e' ma non si lascia scrivere -- disco pieno, `database
+        # is locked` oltre il `busy_timeout`. Per chi guarda e' la stessa cosa
+        # («il sapere adesso non si puo' usare») e ha lo stesso rimedio
+        # (riprovare), mentre un 500 col corpo HTML di aiohttp la pagina non
+        # sa nemmeno leggerlo. Non e' un 400: non c'e' niente di sbagliato in
+        # cio' che il proprietario ha chiesto.
+        return web.json_response({"errore": str(failed)}, status=503)
+    except JudgmentNotInEffect as unused:
+        return web.json_response(
+            {"errore": str(unused), "riga": unused.row,
+             "impronta": unused.status["impronta"],
+             "provenienza_istantanea": unused.status["provenienza_istantanea"]},
+            status=409)
+    return web.json_response(outcome)
+
 
 async def handle_analysis(request) -> web.Response:
     """L'analisi di un giorno, o le ultime (spec §10).
@@ -381,7 +443,12 @@ def _with_device_names(app, analysis: dict) -> dict:
 async def handle_knowledge(request) -> web.Response:
     """Il **sapere**: cosa HIRIS ha capito della casa, e cosa non ha capito.
 
-    Torna `{"conteggi": {...}, "non_capito": [...]}`.
+    Torna `{"conteggi": {...}, "non_capito": [...], "giudizi": [...],
+    "domande_aperte": [...]}`. `giudizi` sono le righe dei giudizi sui tipi che
+    l'archivio sa leggere, con da dove vengono (`mind/judgments.judgment_listing`:
+    una riga che l'archivio salta non c'e'); `domande_aperte` le
+    domande del censore (`type_census.OPEN_QUESTIONS`) a cui la pagina chiede
+    di rispondere (spec 2026-09-16 §7).
 
     **La quarta fondamenta**: se un dato c'e' e nessuno puo' chiederlo, non
     esiste. Il sapere contiene le direzioni dell'energia, i significati delle
@@ -410,5 +477,10 @@ async def handle_knowledge(request) -> web.Response:
                    "provenienza": f.provenance, "prove": f.evidence,
                    "chi": f.who, "quando_ts": f.when_ts}
                   for f in sapere.not_understood()]
-    return web.json_response({"conteggi": sapere.summary(),
-                              "non_capito": unexplained})
+    return web.json_response({
+        "conteggi": sapere.summary(),
+        "non_capito": unexplained,
+        "giudizi": judgment_listing(sapere),
+        "domande_aperte": [{"chiavi": sorted(question.keys), "domanda": question.question}
+                           for question in OPEN_QUESTIONS],
+    })

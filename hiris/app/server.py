@@ -62,8 +62,11 @@ from .mind.facts import (
     BALANCE_DIRECTIONS,
     aggregate_day,
     build_balance_body,
+    chronicle_is_stale,
     day_boundaries,
+    rebuild_chronicle,
 )
+from .mind.judgments import build_judgments
 from .mind.knowledge import Fact, KnowledgeStore
 from .mind.observer import SCOPE_TURN_KIND
 from .mind.observer import apply_answer as observer_apply_answer
@@ -77,6 +80,7 @@ from .mind.seed import (
     attribute_seed,
     balance_recipe,
     direction_seed,
+    judgment_seed,
     meaning_seed,
     meanings_from_translations,
 )
@@ -1371,9 +1375,48 @@ def _timezone_from_home_space_store(home_space_store) -> str | None:
     return home_space_store.reference_frame().get("fuso") if home_space_store else None
 
 
-async def backfill_one_missing_report(app, ha_client, *,
-                                      now=datetime.now) -> str | None:
-    """Il resoconto di **un** giorno che non ce l'ha. Torna quale, o `None`.
+#: Quanto tace il log per un giorno di `backfill_one_report` che non si fa, dopo
+#: averlo detto una volta. Decisioni del proprietario, 17/09/2026: prima per la
+#: cronaca che non si rifa', poi -- lo stesso giorno -- anche per il resoconto
+#: che non si recupera (Home Assistant irraggiungibile). Il giro gira ogni
+#: cinque minuti: senza, lo stesso warning uscirebbe a ogni giro, in entrambi i
+#: rami. Il comportamento dei rami non cambia (il «manca» torna `None` e
+#: riprova), cambia solo quante volte lo dicono.
+#:
+#: **I due rami condividono la voce del giorno**, di proposito: un giorno sta in
+#: un ramo solo alla volta (un resoconto che manca non ha una cronaca da rifare),
+#: e passa dal primo al secondo solo RIUSCENDO, cioe' togliendo la voce. Due
+#: chiavi separate non direbbero niente di piu', e sarebbero due posti per lo
+#: stesso fatto: «questo giorno non si riesce a fare».
+#:
+#: Lo stato vive in `app["backfill_quiet"]` (giorno ->
+#: istante dell'ultimo warning), **creato vuoto da `_on_startup`**, prima che
+#: aiohttp congeli l'app: il giro gira ad app avviata, e aggiungere una chiave a
+#: quel punto e' «Changing state of started or joined application» (stessa
+#: regola di `api/handlers_mcp.create_rounds_per_exchange`, M-2). Un riavvio lo
+#: azzera, e il warning si riscrive una volta -- accettato.
+#:
+#: Una voce per giorno FALLITO; si toglie quando quel giorno riesce, e altrimenti
+#: non si pota finche' il processo vive. Il conto e' limitato: un giorno uscito
+#: dal grezzo non entra piu' in nessuno dei due rami, e i giorni del grezzo sono 22.
+BACKFILL_QUIET_S = 4 * 3600
+
+
+def _backfill_warning_due(app, day: str, clock: float) -> bool:
+    """Se il warning di `day` va scritto adesso: si' la prima volta e dopo
+    `BACKFILL_QUIET_S` dall'ultimo, e in quel caso segna l'istante. Una sola
+    regola per i due rami di `backfill_one_report`."""
+    quiet = app["backfill_quiet"]
+    if clock - quiet.get(day, float("-inf")) < BACKFILL_QUIET_S:
+        return False
+    quiet[day] = clock
+    return True
+
+
+async def backfill_one_report(app, ha_client, *,
+                              now=datetime.now) -> str | None:
+    """Il resoconto di **un** giorno che manca o la cui cronaca e' nata con un
+    altro giudizio. Torna quale, o `None`.
 
     **Perche' esiste, col numero.** Misurato sulla casa vera il 14/09/2026,
     appena il resoconto ha cominciato a nascere: esistevano quello del 12 e
@@ -1398,11 +1441,51 @@ async def backfill_one_missing_report(app, ha_client, *,
     successo niente»: una bugia archiviata, nell'archivio che esiste per non
     dirne.
 
-    **Solo i mancanti**, mai una sovrascrittura: stessa asimmetria di
-    `_write_missing_reports` e di `store._migration_8`.
+    **Un giorno mancante si fa intero; uno gia' scritto non si sovrascrive
+    mai per intero.** Le misure di un giorno scritto restano quelle: stessa
+    asimmetria di `_write_missing_reports` e di `store._migration_8`.
 
-    Non solleva: gira per sempre, e un giorno che non si e' potuto rifare non
-    deve fermare gli altri.
+    **Ma la sua cronaca si', quando e' nata con un altro giudizio** (dal
+    17/09/2026, spec `docs/design/2026-09-16-il-giudizio-dei-tipi.md` §6):
+    l'impronta del resoconto e' diversa da quella dell'istantanea corrente, o
+    manca (`facts.chronicle_is_stale`). Allora `facts.rebuild_chronicle`
+    sostituisce **solo** `cronaca` e `giudizio` -- nessuna lettura di Home
+    Assistant, nessuna ricetta. Stesso giro, stesse regole: un giorno per
+    giro, dal piu' vecchio, mai oltre il grezzo.
+
+    **Il giorno a cavallo della potatura non si rifa'** (revisione del
+    17/09/2026, eseguita): la potatura taglia a un istante e non a mezzanotte,
+    quindi il giorno in cui cade il taglio ha perso le sue voci nate prima. Non
+    si possono ricostruire, e rifarlo le cancellerebbe: quel giorno tiene la
+    cronaca e l'impronta che ha, e il documento dice che e' di un altro
+    giudizio. Solo per la cronaca: un giorno MANCANTE a cavallo si scrive
+    ancora, com'era.
+
+    **La condizione e' «nessuna riga di questo giorno puo' essere stata
+    potata»**, cioe' l'inizio del giorno oltre il taglio della potatura
+    (`adesso - READING_RETENTION_S`, dov'esso taglia: `mind/store.prune`) --
+    **non** un confronto con la riga piu' vecchia dell'archivio (giro di
+    correzioni 1, punto 1, riprodotto). Le due condizioni coincidono su una
+    casa potata, dove la riga piu' vecchia E' il taglio, e divergono su una
+    casa **giovane**: li' la riga piu' vecchia e' soltanto l'ora
+    d'installazione, il primo giorno comincia a mezzanotte e con la vecchia
+    condizione restava al giudizio vecchio per sempre, in silenzio, mentre
+    `report.as_document` prometteva il contrario.
+
+    **Ogni giorno rifatto logga una riga con la durata**: e' la misura vera di
+    quanto costa un giorno sull'host di Home Assistant, che la spec (§1,
+    misura 12) non ha. Un giro che non ha niente da fare non logga niente.
+
+    Non solleva: gira per sempre. **I due rami falliscono in modo diverso, e
+    reagiscono in modo diverso.** Un giorno mancante che non si scrive torna
+    `None` e si riprova al giro dopo dallo stesso giorno: i suoi errori sono
+    la rete verso Home Assistant, e passano. Una cronaca che non si rifa' e'
+    un difetto locale e deterministico -- fallirebbe a ogni giro -- e dal piu'
+    vecchio fermerebbe per sempre ogni giorno dopo, al primo avvio tutti: si
+    logga e si passa al giorno successivo nello stesso giro. **In entrambi i
+    rami** il warning esce una volta per giorno ogni `BACKFILL_QUIET_S`, non a
+    ogni giro, e una riuscita toglie la voce del giorno (Task 7b, decisioni del
+    proprietario del 17/09/2026).
     """
     archivio = app["observations"]
     first_ts = archivio.oldest_reading_ts()
@@ -1410,25 +1493,55 @@ async def backfill_one_missing_report(app, ha_client, *,
         return None
     timezone = _timezone_from_home_space_store(app.get("home_space_store"))
     zone = home_space_zone(timezone)
-    today = now(zone).date()
+    adesso = now(zone)
+    today = adesso.date()
     first_day = datetime.fromtimestamp(first_ts, tz=zone).date()
+    # Il taglio della potatura, calcolato come lo calcola lei
+    # (`mind/store.prune`: `quando_ts < now - READING_RETENTION_S`). Un giorno
+    # che comincia da qui in poi non puo' aver perso nessuna riga, e si rifa'.
+    oldest_intact_ts = adesso.timestamp() - READING_RETENTION_S
 
     day = first_day
     while day < today:
         as_text = day.strftime("%Y-%m-%d")
-        if archivio.report(as_text) is None:
+        written = archivio.report(as_text)
+        if written is None:
             try:
                 ricette, serie, nomi, without = await _report_ingredients(
                     app, ha_client, giorno=as_text, timezone=timezone)
                 aggregate_day(store=archivio, day=as_text, timezone=timezone,
                               recipes=ricette, series=serie, names=nomi,
-                              without_statistics=without)
+                              without_statistics=without,
+                              judgments=app["type_judgments"])
             except Exception as error:
-                logger.warning(
-                    "cervello: resoconto di %s non recuperato (%s: %s)",
-                    as_text, type(error).__name__, error)
+                if _backfill_warning_due(app, as_text, now(zone).timestamp()):
+                    logger.warning(
+                        "cervello: resoconto di %s non recuperato (%s: %s) -- per questo "
+                        "giorno il log tace per %d ore", as_text, type(error).__name__,
+                        error, BACKFILL_QUIET_S // 3600)
                 return None
+            app["backfill_quiet"].pop(as_text, None)
             logger.info("cervello: recuperato il resoconto di %s", as_text)
+            return as_text
+        if (chronicle_is_stale(written, app["type_judgments"])
+                and day_boundaries(as_text, timezone)[0] >= oldest_intact_ts):
+            started = time.monotonic()
+            try:
+                rebuild_chronicle(store=archivio, day=as_text, timezone=timezone,
+                                  judgments=app["type_judgments"])
+            except Exception as error:
+                if _backfill_warning_due(app, as_text, now(zone).timestamp()):
+                    logger.warning(
+                        "cervello: cronaca di %s non rifatta (%s: %s) -- per questo "
+                        "giorno il log tace per %d ore", as_text, type(error).__name__,
+                        error, BACKFILL_QUIET_S // 3600)
+                day += timedelta(days=1)
+                continue
+            app["backfill_quiet"].pop(as_text, None)
+            logger.info(
+                "cervello: rifatta la cronaca di %s col giudizio %s in %.2f s",
+                as_text, app["type_judgments"].chronicle_fingerprint(),
+                time.monotonic() - started)
             return as_text
         day += timedelta(days=1)
     return None
@@ -1487,7 +1600,8 @@ async def _write_missing_reports(app, ha_client, days, timezone) -> list[str]:
             aggregate_day(
                 store=archivio, day=day, timezone=timezone,
                 recipes=ricette, series=serie, names=nomi,
-                without_statistics=without)
+                without_statistics=without,
+                judgments=app["type_judgments"])
             scritti.append(day)
         except Exception as error:
             logger.warning(
@@ -1535,14 +1649,16 @@ async def _reaggregate_days(app, ha_client, *, now=datetime.now) -> None:
     tollera il parziale»*, perche' scrivere oggetti poveri sopra oggetti ricchi
     era un impoverimento.
 
-    Quella regola non ha piu' oggetto: **il resoconto non si sostituisce mai**,
-    si scrive solo dove manca. L'asimmetria e' rimasta, spostata dentro
+    Quella regola non ha piu' oggetto: **qui il resoconto non si sostituisce
+    mai**, si scrive solo dove manca (l'unica sostituzione, dal 17/09/2026, e'
+    la sola cronaca nata con un altro giudizio, e la fa il recupero:
+    `backfill_one_report`). L'asimmetria e' rimasta, spostata dentro
     `_write_missing_reports`, che e' l'unica cosa che questa funzione fa
     adesso. E le quattro uscite erano proprio cio' che, fino alla 3.33.2,
     impediva a qualunque resoconto di nascere su quella casa.
 
     **Perche' esiste ancora, accanto al recupero periodico.** Il recupero
-    (`backfill_one_missing_report`) scrive un giorno ogni cinque minuti dal
+    (`backfill_one_report`) scrive un giorno ogni cinque minuti dal
     piu' vecchio: gli ultimi due arriverebbero per ultimi, ore dopo l'avvio.
     Questa li mette davanti subito, che e' cio' che il proprietario guarda
     quando riapre la pagina.
@@ -2780,6 +2896,57 @@ def _read_static_pages(app) -> None:
             app[key] = ""
 
 
+def _open_knowledge(app, data_dir: str) -> None:
+    """Apre il sapere, lo semina e costruisce l'istantanea dei giudizi.
+
+    **Il file e' `sapere.db`, NON `knowledge.db`**: quel nome e' gia' occupato
+    su disco da un archivio documentale morto, dichiarato piu' sotto in
+    `_on_startup`. Aprirlo qui troverebbe le sue tabelle, e il
+    `CREATE TABLE IF NOT EXISTS` non direbbe niente.
+
+    Il seme del repo scrive solo cio' che ancora non c'e': la casa scrive
+    sopra, e un riavvio non cancella cio' che ha imparato.
+
+    **Se aprire o seminare solleva, l'add-on parte lo stesso** (decisione del
+    proprietario, 17/09/2026; spec 2026-09-16 §8): l'errore si logga, l'archivio
+    aperto a meta' si chiude, `app["knowledge"]` resta `None` e l'istantanea
+    si costruisce dal solo seme, col `perche` che porta l'errore vero -- e
+    `/api/health` lo mostra. Ogni lettore di `app["knowledge"]` regge `None`:
+    chi lo legge usa `app.get` o guarda `None` prima di usarlo (la chiave qui
+    esiste sempre, quindi anche l'indice stretto del `Watcher` riceve `None`);
+    `_on_cleanup` chiude solo un archivio che c'e'; la rotta di scrittura e
+    quella del sapere rispondono 503.
+
+    Una riga del sapere che non si interpreta non passa di qui: la gestisce
+    `build_judgments`, con la stessa ricaduta sul seme.
+    """
+    knowledge = None
+    try:
+        knowledge = KnowledgeStore(os.path.join(data_dir, "sapere.db"))
+        seeded = knowledge.seed(
+            direction_seed() + meaning_seed() + attribute_seed() + judgment_seed(),
+            priority=REPO_PRIORITY)
+    except Exception as error:
+        reason = f"{type(error).__name__}: {error}"
+        # Con la traccia: un errore di programmazione dentro le funzioni del
+        # seme non si diagnostica dal solo messaggio.
+        logger.exception("sapere: non si apre, i giudizi vengono dal solo seme (%s)", reason)
+        if knowledge is not None:
+            try:
+                knowledge.close()
+            except Exception as close_error:
+                logger.warning("sapere: chiusura dopo il guasto non riuscita (%s: %s)",
+                               type(close_error).__name__, close_error)
+        app["knowledge"] = None
+        app["type_judgments"], app["type_judgments_status"] = build_judgments(
+            None, unavailable_reason=reason)
+        return
+    if seeded:
+        logger.info("sapere: %d righe del seme scritte (le altre c'erano gia')", seeded)
+    app["knowledge"] = knowledge
+    app["type_judgments"], app["type_judgments_status"] = build_judgments(knowledge)
+
+
 async def _on_startup(app: web.Application) -> None:
     # fetta E3 Task 7: `import time as _time` viveva fra gli import della
     # Sentinella (cancellati con lei), ma serve ancora qui sotto a
@@ -2859,6 +3026,17 @@ async def _on_startup(app: web.Application) -> None:
         hiris_slug,
     )
 
+    # Il sapere: cio' che HIRIS ha capito, con la provenienza e le prove
+    # (fetta «il sapere e le ricette», 12/09/2026, spec §8).
+    #
+    # **Nasce PRIMA della cache delle entita'**, insieme al suo seme e
+    # all'istantanea dei giudizi, perche' lo prescrive la spec 2026-09-16 §8.
+    # Oggi la cache non legge ne' il sapere ne' i giudizi: le sue porte del
+    # vocabolario restano codice (spec §2) e l'istantanea non le arriva (§3).
+    # L'ordine non ha quindi un lettore vivo che lo pretenda. Il blocco dipende
+    # solo da `data_dir`, risolto in cima a questo avvio.
+    _open_knowledge(app, data_dir)
+
     entity_cache = EntityCache()
     try:
         await entity_cache.load(ha_client)
@@ -2912,22 +3090,10 @@ async def _on_startup(app: web.Application) -> None:
     # perche' e' il suo unico ingresso.
     app["observations"] = ObservationsStore(
         os.path.join(data_dir, "osservazioni.db"))
-    # Il sapere: cio' che HIRIS ha capito, con la provenienza e le prove
-    # (fetta «il sapere e le ricette», 12/09/2026, spec §8).
-    #
-    # **Il file e' `sapere.db`, NON `knowledge.db`**: quel nome e' gia'
-    # occupato su disco da un archivio documentale morto, dichiarato piu'
-    # sotto in questo stesso avvio. Aprirlo qui troverebbe le sue tabelle, e
-    # il `CREATE TABLE IF NOT EXISTS` non direbbe niente.
-    app["knowledge"] = KnowledgeStore(os.path.join(data_dir, "sapere.db"))
-    # Il seme del repo scrive solo cio' che ancora non c'e': la casa scrive
-    # sopra, e un riavvio non cancella cio' che ha imparato.
-    _seminate = app["knowledge"].seed(
-        direction_seed() + meaning_seed() + attribute_seed(),
-        priority=REPO_PRIORITY)
-    if _seminate:
-        logger.info("sapere: %d righe del seme scritte (le altre c'erano gia')",
-                    _seminate)
+    # La quiete del recupero delle cronache (`BACKFILL_QUIET_S`): nasce qui,
+    # prima che aiohttp congeli l'app, perche' il giro la usa ad app avviata.
+    app["backfill_quiet"] = {}
+    # Il sapere e' nato piu' sopra, prima della cache delle entita'.
     # L'osservatore riceve il sapere: da li' legge **quali attributi valga la
     # pena tenere** per un tipo (spec §5.4). Senza, scriverebbe come prima e
     # l'esempio fondativo del cervello -- «il riscaldamento parte alle 15:30,
@@ -3924,20 +4090,23 @@ async def _on_startup(app: web.Application) -> None:
         misfire_grace_time=600,
     )
 
-    # Il recupero dei resoconti mancanti: un giorno per giro, dal piu' vecchio.
+    # Il recupero dei resoconti: un giorno per giro, dal piu' vecchio.
     # Nasce da una misura del 14/09/2026 -- sulla casa vera esistevano i
     # resoconti del 12 e del 13 e basta, mentre cinque giorni prima avevano
     # oggetti e grezzo e nessun resoconto: nessuno dei due scrittori (la
     # riparazione d'avvio, due giorni; la notturna, ieri) arriva indietro.
+    # Dal 17/09/2026 lo stesso giro rifa' anche la sola cronaca dei giorni nati
+    # con un altro giudizio (spec 2026-09-16 §6, vedi `backfill_one_report`).
     #
-    # Ogni cinque minuti perche' e' un lavoro che non ha nessuna fretta e
-    # costa una richiesta di statistiche a giro: ventidue giorni si coprono in
+    # Ogni cinque minuti perche' e' un lavoro che non ha nessuna fretta, e un
+    # giorno mancante costa una richiesta di statistiche (rifare la sola
+    # cronaca non ne costa nessuna, solo l'archivio): ventidue giorni si coprono in
     # meno di due ore, e finito il recupero il giro non fa piu' niente e non
     # lo dice -- un lavoro che stampa «niente da fare» per sempre e' rumore
     # sano che seppellisce cio' che e' rotto.
     async def _recupero_resoconti() -> None:
         try:
-            await backfill_one_missing_report(app, ha_client)
+            await backfill_one_report(app, ha_client)
         except Exception as error:
             logger.warning(
                 "cervello: recupero dei resoconti fallito (%s: %s) -- "
@@ -4010,7 +4179,8 @@ async def _on_startup(app: web.Application) -> None:
             count = aggregate_day(
                 store=app["observations"], day=ieri, timezone=timezone,
                 recipes=ricette, series=serie, names=nomi,
-                without_statistics=without)
+                without_statistics=without,
+                judgments=app["type_judgments"])
             logger.info("cervello: %s voci di cronaca per %s", count, ieri)
         except Exception as error:
             logger.warning("cervello: aggregazione notturna fallita (%s: %s)",
@@ -4815,10 +4985,11 @@ async def _on_cleanup(app: web.Application) -> None:
     if "observations" in app:
         app["observations"].close()
     # Il sapere (`mind/knowledge.py`, fetta «il sapere e le ricette»): stessa
-    # disciplina e stesso meccanismo dell'archivio qui sopra -- un secondo modo
-    # di fare la stessa cosa, accanto al primo, e' un invito al copia-incolla
-    # sbagliato la prossima volta.
-    if "knowledge" in app:
+    # disciplina dell'archivio qui sopra, con una differenza sola -- la chiave
+    # puo' esserci e valere `None`, quando all'avvio il sapere non si e' aperto
+    # (`_open_knowledge`, Task 7b). Per questo si guarda il valore, non la
+    # presenza della chiave.
+    if app.get("knowledge") is not None:
         app["knowledge"].close()
     # fetta E4 Task 4: lo scheduler non e' piu' ospitato da un
     # `engine.stop()` -- l'entita' Chatbot (e l'engine che lo portava) e'
@@ -5136,13 +5307,14 @@ def create_app() -> web.Application:
 
     # Fetta «l'osservatore», Task 7 (docs/design/2026-08-26-l-osservatore.md
     # §7): la pagina che dice «cosa sto guardando e perche'» e mostra gli
-    # oggetti che l'aggregazione notturna ha costruito. Due GET, come
-    # /api/home-space e /api/memories qui sopra: nessuna scrittura, quindi nessun
-    # `csrf_middleware` da rispettare.
+    # oggetti che l'aggregazione notturna ha costruito. Nata come due GET; oggi
+    # quattro GET e due POST (l'obiettivo e i giudizi sui tipi), e le POST
+    # passano dal `csrf_middleware` come ogni altra scrittura su /api/.
     from .api.handlers_mind import (
         handle_analysis,
         handle_knowledge,
         handle_report,
+        handle_set_judgment,
         handle_set_objective,
         handle_watching,
     )
@@ -5158,6 +5330,10 @@ def create_app() -> web.Application:
     # La sola manopola del prodotto: fino al 14/09/2026 l'obiettivo si
     # poteva solo LEGGERE, e sulla casa vera era ancora quello di fabbrica.
     app.router.add_post("/api/mind/objective", handle_set_objective)
+    # La porta unica dei giudizi sui tipi (spec 2026-09-16 §4): scrive,
+    # ricostruisce l'istantanea e la sostituisce -- la correzione vale subito.
+    # E' una scrittura: passa dal `csrf_middleware` come l'obiettivo.
+    app.router.add_post("/api/mind/judgment", handle_set_judgment)
 
     return app
 
@@ -5289,7 +5465,14 @@ async def _handle_health(request: web.Request) -> web.Response:
     # fuori non si legge, e la casa poteva solo dire «nessun resoconto» senza
     # dire perche'. Stessa legge di `ponte` qui sopra -- un fatto che nessun
     # file del repository puo' dire.
+    # `istantanea` dice da dove viene l'istantanea dei giudizi sui tipi -- il
+    # sapere o il solo seme -- e, se dal seme, perche' (spec 2026-09-16 §8).
+    # **Si chiamava `giudizi`, e quella parola qui era doppia** (giro di
+    # correzioni 1, punto 3): in `/api/mind/knowledge` `giudizi` e' l'ELENCO
+    # delle righe, qui era lo STATO dell'istantanea. Due cose diverse dette con
+    # una parola sola si separano alla fonte, non a valle.
     return web.json_response({"status": "ok", "version": read_version(),
                               "build": request.app.get("build_stamp", ""),
                               "ponte": last_bridge_init(),
-                              "riparazione": request.app.get("ultima_riparazione")})
+                              "riparazione": request.app.get("ultima_riparazione"),
+                              "istantanea": request.app.get("type_judgments_status")})

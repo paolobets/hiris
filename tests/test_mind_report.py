@@ -246,7 +246,7 @@ def test_il_resoconto_porta_il_suo_giorno_la_domanda_e_le_tre_parti():
                          recipes={"dev1": RICETTA}, names={})
 
     assert r["giorno"] == "2026-09-13"
-    assert set(r) == {"giorno", "obiettivo", "misure", "forme", "cronaca"}
+    assert set(r) == {"giorno", "obiettivo", "misure", "forme", "cronaca", "giudizio"}
 
 
 def test_un_giorno_SENZA_NIENTE_e_un_resoconto_vuoto_non_un_errore():
@@ -257,7 +257,7 @@ def test_un_giorno_SENZA_NIENTE_e_un_resoconto_vuoto_non_un_errore():
                          recipes={}, names={})
 
     assert r == {"giorno": "2026-09-13", "obiettivo": None, "misure": [],
-                 "forme": [], "cronaca": []}
+                 "forme": [], "cronaca": [], "giudizio": None}
 
 
 # -- il documento: DERIVATO, mai scritto ------------------------------------
@@ -530,6 +530,34 @@ def test_il_documento_scrive_l_obiettivo_sotto_il_titolo():
     righe = documento.split("\n")
     assert righe[0].startswith("# Resoconto del")
     assert "spendere meno di sera" in "\n".join(righe[:4]), documento[:200]
+
+
+def test_il_documento_DICE_quando_la_cronaca_e_di_un_altro_giudizio():
+    """Il gradino si vede (spec 2026-09-16 §6). Mutazione ESEGUITA: ignorare
+    `current_fingerprint` -- rossa. Un resoconto SENZA impronta (scritto prima
+    del 17/09/2026) e' raccontato con un giudizio diverso anche lui; senza
+    un'impronta corrente il documento non afferma niente."""
+    r = {"giorno": "2026-08-01", "misure": [], "cronaca": [], "giudizio": {"impronta": "a"}}
+    assert "giudizio diverso" in rep.as_document(r, current_fingerprint="b")
+    assert "giudizio diverso" not in rep.as_document(r, current_fingerprint="a")
+    assert "giudizio diverso" not in rep.as_document(r)
+    anteriore = {"giorno": "2026-08-01", "misure": [], "cronaca": []}
+    assert "giudizio diverso" in rep.as_document(anteriore, current_fingerprint="a")
+    # I giorni del grezzo vengono dalla conservazione, una fonte sola (fix
+    # round 1). Mutazione ESEGUITA: scrivere «(21 giorni)» a mano -- rossa.
+    from hiris.app.mind.store import READING_RETENTION_S
+    assert f"({READING_RETENTION_S // 86400} giorni)" in rep.as_document(
+        r, current_fingerprint="b")
+    # Sta sotto «La cronaca», non altrove: e' di lei che parla.
+    assert "giudizio diverso" in rep.section(
+        rep.as_document(r, current_fingerprint="b"), rep.SEZIONE_CRONACA)
+
+
+def test_il_resoconto_porta_il_giudizio_ricevuto():
+    """Mutazione ESEGUITA: in `build_report` non scrivere `giudizio` -- rossa."""
+    r = rep.build_report(day="2026-09-13", episodes=[], series={}, recipes={},
+                         names={}, judgment={"impronta": "abc"})
+    assert r["giudizio"] == {"impronta": "abc"}
 
 # ── Le misure in SERIE: la forma in cui l'analista le legge (§10) ───────────
 #

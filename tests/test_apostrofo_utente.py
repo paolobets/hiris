@@ -85,11 +85,14 @@ restava fuori perche' la pagina dell'osservatore lo rendeva con
 di `"chi c'e'"` vivono adesso in `home_space/type_vocabulary.py`. E
 `ASPECT_LABEL` **non esiste piu'**: la pagina non raggruppa piu' per gamba --
 mostra cosa si guarda, perche' e chi l'ha deciso (`watcher-route.js`, sezione
-01). Quelle stringhe **non arrivano piu' su nessuno schermo**: sono il valore
-interno di una metrica del vocabolario dei tipi, che oggi legge solo
-`facts.genre_for`. Restano fuori da questa prova per una ragione piu' forte di
-prima, non per inerzia -- e quando la Fetta 5 rifondera' i sei generi
-usciranno del tutto.
+01). Quelle stringhe **non sono mai arrivate su nessuno schermo dopo
+l'11/09/2026**, ed erano il valore interno di una metrica del vocabolario dei
+tipi che nessun lettore di produzione interrogava piu' dal 17/09/2026
+(`facts.genre_for` chiede il genere all'istantanea dei giudizi, spec
+2026-09-16 §5). **Sono uscite del tutto il 17/09/2026**, con la gamba intera
+(spec §11): questo paragrafo resta come nota storica, non come eccezione
+attiva -- `home_space/type_vocabulary.py` non porta piu' nessuna occorrenza di
+`"chi c'e'"` fuori da questa stessa prosa di changelog.
 
 **Il limite dichiarato.** Questa lista e' stata costruita leggendo il
 codice l'8/09/2026, non derivata da un criterio che il codice esponga: non

@@ -76,6 +76,49 @@ def _coperto():
 
 
 # ---------------------------------------------------------------------------
+# LA FONTE DEL RIVENDICATO -- dal 17/09/2026 e' l'istantanea del seme
+# ---------------------------------------------------------------------------
+
+def test_claimed_states_e_claimed_switchable_domains_leggono_il_seme():
+    """Spec 2026-09-16 §3: il censore chiede il riposo, il lavoro e
+    l'accendibile all'istantanea del SOLO seme (`type_vocabulary.REPO_JUDGMENTS`),
+    non piu' alle funzioni di modulo `resting_states_of`/`working_states_of`/
+    `operable_domains` lette a mano -- e' la stessa istantanea che
+    `judgment_seed_rows()` costruisce dal letterale, quindi il valore non
+    cambia, ma la FONTE si', ed e' quella che questo test guarda.
+
+    Mutazione ESEGUITA: sostituita `type_vocabulary.REPO_JUDGMENTS` con
+    un'istantanea priva del riposo di `cover` e priva del dominio
+    accendibile `light` -- se `claimed_states`/`claimed_switchable_domains`
+    leggessero ancora le funzioni di modulo invece dell'istantanea, questa
+    prova resterebbe verde; con la lettura giusta arrossisce, e ripristinata
+    (`type_vocabulary.REPO_JUDGMENTS = originale`) torna verde.
+    """
+    from hiris.app.home_space import type_vocabulary as tv
+    from hiris.app.home_space.type_judgments import TypeJudgments
+
+    assert "stopped" in type_census.claimed_states("cover", None)
+    assert "light" in type_census.claimed_switchable_domains()
+
+    righe = tuple(r for r in tv.judgment_seed_rows()
+                  if not (r[1] == "cover" and r[2] == "riposo")
+                  and not (r[1] == "light" and r[2] == "accendibile"))
+    finto = TypeJudgments.from_rows(righe, genres=tv.CHRONICLE_GENRES,
+                                    absent_forms=tv.ABSENT_STATE_FORMS.value)
+    originale = tv.REPO_JUDGMENTS
+    tv.REPO_JUDGMENTS = finto
+    try:
+        assert "stopped" not in type_census.claimed_states("cover", None), (
+            "il riposo deve venire dall'istantanea del seme, non da una "
+            "funzione di modulo letta a mano")
+        assert "light" not in type_census.claimed_switchable_domains(), (
+            "l'accendibile deve venire dall'istantanea del seme, non da "
+            "`type_vocabulary.operable_domains()`")
+    finally:
+        tv.REPO_JUDGMENTS = originale
+
+
+# ---------------------------------------------------------------------------
 # SA TROVARE -- una materia alla volta
 # ---------------------------------------------------------------------------
 
@@ -316,27 +359,23 @@ def test_i_cinque_difetti_gia_misurati_sono_chiusi_e_nessuno_e_sparito(casa):
     del boiler e i due della serratura tornano fra i ritrovamenti, e le
     asserzioni `not in` arrossiscono.
     """
-    from hiris.app.home_space.type_vocabulary import (
-        capability_tables,
-        resting_states_of,
-        working_states_of,
-    )
+    from hiris.app.home_space.type_vocabulary import REPO_JUDGMENTS, capability_tables
     stati = set(findings(casa)[Subject.STATE])
     # 1. i sei modi del boiler: FUNZIONAMENTO, e il vocabolario lo dice
     assert state_key("water_heater", None, "eco") not in stati
-    assert "eco" in working_states_of("water_heater")
+    assert "eco" in REPO_JUDGMENTS.working_of("water_heater")
     # 2. `stopped` di tapparella e valvola: RIPOSO
-    assert "stopped" in resting_states_of("cover")
-    assert "stopped" in resting_states_of("valve")
+    assert "stopped" in REPO_JUDGMENTS.resting_of("cover")
+    assert "stopped" in REPO_JUDGMENTS.resting_of("valve")
     # 3. la serratura: due sono funzionamento, `jammed` resta APERTO -- e'
     #    un guasto, e il genere oggi non dipende dallo stato
-    assert working_states_of("lock") >= {"locking", "unlocking"}
-    assert "jammed" not in working_states_of("lock")
-    assert "jammed" not in resting_states_of("lock")
+    assert set(REPO_JUDGMENTS.working_of("lock")) >= {"locking", "unlocking"}
+    assert "jammed" not in REPO_JUDGMENTS.working_of("lock")
+    assert "jammed" not in REPO_JUDGMENTS.resting_of("lock")
     assert (Subject.STATE, state_key("lock", None, "jammed")) in {
         (q.subject, key) for q in type_census.OPEN_QUESTIONS for key in q.keys}
     # 4. il tosaerba come l'aspirapolvere
-    assert "docked" in resting_states_of("lawn_mower")
+    assert "docked" in REPO_JUDGMENTS.resting_of("lawn_mower")
     assert state_key("lawn_mower", None, "mowing") not in stati
     # 5. i quattro domini fuori, per voce e con la ragione
     for domain in ("assist_satellite", "camera", "timer", "group"):

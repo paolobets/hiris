@@ -28,13 +28,15 @@ import ast
 import json
 from pathlib import Path
 
-from hiris.app.home_space import briefing
-from hiris.app.home_space.type_vocabulary import (
-    notable_types,
-    resting_states_of,
-    unknown_states,
-    working_states_of,
-)
+from hiris.app.home_space import briefing, type_vocabulary
+
+
+def _domini_notevoli() -> set[str]:
+    """I domini che il repo dei giudizi (seme di `type_vocabulary`) dichiara
+    degni di un annuncio -- stesso fatto di `notable_types()` (cancellata col
+    Task 8, spec 2026-09-16 §11), letto dalla nuova porta."""
+    return {domain for domain in type_vocabulary.declared_domains()
+            if type_vocabulary.REPO_JUDGMENTS.is_notable(domain)}
 
 _PRODOTTO = Path(__file__).resolve().parents[1] / "hiris" / "app"
 _PUBBLICATO = Path(__file__).resolve().parent / "data" / "pubblicato-dalla-casa.json"
@@ -181,10 +183,10 @@ def test_il_complemento_dei_riposi_non_coincide_con_gli_stati_attivi():
     nomina.
     """
     divario = set()
-    for dominio, classe in notable_types():
-        if classe is not None:
-            continue
-        riposi = resting_states_of(dominio) | unknown_states()
+    for dominio in _domini_notevoli():
+        riposi = (type_vocabulary.REPO_JUDGMENTS.resting_of(dominio)
+                  | type_vocabulary.unknown_states()
+                  | type_vocabulary.ABSENT_STATE_FORMS.value)
         for stato in _stati_pubblicati(dominio) - riposi:
             if stato not in briefing._ACTIVE_STATES:
                 divario.add(f"{dominio}={stato}")
@@ -208,9 +210,9 @@ def test_nessuno_stato_attivo_e_il_riposo_di_un_tipo_che_lo_porta():
     """
     contraddizioni = sorted(
         f"{dominio}={stato}"
-        for dominio, classe in notable_types() if classe is None
+        for dominio in _domini_notevoli()
         for stato in briefing._ACTIVE_STATES
-        if stato in resting_states_of(dominio))
+        if stato in type_vocabulary.REPO_JUDGMENTS.resting_of(dominio))
     assert not contraddizioni, (
         "stati che il nucleo conta come attivi e il vocabolario dichiara "
         f"riposo: {contraddizioni}")
@@ -231,6 +233,7 @@ def test_il_divario_e_fatto_di_stati_che_il_vocabolario_ha_gia_guardato():
     dichiarati, orfani = [], []
     for voce in sorted(_DIVARIO_MISURATO):
         dominio, _, stato = voce.partition("=")
-        (dichiarati if stato in working_states_of(dominio) else orfani).append(voce)
+        (dichiarati if stato in type_vocabulary.REPO_JUDGMENTS.working_of(dominio)
+         else orfani).append(voce)
     assert orfani == ["lock=jammed"], orfani
     assert len(dichiarati) == 10, dichiarati

@@ -2017,3 +2017,44 @@
   line-height: var(--lh-snug);
   overflow-wrap: anywhere;
 }
+
+/* Le righe dei giudizi sui tipi (sezione 04, watcher-route.js, forma
+   approvata dal proprietario il 17/09/2026, punto 6): `soggetto | valore |
+   provenienza | azioni`, mai una `<table>`. `.jr-meta` tiene INSIEME
+   valore e provenienza cosi' l'impilamento sotto i 768px segue esattamente
+   i tre blocchi che la forma approvata chiede -- titolo; valore+provenienza;
+   azioni a tutta larghezza -- non quattro righe separate. */
+.section-card .sc-row.jr-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.3fr) minmax(160px, 1fr) auto;
+  gap: var(--sp-2) var(--sp-3);
+  align-items: center;
+}
+.section-card .jr-subject { overflow-wrap: anywhere; }
+/* Fix round 1 (revisione Fable, IMPORTANT 1): il wrapper del badge
+   «Corretto da te» + la frase sulla cronaca che si rifà da sola, impilati
+   invece che in riga -- due frasi affiancate sulla stessa altezza di riga
+   sarebbero difficili da leggere separate. */
+.section-card .jr-provenance {
+  display: flex; flex-direction: column; gap: 2px;
+}
+.section-card .jr-meta {
+  display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap;
+}
+.section-card .jr-actions {
+  display: flex; gap: var(--sp-2); justify-content: flex-end; flex-wrap: wrap;
+}
+@media (max-width: 768px) {
+  .section-card .sc-row.jr-row { grid-template-columns: 1fr; }
+  .section-card .jr-actions { justify-content: flex-start; }
+}
+/* Bottoni col dito, non col puntatore fine: `min-height:44px` (forma
+   approvata, punto 6) -- per questo i bottoni della sezione 04 sono
+   `btn btn-ghost`, mai `btn-sm` (watcher-route.js). Copre anche il modulo
+   di aggiunta (`.jr-add-form`), che vive fuori da `.jr-row`. */
+@media (pointer: coarse) {
+  .section-card .jr-row .btn-ghost,
+  .section-card .jr-add-form .btn-ghost {
+    min-height: 44px;
+  }
+}

@@ -7,10 +7,12 @@ tipo ha una casa sola, un campo non esiste senza provenienza, una coppia si
 collega invece di copiare), non quelle che ricopiano il contenuto e si
 autoconfermano.
 
-Le prove di comportamento dei tre lettori restano dove erano
-(`test_home_space_gamba.py`, `test_mind_facts.py`, `test_decoded_capabilities.py`,
-`test_feature_tables_pinned_to_source.py`): la fetta non cambia cosa fanno, e
-spostarle qui avrebbe dato l'impressione che sia nato un comportamento nuovo.
+Le prove di comportamento dei lettori restano dove erano (`test_mind_facts.py`,
+`test_decoded_capabilities.py`, `test_feature_tables_pinned_to_source.py`): la
+fetta non cambia cosa fanno, e spostarle qui avrebbe dato l'impressione che
+sia nato un comportamento nuovo. La gamba (`aspect_of`/`ASPECT`/`ASPECTS`) e
+le sue prove (`test_home_space_gamba.py`) sono uscite intere col Task 8 (spec
+2026-09-16 §11): quel lettore non esiste piu', non solo si e' spostato.
 """
 import ast
 from pathlib import Path
@@ -20,10 +22,10 @@ import pytest
 from hiris.app.home_space import topology, type_vocabulary
 from hiris.app.home_space.type_vocabulary import (
     ABSENT_STATE_FORMS,
-    ASPECT,
-    ASPECTS,
     CAPABILITY_NAMES,
     FIELD_KINDS,
+    GENRE,
+    NOTABLE,
     OPERABLE,
     PROVENANCES,
     RESTING_STATES,
@@ -36,16 +38,10 @@ from hiris.app.home_space.type_vocabulary import (
     TypeRow,
     TypeVocabulary,
     _vocabulary,
-    aspect_of,
     capability_names,
     capability_tables,
     declared_working_states,
-    is_operable,
-    operable_domains,
-    resting_states,
-    resting_states_of,
     unknown_states,
-    working_states_of,
 )
 from hiris.app.mind import facts
 from hiris.app.proxy import entity_cache
@@ -96,11 +92,11 @@ def test_una_riga_rifiuta_un_valore_nudo():
     Mutazione: togliere il ciclo di controllo da `TypeRow.__init__` -- la
     costruzione riesce e questa prova arrossisce."""
     with pytest.raises(TypeError) as errore:
-        TypeRow("sensor", None, {ASPECT: "comfort"})
+        TypeRow("sensor", None, {RESTING_STATES: "off"})
     assert "provenienza" in str(errore.value)
     # E la stessa guardia vale dalla porta che si usa davvero.
     with pytest.raises(TypeError):
-        TypeVocabulary().add("sensor", aspect="comfort")
+        TypeVocabulary().add("sensor", operable="comfort")
 
 
 def test_un_importato_senza_la_sua_versione_non_si_costruisce():
@@ -143,14 +139,14 @@ def test_ogni_campo_di_ogni_riga_dichiara_la_propria_provenienza():
 
 def test_i_giudizi_sono_nostri_e_le_capacita_sono_importate():
     """La provenienza non e' un'etichetta decorativa: dice il vero su ogni
-    campo. La gamba, l'accendibile e il riposo sono giudizi che nessuna API di
+    campo. Il genere, l'accendibile e il riposo sono giudizi che nessuna API di
     Home Assistant puo' darci; i nomi dei bit di `supported_features` sono
     `IntFlag` nel sorgente, quindi importati e datati.
 
     Mutazione: dichiarare le tabelle dei bit con `Ours(...)` invece di
     `Imported(...)` -- il secondo ciclo arrossisce."""
     for row in _vocabulary.rows():
-        for name in (ASPECT, OPERABLE, RESTING_STATES):
+        for name in (OPERABLE, RESTING_STATES):
             field = row.fields.get(name)
             if field is not None:
                 assert field.provenance is Provenance.OURS, f"{row.key}.{name}"
@@ -180,18 +176,49 @@ def test_nessun_campo_e_chiesto_finche_nessuno_chiede():
 # --- una coppia si collega al suo dominio, non lo copia -------------------
 
 def test_una_coppia_eredita_dal_dominio_invece_di_copiarlo():
-    """`("binary_sensor", "smoke")` porta la sua gamba e NIENTE di piu': il suo
-    riposo e' quello del dominio, letto attraverso il collegamento.
+    """`("binary_sensor", "smoke")` porta il suo genere e NIENTE di piu': il
+    suo riposo e' quello del dominio, letto attraverso il collegamento -- lo
+    stesso collegamento che l'istantanea dei giudizi (`REPO_JUDGMENTS`, la
+    porta che sostituisce `resting_states_of`) risale.
 
-    Mutazione: in `TypeVocabulary.field`, togliere il ripiego sulla riga di
-    dominio (ritornare `None` invece di guardare `(domain, None)`) -- la prima
-    asserzione arrossisce."""
+    Mutazione ESEGUITA: in `TypeJudgments._lookup` togliere il ripiego dalla
+    coppia al dominio (aggiungere la chiave `("tipo", domain, field)` solo
+    quando `device_class` manca) -- la seconda asserzione arrossisce. Il
+    ripiego di `TypeVocabulary.field` qui non conta: `REPO_JUDGMENTS` nasce
+    da `row.fields`, riga per riga, e il collegamento lo risale la ricerca
+    dell'istantanea; quello di `field` lo difende la prova qui sotto."""
     coppia = _vocabulary.row("binary_sensor", "smoke")
     assert RESTING_STATES not in coppia.fields, (
         "la coppia dichiara un riposo suo: e' una copia, non un collegamento")
-    assert resting_states_of("binary_sensor", "smoke") == \
-        resting_states_of("binary_sensor")
-    assert "off" in resting_states_of("binary_sensor", "smoke")
+    assert (type_vocabulary.REPO_JUDGMENTS.resting_of("binary_sensor", "smoke")
+            == type_vocabulary.REPO_JUDGMENTS.resting_of("binary_sensor"))
+    assert "off" in type_vocabulary.REPO_JUDGMENTS.resting_of("binary_sensor", "smoke")
+
+
+def test_il_vocabolario_chiede_prima_alla_coppia_e_poi_al_dominio():
+    """`TypeVocabulary.value` sulla riga vera di `("binary_sensor", "smoke")`:
+    la coppia dichiara `genre` («sicurezza», con `add_all` nel letterale), il
+    suo dominio no. Il valore della coppia si legge dalla coppia e non trapela nel
+    dominio.
+
+    Mutazione ESEGUITA: in `TypeVocabulary.field` togliere il ramo della
+    coppia (il blocco `if device_class:`) -- la prima asserzione arrossisce.
+    Nessuna coppia del letterale sovrascrive un valore che il suo dominio
+    dichiara (misurato il 17/09/2026), quindi l'ordine fra due valori
+    presenti tutt'e due lo prova la prova seguente, su un vocabolario
+    costruito a mano."""
+    assert _vocabulary.value("binary_sensor", "smoke", GENRE) == "sicurezza"
+    assert _vocabulary.value("binary_sensor", None, GENRE) is None
+
+
+def test_se_coppia_e_dominio_dicono_due_cose_vince_la_coppia():
+    """Mutazione ESEGUITA: in `TypeVocabulary.field` guardare la riga di
+    dominio PRIMA della coppia -- la prima asserzione arrossisce."""
+    vocabolario = TypeVocabulary()
+    vocabolario.add("binary_sensor", notable=Ours(False))
+    vocabolario.add("binary_sensor", "smoke", notable=Ours(True))
+    assert vocabolario.value("binary_sensor", "smoke", NOTABLE) is True
+    assert vocabolario.value("binary_sensor", "door", NOTABLE) is False
 
 
 def test_nessuna_coppia_ripete_un_valore_che_il_suo_dominio_gia_dice():
@@ -224,9 +251,9 @@ def test_una_coppia_orfana_non_si_costruisce():
     `TypeVocabulary.add` -- la costruzione riesce e questa prova arrossisce."""
     vocabolario = TypeVocabulary()
     with pytest.raises(KeyError):
-        vocabolario.add("sensor", "energy", aspect=Ours("energia"))
+        vocabolario.add("sensor", "energy", notable=Ours(True))
     vocabolario.add("sensor")
-    vocabolario.add("sensor", "energy", aspect=Ours("energia"))  # ora si collega
+    vocabolario.add("sensor", "energy", notable=Ours(True))  # ora si collega
 
 
 def test_un_tipo_non_puo_avere_due_righe():
@@ -239,7 +266,7 @@ def test_un_tipo_non_puo_avere_due_righe():
     vocabolario = TypeVocabulary()
     vocabolario.add("light", operable=Ours(True), resting_states=Ours({"off"}))
     with pytest.raises(ValueError):
-        vocabolario.add("light", aspect=Ours("comfort"))
+        vocabolario.add("light", notable=Ours(True))
     # E un campo gia' dichiarato non si sovrascrive in silenzio.
     with pytest.raises(ValueError):
         vocabolario.extend("light", operable=Ours(False))
@@ -255,8 +282,8 @@ def test_un_tipo_accendibile_porta_i_suoi_stati_di_riposo():
 
     Mutazione: togliere `resting_states` dalla riga di `water_heater` --
     arrossisce, e con lei l'`import` del modulo (vedi la prova sotto)."""
-    assert operable_domains()
-    for domain in sorted(operable_domains()):
+    assert type_vocabulary.REPO_JUDGMENTS.operable_domains()
+    for domain in sorted(type_vocabulary.REPO_JUDGMENTS.operable_domains()):
         propri = _vocabulary.value(domain, None, RESTING_STATES, frozenset())
         assert propri, (
             f"`{domain}` e' dichiarato accendibile e non porta nessuno stato "
@@ -288,49 +315,6 @@ def test_la_regola_del_riposo_e_una_condizione_di_costruzione():
     assert "water_heater" in str(errore.value)
 
 
-def test_accendibile_e_pavimento_sono_due_metriche_diverse():
-    """`_OPERABLE` elencava dieci domini di cui la gamba ne ammette DUE
-    (`climate`, `cover`). Non e' un difetto da correggere di straforo: e' il
-    fatto che il vocabolario deve rendere VISIBILE. Le due domande sono diverse, e
-    devono poter divergere -- allargare il pavimento per far coincidere i due
-    elenchi sarebbe curare il sintomo sbagliato.
-
-    Mutazione: dare una gamba a `water_heater` «per coerenza» -- la seconda
-    asserzione arrossisce, ed e' il punto.
-
-    **`siren` e' il terzo dall'08/09/2026**, e la sua entrata ha fatto emergere
-    un difetto vero: e' l'unico tipo insieme accendibile e della gamba
-    «sicurezza», e con l'ordine che `genre_for` aveva prima, una sirena che
-    suona sarebbe diventata un oggetto di «funzionamento» invece che di
-    «sicurezza». Il sovrapporsi delle due metriche non e' un errore da
-    appianare: e' cio' che ha reso visibile l'ordine sbagliato."""
-    sovrapposti = {d for d in operable_domains()
-                 if _vocabulary.value(d, None, ASPECT) is not None}
-    assert sovrapposti == {"climate", "cover", "siren"}
-    assert aspect_of("water_heater.boiler", {}) is None
-    assert is_operable("water_heater") is True
-
-
-def test_gli_stati_di_riposo_sono_esattamente_quelli_rivendicati():
-    """L'unione che `_is_on` legge non e' un elenco a parte: e' la somma dei
-    riposi che i tipi rivendicano, piu' le due forme dell'assenza di stato che
-    non sono di nessun tipo in particolare. Nessun valore orfano.
-
-    Mutazione: aggiungere uno stato a `ABSENT_STATE_FORMS` senza che nessun
-    tipo lo rivendichi -- la seconda asserzione arrossisce."""
-    rivendicati = set(ABSENT_STATE_FORMS.value)
-    for row in _vocabulary.rows():
-        field = row.fields.get(RESTING_STATES)
-        if field is not None:
-            rivendicati |= set(field.value)
-    assert resting_states() == frozenset(rivendicati)
-    orfani = resting_states() - ABSENT_STATE_FORMS.value - {
-        s for row in _vocabulary.rows()
-        for s in (row.fields[RESTING_STATES].value
-                  if RESTING_STATES in row.fields else ())}
-    assert orfani == set()
-
-
 def test_gli_stati_ignoti_non_sono_riposi():
     """Correzione punto 2 del secondo giro di review, che il vocabolario eredita
     invariata: un riavvio di Home Assistant fa attraversare `unavailable` e
@@ -340,7 +324,10 @@ def test_gli_stati_ignoti_non_sono_riposi():
     Mutazione: aggiungere `"unavailable"` a un `resting_states` qualunque --
     arrossisce."""
     assert unknown_states() == frozenset({"unavailable", "unknown"})
-    assert unknown_states() & resting_states() == frozenset()
+    riposi_dichiarati = {stato for row in _vocabulary.rows()
+                         for stato in (row.fields[RESTING_STATES].value
+                                       if RESTING_STATES in row.fields else ())}
+    assert unknown_states() & riposi_dichiarati == frozenset()
     assert UNKNOWN_STATES.provenance is Provenance.OURS
 
 
@@ -365,10 +352,10 @@ def test_i_sei_modi_del_boiler_sono_funzionamento_e_non_riposi():
     (`_verify_no_state_is_both_rest_and_work`) arrossisce prima ancora se lo si
     mette in tutt'e due.
     """
-    assert resting_states_of("water_heater") >= {"off"}
+    assert type_vocabulary.REPO_JUDGMENTS.resting_of("water_heater") >= {"off"}
     modi = {"eco", "gas", "electric", "heat_pump", "high_demand", "performance"}
-    assert working_states_of("water_heater") == modi
-    assert not (modi & resting_states_of("water_heater"))
+    assert set(type_vocabulary.REPO_JUDGMENTS.working_of("water_heater")) == modi
+    assert not (modi & type_vocabulary.REPO_JUDGMENTS.resting_of("water_heater"))
 
 
 def test_una_tapparella_ferma_a_meta_corsa_e_a_riposo():
@@ -381,10 +368,10 @@ def test_una_tapparella_ferma_a_meta_corsa_e_a_riposo():
     asserzione arrossisce; e `_is_on("stopped")` torna `True`, che e' il
     comportamento vecchio.
     """
-    assert "stopped" in resting_states_of("cover")
-    assert "stopped" in resting_states_of("valve")
-    assert "stopped" not in working_states_of("cover")
-    assert "stopped" not in working_states_of("valve")
+    assert "stopped" in type_vocabulary.REPO_JUDGMENTS.resting_of("cover")
+    assert "stopped" in type_vocabulary.REPO_JUDGMENTS.resting_of("valve")
+    assert "stopped" not in type_vocabulary.REPO_JUDGMENTS.working_of("cover")
+    assert "stopped" not in type_vocabulary.REPO_JUDGMENTS.working_of("valve")
 
 
 def test_la_serratura_che_si_muove_sta_funzionando_e_jammed_non_e_ne_l_uno_ne_l_altro():
@@ -404,10 +391,10 @@ def test_la_serratura_che_si_muove_sta_funzionando_e_jammed_non_e_ne_l_uno_ne_l_
     Mutazione ESEGUITA: aggiungere `"jammed"` a `working_states` di `lock` --
     la terza asserzione arrossisce.
     """
-    assert working_states_of("lock") >= {"locking", "unlocking"}
-    assert "locked" in resting_states_of("lock")
-    assert "jammed" not in working_states_of("lock")
-    assert "jammed" not in resting_states_of("lock")
+    assert set(type_vocabulary.REPO_JUDGMENTS.working_of("lock")) >= {"locking", "unlocking"}
+    assert "locked" in type_vocabulary.REPO_JUDGMENTS.resting_of("lock")
+    assert "jammed" not in type_vocabulary.REPO_JUDGMENTS.working_of("lock")
+    assert "jammed" not in type_vocabulary.REPO_JUDGMENTS.resting_of("lock")
 
 
 def test_il_tosaerba_si_tratta_come_l_aspirapolvere():
@@ -421,11 +408,11 @@ def test_il_tosaerba_si_tratta_come_l_aspirapolvere():
     taglio.
     """
     comuni = {"docked", "returning", "error"}
-    assert resting_states_of("lawn_mower") >= comuni
-    assert resting_states_of("vacuum") >= comuni
-    assert is_operable("lawn_mower") is True
-    assert "mowing" in working_states_of("lawn_mower")
-    assert "mowing" not in resting_states_of("lawn_mower")
+    assert type_vocabulary.REPO_JUDGMENTS.resting_of("lawn_mower") >= comuni
+    assert type_vocabulary.REPO_JUDGMENTS.resting_of("vacuum") >= comuni
+    assert "lawn_mower" in type_vocabulary.REPO_JUDGMENTS.operable_domains()
+    assert "mowing" in type_vocabulary.REPO_JUDGMENTS.working_of("lawn_mower")
+    assert "mowing" not in type_vocabulary.REPO_JUDGMENTS.resting_of("lawn_mower")
 
 
 def test_remote_e_siren_sono_accendibili_con_off_a_riposo():
@@ -440,11 +427,9 @@ def test_remote_e_siren_sono_accendibili_con_off_a_riposo():
     all'importazione non dice niente (un tipo non accendibile non deve avere
     riposi), e questa prova e' l'unica che se ne accorge.
     """
-    assert is_operable("remote") is True
-    assert is_operable("siren") is True
-    assert "off" in resting_states_of("remote")
-    assert "off" in resting_states_of("siren")
-    assert {"remote", "siren"} <= operable_domains()
+    assert "off" in type_vocabulary.REPO_JUDGMENTS.resting_of("remote")
+    assert "off" in type_vocabulary.REPO_JUDGMENTS.resting_of("siren")
+    assert {"remote", "siren"} <= type_vocabulary.REPO_JUDGMENTS.operable_domains()
 
 
 def test_ogni_stato_di_funzionamento_porta_la_sua_ragione_scritta():
@@ -475,7 +460,7 @@ def test_nessuno_stato_vale_insieme_riposo_e_funzionamento():
     invece di essere un errore di importazione.
     """
     for dominio, tabella in declared_working_states().items():
-        contraddizioni = set(tabella) & resting_states_of(dominio)
+        contraddizioni = set(tabella) & type_vocabulary.REPO_JUDGMENTS.resting_of(dominio)
         assert not contraddizioni, (
             f"«{dominio}» dichiara {sorted(contraddizioni)} insieme a riposo e "
             "in funzionamento")
@@ -491,6 +476,31 @@ def test_nessuno_stato_vale_insieme_riposo_e_funzionamento():
     finally:
         type_vocabulary._vocabulary = originale
     assert "light=off" in str(errore.value)
+
+
+def test_una_forma_dell_assenza_non_e_uno_stato_di_lavoro():
+    """`none` e il vuoto (`ABSENT_STATE_FORMS`) non sono uno stato di nessun
+    tipo: `mind/facts.py::build_episodes` li salta prima di ogni ramo, e
+    l'istantanea dei giudizi li rifiuta solo nel riposo. Nel lavoro il solo
+    cancello e' il guardiano all'importazione, che li deve confrontare anche
+    se nessuna riga li dichiara a riposo.
+
+    Mutazione ESEGUITA: in `_verify_no_state_is_both_rest_and_work` togliere
+    `| ABSENT_STATE_FORMS.value` -- il guardiano tace e questa prova arrossisce.
+    """
+    vocabolario = type_vocabulary.TypeVocabulary()
+    vocabolario.add("light", operable=Ours(True), resting_states=Ours({"off"}),
+                    working_states=Ours({"none": "una ragione lunga abbastanza",
+                                         "": "un'altra ragione lunga abbastanza"}))
+    originale = type_vocabulary._vocabulary
+    type_vocabulary._vocabulary = vocabolario
+    try:
+        with pytest.raises(ValueError) as errore:
+            type_vocabulary._verify_no_state_is_both_rest_and_work()
+    finally:
+        type_vocabulary._vocabulary = originale
+    assert "light=none" in str(errore.value)
+    assert "light=," in str(errore.value)
 
 
 # --- un tipo ha una casa sola ---------------------------------------------
@@ -528,21 +538,15 @@ _ECCEZIONI_MOTIVATE: dict[tuple[str, tuple[str, ...]], str] = {
     ("mind/seed.py", ("climate", "humidifier", "water_heater")):
         "`seed._WANTED_ATTRIBUTES`: non dice cosa un tipo E', dice **quali "
         "suoi ATTRIBUTI valga la pena tenere nel grezzo** (spec §5.4). E' un "
-        "giudizio di natura diversa da quelli del vocabolario -- non «a quale "
-        "gamba serve», non «quando ha finito», ma «cosa di lui va scritto per "
+        "giudizio di natura diversa da quelli del vocabolario -- non «che "
+        "genere apre», non «quando ha finito», ma «cosa di lui va scritto per "
         "poter rispondere dopo». Il vocabolario dei tipi risponde alla prima "
         "domanda; questa tabella alla seconda, e sono indipendenti: un tipo "
-        "puo' servire a una gamba senza avere nessun attributo utile, e "
+        "puo' avere un genere senza avere nessun attributo utile, e "
         "viceversa. **E' anche destinata a non restare nel codice**: dalla "
         "fetta 4 queste righe sono un SEME del sapere (`mind/knowledge.py`), "
         "e la casa ci scrive sopra -- il giorno in cui una ricetta le decide "
         "da sola, questo letterale sparisce e questa riga con lui.",
-    ("mind/facts.py", ("device_tracker", "person")):
-        "`facts.genre_for`: scritto in linea dentro la condizione, ed e' il "
-        "GENERE dell'oggetto, non una delle tre metriche di questa fetta. Il "
-        "piano (fetta 6) dichiara di completare proprio questa forma -- le "
-        "condizioni in linea, che nessun inventario di insiemi letterali "
-        "vede.",
     # `entity_cache._DOMAIN_ATTRS` stava qui, e non c'e' piu': la fetta
     # dell'eredita' (07/09/2026) l'ha cancellata invece di dichiararla. Era la
     # valutazione che la spec (§8, §9) rimandava; il requisito del proprietario
@@ -556,6 +560,10 @@ _ECCEZIONI_MOTIVATE: dict[tuple[str, tuple[str, ...]], str] = {
     # il moto che questa prova esiste per non impedire -- misurato: lasciarla
     # avrebbe fatto rosso l'uguaglianza nell'altra direzione, che e'
     # esattamente il permesso-che-nessuno-usa che quel controllo previene.
+    # `("mind/facts.py", ("device_tracker", "person"))` STAVA qui, ed e'
+    # sparito il 17/09/2026: era la condizione in linea di `facts.genre_for`
+    # che dava il genere `presenza`, e il genere e' passato all'istantanea dei
+    # giudizi (spec 2026-09-16 §5) -- la tupla non c'e' piu'.
     ("home_space/behavior.py", ("automation", "script")):
         "`behavior._reread`: non e' un vocabolario di tipi, e' la GUARDIA che "
         "distingue «Home Assistant non ha ancora caricato le automazioni» da "
@@ -596,7 +604,16 @@ def _vocabolari_paralleli() -> set[tuple[str, int, tuple[str, ...]]]:
     """
     domini = _vocabulary.domains()
     classi = {device_class for _, device_class in _vocabulary.pairs()}
-    stati = resting_states() | unknown_states()
+    # L'unione di tutti i riposi dichiarati, letta direttamente dal letterale:
+    # stessa lista che il porto `resting_states()` costruiva (cancellata col
+    # Task 8, spec 2026-09-16 §11) -- qui serve solo a riconoscere un elenco
+    # PARALLELO di stati altrove nel prodotto, non a un lettore vero.
+    stati = set(ABSENT_STATE_FORMS.value)
+    for row in _vocabulary.rows():
+        field = row.fields.get(RESTING_STATES)
+        if field is not None:
+            stati |= set(field.value)
+    stati |= unknown_states()
     trovati = set()
     for path in sorted(_PRODOTTO.rglob("*.py")):
         if path.name == "type_vocabulary.py":
@@ -629,10 +646,11 @@ def test_un_tipo_ha_una_casa_sola():
     nomina il file, la riga e i membri.
 
     Il limite, e va letto: questo controllo vede gli insiemi LETTERALI, non le
-    condizioni in linea (`if domain in ("a", "b")`). Ne vede una sola, quella
-    di `genre_for`, perche' e' una tupla letterale; una scritta come catena di
-    `or` gli sfuggirebbe. E' il limite che la fetta 6 del piano dichiara di
-    chiudere, ed e' scritto qui perche' nessuno lo scambi per copertura."""
+    condizioni in linea (`if domain in ("a", "b")`). Ne vedeva una sola, quella
+    di `genre_for`, perche' era una tupla letterale (uscita il 17/09/2026 col
+    genere dall'istantanea); una scritta come catena di `or` gli sfuggirebbe.
+    E' il limite che la fetta 6 del piano dichiara di chiudere, ed e' scritto
+    qui perche' nessuno lo scambi per copertura."""
     trovati = _vocabolari_paralleli()
     attese = set(_ECCEZIONI_MOTIVATE)
     dichiarate = set()
@@ -691,49 +709,7 @@ def test_le_undici_liste_non_esistono_piu():
         importlib.import_module("hiris.app.mind.baseline")
 
 
-def test_le_sei_gambe_vivono_in_un_posto_solo():
-    """`ASPECTS` sta con le righe che assegna, e da nessun'altra parte.
-
-    Fino all'11/09/2026 c'era una riesportazione in `mind/baseline.py`, e
-    questa prova guardava che fosse la STESSA tupla e non una copia. Il file
-    e' stato cancellato col pavimento: adesso l'unica difesa e' che nessuno
-    la ridichiari, ed e' quella che si guarda qui.
-
-    Mutazione: ricopiare la tupla in `mind/facts.py` e importarla da li'."""
-    assert ASPECTS == ("chi c'e'", "comfort", "dispersione", "energia",
-                       "buono stato", "sicurezza")
-    assert not hasattr(facts, "ASPECTS")
-
-
 # --- le tre metriche, dalla porta del vocabolario ---------------------------
-
-def test_la_coppia_vince_sul_dominio():
-    """`sensor` non ha gamba; `("sensor", "energy")` si'. E `binary_sensor`
-    con una classe che il vocabolario non conosce ricade sul dominio, che tace --
-    non su un ripiego inventato.
-
-    Mutazione: in `TypeVocabulary.field`, guardare il dominio PRIMA della coppia
-    -- la prima asserzione arrossisce."""
-    assert aspect_of("sensor.contatore", {"device_class": "energy"}) == "energia"
-    assert aspect_of("sensor.qualcosa", {}) is None
-    assert aspect_of("binary_sensor.x", {"device_class": "vibration"}) is None
-    # `climate` porta la gamba sul DOMINIO: una classe sconosciuta non la toglie.
-    assert aspect_of("climate.camera", {"device_class": "inventata"}) == "comfort"
-
-
-def test_la_guardia_vive_nella_riga_non_nel_lettore():
-    """Il `device_tracker` e' l'unico tipo la cui gamba dipende da un attributo
-    diverso dalla classe. La condizione sta nella riga (`aspect_guard`), non in
-    un ramo scritto a mano dentro `aspect_of`: e' parte del giudizio.
-
-    Mutazione: togliere `aspect_guard` dalla riga di `device_tracker` -- la
-    seconda e la terza asserzione arrossiscono."""
-    assert aspect_of("device_tracker.iphone", {"source_type": "gps"}) == "chi c'e'"
-    assert aspect_of("device_tracker.nvr", {"source_type": "router"}) is None
-    assert aspect_of("device_tracker.ipad", {}) is None
-    guardia = _vocabulary.value("device_tracker", None, "aspect_guard")
-    assert guardia == ("source_type", "gps")
-
 
 def test_una_capacita_senza_tabella_verificata_dice_non_lo_so():
     """`None` e non un dizionario vuoto: «non lo so» e «so che non ne ha» sono
@@ -760,24 +736,24 @@ def test_i_campi_dichiarati_non_si_modificano_da_fuori():
     with pytest.raises(TypeError):
         capability_names("light")[64] = "inventata"
     with pytest.raises(AttributeError):
-        resting_states().add("inventato")
+        _vocabulary.row("light").fields[RESTING_STATES].value.add("inventato")
     riga = _vocabulary.row("light")
     with pytest.raises(AttributeError):
         riga.domain = "altro"
 
 
 def test_le_letture_del_prodotto_passano_dall_vocabolario():
-    """I tre lettori non tengono piu' nessun elenco proprio: chiedono. E'
+    """I lettori non tengono piu' nessun elenco proprio: chiedono. E'
     l'unica prova di questo file che guarda i moduli veri invece
     del vocabolario, e serve a impedire che qualcuno reintroduca un ripiego
     locale «solo per questo caso».
 
-    Mutazione: in `facts.genre_for`, rimettere
-    `if domain in ("climate", "cover", ...)` al posto di `is_operable(domain)`
+    Mutazione (riscritta ed ESEGUITA il 17/09/2026, quando il genere e' passato
+    all'istantanea dei giudizi): in `facts.genre_for`, rimettere
+    `if domain in ("climate", "cover", ...)` prima di `judgments.genre_of`
     -- la prova `test_un_tipo_ha_una_casa_sola` arrossisce, e questa resta
     verde: e' voluto, sorvegliano due cose diverse. La mutazione di QUESTA e'
     far ritornare `[]` a `topology.decoded_capabilities` per ogni dominio."""
-    assert aspect_of("sensor.presa", {"device_class": "energy"}) == "energia"
     assert facts.genre_for("light.cucina", None) == "funzionamento"
     assert topology.decoded_capabilities("light", 4 | 32) == ["effetti", "transizione"]
     assert entity_cache is not None  # importato per il vocabolario dichiarato sopra

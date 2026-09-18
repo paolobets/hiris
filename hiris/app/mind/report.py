@@ -59,6 +59,7 @@ from __future__ import annotations
 import logging
 
 from .recipes import Recipe
+from .store import READING_RETENTION_S
 
 logger = logging.getLogger(__name__)
 
@@ -79,12 +80,15 @@ _ANCHOR = ("nome", "classe", "attributi", "dominio", "titolo", "comparso_ts")
 
 def build_report(*, day: str, episodes, series: dict, recipes: dict,
                  names: dict, objective: dict | None = None,
-                 without_statistics: set[str] | None = None) -> dict:
-    """Il resoconto di un giorno: `{giorno, misure, cronaca}`.
+                 without_statistics: set[str] | None = None,
+                 judgment: dict | None = None) -> dict:
+    """Il resoconto di un giorno: `{giorno, obiettivo, misure, forme, cronaca,
+    giudizio}`.
 
     **Puro**: nessuna lettura di rete e nessun archivio. Le serie arrivano gia'
     lette dal chiamante, le ricette gia' lette dal sapere, gli episodi gia'
-    costruiti da `aggregate_day` -- stessa disciplina di `build_balance_body`.
+    costruiti da `facts.build_episodes` -- stessa disciplina di
+    `build_balance_body`.
 
     Un giorno vuoto produce un resoconto vuoto, e **va scritto lo stesso**:
     «quel giorno non e' successo niente» e «quel giorno non l'abbiamo
@@ -105,11 +109,18 @@ def build_report(*, day: str, episodes, series: dict, recipes: dict,
     statistiche affatto (spec §6, primo «rifiuta se»): le loro misure escono
     «non calcolabile» dicendo QUELLO, invece di «la serie e' vuota». `None`
     vuol dire «non l'abbiamo potuto chiedere», e allora non si afferma niente.
+
+    **`judgment` e' l'impronta dei giudizi con cui e' nata la cronaca**
+    (`{"impronta": ...}`, spec `docs/design/2026-09-16-il-giudizio-dei-tipi.md`
+    §6), gia' calcolata da chi chiama: `facts.aggregate_day` e
+    `facts.rebuild_chronicle`. Come `objective`, `None` resta `None`: nessuna
+    impronta inventata per una cronaca che non dice con quale giudizio e' nata.
     """
     measured, shapes = _measurements(series, recipes, names,
                                      without_statistics)
     return {"giorno": day, "obiettivo": objective, "misure": measured,
-            "forme": shapes, "cronaca": [_entry(e) for e in episodes or []]}
+            "forme": shapes, "cronaca": [_entry(e) for e in episodes or []],
+            "giudizio": judgment}
 
 
 def _measurements(series: dict, recipes: dict, names: dict,
@@ -447,12 +458,20 @@ SEZIONE_CRONACA = "La cronaca"
 SEZIONE_IGNOTO = "Cosa non si sa"
 
 
-def as_document(report: dict) -> str:
+def as_document(report: dict, *, current_fingerprint: str | None = None) -> str:
     """Il resoconto reso come documento, **derivato e mai scritto a mano**.
 
     Tre sezioni, e la terza non e' una ripetizione della prima: *«cosa non si
     sa»* e' il terzo innesco dell'analista, e in fondo a una tabella di numeri
     buoni non salterebbe all'occhio.
+
+    **`current_fingerprint` e' l'impronta dei giudizi di adesso** (spec
+    2026-09-16 §6). Quando arriva ed e' diversa da quella del resoconto -- o il
+    resoconto non ne ha nessuna, perche' e' nato prima che l'impronta esistesse
+    -- sotto «La cronaca» una riga lo dice. La frase vale sia per un giorno
+    oltre il grezzo, che resta com'e', sia per uno recente che il recupero non
+    ha ancora rifatto: questa funzione non sa quale dei due sia, e non lo
+    afferma. Senza `current_fingerprint` non si afferma niente.
     """
     measurements = [m for m in report.get("misure") or [] if "valore" in m]
     unknown = [m for m in report.get("misure") or [] if "valore" not in m]
@@ -478,6 +497,12 @@ def as_document(report: dict) -> str:
     lines.append("")
 
     lines += [f"## {SEZIONE_CRONACA}", ""]
+    fingerprint = (report.get("giudizio") or {}).get("impronta")
+    if current_fingerprint is not None and fingerprint != current_fingerprint:
+        lines += [("*Questa cronaca e' raccontata con un giudizio diverso da quello "
+                   "di adesso. Il recupero la rifa' finche' il grezzo di quel giorno "
+                   f"c'e' tutto ({READING_RETENTION_S // 86400} giorni); oltre, resta "
+                   "com'e'.*"), ""]
     if chronicle:
         lines += ["| when | chi | cosa |", "|---|---|---|"]
         for v in chronicle:

@@ -145,14 +145,20 @@ written, or a refusal recorded, is never asked again
 (`server.py::recipe_round`). One at a time is not generic caution — thirty
 devices asked together would empty the plan's daily ceiling on their own, and
 from there every turn, chat included, would fall through to the paid providers.
-The fifteenth writes the daily report of **one** day that does not have one yet,
-oldest first, every 5 minutes (`server.py::backfill_one_missing_report`). It
-exists because of a measurement taken on the owner's house on 14/09/2026: the
-reports for the 12th and the 13th existed and nothing else did, while the 7th
-through the 11th had raw state changes and objects and no report — neither
-writer reaches backwards, and for the analyst those days did not exist. It stops
-when nothing is missing, and it never goes further back than the raw itself: a
-day can only be redone while its raw still exists.
+The fifteenth takes care of **one** day every 5 minutes, oldest first
+(`server.py::backfill_one_report`). It exists because of a measurement taken on
+the owner's house on 14/09/2026: the reports for the 12th and the 13th existed
+and nothing else did, while the 7th through the 11th had raw state changes and
+objects and no report — neither writer reaches backwards, and for the analyst
+those days did not exist. A day with no report at all is written whole. Since
+17/09/2026 the same round also **redoes the chronicle** of a day that was born
+under a different judgement of the house: the report carries the fingerprint of
+the judgements it was written with, and a correction made today ages every day
+that disagrees with it. Only the chronicle and that fingerprint are replaced —
+the measures, the shapes and the objective of that day stay as they were, and
+nothing is asked of Home Assistant. It stops when there is nothing left to do,
+and it never goes further back than the raw itself: a day can only be redone
+while its raw still exists.
 
 
 The sixteenth is the analyst (spec §10), every hour

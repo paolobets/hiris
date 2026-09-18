@@ -1,7 +1,7 @@
 """Ogni nome delle due tabelle degli attributi, pinnato contro la fonte -- non
 contro se stesso.
 
-Le tabelle vivono in `home_space/type_vocabulary.py` (metrica 4) e dicono, per
+Le tabelle vivono in `home_space/type_vocabulary.py` (metrica 5) e dicono, per
 dominio, quali attributi Home Assistant classifica come CAPACITA' (cosa
 l'entita' puo' fare) e quali come VALORE CORRENTE (com'e' adesso). Sono una
 trascrizione, non un giudizio: chi le scrive copia, e chi le legge deve poter

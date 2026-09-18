@@ -166,7 +166,7 @@ _domain = domain_of
 # pubblica per dominio come `StrEnum` dal `2026.9.1`. Il dizionario che dice
 # quale nome sta di qua e quale di la' vive nel vocabolario dei tipi, con
 # provenienza `importato` e la versione da cui viene
-# (`home_space/type_vocabulary.py`, metrica 4).
+# (`home_space/type_vocabulary.py`, metrica 5).
 #
 # `uninterpreted` e' la cesta che rende il requisito onesto: gli otto `ave_*`
 # dei termostati AVE, i `marker_*`, `days_until`, `next_date` della raccolta

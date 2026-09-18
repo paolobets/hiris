@@ -185,8 +185,10 @@ def claimed_states(domain: str, device_class: str | None) -> frozenset[str]:
 
     Tre provenienze diverse, e la differenza fra loro conta:
 
-    - i **riposi** e i **funzionamenti** del vocabolario dei tipi -- le due
-      meta' dell'unico giudizio per tipo;
+    - i **riposi** e i **funzionamenti** dell'istantanea del SOLO seme
+      (`type_vocabulary.REPO_JUDGMENTS`, spec 2026-09-16 §3 -- il censore
+      chiede cosa il repo rivendica, non cosa dice la casa) -- le due meta'
+      dell'unico giudizio per tipo;
     - **`unavailable`/`unknown`** e le due forme dell'assenza, che attraversano
       ogni tipo e per questo non stanno su nessuna riga;
     - gli **stati attivi** del nucleo, che sono CIECHI AL DOMINIO.
@@ -202,8 +204,8 @@ def claimed_states(domain: str, device_class: str | None) -> frozenset[str]:
     voce e' stata chiusa: col giudizio nel vocabolario, o con un'eccezione
     motivata qui sotto.
     """
-    claimed = set(type_vocabulary.resting_states_of(domain, device_class))
-    claimed |= set(type_vocabulary.working_states_of(domain, device_class))
+    claimed = set(type_vocabulary.REPO_JUDGMENTS.resting_of(domain, device_class))
+    claimed |= set(type_vocabulary.REPO_JUDGMENTS.working_of(domain, device_class))
     claimed |= set(type_vocabulary.unknown_states())
     claimed |= set(type_vocabulary.ABSENT_STATE_FORMS.value)
     claimed |= set(briefing._ACTIVE_STATES)
@@ -225,7 +227,10 @@ def claimed_capability_bits(domain: str) -> frozenset[int]:
 
 
 def claimed_switchable_domains() -> frozenset[str]:
-    return type_vocabulary.operable_domains()
+    """I domini accendibili che il repo rivendica -- dall'istantanea del solo
+    seme (spec 2026-09-16 §3), non piu' da `type_vocabulary.operable_domains()`
+    letta a mano: stessa fonte di `claimed_states` qui sopra."""
+    return type_vocabulary.REPO_JUDGMENTS.operable_domains()
 
 
 # --------------------------------------------------------------------------
@@ -434,9 +439,10 @@ def _same_reason(subject: Subject, keys, reason: str) -> dict[tuple[Subject, str
 # v3.23.0..HEAD, 08/09/2026). La versione precedente eccettuava tutti e
 # cinque gli stati non-`triggered` con la stessa ragione ("SONO il riposo"),
 # ma `type_vocabulary.py` decide l'esatto opposto per `disarmed`: il
-# vocabolario dichiara riposi SOLO i cinque `armed_*` (`resting_states_of
-# ("alarm_control_panel") == {"armed_home", "armed_away", "armed_night",
-# "armed_vacation", "armed_custom_bypass"}`), col commento «un allarme si
+# vocabolario dichiara riposi SOLO i cinque `armed_*`
+# (`type_vocabulary.REPO_JUDGMENTS.resting_of("alarm_control_panel") ==
+# {"armed_home", "armed_away", "armed_night", "armed_vacation",
+# "armed_custom_bypass"}`), col commento «un allarme si
 # INSERISCE per stare a riposo, non il contrario -- disarmed e triggered NON
 # sono riposi». Misurato: `_is_on("disarmed") is True`. La ragione citava un
 # codice che dice il contrario di quel che afferma.
@@ -454,7 +460,7 @@ def _same_reason(subject: Subject, keys, reason: str) -> dict[tuple[Subject, str
 # `disarmed`, `arming`, `disarming`, `pending` NON hanno una ragione vera da
 # scrivere qui: sono transitori o duraturi quanto `armed_*`, ma il giudizio
 # su cosa siano (funzionamento come `lock.unlocked`/`locking`, o qualcos'altro)
-# e' un giudizio del prodotto sulla gamba «sicurezza» che nessuno ha ancora
+# e' un giudizio del prodotto sul genere «sicurezza» che nessuno ha ancora
 # preso -- vedi `OPEN_QUESTIONS`.
 EXCEPTIONS[(Subject.STATE, state_key("alarm_control_panel", None, "armed"))] = (
     "Non e' mai lo stato reale di un'entita': `AlarmControlPanelState` non "
@@ -487,9 +493,10 @@ EXCEPTIONS.update(_same_reason(
 # Emergono dall'08/09/2026, con la sparizione di `topology._CLASS_MEANING`
 # (spec §6): quella tabella le rivendicava tutte e ventotto, e la
 # rivendicazione era «qualcuno le traduce» -- non «qualcuno ha deciso se
-# servono». Adesso le parole le dice Home Assistant, e la domanda vera (spec
-# §7: serve a una delle sei gambe dell'obiettivo?) resta scoperta per le
-# dodici che nessuna gamba raccoglie. **La risposta era gia' scritta nel
+# servono». Adesso le parole le dice Home Assistant, e la domanda vera di
+# allora (spec §7: serve a una delle sei gambe dell'obiettivo? -- la gamba e'
+# uscita per intero il 17/09/2026, spec 2026-09-16 §11) restava scoperta per
+# le dodici che nessuna gamba raccoglieva. **La risposta era gia' scritta nel
 # prodotto**, accanto al campo `notable` di `type_vocabulary`, ed e' quella: sono transitori e
 # manutenzione, si vanno a chiedere e non si annunciano.
 
@@ -499,15 +506,14 @@ EXCEPTIONS.update(_same_reason(
      ("light", "moving", "plug", "power", "running", "sound", "vibration")),
     "Transitorio: dice com'e' un istante, non che sia successo qualcosa da "
     "osservare o da annunciare. Deciso e scritto accanto al campo `notable` di `type_vocabulary` "
-    "(«restano fuori i transitori»), e nessuna delle sei gambe dell'obiettivo lo "
-    "raccoglie: `chi c'e'` ha gia' `motion`/`occupancy`/`presence`, che sono la "
-    "stessa domanda posta bene."))
+    "(«restano fuori i transitori»): `binary_sensor.motion`/`occupancy`/`presence` "
+    "sono gia' nel vocabolario, senza campi propri, per lo stesso motivo."))
 
 EXCEPTIONS.update(_same_reason(
     Subject.DEVICE_CLASS,
     (class_key("binary_sensor", device_class) for device_class in
      ("battery", "battery_charging", "connectivity", "update")),
-    "Manutenzione: e' la gamba «buono stato», che pero' HIRIS la osserva dove "
+    "Manutenzione: HIRIS la osserva dove "
     "il dato e' un NUMERO (`sensor.battery`, gia' nel vocabolario) e non dove e' "
     "un si'/no. Un `binary_sensor.battery` dice «carica bassa» e basta: non c'e' "
     "una soglia da confrontare ne' una tendenza da guardare, e annunciarlo "
@@ -516,7 +522,7 @@ EXCEPTIONS.update(_same_reason(
 
 EXCEPTIONS[(Subject.DEVICE_CLASS, class_key("binary_sensor", "lock"))] = (
     "E' il DOPPIONE di un tipo che il vocabolario gia' porta: il dominio `lock` "
-    "ha la sua riga, con la gamba «sicurezza» e i suoi riposi. Un "
+    "ha la sua riga, col suo genere «sicurezza» e i suoi riposi. Un "
     "`binary_sensor.lock` e' la stessa serratura vista da un'integrazione che "
     "non implementa il dominio, e dargli una riga propria vorrebbe dire due "
     "case per lo stesso soggetto. Se un giorno questa casa ne avesse uno, la "
@@ -556,7 +562,7 @@ EXCEPTIONS.update(_same_reason(
     # davvero. `calendar` e' stato aggiunto a quella riga (vedi il commento
     # accanto al campo `notable` di `type_vocabulary`), quindi per lui la citazione ora e'
     # vera. `update=off` non ci sta piu': vedi `OPEN_QUESTIONS`, perche'
-    # `update=on` sfiora la gamba «buono stato» e nessuno lo ha mai deciso.
+    # `update=on` tocca il «buono stato» della casa e nessuno lo ha mai deciso.
     (state_key("calendar", None, "off"), state_key("sensor", None, "off")),
     "Sono due domini che HIRIS non giudica per stato: un `sensor` MISURA, un "
     "`calendar` dice se c'e' un evento in corso adesso. Nessuno dei due e' "
@@ -565,16 +571,15 @@ EXCEPTIONS.update(_same_reason(
 
 EXCEPTIONS.update(_same_reason(
     Subject.STATE,
-    (state_key("person", None, "home"), state_key("person", None, "not_home"),
-     state_key("device_tracker", None, "home"),
+    (state_key("person", None, "not_home"),
      state_key("device_tracker", None, "not_home")),
     "Gia' giudicati, e il giudizio e' il genere «presenza» di "
-    "`mind/facts.py::aggregate_day`: `home` E' il riposo (chiude l'episodio) e "
-    "l'oggetto e' l'ASSENZA -- «fuori casa dalle 8:10 alle 17:34» -- non il "
-    "rientro. Non stanno fra i riposi del vocabolario perche' quel ramo non "
-    "passa da `_is_on`: confronta `home` da se', ed e' l'unico genere che lo fa. "
-    "Il giorno in cui i due rami si unificassero, queste quattro voci "
-    "diventerebbero due righe di vocabolario."))
+    "`mind/facts.py::aggregate_day`: l'oggetto e' l'ASSENZA -- «fuori casa "
+    "dalle 8:10 alle 17:34» -- non il rientro, e `not_home` non e' ne' un "
+    "riposo ne' un lavoro. **`home` non e' piu' qui** (spec 2026-09-16 "
+    "«il giudizio dei tipi» §5): e' diventato una riga `resting_states` sul "
+    "tipo, nel seme dei giudizi -- il censore lo trova gia' rivendicato e "
+    "questa voce sarebbe morta."))
 
 
 # I quattro domini che il proprietario ha lasciato FUORI l'08/09/2026, quinta
@@ -680,7 +685,7 @@ OPEN_QUESTIONS: tuple[OpenQuestion, ...] = (
         "due posti che il vocabolario ha oggi. **La decisione c'e', il posto dove "
         "scriverla no**: «guasto» in questo prodotto e' un GENERE "
         "(`mind/facts.py::GENRES`), e il genere si decide per SOGGETTO -- "
-        "`genre_for(soggetto, gamba)` lo stato non lo riceve nemmeno, e un "
+        "`genre_for(soggetto, classe)` lo stato non lo riceve nemmeno, e un "
         "soggetto ha un genere solo per tutta la giornata (`open_episodes` e' "
         "indicizzato per soggetto: una serratura che si inceppa a episodio di "
         "sicurezza aperto non potrebbe cambiare genere senza chiuderne uno e "
@@ -706,7 +711,7 @@ OPEN_QUESTIONS: tuple[OpenQuestion, ...] = (
         "`disarming`, `pending`. `disarmed` puo' durare giorni -- il "
         "vocabolario lo dichiara gia' NON-riposo (`_is_on(\"disarmed\") is "
         "True`, misurato), ma non gli ha ancora dato un genere: e' "
-        "FUNZIONAMENTO, come `lock.unlocked` (\"e' il fatto che la gamba "
+        "FUNZIONAMENTO, come `lock.unlocked` (\"e' il fatto che il genere "
         "sicurezza esiste per osservare\")? `arming`/`disarming`/`pending` "
         "sono transitori di pochi secondi, la stessa forma di "
         "`lock.locking`/`unlocking` -- vanno trattati allo stesso modo? Chi "
@@ -719,11 +724,11 @@ OPEN_QUESTIONS: tuple[OpenQuestion, ...] = (
     # 08/09/2026): `update=off` stava eccettuato insieme a `calendar`/`sensor`
     # citando una decisione (il campo `notable` di `type_vocabulary`) che non nomina
     # `update`. Il proprietario non ha mai deciso se un aggiornamento
-    # disponibile riguardi la gamba «buono stato».
+    # disponibile riguardi il «buono stato» della casa.
     OpenQuestion(
         Subject.STATE,
         "Un aggiornamento disponibile (`update=on`, 53 entita' di questa casa "
-        "misurate l'08/09/2026) sfiora la gamba «buono stato», e nessuno lo "
+        "misurate l'08/09/2026) tocca il «buono stato» della casa, e nessuno lo "
         "ha mai deciso: oggi non e' notevole ne' osservato, semplicemente "
         "perche' `update` non e' nell'elenco dei domini-evento. Si dichiara "
         "notevole il giorno in cui un aggiornamento diventa disponibile, o "

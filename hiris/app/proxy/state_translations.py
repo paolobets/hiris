@@ -6,10 +6,10 @@ un'incoerenza -- sono due cose di natura diversa:
 
 - il nome puo' SPARIRE con l'entita', quindi si scrive quando lo si sa;
 - lo stato non sparisce mai (`heat` e' il fatto, ed e' quello che
-  `mind/facts.py` confronta coi riposi e i «non lo so» dichiarati nel
-  vocabolario dei tipi -- `type_vocabulary.resting_states()`/
-  `unknown_states()`, non piu' `_RESTING`/`_UNKNOWN` scritti a mano dal
-  07/09/2026 -- per aprire e chiudere gli episodi), mentre la sua TRADUZIONE
+  `mind/facts.py` confronta coi riposi del soggetto, letti dall'istantanea dei
+  giudizi, e coi «non lo so» del vocabolario dei tipi -- `unknown_states()`,
+  non piu' `_RESTING`/`_UNKNOWN` scritti a mano dal 07/09/2026 -- per aprire e
+  chiudere gli episodi), mentre la sua TRADUZIONE
   migliora: una voce che oggi manca
   domani c'e'. Renderla alla lettura fa arrivare i miglioramenti anche alle
   righe vecchie; congelarla in colonna li perde per sempre. E la lingua e'
@@ -153,9 +153,10 @@ def state_translation(state, *, domain, device_class=None, platform=None,
     delle 801 chiavi lette da questa casa e' `entity_component.*.state.
     (unavailable|unknown)`. Corretto il 09/09/2026: questa funzione NON ha
     un solo chiamante. `api/handlers_mind.py::_with_rendered_states` (dietro
-    `/api/mind/facts`) legge oggetti che `mind/facts.py::aggregate_day` ha
-    gia' filtrato -- li' i due stati non arrivano mai, perche' non aprono ne'
-    chiudono un episodio e sono scartati prima che un `corpo.stato` esista.
+    `/api/mind/facts`, entrambi usciti con gli oggetti il 15/09/2026) leggeva
+    oggetti che `mind/facts.py::aggregate_day` aveva gia' filtrato -- li' i due
+    stati non arrivavano mai, perche' non aprono ne' chiudono un episodio e
+    sono scartati prima che un `corpo.stato` esista.
     Ma `rendered_state` (sotto, nello stesso modulo) chiama questa funzione
     per conto di `topology.readable_state`, che `home_space/briefing.py` e
     `home_space/queries.py` invocano sullo stato VIVO di un'entita' -- non

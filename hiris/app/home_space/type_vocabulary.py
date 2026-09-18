@@ -14,25 +14,32 @@ come vuole la seconda fondamenta. Una coppia il cui dominio non ha una riga
 non si puo' costruire: e' un errore di costruzione, non un buco che si scopre
 leggendo.
 
-**Quattro domande, una casa.** Le metriche non sono elenchi: sono modi di
-interrogare la stessa riga. Erano tre alla fetta 1; la quarta e' arrivata
-l'08/09/2026 con lo scioglimento delle sei liste sparse.
+**Tre domande, una casa.** Le metriche non sono elenchi: sono modi di
+interrogare la stessa riga. Erano quattro, e i numeri qui sotto restano quelli
+delle sezioni del modulo: la 1 (la gamba, «serve all'obiettivo?») e' uscita
+il 17/09/2026, intera, con la spec 2026-09-16 §11, insieme a `aspect_of`,
+`ASPECT`, `ASPECT_GUARD` e `ASPECTS` (vive dall'11/09/2026, quando avevano
+preso il posto di `mind/baseline.py::aspect` e delle sue otto costanti
+satellite). La gamba decideva UNA cosa che ancora
+conta -- il genere di un episodio -- e quella cosa vive nel campo `genre`
+(spec 2026-09-16 §5); le altre cinque domande che poneva (`chi c'e'`,
+`comfort`, `dispersione`, `energia`, `buono stato`) non avevano nessun
+lettore di produzione rimasto: la sesta, `sicurezza`, e' l'unica che il
+genere ha ereditato.
 
-1. «Serve all'obiettivo?» -> `aspect_of` -- la gamba dell'osservatore
-   (`chi c'e'`, `comfort`, `dispersione`, `energia`, `buono stato`,
-   `sicurezza`) o niente. Prima viveva in `mind/baseline.py::aspect`
-   (cancellato l'11/09/2026 col pavimento) e nelle sue otto costanti
-   satellite.
-2. «Si accende e si spegne, e qual e' il suo riposo?» -> `is_operable`,
-   `resting_states_of`, `resting_states`. Prima erano `_OPERABLE`, `_RESTING`
-   e `_UNKNOWN` in `mind/facts.py`.
+2. «Si accende e si spegne, e qual e' il suo riposo, e come lavora?» -> i
+   campi `operable`, `resting_states`, `working_states`. Prima erano
+   `_OPERABLE`, `_RESTING` e `_UNKNOWN` in `mind/facts.py`; oggi chi legge in
+   produzione non li chiede piu' a questo modulo, li chiede all'istantanea
+   dei giudizi (`home_space/type_judgments.TypeJudgments`) di cui questi
+   campi sono il seme.
 3. «Cosa sa fare?» -> `capability_names`. Prima era `_FEATURE_NAMES` in
    `home_space/topology.py`.
-4. «Merita un annuncio?» -> `is_notable`, `notable_types`. Prima erano
-   `_EVENT_DOMAINS` e `_EVENT_CLASSES` in `home_space/briefing.py`: DUE
-   elenchi per una domanda sola, uno per dominio e uno per coppia, che nessuno
-   teneva allineati. Qui sono un campo solo sulle due granularita' del tipo, ed
-   e' il caso che dimostra perche' il soggetto e' il tipo e non il dominio.
+4. «Merita un annuncio?» -> il campo `notable`. Prima erano `_EVENT_DOMAINS`
+   e `_EVENT_CLASSES` in `home_space/briefing.py`: DUE elenchi per una
+   domanda sola, uno per dominio e uno per coppia, che nessuno teneva
+   allineati. Qui sono un campo solo sulle due granularita' del tipo, ed e'
+   il caso che dimostra perche' il soggetto e' il tipo e non il dominio.
 
 **Ogni campo dichiara da dove viene, e non c'e' modo di scriverne uno che non
 lo dichiari** -- vedi `Field` qui sotto. Le provenienze sono tre e non di piu'
@@ -46,9 +53,18 @@ modulo solo?» va risposta invece che elusa. `ha_vocabulary.py` porta cio' che
 Home Assistant DOCUMENTA e non manda mai in un payload -- il SIGNIFICATO in
 parole di uno `state_class`, di un `device_class`, di un `entity_category`:
 tutto `importato`, tutto citato dalla fonte con la sua versione. Questo modulo
-porta cio' che Home Assistant NON PUO' dirci -- a quale gamba dell'obiettivo un
-tipo serve, quale suo stato vale «a riposo»: tutto `nostro`. Le due meta' non
-si sovrappongono in nessuna riga: nessun fatto vive di qua e di la'.
+porta anche cio' che Home Assistant NON documenta come significato ma
+dichiara comunque -- i nomi dei bit di `supported_features`, gli attributi di
+capacita' e di stato: quelli restano `importato` anche qui, non c'e' una
+seconda casa per un fatto del fornitore. **«Tutto nostro» era gia' falso
+quando questa frase fu scritta**: le tabelle di `capability_names`,
+`capability_attributes` e `state_attributes` sono `importato` da sempre. Cio'
+che e' DAVVERO nostro, qui, sono i giudizi -- genere, riposo, lavoro,
+notevole, accendibile, limiti dei parametri -- ed e' SOLO quello il **seme
+del sapere** (`judgment_seed_rows()`, in fondo a questo file, spec
+2026-09-16 §2-§3): l'archivio lo legge una volta, e da li' in poi corregge
+l'istantanea viva senza toccare questo letterale. Le due meta' non si
+sovrappongono in nessuna riga: nessun fatto vive di qua e di la'.
 
 Restano separate **per questa fetta**, e non per sempre. L'argomento piu' forte
 per unirle e' misurabile e va scritto: `DEVICE_CLASS_MEANING` e' indicizzato
@@ -82,19 +98,33 @@ quattro domini (`assist_satellite`, `camera`, `timer`, `group`) restano fuori
 con la ragione scritta nel censore.
 
 Cio' che il censore nomina e che NON e' nostro decidere resta aperto in
-`type_census.OPEN_QUESTIONS`, con la domanda scritta: **110 voci** -- 109 classi
-del dispositivo mai nominate, e `lock=jammed`, che ha la decisione presa (e' un
-GUASTO) e non ha ancora un posto dove scriverla, perche' il genere si decide
-per soggetto e non per stato.
+`type_census.OPEN_QUESTIONS`, con la domanda scritta: **115 voci** (ricontate
+eseguendo `sum(len(q.keys) for q in type_census.OPEN_QUESTIONS)`) -- 109
+classi del dispositivo mai nominate, i quattro stati indecisi di
+`alarm_control_panel` (`arming`, `disarmed`, `disarming`, `pending`),
+`update=off`, e `lock=jammed`, che ha la decisione presa (e' un GUASTO) e non
+ha ancora un posto dove scriverla, perche' il genere si decide per soggetto e
+non per stato.
 
 Spec: `docs/design/2026-09-07-l-anagrafe-dei-tipi.md`.
 """
 from __future__ import annotations
 
+import json
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping
 from enum import Enum
 from types import MappingProxyType
+
+from .type_judgments import (
+    GENRE_FIELD,
+    NOTABLE_FIELD,
+    OPERABLE_FIELD,
+    PARAMETER_LIMITS_FIELD,
+    RESTING_FIELD,
+    WORKING_FIELD,
+    TypeJudgments,
+)
 
 
 class Provenance(Enum):
@@ -236,9 +266,9 @@ class Imported(Field):
 
 
 class Ours(Field):
-    """Un giudizio che Home Assistant non puo' darci: a quale gamba
-    dell'obiettivo un tipo serve, quale suo stato vale «a riposo». Nessuna API
-    di HA lo dice, e non lo dira' mai."""
+    """Un giudizio che Home Assistant non puo' darci: che genere di episodio
+    un tipo apre, quale suo stato vale «a riposo». Nessuna API di HA lo dice,
+    e non lo dira' mai."""
 
     __slots__ = ()
 
@@ -401,13 +431,6 @@ class TypeVocabulary:
 # una metrica smetterebbe di funzionare in silenzio.
 # --------------------------------------------------------------------------
 
-#: La gamba dell'obiettivo a cui questo tipo serve.
-ASPECT = "aspect"
-
-#: `(attributo, valore atteso)`: la gamba vale solo se l'entita' porta quel
-#: valore in quell'attributo. Oggi esiste per `device_tracker` e solo per lui.
-ASPECT_GUARD = "aspect_guard"
-
 #: Se questo tipo «funziona»: si accende e si spegne, si apre e si chiude.
 OPERABLE = "operable"
 
@@ -473,6 +496,17 @@ PARAMETER_LIMITS = "parameter_limits"
 #: resto -- cosi' il censore li sorveglia con lo stesso conto.
 NOTABLE = "notable"
 
+#: Il genere di un episodio: a quale forma della cronaca appartiene. Sostituisce
+#: la gamba (spec 2026-09-16 §5): e' la sola cosa che la gamba decideva davvero.
+GENRE = "genre"
+
+#: I generi della cronaca, **un elenco chiuso**: ogni genere ha una forma (come
+#: apre, come chiude) scritta in `mind/facts.py`. La casa sceglie quale dare a un
+#: soggetto, non ne inventa uno. `energia` e `bilancio` sono usciti il
+#: 16/09/2026: nessun ramo di `aggregate_day` li trattava, e nessun codice
+#: produceva `bilancio` (spec 2026-09-16 §5).
+CHRONICLE_GENRES = ("funzionamento", "presenza", "guasto", "sicurezza")
+
 
 
 # --------------------------------------------------------------------------
@@ -500,78 +534,47 @@ FEATURE_SOURCE = (
 _vocabulary = TypeVocabulary()
 
 
-# -- metrica 1: la gamba ----------------------------------------------------
+_vocabulary.add("person", genre=Ours("presenza"), resting_states=Ours({"home"}))
+
+_vocabulary.add("device_tracker", genre=Ours("presenza"), resting_states=Ours({"home"}))
+
+_vocabulary.add("climate", genre=Ours("funzionamento"))
+_vocabulary.add("cover", genre=Ours("funzionamento"))
+
+# Gli allarmi entrarono in questo vocabolario il 26/08/2026 (review del primo
+# task): la prima stesura non li considerava affatto -- ne' fumo, ne' gas, ne'
+# monossido, ne' allagamento, ne' serrature, ne' pannello dell'allarme -- ed
+# era il buco peggiore possibile, sulla categoria di dati che conta piu' di
+# tutte (`docs/design/2026-08-26-l-osservatore.md` §4).
 #
-# **Il pavimento non e' una lista scritta a mano.** Si deriva da cio' che Home
-# Assistant dichiara gia' su ogni entita' -- dominio, classe del dispositivo,
-# `source_type` -- perche' una lista a mano invecchia col primo dispositivo
-# nuovo e nessuno se ne accorge. **Non `state_class`** (correzione di parole
-# della review, mandato «il bilancio dell'energia», punto 7, 27/08/2026):
-# resta grezzo conservato nell'archivio (`mind/store.py`), non un criterio del
-# pavimento.
-#
-# **Perche' esiste un pavimento.** Il prompt dell'obiettivo decide cosa entra
-# nelle osservazioni, quindi e' un punto singolo che puo' ACCECARE
-# l'osservatore -- e cio' che non e' stato osservato non esiste piu':
-# riscrivere il prompt fra tre mesi non fa ricomparire i tre mesi mancanti. Il
-# pavimento e' cio' che il prompt non puo' togliere. Sopra di esso allarga;
-# sotto, mai.
-
-ASPECTS = ("chi c'e'", "comfort", "dispersione", "energia", "buono stato",
-           "sicurezza")
-
-_vocabulary.add("person", aspect=Ours("chi c'e'"))
-
-# MISURATO il 26/08/2026: 65 dei 73 tracker di questa casa sono `router` --
-# l'NVR, Alexa, un Echo, una TV, una lampada. Dicono «questo apparecchio e'
-# connesso al wifi», non «c'e' qualcuno in casa». I 4 `gps` sono i telefoni, e
-# sono le fonti dietro le due `person`. Non e' volume (i 65 fanno 114 cambi al
-# giorno, lo zero per cento): e' che non significano niente per l'obiettivo.
-#
-# **E' l'unica riga con una GUARDIA**, e la guardia sta nella riga proprio
-# perche' non finisca in un ramo scritto a mano dentro il lettore: la
-# condizione fa parte del giudizio, non del codice che lo legge. Nel dubbio si
-# sta fuori -- un tracker che non dichiara il proprio `source_type` non e' una
-# persona finche' non lo dice.
-_vocabulary.add("device_tracker",
-              aspect=Ours("chi c'e'"),
-              aspect_guard=Ours(("source_type", "gps")))
-
-_vocabulary.add("climate", aspect=Ours("comfort"))
-_vocabulary.add("cover", aspect=Ours("dispersione"))
-
-# La sesta gamba, aggiunta il 26/08/2026 dalla review del primo task: la prima
-# stesura non conteneva gli allarmi -- ne' fumo, ne' gas, ne' monossido, ne'
-# allagamento, ne' serrature, ne' pannello dell'allarme -- ed era il buco
-# peggiore possibile, sulla categoria di dati che conta piu' di tutte
-# (`docs/design/2026-08-26-l-osservatore.md` §4).
-#
-# Il vocabolario gemello viveva in `home_space/briefing.py` e da oggi e' la
-# metrica 4 di questo modulo (il campo `notable`): «cosa e' notevole ADESSO»
-# resta una domanda DIVERSA da «cosa si osserva SEMPRE» -- la gamba dice quali
-# entita' entrano nel pavimento dell'osservatore, il campo `notable` quali
-# cambiamenti meritano una riga del nucleo -- ma sono due domande sulla STESSA
-# riga, non due elenchi che possono divergere senza che nessuno se ne accorga.
-_vocabulary.add("lock", aspect=Ours("sicurezza"),
-              resting_states=Ours({"locked"}))
+# Il vocabolario gemello di «cosa e' notevole ADESSO» viveva in
+# `home_space/briefing.py`; oggi e' il campo `notable`, sotto: «cosa e'
+# notevole ADESSO» resta una domanda diversa da «cosa si osserva SEMPRE»
+# (quest'ultima, dal 17/09/2026, la decide lo scope dell'osservatore --
+# `mind/watcher.py`, spec 2026-09-16 §11 -- non piu' una riga di questo
+# vocabolario).
+_vocabulary.add("lock", resting_states=Ours({"locked"}), genre=Ours("sicurezza"))
 # «Un allarme si INSERISCE per stare a riposo, non il contrario» -- correzione
 # al rovesciamento della review, punto 3b: `disarmed` e `triggered` NON sono
 # riposi, per quanto suoni controintuitivo a chi legge in fretta.
-_vocabulary.add("alarm_control_panel", aspect=Ours("sicurezza"),
+_vocabulary.add("alarm_control_panel",
               resting_states=Ours({"armed_home", "armed_away", "armed_night",
-                                   "armed_vacation", "armed_custom_bypass"}))
-_vocabulary.add("siren", aspect=Ours("sicurezza"), resting_states=Ours({"off"}))
+                                   "armed_vacation", "armed_custom_bypass"}),
+              genre=Ours("sicurezza"))
+_vocabulary.add("siren", resting_states=Ours({"off"}), genre=Ours("sicurezza"))
 
-# `binary_sensor` e `sensor`: il dominio da solo non porta nessuna gamba -- il
-# giudizio vive sulle COPPIE qui sotto, che dal dominio ereditano il riposo
-# invece di ripeterlo.
+# `binary_sensor` e `sensor`: il dominio da solo non porta ne' genere ne'
+# `notable` -- il giudizio vive sulle COPPIE qui sotto, che dal dominio
+# ereditano il riposo invece di ripeterlo.
 _vocabulary.add("binary_sensor", resting_states=Ours({"off"}))
 _vocabulary.add("sensor")
 
-_vocabulary.add_all("binary_sensor", ("presence", "occupancy", "motion"),
-                  aspect=Ours("chi c'e'"))
-_vocabulary.add_all("binary_sensor", ("door", "window", "opening", "garage_door"),
-                  aspect=Ours("dispersione"))
+# Queste tre coppie non portano piu' nessun campo dall'uscita della gamba
+# (spec 2026-09-16 §11, 17/09/2026): restano dichiarate -- come il dominio
+# `sensor` qui sopra -- perche' il censore (`type_census.py`) le sappia gia'
+# guardate, non perche' abbiano un giudizio proprio.
+_vocabulary.add_all("binary_sensor", ("presence", "occupancy", "motion"))
+_vocabulary.add_all("binary_sensor", ("door", "window", "opening", "garage_door"))
 # Trappola gia' documentata nel prodotto: la classe si chiama
 # `carbon_monoxide`, NON `co`. E trappola seconda: `gas` compare anche fra i
 # sensori dell'energia qui sotto, ma e' un'altra entita' -- il rilevatore di
@@ -580,41 +583,42 @@ _vocabulary.add_all("binary_sensor", ("door", "window", "opening", "garage_door"
 _vocabulary.add_all("binary_sensor",
                   ("smoke", "gas", "carbon_monoxide", "moisture", "safety",
                    "tamper", "problem", "heat", "cold"),
-                  aspect=Ours("sicurezza"))
+                  genre=Ours("sicurezza"))
 
-_vocabulary.add_all("sensor", ("temperature", "humidity"), aspect=Ours("comfort"))
-# Qualita' dell'aria: la gamba «comfort» promette «che aria si respira», non
-# solo temperatura e umidita'. `carbon_monoxide` NON e' qui: e' una
-# concentrazione di un gas letale, non comfort -- sta in «sicurezza», sotto.
+# Queste sensor.* non portano piu' nessun campo dall'uscita della gamba: sono
+# misure (`sensor` non e' mai accendibile e non ha un genere), e restano
+# dichiarate per lo stesso motivo delle tre coppie di `binary_sensor` sopra.
+_vocabulary.add_all("sensor", ("temperature", "humidity"))
+# `carbon_monoxide` NON e' qui insieme alle altre: e' una concentrazione di un
+# gas letale, non una qualita' dell'aria qualunque (trappola gia' documentata:
+# la classe si chiama `carbon_monoxide`, non `co`).
 _vocabulary.add_all("sensor",
                   ("carbon_dioxide", "pm1", "pm10", "pm25",
                    "volatile_organic_compounds",
                    "volatile_organic_compounds_parts", "nitrogen_dioxide",
                    "nitrogen_monoxide", "nitrous_oxide", "ozone",
-                   "sulphur_dioxide"),
-                  aspect=Ours("comfort"))
-_vocabulary.add("sensor", "carbon_monoxide", aspect=Ours("sicurezza"))
+                   "sulphur_dioxide"))
+_vocabulary.add("sensor", "carbon_monoxide")
 # `battery` e' `diagnostic`, e le entita' di servizio sono 604 su 1226 in
 # questa casa. Il filtro e' per CLASSE, non per categoria: escludere
-# `diagnostic` in blocco toglierebbe «buono stato».
-_vocabulary.add("sensor", "battery", aspect=Ours("buono stato"))
+# `diagnostic` in blocco toglierebbe la sorveglianza sullo stato di carica.
+_vocabulary.add("sensor", "battery")
 # DEBITO DICHIARATO il 26/08/2026, CHIUSO A LIVELLO DI EPISODIO il 27/08/2026
 # (mandato «le direzioni dell'energia»): Home Assistant usa `device_class:
 # energy` (e `power`) sia per l'energia PRODOTTA da un fotovoltaico sia per
 # quella PRELEVATA dalla rete -- la classe da sola non separa le due
 # direzioni, e indovinarle dal NOME del sensore si romperebbe sul prossimo
-# inverter. **Questa gamba resta un'unica «energia»**, vera per tutti e 15 i
-# sensori di questa casa, produzione compresa; la direzione vive DENTRO
-# l'episodio (`mind/facts.py::aggregate_day`, parametro `direzioni`), non e'
-# una gamba nuova.
+# inverter. La direzione vive DENTRO l'episodio del bilancio
+# (`mind/facts.py::aggregate_day`, parametro `direzioni`), non in un giudizio
+# di questo vocabolario -- che dal 16/09/2026 non assegna piu' nessun genere a
+# questi quattro (D2: «energia» era un genere morto, nessun ramo lo apriva).
 #
-# **`state_class: total_increasing` da solo NON basta per «energia»**
-# (correzione del 27/08/2026): prima di quella correzione un contatore
+# **`state_class: total_increasing` da solo NON basta per rivendicare questa
+# riga** (correzione del 27/08/2026): prima di quella correzione un contatore
 # sempre-crescente qualunque finiva qui -- i gigabyte del router
 # (`device_class: data_size`) erano archiviati come energia e producevano un
-# episodio ogni notte. Solo le classi dichiarate qui sotto sono energia.
-_vocabulary.add_all("sensor", ("energy", "power", "gas", "water"),
-                  aspect=Ours("energia"))
+# episodio ogni notte. Solo le classi dichiarate qui sotto lo sono.
+_vocabulary.add_all("sensor", ("energy", "power", "gas", "water"))
 
 
 # -- metrica 2: accendibile, e il suo riposo --------------------------------
@@ -648,7 +652,7 @@ _vocabulary.add_all("sensor", ("energy", "power", "gas", "water"),
 # non e' un doppione: e' cio' che distingue una decisione da un silenzio, ed e'
 # l'unica forma in cui il censore puo' vedere la differenza.
 #
-# `climate` e `cover` hanno gia' la loro riga sopra (portano una gamba): la
+# `climate` e `cover` hanno gia' la loro riga sopra (portano un genere): la
 # seconda metrica si aggiunge alla stessa riga, non ne apre una seconda.
 
 # I sei modi operativi di un termostato acceso. Non sono sei riposi travestiti:
@@ -676,14 +680,18 @@ _vocabulary.extend("cover", operable=Ours(True),
                      "opening": "si sta muovendo: la corsa e' in atto, non finita",
                      "closing": "si sta muovendo: la corsa e' in atto, non finita",
                  }))
-_vocabulary.add("switch", operable=Ours(True), resting_states=Ours({"off"}))
-_vocabulary.add("light", operable=Ours(True), resting_states=Ours({"off"}))
-_vocabulary.add("fan", operable=Ours(True), resting_states=Ours({"off"}))
+_vocabulary.add("switch", operable=Ours(True), resting_states=Ours({"off"}),
+              genre=Ours("funzionamento"))
+_vocabulary.add("light", operable=Ours(True), resting_states=Ours({"off"}),
+              genre=Ours("funzionamento"))
+_vocabulary.add("fan", operable=Ours(True), resting_states=Ours({"off"}),
+              genre=Ours("funzionamento"))
 # **I sei modi del boiler sono FUNZIONAMENTO** -- decisione del proprietario,
 # 08/09/2026, sulla prima delle nove domande del censore. Sono modi OPERATIVI,
 # non pause: un boiler in `eco` scalda, solo con meno foga. Il suo unico riposo
 # resta `off`, ed e' l'unico stato in cui non sta facendo niente.
 _vocabulary.add("water_heater", operable=Ours(True), resting_states=Ours({"off"}),
+              genre=Ours("funzionamento"),
               working_states=Ours({
                   "eco": "modo operativo a consumo ridotto: scalda, con meno foga",
                   "gas": "sta scaldando a gas -- la fonte, non una pausa",
@@ -693,7 +701,8 @@ _vocabulary.add("water_heater", operable=Ours(True), resting_states=Ours({"off"}
                   "performance": "modo a piena potenza",
               }))
 # `humidifier`: solo `on`/`off`, nessuno stato intermedio.
-_vocabulary.add("humidifier", operable=Ours(True), resting_states=Ours({"off"}))
+_vocabulary.add("humidifier", operable=Ours(True), resting_states=Ours({"off"}),
+              genre=Ours("funzionamento"))
 # `vacuum`: `docked` (in base, eventualmente in carica), `idle` (fermo, non in
 # carica ne' in errore), `returning` (sta rientrando, non sta piu' pulendo),
 # `error`, `off`. Solo `cleaning` e' acceso.
@@ -706,6 +715,7 @@ _vocabulary.add("humidifier", operable=Ours(True), resting_states=Ours({"off"}))
 # tipo lo rivendica.
 _vocabulary.add("vacuum", operable=Ours(True),
               resting_states=Ours({"docked", "returning", "error", "idle", "off"}),
+              genre=Ours("funzionamento"),
               working_states=Ours({
                   "cleaning": "sta pulendo: e' l'unico stato in cui l'aspirapolvere lavora",
                   "paused": "un'attivita' SOSPESA, non finita -- vedi `media_player` sotto",
@@ -718,6 +728,7 @@ _vocabulary.add("vacuum", operable=Ours(True),
 # non una corsa in sospeso.
 _vocabulary.add("valve", operable=Ours(True),
               resting_states=Ours({"closed", "stopped"}),
+              genre=Ours("funzionamento"),
               working_states=Ours({
                   "open": "una valvola aperta e' cio' che lascia passare: e' il fatto",
                   "opening": "si sta muovendo: la corsa e' in atto, non finita",
@@ -730,6 +741,7 @@ _vocabulary.add("valve", operable=Ours(True),
 # l'ha nominato il censore.
 _vocabulary.add("lawn_mower", operable=Ours(True),
               resting_states=Ours({"docked", "returning", "error"}),
+              genre=Ours("funzionamento"),
               working_states=Ours({
                   "mowing": "sta tagliando: e' l'unico stato in cui il tosaerba lavora",
                   "paused": "un taglio SOSPESO, non finito -- come la pausa del vacuum",
@@ -744,9 +756,10 @@ _vocabulary.add("lawn_mower", operable=Ours(True),
 # CONTIENE entrambi, cioe' il prodotto quel `on` lo annunciava gia' come
 # un'accensione mentre l'esclusione affermava il contrario. L'esclusione cade.
 #
-# `siren` ha gia' la sua riga sopra (porta la gamba «sicurezza» e il riposo
+# `siren` ha gia' la sua riga sopra (porta il genere «sicurezza» e il riposo
 # `off`): qui si aggiunge la sola meta' che le mancava.
-_vocabulary.add("remote", operable=Ours(True), resting_states=Ours({"off"}))
+_vocabulary.add("remote", operable=Ours(True), resting_states=Ours({"off"}),
+              genre=Ours("funzionamento"))
 _vocabulary.extend("siren", operable=Ours(True))
 # `media_player`: `idle` (acceso ma non riproduce nulla), `standby` (deprecato
 # verso `off`/`idle` dalla 2026.8, ma ancora prodotto da alcune integrazioni --
@@ -762,6 +775,7 @@ _vocabulary.extend("siren", operable=Ours(True))
 # episodio solo in due.
 _vocabulary.add("media_player", operable=Ours(True),
               resting_states=Ours({"off", "idle", "standby"}),
+              genre=Ours("funzionamento"),
               working_states=Ours({
                   "playing": "sta riproducendo: c'e' qualcosa in corso",
                   "paused": "un'attivita' SOSPESA, non finita: il film riparte "
@@ -774,7 +788,7 @@ _vocabulary.add("media_player", operable=Ours(True),
 # -- le due meta' del funzionamento su tipi che NON sono accendibili ---------
 #
 # `lock` e `alarm_control_panel` non sono dichiarati accendibili -- una
-# serratura non si «accende» -- ma portano la gamba «sicurezza», e la gamba
+# serratura non si «accende» -- ma portano il genere «sicurezza», e il genere
 # «sicurezza» apre e chiude episodi con la STESSA forma del funzionamento
 # (`mind/facts.py`, ramo `sicurezza`: «il genere e' diverso, la forma no»).
 # Quindi anche loro hanno stati che valgono «sta succedendo», e finche' nessuno
@@ -788,7 +802,7 @@ _vocabulary.add("media_player", operable=Ours(True),
 # **`jammed` NON e' qui, ed e' una decisione presa e non ancora eseguibile.**
 # Il proprietario l'ha giudicato un GUASTO -- «e' inceppata, non sta
 # lavorando» -- e un guasto e' un GENERE, non uno stato di funzionamento. Il
-# genere oggi si decide per SOGGETTO (`facts.genre_for(soggetto, gamba)`, che
+# genere oggi si decide per SOGGETTO (`facts.genre_for(soggetto, classe)`, che
 # lo stato non lo riceve nemmeno), quindi non c'e' nessun posto in cui `jammed`
 # possa entrare senza mentire: metterlo qui direbbe «sta funzionando», che e'
 # esattamente cio' che il proprietario ha escluso. Resta **aperto e nominato**
@@ -796,14 +810,14 @@ _vocabulary.add("media_player", operable=Ours(True),
 # manca per eseguirla scritto accanto. Meglio una voce aperta di una infilata
 # nel posto sbagliato.
 _vocabulary.extend("lock", working_states=Ours({
-    "unlocked": "sbloccata: e' il fatto che la gamba sicurezza esiste per osservare",
+    "unlocked": "sbloccata: e' il fatto che il genere sicurezza esiste per osservare",
     "locking": "si sta chiudendo: la serratura sta lavorando",
     "unlocking": "si sta aprendo: la serratura sta lavorando",
     "open": "aperta davvero, non solo sbloccata (`LockEntityFeature.OPEN`)",
     "opening": "sta aprendo la porta, non solo il chiavistello",
 }))
-# `triggered` e' l'allarme SCATTATO: il solo stato di questo dominio che la
-# gamba «sicurezza» esiste per osservare. Non e' un riposo (i riposi sono gli
+# `triggered` e' l'allarme SCATTATO: il solo stato di questo dominio che il
+# genere «sicurezza» esiste per osservare. Non e' un riposo (i riposi sono gli
 # `armed_*`: «un allarme si INSERISCE per stare a riposo, non il contrario»), e
 # fino all'08/09/2026 lo rivendicava soltanto la tabella cieca al dominio che
 # questa fetta ha cancellato.
@@ -812,8 +826,9 @@ _vocabulary.extend("alarm_control_panel", working_states=Ours({
 }))
 
 
-#: Gli stati che valgono riposo per QUALUNQUE tipo, e per questo non stanno su
-#: nessuna riga: non sono il riposo di un dominio, sono le due forme in cui
+#: Gli stati che non sono di NESSUN tipo, e per questo non stanno su nessuna
+#: riga: non sono il riposo di un dominio (dal 17/09/2026 `mind/facts.py` li
+#: salta, come `UNKNOWN_STATES`; spec 2026-09-16 §5), sono le due forme in cui
 #: Home Assistant scrive «qui non c'e' nessuno stato». Attribuirle a una riga
 #: qualsiasi darebbe a un tipo un fatto che non e' suo.
 ABSENT_STATE_FORMS = Ours({"none", ""})
@@ -1159,7 +1174,7 @@ for _domain, _bits in _FEATURE_TABLES.items():
 del _domain, _bits, _table
 
 
-# -- metrica 4: quali attributi dicono cosa puo' fare, quali com'e' adesso,
+# -- metrica 5: quali attributi dicono cosa puo' fare, quali com'e' adesso,
 # -- e quali DI COSA e' fatta -----------------------------------------------
 #
 # **La separazione e' di Home Assistant, non nostra, e non c'era niente da
@@ -1601,113 +1616,6 @@ del _domain, _new_fields
 # LE METRICHE, in forma di domanda
 # --------------------------------------------------------------------------
 
-def _text(value) -> str:
-    """Un attributo di Home Assistant -> stringa confrontabile.
-
-    Gli attributi arrivano da fuori: possono mancare, essere `None`, o avere un
-    tipo inatteso. Un'eccezione qui fermerebbe l'osservatore su un evento solo,
-    e l'osservatore gira per sempre.
-    """
-    return value.strip() if isinstance(value, str) else ""
-
-
-def aspect_of(entity_id, attributes) -> str | None:
-    """**Metrica 1** -- a quale gamba dell'obiettivo serve questa entita', o
-    `None`.
-
-    L'obiettivo e' «ottimizzare la casa e renderla confortevole», e ha tre
-    gambe -- efficiente, confortevole, in buono stato -- che qui diventano sei
-    domande: chi c'e', che aria si respira, cosa disperde, quanta energia si
-    muove, cosa si sta rompendo, cosa minaccia la sicurezza.
-
-    **«Quanta energia si muove» e non «cosa consuma»** (correzione del
-    26/08/2026): questa gamba cattura energia PRODOTTA e PRELEVATA nella stessa
-    classe HA, e «consuma» affermerebbe il contrario per una buona meta' dei 15
-    sensori che un fotovoltaico con accumulo porta qui.
-
-    La coppia vince sul dominio, e la guardia -- dove c'e' -- vale sull'una come
-    sull'altro: e' la riga a dire a quale condizione il suo giudizio tiene, non
-    il codice che la legge.
-    """
-    attributes = attributes if isinstance(attributes, dict) else {}
-    domain = str(entity_id).split(".")[0]
-    device_class = _text(attributes.get("device_class"))
-    aspect = _vocabulary.value(domain, device_class, ASPECT)
-    if aspect is None:
-        return None
-    guard = _vocabulary.value(domain, device_class, ASPECT_GUARD)
-    if guard is not None:
-        attribute_name, expected = guard
-        if _text(attributes.get(attribute_name)) != expected:
-            return None
-    return aspect
-
-
-def is_operable(domain: str) -> bool:
-    """**Metrica 2, prima meta'** -- se questo tipo «funziona»: si accende e si
-    spegne, si apre e si chiude. Sono i protagonisti degli oggetti di
-    funzionamento."""
-    return bool(_vocabulary.value(domain, None, OPERABLE, False))
-
-
-def operable_domains() -> frozenset[str]:
-    """I domini accendibili. Scritto una volta perche' una prova possa
-    contarli: `_OPERABLE` ne elencava dieci di cui il pavimento ne ammetteva
-    due, e le due metriche sono diverse -- il vocabolario le tiene distinte invece
-    di far coincidere per sbaglio l'una con l'altra."""
-    return frozenset(domain for domain in _vocabulary.domains()
-                     if is_operable(domain))
-
-
-def resting_states_of(domain: str, device_class: str | None = None) -> frozenset[str]:
-    """Gli stati che chiudono un episodio di QUESTO tipo, piu' le due forme
-    dell'assenza di stato che valgono per tutti.
-
-    Una coppia che non ne dichiara di suoi eredita quelli del dominio: e' il
-    collegamento per identificatore, non una copia rimasta indietro.
-    """
-    own = _vocabulary.value(domain, device_class, RESTING_STATES, frozenset())
-    return frozenset(own) | ABSENT_STATE_FORMS.value
-
-
-def resting_states() -> frozenset[str]:
-    """**Metrica 2, seconda meta'** -- l'unione di tutti i riposi dichiarati.
-
-    **Un solo insieme, non due che si sovrappongono**: e' letto da piu' rami
-    (funzionamento e sicurezza). Non e' un insieme esclusivo per tipo in senso
-    stretto -- `idle` chiude sia il vacuum sia il media_player -- ma resta
-    senza ambiguita': ogni valore ha lo stesso significato («questo episodio e'
-    finito») in qualunque tipo compaia. Cio' che il vocabolario aggiunge e' che
-    ogni valore ha ora un tipo che lo RIVENDICA, invece di stare in un elenco
-    piatto di cui nessuno sa piu' chi vi abbia aggiunto cosa.
-
-    **`unavailable`/`unknown` NON stanno qui**: vedi `unknown_states`.
-    """
-    states = set(ABSENT_STATE_FORMS.value)
-    for row in _vocabulary.rows():
-        field = row.fields.get(RESTING_STATES)
-        if field is not None:
-            states |= set(field.value)
-    return frozenset(states)
-
-
-def working_states_of(domain: str, device_class: str | None = None) -> frozenset[str]:
-    """Gli stati che, per QUESTO tipo, valgono «sta funzionando».
-
-    L'altra meta' della metrica 2. Non cambia il comportamento di nessun
-    lettore -- `_is_on` risponde gia' per esclusione dai riposi -- e serve a
-    una cosa sola, che nessun'altra riga sa dire: **distinguere una decisione
-    da un silenzio**. Un tipo che non ne dichiara nessuno non e' un tipo i cui
-    stati sono tutti riposi: e' un tipo che nessuno ha ancora guardato, ed e'
-    esattamente cio' che il censore deve poter nominare.
-
-    Come per i riposi, una coppia che non ne dichiara di suoi eredita quelli
-    del dominio: si collega, non copia.
-    """
-    own = _vocabulary.value(domain, device_class, WORKING_STATES, {})
-    return frozenset(own)
-
-
 def declared_working_states() -> Mapping[str, Mapping[str, str]]:
     """Dominio -> `stato -> ragione`, per la prova che boccia un giudizio
     senza ragione scritta. Stessa forma di `dropped_capability_attributes`."""
@@ -1722,29 +1630,6 @@ def unknown_states() -> frozenset[str]:
     con questo stato si salta, e l'episodio in corso resta aperto attraverso il
     buco -- che e' la verita', non sappiamo che sia finito."""
     return UNKNOWN_STATES.value
-
-
-def is_notable(domain: str, device_class: str | None = None) -> bool:
-    """**Metrica 4** -- se un cambiamento di questo tipo merita un annuncio nel
-    nucleo, invece di essere una cosa che si va a chiedere.
-
-    **Prima la coppia, poi il dominio da cui pende**, come per ogni altro
-    campo: e' cio' che permette a `binary_sensor` di rispondere «no» come
-    dominio e «si'» sulle tredici classi che lo meritano, senza due elenchi.
-    """
-    return bool(_vocabulary.value(domain, device_class, NOTABLE, False))
-
-
-def notable_types() -> frozenset[tuple[str, str | None]]:
-    """Le chiavi dei tipi che meritano un annuncio -- domini e coppie insieme.
-
-    Scritto una volta perche' una prova possa contarli **con lo stesso conto**:
-    finche' erano due insiemi in due punti di `briefing.py`, nessuna prova
-    poteva chiedere «sono ancora d'accordo?», perche' non c'era un accordo da
-    verificare -- c'erano due elenchi.
-    """
-    return frozenset(row.key for row in _vocabulary.rows()
-                     if NOTABLE in row.fields and row.fields[NOTABLE].value)
 
 
 def capability_names(domain: str) -> Mapping[int, str] | None:
@@ -1853,25 +1738,6 @@ def declared_assumable_attributes() -> Mapping[str, Mapping[str, str]]:
         if _vocabulary.value(domain, None, ASSUMABLE_ATTRIBUTES) is not None})
 
 
-def parameter_limits(domain: str, parameter: str) -> Mapping[str, str] | None:
-    """**Metrica 5** -- quale attributo di QUESTA entita' porta il limite vero
-    di un parametro di servizio, o `None` se non lo sappiamo.
-
-    Due forme sole: `{"min": ..., "max": ...}` per un intervallo,
-    `{"options": ...}` per un elenco di valori legali. Vedi
-    `_PARAMETER_LIMITS`: **vince l'entita' sul selettore**, e il selettore
-    generico di `light.turn_on.color_temp_kelvin` (2000-6500 K) contro
-    l'Alberello (1500-9000 K) e' la misura che lo dice.
-
-    `None` e non un dizionario vuoto: «non lo so» e «so che non ne ha» sono
-    due fatti diversi, e su cio' che non si sa non si restringe niente.
-    """
-    per_domain = _vocabulary.value(domain, None, PARAMETER_LIMITS)
-    if per_domain is None:
-        return None
-    return per_domain.get(parameter)
-
-
 def declared_parameter_limits() -> Mapping[str, Mapping[str, Mapping[str, str]]]:
     """Tutti i collegamenti parametro -> attributo, per la prova che verifica
     che ogni attributo nominato sia una capacita' DICHIARATA da Home Assistant
@@ -1948,7 +1814,7 @@ def _verify_operable_types_bring_their_rest() -> None:
     """
     incomplete = sorted(
         domain for domain in _vocabulary.domains()
-        if is_operable(domain)
+        if _vocabulary.value(domain, None, OPERABLE, False)
         and not _vocabulary.value(domain, None, RESTING_STATES, frozenset()))
     if incomplete:
         raise ValueError(
@@ -1967,12 +1833,20 @@ def _verify_no_state_is_both_rest_and_work() -> None:
     stato in tutt'e due direbbe a `mind/facts.py` di chiudere l'episodio e al
     censore che quel tipo lo tiene aperto -- due risposte alla stessa domanda,
     che e' il difetto che questo vocabolario esiste per non avere.
+
+    Il confronto include `ABSENT_STATE_FORMS`: `none` e il vuoto sono un dato
+    che manca, non uno stato di nessun tipo (spec 2026-09-16 §5), e
+    `mind/facts.py::build_episodes` li salta prima di ogni ramo -- uno stato di
+    lavoro scritto in una di quelle forme non si vedrebbe mai. L'istantanea dei
+    giudizi le rifiuta solo nel riposo: nel lavoro il solo cancello e' questo.
     """
     contradictions = sorted(
         f"{row.domain}={state}"
         for row in _vocabulary.rows()
         for state in (row.fields[WORKING_STATES].value if WORKING_STATES in row.fields else ())
-        if state in resting_states_of(row.domain, row.device_class))
+        if state in (frozenset(_vocabulary.value(row.domain, row.device_class,
+                                                 RESTING_STATES, frozenset()))
+                     | ABSENT_STATE_FORMS.value))
     if contradictions:
         raise ValueError(
             "stati dichiarati insieme a riposo e in funzionamento: "
@@ -1982,3 +1856,51 @@ def _verify_no_state_is_both_rest_and_work() -> None:
 
 _verify_operable_types_bring_their_rest()
 _verify_no_state_is_both_rest_and_work()
+
+
+# --------------------------------------------------------------------------
+# IL SEME DEL SAPERE (spec 2026-09-16 §2, §3)
+# --------------------------------------------------------------------------
+
+#: Nome del campo in questo modulo -> nome del campo nel sapere. **La traduzione
+#: vive qui e solo qui.** Solo i giudizi nostri: i fatti copiati dal sorgente di
+#: HA restano codice, con le loro prove ancorate alla fonte.
+JUDGMENT_FIELDS = MappingProxyType({
+    GENRE: GENRE_FIELD, RESTING_STATES: RESTING_FIELD, WORKING_STATES: WORKING_FIELD,
+    NOTABLE: NOTABLE_FIELD, OPERABLE: OPERABLE_FIELD,
+    PARAMETER_LIMITS: PARAMETER_LIMITS_FIELD,
+})
+
+
+def _seed_value(name: str, value) -> str:
+    if name == GENRE:
+        return value
+    if name in (NOTABLE, OPERABLE):
+        return "si" if value else "no"
+    if name == RESTING_STATES:
+        return json.dumps(sorted(value), ensure_ascii=False)
+    return json.dumps(_plain(value), ensure_ascii=False, sort_keys=True)
+
+
+def _plain(value):
+    if isinstance(value, Mapping):
+        return {k: _plain(v) for k, v in value.items()}
+    if isinstance(value, (set, frozenset, tuple, list)):
+        return sorted(value)
+    return value
+
+
+def judgment_seed_rows() -> tuple[tuple[str, str, str, str], ...]:
+    """I giudizi del letterale, come righe del sapere: `(tipo, soggetto, campo, valore)`."""
+    rows = []
+    for row in _vocabulary.rows():
+        subject = row.domain + (f".{row.device_class}" if row.device_class else "")
+        for name, field in row.fields.items():
+            if name in JUDGMENT_FIELDS and field.provenance is Provenance.OURS:
+                rows.append(("tipo", subject, JUDGMENT_FIELDS[name],
+                            _seed_value(name, field.value)))
+    return tuple(sorted(rows))
+
+
+REPO_JUDGMENTS = TypeJudgments.from_rows(judgment_seed_rows(), genres=CHRONICLE_GENRES,
+                                         absent_forms=ABSENT_STATE_FORMS.value)

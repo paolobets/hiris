@@ -111,6 +111,53 @@ async def test_l_unico_costruttore_del_dispatcher_passa_la_porta():
     assert actuator.chiamate, "il dispatcher costruito dall'app non ha la porta"
 
 
+def test_l_unico_costruttore_del_dispatcher_passa_l_istantanea_dei_giudizi():
+    """Fix round 1 (revisione Fable), rilievo MINOR 4: stessa domanda del
+    test sopra sulla porta, per l'istantanea dei giudizi (Task 5). Se
+    `create_tool_dispatcher` non la inoltra, ogni turno di chat costruirebbe
+    un `ToolDispatcher` che ricade silenziosamente sul solo seme
+    (`REPO_JUDGMENTS`) anche quando `app["type_judgments"]` porta una
+    correzione viva del proprietario -- lo stesso guasto silenzioso del test
+    sopra, sull'istantanea invece che sulla porta.
+
+    Mutazione ESEGUITA: cambiato `judgments=app.get("type_judgments")` in
+    `judgments=app.get("nome_sbagliato")` nella chiamata `ToolDispatcher(`
+    dentro `create_tool_dispatcher` -- rossa; ripristinato con l'editor.
+    """
+    from hiris.app.api.handlers_chat import create_tool_dispatcher
+
+    giudizi_finti = object()
+    d = create_tool_dispatcher({"type_judgments": giudizi_finti})
+    assert d._judgments is giudizi_finti
+
+
+def test_un_app_SENZA_la_chiave_costruisce_il_dispatcher_sul_SOLO_SEME():
+    """Giro di correzioni 1, punto 5: la ricaduta si SCEGLIE e si fissa.
+
+    `create_tool_dispatcher` legge `app.get("type_judgments")`, e
+    `ToolDispatcher.__init__` con `None` ricade su `REPO_JUDGMENTS`: la prova
+    strutturale D3 (`tests/test_judgments_passed_in_production.py`) guarda il
+    **keyword**, non il valore, quindi quella ricaduta non era fissata da
+    nessuna prova. In produzione non scatta mai -- l'avvio scrive sempre la
+    chiave, anche quando il sapere non si apre (`server._open_knowledge` mette
+    il solo seme, spec §8) -- ma il `.get` esiste perche' le prove costruiscono
+    `app` a mano, e **questa e' la prova che dichiara cosa deve fare**: il solo
+    seme del repo, mai `None`, mai un `KeyError`.
+
+    L'alternativa scartata era `app["type_judgments"]` secco: farebbe esplodere
+    un percorso di prova legittimo per difendersi da un ramo che la produzione
+    non raggiunge.
+
+    Mutazione ESEGUITA: `app["type_judgments"]` al posto del `.get` --
+    rossa (`KeyError: 'type_judgments'`); ripristinato con l'editor.
+    """
+    from hiris.app.api.handlers_chat import create_tool_dispatcher
+    from hiris.app.home_space.type_vocabulary import REPO_JUDGMENTS
+
+    d = create_tool_dispatcher({})
+    assert d._judgments is REPO_JUDGMENTS
+
+
 def test_la_porta_nasce_nell_app_e_dopo_lo_specchio_dello_stato():
     """Pin sorgente sull'aggancio in `_on_startup` (stessa tecnica di
     `tests/test_action_registry.py::test_il_registro_e_agganciato_all_app`).

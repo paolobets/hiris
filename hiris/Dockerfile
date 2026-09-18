@@ -172,8 +172,18 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 # container. Il passo 4 torna APERTO per la 2.1.272 e si salda al primo turno
 # di chat dopo l'aggiornamento -- a add-on appena riavviato `ponte` e' `null`,
 # perche' quel numero nasce da un turno, non dall'avvio.
+#
+# 18 settembre 2026 — alzata da 2.1.272 a **2.1.276**, col rilascio della
+# 3.49.0, **per decisione esplicita del proprietario**. E' un'eccezione alla
+# regola della riga sopra: il cancello ha parlato durante la 3.48.x, e la
+# regola avrebbe mandato il pin al rilascio dopo questo. Il proprietario ha
+# chiesto di aggiornarlo adesso, e questa riga registra chi l'ha deciso invece
+# di far sembrare che la regola dicesse cosi'. Ripiego: la **2.1.272**, il pin
+# che questa riga sostituisce (la **2.1.270** resta l'ultima davvero letta
+# dentro il container). Il passo 4 e' APERTO per la 2.1.276 e si salda al primo
+# turno di chat dopo l'aggiornamento.
 RUN apk add --no-cache nodejs npm libgcc libstdc++ ripgrep \
-    && npm install -g @anthropic-ai/claude-code@2.1.272 \
+    && npm install -g @anthropic-ai/claude-code@2.1.276 \
     && npm cache clean --force
 ENV USE_BUILTIN_RIPGREP=0
 

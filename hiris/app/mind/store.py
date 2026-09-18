@@ -87,14 +87,14 @@ def _migration_2(conn) -> None:
     **Non piu' "le tre classi che il pavimento legge"** (frase corretta dal
     mandato «il bilancio dell'energia», punto 4, 27/08/2026 -- falsa al
     presente: era vera ed era stata dichiarata fuori scope quando scritta
-    il 26/08, la scelta giusta allora). Dopo la correzione del 27/08 sul
-    traffico di rete (`type_vocabulary.aspect_of`, il suo docstring), quella funzione
-    legge solo `device_class` e `source_type` per decidere la
-    gamba di `sensor` e `binary_sensor` -- `state_class` NON e' piu' fra i
-    criteri. Resta comunque QUI, nel grezzo: non e' tolta dallo schema, e'
-    `type_vocabulary.aspect_of()` che ha smesso di leggerla per decidere la gamba, non
-    `store.py` che smette di conservarla -- i 22 giorni di grezzo
-    permettono di rifare il giudizio anche se un domani tornasse a servire.
+    il 26/08, la scelta giusta allora). Il pavimento e la gamba che leggeva
+    queste tre classi sono usciti interi il 17/09/2026 (spec 2026-09-16 §11):
+    oggi solo `device_class` ha un lettore vivo (`facts.genre_for` e
+    `facts._is_on`, attraverso l'istantanea dei giudizi); `state_class` e
+    `source_type` non ne hanno nessuno. Restano comunque QUI, nel grezzo: non
+    sono tolte dallo schema, e sono i LETTORI che sono spariti, non
+    `store.py` che smette di conservarle -- i 22 giorni di grezzo
+    permettono di rifare il giudizio anche se un domani tornassero a servire.
 
     Tre colonne aggiunte, nessuna riscritta: le righe gia' in casa restano
     esattamente com'erano e diventano NULL sulle tre, che e' cio' che sono
@@ -638,11 +638,12 @@ class ObservationsStore:
 
         `device_class`, `state_class` e `source_type` sono le tre classi che
         Home Assistant dichiara sull'entita' -- **grezzo per definizione**, non
-        un giudizio nostro: e' cio' che serve a `type_vocabulary.aspect_of()` per
-        decidere la gamba di `sensor` e `binary_sensor` quando l'aggregazione
-        rilegge la riga, giorni dopo che l'evento e' passato. Tutti e tre
-        annullabili: le condizioni di sistema non li portano, e una riga
-        scritta prima che queste colonne esistessero li rilegge come `None`.
+        un giudizio nostro: e' `device_class` cio' che serve a `facts.genre_for`
+        per decidere il genere di `sensor` e `binary_sensor` quando
+        l'aggregazione rilegge la riga, giorni dopo che l'evento e' passato.
+        Tutti e tre annullabili: le condizioni di sistema non li portano, e una
+        riga scritta prima che queste colonne esistessero li rilegge come
+        `None`.
 
         `domain` e `title` sono dominio e titolo della voce di configurazione
         di una condizione di SISTEMA (`watcher.py::watch_system`) -- **grezzo
@@ -691,8 +692,12 @@ class ObservationsStore:
     def replace_report(self, day: str, report: dict) -> None:
         """Scrive il resoconto di un giorno, **sostituendo** quello che c'era.
 
-        Stessa disciplina di `replace_day`: rifare un giorno lo sostituisce e
-        non lo accoda. Sbagliare un resoconto costa **un giorno**, e solo
+        **Rifare un giorno lo sostituisce e non lo accoda.** Era «stessa
+        disciplina di `replace_day`», e quella funzione non esiste piu': e'
+        uscita il 15/09/2026 con la tabella degli oggetti (`_migration_10`),
+        lasciando qui il rinvio a un nome che chi legge non puo' trovare (giro
+        di correzioni 1, punto 2). La disciplina, che era sua e resta,
+        e' scritta qui sopra. Sbagliare un resoconto costa **un giorno**, e solo
         finche' il grezzo di quel giorno esiste -- e' la promessa dei due
         strati, e senza la sostituzione non sarebbe vera.
         """

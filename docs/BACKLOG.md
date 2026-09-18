@@ -362,6 +362,66 @@ va corretto, in un posto solo.
 > del repository e da cio' che e' stato misurato sulla casa vera. La lista del proprietario va
 > reinserita da lui, e queste voci vanno lette come un fondo di magazzino, non come una sua scelta.
 
+### Le cinque cose che la fetta dei giudizi ha dichiarato fuori perimetro
+
+`origine: spec «il giudizio dei tipi» §12, dichiarate il 16/09/2026, scritte qui il 17/09/2026 (3.49.0)` · `docs/design/2026-09-16-il-giudizio-dei-tipi.md` §12
+
+Non sono dimenticanze: sono cinque confini scritti prima di cominciare, e restano fuori perche'
+ognuno porta una decisione che la fetta non voleva prendere di corsa.
+
+1. **L'osservatore che propone un genere per un'entita'.** Una sua scelta sarebbe `dedotto`, e la
+   regola che non si negozia dice che *una deduzione non diventa mai un fatto*: servirebbe la
+   forma di una proposta (chi la conferma, dove si vede, cosa accade se nessuno risponde). Oggi il
+   genere lo porta il seme del repo, oppure lo scrive il proprietario.
+2. **Lo strumento della chat per correggere un giudizio.** Chi scriverebbe sarebbe il modello che
+   interpreta le parole del proprietario, cioe' un autore in piu' su righe che oggi hanno un autore
+   solo. La porta di scrittura e' una (`mind/judgments.write_judgment`), quindi la fetta e' piccola;
+   la domanda che la trattiene e' se una frase detta valga come una correzione fatta a mano nella
+   pagina.
+3. **Il genere che dipende dallo stato** (`lock` in `jammed` e' un guasto, non un funzionamento).
+   **Nessun caso in questa casa: 0 serrature.** Quando servira' sara' un **campo separato**, non un
+   formato dentro `genere`: questa e' la parte gia' decisa. Ha un appuntamento anche in «Gli undici
+   stati che non sono ne' riposo ne' acceso», dove `lock` in `jammed` aspetta la stessa fetta: si
+   fanno insieme.
+4. **L'uscita di `source_type` dal grezzo** — vive nella sua voce, «I tre attributi fissi del grezzo
+   non sono usciti», che il 17/09/2026 ha registrato la perdita del suo ultimo lettore.
+5. **I sei apparati di rete come `presenza`.** Un `nessuno` sulle loro entita' li toglierebbe dalla
+   cronaca, ma **nessuno di loro e' guardato oggi**: e' una scrittura che non cambierebbe niente
+   finche' l'obiettivo non li sceglie.
+
+### Una coppia dichiarata senza giudizio: il censore non sa chiederne il genere
+
+`origine: revisione del Task 8 della fetta dei giudizi, 17/09/2026` · `docs/design/2026-09-16-il-giudizio-dei-tipi.md` §5
+
+**Il fatto, misurato il 17/09/2026.** Il vocabolario dichiara **22 coppie** `dominio`/`device_class`
+che non portano nessun giudizio: esistono come perimetro, e nessuna riga dice che genere di fatto ne
+nasca. Il censore ha sei domande aperte (che coprono 115 voci) e **nessuna e' questa**: chi legge la
+pagina del sapere non scopre mai che quelle 22 coppie sono rivendicate e mute.
+
+**Cosa servirebbe:** una settima domanda aperta in `home_space/type_census.OPEN_QUESTIONS`, «coppia
+dichiarata senza giudizio», con la sua voce nella pagina. E' piccola, e la sua utilita' va misurata
+prima: se molte di quelle coppie meritano davvero `nessuno`, la domanda diventerebbe rumore -- e
+«se una cosa funziona non va segnalata» vale anche per le domande.
+
+### Una riga del seme ritirata da un rilascio futuro resta in vigore per sempre
+
+`origine: giro di correzioni 1 del Task 11 della fetta dei giudizi, 17/09/2026` · `docs/design/2026-09-16-il-giudizio-dei-tipi.md` §8
+
+**Il fatto.** `knowledge.seed()` scrive e corregge, **non cancella** (ed e' la sua promessa: un seme
+che cancellasse porterebbe via anche cio' che la casa ha imparato). Quindi il giorno in cui una riga
+sparisse da `type_vocabulary.judgment_seed_rows()`, sulle installazioni gia' avviate resterebbe sul
+disco: `mind/judgments.judgment_listing` la mostrerebbe come `da: altro` -- ne' il seme ne' il
+proprietario la rivendicano -- e l'istantanea continuerebbe a leggerla. Correggere il repo
+ripara una riga sbagliata; **ritirarla non la toglie a nessuno**. Nessun caso oggi: nessuna riga e'
+mai stata ritirata dal seme dei giudizi.
+
+**Cosa servirebbe.** Un modo di dire «questa terna non e' piu' del seme» che tolga la riga **solo**
+se nessuno l'ha toccata -- la stessa lettura dal valore che `seed` fa gia' (`seeded_value`), al
+contrario. Non si e' costruito adesso perche' **cancellare righe del seme e' una decisione del
+proprietario**, non un effetto collaterale di un aggiornamento: una cancellazione automatica a fine
+sprint sarebbe esattamente il tipo di scrittura silenziosa che la porta unica esiste per impedire.
+Dichiarato nel codice accanto a `mind/seed.judgment_seed`.
+
 ### Le due mancanze della lingua delle ricette: il periodo e l'elenco di misure
 
 `origine: verifica dal vivo della 3.34.0, 14/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §6-§7
@@ -587,6 +647,31 @@ dalle statistiche -- non dal grezzo -- quindi toglierle dal grezzo non dovrebbe 
 misura. Ma la **cronaca** nasce dal grezzo (`mind/facts.aggregate_day`): va misurato **prima** cosa
 sparirebbe dalla cronaca, o si scopre dopo il rilascio di aver reso muto qualcosa che si vedeva.
 
+### ~~Il genere di un episodio nasce ancora dalla gamba, e finche' e' cosi' gambe e generi restano~~ — CHIUSA il 17/09/2026 (3.49.0)
+
+**Chiusa costruendo il sostituto**, che e' la sola strada che la voce ammetteva: il genere
+dell'episodio non nasce piu' dalla gamba, lo chiede all'**istantanea dei giudizi**
+(`mind/facts.genre_for` -> `TypeJudgments.genre_of`), e i giudizi sono righe del sapere che la casa
+puo' correggere. Le gambe sono **cancellate**: `ASPECT`, `ASPECT_GUARD`, `ASPECTS`, `aspect_of`, i
+campi `aspect` e `aspect_guard` (43 celle) e con loro `is_operable`, `operable_domains`,
+`resting_states_of`, `resting_states`, `working_states_of`, `is_notable`, `notable_types`,
+`parameter_limits`; `tests/test_home_space_gamba.py` e' eliminato e le sue prove sono tradotte sui
+giudizi. Il rilevatore di fumo che la voce difendeva non torna a leggersi «Acceso»: nel seme e' una
+riga `genere` `sicurezza`, e una prova la fissa.
+
+**La misura che rendeva la sostituzione sicura** (spec §1, misura 7): ripassate 52.123 righe di
+storia di Home Assistant su 304 entita' dei tipi con genere, dal 09/09 al 16/09, chiedendo il
+riposo al tipo invece che all'unione di tutti i riposi -- **0 righe cambiano esito**.
+
+**Un cambio di comportamento dichiarato, non un effetto collaterale**: `none` non e' piu' un
+riposo. Su 6 apparati di rete, 200 righe `none` in una settimana non apriranno piu' un'assenza e
+non chiuderanno piu' un episodio.
+
+**Cosa resta da fare, ed e' il Task 12 del piano**: la verifica dal vivo in casa dopo il rilascio,
+col confronto fra le cronache salvate prima e quelle rifatte dopo.
+
+**Com'era scritta quando era aperta:**
+
 ### Il genere di un episodio nasce ancora dalla gamba, e finche' e' cosi' gambe e generi restano
 
 `origine: revisione indipendente dello sprint, 15/09/2026; decisa il 16/09/2026` · `docs/design/2026-09-10-i-tre-attori.md` §13
@@ -627,6 +712,46 @@ stessa ragione gia' scritta nella voce «I tre attributi fissi del grezzo non so
 genere dal sapere invece che dalla gamba, che e' parente stretto della voce del vocabolario-seme
 qui sotto), **oppure la §13 va corretta** per dire che gambe e generi RESTANO, e perche'. Oggi la
 spec dichiara distrutto cio' che gira, ed e' una bugia scritta accanto al codice.
+
+### ~~Il vocabolario dei tipi non e' ancora un seme del sapere~~ — CHIUSA il 17/09/2026 (3.49.0)
+
+**Chiusa con un terzo disegno, che questa voce non aveva visto** (correzione del 17/09/2026, dopo
+la revisione a 360 gradi: la prima stesura di questa chiusura diceva «il primo dei due disegni», ed
+era falsa -- la spec §0 li ha **confrontati e scartati entrambi**, per ragioni misurate). Il disegno
+scelto dal proprietario e' l'**istantanea immutabile** (disegno «C»): i giudizi si leggono dal
+sapere una volta sola e si consegnano ai lettori come un oggetto fermo, invece di spostare i lettori
+sull'archivio (letture SQLite nel percorso caldo) o di fare del modulo il confine (uno stato
+condiviso caricato pigramente in un modulo oggi puro). **Misura del 16/09/2026**: non
+sette moduli e undici porte, ma **7 moduli e 17 porte** (`action/verification`,
+`home_space/briefing`, `home_space/queries`, `home_space/topology`, `home_space/type_census`,
+`mind/facts`, `proxy/entity_cache` -- la voce elencava `action/registry`, che lo cita soltanto, e
+non aveva visto `proxy/entity_cache`).
+
+**E i lettori dei GIUDIZI sono quattro, non sette** (spec §3, D4): `home_space/briefing`
+(`notevole`, `lavoro`), `home_space/queries` (`limiti_parametri`), `home_space/type_census`
+(`riposo`, `lavoro`, `accendibile`) e `mind/facts` (`genere`, `riposo`). Gli altri tre leggono
+**fatti di Home Assistant** o `assumable_attributes`, che non sono giudizi nostri e per decisione
+D1 restano codice accanto alla tabella importata che correggono.
+
+**Cosa si carica adesso all'avvio**: `mind/seed.judgment_seed` semina **99 celle** dal letterale --
+26 `genere`, 23 `notevole`, 18 `riposo` (16 piu' le 2 `home` nuove su `person` e `device_tracker`),
+13 `accendibile`, 10 `limiti_parametri`, 9 `lavoro` -- con provenienza `nostro` e autore «seme del
+repo» (conteggio rieseguito il 17/09/2026: 99). La regola del seme che esisteva gia' («nessuno l'ha
+toccata si legge dal valore») e' cio' che permette di **tornare al seme** dopo una correzione.
+
+**Il doppione senza lettori, che la seconda fondamenta vieta, non e' nato**: cio' che e' diventato
+sapere e' uscito dal letterale nello stesso movimento (Task 8 del piano: **tredici nomi**
+cancellati fra costanti, porte e un aiutante privato -- `ASPECT`, `ASPECT_GUARD`, `ASPECTS`,
+`aspect_of`, `_text`, `is_operable`, `operable_domains`, `resting_states_of`, `resting_states`,
+`working_states_of`, `is_notable`, `notable_types`, `parameter_limits` -- e **43 celle** di gamba e
+guardia), e cio' che resta codice -- `capability_names`, `capability_attributes`,
+`state_attributes` (68 celle `importato`), `capability_attributes_dropped`, `assumable_attributes`
+-- resta con le sue 12 prove ancorate al sorgente.
+
+**La promessa del §8 e' mantenuta**: la casa scrive sopra il giudizio del repo, da una porta sola
+(`POST /api/mind/judgment`) e dalla pagina del sapere, nella sezione «Le tue correzioni».
+
+**Com'era scritta quando era aperta:**
 
 ### Il vocabolario dei tipi non e' ancora un seme del sapere
 
@@ -675,15 +800,35 @@ e per i significati.
 
 `origine: fetta 4, 13/09/2026, misurato leggendo il codice` · `docs/design/2026-09-12-il-sapere-e-le-ricette.md` misura 6
 
-**Il fatto.** Il piano prevedeva che `device_class`, `state_class` e `source_type` uscissero dal
-grezzo con questa fetta. Non sono usciti: `device_class` e `source_type` li legge
-`mind/facts._reading_aspect` per derivare la **gamba** di ogni `sensor` e `binary_sensor`, e
-`device_class` finisce nel corpo di ogni episodio. Toglierli significherebbe che un rilevatore di
-fumo scattato torna a leggersi «Acceso».
+**Aggiornata il 17/09/2026 (3.49.0): `source_type` ha perso il suo ultimo lettore.** Con la gamba
+e' uscito `_reading_aspect`, che era l'unico a leggerlo: oggi `source_type` si **scrive** nel grezzo
+(`mind/watcher.py`, `mind/store.py`) e **nessuno lo legge** -- misurato con un grep su tutto
+`hiris/app`: le sole altre occorrenze sono due commenti e la riga che lo elenca fra gli **attributi
+di stato** del `device_tracker` (`type_vocabulary.py:1525`, tabella `importato`: «com'e' adesso»
+secondo Home Assistant -- non una lista di scarti, come diceva la prima stesura di questa nota, e la
+revisione del 17/09 l'ha corretta). Il genere dell'episodio adesso lo chiede
+all'istantanea dei giudizi, non alle classi. `device_class` invece resta letto: `genre_for` lo usa
+come secondo termine del soggetto (la coppia `dominio`/`device_class`) e finisce nel corpo di ogni
+episodio.
 
-**La spec si contraddice su questo punto**: §5.3 dice che lo scope *deriva* da dominio,
+**Quindi la voce si restringe a due colonne**, e per entrambe la domanda e' la stessa: `state_class`
+non ha lettori dal 27/08/2026, `source_type` non ne ha piu' dal 17/09/2026. La ragione scritta per
+tenerle («i 22 giorni permettono di rifare il giudizio se un domani tornasse a servire») ora vale
+per due colonne invece di una: o si conferma, o escono insieme.
+
+**Com'era scritto il fatto quando la gamba c'era ancora.** Il piano prevedeva che `device_class`,
+`state_class` e `source_type` uscissero dal grezzo con la fetta 4. Non sono usciti: `device_class` e
+`source_type` li leggeva `mind/facts._reading_aspect` per derivare la **gamba** di ogni `sensor` e
+`binary_sensor`, e `device_class` finisce nel corpo di ogni episodio. Toglierli significherebbe che
+un rilevatore di fumo scattato torna a leggersi «Acceso».
+
+**La spec si contraddiceva su questo punto**: §5.3 dice che lo scope *deriva* da dominio,
 `device_class` e `source_type`; §5.4 dice che quei tre escono. Non possono valere entrambe, e
-vince §5.3 perche' descrive codice vivo e misurato.
+vinceva §5.3 perche' descriveva codice vivo e misurato. **Dal 17/09/2026 la contraddizione si
+restringe a `device_class`**: il perimetro si compone da dominio e `device_class`
+(`mind/watcher._wanted_attributes`, chiave `(domain, device_class)`), e `source_type` **non entra
+nel perimetro**: nel grezzo ci arriva solo perche' `mind/watcher` lo scrive in colonna, e nessuno lo
+rilegge.
 
 **Cosa e' cambiato lo stesso**: il grezzo non conserva piu' *solo* tre attributi scelti a mano.
 Conserva quelli che il sapere dice valgano la pena per quel tipo, e il cambio di uno di quelli fa
@@ -980,6 +1125,58 @@ qui la risposta cambia l'intera forma della fetta:
 4. **Le frasi.** HA ha un suo vocabolario di intenti gia' fatto. Va stabilito se HIRIS lo estenda
    o lo sostituisca: sostituirlo vorrebbe dire rifare cose che HA fa gia' bene, ed e' la prima
    legge del prodotto (sussidiarieta').
+
+**16/09/2026, brainstorming ripartito da zero.** Il proprietario ha scelto le situazioni che
+contano: **(a)** chiedere a HIRIS dal telefono, dentro l'app di HA, a testo o a voce; **(d)**
+comandare la casa con frasi libere; **(c)** HIRIS che avvisa da solo; e **poi** usare l'assistente
+dal **Retro Panel** («lo vediamo poi»). Verificato sul sorgente di HA lo stesso giorno: un add-on
+puo' essere agente di conversazione di Assist senza custom component (Wyoming, programma *handle*,
+`discovery: [wyoming]`; precedente ufficiale OHF-Voice `script-agent`), e la pipeline con
+`prefer_local_intents` fa provare prima le frasi e gli intenti locali di HA e passa all'agente solo
+cio' che HA non capisce (`assist_pipeline/default_pipeline.py`). Vincolo gia' noto per il Retro
+Panel: gira su iOS 12, dove l'input vocale del browser non c'e' -- da li' sara' testo.
+
+**L'ordine, deciso dal proprietario il 16/09/2026: (a) e (d) insieme, poi (c).** E **dopo, la
+sicurezza costruita sull'intero scenario, per disegno** («finito andremo a costruire tutta la
+sicurezza avendo l'intero scenario e applicando una security by design»). Punto aperto da portargli
+al rilascio: fra questa fetta e lo sprint della sicurezza, i comandi via Assist restano accesi o
+spenti di fabbrica?
+
+**Chi risponde e come, deciso il 16/09/2026.** HIRIS **e'** l'agente di Assist (Wyoming, non
+strumenti per un altro modello), e **ogni frase e' un turno completo** di HIRIS, identico alla
+chat: stesso cervello, strumenti, mani. Misurato quel giorno, un campione: un turno di chat semplice
+(una domanda sulla temperatura) dura **14,8 s** dall'invio alla risposta (202 in 0,5 s, poi la coda
+del ponte). **Per dopo, deciso dal proprietario:** a fetta fatta si indaga se e come **velocizzare
+sia le risposte vocali sia la chat** -- con le misure dell'uso vero, non prima.
+
+**La conversazione, decisa il 16/09/2026: un filo per ogni conversazione di Assist**
+(`conversation_id`), separato dalla chat della pagina -- perche' il proprietario **vuole
+introdurre la divisione delle chat per utente**, e questa e' la stessa strada. Oggi
+`chat_store.py` ha un filo solo (sessioni chiuse dal silenzio, riassunti). Vincolo misurato sul
+sorgente di HA (`wyoming/conversation.py`): a un agente Wyoming arrivano solo `conversation_id`,
+`device_id`, `satellite_id` -- **non l'utente**. La divisione per utente dovra' dire da dove
+ricava chi parla (per esempio il dispositivo); vedi anche la voce «HIRIS per gli utenti non-admin
+di Home Assistant».
+
+**Chi prova per primo, deciso il 16/09/2026: prima HA, poi HIRIS.** La pipeline usa
+`prefer_local_intents`: frasi personalizzate e intenti locali di HA prima, HIRIS solo per cio' che
+HA non capisce (verificato in `assist_pipeline/default_pipeline.py`). Limite dichiarato: i comandi
+che fa HA non passano da HIRIS, quindi non entrano nella sua cronaca delle azioni ne' nel filo.
+
+**Il primo avvio, deciso il 16/09/2026.** HIRIS si annuncia (discovery Wyoming); il proprietario
+**conferma in HA** (passo che HIRIS non puo' saltare); poi, **su sua richiesta**, un pulsante nella
+pagina di HIRIS crea la pipeline «HIRIS» con le scelte decise (prima HA, italiano) attraverso
+`assist_pipeline/pipeline/create` (verificato nel sorgente: `create`, `update`, `list`, `delete`,
+`set_preferred`). La pipeline di serie non si tocca e **non diventa predefinita** se non lo sceglie
+lui.
+
+**La voce, decisa il 16/09/2026: Whisper e Piper in casa**, in locale, cosi' la voce funziona da
+ogni dispositivo (Android e altoparlanti compresi). Misurato quel giorno: host `generic-x86-64`,
+HAOS 18.2, 90,8 GB liberi, **nessun add-on vocale installato** (11 add-on). CPU e RAM non lette.
+Verificato sul sorgente delle app e di HA: la pipeline non taglia una risposta sotto i **300 s**
+(`assist_pipeline/const.py`), e da iPhone esiste anche la trascrizione sul telefono (Companion,
+Labs, iOS 17+). Da misurare dopo l'installazione: quanto aggiunge la trascrizione su questo host, e
+quanto e' accurata in italiano con il modello di partenza.
 
 **Da NON fare prima dell'analisi:** scrivere codice. Questa voce esiste perche' la richiesta non
 vada persa, non perche' il perimetro sia chiaro -- come per la voce dei comandi qui sopra, **il

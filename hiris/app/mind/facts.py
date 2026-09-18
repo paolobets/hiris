@@ -8,30 +8,33 @@ durava.
 
 **E' l'unico posto di questa fetta dove si giudica**, ed e' voluto: un giudizio
 qui si rifa' finche' il grezzo esiste (22 giorni: 21 di promessa, uno di
-guardia -- vedi `archivio.READING_RETENTION_S`), uno preso in scrittura non
+guardia -- vedi `mind/store.READING_RETENTION_S`), uno preso in scrittura non
 si corregge piu'.
 
 **L'obiettivo sceglie QUALI entita', la natura decide CHE TIPO di oggetto ne
-esce.** La prima non e' una lista scritta a mano: lo scope (`mind/watcher.py`, `store.is_watched`
-gamba`) deriva QUALI entita' da cio' che Home Assistant dichiara gia' --
-dominio, `device_class`, `source_type` (**non `state_class`**: correzione
-di parole della review, mandato «il bilancio dell'energia», punto 7,
-27/08/2026 -- dopo la correzione del 27/08, `type_vocabulary.aspect_of` non lo legge
-piu' per decidere nessuna gamba, vedi il suo docstring). **La seconda, invece,
-e' un giudizio nostro**: quali tipi «si accendono e si spengono», e quali loro
-stati valgono «a riposo», nessuna API di Home Assistant lo dice.
+esce.** La prima non e' una lista scritta a mano: e' lo scope
+(`mind/watcher.py`, `store.is_watched`), una decisione presa soggetto per
+soggetto dall'osservatore (`mind/observer.py`, spec §5.1) -- non piu' derivata
+da `device_class`/`source_type` come faceva la gamba, uscita insieme al
+vocabolario dei tipi il 17/09/2026 (spec 2026-09-16 §11). **La seconda,
+invece, e' un giudizio nostro**: che genere di episodio nasce da un soggetto,
+e quali suoi stati valgono «a riposo», nessuna API di Home Assistant lo dice.
 
 **Dal 07/09/2026 quel giudizio non vive piu' qui.** `_OPERABLE`, `_RESTING` e
 `_UNKNOWN` erano tre elenchi scritti a mano in questo modulo; sono diventati
-righe del **vocabolario dei tipi** (`home_space/type_vocabulary.py`), interrogate
-con la metrica «accendibile + riposi». Questo modulo resta il LETTORE:
-`genre_for` chiede se un tipo e' accendibile, `_is_on` chiede se uno stato e'
-un riposo, e il salto in cima ad `aggregate_day` chiede quali stati sono
-«non lo so». La regola che questo file portava in un commento -- «un tipo
-entra fra gli accendibili INSIEME al suo riposo, nella stessa modifica» -- e'
-diventata una condizione di costruzione del vocabolario: chi la viola non fa
-passare nemmeno un `import`. Spec:
+righe del **vocabolario dei tipi** (`home_space/type_vocabulary.py`). Spec:
 `docs/design/2026-09-07-l-anagrafe-dei-tipi.md`.
+
+**Dal 17/09/2026 il genere e il riposo si chiedono all'istantanea dei
+giudizi** (`home_space/type_judgments.TypeJudgments`, spec
+`docs/design/2026-09-16-il-giudizio-dei-tipi.md` §5), di cui il vocabolario e'
+il seme. Questo modulo resta il LETTORE: `genre_for` chiede il genere del
+soggetto, `_is_on` chiede se uno stato e' un riposo PER QUEL soggetto, e il
+salto in cima a `build_episodes` toglie gli stati «non lo so» e le forme
+dell'assenza di stato (`type_vocabulary.unknown_states()`,
+`type_vocabulary.ABSENT_STATE_FORMS`). L'istantanea arriva come parametro
+`judgments=`: in produzione e' `app["type_judgments"]`, il predefinito
+`REPO_JUDGMENTS` e' il solo seme.
 
 **Una frase che questo docstring ha portato fino a oggi era falsa**, e vale la
 pena lasciarne traccia: diceva che Home Assistant «non dichiara da nessuna
@@ -47,26 +50,31 @@ import json
 from datetime import datetime, timedelta
 
 from ..home_space.historian import home_space_zone
+from ..home_space.type_judgments import TypeJudgments
 from ..home_space.type_vocabulary import (
-    aspect_of,
-    is_operable,
-    resting_states,
+    ABSENT_STATE_FORMS,
+    CHRONICLE_GENRES,
+    REPO_JUDGMENTS,
     unknown_states,
 )
 from .recipes import Recipe
 from .report import build_report
 from .seed import balance_recipe
 
-# `aggregate_day` e' SINCRONA: non fa nessuna lettura di rete. I comprimari
-# arrivano gia' risolti dal chiamante (vedi il Task 6), proprio perche' una
-# chiamata a `legami` dentro il ciclo farebbe migliaia di richieste per una
-# giornata. Renderla `async` "per il futuro" sarebbe generalita' speculativa.
-# **Vale identico per `balances`** (mandato «il bilancio dell'energia»,
-# 27/08/2026): arriva gia' costruito dal chiamante (`server.py::
-# costruisci_bilanci`), che ha gia' letto `HAClient.statistiche_orarie()` --
-# una lettura di rete per giro, non per giorno ne' per dispositivo.
+# `aggregate_day` e `build_episodes` sono SINCRONE: non fanno nessuna lettura
+# di rete. Cio' che viene da Home Assistant -- le serie delle ricette, i nomi
+# dei dispositivi -- arriva gia' letto dal chiamante
+# (`server.py::_report_ingredients`), una lettura per giro e non una per
+# episodio. Renderle `async` "per il futuro" sarebbe generalita' speculativa.
 
-GENRES = ("funzionamento", "presenza", "energia", "guasto", "sicurezza", "bilancio")
+#: I quattro generi che hanno una forma (spec 2026-09-16 §5, D2), spostati in
+#: `type_vocabulary.CHRONICLE_GENRES`: una casa sola, `mind/facts` la importa.
+#: `energia` e `bilancio` sono usciti il 16/09/2026: nessun ramo di
+#: `build_episodes` apre o chiude niente per un contatore (vedi i commenti
+#: dentro la funzione, «I bilanci non entrano piu' qui» subito dopo
+#: `store.readings` e «Un contatore non apre niente» piu' sotto), e nessun
+#: codice produce il genere `"bilancio"`.
+GENRES = CHRONICLE_GENRES
 
 # Le SETTE dimensioni che il bilancio riporta. **Il consumo e' la settima**
 # (correzione ALTO della review, mandato «il bilancio dell'energia», punto
@@ -100,141 +108,59 @@ BALANCE_DIRECTIONS = ("produzione", "autoconsumo", "immissione",
 #: Assistant, ma una condizione di sistema: una voce del registro di errori
 #: (`problema:`, `integrazione:`, `log:` -- Task 2 «le tracce e il log») o
 #: un'esecuzione di automazione in errore (`automazione:`, Task 4 dello
-#: stesso verticale). Scritto UNA volta perche' e' la stessa domanda posta da
-#: tre lettori diversi -- `genre_for` (qui sotto, decide il genere),
-#: `_reading_aspect` (qui sotto, decide la gamba) e
-#: `api/handlers_mind.py::_with_rendered_states` (decide se cercare una
-#: traduzione di stato) -- e fino al 09/09/2026 (audit delle fondamenta) la
-#: stessa tupla era scritta a mano in tutti e tre i posti: un quarto prefisso
-#: aggiunto a due su tre sarebbe stato invisibile a qualunque prova che non
-#: confrontasse i tre elenchi lettera per lettera.
+#: stesso verticale). **Il suo unico lettore e' `genre_for`**, qui sotto, che
+#: ne fa un `guasto`. Fino al 09/09/2026 (audit delle fondamenta) la stessa
+#: tupla era scritta a mano in tre posti; gli altri due lettori sono usciti:
+#: `api/handlers_mind.py::_with_rendered_states` il 15/09/2026 con gli oggetti
+#: (commit `b2b2b55e`), `_reading_aspect` il 17/09/2026 con la gamba.
 NOT_ENTITY_PREFIXES = ("problema:", "integrazione:", "log:", "automazione:")
 
-# Le tre liste che vivevano qui -- `_OPERABLE` (i domini che «funzionano»),
-# `_RESTING` (gli stati che valgono «a riposo») e `_UNKNOWN` (gli stati «non lo
-# so») -- sono righe del vocabolario dei tipi dal 07/09/2026. Le tre funzioni che
-# le leggevano restano, con la stessa firma e lo stesso risultato: cambia da
-# dove viene la risposta, non quale sia.
-#
-# **Perche' l'unione e non il riposo del singolo tipo.** `_is_on` non sa a
-# quale dominio appartenga il valore che riceve -- lo riceve nudo -- e
-# `type_vocabulary.resting_states()` restituisce esattamente l'unione che
-# `_RESTING` era: un solo insieme, non due che si sovrappongono. Ogni valore
-# ha lo stesso significato («questo episodio e' finito») in qualunque tipo
-# compaia; cio' che il vocabolario aggiunge e' che ogni valore ha ora un tipo che
-# lo rivendica, invece di stare in un elenco piatto di cui nessuno sa piu' chi
-# vi abbia aggiunto cosa. Passare al riposo per-tipo sarebbe un cambio di
-# comportamento, non una rifattorizzazione, e questa fetta non ne fa nessuno.
+# **Il riposo e' del SOGGETTO, non l'unione di tutti i tipi** (17/09/2026, spec
+# 2026-09-16 §5). Fino ad allora `_is_on` riceveva lo stato nudo e lo
+# confrontava con `type_vocabulary.resting_states()`, l'unione dei riposi di
+# ogni tipo; ora riceve anche il soggetto e la sua classe, e chiede
+# all'istantanea il riposo di QUEL soggetto (entita', poi coppia, poi dominio).
+# **Misurato prima di cambiarlo** (spec §1, misura 7): ripassate 52.123 righe
+# di storia di Home Assistant su 304 entita' dei tipi con genere, dal 09/09 al
+# 16/09/2026, nessuna riga cambia esito. L'unico cambio che la casa vede e' il
+# salto di `none` e del vuoto, dichiarato in `build_episodes`.
 
 
-def genre_for(subject: str, aspect_: str | None) -> str | None:
-    """Che tipo di oggetto puo' nascere da questo soggetto, o `None` se non ne
-    nasce nessuno.
+def genre_for(subject: str, device_class: str | None, *,
+              judgments: TypeJudgments = REPO_JUDGMENTS) -> str | None:
+    """Che genere di episodio puo' nascere da questo soggetto, o `None` se non
+    ne nasce nessuno.
 
-    **I sensori da soli non generano oggetti**: «la temperatura e' salita» non
-    e' una cosa compiuta, e' il CONTESTO di qualcosa che e' successo. Se ne
-    generassero, una giornata ne produrrebbe migliaia e nessuno sarebbe
-    leggibile.
+    **Le condizioni di sistema sono `guasto` qui, nel codice**: `problema:`,
+    `integrazione:`, `log:` (una voce del registro di errori) e `automazione:`
+    (un'esecuzione in errore) non sono entita' di Home Assistant, e la loro
+    forma e' codice. Per ogni entita' il genere e' un **giudizio
+    dell'istantanea** (spec 2026-09-16 §5): prima l'entita', poi la coppia
+    dominio/`device_class` della riga di grezzo, poi il dominio. Un `nessuno`
+    scritto su un livello nega quelli sopra.
 
-    **La sesta gamba (sicurezza) ha un genere proprio, non un buco.**
-    Serrature, pannello dell'allarme, sirene, e i sensori di fumo/gas/
-    monossido/allagamento/manomissione/guasto/calore/gelo sono una minaccia,
-    non un funzionamento normale: hanno la stessa FORMA di una condizione di
-    sistema -- nascono, durano, finiscono o restano aperti -- ma non sono la
-    STESSA cosa. Una porta aperta con la chiave e un'integrazione Sonos rotta
-    non sono lo stesso genere di fatto, e l'analista le trattera' in modo
-    diverso: `"guasto"` resta per le condizioni di sistema (`problema:`,
-    `integrazione:`, `log:` -- una voce del registro di errori, Task 2 «le
-    tracce e il log» -- e `automazione:`, un'esecuzione in errore, Task 4
-    dello stesso verticale -- un confine netto e facile da spiegare), `"sicurezza"` per
-    tutta la gamba omonima. Qui il criterio e' `aspect_ == "sicurezza"`,
-    qualunque sia il dominio, cosi' non serve ripetere l'elenco dei domini/
-    classi che il pavimento gia' tiene.
+    **I sensori da soli non generano episodi**: «la temperatura e' salita» non
+    e' una cosa compiuta, e' il CONTESTO di qualcosa che e' successo. Nel seme
+    il dominio `sensor` non ha nessuna riga `genere`, e nemmeno le sue coppie.
 
-    **Eccezione dichiarata (correzione del giro di review, punto 7): un
-    `sensor` numerico della gamba sicurezza NON genera un oggetto.** Oggi
-    l'unico caso raggiungibile e' il monossido misurato in concentrazione
-    (`carbon_monoxide` su `sensor`, non su `binary_sensor`): una lettura come
-    "0.4" non e' mai fra gli stati di riposo, quindi userebbe `_is_on` per
-    aprire un oggetto che non chiuderebbe mai -- un guasto perennemente
-    aperto al giorno, per ogni sensore CO numerico della casa. Un sensore che
-    MISURA non e' un sensore che SCATTA: servirebbe una soglia per decidere
-    quando la concentrazione diventa una minaccia, e non ne abbiamo una
-    onesta.
-    **Restare fuori e' la decisione**, non una dimenticanza: il
-    `binary_sensor` di monossido -- che scatta davvero, con uno stato on/off
-    -- resta dentro senza bisogno di nessuna soglia.
+    **`sicurezza` non e' `guasto`.** Serrature, pannello dell'allarme, sirene e
+    i `binary_sensor` di fumo, gas, monossido, allagamento, sicurezza,
+    manomissione, problema, calore e gelo hanno la stessa FORMA di una
+    condizione di sistema -- nascono, durano, finiscono o restano aperti -- ma
+    una porta aperta con la chiave e un'integrazione Sonos rotta non sono lo
+    stesso genere di fatto. Nel seme sono righe `genere` `sicurezza`, e una
+    sirena (accendibile anche lei) e' `sicurezza`, non `funzionamento`.
+
+    **Il monossido misurato resta fuori, e restare fuori e' la decisione**: un
+    `sensor` di classe `carbon_monoxide` MISURA una concentrazione, non SCATTA.
+    Una lettura come "0.4" non e' mai un riposo e aprirebbe un episodio che non
+    chiude mai; servirebbe una soglia, e non ne abbiamo una onesta. Il seme non
+    gli scrive nessun genere; il `binary_sensor` di monossido, che scatta
+    davvero, e' `sicurezza`.
     """
     if subject.startswith(NOT_ENTITY_PREFIXES):
         return "guasto"
-    domain = subject.split(".")[0]
-    # **La gamba «sicurezza» viene PRIMA di «accendibile», e l'ordine e' il
-    # giudizio.** Fino all'08/09/2026 nessun tipo era insieme accendibile e di
-    # sicurezza, quindi l'ordine non si vedeva; quel giorno il proprietario ha
-    # dichiarato `siren` accendibile (nona domanda del censore) e una sirena che
-    # suona sarebbe diventata un oggetto di «funzionamento» -- cioe' l'evento
-    # piu' importante che questa casa possa produrre declassato a «una cosa si
-    # e' accesa», in silenzio, come effetto collaterale di una decisione che
-    # parlava d'altro. Il docstring qui sopra lo diceva gia' -- «`sicurezza` per
-    # tutta la gamba omonima, QUALUNQUE sia il dominio» -- e il codice lo
-    # smentiva.
-    if aspect_ == "sicurezza":
-        if domain == "sensor":
-            return None
-        return "sicurezza"
-    if is_operable(domain):
-        return "funzionamento"
-    if domain in ("person", "device_tracker"):
-        return "presenza"
-    if domain == "sensor" and aspect_ == "energia":
-        return "energia"
-    return None
-
-
-def _reading_aspect(subject: str, row: dict) -> str | None:
-    """La gamba del soggetto, ricostruita dal grezzo.
-
-    Il grezzo non porta il CONTESTO attorno (§3 della spec: temperatura,
-    presenza, tutto cio' che cambierebbe il giudizio) ma porta, da questa
-    correzione, le tre classi che Home Assistant dichiara sull'entita' --
-    `device_class`, `state_class`, `source_type` -- perche' sono grezzo per
-    definizione, non un giudizio nostro. **`type_vocabulary.aspect_of()` legge solo
-    `device_class` e `source_type`** per decidere la gamba di `sensor` e
-    `binary_sensor` (correzione di parole della review, mandato «il
-    bilancio dell'energia», punto 7, 27/08/2026: prima di questa
-    correzione questo docstring diceva che le leggeva tutte e tre --
-    `state_class` NON e' fra i criteri, dalla correzione del 27/08 sul
-    traffico di rete, vedi il docstring di `gamba`). Resta comunque nel
-    grezzo, non e' tolta dallo schema: e' `type_vocabulary.aspect_of()` che non la
-    legge, non `store.py` che smette di conservarla -- i 22 giorni di
-    grezzo permettono di rifare il giudizio anche se un domani tornasse a
-    servire.
-
-    **Non si salva la gamba gia' calcolata.** Sarebbe piu' comodo, ed e' la
-    scelta sbagliata: la gamba e' un giudizio, e il giudizio sta tutto qui,
-    nell'aggregazione, precisamente perche' i 22 giorni di grezzo permettano
-    di rifarlo. Congelarlo in scrittura toglierebbe quella possibilita' il
-    giorno in cui il pavimento cambiasse.
-
-    **`log:` e `automazione:` sono un terzo e un quarto prefisso senza
-    gamba, non due volte lo stesso controllo.** Una voce del registro di
-    errori (Task 2) o un'esecuzione di automazione in errore (Task 4) non
-    sono un'entita': cercarne la gamba con `type_vocabulary.aspect_of()` andrebbe a
-    leggere `subject` come se fosse un `entity_id` (`sensor.qualcosa`) che
-    non e' -- per `automazione:automation.x` in particolare, spaccarlo su
-    `"."` darebbe il dominio `"automazione:automation"`, che non e' un
-    `entity_id` valido di nessuna casa -- per un soggetto che ha gia' preso
-    la sua strada in `genre_for` un rigo sopra nel file -- lo stesso
-    confine, in DUE funzioni diverse: qui decide la gamba (nessuna), la'
-    decide il genere (`"guasto"`).
-    """
-    if subject.startswith(NOT_ENTITY_PREFIXES):
-        return None
-    return aspect_of(subject, {
-        "device_class": row.get("device_class"),
-        "state_class": row.get("state_class"),
-        "source_type": row.get("source_type"),
-    })
+    return judgments.genre_of(subject, device_class)
 
 
 def day_boundaries(day: str, timezone: str | None) -> tuple[float, float]:
@@ -262,11 +188,15 @@ def day_boundaries(day: str, timezone: str | None) -> tuple[float, float]:
     return start.timestamp(), (start + timedelta(days=1)).timestamp()
 
 
-def _is_on(value) -> bool:
-    """Se questo stato NON e' un riposo -- cioe' se l'episodio e' ancora in
-    corso. L'insieme dei riposi e' l'unione che il vocabolario dei tipi tiene:
-    `_RESTING` era esattamente quella, elencata a mano."""
-    return str(value or "").strip().lower() not in resting_states()
+def _is_on(value, subject: str, device_class: str | None,
+           judgments: TypeJudgments) -> bool:
+    """Se questo stato NON e' un riposo **per questo soggetto** -- cioe' se
+    l'episodio e' ancora in corso. Il riposo e' quello che l'istantanea
+    dichiara per l'entita', la coppia o il dominio (vedi il commento sopra
+    `genre_for`: misurato, nessuna riga della casa cambia esito)."""
+    domain = subject.split(".")[0]
+    state = str(value or "").strip().lower()
+    return state not in judgments.resting_of(domain, device_class, subject)
 
 
 def _opening_attributes(row: dict):
@@ -305,7 +235,7 @@ def _as_number(value) -> float | None:
 
 
 def _kwh(value) -> float | None:
-    """Un numero della gamba energia -> kWh arrotondati a 2 decimali.
+    """Un numero del bilancio dell'energia -> kWh arrotondati a 2 decimali.
 
     2 decimali (0,01 kWh = 10 Wh, mandato punto 6): i contatori di questa
     casa non scrivono mai piu' di due cifre dopo la virgola (misurato:
@@ -590,45 +520,29 @@ def build_balance_body(*, series: dict[str, list[dict]],
     return body
 
 
-def aggregate_day(*, store, day: str, timezone: str | None,
-                         recipes=None, series=None, names=None,
-                         without_statistics=None) -> int:
-    """Costruisce gli oggetti di un giorno. Torna quanti ne ha scritti.
+def build_episodes(*, store, day: str, timezone: str | None,
+                   judgments: TypeJudgments = REPO_JUDGMENTS) -> list[dict]:
+    """Gli episodi di un giorno, nella forma che `report.build_report` riceve.
 
-    **Idempotente**: rifare un giorno lo SOSTITUISCE, non lo accoda. Gli
-    oggetti si accumulano in una lista e si consegnano tutti insieme, in una
-    volta sola, ad `archivio.replace_day` -- cancellare e poi inserire
-    uno per uno, con un commit per ciascuno, lascerebbe un giorno mezzo
-    scritto indistinguibile da uno completo se qualcosa muore a meta'. E'
-    esattamente il difetto gemello che il vecchio «costruire» ha gia' pagato
-    (accodava invece di sostituire, e le ancore YAML lo nascondevano).
+    Ogni episodio e' `{"genere", "protagonista", "inizio", "fine",
+    "corpo_base"}`: `fine` a `None` quando a fine giornata e' ancora in corso.
+    **Legge soltanto l'archivio** -- `store.readings` (i cambi del giorno) e
+    `store.last_before` (cio' che era gia' in corso a mezzanotte) -- e non
+    scrive niente: estratta da `aggregate_day` il 17/09/2026 perche' la cronaca
+    si possa costruire senza le misure (spec 2026-09-16 §1, misura 10).
 
-    `companions(subject) -> list[str]` dice quali altre cose stanno con il
-    protagonista. E' iniettabile perche' nella vita vera lo chiede a `legami`
-    (una chiamata di rete) e nei test no. **Non si indovina dal nome**: e' il
-    caso misurato del lampadario, dove tre lampade, il loro gruppo e
-    l'interruttore fisico sono un sistema solo.
-
-    `directions(subject) -> dict | None` dice la direzione di un contatore di
-    energia -- `{"direzione": ..., "provenienza": "dichiarata" | "dedotta"}`,
-    o `None` se non si conosce. **Stessa forma di `companions`, stessa
-    ragione**: nella vita vera lo chiede a `HAClient.energy_directions()`
-    (due letture di rete, `energy/get_prefs` + il registro entita'), nei
-    test no. **Non si scrive nel grezzo** (mandato «le direzioni
-    dell'energia», 27/08/2026, punto 2): la direzione e' una CONFIGURAZIONE
-    -- la dashboard Energia dell'utente puo' cambiare -- e congelarla in
-    scrittura la renderebbe irrecuperabile per i 21 giorni in cui il grezzo
-    permette di rifare il giudizio, la stessa ragione per cui il grezzo
-    porta `device_class` e non la gamba gia' calcolata (vedi il docstring
-    del modulo). **Quando la direzione non si conosce, il campo non c'e'**
-    nel corpo -- non una `"sconosciuta"` travestita da dato.
+    **Il genere e il riposo vengono da `judgments`** (spec §5): in produzione
+    l'istantanea viva, `app["type_judgments"]`; il predefinito `REPO_JUDGMENTS`
+    e' il solo seme del repo. Un episodio di `funzionamento`, `sicurezza` o
+    `presenza` e' aperto quando lo stato non e' a riposo per il suo soggetto
+    (`_is_on`); un `guasto` apre su qualunque condizione e chiude su `chiuso`.
 
     **Il corpo porta `nome`, quando il grezzo del giorno lo portava**
     (fetta «il nome», 07/09/2026): il nome amichevole SALVATO al momento
     del cambio (`store.py::_migration_5`), non risolto ora dall'anagrafe --
-    un oggetto sopravvive ai 22 giorni del grezzo e all'entita' stessa, e
+    un resoconto sopravvive ai 22 giorni del grezzo e all'entita' stessa, e
     un nome risolto dopo tornerebbe a essere l'`entity_id` grezzo proprio
-    sugli oggetti piu' vecchi. Il campo **tace** quando non c'e' (le righe
+    sulle voci piu' vecchie. Il campo **tace** quando non c'e' (le righe
     scritte prima della colonna, le condizioni di sistema, le entita' su cui
     HA non scrive l'attributo): mai un `nome: null`, e chi legge mostra
     allora l'identificatore DICENDO che e' un identificatore.
@@ -641,72 +555,6 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     leggerebbe «Acceso» invece di «Rilevato» (misurato dal vivo il
     07/09/2026). Tace come `nome` quando non c'e'. Vedi `close()` qui
     sotto e `proxy/state_translations.py`.
-
-    **L'energia e' un genere a parte** (correzione del giro di review,
-    punto 6): non ha un "acceso"/"spento" -- un contatore sale e basta -- e
-    non nasce da un ciclo apri/chiudi come gli altri generi. Un oggetto di
-    energia e' il RIEPILOGO del giorno per quel contatore: la prima lettura,
-    l'ultima, e la loro differenza. Si chiude sempre dentro la giornata (mai
-    `fine_ts: None`), perche' e' gia' cio' che si sa a fine giornata, non
-    qualcosa ancora in corso.
-
-    **Debito dichiarato** (secondo giro di review, punto 5): la spec (§6)
-    promette che un'energia dica «quanto, in che periodo, COME DISTRIBUITO».
-    Questo riepilogo dice le prime due e non la terza -- prima lettura,
-    ultima e la loro differenza non dicono se il contatore e' salito piano
-    per tutto il giorno o e' scattato tutto in un'ora. Quella forma (a
-    bucket orari, o i punti intermedi) non c'e' ancora: la scelta e' onesta
-    finche' lo dice qui, non solo nel rapporto di un giro di correzioni che
-    fra un mese non legge piu' nessuno.
-
-    **Secondo debito, dichiarato il 26/08/2026, CHIUSO il 27/08/2026**
-    (mandato «le direzioni dell'energia» -- vedi le righe `energia` del vocabolario dei tipi
-    per la storia): il riepilogo qui sotto era lo STESSO per un contatore
-    che PRODUCE e uno che PRELEVA, entrambi `device_class: energy`/`power`.
-    La GAMBA resta "energia" (non si sdoppia: e' vera per tutti e 17 i
-    sensori dell'inverter, produzione compresa -- `home_space/type_vocabulary.py`), ma il
-    CORPO di un episodio di energia ora porta `direzione`/`provenienza`
-    quando `directions()`, sopra, le sa dire -- lette da `energy/get_prefs`
-    (la dashboard Energia, dichiarata) e da `translation_key` (dedotta
-    dall'integrazione, dove la dichiarata tace). Non e' un debito chiuso
-    del tutto: la dichiarata copre 6 delle 17 entita' di questa casa, la
-    dedotta le copre tutte ma solo su questa integrazione (`zcsazzurro`) --
-    un episodio senza `direzione` resta possibile, ed e' un fatto onesto
-    («non lo sappiamo»), non un buco silenzioso.
-
-    `balances: list[dict] | None` -- **terzo debito, CHIUSO il 27/08/2026**
-    (mandato «il bilancio dell'energia»): undici frammenti di energia dello
-    stesso dispositivo diventano UN oggetto, di genere `"bilancio"`. Ogni
-    elemento e' `{"dispositivo_id", "nome", "entita": [...], "corpo": {...}}`
-    -- gia' costruito dal chiamante (`server.py::build_balances`, che
-    legge `HAClient.hourly_statistics()`: **il bilancio non dipende dal
-    grezzo**, viene dalle statistiche di HA, che sono piu' corrette
-    (gestiscono gli azzeramenti) e piu' durature dei nostri 22 giorni). E'
-    lo STESSO principio di `companions`/`directions`: la rete sta fuori da
-    questa funzione, che resta sincrona.
-
-    **Le entita' elencate in `entita` di un bilancio VALIDO (con almeno un
-    totale) smettono di produrre il loro episodio di energia individuale**
-    -- e' il punto per cui questa fetta esiste: se restassero entrambi,
-    avremmo undici frammenti *PIU'* l'oggetto, peggio di prima. Un bilancio
-    senza nemmeno un totale (le statistiche non hanno detto niente per
-    nessuna delle sue dimensioni) NON sopprime niente e non si scrive: e'
-    la stessa regola di `directions`, mai un oggetto vuoto al posto di
-    quello che c'era. Le entita' di energia FUORI da ogni bilancio (nessun
-    dispositivo, o un dispositivo di cui NESSUNA entita' ha una direzione
-    riconosciuta fra `BALANCE_DIRECTIONS`) continuano a produrre il loro
-    episodio come prima. **Non piu' "un dispositivo la cui unica direzione
-    e' 'consumo' non basta a costruirne uno"** (frase corretta dal mandato
-    «il bilancio dell'energia», punto 4, 27/08/2026: era gia' falsa da
-    quando "consumo" e' entrata in `BALANCE_DIRECTIONS` come settimo totale
-    -- vedi il commento sopra la costante -- ed era contraddetta da un test
-    dello stesso giro, `test_server_balances.py::
-    test_il_consumo_da_solo_ora_basta_e_diventa_un_candidato`: un
-    dispositivo con la sola direzione "consumo" e' gia' un candidato
-    valido, e produce un bilancio, non piu' il suo episodio individuale).
-    **E' il genere a decidere la forma**, e un'entita' senza un bilancio da
-    entrare non ha nessuna forma
-    migliore di quella che gia' aveva.
     """
     from_ts, to_ts = day_boundaries(day, timezone)
     rows = store.readings(from_ts=from_ts, to_ts=to_ts)
@@ -719,32 +567,41 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     # bilancio arriva per la sua ricetta.
 
     # `unavailable`/`unknown` si saltano QUI, una volta sola, prima di ogni
-    # ramo e prima delle misure (`type_vocabulary.unknown_states()`, correzione
-    # dei punti 2 e 3 del secondo giro di review): un riavvio di Home
-    # Assistant li fa attraversare a OGNI entita'. Filtrarli a valle -- come
-    # prima, con gli stati di riposo per funzionamento/sicurezza e un `if`
-    # locale per presenza -- li faceva significare due cose diverse nello
-    # stesso modulo: riposo in un ramo (chiude un episodio in corso), salto
-    # nell'altro. La riga che
-    # si perde qui e' un buco nell'informazione, non un fatto sulla casa:
-    # non deve ne' aprire ne' chiudere niente, in NESSUN ramo, e non deve
-    # contaminare il riepilogo di un'energia (`misure`, sotto) con
-    # "unavailable" come prima o ultima lettura del giorno.
-    ignored = unknown_states()
+    # ramo (`type_vocabulary.unknown_states()`, correzione dei punti 2 e 3 del
+    # secondo giro di review): un riavvio di Home Assistant li fa attraversare
+    # a OGNI entita'. Filtrarli a valle -- come prima, con gli stati di riposo
+    # per funzionamento/sicurezza e un `if` locale per presenza -- li faceva
+    # significare due cose diverse nello stesso modulo: riposo in un ramo
+    # (chiude un episodio in corso), salto nell'altro. La riga che si perde qui
+    # e' un buco nell'informazione, non un fatto sulla casa: non deve ne'
+    # aprire ne' chiudere niente, in NESSUN ramo. Lo stesso insieme salta lo
+    # stato ereditato da prima di mezzanotte (`store.last_before`, sotto).
+    #
+    # Una riga saltata non porta nemmeno il suo nome ne' i suoi attributi:
+    # il filtro la toglie prima della raccolta dei nomi e dei cambi di
+    # attributo, qui sotto.
+    #
+    # **Dal 17/09/2026 si saltano anche `none` e il vuoto**
+    # (`type_vocabulary.ABSENT_STATE_FORMS`, spec 2026-09-16 §5): sono un dato
+    # che manca, come `unavailable`, non il riposo di nessuno. **Cambio di
+    # comportamento dichiarato, misurato** (spec §1, misura 8): in una
+    # settimana, dal 09/09 al 16/09/2026, 200 righe `none` da 6 apparati di
+    # rete, quasi tutte intorno alle 23. Su un `device_tracker` `none` apriva
+    # un'assenza (non era `home`); su uno `switch` chiudeva l'episodio (era
+    # nell'unione dei riposi). Ora non apre e non chiude niente.
+    ignored = unknown_states() | ABSENT_STATE_FORMS.value
     rows = [r for r in rows
              if str(r["a"] or "").strip().lower() not in ignored]
 
-    # Prima passata: le misure, per soggetto. Servono come contesto e non
-    # generano oggetti da sole.
-    measurements: dict[str, list[tuple[float, str]]] = {}
     # Il nome amichevole del soggetto, preso dal GREZZO di questo giorno --
     # mai dall'anagrafe di oggi (`store.py::_migration_5`: risolverlo dopo
     # attribuirebbe a ieri il nome di oggi, e per un oggetto piu' vecchio
     # dei 22 giorni di grezzo non ci sarebbe piu' niente da risolvere).
     #
     # **Il primo non vuoto vince**, e la regola vale per tutti e due i modi
-    # in cui un episodio nasce qui sotto (il ciclo apri/chiudi e il
-    # riepilogo dell'energia): uno solo, non due che possono divergere. Un
+    # in cui un episodio nasce qui sotto (lo stato ereditato da prima di
+    # mezzanotte e il ciclo apri/chiudi del giorno): uno solo, non due che
+    # possono divergere. Un
     # `None` non e' un nome, e' l'assenza di uno -- saltarlo per prendere il
     # nome che una riga successiva dello STESSO soggetto, nello STESSO
     # giorno, dichiara davvero non inventa niente. E' anche il caso vero del
@@ -753,8 +610,8 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     # proprio quel giorno.
     # **`entity_names`, non `names`: sono due cose diverse.** Qui vivono i
     # nomi amichevoli delle ENTITA', letti dal grezzo e per chiave
-    # l'`entity_id`; il parametro `names` porta i nomi dei DISPOSITIVI, per
-    # chiave l'id del dispositivo, e serve alle misure.
+    # l'`entity_id`; il parametro `names` di `aggregate_day` porta i nomi dei
+    # DISPOSITIVI, per chiave l'id del dispositivo, e serve alle misure.
     #
     # Fino al 15/09/2026 si chiamavano tutt'e due `names`, e questa riga
     # cancellava il parametro. Il risultato si e' letto nella prima analisi
@@ -763,7 +620,6 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     # un nome.
     entity_names: dict[str, str] = {}
     for r in rows:
-        measurements.setdefault(r["soggetto"], []).append((r["quando_ts"], r["a"]))
         name = r.get("friendly_name")
         if name and r["soggetto"] not in entity_names:
             entity_names[r["soggetto"]] = name
@@ -780,28 +636,26 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     # mezzanotte: dire che il riscaldamento e' partito alle 00:00 sarebbe una
     # bugia sul quando, ed e' proprio il quando che l'analista guarda.
     #
-    # Solo i generi che aprono e chiudono (`funzionamento`, `sicurezza`,
-    # `presenza`): l'energia e' un riepilogo di letture DENTRO il giorno, e
-    # una lettura di ieri non ne fa parte. Il `guasto` ha gia' il suo
-    # meccanismo attraverso i riavvii (`watcher.rebuild_conditions`), e
+    # Solo i generi che aprono e chiudono sullo stato (`funzionamento`,
+    # `sicurezza`, `presenza`), con la stessa regola del ciclo del giorno:
+    # aperto se lo stato non e' a riposo per il soggetto. Il `guasto` ha gia'
+    # il suo meccanismo attraverso i riavvii (`watcher.rebuild_conditions`), e
     # riseminarlo anche qui sarebbero due risposte alla stessa domanda.
     for r in store.last_before(from_ts):
         subject = r["soggetto"]
-        genre = genre_for(subject, _reading_aspect(subject, r))
+        genre = genre_for(subject, r.get("device_class"), judgments=judgments)
         state = str(r["a"] or "").strip().lower()
         if genre not in ("funzionamento", "sicurezza", "presenza") or state in ignored:
             continue
-        still_open = (state != "home") if genre == "presenza" else _is_on(state)
+        still_open = _is_on(state, subject, r.get("device_class"), judgments)
         if still_open:
             open_episodes[subject] = {
                 "genere": genre, "inizio": r["quando_ts"], "stato": r["a"],
                 "classe": r.get("device_class")}
             if r.get("friendly_name") and subject not in entity_names:
                 entity_names[subject] = r["friendly_name"]
-    # Gli episodi: inizio/fine di ogni oggetto, SENZA ancora i comprimari.
-    # Si separano dal corpo apposta (vedi sotto): il limite superiore delle
-    # misure di un comprimario dipende dal PROSSIMO episodio dello stesso
-    # protagonista, che a meta' del ciclo non e' ancora noto.
+    # Gli episodi chiusi (o ancora aperti a fine giornata), nell'ordine in cui
+    # `close()` li consegna.
     episodes: list[dict] = []
     # I cambi di ATTRIBUTO del giorno, per soggetto: `[(istante, {nome:
     # valore}), ...]` in ordine cronologico. Sono le righe che l'osservatore
@@ -828,7 +682,7 @@ def aggregate_day(*, store, day: str, timezone: str | None,
         # La classe che Home Assistant dichiarava sull'entita' al momento del
         # cambio (`device_class` nel grezzo, `classe` qui -- il nome italiano
         # che l'anagrafe usa gia' ovunque per la stessa cosa). Non e' un
-        # doppione del grezzo: gli `oggetti` vivono piu' a lungo dei `cambi`
+        # doppione del grezzo: il `resoconto` vive piu' a lungo dei `cambi`
         # (22 giorni), esattamente come per `nome`.
         #
         # **Perche' serve, e non e' un "per ogni evenienza"**: e' il SECONDO
@@ -841,8 +695,8 @@ def aggregate_day(*, store, day: str, timezone: str | None,
         # senza classe -- e' «Acceso». Un rilevatore di fumo scattato
         # leggerebbe «Acceso».
         #
-        # Tace quando non c'e', come ogni altra chiave del corpo. Gli oggetti
-        # aggregati PRIMA di questa riga non la portano e non si riempiono a
+        # Tace quando non c'e', come ogni altra chiave del corpo. Le voci
+        # aggregate PRIMA di questa riga non la portano e non si riempiono a
         # posteriori: cadono sul terzo gradino, che e' la verita' («di quella
         # riga non sappiamo la classe»), non un'invenzione.
         if o.get("classe"):
@@ -918,7 +772,7 @@ def aggregate_day(*, store, day: str, timezone: str | None,
                 attribute_changes.setdefault(subject, []).append(
                     (r["quando_ts"], values))
             continue
-        genre = genre_for(subject, _reading_aspect(subject, r))
+        genre = genre_for(subject, r.get("device_class"), judgments=judgments)
         if genre is None:
             continue
         if genre == "guasto":
@@ -934,7 +788,7 @@ def aggregate_day(*, store, day: str, timezone: str | None,
                 close(subject, r["quando_ts"])
             else:
                 # Sovrascrive senza `if subject not in open_episodes` (a
-                # differenza di `sicurezza`/`funzionamento` sotto): due
+                # differenza del ramo dei tre generi di stato, sotto): due
                 # aperture di fila per lo stesso soggetto perderebbero la
                 # prima data d'inizio. Non per una guardia qui, ma per la
                 # disciplina dello SCRITTORE, in un altro file:
@@ -957,48 +811,30 @@ def aggregate_day(*, store, day: str, timezone: str | None,
                     "comparso_ts": r.get("first_occurred"),
                 }
             continue
-        if genre == "sicurezza":
-            # Sesta gamba, entita' vera: stessa logica acceso/spento del
-            # funzionamento -- il genere e' diverso, la forma no.
-            if _is_on(r["a"]):
+        if genre in ("funzionamento", "sicurezza", "presenza"):
+            # **Una forma sola per i tre generi** (spec 2026-09-16 §5): aperto
+            # quando lo stato non e' a riposo per il soggetto, chiuso quando lo
+            # e'. Il genere e' diverso, la forma no.
+            #
+            # **La presenza non ha piu' un ramo suo.** Fino al 17/09/2026 qui
+            # c'era un confronto scritto a mano con `"home"`; ora `home` e' la
+            # riga `riposo` di `person` e `device_tracker` nel seme, e l'episodio
+            # di una persona resta l'ASSENZA, «fuori casa dalle 8:10 alle
+            # 17:34», non il ritorno. Trattare anche il ritorno come un secondo
+            # episodio duplicherebbe lo stesso fatto (l'orario del rientro e'
+            # gia' `fine_ts` dell'assenza). Un sensore di presenza a cui la
+            # casa scrive il genere `presenza` apre a `on` e chiude a `off`,
+            # il riposo del suo dominio: lo dicono `cosa` e `classe`.
+            #
+            # `if subject not in open_episodes`: un cambio fra due stati non a
+            # riposo -- una persona che da `not_home` entra nella zona
+            # `ufficio`, una TV da `playing` a `paused` -- non riapre
+            # l'episodio e non ne azzera inizio e stato.
+            if _is_on(r["a"], subject, r.get("device_class"), judgments):
                 if subject not in open_episodes:
                     open_episodes[subject] = {"genere": genre, "inizio": r["quando_ts"],
-                                        "stato": r["a"], "classe": r.get("device_class"),
-                                        "attributi_apertura": _opening_attributes(r)}
-            else:
-                close(subject, r["quando_ts"])
-            continue
-        if genre == "presenza":
-            # «home» e' il riposo, come «off» lo e' per un funzionamento:
-            # l'oggetto e' l'ASSENZA, «fuori casa dalle 8:10 alle 17:34», non
-            # il ritorno. Trattare anche il ritorno come un secondo oggetto
-            # aperto duplicherebbe lo stesso fatto (l'orario del rientro e'
-            # gia' `fine_ts` dell'assenza) e a fine giornata lascerebbe per
-            # sempre un oggetto «in casa» ancora aperto, per ogni persona,
-            # ogni notte -- rumore, non un fatto compiuto.
-            #
-            # "unavailable"/"unknown" sono gia' fuori da `righe` (il filtro
-            # in cima alla funzione): un riavvio di HA non apre ne' chiude
-            # niente qui, per nessuna `person`.
-            #
-            # Il confronto normalizza (strip, minuscole) come `_is_on` fa
-            # per gli altri rami -- pulizia del secondo giro di review: qui
-            # confrontava il valore grezzo, mentre il filtro degli stati
-            # ignoti, prima di questa correzione, normalizzava tre righe
-            # sopra. Due convenzioni per lo stesso valore, ora una sola.
-            if str(r["a"] or "").strip().lower() == "home":
-                close(subject, r["quando_ts"])
-            elif subject not in open_episodes:
-                open_episodes[subject] = {"genere": genre, "inizio": r["quando_ts"],
-                                    "stato": r["a"], "classe": r.get("device_class"),
-                                    "attributi_apertura": _opening_attributes(r)}
-            continue
-        if genre == "funzionamento":
-            if _is_on(r["a"]):
-                if subject not in open_episodes:
-                    open_episodes[subject] = {"genere": genre, "inizio": r["quando_ts"],
-                                        "stato": r["a"], "classe": r.get("device_class"),
-                                        "attributi_apertura": _opening_attributes(r)}
+                                              "stato": r["a"], "classe": r.get("device_class"),
+                                              "attributi_apertura": _opening_attributes(r)}
             else:
                 close(subject, r["quando_ts"])
             continue
@@ -1007,7 +843,9 @@ def aggregate_day(*, store, day: str, timezone: str | None,
         # un episodio di energia; quell'episodio e' uscito, perche' un
         # contatore non ha uno stato, ha un numero -- e i numeri stanno
         # fra le misure, dove la ricetta li porta con la copertura che
-        # l'episodio non aveva.
+        # l'episodio non aveva. Dal 16/09/2026 nemmeno il genere `energia`
+        # esiste piu' (spec 2026-09-16 §5, D2): l'istantanea ammette solo i
+        # quattro generi trattati qui sopra, e nessuna riga arriva fin qui.
 
     # Cio' che a fine giornata e' ancora in corso resta APERTO: `fine_ts` a
     # `None` e' un fatto, zero direbbe «finita subito».
@@ -1018,8 +856,7 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     # finale, differenza -- e il suo unico lettore era l'oggetto. Nella
     # cronaca quella voce direbbe «quando, chi, genere: energia, cosa:
     # niente»: un contatore non ha uno stato, ha un numero, e un numero
-    # sta fra le MISURE. Lo dice gia' il commento qui sopra: «l'energia e'
-    # un riepilogo di letture DENTRO il giorno».
+    # sta fra le MISURE.
     #
     # **Verificato dal vivo prima di toglierlo**: i tre contatori della
     # casa che avevano un episodio di energia sono tutti coperti da una
@@ -1037,11 +874,46 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     # La perdita che si temeva non esisteva: non c'era niente da perdere.
     # E ogni giorno che aveva oggetti (26/08 -> 14/09) aveva gia' il suo
     # resoconto, quindi nemmeno la storia si e' persa.
+    return episodes
 
-    # **IL RESOCONTO DEL GIORNO** (spec §9), scritto dagli stessi episodi che
-    # questa funzione ha appena costruito -- una lettura sola del grezzo, un
-    # giudizio solo.
-    #
+
+def aggregate_day(*, store, day: str, timezone: str | None,
+                  recipes=None, series=None, names=None,
+                  without_statistics=None,
+                  judgments: TypeJudgments = REPO_JUDGMENTS) -> int:
+    """Scrive il resoconto di un giorno. Torna quante voci di cronaca porta.
+
+    **Il resoconto e' la cronaca piu' le misure** (spec §9): la cronaca sono gli
+    episodi di `build_episodes`, che legge il grezzo dell'archivio con
+    l'istantanea `judgments`; le misure arrivano gia' lette dal chiamante --
+    `recipes` (le ricette dal sapere), `series` (le serie delle entita' che le
+    ricette nominano), `names` (i nomi dei DISPOSITIVI, per chiave l'id) e
+    `without_statistics` -- e si incontrano in `report.build_report`, che e'
+    pura. L'obiettivo e' quello che valeva alla fine di QUEL giorno
+    (`store.objective_at`), non quello di oggi.
+
+    **Sincrona, nessuna lettura di rete**: tutto cio' che viene da Home
+    Assistant l'ha gia' letto il chiamante (`server.py::_report_ingredients`).
+
+    **Idempotente**: rifare un giorno lo SOSTITUISCE, non lo accoda. Il
+    resoconto si costruisce tutto in memoria e si consegna in una scrittura
+    sola ad `store.replace_report`, che sostituisce la riga del giorno: niente
+    giorno mezzo scritto indistinguibile da uno completo se qualcosa muore a
+    meta'. E' esattamente il difetto gemello che il vecchio «costruire» ha gia'
+    pagato (accodava invece di sostituire, e le ancore YAML lo nascondevano).
+
+    **In produzione `judgments` e' `app["type_judgments"]`**, l'istantanea viva
+    (i tre chiamanti in `server.py`); il predefinito `REPO_JUDGMENTS` e' il
+    solo seme, per le prove.
+
+    **Il bilancio non entra piu' qui, e non produce un genere `"bilancio"`**
+    (15/09/2026, con gli oggetti). Fino ad allora questa funzione riceveva un
+    parametro `balances` che faceva nascere un oggetto di genere `"bilancio"`;
+    quel parametro non esiste piu', e il bilancio vive fra le MISURE, con la
+    sua ricetta (`mind/seed.balance_recipe`).
+    """
+    episodes = build_episodes(store=store, day=day, timezone=timezone, judgments=judgments)
+    _, to_ts = day_boundaries(day, timezone)
     # **Si scrive SEMPRE, anche senza ricette.** Fino al 15/09/2026 un
     # chiamante che non portava le ricette non faceva scrivere niente, e la
     # ragione era buona: un resoconto con meta' delle misure vuota per un
@@ -1050,12 +922,120 @@ def aggregate_day(*, store, day: str, timezone: str | None,
     # quelli, non scrivere vuol dire **perdere il giorno**, e «non e' successo
     # niente» tornerebbe a confondersi con «non l'abbiamo guardato» -- la
     # distinzione per cui il resoconto esiste.
+    # **L'impronta dei giudizi viaggia con la cronaca** (spec 2026-09-16 §6):
+    # e' cio' che permette al recupero di sapere quali giorni sono nati con un
+    # altro giudizio, e al documento di dirlo.
     store.replace_report(day, build_report(
         day=day, episodes=episodes, series=series or {},
         recipes=recipes or {}, names=names or {},
         without_statistics=without_statistics,
-        objective=store.objective_at(to_ts)))
-
+        objective=store.objective_at(to_ts),
+        judgment={"impronta": judgments.chronicle_fingerprint()}))
     # **Torna quante voci di cronaca ha scritto.** Prima tornava quanti
     # oggetti aveva salvato: e' lo stesso numero detto nella lingua che resta.
     return len(episodes)
+
+
+def chronicle_is_stale(report: dict, judgments: TypeJudgments) -> bool:
+    """Una cronaca e' vecchia se non dice con quale giudizio e' nata, o se e'
+    nata con un altro (spec 2026-09-16 §6).
+
+    **L'assenza conta come «un altro»**: i resoconti scritti prima del
+    17/09/2026 non portano impronta, e sono proprio quelli che il primo avvio
+    deve rifare dentro il grezzo.
+    """
+    fingerprint = ((report or {}).get("giudizio") or {}).get("impronta")
+    return fingerprint != judgments.chronicle_fingerprint()
+
+
+def rebuild_chronicle(*, store, day: str, timezone: str | None,
+                      judgments: TypeJudgments = REPO_JUDGMENTS) -> bool:
+    """Rifa' **solo** la cronaca di un giorno col giudizio di adesso. Torna
+    `True` se ha riscritto, `False` se quel giorno non ha un resoconto.
+
+    Misure, forme e obiettivo restano quelli scritti: **nessuna lettura di Home
+    Assistant, nessuna ricetta riletta** -- le statistiche di un giorno vecchio
+    possono non esserci piu', e rifare le misure le perderebbe (spec 2026-09-16
+    §6). Gli episodi escono da `build_episodes`, la stessa costruzione di
+    `aggregate_day`; la voce di cronaca e l'impronta da `build_report`, che
+    resta pura: le misure che calcola su serie e ricette vuote si buttano.
+
+    **Gli episodi EREDITATI da prima del giorno si tengono, a una condizione.**
+    Misurato dalla revisione del 17/09/2026: un termostato acceso da venticinque
+    giorni entra nella cronaca di oggi per la sua riga d'origine
+    (`store.last_before`), e quella riga esce dal grezzo prima del giorno che
+    la eredita. Rifare quel giorno perdeva la voce. Una voce scritta che
+    **comincia prima dell'inizio del giorno** e che la cronaca rifatta non ha
+    (stessa identita': `chi` e `quando_ts`) si tiene se:
+
+    - il grezzo **non ha piu' nessuna riga** di quel soggetto prima del giorno
+      -- se ce l'ha, l'assenza e' un giudizio nuovo (un riposo cambiato), non
+      un grezzo perso, e la voce esce;
+    - il soggetto ha **ancora un genere** per i giudizi di adesso
+      (`genre_for`, con la `classe` della voce): un `nessuno` la toglie.
+
+    Si inserisce dove la cronaca di oggi la metterebbe: le chiuse per `fine_ts`,
+    poi le ancora aperte per `quando_ts`, senza spostare le voci rifatte (vedi
+    `_chronicle_position`).
+
+    **Il limite, dichiarato**: una voce tenuta cosi' conserva la forma con cui
+    era stata scritta -- non si puo' rifare senza la sua riga d'origine -- e
+    resta cosi' anche sotto l'impronta nuova. Le voci che cominciano DENTRO il
+    giorno non si tengono mai: per questo il recupero non rifa' un giorno che
+    puo' aver perso righe per la potatura -- cioe' che comincia prima del taglio
+    (`server.py::backfill_one_report`), non un giorno che comincia prima della
+    riga piu' vecchia.
+
+    **Il residuo che le due condizioni non coprono: riposo cambiato E riga
+    d'origine potata.** Le due condizioni verificano che il grezzo sia sparito
+    e che il soggetto abbia ANCORA un genere -- non che il giudizio di OGGI
+    avrebbe aperto quella stessa voce. Una voce ereditata puo' quindi restare
+    anche quando il giudizio nuovo non l'avrebbe mai aperta cosi' (un riposo
+    diventato piu' largo, per esempio): non c'e' modo di accorgersene senza la
+    riga d'origine, ed e' gia' potata. Resta com'e', sotto qualunque impronta,
+    finche' il giorno non torna raggiungibile dal grezzo -- cioe', superati i
+    22 giorni di ritenzione (`mind/store.READING_RETENTION_S`), mai.
+
+    **Un giorno senza resoconto non si tocca**: farlo intero, con le misure,
+    e' lavoro del recupero (`server.py::backfill_one_report`), non di questa
+    funzione.
+    """
+    report = store.report(day)
+    if report is None:
+        return False
+    episodes = build_episodes(store=store, day=day, timezone=timezone, judgments=judgments)
+    rebuilt = build_report(day=day, episodes=episodes, series={}, recipes={}, names={},
+                           judgment={"impronta": judgments.chronicle_fingerprint()})
+    chronicle = list(rebuilt["cronaca"])
+    from_ts, _ = day_boundaries(day, timezone)
+    rebuilt_ids = {(v.get("chi"), v.get("quando_ts")) for v in chronicle}
+    raw_subjects = {r["soggetto"] for r in store.last_before(from_ts)}
+    for entry in report.get("cronaca") or []:
+        started = entry.get("quando_ts")
+        subject = entry.get("chi")
+        if (started is None or started >= from_ts or subject is None
+                or (subject, started) in rebuilt_ids or subject in raw_subjects
+                or genre_for(subject, entry.get("classe"), judgments=judgments) is None):
+            continue
+        key = _chronicle_position(entry)
+        index = next((i for i, v in enumerate(chronicle)
+                      if _chronicle_position(v) > key), len(chronicle))
+        chronicle.insert(index, entry)
+    store.replace_report(day, {**report, "cronaca": chronicle,
+                               "giudizio": rebuilt["giudizio"]})
+    return True
+
+
+def _chronicle_position(entry: dict) -> tuple:
+    """Dove una voce sta nella cronaca di un giorno, nell'ordine in cui
+    `build_episodes` la consegna: prima le chiuse, nell'ordine in cui si sono
+    chiuse (`fine_ts`), poi quelle ancora aperte a fine giornata, nell'ordine in
+    cui si sono aperte -- le ereditate prima delle nate nel giorno.
+
+    Serve solo a `rebuild_chronicle` per INSERIRE una voce tenuta: le voci
+    rifatte non si riordinano, restano nell'ordine di `build_episodes`.
+    """
+    end = entry.get("fine_ts")
+    if end is not None:
+        return (0, float(end))
+    return (1, float(entry.get("quando_ts") or 0.0))

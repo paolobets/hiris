@@ -311,7 +311,7 @@ def test_i_tre_silenzi_non_collassano_fino_al_lettore():
     assert "Tapparella (on)" in sezione
 
     # E `guarda` **tace**, con lo `stato` grezzo al suo posto: e' la stessa
-    # regola, e la lettura e' quella di `handlers_mind._with_rendered_states`
+    # regola, e la lettura e' quella di `queries._enrich_entity`
     # -- la chiave assente significa «questo stato non ha resa», la chiave
     # presente «non ho potuto chiedere». Misurato sulla casa vera: 431 entita'
     # su 841 (ogni `sensor`, ogni `number`, ogni `select`) non hanno una resa e

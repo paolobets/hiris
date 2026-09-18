@@ -66,10 +66,10 @@ sul dettaglio di UN'entita' sola. La fonte e la versione scritte qui sono
 cio' che permette a chi legge quella chiave di sapere se e' ancora valida.
 
 **Il confine con `type_vocabulary.py`, dal 07/09/2026.** Il modulo vicino
-porta il vocabolario dei TIPI: a quale gamba dell'obiettivo un tipo serve,
-se «si accende e si spegne», quali suoi stati valgono «a riposo», che nomi
-hanno i bit di `supported_features`. La regola che separa i due, scritta per
-intero nel docstring di quel modulo: **una frase che spiega cosa SIGNIFICA un
+porta il vocabolario dei TIPI: che genere di episodio un tipo apre, se «si
+accende e si spegne», quali suoi stati valgono «a riposo», che nomi hanno i
+bit di `supported_features`. La regola che separa i due, scritta per intero
+nel docstring di quel modulo: **una frase che spiega cosa SIGNIFICA un
 valore sta qui; un giudizio su cosa un tipo SERVE o quando HA FINITO sta la'.**
 `DEVICE_CLASS_MEANING`, indicizzato per `(dominio, classe)`, e' indicizzato
 esattamente come un tipo: era **il candidato dichiarato** a diventare un campo

@@ -62,7 +62,8 @@ from .topology import (
     name_with_id,
     readable_state,
 )
-from .type_vocabulary import is_notable, working_states_of
+from .type_judgments import TypeJudgments
+from .type_vocabulary import REPO_JUDGMENTS
 
 # **Perche' questa tabella e' rimasta qui mentre le altre traslocavano**
 # (08/09/2026). I nomi sono vocabolario di un tipo, e la loro casa naturale e'
@@ -369,7 +370,8 @@ def _plural(n: int, singular: str, plural: str) -> str:
 
 
 
-def _is_event(domain: str, device_class: str | None, value) -> bool:
+def _is_event(domain: str, device_class: str | None, value,
+              judgments: TypeJudgments = REPO_JUDGMENTS) -> bool:
     """Sta SUCCEDENDO qualcosa? -- non «e' cosi'», non «vale tanto».
 
     E' la domanda che il digesto deve porsi, ed e' diversa da «vale la pena
@@ -380,32 +382,38 @@ def _is_event(domain: str, device_class: str | None, value) -> bool:
     esisteva e al suo posto c'era un `in _STATI_NOTEVOLI` cieco al tipo: 300
     elementi su 845, e il dettaglio individuale perso sotto il raggruppamento.
 
-    **Chi merita un annuncio lo dice il vocabolario dei tipi**, non due elenchi
-    di questo modulo: `is_notable` risponde per il dominio e per la coppia con
-    lo stesso campo, che e' il motivo per cui `binary_sensor` puo' dire «no» in
-    generale e «si'» sulle tredici classi che lo meritano.
+    **Chi merita un annuncio lo dice l'istantanea dei giudizi** (dal
+    17/09/2026, spec 2026-09-16 §3 -- prima era il vocabolario dei tipi letto
+    a mano), non due elenchi di questo modulo: `is_notable` risponde per il
+    dominio e per la coppia con lo stesso campo, che e' il motivo per cui
+    `binary_sensor` puo' dire «no» in generale e «si'» sulle tredici classi
+    che lo meritano. `judgments` arriva come parametro (D3): in produzione
+    l'istantanea viva (`app["type_judgments"]`), il predefinito
+    `REPO_JUDGMENTS` e' il solo seme del repo, per le prove -- questa
+    funzione non ha niente a che fare col censore (`type_census.py`), che
+    legge `REPO_JUDGMENTS` per conto suo e non chiama mai `_is_event`.
 
     **`alarm_control_panel` era una TERZA sede dello stesso fatto** (corretto
-    il 09/09/2026, audit delle fondamenta): fino a oggi questa funzione
+    il 09/09/2026, audit delle fondamenta): fino ad allora questa funzione
     portava un ramo scritto a mano, `if domain == "alarm_control_panel":
-    return v == "triggered"`, mentre il vocabolario dei tipi dichiara GIA' lo
-    stesso fatto -- `type_vocabulary.working_states_of("alarm_control_panel")
-    == {"triggered"}`, con la sua ragione scritta li' («e' il fatto piu'
+    return v == "triggered"`, mentre il vocabolario dei tipi dichiarava GIA'
+    lo stesso fatto -- oggi `judgments.working_of("alarm_control_panel") ==
+    {"triggered": "..."}`, con la sua ragione scritta li' («e' il fatto piu'
     notevole che questa casa possa produrre»). Il comportamento era giusto;
     il valore che decide era scritto due volte. Non passa da `is_notable` +
     `_ACTIVE_STATES` come gli altri domini accendibili, perche' l'allarme non
-    e' accendibile (`is_operable("alarm_control_panel")` e' falso: non si
-    "accende", si arma) e i suoi stati notevoli non sono il complemento dei
+    e' accendibile (`"alarm_control_panel"` non e' in `judgments.operable_domains()`:
+    non si "accende", si arma) e i suoi stati notevoli non sono il complemento dei
     riposi che quelle cinque parole rappresentano -- e' la stessa distinzione
     che tiene `_ACTIVE_STATES` fuori dal vocabolario (vedi la sua dichiarazione
     qui sotto).
     """
     v = str(value).lower()
     if domain == "alarm_control_panel":
-        return v in working_states_of(domain)
+        return v in judgments.working_of(domain)
     if domain == "binary_sensor":
-        return v == "on" and is_notable(domain, device_class)
-    if is_notable(domain):
+        return v == "on" and judgments.is_notable(domain, device_class)
+    if judgments.is_notable(domain):
         return v in _ACTIVE_STATES
     return False
 
@@ -782,7 +790,8 @@ def _highlight_lines(home_space: dict, state: dict, floors: list[dict],
                     unreliable_state: bool,
                     reported_classes: dict[str, str] | None = None,
                     translations: dict | None = None,
-                    fallback_names: dict[str, str] | None = None
+                    fallback_names: dict[str, str] | None = None,
+                    judgments: TypeJudgments = REPO_JUDGMENTS
                     ) -> tuple[list[str], list[int], bool]:
     """Cio' che e' notevole ADESSO: acceso, aperto, in allarme scattato.
     Serve lo stato vivo, che arriva dal chiamante -- il nucleo non lo va a
@@ -797,7 +806,10 @@ def _highlight_lines(home_space: dict, state: dict, floors: list[dict],
     taglio (vedi `_grouped_highlights_heading`): l'intestazione non e'
     nelle righe tagliabili apposta, per poterla ricalcolare sul totale VERO
     dopo il taglio invece di lasciarla affermare un numero che le righe
-    sotto non confermano piu'."""
+    sotto non confermano piu'.
+
+    `judgments` e' l'istantanea dei giudizi che decide chi e' notevole
+    (`_is_event`, spec 2026-09-16 §3): la inoltra soltanto, non la usa qui."""
     if unreliable_state:
         return ([
             ("Stato non letto (o dichiarato non attendibile): non si puo' dire se in "
@@ -851,6 +863,7 @@ def _highlight_lines(home_space: dict, state: dict, floors: list[dict],
             continue
         if not _is_event(
             domain_of(entity_id), actual_class(e.get("classe"), reported.get(entity_id)), value,
+            judgments=judgments,
         ):
             continue
         # **Il DOMINIO entra nella resa**, e prima dell'08/09/2026 non
@@ -1739,7 +1752,8 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
             attributes: dict[str, dict] | None = None,
             translations: dict | None = None,
             fallback_names: dict[str, str] | None = None,
-            now: float | None = None) -> tuple[str, dict]:
+            now: float | None = None,
+            judgments: TypeJudgments = REPO_JUDGMENTS) -> tuple[str, dict]:
     """Compone il nucleo: la stessa casa per chiunque ragioni.
 
     Pura -- nessun I/O, nessuna rete. Restituisce `(testo, riepilogo)`:
@@ -1812,6 +1826,19 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     HA cosa contiene un'area e' una chiamata di rete. `None` significa «il
     chiamante non ha chiesto», e NON «l'albero combacia»: vedi
     `_comparison_notice`, che tiene separati i tre esiti e il non-letto.
+
+    `judgments` e' l'istantanea dei giudizi sui tipi (spec 2026-09-16 §3):
+    decide chi e' notevole in "Notevole adesso" (`_highlight_lines` ->
+    `_is_event`). Arriva come ARGOMENTO come `stato`: questa funzione e' pura.
+    In produzione e' sempre l'istantanea viva, `app["type_judgments"]`; il
+    predefinito `REPO_JUDGMENTS` -- il solo seme del repo -- serve alle prove
+    (il censore, `type_census.py`, non chiama mai `compose()`: legge
+    `REPO_JUDGMENTS` per conto suo). Una prova strutturale
+    (`test_judgments_passed_in_production.py`) boccia ogni chiamata di
+    produzione a questa funzione senza `judgments=`; due prove dal lettore
+    (`test_briefing.py`/`test_queries.py`) sorvegliano che le catene interne
+    -- che quella prova strutturale non guarda -- lo inoltrino davvero fino
+    in fondo.
 
     `behavior_problems`/`unread_bodies` sono le
     dichiarazioni che `comportamento.reread()` costruisce gia' e che
@@ -2005,7 +2032,7 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
             "dice che non si e' potuto guardare.")
     highlight_lines, highlight_weights, grouped_highlight = _highlight_lines(
         home_space, state, floors, unreliable, reported_classes, translations,
-        fallback_names)
+        fallback_names, judgments=judgments)
     capability_lines, capability_weights, capabilities_are_countable = _capability_lines(
         attributes, unreliable, digest_visible_entity_ids(home_space))
     behavior_lines, behavior_weights = _behavior_lines(behavior)

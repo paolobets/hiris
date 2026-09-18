@@ -19,6 +19,7 @@ from aiohttp import web
 
 from ..home_space.briefing import compose
 from ..home_space.topology import category_names, hierarchy, live_mirror
+from ..home_space.type_vocabulary import REPO_JUDGMENTS
 from ..proxy.entity_cache import inventory_is_readable
 
 
@@ -348,6 +349,20 @@ def compose_briefing(app) -> tuple[str, dict]:
     # "niente acceso" invece di "non ho potuto guardare".
     reliable_state = home_space_store is not None and inventory_is_readable(cache)
 
+    # L'istantanea dei giudizi (spec 2026-09-16 §3): in produzione e' sempre
+    # `app["type_judgments"]`, scritta all'avvio prima di ogni rotta
+    # (`server.py::_on_startup`). `.get()` e non l'indice diretto perche'
+    # questa funzione accetta anche un `app` finto -- un dizionario qualunque,
+    # come dice il suo stesso docstring -- e lo fanno gia' `tests/
+    # test_ha_problems.py`, `test_home_space_reference.py` e
+    # `test_verifiable_tree.py` passando `{}` per provare altre sezioni: senza
+    # il ripiego quei test cadrebbero con un `KeyError` che non parla di loro.
+    # In una vera richiesta questo ramo non scatta mai: il seme "solo seme" di
+    # `server.py` esiste apposta per non lasciare MAI la chiave assente.
+    judgments = app.get("type_judgments")
+    if judgments is None:
+        judgments = REPO_JUDGMENTS
+
     return compose(
         home_space, behavior, memories, state,
         unavailable=unavailable,
@@ -368,6 +383,7 @@ def compose_briefing(app) -> tuple[str, dict]:
         # continuerebbe a indovinare l'ora quando `prometti` gli chiede di
         # risolvere «fra un'ora» -- che e' il difetto misurato il 21/08/2026.
         now=time.time(),
+        judgments=judgments,
     )
 
 

@@ -1,5 +1,57 @@
 # HIRIS — Changelog
 
+## [3.49.0] — Il giudizio sui tipi esce dal codice, e la casa lo può correggere (2026-09-17)
+
+Finora **che genere di fatto** nascesse da una cosa della casa lo decideva il codice: la «gamba»
+di `type_vocabulary`, dedotta da `device_class` e `source_type`. Era un'opinione nostra scritta
+dove nessuno poteva discuterla — e il §8 della spec promette il contrario: *«il repo diventa il
+seme, e la casa scrive sopra»*.
+
+Adesso i giudizi sono **righe del sapere**. All'avvio se ne seminano **99** dal letterale — 26
+`genere`, 23 `notevole`, 18 `riposo`, 13 `accendibile`, 10 `limiti_parametri`, 9 `lavoro` — con
+provenienza `nostro` e autore «seme del repo». `mind/facts` non calcola più il genere: lo **chiede**
+a un'istantanea dei giudizi, letta una volta per giorno aggregato, così che una correzione arrivata
+a metà non spacchi in due la cronaca di un giorno.
+
+**Si corregge dalla pagina del sapere**, in «Cosa ho capito della casa», sotto il nuovo titolo «Le
+tue correzioni»: si cambia il
+genere di un tipo o di una singola entità, e si torna al seme quando la correzione era sbagliata.
+Una porta sola scrive (`POST /api/mind/judgment`), rifiuta un campo fuori perimetro e un valore che
+l'istantanea non sa interpretare, e ricostruisce l'istantanea prima di rispondere.
+
+**Ogni resoconto porta l'impronta dei giudizi con cui è stato scritto.** Quando il giudizio cambia,
+i giorni scritti con l'impronta vecchia si rifanno da sé, uno ogni cinque minuti, dal più vecchio:
+è il solo modo per non riscrivere tutto e non lasciare la cronaca in due verità diverse. Il giorno
+a cavallo della potatura non si rifà, e il documento dice perché.
+
+**Un cambio di comportamento, dichiarato**: `none` non è più un riposo. Prima, su un
+`device_tracker` apriva un'assenza e su uno `switch` chiudeva un episodio — nella settimana
+misurata il 16/09 sono **200 righe da 6 apparati di rete** (rimisurate il 17/09 sulla finestra che
+il recorder conserva ancora: **186**, sparse nell'arco della giornata). Adesso `none` non apre e
+non chiude niente.
+
+**La misura che ha reso sicura la sostituzione**: ripassate **52.123 righe** di storia di Home
+Assistant su **304 entità** dei tipi con genere, dal 09/09 al 16/09, chiedendo il riposo al tipo
+invece che all'unione di tutti i riposi — **0 righe cambiano esito**. Quanto costi rifare un giorno
+sull'host di Home Assistant **non è ancora misurato**: la riga di log c'è, il numero si scrive dopo
+la verifica in casa.
+
+**E si è cancellato ciò che il sapere ha sostituito**, perché ogni fetta è anche pulizia: le gambe
+(`ASPECT`, `ASPECT_GUARD`, `ASPECTS`, `aspect_of`, 43 celle di gamba e guardia) e le otto porte del
+letterale che nessuno legge più (`is_operable`, `operable_domains`, `resting_states_of`,
+`resting_states`, `working_states_of`, `is_notable`, `notable_types`, `parameter_limits`), con le
+loro prove tradotte sui giudizi.
+
+Restano **codice**, e non per dimenticanza: ciò che Home Assistant dichiara di sé
+(`capability_names`, `capability_attributes`, `state_attributes` — 68 celle `importato`) è
+trascrizione, non opinione, e va riletta da lui, non corretta da noi.
+
+Sale anche la **CLI del ponte**, da 2.1.272 a **2.1.276**, per decisione esplicita del
+proprietario: di regola il pin viaggia col rilascio successivo a quello in cui il cancello lo
+segnala, e questa volta è stato chiesto di aggiornarlo subito.
+
+Prove: **4271** Python (erano 4203), **407** JavaScript (erano 379).
+
 ## [3.48.1] — Un dispositivo storto non affama gli altri trenta (2026-09-16)
 
 `recipe_round` chiedeva sempre al **primo** della lista. Se la risposta non

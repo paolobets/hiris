@@ -11,6 +11,8 @@ import os
 
 import pytest
 
+from hiris.app.home_space import type_vocabulary as tv
+from hiris.app.home_space.type_judgments import TypeJudgments
 from hiris.app.mind.facts import GENRES, aggregate_day, day_boundaries, genre_for
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.mind.watcher import Watcher
@@ -47,12 +49,21 @@ def cronaca(archivio, giorno=None):
 
 
 def test_il_genere_discende_dalla_natura():
-    assert genre_for("climate.camera_t", "comfort") == "funzionamento"
-    assert genre_for("cover.tapparella", "dispersione") == "funzionamento"
-    assert genre_for("person.marta", "chi c'e'") == "presenza"
-    assert genre_for("sensor.presa_energia", "energia") == "energia"
+    """Dal 17/09/2026 il secondo argomento e' la `device_class` del grezzo, non
+    la gamba (spec 2026-09-16 §5): il genere di un'entita' e' un giudizio
+    dell'istantanea, i prefissi di sistema restano codice.
+
+    `sensor.presa` di classe `power` non ha genere (D2): `energia` non ha una
+    forma, e il seme non lo scrive. Mutazione ESEGUITA: in `genre_for`,
+    chiedere a `judgments.genre_of(subject, None)` invece di passare la classe
+    -- rossa su `genre_for("binary_sensor.fumo", "smoke") == "sicurezza"`."""
+    assert genre_for("climate.camera_t", None) == "funzionamento"
+    assert genre_for("cover.tapparella", None) == "funzionamento"
+    assert genre_for("person.marta", None) == "presenza"
+    assert genre_for("sensor.presa", "power") is None
     assert genre_for("problema:sonos.x", None) == "guasto"
-    assert genre_for("sensor.camera_temperatura", "comfort") is None
+    assert genre_for("sensor.camera_t", "temperature") is None
+    assert genre_for("binary_sensor.fumo", "smoke") == "sicurezza"
     for g in GENRES:
         assert isinstance(g, str)
 
@@ -61,18 +72,24 @@ def test_il_genere_di_sicurezza_e_diverso_dal_guasto_di_sistema():
     """Correzione 0.1: 'guasto' resta per le condizioni di SISTEMA
     (problema:/integrazione:, un confine netto); la gamba sicurezza ha un
     genere proprio, 'sicurezza' -- una porta aperta con la chiave e
-    un'integrazione Sonos rotta non sono lo stesso genere di fatto."""
-    assert genre_for("lock.porta_ingresso", "sicurezza") == "sicurezza"
+    un'integrazione Sonos rotta non sono lo stesso genere di fatto.
+
+    Dal 17/09/2026 il secondo argomento di `genre_for` e' la `device_class`,
+    non la gamba. Mutazione ESEGUITA: togliere `genre=Ours("sicurezza")` dalla
+    riga `lock` del letterale -- rossa sulla prima asserzione."""
+    assert genre_for("lock.porta_ingresso", None) == "sicurezza"
     assert genre_for("problema:sonos.x", None) == "guasto"
     assert genre_for("integrazione:abc", None) == "guasto"
     assert "sicurezza" in GENRES
-    # Sei generi, non cinque (27/08/2026, mandato «il bilancio
-    # dell'energia»): "bilancio" e' nato in GENRES, ma non lo produce
-    # `genre_for()` -- non nasce da un soggetto/gamba come gli altri
-    # cinque, arriva gia' costruito da fuori (`aggregate_day(bilanci=...)`,
-    # vedi `test_mind_balance.py`).
-    assert len(GENRES) == 6
-    assert "bilancio" in GENRES
+    # Quattro generi, non sei (16/09/2026, spec «il giudizio dei tipi» §5,
+    # D2): `GENRES` e' diventato `type_vocabulary.CHRONICLE_GENRES`, i soli
+    # generi con una FORMA scritta in questo file. "energia" e "bilancio"
+    # sono usciti: nessun ramo di `aggregate_day` trattava il primo (una riga
+    # `energia` cadeva oltre tutti i rami senza produrre niente), e nessun
+    # codice produceva mai il secondo -- la docstring che lo descriveva era
+    # una ragione smentita dal file stesso.
+    assert len(GENRES) == 4
+    assert "bilancio" not in GENRES and "energia" not in GENRES
 
 
 def test_a_log_subject_is_a_fault():
@@ -120,15 +137,17 @@ def test_un_assenza_e_un_oggetto(archivio):
 
 def test_un_cambio_di_zona_a_meta_assenza_non_riapre_l_oggetto(archivio):
     """La settima finta (mandato, punto 1): la guardia del ramo presenza
-    (`elif subject not in open_episodes`) impedisce che un cambio di ZONA a meta'
+    (`if subject not in open_episodes`; dal 17/09/2026 il ramo e' unico per
+    presenza, funzionamento e sicurezza) impedisce che un cambio di ZONA a meta'
     di un'assenza -- le zone sono stati VERI di una `person`, non solo
     "home"/"not_home" -- riapra l'oggetto azzerandone inizio e stato. Paolo
     esce di casa alle 8:10 ("not_home"), entra in una zona ("ufficio") alle
     9:00, rientra alle 17:34: l'assenza vera dura dalle 8:10 alle 17:34, con
     stato "not_home" -- non dalle 9:00, con stato "ufficio".
 
-    Mutazione ESEGUITA e verificata rossa: `elif subject not in open_episodes:`
-    -> `else:` nel ramo presenza -- il cambio di zona delle 9:00 riapre
+    Mutazione ESEGUITA e verificata rossa (rieseguita il 17/09/2026 sul ramo
+    unico): togliere la guardia `if subject not in open_episodes:` e aprire
+    sempre -- il cambio di zona delle 9:00 riapre
     l'oggetto, e inizio_ts/stato tornano ts(9,0)/"ufficio" invece di
     ts(8,10)/"not_home"."""
     archivio.record(quando_ts=ts(8, 10), source="entita",
@@ -230,16 +249,12 @@ def test_a_log_entry_becomes_a_fault_object(archivio):
     porta il livello, `dominio` il logger, `titolo` la prima riga del
     messaggio, esattamente come per un'integrazione rotta.
 
-    Questo test esercita anche `_reading_aspect`: se tornasse la gamba di
-    un'entita' inesistente invece di `None` per un soggetto `log:`, nulla
-    qui cambierebbe (il dominio ricavato da un soggetto `log:` non puo' mai
-    combaciare con un dominio HA vero, per via del prefisso), quindi la sua
-    correttezza non ha una mutazione onesta che la uccida da sola -- e'
-    dichiarato, non taciuto. Una prima mutazione che UCCIDE questo test e'
-    nella tupla di prefissi di `genre_for`: senza `"log:"` il soggetto non
-    produce nessun genere, `aggregate_day` non apre nessun episodio, e
-    `cronaca(archivio)` torna vuoto -- il test torna rosso su
-    `IndexError` nell'indicizzare `[0]`.
+    Una prima mutazione che UCCIDE questo test e' nella tupla di prefissi di
+    `genre_for`: senza `"log:"` il soggetto non produce nessun genere,
+    `aggregate_day` non apre nessun episodio, e `cronaca(archivio)` torna
+    vuoto -- il test torna rosso su `IndexError` nell'indicizzare `[0]`.
+    (Fino al 17/09/2026 questo docstring diceva che il test esercitava anche
+    `_reading_aspect`; quella funzione e' uscita col genere dall'istantanea.)
 
     Una seconda, indipendente, e' su `comparso_ts` (la colonna nuova del
     giro di revisione, `store.py::_migration_4`): togliere
@@ -378,10 +393,11 @@ def test_un_cambio_a_mezzanotte_appartiene_al_giorno_che_comincia(archivio):
 # -- Correzione E: il pavimento ha sei gambe, la sicurezza non e' un buco --
 # -- Correzione 0.1: la sicurezza e' un genere proprio, non piu' 'guasto' --
 
-def test_il_genere_conosce_tutte_e_sei_le_gambe():
+def test_serrature_allarmi_sirene_rilevatori_sono_sicurezza():
     """Le nature risolvibili dal solo dominio -- serratura, pannello
-    dell'allarme, sirena -- e i rilevatori (quando la gamba e' nota) diventano
-    un oggetto di sicurezza: sono una minaccia, non un funzionamento normale,
+    dell'allarme, sirena -- e i rilevatori (quando la `device_class` e' quella
+    giusta) diventano un oggetto di sicurezza: sono una minaccia, non un
+    funzionamento normale,
     e hanno la stessa FORMA di una condizione di sistema -- nate, durate,
     chiuse o ancora aperte -- ma non lo STESSO genere (0.1: una porta aperta
     con la chiave e un'integrazione Sonos rotta non sono la stessa cosa). Un
@@ -391,12 +407,19 @@ def test_il_genere_conosce_tutte_e_sei_le_gambe():
     `sensor.co_soggiorno` e' `None` e non `"sicurezza"` da questa correzione
     (giro di review, punto 7): e' un `sensor` che MISURA (una concentrazione
     numerica), non un `binary_sensor` che SCATTA -- vedi il docstring di
-    `genre_for` per la ragione per cui resta fuori."""
-    assert genre_for("lock.porta_ingresso", "sicurezza") == "sicurezza"
-    assert genre_for("alarm_control_panel.casa", "sicurezza") == "sicurezza"
-    assert genre_for("siren.sirena_esterna", "sicurezza") == "sicurezza"
-    assert genre_for("binary_sensor.fumo_cucina", "sicurezza") == "sicurezza"
-    assert genre_for("sensor.co_soggiorno", "sicurezza") is None
+    `genre_for` per la ragione per cui resta fuori.
+
+    **Dal 17/09/2026 il secondo argomento e' la `device_class`**, non la
+    gamba: il rilevatore e' `sicurezza` per la sua classe (`smoke`), il
+    monossido misurato non ha genere perche' il seme non ne scrive nessuno per
+    `sensor.carbon_monoxide` (spec 2026-09-16 §5). Mutazione ESEGUITA: dare
+    `genre=Ours("sicurezza")` alla coppia `sensor`/`carbon_monoxide` nel
+    letterale -- rossa sull'ultima asserzione."""
+    assert genre_for("lock.porta_ingresso", None) == "sicurezza"
+    assert genre_for("alarm_control_panel.casa", None) == "sicurezza"
+    assert genre_for("siren.sirena_esterna", None) == "sicurezza"
+    assert genre_for("binary_sensor.fumo_cucina", "smoke") == "sicurezza"
+    assert genre_for("sensor.co_soggiorno", "carbon_monoxide") is None
 
 
 def test_una_sirena_che_suona_e_rientra_e_un_oggetto_di_sicurezza(archivio):
@@ -431,18 +454,17 @@ def test_una_serratura_sbloccata_e_richiusa_e_un_oggetto_di_sicurezza(archivio):
 
 # -- Task 3, punto 0: il grezzo porta le tre classi che il pavimento legge --
 #
-# Prima di questa correzione, `_reading_aspect` chiamava `pavimento.aspect`
-# SENZA attributi: per `sensor`/`binary_sensor` (che decidono la gamba dalla
-# classe, non dal dominio) la gamba tornava sempre `None`. Conseguenza
-# misurata: il genere `energia` non nasceva MAI, e nemmeno un solo oggetto
-# per fumo, gas, monossido, allagamento, manomissione -- la gamba "sicurezza"
-# restava raggiungibile solo per serrature, sirene e pannello dell'allarme.
+# Prima di quella correzione la gamba si ricostruiva dal grezzo SENZA la
+# classe: per `sensor`/`binary_sensor` (che decidono dalla classe, non dal
+# dominio) tornava sempre `None`, e non nasceva un solo oggetto per fumo, gas,
+# monossido, allagamento, manomissione. Dal 17/09/2026 la classe del grezzo
+# arriva a `genre_for`, che chiede il genere della coppia all'istantanea.
 
 def test_un_binary_sensor_di_fumo_diventa_un_oggetto_di_sicurezza(archivio):
-    """La mutazione e' non passare le classi a `aspect` dentro
-    `_reading_aspect`: senza `device_class="smoke"`, `pavimento.aspect`
-    tornerebbe `None` per un `binary_sensor`, `genre_for` tornerebbe `None`, e
-    questo oggetto -- oggi impossibile -- non nascerebbe."""
+    """Mutazione ESEGUITA (17/09/2026): in `build_episodes`, chiamare
+    `genre_for(subject, None, judgments=judgments)` invece di passare
+    `r.get("device_class")` -- `genre_for` torna `None` per un
+    `binary_sensor` senza classe, e questo episodio non nasce (conteggio 0)."""
     archivio.record(quando_ts=ts(2, 0), source="entita",
                     subject="binary_sensor.fumo_cucina", da="off", a="on",
                     device_class="smoke")
@@ -517,9 +539,10 @@ def test_un_sensore_co_numerico_non_genera_un_oggetto_di_sicurezza(archivio):
     """Un `sensor` MISURA, non SCATTA: senza una soglia onesta, una
     concentrazione come "0.4" non e' mai in `_RESTING` e aprirebbe un oggetto
     di sicurezza perennemente aperto al giorno, per ogni sensore CO
-    numerico della casa. Mutazione: togliere l'eccezione `dominio ==
-    "sensor"` dal ramo sicurezza di `genre_for` -- il conteggio tornerebbe
-    1 invece di 0."""
+    numerico della casa. Mutazione ESEGUITA (17/09/2026, riscritta: l'eccezione
+    `dominio == "sensor"` di `genre_for` non esiste piu', ora e' l'assenza di
+    una riga `genere` nel seme): dare `genre=Ours("sicurezza")` alla coppia
+    `sensor`/`carbon_monoxide` nel letterale -- rossa, conteggio 1 invece di 0."""
     archivio.record(quando_ts=ts(2), source="entita",
                     subject="sensor.co_soggiorno", da=None, a="0.4",
                     device_class="carbon_monoxide")
@@ -1115,3 +1138,282 @@ def test_il_nome_del_DISPOSITIVO_arriva_alle_misure(archivio):
     # strade diverse, e questa correzione non deve chiuderne una per aprire
     # l'altra.
     assert scritto["cronaca"][0]["nome"] == "Termostato Camera"
+
+
+# ---------------------------------------------------------------------------
+# Il genere e il riposo dall'istantanea dei giudizi (spec 2026-09-16 §5).
+# Una regola sola per l'apertura: un episodio e' APERTO quando lo stato non e'
+# a riposo PER IL SUO SOGGETTO. `none` e il vuoto non aprono e non chiudono.
+# ---------------------------------------------------------------------------
+
+def _giudizi(*righe):
+    """Il seme del repo piu' le righe che la casa scrive sopra."""
+    return TypeJudgments.from_rows(tv.judgment_seed_rows() + righe,
+                                   genres=tv.CHRONICLE_GENRES,
+                                   absent_forms=tv.ABSENT_STATE_FORMS.value)
+
+
+def test_un_sensore_di_presenza_col_genere_scritto_dalla_casa_APRE_a_on_e_CHIUDE_a_off(archivio):
+    """Spec §5, la regola unica. Mutazione ESEGUITA: rimettere il ramo della
+    presenza che chiude solo su `home` -- rossa (l'episodio resta aperto)."""
+    archivio.record(quando_ts=ts(9, 0), source="entita", subject="binary_sensor.fp300",
+                    da="off", a="on", device_class="occupancy")
+    archivio.record(quando_ts=ts(9, 30), source="entita", subject="binary_sensor.fp300",
+                    da="on", a="off", device_class="occupancy")
+    giudizi = _giudizi(("tipo", "binary_sensor.occupancy", "genere", "presenza"))
+    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome", judgments=giudizi) == 1
+    voce = cronaca(archivio)[0]
+    assert voce["genere"] == "presenza" and voce["fine_ts"] == ts(9, 30)
+
+
+def test_senza_la_riga_della_casa_il_sensore_di_presenza_resta_MUTO_come_oggi(archivio):
+    """I sensori di presenza non entrano nel seme: li scrive il proprietario
+    (spec §5). Mutazione ESEGUITA: aggiungere la riga `genere` `presenza` di
+    `binary_sensor.occupancy` a `judgment_seed_rows()` -- rossa (conteggio 1)."""
+    archivio.record(quando_ts=ts(9, 0), source="entita", subject="binary_sensor.fp300",
+                    da="off", a="on", device_class="occupancy")
+    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 0
+
+
+def test_l_assenza_di_una_persona_resta_quella_di_oggi(archivio):
+    """Mutazione ESEGUITA: togliere `riposo` da `person` nel seme -- rossa (a
+    `home` l'assenza non chiude piu')."""
+    archivio.record(quando_ts=ts(8, 0), source="entita", subject="person.marta",
+                    da="home", a="not_home")
+    archivio.record(quando_ts=ts(17, 0), source="entita", subject="person.marta",
+                    da="not_home", a="home")
+    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
+    voce = cronaca(archivio)[0]
+    assert voce["cosa"] == "not_home" and voce["fine_ts"] == ts(17, 0)
+
+
+def test_none_su_un_tracker_NON_apre_un_assenza(archivio):
+    """Cambio dichiarato (spec §1 misura 8): 200 righe `none` in una settimana
+    da 6 apparati di rete aprivano assenze false. Mutazione ESEGUITA: togliere
+    le forme assenti dall'insieme saltato -- rossa (conteggio 1)."""
+    archivio.record(quando_ts=ts(23, 0), source="entita", subject="device_tracker.switch_2",
+                    da="home", a="none")
+    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 0
+
+
+def test_none_su_uno_switch_NON_chiude_e_NON_apre(archivio):
+    """Su uno `switch` `none` chiudeva l'episodio (spec §1 misura 8); ora non
+    chiude, e non apre nemmeno.
+
+    **Riscritta il 17/09/2026, perche' la forma del capitolato non poteva
+    fallire da sola.** Con la sola accensione chiusa da `none`, la mutazione
+    «togliere le forme assenti dall'insieme saltato» e' stata ESEGUITA ed e'
+    rimasta VERDE: senza il salto, `none` arriva a `_is_on`, e nel riposo del
+    soggetto (`off`) non c'e' -- l'episodio resta aperto per un'altra strada.
+    Il salto e' la difesa che conta dove l'episodio NON e' aperto: per questo
+    c'e' la seconda presa, spenta alle 9:00 e a `none` alle 22:00.
+
+    Mutazioni ESEGUITE: (1) togliere le forme assenti dall'insieme saltato --
+    rossa (la presa spenta apre un episodio, conteggio 2); (2) insieme, il
+    comportamento di prima: niente salto e `none` contato fra i riposi
+    (`_is_on`: `judgments.resting_of(...) | {"none"}`) -- rossa, `fine_ts`
+    dell'accesso a internet diventa le 23:00 (`assert 1787605200.0 is None`);
+    ripristinata con l'editor, sha256 identico.
+
+    **La (2) dichiarava una mutazione impossibile** (giro di correzioni 1,
+    punto 7): citava `type_vocabulary.resting_states()`, l'unione dei riposi
+    di tutti i tipi, che e' uscita col Task 8. Qui sopra c'e' cio' che quella
+    unione FACEVA -- portarsi dentro `none` -- scritto in un modo che oggi si
+    puo' davvero eseguire."""
+    archivio.record(quando_ts=ts(10, 0), source="entita", subject="switch.accesso_internet",
+                    da="off", a="on")
+    archivio.record(quando_ts=ts(23, 0), source="entita", subject="switch.accesso_internet",
+                    da="on", a="none")
+    archivio.record(quando_ts=ts(9, 0), source="entita", subject="switch.presa",
+                    da="on", a="off")
+    archivio.record(quando_ts=ts(22, 0), source="entita", subject="switch.presa",
+                    da="off", a="none")
+    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 1
+    assert cronaca(archivio)[0]["fine_ts"] is None
+
+
+def test_none_prima_della_mezzanotte_NON_apre_un_assenza(archivio):
+    """Lo stesso cambio dichiarato, sulla strada di cio' che era gia' in corso
+    a mezzanotte (`store.last_before`): un tracker lasciato a `none` la sera
+    prima non e' un'assenza cominciata ieri. Mutazione ESEGUITA: togliere
+    `or state in ignored` dal ciclo di `last_before` -- rossa (conteggio 1)."""
+    archivio.record(quando_ts=MEZZANOTTE - 3600, source="entita",
+                    subject="device_tracker.switch_2", da="home", a="none")
+    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome") == 0
+
+
+def test_un_giudizio_della_casa_su_UNA_entita_la_tace(archivio):
+    """`nessuno` su un'entita' nega il genere del suo dominio (spec §3).
+    Mutazione ESEGUITA: in `build_episodes`, chiamare `genre_for` senza
+    `judgments=` -- rossa (conteggio 1: vale il seme, `switch` e'
+    `funzionamento`)."""
+    archivio.record(quando_ts=ts(10, 0), source="entita", subject="switch.accesso_internet",
+                    da="off", a="on")
+    giudizi = _giudizi(("entita", "switch.accesso_internet", "genere", "nessuno"))
+    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome", judgments=giudizi) == 0
+
+
+def test_il_riposo_e_quello_del_SOGGETTO_non_l_unione_dei_tipi(archivio):
+    """Una TV che resta `on` senza riprodurre e' a riposo per QUESTA casa: la
+    riga `riposo` sull'entita' chiude l'episodio a `on`. Con l'unione dei
+    riposi di tutti i tipi `on` non e' riposo di nessuno, e l'episodio
+    resterebbe aperto.
+
+    Mutazione ESEGUITA: in `_is_on`, chiedere il riposo al solo DOMINIO --
+    `judgments.resting_of(domain)`, senza la classe ne' l'entita' -- rossa
+    (`assert None == 1787605200.0`: `media_player` non dichiara nessun riposo,
+    l'episodio non si chiude); ripristinata con l'editor, sha256 identico.
+
+    **La mutazione dichiarata prima era impossibile** (giro di correzioni 1,
+    punto 7): citava `type_vocabulary.resting_states()`, uscita col Task 8.
+    Il suo bersaglio vero era «non chiedere il riposo del SOGGETTO», che e'
+    esattamente cio' che la mutazione qui sopra fa."""
+    archivio.record(quando_ts=ts(21, 0), source="entita", subject="media_player.tv",
+                    da="on", a="playing")
+    archivio.record(quando_ts=ts(23, 0), source="entita", subject="media_player.tv",
+                    da="playing", a="on")
+    giudizi = _giudizi(("entita", "media_player.tv", "riposo", '["on"]'))
+    assert aggregate_day(store=archivio, day=G, timezone="Europe/Rome", judgments=giudizi) == 1
+    assert cronaca(archivio)[0]["fine_ts"] == ts(23, 0)
+
+
+# ---------------------------------------------------------------------------
+# L'impronta nel resoconto e la cronaca rifatta (spec 2026-09-16 §6).
+# ---------------------------------------------------------------------------
+
+def test_il_resoconto_porta_l_impronta_dei_giudizi_con_cui_e_nata_la_cronaca(archivio):
+    """Spec §6: «la scrive chiunque scriva la cronaca». L'aggregazione notturna,
+    la riparazione d'avvio e il recupero passano tutti da `aggregate_day`.
+    Mutazione ESEGUITA: in `aggregate_day` scrivere l'impronta di
+    `REPO_JUDGMENTS` invece di quella di `judgments` -- rossa (l'istantanea
+    della prova ha una riga `genere` in piu', quindi un'altra impronta)."""
+    giudizi = _giudizi(("tipo", "binary_sensor.occupancy", "genere", "presenza"))
+    assert giudizi.chronicle_fingerprint() != tv.REPO_JUDGMENTS.chronicle_fingerprint()
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome", judgments=giudizi)
+    assert archivio.report(G)["giudizio"] == {"impronta": giudizi.chronicle_fingerprint()}
+
+
+def test_rifare_la_cronaca_NON_tocca_misure_forme_obiettivo(archivio):
+    """Spec §6: solo `cronaca` e `giudizio` cambiano, byte per byte il resto.
+    Mutazione ESEGUITA: in `rebuild_chronicle` chiamare `aggregate_day` (che
+    riscrive tutto con misure vuote) -- rossa."""
+    import json
+
+    from hiris.app.mind.facts import rebuild_chronicle
+
+    archivio.record(quando_ts=ts(9, 0), source="entita", subject="binary_sensor.fp300",
+                    da="off", a="on", device_class="occupancy")
+    archivio.replace_report(G, {"giorno": G, "obiettivo": {"testo": "x", "scritto_ts": 1.0},
+                                "misure": [{"soggetto": "d", "misura": "m", "valore": 3,
+                                            "unita": "kWh", "copertura": 1.0}],
+                                "forme": [{"soggetto": "d", "valore": [1, 2]}],
+                                "cronaca": [], "giudizio": {"impronta": "vecchia"}})
+    prima = archivio.report(G)
+    giudizi = _giudizi(("tipo", "binary_sensor.occupancy", "genere", "presenza"))
+    assert rebuild_chronicle(store=archivio, day=G, timezone="Europe/Rome", judgments=giudizi)
+    dopo = archivio.report(G)
+    for chiave in ("giorno", "obiettivo", "misure", "forme"):
+        assert json.dumps(dopo[chiave], sort_keys=True) == json.dumps(prima[chiave], sort_keys=True)
+    assert len(dopo["cronaca"]) == 1
+    assert dopo["giudizio"] == {"impronta": giudizi.chronicle_fingerprint()}
+
+
+def test_rifare_la_cronaca_di_un_giorno_SENZA_resoconto_non_scrive_niente(archivio):
+    """Rifare la cronaca non e' fare il giorno: un giorno senza resoconto lo fa
+    intero il recupero, con le misure. Mutazione ESEGUITA: togliere il ritorno
+    anticipato su `report is None` -- rossa (solleva, o scrive un resoconto
+    senza misure)."""
+    from hiris.app.mind.facts import rebuild_chronicle
+
+    archivio.record(quando_ts=ts(10, 0), source="entita", subject="switch.presa",
+                    da="off", a="on")
+    assert rebuild_chronicle(store=archivio, day=G, timezone="Europe/Rome",
+                             judgments=tv.REPO_JUDGMENTS) is False
+    assert archivio.report(G) is None
+
+
+def test_una_cronaca_senza_impronta_o_con_un_altra_e_VECCHIA():
+    """Mutazioni ESEGUITE: (1) considerare vecchia solo un'impronta diversa, non
+    l'assenza -- rossa sulla prima (i resoconti scritti prima del 17/09/2026
+    non hanno impronta); (2) confrontare con `REPO_JUDGMENTS` invece che con
+    `judgments` -- rossa: l'istantanea della prova NON e' il seme (fix round 1,
+    la forma di prima col seme lasciava verde questa mutazione)."""
+    from hiris.app.mind.facts import chronicle_is_stale
+
+    j = _giudizi(("tipo", "binary_sensor.occupancy", "genere", "presenza"))
+    assert j.chronicle_fingerprint() != tv.REPO_JUDGMENTS.chronicle_fingerprint()
+    assert chronicle_is_stale({"cronaca": []}, j)
+    assert chronicle_is_stale({"giudizio": {"impronta": "altra"}}, j)
+    assert chronicle_is_stale(
+        {"giudizio": {"impronta": tv.REPO_JUDGMENTS.chronicle_fingerprint()}}, j)
+    assert not chronicle_is_stale({"giudizio": {"impronta": j.chronicle_fingerprint()}}, j)
+
+
+def _giorno_ereditato(archivio):
+    """Un giorno con un episodio EREDITATO (il termostato acceso da tre giorni),
+    uno chiuso dentro il giorno e uno aperto dentro il giorno; scritto col seme
+    e marcato con un'impronta vecchia, come un resoconto nato prima."""
+    archivio.record(quando_ts=MEZZANOTTE - 3 * 86400, source="entita",
+                    subject="climate.camera", da="off", a="heat")
+    archivio.record(quando_ts=ts(8, 0), source="entita", subject="switch.presa",
+                    da="off", a="on")
+    archivio.record(quando_ts=ts(9, 0), source="entita", subject="switch.presa",
+                    da="on", a="off")
+    archivio.record(quando_ts=ts(10, 0), source="entita", subject="light.b",
+                    da="off", a="on")
+    aggregate_day(store=archivio, day=G, timezone="Europe/Rome")
+    scritto = archivio.report(G)
+    assert [v["chi"] for v in scritto["cronaca"]] == [
+        "switch.presa", "climate.camera", "light.b"]
+    archivio.replace_report(G, {**scritto, "giudizio": {"impronta": "vecchia"}})
+    return scritto["cronaca"]
+
+
+def test_rifare_la_cronaca_TIENE_l_episodio_ereditato_il_cui_grezzo_e_potato(archivio):
+    """Fix round 1 (revisione di Fable, eseguita): la riga d'origine di un
+    episodio ereditato da prima di mezzanotte esce dal grezzo prima del giorno
+    stesso, e rifare la cronaca lo perdeva. Resta, al suo posto nell'ordine di
+    oggi. Mutazioni ESEGUITE: (1) togliere la fusione degli ereditati -- rossa
+    (restano due voci); (2) accodarli in fondo invece di inserirli con la
+    regola d'ordine -- rossa."""
+    from hiris.app.mind.facts import rebuild_chronicle
+    from hiris.app.mind.store import READING_RETENTION_S
+
+    prima = _giorno_ereditato(archivio)
+    # Il taglio cade un'ora prima di mezzanotte: via la riga d'origine del
+    # termostato, restano quelle del giorno.
+    archivio.prune(MEZZANOTTE - 3600 + READING_RETENTION_S)
+    assert rebuild_chronicle(store=archivio, day=G, timezone="Europe/Rome",
+                             judgments=tv.REPO_JUDGMENTS)
+    dopo = archivio.report(G)["cronaca"]
+    assert [v["chi"] for v in dopo] == ["switch.presa", "climate.camera", "light.b"]
+    assert dopo[1] == prima[1]
+
+
+def test_rifare_la_cronaca_TOGLIE_l_ereditato_il_cui_soggetto_ora_non_ha_genere(archivio):
+    """Un ereditato col grezzo potato si tiene solo se il suo soggetto ha
+    ancora un genere: un `nessuno` scritto dalla casa lo toglie. Mutazione
+    ESEGUITA: tenere l'ereditato senza chiedere il genere -- rossa."""
+    from hiris.app.mind.facts import rebuild_chronicle
+    from hiris.app.mind.store import READING_RETENTION_S
+
+    _giorno_ereditato(archivio)
+    archivio.prune(MEZZANOTTE - 3600 + READING_RETENTION_S)
+    giudizi = _giudizi(("entita", "climate.camera", "genere", "nessuno"))
+    assert rebuild_chronicle(store=archivio, day=G, timezone="Europe/Rome", judgments=giudizi)
+    assert [v["chi"] for v in archivio.report(G)["cronaca"]] == ["switch.presa", "light.b"]
+
+
+def test_rifare_la_cronaca_TOGLIE_l_ereditato_che_il_grezzo_ancora_smentisce(archivio):
+    """Se la riga d'origine c'e' ancora, l'assenza dalla cronaca rifatta e' un
+    GIUDIZIO nuovo, non un grezzo perso: qui `heat` diventa un riposo del
+    termostato, e l'episodio non c'e' piu'. Tenerlo scriverebbe l'impronta
+    nuova su una voce del giudizio vecchio. Mutazione ESEGUITA: tenere
+    l'ereditato anche quando `store.last_before` ha ancora il soggetto --
+    rossa."""
+    from hiris.app.mind.facts import rebuild_chronicle
+
+    _giorno_ereditato(archivio)
+    giudizi = _giudizi(("entita", "climate.camera", "riposo", '["off", "heat"]'))
+    assert rebuild_chronicle(store=archivio, day=G, timezone="Europe/Rome", judgments=giudizi)
+    assert [v["chi"] for v in archivio.report(G)["cronaca"]] == ["switch.presa", "light.b"]

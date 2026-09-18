@@ -23,9 +23,8 @@ Spec: docs/design/2026-08-16-il-vocabolario-delle-tipologie.md
 """
 import pytest
 
-from hiris.app.home_space import briefing, topology
+from hiris.app.home_space import briefing, topology, type_vocabulary
 from hiris.app.home_space.briefing import compose
-from hiris.app.home_space.type_vocabulary import notable_types
 from hiris.app.proxy import state_translations
 
 # Le finte vivono gia' in `test_briefing.py`: si riusano invece di riscriverle.
@@ -418,13 +417,17 @@ def test_una_nascosta_DISABILITATA_non_si_conta_due_volte():
 
 
 def domini_notevoli() -> set[str]:
-    """I domini che il vocabolario dichiara degni di un annuncio."""
-    return {dominio for dominio, classe in notable_types() if classe is None}
+    """I domini che il repo dei giudizi dichiara degni di un annuncio --
+    stesso fatto di `notable_types()` (cancellata col Task 8, spec
+    2026-09-16 §11), letto dalla nuova porta."""
+    return {dominio for dominio in type_vocabulary.declared_domains()
+            if type_vocabulary.REPO_JUDGMENTS.is_notable(dominio)}
 
 
 def classi_notevoli() -> set[tuple[str, str]]:
     """Le coppie (dominio, classe) degne di un annuncio."""
-    return {chiave for chiave in notable_types() if chiave[1] is not None}
+    return {coppia for coppia in type_vocabulary.declared_pairs()
+            if type_vocabulary.REPO_JUDGMENTS.is_notable(*coppia)}
 
 _STATI_ATTIVI_HA = {"on", "open", "unlocked", "playing", "cleaning"}
 

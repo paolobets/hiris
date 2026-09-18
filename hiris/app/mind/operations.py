@@ -813,7 +813,10 @@ _register(Operation(
 def _episode(readings, *, is_on, period_end: float) -> Result:
     """Le finestre in cui un soggetto era «acceso»: **un `Period`**.
 
-    Estratta dal ciclo apri/chiudi di `mind/facts.aggregate_day`. Restituisce
+    Estratta dal ciclo apri/chiudi degli episodi di `mind/facts`, che dal
+    17/09/2026 vive in `build_episodes` e non piu' dentro `aggregate_day`
+    (spec 2026-09-16 §6: **una** costruzione degli episodi, chiamata
+    dall'aggregazione e dal ricalcolo). Restituisce
     un periodo e non una lista di coppie **perche' e' cio' che rende la
     restrizione una composizione**: le finestre che escono di qui entrano in
     qualunque altra operazione come «su quando» (vedi `Period`).
@@ -947,9 +950,12 @@ def _measurements_in_period(readings, period: Period, *, unit: str) -> Result:
     """Cosa ha fatto una grandezza **mentre** il periodo durava: la serie
     ristretta a quelle finestre.
 
-    Estratta dalle `measurements` dei comprimari di `mind/facts.aggregate_day`, dove
-    la regola era gia' scritta: una misura presa PRIMA che l'episodio
-    cominciasse e' il clima di prima, non l'effetto di quell'episodio.
+    Estratta dalle `measurements` dei comprimari di `mind/facts.aggregate_day`,
+    dove la regola era gia' scritta: una misura presa PRIMA che l'episodio
+    cominciasse e' il clima di prima, non l'effetto di quell'episodio. **Quel
+    dizionario non esiste piu'** -- i comprimari sono usciti con gli oggetti
+    (15/09/2026, spec 2026-09-16 §11): la regola e' sopravvissuta alla sua
+    origine e vive qui, sola (giro di correzioni 1, punto 2).
 
     **Restituisce una SERIE, non «da 18 a 21».** La prima stesura tornava i due
     estremi, e il cancello delle sette domande ha fatto emergere che cosi' non

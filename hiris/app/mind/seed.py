@@ -247,6 +247,34 @@ def attribute_seed(when_ts: float | None = None) -> list[Fact]:
     ]
 
 
+# -- i giudizi sui tipi ------------------------------------------------------
+
+def judgment_seed(when_ts: float | None = None) -> list[Fact]:
+    """I giudizi sui tipi come righe del sapere (spec 2026-09-16 §3): `nostro`,
+    senza verifica, dal letterale di `home_space/type_vocabulary.py`. La casa
+    scrive sopra dalla porta unica (`mind/judgments.write_judgment`).
+
+    **Il seme non CANCELLA: una riga ritirata da un rilascio futuro resta in
+    vigore per sempre** (giro di correzioni 1, punto 6, dichiarato e non
+    costruito). `knowledge.seed` scrive e corregge, non toglie: il giorno in
+    cui una riga sparisse da `judgment_seed_rows()`, sulle installazioni
+    esistenti resterebbe sul disco, `judgment_listing` la mostrerebbe come
+    `da: altro` (nessuno dei due la rivendica) e l'istantanea continuerebbe a
+    leggerla. Oggi non succede: nessuna riga e' mai stata ritirata. Non si
+    costruisce niente adesso perche' **cancellare righe del seme e' una
+    decisione del proprietario**, non un effetto collaterale di un
+    aggiornamento -- e una cancellazione automatica porterebbe via anche la
+    riga che il proprietario avesse corretto a mano sulla stessa terna. Voce
+    in `docs/BACKLOG.md`.
+    """
+    from ..home_space.type_vocabulary import judgment_seed_rows
+
+    when = when_ts if when_ts is not None else now_ts()
+    return [Fact(subject_kind=kind, subject=subject, field=field, value=value,
+                 provenance="nostro", who=SEED_AUTHOR, when_ts=when)
+            for kind, subject, field, value in judgment_seed_rows()]
+
+
 # -- la ricetta del bilancio ------------------------------------------------
 
 def balance_recipe(entity_per_dimension: dict[str, str], *, order,

@@ -165,3 +165,15 @@ def test_la_fonte_della_casa_dice_il_comando_la_lingua_e_la_versione():
     assert riga.verification is None, (
         "il «controllo» sarebbe la stessa fonte della provenienza: e' la "
         "provenienza riscritta due volte, non una verifica")
+
+
+# -- il seme dei giudizi sui tipi ------------------------------------------
+
+def test_il_seme_dei_giudizi_e_NOSTRO_senza_verifica_e_col_suo_autore(sapere):
+    """Mutazione: provenienza `importato` -- rossa."""
+    from hiris.app.mind.seed import SEED_AUTHOR, judgment_seed
+    righe = judgment_seed(when_ts=1.0)
+    assert righe and all(r.provenance == "nostro" and r.verification is None
+                         and r.who == SEED_AUTHOR for r in righe)
+    assert sapere.seed(righe, priority=2) == len(righe)
+    assert sapere.seed(righe, priority=2) == 0

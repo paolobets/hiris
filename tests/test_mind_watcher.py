@@ -174,9 +174,10 @@ def test_il_filtro_vale_SOLO_per_il_dominio_sensor(coppia):
 # -- Correzione 0: il grezzo porta le tre classi che il pavimento legge -----
 
 def test_guarda_cambio_scrive_le_tre_classi_quando_ci_sono(coppia):
-    """Senza le tre classi nel grezzo, `aggregate_day` non puo' sapere che
-    `binary_sensor.fumo_cucina` e' un rilevatore di fumo: il genere `energia`
-    e la sesta gamba per classe non nascono mai (Task 3, punto 0)."""
+    """Senza `device_class` nel grezzo, `aggregate_day` non puo' sapere che
+    `binary_sensor.fumo_cucina` e' un rilevatore di fumo: il genere
+    `sicurezza` per la sua coppia non nasce mai (Task 3, punto 0; il genere
+    si chiede all'istantanea dei giudizi dal 17/09/2026, spec 2026-09-16 §5)."""
     archivio, osservatore = coppia
     ev = _evento("binary_sensor.fumo_cucina", "off", "on",
                  {"device_class": "smoke", "state_class": "measurement",

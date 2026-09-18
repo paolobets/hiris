@@ -368,49 +368,132 @@ def test_allarme_scattato_e_notevole_armato_no():
     assert "Allarme" not in sezione_notevole
 
 
-def test_lallarme_notevole_lo_dice_il_vocabolario_non_un_letterale_qui():
+def test_lallarme_notevole_lo_dice_l_istantanea_non_un_letterale_qui():
     """Audit delle fondamenta, «sotto la soglia dei dieci» n.1 (09/09/2026):
     prima di questa correzione `_is_event` portava un ramo scritto a mano,
     `if domain == "alarm_control_panel": return v == "triggered"` -- una
-    TERZA sede dello stesso fatto che `type_vocabulary.working_states_of(
-    "alarm_control_panel")` gia' dichiara (`{"triggered": "..."}`, con la sua
-    ragione scritta li'). Il test gemello sopra
-    (`test_allarme_scattato_e_notevole_armato_no`) prova il COMPORTAMENTO, ma
-    non poteva distinguere «letto dal vocabolario» da «scritto qui»: la
-    stessa uscita ("triggered" notevole, "armed_away" no) l'avrebbe prodotta
-    anche il vecchio letterale. Questo test guarda davvero il pannello
-    d'allarme cambiando la fonte, non il valore.
+    TERZA sede dello stesso fatto che il vocabolario dei tipi gia' dichiara
+    (`{"triggered": "..."}`, con la sua ragione scritta li'). Il test gemello
+    sopra (`test_allarme_scattato_e_notevole_armato_no`) prova il
+    COMPORTAMENTO, ma non poteva distinguere «letto dalla fonte giusta» da
+    «scritto qui»: la stessa uscita ("triggered" notevole, "armed_away" no)
+    l'avrebbe prodotta anche il vecchio letterale. Questo test guarda davvero
+    il pannello d'allarme cambiando la fonte, non il valore.
+
+    **Dal 17/09/2026 (spec 2026-09-16 §3, D3) la fonte e' l'istantanea dei
+    giudizi (`judgments=`), non piu' il modulo `type_vocabulary` letto a
+    mano**: un monkeypatch di `type_vocabulary.working_states_of` (la forma
+    di prima) non intercetterebbe piu' niente, perche' `_is_event` non legge
+    piu' quel simbolo -- e' esattamente il test che, dopo il Task 5, restava
+    verde per la ragione sbagliata (orfano ai sensi di CLAUDE.md, «i test si
+    smontano insieme a cio' che testavano»). Riscritto per passare
+    un'istantanea diversa, come fa il test gemello sul campo `notevole` in
+    questo stesso file.
 
     Mutazione ESEGUITA: rimesso `if domain == "alarm_control_panel": return v
-    == "triggered"` (letterale, cieco al vocabolario) al posto di `return v
-    in working_states_of(domain)` -- il monkeypatch qui sotto smette di
-    cambiare l'esito e questa prova diventa rossa; ripristinato riscrivendo
-    il file.
+    == "triggered"` (letterale, cieco all'istantanea) al posto di `return v
+    in judgments.working_of(domain)` -- l'istantanea sostituita qui sotto
+    smette di cambiare l'esito e questa prova diventa rossa; ripristinato
+    riscrivendo il file con l'editor (verificato che `git diff` dopo il
+    ripristino mostri solo le righe di questa fetta, nessuna riga persa:
+    non e' stato fatto nessun commit, quindi non c'e' uno stato pulito da
+    verificare con `git status`).
     """
-    from hiris.app.home_space import type_vocabulary
+    from hiris.app.home_space import type_vocabulary as tv
+    from hiris.app.home_space.type_judgments import TypeJudgments
 
     assert briefing._is_event("alarm_control_panel", None, "triggered") is True
     for stato in ("armed_home", "armed_away", "armed_night", "disarmed",
                   "arming", "disarming", "pending"):
         assert briefing._is_event("alarm_control_panel", None, stato) is False
 
-    def _stati_immaginati(domain, device_class=None):
-        assert domain == "alarm_control_panel"
-        return frozenset({"armed_home"})
+    righe = tuple(r for r in tv.judgment_seed_rows()
+                  if not (r[1] == "alarm_control_panel" and r[2] == "lavoro"))
+    giudizi = TypeJudgments.from_rows(
+        righe + (("tipo", "alarm_control_panel", "lavoro", '{"armed_home": "prova"}'),),
+        genres=tv.CHRONICLE_GENRES, absent_forms=tv.ABSENT_STATE_FORMS.value)
 
-    original = type_vocabulary.working_states_of
-    briefing.working_states_of = _stati_immaginati
-    try:
-        assert briefing._is_event("alarm_control_panel", None, "armed_home") is True, (
-            "il valore che conta deve venire dal vocabolario: con "
-            "`working_states_of` sostituita, anche uno stato diverso da "
-            "\"triggered\" deve diventare notevole")
-        assert briefing._is_event("alarm_control_panel", None, "triggered") is False, (
-            "e il vecchio valore non deve restare notevole per un motivo "
-            "suo: se lo fosse, la funzione starebbe ancora leggendo un "
-            "letterale invece del vocabolario")
-    finally:
-        briefing.working_states_of = original
+    assert briefing._is_event(
+        "alarm_control_panel", None, "armed_home", judgments=giudizi) is True, (
+        "il valore che conta deve venire dall'istantanea: con un `lavoro` "
+        "diverso, anche uno stato diverso da \"triggered\" deve diventare "
+        "notevole")
+    assert briefing._is_event(
+        "alarm_control_panel", None, "triggered", judgments=giudizi) is False, (
+        "e il vecchio valore non deve restare notevole per un motivo suo: se "
+        "lo fosse, la funzione starebbe ancora leggendo un letterale invece "
+        "dell'istantanea")
+
+
+def test_una_correzione_della_casa_su_notevole_arriva_al_nucleo():
+    """Spec §3: il nucleo legge l'istantanea che riceve.
+
+    Mutazione ESEGUITA (giro di correzioni 1, punto 7): in `_is_event`,
+    ignorare il parametro e leggere il seme del repo -- `judgments =
+    REPO_JUDGMENTS` in testa al corpo -- rossa
+    (`assert True is False` sulla riga con `judgments=giudizi`); ripristinata
+    con l'editor, sha256 identico.
+
+    **La mutazione dichiarata prima era impossibile**: diceva «tornare a
+    `type_vocabulary.is_notable`», e quella funzione e' uscita col Task 8 --
+    una docstring che dichiara una mutazione che non si puo' piu' eseguire e'
+    una ragione falsa accanto al codice.
+    """
+    from hiris.app.home_space import type_vocabulary as tv
+    from hiris.app.home_space.briefing import _is_event
+    from hiris.app.home_space.type_judgments import TypeJudgments
+    righe = tuple(r for r in tv.judgment_seed_rows()
+                  if not (r[1] == "light" and r[2] == "notevole"))
+    giudizi = TypeJudgments.from_rows(righe + (("tipo", "light", "notevole", "no"),),
+                                      genres=tv.CHRONICLE_GENRES,
+                                      absent_forms=tv.ABSENT_STATE_FORMS.value)
+    assert _is_event("light", None, "on") is True
+    assert _is_event("light", None, "on", judgments=giudizi) is False
+
+
+def test_una_correzione_su_notevole_arriva_dal_nucleo_intero_non_solo_da_is_event():
+    """Fix round 1 (revisione Fable), rilievo ALTO: il test gemello sopra
+    prova che `_is_event`, chiamata DIRETTAMENTE, legge `judgments` -- ma non
+    che `compose()` gliela CONSEGNI. `_highlight_lines` e `_is_event` sono
+    chiamate interne che nessuna funzione in `FUNZIONI` di
+    `tests/test_judgments_passed_in_production.py` sorveglia (quel test
+    controlla solo i nomi che elenca, non «ogni chiamata interna inoltra»,
+    nonostante il commento che lo diceva -- corretto anche quello): un
+    inoltro tolto a meta' catena sarebbe passato inosservato da OGNI prova
+    scritta nel Task 5. Questa e' la prova DAL LETTORE (spec §9.3), non
+    dalla funzione foglia: chiama `compose()`, come fa davvero
+    `handlers_home_space.compose_briefing`.
+
+    Mutazioni ESEGUITE: tolto `judgments=judgments` dalla chiamata
+    `_highlight_lines(` dentro `compose` -- rossa (l'Alberello/Faretti torna
+    notevole anche con l'istantanea corretta); ripristinato con l'editor,
+    verde. Tolto `judgments=judgments` dalla chiamata `_is_event(` dentro
+    `_highlight_lines` -- rossa per la stessa ragione; ripristinato, verde.
+    """
+    from hiris.app.home_space import type_vocabulary as tv
+    from hiris.app.home_space.type_judgments import TypeJudgments
+
+    testo_seme, _ = compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)
+    sezione_seme = testo_seme.split("## Notevole adesso")[1].split(
+        "## Cio' che la casa fa")[0]
+    assert "Faretti" in sezione_seme, "col seme la luce accesa e' notevole"
+
+    righe = tuple(r for r in tv.judgment_seed_rows()
+                  if not (r[1] == "light" and r[2] == "notevole"))
+    giudizi = TypeJudgments.from_rows(righe + (("tipo", "light", "notevole", "no"),),
+                                      genres=tv.CHRONICLE_GENRES,
+                                      absent_forms=tv.ABSENT_STATE_FORMS.value)
+    testo_corretto, _ = compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, judgments=giudizi)
+    sezione_corretta = testo_corretto.split("## Notevole adesso")[1].split(
+        "## Cio' che la casa fa")[0]
+    assert "Faretti" not in sezione_corretta, (
+        "la correzione della casa (`light` non piu' notevole) deve arrivare "
+        "fino al testo che `compose()` restituisce, non solo a `_is_event` "
+        "chiamata da sola")
+    # Il sensore di porta resta notevole (non l'ho toccato): la sezione non
+    # e' vuota per un altro motivo (`unreliable`/casa vuota), che renderebbe
+    # l'assert sopra vero per la ragione sbagliata.
+    assert "Porta" in sezione_corretta
 
 
 def test_i_ricordi_tagliati_sono_ordinati_esplicitamente_dal_codice():

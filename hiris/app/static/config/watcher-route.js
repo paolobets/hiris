@@ -1001,7 +1001,7 @@ window.HirisWatcherRoute = (function () {
      testa del file per il perche' (una quantita' con una forma, non un
      episodio) e per il contratto esatto del corpo. */
 
-  /* Un valore della gamba energia -> "24,5 kWh", virgola italiana. Il
+  /* Un numero del bilancio dell'energia -> "24,5 kWh", virgola italiana. Il
      backend ha gia' arrotondato a 2 decimali (`build_balance_body`,
      mandato punto 6, il difetto misurato `+0.010000000000000009`): qui si
      FORMATTA, non si arrotonda una seconda volta -- `maximumFractionDigits:
@@ -1439,8 +1439,524 @@ window.HirisWatcherRoute = (function () {
     return KNOWLEDGE_FIELDS[campo] || campo;
   }
 
+  /* -------------------------------------------------------- i giudizi sui tipi (§4, §7)
+
+     Sezione 04, gerarchia approvata dal proprietario il 17/09/2026 (task 9,
+     .superpowers/sdd/2026-09-16-il-giudizio-dei-tipi/task-9-ux-approvata.md):
+     «Cosa non ha capito» (sopra, invariata) -> «Le tue correzioni» (righe
+     `proprietario`+`altro`, e il modulo di aggiunta in testa) -> «I giudizi
+     del seme» (sei gruppi chiusi, uno per campo) -> «Le domande aperte»
+     (sei, chiuse) -> «Cosa ha capito» (sotto, invariata).
+
+     **Una riga vive in un posto solo** (fondamenta HIRIS): chi ha corretto
+     un giudizio del seme sparisce dal SUO gruppo e vive solo in «Le tue
+     correzioni» -- il gruppo del seme ne conta il numero rimasto, non la
+     nasconde e basta.
+
+     Sicurezza: mai innerHTML sul testo del server -- le domande aperte
+     portano backtick e `**`, e si costruiscono nodo per nodo (vedi
+     `appendMarkedText`). */
+
+  /* I sei campi, nell'ordine approvato -- letterale, identico a
+     GENRE_FIELD/RESTING_FIELD/NOTABLE_FIELD/OPERABLE_FIELD/
+     PARAMETER_LIMITS_FIELD/WORKING_FIELD di home_space/type_judgments.py
+     (contati nel sorgente Python, non ricopiati da una variabile). */
+  var JUDGMENT_FIELD_GROUPS = [
+    { campo: 'genere', etichetta: 'Genere' },
+    { campo: 'riposo', etichetta: 'Riposo' },
+    { campo: 'notevole', etichetta: 'Notevole' },
+    { campo: 'accendibile', etichetta: 'Accendibile' },
+    { campo: 'limiti_parametri', etichetta: 'Limiti dei parametri' },
+    { campo: 'lavoro', etichetta: 'Lavoro' }
+  ];
+
+  /* Solo `genere` si corregge sul posto in v1 (forma approvata, punto 3 e
+     "cosa la v1 non fa"): gli altri cinque restano in sola lettura da qui. */
+  var EDITABLE_JUDGMENT_FIELD = 'genere';
+
+  /* Valori JSON (liste/mappe), non tradotti -- `.text-mono` (forma
+     approvata, punto 2). Gli altri campi portano un valore già leggibile. */
+  var JSON_JUDGMENT_FIELDS = { riposo: true, lavoro: true, limiti_parametri: true };
+
+  /* I generi che il proprietario può scegliere: CHRONICLE_GENRES meno
+     `guasto` (le condizioni di sistema -- mai lo stato di un tipo o di
+     un'entità, `judgments._SYSTEM_ONLY_GENRE`) più `nessuno` (`NO_GENRE`,
+     "niente episodi") -- letterale da home_space/type_vocabulary.py, forma
+     approvata punto 3. */
+  var JUDGMENT_GENRE_OPTIONS = [
+    { valore: 'funzionamento', etichetta: 'Funzionamento' },
+    { valore: 'presenza', etichetta: 'Presenza' },
+    { valore: 'sicurezza', etichetta: 'Sicurezza' },
+    { valore: 'nessuno', etichetta: 'Nessuno (niente episodi)' }
+  ];
+
+  /* 22 giorni: la ritenzione del grezzo, `mind/store.READING_RETENTION_S`
+     (server). NON arriva nel payload di `/api/mind/knowledge` -- se un
+     campo un giorno la porta, questa costante si toglie e si legge da lì
+     (regola del brief, task 9, sezione 04). */
+  var CHRONICLE_RETENTION_DAYS = 22;
+
+  function chronicleCostPhrase() {
+    return 'rifà la cronaca degli ultimi ' + fmtDays(CHRONICLE_RETENTION_DAYS * 86400) +
+      ', un giorno ogni 5 minuti: fino a circa due ore';
+  }
+
+  /* Solo la DATA (senza l'ora): `proprietario` la vuole con l'anno
+     («Corretto da te il gg/mm/aaaa», forma approvata punto 4) -- `fmtWhenFull`
+     porta anche l'ora, che qui è un dato in più da leggere. */
+  function fmtDateOnly(ts) {
+    if (ts == null) return null;
+    var d = new Date(ts * 1000);
+    return pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + '/' + d.getFullYear();
+  }
+
+  /* Solo giorno/mese, SENZA anno: `altro` la vuole così («Modificata a mano
+     il gg/mm da {chi}», forma approvata punto 4) -- un'asimmetria scritta
+     apposta nella forma approvata, non un refuso. */
+  function fmtDayMonth(ts) {
+    if (ts == null) return null;
+    var d = new Date(ts * 1000);
+    return pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1);
+  }
+
+  /* Il livello che il soggetto occupa nelle chiavi di `TypeJudgments`
+     (dominio -> coppia -> entità, mirror di `judgments._level`, letto nel
+     sorgente Python il 17/09/2026): serve solo a ORDINARE le righe del
+     gruppo (forma approvata, punto 2), non a validarle -- quello lo fa il
+     server, sul 400. */
+  function judgmentSubjectLevel(kind, subject) {
+    if (kind === 'entita') return 2;
+    return (String(subject || '').indexOf('.') === -1) ? 0 : 1;
+  }
+
+  function sortJudgmentRows(righe) {
+    return righe.slice().sort(function (a, b) {
+      var la = judgmentSubjectLevel(a.soggetto_genere, a.soggetto);
+      var lb = judgmentSubjectLevel(b.soggetto_genere, b.soggetto);
+      if (la !== lb) return la - lb;
+      return String(a.soggetto).localeCompare(String(b.soggetto));
+    });
+  }
+
+  /* Etichetta + campo, stessa forma micro del modulo di correzione di
+     memory-route.js (`costruisciModuloCorrezione::field`) -- non condivisa
+     fra i due file (non c'è un modulo comune per questi helper di UI), ma
+     la stessa disciplina visiva.
+
+     **Fix round 1 (revisione Fable, IMPORTANT 2)**: l'etichetta non era
+     ASSOCIATA al campo -- solo testo accanto, `for`/`id` mancanti. Un
+     lettore di schermo su `select[aria-label]` la legge, ma un click
+     sull'etichetta (o `input.labels[0]`) non trovava niente: il contratto
+     HTML dell'etichetta era rotto anche se il nome accessibile "sembrava"
+     esserci. Un contatore di modulo basta -- ogni chiamata di
+     `judgmentField` in pagina (editor del genere per riga, modulo di
+     aggiunta) ne apre uno nuovo, quindi gli `id` non collidono mai. */
+  var judgmentFieldSeq = 0;
+
+  function judgmentField(label, input) {
+    var f = el('div');
+    f.style.cssText = 'display:flex;flex-direction:column;gap:2px';
+    if (!input.id) input.id = 'jr-field-' + (++judgmentFieldSeq);
+    var l = el('label', null, label);
+    l.htmlFor = input.id;
+    l.style.cssText = 'font-size:var(--fs-12);color:var(--text-3)';
+    f.appendChild(l);
+    f.appendChild(input);
+    return f;
+  }
+
+  /* Nessun `aria-label` qui: il select passa SEMPRE da `judgmentField`
+     (sopra), che ora gli lega un'etichetta VERA (`for`/`id`) -- un
+     `aria-label` in più vincerebbe quel legame per il nome accessibile
+     (la regola di calcolo lo preferisce) e lo renderebbe invisibile a chi
+     naviga per etichette, mentre il testo visibile resterebbe un altro
+     («Genere» in entrambi i casi qui, ma sarebbe un doppione fragile). */
+  function genreSelect() {
+    var sel = el('select');
+    JUDGMENT_GENRE_OPTIONS.forEach(function (o) {
+      var opt = el('option', null, o.etichetta);
+      opt.value = o.valore;
+      sel.appendChild(opt);
+    });
+    return sel;
+  }
+
+  /* Il testo da mostrare quando la SCRITTURA (non la lettura della sezione)
+     fallisce per un motivo che non è 400/409 -- stesso tono di
+     `renderKnowledgeError`, adattato a un verbo di scrittura invece che di
+     lettura (regola del brief: "le frasi di renderKnowledgeError"). */
+  /* `corpo` è quello della risposta, quando c'è: dal 17/09/2026 il 503 ha DUE
+     ragioni -- il sapere non collegato, e l'archivio che c'è ma non si lascia
+     scrivere (disco pieno, base occupata; vedi `handlers_mind.py`) -- e il
+     server manda la sua in `errore`. Scriverne qui una sola sarebbe una
+     ragione falsa accanto al codice per l'altra metà dei casi. Il testo di
+     riserva resta per quando il corpo non c'è (un 503 del proxy) o per un
+     guasto di rete, dove non c'è nessuna risposta da leggere. */
+  function judgmentWriteErrorText(status, corpo) {
+    if (corpo && corpo.errore) return corpo.errore;
+    if (status === 503) {
+      return 'Il sapere non è collegato in questo momento. Non è vuoto — è che non si può leggere.';
+    }
+    return 'Non è stato possibile scrivere. Riprova più tardi.';
+  }
+
+  /* La scrittura, condivisa dall'editor del genere, da «Torna al seme» e dal
+     modulo di aggiunta -- un solo posto per i quattro esiti della spec
+     (200/400/409/rete), così i tre chiamanti non li interpretano ciascuno a
+     modo suo (fondamenta: nessun doppione). */
+  function submitJudgment(payload, ui) {
+    ui.button.disabled = true;
+    ui.esito.textContent = 'Scrivo…';
+    return write('api/mind/judgment', payload).then(function (occurrence) {
+      if (occurrence.ok) {
+        /* 200: la sezione si ricarica intera -- la riga riappare in «Le tue
+           correzioni» con la sua provenienza nuova (forma approvata, punto 3).
+           `true`: sposta il focus sul titolo della sezione dopo il
+           ricaricamento (fix round 1, MINOR 6) -- senza, il bottone appena
+           premuto sparisce col resto del corpo e il focus cade su `<body>`. */
+        loadKnowledge(ui.outerBody, undefined, true);
+        return;
+      }
+      ui.button.disabled = false;
+      if (occurrence.status === 400) {
+        ui.esito.textContent = (occurrence.corpo && occurrence.corpo.errore) ||
+          'Questa correzione non si può scrivere.';
+        return;
+      }
+      if (occurrence.status === 409) {
+        var motivo = (occurrence.corpo && occurrence.corpo.errore) || '';
+        // Fix round 1 (revisione Fable, MINOR 4): senza un punto dopo
+        // `motivo` la frase successiva si leggeva attaccata («…seme non ce
+        // l'ha Il sapere legge…»). Non se ne aggiunge uno se `motivo` lo
+        // porta già (niente «..»).
+        var motivoPuntato = motivo && !/[.!?]$/.test(motivo) ? motivo + '.' : motivo;
+        loadKnowledge(ui.outerBody, 'La correzione è scritta ma non è in vigore: ' + motivoPuntato +
+          ' Il sapere legge solo il seme.', true);
+        return;
+      }
+      ui.esito.textContent = judgmentWriteErrorText(occurrence.status, occurrence.corpo);
+    }, function () {
+      ui.button.disabled = false;
+      ui.esito.textContent = judgmentWriteErrorText(null);
+    });
+  }
+
+  /* «Correggi» il genere sul posto (SOLO questo campo, forma approvata
+     punto 3): apre/chiude un editor dentro la riga, senza modale. */
+  function genreCorrectControl(g, outerBody) {
+    var wrap = el('div');
+    var toggle = el('button', 'btn btn-ghost', 'Correggi');
+    toggle.type = 'button';
+    toggle.setAttribute('aria-expanded', 'false');
+    var panel = el('div');
+    panel.hidden = true;
+    panel.style.cssText = 'margin-top:8px;display:flex;flex-direction:column;gap:6px;max-width:340px';
+
+    toggle.addEventListener('click', function () {
+      var aperto = toggle.getAttribute('aria-expanded') === 'true';
+      if (aperto) { clearEl(panel); panel.hidden = true; toggle.setAttribute('aria-expanded', 'false'); return; }
+      clearEl(panel);
+      var sel = genreSelect();
+      if (JUDGMENT_GENRE_OPTIONS.some(function (o) { return o.valore === g.valore; })) sel.value = g.valore;
+      panel.appendChild(judgmentField('Genere', sel));
+      panel.appendChild(el('p', 'field-hint', 'Cambiare il genere ' + chronicleCostPhrase() + '.'));
+      var esito = el('p', 'sc-desc', '');
+      var scrivi = el('button', 'btn btn-ghost', 'Scrivi');
+      scrivi.type = 'button';
+      scrivi.addEventListener('click', function () {
+        submitJudgment({
+          soggetto_genere: g.soggetto_genere, soggetto: g.soggetto, campo: EDITABLE_JUDGMENT_FIELD,
+          valore: sel.value
+        }, { button: scrivi, esito: esito, outerBody: outerBody });
+      });
+      panel.appendChild(scrivi);
+      panel.appendChild(esito);
+      panel.hidden = false;
+      toggle.setAttribute('aria-expanded', 'true');
+    });
+
+    wrap.appendChild(toggle);
+    wrap.appendChild(panel);
+    return wrap;
+  }
+
+  /* «Torna al seme» (forma approvata, punto 5): niente `confirm()`, due
+     passi in linea. Vale per righe `proprietario` E `altro`, di qualunque
+     campo -- manda `valore: null`. */
+  function revertToSeedControl(g, outerBody) {
+    var wrap = el('div');
+    var start = el('button', 'btn btn-ghost', 'Torna al seme');
+    start.type = 'button';
+    var confirmBox = el('div');
+    confirmBox.hidden = true;
+    confirmBox.style.cssText = 'margin-top:6px;display:flex;flex-direction:column;gap:6px;max-width:340px';
+    var warn = el('p', 'field-hint',
+      'Cancella la tua correzione: il sapere riprende il valore del seme, o nessuna riga se il ' +
+      'seme non ne ha. Anche questo ' + chronicleCostPhrase() + '.');
+    var actions = el('div');
+    actions.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap';
+    var yes = el('button', 'btn btn-ghost btn-ghost-danger', 'Sì, torna al seme');
+    yes.type = 'button';
+    var cancel = el('button', 'btn btn-ghost', 'Annulla');
+    cancel.type = 'button';
+    var esito = el('p', 'sc-desc', '');
+
+    /* Fix round 1 (revisione Fable, IMPORTANT 3): nascondere il bottone che
+       ha il focus lo fa cadere su `<body>` (il browser non lo sposta da
+       solo) -- chi naviga da tastiera perdeva il posto ad ogni passo.
+       Si sposta ESPLICITAMENTE, dopo aver reso visibile il bersaglio. */
+    start.addEventListener('click', function () {
+      start.hidden = true; confirmBox.hidden = false; yes.focus();
+    });
+    cancel.addEventListener('click', function () {
+      confirmBox.hidden = true; start.hidden = false; start.focus();
+    });
+    yes.addEventListener('click', function () {
+      submitJudgment({
+        soggetto_genere: g.soggetto_genere, soggetto: g.soggetto, campo: g.campo, valore: null
+      }, { button: yes, esito: esito, outerBody: outerBody });
+    });
+
+    actions.appendChild(yes);
+    actions.appendChild(cancel);
+    confirmBox.appendChild(warn);
+    confirmBox.appendChild(actions);
+    confirmBox.appendChild(esito);
+    wrap.appendChild(start);
+    wrap.appendChild(confirmBox);
+    return wrap;
+  }
+
+  /* La provenienza di una riga (forma approvata, punto 4): `seme` è un
+     testo quieto, `proprietario`/`altro` sono badge -- lo stesso linguaggio
+     di `.agent-badge` già in uso nel resto della pagina, non un componente
+     nuovo.
+
+     **Fix round 1 (revisione Fable, IMPORTANT 1)**: la forma approvata dice
+     che una riga corretta dal proprietario porta ANCHE «La cronaca dei
+     giorni passati si rifà da sola» -- mancava del tutto. Sta qui, accanto
+     al badge, perché è una proprietà della riga finché resta `proprietario`
+     (non una notifica che sparisce al primo ricaricamento): chi rivede la
+     pagina domani deve rileggerla, non solo chi l'ha appena scritta. */
+  function provenanceNode(g) {
+    if (g.da === 'proprietario') {
+      var wrap = el('span', 'jr-provenance');
+      wrap.appendChild(el('span', 'agent-badge badge-on', 'Corretto da te il ' + (fmtDateOnly(g.quando_ts) || '—')));
+      wrap.appendChild(el('span', 'field-hint', 'La cronaca dei giorni passati si rifà da sola.'));
+      return wrap;
+    }
+    if (g.da === 'altro') {
+      return el('span', 'agent-badge badge-warn',
+        'Modificata a mano il ' + (fmtDayMonth(g.quando_ts) || '—') + ' da ' + (g.chi || 'qualcun altro'));
+    }
+    return el('span', 'field-hint', 'dal seme');
+  }
+
+  function judgmentValueNode(g) {
+    var cls = JSON_JUDGMENT_FIELDS[g.campo] ? 'text-mono' : null;
+    return el('span', cls, g.valore == null ? '—' : g.valore);
+  }
+
+  /* Una riga: `soggetto | valore | provenienza | azioni` (forma approvata,
+     punto 6), a griglia larga e impilata sotto i 768px -- mai una
+     `<table>` (CSS: `.jr-row` in hiris-config.css). */
+  function judgmentRow(g, outerBody) {
+    var riga = el('div', 'sc-row jr-row');
+    riga.appendChild(el('div', 'jr-subject text-mono', g.soggetto));
+    var meta = el('div', 'jr-meta');
+    meta.appendChild(judgmentValueNode(g));
+    meta.appendChild(provenanceNode(g));
+    riga.appendChild(meta);
+    var actions = el('div', 'jr-actions');
+    if (g.campo === EDITABLE_JUDGMENT_FIELD) actions.appendChild(genreCorrectControl(g, outerBody));
+    if (g.da === 'proprietario' || g.da === 'altro') actions.appendChild(revertToSeedControl(g, outerBody));
+    riga.appendChild(actions);
+    return riga;
+  }
+
+  /* Il modulo di aggiunta (forma approvata, punto 7): soggetto libero,
+     tipo/entità OBBLIGATORIO (guida `soggetto_genere`), genere. Nessuna
+     validazione client della FORMA del soggetto -- il 400 del server la
+     spiega; il tipo/entità invece si controlla qui, perché senza non c'è
+     `soggetto_genere` da mandare affatto. */
+  function addJudgmentForm(outerBody) {
+    /* Fix round 1 (revisione Fable, MINOR 8): era un `<div>` con un bottone
+       `type="button"` -- Invio nel campo Soggetto non mandava niente, e
+       `required` sui radio non aveva alcun form da validare. Un `<form>`
+       vero con un bottone `type="submit"` restituisce entrambi; il
+       controllo JS sul radio mancante resta (vedi sotto) perché un evento
+       'submit' sintetico (dispatchEvent, come nei test) NON passa dalla
+       validazione nativa del browser -- solo un invio vero da tastiera/
+       mouse la passa. */
+    var wrap = el('form', 'field-group jr-add-form');
+    wrap.style.cssText = 'border:1px solid var(--border-2);border-radius:8px;padding:10px 12px;' +
+      'margin-bottom:10px;display:flex;flex-direction:column;gap:8px;max-width:420px';
+
+    var subjectInput = el('input');
+    subjectInput.type = 'text';
+    subjectInput.placeholder = 'binary_sensor.occupancy';
+    wrap.appendChild(judgmentField('Soggetto', subjectInput));
+
+    var radioName = 'judgment-add-kind-' + Math.random().toString(36).slice(2);
+    var radioWrap = el('div');
+    radioWrap.style.cssText = 'display:flex;gap:14px;flex-wrap:wrap';
+    function radioOption(value, testo) {
+      var label = el('label');
+      label.style.cssText = 'display:flex;align-items:center;gap:6px;min-height:28px';
+      var input = el('input');
+      input.type = 'radio'; input.name = radioName; input.value = value; input.required = true;
+      label.appendChild(input);
+      label.appendChild(document.createTextNode(testo));
+      radioWrap.appendChild(label);
+      return input;
+    }
+    var radioTipo = radioOption('tipo', 'Un tipo');
+    var radioEntita = radioOption('entita', 'Un’entità');
+    wrap.appendChild(radioWrap);
+    wrap.appendChild(el('p', 'field-hint',
+      'Un tipo vale per tutti i dispositivi di quella classe; un’entità per uno solo.'));
+
+    var sel = genreSelect();
+    wrap.appendChild(judgmentField('Genere', sel));
+
+    var esito = el('p', 'sc-desc', '');
+    var scrivi = el('button', 'btn btn-ghost', 'Scrivi');
+    scrivi.type = 'submit';
+    wrap.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var scelto = radioTipo.checked ? 'tipo' : (radioEntita.checked ? 'entita' : null);
+      if (!scelto) {
+        esito.textContent = 'Scegli se è un tipo o un’entità.';
+        return;
+      }
+      submitJudgment({
+        soggetto_genere: scelto, soggetto: subjectInput.value.trim(), campo: EDITABLE_JUDGMENT_FIELD,
+        valore: sel.value
+      }, { button: scrivi, esito: esito, outerBody: outerBody });
+    });
+    wrap.appendChild(scrivi);
+    wrap.appendChild(esito);
+    return wrap;
+  }
+
+  /* «Le tue correzioni» (forma approvata, gerarchia): il modulo di aggiunta
+     in testa, sempre visibile, poi le righe `proprietario` e `altro` --
+     ovunque vivessero nel seme, qui vivono UNA volta sola.
+
+     Torna il titolo (`<h3>`): fix round 1 (MINOR 6) lo rende focalizzabile
+     (`tabindex=-1`) e ci sposta il focus dopo un ricaricamento innescato da
+     una scrittura -- senza, il bottone appena premuto sparisce col resto
+     del corpo e il focus cade su `<body>`, e chi naviga da tastiera perde
+     il posto. */
+  function renderCorrections(body, giudizi, outerBody) {
+    var heading = subheading(body, 'Le tue correzioni');
+    heading.tabIndex = -1;
+    body.appendChild(addJudgmentForm(outerBody));
+
+    var corrette = sortJudgmentRows(giudizi.filter(function (g) {
+      return g.da === 'proprietario' || g.da === 'altro';
+    }));
+    if (!corrette.length) {
+      line(body, 'Nessuna correzione ancora: le righe che scrivi da qui vivono da sole.', TONE_CALM);
+      return heading;
+    }
+    corrette.forEach(function (g) { body.appendChild(judgmentRow(g, outerBody)); });
+    return heading;
+  }
+
+  /* «I giudizi del seme» (forma approvata, punto 2): sei gruppi chiusi, uno
+     per campo, ordinati per soggetto dentro. Il conteggio si calcola dai
+     dati -- mai scritto a mano -- e porta anche le correzioni tolte da qui
+     («25 dal seme · 1 corretta da te»): la riga vive solo in «Le tue
+     correzioni», ma il numero del gruppo racconta lo storico intero.
+
+     **Fix round 1 (revisione Fable, MINOR 5)**: il conteggio contava solo
+     `da === 'proprietario'` -- una riga `altro` (modificata a mano, fuori
+     da questa porta) spariva dal gruppo E dal conteggio, e il commento
+     sopra («racconta lo storico intero») era falso proprio per quel caso.
+     Ora conta entrambe, separate: «N dal seme · M corretta/e da te · K
+     modificata/e a mano» (una parte si omette se il suo numero è zero). */
+  function renderSeedGroups(body, giudizi, outerBody) {
+    subheading(body, 'I giudizi del seme');
+    JUDGMENT_FIELD_GROUPS.forEach(function (gruppo) {
+      var semeRighe = sortJudgmentRows(giudizi.filter(function (g) {
+        return g.campo === gruppo.campo && g.da === 'seme';
+      }));
+      var correzioni = giudizi.filter(function (g) {
+        return g.campo === gruppo.campo && g.da === 'proprietario';
+      }).length;
+      var modificheAMano = giudizi.filter(function (g) {
+        return g.campo === gruppo.campo && g.da === 'altro';
+      }).length;
+      var parti = [];
+      if (correzioni || modificheAMano) {
+        parti.push(fmtCount(semeRighe.length) + ' dal seme');
+        if (correzioni) parti.push(fmtCount(correzioni) + (correzioni === 1 ? ' corretta da te' : ' corrette da te'));
+        if (modificheAMano) {
+          parti.push(fmtCount(modificheAMano) + (modificheAMano === 1 ? ' modificata a mano' : ' modificate a mano'));
+        }
+      } else {
+        parti.push(fmtCount(semeRighe.length));
+      }
+      var etichetta = gruppo.etichetta + ' · ' + parti.join(' · ');
+      body.appendChild(createDisclosure(etichetta, etichetta, function (panel) {
+        if (!semeRighe.length) {
+          panel.appendChild(el('p', 'field-hint', 'Nessuna riga di questo campo.'));
+          return;
+        }
+        semeRighe.forEach(function (g) { panel.appendChild(judgmentRow(g, outerBody)); });
+      }, false));
+    });
+  }
+
+  /* Testo del server -> DOM, MAI innerHTML: `**` si toglie, i backtick
+     diventano `<code>` (forma approvata: «Le domande aperte»). */
+  function appendMarkedText(parent, testo) {
+    var pulito = String(testo || '').replace(/\*\*/g, '');
+    var parti = pulito.split(/(`[^`]*`)/g);
+    parti.forEach(function (parte) {
+      if (parte.length >= 2 && parte.charAt(0) === '`' && parte.charAt(parte.length - 1) === '`') {
+        parent.appendChild(el('code', null, parte.slice(1, -1)));
+      } else if (parte) {
+        parent.appendChild(document.createTextNode(parte));
+      }
+    });
+  }
+
+  function firstSentenceTruncated(testo, max) {
+    var piano = String(testo || '').replace(/\*\*/g, '').replace(/`/g, '');
+    var idx = piano.search(/[.!?]/);
+    var frase = idx === -1 ? piano : piano.slice(0, idx + 1);
+    if (frase.length > max) frase = frase.slice(0, max).replace(/\s+\S*$/, '') + '…';
+    return frase;
+  }
+
+  /* «Le domande aperte» (forma approvata): 4 delle 6 non si rispondono da
+     questa porta (il contratto non porta un campo di destinazione) -- in v1
+     si mostrano da leggere, chiuse, senza modulo di risposta. */
+  function renderOpenQuestions(body, domande) {
+    subheading(body, 'Le domande aperte');
+    if (!domande.length) {
+      line(body, 'Il censore non ha domande aperte in questo momento.', TONE_CALM);
+      return;
+    }
+    domande.forEach(function (q) {
+      var chiavi = q.chiavi || [];
+      var chiuso = firstSentenceTruncated(q.domanda, 80) + ' (' + fmtCount(chiavi.length) +
+        (chiavi.length === 1 ? ' chiave)' : ' chiavi)');
+      body.appendChild(createDisclosure(chiuso, chiuso, function (panel) {
+        var testo = el('p', 'sc-desc');
+        appendMarkedText(testo, q.domanda);
+        panel.appendChild(testo);
+        if (chiavi.length) panel.appendChild(el('p', 'text-mono', chiavi.join(', ')));
+      }, false));
+    });
+  }
+
   function renderKnowledge(body, sapere) {
     var nonCapito = (sapere && sapere.non_capito) || [];
+    var giudizi = (sapere && sapere.giudizi) || [];
+    var domande = (sapere && sapere.domande_aperte) || [];
 
     /* **Ciò che non ha capito viene PRIMA.** È l'unica parte su cui il
        proprietario può fare qualcosa -- «quello è il contatore dell'acqua» --
@@ -1465,11 +1981,20 @@ window.HirisWatcherRoute = (function () {
       });
     }
 
+    /* «Le tue correzioni» -> «I giudizi del seme» -> «Le domande aperte»
+       (forma approvata, gerarchia). `outerBody` è la sezione intera: ogni
+       scrittura la ricarica per intero (spec: la correzione vale subito).
+       Il titolo di «Le tue correzioni» torna indietro (fix round 1, MINOR 6):
+       `loadKnowledge` lo usa per rimettere il focus dopo una scrittura. */
+    var correctionsHeading = renderCorrections(body, giudizi, body);
+    renderSeedGroups(body, giudizi, body);
+    renderOpenQuestions(body, domande);
+
     subheading(body, 'Cosa ha capito');
     var righe = (sapere && sapere.conteggi && sapere.conteggi.righe) || [];
     if (!righe.length) {
       line(body, 'Il sapere è vuoto: nessuna riga, di nessuna specie.', TONE_UNKNOWN);
-      return;
+      return correctionsHeading;
     }
     /* **Per specie e provenienza, non un totale solo**: «177 significati
        importati da Home Assistant» e «tre ricette dedotte dal modello» sono
@@ -1484,6 +2009,7 @@ window.HirisWatcherRoute = (function () {
       grid.appendChild(tile);
     });
     body.appendChild(grid);
+    return correctionsHeading;
   }
 
   function renderKnowledgeError(body, status, reload) {
@@ -1496,14 +2022,27 @@ window.HirisWatcherRoute = (function () {
     retryButton(body, reload);
   }
 
-  function loadKnowledge(body) {
+  /* `notice` (facoltativo): il messaggio del 409 («scritta ma non in
+     vigore», `submitJudgment`) sopravvive al ricaricamento -- senza,
+     ricaricare subito la sezione lo cancellerebbe prima che chi ha
+     scritto la correzione faccia in tempo a leggerlo. */
+  /* `focusCorrections` (fix round 1, MINOR 6): dopo una scrittura riuscita
+     (200) o non in vigore (409) il corpo si ricostruisce da zero -- il
+     bottone appena premuto sparisce, e senza spostarlo esplicitamente il
+     focus cade su `<body>`. Il bersaglio è il titolo di «Le tue
+     correzioni» (`renderKnowledge` lo torna indietro), reso focalizzabile
+     con `tabindex=-1` -- non un ricaricamento generico (mount iniziale,
+     «Riprova»), dove spostare il focus da solo sarebbe invadente. */
+  function loadKnowledge(body, notice, focusCorrections) {
     clearEl(body);
     line(body, 'Caricamento…', TONE_CALM);
     function reload() { return loadKnowledge(body); }
     return read('api/mind/knowledge').then(function (occurrence) {
       clearEl(body);
       if (!occurrence.ok) { renderKnowledgeError(body, occurrence.status, reload); return; }
-      renderKnowledge(body, occurrence.corpo);
+      if (notice) line(body, notice, TONE_PROBLEM);
+      var heading = renderKnowledge(body, occurrence.corpo);
+      if (focusCorrections && heading && typeof heading.focus === 'function') heading.focus();
     }, function () {
       clearEl(body);
       renderKnowledgeError(body, null, reload);

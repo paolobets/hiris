@@ -476,6 +476,23 @@ un verificatore.
 caricano all'avvio con la loro provenienza: restano scritte, riviste, linterate e in git — e la casa
 scrive sopra.
 
+> **STATO al 17/09/2026 (3.49.0) — fatto, e le «76 righe» erano la misura sbagliata.** Del
+> vocabolario dei tipi non si semina la riga: si seminano i **giudizi**, cioè le celle che un
+> lettore usa davvero a runtime. Sono **99** (`mind/seed.judgment_seed`): 26 `genere`, 23
+> `notevole`, 18 `riposo`, 13 `accendibile`, 10 `limiti_parametri`, 9 `lavoro`, provenienza
+> `nostro`, autore «seme del repo». Le altre celle delle 76 righe **restano codice** con le loro
+> porte e le 12 prove ancorate al sorgente, e la ragione è la prima fondamenta, non la fretta:
+> `capability_names`, `capability_attributes` e `state_attributes` (68 celle `importato`) sono la
+> **trascrizione di ciò che Home Assistant dichiara**, non un nostro giudizio — seminarle
+> significherebbe invitare la casa a «correggere» un fatto di HA, che va riletto da HA e non
+> discusso. `capability_attributes_dropped` e `assumable_attributes` sono giudizi nostri, ma
+> **correggono una tabella importata** e vivono accanto alla loro fonte (decisione D1).
+>
+> Quindi la promessa di questo paragrafo è mantenuta dove ha senso: **ciò che è opinione diventa
+> una riga che la casa può correggere** (dalla porta `POST /api/mind/judgment` e dalla pagina del
+> sapere), **ciò che è trascrizione resta codice**. La verifica dal vivo in casa è il Task 12 del
+> piano, e a quel punto questa nota va confermata o corretta con ciò che si vede.
+
 ---
 
 ## §9 · Il resoconto giornaliero
@@ -607,13 +624,13 @@ stessa cosa.
 | esce | dove va |
 |---|---|
 | `casa.db` | **cancellato** — l'anagrafe si legge dal vivo, e più ricca |
-| ~~le **gambe** (`ASPECTS`, `aspect_of`, le 42 righe che le assegnano)~~ **RESTANO** (16/09/2026) | il giudizio di **rilevanza** è passato all'osservatore, come previsto — ma le gambe facevano anche un secondo lavoro che questa riga non aveva visto: `mind/facts._reading_aspect` ne ricava il **genere** di ogni episodio, e senza un sostituto un rilevatore di fumo scattato torna a leggersi «Acceso». Restano finché il genere non nasce dal sapere: è a backlog, misurato |
+| le **gambe** (`ASPECTS`, `aspect_of`, le 42 righe che le assegnano) | **CANCELLATE il 17/09/2026 (3.49.0)**, insieme a `ASPECT`, `ASPECT_GUARD` e alle 43 celle di gamba e guardia: il sostituto esiste, il **genere** dell'episodio lo chiede all'istantanea dei giudizi. La riga «RESTANO» del 16/09 è superata |
 | il **pavimento** (`baseline.in_baseline`, `baseline.aspect`) | sostituito dalla **cadenza di riconsiderazione** |
 | gli **`oggetti`** come strato separato | episodi dentro il resoconto giornaliero |
-| ~~`genre_for` e i sei **generi**~~ **RESTANO** (16/09/2026) | vero per le **misure**, che nascono dalle ricette — ma la **cronaca** no: il genere di un episodio viene ancora da qui, e gira dentro `aggregate_day` ogni notte. Stessa voce di backlog delle gambe: si cancellano insieme, o non si cancellano |
+| `genre_for` e i sei **generi** | **RESTA `genre_for`, e adesso è un lettore** (17/09/2026): non calcola più il genere dalla gamba, lo **chiede** all'istantanea (`TypeJudgments.genre_of`). E i generi della cronaca sono diventati **quattro**, non sei — `funzionamento`, `presenza`, `sicurezza`, `guasto` (`type_vocabulary.CHRONICLE_GENRES`): `energia` e `bilancio` sono usciti perché nessun episodio prendeva quella forma (decisione D2). Il giudizio che dice quale genere spetti a un soggetto è uscito dal codice ed è una riga del sapere |
 | `_DIRECTION_BY_TRANSLATION_KEY` (`ha_client.py:1916`) | 14 righe di sapere, soggetto `integrazione` |
 | `DEVICE_CLASS_MEANING` (27 voci) | letto da `frontend/get_translations` |
-| `type_vocabulary.py` come **casa** | resta come **seme**: 76 righe caricate all'avvio |
+| `type_vocabulary.py` come **casa** | resta come **seme**, e dal 17/09/2026 lo è davvero: non 76 righe, **99 celle di giudizio** caricate all'avvio (vedi la nota di §8); il resto è trascrizione di HA e resta codice |
 | `home_space/store.py::replace()` che cancella tutto | non serve più |
 | l'assenza del filtro `da != a` | filtro aggiunto (**−22%** da solo) |
 
@@ -630,6 +647,20 @@ stessa cosa.
 >
 > Finché restano, **questa tabella dichiara distrutto ciò che gira**: o si costruisce il sostituto,
 > o la riga va corretta. È a backlog, con la misura, e la decisione è del proprietario.
+
+> **STATO al 17/09/2026 (3.49.0): il sostituto è stato costruito, e le due righe qui sopra sono
+> superate.** Le **gambe sono cancellate** — `ASPECT`, `ASPECT_GUARD`, `ASPECTS`, `aspect_of` e le
+> 43 celle di gamba e guardia — insieme alle **otto porte** del letterale che nessuno legge più
+> (`is_operable`, `operable_domains`, `resting_states_of`, `resting_states`, `working_states_of`,
+> `is_notable`, `notable_types`, `parameter_limits`). `genre_for` **resta**, ma come
+> **lettore**: chiede il genere all'istantanea dei giudizi. Il rilevatore di fumo non torna
+> «Acceso»: nel seme è una riga `genere` `sicurezza`, e una prova la fissa.
+>
+> Il prezzo dichiarato: `none` **non è più un riposo** (cambio di comportamento, 200 righe in una
+> settimana su 6 apparati di rete), e la misura che ha reso sicura la sostituzione è il ripasso di
+> 52.123 righe di storia di HA su 304 entità — **0 righe cambiano esito**. `DEVICE_CLASS_MEANING`
+> resta «a metà» come prima. **La verifica dal vivo in casa non è ancora stata fatta**: è il Task
+> 12 del piano, e finché non è fatta questa nota vale sul codice, non sulla casa.
 
 **E i test si smontano insieme a ciò che testavano** — è la regola della review totale, e qui vale
 in pieno: le asserzioni che difendono gambe, pavimento e generi difenderebbero ciò che abbiamo

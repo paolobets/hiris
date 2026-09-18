@@ -1784,3 +1784,90 @@ def test_area_listing_a_diagnostic_sensor_does_not_repeat_the_rule():
                   "area", "sala")
     entity = next(e for e in detail["entita"] if e["id"] == "sensor.persons")
     assert "regola" not in entity
+
+
+def test_un_limite_corretto_dalla_casa_arriva_ai_comandi():
+    """Mutazione ESEGUITA (giro di correzioni 1, punto 7): in
+    `_limits_of_entity`, ignorare il parametro e leggere il seme del repo --
+    `linked = REPO_JUDGMENTS.parameter_limits(domain, parameter)` -- rossa
+    (torna `{'minimo': 1500, 'massimo': 9000, 'limiti_da': "questa entita'"}`
+    invece di `{}`); ripristinata con l'editor, sha256 identico.
+
+    **La mutazione dichiarata prima era impossibile**: diceva «tornare a
+    `type_vocabulary.parameter_limits`», uscita col Task 8.
+    """
+    from hiris.app.home_space import type_vocabulary as tv
+    from hiris.app.home_space.queries import _limits_of_entity
+    from hiris.app.home_space.type_judgments import TypeJudgments
+    righe = tuple(r for r in tv.judgment_seed_rows()
+                  if not (r[1] == "light" and r[2] == "limiti_parametri"))
+    giudizi = TypeJudgments.from_rows(righe, genres=tv.CHRONICLE_GENRES,
+                                      absent_forms=tv.ABSENT_STATE_FORMS.value)
+    attributi = {"min_color_temp_kelvin": 1500, "max_color_temp_kelvin": 9000}
+    assert _limits_of_entity("light", "color_temp_kelvin", attributi)
+    assert _limits_of_entity("light", "color_temp_kelvin", attributi, judgments=giudizi) == {}
+
+
+class _RegistroDelColoreFinto:
+    """Il registro minimo che questa prova chiede: un solo servizio,
+    `light.turn_on`, con un solo parametro senza filtro (si applica sempre a
+    prescindere dagli attributi). Non e' `ServiceRegistry` -- qui serve solo
+    il contratto duck-type che `commands_for` chiede (`services_for`/
+    `service`), non la normalizzazione vera del payload di Home Assistant,
+    gia' provata altrove (`tests/test_action_capabilities.py`)."""
+
+    def services_for(self, domain):
+        return ["turn_on"] if domain == "light" else []
+
+    def service(self, domain, name):
+        if domain == "light" and name == "turn_on":
+            return {"fields": {"color_temp_kelvin": {}}}
+        return None
+
+
+def test_una_correzione_su_limiti_arriva_dalla_vista_intera_non_solo_dalla_foglia():
+    """Fix round 1 (revisione Fable), rilievo ALTO: il test gemello sopra
+    prova che `_limits_of_entity`, chiamata DIRETTAMENTE, legge `judgments`
+    -- ma non che `view()` gliela CONSEGNI attraverso tutta la catena
+    (view -> _view_entity -> commands_for -> _command_parameters ->
+    _limits_of_entity). Nessuna di quelle quattro funzioni intermedie e' in
+    `FUNZIONI` di `tests/test_judgments_passed_in_production.py` (solo
+    `commands_for` lo e', e solo per il suo UNICO sito di chiamata in
+    `_view_entity`): un inoltro tolto a meta' catena sarebbe passato
+    inosservato da ogni prova del Task 5. Questa e' la prova DAL LETTORE
+    (spec §9.3): chiama `view()`, come fa davvero `ToolDispatcher._view`.
+
+    Mutazioni ESEGUITE, una alla volta, ciascuna rossa e ripristinata con
+    l'editor: tolto `judgments=judgments` dalla chiamata `_view_entity(`
+    dentro `view`; dalla chiamata `commands_for(` dentro `_view_entity`;
+    dalla chiamata `_command_parameters(` dentro `commands_for`; dalla
+    chiamata `_limits_of_entity(` dentro `_command_parameters`. In ognuno
+    dei quattro casi i limiti dell'Alberello (min/massimo) restano nel
+    dettaglio anche con l'istantanea corretta, e la prova arrossisce su
+    `assert "minimo" not in limiti_corretti`.
+    """
+    from hiris.app.home_space import type_vocabulary as tv
+    from hiris.app.home_space.type_judgments import TypeJudgments
+
+    attributi = {"light.cucina_1": inherited_attributes(
+        {"min_color_temp_kelvin": 1500, "max_color_temp_kelvin": 9000}, "light")}
+    registro = _RegistroDelColoreFinto()
+
+    dettaglio_seme = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "entita", "light.cucina_1",
+                    reported_attributes=attributi, registry=registro)
+    limiti_seme = dettaglio_seme["comandi"]["light.turn_on"]["parametri"]["color_temp_kelvin"]
+    assert limiti_seme["minimo"] == 1500
+    assert limiti_seme["massimo"] == 9000
+
+    righe = tuple(r for r in tv.judgment_seed_rows()
+                  if not (r[1] == "light" and r[2] == "limiti_parametri"))
+    giudizi = TypeJudgments.from_rows(righe, genres=tv.CHRONICLE_GENRES,
+                                      absent_forms=tv.ABSENT_STATE_FORMS.value)
+    corretta = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "entita", "light.cucina_1",
+                    reported_attributes=attributi, registry=registro, judgments=giudizi)
+    limiti_corretti = corretta["comandi"]["light.turn_on"]["parametri"]["color_temp_kelvin"]
+    assert "minimo" not in limiti_corretti, (
+        "la correzione della casa (`light` senza piu' limiti_parametri) deve "
+        "arrivare fino al dettaglio che `view()` restituisce, non solo a "
+        "`_limits_of_entity` chiamata da sola")
+    assert "massimo" not in limiti_corretti

@@ -920,7 +920,7 @@ class Watcher:
         lavoro periodico comincino a girare.
 
         **Limite dichiarato, non una promessa.** Il grezzo vive 21 giorni (22
-        con la guardia, vedi `archivio.READING_RETENTION_S`). Una condizione
+        con la guardia, vedi `mind/store.READING_RETENTION_S`). Una condizione
         aperta da piu' a lungo ha gia' perso la sua riga d'apertura con la
         potatura: qui verra' vista come nuova, e la data d'inizio (`quando_ts`)
         che l'oggetto porta sara' quella del ritrovamento, non quella vera. Non

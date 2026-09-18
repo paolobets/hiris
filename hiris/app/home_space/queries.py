@@ -76,7 +76,8 @@ from .topology import (
     labels_with_id,
     readable_state,
 )
-from .type_vocabulary import parameter_limits
+from .type_judgments import TypeJudgments
+from .type_vocabulary import REPO_JUDGMENTS
 
 # I tipi di comportamento che `guarda` sa mostrare col loro corpo. Un
 # "automazione" e uno "script" sono voci dello stesso elenco
@@ -430,8 +431,8 @@ def _enrich_entity(entity_detail: dict, entry: dict,
             # avrebbe messo 431 blocchi di scusa dentro le risposte di `guarda`
             # per dire ogni volta la stessa cosa non-notizia, contro la legge di
             # questo prodotto («una chiave senza niente da dire non esce»). La
-            # distinzione non si perde, e si legge come in
-            # `handlers_mind._with_rendered_states`: la chiave ASSENTE con lo
+            # distinzione non si perde, e si legge come proprio qui, dentro
+            # `_enrich_entity`: la chiave ASSENTE con lo
             # `stato` grezzo significa «questo stato non ha resa, e Home
             # Assistant stesso mostrerebbe il grezzo»; la chiave PRESENTE
             # significa «non ho potuto chiedere», col motivo dentro.
@@ -817,19 +818,23 @@ def _values_seen(values: list) -> dict:
             "altri_valori": len(values) - _MOST_VALUES}
 
 
-def _limits_of_entity(domain: str, parameter: str, attributes: dict) -> dict:
+def _limits_of_entity(domain: str, parameter: str, attributes: dict,
+                      judgments: TypeJudgments = REPO_JUDGMENTS) -> dict:
     """I limiti che l'ENTITA' dichiara per questo parametro, o `{}`.
 
-    Il collegamento parametro -> attributo vive nell'anagrafe dei tipi
-    (`type_vocabulary.parameter_limits`), dove ogni nome e' sorvegliato da una
-    prova che lo confronta con le capacita' che Home Assistant dichiara per
-    quel dominio: un refuso non diventa un limite che non esiste.
+    Il collegamento parametro -> attributo vive nell'istantanea dei giudizi
+    (`judgments.parameter_limits`, spec 2026-09-16 §3, campo `limiti_parametri`
+    -- prima era `type_vocabulary.parameter_limits` letto a mano), dove ogni
+    nome e' sorvegliato da una prova che lo confronta con le capacita' che
+    Home Assistant dichiara per quel dominio: un refuso non diventa un limite
+    che non esiste. `judgments` arriva come parametro (D3): in produzione
+    l'istantanea viva, il predefinito `REPO_JUDGMENTS` e' il solo seme.
 
     **Un intervallo si prende solo INTERO.** Con un estremo solo dall'entita'
     e l'altro dal selettore la risposta direbbe «da 1500 a 6500», che non e'
     ne' il cursore ne' la lampadina -- una terza cosa, vera di nessuno.
     """
-    linked = parameter_limits(domain, parameter)
+    linked = judgments.parameter_limits(domain, parameter)
     if not linked:
         return {}
     options_attribute = linked.get("options")
@@ -883,7 +888,8 @@ def _limits_of_selector(detail: dict) -> dict:
     return {}
 
 
-def _command_parameters(domain: str, definition: dict, attributes: dict) -> dict:
+def _command_parameters(domain: str, definition: dict, attributes: dict,
+                        judgments: TypeJudgments = REPO_JUDGMENTS) -> dict:
     """I parametri di UN servizio utilizzabili su un'entita' con questi
     attributi, coi loro limiti.
 
@@ -896,7 +902,9 @@ def _command_parameters(domain: str, definition: dict, attributes: dict) -> dict
 
     I limiti dell'entita' vincono su quelli del selettore, e da un'unita'
     dichiarata solo dal selettore (`kelvin`, `%`) non si rinuncia: e' la sola
-    parte del cursore generico che descrive anche il dispositivo.
+    parte del cursore generico che descrive anche il dispositivo. `judgments`
+    e' l'istantanea dei giudizi (spec §3): la inoltra soltanto a
+    `_limits_of_entity`.
     """
     fields = definition.get("fields")
     if fields is None:
@@ -909,7 +917,7 @@ def _command_parameters(domain: str, definition: dict, attributes: dict) -> dict
             continue
         detail = detail if isinstance(detail, dict) else {}
         limits = _limits_of_selector(detail)
-        own = _limits_of_entity(domain, name, attributes)
+        own = _limits_of_entity(domain, name, attributes, judgments=judgments)
         if own:
             unit = limits.get("unita")
             limits = dict(own)
@@ -919,7 +927,8 @@ def _command_parameters(domain: str, definition: dict, attributes: dict) -> dict
     return {_COMMAND_PARAMETERS: parameters}
 
 
-def commands_for(entity_id: str, registry, attributes: dict) -> dict:
+def commands_for(entity_id: str, registry, attributes: dict,
+                 judgments: TypeJudgments = REPO_JUDGMENTS) -> dict:
     """Cosa si puo' chiedere a questa entita', servizio per servizio.
 
     `{}` quando non c'e' un registro, o quando questa casa non dichiara
@@ -929,7 +938,9 @@ def commands_for(entity_id: str, registry, attributes: dict) -> dict:
 
     Pura come tutto questo modulo: il registro glielo passa il chiamante
     (`home_space/tools.py`), gia' scaldato, e qui dentro non si chiede niente
-    a nessuno.
+    a nessuno. `judgments` e' l'istantanea dei giudizi sui limiti dei
+    parametri (spec 2026-09-16 §3): la inoltra a `_command_parameters`, in
+    produzione l'istantanea viva.
     """
     if registry is None or not isinstance(attributes, dict):
         return {}
@@ -943,7 +954,8 @@ def commands_for(entity_id: str, registry, attributes: dict) -> dict:
         definition = service(domain, name)
         if not isinstance(definition, dict):
             continue
-        commands[f"{domain}.{name}"] = _command_parameters(domain, definition, attributes)
+        commands[f"{domain}.{name}"] = _command_parameters(
+            domain, definition, attributes, judgments=judgments)
     return commands
 
 
@@ -1112,7 +1124,8 @@ def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
                  reported_attributes: dict[str, dict] | None = None,
                  registry=None,
                  translations: dict | None = None,
-                 knowledge=None) -> dict:
+                 knowledge=None,
+                 judgments: TypeJudgments = REPO_JUDGMENTS) -> dict:
     entity = next((e for e in home_space.get("entita") or [] if e.get("id") == reference), None)
     if entity is None:
         # CRITICAL ③: col registro "entita" caduto (`replace` parziale
@@ -1263,7 +1276,8 @@ def _view_entity(home_space: dict, memories: list[dict], state: dict, reference,
     # comanda».
     commands = commands_for(entity["id"], registry,
                             disclosable_attributes(
-                                (reported_attributes or {}).get(entity["id"])))
+                                (reported_attributes or {}).get(entity["id"])),
+                            judgments=judgments)
     if commands:
         detail["comandi"] = commands
     return detail
@@ -1645,7 +1659,8 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
            reported_attributes: dict[str, dict] | None = None,
            registry=None,
            translations: dict | None = None,
-           knowledge=None) -> dict:
+           knowledge=None,
+           judgments: TypeJudgments = REPO_JUDGMENTS) -> dict:
     """Il dettaglio di UNA cosa sola -- l'area con le sue entita' e i loro
     stati, l'entita' col suo stato e la sua classe, l'automazione o lo
     script col loro corpo, il dispositivo con le sue entita', il ricordo
@@ -1776,6 +1791,20 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     stesso ricordo non deve poter uscire filtrato da una via e grezzo da
     un'altra. Il testo ARCHIVIATO non cambia (`memory/store.py`, regola
     1): questa e' una copia, non una riscrittura.
+
+    `judgments` e' l'istantanea dei giudizi sui tipi (spec 2026-09-16 §3):
+    la inoltra soltanto, a `_view_entity` -> `commands_for` ->
+    `_command_parameters` -> `_limits_of_entity` (il solo ramo che li legge).
+    Arriva come ARGOMENTO come `stato`: questa funzione e' pura. In
+    produzione e' sempre l'istantanea viva, `app["type_judgments"]` (via
+    `home_space/tools.py::ToolDispatcher._view`); il predefinito
+    `REPO_JUDGMENTS` -- il solo seme del repo -- serve alle prove. Una prova
+    strutturale (`tests/test_judgments_passed_in_production.py`) boccia ogni
+    chiamata di produzione a questa funzione senza `judgments=`; una prova dal
+    lettore (`tests/test_queries.py::
+    test_una_correzione_su_limiti_arriva_dalla_vista_intera_non_solo_dalla_foglia`)
+    sorveglia che la catena interna -- che quella prova strutturale non guarda
+    -- lo inoltri davvero fino a `_limits_of_entity`.
     """
     memories = sanitized_memories(memories)
     if kind == "area":
@@ -1786,7 +1815,7 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
         return _view_entity(home_space, memories, state, reference, unavailable,
                               fallback_names, reported_units, reported_classes,
                               reported_since_when, reported_attributes, registry,
-                              translations, knowledge)
+                              translations, knowledge, judgments=judgments)
     if kind == "dispositivo":
         return _view_device(home_space, memories, state, reference, unavailable,
                                    fallback_names, reported_units, reported_classes,

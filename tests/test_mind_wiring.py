@@ -25,6 +25,7 @@ import pytest
 
 from hiris.app import server
 from hiris.app.home_space.reader import HomeSpace
+from hiris.app.home_space.type_vocabulary import REPO_JUDGMENTS
 from hiris.app.mind.store import READING_RETENTION_S
 from hiris.app.mind.watcher import Watcher
 from hiris.app.proxy.entity_cache import EntityCache, _to_minimal
@@ -549,7 +550,8 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
 
         asyncio.run(server.reaggregate_last_two_days(
             {"home_space_store": None, "observations": archivio,
-             "knowledge": _sapere(tmp_path)}, ha_client=_ClienteStatistiche(),
+             "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS},
+            ha_client=_ClienteStatistiche(),
             now=lambda tz: oggi.astimezone(tz)))
 
         giorni_scritti = {o["giorno"] for o in _cronaca_intera(archivio)}
@@ -572,7 +574,8 @@ def test_riaggrega_gli_ultimi_due_giorni_rifa_esattamente_ieri_e_l_altro_ieri(tm
         prima = _cronaca_intera(archivio)
         asyncio.run(server.reaggregate_last_two_days(
             {"home_space_store": None, "observations": archivio,
-             "knowledge": _sapere(tmp_path)}, ha_client=_ClienteStatistiche(),
+             "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS},
+            ha_client=_ClienteStatistiche(),
             now=lambda tz: oggi.astimezone(tz)))
         dopo = _cronaca_intera(archivio)
 
@@ -1482,10 +1485,13 @@ def test_il_sapere_nasce_PRIMA_della_riparazione_all_avvio():
 
     Mutazione ESEGUITA: spostare `app["knowledge"] = KnowledgeStore(...)`
     sotto la chiamata a `reaggregate_last_two_days` -- rossa.
-    """
-    sorgente = inspect.getsource(server)
 
-    assert (sorgente.index('app["knowledge"] = KnowledgeStore(')
+    Dal Task 7b il sapere nasce in `_open_knowledge`, chiamata da `_on_startup`:
+    l'ordine si cerca sulla chiamata, dentro `_on_startup`.
+    """
+    sorgente = inspect.getsource(server._on_startup)
+
+    assert (sorgente.index("_open_knowledge(app, data_dir)")
             < sorgente.index("reaggregate_last_two_days(app, ha_client)"))
 
 
@@ -1582,11 +1588,14 @@ def test_l_osservatore_riceve_il_sapere_e_nasce_DOPO_di_lui():
 
     Mutazione ESEGUITA: spostare `app["watcher"] = Watcher(...)` sopra la
     creazione del sapere -- rossa.
+
+    Dal Task 7b il sapere nasce in `_open_knowledge` e la chiave c'e' sempre,
+    anche quando vale `None` (il Watcher lo regge: non chiede attributi).
     """
-    sorgente = inspect.getsource(server)
+    sorgente = inspect.getsource(server._on_startup)
 
     assert 'Watcher(app["observations"], knowledge=app["knowledge"])' in sorgente
-    assert (sorgente.index('app["knowledge"] = KnowledgeStore(')
+    assert (sorgente.index("_open_knowledge(app, data_dir)")
             < sorgente.index('app["watcher"] = Watcher('))
 
 
@@ -1705,13 +1714,25 @@ def test_la_riparazione_all_avvio_riscrive_anche_il_RESOCONTO_dei_due_giorni(tmp
 
         asyncio.run(server.reaggregate_last_two_days(
             {"home_space_store": None, "observations": archivio,
-             "knowledge": _sapere(tmp_path)}, ha_client=_ClienteStatistiche(),
+             "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS},
+            ha_client=_ClienteStatistiche(),
             now=lambda tz: oggi.astimezone(tz)))
 
         for giorno in ("2026-08-22", "2026-08-23"):
             scritto = archivio.report(giorno)
             assert scritto is not None, f"il resoconto di {giorno} manca"
             assert scritto["giorno"] == giorno
+            # Anche la riparazione d'avvio scrive la cronaca, quindi anche lei
+            # scrive l'impronta (spec 2026-09-16 §6). Mutazione ESEGUITA: in
+            # `aggregate_day` non passare `judgment=` a `build_report` -- rossa.
+            # **Che l'impronta sia QUESTA e non un'altra e' vero per
+            # costruzione** (giro di correzioni 1, punto 7): `app` porta
+            # `REPO_JUDGMENTS`, quindi non si prova che l'istantanea VIVA
+            # arrivi fin qui, si prova che un'impronta ci sia. La proprieta'
+            # vera -- «l'impronta scritta e' quella dei giudizi ricevuti» --
+            # la difende `tests/test_mind_facts.py`, con un'istantanea
+            # diversa da quella del repo.
+            assert scritto["giudizio"] == {"impronta": REPO_JUDGMENTS.chronicle_fingerprint()}
         # E OGGI no: non e' finito, e un resoconto di mezza giornata direbbe
         # il falso su cio' che quel giorno e' stato.
         assert archivio.report("2026-08-24") is None
@@ -1744,19 +1765,20 @@ def test_il_recupero_scrive_UN_giorno_mancante_per_giro_partendo_dal_piu_vecchio
             quando = (oggi - timedelta(days=delta)).replace(hour=10)
             archivio.record(quando_ts=quando.timestamp(), source="entita",
                             subject=f"light.g{delta}", da="off", a="on")
-        archivio.replace_report("2026-08-24", {"giorno": "2026-08-24",
-                                               "misure": [], "forme": [],
-                                               "cronaca": []})
+        archivio.replace_report("2026-08-24", {
+            "giorno": "2026-08-24", "misure": [], "forme": [], "cronaca": [],
+            "giudizio": {"impronta": REPO_JUDGMENTS.chronicle_fingerprint()}})
         app = {"home_space_store": None, "observations": archivio,
-               "knowledge": _sapere(tmp_path)}
+               "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
+               "backfill_quiet": {}}
 
-        scritto = asyncio.run(server.backfill_one_missing_report(
+        scritto = asyncio.run(server.backfill_one_report(
             app, ha_client=_ClienteStatistiche(), now=lambda tz: oggi.astimezone(tz)))
         assert scritto == "2026-08-22", scritto
         assert archivio.report("2026-08-22") is not None
 
         # Il giro dopo prende il successivo, e salta quello gia' scritto.
-        assert asyncio.run(server.backfill_one_missing_report(
+        assert asyncio.run(server.backfill_one_report(
             app, ha_client=_ClienteStatistiche(),
             now=lambda tz: oggi.astimezone(tz))) == "2026-08-23"
     finally:
@@ -1769,6 +1791,11 @@ def test_il_recupero_TACE_quando_non_manca_piu_niente(tmp_path):
     sano che seppellisce cio' che e' rotto.
 
     Mutazione: tornare il giorno anche quando c'e' gia' -- rossa.
+
+    **Dal 17/09/2026 «non manca piu' niente» vuol dire anche «nessuna cronaca
+    e' nata con un altro giudizio»** (spec 2026-09-16 §6): il resoconto della
+    prova porta l'impronta dell'istantanea corrente. Senza, il giro lo
+    rifarebbe -- ed e' giusto, lo prova la prova accanto.
     """
     from datetime import datetime, timedelta
 
@@ -1780,13 +1807,14 @@ def test_il_recupero_TACE_quando_non_manca_piu_niente(tmp_path):
         quando = (oggi - timedelta(days=1)).replace(hour=10)
         archivio.record(quando_ts=quando.timestamp(), source="entita",
                         subject="light.a", da="off", a="on")
-        archivio.replace_report("2026-08-24", {"giorno": "2026-08-24",
-                                               "misure": [], "forme": [],
-                                               "cronaca": []})
+        archivio.replace_report("2026-08-24", {
+            "giorno": "2026-08-24", "misure": [], "forme": [], "cronaca": [],
+            "giudizio": {"impronta": REPO_JUDGMENTS.chronicle_fingerprint()}})
         app = {"home_space_store": None, "observations": archivio,
-               "knowledge": _sapere(tmp_path)}
+               "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
+               "backfill_quiet": {}}
 
-        assert asyncio.run(server.backfill_one_missing_report(
+        assert asyncio.run(server.backfill_one_report(
             app, ha_client=_ClienteStatistiche(), now=lambda tz: oggi.astimezone(tz))) is None
     finally:
         archivio.close()
@@ -1812,13 +1840,527 @@ def test_il_recupero_NON_va_oltre_il_grezzo(tmp_path):
         archivio.record(quando_ts=quando.timestamp(), source="entita",
                         subject="light.a", da="off", a="on")
         app = {"home_space_store": None, "observations": archivio,
-               "knowledge": _sapere(tmp_path)}
+               "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
+               "backfill_quiet": {}}
 
-        assert asyncio.run(server.backfill_one_missing_report(
+        assert asyncio.run(server.backfill_one_report(
             app, ha_client=_ClienteStatistiche(),
             now=lambda tz: oggi.astimezone(tz))) == "2026-08-23"
     finally:
         archivio.close()
+
+
+def test_il_recupero_rifa_la_CRONACA_di_un_giorno_con_un_altra_impronta(tmp_path, caplog):
+    """Spec 2026-09-16 §6. Mutazioni ESEGUITE: (1) lasciare la condizione a «il
+    resoconto manca» -- rossa (torna `None`); (2) rifare il giorno intero con
+    `aggregate_day` -- rossa (le misure del resoconto spariscono); (3) non
+    loggare la riga con la durata -- rossa.
+
+    **L'impronta asserita qui e' vera per costruzione** (giro di correzioni 1,
+    punto 7): `app["type_judgments"]` porta `REPO_JUDGMENTS`, quindi
+    l'uguaglianza dice «la cronaca rifatta ha scritto un'impronta», non «ha
+    scritto quella dei giudizi che ha ricevuto». Che sia proprio quella --
+    con un'istantanea diversa da quella del repo -- lo difende
+    `tests/test_mind_facts.py`. Qui si prova il CABLAGGIO: che sia il recupero
+    a far partire il rifacimento, che tocchi solo cronaca e impronta, e che
+    logghi la durata."""
+    from datetime import datetime, timedelta
+
+    from hiris.app.mind.store import ObservationsStore
+
+    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
+    try:
+        oggi = datetime(2026, 8, 25, tzinfo=UTC)
+        quando = (oggi - timedelta(days=2)).replace(hour=10)
+        archivio.record(quando_ts=quando.timestamp(), source="entita",
+                        subject="light.g", da="off", a="on")
+        # Il grezzo comincia ESATTAMENTE a mezzanotte del 23: il giorno e'
+        # tutto nel grezzo, e non e' quello a cavallo della potatura che il
+        # recupero non rifa' (fix round 1, prova accanto).
+        archivio.record(quando_ts=quando.replace(hour=0).timestamp(), source="entita",
+                        subject="sensor.t", da="20", a="21")
+        for giorno in ("2026-08-23", "2026-08-24"):
+            archivio.replace_report(giorno, {
+                "giorno": giorno, "misure": [{"soggetto": "d", "misura": "m", "valore": 1,
+                                              "unita": "kWh", "copertura": 1.0}],
+                "forme": [], "cronaca": [], "giudizio": {"impronta": "vecchia"}})
+        app = {"home_space_store": None, "observations": archivio,
+               "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
+               "backfill_quiet": {}}
+        with caplog.at_level(logging.INFO, logger=server.logger.name):
+            scritto = asyncio.run(server.backfill_one_report(
+                app, ha_client=_ClienteStatistiche(), now=lambda tz: oggi.astimezone(tz)))
+        assert scritto == "2026-08-23"
+        rifatto = archivio.report("2026-08-23")
+        assert rifatto["misure"]
+        assert rifatto["giudizio"]["impronta"] == REPO_JUDGMENTS.chronicle_fingerprint()
+        assert len(rifatto["cronaca"]) == 1
+        assert any(re.search(r"rifatta la cronaca di 2026-08-23 .* in \d+\.\d\d s$",
+                             r.getMessage()) for r in caplog.records), caplog.text
+    finally:
+        archivio.close()
+
+
+def test_il_recupero_NON_rifa_il_giorno_a_cavallo_della_potatura_e_TIENE_gli_ereditati(tmp_path):
+    """Fix round 1, lo scenario che la revisione di Fable ha ESEGUITO: un
+    resoconto scritto col grezzo intero (tre voci), poi la potatura, poi un giro
+    di recupero -- ne restava una.
+
+    Due meccanismi, due regole: (1) il giorno piu' vecchio sta a cavallo del
+    taglio, e le sue righe prima del taglio non ci sono piu': **non si rifa'**;
+    (2) il giorno dopo eredita il termostato acceso da giorni, la cui riga
+    d'origine e' potata: rifatto, **tiene** la voce ereditata.
+
+    Mutazioni ESEGUITE: (1) togliere il salto del giorno a cavallo -- rossa
+    (torna il 23 e la sua cronaca perde `light.a`); (2) togliere la fusione
+    degli ereditati in `rebuild_chronicle` -- rossa (il 24 perde il termostato).
+
+    **L'orologio del giro e' quello della potatura** (giro di correzioni 1,
+    punto 1): `prune(taglio + READING_RETENTION_S)` e' la potatura che gira
+    ventidue giorni dopo il taglio, quindi `oggi` e' quell'istante li'. La
+    prima stesura potava col taglio del 23/08 e poi chiedeva il recupero al
+    25/08: uno stato che la produzione non puo' mai avere -- a due giorni
+    dall'installazione non e' stato potato niente -- e **indistinguibile** da
+    quello di una casa giovane (la prova qui sotto), dove il primo giorno si
+    rifa' eccome. Le due prove chiedono l'opposto sulla stessa terna di
+    numeri: e' l'orologio a separarle, ed e' per questo che dev'essere vero.
+    """
+    from datetime import datetime
+
+    from hiris.app.mind.facts import aggregate_day
+    from hiris.app.mind.store import ObservationsStore
+
+    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
+    try:
+        oggi = datetime(2026, 9, 14, 5, tzinfo=UTC)
+
+        def _ts(giorno, ora):
+            return datetime(2026, 8, giorno, ora, tzinfo=UTC).timestamp()
+
+        archivio.record(quando_ts=_ts(20, 10), source="entita", subject="climate.camera",
+                        da="off", a="heat")
+        archivio.record(quando_ts=_ts(23, 1), source="entita", subject="light.a",
+                        da="off", a="on")
+        archivio.record(quando_ts=_ts(23, 2), source="entita", subject="light.a",
+                        da="on", a="off")
+        archivio.record(quando_ts=_ts(23, 10), source="entita", subject="light.b",
+                        da="off", a="on")
+        scritti = {}
+        for giorno in ("2026-08-23", "2026-08-24"):
+            aggregate_day(store=archivio, day=giorno, timezone=None, judgments=REPO_JUDGMENTS)
+            scritti[giorno] = {**archivio.report(giorno), "giudizio": {"impronta": "vecchia"}}
+            archivio.replace_report(giorno, scritti[giorno])
+        assert [v["chi"] for v in scritti["2026-08-23"]["cronaca"]] == [
+            "light.a", "climate.camera", "light.b"]
+        assert [v["chi"] for v in scritti["2026-08-24"]["cronaca"]] == [
+            "climate.camera", "light.b"]
+
+        # Il taglio alle 05:00 del 23: via il termostato e `light.a`.
+        archivio.prune(_ts(23, 5) + READING_RETENTION_S)
+        app = {"home_space_store": None, "observations": archivio,
+               "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
+               "backfill_quiet": {}}
+        scritto = asyncio.run(server.backfill_one_report(
+            app, ha_client=_ClienteStatistiche(), now=lambda tz: oggi.astimezone(tz)))
+
+        assert scritto == "2026-08-24"
+        assert archivio.report("2026-08-23") == scritti["2026-08-23"]
+        rifatto = archivio.report("2026-08-24")
+        assert rifatto["giudizio"] == {"impronta": REPO_JUDGMENTS.chronicle_fingerprint()}
+        assert rifatto["cronaca"] == scritti["2026-08-24"]["cronaca"]
+    finally:
+        archivio.close()
+
+
+def test_su_una_casa_GIOVANE_il_primo_giorno_rifa_la_cronaca(tmp_path):
+    """Giro di correzioni 1, punto 1 (revisione 1, IMPORTANT): su una casa
+    **mai potata** il primo giorno del grezzo si rifa' come tutti gli altri.
+
+    La guardia della potatura confrontava l'inizio del giorno con
+    `oldest_reading_ts()`. Su una casa potata quello e' l'istante del taglio;
+    su una casa **giovane** e' soltanto l'ora d'installazione -- il primo
+    giorno comincia a mezzanotte, la prima riga arriva alle 10:00, e quel
+    giorno restava al giudizio vecchio **per sempre**, senza un rigo di log,
+    finche' non usciva dalla finestra. La condizione vera e' «nessuna riga di
+    questo giorno puo' essere stata potata», cioe' l'inizio del giorno dentro
+    la ritenzione (`mind/store.prune` taglia esattamente li').
+
+    Rossa prima della correzione: i tre giri tornavano
+    `['2026-09-11', None, None]` e il 10/09 restava a `impronta: vecchia`.
+    """
+    from datetime import datetime
+
+    from hiris.app.mind.facts import aggregate_day, chronicle_is_stale
+    from hiris.app.mind.store import ObservationsStore
+
+    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
+    try:
+        oggi = datetime(2026, 9, 12, tzinfo=UTC)
+
+        def _ts(giorno, ora):
+            return datetime(2026, 9, giorno, ora, tzinfo=UTC).timestamp()
+
+        # L'add-on e' installato il 10/09 alle 10:00: la riga piu' vecchia e'
+        # quella, mezzanotte del 10 e' PRIMA -- e non e' stato potato niente.
+        archivio.record(quando_ts=_ts(10, 10), source="entita", subject="light.a",
+                        da="off", a="on")
+        archivio.record(quando_ts=_ts(11, 10), source="entita", subject="light.b",
+                        da="off", a="on")
+        assert archivio.prune(oggi.timestamp()) == 0, "niente e' scaduto: la casa ha due giorni"
+
+        scritti = {}
+        for giorno in ("2026-09-10", "2026-09-11"):
+            aggregate_day(store=archivio, day=giorno, timezone=None, judgments=REPO_JUDGMENTS)
+            scritti[giorno] = {**archivio.report(giorno), "giudizio": {"impronta": "vecchia"}}
+            archivio.replace_report(giorno, scritti[giorno])
+
+        app = {"home_space_store": None, "observations": archivio,
+               "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
+               "backfill_quiet": {}}
+        giri = [asyncio.run(server.backfill_one_report(
+            app, ha_client=_ClienteStatistiche(), now=lambda tz: oggi.astimezone(tz)))
+            for _ in range(3)]
+
+        assert giri == ["2026-09-10", "2026-09-11", None]
+        for giorno in ("2026-09-10", "2026-09-11"):
+            assert not chronicle_is_stale(archivio.report(giorno), REPO_JUDGMENTS), giorno
+    finally:
+        archivio.close()
+
+
+def test_una_cronaca_che_NON_si_rifa_NON_ferma_i_giorni_dopo(tmp_path, monkeypatch):
+    """Fix round 1: dal piu' vecchio, un giorno che fallisce sempre allo stesso
+    modo (un difetto locale, non la rete) fermerebbe per sempre tutti quelli
+    dopo -- e al primo avvio sono vecchi tutti. Si logga e si passa al giorno
+    dopo, nello stesso giro. Mutazione ESEGUITA: `return None` dopo il warning
+    del ramo della cronaca -- rossa (torna `None`)."""
+    from datetime import datetime, timedelta
+
+    from hiris.app.mind import facts
+    from hiris.app.mind.store import ObservationsStore
+
+    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
+    try:
+        oggi = datetime(2026, 8, 25, tzinfo=UTC)
+        quando = (oggi - timedelta(days=2)).replace(hour=10)
+        archivio.record(quando_ts=quando.timestamp(), source="entita",
+                        subject="light.g", da="off", a="on")
+        archivio.record(quando_ts=quando.replace(hour=0).timestamp(), source="entita",
+                        subject="sensor.t", da="20", a="21")
+        for giorno in ("2026-08-23", "2026-08-24"):
+            archivio.replace_report(giorno, {
+                "giorno": giorno, "misure": [], "forme": [], "cronaca": [],
+                "giudizio": {"impronta": "vecchia"}})
+
+        def _rotta(*, store, day, timezone, judgments):
+            if day == "2026-08-23":
+                raise ValueError("un difetto locale")
+            return facts.rebuild_chronicle(store=store, day=day, timezone=timezone,
+                                           judgments=judgments)
+
+        monkeypatch.setattr(server, "rebuild_chronicle", _rotta)
+        app = {"home_space_store": None, "observations": archivio,
+               "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
+               "backfill_quiet": {}}
+        scritto = asyncio.run(server.backfill_one_report(
+            app, ha_client=_ClienteStatistiche(), now=lambda tz: oggi.astimezone(tz)))
+        assert scritto == "2026-08-24"
+        assert archivio.report("2026-08-23")["giudizio"] == {"impronta": "vecchia"}
+    finally:
+        archivio.close()
+
+
+def test_il_giro_ogni_5_minuti_CHIAMA_backfill_one_report(caplog):
+    """Giro di correzioni 1, punto 8 (MEDIO): **il lavoro periodico non era
+    pinnato da nessuna prova**.
+
+    `_recupero_resoconti` (in `_on_startup`, registrato ogni 5 minuti come
+    `hiris_mind_backfill`) chiama `backfill_one_report` dentro un
+    `except Exception` che logga e passa. Un nome sbagliato -- ed e'
+    esattamente cio' che il rinominare del Task 6 rischiava, `server.py`
+    chiamava `backfill_one_missing_report` fino a ieri -- diventerebbe un
+    `NameError` inghiottito da quel ramo e loggato ogni cinque minuti per
+    sempre: la casa smetterebbe di recuperare i giorni e **tutta la suite
+    resterebbe verde**.
+
+    Si carica la funzione innestata col meccanismo gia' in uso qui sopra
+    (`_carica_funzione_innestata`), con una finta al posto di
+    `backfill_one_report`: se il nome nel sorgente non e' quello, la finta non
+    viene chiamata e il ramo di guardia scrive il suo warning.
+
+    Mutazione ESEGUITA: in `server.py`, `await backfill_one_report(app,
+    ha_client)` -> `await backfill_one_missing_report(app, ha_client)` --
+    rossa (`assert [] != []` sulle chiamate, e il warning «recupero dei
+    resoconti fallito (NameError: ...)»); ripristinata con l'editor, sha256
+    identico.
+    """
+    chiamate = []
+
+    async def _finta(app, ha_client):
+        chiamate.append((app, ha_client))
+        return "2026-08-23"
+
+    logger_test = logging.getLogger("test_recupero_pinnato")
+    app_finta, cliente_finto = {"observations": None}, object()
+    job = _carica_funzione_innestata("_recupero_resoconti", {
+        "app": app_finta, "ha_client": cliente_finto,
+        "backfill_one_report": _finta, "logger": logger_test,
+    })
+
+    with caplog.at_level(logging.WARNING, logger="test_recupero_pinnato"):
+        asyncio.run(job())
+
+    assert chiamate == [(app_finta, cliente_finto)], (
+        "il giro deve chiamare `backfill_one_report` con l'app e il cliente di HA")
+    assert caplog.records == [], (
+        "un nome che non esiste finisce nel ramo di guardia invece che in un errore: "
+        f"{[r.getMessage() for r in caplog.records]}")
+
+
+def test_una_cronaca_che_NON_si_rifa_si_logga_UNA_volta_ogni_quattro_ore_per_giorno(
+        tmp_path, monkeypatch, caplog):
+    """Decisione del proprietario, 17/09/2026 (Task 7b): il giorno che non si
+    rifa' si scrive nel log una volta, poi si tace per 4 ore **per quel
+    giorno**; dopo, se fallisce ancora, si riscrive. Il giro gira ogni cinque
+    minuti: senza, lo stesso warning uscirebbe 48 volte in quattro ore.
+
+    Mutazioni ESEGUITE: (1) togliere la soglia (loggare sempre) -- rossa al
+    secondo giro; (2) stato unico invece che per giorno -- rossa quando fallisce
+    il secondo giorno."""
+    from datetime import datetime, timedelta
+
+    from hiris.app.mind.store import ObservationsStore
+
+    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
+    try:
+        start = datetime(2026, 8, 25, 1, 0, tzinfo=UTC)
+        first = datetime(2026, 8, 23, 0, 0, tzinfo=UTC)
+        archivio.record(quando_ts=first.timestamp(), source="entita",
+                        subject="sensor.t", da="20", a="21")
+        archivio.record(quando_ts=first.replace(hour=10).timestamp(), source="entita",
+                        subject="light.g", da="off", a="on")
+        archivio.replace_report("2026-08-23", {
+            "giorno": "2026-08-23", "misure": [], "forme": [], "cronaca": [],
+            "giudizio": {"impronta": "vecchia"}})
+        archivio.replace_report("2026-08-24", {
+            "giorno": "2026-08-24", "misure": [], "forme": [], "cronaca": [],
+            "giudizio": {"impronta": REPO_JUDGMENTS.chronicle_fingerprint()}})
+
+        def _broken(*, store, day, timezone, judgments):
+            raise ValueError(f"un difetto locale del {day}")
+
+        monkeypatch.setattr(server, "rebuild_chronicle", _broken)
+        app = {"home_space_store": None, "observations": archivio,
+               "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
+               "backfill_quiet": {}}
+
+        def _round(after):
+            caplog.clear()
+            clock = start + after
+            with caplog.at_level(logging.WARNING, logger=server.logger.name):
+                asyncio.run(server.backfill_one_report(
+                    app, ha_client=_ClienteStatistiche(), now=lambda tz: clock.astimezone(tz)))
+            return sorted(re.search(r"cronaca di (\S+) non rifatta", r.getMessage()).group(1)
+                          for r in caplog.records if "non rifatta" in r.getMessage())
+
+        assert _round(timedelta(0)) == ["2026-08-23"]
+        assert _round(timedelta(minutes=5)) == []
+        # Un altro giorno comincia a fallire: il SUO warning esce, quello del 23 no.
+        archivio.replace_report("2026-08-24", {
+            "giorno": "2026-08-24", "misure": [], "forme": [], "cronaca": [],
+            "giudizio": {"impronta": "vecchia"}})
+        assert _round(timedelta(minutes=10)) == ["2026-08-24"]
+        assert _round(timedelta(hours=3, minutes=59)) == []
+        assert _round(timedelta(hours=4, minutes=1)) == ["2026-08-23"]
+    finally:
+        archivio.close()
+
+
+def _one_stale_day(tmp_path):
+    """Un archivio col solo 2026-08-23 da rifare (il 24 ha l'impronta corrente)."""
+    from datetime import datetime
+
+    from hiris.app.mind.store import ObservationsStore
+
+    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
+    first = datetime(2026, 8, 23, 0, 0, tzinfo=UTC)
+    archivio.record(quando_ts=first.timestamp(), source="entita",
+                    subject="sensor.t", da="20", a="21")
+    archivio.record(quando_ts=first.replace(hour=10).timestamp(), source="entita",
+                    subject="light.g", da="off", a="on")
+    archivio.replace_report("2026-08-23", {
+        "giorno": "2026-08-23", "misure": [], "forme": [], "cronaca": [],
+        "giudizio": {"impronta": "vecchia"}})
+    archivio.replace_report("2026-08-24", {
+        "giorno": "2026-08-24", "misure": [], "forme": [], "cronaca": [],
+        "giudizio": {"impronta": REPO_JUDGMENTS.chronicle_fingerprint()}})
+    return archivio
+
+
+def test_un_giorno_che_RIESCE_riapre_il_suo_warning(tmp_path, monkeypatch, caplog):
+    """Fix round 1 del Task 7b: fallisce, poi riesce, poi torna a fallire entro
+    le 4 ore -- e' un fatto nuovo, e si dice. Mutazione ESEGUITA: togliere il
+    `pop` sulla riuscita -- rossa (l'ultimo giro tace)."""
+    from datetime import datetime, timedelta
+
+    from hiris.app.mind import facts
+
+    archivio = _one_stale_day(tmp_path)
+    try:
+        start = datetime(2026, 8, 25, 1, 0, tzinfo=UTC)
+        failing = {"2026-08-23"}
+
+        def _chronicle(*, store, day, timezone, judgments):
+            if day in failing:
+                raise ValueError("un difetto locale")
+            return facts.rebuild_chronicle(store=store, day=day, timezone=timezone,
+                                           judgments=judgments)
+
+        monkeypatch.setattr(server, "rebuild_chronicle", _chronicle)
+        app = {"home_space_store": None, "observations": archivio,
+               "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
+               "backfill_quiet": {}}
+
+        def _warnings(after):
+            caplog.clear()
+            clock = start + after
+            with caplog.at_level(logging.WARNING, logger=server.logger.name):
+                asyncio.run(server.backfill_one_report(
+                    app, ha_client=_ClienteStatistiche(), now=lambda tz: clock.astimezone(tz)))
+            return [r for r in caplog.records if "non rifatta" in r.getMessage()]
+
+        assert len(_warnings(timedelta(0))) == 1
+        failing.clear()
+        assert _warnings(timedelta(minutes=5)) == []
+        assert archivio.report("2026-08-23")["giudizio"] == {
+            "impronta": REPO_JUDGMENTS.chronicle_fingerprint()}
+        # Di nuovo vecchia, di nuovo rotta: entro le 4 ore dal primo warning.
+        archivio.replace_report("2026-08-23", {
+            "giorno": "2026-08-23", "misure": [], "forme": [], "cronaca": [],
+            "giudizio": {"impronta": "vecchia"}})
+        failing.add("2026-08-23")
+        assert len(_warnings(timedelta(minutes=10))) == 1
+    finally:
+        archivio.close()
+
+
+def test_un_resoconto_che_NON_si_recupera_si_logga_UNA_volta_ogni_quattro_ore(
+        tmp_path, monkeypatch, caplog):
+    """Decisione del proprietario, 17/09/2026 (fix round 1 del Task 7b): la
+    quiete vale anche per il ramo «manca» -- Home Assistant irraggiungibile
+    scriveva lo stesso warning ogni cinque minuti. Il ramo resta com'era: torna
+    `None` e riprova al giro dopo. La voce del giorno e' la STESSA del ramo
+    della cronaca, e una riuscita in un ramo la toglie anche per l'altro.
+
+    Mutazioni ESEGUITE: (1) togliere la soglia nel ramo «manca» -- rossa al
+    giro dei 5 minuti; (2) togliere la pulizia sulla riuscita del ramo «manca»
+    -- rossa sull'ultimo giro (la cronaca che fallisce tace)."""
+    from datetime import datetime, timedelta
+
+    from hiris.app.mind.store import ObservationsStore
+
+    archivio = ObservationsStore(str(tmp_path / "osservazioni.db"))
+    try:
+        start = datetime(2026, 8, 25, 1, 0, tzinfo=UTC)
+        first = datetime(2026, 8, 24, 0, 0, tzinfo=UTC)
+        archivio.record(quando_ts=first.timestamp(), source="entita",
+                        subject="sensor.t", da="20", a="21")
+        archivio.record(quando_ts=first.replace(hour=10).timestamp(), source="entita",
+                        subject="light.g", da="off", a="on")
+        broken = {"ingredients": True, "chronicle": False}
+        real_ingredients = server._report_ingredients
+        real_chronicle = server.rebuild_chronicle
+
+        async def _ingredients(app, ha_client, *, giorno, timezone):
+            if broken["ingredients"]:
+                raise ConnectionError("Home Assistant non risponde")
+            return await real_ingredients(app, ha_client, giorno=giorno, timezone=timezone)
+
+        def _chronicle(*, store, day, timezone, judgments):
+            if broken["chronicle"]:
+                raise ValueError("un difetto locale")
+            return real_chronicle(store=store, day=day, timezone=timezone, judgments=judgments)
+
+        monkeypatch.setattr(server, "_report_ingredients", _ingredients)
+        monkeypatch.setattr(server, "rebuild_chronicle", _chronicle)
+        app = {"home_space_store": None, "observations": archivio,
+               "knowledge": _sapere(tmp_path), "type_judgments": REPO_JUDGMENTS,
+               "backfill_quiet": {}}
+
+        def _round(after):
+            caplog.clear()
+            clock = start + after
+            with caplog.at_level(logging.WARNING, logger=server.logger.name):
+                done = asyncio.run(server.backfill_one_report(
+                    app, ha_client=_ClienteStatistiche(), now=lambda tz: clock.astimezone(tz)))
+            return done, [r.getMessage() for r in caplog.records
+                          if "non recuperato" in r.getMessage()
+                          or "non rifatta" in r.getMessage()]
+
+        assert _round(timedelta(0)) == (None, [(
+            "cervello: resoconto di 2026-08-24 non recuperato (ConnectionError: Home "
+            "Assistant non risponde) -- per questo giorno il log tace per 4 ore")])
+        assert _round(timedelta(minutes=5)) == (None, [])
+        done, logged = _round(timedelta(hours=4, minutes=1))
+        assert done is None and len(logged) == 1 and "non recuperato" in logged[0]
+        # Riesce: il resoconto si scrive, e la voce del giorno se ne va.
+        broken["ingredients"] = False
+        assert _round(timedelta(hours=4, minutes=6)) == ("2026-08-24", [])
+        # Lo stesso giorno, poi, ha una cronaca di un altro giudizio che non si
+        # rifa': e' un fatto nuovo, entro 4 ore dall'ultimo warning -- si dice.
+        archivio.replace_report("2026-08-24", {
+            **archivio.report("2026-08-24"), "giudizio": {"impronta": "vecchia"}})
+        broken["chronicle"] = True
+        done, logged = _round(timedelta(hours=4, minutes=11))
+        assert done is None and len(logged) == 1 and "non rifatta" in logged[0]
+    finally:
+        archivio.close()
+
+
+def test_la_quiete_NON_cambia_lo_stato_di_un_app_aiohttp_avviata(tmp_path, monkeypatch):
+    """Fix round 1 del Task 7b (revisione Fable, misurato su aiohttp 3.14.3): il
+    giro gira ad app avviata e congelata; creare la chiave li'
+    (`app.setdefault`) emette «Changing state of started or joined application
+    is deprecated» -- con aiohttp 4 un errore. La chiave nasce in `_on_startup`,
+    che aiohttp esegue PRIMA del `freeze` (`AppRunner._make_server`).
+
+    Due meta', perche' una sola non basta: (1) il giro su un'app VERA congelata,
+    con la chiave gia' creata, non emette l'avviso; (2) `_on_startup` crea la
+    chiave. Con la chiave gia' presente anche `setdefault` tacerebbe: la meta'
+    che lo scopre e' la (2).
+    Mutazioni ESEGUITE: (a) `setdefault` nel giro e niente chiave in
+    `_on_startup` -- rossa sulla (2); (b) il giro che riassegna
+    `app["backfill_quiet"]` -- rossa sulla (1)."""
+    import warnings
+    from datetime import datetime
+
+    from aiohttp import web
+
+    archivio = _one_stale_day(tmp_path)
+    try:
+        def _broken(*, store, day, timezone, judgments):
+            raise ValueError("un difetto locale")
+
+        monkeypatch.setattr(server, "rebuild_chronicle", _broken)
+        app = web.Application()
+        for key, value in (("home_space_store", None), ("observations", archivio),
+                           ("knowledge", None), ("type_judgments", REPO_JUDGMENTS),
+                           ("backfill_quiet", {})):
+            app[key] = value
+        quiet = app["backfill_quiet"]
+        app.freeze()
+        clock = datetime(2026, 8, 25, 1, 0, tzinfo=UTC)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            asyncio.run(server.backfill_one_report(
+                app, ha_client=_ClienteStatistiche(), now=lambda tz: clock.astimezone(tz)))
+        assert not [w for w in caught if "Changing state" in str(w.message)], \
+            [str(w.message) for w in caught]
+        assert app["backfill_quiet"] is quiet and "2026-08-23" in quiet
+    finally:
+        archivio.close()
+
+    assert 'app["backfill_quiet"] = {}' in inspect.getsource(server._on_startup)
 
 def test_i_punti_orari_NON_buttano_media_minimo_e_massimo():
     """**La frase fondativa della spec, dentro il codice nuovo.** Il client

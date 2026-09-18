@@ -171,6 +171,8 @@ from .queries import search as _search_candidates
 from .queries import view as _view_detail
 from .reader import HomeSpace
 from .topology import live_mirror
+from .type_judgments import TypeJudgments
+from .type_vocabulary import REPO_JUDGMENTS
 
 # I tipi di ancora che la memoria conosce, DERIVATI da
 # `memory/interpretation.VOCABULARY["ancore"]` -- la fonte vera, non
@@ -1543,7 +1545,8 @@ class ToolDispatcher:
                  cache=None, actuator=None, lookup_cache: LookupCache | None = None,
                  ha=None, registry=None, agenda=None, workshop=None,
                  exchange: str | None = None, journal=None,
-                 translations=None, knowledge=None) -> None:
+                 translations=None, knowledge=None,
+                 judgments: TypeJudgments | None = None) -> None:
         self._home_space = home_space_store
         self._memory = memory_store
         # Il sapere (`mind/knowledge.py`): cio' che HIRIS ha capito, con la
@@ -1623,6 +1626,14 @@ class ToolDispatcher:
         # lo stesso, con `stato_non_reso` al posto di `stato_leggibile` e il
         # motivo dentro. E' una degradazione dichiarata, non un guasto.
         self._translations = translations
+        # L'istantanea dei giudizi sui tipi (spec 2026-09-16 §3): la STESSA
+        # istanza che legge il nucleo, `app["type_judgments"]`
+        # (`handlers_chat.py::create_tool_dispatcher`). `None` e' legittimo
+        # come per gli altri archivi -- il dispatcher e' SEMPRE costruibile --
+        # e ricade sul solo seme del repo (`REPO_JUDGMENTS`): la stessa
+        # degradazione dichiarata di `_translations` qui sopra, MAI un
+        # `guarda` che solleva perche' nessuno gli ha passato l'istantanea.
+        self._judgments = judgments if judgments is not None else REPO_JUDGMENTS
 
     _RESOURCE_PER_TOOL: ClassVar[dict[str, tuple[str, ...]]] = {
         "search": ("casa",), "view": ("casa", "memoria"),
@@ -2075,7 +2086,12 @@ class ToolDispatcher:
                                       # altri archivi -- il dispatcher e'
                                       # SEMPRE costruibile, e senza sapere il
                                       # dettaglio tace su quel campo.
-                                      knowledge=self._knowledge)
+                                      knowledge=self._knowledge,
+                                      # L'istantanea dei giudizi (spec §3): mai
+                                      # `None` qui -- `__init__` l'ha gia'
+                                      # ricaduta sul seme se il chiamante non
+                                      # gliel'ha passata.
+                                      judgments=self._judgments)
         # Senza inventario leggibile ogni `stato: None` sarebbe ambiguo fra
         # «l'entita' non ha stato» e «non ho potuto guardare»: si dichiara.
         # Fix E1-③: `letto` (la lettura di QUESTA chiamata e' andata a buon

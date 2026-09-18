@@ -40,9 +40,11 @@ def test_un_cambio_si_rilegge_intero(archivio):
 
 
 def test_annota_scrive_le_tre_classi_quando_ci_sono(archivio):
-    """Il pavimento decide la gamba di `sensor`/`binary_sensor` da queste tre
-    classi (Task 3, punto 0): senza, l'aggregazione non puo' mai ricostruire
-    la gamba di un rilevatore di fumo o di un contatore di energia."""
+    """Queste tre classi arrivarono col Task 3, punto 0, quando decidevano il
+    pavimento e la gamba -- entrambi usciti (11/09 e 17/09/2026). Oggi solo
+    `device_class` ha un lettore vivo: senza di lei, `genre_for` non puo'
+    ricostruire il genere di un rilevatore di fumo o di un allagamento
+    quando l'aggregazione rilegge il grezzo."""
     archivio.record(quando_ts=ADESSO, source="entita",
                     subject="binary_sensor.fumo_cucina", da="off", a="on",
                     device_class="smoke", state_class=None, source_type=None)

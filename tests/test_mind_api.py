@@ -413,13 +413,36 @@ async def test_SENZA_giorno_tornano_le_MISURE_di_molti_giorni_senza_cronaca():
 @pytest.mark.asyncio
 async def test_lo_stesso_giorno_si_puo_chiedere_come_DOCUMENTO():
     from hiris.app.api.handlers_mind import handle_report
+    from hiris.app.home_space.type_vocabulary import REPO_JUDGMENTS
 
-    app = {"observations": _ArchivioConResoconto({"2026-09-13": _RESOCONTO})}
+    app = {"observations": _ArchivioConResoconto({"2026-09-13": _RESOCONTO}),
+           "type_judgments": REPO_JUDGMENTS}
     r = await handle_report(_richiesta(
         app, query={"day": "2026-09-13", "formato": "documento"}))
 
     assert r.content_type == "text/markdown"
     assert "## Le misure" in r.text
+
+
+@pytest.mark.asyncio
+async def test_il_DOCUMENTO_confronta_la_cronaca_col_giudizio_di_ADESSO():
+    """Spec 2026-09-16 §6: il documento dell'analista dice quando un giorno e'
+    raccontato con un giudizio diverso da quello attuale. Mutazione ESEGUITA:
+    in `handle_report` chiamare `as_document(resoconto)` senza
+    `current_fingerprint` -- rossa sulla prima asserzione."""
+    from hiris.app.api.handlers_mind import handle_report
+    from hiris.app.home_space.type_vocabulary import REPO_JUDGMENTS
+
+    attuale = {**_RESOCONTO, "giudizio": {"impronta": REPO_JUDGMENTS.chronicle_fingerprint()}}
+    altro = {**_RESOCONTO, "giudizio": {"impronta": "0000000000000000"}}
+    app = {"observations": _ArchivioConResoconto({"2026-09-13": altro, "2026-09-14": attuale}),
+           "type_judgments": REPO_JUDGMENTS}
+    r = await handle_report(_richiesta(
+        app, query={"day": "2026-09-13", "formato": "documento"}))
+    assert "giudizio diverso" in r.text
+    r = await handle_report(_richiesta(
+        app, query={"day": "2026-09-14", "formato": "documento"}))
+    assert "giudizio diverso" not in r.text
 
 # ── L'obiettivo si puo' finalmente SCRIVERE ──────────────────────────────────
 #
@@ -785,6 +808,16 @@ class _FintoSapere:
 
     def not_understood(self):
         return list(self._unexplained)
+
+    def judgment_rows(self):
+        # `handle_knowledge` porta anche i giudizi (spec 2026-09-16 §7): le
+        # prove qui guardano conteggi e non capiti, i giudizi le loro
+        # (`tests/test_handlers_mind_judgment.py`).
+        return []
+
+
+assert_stessa_firma(sap.KnowledgeStore.judgment_rows, _FintoSapere.judgment_rows,
+                    nome="judgment_rows")
 
 
 @pytest.mark.asyncio
