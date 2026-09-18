@@ -73,6 +73,13 @@ pigramente, che qui esiste gia' nell'ordine d'avvio (§1, misura 5).
    7 per ciascuno dei quattro `skyq`): la finestra di allora non e' piu' riproducibile, quindi le
    due misure non si sovrappongono. **Cio' che la misura doveva dimostrare resta vero**: `none`
    arriva a centinaia in una settimana da apparati di rete, e oggi apre e chiude episodi.
+   **E dal vivo il cambio non sposta niente, misurato il 18/09/2026**: confrontate le cronache dei 22
+   giorni prima e dopo il rilascio della 3.49.0, **nessuna voce** — ne' prima ne' dopo — porta uno
+   dei sei apparati, e **nessuna ha `cosa == "none"`**. Questa misura contava righe della **storia di
+   Home Assistant**, non voci di cronaca: quei soggetti l'osservatore non li guarda, quindi in questa
+   casa il `none` non apriva e non chiudeva niente. Il cambio resta giusto (il giorno in cui uno di
+   quei soggetti entrasse nell'obiettivo, aprirebbe assenze false), ma **l'impatto misurato e' zero**:
+   e' scritto qui perche' la promessa non sia piu' grande del fatto.
    Oggi su un `device_tracker` `none` **apre un'assenza**
    (non e' `home`); su uno `switch` **chiude** un episodio (e' nell'unione dei riposi).
 9. **Il genere `presenza` oggi e' l'ASSENZA di una persona**: i 5 episodi del 15/09 sono tutti
@@ -87,11 +94,11 @@ pigramente, che qui esiste gia' nell'ordine d'avvio (§1, misura 5).
     su un archivio locale con 17.519 righe (il volume del 15/09) e 1.755 episodi: **0,68–0,74 s** su
     un PC di sviluppo, cinque ripetizioni. L'host di HA non e' misurato; la fetta scrive la durata
     vera nel log di ogni giorno rifatto (§6).
-    **Stato al 17/09/2026 (Task 10):** la riga di log **esiste** ed e' implementata
-    (`server.py::_recupero_resoconti`, «ogni giorno rifatto logga una riga con la durata»); la
-    **durata vera della casa non e' ancora scrivibile qui**, perche' nasce solo dopo il rilascio,
-    quando il recupero rifa' i giorni sull'host di HA. Si scrive al Task 12, con la verifica dal
-    vivo: **questa misura resta sintetica finche' quel numero non c'e'.**
+    **MISURATA SULLA CASA VERA il 18/09/2026**, col rilascio della 3.49.0: il recupero ha rifatto 21
+    giorni, uno ogni cinque minuti, e ogni riga di log porta la sua durata. **Da 0,90 s (28/08) a
+    11,74 s (17/09)**, in crescita monotona col volume del giorno. Sul PC di sviluppo la stessa
+    operazione costava 0,68-0,74 s: **sull'host di Home Assistant costa fino a sedici volte tanto**,
+    e la differenza cresce coi giorni pieni. Resta comodamente dentro il giro da cinque minuti.
 13. **Le domande aperte del censore**: `type_census.OPEN_QUESTIONS` ne ha **6**, che coprono
     **115 voci** (1 + 4 + 1 + 31 + 57 + 21). La docstring di `type_vocabulary.py` dice «110».
 14. **La casa**: 0 `lock`, 1 `alarm_control_panel` (`disarmed`), 53 `update` (nessuno `on`), HA

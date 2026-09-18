@@ -32,9 +32,15 @@ non chiude niente.
 
 **La misura che ha reso sicura la sostituzione**: ripassate **52.123 righe** di storia di Home
 Assistant su **304 entità** dei tipi con genere, dal 09/09 al 16/09, chiedendo il riposo al tipo
-invece che all'unione di tutti i riposi — **0 righe cambiano esito**. Quanto costi rifare un giorno
-sull'host di Home Assistant **non è ancora misurato**: la riga di log c'è, il numero si scrive dopo
-la verifica in casa.
+invece che all'unione di tutti i riposi — **0 righe cambiano esito**.
+
+**Verificato in casa il 18/09**, a rilascio fatto: 21 giorni rifatti, uno ogni cinque minuti, da
+**0,90 s a 11,74 s** ciascuno sull'host di Home Assistant (sul PC di sviluppo erano 0,7 s). Il
+giorno a cavallo della potatura non è stato rifatto, come la regola dice. Confrontate le cronache
+prima e dopo: **nessuna differenza fuori dalle tre classi dichiarate** — 474 chiavi di formato
+aggiunte, 261 episodi di energia tolti. E il cambio su `none`, in questa casa, **non ha spostato
+nulla**: quei sei apparati non sono guardati, quindi non producevano episodi. Il cambio resta
+giusto; l'impatto misurato è zero.
 
 **E si è cancellato ciò che il sapere ha sostituito**, perché ogni fetta è anche pulizia: le gambe
 (`ASPECT`, `ASPECT_GUARD`, `ASPECTS`, `aspect_of`, 43 celle di gamba e guardia) e le otto porte del
