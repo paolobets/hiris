@@ -14,6 +14,7 @@ from hiris.app.home_space.reader import HomeSpace
 from hiris.app.mind import knowledge as sap
 from hiris.app.mind.store import ATTEMPTS_SHOWN, ObservationsStore
 from hiris.app.mind.watcher import Watcher
+from hiris.app.proxy.entity_cache import EntityCache
 from hiris.app.proxy.state_translations import StateTranslations
 from tests._contracts import assert_stessa_firma
 
@@ -831,9 +832,9 @@ async def test_il_sapere_si_puo_finalmente_CHIEDERE():
     Mutazione: togliere la rotta -- 404.
     """
     sapere = _FintoSapere(riassunto={"totale": 3, "righe": [
-        {"specie": "tipo", "campo": "significato", "provenienza": "importato",
+        {"sorta": "tipo", "campo": "significato", "provenienza": "importato",
          "quante": 2},
-        {"specie": "dispositivo", "campo": "ricetta", "provenienza": "dedotto",
+        {"sorta": "dispositivo", "campo": "ricetta", "provenienza": "dedotto",
          "quante": 1}]})
     r = await handle_knowledge(_richiesta({"knowledge": sapere}))
     assert r.status == 200
@@ -909,3 +910,148 @@ def test_le_porte_del_cervello_sono_REGISTRATE_non_solo_scritte():
             "nessuno puo' chiamarlo")
     assert 'add_post("/api/mind/objective", handle_set_objective)' in sorgente, (
         "senza questa, l'obiettivo si puo' leggere e non scrivere")
+
+
+# ---------------------------------------------------------------------------
+# La rotta del giorno e la BANDA (spec 2026-09-18 §3).
+#
+# Il resoconto archiviato non si tocca: la rotta lo legge, `report.as_page` lo
+# rende per la pagina, e il documento markdown resta quello di prima. Qui si
+# prova la GIUNTURA -- che la rotta chieda al sapere e allo specchio -- non la
+# regola del primo piano, che ha il suo file (`test_mind_report_page.py`).
+# ---------------------------------------------------------------------------
+
+class _FintoSpecchio:
+    """Lo specchio delle entita' dal lato dei nomi vivi."""
+
+    def __init__(self, stati):
+        self._stati = list(stati)
+
+    def all_states(self):
+        return list(self._stati)
+
+
+assert_stessa_firma(EntityCache.all_states, _FintoSpecchio.all_states,
+                    nome="all_states")
+
+
+def _giudizi_seme():
+    from hiris.app.home_space import type_vocabulary as tv
+    from hiris.app.home_space.type_judgments import TypeJudgments
+
+    return TypeJudgments.from_rows(tv.judgment_seed_rows(),
+                                   genres=tv.CHRONICLE_GENRES,
+                                   absent_forms=tv.ABSENT_STATE_FORMS.value)
+
+
+_GIORNO_GUASTATO = {
+    "giorno": "2026-09-17",
+    "misure": [],
+    "cronaca": [
+        {"quando_ts": 1789646396.0, "fine_ts": None,
+         "chi": "log:homeassistant.components.hydrawise@helpers/update_coordinator.py:447",
+         "genere": "guasto", "cosa": "ERROR",
+         "dominio": "homeassistant.components.hydrawise",
+         "titolo": "Timeout fetching hydrawise data"},
+        {"quando_ts": 1789646000.0, "fine_ts": None,
+         "chi": "alarm_control_panel.piano_terra", "genere": "sicurezza",
+         "cosa": "disarmed"},
+    ],
+}
+
+
+@pytest.mark.asyncio
+async def test_la_rotta_del_giorno_porta_la_BANDA_e_il_nome_del_guasto():
+    """Misurato sulla casa vera il 18/09: la pagina mostrava `ERROR` e
+    l'identificativo grezzo del logger, mentre la frase vera (`titolo`) e
+    l'integrazione (`dominio`) erano gia' nel dato, a due chiavi di distanza.
+
+    Mutazione ESEGUITA: tornare il resoconto archiviato com'e' -- rossa.
+    """
+    app = {"observations": _ArchivioConResoconto({"2026-09-17": _GIORNO_GUASTATO}),
+           "type_judgments": _giudizi_seme()}
+    r = await handle_report(_richiesta(app, query={"day": "2026-09-17"}))
+
+    resoconto = json.loads(r.text)["resoconto"]
+    riga, = resoconto["primo_piano"]
+    assert riga["sorta"] == "guasto"
+    assert riga["nome"] == "Hydrawise"
+    assert riga["titolo"] == "Timeout fetching hydrawise data"
+
+
+@pytest.mark.asyncio
+async def test_il_nome_VIVO_di_un_entita_arriva_dallo_SPECCHIO():
+    """Il resoconto archivia il nome che l'entita' aveva **quando il grezzo e'
+    stato scritto**, e l'allarme di questa casa non ne aveva nessuno: il nome
+    di adesso lo sa lo specchio, che e' gia' in questa istanza.
+
+    Mutazione ESEGUITA: non passare i nomi vivi -- rossa (l'allarme resta
+    senza nome, e la pagina mostra `alarm_control_panel.piano_terra`).
+    """
+    app = {"observations": _ArchivioConResoconto({"2026-09-17": _GIORNO_GUASTATO}),
+           "type_judgments": _giudizi_seme(),
+           "entity_cache": _FintoSpecchio([
+               {"id": "alarm_control_panel.piano_terra", "name": "Allarme piano terra"},
+               {"id": "light.studio", "name": "Studio"}])}
+    r = await handle_report(_richiesta(app, query={"day": "2026-09-17"}))
+
+    cronaca = json.loads(r.text)["resoconto"]["cronaca"]
+    allarme = [v for v in cronaca if v["chi"] == "alarm_control_panel.piano_terra"]
+    assert allarme[0]["nome"] == "Allarme piano terra"
+
+
+@pytest.mark.asyncio
+async def test_senza_lo_specchio_la_rotta_risponde_LO_STESSO():
+    """L'add-on puo' essere partito a meta'. Un 500 qui toglierebbe anche i
+    guasti, che il nome ce l'hanno per conto loro.
+
+    Mutazione ESEGUITA: `app["entity_cache"]` invece di `.get` -- rossa.
+    """
+    app = {"observations": _ArchivioConResoconto({"2026-09-17": _GIORNO_GUASTATO}),
+           "type_judgments": _giudizi_seme()}
+    r = await handle_report(_richiesta(app, query={"day": "2026-09-17"}))
+
+    assert r.status == 200
+    assert json.loads(r.text)["resoconto"]["primo_piano"][0]["nome"] == "Hydrawise"
+
+
+@pytest.mark.asyncio
+async def test_senza_l_istantanea_dei_GIUDIZI_il_primo_piano_porta_solo_il_sistema():
+    """«Non lo so» non e' «non c'e' niente da sapere»: senza i giudizi gli
+    episodi delle entita' non si possono giudicare, e le condizioni di sistema
+    restano perche' il loro livello lo scrive Home Assistant.
+
+    Mutazione ESEGUITA: `app["type_judgments"]` invece di `.get` -- rossa
+    (KeyError, e la pagina perde anche i guasti).
+    """
+    app = {"observations": _ArchivioConResoconto({"2026-09-17": _GIORNO_GUASTATO})}
+    r = await handle_report(_richiesta(app, query={"day": "2026-09-17"}))
+
+    assert r.status == 200
+    assert [x["sorta"] for x in json.loads(r.text)["resoconto"]["primo_piano"]] == ["guasto"]
+
+
+@pytest.mark.asyncio
+async def test_il_DOCUMENTO_resta_quello_che_era():
+    """Il markdown e' la resa per il MODELLO, e non guadagna il primo piano: e' la
+    pagina che ha bisogno di sapere cosa sta in cima, l'analista legge i
+    numeri. Due rese dello stesso archivio, e ognuna porta cio' che serve a
+    chi la legge.
+
+    Mutazione ESEGUITA: passare anche il documento da `as_page` -- rossa.
+    """
+    app = {"observations": _ArchivioConResoconto({"2026-09-17": _GIORNO_GUASTATO}),
+           "type_judgments": _giudizi_seme()}
+    r = await handle_report(_richiesta(app, query={"day": "2026-09-17",
+                                                   "formato": "documento"}))
+
+    assert r.content_type == "text/markdown"
+    # **Non basta cercare la chiave**: `as_document` rende le sezioni che
+    # conosce e una chiave in piu' la ignorerebbe in silenzio -- la prova
+    # resterebbe verde anche col documento passato da `as_page`, cioe' non
+    # potrebbe fallire (mutazione ESEGUITA il 20/09, verde). Cio' che cambia
+    # davvero e' la cronaca: il documento tiene l'IDENTIFICATIVO archiviato,
+    # che e' con quello che l'analista va a scavare, mentre la pagina mostra
+    # il nome risolto adesso.
+    assert "log:homeassistant.components.hydrawise" in r.text
+    assert "Hydrawise" not in r.text

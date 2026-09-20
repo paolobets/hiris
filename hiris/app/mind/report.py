@@ -58,6 +58,7 @@ from __future__ import annotations
 
 import logging
 
+from ..home_space.type_vocabulary import SYSTEM_GENRE, unknown_states
 from .recipes import Recipe
 from .store import READING_RETENTION_S
 
@@ -540,3 +541,213 @@ def section(document: str, title: str) -> str:
     rest = document.split(opening, 1)[1]
     end = rest.find("\n## ")
     return (opening + (rest if end == -1 else rest[:end])).strip()
+
+
+# ---------------------------------------------------------------------------
+# Il resoconto come lo legge la PAGINA (spec 2026-09-18 §3).
+#
+# `as_document` rende lo stesso archivio per un modello; qui si rende per un
+# umano. Due rese, un archivio solo: e' la ragione per cui il documento si
+# deriva invece di essere scritto, applicata una seconda volta.
+#
+# **Niente di tutto questo si salva.** La cronaca archiviata si rifa' solo
+# quando cambia un giudizio, e l'impronta dice quali giorni rifare: se «esce
+# dal solito» stesse nella cronaca, il giorno in cui si cambia idea su cosa
+# merita il primo piano -- e si cambiera' idea -- servirebbe rifare ventidue giorni
+# per una decisione che col sapere non c'entra. In lettura costa una riga.
+# ---------------------------------------------------------------------------
+
+#: Le tre sorte del primo piano, **nell'ordine in cui si leggono**. Non e'
+#: l'ordine di arrivo, ed e' una decisione del proprietario: «un allarme
+#: scattato e' la prima cosa da sapere; una luce accesa e' la seconda, non la
+#: prima». I guasti vengono prima degli avvisi perche' il livello lo dice Home
+#: Assistant, non noi.
+FRONT_PAGE_ORDER = ("da_sapere_subito", "guasto", "avviso")
+
+#: Il solo livello di Home Assistant che il primo piano declassa ad avviso
+#: (`record.levelname`, maiuscolo come HA lo scrive). **Tutto il resto pesa
+#: come un guasto, `CRITICAL` compreso**: un livello che non conosciamo puo'
+#: portare una riga in piu' in primo piano, mai una in meno.
+_WARNING_LEVEL = "WARNING"
+
+#: I due prefissi con cui un logger di Home Assistant nomina l'integrazione da
+#: cui viene: `homeassistant.components.hydrawise` -> «Hydrawise»,
+#: `custom_components.alarmo.alarm_control_panel` -> «Alarmo». Il segmento
+#: SUBITO DOPO il prefisso e' l'integrazione; quelli ancora dopo sono la
+#: piattaforma dentro di lei, e non sono il suo nome.
+_INTEGRATION_PREFIXES = ("homeassistant.components.", "custom_components.")
+
+#: Il nucleo di Home Assistant quando il logger non nomina nessuna
+#: integrazione (`homeassistant.helpers.entity`, misurato sulla casa vera il
+#: 17/09/2026). **E' una citazione, non una resa**: il prodotto si chiama
+#: cosi', e «Homeassistant.helpers.entity» non e' il nome di niente.
+_CORE_LOGGER_PREFIX = "homeassistant."
+_CORE_NAME = "Home Assistant"
+
+
+def _integration_name(domain: str) -> str | None:
+    """Il nome leggibile dell'integrazione da cui viene una voce di sistema.
+
+    **Si ricava da cio' che la voce gia' porta** -- `dominio`, scritto
+    dall'osservatore insieme al titolo -- e mai dall'identificativo del
+    soggetto: quello e' la chiave con cui Home Assistant deduplica (logger piu'
+    posizione nel sorgente), e leggerlo come un nome darebbe
+    `log:...@handler.py:108` in cima alla pagina, che e' esattamente cio' che
+    la pagina faceva prima del 18/09.
+    """
+    domain = str(domain or "").strip()
+    if not domain:
+        return None
+    for prefix in _INTEGRATION_PREFIXES:
+        if domain.startswith(prefix):
+            slug = domain[len(prefix):].split(".")[0]
+            return _rendered(slug) if slug else None
+    if domain.startswith(_CORE_LOGGER_PREFIX):
+        return _CORE_NAME
+    # Una libreria di terze parti (`aioamazondevices`) non e' un'integrazione e
+    # non ha un segmento da estrarre: il suo nome intero e' piu' vero di
+    # qualunque pezzo se ne possa tagliare.
+    return _rendered(domain)
+
+
+def _rendered(slug: str) -> str:
+    """`alexa_devices` -> «Alexa devices». Una maiuscola e gli spazi: la
+    minima resa che fa di un identificatore un nome, senza fingere di sapere
+    come quell'integrazione si scriva davvero (`FRITZ!Box` lo sa solo HA)."""
+    words = slug.replace("_", " ").strip()
+    return words[:1].upper() + words[1:]
+
+
+def as_page(report: dict, *, judgments, names: dict | None = None) -> dict:
+    """Il resoconto di un giorno **con il nome sempre e il primo piano**, per la
+    pagina dell'osservatore (spec §3).
+
+    Torna una copia: il resoconto che arriva non si tocca. Il contratto
+    **cresce di chiavi e non ne perde nessuna** -- chi legge gia' questa rotta
+    continua a funzionare.
+
+    - **`nome`, sempre.** Chi ce l'ha tiene il suo (e' quello di ALLORA, ed e'
+      piu' vero: un dispositivo si puo' rinominare); una voce di sistema lo
+      ricava dal `dominio` che gia' porta; un'entita' lo prende da `names`, i
+      nomi vivi. Chi non ha nessuna delle tre resta **senza**: la pagina mostra
+      l'identificativo dicendo che e' un identificativo, e nessuno inventa un
+      nome dall'`entity_id`.
+    - **`primo_piano`** -- le righe che escono dal solito, raggruppate, nell'ordine
+      di `FRONT_PAGE_ORDER`. La stessa marca sta anche sulla voce di cronaca, cosi'
+      la cronaca in fondo la disegna com'e' in cima senza ricalcolarla.
+
+    **Qui non c'e' nessun criterio.** Per un'entita' la domanda va al sapere
+    (`TypeJudgments.stato_da_sapere_subito`), che risponde leggendo righe che
+    la casa puo' correggere; per una condizione di sistema si cita il livello
+    che Home Assistant ha scritto. Correggere un giudizio cambia il primo piano dalla
+    lettura successiva, senza un rilascio.
+
+    `judgments` puo' essere `None` (avvio a meta', archivio non collegato):
+    allora gli episodi non entrano in primo piano -- «non lo so» non e' «non c'e'
+    niente da sapere» -- mentre le condizioni di sistema restano, perche' il
+    loro livello non dipende dai giudizi.
+    """
+    page = dict(report)
+    chronicle = report.get("cronaca")
+    if chronicle is None:
+        page["primo_piano"] = []
+        return page
+    seen, band = [], []
+    for entry in chronicle:
+        entry = dict(entry)
+        name = _resolved_name(entry, names)
+        if name:
+            entry["nome"] = name
+        mark = _front_page_mark(entry, judgments)
+        if mark is not None:
+            entry["primo_piano"] = mark
+            band.append(entry)
+        seen.append(entry)
+    page["cronaca"] = seen
+    page["primo_piano"] = _grouped(band)
+    return page
+
+
+def _resolved_name(entry: dict, names: dict | None) -> str | None:
+    stored = entry.get("nome")
+    if stored:
+        return stored
+    if entry.get("dominio"):
+        return _integration_name(entry["dominio"])
+    return (names or {}).get(entry.get("chi"))
+
+
+def _front_page_mark(entry: dict, judgments) -> dict | None:
+    """La marca di una voce, o `None` se quella voce non esce dal solito.
+
+    Due strade, e la differenza non e' un caso: una condizione di **sistema**
+    porta gia' il suo livello da Home Assistant, un episodio di un'**entita'**
+    va chiesto al sapere.
+    """
+    state = entry.get("cosa")
+    if entry.get("genere") == SYSTEM_GENRE:
+        level = str(state or "").strip().upper()
+        return {"sorta": "avviso" if level == _WARNING_LEVEL else "guasto"}
+    subject = str(entry.get("chi") or "")
+    if judgments is None or "." not in subject:
+        return None
+    domain = subject.split(".")[0]
+    device_class = entry.get("classe")
+    # **La condizione d'uso di `stato_da_sapere_subito`, custodita qui invece
+    # che data per scontata**: `mind/facts.py` non scrive mai una cronaca con
+    # `unavailable`/`unknown`, ma un tipo senza `lavoro` li leggerebbe come
+    # «non e' un riposo» e li farebbe entrare in primo piano. Una riga «il sensore
+    # non risponde» in cima alla pagina, col vestito di un allarme.
+    if str(state).strip().lower() in unknown_states():
+        return None
+    if not judgments.stato_da_sapere_subito(domain, device_class, state,
+                                            entity_id=subject):
+        return None
+    mark = {"sorta": "da_sapere_subito"}
+    # La ragione la scrive il GIUDIZIO, accanto allo stato di lavoro; quando il
+    # giudizio e' un elenco (`lock: ["jammed"]`) non c'e' nessuna ragione, e la
+    # riga resta muta invece di guadagnare una frase nostra.
+    reason = judgments.working_of(domain, device_class).get(str(state).strip().lower())
+    if reason:
+        mark["perche"] = reason
+    return mark
+
+
+#: Le chiavi con cui due voci sono **la stessa cosa** e diventano una riga
+#: sola. Il soggetto e lo stato, piu' il titolo per le voci di sistema: due
+#: guasti diversi della stessa integrazione restano due righe -- si raggruppa
+#: cio' che e' uguale, non cio' che viene dallo stesso posto.
+_FRONT_PAGE_KEY = ("chi", "cosa", "titolo")
+
+
+def _grouped(entries: list[dict]) -> list[dict]:
+    """Le voci in primo piano, raggruppate e in ordine di sorta.
+
+    **Il raggruppamento non e' un abbellimento**: l'osservatore apre un
+    episodio nuovo a ogni sfarfallio -- misurato sulla casa vera, venticinque
+    episodi per una sola integrazione rotta -- e un primo piano che le elencasse
+    tutti sarebbe il rumore che il primo piano esiste per togliere. `volte` dice
+    quante, e la finestra e' il giorno che si sta leggendo.
+    """
+    rows: dict[tuple, dict] = {}
+    for entry in entries:
+        key = tuple(entry.get(k) for k in _FRONT_PAGE_KEY) + (entry["primo_piano"]["sorta"],)
+        row = rows.get(key)
+        if row is None:
+            row = {**entry["primo_piano"], "volte": 0,
+                   "quando_ts": entry.get("quando_ts"), "ultimo_ts": entry.get("quando_ts"),
+                   "fine_ts": entry.get("fine_ts")}
+            for field in ("nome", "chi", "cosa", "titolo", "dominio"):
+                if entry.get(field):
+                    row[field] = entry[field]
+            rows[key] = row
+        row["volte"] += 1
+        # L'ultima volta, e come e' finita QUELLA: un episodio piu' recente
+        # racconta lo stato di adesso, uno piu' vecchio no.
+        if (entry.get("quando_ts") or 0) >= (row["ultimo_ts"] or 0):
+            row["ultimo_ts"] = entry.get("quando_ts")
+            row["fine_ts"] = entry.get("fine_ts")
+        moments = [v for v in (row["quando_ts"], entry.get("quando_ts")) if v is not None]
+        row["quando_ts"] = min(moments) if moments else None
+    order = {kind: i for i, kind in enumerate(FRONT_PAGE_ORDER)}
+    return sorted(rows.values(), key=lambda r: order.get(r["sorta"], len(order)))

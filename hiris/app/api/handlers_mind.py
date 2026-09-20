@@ -50,7 +50,7 @@ from ..mind.judgments import (
     judgment_listing,
     write_judgment,
 )
-from ..mind.report import as_document
+from ..mind.report import as_document, as_page
 
 #: Quanti giorni di volume la pagina mostra. **Non e' la durata del grezzo**
 #: (22 giorni, `store.READING_RETENTION_S`): e' quanto serve a vedere se il
@@ -211,7 +211,18 @@ async def handle_report(request: web.Request) -> web.Response:
         current = request.app["type_judgments"].chronicle_fingerprint()
         return web.Response(text=as_document(resoconto, current_fingerprint=current),
                             content_type="text/markdown", charset="utf-8")
-    return web.json_response({"resoconto": resoconto})
+    # **La resa per la PAGINA** (spec 2026-09-18 §3): il nome sempre, e la
+    # banda di cio' che esce dal solito. Non tocca cio' che e' archiviato --
+    # il giudizio su cosa merita la banda si cambia da «Cosa ho capito», e se
+    # stesse nella cronaca ogni ripensamento costerebbe ventidue giorni da
+    # rifare. Il documento qui sopra NON ci passa: e' la resa per il modello,
+    # e l'analista legge i numeri, non la prima pagina.
+    #
+    # Le due fonti si chiedono con `.get`: un add-on partito a meta' deve
+    # rispondere lo stesso, con meno cose da dire e nessuna inventata.
+    return web.json_response({"resoconto": as_page(
+        resoconto, judgments=request.app.get("type_judgments"),
+        names=_entity_names(request.app))})
 
 
 async def _translations_report(app) -> dict:
@@ -390,6 +401,27 @@ def _device_names(app) -> dict:
     return {str(d.get("id")): d.get("nome")
             for d in (casa.read() or {}).get("dispositivi") or []
             if d.get("id") and d.get("nome")}
+
+
+def _entity_names(app) -> dict:
+    """I nomi **vivi** delle entita', dallo specchio, o `{}` se non c'e'.
+
+    Il gemello di `_device_names`, per l'altro genere di soggetto: le misure
+    parlano di dispositivi (l'anagrafe), la cronaca di entita' (lo specchio).
+    Una mappa sola per chi legge, costruita dove si legge -- l'archivio
+    continua a dire cio' che sapeva.
+
+    **Serve perche' il grezzo il nome non sempre ce l'ha**: misurato sulla
+    casa vera il 18/09/2026, 7 voci di cronaca su 75 erano senza, e fra loro
+    l'allarme del piano terra. Sei le risolve il `dominio` che portano con se';
+    la settima e' un'entita', e il suo nome vive qui.
+    """
+    cache = app.get("entity_cache")
+    if cache is None:
+        return {}
+    return {str(s.get("id")): s.get("name")
+            for s in cache.all_states() or []
+            if s.get("id") and s.get("name")}
 
 
 def _named(names: dict, lines) -> list:

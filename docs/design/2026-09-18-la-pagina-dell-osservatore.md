@@ -295,7 +295,7 @@ ai campi, fuoco governato all'apertura e alla chiusura, nessuna emoji.
 6. «Cosa ho capito» e «L'osservatore».
 7. Cancelli, e la verifica dal vivo sulla casa.
 
-**STATO al 20/09/2026 (3.51.0).**
+**STATO al 20/09/2026 (3.51.0 e 3.52.0).**
 
 - **Punto 2, la cornice: FATTO e rilasciato.** Quattro pannelli, indirizzi propri, carico pigro,
   stato che sopravvive, errori isolati, `tablist` con le frecce, bersagli 44 px, «Letto alle ·
@@ -307,10 +307,28 @@ ai campi, fuoco governato all'apertura e alla chiusura, nessuna emoji.
   oggi, riordinato dentro la cornice; il riordino interno che questa §4 descrive (le domande aperte
   in testa, i gruppi chiusi, i soggetti tecnici per integrazione) **non è fatto** — quello dipende
   dal punto 1.
-- **Punti 1, 3, 4, 5: NON fatti.** `notevole_in_banda` non esiste ancora in nessuna riga di codice,
-  e «Fanne una proposta» nemmeno.
+- **Punti 1 e 4: FATTI e rilasciati con la 3.52.0 (20/09).** Il modulo di lettura è
+  `mind/report.as_page`, chiamato dalla rotta del giorno; la banda è in cima alla scheda «Il
+  giorno», e in pagina si intitola «Fuori dal solito» come questa §4A chiede.
+- **I nomi dei campi non sono quelli scritti qui, e la ragione è il glossario.** Il contratto porta
+  `primo_piano` (una riga: `sorta`, `perche`), non `notevole_in_banda`/`specie_notevole`/
+  `perche_notevole`. Tre parole di questa spec erano **già occupate**, ciascuna con un altro
+  significato nello stesso prodotto: `notevole` è il criterio del *briefing* (misurato sul 17/09:
+  marcherebbe 57 voci su 75 contro le 6 vere), `specie` dice se un impegno è un fare o un chiedere,
+  `banda` in `watcher-giorno.js` era già la striscia dei comandi con il selettore del giorno.
+  Riusarle qui avrebbe rimesso due cose sotto un nome solo — il difetto che la fetta precedente ha
+  separato. **La prosa di questa spec resta com'è scritta**: dice «la banda» perché quella parola
+  descrive bene la cosa; è il *codice* che porta il nome non ambiguo.
+- **Della §3 manca il terzo punto**: il raggruppamento dei soggetti tecnici per integrazione, con
+  `volte` e la finestra. Non serve alla banda (che raggruppa la cronaca di un giorno) ma alla
+  scheda «L'osservatore», e vive sull'altra rotta: è a backlog con la sua misura.
+- **Punti 3 e 5: NON fatti.** La forma condivisa degli elenchi lunghi (la banda usa il rivelatore
+  che esiste già, e costruisce l'elenco alla resa invece che al clic) e «Fanne una proposta».
+- **Il cancello 1 della §7 è VIVO** dal 20/09, e non guarda il codice: la pagina disegna una riga
+  che il server marca anche quando è una luce accesa, e non disegna un episodio `sicurezza` che il
+  server non ha marcato. Provate tutte e due con la mutazione, rosse.
 - **Il cancello 1 della §7** (una prova che fallisce se la pagina torna a decidere da sola cosa è
   notevole) **nasce col punto 4**: oggi in JavaScript non c'è nessun elenco di generi da sorvegliare
   perché non c'è nessuna banda. Il **cancello 2** (aprire «Il giorno» non scarica i dati
   dell'osservatore) è vivo dal 20/09.
-- **Verifica dal vivo: da fare** sulla 3.51.0 installata in casa.
+- **Verifica dal vivo: da fare** sulla 3.52.0 installata in casa.

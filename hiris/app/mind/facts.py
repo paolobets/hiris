@@ -55,6 +55,7 @@ from ..home_space.type_vocabulary import (
     ABSENT_STATE_FORMS,
     CHRONICLE_GENRES,
     REPO_JUDGMENTS,
+    SYSTEM_GENRE,
     unknown_states,
 )
 from .recipes import Recipe
@@ -775,7 +776,7 @@ def build_episodes(*, store, day: str, timezone: str | None,
         genre = genre_for(subject, r.get("device_class"), judgments=judgments)
         if genre is None:
             continue
-        if genre == "guasto":
+        if genre == SYSTEM_GENRE:
             # Solo condizioni di sistema arrivano qui (vedi `genre_for`). La
             # convenzione si rovescia con la fetta «il guasto e il
             # riavvio»: prima "aperto" apriva e tutto il resto chiudeva.

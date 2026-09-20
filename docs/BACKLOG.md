@@ -42,6 +42,26 @@ voci non sa dire se il lavoro procede.
 
 ## Scelti — sprint in corso
 
+### I soggetti tecnici raggruppati per integrazione — aperta il 20/09/2026
+
+È il **terzo punto della §3** di `docs/design/2026-09-18-la-pagina-dell-osservatore.md`, l'unico
+rimasto fuori dalla 3.52.0: «il raggruppamento dei soggetti tecnici per integrazione, con `volte` e
+**la finestra** a cui quel numero si riferisce — un numero di volte senza finestra non significa
+niente».
+
+**Non serve al primo piano** (che raggruppa la cronaca di UN giorno, e la finestra è quel giorno):
+serve alla scheda «L'osservatore», e vive sull'altra rotta, `GET /api/mind/watching`. Misurato il
+18/09 sulla casa: **39 soggetti tecnici su 153**, da **30 logger distinti** che sono **23
+integrazioni** una volta raggruppati. Oggi la pagina li elenca uno per uno, col percorso del
+sorgente in chiaro, e non dice mai quante volte una condizione è ricorsa.
+
+**Cosa manca per farlo, e va misurato prima**: `watching` porta il soggetto (`log:<logger>@<file>:
+<riga>`) ma **non** il `dominio`, che è ciò da cui il nome dell'integrazione si ricava nel primo
+piano (`mind/report._integration_name`). O lo porta anche quella rotta, o il nome va ricavato dal
+logger dentro il soggetto — due strade, e la seconda duplicherebbe una regola che ora vive in un
+posto solo. E `volte` non esiste su quella rotta: va deciso su quale finestra si conta (il grezzo
+dura 22 giorni) e chi la conta.
+
 ### La CLI del ponte sale alla 2.1.278 nel prossimo rilascio — aperta il 20/09/2026
 
 Il cancello (`scripts/verifica_componenti.py`) ha fermato il rilascio della **v3.51.0** su

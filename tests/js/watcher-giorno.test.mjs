@@ -235,7 +235,7 @@ test('seam _rendiResoconto: un giorno senza forme non apre la sezione', () => {
    chi l'ha premuto. */
 
 test('la scheda: il selettore si costruisce UNA volta, e il giorno scelto sopravvive a una rilettura', async () => {
-  // Mutazione che la uccide: in `carica`, `loadReport(banda.resoconto, null)`
+  // Mutazione che la uccide: in `carica`, `loadReport(primo piano.resoconto, null)`
   // -- cioe' rileggere sempre ieri invece del giorno che si sta guardando.
   const ctx = montaConServer();
   ctx.window.HirisWatcherRoute.mount('giorno');
@@ -261,8 +261,187 @@ test('la scheda: il selettore si costruisce UNA volta, e il giorno scelto soprav
   assert.ok(ctx.chiamate[ctx.chiamate.length - 1].indexOf(TRE_GIORNI_FA) !== -1,
     'rileggere e’ tornato a ieri: il giorno scelto non sopravvive');
 
-  // La banda si RITROVA, non si ricostruisce: e' la proprieta' su cui poggia
+  // Il primo piano si RITROVA, non si ricostruisce: e' la proprieta' su cui poggia
   // tutto il resto di questa prova, e qui si guarda da sola.
-  const banda = ctx.window.HirisWatcherGiorno._rendiBanda(pannello.querySelector('.sc-body'));
-  assert.equal(banda.campo, campo, '`_rendiBanda` ha costruito un campo nuovo invece di ritrovare il suo');
+  const comandi = ctx.window.HirisWatcherGiorno._rendiBanda(pannello.querySelector('.sc-body'));
+  assert.equal(comandi.campo, campo, '`_rendiBanda` ha costruito un campo nuovo invece di ritrovare il suo');
+});
+
+
+/* -------------------------------------------------------------------------
+   «Fuori dal solito»: il primo piano in cima alla scheda (spec §4A, punto 2).
+
+   **La pagina non decide niente qui.** Il server manda `primo_piano` gia' scelta,
+   raggruppata e ordinata (`mind/report.as_page`), e queste prove custodiscono
+   proprio quello: disegnare cio' che arriva, anche quando da sola la pagina
+   non lo sceglierebbe mai, e NON disegnare cio' che non arriva anche quando
+   il genere sembrerebbe dirlo.
+   ------------------------------------------------------------------------- */
+
+function primoPiano(extra) {
+  return Object.assign({
+    sorta: 'guasto', nome: 'Hydrawise', chi: 'log:homeassistant.components.hydrawise@x.py:447',
+    cosa: 'ERROR', titolo: 'Timeout fetching hydrawise data',
+    dominio: 'homeassistant.components.hydrawise',
+    volte: 1, quando_ts: 1789646396, ultimo_ts: 1789646396, fine_ts: null,
+  }, extra || {});
+}
+
+test('seam _rendiResoconto: «Fuori dal solito» sta in CIMA, prima di tutto il resto', () => {
+  // Mutazione che la uccide: appendere il primo piano dopo le misure.
+  const { corpo } = rendiResoconto(resoconto({
+    primo_piano: [primoPiano()],
+    misure: [misura(), nonCalcolabile('autosufficienza', 'copertura 8%')],
+  }));
+
+  const testo = corpo.textContent;
+  assert.ok(testo.indexOf('Fuori dal solito') >= 0);
+  assert.ok(testo.indexOf('Fuori dal solito') < testo.indexOf('Cosa non si sa'),
+    'la prima domanda e\' «e\' successo qualcosa che devo sapere?», e la risposta ' +
+    'non puo\' stare sotto una tabella di numeri');
+});
+
+test('seam _rendiResoconto: una riga di guasto mostra la FRASE VERA, non il livello', () => {
+  /* La frase e' gia' nel dato (`titolo`, scritto da mind/watcher.py dal
+     12/09) e la pagina disegnava `ERROR`. Mutazione che la uccide: stampare
+     `cosa` al posto di `titolo`. */
+  const { corpo } = rendiResoconto(resoconto({ primo_piano: [primoPiano()] }));
+
+  const testo = corpo.textContent;
+  assert.match(testo, /Hydrawise/);
+  assert.match(testo, /Timeout fetching hydrawise data/);
+  assert.doesNotMatch(testo, /ERROR/,
+    'il livello e\' il nome interno di una severita\', non cio\' che e\' successo');
+});
+
+test('seam _rendiResoconto: un guasto ripetuto dice QUANTE volte e QUANDO l\'ultima', () => {
+  // Mutazione che la uccide: ignorare `volte`/`ultimo_ts`.
+  const { corpo } = rendiResoconto(resoconto({
+    primo_piano: [primoPiano({ volte: 6, quando_ts: 1789600000, ultimo_ts: 1789646396 })],
+  }));
+
+  assert.match(corpo.textContent, /6 volte/);
+  /* L'ora nella forma della pagina, «gg/mm hh:mm» (`fmtTime`): un episodio
+     puo' cominciare il giorno prima e finire in quello che si guarda, e un
+     secondo formato solo per il primo piano sarebbe un vocabolario in piu' per lo
+     stesso fatto. */
+  assert.match(corpo.textContent, /l’ultima alle \d\d\/\d\d \d\d:\d\d/);
+});
+
+test('seam _rendiResoconto: una riga «da sapere subito» CITA lo stato e dice da quando a quando', () => {
+  /* «Allarme piano terra — triggered · dalle 03:12 alle 03:19». Scrivere «e'
+     scattato» sarebbe una traduzione che oggi nessuno fa: rendere gli stati
+     nella lingua della casa e' una fetta sua. Mutazione che la uccide:
+     tradurre lo stato, o omettere la finestra. */
+  const { corpo } = rendiResoconto(resoconto({
+    primo_piano: [primoPiano({
+      sorta: 'da_sapere_subito', nome: 'Allarme piano terra',
+      chi: 'alarm_control_panel.piano_terra', cosa: 'triggered',
+      titolo: undefined, dominio: undefined,
+      quando_ts: 1789646396, ultimo_ts: 1789646396, fine_ts: 1789646816,
+    })],
+  }));
+
+  const testo = corpo.textContent;
+  assert.match(testo, /Allarme piano terra/);
+  assert.match(testo, /triggered/);
+  assert.match(testo, /dalle \d\d\/\d\d \d\d:\d\d alle \d\d\/\d\d \d\d:\d\d/);
+});
+
+test('seam _rendiResoconto: la RAGIONE del giudizio si legge sulla riga, quando c\'e\'', () => {
+  // Mutazione che la uccide: non stampare `perche`.
+  const { corpo } = rendiResoconto(resoconto({
+    primo_piano: [primoPiano({ sorta: 'da_sapere_subito', nome: 'Allarme piano terra',
+      cosa: 'triggered', titolo: undefined,
+      perche: 'l’allarme e’ scattato: e’ il fatto piu’ notevole di questa casa' })],
+  }));
+
+  assert.match(corpo.textContent, /il fatto piu’ notevole di questa casa/);
+});
+
+test('seam _rendiResoconto: una riga senza ragione si disegna LO STESSO', () => {
+  /* `lock` entra in primo piano con un elenco di stati (`["jammed"]`), e un elenco
+     non ha una ragione accanto: e' il primo caso reale di riga muta. E' la
+     primo piano che decide, non la prosa. Mutazione che la uccide: saltare le righe
+     senza `perche`. */
+  const { corpo } = rendiResoconto(resoconto({
+    primo_piano: [primoPiano({ sorta: 'da_sapere_subito', nome: 'Serratura ingresso',
+      chi: 'lock.ingresso', cosa: 'jammed', titolo: undefined, dominio: undefined })],
+  }));
+
+  assert.match(corpo.textContent, /Serratura ingresso/);
+  assert.match(corpo.textContent, /jammed/);
+});
+
+test('seam _rendiResoconto: NIENTE da dire si dice col NUMERO delle voci guardate', () => {
+  /* Il numero e' la prova che ha guardato. **Non** si scrive «tutto a
+     posto»: la pagina custodisce, non giudica. Mutazione che la uccide:
+     tacere quando il primo piano e' vuota, o scrivere un giudizio. */
+  const { corpo } = rendiResoconto(resoconto({
+    primo_piano: [],
+    cronaca: [{ quando_ts: 1789219800, fine_ts: null, chi: 'light.studio',
+      nome: 'Studio', cosa: 'on' }],
+  }));
+
+  const testo = corpo.textContent;
+  assert.match(testo, /1 voce/, 'il numero e\' la prova che ha guardato');
+  assert.doesNotMatch(testo, /tutto a posto/i);
+});
+
+test('seam _rendiResoconto: il primo piano ASSENTE non si legge come «niente da dire»', () => {
+  /* Tre stati, non due: «niente da dire» e' un elenco vuoto, «non lo so» e'
+     una chiave che non c'e' (un add-on partito a meta', una rotta vecchia).
+     Mutazione che la uccide: `(r.primo_piano || [])`. */
+  const { corpo } = rendiResoconto(resoconto({
+    cronaca: [{ quando_ts: 1789219800, fine_ts: null, chi: 'light.studio', cosa: 'on' }],
+  }));
+
+  assert.match(corpo.textContent, /non si pu[oò] sapere/i);
+});
+
+test('seam _rendiResoconto: oltre cinque righe il resto sta dietro «Vedi tutti»', () => {
+  // Mutazione che la uccide: disegnarle tutte, o troncare senza dire quante.
+  const righe = [];
+  for (let i = 0; i < 8; i++) righe.push(primoPiano({ titolo: 'Guasto numero ' + i, chi: 'log:x@a.py:' + i }));
+  const { corpo } = rendiResoconto(resoconto({ primo_piano: righe }));
+
+  const bottone = [...corpo.querySelectorAll('button')]
+    .filter((b) => /Vedi tutti/.test(b.textContent))[0];
+  assert.ok(bottone, 'senza il bottone le altre tre righe sarebbero perdute');
+  assert.match(bottone.textContent, /\(8\)/, 'il numero dice quante sono in tutto');
+});
+
+test('il primo piano: la pagina DISEGNA cio\' che il server marca, anche una luce accesa', () => {
+  /* **Il cancello della fetta** (spec §7, cancello 1): il criterio vive nei
+     giudizi, e il proprietario lo corregge da «Cosa ho capito». Se la pagina
+     tornasse a decidere da sola -- un elenco di generi in JavaScript -- una
+     riga come questa sparirebbe, e la correzione del proprietario non avrebbe
+     nessun effetto.
+
+     Mutazione che la uccide: filtrare il primo piano per genere o per sorta. */
+  const { corpo } = rendiResoconto(resoconto({
+    primo_piano: [primoPiano({ sorta: 'da_sapere_subito', nome: 'Studio', chi: 'light.studio',
+      cosa: 'on', titolo: undefined, dominio: undefined })],
+  }));
+
+  assert.match(corpo.textContent, /Studio/);
+  assert.doesNotMatch(corpo.textContent, /Nessun guasto/);
+});
+
+test('il primo piano: un episodio che il server NON ha marcato resta fuori, qualunque genere abbia', () => {
+  /* L'altra meta' del cancello: l'allarme `disarmed` e' di genere
+     «sicurezza» e non entra, perche' un allarme disinserito e' la normalita'
+     di una casa. La pagina non lo sa, e non deve saperlo.
+
+     Mutazione che la uccide: pescare dalla cronaca invece che dalil primo piano. */
+  const { corpo } = rendiResoconto(resoconto({
+    primo_piano: [],
+    cronaca: [{ quando_ts: 1789219800, fine_ts: null, genere: 'sicurezza',
+      chi: 'alarm_control_panel.piano_terra', nome: 'Allarme piano terra',
+      cosa: 'disarmed' }],
+  }));
+
+  const primaRiga = corpo.textContent.split('Fuori dal solito')[1] || '';
+  assert.doesNotMatch(primaRiga.split('La cronaca')[0], /Allarme piano terra/,
+    'il primo piano ha pescato da sola dalla cronaca');
 });

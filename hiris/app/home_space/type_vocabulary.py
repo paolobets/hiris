@@ -515,6 +515,15 @@ GENRE = "genre"
 #: produceva `bilancio` (spec 2026-09-16 §5).
 CHRONICLE_GENRES = ("funzionamento", "presenza", "guasto", "sicurezza")
 
+#: Il genere delle **condizioni di sistema** -- una voce del registro, un
+#: repair, un'integrazione o un'automazione rotta -- dentro `CHRONICLE_GENRES`.
+#: Ha una forma sua (`mind/facts.py`: apre su qualunque condizione e chiude su
+#: `chiuso`) e un protagonista che non e' un'entita' della casa, e per questo
+#: chi legge la cronaca deve poterlo distinguere senza riscrivere la parola:
+#: due letterali «guasto» in due file sono il doppione che diverge il giorno
+#: in cui uno dei due si rinomina.
+SYSTEM_GENRE = "guasto"
+
 
 
 # --------------------------------------------------------------------------
