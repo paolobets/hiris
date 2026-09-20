@@ -1,5 +1,53 @@
 # HIRIS — Changelog
 
+## [3.54.0] — Cinquecento righe in una colonna diventano trentatré (2026-09-20)
+
+La pagina dell'osservatore nasce da una frase del proprietario: *«è troppo lunga, densa di
+informazioni non strutturate»*. Le quattro schede (3.51.0) hanno diviso i mestieri; questa fetta
+toglie il peso. **Misurato sui dati veri della casa, prima e dopo**:
+
+| scheda | prima | dopo |
+|---|---|---|
+| «Il giorno» | 128 righe, 13.549 caratteri | **27 righe, 5.655** |
+| «L'osservatore» | 50.166 caratteri | **2.988** |
+| «Cosa ho capito» | 115 righe, 13.628 caratteri | **0 righe disegnate, 7.124** |
+
+**La forma condivisa degli elenchi lunghi** (spec §6), una sola per tutta la pagina: riassunto coi
+numeri, i pochi che contano **col criterio dichiarato in didascalia**, e il resto dietro un
+bottone. Tre regole che non si vedono guardando una pagina corta: l'elenco **si costruisce al
+clic** (280 righe disegnate e messe `hidden` costano lo stesso a chi le disegna); oltre le cento si
+va **a blocchi di cinquanta**, col fuoco sulla prima riga nuova; e il bersaglio è un **bottone da
+44 px**, non un `summary` alto 21-23. Sotto le tre righe non si chiude niente: «Vedi tutte (1)»
+sarebbe un clic per niente.
+
+**«Il giorno»**: le misure mostrano **le cinque con la copertura più bassa** — e quando sono tutte
+piene lo dicono, invece di cinque numeri buoni a caso; le forme e la cronaca stanno in fondo,
+chiuse, col numero in chiaro.
+
+**«L'osservatore» cambia ordine e mestiere** (spec §4D). L'obiettivo, poi **i tre numeri** —
+guardati, lasciati fuori, righe scritte ieri — poi la riconsiderazione: prima era quarta, dopo due
+elenchi da centocinquanta righe. «Cosa guardo» separa **le cose della casa** (raggruppate per chi
+le ha decise) dalle **integrazioni e log**, che sono un'altra domanda: 39 soggetti tecnici che
+vengono da 23 integrazioni, e che la pagina elencava uno per uno col percorso del sorgente in
+chiaro. Il nome dell'integrazione **lo ricava il server**, con la stessa regola del primo piano: i
+tre logger del Supervisor sono una integrazione sola, e il numero di versione del frontend non ne
+fa una nuova. «Lasciato fuori» si raggruppa **per tipo di cosa** e non per motivo: i 280 lasciati
+fuori portano **128 motivi distinti** scritti in prosa dal modello, e per motivo non si
+raggruppano.
+
+**«Cosa ho capito» mette in testa la riga di peso** («115 giudizi · 6 domande aperte · 384 righe di
+sapere · 0 corretti da te») e **le domande aperte**, che sono l'unica cosa che chiede qualcosa al
+proprietario ed erano quarte. «Cosa non ha capito» **tace quando non ha niente da dire**: occupava
+la prima riga della scheda per dire che non c'era niente. I gruppi dei giudizi non si costruiscono
+più alla resa: chiuso non vuol dire non costruito, e 121 righe venivano disegnate comunque.
+
+**Sedici prove riscritte, e vale la pena dire perché.** Asserivano la forma vecchia — `ul > li`,
+`details > summary`, una riga visibile — e la forma è cambiata per decisione, non per caso. Ognuna
+tiene la sua proprietà (il motivo condiviso detto una volta sola, il prefisso tecnico che non
+resta mai a schermo, il fuoco che non si perde) e la dice nella forma nuova. Tre sono state
+**riscritte del tutto** perché la loro premessa non esiste più: un «gruppo misto» di entità e
+condizioni di sistema non nasce, ora che si separano per forma del soggetto.
+
 ## [3.53.0] — «HACS non è qualcosa da monitorare» (2026-09-20)
 
 Detto dal proprietario guardando il primo piano del 19/09. Misurato prima di scrivere una riga:
