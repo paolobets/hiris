@@ -1,5 +1,61 @@
 # HIRIS — Changelog
 
+## [3.51.0] — Tre mestieri in una colonna sola diventano quattro schede (2026-09-20)
+
+La pagina dell'osservatore nasce da una frase del proprietario: *«è troppo lunga, densa di
+informazioni non strutturate, e riporta anche elementi con errori»*. Misurato il 18/09 sulla casa
+viva: **oltre 110 KB scaricati e più di 500 righe disegnate** in una colonna sola, con tutto ciò che
+chiede qualcosa all'utente in fondo. Erano **tre mestieri diversi** — come sta la casa, cosa ha
+capito, come sta lavorando — più l'unico che chiede un'**azione**, tenuti a forza insieme.
+
+**Quattro schede, una voce di menu** (spec `2026-09-18-la-pagina-dell-osservatore.md`, §2): «Il
+giorno» · «Cosa fare» · «Cosa ho capito» · «L'osservatore». Ognuna ha il suo indirizzo
+(`#/watcher/giorno`…), quindi un segnalibro riapre la scheda giusta e «indietro» torna a quella di
+prima; `#/watcher` nudo si riscrive su «giorno» **senza** aggiungere una voce di cronologia, o
+«indietro» manderebbe avanti. La prima scheda si chiama «Il giorno» e non «Oggi» perché il resoconto
+nasce alle 00:20 e racconta **ieri**.
+
+**Ogni scheda legge i suoi dati alla prima apertura, mai prima**: aprire «Il giorno» non scarica più
+gli 86 KB dell'osservatore. Cambiare scheda **non ricostruisce niente** — elenchi aperti, giorno
+scelto e posizione sono lì quando si torna — e un guasto resta dentro la sua scheda: se il resoconto
+non si legge, «Cosa ho capito» continua a funzionare. In testa a ogni pannello, a dati arrivati,
+«Letto alle 14:32 · Aggiorna»: è l'unico modo per rileggere, e dice quanto è fresco ciò che si
+guarda. Le etichette sono **nude, senza contatori**: un contatore obbligherebbe a caricare tutte e
+quattro le schede all'avvio, cioè l'opposto del carico pigro.
+
+**La forma del codice segue quella della pagina.** `config/watcher-route.js` era **2.242 righe**:
+ora è un guscio di **187** che non legge nessun dato — tiene schede, pannelli, freschezza e carico
+pigro — più un file per mestiere (`watcher-giorno.js`, `watcher-cosa-fare.js`, `watcher-sapere.js`,
+`watcher-lavoro.js`) e `watcher-shared.js` per ciò che tutti e cinque condividono. Il taglio è stato
+**verificato riga per riga contro il file di partenza**: delle 106 prove precedenti **nessuna è
+sparita**, 102 sono identiche e 4 differiscono solo per le differenze dichiarate (il namespace della
+seam, `mount(scheda)`, il pannello per id). Le prove nuove della cornice sono **undici**.
+
+**Il difetto che il cancello scritto oggi ha trovato, e che nessuna prova vedeva.** Il guscio faceva
+`pannello.hidden = false` su **tutti e quattro** i pannelli invece che sul solo attivo: le quattro
+schede si disegnavano una sotto l'altra, cioè **la colonna sola da cui questa fetta nasce**. La
+suite era verde lo stesso, e la prova che avrebbe dovuto accorgersene — «un pannello nascosto non
+porta `aria-live`» — **non poteva fallire**: contava `[hidden] [aria-live]`, e senza nemmeno un
+pannello nascosto quel numero è zero qualunque cosa faccia il codice. Riscritta asserendo **la
+premessa** (tre pannelli nascosti, e con del contenuto dentro), è rossa sul codice sbagliato. È la
+malattia n. 1 di questo progetto, vista per la dodicesima volta in questa campagna: *si asserisce il
+fatto, non la proprietà che dovrebbe produrlo*.
+
+**Il cancello sugli identificatori cresce di quattro eccezioni dichiarate.** I namespace delle
+quattro schede non sono letti nudi da nessuno: il guscio li risolve **per nome**
+(`window[scheda.modulo]`) per poter dire «questa scheda non ha caricato» invece di esplodere al
+montaggio. Restano dichiarati in `.oxlintrc.json` lo stesso, e non è una concessione al linter: è
+`scripts/sponde_js.py` che così fallisce se un domani nessuno in `static/` produce più quel globale
+— l'unica cosa che vedrebbe una mezza rinomina di `window.HirisWatcherGiorno`, che `no-undef` non
+può vedere per costruzione, perché dall'altro lato c'è una stringa.
+
+**Cosa questa versione NON porta ancora**, ed è scritto per non doverlo scoprire usando: la banda
+«Fuori dal solito» in cima al giorno, il modulo di lettura nel server che le serve (il nome sempre
+risolto, il marchio del notevole, il raggruppamento dei 39 soggetti tecnici per integrazione) e il
+ponte «Fanne una proposta» verso la chat. Sono i punti 1, 3, 4 e 5 dell'ordine della spec: la
+cornice è il punto 2, ed esce da sola perché è compiuta e perché una pagina che si prova dal vivo
+insegna più di una che aspetta.
+
 ## [3.50.0] — Il sapere impara a dire «questo lo devi sapere subito» (2026-09-18)
 
 La pagina nuova dell'osservatore voleva mettere in cima «ciò che esce dal solito», e la decisione
