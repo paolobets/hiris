@@ -42,6 +42,21 @@ voci non sa dire se il lavoro procede.
 
 ## Scelti — sprint in corso
 
+### Zittire un'integrazione NUOVA dalla pagina — aperta il 20/09/2026
+
+Con la 3.53.0 il proprietario corregge le **sei righe di `impalcatura` che il seme porta**, dalla
+scheda «Cosa ho capito». Quello che non può ancora fare è **aggiungere una riga nuova**: se domani
+una settima integrazione comincia a riempire il primo piano di rumore, il modulo di aggiunta di
+quella pagina scrive solo `genere` e solo su un tipo o un'entità.
+
+**Cosa serve**: il modulo di aggiunta impara il terzo genere di soggetto (`integrazione`) e il
+campo da scrivere invece di darlo per scontato. La porta (`POST /api/mind/judgment`) è già
+generica e accetta la riga: il buco è solo nella pagina.
+
+**L'alternativa, più vicina a dove nasce il fastidio**: un comando sulla riga stessa del primo
+piano — «non svegliarmi per questa» — che scrive lo stesso giudizio. Costa una scrittura nella
+scheda «Il giorno», che oggi legge e basta.
+
 ### I soggetti tecnici raggruppati per integrazione — aperta il 20/09/2026
 
 È il **terzo punto della §3** di `docs/design/2026-09-18-la-pagina-dell-osservatore.md`, l'unico

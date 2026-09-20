@@ -89,23 +89,35 @@ def test_i_fatti_di_HA_non_entrano_nel_seme():
     `JudgmentError` (`attributi_assumibili` non e' un giudizio), eseguita e
     osservata."""
     campi = {field for _, _, field, _ in tv.judgment_seed_rows()}
-    assert campi <= set(tv.JUDGMENT_FIELDS.values())
+    # `impalcatura` non viene dal vocabolario dei tipi -- e' la **seconda
+    # sorgente** del seme, nata il 20/09/2026: righe il cui soggetto e'
+    # un'integrazione, non un tipo (`SCAFFOLDING_INTEGRATIONS`). Dichiararla
+    # qui e' il punto: la prova continua a dire «nessun fatto importato da
+    # Home Assistant diventa un giudizio», e non «il seme ha una sorgente
+    # sola», che dal 20/09 sarebbe falso.
+    assert campi <= set(tv.JUDGMENT_FIELDS.values()) | {tv.SCAFFOLDING}
     assert "capability_names" not in campi and "state_attributes" not in campi
     assert "attributi_assumibili" not in campi  # D1: resta codice
 
 
-def test_il_seme_conta_115_celle_campo_per_campo():
-    """Contato ESEGUENDO il 18/09/2026 (Task 0, passo 1), non a mano: 99 celle
-    prima della fetta «da sapere subito», 16 righe nuove, 115.
+def test_il_seme_conta_121_celle_campo_per_campo():
+    """Contato ESEGUENDO, non a mano: 99 celle prima della fetta «da sapere
+    subito», 16 righe nuove il 18/09/2026 (115), e **6 righe di `impalcatura`
+    il 20/09** -- le integrazioni che sono Home Assistant che parla di se'.
+    121.
 
-    Mutazione: dimenticare una delle sedici righe -- rossa su `da_sapere_subito`
-    e sul totale.
+    Le sei non sono di gusto: ognuna e' comparsa in primo piano nella
+    settimana 13-19/09, e insieme hanno fatto 12 righe su 42.
+
+    Mutazione: dimenticare una delle righe -- rossa sul suo campo e sul
+    totale.
     """
     import collections
     per_campo = collections.Counter(field for _, _, field, _ in tv.judgment_seed_rows())
     assert per_campo == {"genere": 26, "notevole": 23, "riposo": 18, "accendibile": 13,
-                         "limiti_parametri": 10, "lavoro": 9, "da_sapere_subito": 16}
-    assert sum(per_campo.values()) == 115
+                         "limiti_parametri": 10, "lavoro": 9, "da_sapere_subito": 16,
+                         "impalcatura": 6}
+    assert sum(per_campo.values()) == 121
 
 
 def test_l_impronta_del_seme_vero_e_QUESTA():

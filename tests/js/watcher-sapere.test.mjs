@@ -1083,3 +1083,44 @@ test('seam _rendiSapere: `si` e `no` restano quello che sono', () => {
   }
   assert.deepEqual(valori, { siren: 'si', update: 'no' });
 });
+
+
+/* -------------------------------------------------------------------------
+   L'IMPALCATURA (20/09/2026): il giudizio che dice «questa integrazione e'
+   Home Assistant che parla di se'». E' l'unico giudizio il cui soggetto non
+   e' una cosa di casa, e l'unico che il proprietario corregge per zittire il
+   primo piano invece che per correggere un tipo.
+   ------------------------------------------------------------------------- */
+
+test('seam _rendiSapere: una riga di IMPALCATURA si corregge, con si/no', () => {
+  /* Il proprietario ha deciso il 20/09 che hacs non si monitora, e la stessa
+     decisione deve poter tornare indietro senza un rilascio: e' tutta la
+     ragione per cui il criterio vive nel sapere.
+
+     Mutazione che la uccide: lasciare `genere` come unico campo correggibile. */
+  const g = giudizio({ campo: 'impalcatura', valore: 'si', da: 'seme',
+    soggetto_genere: 'integrazione', soggetto: 'hacs' });
+  const { document, corpo } = rendiSapere(sapereFinto({ giudizi: [g] }));
+  const riga = trovaRigaGiudizio(corpo, g.soggetto);
+
+  const correggi = bottone(document, 'Correggi', riga);
+  assert.ok(correggi, 'senza questo bottone la decisione sarebbe cablata nel seme');
+  correggi.click();
+  const opzioni = [...riga.querySelectorAll('option')].map((o) => o.value);
+  assert.deepEqual(opzioni, ['si', 'no'], 'un giudizio si/no non ha altre forme');
+});
+
+test("seam _rendiSapere: correggere l'impalcatura NON avvisa del costo della cronaca", () => {
+  /* `impalcatura` non sta nell'impronta: si legge quando la pagina legge, e
+     cambiarla non fa rifare nessun giorno. Dirlo lo stesso sarebbe un avviso
+     falso -- e il proprietario imparerebbe a ignorarli.
+
+     Mutazione che la uccide: la frase del costo su ogni campo. */
+  const g = giudizio({ campo: 'impalcatura', valore: 'si', da: 'seme',
+    soggetto_genere: 'integrazione', soggetto: 'hassio' });
+  const { document, corpo } = rendiSapere(sapereFinto({ giudizi: [g] }));
+  const riga = trovaRigaGiudizio(corpo, g.soggetto);
+  bottone(document, 'Correggi', riga).click();
+
+  assert.doesNotMatch(riga.textContent, /cronaca dei giorni/i);
+});

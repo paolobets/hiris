@@ -721,7 +721,8 @@ class KnowledgeStore:
         return _facts(rows)
 
     def judgment_rows(self) -> list[Fact]:
-        """Le righe dei giudizi su tipi ed entita' (spec 2026-09-16 §3)."""
+        """Le righe dei giudizi su tipi, entita' e integrazioni (spec
+        2026-09-16 §3; `integrazione` dal 20/09/2026)."""
         return self.judgment_rows_and_skipped()[0]
 
     def judgment_rows_and_skipped(self) -> tuple[list[Fact], list[str]]:
@@ -736,7 +737,13 @@ class KnowledgeStore:
         with self._lock:
             rows = self._conn.execute(
                 f"SELECT {', '.join(_COLUMNS)} FROM knowledge "
-                "WHERE subject_kind IN ('tipo', 'entita') "
+                # `integrazione` e' entrata il 20/09/2026 con `impalcatura`, il
+                # primo giudizio il cui soggetto non e' una cosa di casa. I tre
+                # generi sono quelli che `type_judgments._SUBJECT_KINDS`
+                # ammette: `dispositivo` resta fuori perche' nessun giudizio
+                # vive su un dispositivo, e prenderlo qui porterebbe
+                # nell'istantanea righe che `from_rows` rifiuterebbe una a una.
+                "WHERE subject_kind IN ('tipo', 'entita', 'integrazione') "
                 f"AND field IN ({', '.join('?' * len(names))}) "
                 "ORDER BY subject_kind, subject, field", names).fetchall()
         return _facts_and_skipped(rows)

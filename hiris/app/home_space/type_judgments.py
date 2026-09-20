@@ -32,12 +32,28 @@ PARAMETER_LIMITS_FIELD = "limiti_parametri"
 #: l'italiano e l'inglese si sceglie in un passaggio successivo). Quando lo
 #: sara', la rinomina e' un commit di sola rinomina.
 DA_SAPERE_SUBITO_FIELD = "da_sapere_subito"
+#: «Questa integrazione e' Home Assistant che parla di se' stesso, non la
+#: casa?» (decisione del proprietario, 20/09/2026: *«hacs non e' qualcosa da
+#: monitorare»*). Si/no, e **l'assenza vale no**: chi non e' dichiarato
+#: impalcatura e' roba di casa, perche' il contrario farebbe tacere il primo
+#: piano su tutto cio' che nessuno ha ancora giudicato.
+#:
+#: Il soggetto e' un'INTEGRAZIONE, non un tipo: una condizione di sistema non
+#: ha ne' dominio ne' classe -- ha il logger da cui viene. Misurato su sette
+#: giorni di primo piano (13-19/09/2026): 42 righe, e 12 erano impalcatura.
+#:
+#: **Il nome inglese non e' deciso**, come per `da_sapere_subito`: la riga
+#: nasce con l'italiano (regola del glossario).
+SCAFFOLDING_FIELD = "impalcatura"
 JUDGMENT_FIELD_NAMES = frozenset({
     GENRE_FIELD, RESTING_FIELD, WORKING_FIELD, NOTABLE_FIELD, OPERABLE_FIELD,
-    PARAMETER_LIMITS_FIELD, DA_SAPERE_SUBITO_FIELD})
+    PARAMETER_LIMITS_FIELD, DA_SAPERE_SUBITO_FIELD, SCAFFOLDING_FIELD})
 CHRONICLE_FIELDS = (GENRE_FIELD, RESTING_FIELD)
 NO_GENRE = "nessuno"
-_SUBJECT_KINDS = ("tipo", "entita")
+#: `integrazione` e' nato il 20/09/2026 con `impalcatura`: il terzo genere
+#: di soggetto, per cio' che non e' ne' un tipo ne' un'entita' -- il nome
+#: dell'integrazione da cui viene una condizione di sistema.
+_SUBJECT_KINDS = ("tipo", "entita", "integrazione")
 _YES_NO = {"si": True, "no": False}
 # Le due forme di un limite di parametro (spec §2).
 _LIMIT_KEY_SETS = (frozenset({"min", "max"}), frozenset({"options"}))
@@ -136,7 +152,7 @@ def _parse(field: str, value: str, genres: frozenset[str], absent_forms: frozens
         if value != NO_GENRE and value not in genres:
             raise ValueError(f"genere fuori elenco: {value!r}")
         return value
-    if field in (NOTABLE_FIELD, OPERABLE_FIELD):
+    if field in (NOTABLE_FIELD, OPERABLE_FIELD, SCAFFOLDING_FIELD):
         if value not in _YES_NO:
             raise ValueError(f"atteso si/no, trovato {value!r}")
         return _YES_NO[value]
@@ -247,6 +263,20 @@ class TypeJudgments:
 
     def working_of(self, domain, device_class=None) -> Mapping[str, str]:
         return self._lookup(WORKING_FIELD, domain, device_class) or MappingProxyType({})
+
+    def is_scaffolding(self, integration: str) -> bool:
+        """`True` se questa integrazione e' impalcatura di Home Assistant.
+
+        **Non passa da `_lookup`**, ed e' deliberato: quello costruisce le
+        chiavi di un'entita' (entita' -> coppia -> dominio), e un'integrazione
+        non e' nessuna delle tre. Una chiave sola, esatta.
+
+        **L'assenza vale no**: chi nessuno ha giudicato e' roba di casa. Il
+        contrario -- «e' impalcatura finche' non dici il contrario» -- farebbe
+        tacere il primo piano su ogni integrazione nuova, cioe' proprio quando
+        una cosa si rompe per la prima volta.
+        """
+        return bool(self._by_key.get(("integrazione", str(integration), SCAFFOLDING_FIELD)))
 
     def is_notable(self, domain, device_class=None) -> bool:
         return bool(self._lookup(NOTABLE_FIELD, domain, device_class))

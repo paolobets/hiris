@@ -90,7 +90,7 @@ window.HirisWatcherSapere = (function () {
      ricopiati da una variabile). Fix round 1, IMPORTANT 2: `da_sapere_subito`
      (Task 1, spec 2026-09-18-da-sapere-subito.md §2) era un settimo campo nel
      sapere senza il suo settimo qui -- non compariva mai nella pagina. Resta
-     fuori da `EDITABLE_JUDGMENT_FIELD` (sotto): la spec §5 dichiara fuori da
+     fuori da `EDITABLE_JUDGMENT_FIELDS` (sotto): la spec §5 dichiara fuori da
      quella fetta la SCRITTURA di un valore nuovo dalla pagina -- il ritorno al
      seme, invece, la pagina lo fa gia' per qualunque riga corretta di
      qualunque campo (`revertToSeedControl`). */
@@ -101,12 +101,26 @@ window.HirisWatcherSapere = (function () {
     { campo: 'accendibile', etichetta: 'Accendibile' },
     { campo: 'limiti_parametri', etichetta: 'Limiti dei parametri' },
     { campo: 'lavoro', etichetta: 'Lavoro' },
-    { campo: 'da_sapere_subito', etichetta: 'Da sapere subito' }
+    { campo: 'da_sapere_subito', etichetta: 'Da sapere subito' },
+    { campo: 'impalcatura', etichetta: 'Impalcatura' }
   ];
 
-  /* Solo `genere` si corregge sul posto in v1 (forma approvata, punto 3 e
-     "cosa la v1 non fa"): gli altri sei restano in sola lettura da qui. */
-  var EDITABLE_JUDGMENT_FIELD = 'genere';
+  /* I campi che si correggono sul posto, e **le forme che quel campo ammette**.
+     In v1 era solo `genere` (forma approvata, punto 3); `impalcatura` e'
+     entrata il 20/09/2026 con la decisione del proprietario «hacs non e'
+     qualcosa da monitorare»: se il criterio del primo piano vive nel sapere
+     ma non si puo' correggere da qui, vive nel seme -- cioe' nel codice, che
+     e' esattamente cio' che la fetta dichiarava di evitare.
+
+     Una mappa e non due funzioni: l'editor e' lo stesso, cambiano le opzioni
+     del menu. Gli altri cinque campi restano in sola lettura. */
+  var EDITABLE_JUDGMENT_FIELDS = {
+    genere: null,  // le sue opzioni sono `JUDGMENT_GENRE_OPTIONS`, qui sotto
+    impalcatura: [
+      { valore: 'si', etichetta: 'Sì: è Home Assistant che parla di sé' },
+      { valore: 'no', etichetta: 'No: riguarda la casa' }
+    ]
+  };
 
   /* I campi che entrano nell'IMPRONTA della cronaca -- letterale, identico a
      `CHRONICLE_FIELDS = (GENRE_FIELD, RESTING_FIELD)` di
@@ -189,9 +203,13 @@ window.HirisWatcherSapere = (function () {
      (la regola di calcolo lo preferisce) e lo renderebbe invisibile a chi
      naviga per etichette, mentre il testo visibile resterebbe un altro
      («Genere» in entrambi i casi qui, ma sarebbe un doppione fragile). */
-  function genreSelect() {
+  function fieldOptions(campo) {
+    return EDITABLE_JUDGMENT_FIELDS[campo] || JUDGMENT_GENRE_OPTIONS;
+  }
+
+  function genreSelect(campo) {
     var sel = el('select');
-    JUDGMENT_GENRE_OPTIONS.forEach(function (o) {
+    fieldOptions(campo).forEach(function (o) {
       var opt = el('option', null, o.etichetta);
       opt.value = o.valore;
       sel.appendChild(opt);
@@ -260,9 +278,10 @@ window.HirisWatcherSapere = (function () {
     });
   }
 
-  /* «Correggi» il genere sul posto (SOLO questo campo, forma approvata
-     punto 3): apre/chiude un editor dentro la riga, senza modale. */
-  function genreCorrectControl(g, outerBody) {
+  /* «Correggi» sul posto il campo di questa riga (uno di
+     `EDITABLE_JUDGMENT_FIELDS`): apre/chiude un editor dentro la riga, senza
+     modale. */
+  function judgmentCorrectControl(g, outerBody) {
     var wrap = el('div');
     var toggle = el('button', 'btn btn-ghost', 'Correggi');
     toggle.type = 'button';
@@ -275,16 +294,23 @@ window.HirisWatcherSapere = (function () {
       var aperto = toggle.getAttribute('aria-expanded') === 'true';
       if (aperto) { clearEl(panel); panel.hidden = true; toggle.setAttribute('aria-expanded', 'false'); return; }
       clearEl(panel);
-      var sel = genreSelect();
-      if (JUDGMENT_GENRE_OPTIONS.some(function (o) { return o.valore === g.valore; })) sel.value = g.valore;
-      panel.appendChild(judgmentField('Genere', sel));
-      panel.appendChild(el('p', 'field-hint', 'Cambiare il genere ' + chronicleCostPhrase() + '.'));
+      var sel = genreSelect(g.campo);
+      if (fieldOptions(g.campo).some(function (o) { return o.valore === g.valore; })) sel.value = g.valore;
+      panel.appendChild(judgmentField(judgmentFieldLabel(g.campo), sel));
+      /* **Il costo si dice solo per i campi che lo hanno.** `impalcatura` non
+         entra nell'impronta: si legge quando la pagina legge, e cambiarla non
+         fa rifare nessun giorno. Un avviso falso insegna a ignorare quelli
+         veri. */
+      if (rifaLaCronaca(g.campo)) {
+        panel.appendChild(el('p', 'field-hint',
+          'Cambiare ' + judgmentFieldLabel(g.campo).toLowerCase() + ' ' + chronicleCostPhrase() + '.'));
+      }
       var esito = el('p', 'sc-desc', '');
       var scrivi = el('button', 'btn btn-ghost', 'Scrivi');
       scrivi.type = 'button';
       scrivi.addEventListener('click', function () {
         submitJudgment({
-          soggetto_genere: g.soggetto_genere, soggetto: g.soggetto, campo: EDITABLE_JUDGMENT_FIELD,
+          soggetto_genere: g.soggetto_genere, soggetto: g.soggetto, campo: g.campo,
           valore: sel.value
         }, { button: scrivi, esito: esito, outerBody: outerBody });
       });
@@ -449,7 +475,9 @@ window.HirisWatcherSapere = (function () {
     meta.appendChild(provenanceNode(g));
     riga.appendChild(meta);
     var actions = el('div', 'jr-actions');
-    if (g.campo === EDITABLE_JUDGMENT_FIELD) actions.appendChild(genreCorrectControl(g, outerBody));
+    if (Object.prototype.hasOwnProperty.call(EDITABLE_JUDGMENT_FIELDS, g.campo)) {
+      actions.appendChild(judgmentCorrectControl(g, outerBody));
+    }
     if (g.da === 'proprietario' || g.da === 'altro') actions.appendChild(revertToSeedControl(g, outerBody));
     riga.appendChild(actions);
     return riga;
@@ -511,7 +539,7 @@ window.HirisWatcherSapere = (function () {
         return;
       }
       submitJudgment({
-        soggetto_genere: scelto, soggetto: subjectInput.value.trim(), campo: EDITABLE_JUDGMENT_FIELD,
+        soggetto_genere: scelto, soggetto: subjectInput.value.trim(), campo: 'genere',
         valore: sel.value
       }, { button: scrivi, esito: esito, outerBody: outerBody });
     });

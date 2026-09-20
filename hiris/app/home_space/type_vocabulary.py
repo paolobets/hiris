@@ -504,6 +504,10 @@ NOTABLE = "notable"
 #: regola esiste per far scattare.
 DA_SAPERE_SUBITO = "da_sapere_subito"
 
+#: Il campo `impalcatura` (20/09/2026). Vive su un'INTEGRAZIONE, non su un
+#: tipo: e' l'unico giudizio il cui soggetto non e' una cosa di casa.
+SCAFFOLDING = "impalcatura"
+
 #: Il genere di un episodio: a quale forma della cronaca appartiene. Sostituisce
 #: la gamba (spec 2026-09-16 §5): e' la sola cosa che la gamba decideva davvero.
 GENRE = "genre"
@@ -1955,9 +1959,32 @@ def _plain(value):
     return value
 
 
+#: **L'impalcatura di Home Assistant**: le integrazioni che parlano di HA
+#: stesso e non della casa (decisione del proprietario, 20/09/2026: *«hacs non
+#: e' qualcosa da monitorare»*). Le loro condizioni di sistema restano nella
+#: cronaca -- sono storia, e l'analista puo' usarle -- ma non salgono in primo
+#: piano.
+#:
+#: **Ognuna e' misurata, nessuna e' di gusto**: sui sette giorni 13-19/09/2026
+#: il primo piano ha portato 42 righe e queste sei ne hanno fatte 12 --
+#: `hassio` 6 (timeout sul restart e sui log degli add-on), `hacs` 3 (due 404
+#: di GitHub su un'integrazione del proprietario e un «riavvio richiesto»),
+#: `homeassistant` 2 (il nucleo: «aggiornare lo stato di X ha preso 0,4 s»,
+#: «un'integrazione personalizzata non collaudata»), `websocket_api` 2,
+#: `frontend` 1, `habluetooth` 1.
+#:
+#: **Chi governa oggetti di casa resta fuori da questo elenco**, anche quando
+#: e' rumoroso: `hydrawise` e' l'irrigazione ferma, `alarmo` e' l'allarme
+#: scattato, `sensor` e' il recorder che dichiara sbagliato un contatore
+#: dell'inverter -- il dato su cui si regge il bilancio dell'energia.
+SCAFFOLDING_INTEGRATIONS = Ours(("frontend", "habluetooth", "hacs", "hassio",
+                                 "homeassistant", "websocket_api"))
+
+
 def judgment_seed_rows() -> tuple[tuple[str, str, str, str], ...]:
     """I giudizi del letterale, come righe del sapere: `(tipo, soggetto, campo, valore)`."""
-    rows = []
+    rows = [("integrazione", slug, SCAFFOLDING, "si")
+            for slug in SCAFFOLDING_INTEGRATIONS.value]
     for row in _vocabulary.rows():
         subject = row.domain + (f".{row.device_class}" if row.device_class else "")
         for name, field in row.fields.items():

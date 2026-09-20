@@ -32,8 +32,19 @@ from hiris.app.mind.report import as_page
 
 
 def _giudizi(*righe):
-    """Il seme del repo piu' le righe che la casa scrive sopra."""
-    return TypeJudgments.from_rows(tv.judgment_seed_rows() + righe,
+    """Il seme del repo con sopra le righe che la casa scrive.
+
+    **Sostituisce per chiave, non accoda**, come fa l'archivio vero: la chiave
+    primaria del sapere e' `(genere, soggetto, campo)`, e due righe sulla
+    stessa chiave `from_rows` le rifiuta entrambe. Una finta che accodasse
+    renderebbe impossibile provare la CORREZIONE di una riga del seme, che e'
+    il caso che conta.
+    """
+    per_chiave = {(k, s, c): (k, s, c, v)
+                  for k, s, c, v in tv.judgment_seed_rows()}
+    for k, s, c, v in righe:
+        per_chiave[(k, s, c)] = (k, s, c, v)
+    return TypeJudgments.from_rows(tuple(per_chiave.values()),
                                    genres=tv.CHRONICLE_GENRES,
                                    absent_forms=tv.ABSENT_STATE_FORMS.value)
 
@@ -419,3 +430,99 @@ def test_uno_stato_NON_LO_SO_non_entra_mai_in_primo_piano(stato):
                                           genere="sicurezza", classe="smoke")),
                      judgments=_giudizi())
     assert pagina["primo_piano"] == []
+
+
+# ---------------------------------------------------------------------------
+# L'IMPALCATURA di Home Assistant (decisione del proprietario, 20/09/2026:
+# «hacs non e' qualcosa da monitorare»).
+#
+# Misurato sui sette giorni 13-19/09: il primo piano ha portato 42 righe, e
+# **12 erano Home Assistant che parla di se'** -- il Supervisor coi timeout
+# sugli add-on, HACS, il frontend, il websocket, il bluetooth. L'irrigazione
+# ferma e l'allarme scattato erano la minoranza.
+#
+# **Restano nella cronaca**: sono storia, e l'analista puo' usarle. Non salgono
+# in cima.
+# ---------------------------------------------------------------------------
+
+def test_una_condizione_dell_IMPALCATURA_non_sale_ma_RESTA_nella_cronaca():
+    """Mutazione: non chiedere il giudizio -- rossa (HACS torna in cima).
+    Mutazione: toglierla anche dalla cronaca -- rossa (la storia sparisce)."""
+    voce = _guasto("log:custom_components.hacs@x.py:1", titolo="GitHub returned 404",
+                   dominio="custom_components.hacs")
+    pagina = as_page(_resoconto(voce), judgments=_giudizi())
+
+    assert pagina["primo_piano"] == []
+    assert pagina["cronaca"][0]["nome"] == "Hacs"
+    assert "primo_piano" not in pagina["cronaca"][0]
+
+
+def test_la_stessa_condizione_di_un_integrazione_di_CASA_sale():
+    """La contropartita: senza di lei, un cancello che tace su tutto
+    passerebbe la prova qui sopra. Hydrawise e' l'irrigazione.
+
+    Mutazione: `is_scaffolding` che torna sempre vero -- rossa."""
+    voce = _guasto("log:homeassistant.components.hydrawise@x.py:1",
+                   titolo="Timeout fetching hydrawise data",
+                   dominio="homeassistant.components.hydrawise")
+    pagina = as_page(_resoconto(voce), judgments=_giudizi())
+
+    assert [r["nome"] for r in pagina["primo_piano"]] == ["Hydrawise"]
+
+
+def test_i_TRE_logger_di_una_stessa_integrazione_sono_UNA_integrazione():
+    """Misurato: il Supervisor ha fatto 6 righe in una settimana da tre logger
+    diversi (`hassio.handler`, `hassio.coordinator`, `hassio.http`). Se il
+    giudizio si leggesse sul percorso del logger invece che sull'integrazione,
+    il proprietario dovrebbe scrivere tre righe per zittire una cosa sola --
+    e una quarta il giorno in cui HA aggiunge un modulo.
+
+    Mutazione: chiedere il giudizio col `dominio` intero -- rossa."""
+    voci = [_guasto(f"log:homeassistant.components.hassio.{modulo}@x.py:1",
+                    titolo=f"Timeout {modulo}",
+                    dominio=f"homeassistant.components.hassio.{modulo}")
+            for modulo in ("handler", "coordinator", "http")]
+    pagina = as_page(_resoconto(*voci), judgments=_giudizi())
+
+    assert pagina["primo_piano"] == []
+
+
+def test_il_numero_di_versione_del_FRONTEND_non_fa_un_integrazione_nuova():
+    """`frontend.js.modern.202608267`: l'ultimo pezzo e' la versione del
+    pacchetto e cambia a ogni rilascio di Home Assistant. Se finisse nel
+    soggetto del giudizio, la riga scritta oggi smetterebbe di mordere al
+    prossimo aggiornamento -- un giudizio che scade da solo.
+
+    Mutazione: prendere piu' di un segmento -- rossa."""
+    voce = _guasto("log:frontend.js.modern.202608267@x.py:1", cosa="WARNING",
+                   titolo="Uncaught error", dominio="frontend.js.modern.202608267")
+    pagina = as_page(_resoconto(voce), judgments=_giudizi())
+
+    assert pagina["primo_piano"] == []
+
+
+def test_la_casa_puo_RIMETTERE_in_primo_piano_cio_che_il_seme_ha_zittito():
+    """**Il cancello di questa mezza fetta**: il criterio vive nei giudizi, e
+    il proprietario lo corregge da «Cosa ho capito» senza un rilascio. Se
+    l'elenco fosse nel codice, questa riga non sposterebbe niente.
+
+    Mutazione: un elenco di integrazioni dentro `report.py` -- rossa."""
+    voce = _guasto("log:custom_components.hacs@x.py:1", titolo="GitHub returned 404",
+                   dominio="custom_components.hacs")
+    casa = _giudizi(("integrazione", "hacs", "impalcatura", "no"))
+    pagina = as_page(_resoconto(voce), judgments=casa)
+
+    assert [r["nome"] for r in pagina["primo_piano"]] == ["Hacs"]
+
+
+def test_senza_i_giudizi_l_impalcatura_NON_si_indovina():
+    """Senza l'istantanea le condizioni di sistema restano (il loro livello lo
+    scrive Home Assistant), e nessuna si zittisce: «non lo so» non diventa
+    «taci». Meglio una riga in piu' che una in meno.
+
+    Mutazione: zittire per assenza di giudizi -- rossa."""
+    voce = _guasto("log:custom_components.hacs@x.py:1", titolo="GitHub returned 404",
+                   dominio="custom_components.hacs")
+    pagina = as_page(_resoconto(voce), judgments=None)
+
+    assert [r["nome"] for r in pagina["primo_piano"]] == ["Hacs"]

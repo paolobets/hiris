@@ -17,6 +17,7 @@ import sqlite3
 import time as _time
 
 from ..home_space.type_judgments import (
+    _SUBJECT_KINDS,
     DA_SAPERE_SUBITO_FIELD,
     GENRE_FIELD,
     JUDGMENT_FIELD_NAMES,
@@ -24,6 +25,7 @@ from ..home_space.type_judgments import (
     OPERABLE_FIELD,
     PARAMETER_LIMITS_FIELD,
     RESTING_FIELD,
+    SCAFFOLDING_FIELD,
     WORKING_FIELD,
     JudgmentError,
     TypeJudgments,
@@ -62,6 +64,7 @@ _LEVELS = {
     WORKING_FIELD: frozenset({"coppia", "dominio"}),
     NOTABLE_FIELD: frozenset({"coppia", "dominio"}),
     DA_SAPERE_SUBITO_FIELD: frozenset({"coppia", "dominio"}),
+    SCAFFOLDING_FIELD: frozenset({"integrazione"}),
     OPERABLE_FIELD: frozenset({"dominio"}),
     PARAMETER_LIMITS_FIELD: frozenset({"dominio"}),
 }
@@ -179,6 +182,9 @@ def _status(source: str, why: str | None, judgments: TypeJudgments) -> dict:
 #: `.device_class` (minuscole, cifre, `_`). NON e' la forma di un entity_id:
 #: quella e' `_ENTITY_ID_RE`, importata qui sotto.
 _TYPE_SUBJECT_RE = re.compile(r"[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)?")
+#: Lo slug di un'integrazione: un segmento solo, come lo scrive Home
+#: Assistant nel manifest (`hacs`, `websocket_api`, `homeassistant`).
+_INTEGRATION_RE = re.compile(r"[a-z][a-z0-9_]*")
 
 
 def _level(subject_kind: str, subject: str) -> str | None:
@@ -191,6 +197,12 @@ def _level(subject_kind: str, subject: str) -> str | None:
     una correzione che la casa non vede (revisione del Task 7)."""
     if subject_kind == "entita":
         return "entita" if _ENTITY_ID_RE.fullmatch(subject) else None
+    if subject_kind == "integrazione":
+        # Lo SLUG, non il percorso del logger: `hacs`, `websocket_api`.
+        # `custom_components.hacs` sarebbe una riga accettata che nessuna
+        # chiave incontrera' mai -- `report._integration_slug` consegna sempre
+        # un segmento solo.
+        return "integrazione" if _INTEGRATION_RE.fullmatch(subject) else None
     if not _TYPE_SUBJECT_RE.fullmatch(subject):
         return None
     return "coppia" if "." in subject else "dominio"
@@ -232,7 +244,7 @@ def judgment_listing(knowledge) -> list[dict]:
 
 
 def _check(subject_kind: str, subject: str, field: str, value, current: TypeJudgments) -> None:
-    if subject_kind not in ("tipo", "entita") or not subject:
+    if subject_kind not in _SUBJECT_KINDS or not subject:
         raise JudgmentRefused("serve un soggetto: un tipo o un'entita'")
     if field not in JUDGMENT_FIELD_NAMES:
         raise JudgmentRefused(f"`{field}` non e' un giudizio che la casa possa correggere")

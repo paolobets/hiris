@@ -887,3 +887,93 @@ def test_ogni_giudizio_ha_i_suoi_livelli_dichiarati():
     `_LEVELS` -- rossa."""
     from hiris.app.mind.judgments import _LEVELS
     assert set(_LEVELS) == JUDGMENT_FIELD_NAMES
+
+
+# ---------------------------------------------------------------------------
+# L'IMPALCATURA (decisione del proprietario, 20/09/2026: «hacs non e' qualcosa
+# da monitorare»).
+#
+# Misurato su sette giorni di primo piano (13-19/09): **42 righe, e 12 sono
+# Home Assistant che parla di se'** -- HACS (2 errori 404 di GitHub e un
+# «riavvio richiesto»), il Supervisor coi timeout sul restart degli add-on, il
+# frontend, il websocket, il bluetooth. Le cose di casa -- l'irrigazione ferma,
+# l'allarme scattato -- erano la minoranza.
+#
+# **Il criterio non sta nel codice.** Per un'entita' lo diceva gia' un giudizio
+# (`da_sapere_subito`); per una condizione di sistema non lo diceva nessuno, ed
+# entravano tutte. Ora lo dice un giudizio sull'INTEGRAZIONE, che la casa
+# scrive e corregge da «Cosa ho capito»: `impalcatura`.
+# ---------------------------------------------------------------------------
+
+def test_il_seme_dichiara_l_impalcatura_di_home_assistant():
+    """Le sei misurate il 20/09/2026. **Il seme non e' un elenco di gusti**:
+    ognuna e' comparsa in primo piano in quella settimana.
+
+    Mutazione: togliere una riga dal seme -- rossa."""
+    righe = {(soggetto, valore) for genere, soggetto, campo, valore in tv.judgment_seed_rows()
+             if genere == "integrazione" and campo == "impalcatura"}
+
+    assert righe == {("frontend", "si"), ("habluetooth", "si"), ("hacs", "si"),
+                     ("hassio", "si"), ("homeassistant", "si"), ("websocket_api", "si")}
+
+
+def test_un_integrazione_che_governa_oggetti_di_casa_NON_e_impalcatura():
+    """La contropartita, e senza di lei il seme potrebbe dire «si» a tutti:
+    Hydrawise e' l'irrigazione, Alarmo e' l'allarme. Se sparissero dal primo
+    piano, la pagina tacerebbe proprio su cio' per cui esiste.
+
+    Mutazione: `impalcatura` che torna vero per assenza -- rossa."""
+    giudizi = tv.REPO_JUDGMENTS
+
+    assert giudizi.is_scaffolding("hacs") is True
+    assert giudizi.is_scaffolding("hydrawise") is False
+    assert giudizi.is_scaffolding("alarmo") is False
+
+
+def test_impalcatura_su_un_TIPO_e_rifiutata(tmp_path):
+    """`impalcatura` vive su un'integrazione e su nient'altro: su `light` non
+    la consulterebbe nessuna domanda, e una riga che nessuno legge e' una
+    correzione che la casa crede di aver fatto.
+
+    Mutazione: `_LEVELS` che ammette anche il dominio -- rossa."""
+    s, app = _app_seminata(tmp_path)
+    try:
+        with pytest.raises(JudgmentRefused):
+            write_judgment(app, subject_kind="tipo", subject="light",
+                           field="impalcatura", value="si", now=lambda: 1.0)
+    finally:
+        s.close()
+
+
+def test_un_soggetto_integrazione_con_una_forma_che_nessuna_chiave_incontra_e_rifiutato(tmp_path):
+    """Il soggetto e' lo SLUG dell'integrazione -- `hacs`, `websocket_api` --
+    non il percorso del logger: `custom_components.hacs` sarebbe una riga
+    accettata che nessuna chiave incontrera' mai.
+
+    Mutazione: nessun controllo di forma -- rossa."""
+    s, app = _app_seminata(tmp_path)
+    try:
+        with pytest.raises(JudgmentRefused):
+            write_judgment(app, subject_kind="integrazione",
+                           subject="custom_components.hacs", field="impalcatura",
+                           value="si", now=lambda: 1.0)
+        # E la forma giusta si scrive: senza questa meta', un controllo che
+        # rifiuta TUTTO passerebbe la prova qui sopra.
+        write_judgment(app, subject_kind="integrazione", subject="hydrawise",
+                       field="impalcatura", value="si", now=lambda: 2.0)
+        assert app["type_judgments"].is_scaffolding("hydrawise") is True
+    finally:
+        s.close()
+
+
+def test_impalcatura_NON_rifa_la_cronaca():
+    """`CHRONICLE_FIELDS` dice quali giudizi obbligano a rifare i giorni
+    passati: `impalcatura` si legge quando la pagina legge, quindi cambiarla
+    costa una riga e zero ricostruzioni -- la stessa ragione per cui il primo
+    piano non si salva.
+
+    Mutazione: aggiungerla a `CHRONICLE_FIELDS` -- rossa (22 giorni da rifare
+    per una decisione che con la cronaca non c'entra)."""
+    from hiris.app.home_space.type_judgments import CHRONICLE_FIELDS
+
+    assert "impalcatura" not in CHRONICLE_FIELDS
