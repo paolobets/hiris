@@ -117,13 +117,16 @@ window.HirisWatcherGiorno = (function () {
      vuole aprire un'issue. */
   function primoPianoDetail(r) {
     return S.createDisclosure('Dettaglio', 'Chiudi', function (panel) {
-      var d = describeWatchedSubject(r.chi || '', r.nome);
       if (r.dominio) panel.appendChild(el('div', 'field-hint', r.dominio));
       if (r.volte > 1) {
         panel.appendChild(el('div', 'field-hint', 'la prima alle ' + fmtTime(r.quando_ts)));
       }
+      /* L'identificativo grezzo e BASTA: per una voce di registro porta gia'
+         dentro di se' la posizione nel sorgente, e `describeWatchedSubject`
+         la direbbe una seconda volta sulla riga sotto -- visto dal vivo il
+         20/09 sul guasto di `ipp`, «helpers/update_coordinator.py:512» due
+         volte a tre righe di distanza. */
       panel.appendChild(el('div', 'field-hint', SUBJECT_IS_ID + ' ' + (r.chi || '')));
-      if (d.secondary) panel.appendChild(el('div', 'field-hint', d.secondary));
     });
   }
 
@@ -170,6 +173,47 @@ window.HirisWatcherGiorno = (function () {
     }
   }
 
+  /* L'ordine in cui le parti di un valore composto si leggono. **Lo stesso
+     elenco di `_KEY_ORDER` in `mind/report.py`**, e una prova lo tiene
+     agganciato a quello: «media, minimo, massimo» e' come l'operazione le
+     racconta, mentre in ordine alfabetico uscirebbe «massimo, media, minimo»
+     -- lo stesso dato in un ordine che nessuno userebbe parlando. */
+  var MEASURE_KEY_ORDER = ['media', 'minimo', 'massimo',
+                           'verso', 'pendenza', 'punti',
+                           'differenza', 'variazione'];
+
+  /* Le parti di una misura, gia' scritte: la prima e' la piastrella grande,
+     le altre la riga sotto.
+
+     **Trovato dal vivo il 20/09/2026** montando questa pagina sul resoconto
+     vero del 19: 36 misure su 67 hanno un valore COMPOSTO (23 `media_min_max`,
+     13 `tendenza`), e la griglia scriveva «[object Object] °C» su piu' della
+     meta' delle piastrelle. Nessuna prova lo vedeva perche' ogni misura finta
+     di questo file portava un numero.
+
+     **L'unita' si attacca solo quando tutte le parti sono numeri**, come nel
+     documento: `tendenza` porta `verso` (una parola) e `punti` (un
+     conteggio), e «°C» in fondo direbbe che ventiquattro punti sono
+     ventiquattro gradi. */
+  function parteMisura(m) {
+    var unita = m.unita || '';
+    var valore = m.valore;
+    if (valore === null || typeof valore !== 'object') {
+      return [(valore + ' ' + unita).trim()];
+    }
+    var chiavi = Object.keys(valore).sort(function (a, b) {
+      var ia = MEASURE_KEY_ORDER.indexOf(a), ib = MEASURE_KEY_ORDER.indexOf(b);
+      if (ia === -1) ia = MEASURE_KEY_ORDER.length;
+      if (ib === -1) ib = MEASURE_KEY_ORDER.length;
+      return ia - ib || (a < b ? -1 : a > b ? 1 : 0);
+    });
+    var tutteNumeri = chiavi.every(function (k) { return typeof valore[k] === 'number'; });
+    return chiavi.map(function (k, i) {
+      var parte = k + ' ' + valore[k];
+      return (i === 0 && tutteNumeri && unita) ? parte + ' ' + unita : parte;
+    });
+  }
+
   function renderReport(body, report) {
     /* **Il giorno si DICE.** La scheda mostra sempre UN giorno solo, ma il
        selettore lo cambia: senza la data scritta qui, chi lo ha appena
@@ -203,7 +247,9 @@ window.HirisWatcherGiorno = (function () {
       misure.forEach(function (m) {
         var tile = el('div', 'stat-tile');
         tile.appendChild(el('div', 'st-label', (m.nome || m.soggetto) + ' · ' + m.misura));
-        tile.appendChild(el('div', 'st-value', m.valore + ' ' + (m.unita || '')));
+        var parti = parteMisura(m);
+        tile.appendChild(el('div', 'st-value', parti[0]));
+        if (parti.length > 1) tile.appendChild(el('div', 'st-delta', parti.slice(1).join(' · ')));
         /* La copertura si dice SOLO quando non e' piena: «100%» accanto a ogni
            numero sarebbe rumore su cui l'occhio smette di fermarsi, ed e'
            proprio quando NON e' piena che deve fermarsi. */

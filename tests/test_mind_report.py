@@ -911,3 +911,77 @@ def test_senza_nomi_la_serie_non_ne_inventa():
                      "unita": "kWh", "copertura": 1.0}]},
     ], names={"un_altro_dispositivo": "SOLARE"})
     assert serie["serie"][0]["nome"] is None
+
+
+# ---------------------------------------------------------------------------
+# I valori COMPOSTI (trovati dal vivo il 20/09/2026, sul resoconto del 19).
+#
+# Misurato sulla casa vera: **36 misure su 67 hanno un valore composto** --
+# 23 `media_min_max` e 13 `tendenza` -- e sia il documento sia la pagina le
+# stampavano grezze: `{'media': 24.12, 'minimo': 23.4, 'massimo': 24.3} °C`
+# nel markdown che legge l'analista, «[object Object] °C» nella griglia che
+# legge il proprietario. Piu' della meta' delle misure di ogni giorno.
+#
+# `_split_value` e `_KEY_ORDER` esistevano dal 13/09 ed erano usati dalle
+# SERIE, non dal documento: una regola gia' scritta che il suo vicino non
+# chiamava.
+# ---------------------------------------------------------------------------
+
+def test_una_misura_COMPOSTA_si_legge_a_parole_non_come_un_dizionario():
+    """Mutazione: tornare a `str(valore)` -- rossa (il dizionario compare)."""
+    documento = rep.as_document({"giorno": "2026-09-19", "misure": [
+        {"soggetto": "x", "nome": "Corridoio T", "misura": "temperatura_media_min_max",
+         "operazione": "media_min_max", "unita": "°C", "copertura": 1.0,
+         "valore": {"media": 24.12, "minimo": 23.4, "massimo": 24.3}}]})
+
+    assert "media 24.12" in documento
+    assert "minimo 23.4" in documento
+    assert "massimo 24.3" in documento
+    assert "{" not in documento, "il dizionario Python e' finito nel markdown"
+
+
+def test_le_parti_di_un_valore_composto_sono_nell_ordine_DICHIARATO():
+    """«media, minimo, massimo» e' come l'operazione le racconta; in ordine
+    alfabetico uscirebbe «massimo, media, minimo», lo stesso dato detto in un
+    ordine che nessuno userebbe parlando.
+
+    Mutazione: `sorted(valore)` -- rossa."""
+    documento = rep.as_document({"giorno": "2026-09-19", "misure": [
+        {"soggetto": "x", "nome": "Corridoio T", "misura": "t",
+         "operazione": "media_min_max", "unita": "°C", "copertura": 1.0,
+         "valore": {"massimo": 24.3, "media": 24.12, "minimo": 23.4}}]})
+
+    riga = [r for r in documento.splitlines() if "Corridoio T" in r][0]
+    assert riga.index("media 24.12") < riga.index("minimo 23.4") < riga.index("massimo 24.3")
+
+
+def test_un_valore_composto_MISTO_non_prende_l_unita():
+    """`tendenza` porta `verso` (una parola), `pendenza` e `punti` (un
+    conteggio): scriverci «°C» in fondo direbbe che ventiquattro punti sono
+    ventiquattro gradi. L'unita' si attacca solo quando TUTTE le parti sono
+    numeri della stessa misura.
+
+    Mutazione: appendere l'unita' sempre -- rossa."""
+    documento = rep.as_document({"giorno": "2026-09-19", "misure": [
+        {"soggetto": "x", "nome": "Corridoio T", "misura": "temperatura_tendenza",
+         "operazione": "tendenza", "unita": "°C", "copertura": 1.0,
+         "valore": {"verso": "in salita", "pendenza": 0.0007, "punti": 24}}]})
+
+    riga = [r for r in documento.splitlines() if "Corridoio T" in r][0]
+    assert "verso in salita" in riga
+    assert "punti 24" in riga
+    assert "°C" not in riga, "l'unita' della temperatura appiccicata a un conteggio"
+
+
+def test_un_valore_composto_tutto_NUMERICO_l_unita_ce_l_ha():
+    """La contropartita: media, minimo e massimo sono tre gradi, e senza
+    l'unita' sarebbero tre numeri nudi.
+
+    Mutazione: non appendere mai l'unita' -- rossa."""
+    documento = rep.as_document({"giorno": "2026-09-19", "misure": [
+        {"soggetto": "x", "nome": "Corridoio T", "misura": "t",
+         "operazione": "media_min_max", "unita": "°C", "copertura": 1.0,
+         "valore": {"media": 24.12, "minimo": 23.4, "massimo": 24.3}}]})
+
+    riga = [r for r in documento.splitlines() if "Corridoio T" in r][0]
+    assert "°C" in riga

@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 import { loadScripts, tick } from './helpers/dom.mjs';
 
 /* La scheda «Il giorno» (config/watcher-giorno.js): il resoconto di UN
@@ -444,4 +447,63 @@ test('il primo piano: un episodio che il server NON ha marcato resta fuori, qual
   const primaRiga = corpo.textContent.split('Fuori dal solito')[1] || '';
   assert.doesNotMatch(primaRiga.split('La cronaca')[0], /Allarme piano terra/,
     'il primo piano ha pescato da sola dalla cronaca');
+});
+
+
+/* -------------------------------------------------------------------------
+   I valori COMPOSTI (trovati dal vivo il 20/09/2026, resoconto del 19).
+
+   Misurato sulla casa vera: **36 misure su 67** hanno un valore composto --
+   23 `media_min_max`, 13 `tendenza` -- e la griglia stampava «[object Object]
+   °C» in piu' della meta' delle piastrelle. I dati finti di queste prove
+   avevano sempre un numero: e' uscito montando la pagina VERA sui dati VERI.
+   ------------------------------------------------------------------------- */
+
+test("seam _rendiResoconto: una misura COMPOSTA si legge, non e' un [object Object]", () => {
+  // Mutazione che la uccide: tornare a `m.valore + ' ' + m.unita`.
+  const { corpo } = rendiResoconto(resoconto({
+    misure: [misura({ misura: 'temperatura_media_min_max', operazione: 'media_min_max',
+      unita: '°C', valore: { media: 24.12, minimo: 23.4, massimo: 24.3 } })],
+  }));
+
+  const testo = corpo.textContent;
+  assert.doesNotMatch(testo, /\[object Object\]/);
+  assert.match(testo, /media 24\.12 °C/);
+  assert.match(testo, /minimo 23\.4/);
+  assert.match(testo, /massimo 24\.3/);
+});
+
+test("seam _rendiResoconto: un valore composto MISTO non prende l'unita'", () => {
+  /* `tendenza` porta una parola (`verso`) e un conteggio (`punti`): «°C» in
+     fondo direbbe che ventiquattro punti sono ventiquattro gradi.
+     Mutazione che la uccide: appendere l'unita' sempre. */
+  const { corpo } = rendiResoconto(resoconto({
+    misure: [misura({ misura: 'temperatura_tendenza', operazione: 'tendenza',
+      unita: '°C', valore: { verso: 'in salita', pendenza: 0.0007, punti: 24 } })],
+  }));
+
+  const testo = corpo.textContent;
+  assert.match(testo, /verso in salita/);
+  assert.match(testo, /punti 24/);
+  assert.doesNotMatch(testo, /°C/);
+});
+
+test('le parti di un valore composto: lo stesso ordine in report.py e in watcher-giorno.js', () => {
+  /* Due elenchi della stessa cosa in due lingue: senza questa prova
+     divergerebbero al primo ritocco, e la pagina direbbe «massimo, media,
+     minimo» mentre il documento dice «media, minimo, massimo» -- lo stesso
+     dato in un ordine che nessuno userebbe parlando.
+
+     Mutazione che la uccide: aggiungere una chiave da una parte sola. */
+  const py = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..',
+    'hiris', 'app', 'mind', 'report.py'), 'utf8');
+  const blocco = py.split('_KEY_ORDER = {')[1].split('}')[0];
+  const chiaviPython = [...blocco.matchAll(/"(\w+)":\s*\d+/g)].map((m) => m[1]);
+
+  const js = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..',
+    'hiris', 'app', 'static', 'config', 'watcher-giorno.js'), 'utf8');
+  const elenco = js.split('MEASURE_KEY_ORDER = [')[1].split(']')[0];
+  const chiaviJs = [...elenco.matchAll(/'(\w+)'/g)].map((m) => m[1]);
+
+  assert.deepEqual(chiaviJs, chiaviPython);
 });

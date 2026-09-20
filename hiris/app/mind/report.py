@@ -448,6 +448,31 @@ def _split_value(line: dict):
             value, key=lambda k: (_KEY_ORDER.get(k, 9), str(k)))]
     return [(None, value)]
 
+def measured_value(line: dict) -> str:
+    """Il valore di una misura **a parole**, composto o no.
+
+    **Trovato dal vivo il 20/09/2026**, sul resoconto del 19: 36 misure su 67
+    hanno un valore composto -- 23 `media_min_max` e 13 `tendenza` -- e il
+    documento le stampava cosi' come sono, `{'media': 24.12, 'minimo': 23.4,
+    'massimo': 24.3} °C`, dentro la tabella che l'analista legge. La regola per
+    scomporle (`_split_value`, `_KEY_ORDER`) esisteva dal 13/09 ed era usata
+    dalle SERIE: una regola gia' scritta che il suo vicino non chiamava.
+
+    **L'unita' si attacca solo quando TUTTE le parti sono numeri.** `tendenza`
+    porta `verso` (una parola) e `punti` (un conteggio): scriverci «°C» in
+    fondo direbbe che ventiquattro punti sono ventiquattro gradi.
+    """
+    parts = _split_value(line)
+    unit = str(line.get("unita") or "").strip()
+    if len(parts) == 1 and parts[0][0] is None:
+        value = parts[0][1]
+        return f"{value} {unit}".strip()
+    numeric = all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                  for _, v in parts)
+    said = " · ".join(f"{k} {v}" for k, v in parts)
+    return f"{said} {unit}".strip() if numeric and unit else said
+
+
 # -- il documento -----------------------------------------------------------
 
 #: I titoli delle sezioni. Sono l'indice che l'analista scorre, e la porzione
@@ -490,7 +515,7 @@ def as_document(report: dict, *, current_fingerprint: str | None = None) -> str:
         lines += ["| chi | misura | valore | copertura |",
                   "|---|---|---|---|"]
         lines += [f"| {m.get('nome') or m['soggetto']} | {m['misura']} | "
-                  f"{m['valore']} {m['unita']} | {m['copertura']:.0%} |"
+                  f"{measured_value(m)} | {m['copertura']:.0%} |"
                   for m in measurements]
     else:
         lines.append("Nessuna misura: nessun dispositivo ha una ricetta, "
