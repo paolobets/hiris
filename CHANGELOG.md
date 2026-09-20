@@ -1,5 +1,72 @@
 # HIRIS — Changelog
 
+## [3.52.0] — «Fuori dal solito», e chi lo decide (2026-09-20)
+
+La scheda «Il giorno» apriva con una tabella di numeri. La prima domanda di chi la apre è un'altra
+— *«è successo qualcosa che devo sapere?»* — e la risposta stava in fondo, dentro 75 righe di
+cronaca in ordine di orologio. Adesso il primo piano — in pagina si intitola **«Fuori dal solito»** — è la prima cosa, e
+sopra di lui c'è solo la data del giorno che si sta leggendo.
+
+**Chi giudica è il server, in un posto solo** (decisione 9 della spec `2026-09-18`). La pagina
+disegna ciò che riceve: `mind/report.as_page` legge il resoconto archiviato, lo lascia dov'è, e
+in lettura gli aggiunge il nome e il primo piano. **Niente di tutto questo si salva**, ed è la regola
+della fetta dei giudizi applicata di nuovo: la cronaca archiviata si rifà solo quando cambia un
+giudizio, e l'impronta dice quali giorni rifare — se «esce dal solito» stesse nella cronaca, il
+giorno in cui si cambia idea su cosa merita il primo piano costerebbe ventidue giorni da rifare. In
+lettura costa una riga.
+
+**Il criterio non è nel codice, è nel sapere.** Per un episodio la domanda va a
+`da_sapere_subito` (il giudizio nato con la 3.50.0, 16 tipi); per una condizione di sistema si
+cita il livello che Home Assistant ha scritto da sé — `WARNING` è un avviso, tutto il resto pesa
+come un guasto, `CRITICAL` compreso: un livello che non conosciamo può portare una riga in più in
+primo piano, mai una in meno. Correggere un giudizio da «Cosa ho capito» cambia il primo piano **dalla lettura
+successiva, senza un rilascio**, e due prove lo custodiscono su entrambi i lati.
+
+**Misurato sulla cronaca vera del 17/09** (75 voci): entrano in primo piano **6 righe** — 4 guasti e 2
+avvisi — e nessun episodio di entità. L'unica voce di genere `sicurezza` di quel giorno è l'allarme
+`disarmed`, che è la normalità di una casa e resta fuori. Col criterio del *briefing* (`notevole`,
+un'altra domanda) sarebbero state **57**.
+
+**Il nome, sempre.** Sette voci su 75 non ne avevano, ed erano i sei guasti e l'allarme: la pagina
+mostrava al loro posto `log:homeassistant.components.hassio.handler@components/hassio/handler.py:108`.
+Sei le risolve il `dominio` che la voce già portava — `homeassistant.components.hydrawise` →
+«Hydrawise», `custom_components.alarmo.alarm_control_panel` → «Alarmo», e un logger del nucleo che
+non nomina nessuna integrazione → «Home Assistant», che è una citazione e non una resa. La settima è
+un'entità, e il nome di adesso lo sa lo specchio, che era già in questa istanza e nessuno aveva mai
+chiesto. **Chi non ha nessuna delle tre resta senza**: la pagina mostra l'identificativo dicendo che
+è un identificativo, e nessuno inventa un nome dall'`entity_id`.
+
+**La riga di un guasto porta la frase vera**, non il livello: `Hydrawise — Timeout fetching
+hydrawise data`, col `titolo` che l'osservatore scrive dal 12/09 e che la pagina buttava per
+disegnare `ERROR`. Il titolo è una citazione e resta nella lingua in cui Home Assistant l'ha
+scritto. Sotto, in grigio: la sorta, quante volte, l'ultima; e dietro «Dettaglio» il dominio
+intero, la prima volta e l'identificativo grezzo, che servono a chi quella riga vuole andarla a
+cercare.
+
+**Lo stesso guasto ripetuto è UNA riga.** L'osservatore apre un episodio nuovo a ogni sfarfallio —
+misurato in casa: venticinque episodi per una sola integrazione rotta — e un primo piano che le
+elencasse tutte sarebbe il rumore che il primo piano esiste per togliere. Si raggruppa ciò che è la
+stessa cosa (stesso soggetto, stesso stato, stesso titolo), non ciò che viene dallo stesso posto:
+due guasti diversi della stessa integrazione restano due righe.
+
+**Tre stati e non due, anche qui.** Un primo piano vuoto dice «niente da segnalare fra le 75 voci della
+cronaca di quel giorno» — il numero è la prova che ha guardato, e **non** si scrive «tutto a
+posto», perché la pagina custodisce e non giudica. La chiave `primo_piano` che non c'è dice un'altra
+cosa: «non si può sapere». Le due frasi non si scambiano.
+
+**Tre nomi che la spec proponeva erano già occupati, e il glossario li ha fermati.** La spec del
+18/09 scriveva `notevole_in_banda`, `specie_notevole`, `perche_notevole`. Ma `notevole` è il
+criterio del *briefing* («vale la pena raccontarlo dopo?»), `specie` dice se un impegno è un fare o
+un chiedere, e `banda` in `watcher-giorno.js` era già la striscia dei comandi con il selettore del
+giorno. Tre volte la stessa trappola: **due cose diverse dette con una parola sola**. Il contratto
+porta quindi `primo_piano`, e ogni riga dice di che `sorta` è. La prosa della spec resta come il
+proprietario l'ha scritta — «la banda» descrive bene la cosa — ed è il codice a portare il nome che
+non si può confondere.
+
+**Una parola sola per due cose, separata alla fonte.** `guasto` era il nome di un genere della
+cronaca ed era anche un letterale in due file: ora è `SYSTEM_GENRE`, scritto dove vivono gli altri
+giudizi sui tipi, e `mind/facts.py` lo legge invece di riscriverlo.
+
 ## [3.51.0] — Tre mestieri in una colonna sola diventano quattro schede (2026-09-20)
 
 La pagina dell'osservatore nasce da una frase del proprietario: *«è troppo lunga, densa di
@@ -49,7 +116,7 @@ montaggio. Restano dichiarati in `.oxlintrc.json` lo stesso, e non è una conces
 — l'unica cosa che vedrebbe una mezza rinomina di `window.HirisWatcherGiorno`, che `no-undef` non
 può vedere per costruzione, perché dall'altro lato c'è una stringa.
 
-**Cosa questa versione NON porta ancora**, ed è scritto per non doverlo scoprire usando: la banda
+**Cosa questa versione NON porta ancora**, ed è scritto per non doverlo scoprire usando: il primo piano
 «Fuori dal solito» in cima al giorno, il modulo di lettura nel server che le serve (il nome sempre
 risolto, il marchio del notevole, il raggruppamento dei 39 soggetti tecnici per integrazione) e il
 ponte «Fanne una proposta» verso la chat. Sono i punti 1, 3, 4 e 5 dell'ordine della spec: la
@@ -63,7 +130,7 @@ del proprietario è che **il criterio lo dice il sapere**, non il codice. La par
 già servire, `notevole`, dice un'altra cosa: risponde a *«vale la pena raccontarlo nel
 riassunto?»* (`home_space/briefing._is_event`), non a *«il proprietario deve saperlo nel momento in
 cui succede?»*. Misurato contro la cronaca vera del 17/09 (75 voci): leggendo il criterio come
-«stato di lavoro oppure tipo `notevole: si`» finiscono in banda **71 voci su 75**, e **35 sono
+«stato di lavoro oppure tipo `notevole: si`» finiscono in primo piano **71 voci su 75**, e **35 sono
 accensioni di luce** — perché 10 dei 23 `notevole: si` del seme sono domini interi (`light`,
 `switch`, `cover`, `fan`, `lock`, `media_player`, `remote`, `siren`, `vacuum`, `valve`). Un allarme
 scattato è la prima cosa da sapere; una luce accesa è la seconda, non la prima. **Questa fetta non
@@ -86,7 +153,7 @@ regola usa il loro riposo. **La serratura no**: per `lock`, `lavoro` significa �
 (`locked`). Col solo `si`, **ogni sblocco sarebbe stato la prima riga e l'inceppamento no** —
 l'esatto contrario di ciò che serve. Il seme porta quindi `lock` → `da_sapere_subito: ["jammed"]`.
 
-Quando il valore è un elenco, entra in banda **solo** uno di quegli stati e nient'altro: è il primo
+Quando il valore è un elenco, entra in primo piano **solo** uno di quegli stati e nient'altro: è il primo
 ramo della regola, e lavoro, riposo e ripiego non si applicano. Un elenco vuoto si rifiuta (direbbe
 `no` in un secondo modo) e le forme dell'assenza non ci stanno dentro, come non stanno in un
 `riposo`. In pagina si legge «solo: jammed»: **gli stati si citano, non si traducono**, finché non
@@ -106,13 +173,13 @@ spegnimento — sarebbe una notizia). La porta continua a rifiutare, come cortes
 problema a chi scrive, e chiede di scrivere prima `riposo` o `lavoro`.
 
 **La regola legge anche il riposo dell'entità.** `riposo` si corregge per entità e la cronaca lo
-onora; la regola della banda chiedeva il riposo solo al tipo, e sullo stesso fatto la cronaca
+onora; la regola del primo piano chiedeva il riposo solo al tipo, e sullo stesso fatto la cronaca
 diceva «riposo» mentre la regola diceva «notizia». Ora `stato_da_sapere_subito` accetta l'entità e
 la consulta prima del tipo, come fa `resting_of`. Per il resto la porta tratta il campo
 come gli altri: livelli coppia e dominio, ritorno al seme con `value: null`.
 
 **L'impronta non si muove, e quindi nessun giorno si rifà.** `da_sapere_subito` non entra
-nell'insieme `CHRONICLE_FIELDS` (resta `genere, riposo`): la banda che lo userà si calcola in
+nell'insieme `CHRONICLE_FIELDS` (resta `genere, riposo`): il primo piano che lo userà si calcola in
 lettura, non scrivendo la cronaca. Verificato: l'impronta del seme resta `9692e12830c90fd0`, la
 stessa di prima di questa fetta — il rilascio non fa rifare nessun giorno di storia.
 
@@ -142,7 +209,7 @@ controllo di completezza, che passa da 12 a **13** righe vuote.
 Rimisurato dal vivo dopo la terza forma, sugli stessi otto giorni: **gli stessi identici numeri**,
 37 righe su 387 voci, tutte guasti. La ragione va detta perché il numero uguale non venga letto come
 «non serviva»: in quegli otto giorni **non c'è una sola voce di `lock`** — le uniche voci dei domini
-«da sapere subito» sono otto `alarm_control_panel disarmed`, correttamente fuori banda. La forma
+«da sapere subito» sono otto `alarm_control_panel disarmed`, correttamente fuori primo piano. La forma
 nuova si giudica sul ragionamento, non su questo campione.
 
 Prove: **4309** Python (erano 4271), 4 skipped · **417** JavaScript (erano 407) · ruff pulito ·
@@ -514,7 +581,7 @@ rilascio apre la porta.
 
 `GET /api/mind/knowledge` risponde due cose, non un totale solo:
 
-- **cosa c'è**, una riga per specie × campo × provenienza, perché «177
+- **cosa c'è**, una riga per natura × campo × provenienza, perché «177
   significati importati da Home Assistant» e «tre ricette dedotte dal modello»
   sono fatti diversi, e chi legge deve distinguerli;
 - **cosa non è stato capito**, le righe marcate `non_capito` dalla più
@@ -1503,7 +1570,7 @@ Trovata dal vivo alle 21:05, dieci minuti dopo aver rilasciato la correzione
 che quella promessa la scriveva: un turno finito a vuoto veniva ri-raccolto
 ogni dieci minuti, sempre vuoto, e non se ne accodava mai uno nuovo. Adesso se
 ne accoda uno -- **non prima di un'ora**, perche' con un ponte che sa ragionare
-quella specie una risposta vuota vuol dire che la CLI non ha risposto, e quel
+quella sorta una risposta vuota vuol dire che la CLI non ha risposto, e quel
 giro e' costato. Il conto: a ogni passaggio sarebbero 144 turni al giorno, e il
 tetto di fabbrica del piano e' 150.
 
@@ -1515,7 +1582,7 @@ due secondi dopo il ponte ha scritto *«nessun ramo lo ragiona piu'»* e ha
 restituito una decisione vuota.
 
 Chi produce un turno e chi lo serve sono due moduli diversi, e il secondo
-**dichiara per conto suo** quali specie sa ragionare. Accodarne una che non
+**dichiara per conto suo** quali natura sa ragionare. Accodarne una che non
 conosce non fallisce: produce una decisione vuota e un avviso nel log, cioe' un
 guasto silenzioso che si vede solo guardando la casa girare. Il docstring
 dell'osservatore lo diceva in anticipo, con queste parole esatte -- ed era
@@ -1532,7 +1599,7 @@ non sarebbe stato chiesto **mai piu'**.
 scriverle con la stessa parola e' il difetto che questo progetto insegue per
 mestiere. Adesso una risposta vuota non si scrive affatto: non consuma il
 colpo, e il giro successivo richiede. Non serve un freno -- quando il ponte
-rifiuta una specie lo fa in millisecondi, senza chiamare nessun modello.
+rifiuta una natura lo fa in millisecondi, senza chiamare nessun modello.
 
 Le righe gia' scritte da quel percorso **escono con una migrazione**. Si puo'
 dire con certezza che erano tutte false: quel campo e' nato con la 3.31.0 e il
@@ -2857,7 +2924,7 @@ rinominare sarebbe rischio senza guadagno.
 
 **Tre controlli nuovi sulla pagina web**, che prima non esistevano: uno che trova i nomi usati e mai
 dichiarati, uno che verifica che ogni file sia caricato **dopo** quello che gli serve, e una modifica
-che fa **fallire** le prove invece di lasciarle appese — prima un difetto di questa specie sembrava
+che fa **fallire** le prove invece di lasciarle appese — prima un difetto di questa natura sembrava
 solo lentezza.
 
 **Cosa non e' cambiato, per decisione scritta:** il database (60 nomi di colonna su 102 non hanno mai
@@ -3003,7 +3070,7 @@ contarne il contenuto** — l'errore che la fetta stessa ha corretto una decina 
 che gira in casa non cambia comportamento. Ma un cancello rosso e' un cancello che si impara a
 ignorare, e questa versione lo rimette verde.
 
-**Tre guasti, tutti della stessa specie: qualcosa che in locale non si vede.**
+**Tre guasti, tutti della stessa sorta: qualcosa che in locale non si vede.**
 
 1. **Due test dello strumento di rinomina** usavano `tokenize.FSTRING_MIDDLE` e `TSTRING_MIDDLE`, che
    esistono rispettivamente da Python 3.12 e 3.14. L'ambiente di sviluppo e' 3.14 — **il CI gira anche
@@ -3417,7 +3484,7 @@ strumento.
 - **`accaduto` non diceva niente.** Il logbook mette il testo di un cambio di stato in
   `state`, non in `message`: su 755 voci vere ne portavano `state` 754, e la proiezione
   teneva solo l'altro. Lo strumento rispondeva con nome e ora e nient'altro. Adesso `stato` e
-  `messaggio` escono come due campi distinti: «on» e «entered zone Casa» sono fatti di natura
+  `messaggio` escono come due campi distinti: «on» e «entered zone Casa» sono fatti di sorta
   diversa e fonderli sarebbe stato comodo e falso.
 - **Un istante, un fuso.** `finestra_coperta` usciva nel fuso della casa e i punti in UTC,
   nella stessa risposta: chi legge poteva concluderne che i dati cominciano due ore dopo
@@ -7029,7 +7096,7 @@ migliorabile" → audit con 19 punti → "fai la 10.14 fixando tutto".
   dashboard / mount/unmount card. Nuovo bottone "↺ pulisci conversazione".
 - **Polling visibility-aware** (H2): listener `visibilitychange` sospende
   il polling 30s quando la tab è hidden, riprende su visible con refresh
-  immediato. Risparmia quote API (specie OpenRouter `:free`).
+  immediato. Risparmia quote API (natura OpenRouter `:free`).
 - **Toggle come switch HA-style** (H3): track + thumb, `role="switch"` +
   `aria-checked`. Sostituisce le emoji 🟢/⚪ poco discoverable.
 - **Budget bar threshold colors** (H4): verde fino 50%, accent fino 80%,
