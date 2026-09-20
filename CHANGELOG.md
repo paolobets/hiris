@@ -1,5 +1,45 @@
 # HIRIS — Changelog
 
+## [3.53.0] — «HACS non è qualcosa da monitorare» (2026-09-20)
+
+Detto dal proprietario guardando il primo piano del 19/09. Misurato prima di scrivere una riga:
+**sui sette giorni 13-19/09 il primo piano ha portato 42 righe, e 12 erano Home Assistant che parla
+di sé** — il Supervisor coi timeout sul restart degli add-on (6), HACS (3: due 404 di GitHub su
+un'integrazione del proprietario e un «riavvio richiesto»), il nucleo (2), il websocket, il
+frontend, il bluetooth. L'irrigazione ferma e l'allarme scattato erano la minoranza.
+
+**Il difetto non era HACS: era che il criterio non c'era.** Per un episodio di un'entità lo diceva
+un giudizio (`da_sapere_subito`, 3.50.0); per una condizione di sistema non lo diceva nessuno, ed
+entravano tutte — la regola stava nel codice, che è esattamente ciò che questa fetta dichiarava di
+voler evitare, sull'altra metà del dato.
+
+**Il giudizio nuovo: `impalcatura`.** Si/no, l'assenza vale no. È il primo giudizio il cui soggetto
+**non è una cosa di casa**: non un tipo né un'entità, ma **un'integrazione** — il terzo genere di
+soggetto del sapere (`integrazione`), nato con lui. Il seme ne dichiara sei, e nessuna è di gusto:
+`hassio`, `hacs`, `homeassistant`, `websocket_api`, `frontend`, `habluetooth` sono esattamente
+quelle comparse in primo piano quella settimana. Il seme sale da **115 a 121 celle**.
+
+**Il soggetto è il nome breve dell'integrazione, non il percorso del logger.** Il Supervisor ha
+fatto sei righe da **tre logger diversi** (`hassio.handler`, `.coordinator`, `.http`): un giudizio
+scritto sul percorso intero avrebbe voluto una riga per modulo, e una quarta al prossimo
+aggiornamento. Il frontend porta nel proprio la **versione del pacchetto**
+(`frontend.js.modern.202608267`): scritta lì, la riga sarebbe scaduta da sola al rilascio dopo.
+
+**Restano nella cronaca**, e non è un dettaglio: sono storia, l'analista può usarle, e «non
+svegliarmi» non è «dimentica».
+
+**Si corregge da «Cosa ho capito», senza un rilascio.** L'editor sul posto non era più solo del
+`genere`: ora una riga di `impalcatura` porta il suo sì/no. E **non** dice la frase sul costo della
+cronaca, perché `impalcatura` non entra nell'impronta: si legge quando la pagina legge, e cambiarla
+non fa rifare nessun giorno. Un avviso falso insegna a ignorare quelli veri.
+
+**Misurato dopo: il primo piano della stessa settimana passa da 42 righe a 26**, da 1 a 8 al
+giorno. Ciò che resta è tutto roba di casa — l'irrigazione ferma, l'allarme, la stampante, le
+telecamere, le luci, il contatore dell'inverter che il recorder dichiara sbagliato — **e un
+tentativo di login fallito da un indirizzo esterno**, che `homeassistant.components.http.ban` ha
+scritto il 16/09. Quella riga è la ragione per cui l'elenco è misurato e non dedotto: «http» sembra
+impalcatura, e non lo è.
+
 ## [3.52.1] — Più della metà delle misure era «[object Object]» (2026-09-20)
 
 **Trovato dal vivo**, montando la pagina vera sul resoconto vero del 19/09 (la casa era appena
