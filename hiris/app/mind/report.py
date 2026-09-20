@@ -670,6 +670,21 @@ def _rendered(slug: str) -> str:
     return words[:1].upper() + words[1:]
 
 
+def integration_of(domain: str) -> tuple[str, str] | None:
+    """`(nome, identificativo)` dell'integrazione da cui viene un dominio di
+    registro, o `None` se non se ne ricava nessuno.
+
+    La porta pubblica delle due regole che questo modulo usa per il primo
+    piano (`_integration_name`, `_integration_slug`): la usa la rotta dello
+    scope per raggruppare i soggetti tecnici, cosi' le due schede della stessa
+    pagina dicono lo stesso nome per lo stesso logger.
+    """
+    identifier = _integration_slug(domain)
+    if not identifier:
+        return None
+    return _integration_name(domain), identifier
+
+
 def as_page(report: dict, *, judgments, names: dict | None = None) -> dict:
     """Il resoconto di un giorno **con il nome sempre e il primo piano**, per la
     pagina dell'osservatore (spec §3).

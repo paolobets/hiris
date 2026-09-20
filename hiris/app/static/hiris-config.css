@@ -2127,3 +2127,23 @@
   display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap;
   margin-bottom: var(--sp-3);
 }
+
+/* Gli elenchi lunghi (spec 2026-09-18 §6) */
+
+/* 44 px: la soglia del tocco. I `summary` di questa pagina sono alti 21-23
+   px, ed e' la misura per cui la spec vieta di usarli per aprire un elenco. */
+.long-list-btn {
+  min-height: 44px; align-self: flex-start; margin-top: var(--sp-2);
+}
+
+/* **Nessuna altezza fissa, e nessun `overflow`**: uno scroll dentro lo scroll
+   su un telefono e' una trappola -- il dito muove l'elenco invece della
+   pagina, e chi legge non sa piu' quale dei due sta scorrendo. L'elenco e'
+   lungo quanto e', ed e' la pagina a scorrere. */
+.long-list {
+  display: flex; flex-direction: column; gap: var(--sp-2); margin-top: var(--sp-2);
+}
+.long-list-title {
+  margin: 0 0 var(--sp-2) 0; font-size: var(--fs-sm); color: var(--text-2);
+}
+.long-list-title:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

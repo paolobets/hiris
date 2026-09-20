@@ -608,13 +608,21 @@ window.HirisWatcherSapere = (function () {
         parti.push(fmtCount(semeRighe.length));
       }
       var etichetta = gruppo.etichetta + ' · ' + parti.join(' · ');
-      body.appendChild(createDisclosure(etichetta, etichetta, function (panel) {
-        if (!semeRighe.length) {
-          panel.appendChild(el('p', 'field-hint', 'Nessuna riga di questo campo.'));
-          return;
-        }
-        semeRighe.forEach(function (g) { panel.appendChild(judgmentRow(g, outerBody)); });
-      }, false));
+      if (!semeRighe.length) {
+        line(body, etichetta + ' · nessuna riga di questo campo', TONE_CALM);
+        return;
+      }
+      /* **Le righe si costruiscono al clic** (spec §6): misurato sulla casa
+         il 20/09, i giudizi sono 121 e venivano disegnati tutti alla resa,
+         dentro dei rivelatori chiusi. Chiuso non vuol dire non costruito. */
+      S.elencoLungo(body, {
+        titolo: gruppo.etichetta,
+        riassunto: etichetta,
+        pochi: [],
+        tutti: semeRighe,
+        etichetta: 'Vedi tutti',
+        rendi: function (g) { return judgmentRow(g, outerBody); }
+      });
     });
   }
 
@@ -645,16 +653,28 @@ window.HirisWatcherSapere = (function () {
     var giudizi = (sapere && sapere.giudizi) || [];
     var domande = (sapere && sapere.domande_aperte) || [];
 
-    /* **Ciò che non ha capito viene PRIMA.** È l'unica parte su cui il
-       proprietario può fare qualcosa -- «quello è il contatore dell'acqua» --
-       e in fondo a un elenco di conteggi non salterebbe all'occhio. Stessa
-       regola di «cosa non si sa» nel resoconto. */
-    subheading(body, 'Cosa non ha capito');
-    if (!nonCapito.length) {
-      line(body, 'Non c’è niente che non abbia capito. Quando il modello non riesce ' +
-        'a leggere un dispositivo lo scrive qui, e basta una parola tua per risolverlo.',
-        TONE_CALM);
-    } else {
+    /* **La riga di peso, in testa** (spec §4C): i numeri del sapere prima di
+       ogni elenco. È la risposta breve alla domanda della scheda -- «cosa ha
+       capito della casa, e dove sbaglia?» -- e prima di questa fetta
+       bisognava scorrere centoventuno righe per ricavarla. */
+    var corrette = giudizi.filter(function (g) { return g.da === 'proprietario'; }).length;
+    var righeSapere = (sapere && sapere.conteggi && sapere.conteggi.totale) || 0;
+    var peso = [fmtCount(giudizi.length) + (giudizi.length === 1 ? ' giudizio' : ' giudizi'),
+                fmtCount(domande.length) + (domande.length === 1 ? ' domanda aperta' : ' domande aperte')];
+    if (righeSapere) {
+      peso.push(fmtCount(righeSapere) + (righeSapere === 1 ? ' riga di sapere' : ' righe di sapere'));
+    }
+    peso.push(fmtCount(corrette) + (corrette === 1 ? ' corretto da te' : ' corretti da te'));
+    line(body, peso.join(' · '), TONE_CALM);
+
+    /* **Ciò che non ha capito viene PRIMA, e TACE quando non c'è** (spec
+       §4C). È l'unica parte su cui il proprietario può fare qualcosa --
+       «quello è il contatore dell'acqua» -- ma una sezione che occupa la
+       prima riga della scheda per dire che non ha niente da dire è rumore:
+       la stessa regola di «Cosa non si sa» nel resoconto, che compare solo
+       se ha qualcosa da dire. */
+    if (nonCapito.length) {
+      subheading(body, 'Cosa non ha capito');
       nonCapito.forEach(function (r) {
         var riga = el('div', 'sc-row');
         riga.appendChild(el('div', 'sc-row-title',
@@ -668,14 +688,17 @@ window.HirisWatcherSapere = (function () {
       });
     }
 
-    /* «Le tue correzioni» -> «I giudizi del seme» -> «Le domande aperte»
-       (forma approvata, gerarchia). `outerBody` è la scheda intera: ogni
-       scrittura la ricarica per intero (spec: la correzione vale subito).
-       Il titolo di «Le tue correzioni» torna indietro (fix round 1, MINOR 6):
-       `carica` lo usa per rimettere il focus dopo una scrittura. */
+    /* **Le domande aperte vengono prima dei giudizi** (spec §4C): sono
+       l'unica cosa che chiede qualcosa al proprietario, e stavano quarte.
+       Poi le sue correzioni, poi i gruppi del seme -- che sono i piu'
+       numerosi e i meno urgenti.
+
+       `outerBody` è la scheda intera: ogni scrittura la ricarica per intero
+       (la correzione vale subito). Il titolo di «Le tue correzioni» torna
+       indietro: `carica` lo usa per rimettere il focus dopo una scrittura. */
+    renderOpenQuestions(body, domande);
     var correctionsHeading = renderCorrections(body, giudizi, body);
     renderSeedGroups(body, giudizi, body);
-    renderOpenQuestions(body, domande);
 
     subheading(body, 'Cosa ha capito');
     var righe = (sapere && sapere.conteggi && sapere.conteggi.righe) || [];

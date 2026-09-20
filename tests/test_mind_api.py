@@ -1055,3 +1055,99 @@ async def test_il_DOCUMENTO_resta_quello_che_era():
     # il nome risolto adesso.
     assert "log:homeassistant.components.hydrawise" in r.text
     assert "Hydrawise" not in r.text
+
+
+# ---------------------------------------------------------------------------
+# I soggetti TECNICI, raggruppati per integrazione (spec 2026-09-18 §3 e §4D).
+#
+# Misurato il 18/09/2026: dei 153 soggetti guardati **39 sono tecnici**, e
+# vengono da 30 logger distinti che sono **23 integrazioni** una volta messi
+# insieme. La pagina li elencava uno per uno, col percorso del sorgente in
+# chiaro -- trentanove righe che dicono sei cose.
+#
+# Il nome dell'integrazione lo ricava il SERVER, con la stessa regola del
+# primo piano (`mind/report._integration_slug`): una regola sola, o le due
+# schede direbbero due nomi per la stessa cosa.
+# ---------------------------------------------------------------------------
+
+class _OsservatoreConSoggetti:
+    def __init__(self, soggetti):
+        self._soggetti = soggetti
+
+    def watching(self):
+        return [{"soggetto": s, "motivo": "una condizione di sistema aperta si guarda "
+                                          "finche' dura", "autore": None,
+                 "da_quando_ts": None} for s in self._soggetti]
+
+
+@pytest.mark.asyncio
+async def test_i_soggetti_di_REGISTRO_portano_l_integrazione_e_il_suo_nome():
+    """I tre logger del Supervisor sono UNA integrazione, e la pagina deve
+    poterli mettere insieme senza rifare la regola in JavaScript.
+
+    Mutazione ESEGUITA: non arricchire le voci -- rossa.
+    """
+    from hiris.app.api.handlers_mind import handle_watching
+
+    app = {"watcher": _OsservatoreConSoggetti([
+        "log:homeassistant.components.hassio.handler@components/hassio/handler.py:108",
+        "log:homeassistant.components.hassio.http@components/hassio/http.py:12",
+        "log:aioamazondevices@components/alexa_devices/coordinator.py:191",
+    ])}
+    r = await handle_watching(_richiesta(app))
+
+    voci = json.loads(r.text)["watching"]
+    assert [v.get("integrazione") for v in voci] == ["hassio", "hassio", "aioamazondevices"]
+    assert [v.get("nome") for v in voci] == ["Hassio", "Hassio", "Aioamazondevices"]
+
+
+@pytest.mark.asyncio
+async def test_una_SEGNALAZIONE_porta_il_dominio_che_la_apre():
+    """`problema:hacs.restart_required_...`: l'integrazione e' il primo pezzo,
+    il resto e' l'identificativo della segnalazione.
+
+    Mutazione ESEGUITA: leggere tutto il resto come integrazione -- rossa.
+    """
+    from hiris.app.api.handlers_mind import handle_watching
+
+    app = {"watcher": _OsservatoreConSoggetti(
+        ["problema:hacs.restart_required_605635573_tags/v5.5.0"])}
+    r = await handle_watching(_richiesta(app))
+
+    voce, = json.loads(r.text)["watching"]
+    assert voce["integrazione"] == "hacs"
+    assert voce["nome"] == "Hacs"
+
+
+@pytest.mark.asyncio
+async def test_un_ENTITA_non_diventa_un_integrazione():
+    """`light.studio` ha un dominio, non un'integrazione: chiamarlo «Light»
+    fra le integrazioni metterebbe le cose di casa in mezzo ai log.
+
+    Mutazione ESEGUITA: arricchire ogni soggetto -- rossa.
+    """
+    from hiris.app.api.handlers_mind import handle_watching
+
+    app = {"watcher": _OsservatoreConSoggetti(["light.studio", "sensor.potenza"])}
+    r = await handle_watching(_richiesta(app))
+
+    for voce in json.loads(r.text)["watching"]:
+        assert "integrazione" not in voce
+        assert "nome" not in voce
+
+
+@pytest.mark.asyncio
+async def test_una_voce_di_config_entry_NON_inventa_un_integrazione():
+    """`integrazione:01K2CK...` porta l'identificativo della voce di
+    configurazione, non il dominio: da li' il nome non si ricava, e non si
+    indovina.
+
+    Mutazione ESEGUITA: prendere l'identificativo come nome -- rossa.
+    """
+    from hiris.app.api.handlers_mind import handle_watching
+
+    app = {"watcher": _OsservatoreConSoggetti(["integrazione:01K2CK4GG287VKK18M5J788MRQ"])}
+    r = await handle_watching(_richiesta(app))
+
+    voce, = json.loads(r.text)["watching"]
+    assert "integrazione" not in voce, "l'identificativo di una voce non e' un'integrazione"

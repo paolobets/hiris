@@ -90,6 +90,17 @@ function giornoFa(n) {
 const OGGI = giornoFa(0);
 const IERI = giornoFa(1);
 
+/* Dal 20/09 gli elenchi lunghi si costruiscono al clic (spec §6): una prova
+   che guarda una riga della cronaca o una piastrella deve aprire il suo
+   elenco, come fa chi legge. Non e' un dettaglio della prova: e' la forma
+   nuova della pagina. */
+function apri(corpo, etichetta) {
+  const b = [...corpo.querySelectorAll('button')]
+    .filter((x) => x.textContent.indexOf(etichetta) >= 0)[0];
+  if (b) b.click();
+  return b;
+}
+
 function rendiResoconto(payload) {
   const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const corpo = document.createElement('div');
@@ -133,6 +144,7 @@ test('seam _rendiResoconto: la cronaca dice quando, chi, cosa — e i cambi di a
     }],
   }));
 
+  apri(corpo, 'Vedi tutte');
   const testo = corpo.textContent;
   assert.match(testo, /Termostato Soggiorno/);
   assert.match(testo, /in corso/, '«ancora in corso» e\' un fatto, non un buco');
@@ -506,4 +518,76 @@ test('le parti di un valore composto: lo stesso ordine in report.py e in watcher
   const chiaviJs = [...elenco.matchAll(/'(\w+)'/g)].map((m) => m[1]);
 
   assert.deepEqual(chiaviJs, chiaviPython);
+});
+
+
+/* -------------------------------------------------------------------------
+   Gli elenchi lunghi della scheda (spec §6 applicata al §4A).
+
+   Misurato sul resoconto vero del 19/09: 93 voci di cronaca, 67 misure, 8
+   forme -- 128 righe disegnate in una colonna, prima di questa fetta.
+   ------------------------------------------------------------------------- */
+
+function cronacaDi(quante) {
+  const voci = [];
+  for (let i = 0; i < quante; i++) {
+    voci.push({ quando_ts: 1789219800 + i * 60, fine_ts: null,
+      chi: 'light.stanza_' + i, nome: 'Stanza ' + i, cosa: 'on' });
+  }
+  return voci;
+}
+
+test('seam _rendiResoconto: la cronaca NON disegna novantatré righe, ne dice il numero', () => {
+  /* Mutazione che la uccide: tornare a `cronaca.forEach(...)` diretto. */
+  const { corpo } = rendiResoconto(resoconto({ cronaca: cronacaDi(93) }));
+
+  assert.match(corpo.textContent, /93 voci/);
+  const righe = corpo.querySelectorAll('.sc-row').length;
+  assert.ok(righe < 10, 'la cronaca è ancora tutta disegnata: ' + righe + ' righe');
+  const apri = [...corpo.querySelectorAll('button')].filter((b) => /Vedi tutte \(93\)/.test(b.textContent))[0];
+  assert.ok(apri, 'senza il bottone le 93 voci sarebbero irraggiungibili');
+  apri.click();
+  assert.equal(corpo.querySelectorAll('.sc-row').length, 50, 'il primo blocco è di 50');
+});
+
+test('seam _rendiResoconto: delle misure si vedono le cinque con la copertura più bassa', () => {
+  /* Spec §4A.4: il criterio è dichiarato in didascalia, mai l'ordine di
+     arrivo. Mutazione che la uccide: mostrare le prime cinque. */
+  const misure = [];
+  for (let i = 0; i < 12; i++) {
+    misure.push(misura({ misura: 'm' + i, valore: i, copertura: (i + 1) / 20 }));
+  }
+  const { corpo } = rendiResoconto(resoconto({ misure }));
+
+  assert.match(corpo.textContent, /le 5 con la copertura più bassa/);
+  const piastrelle = [...corpo.querySelectorAll('.stat-tile')].map((t) => t.textContent);
+  assert.equal(piastrelle.length, 5);
+  assert.ok(/· m0/.test(piastrelle[0]), 'la prima non è quella con la copertura più bassa');
+  assert.ok(/· m4/.test(piastrelle[4]));
+});
+
+test('seam _rendiResoconto: quando la copertura è piena su tutte, lo DICE', () => {
+  /* «Quando sono tutte piene lo si dice, invece di mostrare un elenco vuoto»
+     (spec §4A.4). Mutazione che la uccide: mostrare comunque cinque
+     piastrelle a caso. */
+  const { corpo } = rendiResoconto(resoconto({
+    misure: [misura({ misura: 'a', copertura: 1 }), misura({ misura: 'b', copertura: 1 })],
+  }));
+
+  assert.match(corpo.textContent, /copertura piena/);
+  assert.doesNotMatch(corpo.textContent, /le 5 con la copertura più bassa/);
+});
+
+test('seam _rendiResoconto: le forme stanno dietro un bottone, non in colonna', () => {
+  // Mutazione che la uccide: disegnarle tutte.
+  const forme = [];
+  for (let i = 0; i < 8; i++) {
+    forme.push({ soggetto: 'dev' + i, nome: 'Dispositivo ' + i, misura: 'forma_' + i,
+      unita: 'W', valore: [{ ora: '2026-09-19T10:00:00+00:00', valore: 1 }] });
+  }
+  const { corpo } = rendiResoconto(resoconto({ forme }));
+
+  assert.match(corpo.textContent, /8 forme/);
+  const apri = [...corpo.querySelectorAll('button')].filter((b) => /Vedi tutte \(8\)/.test(b.textContent))[0];
+  assert.ok(apri, 'le forme sono ancora disegnate tutte');
 });

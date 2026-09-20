@@ -50,7 +50,7 @@ from ..mind.judgments import (
     judgment_listing,
     write_judgment,
 )
-from ..mind.report import as_document, as_page
+from ..mind.report import as_document, as_page, integration_of
 
 #: Quanti giorni di volume la pagina mostra. **Non e' la durata del grezzo**
 #: (22 giorni, `store.READING_RETENTION_S`): e' quanto serve a vedere se il
@@ -108,13 +108,58 @@ async def handle_watching(request: web.Request) -> web.Response:
             {"watching": [], "error": "osservatore non disponibile"}, status=503)
     store = request.app.get("observations")
     return web.json_response({
-        "watching": watcher.watching(),
+        "watching": _with_integration(watcher.watching()),
         "fuori": _left_out(store),
         "obiettivo": store.objective() if store is not None else None,
         "riconsiderazione": store.last_reconsideration() if store is not None else None,
         "tentativi": store.recent_attempts() if store is not None else None,
         "volume": _volume(request.app, store),
     })
+
+
+#: I prefissi dei soggetti TECNICI, e da dove si legge l'integrazione dentro
+#: ciascuno. `log:` porta il logger fino alla chiocciola
+#: (`log:homeassistant.components.hassio.handler@...`); `problema:` porta il
+#: dominio come primo pezzo (`problema:hacs.restart_required_...`).
+#: **`integrazione:` non c'e', e non e' una dimenticanza**: quel soggetto porta
+#: l'identificativo di una voce di configurazione
+#: (`integrazione:01K2CK4GG287VKK18M5J788MRQ`), da cui il dominio non si ricava
+#: -- e indovinarlo darebbe un nome inventato a una riga che ne ha gia' uno
+#: vero da un'altra parte.
+_TECHNICAL_PREFIXES = ("log:", "problema:")
+
+
+def _with_integration(lines: list[dict]) -> list[dict]:
+    """Le voci tecniche con **l'integrazione da cui vengono, e il suo nome**.
+
+    Misurato il 18/09/2026: dei 153 soggetti guardati 39 sono tecnici, e
+    vengono da **30 logger distinti che sono 23 integrazioni**. La pagina li
+    elencava uno per uno col percorso del sorgente in chiaro: trentanove righe
+    per dirne ventitre.
+
+    **La regola e' quella del primo piano** (`mind/report.integration_of`), e
+    non una seconda scritta qui o in JavaScript: due letture dello stesso
+    logger darebbero due nomi per la stessa cosa nelle due schede della stessa
+    pagina -- il difetto che la 3.46.0 ha gia' chiuso fra misure e cronaca.
+
+    Le voci che non sono tecniche non guadagnano nessuna chiave: `light.studio`
+    ha un dominio, non un'integrazione, e chiamarlo «Light» fra le
+    integrazioni metterebbe le cose di casa in mezzo ai log.
+    """
+    seen = []
+    for line in lines or []:
+        subject = str(line.get("soggetto") or "")
+        slug = None
+        if subject.startswith("log:"):
+            rest = subject[len("log:"):]
+            slug = integration_of(rest.split("@")[0])
+        elif subject.startswith("problema:"):
+            slug = integration_of(subject[len("problema:"):])
+        if slug:
+            nome, identificativo = slug
+            line = {**line, "integrazione": identificativo, "nome": nome}
+        seen.append(line)
+    return seen
 
 
 def _left_out(store) -> list[dict]:

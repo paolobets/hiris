@@ -214,6 +214,31 @@ window.HirisWatcherGiorno = (function () {
     });
   }
 
+  function piastrellaMisura(m) {
+    var tile = el('div', 'stat-tile');
+    tile.appendChild(el('div', 'st-label', (m.nome || m.soggetto) + ' · ' + m.misura));
+    var parti = parteMisura(m);
+    tile.appendChild(el('div', 'st-value', parti[0]));
+    if (parti.length > 1) tile.appendChild(el('div', 'st-delta', parti.slice(1).join(' · ')));
+    /* La copertura si dice SOLO quando non e' piena: «100%» accanto a ogni
+       numero sarebbe rumore su cui l'occhio smette di fermarsi, ed e' proprio
+       quando NON e' piena che deve fermarsi. */
+    if (typeof m.copertura === 'number' && m.copertura < 1) {
+      tile.appendChild(el('div', 'st-delta', 'su ' + fmtPercent(m.copertura) + ' del giorno'));
+    }
+    return tile;
+  }
+
+  function rigaForma(f) {
+    var punti = (f.valore || []).length;
+    var riga = el('div', 'sc-row');
+    riga.appendChild(el('div', 'sc-row-title', (f.nome || f.soggetto) + ' · ' + f.misura));
+    riga.appendChild(el('div', 'sc-row-why',
+      fmtCount(punti) + (punti === 1 ? ' punto orario' : ' punti orari')
+      + (f.unita ? ' in ' + f.unita : '')));
+    return riga;
+  }
+
   function renderReport(body, report) {
     /* **Il giorno si DICE.** La scheda mostra sempre UN giorno solo, ma il
        selettore lo cambia: senza la data scritta qui, chi lo ha appena
@@ -243,22 +268,27 @@ window.HirisWatcherGiorno = (function () {
       line(body, 'Nessuna misura per questo giorno: nessun dispositivo ha ancora una ricetta, ' +
         'oppure nessuna ha potuto calcolarsi.', TONE_CALM);
     } else {
-      var grid = el('div', 'stat-grid');
-      misure.forEach(function (m) {
-        var tile = el('div', 'stat-tile');
-        tile.appendChild(el('div', 'st-label', (m.nome || m.soggetto) + ' · ' + m.misura));
-        var parti = parteMisura(m);
-        tile.appendChild(el('div', 'st-value', parti[0]));
-        if (parti.length > 1) tile.appendChild(el('div', 'st-delta', parti.slice(1).join(' · ')));
-        /* La copertura si dice SOLO quando non e' piena: «100%» accanto a ogni
-           numero sarebbe rumore su cui l'occhio smette di fermarsi, ed e'
-           proprio quando NON e' piena che deve fermarsi. */
-        if (typeof m.copertura === 'number' && m.copertura < 1) {
-          tile.appendChild(el('div', 'st-delta', 'su ' + fmtPercent(m.copertura) + ' del giorno'));
-        }
-        grid.appendChild(tile);
+      /* **I pochi che contano sono le cinque con la copertura più bassa**
+         (spec §4A.4), non le prime arrivate -- e il criterio si scrive, o
+         cinque piastrelle scelte da noi sembrerebbero le uniche cinque.
+         Quando la copertura è piena su tutte **lo si dice**, invece di
+         mostrare cinque numeri buoni a caso. */
+      var scarse = misure.filter(function (m) {
+        return typeof m.copertura === 'number' && m.copertura < 1;
+      }).sort(function (a, b) { return a.copertura - b.copertura; });
+      S.elencoLungo(body, {
+        titolo: 'Tutte le misure del giorno',
+        classe: 'stat-grid',
+        riassunto: fmtCount(misure.length) + (misure.length === 1 ? ' misura letta' : ' misure lette')
+          + (scarse.length
+            ? ' · ' + fmtCount(scarse.length) + ' con la copertura incompleta'
+            : ' · tutte con copertura piena'),
+        didascalia: scarse.length ? 'le 5 con la copertura più bassa' : '',
+        pochi: scarse.slice(0, 5),
+        tutti: misure,
+        etichetta: 'Vedi tutte',
+        rendi: piastrellaMisura
       });
-      body.appendChild(grid);
     }
 
     /* **Le forme orarie si DICONO, non si stampano.** Misurato sulla casa vera
@@ -271,14 +301,13 @@ window.HirisWatcherGiorno = (function () {
     var forme = report.forme || [];
     if (forme.length) {
       subheading(body, 'Le forme del giorno');
-      forme.forEach(function (f) {
-        var punti = (f.valore || []).length;
-        var riga = el('div', 'sc-row');
-        riga.appendChild(el('div', 'sc-row-title', (f.nome || f.soggetto) + ' · ' + f.misura));
-        riga.appendChild(el('div', 'sc-row-why',
-          fmtCount(punti) + (punti === 1 ? ' punto orario' : ' punti orari')
-          + (f.unita ? ' in ' + f.unita : '')));
-        body.appendChild(riga);
+      S.elencoLungo(body, {
+        titolo: 'Tutte le forme del giorno',
+        riassunto: fmtCount(forme.length) + (forme.length === 1 ? ' forma oraria' : ' forme orarie'),
+        pochi: [],
+        tutti: forme,
+        etichetta: 'Vedi tutte',
+        rendi: rigaForma
       });
     }
     subheading(body, 'La cronaca');
@@ -286,7 +315,18 @@ window.HirisWatcherGiorno = (function () {
       line(body, 'Nessun fatto: quel giorno non è cambiato niente di ciò che si guarda.', TONE_CALM);
       return;
     }
-    cronaca.forEach(function (v) { body.appendChild(chronicleLine(v)); });
+    /* **In fondo e chiusa** (spec §4A.6): è l'indice di tutto il giorno, e
+       novantatré righe in coda a una pagina sono la colonna da cui questa
+       fetta nasce. Chi la apre la vede in ordine cronologico, a blocchi. */
+    S.elencoLungo(body, {
+      titolo: 'La cronaca di ' + (report.giorno ? ggMmAaaa(report.giorno) : 'quel giorno'),
+      riassunto: fmtCount(cronaca.length) + (cronaca.length === 1 ? ' voce' : ' voci')
+        + ' · in ordine di orologio',
+      pochi: [],
+      tutti: cronaca,
+      etichetta: 'Vedi tutte',
+      rendi: chronicleLine
+    });
   }
 
   /* Una riga della cronaca: quando, chi, cosa -- e quanti attributi si sono

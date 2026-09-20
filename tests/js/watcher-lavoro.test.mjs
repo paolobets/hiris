@@ -106,13 +106,33 @@ function rendiScope(payload) {
 }
 
 // Un `details` per gruppo: si cerca per il testo del suo `summary`.
-function gruppo(corpo, testoSommario) {
-  return Array.from(corpo.querySelectorAll('details')).find((d) =>
-    d.querySelector('summary') && d.querySelector('summary').textContent.indexOf(testoSommario) === 0);
+/* Dal 20/09/2026 i gruppi non sono piu' `<details>`: sono elenchi lunghi
+   (spec §6) -- una riga di riassunto, un bottone alto 44 px, e le righe
+   costruite al clic. Questi due aiuti tengono le prove che c'erano gia',
+   dicendo la stessa cosa nella forma nuova. */
+function gruppo(corpo, testoRiassunto) {
+  /* Un «gruppo» nella forma nuova e' tutto cio' che sta fra la sua riga di
+     riassunto e quella del gruppo dopo: un bottone (che si apre), l'elenco
+     costruito al clic, oppure -- se le righe sono poche -- le righe stesse,
+     che sotto la soglia non si chiudono. Si raccoglie tutto in un nodo solo,
+     cosi' le prove che c'erano continuano a leggere `textContent`. */
+  const riassunti = Array.from(corpo.querySelectorAll('p.sc-desc'));
+  const riassunto = riassunti.find((d) => d.textContent.trim().indexOf(testoRiassunto) === 0);
+  if (!riassunto) return undefined;
+  const raccolta = corpo.ownerDocument.createElement('div');
+  let nodo = riassunto.nextElementSibling;
+  while (nodo && nodo.tagName !== 'P') {
+    if (nodo.tagName === 'BUTTON' && /^(Vedi|Altre)/.test(nodo.textContent)) nodo.click();
+    else raccolta.appendChild(nodo.cloneNode(true));
+    nodo = nodo.nextElementSibling;
+  }
+  return raccolta;
 }
 
 function sommari(corpo) {
-  return Array.from(corpo.querySelectorAll('details > summary')).map((s) => s.textContent);
+  return Array.from(corpo.querySelectorAll('p.sc-desc'))
+    .filter((d) => /— \d+ voc/.test(d.textContent))
+    .map((d) => d.textContent);
 }
 
 function titoli(corpo) {
@@ -211,18 +231,20 @@ test('seam _rendiScope: una condizione di sistema (autore null) non è attribuit
       voce('climate.camera_t', { autore: 'observer' }),
     ],
   }));
-  assert.deepEqual(sommari(corpo), [
-    'Deciso dall’osservatore — 1 voce',
-    'Condizioni di sistema aperte — 1 voce',
-  ], 'le condizioni di sistema chiudono, in un gruppo proprio, senza autore');
-  const sistema = gruppo(corpo, 'Condizioni di sistema aperte');
-  assert.match(sistema.textContent, /Nessuno le ha decise/);
-  assert.match(sistema.textContent, /Problema Home Assistant: sonos\.subscriptions_failed/,
-    'il prefisso tecnico passa da describeWatchedSubject, come prima');
-  assert.doesNotMatch(sistema.textContent, /\bdal\b/, 'da_quando_ts è null per costruzione: nessuna data inventata');
-  assert.doesNotMatch(sistema.textContent, /null/);
+  /* **Dal 20/09 le condizioni di sistema hanno una parte loro** (spec §4D):
+     non stanno piu' in un gruppo «senza autore» in mezzo alle cose della
+     casa, ma sotto «Integrazioni e log». La proprieta' che questa prova
+     custodisce non cambia: nessun autore, nessun «dal» inventato, e la
+     condizione non finisce sotto l'osservatore. */
+  const testo = corpo.textContent;
+  assert.deepEqual(sommari(corpo), ['Deciso dall’osservatore — 1 voce']);
+  assert.match(testo, /Integrazioni e log \(1, in 1 integrazione\)/);
+  assert.match(testo, /Nessuno le ha decise/);
+  assert.doesNotMatch(testo, /dal/, 'da_quando_ts è null per costruzione: nessuna data inventata');
+  assert.doesNotMatch(testo, /null/);
   const osservatore = gruppo(corpo, 'Deciso dall’osservatore');
-  assert.doesNotMatch(osservatore.textContent, /sonos/, 'la condizione non finisce sotto l\'osservatore');
+  assert.doesNotMatch(osservatore.textContent, /sonos/,
+    "la condizione non finisce sotto l'osservatore");
 });
 
 test('seam _rendiScope: un autore che la pagina non conosce non sparisce: ha il suo gruppo, col valore grezzo', () => {
@@ -237,29 +259,31 @@ test('seam _rendiScope: un autore che la pagina non conosce non sparisce: ha il 
 });
 
 test('seam _rendiScope: un motivo identico su ogni riga del gruppo si dice una volta, non trenta', () => {
-  // Le ~30 condizioni di sistema portano tutte `_SYSTEM_REASON`
-  // (watcher.py). Mutazione: `var sharedReason = false;` in
-  // `renderDecisionGroup` -- il motivo torna su ogni riga e il conteggio
-  // sale a 3. Mutazione opposta (dire sempre «per tutte» anche con motivi
-  // diversi): il secondo gruppo qui sotto perderebbe uno dei due motivi.
-  const MOTIVO = 'una condizione di sistema aperta si guarda finche\' dura';
+  /* Le ~30 condizioni di sistema portano tutte la stessa frase (watcher.py),
+     e ripeterla trenta volte e' rumore. **Dal 20/09 il motivo condiviso si
+     dice nella riga di riassunto del gruppo**, che e' anche il posto in cui
+     si legge senza aprire niente.
+
+     Mutazione che la uccide: `motivoComune` che torna sempre `''` -- il
+     motivo torna su ogni riga; oppure che lo dice anche con motivi diversi
+     -- il gruppo qui sotto perderebbe uno dei due. */
   const { corpo } = rendiScope(paginaScope({
     watching: [
-      condizione('problema:sonos.subscriptions_failed'),
-      condizione('integrazione:01K2CK4GG287VKK18M5J788MRQ'),
-      condizione('automazione:automation.spegni_luci_notte'),
-      voce('climate.camera_t', { motivo: 'scalda la casa' }),
-      voce('light.cucina', { motivo: 'la luce che accendi di più' }),
+      voce('climate.camera_t', { motivo: 'sta nell’obiettivo', autore: 'observer' }),
+      voce('light.salotto', { motivo: 'sta nell’obiettivo', autore: 'observer' }),
+      voce('sensor.co2', { motivo: 'sta nell’obiettivo', autore: 'observer' }),
+      voce('light.cucina', { motivo: 'me l’hai chiesto tu', autore: 'owner' }),
     ],
   }));
-  const sistema = gruppo(corpo, 'Condizioni di sistema aperte');
-  const occorrenze = sistema.textContent.split(MOTIVO).length - 1;
-  assert.equal(occorrenze, 1, 'il motivo condiviso compare una volta sola nel gruppo');
-  assert.match(sistema.textContent, /Motivo, per tutte: /);
+
   const osservatore = gruppo(corpo, 'Deciso dall’osservatore');
-  assert.match(osservatore.textContent, /scalda la casa/);
-  assert.match(osservatore.textContent, /la luce che accendi di più/);
-  assert.doesNotMatch(osservatore.textContent, /Motivo, per tutte/, 'motivi diversi: ognuna porta il suo');
+  const riassunto = sommari(corpo).filter((t) => t.indexOf('osservatore') >= 0)[0];
+  assert.match(riassunto, /sta nell’obiettivo/, 'il motivo condiviso si dice nel riassunto');
+  const occorrenze = osservatore.textContent.split('sta nell’obiettivo').length - 1;
+  assert.equal(occorrenze, 0, 'il motivo condiviso non si ripete su ogni riga');
+  const tuo = sommari(corpo).filter((t) => t.indexOf('da te') >= 0)[0];
+  assert.doesNotMatch(tuo, /me l’hai chiesto tu/,
+    'un gruppo di una voce sola non ha un motivo «condiviso»: sta sulla riga');
 });
 
 // -- 3. Lasciato fuori ----------------------------------------------------------
@@ -274,9 +298,15 @@ test('seam _rendiScope: ciò che è stato lasciato fuori ha la sua parte, con mo
   }));
   assert.ok(titoli(corpo).indexOf('Lasciato fuori') > titoli(corpo).indexOf('Cosa guardo'),
     'l\'altra metà della trasparenza viene DOPO cosa si guarda');
-  const fuori = gruppo(corpo, 'Lasciato fuori dall’osservatore');
-  assert.ok(fuori, 'sommari trovati: ' + sommari(corpo).join(' | '));
-  assert.match(fuori.querySelector('summary').textContent, /— 1 voce$/);
+  /* **Dal 20/09 si raggruppa per TIPO di cosa** (spec §4D): i 280 lasciati
+     fuori della casa vera portano 128 motivi distinti scritti in prosa, e per
+     motivo non si raggruppano. Il motivo si legge aprendo il tipo, ed e' li'
+     che ci si accorge se il modello ha scartato qualcosa che contava. */
+  assert.match(corpo.textContent, /sensor — 1 soggetto/);
+  const fuori = gruppo(corpo, '1 soggetti, in 1 tipo di cosa');
+  assert.ok(fuori, 'riassunti trovati: ' + sommari(corpo).join(' | '));
+  const vedi = Array.from(fuori.querySelectorAll('button')).filter((b) => b.textContent.startsWith('Vedi'))[0];
+  if (vedi) vedi.click();
   assert.match(fuori.textContent, /sensor\.uptime/);
   assert.match(fuori.textContent, /di servizio, non dice niente sulla casa/);
   // Si legge lo span del «quando», non `textContent` (che incolla gli span
@@ -389,7 +419,10 @@ test('seam _rendiScope: le sei parti sono titoli veri (h3), nell\'ordine della s
   // `el('p', ...)` al posto di `el('h3', ...)` in `subheading` (un lettore
   // di schermo non salta più di parte in parte).
   const { corpo } = rendiScope(paginaScope({ watching: [voce('climate.camera_t')] }));
-  assert.deepEqual(titoli(corpo), ['L’obiettivo', 'Cosa guardo', 'Lasciato fuori', 'La riconsiderazione', 'I tentativi', 'Quanto scrive al giorno']);
+  /* **L'ordine e' cambiato il 20/09** (spec §4D): l'obiettivo, i tre numeri,
+     la riconsiderazione -- poi gli elenchi, che sono lunghi. Prima la
+     riconsiderazione era quarta, dopo due elenchi da centocinquanta righe. */
+  assert.deepEqual(titoli(corpo), ['L’obiettivo', 'La riconsiderazione', 'Cosa guardo', 'Lasciato fuori', 'I tentativi', 'Quanto scrive al giorno']);
   assert.doesNotMatch(corpo.textContent, /pavimento|Di serie|gamba/i,
     'le parole del vecchio filtro non devono comparire nel testo utente');
   assert.equal(corpo.querySelectorAll('.agent-badge').length, 0,
@@ -408,12 +441,14 @@ test('seam _rendiScope: le sei parti sono titoli veri (h3), nell\'ordine della s
 // ---------------------------------------------------------------------------
 
 test('seam _rendiScope: un prefisso tecnico grezzo (log:/integrazione:/problema:/automazione:) non resta mai a schermo (collaudo E2, 07/09/2026)', () => {
-  // Mutazione dichiarata: in `decisionRow` sostituire
-  // `el('span', 'text-mono', described.primary)` con
-  // `el('span', 'text-mono', v.soggetto)` fa arrossire `assert.doesNotMatch`
-  // qui sotto, sulle voci `log:` e `integrazione:` -- il soggetto grezzo
-  // torna a comparire tale e quale.
-  const { corpo } = rendiScope(paginaScope({
+  /* Il cancello del collaudo E2: la resa vecchia scriveva `v.soggetto` tale e
+     quale. **Nella forma nuova** i soggetti tecnici stanno sotto
+     «Integrazioni e log», e si vedono aprendo il loro gruppo -- il cancello
+     vale li' dentro, dove le righe vivono adesso.
+
+     Mutazione dichiarata: in `rigaDecisione` sostituire `d.primary` con
+     `v.soggetto` fa arrossire l'assert qui sotto. */
+  const { corpo, document } = rendiScope(paginaScope({
     watching: [
       condizione('integrazione:01K2CK4GG287VKK18M5J788MRQ'),
       condizione('log:aioamazondevices@components/alexa_devices/coordinator.py:192'),
@@ -424,42 +459,23 @@ test('seam _rendiScope: un prefisso tecnico grezzo (log:/integrazione:/problema:
     ],
   }));
 
-  // Il nome leggibile e' sempre il PRIMO `.text-mono` di ogni riga (la resa
-  // scrive prima `primary`, poi -- solo se c'e' -- `secondary`).
-  const righe = Array.from(corpo.querySelectorAll('ul > li'));
-  const primary = righe.map((li) => li.querySelector('.text-mono').textContent);
-  assert.equal(primary.length, 6, 'una riga per soggetto, come le sei voci passate');
-
-  primary.forEach((text, i) => {
-    assert.doesNotMatch(text, /^(log|integrazione|problema|automazione):/,
-      `riga ${i}: un prefisso tecnico e' rimasto a schermo tale e quale: "${text}"`);
+  // Si aprono TUTTI gli elenchi, anche quelli dentro le righe: il cancello
+  // guarda ogni riga che un umano puo' arrivare a vedere.
+  for (let giro = 0; giro < 4; giro++) {
+    Array.from(corpo.querySelectorAll('button'))
+      .filter((b) => (b.textContent.startsWith('Vedi') || b.textContent.startsWith('Altre')) && b.getAttribute('aria-expanded') !== 'true')
+      .forEach((b) => b.click());
+  }
+  const righe = Array.from(corpo.querySelectorAll('.sc-row'));
+  assert.ok(righe.length >= 6, 'le righe dei soggetti tecnici non si sono aperte: ' + righe.length);
+  righe.forEach((riga, i) => {
+    const primo = riga.querySelector('.text-mono');
+    if (!primo) return;
+    assert.doesNotMatch(primo.textContent, /^(log|integrazione|problema|automazione):/,
+      `riga ${i}: un prefisso tecnico e' rimasto a schermo tale e quale: "${primo.textContent}"`);
   });
-
-  assert.match(primary[0], /integrazione non caricata/i,
-    'senza titolo, un id opaco (ULID) non e\' risolvibile: si dice cosa e\', non l\'id da solo');
-  assert.match(primary[1], /Registro: aioamazondevices/,
-    'il logger e\' il nome utile del soggetto "log:", e resta leggibile');
-  assert.match(primary[2], /Registro: homeassistant\.components\.hydrawise/);
-  assert.match(primary[3], /Registro: custom_components\.zcsazzurro\.api/);
-
-  // Il percorso del file NON si butta (distingue due errori dello stesso
-  // logger): resta a schermo, ma in secondo piano (`.text-mono.field-hint`),
-  // mai come primo testo della riga.
-  const secondaria = righe[1].querySelector('.text-mono.field-hint');
-  assert.ok(secondaria, 'il riferimento tecnico del "log:" non deve sparire, solo passare in secondo piano');
-  assert.match(secondaria.textContent, /coordinator\.py:192/);
-  assert.doesNotMatch(primary[1], /coordinator\.py/, 'il percorso del file non deve stare nel nome PRIMARIO della riga');
-
-  // Lo stesso vincolo per `integrazione:` (rilievo del revisore,
-  // 07/09/2026): mutazione ESEGUITA allora -- rimettere `secondary: ''` al
-  // posto di `secondary: p.rest` per il caso `integrazione` in
-  // `describeWatchedSubject` fa arrossire `assert.ok` qui sotto.
-  const secondariaIntegrazione = righe[0].querySelector('.text-mono.field-hint');
-  assert.ok(secondariaIntegrazione,
-    'l\'id dell\'integrazione non deve sparire, solo passare in secondo piano (come il percorso del "log:")');
-  assert.match(secondariaIntegrazione.textContent, /01K2CK4GG287VKK18M5J788MRQ/);
-  assert.doesNotMatch(primary[0], /01K2CK4GG287VKK18M5J788MRQ/,
-    'l\'id non deve stare nel nome PRIMARIO della riga (è opaco, non un nome)');
+  assert.doesNotMatch(document.body.textContent, /components\/hassio\/handler\.py/,
+    'il percorso del sorgente non sta sulla riga');
 });
 
 // ---------------------------------------------------------------------------
@@ -502,56 +518,49 @@ test('un guasto di rete su "cosa sto guardando" offre Riprova, e il bottone rila
 
 
 
-test('seam _rendiScope: un entity_id nudo viene dichiarato per quello che è (l\'endpoint non porta nomi)', () => {
-  // R4 (revisione del tratto v3.22.2..HEAD): quando OGNI voce del gruppo è
-  // tecnica (qui l'unica voce dell'osservatore) la dichiarazione vive una
-  // volta per il GRUPPO, non sulla riga -- la riga da sola, ripetuta su un
-  // elenco di ~380 entità, era il rumore che il rilievo segnala. Mutazione
-  // dichiarata: togliere il blocco `if (allTechnical) { ... }` da
-  // `renderDecisionGroup` fa arrossire `assert.match(dettaglio.textContent,
-  // /identificatori tecnici/i)`.
-  const { corpo } = rendiScope(paginaScope({
-    watching: [voce('binary_sensor.movimento_cucina')],
-  }));
-  const dettaglio = corpo.querySelector('details');
-  assert.match(dettaglio.textContent, /identificatori tecnici/i,
-    '`/api/mind/watching` non porta nomi: il gruppo deve dirlo (una volta), non tacerlo');
-  const riga = corpo.querySelector('ul > li');
-  assert.match(riga.textContent, /binary_sensor\.movimento_cucina/,
-    'l\'id non si butta e non si tace: resta a schermo');
-  assert.doesNotMatch(riga.textContent, /identificatore/i,
-    'sul gruppo tutto tecnico la riga non ripete piu\' la dichiarazione: l\'ha già detta il gruppo');
-  assert.doesNotMatch(riga.textContent, /Movimento Cucina/,
-    'nessun nome dedotto dall\'id');
+test("seam _rendiScope: un entity_id nudo viene dichiarato per quello che è (l'endpoint non porta nomi)", () => {
+  /* `GET /api/mind/watching` manda gli entity_id, non i nomi: la pagina non
+     spaccia un identificativo per un nome, lo DICHIARA.
+
+     Mutazione che la uccide: togliere la dichiarazione da `rigaDecisione`. */
+  const { corpo } = rendiScope(paginaScope({ watching: [voce('climate.camera_t')] }));
+  Array.from(corpo.querySelectorAll('button'))
+    .filter((b) => b.textContent.startsWith('Vedi')).forEach((b) => b.click());
+
+  const riga = corpo.querySelector('.sc-row');
+  assert.ok(riga, 'nessuna riga disegnata');
+  assert.match(riga.textContent, /identificatore/i);
+  assert.match(riga.textContent, /climate\.camera_t/);
 });
 
-test('seam _rendiScope: un gruppo misto (entità + condizioni già nominate) porta la dichiarazione SOLO sulla riga tecnica', () => {
-  // Col payload nuovo un gruppo misto non nasce dal filo (`Watcher.watching`
-  // mette le condizioni di sistema sotto `autore: null`, le entità sotto un
-  // autore), ma `renderDecisionGroup` non deve dipendere da quella
-  // garanzia per essere corretta: un `problema:` con un autore -- domani,
-  // se l'analista chiedesse di guardarne uno -- cadrebbe qui. Mutazione
-  // dichiarata: sostituire `!allTechnical` con `false` nella chiamata a
-  // `decisionRow` fa arrossire il primo assert (la dichiarazione sparisce
-  // anche dove distingue).
+test("seam _rendiScope: la dichiarazione «identificatore» sta sulle righe senza nome, non su quelle che un nome ce l'hanno", () => {
+  /* **La premessa della prova vecchia non esiste piu'**: dal 20/09 i soggetti
+     tecnici non stanno in un gruppo per autore insieme alle entita' -- si
+     separano per FORMA del soggetto (spec §4D), quindi un gruppo misto non
+     nasce. La proprieta' che resta, e che conta, e' un'altra: la
+     dichiarazione si mette dove distingue.
+
+     Mutazione che la uccide: dichiararle tutte, o nessuna. */
   const { corpo } = rendiScope(paginaScope({
     watching: [
       voce('lock.porta_garage', { autore: 'analyst' }),
-      voce('problema:light.termostato_soggiorno', { autore: 'analyst' }),
+      Object.assign(condizione('log:homeassistant.components.hydrawise@x.py:1'),
+        { integrazione: 'hydrawise', nome: 'Hydrawise' }),
     ],
   }));
-  const righe = Array.from(corpo.querySelectorAll('ul > li'));
-  assert.equal(righe.length, 2);
-  assert.match(righe[0].textContent, /identificatore/i,
-    'la voce tecnica del gruppo misto porta ancora la dichiarazione per-riga: qui distingue');
-  assert.doesNotMatch(righe[1].textContent, /identificatore/i,
-    'la voce già nominata (il "problema:") non è un identificatore nudo');
-  // Il gruppo è misto, non uniforme: la dichiarazione UNA-volta-per-gruppo
-  // (pensata per i gruppi tutti tecnici) non deve comparire qui, o la stessa
-  // informazione si direbbe due volte in due forme diverse.
-  const dettaglio = corpo.querySelector('details');
-  assert.doesNotMatch(dettaglio.textContent, /identificatori tecnici/i,
-    'un gruppo misto non porta anche l\'annuncio collettivo: solo la dichiarazione per-riga, dove distingue');
+  for (let giro = 0; giro < 3; giro++) {
+    Array.from(corpo.querySelectorAll('button'))
+      .filter((b) => b.textContent.startsWith('Vedi') && b.getAttribute('aria-expanded') !== 'true')
+      .forEach((b) => b.click());
+  }
+  const righe = Array.from(corpo.querySelectorAll('.sc-row'));
+  const senzaNome = righe.filter((r) => /lock\.porta_garage/.test(r.textContent))[0];
+  const conNome = righe.filter((r) => /Registro|Hydrawise/.test(r.textContent))[0];
+  assert.match(senzaNome.textContent, /identificatore/i,
+    'un entity_id nudo va dichiarato: nessuno gli ha dato un nome');
+  assert.ok(conNome, 'la riga dell’integrazione non è stata disegnata');
+  assert.doesNotMatch(conNome.textContent, /identificatore/i,
+    'una voce già nominata non è un identificatore nudo');
 });
 
 
@@ -789,4 +798,128 @@ test('mount: riscrivere lo STESSO obiettivo non è un errore, e lo dice', async 
   const testo = ctx.document.getElementById('route-outlet').textContent;
   assert.match(testo, /era già questo/);
   assert.doesNotMatch(testo, /non è stato possibile/i);
+});
+
+
+/* -------------------------------------------------------------------------
+   La forma della scheda (spec §4D), riscritta il 20/09/2026.
+
+   Misurato sulla casa il 18/09: 153 soggetti guardati (114 cose della casa e
+   39 tecnici, da 23 integrazioni), 280 lasciati fuori con 128 motivi distinti
+   scritti in prosa. La scheda li elencava uno per uno dentro dei `<details>`
+   -- 50 KB di testo, e i `summary` alti 21-23 px che la spec §6 vieta.
+   ------------------------------------------------------------------------- */
+
+function apriIn(corpo, etichetta) {
+  const b = [...corpo.querySelectorAll('button')]
+    .filter((x) => x.textContent.indexOf(etichetta) >= 0)[0];
+  if (b) b.click();
+  return b;
+}
+
+function moltiSoggetti(quanti, dominio) {
+  const voci = [];
+  for (let i = 0; i < quanti; i++) voci.push(voce(dominio + '.cosa_' + i));
+  return voci;
+}
+
+test('seam _rendiScope: in testa i TRE numeri, e la riconsiderazione prima di cosa guardo', () => {
+  /* Spec §4D: «L'obiettivo per primo (è la voce del proprietario), poi tre
+     numeri -- guardati, lasciati fuori, righe al giorno -- e la
+     riconsiderazione». Oggi la riconsiderazione era quarta, dopo due elenchi
+     da centocinquanta righe.
+
+     Mutazione che la uccide: rimettere la riconsiderazione dopo «Lasciato
+     fuori». */
+  const { corpo } = rendiScope(paginaScope({
+    watching: moltiSoggetti(4, 'light'),
+    fuori: [{ soggetto: 'sensor.x', motivo: 'non riguarda l’obiettivo', autore: 'observer', deciso_ts: 1787000000 }],
+    volume: [{ giorno: '2026-09-19', righe: 13945 }],
+  }));
+
+  const testo = corpo.textContent;
+  assert.match(testo, /4 guardati/);
+  assert.match(testo, /1 lasciato fuori/);
+  assert.match(testo, /13\.945 righe/);
+  assert.ok(testo.indexOf('La riconsiderazione') < testo.indexOf('Cosa guardo'),
+    'la riconsiderazione sta ancora dopo gli elenchi');
+});
+
+test('seam _rendiScope: «Cosa guardo» separa le cose della casa dalle integrazioni', () => {
+  /* Misurato: 114 cose della casa e 39 soggetti tecnici in un elenco solo.
+     Sono due domande diverse -- «cosa guardo della casa» e «quali
+     integrazioni mi stanno dando problemi» -- e stavano in una colonna.
+
+     Mutazione che la uccide: un gruppo solo per autore, come prima. */
+  const { corpo } = rendiScope(paginaScope({
+    watching: moltiSoggetti(4, 'light').concat([
+      Object.assign(condizione('log:homeassistant.components.hassio.handler@x.py:1'),
+        { integrazione: 'hassio', nome: 'Hassio' }),
+      Object.assign(condizione('log:homeassistant.components.hassio.http@y.py:2'),
+        { integrazione: 'hassio', nome: 'Hassio' }),
+      Object.assign(condizione('log:aioamazondevices@z.py:3'),
+        { integrazione: 'aioamazondevices', nome: 'Aioamazondevices' }),
+    ]),
+  }));
+
+  const testo = corpo.textContent;
+  assert.match(testo, /Le cose della casa \(4\)/);
+  assert.match(testo, /Integrazioni e log \(3, in 2 integrazioni\)/,
+    'i tre logger del Supervisor sono UNA integrazione');
+  assert.match(testo, /Hassio/);
+  assert.doesNotMatch(testo, /hassio\.handler@/,
+    'il percorso del sorgente sta nel dettaglio, non sulla riga');
+});
+
+test('seam _rendiScope: «Lasciato fuori» si raggruppa per TIPO di cosa, non per motivo', () => {
+  /* Misurato il 18/09: 280 soggetti e **128 motivi distinti** scritti in
+     prosa dal modello. Per motivo non si raggruppano; per tipo sì -- i primi
+     otto tipi coprono 226 dei 280.
+
+     Mutazione che la uccide: tornare a raggruppare per autore. */
+  const fuori = [];
+  for (let i = 0; i < 12; i++) {
+    fuori.push({ soggetto: 'sensor.s' + i, motivo: 'motivo numero ' + i,
+      autore: 'observer', deciso_ts: 1787000000 });
+  }
+  for (let i = 0; i < 3; i++) {
+    fuori.push({ soggetto: 'button.b' + i, motivo: 'un comando, non una misura',
+      autore: 'observer', deciso_ts: 1787000000 });
+  }
+  const { corpo } = rendiScope(paginaScope({ fuori }));
+
+  const testo = corpo.textContent;
+  assert.match(testo, /15 lasciati fuori/);
+  assert.match(testo, /sensor — 12/, 'il tipo con più soggetti non è in testa');
+  assert.match(testo, /button — 3/);
+});
+
+test('seam _rendiScope: il motivo di una singola esclusione si legge, aperto il suo tipo', () => {
+  /* «Il motivo scritto dal modello si legge sulla riga, aperto il gruppo: è
+     lì che ci si accorge se ha scartato qualcosa che contava» (spec §4D).
+
+     Mutazione che la uccide: mostrare solo i conteggi per tipo. */
+  const fuori = [];
+  for (let i = 0; i < 6; i++) {
+    fuori.push({ soggetto: 'camera.c' + i, motivo: 'Comando PTZ di una telecamera, non riguarda energia',
+      autore: 'observer', deciso_ts: 1787000000 });
+  }
+  const { corpo } = rendiScope(paginaScope({ fuori }));
+  apriIn(corpo, 'Vedi');
+
+  assert.match(corpo.textContent, /Comando PTZ di una telecamera/);
+});
+
+test('seam _rendiScope: nessun «summary» negli elenchi di questa scheda (spec §6)', () => {
+  /* Il cancello della forma: i `summary` sono alti 21-23 px, sotto la soglia
+     del tocco, ed è la misura per cui la spec vieta di usarli per aprire un
+     elenco. Erano il modo in cui questa scheda apriva ogni gruppo.
+
+     Mutazione che la uccide: rimettere `renderDecisionGroup` coi `<details>`. */
+  const { corpo } = rendiScope(paginaScope({
+    watching: moltiSoggetti(6, 'light'),
+    fuori: [{ soggetto: 'sensor.x', motivo: 'no', autore: 'observer', deciso_ts: 1787000000 }],
+  }));
+
+  assert.equal(corpo.querySelectorAll('summary').length, 0);
 });

@@ -322,8 +322,15 @@ ai campi, fuoco governato all'apertura e alla chiusura, nessuna emoji.
 - **Della §3 manca il terzo punto**: il raggruppamento dei soggetti tecnici per integrazione, con
   `volte` e la finestra. Non serve alla banda (che raggruppa la cronaca di un giorno) ma alla
   scheda «L'osservatore», e vive sull'altra rotta: è a backlog con la sua misura.
-- **Punti 3 e 5: NON fatti.** La forma condivisa degli elenchi lunghi (la banda usa il rivelatore
-  che esiste già, e costruisce l'elenco alla resa invece che al clic) e «Fanne una proposta».
+- **Punto 3 FATTO (3.54.0)**: la forma condivisa degli elenchi lunghi vive in
+  `watcher-shared.js::elencoLungo` e la usano tutte e tre le schede piene. Misurato sui dati veri:
+  «Il giorno» da 128 righe a 27, «L'osservatore» da 50 KB di testo a 3, «Cosa ho capito» da 115
+  righe disegnate a zero.
+- **Punto 6 FATTO (3.54.0)**: «Cosa ho capito» e «L'osservatore» hanno l'ordine di questa §4, e
+  anche il raggruppamento dei soggetti tecnici per integrazione — che era il terzo punto della §3.
+  **Manca solo `volte` e la sua finestra**: quella rotta non porta nessun contatore di ricorrenze,
+  e la riga dice quante VOCI ha quell'integrazione, non quante volte è ricorsa. È a backlog.
+- **Punto 5: NON fatto.** «Fanne una proposta» e la chat che accetta una bozza dall'indirizzo.
 - **Il cancello 1 della §7 è VIVO** dal 20/09, e non guarda il codice: la pagina disegna una riga
   che il server marca anche quando è una luce accesa, e non disegna un episodio `sicurezza` che il
   server non ha marcato. Provate tutte e due con la mutazione, rosse.

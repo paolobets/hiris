@@ -80,6 +80,7 @@ window.HirisWatcherLavoro = (function () {
   var retryButton = S.retryButton;
   var createDisclosure = S.createDisclosure;
   var describeWatchedSubject = S.describeWatchedSubject;
+  var parseSubjectPrefix = S.parseSubjectPrefix;
   var ggMmAaaa = S.ggMmAaaa;
   var fmtWhenFull = S.fmtWhenFull;
   var fmtDays = S.fmtDays;
@@ -91,7 +92,6 @@ window.HirisWatcherLavoro = (function () {
   var TONE_CALM = S.TONE_CALM;
   var TONE_UNKNOWN = S.TONE_UNKNOWN;
   var SUBJECT_IS_ID = S.SUBJECT_IS_ID;
-  var SUBJECT_IS_ID_PLURAL = S.SUBJECT_IS_ID_PLURAL;
 
   /* I tre autori possibili di una decisione dello scope (`author` in
      `mind/store.py`, `scope()`), nell'ordine in cui interessano a chi legge:
@@ -198,100 +198,110 @@ window.HirisWatcherLavoro = (function () {
     body.appendChild(esito);
   }
 
-  /* Una riga di decisione, per «cosa guardo» e per «lasciato fuori» insieme:
-     e' la STESSA forma (soggetto, motivo, quando) e due funzioni gemelle
-     divergerebbero al primo ritocco. `sayTechnical`/`sayReason` sono decisi
-     dal gruppo (sotto): quando ogni voce del gruppo e' un identificatore, o
-     quando ogni voce porta lo stesso motivo, la dichiarazione vive una volta
-     sul gruppo e la riga non la ripete -- e' R4, esteso al motivo.
-
-     Fetta «il nome» (07/09/2026): questo elenco NON porta nomi, mai. Un'entita'
-     resta il suo `entity_id`, e la riga lo DICE (`d.technical`) invece di
-     lasciarlo passare per un nome; `describeWatchedSubject` (condivisa con le
-     altre schede, watcher-shared.js) separa i soggetti grezzi
-     (`log:...@file:riga`, `integrazione:<id opaco>`) in nome leggibile +
-     riferimento tecnico secondario, mai buttato ma in secondo piano
-     (`.field-hint`). */
-  function decisionRow(described, v, sayTechnical, sayReason, when) {
-    var li = el('li');
-    li.style.cssText = 'margin-bottom:8px;font-size:var(--fs-13);overflow-wrap:anywhere';
-    var head = el('div');
-    head.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap';
-    if (described.technical && sayTechnical) head.appendChild(el('span', 'field-hint', SUBJECT_IS_ID));
-    head.appendChild(el('span', 'text-mono', described.primary));
-    if (described.secondary) head.appendChild(el('span', 'text-mono field-hint', described.secondary));
-    if (when) head.appendChild(el('span', 'field-hint', when));
-    li.appendChild(head);
-    if (sayReason) {
-      /* Un motivo che manca si dice, non si tace: una decisione senza il suo
-         perche' e' esattamente cio' che questa pagina esiste per non avere. */
-      var reason = el('p', null, v.motivo ? v.motivo : '(nessun motivo scritto)');
-      reason.style.cssText = 'margin:2px 0 0;color:var(--text-2)';
-      li.appendChild(reason);
+  /* I tre numeri, subito sotto l'obiettivo (spec §4D): quanto si guarda,
+     quanto si e' lasciato fuori, quanto costa in righe al giorno. Sono la
+     risposta breve alla domanda della scheda -- «sta lavorando bene?» -- e
+     prima di questa fetta bisognava scorrere due elenchi da centocinquanta
+     righe per ricavarli. */
+  function renderNumeri(body, p) {
+    var guardati = (p.watching || []).length;
+    var fuori = (p.fuori || []).length;
+    var volume = p.volume || [];
+    var ultimo = volume.length ? volume[volume.length - 1] : null;
+    var parti = [fmtCount(guardati) + (guardati === 1 ? ' guardato' : ' guardati'),
+                 fmtCount(fuori) + (fuori === 1 ? ' lasciato fuori' : ' lasciati fuori')];
+    if (ultimo && typeof ultimo.righe === 'number') {
+      parti.push(fmtCount(ultimo.righe) + ' righe scritte ieri');
     }
-    return li;
+    line(body, parti.join(' · '), TONE_CALM);
   }
 
-  /* Un gruppo per autore, chiuso di default (sulla casa vera il gruppo
-     dell'osservatore e' ~380 righe: aperto sarebbe un muro davanti alle altre
-     quattro parti). Il sommario porta chi ha deciso e quante voci, cosi' la
-     scheda si legge a colpo d'occhio senza aprire niente.
-
-     `opts.title(autore)` da' l'intestazione («Deciso da te», «Lasciato fuori
-     dall'analista»), `opts.whenKey`/`opts.whenPrefix` dicono quale istante
-     mostrare e con che parola («dal 11/09/2026 14:00» per cio' che si
-     guarda, «il 11/09/2026 14:00» per cio' che e' stato escluso). */
-  function renderDecisionGroup(body, group, opts) {
-    var det = el('details');
-    det.open = false;
-    var n = group.voci.length;
-    var title = group.autore == null ? SYSTEM_GROUP_TITLE : opts.title(group.autore);
-    var summary = el('summary', null, title + ' — ' + n + (n === 1 ? ' voce' : ' voci'));
-    summary.style.cssText = 'cursor:pointer;font-weight:500';
-    det.appendChild(summary);
-
-    if (group.autore == null) {
-      var systemHint = el('p', 'field-hint',
-        'Nessuno le ha decise: non sono entità, e si guardano finché durano. Non c’è niente da togliere.');
-      systemHint.style.cssText = 'margin:4px 0 0';
-      det.appendChild(systemHint);
-    }
-
-    var described = group.voci.map(function (v) { return describeWatchedSubject(v.soggetto); });
-    var allTechnical = described.length > 0 && described.every(function (d) { return d.technical; });
-    if (allTechnical) {
-      // Detto UNA volta per il gruppo, non tace mai: chi legge deve
-      // continuare a sapere che quelle sotto non sono nomi (R4).
-      var hint = el('p', 'field-hint', 'Le voci qui sotto sono ' + SUBJECT_IS_ID_PLURAL + '.');
-      hint.style.cssText = 'margin:4px 0 0';
-      det.appendChild(hint);
-    }
-
-    /* Lo stesso motivo su ogni riga del gruppo (le ~30 condizioni di sistema
-       portano tutte `_SYSTEM_REASON`, watcher.py) si dice una volta, non
-       trenta: e' un dato, non una supposizione -- si confronta la stringa,
-       riga per riga, e basta una voce diversa perche' ognuna torni a
-       portare il suo. */
-    var firstReason = n ? group.voci[0].motivo : null;
-    var sharedReason = n > 1 && group.voci.every(function (v) { return v.motivo === firstReason; });
-    if (sharedReason) {
-      var reasonHint = el('p', null, 'Motivo, per tutte: ' + (firstReason ? firstReason : '(nessun motivo scritto)'));
-      reasonHint.style.cssText = 'margin:4px 0 0;font-size:var(--fs-13);color:var(--text-2)';
-      det.appendChild(reasonHint);
-    }
-
-    var ul = el('ul');
-    ul.style.cssText = 'margin:6px 0 4px;padding-left:18px';
-    group.voci.forEach(function (v, i) {
-      var ts = v[opts.whenKey];
-      var when = ts != null ? opts.whenPrefix + ' ' + fmtWhenFull(ts) : null;
-      ul.appendChild(decisionRow(described[i], v, !allTechnical, !sharedReason, when));
+  /* I soggetti tecnici raggruppati per integrazione. **Il nome e
+     l'identificativo li manda il server** (`api/mind/watching`, che usa la
+     stessa regola del primo piano): qui non si legge nessun logger, o le due
+     schede direbbero due nomi per la stessa cosa. */
+  function byIntegration(voci) {
+    var gruppi = {};
+    var ordine = [];
+    voci.forEach(function (v) {
+      var k = v.integrazione || '';
+      if (!gruppi[k]) { gruppi[k] = { chiave: k, nome: v.nome || '', voci: [] }; ordine.push(k); }
+      gruppi[k].voci.push(v);
     });
-    det.appendChild(ul);
-    body.appendChild(det);
+    return ordine.map(function (k) { return gruppi[k]; }).sort(function (a, b) {
+      return b.voci.length - a.voci.length || String(a.nome).localeCompare(String(b.nome));
+    });
   }
 
-  /* 2. Cosa si guarda. */
+  /* Il tipo di cosa di un soggetto: `sensor.potenza` -> `sensor`. **Non il
+     motivo**: misurato il 18/09, i 280 lasciati fuori portano 128 motivi
+     distinti scritti in prosa dal modello, e per motivo non si raggruppano.
+     Per tipo si': i primi otto coprono 226 dei 280. */
+  function tipoDi(soggetto) {
+    var s = String(soggetto || '');
+    var p = parseSubjectPrefix(s);
+    if (p.kind) return p.kind;
+    var punto = s.indexOf('.');
+    return punto === -1 ? s : s.slice(0, punto);
+  }
+
+  function byType(voci) {
+    var gruppi = {};
+    var ordine = [];
+    voci.forEach(function (v) {
+      var k = tipoDi(v.soggetto);
+      if (!gruppi[k]) { gruppi[k] = { tipo: k, voci: [] }; ordine.push(k); }
+      gruppi[k].voci.push(v);
+    });
+    return ordine.map(function (k) { return gruppi[k]; }).sort(function (a, b) {
+      return b.voci.length - a.voci.length || a.tipo.localeCompare(b.tipo);
+    });
+  }
+
+  /* Una riga di decisione: il soggetto, il suo motivo, e da quando. La stessa
+     forma per cio' che si guarda e per cio' che e' stato lasciato fuori --
+     cambia la parola dell'istante, non la riga. */
+  /* La frase che tutte le voci di un gruppo condividono, o `''`. */
+  function motivoComune(voci) {
+    if (!voci.length) return '';
+    var primo = voci[0].motivo || '';
+    if (!primo) return '';
+    for (var i = 1; i < voci.length; i++) {
+      if ((voci[i].motivo || '') !== primo) return '';
+    }
+    return voci.length > 1 ? primo : '';
+  }
+
+  function rigaDecisione(v, opts) {
+    var riga = el('div', 'sc-row');
+    var d = describeWatchedSubject(v.soggetto, v.nome);
+    var titolo = el('div', 'sc-row-title');
+    if (d.technical && !v.nome) titolo.appendChild(el('span', 'field-hint', SUBJECT_IS_ID + ' '));
+    titolo.appendChild(el('span', 'text-mono', d.primary));
+    riga.appendChild(titolo);
+    /* Il «quando» su una riga sua, non incollato al soggetto: dentro un
+       titolo gli span si toccano senza spazio -- «sensor.uptimeil
+       17/08/2026» -- e uno spazio dentro l'etichetta sarebbe una spaziatura
+       scritta nel testo invece che nel foglio. */
+    var ts = v[opts.whenKey];
+    if (ts != null) riga.appendChild(el('div', 'field-hint', opts.whenPrefix + ' ' + fmtWhenFull(ts)));
+    if (d.secondary) riga.appendChild(el('div', 'field-hint text-mono', d.secondary));
+    /* Un motivo che manca si dice, non si tace: una decisione senza il suo
+       perche' e' esattamente cio' che questa pagina esiste per non avere. */
+    if (!opts.senzaMotivo) {
+      riga.appendChild(el('div', 'sc-row-why', v.motivo ? v.motivo : '(nessun motivo scritto)'));
+    }
+    if (v.autore != null && !opts.senzaAutore) {
+      riga.appendChild(el('div', 'field-hint', 'Deciso ' + authorPhrase(v.autore)));
+    }
+    return riga;
+  }
+
+  /* 2. Cosa si guarda: **due mestieri, due elenchi** (spec §4D). Le cose
+     della casa sono la risposta a «cosa guardo di casa mia»; i soggetti
+     tecnici a «quali integrazioni mi stanno dando problemi». Stavano in una
+     colonna sola di 153 righe, raggruppata per autore -- e i tecnici, che
+     autore non ne hanno, finivano tutti in un gruppo senza nome. */
   function renderWatched(body, watching) {
     subheading(body, 'Cosa guardo');
     if (!watching.length) {
@@ -301,12 +311,76 @@ window.HirisWatcherLavoro = (function () {
         TONE_CALM);
       return;
     }
-    groupByAuthor(watching).forEach(function (g) {
-      renderDecisionGroup(body, g, {
-        title: function (autore) { return 'Deciso ' + authorPhrase(autore); },
-        whenKey: 'da_quando_ts', whenPrefix: 'dal'
+    /* Tecnico e' un soggetto con un prefisso (`log:`, `problema:`,
+       `integrazione:`, `automazione:`): non e' un'entita' della casa, e
+       nessuno lo ha scelto. La regola e' quella che la pagina usa gia'
+       ovunque per riconoscerli (`parseSubjectPrefix`). */
+    var tecnici = watching.filter(function (v) { return !!parseSubjectPrefix(v.soggetto).kind; });
+    var casa = watching.filter(function (v) { return !parseSubjectPrefix(v.soggetto).kind; });
+
+    if (casa.length) {
+      line(body, 'Le cose della casa (' + fmtCount(casa.length) + ')', TONE_CALM);
+      /* **Raggruppate per chi le ha decise** (spec §4D): «l'ho scelto io» e
+         «l'ha scelto l'osservatore» sono due cose diverse, e la seconda e'
+         quella che si guarda per capire se ha capito l'obiettivo. */
+      groupByAuthor(casa).forEach(function (g) {
+        var titolo = g.autore == null ? SYSTEM_GROUP_TITLE : 'Deciso ' + authorPhrase(g.autore);
+        /* Lo stesso motivo su ogni riga del gruppo si dice UNA volta, non
+           trenta: sulla casa vera le condizioni di sistema portano tutte la
+           stessa frase, e ripeterla per trenta righe e' rumore su cui
+           l'occhio smette di fermarsi. E' un dato, non una supposizione: si
+           confrontano le stringhe. */
+        var comune = motivoComune(g.voci);
+        S.elencoLungo(body, {
+          titolo: titolo,
+          riassunto: titolo + ' — ' + fmtCount(g.voci.length)
+            + (g.voci.length === 1 ? ' voce' : ' voci') + (comune ? ' · ' + comune : ''),
+          pochi: [],
+          tutti: g.voci,
+          etichetta: 'Vedi tutte',
+          rendi: function (v) {
+            return rigaDecisione(v, { whenKey: 'da_quando_ts', whenPrefix: 'dal',
+                                      senzaMotivo: !!comune, senzaAutore: true });
+          }
+        });
       });
+    }
+    if (tecnici.length) {
+      var gruppi = byIntegration(tecnici);
+      line(body, 'Integrazioni e log (' + fmtCount(tecnici.length) + ', in '
+        + fmtCount(gruppi.length) + (gruppi.length === 1 ? ' integrazione' : ' integrazioni') + ')',
+        TONE_CALM);
+      line(body, 'Nessuno le ha decise: nascono dai guasti, e si guardano finché durano. '
+        + 'Non c’è niente da togliere.', TONE_CALM);
+      S.elencoLungo(body, {
+        titolo: 'Tutte le integrazioni che stanno parlando',
+        riassunto: '',
+        didascalia: 'le 5 con più voci',
+        pochi: gruppi.slice(0, 5),
+        tutti: gruppi,
+        etichetta: 'Vedi tutte',
+        rendi: rigaIntegrazione
+      });
+    }
+  }
+
+  /* Una riga per integrazione: il nome, quante voci, e il percorso del
+     sorgente **solo nel dettaglio** -- trentanove percorsi in pagina sono
+     trentanove righe che nessuno legge. */
+  function rigaIntegrazione(g) {
+    var riga = el('div', 'sc-row');
+    var nome = g.nome || (g.chiave ? g.chiave : 'Senza integrazione');
+    riga.appendChild(el('div', 'sc-row-title', nome + ' — ' + fmtCount(g.voci.length)
+      + (g.voci.length === 1 ? ' voce' : ' voci')));
+    S.elencoLungo(riga, {
+      titolo: 'Le voci di ' + nome,
+      riassunto: '',
+      pochi: [],
+      tutti: g.voci,
+      etichetta: 'Vedi',
+      rendi: function (v) { return rigaDecisione(v, { whenKey: 'da_quando_ts', whenPrefix: 'dal' }); }
     });
+    return riga;
   }
 
   /* 3. Lasciato fuori. Tre stati: non leggibile (archivio scollegato),
@@ -327,12 +401,34 @@ window.HirisWatcherLavoro = (function () {
       line(body, 'Niente è stato lasciato fuori con una ragione scritta.', TONE_CALM);
       return;
     }
-    groupByAuthor(leftOut).forEach(function (g) {
-      renderDecisionGroup(body, g, {
-        title: function (autore) { return 'Lasciato fuori ' + authorPhrase(autore); },
-        whenKey: 'deciso_ts', whenPrefix: 'il'
-      });
+    var gruppi = byType(leftOut);
+    S.elencoLungo(body, {
+      titolo: 'Tutti i tipi di cosa lasciati fuori',
+      riassunto: fmtCount(leftOut.length) + ' soggetti, in ' + fmtCount(gruppi.length)
+        + (gruppi.length === 1 ? ' tipo di cosa' : ' tipi di cosa'),
+      didascalia: 'i 5 tipi con più soggetti',
+      pochi: gruppi.slice(0, 5),
+      tutti: gruppi,
+      etichetta: 'Vedi tutti',
+      rendi: rigaTipoFuori
     });
+  }
+
+  function rigaTipoFuori(g) {
+    var riga = el('div', 'sc-row');
+    riga.appendChild(el('div', 'sc-row-title', g.tipo + ' — ' + fmtCount(g.voci.length)
+      + (g.voci.length === 1 ? ' soggetto' : ' soggetti')));
+    /* **Il motivo sta dentro, non nel conteggio**: e' aprendo un tipo che ci
+       si accorge se il modello ha scartato qualcosa che contava. */
+    S.elencoLungo(riga, {
+      titolo: 'I soggetti di tipo ' + g.tipo + ' lasciati fuori',
+      riassunto: '',
+      pochi: [],
+      tutti: g.voci,
+      etichetta: 'Vedi',
+      rendi: function (v) { return rigaDecisione(v, { whenKey: 'deciso_ts', whenPrefix: 'il' }); }
+    });
+    return riga;
   }
 
   /* 4. La riconsiderazione: tre numeri, tutti e tre (`quando_ts`,
@@ -576,10 +672,16 @@ window.HirisWatcherLavoro = (function () {
   function renderScope(body, payload) {
     var p = payload || {};
     var archiveMissing = p.obiettivo == null;
+    /* L'ordine e' quello della spec §4D, e non e' un gusto: l'obiettivo e'
+       la voce del proprietario, i tre numeri sono la risposta breve alla
+       domanda della scheda, e la riconsiderazione dice quando la casa e'
+       stata ripensata l'ultima volta. Gli elenchi -- che sono lunghi --
+       vengono dopo. */
     renderObjective(body, p.obiettivo);
+    renderNumeri(body, p);
+    renderReconsideration(body, p.riconsiderazione, archiveMissing);
     renderWatched(body, p.watching || []);
     renderLeftOut(body, p.fuori || [], archiveMissing);
-    renderReconsideration(body, p.riconsiderazione, archiveMissing);
     renderAttempts(body, p.tentativi || [], archiveMissing);
     renderVolume(body, p.volume || [], archiveMissing);
   }

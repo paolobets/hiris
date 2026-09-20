@@ -504,7 +504,11 @@ test('la cornice: un errore in una scheda resta dentro la sua scheda', async () 
   /* L'altra meta' della promessa della spec §2 -- «se il resoconto non si
      legge, "Cosa ho capito" continua a funzionare» -- che senza questa riga
      sarebbe vera anche per un pannello vuoto. */
-  assert.match(sapere.textContent, /Cosa non ha capito/,
+  /* Il segno che la scheda ha reso davvero: la riga di peso, che c'e'
+     SEMPRE (spec §4C). Fino al 20/09 questa riga cercava «Cosa non ha
+     capito», che ora tace quando non c'e' niente da capire -- e avrebbe
+     fatto fallire la prova per il motivo sbagliato. */
+  assert.match(sapere.textContent, /0 giudizi/,
     '«Cosa ho capito» non ha reso niente: l’errore dell’altra scheda se l’è portata via');
 });
 

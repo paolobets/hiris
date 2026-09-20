@@ -57,7 +57,7 @@ generica e accetta la riga: il buco è solo nella pagina.
 piano — «non svegliarmi per questa» — che scrive lo stesso giudizio. Costa una scrittura nella
 scheda «Il giorno», che oggi legge e basta.
 
-### I soggetti tecnici raggruppati per integrazione — aperta il 20/09/2026
+### I soggetti tecnici raggruppati per integrazione — **USCITA con la v3.54.0**, resta `volte`
 
 È il **terzo punto della §3** di `docs/design/2026-09-18-la-pagina-dell-osservatore.md`, l'unico
 rimasto fuori dalla 3.52.0: «il raggruppamento dei soggetti tecnici per integrazione, con `volte` e
@@ -70,12 +70,15 @@ serve alla scheda «L'osservatore», e vive sull'altra rotta, `GET /api/mind/wat
 integrazioni** una volta raggruppati. Oggi la pagina li elenca uno per uno, col percorso del
 sorgente in chiaro, e non dice mai quante volte una condizione è ricorsa.
 
-**Cosa manca per farlo, e va misurato prima**: `watching` porta il soggetto (`log:<logger>@<file>:
-<riga>`) ma **non** il `dominio`, che è ciò da cui il nome dell'integrazione si ricava nel primo
-piano (`mind/report._integration_name`). O lo porta anche quella rotta, o il nome va ricavato dal
-logger dentro il soggetto — due strade, e la seconda duplicherebbe una regola che ora vive in un
-posto solo. E `volte` non esiste su quella rotta: va deciso su quale finestra si conta (il grezzo
-dura 22 giorni) e chi la conta.
+**Fatto il 20/09 con la 3.54.0**: la rotta arricchisce le voci tecniche con `integrazione` e
+`nome`, usando `mind/report.integration_of` — la stessa regola del primo piano, in un posto solo.
+La pagina raggruppa e mostra «Hassio — 6 voci», col percorso del sorgente solo nel dettaglio.
+
+**Resta `volte` e la sua finestra**, e non è un dettaglio: la riga dice quante VOCI DI REGISTRO
+distinte ha quell'integrazione, non **quante volte** una condizione è ricorsa — che è il numero che
+la §3 chiedeva («un numero di volte senza finestra non significa niente»). Quella rotta non porta
+nessun contatore: va deciso su quale finestra si conta (il grezzo dura 22 giorni) e chi la conta.
+Finché non c'è, la pagina non dice un numero che non ha.
 
 ### La CLI del ponte sale alla 2.1.278 nel prossimo rilascio — aperta il 20/09/2026
 

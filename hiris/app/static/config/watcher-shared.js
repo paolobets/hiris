@@ -315,6 +315,135 @@ window.HirisWatcherShared = (function () {
      un terzo vocabolario per lo stesso fatto. */
   var SUBJECT_IS_ID_PLURAL = 'identificatori tecnici, non nomi';
 
+  /* ------------------------------------------------ gli elenchi LUNGHI */
+
+  /* Una forma sola per ogni elenco lungo della pagina (spec §6): riassunto coi
+     numeri, i pochi che contano col loro criterio dichiarato, il resto dietro
+     un bottone che lo costruisce **al clic**.
+
+     **Misurato il 18/09/2026, ed e' la ragione per cui questo pezzo esiste**:
+     la pagina scaricava 110 KB e disegnava oltre 500 righe in una colonna
+     sola. Il 19/09 la sola cronaca ne aveva 93, i giudizi 121, i soggetti
+     guardati 153, i lasciati fuori 280.
+
+     Tre regole che non si vedono guardando una pagina corta:
+
+     1. **si costruisce al clic**, non si nasconde: 280 righe disegnate e
+        messe `hidden` costano lo stesso a chi le disegna;
+     2. **a blocchi di cinquanta oltre le cento**, col fuoco sulla prima riga
+        nuova -- altrimenti chi legge da tastiera torna in cima ogni volta;
+     3. **bottone, non `summary`**: i `summary` di questa pagina sono alti
+        21-23 px, sotto la soglia del tocco.
+
+     Chi chiama porta i DATI e sa disegnarne uno (`rendi`); questo pezzo non
+     sa cosa sia una riga, e non deve saperlo. */
+
+  //: Quante righe nel primo blocco, e da quante in poi si va a blocchi
+  //: (spec §6). Cinquanta e' quanto sta in una schermata scorrendo una volta.
+  var BLOCCO = 50;
+  var SOGLIA_BLOCCHI = 100;
+  //: Sotto questa soglia un elenco senza «pochi» si disegna invece di
+  //: chiudersi: un bottone «Vedi tutte (1)» e' un clic per niente, e il
+  //: meccanismo e' per gli elenchi LUNGHI.
+  var SOGLIA_CHIUSURA = 3;
+
+  function elencoLungo(corpo, opzioni) {
+    var tutti = opzioni.tutti || [];
+    var pochi = opzioni.pochi || [];
+    if (opzioni.riassunto) line(corpo, opzioni.riassunto, TONE_CALM);
+    if (pochi.length) {
+      /* Il criterio PRIMA delle righe: cinque righe scelte da noi, senza la
+         frase che dice come, sembrerebbero le uniche cinque che esistono. */
+      if (opzioni.didascalia) corpo.appendChild(el('div', 'field-hint', opzioni.didascalia));
+      /* **La forma la decide chi chiama** (`classe`): le misure sono
+         piastrelle in griglia, la cronaca righe in colonna. Questo pezzo
+         governa il meccanismo -- riassunto, pochi, vedi tutti, blocchi -- non
+         il vestito; cablarci una colonna vorrebbe dire che chi ha una griglia
+         sceglie di non usarlo. */
+      var cesto = opzioni.classe ? el('div', opzioni.classe) : corpo;
+      pochi.forEach(function (d) { cesto.appendChild(opzioni.rendi(d)); });
+      if (cesto !== corpo) corpo.appendChild(cesto);
+    }
+    if (tutti.length <= pochi.length) return;
+    if (!pochi.length && tutti.length <= SOGLIA_CHIUSURA) {
+      tutti.forEach(function (d) { corpo.appendChild(opzioni.rendi(d)); });
+      return;
+    }
+
+    var etichetta = (opzioni.etichetta || 'Vedi tutti') + ' (' + fmtCount(tutti.length) + ')';
+    var apri = el('button', 'btn btn-ghost long-list-btn', etichetta);
+    apri.type = 'button';
+    apri.setAttribute('aria-expanded', 'false');
+    var elenco = el('div', 'long-list' + (opzioni.classe ? ' ' + opzioni.classe : ''));
+    elenco.hidden = true;
+    var disegnate = 0;
+
+    /* Il titolo dell'elenco aperto: e' li' che va il fuoco, e non sulla prima
+       riga -- chi usa uno screen reader deve sapere COSA si e' aperto prima
+       di sentirne il contenuto. `tabindex=-1` perche' il fuoco ce lo mettiamo
+       noi: non entra nella sequenza di tabulazione. */
+    var titolo = el('h4', 'long-list-title', opzioni.titolo || etichetta);
+    titolo.setAttribute('tabindex', '-1');
+
+    function altre() {
+      var fino = Math.min(disegnate + BLOCCO, tutti.length);
+      var primaNuova = null;
+      for (var i = disegnate; i < fino; i++) {
+        var riga = opzioni.rendi(tutti[i]);
+        if (primaNuova === null) primaNuova = riga;
+        elenco.appendChild(riga);
+      }
+      disegnate = fino;
+      return primaNuova;
+    }
+
+    var ancora = el('button', 'btn btn-ghost long-list-btn', '');
+    ancora.type = 'button';
+    function aggiornaAncora() {
+      var restano = tutti.length - disegnate;
+      ancora.hidden = restano <= 0;
+      ancora.textContent = 'Altre ' + fmtCount(Math.min(BLOCCO, restano))
+        + ' (ne restano ' + fmtCount(restano) + ')';
+    }
+    ancora.addEventListener('click', function () {
+      var prima = altre();
+      aggiornaAncora();
+      /* Il fuoco sulla prima riga NUOVA: e' la riga da cui si riprende a
+         leggere. Ha bisogno di `tabindex=-1` per poterlo ricevere. */
+      if (prima) {
+        prima.setAttribute('tabindex', '-1');
+        prima.focus();
+      }
+    });
+
+    apri.addEventListener('click', function () {
+      var aperto = apri.getAttribute('aria-expanded') === 'true';
+      if (aperto) {
+        /* **Si svuota, non si nasconde**: cio' che si e' costruito al clic si
+           disfa alla chiusura, o la seconda apertura di un elenco da 280
+           righe le disegnerebbe una seconda volta sopra le prime. */
+        clearEl(elenco);
+        disegnate = 0;
+        elenco.hidden = true;
+        ancora.hidden = true;
+        apri.setAttribute('aria-expanded', 'false');
+        apri.focus();
+        return;
+      }
+      elenco.appendChild(titolo);
+      altre();
+      if (tutti.length > SOGLIA_BLOCCHI) aggiornaAncora();
+      else ancora.hidden = true;
+      elenco.hidden = false;
+      apri.setAttribute('aria-expanded', 'true');
+      titolo.focus();
+    });
+
+    corpo.appendChild(apri);
+    corpo.appendChild(elenco);
+    corpo.appendChild(ancora);
+  }
+
   /* ------------------------------------------------ gli elenchi che si aprono */
 
   /* Il rivelatore sincrono, estratto (correzione del giro del 07/09/2026):
@@ -445,6 +574,7 @@ window.HirisWatcherShared = (function () {
     el: el, clearEl: clearEl, line: line, subheading: subheading,
     read: read, write: write, retryButton: retryButton,
     createDisclosure: createDisclosure, intestazioneFresca: intestazioneFresca,
+    elencoLungo: elencoLungo,
     describeWatchedSubject: describeWatchedSubject, parseSubjectPrefix: parseSubjectPrefix,
     judgmentField: judgmentField, appendMarkedText: appendMarkedText,
     firstSentenceTruncated: firstSentenceTruncated,

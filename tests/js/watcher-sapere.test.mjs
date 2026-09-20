@@ -72,6 +72,16 @@ function montaConServer(opts = {}) {
   return Object.assign(ctx, { chiamate, corpiInviati });
 }
 
+/* Dal 20/09/2026 un gruppo del seme non e' piu' un rivelatore col titolo nel
+   bottone: e' un elenco lungo (spec §6) -- una riga di riassunto, e il
+   bottone «Vedi tutti (N)» che costruisce le righe al clic. Questo aiuto
+   trova il riassunto di un gruppo, e le prove che c'erano continuano a
+   leggerne il testo. */
+function riassuntoGruppo(corpo, etichetta) {
+  return Array.from(corpo.querySelectorAll('p.sc-desc'))
+    .find((d) => d.textContent.indexOf(etichetta + ' ·') === 0);
+}
+
 function bottone(document, testo, entro) {
   const scope = entro || document;
   return Array.from(scope.querySelectorAll('button')).find((b) => b.textContent === testo);
@@ -179,11 +189,16 @@ test('seam _rendiSapere: ciò che NON ha capito viene prima, con chi e quando', 
   assert.match(testo, /modello \(ponte\)/);
 });
 
-test('seam _rendiSapere: se ha capito tutto lo DICE, e non tace', () => {
-  // Un elenco vuoto senza una parola sembrerebbe una sezione rotta.
-  // Mutazione che la uccide: non scrivere niente quando non c’è niente.
+test('seam _rendiSapere: se ha capito tutto, la sezione non compare (e i numeri lo dicono lo stesso)', () => {
+  /* **Cambiato il 20/09** (spec §4C: «"Non capito" non compare quando è
+     zero»). Prima la sezione occupava la prima riga della scheda per dire che
+     non aveva niente da dire; il fatto non si perde -- la riga di peso in
+     testa porta i numeri, e il «non capito» torna appena c'è.
+
+     Mutazione che la uccide: rimettere la frase quando l'elenco è vuoto. */
   const { corpo } = rendiSapere(sapereFinto());
-  assert.match(corpo.textContent, /niente che non abbia capito/);
+  assert.doesNotMatch(corpo.textContent, /niente che non abbia capito/);
+  assert.doesNotMatch(corpo.textContent, /Cosa non ha capito/);
 });
 
 test('seam _rendiSapere: «non serve una ricetta» si legge in italiano, non in nome di colonna', () => {
@@ -357,13 +372,12 @@ test('seam _rendiSapere: i gruppi del seme mostrano il conteggio calcolato dai d
     giudizio({ campo: 'riposo', da: 'seme', soggetto: 'switch', soggetto_genere: 'tipo' }),
   ];
   const { corpo } = rendiSapere(sapereFinto({ giudizi }));
-  const bottoni = Array.from(corpo.querySelectorAll('button'));
-  const genere = bottoni.find((b) => b.textContent.indexOf('Genere ·') === 0);
+  const genere = riassuntoGruppo(corpo, 'Genere');
   assert.ok(genere, 'il gruppo «Genere» esiste');
   assert.match(genere.textContent, /2 dal seme/, 'due righe restano nel seme (la terza vive in «Le tue correzioni»)');
   assert.match(genere.textContent, /1 corretta da te/);
 
-  const riposo = bottoni.find((b) => b.textContent.indexOf('Riposo ·') === 0);
+  const riposo = riassuntoGruppo(corpo, 'Riposo');
   assert.ok(riposo);
   assert.equal(riposo.textContent, 'Riposo · 1', 'senza correzioni il gruppo mostra solo il totale');
 });
@@ -551,7 +565,7 @@ test('seam _rendiSapere: il gruppo del seme conta anche le righe «altro» (modi
     giudizio({ campo: 'riposo', da: 'altro', chi: 'qualcun altro', soggetto: 'switch.y' }),
   ];
   const { corpo } = rendiSapere(sapereFinto({ giudizi }));
-  const riposo = Array.from(corpo.querySelectorAll('button')).find((b) => b.textContent.indexOf('Riposo ·') === 0);
+  const riposo = riassuntoGruppo(corpo, 'Riposo');
   assert.ok(riposo);
   assert.match(riposo.textContent, /2 dal seme/);
   assert.match(riposo.textContent, /1 modificata a mano/);
@@ -565,7 +579,7 @@ test('seam _rendiSapere: il gruppo del seme mostra tutte e tre le parti quando c
     giudizio({ campo: 'lavoro', da: 'altro', chi: 'qualcun altro', soggetto: 'climate.y' }),
   ];
   const { corpo } = rendiSapere(sapereFinto({ giudizi }));
-  const lavoro = Array.from(corpo.querySelectorAll('button')).find((b) => b.textContent.indexOf('Lavoro ·') === 0);
+  const lavoro = riassuntoGruppo(corpo, 'Lavoro');
   assert.equal(lavoro.textContent, 'Lavoro · 1 dal seme · 1 corretta da te · 1 modificata a mano');
 });
 
@@ -745,9 +759,13 @@ test('seam _rendiSapere: i cinque titoli della sezione 04 sono h3 veri, nell\'or
     giudizi: [giudizio({ da: 'proprietario', chi: 'proprietario' })],
     domande_aperte: [domandaAperta()],
   }));
+  /* **L'ordine e' cambiato il 20/09** (spec §4C): le domande aperte sono
+     l'unica cosa che chiede qualcosa al proprietario e sono salite in testa;
+     «Cosa non ha capito» non compare quando non ha niente da dire (qui non
+     ce l'ha). */
   assert.deepEqual(titoli(corpo), [
-    'Cosa non ha capito', 'Le tue correzioni', 'I giudizi del seme',
-    'Le domande aperte', 'Cosa ha capito']);
+    'Le domande aperte', 'Le tue correzioni', 'I giudizi del seme',
+    'Cosa ha capito']);
 });
 
 test('seam _rendiSapere: «Torna al seme» c\'è anche sulle righe «da: altro», non solo «proprietario»', () => {
@@ -857,22 +875,25 @@ test('seam _rendiSapere: la sezione DISEGNA un gruppo per OGNI campo dichiarato,
     campo: g.campo, da: 'seme', soggetto_genere: 'tipo', soggetto: 'binary_sensor.' + g.campo,
   }));
   const { corpo } = rendiSapere(sapereFinto({ giudizi }));
-  const bottoni = Array.from(corpo.querySelectorAll('button')).map((b) => b.textContent);
+  const riassunti = Array.from(corpo.querySelectorAll('p.sc-desc')).map((d) => d.textContent);
   for (const g of dichiarati) {
-    assert.ok(bottoni.some((t) => t.indexOf(g.etichetta + ' ·') === 0),
+    assert.ok(riassunti.some((t) => t.indexOf(g.etichetta + ' ·') === 0),
       'gruppo del seme non disegnato: ' + g.campo + ' («' + g.etichetta + '»). '
-      + 'Bottoni trovati: ' + JSON.stringify(bottoni));
+      + 'Riassunti trovati: ' + JSON.stringify(riassunti));
   }
 
-  // E il gruppo nuovo porta davvero la sua riga dentro, non solo il titolo.
-  const gruppoNuovo = Array.from(corpo.querySelectorAll('.field-group')).find((w) => {
-    const b = w.querySelector('button');
-    return b && b.textContent.indexOf('Da sapere subito ·') === 0;
-  });
-  assert.ok(gruppoNuovo, 'il gruppo «Da sapere subito» esiste nel DOM');
-  const riga = gruppoNuovo.querySelector('.jr-row .jr-subject');
+  /* E il gruppo nuovo porta davvero la sua riga dentro, non solo il titolo.
+     **Dal 20/09 la riga si costruisce al clic** (spec §6): si apre, come fa
+     chi legge. */
+  const riassunto = riassuntoGruppo(corpo, 'Da sapere subito');
+  assert.ok(riassunto, 'il gruppo «Da sapere subito» esiste nel DOM');
+  /* Un gruppo di poche righe non si chiude dietro un bottone (sotto la
+     soglia si disegna): si apre quello che c'è, e si guarda la riga. */
+  Array.from(corpo.querySelectorAll('button'))
+    .filter((b) => b.textContent.startsWith('Vedi tutti')).forEach((b) => b.click());
+  const riga = Array.from(corpo.querySelectorAll('.jr-row .jr-subject'))
+    .find((n) => n.textContent === 'binary_sensor.da_sapere_subito');
   assert.ok(riga, 'il gruppo «Da sapere subito» disegna la sua riga');
-  assert.equal(riga.textContent, 'binary_sensor.da_sapere_subito');
 });
 
 /* Revisione finale, I-4: la pagina diceva il FALSO a chi corregge
@@ -1123,4 +1144,93 @@ test("seam _rendiSapere: correggere l'impalcatura NON avvisa del costo della cro
   bottone(document, 'Correggi', riga).click();
 
   assert.doesNotMatch(riga.textContent, /cronaca dei giorni/i);
+});
+
+
+/* -------------------------------------------------------------------------
+   La forma della scheda (spec §4C), riordinata il 20/09/2026.
+
+   Misurato sulla casa il 20/09: 121 giudizi e 115 righe disegnate in una
+   colonna, con «Cosa non ha capito» in cima a dire che non c'e' niente da
+   dire, e le sei domande aperte -- l'unica cosa che chiede qualcosa al
+   proprietario -- in quarta posizione.
+   ------------------------------------------------------------------------- */
+
+test('seam _rendiSapere: in testa la riga di PESO, coi numeri del sapere', () => {
+  /* «121 giudizi · 6 domande aperte · N righe di sapere · N corrette da te»
+     (spec §4C): la risposta breve alla domanda della scheda, prima di ogni
+     elenco.
+
+     Mutazione che la uccide: togliere la riga, o contare i giudizi invece
+     delle correzioni. */
+  const { corpo } = rendiSapere(sapereFinto({
+    giudizi: [giudizio({ da: 'seme', soggetto: 'light' }),
+      giudizio({ da: 'proprietario', soggetto: 'switch', campo: 'genere' })],
+    domande_aperte: [{ chiavi: ['lock=jammed'], domanda: 'Una serratura inceppata?' }],
+  }));
+
+  const testo = corpo.textContent;
+  assert.match(testo, /2 giudizi/);
+  assert.match(testo, /1 domanda aperta/);
+  assert.match(testo, /1 corretto da te/);
+});
+
+test('seam _rendiSapere: le domande aperte vengono PRIMA dei giudizi', () => {
+  /* «Sono l'unica cosa che chiede qualcosa al proprietario, e non stanno
+     dietro un clic» (spec §4C). Erano quarte.
+
+     Mutazione che la uccide: rimettere `renderOpenQuestions` dopo i gruppi. */
+  const { corpo } = rendiSapere(sapereFinto({
+    giudizi: [giudizio({ da: 'seme', soggetto: 'light' })],
+    domande_aperte: [{ chiavi: ['lock=jammed'], domanda: 'Una serratura inceppata?' }],
+  }));
+
+  const testo = corpo.textContent;
+  assert.ok(testo.indexOf('Le domande aperte') < testo.indexOf('I giudizi del seme'),
+    'le domande aperte stanno ancora dopo i giudizi');
+  assert.match(testo, /Una serratura inceppata\?/, 'la domanda si legge per intero, senza aprire niente');
+});
+
+test("seam _rendiSapere: «Cosa non ha capito» TACE quando non c'è niente", () => {
+  /* Spec §4C: «Non capito» non compare quando è zero. Oggi occupava la prima
+     riga della scheda per dire che non c'era niente da dire.
+
+     Mutazione che la uccide: rimettere la frase quando l'elenco è vuoto. */
+  const { corpo } = rendiSapere(sapereFinto({ giudizi: [giudizio({ da: 'seme' })] }));
+
+  assert.doesNotMatch(corpo.textContent, /Cosa non ha capito/);
+});
+
+test("seam _rendiSapere: «Cosa non ha capito» PARLA quando c'è qualcosa, e in cima", () => {
+  /* La contropartita: quando c'è, è la parte su cui il proprietario può fare
+     qualcosa, e viene prima di tutto il resto.
+
+     Mutazione che la uccide: tacere sempre. */
+  const { corpo } = rendiSapere(sapereFinto({
+    non_capito: [{ soggetto: 'sensor.x', valore: 'non so cosa misuri', chi: 'modello' }],
+    giudizi: [giudizio({ da: 'seme' })],
+  }));
+
+  const testo = corpo.textContent;
+  assert.match(testo, /non so cosa misuri/);
+  assert.ok(testo.indexOf('Cosa non ha capito') < testo.indexOf('Le domande aperte'));
+});
+
+test('seam _rendiSapere: i giudizi di un gruppo stanno dietro un bottone, non in colonna', () => {
+  /* Misurato: 121 giudizi disegnati tutti insieme. Un gruppo si apre quando
+     lo si chiede (spec §6).
+
+     Mutazione che la uccide: disegnare le righe del gruppo alla resa. */
+  const giudizi = [];
+  for (let i = 0; i < 12; i++) {
+    giudizi.push(giudizio({ da: 'seme', campo: 'genere', soggetto: 'light.tipo' + i }));
+  }
+  const { corpo } = rendiSapere(sapereFinto({ giudizi }));
+
+  const righe = corpo.querySelectorAll('.jr-row').length;
+  assert.ok(righe === 0, 'le righe dei giudizi sono ancora disegnate: ' + righe);
+  const apri = [...corpo.querySelectorAll('button')].filter((b) => /Vedi tutti \(12\)/.test(b.textContent))[0];
+  assert.ok(apri, 'manca il bottone del gruppo');
+  apri.click();
+  assert.equal(corpo.querySelectorAll('.jr-row').length, 12);
 });
