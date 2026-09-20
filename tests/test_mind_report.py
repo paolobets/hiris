@@ -951,7 +951,7 @@ def test_le_parti_di_un_valore_composto_sono_nell_ordine_DICHIARATO():
          "operazione": "media_min_max", "unita": "°C", "copertura": 1.0,
          "valore": {"massimo": 24.3, "media": 24.12, "minimo": 23.4}}]})
 
-    riga = [r for r in documento.splitlines() if "Corridoio T" in r][0]
+    riga = next(r for r in documento.splitlines() if "Corridoio T" in r)
     assert riga.index("media 24.12") < riga.index("minimo 23.4") < riga.index("massimo 24.3")
 
 
@@ -967,7 +967,7 @@ def test_un_valore_composto_MISTO_non_prende_l_unita():
          "operazione": "tendenza", "unita": "°C", "copertura": 1.0,
          "valore": {"verso": "in salita", "pendenza": 0.0007, "punti": 24}}]})
 
-    riga = [r for r in documento.splitlines() if "Corridoio T" in r][0]
+    riga = next(r for r in documento.splitlines() if "Corridoio T" in r)
     assert "verso in salita" in riga
     assert "punti 24" in riga
     assert "°C" not in riga, "l'unita' della temperatura appiccicata a un conteggio"
@@ -983,5 +983,5 @@ def test_un_valore_composto_tutto_NUMERICO_l_unita_ce_l_ha():
          "operazione": "media_min_max", "unita": "°C", "copertura": 1.0,
          "valore": {"media": 24.12, "minimo": 23.4, "massimo": 24.3}}]})
 
-    riga = [r for r in documento.splitlines() if "Corridoio T" in r][0]
+    riga = next(r for r in documento.splitlines() if "Corridoio T" in r)
     assert "°C" in riga

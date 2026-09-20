@@ -1,5 +1,32 @@
 # HIRIS — Changelog
 
+## [3.52.1] — Più della metà delle misure era «[object Object]» (2026-09-20)
+
+**Trovato dal vivo**, montando la pagina vera sul resoconto vero del 19/09 (la casa era appena
+salita alla 3.51.0, e la porta era aperta). Su **67 misure, 36 hanno un valore composto** — 23
+`media_min_max` e 13 `tendenza` — e nessuno dei due lettori sapeva scomporlo: la griglia del giorno
+scriveva **«[object Object] °C»** in più della metà delle piastrelle, e il documento markdown che
+legge l'analista stampava il dizionario Python, `{'media': 24.12, 'minimo': 23.4, 'massimo': 24.3}
+°C`, dentro la tabella delle misure.
+
+La regola per scomporli esisteva dal 13/09 (`_split_value`, `_KEY_ORDER` in `mind/report.py`) ed
+era usata **dalle serie**: una regola già scritta che i suoi due vicini non chiamavano. Adesso una
+misura composta si legge a parole — `media 24.12 °C · minimo 23.4 · massimo 24.3` — nello stesso
+ordine in cui l'operazione la racconta: alfabeticamente uscirebbe «massimo, media, minimo», lo
+stesso dato detto in un ordine che nessuno userebbe parlando.
+
+**L'unità si attacca solo quando tutte le parti sono numeri.** `tendenza` porta `verso` (una
+parola) e `punti` (un conteggio): «°C» in fondo direbbe che ventiquattro punti sono ventiquattro
+gradi.
+
+**Nessuna prova poteva vederlo**, e vale la pena dire perché: ogni misura finta di questa suite
+portava un numero. È uscito eseguendo, non leggendo — e l'ordine delle parti, ora che vive in due
+lingue, ha una prova che tiene agganciato l'elenco JavaScript a quello Python.
+
+**E una riga di dettaglio in meno nel primo piano**: per una voce di registro l'identificativo
+grezzo porta già dentro di sé la posizione nel sorgente, e la riga sotto la ripeteva —
+«helpers/update_coordinator.py:512» due volte a tre righe di distanza, visto sul guasto di `ipp`.
+
 ## [3.52.0] — «Fuori dal solito», e chi lo decide (2026-09-20)
 
 La scheda «Il giorno» apriva con una tabella di numeri. La prima domanda di chi la apre è un'altra
