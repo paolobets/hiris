@@ -244,9 +244,17 @@
        (solo document e fetch, stesso pattern di agenda-route.js), quindi
        la posizione nell'ordine non vincola niente. -->
   <script src="static/config/constructions-route.js"></script>
-  <!-- fetta «l'osservatore» Task 7: pagina #/watcher. Nessuna dipendenza
-       (solo document e fetch, stesso pattern di tree-route.js), quindi la
-       posizione nell'ordine non vincola niente. -->
+  <!-- fetta «la pagina dell'osservatore» (18/09/2026): la pagina #/watcher è
+       sei file, non uno. L'ordine QUI è una dipendenza vera e non un'abitudine:
+       i quattro moduli di scheda leggono `HirisWatcherShared` mentre valutano
+       la loro IIFE, e il guscio legge `HirisRouter` (già caricato sopra).
+       `scripts/sponde_js.py` verifica che chi legge sia caricato dopo chi
+       produce, leggendo proprio queste righe. -->
+  <script src="static/config/watcher-shared.js"></script>
+  <script src="static/config/watcher-giorno.js"></script>
+  <script src="static/config/watcher-cosa-fare.js"></script>
+  <script src="static/config/watcher-sapere.js"></script>
+  <script src="static/config/watcher-lavoro.js"></script>
   <script src="static/config/watcher-route.js"></script>
   <script src="static/config/main.js"></script>
 </body>

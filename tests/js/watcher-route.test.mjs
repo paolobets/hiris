@@ -6,159 +6,58 @@ import { dirname, join } from 'node:path';
 import { JSDOM } from 'jsdom';
 import { loadScripts, tick } from './helpers/dom.mjs';
 
-/* Giro di correzioni sulla pagina «L'osservatore» (config/watcher-route.js),
-   guida-ux-osservatore in .superpowers/sdd/2026-08-26-l-osservatore/pagina-brief.md.
+/* Il GUSCIO della pagina «L'osservatore» (config/watcher-route.js): le quattro
+   schede, il carico pigro, gli indirizzi, la freschezza.
 
-   E' anche il primo file di test di questa pagina: fino a qui `_rendiOsservate`
-   e `_rendiOggetti` erano una seam PROMESSA da un commento ("seam di test: la
-   resa va pinnata senza passare da fetch") e mai usata da nessun test -- oltre
-   quattrocento righe di resa senza nessuna rete. Le sezioni "seam:" qui sotto
-   chiudono quel buco usando esattamente quelle due funzioni.
-
-   Dal 11/09/2026 (fetta «i tre attori») `_rendiOsservate(corpo, elenco)` e'
-   diventata `_rendiScope(corpo, payload)`: la sezione 01 non rende piu' un
-   elenco di voci per gamba, rende le cinque parti di `GET /api/mind/watching`
-   (obiettivo, cosa si guarda, lasciato fuori, riconsiderazione, volume). */
+   Fino al 18/09/2026 questo file portava tutte le prove della pagina, perche'
+   la pagina era un file solo da 2.243 righe. Col taglio della spec
+   `docs/design/2026-09-18-la-pagina-dell-osservatore.md` la resa di ogni
+   scheda e' andata nel file della sua scheda (`watcher-giorno.test.mjs`,
+   `watcher-cosa-fare.test.mjs`, `watcher-sapere.test.mjs`,
+   `watcher-lavoro.test.mjs`) e qui resta cio' che e' del guscio: la cornice,
+   i cancelli che scandiscono TUTTA la cartella `config/` (il refuso, nessun
+   `innerHTML`), il campo data dentro il tema, e le rotte contro il README. */
 
 const CONFIG_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'hiris', 'app', 'static', 'config');
-const SORGENTE = readFileSync(join(CONFIG_DIR, 'watcher-route.js'), 'utf8');
 
-/* IMPORTANT 2 (revisione Fable, giro di correzioni 1): `JUDGMENT_FIELD_GROUPS`
-   qui sotto ripete -- di proposito, forma approvata task 9 -- l'elenco dei
-   campi che `home_space/type_judgments.py::JUDGMENT_FIELD_NAMES` dichiara.
-   E' esattamente il vocabolario a due lati di `agenda-route-vocabulary.test.mjs`
-   (Python di un lato, JavaScript dell'altro, legati SOLO da una prova che
-   legge entrambi i sorgenti): senza una prova cosi', un campo nuovo in Python
-   (come `da_sapere_subito`, Task 1) puo' non comparire mai qui, ed e' successo
-   davvero -- il giro 1 lo ha trovato a mano, non con una prova. */
-const TYPE_JUDGMENTS_PY = readFileSync(
-  join(CONFIG_DIR, '..', '..', 'home_space', 'type_judgments.py'), 'utf8');
+/* I SEI file della pagina, letti insieme: i due cancelli di pulizia qui sotto
+   («niente `innerHTML`», «nessun tono morto») valevano su un file solo perche'
+   la pagina era un file solo. Dopo il taglio, guardarne uno sarebbe guardare
+   un sesto del codice e chiamarlo cancello. */
+const SEI_FILE = ['watcher-shared.js', 'watcher-giorno.js', 'watcher-cosa-fare.js',
+  'watcher-sapere.js', 'watcher-lavoro.js', 'watcher-route.js'];
+const SORGENTI = SEI_FILE.map((f) => [f, readFileSync(join(CONFIG_DIR, f), 'utf8')]);
+const SORGENTE = SORGENTI.map(([, t]) => t).join('\n');
+
+const SCRIPTS = ['config/watcher-shared.js', 'config/watcher-giorno.js',
+  'config/watcher-cosa-fare.js', 'config/watcher-sapere.js',
+  'config/watcher-lavoro.js', 'config/state.js', 'config/router.js',
+  'config/watcher-route.js'];
 
 function fixtureHtml() {
   return '<!doctype html><body><div id="route-outlet"></div></body>';
 }
 
-const SCRIPTS = ['config/watcher-route.js'];
-
 function jsonResponse(body, status) {
   return { ok: (status || 200) < 400, status: status || 200, json: async () => body };
 }
 
-/* Il payload nuovo di `GET /api/mind/watching` (fetta «i tre attori»,
-   11/09/2026): cinque parti in una risposta sola. `paginaScope()` è la
-   forma «archivio collegato, niente ancora deciso»; ogni prova sovrascrive
-   la parte che le serve. Le date sono epoch in secondi (float), come
-   `da_quando_ts`/`deciso_ts`/`scritto_ts`/`quando_ts` sul filo -- MAI
-   confrontate con una stringa fissa nei test: la resa è nel fuso del
-   browser di chi fa girare la suite. */
-const OBIETTIVO_DI_PROVA = { testo: 'ottimizzare la casa e renderla confortevole', scritto_ts: 1787000000 };
-const RICONSIDERAZIONE_DI_PROVA = { quando_ts: 1787000000, finestra_s: 604800, cadenza_s: 302400 };
-
-function paginaScope(extra) {
-  return Object.assign({
-    watching: [], fuori: [], obiettivo: OBIETTIVO_DI_PROVA,
-    riconsiderazione: RICONSIDERAZIONE_DI_PROVA, volume: [],
-  }, extra || {});
-}
-
-// Una voce decisa dallo scope (un'entità), e una condizione di sistema --
-// che `Watcher.watching` (watcher.py) manda con `autore: null` e
-// `da_quando_ts: null`, per costruzione.
-function voce(soggetto, extra) {
-  return Object.assign({ soggetto, motivo: 'scalda la casa', autore: 'observer', da_quando_ts: 1787000000 }, extra || {});
-}
-
-function condizione(soggetto) {
-  return { soggetto, motivo: 'una condizione di sistema aperta si guarda finche\' dura', autore: null, da_quando_ts: null };
-}
-
-/* Il finto server: distingue le due rotte per prefisso, come fa la pagina
-   vera (`api/mind/watching`, `api/mind/facts[?day=...]`). */
-function montaConServer(opts = {}) {
+/* Il finto server del guscio: risponde a TUTTE e quattro le rotte delle
+   schede, perche' qui si monta la cornice e non una scheda sola. `monta()`
+   conta le chiamate: e' con quel conto che si misura il carico pigro. */
+function monta(opts = {}) {
   const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
   const chiamate = [];
-  const corpiInviati = [];
-  ctx.window.fetch = async (url, init) => {
-    const u = String(url);
-    chiamate.push(u);
-    if (init && init.body) corpiInviati.push(String(init.body));
-    if (u.indexOf('api/mind/objective') === 0) {
-      if (opts.obiettivoRotto) throw new Error('rete giu\'');
-      return jsonResponse(
-        opts.obiettivo !== undefined ? opts.obiettivo
-          : { obiettivo: OBIETTIVO_DI_PROVA, scritto: true },
-        opts.obiettivoStatus);
-    }
-    /* La rotta dei giudizi sui tipi (Task 9, sezione 04): la stessa forma
-       delle altre due POST di questo finto server (`objective`), con la
-       chiave vera di `handlers_mind.handle_set_judgment` (`riga`/`impronta`/
-       `da`, o `errore` sul 400/409). */
-    if (u.indexOf('api/mind/judgment') === 0) {
-      if (opts.giudizioRotto) throw new Error('rete interrotta');
-      return jsonResponse(
-        opts.giudizio !== undefined ? opts.giudizio : { riga: null, impronta: 'x', da: 'sapere' },
-        opts.giudizioStatus);
-    }
-    if (u.indexOf('api/mind/watching') === 0) {
-      if (opts.osservateRotto) throw new Error('rete giu\'');
-      return jsonResponse(
-        opts.watching !== undefined ? opts.watching : paginaScope(),
-        opts.osservateStatus);
-    }
-    if (u.indexOf('api/mind/facts') === 0) {
-      if (opts.oggettiRotto) throw new Error('rete giu\'');
-      return jsonResponse(
-        opts.facts !== undefined ? opts.facts : { facts: [] },
-        opts.oggettiStatus);
-    }
-    /* La terza rotta, dal 14/09/2026 (sezione 03). Prima di questa correzione
-       `montaConServer` SOLLEVAVA su `api/mind/report` -- e la pagina lo
-       inghiottiva nel ramo d'errore di `loadReport`, quindi tutte le prove di
-       mount restavano verdi con la sezione 03 muta. La chiave `resoconto` è
-       quella vera di `handlers_mind.handle_report`, ed è PINNATA qui: se una
-       delle due parti la rinomina, questa prova cade. */
-    if (u.indexOf('api/mind/knowledge') === 0) {
-      if (opts.sapereRotto) throw new Error('rete interrotta');
-      return jsonResponse(
-        opts.sapere !== undefined ? opts.sapere
-          : { conteggi: { totale: 0, righe: [] }, non_capito: [] },
-        opts.sapereStatus);
-    }
-    if (u.indexOf('api/mind/analysis') === 0) {
-      if (opts.analisiRotta) throw new Error('rete interrotta');
-      return jsonResponse(
-        opts.analisi !== undefined ? opts.analisi : { analisi: { osservazioni: [] } },
-        opts.analisiStatus);
-    }
-    if (u.indexOf('api/mind/report') === 0) {
-      if (opts.resocontoRotto) throw new Error('rete giu\'');
-      return jsonResponse(
-        opts.resoconto !== undefined ? opts.resoconto : { resoconto: resoconto() },
-        opts.resocontoStatus);
-    }
-    throw new Error('url inatteso: ' + u);
+  ctx.window.fetch = async (url) => {
+    chiamate.push(String(url));
+    return jsonResponse(opts.corpo || {});
   };
-  return Object.assign(ctx, { chiamate, corpiInviati });
+  return Object.assign(ctx, { chiamate });
 }
 
-function bottone(document, testo, entro) {
-  const scope = entro || document;
-  return Array.from(scope.querySelectorAll('button')).find((b) => b.textContent === testo);
-}
-
-// -- date locali, calcolate come le calcola la pagina (fuso del browser di
-//    chi fa girare il test), MAI hardcoded: una data fissa scritta nel test
-//    diventerebbe falsa il giorno dopo. --
-function pad2(n) { return n < 10 ? '0' + n : String(n); }
-function isoLocale(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
-function giornoFa(n) {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return isoLocale(d);
-}
-
-const OGGI = giornoFa(0);
-const IERI = giornoFa(1);
+// Le date locali («oggi», «ieri», calcolate come le calcola la pagina) sono
+// uscite con le prove del resoconto: vivono in `watcher-giorno.test.mjs`, che
+// e' l'unica scheda che guarda un giorno.
 const TRONCAMENTI_LEGITTIMI = new Set(['po', 'mo', 'be', 'da', 'di', 'fa', 'sta', 'va']);
 const REFUSO_ACCENTO = /([A-Za-zÀ-ÿ]*[aeiouAEIOU])’(?=[\s.,;:)\]!?»"]|$)/g;
 
@@ -224,8 +123,11 @@ test("la guardia NON grida sull’elisione vera né sui troncamenti dell’itali
 });
 
 test('mount: "Non sto guardando ancora niente" usa è, non e’', async () => {
-  const { window, document } = montaConServer();
-  window.HirisWatcherRoute.mount();
+  // La frase vive nella scheda «L'osservatore», e dal 18/09/2026 una scheda si
+  // legge solo se la si apre: il nome non e' un ornamento, senza quello questa
+  // prova guarderebbe un pannello mai caricato.
+  const { window, document } = monta();
+  window.HirisWatcherRoute.mount('lavoro');
   await tick(20);
 
   const testo = document.getElementById('route-outlet').textContent;
@@ -234,8 +136,8 @@ test('mount: "Non sto guardando ancora niente" usa è, non e’', async () => {
 });
 
 test('mount: il sottotitolo dice i TRE attori, e non rimanda l’analista a domani', async () => {
-  const { window, document } = montaConServer();
-  window.HirisWatcherRoute.mount();
+  const { window, document } = monta();
+  window.HirisWatcherRoute.mount('giorno');
   await tick(20);
 
   const sottotitolo = document.querySelector('.page-subtitle').textContent;
@@ -245,379 +147,6 @@ test('mount: il sottotitolo dice i TRE attori, e non rimanda l’analista a doma
     'il terzo attore c’è: la pagina non lo rimanda più a domani');
   assert.doesNotMatch(sottotitolo, /domani/,
     'l’analista ha gia’ parlato: prometterlo per domani sarebbe falso');
-});
-
-// ---------------------------------------------------------------------------
-// Fetta «i tre attori» (11/09/2026, spec §5.1 e §11): il pavimento non
-// esiste più. `GET /api/mind/watching` porta cinque parti in una risposta
-// sola -- obiettivo, cosa si guarda (motivo + autore), lasciato fuori,
-// riconsiderazione, volume -- e la seam è `_rendiScope(corpo, payload)`,
-// non più `_rendiOsservate(corpo, elenco)`. Ogni prova qui sotto dichiara
-// quale mutazione della produzione la farebbe arrossire.
-// ---------------------------------------------------------------------------
-
-function rendiScope(payload) {
-  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
-  const corpo = document.createElement('div');
-  window.HirisWatcherRoute._rendiScope(corpo, payload);
-  return { window, document, corpo };
-}
-
-// Un `details` per gruppo: si cerca per il testo del suo `summary`.
-function gruppo(corpo, testoSommario) {
-  return Array.from(corpo.querySelectorAll('details')).find((d) =>
-    d.querySelector('summary') && d.querySelector('summary').textContent.indexOf(testoSommario) === 0);
-}
-
-function sommari(corpo) {
-  return Array.from(corpo.querySelectorAll('details > summary')).map((s) => s.textContent);
-}
-
-function titoli(corpo) {
-  return Array.from(corpo.querySelectorAll('h3')).map((h) => h.textContent);
-}
-
-const DATA_ORA = /\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}/;
-
-// -- 1. L'obiettivo ---------------------------------------------------------
-
-test('seam _rendiScope: l\'obiettivo è la prima cosa, col suo testo e quando è stato scritto', () => {
-  // Mutazione che la uccide: togliere `renderObjective(body, p.obiettivo)`
-  // da `renderScope` (il testo dell'obiettivo sparisce), oppure spostarla
-  // dopo `renderWatched` (il primo h3 non è più «L’obiettivo»).
-  const { corpo } = rendiScope(paginaScope({ obiettivo: { testo: 'tenere la casa calda e spendere poco', scritto_ts: 1787000000 } }));
-  assert.equal(titoli(corpo)[0], 'L’obiettivo', 'senza la domanda le scelte sono illeggibili: viene prima');
-  const citazione = corpo.querySelector('blockquote');
-  assert.ok(citazione, 'il testo dell\'obiettivo è una citazione del proprietario, non un paragrafo qualunque');
-  assert.equal(citazione.textContent, 'tenere la casa calda e spendere poco');
-  assert.match(corpo.textContent, /Scritto il \d{2}\/\d{2}\/\d{4} \d{2}:\d{2}/,
-    'è datato, e la sua storia conta (spec §11): la data porta l\'anno');
-});
-
-test('seam _rendiScope: un obiettivo mai scritto (scritto_ts null) si dice «di fabbrica», non si spaccia per scritto', () => {
-  // Mutazione: sostituire `objective.scritto_ts == null ? ... : ...` col solo
-  // ramo «Scritto il»: `fmtWhenFull(null)` torna null e la pagina direbbe
-  // «Scritto il null.» -- questo assert lo vede.
-  const { corpo } = rendiScope(paginaScope({ obiettivo: { testo: 'ottimizzare la casa e renderla confortevole', scritto_ts: null } }));
-  assert.match(corpo.textContent, /Obiettivo di fabbrica: nessuno l’ha ancora scritto/);
-  assert.doesNotMatch(corpo.textContent, /Scritto il/);
-});
-
-// -- I tre stati: archivio scollegato ≠ vuoto ≠ pieno --------------------------
-
-test('seam _rendiScope: con l\'archivio scollegato (obiettivo null) niente è inventato: né il default, né «niente escluso», né «mai riconsiderato»', () => {
-  // È il ramo `store is None` di `handle_watching` (handlers_mind.py):
-  // `obiettivo: null`, `fuori: []`, `riconsiderazione: null`, `volume: []`.
-  // Mutazione: `var archiveMissing = false;` in `renderScope` -- la pagina
-  // direbbe «Niente è stato lasciato fuori» e «Non è mai stata fatta», due
-  // affermazioni che nessuno ha verificato, e i tre `doesNotMatch` sotto
-  // arrossiscono.
-  const { corpo } = rendiScope({
-    watching: [voce('climate.camera_t')], fuori: [], obiettivo: null, riconsiderazione: null, volume: [],
-  });
-  const testo = corpo.textContent;
-  assert.match(testo, /L’obiettivo non si può leggere/);
-  assert.doesNotMatch(testo, /ottimizzare la casa/, 'il default di fabbrica NON si mostra: non si sa quale sia');
-  assert.match(testo, /Non si può sapere cosa è stato lasciato fuori/);
-  assert.doesNotMatch(testo, /Niente è stato lasciato fuori/);
-  assert.match(testo, /Non si può sapere quando la casa è stata riconsiderata/);
-  assert.doesNotMatch(testo, /mai stata fatta/);
-  assert.match(testo, /Non si può contare/);
-  assert.doesNotMatch(testo, /Nessun conteggio disponibile/);
-  // Ciò che si guarda, invece, c'è (l'osservatore risponde anche senza archivio).
-  assert.match(testo, /climate\.camera_t/);
-});
-
-// -- 2. Cosa si guarda: motivo e chi ha deciso ---------------------------------
-
-test('seam _rendiScope: le voci si raggruppano per chi ha deciso, nell\'ordine tu / analista / osservatore, e ogni riga porta il suo motivo', () => {
-  // Mutazione: invertire `AUTHOR_ORDER` (l'ordine dei sommari cambia), o
-  // togliere `AUTHOR_LABEL[autore] ||` da `authorPhrase` (i sommari
-  // diventano «Deciso da «owner»»), o `sayReason` forzato a false in
-  // `decisionRow` (i motivi spariscono dalle righe).
-  const { corpo } = rendiScope(paginaScope({
-    watching: [
-      voce('climate.camera_t', { motivo: 'scalda la casa, e il riscaldamento è la voce più pesante', autore: 'observer' }),
-      voce('light.cucina', { motivo: 'me l’hai chiesto tu', autore: 'owner' }),
-      voce('sensor.co2_soggiorno', { motivo: 'serve al resoconto sull’aria', autore: 'analyst' }),
-    ],
-  }));
-  assert.deepEqual(sommari(corpo), [
-    'Deciso da te — 1 voce',
-    'Deciso dall’analista — 1 voce',
-    'Deciso dall’osservatore — 1 voce',
-  ]);
-  const tuo = gruppo(corpo, 'Deciso da te');
-  assert.match(tuo.textContent, /light\.cucina/);
-  assert.match(tuo.textContent, /me l’hai chiesto tu/, 'il motivo sta accanto alla voce: è da lì che si toglie');
-  assert.match(tuo.textContent, /dal \d{2}\/\d{2}\/\d{4} \d{2}:\d{2}/, '«da quando» si dice, con l\'anno');
-  const osservatore = gruppo(corpo, 'Deciso dall’osservatore');
-  assert.match(osservatore.textContent, /il riscaldamento è la voce più pesante/);
-});
-
-test('seam _rendiScope: una condizione di sistema (autore null) non è attribuita a nessuno e non porta un «dal»', () => {
-  // `Watcher.watching` (watcher.py): le condizioni di sistema non passano
-  // dallo scope, nessuno le ha decise, `autore: None`, `da_quando_ts: None`.
-  // Mutazione: `var k = v.autore == null ? '' : ...` -> `var k = v.autore ||
-  // 'observer'` in `groupByAuthor`: la condizione finirebbe sotto «Deciso
-  // dall’osservatore», e il primo assert la vede. Mutazione sul «dal»:
-  // `ts != null ? ... : null` -> sempre `opts.whenPrefix + ' ' +
-  // fmtWhenFull(ts)`: comparirebbe «dal null».
-  const { corpo } = rendiScope(paginaScope({
-    watching: [
-      condizione('problema:sonos.subscriptions_failed'),
-      voce('climate.camera_t', { autore: 'observer' }),
-    ],
-  }));
-  assert.deepEqual(sommari(corpo), [
-    'Deciso dall’osservatore — 1 voce',
-    'Condizioni di sistema aperte — 1 voce',
-  ], 'le condizioni di sistema chiudono, in un gruppo proprio, senza autore');
-  const sistema = gruppo(corpo, 'Condizioni di sistema aperte');
-  assert.match(sistema.textContent, /Nessuno le ha decise/);
-  assert.match(sistema.textContent, /Problema Home Assistant: sonos\.subscriptions_failed/,
-    'il prefisso tecnico passa da describeWatchedSubject, come prima');
-  assert.doesNotMatch(sistema.textContent, /\bdal\b/, 'da_quando_ts è null per costruzione: nessuna data inventata');
-  assert.doesNotMatch(sistema.textContent, /null/);
-  const osservatore = gruppo(corpo, 'Deciso dall’osservatore');
-  assert.doesNotMatch(osservatore.textContent, /sonos/, 'la condizione non finisce sotto l\'osservatore');
-});
-
-test('seam _rendiScope: un autore che la pagina non conosce non sparisce: ha il suo gruppo, col valore grezzo', () => {
-  // Stessa regola di `GENRE_LABEL`. Mutazione: in `groupByAuthor` togliere
-  // il ciclo `seen.forEach(...)` che accoda gli autori fuori da
-  // `AUTHOR_ORDER` -- la voce sparirebbe dalla pagina.
-  const { corpo } = rendiScope(paginaScope({
-    watching: [voce('switch.pompa', { autore: 'gardener' })],
-  }));
-  assert.deepEqual(sommari(corpo), ['Deciso da «gardener» — 1 voce']);
-  assert.match(gruppo(corpo, 'Deciso da «gardener»').textContent, /switch\.pompa/);
-});
-
-test('seam _rendiScope: un motivo identico su ogni riga del gruppo si dice una volta, non trenta', () => {
-  // Le ~30 condizioni di sistema portano tutte `_SYSTEM_REASON`
-  // (watcher.py). Mutazione: `var sharedReason = false;` in
-  // `renderDecisionGroup` -- il motivo torna su ogni riga e il conteggio
-  // sale a 3. Mutazione opposta (dire sempre «per tutte» anche con motivi
-  // diversi): il secondo gruppo qui sotto perderebbe uno dei due motivi.
-  const MOTIVO = 'una condizione di sistema aperta si guarda finche\' dura';
-  const { corpo } = rendiScope(paginaScope({
-    watching: [
-      condizione('problema:sonos.subscriptions_failed'),
-      condizione('integrazione:01K2CK4GG287VKK18M5J788MRQ'),
-      condizione('automazione:automation.spegni_luci_notte'),
-      voce('climate.camera_t', { motivo: 'scalda la casa' }),
-      voce('light.cucina', { motivo: 'la luce che accendi di più' }),
-    ],
-  }));
-  const sistema = gruppo(corpo, 'Condizioni di sistema aperte');
-  const occorrenze = sistema.textContent.split(MOTIVO).length - 1;
-  assert.equal(occorrenze, 1, 'il motivo condiviso compare una volta sola nel gruppo');
-  assert.match(sistema.textContent, /Motivo, per tutte: /);
-  const osservatore = gruppo(corpo, 'Deciso dall’osservatore');
-  assert.match(osservatore.textContent, /scalda la casa/);
-  assert.match(osservatore.textContent, /la luce che accendi di più/);
-  assert.doesNotMatch(osservatore.textContent, /Motivo, per tutte/, 'motivi diversi: ognuna porta il suo');
-});
-
-// -- 3. Lasciato fuori ----------------------------------------------------------
-
-test('seam _rendiScope: ciò che è stato lasciato fuori ha la sua parte, con motivo, autore e quando; e la frase su chi non è stato considerato', () => {
-  // Mutazione: togliere il ciclo `groupByAuthor(leftOut).forEach(...)` da
-  // `renderLeftOut` -- `sensor.uptime` e il suo motivo spariscono. Mutazione
-  // sulla frase: toglierla lascia leggere «lasciato fuori» come «tutto il
-  // resto della casa».
-  const { corpo } = rendiScope(paginaScope({
-    fuori: [{ soggetto: 'sensor.uptime', motivo: 'di servizio, non dice niente sulla casa', autore: 'observer', deciso_ts: 1787000001 }],
-  }));
-  assert.ok(titoli(corpo).indexOf('Lasciato fuori') > titoli(corpo).indexOf('Cosa guardo'),
-    'l\'altra metà della trasparenza viene DOPO cosa si guarda');
-  const fuori = gruppo(corpo, 'Lasciato fuori dall’osservatore');
-  assert.ok(fuori, 'sommari trovati: ' + sommari(corpo).join(' | '));
-  assert.match(fuori.querySelector('summary').textContent, /— 1 voce$/);
-  assert.match(fuori.textContent, /sensor\.uptime/);
-  assert.match(fuori.textContent, /di servizio, non dice niente sulla casa/);
-  // Si legge lo span del «quando», non `textContent` (che incolla gli span
-  // senza spazi -- «sensor.uptimeil 17/08/2026» -- e un `\b` non ci starebbe).
-  const quando = Array.from(fuori.querySelectorAll('.field-hint')).map((s) => s.textContent)
-    .find((s) => /^(il|dal) /.test(s));
-  assert.ok(quando, 'deciso_ts deve comparire come «quando» accanto alla voce');
-  assert.match(quando, /^il \d{2}\/\d{2}\/\d{4} \d{2}:\d{2}$/, 'deciso_ts si mostra come «il ...», non «dal ...»');
-  assert.match(corpo.textContent, /non è stato escluso — non è stato considerato/);
-});
-
-test('seam _rendiScope: con l\'archivio collegato e nessuna esclusione si dice «niente lasciato fuori» (non «non si può sapere»)', () => {
-  // Mutazione: `if (archiveMissing)` -> `if (archiveMissing || !leftOut.length)`
-  // in `renderLeftOut`: un'assenza vera verrebbe raccontata come un buco di
-  // lettura.
-  const { corpo } = rendiScope(paginaScope({ fuori: [] }));
-  assert.match(corpo.textContent, /Niente è stato lasciato fuori con una ragione scritta/);
-  assert.doesNotMatch(corpo.textContent, /Non si può sapere cosa è stato lasciato fuori/);
-});
-
-// -- 4. La riconsiderazione: tutti e tre i numeri ----------------------------
-
-test('seam _rendiScope: la riconsiderazione mostra quando, la memoria misurata in giorni e la cadenza in ore — tutti e tre', () => {
-  // Mutazione: togliere la tessera «Memoria di Home Assistant, misurata» da
-  // `tiles` in `renderReconsideration` -- «ogni 84 ore» resterebbe da
-  // credere sulla parola, e `/7 giorni/` arrossisce. Mutazione su
-  // `fmtHours`: dividere per 86400 invece di 3600 darebbe «3,5 ore».
-  const { corpo } = rendiScope(paginaScope({ riconsiderazione: { quando_ts: 1787000000, finestra_s: 604800, cadenza_s: 302400 } }));
-  const tessere = Array.from(corpo.querySelectorAll('.stat-tile')).map((t) =>
-    [t.querySelector('.st-label').textContent, t.querySelector('.st-value').textContent]);
-  assert.equal(tessere.length, 3);
-  assert.equal(tessere[0][0], 'Ultima volta');
-  assert.match(tessere[0][1], DATA_ORA);
-  assert.deepEqual(tessere[1], ['Memoria di Home Assistant, misurata', '7 giorni']);
-  assert.deepEqual(tessere[2], ['Cadenza', 'ogni 84 ore']);
-  assert.match(corpo.textContent, /La cadenza è la metà della memoria misurata/,
-    'il legame fra i due numeri (mind/cadence.py::cadence_from) si dice');
-});
-
-test('seam _rendiScope: riconsiderazione mai fatta (null, archivio collegato) si dice tale, senza tessere', () => {
-  // Mutazione: `if (!r)` tolto in `renderReconsideration` -- `r.quando_ts`
-  // lancerebbe su null, oppure (con `r || {}`) comparirebbero tre tessere
-  // «data non disponibile / non misurata / nessuna» per una riconsiderazione
-  // che non è mai avvenuta.
-  const { corpo } = rendiScope(paginaScope({ riconsiderazione: null }));
-  assert.match(corpo.textContent, /Non è mai stata fatta/);
-  assert.equal(corpo.querySelectorAll('.stat-tile').length, 0);
-});
-
-test('seam _rendiScope: finestra non misurata dentro una riconsiderazione avvenuta: «non misurata», «nessuna», e la conseguenza detta', () => {
-  // `record_reconsideration` (mind/store.py) accetta `window_s=None`, e
-  // `cadence_from(None)` (mind/cadence.py) dà None; `due()` senza cadenza
-  // risponde di no. Mutazione: togliere il ramo `if (r.finestra_s == null ||
-  // r.cadenza_s == null)` -- la pagina direbbe «la cadenza è la metà della
-  // memoria misurata» sotto a una tessera «non misurata».
-  const { corpo } = rendiScope(paginaScope({ riconsiderazione: { quando_ts: 1787000000, finestra_s: null, cadenza_s: null } }));
-  const valori = Array.from(corpo.querySelectorAll('.stat-tile .st-value')).map((v) => v.textContent);
-  assert.equal(valori[1], 'non misurata');
-  assert.equal(valori[2], 'nessuna');
-  assert.match(corpo.textContent, /non riconsidera la casa da solo finché non riesce a misurarla/);
-  assert.doesNotMatch(corpo.textContent, /La cadenza è la metà/);
-});
-
-// -- 5. Quanto scrive al giorno ---------------------------------------------------
-
-test('seam _rendiScope: il volume è una barra per giorno, nell\'ordine del payload, larga in proporzione al giorno più alto, col numero scritto', () => {
-  // Mutazione: `.reverse()` prima del ciclo in `renderVolume` (l'ordine dei
-  // giorni cambia); `pct` calcolato su una costante invece che su `max` (le
-  // larghezze non tornano); `fmtCount` sostituito da `String(n)` («4951»
-  // invece di «4.951»); `if (r.righe) return` per saltare i giorni a zero (la
-  // riga a zero sparisce).
-  //
-  // **I giorni arrivano NON ordinati, ed è voluto** (15/09/2026): col payload
-  // già crescente un `volume.sort(...)` era un no-op e la mutazione restava
-  // verde — la prova dimostrava «crescente», non «nell'ordine del payload»
-  // come dice il titolo. L'ha detto una mutazione eseguita dalla revisione
-  // indipendente.
-  const { corpo } = rendiScope(paginaScope({
-    volume: [
-      { giorno: '2026-09-05', righe: 4951 },
-      { giorno: '2026-09-04', righe: 29227 },
-      { giorno: '2026-09-06', righe: 0 },
-    ],
-  }));
-  const righe = Array.from(corpo.querySelectorAll('ul > li'));
-  assert.equal(righe.length, 3);
-  assert.deepEqual(righe.map((li) => li.querySelector('.field-hint').textContent),
-    ['05/09/2026', '04/09/2026', '06/09/2026'],
-    "nell'ordine in cui il server li manda: chi ordina e' `_volume`, non la pagina");
-  assert.deepEqual(righe.map((li) => li.querySelector('.text-mono').textContent),
-    ['4.951 righe', '29.227 righe', '0 righe']);
-  // Il CSSOM RISERIALIZZA il valore letto («100.0%» -> «100%», «0.0%» ->
-  // «0%»; stesso comportamento gia' misurato per `display:flex` piu' sopra):
-  // si confronta il numero, non la stringa scritta dalla pagina.
-  const larghezze = righe.map((li) => parseFloat(li.querySelector('[aria-hidden="true"] > div').style.width));
-  assert.equal(larghezze[1], 100, 'il giorno piu\' alto e\' il metro: barra piena');
-  assert.equal(larghezze[0], Number((4951 / 29227 * 100).toFixed(1)));
-  assert.equal(larghezze[2], 0, 'un giorno a zero resta una barra vuota, non sparisce');
-  assert.equal(corpo.querySelectorAll('canvas, svg').length, 0, 'barre CSS, niente canvas/SVG per sette numeri');
-});
-
-// -- Le sei parti, in quest'ordine, e niente pavimento ------------------------------
-//
-// Erano cinque fino all'11/09/2026. La sesta, «I tentativi», e' entrata perche'
-// le altre cinque, tutte insieme, non sapevano dire che l'osservatore stava
-// fallendo da quaranta minuti mentre la casa non veniva piu' registrata.
-
-test('seam _rendiScope: le sei parti sono titoli veri (h3), nell\'ordine della spec, e il pavimento non affiora più', () => {
-  // Mutazione: scambiare due chiamate in `renderScope` (l'ordine cambia);
-  // `el('p', ...)` al posto di `el('h3', ...)` in `subheading` (un lettore
-  // di schermo non salta più di parte in parte).
-  const { corpo } = rendiScope(paginaScope({ watching: [voce('climate.camera_t')] }));
-  assert.deepEqual(titoli(corpo), ['L’obiettivo', 'Cosa guardo', 'Lasciato fuori', 'La riconsiderazione', 'I tentativi', 'Quanto scrive al giorno']);
-  assert.doesNotMatch(corpo.textContent, /pavimento|Di serie|gamba/i,
-    'le parole del vecchio filtro non devono comparire nel testo utente');
-  assert.equal(corpo.querySelectorAll('.agent-badge').length, 0,
-    'nessun badge di provenienza per riga: chi ha deciso sta sul gruppo');
-});
-
-// ---------------------------------------------------------------------------
-// Cancello del collaudo E2 (07/09/2026, BACKLOG.md «"Cosa sto guardando"
-// stampa i soggetti grezzi, gli episodi no»): la vecchia resa scriveva
-// `v.soggetto` tale e quale, mentre gli episodi (renderFacts, la sezione
-// gemella della stessa pagina) passavano gia' da `protagonistName`. Col
-// gruppo passato da due a diciannove voci, diciassette delle quali percorsi
-// di file, il difetto -- gia' presente prima -- e' diventato visibile.
-// Portato sul payload nuovo (11/09/2026): le condizioni di sistema arrivano
-// con `autore: null`, e la resa passa da `decisionRow`.
-// ---------------------------------------------------------------------------
-
-test('seam _rendiScope: un prefisso tecnico grezzo (log:/integrazione:/problema:/automazione:) non resta mai a schermo (collaudo E2, 07/09/2026)', () => {
-  // Mutazione dichiarata: in `decisionRow` sostituire
-  // `el('span', 'text-mono', described.primary)` con
-  // `el('span', 'text-mono', v.soggetto)` fa arrossire `assert.doesNotMatch`
-  // qui sotto, sulle voci `log:` e `integrazione:` -- il soggetto grezzo
-  // torna a comparire tale e quale.
-  const { corpo } = rendiScope(paginaScope({
-    watching: [
-      condizione('integrazione:01K2CK4GG287VKK18M5J788MRQ'),
-      condizione('log:aioamazondevices@components/alexa_devices/coordinator.py:192'),
-      condizione('log:homeassistant.components.hydrawise@helpers/update_coordinator.py:481'),
-      condizione('log:custom_components.zcsazzurro.api@custom_components/zcsazzurro/api.py:202'),
-      condizione('problema:light.termostato_soggiorno'),
-      condizione('automazione:automation.spegni_luci_notte'),
-    ],
-  }));
-
-  // Il nome leggibile e' sempre il PRIMO `.text-mono` di ogni riga (la resa
-  // scrive prima `primary`, poi -- solo se c'e' -- `secondary`).
-  const righe = Array.from(corpo.querySelectorAll('ul > li'));
-  const primary = righe.map((li) => li.querySelector('.text-mono').textContent);
-  assert.equal(primary.length, 6, 'una riga per soggetto, come le sei voci passate');
-
-  primary.forEach((text, i) => {
-    assert.doesNotMatch(text, /^(log|integrazione|problema|automazione):/,
-      `riga ${i}: un prefisso tecnico e' rimasto a schermo tale e quale: "${text}"`);
-  });
-
-  assert.match(primary[0], /integrazione non caricata/i,
-    'senza titolo, un id opaco (ULID) non e\' risolvibile: si dice cosa e\', non l\'id da solo');
-  assert.match(primary[1], /Registro: aioamazondevices/,
-    'il logger e\' il nome utile del soggetto "log:", e resta leggibile');
-  assert.match(primary[2], /Registro: homeassistant\.components\.hydrawise/);
-  assert.match(primary[3], /Registro: custom_components\.zcsazzurro\.api/);
-
-  // Il percorso del file NON si butta (distingue due errori dello stesso
-  // logger): resta a schermo, ma in secondo piano (`.text-mono.field-hint`),
-  // mai come primo testo della riga.
-  const secondaria = righe[1].querySelector('.text-mono.field-hint');
-  assert.ok(secondaria, 'il riferimento tecnico del "log:" non deve sparire, solo passare in secondo piano');
-  assert.match(secondaria.textContent, /coordinator\.py:192/);
-  assert.doesNotMatch(primary[1], /coordinator\.py/, 'il percorso del file non deve stare nel nome PRIMARIO della riga');
-
-  // Lo stesso vincolo per `integrazione:` (rilievo del revisore,
-  // 07/09/2026): mutazione ESEGUITA allora -- rimettere `secondary: ''` al
-  // posto di `secondary: p.rest` per il caso `integrazione` in
-  // `describeWatchedSubject` fa arrossire `assert.ok` qui sotto.
-  const secondariaIntegrazione = righe[0].querySelector('.text-mono.field-hint');
-  assert.ok(secondariaIntegrazione,
-    'l\'id dell\'integrazione non deve sparire, solo passare in secondo piano (come il percorso del "log:")');
-  assert.match(secondariaIntegrazione.textContent, /01K2CK4GG287VKK18M5J788MRQ/);
-  assert.doesNotMatch(primary[0], /01K2CK4GG287VKK18M5J788MRQ/,
-    'l\'id non deve stare nel nome PRIMARIO della riga (è opaco, non un nome)');
 });
 
 // ---------------------------------------------------------------------------
@@ -636,8 +165,8 @@ test('mount: il campo Giorno entra nei selettori del tema (input[type=date] cond
 });
 
 test('mount: l\'etichetta «Giorno» è associata al campo data (for/id)', async () => {
-  const { window, document } = montaConServer();
-  window.HirisWatcherRoute.mount();
+  const { window, document } = monta();
+  window.HirisWatcherRoute.mount('giorno');
   await tick(20);
 
   const input = document.querySelector('input[type=date]');
@@ -708,117 +237,6 @@ test('CSS: il selettore che azzera min-width sugli span corrisponde a uno span c
 });
 
 // ---------------------------------------------------------------------------
-// «Riprova»: unica pagina di lettura che ne era priva (rilievo 4)
-// ---------------------------------------------------------------------------
-
-test('un errore nel leggere "cosa sto guardando" (503) offre Riprova, e il testo del messaggio non cambia', async () => {
-  const { window, document } = montaConServer({ osservateStatus: 503, watching: {} });
-  window.HirisWatcherRoute.mount();
-  await tick(20);
-
-  const testo = document.getElementById('route-outlet').textContent;
-  assert.match(testo, /Non è una lista vuota — è l’osservatore stesso ad essere fermo/,
-    'il testo d\'errore a tre stati non si tocca (è dichiarato il migliore del pannello)');
-  assert.ok(bottone(document, 'Riprova'), 'deve esserci un modo di riprovare, come nelle pagine sorelle');
-});
-
-test('un guasto di rete su "cosa sto guardando" offre Riprova, e il bottone rilancia la richiesta', async () => {
-  const { window, document, chiamate } = montaConServer({ osservateRotto: true });
-  window.HirisWatcherRoute.mount();
-  await tick(20);
-
-  const primaDelClick = chiamate.filter((u) => u.indexOf('watching') !== -1).length;
-  const retry = bottone(document, 'Riprova');
-  assert.ok(retry, 'deve esserci un modo di riprovare');
-  retry.dispatchEvent(new window.Event('click', { bubbles: true }));
-  await tick(20);
-
-  const dopoIlClick = chiamate.filter((u) => u.indexOf('watching') !== -1).length;
-  assert.equal(dopoIlClick, primaDelClick + 1, 'il bottone deve rilanciare la stessa richiesta');
-});
-
-
-
-
-
-
-
-// ---------------------------------------------------------------------------
-// Punto 1 (ALTO) del brief-correzioni, riaperto e reso PIÙ severo dal punto 6:
-// «la pagina non deve mai affermare un'ora falsa». Prima della correzione del
-// 27/08 (mandato punto 6) la forma era un segnaposto posizionale ("punto N"),
-// e il vecchio test si limitava a VIETARE qualunque HH:MM nell'SVG. Ora che
-// il Python porta l'ora vera per ogni punto (`forma[dimensione] = [{"ora",
-// "valore"}, ...]`), vietare non basta più: il test deve PRETENDERE l'ora
-// giusta, e arrossire se la resa tornasse a leggere la POSIZIONE nell'array
-// al posto della chiave `ora` (la mutazione che il mandato chiede di
-// eseguire, non dedurre).
-// ---------------------------------------------------------------------------
-
-
-
-
-
-// La dodicesima (brief-dodicesima.md, punto 1 -- MEDIO, "il cuore"): nessun
-// test qui sopra lega la POSIZIONE della barra all'ora che dichiara. Un test
-// guarda le distanze RELATIVE fra le barre ("i buchi si vedono", sopra), un
-// altro guarda l'ETICHETTA (il titolo del `<title>`, sopra) -- nessuno lega
-// le due cose. Mutazione ESEGUITA dal revisore per provarlo: spostare OGNI
-// barra di un'ora nel solo piazzamento (x), lasciando l'etichetta corretta
-// -> i 56 test allora esistenti restavano tutti verdi. Il riquadro al
-// passaggio del mouse direbbe «le 13», e la barra starebbe alle 14 -- e la
-// POSIZIONE e' cio' che si guarda per decidere, non l'etichetta.
-// Serve un ancoraggio ASSOLUTO: la coordinata x attesa, calcolata dalla SUA
-// ora con lo stesso contratto geometrico di `renderBalanceCurve`
-// (watcher-route.js: viewBox 640x140, margine sinistro 4, 24 ore fisse
-// -- `L`/`sinistra`/`ORE_DEL_GIORNO` nel sorgente, non ricopiati per caso:
-// e' lo stesso disegno che la pagina dichiara nel suo `viewBox`, verificato
-// sotto). Una sola serie (produzione) rende l'indice di serie ininfluente
-// (`si * barWidth` = 0), cosi' la formula attesa non dipende da un
-// dettaglio che non e' oggetto di questo test.
-
-// ---------------------------------------------------------------------------
-// Punto 3 (MEDIO): la descrizione dell'SVG non deve affermare «gli stessi
-// numeri» -- falso nel caso generale (i momenti portano orari e percentuali,
-// non gli stessi kWh della curva) -- e deve sparire quando i momenti mancano.
-// ---------------------------------------------------------------------------
-
-
-
-
-
-// ---------------------------------------------------------------------------
-// Punto 2 (MEDIO): a 1200px `.bil-moments` (auto-fit) può calcolare un numero
-// DISPARI di colonne -- dt e dd, celle indipendenti della griglia, si
-// spezzano a fine riga (misurato dal revisore: «Picco di produzione» chiude
-// una riga, il suo valore ne apre un'altra accanto a un'altra etichetta).
-// jsdom non fa layout, quindi non può riprodurre lo sfondamento a 1200px --
-// ma può verificare la precondizione strutturale della correzione: ogni
-// dt/dd deve condividere un contenitore proprio (`.bil-moment`), MAI essere
-// figlio diretto di `.bil-moments`, perché solo così un motore vero non può
-// più spezzare la coppia a nessuna larghezza (verificato dal vivo, vedi il
-// rapporto).
-// ---------------------------------------------------------------------------
-
-
-// ---------------------------------------------------------------------------
-// Il consumo, settima direzione del bilancio (LETTA, non dedotta -- vedi il
-// commento sopra DIREZIONI_BILANCIO in mind/facts.py, mandato «il
-// bilancio dell'energia», punto 1, 27/08/2026): la pagina deve poterlo
-// mostrare come le altre sei, con la stessa etichetta già usata dagli
-// episodi di energia.
-// ---------------------------------------------------------------------------
-
-
-
-
-
-// ---------------------------------------------------------------------------
-// Corsa sul cambio giorno (rilievo 8b): un contatore di generazione
-// ---------------------------------------------------------------------------
-
-
-// ---------------------------------------------------------------------------
 // Pulizia: nessun `TONE_UNKNOWN` morto, nessun innerHTML (rilievo 8d + disciplina generale)
 // ---------------------------------------------------------------------------
 
@@ -879,8 +297,18 @@ test('README: ogni rotta della tabella "Interface" è una di quelle davvero regi
   // Stessa forma letterale del test sopra: `HirisRouter.register(/^#\/xxx\/?$/`
   // per una rotta con nome, `HirisRouter.register(/^#\/?$/` per la radice
   // (senza segmento -- gruppo di cattura opzionale).
+  //
+  // **Il difetto era di questa prova** (18/09/2026): dal taglio della pagina
+  // dell'osservatore una rotta puo' portare un SOTTOSEGMENTO facoltativo --
+  // `/^#\/watcher(?:\/(giorno|cosa-fare|sapere|lavoro))?\/?$/` -- e
+  // l'estrazione di prima, che pretendeva `\/?$` subito dopo il nome, non
+  // riconosceva piu' `watcher`: la prova gridava «il README documenta una
+  // rotta che main.js non registra» mentre main.js la registrava eccome.
+  // La coda `\/?$/` resta obbligatoria (una rotta senza ancoraggio finale
+  // resta invisibile, ed e' giusto): in mezzo si ammette UN gruppo non
+  // catturante facoltativo, che e' la forma delle schede.
   const daMainJs = new Set();
-  const reMainJs = /HirisRouter\.register\(\/\^#(?:\\\/(\w+))?\\\/\?\$\//g;
+  const reMainJs = /HirisRouter\.register\(\/\^#(?:\\\/([\w-]+))?(?:\(\?:.*?\)\?)?\\\/\?\$\//g;
   while ((m = reMainJs.exec(MAIN_JS))) daMainJs.add(m[1] || '');
   assert.ok(daMainJs.size > 0, 'nessuna rotta riconosciuta in main.js: la forma della regex è cambiata?');
 
@@ -893,1576 +321,204 @@ test('README: ogni rotta della tabella "Interface" è una di quelle davvero regi
 });
 
 // ---------------------------------------------------------------------------
-// Fetta «il nome» (07/09/2026): il nome amichevole SALVATO al momento del
-// cambio (`corpo.nome`, colonna `friendly_name`) arriva alla riga; e quando
-// non c'è, la riga mostra l'identificatore DICENDO che è un identificatore —
-// mai un nome dedotto dall'`entity_id`, mai una riga muta.
+// La cornice: quattro schede, carico pigro, stato che sopravvive, indirizzi
+// (spec 2026-09-18 §2). Ogni prova qui sotto e' nata ROSSA prima che il
+// guscio esistesse, e porta la mutazione che la ucciderebbe.
 // ---------------------------------------------------------------------------
 
-
-
-
-test('seam _rendiScope: un entity_id nudo viene dichiarato per quello che è (l\'endpoint non porta nomi)', () => {
-  // R4 (revisione del tratto v3.22.2..HEAD): quando OGNI voce del gruppo è
-  // tecnica (qui l'unica voce dell'osservatore) la dichiarazione vive una
-  // volta per il GRUPPO, non sulla riga -- la riga da sola, ripetuta su un
-  // elenco di ~380 entità, era il rumore che il rilievo segnala. Mutazione
-  // dichiarata: togliere il blocco `if (allTechnical) { ... }` da
-  // `renderDecisionGroup` fa arrossire `assert.match(dettaglio.textContent,
-  // /identificatori tecnici/i)`.
-  const { corpo } = rendiScope(paginaScope({
-    watching: [voce('binary_sensor.movimento_cucina')],
-  }));
-  const dettaglio = corpo.querySelector('details');
-  assert.match(dettaglio.textContent, /identificatori tecnici/i,
-    '`/api/mind/watching` non porta nomi: il gruppo deve dirlo (una volta), non tacerlo');
-  const riga = corpo.querySelector('ul > li');
-  assert.match(riga.textContent, /binary_sensor\.movimento_cucina/,
-    'l\'id non si butta e non si tace: resta a schermo');
-  assert.doesNotMatch(riga.textContent, /identificatore/i,
-    'sul gruppo tutto tecnico la riga non ripete piu\' la dichiarazione: l\'ha già detta il gruppo');
-  assert.doesNotMatch(riga.textContent, /Movimento Cucina/,
-    'nessun nome dedotto dall\'id');
-});
-
-test('seam _rendiScope: un gruppo misto (entità + condizioni già nominate) porta la dichiarazione SOLO sulla riga tecnica', () => {
-  // Col payload nuovo un gruppo misto non nasce dal filo (`Watcher.watching`
-  // mette le condizioni di sistema sotto `autore: null`, le entità sotto un
-  // autore), ma `renderDecisionGroup` non deve dipendere da quella
-  // garanzia per essere corretta: un `problema:` con un autore -- domani,
-  // se l'analista chiedesse di guardarne uno -- cadrebbe qui. Mutazione
-  // dichiarata: sostituire `!allTechnical` con `false` nella chiamata a
-  // `decisionRow` fa arrossire il primo assert (la dichiarazione sparisce
-  // anche dove distingue).
-  const { corpo } = rendiScope(paginaScope({
-    watching: [
-      voce('lock.porta_garage', { autore: 'analyst' }),
-      voce('problema:light.termostato_soggiorno', { autore: 'analyst' }),
-    ],
-  }));
-  const righe = Array.from(corpo.querySelectorAll('ul > li'));
-  assert.equal(righe.length, 2);
-  assert.match(righe[0].textContent, /identificatore/i,
-    'la voce tecnica del gruppo misto porta ancora la dichiarazione per-riga: qui distingue');
-  assert.doesNotMatch(righe[1].textContent, /identificatore/i,
-    'la voce già nominata (il "problema:") non è un identificatore nudo');
-  // Il gruppo è misto, non uniforme: la dichiarazione UNA-volta-per-gruppo
-  // (pensata per i gruppi tutti tecnici) non deve comparire qui, o la stessa
-  // informazione si direbbe due volte in due forme diverse.
-  const dettaglio = corpo.querySelector('details');
-  assert.doesNotMatch(dettaglio.textContent, /identificatori tecnici/i,
-    'un gruppo misto non porta anche l\'annuncio collettivo: solo la dichiarazione per-riga, dove distingue');
-});
-
-
-
-
-
-
-
-
-// -- 6. I tentativi ---------------------------------------------------------
-//
-// Il difetto misurato sulla casa vera l'11/09/2026: l'osservatore ha provato
-// e fallito quattro volte in quaranta minuti, HIRIS ha smesso di registrare
-// qualunque cosa (il cancello di cio' che si registra E' lo scope), e questa
-// pagina diceva soltanto «Non e' mai stata fatta». Vero alla lettera, falso
-// come racconto. La regola che il prodotto si e' dato -- e che questa pagina
-// violava -- e' che **un guasto non si appiattisce su un'assenza**.
-
-function tentativo(esito, quandoFa, dettaglio) {
-  return { quando_ts: Math.floor(Date.now() / 1000) - quandoFa, esito: esito,
-           dettaglio: dettaglio };
-}
-
-test('seam _rendiScope: senza nessun tentativo lo dice, e non tace', () => {
-  // Mutazione che la uccide: saltare la sezione quando l'elenco e' vuoto --
-  // e' proprio il silenzio da cui questa fetta nasce.
-  const { corpo } = rendiScope(paginaScope({ tentativi: [] }));
-  assert.ok(titoli(corpo).includes('I tentativi'),
-    'la sezione esiste anche quando non c\'e' + '’' + ' niente da mostrare');
-  assert.match(corpo.textContent, /Nessuno ha ancora provato a ripensare la casa/);
-});
-
-test('seam _rendiScope: un turno in attesa NON si confonde con un guasto', () => {
-  // Dieci minuti di attesa legittima e quaranta di guasto avevano la stessa
-  // faccia: nessuna. Mutazione che la uccide: rendere «accodata» con lo
-  // stesso tono del fallimento.
-  const { corpo } = rendiScope(paginaScope({
-    tentativi: [tentativo('accodata', 180, 'chiesto al piano: non è mai stata fatta')] }));
-  assert.match(corpo.textContent, /In corso da 3 minuti/);
-  assert.equal(corpo.innerHTML.indexOf('--err-ink'), -1,
-    'aspettare non è un guasto: nessun rosso');
-});
-
-test("seam _rendiScope: un giro riuscito dice quanto ha deciso NELLA FRASE, non solo nell'elenco", () => {
-  // **Questa prova e' nata verde e non poteva fallire.** La prima stesura
-  // asseriva `/31 decisioni su 381/` su tutto il testo della sezione -- e
-  // quel dettaglio compare ANCHE dentro l'elenco richiudibile, quindi
-  // toglierlo dalla frase a colpo d'occhio la lasciava verde. Mutazione
-  // ESEGUITA l'11/09/2026 (`line(...)` senza `last.dettaglio`): verde.
-  // Riscritta per legare le due meta' in UNA frase, la stessa mutazione la
-  // fa arrossire. E' il difetto n.1 di questo progetto, trovato su se stesso.
-  const { corpo } = rendiScope(paginaScope({
-    tentativi: [tentativo('riuscito', 7200, "31 decisioni su 381 entita' guardate")] }));
-  assert.match(corpo.textContent, /L’ultimo tentativo è riuscito, 2 ore fa: 31 decisioni su 381/,
-    "a colpo d'occhio si deve leggere quanto ha deciso, senza aprire niente");
-});
-
-test('seam _rendiScope: una serie di fallimenti si vede, e dice DA QUANTO', () => {
-  // **Questa e' la prova del difetto dell'11/09/2026.** Quattro fallimenti di
-  // fila in quaranta minuti erano indistinguibili da un avvio appena fatto.
-  // Mutazione che la uccide: mostrare solo l'ultimo tentativo invece della
-  // serie -- il testo perde «4 tentativi di fila» e il «da 40 minuti».
-  // Il giro riuscito in fondo e' cio' che rende la durata SAPUTA: la serie
-  // finisce li', e non c'e' niente da dire con «almeno».
-  const { corpo } = rendiScope(paginaScope({
-    tentativi: [
-      tentativo('non_riuscito', 120, 'il modello non ha risposto: RuntimeError'),
-      tentativo('non_riuscito', 720, 'il modello non ha risposto: RuntimeError'),
-      tentativo('non_riuscito', 1320, 'il modello non ha risposto: RuntimeError'),
-      tentativo('non_riuscito', 2400, 'il modello non ha risposto: RuntimeError'),
-      tentativo('riuscito', 3000, "31 decisioni su 381 entita' guardate"),
-    ] }));
-  assert.match(corpo.textContent, /Sta fallendo da 40 minuti/);
-  assert.match(corpo.textContent, /4 tentativi di fila/);
-  assert.ok(corpo.innerHTML.indexOf('--err-ink') !== -1,
-    'un guasto in corso costa dati veri, per sempre: si vede');
-});
-
-test('seam _rendiScope: con l\'elenco pieno di fallimenti si dice «almeno», non un numero preciso', () => {
-  // L'elenco arriva a dieci: se sono dieci fallimenti, da quanto duri non si
-  // SA. Un numero preciso su un fatto troncato e' un dato dedotto spacciato
-  // per uno letto -- il difetto n.4 di questo progetto.
-  // Mutazione che la uccide: togliere il ramo «almeno».
-  const tentativi = [];
-  for (let n = 0; n < 10; n++) tentativi.push(tentativo('non_riuscito', 120 + n * 600, 'niente da fare'));
-  const { corpo } = rendiScope(paginaScope({ tentativi: tentativi }));
-  assert.match(corpo.textContent, /almeno 10 tentativi di fila/);
-  assert.match(corpo.textContent, /più indietro di così non si vede/,
-    "la pagina non nomina «dieci»: il tetto vive nell'archivio, e ricopiarlo "
-    + 'qui sarebbe un doppione destinato a mentire quando cambia');
-});
-
-test('seam _rendiScope: quando sta fallendo la storia è già APERTA, altrimenti no', () => {
-  // Le altre rivelazioni di questa pagina nascono chiuse perche' sono un
-  // DETTAGLIO -- «i dati sono gia' nel payload, chi vuole apre»; questa nasce
-  // aperta per URGENZA, che e' un'altra ragione e vale solo nel caso brutto.
-  // (La prima stesura citava «un'area con 1.224 entita'»: quel numero vive in
-  // `tree-route.js:348`, parla di una CASA e riguarda un'altra pagina --
-  // motivazione falsa, trovata dalla review indipendente dell'11/09/2026.)
-  // Mutazione che la uccide: passare sempre `false` a `openByDefault`.
-  const rotto = rendiScope(paginaScope({
-    tentativi: [tentativo('non_riuscito', 120, 'x'), tentativo('non_riuscito', 720, 'x')] }));
-  const sano = rendiScope(paginaScope({
-    tentativi: [tentativo('riuscito', 120, '3 decisioni su 4 entita\' guardate')] }));
-
-  const apertoRotto = Array.from(rotto.corpo.querySelectorAll('button[aria-expanded]'))
-    .some((b) => b.getAttribute('aria-expanded') === 'true');
-  const apertoSano = Array.from(sano.corpo.querySelectorAll('button[aria-expanded]'))
-    .some((b) => b.getAttribute('aria-expanded') === 'true');
-
-  assert.ok(apertoRotto, 'un guasto in corso non si va a cercare: si trova aperto');
-  assert.ok(!apertoSano, 'quando va tutto bene la storia è rumore: resta chiusa');
-});
-
-test('seam _rendiScope: un turno in attesa DOPO una serie di fallimenti non nasconde la serie', () => {
-  // **Il difetto che la review ha trovato, ed e' quello da cui nasce la
-  // fetta, ricostruito dalla pagina nuova.** Dopo un fallimento il giro
-  // riaccoda, quindi la sequenza VERA che l'archivio produce ha «accodata» in
-  // cima e i fallimenti sotto: contando la serie dall'indice 0 il conto
-  // finiva a zero, e quaranta minuti di guasto tornavano ad avere la faccia
-  // di un'attesa di un minuto -- calma, elenco chiuso.
-  // Mutazione che la uccide: contare i fallimenti dall'indice 0 invece che
-  // dalla prima voce che non sia «accodata».
-  const { corpo } = rendiScope(paginaScope({
-    tentativi: [
-      tentativo('accodata', 30, 'chiesto al piano'),
-      tentativo('non_riuscito', 600, 'il modello non ha risposto: RuntimeError'),
-      tentativo('non_riuscito', 1200, 'il modello non ha risposto: RuntimeError'),
-      tentativo('non_riuscito', 1800, 'il modello non ha risposto: RuntimeError'),
-      tentativo('riuscito', 2400, '31 decisioni su 381 entita\' guardate'),
-    ] }));
-  assert.match(corpo.textContent, /3 tentativi di fila non sono riusciti/);
-  assert.ok(corpo.innerHTML.indexOf('--err-ink') !== -1,
-    'sta ancora fallendo: l\'attesa in corso non cancella la serie sotto');
-});
-
-test('seam _rendiScope: un esito che la pagina non conosce non la fa esplodere', () => {
-  // **Questa prova e' nata verde per la ragione sbagliata.** La prima stesura
-  // usava «scaduta», che pero' e' un esito CONOSCIUTO e conta fra i guasti: il
-  // ramo della serie lo copriva e la guardia non veniva mai toccata. Mutazione
-  // ESEGUITA l'11/09/2026 (`run > 1` -> `run >= 0`, che toglie la guardia):
-  // verde. Riscritta con un esito che la pagina non conosce davvero.
-  //
-  // Senza guardia, `tentativi[inizio + run - 1]` con `run === 0` legge
-  // `tentativi[-1]` -- `undefined` -- e l'eccezione porta via TUTTE E SEI le
-  // parti della sezione: la pagina che deve dire «sta funzionando?» muore.
-  const { corpo } = rendiScope(paginaScope({
-    tentativi: [tentativo('boh', 120, 'un esito che questa pagina non conosce'),
-                tentativo('non_riuscito', 720, 'x')] }));
-  assert.ok(titoli(corpo).includes('Quanto scrive al giorno'),
-    "la sezione dopo esiste ancora: niente e' esploso");
-  assert.match(corpo.textContent, /un esito che questa pagina non conosce/);
-});
-
-test('seam _rendiScope: un tentativo di un mese fa si dice in giorni, non in 840 ore', () => {
-  // Su una casa SANA i tentativi avvengono alla cadenza -- 84 ore su questa
-  // casa -- quindi dieci righe sono piu' di un mese. Il commento diceva «per
-  // costruzione sono recenti»: falso.
-  // Mutazione che la uccide: togliere la soglia dei giorni da `fmtDuration`.
-  const { corpo } = rendiScope(paginaScope({
-    tentativi: [tentativo('riuscito', 35 * 86400, '31 decisioni su 381 entita\' guardate')] }));
-  assert.doesNotMatch(corpo.textContent, /\d{3,} ore/);
-  assert.match(corpo.textContent, /giorni fa/);
-});
-
-/* ---------------------------------------------------------- il resoconto (§9)
-
-   La sezione 03 rende il resoconto del giorno PER UN UMANO. Il resoconto non è
-   fatto per un umano — serve all'analista, e il suo documento markdown è
-   pensato per stare in un prompt — ma la pagina rende lo STESSO dato con
-   l'idioma suo: stesso archivio, due rese. È la ragione per cui il documento
-   si deriva invece di essere archiviato. */
-
-function resoconto(extra) {
-  return Object.assign({ giorno: '2026-09-13', misure: [], forme: [], cronaca: [] }, extra || {});
-}
-
-function misura(extra) {
-  return Object.assign({
-    soggetto: 'dev1', nome: 'Inverter', misura: 'prodotta',
-    operazione: 'somma_periodo', valore: 23.71, unita: 'kWh', copertura: 1,
-  }, extra || {});
-}
-
-/* Una misura che NON si e' potuta fare: `valore` va **tolta**, non messa a
-   `undefined` -- la pagina (come `as_document`) separa le due liste con
-   `'valore' in m`, e una chiave presente a `undefined` sarebbe «calcolata». */
-function nonCalcolabile(nome, perche) {
-  const m = misura({ misura: nome, non_calcolabile: perche });
-  delete m.valore;
-  delete m.unita;
-  delete m.copertura;
-  return m;
-}
-
-function rendiAnalisi(payload) {
-  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
-  const corpo = document.createElement('div');
-  window.HirisWatcherRoute._rendiAnalisi(corpo, payload.analisi);
-  return { window, document, corpo };
-}
-
-function rendiResoconto(payload) {
-  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
-  const corpo = document.createElement('div');
-  window.HirisWatcherRoute._rendiResoconto(corpo, payload);
-  return { window, document, corpo };
-}
-
-test('seam _rendiResoconto: «cosa non si sa» viene PRIMA delle misure', () => {
-  // Mutazione che la uccide: spostare il blocco `ignote` dopo la griglia.
-  const { corpo } = rendiResoconto(resoconto({
-    misure: [misura(), nonCalcolabile('autosufficienza',
-      'copertura 8%, sotto il minimo del 75%')],
-  }));
-
-  const testo = corpo.textContent;
-  assert.ok(testo.indexOf('Cosa non si sa') >= 0, 'la sezione c\'e\'');
-  assert.ok(testo.indexOf('Cosa non si sa') < testo.indexOf('Le misure'),
-    'in fondo a una tabella di numeri buoni non salterebbe all\'occhio, ed e\' la ' +
-    'parte su cui il proprietario puo\' fare qualcosa');
-  assert.match(testo, /copertura 8%/);
-});
-
-test('seam _rendiResoconto: la copertura si dice solo quando NON e\' piena', () => {
-  // Mutazione che la uccide: togliere `&& m.copertura < 1` dalla guardia.
-  const piena = rendiResoconto(resoconto({ misure: [misura()] }));
-  assert.doesNotMatch(piena.corpo.textContent, /del giorno/,
-    '«su 100% del giorno» accanto a ogni numero e\' rumore su cui l\'occhio smette ' +
-    'di fermarsi, ed e\' proprio quando non e\' piena che deve fermarsi');
-
-  const parziale = rendiResoconto(resoconto({ misure: [misura({ copertura: 0.83 })] }));
-  assert.match(parziale.corpo.textContent, /83% del giorno/);
-});
-
-test('seam _rendiResoconto: la cronaca dice quando, chi, cosa — e i cambi di attributo', () => {
-  // Mutazione che la uccide: non appendere la coda dei cambi di attributo.
-  const { corpo } = rendiResoconto(resoconto({
-    cronaca: [{
-      quando_ts: 1789219800, fine_ts: null, chi: 'climate.soggiorno',
-      nome: 'Termostato Soggiorno', cosa: 'heat',
-      attributi: [{ quando_ts: 1789223400, valori: { hvac_action: 'idle' } }],
-    }],
-  }));
-
-  const testo = corpo.textContent;
-  assert.match(testo, /Termostato Soggiorno/);
-  assert.match(testo, /in corso/, '«ancora in corso» e\' un fatto, non un buco');
-  assert.match(testo, /1 cambio di attributo/);
-});
-
-test('seam _rendiResoconto: un giorno senza niente lo DICE, e non tace', () => {
-  // «quel giorno non e' successo niente» e «quel giorno non l'abbiamo
-  // guardato» sono due cose diverse: la pagina deve dire la prima.
-  // Mutazione che la uccide: tornare presto quando misure e cronaca sono vuote.
-  const { corpo } = rendiResoconto(resoconto());
-
-  assert.match(corpo.textContent, /Nessuna misura per questo giorno/);
-  assert.match(corpo.textContent, /Nessun fatto/);
-});
-
-/* --------------------------------------- il resoconto, montato sulla pagina
-
-   Le prove qui sopra pinnano la RESA. Queste pinnano il FILO: la chiave che
-   la rotta usa, e il fatto che il giorno sia uno solo per le due sezioni. È
-   la classe di difetto che nessuna prova di resa può vedere -- `corpo.fatti`
-   al posto di `corpo.resoconto` renderebbe una sezione vuota, in silenzio,
-   con la suite tutta verde. */
-
-test('mount: la sezione 02 legge la chiave «resoconto» della rotta, e rende la misura', async () => {
-  // Mutazione che la uccide: in `loadReport`, `occurrence.corpo.risultato`
-  // (o qualunque altro nome) al posto di `occurrence.corpo.resoconto`.
-  const { window, document } = montaConServer({
-    resoconto: { resoconto: resoconto({ misure: [misura()] }) },
-  });
-  window.HirisWatcherRoute.mount();
-  await tick(20);
-
-  const card3 = document.querySelectorAll('.section-card')[1];
-  assert.ok(card3, 'la sezione 03 deve esistere sulla pagina');
-  assert.match(card3.textContent, /Inverter/);
-  assert.match(card3.textContent, /23\.71 kWh/);
-});
-
-
-test('mount: la pagina apre su IERI — OGGI non ha ancora un resoconto (si scrive alle 00:20)', async () => {
-  // Il selettore nasce su ieri, e sono LE DUE sezioni a seguirlo. Chiedere
-  // OGGI darebbe un 404 a ogni apertura della pagina, su tutt'e due.
-  // Mutazione che la uccide: `dayInput.value = localToday()`.
-  const ctx = montaConServer();
-  ctx.window.HirisWatcherRoute.mount();
-  await tick(20);
-
-  const report = ctx.chiamate.filter((u) => u.indexOf('api/mind/report') === 0);
-  assert.equal(report.length, 1, 'una sola richiesta all\u2019apertura');
-  assert.ok(report[0].indexOf(IERI) !== -1,
-    'deve chiedere ieri (' + IERI + '), ha chiesto: ' + report[0]);
-  assert.ok(report[0].indexOf(OGGI) === -1, 'e non oggi');
-});
-
-
-test('mount: un giorno senza resoconto (404) lo SPIEGA, e non dice che non è successo niente', async () => {
-  // «non c'è ancora» e «non è successo niente» sono due cose diverse, e la
-  // seconda al posto della prima sarebbe una bugia tranquillizzante.
-  // Mutazione che la uccide: togliere il ramo `status === 404`.
-  const { window, document } = montaConServer({ resocontoStatus: 404 });
-  window.HirisWatcherRoute.mount();
-  await tick(20);
-
-  const card3 = document.querySelectorAll('.section-card')[1];
-  assert.match(card3.textContent, /non c’è ancora un resoconto/);
-  assert.match(card3.textContent, /00:20/);
-});
-
-test('seam _rendiResoconto: le forme orarie si DICONO, non si stampano', () => {
-  // Misurato sulla casa vera il 14/09/2026: otto serie orarie pesavano il 75%
-  // delle misure del giorno. Stampate in una griglia diventavano una riga di
-  // «[object Object],[object Object],…» -- il contrario di leggibile. Si dice
-  // che ci sono, con quanti punti, e il dato resta nell'archivio.
-  // Mutazione che la uccide: non rendere affatto `forme`.
-  const { corpo } = rendiResoconto(resoconto({
-    misure: [misura()],
-    forme: [{ soggetto: 'dev1', nome: 'Inverter', misura: 'forma_produzione',
-              operazione: 'per_ora', unita: 'kWh', copertura: 1,
-              valore: [{ ora: 'x', valore: 1 }, { ora: 'y', valore: 2 }] }],
-  }));
-
-  const testo = corpo.textContent;
-  assert.match(testo, /forma_produzione/);
-  assert.match(testo, /2 punti orari/);
-  assert.doesNotMatch(testo, /\[object Object\]/,
-    'una serie non si stampa: si dice');
-});
-
-test('seam _rendiResoconto: un giorno senza forme non apre la sezione', () => {
-  // Un titolo sopra il vuoto e' rumore: la sezione compare solo se c'e'.
-  // Mutazione che la uccide: rendere il titolo sempre.
-  const { corpo } = rendiResoconto(resoconto({ misure: [misura()] }));
-  assert.doesNotMatch(corpo.textContent, /Le forme del giorno/);
-});
-
-/* ------------------------------------------- l'obiettivo si SCRIVE (§11)
-
-   Misurato sulla casa vera il 14/09/2026: l'obiettivo era ancora quello di
-   fabbrica, `scritto_ts: null`, perché `set_objective` non aveva NESSUN
-   chiamante — né rotta, né campo, né strumento in chat. L'osservatore
-   decideva cosa guardare contro una frase generica, e la spec lo chiama
-   «obiettivo = prompt». */
-
-test('seam _rendiScope: l’obiettivo si può scrivere, e il campo parte da quello di adesso', () => {
-  // Mutazione che la uccide: rendere l'obiettivo di sola lettura.
-  const { corpo } = rendiScope(paginaScope());
-  const campo = corpo.querySelector('textarea');
-  assert.ok(campo, 'ci deve essere un campo per scriverlo');
-  assert.equal(campo.value, OBIETTIVO_DI_PROVA.testo,
-    'parte da quello di adesso: si corregge, non si riscrive da zero');
-  assert.ok(bottone(corpo, 'Salva l’obiettivo'), 'e un bottone per salvarlo');
-});
-
-test('mount: salvare l’obiettivo lo manda alla rotta, col testo scritto', async () => {
-  // Mutazione che la uccide: mandare il testo vecchio invece di quello nel campo.
-  const ctx = montaConServer();
-  ctx.window.HirisWatcherRoute.mount();
-  await tick(20);
-
-  const campo = ctx.document.querySelector('textarea');
-  campo.value = 'spendere meno di sera';
-  bottone(ctx.document, 'Salva l’obiettivo').click();
-  await tick(20);
-
-  const scritte = ctx.chiamate.filter((u) => u.indexOf('api/mind/objective') === 0);
-  assert.equal(scritte.length, 1, JSON.stringify(ctx.chiamate));
-  assert.equal(ctx.corpiInviati[0], JSON.stringify({ testo: 'spendere meno di sera' }));
-});
-
-test('mount: un obiettivo rifiutato DICE perché, e non svuota il campo', async () => {
-  // Il proprietario ha appena scritto una frase: perderla sarebbe il danno
-  // peggiore dei due.
-  // Mutazione che la uccide: ricaricare la sezione anche quando la rotta rifiuta.
-  const ctx = montaConServer({
-    obiettivoStatus: 400,
-    obiettivo: { errore: 'un obiettivo vuoto non si scrive: è la sola manopola' },
-  });
-  ctx.window.HirisWatcherRoute.mount();
-  await tick(20);
-
-  const campo = ctx.document.querySelector('textarea');
-  campo.value = '   ';
-  bottone(ctx.document, 'Salva l’obiettivo').click();
-  await tick(20);
-
-  assert.match(ctx.document.getElementById('route-outlet').textContent,
-    /sola manopola/);
-  assert.equal(ctx.document.querySelector('textarea').value, '   ',
-    'il campo resta com’era: la frase appena scritta non si butta');
-});
-
-test('mount: riscrivere lo STESSO obiettivo non è un errore, e lo dice', async () => {
-  // `scritto: false` vuol dire «c'era già», non «non ha funzionato»: dirlo
-  // come un guasto insegnerebbe a diffidare dei guasti veri.
-  // Mutazione che la uccide: trattare `scritto: false` come un errore.
-  const ctx = montaConServer({
-    obiettivo: { obiettivo: OBIETTIVO_DI_PROVA, scritto: false },
-  });
-  ctx.window.HirisWatcherRoute.mount();
-  await tick(20);
-
-  bottone(ctx.document, 'Salva l’obiettivo').click();
-  await tick(20);
-
-  const testo = ctx.document.getElementById('route-outlet').textContent;
-  assert.match(testo, /era già questo/);
-  assert.doesNotMatch(testo, /non è stato possibile/i);
-});
-
-/* ------------------------------------------------- l'analista sulla pagina
-
-   Il terzo attore parla dal 15/09/2026, e per un giorno la sua voce e'
-   esistita solo su una rotta: la pagina prometteva «domani ragionera'
-   l'analista» mentre l'analista aveva gia' parlato. Un dato che nessuno puo'
-   chiedere non esiste — e questo si poteva chiedere solo con curl. */
-
-function analisi(osservazioni) {
-  return { analisi: { osservazioni: osservazioni || [] } };
-}
-
-function osservazione(extra) {
-  return Object.assign({
-    soggetto: 'dev1', nome: 'Inverter', misura: 'prelievo', chiave: null,
-    unita: 'kWh', innesco: 1, cosa: 'il prelievo dalla rete è salito',
-    spiegato: null, cosa_cambierebbe: 'spostare i consumi sulle ore di sole',
-    valore: 0.74, copertura: 1, quanti_scarti: 2.75, mediana: 0.3, base: 19,
-  }, extra || {});
-}
-
-test('seam _rendiAnalisi: ogni osservazione dice cosa, perché, e cosa cambierebbe', () => {
-  // Le quattro cose che la spec §10 elenca. Mutazione che la uccide: non
-  // rendere `cosa_cambierebbe`.
-  const { corpo } = rendiAnalisi(analisi([osservazione()]));
-  const testo = corpo.textContent;
-  assert.match(testo, /Inverter/);
-  assert.match(testo, /il prelievo dalla rete è salito/);
-  assert.match(testo, /spostare i consumi sulle ore di sole/);
-  assert.match(testo, /0\.74 kWh/);
-});
-
-test('seam _rendiAnalisi: l’innesco si dice a parole, non col numero', () => {
-  // «1» non vuol dire niente per chi legge: i tre inneschi hanno un nome
-  // nella spec, ed è quello che va in pagina.
-  // Mutazione che la uccide: stampare `o.innesco`.
-  const { corpo } = rendiAnalisi(analisi([
-    osservazione({ innesco: 1 }),
-    osservazione({ innesco: 2, misura: 'batteria' }),
-    osservazione({ innesco: 3, misura: 'bilancio' }),
-  ]));
-  const testo = corpo.textContent;
-  assert.match(testo, /è cambiato/);
-  assert.match(testo, /stabile e costa/);
-  assert.match(testo, /non c’è più/);
-  assert.doesNotMatch(testo, /innesco 1/);
-});
-
-test('seam _rendiAnalisi: ciò che è SPIEGATO si distingue da ciò che non lo è', () => {
-  // È la differenza fra una scoperta e una conferma, e la spec la chiede
-  // esplicitamente. Mutazione che la uccide: non rendere `spiegato`.
-  const { corpo } = rendiAnalisi(analisi([
-    osservazione({ spiegato: 'coerente con il prelievo dello stesso giorno' }),
-  ]));
-  assert.match(corpo.textContent, /coerente con il prelievo/);
-});
-
-test('seam _rendiAnalisi: lo scostamento si dice col suo numero e con la base', () => {
-  // «Non si inventa una soglia»: il numero c’è, e con quanti giorni di storia
-  // è stato calcolato — «la base è sottile» è un fatto da leggere.
-  // Mutazione che la uccide: non rendere `base`.
-  const { corpo } = rendiAnalisi(analisi([osservazione()]));
-  const testo = corpo.textContent;
-  assert.match(testo, /2\.75/);
-  assert.match(testo, /19 giorni/);
-});
-
-test('seam _rendiAnalisi: il SILENZIO si dice, e non sembra un guasto', () => {
-  // «Il silenzio è un esito legittimo»: zero osservazioni vuol dire che ha
-  // guardato e non c’era niente da dire.
-  // Mutazione che la uccide: lasciare la sezione vuota.
-  const { corpo } = rendiAnalisi(analisi([]));
-  assert.match(corpo.textContent, /niente da segnalare/);
-});
-
-test('mount: la sezione 03 legge la chiave «analisi» della rotta', () => {
-  // Mutazione che la uccide: `corpo.osservazioni` al posto di `corpo.analisi`.
-  const ctx = montaConServer({ analisi: analisi([osservazione()]) });
-  ctx.window.HirisWatcherRoute.mount();
-  return tick(20).then(function () {
-    const card3 = ctx.document.querySelectorAll('.section-card')[2];
-    assert.ok(card3, 'la sezione 03 deve esistere');
-    assert.match(card3.textContent, /Inverter/);
-  });
-});
-
-test('mount: un giorno mai analizzato (404) lo SPIEGA', () => {
-  // «Non ho guardato» e «ho guardato e non c’era niente» sono due cose
-  // diverse, e la pagina deve dirle diverse.
-  // Mutazione che la uccide: mostrare «niente da segnalare» anche sul 404.
-  const ctx = montaConServer({ analisiStatus: 404, analisi: { errore: 'x' } });
-  ctx.window.HirisWatcherRoute.mount();
-  return tick(20).then(function () {
-    const testo = ctx.document.querySelectorAll('.section-card')[2].textContent;
-    assert.match(testo, /non ha ancora guardato/);
-    assert.doesNotMatch(testo, /niente da segnalare/);
-  });
-});
-
-/* -------------------------------------------- il sapere sulla pagina (§8)
-
-   «Se un dato c'è e nessuno può chiederlo, non esiste»: il sapere si leggeva
-   da tre punti del codice e da nessuna pagina. E le righe che il modello non
-   ha capito sono precisamente quelle che il proprietario risolverebbe in
-   dieci secondi. */
-
-function sapereFinto(extra) {
-  return Object.assign({
-    conteggi: { totale: 180, righe: [
-      { specie: 'tipo', campo: 'significato', provenienza: 'importato', quante: 177 },
-      { specie: 'dispositivo', campo: 'ricetta', provenienza: 'dedotto', quante: 3 },
-    ] },
-    non_capito: [],
-    // Task 9 (sezione 04): le due chiavi nuove di `handle_knowledge`, sempre
-    // presenti (anche vuote) cosi' i test che non le toccano non fanno
-    // scoppiare `renderCorrections`/`renderSeedGroups`/`renderOpenQuestions`.
-    giudizi: [],
-    domande_aperte: [],
-  }, extra || {});
-}
-
-/* Una riga di `judgment_listing` (mind/judgments.py), forma vera di
-   `handle_knowledge`: `{soggetto_genere, soggetto, campo, valore, da, chi,
-   quando_ts}`. Di proposito il default e' un'entita' con `da: "seme"` --
-   ogni prova sovrascrive solo cio' che le serve. */
-function giudizio(extra) {
-  return Object.assign({
-    soggetto_genere: 'entita', soggetto: 'binary_sensor.occupancy', campo: 'genere',
-    valore: 'presenza', da: 'seme', chi: 'seme del repo', quando_ts: 1787000000,
-  }, extra || {});
-}
-
-// Una `OpenQuestion` cosi' come la rende `handle_knowledge`
-// (`{chiavi, domanda}` — spec 2026-09-16 §7).
-function domandaAperta(extra) {
-  return Object.assign({
-    chiavi: ['stato:lock:jammed'],
-    domanda: 'Una serratura `jammed`: è un **guasto**?',
-  }, extra || {});
-}
-
-// Percorre gli antenati fino a `root` (escluso): vero se uno qualunque porta
-// `hidden` -- serve a provare il flusso a DUE PASSI di «Torna al seme» senza
-// indovinare la profondita' del DOM che lo costruisce.
-function isHiddenAncestor(nodo, root) {
-  for (var n = nodo; n && n !== root; n = n.parentElement) {
-    if (n.hidden) return true;
-  }
-  return false;
-}
-
-// La riga `.jr-row` di un dato soggetto, dentro la sezione 04 -- serve a
-// scoprire IL bottone giusto quando la sezione ne porta piu' di uno con lo
-// stesso testo (es. «Scrivi» del modulo di aggiunta e «Scrivi» di un
-// editor aperto).
-function trovaRigaGiudizio(card, soggetto) {
-  return Array.from(card.querySelectorAll('.jr-row')).find((r) => {
-    var s = r.querySelector('.jr-subject');
-    return s && s.textContent === soggetto;
-  });
-}
-
-function rendiSapere(payload) {
-  const { window, document } = loadScripts(SCRIPTS, { html: fixtureHtml() });
-  const corpo = document.createElement('div');
-  window.HirisWatcherRoute._rendiSapere(corpo, payload);
-  return { window, document, corpo };
-}
-
-test('seam _rendiSapere: dice cosa ha capito, per specie e provenienza', () => {
-  // «177 significati importati» e «tre ricette dedotte dal modello» sono due
-  // fatti diversi. Mutazione che la uccide: stampare il solo totale.
-  const { corpo } = rendiSapere(sapereFinto());
-  const testo = corpo.textContent;
-  assert.match(testo, /177/);
-  assert.match(testo, /significati/);
-  assert.match(testo, /importato/);
-  assert.match(testo, /ricette/);
-});
-
-test('seam _rendiSapere: ciò che NON ha capito viene prima, con chi e quando', () => {
-  // È l’unica parte su cui il proprietario può fare qualcosa: in fondo a un
-  // elenco di conteggi non salterebbe all’occhio — stessa regola di «cosa non
-  // si sa» nel resoconto.
-  // Mutazione che la uccide: metterlo dopo i conteggi.
-  const { corpo } = rendiSapere(sapereFinto({ non_capito: [
-    { specie: 'dispositivo', soggetto: 'dev1', campo: 'ricetta_non_capita',
-      valore: 'non ho capito cosa misura', provenienza: 'dedotto',
-      chi: 'modello (ponte)', quando_ts: 1787000000 },
-  ] }));
-  const testo = corpo.textContent;
-  assert.ok(testo.indexOf('non ho capito cosa misura') < testo.indexOf('177'),
-    'ciò su cui si può agire viene prima');
-  assert.match(testo, /modello \(ponte\)/);
-});
-
-test('seam _rendiSapere: se ha capito tutto lo DICE, e non tace', () => {
-  // Un elenco vuoto senza una parola sembrerebbe una sezione rotta.
-  // Mutazione che la uccide: non scrivere niente quando non c’è niente.
-  const { corpo } = rendiSapere(sapereFinto());
-  assert.match(corpo.textContent, /niente che non abbia capito/);
-});
-
-test('seam _rendiSapere: «non serve una ricetta» si legge in italiano, non in nome di colonna', () => {
-  // Sulla casa vera sono 18 dispositivi su 52: la piastrella più grossa della
-  // sezione. `ricetta_non_serve · dispositivo` si legge come un guasto, ed è
-  // il contrario — è il modello che ha guardato e ha detto che non c'è niente
-  // da misurare. La traduzione avviene al confine, che è questa pagina.
-  // Mutazione che la uccide: stampare il nome del campo così com'è.
-  const { corpo } = rendiSapere(sapereFinto({ conteggi: { totale: 18, righe: [
-    { specie: 'dispositivo', campo: 'ricetta_non_serve', provenienza: 'dedotto',
-      quante: 18 },
-  ] } }));
-  assert.match(corpo.textContent, /niente da misurare/);
-  assert.doesNotMatch(corpo.textContent, /ricetta_non_serve/);
-});
-
-test('mount: la sezione 04 legge il sapere dalla sua rotta', () => {
-  // Mutazione che la uccide: leggere `corpo.sapere` invece della busta vera.
-  const ctx = montaConServer({ sapere: sapereFinto() });
-  ctx.window.HirisWatcherRoute.mount();
-  return tick(20).then(function () {
-    const card4 = ctx.document.querySelectorAll('.section-card')[3];
-    assert.ok(card4, 'la sezione 04 deve esistere');
-    assert.match(card4.textContent, /177/);
-  });
-});
-
-/* --------------------------------------------------- i giudizi sui tipi (Task 9)
-
-   Forma approvata dal proprietario il 17/09/2026
-   (.superpowers/sdd/2026-09-16-il-giudizio-dei-tipi/task-9-ux-approvata.md):
-   «Cosa non ha capito» -> «Le tue correzioni» (righe `proprietario`+`altro`,
-   modulo di aggiunta in testa) -> «I giudizi del seme» (sette gruppi chiusi:
-   i sei approvati il 17/09/2026 piu' `da_sapere_subito`, 3.50.0)
-   -> «Le domande aperte» (sei, chiuse) -> «Cosa ha capito». */
-
-test('seam _rendiSapere: con solo giudizi «dal seme» non c’è «Torna al seme»', () => {
-  // Mutazione che la uccide: mostrare il comando anche per `da: "seme"`.
-  const { corpo } = rendiSapere(sapereFinto({ giudizi: [giudizio({ da: 'seme' })] }));
-  assert.equal(bottone(corpo, 'Torna al seme'), undefined);
-});
-
-test('mount: una riga «da: proprietario» mostra la data e il comando a due passi «Torna al seme», che manda valore: null', async () => {
-  // Mutazione che la uccide: non mostrare la data con l'anno, o mandare un
-  // valore diverso da null, o saltare il secondo passo.
-  const g = giudizio({
-    da: 'proprietario', chi: 'proprietario', quando_ts: 1787000000,
-    campo: 'notevole', valore: 'true',
-  });
-  const ctx = montaConServer({ sapere: sapereFinto({ giudizi: [g] }) });
-  ctx.window.HirisWatcherRoute.mount();
-  await tick(20);
-
-  const card4 = ctx.document.querySelectorAll('.section-card')[3];
-  assert.match(card4.textContent, /Corretto da te il \d{2}\/\d{2}\/\d{4}/);
-
-  const start = bottone(ctx.document, 'Torna al seme', card4);
-  assert.ok(start, 'il comando esiste per una riga corretta dal proprietario');
-  const yes = bottone(ctx.document, 'Sì, torna al seme', card4);
-  assert.ok(yes, 'il secondo passo esiste nel DOM (nascosto)');
-  assert.equal(isHiddenAncestor(yes, card4), true,
-    'il secondo passo resta nascosto finché non si preme il primo — niente confirm()');
-
-  start.click();
-  assert.equal(isHiddenAncestor(yes, card4), false,
-    'il secondo passo compare dopo aver premuto il primo');
-  yes.click();
-  await tick(20);
-
-  const scritte = ctx.chiamate.filter((u) => u.indexOf('api/mind/judgment') === 0);
-  assert.equal(scritte.length, 1, JSON.stringify(ctx.chiamate));
-  const inviato = JSON.parse(ctx.corpiInviati[ctx.corpiInviati.length - 1]);
-  assert.deepEqual(inviato, {
-    soggetto_genere: g.soggetto_genere, soggetto: g.soggetto, campo: g.campo, valore: null,
-  });
-});
-
-test('seam _rendiSapere: una riga «da: altro» mostra il badge di avviso, giorno/mese SENZA anno, e chi', () => {
-  // Mutazione che la uccide: usare `badge-on` anche per «altro», o scrivere
-  // l'anno (la forma approvata lo vuole SOLO per «proprietario»).
-  const g = giudizio({ da: 'altro', chi: 'qualcun altro', quando_ts: 1787000000, campo: 'riposo' });
-  const { corpo } = rendiSapere(sapereFinto({ giudizi: [g] }));
-  const badge = corpo.querySelector('.agent-badge.badge-warn');
-  assert.ok(badge, 'la riga «altro» porta il badge di avviso');
-  assert.match(badge.textContent, /Modificata a mano il \d{2}\/\d{2} da qualcun altro/);
-  assert.doesNotMatch(badge.textContent, /\d{4}/, 'niente anno per «altro» (forma approvata, punto 4)');
-});
-
-test('mount: correggere il genere manda {soggetto_genere, soggetto, campo: "genere", valore}, e un 400 mostra l’errore mantenendo la scelta', async () => {
-  // Mutazione che la uccide: mandare un corpo diverso, o svuotare/resettare
-  // la select dopo il rifiuto.
-  const g = giudizio({
-    da: 'seme', campo: 'genere', soggetto_genere: 'tipo', soggetto: 'binary_sensor.motion',
-    valore: 'presenza',
-  });
-  const ctx = montaConServer({
-    sapere: sapereFinto({ giudizi: [g] }),
-    giudizioStatus: 400,
-    giudizio: { errore: 'questo soggetto non si può correggere qui' },
-  });
-  ctx.window.HirisWatcherRoute.mount();
-  await tick(20);
-
-  const card4 = ctx.document.querySelectorAll('.section-card')[3];
-  const riga = trovaRigaGiudizio(card4, g.soggetto);
-  assert.ok(riga, 'la riga del seme esiste (dentro il gruppo «Genere»)');
-  bottone(ctx.document, 'Correggi', riga).click();
-  // Fix round 1 (IMPORTANT 2): il select non porta più `aria-label` -- ha
-  // un'etichetta VERA (`for`/`id`, `judgmentField`) invece di un doppione
-  // che l'avrebbe zittita per chi naviga per etichette.
-  const select = riga.querySelector('select');
-  assert.ok(select, 'l’editor del genere si apre dentro la riga');
-  assert.equal(select.labels[0].textContent, 'Genere', 'l’etichetta è associata, non solo aria-label');
-  select.value = 'sicurezza';
-  bottone(ctx.document, 'Scrivi', riga).click();
-  await tick(20);
-
-  assert.match(card4.textContent, /questo soggetto non si può correggere qui/);
-  assert.equal(select.value, 'sicurezza',
-    'il valore scelto resta: il proprietario non deve riscegliere dopo un rifiuto');
-
-  const inviato = JSON.parse(ctx.corpiInviati[ctx.corpiInviati.length - 1]);
-  assert.deepEqual(inviato, {
-    soggetto_genere: 'tipo', soggetto: 'binary_sensor.motion', campo: 'genere', valore: 'sicurezza',
-  });
-});
-
-test('mount: un 409 dice che la correzione è scritta ma non è in vigore, col motivo del server', async () => {
-  // Mutazione che la uccide: trattare il 409 come un successo silenzioso, o
-  // come un 400 qualunque (senza dire che l'istantanea è tornata al seme).
-  const g = giudizio({ da: 'seme', campo: 'genere', soggetto_genere: 'tipo', soggetto: 'light.dimmable' });
-  const ctx = montaConServer({
-    sapere: sapereFinto({ giudizi: [g] }),
-    giudizioStatus: 409,
-    giudizio: { errore: 'righe del sapere che non si interpretano: x', riga: null, impronta: 'y', da: 'solo seme' },
-  });
-  ctx.window.HirisWatcherRoute.mount();
-  await tick(20);
-
-  let card4 = ctx.document.querySelectorAll('.section-card')[3];
-  const riga = trovaRigaGiudizio(card4, g.soggetto);
-  bottone(ctx.document, 'Correggi', riga).click();
-  bottone(ctx.document, 'Scrivi', riga).click();
-  await tick(30);
-
-  card4 = ctx.document.querySelectorAll('.section-card')[3];
-  assert.match(card4.textContent, /non è in vigore/);
-  assert.match(card4.textContent, /righe del sapere che non si interpretano/);
-  assert.match(card4.textContent, /Il sapere legge solo il seme/);
-});
-
-test('seam _rendiSapere: le domande aperte compaiono con la domanda e il conteggio delle chiavi, i backtick diventano <code> e i "**" si tolgono', () => {
-  // Mutazione che la uccide: innerHTML col testo grezzo del server (i
-  // backtick/`**` restano testo invece di diventare <code>/sparire).
-  const domande = [domandaAperta({ domanda: 'Una serratura `jammed`: **è un guasto**?', chiavi: ['a', 'b', 'c'] })];
-  const { corpo } = rendiSapere(sapereFinto({ domande_aperte: domande }));
-  assert.match(corpo.textContent, /3 chiavi/);
-  const code = corpo.querySelector('code');
-  assert.ok(code, 'il backtick diventa un elemento <code>, non testo grezzo');
-  assert.equal(code.textContent, 'jammed');
-  assert.doesNotMatch(corpo.textContent, /\*\*/, 'i "**" si tolgono dal testo reso');
-});
-
-test('seam _rendiSapere: i gruppi del seme mostrano il conteggio calcolato dai dati, non scritto a mano', () => {
-  // Mutazione che la uccide: un numero letterale al posto del conteggio, o
-  // sommare le correzioni al totale invece di separarle col " · ".
-  const giudizi = [
-    giudizio({ campo: 'genere', da: 'seme', soggetto: 'light', soggetto_genere: 'tipo' }),
-    giudizio({ campo: 'genere', da: 'seme', soggetto: 'light.dimmable', soggetto_genere: 'tipo' }),
-    giudizio({ campo: 'genere', da: 'proprietario', soggetto: 'light.cucina', soggetto_genere: 'entita' }),
-    giudizio({ campo: 'riposo', da: 'seme', soggetto: 'switch', soggetto_genere: 'tipo' }),
-  ];
-  const { corpo } = rendiSapere(sapereFinto({ giudizi }));
-  const bottoni = Array.from(corpo.querySelectorAll('button'));
-  const genere = bottoni.find((b) => b.textContent.indexOf('Genere ·') === 0);
-  assert.ok(genere, 'il gruppo «Genere» esiste');
-  assert.match(genere.textContent, /2 dal seme/, 'due righe restano nel seme (la terza vive in «Le tue correzioni»)');
-  assert.match(genere.textContent, /1 corretta da te/);
-
-  const riposo = bottoni.find((b) => b.textContent.indexOf('Riposo ·') === 0);
-  assert.ok(riposo);
-  assert.equal(riposo.textContent, 'Riposo · 1', 'senza correzioni il gruppo mostra solo il totale');
-});
-
-/* Giro di correzioni 1, punto 7: erano UNA prova sola, e le sue due metà non
-   provavano la stessa cosa. Premere «Scrivi» senza radio scelto non arriva mai
-   alla guardia JS: i radio sono `required`, e la validazione nativa del form
-   (che jsdom implementa) ferma l'invio prima. Quella metà sorvegliava dunque
-   l'attributo `required`, non il codice di questo modulo -- e il nome della
-   prova diceva un'altra cosa. Due fatti, due prove. */
-
-test('mount: senza tipo/entità il modulo di aggiunta non manda niente -- lo ferma `required` (validazione nativa del form)', async () => {
-  // Mutazione che la uccide: togliere `input.required = true` da `radioOption`.
-  const ctx = montaConServer({ sapere: sapereFinto() });
-  ctx.window.HirisWatcherRoute.mount();
-  await tick(20);
-
-  const card4 = ctx.document.querySelectorAll('.section-card')[3];
-  const subjectInput = card4.querySelector('input[type=text]');
-  subjectInput.value = 'binary_sensor.occupancy';
-  assert.ok(Array.from(card4.querySelectorAll('input[type=radio]')).every((r) => r.required),
-    'i radio sono `required`: è lui a fermare l\'invio, e va detto qui');
-  bottone(ctx.document, 'Scrivi', card4).click();
-  await tick(20);
-
-  assert.equal(ctx.chiamate.filter((u) => u.indexOf('api/mind/judgment') === 0).length, 0,
-    'senza scegliere tipo/entità non si manda niente: soggetto_genere non esiste');
-  // E il messaggio della guardia JS NON compare: prova che l'invio si è
-  // fermato PRIMA del gestore 'submit', cioè nella validazione nativa. È
-  // questo che separa le due prove.
-  assert.doesNotMatch(card4.textContent, /Scegli se è un tipo o un’entità/);
-});
-
-/* La GUARDIA JS -- quella che ferma un `submit` che la validazione nativa non
-   ha visto -- è provata più sotto, «il modulo di aggiunta come <form> NON
-   manda niente se si invia senza scegliere tipo/entità»: non se ne scrive una
-   seconda qui. */
-
-test('mount: scelto tipo/entità, la scelta guida soggetto_genere', async () => {
-  // Mutazione che la uccide: ignorare quale dei due radio è stato scelto.
-  const ctx = montaConServer({ sapere: sapereFinto() });
-  ctx.window.HirisWatcherRoute.mount();
-  await tick(20);
-
-  const card4 = ctx.document.querySelectorAll('.section-card')[3];
-  const subjectInput = card4.querySelector('input[type=text]');
-  subjectInput.value = 'binary_sensor.occupancy';
-  const radioEntita = Array.from(card4.querySelectorAll('input[type=radio]')).find((r) => r.value === 'entita');
-  assert.ok(radioEntita, 'il radio «un\'entità» esiste');
-  radioEntita.checked = true;
-  bottone(ctx.document, 'Scrivi', card4).click();
-  await tick(20);
-
-  const scritte = ctx.chiamate.filter((u) => u.indexOf('api/mind/judgment') === 0);
-  assert.equal(scritte.length, 1, JSON.stringify(ctx.chiamate));
-  const inviato = JSON.parse(ctx.corpiInviati[ctx.corpiInviati.length - 1]);
-  assert.equal(inviato.soggetto_genere, 'entita');
-  assert.equal(inviato.soggetto, 'binary_sensor.occupancy');
-  assert.equal(inviato.campo, 'genere');
-});
-
-/* ============================================================================
-   Fix round 1 (revisione Fable, task-9-report.md): IMPORTANT 1/2/3, MINOR
-   4/5/6/7/8. Ogni prova qui sotto è stata scritta e vista ROSSA sul codice
-   PRIMA della correzione corrispondente (vedi task-9-report.md, sezione
-   «Fix round 1» per l'output di ogni corsa rossa).
-   ========================================================================= */
-
-// -- IMPORTANT 1: manca «la cronaca dei giorni passati si rifà da sola» -----
-
-test('seam _rendiSapere: una riga «da: proprietario» dice anche che la cronaca dei giorni passati si rifà da sola (forma approvata, punto 3)', () => {
-  // Mutazione che la uccide: non scrivere questa frase, o scriverla solo
-  // come notifica transitoria invece che accanto al badge della riga.
-  const g = giudizio({ da: 'proprietario', quando_ts: 1787000000 });
-  const { corpo } = rendiSapere(sapereFinto({ giudizi: [g] }));
-  const badge = corpo.querySelector('.agent-badge.badge-on');
-  assert.ok(badge, 'il badge «corretto da te» esiste');
-  assert.match(corpo.textContent, /La cronaca dei giorni passati si rifà da sola/);
-});
-
-test('seam _rendiSapere: la frase sulla cronaca NON compare per righe «seme» o «altro» (solo «proprietario» l’ha appena cambiata)', () => {
-  const giudizi = [giudizio({ da: 'seme', soggetto: 'light.a' }), giudizio({ da: 'altro', soggetto: 'light.b', chi: 'x' })];
-  const { corpo } = rendiSapere(sapereFinto({ giudizi }));
-  assert.doesNotMatch(corpo.textContent, /La cronaca dei giorni passati si rifà da sola/);
-});
-
-// -- IMPORTANT 2: label non associate (for/id), non solo aria-label ---------
-
-test('seam _rendiSapere: «Soggetto» e «Genere» del modulo di aggiunta hanno un’etichetta VERA (for/id), non solo aria-label', () => {
-  // Mutazione che la uccide: lasciare `judgmentField` senza `id`/`htmlFor`.
-  const { document, corpo } = rendiSapere(sapereFinto());
-  const subjectInput = corpo.querySelector('.jr-add-form input[type=text]');
-  assert.ok(subjectInput, 'il campo soggetto esiste');
-  assert.equal(subjectInput.labels && subjectInput.labels.length, 1,
-    'un’etichetta è associata al campo (non solo un placeholder)');
-  assert.equal(subjectInput.labels[0].textContent, 'Soggetto');
-
-  const select = corpo.querySelector('.jr-add-form select');
-  assert.ok(select, 'il select del genere esiste');
-  assert.equal(select.labels && select.labels.length, 1, 'un’etichetta è associata al select');
-  assert.equal(select.labels[0].textContent, 'Genere');
-  void document;
-});
-
-test('seam _rendiSapere: il select dell’editor del genere (dentro una riga) ha anch’esso un’etichetta associata', () => {
-  const g = giudizio({ campo: 'genere', da: 'seme', soggetto: 'light.editor_label' });
-  const { document, corpo } = rendiSapere(sapereFinto({ giudizi: [g] }));
-  const riga = trovaRigaGiudizio(corpo, g.soggetto);
-  bottone(document, 'Correggi', riga).click();
-  const select = riga.querySelector('select');
-  assert.ok(select, 'l’editor è aperto');
-  assert.equal(select.labels && select.labels.length, 1);
-  assert.equal(select.labels[0].textContent, 'Genere');
-});
-
-// -- IMPORTANT 3: il focus si perde su <body> in «Torna al seme» -----------
-
-test('mount: «Torna al seme» sposta il focus ad ogni passo — niente focus perso su <body>', async () => {
-  // Mutazione che la uccide: nascondere il bottone che ha il focus senza
-  // spostarlo altrove (start.hidden/confirmBox.hidden senza .focus()).
-  const g = giudizio({ da: 'proprietario', campo: 'notevole', soggetto: 'light.focus_revert' });
-  const ctx = montaConServer({ sapere: sapereFinto({ giudizi: [g] }) });
-  ctx.window.HirisWatcherRoute.mount();
-  await tick(20);
-
-  const card4 = ctx.document.querySelectorAll('.section-card')[3];
-  const riga = trovaRigaGiudizio(card4, g.soggetto);
-  const start = bottone(ctx.document, 'Torna al seme', riga);
-  const yes = bottone(ctx.document, 'Sì, torna al seme', riga);
-  const cancel = bottone(ctx.document, 'Annulla', riga);
-
-  start.click();
-  assert.equal(ctx.document.activeElement, yes,
-    'il focus passa al bottone di conferma quando si apre il secondo passo');
-
-  cancel.click();
-  assert.equal(ctx.document.activeElement, start,
-    '«Annulla» riporta il focus sul comando che aveva aperto il passo');
-});
-
-// -- MINOR 4: manca il punto dopo {errore} nel messaggio del 409 -----------
-
-test('mount: il messaggio del 409 mette un punto dopo {errore}, senza raddoppiarlo se l’errore lo porta già', async () => {
-  const g1 = giudizio({ da: 'seme', campo: 'genere', soggetto_genere: 'tipo', soggetto: 'light.p1' });
-  const ctx1 = montaConServer({
-    sapere: sapereFinto({ giudizi: [g1] }),
-    giudizioStatus: 409,
-    giudizio: { errore: 'righe del sapere che non si interpretano: x', riga: null, impronta: 'y', da: 'solo seme' },
-  });
-  ctx1.window.HirisWatcherRoute.mount();
-  await tick(20);
-  let card4 = ctx1.document.querySelectorAll('.section-card')[3];
-  bottone(ctx1.document, 'Correggi', trovaRigaGiudizio(card4, g1.soggetto)).click();
-  bottone(ctx1.document, 'Scrivi', trovaRigaGiudizio(card4, g1.soggetto)).click();
-  await tick(30);
-  card4 = ctx1.document.querySelectorAll('.section-card')[3];
-  assert.match(card4.textContent, /non si interpretano: x\. Il sapere legge solo il seme\./,
-    'un punto separa {errore} dalla frase successiva');
-  assert.doesNotMatch(card4.textContent, /x\.\. Il sapere/, 'niente punto raddoppiato');
-
-  const g2 = giudizio({ da: 'seme', campo: 'genere', soggetto_genere: 'tipo', soggetto: 'light.p2' });
-  const ctx2 = montaConServer({
-    sapere: sapereFinto({ giudizi: [g2] }),
-    giudizioStatus: 409,
-    giudizio: { errore: 'il seme non ce l’ha.', riga: null, impronta: 'y', da: 'solo seme' },
-  });
-  ctx2.window.HirisWatcherRoute.mount();
-  await tick(20);
-  let card4b = ctx2.document.querySelectorAll('.section-card')[3];
-  bottone(ctx2.document, 'Correggi', trovaRigaGiudizio(card4b, g2.soggetto)).click();
-  bottone(ctx2.document, 'Scrivi', trovaRigaGiudizio(card4b, g2.soggetto)).click();
-  await tick(30);
-  card4b = ctx2.document.querySelectorAll('.section-card')[3];
-  assert.match(card4b.textContent, /il seme non ce l’ha\. Il sapere legge solo il seme\./);
-  assert.doesNotMatch(card4b.textContent, /ha\.\. Il sapere/, 'errore già puntato non raddoppia il punto');
-});
-
-// -- MINOR 5: le righe «altro» non entrano nel conteggio del gruppo del seme
-
-test('seam _rendiSapere: il gruppo del seme conta anche le righe «altro» (modificate a mano)', () => {
-  // Mutazione che la uccide: contare solo `da === 'proprietario'`.
-  const giudizi = [
-    giudizio({ campo: 'riposo', da: 'seme', soggetto: 'switch' }),
-    giudizio({ campo: 'riposo', da: 'seme', soggetto: 'switch.x' }),
-    giudizio({ campo: 'riposo', da: 'altro', chi: 'qualcun altro', soggetto: 'switch.y' }),
-  ];
-  const { corpo } = rendiSapere(sapereFinto({ giudizi }));
-  const riposo = Array.from(corpo.querySelectorAll('button')).find((b) => b.textContent.indexOf('Riposo ·') === 0);
-  assert.ok(riposo);
-  assert.match(riposo.textContent, /2 dal seme/);
-  assert.match(riposo.textContent, /1 modificata a mano/);
-  assert.doesNotMatch(riposo.textContent, /corretta da te/, 'nessuna correzione del proprietario in questo gruppo');
-});
-
-test('seam _rendiSapere: il gruppo del seme mostra tutte e tre le parti quando ci sono sia correzioni che modifiche a mano', () => {
-  const giudizi = [
-    giudizio({ campo: 'lavoro', da: 'seme', soggetto: 'climate' }),
-    giudizio({ campo: 'lavoro', da: 'proprietario', soggetto: 'climate.x' }),
-    giudizio({ campo: 'lavoro', da: 'altro', chi: 'qualcun altro', soggetto: 'climate.y' }),
-  ];
-  const { corpo } = rendiSapere(sapereFinto({ giudizi }));
-  const lavoro = Array.from(corpo.querySelectorAll('button')).find((b) => b.textContent.indexOf('Lavoro ·') === 0);
-  assert.equal(lavoro.textContent, 'Lavoro · 1 dal seme · 1 corretta da te · 1 modificata a mano');
-});
-
-// -- MINOR 6: dopo un 200/409 il focus resta su <body> ----------------------
-
-test('mount: dopo un 200 il focus si sposta sul titolo «Le tue correzioni», non si perde su <body>', async () => {
-  const g = giudizio({ da: 'seme', campo: 'genere', soggetto_genere: 'tipo', soggetto: 'light.focus200' });
-  const ctx = montaConServer({ sapere: sapereFinto({ giudizi: [g] }) });
-  ctx.window.HirisWatcherRoute.mount();
-  await tick(20);
-
-  let card4 = ctx.document.querySelectorAll('.section-card')[3];
-  const riga = trovaRigaGiudizio(card4, g.soggetto);
-  bottone(ctx.document, 'Correggi', riga).click();
-  bottone(ctx.document, 'Scrivi', riga).click();
-  await tick(30);
-
-  card4 = ctx.document.querySelectorAll('.section-card')[3];
-  const titolo = Array.from(card4.querySelectorAll('h3')).find((h) => h.textContent === 'Le tue correzioni');
-  assert.ok(titolo, 'il titolo esiste dopo il ricaricamento');
-  assert.equal(ctx.document.activeElement, titolo, 'il focus non torna su <body> dopo il ricaricamento');
-});
-
-test('mount: dopo un 409 il focus si sposta comunque sul titolo «Le tue correzioni»', async () => {
-  const g = giudizio({ da: 'seme', campo: 'genere', soggetto_genere: 'tipo', soggetto: 'light.focus409' });
-  const ctx = montaConServer({
-    sapere: sapereFinto({ giudizi: [g] }),
-    giudizioStatus: 409,
-    giudizio: { errore: 'x', riga: null, impronta: 'y', da: 'solo seme' },
-  });
-  ctx.window.HirisWatcherRoute.mount();
-  await tick(20);
-
-  let card4 = ctx.document.querySelectorAll('.section-card')[3];
-  const riga = trovaRigaGiudizio(card4, g.soggetto);
-  bottone(ctx.document, 'Correggi', riga).click();
-  bottone(ctx.document, 'Scrivi', riga).click();
-  await tick(30);
-
-  card4 = ctx.document.querySelectorAll('.section-card')[3];
-  const titolo = Array.from(card4.querySelectorAll('h3')).find((h) => h.textContent === 'Le tue correzioni');
-  assert.equal(ctx.document.activeElement, titolo);
-});
-
-// -- MINOR 7: buchi nelle prove -----------------------------------------
-
-test('seam _rendiSapere: il select del genere porta ESATTAMENTE le 4 opzioni approvate (mai guasto/energia/bilancio)', () => {
-  const { corpo } = rendiSapere(sapereFinto());
-  const select = corpo.querySelector('.jr-add-form select');
-  const valori = Array.from(select.options).map((o) => o.value);
-  assert.deepEqual(valori, ['funzionamento', 'presenza', 'sicurezza', 'nessuno']);
-});
-
-test('seam _rendiSapere: «Correggi» non compare su una riga che non è di campo «genere»', () => {
-  const g = giudizio({ campo: 'accendibile', da: 'seme', soggetto: 'switch.no_correggi' });
-  const { document, corpo } = rendiSapere(sapereFinto({ giudizi: [g] }));
-  const riga = trovaRigaGiudizio(corpo, g.soggetto);
-  assert.ok(riga, 'la riga esiste');
-  assert.equal(bottone(document, 'Correggi', riga), undefined, 'niente editor per un campo che la v1 non tocca');
-});
-
-test('mount: un 503 sulla scrittura di un giudizio lo dice (il sapere non è collegato), e riabilita il bottone', async () => {
-  const g = giudizio({ da: 'seme', campo: 'genere', soggetto_genere: 'tipo', soggetto: 'light.w503' });
-  const ctx = montaConServer({ sapere: sapereFinto({ giudizi: [g] }), giudizioStatus: 503 });
-  ctx.window.HirisWatcherRoute.mount();
-  await tick(20);
-  const card4 = ctx.document.querySelectorAll('.section-card')[3];
-  const riga = trovaRigaGiudizio(card4, g.soggetto);
-  bottone(ctx.document, 'Correggi', riga).click();
-  const scrivi = bottone(ctx.document, 'Scrivi', riga);
-  scrivi.click();
-  await tick(20);
-
-  assert.match(riga.textContent, /non è collegato in questo momento/);
-  assert.equal(scrivi.disabled, false, 'il bottone si riabilita dopo il guasto');
-});
-
-test('mount: un guasto di RETE sulla scrittura di un giudizio lo dice, e riabilita il bottone', async () => {
-  const g = giudizio({ da: 'seme', campo: 'genere', soggetto_genere: 'tipo', soggetto: 'light.wnet' });
-  const ctx = montaConServer({ sapere: sapereFinto({ giudizi: [g] }), giudizioRotto: true });
-  ctx.window.HirisWatcherRoute.mount();
-  await tick(20);
-  const card4 = ctx.document.querySelectorAll('.section-card')[3];
-  const riga = trovaRigaGiudizio(card4, g.soggetto);
-  bottone(ctx.document, 'Correggi', riga).click();
-  const scrivi = bottone(ctx.document, 'Scrivi', riga);
-  scrivi.click();
-  await tick(20);
-
-  assert.match(riga.textContent, /Non è stato possibile scrivere/);
-  assert.equal(scrivi.disabled, false, 'il bottone si riabilita dopo il guasto di rete');
-});
-
-// -- MINOR 8: il modulo di aggiunta non è un <form> -------------------------
-
-test('mount: il modulo di aggiunta è un <form>: inviarlo (evento submit) con tipo/entità scelto manda la POST', async () => {
-  // Mutazione che la uccide: lasciare il modulo come <div> senza handler
-  // di 'submit' (l'evento sintetico non troverebbe nessun listener).
-  const ctx = montaConServer({ sapere: sapereFinto() });
-  ctx.window.HirisWatcherRoute.mount();
-  await tick(20);
-
-  const card4 = ctx.document.querySelectorAll('.section-card')[3];
-  const form = card4.querySelector('form.jr-add-form');
-  assert.ok(form, 'il modulo di aggiunta è un <form> vero (serve perché Invio nel campo testo lo invii)');
-
-  form.querySelector('input[type=text]').value = 'binary_sensor.occupancy';
-  form.querySelector('input[type=radio][value="entita"]').checked = true;
-  form.dispatchEvent(new ctx.window.Event('submit', { cancelable: true, bubbles: true }));
-  await tick(20);
-
-  const scritte = ctx.chiamate.filter((u) => u.indexOf('api/mind/judgment') === 0);
-  assert.equal(scritte.length, 1, JSON.stringify(ctx.chiamate));
-});
-
-test('mount: il modulo di aggiunta come <form> NON manda niente se si invia senza scegliere tipo/entità', async () => {
-  /* **È QUESTA la prova della guardia JS** (giro di correzioni 1, punto 7):
-     un `submit` sintetico non passa dalla validazione nativa del browser, che
-     invece ferma da sola il click su «Scrivi» coi radio `required`. Senza il
-     ramo `if (!scelto)` di `addJudgmentForm` partirebbe una POST con
-     `soggetto_genere: null`. Si asserisce anche il MESSAGGIO: fermarsi in
-     silenzio, per chi guarda, è indistinguibile da un guasto.
-     Mutazione ESEGUITA: togliere il ramo `if (!scelto)` -- rossa
-     (`1 !== 0`); ripristinata con l'editor, sha256 identico. */
-  const ctx = montaConServer({ sapere: sapereFinto() });
-  ctx.window.HirisWatcherRoute.mount();
-  await tick(20);
-
-  const card4 = ctx.document.querySelectorAll('.section-card')[3];
-  const form = card4.querySelector('form.jr-add-form');
-  form.querySelector('input[type=text]').value = 'binary_sensor.occupancy';
-  form.dispatchEvent(new ctx.window.Event('submit', { cancelable: true, bubbles: true }));
-  await tick(20);
-
-  assert.equal(ctx.chiamate.filter((u) => u.indexOf('api/mind/judgment') === 0).length, 0);
-  assert.match(form.textContent, /Scegli se è un tipo o un’entità/);
-});
-
-/* Giro di correzioni 1, punto 8: il 503 sulla scrittura ha DUE ragioni. */
-
-test('mount: un 503 che porta la sua ragione mostra QUELLA, non il testo di riserva', async () => {
-  // Mutazione ESEGUITA: `judgmentWriteErrorText` che ignora `corpo` -- rossa
-  // (compare «non è collegato in questo momento» invece del disco pieno).
-  const g = giudizio({ da: 'seme', campo: 'genere', soggetto_genere: 'tipo', soggetto: 'light.wdisk' });
-  const ctx = montaConServer({
-    sapere: sapereFinto({ giudizi: [g] }),
-    giudizio: { errore: 'il sapere non ha potuto scrivere (OperationalError: disco pieno)' },
-    giudizioStatus: 503,
-  });
-  ctx.window.HirisWatcherRoute.mount();
-  await tick(20);
-  const card4 = ctx.document.querySelectorAll('.section-card')[3];
-  const riga = trovaRigaGiudizio(card4, g.soggetto);
-  bottone(ctx.document, 'Correggi', riga).click();
-  const scrivi = bottone(ctx.document, 'Scrivi', riga);
-  scrivi.click();
-  await tick(20);
-
-  assert.match(riga.textContent, /disco pieno/);
-  assert.doesNotMatch(riga.textContent, /non è collegato in questo momento/);
-  assert.equal(scrivi.disabled, false, 'il bottone si riabilita dopo il guasto');
-});
-
-/* Giro di correzioni 1, punto 8 (BASSO x2): due invarianti della sezione 04
-   che nessuna prova fissava. */
-
-test('seam _rendiSapere: i cinque titoli della sezione 04 sono h3 veri, nell\'ordine della forma approvata', () => {
-  /* La sorella `_rendiScope` ha la sua da sempre; questa no, e uno scambio di
-     due chiamate in `renderKnowledge` -- «Cosa ha capito» prima delle
-     correzioni, per dire -- sarebbe rimasto verde. L'ordine È la forma
-     approvata: ciò su cui il proprietario può fare qualcosa viene prima dei
-     conteggi.
-     Mutazione ESEGUITA: scambiare `renderCorrections(...)` e
-     `renderSeedGroups(...)` in `renderKnowledge` -- rossa (i due titoli di
-     mezzo si invertono); ripristinata con l'editor, sha256 identico. */
-  const { corpo } = rendiSapere(sapereFinto({
-    giudizi: [giudizio({ da: 'proprietario', chi: 'proprietario' })],
-    domande_aperte: [domandaAperta()],
-  }));
-  assert.deepEqual(titoli(corpo), [
-    'Cosa non ha capito', 'Le tue correzioni', 'I giudizi del seme',
-    'Le domande aperte', 'Cosa ha capito']);
-});
-
-test('seam _rendiSapere: «Torna al seme» c\'è anche sulle righe «da: altro», non solo «proprietario»', () => {
-  /* Forma approvata: una riga modificata a mano fuori dalla porta è
-     esattamente quella che il proprietario vuole poter rimettere a posto, e
-     una mutazione che restringesse il controllo a `proprietario` sarebbe
-     rimasta verde.
-     Mutazione ESEGUITA: `if (g.da === 'proprietario')` al posto di
-     `if (g.da === 'proprietario' || g.da === 'altro')` -- rossa (il bottone
-     non c'è); ripristinata con l'editor, sha256 identico. */
-  const { corpo } = rendiSapere(sapereFinto({
-    giudizi: [giudizio({ da: 'altro', soggetto: 'light.a_mano', chi: 'ignoto' })],
-  }));
-  const riga = Array.from(corpo.querySelectorAll('.jr-row')).find((r) => {
-    const s = r.querySelector('.jr-subject');
-    return s && s.textContent === 'light.a_mano';
-  });
-  assert.ok(riga, 'la riga «altro» compare in «Le tue correzioni»');
-  assert.ok(Array.from(riga.querySelectorAll('button')).some((b) => b.textContent === 'Torna al seme'),
-    'anche una riga modificata a mano si può rimettere al seme');
-});
-
-/* Giro di correzioni 1 (revisione Fable, IMPORTANT 2): i due elenchi dei
-   campi dei giudizi, Python e JavaScript, legati da una prova sola --
-   stesso pattern di `agenda-route-vocabulary.test.mjs`. Mutazione che deve
-   far diventare rosso questo file: aggiungere un settimo... ottavo campo a
-   `JUDGMENT_FIELD_NAMES` (`type_judgments.py`) senza il suo gruppo in
-   `JUDGMENT_FIELD_GROUPS` (`watcher-route.js`) -- o il contrario. */
-
-// `NOME_FIELD = "valore"`: costruisce nome-costante -> valore-stringa, per
-// risolvere gli identificatori che `JUDGMENT_FIELD_NAMES` elenca (il
-// frozenset porta nomi di costanti Python, non i valori).
-function costantiCampoPython(sorgente) {
-  const mappa = {};
-  for (const m of sorgente.matchAll(/^(\w+_FIELD) = "([a-z_]+)"$/gm)) {
-    mappa[m[1]] = m[2];
-  }
-  return mappa;
-}
-
-test('i campi dei giudizi: lo stesso insieme in type_judgments.py (JUDGMENT_FIELD_NAMES) e in watcher-route.js (JUDGMENT_FIELD_GROUPS)', () => {
-  const mappa = costantiCampoPython(TYPE_JUDGMENTS_PY);
-
-  const blocco = TYPE_JUDGMENTS_PY.match(/JUDGMENT_FIELD_NAMES = frozenset\(\{([\s\S]*?)\}\)/);
-  assert.ok(blocco, 'JUDGMENT_FIELD_NAMES non trovata in type_judgments.py '
-    + '(e\' cambiata forma sotto questo test?)');
-  const nomiCostanti = blocco[1].split(',').map((s) => s.trim()).filter(Boolean);
-  assert.ok(nomiCostanti.length >= 7, 'attesi almeno sette campi (erano sei prima '
-    + 'del Task 1 di «da sapere subito»): ' + nomiCostanti.join(', '));
-
-  const python = new Set(nomiCostanti.map((nome) => {
-    assert.ok(mappa[nome], 'costante non risolta: ' + nome
-      + ' (manca una riga `' + nome + ' = "..."` in type_judgments.py?)');
-    return mappa[nome];
-  }));
-
-  const m = SORGENTE.match(/var JUDGMENT_FIELD_GROUPS = \[([\s\S]*?)\];/);
-  assert.ok(m, 'JUDGMENT_FIELD_GROUPS non trovata in watcher-route.js');
-  const js = new Set(Array.from(m[1].matchAll(/campo:\s*'([a-z_]+)'/g)).map((mm) => mm[1]));
-
-  assert.deepEqual(js, python,
-    'JUDGMENT_FIELD_GROUPS (JavaScript) deve elencare esattamente gli stessi campi di '
-    + 'JUDGMENT_FIELD_NAMES (Python): un campo nuovo da un lato solo sparisce dalla pagina '
-    + 'del sapere in silenzio -- e\' successo davvero a `da_sapere_subito` (Task 1, giro 1)');
-});
-
-test('JUDGMENT_FIELD_GROUPS: ogni gruppo porta un\'etichetta italiana non vuota', () => {
-  // Un campo che compare nell'insieme (prova sopra) ma con un'etichetta vuota
-  // renderebbe una riga muta in «I giudizi del seme» -- distinto di proposito
-  // dalla prova sull'insieme, cosi' chi legge il rosso sa subito quale delle
-  // due cose e' storta.
-  const m = SORGENTE.match(/var JUDGMENT_FIELD_GROUPS = \[([\s\S]*?)\];/);
-  assert.ok(m, 'JUDGMENT_FIELD_GROUPS non trovata in watcher-route.js');
-  const gruppi = Array.from(m[1].matchAll(/\{\s*campo:\s*'([a-z_]+)',\s*etichetta:\s*'([^']*)'\s*\}/g));
-  assert.ok(gruppi.length >= 7, 'attesi almeno sette gruppi');
-  for (const [, campo, etichetta] of gruppi) {
-    assert.ok(etichetta.trim().length > 0, 'etichetta vuota per il campo: ' + campo);
+test('la cornice: quattro schede con la semantica tablist, e nessun contatore nelle etichette', async () => {
+  const ctx = monta();
+  ctx.window.HirisWatcherRoute.mount('giorno');
+  await tick(0);
+  const tablist = ctx.document.querySelector('[role="tablist"]');
+  assert.ok(tablist, 'manca il tablist');
+  const tab = Array.from(ctx.document.querySelectorAll('[role="tab"]'));
+  assert.deepEqual(tab.map((t) => t.textContent),
+    ['Il giorno', 'Cosa fare', 'Cosa ho capito', 'L’osservatore']);
+  /* **Etichette nude** (spec §2): un contatore obbligherebbe a caricare tutte
+     e quattro le schede all'avvio, contro la decisione 7. La prova e' che
+     nessuna etichetta contenga una cifra. */
+  for (const t of tab) assert.ok(!/\d/.test(t.textContent), 'contatore nell’etichetta: ' + t.textContent);
+  for (const t of tab) {
+    const pannello = ctx.document.getElementById(t.getAttribute('aria-controls'));
+    assert.ok(pannello, 'la scheda «' + t.textContent + '» non controlla nessun pannello');
+    assert.equal(pannello.getAttribute('role'), 'tabpanel');
+    assert.equal(pannello.getAttribute('aria-labelledby'), t.id);
   }
 });
 
-/* Revisione finale, I-3: le due prove qui sopra leggono i SORGENTI -- nessuna
-   DISEGNA la sezione e cerca il campo nuovo. Il revisore ha disegnato solo i
-   primi sei gruppi (`JUDGMENT_FIELD_GROUPS.slice(0, 6)` in `renderSeedGroups`)
-   e **nessuna prova e' arrossita**: i due elenchi restavano identici, e la
-   pagina non mostrava «Da sapere subito». Questa prova monta la sezione e
-   guarda il DOM. */
+test('la cornice: le frecce destra/sinistra passano da una scheda all’altra, e il focus le segue', async () => {
+  // Spec §2: «frecce destra-sinistra fra le schede». E' cio' che distingue un
+  // `tablist` da quattro bottoni in fila: un solo bersaglio nella sequenza di
+  // tabulazione, gli altri si raggiungono con le frecce.
+  // Mutazione che la uccide: togliere `tablist.addEventListener('keydown', frecce)`.
+  const ctx = monta();
+  ctx.window.HirisWatcherRoute.mount('giorno');
+  await tick(0);
+  const tab = Array.from(ctx.document.querySelectorAll('[role="tab"]'));
+  assert.equal(tab[0].tabIndex, 0, 'la scheda attiva e’ l’unica nella sequenza di tabulazione');
+  assert.equal(tab[1].tabIndex, -1, 'le altre si raggiungono con le frecce, non col tabulatore');
+  tab[0].dispatchEvent(new ctx.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  assert.equal(ctx.window.location.hash, '#/watcher/cosa-fare',
+    'la freccia destra non ha portato alla scheda successiva');
+  assert.equal(ctx.document.activeElement, tab[1],
+    'il focus resta sulla scheda di prima: chi naviga da tastiera perde il posto');
+  /* Nel prodotto il `hashchange` rimonta la scheda nuova; qui lo si fa a mano,
+     perche' la finta non fa girare il router. Senza, «quale scheda e' attiva»
+     resterebbe la prima e la freccia sinistra girerebbe sull'ultima -- che e'
+     il comportamento giusto per lo stato che avrebbe davanti, non un difetto. */
+  ctx.window.HirisWatcherRoute.mount('cosa-fare');
+  tab[1].dispatchEvent(new ctx.window.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+  assert.equal(ctx.window.location.hash, '#/watcher/giorno', 'la freccia sinistra non torna indietro');
+});
 
-test('seam _rendiSapere: la sezione DISEGNA un gruppo per OGNI campo dichiarato, «Da sapere subito» compreso', () => {
-  /* Mutazione ESEGUITA: `JUDGMENT_FIELD_GROUPS.slice(0, 6).forEach(...)` in
-     `renderSeedGroups` -- rossa qui («gruppo del seme non disegnato:
-     da_sapere_subito»), verde su tutto il resto del file; ripristinata con
-     l'editor.
+test('CSS: il bersaglio di una scheda è alto almeno 44 px (la soglia del tocco, spec §2)', () => {
+  // Il numero si legge dal foglio vero, non si ricopia qui: i `summary` di
+  // questa pagina sono alti 21-23 px, ed e' la misura per cui la spec §6 vieta
+  // di usarli per aprire un elenco.
+  // Mutazione che la uccide: portare `min-height` di `.watcher-tab` a 32px.
+  const css = readFileSync(join(CONFIG_DIR, '..', 'hiris-config.css'), 'utf8');
+  const regola = css.match(/\.watcher-tab \{([^}]*)\}/);
+  assert.ok(regola, 'manca la regola `.watcher-tab` in hiris-config.css');
+  const alta = regola[1].match(/min-height:\s*(\d+)px/);
+  assert.ok(alta, '`.watcher-tab` non dichiara min-height: il bersaglio sarebbe alto quanto il testo');
+  assert.ok(Number(alta[1]) >= 44,
+    'il bersaglio di una scheda deve essere almeno 44px, dichiara ' + alta[1] + 'px');
+});
 
-     Si asserisce la PROPRIETA' (ogni gruppo dichiarato e' disegnato), non il
-     solo fatto del settimo campo: cosi' anche l'ottavo, il giorno che
-     arrivera', non potra' restare fuori dalla pagina in silenzio. */
-  const m = SORGENTE.match(/var JUDGMENT_FIELD_GROUPS = \[([\s\S]*?)\];/);
-  assert.ok(m, 'JUDGMENT_FIELD_GROUPS non trovata in watcher-route.js');
-  const dichiarati = Array.from(m[1].matchAll(/\{\s*campo:\s*'([a-z_]+)',\s*etichetta:\s*'([^']*)'\s*\}/g))
-    .map(([, campo, etichetta]) => ({ campo, etichetta }));
-  assert.ok(dichiarati.some((g) => g.campo === 'da_sapere_subito'),
-    'il campo di questa fetta deve essere fra i gruppi dichiarati');
+test('la cornice: aprire «Il giorno» NON scarica i dati dell’osservatore (spec §7, cancello 2)', async () => {
+  const ctx = monta();
+  ctx.window.HirisWatcherRoute.mount('giorno');
+  await tick(0);
+  assert.deepEqual(ctx.chiamate.filter((u) => u.indexOf('api/mind/watching') === 0), [],
+    'aprendo «Il giorno» la pagina ha chiesto gli 86 KB dell’osservatore');
+  assert.deepEqual(ctx.chiamate.filter((u) => u.indexOf('api/mind/knowledge') === 0), []);
+  assert.deepEqual(ctx.chiamate.filter((u) => u.indexOf('api/mind/analysis') === 0), []);
+  assert.equal(ctx.chiamate.filter((u) => u.indexOf('api/mind/report') === 0).length, 1);
+});
 
-  // Una riga di seme per ogni campo dichiarato: cosi' nessun gruppo puo'
-  // mancare dal DOM per mancanza di dati invece che per un difetto di resa.
-  const giudizi = dichiarati.map((g) => giudizio({
-    campo: g.campo, da: 'seme', soggetto_genere: 'tipo', soggetto: 'binary_sensor.' + g.campo,
-  }));
-  const { corpo } = rendiSapere(sapereFinto({ giudizi }));
-  const bottoni = Array.from(corpo.querySelectorAll('button')).map((b) => b.textContent);
-  for (const g of dichiarati) {
-    assert.ok(bottoni.some((t) => t.indexOf(g.etichetta + ' ·') === 0),
-      'gruppo del seme non disegnato: ' + g.campo + ' («' + g.etichetta + '»). '
-      + 'Bottoni trovati: ' + JSON.stringify(bottoni));
+test('la cornice: la scheda si carica alla PRIMA apertura, e una seconda volta non richiede niente', async () => {
+  const ctx = monta();
+  ctx.window.HirisWatcherRoute.mount('giorno');
+  await tick(0);
+  ctx.window.HirisWatcherRoute.mount('lavoro');
+  await tick(0);
+  const dopoLaPrima = ctx.chiamate.filter((u) => u.indexOf('api/mind/watching') === 0).length;
+  assert.equal(dopoLaPrima, 1);
+  ctx.window.HirisWatcherRoute.mount('giorno');
+  ctx.window.HirisWatcherRoute.mount('lavoro');
+  await tick(0);
+  assert.equal(ctx.chiamate.filter((u) => u.indexOf('api/mind/watching') === 0).length, 1,
+    'tornare su una scheda gia’ aperta l’ha ricaricata: lo stato non sopravvive');
+});
+
+test('la cornice: lo stato di una scheda sopravvive al cambio di scheda', async () => {
+  const ctx = monta();
+  ctx.window.HirisWatcherRoute.mount('giorno');
+  await tick(0);
+  const pannello = ctx.document.getElementById('watcher-panel-giorno');
+  const segno = ctx.document.createElement('div');
+  segno.id = 'segno-di-prova';
+  pannello.appendChild(segno);
+  ctx.window.HirisWatcherRoute.mount('sapere');
+  ctx.window.HirisWatcherRoute.mount('giorno');
+  await tick(0);
+  assert.ok(ctx.document.getElementById('segno-di-prova'),
+    'cambiare scheda ha ricostruito il pannello: elenchi aperti e posizione andrebbero persi');
+});
+
+/* Il pannello che si vede e quelli che non si vedono. La spec §2 lo dice in una
+   riga -- «cambiare scheda toglie `hidden` a uno e lo dà agli altri» -- e senza
+   questa prova la pagina torna una colonna sola: quattro schede disegnate una
+   sotto l'altra, che è esattamente ciò da cui questa fetta nasce. */
+test('la cornice: si vede SOLO il pannello della scheda scelta, gli altri tre sono nascosti', async () => {
+  const ctx = monta();
+  const visibili = () => ctx.window.HirisWatcherRoute._schede
+    .map((def) => def.nome)
+    .filter((nome) => !ctx.document.getElementById('watcher-panel-' + nome).hidden);
+  ctx.window.HirisWatcherRoute.mount('giorno');
+  await tick(0);
+  assert.deepEqual(visibili(), ['giorno'],
+    'più di un pannello è in vista: le schede tornerebbero una colonna sola');
+  ctx.window.HirisWatcherRoute.mount('sapere');
+  await tick(0);
+  assert.deepEqual(visibili(), ['sapere'],
+    'cambiare scheda non ha nascosto quella di prima');
+});
+
+/* **La premessa si asserisce**: finché nessun pannello è `hidden` -- e finché
+   nessuno è mai stato aperto -- `[hidden] [aria-live]` è zero qualunque cosa
+   faccia il codice, e la prova direbbe di sorvegliare una regola che non sta
+   guardando. Qui si aprono tutte e quattro le schede, così i tre pannelli
+   nascosti hanno DENTRO qualcosa, e solo allora si conta. */
+test('la cornice: un pannello nascosto non porta aria-live (spec §2)', async () => {
+  const ctx = monta();
+  for (const def of ctx.window.HirisWatcherRoute._schede) {
+    ctx.window.HirisWatcherRoute.mount(def.nome);
+    await tick(0);
   }
-
-  // E il gruppo nuovo porta davvero la sua riga dentro, non solo il titolo.
-  const gruppoNuovo = Array.from(corpo.querySelectorAll('.field-group')).find((w) => {
-    const b = w.querySelector('button');
-    return b && b.textContent.indexOf('Da sapere subito ·') === 0;
-  });
-  assert.ok(gruppoNuovo, 'il gruppo «Da sapere subito» esiste nel DOM');
-  const riga = gruppoNuovo.querySelector('.jr-row .jr-subject');
-  assert.ok(riga, 'il gruppo «Da sapere subito» disegna la sua riga');
-  assert.equal(riga.textContent, 'binary_sensor.da_sapere_subito');
-});
-
-/* Revisione finale, I-4: la pagina diceva il FALSO a chi corregge
-   `da_sapere_subito`. Due frasi promettono che la cronaca si rifa' -- «La
-   cronaca dei giorni passati si rifà da sola» accanto al badge, e «Anche questo
-   rifà la cronaca degli ultimi 22 giorni» dentro «Torna al seme» -- ma la
-   cronaca si rifa' solo per i campi che entrano nell'IMPRONTA
-   (`type_judgments.CHRONICLE_FIELDS`: `genere` e `riposo`). Per `notevole`,
-   `accendibile`, `lavoro`, `limiti_parametri` e `da_sapere_subito` quelle due
-   frasi erano una promessa che nessuno mantiene. */
-
-/* I due elenchi si leggono dal SORGENTE e diventano il dato della prova: i
-   campi dichiarati (`JUDGMENT_FIELD_GROUPS`) e quelli dell'impronta
-   (`CHRONICLE_JUDGMENT_FIELDS`). **Non si elencano a mano qui.** Una prova che
-   scrivesse «genere e riposo si', da_sapere_subito no» asserirebbe il FATTO di
-   oggi; queste asseriscono la PROPRIETA' -- la frase compare per tutti e soli
-   i campi dell'impronta -- e restano vere il giorno in cui l'impronta cambia. */
-function campiDichiarati() {
-  const m = SORGENTE.match(/var JUDGMENT_FIELD_GROUPS = \[([\s\S]*?)\];/);
-  assert.ok(m, 'JUDGMENT_FIELD_GROUPS non trovata in watcher-route.js');
-  return Array.from(m[1].matchAll(/campo:\s*'([a-z_]+)'/g)).map((mm) => mm[1]);
-}
-
-function campiDellImpronta() {
-  const m = SORGENTE.match(/var CHRONICLE_JUDGMENT_FIELDS = \{([^}]*)\};/);
-  assert.ok(m, 'CHRONICLE_JUDGMENT_FIELDS non trovata in watcher-route.js');
-  return new Set(Array.from(m[1].matchAll(/([a-z_]+):\s*true/g)).map((mm) => mm[1]));
-}
-
-// Un valore che la riga di QUEL campo sa mostrare, cosi' che la prova giri su
-// tutti i campi senza inventare forme che il server non manderebbe mai.
-const VALORE_PER_CAMPO = {
-  genere: 'presenza',
-  riposo: '["off"]',
-  lavoro: '{"on": "acceso"}',
-  limiti_parametri: '{"brightness": {"min": "a", "max": "b"}}',
-  notevole: 'si',
-  accendibile: 'si',
-  da_sapere_subito: 'no',
-};
-
-test('seam _rendiSapere: la frase sulla cronaca compare per TUTTI e SOLI i campi dell\'impronta', () => {
-  /* Mutazione ESEGUITA (la stessa del revisore): `rifaLaCronaca` riscritta
-     come `return campo !== 'da_sapere_subito'`, che ignora del tutto la
-     costante. **Con la stesura precedente di questa prova restava verde su
-     417 prove**, perche' quella asseriva i due casi di oggi invece della
-     proprieta' che li produce -- il difetto n. 1 del progetto, in casa nostra.
-     Ora e' rossa su `notevole`. Ripristinata con l'editor.
-
-     Cosa lasciava passare: il giorno in cui qualcuno corregge `notevole`, la
-     pagina gli rimostrerebbe la frase falsa e nessuna prova lo direbbe. */
-  const impronta = campiDellImpronta();
-  assert.ok(impronta.size > 0, 'l\'impronta ha almeno un campo');
-  const fuori = campiDichiarati().filter((c) => !impronta.has(c));
-  assert.ok(fuori.length > 0,
-    'servono campi FUORI dall\'impronta, o questa prova non avrebbe un lato negativo');
-
-  const frase = /La cronaca dei giorni passati si rifà da sola/;
-  for (const campo of campiDichiarati()) {
-    const { corpo } = rendiSapere(sapereFinto({
-      giudizi: [giudizio({
-        da: 'proprietario', campo, soggetto: 'light.a', soggetto_genere: 'entita',
-        valore: VALORE_PER_CAMPO[campo] || 'x',
-      })],
-    }));
-    assert.match(corpo.textContent, /Corretto da te il/, 'il badge c\'e\' per ogni campo: ' + campo);
-    if (impronta.has(campo)) {
-      assert.match(corpo.textContent, frase,
-        '`' + campo + '` entra nell\'impronta: la cronaca si rifa\' davvero, e va detto');
-    } else {
-      assert.doesNotMatch(corpo.textContent, frase,
-        '`' + campo + '` NON entra nell\'impronta: promettere che la cronaca si rifa\' e\' falso');
-    }
+  ctx.window.HirisWatcherRoute.mount('giorno');
+  await tick(0);
+  const nascosti = [...ctx.document.querySelectorAll('.watcher-panel[hidden]')];
+  assert.equal(nascosti.length, 3,
+    'nessun pannello nascosto: senza la premessa questa prova non potrebbe fallire');
+  for (const pannello of nascosti) {
+    assert.ok(pannello.textContent.trim().length > 0,
+      'il pannello nascosto è vuoto: la prova non guarda nessun contenuto');
   }
+  assert.equal(ctx.document.querySelectorAll('.watcher-panel[hidden] [aria-live]').length, 0,
+    'una riga in un pannello nascosto sarebbe letta per una scheda che nessuno guarda');
 });
 
-test('seam _rendiSapere: «Torna al seme» avvisa del costo della cronaca per TUTTI e SOLI i campi dell\'impronta', () => {
-  /* Stessa correzione della prova qui sopra, e per la stessa ragione: le due
-     frasi escono dalla STESSA funzione (`rifaLaCronaca`), quindi una mutazione
-     su quella deve arrossire tutt'e due. Mutazione ESEGUITA: la stessa
-     (`campo !== 'da_sapere_subito'`) -- rossa su `notevole`; ripristinata con
-     l'editor. */
-  const impronta = campiDellImpronta();
-  const costo = /rifà la cronaca degli ultimi/;
-  for (const campo of campiDichiarati()) {
-    const { corpo } = rendiSapere(sapereFinto({
-      giudizi: [giudizio({
-        da: 'proprietario', campo, soggetto: 'light.a', soggetto_genere: 'entita',
-        valore: VALORE_PER_CAMPO[campo] || 'x',
-      })],
-    }));
-    assert.match(corpo.textContent, /il sapere riprende il valore del seme/,
-      'il resto dell\'avviso c\'e\' sempre: tornare al seme cancella comunque la correzione ('
-      + campo + ')');
-    if (impronta.has(campo)) {
-      assert.match(corpo.textContent, costo, '`' + campo + '` fa rifare i giorni: va avvisato');
-    } else {
-      assert.doesNotMatch(corpo.textContent, costo,
-        '`' + campo + '` non fa rifare nessun giorno: annunciare due ore di lavoro e\' falso');
-    }
-  }
+test('la cornice: «#/watcher» nudo si riscrive su «giorno» SENZA aggiungere una voce di cronologia', async () => {
+  const ctx = monta();
+  const chiamate = [];
+  ctx.window.history.replaceState = (a, b, url) => chiamate.push(url);
+  ctx.window.HirisWatcherRoute.mount(undefined);
+  await tick(0);
+  assert.deepEqual(chiamate, ['#/watcher/giorno']);
 });
 
-test('seam _rendiSapere: in «Le tue correzioni» ogni riga dice QUALE campo è', () => {
-  /* Senza, due righe dello stesso soggetto sono indistinguibili: «lock · no ·
-     Corretto da te» vale identica per `notevole` e per `da_sapere_subito`.
-     Mutazione che la uccide: togliere il campo dalla riga. */
-  const { corpo } = rendiSapere(sapereFinto({
-    giudizi: [
-      giudizio({ da: 'proprietario', campo: 'notevole', soggetto: 'lock', soggetto_genere: 'tipo', valore: 'no' }),
-      giudizio({ da: 'proprietario', campo: 'da_sapere_subito', soggetto: 'lock', soggetto_genere: 'tipo', valore: 'no' }),
-    ],
-  }));
-  const campi = Array.from(corpo.querySelectorAll('.jr-row .jr-field')).map((n) => n.textContent);
-  assert.deepEqual(campi.slice().sort(), ['Da sapere subito', 'Notevole'],
-    'le due righe dello stesso soggetto si distinguono per campo');
+test('la cornice: un errore in una scheda resta dentro la sua scheda', async () => {
+  const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  ctx.window.fetch = async (url) => {
+    if (String(url).indexOf('api/mind/report') === 0) return jsonResponse({ errore: 'x' }, 503);
+    return jsonResponse({ conteggi: { righe: [] }, non_capito: [], giudizi: [], domande_aperte: [] });
+  };
+  ctx.window.HirisWatcherRoute.mount('giorno');
+  await tick(0);
+  ctx.window.HirisWatcherRoute.mount('sapere');
+  await tick(0);
+
+  /* La frase e' quella del 503 (`renderReportError`), non quella generica:
+     scritta com'era nel brief -- «Non è stato possibile leggere il resoconto»
+     -- questa prova NON POTEVA fallire, perche' con un 503 la pagina scrive
+     l'altra frase. E' il difetto n.1 di questo progetto, trovato eseguendo la
+     mutazione: si asserisce il FATTO, non la proprieta'. */
+  const giorno = ctx.document.getElementById('watcher-panel-giorno');
+  assert.match(giorno.textContent, /L’archivio dei resoconti non è disponibile/,
+    'precondizione: l’errore del resoconto c’è davvero, e sta nella scheda che l’ha chiesto');
+  const sapere = ctx.document.getElementById('watcher-panel-sapere');
+  assert.doesNotMatch(sapere.textContent, /L’archivio dei resoconti non è disponibile/,
+    'l’errore del resoconto e’ colato dentro «Cosa ho capito»');
+  /* L'altra meta' della promessa della spec §2 -- «se il resoconto non si
+     legge, "Cosa ho capito" continua a funzionare» -- che senza questa riga
+     sarebbe vera anche per un pannello vuoto. */
+  assert.match(sapere.textContent, /Cosa non ha capito/,
+    '«Cosa ho capito» non ha reso niente: l’errore dell’altra scheda se l’è portata via');
 });
 
-/* I due elenchi dei campi che rifanno la cronaca, Python e JavaScript, legati
-   da una prova sola -- stesso pattern di `JUDGMENT_FIELD_GROUPS` qui sopra.
-   Senza, il giorno che un campo entra (o esce) da `CHRONICLE_FIELDS` la pagina
-   continuerebbe a promettere -- o a tacere -- la cosa sbagliata, e nessuno se
-   ne accorgerebbe. */
-test('i campi che rifanno la cronaca: gli stessi in type_judgments.py (CHRONICLE_FIELDS) e in watcher-route.js (CHRONICLE_JUDGMENT_FIELDS)', () => {
-  const mappa = costantiCampoPython(TYPE_JUDGMENTS_PY);
-  const blocco = TYPE_JUDGMENTS_PY.match(/^CHRONICLE_FIELDS = \(([^)]*)\)$/m);
-  assert.ok(blocco, 'CHRONICLE_FIELDS non trovata in type_judgments.py');
-  const python = new Set(blocco[1].split(',').map((s) => s.trim()).filter(Boolean).map((nome) => {
-    assert.ok(mappa[nome], 'costante non risolta: ' + nome);
-    return mappa[nome];
-  }));
-
-  const m = SORGENTE.match(/var CHRONICLE_JUDGMENT_FIELDS = \{([^}]*)\};/);
-  assert.ok(m, 'CHRONICLE_JUDGMENT_FIELDS non trovata in watcher-route.js');
-  const js = new Set(Array.from(m[1].matchAll(/([a-z_]+):\s*true/g)).map((mm) => mm[1]));
-
-  assert.deepEqual(js, python,
-    'CHRONICLE_JUDGMENT_FIELDS (JavaScript) deve elencare esattamente i campi di CHRONICLE_FIELDS '
-    + '(Python): sono i soli per cui «la cronaca dei giorni passati si rifà da sola» è vero');
-});
-
-/* La TERZA forma del valore di `da_sapere_subito` (decisione del proprietario,
-   18/09/2026): `si`, `no`, oppure l'elenco JSON degli stati che contano --
-   `lock` porta `["jammed"]`. Reso in pagina come «solo: jammed», con lo stato
-   CITATO e non tradotto: finche' non esiste la fetta che rende gli stati nella
-   lingua della casa, «inceppata» sarebbe una traduzione decisa qui, in un file
-   di resa, cioe' esattamente dove non si decide il vocabolario. */
-
-test('seam _rendiSapere: un `da_sapere_subito` a ELENCO si legge «solo: jammed», non come JSON grezzo', () => {
-  /* Mutazione ESEGUITA: tolto il ramo dell'elenco da `judgmentValueNode` --
-     rossa (il valore resta il testo `["jammed"]`); ripristinata con l'editor. */
-  const { corpo } = rendiSapere(sapereFinto({
-    giudizi: [giudizio({
-      campo: 'da_sapere_subito', da: 'seme', soggetto_genere: 'tipo', soggetto: 'lock',
-      valore: '["jammed"]',
-    })],
-  }));
-  const riga = Array.from(corpo.querySelectorAll('.jr-row')).find((r) => {
-    const s = r.querySelector('.jr-subject');
-    return s && s.textContent === 'lock';
-  });
-  assert.ok(riga, 'la riga di `lock` esiste');
-  assert.match(riga.textContent, /solo: jammed/);
-  assert.doesNotMatch(riga.textContent, /\[/, 'niente JSON grezzo in pagina');
-  // Lo stato si CITA: sta in un nodo monospazio, come gli altri valori tecnici.
-  assert.ok(riga.querySelector('.jr-value-states'),
-    'gli stati stanno in un nodo loro, citati e non tradotti');
-});
-
-test('seam _rendiSapere: un elenco di PIÙ stati li separa con la virgola', () => {
-  const { corpo } = rendiSapere(sapereFinto({
-    giudizi: [giudizio({
-      campo: 'da_sapere_subito', da: 'seme', soggetto_genere: 'tipo', soggetto: 'vacuum',
-      valore: '["error", "stuck"]',
-    })],
-  }));
-  assert.match(corpo.textContent, /solo: error, stuck/);
-});
-
-test('seam _rendiSapere: `si` e `no` restano quello che sono', () => {
-  /* Il ramo nuovo non deve mangiarsi le altre due forme del valore.
-
-     **Si guarda il NODO DEL VALORE, non tutto il corpo.** La prima stesura
-     faceva `assert.match(corpo.textContent, /si/)`, che combacia con «**si**ren»
-     -- cioe' col nome del soggetto della riga stessa: la mutazione che svuota
-     il valore di `da_sapere_subito` non la arrossiva. Era una prova che non
-     poteva fallire.
-
-     Mutazione ESEGUITA: `judgmentValueNode` che torna un valore vuoto per
-     `da_sapere_subito` -- rossa qui (`'' != 'si'`); ripristinata con l'editor. */
-  const { corpo } = rendiSapere(sapereFinto({
-    giudizi: [
-      giudizio({
-        campo: 'da_sapere_subito', da: 'seme', soggetto_genere: 'tipo', soggetto: 'siren',
-        valore: 'si',
-      }),
-      giudizio({
-        campo: 'da_sapere_subito', da: 'seme', soggetto_genere: 'tipo', soggetto: 'update',
-        valore: 'no',
-      }),
-    ],
-  }));
-  assert.doesNotMatch(corpo.textContent, /solo:/, 'niente «solo:» dove il valore non e\' un elenco');
-  const valori = {};
-  for (const riga of corpo.querySelectorAll('.jr-row')) {
-    valori[riga.querySelector('.jr-subject').textContent] =
-      riga.querySelector('.jr-value').textContent;
-  }
-  assert.deepEqual(valori, { siren: 'si', update: 'no' });
+test('la cornice: a dati arrivati ogni pannello dice quando li ha letti, e offre Aggiorna', async () => {
+  const ctx = monta();
+  ctx.window.HirisWatcherRoute.mount('giorno');
+  await tick(0);
+  const pannello = ctx.document.getElementById('watcher-panel-giorno');
+  assert.match(pannello.textContent, /Letto alle \d\d:\d\d/);
+  const aggiorna = Array.from(pannello.querySelectorAll('button'))
+    .find((b) => b.textContent === 'Aggiorna');
+  assert.ok(aggiorna, 'manca «Aggiorna»: senza, non c’e’ nessun modo di rileggere');
+  const prima = ctx.chiamate.length;
+  aggiorna.dispatchEvent(new ctx.window.Event('click'));
+  await tick(0);
+  assert.ok(ctx.chiamate.length > prima, '«Aggiorna» non ha riletto niente');
 });

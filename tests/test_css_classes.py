@@ -105,6 +105,33 @@ def _dom_ids() -> set[str]:
 # nome scritto qui.
 _STORAGE_KEYS = re.compile(r"(?:localStorage|sessionStorage)\.\w+\(\s*'([^']+)'")
 
+# Il corpo di un'espressione regolare passata a `HirisRouter.register(...)`:
+# `\/` dentro non chiude il letterale, e per questo non basta `[^/]+`.
+_ROTTE = re.compile(r"HirisRouter\.register\(\s*/((?:\\.|[^/\\])+)/")
+
+
+def _route_segments() -> set[str]:
+    """I segmenti di indirizzo, raccolti da dove le rotte si DICHIARANO.
+
+    Terza famiglia che ha la forma di una classe senza esserlo, dopo gli id e
+    le chiavi del browser: dal 18/09/2026 una rotta puo' portare un
+    sottosegmento in kebab-case -- `#/watcher/cosa-fare` -- e il letterale
+    `'cosa-fare'` che il guscio delle schede usa per comporre indirizzi e id
+    e' indistinguibile da un nome di classe.
+
+    Si toglie con una REGOLA e non con un nome in `_INTENTIONALLY_UNSTYLED`:
+    quella lista dice «questa classe non ha una regola, e va bene cosi'», e
+    scriverci dentro una cosa che classe non e' la farebbe mentire. I segmenti
+    si leggono dal solo posto che li dichiara, `config/main.js`, quindi un
+    segmento nuovo entra nel cancello il giorno in cui la rotta nasce."""
+    fuori: set[str] = set()
+    for cartella in _SHELLS:
+        for p in _sources(cartella):
+            js = _live_js(p.read_text(encoding="utf-8"))
+            for corpo in _ROTTE.findall(js):
+                fuori |= set(re.findall(r"[a-z][a-z0-9-]*", corpo))
+    return fuori
+
 
 def _written_classes(js: str) -> set[str]:
     """Ogni nome che ha la FORMA di una classe, dalle righe vive.
@@ -162,13 +189,14 @@ def test_ogni_classe_che_il_frontend_scrive_ha_una_regola_nel_foglio(cartella):
     parlino della stessa cosa."""
     css = _sheets(_SHELLS[cartella])
     ids = _dom_ids()
+    segmenti = _route_segments()
     orfane: dict[str, list[str]] = {}
     sorgenti = _sources(cartella) + [STATIC / _SHELLS[cartella]]
     for p in sorgenti:
         testo = p.read_text(encoding="utf-8")
         vive = testo if p.suffix == ".html" else _live_js(testo)
         chiavi = set(_STORAGE_KEYS.findall(vive))
-        for c in _written_classes(vive) - ids - chiavi - _INTENTIONALLY_UNSTYLED:
+        for c in _written_classes(vive) - ids - chiavi - segmenti - _INTENTIONALLY_UNSTYLED:
             if not re.search(r"\." + re.escape(c) + r"(?![\w-])", css):
                 orfane.setdefault(c, []).append(p.name)
     assert not orfane, (

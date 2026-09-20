@@ -1885,6 +1885,7 @@ al Task 6 invece che deciso qui.
 | scegli | choose |
 | scelto | chosen |
 | scena | scene |
+| scheda | tab | **`tab` e' anche la parola di ARIA** (`role="tab"`, `role="tablist"`): dominio e confine dicono la stessa cosa, e non c'e' niente da dirimere. Nata il 18/09/2026 con la pagina dell'osservatore, che e' la prima del prodotto ad avere schede vere -- il `fieldset.tab-active` dell'editor vecchio non e' una scheda ma un fieldset nascosto |
 | sconosciuto | unknown |
 | scritto | written |
 | scrivi | write |

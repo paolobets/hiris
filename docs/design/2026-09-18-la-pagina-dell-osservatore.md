@@ -294,3 +294,23 @@ ai campi, fuoco governato all'apertura e alla chiusura, nessuna emoji.
 5. «Cosa fare» e il ponte (compresa la bozza nella chat).
 6. «Cosa ho capito» e «L'osservatore».
 7. Cancelli, e la verifica dal vivo sulla casa.
+
+**STATO al 20/09/2026 (3.51.0).**
+
+- **Punto 2, la cornice: FATTO e rilasciato.** Quattro pannelli, indirizzi propri, carico pigro,
+  stato che sopravvive, errori isolati, `tablist` con le frecce, bersagli 44 px, «Letto alle ·
+  Aggiorna». `watcher-route.js` da 2.242 righe è diventato sei file; nessuna delle 106 prove
+  precedenti è andata persa (verificato per corpo, non per conteggio), undici nuove sulla cornice.
+  **Il punto 2 è uscito PRIMA del punto 1**, contro l'ordine scritto qui: la cornice non dipende dal
+  modulo di lettura, e mandarla in casa subito la fa provare dal vivo mentre il resto si costruisce.
+- **Punto 6, «Cosa ho capito» e «L'osservatore»: le due schede esistono** e portano il contenuto di
+  oggi, riordinato dentro la cornice; il riordino interno che questa §4 descrive (le domande aperte
+  in testa, i gruppi chiusi, i soggetti tecnici per integrazione) **non è fatto** — quello dipende
+  dal punto 1.
+- **Punti 1, 3, 4, 5: NON fatti.** `notevole_in_banda` non esiste ancora in nessuna riga di codice,
+  e «Fanne una proposta» nemmeno.
+- **Il cancello 1 della §7** (una prova che fallisce se la pagina torna a decidere da sola cosa è
+  notevole) **nasce col punto 4**: oggi in JavaScript non c'è nessun elenco di generi da sorvegliare
+  perché non c'è nessuna banda. Il **cancello 2** (aprire «Il giorno» non scarica i dati
+  dell'osservatore) è vivo dal 20/09.
+- **Verifica dal vivo: da fare** sulla 3.51.0 installata in casa.

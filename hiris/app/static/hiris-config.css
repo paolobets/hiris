@@ -2090,3 +2090,40 @@
     min-height: 44px;
   }
 }
+
+/* ────────────────────────────────────────────────────────────
+   «L'osservatore»: quattro schede (spec 2026-09-18 §2)
+   ──────────────────────────────────────────────────────────── */
+
+/* Non si riusa `fieldset.tab-active` -- e' lo stampo dell'editor vecchio, che
+   nasconde i fieldset -- perche' qui le schede sono bottoni veri con la
+   semantica `tablist`, e i pannelli sono `div` con `hidden`. */
+.watcher-tabs {
+  display: flex; gap: var(--sp-2); flex-wrap: wrap;
+  border-bottom: 1px solid var(--border); margin-bottom: var(--sp-4);
+}
+.watcher-tab {
+  /* 44 px: la soglia del tocco. I `summary` di questa pagina sono alti 21-23
+     px, ed e' la ragione per cui la spec §6 vieta di usarli per aprire un
+     elenco. */
+  min-height: 44px; padding: 0 var(--sp-4);
+  background: transparent; border: 0; border-bottom: 2px solid transparent;
+  color: var(--text-2); font: inherit; font-weight: 500; cursor: pointer;
+}
+.watcher-tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+.watcher-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Il pannello e' focalizzabile (`tabindex=0`): dal `tablist` il tabulatore
+   porta qui, ed e' cosi' che si entra nel contenuto della scheda. Un bersaglio
+   focalizzabile senza anello visibile e' un difetto di accessibilita', non una
+   scelta di stile -- stesso anello della scheda qui sopra, perche' e' lo
+   stesso gesto. Il resto del vestito il pannello lo prende da `.section-card`,
+   che porta con se' le 29 regole gia' scritte per il corpo di una sezione. */
+.watcher-panel:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* «Letto alle 14:32 · Aggiorna», in testa al pannello e FUORI dal `.sc-body`
+   che ogni lettura ripulisce: e' del pannello, non del contenuto. */
+.watcher-fresh {
+  display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap;
+  margin-bottom: var(--sp-3);
+}

@@ -1,8 +1,10 @@
 {
   // HIRIS -- il cancello sugli identificatori del frontend.
   //
-  // `hiris/app/static/` non ha moduli: 22 file caricati con `<script src>` in
-  // ordine fisso, che si parlano per variabile globale. Senza questa
+  // `hiris/app/static/` non ha moduli: 28 file caricati con `<script src>` in
+  // ordine fisso (contati nei due `.html` il 18/09/2026, non ricopiati: erano
+  // 23 prima che la pagina dell'osservatore diventasse sei file), che si
+  // parlano per variabile globale. Senza questa
   // configurazione `no-undef` e' spento e una mezza rinomina passa muta.
   // Misurato: `var lastResolvedHash` rinominato nella dichiarazione e in 2 usi
   // su 4 lascia due assegnamenti orfani che in JS non-strict CREANO UNA
@@ -23,8 +25,8 @@
   // che qualcuno verifica.
   "env": { "browser": true, "es2021": true },
 
-  // I 27 non sono scelti: sono i nomi che un file LEGGE senza dichiararli --
-  // 19 namespace pubblicati su `window` e 8 nomi nudi di `config/api.js`
+  // I 32 non sono scelti: sono i nomi che un file LEGGE senza dichiararli --
+  // 24 namespace pubblicati su `window` e 8 nomi nudi di `config/api.js`
   // (sette funzioni e una costante, `SUBSCRIPTION_ONLY_COST_LABEL`, dal
   // collaudo 3.22 C5 -- `isSubscriptionOnly`/`SUBSCRIPTION_ONLY_COST_LABEL`
   // sono lette da `config/usage-route.js`, non solo da chi le dichiara).
@@ -36,6 +38,19 @@
   // lasciando indietro la chiamata, `no-undef` tacerebbe perche' gliel'avremmo
   // detto noi che quel nome esiste. Un globale dichiarato senza bisogno non e'
   // prudenza, e' una rinuncia.
+  //
+  // QUATTRO ECCEZIONI DICHIARATE, dal 18/09/2026 (la pagina dell'osservatore in
+  // sei file): `HirisWatcherGiorno`/`CosaFare`/`Sapere`/`Lavoro` non sono letti
+  // nudi da nessuno -- il guscio li risolve per NOME (`window[scheda.modulo]`,
+  // config/watcher-route.js) per poter dire «questa scheda non ha caricato»
+  // invece di esplodere al montaggio. Stanno qui lo stesso, e non e' una
+  // concessione al linter: e' il punto 1 di `scripts/sponde_js.py` -- un globale
+  // dichiarato che nessun file di static/ produce piu' fa fallire il cancello,
+  // ed e' l'UNICA cosa che vedrebbe una mezza rinomina di
+  // `window.HirisWatcherGiorno`, che `no-undef` non puo' vedere per costruzione
+  // (dall'altro lato c'e' una stringa). `HirisWatcherShared` invece e' letto
+  // nudo dai cinque file che lo usano: per lui valgono tutti e tre i punti del
+  // cancello, l'ordine dei `<script src>` compreso.
   "globals": {
     "HirisAgendaRoute": "readonly",
     "HirisBuildCheck": "readonly",
@@ -55,7 +70,12 @@
     "HirisState": "readonly",
     "HirisTreeRoute": "readonly",
     "HirisUsageRoute": "readonly",
+    "HirisWatcherCosaFare": "readonly",
+    "HirisWatcherGiorno": "readonly",
+    "HirisWatcherLavoro": "readonly",
     "HirisWatcherRoute": "readonly",
+    "HirisWatcherSapere": "readonly",
+    "HirisWatcherShared": "readonly",
     "applyTheme": "readonly",
     "esc": "readonly",
     "fmtDateTime": "readonly",
@@ -70,7 +90,7 @@
     {
       // La suite gira su Node e MONTA i globali del browser nel proprio realm
       // (vedi `tests/js/helpers/dom.mjs`): qui `process`/`global` esistono, e i
-      // 25 si scrivono invece di leggersi soltanto.
+      // 32 si scrivono invece di leggersi soltanto.
       "files": ["tests/js/**"],
       "env": { "browser": true, "es2021": true, "node": true },
       "globals": {
@@ -92,7 +112,12 @@
         "HirisState": "writable",
         "HirisTreeRoute": "writable",
         "HirisUsageRoute": "writable",
+        "HirisWatcherCosaFare": "writable",
+        "HirisWatcherGiorno": "writable",
+        "HirisWatcherLavoro": "writable",
         "HirisWatcherRoute": "writable",
+        "HirisWatcherSapere": "writable",
+        "HirisWatcherShared": "writable",
         "applyTheme": "writable",
         "esc": "writable",
         "fmtDateTime": "writable",

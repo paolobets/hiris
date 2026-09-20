@@ -162,15 +162,19 @@
       document.getElementById('route-outlet').innerHTML = '<h1 class="page-title">Proposte</h1>';
     }
   });
-  /* fetta «l'osservatore» Task 7: la pagina #/watcher -- vedi
-     config/watcher-route.js per il perche'. `mount()` senza argomenti,
-     legge da solo `#route-outlet`: stesso pattern di tree-route.js e
-     memory-route.js, non quello di constructions-route.js (che porta
-     l'outlet come parametro). */
-  HirisRouter.register(/^#\/watcher\/?$/, function() {
+  /* fetta «la pagina dell'osservatore» (18/09/2026): quattro schede, quattro
+     indirizzi. `#/watcher` nudo resta valido -- un segnalibro vecchio non
+     trova «Pagina non trovata» -- e il guscio lo riscrive su «giorno» senza
+     aggiungere una voce di cronologia. `updateNavActive` non cambia: guarda
+     gia' `hash.indexOf('#/watcher') === 0`, quindi tutte e quattro le schede
+     accendono la stessa voce di menu (una voce, schede: decisione 2).
+     `mount(scheda)` legge da solo `#route-outlet`: stesso pattern di
+     tree-route.js e memory-route.js, non quello di constructions-route.js
+     (che porta l'outlet come parametro). */
+  HirisRouter.register(/^#\/watcher(?:\/(giorno|cosa-fare|sapere|lavoro))?\/?$/, function(m) {
     setCrumbHere('L’osservatore');
     if (window.HirisWatcherRoute) {
-      HirisWatcherRoute.mount();
+      HirisWatcherRoute.mount(m && m[1]);
     } else {
       document.getElementById('route-outlet').innerHTML = '<h1 class="page-title">L’osservatore</h1>';
     }

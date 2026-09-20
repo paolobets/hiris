@@ -42,6 +42,20 @@ voci non sa dire se il lavoro procede.
 
 ## Scelti — sprint in corso
 
+### La CLI del ponte sale alla 2.1.278 nel prossimo rilascio — aperta il 20/09/2026
+
+Il cancello (`scripts/verifica_componenti.py`) ha fermato il rilascio della **v3.51.0** su
+`2.1.276 -> 2.1.278` (pin in `hiris/Dockerfile`). La 3.51.0 è uscita con `HIRIS_COMPONENTI_OK=1`,
+**dichiarato qui e nel rilascio**, perché quella versione porta la cornice della pagina
+dell'osservatore: far salire lì una dipendenza non provata spedirebbe un cambiamento sotto il
+changelog di qualcun altro. Regola del proprietario del 07/09/2026.
+
+**Cosa fare nel rilascio successivo**: `python scripts/verifica_componenti.py --aggiorna`,
+l'annotazione nel `Dockerfile` nella forma che la regola chiede (data, uscite saltate, piano di
+ripiego), la suite intera, e poi la prova che il pin arriva davvero dentro il container —
+`GET /api/health` deve rispondere `ponte.cli: "2.1.278"`. Il ripiego dichiarato resta la
+**2.1.276**, l'ultima di cui esista una lettura vera.
+
 ### La CLI del ponte e' salita alla 2.1.267 — CHIUSA il 10/09/2026
 
 **Aperta e chiusa nello stesso giorno.** Il cancello
