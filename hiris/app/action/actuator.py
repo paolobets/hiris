@@ -590,7 +590,8 @@ class ActionActuator:
                            type(error).__name__, error)
             return None
 
-    async def _call_no_target(self, verdict, data: dict, actor: str) -> dict:
+    async def _call_no_target(self, verdict, data: dict, actor: str,
+                              subject: dict | None = None) -> dict:
         """La chiamata di un servizio che non dichiara un target
         (`Verdict.no_target`): niente entita' da iniettare, niente
         stato da rileggere. Review finale, rilievo CRITICO ①.
@@ -621,7 +622,7 @@ class ActionActuator:
             message = f"Home Assistant ha rifiutato la chiamata: {error}"
             execution_id = self._record(
                 actor=actor, service=service, entity=[],
-                executed=False, error=message)
+                executed=False, error=message, subject=subject)
             occurrence = {"eseguito": False, "errore": message}
             if execution_id is not None:
                 occurrence["esecuzione_id"] = execution_id
@@ -634,12 +635,13 @@ class ActionActuator:
                  "avviso": _NO_STATE_TO_REREAD}
         execution_id = self._record(
             actor=actor, service=service, entity=[],
-            executed=True, changed=[], notice=occurrence["avviso"])
+            executed=True, changed=[], notice=occurrence["avviso"], subject=subject)
         if execution_id is not None:
             occurrence["esecuzione_id"] = execution_id
         return occurrence
 
-    async def execute(self, call: dict, *, actor: str) -> dict:
+    async def execute(self, call: dict, *, actor: str,
+                      subject: dict | None = None) -> dict:
         try:
             await self._registry.ensure_fresh(self._ha)
         except Exception as error:
@@ -704,7 +706,7 @@ class ActionActuator:
             # fonti del «dopo» -- non si applica a un servizio che non ha
             # niente da rileggere, ed e' un ramo a parte apposta: vedi
             # `_call_no_target`.
-            return await self._call_no_target(verdict, data, actor)
+            return await self._call_no_target(verdict, data, actor, subject)
         data["entity_id"] = list(verdict.entity)
 
         # L'ascolto si apre PRIMA della chiamata (vedi il docstring del
@@ -728,7 +730,7 @@ class ActionActuator:
                 execution_id = self._record(
                     actor=actor,
                     service=f"{verdict.domain}.{verdict.service}",
-                    entity=list(verdict.entity), executed=False, error=message)
+                    entity=list(verdict.entity), executed=False, error=message, subject=subject)
                 occurrence = {"eseguito": False, "errore": message}
                 if execution_id is not None:
                     occurrence["esecuzione_id"] = execution_id
@@ -815,7 +817,7 @@ class ActionActuator:
                     else "nessun ascolto disponibile, attesa zero")
         execution_id = self._record(
             actor=actor, service=occurrence["servizio"], entity=list(verdict.entity),
-            executed=True, changed=changed, notice=occurrence.get("avviso"))
+            executed=True, changed=changed, notice=occurrence.get("avviso"), subject=subject)
         if execution_id is not None:
             occurrence["esecuzione_id"] = execution_id
         return occurrence

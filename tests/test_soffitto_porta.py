@@ -36,13 +36,16 @@ def chiudi_archivi():
 class _Officina:
     def __init__(self):
         self.applicate = []
+        self.soggetti = []
 
-    async def apply(self, ident, *, actor, exchange, now):
+    async def apply(self, ident, *, actor, exchange, now, subject=None):
         self.applicate.append((ident, actor))
+        self.soggetti.append(subject)
         return {"applicata": ident}
 
-    async def restore(self, ident, *, actor, exchange, now):
+    async def restore(self, ident, *, actor, exchange, now, subject=None):
         self.applicate.append((ident, actor))
+        self.soggetti.append(subject)
         return {"ripristinata": ident}
 
 
@@ -186,7 +189,7 @@ class _OfficinaContata:
     def __init__(self):
         self.applicate = []
 
-    async def apply(self, ident, *, actor, exchange, now):
+    async def apply(self, ident, *, actor, exchange, now, subject=None):
         self.applicate.append(ident)
         return {"applicata": ident}
 
@@ -265,3 +268,20 @@ async def test_la_chat_passa_il_soffitto_al_dispatcher(cliente):
     dispatcher = create_tool_dispatcher(app, exchange="t-1", soffitto=negato)
 
     assert dispatcher._soffitto == negato
+
+
+@pytest.mark.asyncio
+async def test_la_porta_porta_anche_il_SOGGETTO_alla_cronaca(cliente):
+    """Il soffitto dice cosa si concede; la cronaca deve dire **a chi**. Senza
+    questo passaggio l'officina scriverebbe «origine: pagina» e nient'altro --
+    cioe' da quale porta, non chi -- e «chi ha scritto quell'automazione»
+    resterebbe senza risposta come prima.
+
+    Mutazione ESEGUITA: non passare `soggetto=` a `workshop.apply` -- rossa.
+    """
+    await cliente.post("/api/constructions/c1/confirm",
+                       headers=_testate("u-admin"))
+
+    visto = cliente.app["workshop"].soggetti[-1]
+    assert visto["id"] == "u-admin"
+    assert visto["specie"] == "persona"

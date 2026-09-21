@@ -3,6 +3,7 @@ import ipaddress
 import logging
 import os
 import re
+import time
 
 from aiohttp import web
 
@@ -70,6 +71,14 @@ def _is_supervisor_ingress(request: web.Request) -> bool:
 #: di aggiungere le proprie, quindi attraverso l'ingress non sono falsificabili.
 #: Su ogni altra strada lo sono, ed e' il motivo per cui si leggono in un ramo
 #: solo.
+#: Le intestazioni con cui un CANALE si presenta (spec 2026-09-21 §6). La
+#: `X-HIRIS-Canale` viaggia anche senza firma durante la convivenza: li' non
+#: autentica niente e serve solo a MISURARE chi non firma ancora.
+_CANALE = "X-HIRIS-Canale"
+_MOMENTO = "X-HIRIS-Momento"
+_UNICO = "X-HIRIS-Unico"
+_FIRMA = "X-HIRIS-Firma"
+
 _CHI = "X-Remote-User-Id"
 _NOME = "X-Remote-User-Display-Name"
 _UTENTE = "X-Remote-User-Name"
@@ -97,6 +106,35 @@ def _soggetto(request: web.Request, specie: str) -> dict:
             "utente": request.headers.get(_UTENTE) or None}
 
 
+async def _canale(request: web.Request):
+    """Il canale che ha firmato questa richiesta — o `None` se non ci prova.
+
+    **Chi prova a firmare e sbaglia non scivola sul ripiego del token**: sarebbe
+    una porta aperta da qualunque firma storta, cioe' il contrario di una
+    difesa. Per questo la funzione distingue tre esiti e non due: non ci prova
+    (`None`), ci prova e regge (il canale), ci prova e non regge (il motivo).
+    """
+    from . import canali
+
+    # **A dire «sto firmando» e' la FIRMA, non il nome del canale.** Durante la
+    # convivenza (spec §8) chi usa ancora il token dichiara `X-HIRIS-Canale`
+    # per farsi misurare: trattare quella dichiarazione come un tentativo di
+    # firma lo rifiuterebbe, cioe' spegnerebbe l'integrazione che stiamo
+    # cercando di contare. Misurato scrivendo la prova, non supposto.
+    if not request.headers.get(_FIRMA):
+        return None, None
+    return canali.riconosci(
+        canale=request.headers.get(_CANALE, ""),
+        momento=request.headers.get(_MOMENTO, ""),
+        unico=request.headers.get(_UNICO, ""),
+        firma=request.headers.get(_FIRMA, ""),
+        metodo=request.method, percorso=request.path,
+        corpo=await request.read(),
+        registrate=request.app.get("canali_registrati") or {},
+        visti=request.app.get("canali_visti"),
+        adesso=time.time())
+
+
 @web.middleware
 async def internal_auth_middleware(request: web.Request, handler) -> web.Response:
     """Validate X-HIRIS-Internal-Token for non-Ingress requests.
@@ -107,6 +145,30 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
     token is configured they are denied by default (set HIRIS_ALLOW_NO_TOKEN=1 to
     disable this during local development).
     """
+    from .canali import consente_metodo
+
+    firmato, motivo = await _canale(request)
+    if motivo is not None:
+        logger.warning("canale: richiesta rifiutata da %s — %s",
+                       request.remote, motivo)
+        return web.json_response({"errore": motivo}, status=401)
+    if firmato is not None:
+        if not consente_metodo(firmato["ruolo"], request.method):
+            logger.warning(
+                "canale: «%s» ha ruolo «%s» e ha chiesto %s %s — negato",
+                firmato["canale"], firmato["ruolo"], request.method, request.path)
+            return web.json_response(
+                {"errore": f"il canale «{firmato['canale']}» ha il ruolo "
+                           f"«{firmato['ruolo']}»: legge e non scrive"},
+                status=403)
+        request["auth_via"] = "canale"
+        request["soggetto"] = {"specie": firmato["specie"],
+                               "id": firmato["canale"],
+                               "nome": firmato["canale"],
+                               "utente": None,
+                               "ruolo": firmato["ruolo"]}
+        return await handler(request)
+
     if _is_supervisor_ingress(request):
         request["auth_via"] = "ingress"
         request["soggetto"] = _soggetto(request, "persona")
@@ -130,6 +192,15 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
         logger.warning("Unauthorized inter-addon request from %s", request.remote)
         return web.json_response({"error": "unauthorized"}, status=401)
 
+    # La CONVIVENZA (spec §8): il token resta per una fetta, perche' il gateway
+    # e il proxy di Retro Panel vivono in due repository separati e un taglio
+    # netto li spegnerebbe. Ma chi lo usa **si misura**, o la fine della
+    # convivenza la deciderebbe una speranza invece di un dato.
+    logger.info(
+        "convivenza: richiesta col token condiviso da %s (canale dichiarato: "
+        "%s) su %s %s — questo ripiego esce quando questa riga tace",
+        request.remote, request.headers.get(_CANALE) or "IGNOTO",
+        request.method, request.path)
     request["auth_via"] = "token"
     request["soggetto"] = _soggetto(request, "integrazione")
     return await handler(request)

@@ -19,7 +19,7 @@ class FintaOfficina:
         self.chiamate.append(("propose", intento, actor, exchange))
         return self._proponi
 
-    async def apply(self, proposta_id, *, actor, exchange, now):
+    async def apply(self, proposta_id, *, actor, exchange, now, subject=None):
         self.chiamate.append(("apply", proposta_id, actor, exchange))
         return self._applica
 

@@ -122,7 +122,9 @@ async def _act(request: web.Request, verb: str) -> web.Response:
     if store.read(ident) is None:
         return web.json_response({"error": _NOT_FOUND}, status=404)
     method = getattr(workshop, verb)
-    occurrence = await method(ident, actor="pagina", exchange=None, now=time.time())
+    occurrence = await method(ident, actor="pagina", exchange=None,
+                              now=time.time(),
+                              subject=request.get("soggetto"))
     if "errore" in occurrence:
         # Un guasto di TRASPORTO verso Home Assistant (ondata finale, punto
         # 7, terza pulizia) non e' «la proposta non e' piu' in attesa»: e' la

@@ -1547,7 +1547,8 @@ class ToolDispatcher:
                  exchange: str | None = None, journal=None,
                  translations=None, knowledge=None,
                  judgments: TypeJudgments | None = None,
-                 soffitto: dict | None = None) -> None:
+                 soffitto: dict | None = None,
+                 subject: dict | None = None) -> None:
         self._home_space = home_space_store
         self._memory = memory_store
         # Il soffitto di chi ha aperto questo turno (invariante I-1). `None`
@@ -1557,6 +1558,10 @@ class ToolDispatcher:
         # dei canali esterni, e stringerlo qui a meta' spegnerebbe il gateway
         # senza che nessuno l'abbia deciso. **Dichiarato, non dedotto.**
         self._soffitto = soffitto
+        # CHI ha aperto questo turno. Viaggia accanto al soffitto e non dentro:
+        # il soffitto dice cosa si concede, il soggetto dice a chi -- e la
+        # cronaca ha bisogno del secondo anche quando il primo ha detto di si'.
+        self._subject = subject
         # Il sapere (`mind/knowledge.py`): cio' che HIRIS ha capito, con la
         # provenienza. Oggi ne esce il SIGNIFICATO della classe di un'entita'
         # sul dettaglio di `guarda` -- la porta che rende interrogabile
@@ -2339,7 +2344,8 @@ class ToolDispatcher:
         chiederanno alla STESSA porta senza passare da qui. Se un giorno questo
         metodo cresce, la logica sta migrando nel posto sbagliato.
         """
-        return await self._actuator.execute(arguments, actor="chat")
+        return await self._actuator.execute(
+            arguments, actor="chat", subject=self._subject)
 
     # -- le promesse -----------------------------------------------------
 
@@ -2537,7 +2543,8 @@ class ToolDispatcher:
         if self._soffitto is not None and not self._soffitto["costruire"]:
             return {"errore": self._soffitto["perche"]}
         occurrence = await self._workshop.apply(
-            proposal_id.strip(), actor="chat", exchange=self._exchange, now=_time.time())
+            proposal_id.strip(), actor="chat", exchange=self._exchange,
+            now=_time.time(), subject=self._subject)
         # Punto 7 (residuo): `guasto_rete` e' interno (`Workshop._fallita`/
         # `_rete`) -- `handlers_constructions.py` lo toglie gia' sul percorso
         # HTTP (lo legge per scegliere 503 invece di 409, poi lo estrae dal

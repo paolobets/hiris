@@ -63,7 +63,8 @@ CREATE TABLE IF NOT EXISTS esecuzioni (
     errore TEXT,
     avviso TEXT,
     genere TEXT NOT NULL DEFAULT 'comando',
-    oggetto TEXT
+    oggetto TEXT,
+    soggetto_json TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_esecuzioni_quando ON esecuzioni(quando_ts DESC);
 """
@@ -85,6 +86,25 @@ def _migration_2(conn) -> None:
         conn.execute("ALTER TABLE esecuzioni ADD COLUMN oggetto TEXT")
 
 
+def _migration_3(conn) -> None:
+    """v2 -> v3: la cronaca registra anche CHI (spec 2026-09-21 §11).
+
+    `origine` dice da quale PORTA e' passato un atto -- «chat», «pagina»,
+    «schedulatore»: nomi di pezzi di codice, non di persone. Questa colonna sta
+    accanto e dice chi, cosi' «chi ha spento la luce» ha una risposta.
+
+    **Una colonna sola per tutte e quattro le specie** (persona, luogo,
+    integrazione, nessuno): una colonna per specie costringerebbe ogni lettore
+    a chiedersi «in quale guardo?», e la seconda risposta sarebbe sbagliata.
+
+    Si AGGIUNGE e non si riscrive: le righe di ieri restano com'erano, con
+    `subject` a `NULL`, che e' cio' che sono -- atti di cui non si sapeva chi.
+    """
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(esecuzioni)")}
+    if "soggetto_json" not in existing:
+        conn.execute("ALTER TABLE esecuzioni ADD COLUMN soggetto_json TEXT")
+
+
 def _row(r) -> dict:
     return {
         "id": r["id"],
@@ -98,6 +118,14 @@ def _row(r) -> dict:
         "avviso": r["avviso"],
         "genere": r["genere"],
         "oggetto": r["oggetto"],
+        # `None` e un dizionario vuoto sono due fatti diversi: «non c'era
+        # nessuno» (lo schedulatore) contro «c'era qualcuno e non so chi».
+        # La CHIAVE resta italiana come `origine`, `servizio` ed `entita`: e'
+        # un dato del dominio, e il dominio di questo prodotto e' in italiano.
+        # Inglese e' il nome del PARAMETRO, perche' `action/` e' uno degli
+        # ambiti gia' convertiti (vedi `scripts/rinomina.py`).
+        "soggetto": (None if r["soggetto_json"] is None
+                     else json.loads(r["soggetto_json"])),
     }
 
 
@@ -105,7 +133,8 @@ class Journal:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=2, migrations={2: _migration_2})
+        init_schema(self._conn, _SCHEMA, version=3,
+                    migrations={2: _migration_2, 3: _migration_3})
 
     def close(self) -> None:
         with self._lock:
@@ -113,7 +142,8 @@ class Journal:
 
     def log(self, *, actor: str, service: str, entity: list[str],
                  executed: bool, now: float, changed: list[str] | None = None,
-                 error: str | None = None, notice: str | None = None) -> str:
+                 error: str | None = None, notice: str | None = None,
+                 subject: dict | None = None) -> str:
         ident = secrets.token_urlsafe(9)
         with self._lock:
             self._conn.execute(
@@ -121,19 +151,22 @@ class Journal:
                 (now - EXECUTIONS_RETENTION_S,))
             self._conn.execute(
                 "INSERT INTO esecuzioni(id,quando_ts,origine,servizio,entita_json,"
-                "eseguito,cambiato_json,errore,avviso,genere,oggetto) "
-                "VALUES(?,?,?,?,?,?,?,?,?,'comando',NULL)",
+                "eseguito,cambiato_json,errore,avviso,genere,oggetto,"
+                "soggetto_json) "
+                "VALUES(?,?,?,?,?,?,?,?,?,'comando',NULL,?)",
                 (ident, now, actor, service, json.dumps(list(entity)),
                  int(bool(executed)),
                  None if changed is None else json.dumps(list(changed)),
-                 error, notice))
+                 error, notice,
+                 None if subject is None else json.dumps(subject)))
             self._conn.commit()
         return ident
 
     def log_construction(self, *, actor: str, operation: str, domain: str,
                              key: str, entity: list[str], executed: bool,
                              now: float, error: str | None = None,
-                             notice: str | None = None) -> str:
+                             notice: str | None = None,
+                             subject: dict | None = None) -> str:
         """Un atto di costruzione, nella STESSA tabella dei comandi.
 
         Un atto e' lo stesso fatto qualunque sia l'origine e qualunque sia il
@@ -154,11 +187,13 @@ class Journal:
                 (now - EXECUTIONS_RETENTION_S,))
             self._conn.execute(
                 "INSERT INTO esecuzioni(id,quando_ts,origine,servizio,entita_json,"
-                "eseguito,cambiato_json,errore,avviso,genere,oggetto) "
-                "VALUES(?,?,?,?,?,?,NULL,?,?,'costruzione',?)",
+                "eseguito,cambiato_json,errore,avviso,genere,oggetto,"
+                "soggetto_json) "
+                "VALUES(?,?,?,?,?,?,NULL,?,?,'costruzione',?,?)",
                 (ident, now, actor, f"{domain}.{operation}",
                  json.dumps(list(entity)), int(bool(executed)), error, notice,
-                 f"{domain}.{key}"))
+                 f"{domain}.{key}",
+                 None if subject is None else json.dumps(subject)))
             self._conn.commit()
         return ident
 

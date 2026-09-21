@@ -326,7 +326,7 @@ class Workshop:
     # ---- applicare ------------------------------------------------------
 
     async def apply(self, proposal_id: str, *, actor: str, exchange: str | None,
-                      now: float) -> dict:
+                      now: float, subject: dict | None = None) -> dict:
         proposal = self._store.read(proposal_id)
         if proposal is None:
             return {"errore": "non ho nessuna proposta con quell’identificatore."}
@@ -357,7 +357,7 @@ class Workshop:
                 note = await self._disfa(nati, senza_id)
                 return self._fallita(proposal, now, actor,
                                      f"non sono riuscito a creare l’helper: "
-                                     f"{occurrence['errore']}{note}")
+                                     f"{occurrence['errore']}{note}", subject=subject)
             creato = occurrence.get("helper") or {}
             if creato.get("id"):
                 nati.append((helper.get("dominio"), creato["id"]))
@@ -392,7 +392,7 @@ class Workshop:
             reason = raw_error if guasto_rete else _translate_rejection(
                 raw_error, domain)
             return self._fallita(proposal, now, actor, reason + note,
-                                 guasto_rete=guasto_rete)
+                                 guasto_rete=guasto_rete, subject=subject)
 
         entity, notice = await self._reread(domain, key, operation)
         if operation == "crea":
@@ -433,7 +433,7 @@ class Workshop:
 
         execution_id = self._journal.log_construction(
             actor=actor, operation=operation, domain=domain, key=key,
-            entity=entity, executed=True, now=now, notice=notice)
+            entity=entity, executed=True, now=now, notice=notice, subject=subject)
         occurrence_state = self._store.mark_applied(proposal_id, now=now,
                                                       execution_id=execution_id)
         if "errore" in occurrence_state:
@@ -554,11 +554,11 @@ class Workshop:
         return (" " + "; ".join(pezzi) + ".") if pezzi else ""
 
     def _fallita(self, proposal: dict, now: float, actor: str, reason: str, *,
-                guasto_rete: bool = False) -> dict:
+                guasto_rete: bool = False, subject: dict | None = None) -> dict:
         execution_id = self._journal.log_construction(
             actor=actor, operation=proposal["gesto"], domain=proposal["dominio"],
             key=proposal["chiave"], entity=[], executed=False, now=now,
-            error=reason)
+            error=reason, subject=subject)
         occurrence_state = self._store.mark_rejected(proposal["id"], now=now,
                                                       reason=reason)
         if "errore" in occurrence_state:
@@ -721,7 +721,7 @@ class Workshop:
     # ---- ripristinare ---------------------------------------------------
 
     async def restore(self, construction_id: str, *, actor: str,
-                         exchange: str | None, now: float) -> dict:
+                         exchange: str | None, now: float, subject: dict | None = None) -> dict:
         """Rimettere il «prima» e' un'ALTRA costruzione, e passa di qui.
 
         Non e' una scorciatoia che scrive diretta: valida come tutte le altre,

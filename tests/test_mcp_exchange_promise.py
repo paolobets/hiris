@@ -43,7 +43,8 @@ class PortaFinta:
     def __init__(self) -> None:
         self.chiamate = []
 
-    async def execute(self, call: dict, *, actor: str):
+    async def execute(self, call: dict, *, actor: str,
+                      subject: dict | None = None):
         self.chiamate.append((call, actor))
         return {"eseguito": True, "esecuzione_id": "e1"}
 

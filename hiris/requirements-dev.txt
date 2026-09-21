@@ -1,0 +1,24 @@
+# Le dipendenze di SVILUPPO — non entrano nell'immagine.
+#
+# Fino al 21/09/2026 stavano insieme a quelle di produzione, in un file solo, e
+# il `Dockerfile` installava tutto: l'add-on che gira in casa portava dentro
+# `pytest`, `pytest-asyncio`, `pytest-aiohttp` e `ruff` — quattro alberi di
+# dipendenze in piu' da sorvegliare per le vulnerabilita', in cambio di zero
+# funzioni per chi usa HIRIS.
+#
+# La separazione e' arrivata quando `cryptography` e' entrata in produzione: si
+# aggiunge una libreria che serve, e nello stesso gesto si tolgono quelle che
+# non servivano.
+#
+# Il CI installa entrambi i file; il `Dockerfile` solo `requirements.txt`.
+-r requirements.txt
+
+pytest>=9.1.1,<10.0.0
+pytest-asyncio>=1.4.0,<2.0.0
+pytest-aiohttp>=1.1.1,<2.0.0
+
+# Il linter e' parte del cancello, non un accessorio. Il TETTO al minor
+# successivo e' la difesa vera: ruff cambia il proprio set di default fra
+# minor, e senza tetto un CI verde diventerebbe rosso senza che nessuno abbia
+# toccato una riga.
+ruff>=0.16.4,<0.17.0

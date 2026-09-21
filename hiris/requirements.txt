@@ -11,20 +11,18 @@
 #
 # Le PR di dependabot che proponevano pavimenti piu' bassi di questi sono
 # superate: le loro versioni erano gia' vecchie quando sono arrivate.
+# Le firme dei canali esterni (spec 2026-09-21 «i canali e i ruoli»): Ed25519,
+# chiave pubblica da una parte e privata dall'altra. Non c'e' un equivalente
+# nella libreria standard, e rifarsi la crittografia in proprio e' la cosa che
+# non si fa. Misurato il 21/09 su PyPI: esistono wheel musllinux_1_2 per
+# aarch64 e x86_64, cioe' entrambe le architetture che questo add-on dichiara
+# -- nessuna compilazione in fase di costruzione dell'immagine.
+cryptography>=46.0.0,<51.0.0
+
 aiohttp>=3.14.3,<4.0.0
 anthropic>=1.0.0,<2.0.0
 apscheduler>=3.11.3,<4.0.0
-python-dotenv>=1.2.2
-pytest>=9.1.1,<10.0.0
-pytest-asyncio>=1.4.0,<2.0.0
-pytest-aiohttp>=1.1.1,<2.0.0
 httpx>=0.28.1,<1.0.0
 openai>=3.1.0,<4.0.0
 model2vec>=0.9.0
 pyyaml>=6.0.3,<7.0
-
-# Il linter e' parte del cancello, non un accessorio: sta qui perche' il CI lo
-# installa con tutto il resto. Il TETTO al minor successivo e' la difesa vera —
-# ruff cambia il proprio set di default fra minor, e senza tetto un CI verde
-# diventerebbe rosso senza che nessuno abbia toccato una riga.
-ruff>=0.16.4,<0.17.0

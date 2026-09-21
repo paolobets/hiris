@@ -295,6 +295,11 @@ def test_aggiorna_porta_le_azioni_all_ultimo_major_e_non_tocca_altro(tmp_path, m
         "RUN npm install -g @anthropic-ai/claude-code@2.1.228\n", encoding="utf-8")
     (dentro / "requirements.txt").write_text("anthropic>=0.87.0,<1.0.0\n",
                                              encoding="utf-8")
+    # DUE file dal 21/09/2026: produzione e sviluppo si sono separati quando
+    # `cryptography` e' entrata nell'immagine. Il repo finto ne ha due come
+    # quello vero, o proverebbe il cancello contro un mondo che non esiste.
+    (dentro / "requirements-dev.txt").write_text(
+        "-r requirements.txt\nruff>=0.16.4,<0.17.0\n", encoding="utf-8")
     monkeypatch.setattr(vc, "RADICE", tmp_path)
 
     letti = vc.leggi_i_file()
@@ -324,6 +329,11 @@ def test_con_cli_il_dockerfile_si_tocca_eccome(tmp_path, monkeypatch):
         "RUN npm install -g @anthropic-ai/claude-code@2.1.228\n", encoding="utf-8")
     (dentro / "requirements.txt").write_text("anthropic>=0.87.0,<1.0.0\n",
                                              encoding="utf-8")
+    # DUE file dal 21/09/2026: produzione e sviluppo si sono separati quando
+    # `cryptography` e' entrata nell'immagine. Il repo finto ne ha due come
+    # quello vero, o proverebbe il cancello contro un mondo che non esiste.
+    (dentro / "requirements-dev.txt").write_text(
+        "-r requirements.txt\nruff>=0.16.4,<0.17.0\n", encoding="utf-8")
     monkeypatch.setattr(vc, "RADICE", tmp_path)
 
     nuova = vc.aggiorna_cli(vc.leggi_i_file(), {"cli": {"versione": "2.1.233"}})

@@ -693,7 +693,7 @@ async def test_conversazione_4_spegni_la_luce_arriva_alla_porta_e_torna_al_model
         def __init__(self):
             self.chiamate = []
 
-        async def execute(self, chiamata, *, actor):
+        async def execute(self, chiamata, *, actor, subject=None):
             self.chiamate.append((chiamata, actor))
             return {"eseguito": True, "servizio": "light.turn_off",
                     "entita": ["light.cucina_1"],

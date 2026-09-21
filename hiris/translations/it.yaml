@@ -30,7 +30,7 @@ configuration:
     description: "Paga le risposte di Claude; la prendi su console.anthropic.com. PRIVACY: messaggi e contesto della casa passano da Anthropic (USA)."
   claude_code_oauth_token:
     name: "Provider · Piano Claude Max — token"
-    description: "Apre il piano; lo generi con `claude setup-token`. ATTENZIONE: qui i consumi non si misurano. Da solo non basta: il piano si accende nella pagina Modelli di HIRIS."
+    description: "Apre il piano; lo generi con `claude setup-token`. ATTENZIONE: qui i consumi non si misurano. Da solo non basta: il piano si accende nella pagina Modelli di HIRIS. PRIVACY: su questo percorso passano la conoscenza della casa e i ricordi delle conversazioni, sotto le condizioni d'uso e di conservazione del piano Claude Max, DIVERSE da quelle dell'API a consumo."
   openrouter_api_key:
     name: "Provider · OpenRouter — chiave"
     description: "La chiave di openrouter.ai; ci sono anche modelli ':free'. PRIVACY: i messaggi passano da OpenRouter (USA) e dal fornitore del modello."
@@ -70,3 +70,6 @@ configuration:
   supervisor_ingress_cidr:
     name: "Avanzate · reti riconosciute come ingress"
     description: "Chi arriva da queste reti entra senza token, tutti gli altri no. Allargarlo apre la API di HIRIS. Predefinito: la rete del Supervisor."
+  canali:
+    name: "Avanzate · canali esterni (nome:ruolo:chiave)"
+    description: "Chi può parlare con HIRIS da fuori Home Assistant, una riga per canale. Il RUOLO decide: `amministratore` costruisce, `utente` comanda ma non costruisce, `lettore` legge e basta. La CHIAVE è pubblica e non è un segreto: chi firma tiene la privata, e HIRIS non ne ha nessuna. Lascia vuoto se non usi integrazioni esterne."

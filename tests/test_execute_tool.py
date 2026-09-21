@@ -28,7 +28,7 @@ class FintaPorta:
         self.esito = esito or {"eseguito": True, "servizio": "light.turn_off",
                                "entita": ["light.salotto"], "cambiato": ["light.salotto"]}
 
-    async def execute(self, chiamata, *, actor):
+    async def execute(self, chiamata, *, actor, subject=None):
         self.chiamate.append((chiamata, actor))
         return self.esito
 

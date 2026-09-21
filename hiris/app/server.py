@@ -5533,6 +5533,13 @@ def create_app() -> web.Application:
     from .api.soffitto import prepara_ruoli
     prepara_ruoli(app)
 
+    # I canali esterni e le loro chiavi pubbliche (spec 2026-09-21). Stesso
+    # motivo di sopra per cui i contenitori nascono qui e non alla prima
+    # richiesta servita.
+    from .api.canali import prepara_canali
+    app["canali_testo"] = os.environ.get("CANALI", "")
+    prepara_canali(app)
+
     # fetta E3 Task 5: /api/brain/feed e /api/brain/reasoning sono uscite col
     # Brain auto-proponente (handle_brain_feed componeva reasoning_log/
     # brain.feed, handle_brain_reasoning leggeva il solo reasoning_log --

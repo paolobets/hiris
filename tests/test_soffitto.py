@@ -1,56 +1,60 @@
-"""Il SOFFITTO: quanto si concede a chi chiede (invariante I-1).
+"""Il SOFFITTO: quanto si concede a chi chiede (spec 2026-09-21, §2 e §4).
 
-**Il principio, deciso dal proprietario il 21/09/2026**: *HIRIS non concede mai
-piu' di quanto il chiamante gia' puo' in Home Assistant.* Ne' piu' ne' meno.
+**Il principio, del proprietario**: *HIRIS non concede mai piu' di quanto il
+chiamante gia' puo' in Home Assistant.* Ne' piu' ne' meno.
 
 Meno sarebbe **teatro**: un utente non amministratore comanda gia' le sue entita'
-dalla plancia, e impedirglielo dentro HIRIS non toglie un potere a nessuno --
-aggiunge una frustrazione e una falsa sensazione di sicurezza.
+dalla plancia, e impedirglielo dentro HIRIS non toglie un potere a nessuno.
+Piu' e' quello che HIRIS faceva: parla con HA col proprio token, che e'
+amministratore, quindi non restringeva -- **amplificava**.
 
-Piu' e' quello che HIRIS fa **oggi**, ed e' il difetto che questo modulo chiude.
-Verificato sul sorgente di Home Assistant il 21/09: il Supervisor proxa verso il
-nucleo con la propria sessione privilegiata, e
-`websocket_api/connection.py::context` costruisce il contesto **dall'utente
-autenticato, ignorando il messaggio** -- nessuna delega, nessuna impersonazione.
-Quindi HIRIS parla con HA da amministratore qualunque sia la persona che ha
-scritto, e un non amministratore che passa di qui ottiene i poteri di HIRIS
-invece dei propri.
+**La forma, dopo la decisione del 21/09 sui canali.** Il ruolo non si deduce da
+dove arriva una richiesta: **viaggia con la credenziale**. Per una persona lo
+dice Home Assistant (`config/auth/list`), per un canale lo dice la registrazione,
+per un turno senza soggetto lo dice il suo mestiere. Quattro sorgenti, **una
+funzione sola** che decide -- invece di quattro funzioni che si somigliano e
+divergono al primo cambiamento (fondamenta 2).
 
-**Dove sta la differenza, misurata.** Non nei servizi: `verification.py` dichiara
-che i servizi di sistema (`homeassistant.restart`, `hassio.host_reboot`,
-`recorder.purge`, `shell_command.*`) sono gia' irraggiungibili dalla porta,
-perche' non dichiarano un bersaglio e un bersaglio vuoto e' sempre un rifiuto.
-L'amplificazione vera e' **una sola porta**: la CONFIGURAZIONE. Un non
-amministratore, via HIRIS, puo' far scrivere automazioni in casa -- cosa che Home
-Assistant gli nega.
-
-Da cui il soffitto: **una porta, due valori**. Nessun servizio elencato, niente
-che invecchi a ogni rilascio di HA.
+**Il grado piu' basso non e' «niente».** Chi e' passato dall'ingress di Home
+Assistant *e' comunque un utente di HA*, quindi comanda: il grado piu' basso
+compatibile con l'essere passati di li' e' `utente`, non `lettore`. Trattare un
+ruolo illeggibile come «non puo' niente» spegnerebbe la chat a chi ha tutto il
+diritto di usarla, per un guasto di rete.
 """
+import pytest
 
 from hiris.app.api.soffitto import consente
 
-_AMMINISTRATORE = {"specie": "persona", "id": "u-1", "nome": "Paolo"}
-_OSPITE = {"specie": "persona", "id": "u-9", "nome": "Ospite"}
+_PERSONA = {"specie": "persona", "id": "u-1", "nome": "Paolo"}
 _ANONIMO = {"specie": "persona", "id": None, "nome": None}
-_INTEGRAZIONE = {"specie": "integrazione", "id": None, "nome": None}
+_CANALE = {"specie": "integrazione", "id": "gateway", "nome": "gateway"}
+_LUOGO = {"specie": "luogo", "id": "retropanel", "nome": "Retro Panel"}
 
 
-def test_un_amministratore_costruisce():
-    """Il caso del proprietario: non cambia niente di come usa HIRIS oggi.
+@pytest.mark.parametrize("ruolo,legge,comanda,costruisce", [
+    ("amministratore", True, True, True),
+    ("utente", True, True, False),
+    ("lettore", True, False, False),
+])
+def test_i_tre_ruoli_decidono_tutto(ruolo, legge, comanda, costruisce):
+    """La tabella della spec §4, pinnata sul soffitto e non solo sul modulo dei
+    canali: sono due lettori dello stesso fatto, e devono dire la stessa cosa.
 
-    Mutazione: negare a tutti -- rossa (sarebbe il prodotto rotto per tutti,
-    non messo in sicurezza)."""
-    assert consente(_AMMINISTRATORE, amministratore=True)["costruire"] is True
+    Mutazione ESEGUITA: dare `costruire` a «utente» -- rossa."""
+    esito = consente(_PERSONA, ruolo=ruolo)
+
+    assert esito["leggere"] is legge
+    assert esito["comandare"] is comanda
+    assert esito["costruire"] is costruisce
 
 
-def test_un_utente_qualunque_NON_costruisce_ma_tutto_il_resto_si():
-    """Il cuore del principio. Comandare resta: la plancia glielo da' gia'.
-    Costruire no: la plancia non glielo da'.
+def test_un_utente_qualunque_NON_costruisce_ma_comanda():
+    """Il cuore del principio, detto sul caso vero. Comandare resta: la plancia
+    glielo da' gia'. Costruire no: la plancia non glielo da'.
 
-    Mutazione ESEGUITA: togliere la distinzione e negare anche `comandare` --
-    rossa, ed e' la mutazione che descrive l'errore di disegno evitato."""
-    esito = consente(_OSPITE, amministratore=False)
+    Mutazione ESEGUITA: negare anche `comandare` -- rossa, ed e' la mutazione
+    che descrive l'errore di disegno evitato."""
+    esito = consente(_PERSONA, ruolo="utente")
 
     assert esito["costruire"] is False
     assert esito["comandare"] is True, (
@@ -59,56 +63,93 @@ def test_un_utente_qualunque_NON_costruisce_ma_tutto_il_resto_si():
     assert esito["perche"], "un rifiuto senza motivo e' un ordine"
 
 
-def test_un_ingress_ANONIMO_non_costruisce():
-    """`X-Remote-User-Id` non e' garantito. «Non so chi sei» non e' «sei il
-    proprietario»: si vale il grado piu' basso.
+def test_il_ruolo_ILLEGGIBILE_vale_utente_non_lettore():
+    """**Il grado piu' basso compatibile con l'essere passati da HA.** Se Home
+    Assistant non ha risposto, chi sta chiedendo e' comunque un utente che ha
+    superato l'ingress: negargli di comandare per un guasto di rete gli
+    toglierebbe cio' che la plancia gli da' comunque.
 
-    Mutazione: trattare l'anonimo come amministratore -- rossa."""
-    assert consente(_ANONIMO, amministratore=None)["costruire"] is False
+    Ma costruire no: quello resta chiuso finche' non si sa.
 
+    Mutazione ESEGUITA: ripiegare su `lettore` -- rossa (la chat si spegne per
+    un guasto)."""
+    esito = consente(_PERSONA, ruolo=None)
 
-def test_se_il_RUOLO_non_si_e_potuto_leggere_non_si_costruisce():
-    """**Il verso del dubbio.** Se Home Assistant non ha risposto, il ruolo e'
-    `None` -- e un guasto di rete non deve diventare un aumento di privilegi.
-
-    Mutazione ESEGUITA: `amministratore or True` al posto del confronto --
-    rossa."""
-    esito = consente(_AMMINISTRATORE, amministratore=None)
-
+    assert esito["comandare"] is True
     assert esito["costruire"] is False
     assert "non" in esito["perche"].lower()
 
 
-def test_una_INTEGRAZIONE_tiene_oggi_il_soffitto_di_ieri_e_lo_dichiara():
-    """Il gateway, il proxy di Retro Panel e il ponte portano un token, non una
-    persona: `amministratore` non si applica e non si puo' dedurre.
+def test_un_ingress_ANONIMO_comanda_ma_non_costruisce():
+    """`X-Remote-User-Id` non e' garantito: con provider di autenticazione non
+    nativi puo' mancare. Chi e' senza identita' ha comunque una sessione di HA
+    valida, quindi vale `utente`.
 
-    Oggi conservano il soffitto che avevano, **dichiarato e non dedotto**: il
-    loro perimetro e' l'invariante successivo (i canali esterni, con credenziali
-    non falsificabili), e stringerlo qui a meta' vorrebbe dire romperli adesso
-    per una difesa che arriva dopo.
+    Mutazione: trattare l'anonimo come amministratore -- rossa."""
+    esito = consente(_ANONIMO, ruolo=None)
 
-    Mutazione: fargli ereditare in silenzio il ramo delle persone -- rossa (un
-    token diventerebbe una persona anonima, cioe' negato, e il gateway si
-    spegnerebbe senza che nessuno l'abbia deciso)."""
-    esito = consente(_INTEGRAZIONE, amministratore=None)
-
-    assert esito["costruire"] is True
-    assert esito["rinviato"] is True, (
-        "il soffitto delle macchine e' una decisione rinviata, e va DETTA: "
-        "un rinvio taciuto e' indistinguibile da una svista")
+    assert esito["comandare"] is True
+    assert esito["costruire"] is False
 
 
-def test_ogni_gesto_conosciuto_ha_una_risposta():
+def test_un_CANALE_vale_il_ruolo_della_sua_registrazione():
+    """Il gateway, il Retro Panel, la porta di sviluppo: il ruolo gliel'ha dato
+    il proprietario quando li ha registrati, e non si deduce da nient'altro.
+
+    Mutazione ESEGUITA: far ereditare a un canale il ramo delle persone --
+    rossa (un canale «lettore» comanderebbe)."""
+    assert consente(_CANALE, ruolo="utente")["comandare"] is True
+    assert consente(_CANALE, ruolo="utente")["costruire"] is False
+    assert consente(_CANALE, ruolo="lettore")["comandare"] is False
+    assert consente(_LUOGO, ruolo="amministratore")["costruire"] is True
+
+
+def test_un_CANALE_senza_ruolo_non_puo_niente():
+    """Qui il verso del dubbio e' l'opposto di quello delle persone, e la
+    differenza e' il fatto che li' distingue: una persona ha comunque superato
+    l'ingress di Home Assistant, una macchina senza ruolo **non ha superato
+    niente**.
+
+    Mutazione ESEGUITA: dare `utente` anche a un canale senza ruolo -- rossa."""
+    esito = consente(_CANALE, ruolo=None)
+
+    assert esito["leggere"] is False
+    assert esito["comandare"] is False
+    assert esito["costruire"] is False
+
+
+def test_un_ruolo_INVENTATO_ricade_dove_ricade_uno_MANCANTE():
+    """I ruoli sono un insieme chiuso, e una parola fuori dall'insieme non e'
+    un permesso. Ma «fuori dall'insieme» e «mancante» sono lo stesso fatto --
+    *non ho un ruolo valido per costui* -- e devono avere lo stesso esito, o
+    esisterebbero due strade per la stessa condizione.
+
+    Quindi vale l'asimmetria fra le specie, non una terza regola: per una
+    persona `utente` (ha comunque superato l'ingress), per una macchina niente
+    (non ha superato niente).
+
+    Mutazione ESEGUITA: trattare la parola inventata come un ruolo valido --
+    rossa."""
+    persona = consente(_PERSONA, ruolo="capo")
+    assert persona["comandare"] is True
+    assert persona["costruire"] is False
+    assert persona == consente(_PERSONA, ruolo=None)
+
+    macchina = consente(_CANALE, ruolo="capo")
+    assert macchina["comandare"] is False
+    assert macchina == consente(_CANALE, ruolo=None)
+
+
+def test_ogni_esito_risponde_a_TUTTI_i_gesti():
     """Un soffitto che non nomina un gesto lo lascia passare in silenzio.
-    L'insieme dei gesti e' chiuso, e ogni esito li copre tutti.
+    L'insieme e' chiuso, e ogni esito li copre tutti.
 
     Mutazione: aggiungere un gesto a `GESTI` e non rispondergli -- rossa."""
     from hiris.app.api.soffitto import GESTI
 
-    for soggetto, ruolo in ((_AMMINISTRATORE, True), (_OSPITE, False),
-                            (_ANONIMO, None), (_INTEGRAZIONE, None)):
-        esito = consente(soggetto, amministratore=ruolo)
-        for gesto in GESTI:
-            assert gesto in esito, f"{gesto} senza risposta per {soggetto['specie']}"
-            assert isinstance(esito[gesto], bool)
+    for soggetto in (_PERSONA, _ANONIMO, _CANALE, _LUOGO):
+        for ruolo in (*("amministratore", "utente", "lettore"), None, "capo"):
+            esito = consente(soggetto, ruolo=ruolo)
+            for gesto in GESTI:
+                assert isinstance(esito.get(gesto), bool), (
+                    f"{gesto} senza risposta per {soggetto['specie']}/{ruolo}")

@@ -60,6 +60,11 @@ IN_FONDO_PERCHE_PERICOLOSE = [
     "log_level",
     "internal_token",
     "supervisor_ingress_cidr",
+    # `canali` (21/09/2026): chi ci mette una riga da' a una macchina fuori da
+    # Home Assistant il diritto di parlare con HIRIS, e il RUOLO che ci scrive
+    # decide se quella macchina comanda la casa. La chiave e' pubblica e non e'
+    # un segreto -- il pericolo non e' li', e' nel ruolo.
+    "canali",
 ]
 
 # I due gruppi annidati rimasti. Il dizionario annidato e' l'unico
@@ -279,7 +284,7 @@ def test_la_pagina_add_on_tiene_solo_cio_che_si_custodisce():
     assert set(cfg["options"]) == {
         "claude_api_key", "claude_code_oauth_token", "openrouter_api_key",
         "openai_api_key", "local_model", "theme", "memory",
-        "log_level", "internal_token", "supervisor_ingress_cidr",
+        "log_level", "internal_token", "supervisor_ingress_cidr", "canali",
     }
 
 

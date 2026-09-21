@@ -22,7 +22,7 @@ class PortaFinta:
         self._occurrence = occurrence or {"eseguito": True, "cambiato": ["light.studio"],
                                 "esecuzione_id": "e1"}
 
-    async def __call__(self, chiamata, *, actor):
+    async def __call__(self, chiamata, *, actor, subject=None):
         self.chiamate.append((chiamata, actor))
         return self._occurrence
 
@@ -175,7 +175,7 @@ async def test_una_porta_che_solleva_non_ferma_il_battito(archivio):
 
     chiamate = []
 
-    async def porta(chiamata, *, actor):
+    async def porta(chiamata, *, actor, subject=None):
         chiamate.append(chiamata)
         if len(chiamate) == 1:
             raise RuntimeError("la rete e' caduta")

@@ -162,7 +162,13 @@ def leggi_i_file() -> dict:
     """Cio' che il repo dichiara. Nessuna rete."""
     dockerfile = RADICE / "hiris" / "Dockerfile"
     workflow = RADICE / ".github" / "workflows" / "tests.yml"
-    requisiti = RADICE / "hiris" / "requirements.txt"
+    # DUE file dal 21/09/2026: la produzione e lo sviluppo si sono separati
+    # quando `cryptography` e' entrata nell'immagine. Si leggono entrambi,
+    # perche' un pavimento o un tetto sbagliato su `ruff` o su `pytest` rompe
+    # il cancello esattamente come uno su `aiohttp` -- e leggerne uno solo
+    # avrebbe fatto sparire in silenzio quattro righe dalla sorveglianza.
+    requisiti = [RADICE / "hiris" / "requirements.txt",
+                 RADICE / "hiris" / "requirements-dev.txt"]
 
     trovata = _RE_CLI.search(dockerfile.read_text(encoding="utf-8"))
     if not trovata:
@@ -185,9 +191,11 @@ def leggi_i_file() -> dict:
 
     tetti: dict = {}
     pavimenti: dict = {}
-    for riga in requisiti.read_text(encoding="utf-8").splitlines():
-        riga = riga.strip()
-        if not riga or riga.startswith("#"):
+    righe = [(riga.strip(), percorso.relative_to(RADICE).as_posix())
+             for percorso in requisiti
+             for riga in percorso.read_text(encoding="utf-8").splitlines()]
+    for riga, dove in righe:
+        if not riga or riga.startswith(("#", "-r ")):
             continue
         nome = re.split(r"[><=!\s]", riga, maxsplit=1)[0]
         minimo = re.search(r">=\s*([\d.]+)", riga)
@@ -203,8 +211,7 @@ def leggi_i_file() -> dict:
         # Nessun tetto -> nessun major da escludere. Inventarne uno
         # produrrebbe uno scarto permanente su una riga sana.
         if massimo:
-            tetti[nome] = {"tetto": massimo.group(1),
-                           "dove": "hiris/requirements.txt"}
+            tetti[nome] = {"tetto": massimo.group(1), "dove": dove}
     return {"cli": cli, "azioni": azioni, "tetti": tetti, "pavimenti": pavimenti}
 
 

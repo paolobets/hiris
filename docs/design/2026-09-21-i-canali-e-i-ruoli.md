@@ -1,0 +1,297 @@
+# I canali e i ruoli — chi parla con HIRIS, e quanto gli si concede
+
+`spec · 21/09/2026 · invariante I-2 dello sprint sicurezza`
+
+Nasce dal registro dei rischi dello stesso giorno (`2026-09-21-sicurezza-esposizioni.md`) e dalle
+decisioni che il proprietario ha preso una alla volta il 21/09. Copre **tutti e sette** gli ingressi
+di HIRIS, dentro e fuori Home Assistant, perché progettare la sicurezza di un ingresso alla volta è
+il modo in cui restano i buchi fra l'uno e l'altro.
+
+Presuppone I-0 (*un cancello chiede il suo elenco, non lo ricopia*) e I-1 (*ogni richiesta ha un
+soggetto*), già vivi.
+
+---
+
+## §0 · Le tre decisioni che hanno formato questa spec
+
+**1. Non si limitano i servizi.** *«Non vorrei limitare i servizi, così castriamo HIRIS e non segue
+la versione.»* Una lista di servizi invecchia a ogni rilascio di Home Assistant, e si aggira
+comunque scrivendo il servizio dentro il corpo di un'automazione. Il bersaglio era sbagliato: **il
+pericolo non è il servizio, è che il modello sia stato convinto da un testo letto in casa** —
+`lock.unlock` chiesto dal proprietario è il prodotto che funziona, lo stesso `lock.unlock` suggerito
+da una riga di registro è l'attacco, e nessuna lista li distingue.
+
+**2. HIRIS non è più stretto di Home Assistant.** Un utente non amministratore comanda già le sue
+entità dalla plancia: impedirglielo dentro HIRIS non toglie un potere a nessuno. Ciò che va chiuso è
+il verso opposto — HIRIS **amplifica**, perché parla con HA col proprio token, che è amministratore.
+
+**3. Il ruolo viaggia con la credenziale.** *«Quando si rilascia il token per configurare quei
+dispositivi gli si assegna anche un permesso: esempio ruolo admin, ruolo user, così non gestisce
+automazioni e altro, quindi comanda.»* È la decisione che fa collassare il disegno: il ruolo non si
+deduce da dove sta un dispositivo — **lo si dichiara quando lo si registra**.
+
+---
+
+## §1 · I fatti su Home Assistant, verificati il 21/09/2026
+
+Regola del progetto: su HA non si ipotizza. Ogni riga qui sotto è stata letta sulla documentazione
+per sviluppatori o sul sorgente, non dedotta.
+
+| Fatto | Dove |
+|---|---|
+| `panel_admin` (default `true`) nasconde **la voce di menu**, non difende l'URL: *«Make the menu entry only available to users in the admin group»* | doc add-on |
+| Il proxy di ingress **non ha nessun controllo di ruolo**: l'unico requisito è `if not self.sys_ingress.validate_session(session)` | `supervisor/api/ingress.py` |
+| Il proxy aggiunge `X-Remote-User-Id`, `X-Remote-User-Name`, `X-Remote-User-Display-Name` da `session_data.user`, e **filtra via le stesse intestazioni in ingresso** | `supervisor/api/ingress.py::_init_header` |
+| Il Supervisor proxa verso il nucleo **con la propria sessione privilegiata**: le chiamate di un add-on sono attribuite a un utente di sistema amministratore | `supervisor/api/proxy.py` |
+| `context(msg)` costruisce il contesto **dall'utente autenticato, ignorando il messaggio**: nessuna delega, nessuna impersonazione | `websocket_api/connection.py` |
+| HA fa rispettare i permessi per entità **su `call.context.user_id`**, dentro la macchina delle chiamate: `if not user.is_admin: entity_perms = user.permissions.check_entity` | `helpers/service.py` |
+| `config/auth/list` è `@websocket_api.require_admin` e restituisce `group_ids`, **non** `is_admin` | `components/config/auth.py` |
+| `admin_only` **non è mai esposto ai client** nelle descrizioni dei servizi | `helpers/service.py` |
+| `ConversationInput` porta `context`, `device_id`, `satellite_id`: **con la voce non c'è una persona, c'è un dispositivo** | `components/conversation/models.py` |
+| `config/label_registry/create` richiede admin — la porta che HIRIS usa già, e la prova indiretta che la sua connessione abbia i diritti per `config/auth/list` | `components/config/label_registry.py` |
+
+**Resta da misurare dal vivo**, e va fatto al primo rilascio: che `config/auth/list` risponda davvero
+nell'add-on. Se non rispondesse, il ruolo sarebbe illeggibile e — per il verso del dubbio — nessuno
+potrebbe costruire, **nemmeno il proprietario**. Il registro lo dichiara con la conseguenza scritta
+per esteso.
+
+---
+
+## §2 · Il modello: tre domande, e vale il minore
+
+Ogni richiesta che arriva a HIRIS risponde a tre domande. Il soffitto è **il minore** delle tre
+risposte — mai la somma, mai la più generosa.
+
+```
+1. DA DOVE arriva   →  il canale, e con quale credenziale prova di essere lui
+2. CHI c'è dietro   →  la specie del soggetto, e la sua identità quando c'è
+3. QUALE RUOLO ha   →  amministratore · utente · lettore
+```
+
+La terza è quella che decide, ed è nuova solo nella **provenienza**: per una persona il ruolo lo dice
+Home Assistant, per tutto il resto lo dice **la registrazione**. Da cui **una sola funzione** che
+decide il soffitto, con quattro sorgenti diverse per il suo ingresso — invece di quattro funzioni
+che si somigliano e divergono al primo cambiamento (fondamenta 2).
+
+---
+
+## §3 · Le quattro specie di soggetto
+
+| specie | chi è | come lo si sa | esempi |
+|---|---|---|---|
+| **persona** | un utente di Home Assistant, identificato | sessione HA, `X-Remote-User-Id` | pannello ingress · card lovelace · Assist **scritto** |
+| **luogo** | nessuno si è autenticato, ma si sa **dove** | il dispositivo, il satellite, il pannello | Retro Panel · Assist **parlato** |
+| **integrazione** | una macchina | firma Ed25519 | gateway MCP · porta di sviluppo |
+| **nessuno** | HIRIS per conto suo | — | schedulatore · osservatore · analista · attuatore · ponte |
+
+**`luogo` è la specie che il quadro intero ha fatto emergere**, e non era nel disegno iniziale. Non è
+«anonimo»: un anonimo è qualcuno di cui non si sa niente, un luogo è **qualcuno che è fisicamente in
+casa** — informazione vera, diversa, e che vale la pena tenere distinta. Un pannello in corridoio e
+un altoparlante in cucina sono la stessa cosa, e trattarli come due casi sarebbe il doppione per
+forma.
+
+**Il soggetto esiste sempre.** «Non so chi sei» produce una persona anonima, non l'assenza di un
+soggetto: un campo mancante e un campo vuoto si confondono al primo lettore distratto, due parole
+diverse no. (Già vivo da I-1.)
+
+---
+
+## §4 · I tre ruoli
+
+Il vocabolario è **quello di Home Assistant**, non uno nostro: `amministratore` e `utente`
+corrispondono a ciò che HA chiama admin e non-admin, così un proprietario che conosce HA non deve
+imparare un secondo sistema. `lettore` è il terzo, e serve a un caso che HA non ha: una macchina che
+deve **misurare senza toccare**.
+
+| ruolo | legge | comanda | costruisce | chi lo ha |
+|---|:--:|:--:|:--:|---|
+| **amministratore** | ✓ | ✓ | ✓ | il proprietario dal pannello · un pannello di fiducia |
+| **utente** | ✓ | ✓ | ✗ | Retro Panel · altoparlante · un familiare in HA |
+| **lettore** | ✓ | ✗ | ✗ | la porta di sviluppo |
+
+**Perché `costruire` è la sola cosa riservata, e non i servizi di sistema.** I servizi di sistema
+(`homeassistant.restart`, `hassio.host_reboot`, `recorder.purge`, `shell_command.*`) sono **già
+irraggiungibili** dalla porta: non dichiarano un bersaglio, e un bersaglio vuoto è sempre un rifiuto
+(`action/verification.py`). L'unica amplificazione vera è la scrittura della configurazione. Una
+porta, due valori — e niente che invecchi a ogni rilascio di HA.
+
+**Il ruolo di un turno senza soggetto** (schedulatore, osservatore, analista, attuatore) non si
+dichiara qui: lo decide il **mestiere** di quel turno, custodito dai cancelli che già esistono
+(`_SELF_CONTAINED_KINDS`, `SOLA_LETTURA` delle promesse, il cancello dell'attuatore).
+
+---
+
+## §5 · I sette ingressi
+
+| # | ingresso | credenziale | specie | ruolo da | stato |
+|---|---|---|---|---|---|
+| 1 | **pannello ingress** | sessione HA + IP del proxy | persona | `config/auth/list` | ✅ I-1 |
+| 2 | **card lovelace** | sessione ingress creata dal browser | persona | `config/auth/list` | da costruire |
+| 3 | **Assist scritto** | `context.user_id` da HA | persona | `config/auth/list` | da costruire |
+| 4 | **Assist parlato** | `device_id` / `satellite_id` | luogo | registrazione | da costruire |
+| 5 | **Retro Panel** | firma Ed25519 | luogo | registrazione | I-2 fetta 2 |
+| 6 | **porta 8099** | firma Ed25519 | integrazione | registrazione (`lettore`) | I-2 fetta 1 |
+| 7 | **ponte** | credenziale effimera per turno | nessuno | il mestiere del turno | I-2 fetta 3 |
+
+**Nota sull'ingresso 2.** `panel_admin: true` nasconde la voce di menu ai non amministratori, ma una
+card su una plancia **la vedono tutti**. Costruirla significa esporre HIRIS a chi oggi non lo apre:
+è una decisione di prodotto, non un dettaglio d'interfaccia. Il soffitto di I-1 regge (comandare sì,
+costruire no), e va detto invece che scoperto.
+
+**Nota sull'ingresso 7.** Il ponte non è un canale di rete: gira dentro il container. Una chiave a
+vita lunga tornerebbe nella riga di comando del sottoprocesso, che è il reperto C-3 — leggibile per
+300 secondi da qualunque processo. Per lui la risposta è una credenziale **effimera**, legata al
+turno e senza valore fuori di esso.
+
+---
+
+## §6 · La credenziale di un canale
+
+### Perché asimmetrica
+
+`/data` finisce nei backup di Home Assistant, che sono in chiaro se l'utente non gli mette una
+password (reperto C-4). Con **un segreto per canale**, chi legge un backup può impersonare quel
+canale. Con una **chiave pubblica**, non ottiene niente.
+
+È questa la differenza fra «segreto» e «non falsificabile», ed è la ragione per cui la credenziale è
+una coppia di chiavi e non un secondo token: l'integrazione tiene la privata, **HIRIS non tiene
+nessuna chiave che serva a firmare**.
+
+Costo: `cryptography` diventa una dipendenza di produzione. Misurato il 21/09 su PyPI: esistono
+wheel `musllinux_1_2_aarch64` e `musllinux_1_2_x86_64`, cioè entrambe le architetture che HIRIS
+dichiara — **nessuna compilazione** in fase di costruzione dell'immagine.
+
+### Cosa viaggia
+
+```
+X-HIRIS-Canale:  <nome registrato>
+X-HIRIS-Momento: <secondi>
+X-HIRIS-Unico:   <valore irripetibile>
+X-HIRIS-Firma:   <firma, base64>
+```
+
+E la materia firmata, che le due parti devono condividere e che vive **scritta una volta sola**:
+
+```
+metodo ⏎ percorso ⏎ momento ⏎ unico ⏎ impronta-sha256(corpo)
+```
+
+**La firma copre la richiesta, non l'identità.** Firmare la sola identità lascerebbe cambiare ciò
+che la richiesta chiede tenendo buona la firma, e lascerebbe valere per una scrittura una firma nata
+per una lettura.
+
+### Le tre difese contro «qualcuno in mezzo»
+
+1. **La finestra**, in entrambi i versi. Una firma intercettata non vale per sempre; e controllare
+   solo il passato lascerebbe che un orologio avanti di un'ora allarghi la finestra di un'ora,
+   cioè lascerebbe **al chiamante** il compito di deciderla.
+2. **Il valore irripetibile**, ricordato per la durata della finestra. Senza, dentro la finestra una
+   richiesta intercettata e rimandata identica sarebbe ancora valida.
+3. **Il canale dichiarato nel codice** (§7): una firma perfetta di un nome che nessuno ha dichiarato
+   viene rifiutata.
+
+### Cosa non fa
+
+Non sostituisce TLS e non lo finge: la riservatezza del contenuto resta del trasporto. Questa
+credenziale risponde a *chi sei* e *questa richiesta è intatta*, non a *chi può leggerla*.
+
+---
+
+## §7 · La registrazione: due posti, e sono separati apposta
+
+| cosa | dove vive | perché lì |
+|---|---|---|
+| **chiave pubblica** | opzioni dell'add-on | non è un segreto: nessun archivio nuovo, niente da escludere dai backup, e si incolla dalla pagina del Supervisor |
+| **ruolo** | opzioni dell'add-on, accanto alla chiave | è la decisione del proprietario su quel dispositivo, e deve stare dove la prende |
+| **il canale esiste** | **nel codice**, elenco di ammissione | un nome che nessuno ha dichiarato viene rifiutato **anche con firma valida** |
+
+La forma di una riga: `nome · ruolo · chiave pubblica`.
+
+**Chiude per difetto, tre volte.** Un canale non dichiarato nel codice: rifiutato. Un canale
+dichiarato senza chiave: rifiutato. Una chiave senza ruolo: rifiutata. Ognuno dei tre rifiuti dice
+quale dei tre manca, perché un rifiuto che non dice cosa fare è un ordine.
+
+---
+
+## §8 · La convivenza, e come si misura la sua fine
+
+Il gateway MCP e il proxy di Retro Panel vivono in **due repository separati**. Un taglio netto li
+spegnerebbe finché non sono aggiornati.
+
+Per una fetta HIRIS accetta **la firma oppure il token**. Chi usa ancora il token deve però
+dichiarare `X-HIRIS-Canale` — non firmato, e senza nessun valore di autenticazione: serve solo a
+**misurare chi è rimasto indietro** invece di indovinarlo. Chi non lo dichiara finisce nel registro
+come «canale ignoto», con l'indirizzo e il percorso.
+
+**La fine della convivenza la decide una misura, non una data**: quando il registro tace per qualche
+giorno, il ripiego esce e il segreto condiviso smette di esistere.
+
+---
+
+## §9 · I cancelli
+
+Ognuno **chiede il suo elenco** invece di ricopiarlo (I-0), e ognuno arriva con la sua mutazione
+eseguita.
+
+1. **Ogni canale dichiarato ha un ruolo e una ragione.** Un canale senza ruolo erediterebbe tutto in
+   silenzio; uno senza ragione è indistinguibile da una dimenticanza.
+2. **I ruoli sono un insieme chiuso**, e la tabella del §4 li copre tutti: un ruolo nuovo che nessuno
+   ha mappato non è «permesso», è un ruolo su cui nessuno ha deciso.
+3. **La materia firmata è una sola.** Se chi firma e chi verifica divergessero, ogni firma legittima
+   verrebbe rifiutata e nessuno capirebbe perché.
+4. **Nessuna rotta mutante senza una decisione** — già vivo da I-1, e si estende: la classificazione
+   dirà anche quale ruolo serve.
+5. **Il ripiego al token è temporaneo e si vede.** Una prova che fallisce quando il ramo del ripiego
+   sopravvive a una data dichiarata: un rinvio senza scadenza è un rinvio che non finisce.
+
+---
+
+## §10 · Le fette
+
+| | Cosa | Repository | Stato |
+|---|---|---|---|
+| **1** | Il meccanismo (firma, finestra, valore irripetibile, registrazione), i cancelli, e **la porta di sviluppo come `lettore`** | solo HIRIS | ✅ **fatta il 21/09** |
+| **2** | Gateway MCP e Retro Panel firmano; si misura la convivenza | tre repository | da fare |
+| **3** | Il token esce; il ponte passa alla credenziale effimera | solo HIRIS | da fare |
+
+Gli ingressi 2, 3 e 4 del §5 — card lovelace, Assist scritto, Assist parlato — **non esistono
+ancora**: questa spec dichiara il loro posto nel modello perché nascano già dentro, invece di essere
+messi in sicurezza dopo. La loro costruzione è una fetta di prodotto, non di sicurezza.
+
+---
+
+## §11 · Cosa resta fuori, dichiarato
+
+- ~~**La cronaca non registra ancora chi.**~~ **Fatto nella fetta 1**: una colonna sola
+  (`soggetto_json`) per tutte e quattro le specie, aggiunta e non riscritta — le righe di ieri
+  restano con `soggetto` a `NULL`, che è ciò che sono. Il filo arriva dal confine fino all'atto:
+  `execute`, `apply`, `restore` e i loro rami di fallimento.
+- **Cosa resta fuori davvero:** Con questa spec il soggetto diventa anche «quale
+  integrazione» e «quale luogo»: la colonna si aggiunge **una volta sola**, nella fetta 1, invece di
+  due volte.
+- **Le promesse non portano ancora chi le ha chieste.** Una promessa nata da una frase del
+  proprietario ed eseguita tre giorni dopo si registra come «schedulatore», che è vero e
+  insufficiente: la risposta piena sarebbe «la promessa che X ha fatto martedì». Serve una colonna
+  nell'archivio delle promesse, ed è una fetta sua.
+- **Il soffitto per area.** Un luogo potrebbe comandare solo le entità della sua area — HIRIS sa già
+  risolvere aree e piani, quindi il dato c'è. Il proprietario ha scelto il ruolo, che è più semplice
+  e più prevedibile; le due cose **si compongono** (ruolo `utente` *e* solo l'area ingresso) e il
+  disegno non lo impedisce. Fuori adesso perché non serve adesso.
+- **La marcatura del contenuto non fidato** (B-2 del registro) resta l'unica decisione di disegno
+  aperta dello sprint, ed è un invariante suo.
+- **TLS e il trasporto**: non è questa spec.
+
+---
+
+## §12 · Le decisioni, e chi le ha prese
+
+Tutte del proprietario, il 21/09/2026, una domanda alla volta.
+
+| # | Domanda | Decisione |
+|---|---|---|
+| 1 | Si limitano i servizi? | **No**: castrerebbe HIRIS e non seguirebbe la versione di HA |
+| 2 | Quanto stringe HIRIS per un utente non amministratore? | **Solo ciò che HA già gli nega**: costruire |
+| 3 | La porta di sviluppo dopo I-2? | **Chiave dedicata, sola lettura** |
+| 4 | Come si passa dal segreto condiviso alle chiavi? | **Convivenza dichiarata e misurata**, poi si chiude |
+| 5 | `cryptography` in produzione? | **Sì, e lo vedo come un plus** |
+| 6 | Il soffitto di un luogo? | **Il ruolo si assegna quando si rilascia la credenziale**: admin, utente |

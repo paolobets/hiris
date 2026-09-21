@@ -28,7 +28,7 @@ configuration:
     description: "Pays for Claude's replies; get it at console.anthropic.com. PRIVACY: your messages and your home's context go through Anthropic (USA)."
   claude_code_oauth_token:
     name: "Provider · Claude Max plan — token"
-    description: "Opens the plan; generate it with `claude setup-token`. WARNING: usage here is not measured. On its own it is not enough: the plan is turned on from the Models page inside HIRIS."
+    description: "Opens the plan; generate it with `claude setup-token`. WARNING: usage here is not measured. On its own it is not enough: the plan is turned on from the Models page inside HIRIS. PRIVACY: your home's knowledge and the memories of your conversations travel this path, under the Claude Max plan's own usage and retention terms, which DIFFER from those of the pay-as-you-go API."
   openrouter_api_key:
     name: "Provider · OpenRouter — key"
     description: "Your openrouter.ai key; ':free' models are available too. PRIVACY: messages go through OpenRouter (USA) and the model's own vendor."
@@ -68,3 +68,6 @@ configuration:
   supervisor_ingress_cidr:
     name: "Advanced · networks recognised as ingress"
     description: "Requests from these networks get in without a token, all others do not. Widening it opens HIRIS's API. Default: the Supervisor's network."
+  canali:
+    name: "Advanced · external channels (name:role:key)"
+    description: "Who may talk to HIRIS from outside Home Assistant, one line per channel. The ROLE decides: `amministratore` builds, `utente` commands but does not build, `lettore` only reads. The KEY is public and is not a secret: whoever signs keeps the private one, and HIRIS holds none. Leave empty if you use no external integrations."

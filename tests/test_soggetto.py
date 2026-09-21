@@ -21,8 +21,13 @@ E **«non so chi sei» non e' «sei il proprietario»**: un ingress senza identi
 produce un soggetto ANONIMO, non l'assenza di soggetto, perche' un campo vuoto e
 un campo mancante si confondono mentre due parole diverse no.
 """
-import pytest
+import base64
+import time
 
+import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+from hiris.app.api import canali
 from hiris.app.api.middleware_internal_auth import internal_auth_middleware
 
 _INGRESS = "/api/hassio_ingress/abc123/"
@@ -38,8 +43,13 @@ class _Richiesta(dict):
         super().__init__()
         self.headers = headers
         self.remote = remote
+        # `method` e `path` ci sono sempre in una richiesta vera, e il confine
+        # li nomina: una finta senza si difenderebbe da un mondo che non esiste.
+        self.method = "GET"
+        self.path = "/api/entities"
         self.app = {"internal_token": token,
-                    "supervisor_ingress_cidrs": ["172.30.32.0/23"]}
+                    "supervisor_ingress_cidrs": ["172.30.32.0/23"],
+                    "canali_visti": {}, "canali_registrati": {}}
 
 
 async def _passa(richiesta):
@@ -120,3 +130,149 @@ async def test_il_soggetto_dice_sempre_di_che_SPECIE_e():
         _, visto = await _passa(_Richiesta(headers=intestazioni, remote=remoto,
                                            token=token))
         assert visto["soggetto"]["specie"] == specie
+
+
+# --- il ramo della FIRMA, e la convivenza col token -------------------------
+
+class _Firmata(_Richiesta):
+    """Come `_Richiesta`, ma con un corpo: la firma lo copre."""
+
+    def __init__(self, *, headers, remote, token="", corpo=b"",
+                 metodo="GET", percorso="/api/entities", registrate=None):
+        super().__init__(headers=headers, remote=remote, token=token)
+        self._corpo = corpo
+        self.method = metodo
+        self.path = percorso
+        self.app["canali_visti"] = {}
+        self.app["canali_registrati"] = registrate or {}
+
+    async def read(self):
+        return self._corpo
+
+
+def _firmante(ruolo="lettore", nome="sviluppo"):
+    privata = Ed25519PrivateKey.generate()
+    pubblica = base64.b64encode(
+        privata.public_key().public_bytes_raw()).decode("ascii")
+    return privata, {nome: {"ruolo": ruolo, "chiave": pubblica}}
+
+
+def _richiesta_firmata(privata, registrate, *, canale="sviluppo", metodo="GET",
+                       percorso="/api/entities", corpo=b"", unico="u-1"):
+    momento = time.time()
+    firma = base64.b64encode(privata.sign(
+        canali.materia_firmata(metodo, percorso, momento, unico, corpo))
+    ).decode("ascii")
+    return _Firmata(
+        headers={"X-HIRIS-Canale": canale, "X-HIRIS-Momento": str(int(momento)),
+                 "X-HIRIS-Unico": unico, "X-HIRIS-Firma": firma},
+        remote="192.168.1.31", token="s3greto", corpo=corpo,
+        metodo=metodo, percorso=percorso, registrate=registrate)
+
+
+@pytest.mark.asyncio
+async def test_una_richiesta_FIRMATA_passa_e_dice_quale_canale():
+    """Da qui il registro può dire QUALE integrazione ha chiamato, e con quale
+    ruolo -- cosa che col segreto condiviso non era possibile.
+
+    Mutazione: ignorare le intestazioni della firma -- rossa."""
+    privata, registrate = _firmante()
+
+    esito, visto = await _passa(_richiesta_firmata(privata, registrate))
+
+    assert esito == "ok"
+    assert visto["auth_via"] == "canale"
+    assert visto["soggetto"]["id"] == "sviluppo"
+    assert visto["soggetto"]["ruolo"] == "lettore"
+    assert visto["soggetto"]["specie"] == "integrazione"
+
+
+@pytest.mark.asyncio
+async def test_una_firma_SBAGLIATA_non_passa_nemmeno_col_token_giusto():
+    """**Il cuore della convivenza.** Chi *prova* a firmare e sbaglia non deve
+    scivolare sul ripiego del token: sarebbe una porta aperta da qualunque
+    firma storta, cioe' il contrario di una difesa.
+
+    Mutazione ESEGUITA: ricadere sul token quando la firma non regge --
+    rossa."""
+    privata, registrate = _firmante()
+    richiesta = _richiesta_firmata(privata, registrate)
+    richiesta.headers["X-HIRIS-Firma"] = base64.b64encode(b"x" * 64).decode()
+    # **Il token VALIDO, davvero.** Senza questa riga il 401 arriverebbe dal
+    # ramo del token per assenza, non dal rifiuto della firma: la prova
+    # asserirebbe il fatto giusto per la ragione sbagliata, e resterebbe verde
+    # anche togliendo il rifiuto. Misurato con la mutazione, non supposto.
+    richiesta.headers["X-HIRIS-Internal-Token"] = "s3greto"
+
+    esito, visto = await _passa(richiesta)
+
+    assert esito != "ok", (
+        "una firma storta e' scivolata sul ripiego del token: chi prova a "
+        "firmare e sbaglia non deve avere una seconda strada")
+    assert esito.status == 401
+    assert visto.get("auth_via") is None
+
+
+@pytest.mark.asyncio
+async def test_un_LETTORE_non_scrive():
+    """La porta di sviluppo, decisa dal proprietario: misurare sì, comandare
+    no. Il soffitto del metodo morde al confine, prima di ogni rotta.
+
+    Mutazione ESEGUITA: non guardare il metodo -- rossa."""
+    privata, registrate = _firmante(ruolo="lettore")
+
+    esito, _ = await _passa(_richiesta_firmata(
+        privata, registrate, metodo="POST", percorso="/api/chat",
+        corpo=b'{"message":"spegni tutto"}'))
+
+    assert esito.status == 403
+
+
+@pytest.mark.asyncio
+async def test_un_UTENTE_scrive():
+    """Il contrario, o la difesa sarebbe il prodotto rotto per tutti.
+
+    Mutazione: negare a ogni ruolo -- rossa."""
+    privata, registrate = _firmante(ruolo="utente")
+
+    esito, visto = await _passa(_richiesta_firmata(
+        privata, registrate, metodo="POST", percorso="/api/chat", corpo=b"{}"))
+
+    assert esito == "ok"
+    assert visto["soggetto"]["ruolo"] == "utente"
+
+
+@pytest.mark.asyncio
+async def test_il_TOKEN_continua_a_valere_e_si_misura_chi_lo_usa(caplog):
+    """La convivenza (spec §8): per una fetta il token resta, perché gateway e
+    Retro Panel vivono in due repository separati e un taglio netto li
+    spegnerebbe. Ma **chi lo usa si misura**, o la fine della convivenza la
+    deciderebbe una speranza invece di un dato.
+
+    Mutazione ESEGUITA: accettare il token senza dichiararlo -- rossa."""
+    richiesta = _Firmata(headers={"X-HIRIS-Internal-Token": "s3greto",
+                                  "X-HIRIS-Canale": "gateway"},
+                         remote="192.168.1.31", token="s3greto")
+
+    with caplog.at_level("INFO"):
+        esito, visto = await _passa(richiesta)
+
+    assert esito == "ok"
+    assert visto["auth_via"] == "token"
+    assert "gateway" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_chi_usa_il_token_SENZA_dirsi_finisce_come_ignoto(caplog):
+    """Chi non dichiara il canale non deve passare inosservato: sarebbe
+    l'integrazione che nessuno sa di dover aggiornare.
+
+    Mutazione: tacere quando il canale non è dichiarato -- rossa."""
+    richiesta = _Firmata(headers={"X-HIRIS-Internal-Token": "s3greto"},
+                         remote="192.168.1.31", token="s3greto")
+
+    with caplog.at_level("INFO"):
+        esito, _ = await _passa(richiesta)
+
+    assert esito == "ok"
+    assert "ignoto" in caplog.text.lower()

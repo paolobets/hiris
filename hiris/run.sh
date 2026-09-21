@@ -59,6 +59,9 @@ export HF_HOME=/config/hiris/models/huggingface
 export LOG_LEVEL=$(bashio::config 'log_level' 'info')
 export INTERNAL_TOKEN=$(bashio::config 'internal_token' '')
 export SUPERVISOR_INGRESS_CIDR=$(bashio::config 'supervisor_ingress_cidr' '172.30.32.0/23')
+# I canali esterni: `nome:ruolo:chiave`, una per riga. Le chiavi sono
+# PUBBLICHE -- qui non viaggia nessun segreto.
+export CANALI=$(bashio::config 'canali' '')
 
 # Versione B: esce HIRIS_DEBUG_EXPOSE_PORT/debug_expose_port, con il blocco di
 # sette `bashio::log.warning` che era il suo unico effetto. Non apriva niente:

@@ -57,11 +57,11 @@ class FintaOfficina:
         self.esito = esito
         self.chiamate = []
 
-    async def apply(self, proposta_id, *, actor, exchange, now):
+    async def apply(self, proposta_id, *, actor, exchange, now, subject=None):
         self.chiamate.append(("apply", proposta_id, actor, exchange))
         return self.esito
 
-    async def restore(self, costruzione_id, *, actor, exchange, now):
+    async def restore(self, costruzione_id, *, actor, exchange, now, subject=None):
         self.chiamate.append(("restore", costruzione_id, actor, exchange))
         return self.esito
 
@@ -308,6 +308,12 @@ async def test_rifiutare_cio_che_non_e_piu_in_attesa_da_409():
 
 ADESSO_HTTP = 1_756_100_000.0
 
+#: Chi bussa, in queste prove HTTP: il proprietario, dall'ingress di Home
+#: Assistant. Serve perché la porta della configurazione chiede CHI, e una
+#: richiesta senza soggetto vuol dire che il confine non è passato.
+_INGRESS_ADMIN = {"X-Ingress-Path": "/api/hassio_ingress/abc/",
+                  "X-Remote-User-Id": "u-admin"}
+
 
 @pytest_asyncio.fixture
 async def client(aiohttp_client, tmp_path):
@@ -320,6 +326,12 @@ async def client(aiohttp_client, tmp_path):
     # Solo per i test: leggere cosa e' stato scritto DAVVERO su Home
     # Assistant, senza toccare l'attributo privato dell'officina.
     app["_fake_ha"] = ha
+    # Dal 21/09/2026 la porta della configurazione chiede CHI (invariante I-1):
+    # queste prove parlano del CSRF e dei codici di stato, non del soffitto,
+    # quindi dichiarano la premessa -- un amministratore, dall'ingress -- invece
+    # di subirla.
+    app["ha_client"] = _RuoliFinti()
+    app["supervisor_ingress_cidrs"] = ["0.0.0.0/0"]
     app.on_startup.clear()
     app.on_cleanup.clear()
     c = await aiohttp_client(app)
@@ -337,7 +349,7 @@ async def test_conferma_senza_x_requested_with_e_403_e_non_scrive_niente(client,
         dopo={"alias": "Tapparelle"}, helper=[], preview="anteprima",
         now=ADESSO_HTTP)["id"]
 
-    risposta = await client.post(f"/api/constructions/{ident}/confirm")
+    risposta = await client.post(f"/api/constructions/{ident}/confirm", headers=_INGRESS_ADMIN)
     assert risposta.status == 403
     assert (await risposta.json())["error"] == "csrf_required"
     # La meta' che conta: un 403 non deve aver toccato ne' l'archivio ne'
@@ -355,8 +367,9 @@ async def test_conferma_con_x_requested_with_applica_anche_a_csrf_stretto(client
         dopo={"alias": "Tapparelle"}, helper=[], preview="anteprima",
         now=ADESSO_HTTP)["id"]
 
-    risposta = await client.post(f"/api/constructions/{ident}/confirm",
-                                 headers={"X-Requested-With": "fetch"})
+    risposta = await client.post(
+        f"/api/constructions/{ident}/confirm",
+        headers={**_INGRESS_ADMIN, "X-Requested-With": "fetch"})
     assert risposta.status == 200
     assert archivio.read(ident)["stato"] == "applicata"
     assert client.app["_fake_ha"].salvate
@@ -372,7 +385,7 @@ async def test_ripristina_senza_x_requested_with_e_403_e_non_scrive_niente(clien
         preview="anteprima", now=ADESSO_HTTP)["id"]
     archivio.mark_applied(ident, now=ADESSO_HTTP, execution_id="e-test")
 
-    risposta = await client.post(f"/api/constructions/{ident}/restore")
+    risposta = await client.post(f"/api/constructions/{ident}/restore", headers=_INGRESS_ADMIN)
     assert risposta.status == 403
     assert (await risposta.json())["error"] == "csrf_required"
     assert client.app["_fake_ha"].salvate == []
@@ -393,8 +406,9 @@ async def test_ripristina_con_x_requested_with_ripristina_anche_a_csrf_stretto(
         preview="anteprima", now=ADESSO_HTTP)["id"]
     archivio.mark_applied(ident, now=ADESSO_HTTP, execution_id="e-test")
 
-    risposta = await client.post(f"/api/constructions/{ident}/restore",
-                                 headers={"X-Requested-With": "fetch"})
+    risposta = await client.post(
+        f"/api/constructions/{ident}/restore",
+        headers={**_INGRESS_ADMIN, "X-Requested-With": "fetch"})
     assert risposta.status == 200
     assert client.app["_fake_ha"].salvate
 
