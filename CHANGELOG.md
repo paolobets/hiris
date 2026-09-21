@@ -1,5 +1,50 @@
 # HIRIS — Changelog
 
+## [3.55.0] — L'analisi si rifà quando cambia ciò su cui si regge (2026-09-21)
+
+Trovato dal proprietario leggendo il ritmo dell'analista: *«se gira alle 14 completa l'analisi, il
+resto dei dati lo elabora il giorno successivo? C'è qualcosa di sbagliato»*. C'era, ma non dove
+sembrava.
+
+**Quello che è per disegno**: l'analista non legge i dati di oggi, legge i **resoconti**, e il
+resoconto di un giorno nasce alle 00:20 del giorno dopo. Girare alle 14 o alle 20 dello stesso
+giorno darebbe lo stesso input. Per questo il giro è orario — è un ritentativo, non un'analisi — e
+un giorno ha **una analisi sola**: la domanda pesa ~35.000 token, misurati il 15/09 su venti giorni
+e 146 serie.
+
+**Quello che era sbagliato**: l'input *può* cambiare durante la giornata, in due modi che esistono
+davvero — `backfill_one_report` recupera ogni cinque minuti il resoconto di un giorno che mancava,
+e una correzione di giudizio fa rifare i giorni con l'impronta vecchia. Il giro però chiedeva «c'è
+già un'analisi per oggi?»: se c'era, taceva fino all'indomani, e l'indomani analizzava l'indomani.
+**Un resoconto recuperato alle 15:00 non entrava in nessuna analisi, mai.**
+
+È la terza volta che questo prodotto paga la stessa forma — *la porta salta chi ha già una
+risposta, anche quando la risposta è vecchia*. Le altre due: `devices_to_ask`, che salta i
+dispositivi con una ricetta rotta, e i dieci dispositivi bloccati da un rifiuto che nessuno faceva
+scadere.
+
+**La cura è quella che il prodotto usa già un piano più sotto: l'impronta.** L'analisi porta il
+proprio **fondamento** — quali giorni ha letto e **quando ciascun resoconto è stato scritto** — e il
+giro chiede «c'è già un'analisi *su questo fondamento*?». Ventitré giri su ventiquattro il
+fondamento è identico e non succede niente, come prima; quando un giorno è stato recuperato o
+rifatto, l'analisi si rifà e **sostituisce** quella vecchia. Il fondamento si legge nel punto in cui
+l'analisi si scrive, così le due strade — il turno diretto e la risposta raccolta dal ponte — lo
+registrano allo stesso modo.
+
+**`scritto_ts` e non il solo elenco dei giorni**: un giorno rifatto dopo una tua correzione può
+avere lo stesso nome e lo stesso contenuto, ed è l'istante a dire che qualcuno lo ha toccato. La
+lettura è leggera apposta (`report_stamps`: giorno e istante, **senza i corpi**), perché gira ogni
+ora e caricare 146 serie per confrontare un'impronta sarebbe pagare un costo per non usarlo.
+
+**Sono le prime prove che fanno girare un anello dello schedulatore per intero.** Nessuna toccava
+`analyst_round` prima d'ora — ed è anche per questo che il difetto ha potuto vivere. Le due
+mutazioni dichiarate sono state eseguite: rimettere il vecchio confronto fa cadere le due prove del
+rifacimento; mettere nel fondamento i soli giorni e non i loro istanti ne fa cadere una.
+
+Questa fetta è il presupposto dell'**attuatore**, il terzo attore, che viene dopo: deve lavorare su
+analisi complete, e costruirlo sopra un'analisi che può essere vecchia vorrebbe dire proporre su
+dati che nel frattempo sono cambiati.
+
 ## [3.54.0] — Cinquecento righe in una colonna diventano trentatré (2026-09-20)
 
 La pagina dell'osservatore nasce da una frase del proprietario: *«è troppo lunga, densa di
