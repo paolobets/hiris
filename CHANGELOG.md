@@ -1,5 +1,66 @@
 # HIRIS — Changelog
 
+## [3.56.0] — Il terzo attore, e cosa vuol dire «creare le soluzioni» (2026-09-21)
+
+Il cervello ha quattro attori dal 25/08: osservatore, analista, **attuatore**, verificatore. I
+primi due vivono da settimane. Questo rilascio porta il terzo — e la sua forma l'ha decisa una
+misura, non la parola «attuatore».
+
+**Il rifiuto che l'ha fatto nascere.** Il ponte «Fanne una proposta» della pagina dell'osservatore
+è stato bocciato dal proprietario su tutte e quattro le obiezioni possibili: *mi sposta dalla
+pagina · devo fare io il lavoro · è finta, non c'è l'attuatore · la proposta rischia di essere
+sbagliata*. Le prime due chiedevano di costruire di più, le altre due di non costruire affatto — e
+avevano ragione insieme.
+
+**La misura che ha smontato il presupposto.** Lette una per una le otto osservazioni che l'analista
+ha davvero scritto sulla casa il 15 e il 16/09: **cinque chiedono di indagare** («il sensore era
+fermo?», «a che ore è avvenuto il prelievo?»), **tre di riparare una ricetta di HIRIS** che non si
+calcola più, una di cambiare un'abitudine, e **zero di costruire un'automazione**. Un attuatore che
+«crea le soluzioni» non avrebbe avuto niente da creare: `workshop.propose` vuole un'intenzione
+strutturata, l'analista scrive prosa, e fra le due c'è un salto che solo un turno di modello può
+fare.
+
+**Cosa fa, in ordine.** *Indaga* — sola lettura — e scrive cosa ha trovato accanto
+all'osservazione: spesso l'indagine è già la risposta, e una coda che non si riempie è il primo
+obiettivo di questo attore. *Ripara* una ricetta che non si esegue più, da solo, e lo dichiara: è
+l'unico gesto che scrive senza chiedere, ed è lo stesso atto che il giro notturno delle ricette fa
+già — su una riga che oggi **nessuno riguarda**, perché `devices_to_ask` salta i dispositivi che
+una ricetta ce l'hanno, anche quando è rotta. *Propone* soltanto quando c'è qualcosa da proporre
+(il gesto arriva per intero nel rilascio successivo).
+
+**Due gesti nella risposta, tre nell'archivio**, ed è il confine dei poteri detto sui nomi: la
+riparazione la fa il codice prima di chiamare il modello, e il modello **non può rivendicarla** —
+se potesse, potrebbe dichiarare una riparazione che non è avvenuta, una bugia archiviata e
+indistinguibile da un fatto. Una prova lo custodisce sull'insieme dei nomi, non sui casi.
+
+**Un'analisi, un'attuazione.** Il giro si aggancia allo stesso battito orario dell'analista e non
+fa niente finché l'analisi di oggi non c'è: parte quando l'analisi è finita, qualunque ora sia,
+senza inventare un orario. Il riferimento è **l'analisi e non il giorno** — dalla 3.55.0 un'analisi
+si rifà quando cambia il suo fondamento, e un'attuazione fatta su quella vecchia parlava di numeri
+che non ci sono più.
+
+**Gli esiti si legano all'impronta dell'osservazione, non alla sua posizione.** Il numero con cui il
+modello indica un'osservazione vale dentro l'elenco che gli abbiamo dato — già filtrato — e
+archiviarlo legherebbe un esito a una riga che domani potrebbe essere un'altra. È il server a
+rimettere insieme esito e domanda quando la pagina legge: rifare quella regola in JavaScript
+sarebbe il secondo posto in cui si decide chi risponde a chi.
+
+**I due cancelli, e mordono.** Il primo legge il sorgente e fallisce se nei moduli dell'attuatore
+compare una delle porte con cui questo prodotto scrive davvero in Home Assistant (`call_service`,
+`save_configuration`, `delete_configuration`) — il confine del 25/08 era una promessa in un
+documento, e le promesse non fermano una riga di codice; una seconda prova verifica che quei tre
+nomi siano davvero le porte di `ha_client`, o il cancello sorveglierebbe parole che non esistono
+più. Il secondo: due giri partiti insieme — lo schedulatore ha mezz'ora di tolleranza — non pagano
+due turni per la stessa analisi.
+
+**Il README dichiara diciassette lavori periodici**, non più sedici, e la prova che tiene insieme i
+due numeri è stata aggiornata con loro: un lavoro periodico gira per sempre e costa per sempre.
+
+**Cosa NON porta ancora**: le proposte con i tre esiti — crea, rifiuta, «fatto fuori da HA» — e il
+«Rifalla» che apre un testo e rifà il turno finché va bene. Sono il rilascio B della spec, e i suoi
+task si dettagliano quando le prime misure diranno se il gesto «propone» serve così com'è
+disegnato.
+
 ## [3.55.0] — L'analisi si rifà quando cambia ciò su cui si regge (2026-09-21)
 
 Trovato dal proprietario leggendo il ritmo dell'analista: *«se gira alle 14 completa l'analisi, il
