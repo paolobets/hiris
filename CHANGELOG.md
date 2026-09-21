@@ -1,5 +1,50 @@
 # HIRIS — Changelog
 
+## [3.57.0] — L'attuatore propone, e tu hai tre risposte (2026-09-21)
+
+Il rilascio B della spec del terzo attore: il gesto che mancava. Da qui l'attuatore non si limita a
+indagare e riparare — **propone**, e ogni proposta aspetta una tua decisione.
+
+**Due forme, due archivi, una pagina.** Una proposta che Home Assistant sa tenere passa
+dall'**officina** (`costruisci`): compone, valida contro questa casa, e ne esce un'anteprima col
+diff — non scrive niente, e la scrittura resta dov'è, un turno diverso col tuo sì. Una proposta che
+deve fare una persona — *«sposta la lavatrice nel primo pomeriggio»* — va in un archivio gemello,
+perché la tabella dell'officina ha `gesto`, `dominio`, `chiave` e `diff`: infilarci una frase in
+prosa vorrebbe dire cinque colonne di finti valori e metà macchina che non si applica. **«Un posto
+solo dove si decide» è una promessa sulla pagina**, non sulla tabella: «Proposte» le mostra in un
+elenco solo, ordinato per data, con l'etichetta che dice chi la applica — e il pallino somma le due
+code.
+
+**I tre esiti.** *Crea* (solo per le costruibili, come oggi). *Rifiuta*. E **«L'ho fatta io»**, che
+chiude la proposta **come applicata** dichiarando che non è stato HIRIS a farlo e che non può
+verificarlo in nessun oggetto. Non è una sfumatura: per il verificatore, un domani, «l'ho fatto io»
+e «lo hai fatto tu» sono due prove diverse, e appiattirle su «chiusa» le perderebbe entrambe.
+
+**«Rifalla» apre un campo di testo** con le tue richieste di modifica e ripete il turno, **senza
+limiti**: la si può far rifare finché va bene. Ogni giro resta attaccato alla proposta — la forma
+scartata e quello che hai chiesto — così il modello vede il filo intero e non ripropone ciò che hai
+appena rifiutato. Il giro si scrive **solo a risposta arrivata**: una proposta riscritta a metà
+sarebbe peggio di una non riscritta.
+
+**Se dice «costruibile» deve portare l'intenzione.** `workshop.propose` vuole `gesto`, `dominio`,
+innesco e azioni; una frase in prosa non li ha. Un esito che si dichiara costruibile senza
+intenzione **rifiuta la risposta per intero**, e il giro dopo riprova — meglio un rifiuto che una
+costruzione che non sta in piedi.
+
+**L'anti-ripetizione morde qui.** Ogni proposta porta l'impronta dell'osservazione e la **forza
+della prova**; una domanda che ha già una proposta, in qualunque stato, non ne genera una seconda.
+Tornerà solo se la prova cambia — base diversa, scostamento peggiore, innesco nuovo — perché il
+tempo non è una prova, e riproporre la stessa cosa con gli stessi dati è insistere, non informare.
+
+**Il terzo cancello della spec** è vivo: le due forme non si mescolano negli archivi — una proposta
+da fare a mano non chiama l'officina, una costruibile non entra nell'archivio gemello. Mutazione
+eseguita su entrambe le metà.
+
+**Adesso cominciano le misure** (§8 della spec): quante osservazioni chiude l'indagine senza
+proporre niente, quante proposte accettate contro rifiutate, quante volte «Rifalla» e quanti giri
+prima del sì, quante ricette riparate da sole. Con il criterio di spegnimento scritto prima di
+cominciare: se dopo due settimane il rifiuto è l'esito dominante, l'attuatore si spegne.
+
 ## [3.56.1] — L'analista era muto da cinque giorni (2026-09-21)
 
 Trovato guardando se il terzo attore avesse già girato sulla casa: **i resoconti c'erano tutti fino
