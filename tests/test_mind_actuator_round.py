@@ -236,3 +236,73 @@ async def test_la_risposta_del_PONTE_si_raccoglie_e_si_archivia(casa, piano_acce
     attuazione = store.analysis(OGGI)["attuazione"]
     assert attuazione["esiti"][0]["trovato"] == "risposto dal piano"
     assert modello.chiamate == 0
+
+
+# ---------------------------------------------------------------------------
+# La riparazione: l'unico gesto che scrive senza chiedere (spec §2).
+# ---------------------------------------------------------------------------
+
+class _FintaAnagrafe:
+    """L'anagrafe dal lato del giro: i dispositivi e il fuso della casa.
+
+    `reference_frame` sta qui perche' il giro ci legge il fuso: senza, il
+    giorno si calcolerebbe altrove e la prova proverebbe un'altra cosa."""
+
+    def read(self):
+        return {"dispositivi": [{"id": "dev2", "nome": "Inverter"}]}
+
+    def reference_frame(self):
+        return {}
+
+
+def _oss_ricetta_rotta():
+    return _oss(soggetto="dev2", misura="consumo", innesco=3, base=0,
+                cosa="la misura non si calcola piu'",
+                spiegato="il registro non sa piu' eseguire primo_ultimo",
+                cosa_cambierebbe="ripristinare il calcolo")
+
+
+@pytest.mark.asyncio
+async def test_una_ricetta_ROTTA_si_riscrive_da_sola_e_lo_DICHIARA(casa, monkeypatch):
+    """Spec §2, gesto 2. **E' lo stesso atto che il giro notturno delle
+    ricette fa gia' senza chiedere**: non e' un potere nuovo, e' lo stesso
+    potere applicato a una riga che esiste ed e' rotta -- quella che
+    `devices_to_ask` non riguardera' mai, perche' salta chi una ricetta ce
+    l'ha.
+
+    Mutazione: proporre invece di riparare -- rossa (nessuna ricetta
+    riscritta, e un consiglio tecnico in coda al posto di un fatto)."""
+    app, store, _modello = casa
+    app.update({"knowledge": object(), "home_space_store": _FintaAnagrafe()})
+    chiamate = []
+
+    async def _finta_ask(runner, sapere, home_space, device_id, **kwargs):
+        chiamate.append(device_id)
+        return {"scritta": True}
+
+    monkeypatch.setattr(server.recipe_turn, "ask", _finta_ask)
+    store.replace_analysis(OGGI, _analisi(_oss_ricetta_rotta()))
+
+    await server.actuator_round(app)
+
+    assert chiamate == ["dev2"], "la ricetta rotta non e' stata riscritta"
+    esiti = store.analysis(OGGI)["attuazione"]["esiti"]
+    riparazioni = [e for e in esiti if e["gesto"] == "riparazione"]
+    assert riparazioni and riparazioni[0]["riscritta"] is True
+    assert riparazioni[0]["soggetto"] == "dev2"
+
+
+@pytest.mark.asyncio
+async def test_senza_il_SAPERE_non_si_finge_nessuna_riparazione(casa):
+    """L'add-on puo' essere partito a meta'. Una riparazione dichiarata e non
+    avvenuta sarebbe una bugia archiviata, e il giorno dopo nessuno
+    riproverebbe.
+
+    Mutazione: scrivere l'esito prima di sapere com'e' andata -- rossa."""
+    app, store, _modello = casa
+    store.replace_analysis(OGGI, _analisi(_oss_ricetta_rotta()))
+
+    await server.actuator_round(app)
+
+    esiti = (store.analysis(OGGI).get("attuazione") or {}).get("esiti") or []
+    assert [e for e in esiti if e["gesto"] == "riparazione"] == []

@@ -1,24 +1,22 @@
-"""Il turno dell'**attuatore** (spec 2026-09-21 §2): tre gesti, e nient'altro.
+"""Il turno dell'**attuatore** (spec 2026-09-21 §2).
 
 Gemello di `analyst_turn.py`, e per la stessa ragione: il modello dice cosa ha
-fatto e cosa ha trovato, il codice **valida e rifiuta**. Una risposta storta
-non si corregge -- si rifiuta per intero, e il giro dopo riprova.
+trovato e cosa propone, il codice **valida e rifiuta**. Una risposta storta non
+si corregge -- si rifiuta per intero, e il giro dopo riprova.
 
-**I tre gesti sono chiusi**, e ognuno ha il suo confine:
+**Due gesti nella risposta, tre nell'archivio**, e la differenza e' esattamente
+il potere che al modello non e' stato dato:
 
 - `indagine` -- sola lettura. Cinque osservazioni su otto, sulla casa vera,
   sono domande: «il sensore era fermo?», «a che ore e' avvenuto il prelievo?».
-  Rispondere e' meglio che proporre, e una coda che non si riempie e' il primo
+  Rispondere vale piu' che proporre, e una coda che non si riempie e' il primo
   obiettivo di questo attore.
-- `riparazione` -- scrive **solo nel sapere di HIRIS** (le ricette). E' l'unico
-  gesto che scrive senza chiedere, e la ragione e' che e' lo stesso atto che il
-  giro notturno delle ricette fa gia' senza chiedere a nessuno.
 - `proposta` -- non scrive niente: passa da `costruisci`, che compone e valida
   ma non tocca la casa, e lascia i tre esiti al proprietario.
-
-Un quarto gesto sarebbe un potere che nessuno ha dato a questo attore, e
-arriverebbe dentro una risposta: per questo l'elenco e' chiuso e la risposta si
-rifiuta.
+- `riparazione` -- **la fa il codice**, non il modello: il giro riscrive la
+  ricetta rotta prima di chiamarlo e aggiunge l'esito come fatto. Se potesse
+  dichiararla lui, potrebbe dichiarare una riparazione che non e' avvenuta --
+  una bugia archiviata, indistinguibile da un fatto.
 """
 from __future__ import annotations
 
@@ -30,9 +28,17 @@ logger = logging.getLogger(__name__)
 #: La specie di turno, per il ponte e per il runner.
 ACTUATION_TURN_KIND = "attuazione"
 
-#: I tre gesti, chiusi. L'ordine e' quello della spec §2, che e' anche quello
-#: in cui si preferiscono: rispondere, riparare, proporre.
-GESTURES = ("indagine", "riparazione", "proposta")
+#: I gesti che il MODELLO puo' rivendicare nella sua risposta. **Due, non
+#: tre**: la riparazione la fa il codice (il giro riscrive la ricetta prima di
+#: chiedere, e aggiunge l'esito come fatto), e lasciarla dire al modello
+#: vorrebbe dire lasciargli dichiarare una riparazione che non e' avvenuta --
+#: una bugia archiviata, indistinguibile da un fatto.
+GESTURES = ("indagine", "proposta")
+
+#: I gesti che esistono nell'ARCHIVIO, cioe' quelli che la pagina puo'
+#: incontrare leggendo un'attuazione. La differenza fra i due elenchi e'
+#: esattamente il potere che al modello non e' stato dato.
+OUTCOME_GESTURES = ("indagine", "riparazione", "proposta")
 
 SYSTEM = """Sei l'attuatore di HIRIS, un sistema che guarda una casa domotica.
 
@@ -40,18 +46,19 @@ L'analista ti consegna cio' che ha concluso. Il tuo mestiere e' UNO: prendere
 quelle conclusioni e **fare il passo successivo** -- e il passo successivo,
 quasi sempre, non e' costruire qualcosa.
 
-Hai tre gesti, e nessun altro:
+Hai due gesti, e nessun altro:
 
 1. INDAGINE -- vai a vedere e rispondi. La maggior parte delle osservazioni
    sono domande («il sensore era fermo?», «a che ore e' avvenuto il
    prelievo?»). Guardare e rispondere vale piu' che proporre: se l'indagine
-   chiude la questione, hai finito, e non si propone niente.
-2. RIPARAZIONE -- quando una misura non si calcola piu' perche' la ricetta non
-   regge, la ricetta si riscrive. Riguarda il sapere di HIRIS, non la casa.
-3. PROPOSTA -- quando c'e' davvero qualcosa da fare. Di' se e' un oggetto che
+   chiude la questione hai finito, e non si propone niente.
+2. PROPOSTA -- quando c'e' davvero qualcosa da fare. Di' se e' un oggetto che
    Home Assistant sa tenere (un'automazione, una scena, un helper) oppure una
    cosa che deve fare una persona: molte cose utili non sono oggetti di Home
    Assistant, e proporle come tali le fa fallire.
+
+Le ricette rotte le ho gia' riscritte io prima di chiamarti, e te lo dico nella
+domanda: non riproporle.
 
 **Non tocchi la casa.** Non accendi, non spegni, non scrivi configurazioni: le
 proposte le decide il proprietario, una per una.
@@ -67,9 +74,8 @@ ANSWER_CONTRACT = """Rispondi SOLO con un oggetto JSON di questa forma:
 
 {"esiti": [
   {"osservazione": <il numero dell'osservazione, come nell'elenco>,
-   "gesto": "indagine" | "riparazione" | "proposta",
+   "gesto": "indagine" | "proposta",
    "trovato": "cosa hai trovato o cosa proponi, in una frase",
-   "soggetto": "<solo per riparazione: il soggetto della misura>",
    "costruibile": true | false}
 ]}
 
@@ -185,10 +191,6 @@ def apply_actuation(observations, answer: str) -> dict:
         if not str(outcome.get("trovato") or "").strip():
             problems.append(
                 f"l'esito {index} non dice cosa ha trovato o cosa propone")
-        if gesture == "riparazione" and not str(outcome.get("soggetto") or "").strip():
-            problems.append(
-                f"l'esito {index} ripara senza dire cosa: il gesto che scrive "
-                "senza chiedere deve dichiarare su cosa ha scritto")
         kept.append(outcome)
     if problems:
         return {"attuazione": None, "problemi": problems, "risposta": True}

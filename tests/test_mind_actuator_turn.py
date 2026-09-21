@@ -1,12 +1,12 @@
-"""Il turno dell'attuatore (spec 2026-09-21 §2): tre gesti, e nient'altro.
+"""Il turno dell'attuatore (spec 2026-09-21 §2): due gesti nella risposta.
 
 Gemello di `test_mind_analyst_turn.py`, e per la stessa ragione: il modello
-dice **cosa ha fatto e cosa ha trovato**, il codice valida e rifiuta. Una
-risposta storta non si corregge -- si rifiuta, e il giro dopo riprova.
+dice cosa ha trovato e cosa propone, il codice valida e rifiuta. Una risposta
+storta non si corregge -- si rifiuta, e il giro dopo riprova.
 
-**I tre gesti sono chiusi**: indagine (sola lettura), riparazione (solo il
-sapere di HIRIS), proposta (che non scrive niente). Un quarto gesto sarebbe un
-potere che nessuno ha dato a questo attore.
+**Due gesti nella risposta, tre nell'archivio**: indagine e proposta le
+rivendica il modello; la riparazione la fa il codice, e lasciargliela
+dichiarare vorrebbe dire lasciargli dichiarare una cosa non avvenuta.
 """
 import json
 
@@ -82,9 +82,9 @@ def test_una_risposta_che_nomina_un_osservazione_INESISTENTE_si_rifiuta():
     assert esito["problemi"]
 
 
-def test_un_GESTO_fuori_dai_tre_si_rifiuta():
-    """I gesti sono tre e chiusi. Un quarto sarebbe un potere che nessuno ha
-    dato a questo attore, e arriverebbe dentro una risposta.
+def test_un_GESTO_fuori_dai_due_si_rifiuta():
+    """I gesti della risposta sono due e chiusi. Un terzo sarebbe un potere che
+    nessuno ha dato a questo attore, e arriverebbe dentro una risposta.
 
     Mutazione: ammettere qualunque parola -- rossa."""
     esito = at.apply_actuation(_osservazioni(),
@@ -155,18 +155,30 @@ def test_TUTTI_i_problemi_si_dicono_insieme():
     assert len(esito["problemi"]) >= 3
 
 
-def test_la_RIPARAZIONE_dichiara_cosa_ha_riscritto():
-    """Il gesto che scrive senza chiedere e' l'unico, e deve dire cosa ha
-    toccato: «l'ho riparata» senza dire quale sarebbe un potere esercitato al
-    buio.
+def test_una_RIPARAZIONE_dichiarata_dal_MODELLO_si_rifiuta():
+    """**Le riparazioni le fa il codice, non il modello.** Il giro riscrive la
+    ricetta prima di chiedere, e aggiunge l'esito come FATTO; se il modello
+    potesse dichiararne una, potrebbe dichiararne una che non e' avvenuta --
+    e sarebbe una bugia archiviata, indistinguibile da un fatto.
 
-    Mutazione: accettare una riparazione senza `soggetto` -- rossa."""
-    senza = at.apply_actuation(_osservazioni(),
-                               _risposta({"osservazione": 1, "gesto": "riparazione"}))
-    assert senza["attuazione"] is None
+    Per questo i gesti che il modello puo' rivendicare sono DUE, e i gesti che
+    esistono nell'archivio sono TRE: la differenza e' esattamente il potere
+    che non gli e' stato dato.
 
-    con = at.apply_actuation(
+    Mutazione: rimettere `riparazione` fra i gesti ammessi nella risposta --
+    rossa."""
+    esito = at.apply_actuation(
         _osservazioni(),
         _risposta({"osservazione": 1, "gesto": "riparazione", "soggetto": "dev2",
-                   "trovato": "il metodo primo_ultimo non e' piu' eseguibile"}))
-    assert con["problemi"] == []
+                   "trovato": "l'ho riscritta io"}))
+
+    assert esito["attuazione"] is None
+    assert any("riparazione" in p for p in esito["problemi"])
+
+
+def test_i_gesti_dell_ARCHIVIO_sono_tre_e_quelli_della_RISPOSTA_due():
+    """La proprieta' detta sui nomi, perche' il giorno in cui qualcuno
+    aggiunge un gesto se ne accorga da qui.
+
+    Mutazione: allineare i due elenchi -- rossa."""
+    assert set(at.OUTCOME_GESTURES) - set(at.GESTURES) == {"riparazione"}

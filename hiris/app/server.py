@@ -2180,9 +2180,6 @@ async def actuator_round(app) -> dict | None:
         if not pending:
             return None
 
-        question = actuator_turn.build_question(pending, [])
-        if question is None:
-            return None
         route, downgrade = who_answers(app)
         runner = app.get("llm_router") or app.get("claude_runner")
         if route == "ponte":
@@ -2193,10 +2190,19 @@ async def actuator_round(app) -> dict | None:
         if downgrade:
             logger.info("attuatore: il giro passa dalla catena (%s)", downgrade)
 
+        # **La riparazione viene PRIMA della domanda**, e il modello lo viene a
+        # sapere: se lo scoprisse dopo proporrebbe di riparare una cosa gia'
+        # riparata, e il proprietario si troverebbe in coda un consiglio su un
+        # problema che non esiste piu'.
+        repaired = await _repair_recipes(app, actuator.broken_recipes(pending))
+        question = actuator_turn.build_question(pending, repaired)
+        if question is None:
+            return None
+
         answer = await runner.chat(user_message=question,
                                    system_prompt=actuator_turn.SYSTEM)
         esito = actuator_turn.apply_actuation(pending, answer)
-        _write_actuation(store, today, stamp, esito)
+        _write_actuation(store, today, stamp, esito, repaired=repaired)
         return esito
     except Exception as error:
         logger.warning("attuatore: giro fallito (%s: %s) -- si riprova al giro "
@@ -2204,7 +2210,49 @@ async def actuator_round(app) -> dict | None:
         return None
 
 
-def _write_actuation(store, day: str, stamp: str | None, esito: dict) -> None:
+async def _repair_recipes(app, broken) -> list[dict]:
+    """Riscrive le ricette rotte, e dice **cosa e' successo davvero**.
+
+    E' l'unico gesto dell'attuatore che scrive senza chiedere, e la ragione e'
+    che **e' lo stesso atto che il giro notturno delle ricette fa gia' senza
+    chiedere a nessuno**: non e' un potere nuovo, e' lo stesso potere applicato
+    a una riga che esiste ed e' rotta. Quella riga, oggi, non la riguarda
+    nessuno: `devices_to_ask` salta i dispositivi che una ricetta ce l'hanno
+    gia'.
+
+    **Senza il sapere o l'anagrafe non si finge niente**: l'add-on puo' essere
+    partito a meta', e una riparazione dichiarata e non avvenuta sarebbe una
+    bugia archiviata -- il giorno dopo nessuno riproverebbe.
+    """
+    sapere = app.get("knowledge")
+    home_space_store = app.get("home_space_store")
+    runner = app.get("llm_router") or app.get("claude_runner")
+    if not broken or sapere is None or home_space_store is None or runner is None:
+        return []
+    home_space = home_space_store.read() or {}
+    store = app.get("observations")
+    objective = ((store.objective() or {}).get("testo") or "") if store is not None else ""
+    done = []
+    for observation in broken:
+        device_id = str(observation.get("soggetto") or "")
+        if not device_id:
+            continue
+        esito = await recipe_turn.ask(
+            runner, sapere, home_space, device_id,
+            objective=objective, who=ACTUATOR_AUTHOR, when_ts=time.time())
+        done.append({"soggetto": device_id, "misura": observation.get("misura"),
+                     "riscritta": bool(esito.get("scritta"))})
+    return done
+
+
+#: Chi firma una ricetta riscritta dall'attuatore. Non «il modello» e non «il
+#: seme»: chi legge una riga del sapere deve poter sapere **quale attore** l'ha
+#: messa li', o il verificatore non potrebbe attribuire niente a nessuno.
+ACTUATOR_AUTHOR = "attuatore"
+
+
+def _write_actuation(store, day: str, stamp: str | None, esito: dict,
+                     *, repaired=()) -> None:
     """Scrive l'attuazione **dentro l'analisi**, o dice perche' non l'ha fatto.
 
     Gli esiti stanno accanto alle osservazioni che li hanno generati: sono la
@@ -2224,7 +2272,18 @@ def _write_actuation(store, day: str, stamp: str | None, esito: dict) -> None:
     analysis = store.analysis(day)
     if analysis is None:
         return
-    analysis = {**analysis, "attuazione": {**actuation, "su_fondamento": stamp}}
+    esiti = list(actuation.get("esiti") or [])
+    # Le riparazioni sono FATTI, non risposte del modello: si aggiungono qui,
+    # cosi' la pagina le legge come tutto il resto e il modello non puo'
+    # dichiararne una che non e' avvenuta.
+    esiti += [{"gesto": "riparazione", "soggetto": row.get("soggetto"),
+               "misura": row.get("misura"), "riscritta": row.get("riscritta"),
+               "trovato": ("la ricetta non si eseguiva piu': riscritta"
+                           if row.get("riscritta")
+                           else "la ricetta non si eseguiva piu', e non sono "
+                                "riuscito a riscriverla")}
+              for row in repaired or ()]
+    analysis = {**analysis, "attuazione": {"esiti": esiti, "su_fondamento": stamp}}
     store.replace_analysis(day, analysis)
     logger.info("attuatore: attuazione di %s scritta (%d esiti)",
                 day, len(actuation.get("esiti") or []))
