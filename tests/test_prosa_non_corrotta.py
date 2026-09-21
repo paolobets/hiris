@@ -77,6 +77,13 @@ _PAROLE_DOMINIO = frozenset({
     "tutti", "tutto", "altro", "altra", "altre", "altri", "nomi", "scope",
     "problemi", "problema", "risposta", "domanda", "data",
     "cronaca", "fuori", "resto", "sezione", "documento",
+    # Le colonne delle PROPOSTE (21/09/2026). Sono parole italiane ordinarie
+    # prima che identificatori: mettere fra backtick «il suo perche'» o «la
+    # richiesta di modifica» direbbe che quella frase parla di una colonna,
+    # mentre parla italiano. La riga di `perche` lo rende evidente: senza
+    # questa eccezione andrebbero fra backtick anche i «perche'» che
+    # significano «poiche'».
+    "perche", "prova", "testo", "richiesta", "giri", "impronta", "esito",
 })
 
 #: I file guardati: l'ambito dove le rinomine meccaniche sono avvenute.

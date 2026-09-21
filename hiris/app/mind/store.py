@@ -35,6 +35,7 @@ import json
 import logging
 import threading
 import time as _time
+import uuid
 
 from ..storage import connect, init_schema
 from .scope import may_overwrite
@@ -424,6 +425,40 @@ CREATE TABLE IF NOT EXISTS analisi (
     corpo_json   TEXT NOT NULL,
     scritto_ts   REAL NOT NULL
 );
+
+-- Le PROPOSTE che deve applicare una persona (spec 2026-09-21 §3).
+--
+-- **Perche' non stanno in `costruzioni`**: quella tabella ha `gesto`,
+-- `dominio`, `chiave`, `prima_json`, `dopo_json`, `anteprima` -- ogni colonna
+-- parla di un oggetto che HIRIS sa scrivere -- e sopra ci vive la macchina
+-- dell'officina (scadenza, claim, applicazione, ripristino). «Sposta i consumi
+-- nel pomeriggio» non ha niente di tutto questo: infilarla li' vorrebbe dire
+-- cinque colonne di finti valori e meta' macchina che non si applica.
+--
+-- «Un posto solo dove si decide» e' una promessa sulla PAGINA, non sulla
+-- tabella: e' la pagina a mostrarle insieme, con l'etichetta di chi le applica.
+--
+-- `impronta` e `prova_json` sono l'anti-ripetizione: l'attuatore salta una
+-- domanda gia' decisa **finche' la sua prova non cambia**.
+--
+-- `giri_json` e' il filo del «Rifalla»: ogni giro porta la richiesta di
+-- modifica e la forma che ne e' uscita, cosi' il modello vede il filo intero e
+-- non ripropone cio' che e' stato appena scartato.
+CREATE TABLE IF NOT EXISTS proposte (
+    id            TEXT PRIMARY KEY,
+    creata_ts     REAL NOT NULL,
+    aggiornata_ts REAL NOT NULL,
+    stato         TEXT NOT NULL,
+    testo         TEXT NOT NULL,
+    perche        TEXT NOT NULL,
+    chi_applica   TEXT NOT NULL,
+    impronta      TEXT NOT NULL,
+    prova_json    TEXT NOT NULL,
+    giri_json     TEXT NOT NULL,
+    esito_ts      REAL,
+    esito_nota    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_proposte_stato ON proposte(stato, creata_ts DESC);
 
 CREATE TABLE IF NOT EXISTS resoconto (
     giorno       TEXT PRIMARY KEY,
@@ -1117,6 +1152,98 @@ class ObservationsStore:
                 "SELECT giorno, scritto_ts FROM resoconto ORDER BY giorno DESC LIMIT ?",
                 (int(max(1, limit)),)).fetchall()
         return [(r[0], r[1]) for r in righe]
+
+    #: Gli esiti che chiudono una proposta da fare a mano. **Chiusi**: una
+    #: parola nuova arriverebbe da una rotta e diventerebbe uno stato che
+    #: nessuna pagina sa disegnare. `crea` non c'e' -- qui non c'e' niente da
+    #: scrivere in Home Assistant: quella strada e' l'officina.
+    PROPOSAL_OUTCOMES = ("rifiutata", "fatta_fuori")
+
+    def add_proposal(self, *, text: str, perche: str, fingerprint: str,
+                     prova: dict, chi_applica: str, now_ts: float) -> str:
+        """Scrive una proposta da fare a mano, e torna il suo identificativo.
+
+        **Senza impronta non si scrive**: e' cio' su cui si regge
+        l'anti-ripetizione, e senza la stessa proposta tornerebbe ogni giorno.
+        """
+        if not str(fingerprint or "").strip():
+            raise ValueError("una proposta senza impronta tornerebbe ogni giorno")
+        ident = uuid.uuid4().hex
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO proposte(id,creata_ts,aggiornata_ts,stato,testo,"
+                "perche,chi_applica,impronta,prova_json,giri_json) "
+                "VALUES(?,?,?,'attesa',?,?,?,?,?,'[]')",
+                (ident, now_ts, now_ts, text, perche, chi_applica, fingerprint,
+                 json.dumps(prova or {}, ensure_ascii=False)))
+            self._conn.commit()
+        return ident
+
+    def proposals(self, *, pending_only: bool = False, limit: int = 200) -> list[dict]:
+        """Le proposte da fare a mano, dalla piu' recente."""
+        sql = ("SELECT id,creata_ts,aggiornata_ts,stato,testo,perche,"
+               "chi_applica,impronta,prova_json,giri_json,esito_ts,esito_nota "
+               "FROM proposte")
+        if pending_only:
+            sql += " WHERE stato = 'attesa'"
+        sql += " ORDER BY creata_ts DESC LIMIT ?"
+        with self._lock:
+            rows = self._conn.execute(sql, (int(max(1, limit)),)).fetchall()
+        return [{"id": r[0], "creata_ts": r[1], "aggiornata_ts": r[2],
+                 "stato": r[3], "testo": r[4], "perche": r[5],
+                 "chi_applica": r[6], "impronta": r[7],
+                 "prova": json.loads(r[8]), "giri": json.loads(r[9]),
+                 "esito_ts": r[10], "esito_nota": r[11]} for r in rows]
+
+    def close_proposal(self, ident: str, occurrence: str, *,
+                       why: str | None = None, now_ts: float) -> bool:
+        """Chiude una proposta con uno dei suoi esiti. Torna se ha toccato una riga."""
+        if occurrence not in self.PROPOSAL_OUTCOMES:
+            raise ValueError(
+                f"esito sconosciuto: {occurrence!r}. Gli esiti sono "
+                + ", ".join(self.PROPOSAL_OUTCOMES))
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE proposte SET stato=?, aggiornata_ts=?, esito_ts=?, "
+                "esito_nota=? WHERE id=? AND stato='attesa'",
+                (occurrence, now_ts, now_ts, why, ident))
+            self._conn.commit()
+        return cur.rowcount > 0
+
+    def add_proposal_round(self, ident: str, *, request: str, text: str,
+                           now_ts: float) -> bool:
+        """Accoda un giro di «Rifalla» e **sostituisce il testo** con la forma
+        nuova.
+
+        Il filo si accoda e non si sostituisce: il modello deve vedere cosa e'
+        stato scartato, o potrebbe tornare alla prima forma al secondo giro.
+        Un giro **non chiude niente**: la proposta resta in attesa.
+        """
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT testo, giri_json FROM proposte WHERE id=?", (ident,)).fetchone()
+            if row is None:
+                return False
+            rounds = json.loads(row[1])
+            rounds.append({"richiesta": request, "scartata": row[0],
+                           "quando_ts": now_ts})
+            self._conn.execute(
+                "UPDATE proposte SET testo=?, giri_json=?, aggiornata_ts=? WHERE id=?",
+                (text, json.dumps(rounds, ensure_ascii=False), now_ts, ident))
+            self._conn.commit()
+        return True
+
+    def decided_proposals(self) -> dict[str, dict]:
+        """`{impronta: prova}` per le proposte che l'attuatore non deve rifare.
+
+        **Ci stanno anche quelle in ATTESA**: una coda aperta non si duplica.
+        Una proposta rifiutata torna solo se la prova cambia -- il confronto lo
+        fa `actuator.to_handle`, qui si consegna cio' su cui e' stato deciso.
+        """
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT impronta, prova_json FROM proposte").fetchall()
+        return {r[0]: json.loads(r[1]) for r in rows}
 
     def analysis(self, day: str) -> dict | None:
         """L'analisi di quel giorno, o `None` se non ne ha una.
