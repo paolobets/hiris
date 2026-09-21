@@ -1100,6 +1100,24 @@ class ObservationsStore:
                 (day, json.dumps(analysis, ensure_ascii=False), _time.time()))
             self._conn.commit()
 
+    def report_stamps(self, *, limit: int = 30) -> list[tuple[str, float]]:
+        """`(giorno, scritto_ts)` degli ultimi resoconti, **senza i corpi**.
+
+        E' la lettura con cui il giro dell'analista si chiede se il suo
+        fondamento e' cambiato, e gira ogni ora: caricare 146 serie per
+        confrontare un'impronta sarebbe pagare un costo per non usarlo.
+
+        **`scritto_ts` e non il solo giorno**: un giorno rifatto -- dopo una
+        correzione di giudizio, o un recupero -- puo' avere lo stesso
+        contenuto e lo stesso nome, ed e' l'istante a dire che qualcuno lo ha
+        toccato.
+        """
+        with self._lock:
+            righe = self._conn.execute(
+                "SELECT giorno, scritto_ts FROM resoconto ORDER BY giorno DESC LIMIT ?",
+                (int(max(1, limit)),)).fetchall()
+        return [(r[0], r[1]) for r in righe]
+
     def analysis(self, day: str) -> dict | None:
         """L'analisi di quel giorno, o `None` se non ne ha una.
 

@@ -30,6 +30,7 @@ un modello mai interpellato.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 
@@ -69,6 +70,29 @@ def read_analysis(answer: str) -> tuple[dict | None, str | None]:
     if not isinstance(data, dict):
         return None, "la risposta non e' un oggetto con le osservazioni"
     return data, None
+
+
+def fondamento(stamps) -> dict:
+    """Il **`fondamento`** di un'analisi: su quali resoconti e' stata scritta.
+
+    `{"giorni": n, "impronta": "..."}`. L'impronta compatta le coppie
+    `(giorno, scritto_ts)`: cambia se un giorno compare, se sparisce, o se
+    **e' stato riscritto** -- un recupero o un rifacimento dopo una correzione
+    di giudizio.
+
+    **Perche' esiste** (difetto trovato dal proprietario il 20/09/2026): il
+    giro chiedeva «c'e' gia' un'analisi per oggi?», e un resoconto recuperato
+    alle 15:00 non entrava in nessuna analisi, mai. E' la stessa meccanica
+    dell'impronta dei giudizi sulla cronaca, un piano piu' su: si confronta il
+    `fondamento`, non la data.
+
+    **L'ordine non conta**: le coppie si ordinano prima di impastarle, o due
+    letture dello stesso archivio darebbero due impronte.
+    """
+    pairs = sorted((str(day), float(when)) for day, when in (stamps or []))
+    text = "|".join(f"{day}@{when!r}" for day, when in pairs)
+    return {"giorni": len(pairs),
+            "impronta": hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]}
 
 
 def apply_analysis(series: dict, answer: str) -> dict:

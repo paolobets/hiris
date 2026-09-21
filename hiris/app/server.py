@@ -2072,7 +2072,19 @@ async def analyst_round(app) -> dict | None:
         collected = _collect_analyst_turn(app, store, today)
         if collected is not None and collected.get("risposta"):
             return collected
-        if store.analysis(today) is not None:
+        # **Non «c'e' gia' un'analisi per oggi?», ma «ce n'e' gia' una su
+        # QUESTO fondamento?»** (difetto trovato dal proprietario il
+        # 20/09/2026). I resoconti che l'analista legge possono cambiare
+        # durante la giornata -- un giorno recuperato da `backfill_one_report`,
+        # o rifatto dopo una correzione di giudizio -- e col vecchio confronto
+        # quel giorno non entrava in nessuna analisi, mai: l'analisi restava
+        # quella delle 14:00 e l'indomani si analizzava l'indomani.
+        #
+        # Ventitre' giri su ventiquattro il fondamento e' identico e qui non
+        # succede niente, come prima.
+        fondamento = analyst_turn.fondamento(store.report_stamps(limit=ANALYST_DAYS))
+        scritta = store.analysis(today)
+        if scritta is not None and scritta.get("fondamento") == fondamento:
             return None
         if _analyst_turn_in_flight(app):
             return None
@@ -2128,6 +2140,15 @@ def _write_analysis(store, day: str, esito: dict) -> None:
             logger.warning("analista: risposta rifiutata per %s -- %s",
                            day, " \u00b7 ".join(esito["problemi"]))
         return
+    # **Il fondamento si legge QUI**, non da chi chiama: e' lo stato dei
+    # resoconti nel momento in cui l'analisi viene scritta, e le due strade --
+    # il turno diretto e la risposta raccolta dal ponte -- devono registrarlo
+    # allo stesso modo. Il ponte rilegge le serie adesso (vedi
+    # `_collect_analyst_turn`), quindi «adesso» e' il fondamento giusto per
+    # entrambe.
+    analysis = {**analysis,
+                "fondamento": analyst_turn.fondamento(
+                    store.report_stamps(limit=ANALYST_DAYS))}
     store.replace_analysis(day, analysis)
     logger.info("analista: analisi di %s scritta (%d osservazioni)",
                 day, len(analysis.get("osservazioni") or []))
