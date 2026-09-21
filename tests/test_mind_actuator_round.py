@@ -306,3 +306,23 @@ async def test_senza_il_SAPERE_non_si_finge_nessuna_riparazione(casa):
 
     esiti = (store.analysis(OGGI).get("attuazione") or {}).get("esiti") or []
     assert [e for e in esiti if e["gesto"] == "riparazione"] == []
+
+
+@pytest.mark.asyncio
+async def test_un_esito_si_lega_all_IMPRONTA_dell_osservazione_non_alla_posizione(casa):
+    """Il modello si riferisce a un'osservazione col suo NUMERO nell'elenco
+    che gli abbiamo dato, e quell'elenco e' gia' filtrato (`to_handle`): la
+    posizione vale dentro quel giro e basta. Archiviarla vorrebbe dire legare
+    un esito a una riga che domani potrebbe essere un'altra.
+
+    Mutazione: archiviare `osservazione` (l'indice) invece dell'impronta --
+    rossa."""
+    app, store, _modello = casa
+    store.replace_analysis(OGGI, _analisi())
+
+    await server.actuator_round(app)
+
+    esito = store.analysis(OGGI)["attuazione"]["esiti"][0]
+    from hiris.app.mind import actuator
+
+    assert esito["impronta"] == actuator.observation_key(_oss())

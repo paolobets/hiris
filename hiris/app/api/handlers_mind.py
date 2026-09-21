@@ -514,8 +514,36 @@ def _with_device_names(app, analysis: dict) -> dict:
     """
     names = _device_names(app)
     if not names:
+        return _with_outcomes(analysis)
+    return _with_outcomes({**analysis,
+                           "osservazioni": _named(names, analysis.get("osservazioni"))})
+
+
+def _with_outcomes(analysis: dict) -> dict:
+    """L'analisi con **l'esito dell'attuatore accanto alla sua osservazione**.
+
+    Gli esiti sono la risposta alle domande dell'analista, e la pagina li legge
+    dove la domanda sta. A rimetterli insieme e' il server, perche' e' lui che
+    conosce la regola dell'impronta: rifarla in JavaScript sarebbe il secondo
+    posto in cui si decide chi risponde a chi, e due regole divergono al primo
+    ritocco.
+
+    **Chi non ha un esito non ne guadagna uno vuoto**: il silenzio
+    dell'attuatore e' un fatto che la pagina dice con parole sue, e un `{}`
+    somiglierebbe a una risposta.
+    """
+    actuation = analysis.get("attuazione") or {}
+    by_key = {o.get("impronta"): o for o in actuation.get("esiti") or []
+              if o.get("impronta")}
+    if not by_key:
         return analysis
-    return {**analysis, "osservazioni": _named(names, analysis.get("osservazioni"))}
+    from ..mind.actuator import observation_key
+
+    seen = []
+    for observation in analysis.get("osservazioni") or []:
+        outcome = by_key.get(observation_key(observation))
+        seen.append({**observation, "esito": outcome} if outcome else observation)
+    return {**analysis, "osservazioni": seen}
 
 async def handle_knowledge(request) -> web.Response:
     """Il **sapere**: cosa HIRIS ha capito della casa, e cosa non ha capito.

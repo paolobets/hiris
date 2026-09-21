@@ -1151,3 +1151,62 @@ async def test_una_voce_di_config_entry_NON_inventa_un_integrazione():
 
     voce, = json.loads(r.text)["watching"]
     assert "integrazione" not in voce, "l'identificativo di una voce non e' un'integrazione"
+
+
+# ---------------------------------------------------------------------------
+# L'ATTUAZIONE sulla rotta dell'analisi (spec 2026-09-21 §2).
+#
+# Gli esiti dell'attuatore sono la risposta alle domande dell'analista, e la
+# pagina li legge ACCANTO alla domanda: e' il server a rimetterli insieme,
+# perche' e' lui che conosce la regola dell'impronta -- rifarla in JavaScript
+# sarebbe il secondo posto in cui si decide chi risponde a chi.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_l_ESITO_dell_attuatore_arriva_ACCANTO_alla_sua_osservazione(tmp_path):
+    """Mutazione ESEGUITA: non attaccare l'esito -- rossa (la pagina dovrebbe
+    rifare la regola dell'impronta per conto suo)."""
+    from hiris.app.mind import actuator
+    from hiris.app.mind.store import ObservationsStore
+
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    osservazione = {"soggetto": "dev1", "misura": "prelievo", "chiave": None,
+                    "innesco": 1, "base": 19, "cosa": "x", "cosa_cambierebbe": "y"}
+    try:
+        archivio.replace_analysis("2026-09-20", {
+            "osservazioni": [osservazione],
+            "attuazione": {"su_fondamento": "aaa", "esiti": [
+                {"gesto": "indagine", "trovato": "fra le 19 e le 22",
+                 "impronta": actuator.observation_key(osservazione)}]}})
+
+        r = await handle_analysis(_richiesta({"observations": archivio},
+                                             {"day": "2026-09-20"}))
+
+        analisi = json.loads(r.text)["analisi"]
+        assert analisi["osservazioni"][0]["esito"]["trovato"] == "fra le 19 e le 22"
+    finally:
+        archivio.close()
+
+
+@pytest.mark.asyncio
+async def test_un_osservazione_SENZA_esito_non_ne_guadagna_uno_finto(tmp_path):
+    """Il silenzio dell'attuatore e' un fatto: la pagina lo dice con parole
+    sue, e non deve trovarsi un esito vuoto che sembra una risposta.
+
+    Mutazione ESEGUITA: attaccare `{}` a chi non ha esito -- rossa.
+    """
+    from hiris.app.mind.store import ObservationsStore
+
+    archivio = ObservationsStore(str(tmp_path / "oss.db"))
+    try:
+        archivio.replace_analysis("2026-09-20", {
+            "osservazioni": [{"soggetto": "dev1", "misura": "prelievo",
+                              "chiave": None, "innesco": 1}],
+            "attuazione": {"su_fondamento": "aaa", "esiti": []}})
+
+        r = await handle_analysis(_richiesta({"observations": archivio},
+                                             {"day": "2026-09-20"}))
+
+        assert "esito" not in json.loads(r.text)["analisi"]["osservazioni"][0]
+    finally:
+        archivio.close()

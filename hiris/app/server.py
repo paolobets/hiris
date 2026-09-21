@@ -2154,6 +2154,13 @@ async def actuator_round(app) -> dict | None:
     store = app.get("observations")
     if store is None:
         return None
+    # **Un giro alla volta.** Lo schedulatore ha mezz'ora di `misfire_grace_time`:
+    # due giri possono partire insieme dopo una sosta dell'add-on, e senza
+    # questa guardia si pagherebbero due turni per la stessa analisi -- il
+    # secondo scriverebbe sopra il primo, con gli stessi dati.
+    if app.get("attuatore_in_volo"):
+        return None
+    app["attuatore_in_volo"] = True
     try:
         timezone = _timezone_from_home_space_store(app.get("home_space_store"))
         today = datetime.now(home_space_zone(timezone)).date().strftime("%Y-%m-%d")
@@ -2202,12 +2209,15 @@ async def actuator_round(app) -> dict | None:
         answer = await runner.chat(user_message=question,
                                    system_prompt=actuator_turn.SYSTEM)
         esito = actuator_turn.apply_actuation(pending, answer)
-        _write_actuation(store, today, stamp, esito, repaired=repaired)
+        _write_actuation(store, today, stamp, esito, repaired=repaired,
+                         pending=pending)
         return esito
     except Exception as error:
         logger.warning("attuatore: giro fallito (%s: %s) -- si riprova al giro "
                        "dopo", type(error).__name__, error)
         return None
+    finally:
+        app["attuatore_in_volo"] = False
 
 
 async def _repair_recipes(app, broken) -> list[dict]:
@@ -2241,6 +2251,7 @@ async def _repair_recipes(app, broken) -> list[dict]:
             runner, sapere, home_space, device_id,
             objective=objective, who=ACTUATOR_AUTHOR, when_ts=time.time())
         done.append({"soggetto": device_id, "misura": observation.get("misura"),
+                     "impronta": actuator.observation_key(observation),
                      "riscritta": bool(esito.get("scritta"))})
     return done
 
@@ -2252,7 +2263,7 @@ ACTUATOR_AUTHOR = "attuatore"
 
 
 def _write_actuation(store, day: str, stamp: str | None, esito: dict,
-                     *, repaired=()) -> None:
+                     *, repaired=(), pending=()) -> None:
     """Scrive l'attuazione **dentro l'analisi**, o dice perche' non l'ha fatto.
 
     Gli esiti stanno accanto alle osservazioni che li hanno generati: sono la
@@ -2272,12 +2283,25 @@ def _write_actuation(store, day: str, stamp: str | None, esito: dict,
     analysis = store.analysis(day)
     if analysis is None:
         return
-    esiti = list(actuation.get("esiti") or [])
+    # **L'esito si lega all'IMPRONTA, non alla posizione.** Il numero con cui
+    # il modello indica un'osservazione vale dentro l'elenco che gli abbiamo
+    # dato -- gia' filtrato da `to_handle` -- e archiviarlo legherebbe un
+    # esito a una riga che domani potrebbe essere un'altra.
+    rows = list(pending or [])
+    esiti = []
+    for outcome in actuation.get("esiti") or []:
+        index = outcome.get("osservazione")
+        row = rows[index] if isinstance(index, int) and 0 <= index < len(rows) else None
+        segnato = {k: v for k, v in outcome.items() if k != "osservazione"}
+        if row is not None:
+            segnato["impronta"] = actuator.observation_key(row)
+        esiti.append(segnato)
     # Le riparazioni sono FATTI, non risposte del modello: si aggiungono qui,
     # cosi' la pagina le legge come tutto il resto e il modello non puo'
     # dichiararne una che non e' avvenuta.
     esiti += [{"gesto": "riparazione", "soggetto": row.get("soggetto"),
                "misura": row.get("misura"), "riscritta": row.get("riscritta"),
+               "impronta": row.get("impronta"),
                "trovato": ("la ricetta non si eseguiva piu': riscritta"
                            if row.get("riscritta")
                            else "la ricetta non si eseguiva piu', e non sono "
@@ -2320,7 +2344,7 @@ def _collect_actuator_turn(app, store, today: str, stamp: str | None) -> dict | 
     esito = actuator_turn.apply_actuation(pending, reply)
     if not esito.get("risposta"):
         return esito
-    _write_actuation(store, day, stamp, esito)
+    _write_actuation(store, day, stamp, esito, pending=pending)
     return esito
 
 

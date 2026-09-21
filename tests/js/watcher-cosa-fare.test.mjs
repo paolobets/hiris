@@ -147,3 +147,72 @@ test('mount: un giorno mai analizzato (404) lo SPIEGA', () => {
     assert.doesNotMatch(testo, /niente da segnalare/);
   });
 });
+
+
+/* -------------------------------------------------------------------------
+   L'ATTUATORE sulla scheda (spec 2026-09-21 §2).
+
+   Cinque osservazioni su otto sono domande, e la risposta va **sotto la
+   domanda**: in una pagina sua servirebbe una giuntura per rimetterle
+   insieme, e chi legge dovrebbe fare il lavoro a mano.
+   ------------------------------------------------------------------------- */
+
+function conEsito(esito) {
+  return {
+    osservazioni: [{ soggetto: 'dev1', nome: 'Inverter', misura: 'prelievo',
+      innesco: 1, base: 19, cosa: 'il prelievo si stacca',
+      cosa_cambierebbe: 'spostare i consumi', esito: esito }],
+    attuazione: { su_fondamento: 'aaa', esiti: esito ? [esito] : [] },
+  };
+}
+
+test('seam _rendiAnalisi: sotto un\'osservazione si legge cosa l\'attuatore ha TROVATO', () => {
+  // Mutazione che la uccide: non disegnare l'esito.
+  const { corpo } = rendiAnalisi({ analisi: conEsito({ gesto: 'indagine',
+    trovato: 'il prelievo è avvenuto fra le 19 e le 22, per lo scaldabagno' }) });
+
+  assert.match(corpo.textContent, /fra le 19 e le 22/);
+  assert.match(corpo.textContent, /guardato/i, 'il gesto si dice, o «fra le 19 e le 22» è una frase orfana');
+});
+
+test('seam _rendiAnalisi: una RIPARAZIONE si legge come un fatto compiuto', () => {
+  /* E' l'unico gesto che scrive senza chiedere: chi legge deve sapere che è
+     già stato fatto, non che si potrebbe fare.
+     Mutazione che la uccide: usare la stessa frase dell'indagine. */
+  const { corpo } = rendiAnalisi({ analisi: conEsito({ gesto: 'riparazione', riscritta: true,
+    soggetto: 'dev1', misura: 'consumo',
+    trovato: 'la ricetta non si eseguiva più: riscritta' }) });
+
+  assert.match(corpo.textContent, /riscritta/);
+  assert.match(corpo.textContent, /Ho riparato/i);
+});
+
+test('seam _rendiAnalisi: una riparazione NON RIUSCITA non si racconta come riuscita', () => {
+  /* Mutazione che la uccide: ignorare `riscritta` e dire sempre «riparato». */
+  const { corpo } = rendiAnalisi({ analisi: conEsito({ gesto: 'riparazione', riscritta: false,
+    soggetto: 'dev1', misura: 'consumo',
+    trovato: 'la ricetta non si eseguiva più, e non sono riuscito a riscriverla' }) });
+
+  assert.doesNotMatch(corpo.textContent, /Ho riparato/i);
+  assert.match(corpo.textContent, /non sono riuscito/);
+});
+
+test('seam _rendiAnalisi: un\'osservazione senza esito lo DICE, invece di tacere', () => {
+  /* Il silenzio e' indistinguibile da «non l'ho guardata»: e' la stessa legge
+     del resoconto vuoto, applicata all'attuatore.
+     Mutazione che la uccide: tacere quando l'esito manca. */
+  const { corpo } = rendiAnalisi({ analisi: conEsito(null) });
+
+  assert.match(corpo.textContent, /non so cosa/i);
+});
+
+test('seam _rendiAnalisi: senza attuazione la scheda non dice niente sull\'attuatore', () => {
+  /* Prima che l'attuatore giri, la sua assenza non e' un silenzio: e' che non
+     ha ancora guardato. Dire «non so cosa proporre» sarebbe falso.
+     Mutazione che la uccide: scrivere la frase del silenzio anche qui. */
+  const { corpo } = rendiAnalisi({ analisi: {
+    osservazioni: [{ soggetto: 'dev1', misura: 'prelievo', innesco: 1, cosa: 'x' }],
+  } });
+
+  assert.doesNotMatch(corpo.textContent, /non so cosa/i);
+});

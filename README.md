@@ -67,7 +67,7 @@ one of the sixteen tools below, lets a sentence you type now run later, at a
 time you name, with nobody in the chat when it happens — see the next
 paragraph for what that means in practice.
 
-Periodic work *does* run — the scheduler registers **sixteen** APScheduler jobs
+Periodic work *does* run — the scheduler registers **seventeen** APScheduler jobs
 at startup, not four, and one of them is not housekeeping: it is the reason
 the paragraph above needed the caveat. Fourteen are internal bookkeeping — none of
 them speaks to you and none of them touches the house: the entity-inventory
@@ -176,6 +176,22 @@ not look" are two different things, and the archive keeps them apart. And the
 model never writes a number — it names which measure, and the code attaches
 value, coverage, deviation and base from the series, so that a wrong number
 inside an authoritative-looking report is impossible.
+
+The seventeenth is the actuator (spec `2026-09-21-l-attuatore.md`), the brain's
+third actor, on the same hourly beat (`server.py::actuator_round`). It does
+nothing until today's analysis exists and has not been acted on yet: *one
+analysis, one actuation* — keyed to the analysis's own foundation, not to the
+day, so an analysis redone after a recovered report gets a new actuation. Its
+shape was decided by measurement, not by the word "actuator": of the eight
+observations the analyst really wrote on the owner's house on 15 and 16/09/2026,
+**five ask to investigate**, three ask to repair one of HIRIS's own recipes,
+one asks to change a habit, and **none asks to build an automation**. So it
+investigates first — read-only — and answers next to the question; it rewrites
+a recipe that no longer executes, which is the one thing it writes without
+asking, and the same act the nightly recipe round already performs; and it
+proposes only when there is something to propose. It never writes to the house:
+that path goes through `costruisci`, which composes and validates but does not
+write, and through the owner's yes.
 
 
 2.0 is a reduction to the core. Version 1.x shipped a much wider surface
