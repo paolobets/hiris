@@ -37,7 +37,7 @@ def test_sanitize_ha_value_under_255_is_not_marked():
     assert sanitize_ha_value(corto) == corto
 
 
-# --- M2 (audit-2026-08-25, minori): campi liberi NON-`state` (`messaggio`
+# --- M2 (revisione di agosto 2026): campi liberi NON-`state` (`messaggio`
 # del diario, `motivo` di un'integrazione) meritano un tetto dedicato, non
 # i 255 di `sanitize_ha_value` -- vedi MAX_FREE_TEXT in _sanitize.py.
 

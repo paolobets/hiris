@@ -314,7 +314,7 @@ async def test_diario_lascia_intatti_i_campi_assenti():
     assert voce["messaggio"] is None
 
 
-# --- M2 (audit-2026-08-25, minori): `messaggio` non e' uno `state` ---------
+# --- M2 (revisione di agosto 2026): `messaggio` non e' uno `state` --------
 #
 # Prima usava sanitize_ha_value (255, il tetto di uno `state`): un messaggio
 # di automazione legittimo, piu' lungo del titolo di un brano ma ben sotto

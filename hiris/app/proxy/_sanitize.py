@@ -149,7 +149,7 @@ _INJECTION_RE = re.compile(
     r'|ignora\s+(?:le\s+|tutte\s+le\s+|ogni\s+)?(?:\w+\s+)?istruzion[ei]|ignora\s+tutto'
     r'|dimentica\s+(?:tutto|le\s+istruzioni|quanto\s+detto|le\s+regole)'
     r'|scorda\s+(?:tutto|le\s+istruzioni)'
-    # M3 (audit-2026-08-25, minori): "istruzioni precedenti"/"nuove
+    # M3 (August 2026 review): "istruzioni precedenti"/"nuove
     # istruzioni" bare (no colon after) is ordinary Italian -- "le nuove
     # istruzioni della caldaia sono nel cassetto", "le istruzioni precedenti
     # del forno erano piu' chiare" are normal sentences about an appliance
@@ -215,7 +215,7 @@ _INJECTION_RE = re.compile(
 # same fact (this string got cut) must read the same way everywhere it
 # happens, not invent a second wording for the identical event.
 #
-# M1 (audit-2026-08-25, minori): this marker and the clamp algorithm below
+# M1 (August 2026 review): this marker and the clamp algorithm below
 # used to be duplicated verbatim in `ha_client.py` (`_TRUNC_MARK`/
 # `_truncate`) -- same algorithm, same string, written twice, free to drift.
 # `ha_client.py` already imports from this module (`sanitize_ha_value`), so
@@ -269,8 +269,8 @@ def sanitize_text(v, max_len: int = 2000) -> str:
     The result never exceeds `max_len`. When the text actually gets cut, the
     cut is DECLARED with a trailing marker (`_TRUNCATED`, marker included in
     the budget) instead of silently disappearing — via `truncate_with_marker`
-    below, shared with `ha_client.py::_truncate` since M1 (audit-2026-08-25,
-    minori). Text at or under `max_len` is returned untouched, no marker:
+    below, shared with `ha_client.py::_truncate` since M1 (the August 2026
+    review). Text at or under `max_len` is returned untouched, no marker:
     declaring a cut that didn't happen would be its own false claim.
     """
     if v is None:
@@ -294,14 +294,14 @@ def sanitize_ha_value(v) -> str:
     Wired call sites: see the top-of-module list.
 
     NOT for `messaggio` (diario) or `motivo` (integration failure reason):
-    those are not `state`, see `sanitize_ha_free_text` below (M2,
-    audit-2026-08-25, minori) — using this 255 cap for them was the earlier,
+    those are not `state`, see `sanitize_ha_free_text` below (M2, the
+    August 2026 review) — using this 255 cap for them was the earlier,
     honest-but-not-generous choice this fix replaces.
     """
     return sanitize_text(v, 255)
 
 
-# M2 (audit-2026-08-25, minori): 255 is Home Assistant's own ceiling on a
+# M2 (August 2026 review): 255 is Home Assistant's own ceiling on a
 # `state` string -- correct for `sanitize_ha_value` above, wrong for fields
 # that are not `state`. `messaggio` (a logbook entry's free text --
 # ha_client.py::diario) and `motivo` (why an integration failed to start --

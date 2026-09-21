@@ -210,7 +210,7 @@ def _translate_statistics(raw: dict) -> dict[str, list[dict]]:
     return series
 
 
-# M1 (audit-2026-08-25, minori): `_truncate` used to be defined here,
+# M1 (August 2026 review): `_truncate` used to be defined here,
 # duplicating `_sanitize.py`'s clamp algorithm and marker constant
 # (`_TRUNC_MARK = " [troncato]"`) line for line. This module already imports
 # from `._sanitize` (`sanitize_ha_value`), so the shared version costs one
@@ -1202,7 +1202,7 @@ class HAClient:
                 "stato": sanitize_ha_value(state) if state else state,
                 # `messaggio` non e' uno `state` -- non ha il tetto di HA a
                 # 255 che giustifica sanitize_ha_value per nome/stato. M2
-                # (audit-2026-08-25, minori): cap dedicato piu' alto (500),
+                # (revisione di agosto 2026): cap dedicato piu' alto (500),
                 # vedi sanitize_ha_free_text in _sanitize.py per il perche'
                 # del numero.
                 "messaggio": sanitize_ha_free_text(message) if message else message,

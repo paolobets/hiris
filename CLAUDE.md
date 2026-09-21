@@ -117,7 +117,7 @@ contro l'installazione, la esegue e rilegge lo stato. Non è ③ — non c'è ne
 autonomia, nessun perimetro da approvare — è la chat che fa una cosa sola quando gliela chiedi.
 **Un canale, una porta.** Per ogni canale di scrittura verso Home Assistant esiste **un unico
 modulo** che lo attraversa. Oggi sono due: i **servizi** (`action/actuator.py`, dalla fetta
-«comandare») e la **configurazione** (`azione/construction/workshop.py`, dalla fetta «costruire»).
+«comandare») e la **configurazione** (`action/construction/workshop.py`, dalla fetta «costruire»).
 Sono canali diversi in tutto — rotta, verifica, «dopo» — e condividono ciò che conta: la cronaca,
 l'`origine` e la forma del rifiuto motivato, che vivono **una volta sola** e hanno la **stessa
 forma da entrambi**. Un terzo punto che scriva su Home Assistant fuori da queste due porte è un
@@ -340,6 +340,43 @@ gli stati di un dominio, cosa un'entita' dichiara — l'ordine e' questo, e non 
 Il corollario: **quando HA ha una fonte dichiarativa, quella e' la risposta.** Aree, dispositivi,
 legami, classi, e la dashboard Energia sono cose che HA **sa gia'**: indovinarle dai nomi delle
 entita' funziona su un impianto e si rompe sul successivo.
+
+### Un cancello CHIEDE il suo elenco, non lo ricopia (I-0, 21 settembre)
+
+Un cancello che ricopia una lista **invecchia in silenzio**: l'originale cresce, la copia no, e il
+cancello resta verde mentre il buco si apre. Misurato il 21/09/2026: il cancello dell'attuatore
+elencava a mano tre porte di scrittura mentre `HAClient` ne espone quarantatre su **due canali**, e
+il cancello dei giudizi elencava quattordici funzioni mentre diciotto ne ricevono -- **due delle
+quattro mancanti erano nate tre giorni prima**.
+
+> **Se un elenco dentro una prova ricopia un fatto che vive altrove nel codice, non si scrive: si
+> chiede.** Al sorgente, alla cartella, al grafo delle chiamate, alla firma, al documento che lo
+> dichiara.
+
+**La distinzione che conta**, perche' non tutti gli elenchi a mano sono un difetto:
+
+- **l'elenco E' il fatto** -- le preposizioni italiane, i nomi di provider ritirati, le tabelle
+  cancellate: non esiste una fonte da interrogare, la lista *e'* la conoscenza. Resta scritta, con
+  la ragione accanto;
+- **l'elenco RICOPIA un fatto** -- le porte di `ha_client`, le funzioni che ricevono un parametro,
+  i file di una cartella: la fonte esiste e va interrogata. Ricopiarla e' un doppione ai sensi
+  della fondamenta 2, e il doppione che invecchia e' quello che fa piu' danno, perche' il cancello
+  continua a dire di si'.
+
+Fanno eccezione, e restano scritte a mano, **le liste di AMMISSIONE**: `AMMESSI`, `PERMESSI` e
+simili non ricopiano niente -- **enunciano il cancello**. Chiudono per difetto: una voce nuova e'
+vietata finche' qualcuno non la ammette per iscritto, con la ragione, che e' esattamente il momento
+in cui qualcuno deve pensarci.
+
+**Due prove accompagnano ogni derivazione**, e senza non e' finita: una che la derivazione non si
+sia rotta (un insieme improvvisamente piccolo e' un cancello che sembra vivo e non guarda piu'
+niente), e la **mutazione eseguita** -- si aggiunge la cosa nuova alla fonte e si verifica che
+entri nel cancello **senza toccare la prova**.
+
+**E si deriva la proprieta', non la forma.** Il cancello dei giudizi pretendeva la parola chiave
+`judgments=`; sette chiamate corrette la passavano per posizione. Un cancello che chiama sbagliato
+il codice giusto spinge a cambiare codice che funziona per farlo tacere -- il modo piu' rapido di
+insegnare a non fidarsi dei cancelli.
 
 ### Cosa rende buono un test (affinamento del 26 agosto)
 

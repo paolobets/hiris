@@ -352,7 +352,7 @@ def test_truncate_never_exceeds_cap():
 
 
 def test_truncate_e_la_stessa_funzione_di_sanitize():
-    """M1 (audit-2026-08-25, minori): `ha_client.py::_truncate` e
+    """M1 (revisione di agosto 2026): `ha_client.py::_truncate` e
     `_sanitize.py`'s `sanitize_text` usavano due implementazioni duplicate
     (stesso algoritmo, stessa costante) del taglio con marcatore. Ora
     `_truncate` E' `_sanitize.truncate_with_marker` -- non solo si comporta

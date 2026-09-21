@@ -58,17 +58,87 @@ quella chiamata -- rossa, con file e riga; ripristinato con l'editor.
 import ast
 import pathlib
 
-FUNZIONI = {"aggregate_day", "build_episodes", "rebuild_chronicle", "compose", "view",
-            "_view_detail", "commands_for", "ToolDispatcher",
-            # La catena interna, dal giro di correzioni 1 (punto 4): sono
-            # funzioni con lo stesso predefinito `REPO_JUDGMENTS`, e un inoltro
-            # dimenticato a meta' strada e' la stessa ricaduta silenziosa.
-            "genre_for", "_is_event", "_highlight_lines", "_view_entity",
-            "_command_parameters", "_limits_of_entity"}
+#: Le funzioni sorvegliate si CHIEDONO al codice, non si elencano (I-0,
+#: 21/09/2026). L'elenco scritto a mano era gia' invecchiato: `as_page`,
+#: `_front_page_mark`, `_is_on`, `_status` e `chronicle_is_stale` ricevono
+#: `judgments` e non erano sorvegliate -- due delle cinque erano nate tre
+#: giorni prima. Un elenco che ricopia una firma non regge il ritmo di chi
+#: scrive codice.
+#:
+#: **La firma e' il fatto**: chi dichiara di ricevere `judgments` deve essere
+#: chiamato con `judgments=`. Una funzione nuova entra qui il giorno in cui
+#: nasce.
 RADICE = pathlib.Path(__file__).resolve().parents[1] / "hiris" / "app"
 
 
+def funzioni_sorvegliate() -> frozenset[str]:
+    """Chi DICHIARA di ricevere `judgments`, derivato dalle firme.
+
+    Per un costruttore vale il nome della CLASSE, che e' quello che si legge
+    al sito di costruzione (`ToolDispatcher(...)`, non `__init__(...)`).
+    """
+    nomi = set()
+    for percorso in RADICE.rglob("*.py"):
+        albero = ast.parse(percorso.read_text(encoding="utf-8"))
+        for nodo in ast.walk(albero):
+            if isinstance(nodo, ast.ClassDef):
+                for figlio in nodo.body:
+                    if (isinstance(figlio, (ast.FunctionDef, ast.AsyncFunctionDef))
+                            and figlio.name == "__init__"
+                            and _riceve_giudizi(figlio)):
+                        nomi.add(nodo.name)
+            elif (isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and nodo.name != "__init__" and _riceve_giudizi(nodo)):
+                nomi.add(nodo.name)
+    assert len(nomi) > 10, (
+        f"ne ho derivate solo {len(nomi)}: la derivazione si e' rotta, e un "
+        "cancello che deriva male sembra vivo mentre non guarda piu' niente")
+    return frozenset(nomi)
+
+
+def _riceve_giudizi(nodo) -> bool:
+    return "judgments" in [a.arg for a in nodo.args.args + nodo.args.kwonlyargs]
+
+
+def posizioni_giudizi() -> dict[str, set[int]]:
+    """Per ogni funzione sorvegliata, in che POSIZIONE sta `judgments`.
+
+    Serve perche' la proprieta' da difendere e' che l'istantanea **arrivi**,
+    non che sia scritta in una forma. Sette chiamate di produzione la passano
+    per posizione, e sono corrette: pretendere la parola chiave le direbbe
+    sbagliate e spingerebbe a cambiare codice che funziona per far tacere un
+    cancello -- il modo piu' rapido di insegnare a non fidarsi dei cancelli.
+
+    `None` fra gli indici vuol dire «solo per nome» (parametro dopo `*`): li'
+    la parola chiave e' l'unica forma possibile.
+    """
+    posizioni: dict[str, set] = {}
+    for percorso in RADICE.rglob("*.py"):
+        albero = ast.parse(percorso.read_text(encoding="utf-8"))
+        for nodo in ast.walk(albero):
+            corpo = ([(nodo.name, f) for f in nodo.body
+                      if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))
+                      and f.name == "__init__"]
+                     if isinstance(nodo, ast.ClassDef) else
+                     [(nodo.name, nodo)]
+                     if isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef))
+                     and nodo.name != "__init__" else [])
+            for nome, funzione in corpo:
+                if not _riceve_giudizi(funzione):
+                    continue
+                nomi_posizionali = [a.arg for a in funzione.args.args]
+                indice = (nomi_posizionali.index("judgments")
+                          if "judgments" in nomi_posizionali else None)
+                # `self` non si conta: al sito di chiamata non si scrive
+                if indice is not None and nomi_posizionali[:1] == ["self"]:
+                    indice -= 1
+                posizioni.setdefault(nome, set()).add(indice)
+    return posizioni
+
+
 def test_ogni_chiamata_di_produzione_passa_l_istantanea():
+    sorvegliate = funzioni_sorvegliate()
+    posizioni = posizioni_giudizi()
     mancanti = []
     for path in RADICE.rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -76,6 +146,13 @@ def test_ogni_chiamata_di_produzione_passa_l_istantanea():
             if not isinstance(node, ast.Call):
                 continue
             name = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
-            if name in FUNZIONI and not any(k.arg == "judgments" for k in node.keywords):
+            if name not in sorvegliate:
+                continue
+            # Per NOME o per POSIZIONE: cio' che conta e' che l'istantanea
+            # arrivi, non la forma in cui e' scritta.
+            per_nome = any(k.arg == "judgments" for k in node.keywords)
+            per_posizione = any(i is not None and len(node.args) > i
+                                for i in posizioni.get(name, set()))
+            if not (per_nome or per_posizione):
                 mancanti.append(f"{path.relative_to(RADICE)}:{node.lineno} {name}(")
     assert not mancanti, "\n".join(mancanti)

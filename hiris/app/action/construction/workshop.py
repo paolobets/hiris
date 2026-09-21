@@ -92,7 +92,7 @@ def _readable_state(state: str) -> str:
 # SQLite -- e la cattura larga toglie ogni garanzia sulla sua lunghezza: e'
 # quella di QUALUNQUE eccezione, non solo di un guasto di trasporto breve.
 #
-# M1, terzo giro (correzioni-minori.md, audit-2026-08-25): questa era una
+# M1, terzo giro (revisione di agosto 2026): questa era una
 # TERZA copia dello stesso algoritmo gia' unificato da M1 in
 # `_sanitize.py::truncate_with_marker` (con `ha_client.py::_truncate` come
 # alias dello stesso oggetto) -- nessuno dei tre referti dell'audit l'aveva

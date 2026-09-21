@@ -160,7 +160,7 @@ def test_system_prompt_lowercase_already_covered():
 
 
 # ---------------------------------------------------------------------------
-# M3 (audit-2026-08-25, minori) -- "istruzioni precedenti"/"nuove istruzioni"
+# M3 (revisione di agosto 2026) -- "istruzioni precedenti"/"nuove istruzioni"
 # bare (senza i due punti) sono italiano normale, non un'iniezione: il
 # bigram da solo mangiava frasi legittime su un manuale/istruzioni di un
 # elettrodomestico. Il pattern ora richiede i due punti che introducono un
