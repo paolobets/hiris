@@ -27,11 +27,14 @@ un'assenza deliberata.
 """
 from __future__ import annotations
 
+import logging
 import time
 
 from aiohttp import web
 
 from .boundary import occurrence_out
+
+logger = logging.getLogger(__name__)
 
 # Un solo testo per «quell'id non esiste», usato sia da chi legge sia da chi
 # agisce: due frasi diverse per lo stesso fatto sarebbero una piccola
@@ -93,6 +96,24 @@ async def handle_get_construction(request: web.Request) -> web.Response:
 
 
 async def _act(request: web.Request, verb: str) -> web.Response:
+    """Le due scritture della pagina verso Home Assistant, da un punto solo.
+
+    **Il soffitto morde qui** (invariante I-1, 21/09/2026), e qui soltanto:
+    `apply` e `restore` sono le uniche due strade da cui la pagina tocca la
+    configurazione della casa. `reject` non passa di qui, e non e' una svista --
+    non scrive niente su Home Assistant, e chiudere un rifiuto dietro un
+    permesso lascerebbe in coda per sempre, a chi non puo' costruire, una
+    proposta che non vuole.
+    """
+    from .soffitto import per_richiesta
+
+    permesso = await per_richiesta(request.app, request)
+    if not permesso["costruire"]:
+        logger.warning(
+            "soffitto: «%s» negato a %r — %s", verb,
+            (request.get("soggetto") or {}).get("nome"), permesso["perche"])
+        return web.json_response({"errore": permesso["perche"]}, status=403)
+
     store = _store(request)
     workshop = request.app.get("workshop")
     if store is None or workshop is None:

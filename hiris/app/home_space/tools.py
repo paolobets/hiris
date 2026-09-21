@@ -1546,9 +1546,17 @@ class ToolDispatcher:
                  ha=None, registry=None, agenda=None, workshop=None,
                  exchange: str | None = None, journal=None,
                  translations=None, knowledge=None,
-                 judgments: TypeJudgments | None = None) -> None:
+                 judgments: TypeJudgments | None = None,
+                 soffitto: dict | None = None) -> None:
         self._home_space = home_space_store
         self._memory = memory_store
+        # Il soffitto di chi ha aperto questo turno (invariante I-1). `None`
+        # vuol dire che nessuna persona ha aperto il turno -- il ponte, lo
+        # schedulatore, una promessa che si sveglia -- e li' vale il
+        # comportamento di ieri: il perimetro delle macchine e' l'invariante
+        # dei canali esterni, e stringerlo qui a meta' spegnerebbe il gateway
+        # senza che nessuno l'abbia deciso. **Dichiarato, non dedotto.**
+        self._soffitto = soffitto
         # Il sapere (`mind/knowledge.py`): cio' che HIRIS ha capito, con la
         # provenienza. Oggi ne esce il SIGNIFICATO della classe di un'entita'
         # sul dettaglio di `guarda` -- la porta che rende interrogabile
@@ -2522,6 +2530,12 @@ class ToolDispatcher:
         proposal_id = (arguments or {}).get("proposta_id")
         if not isinstance(proposal_id, str) or not proposal_id.strip():
             return {"errore": "serve il `proposta_id` che ti ha dato `propose`."}
+        # Il soffitto (I-1): la porta della configurazione ha due lati, il clic
+        # sulla pagina e questo strumento. Custodirne uno solo lascerebbe
+        # spalancato l'altro -- e questo e' il piu' facile da attraversare,
+        # perche' basta scrivere «conferma» in chat.
+        if self._soffitto is not None and not self._soffitto["costruire"]:
+            return {"errore": self._soffitto["perche"]}
         occurrence = await self._workshop.apply(
             proposal_id.strip(), actor="chat", exchange=self._exchange, now=_time.time())
         # Punto 7 (residuo): `guasto_rete` e' interno (`Workshop._fallita`/

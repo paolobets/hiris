@@ -64,6 +64,39 @@ def _is_supervisor_ingress(request: web.Request) -> bool:
     return False
 
 
+#: Le intestazioni con cui il Supervisor dice CHI sta chiamando. Verificato il
+#: 21/09/2026 sul sorgente (`supervisor/api/ingress.py::_init_header`): le
+#: compone da `session_data.user` e **filtra via le stesse in ingresso** prima
+#: di aggiungere le proprie, quindi attraverso l'ingress non sono falsificabili.
+#: Su ogni altra strada lo sono, ed e' il motivo per cui si leggono in un ramo
+#: solo.
+_CHI = "X-Remote-User-Id"
+_NOME = "X-Remote-User-Display-Name"
+_UTENTE = "X-Remote-User-Name"
+
+
+def _soggetto(request: web.Request, specie: str) -> dict:
+    """Chi sta chiamando — sempre un oggetto, mai `None`.
+
+    **«Non so chi sei» non e' «sei il proprietario».** Un ingress senza identita'
+    (i provider di autenticazione non nativi non la portano: l'intestazione non
+    e' garantita) da' una PERSONA ANONIMA, non l'assenza di un soggetto: un
+    campo mancante e un campo vuoto si confondono al primo lettore distratto,
+    due parole diverse no.
+
+    La `specie` c'e' sempre perche' e' il primo fatto che serve a decidere un
+    soffitto: una persona di Home Assistant e una macchina che porta un token
+    non si autenticano nello stesso modo e non possono valere lo stesso.
+    """
+    if specie != "persona":
+        return {"specie": specie, "id": None, "nome": None, "utente": None}
+    return {"specie": "persona",
+            "id": request.headers.get(_CHI) or None,
+            "nome": (request.headers.get(_NOME)
+                     or request.headers.get(_UTENTE) or None),
+            "utente": request.headers.get(_UTENTE) or None}
+
+
 @web.middleware
 async def internal_auth_middleware(request: web.Request, handler) -> web.Response:
     """Validate X-HIRIS-Internal-Token for non-Ingress requests.
@@ -76,6 +109,7 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
     """
     if _is_supervisor_ingress(request):
         request["auth_via"] = "ingress"
+        request["soggetto"] = _soggetto(request, "persona")
         return await handler(request)
 
     token = request.app.get("internal_token", "")
@@ -83,6 +117,7 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
         if _allow_no_token():
             logger.critical("SECURITY: HIRIS_ALLOW_NO_TOKEN=1 is set — authentication is DISABLED")
             request["auth_via"] = "no_token"
+            request["soggetto"] = _soggetto(request, "sviluppo")
             return await handler(request)
         logger.warning(
             "Blocked unauthenticated non-ingress request from %s "
@@ -96,4 +131,5 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
         return web.json_response({"error": "unauthorized"}, status=401)
 
     request["auth_via"] = "token"
+    request["soggetto"] = _soggetto(request, "integrazione")
     return await handler(request)

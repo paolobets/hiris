@@ -79,20 +79,56 @@ def test_i_finti_combaciano_con_la_firma_vera():
     assert_stessa_firma(Workshop.restore, FintaOfficina.restore, nome="restore")
 
 
+#: Chi sta confermando, in queste prove. Dal 21/09/2026 (invariante I-1) la
+#: porta della configurazione chiede CHI: una richiesta senza soggetto vuol dire
+#: che il confine non e' passato, ed e' un rifiuto. Queste prove parlano della
+#: semantica della porta -- l'origine umana, 409 contro 503 -- non del soffitto,
+#: che ha il suo file: quindi dichiarano la premessa invece di subirla.
+AMMINISTRATORE = {"specie": "persona", "id": "u-admin", "nome": "Paolo",
+                  "utente": "paolo"}
+
+
+class _RuoliFinti:
+    async def users(self):
+        return {"utenti": [{"id": "u-admin", "nome": "Paolo",
+                            "amministratore": True, "proprietario": True,
+                            "sistema": False}]}
+
+
 def _app(archivio=None, officina=None):
     app = web.Application()
     if archivio is not None:
         app["constructions"] = archivio
     if officina is not None:
         app["workshop"] = officina
+    app["ha_client"] = _RuoliFinti()
+    app["ruoli"] = {"quando": 0.0, "per_id": {}}
     return app
 
 
 class FintaRichiesta:
-    def __init__(self, app, ident=None, query=None):
+    """Quanto basta di una `web.Request` per queste rotte.
+
+    **E' anche una mappa**, come quella vera: aiohttp lascia che i middleware
+    ci depositino dentro cio' che hanno stabilito (`auth_via`, `soggetto`), e
+    una finta che non lo fosse costringerebbe il codice di produzione a
+    difendersi da una scorciatoia dei test invece che dal mondo.
+    """
+
+    def __init__(self, app, ident=None, query=None, soggetto=None):
         self.app = app
         self.match_info = {"id": ident} if ident else {}
         self.query = query or {}
+        self._deposito = {"soggetto": soggetto} if soggetto else {}
+
+    def get(self, chiave, predefinito=None):
+        return self._deposito.get(chiave, predefinito)
+
+    def __getitem__(self, chiave):
+        return self._deposito[chiave]
+
+    def __setitem__(self, chiave, valore):
+        self._deposito[chiave] = valore
 
 
 def _corpo(risposta) -> dict:
@@ -179,7 +215,8 @@ async def test_confermare_dalla_pagina_dichiara_l_origine_umana():
     """La pagina E' un umano che ha cliccato: nessun turno da distinguere."""
     officina = FintaOfficina({"applicata": True, "esecuzione_id": "e1"})
     app = _app(FintoArchivio([{"id": "p1", "stato": "in_attesa"}]), officina)
-    risposta = await handle_confirm_construction(FintaRichiesta(app, ident="p1"))
+    risposta = await handle_confirm_construction(
+        FintaRichiesta(app, ident="p1", soggetto=AMMINISTRATORE))
     assert risposta.status == 200
     _, proposta_id, origine, turno = officina.chiamate[0]
     assert (proposta_id, origine, turno) == ("p1", "pagina", None)
@@ -189,7 +226,8 @@ async def test_confermare_dalla_pagina_dichiara_l_origine_umana():
 async def test_una_conferma_rifiutata_non_risponde_200():
     officina = FintaOfficina({"errore": "quella proposta e' gia' applicata."})
     app = _app(FintoArchivio([{"id": "p1", "stato": "applicata"}]), officina)
-    risposta = await handle_confirm_construction(FintaRichiesta(app, ident="p1"))
+    risposta = await handle_confirm_construction(
+        FintaRichiesta(app, ident="p1", soggetto=AMMINISTRATORE))
     assert risposta.status == 409
 
 
@@ -202,7 +240,8 @@ async def test_un_guasto_di_rete_dell_officina_da_503_non_409():
     officina = FintaOfficina({"errore": "Home Assistant non ha risposto: timeout",
                               "guasto_rete": True})
     app = _app(FintoArchivio([{"id": "p1", "stato": "in_attesa"}]), officina)
-    risposta = await handle_confirm_construction(FintaRichiesta(app, ident="p1"))
+    risposta = await handle_confirm_construction(
+        FintaRichiesta(app, ident="p1", soggetto=AMMINISTRATORE))
     assert risposta.status == 503
     # Il flag e' interno: non deve trapelare nel corpo della risposta.
     assert b"guasto_rete" not in risposta.body
@@ -212,7 +251,8 @@ async def test_un_guasto_di_rete_dell_officina_da_503_non_409():
 async def test_ripristinare_passa_dall_officina():
     officina = FintaOfficina({"applicata": True, "esecuzione_id": "e2"})
     app = _app(FintoArchivio([{"id": "c1", "stato": "applicata"}]), officina)
-    risposta = await handle_restore_construction(FintaRichiesta(app, ident="c1"))
+    risposta = await handle_restore_construction(
+        FintaRichiesta(app, ident="c1", soggetto=AMMINISTRATORE))
     assert risposta.status == 200
     assert officina.chiamate[0][0] == "restore"
 
@@ -225,7 +265,8 @@ async def test_confermare_senza_officina_da_503():
     esattamente la finestra fra la creazione dell'app e il momento in cui
     `_on_startup` monta `app["workshop"]`."""
     app = _app(FintoArchivio([{"id": "p1", "stato": "in_attesa"}]))
-    risposta = await handle_confirm_construction(FintaRichiesta(app, ident="p1"))
+    risposta = await handle_confirm_construction(
+        FintaRichiesta(app, ident="p1", soggetto=AMMINISTRATORE))
     assert risposta.status == 503
     assert b"officina non disponibile" in risposta.body
 

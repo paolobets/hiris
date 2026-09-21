@@ -648,6 +648,42 @@ class HAClient:
         rows = occurrence["etichette"]
         return {"etichette": rows if isinstance(rows, list) else []}
 
+    #: Il gruppo con cui Home Assistant marca un amministratore. Verificato il
+    #: 21/09/2026 sul sorgente (`components/config/auth.py`): `config/auth/list`
+    #: restituisce `group_ids` e **non** `is_admin`, che si ricava di qui.
+    GRUPPO_AMMINISTRATORI = "system-admin"
+
+    async def users(self) -> dict:
+        """Chi sono le persone di questa casa, e chi comanda.
+
+        Serve all'invariante I-1: l'ingress dice CHI sta chiedendo
+        (`X-Remote-User-Id`), non cosa gli e' concesso. Il ruolo lo sa Home
+        Assistant, e HIRIS puo' chiederglielo perche' il Supervisor proxa con la
+        propria sessione privilegiata -- che e' poi la stessa ragione per cui
+        oggi HIRIS **amplifica**, parlando con HA da amministratore qualunque sia
+        la persona che ha scritto in chat.
+
+        **Il verso del dubbio**: se la lettura non riesce si torna il motivo e
+        **nessun elenco**. Un elenco vuoto accanto a un guasto si legge come «non
+        ce n'erano», e a valle diventerebbe «nessuno e' amministratore» oppure --
+        peggio, secondo come lo si scrive -- un ripiego su «lo e' chiunque». Un
+        guasto di rete non deve poter cambiare un permesso.
+        """
+        occurrence = self._ws_occurrence(
+            await self._ws_command("config/auth/list"), "utenti")
+        if "errore" in occurrence:
+            return occurrence
+        rows = occurrence["utenti"]
+        if not isinstance(rows, list):
+            return {"errore": "l’elenco degli utenti non è arrivato come elenco"}
+        return {"utenti": [
+            {"id": r.get("id"),
+             "nome": r.get("name"),
+             "amministratore": self.GRUPPO_AMMINISTRATORI in (r.get("group_ids") or []),
+             "proprietario": bool(r.get("is_owner")),
+             "sistema": bool(r.get("system_generated"))}
+            for r in rows if isinstance(r, dict)]}
+
     async def create_label(self, name: str) -> dict:
         """Crea un'etichetta. La paternita' di cio' che HIRIS costruisce vive
         QUI, nel registro di Home Assistant, e non in una tabella nostra: e'

@@ -5525,6 +5525,14 @@ def create_app() -> web.Application:
     # errore.
     create_rounds_per_exchange(app)
 
+    # I ruoli di Home Assistant (invariante I-1): il contenitore nasce QUI,
+    # mentre l'app si compone, per la stessa ragione dei contatori qui sopra --
+    # scrivere in `app[...]` a richiesta gia' servita e' deprecato in aiohttp 3
+    # e un errore in aiohttp 4. Chi lo riempie e' `soffitto._amministratore`,
+    # alla prima richiesta che ha bisogno di sapere chi comanda.
+    from .api.soffitto import prepara_ruoli
+    prepara_ruoli(app)
+
     # fetta E3 Task 5: /api/brain/feed e /api/brain/reasoning sono uscite col
     # Brain auto-proponente (handle_brain_feed componeva reasoning_log/
     # brain.feed, handle_brain_reasoning leggeva il solo reasoning_log --
