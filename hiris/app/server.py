@@ -56,7 +56,7 @@ from .keeper.store import AgendaStore
 from .keeper.sweeper import Sweeper
 from .memory.lookup_cache import LookupCache
 from .memory.store import MemoryStore
-from .mind import analyst, analyst_turn, recipe_turn, report
+from .mind import actuator, actuator_turn, analyst, analyst_turn, recipe_turn, report
 from .mind.cadence import cadence_from, measure_memory_window, reason_to_reconsider
 from .mind.facts import (
     BALANCE_DIRECTIONS,
@@ -2127,6 +2127,169 @@ async def analyst_round(app) -> dict | None:
 ANALYST_DAYS = 30
 
 
+async def actuator_round(app) -> dict | None:
+    """L'anello dell'**attuatore**: il terzo attore del cervello (spec
+    2026-09-21).
+
+    Torna il resoconto del giro, o `None` se non c'era da farlo.
+
+    **Un'analisi, un'attuazione.** Il giro si aggancia allo stesso battito
+    orario dell'analista e non fa niente finche' non trova l'analisi di oggi;
+    quando l'ha attuata, tace. Il riferimento e' **l'analisi e non il giorno**:
+    dalla 3.55.0 un'analisi si rifa' quando cambia il suo fondamento, e
+    un'attuazione fatta su quella vecchia parlava di numeri che non ci sono
+    piu'.
+
+    Cosi' parte quando l'analisi e' finita -- qualunque ora sia, perche'
+    l'analista ritenta ogni ora finche' non riesce -- senza inventare un
+    orario suo.
+
+    **Il silenzio dell'analista non fa girare niente**: un elenco vuoto di
+    osservazioni non ha niente da attuare, e chiedere costerebbe un turno per
+    una risposta che non puo' esistere.
+
+    Non solleva mai: gira per sempre, e un giro andato storto non deve fermare
+    lo schedulatore.
+    """
+    store = app.get("observations")
+    if store is None:
+        return None
+    try:
+        timezone = _timezone_from_home_space_store(app.get("home_space_store"))
+        today = datetime.now(home_space_zone(timezone)).date().strftime("%Y-%m-%d")
+        analysis = store.analysis(today)
+        if analysis is None:
+            return None
+        stamp = (analysis.get("fondamento") or {}).get("impronta")
+        # **La risposta del piano si raccoglie PRIMA di chiedere di nuovo**:
+        # il ponte gira altrove e risponde minuti dopo, e senza questo passo
+        # accoderebbe una domanda a ogni giro e non ne leggerebbe mai una.
+        collected = _collect_actuator_turn(app, store, today, stamp)
+        if collected is not None and collected.get("risposta"):
+            return collected
+        analysis = store.analysis(today) or analysis
+        done = analysis.get("attuazione") or {}
+        if done.get("su_fondamento") == stamp:
+            return None
+
+        # Nel rilascio A non esistono ancora proposte, quindi non c'e' niente
+        # di gia' deciso da saltare: l'elenco arriva tutto. La porta e' quella
+        # (`actuator.to_handle`), e il rilascio B le portera' le proposte
+        # chiuse col loro fondamento di prova.
+        pending = actuator.to_handle(analysis.get("osservazioni") or [], {})
+        if not pending:
+            return None
+
+        question = actuator_turn.build_question(pending, [])
+        if question is None:
+            return None
+        route, downgrade = who_answers(app)
+        runner = app.get("llm_router") or app.get("claude_runner")
+        if route == "ponte":
+            return _enqueue_actuator_turn(app, today)
+        if runner is None:
+            logger.info("attuatore: nessun modello collegato, si riprova al giro dopo")
+            return None
+        if downgrade:
+            logger.info("attuatore: il giro passa dalla catena (%s)", downgrade)
+
+        answer = await runner.chat(user_message=question,
+                                   system_prompt=actuator_turn.SYSTEM)
+        esito = actuator_turn.apply_actuation(pending, answer)
+        _write_actuation(store, today, stamp, esito)
+        return esito
+    except Exception as error:
+        logger.warning("attuatore: giro fallito (%s: %s) -- si riprova al giro "
+                       "dopo", type(error).__name__, error)
+        return None
+
+
+def _write_actuation(store, day: str, stamp: str | None, esito: dict) -> None:
+    """Scrive l'attuazione **dentro l'analisi**, o dice perche' non l'ha fatto.
+
+    Gli esiti stanno accanto alle osservazioni che li hanno generati: sono la
+    risposta a quelle domande, e in un archivio a parte servirebbe una giuntura
+    per rimetterli insieme.
+
+    **Una risposta rifiutata non si archivia**: un'attuazione con dentro dei
+    problemi non e' un'attuazione, e scriverla direbbe che quel giorno e' stato
+    attuato. Il giro dopo riprova, perche' `su_fondamento` resta assente.
+    """
+    actuation = esito.get("attuazione")
+    if actuation is None:
+        if esito.get("problemi"):
+            logger.warning("attuatore: risposta rifiutata per %s -- %s",
+                           day, " · ".join(esito["problemi"]))
+        return
+    analysis = store.analysis(day)
+    if analysis is None:
+        return
+    analysis = {**analysis, "attuazione": {**actuation, "su_fondamento": stamp}}
+    store.replace_analysis(day, analysis)
+    logger.info("attuatore: attuazione di %s scritta (%d esiti)",
+                day, len(actuation.get("esiti") or []))
+
+
+def _collect_actuator_turn(app, store, today: str, stamp: str | None) -> dict | None:
+    """La risposta che il piano ha dato alla domanda dell'attuatore.
+
+    **Un turno gia' raccolto non si rilegge**, e la traccia e' l'attuazione
+    stessa: se porta questo fondamento, la risposta e' gia' stata applicata.
+
+    Le osservazioni si rileggono **adesso**, come fa l'analista con le serie:
+    il ponte risponde minuti dopo, e nel frattempo l'analisi puo' essersi
+    rifatta -- gli esiti devono attaccarsi alle osservazioni che ci sono ora.
+    """
+    queue = app.get("reasoning_queue")
+    if queue is None:
+        return None
+    turn = queue.latest(actuator_turn.ACTUATION_TURN_KIND)
+    if not turn:
+        return None
+    day = (turn.get("wake") or {}).get("giorno")
+    if day != today:
+        return None
+    analysis = store.analysis(day)
+    if analysis is None:
+        return None
+    if (analysis.get("attuazione") or {}).get("su_fondamento") == stamp:
+        return None
+    reply = (turn.get("decision") or {}).get("reply") or ""
+    if not str(reply).strip():
+        return None
+    pending = actuator.to_handle(analysis.get("osservazioni") or [], {})
+    esito = actuator_turn.apply_actuation(pending, reply)
+    if not esito.get("risposta"):
+        return esito
+    _write_actuation(store, day, stamp, esito)
+    return esito
+
+
+def _enqueue_actuator_turn(app, day: str) -> dict | None:
+    """Accoda al piano la domanda dell'attuatore, e torna subito."""
+    from .api.handlers_models import _STORE_DEFAULTS
+    store = app.get("observations")
+    analysis = store.analysis(day) if store is not None else None
+    if analysis is None:
+        return None
+    pending = actuator.to_handle(analysis.get("osservazioni") or [], {})
+    question = actuator_turn.build_question(pending, [])
+    if question is None:
+        return None
+    job = {"history": [{"role": "user", "content": question}],
+           "system_prompt": actuator_turn.SYSTEM,
+           "istruzione": actuator_turn.ANSWER_CONTRACT}
+    deadline_min = int((app.get("models_config") or {}).get("ponte", {}).get(
+        "scadenza_min", _STORE_DEFAULTS["ponte"]["scadenza_min"]))
+    now = time.time()
+    app["reasoning_queue"].enqueue(
+        actuator_turn.ACTUATION_TURN_KIND, {"giorno": day}, job,
+        now + deadline_min * 60, now=now)
+    logger.info("attuatore: turno accodato al piano per %s (scadenza %d min)",
+                day, deadline_min)
+    return {"accodata": True, "giorno": day}
+
+
 def _write_analysis(store, day: str, esito: dict) -> None:
     """Scrive l'analisi, o dice perche' non l'ha scritta.
 
@@ -4145,6 +4308,20 @@ async def _on_startup(app: web.Application) -> None:
         _anello_analista,
         trigger="interval", minutes=60,
         id="hiris_mind_analyst", replace_existing=True,
+        misfire_grace_time=1800,
+    )
+
+    # L'anello dell'ATTUATORE (spec 2026-09-21 §4): stesso battito, e non fa
+    # niente finche' l'analisi di oggi non c'e' o e' gia' stata attuata. Cosi'
+    # parte quando l'analisi e' finita -- qualunque ora sia, perche' l'analista
+    # ritenta ogni ora finche' non riesce -- senza inventare un orario suo.
+    async def _anello_attuatore() -> None:
+        await actuator_round(app)
+
+    scheduler.add_job(
+        _anello_attuatore,
+        trigger="interval", minutes=60,
+        id="hiris_mind_actuator", replace_existing=True,
         misfire_grace_time=1800,
     )
 
