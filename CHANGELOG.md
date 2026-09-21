@@ -1,5 +1,40 @@
 # HIRIS — Changelog
 
+## [3.56.1] — L'analista era muto da cinque giorni (2026-09-21)
+
+Trovato guardando se il terzo attore avesse già girato sulla casa: **i resoconti c'erano tutti fino
+al 20/09, e l'ultima analisi era del 16**. Cinque giorni di silenzio, e la pagina diceva solo
+«L'analista non ha ancora guardato questo giorno» — vero alla lettera, e indistinguibile dalla
+normalità.
+
+**Cos'era.** Il 17/09 un turno dell'analista era stato accodato al ponte (lo dice la sua stessa
+pagina: «accodata», ore 09:13). Poi il ponte è stato spento — e la spazzata delle scadenze gira
+**solo a ponte acceso**, per una ragione sua e giusta («mai accodare in una coda che nessuno
+spazza»). Quel turno è rimasto `pending` per sempre. E `_analyst_turn_in_flight` guardava soltanto
+«c'è una risposta?»: ha risposto «in volo» a ogni giro, per sempre.
+
+**La riga che mancava era già scritta due volte, nello stesso file.** Le guardie gemelle dello
+scope e delle ricette dicono da settimane: *«uno scaduto NON è in volo: se lo fosse, il giro
+aspetterebbe per sempre una risposta che nessuno darà più»*. L'analista è nato senza. Ed è il
+**quarto caso della stessa forma** in questo prodotto — la porta salta perché qualcosa esiste già,
+anche quando quel qualcosa è morto: `devices_to_ask` coi dispositivi che hanno una ricetta rotta, i
+dieci bloccati da un rifiuto che nessuno faceva scadere, l'analisi che non si rifaceva quando
+cambiava il suo fondamento (3.55.0), e questo.
+
+**Adesso la guardia è una sola e la usano in quattro**: scope, ricette, analista e attuatore. Le tre
+copie erano tre occasioni di scriverne una sbagliata, e una lo era. E l'attuatore — che sul ponte
+**non aveva nessuna guardia**, difetto di ieri, mio — avrebbe accodato una domanda ogni ora: una
+coda di domande identiche che nessuno avrebbe letto.
+
+**Cosa aspettarsi in casa**: al primo giro utile dopo l'aggiornamento l'analista torna a scrivere,
+e subito dopo l'attuatore fa il suo primo giro vero sulle osservazioni di oggi.
+
+**Dentro c'è anche l'archivio delle proposte da fare a mano** (rilascio B della spec
+dell'attuatore), ancora inerte: nessuna rotta e nessuna pagina lo leggono. Le proposte costruibili
+restano nella tabella dell'officina, che ha gesto, dominio e diff; queste hanno il testo, il perché,
+chi le applica, l'impronta dell'osservazione e il filo dei giri del «Rifalla» — che si accoda e non
+si sostituisce, o al secondo giro il modello tornerebbe alla prima forma.
+
 ## [3.56.0] — Il terzo attore, e cosa vuol dire «creare le soluzioni» (2026-09-21)
 
 Il cervello ha quattro attori dal 25/08: osservatore, analista, **attuatore**, verificatore. I
