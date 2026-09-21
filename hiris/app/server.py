@@ -1820,7 +1820,7 @@ async def reconsideration_round(app, ha_client) -> dict | None:
             # li' in poi ogni turno -- chat compresa -- passerebbe ai provider
             # a pagamento.
             return None
-        if _scope_turn_in_flight(app):
+        if _turn_in_flight(app, SCOPE_TURN_KIND):
             # Questo giro scatta ogni minuto e un turno del piano ne dura
             # parecchi: senza questa guardia la casa accodarebbe un turno al
             # minuto, ciascuno col suo lotto di casa dentro, e il tetto
@@ -2040,6 +2040,36 @@ def _punti_orari(punti) -> list[dict]:
 # doppioni -- vale anche per otto righe.
 
 
+def _turn_in_flight(app, kind: str) -> bool:
+    """Se un turno di quella specie sta gia' aspettando una risposta dal piano.
+
+    **La coda e' l'unico posto in cui questo fatto vive.** Tenere il `job_id`
+    anche altrove -- su `app`, in un archivio -- sarebbe un doppione ai sensi
+    della fondamenta 2, e per giunta uno che non sopravvive a un riavvio,
+    mentre il job si'.
+
+    **Uno SCADUTO non e' in volo**, e questa riga e' costata cinque giorni di
+    silenzio. Misurato sulla casa il 21/09/2026: l'analista non scriveva
+    un'analisi dal 16, coi resoconti tutti archiviati. Il 17 un suo turno era
+    stato accodato al ponte; poi il ponte e' stato spento, e la spazzata delle
+    scadenze gira **solo a ponte acceso** -- quel turno e' rimasto `pending`
+    per sempre. La guardia dell'analista guardava soltanto «c'e' una
+    risposta?», e ha risposto «in volo» a ogni giro, per sempre.
+
+    Lo scope e le ricette avevano la riga giusta da settimane, ciascuno nella
+    propria copia: **tre guardie, e una nata senza**. Adesso e' una sola, e
+    chi la legge legge anche il perche'.
+    """
+    queue = app.get("reasoning_queue")
+    if queue is None:
+        return False
+    turn = queue.latest(kind)
+    if turn is None:
+        return False
+    return (turn["status"] in ("pending", "claimed")
+            and turn["deadline_ts"] > time.time())
+
+
 async def analyst_round(app) -> dict | None:
     """L'anello dell'analista: **«leggi le misure di molti giorni e di' cosa si
     potrebbe fare»** (spec §10).
@@ -2086,7 +2116,7 @@ async def analyst_round(app) -> dict | None:
         scritta = store.analysis(today)
         if scritta is not None and scritta.get("fondamento") == fondamento:
             return None
-        if _analyst_turn_in_flight(app):
+        if _turn_in_flight(app, analyst_turn.ANALYSIS_TURN_KIND):
             return None
 
         from .api.handlers_mind import _device_names
@@ -2190,6 +2220,11 @@ async def actuator_round(app) -> dict | None:
         route, downgrade = who_answers(app)
         runner = app.get("llm_router") or app.get("claude_runner")
         if route == "ponte":
+            # La stessa guardia degli altri tre: senza, il ponte riceverebbe
+            # una domanda a ogni giro -- una coda di domande identiche che
+            # nessuno leggera' mai.
+            if _turn_in_flight(app, actuator_turn.ACTUATION_TURN_KIND):
+                return None
             return _enqueue_actuator_turn(app, today)
         if runner is None:
             logger.info("attuatore: nessun modello collegato, si riprova al giro dopo")
@@ -2400,15 +2435,6 @@ def _write_analysis(store, day: str, esito: dict) -> None:
                 day, len(analysis.get("osservazioni") or []))
 
 
-def _analyst_turn_in_flight(app) -> bool:
-    """Se c'e' gia' una domanda dell'analista in attesa sul piano."""
-    queue = app.get("reasoning_queue")
-    if queue is None:
-        return False
-    turn = queue.latest(analyst_turn.ANALYSIS_TURN_KIND)
-    return bool(turn and not (turn.get("decision") or {}).get("reply"))
-
-
 def _enqueue_analyst_turn(app, series: dict, day: str) -> dict | None:
     """Accoda al piano la domanda dell'analista, e torna subito."""
     from .api.handlers_models import _STORE_DEFAULTS
@@ -2512,7 +2538,7 @@ async def recipe_round(app) -> dict | None:
         # dopo aver rilasciato la correzione che quella promessa la scriveva.
         if collected is not None and _troppo_presto_per_richiedere(app):
             return collected
-        if _recipe_turn_in_flight(app):
+        if _turn_in_flight(app, recipe_turn.RECIPE_TURN_KIND):
             return None
 
         # **Quali entita' sanno produrre una serie**: serve due volte, e si
@@ -2599,19 +2625,6 @@ def _troppo_presto_per_richiedere(app) -> bool:
         return False
     deciso = turn.get("decided_ts") or turn.get("created_ts") or 0
     return (time.time() - deciso) < RECIPE_RETRY_HOLD_S
-
-
-def _recipe_turn_in_flight(app) -> bool:
-    """Se c'e' gia' un turno di ricetta in volo. Stessa guardia dello scope:
-    senza, si accoderebbe un turno a ogni passaggio."""
-    queue = app.get("reasoning_queue")
-    if queue is None:
-        return False
-    turn = queue.latest(recipe_turn.RECIPE_TURN_KIND)
-    if turn is None:
-        return False
-    return (turn["status"] in ("pending", "claimed")
-            and turn["deadline_ts"] > time.time())
 
 
 def _enqueue_recipe_turn(app, home_space: dict, device_id: str, *,
@@ -2709,27 +2722,6 @@ def _attempt_detail(outcome: dict) -> str:
     """Il riassunto di un giro riuscito, nella lingua della pagina."""
     return (f"{outcome.get('decise', 0)} decisioni su "
             f"{outcome.get('candidate', 0)} entita' guardate")
-
-
-def _scope_turn_in_flight(app) -> bool:
-    """Se un turno di scope sta gia' aspettando una risposta dal piano.
-
-    **La coda e' l'unico posto in cui questo fatto vive.** Tenere il `job_id`
-    anche altrove -- su `app`, in un archivio -- sarebbe un doppione ai sensi
-    della fondamenta 2, e per giunta uno che non sopravvive a un riavvio,
-    mentre il job si'.
-
-    Uno scaduto NON e' in volo: se lo fosse, il giro aspetterebbe per sempre
-    una risposta che nessuno dara' piu', e la casa non sarebbe mai osservata.
-    """
-    queue = app.get("reasoning_queue")
-    if queue is None:
-        return False
-    turn = queue.latest(SCOPE_TURN_KIND)
-    if turn is None:
-        return False
-    return (turn["status"] in ("pending", "claimed")
-            and turn["deadline_ts"] > time.time())
 
 
 #: Quanto si aspetta prima di riprovare, dopo un fallimento. Raddoppia a ogni

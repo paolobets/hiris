@@ -163,3 +163,66 @@ async def test_l_analisi_rifatta_SOSTITUISCE_e_non_si_accoda(casa):
     assert modello.chiamate == conteggio, (
         "dopo aver rifatto l'analisi il giro ha chiesto di nuovo: il fondamento "
         "scritto non e' quello su cui e' stata rifatta")
+
+
+# ---------------------------------------------------------------------------
+# La guardia del ponte: un turno SCADUTO non e' in volo.
+#
+# **Difetto vivo, misurato sulla casa il 21/09/2026**: l'analista non scriveva
+# un'analisi dal 16/09 -- cinque giorni, coi resoconti tutti archiviati. Il
+# 17/09 un turno era stato accodato al ponte; poi il ponte e' stato spento, e
+# la spazzata delle scadenze gira SOLO a ponte acceso (`server.py`: «mai
+# accodare in una coda che nessuno spazza»). Quel turno e' rimasto `pending`
+# per sempre, e `_analyst_turn_in_flight` -- che guardava solo «c'e' una
+# risposta?» -- ha risposto «in volo» a ogni giro, per sempre.
+#
+# Le guardie gemelle dello scope e delle ricette, nello stesso file, lo
+# scrivono da settimane: «uno scaduto NON e' in volo: se lo fosse, il giro
+# aspetterebbe per sempre una risposta che nessuno dara' piu'». L'analista e'
+# nato senza quella riga.
+# ---------------------------------------------------------------------------
+
+class _CodaConTurnoFermo:
+    """Un turno accodato e mai risposto, con la scadenza passata."""
+
+    def __init__(self, deadline_ts, status="pending"):
+        self.turno = {"status": status, "deadline_ts": deadline_ts,
+                      "wake": {"giorno": "2026-09-17"}, "decision": None}
+        self.accodati = []
+
+    def latest(self, kind):
+        return self.turno
+
+    def count_exchanges_today(self):
+        return 0
+
+    def enqueue(self, kind, wake, job, deadline, now=None):
+        self.accodati.append(kind)
+
+
+@pytest.mark.asyncio
+async def test_un_turno_SCADUTO_non_blocca_l_analista_per_sempre(casa):
+    """Mutazione: la guardia vecchia (`not reply`) -- rossa, e la casa resta
+    senza analisi finche' qualcuno non se ne accorge."""
+    app, _store, modello = casa
+    app["reasoning_queue"] = _CodaConTurnoFermo(deadline_ts=1.0)
+
+    await server.analyst_round(app)
+
+    assert modello.chiamate == 1, (
+        "un turno scaduto ha bloccato l'analista: e' il difetto del 17-21/09")
+
+
+@pytest.mark.asyncio
+async def test_un_turno_ANCORA_VALIDO_blocca_l_analista(casa):
+    """La contropartita: senza di lei basterebbe togliere la guardia, e il
+    ponte riceverebbe una domanda a ogni giro.
+
+    Mutazione: togliere la guardia -- rossa."""
+    import time as _t
+    app, _store, modello = casa
+    app["reasoning_queue"] = _CodaConTurnoFermo(deadline_ts=_t.time() + 600)
+
+    await server.analyst_round(app)
+
+    assert modello.chiamate == 0

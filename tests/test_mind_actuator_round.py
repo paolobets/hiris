@@ -326,3 +326,25 @@ async def test_un_esito_si_lega_all_IMPRONTA_dell_osservazione_non_alla_posizion
     from hiris.app.mind import actuator
 
     assert esito["impronta"] == actuator.observation_key(_oss())
+
+
+@pytest.mark.asyncio
+async def test_col_ponte_un_turno_IN_VOLO_non_ne_accoda_un_secondo(casa, piano_acceso):
+    """La guardia che all'attuatore mancava del tutto: senza, il ponte
+    riceverebbe una domanda a ogni giro -- una coda di domande identiche che
+    nessuno leggera' mai. E' lo stesso difetto che ha tenuto l'analista muto
+    cinque giorni, preso dal verso opposto.
+
+    Mutazione: togliere la guardia -- rossa (due accodamenti)."""
+    import time as _t
+    app, store, _modello = casa
+    coda = _FintaCoda()
+    coda.turno = {"status": "pending", "deadline_ts": _t.time() + 600,
+                  "wake": {"giorno": OGGI}, "decision": None}
+    app.update({"bridge_active": True, "reasoning_queue": coda,
+                "models_config": {"ponte": {"scadenza_min": 10}}})
+    store.replace_analysis(OGGI, _analisi())
+
+    await server.actuator_round(app)
+
+    assert coda.accodati == [], "un secondo turno accodato mentre il primo aspetta"
