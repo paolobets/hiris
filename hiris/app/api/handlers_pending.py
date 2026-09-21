@@ -37,6 +37,14 @@ import time
 from aiohttp import web
 
 
+def _proposals_pending(app) -> int:
+    """Quante proposte da fare a mano aspettano una tua decisione."""
+    observations = app.get("observations")
+    if observations is None:
+        return 0
+    return len(observations.proposals(pending_only=True))
+
+
 async def handle_get_pending(request: web.Request) -> web.Response:
     agenda = request.app.get("agenda")
     constructions = request.app.get("constructions")
@@ -48,5 +56,9 @@ async def handle_get_pending(request: web.Request) -> web.Response:
         return web.json_response({"error": "archivio non disponibile"}, status=503)
     return web.json_response({
         "agenda_unread": agenda.count_unread(),
-        "constructions_pending": constructions.count_pending(now=time.time()),
+        # **Le due code, sommate** (spec 2026-09-21 §3): un pallino che ne
+        # contasse una sola direbbe un numero piu' piccolo di quello che ti
+        # aspetta -- ed e' peggio di nessun pallino, perche' sembra un conto.
+        "constructions_pending": (constructions.count_pending(now=time.time())
+                                  + _proposals_pending(request.app)),
     })

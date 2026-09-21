@@ -1233,6 +1233,19 @@ class ObservationsStore:
             self._conn.commit()
         return True
 
+    def rewrite_proposal_why(self, ident: str, perche: str) -> bool:
+        """Riscrive il `perche` di una proposta, dopo un giro di «Rifalla».
+
+        Il testo cambia (lo fa `add_proposal_round`), e la ragione con lui: una
+        proposta nuova con la ragione vecchia sarebbe una riga che non si
+        spiega piu'.
+        """
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE proposte SET perche=? WHERE id=?", (perche, ident))
+            self._conn.commit()
+        return cur.rowcount > 0
+
     def decided_proposals(self) -> dict[str, dict]:
         """`{impronta: prova}` per le proposte che l'attuatore non deve rifare.
 

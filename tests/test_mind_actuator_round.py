@@ -348,3 +348,110 @@ async def test_col_ponte_un_turno_IN_VOLO_non_ne_accoda_un_secondo(casa, piano_a
     await server.actuator_round(app)
 
     assert coda.accodati == [], "un secondo turno accodato mentre il primo aspetta"
+
+
+# ---------------------------------------------------------------------------
+# Il gesto PROPOSTA (spec §3): due forme, due archivi, una pagina.
+# ---------------------------------------------------------------------------
+
+class _FintaOfficina:
+    """L'officina dal lato del giro: `propose` compone e NON scrive in casa."""
+
+    def __init__(self, esito=None):
+        self.intenzioni = []
+        self._esito = esito or {"proposta_id": "c1", "anteprima": "diff"}
+
+    async def propose(self, intent, *, actor, exchange, now):
+        self.intenzioni.append((intent, actor))
+        return self._esito
+
+
+def _modello_proponente(costruibile, intenzione=None):
+    corpo = {"osservazione": 0, "gesto": "proposta",
+             "trovato": "Sposta la lavatrice nel primo pomeriggio",
+             "costruibile": costruibile}
+    if intenzione is not None:
+        corpo["intenzione"] = intenzione
+    return _FintoModello(risposta=json.dumps({"esiti": [corpo]}))
+
+
+@pytest.mark.asyncio
+async def test_una_proposta_NON_COSTRUIBILE_finisce_nell_archivio_delle_proposte(casa):
+    """«Sposta i consumi nel pomeriggio» non e' un oggetto di Home Assistant:
+    e' una cosa che fai tu, e va nella coda che la pagina mostra accanto alle
+    altre.
+
+    Mutazione: mandarla all'officina -- rossa (l'officina la rifiuterebbe, e
+    la proposta sparirebbe)."""
+    app, store, _modello = casa
+    app["llm_router"] = _modello_proponente(False)
+    store.replace_analysis(OGGI, _analisi())
+
+    await server.actuator_round(app)
+
+    righe = store.proposals()
+    assert len(righe) == 1
+    assert righe[0]["testo"].startswith("Sposta la lavatrice")
+    assert righe[0]["chi_applica"] == "tu"
+    assert righe[0]["impronta"] == "dev1|prelievo|None|1"
+    assert righe[0]["prova"]["base"] == 19, "senza la prova non si riapre mai"
+
+
+@pytest.mark.asyncio
+async def test_una_proposta_COSTRUIBILE_passa_dall_OFFICINA(casa):
+    """«L'attuatore non guadagna un canale di scrittura suo» (25/08): passa da
+    `costruisci`, che compone e valida contro QUESTA casa e non scrive niente.
+
+    Mutazione: scriverla nell'archivio delle proposte a mano -- rossa (niente
+    anteprima, niente diff, e un «crea» che non ha nulla da creare)."""
+    app, store, _modello = casa
+    officina = _FintaOfficina()
+    app["workshop"] = officina
+    app["llm_router"] = _modello_proponente(
+        True, {"gesto": "crea", "dominio": "automation",
+               "richiesto": "accendi la lavatrice alle 14"})
+    store.replace_analysis(OGGI, _analisi())
+
+    await server.actuator_round(app)
+
+    assert officina.intenzioni, "l'officina non e' stata chiamata"
+    intento, attore = officina.intenzioni[0]
+    assert intento["gesto"] == "crea"
+    assert attore == "attuatore", "chi ha proposto deve restare scritto"
+    assert store.proposals() == [], "una costruibile non va nell'archivio a mano"
+
+
+@pytest.mark.asyncio
+async def test_una_costruibile_SENZA_intenzione_si_rifiuta(casa):
+    """Una proposta «costruibile» senza l'intenzione strutturata non e'
+    costruibile: l'officina vuole gesto, dominio e il resto, e una frase in
+    prosa non li ha.
+
+    Mutazione: mandare all'officina un'intenzione vuota -- rossa."""
+    app, store, _modello = casa
+    app["workshop"] = _FintaOfficina()
+    app["llm_router"] = _modello_proponente(True)
+    store.replace_analysis(OGGI, _analisi())
+
+    await server.actuator_round(app)
+
+    assert "attuazione" not in store.analysis(OGGI), (
+        "una risposta storta non si archivia: il giro dopo riprova")
+
+
+@pytest.mark.asyncio
+async def test_la_stessa_proposta_non_si_scrive_DUE_volte(casa):
+    """L'anti-ripetizione, dal lato dell'archivio: una domanda che ha gia' una
+    proposta -- in qualunque stato -- non ne genera una seconda.
+
+    Mutazione: non leggere le proposte decise -- rossa (una coda che cresce
+    ogni giorno con la stessa riga)."""
+    app, store, _modello = casa
+    app["llm_router"] = _modello_proponente(False)
+    store.replace_analysis(OGGI, _analisi())
+    await server.actuator_round(app)
+
+    store.replace_analysis(OGGI, _analisi(impronta="bbb"))
+    await server.actuator_round(app)
+
+    assert len(store.proposals()) == 1

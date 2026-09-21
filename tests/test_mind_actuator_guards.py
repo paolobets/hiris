@@ -94,3 +94,55 @@ async def test_due_giri_insieme_non_fanno_DUE_attuazioni(tmp_path):
         assert modello.chiamate == 1
     finally:
         store.close()
+
+
+class _OfficinaCheConta:
+    def __init__(self):
+        self.chiamate = 0
+
+    async def propose(self, intent, *, actor, exchange, now):
+        self.chiamate += 1
+        return {"proposta_id": "c1"}
+
+
+@pytest.mark.asyncio
+async def test_le_due_forme_non_si_MESCOLANO_negli_archivi(tmp_path):
+    """**Il terzo cancello** (spec §7): si leggono insieme, si archiviano
+    separate. Una frase in prosa dentro la tabella dei diff sarebbe cinque
+    colonne di finti valori; un'automazione dentro l'archivio delle proposte a
+    mano sarebbe un «crea» senza niente da creare.
+
+    Qui si prova la meta' che le altre prove non toccano: **una proposta da
+    fare a mano non chiama l'officina**.
+
+    Mutazione ESEGUITA: mandare all'officina anche le non costruibili --
+    rossa."""
+    from hiris.app.mind.store import ObservationsStore
+
+    store = ObservationsStore(str(tmp_path / "oss.db"))
+    officina = _OfficinaCheConta()
+
+    class _Modello:
+        chiamate = 0
+
+        async def chat(self, **kwargs):
+            return json.dumps({"esiti": [
+                {"osservazione": 0, "gesto": "proposta", "costruibile": False,
+                 "trovato": "Sposta la lavatrice nel pomeriggio"}]})
+
+    app = {"observations": store, "llm_router": _Modello(), "bridge_active": False,
+           "workshop": officina}
+    try:
+        store.replace_analysis(OGGI, {
+            "osservazioni": [{"soggetto": "dev1", "misura": "prelievo",
+                              "chiave": None, "innesco": 1, "base": 19,
+                              "cosa": "x", "cosa_cambierebbe": "y"}],
+            "fondamento": {"giorni": 3, "impronta": "aaa"}})
+
+        await server.actuator_round(app)
+
+        assert officina.chiamate == 0, (
+            "una proposta da fare a mano e' finita all'officina")
+        assert len(store.proposals()) == 1
+    finally:
+        store.close()

@@ -2244,6 +2244,7 @@ async def actuator_round(app) -> dict | None:
         answer = await runner.chat(user_message=question,
                                    system_prompt=actuator_turn.SYSTEM)
         esito = actuator_turn.apply_actuation(pending, answer)
+        await _file_proposals(app, store, esito, pending)
         _write_actuation(store, today, stamp, esito, repaired=repaired,
                          pending=pending)
         return esito
@@ -2295,6 +2296,60 @@ async def _repair_recipes(app, broken) -> list[dict]:
 #: seme»: chi legge una riga del sapere deve poter sapere **quale attore** l'ha
 #: messa li', o il verificatore non potrebbe attribuire niente a nessuno.
 ACTUATOR_AUTHOR = "attuatore"
+
+
+async def _file_proposals(app, store, esito: dict, pending) -> None:
+    """Mette in coda le proposte del turno: **due forme, due archivi**.
+
+    - **costruibile** -> passa dall'officina (`costruisci`), che compone e
+      valida contro QUESTA casa e **non scrive niente**: ne esce un'anteprima
+      col diff, e la scrittura resta dove sta -- un turno diverso, col si' del
+      proprietario. E' il confine del 25/08: «l'attuatore non guadagna un
+      canale di scrittura suo».
+    - **da fare a mano** -> l'archivio gemello, con l'impronta e la prova, che
+      sono cio' su cui si regge l'anti-ripetizione.
+
+    «Un posto solo dove si decide» e' una promessa sulla PAGINA: i due archivi
+    restano due, perche' una frase in prosa dentro una tabella di diff sarebbe
+    il doppione per forma.
+    """
+    actuation = esito.get("attuazione")
+    if not actuation:
+        return
+    rows = list(pending or [])
+    decided = store.decided_proposals()
+    workshop = app.get("workshop")
+    for outcome in actuation.get("esiti") or []:
+        if outcome.get("gesto") != "proposta":
+            continue
+        index = outcome.get("osservazione")
+        row = rows[index] if isinstance(index, int) and 0 <= index < len(rows) else None
+        if row is None:
+            continue
+        key = actuator.observation_key(row)
+        if key in decided:
+            # La stessa domanda ha gia' una proposta -- in attesa o decisa --
+            # e una coda che cresce ogni giorno con la stessa riga e' il
+            # rumore che questa fetta esiste per togliere.
+            continue
+        if outcome.get("costruibile"):
+            if workshop is None:
+                logger.info("attuatore: officina non collegata, la proposta "
+                            "costruibile di %s non si crea", row.get("soggetto"))
+                continue
+            esito_officina = await workshop.propose(
+                dict(outcome.get("intenzione") or {}),
+                actor=ACTUATOR_AUTHOR, exchange=None, now=time.time())
+            if esito_officina.get("errore"):
+                logger.info("attuatore: l'officina ha rifiutato la proposta (%s)",
+                            esito_officina["errore"])
+            continue
+        store.add_proposal(
+            text=str(outcome.get("trovato") or "").strip(),
+            perche=str(row.get("cosa") or "").strip(),
+            fingerprint=key, prova=actuator.evidence_of(row),
+            chi_applica="tu", now_ts=time.time())
+        decided[key] = actuator.evidence_of(row)
 
 
 def _write_actuation(store, day: str, stamp: str | None, esito: dict,
@@ -5561,6 +5616,17 @@ def create_app() -> web.Application:
     # perche' anche questa non la salti. Non scrive su Home Assistant: si
     # scrive nell'archivio e basta (vedi il modulo `handlers_constructions`).
     app.router.add_post("/api/constructions/{id}/reject", handle_reject_construction)
+    # Le proposte da fare a mano (spec 2026-09-21 §3): due esiti e un
+    # «rifalla». `crea` non c'e' -- qui non c'e' niente da scrivere in Home
+    # Assistant, e quella strada e' l'officina qui sopra.
+    from .api.handlers_proposals import (
+        handle_proposal_done,
+        handle_proposal_redo,
+        handle_proposal_reject,
+    )
+    app.router.add_post("/api/proposals/{id}/reject", handle_proposal_reject)
+    app.router.add_post("/api/proposals/{id}/done", handle_proposal_done)
+    app.router.add_post("/api/proposals/{id}/redo", handle_proposal_redo)
 
     # I due numeri dei pallini, in una richiesta sola. Sta qui, dopo i due
     # archivi che legge, e non dentro nessuno dei due blocchi sopra: non

@@ -248,3 +248,20 @@ propone cose che non vuoi è rumore, e il rumore sano è quello che seppellisce 
 4. Il turno e il giro, con la regola *un'analisi, un'attuazione*.
 5. I tre cancelli della §7.
 6. La verifica dal vivo sulla casa, e la prima settimana di misure della §8.
+
+---
+
+## §11 · STATO
+
+- **Rilascio A — v3.56.0 (21/09)**: indaga e ripara. `mind/actuator.py`,
+  `mind/actuator_turn.py`, `server.actuator_round` (catena e ponte), la riparazione via
+  `recipe_turn.ask`, gli esiti sotto la loro osservazione in «Cosa fare», e i primi due cancelli.
+  **Due decisioni emerse implementando**, e non erano qui: gli esiti si legano all'**impronta**
+  dell'osservazione e non alla posizione; ed è il **server** ad attaccare l'esito alla sua domanda
+  quando la pagina legge.
+- **v3.56.1**: il difetto che teneva l'analista muto da cinque giorni — un turno del ponte scaduto e
+  mai spazzato lo dichiarava «in volo» per sempre. Una guardia sola per quattro giri.
+- **Rilascio B — v3.57.0 (21/09)**: propone. L'archivio gemello, le tre rotte, l'elenco unificato
+  col pallino sommato, i tre esiti, il «Rifalla» col suo filo, e il terzo cancello.
+- **Da fare**: le misure della §8, dopo una settimana di casa vera. E il **verificatore**, che è la
+  fetta successiva e il motivo per cui il terzo esito esiste.

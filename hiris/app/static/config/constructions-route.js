@@ -136,7 +136,7 @@
 window.HirisConstructions = (function () {
   'use strict';
 
-  var OPEN_STATES = ['in_attesa', 'in_corso'];
+  var OPEN_STATES = ['in_attesa', 'in_corso', 'attesa'];
 
   var STATE_LABEL = {
     in_attesa: 'In attesa',
@@ -408,7 +408,114 @@ window.HirisConstructions = (function () {
   /* guida §2: dall'alto in basso -- etichetta strutturale (+ badge gesto, +
      "esiste gia'" quando serve), frase subordinata, anteprima per intero,
      helper, rivelatore dei dettagli tecnici, bottoni. */
+  /* Le proposte DA FARE A MANO (spec 2026-09-21 §3): non hanno gesto, ne'
+     dominio, ne' un diff -- hanno un testo, un perche', e tre esiti di cui
+     uno solo e' un «no». **«Crea» non c'e'**: qui non c'e' niente da scrivere
+     in Home Assistant, e quella strada e' l'officina.
+
+     Vivono in un archivio gemello e si leggono in questo elenco: «un posto
+     solo dove si decide» e' una promessa sulla PAGINA, non sulla tabella. */
+  function lineAMano(c, statusEl, reload) {
+    var box = el('div', 'construction construction--' + c.stato);
+    box.style.cssText = 'border-top:1px solid var(--border);padding:var(--sp-4) 0;' +
+      'display:flex;flex-direction:column;gap:var(--sp-2)';
+
+    var head = el('div');
+    head.style.cssText = 'display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap';
+    head.appendChild(el('span', null, c.testo || ''));
+    head.appendChild(el('span', 'agent-badge badge-off', 'la fai tu'));
+    box.appendChild(head);
+    if (c.perche) box.appendChild(el('div', 'field-hint', c.perche));
+
+    /* Il filo dei giri: cosa hai gia' scartato, e cosa avevi chiesto. Al
+       terzo giro nessuno si ricorda piu' cosa aveva chiesto al primo. */
+    (c.giri || []).forEach(function (giro) {
+      var riga = el('div', 'field-hint');
+      riga.appendChild(el('div', null, 'Avevi chiesto: ' + (giro.richiesta || '')));
+      riga.appendChild(el('div', null, 'Scartata: ' + (giro.scartata || '')));
+      box.appendChild(riga);
+    });
+
+    if (c.stato !== 'attesa') {
+      box.appendChild(el('div', 'field-hint',
+        c.stato === 'fatta_fuori'
+          ? 'L’hai fatta tu, fuori da Home Assistant.' + (c.esito_nota ? ' ' + c.esito_nota : '')
+          : 'Rifiutata.'));
+      return box;
+    }
+
+    var actions = el('div');
+    actions.style.cssText = 'display:flex;gap:var(--sp-2);flex-wrap:wrap;margin-top:var(--sp-1)';
+    actions.appendChild(proposalButton(c, 'done', 'L’ho fatta io', 'btn btn-primary',
+      statusEl, reload));
+    actions.appendChild(proposalButton(c, 'reject', 'Rifiuta', 'btn', statusEl, reload));
+    actions.appendChild(redoControl(c, statusEl, reload));
+    box.appendChild(actions);
+    return box;
+  }
+
+  /* I due esiti che chiudono: stessa forma dei bottoni dell'officina, **altra
+     porta**. Chiamare `/api/constructions/...` con l'id di una proposta a mano
+     darebbe un 404, e la pagina direbbe «non esiste» su una riga che sta
+     guardando. */
+  function proposalButton(c, verbo, etichetta, cls, statusEl, reload) {
+    var b = el('button', cls, etichetta);
+    b.type = 'button';
+    b.setAttribute('data-azione', 'proposta-' + verbo);
+    b.setAttribute('data-id', c.id);
+    b.addEventListener('click', function () {
+      b.disabled = true;
+      api('api/proposals/' + encodeURIComponent(c.id) + '/' + verbo,
+          { method: 'POST', body: JSON.stringify({}) })
+        .then(function () { reload(); }, function () {
+          b.disabled = false;
+          if (statusEl) statusEl.textContent = 'Non è stato possibile: riprova.';
+        });
+    });
+    return b;
+  }
+
+  /* «Rifalla» apre un campo di testo con le richieste di modifica, e ripete
+     il turno **senza limiti**: la si puo' far rifare finche' va bene
+     (decisione del proprietario, 21/09/2026). */
+  function redoControl(c, statusEl, reload) {
+    var wrap = el('div');
+    wrap.style.cssText = 'display:flex;flex-direction:column;gap:var(--sp-2)';
+    var apri = el('button', 'btn btn-ghost', 'Rifalla');
+    apri.type = 'button';
+    apri.setAttribute('aria-expanded', 'false');
+    wrap.appendChild(apri);
+    apri.addEventListener('click', function () {
+      if (apri.getAttribute('aria-expanded') === 'true') return;
+      apri.setAttribute('aria-expanded', 'true');
+      var campo = el('textarea');
+      campo.rows = 3;
+      campo.setAttribute('aria-label', 'Cosa cambiare');
+      campo.style.cssText = 'width:100%;max-width:420px';
+      var manda = el('button', 'btn btn-primary', 'Rifalla adesso');
+      manda.type = 'button';
+      manda.addEventListener('click', function () {
+        var richiesta = (campo.value || '').trim();
+        if (!richiesta) {
+          if (statusEl) statusEl.textContent = 'Scrivi cosa vuoi cambiare.';
+          return;
+        }
+        manda.disabled = true;
+        api('api/proposals/' + encodeURIComponent(c.id) + '/redo',
+            { method: 'POST', body: JSON.stringify({ richiesta: richiesta }) })
+          .then(function () { reload(); }, function () {
+            manda.disabled = false;
+            if (statusEl) statusEl.textContent = 'Non è stato possibile rifarla: riprova.';
+          });
+      });
+      wrap.appendChild(campo);
+      wrap.appendChild(manda);
+    });
+    return wrap;
+  }
+
   function line(c, statusEl, reload) {
+    if (c.a_mano) return lineAMano(c, statusEl, reload);
     var box = el('div', 'construction construction--' + c.stato);
     box.style.cssText = 'border-top:1px solid var(--border);padding:var(--sp-4) 0;' +
       'display:flex;flex-direction:column;gap:var(--sp-2)';

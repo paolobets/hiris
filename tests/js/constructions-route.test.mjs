@@ -238,3 +238,100 @@ test('durante una richiesta in volo Approva e Rifiuta si disabilitano insieme', 
   assert.equal(rifiuta.disabled, true,
     'il gemello deve disabilitarsi insieme, non restare cliccabile mentre la richiesta è in volo');
 });
+
+
+/* -------------------------------------------------------------------------
+   Le proposte DA FARE A MANO (spec 2026-09-21 §3).
+
+   «Un posto solo dove si decide» e' una promessa sulla PAGINA: i due archivi
+   restano due, l'elenco e' uno, e un campo dice chi la applica.
+   ------------------------------------------------------------------------- */
+
+function propostaAMano(extra) {
+  return Object.assign({
+    id: 'm1', stato: 'attesa', a_mano: true, chi_applica: 'tu',
+    testo: 'Sposta la lavatrice nel primo pomeriggio',
+    perche: 'il prelievo dalla rete si concentra la mattina',
+    giri: [], creata_ts: 1756000100,
+  }, extra || {});
+}
+
+test('una proposta da fare a mano si legge, e dice che la fai tu', async () => {
+  /* Mutazione che la uccide: disegnare solo le costruibili -- la riga sparisce
+     dalla pagina pur essendo nella risposta. */
+  const { dom } = montaCon({ constructions: [propostaAMano()] });
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+
+  const testo = dom.window.document.body.textContent;
+  assert.match(testo, /Sposta la lavatrice nel primo pomeriggio/);
+  assert.match(testo, /il prelievo dalla rete/, 'il perche\' sta accanto alla proposta');
+  assert.match(testo, /la fai tu/i, 'chi la applica non si legge');
+});
+
+test('una proposta a mano ha TRE comandi, e nessun «Approva»', async () => {
+  /* «Crea» non si applica: non c'e' niente da scrivere in Home Assistant.
+     Mutazione che la uccide: riusare i bottoni dell'officina. */
+  const { dom } = montaCon({ constructions: [propostaAMano()] });
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+
+  const testi = [...dom.window.document.querySelectorAll('button')].map((b) => b.textContent);
+  assert.ok(testi.some((t) => /Rifiuta/.test(t)));
+  assert.ok(testi.some((t) => /fatta|fatto/i.test(t)), 'manca «l\'ho fatta io»');
+  assert.ok(testi.some((t) => /Rifalla/.test(t)));
+  assert.ok(!testi.some((t) => /Approva/.test(t)), '«Approva» su una cosa che HIRIS non scrive');
+});
+
+test('«l’ho fatta io» chiama la rotta delle proposte, non quella dell’officina', async () => {
+  /* Due archivi, due porte: chiamare `/api/constructions/...` con l'id di una
+     proposta a mano darebbe un 404, e la pagina direbbe «non esiste» su una
+     riga che sta guardando.
+     Mutazione che la uccide: riusare `actionButton`. */
+  const { dom, chiamate } = montaCon({ constructions: [propostaAMano()] });
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  const fatta = [...dom.window.document.querySelectorAll('button')]
+    .filter((b) => /fatta|fatto/i.test(b.textContent))[0];
+  fatta.click();
+  await new Promise((r) => setTimeout(r, 0));
+
+  const indirizzi = chiamate.map((c) => String(c[0]));
+  assert.ok(indirizzi.some((u) => /api\/proposals\/m1\/done/.test(u)),
+    'chiamate: ' + JSON.stringify(indirizzi));
+});
+
+test('«Rifalla» apre un campo di testo, e manda quello che scrivi', async () => {
+  /* La decisione del proprietario: «Rifalla apre un testo con le richieste di
+     modifica e si ripete il turno, senza limiti».
+     Mutazione che la uccide: mandare la richiesta vuota. */
+  const { dom, chiamate } = montaCon({ constructions: [propostaAMano()] });
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  const rifalla = [...dom.window.document.querySelectorAll('button')]
+    .filter((b) => /Rifalla/.test(b.textContent))[0];
+  rifalla.click();
+
+  const campo = dom.window.document.querySelector('textarea');
+  assert.ok(campo, 'nessun campo di testo: «Rifalla» chiederebbe di rifare la stessa cosa');
+  campo.value = 'troppo presto, dopo le 14';
+  const manda = [...dom.window.document.querySelectorAll('button')]
+    .filter((b) => /Rifalla adesso|Manda/i.test(b.textContent))[0];
+  assert.ok(manda, 'manca il bottone che manda la richiesta');
+  manda.click();
+  await new Promise((r) => setTimeout(r, 0));
+
+  const chiamata = chiamate.filter((c) => /redo/.test(String(c[0])))[0];
+  assert.ok(chiamata, 'la richiesta non e\' partita');
+  assert.match(String(chiamata[1].body), /troppo presto/);
+});
+
+test('il filo dei giri si legge sotto la proposta', async () => {
+  /* Chi guarda deve poter vedere cosa ha gia' scartato: senza, al terzo giro
+     non si ricorda piu' cosa aveva chiesto.
+     Mutazione che la uccide: non disegnare i giri. */
+  const { dom } = montaCon({ constructions: [propostaAMano({ giri: [
+    { richiesta: 'troppo presto, dopo le 14', scartata: 'Sposta la lavatrice la mattina',
+      quando_ts: 1756000200 }] })] });
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+
+  const testo = dom.window.document.body.textContent;
+  assert.match(testo, /troppo presto, dopo le 14/);
+  assert.match(testo, /Sposta la lavatrice la mattina/);
+});

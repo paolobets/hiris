@@ -54,7 +54,32 @@ async def handle_get_constructions(request: web.Request) -> web.Response:
     store.scadi(time.time())
     pending_only = request.query.get("pending_only") in ("1", "true", "si")
     return web.json_response(
-        {"constructions": store.list(pending_only=pending_only, limit=200)})
+        {"constructions": _both_queues(request.app, store, pending_only)})
+
+
+#: Chi applica una proposta. Le costruibili le scrive HIRIS in Home Assistant
+#: (con il tuo si'), le altre le fai tu: **e' un campo, non una seconda
+#: pagina** -- «un posto solo dove si decide» e' una promessa sulla pagina, e i
+#: due archivi restano due perche' una frase in prosa dentro una tabella di
+#: diff sarebbe il doppione per forma (spec 2026-09-21 §3).
+_APPLIES_HIRIS = "hiris"
+_APPLIES_YOU = "tu"
+
+
+def _both_queues(app, store, pending_only: bool) -> list[dict]:
+    """Le due code in un elenco solo, dalla piu' recente.
+
+    **Si riordina**, e non si concatena: due code messe in fila darebbero un
+    elenco il cui ordine dipende da quale archivio si legge per primo, cioe'
+    da un dettaglio di implementazione.
+    """
+    rows = [{**row, "chi_applica": _APPLIES_HIRIS}
+            for row in store.list(pending_only=pending_only, limit=200)]
+    observations = app.get("observations")
+    if observations is not None:
+        rows += [{**row, "chi_applica": _APPLIES_YOU, "a_mano": True}
+                 for row in observations.proposals(pending_only=pending_only)]
+    return sorted(rows, key=lambda r: r.get("creata_ts") or 0, reverse=True)
 
 
 async def handle_get_construction(request: web.Request) -> web.Response:

@@ -76,11 +76,21 @@ ANSWER_CONTRACT = """Rispondi SOLO con un oggetto JSON di questa forma:
   {"osservazione": <il numero dell'osservazione, come nell'elenco>,
    "gesto": "indagine" | "proposta",
    "trovato": "cosa hai trovato o cosa proponi, in una frase",
-   "costruibile": true | false}
+   "costruibile": true | false,
+   "intenzione": {"gesto": "crea" | "modifica" | "cancella",
+                  "dominio": "automation" | "scene" | "script" | ...,
+                  "richiesto": "cosa deve fare, a parole",
+                  "innesco": "quando scatta",
+                  "azioni": ["cosa fa, passo per passo"]}}
 ]}
 
 `costruibile` serve solo alla proposta: `true` se e' un oggetto che Home
 Assistant sa tenere, `false` se e' una cosa che deve fare una persona.
+
+**Se scrivi `costruibile: true` devi portare anche `intenzione`**: una frase in
+prosa non basta a costruire niente, e senza l'intenzione la proposta viene
+rifiutata per intero. Se non sai comporla, scrivi `costruibile: false` e dilla
+a parole: e' meglio di una costruzione che non sta in piedi.
 
 Un elenco vuoto va benissimo: vuol dire che hai guardato e non c'era niente da
 fare."""
@@ -191,6 +201,18 @@ def apply_actuation(observations, answer: str) -> dict:
         if not str(outcome.get("trovato") or "").strip():
             problems.append(
                 f"l'esito {index} non dice cosa ha trovato o cosa propone")
+        # **Costruibile senza intenzione non e' costruibile**: l'officina vuole
+        # gesto, dominio e il resto, e una frase in prosa non li ha. Meglio un
+        # rifiuto che una costruzione che non sta in piedi.
+        if gesture == "proposta" and outcome.get("costruibile"):
+            intent = outcome.get("intenzione")
+            ok = (isinstance(intent, dict) and intent.get("gesto")
+                  and intent.get("dominio"))
+            if not ok:
+                problems.append(
+                    f"l'esito {index} si dice costruibile ma non porta "
+                    "un'intenzione con `gesto` e `dominio`: una frase in prosa "
+                    "non basta a costruire niente")
         kept.append(outcome)
     if problems:
         return {"attuazione": None, "problemi": problems, "risposta": True}
