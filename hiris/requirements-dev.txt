@@ -21,4 +21,4 @@ pytest-aiohttp>=1.1.1,<2.0.0
 # successivo e' la difesa vera: ruff cambia il proprio set di default fra
 # minor, e senza tetto un CI verde diventerebbe rosso senza che nessuno abbia
 # toccato una riga.
-ruff>=0.16.4,<0.17.0
+ruff>=0.16.8,<0.17.0
