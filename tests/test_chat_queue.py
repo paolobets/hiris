@@ -28,6 +28,21 @@ from hiris.app.chat_store import append_messages, close_all_stores, load_history
 from hiris.app.reasoning.queue import ReasoningQueue
 
 
+@web.middleware
+async def _finto_worker(request, handler):
+    """Le due rotte del ponte chiedono una credenziale di turno (A-4, 22/09).
+
+    Queste prove parlano della CODA -- chi prende un job, chi lo consegna, cosa
+    succede a un nonce sbagliato -- non del confine. Dichiarano la premessa
+    invece di subirla, e la dichiarano nella forma vera: `auth_via`, che e' il
+    verdetto che il confine lascia.
+    """
+    request["auth_via"] = "turno"
+    request["soggetto"] = {"specie": "nessuno", "id": "ponte"}
+    return await handler(request)
+
+
+
 @pytest.fixture(autouse=True)
 def reset_stores():
     close_all_stores()
@@ -36,7 +51,7 @@ def reset_stores():
 
 
 def _app(tmp_path, *, submit_chat_reply=None):
-    app = web.Application()
+    app = web.Application(middlewares=[_finto_worker])
     q = ReasoningQueue(str(tmp_path / "r.db"))
     app["reasoning_queue"] = q
     app["_clock"] = lambda: 10.0

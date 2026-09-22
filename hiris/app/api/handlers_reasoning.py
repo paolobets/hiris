@@ -10,11 +10,50 @@ from ..mind.observer import SCOPE_TURN_KIND
 logger = logging.getLogger(__name__)
 
 
+#: Chi puo' parlare con queste due rotte. **Una sola classe**: il worker del
+#: ponte, che porta una credenziale di turno.
+#:
+#: Reperto A-4 dell'audit del 21/09/2026, chiuso il 22. `claim` restituisce il
+#: job col `context` deserializzato per intero -- il nucleo della casa e i
+#: ricordi -- piu' un nonce fresco; con quel nonce `submit`, sul ramo `chat`,
+#: scrive un testo arbitrario nella conversazione **come risposta di HIRIS**.
+#: L'utente legge un'istruzione ostile credendola l'assistente, ed e' lui a
+#: eseguirla.
+#:
+#: La rotta gemella dello stesso worker (`/api/mcp`) restringeva
+#: l'autenticazione da sempre; queste due erano nate senza, e non si potevano
+#: chiudere finche' il gateway MCP le chiamava col segreto condiviso. Il 22/09
+#: il proprietario ha dichiarato quel progetto morto: resta il worker, e basta.
+_AMMESSO = "turno"
+
+_SOLO_PONTE = ("queste rotte servono il worker del ponte e nient’altro: "
+            "richiedono una credenziale di turno")
+
+
+def _ponte_soltanto(request) -> web.Response | None:
+    """`None` se puo' passare, la risposta di rifiuto altrimenti.
+
+    Si guarda `auth_via` -- il verdetto del confine -- e non si ricopia nessun
+    confronto di segreti: un secondo posto in cui si decide chi e' autenticato
+    e' un secondo posto che puo' divergere. Stessa forma di `handlers_mcp`.
+    """
+    if request.get("auth_via") != _AMMESSO:
+        logger.warning(
+            "reasoning: %s rifiutata a %s (autenticazione vista: %s)",
+            request.path if hasattr(request, "path") else "?",
+            getattr(request, "remote", "?"), request.get("auth_via"))
+        return web.json_response({"errore": _SOLO_PONTE}, status=401)
+    return None
+
+
 def _now(request):
     return (request.app.get("_clock") or time.time)()
 
 
 async def handle_reasoning_claim(request: web.Request) -> web.Response:
+    negato = _ponte_soltanto(request)
+    if negato is not None:
+        return negato
     q = request.app.get("reasoning_queue")
     if q is None:
         return web.json_response({"job": None})
@@ -22,6 +61,9 @@ async def handle_reasoning_claim(request: web.Request) -> web.Response:
 
 
 async def handle_reasoning_submit(request: web.Request) -> web.Response:
+    negato = _ponte_soltanto(request)
+    if negato is not None:
+        return negato
     q = request.app.get("reasoning_queue")
     if q is None:
         return web.json_response({"ok": False, "error": "queue unavailable"}, status=503)

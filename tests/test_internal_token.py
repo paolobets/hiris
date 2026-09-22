@@ -42,6 +42,22 @@ from hiris.app.internal_token import (
 from hiris.app.reasoning.queue import ReasoningQueue
 
 
+def _intestazioni_ponte(app):
+    """Le intestazioni che il worker usa DAVVERO, dal 22/09/2026.
+
+    `agent_runner.build_headers()` legge il segreto condiviso dall'ambiente; la
+    produzione non passa piu' di li' -- `create_app` cabla una fabbrica che
+    CONIA una credenziale di turno (`api/credenziali.credenziale_ponte_viva`),
+    e le due rotte del ponte pretendono quella (reperto A-4 dell'audit, chiuso
+    il 22/09). Usare qui la vecchia strada proverebbe un mondo che il prodotto
+    non esegue piu'.
+    """
+    from hiris.app.api.credenziali import credenziale_ponte_viva
+    return {"X-HIRIS-Internal-Token": credenziale_ponte_viva(app, adesso=time.time()),
+            "X-Requested-With": "hiris-agent"}
+
+
+
 @pytest.fixture(autouse=True)
 def reset_chat_stores():
     yield
@@ -355,7 +371,7 @@ async def test_il_giro_vero_del_ponte_si_chiude_claim_piu_submit(
     `run_once` e' sincero-bloccante (httpx.Client), quindi gira in un thread:
     esattamente come in produzione, dove `run_loop` lo passa a
     `run_in_executor` per non bloccare il loop dell'add-on."""
-    client, coda, _app = ponte_con_configurazione_predefinita
+    client, coda, app = ponte_con_configurazione_predefinita
     adesso = time.time()
     coda.enqueue(
         "chat", {},
@@ -366,13 +382,44 @@ async def test_il_giro_vero_del_ponte_si_chiude_claim_piu_submit(
     base_url = f"http://127.0.0.1:{client.server.port}"
     with httpx.Client(timeout=30) as http:
         esito = await asyncio.to_thread(
-            agent_runner.run_once, http, base_url, agent_runner.build_headers(), "mock"
+            agent_runner.run_once, http, base_url, _intestazioni_ponte(app), "mock"
         )
 
     assert esito == "done", (
-        "con il token generato all'avvio il ponte claima e consegna; "
-        "col guasto in piedi qui arrivava un 401 da raise_for_status()"
+        "con la credenziale di turno il ponte claima e consegna"
     )
+
+
+@pytest.mark.asyncio
+async def test_il_SEGRETO_CONDIVISO_non_apre_piu_le_rotte_del_ponte(
+    ponte_con_configurazione_predefinita,
+):
+    """**La proprieta' NUOVA, e vale piu' di quella che ha sostituito**
+    (reperto A-4 dell'audit del 21/09, chiuso il 22).
+
+    Fino a ieri il segreto condiviso apriva queste due rotte, e chiunque lo
+    avesse -- il gateway su un'altra macchina, il proxy del pannello, chi
+    leggesse un backup di Home Assistant -- poteva prendersi il `context` di un
+    turno (il nucleo della casa e i ricordi) e, col nonce che `claim` gli
+    consegna, scrivere un testo arbitrario in conversazione **come risposta di
+    HIRIS**.
+
+    Adesso le apre solo chi porta una credenziale di turno, che vive dieci
+    minuti e muore col ponte.
+
+    Mutazione ESEGUITA: riammettere `auth_via == "token"` -- rossa."""
+    client, _coda, app = ponte_con_configurazione_predefinita
+
+    base_url = f"http://127.0.0.1:{client.server.port}"
+    with httpx.Client(timeout=30) as http:
+        risposta = await asyncio.to_thread(
+            http.post, f"{base_url}/api/reasoning/claim",
+            headers={"X-HIRIS-Internal-Token": app["internal_token"],
+                     "X-Requested-With": "hiris-agent"},
+            json={})
+
+    assert risposta.status_code == 401, (
+        "il segreto condiviso apre ancora le rotte del ponte: A-4 e' tornato")
 
 
 @pytest.mark.asyncio

@@ -5,8 +5,23 @@ from hiris.app.api.handlers_reasoning import handle_reasoning_claim, handle_reas
 from hiris.app.reasoning.queue import ReasoningQueue
 
 
+@web.middleware
+async def _finto_worker(request, handler):
+    """Le due rotte del ponte chiedono una credenziale di turno (A-4, 22/09).
+
+    Queste prove parlano della CODA -- chi prende un job, chi lo consegna, cosa
+    succede a un nonce sbagliato -- non del confine. Dichiarano la premessa
+    invece di subirla, e la dichiarano nella forma vera: `auth_via`, che e' il
+    verdetto che il confine lascia.
+    """
+    request["auth_via"] = "turno"
+    request["soggetto"] = {"specie": "nessuno", "id": "ponte"}
+    return await handler(request)
+
+
+
 def _app(tmp_path):
-    app = web.Application()
+    app = web.Application(middlewares=[_finto_worker])
     q = ReasoningQueue(str(tmp_path / "r.db"))
     app["reasoning_queue"] = q
     app["_clock"] = lambda: 10.0
@@ -46,7 +61,7 @@ async def test_submit_without_execute_decision_wired_records_and_logs(
     il codice sa fare. Un submit non-chat che raggiunge questa rotta puo'
     arrivare solo da un job scaduto/legacy; non deve sparire in silenzio --
     resta "recorded" e logga un warning esplicito che nomina il job."""
-    app = web.Application()
+    app = web.Application(middlewares=[_finto_worker])
     q = ReasoningQueue(str(tmp_path / "r.db"))
     app["reasoning_queue"] = q
     app["_clock"] = lambda: 10.0

@@ -35,6 +35,21 @@ from hiris.app.provider_occurrences import OccurrenceRegistry
 from hiris.app.reasoning.queue import ReasoningQueue
 
 
+@web.middleware
+async def _finto_worker(request, handler):
+    """Le due rotte del ponte chiedono una credenziale di turno (A-4, 22/09).
+
+    Queste prove parlano della CODA -- chi prende un job, chi lo consegna, cosa
+    succede a un nonce sbagliato -- non del confine. Dichiarano la premessa
+    invece di subirla, e la dichiarano nella forma vera: `auth_via`, che e' il
+    verdetto che il confine lascia.
+    """
+    request["auth_via"] = "turno"
+    request["soggetto"] = {"specie": "nessuno", "id": "ponte"}
+    return await handler(request)
+
+
+
 def _load_real_submit_chat_reply(app, data_dir):
     """Stessa estrazione di `test_submit_chat_reply_guards.py`: la funzione
     VERA di `server._on_startup`, non una copia a mano che potrebbe
@@ -70,7 +85,7 @@ async def test_un_turno_riuscito_del_ponte_lascia_una_traccia_nel_registro(
     data_dir = str(tmp_path / "data")
     registry = OccurrenceRegistry(clock=lambda: 999.0)
 
-    app = web.Application()
+    app = web.Application(middlewares=[_finto_worker])
     app["_clock"] = lambda: 10.0
     app["occurrence_registry"] = registry
     q = ReasoningQueue(str(tmp_path / "r.db"))
@@ -123,7 +138,7 @@ async def test_un_sentinella_di_errore_del_ponte_registra_un_fallimento(
     data_dir = str(tmp_path / "data")
     registry = OccurrenceRegistry(clock=lambda: 999.0)
 
-    app = web.Application()
+    app = web.Application(middlewares=[_finto_worker])
     app["_clock"] = lambda: 10.0
     app["occurrence_registry"] = registry
     q = ReasoningQueue(str(tmp_path / "r.db"))

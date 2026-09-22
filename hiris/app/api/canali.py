@@ -77,6 +77,11 @@ PUO = {
     "lettore": {"leggere": True, "comandare": False, "costruire": False},
 }
 
+#: I canali che ESISTONO. Il **gateway MCP** stava qui e ne e' uscito il
+#: 22/09/2026: il proprietario ha dichiarato quel progetto morto, e un canale
+#: dichiarato che non esiste e' esattamente la forma di difetto che questo
+#: sprint insegue -- una porta aperta per un chiamante che non c'e'.
+#:
 #: I canali che ESISTONO. Il ruolo e la chiave li mette il proprietario nelle
 #: opzioni; che un nome sia un canale lo decide questo elenco, ed e' una lista
 #: di **ammissione**: non ricopia niente, enuncia il cancello.
@@ -87,13 +92,6 @@ CANALI = {
                    "misurare la casa vera prima di progettare, che è il metodo "
                    "di questo prodotto. Il proprietario le ha dato il ruolo "
                    "«lettore» il 21/09/2026: legge, non comanda"),
-    },
-    "gateway": {
-        "specie": "integrazione",
-        "perche": ("il gateway MCP su un'altra macchina, che porta a HIRIS le "
-                   "richieste di un client esterno: è fuori dal perimetro "
-                   "dell'add-on, quindi il rischio lì non è l'utente ma chi si "
-                   "mette in mezzo"),
     },
     "retropanel": {
         "specie": "luogo",

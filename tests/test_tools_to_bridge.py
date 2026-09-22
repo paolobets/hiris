@@ -60,6 +60,21 @@ from tests.test_knowledge_tools import _semina_casa
 
 _NOMI_NUDI = {d["name"] for d in KNOWLEDGE_TOOLS}
 
+def _intestazioni_ponte(app):
+    """Le intestazioni che il worker usa DAVVERO, dal 22/09/2026.
+
+    `_intestazioni_ponte(app)` legge il segreto condiviso dall'ambiente; la
+    produzione non passa piu' di li' -- `create_app` cabla una fabbrica che
+    CONIA una credenziale di turno (`api/credenziali.per_il_ponte`). Usare qui
+    la vecchia strada proverebbe un mondo che il prodotto non esegue.
+    """
+    import time as _t
+
+    from hiris.app.api.credenziali import credenziale_ponte_viva
+    return {"X-HIRIS-Internal-Token": credenziale_ponte_viva(app, adesso=_t.time()),
+            "X-Requested-With": "hiris-agent"}
+
+
 
 def _normalizza(argv):
     """La stessa normalizzazione del pin dell'argv
@@ -476,7 +491,7 @@ async def test_la_sonda_vera_contro_il_server_vero(ponte_con_configurazione_pred
 
     Configurazione PREDEFINITA dell'add-on (`internal_token: ""`, quindi
     generato all'avvio) e valvole della suite rimosse: se il token che
-    `build_headers()` legge da `os.environ` non fosse quello che l'app
+    `_intestazioni_ponte(app)` legge da `os.environ` non fosse quello che l'app
     conosce, la rotta risponderebbe 401 e la sonda direbbe di no -- che e'
     esattamente il guasto gia' visto su questo ramo, quando il worker si
     prendeva 401 ogni tre secondi all'infinito.
@@ -486,8 +501,18 @@ async def test_la_sonda_vera_contro_il_server_vero(ponte_con_configurazione_pred
     direttamente qui bloccherebbe il loop che deve servirla, e il test
     andrebbe in stallo invece di fallire."""
     client, _coda, app = ponte_con_configurazione_predefinita
-    intestazioni = runner.build_headers()
-    assert intestazioni["X-HIRIS-Internal-Token"] == app["internal_token"]
+    intestazioni = _intestazioni_ponte(app)
+    # **Non e' piu' il segreto condiviso, ed e' il punto** (22/09/2026): il
+    # ponte porta una credenziale di turno, che vive dieci minuti e muore con
+    # lui. Se qui tornasse a coincidere col token dell'app, vorrebbe dire che
+    # il segreto eterno e' rientrato dalla finestra.
+    from hiris.app.api.credenziali import riconosci
+    portata = intestazioni["X-HIRIS-Internal-Token"]
+
+    assert portata != app["internal_token"], (
+        "il ponte porta di nuovo il segreto condiviso")
+    assert riconosci(app["credenziali"], portata, adesso=time.time()) is not None, (
+        "la credenziale che il ponte porta non e' viva: la sonda prendera' 401")
 
     with httpx.Client(timeout=30) as http:
         ok, motivo = await asyncio.to_thread(
@@ -535,12 +560,12 @@ async def test_la_sonda_dice_si_anche_senza_archivi_e_va_dichiarato(
 
     with httpx.Client(timeout=30) as http:
         ok, _motivo = await asyncio.to_thread(
-            runner.probe_tools, http, _base_url(client), runner.build_headers())
+            runner.probe_tools, http, _base_url(client), _intestazioni_ponte(app))
         assert ok is True
 
         risposta = await asyncio.to_thread(
             lambda: http.post(
-                f"{_base_url(client)}/api/mcp", headers=runner.build_headers(),
+                f"{_base_url(client)}/api/mcp", headers=_intestazioni_ponte(app),
                 json={"jsonrpc": "2.0", "id": 2, "method": "tools/call",
                       "params": {"name": "search", "arguments": {"testo": "cucina"}}}))
 
@@ -595,7 +620,7 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
             with httpx.Client(timeout=30) as dentro:
                 def _rpc(corpo):
                     return dentro.post(f"{base}/api/mcp",
-                                       headers=runner.build_headers(),
+                                       headers=_intestazioni_ponte(app),
                                        json=corpo).json()
 
                 elenco = _rpc({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
@@ -621,7 +646,7 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
             httpx.Client(timeout=30) as http,
         ):
             esito = await asyncio.to_thread(
-                runner.run_once, http, base, runner.build_headers(), "live")
+                runner.run_once, http, base, _intestazioni_ponte(app), "live")
 
         assert esito == "done"
         # il giro di produzione ha collegato gli strumenti: prompt e argv insieme
