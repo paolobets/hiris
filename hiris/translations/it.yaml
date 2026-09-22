@@ -70,6 +70,3 @@ configuration:
   supervisor_ingress_cidr:
     name: "Avanzate · reti riconosciute come ingress"
     description: "Chi arriva da queste reti entra senza token, tutti gli altri no. Allargarlo apre la API di HIRIS. Predefinito: la rete del Supervisor."
-  canali:
-    name: "Avanzate · canali esterni (nome:ruolo:chiave)"
-    description: "Chi può parlare con HIRIS da fuori Home Assistant, una riga per canale. Il RUOLO decide: `amministratore` costruisce, `utente` comanda ma non costruisce, `lettore` legge e basta. La CHIAVE è pubblica e non è un segreto: chi firma tiene la privata, e HIRIS non ne ha nessuna. Lascia vuoto se non usi integrazioni esterne."

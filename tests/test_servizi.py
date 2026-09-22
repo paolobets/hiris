@@ -69,9 +69,9 @@ def test_il_CODICE_si_deriva_dalla_chiave_e_non_e_casuale(archivio):
     _, pubblica = _coppia()
 
     primo = archivio.presenta(nome="a", chiave=pubblica, indirizzo="x", now_ts=100.0)
-    dal_solo_calcolo = ServiziStore.codice(pubblica)
+    calcolato = ServiziStore.codice(pubblica)
 
-    assert primo["codice"] == dal_solo_calcolo
+    assert primo["codice"] == calcolato
     assert len(primo["codice"]) == 4 and primo["codice"].isdigit()
 
 
@@ -164,7 +164,11 @@ def test_un_servizio_REVOCATO_che_si_ripresenta_resta_revocato(archivio):
     per tornare in coda, e la revoca diventerebbe un fastidio invece che una
     decisione.
 
-    Mutazione ESEGUITA: riportarlo «in attesa» alla ripresentazione -- rossa."""
+    Mutazione ESEGUITA: `stato='in_attesa'` nell'UPDATE della ripresentazione
+    -- rossa. **Non basta togliere il ramo `elif`**: quell'UPDATE non tocca
+    `stato`, quindi cambiare la sola condizione lascia la prova verde. La
+    prima mutazione tentata era quella, ed era una mutazione che non mutava
+    niente -- misurata, non supposta."""
     _, pubblica = _coppia()
     archivio.presenta(nome="x", chiave=pubblica, indirizzo="x", now_ts=100.0)
     archivio.approva(pubblica, ruolo="utente", specie="luogo", now_ts=200.0)
@@ -210,3 +214,78 @@ def test_l_elenco_dice_TUTTO_quello_che_serve_a_decidere(archivio):
     riga = archivio.elenco()[0]
     for campo in ("nome", "indirizzo", "codice", "visto_ts", "stato"):
         assert riga.get(campo) is not None, campo
+
+
+# --- la FINESTRA di accoppiamento -------------------------------------------
+#
+# Decisione del proprietario, 22/09/2026: **dieci minuti, e fuori si rifiuta**.
+#
+# La rotta di presentazione e' l'unica superficie che questo prodotto non puo'
+# autenticare -- un servizio che non hai ancora approvato non ha modo di
+# autenticarsi, ed e' tutto il punto dell'accoppiamento. Invece di difenderla
+# (tetti, limiti di ritmo, scadenze) si e' scelto di **non farla esistere**:
+# esiste solo nei dieci minuti in cui l'hai aperta tu.
+#
+# Una difesa permanente invecchia; una porta chiusa no.
+
+from hiris.app.api import servizi as mod
+
+
+def test_la_finestra_nasce_CHIUSA():
+    """Se nascesse aperta, «si apre quando lo dici tu» sarebbe falso al primo
+    avvio -- e l'add-on riparte spesso.
+
+    Mutazione ESEGUITA: nascere aperta -- rossa."""
+    finestra = {}
+
+    assert mod.finestra_aperta(finestra, adesso=100.0) is False
+
+
+def test_aprirla_la_tiene_aperta_DIECI_minuti():
+    """Il numero e' del proprietario, e sta scritto dove si applica.
+
+    Mutazione: ignorare la durata -- rossa."""
+    finestra = {}
+    mod.apri_finestra(finestra, adesso=100.0)
+
+    assert mod.finestra_aperta(finestra, adesso=100.0 + mod.FINESTRA_S - 1) is True
+    assert mod.finestra_aperta(finestra, adesso=100.0 + mod.FINESTRA_S + 1) is False
+    assert mod.FINESTRA_S == 600.0
+
+
+def test_si_puo_CHIUDERE_prima():
+    """Accoppiato il servizio, la finestra non deve restare aperta per i minuti
+    che avanzano: chiuderla e' un gesto, e il gesto c'e'.
+
+    Mutazione: non chiudere davvero -- rossa."""
+    finestra = {}
+    mod.apri_finestra(finestra, adesso=100.0)
+
+    mod.chiudi_finestra(finestra)
+
+    assert mod.finestra_aperta(finestra, adesso=101.0) is False
+
+
+def test_quanto_manca_si_puo_DIRE():
+    """La pagina deve poter mostrare il tempo che resta: una finestra che si
+    apre senza dire quanto dura costringe a indovinare.
+
+    Mutazione: tornare sempre zero -- rossa."""
+    finestra = {}
+    mod.apri_finestra(finestra, adesso=100.0)
+
+    assert mod.finestra_resta(finestra, adesso=100.0) == pytest.approx(600.0)
+    assert mod.finestra_resta(finestra, adesso=1000.0) == 0.0
+    assert mod.finestra_resta({}, adesso=100.0) == 0.0
+
+
+def test_il_contenitore_della_finestra_nasce_con_l_app():
+    """Scrivere in `app[...]` a richiesta gia' servita e' deprecato in aiohttp 3
+    e un errore in aiohttp 4 -- la stessa ragione dei contatori, dei ruoli, dei
+    canali visti e delle credenziali.
+
+    Mutazione: crearlo alla prima apertura -- rossa."""
+    app = {}
+    mod.prepara_finestra(app)
+
+    assert app["finestra_servizi"] == {}

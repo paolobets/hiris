@@ -32,6 +32,23 @@ SOFFITTATE = {
     "POST /api/chat":
         "il modello può chiamare «confirm», che è la stessa porta vista dal "
         "lato della conversazione: il soffitto viaggia nel dispatcher",
+    "POST /api/services/approve":
+        "dà a una macchina il diritto di parlare con HIRIS, e HIRIS parla con "
+        "Home Assistant col proprio token di amministratore: approvare un "
+        "servizio è scrivere un permesso che HA negherebbe a un non "
+        "amministratore",
+    "POST /api/services/revoke":
+        "toglie quel permesso, e chi non può darlo non deve poterlo togliere: "
+        "spegnere il pannello di casa d’altri è un gesto da amministratore "
+        "quanto accenderlo",
+    "POST /api/services/window/open":
+        "apre l’unica superficie non autenticata di questo prodotto, per dieci "
+        "minuti: esporla è un gesto da amministratore come scrivere "
+        "un’automazione",
+    "POST /api/services/window/close":
+        "la richiude. Passa dallo stesso soffitto dell’apertura perché un "
+        "estraneo che potesse chiuderla toglierebbe al proprietario "
+        "l’accoppiamento che ha appena aperto",
 }
 
 #: Le rotte mutanti ESENTI, ognuna con la ragione per cui lo è. Non e' una
@@ -83,6 +100,14 @@ ESENTI = {
     "POST /api/reasoning/submit":
         "la consegna del turno dallo stesso worker del ponte: token e non "
         "persona, e il suo perimetro è l’invariante dei canali esterni",
+    "POST /api/services/present":
+        "**l’unica superficie che questo prodotto non può autenticare**, e "
+        "deve esserlo: un servizio non ancora approvato non ha modo di "
+        "autenticarsi. Non ha un soggetto da far passare da nessun soffitto — "
+        "non autorizza niente, mette in coda una richiesta che il proprietario "
+        "vedrà. La sua difesa è un’altra: esiste solo nei dieci minuti in cui "
+        "la finestra è aperta, e il confine la rifiuta fuori di lì "
+        "(`test_servizi_rotte.py`)",
 }
 
 

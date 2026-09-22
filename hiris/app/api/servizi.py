@@ -188,3 +188,58 @@ class ServiziStore:
                 (now_ts - self.ATTESA_S,))
             self._conn.commit()
         return cur.rowcount
+
+
+#: Quanto resta aperta la finestra di accoppiamento. **Dieci minuti**, decisione
+#: del proprietario del 22/09/2026, e sta scritta dove si applica.
+#:
+#: La rotta di presentazione e' l'unica superficie che questo prodotto non puo'
+#: autenticare: un servizio che non hai ancora approvato **non ha modo** di
+#: autenticarsi, ed e' tutto il punto dell'accoppiamento. Invece di difenderla
+#: -- tetti sul numero di righe, limiti di ritmo, scadenze -- si e' scelto di
+#: **non farla esistere**: c'e' solo nei dieci minuti in cui l'hai aperta tu.
+#:
+#: Una difesa permanente invecchia. Una porta chiusa no.
+FINESTRA_S = 600.0
+
+
+def apri_finestra(finestra: dict, *, adesso: float) -> float:
+    """Apre l'accoppiamento per `FINESTRA_S` secondi. Torna quando si chiude."""
+    finestra["scade"] = adesso + FINESTRA_S
+    return finestra["scade"]
+
+
+def chiudi_finestra(finestra: dict) -> None:
+    """La chiude subito.
+
+    Accoppiato il servizio, la finestra non deve restare aperta per i minuti
+    che avanzano: e' una superficie in piu' per niente.
+    """
+    finestra.pop("scade", None)
+
+
+def finestra_aperta(finestra: dict | None, *, adesso: float) -> bool:
+    """Se adesso si accetta una presentazione.
+
+    **Nasce chiusa**: se nascesse aperta, «si apre quando lo dici tu» sarebbe
+    falso a ogni avvio dell'add-on — e l'add-on riparte spesso.
+    """
+    return bool((finestra or {}).get("scade", 0) > adesso)
+
+
+def finestra_resta(finestra: dict | None, *, adesso: float) -> float:
+    """Quanti secondi mancano alla chiusura — `0` se è già chiusa.
+
+    Serve alla pagina: una finestra che si apre senza dire quanto dura
+    costringe chi la guarda a indovinare.
+    """
+    return max(0.0, float((finestra or {}).get("scade", 0)) - adesso)
+
+
+def prepara_finestra(app) -> None:
+    """Il contenitore nasce quando l'app si compone, non alla prima apertura.
+
+    E vive **in memoria**, non nell'archivio: una finestra che sopravvive a un
+    riavvio è una finestra che ti sei dimenticato aperta.
+    """
+    app["finestra_servizi"] = {}

@@ -29,6 +29,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from hiris.app.api import canali
 from hiris.app.api.middleware_internal_auth import internal_auth_middleware
+from hiris.app.api.servizi import ServiziStore
 
 _INGRESS = "/api/hassio_ingress/abc123/"
 _INTESTAZIONI = {"X-Remote-User-Id": "u-42",
@@ -49,7 +50,7 @@ class _Richiesta(dict):
         self.path = "/api/entities"
         self.app = {"internal_token": token,
                     "supervisor_ingress_cidrs": ["172.30.32.0/23"],
-                    "canali_visti": {}, "canali_registrati": {}}
+                    "canali_visti": {}, "servizi": None}
 
 
 async def _passa(richiesta):
@@ -138,47 +139,67 @@ class _Firmata(_Richiesta):
     """Come `_Richiesta`, ma con un corpo: la firma lo copre."""
 
     def __init__(self, *, headers, remote, token="", corpo=b"",
-                 metodo="GET", percorso="/api/entities", registrate=None):
+                 metodo="GET", percorso="/api/entities", servizi=None):
         super().__init__(headers=headers, remote=remote, token=token)
         self._corpo = corpo
         self.method = metodo
         self.path = percorso
         self.app["canali_visti"] = {}
-        self.app["canali_registrati"] = registrate or {}
+        self.app["servizi"] = servizi
 
     async def read(self):
         return self._corpo
 
 
-def _firmante(ruolo="lettore", nome="sviluppo"):
+@pytest.fixture()
+def archivio(tmp_path):
+    """L'archivio VERO dei servizi, non una finta.
+
+    Qui si prova il confine insieme a chi decide se una chiave e' autorizzata:
+    e' la giunzione in cui l'accoppiamento diventa un permesso, e una finta
+    direbbe di si' anche il giorno in cui il vero dicesse di no.
+    """
+    store = ServiziStore(str(tmp_path / "servizi.db"))
+    yield store
+    store.close()
+
+
+def _firmante(archivio, ruolo="lettore", nome="sviluppo", specie="integrazione"):
+    """Una coppia di chiavi **accoppiata davvero**: si presenta e viene
+    approvata, perche' e' l'unico modo in cui un servizio esiste."""
     privata = Ed25519PrivateKey.generate()
     pubblica = base64.b64encode(
         privata.public_key().public_bytes_raw()).decode("ascii")
-    return privata, {nome: {"ruolo": ruolo, "chiave": pubblica}}
+    adesso = time.time()
+    archivio.presenta(nome=nome, chiave=pubblica, indirizzo="192.168.1.31",
+                      now_ts=adesso)
+    archivio.approva(pubblica, ruolo=ruolo, specie=specie, now_ts=adesso)
+    return privata, pubblica
 
 
-def _richiesta_firmata(privata, registrate, *, canale="sviluppo", metodo="GET",
+def _richiesta_firmata(privata, pubblica, archivio, *, metodo="GET",
                        percorso="/api/entities", corpo=b"", unico="u-1"):
     momento = time.time()
     firma = base64.b64encode(privata.sign(
         canali.materia_firmata(metodo, percorso, momento, unico, corpo))
     ).decode("ascii")
     return _Firmata(
-        headers={"X-HIRIS-Canale": canale, "X-HIRIS-Momento": str(int(momento)),
+        headers={"X-HIRIS-Servizio": pubblica,
+                 "X-HIRIS-Momento": str(int(momento)),
                  "X-HIRIS-Unico": unico, "X-HIRIS-Firma": firma},
         remote="192.168.1.31", token="s3greto", corpo=corpo,
-        metodo=metodo, percorso=percorso, registrate=registrate)
+        metodo=metodo, percorso=percorso, servizi=archivio)
 
 
 @pytest.mark.asyncio
-async def test_una_richiesta_FIRMATA_passa_e_dice_quale_canale():
+async def test_una_richiesta_FIRMATA_passa_e_dice_quale_servizio(archivio):
     """Da qui il registro può dire QUALE integrazione ha chiamato, e con quale
     ruolo -- cosa che col segreto condiviso non era possibile.
 
     Mutazione: ignorare le intestazioni della firma -- rossa."""
-    privata, registrate = _firmante()
+    privata, pubblica = _firmante(archivio)
 
-    esito, visto = await _passa(_richiesta_firmata(privata, registrate))
+    esito, visto = await _passa(_richiesta_firmata(privata, pubblica, archivio))
 
     assert esito == "ok"
     assert visto["auth_via"] == "canale"
@@ -188,15 +209,15 @@ async def test_una_richiesta_FIRMATA_passa_e_dice_quale_canale():
 
 
 @pytest.mark.asyncio
-async def test_una_firma_SBAGLIATA_non_passa_nemmeno_col_token_giusto():
+async def test_una_firma_SBAGLIATA_non_passa_nemmeno_col_token_giusto(archivio):
     """**Il cuore della convivenza.** Chi *prova* a firmare e sbaglia non deve
     scivolare sul ripiego del token: sarebbe una porta aperta da qualunque
     firma storta, cioe' il contrario di una difesa.
 
     Mutazione ESEGUITA: ricadere sul token quando la firma non regge --
     rossa."""
-    privata, registrate = _firmante()
-    richiesta = _richiesta_firmata(privata, registrate)
+    privata, pubblica = _firmante(archivio)
+    richiesta = _richiesta_firmata(privata, pubblica, archivio)
     richiesta.headers["X-HIRIS-Firma"] = base64.b64encode(b"x" * 64).decode()
     # **Il token VALIDO, davvero.** Senza questa riga il 401 arriverebbe dal
     # ramo del token per assenza, non dal rifiuto della firma: la prova
@@ -214,29 +235,30 @@ async def test_una_firma_SBAGLIATA_non_passa_nemmeno_col_token_giusto():
 
 
 @pytest.mark.asyncio
-async def test_un_LETTORE_non_scrive():
+async def test_un_LETTORE_non_scrive(archivio):
     """La porta di sviluppo, decisa dal proprietario: misurare sì, comandare
     no. Il soffitto del metodo morde al confine, prima di ogni rotta.
 
     Mutazione ESEGUITA: non guardare il metodo -- rossa."""
-    privata, registrate = _firmante(ruolo="lettore")
+    privata, pubblica = _firmante(archivio, ruolo="lettore")
 
     esito, _ = await _passa(_richiesta_firmata(
-        privata, registrate, metodo="POST", percorso="/api/chat",
+        privata, pubblica, archivio, metodo="POST", percorso="/api/chat",
         corpo=b'{"message":"spegni tutto"}'))
 
     assert esito.status == 403
 
 
 @pytest.mark.asyncio
-async def test_un_UTENTE_scrive():
+async def test_un_UTENTE_scrive(archivio):
     """Il contrario, o la difesa sarebbe il prodotto rotto per tutti.
 
     Mutazione: negare a ogni ruolo -- rossa."""
-    privata, registrate = _firmante(ruolo="utente")
+    privata, pubblica = _firmante(archivio, ruolo="utente")
 
     esito, visto = await _passa(_richiesta_firmata(
-        privata, registrate, metodo="POST", percorso="/api/chat", corpo=b"{}"))
+        privata, pubblica, archivio, metodo="POST", percorso="/api/chat",
+        corpo=b"{}"))
 
     assert esito == "ok"
     assert visto["soggetto"]["ruolo"] == "utente"
@@ -251,7 +273,7 @@ async def test_il_TOKEN_continua_a_valere_e_si_misura_chi_lo_usa(caplog):
 
     Mutazione ESEGUITA: accettare il token senza dichiararlo -- rossa."""
     richiesta = _Firmata(headers={"X-HIRIS-Internal-Token": "s3greto",
-                                  "X-HIRIS-Canale": "gateway"},
+                                  "X-HIRIS-Servizio": "gateway"},
                          remote="192.168.1.31", token="s3greto")
 
     with caplog.at_level("INFO"):
@@ -264,10 +286,10 @@ async def test_il_TOKEN_continua_a_valere_e_si_misura_chi_lo_usa(caplog):
 
 @pytest.mark.asyncio
 async def test_chi_usa_il_token_SENZA_dirsi_finisce_come_ignoto(caplog):
-    """Chi non dichiara il canale non deve passare inosservato: sarebbe
+    """Chi non si dichiara non deve passare inosservato: sarebbe
     l'integrazione che nessuno sa di dover aggiornare.
 
-    Mutazione: tacere quando il canale non è dichiarato -- rossa."""
+    Mutazione: tacere quando il servizio non è dichiarato -- rossa."""
     richiesta = _Firmata(headers={"X-HIRIS-Internal-Token": "s3greto"},
                          remote="192.168.1.31", token="s3greto")
 

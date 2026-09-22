@@ -77,32 +77,14 @@ PUO = {
     "lettore": {"leggere": True, "comandare": False, "costruire": False},
 }
 
-#: I canali che ESISTONO. Il **gateway MCP** stava qui e ne e' uscito il
-#: 22/09/2026: il proprietario ha dichiarato quel progetto morto, e un canale
-#: dichiarato che non esiste e' esattamente la forma di difetto che questo
-#: sprint insegue -- una porta aperta per un chiamante che non c'e'.
-#:
-#: I canali che ESISTONO. Il ruolo e la chiave li mette il proprietario nelle
-#: opzioni; che un nome sia un canale lo decide questo elenco, ed e' una lista
-#: di **ammissione**: non ricopia niente, enuncia il cancello.
-CANALI = {
-    "sviluppo": {
-        "specie": "integrazione",
-        "perche": ("la porta 8099, aperta solo durante una diagnostica: serve a "
-                   "misurare la casa vera prima di progettare, che è il metodo "
-                   "di questo prodotto. Il proprietario le ha dato il ruolo "
-                   "«lettore» il 21/09/2026: legge, non comanda"),
-    },
-    "retropanel": {
-        "specie": "luogo",
-        "perche": ("il pannello fisico di casa: nessuno si autentica davanti a "
-                   "un pannello in corridoio, ma si sa DOVE è — ed è "
-                   "un'informazione vera, diversa da «anonimo»"),
-    },
-}
-
 #: I metodi che non cambiano niente. Un `lettore` fa questi e basta.
 _SICURI = frozenset({"GET", "HEAD", "OPTIONS"})
+
+#: Che cosa e' un servizio a cui nessuno ha scritto la specie. **Una macchina**,
+#: che e' il caso comune e quello che concede meno: un `luogo` dice alla cronaca
+#: che la richiesta viene da un posto della casa, e affermarlo senza saperlo
+#: sarebbe scrivere nella cronaca una cosa non vera.
+SPECIE_IGNOTA = "integrazione"
 
 
 def materia_firmata(metodo: str, percorso: str, momento: float, unico: str,
@@ -137,30 +119,6 @@ def consente_metodo(ruolo: str, metodo: str) -> bool:
     return True if puo["comandare"] else str(metodo).upper() in _SICURI
 
 
-def leggi_registrazioni(testo: str | None) -> dict[str, dict]:
-    """Le registrazioni dalle opzioni dell'add-on: `nome:ruolo:chiave`, una per riga.
-
-    Una riga storta **si salta e non ferma le altre**: sarebbe un errore di
-    battitura che spegne un'integrazione che non c'entra. Ma si dichiara nel
-    registro, perché una riga saltata in silenzio è indistinguibile da una riga
-    che non è mai stata scritta.
-    """
-    lette: dict[str, dict] = {}
-    for riga in (testo or "").splitlines():
-        pulita = riga.strip()
-        if not pulita or pulita.startswith("#"):
-            continue
-        pezzi = pulita.split(":", 2)
-        if len(pezzi) != 3 or not all(p.strip() for p in pezzi):
-            logger.warning(
-                "canali: la riga %r non ha la forma «nome:ruolo:chiave» — "
-                "saltata, le altre restano", pulita[:40])
-            continue
-        nome, ruolo, chiave = (p.strip() for p in pezzi)
-        lette[nome] = {"ruolo": ruolo, "chiave": chiave}
-    return lette
-
-
 def _chiave(grezza: str) -> Ed25519PublicKey | None:
     """La chiave pubblica dal testo che il proprietario ha incollato.
 
@@ -186,33 +144,40 @@ def _pota(visti: dict, adesso: float) -> None:
         del visti[unico]
 
 
-def riconosci(*, canale: str, momento, unico: str, firma: str, metodo: str,
-              percorso: str, corpo: bytes, registrate: dict, visti: dict,
+def riconosci(*, chiave: str, momento, unico: str, firma: str, metodo: str,
+              percorso: str, corpo: bytes, servizi, visti: dict,
               adesso: float) -> tuple[dict | None, str | None]:
-    """Chi è questo canale, se la sua firma regge — `({canale, ruolo, specie}, None)`.
+    """Quale servizio ha firmato, se la firma regge — `({servizio, ruolo, specie}, None)`.
 
     Si chiama «riconosci» e non «verifica» perché **torna un'identità**, non un
     sì o un no: chi legge il nome deve sapere che a valle avrà un soggetto, non
     un booleano.
 
-    **Tre rifiuti, e ognuno dice quale dei tre manca**: il canale non è
-    dichiarato nel codice; non ha una registrazione; la registrazione non ha un
-    ruolo valido. Un rifiuto che non dice cosa fare è un ordine.
+    Torna `servizio` e non `canale`: il canale è la strada, il servizio è chi ci
+    parla dentro, e chiamarli con la stessa parola li farebbe confondere al
+    primo lettore nuovo.
+
+    **Ogni rifiuto dice cosa manca**: la chiave non appartiene a un servizio
+    autorizzato; il servizio non ha un ruolo valido; il momento è fuori
+    finestra; il valore irripetibile è già stato servito; la firma non regge.
+    Un rifiuto che non dice cosa fare è un ordine.
     """
-    dichiarato = CANALI.get(str(canale or ""))
-    if dichiarato is None:
-        return None, (f"«{canale}» non è un canale dichiarato: una firma valida "
-                      "non basta, il perimetro di un'integrazione si decide "
-                      "prima di darle accesso")
-
-    riga = registrate.get(canale)
-    if not riga:
-        return None, (f"«{canale}» è dichiarato ma non registrato: manca la sua "
-                      "chiave pubblica nelle opzioni dell’add-on")
-
-    ruolo = riga.get("ruolo")
+    # **Un servizio si identifica con la sua chiave pubblica**, che e' la sua
+    # identita': un nome sarebbe una seconda rappresentazione dello stesso
+    # fatto, e due rappresentazioni divergono. Il nome resta, ma e' un'etichetta
+    # per il proprietario -- non serve a riconoscere nessuno.
+    #
+    # E **lo dice l'archivio, non un elenco nel codice**: dal 22/09/2026 un
+    # servizio esiste quando il proprietario l'ha approvato, e l'approvazione
+    # E' la dichiarazione. Un rilascio non c'entra piu' niente.
+    autorizzato = servizi.autorizzato(chiave) if servizi is not None else None
+    if autorizzato is None:
+        return None, ("questa chiave non appartiene a nessun servizio "
+                      "autorizzato: presentati quando il proprietario apre "
+                      "l’accoppiamento, e fatti approvare")
+    ruolo = autorizzato.get("ruolo")
     if ruolo not in RUOLI:
-        return None, (f"«{canale}» ha il ruolo {ruolo!r}, che non esiste: i "
+        return None, (f"il servizio ha il ruolo {ruolo!r}, che non esiste: i "
                       f"ruoli sono {', '.join(RUOLI)}")
 
     try:
@@ -231,13 +196,13 @@ def riconosci(*, canale: str, momento, unico: str, firma: str, metodo: str,
         return None, ("questa richiesta è già stata servita: un valore "
                       "irripetibile vale una volta sola")
 
-    chiave = _chiave(riga.get("chiave"))
-    if chiave is None:
-        return None, (f"la chiave pubblica di «{canale}» non si legge: "
-                      "dev’essere una chiave Ed25519 in base64")
+    pubblica = _chiave(chiave)
+    if pubblica is None:
+        return None, ("la chiave pubblica non si legge: dev’essere una chiave "
+                      "Ed25519 in base64")
 
     try:
-        chiave.verify(base64.b64decode(str(firma or ""), validate=True),
+        pubblica.verify(base64.b64decode(str(firma or ""), validate=True),
                       materia_firmata(metodo, percorso, quando, unico, corpo))
     except InvalidSignature:
         return None, "la firma non corrisponde a questa richiesta"
@@ -248,21 +213,15 @@ def riconosci(*, canale: str, momento, unico: str, firma: str, metodo: str,
         return None, "la firma non si è potuta leggere"
 
     visti[unico] = adesso
-    return {"canale": canale, "ruolo": ruolo,
-            "specie": dichiarato["specie"]}, None
+    return {"servizio": autorizzato["nome"], "ruolo": ruolo,
+            "specie": autorizzato.get("specie") or SPECIE_IGNOTA}, None
 
 
 def prepara_canali(app) -> None:
-    """I contenitori dei canali nascono quando l'app si compone.
+    """Il contenitore dei valori gia' visti nasce quando l'app si compone.
 
-    Scrivere in `app[...]` a richiesta già servita è deprecato in aiohttp 3 e un
-    errore in aiohttp 4 — la stessa ragione per cui nascono qui i contatori dei
-    giri di strumento e la cache dei ruoli.
+    Non c'e' piu' nessuna registrazione da leggere: dal 22/09/2026 i servizi
+    vivono nell'archivio (`api/servizi.py`) e nascono da un accoppiamento
+    approvato dal proprietario, non da un campo di testo nelle opzioni.
     """
     app["canali_visti"] = {}
-    app["canali_registrati"] = leggi_registrazioni(app.get("canali_testo"))
-    if app["canali_registrati"]:
-        logger.info("canali: registrati %s",
-                    ", ".join(f"{n} ({r['ruolo']})"
-                              for n, r in sorted(app["canali_registrati"].items())))
-

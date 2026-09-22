@@ -191,25 +191,6 @@ options:
   # il resto richiede internal_token. Default = rete Docker standard del
   # Supervisor. Restringi (es. 172.30.32.2/32) se esponi la API a un tunnel.
   supervisor_ingress_cidr: "172.30.32.0/23"
-  # I CANALI esterni e la loro credenziale (spec 2026-09-21 «i canali e i
-  # ruoli»). Una riga per canale, nella forma `nome:ruolo:chiave`:
-  #
-  #     sviluppo:lettore:MCowBQYDK2VwAyEA...
-  #     retropanel:utente:MCowBQYDK2VwAyEA...
-  #
-  # Il RUOLO e' la decisione: `amministratore` costruisce, `utente` comanda ma
-  # non costruisce, `lettore` legge e basta. Lo si assegna quando si registra
-  # il dispositivo, conoscendo a cosa serve.
-  #
-  # La CHIAVE e' PUBBLICA: non e' un segreto, e non c'e' niente da proteggere
-  # se qualcuno la legge -- e' esattamente la ragione per cui la credenziale e'
-  # una coppia di chiavi e non un secondo token condiviso. Chi firma tiene la
-  # privata, e HIRIS non ne ha nessuna.
-  #
-  # Che un NOME sia un canale lo decide il codice (`api/canali.py::CANALI`):
-  # una chiave per un nome non dichiarato viene rifiutata, cosi' aggiungere
-  # un'integrazione costringe a decidere il suo perimetro.
-  canali: ""
 
   # ── Opzioni uscite, e perche' ─────────────────────────────────────────────
   # fetta E3 Task 7: escono `sentinel_daily_cap`/`sentinel_cooldown_min` --
@@ -264,4 +245,3 @@ schema:
   log_level: "list(debug|info|warning|error)"
   internal_token: password
   supervisor_ingress_cidr: "str?"
-  canali: "str?"

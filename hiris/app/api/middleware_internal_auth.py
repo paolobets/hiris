@@ -65,20 +65,22 @@ def _is_supervisor_ingress(request: web.Request) -> bool:
     return False
 
 
+#: Le intestazioni con cui un SERVIZIO firma (spec 2026-09-21 §6, rifatta il
+#: 22/09). `X-HIRIS-Servizio` porta la sua **chiave pubblica**, che e' la sua
+#: identita': un nome sarebbe una seconda rappresentazione dello stesso fatto.
+#: Viaggia anche senza firma durante la convivenza, e li' non autentica niente
+#: -- serve solo a MISURARE chi non firma ancora.
+_SERVIZIO = "X-HIRIS-Servizio"
+_MOMENTO = "X-HIRIS-Momento"
+_UNICO = "X-HIRIS-Unico"
+_FIRMA = "X-HIRIS-Firma"
+
 #: Le intestazioni con cui il Supervisor dice CHI sta chiamando. Verificato il
 #: 21/09/2026 sul sorgente (`supervisor/api/ingress.py::_init_header`): le
 #: compone da `session_data.user` e **filtra via le stesse in ingresso** prima
 #: di aggiungere le proprie, quindi attraverso l'ingress non sono falsificabili.
 #: Su ogni altra strada lo sono, ed e' il motivo per cui si leggono in un ramo
 #: solo.
-#: Le intestazioni con cui un CANALE si presenta (spec 2026-09-21 §6). La
-#: `X-HIRIS-Canale` viaggia anche senza firma durante la convivenza: li' non
-#: autentica niente e serve solo a MISURARE chi non firma ancora.
-_CANALE = "X-HIRIS-Canale"
-_MOMENTO = "X-HIRIS-Momento"
-_UNICO = "X-HIRIS-Unico"
-_FIRMA = "X-HIRIS-Firma"
-
 _CHI = "X-Remote-User-Id"
 _NOME = "X-Remote-User-Display-Name"
 _UTENTE = "X-Remote-User-Name"
@@ -106,8 +108,8 @@ def _soggetto(request: web.Request, specie: str) -> dict:
             "utente": request.headers.get(_UTENTE) or None}
 
 
-async def _canale(request: web.Request):
-    """Il canale che ha firmato questa richiesta — o `None` se non ci prova.
+async def _firmatario(request: web.Request):
+    """Il servizio che ha firmato questa richiesta — o `None` se non ci prova.
 
     **Chi prova a firmare e sbaglia non scivola sul ripiego del token**: sarebbe
     una porta aperta da qualunque firma storta, cioe' il contrario di una
@@ -116,21 +118,21 @@ async def _canale(request: web.Request):
     """
     from . import canali
 
-    # **A dire «sto firmando» e' la FIRMA, non il nome del canale.** Durante la
-    # convivenza (spec §8) chi usa ancora il token dichiara `X-HIRIS-Canale`
-    # per farsi misurare: trattare quella dichiarazione come un tentativo di
-    # firma lo rifiuterebbe, cioe' spegnerebbe l'integrazione che stiamo
-    # cercando di contare. Misurato scrivendo la prova, non supposto.
+    # **A dire «sto firmando» e' la FIRMA, non il nome del servizio.** Durante
+    # la convivenza (spec §8) chi usa ancora il token dichiara
+    # `X-HIRIS-Servizio` per farsi misurare: trattare quella dichiarazione come
+    # un tentativo di firma lo rifiuterebbe, cioe' spegnerebbe l'integrazione
+    # che stiamo cercando di contare. Misurato scrivendo la prova, non supposto.
     if not request.headers.get(_FIRMA):
         return None, None
     return canali.riconosci(
-        canale=request.headers.get(_CANALE, ""),
+        chiave=request.headers.get(_SERVIZIO, ""),
         momento=request.headers.get(_MOMENTO, ""),
         unico=request.headers.get(_UNICO, ""),
         firma=request.headers.get(_FIRMA, ""),
         metodo=request.method, percorso=request.path,
         corpo=await request.read(),
-        registrate=request.app.get("canali_registrati") or {},
+        servizi=request.app.get("servizi"),
         visti=request.app.get("canali_visti"),
         adesso=time.time())
 
@@ -145,26 +147,46 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
     token is configured they are denied by default (set HIRIS_ALLOW_NO_TOKEN=1 to
     disable this during local development).
     """
+    # **L'unica superficie che questo prodotto non puo' autenticare**, e
+    # esiste solo nei dieci minuti in cui il proprietario ha aperto
+    # l'accoppiamento (decisione del 22/09/2026). Un servizio che non e' ancora
+    # approvato NON HA MODO di autenticarsi -- e' tutto il punto -- e invece di
+    # difendere quella rotta per sempre si e' scelto di non farla esistere:
+    # fuori dalla finestra risponde 401 come qualunque altra.
+    #
+    # Una difesa permanente invecchia; una porta chiusa no.
+    from .handlers_servizi import ROTTA_APERTA
+    from .servizi import finestra_aperta
+
+    if (request.path == ROTTA_APERTA
+            and finestra_aperta(request.app.get("finestra_servizi"),
+                                adesso=time.time())):
+        request["auth_via"] = "accoppiamento"
+        request["soggetto"] = {"specie": "nessuno", "id": None, "nome": None,
+                               "utente": None, "ruolo": None}
+        return await handler(request)
+
     from .canali import consente_metodo
 
-    firmato, motivo = await _canale(request)
+    firmato, motivo = await _firmatario(request)
     if motivo is not None:
-        logger.warning("canale: richiesta rifiutata da %s — %s",
+        logger.warning("servizio: richiesta rifiutata da %s — %s",
                        request.remote, motivo)
         return web.json_response({"errore": motivo}, status=401)
     if firmato is not None:
         if not consente_metodo(firmato["ruolo"], request.method):
             logger.warning(
-                "canale: «%s» ha ruolo «%s» e ha chiesto %s %s — negato",
-                firmato["canale"], firmato["ruolo"], request.method, request.path)
+                "servizio: «%s» ha ruolo «%s» e ha chiesto %s %s — negato",
+                firmato["servizio"], firmato["ruolo"], request.method,
+                request.path)
             return web.json_response(
-                {"errore": f"il canale «{firmato['canale']}» ha il ruolo "
+                {"errore": f"il servizio «{firmato['servizio']}» ha il ruolo "
                            f"«{firmato['ruolo']}»: legge e non scrive"},
                 status=403)
         request["auth_via"] = "canale"
         request["soggetto"] = {"specie": firmato["specie"],
-                               "id": firmato["canale"],
-                               "nome": firmato["canale"],
+                               "id": firmato["servizio"],
+                               "nome": firmato["servizio"],
                                "utente": None,
                                "ruolo": firmato["ruolo"]}
         return await handler(request)
@@ -218,9 +240,9 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
     # netto li spegnerebbe. Ma chi lo usa **si misura**, o la fine della
     # convivenza la deciderebbe una speranza invece di un dato.
     logger.info(
-        "convivenza: richiesta col token condiviso da %s (canale dichiarato: "
+        "convivenza: richiesta col token condiviso da %s (servizio dichiarato: "
         "%s) su %s %s — questo ripiego esce quando questa riga tace",
-        request.remote, request.headers.get(_CANALE) or "IGNOTO",
+        request.remote, request.headers.get(_SERVIZIO) or "IGNOTO",
         request.method, request.path)
     request["auth_via"] = "token"
     request["soggetto"] = _soggetto(request, "integrazione")

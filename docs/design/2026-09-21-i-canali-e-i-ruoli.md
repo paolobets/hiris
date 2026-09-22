@@ -164,11 +164,15 @@ dichiara — **nessuna compilazione** in fase di costruzione dell'immagine.
 ### Cosa viaggia
 
 ```
-X-HIRIS-Canale:  <nome registrato>
-X-HIRIS-Momento: <secondi>
-X-HIRIS-Unico:   <valore irripetibile>
-X-HIRIS-Firma:   <firma, base64>
+X-HIRIS-Servizio: <chiave pubblica, base64>
+X-HIRIS-Momento:  <secondi>
+X-HIRIS-Unico:    <valore irripetibile>
+X-HIRIS-Firma:    <firma, base64>
 ```
+
+**Porta la chiave, non il nome** (22/09). La chiave pubblica *è* l'identità del servizio: un nome
+sarebbe una seconda rappresentazione dello stesso fatto, e due rappresentazioni divergono. Il nome
+resta — ma è un'etichetta per il proprietario, e non riconosce nessuno.
 
 E la materia firmata, che le due parti devono condividere e che vive **scritta una volta sola**:
 
@@ -187,8 +191,9 @@ per una lettura.
    cioè lascerebbe **al chiamante** il compito di deciderla.
 2. **Il valore irripetibile**, ricordato per la durata della finestra. Senza, dentro la finestra una
    richiesta intercettata e rimandata identica sarebbe ancora valida.
-3. **Il canale dichiarato nel codice** (§7): una firma perfetta di un nome che nessuno ha dichiarato
-   viene rifiutata.
+3. **L'approvazione** (§7): una firma perfetta di una chiave che il proprietario non ha approvato
+   viene rifiutata. E il **codice a quattro cifre** dell'accoppiamento difende il primo contatto,
+   che è l'unico momento in cui «qualcuno in mezzo» avrebbe qualcosa da guadagnare.
 
 ### Cosa non fa
 
@@ -197,19 +202,65 @@ credenziale risponde a *chi sei* e *questa richiesta è intatta*, non a *chi pu�
 
 ---
 
-## §7 · La registrazione: due posti, e sono separati apposta
+## §7 · L'accoppiamento: il primo contatto è un evento che si approva
 
-| cosa | dove vive | perché lì |
+**Rifatto il 22/09/2026.** La prima stesura metteva chiave e ruolo in un campo di testo delle
+opzioni dell'add-on. Il proprietario l'ha respinta per tre ragioni che quel campo non può risolvere:
+
+- **ogni modifica riavvia l'add-on** — aggiungere un servizio spegne la casa per dieci secondi;
+- **revocare significa editare un blob di testo**, invece di compiere un gesto;
+- e soprattutto **non si vede mai quando un servizio si presenta la prima volta**: l'autorizzazione
+  è già data prima che il servizio esista.
+
+Il terzo punto è ciò che rende «by design» questo disegno, e non è la crittografia: è che **il primo
+contatto è un evento che il proprietario vede e approva**.
+
+### Il giro intero
+
+| passo | chi | cosa |
 |---|---|---|
-| **chiave pubblica** | opzioni dell'add-on | non è un segreto: nessun archivio nuovo, niente da escludere dai backup, e si incolla dalla pagina del Supervisor |
-| **ruolo** | opzioni dell'add-on, accanto alla chiave | è la decisione del proprietario su quel dispositivo, e deve stare dove la prende |
-| **il canale esiste** | **nel codice**, elenco di ammissione | un nome che nessuno ha dichiarato viene rifiutato **anche con firma valida** |
+| 1 | proprietario | apre la **finestra di accoppiamento**, che dura **dieci minuti** |
+| 2 | servizio | genera la propria coppia di chiavi — **la privata non esce da lì, mai** |
+| 3 | servizio | `POST /api/services/present` con la pubblica e un nome |
+| 4 | HIRIS | mette una riga **in attesa** e torna un **codice di quattro cifre** derivato dalla chiave |
+| 5 | proprietario | confronta quel codice con quello che il servizio mostra sul proprio schermo |
+| 6 | proprietario | **approva**, scegliendo il **ruolo** (§4) e la **specie** |
+| 7 | proprietario | può **revocare** in qualunque momento, e vale subito |
 
-La forma di una riga: `nome · ruolo · chiave pubblica`.
+### Le tre decisioni che reggono il disegno
 
-**Chiude per difetto, tre volte.** Un canale non dichiarato nel codice: rifiutato. Un canale
-dichiarato senza chiave: rifiutato. Una chiave senza ruolo: rifiutata. Ognuno dei tre rifiuti dice
-quale dei tre manca, perché un rifiuto che non dice cosa fare è un ordine.
+**La rotta di presentazione è l'unica superficie che questo prodotto non può autenticare**, e deve
+esserlo: un servizio non ancora approvato *non ha modo* di autenticarsi. Invece di difenderla per
+sempre — tetti sul numero di righe, limiti di ritmo, scadenze — si è scelto di **non farla
+esistere**: il confine la esenta solo nei dieci minuti della finestra, e fuori di lì risponde 401
+come qualunque altra. Una difesa permanente invecchia; una porta chiusa no.
+
+**Il codice si deriva dalla chiave**, e non è casuale: così il servizio può mostrarlo senza scambiare
+nient'altro con HIRIS. Un codice casuale richiederebbe un secondo scambio, e quel secondo scambio
+sarebbe esattamente il punto in cui qualcuno si mette in mezzo. Quattro cifre non sono un segreto e
+non devono esserlo: non difendono da chi indovina, difendono da chi si è messo in mezzo — che non
+può far coincidere il proprio codice con quello che il servizio vero mostra sul suo schermo.
+
+**Qui non vive nessun segreto.** Una chiave pubblica non lo è, e un codice derivato da essa nemmeno:
+l'archivio dei servizi si può leggere per intero senza che ne esca niente di utile a nessuno. È la
+stessa proprietà del §6, vista dal lato dell'archivio invece che da quello del backup.
+
+### Chiude per difetto
+
+Una chiave mai approvata: rifiutata, **anche con una firma perfetta**. Un servizio revocato che si
+ripresenta: resta revocato, o ribussare annullerebbe la revoca. Una riga senza ruolo valido:
+rifiutata, perché un ruolo che manca erediterebbe in silenzio qualcosa deciso dal codice invece che
+dal proprietario. Ognuno dei rifiuti dice cosa manca: un rifiuto che non dice cosa fare è un ordine.
+
+**Il campo di testo è uscito.** Due posti in cui si dichiara la stessa cosa sono la fondamenta 2
+violata — ed è proprio ciò che questo progetto vieta.
+
+### Cosa questo non difende
+
+Chiunque possa raggiungere HIRIS nei dieci minuti della finestra può mettere una riga in coda. Non
+ottiene niente — una riga in attesa non autorizza nulla — ma **può sporcare la pagina**. La difesa
+non è un tetto: è che quelle righe scadono da sole in 24 ore, e che la finestra la apre una persona
+per il tempo che serve a un accoppiamento.
 
 ---
 
@@ -219,9 +270,13 @@ Il gateway MCP e il proxy di Retro Panel vivono in **due repository separati**. 
 spegnerebbe finché non sono aggiornati.
 
 Per una fetta HIRIS accetta **la firma oppure il token**. Chi usa ancora il token deve però
-dichiarare `X-HIRIS-Canale` — non firmato, e senza nessun valore di autenticazione: serve solo a
+dichiarare `X-HIRIS-Servizio` — non firmato, e senza nessun valore di autenticazione: serve solo a
 **misurare chi è rimasto indietro** invece di indovinarlo. Chi non lo dichiara finisce nel registro
-come «canale ignoto», con l'indirizzo e il percorso.
+come «servizio ignoto», con l'indirizzo e il percorso.
+
+**A dire «sto firmando» è la firma, non il nome.** Se bastasse dichiarare `X-HIRIS-Servizio` per
+entrare nel ramo della verifica, chi lo dichiara per farsi misurare verrebbe rifiutato — cioè la
+misura spegnerebbe l'integrazione che esiste per contare. Misurato scrivendo la prova, non supposto.
 
 **La fine della convivenza la decide una misura, non una data**: quando il registro tace per qualche
 giorno, il ripiego esce e il segreto condiviso smette di esistere.
@@ -233,8 +288,10 @@ giorno, il ripiego esce e il segreto condiviso smette di esistere.
 Ognuno **chiede il suo elenco** invece di ricopiarlo (I-0), e ognuno arriva con la sua mutazione
 eseguita.
 
-1. **Ogni canale dichiarato ha un ruolo e una ragione.** Un canale senza ruolo erediterebbe tutto in
-   silenzio; uno senza ragione è indistinguibile da una dimenticanza.
+1. **Il confine esenta un percorso solo, e legato alla finestra.** Una seconda riga nell'esenzione
+   sarebbe una seconda superficie non autenticata, e non deve poter nascere per distrazione: il
+   cancello guarda la **forma** del confine, non solo il comportamento, perché l'esenzione potrebbe
+   restare mentre il controllo della finestra sparisce.
 2. **I ruoli sono un insieme chiuso**, e la tabella del §4 li copre tutti: un ruolo nuovo che nessuno
    ha mappato non è «permesso», è un ruolo su cui nessuno ha deciso.
 3. **La materia firmata è una sola.** Se chi firma e chi verifica divergessero, ogni firma legittima
@@ -250,8 +307,9 @@ eseguita.
 
 | | Cosa | Repository | Stato |
 |---|---|---|---|
-| **1** | Il meccanismo (firma, finestra, valore irripetibile, registrazione), i cancelli, e **la porta di sviluppo come `lettore`** | solo HIRIS | ✅ **fatta il 21/09** |
-| **2** | Gateway MCP e Retro Panel firmano; si misura la convivenza | tre repository | da fare |
+| **1** | Il meccanismo (firma, finestra, valore irripetibile), i cancelli, e **la porta di sviluppo come `lettore`** | solo HIRIS | ✅ **fatta il 21/09** |
+| **1b** | **L'accoppiamento** (§7): archivio dei servizi, finestra di dieci minuti, codice a quattro cifre, approvazione e revoca dalla pagina — e il campo di testo esce | solo HIRIS | ✅ **fatta il 22/09** |
+| **2** | Gateway MCP e Retro Panel si accoppiano e firmano; si misura la convivenza | tre repository | da fare |
 | **3** | Il token esce; il ponte passa alla credenziale effimera | solo HIRIS | da fare |
 
 Gli ingressi 2, 3 e 4 del §5 — card lovelace, Assist scritto, Assist parlato — **non esistono
@@ -295,3 +353,11 @@ Tutte del proprietario, il 21/09/2026, una domanda alla volta.
 | 4 | Come si passa dal segreto condiviso alle chiavi? | **Convivenza dichiarata e misurata**, poi si chiude |
 | 5 | `cryptography` in produzione? | **Sì, e lo vedo come un plus** |
 | 6 | Il soffitto di un luogo? | **Il ruolo si assegna quando si rilascia la credenziale**: admin, utente |
+
+E il 22/09/2026, dopo aver visto la fetta 1 dal vivo:
+
+| # | Domanda | Decisione |
+|---|---|---|
+| 7 | I servizi si dichiarano in un campo di testo? | **No: una sezione in configurazione**, con approvazione alla prima presentazione e revoca |
+| 8 | La chiave privata la genera chi? | **Il servizio, e non viaggia mai** |
+| 9 | Quanto resta aperto l'accoppiamento? | **Dieci minuti. Chiusa la finestra si rifiuta** |

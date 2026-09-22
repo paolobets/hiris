@@ -3552,6 +3552,12 @@ async def _on_startup(app: web.Application) -> None:
     # non chiama mai un servizio.
     app["constructions"] = ConstructionStore(
         os.path.join(data_dir, "costruzioni.db"))
+
+    # L'archivio dei servizi accoppiati (22/09/2026). Qui non vive nessun
+    # segreto: solo chiavi PUBBLICHE, il ruolo che il proprietario ha dato e lo
+    # stato. Si puo' leggere per intero senza che ne esca niente di utile.
+    from .api.servizi import ServiziStore
+    app["servizi"] = ServiziStore(os.path.join(data_dir, "servizi.db"))
     app["workshop"] = Workshop(
         ha_client, app["constructions"], app["journal"],
         read_timezone=lambda: _timezone_from_home_space_store(app.get("home_space_store")))
@@ -5352,6 +5358,15 @@ async def _on_cleanup(app: web.Application) -> None:
     # al riavvio.
     if "constructions" in app:
         app["constructions"].close()
+    # I CONSUMI e i SERVIZI accoppiati. Tutti e due mancavano da qui -- `usage`
+    # da mesi, `servizi` dal giorno in cui e' nato (22/09/2026) -- e nessuna
+    # delle prove accanto poteva accorgersene, perche' ognuna nominava a mano
+    # l'archivio che il suo autore ricordava. Li ha trovati il cancello
+    # derivato `tests/test_archivi_chiusi.py`, che da oggi li chiede al codice.
+    if "usage" in app:
+        app["usage"].close()
+    if "servizi" in app:
+        app["servizi"].close()
     # Fetta «l'osservatore» (Task 5): l'archivio dei cambi e degli oggetti
     # del cervello (`mind/store.py`), costruito in `_on_startup`
     # accanto a `app["journal"]`. Stessa disciplina degli archivi qui sopra:
@@ -5538,6 +5553,25 @@ def create_app() -> web.Application:
     # Task 6 della E5 li ha cancellati entrambi, insieme alla voce di menu
     # "Accessi Gateway" che portava alla pagina.
 
+    # L'accoppiamento dei servizi esterni (spec 2026-09-21 §7, rifatta il
+    # 22/09). `present` e' l'unica rotta esente dal confine, e solo mentre la
+    # finestra e' aperta: vedi `middleware_internal_auth` e il cancello in
+    # `tests/test_servizi_rotte.py`.
+    from .api.handlers_servizi import (
+        handle_close_window,
+        handle_open_window,
+        handle_service_approve,
+        handle_service_present,
+        handle_service_revoke,
+        handle_services,
+    )
+    app.router.add_get("/api/services", handle_services)
+    app.router.add_post("/api/services/present", handle_service_present)
+    app.router.add_post("/api/services/window/open", handle_open_window)
+    app.router.add_post("/api/services/window/close", handle_close_window)
+    app.router.add_post("/api/services/approve", handle_service_approve)
+    app.router.add_post("/api/services/revoke", handle_service_revoke)
+
     from .api.handlers_reasoning import handle_reasoning_claim, handle_reasoning_submit
     app.router.add_post("/api/reasoning/claim", handle_reasoning_claim)
     app.router.add_post("/api/reasoning/submit", handle_reasoning_submit)
@@ -5586,8 +5620,13 @@ def create_app() -> web.Application:
     from .api.credenziali import prepara_credenziali
     prepara_credenziali(app)
 
+    # L'accoppiamento dei servizi (decisione del proprietario, 22/09/2026): la
+    # finestra vive in MEMORIA e nasce chiusa -- una finestra che sopravvive a
+    # un riavvio e' una finestra che ti sei dimenticato aperta.
+    from .api.servizi import prepara_finestra
+    prepara_finestra(app)
+
     from .api.canali import prepara_canali
-    app["canali_testo"] = os.environ.get("CANALI", "")
     prepara_canali(app)
 
     # fetta E3 Task 5: /api/brain/feed e /api/brain/reasoning sono uscite col

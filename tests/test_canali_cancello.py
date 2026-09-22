@@ -4,9 +4,9 @@ Tre proprieta' che non si rompono per un errore, ma per il tempo: un canale
 aggiunto mesi dopo da chi non ha letto niente di questo sprint, un ruolo nuovo
 che nessuno mappa, e un ripiego temporaneo che nessuno si ricorda di togliere.
 
-**Gli elenchi si chiedono** (I-0): i canali al modulo che li dichiara, i ruoli
-alla tabella che li mappa, le rotte al router. Cio' che resta scritto a mano e'
-la decisione, non la copia di un fatto.
+**Gli elenchi si chiedono** (I-0): i ruoli alla tabella che li mappa, le specie
+al modulo che le possiede, le intestazioni al confine. Cio' che resta scritto a
+mano e' la decisione, non la copia di un fatto.
 """
 import ast
 import datetime
@@ -20,15 +20,21 @@ RADICE = pathlib.Path(__file__).resolve().parents[1]
 _CONFINE = RADICE / "hiris" / "app" / "api" / "middleware_internal_auth.py"
 
 
-def test_ogni_canale_ha_una_specie_CONOSCIUTA():
-    """Una specie sconosciuta finirebbe nella cronaca come una parola che
-    nessun lettore sa interpretare -- e «integrazione» e «luogo» non sono
-    sinonimi: una macchina non e' in nessun posto, un pannello si'.
+def test_la_specie_di_RIPIEGO_e_una_specie_che_esiste():
+    """Dal 22/09/2026 la specie di un servizio la decide il proprietario quando
+    approva, e l'insieme chiuso vive in `servizi.SPECIE`. Ma una riga
+    d'archivio senza specie c'e' comunque un ripiego, e quel ripiego finisce
+    nella cronaca: se fosse una parola fuori dall'insieme, sarebbe una parola
+    che nessun lettore sa interpretare -- e «integrazione» e «luogo» non sono
+    sinonimi, una macchina non e' in nessun posto, un pannello si'.
 
-    Mutazione: dare a un canale una specie inventata -- rossa."""
-    for nome, riga in canali.CANALI.items():
-        assert riga["specie"] in ("integrazione", "luogo"), (
-            f"«{nome}»: specie {riga['specie']!r}")
+    Mutazione ESEGUITA: ripiegare su «luogo» (che esiste) -- verde, come deve
+    essere; ripiegare su «dispositivo» -- rossa."""
+    from hiris.app.api import servizi
+
+    assert canali.SPECIE_IGNOTA in servizi.SPECIE, (
+        f"il ripiego è {canali.SPECIE_IGNOTA!r}, che non è una specie: "
+        f"sono {', '.join(servizi.SPECIE)}")
 
 
 def test_la_tabella_dei_ruoli_e_ORDINATA_dal_piu_largo_al_piu_stretto():
@@ -109,7 +115,7 @@ def test_il_confine_verifica_la_firma_PRIMA_di_guardare_il_token():
                    and n.name == "internal_auth_middleware")
     corpo = ast.get_source_segment(sorgente, confine) or ""
 
-    assert corpo.index("_canale(request)") < corpo.index("compare_digest"), (
+    assert corpo.index("_firmatario(request)") < corpo.index("compare_digest"), (
         "il token si guarda prima della firma: chi ha il token non avrebbe "
         "nessun motivo di firmare, e la convivenza non finirebbe mai")
 
@@ -123,7 +129,7 @@ def test_le_intestazioni_della_firma_sono_le_STESSE_dei_due_lati():
     sorgente = _CONFINE.read_text(encoding="utf-8")
     nominate = set(re.findall(r'"(X-HIRIS-[A-Za-z]+)"', sorgente))
 
-    assert {"X-HIRIS-Canale", "X-HIRIS-Momento", "X-HIRIS-Unico",
+    assert {"X-HIRIS-Servizio", "X-HIRIS-Momento", "X-HIRIS-Unico",
             "X-HIRIS-Firma"} <= nominate, (
         f"il confine nomina {sorted(nominate)}: mancano intestazioni che la "
         "spec §6 dichiara")
