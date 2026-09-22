@@ -1,5 +1,53 @@
 # HIRIS — Changelog
 
+## [3.60.0] — Il perimetro (2026-09-22)
+
+Fetta 3 dello sprint sicurezza: tre reperti del registro dei rischi, che sono lo stesso lavoro visto
+da tre lati — **come si dimostra di essere chi si dice**.
+
+> **Se avevi integrato HIRIS con `internal_token`**, quell'opzione non esiste più: l'integrazione
+> riceve un 401 che le dice cosa fare. Si accoppia dalla pagina **Servizi**, apri la finestra di
+> dieci minuti e la approvi confrontando il codice di quattro cifre.
+
+### «Fidato» voleva dire la rete di tutti gli add-on
+
+Il confine credeva a `X-Ingress-Path` più l'indirizzo sorgente dentro `172.30.32.0/23`. Sembra
+stretto e non lo è: quel `/23` non è l'indirizzo del proxy, è la rete Docker in cui vive **ogni
+add-on installato**. Un add-on vicino scriveva un'intestazione — una stringa, non un segreto — e
+otteneva l'API per intero **con l'identità che si sceglieva lui**. E se il tunnel che pubblica la
+casa gira come add-on, il caso normale, quell'indirizzo è il suo.
+
+Adesso HIRIS chiede al Supervisor se riconosce il **biscotto di sessione**. Un add-on vicino può
+falsificare l'intestazione e può stare nella rete; non può avere una sessione che il Supervisor
+conosce senza averla rubata a una persona — e a quel punto ha già quella persona su Home Assistant,
+cioè il problema non è più HIRIS.
+
+### `0.0.0.0/0` passava in silenzio
+
+Le reti fidate si validano: niente reti pubbliche, niente prefissi più larghi di `/16`, e ogni
+rifiuto nomina la voce e dice perché. Un campo **tutto sbagliato non ripiega sul default**:
+ripiegare vorrebbe dire che scrivere male allarga il perimetro invece di stringerlo.
+
+### Il segreto condiviso è uscito
+
+Uno per tutte le integrazioni, eterno, in chiaro nei backup: chi lo leggeva una volta era tutte, e
+nessun registro poteva dire quale integrazione avesse chiamato. La convivenza doveva finire su una
+**misura** e non su una data, ed è finita così — il registro ha smesso di nominare chiunque non
+firmasse. Il ripiego esce **prima** della data limite che lo custodiva.
+
+Restano tre strade, e ognuna dice chi è: la firma di un servizio approvato, l'ingress con la
+sessione verificata, la credenziale di turno del ponte.
+
+### Due cose le ha trovate la suite, non una rilettura
+
+Una **regressione che stava per uscire**: tolto il segreto condiviso, la redazione del registro è
+rimasta senza bersaglio — con l'aria di funzionare — e la credenziale del ponte sarebbe finita nel
+log, cioè nel file che si incolla in una segnalazione. E una **prova verde per la ragione
+sbagliata**, che passava perché una chiamata di rete falliva invece che per la guardia che diceva
+di misurare.
+
+Quindici mutazioni eseguite, tutte rosse. 900 righe di meccanismo morto in meno.
+
 ## [3.59.1] — Quello che confermi è quello che hai scelto (2026-09-22)
 
 Tre correzioni nate **provando l'accoppiamento dal vivo**, non rileggendo il codice. La catena
