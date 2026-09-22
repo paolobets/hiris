@@ -23,7 +23,7 @@ aiohttp>=3.14.3,<4.0.0
 anthropic>=1.0.0,<2.0.0
 apscheduler>=3.11.3,<4.0.0
 httpx>=0.28.1,<1.0.0
-openai>=3.1.0,<4.0.0
+openai>=3.16.2,<4.0.0
 # `model2vec` e' USCITA il 22/09/2026 (reperto D-2). Era una dipendenza di
 # produzione per un percorso DICHIARATO INERTE -- nessun codice chiama piu'
 # `embed()` -- e si tirava dietro quindici pacchetti su quarantanove: numpy,
