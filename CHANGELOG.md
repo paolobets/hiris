@@ -1,5 +1,27 @@
 # HIRIS — Changelog
 
+## [3.61.1] — Il binario nativo (2026-09-22)
+
+**La 3.61.0 non si installava.** La costruzione dell'immagine falliva con:
+
+```
+Error: claude native binary not installed.
+```
+
+`--ignore-scripts` non si può usare per `@anthropic-ai/claude-code`: quel pacchetto **ha bisogno**
+del proprio script di post-installazione, che mette a posto il binario nativo. Il costo di vietarlo
+non era zero come scritto — era la CLI che non esiste.
+
+**La rete ha tenuto.** Il `--version` messo nella stessa istruzione l'ha preso al momento della
+costruzione: nessuna immagine rotta è mai uscita, e l'add-on ha continuato a girare sulla 3.60.1.
+È esattamente il motivo per cui quella riga è stata scritta — la rete che al reperto A-2, stamattina,
+era mancata.
+
+`--ignore-scripts` resta dove funziona e serve: sul `npm ci` del CI, dove i pacchetti sono attrezzi
+di prova e dove quel codice girerebbe col token del lavoro in mano.
+
+Quella metà del reperto D-4 resta **aperta e dichiarata**, invece di essere finta chiusa.
+
 ## [3.61.0] — La fornitura (2026-09-22)
 
 Fetta 4 dello sprint sicurezza: **cosa l'add-on si porta dentro, da dove arriva, e chi lo guarda.**

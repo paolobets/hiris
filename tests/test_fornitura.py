@@ -27,18 +27,24 @@ CI = (RADICE / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8"
 
 # --- D-4 · la fornitura dell'immagine ---------------------------------------
 
-def test_npm_non_esegue_script_di_POST_INSTALLAZIONE():
-    """Un pacchetto puo' eseguire codice mentre si installa. Qui non ne serve
-    nessuno, e il costo di vietarlo e' zero.
+def test_il_CI_non_esegue_gli_script_di_POST_INSTALLAZIONE():
+    """Un pacchetto npm puo' eseguire codice mentre si installa, e nel CI quel
+    codice gira con il token del lavoro in mano. Per gli attrezzi di prova
+    (jsdom, oxlint, acorn) non ne serve nessuno.
 
-    Mutazione ESEGUITA: tolto `--ignore-scripts` -- rossa."""
-    # I COMMENTI non si contano: uno di loro spiega come si aggiorna il pin,
-    # e nominare `npm install -g` li dentro non installa niente.
-    installazioni = [r for r in DOCKERFILE.splitlines()
-                     if "npm install" in r and not r.lstrip().startswith("#")]
+    **E nell'immagine NON si puo'**, ed e' misurato: la 3.61.0 lo aveva
+    aggiunto anche li' e la costruzione e' fallita con «claude native binary
+    not installed» -- `@anthropic-ai/claude-code` ha bisogno del proprio
+    script, che mette a posto il binario nativo. Il costo di vietarlo non era
+    zero: era la CLI che non esiste. Quella meta' del reperto D-4 resta
+    aperta, dichiarata, invece di essere finta chiusa.
 
-    assert installazioni, "nessuna `npm install` nel Dockerfile: forma cambiata?"
-    for riga in installazioni:
+    Mutazione ESEGUITA: tolto `--ignore-scripts` dal CI -- rossa."""
+    righe = [r for r in CI.splitlines()
+             if "npm ci" in r and not r.lstrip().startswith("#")]
+
+    assert righe, "nessuna `npm ci` nel workflow: forma cambiata?"
+    for riga in righe:
         assert "--ignore-scripts" in riga, f"esegue gli script: {riga.strip()}"
 
 

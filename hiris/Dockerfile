@@ -182,12 +182,21 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 # che questa riga sostituisce (la **2.1.270** resta l'ultima davvero letta
 # dentro il container). Il passo 4 e' APERTO per la 2.1.276 e si salda al primo
 # turno di chat dopo l'aggiornamento.
-# **`--ignore-scripts`, un percorso FISSO, e una prova** (reperto D-4,
-# 22/09/2026).
+# **Un percorso FISSO e una prova** (reperto D-4, 22/09/2026).
 #
-# `--ignore-scripts`: un pacchetto npm puo' eseguire codice mentre si
-# installa. Qui non ne serve nessuno -- ripgrep arriva da `apk` e
-# `USE_BUILTIN_RIPGREP=0` lo dichiara -- e il costo di vietarlo e' zero.
+# **`--ignore-scripts` NON si puo' usare qui, ed e' misurato.** La 3.61.0 lo
+# aveva aggiunto: la costruzione e' fallita con
+#
+#     Error: claude native binary not installed.
+#
+# `@anthropic-ai/claude-code` **ha bisogno** del proprio script di
+# post-installazione, che mette a posto il binario nativo. Il costo di vietarlo
+# non era zero: era la CLI che non esiste. Resta su `npm ci` nel CI, dove i
+# pacchetti sono altri e dove funziona.
+#
+# **Il `--version` qui sotto l'ha preso al momento della costruzione**, che e'
+# il punto per cui esiste: non e' uscito niente di rotto verso nessuno. La
+# stessa rete che al reperto A-2 era mancata.
 #
 # Il COLLEGAMENTO: fino a oggi il sottoprocesso si invocava come `claude` e
 # chi lo esegue lo cercava in `PATH`, che non e' una cosa che questo
@@ -199,7 +208,7 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 # esce niente verso nessuno -- e' la rete che il 22/09 e' mancata al
 # reperto A-2, dove una verifica non provabile e' arrivata in produzione.
 RUN apk add --no-cache nodejs npm libgcc libstdc++ ripgrep \
-    && npm install -g --ignore-scripts @anthropic-ai/claude-code@2.1.276 \
+    && npm install -g @anthropic-ai/claude-code@2.1.276 \
     && npm cache clean --force \
     && mkdir -p /usr/lib/hiris \
     && ln -sf "$(command -v claude)" /usr/lib/hiris/claude \
