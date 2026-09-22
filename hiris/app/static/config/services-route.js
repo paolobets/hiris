@@ -119,6 +119,24 @@ window.HirisServicesRoute = (function () {
       .then(function (d) { stato.dati = d; disegna(); ritmo(); });
   }
 
+  /* **Mentre un pannello e' aperto la pagina NON si ridisegna, e non e' un
+     dettaglio di resa.**
+
+     Trovato dal vivo il 22/09/2026, alla prima prova vera: `disegna()`
+     ricostruisce l'outlet da zero, quindi anche il pannello aperto -- con una
+     `scelte` nuova, azzerata sui valori predefiniti. Il proprietario sceglieva
+     «lettore», cinque secondi dopo arrivava un battito, e la scelta tornava
+     «utente» sotto i suoi occhi mentre stava per confermare.
+
+     Su questa pagina **cio' che si conferma DEVE essere cio' che si e'
+     scelto**: si sta decidendo quanto potere dare a una macchina sulla casa.
+     Un dato fresco vale meno di una scelta stabile, quindi finche' il pannello
+     e' aperto i dati si aggiornano e il disegno aspetta. */
+  function ridisegna() {
+    if (stato.aperto != null) return;
+    disegna();
+  }
+
   /* Siamo ancora su questa pagina? Il router di questa SPA non avvisa nessuno
      quando una route esce di scena, e un giro di riletture che sopravvivesse
      continuerebbe a interrogare il server da una pagina che non si vede piu',
@@ -136,7 +154,7 @@ window.HirisServicesRoute = (function () {
         if (!ancoraQui()) { unmount(); return; }
         api(SERVICES_URL, { method: 'GET' })
           .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
-          .then(function (d) { stato.dati = d; disegna(); ritmo(); })
+          .then(function (d) { stato.dati = d; ridisegna(); ritmo(); })
           .catch(function () { /* un giro perso non e' un guasto: al prossimo */ });
       }, RILETTURA_MS);
     } else if ((!aperta || !ancoraQui()) && stato.giro != null) {

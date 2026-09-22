@@ -1,5 +1,39 @@
 # HIRIS — Changelog
 
+## [3.59.1] — Quello che confermi è quello che hai scelto (2026-09-22)
+
+Tre correzioni nate **provando l'accoppiamento dal vivo**, non rileggendo il codice. La catena
+intera ha funzionato alla prima — finestra, codice a quattro cifre confrontato, approvazione, e poi
+una richiesta firmata accolta sulla casa vera — e proprio per questo ha mostrato cose che nessuna
+prova in laboratorio aveva chiesto.
+
+### Il pannello si azzerava sotto le mani
+
+La pagina si rilegge ogni cinque secondi mentre la finestra è aperta, perché le righe in attesa
+arrivano da un'altra macchina. Ma la rilettura ricostruiva **anche il pannello aperto**, con la
+scelta riportata al valore predefinito: sceglievi «lettore», passavano cinque secondi, e il pallino
+tornava su «utente» mentre stavi per confermare.
+
+Su una pagina dove si decide **quanto potere dare a una macchina sulla casa**, ciò che si conferma
+deve essere ciò che si è scelto. Adesso, finché un pannello è aperto, i dati si aggiornano e il
+disegno aspetta: un dato fresco vale meno di una scelta stabile.
+
+### Un rifiuto mandava a cercare
+
+Il soffitto rispondeva *«il perimetro di un'integrazione si decide quando **la si registra**»*. La
+registrazione non esiste più: un rifiuto che manda a compiere un gesto che il prodotto non ha è
+peggio di un rifiuto muto. Adesso nomina l'approvazione e la pagina dove si fa.
+
+### La spec non assegna più un ruolo per nome
+
+Diceva «la porta di sviluppo è `lettore`». **Quella riga è uscita.** Il ruolo lo decide il
+proprietario **ogni volta che approva**, e dipende da cosa quel servizio deve fare oggi: una
+specifica che lo scrive per nome invecchia in silenzio, e scavalca il disegno — il ruolo viaggia con
+la credenziale proprio perché non stia scritto da nessun'altra parte.
+
+Qui si scrive **cosa può ognuno dei tre ruoli**. **Chi ha quale ruolo** vive in un posto solo:
+l'archivio dei servizi, e si legge dalla pagina «Servizi».
+
 ## [3.59.0] — L'accoppiamento (2026-09-22)
 
 Il campo di testo nelle opzioni dell'add-on **esce**. Il proprietario l'ha respinto per tre ragioni

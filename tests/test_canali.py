@@ -378,8 +378,14 @@ def test_i_ruoli_sono_gli_STESSI_in_tutte_e_due_le_case():
     ("GET", True), ("HEAD", True), ("OPTIONS", True),
     ("POST", False), ("PUT", False), ("PATCH", False), ("DELETE", False)])
 def test_un_LETTORE_legge_e_basta(metodo, passa):
-    """La porta di sviluppo, decisa dal proprietario: misurare la casa vera
-    prima di progettare resta possibile, comandare no.
+    """A che serve un ruolo che legge e basta: una macchina che deve **misurare
+    senza toccare** -- e Home Assistant non ha un ruolo cosi'.
+
+    **Qui non si nomina nessun servizio, ed e' voluto** (decisione del
+    proprietario, 22/09/2026): chi ha quale ruolo lo decide lui approvando,
+    caso per caso, e vive nell'archivio dei servizi. Scriverlo anche qui
+    sarebbe la stessa decisione in due posti, libera di divergere -- e a
+    divergere sarebbe il posto che nessuno rilegge.
 
     Mutazione ESEGUITA: far passare qualunque metodo -- rossa."""
     assert canali.consente_metodo("lettore", metodo) is passa

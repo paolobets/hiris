@@ -25,7 +25,7 @@ user.is_admin: if admin_only: raise Unauthorized`).
 
 **La forma, dopo la decisione del 21/09 sui canali.** Il ruolo non si deduce da
 dove arriva una richiesta: **viaggia con la credenziale**. Per una persona lo
-dice Home Assistant, per un canale lo dice la registrazione, per un turno senza
+dice Home Assistant, per un servizio lo dice l'approvazione, per un turno senza
 soggetto lo dice il suo mestiere. Quattro sorgenti, **una funzione sola** che
 decide.
 """
@@ -68,16 +68,21 @@ _SOLO_AMMINISTRATORI = ("scrivere automazioni, script o scene in Home Assistant 
 _IGNOTO = ("non ho potuto sapere se questa utenza è amministratore, e finché "
            "non lo so non si costruisce: un guasto nella lettura non deve "
            "diventare un permesso in più")
-_MACCHINA_MUTA = ("questa richiesta arriva da un canale senza un ruolo "
-                  "dichiarato: il perimetro di un’integrazione si decide quando "
-                  "la si registra, non si eredita")
+#: **Corretto il 22/09/2026 leggendolo dal vivo.** Diceva «si decide quando la
+#: si registra», e la registrazione non esiste piu': un rifiuto che manda a
+#: compiere un gesto che il prodotto non ha e' peggio di un rifiuto muto --
+#: manda a cercare. Adesso nomina il gesto vero, e dove si compie.
+_MACCHINA_MUTA = ("questa richiesta arriva da un servizio senza un ruolo "
+                  "dichiarato: il perimetro di un’integrazione si decide "
+                  "quando il proprietario la approva, nella pagina Servizi, "
+                  "e non si eredita")
 
 
 def consente(soggetto: dict | None, *, ruolo: str | None) -> dict:
     """Cosa può fare questo soggetto — un esito per ogni gesto di `GESTI`.
 
     Il ruolo arriva già risolto: da Home Assistant per una persona, dalla
-    registrazione per un canale. Qui si decide soltanto, e si decide una volta.
+    l'approvazione per un servizio. Qui si decide soltanto, e si decide una volta.
 
     **Il verso del dubbio è diverso per le due specie**, e la differenza è il
     fatto che le distingue: una persona senza ruolo leggibile ha comunque
@@ -154,7 +159,7 @@ async def per_richiesta(app, request) -> dict:
 
     Il soggetto lo ha stabilito il confine (`middleware_internal_auth`); il
     ruolo arriva da Home Assistant se è una persona, e **viaggia già col
-    soggetto** se è un canale, perché gliel'ha dato la registrazione.
+    soggetto** se è un servizio, perché gliel'ha dato l'approvazione.
     """
     soggetto = request.get("soggetto") or {}
     if soggetto.get("specie") == "persona":

@@ -107,7 +107,7 @@ deve **misurare senza toccare**.
 |---|:--:|:--:|:--:|---|
 | **amministratore** | ✓ | ✓ | ✓ | il proprietario dal pannello · un pannello di fiducia |
 | **utente** | ✓ | ✓ | ✗ | Retro Panel · altoparlante · un familiare in HA |
-| **lettore** | ✓ | ✗ | ✗ | la porta di sviluppo |
+| **lettore** | ✓ | ✗ | ✗ | una macchina che deve **misurare senza toccare** |
 
 **Perché `costruire` è la sola cosa riservata, e non i servizi di sistema.** I servizi di sistema
 (`homeassistant.restart`, `hassio.host_reboot`, `recorder.purge`, `shell_command.*`) sono **già
@@ -307,7 +307,7 @@ eseguita.
 
 | | Cosa | Repository | Stato |
 |---|---|---|---|
-| **1** | Il meccanismo (firma, finestra, valore irripetibile), i cancelli, e **la porta di sviluppo come `lettore`** | solo HIRIS | ✅ **fatta il 21/09** |
+| **1** | Il meccanismo (firma, finestra, valore irripetibile) e i cancelli | solo HIRIS | ✅ **fatta il 21/09** |
 | **1b** | **L'accoppiamento** (§7): archivio dei servizi, finestra di dieci minuti, codice a quattro cifre, approvazione e revoca dalla pagina — e il campo di testo esce | solo HIRIS | ✅ **fatta il 22/09** |
 | **2** | Gateway MCP e Retro Panel si accoppiano e firmano; si misura la convivenza | tre repository | da fare |
 | **3** | Il token esce; il ponte passa alla credenziale effimera | solo HIRIS | da fare |
@@ -349,7 +349,7 @@ Tutte del proprietario, il 21/09/2026, una domanda alla volta.
 |---|---|---|
 | 1 | Si limitano i servizi? | **No**: castrerebbe HIRIS e non seguirebbe la versione di HA |
 | 2 | Quanto stringe HIRIS per un utente non amministratore? | **Solo ciò che HA già gli nega**: costruire |
-| 3 | La porta di sviluppo dopo I-2? | **Chiave dedicata, sola lettura** |
+| 3 | Chi decide il ruolo di un servizio? | **Il proprietario, caso per caso, al momento dell'approvazione** |
 | 4 | Come si passa dal segreto condiviso alle chiavi? | **Convivenza dichiarata e misurata**, poi si chiude |
 | 5 | `cryptography` in produzione? | **Sì, e lo vedo come un plus** |
 | 6 | Il soffitto di un luogo? | **Il ruolo si assegna quando si rilascia la credenziale**: admin, utente |
@@ -361,3 +361,24 @@ E il 22/09/2026, dopo aver visto la fetta 1 dal vivo:
 | 7 | I servizi si dichiarano in un campo di testo? | **No: una sezione in configurazione**, con approvazione alla prima presentazione e revoca |
 | 8 | La chiave privata la genera chi? | **Il servizio, e non viaggia mai** |
 | 9 | Quanto resta aperto l'accoppiamento? | **Dieci minuti. Chiusa la finestra si rifiuta** |
+
+### Il ruolo non si scrive qui, e non è una dimenticanza
+
+**Chiarito dal proprietario il 22/09/2026**, dopo aver accoppiato il primo servizio dal vivo:
+
+> «Decido io quale ruolo concedo. In questo caso a Claude posso dare il ruolo amministratore anche
+> per farmi aiutare a fare cose o verifiche approfondite — non mi legherei su quell'argomento.»
+
+La prima stesura di questa spec assegnava un ruolo a un servizio per nome: «la porta di sviluppo è
+`lettore`». **Quella riga è uscita**, ed è giusto che sia uscita: era una decisione presa una volta
+e scritta in un documento, mentre la decisione vera si prende **ogni volta che si approva**, e
+dipende da cosa quel servizio deve fare *oggi*.
+
+Una specifica che assegna un ruolo per nome fa due danni. Invecchia in silenzio — il giorno in cui
+il proprietario decide diversamente, il documento dice il falso e nessun cancello se ne accorge. E
+scavalca il disegno: **il ruolo viaggia con la credenziale** (decisione 6) proprio perché non stia
+scritto da nessun'altra parte.
+
+Quindi: qui si scrive **cosa può ognuno dei tre ruoli** (§4). **Chi ha quale ruolo** vive in un
+posto solo — l'archivio dei servizi, dove l'ha messo il proprietario approvando — e si legge dalla
+pagina «Servizi», mai da un documento.

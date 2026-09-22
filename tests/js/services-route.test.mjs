@@ -329,6 +329,63 @@ test('se la pagina non si legge lo dice, e dice anche a CHI è riservata', async
   assert.match(testo(document), /amministratore/);
 });
 
+test('una rilettura NON azzera la scelta del pannello aperto', async () => {
+  const { document, window, battito } = monta({
+    stato: stato([servizio()], { aperta: true, resta_s: 573 }) });
+  window.HirisServicesRoute.mount();
+  await tick();
+  bottone(document, 'Approva…').click();
+  await tick();
+
+  const lettore = Array.from(document.querySelectorAll('input[type=radio]'))
+    .find((r) => r.value === 'lettore');
+  lettore.checked = true;
+  lettore.dispatchEvent(new window.Event('change'));
+
+  battito.fn();
+  await tick();
+
+  /* **Difetto TROVATO DAL VIVO il 22/09/2026, alla prima prova vera.** Il
+     proprietario sceglieva «lettore», cinque secondi dopo arrivava un battito,
+     `disegna()` ricostruiva l'outlet -- pannello compreso, con una `scelte`
+     nuova -- e la scelta tornava «utente» sotto i suoi occhi. Su una pagina
+     dove si decide quanto potere dare a una macchina sulla casa, cio' che si
+     conferma deve essere cio' che si e' scelto.
+
+     Mutazione ESEGUITA: `disegna()` al posto di `ridisegna()` nel battito --
+     rossa (era lo stato da cui si parte). */
+  const scelti = Array.from(document.querySelectorAll('input[type=radio]'))
+    .filter((r) => r.checked).map((r) => r.value);
+  assert.deepEqual(scelti, ['lettore', 'integrazione'],
+    'la rilettura ha azzerato la scelta del proprietario');
+  assert.ok(bottone(document, 'Accoppia come lettore'));
+});
+
+test('e quello che si conferma è quello che si era scelto', async () => {
+  const { document, window, battito, chiamate } = monta({
+    stato: stato([servizio()], { aperta: true, resta_s: 573 }) });
+  window.HirisServicesRoute.mount();
+  await tick();
+  bottone(document, 'Approva…').click();
+  await tick();
+
+  const lettore = Array.from(document.querySelectorAll('input[type=radio]'))
+    .find((r) => r.value === 'lettore');
+  lettore.checked = true;
+  lettore.dispatchEvent(new window.Event('change'));
+  battito.fn();
+  await tick();
+
+  bottone(document, 'Accoppia come lettore').click();
+  await tick();
+  await tick();
+
+  /* La meta' che conta davvero: non basta che il pallino resti dov'era, deve
+     restarci anche il valore che parte. */
+  const inviata = chiamate.find((c) => c.url.endsWith('/approve'));
+  assert.equal(JSON.parse(inviata.corpo).ruolo, 'lettore');
+});
+
 // --- il giro di riletture ---------------------------------------------------
 
 test('la pagina si rilegge da sola SOLO mentre la finestra è aperta', async () => {
