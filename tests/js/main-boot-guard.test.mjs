@@ -65,6 +65,10 @@ const ROUTE = [
   // la route non è più registrata da main.js: lasciarla qui avrebbe fatto
   // fallire il conteggio, che è esattamente il compito di questo elenco.
   ['#/settings', 'Impostazioni chat'],
+  // fetta «l'accoppiamento» (22/09/2026): chi, oltre al proprietario, puo'
+  // parlare con HIRIS -- e il momento in cui un servizio si presenta la prima
+  // volta, che e' il solo momento in cui c'e' qualcosa da approvare.
+  ['#/services', 'Servizi'],
 ];
 
 function avvia() {
@@ -84,7 +88,7 @@ test('main.js non dereferenzia nessun modulo di route al parse: senza NESSUNO di
 
   for (const globale of ['HirisDashboard', 'HirisTreeRoute', 'HirisMemoryRoute', 'HirisAgendaRoute',
                          'HirisConstructions', 'HirisWatcherRoute', 'HirisUsageRoute', 'HirisModelsRoute',
-                         'HirisSettingsRoute']) {
+                         'HirisSettingsRoute', 'HirisServicesRoute']) {
     assert.equal(typeof window[globale], 'undefined',
       `precondizione: ${globale} non deve essere caricato in questo test`);
   }

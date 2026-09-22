@@ -2147,3 +2147,55 @@
   margin: 0 0 var(--sp-2) 0; font-size: var(--fs-sm); color: var(--text-2);
 }
 .long-list-title:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ────────────────────────────────────────────────────────────
+   «Servizi»: l'accoppiamento (spec 2026-09-21 §7, rifatta il 22/09/2026)
+   ──────────────────────────────────────────────────────────── */
+/* Il codice a quattro cifre. E' il solo fatto verificabile della pagina -- il
+   nome se lo sceglie chi si presenta, il codice si deriva dalla chiave -- e
+   chi lo legge ha il telefono in mano guardando un pannello a due metri:
+   grande, monospazio, e SENZA raggruppamenti. Se il pannello mostra «4813» e
+   HIRIS scrivesse «48 13», il confronto rallenterebbe invece di essere
+   immediato. `--fs-24` e non piu' grande: deve restare una riga di una riga,
+   non diventare l'intestazione della sezione. */
+.section-card .service-code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-24);
+  letter-spacing: 0.12em;
+  color: var(--text);
+  margin: var(--sp-2) 0 2px;
+}
+/* Il pannello dell'approvazione, DENTRO la riga: due menu a tendina
+   nasconderebbero che si sta decidendo qualcosa. Il bordo a sinistra dice che
+   appartiene alla riga sopra e non e' una sezione nuova. */
+.section-card .service-panel {
+  margin: var(--sp-3) 0 var(--sp-2);
+  padding: var(--sp-3) 0 var(--sp-3) var(--sp-4);
+  border-left: 2px solid var(--border);
+  display: flex; flex-direction: column; gap: var(--sp-3);
+}
+.section-card .service-choice {
+  border: 0; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: var(--sp-2);
+}
+.section-card .service-choice > legend {
+  padding: 0;
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-3);
+}
+/* Ogni scelta e' un bersaglio intero, non solo il pallino: su un telefono un
+   radio da 20px circondato da testo non cliccabile e' un bersaglio che si
+   manca. Il testo sta in colonna accanto al pallino -- nome sopra,
+   spiegazione sotto -- perche' e' la spiegazione a far decidere, non il nome. */
+.section-card .service-option {
+  display: flex; align-items: flex-start; gap: var(--sp-3);
+  cursor: pointer;
+  min-height: 44px;
+}
+.section-card .service-option input {
+  width: 20px; height: 20px; flex: 0 0 auto; margin-top: 2px;
+}
+.section-card .service-option > span {
+  display: flex; flex-direction: column; gap: 1px;
+}

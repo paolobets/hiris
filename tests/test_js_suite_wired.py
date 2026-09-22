@@ -34,6 +34,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # senza che nessuno se ne accorga. Chi la riabbassa deve scrivere qui perche',
 # come e' stato fatto ora.
 #
+# fetta «l'accoppiamento» (22/09/2026): la soglia era rimasta a 12 mentre i file
+# erano diventati 36 -- un margine di ventiquattro file cancellabili in silenzio,
+# cioe' la guardia spenta per erosione invece che per decisione, esattamente cio'
+# che il paragrafo qui sotto vieta. Piu' `services-route.test.mjs`, che questa
+# fetta aggiunge: 36 + 1 = 37, CONTATO (`ls tests/js/*.test.mjs | wc -l`), non
+# incrementato a mano. Chi aggiunge o toglie un file conta di nuovo.
+#
 # fetta «la catena diventa l'unica verita'» Task 2: la soglia era rimasta a 8
 # mentre i file erano diventati 11 -- tre file aggiunti dopo la riancora
 # (`chat-page`, `chat-usage-widget`, `chat-usage-non-measured`) senza rialzarla,
@@ -42,7 +49,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # aggiunge (la pagina #/models non aveva alcun test comportamentale, ed e' la
 # pagina che questa fetta riscrive): 11 + 1 = 12. Il numero e' CONTATO, non
 # incrementato a mano -- chi aggiunge o toglie un file conta di nuovo.
-_MIN_JS_TEST_FILES = 12
+_MIN_JS_TEST_FILES = 37
 
 
 def _js_test_files():

@@ -502,7 +502,7 @@ card tile from your dashboard is the one gesture left to you.
 ## Interface
 
 Opening the add-on shows the chat. A configuration panel is served at
-`/config` as a small single-page app with nine live routes:
+`/config` as a small single-page app with ten live routes:
 
 | Route | What it does |
 |---|---|
@@ -515,6 +515,7 @@ Opening the add-on shows the chat. A configuration panel is served at
 | `#/settings` | **Chat settings** — seven of them (name, system prompt, answer shape, reasoning budget, turn cap, retention days, home restriction). The model is **not** chosen here — it is chosen per provider in `#/models`, so one page decides who answers |
 | `#/models` | **Models** — active providers, the automatic chain and the default model per provider |
 | `#/usage` | **Usage** — tokens and cost, or the reason why they cannot be measured |
+| `#/services` | **Services** — who, besides you, may talk to HIRIS: panels and integrations on other machines. Open the ten-minute pairing window, compare the four-digit code the service shows on its own screen, approve it with a role, and revoke it at any time with immediate effect |
 
 Both surfaces share one stylesheet and one palette. The rebuild inventory in
 [`docs/out-of-scope/2026-08-08-frontend-da-rifare.md`](docs/out-of-scope/2026-08-08-frontend-da-rifare.md)

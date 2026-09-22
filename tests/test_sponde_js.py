@@ -101,6 +101,10 @@ def test_i_due_globali_privati_di_api_js_non_sono_dichiarati():
     # e' l'abbonamento) -- stessa specie di `fmtNum`/`fmtEuro` qui sopra, non
     # private come `_setUsageText`.
     assert {"isSubscriptionOnly", "SUBSCRIPTION_ONLY_COST_LABEL"} <= globali
+    # 32 -> 33 con la pagina dei servizi (22/09/2026): `HirisServicesRoute` e'
+    # il namespace di config/services-route.js, letto nudo da config/main.js
+    # come ogni altra route.
+    #
     # 27 -> 32 col taglio della pagina dell'osservatore (18/09/2026): quella
     # pagina e' diventata sei file, e i cinque namespace nuovi
     # (`HirisWatcherShared` piu' i quattro moduli di scheda) sono globali fra
@@ -108,7 +112,7 @@ def test_i_due_globali_privati_di_api_js_non_sono_dichiarati():
     # nell'elenco anche se nessuno li legge NUDI -- il guscio li risolve per
     # nome -- e' scritta accanto a loro in `.oxlintrc.json`: e' il punto 1 di
     # questo stesso cancello a sorvegliarli.
-    assert len(globali) == 32
+    assert len(globali) == 33
 
 
 def test_la_suite_js_esce_anche_quando_un_cronometro_resta_appeso():

@@ -84,6 +84,7 @@
         (route === 'watcher' && hash.indexOf('#/watcher') === 0) ||
         (route === 'usage' && hash.indexOf('#/usage') === 0) ||
         (route === 'models' && hash.indexOf('#/models') === 0) ||
+        (route === 'services' && hash.indexOf('#/services') === 0) ||
         /* fetta E5 Task 2: qui c'era un ramo `settings` orfano -- nessuna
            voce di nav con data-route="settings" (tolta in v0.10.5) e nessuna
            route `#/settings` registrata sotto, quindi la condizione non
@@ -193,6 +194,21 @@
       HirisModelsRoute.mount();
     } else {
       document.getElementById('route-outlet').innerHTML = '<h1 class="page-title">Modelli</h1>';
+    }
+  });
+  /* fetta «l'accoppiamento» (22/09/2026): la pagina dei servizi esterni --
+     vedi config/services-route.js per il perche'. E' l'unica route di questa
+     SPA che si RILEGGE da sola: le righe in attesa arrivano da un'altra
+     macchina mentre la finestra e' aperta, e chi dovesse ricaricare per
+     vederle penserebbe che l'accoppiamento non funziona. Il giro si ferma da
+     se' quando la finestra si chiude o quando si lascia la pagina. */
+  HirisRouter.register(/^#\/services\/?$/, function() {
+    setCrumbHere('Servizi');
+    if (window.HirisServicesRoute) {
+      HirisServicesRoute.mount();
+    } else {
+      document.getElementById('route-outlet').innerHTML =
+        '<h1 class="page-title">Servizi</h1>';
     }
   });
   /* fetta "esce il documentale": qui era registrata la route #/history
