@@ -94,6 +94,17 @@ ripiego), la suite intera, e poi la prova che il pin arriva davvero dentro il co
 `GET /api/health` deve rispondere `ponte.cli: "2.1.278"`. Il ripiego dichiarato resta la
 **2.1.276**, l'ultima di cui esista una lettura vera.
 
+**Rimandata di nuovo il 22/09/2026, con la v3.59.0** (`HIRIS_COMPONENTI_OK=1`, dichiarato qui e nel
+rilascio): quella versione porta l'accoppiamento dei servizi, ed è una fetta di sicurezza — far
+salire lì una dipendenza non provata è esattamente ciò che la regola vieta.
+
+**Ma la voce va letta come sta scritta adesso**: «nel prossimo rilascio» è stato scritto il
+20/09 e da allora sono passati **otto rilasci** (3.51.0 → 3.59.0). Una voce che dice «il
+prossimo» per otto volte non sta rimandando: sta dicendo il falso, e il rimando è diventato il
+comportamento predefinito invece che una decisione. Il prossimo rilascio che **non** porti una
+fetta di sicurezza la prende, oppure si dichiara qui che la 2.1.276 è il pin scelto e il cancello
+si riancora — non c'è una terza risposta onesta.
+
 ### La CLI del ponte e' salita alla 2.1.267 — CHIUSA il 10/09/2026
 
 **Aperta e chiusa nello stesso giorno.** Il cancello

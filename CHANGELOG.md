@@ -1,5 +1,62 @@
 # HIRIS — Changelog
 
+## [3.59.0] — L'accoppiamento (2026-09-22)
+
+Il campo di testo nelle opzioni dell'add-on **esce**. Il proprietario l'ha respinto per tre ragioni
+che nessuna riscrittura poteva togliergli: ogni modifica riavvia l'add-on, revocare significava
+editare un blob di testo, e soprattutto **non si vedeva mai il momento in cui un servizio si
+presenta la prima volta** — l'autorizzazione era già data prima che il servizio esistesse.
+
+È il terzo punto a rendere «by design» questo disegno, e non è la crittografia.
+
+### Come si accoppia un servizio, adesso
+
+Apri una **finestra di dieci minuti** dalla pagina «Servizi». Il servizio genera la propria coppia
+di chiavi sulla sua macchina — **la privata non esce da lì, mai** — e si presenta con la pubblica.
+Presentarsi **non autorizza**: mette in coda una riga con un **codice di quattro cifre derivato
+dalla chiave**, che il servizio mostra a sua volta sul proprio schermo. Se i due coincidono, stai
+accoppiando QUEL servizio e non qualcuno che si è messo in mezzo. Poi approvi, scegliendo il ruolo
+(`utente`, `lettore`, `amministratore`) e la specie; e revochi quando vuoi, con effetto immediato.
+
+Il codice si deriva dalla chiave e non è casuale: un codice casuale richiederebbe un secondo
+scambio, e quel secondo scambio sarebbe esattamente il punto in cui qualcuno si mette in mezzo.
+
+### L'unica superficie non autenticata non esiste quasi mai
+
+`POST /api/services/present` non si può autenticare, e deve essere così: un servizio non ancora
+approvato **non ha modo** di autenticarsi. Invece di difenderla per sempre — tetti sulle righe,
+limiti di ritmo — si è scelto di **non farla esistere**: il confine la esenta solo nei dieci minuti
+in cui la finestra è aperta, e fuori di lì risponde 401 come qualunque altra rotta.
+
+Una difesa permanente invecchia. Una porta chiusa no.
+
+### La pagina
+
+Tre sezioni e non un elenco unico, perché i tre stati sono tre lavori diversi: «in attesa» è una
+decisione da prendere adesso, «accoppiato» è un registro, «revocato» è una memoria. Il codice è in
+monospazio e grande, senza raggruppamenti — chi lo legge ha il telefono in mano e sta guardando un
+pannello a due metri. La riga dice «Si presenta come …» e non afferma il nome: il nome se lo sceglie
+chi si presenta, l'unico fatto è il codice.
+
+**«Rifiuta»** su una riga in attesa, perché scoprire che il codice non coincide doveva avere una
+risposta diversa dall'aspettare ventiquattro ore. **«Riammetti»** su una revocata, perché
+ripresentarsi non rimette in coda un revocato e un click sbagliato sarebbe stato definitivo.
+
+È l'unica pagina della configurazione che si rilegge da sola: ogni cinque secondi, e **solo** mentre
+la finestra è aperta.
+
+### Un archivio lasciato aperto, e il cancello che l'ha trovato
+
+`_on_cleanup` chiudeva gli archivi SQLite da un elenco **scritto a mano**, e ne mancavano due:
+`servizi` (nato oggi) e **`usage` (da mesi)**. Un file lasciato aperto resta bloccato, e il difetto
+compare al riavvio successivo — che su un add-on succede a ogni aggiornamento. Ora l'elenco si
+**chiede al codice**, e nessun archivio nuovo può più dimenticarsi.
+
+### Le prove
+
+Trentasette mutazioni eseguite, tutte rosse. Una era verde, e la sua riga mentiva: la mutazione
+scritta accanto alla prova non mutava niente. Corretta con quella vera, e scritto perché.
+
 ## [3.58.1] — L'analista torna a parlare (2026-09-22)
 
 Trovato **dal vivo**, leggendo il registro dell'add-on sulla casa vera. L'analista non scriveva
