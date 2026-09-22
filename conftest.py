@@ -1,6 +1,5 @@
 import os
 
-import pytest
 import pytest_asyncio
 
 # Allow unauthenticated non-ingress requests in the test suite.
@@ -13,45 +12,19 @@ os.environ.setdefault("HIRIS_ALLOW_NO_TOKEN", "1")
 os.environ.setdefault("HIRIS_ALLOW_NO_CSRF", "1")
 
 
-# --- Fingere l'ingress del Supervisor, dal 22/09/2026 -----------------------
+# --- Fingere l'ingress del Supervisor --------------------------------------
 #
-# Dal reperto A-2 scrivere `X-Ingress-Path` non basta piu': il confine chiede
-# al Supervisor se riconosce il biscotto di sessione. Le prove che fingono una
-# richiesta di ingress devono quindi portare un biscotto E avere un Supervisor
-# a cui chiederlo.
+# Qui, per poche ore del 22/09/2026, e' vissuto un Supervisor finto che
+# rispondeva alla verifica della sessione. Quella verifica e' uscita: la rotta
+# `/ingress/validate_session` e' riservata a Home Assistant Core e risponde 403
+# a un add-on -- il proprietario e' rimasto chiuso fuori dal proprio pannello
+# finche' la 3.60.1 non l'ha tolta.
 #
-# **Sta qui e non in ogni file** per una ragione sola: una prova nuova che
-# finge l'ingress deve trovare l'attrezzo gia' pronto. Se ognuno se lo
-# riscrivesse, il primo che lo scrivesse accomodante -- un Supervisor che dice
-# sempre di si' -- renderebbe verde proprio il difetto che A-2 chiude, e
-# nessuno se ne accorgerebbe.
-#
-# **Non e' `autouse`, ed e' deliberato**: il Supervisor finto deve entrare in
-# scena solo dove una prova lo chiede. Un finto sempre acceso trasformerebbe
-# «l'ingress e' verificato» in «l'ingress passa», che e' l'opposto.
-
-#: La sessione che il Supervisor finto riconosce, e l'unica.
-SESSIONE_INGRESS = "sessione-che-il-supervisor-conosce"
-
-#: I biscotti da mandare con una richiesta di ingress finta.
-BISCOTTI_INGRESS = {"ingress_session": SESSIONE_INGRESS}
-
-
-@pytest.fixture()
-def supervisor_ingress(monkeypatch):
-    """Un Supervisor che riconosce UNA sessione: `SESSIONE_INGRESS`.
-
-    Qualunque altro valore e' «no», che e' il caso dell'add-on vicino: puo'
-    scrivere l'intestazione, puo' stare nella rete fidata, non puo' avere un
-    biscotto che il Supervisor conosce.
-    """
-    from hiris.app.api import ingresso
-
-    async def chiedi(sessione):
-        return sessione == SESSIONE_INGRESS
-
-    monkeypatch.setattr(ingresso, "_domanda_supervisor", chiedi)
-    return BISCOTTI_INGRESS
+# **Fingere l'ingress adesso vuol dire una cosa sola**: arrivare dall'indirizzo
+# di cui l'app si fida, che ogni prova dichiara in
+# `app["supervisor_ingress_cidrs"]`. Non serve nessuna finta, e non averne una
+# e' meglio: una finta accomodante renderebbe verde proprio il difetto che A-2
+# esiste per chiudere.
 
 
 def credenziale_ponte(app, segreto: str) -> dict:

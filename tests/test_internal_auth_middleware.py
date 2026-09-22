@@ -43,7 +43,9 @@ def _make_app(tmp_path, cidrs=None):
     # on_startup is cleared below, so wire the CR-1 trusted-CIDR list manually.
     # Default 172.30.32.0/23 does NOT include the test client's loopback IP, so
     # X-Ingress-Path alone must not bypass auth (that is the CR-1 fix).
-    app["supervisor_ingress_cidrs"] = cidrs or ["172.30.32.0/23"]
+    # L'indirizzo esatto del proxy: e' cio' che in produzione
+    # `reti_di_fiducia` risolve dal nome «supervisor» (reperto A-2).
+    app["supervisor_ingress_cidrs"] = cidrs or ["172.30.32.2/32"]
     app.on_startup.clear()
     app.on_cleanup.clear()
     return app
@@ -62,7 +64,7 @@ async def client_trust_loopback(aiohttp_client, tmp_path):
     richiesta di ingress genuina (intestazione + indirizzo fidato + sessione
     che il Supervisor riconosce) passa."""
     return await aiohttp_client(
-        _make_app(tmp_path, cidrs=["127.0.0.0/8", "::1/128"])
+        _make_app(tmp_path, cidrs=["127.0.0.1/32", "::1/128"])
     )
 
 
@@ -124,7 +126,7 @@ async def test_una_credenziale_di_TURNO_apre(client, tmp_path):
 
 @pytest.mark.asyncio
 async def test_ingress_path_from_trusted_source_bypasses_auth(
-    client_trust_loopback, supervisor_ingress
+    client_trust_loopback
 ):
     """Genuine ingress bypasses the token check.
 
@@ -136,27 +138,24 @@ async def test_ingress_path_from_trusted_source_bypasses_auth(
     resp = await client_trust_loopback.get(
         "/api/health",
         headers={"X-Ingress-Path": "/api/hassio_ingress/hiris",
-                 "Cookie": "ingress_session=sessione-che-il-supervisor-conosce"},
+     },
     )
     assert resp.status == 200
 
 
 @pytest.mark.asyncio
-async def test_a2_ingress_senza_sessione_valida_non_passa(client_trust_loopback):
-    """**Il reperto A-2.** Intestazione giusta, indirizzo fidato, e nessuna
-    sessione che il Supervisor conosca: non passa.
+async def test_a2_un_indirizzo_che_non_e_il_proxy_non_passa(client):
+    """**Il reperto A-2.** Intestazione giusta, e un indirizzo che non e'
+    quello del proxy: non passa.
 
-    E' il caso dell'add-on vicino, che sta nella rete del Supervisor per
-    costruzione -- e se il tunnel che pubblica la casa gira come add-on, il
-    caso normale, e' il suo indirizzo.
+    `client` si fida solo di `172.30.32.2/32` -- cio' che in produzione
+    `reti_di_fiducia` risolve dal nome «supervisor» -- e la suite chiama da
+    loopback.
 
-    Mutazione ESEGUITA: tolta la verifica della sessione dal confine -- rossa
-    (200 invece di 401)."""
-    resp = await client_trust_loopback.get(
-        "/api/health",
-        headers={"X-Ingress-Path": "/api/hassio_ingress/hiris",
-                 "Cookie": "ingress_session=rubata-mai-esistita"},
-    )
+    Mutazione ESEGUITA: rimessa la rete `/23` fra quelle fidate -- rossa."""
+    resp = await client.get(
+        "/api/health", headers={"X-Ingress-Path": "/api/hassio_ingress/hiris"})
+
     assert resp.status == 401
 
 
@@ -216,13 +215,13 @@ async def test_ingress_path_arbitrary_value_does_not_bypass(client):
 
 @pytest.mark.asyncio
 async def test_ingress_path_real_supervisor_token_pattern_passes(
-    client_trust_loopback, supervisor_ingress
+    client_trust_loopback
 ):
     """Real Supervisor format /api/hassio_ingress/<random-token>/ from a trusted
     source, con la sessione che il Supervisor riconosce (A-2), passa."""
     resp = await client_trust_loopback.get(
         "/api/health",
         headers={"X-Ingress-Path": "/api/hassio_ingress/AbCdEf123-XyZ_456/",
-                 "Cookie": "ingress_session=sessione-che-il-supervisor-conosce"},
+     },
     )
     assert resp.status == 200

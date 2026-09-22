@@ -1,5 +1,33 @@
 # HIRIS — Changelog
 
+## [3.60.1] — La verifica che non potevo fare (2026-09-22)
+
+**Correzione urgente della 3.60.0, che chiudeva il proprietario fuori dal proprio pannello.**
+
+Per stringere il perimetro dell'ingress, la 3.60.0 chiedeva al Supervisor se riconoscesse il
+biscotto di sessione. La rotta esiste, il contratto è quello, e il biscotto arriva davvero
+all'add-on: tutto verificato sulla sorgente prima di scrivere una riga. **Ma quella rotta è
+riservata a Home Assistant Core** — in `supervisor/api/middleware/security.py` non combacia con
+nessuna lista permissiva e cade nel controllo finale, che nega. Il Supervisor rispondeva **403**, e
+HIRIS trattava ogni richiesta del pannello come se venisse da un estraneo.
+
+Era stata verificata l'esistenza della rotta e il suo contratto, **non** che il nostro chiamante
+avesse il diritto di chiamarla. Una verifica che si ferma un gradino prima di «e io, posso?» non ha
+verificato la cosa che serviva.
+
+### Cosa fa adesso
+
+Si risolve il nome `supervisor` e ci si fida di **quell'indirizzo soltanto**. È lui a inoltrare
+l'ingress, e la differenza con prima è tutta lì: non più la rete Docker intera, dove vive ogni
+add-on installato — il buco che il reperto A-2 descriveva.
+
+L'indirizzo si **risolve** invece di ricopiarlo in una costante: un indirizzo scritto a mano diventa
+falso il giorno in cui cambia, e quel giorno l'ingress smetterebbe di funzionare senza dire perché.
+
+E se la risoluzione non riesce, si torna alle reti configurate **dichiarandolo nel registro**, che
+all'avvio dice sempre di quanto ci si sta fidando oggi. È la riga che alla 3.60.0 mancava: un guasto
+nella verifica non deve poter chiudere il proprietario fuori dal proprio pannello.
+
 ## [3.60.0] — Il perimetro (2026-09-22)
 
 Fetta 3 dello sprint sicurezza: tre reperti del registro dei rischi, che sono lo stesso lavoro visto

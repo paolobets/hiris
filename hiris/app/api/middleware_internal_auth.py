@@ -31,25 +31,17 @@ def _supervisor_cidrs(request: web.Request) -> list[str]:
 async def _is_supervisor_ingress(request: web.Request) -> bool:
     """Se questa richiesta viene DAVVERO dall'ingress del Supervisor.
 
-    **Tre controlli, e il terzo e' l'unico che dimostra qualcosa** (reperto A-2,
-    chiuso il 22/09/2026):
+    **Due controlli, e il secondo e' quello che stringe** (reperto A-2):
 
-    1. `X-Ingress-Path` c'e' e ha la forma del Supervisor;
-    2. l'indirizzo sorgente sta in una rete fidata;
-    3. **il Supervisor riconosce il biscotto di sessione.**
+    1. `X-Ingress-Path` c'e' e ha la forma del Supervisor -- che chiunque puo'
+       scrivere, quindi da solo non dimostra niente;
+    2. l'indirizzo sorgente e' quello di cui ci si fida, e dal 22/09/2026
+       quello e' **l'indirizzo a cui risponde il nome «supervisor»**, risolto
+       all'avvio: uno solo, non la rete Docker intera dove vive ogni add-on
+       installato.
 
-    I primi due sembrano stretti e non lo sono: l'intestazione la scrive
-    chiunque, e la rete predefinita non e' l'indirizzo del proxy -- e' la rete
-    Docker in cui vive **ogni add-on installato**. Se il tunnel che pubblica la
-    casa gira come add-on (il caso normale), il suo indirizzo e' li' dentro, e
-    fino a oggi gli bastava scrivere un'intestazione per avere `/api/*` intero.
-
-    Il terzo chiude quel buco: un add-on vicino puo' falsificare l'intestazione
-    e puo' stare nella rete, ma non puo' avere un biscotto che il Supervisor
-    riconosce senza averlo rubato a una persona.
-
-    I primi due restano perche' costano zero e fermano prima cio' che non deve
-    nemmeno arrivare a una chiamata di rete.
+    Un add-on vicino puo' falsificare l'intestazione. Non puo' presentarsi
+    dall'indirizzo del Supervisor.
     """
     ingress_path = request.headers.get("X-Ingress-Path", "")
     if not ingress_path or not _INGRESS_PATH_RE.match(ingress_path):
@@ -77,16 +69,15 @@ async def _is_supervisor_ingress(request: web.Request) -> bool:
         )
         return False
 
-    # **Il controllo che dimostra qualcosa.** Vedi il docstring: i due qui sopra
-    # non distinguono il proxy da un add-on vicino, questo si'.
-    from .ingresso import BISCOTTO, sessione_valida
-
-    if not await sessione_valida(request.app, request.cookies.get(BISCOTTO, "")):
-        logger.warning(
-            "ingress: %s porta l’intestazione del proxy ma non una sessione "
-            "che il Supervisor riconosce — trattata come richiesta diretta",
-            remote)
-        return False
+    # **Qui la 3.60.0 chiedeva al Supervisor di verificare la sessione, e il
+    # Supervisor rispondeva 403.** Quella rotta e' riservata a Home Assistant
+    # Core: nessun ruolo di add-on la apre. Il risultato e' stato il
+    # proprietario chiuso fuori dal proprio pannello -- vedi `api/ingresso.py`,
+    # dove la lezione sta scritta per esteso.
+    #
+    # A stringere e' adesso l'INDIRIZZO: `reti_di_fiducia` crede al solo
+    # indirizzo a cui risponde il nome «supervisor», non alla rete Docker
+    # intera dove vive ogni add-on installato.
     return True
 
 

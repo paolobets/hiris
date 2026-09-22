@@ -10,35 +10,47 @@ vicino manda l'intestazione e ottiene `/api/*` per intero senza conoscere nessun
 segreto -- e se il tunnel che pubblica la casa gira come add-on (Cloudflared,
 Tailscale: il caso normale), il suo indirizzo e' li' dentro.
 
-**La risposta vera e' il biscotto di sessione.** Verificato il 22/09/2026 sulla
-sorgente del Supervisor, non supposto:
+**La strada che sembrava giusta e NON si puo' percorrere.** Il Supervisor ha
+una rotta per questo -- `POST /ingress/validate_session`, corpo
+`{"session": "<valore>"}` -- e il biscotto arriva davvero all'add-on
+(`_init_header()` filtra dodici intestazioni e il biscotto non e' fra quelle).
+Sembrava la risposta, ed e' stata rilasciata nella 3.60.0.
 
-- `supervisor/api/__init__.py` registra
-  `web.post("/ingress/validate_session", api_ingress.validate_session)`;
-- il corpo e' `{"session": "<valore>"}`, l'autenticazione e' il
-  `SUPERVISOR_TOKEN` come `Bearer`, e la risposta e' 200 oppure 401;
-- `handler()` legge la sessione da `request.cookies.get(COOKIE_INGRESS, "")`,
-  dove `COOKIE_INGRESS = "ingress_session"`;
-- `_init_header()` filtra dodici intestazioni prima di inoltrare, e **il
-  biscotto non e' fra quelle**: arriva all'add-on.
+**Non e' chiamabile da un add-on.** Il Supervisor ha risposto **403** al primo
+tentativo vero, e la sorgente dice perche': in
+`supervisor/api/middleware/security.py` le due rotte `/ingress/session` e
+`/ingress/validate_session` non combaciano con nessuna delle liste permissive
+-- il solo schema che le somiglia e' `/ingress/[-_A-Za-z0-9]+/.*`, che pretende
+uno slug in mezzo -- quindi cadono nel controllo finale, dove passa soltanto
+Home Assistant Core. **Nessun ruolo di add-on la apre**, e non e' una cosa che
+si aggiusta con un permesso in `config.yaml`.
 
-Un add-on vicino puo' falsificare `X-Ingress-Path` e puo' trovarsi nel `/23`.
-Non puo' avere un biscotto che il Supervisor riconosce senza averlo **rubato a
-una persona** -- e a quel punto ha gia' la sessione di quella persona su Home
-Assistant, cioe' il problema non e' piu' HIRIS.
+**La lezione, scritta qui perche' non si ripeta**: era stata verificata
+l'esistenza della rotta, il suo contratto e il percorso del biscotto -- tutto
+vero -- e **non** che il nostro chiamante avesse il diritto di chiamarla. Una
+verifica che si ferma un gradino prima di «e io, posso?» e' una verifica che
+non ha verificato la cosa che serviva.
 
-**Una cosa da sapere su `validate_session`**: allunga la sessione di quindici
-minuti a ogni chiamata. Non e' un effetto che introduciamo noi -- il proxy la
-chiama gia' per ogni richiesta che inoltra, quindi quando HIRIS la vede la
-sessione e' stata appena allungata comunque. La cache qui sotto esiste per non
-aggiungere una chiamata di rete a ogni richiesta, non per evitare quell'effetto.
+## Cosa si fa invece: **l'indirizzo esatto del proxy, risolto**
+
+A inoltrare l'ingress e' il Supervisor, e il suo nome nella rete Docker e'
+`supervisor`. Risolvendolo si ottiene **un solo indirizzo**, e quello si fida:
+non la rete Docker intera, dove vive ogni add-on installato.
+
+**Si risolve, non si ricopia.** Scrivere `172.30.32.2/32` in una costante
+sarebbe un fatto copiato, che diventa falso il giorno in cui quell'indirizzo
+cambia -- e quel giorno l'ingress smetterebbe di funzionare senza dire perche'.
+Chiederlo al risolutore lo tiene vero da solo.
+
+E **se la risoluzione non riesce** si torna alle reti configurate, dichiarandolo
+nel registro: senza quel ripiego un guasto del risolutore chiuderebbe il
+proprietario fuori dal suo pannello -- che e' esattamente quello che la 3.60.0
+ha fatto, e non deve poter succedere di nuovo per una via diversa.
 """
 from __future__ import annotations
 
 import ipaddress
 import logging
-import os
-import time
 
 logger = logging.getLogger(__name__)
 
@@ -52,14 +64,10 @@ RETE_PREDEFINITA = "172.30.32.0/23"
 #: crede di aver ristretto mentre ha aperto.
 PREFISSO_MINIMO = 16
 
-#: Il nome del biscotto, da `supervisor/api/ingress.py::COOKIE_INGRESS`.
-BISCOTTO = "ingress_session"
-
-#: Per quanto si ricorda l'esito di una sessione. Corto: una sessione revocata
-#: deve smettere di valere in fretta, e la sessione del Supervisor dura quindici
-#: minuti — ricordarne l'esito per piu' di un minuto vorrebbe dire servirne una
-#: morta per una frazione apprezzabile della sua vita.
-RICORDO_S = 60.0
+#: Il nome con cui il Supervisor si fa trovare nella rete Docker. E' lui a
+#: inoltrare l'ingress, quindi e' il suo indirizzo -- e nessun altro -- che va
+#: creduto.
+SUPERVISOR = "supervisor"
 
 
 def reti_fidate(testo: str) -> tuple[list, list[str]]:
@@ -104,85 +112,57 @@ def reti_fidate(testo: str) -> tuple[list, list[str]]:
     return reti, rifiuti
 
 
-def prepara_ingresso(app) -> None:
-    """I contenitori nascono quando l'app si compone, non alla prima richiesta.
+def indirizzo_proxy(risolutore=None) -> str:
+    """L'indirizzo del Supervisor, **risolto** — stringa vuota se non si può.
 
-    Scrivere in `app[...]` a richiesta già servita è deprecato in aiohttp 3 e un
-    errore in aiohttp 4 — la stessa ragione per cui nascono lì le credenziali
-    effimere, i valori irripetibili già visti e la cache dei ruoli.
+    È lui a inoltrare l'ingress: fidarsi di quel solo indirizzo invece che
+    della rete Docker intera è la differenza fra «il proxy» e «ogni add-on
+    installato».
+
+    Torna una stringa vuota invece di sollevare: fuori dal Supervisor quel nome
+    non esiste, ed è normale.
     """
-    app["sessioni_ingress"] = {}
+    import socket
 
-
-def _pota(ricordi: dict, adesso: float) -> None:
-    for chiave in [c for c, (_, quando) in ricordi.items()
-                   if adesso - quando > RICORDO_S]:
-        del ricordi[chiave]
-
-
-async def sessione_valida(app, sessione: str, *, adesso: float | None = None) -> bool:
-    """Se il Supervisor riconosce questa sessione di ingress.
-
-    **Chiude per difetto in ogni verso**: nessun biscotto, nessun token del
-    Supervisor, il Supervisor che non risponde, una risposta che non è 200 —
-    tutti «no». E non è severità gratuita: una richiesta arrivata *attraverso*
-    il proxy dimostra che il Supervisor era vivo un istante prima, quindi un
-    guasto di rete proprio lì è già anomalo. Il ripiego sarebbe esattamente il
-    buco che questa funzione esiste per chiudere.
-    """
-    adesso = time.time() if adesso is None else adesso
-    sessione = str(sessione or "").strip()
-    if not sessione:
-        return False
-
-    ricordi = app.get("sessioni_ingress")
-    if ricordi is not None:
-        _pota(ricordi, adesso)
-        ricordato = ricordi.get(sessione)
-        if ricordato is not None:
-            return ricordato[0]
-
-    # **La guardia sta QUI e non dentro la domanda**, ed e' una scelta: questa
-    # funzione sta sul percorso di ogni richiesta di ingress, quindi e' lei che
-    # non deve poter sollevare. Metterla nella domanda lascerebbe scoperto il
-    # giorno in cui qualcuno aggiunge una seconda riga qui sopra.
+    risolvi = risolutore or socket.gethostbyname
     try:
-        esito = await _domanda_supervisor(sessione)
-    except Exception as errore:
-        logger.warning(
-            "ingress: non ho potuto verificare la sessione col Supervisor "
-            "(%s) — rifiuto, perché il ripiego sarebbe proprio il buco che "
-            "questa verifica chiude", errore.__class__.__name__)
-        return False
-    if ricordi is not None:
-        ricordi[sessione] = (esito, adesso)
-    return esito
+        return str(risolvi(SUPERVISOR) or "")
+    except Exception:
+        return ""
 
 
-async def _domanda_supervisor(sessione: str) -> bool:
-    token = os.environ.get("SUPERVISOR_TOKEN", "").strip()
-    if not token:
-        logger.warning(
-            "ingress: non ho il token del Supervisor, quindi non posso "
-            "verificare nessuna sessione — le richieste di ingress sono "
-            "rifiutate. Fuori dal Supervisor questo è normale; dentro, è un "
-            "guasto dell'add-on")
-        return False
+def perimetro_fidato(testo: str, risolutore=None) -> tuple[list, list[str], str]:
+    """Le reti da credere — `(reti, rifiuti, come)`.
 
-    import aiohttp
+    **L'indirizzo risolto vince su tutto**: se il Supervisor risponde al suo
+    nome, si crede quel solo indirizzo. Le voci scritte nelle opzioni restano
+    per chi ha un impianto fuori dall'ordinario, e valgono quando la
+    risoluzione non riesce.
 
-    timeout = aiohttp.ClientTimeout(total=5)
-    async with aiohttp.ClientSession(timeout=timeout) as sessione_http, sessione_http.post(
-            "http://supervisor/ingress/validate_session",
-            json={"session": sessione},
-            headers={"Authorization": f"Bearer {token}"}) as risposta:
-        if risposta.status == 200:
-            return True
-        # Il 401 e' la risposta NORMALE a una sessione che non esiste: non
-        # si registra come guasto, o il registro si riempirebbe a ogni
-        # biscotto scaduto in un browser lasciato aperto.
-        if risposta.status != 401:
-            logger.warning(
-                "ingress: il Supervisor ha risposto %s alla verifica "
-                "della sessione — rifiuto", risposta.status)
-        return False
+    `come` è ciò che il registro dichiara all'avvio: chi legge deve poter
+    sapere **quanto è largo** il perimetro di oggi senza andarlo a dedurre.
+    """
+    import ipaddress as _ip
+
+    indirizzo = indirizzo_proxy(risolutore)
+    if indirizzo:
+        try:
+            rete = _ip.ip_network(f"{indirizzo}/32", strict=False)
+            return [rete], [], f"l’indirizzo del Supervisor, risolto: {indirizzo}"
+        except (ValueError, TypeError):
+            pass
+
+    reti, rifiuti = reti_fidate(testo)
+    return reti, rifiuti, (
+        "le reti scritte nelle opzioni (il nome «supervisor» non si è risolto): "
+        + ", ".join(str(r) for r in reti) if reti
+        else "nessuna rete: il nome «supervisor» non si è risolto e le opzioni "
+             "non hanno nessuna voce valida")
+def prepara_ingresso(app) -> None:
+    """Qui nasceva la cache delle sessioni verificate col Supervisor.
+
+    È uscita con la verifica che la riempiva: `validate_session` è riservata a
+    Home Assistant Core, quindi quella cache non avrebbe mai avuto niente da
+    ricordare. La funzione resta, vuota e dichiarata, perché `server.py` la
+    chiama e perché il posto dove i contenitori nascono è uno solo.
+    """

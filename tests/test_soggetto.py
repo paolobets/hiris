@@ -32,9 +32,6 @@ from hiris.app.api.middleware_internal_auth import internal_auth_middleware
 from hiris.app.api.servizi import ServiziStore
 
 _INGRESS = "/api/hassio_ingress/abc123/"
-#: Il biscotto che il proxy inoltra. Dal 22/09/2026 non basta piu' scrivere
-#: `X-Ingress-Path`: il Supervisor deve riconoscere QUESTA sessione (A-2).
-_SESSIONE = {"ingress_session": "s-vera"}
 _INTESTAZIONI = {"X-Remote-User-Id": "u-42",
                  "X-Remote-User-Name": "paolo",
                  "X-Remote-User-Display-Name": "Paolo Bets"}
@@ -43,20 +40,21 @@ _INTESTAZIONI = {"X-Remote-User-Id": "u-42",
 class _Richiesta(dict):
     """Una richiesta finta, quanto basta al middleware."""
 
-    def __init__(self, *, headers, remote, token="", biscotti=None):
+    def __init__(self, *, headers, remote, token=""):
         super().__init__()
         self.headers = headers
         self.remote = remote
-        # Dal 22/09/2026 il confine legge il biscotto di sessione dell'ingress
-        # (reperto A-2): una finta senza `cookies` si difenderebbe da un mondo
-        # che non esiste, ed e' proprio il campo su cui si decide.
-        self.cookies = dict(biscotti or {})
         # `method` e `path` ci sono sempre in una richiesta vera, e il confine
         # li nomina: una finta senza si difenderebbe da un mondo che non esiste.
         self.method = "GET"
         self.path = "/api/entities"
         self.app = {"internal_token": token,
-                    "supervisor_ingress_cidrs": ["172.30.32.0/23"],
+                    # **L'indirizzo ESATTO del proxy**, che in produzione
+                    # `reti_di_fiducia` risolve dal nome «supervisor». La rete
+                    # `/23` di prima comprendeva ogni add-on installato: era
+                    # il reperto A-2, e una finta che la tenesse proverebbe un
+                    # mondo che il prodotto non esegue piu'.
+                    "supervisor_ingress_cidrs": ["172.30.32.2/32"],
                     "canali_visti": {}, "servizi": None,
                     "sessioni_ingress": {}}
 
@@ -71,23 +69,6 @@ def confine_vero(monkeypatch):
     riga passavano con `auth_via` a «no_token».
     """
     monkeypatch.delenv("HIRIS_ALLOW_NO_TOKEN", raising=False)
-
-
-@pytest.fixture(autouse=True)
-def supervisor(monkeypatch):
-    """Il Supervisor, ridotto all'unica domanda che il confine gli fa.
-
-    **Autouse, e riconosce UNA sessione sola.** Una finta accomodante che
-    dicesse sempre di si' renderebbe verde anche il difetto che il reperto A-2
-    esiste per chiudere: un add-on vicino che scrive l'intestazione senza avere
-    nessun biscotto.
-    """
-    from hiris.app.api import ingresso
-
-    async def chiedi(sessione):
-        return sessione == "s-vera"
-
-    monkeypatch.setattr(ingresso, "_domanda_supervisor", chiedi)
 
 
 async def _passa(richiesta):
@@ -111,7 +92,7 @@ async def test_una_richiesta_di_ingress_porta_il_soggetto():
     """
     _, visto = await _passa(_Richiesta(
         headers={"X-Ingress-Path": _INGRESS, **_INTESTAZIONI},
-        remote="172.30.32.2", biscotti=_SESSIONE))
+        remote="172.30.32.2"))
 
     assert visto["auth_via"] == "ingress"
     assert visto["soggetto"]["id"] == "u-42"
@@ -123,40 +104,26 @@ async def test_un_ADD_ON_VICINO_non_diventa_il_proprietario(confine_vero):
     """**Il reperto A-2, e il motivo per cui questo file e' cambiato il
     22/09/2026.**
 
-    La rete «fidata» predefinita non e' l'indirizzo del proxy: e' la rete
-    Docker in cui vive OGNI add-on installato. Un add-on vicino sta dentro quel
-    `/23` per costruzione, e fino a oggi gli bastava scrivere `X-Ingress-Path`
-    -- una stringa, non un segreto -- per ottenere `/api/*` per intero **con
+    La rete «fidata» di prima non era l'indirizzo del proxy: era la rete
+    Docker in cui vive OGNI add-on installato. Un add-on vicino stava dentro
+    quel `/23` per costruzione, e gli bastava scrivere `X-Ingress-Path` -- una
+    stringa, non un segreto -- per ottenere `/api/*` per intero **con
     l'identita' che si sceglieva lui**. E se il tunnel che pubblica la casa
-    gira come add-on, il caso normale, quell'indirizzo e' il suo.
+    gira come add-on, il caso normale, quell'indirizzo era il suo.
 
-    Qui ha tutto: l'intestazione giusta, l'indirizzo giusto, e perfino un
-    biscotto -- ma un biscotto che il Supervisor non conosce.
+    Qui ha l'intestazione giusta e un indirizzo della rete del Supervisor.
+    Non ha **l'indirizzo del Supervisor**, che e' l'unico di cui ci si fida.
 
-    Mutazione ESEGUITA: tolta la verifica della sessione dal confine -- rossa
+    Mutazione ESEGUITA: rimessa la rete `/23` fra quelle fidate -- rossa
     (`auth_via` torna «ingress» e il soggetto diventa «u-42»).
     """
     esito, visto = await _passa(_Richiesta(
         headers={"X-Ingress-Path": _INGRESS, **_INTESTAZIONI},
-        remote="172.30.32.9",
-        biscotti={"ingress_session": "rubata-mai-esistita"}))
+        remote="172.30.32.9"))
 
     assert visto.get("auth_via") != "ingress", (
         "un add-on vicino e' diventato una persona di Home Assistant")
     assert esito != "ok", "ed e' pure passato"
-
-
-@pytest.mark.asyncio
-async def test_l_intestazione_SENZA_biscotto_non_basta(confine_vero):
-    """La forma piu' semplice dello stesso attacco: nessun biscotto affatto.
-
-    Mutazione: accettare quando il biscotto manca -- rossa."""
-    esito, visto = await _passa(_Richiesta(
-        headers={"X-Ingress-Path": _INGRESS, **_INTESTAZIONI},
-        remote="172.30.32.2"))
-
-    assert visto.get("auth_via") != "ingress"
-    assert esito != "ok"
 
 
 @pytest.mark.asyncio
@@ -195,8 +162,7 @@ async def test_un_ingress_SENZA_identita_da_un_soggetto_anonimo_non_nessuno():
     campo vuoto si confondono al primo lettore distratto; due parole diverse no.
     """
     _, visto = await _passa(_Richiesta(
-        headers={"X-Ingress-Path": _INGRESS}, remote="172.30.32.2",
-        biscotti=_SESSIONE))
+        headers={"X-Ingress-Path": _INGRESS}, remote="172.30.32.2"))
 
     assert visto["soggetto"] is not None
     assert visto["soggetto"]["specie"] == "persona"
@@ -213,8 +179,7 @@ async def test_il_soggetto_dice_sempre_di_che_SPECIE_e(archivio):
     dedurla e' il modo in cui due strade diventano una per distrazione).
     """
     _, persona = await _passa(_Richiesta(
-        headers={"X-Ingress-Path": _INGRESS}, remote="172.30.32.2",
-        biscotti=_SESSIONE))
+        headers={"X-Ingress-Path": _INGRESS}, remote="172.30.32.2"))
     assert persona["soggetto"]["specie"] == "persona"
 
     privata, pubblica = _firmante(archivio)

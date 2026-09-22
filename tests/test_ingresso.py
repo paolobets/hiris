@@ -125,212 +125,105 @@ def test_un_campo_VUOTO_e_diverso_da_un_campo_sbagliato():
     assert rifiutate == []
 
 
-# --- A-2(b) · la sessione si chiede al Supervisor ---------------------------
+# --- A-2 · ci si fida dell'INDIRIZZO del proxy, risolto ---------------------
 
-class _Supervisor:
-    """Il Supervisor, ridotto all'unica domanda che gli facciamo.
+def test_l_indirizzo_del_proxy_si_RISOLVE_e_si_crede_solo_quello():
+    """**Il reperto A-2.** La rete predefinita non e' l'indirizzo del proxy: e'
+    la rete Docker dove vive ogni add-on installato, e se il tunnel che
+    pubblica la casa gira come add-on -- il caso normale -- il suo indirizzo e'
+    li' dentro.
 
-    Il vero risponde 200 a una sessione che conosce e 401 a una che non
-    conosce (`supervisor/api/ingress.py::validate_session`, letto il 22/09).
-    """
+    Risolvendo il nome «supervisor» si ottiene UN indirizzo, e si crede quello.
 
-    def __init__(self, conosce=(), stato=None, cade=False):
-        self.conosce = set(conosce)
-        self.stato = stato
-        self.cade = cade
-        self.chiamate = []
+    Mutazione ESEGUITA: ignorare l'indirizzo risolto e tenere le opzioni --
+    rossa."""
+    reti, rifiuti, come = ingresso.perimetro_fidato(
+        "172.30.32.0/23", risolutore=lambda _nome: "172.30.32.2")
 
-    async def __call__(self, sessione):
-        self.chiamate.append(sessione)
-        if self.cade:
-            raise OSError("il Supervisor non risponde")
-        if self.stato is not None:
-            return self.stato == 200
-        return sessione in self.conosce
+    assert [str(r) for r in reti] == ["172.30.32.2/32"]
+    assert rifiuti == []
+    assert "172.30.32.2" in come
 
 
-@pytest.fixture()
-def app():
-    contenitore = {}
-    ingresso.prepara_ingresso(contenitore)
-    return contenitore
+def test_si_risolve_il_nome_GIUSTO():
+    """Il nome non e' una scelta nostra: e' quello con cui il Supervisor si fa
+    trovare nella rete Docker, lo stesso di `http://supervisor/core`.
+
+    Mutazione: risolvere un altro nome -- rossa."""
+    chiesti = []
+    ingresso.perimetro_fidato("", risolutore=lambda nome: chiesti.append(nome) or "10.0.0.1")
+
+    assert chiesti == ["supervisor"]
 
 
-@pytest.fixture()
-def supervisor(monkeypatch):
-    def installa(finto):
-        async def chiedi(sessione):
-            return await finto(sessione)
-        monkeypatch.setattr(ingresso, "_domanda_supervisor", chiedi)
-        return finto
-    return installa
+def test_se_il_nome_NON_SI_RISOLVE_si_torna_alle_opzioni():
+    """**La riga che la 3.60.0 non aveva, e per cui ha chiuso il proprietario
+    fuori dal suo pannello.** Un guasto nella verifica non deve spegnere
+    l'unica strada che il proprietario ha per entrare in casa propria.
+
+    Mutazione ESEGUITA: nessun ripiego -- rossa, ed e' il difetto vero
+    rilasciato il 22/09/2026."""
+    def risolutore_guasto(_nome):
+        raise OSError("questo nome qui non esiste")
+
+    reti, rifiuti, come = ingresso.perimetro_fidato("172.30.32.0/23",
+                                                   risolutore=risolutore_guasto)
+
+    assert [str(r) for r in reti] == ["172.30.32.0/23"]
+    assert rifiuti == []
+    assert "opzioni" in come
 
 
-@pytest.mark.asyncio
-async def test_una_sessione_CONOSCIUTA_dal_supervisor_passa(app, supervisor):
-    """Il caso normale: il proprietario ha aperto HIRIS dalla plancia.
+def test_e_il_registro_DICE_quanto_e_largo_il_perimetro():
+    """Chi legge il registro deve sapere di quanto ci si sta fidando oggi senza
+    andarlo a dedurre: un indirizzo solo, o una rete intera.
 
-    Mutazione: rifiutare sempre -- rossa (la pagina smetterebbe di aprirsi)."""
-    supervisor(_Supervisor(conosce={"s-vera"}))
+    Mutazione: tornare sempre la stessa frase -- rossa."""
+    _, _, stretto = ingresso.perimetro_fidato("", risolutore=lambda _n: "172.30.32.2")
+    _, _, largo = ingresso.perimetro_fidato(
+        "172.30.32.0/23", risolutore=lambda _n: (_ for _ in ()).throw(OSError()))
 
-    assert await ingresso.sessione_valida(app, "s-vera", adesso=100.0) is True
-
-
-@pytest.mark.asyncio
-async def test_una_sessione_INVENTATA_non_passa(app, supervisor):
-    """**Il reperto A-2.** E' cio' che ha in mano un add-on vicino: puo'
-    falsificare l'intestazione e puo' stare nella rete fidata, ma non puo'
-    avere un biscotto che il Supervisor riconosce.
-
-    Mutazione ESEGUITA: fidarsi del solo biscotto senza chiederlo -- rossa."""
-    supervisor(_Supervisor(conosce={"s-vera"}))
-
-    assert await ingresso.sessione_valida(app, "inventata", adesso=100.0) is False
+    assert stretto != largo
+    assert "Supervisor" in stretto and "opzioni" in largo
 
 
-@pytest.mark.asyncio
-async def test_SENZA_biscotto_non_si_chiede_nemmeno(app, supervisor):
-    """Chi non porta un biscotto non e' passato dal proxy: non c'e' niente da
-    chiedere, e chiederlo sarebbe una chiamata di rete per ogni richiesta
-    diretta.
+def test_un_indirizzo_STORTO_non_fa_cadere_l_avvio():
+    """Se il risolutore torna qualcosa che non e' un indirizzo, si ripiega
+    invece di impedire l'avvio.
 
-    Mutazione: chiedere comunque -- rossa."""
-    finto = supervisor(_Supervisor(conosce={"s-vera"}))
+    Mutazione: costruire la rete senza difendersi -- rossa."""
+    reti, _, _ = ingresso.perimetro_fidato("172.30.32.0/23",
+                                          risolutore=lambda _n: "non-un-indirizzo")
 
-    for vuoto in ("", "   ", None):
-        assert await ingresso.sessione_valida(app, vuoto, adesso=100.0) is False
-    assert finto.chiamate == []
+    assert [str(r) for r in reti] == ["172.30.32.0/23"]
 
 
-@pytest.mark.asyncio
-async def test_se_il_supervisor_NON_RISPONDE_si_rifiuta(app, supervisor):
-    """**Il verso del dubbio, e qui costa qualcosa dirlo.** Ripiegare sul
-    controllo della rete quando il Supervisor tace vorrebbe dire riaprire
-    esattamente il buco che questa verifica chiude, e riaprirlo proprio nel
-    momento in cui qualcosa non va.
+def test_la_verifica_della_sessione_NON_ESISTE_piu():
+    """**Il cancello di questo difetto.** `POST /ingress/validate_session` e'
+    riservato a Home Assistant Core: in
+    `supervisor/api/middleware/security.py` quella rotta non combacia con
+    nessuna lista permissiva e cade nel controllo finale, che nega. Il
+    Supervisor ha risposto **403** e la 3.60.0 ha chiuso il proprietario fuori
+    dal proprio pannello.
 
-    E non e' severita' gratuita: una richiesta arrivata ATTRAVERSO il proxy
-    dimostra che il Supervisor era vivo un istante prima.
+    Rimetterla e' la cosa piu' naturale del mondo per chi legge la spec del
+    Supervisor e si ferma un gradino prima di «e io, posso?».
 
-    Mutazione ESEGUITA: ripiegare su `True` -- rossa."""
-    supervisor(_Supervisor(cade=True))
+    Mutazione ESEGUITA: rimessa la chiamata -- rossa."""
+    import ast
+    import pathlib as _p
 
-    assert await ingresso.sessione_valida(app, "s-vera", adesso=100.0) is False
+    sorgente = _p.Path(ingresso.__file__).read_text(encoding="utf-8")
 
+    # **Si guardano le STRINGHE VIVE, non il testo**: i docstring nominano
+    # quella rotta apposta -- e' li' che la lezione sta scritta -- e cercare la
+    # parola renderebbe il cancello impossibile da soddisfare senza cancellare
+    # la memoria del difetto.
+    letterali = [n.value for n in ast.walk(ast.parse(sorgente))
+                 if isinstance(n, ast.Constant) and isinstance(n.value, str)]
+    vive = [t for t in letterali if chr(10) not in t]
 
-@pytest.mark.asyncio
-async def test_una_risposta_INATTESA_si_rifiuta(app, supervisor):
-    """500, 403, una pagina di errore: tutto cio' che non e' 200 e' «no».
-
-    Mutazione: trattare come valido tutto cio' che non e' 401 -- rossa."""
-    supervisor(_Supervisor(stato=500))
-
-    assert await ingresso.sessione_valida(app, "s-vera", adesso=100.0) is False
-
-
-@pytest.mark.asyncio
-async def test_l_esito_si_RICORDA_per_non_chiedere_a_ogni_richiesta(app, supervisor):
-    """Una chiamata di rete a ogni richiesta della pagina sarebbe un costo su
-    un percorso che gira decine di volte al minuto.
-
-    Mutazione ESEGUITA: non ricordare -- rossa (due chiamate)."""
-    finto = supervisor(_Supervisor(conosce={"s-vera"}))
-
-    for _ in range(5):
-        await ingresso.sessione_valida(app, "s-vera", adesso=100.0)
-
-    assert finto.chiamate == ["s-vera"]
-
-
-@pytest.mark.asyncio
-async def test_anche_un_NO_si_ricorda(app, supervisor):
-    """Altrimenti chi bussa con biscotti inventati fa interrogare il Supervisor
-    una volta per bussata: il rifiuto diventerebbe un amplificatore.
-
-    Mutazione: ricordare solo i sì -- rossa."""
-    finto = supervisor(_Supervisor(conosce={"s-vera"}))
-
-    for _ in range(5):
-        await ingresso.sessione_valida(app, "inventata", adesso=100.0)
-
-    assert finto.chiamate == ["inventata"]
-
-
-@pytest.mark.asyncio
-async def test_il_ricordo_SCADE(app, supervisor):
-    """Una sessione revocata deve smettere di valere in fretta: ricordarne
-    l'esito per piu' di un minuto vorrebbe dire servirne una morta per una
-    frazione apprezzabile della sua vita, che dura quindici minuti.
-
-    Mutazione ESEGUITA: ricordare per sempre -- rossa."""
-    finto = supervisor(_Supervisor(conosce={"s-vera"}))
-
-    await ingresso.sessione_valida(app, "s-vera", adesso=100.0)
-    await ingresso.sessione_valida(app, "s-vera", adesso=100.0 + ingresso.RICORDO_S + 1)
-
-    assert len(finto.chiamate) == 2
-
-
-@pytest.mark.asyncio
-async def test_i_ricordi_non_crescono_per_sempre(app, supervisor):
-    """Chi bussa con un biscotto diverso ogni volta riempirebbe la memoria di
-    un percorso che gira a ogni richiesta.
-
-    Mutazione: non potare mai -- rossa."""
-    supervisor(_Supervisor(conosce=set()))
-
-    for n in range(200):
-        await ingresso.sessione_valida(app, f"finta-{n}", adesso=100.0 + n)
-    await ingresso.sessione_valida(app, "ultima", adesso=1000.0)
-
-    assert len(app["sessioni_ingress"]) < 10
-
-
-@pytest.mark.asyncio
-async def test_senza_il_token_del_supervisor_non_si_prova_NEMMENO(monkeypatch):
-    """Fuori dal Supervisor e' normale e la richiesta non e' di ingress;
-    dentro, e' un guasto dell'add-on. In tutti e due i casi non si finge di
-    aver verificato.
-
-    **Si guarda la domanda, non l'esito, e la prima stesura era verde per la
-    ragione sbagliata**: `sessione_valida` inghiotte qualunque eccezione e
-    torna `False`, quindi togliendo la guardia sul token la prova restava verde
-    -- passava perche' la chiamata di rete falliva, non perche' la guardia
-    c'era. Misurato con la mutazione, non supposto. Qui si chiede alla
-    funzione che NON inghiotte, e si pretende che la rete non venga nemmeno
-    toccata.
-
-    Mutazione ESEGUITA: `if False:` al posto della guardia sul token -- rossa
-    (la finta della rete si fa sentire)."""
-    monkeypatch.delenv("SUPERVISOR_TOKEN", raising=False)
-
-    class _NessunaRete:
-        def __init__(self, *a, **k):
-            raise AssertionError(
-                "ha provato a chiamare il Supervisor senza averne il token")
-
-    import aiohttp
-    monkeypatch.setattr(aiohttp, "ClientSession", _NessunaRete)
-
-    assert await ingresso._domanda_supervisor("s-vera") is False
-
-
-@pytest.mark.asyncio
-async def test_e_chi_chiama_vede_un_NO_non_un_guasto(app, monkeypatch):
-    """La contropartita: il rifiuto deve arrivare al confine come un «no»
-    ordinario, non come un'eccezione che spegne la richiesta.
-
-    Mutazione: sollevare invece di tornare `False` -- rossa."""
-    monkeypatch.delenv("SUPERVISOR_TOKEN", raising=False)
-
-    assert await ingresso.sessione_valida(app, "s-vera", adesso=100.0) is False
-
-
-def test_il_nome_del_biscotto_e_quello_del_SUPERVISOR():
-    """Il nome non e' una scelta nostra: lo decide
-    `supervisor/api/ingress.py::COOKIE_INGRESS`, e se divergesse HIRIS non
-    troverebbe mai nessuna sessione e rifiuterebbe ogni ingress senza dire
-    perche'.
-
-    Mutazione: rinominarlo -- rossa."""
-    assert ingresso.BISCOTTO == "ingress_session"
+    assert not any("supervisor/" in t or "validate_session" in t for t in vive), (
+        "questo modulo torna a comporre un indirizzo verso il Supervisor: "
+        "`/ingress/validate_session` e' riservato a Home Assistant Core, "
+        "risponde 403 a un add-on, e l'ingress smette di funzionare per tutti")

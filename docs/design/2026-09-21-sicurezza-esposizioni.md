@@ -94,7 +94,21 @@ risposta a «chi ha spento la luce», che oggi non ce l'ha né in HIRIS né nel 
 
 ### A-2 · «Fidato» vuol dire la rete di tutti gli add-on
 
-> **CHIUSO il 22/09/2026** (fetta 3). Il confine chiede al Supervisor se riconosce il biscotto di sessione (`POST /ingress/validate_session`, verificato sulla sorgente): un add-on vicino può falsificare l'intestazione e può stare nella rete, non può avere una sessione che il Supervisor conosce. I due controlli di prima restano, davanti, perché costano zero.
+> **CHIUSO il 22/09/2026 (fetta 3), ma NON come diceva l'intervento (b).** La via della sessione
+> — `POST /ingress/validate_session` — **non è percorribile da un add-on**: la rotta non combacia
+> con nessuna lista permissiva di `supervisor/api/middleware/security.py` e cade nel controllo
+> finale, dove passa solo Home Assistant Core. Rilasciata nella 3.60.0, il Supervisor ha risposto
+> **403** e il proprietario è rimasto chiuso fuori dal proprio pannello; tolta nella 3.60.1.
+>
+> **Chiude l'intervento (a), e chiude davvero**: si risolve il nome `supervisor` e ci si fida di
+> **quell'indirizzo soltanto**, non della rete Docker dove vive ogni add-on installato. Si risolve
+> invece di ricopiarlo, così resta vero se cambia; se la risoluzione non riesce si torna alle reti
+> configurate, dichiarandolo — perché un guasto nella verifica non deve chiudere il proprietario
+> fuori da casa propria, che è esattamente ciò che la 3.60.0 ha fatto.
+>
+> **La lezione**: era stata verificata l'esistenza della rotta, il suo contratto e il percorso del
+> biscotto — tutto vero — e non che il nostro chiamante avesse il diritto di chiamarla. Una
+> verifica che si ferma un gradino prima di «e io, posso?» non ha verificato la cosa che serviva.
 
 `middleware_internal_auth.py:18` (`172.30.32.0/23`)
 

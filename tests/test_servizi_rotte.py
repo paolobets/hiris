@@ -27,7 +27,7 @@ from hiris.app.server import create_app
 #: Supervisor che risponde.
 _INGRESS = {"X-Ingress-Path": "/api/hassio_ingress/abc/",
             "X-Requested-With": "fetch",
-            "Cookie": "ingress_session=sessione-che-il-supervisor-conosce"}
+}
 _UTENTI = {"utenti": [
     {"id": "u-admin", "nome": "Paolo", "amministratore": True,
      "proprietario": True, "sistema": False},
@@ -42,7 +42,7 @@ def chiudi():
 
 
 @pytest.fixture(autouse=True)
-def _supervisor(supervisor_ingress):
+def _supervisor():
     """Il Supervisor finto, per ogni prova di questo file: qui l'ingress e' la
     strada normale del proprietario, e senza di lui nessuna passerebbe."""
 

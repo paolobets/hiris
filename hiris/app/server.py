@@ -3340,9 +3340,11 @@ async def _on_startup(app: web.Application) -> None:
     # scrivere un'intestazione. E un campo tutto sbagliato NON ripiega sul
     # default: ripiegare vorrebbe dire che scrivere male allarga il perimetro
     # invece di stringerlo.
-    from .api.ingresso import reti_fidate
+    from .api.ingresso import perimetro_fidato
 
-    _reti, _rifiutate = reti_fidate(os.environ.get("SUPERVISOR_INGRESS_CIDR", ""))
+    _reti, _rifiutate, _come = perimetro_fidato(
+        os.environ.get("SUPERVISOR_INGRESS_CIDR", ""))
+    logger.info("ingress: mi fido di %s", _come)
     for _motivo in _rifiutate:
         logger.error("supervisor_ingress_cidr: %s", _motivo)
     if _rifiutate and not _reti:
