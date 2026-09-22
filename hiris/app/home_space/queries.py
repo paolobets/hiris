@@ -50,7 +50,7 @@ from __future__ import annotations
 
 from ..action.registry import field_applies
 from ..memory.resolver import _normalize
-from ..proxy._sanitize import sanitize_text
+from ..proxy._sanitize import sanitize_structure, sanitize_text
 from ..proxy.entity_cache import (
     ASSUMABLE,
     CAPABILITIES,
@@ -1397,10 +1397,25 @@ def _view_behavior(behavior: list[dict], memories: list[dict],
         return _not_found_detail(kind, reference, bool(unread_bodies))
     return {
         "esiste": True, "tipo": kind, "id": entry["id"], "nome": entry.get("nome"),
-        # `corpo` passa cosi' com'e': `None` (HIRIS non l'ha -- e
-        # `unread_bodies` dice perche') e un corpo vuoto ma presente sono due
-        # valori diversi, e questa funzione non li confonde riscrivendoli.
-        "corpo": entry.get("corpo"),
+        # **Il corpo passa dal confine** (reperto B-1, 22/09/2026), e passa
+        # QUI e non in archivio. L'esenzione di prima aveva una ragione
+        # scaduta -- «e' un file locale che il proprietario modifica» -- e dal
+        # 10/09/2026 il corpo arriva da `automation/config`, quindi anche da
+        # un blueprint importato da un indirizzo di community.
+        #
+        # **Perche' qui e non dove si archivia**, che sarebbe il posto
+        # naturale accanto al sigillo dei segreti: quel corpo lo legge anche
+        # `action/construction/workshop.py` come «prima» di una modifica, e
+        # quel «prima» e' cio' che un ripristino RISCRIVE in Home Assistant.
+        # Sanificare in archivio vorrebbe dire mettere «[FILTERED]» dentro
+        # un'automazione vera del proprietario. L'archivio tiene la verita';
+        # chi compone per il modello la filtra.
+        #
+        # `None` (HIRIS non l'ha -- e `unread_bodies` dice perche') resta
+        # `None`: un corpo assente e un corpo vuoto ma presente sono due
+        # valori diversi, e il confine non li confonde riscrivendoli.
+        "corpo": (None if entry.get("corpo") is None
+                  else sanitize_structure(entry.get("corpo"))),
         "ricordi": _tethered_memories(memories, kind, reference),
     }
 

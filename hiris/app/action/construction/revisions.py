@@ -64,6 +64,11 @@ def _load(text):
     return None if text is None else json.loads(text)
 
 
+# L'estrattore dei servizi vive nell'officina, accanto all'anteprima che
+# gia' lo usa: due cammini sullo stesso corpo divergerebbero.
+from .workshop import services_named
+
+
 def _row(r) -> dict:
     return {
         "id": r["id"],
@@ -78,6 +83,18 @@ def _row(r) -> dict:
         "frase": r["frase"],
         "prima": _load(r["prima_json"]),
         "dopo": _load(r["dopo_json"]),
+        # **Cosa chiamera'**, sui due lati (reperto B-4, 22/09/2026). La
+        # pagina ha gia' i corpi interi e potrebbe camminarli in JavaScript:
+        # sarebbe lo stesso cammino scritto due volte, in due linguaggi,
+        # libero di divergere -- e a divergere sarebbe quello che nessuno
+        # riesegue. L'estrattore resta uno, e la pagina riceve la risposta.
+        #
+        # DUE lati e non uno, perche' cio' che serve al proprietario e' cosa
+        # CAMBIA: una lista sola non lo direbbe. E un lato assente da una
+        # lista vuota, non `None`: una creazione non ha un «prima», e un buco
+        # costringerebbe la pagina a un ramo in piu' per dire la stessa cosa.
+        "chiama_prima": services_named(_load(r["prima_json"])),
+        "chiama_dopo": services_named(_load(r["dopo_json"])),
         "helper": _load(r["helper_json"]) or [],
         "anteprima": r["anteprima"],
         "esecuzione_id": r["esecuzione_id"],

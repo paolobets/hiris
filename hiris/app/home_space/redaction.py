@@ -104,3 +104,29 @@ class SecretSeal:
         if isinstance(value, list):
             return [self.redact(v) for v in value]
         return value
+
+
+#: Dove Home Assistant tiene la propria configurazione, **dentro il container**.
+#:
+#: Versioni diverse del Supervisor montano quel volume in posti diversi: si
+#: prova l'uno e poi l'altro, e si riconosce quello vero dal fatto che ci sia
+#: dentro qualcosa che solo HA ci mette.
+_FOLDERS = ("/config", "/homeassistant")
+
+
+def home_assistant_folder() -> str | None:
+    """La cartella di configurazione di Home Assistant, o `None`.
+
+    **Viveva in `server.py` come `_find_ha_config_dir`**, e `home_space/` non
+    poteva chiamarla senza un import circolare: il 22/09/2026 il sigillo dei
+    segreti è servito anche a `home_space/tools.py` (reperto B-1), e riscriverla
+    lì sarebbe stata la stessa ricerca in due posti, libera di divergere. Sta
+    qui, accanto a chi la usa per trovare `secrets.yaml`.
+    """
+    import os
+
+    for candidate in _FOLDERS:
+        if (os.path.exists(os.path.join(candidate, "configuration.yaml"))
+                or os.path.isdir(os.path.join(candidate, ".storage"))):
+            return candidate
+    return None

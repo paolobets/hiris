@@ -147,6 +147,7 @@ from __future__ import annotations
 import inspect
 import logging
 import math
+import os
 import re
 from datetime import datetime, timedelta
 from typing import Any, ClassVar
@@ -156,7 +157,12 @@ from ..memory.interpretation import VOCABULARY, validate
 from ..memory.lookup_cache import LookupCache
 from ..memory.resolver import STORE_KEY_PER_TYPE, costruisci_indice
 from ..memory.store import MemoryStore
-from ..proxy._sanitize import sanitize_ha_free_text, sanitize_ha_value
+from ..proxy._sanitize import (
+    sanitize_ha_free_text,
+    sanitize_ha_value,
+    sanitize_structure,
+    sanitize_traceback,
+)
 from ..proxy.entity_cache import (
     automation_config_id,
     inventory_is_readable,
@@ -170,6 +176,7 @@ from .queries import sanitized_memories as _sanitized_memories
 from .queries import search as _search_candidates
 from .queries import view as _view_detail
 from .reader import HomeSpace
+from .redaction import SecretSeal, home_assistant_folder
 from .topology import live_mirror
 from .type_judgments import TypeJudgments
 from .type_vocabulary import REPO_JUDGMENTS
@@ -1550,6 +1557,10 @@ class ToolDispatcher:
                  soffitto: dict | None = None,
                  subject: dict | None = None) -> None:
         self._home_space = home_space_store
+        # Il sigillo dei segreti si costruisce alla prima richiesta e si
+        # ricorda: leggere `secrets.yaml` a ogni voce di registro sarebbe
+        # un accesso al disco per riga.
+        self._remembered_seal = None
         self._memory = memory_store
         # Il soffitto di chi ha aperto questo turno (invariante I-1). `None`
         # vuol dire che nessuna persona ha aperto il turno -- il ponte, lo
@@ -2877,15 +2888,63 @@ class ToolDispatcher:
     # giudica, cosa dire e cosa tacere e' di chi compone» -- qui chi compone
     # e' la description dello strumento, non un livello di codice in piu').
 
+    def _seal(self):
+        """Il sigillo dei segreti, costruito una volta per questo dispatcher.
+
+        Fino al 22/09/2026 `SecretSeal` aveva **un solo chiamante**
+        (`home_space/behavior.py`): il sigillo esisteva, era ottimo, e copriva
+        una porta su quattro. Qui copre le altre due.
+
+        Si costruisce PIGRAMENTE e si ricorda: leggere `secrets.yaml` a ogni
+        voce di registro sarebbe un accesso al disco per riga. E un guasto non
+        solleva -- `SecretSeal.from_file` non solleva mai, per disegno -- ma
+        produce un sigillo `readable=False`, che non sigilla niente: meno
+        protezione, non nessuna, e il resto del confine vale comunque.
+        """
+        if self._remembered_seal is None:
+            folder = home_assistant_folder()
+            self._remembered_seal = (
+                SecretSeal.from_file(os.path.join(folder, "secrets.yaml"))
+                if folder else SecretSeal({}, readable=False))
+        return self._remembered_seal
+
     async def _system_log(self, arguments: dict[str, Any]) -> dict:
         """Il registro di sistema di Home Assistant, cosi' come sta ora.
 
-        Nessun argomento da validare: `system_log` non ne prende. Un
-        passthrough puro verso `HAClient.system_log()` -- la disciplina
-        `{"voci": [...]}` / `{"errore": ...}` e' gia' del client (vedi il suo
-        docstring).
+        Nessun argomento da validare: `system_log` non ne prende. La
+        disciplina `{"voci": [...]}` / `{"errore": ...}` e' del client (vedi il
+        suo docstring).
+
+        **Non e' piu' un passthrough puro** (reperto B-1, 22/09/2026). Era
+        scritto qui accanto che lo fosse, e quella riga descriveva il difetto
+        senza saperlo: `message` e `exception` arrivano da un componente
+        qualunque -- anche di terze parti -- e finivano nel prompt grezzi.
+        `exception` e' la traccia INTERA, e la descrizione dello strumento non
+        la nominava nemmeno.
+
+        `exception` passa da `sanitize_traceback`, che tiene la **coda**: una
+        traccia dice la cosa che serve in fondo, e tagliarne la testa come per
+        ogni altro campo butterebbe la risposta tenendo la domanda.
         """
-        return await self._ha_channel().system_log()
+        answer = await self._ha_channel().system_log()
+        # `voci` e' la CHIAVE DEL DATO e resta italiana: e' il vocabolario che
+        # il client dichiara e che il modello legge. Cio' che diventa inglese
+        # sono i nomi del codice, in un ambito convertito.
+        entries = answer.get("voci")
+        if not isinstance(entries, list):
+            return answer
+        seal = self._seal()
+        cleaned = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                cleaned.append(sanitize_structure(entry, seal=seal))
+                continue
+            clean = sanitize_structure(
+                {k: v for k, v in entry.items() if k != "exception"}, seal=seal)
+            if "exception" in entry:
+                clean["exception"] = sanitize_traceback(entry["exception"])
+            cleaned.append(clean)
+        return {**answer, "voci": cleaned}
 
     async def _automation_trace(self, arguments: dict[str, Any]) -> dict:
         """Le esecuzioni recenti di un'automazione, o -- con `esecuzione` --
@@ -2975,9 +3034,22 @@ class ToolDispatcher:
                               "che non abbia mai girato: significa che non ho potuto "
                               "guardare."}
         ha = self._ha_channel()
+        # **Tutte e due le strade passano dal confine** (reperto B-1): l'elenco
+        # porta gia' le `variables` di ogni esecuzione, quindi chiuderne una
+        # sola lascerebbe aperta l'altra -- la classe di difetto che questo
+        # prodotto ha gia' pagato tre volte.
+        #
+        # Cio' che c'e' dentro non e' testo del proprietario: `config` porta i
+        # segreti GIA' RISOLTI da Home Assistant, e `variables.trigger` e' il
+        # carico che ha acceso l'automazione -- il corpo di un webhook, un
+        # messaggio MQTT, il testo di un SMS. Lo scrive un dispositivo di rete.
         if run_id:
-            return await ha.automation_trace(automation_id, run_id.strip())
-        return await ha.automation_traces(automation_id)
+            raw = await ha.automation_trace(automation_id, run_id.strip())
+        else:
+            raw = await ha.automation_traces(automation_id)
+        if isinstance(raw, dict) and "errore" in raw:
+            return raw
+        return sanitize_structure(raw, seal=self._seal())
 
     # -- i calendari ------------------------------------------------------
 

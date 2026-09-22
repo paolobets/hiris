@@ -312,6 +312,22 @@ window.HirisConstructions = (function () {
     return entityList(c.dopo && c.dopo.entities) || entityList(c.prima && c.prima.entities);
   }
 
+  /* I servizi che il corpo chiama, e soprattutto quelli che **compaiono**.
+
+     Un elenco solo direbbe «chiamera' queste cose»; cio' che serve a chi
+     decide e' cosa cambia. Quelli nuovi si dicono a parte e per primi: sono
+     la ragione per cui questa riga esiste. */
+  function servicesLines(c) {
+    var prima = c.chiama_prima || [];
+    var dopo = c.chiama_dopo || [];
+    var nuovi = dopo.filter(function (s) { return prima.indexOf(s) < 0; });
+    var righe = [];
+    if (nuovi.length) righe.push('Chiamate NUOVE: ' + nuovi.join(', '));
+    if (dopo.length) righe.push('Chiama: ' + dopo.join(', '));
+    else if (prima.length) righe.push('Chiamava: ' + prima.join(', '));
+    return righe;
+  }
+
   /* guida §3: il rivelatore e' SINCRONO -- niente rete, `prima`/`dopo`
      arrivano gia' nel payload dell'elenco. */
   function detailsPanel(c) {
@@ -325,6 +341,22 @@ window.HirisConstructions = (function () {
     });
 
     comparisonLines(c.prima, c.dopo).forEach(function (line) {
+      box.appendChild(el('div', 'field-hint', line));
+    });
+
+    /* **Cosa chiamera'** (reperto B-4, 22/09/2026). Fino a oggi questo
+       pannello mostrava conteggi -- «azioni: 2 -> 3» -- e in nessun punto
+       dell'interfaccia il proprietario vedeva le AZIONI che stava
+       approvando. Uno `shell_command` dentro il corpo passa la validazione di
+       Home Assistant, e' valido, e crea un oggetto permanente che chiama un
+       servizio che la porta diretta non avrebbe potuto chiamare.
+
+       Non e' una restrizione: il si' c'era gia', era disinformato.
+
+       I nomi arrivano dal server (`chiama_prima`/`chiama_dopo`): camminare i
+       corpi anche qui sarebbe lo stesso cammino in due linguaggi, libero di
+       divergere. */
+    servicesLines(c).forEach(function (line) {
       box.appendChild(el('div', 'field-hint', line));
     });
 

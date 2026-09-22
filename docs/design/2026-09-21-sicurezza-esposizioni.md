@@ -210,6 +210,8 @@ Questa classe è la catena del §0.1. I reperti non sono indipendenti: **sono an
 
 ### B-1 · Tre lettori consegnano al modello il testo più ostile della casa, grezzo
 
+> **CHIUSO il 22/09/2026** (fetta 5). I tre passano dal confine — sigillo dei segreti, filtro d'iniezione, tetto — **in quest'ordine**: il sigillo riconosce i segreti per impronta del valore esatto, e filtrare prima lo altererebbe. `exception` ha un tetto suo e tiene la **coda**: una traccia dice in fondo la cosa che serve. E l'esenzione del corpo, con la sua ragione scaduta, è caduta — ma il filtro sta dove si **compone** per il modello, non dove si archivia: quel corpo lo legge anche l'officina come «prima» di un ripristino, e sanificarlo in archivio riscriverebbe «[FILTERED]» dentro un'automazione vera. `SecretSeal` aveva un solo chiamante; adesso ne ha tre.
+
 `tools.py:2859` (`system_log`, *«un passthrough puro»*) · `tools.py:2957` (`automation_trace`) ·
 `queries.py:1403` (il corpo delle automazioni)
 
@@ -285,6 +287,8 @@ legittimo, ed è il modo in cui questo intervento può fare danno.
 **Serve?** — **Sì**, e non limita cosa HIRIS può fare: limita **quante volte di fila**.
 
 ### B-4 · `propose`/`confirm` è un canale di esecuzione indiretto, più potente di `execute`
+
+> **CHIUSO il 22/09/2026** (fetta 5). L'anteprima e il pannello «Dettagli tecnici» dicono **quali servizi il corpo chiama**, e soprattutto **quali compaiono** rispetto a prima. `action:` è due cose in Home Assistant e si distinguono per il **tipo**, non per la posizione: la posizione cambia da una versione all'altra di HA, il tipo no. I nomi li manda il server: camminare i corpi anche in JavaScript sarebbe lo stesso cammino in due linguaggi, libero di divergere.
 
 `workshop.py:843` (`_compatta`) · `constructions-route.js:281-293`
 

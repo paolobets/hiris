@@ -100,13 +100,20 @@ can enter the model's context calls one of the two functions below:
   injection phrase came back whole, in both `calendario` and `non_letti`.
   Sanitized ONCE before it reaches either destination, not twice.
 
-DELIBERATELY NOT WIRED, and why: the `corpo` field of an automation/script
-(`home_space/behavior.py`, `automations.yaml`/`scripts.yaml`) is a local file
-the house owner edits, not something a network device or a compromised
-integration can write -- it is not the vector this fix closes. This is
-narrower than the same sentence used to be: it once covered the whole
-module, which was wrong -- see the `replace_behavior` bullet above
-for the field (`nome`) that reasoning never actually applied to.
+WAS DELIBERATELY NOT WIRED, and the reason EXPIRED (reperto B-1, 22/09/2026):
+the `corpo` of an automation/script was exempt because it was "a local file the
+house owner edits, not something a network device or a compromised integration
+can write". Since 10/09/2026 the body comes from `automation/config` -- so also
+from a blueprint imported from a community address, which the owner did not
+write. The exemption is gone: `home_space/queries.py::_view_behavior` now puts
+it through `sanitize_structure`.
+
+It filters WHERE IT IS COMPOSED for the model, not where it is archived --
+which would have been the natural place, next to the secret seal. That same
+body is read by `action/construction/workshop.py` as the "before" of a change,
+and that "before" is what a restore WRITES BACK into Home Assistant: sanitising
+on the way in would put "[FILTERED]" inside one of the owner's real
+automations. The archive keeps the truth; the composer filters it.
 
 TRUNCATION IS DECLARED, NOT SILENT (fixed 2026-08-25, I2 in FIX1-report.md;
 the cap refined 2026-08-25, M2 in correzioni-minori.md).
@@ -331,3 +338,82 @@ def sanitize_ha_free_text(v) -> str:
     (`messaggio` del diario, `motivo` di un'integrazione rotta) -- vedi
     `MAX_FREE_TEXT` sopra per la ragione del numero."""
     return sanitize_text(v, MAX_FREE_TEXT)
+
+
+# ── Il confine per ciò che arriva GREZZO dalla casa (reperto B-1, 22/09/2026) ──
+#
+# Tre porte consegnavano al modello il testo più ostile che una casa possa
+# produrre, senza passare di qui: `system_log` (`message` e `exception`),
+# `automation_trace` (`config` coi segreti già risolti da HA, e
+# `variables.trigger` — cioè il carico che ha acceso l'automazione: il corpo di
+# un webhook, un messaggio MQTT, il testo di un SMS), e il `corpo` di
+# un'automazione.
+#
+# **L'ORDINE è sigillo → filtro → tetto, e non è stile.** Il sigillo riconosce i
+# segreti per impronta del valore ESATTO: filtrare o tagliare prima lo
+# altererebbe, l'impronta non combacerebbe più, e un segreto mancato è un
+# segreto pubblicato.
+
+def sanitize_structure(value, *, seal=None):
+    """Il confine su una struttura annidata arbitraria — `config`, `trigger`.
+
+    Le **chiavi non si toccano**: cambiarle cambierebbe la forma della
+    configurazione invece del suo contenuto, e il modello leggerebbe una
+    struttura che in casa non esiste. È la stessa scelta, con la stessa
+    ragione, di `SecretSeal.redact`.
+
+    I valori che **non sono testo** restano quelli che sono: un `delay: 30` che
+    diventasse `"30"` sarebbe un dato cambiato, non un dato protetto.
+
+    Il `sigillo` può mancare — `secrets.yaml` assente o illeggibile — e lì il
+    resto del confine vale comunque: meno protezione, non nessuna.
+    """
+    if seal is not None:
+        value = seal.redact(value)
+    return _filter(value)
+
+
+def _filter(value):
+    if isinstance(value, str):
+        return sanitize_ha_free_text(value)
+    if isinstance(value, dict):
+        return {k: _filter(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_filter(v) for v in value]
+    if isinstance(value, tuple):
+        return tuple(_filter(v) for v in value)
+    return value
+
+
+#: Il tetto di una traccia di eccezione. **Più largo di `MAX_FREE_TEXT`** e per
+#: una ragione misurabile: una traccia legittima è lunga per costruzione — è un
+#: elenco di chiamate — e a 500 caratteri resterebbe solo l'intestazione, cioè
+#: la parte che non risponde a nessuna domanda.
+#:
+#: 4000 e non «il più possibile»: `system_log` torna fino a molte voci in una
+#: risposta sola, e questo tetto si moltiplica dritto nel contesto del modello.
+#: Quattromila caratteri sono circa quaranta righe di stack — abbondanti per
+#: capire cosa è successo, lontane dal poter mangiare un contesto.
+MAX_TRACEBACK = 4000
+
+
+def sanitize_traceback(v) -> str:
+    """Come gli altri, ma **tiene la CODA invece della testa**.
+
+    Una traccia di eccezione dice la cosa che serve in fondo: il tipo
+    dell'errore e il suo messaggio. Tagliandola come ogni altro campo si
+    conserverebbe l'avvio dello stack — che non risponde a niente — e si
+    butterebbe la risposta.
+
+    Il marker va in **testa**, perché lì è avvenuto il taglio: metterlo in
+    fondo direbbe che manca la fine, che è il contrario del vero.
+    """
+    if v is None:
+        return ""
+    if not isinstance(v, str):
+        v = str(v)
+    v = _INJECTION_RE.sub("[FILTERED]", v.strip())
+    if len(v) <= MAX_TRACEBACK:
+        return v
+    marker = _TRUNCATED.strip()
+    return marker + v[-(MAX_TRACEBACK - len(marker)):]

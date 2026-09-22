@@ -840,6 +840,58 @@ def _seme_da(intent: dict) -> int:
     return base + abs(hash((intent.get("alias"), intent.get("frase")))) % 100_000_000
 
 
+#: Fin dove si scende dentro un corpo che si annida. Il corpo puo' arrivare dal
+#: modello: senza un limite, uno annidato all'infinito bloccherebbe l'anteprima
+#: invece di produrla -- cioe' impedirebbe di proporre invece di impedire di
+#: sbagliare. Cinquanta livelli sono molti piu' di quanti ne abbia una
+#: automazione vera (un `choose` dentro un `repeat` dentro un `choose` ne fa
+#: sei) e molti meno di quanti ne servano a fare danno.
+_MAX_DEPTH = 50
+
+
+def services_named(body: dict | None) -> list[str]:
+    """I servizi che questo corpo CHIAMA, nell'ordine in cui compaiono.
+
+    **Il reperto B-4**: l'anteprima diceva `alias · triggers: 1 · actions: 2`,
+    cioe' conteggi, e in nessun punto dell'interfaccia il proprietario vedeva
+    le azioni che stava approvando. Uno `shell_command` dentro il corpo passa
+    `validate_config` -- e' valido -- e crea un oggetto permanente che chiama
+    un servizio che `execute` non avrebbe potuto chiamare.
+
+    Non e' una restrizione: il si' c'era gia', era **disinformato**.
+
+    **`action` e' due cose, e si distinguono per il TIPO.** Home Assistant usa
+    quella parola per il nome del servizio dentro un passo (dal 2024.8, dove
+    prima c'era `service:`) e -- prima di `actions:` -- per la lista dei passi.
+    Una stringa col punto e' un servizio, una lista e' un elenco: la posizione
+    cambia da una versione all'altra di HA, il tipo no.
+
+    Si **deduplica** (un'automazione che accende dieci luci chiama dieci volte
+    lo stesso servizio, e dirlo dieci volte renderebbe illeggibile la riga che
+    deve farsi leggere) e si tiene **l'ordine del corpo**: si legge nell'ordine
+    in cui le cose succedono.
+    """
+    found: list[str] = []
+
+    def walk(node, depth: int) -> None:
+        if depth > _MAX_DEPTH:
+            return
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if (key in ("service", "action")
+                        and isinstance(value, str) and "." in value):
+                    if value not in found:
+                        found.append(value)
+                    continue
+                walk(value, depth + 1)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item, depth + 1)
+
+    walk(body or {}, 0)
+    return found
+
+
 def _compatta(body: dict | None) -> str:
     if not body:
         return "(niente)"
@@ -850,6 +902,15 @@ def _compatta(body: dict | None) -> str:
     for key in ("triggers", "conditions", "actions", "sequence", "entities"):
         if body.get(key):
             pezzi.append(f"{key}: {len(body[key])}")
+    # **Cosa chiamera'** (reperto B-4, 22/09/2026). I conteggi restano: non
+    # erano sbagliati, erano insufficienti -- dicono la dimensione della
+    # modifica, che e' un fatto utile accanto ai nomi.
+    #
+    # Se non chiama niente -- una scena -- non si scrive l'etichetta: «Chiama:»
+    # seguito da niente sarebbe rumore che insegna a saltare la riga.
+    called = services_named(body)
+    if called:
+        pezzi.append("chiama: " + ", ".join(called))
     return " · ".join(pezzi) if pezzi else "(vuoto)"
 
 

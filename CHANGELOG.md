@@ -1,5 +1,42 @@
 # HIRIS — Changelog
 
+## [3.62.0] — L'ingresso della catena (2026-09-22)
+
+Fetta 5 dello sprint sicurezza, e sono i due reperti col miglior rapporto fra danno chiuso e costo.
+
+### Il testo più ostile della casa non arriva più grezzo al modello
+
+Tre porte lo consegnavano intatto, e nessuna delle tre è un caso limite:
+
+- **`system_log`** dava `message` e `exception` — tracce di eccezione intere, da un componente
+  qualunque, anche di terze parti;
+- **`automation_trace`** dava `config` (coi segreti **già risolti da Home Assistant**) e
+  `variables.trigger`, cioè **il carico che ha acceso l'automazione**: il corpo di un webhook, un
+  messaggio MQTT, il testo di un SMS. Lo scrive un dispositivo di rete, non tu;
+- il **corpo** di un'automazione, esente per una ragione scaduta: «è un file locale che il
+  proprietario modifica». Dal 10 settembre il corpo arriva da `automation/config`, quindi anche da
+  un blueprint importato da un indirizzo di community.
+
+Tutte e tre chiamabili **anche dal turno di una promessa notturna**, quando nessuno sta guardando.
+
+Adesso passano dal confine: segreti sigillati, iniezioni filtrate, tetto dichiarato. Le tracce di
+eccezione tengono la **coda** invece della testa — una traccia dice in fondo la cosa che serve — e
+il corpo si filtra **dove si compone per il modello**, non dove si archivia: quel corpo lo legge
+anche l'officina come «prima» di un ripristino, e sanificarlo in archivio scriverebbe «[FILTERED]»
+dentro una tua automazione vera.
+
+### L'anteprima dice cosa chiamerà, non quante cose
+
+Per approvare una proposta leggevi `alias · triggers: 1 · actions: 2`. **Conteggi.** In nessun punto
+dell'interfaccia vedevi le azioni che stavi approvando — e uno `shell_command` dentro il corpo passa
+la validazione di Home Assistant, è valido, e crea in casa un oggetto permanente che chiama un
+servizio che la porta diretta non avrebbe potuto chiamare.
+
+Adesso l'anteprima e il pannello «Dettagli tecnici» nominano i servizi, e soprattutto quelli che
+**compaiono** rispetto a prima. Non è una restrizione: il sì c'era già, era disinformato.
+
+Quindici mutazioni eseguite, tutte rosse.
+
 ## [3.61.1] — Il binario nativo (2026-09-22)
 
 **La 3.61.0 non si installava.** La costruzione dell'immagine falliva con:

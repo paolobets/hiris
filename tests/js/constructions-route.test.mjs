@@ -335,3 +335,58 @@ test('il filo dei giri si legge sotto la proposta', async () => {
   assert.match(testo, /troppo presto, dopo le 14/);
   assert.match(testo, /Sposta la lavatrice la mattina/);
 });
+
+/* --- B-4: il pannello dice COSA chiamera', non quante cose -------------- */
+
+async function pannelloDi(extra) {
+  const { dom } = montaCon({ constructions: [Object.assign({
+    id: 'b4', stato: 'in_attesa', gesto: 'modifica', dominio: 'automation',
+    chiave: 'buonanotte', anteprima: '',
+    prima: { alias: 'Buonanotte' }, dopo: { alias: 'Buonanotte' },
+    creata_ts: 1,
+  }, extra)] });
+  await dom.window.HirisConstructions.mount(
+    dom.window.document.getElementById('route-outlet'));
+  const document = dom.window.document;
+  const rivelatore = Array.from(document.querySelectorAll('button'))
+    .find((b) => b.textContent === 'Dettagli tecnici');
+  assert.ok(rivelatore, 'la card deve avere il rivelatore dei dettagli tecnici');
+  rivelatore.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  return document.body.textContent;
+}
+
+test('dettagli tecnici: le chiamate NUOVE si dicono, e per prime', async () => {
+  /* **Il reperto B-4.** Il pannello mostrava «azioni: 2 -> 3»: conteggi. Uno
+     `shell_command` dentro il corpo passa la validazione di Home Assistant --
+     e' valido -- e crea un oggetto permanente che chiama un servizio che la
+     porta diretta non avrebbe potuto chiamare. Il si' c'era; era
+     disinformato.
+
+     Mutazione ESEGUITA: tolta `servicesLines` dal pannello -- rossa. */
+  const testo = await pannelloDi({
+    chiama_prima: ['light.turn_on'],
+    chiama_dopo: ['light.turn_on', 'shell_command.riavvia'],
+  });
+
+  assert.match(testo, /Chiamate NUOVE: shell_command\.riavvia/);
+});
+
+test('e se non cambia niente, non si grida al nuovo', async () => {
+  /* Un avviso che compare sempre smette di essere un avviso.
+     Mutazione: mostrare sempre la riga -- rossa. */
+  const testo = await pannelloDi({
+    chiama_prima: ['light.turn_on'], chiama_dopo: ['light.turn_on'],
+  });
+
+  assert.doesNotMatch(testo, /Chiamate NUOVE/);
+  assert.match(testo, /Chiama: light\.turn_on/);
+});
+
+test('una proposta che non chiama niente non inventa una riga', async () => {
+  /* Una scena non chiama servizi: scrivere l'etichetta seguita da niente
+     sarebbe rumore che insegna a saltare la riga.
+     Mutazione: scrivere sempre l'etichetta -- rossa. */
+  const testo = await pannelloDi({ chiama_prima: [], chiama_dopo: [] });
+
+  assert.doesNotMatch(testo, /Chiama/);
+});
