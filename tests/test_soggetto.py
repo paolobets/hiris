@@ -276,3 +276,72 @@ async def test_chi_usa_il_token_SENZA_dirsi_finisce_come_ignoto(caplog):
 
     assert esito == "ok"
     assert "ignoto" in caplog.text.lower()
+
+
+# --- la credenziale EFFIMERA del ponte --------------------------------------
+
+@pytest.mark.asyncio
+async def test_una_credenziale_di_TURNO_apre_e_dice_che_non_c_e_nessuno():
+    """Il ponte non e' una persona e non e' un'integrazione registrata: e'
+    HIRIS che lavora per conto suo, per il tempo di un turno.
+
+    Mutazione: non riconoscere le credenziali effimere -- rossa (il ponte si
+    spegne appena il segreto condiviso esce)."""
+    from hiris.app.api import credenziali
+
+    richiesta = _Firmata(headers={}, remote="127.0.0.1", token="s3greto")
+    richiesta.app["credenziali"] = {}
+    segreto = credenziali.conia(richiesta.app["credenziali"], mestiere="ponte",
+                                durata_s=60, adesso=time.time())
+    richiesta.headers["X-HIRIS-Internal-Token"] = segreto
+
+    esito, visto = await _passa(richiesta)
+
+    assert esito == "ok"
+    assert visto["auth_via"] == "turno"
+    assert visto["soggetto"]["specie"] == "nessuno"
+
+
+@pytest.mark.asyncio
+async def test_una_credenziale_SCADUTA_non_apre_piu():
+    """E' tutto il punto della credenziale effimera: cio' che resta nella riga
+    di comando dopo il turno non deve aprire niente.
+
+    Mutazione ESEGUITA: ignorare la scadenza -- rossa."""
+    from hiris.app.api import credenziali
+
+    richiesta = _Firmata(headers={}, remote="127.0.0.1", token="s3greto")
+    richiesta.app["credenziali"] = {}
+    segreto = credenziali.conia(richiesta.app["credenziali"], mestiere="ponte",
+                                durata_s=60, adesso=time.time() - 3600)
+    richiesta.headers["X-HIRIS-Internal-Token"] = segreto
+
+    esito, _ = await _passa(richiesta)
+
+    assert esito != "ok"
+    assert esito.status == 401
+
+
+@pytest.mark.asyncio
+async def test_la_credenziale_si_guarda_PRIMA_del_segreto_condiviso():
+    """L'ordine conta: finche' il segreto condiviso esiste, chi ce l'ha non
+    avrebbe motivo di usare una credenziale effimera -- e la convivenza non
+    finirebbe mai. Stessa ragione per cui la firma si guarda prima del token.
+
+    Mutazione: invertire i due rami -- rossa (il ponte risulterebbe
+    «integrazione» invece che «nessuno», e la cronaca direbbe la cosa
+    sbagliata)."""
+    from hiris.app.api import credenziali
+
+    richiesta = _Firmata(headers={}, remote="127.0.0.1", token="s3greto")
+    richiesta.app["credenziali"] = {}
+    # lo stesso valore vale come credenziale effimera E come segreto condiviso
+    vive = richiesta.app["credenziali"]
+    vive["s3greto"] = {"mestiere": "ponte", "scade": time.time() + 60}
+    richiesta.headers["X-HIRIS-Internal-Token"] = "s3greto"
+    assert credenziali.riconosci(vive, "s3greto", adesso=time.time())
+
+    _, visto = await _passa(richiesta)
+
+    assert visto["auth_via"] == "turno", (
+        "il segreto condiviso ha vinto sulla credenziale effimera")

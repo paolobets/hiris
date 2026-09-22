@@ -532,7 +532,10 @@ async def handle_mcp(request: web.Request) -> web.Response:
     raccomandazione di mandare **anche** `X-Requested-With`, cosi' che nessuno
     dei due rami resti da solo a reggere la rotta.
     """
-    if request.get("auth_via") != "token":
+    # «turno» e' la credenziale EFFIMERA del ponte, che dal 22/09/2026
+    # sostituisce il segreto condiviso su questo percorso: stessa rotta,
+    # stesso portatore, credenziale che muore col turno.
+    if request.get("auth_via") not in ("token", "turno"):
         logger.warning(
             "MCP: richiesta rifiutata da %s -- questa rotta accetta solo "
             "l'X-HIRIS-Internal-Token dell'add-on (autenticazione vista: %s)",

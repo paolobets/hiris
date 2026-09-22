@@ -3128,10 +3128,27 @@ def _govern_bridge_worker(app) -> None:
             # processo separato (`main()`) `/data` non e' di quel processo, e
             # li' il registro resta `None` -- dichiarato, non dimenticato.
             _agent_runner.set_usage_logger(app["usage"].log)
+        # **Le intestazioni del ponte si coniano, non si leggono** (spec §5).
+        # Prima veniva `build_headers`, che legge `INTERNAL_TOKEN`
+        # dall'ambiente: un segreto unico, eterno, condiviso con ogni altra
+        # integrazione, che finiva nella riga di comando del sottoprocesso --
+        # leggibile per trecento secondi da qualunque processo del container.
+        #
+        # Adesso e' una credenziale che vive dieci minuti e vale solo per il
+        # ponte. Il sottoprocesso la riceve dalle STESSE intestazioni (vedi
+        # `runner.reason`, che ne ricava `token` e `forms`), quindi anche
+        # `--mcp-config` e la redazione dell'eco la seguono senza una riga in
+        # piu'.
+        from .api.credenziali import credenziale_ponte_viva
+
+        def _intestazioni_ponte() -> dict:
+            return {"X-HIRIS-Internal-Token": credenziale_ponte_viva(app, adesso=time.time()),
+                    "X-Requested-With": "hiris-agent"}
+
         app["agent_worker_task"] = _spawn(
             _agent_runner.run_loop(
                 "http://127.0.0.1:8099",
-                _agent_runner.build_headers,
+                _intestazioni_ponte,
                 os.environ.get("HIRIS_AGENT_MODE", "live"),
                 int(os.environ.get("HIRIS_AGENT_POLL_SECONDS", "3")),
             ),
@@ -3143,6 +3160,13 @@ def _govern_bridge_worker(app) -> None:
     elif not voluto and live:
         current.cancel()
         app["agent_worker_task"] = None
+        # **Spegnere il ponte spegne il suo accesso, subito.** Aspettare la
+        # scadenza vorrebbe dire che l'interruttore non stacca davvero niente.
+        from .api.credenziali import revoca
+
+        quante = revoca(app.get("credenziali") or {}, mestiere="ponte")
+        (app.get("credenziale_ponte") or {}).clear()
+        logger.info("ponte spento: revocate %d credenziali del turno", quante)
         logger.info(
             "Lavoratore del ponte fermato: il ponte e' spento, oppure manca il "
             "token del Piano Claude Max. La chat risponde dalla catena.")
@@ -5558,6 +5582,10 @@ def create_app() -> web.Application:
     # I canali esterni e le loro chiavi pubbliche (spec 2026-09-21). Stesso
     # motivo di sopra per cui i contenitori nascono qui e non alla prima
     # richiesta servita.
+    # Le credenziali effimere del ponte (spec §5, ingresso 7).
+    from .api.credenziali import prepara_credenziali
+    prepara_credenziali(app)
+
     from .api.canali import prepara_canali
     app["canali_testo"] = os.environ.get("CANALI", "")
     prepara_canali(app)

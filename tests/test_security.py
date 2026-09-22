@@ -280,13 +280,23 @@ async def test_csrf_does_not_apply_to_non_api_paths(csrf_strict):
 
 
 def _make_csrf_app_with_token(token="srv-secret"):
-    """CSRF app that also carries an internal_token, to exercise the
-    server-to-server exemption."""
+    """CSRF app with BOTH middlewares, in the production order.
+
+    From 22/09/2026 the CSRF exemption reads the verdict the auth middleware
+    left (`auth_via`) instead of comparing the shared secret a second time:
+    one place decides who is authenticated, not two. That makes the ORDER of
+    the two middlewares load-bearing -- so this fixture composes them exactly
+    as `create_app` does, or it would be proving something the product never
+    runs.
+    """
     from aiohttp import web
 
     from hiris.app.api.middleware_csrf import csrf_middleware
-    app = web.Application(middlewares=[csrf_middleware])
+    from hiris.app.api.middleware_internal_auth import internal_auth_middleware
+    app = web.Application(middlewares=[internal_auth_middleware, csrf_middleware])
     app["internal_token"] = token
+    app["credenziali"] = {}
+    app["supervisor_ingress_cidrs"] = ["172.30.32.0/23"]
     app.router.add_post("/api/x", lambda r: web.json_response({"ok": True}))
     return app
 
@@ -303,7 +313,49 @@ async def test_csrf_exempts_valid_internal_token_without_xrw(csrf_strict):
 
 @pytest.mark.asyncio
 async def test_csrf_wrong_internal_token_not_exempt(csrf_strict):
-    """An invalid token does not earn the CSRF exemption."""
+    """An invalid token does not earn the CSRF exemption.
+
+    With both middlewares composed in the production order, the refusal now
+    lands EARLIER: the boundary answers 401 before CSRF is ever reached. The
+    property is unchanged -- a wrong secret gets nothing -- and the caller is
+    told the truer thing: the problem is the credential, not a missing header.
+    """
     async with TestClient(TestServer(_make_csrf_app_with_token())) as c:
         resp = await c.post("/api/x", headers={"X-HIRIS-Internal-Token": "wrong"})
-        assert resp.status == 403
+
+        assert resp.status == 401, "a wrong secret must not reach the handler"
+
+
+@pytest.mark.asyncio
+async def test_il_csrf_gira_DOPO_l_autenticazione_e_non_prima():
+    """**L'ordine dei due middleware e' portante**, dal 22/09/2026.
+
+    Il CSRF esenta chi ha gia' provato di essere una macchina, e lo sa
+    leggendo il verdetto che il confine ha lasciato (`auth_via`). Invertirli
+    vorrebbe dire che il CSRF legge un verdetto che non c'e' ancora: rifiuterebbe
+    ogni chiamata da macchina -- il ponte, il gateway, il pannello -- con un 403
+    che parla di CSRF mentre il problema e' un ordine in una lista.
+
+    Si guarda la lista vera di `create_app`: e' un cancello di FORMA, e la forma
+    e' cio' che si rompe quando qualcuno riordina «per pulizia».
+
+    Mutazione ESEGUITA: scambiati i due nella lista -- rossa.
+    """
+    import ast
+    import pathlib
+
+    sorgente = (pathlib.Path(__file__).resolve().parents[1]
+                / "hiris" / "app" / "server.py").read_text(encoding="utf-8")
+    albero = ast.parse(sorgente)
+    lista = None
+    for nodo in ast.walk(albero):
+        if (isinstance(nodo, ast.Call)
+                and getattr(nodo.func, "attr", None) == "Application"):
+            for chiave in nodo.keywords:
+                if chiave.arg == "middlewares":
+                    lista = [getattr(e, "id", "") for e in chiave.value.elts]
+    assert lista, "non trovo la lista dei middleware in `create_app`"
+
+    assert lista.index("internal_auth_middleware") < lista.index("csrf_middleware"), (
+        f"i middleware sono nell'ordine {lista}: il CSRF legge `auth_via`, che "
+        "lo scrive l'autenticazione — invertirli spegne ogni integrazione")

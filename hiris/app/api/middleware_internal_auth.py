@@ -174,6 +174,27 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
         request["soggetto"] = _soggetto(request, "persona")
         return await handler(request)
 
+    # **La credenziale EFFIMERA del ponte** (spec §5, ingresso 7), e si guarda
+    # PRIMA del segreto condiviso per la stessa ragione per cui la firma si
+    # guarda prima di entrambi: finche' il segreto lungo vince, chi ce l'ha non
+    # ha nessun motivo di passare a una credenziale che scade, e il ripiego non
+    # finisce mai.
+    #
+    # Il ponte non e' una persona e non e' un'integrazione registrata: e' HIRIS
+    # che lavora per conto suo, per il tempo di un turno. Da cui `specie:
+    # nessuno`, che e' cio' che la cronaca deve scrivere.
+    from .credenziali import riconosci
+
+    turno = riconosci(request.app.get("credenziali") or {},
+                      request.headers.get("X-HIRIS-Internal-Token"),
+                      adesso=time.time())
+    if turno is not None:
+        request["auth_via"] = "turno"
+        request["soggetto"] = {"specie": "nessuno", "id": turno["mestiere"],
+                               "nome": turno["mestiere"], "utente": None,
+                               "ruolo": None}
+        return await handler(request)
+
     token = request.app.get("internal_token", "")
     if not token:
         if _allow_no_token():

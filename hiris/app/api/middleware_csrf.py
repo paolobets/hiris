@@ -8,12 +8,19 @@ several JS frameworks for free, no token roundtrip needed.
 Applies only to /api/* with POST/PUT/PATCH/DELETE. Same-origin fetch from our
 UI must always set X-Requested-With: 'fetch' (any non-empty value works).
 
-Server-to-server clients authenticated by a valid X-HIRIS-Internal-Token (the
-MCP gateway, the Retro Panel proxy) are exempt: CSRF is a browser-only attack
-class, and a request that already proves knowledge of the shared secret is by
-definition not a forged cross-site request.
+Server-to-server clients are exempt: CSRF is a browser-only attack class, and a
+request that has already proved it is a machine -- a channel signature, a turn
+credential, or the shared secret while it still exists -- is by definition not
+a forged cross-site request.
+
+**The exemption reads the verdict the auth middleware left** (`auth_via`)
+instead of comparing the secret a second time. One place decides who is
+authenticated, not two -- and the second one would have gone stale the day the
+bridge moved to ephemeral credentials, asking a bridge turn for a CSRF header
+the boundary had already cleared. That makes the ORDER of the two middlewares
+load-bearing, and a gate pins it
+(`test_security.py::test_il_csrf_gira_DOPO_l_autenticazione_e_non_prima`).
 """
-import hmac
 import logging
 import os
 
@@ -29,13 +36,6 @@ def _allow_no_csrf() -> bool:
     return os.environ.get("HIRIS_ALLOW_NO_CSRF", "").strip() == "1"
 
 
-def _has_valid_internal_token(request: web.Request) -> bool:
-    token = request.app.get("internal_token", "")
-    if not token:
-        return False
-    return hmac.compare_digest(request.headers.get("X-HIRIS-Internal-Token", ""), token)
-
-
 @web.middleware
 async def csrf_middleware(request: web.Request, handler) -> web.Response:
     if request.method in _SAFE_METHODS:
@@ -44,7 +44,18 @@ async def csrf_middleware(request: web.Request, handler) -> web.Response:
         return await handler(request)
     if request.headers.get("X-Requested-With"):
         return await handler(request)
-    if _has_valid_internal_token(request):
+    # **L'esenzione si tiene sull'esito del confine, non su un secondo
+    # confronto del segreto** (22/09/2026). Prima questo modulo ricopiava il
+    # confronto del token: un secondo posto in cui si decide chi e'
+    # autenticato, e che col ponte passato alle credenziali effimere sarebbe
+    # diventato subito falso -- avrebbe chiesto il CSRF a un turno del ponte
+    # che il confine aveva gia' riconosciuto.
+    #
+    # Il CSRF e' un attacco del BROWSER: una richiesta che ha gia' provato di
+    # essere una macchina -- firma di canale, credenziale di turno, o il
+    # segreto condiviso finche' esiste -- non e', per definizione, una
+    # richiesta forgiata cross-site.
+    if request.get("auth_via") in ("canale", "turno", "token"):
         return await handler(request)
     if _allow_no_csrf():
         return await handler(request)
