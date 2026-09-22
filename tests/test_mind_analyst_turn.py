@@ -37,7 +37,7 @@ def _risposta(osservazioni):
 
 
 def _osservazione(**extra):
-    base = {"soggetto": "dev1", "misura": "prelievo", "chiave": None,
+    base = {"quale": 0,
             "innesco": 1, "cosa": "il prelievo dalla rete e' salito",
             "spiegato": None,
             "cosa_cambierebbe": "meno prelievo vuol dire meno spesa"}
@@ -79,25 +79,38 @@ def test_un_osservazione_su_una_misura_che_NON_ESISTE_si_rifiuta():
     """Il modello non puo' parlare di una misura che la serie non contiene:
     sarebbe un'affermazione su una casa che non abbiamo guardato.
 
-    Mutazione: accettare qualunque soggetto -- rossa.
+    La proprieta' non e' cambiata col contratto numerato; e' cambiata la chiave
+    con cui si sbaglia, e adesso e' l'unica possibile.
+
+    Mutazione: accettare qualunque numero -- rossa.
     """
-    esito = at.apply_analysis(
-        _serie(), _risposta([_osservazione(misura="inventata")]))
-    assert any("inventata" in p for p in esito["problemi"]), esito["problemi"]
+    esito = at.apply_analysis(_serie(), _risposta([_osservazione(quale=7)]))
+
+    assert esito["analisi"] is None
+    assert any("7" in p for p in esito["problemi"]), esito["problemi"]
 
 
-def test_la_CHIAVE_fa_parte_dell_identita_della_misura():
+def test_la_CHIAVE_resta_parte_dell_identita_della_misura():
     """`co2.massimo` e `co2.media` sono due serie diverse, e un'osservazione
-    che sbaglia chiave parla di un'altra cosa.
+    che parla dell'una non parla dell'altra.
 
-    Mutazione: confrontare solo soggetto e misura -- rossa.
-    """
-    buona = at.apply_analysis(_serie(), _risposta([
-        _osservazione(soggetto="dev2", misura="co2", chiave="massimo", innesco=2)]))
-    assert buona["problemi"] == []
-    storta = at.apply_analysis(_serie(), _risposta([
-        _osservazione(soggetto="dev2", misura="co2", chiave="media", innesco=2)]))
-    assert storta["problemi"], "una chiave che non c'e' e' un'altra misura"
+    Col contratto numerato questa proprieta' non si difende piu' confrontando
+    campi: e' garantita **alla fonte**, perche' due serie diverse hanno due
+    numeri diversi e non esiste un modo di indicarne una intendendo l'altra.
+    Qui si verifica che il numero porti davvero la chiave giusta fino
+    all'osservazione arricchita -- che e' cio' che la pagina poi legge.
+
+    Mutazione ESEGUITA: far uscire la chiave della prima riga per tutte --
+    rossa."""
+    serie = _serie()
+    serie["serie"].append({**serie["serie"][1], "chiave": "media"})
+
+    esito = at.apply_analysis(serie, _risposta([
+        _osservazione(quale=1, innesco=2), _osservazione(quale=2, innesco=2)]))
+
+    assert esito["problemi"] == []
+    chiavi = [o["chiave"] for o in esito["analisi"]["osservazioni"]]
+    assert chiavi == ["massimo", "media"], chiavi
 
 
 def test_un_INNESCO_fuori_dai_tre_si_rifiuta():
@@ -140,7 +153,8 @@ def test_TUTTI_i_problemi_si_dicono_insieme():
     Mutazione: tornare al primo problema -- rossa.
     """
     esito = at.apply_analysis(_serie(), _risposta([
-        _osservazione(misura="inventata", innesco=9, cosa_cambierebbe="")]))
+        _osservazione(quale=99, innesco=9, cosa_cambierebbe="")]))
+
     assert len(esito["problemi"]) >= 3, esito["problemi"]
 
 
@@ -268,3 +282,83 @@ def test_il_turno_dell_analista_NON_riceve_gli_strumenti():
     from hiris.app.mind.analyst_turn import ANALYSIS_TURN_KIND
 
     assert ANALYSIS_TURN_KIND in runner._SELF_CONTAINED_KINDS
+
+
+# ---------------------------------------------------------------------------
+# **Il contratto numerato, e perche' e' costato sei giorni di silenzio.**
+#
+# Misurato sulla casa vera il 22/09/2026, dal registro dell'add-on:
+#
+#   analista: risposta rifiutata per 2026-09-17 -- l'osservazione 1 parla di
+#   «Presa Smart · potenza_media_min_max», che non e' fra le misure consegnate
+#   · l'osservazione 3 parla di «Alexa · illuminamento_ambiente · media», ...
+#
+# Cinque osservazioni su cinque, sempre. Non era il modello che sbagliava: ogni
+# riga della serie gli arriva con DUE identificatori --
+#
+#   {"soggetto": "061b20e991aafba5f4994ba574a7df8a", "nome": "Corridoio T", ...}
+#
+# -- e il contratto gli chiedeva `soggetto`, cioe' quello che a un modello
+# linguistico somiglia meno a un identificatore. Rispondeva col nome.
+#
+# **La soluzione era gia' scritta in questo progetto, il giorno prima**, nel
+# turno dell'attuatore: «Le osservazioni si consegnano NUMERATE, e il modello
+# si riferisce a una col suo numero: ricopiarne il testo vorrebbe dire poterlo
+# sbagliare». La lezione non era mai tornata indietro all'analista.
+# ---------------------------------------------------------------------------
+
+def test_la_domanda_consegna_le_misure_NUMERATE():
+    """Senza un numero VISIBILE accanto a ogni riga, chiedere «il numero» e'
+    chiedere al modello di contare -- e contare in un JSON di 162 righe e' il
+    modo piu' facile di sbagliare di uno.
+
+    Mutazione ESEGUITA: togliere la numerazione dalla domanda -- rossa."""
+    domanda = at.build_question(_serie())
+
+    assert "[0]" in domanda and "[1]" in domanda
+    assert "Inverter" in domanda, "il nome resta: serve al modello per capire"
+
+
+def test_un_NUMERO_FUORI_elenco_si_rifiuta():
+    """Il numero e' l'unica chiave: se non e' nell'elenco non c'e' niente da
+    arricchire, e inventare la riga piu' vicina sarebbe attaccare
+    un'osservazione a una misura che nessuno ha scelto.
+
+    Mutazione: accettare qualunque intero -- rossa."""
+    esito = at.apply_analysis(_serie(), _risposta([_osservazione(quale=99)]))
+
+    assert esito["analisi"] is None
+    assert any("99" in p for p in esito["problemi"])
+
+
+def test_il_NOME_UMANO_non_e_piu_una_chiave_e_il_rifiuto_lo_dice():
+    """Il difetto del 17-22/09 preso alla radice: col contratto numerato un
+    nome non e' piu' una risposta possibile, e il rifiuto dice cosa serve
+    invece di dire che quella misura «non e' fra le consegnate» -- che era
+    vero e inutile.
+
+    Mutazione: accettare una stringa come numero -- rossa."""
+    risposta = _risposta([{"soggetto": "Corridoio T", "misura": "temperatura",
+                           "innesco": 1, "cosa": "x", "cosa_cambierebbe": "y"}])
+
+    esito = at.apply_analysis(_serie(), risposta)
+
+    assert esito["analisi"] is None
+    assert any("numero" in p.lower() for p in esito["problemi"]), esito["problemi"]
+
+
+def test_l_osservazione_arricchita_porta_ANCORA_soggetto_misura_e_chiave():
+    """Cambia cio' che il modello DICE, non cio' che l'archivio riceve: la
+    pagina, l'attuatore e il verificatore leggono `soggetto`/`misura`/`chiave`
+    e non devono accorgersi di niente.
+
+    Mutazione ESEGUITA: far uscire il numero invece dei tre campi -- rossa (la
+    scheda «Cosa fare» non saprebbe piu' di cosa parla un'osservazione)."""
+    esito = at.apply_analysis(_serie(), _risposta([_osservazione(quale=1)]))
+
+    vista = esito["analisi"]["osservazioni"][0]
+    assert vista["soggetto"] == "dev2"
+    assert vista["misura"] == "co2"
+    assert vista["chiave"] == "massimo"
+    assert vista["nome"] == "Sala"
+    assert "quale" not in vista, "il numero e' un dettaglio del turno, non un dato"

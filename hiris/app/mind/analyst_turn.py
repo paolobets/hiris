@@ -121,8 +121,9 @@ def apply_analysis(series: dict, answer: str) -> dict:
                               "`osservazioni`: un elenco vuoto e' silenzio, e "
                               "va bene; l'assenza dell'elenco e' un'altra cosa")]}
 
-    known = {(row.get("soggetto"), row.get("misura"), row.get("chiave")): row
-             for row in series.get("serie") or []}
+    # L'elenco IN ORDINE: il numero che il modello indica e' la posizione qui,
+    # ed e' lo stesso ordine con cui `build_question` lo ha consegnato.
+    known = list(series.get("serie") or [])
     problems: list[str] = []
     enriched: list[dict] = []
     for number, line in enumerate(seen, start=1):
@@ -147,14 +148,29 @@ def _enrich(line: dict, number: int, known: dict, problems: list) -> dict | None
             "i numeri li mette il codice, dalla serie. Indica la misura e di' "
             "perche'")
 
-    where = (line.get("soggetto"), line.get("misura"), line.get("chiave"))
-    row = known.get(where)
-    if row is None:
+    # **Il NUMERO, non il nome** (difetto misurato il 22/09/2026, sei giorni di
+    # silenzio). Ogni riga arriva al modello con due identificatori -- l'impronta
+    # del soggetto e il nome umano -- e chiedergli l'impronta significava
+    # chiedergli quello che a un modello linguistico somiglia meno a un
+    # identificatore: rispondeva «Presa Smart», «Alexa», «Corridoio T», e la
+    # risposta veniva rifiutata per intero. Cinque osservazioni su cinque.
+    #
+    # Il numero toglie l'ambiguita' alla fonte, ed e' la stessa scelta gia'
+    # fatta un giorno prima nel turno dell'attuatore: «ricopiarne il testo
+    # vorrebbe dire poterlo sbagliare».
+    which = line.get("quale")
+    row = None
+    if not isinstance(which, int) or isinstance(which, bool):
         problems.append(
-            f"l'osservazione {number} parla di «{line.get('soggetto')} · "
-            f"{line.get('misura')}"
-            + (f" · {line.get('chiave')}" if line.get("chiave") else "")
-            + "», che non e' fra le misure consegnate")
+            f"l'osservazione {number} non porta `quale`, il numero della misura "
+            f"nell'elenco consegnato (ha {which!r}): il numero e' l'unica "
+            "chiave, un nome non basta")
+    elif not 0 <= which < len(known):
+        problems.append(
+            f"l'osservazione {number} indica la misura {which}, che non e' "
+            f"nell'elenco (ce ne sono {len(known)}, da 0 a {len(known) - 1})")
+    else:
+        row = known[which]
 
     trigger = line.get("innesco")
     if trigger not in TRIGGERS:
@@ -207,9 +223,7 @@ solida."""
 ANSWER_CONTRACT = """Rispondi SOLO con un oggetto JSON di questa forma:
 
 {"osservazioni": [
-  {"soggetto": "<il soggetto della misura>",
-   "misura": "<il nome della misura>",
-   "chiave": "<la chiave, o null se la misura non ne ha>",
+  {"quale": <il NUMERO fra parentesi quadre della misura, come nell'elenco>,
    "innesco": 1 | 2 | 3,
    "cosa": "cosa hai visto, in una frase",
    "spiegato": "da cosa e' spiegato, oppure null se non lo e'",
@@ -248,9 +262,11 @@ def build_question(series: dict) -> str | None:
     lines.append("")
     lines.append(f"I giorni, in ordine: {', '.join(series.get('giorni') or [])}")
     lines.append("")
-    lines.append("Le misure, una riga per misura, coi valori in quell'ordine:")
-    lines.append(json.dumps({"serie": [_compact(r) for r in rows]},
-                            ensure_ascii=False))
+    lines.append("Le misure, NUMERATE. Il numero fra parentesi quadre e' la "
+                 "chiave con cui te ne riferisci:")
+    for number, row in enumerate(rows):
+        lines.append(f"[{number}] " + json.dumps(_compact(row),
+                                                 ensure_ascii=False))
     lines.append("")
     lines.append(ANSWER_CONTRACT)
     return "\n".join(lines)

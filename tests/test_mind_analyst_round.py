@@ -226,3 +226,107 @@ async def test_un_turno_ANCORA_VALIDO_blocca_l_analista(casa):
     await server.analyst_round(app)
 
     assert modello.chiamate == 0
+
+
+# ---------------------------------------------------------------------------
+# **Il difetto del 17-22/09, misurato sulla casa vera il 22/09/2026.**
+#
+# Il fix di 3.56.1 aveva chiuso `_turn_in_flight`. Cinque giorni dopo l'analista
+# taceva ancora, e il registro dell'add-on diceva perche':
+#
+#   analista: risposta rifiutata per 2026-09-17 -- l'osservazione 1 parla di
+#   «Presa Smart · potenza_media_min_max», che non e' fra le misure consegnate
+#
+# Non stava analizzando oggi: rimasticava il turno del 17. Quel turno e'
+# `decided` con una risposta vera che **non puo' mai essere accettata**, e:
+#
+#   - una risposta rifiutata non si archivia (giusto: direbbe che quel giorno
+#     e' stato analizzato);
+#   - quindi `store.analysis("2026-09-17")` resta `None` per sempre;
+#   - quindi il raccoglitore la riapplica a ogni giro, la rifiuta, e torna
+#     `risposta: True` -- perche' il modello HA risposto, solo male;
+#   - e `analyst_round` esce li', per sempre.
+#
+# **Quinta occorrenza della stessa forma**: la porta salta chi ha gia' una
+# risposta, anche quando la risposta e' rotta. E ancora una volta la guardia
+# che serviva c'era gia' nei fratelli: `_collect_recipe_turn` pretende
+# `status == "decided"`, `_collect_actuator_turn` pretende `giorno == oggi`.
+# L'analista era nato senza entrambe.
+# ---------------------------------------------------------------------------
+
+class _CodaConRispostaINACCETTABILE:
+    """Un turno del ponte, RISPOSTO, di un altro giorno, che la validazione
+    non potra' mai accettare."""
+
+    def __init__(self, giorno="2026-09-17"):
+        self.turno = {
+            "status": "decided", "deadline_ts": 1.0,
+            "wake": {"giorno": giorno},
+            "decision": {"reply": '{"osservazioni": [{"soggetto": "Presa Smart",'
+                                  ' "misura": "potenza", "chiave": null,'
+                                  ' "innesco": 1, "cosa": "x",'
+                                  ' "cosa_cambierebbe": "y"}]}'},
+        }
+        self.accodati = []
+
+    def latest(self, kind):
+        return self.turno
+
+    def count_exchanges_today(self):
+        return 0
+
+    def enqueue(self, kind, wake, job, deadline, now=None):
+        self.accodati.append(kind)
+
+
+@pytest.mark.asyncio
+async def test_una_risposta_di_UN_ALTRO_GIORNO_non_blocca_l_analista(casa):
+    """**Il difetto vero, e costa sei giorni di silenzio.**
+
+    Un turno risposto per il 17 non dice niente su oggi: riapplicarlo non puo'
+    produrre l'analisi di oggi, e se quella risposta e' inaccettabile il giro
+    non arrivera' MAI a guardare oggi.
+
+    Mutazione ESEGUITA: togliere la guardia del giorno -- rossa, e la casa
+    resta senza analisi finche' qualcuno non legge il registro.
+    """
+    app, _store, modello = casa
+    app["reasoning_queue"] = _CodaConRispostaINACCETTABILE()
+
+    await server.analyst_round(app)
+
+    assert modello.chiamate == 1, (
+        "un turno di un altro giorno ha impedito l'analisi di oggi: e' il "
+        "difetto del 17-22/09")
+
+
+@pytest.mark.asyncio
+async def test_un_turno_ANCORA_SENZA_RISPOSTA_non_si_raccoglie(casa):
+    """La seconda guardia mancante, quella che i fratelli hanno: un turno
+    `pending` non ha niente da raccogliere, e provarci produce un esito finto
+    («il modello non ha risposto») che a valle si legge come un giro gia' fatto.
+
+    Mutazione: togliere il controllo sullo stato -- rossa."""
+    app, store, _modello = casa
+    coda = _CodaConRispostaINACCETTABILE()
+    coda.turno["status"] = "pending"
+    coda.turno["decision"] = None
+    coda.turno["wake"] = {"giorno": _oggi(app)}
+    app["reasoning_queue"] = coda
+
+    # Si guarda il RACCOGLITORE, non il giro: dal giro non si distinguerebbe
+    # «non ho raccolto niente» da «ho raccolto un esito vuoto», e una prova che
+    # non distingue i due casi resta verde anche senza la guardia.
+    raccolto = server._collect_analyst_turn(app, store, _oggi(app))
+
+    assert raccolto is None, (
+        "un turno «pending» ha prodotto un esito: e' l'esito finto «il modello "
+        "non ha risposto», che a valle si legge come un giro gia' fatto")
+
+
+def _oggi(app):
+    from datetime import datetime
+
+    from hiris.app.home_space.historian import home_space_zone
+    fuso = server._timezone_from_home_space_store(app.get("home_space_store"))
+    return datetime.now(home_space_zone(fuso)).date().strftime("%Y-%m-%d")

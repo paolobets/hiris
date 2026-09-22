@@ -2527,8 +2527,30 @@ def _collect_analyst_turn(app, store, today: str) -> dict | None:
     turn = queue.latest(analyst_turn.ANALYSIS_TURN_KIND)
     if not turn:
         return None
+    # **Le due guardie che i fratelli avevano e questo no** (difetto misurato
+    # sulla casa vera il 22/09/2026, sei giorni di silenzio).
+    #
+    # `status`: un turno ancora `pending` non ha niente da raccogliere, e
+    # provarci produce l'esito finto «il modello non ha risposto» -- che a
+    # valle si legge come un giro gia' fatto. `_collect_recipe_turn` pretende
+    # `decided` da settimane.
+    #
+    # `giorno`: una risposta per un altro giorno non dice niente su oggi.
+    # `_collect_actuator_turn` lo pretende da sempre.
+    #
+    # Perche' insieme costavano sei giorni: il turno del 17/09 era `decided`
+    # con una risposta che la validazione **non poteva accettare**; una
+    # risposta rifiutata non si archivia (giusto), quindi `analysis(giorno)`
+    # restava `None` per sempre, quindi il raccoglitore la riapplicava a ogni
+    # giro tornando `risposta: True` -- e `analyst_round` usciva li'. L'analisi
+    # di oggi non veniva mai nemmeno tentata.
+    #
+    # **Quinta occorrenza della stessa forma**: la porta salta chi ha gia' una
+    # risposta, anche quando la risposta e' rotta.
+    if turn.get("status") != "decided":
+        return None
     day = (turn.get("wake") or {}).get("giorno")
-    if not day or store.analysis(day) is not None:
+    if day != today or store.analysis(day) is not None:
         return None
     from .api.handlers_mind import _device_names
 
