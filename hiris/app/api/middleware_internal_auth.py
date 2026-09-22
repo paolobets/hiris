@@ -1,4 +1,3 @@
-import hmac
 import ipaddress
 import logging
 import os
@@ -29,17 +28,28 @@ def _supervisor_cidrs(request: web.Request) -> list[str]:
     return cidrs if cidrs else _DEFAULT_SUPERVISOR_CIDRS
 
 
-def _is_supervisor_ingress(request: web.Request) -> bool:
-    """Verify a request genuinely came from HA Supervisor Ingress.
+async def _is_supervisor_ingress(request: web.Request) -> bool:
+    """Se questa richiesta viene DAVVERO dall'ingress del Supervisor.
 
-    Dual check to prevent X-Ingress-Path spoofing (CR-1):
-    1. ``X-Ingress-Path`` must be present AND match the Supervisor pattern.
-    2. The TCP source IP must fall inside a trusted Supervisor CIDR.
+    **Tre controlli, e il terzo e' l'unico che dimostra qualcosa** (reperto A-2,
+    chiuso il 22/09/2026):
 
-    Without the IP check, any client that can reach the add-on port directly
-    (LAN, or a tunnel from another host) could attach
-    ``X-Ingress-Path: /api/hassio_ingress/x`` and bypass the internal_token on
-    the entire API surface.
+    1. `X-Ingress-Path` c'e' e ha la forma del Supervisor;
+    2. l'indirizzo sorgente sta in una rete fidata;
+    3. **il Supervisor riconosce il biscotto di sessione.**
+
+    I primi due sembrano stretti e non lo sono: l'intestazione la scrive
+    chiunque, e la rete predefinita non e' l'indirizzo del proxy -- e' la rete
+    Docker in cui vive **ogni add-on installato**. Se il tunnel che pubblica la
+    casa gira come add-on (il caso normale), il suo indirizzo e' li' dentro, e
+    fino a oggi gli bastava scrivere un'intestazione per avere `/api/*` intero.
+
+    Il terzo chiude quel buco: un add-on vicino puo' falsificare l'intestazione
+    e puo' stare nella rete, ma non puo' avere un biscotto che il Supervisor
+    riconosce senza averlo rubato a una persona.
+
+    I primi due restano perche' costano zero e fermano prima cio' che non deve
+    nemmeno arrivare a una chiamata di rete.
     """
     ingress_path = request.headers.get("X-Ingress-Path", "")
     if not ingress_path or not _INGRESS_PATH_RE.match(ingress_path):
@@ -51,18 +61,33 @@ def _is_supervisor_ingress(request: web.Request) -> bool:
         remote_ip = ipaddress.ip_address(remote)
     except (ValueError, TypeError):
         return False
+    dentro = False
     for cidr in _supervisor_cidrs(request):
         try:
             if remote_ip in ipaddress.ip_network(cidr, strict=False):
-                return True
+                dentro = True
+                break
         except (ValueError, TypeError):
             continue
-    logger.warning(
-        "CR-1: X-Ingress-Path present but source IP %s not in supervisor CIDRs "
-        "%s — treating as direct request (internal_token required)",
-        remote, _supervisor_cidrs(request),
-    )
-    return False
+    if not dentro:
+        logger.warning(
+            "CR-1: X-Ingress-Path present but source IP %s not in supervisor CIDRs "
+            "%s — treating as direct request (internal_token required)",
+            remote, _supervisor_cidrs(request),
+        )
+        return False
+
+    # **Il controllo che dimostra qualcosa.** Vedi il docstring: i due qui sopra
+    # non distinguono il proxy da un add-on vicino, questo si'.
+    from .ingresso import BISCOTTO, sessione_valida
+
+    if not await sessione_valida(request.app, request.cookies.get(BISCOTTO, "")):
+        logger.warning(
+            "ingress: %s porta l’intestazione del proxy ma non una sessione "
+            "che il Supervisor riconosce — trattata come richiesta diretta",
+            remote)
+        return False
+    return True
 
 
 #: Le intestazioni con cui un SERVIZIO firma (spec 2026-09-21 §6, rifatta il
@@ -81,6 +106,17 @@ _FIRMA = "X-HIRIS-Firma"
 #: di aggiungere le proprie, quindi attraverso l'ingress non sono falsificabili.
 #: Su ogni altra strada lo sono, ed e' il motivo per cui si leggono in un ramo
 #: solo.
+#: Il rifiuto di chi non ha nessuna delle tre credenziali. **Dice cosa fare**:
+#: un'integrazione non aggiornata trova una porta chiusa, e senza questa frase
+#: chi la mantiene passerebbe il pomeriggio a leggere il registro.
+_ISTRUZIONI = (
+    "non ti riconosco. Un servizio esterno entra firmando le proprie "
+    "richieste: fatti accoppiare dal proprietario nella pagina Servizi di "
+    "HIRIS — apre una finestra di dieci minuti, tu ti presenti con la tua "
+    "chiave pubblica, e lui approva il tuo ruolo confrontando un codice di "
+    "quattro cifre. Il segreto condiviso non esiste più dal 22/09/2026."
+)
+
 _CHI = "X-Remote-User-Id"
 _NOME = "X-Remote-User-Display-Name"
 _UTENTE = "X-Remote-User-Name"
@@ -139,13 +175,23 @@ async def _firmatario(request: web.Request):
 
 @web.middleware
 async def internal_auth_middleware(request: web.Request, handler) -> web.Response:
-    """Validate X-HIRIS-Internal-Token for non-Ingress requests.
+    """Chi sta chiamando, e se puo' entrare — **il confine del prodotto**.
 
-    Genuine HA Supervisor Ingress requests (X-Ingress-Path matches the
-    Supervisor pattern AND the source IP is a trusted Supervisor address) always
-    pass. Every other request requires a matching X-HIRIS-Internal-Token; when no
-    token is configured they are denied by default (set HIRIS_ALLOW_NO_TOKEN=1 to
-    disable this during local development).
+    Dal 22/09/2026 ci sono **tre strade, e ognuna dice chi e'**:
+
+    1. la **firma** di un servizio che il proprietario ha approvato
+       (`api/canali.py` piu' `api/servizi.py`);
+    2. l'**ingress** del Supervisor, con la sessione che il Supervisor stesso
+       riconosce (`api/ingresso.py`);
+    3. la **credenziale di turno** del ponte, che vive dieci minuti
+       (`api/credenziali.py`).
+
+    Chi non ne ha nessuna non entra, e il rifiuto gli dice cosa fare. Il
+    segreto condiviso — uno per tutti i portatori, eterno, in chiaro nei
+    backup — e' uscito con la fetta 3 dello sprint sicurezza.
+
+    `HIRIS_ALLOW_NO_TOKEN=1` spegne tutto questo, e lo grida nel registro: e'
+    per lo sviluppo locale, e in produzione e' un guasto.
     """
     # **L'unica superficie che questo prodotto non puo' autenticare**, e
     # esiste solo nei dieci minuti in cui il proprietario ha aperto
@@ -191,7 +237,7 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
                                "ruolo": firmato["ruolo"]}
         return await handler(request)
 
-    if _is_supervisor_ingress(request):
+    if await _is_supervisor_ingress(request):
         request["auth_via"] = "ingress"
         request["soggetto"] = _soggetto(request, "persona")
         return await handler(request)
@@ -217,33 +263,35 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
                                "ruolo": None}
         return await handler(request)
 
-    token = request.app.get("internal_token", "")
-    if not token:
-        if _allow_no_token():
-            logger.critical("SECURITY: HIRIS_ALLOW_NO_TOKEN=1 is set — authentication is DISABLED")
-            request["auth_via"] = "no_token"
-            request["soggetto"] = _soggetto(request, "sviluppo")
-            return await handler(request)
-        logger.warning(
-            "Blocked unauthenticated non-ingress request from %s "
-            "(no internal_token configured; set HIRIS_ALLOW_NO_TOKEN=1 for dev)",
-            request.remote,
-        )
-        return web.json_response({"error": "unauthorized"}, status=401)
+    # **Qui finiva la convivenza col segreto condiviso, e il 22/09/2026 e'
+    # finita davvero** (reperto A-5, fetta 3 dello sprint sicurezza).
+    #
+    # Per una fetta HIRIS ha accettato «la firma oppure il token», perche' il
+    # gateway MCP e il proxy di Retro Panel vivevano in due repository separati
+    # e un taglio netto li avrebbe spenti. La fine la doveva decidere una
+    # MISURA, non una data -- ed e' quello che e' successo: il registro
+    # dell'add-on ha smesso di nominare chiunque non fosse la porta di
+    # sviluppo, che adesso firma.
+    #
+    # Un segreto condiviso non e' un'identita': e' una parola d'ordine. Uno per
+    # tutti i portatori, in chiaro nei backup di Home Assistant, e chi lo legge
+    # una volta e' tutti per sempre; compromessa una strada, l'unica mossa era
+    # cambiarlo e romperle tutte insieme. Adesso ogni portatore ha la propria
+    # credenziale e il registro puo' dire QUALE ha chiamato.
+    #
+    # Restano tre strade, e ognuna dice chi e': la FIRMA di un servizio
+    # approvato, l'INGRESS con la sessione che il Supervisor riconosce, la
+    # CREDENZIALE DI TURNO del ponte.
+    if _allow_no_token():
+        logger.critical(
+            "SECURITY: HIRIS_ALLOW_NO_TOKEN=1 is set — authentication is DISABLED")
+        request["auth_via"] = "no_token"
+        request["soggetto"] = _soggetto(request, "sviluppo")
+        return await handler(request)
 
-    if not hmac.compare_digest(request.headers.get("X-HIRIS-Internal-Token", ""), token):
-        logger.warning("Unauthorized inter-addon request from %s", request.remote)
-        return web.json_response({"error": "unauthorized"}, status=401)
-
-    # La CONVIVENZA (spec §8): il token resta per una fetta, perche' il gateway
-    # e il proxy di Retro Panel vivono in due repository separati e un taglio
-    # netto li spegnerebbe. Ma chi lo usa **si misura**, o la fine della
-    # convivenza la deciderebbe una speranza invece di un dato.
-    logger.info(
-        "convivenza: richiesta col token condiviso da %s (servizio dichiarato: "
-        "%s) su %s %s — questo ripiego esce quando questa riga tace",
-        request.remote, request.headers.get(_SERVIZIO) or "IGNOTO",
-        request.method, request.path)
-    request["auth_via"] = "token"
-    request["soggetto"] = _soggetto(request, "integrazione")
-    return await handler(request)
+    logger.warning(
+        "rifiutata una richiesta non autenticata da %s su %s %s%s",
+        request.remote, request.method, request.path,
+        " — portava un segreto condiviso, che dal 22/09/2026 non apre più niente"
+        if request.headers.get("X-HIRIS-Internal-Token") else "")
+    return web.json_response({"errore": _ISTRUZIONI}, status=401)

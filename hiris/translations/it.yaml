@@ -64,9 +64,6 @@ configuration:
   log_level:
     name: "Avanzate · dettaglio del registro"
     description: "Quanto scrive HIRIS nel registro. Per segnalare un guasto: metti 'debug', riproduci il problema, allega quello che vedi."
-  internal_token:
-    name: "Avanzate · token delle API interne"
-    description: "LASCIALO VUOTO: HIRIS ne genera uno al primo avvio e lo riusa sempre. Scrivine uno solo se un altro componente deve chiamare la sua API."
   supervisor_ingress_cidr:
     name: "Avanzate · reti riconosciute come ingress"
     description: "Chi arriva da queste reti entra senza token, tutti gli altri no. Allargarlo apre la API di HIRIS. Predefinito: la rete del Supervisor."

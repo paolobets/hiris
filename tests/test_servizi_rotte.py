@@ -22,8 +22,12 @@ from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import close_all_stores
 from hiris.app.server import create_app
 
+#: Dal reperto A-2 (22/09/2026) l'intestazione non basta: il confine chiede al
+#: Supervisor se riconosce il biscotto, e la fixture `supervisor_ingress` e' il
+#: Supervisor che risponde.
 _INGRESS = {"X-Ingress-Path": "/api/hassio_ingress/abc/",
-            "X-Requested-With": "fetch"}
+            "X-Requested-With": "fetch",
+            "Cookie": "ingress_session=sessione-che-il-supervisor-conosce"}
 _UTENTI = {"utenti": [
     {"id": "u-admin", "nome": "Paolo", "amministratore": True,
      "proprietario": True, "sistema": False},
@@ -35,6 +39,12 @@ _UTENTI = {"utenti": [
 def chiudi():
     yield
     close_all_stores()
+
+
+@pytest.fixture(autouse=True)
+def _supervisor(supervisor_ingress):
+    """Il Supervisor finto, per ogni prova di questo file: qui l'ingress e' la
+    strada normale del proprietario, e senza di lui nessuna passerebbe."""
 
 
 @pytest.fixture(autouse=True)

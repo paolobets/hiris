@@ -55,7 +55,7 @@ async def csrf_middleware(request: web.Request, handler) -> web.Response:
     # essere una macchina -- firma di canale, credenziale di turno, o il
     # segreto condiviso finche' esiste -- non e', per definizione, una
     # richiesta forgiata cross-site.
-    if request.get("auth_via") in ("canale", "turno", "token", "accoppiamento"):
+    if request.get("auth_via") in ("canale", "turno", "accoppiamento"):
         return await handler(request)
     if _allow_no_csrf():
         return await handler(request)

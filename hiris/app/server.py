@@ -50,7 +50,6 @@ from .home_space.topology import (
     rebuild,
     tree_areas,
 )
-from .internal_token import prepare_internal_token
 from .keeper.exchange import interpreta_promise
 from .keeper.store import AgendaStore
 from .keeper.sweeper import Sweeper
@@ -3328,26 +3327,31 @@ async def _on_startup(app: web.Application) -> None:
     # varco, letto direttamente come directory.
     #
     # Sta qui in cima, e non piu' sotto insieme al resto degli store, perche'
-    # il token interno ci si conserva dentro (vedi subito sotto) e va risolto
-    # prima che qualunque middleware possa servire una richiesta.
+    # va risolta prima che qualunque middleware possa servire una richiesta.
     data_dir = os.environ.get("HIRIS_DATA_DIR", "/data")
     app["data_dir"] = data_dir
-    # Il token interno: se l'opzione dell'add-on e' vuota (il default di
-    # config.yaml) viene generato e conservato in `data_dir`, cosi' che
-    # sopravviva ai riavvii -- ed e' `prepare_internal_token` a ripubblicarlo
-    # anche in `os.environ["INTERNAL_TOKEN"]`, perche' il worker del ponte
-    # (`agent/runner.py::build_headers`) legge di li' a ogni giro e senza
-    # quella riga continuerebbe a mandare l'header vuoto. Se generarlo o
-    # scriverlo fallisce si torna "" e il rifiuto-per-default resta in piedi,
-    # dichiarato nel log: vedi `internal_token.py`.
-    app["internal_token"] = prepare_internal_token(data_dir)
-    # CR-1: trusted Supervisor-ingress source CIDRs. The ingress-bypass in
-    # internal_auth_middleware only applies to requests from these ranges, so a
-    # forged X-Ingress-Path from a direct LAN/tunnel client cannot bypass the
-    # internal_token. Default = the standard HA Supervisor Docker network.
-    _cidrs = [c.strip() for c in os.environ.get(
-        "SUPERVISOR_INGRESS_CIDR", "172.30.32.0/23").split(",") if c.strip()]
-    app["supervisor_ingress_cidrs"] = _cidrs or ["172.30.32.0/23"]
+    # CR-1: le reti sorgenti fidate. Il bypass dell'ingress vale solo per le
+    # richieste che vengono di li', cosi' un `X-Ingress-Path` falsificato da un
+    # client diretto (LAN, o un tunnel da un'altra macchina) non scavalca il
+    # confine. Default: la rete Docker del Supervisor.
+    #
+    # A-3 (22/09/2026): le voci si VALIDANO. Prima si prendevano cosi' com'erano,
+    # quindi `0.0.0.0/0` passava in silenzio e apriva `/api/*` a chiunque sapesse
+    # scrivere un'intestazione. E un campo tutto sbagliato NON ripiega sul
+    # default: ripiegare vorrebbe dire che scrivere male allarga il perimetro
+    # invece di stringerlo.
+    from .api.ingresso import reti_fidate
+
+    _reti, _rifiutate = reti_fidate(os.environ.get("SUPERVISOR_INGRESS_CIDR", ""))
+    for _motivo in _rifiutate:
+        logger.error("supervisor_ingress_cidr: %s", _motivo)
+    if _rifiutate and not _reti:
+        logger.error(
+            "supervisor_ingress_cidr: nessuna voce valida, quindi NESSUNA rete "
+            "è fidata e ogni richiesta dovrà autenticarsi. Correggi il campo "
+            "nelle opzioni dell'add-on, oppure svuotalo per tornare al "
+            "predefinito")
+    app["supervisor_ingress_cidrs"] = [str(r) for r in _reti]
     # fetta E3 Task 7: `app["execute_policy"]` (tiers/entity_tiers) e' uscita.
     # Era il semaforo condiviso fra la superficie remota (execute-API, uscita
     # fetta E2 Task 4) e la Sentinella (watcher/executor.py::execute, uscita
@@ -5625,6 +5629,9 @@ def create_app() -> web.Application:
     # un riavvio e' una finestra che ti sei dimenticato aperta.
     from .api.servizi import prepara_finestra
     prepara_finestra(app)
+    # I ricordi delle sessioni di ingress gia' verificate col Supervisor (A-2).
+    from .api.ingresso import prepara_ingresso
+    prepara_ingresso(app)
 
     from .api.canali import prepara_canali
     prepara_canali(app)

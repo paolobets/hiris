@@ -62,9 +62,6 @@ configuration:
   log_level:
     name: "Advanced · log detail"
     description: "How much HIRIS writes to the log. To report a fault: set 'debug', reproduce the problem, attach what you see."
-  internal_token:
-    name: "Advanced · internal API token"
-    description: "LEAVE IT EMPTY: HIRIS generates one at first startup and reuses it. Write your own only if another component must call its API."
   supervisor_ingress_cidr:
     name: "Advanced · networks recognised as ingress"
     description: "Requests from these networks get in without a token, all others do not. Widening it opens HIRIS's API. Default: the Supervisor's network."

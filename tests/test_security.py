@@ -302,28 +302,32 @@ def _make_csrf_app_with_token(token="srv-secret"):
 
 
 @pytest.mark.asyncio
-async def test_csrf_exempts_valid_internal_token_without_xrw(csrf_strict):
-    """A server-to-server client with a valid X-HIRIS-Internal-Token is exempt
-    from CSRF (it is not a browser, and it already proves the shared secret).
-    This is what lets the MCP gateway and the Retro Panel proxy POST/PUT."""
-    async with TestClient(TestServer(_make_csrf_app_with_token())) as c:
-        resp = await c.post("/api/x", headers={"X-HIRIS-Internal-Token": "srv-secret"})
-        assert resp.status == 200
+async def test_csrf_esenta_chi_si_e_gia_autenticato_ALTROVE(csrf_strict):
+    """Il CSRF esenta chi il confine ha gia' riconosciuto per un'altra strada
+    -- un servizio che firma, il ponte con la sua credenziale di turno,
+    l'accoppiamento -- perche' un attacco CSRF passa per il browser della
+    vittima, e un browser non firma Ed25519 ne' conosce una credenziale di
+    turno.
 
+    **Qui c'erano due prove sul segreto condiviso**, ed escono con lui il
+    22/09/2026 (fetta 3): `auth_via == "token"` non esiste piu'. Restano i tre
+    nomi vivi, e la prova guarda l'ELENCO invece di una richiesta, perche' il
+    difetto che si teme e' un nome aggiunto per distrazione.
 
-@pytest.mark.asyncio
-async def test_csrf_wrong_internal_token_not_exempt(csrf_strict):
-    """An invalid token does not earn the CSRF exemption.
-
-    With both middlewares composed in the production order, the refusal now
-    lands EARLIER: the boundary answers 401 before CSRF is ever reached. The
-    property is unchanged -- a wrong secret gets nothing -- and the caller is
-    told the truer thing: the problem is the credential, not a missing header.
+    Mutazione ESEGUITA: rimesso "token" nell'elenco -- rossa.
     """
-    async with TestClient(TestServer(_make_csrf_app_with_token())) as c:
-        resp = await c.post("/api/x", headers={"X-HIRIS-Internal-Token": "wrong"})
+    import inspect
 
-        assert resp.status == 401, "a wrong secret must not reach the handler"
+    from hiris.app.api import middleware_csrf
+
+    sorgente = inspect.getsource(middleware_csrf)
+    riga = [r for r in sorgente.splitlines() if 'auth_via' in r and ' in (' in r]
+
+    assert len(riga) == 1, f"l'esenzione non e' piu' in un punto solo: {riga}"
+    assert '"token"' not in riga[0], (
+        "il CSRF esenta di nuovo il segreto condiviso, che non esiste piu'")
+    for viva in ('"canale"', '"turno"', '"accoppiamento"'):
+        assert viva in riga[0], f"manca la strada {viva}"
 
 
 @pytest.mark.asyncio

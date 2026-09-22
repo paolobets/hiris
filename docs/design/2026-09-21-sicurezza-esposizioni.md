@@ -67,6 +67,8 @@ serve è debito, non sicurezza.
 
 ### A-1 · Ogni utente di Home Assistant è il proprietario, per HIRIS
 
+> **CHIUSO il 21/09/2026** (fetta 1): ogni richiesta porta un soggetto, e il soffitto decide su di lui.
+
 `middleware_internal_auth.py:76-78` · `handlers_chat.py:702-708`
 
 HIRIS tratta **qualunque** richiesta di ingress come pienamente autorizzata. Non chiede mai quale
@@ -91,6 +93,8 @@ decisione di prodotto, non righe di codice: al primo avvio HIRIS deve sapere chi
 risposta a «chi ha spento la luce», che oggi non ce l'ha né in HIRIS né nel registro di HA (C-3).
 
 ### A-2 · «Fidato» vuol dire la rete di tutti gli add-on
+
+> **CHIUSO il 22/09/2026** (fetta 3). Il confine chiede al Supervisor se riconosce il biscotto di sessione (`POST /ingress/validate_session`, verificato sulla sorgente): un add-on vicino può falsificare l'intestazione e può stare nella rete, non può avere una sessione che il Supervisor conosce. I due controlli di prima restano, davanti, perché costano zero.
 
 `middleware_internal_auth.py:18` (`172.30.32.0/23`)
 
@@ -119,6 +123,8 @@ da «l'API aperta a Internet».
 
 ### A-3 · `supervisor_ingress_cidr` accetta `0.0.0.0/0`, in silenzio
 
+> **CHIUSO il 22/09/2026** (fetta 3). Le voci si validano con `ipaddress`: niente reti pubbliche, niente prefissi più larghi di `/16`, ogni rifiuto nomina la voce e dice perché. E un campo **tutto sbagliato non ripiega sul default**, o scrivere male allargherebbe il perimetro invece di stringerlo. Il controllo gemello in `run.sh` è uscito: diceva una cosa falsa, e la diceva in un secondo linguaggio.
+
 `config.yaml:247` (schema `str?`) · `run.sh:75` · `server.py:3302-3304` · `middleware:55`
 
 Nessuno dei due validatori esistenti lo ferma, e quando accade **il log non parla** (l'avviso sta
@@ -137,6 +143,8 @@ pre-flight di `run.sh`, che oggi **promette un ripiego che `server.py` non fa**.
 **Serve?** — **Sì**, ed è il più economico del gruppo.
 
 ### A-4 · Due rotte del ponte senza classe di autenticazione
+
+> **CHIUSO il 21/09/2026** (lotto 0).
 
 `server.py:5496-5497` · `handlers_reasoning.py` (nessun controllo) · `reasoning/queue.py:69-80`
 
@@ -160,6 +168,8 @@ facile). Attenuante reale: `execute_decision` è uscito, quindi `submit` **non**
 scritte.
 
 ### A-5 · Un segreto solo per tutte le integrazioni
+
+> **CHIUSO il 22/09/2026** (fette 1, 1b e 3). Ogni servizio ha la propria chiave, il proprietario lo approva col suo ruolo dalla pagina Servizi, e il segreto condiviso non esiste più — né nelle opzioni, né nell'ambiente, né nel confine.
 
 `internal_token.py` · `middleware_csrf.py:11-14`
 
@@ -334,6 +344,8 @@ proprietario usa.
 
 ### B-7 · L'attuatore non ha il cancello che gli altri tre attori hanno
 
+> **CHIUSO il 21/09/2026** (lotto 0).
+
 `runner.py:1719-1722` · `mind/actuator_turn.py:29`
 
 `_SELF_CONTAINED_KINDS` contiene osservatore, ricette e analista, e `RAGIONABILI` non contiene
@@ -401,6 +413,8 @@ il registro» è la prima cosa che si chiede a un utente. **Intervento** — cin
 **Costa** — nulla (il debug di HIRIS resta). **Serve?** — **Sì.**
 
 ### C-3 · La riga di comando del sottoprocesso porta il token interno e tutta la casa
+
+> **CHIUSO il 21/09/2026** (fetta 1): la credenziale del ponte vive dieci minuti, quindi ciò che resta nella riga di comando dopo il turno non apre più niente.
 
 `runner.py:616-626` → `:1497`. In chiaro per 300 secondi, leggibile da qualunque processo del
 contenitore: il token interno, il messaggio dell'utente, il nucleo, i ricordi. Il codice dichiara il

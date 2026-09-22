@@ -49,30 +49,17 @@ from hiris.app.api import handlers_mcp
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS
 from hiris.app.memory.store import MemoryStore
 
-# La fixture della configurazione PREDEFINITA dell'add-on, con le due valvole
-# della suite (`HIRIS_ALLOW_NO_TOKEN`, `HIRIS_ALLOW_NO_CSRF`) rimosse: si
-# importa invece di essere ricopiata qui: una seconda copia divergerebbe, e
-# senza le valvole rimosse questi test passerebbero anche col guasto in piedi.
-from tests.test_internal_token import (  # noqa: F401  (fixture usata da pytest)
-    ponte_con_configurazione_predefinita,
-)
+# La fixture dell'app col confine ACCESO vive in `conftest.py` e non qui: una
+# seconda copia divergerebbe, e senza le due valvole della suite rimosse questi
+# test passerebbero anche col guasto in piedi. Viveva in
+# `tests/test_internal_token.py`, uscito il 22/09/2026 col segreto condiviso.
 from tests.test_knowledge_tools import _semina_casa
 
 _NOMI_NUDI = {d["name"] for d in KNOWLEDGE_TOOLS}
 
-def _intestazioni_ponte(app):
-    """Le intestazioni che il worker usa DAVVERO, dal 22/09/2026.
-
-    `_intestazioni_ponte(app)` legge il segreto condiviso dall'ambiente; la
-    produzione non passa piu' di li' -- `create_app` cabla una fabbrica che
-    CONIA una credenziale di turno (`api/credenziali.per_il_ponte`). Usare qui
-    la vecchia strada proverebbe un mondo che il prodotto non esegue.
-    """
-    import time as _t
-
-    from hiris.app.api.credenziali import credenziale_ponte_viva
-    return {"X-HIRIS-Internal-Token": credenziale_ponte_viva(app, adesso=_t.time()),
-            "X-Requested-With": "hiris-agent"}
+# `_intestazioni_ponte` locale e' uscita il 22/09/2026: le intestazioni del
+# ponte le porta la fixture `ponte_produzione` (`conftest.py`), che
+# conia una credenziale di turno come fa `server.py` in produzione.
 
 
 
@@ -485,32 +472,29 @@ class _CacheViva:
 
 
 @pytest.mark.asyncio
-async def test_la_sonda_vera_contro_il_server_vero(ponte_con_configurazione_predefinita):
+async def test_la_sonda_vera_contro_il_server_vero(ponte_produzione):
     """④ La prova che l'autenticazione della rotta e quella del ponte sono
-    **lo stesso token**, e non due.
+    **la stessa credenziale**, e non due.
 
-    Configurazione PREDEFINITA dell'add-on (`internal_token: ""`, quindi
-    generato all'avvio) e valvole della suite rimosse: se il token che
-    `_intestazioni_ponte(app)` legge da `os.environ` non fosse quello che l'app
-    conosce, la rotta risponderebbe 401 e la sonda direbbe di no -- che e'
-    esattamente il guasto gia' visto su questo ramo, quando il worker si
-    prendeva 401 ogni tre secondi all'infinito.
+    Confine ACCESO e valvole della suite rimosse: se la credenziale che il
+    ponte porta non fosse quella che l'app riconosce, la rotta risponderebbe
+    401 e la sonda direbbe di no -- che e' esattamente il guasto gia' visto su
+    questo ramo, quando il worker si prendeva 401 ogni tre secondi
+    all'infinito.
 
     `probe_tools` e' sincrona e bloccante (httpx): gira in un thread,
     come in produzione (`run_loop` -> `run_in_executor`). Chiamata
     direttamente qui bloccherebbe il loop che deve servirla, e il test
     andrebbe in stallo invece di fallire."""
-    client, _coda, app = ponte_con_configurazione_predefinita
-    intestazioni = _intestazioni_ponte(app)
-    # **Non e' piu' il segreto condiviso, ed e' il punto** (22/09/2026): il
-    # ponte porta una credenziale di turno, che vive dieci minuti e muore con
-    # lui. Se qui tornasse a coincidere col token dell'app, vorrebbe dire che
-    # il segreto eterno e' rientrato dalla finestra.
+    client, _coda, app, intestazioni = ponte_produzione
+    # **E' una credenziale di TURNO, ed e' il punto** (22/09/2026): vive dieci
+    # minuti e muore col turno. Il segreto condiviso non esiste piu' -- ne'
+    # nelle opzioni, ne' nell'ambiente, ne' nel confine.
     from hiris.app.api.credenziali import riconosci
     portata = intestazioni["X-HIRIS-Internal-Token"]
 
-    assert portata != app["internal_token"], (
-        "il ponte porta di nuovo il segreto condiviso")
+    assert not os.environ.get("INTERNAL_TOKEN"), (
+        "il segreto condiviso e' rientrato dall'ambiente")
     assert riconosci(app["credenziali"], portata, adesso=time.time()) is not None, (
         "la credenziale che il ponte porta non e' viva: la sonda prendera' 401")
 
@@ -523,11 +507,11 @@ async def test_la_sonda_vera_contro_il_server_vero(ponte_con_configurazione_pred
 
 
 @pytest.mark.asyncio
-async def test_la_sonda_vera_dice_no_col_token_sbagliato(ponte_con_configurazione_predefinita):
+async def test_la_sonda_vera_dice_no_col_token_sbagliato(ponte_produzione):
     """La mutazione del test qui sopra: senza il token giusto la rotta nega, e
     la sonda lo vede. E' cio' che prova che il test precedente misura
     l'autenticazione e non il fatto che la rotta esista."""
-    client, _coda, _app = ponte_con_configurazione_predefinita
+    client, _coda, _app, _intestazioni = ponte_produzione
 
     with httpx.Client(timeout=30) as http:
         ok, motivo = await asyncio.to_thread(
@@ -540,7 +524,7 @@ async def test_la_sonda_vera_dice_no_col_token_sbagliato(ponte_con_configurazion
 
 @pytest.mark.asyncio
 async def test_la_sonda_dice_si_anche_senza_archivi_e_va_dichiarato(
-    ponte_con_configurazione_predefinita,
+    ponte_produzione,
 ):
     """**Il limite di questa difesa, scritto invece che scoperto dopo.**
 
@@ -555,17 +539,17 @@ async def test_la_sonda_dice_si_anche_senza_archivi_e_va_dichiarato(
     dire. Provarlo qui vorrebbe dire chiamarli sul serio a ogni turno -- una
     scrittura in memoria per una diagnosi -- e la difesa costerebbe piu' di
     cio' che difende."""
-    client, _coda, app = ponte_con_configurazione_predefinita
+    client, _coda, app, intestazioni = ponte_produzione
     assert app.get("home_space_store") is None
 
     with httpx.Client(timeout=30) as http:
         ok, _motivo = await asyncio.to_thread(
-            runner.probe_tools, http, _base_url(client), _intestazioni_ponte(app))
+            runner.probe_tools, http, _base_url(client), intestazioni)
         assert ok is True
 
         risposta = await asyncio.to_thread(
             lambda: http.post(
-                f"{_base_url(client)}/api/mcp", headers=_intestazioni_ponte(app),
+                f"{_base_url(client)}/api/mcp", headers=intestazioni,
                 json={"jsonrpc": "2.0", "id": 2, "method": "tools/call",
                       "params": {"name": "search", "arguments": {"testo": "cucina"}}}))
 
@@ -577,7 +561,7 @@ async def test_la_sonda_dice_si_anche_senza_archivi_e_va_dichiarato(
 
 @pytest.mark.asyncio
 async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback(
-    ponte_con_configurazione_predefinita, tmp_path,
+    ponte_produzione, tmp_path,
 ):
     """⑤ **La cosa piu' forte e piu' specifica di questa fetta.**
 
@@ -598,7 +582,7 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
     rotta, `view` e `fetch` compresi (Minor noto del Task 1: non l'avevano mai
     attraversata), e `view` legge la `entity_cache` vera dell'app -- che e'
     l'argomento con cui il disegno ha scartato un sottoprocesso stdio."""
-    client, coda, app = ponte_con_configurazione_predefinita
+    client, coda, app, intestazioni = ponte_produzione
     casa, memoria, memoria_db = _semina_gli_archivi(app, tmp_path)
     try:
         base = _base_url(client)
@@ -620,7 +604,7 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
             with httpx.Client(timeout=30) as dentro:
                 def _rpc(corpo):
                     return dentro.post(f"{base}/api/mcp",
-                                       headers=_intestazioni_ponte(app),
+                                       headers=intestazioni,
                                        json=corpo).json()
 
                 elenco = _rpc({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
@@ -646,7 +630,7 @@ async def test_durante_l_invocazione_della_cli_l_addon_serve_davvero_la_callback
             httpx.Client(timeout=30) as http,
         ):
             esito = await asyncio.to_thread(
-                runner.run_once, http, base, _intestazioni_ponte(app), "live")
+                runner.run_once, http, base, intestazioni, "live")
 
         assert esito == "done"
         # il giro di produzione ha collegato gli strumenti: prompt e argv insieme
@@ -1173,10 +1157,13 @@ def test_il_settimo_canale_l_eccezione_del_giro_non_porta_il_token(monkeypatch, 
     HTTPStatusError` non direbbe ne' quale rotta ne' quale codice, e un log che
     non serve a diagnosticare e' il primo che smette di essere letto -- ma
     passa dalla redazione che c'e' gia'."""
-    monkeypatch.setenv("INTERNAL_TOKEN", token)
+    # **La credenziale si PASSA, non si legge dall'ambiente** (22/09/2026): il
+    # segreto condiviso e' uscito, e un ripiego sull'ambiente sarebbe una
+    # redazione senza bersaglio -- con l'aria di funzionare. `run_loop` passa
+    # quella del giro in corso.
     exc = httpx.LocalProtocolError(f"Illegal header value b'{token}'")
 
-    motivo = runner._exception_reason(exc)
+    motivo = runner._exception_reason(exc, token)
 
     assert not _ricostruibile(token, motivo), (
         "il token e' nel log del giro, cioe' nel file che si incolla in una "
@@ -1186,19 +1173,32 @@ def test_il_settimo_canale_l_eccezione_del_giro_non_porta_il_token(monkeypatch, 
     assert "Illegal header value" in motivo and runner.REDATTO in motivo
 
 
-def test_i_due_giri_del_runner_loggano_l_eccezione_redatta():
-    """I punti di perdita sono **due** -- `run_loop` (in-addon) e `main()` (il
-    runner come processo a se') -- e una difesa applicata a uno solo dei due
-    lascia aperto l'altro: e' la classe di difetto che questo prodotto ha gia'
-    pagato con la redazione dello stdout, chiusa in un punto e dimenticata in
-    quelli del catalogo."""
+def test_il_giro_del_runner_logga_l_eccezione_redatta_CON_LA_CREDENZIALE_VERA():
+    """I punti di perdita erano **due** -- `run_loop` (in-addon) e `main()` (il
+    runner come processo a se') -- e una difesa applicata a uno solo lascia
+    aperto l'altro: e' la classe di difetto che questo prodotto ha gia' pagato
+    con la redazione dello stdout. `main()` e' uscito il 22/09/2026 col
+    segreto condiviso, quindi di punti ne resta uno.
+
+    **E qui si guarda che la redazione abbia un BERSAGLIO.** Togliendo il
+    segreto condiviso, `_exception_reason(exc)` senza argomento ha smesso di
+    avere qualcosa da redigere: la chiamata restava li', con l'aria di
+    funzionare, e la credenziale sarebbe finita nel registro -- cioe' nel file
+    che si incolla in una segnalazione. L'ha preso la suite mentre la fetta si
+    scriveva, non una rilettura.
+
+    Mutazione ESEGUITA: `_exception_reason(exc)` senza credenziale -- rossa.
+    """
     import inspect
 
-    atteso = 'log.warning("run_once errore: %s", _exception_reason(exc))'
-    for funzione in (runner.run_loop, runner.main):
-        assert atteso in inspect.getsource(funzione), (
-            f"{funzione.__name__} logga l'eccezione GREZZA: con un token non "
-            "consegnabile ne porterebbe il valore")
+    sorgente = inspect.getsource(runner.run_loop)
+
+    assert "_exception_reason(" in sorgente, (
+        "run_loop logga l'eccezione GREZZA: con una credenziale non "
+        "consegnabile ne porterebbe il valore")
+    assert "X-HIRIS-Internal-Token" in sorgente, (
+        "`_exception_reason` viene chiamata senza la credenziale del giro: "
+        "reda una stringa vuota, cioe' non reda niente")
 
 
 # ---------------------------------------------------------------------------

@@ -176,19 +176,18 @@ options:
   # sono l'unico segnale disponibile.
   # NON annidate, deliberatamente (2.4.0): `supervisor_ingress_cidr` azzerata
   # torna al default, che e' PIU' LARGO di qualunque valore ristretto a mano --
-  # un allargamento silenzioso del perimetro d'accesso; e `internal_token`
-  # azzerato viene rigenerato, il che rompe senza dirlo chi ha integrato il
-  # gateway MCP con un token deciso da lui. Una sezione a schermo non vale una
-  # regressione di sicurezza che nessuno vede accadere.
+  # un allargamento silenzioso del perimetro d'accesso. Una sezione a schermo
+  # non vale una regressione di sicurezza che nessuno vede accadere.
+  #
+  # `internal_token` e' USCITA il 22/09/2026 (fetta 3 dello sprint sicurezza).
+  # Era un segreto solo per tutte le integrazioni: chi lo leggeva una volta era
+  # tutte, in chiaro nei backup di Home Assistant, e nessun registro poteva dire
+  # quale integrazione avesse chiamato. Adesso un servizio esterno si fa
+  # accoppiare dalla pagina Servizi e firma le proprie richieste.
   log_level: "info"
-  # Vuoto e' il default VOLUTO: all'avvio HIRIS genera il token e lo conserva
-  # in /data (app/token_interno.py), cosi' sopravvive ai riavvii. Valorizzarlo
-  # a mano serve solo a imporre un token deciso da chi integra HIRIS con altri
-  # componenti: in quel caso vince il valore scritto qui.
-  internal_token: ""
   # CR-1: CIDR sorgenti fidate per il bypass-ingress (X-Ingress-Path). Solo le
   # richieste da questi range sono trattate come ingress del Supervisor; tutto
-  # il resto richiede internal_token. Default = rete Docker standard del
+  # il resto deve autenticarsi. Default = rete Docker standard del
   # Supervisor. Restringi (es. 172.30.32.2/32) se esponi la API a un tunnel.
   supervisor_ingress_cidr: "172.30.32.0/23"
 
@@ -243,5 +242,4 @@ schema:
 
   # ── 4. Avanzate: registro, sicurezza ──────────────────────────────────────
   log_level: "list(debug|info|warning|error)"
-  internal_token: password
   supervisor_ingress_cidr: "str?"

@@ -1,7 +1,8 @@
 """Runner hiris-agent: polla la coda di ragionamento HIRIS e ragiona (mock|live).
 
 Porta in-addon del runner del gateway esterno (hiris-mcp-gateway/agent/runner.py).
-L'internal token (env INTERNAL_TOKEN) resta usato per l'HTTP verso la reasoning
+La credenziale di TURNO -- coniata da `server.py`, vive dieci minuti -- e' usata
+per l'HTTP verso la reasoning
 API (`/api/reasoning/claim` e `/api/reasoning/submit`).
 
 OGGI, in una riga: il ponte LEGGE la casa e la memoria, e da questa fetta puo'
@@ -366,8 +367,8 @@ def token_forms(token: str, profondita: int = 2) -> tuple[str, ...]:
 
     -- il segreto ricostruibile con un JSON-unescape.
 
-    Che l'opzione `internal_token` possa contenerli non e' un'ipotesi: e' una
-    `password` libera in `hiris/config.yaml`, e `internal_token.py` la accetta
+    Che una credenziale possa contenerli non era un'ipotesi: fino al 22/09/2026
+    `internal_token` era una `password` libera in `hiris/config.yaml`, accettata
     dopo un `.strip()`. Quella validazione ora rifiuta i caratteri di CONTROLLO
     (che rompono l'header), non le virgolette: sono header-safe, e rompevano
     solo la redazione. Questo e' il posto dove quel fronte si chiude.
@@ -437,7 +438,7 @@ def _exception_reason(exc: BaseException, token: str | None = None) -> str:
     non accetta il client solleva **col valore dentro** (`LocalProtocolError:
     Illegal header value b'...'`, verificato contro un listener vero al fix
     round 2 del Task 3). Fino a oggi quel canale era chiuso da una dipendenza
-    scritta in un docstring altrui -- `internal_token.invalid_token_reason`
+    scritta in un docstring altrui -- la vecchia `invalid_token_reason`
     rifiuta i caratteri di controllo all'avvio -- cioe' da una difesa che sta
     in un altro file e che nessun test legava a questa riga.
 
@@ -456,10 +457,14 @@ def _exception_reason(exc: BaseException, token: str | None = None) -> str:
 
     **Dove NON si applica, e perche'**: `probe_tools` continua a mettere
     nel motivo il messaggio grezzo. Non e' una dimenticanza -- vedi la nota
-    nel suo docstring: quel comportamento e' pinnato contro un listener vero
-    in `tests/test_internal_token.py`, file che questa fetta non tocca."""
-    if token is None:
-        token = os.environ.get("INTERNAL_TOKEN", "")
+    nel suo docstring."""
+    # **Nessun ripiego sull'ambiente.** Fino al 22/09/2026 qui si leggeva
+    # `INTERNAL_TOKEN`, il segreto condiviso: e' uscito con la fetta 3 dello
+    # sprint sicurezza, e leggerlo adesso darebbe sempre stringa vuota -- cioe'
+    # una redazione che non reda niente, con l'aria di farlo. Chi ha un segreto
+    # da nascondere lo passa; chi non lo passa non ne ha.
+    if not token:
+        return f"{type(exc).__name__}: {exc}"
     return f"{type(exc).__name__}: {reda_segreti(str(exc), *token_forms(token))}"
 
 
@@ -495,7 +500,7 @@ def probe_tools(client, base_url: str, headers: dict,
     e con un token che contiene CR/LF/NUL il client HTTP solleva **col valore
     dentro** -- verificato contro un listener vero, `LocalProtocolError: Illegal
     header value b'...'`. La promessa regge perche' un token del genere non
-    arriva fin qui: `internal_token.invalid_token_reason` lo rifiuta
+    arrivava fin qui: la vecchia `invalid_token_reason` lo rifiutava
     all'avvio, lo dichiara nel log e lascia in piedi il rifiuto-per-difetto. Se
     quella validazione sparisse, questo docstring tornerebbe falso.
 
@@ -503,7 +508,6 @@ def probe_tools(client, base_url: str, headers: dict,
     e' scoperta di proposito. Farla passare da `_exception_reason` (la
     redazione usata per il settimo canale, in `run_once`) chiuderebbe il buco
     da sola -- ma renderebbe rosso
-    `tests/test_internal_token.py::test_i_caratteri_rifiutati_sono_ESATTAMENTE_quelli_che_fanno_sollevare_il_client`,
     che pinna contro un listener VERO proprio il fatto che il valore finisce
     nel messaggio dell'eccezione, e quel file e' fra i «cosa RESTA e non si
     tocca» di questa fetta. Provato: la redazione funziona (il motivo diventa
@@ -1344,7 +1348,9 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # (rilievo della review indipendente, 11/09/2026).
     awaited = (client is not None and bool(base_url)
                and job.get("kind") not in _SELF_CONTAINED_KINDS)
-    intestazioni = headers if headers is not None else build_headers()
+    # Nessun ripiego: chi chiama porta le proprie intestazioni. Il ripiego
+    # leggeva il segreto condiviso, uscito il 22/09/2026.
+    intestazioni = headers or {}
     if awaited:
         tools, _reason = probe_tools(client, base_url, intestazioni,
                                      job_id=job_id,
@@ -1511,11 +1517,17 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # (`token_forms`), non la sola grezza. Il commento che stava qui
         # diceva «il token non contiene virgolette: e' generato da
         # secrets.token_urlsafe» -- vero solo sul ramo GENERATO.
-        # `internal_token` e' una `password` libera in config.yaml, e con un
+        # `internal_token` era una `password` libera in config.yaml, e con un
         # token che contiene `"` o `\` la redazione mancava il bersaglio su
         # tutti e cinque i canali. Era una dichiarazione falsa al presente
         # dentro un commento, cioe' il secondo difetto ricorrente di questo
         # prodotto.
+        #
+        # Dal 22/09/2026 quell'opzione non esiste e la credenziale e' sempre
+        # `secrets.token_urlsafe`, quindi quei caratteri non ci possono essere.
+        # **La redazione resta lo stesso**, e non e' zelo: costa niente, e il
+        # giorno in cui una credenziale tornasse a poter contenere qualunque
+        # cosa, toglierla adesso sarebbe un difetto che nessuno rimetterebbe.
         #
         # Si reda anche al SECONDO giro, dove il token non e' mai entrato
         # nell'argv: costa una `str.replace` su una stringa che non lo
@@ -1777,12 +1789,11 @@ def reason(job: dict, mode: str, *, client=None, base_url: str = "",
         (job or {}).get("job_id"), kind)
     return {}
 
-def build_headers() -> dict:
-    """Header per la reasoning API interna (127.0.0.1:8099). Solo loopback:
-    nessun residuo CF-Access/JWT di servizio (non serve, non c'e' rete
-    esterna in mezzo)."""
-    return {"X-HIRIS-Internal-Token": os.environ.get("INTERNAL_TOKEN", ""),
-            "X-Requested-With": "hiris-agent"}
+# Qui viveva `build_headers()`, che leggeva `INTERNAL_TOKEN` dall'ambiente ed
+# e' uscita il 22/09/2026 col segreto condiviso (reperto A-5). Le intestazioni
+# del ponte le CONIA `server.py::_intestazioni_ponte`: una credenziale che vive
+# dieci minuti e vale solo per lui. Chi chiama `reason` porta le proprie.
+
 
 def run_once(client, base_url: str, headers: dict, mode: str) -> str:
     r = client.post(f"{base_url}/api/reasoning/claim", headers=headers, json={})
@@ -1812,11 +1823,23 @@ async def run_loop(base_url: str, get_headers, mode: str, poll_seconds: int) -> 
     executor (`run_in_executor`) e MAI chiamati direttamente nella coroutine,
     altrimenti un job claimato blocca l'intero addon fino a ~5 minuti
     (subprocess timeout=300, httpx.Client timeout=330)."""
+    # **Le intestazioni del giro vivono FUORI dal `try`**, e non e' stile.
+    # `_exception_reason` deve poter redigere la credenziale che questo giro
+    # sta davvero usando: fino al 22/09/2026 la leggeva da `INTERNAL_TOKEN`
+    # nell'ambiente, e quando quel segreto e' uscito la redazione e' rimasta
+    # senza bersaglio -- cioe' la credenziale sarebbe finita nel registro, che
+    # e' il file che si incolla in una segnalazione. **L'ha preso la suite, non
+    # una rilettura.**
+    #
+    # Cosi' e' anche piu' preciso di prima: si reda la credenziale IN CORSO,
+    # non quella che per caso stava in un ambiente.
+    intestazioni_correnti: dict = {}
     loop = asyncio.get_running_loop()
     with httpx.Client(timeout=330) as client:
         while True:
             try:
                 headers = get_headers()
+                intestazioni_correnti = headers
                 outcome = await loop.run_in_executor(
                     None, run_once, client, base_url, headers, mode)
                 if outcome != "idle":
@@ -1827,30 +1850,13 @@ async def run_loop(base_url: str, get_headers, mode: str, poll_seconds: int) -> 
                 # portano, e un valore non consegnabile risale col valore
                 # dentro). Si passa da `_exception_reason`: tipo + messaggio
                 # REDATTO, cosi' il log resta diagnosticabile.
-                log.warning("run_once errore: %s", _exception_reason(exc))
+                log.warning("run_once errore: %s", _exception_reason(
+                    exc, intestazioni_correnti.get("X-HIRIS-Internal-Token", "")))
             await asyncio.sleep(poll_seconds)
 
 
-def main() -> None:
-    logging.basicConfig(level=logging.INFO)
-    base_url = os.environ["HIRIS_BASE_URL"].rstrip("/")
-    mode = os.environ.get("HIRIS_AGENT_MODE", "mock")
-    headers = build_headers()
-    interval = poll_seconds()
-    log.info("hiris-agent avviato mode=%s poll=%ss", mode, interval)
-    with httpx.Client(timeout=330) as client:
-        while True:
-            try:
-                outcome = run_once(client, base_url, headers, mode)
-                if outcome != "idle":
-                    log.info("run: %s", outcome)
-            except Exception as exc:
-                # Task 4, nit 1: vedi `run_loop` -- stesso canale, stessa
-                # chiusura. Sono due punti perche' questo `main()` e' il
-                # runner come processo a se' (il gateway esterno), e
-                # `run_loop` e' quello in-addon.
-                log.warning("run_once errore: %s", _exception_reason(exc))
-            time.sleep(interval)
-
-if __name__ == "__main__":
-    main()
+# E qui viveva `main()`, il punto d'ingresso del worker come processo a se'
+# (`python -m hiris.app.agent.runner`, con `HIRIS_BASE_URL`). Niente
+# nell'immagine lo avvia -- il ponte gira dentro l'add-on, da `run_loop` -- e
+# l'unica cosa che ancora faceva era leggere il segreto condiviso. Esce con lui:
+# ogni fetta e' anche pulizia.

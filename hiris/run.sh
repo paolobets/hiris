@@ -57,7 +57,8 @@ export HF_HOME=/config/hiris/models/huggingface
 
 # ── 4. Avanzate: registro, sicurezza ────────────────────────────────────────
 export LOG_LEVEL=$(bashio::config 'log_level' 'info')
-export INTERNAL_TOKEN=$(bashio::config 'internal_token' '')
+# `INTERNAL_TOKEN` e' uscito il 22/09/2026 col segreto condiviso (reperto A-5):
+# un servizio esterno adesso si accoppia dalla pagina Servizi e firma.
 export SUPERVISOR_INGRESS_CIDR=$(bashio::config 'supervisor_ingress_cidr' '172.30.32.0/23')
 
 # Versione B: esce HIRIS_DEBUG_EXPOSE_PORT/debug_expose_port, con il blocco di
@@ -72,9 +73,12 @@ bashio::log.info "Theme: ${THEME}"
 
 # Pre-flight sanity checks (review mediums): warn early instead of surfacing a
 # cryptic runtime error later. Sono WARNING soltanto — l'add-on parte lo stesso.
-if ! echo "${SUPERVISOR_INGRESS_CIDR}" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}([[:space:]]*,[[:space:]]*([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2})*$'; then
-  bashio::log.warning "supervisor_ingress_cidr non sembra un CIDR valido (${SUPERVISOR_INGRESS_CIDR}); l'app ignora le voci non parsabili e usa il default."
-fi
+# Qui c'era un controllo a espressione regolare su `supervisor_ingress_cidr`,
+# ed e' uscito il 22/09/2026 col reperto A-3. Due ragioni, e la seconda e' la
+# vera: diceva una cosa FALSA -- «l'app ignora le voci non parsabili e usa il
+# default», che Python non faceva -- e diceva la stessa cosa in un secondo
+# linguaggio, libera di divergere da quella vera. Adesso a validare e'
+# `api/ingresso.py::reti_fidate`, che nomina ogni voce rifiutata e dice perche'.
 
 # I due avvisi sul ponte -- «il piano e' acceso ma manca il token» e «hai il
 # token ma il ponte e' spento» -- NON sono spariti: si sono SPOSTATI in

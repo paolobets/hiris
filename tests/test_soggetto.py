@@ -32,6 +32,9 @@ from hiris.app.api.middleware_internal_auth import internal_auth_middleware
 from hiris.app.api.servizi import ServiziStore
 
 _INGRESS = "/api/hassio_ingress/abc123/"
+#: Il biscotto che il proxy inoltra. Dal 22/09/2026 non basta piu' scrivere
+#: `X-Ingress-Path`: il Supervisor deve riconoscere QUESTA sessione (A-2).
+_SESSIONE = {"ingress_session": "s-vera"}
 _INTESTAZIONI = {"X-Remote-User-Id": "u-42",
                  "X-Remote-User-Name": "paolo",
                  "X-Remote-User-Display-Name": "Paolo Bets"}
@@ -40,17 +43,51 @@ _INTESTAZIONI = {"X-Remote-User-Id": "u-42",
 class _Richiesta(dict):
     """Una richiesta finta, quanto basta al middleware."""
 
-    def __init__(self, *, headers, remote, token=""):
+    def __init__(self, *, headers, remote, token="", biscotti=None):
         super().__init__()
         self.headers = headers
         self.remote = remote
+        # Dal 22/09/2026 il confine legge il biscotto di sessione dell'ingress
+        # (reperto A-2): una finta senza `cookies` si difenderebbe da un mondo
+        # che non esiste, ed e' proprio il campo su cui si decide.
+        self.cookies = dict(biscotti or {})
         # `method` e `path` ci sono sempre in una richiesta vera, e il confine
         # li nomina: una finta senza si difenderebbe da un mondo che non esiste.
         self.method = "GET"
         self.path = "/api/entities"
         self.app = {"internal_token": token,
                     "supervisor_ingress_cidrs": ["172.30.32.0/23"],
-                    "canali_visti": {}, "servizi": None}
+                    "canali_visti": {}, "servizi": None,
+                    "sessioni_ingress": {}}
+
+
+@pytest.fixture()
+def confine_vero(monkeypatch):
+    """La suite tiene accesa `HIRIS_ALLOW_NO_TOKEN`, che spegne il confine.
+
+    Le due prove del reperto A-2 dicono «questa richiesta NON passa», e col
+    confine spento passerebbe chiunque: sarebbero verdi senza provare niente —
+    il difetto n.1 di questo progetto. Misurato scrivendole: senza questa
+    riga passavano con `auth_via` a «no_token».
+    """
+    monkeypatch.delenv("HIRIS_ALLOW_NO_TOKEN", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def supervisor(monkeypatch):
+    """Il Supervisor, ridotto all'unica domanda che il confine gli fa.
+
+    **Autouse, e riconosce UNA sessione sola.** Una finta accomodante che
+    dicesse sempre di si' renderebbe verde anche il difetto che il reperto A-2
+    esiste per chiudere: un add-on vicino che scrive l'intestazione senza avere
+    nessun biscotto.
+    """
+    from hiris.app.api import ingresso
+
+    async def chiedi(sessione):
+        return sessione == "s-vera"
+
+    monkeypatch.setattr(ingresso, "_domanda_supervisor", chiedi)
 
 
 async def _passa(richiesta):
@@ -73,7 +110,8 @@ async def test_una_richiesta_di_ingress_porta_il_soggetto():
     chi, che e' tutto il punto di questo invariante).
     """
     _, visto = await _passa(_Richiesta(
-        headers={"X-Ingress-Path": _INGRESS, **_INTESTAZIONI}, remote="172.30.32.2"))
+        headers={"X-Ingress-Path": _INGRESS, **_INTESTAZIONI},
+        remote="172.30.32.2", biscotti=_SESSIONE))
 
     assert visto["auth_via"] == "ingress"
     assert visto["soggetto"]["id"] == "u-42"
@@ -81,21 +119,69 @@ async def test_una_richiesta_di_ingress_porta_il_soggetto():
 
 
 @pytest.mark.asyncio
-async def test_gli_stessi_header_FUORI_dall_ingress_non_si_credono():
-    """**Il cuore di questo file.** Chi arriva dalla porta di sviluppo, o da un
-    add-on vicino, puo' scrivere `X-Remote-User-Id` a mano: crederlo vorrebbe
-    dire consegnare l'identita' del proprietario a chiunque sappia comporre
-    un'intestazione.
+async def test_un_ADD_ON_VICINO_non_diventa_il_proprietario(confine_vero):
+    """**Il reperto A-2, e il motivo per cui questo file e' cambiato il
+    22/09/2026.**
+
+    La rete «fidata» predefinita non e' l'indirizzo del proxy: e' la rete
+    Docker in cui vive OGNI add-on installato. Un add-on vicino sta dentro quel
+    `/23` per costruzione, e fino a oggi gli bastava scrivere `X-Ingress-Path`
+    -- una stringa, non un segreto -- per ottenere `/api/*` per intero **con
+    l'identita' che si sceglieva lui**. E se il tunnel che pubblica la casa
+    gira come add-on, il caso normale, quell'indirizzo e' il suo.
+
+    Qui ha tutto: l'intestazione giusta, l'indirizzo giusto, e perfino un
+    biscotto -- ma un biscotto che il Supervisor non conosce.
+
+    Mutazione ESEGUITA: tolta la verifica della sessione dal confine -- rossa
+    (`auth_via` torna «ingress» e il soggetto diventa «u-42»).
+    """
+    esito, visto = await _passa(_Richiesta(
+        headers={"X-Ingress-Path": _INGRESS, **_INTESTAZIONI},
+        remote="172.30.32.9",
+        biscotti={"ingress_session": "rubata-mai-esistita"}))
+
+    assert visto.get("auth_via") != "ingress", (
+        "un add-on vicino e' diventato una persona di Home Assistant")
+    assert esito != "ok", "ed e' pure passato"
+
+
+@pytest.mark.asyncio
+async def test_l_intestazione_SENZA_biscotto_non_basta(confine_vero):
+    """La forma piu' semplice dello stesso attacco: nessun biscotto affatto.
+
+    Mutazione: accettare quando il biscotto manca -- rossa."""
+    esito, visto = await _passa(_Richiesta(
+        headers={"X-Ingress-Path": _INGRESS, **_INTESTAZIONI},
+        remote="172.30.32.2"))
+
+    assert visto.get("auth_via") != "ingress"
+    assert esito != "ok"
+
+
+@pytest.mark.asyncio
+async def test_gli_stessi_header_FUORI_dall_ingress_non_si_credono(archivio):
+    """**Il cuore di questo file.** Chi arriva da un'altra strada puo' scrivere
+    `X-Remote-User-Id` a mano: crederlo vorrebbe dire consegnare l'identita'
+    del proprietario a chiunque sappia comporre un'intestazione.
+
+    Dal 22/09/2026 «l'altra strada» e' **la firma di un servizio approvato**,
+    non piu' il segreto condiviso: un servizio che firma e' autenticato per
+    davvero, e proprio per questo e' il caso piu' duro -- se le intestazioni
+    si credessero a chiunque sia autenticato, basterebbe essere un servizio
+    qualunque per diventare il proprietario.
 
     Mutazione ESEGUITA: leggere gli header prima di distinguere la strada --
     rossa.
     """
-    _, visto = await _passa(_Richiesta(
-        headers={"X-HIRIS-Internal-Token": "s3greto", **_INTESTAZIONI},
-        remote="192.168.1.31", token="s3greto"))
+    privata, pubblica = _firmante(archivio, ruolo="utente")
+    richiesta = _richiesta_firmata(privata, pubblica, archivio)
+    richiesta.headers.update(_INTESTAZIONI)
 
-    assert visto["auth_via"] == "token"
-    assert visto["soggetto"]["id"] is None, (
+    _, visto = await _passa(richiesta)
+
+    assert visto["auth_via"] == "canale"
+    assert visto["soggetto"]["id"] != "u-42", (
         "un'intestazione scritta dal chiamante e' diventata un'identita'")
     assert visto["soggetto"]["specie"] == "integrazione"
 
@@ -109,7 +195,8 @@ async def test_un_ingress_SENZA_identita_da_un_soggetto_anonimo_non_nessuno():
     campo vuoto si confondono al primo lettore distratto; due parole diverse no.
     """
     _, visto = await _passa(_Richiesta(
-        headers={"X-Ingress-Path": _INGRESS}, remote="172.30.32.2"))
+        headers={"X-Ingress-Path": _INGRESS}, remote="172.30.32.2",
+        biscotti=_SESSIONE))
 
     assert visto["soggetto"] is not None
     assert visto["soggetto"]["specie"] == "persona"
@@ -117,7 +204,7 @@ async def test_un_ingress_SENZA_identita_da_un_soggetto_anonimo_non_nessuno():
 
 
 @pytest.mark.asyncio
-async def test_il_soggetto_dice_sempre_di_che_SPECIE_e():
+async def test_il_soggetto_dice_sempre_di_che_SPECIE_e(archivio):
     """Una persona di Home Assistant e una macchina che porta un token non si
     autenticano nello stesso modo e non possono avere lo stesso soffitto: la
     specie e' il primo fatto che serve a deciderlo, e c'e' sempre.
@@ -125,12 +212,14 @@ async def test_il_soggetto_dice_sempre_di_che_SPECIE_e():
     Mutazione: togliere `specie` -- rossa (chi legge dovrebbe dedurla, e
     dedurla e' il modo in cui due strade diventano una per distrazione).
     """
-    for intestazioni, remoto, token, specie in (
-            ({"X-Ingress-Path": _INGRESS}, "172.30.32.2", "", "persona"),
-            ({"X-HIRIS-Internal-Token": "s"}, "192.168.1.31", "s", "integrazione")):
-        _, visto = await _passa(_Richiesta(headers=intestazioni, remote=remoto,
-                                           token=token))
-        assert visto["soggetto"]["specie"] == specie
+    _, persona = await _passa(_Richiesta(
+        headers={"X-Ingress-Path": _INGRESS}, remote="172.30.32.2",
+        biscotti=_SESSIONE))
+    assert persona["soggetto"]["specie"] == "persona"
+
+    privata, pubblica = _firmante(archivio)
+    _, macchina = await _passa(_richiesta_firmata(privata, pubblica, archivio))
+    assert macchina["soggetto"]["specie"] == "integrazione"
 
 
 # --- il ramo della FIRMA, e la convivenza col token -------------------------
@@ -231,7 +320,9 @@ async def test_una_firma_SBAGLIATA_non_passa_nemmeno_col_token_giusto(archivio):
         "una firma storta e' scivolata sul ripiego del token: chi prova a "
         "firmare e sbaglia non deve avere una seconda strada")
     assert esito.status == 401
-    assert visto.get("auth_via") is None
+    assert visto.get("auth_via") is None, (
+        "col confine di sviluppo acceso questa prova sarebbe verde comunque: "
+        "e' il difetto n.1, e l'ha presa la suite il 22/09/2026")
 
 
 @pytest.mark.asyncio
@@ -265,45 +356,47 @@ async def test_un_UTENTE_scrive(archivio):
 
 
 @pytest.mark.asyncio
-async def test_il_TOKEN_continua_a_valere_e_si_misura_chi_lo_usa(caplog):
-    """La convivenza (spec §8): per una fetta il token resta, perché gateway e
-    Retro Panel vivono in due repository separati e un taglio netto li
-    spegnerebbe. Ma **chi lo usa si misura**, o la fine della convivenza la
-    deciderebbe una speranza invece di un dato.
+async def test_il_SEGRETO_CONDIVISO_non_apre_piu_niente(confine_vero):
+    """**La fine della convivenza (A-5, fetta 3 dello sprint sicurezza).**
 
-    Mutazione ESEGUITA: accettare il token senza dichiararlo -- rossa."""
-    richiesta = _Firmata(headers={"X-HIRIS-Internal-Token": "s3greto",
-                                  "X-HIRIS-Servizio": "gateway"},
-                         remote="192.168.1.31", token="s3greto")
+    Per una fetta HIRIS ha accettato «la firma oppure il token», perche'
+    gateway e Retro Panel vivevano in due repository separati e un taglio netto
+    li avrebbe spenti. La misura ha deciso quando chiudere, come era scritto:
+    il registro dell'add-on ha smesso di nominare qualcuno che non fossi io, e
+    la porta di sviluppo adesso firma.
 
-    with caplog.at_level("INFO"):
-        esito, visto = await _passa(richiesta)
+    Un segreto condiviso non e' un'identita': e' una parola d'ordine, e chi la
+    sente una volta e' tutti. Adesso non e' piu' niente.
 
-    assert esito == "ok"
-    assert visto["auth_via"] == "token"
-    assert "gateway" in caplog.text
+    Mutazione ESEGUITA: rimesso il ramo del token nel confine -- rossa."""
+    esito, visto = await _passa(_Richiesta(
+        headers={"X-HIRIS-Internal-Token": "s3greto"},
+        remote="192.168.1.31", token="s3greto"))
+
+    assert esito != "ok", "il segreto condiviso apre ancora"
+    assert visto.get("auth_via") != "token"
 
 
 @pytest.mark.asyncio
-async def test_chi_usa_il_token_SENZA_dirsi_finisce_come_ignoto(caplog):
-    """Chi non si dichiara non deve passare inosservato: sarebbe
-    l'integrazione che nessuno sa di dover aggiornare.
+async def test_e_chi_lo_manda_riceve_un_rifiuto_che_dice_COSA_FARE(confine_vero):
+    """Un'integrazione che non e' stata aggiornata trova una porta chiusa: il
+    rifiuto deve dirle dove andare, o chi la mantiene passera' il pomeriggio a
+    leggere il registro.
 
-    Mutazione: tacere quando il servizio non è dichiarato -- rossa."""
-    richiesta = _Firmata(headers={"X-HIRIS-Internal-Token": "s3greto"},
-                         remote="192.168.1.31", token="s3greto")
+    Mutazione: rifiutare con «unauthorized» e basta -- rossa."""
+    esito, _ = await _passa(_Richiesta(
+        headers={"X-HIRIS-Internal-Token": "s3greto"},
+        remote="192.168.1.31", token="s3greto"))
 
-    with caplog.at_level("INFO"):
-        esito, _ = await _passa(richiesta)
-
-    assert esito == "ok"
-    assert "ignoto" in caplog.text.lower()
+    corpo = esito.text or ""
+    assert "accoppia" in corpo.lower() or "servizi" in corpo.lower(), (
+        f"il rifiuto non dice cosa fare: {corpo!r}")
 
 
 # --- la credenziale EFFIMERA del ponte --------------------------------------
 
 @pytest.mark.asyncio
-async def test_una_credenziale_di_TURNO_apre_e_dice_che_non_c_e_nessuno():
+async def test_una_credenziale_di_TURNO_apre_e_dice_che_non_c_e_nessuno(confine_vero):
     """Il ponte non e' una persona e non e' un'integrazione registrata: e'
     HIRIS che lavora per conto suo, per il tempo di un turno.
 
@@ -311,7 +404,7 @@ async def test_una_credenziale_di_TURNO_apre_e_dice_che_non_c_e_nessuno():
     spegne appena il segreto condiviso esce)."""
     from hiris.app.api import credenziali
 
-    richiesta = _Firmata(headers={}, remote="127.0.0.1", token="s3greto")
+    richiesta = _Firmata(headers={}, remote="127.0.0.1")
     richiesta.app["credenziali"] = {}
     segreto = credenziali.conia(richiesta.app["credenziali"], mestiere="ponte",
                                 durata_s=60, adesso=time.time())
@@ -325,23 +418,29 @@ async def test_una_credenziale_di_TURNO_apre_e_dice_che_non_c_e_nessuno():
 
 
 @pytest.mark.asyncio
-async def test_una_credenziale_SCADUTA_non_apre_piu():
+async def test_una_credenziale_SCADUTA_non_apre_piu(confine_vero):
     """E' tutto il punto della credenziale effimera: cio' che resta nella riga
     di comando dopo il turno non deve aprire niente.
 
     Mutazione ESEGUITA: ignorare la scadenza -- rossa."""
     from hiris.app.api import credenziali
 
-    richiesta = _Firmata(headers={}, remote="127.0.0.1", token="s3greto")
+    richiesta = _Firmata(headers={}, remote="127.0.0.1")
     richiesta.app["credenziali"] = {}
     segreto = credenziali.conia(richiesta.app["credenziali"], mestiere="ponte",
                                 durata_s=60, adesso=time.time() - 3600)
     richiesta.headers["X-HIRIS-Internal-Token"] = segreto
 
-    esito, _ = await _passa(richiesta)
+    esito, visto = await _passa(richiesta)
 
     assert esito != "ok"
     assert esito.status == 401
+    # E non per un'altra ragione: `auth_via` resta vuoto, cioe' nessun ramo
+    # l'ha accolta. Senza questa riga la prova resterebbe verde anche se il
+    # rifiuto arrivasse da un ramo che non c'entra.
+    assert visto.get("auth_via") is None, (
+        "col confine di sviluppo acceso questa prova sarebbe verde comunque: "
+        "e' il difetto n.1, e l'ha presa la suite il 22/09/2026")
 
 
 @pytest.mark.asyncio
@@ -355,7 +454,7 @@ async def test_la_credenziale_si_guarda_PRIMA_del_segreto_condiviso():
     sbagliata)."""
     from hiris.app.api import credenziali
 
-    richiesta = _Firmata(headers={}, remote="127.0.0.1", token="s3greto")
+    richiesta = _Firmata(headers={}, remote="127.0.0.1")
     richiesta.app["credenziali"] = {}
     # lo stesso valore vale come credenziale effimera E come segreto condiviso
     vive = richiesta.app["credenziali"]

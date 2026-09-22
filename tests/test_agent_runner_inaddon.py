@@ -16,15 +16,32 @@ def test_build_chat_messages_available():
     assert "Sei HIRIS." in system and "Utente: ciao" in user
 
 
-def test_build_headers_only_internal_token_no_cf_access(monkeypatch):
-    # Loopback-only reasoning API: only the internal token travels, never a
-    # CF-Access service credential or a generic Authorization header.
-    monkeypatch.setenv("INTERNAL_TOKEN", "TOK")
-    headers = runner.build_headers()
-    assert headers["X-HIRIS-Internal-Token"] == "TOK"
-    assert "CF-Access-Client-Id" not in headers
-    assert "CF-Access-Client-Secret" not in headers
-    assert "Authorization" not in headers
+def test_le_intestazioni_del_ponte_portano_SOLO_la_credenziale_di_turno():
+    """L'API della reasoning e' su loopback: viaggia la credenziale del turno
+    e nient'altro -- mai una credenziale di servizio CF-Access, mai un
+    `Authorization` generico.
+
+    **Le intestazioni le conia `server.py`**, non piu' `runner.build_headers`:
+    quella leggeva `INTERNAL_TOKEN` dall'ambiente, il segreto condiviso uscito
+    il 22/09/2026 con la fetta 3 dello sprint sicurezza. Si guarda dove
+    nascono davvero.
+
+    Mutazione ESEGUITA: aggiunto un `Authorization` alle intestazioni del
+    ponte in `server.py` -- rossa."""
+    import inspect
+
+    from hiris.app import server
+
+    sorgente = inspect.getsource(server._govern_bridge_worker)
+    inizio = sorgente.index("def _intestazioni_ponte()")
+    corpo = sorgente[inizio:inizio + 400]
+
+    assert "credenziale_ponte_viva" in corpo, (
+        "il ponte non conia piu' una credenziale di turno: se legge un "
+        "segreto da qualche parte, il reperto A-5 e' tornato")
+    for vietata in ("CF-Access-Client-Id", "CF-Access-Client-Secret",
+                    "Authorization"):
+        assert vietata not in corpo, f"viaggia anche {vietata}"
 
 
 def test_safe_subprocess_env_excludes_metered_api_keys(monkeypatch):

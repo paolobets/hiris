@@ -58,7 +58,10 @@ CREDENZIALI_IN_ORDINE = [
 # apriva niente, scriveva sette righe di promemoria nel registro.
 IN_FONDO_PERCHE_PERICOLOSE = [
     "log_level",
-    "internal_token",
+    # `internal_token` e' USCITA il 22/09/2026 con la fetta 3 dello sprint
+    # sicurezza: era un segreto solo per tutte le integrazioni, e adesso un
+    # servizio esterno si accoppia dalla pagina Servizi e firma. La pagina
+    # dell'add-on custodisce un campo in meno, che e' il verso giusto.
     "supervisor_ingress_cidr",
 ]
 
@@ -279,7 +282,7 @@ def test_la_pagina_add_on_tiene_solo_cio_che_si_custodisce():
     assert set(cfg["options"]) == {
         "claude_api_key", "claude_code_oauth_token", "openrouter_api_key",
         "openai_api_key", "local_model", "theme", "memory",
-        "log_level", "internal_token", "supervisor_ingress_cidr",
+        "log_level", "supervisor_ingress_cidr",
     }
 
 

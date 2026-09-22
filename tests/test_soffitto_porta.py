@@ -19,12 +19,21 @@ from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import close_all_stores
 from hiris.app.server import create_app
 
-_INGRESS = {"X-Ingress-Path": "/api/hassio_ingress/abc/"}
+#: Dal reperto A-2 (22/09/2026) serve anche il biscotto di sessione, e un
+#: Supervisor che lo riconosca (fixture `supervisor_ingress`).
+_INGRESS = {"X-Ingress-Path": "/api/hassio_ingress/abc/",
+            "Cookie": "ingress_session=sessione-che-il-supervisor-conosce"}
 _UTENTI = {"utenti": [
     {"id": "u-admin", "nome": "Paolo", "amministratore": True,
      "proprietario": True, "sistema": False},
     {"id": "u-ospite", "nome": "Ospite", "amministratore": False,
      "proprietario": False, "sistema": False}]}
+
+
+
+@pytest.fixture(autouse=True)
+def _supervisor(supervisor_ingress):
+    """Il Supervisor finto: senza, nessuna richiesta di ingress passa."""
 
 
 @pytest.fixture(autouse=True)

@@ -264,22 +264,37 @@ per il tempo che serve a un accoppiamento.
 
 ---
 
-## §8 · La convivenza, e come si misura la sua fine
+## §8 · La convivenza è finita, e l'ha decisa una misura
 
-Il gateway MCP e il proxy di Retro Panel vivono in **due repository separati**. Un taglio netto li
-spegnerebbe finché non sono aggiornati.
+**Chiusa il 22/09/2026.** Il gateway MCP e il proxy di Retro Panel vivevano in due repository
+separati, e un taglio netto li avrebbe spenti: per una fetta HIRIS ha accettato **la firma oppure
+il token**, e chi usava ancora il token si faceva misurare.
 
-Per una fetta HIRIS accetta **la firma oppure il token**. Chi usa ancora il token deve però
-dichiarare `X-HIRIS-Servizio` — non firmato, e senza nessun valore di autenticazione: serve solo a
-**misurare chi è rimasto indietro** invece di indovinarlo. Chi non lo dichiara finisce nel registro
-come «servizio ignoto», con l'indirizzo e il percorso.
+La fine la doveva decidere una misura e non una data, ed è andata così: il registro dell'add-on ha
+smesso di nominare chiunque non firmasse — le due integrazioni erano inattive, il gateway è un
+progetto chiuso, e la porta di sviluppo si è accoppiata e firma. Il ripiego è uscito **prima** della
+data limite che lo custodiva, che è il verso giusto.
 
-**A dire «sto firmando» è la firma, non il nome.** Se bastasse dichiarare `X-HIRIS-Servizio` per
-entrare nel ramo della verifica, chi lo dichiara per farsi misurare verrebbe rifiutato — cioè la
-misura spegnerebbe l'integrazione che esiste per contare. Misurato scrivendo la prova, non supposto.
+Con lui sono usciti: l'opzione `internal_token` dalla pagina dell'add-on, la sua variabile
+d'ambiente, il modulo che lo generava e conservava, l'esenzione del CSRF, il punto d'ingresso del
+worker come processo a sé (`main()`, che nessuno avviava) e la funzione che leggeva il segreto
+dall'ambiente.
 
-**La fine della convivenza la decide una misura, non una data**: quando il registro tace per qualche
-giorno, il ripiego esce e il segreto condiviso smette di esistere.
+**Restano tre strade, e ognuna dice chi è**: la firma di un servizio approvato, l'ingress con la
+sessione che il Supervisor riconosce, la credenziale di turno del ponte. Chi non ne ha nessuna
+riceve un 401 che **dice cosa fare** — farsi accoppiare dalla pagina Servizi — perché
+un'integrazione non aggiornata non deve passare il pomeriggio a leggere il registro.
+
+### Cosa sorveglia il cancello, adesso
+
+Il cancello della convivenza aveva una data e un ramo da custodire; tutti e due sono spariti col
+ripiego. Al loro posto ne vive uno **nel verso opposto**: che il segreto condiviso **non torni**. È
+la cosa più facile da riaggiungere — tre righe, e risolve qualunque integrazione che non ha voglia
+di firmare — quindi il cancello guarda la **forma** del confine, non il comportamento, che non la
+distinguerebbe da una credenziale legittima.
+
+E accanto, la contropartita: le **tre strade devono esserci tutte**. Togliere e basta non è la
+proprietà che si vuole — sarebbe «l'abbiamo spento», non «l'abbiamo messo in sicurezza».
 
 ---
 
@@ -309,8 +324,8 @@ eseguita.
 |---|---|---|---|
 | **1** | Il meccanismo (firma, finestra, valore irripetibile) e i cancelli | solo HIRIS | ✅ **fatta il 21/09** |
 | **1b** | **L'accoppiamento** (§7): archivio dei servizi, finestra di dieci minuti, codice a quattro cifre, approvazione e revoca dalla pagina — e il campo di testo esce | solo HIRIS | ✅ **fatta il 22/09** |
-| **2** | Gateway MCP e Retro Panel si accoppiano e firmano; si misura la convivenza | tre repository | da fare |
-| **3** | Il token esce; il ponte passa alla credenziale effimera | solo HIRIS | da fare |
+| **2** | Retro Panel si accoppia e firma | due repository | da fare |
+| **3** | **Il perimetro**: il token esce, i CIDR si validano, la sessione di ingress si verifica col Supervisor (A-2, A-3, A-5) | solo HIRIS | ✅ **fatta il 22/09** |
 
 Gli ingressi 2, 3 e 4 del §5 — card lovelace, Assist scritto, Assist parlato — **non esistono
 ancora**: questa spec dichiara il loro posto nel modello perché nascano già dentro, invece di essere

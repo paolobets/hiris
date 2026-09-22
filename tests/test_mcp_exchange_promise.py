@@ -73,7 +73,10 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     app["claude_runner"] = None
     app["theme"] = "auto"
     app["supervisor_ingress_cidrs"] = ["172.30.32.0/23"]
-    app["internal_token"] = TOKEN
+    # A-5 (22/09/2026): il segreto condiviso e' uscito. Il sottoprocesso
+    # `claude` porta una credenziale di TURNO, che vive quanto il turno.
+    from conftest import credenziale_ponte
+    credenziale_ponte(app, TOKEN)
 
     casa = _semina_casa(tmp_path)
     memoria = MemoryStore(str(tmp_path / "memoria.db"))

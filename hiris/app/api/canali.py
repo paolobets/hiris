@@ -7,6 +7,11 @@ parola d'ordine, e chi la sente una volta e' tutti. Compromessa una qualunque
 delle quattro strade, l'unica mossa era cambiare il token e romperle tutte
 insieme -- e nessun registro poteva dire QUALE integrazione avesse chiamato.
 
+**Il 22/09/2026 quel segreto e' uscito del tutto** (fetta 3 dello sprint
+sicurezza). La convivenza doveva finire su una MISURA e non su una data, ed e'
+finita cosi': il registro dell'add-on ha smesso di nominare chiunque non
+firmasse.
+
 **Perche' una coppia di chiavi e non un secondo segreto** (spec §6). `/data`
 finisce nei backup di Home Assistant, in chiaro se l'utente non gli mette una
 password (reperto C-4 del registro dei rischi). Con un segreto per canale, chi
@@ -31,7 +36,6 @@ a *chi sei* e *questa richiesta e' intatta*, non a *chi puo' leggerla*.
 from __future__ import annotations
 
 import base64
-import datetime
 import hashlib
 import logging
 
@@ -46,18 +50,6 @@ logger = logging.getLogger(__name__)
 #: che un orologio avanti di un'ora allarghi la finestra di un'ora, cioe'
 #: lascerebbe **al chiamante** il compito di deciderla.
 FINESTRA_S = 30.0
-
-#: Il LIMITE della convivenza col token condiviso (spec §8).
-#:
-#: Non e' la sua fine: la fine la decide una **misura** -- quando la riga
-#: «convivenza:» del registro tace per qualche giorno, il ripiego esce. Questa
-#: data garantisce che non si chiuda mai DOPO, perche' un ripiego del genere
-#: non si rompe, si dimentica: fra sei mesi sarebbe ancora li', accanto alla
-#: difesa che avrebbe dovuto sostituirlo.
-#:
-#: Quando il cancello che la custodisce diventa rosso, la risposta non e'
-#: spostarla: e' guardare il registro.
-CONVIVENZA_SCADENZA = datetime.date(2026, 10, 31)
 
 #: Il vocabolario dei ruoli, e **non e' nostro**: `amministratore` e `utente`
 #: sono cio' che Home Assistant chiama admin e non-admin, cosi' chi conosce HA

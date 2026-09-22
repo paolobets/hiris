@@ -66,7 +66,10 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     # Supervisor: nessun bypass ingress, si passa per forza dal token -- e' il
     # caso del sottoprocesso `claude`, che gira dentro il container.
     app["supervisor_ingress_cidrs"] = ["172.30.32.0/23"]
-    app["internal_token"] = TOKEN
+    # A-5 (22/09/2026): il segreto condiviso e' uscito. Il sottoprocesso
+    # `claude` porta una credenziale di TURNO, che vive quanto il turno.
+    from conftest import credenziale_ponte
+    credenziale_ponte(app, TOKEN)
 
     casa = _semina_casa(tmp_path)
     memoria_db = str(tmp_path / "memoria.db")
@@ -92,7 +95,10 @@ async def rotta_senza_archivi(aiohttp_client, monkeypatch):
     monkeypatch.delenv("HIRIS_ALLOW_NO_CSRF", raising=False)
     app = server.create_app()
     app["supervisor_ingress_cidrs"] = ["172.30.32.0/23"]
-    app["internal_token"] = TOKEN
+    # A-5 (22/09/2026): il segreto condiviso e' uscito. Il sottoprocesso
+    # `claude` porta una credenziale di TURNO, che vive quanto il turno.
+    from conftest import credenziale_ponte
+    credenziale_ponte(app, TOKEN)
     app.on_startup.clear()
     app.on_cleanup.clear()
     return await aiohttp_client(app)

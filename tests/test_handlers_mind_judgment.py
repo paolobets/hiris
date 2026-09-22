@@ -343,13 +343,17 @@ async def test_POST_giudizio_senza_x_requested_with_e_403(client_vero, csrf_stre
 
 @pytest.mark.asyncio
 async def test_POST_giudizio_senza_token_e_401(client_vero, monkeypatch):
-    """E dallo stesso `internal_auth_middleware`: senza `internal_token` e
+    """E dallo stesso `internal_auth_middleware`: senza nessuna credenziale e
     senza la valvola di sviluppo la richiesta e' un 401, come per ogni altra
     rotta dell'API. `internal_auth_middleware` gira PRIMA del csrf, quindi qui
-    non serve `csrf_stretto`."""
+    non serve `csrf_stretto`.
+
+    Dal 22/09/2026 il rifiuto **dice cosa fare** invece di dire soltanto
+    «unauthorized»: un'integrazione non aggiornata trova una porta chiusa, e
+    senza quella frase chi la mantiene passa il pomeriggio nel registro."""
     monkeypatch.setenv("HIRIS_ALLOW_NO_TOKEN", "")
     resp = await client_vero.post("/api/mind/judgment", json={
         "soggetto_genere": "tipo", "soggetto": "light", "campo": "genere",
         "valore": "sicurezza"}, headers={"X-Requested-With": "XMLHttpRequest"})
     assert resp.status == 401
-    assert (await resp.json())["error"] == "unauthorized"
+    assert "Servizi" in (await resp.json())["errore"]

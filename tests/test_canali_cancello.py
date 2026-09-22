@@ -9,7 +9,6 @@ al modulo che le possiede, le intestazioni al confine. Cio' che resta scritto a
 mano e' la decisione, non la copia di un fatto.
 """
 import ast
-import datetime
 import itertools
 import pathlib
 import re
@@ -54,59 +53,25 @@ def test_la_tabella_dei_ruoli_e_ORDINATA_dal_piu_largo_al_piu_stretto():
                     f"«{stretto}» può {gesto} ma «{largo}», che è più largo, no")
 
 
-def test_il_ripiego_al_token_ha_una_SCADENZA_dichiarata():
-    """**Il cancello piu' scomodo di questo sprint, ed e' voluto.**
+def test_il_segreto_condiviso_NON_PUO_TORNARE():
+    """**Il cancello che ha sostituito quello della convivenza** (22/09/2026).
 
-    Il token condiviso resta per una fetta perche' il gateway e il proxy di
-    Retro Panel vivono in due repository separati (spec §8). Un ripiego del
-    genere non si rompe: si dimentica. Fra sei mesi e' ancora li', e il
-    segreto condiviso -- cioe' il difetto che questo invariante esiste per
-    chiudere -- e' ancora vivo accanto alla difesa che avrebbe dovuto
-    sostituirlo.
+    Qui c'erano due prove gemelle: una diceva «il ripiego al token ha una
+    scadenza», l'altra «il ramo del token e' ancora li' finche' la convivenza
+    dura». Erano giuste finche' il ripiego esisteva. Adesso e' uscito, e
+    lasciarle avrebbe dichiarato un ripiego che non c'e'.
 
-    **La misura decide quando chiudere PRIMA; questa data garantisce che non si
-    chiuda MAI DOPO.** Non e' la fine della convivenza: e' il suo limite.
+    Cio' che resta da sorvegliare e' il verso opposto: **che non torni**. Un
+    segreto condiviso e' la cosa piu' facile da riaggiungere -- tre righe, e
+    risolve qualunque integrazione che non ha voglia di firmare. Il giorno in
+    cui qualcuno le scrive, questa prova diventa rossa e lo costringe a
+    passare di qui.
 
-    Quando questa prova diventa rossa la risposta non e' spostare la data: e'
-    guardare il registro. Se tace, si toglie il ripiego. Se parla, si sa
-    esattamente quale integrazione manca -- ed e' quello il lavoro.
-    """
-    # `now(UTC)` e non `today()`: la data locale dipende dal fuso della
-    # macchina che esegue il cancello, e un cancello che scatta un giorno
-    # prima in Australia e' un cancello che scatta a caso.
-    oggi = datetime.datetime.now(datetime.UTC).date()
+    Si guarda la FORMA, come per le porte di scrittura dell'attuatore: il
+    comportamento non lo distinguerebbe da una credenziale legittima.
 
-    assert oggi <= canali.CONVIVENZA_SCADENZA, (
-        f"la convivenza col token condiviso doveva chiudersi entro "
-        f"{canali.CONVIVENZA_SCADENZA} e oggi è {oggi}. Guarda il registro "
-        "dell’add-on: se la riga «convivenza:» tace, togli il ramo del token da "
-        "`middleware_internal_auth` e questa costante. Se parla, dice quale "
-        "integrazione non firma ancora. Spostare la data non è una risposta")
-
-
-def test_il_ramo_del_token_e_ancora_li_finche_la_convivenza_dura():
-    """La contropartita della prova qui sopra: se qualcuno togliesse il ripiego
-    **prima** che le integrazioni sappiano firmare, le spegnerebbe in silenzio.
-
-    Le due prove insieme dicono una cosa sola: il ripiego esiste, e ha una
-    fine. Toglierlo e' un gesto deliberato che rende rossa questa, non una
-    dimenticanza che non rende rossa nessuna.
-
-    Mutazione ESEGUITA: tolto il ramo del token dal confine -- rossa."""
-    sorgente = _CONFINE.read_text(encoding="utf-8")
-
-    assert "convivenza:" in sorgente, (
-        "il ramo del token condiviso non c’è più: se è voluto, togli anche "
-        "`CONVIVENZA_SCADENZA` e questa prova, perché insieme dichiarano un "
-        "ripiego che non esiste")
-
-
-def test_il_confine_verifica_la_firma_PRIMA_di_guardare_il_token():
-    """L'ordine conta, e non e' stile. Se il token si guardasse per primo, chi
-    lo possiede non firmerebbe mai -- e la convivenza non finirebbe, perche'
-    nessuno avrebbe motivo di aggiornare niente.
-
-    Mutazione ESEGUITA: invertire i due rami -- rossa.
+    Mutazione ESEGUITA: rimesso `hmac.compare_digest(...)` col token dell'app
+    nel confine -- rossa.
     """
     sorgente = _CONFINE.read_text(encoding="utf-8")
     albero = ast.parse(sorgente)
@@ -115,9 +80,28 @@ def test_il_confine_verifica_la_firma_PRIMA_di_guardare_il_token():
                    and n.name == "internal_auth_middleware")
     corpo = ast.get_source_segment(sorgente, confine) or ""
 
-    assert corpo.index("_firmatario(request)") < corpo.index("compare_digest"), (
-        "il token si guarda prima della firma: chi ha il token non avrebbe "
-        "nessun motivo di firmare, e la convivenza non finirebbe mai")
+    assert "compare_digest" not in corpo, (
+        "il confine confronta di nuovo un segreto: se e' una credenziale "
+        "EFFIMERA il confronto sta in `api/credenziali.py`, non qui; se e' un "
+        "segreto condiviso, e' il reperto A-5 che torna — uno per tutti i "
+        "portatori, in chiaro nei backup, e nessun registro che dica quale "
+        "integrazione ha chiamato")
+    assert 'app.get("internal_token"' not in corpo and \
+           'app["internal_token"]' not in corpo, (
+        "il confine legge di nuovo un token condiviso dalle opzioni")
+
+
+def test_restano_TRE_strade_e_si_chiamano_per_nome():
+    """La contropartita del cancello qui sopra: togliere e basta non e' la
+    proprieta' che si vuole. Le tre strade devono esserci tutte, o «l'abbiamo
+    messo in sicurezza» vorrebbe dire «l'abbiamo spento».
+
+    Mutazione ESEGUITA: tolto il ramo della credenziale di turno -- rossa (il
+    ponte si spegnerebbe in silenzio)."""
+    sorgente = _CONFINE.read_text(encoding="utf-8")
+
+    for strada in ("_firmatario", "_is_supervisor_ingress", "credenziali"):
+        assert strada in sorgente, f"manca la strada «{strada}»"
 
 
 def test_le_intestazioni_della_firma_sono_le_STESSE_dei_due_lati():

@@ -312,6 +312,7 @@ ADESSO_HTTP = 1_756_100_000.0
 #: Assistant. Serve perché la porta della configurazione chiede CHI, e una
 #: richiesta senza soggetto vuol dire che il confine non è passato.
 _INGRESS_ADMIN = {"X-Ingress-Path": "/api/hassio_ingress/abc/",
+                  "Cookie": "ingress_session=sessione-che-il-supervisor-conosce",
                   "X-Remote-User-Id": "u-admin"}
 
 
@@ -359,7 +360,9 @@ async def test_conferma_senza_x_requested_with_e_403_e_non_scrive_niente(client,
 
 
 @pytest.mark.asyncio
-async def test_conferma_con_x_requested_with_applica_anche_a_csrf_stretto(client, csrf_stretto):
+async def test_conferma_con_x_requested_with_applica_anche_a_csrf_stretto(
+    client, csrf_stretto, supervisor_ingress
+):
     archivio = client.app["constructions"]
     ident = archivio.propose(
         operation="crea", domain="automation", key="tapparelle_csrf_ok",
@@ -396,7 +399,7 @@ async def test_ripristina_senza_x_requested_with_e_403_e_non_scrive_niente(clien
 
 @pytest.mark.asyncio
 async def test_ripristina_con_x_requested_with_ripristina_anche_a_csrf_stretto(
-    client, csrf_stretto
+    client, csrf_stretto, supervisor_ingress
 ):
     archivio = client.app["constructions"]
     ident = archivio.propose(

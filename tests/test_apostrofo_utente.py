@@ -162,7 +162,15 @@ SORVEGLIATO: dict[str, tuple[tuple[int, int], ...] | None] = {
         (856, 872),    # _translate_rejection
     ),
     "action/construction/revisions.py": ((254, 255),),     # risana (solo `reason`)
-    "agent/runner.py": ((1612, 1618),),  # la frase "flusso incompleto" nella reply
+    # **Ri-ancorato il 22/09/2026**, e vale la pena dire perche': questi sono
+    # NUMERI DI RIGA, quindi si spostano quando il file sopra cambia. La fetta 3
+    # dello sprint sicurezza ha tolto `build_headers` e `main` e aggiunto tre
+    # commenti piu' in alto: l'intervallo e' scivolato su una frase che non
+    # doveva sorvegliare, e questa prova e' diventata rossa su un testo che
+    # nessuno aveva toccato. Il cancello ha fatto rumore invece di tacere, che
+    # e' il verso giusto in cui sbagliare -- ma chi sposta righe in
+    # `agent/runner.py` ricontrolli qui.
+    "agent/runner.py": ((1624, 1630),),  # il ramo `rc != 0`: il detail va nella reply
     # Intervalli rinumerati l'09/09/2026 (rilievo 8 dell'audit delle
     # fondamenta: `_cache_counts` entra a livello di modulo, sopra la classe,
     # e sposta di 40 righe tutto cio' che sta sotto). Sono ANCORE, non offset:
