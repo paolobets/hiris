@@ -24,5 +24,14 @@ anthropic>=1.0.0,<2.0.0
 apscheduler>=3.11.3,<4.0.0
 httpx>=0.28.1,<1.0.0
 openai>=3.1.0,<4.0.0
-model2vec>=0.9.0
+# `model2vec` e' USCITA il 22/09/2026 (reperto D-2). Era una dipendenza di
+# produzione per un percorso DICHIARATO INERTE -- nessun codice chiama piu'
+# `embed()` -- e si tirava dietro quindici pacchetti su quarantanove: numpy,
+# tokenizers, safetensors, l'albero di HuggingFace. Quindici alberi da
+# sorvegliare in cambio di zero funzioni, installati a casa di chi usa HIRIS.
+#
+# Misurato: `pip-audit -r` risolveva 49 pacchetti con lei, 34 senza.
+#
+# Il provider resta e degrada con una frase, come `fastembed`: se un giorno i
+# vettori si accendono, la libreria torna con la decisione che li accende.
 pyyaml>=6.0.3,<7.0

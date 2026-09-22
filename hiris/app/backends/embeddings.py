@@ -65,6 +65,19 @@ class OpenAIEmbedder:
         return f"openai/{self._model}"
 
 
+#: Cosa si dice a chi ha scelto un provider locale e non ha la sua libreria.
+#: **Dice perche' non c'e'** -- il percorso e' inerte -- e cosa funziona
+#: davvero: un avviso che dice soltanto «non installata» manda a cercare.
+_LIBRERIA_ASSENTE = (
+    "il provider di embedding «%s» ha bisogno di una libreria che questo "
+    "add-on non installa: il percorso degli embedding è INERTE (nessun codice "
+    "di HIRIS chiama embed()), quindi la libreria non entra nell'immagine. "
+    "Uso NullEmbedder, che è ciò che quel percorso faceva comunque. Se vuoi "
+    "accendere i vettori davvero, «openai» e «ollama» funzionano senza "
+    "installare niente; per questo servirebbe %s."
+)
+
+
 class Model2VecEmbedder:
     """Local embeddings via model2vec — pure Python, Alpine/musl compatible.
 
@@ -195,18 +208,33 @@ def build_embedding_provider(
             )
             return NullEmbedder()
         return OllamaEmbedder(base_url=local_model_url, model=model or "nomic-embed-text")
+    # I due provider LOCALI, e si difendono allo stesso modo (D-2, 22/09/2026).
+    #
+    # Nessuna delle due librerie e' installata nell'immagine: il percorso degli
+    # embedding e' dichiarato inerte -- nessun codice di HIRIS chiama piu'
+    # `embed()` -- e `model2vec` da solo si tirava dietro QUINDICI pacchetti su
+    # quarantanove (`numpy`, `tokenizers`, `safetensors`, l'albero di
+    # HuggingFace), cioe' quindici alberi da sorvegliare per le vulnerabilita'
+    # in cambio di zero funzioni.
+    #
+    # Erano due casi diversi per caso -- `fastembed` si difendeva, `model2vec`
+    # no, perche' l'uno era dichiarato e l'altro no. Adesso sono la stessa cosa:
+    # chi aveva scelto uno dei due nelle opzioni e aggiorna l'add-on trova un
+    # ripiego e una frase, **non un add-on che non parte**.
     if provider == "model2vec":
+        try:
+            import model2vec  # noqa: F401 — si guarda all'avvio, non al primo embed
+        except ImportError:
+            logger.warning(_LIBRERIA_ASSENTE, "model2vec", "pip install model2vec")
+            return NullEmbedder()
         return Model2VecEmbedder(model=model or Model2VecEmbedder._DEFAULT_MODEL)
     if provider == "fastembed":
         try:
-            import fastembed  # noqa: F401 — check availability at startup, not on first embed
+            import fastembed  # noqa: F401 — si guarda all'avvio, non al primo embed
         except ImportError:
-            logger.warning(
-                "fastembed is not installed on this platform (Alpine/musl lacks onnxruntime "
-                "wheels) "
-                "— falling back to NullEmbedder. Use 'openai' or 'ollama' as embedding_provider "
-                "instead."
-            )
+            logger.warning(_LIBRERIA_ASSENTE, "fastembed",
+                           "pip install fastembed (e su Alpine/musl non ci sono "
+                           "wheel di onnxruntime)")
             return NullEmbedder()
         return FastEmbedEmbedder(model=model or FastEmbedEmbedder._DEFAULT_MODEL)
     if provider:

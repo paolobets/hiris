@@ -146,8 +146,19 @@ def componi_scarti(letti: dict, registri: dict) -> list[Scarto]:
 # combaciare il valore diventerebbe vuoto e il controllo TACEREBBE: e' il modo
 # in cui questo strumento potrebbe diventare inutile senza rompersi, quindi una
 # lettura che non trova niente SOLLEVA invece di restituire vuoto.
-_RE_CLI = re.compile(r"npm install -g " + re.escape(PACCHETTO_CLI) + r"@([\d.]+)")
-_RE_AZIONE = re.compile(r"uses:\s*([\w.-]+/[\w.-]+)@v(\d+)")
+# `[^@]*` fra `-g` e il pacchetto: dal 22/09/2026 c'e' `--ignore-scripts` in
+# mezzo (reperto D-4), e un cancello che pretende la forma di ieri tace invece
+# di rompersi -- che e' il modo in cui una verifica smette di verificare.
+_RE_CLI = re.compile(
+    r"npm install -g [^@]*" + re.escape(PACCHETTO_CLI) + r"@([\d.]+)")
+
+# Due forme, e la prima e' quella nuova: dal 22/09/2026 le azioni sono fissate
+# per IMPRONTA (reperto D-5), con l'etichetta nel commento accanto perche'
+# resti leggibile -- e perche' questo cancello possa continuare a leggerla.
+# Senza la prima alternativa non troverebbe piu' nessuna azione e direbbe
+# «tutto a posto» guardando il vuoto.
+_RE_AZIONE = re.compile(
+    r"uses:\s*([\w.-]+/[\w.-]+)@(?:[0-9a-f]{40}\s*#\s*v(\d+)|v(\d+))")
 
 
 def _versione_installata(nome: str):
@@ -158,8 +169,19 @@ def _versione_installata(nome: str):
         return None
 
 
-def leggi_i_file() -> dict:
-    """Cio' che il repo dichiara. Nessuna rete."""
+def leggi_i_file(requisiti=None) -> dict:
+    """Cio' che il repo dichiara. Nessuna rete.
+
+    `requisiti` esiste per **una prova**, e non e' una concessione: la
+    proprieta' «una riga senza tetto non produce un tetto» e' del LETTORE, non
+    dell'elenco di oggi. Fino al 22/09/2026 la si provava puntando a
+    `model2vec`, che un tetto non ce l'aveva; quella libreria e' uscita
+    (reperto D-2) e oggi ogni riga un tetto ce l'ha. Legare la prova a quale
+    pacchetto per caso ne e' sprovvisto vorrebbe dire ritrovarla rossa il
+    giorno in cui qualcuno gliene mette uno -- cioe' rossa su un
+    miglioramento. Cosi' invece la prova chiede al lettore vero, su righe
+    scritte apposta, senza ricopiarne la logica.
+    """
     dockerfile = RADICE / "hiris" / "Dockerfile"
     workflow = RADICE / ".github" / "workflows" / "tests.yml"
     # DUE file dal 21/09/2026: la produzione e lo sviluppo si sono separati
@@ -167,8 +189,8 @@ def leggi_i_file() -> dict:
     # perche' un pavimento o un tetto sbagliato su `ruff` o su `pytest` rompe
     # il cancello esattamente come uno su `aiohttp` -- e leggerne uno solo
     # avrebbe fatto sparire in silenzio quattro righe dalla sorveglianza.
-    requisiti = [RADICE / "hiris" / "requirements.txt",
-                 RADICE / "hiris" / "requirements-dev.txt"]
+    requisiti = requisiti or [RADICE / "hiris" / "requirements.txt",
+                              RADICE / "hiris" / "requirements-dev.txt"]
 
     trovata = _RE_CLI.search(dockerfile.read_text(encoding="utf-8"))
     if not trovata:
@@ -179,7 +201,9 @@ def leggi_i_file() -> dict:
     cli = {"versione": trovata.group(1), "dove": "hiris/Dockerfile"}
 
     azioni: dict = {}
-    for nome, major in _RE_AZIONE.findall(workflow.read_text(encoding="utf-8")):
+    for nome, per_impronta, per_etichetta in _RE_AZIONE.findall(
+            workflow.read_text(encoding="utf-8")):
+        major = per_impronta or per_etichetta
         # Lo stesso `uses:` compare piu' volte (checkout in due job): vince il
         # major PIU' BASSO, perche' e' quello che va aggiornato.
         precedente = azioni.get(nome, {}).get("major")
@@ -191,7 +215,15 @@ def leggi_i_file() -> dict:
 
     tetti: dict = {}
     pavimenti: dict = {}
-    righe = [(riga.strip(), percorso.relative_to(RADICE).as_posix())
+    # `relative_to` solo quando il file STA dentro il repo: una prova che
+    # passa un elenco scritto altrove non deve far sollevare il lettore.
+    def _dove(percorso):
+        try:
+            return percorso.relative_to(RADICE).as_posix()
+        except ValueError:
+            return percorso.name
+
+    righe = [(riga.strip(), _dove(percorso))
              for percorso in requisiti
              for riga in percorso.read_text(encoding="utf-8").splitlines()]
     for riga, dove in righe:

@@ -126,6 +126,25 @@ WHOLE_FILE: tuple[tuple[int, int], ...] | None = None
 
 # file (relativo a hiris/app) -> None (tutto il file) oppure lista di
 # intervalli di riga INCLUSIVI gia' verificati come testo per il proprietario.
+def ancora(relativo: str, testo: str, *, quante: int) -> tuple[tuple[int, int], ...]:
+    """L'intervallo che comincia alla riga che CONTIENE `testo`.
+
+    Un numero di riga scritto a mano invecchia alla prima riga aggiunta sopra,
+    e il cancello si mette a sorvegliare un'altra frase senza dirlo. Qui
+    l'intervallo si ricalcola a ogni corsa.
+
+    Se l'ancora non si trova **si solleva**: un intervallo vuoto renderebbe
+    questo cancello cieco proprio sul file che aveva piu' bisogno di lui.
+    """
+    righe = (APP / relativo).read_text(encoding="utf-8").splitlines()
+    for numero, riga in enumerate(righe, start=1):
+        if testo in riga:
+            return ((numero, numero + quante - 1),)
+    raise AssertionError(
+        f"ancora «{testo}» non trovata in {relativo}: se quel codice e' "
+        "cambiato, scegli una nuova ancora — non lasciare il cancello cieco")
+
+
 SORVEGLIATO: dict[str, tuple[tuple[int, int], ...] | None] = {
     "home_space/briefing.py": WHOLE_FILE,
     "model_resolution.py": WHOLE_FILE,
@@ -162,15 +181,23 @@ SORVEGLIATO: dict[str, tuple[tuple[int, int], ...] | None] = {
         (856, 872),    # _translate_rejection
     ),
     "action/construction/revisions.py": ((254, 255),),     # risana (solo `reason`)
-    # **Ri-ancorato il 22/09/2026**, e vale la pena dire perche': questi sono
-    # NUMERI DI RIGA, quindi si spostano quando il file sopra cambia. La fetta 3
-    # dello sprint sicurezza ha tolto `build_headers` e `main` e aggiunto tre
-    # commenti piu' in alto: l'intervallo e' scivolato su una frase che non
-    # doveva sorvegliare, e questa prova e' diventata rossa su un testo che
-    # nessuno aveva toccato. Il cancello ha fatto rumore invece di tacere, che
-    # e' il verso giusto in cui sbagliare -- ma chi sposta righe in
-    # `agent/runner.py` ricontrolli qui.
-    "agent/runner.py": ((1624, 1630),),  # il ramo `rc != 0`: il detail va nella reply
+    # **Si ANCORA, non si conta** (22/09/2026, seconda volta in un giorno).
+    #
+    # Qui c'erano due numeri di riga, e due volte nello stesso giorno sono
+    # scivolati su una frase che non dovevano sorvegliare -- perche' qualcuno
+    # aveva aggiunto righe piu' in alto in `agent/runner.py`. Il cancello
+    # arrossiva su un testo che nessuno aveva toccato: rumore, non difesa, e
+    # rumore che insegna a non guardarlo.
+    #
+    # `ancora()` trova la riga dal suo CONTENUTO e sorveglia quella piu' le
+    # sei che seguono -- il ramo `rc != 0`, dove il `detail` finisce nella
+    # reply. Cio' che si sposta resta sorvegliato da solo.
+    # L'ancora e' la riga del `log.warning` del ramo `rc != 0`: da li' in giu'
+    # si compone il `detail` che finisce nella REPLY. La riga sopra
+    # (`log_tail`) resta fuori apposta: e' coda di un log, non testo che
+    # l'utente legge -- ed era fuori anche prima, con i numeri.
+    "agent/runner.py": ancora("agent/runner.py", 'log.warning("claude rc=',
+                              quante=7),
     # Intervalli rinumerati l'09/09/2026 (rilievo 8 dell'audit delle
     # fondamenta: `_cache_counts` entra a livello di modulo, sopra la classe,
     # e sposta di 40 righe tutto cio' che sta sotto). Sono ANCORE, non offset:
@@ -265,6 +292,34 @@ def _elisioni_dritte(sorgente: str, nome: str,
 
 def _elisioni_dritte_in(path: Path, intervalli: tuple[tuple[int, int], ...] | None) -> list[str]:
     return _elisioni_dritte(path.read_text(encoding="utf-8"), path.name, intervalli)
+
+
+def test_l_intervallo_di_runner_si_DERIVA_e_non_si_scrive():
+    """**La proprieta' che una prova di comportamento non puo' vedere.**
+
+    Rimettendo due numeri di riga al posto dell'ancora, il cancello sorveglia
+    altre righe -- magari innocue -- e resta verde: ha guardato qualcosa, solo
+    non quello che doveva. E' successo due volte in un giorno con i numeri
+    scritti a mano, ed e' il motivo per cui l'ancora esiste.
+
+    Si guarda la FORMA, come per le porte di scrittura dell'attuatore.
+
+    Mutazione ESEGUITA: `((1, 7),)` al posto dell'ancora -- rossa (prima era
+    verde: il cancello sorvegliava il docstring del modulo e taceva)."""
+    import pathlib as _p
+
+    sorgente = _p.Path(__file__).read_text(encoding="utf-8")
+    # La riga della TABELLA, non quella di questa prova: il criterio e' che
+    # porti un valore (`: ancora(...)` oppure `: ((...`), perche' la riga qui
+    # sotto nomina la stessa chiave per cercarla.
+    riga = [r for r in sorgente.splitlines()
+            if r.lstrip().startswith('"agent/runner.py": ')]
+
+    assert len(riga) == 1, f"la voce di runner.py non e' piu' una sola: {riga}"
+    assert "ancora(" in riga[0], (
+        "l'intervallo di `agent/runner.py` e' tornato a essere scritto a mano: "
+        "scivolera' alla prima riga aggiunta sopra, e il cancello sorveglierA' "
+        "una frase che non doveva -- e' gia' successo due volte")
 
 
 def test_nessuna_elisione_dritta_nel_testo_sorvegliato_del_proprietario():

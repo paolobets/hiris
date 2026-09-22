@@ -182,9 +182,28 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 # che questa riga sostituisce (la **2.1.270** resta l'ultima davvero letta
 # dentro il container). Il passo 4 e' APERTO per la 2.1.276 e si salda al primo
 # turno di chat dopo l'aggiornamento.
+# **`--ignore-scripts`, un percorso FISSO, e una prova** (reperto D-4,
+# 22/09/2026).
+#
+# `--ignore-scripts`: un pacchetto npm puo' eseguire codice mentre si
+# installa. Qui non ne serve nessuno -- ripgrep arriva da `apk` e
+# `USE_BUILTIN_RIPGREP=0` lo dichiara -- e il costo di vietarlo e' zero.
+#
+# Il COLLEGAMENTO: fino a oggi il sottoprocesso si invocava come `claude` e
+# chi lo esegue lo cercava in `PATH`, che non e' una cosa che questo
+# prodotto controlla. Adesso c'e' un percorso nostro, accanto al prodotto.
+#
+# E il `--version` nella STESSA istruzione: spegnere gli script di
+# post-installazione e' una cosa che nessuna suite puo' provare. Se
+# rompesse la CLI, a rompersi qui e' la COSTRUZIONE DELL'IMMAGINE, e non
+# esce niente verso nessuno -- e' la rete che il 22/09 e' mancata al
+# reperto A-2, dove una verifica non provabile e' arrivata in produzione.
 RUN apk add --no-cache nodejs npm libgcc libstdc++ ripgrep \
-    && npm install -g @anthropic-ai/claude-code@2.1.276 \
-    && npm cache clean --force
+    && npm install -g --ignore-scripts @anthropic-ai/claude-code@2.1.276 \
+    && npm cache clean --force \
+    && mkdir -p /usr/lib/hiris \
+    && ln -sf "$(command -v claude)" /usr/lib/hiris/claude \
+    && /usr/lib/hiris/claude --version
 ENV USE_BUILTIN_RIPGREP=0
 
 # Copy application source, manifest, and entrypoint

@@ -317,6 +317,18 @@ def config_mcp(base_url: str, token: str, exchange_id: str = "",
 REDATTO = "***"
 
 
+#: Dove sta la CLI del ponte, e **non si cerca in `PATH`** (reperto D-4,
+#: 22/09/2026): `PATH` non e' una cosa che questo prodotto controlla, e un
+#: `argv[0]` nudo lascia decidere a lui quale programma si esegue. L'immagine
+#: fissa un collegamento accanto al prodotto e ne prova l'esecuzione durante la
+#: costruzione, cosi' un guasto rompe la costruzione invece di uscire.
+#:
+#: Il ripiego al nome nudo serve FUORI dall'immagine -- una suite, un clone di
+#: sviluppo -- dove quel collegamento non c'e' e non ci sara' mai.
+CLI_PONTE = ("/usr/lib/hiris/claude"
+             if os.path.exists("/usr/lib/hiris/claude") else "claude")
+
+
 def reda_segreti(text: str, *segreti: str) -> str:
     """Il token fuori da tutto cio' che esce dal sottoprocesso.
 
@@ -617,7 +629,7 @@ def _chat_claude_args(system: str, user: str, model: str, *,
     Con `False` l'argv resta quello del ramo di DEGRADO: nessuna
     `--mcp-config`, nessun `--allowedTools`, e il prompt che nega gli
     strumenti resta vero per costruzione invece che per fortuna."""
-    argv = ["claude", "-p", user, "--model", model,
+    argv = [CLI_PONTE, "-p", user, "--model", model,
             "--system-prompt", system,
             "--exclude-dynamic-system-prompt-sections",
             "--disallowedTools", _LOCAL_TOOLS_DENY,

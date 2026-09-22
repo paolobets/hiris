@@ -1,5 +1,55 @@
 # HIRIS — Changelog
 
+## [3.61.0] — La fornitura (2026-09-22)
+
+Fetta 4 dello sprint sicurezza: **cosa l'add-on si porta dentro, da dove arriva, e chi lo guarda.**
+
+### La misura che mancava, e adesso si ripete
+
+Le CVE non erano **mai** state scansionate: l'audit di sicurezza non aveva rete e non ha inventato
+numeri. «Sconosciuto» non è «nessuno», ed era l'unica classe del registro dove si sapeva di non
+sapere.
+
+Prima misura, con rete: **zero vulnerabilità note** — su 34 pacchetti Python di produzione
+(transitive comprese), sull'albero di sviluppo, e sugli 82 pacchetti JavaScript.
+
+Il valore di quel numero dura un giorno. Da oggi la scansione è un lavoro del CI e gira **anche a
+calendario**: il mondo delle vulnerabilità cambia senza che noi tocchiamo una riga.
+
+### L'immagine si alleggerisce di quindici pacchetti
+
+`model2vec` era una dipendenza di produzione — installata a casa di chi usa HIRIS — per un percorso
+**dichiarato inerte**: nessun codice chiama più `embed()`. Si tirava dietro `numpy`, `tokenizers`,
+`safetensors`, l'albero di HuggingFace: **quindici pacchetti su quarantanove**, cioè quindici alberi
+da sorvegliare in cambio di zero funzioni.
+
+Esce. I due provider locali degradano adesso allo stesso modo — erano due casi diversi per caso — e
+chi ne aveva scelto uno trova un ripiego e una frase che dice cosa funziona davvero, non un add-on
+che non parte. Se un giorno i vettori si accendono, la libreria torna con la decisione che li
+accende.
+
+### La CLI del ponte non si cerca più in `PATH`
+
+Si installava fidandosi degli script di post-installazione del registro npm, e si risolveva dal
+percorso di ricerca. Adesso: `--ignore-scripts`, un collegamento fisso accanto al prodotto, e un
+`--version` nella **stessa istruzione** — se spegnere gli script rompesse la CLI, a rompersi è la
+costruzione dell'immagine e non esce niente verso nessuno.
+
+### Il CI non eredita più i permessi del repository
+
+`permissions: contents: read` in testa, e ogni azione **fissata per impronta**: un'etichetta è un
+puntatore che qualcuno può spostare, e il giorno in cui lo sposta il CI esegue codice diverso con lo
+stesso nome.
+
+### E un cancello che si rompeva da solo
+
+Il controllo sugli apostrofi sorvegliava certe righe **per numero**: due volte in un giorno quei
+numeri sono scivolati su una frase che non dovevano guardare, perché qualcuno aveva aggiunto righe
+più in alto. Adesso si àncora al contenuto — ciò che si sposta resta sorvegliato da solo — e una
+prova controlla che nessuno rimetta i numeri.
+
+Tredici mutazioni eseguite, tutte rosse.
+
 ## [3.60.1] — La verifica che non potevo fare (2026-09-22)
 
 **Correzione urgente della 3.60.0, che chiudeva il proprietario fuori dal proprio pannello.**

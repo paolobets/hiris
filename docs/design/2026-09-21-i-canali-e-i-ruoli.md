@@ -325,6 +325,7 @@ eseguita.
 | **1** | Il meccanismo (firma, finestra, valore irripetibile) e i cancelli | solo HIRIS | ✅ **fatta il 21/09** |
 | **1b** | **L'accoppiamento** (§7): archivio dei servizi, finestra di dieci minuti, codice a quattro cifre, approvazione e revoca dalla pagina — e il campo di testo esce | solo HIRIS | ✅ **fatta il 22/09** |
 | **2** | Retro Panel si accoppia e firma | due repository | da fare |
+| **4** | **La fornitura**: CVE misurate e sorvegliate, CI stretto, l'immagine si alleggerisce (D-2, D-4, D-5, D-6) | solo HIRIS | ✅ **fatta il 22/09** |
 | **3** | **Il perimetro**: il token esce, i CIDR si validano, la sessione di ingress si verifica col Supervisor (A-2, A-3, A-5) | solo HIRIS | ✅ **fatta il 22/09** |
 
 Gli ingressi 2, 3 e 4 del §5 — card lovelace, Assist scritto, Assist parlato — **non esistono

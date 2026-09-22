@@ -236,12 +236,28 @@ def test_un_minor_sopra_il_tetto_di_un_pacchetto_0x_resta_uno_scarto():
     assert scarti[0].disponibile == "0.17.0"
 
 
-def test_una_dipendenza_senza_tetto_non_finisce_fra_i_tetti():
-    """`model2vec>=0.8.0` non ha un `<`: non c'e' nessun major da escludere, e
-    inventarne uno produrrebbe uno scarto permanente su una riga sana."""
-    letti = vc.leggi_i_file()
-    assert "model2vec" not in letti["tetti"]
-    assert "model2vec" in letti["pavimenti"]
+def test_una_dipendenza_senza_tetto_non_finisce_fra_i_tetti(tmp_path):
+    """Una riga senza `<` non ha nessun major da escludere, e inventarne uno
+    produrrebbe uno scarto permanente su una riga sana.
+
+    **L'esempio vivo e' sparito, e la prova e' migliorata.** Puntava a
+    `model2vec`, uscito dalle dipendenze il 22/09/2026 (reperto D-2); oggi ogni
+    riga di `requirements.txt` un tetto ce l'ha. Legarla a quale pacchetto per
+    caso ne e' sprovvisto vorrebbe dire ritrovarla rossa il giorno in cui
+    qualcuno gliene mette uno -- rossa su un miglioramento. Adesso si chiede al
+    lettore VERO, su righe scritte apposta.
+
+    Mutazione ESEGUITA: inventare `<1.0.0` quando il tetto manca -- rossa."""
+    elenco = tmp_path / "requirements.txt"
+    elenco.write_text(
+        "con-tetto>=1.0.0,<2.0.0" + chr(10) + "senza-tetto>=0.8.0" + chr(10),
+        encoding="utf-8")
+
+    letti = vc.leggi_i_file(requisiti=[elenco])
+
+    assert "senza-tetto" not in letti["tetti"]
+    assert "senza-tetto" in letti["pavimenti"]
+    assert letti["tetti"]["con-tetto"]["tetto"] == "2.0.0"
 
 
 # ── I registri: un guasto non solleva, diventa un motivo ───────────────────

@@ -504,6 +504,33 @@ Questa classe è la più pulita e la più economica da chiudere. **Nessun repert
 | D-4 | `claude` installato senza disattivare gli script di post-installazione né verificare la provenienza, e risolto dal **percorso di ricerca** | Ci si fida del registro npm al momento della costruzione | Disattivare gli script, verificare le firme facendo fallire la costruzione, percorso assoluto nell'eseguibile | Nulla | **Sì** |
 | D-5 | CI: **nessun blocco di permessi**, sei azioni a etichetta mobile | Il token del CI eredita il default del repository | Permessi di sola lettura, azioni fissate per impronta | Nulla | **Sì**, una riga |
 | D-6 | **CVE mai scansionate**: l'audit non aveva rete e non ha inventato numeri | Sconosciuto — che è diverso da «nessuno» | Scansione delle dipendenze Python e JS in un ambiente con rete, **transitive comprese** (`yarl`, `anyio`, `httpcore`, e l'albero di `model2vec`) | Nulla | **Sì, ed è la prima cosa misurabile** |
+
+> **D-1 · CHIUSO il 21/09/2026.** Due file di requisiti; il `Dockerfile` installa solo la produzione.
+>
+> **D-2 · CHIUSO il 22/09/2026.** `python-dotenv` era già uscita; `model2vec` esce adesso —
+> era una dipendenza di produzione per un percorso **dichiarato inerte**, e si tirava dietro
+> **quindici pacchetti su quarantanove**. I due provider locali (`model2vec`, `fastembed`) adesso
+> degradano allo stesso modo: `NullEmbedder` più una frase che dice cosa funziona davvero. Misurato:
+> 49 pacchetti prima, **34 dopo**.
+>
+> **D-4 · CHIUSO il 22/09/2026.** `npm install --ignore-scripts`, un collegamento fisso in
+> `/usr/lib/hiris/claude` invece del percorso di ricerca, e un `--version` nella **stessa
+> istruzione**: se spegnere gli script rompesse la CLI, a rompersi è la costruzione dell'immagine e
+> non esce niente. È la rete che al reperto A-2 è mancata.
+>
+> **D-5 · CHIUSO il 22/09/2026.** `permissions: contents: read` in testa al workflow, e ogni azione
+> fissata per impronta con l'etichetta nel commento accanto.
+>
+> **D-6 · MISURATO il 22/09/2026, e la misura si ripete.** Prima volta con rete: **zero
+> vulnerabilità note** su 34 pacchetti Python di produzione (transitive comprese), sull'albero di
+> sviluppo e sugli 82 pacchetti JavaScript. Il valore di quel numero dura un giorno, quindi la
+> scansione è un lavoro del CI e gira **anche a calendario**: il mondo delle vulnerabilità cambia
+> senza che noi tocchiamo una riga, e un avviso nuovo su una dipendenza ferma deve trovare qualcuno
+> che glielo chieda.
+>
+> **Restano aperti in classe D**: D-3 (immagine di base per etichetta) e D-7 (i caratteri
+> tipografici da un fornitore terzo) — tutti e due «sì per distribuire», nessuno dei due urgente in
+> casa.
 | D-7 | I caratteri tipografici arrivano da un **fornitore di terze parti** a ogni apertura | Rivela indirizzo e programma del proprietario a un terzo; l'add-on non è autosufficiente senza rete; la politica dei contenuti resta aperta verso l'esterno | Portare i tre caratteri dentro l'add-on e stringere la politica | Qualche centinaio di KB nell'immagine | **Sì per distribuire** — in casa è una scelta |
 
 ---

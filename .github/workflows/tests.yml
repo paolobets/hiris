@@ -6,6 +6,21 @@ on:
   pull_request:
     branches: [master]
   workflow_dispatch:
+  # Il mondo delle vulnerabilita' cambia senza che noi tocchiamo una riga: il
+  # lavoro `dipendenze` deve poterlo scoprire anche su un repository fermo.
+  schedule:
+    - cron: "17 6 * * 1"
+
+# **I permessi si dichiarano, e sono di sola lettura** (reperto D-5 del registro
+# dei rischi, 22/09/2026). Senza questo blocco il token del CI eredita il
+# default del repository -- che su un repository privato e' scrivibile -- e
+# ogni azione di terze parti che gira qui dentro lo riceve. Nessun job di
+# questo file ha bisogno di scrivere niente.
+#
+# Un job che un giorno dovesse scrivere se lo dichiara addosso, invece di
+# allargare questa riga: cosi' il permesso in piu' vive dove serve e si vede.
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -21,10 +36,10 @@ jobs:
         python-version: ["3.11", "3.12", "3.13"]
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -37,6 +52,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r hiris/requirements-dev.txt
 
+      # `--ignore-scripts`: un pacchetto puo' eseguire codice al momento
+      # dell'installazione, e qui gira il token del CI. Non ne servono.
       - name: Run pytest
         env:
           HIRIS_ALLOW_NO_TOKEN: "1"
@@ -48,22 +65,22 @@ jobs:
     name: frontend (node --test + jsdom)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
           node-version: '22'
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm test
 
   lint:
     name: lint (ruff + oxlint)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
@@ -80,11 +97,57 @@ jobs:
       - name: ruff
         run: python -m ruff check hiris scripts tests conftest.py .smoke-test
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
           node-version: '22'
           cache: npm
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       # `--deny-warnings` e' dentro lo script: senza, oxlint esce 0 pur avendo
       # segnalato tutto (misurato il 27/08/2026).
       - run: npm run lint
+
+  # ── La misura che mancava (reperto D-6) ──────────────────────────────────
+  #
+  # Fino al 22/09/2026 le CVE non erano mai state scansionate: l'audit di
+  # sicurezza non aveva rete e non ha inventato numeri. «Sconosciuto» non e'
+  # «nessuno», ed era l'unica classe del registro dove si sapeva di non sapere.
+  #
+  # La prima misura -- 22/09/2026, con rete -- ha detto **zero vulnerabilita'
+  # note** su 34 pacchetti Python di produzione (transitive comprese) e 82 di
+  # sviluppo, piu' 82 pacchetti JS. Il valore di quel numero, pero', dura un
+  # giorno: una misura fatta una volta invecchia in silenzio, e qui il mondo
+  # cambia senza che noi tocchiamo una riga.
+  #
+  # Per questo gira **anche a calendario** e non solo sui push: un avviso nuovo
+  # su una dipendenza ferma deve trovare qualcuno che glielo chiede.
+  dipendenze:
+    name: dipendenze (CVE note)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: pip-audit (produzione e sviluppo, transitive comprese)
+        run: |
+          python -m pip install --upgrade pip pip-audit
+          echo "--- produzione: cio' che gira a casa di chi usa HIRIS ---"
+          pip-audit -r hiris/requirements.txt --progress-spinner off
+          echo "--- sviluppo: cio' che gira solo qui ---"
+          pip-audit -r hiris/requirements-dev.txt --progress-spinner off
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+
+      # `--ignore-scripts` anche qui: si installa per GUARDARE l'albero, non
+      # per eseguirlo.
+      - run: npm ci --ignore-scripts
+
+      # Sono tutte dipendenze di SVILUPPO -- nessuna entra nell'immagine --
+      # quindi la soglia e' `high`: un avviso moderato su un attrezzo di prova
+      # fermerebbe i rilasci senza proteggere nessuno.
+      - run: npm audit --audit-level=high
