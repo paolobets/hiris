@@ -1,5 +1,44 @@
 # HIRIS — Changelog
 
+## [3.58.1] — L'analista torna a parlare (2026-09-22)
+
+Trovato **dal vivo**, leggendo il registro dell'add-on sulla casa vera. L'analista non scriveva
+un'analisi dal **17 settembre**: sei giorni. Il rilascio 3.56.1 aveva chiuso una porta, e il difetto
+ne aveva un'altra a tre righe di distanza.
+
+**Due difetti distinti, e il secondo spiega il primo.**
+
+### Il giro era fermo su un turno di cinque giorni prima
+
+Il registro lo diceva per esteso: *«analista: risposta rifiutata per 2026-09-17»*. Non stava
+analizzando oggi — rimasticava il turno del 17, ogni ora. Quel turno aveva una risposta vera che la
+validazione **non poteva accettare**; una risposta rifiutata non si archivia (ed è giusto: direbbe
+che quel giorno è stato analizzato), quindi il segno «già letto» non diventava mai vero, quindi il
+raccoglitore la riapplicava e tornava «il modello ha risposto» — e il giro usciva lì. **L'analisi
+di oggi non veniva mai nemmeno tentata.**
+
+**Quinta occorrenza della stessa forma**: la porta salta chi ha già una risposta, anche quando la
+risposta è rotta. E ancora una volta le guardie che servivano **c'erano già nei fratelli**:
+`_collect_recipe_turn` pretende che il turno sia stato deciso, `_collect_actuator_turn` che parli di
+oggi. Il raccoglitore dell'analista era nato senza entrambe.
+
+### Il contratto chiedeva al modello l'identificatore sbagliato
+
+Ogni misura arriva al modello con **due** identificatori — l'impronta del soggetto e il nome umano —
+e il contratto gli chiedeva l'impronta, cioè quello che a un modello linguistico somiglia meno a un
+identificatore. Rispondeva `«Presa Smart»`, `«Alexa»`, `«Corridoio T»`, e la risposta veniva
+rifiutata per intero. **Cinque osservazioni su cinque, ogni volta.**
+
+Non era il modello che sbagliava: era la domanda. Adesso le misure si consegnano **numerate** e il
+modello risponde col numero — la stessa scelta fatta il giorno prima per l'attuatore, dove era già
+scritto che *«ricopiarne il testo vorrebbe dire poterlo sbagliare»*. La lezione non era mai tornata
+indietro.
+
+**Cambia cosa il modello dice, non cosa l'archivio riceve**: l'osservazione archiviata porta ancora
+soggetto, misura e chiave, e la pagina non si accorge di niente.
+
+Cinque mutazioni eseguite.
+
 ## [3.58.0] — Chi sta chiedendo, e quanto gli si concede (2026-09-22)
 
 I primi tre invarianti dello sprint sicurezza, nati da un audit su cinque assi e da un registro dei
