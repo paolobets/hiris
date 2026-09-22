@@ -1,5 +1,91 @@
 # HIRIS — Changelog
 
+## [3.58.0] — Chi sta chiedendo, e quanto gli si concede (2026-09-22)
+
+I primi tre invarianti dello sprint sicurezza, nati da un audit su cinque assi e da un registro dei
+rischi che li ha ordinati (`docs/design/2026-09-21-sicurezza-esposizioni.md`). Non sono venti
+correzioni: sono **tre proprietà** da cui le correzioni discendono.
+
+### I-0 · Un cancello chiede il suo elenco, non lo ricopia
+
+Un cancello che ricopia una lista **invecchia in silenzio**: l'originale cresce, la copia no, e il
+cancello resta verde mentre il buco si apre. Misurato: quello dell'attuatore elencava a mano **tre**
+porte di scrittura mentre `HAClient` ne espone **quarantatré** su **due canali** — le quattro che
+scrivono via websocket non erano nell'elenco. E il cancello dei giudizi ne sorvegliava quattordici
+mentre diciotto ricevono l'istantanea: **due delle quattro mancanti erano nate tre giorni prima**.
+
+Adesso l'elenco si chiede: al sorgente, alla cartella, al grafo delle chiamate, alla firma, al
+documento che lo dichiara. E lì il cancello ha trovato il primo difetto appena acceso — `CLAUDE.md`
+nominava una porta di scrittura in un percorso che non esiste più.
+
+Resta scritta a mano una specie sola di lista: quelle di **ammissione**, che non ricopiano niente —
+enunciano il cancello, e chiudono per difetto.
+
+### I-1 · Ogni richiesta ha un soggetto
+
+HIRIS sapeva da quale **porta** arriva una richiesta — «chat», «pagina», «schedulatore»: nomi di
+pezzi di codice — e non sapeva **chi** la fa. Tre scritture e **un solo lettore** su quarantacinque
+rotte, e il codice documentava di aver *cancellato* il calcolo dell'identità perché non aveva
+lettori.
+
+Il pezzo mancante ce l'aveva già Home Assistant: a ogni richiesta di ingress il Supervisor aggiunge
+`X-Remote-User-Id`, e filtra via la stessa intestazione in ingresso — quindi attraverso l'ingress
+non è falsificabile, e fuori di lì **non si crede**.
+
+**Il difetto vero non era che HIRIS lasciasse fare troppo: era che AMPLIFICA.** Parla con Home
+Assistant col proprio token, che è amministratore, e un utente non amministratore che passa di qui
+otteneva i poteri di HIRIS invece dei propri. La forma della difesa segue il principio deciso dal
+proprietario — *HIRIS non concede mai più di quanto il chiamante già può in HA, né più né meno*:
+comandare resta di tutti, perché la plancia lo concede già e vietarlo sarebbe teatro; **costruire è
+degli amministratori**, perché è l'unica cosa che HA rifiuterebbe davvero.
+
+### I-2 · Ogni canale si presenta con una chiave che non si può falsificare
+
+Quattro portatori presentavano **lo stesso segreto condiviso**: il ponte, il gateway su un'altra
+macchina, il proxy del pannello e la porta di sviluppo. Un segreto condiviso non è un'identità: è
+una parola d'ordine, e chi la sente una volta è tutti.
+
+Adesso ogni canale ha una **coppia di chiavi**: firma con la privata, HIRIS verifica con la pubblica
+e **non ne tiene nessuna che serva a firmare**. La ragione è misurata: `/data` finisce nei backup di
+Home Assistant, in chiaro se l'utente non gli mette una password.
+
+La firma copre **la richiesta**, non l'identità, e tre difese chiudono il «qualcuno in mezzo»: la
+finestra in **entrambi** i versi, il valore irripetibile che non si può rigiocare, e il canale
+dichiarato nel codice — una firma perfetta di un nome che nessuno ha dichiarato viene rifiutata.
+
+**Il ruolo viaggia con la credenziale**: si assegna quando si registra un dispositivo, conoscendo a
+cosa serve. Tre ruoli col vocabolario di Home Assistant — `amministratore` costruisce, `utente`
+comanda, `lettore` legge — e da qui **una funzione sola** decide il soffitto, con quattro sorgenti
+per il ruolo.
+
+**La porta di sviluppo diventa `lettore`**: misurare la casa vera prima di progettare resta
+possibile, comandare no.
+
+### Cosa cambia per te, in pratica
+
+Se sei amministratore **non cambia niente**. Un altro utente di Home Assistant continua a comandare
+e a chiedere; può farsi proporre un'automazione, ma il «crea» lo fa un amministratore.
+
+Il **token condiviso resta valido per una fetta** — il gateway e il pannello vivono in repository
+separati e un taglio netto li spegnerebbe — ma chi lo usa finisce nel registro, col canale
+dichiarato o come «IGNOTO»: la fine della convivenza la decide una misura, non una speranza. E ha
+una scadenza custodita da un cancello, perché un ripiego senza fine è un ripiego che non finisce.
+
+### E, strada facendo
+
+**La cronaca impara a dire chi**: una colonna sola per persone, luoghi, integrazioni e nessuno,
+aggiunta e non riscritta — le righe di ieri restano quello che sono.
+
+**L'immagine dimagrisce**: `pytest` e il linter non ci entrano più. Era il momento giusto per
+separarli, visto che entrava `cryptography`.
+
+**Il Piano Max dice cosa esce**: era l'unica credenziale senza una riga di privacy, in entrambe le
+lingue, mentre il repository aveva la dichiarazione più precisa di tutte — in un commento che il
+Supervisor non rende.
+
+**Ventidue mutazioni eseguite** in tutto. Una ha trovato una prova scritta un'ora prima che non
+poteva fallire: asseriva il rifiuto giusto per la ragione sbagliata.
+
 ## [3.57.0] — L'attuatore propone, e tu hai tre risposte (2026-09-21)
 
 Il rilascio B della spec del terzo attore: il gesto che mancava. Da qui l'attuatore non si limita a
