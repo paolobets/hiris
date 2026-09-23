@@ -1,5 +1,31 @@
 # HIRIS — Changelog
 
+## [3.65.1] — Il filo che si spezzava proprio dove toglie (2026-09-23)
+
+Trovato **verificando dal vivo la 3.65.0**, non da una prova.
+
+`Workshop.restore` accettava un soggetto e **non lo passava ad `apply`**: ogni ripristino scriveva
+in cronaca una riga senza chi l'aveva chiesto. Il parametro arrivava fin lì e si fermava.
+
+La scheda A-1 del registro dei rischi dichiarava il contrario, ed è chiusa dal 21 settembre: «il
+filo arriva dal confine fino all'atto: `execute`, `apply`, **`restore`** e i loro rami di
+fallimento». Era vero per due su tre.
+
+E pesa proprio dove pesa di più: **disfare è l'atto su cui «chi è stato?» conta davvero**, perché
+toglie qualcosa che c'era.
+
+### Perché nessuna prova lo vedeva
+
+Le prove del soggetto esercitavano il `Journal` **da solo**: gli passavano un soggetto e
+controllavano che lo scrivesse. È necessario, e non basta — un archivio che sa scrivere una colonna
+non dice niente su chi gliela passa. Il filo, da un capo all'altro, non lo percorreva nessuno.
+
+L'ha trovato un **ripristino vero sulla casa vera**: disfatta l'automazione di prova della
+verifica di B-5, e letta la riga che ne era uscita. `soggetto: null`.
+
+Adesso c'è una prova che parte da `propose`, applica, ripristina, e va a leggere la cronaca — il
+filo invece dei suoi pezzi. Due mutazioni eseguite, tutte e due rosse.
+
 ## [3.65.0] — Il consenso, e lo sprint sicurezza chiuso davvero (2026-09-23)
 
 Ottava fetta, e l'ultima. Un reperto solo — **B-5** — che non era stato rimandato: era stato

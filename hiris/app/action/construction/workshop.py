@@ -803,8 +803,18 @@ class Workshop:
         if "errore" in proposal:
             return proposal
         if actor in HUMAN_ACTORS:
+            # **`subject` va inoltrato**, e per una fetta non lo e' stato: il
+            # parametro arrivava fin qui e si fermava, quindi ogni ripristino
+            # scriveva in cronaca una riga senza soggetto -- mentre la nota di
+            # chiusura di A-1 dichiarava che il filo arriva «fino all'atto:
+            # `execute`, `apply`, `restore`». Misurato il 23/09/2026 su un
+            # ripristino vero, guardando la riga che ne era uscita: nessuna
+            # prova lo vedeva, perche' provavano il `Journal` da solo.
+            #
+            # Disfare e' l'atto su cui «chi e' stato?» pesa di piu': toglie
+            # qualcosa che c'era.
             return await self.apply(proposal["id"], actor=actor, exchange=exchange,
-                                      now=now)
+                                      now=now, subject=subject)
         # Dalla chat il ripristino e' un giro in due tempi come tutto il
         # resto (spec §7): applicarlo subito con lo STESSO `turno` che ha
         # appena creato la proposta farebbe rifiutare SEMPRE dal cancello (e'

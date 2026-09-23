@@ -99,3 +99,66 @@ def test_le_righe_gia_scritte_restano_leggibili(tmp_path):
         assert righe[0]["soggetto"] is None
     finally:
         riaperta.close()
+
+
+# --- Il filo, non i suoi pezzi -------------------------------------------
+#
+# Tutto ciò che sta sopra esercita il `Journal` **da solo**: gli si passa un
+# soggetto e si controlla che lo scriva. È necessario e non basta, e il
+# 23/09/2026 si è visto quanto: la nota di chiusura di A-1 dichiara che «il
+# filo arriva dal confine fino all'atto: `execute`, `apply`, `restore` e i loro
+# rami di fallimento», e su `restore` **era spezzato**. Il parametro arrivava
+# fino all'officina e lì si fermava: `restore` lo accettava e non lo passava
+# ad `apply`, quindi ogni ripristino scriveva una riga senza soggetto.
+#
+# Non l'ha trovato una prova. L'ha trovato un ripristino vero sulla casa vera,
+# guardando la riga che ne era uscita.
+
+import os
+
+from hiris.app.action.construction.revisions import ConstructionStore
+from hiris.app.action.construction.workshop import Workshop
+from tests.test_construction_workshop import FintoHA, _intento
+
+_ADESSO = 1_756_000_000.0
+
+
+@pytest.fixture()
+def officina(tmp_path):
+    archivio = ConstructionStore(os.path.join(str(tmp_path), "costruzioni.db"))
+    registro = Journal(os.path.join(str(tmp_path), "azioni.db"))
+    banco = Workshop(FintoHA(), archivio, registro)
+    yield banco, registro
+    archivio.close()
+    registro.close()
+
+
+@pytest.mark.asyncio
+async def test_il_filo_del_soggetto_NON_si_spezza_su_RESTORE(officina):
+    """**Il difetto, misurato sulla casa vera il 23/09/2026.**
+
+    Disfare è un atto come scrivere — anzi, è quello su cui «chi è stato?»
+    pesa di più, perché toglie qualcosa che c'era. `restore` accettava un
+    soggetto, lo teneva, e chiamava `apply` senza.
+
+    Mutazione ESEGUITA: togliere `subject=subject` dalla chiamata ad `apply`
+    dentro `restore` -- rossa."""
+    banco, registro = officina
+    proposta = await banco.propose(_intento(), actor="pagina", exchange=None,
+                                   now=_ADESSO)
+    nata = await banco.apply(proposta["proposta_id"], actor="pagina",
+                             exchange=None, now=_ADESSO + 1,
+                             subject=_PERSONA)
+    assert nata.get("applicata"), nata
+
+    disfatta = await banco.restore(proposta["proposta_id"], actor="pagina",
+                                   exchange=None, now=_ADESSO + 2,
+                                   subject=_PERSONA)
+
+    assert disfatta.get("applicata"), disfatta
+    riga = registro.read(disfatta["esecuzione_id"])
+    assert riga["soggetto"] is not None, (
+        "il ripristino ha scritto una riga senza soggetto: il filo si spezza "
+        "proprio sull'atto che toglie qualcosa"
+    )
+    assert riga["soggetto"]["id"] == "u-42"

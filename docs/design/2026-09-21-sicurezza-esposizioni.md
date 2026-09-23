@@ -68,6 +68,10 @@ serve è debito, non sicurezza.
 ### A-1 · Ogni utente di Home Assistant è il proprietario, per HIRIS
 
 > **CHIUSO il 21/09/2026** (fetta 1): ogni richiesta porta un soggetto, e il soffitto decide su di lui.
+>
+> > **Il filo era spezzato su `restore`, e si è visto solo usandolo** (23/09/2026, v3.65.1). Questa scheda dichiarava che il filo arriva «dal confine fino all'atto: `execute`, `apply`, `restore` e i loro rami di fallimento». `Workshop.restore` accettava il soggetto e **non lo passava ad `apply`**: ogni ripristino scriveva in cronaca una riga senza soggetto — e disfare è l'atto su cui «chi è stato?» pesa di più, perché toglie qualcosa che c'era.
+> >
+> > Non l'ha trovato nessuna prova: le prove del soggetto esercitavano il `Journal` **da solo**, gli passavano un soggetto e controllavano che lo scrivesse. Necessario, e non sufficiente. L'ha trovato un ripristino vero sulla casa vera, guardando la riga che ne era uscita. Adesso c'è una prova che percorre il filo invece dei suoi pezzi.
 
 `middleware_internal_auth.py:76-78` · `handlers_chat.py:702-708`
 
