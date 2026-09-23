@@ -1,5 +1,48 @@
-ARG BUILD_FROM
-FROM $BUILD_FROM
+# **L'immagine di base e' fissata per IMPRONTA** (reperto D-3, 23/09/2026),
+# e sta QUI e non in `build.yaml` per una ragione misurata sulla casa vera.
+#
+# Il pin nacque in `build.yaml` con la 3.64.0 e **ne ruppe l'aggiornamento**.
+# Il Supervisor valida `build_from` con `RE_DOCKER_IMAGE_BUILD`
+# (`supervisor/apps/validate.py`), che non ammette `@` -- quindi non ammette
+# un'impronta. E non si ferma: stampa un WARNING e **prosegue coi default**,
+# cioe' `ghcr.io/home-assistant/base:latest`, che e' Alpine nuda senza Python.
+# La costruzione moriva tre passi piu' sotto con `/bin/ash: pip3: not found`,
+# exit 127, e l'errore non nominava la causa. Un cancello che avvisa e tira
+# dritto e' peggio di uno che manca: sposta il guaio lontano da dove sta.
+#
+# Nel Dockerfile Docker l'impronta la accetta -- ed e' anche dove il
+# Supervisor stesso chiede di mettere i parametri di costruzione: «App uses
+# build.yaml which is deprecated. Move build parameters into the Dockerfile
+# directly», stampato a ogni giro.
+#
+# Uno stadio per architettura e l'ultimo `FROM` sceglie il suo. BuildKit pota
+# gli stadi che non servono, quindi la base dell'altra architettura non viene
+# nemmeno scaricata -- **verificato su Docker vero** (29.4.3, buildx 0.33.0)
+# prima di rilasciare, con la stessa riga di comando che usa il Supervisor.
+#
+# **`BUILD_ARCH` non ha un default, ed e' deliberato**: senza, una costruzione
+# che non lo passasse prenderebbe in silenzio l'architettura sbagliata invece
+# di rompersi. Il Supervisor lo passa sempre (`--build-arg BUILD_ARCH=amd64`).
+#
+# **Cosa costa, detto per intero**: le patch della base non arrivano piu' da
+# sole, comprese quelle di sicurezza. Aggiornarla e' un atto deliberato di chi
+# rilascia, e `scripts/verifica_componenti.py` guarda queste righe a ogni giro
+# perche' «fissato per impronta» non diventi «fermo da un anno».
+#
+# Come si ribumpano:
+#   1. scegliere l'etichetta nuova (es. 3.14-alpine3.22)
+#   2. risolverla in impronta:
+#      docker buildx imagetools inspect ghcr.io/home-assistant/<arch>-base-python:<etichetta>
+#   3. cambiare impronta E commento -- l'etichetta resta scritta sopra perche'
+#      un'impronta da sola non dice quale Python ci sia dentro
+ARG BUILD_ARCH
+
+# 3.13-alpine3.21
+FROM ghcr.io/home-assistant/amd64-base-python@sha256:35d1dcdc69a44fdaaea2f3e14cf762176f03d4cadd6a8c77e8cafa8d2644848b AS base-amd64
+# 3.13-alpine3.21
+FROM ghcr.io/home-assistant/aarch64-base-python@sha256:de1321d958f9f2ab1ea15c478285a602c0750111a8e4ee11dcb7f250ccf6c590 AS base-aarch64
+
+FROM base-${BUILD_ARCH}
 
 # Install Python dependencies
 COPY requirements.txt /tmp/requirements.txt

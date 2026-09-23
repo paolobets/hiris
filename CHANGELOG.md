@@ -1,5 +1,52 @@
 # HIRIS — Changelog
 
+## [3.64.1] — Il pin che il Supervisor non poteva leggere (2026-09-23)
+
+La 3.64.0 non si è installata. L'add-on è rimasto sulla 3.63.0 — il Supervisor aveva fatto il
+backup prima di provarci e ha tenuto l'immagine vecchia, quindi non si è perso niente — e la
+costruzione è morta con `/bin/ash: pip3: not found`.
+
+`pip3` non c'entrava niente. La 3.64.0 fissava l'immagine di base **per impronta** in `build.yaml`
+(reperto D-3), e il Supervisor valida quel campo con una regex che **non ammette `@`**: un'impronta
+lì è un valore non valido. La parte che fa danno è come reagisce — **non si ferma**: scrive un
+avviso nel registro e prosegue **con i valori di default**, cioè `ghcr.io/home-assistant/base:latest`,
+che è Alpine nuda senza Python. Tre passi dopo il primo `pip3` non trovava niente.
+
+Un controllo che avvisa e tira dritto è peggio di uno che manca: sposta il guaio lontano da dove
+sta, e l'errore che si legge non nomina la causa.
+
+Il pin adesso vive nel **`Dockerfile`**, uno stadio per architettura, dove Docker l'impronta la
+accetta — ed è anche dove il Supervisor stesso chiede di mettere i parametri di costruzione, in una
+riga che stampava a ogni giro. D-3 resta chiuso: l'immagine è fissata per impronta come doveva
+essere, con l'etichetta leggibile accanto.
+
+**Provato su Docker vero prima di rilasciare**, con la stessa riga di comando che usa il
+Supervisor: base giusta, `Python 3.13.14`, Alpine `3.21.7`. E lo stadio dell'altra architettura non
+viene nemmeno scaricato.
+
+### Le prove
+
+Il difetto è passato attraverso quattro prove verdi, e vale la pena dire perché. Dicevano tutte la
+stessa specie di cosa — *c'è un'impronta*, *le due differiscono*, *l'etichetta è nel commento*, *il
+cancello legge la riga*: asserivano **il fatto che volevamo**, nessuna asseriva **la proprietà che
+lo fa funzionare**, cioè che quello che scriviamo lo accetti chi lo legge.
+
+Adesso `tests/test_immagine_di_base.py` esegue la **regex vera del Supervisor**, copiata dal suo
+sorgente e non riscritta, su ciò che `build.yaml` dichiara. E una prova sorella le chiede di
+**rifiutare il valore esatto che ha rotto la 3.64.0**: senza, una regex addolcita lascerebbe
+passare tutto, e un controllo che accetta tutto è un controllo che non c'è.
+
+Due prove nuove guardano la proprietà invece del fatto: ogni architettura **dichiarata in
+`config.yaml`** deve avere il suo stadio — non «due stadi», quelli veri — e il cancello del
+rilascio viene **interrogato**, non più cercato con due parole nel suo sorgente. Quelle due parole
+c'erano già per altre ragioni: la prova sarebbe rimasta verde anche se il cancello avesse smesso di
+guardare.
+
+Tredici mutazioni eseguite, tutte rosse. E una **non ha ucciso la prova sotto cui l'avevo
+dichiarata**: rimettere l'etichetta al posto dell'impronta fa sparire lo stadio, quindi a prenderla
+è la prova che conta gli stadi, non quella che ci guarda dentro. È scritto nel docstring così com'è
+andata, invece di spostare la riga e far tornare i conti.
+
 ## [3.64.0] — I dati e la fornitura: lo sprint sicurezza è chiuso (2026-09-23)
 
 Settima e ultima fetta. Sette reperti, e la domanda che li tiene insieme non è «chi può entrare»

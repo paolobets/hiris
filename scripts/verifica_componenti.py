@@ -162,15 +162,15 @@ def componi_scarti(letti: dict, registri: dict) -> list[Scarto]:
 # `[^@]*` fra `-g` e il pacchetto: dal 22/09/2026 c'e' `--ignore-scripts` in
 # mezzo (reperto D-4), e un cancello che pretende la forma di ieri tace invece
 # di rompersi -- che e' il modo in cui una verifica smette di verificare.
-#: `  aarch64: "ghcr.io/home-assistant/aarch64-base-python@sha256:..."`
 #: I tipi di manifesto che si accettano. Senza, il registro risponde con un
-#: manifesto tradotto e l'impronta che torna non e' quella che `build.yaml`
+#: manifesto tradotto e l'impronta che torna non e' quella che il Dockerfile
 #: scrive.
 _MANIFESTI = ("application/vnd.oci.image.index.v1+json, "
               "application/vnd.docker.distribution.manifest.list.v2+json, "
               "application/vnd.docker.distribution.manifest.v2+json")
+#: `FROM ghcr.io/home-assistant/amd64-base-python@sha256:… AS base-amd64`
 _RE_BASE = re.compile(
-    r'^\s*(\w+):\s*"ghcr\.io/([^"@]+)@(sha256:[0-9a-f]{64})"')
+    r"^FROM\s+ghcr\.io/(\S+?)@(sha256:[0-9a-f]{64})\s+AS\s+base-(\w+)\s*$")
 _RE_CLI = re.compile(
     r"npm install -g [^@]*" + re.escape(PACCHETTO_CLI) + r"@([\d.]+)")
 
@@ -218,27 +218,31 @@ def leggi_i_file(requisiti=None) -> dict:
     # l'etichetta dal commento SOPRA la riga: e' l'unica cosa che dice quale
     # Python ci sia dentro, e senza di lei non si saprebbe nemmeno quale
     # etichetta interrogare per sapere se la base si e' mossa.
+    #
+    # Dal **Dockerfile** e non piu' da `build.yaml` (23/09/2026, sera): il
+    # Supervisor rifiuta un'impronta in `build_from` e prosegue in silenzio
+    # coi default, quindi il pin si e' spostato dove Docker lo accetta.
+    # L'architettura si legge dal nome dello stadio (`AS base-<arch>`), che e'
+    # anche cio' che l'ultimo `FROM` sceglie: un solo posto da cambiare.
+    righe_dockerfile = dockerfile.read_text(encoding="utf-8").splitlines()
     basi: dict = {}
-    righe_build = (RADICE / "hiris" / "build.yaml").read_text(
-        encoding="utf-8").splitlines()
-    for indice, riga in enumerate(righe_build):
-        trovata_base = _RE_BASE.search(riga)
+    for indice, riga in enumerate(righe_dockerfile):
+        trovata_base = _RE_BASE.match(riga)
         if not trovata_base:
             continue
-        precedente = righe_build[indice - 1].strip() if indice else ""
+        precedente = righe_dockerfile[indice - 1].strip() if indice else ""
         etichetta = precedente.lstrip("# ").strip() if precedente.startswith("#") else ""
-        basi[trovata_base.group(1)] = {
-            "repository": trovata_base.group(2),
-            "impronta": trovata_base.group(3),
+        basi[trovata_base.group(3)] = {
+            "repository": trovata_base.group(1),
+            "impronta": trovata_base.group(2),
             "etichetta": etichetta,
-            "dove": "hiris/build.yaml",
+            "dove": "hiris/Dockerfile",
         }
     if not basi:
         raise SystemExit(
-            f"Non trovo nessuna immagine di base fissata per impronta in "
-            f"{RADICE / 'hiris' / 'build.yaml'}. Se la forma e' cambiata, "
-            "aggiorna `_RE_BASE`: senza, questo controllo tacerebbe invece di "
-            "rompersi.")
+            f"Non trovo nessuno stadio di base fissato per impronta in "
+            f"{dockerfile}. Se la forma e' cambiata, aggiorna `_RE_BASE`: "
+            "senza, questo controllo tacerebbe invece di rompersi.")
 
     trovata = _RE_CLI.search(dockerfile.read_text(encoding="utf-8"))
     if not trovata:

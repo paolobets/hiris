@@ -307,8 +307,18 @@ def test_aggiorna_porta_le_azioni_all_ultimo_major_e_non_tocca_altro(tmp_path, m
         encoding="utf-8")
     dentro = tmp_path / "hiris"
     dentro.mkdir()
+    # Lo stadio di base sta nel Dockerfile dal 23/09/2026 (reperto D-3): il
+    # lettore SOLLEVA se non ne trova nessuno fissato per impronta --
+    # deliberatamente, perche' un cancello che tace su una forma cambiata non
+    # e' un cancello. Il repo finto deve quindi averlo, o proverebbe il
+    # cancello contro un mondo che non esiste.
     (dentro / "Dockerfile").write_text(
-        "RUN npm install -g @anthropic-ai/claude-code@2.1.228\n", encoding="utf-8")
+        "# 3.13-alpine3.21\n"
+        "FROM ghcr.io/home-assistant/amd64-base-python@sha256:"
+        + "0" * 64 + " AS base-amd64\n"
+        "FROM base-${BUILD_ARCH}\n"
+        "RUN npm install -g @anthropic-ai/claude-code@2.1.228\n",
+        encoding="utf-8")
     (dentro / "requirements.txt").write_text("anthropic>=0.87.0,<1.0.0\n",
                                              encoding="utf-8")
     # DUE file dal 21/09/2026: produzione e sviluppo si sono separati quando
@@ -316,17 +326,6 @@ def test_aggiorna_porta_le_azioni_all_ultimo_major_e_non_tocca_altro(tmp_path, m
     # quello vero, o proverebbe il cancello contro un mondo che non esiste.
     (dentro / "requirements-dev.txt").write_text(
         "-r requirements.txt\nruff>=0.16.4,<0.17.0\n", encoding="utf-8")
-    # E `build.yaml`, dal 23/09/2026 (reperto D-3): il lettore SOLLEVA se non
-    # trova nessuna immagine fissata per impronta -- deliberatamente, perche'
-    # un cancello che tace su una forma cambiata non e' un cancello. Il repo
-    # finto deve quindi averlo, o proverebbe il cancello contro un mondo che
-    # non esiste.
-    (dentro / "build.yaml").write_text(
-        '# 3.13-alpine3.21\n'
-        'build_from:\n'
-        '  amd64: "ghcr.io/home-assistant/amd64-base-python@sha256:'
-        + "0" * 64 + '"\n',
-        encoding="utf-8")
     monkeypatch.setattr(vc, "RADICE", tmp_path)
 
     letti = vc.leggi_i_file()
@@ -352,8 +351,18 @@ def test_con_cli_il_dockerfile_si_tocca_eccome(tmp_path, monkeypatch):
         "      - uses: actions/setup-node@v7\n", encoding="utf-8")
     dentro = tmp_path / "hiris"
     dentro.mkdir()
+    # Lo stadio di base sta nel Dockerfile dal 23/09/2026 (reperto D-3): il
+    # lettore SOLLEVA se non ne trova nessuno fissato per impronta --
+    # deliberatamente, perche' un cancello che tace su una forma cambiata non
+    # e' un cancello. Il repo finto deve quindi averlo, o proverebbe il
+    # cancello contro un mondo che non esiste.
     (dentro / "Dockerfile").write_text(
-        "RUN npm install -g @anthropic-ai/claude-code@2.1.228\n", encoding="utf-8")
+        "# 3.13-alpine3.21\n"
+        "FROM ghcr.io/home-assistant/amd64-base-python@sha256:"
+        + "0" * 64 + " AS base-amd64\n"
+        "FROM base-${BUILD_ARCH}\n"
+        "RUN npm install -g @anthropic-ai/claude-code@2.1.228\n",
+        encoding="utf-8")
     (dentro / "requirements.txt").write_text("anthropic>=0.87.0,<1.0.0\n",
                                              encoding="utf-8")
     # DUE file dal 21/09/2026: produzione e sviluppo si sono separati quando
@@ -361,17 +370,6 @@ def test_con_cli_il_dockerfile_si_tocca_eccome(tmp_path, monkeypatch):
     # quello vero, o proverebbe il cancello contro un mondo che non esiste.
     (dentro / "requirements-dev.txt").write_text(
         "-r requirements.txt\nruff>=0.16.4,<0.17.0\n", encoding="utf-8")
-    # E `build.yaml`, dal 23/09/2026 (reperto D-3): il lettore SOLLEVA se non
-    # trova nessuna immagine fissata per impronta -- deliberatamente, perche'
-    # un cancello che tace su una forma cambiata non e' un cancello. Il repo
-    # finto deve quindi averlo, o proverebbe il cancello contro un mondo che
-    # non esiste.
-    (dentro / "build.yaml").write_text(
-        '# 3.13-alpine3.21\n'
-        'build_from:\n'
-        '  amd64: "ghcr.io/home-assistant/amd64-base-python@sha256:'
-        + "0" * 64 + '"\n',
-        encoding="utf-8")
     monkeypatch.setattr(vc, "RADICE", tmp_path)
 
     nuova = vc.aggiorna_cli(vc.leggi_i_file(), {"cli": {"versione": "2.1.233"}})
