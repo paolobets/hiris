@@ -126,6 +126,34 @@ WHOLE_FILE: tuple[tuple[int, int], ...] | None = None
 
 # file (relativo a hiris/app) -> None (tutto il file) oppure lista di
 # intervalli di riga INCLUSIVI gia' verificati come testo per il proprietario.
+def corpo(relativo: str, nome: str) -> tuple[tuple[int, int], ...]:
+    """L'intervallo di una funzione, **letto dal suo albero sintattico**.
+
+    `ancora()` qui sotto fissa l'INIZIO al contenuto e poi conta le righe: e'
+    mezza cura, e il 23/09/2026 si e' visto quanto mezza. `apply` e' cresciuta
+    di quindici righe di docstring, l'ancora ne contava ancora 121, e **le
+    ultime quindici righe della funzione hanno smesso di essere sorvegliate**
+    senza che niente arrossisse — un cancello cieco proprio sulla coda, dove
+    una funzione mette le frasi che l'utente legge.
+
+    Un intervallo che si ricalcola all'inizio ma non alla fine invecchia
+    esattamente come uno scritto a mano: piu' lentamente, e in silenzio.
+
+    Se la funzione non si trova **si solleva**, per la stessa ragione per cui
+    si solleva `ancora`.
+    """
+    import ast
+
+    albero = ast.parse((APP / relativo).read_text(encoding="utf-8"))
+    for nodo in ast.walk(albero):
+        if (isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and nodo.name == nome):
+            return ((nodo.lineno, nodo.end_lineno),)
+    raise AssertionError(
+        f"la funzione «{nome}» non esiste piu' in {relativo}: se e' stata "
+        "rinominata, aggiorna questa riga — non lasciare il cancello cieco")
+
+
 def ancora(relativo: str, testo: str, *, quante: int) -> tuple[tuple[int, int], ...]:
     """L'intervallo che comincia alla riga che CONTIENE `testo`.
 
@@ -173,12 +201,27 @@ SORVEGLIATO: dict[str, tuple[tuple[int, int], ...] | None] = {
     # `_helper_entities` resta FUORI:
     # le sue uniche stringhe sono `logger.warning` con segnaposto, e la frase
     # che il proprietario legge la compone `apply`, dentro il suo intervallo.
+    # **Erano cinque intervalli a NUMERI, e sono scivolati una terza volta**
+    # (23/09/2026, fetta 8): cinquantuno righe aggiunte in cima al file --
+    # `FRASE_MAX` e `_aggiungi_frase` per il reperto B-5 -- hanno spostato
+    # tutto piu' giu', e il cancello ha cominciato a sorvegliare due frasi che
+    # nessuno aveva toccato (`logger.warning` dell'etichetta, e il rifiuto di
+    # `richiesto`). Esattamente cio' che il commento qui sotto racconta essere
+    # successo due volte il 22/09 su `agent/runner.py` -- e la cui cura era
+    # gia' scritta, in questo stesso file, quindici righe piu' giu'.
+    #
+    # Una cura scritta e non applicata dove serviva e' una cura che non c'e'.
+    # Adesso tutti e cinque gli intervalli si ANCORANO al loro contenuto.
     "action/construction/workshop.py": (
-        (64, 70),      # ARTICOLO_INDETERMINATIVO / ARTICOLO_DETERMINATIVO
-        (288, 324),    # _preview
-        (328, 448),    # apply
-        (723, 773),    # restore
-        (856, 872),    # _translate_rejection
+        # ARTICOLO_INDETERMINATIVO / ARTICOLO_DETERMINATIVO
+        *ancora("action/construction/workshop.py",
+                "ARTICOLO_INDETERMINATIVO", quante=7),
+        # Le quattro funzioni si leggono dall'ALBERO, non si contano: vedi
+        # `corpo()` per cosa e' costato contarle.
+        *corpo("action/construction/workshop.py", "_preview"),
+        *corpo("action/construction/workshop.py", "apply"),
+        *corpo("action/construction/workshop.py", "restore"),
+        *corpo("action/construction/workshop.py", "_translate_rejection"),
     ),
     "action/construction/revisions.py": ((254, 255),),     # risana (solo `reason`)
     # **Si ANCORA, non si conta** (22/09/2026, seconda volta in un giorno).

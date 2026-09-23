@@ -324,12 +324,20 @@ eseguita.
 |---|---|---|---|
 | **1** | Il meccanismo (firma, finestra, valore irripetibile) e i cancelli | solo HIRIS | ✅ **fatta il 21/09** |
 | **1b** | **L'accoppiamento** (§7): archivio dei servizi, finestra di dieci minuti, codice a quattro cifre, approvazione e revoca dalla pagina — e il campo di testo esce | solo HIRIS | ✅ **fatta il 22/09** |
-| **2** | Retro Panel si accoppia e firma | due repository | da fare |
-| **7** | **I dati e la fornitura**: i segreti numerici, il registro in `debug`, i backup, cosa esce e verso chi, la conservazione, l'immagine per impronta, i caratteri in casa (C-1, C-2, C-4, C-5, C-6, D-3, D-7) | solo HIRIS | ✅ **fatta il 23/09** — lo sprint sicurezza è CHIUSO |
+| **2** | Retro Panel si accoppia e firma | due repository | ⬅️ **FUORI dallo sprint**, dichiarata il 23/09/2026 — vedi sotto |
+| **7** | **I dati e la fornitura**: i segreti numerici, il registro in `debug`, i backup, cosa esce e verso chi, la conservazione, l'immagine per impronta, i caratteri in casa (C-1, C-2, C-4, C-5, C-6, D-3, D-7) | solo HIRIS | ✅ **fatta il 23/09** |
+| **8** | **Il consenso**: la cronaca registra la frase su cui una conferma è nata (B-5) — l'ultimo reperto, e l'unico che era stato **saltato** invece che rimandato | solo HIRIS | ✅ **fatta il 23/09** — lo sprint sicurezza è CHIUSO |
 | **6** | **Il modello**: la marcatura del contenuto, il freno di ritmo, le promesse che dichiarano cosa toccano (B-2, B-3, B-6) | solo HIRIS | ✅ **fatta il 22/09** |
 | **5** | **L'ingresso della catena**: i tre lettori grezzi passano dal confine, e l'anteprima dice cosa chiamerà (B-1, B-4) | solo HIRIS | ✅ **fatta il 22/09** |
 | **4** | **La fornitura**: CVE misurate e sorvegliate, CI stretto, l'immagine si alleggerisce (D-2, D-4, D-5, D-6) | solo HIRIS | ✅ **fatta il 22/09** |
 | **3** | **Il perimetro**: il token esce, i CIDR si validano, la sessione di ingress si verifica col Supervisor (A-2, A-3, A-5) | solo HIRIS | ✅ **fatta il 22/09** |
+
+**La fetta 2 esce dallo sprint, e la ragione è misurata.** Non chiude nessun rischio: la
+convivenza col segreto condiviso è finita su una MISURA — il registro dell'add-on ha smesso di
+nominare chiunque non firmasse — e da allora la porta è chiusa per tutti. Quel che manca non è una
+difesa, è una **capacità**: finché Retro Panel non si accoppia, non può più parlare con HIRIS. È
+lavoro di prodotto su due repository, e tenere aperto uno sprint di sicurezza per una capacità
+farebbe sembrare esposto qualcosa che non lo è. Sta in `docs/BACKLOG.md`.
 
 Gli ingressi 2, 3 e 4 del §5 — card lovelace, Assist scritto, Assist parlato — **non esistono
 ancora**: questa spec dichiara il loro posto nel modello perché nascano già dentro, invece di essere
@@ -354,8 +362,12 @@ messi in sicurezza dopo. La loro costruzione è una fetta di prodotto, non di si
   risolvere aree e piani, quindi il dato c'è. Il proprietario ha scelto il ruolo, che è più semplice
   e più prevedibile; le due cose **si compongono** (ruolo `utente` *e* solo l'area ingresso) e il
   disegno non lo impedisce. Fuori adesso perché non serve adesso.
-- **La marcatura del contenuto non fidato** (B-2 del registro) resta l'unica decisione di disegno
-  aperta dello sprint, ed è un invariante suo.
+- ~~**La marcatura del contenuto non fidato** (B-2 del registro) resta l'unica decisione di
+  disegno aperta dello sprint.~~ **Superata il 22-23/09/2026**: B-2 è chiuso con la fetta 6 (il
+  contenuto entra delimitato e dichiarato materiale, più un freno di ritmo per entità), e la
+  separazione fra chi legge e chi agisce è stata **ritirata con la misura accanto** invece che
+  rimandata. B-5 — che questa riga non nominava — è chiuso con la fetta 8. **Nessuna decisione di
+  disegno resta aperta.**
 - **TLS e il trasporto**: non è questa spec.
 
 ---

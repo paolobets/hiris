@@ -56,7 +56,8 @@ def _trim_history(history: list[dict], max_tokens: int = _MAX_HISTORY_TOKENS) ->
 
 def create_tool_dispatcher(app, exchange: str | None = None,
                            soffitto: dict | None = None,
-                           soggetto: dict | None = None) -> ToolDispatcher:
+                           soggetto: dict | None = None,
+                           frase: str | None = None) -> ToolDispatcher:
     """L'UNICO punto del prodotto in cui `ToolDispatcher` viene costruito.
 
     I sedici strumenti della chat (`home_space/tools.py`) -- non il catalogo
@@ -130,6 +131,13 @@ def create_tool_dispatcher(app, exchange: str | None = None,
         # nessuna persona che l'ha aperto (ponte, schedulatore, promessa).
         soffitto=soffitto,
         subject=soggetto,
+        # **La frase di QUESTO turno** (B-5), quella su cui una conferma
+        # nasce. Ha un default perche' due dei quattro chiamanti non hanno
+        # nessuna persona che parli -- la rotta MCP e le promesse -- e li' la
+        # cronaca deve poter dire che nessuno ha detto niente, invece di
+        # ricevere una stringa vuota che si legge «ha parlato e non si
+        # capiva».
+        phrase=frase,
         cache=app.get("entity_cache"),
         actuator=app.get("action_actuator"),
         lookup_cache=app.get("tools_lookup_cache"),
@@ -587,7 +595,12 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
             dispatcher=create_tool_dispatcher(
                 request.app, exchange=exchange_id,
                 soffitto=await per_richiesta(request.app, request),
-                soggetto=request.get("soggetto")),
+                soggetto=request.get("soggetto"),
+                # Lo STESSO testo che il modello ha davanti come ultimo turno
+                # (`user_message=ultimo`, qui sopra): se questo ramo leggesse
+                # da un'altra parte, la cronaca registrerebbe una frase
+                # diversa da quella su cui il modello ha deciso.
+                frase=ultimo),
         )
     except RunnerBackendError as exc:
         # Stessa rete del ramo sincrono, e per la stessa ragione: `runner` può
@@ -923,7 +936,9 @@ async def handle_chat(request: web.Request) -> web.Response:
     tool_dispatcher = create_tool_dispatcher(
         request.app, exchange=exchange_id,
         soffitto=await per_richiesta(request.app, request),
-                soggetto=request.get("soggetto"))
+        soggetto=request.get("soggetto"),
+        # Lo STESSO testo che va al modello come `user_message` piu' sotto.
+        frase=message)
 
     # fetta "la catena diventa l'unica verita'": qui c'era
     # `agent_model = settings.model`. Il campo e' uscito con la decisione

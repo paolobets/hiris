@@ -1555,7 +1555,8 @@ class ToolDispatcher:
                  translations=None, knowledge=None,
                  judgments: TypeJudgments | None = None,
                  soffitto: dict | None = None,
-                 subject: dict | None = None) -> None:
+                 subject: dict | None = None,
+                 phrase: str | None = None) -> None:
         self._home_space = home_space_store
         # Il sigillo dei segreti si costruisce alla prima richiesta e si
         # ricorda: leggere `secrets.yaml` a ogni voce di registro sarebbe
@@ -1573,6 +1574,12 @@ class ToolDispatcher:
         # il soffitto dice cosa si concede, il soggetto dice a chi -- e la
         # cronaca ha bisogno del secondo anche quando il primo ha detto di si'.
         self._subject = subject
+        # **La frase di QUESTO turno** (B-5): quella su cui una conferma nasce.
+        # Non e' la `frase` di una proposta, che e' la frase che ha CHIESTO la
+        # costruzione -- questa e' quella che la CONFERMA. `None` per MCP e
+        # per le promesse, dove non c'e' nessuna persona che parli, ed e' il
+        # fatto giusto: la cronaca dira' che nessuno ha detto niente.
+        self._phrase = phrase
         # Il sapere (`mind/knowledge.py`): cio' che HIRIS ha capito, con la
         # provenienza. Oggi ne esce il SIGNIFICATO della classe di un'entita'
         # sul dettaglio di `guarda` -- la porta che rende interrogabile
@@ -2594,7 +2601,12 @@ class ToolDispatcher:
             return {"errore": self._soffitto["perche"]}
         occurrence = await self._workshop.apply(
             proposal_id.strip(), actor="chat", exchange=self._exchange,
-            now=_time.time(), subject=self._subject)
+            now=_time.time(), subject=self._subject,
+            # B-5: il cancello sa dire «in mezzo c'e' stato un turno», non «in
+            # mezzo c'e' stato un si'». La frase di questo turno va in cronaca
+            # accanto all'atto, cosi' che «chi ha detto si'» abbia una
+            # risposta invece di essere dedotto dal silenzio.
+            confirm_phrase=self._phrase)
         # Punto 7 (residuo): `guasto_rete` e' interno (`Workshop._fallita`/
         # `_rete`) -- `handlers_constructions.py` lo toglie gia' sul percorso
         # HTTP (lo legge per scegliere 503 invece di 409, poi lo estrae dal

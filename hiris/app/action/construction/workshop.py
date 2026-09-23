@@ -87,6 +87,41 @@ def _readable_state(state: str) -> str:
     return READABLE_STATE.get(state, state)
 
 
+#: Quanto si conserva della frase che conferma (B-5). La cronaca la rilegge
+#: `logbook`, che la porta al modello: un muro di testo incollato in chat
+#: diventerebbe carico a ogni turno, per i novanta giorni della conservazione.
+#: Un sì sta in poche parole; quel che eccede non aggiunge niente alla domanda
+#: a cui questo campo risponde («chi ha detto sì?»).
+PHRASE_MAX = 240
+
+
+def _add_phrase(subject: dict | None, phrase: str | None) -> dict | None:
+    """Il soggetto con dentro la frase che ha confermato — **una copia**.
+
+    Il dizionario che arriva dal confine vive quanto la richiesta e lo leggono
+    anche altri: scriverci dentro sarebbe un effetto a distanza su un oggetto
+    di qualcun altro.
+
+    **L'assenza e' un fatto, e non si finge.** Una conferma dalla pagina non
+    porta nessuna frase perche' il clic *e'* il si'; una promessa notturna e
+    un servizio via MCP non hanno nessuna persona che parli. In tutti e tre i
+    casi la chiave non c'e' -- e «non c'e'» non e' `""`, che si leggerebbe
+    come «ha detto niente».
+
+    E la frase nasce anche **senza** soggetto: sono due fatti indipendenti, e
+    legarli perderebbe quello che c'e' per colpa di quello che manca.
+    """
+    detto = (phrase or "").strip()
+    if not detto:
+        return subject
+    if len(detto) > PHRASE_MAX:
+        # Il taglio **si dichiara**: senza il marcatore, quella sembrerebbe la
+        # frase intera, e chi legge la cronaca giudicherebbe su meta' di cio'
+        # che e' stato detto.
+        detto = detto[:PHRASE_MAX] + "…"
+    return {**(subject or {}), "confirm_phrase": detto}
+
+
 # Punto 4 (residuo): il messaggio grezzo di `_rete` (sotto) finisce in quattro
 # superfici, due permanenti -- `costruzioni.motivo`/`errore` nella cronaca in
 # SQLite -- e la cattura larga toglie ogni garanzia sulla sua lunghezza: e'
@@ -326,7 +361,21 @@ class Workshop:
     # ---- applicare ------------------------------------------------------
 
     async def apply(self, proposal_id: str, *, actor: str, exchange: str | None,
-                      now: float, subject: dict | None = None) -> dict:
+                      now: float, subject: dict | None = None,
+                      confirm_phrase: str | None = None) -> dict:
+        """`confirm_phrase` e' **la frase su cui l'oggetto e' nato** (B-5).
+
+        Il cancello qui sotto sa dire «in mezzo c'e' stato un turno». Non sa
+        dire «in mezzo c'e' stato un si'», e non puo': `confirm` e' uno
+        strumento del modello, quindi turno N propone, turno N+1 l'utente
+        scrive «grazie» e l'oggetto viene scritto. Il proprietario ha scelto
+        di **registrare** invece di vietare: l'autoconferma resta possibile e
+        smette di essere invisibile.
+
+        **Non e' la `frase` di una proposta**, che e' la frase che ha CHIESTO
+        la costruzione. Questa e' quella che l'ha CONFERMATA: due fatti
+        diversi, due parole diverse.
+        """
         proposal = self._store.read(proposal_id)
         if proposal is None:
             return {"errore": "non ho nessuna proposta con quell’identificatore."}
@@ -335,6 +384,7 @@ class Workshop:
         cancello = self._cancello(proposal, actor, exchange)
         if cancello is not None:
             return {"errore": cancello}
+        subject = _add_phrase(subject, confirm_phrase)
 
         # Rivendicazione atomica (spec §7): il controllo sullo stato appena
         # letto qui sopra non basta -- e' una lettura che una richiesta

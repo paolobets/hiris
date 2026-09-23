@@ -42,6 +42,77 @@ voci non sa dire se il lavoro procede.
 
 ## Scelti — sprint in corso
 
+### «Rifalla» manda davvero il giro sul ponte — aperta il 23/09/2026
+
+`origine: il proprietario, durante la fetta 7 dello sprint sicurezza` · `rilascio: v3.64.0`
+
+Con la 3.64.0 il bottone **«Rifalla»** dell'osservatore ha smesso di essere l'unica porta verso un
+modello che non dichiarava chi risponde: adesso **lo dice**, con parole sue — «il piano non ha
+fallito, e' la porta che risponde subito mentre il piano risponde in differita».
+
+Dichiararlo non e' mandarcelo. Su una casa che gira sul Piano Max ogni «Rifalla» resta **a
+consumo**, e ora si sa. Mandarlo davvero sul ponte e' una fetta sua e costa due cose: il bottone
+**smetterebbe di rispondere subito** (il ponte risponde in differita) e la pagina dovrebbe
+**interrogare** invece di ricevere. E' un cambio di come si comporta un bottone, non un
+aggiustamento.
+
+**Questa voce e' nata con un debito**: la decisione fu presa il 23/09 e dichiarata scritta qui,
+e qui non c'era — il commit della 3.64.0 tocco' `docs/BACKLOG.md` per il solo rimando della CLI.
+Se ne e' accorto il conto dei reperti fatto per chiudere lo sprint. Una decisione rimandata e non
+tracciata e' la specie che torna.
+
+### Retro Panel si accoppia e firma — FUORI dallo sprint sicurezza, aperta il 23/09/2026
+
+`origine: la fetta 2 di docs/design/2026-09-21-i-canali-e-i-ruoli.md` · `due repository`
+
+**Non chiude nessun rischio, e per questo esce dallo sprint.** La convivenza col segreto condiviso
+e' finita su una MISURA e non su una data — il registro dell'add-on ha smesso di nominare chiunque
+non firmasse — e da allora la porta e' chiusa per tutti. Quel che manca non e' una difesa, e' una
+**capacita'**: finche' Retro Panel non si accoppia, non puo' piu' parlare con HIRIS.
+
+Cosa serve: Retro Panel genera una coppia Ed25519 (la privata **non viaggia mai**), si presenta
+nella finestra di dieci minuti che il proprietario apre dalla pagina Servizi, e il proprietario
+approva il suo ruolo confrontando il codice a quattro cifre. Poi firma come firma la porta di
+sviluppo: `X-HIRIS-Servizio` (la chiave pubblica, che e' l'identita'), `X-HIRIS-Momento`,
+`X-HIRIS-Unico`, `X-HIRIS-Firma`, sul contratto di `api/canali.py::materia_firmata`.
+
+### L'opzione `canali` e' rimasta nelle opzioni salvate dell'add-on — aperta il 23/09/2026
+
+`origine: misurata sul registro della casa vera, 23/09/2026`
+
+A ogni avvio il Supervisor scrive:
+
+    WARNING [supervisor.apps.options] Option 'canali' does not exist in the schema for HIRIS
+
+E' il **campo di testo dei canali** uscito dallo schema con la fetta 1b, quando i servizi hanno
+smesso di dichiararsi in un'opzione e hanno cominciato a nascere da un accoppiamento approvato. Lo
+schema non lo dichiara piu'; le opzioni **salvate** su questa casa si', e il Supervisor lo ignora e
+tira dritto.
+
+Non e' un'esposizione — quel valore non lo legge piu' nessuno. E' la **stessa specie di cosa** che
+ha rotto l'aggiornamento della 3.64.0: un valore che chi lo legge non riconosce, dentro un avviso
+che nessuno guarda. Si chiude togliendolo dalle opzioni dell'add-on nella pagina di
+configurazione di HA — non c'e' niente da cambiare nel codice.
+
+### `vault.db` e' stato cancellato senza poter dire cosa conteneva — aperta il 23/09/2026
+
+`origine: misurata sul registro della casa vera, 23/09/2026` · `rilascio che l'ha prodotta: v3.64.1`
+
+Al primo avvio dopo l'aggiornamento:
+
+    [INFO] app.server: vault.db non si e' potuto leggere prima di cancellarlo
+                       (OperationalError: no such table: pii)
+
+Il codice si comporta bene: non trovando la tabella attesa **cancella lo stesso** — nessuno lo
+leggeva piu' — e dichiara di non aver potuto contare invece di affermare uno zero che nessuno ha
+misurato. Il lato di sicurezza e' a posto: quel file conteneva dati personali in chiaro e non c'e'
+piu'.
+
+Resta un difetto piccolo e vero: la riga di conferma esce **solo se il conteggio riesce**, quindi
+il registro dice che non l'ha letto e **non dice che l'ha cancellato**. Chi legge lo deduce
+dall'assenza di un errore, che non e' dire. E il file ora non c'e' piu': **cosa contenesse non lo
+sapremo**, quindi la meta' informativa di quella fetta su questa casa non e' piu' verificabile.
+
 ### Zittire un'integrazione NUOVA dalla pagina — aperta il 20/09/2026
 
 Con la 3.53.0 il proprietario corregge le **sei righe di `impalcatura` che il seme porta**, dalla
@@ -116,7 +187,14 @@ La CLI oggi disponibile è la **2.1.280** (non più la 2.1.278 di questa voce: n
 uscite altre due). Il ripiego dichiarato resta la **2.1.276**, l'ultima di cui esista una lettura
 vera da `GET /api/health`.
 
-**Se la fetta delle misure non la prende, questa voce non si rimanda un'undicesima volta: si
+**Rimandata un'undicesima volta il 23/09/2026, con la v3.65.0** — e va detto che è l'undicesima,
+non nascosto sotto la regola. La 3.65.0 è la **fetta 8**, l'ultima dello sprint sicurezza (B-5),
+quindi la regola scritta qui sopra vale ancora alla lettera: una dipendenza non provata non sale
+sotto il changelog di una fetta di sicurezza. Ma la condizione «il prossimo rilascio che NON porti
+una fetta di sicurezza» adesso è esigibile davvero: **lo sprint è chiuso**, non restano fette di
+sicurezza da fare, e il rilascio successivo è la fetta delle misure.
+
+**Se la fetta delle misure non la prende, questa voce non si rimanda una dodicesima volta: si
 chiude dichiarando la 2.1.276 come pin scelto, e il cancello si riancora lì.**
 
 ### La CLI del ponte e' salita alla 2.1.267 — CHIUSA il 10/09/2026
@@ -1259,11 +1337,27 @@ quanto e' accurata in italiano con il modello di partenza.
 vada persa, non perche' il perimetro sia chiaro -- come per la voce dei comandi qui sopra, **il
 perimetro non e' ancora stato scelto**.
 
-### La sicurezza
+### ~~La sicurezza~~ — **USCITA**: lo sprint c'e' stato, dal 21 al 23/09/2026
 
-`origine: deciso dal proprietario il 04/09/2026` · `documento: docs/design/2026-09-04-la-sicurezza-il-seme.md`
+`origine: deciso dal proprietario il 04/09/2026` · `documento: docs/design/2026-09-21-sicurezza-esposizioni.md`
 
-Sprint a se', **dopo** quello dei comandi. Il reperto che lo apre: HIRIS non ha nessuna lista di
+**Chiusa il 23/09/2026 con la v3.65.0.** Otto fette, venticinque reperti in quattro classi, tutti
+con una nota: chiusi, o **ritirati con la misura accanto**. Il registro dei rischi e la tabella
+delle fette stanno nei due documenti del 21/09; il racconto, rilascio per rilascio, nel CHANGELOG
+(3.55.0 → 3.65.0).
+
+E il reperto che apriva questa voce ha avuto una risposta che non e' quella che si aspettava: **la
+lista di servizi vietati non e' stata scritta, ed e' deliberato**. Una lista di divieto e'
+aggirabile per costruzione — un `shell_command` dentro il corpo di un'automazione passa
+`validate_config` ed e' un oggetto permanente che chiama cio' che `execute` non avrebbe potuto
+chiamare. Al suo posto: l'anteprima dice **quali servizi il corpo chiama** e quali **compaiono**
+rispetto a prima (B-4), c'e' un freno di ritmo **per entita'** (B-3), e la cronaca registra la
+frase su cui una conferma e' nata (B-5). Si e' scelto di **rendere visibile** invece di vietare,
+perche' il divieto lo si aggira e la visibilita' no.
+
+La forma originale della voce, com'era quando era aperta:
+
+> Sprint a se', **dopo** quello dei comandi. Il reperto che lo apre: HIRIS non ha nessuna lista di
 servizi vietati. Cio' che oggi rende irraggiungibili `homeassistant.restart`, `hassio.host_reboot`,
 `recorder.purge`, `shell_command.*` e' un accidente di forma — quei servizi non dichiarano un
 `target`, e un bersaglio vuoto e' sempre stato un rifiuto. La difesa non e' progettata: e'

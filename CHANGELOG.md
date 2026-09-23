@@ -1,5 +1,101 @@
 # HIRIS — Changelog
 
+## [3.65.0] — Il consenso, e lo sprint sicurezza chiuso davvero (2026-09-23)
+
+Ottava fetta, e l'ultima. Un reperto solo — **B-5** — che non era stato rimandato: era stato
+**saltato**. Venticinque reperti nel registro, ventiquattro con una nota di chiusura o di ritiro,
+e uno senza niente. Se n'è accorto il conto fatto per rispondere alla domanda «cosa serve per
+chiudere lo sprint».
+
+### «In mezzo c'è stato un turno» non è «in mezzo c'è stato un sì»
+
+Il cancello dell'officina verifica che una conferma arrivi in un turno **diverso** da quello in cui
+la proposta è nata. Non verifica che tu abbia detto di sì, e **non può**: `confirm` è uno strumento
+del modello. Turno N propone, al turno N+1 tu scrivi «grazie», il modello chiama `confirm`, e
+l'oggetto viene scritto.
+
+Il registro dei rischi proponeva due vie e lasciava la scelta al proprietario, perché **qui la
+restrizione costa qualcosa**. La scelta è caduta sulla seconda: la cronaca registra
+`confirm_phrase`, cioè **la frase su cui l'oggetto è nato**.
+
+Non impedisce niente, ed è il punto. Un'autoconferma resta possibile e smette di essere invisibile:
+«grazie» scritto accanto a un'automazione appena creata è una domanda che si pone da sola. L'altra
+via — togliere `confirm` al modello e confermare solo dalla pagina — era la difesa forte, e costava
+un uso vero: HIRIS non avrebbe più potuto completare una costruzione dentro la conversazione.
+
+Tre dettagli che il disegno ha deciso, e nessuno è cosmetico:
+
+- **si chiama `confirm_phrase`, non `frase`**, perché `propose` ha già un campo `frase` ed è *la
+  frase che ha chiesto la costruzione*. Due fatti diversi non condividono una parola: si separano
+  alla fonte, mai a valle. In inglese perché `action/` è un ambito già convertito — il cancello
+  della rinomina ha preso il nome italiano al primo giro, che è il suo mestiere;
+- **l'assenza non si finge.** Dalla pagina la chiave non c'è, perché il clic *è* il sì; da una
+  promessa notturna o da un servizio via MCP non c'è, perché non c'è nessuna persona che parli. E
+  «non c'è» non è `""`, che si leggerebbe come «ha detto niente»;
+- **la frase si taglia, e il taglio si dichiara.** La cronaca la rilegge `logbook`, che la porta al
+  modello: novanta giorni di muri di testo incollati sarebbero carico a ogni turno. Tagliata senza
+  marcatore sembrerebbe la frase intera, e si giudicherebbe su metà di ciò che è stato detto.
+
+### Quattro documenti che dicevano il falso
+
+- Il **§10 del registro dei rischi** si intitolava «La decisione ancora aperta» e annunciava B-2
+  come «il prossimo passo» — mentre B-2 era chiuso da un giorno, e *non* come quella sezione
+  prevedeva. Non nominava affatto B-5. Adesso porta le date di tutte e due le decisioni, e
+  dichiara che non ne resta nessuna aperta.
+- Il **§11 dell'altro documento** ripeteva la stessa affermazione scaduta.
+- La voce **«La sicurezza» nel backlog** descriveva ancora lo sprint al futuro, e il reperto che
+  l'aveva aperta — «HIRIS non ha nessuna lista di servizi vietati» — ha avuto una risposta che non
+  è quella che si aspettava: **la lista non è stata scritta, ed è deliberato.** Un divieto per
+  elenco è aggirabile per costruzione; al suo posto l'anteprima dice quali servizi il corpo chiama
+  e quali *compaiono*, c'è un freno di ritmo per entità, e adesso la cronaca porta la frase. Si è
+  scelto di rendere visibile invece di vietare, perché il divieto lo si aggira e la visibilità no.
+- Il rimando di **«Rifalla»** era stato dichiarato scritto nel backlog il 23/09, e **non c'era**:
+  il commit della 3.64.0 toccò quel file per il solo rimando della CLI. Adesso c'è.
+
+### La fetta 2 esce dallo sprint, dichiarata
+
+«Retro Panel si accoppia e firma» **non chiude nessun rischio**: la convivenza col segreto condiviso
+è finita su una *misura* — il registro dell'add-on ha smesso di nominare chiunque non firmasse — e
+da allora la porta è chiusa per tutti. Quel che manca non è una difesa, è una **capacità**: finché
+Retro Panel non si accoppia non può più parlare con HIRIS. È lavoro di prodotto su due repository,
+ed è nel backlog con cosa serve per farlo.
+
+### Le prove
+
+Tredici mutazioni eseguite, tutte rosse — ma **tre sono sopravvissute al primo giro**, ed erano le
+tre che contano: il dispatcher che non inoltra la frase, e i due rami della chat che non la passano.
+Togliendo uno qualunque di quei tre fili la funzione è morta, e nessuna prova lo vedeva.
+
+Il difetto era lo stesso in tutti e tre i casi: **guardare il file invece del comportamento**. La
+prova sui due rami contava le occorrenze di `frase=` nel sorgente, e togliendone una ne restavano
+comunque due — il conteggio tornava. Adesso si guarda l'**albero sintattico**: ogni chiamata a
+`create_tool_dispatcher` dentro il modulo della chat deve portare `frase`, e sono i *chiamanti* a
+essere contati, non le occorrenze di una stringa. E il filo in mezzo ha una prova che lo attraversa
+per intero, chiamando lo strumento `confirm` con il nome che usa il modello.
+
+### Un cancello che era diventato cieco senza dirlo
+
+Cinquantuno righe aggiunte in cima a `workshop.py` hanno fatto scivolare il cancello degli
+apostrofi, che sorvegliava cinque intervalli **a numeri di riga**: ha cominciato ad arrossire su due
+frasi che nessuno aveva toccato. È la terza volta — le prime due il 22/09, su un altro file — e la
+cura era **già scritta in quello stesso file, quindici righe più giù**: `ancora()`, che trova
+l'intervallo dal contenuto invece di contarlo. Una cura scritta e non applicata dove serviva è una
+cura che non c'è.
+
+Ma ancorare non bastava, e si è visto misurando: `ancora()` fissa l'**inizio** al contenuto e poi
+conta le righe. `apply` era cresciuta di quindici righe di docstring, il conteggio ne teneva ancora
+121, e **le ultime quindici righe della funzione avevano smesso di essere sorvegliate** — in
+silenzio, proprio sulla coda, che è dove una funzione mette le frasi che l'utente legge. Un
+intervallo che si ricalcola all'inizio ma non alla fine invecchia come uno scritto a mano: più
+lentamente.
+
+Adesso le quattro funzioni si leggono dall'**albero sintattico**, da `def` a fine corpo. Verificato
+iniettando un'elisione dritta dentro una stringa nella **coda** di ciascuno dei cinque intervalli:
+il cancello arrossisce 5 volte su 5, compresa la riga che il conteggio non vedeva.
+
+**Lo sprint sicurezza è chiuso.** Otto fette, venticinque reperti, quattro classi: tutti chiusi, o
+ritirati con la misura accanto. Nessuna decisione di disegno resta aperta.
+
 ## [3.64.1] — Il pin che il Supervisor non poteva leggere (2026-09-23)
 
 La 3.64.0 non si è installata. L'add-on è rimasto sulla 3.63.0 — il Supervisor aveva fatto il

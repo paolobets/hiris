@@ -324,6 +324,12 @@ registro: non è una restrizione, è informazione.
 
 ### B-5 · `confirm` è un confine di turno, non un consenso
 
+> **CHIUSO il 23/09/2026** (fetta 8), con la **seconda** delle due vie qui sotto — scelta dal proprietario. La cronaca registra `confirm_phrase`: la frase dell'utente nel turno in cui la conferma è arrivata. **Non impedisce niente**, ed è il punto: l'autoconferma resta possibile e smette di essere invisibile, perché «grazie» scritto accanto a un'automazione nata è una domanda che si pone da sola. La prima via — togliere `confirm` al modello — costava un uso vero, e il costo era dichiarato qui: HIRIS non avrebbe più potuto completare una costruzione dentro la conversazione.
+>
+> Tre dettagli che il disegno ha deciso, e non sono cosmetici. **Il nome è `confirm_phrase`, non `frase`**: `propose` ha già un campo `frase`, ed è la frase che ha *chiesto* la costruzione — due fatti diversi non condividono una parola, e si separano alla fonte. In inglese perché `action/` è un ambito **già convertito**, e un nome italiano nuovo lì è debito che nasce oggi: il cancello della rinomina l'ha preso al primo giro. **L'assenza non si finge**: dalla pagina la chiave non c'è, perché il clic *è* il sì; da una promessa notturna o da un servizio MCP non c'è, perché non c'è nessuna persona che parli — e «non c'è» non è `""`, che si leggerebbe «ha detto niente». **La frase si taglia a 240 caratteri e il taglio si dichiara**: la cronaca la rilegge `logbook`, che la porta al modello, e novanta giorni di muri di testo incollati sarebbero carico a ogni turno.
+>
+> **Era l'unico reperto senza una nota di stato**, e non era stato rimandato: era stato saltato. Nessuna delle sette fette lo nominava.
+
 `workshop.py:450-479`
 
 Il cancello verifica che la conferma arrivi in un turno **diverso** dalla proposta. Non verifica
@@ -680,13 +686,29 @@ riguardano questa casa e riguardano tutte le altre.
 
 ---
 
-## §10 · La decisione ancora aperta
+## §10 · Le decisioni che erano aperte — **tutte e due prese**
 
-**B-2 è l'unico punto di questo registro dove non esiste un intervento ovvio**, e dove la scelta
-cambia il prodotto invece di correggerlo. La domanda non è «cosa vietiamo» — quella è chiusa — ma
-**su quale asse agisce il cancello, se non su quello dei servizi**. Le vie emerse finora: separare
-chi legge da chi agisce · ancorare l'azione a una richiesta della persona · far dichiarare alla casa
-stessa cosa è delicato · sostituire il divieto con reversibilità e ritmo.
+> **Questa sezione diceva il falso dal 22/09 al 23/09/2026**, ed è il motivo per cui adesso porta
+> le date. Affermava che B-2 era «il prossimo passo» quando B-2 era già chiuso da un giorno, e non
+> nominava affatto B-5, che era l'unico reperto senza una nota di stato. Una sezione che elenca le
+> cose da decidere e non si aggiorna quando vengono decise è peggio di una sezione che non c'è:
+> chi la legge crede di sapere cosa manca.
 
-Nessuna è stata scelta. **Va decisa a partire dai rischi di questo documento, non in astratto**, ed
-è il prossimo passo.
+**B-2 — chiuso il 22/09/2026 (fetta 6), e non come questa sezione prevedeva.** La domanda era «su
+quale asse agisce il cancello, se non su quello dei servizi», e le vie erano quattro: separare chi
+legge da chi agisce · ancorare l'azione a una richiesta della persona · far dichiarare alla casa
+cosa è delicato · sostituire il divieto con reversibilità e ritmo.
+
+La prima è stata **scelta e poi ritirata**, e la misura l'ha ritirata prima che si scrivesse una
+riga: 861 entità sulla casa vera, **zero** con uno stato di testo libero, nessun `input_text` — lo
+scenario su cui B-2 si fondava lì non ha dove succedere. Quel che resta è chiuso dalla quarta via:
+il contenuto della casa entra **delimitato e dichiarato materiale**, e c'è un freno di ritmo **per
+entità**. Una decisione rinviata senza ragione torna; una ritirata con la misura accanto no.
+
+**B-5 — chiuso il 23/09/2026 (fetta 8)**, con la via che registra invece di vietare: la cronaca
+porta `confirm_phrase`. La scelta è del proprietario, e il costo dell'altra via era dichiarato —
+confermare solo dalla pagina toglieva a HIRIS la possibilità di completare una costruzione dentro
+la conversazione.
+
+**Non resta nessuna decisione di disegno aperta in questo registro.** I venticinque reperti hanno
+tutti una nota: chiusi, o ritirati con la misura accanto.
