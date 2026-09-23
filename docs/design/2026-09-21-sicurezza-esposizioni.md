@@ -242,6 +242,12 @@ dichiarati. Nessuna funzione persa.
 
 ### B-2 · Il contenuto della casa è indistinguibile dall'istruzione della persona
 
+> **CHIUSO il 22/09/2026 (fetta 6), e NON come il §10 prevedeva — la misura ha cambiato la premessa.** L'esempio di questa scheda era un `input_text` scritto da chiunque tocchi la plancia. Misurato sulla casa vera: **861 entità, zero con uno stato di testo libero, nessun `input_text`**. Il proprietario l'ha contestato con l'argomento giusto — «se un altro utente di HA usa HIRIS ha ricevuto il permesso; se qualcuno scrive nel calendario la superficie è in HA, e le sicurezze sono a monte» — e l'argomento regge: il testo di fuori arriva da **soggetti autorizzati** (calendari condivisi, ricordi di una seconda utenza, titoli dei media), non da estranei.
+>
+> **La separazione «chi legge / chi agisce» è quindi USCITA dallo sprint**, scelta e poi ritirata: non rimandata per il costo, ma perché il presupposto non regge — in casa e distribuito. Scritto qui con la misura accanto, perché una decisione rinviata senza ragione torna e una con la ragione scritta no.
+>
+> **Cosa HIRIS si tiene, e perché a monte non ha padrone.** HA autorizza una persona a leggere e scrivere entità; Google autorizza qualcuno a mettere un evento in un calendario. Nessuno dei due ha il concetto di «questo testo verrà letto da qualcosa che agisce al posto del proprietario». Un non amministratore non può chiamare `lock.unlock` attraverso HA — glielo nega — ma se una sua frase indirizza un turno in cui il proprietario sta chiedendo qualcosa, l'azione parte **coi permessi del proprietario**: un permesso *prestato* attraverso l'agente. Quel salto esiste solo qui, e la **marcatura** è ciò che lo nomina: il contenuto della casa entra delimitato e dichiarato materiale, con scritto cosa fare se contiene una richiesta (riferirla, non eseguirla né tacerla). I delimitatori si ripuliscono dal contenuto: non è il recinto a doverli indovinare.
+
 `prompts.py:520-521` · `prompts.py:528` · `claude_runner.py:965-968`
 
 Grep su `non fidat` · `untrusted` · `treat as data` · `not instructions` in tutto il prodotto:
@@ -264,6 +270,10 @@ equivalenti e nessuna è una lista di servizi.
 **Serve?** — **Sì.** È l'anello che rende tutti gli altri sfruttabili.
 
 ### B-3 · `execute` non ha nessun freno, né di permesso né di ritmo
+
+> **CHIUSO il 22/09/2026** (fetta 6). Un freno **per entità**, in `ActionActuator.execute` — l'unico posto che vede ogni azione di ogni origine — e **dopo** la verifica, così un comando che non sarebbe comunque partito non consuma il ritmo. È una sospensione che si dichiara, non un errore muto.
+>
+> **La soglia è provvisoria e lo dichiara**, pinnato da una prova: il registro chiede una misura sui 90 giorni di cronaca, e quella misura il 22/09 non era ottenibile — nessuna rotta HTTP espone la cronaca. Il numero di oggi è generoso apposta: prende i circoli (centinaia di giri) e non può prendere un uso legittimo.
 
 `verification.py` (tre domande: esiste il servizio, esiste l'entità, esistono i parametri) ·
 `action/` (grep su ritmo, sospensione, attesa: zero occorrenze funzionali)
@@ -334,6 +344,10 @@ conversazione. È una perdita d'uso vera e va pesata.
 **Serve?** — **Sì**, ma la via si sceglie col proprietario: qui la restrizione costa qualcosa.
 
 ### B-6 · Le promesse che agiscono hanno potere pieno e lavorano al buio
+
+> **CHIUSO il 22/09/2026** (fetta 6). Il bersaglio si risolve **anche alla nascita** — prima su un bersaglio per area la verifica si fermava con «lo risolverà la porta, al momento», e la promessa nasceva senza che nessuno sapesse cosa avrebbe toccato — il numero si conserva (`entities_at_birth`), e al risveglio **si dichiara se è cambiato**, in tutti e due i versi: più entità è il caso che preoccupa, meno entità è il caso che inganna.
+>
+> **Non si toglie niente**: una promessa nata da una frase esplicita del proprietario resta una sua richiesta e parte, e se il conteggio non riesce la promessa nasce lo stesso — questa misura informa, non rifiuta.
 
 `tools.py:2414-2472` · `keeper/sweeper.py:66-78`
 

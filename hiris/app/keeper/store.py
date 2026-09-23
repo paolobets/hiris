@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS promesse (
     avvisare INTEGER,
     nata_ts REAL NOT NULL,
     risvegliata_ts REAL,
-    esito_letto_ts REAL
+    esito_letto_ts REAL,
+    entities_at_birth INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_promesse_scadenza ON promesse(stato, quando_ts);
 """
@@ -110,6 +111,28 @@ def _migration_2(conn) -> None:
         (time.time(),))
 
 
+def _migration_3(conn) -> None:
+    """`entities_at_birth`: quante entita' toccava il bersaglio ALLA NASCITA
+    (reperto B-6, 22/09/2026).
+
+    Su un bersaglio per area la verifica alla nascita si fermava prima -- «lo
+    risolvera' la porta, al momento» -- quindi una promessa nasceva senza che
+    nessuno sapesse cosa avrebbe toccato, e poteva risvegliarsi trenta giorni
+    dopo su una casa diversa.
+
+    **Si AGGIUNGE, non si riscrive**, e senza `NOT NULL`: le promesse nate
+    prima di oggi quel numero non ce l'hanno, e `None` e' esattamente cio' che
+    sono -- non `0`, che direbbe «nessuna entita'», che e' un'altra cosa. Lo
+    stesso precedente di `action/journal.py::_migration_3` (`soggetto_json`).
+
+    Il nome e' in INGLESE perche' le colonne nuove lo sono: le italiane sono
+    debito, e si migrano in una fetta loro.
+    """
+    colonne = {r[1] for r in conn.execute("PRAGMA table_info(promesse)")}
+    if "entities_at_birth" not in colonne:
+        conn.execute("ALTER TABLE promesse ADD COLUMN entities_at_birth INTEGER")
+
+
 def _json(value) -> str | None:
     return None if value is None else json.dumps(value)
 
@@ -118,7 +141,8 @@ class AgendaStore:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=2, migrations={2: _migration_2})
+        init_schema(self._conn, _SCHEMA, version=3,
+                    migrations={2: _migration_2, 3: _migration_3})
 
     def close(self) -> None:
         with self._lock:
@@ -144,13 +168,19 @@ class AgendaStore:
             ident = secrets.token_urlsafe(9)
             self._conn.execute(
                 "INSERT INTO promesse(id,specie,frase,quando_ts,quando_detto,fuso,"
-                "chiamata_json,domanda,istantanea_json,recapito,stato,nata_ts) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,'in_attesa',?)",
+                "chiamata_json,domanda,istantanea_json,recapito,stato,nata_ts,"
+                "entities_at_birth) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,'in_attesa',?,?)",
                 (ident, data["specie"], data["frase"].strip(), float(data["quando_ts"]),
                  data.get("quando_detto"), data.get("fuso"),
                  _json(data.get("chiamata")), data.get("domanda"),
                  _json(data.get("istantanea")), data.get("recapito"),
-                 now))
+                 now,
+                 # Quante entita' toccava il bersaglio alla nascita (B-6).
+                 # `None` quando non c'e' niente da risolvere -- un bersaglio
+                 # di sole entita' -- ed e' diverso da `0`, che direbbe
+                 # «nessuna entita'».
+                 data.get("entities_at_birth")))
             self._conn.commit()
         return {"promessa": self.read(ident)}
 

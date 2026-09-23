@@ -100,6 +100,7 @@ from ..proxy.entity_cache import (
     disclosable_attributes,
     inventory_is_readable,
 )
+from .rhythm import too_often
 from .verification import verification
 
 logger = logging.getLogger(__name__)
@@ -468,6 +469,10 @@ class _StateListener:
 
 class ActionActuator:
     def __init__(self, ha_client, registry, cache, journal=None) -> None:
+        # I momenti recenti per entita', per il freno di ritmo (B-3). Vive
+        # qui e non globale: un attuatore per prova non eredita il ritmo
+        # di un altro.
+        self._rhythm: dict = {}
         self._ha = ha_client
         self._registry = registry
         self._cache = cache
@@ -685,6 +690,26 @@ class ActionActuator:
         if not verdict.ok:
             logger.info("azione rifiutata [origine=%s]: %s", actor, verdict.reason)
             return {"eseguito": False, "errore": verdict.reason}
+
+        # **Il freno di RITMO** (reperto B-3, 22/09/2026), e sta QUI perche'
+        # qui passa ogni azione di ogni origine -- chat, promessa,
+        # schedulatore, ponte -- e la cronaca e' accanto.
+        #
+        # Dopo la verifica e PRIMA dell'esecuzione: un comando che non sarebbe
+        # comunque partito non deve consumare il ritmo, o un'automazione rotta
+        # che chiama un servizio inesistente fermerebbe quella sana che chiama
+        # la stessa entita'.
+        #
+        # Non limita COSA si puo' fare -- il permesso non si tocca, decisione
+        # del proprietario -- limita quante volte di fila sulla stessa cosa. Il
+        # circolo e' un incidente, non un attacco: capita da solo, e capita
+        # dove nessuno guarda.
+        for target in (verdict.entity or [None]):
+            braked = too_often(self._rhythm, target, now=time.time())
+            if braked is not None:
+                logger.warning("azione FERMATA dal ritmo [origine=%s]: %s",
+                               actor, braked)
+                return {"eseguito": False, "errore": braked}
 
         # L'anteprima: cosa si toccherebbe, calcolata e detta PRIMA di
         # toccarlo. Nell'esito ci arriva in fondo, ma qui e' gia' un fatto --

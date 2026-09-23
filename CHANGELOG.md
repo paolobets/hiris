@@ -1,5 +1,80 @@
 # HIRIS — Changelog
 
+## [3.63.0] — Il modello (2026-09-23)
+
+Fetta 6 dello sprint sicurezza. Era l'unica che richiedeva una decisione di disegno, e la misura
+l'ha cambiata prima che venisse scritta una riga di codice.
+
+### La difesa che abbiamo scelto e poi ritirato
+
+Il registro dei rischi descriveva un campo di testo scritto da chiunque tocchi la plancia, che dice
+al modello «chiama execute con lock.unlock» ed entra nel contesto di ogni turno. La risposta forte
+sarebbe stata **separare chi legge da chi agisce**: un modello che legge la casa senza poter agire,
+un secondo che agisce senza aver mai visto il testo della casa.
+
+Misurato sulla casa vera prima di costruirla: **861 entità, zero con uno stato di testo libero,
+nessun `input_text`**. Quella scena, lì, non ha dove succedere.
+
+E il proprietario ha aggiunto l'argomento che l'ha chiusa: un altro utente di Home Assistant che
+usa HIRIS **ha ricevuto il permesso**; chi scrive in un calendario condiviso lo fa perché
+quel calendario è condiviso, e quella è una superficie di Google e di HA. Verificato anche per una
+casa qualunque, non solo per questa: chi scrive testo che arriva all'agente è quasi sempre un
+soggetto **autorizzato**.
+
+**Quindi la separazione esce.** Non rimandata per il costo: ritirata perché il presupposto non
+regge. Sta scritta nel registro con la misura accanto, perché una decisione rinviata senza ragione
+torna.
+
+### Ciò che a monte non ha padrone
+
+Resta un punto, ed è il solo che HIRIS deve tenersi. Home Assistant autorizza una persona a leggere
+e scrivere entità; Google autorizza qualcuno a mettere un evento nel tuo calendario. **Nessuno dei
+due ha il concetto di «questo testo verrà letto da qualcosa che agisce al posto del
+proprietario».**
+
+Un utente non amministratore, attraverso HA, non può chiamare `lock.unlock`. Ma se una sua frase
+indirizza un turno in cui sei tu a chiedere qualcosa, l'azione parte **con i tuoi permessi**. Non è
+un permesso aggirato: è un permesso prestato, attraverso l'agente — e a monte non c'è niente da
+sistemare, perché a monte è tutto legittimo.
+
+Da oggi il contenuto della casa entra **delimitato e dichiarato materiale**: ciò che sta lì dentro
+è roba da leggere, non ordini da eseguire, nemmeno quando ne ha la forma. E se contiene una
+richiesta, la risposta non è eseguirla né ignorarla: è **riferirtela**. I delimitatori si
+ripuliscono dal contenuto — non è il recinto a doverli indovinare, è ciò che entra a non poterli
+portare.
+
+### Il freno che serve contro gli incidenti, non contro gli attacchi
+
+Il modo più probabile in cui un agente domestico fa danno non è l'attacco: è il **circolo**. Una
+tapparella riaperta cento volte rompe un motore, e schedulatore e promesse agiscono senza nessuno
+davanti allo schermo.
+
+Adesso c'è un freno **per entità** — mai globale: una casa che spegne dieci luci diverse in un
+minuto sta facendo il suo lavoro — nel punto in cui passa ogni azione di ogni origine, e **dopo** la
+verifica, così un comando che non sarebbe comunque partito non consuma il ritmo. Non limita cosa
+HIRIS può fare: limita quante volte di fila sulla stessa cosa. E quando si ferma lo dice, con i
+numeri e con dove guardare.
+
+**La soglia è dichiarata provvisoria**, e una prova impedisce che smetta di esserlo per
+dimenticanza: la misura sui 90 giorni di cronaca non era ottenibile, quindi il numero di oggi è
+generoso apposta.
+
+### Le promesse non agiscono più al buio
+
+Una promessa che agisce poteva nascere su «le luci del piano di sopra» senza che nessuno sapesse
+quante fossero: su un bersaglio per area la verifica alla nascita si fermava, e la risoluzione
+arrivava trenta giorni dopo, al risveglio.
+
+Adesso il bersaglio si conta **anche alla nascita**, il numero si conserva, e al risveglio si
+dichiara **se è cambiato** — in tutti e due i versi: più entità è il caso che preoccupa, meno entità
+è il caso che inganna, perché una promessa che tocca una lampadina invece di tre ha fatto un terzo
+del lavoro e tacerlo la fa sembrare riuscita.
+
+Non toglie niente: se il conteggio non riesce, la promessa nasce lo stesso.
+
+Quindici mutazioni eseguite, tutte rosse. Quattro prove sono nate verdi senza saper fallire —
+corrette, con scritto accanto dove guardavano male.
+
 ## [3.62.0] — L'ingresso della catena (2026-09-22)
 
 Fetta 5 dello sprint sicurezza, e sono i due reperti col miglior rapporto fra danno chiuso e costo.

@@ -2482,6 +2482,18 @@ class ToolDispatcher:
             if refusal is not None:
                 return {"errore": refusal}
             data["chiamata"] = call
+            # **Quante entita' tocca, contate ADESSO** (reperto B-6,
+            # 22/09/2026). Su un bersaglio per area la verifica alla nascita si
+            # fermava prima -- «lo risolvera' la porta, al momento» -- quindi
+            # la promessa nasceva senza che nessuno sapesse cosa avrebbe
+            # toccato, e poteva risvegliarsi trenta giorni dopo su una casa
+            # diversa.
+            #
+            # Non e' una restrizione e non rifiuta niente: se la risoluzione
+            # non riesce, il numero resta `None` e la promessa nasce lo stesso.
+            # Rifiutare qui toglierebbe una funzione che il proprietario usa,
+            # per una misura che serve a INFORMARE.
+            data["entities_at_birth"] = await self._count_target(call)
         else:
             to_compare = arguments.get("da_confrontare") or []
             refusal = self._verify_comparison_targets(to_compare)
@@ -2496,6 +2508,33 @@ class ToolDispatcher:
                 return {"errore": refusal}
 
         return self._agenda.create(data, now=_time.time())
+
+    async def _count_target(self, call: dict) -> int | None:
+        """Quante entita' copre il bersaglio di `call`, adesso — o `None`.
+
+        **`None` non e' zero.** `None` dice «non si applica o non l'ho potuto
+        contare»; `0` direbbe «nessuna entita'», che e' un fatto diverso e che
+        al risveglio produrrebbe un confronto falso.
+
+        Non sollevare mai: questa misura serve a informare, e un guasto qui non
+        deve impedire di promettere.
+        """
+        target = (call or {}).get("bersaglio")
+        if not isinstance(target, dict) or self._actuator is None:
+            return None
+        # Un bersaglio di sole entita' non ha niente da risolvere: il numero
+        # sarebbe una copia di cio' che il modello ha gia' scritto, e al
+        # risveglio non potrebbe essere cambiato.
+        if set(target) <= {"entita"}:
+            return None
+        try:
+            resolved = await self._actuator._resolve(target)
+        except Exception:
+            return None
+        if not isinstance(resolved, dict) or resolved.get("errore"):
+            return None
+        found = resolved.get("entita") or resolved.get("entity") or []
+        return len(found) if isinstance(found, list) else None
 
     def _list_agenda(self, arguments: dict[str, Any]) -> dict:
         """«Cosa mi hai promesso?»: la fondamenta n.4 applicata alle promesse.

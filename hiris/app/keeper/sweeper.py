@@ -68,8 +68,22 @@ class Sweeper:
     async def _keep_fai(self, promise: dict, now: float) -> None:
         occurrence = await self._execute(promise["chiamata"], actor="schedulatore")
         if occurrence.get("eseguito"):
+            # **Il bersaglio e' ancora quello di allora?** (reperto B-6,
+            # 22/09/2026). Fra la nascita e adesso possono essere passati
+            # trenta giorni, e «le luci di sopra» puo' essere diventata
+            # un'altra cosa. Non si rifiuta niente -- l'azione e' gia' andata,
+            # ed era una richiesta del proprietario -- si DICHIARA, perche' chi
+            # legge l'esito non deve andare a contare.
+            #
+            # `toccate` viene dall'anteprima che la porta produce gia': non si
+            # risolve una seconda volta.
+            notice = target_changed(
+                promise.get("entities_at_birth"),
+                len((occurrence.get("anteprima") or {}).get("toccate") or [])
+                if occurrence.get("anteprima") else None)
             self._store.concludi(promise["id"], state="mantenuta", now=now,
-                                    execution_id=occurrence.get("esecuzione_id"))
+                                    execution_id=occurrence.get("esecuzione_id"),
+                                    reason=notice)
         else:
             self._store.concludi(
                 promise["id"], state="fallita", now=now,
@@ -140,3 +154,31 @@ class Sweeper:
         self._store.concludi(promise["id"], state="mantenuta", now=now,
                                 reason=reason, text=text, avvisare=avvisare,
                                 execution_id=execution_id)
+
+
+def target_changed(at_birth, now) -> str | None:
+    """Se il bersaglio di una promessa non copre piu' le stesse entita', **la
+    frase che lo dice** (reperto B-6, 22/09/2026). `None` se non e' cambiato.
+
+    Fra la nascita e il risveglio possono passare trenta giorni: «spegni le
+    luci di sopra» puo' essere tre lampadine quando lo prometti e undici quando
+    parte -- una stanza nuova, un dispositivo aggiunto -- e chi legge l'esito
+    deve poterlo sapere senza andare a contare.
+
+    **Si dichiara in tutti e due i versi.** Piu' entita' e' il caso che
+    preoccupa; meno entita' e' il caso che inganna -- una promessa che tocca
+    una lampadina invece di tre ha fatto un terzo del lavoro, e tacerlo la fa
+    sembrare riuscita.
+
+    Se alla nascita non c'era un numero -- nessun bersaglio da risolvere, o una
+    promessa nata prima del 22/09/2026 -- non c'e' niente da confrontare, e
+    inventare un avviso sarebbe rumore.
+    """
+    if at_birth is None or now is None:
+        return None
+    if int(at_birth) == int(now):
+        return None
+    return (f"attenzione: quando l’hai promesso il bersaglio copriva "
+            f"{at_birth} entità, adesso ne copre {now}. Ho eseguito su "
+            "quelle di adesso — se non è ciò che volevi, la casa è cambiata da "
+            "quando l’hai chiesto.")

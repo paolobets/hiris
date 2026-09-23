@@ -88,7 +88,11 @@ def test_il_contesto_sta_in_coda_e_dopo_la_guida():
     system, _user = prompts.build_chat_messages("Sei HIRIS.", [], contesto=_CONTESTO)
 
     assert system.index(prompts._GUIDE_WITHOUT_TOOLS) < system.index(_CONTESTO)
-    assert system.rstrip().endswith(_CONTESTO), (
+    # Dal 22/09/2026 il contesto entra RECINTATO (reperto B-2): in coda c'e'
+    # il delimitatore di chiusura, e il contenuto sta dentro. La proprieta'
+    # sorvegliata non cambia -- il blocco volatile resta l'ultimo, ed e' anche
+    # cio' che rende cacheabile il prefisso stabile davanti.
+    assert system.rstrip().endswith(prompts.CHIUSURA_CASA), (
         "il contesto e' il blocco volatile: nel ramo sincrono sta in fondo, "
         "dopo tutti i blocchi stabili (claude_runner.py::ClaudeRunner.chat, "
         "dove `context_str` e' l'ultimo append a `system_blocks`). Se qui non "

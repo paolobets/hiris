@@ -79,6 +79,9 @@ _CHIAVI = (
     "id", "specie", "frase", "quando_ts", "quando_detto", "fuso", "chiamata",
     "domanda", "istantanea", "recapito", "stato", "motivo", "esecuzione_id",
     "testo", "avvisare", "nata_ts", "risvegliata_ts", "esito_letto_ts",
+    # `entities_at_birth`: quante entita' toccava il bersaglio alla nascita
+    # (reperto B-6, 22/09/2026). In inglese perche' le colonne nuove lo sono.
+    "entities_at_birth",
 )
 
 
@@ -173,6 +176,19 @@ def _load(reading):
         return None
 
 
+def _column(row, name):
+    """Il valore di una colonna che POTREBBE non esserci ancora.
+
+    `serializza` gira anche su righe lette da un archivio che una migrazione
+    non ha ancora toccato: chiedere una colonna assente solleverebbe, e la
+    forma promette «stesse chiavi, sempre».
+    """
+    try:
+        return row[name]
+    except (IndexError, KeyError):
+        return None
+
+
 def serializza(row) -> dict:
     """L'unica forma di una promessa. Stesse chiavi, sempre."""
     fuori = {
@@ -193,6 +209,12 @@ def serializza(row) -> dict:
         "avvisare": None if row["avvisare"] is None else bool(row["avvisare"]),
         "nata_ts": row["nata_ts"],
         "risvegliata_ts": row["risvegliata_ts"],
+        # Quante entita' toccava il bersaglio ALLA NASCITA (reperto B-6).
+        # `None` quando non c'era niente da risolvere -- un bersaglio di sole
+        # entita' -- e per le promesse nate prima del 22/09/2026, che quel
+        # numero non ce l'hanno: `None` e `0` sono due cose diverse, e «non si
+        # applica» non e' «nessuna entita'».
+        "entities_at_birth": _column(row, "entities_at_birth"),
         # NULL = non letto. La pagina Impegni ci costruisce sopra la sezione
         # «Esiti da leggere», e il pallino ci conta sopra. E' NULL anche per
         # ogni promessa IN SOSPESO -- che non ha ancora un esito -- quindi da

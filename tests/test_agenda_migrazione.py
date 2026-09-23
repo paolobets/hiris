@@ -202,6 +202,6 @@ def test_archivio_nuovo_nasce_gia_a_posto(tmp_path):
     try:
         colonne = {r["name"] for r in store._conn.execute("PRAGMA table_info(promesse)")}
         assert "esito_letto_ts" in colonne
-        assert store._conn.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert store._conn.execute("PRAGMA user_version").fetchone()[0] == 3
     finally:
         store.close()
