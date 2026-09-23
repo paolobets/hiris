@@ -378,6 +378,17 @@
         data.stato_testo));
     }
     if (data.nota) row.appendChild(el('div', 'row-note', data.nota));
+    /* Dove va il dato. Sta nella RIGA del provider e non in una nota a piè di
+       pagina, perché il gesto che manda i dati fuori casa si fa qui: la
+       pagina del Supervisor, dove la stessa riga esiste da sempre nelle
+       traduzioni, è il posto dove si incolla una chiave, non quello dove si
+       decide chi risponde.
+
+       La frase arriva dal payload (`model_resolution.PRIVACY`) come ogni
+       altra affermazione sul prodotto in questo file: comporla qui
+       significherebbe che domani la pagina dice una cosa e il backend
+       un'altra, senza che nessuno lo veda. */
+    if (data.privacy) row.appendChild(el('div', 'row-privacy', data.privacy));
     return row;
   }
 

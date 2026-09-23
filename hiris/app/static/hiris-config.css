@@ -1549,6 +1549,15 @@
   line-height: var(--lh-snug);
   padding-left: calc(1.6em + 7px + 2 * var(--sp-3));
 }
+/* Dove va il dato. Stesso rientro della nota e dello stato -- e' della riga,
+   non della sequenza -- e in tondo, non in grassetto: e' una dichiarazione,
+   non un avviso. Chi legge deve poterla trovare, non esserne allarmato. */
+.row-privacy {
+  grid-column: 1 / -1;
+  font-size: var(--fs-12); color: var(--text-3);
+  line-height: var(--lh-snug);
+  padding-left: calc(1.6em + 7px + 2 * var(--sp-3));
+}
 /* La riga di stato: l'ultimo esito OSSERVATO. Incolonnata sotto il nome, come
    la nota, perche' e' della riga e non della sequenza (il connettore, che sta
    FRA due righe, ha lo stesso rientro e un tratteggio sopra: e' quello che li
@@ -2198,4 +2207,24 @@
 }
 .section-card .service-option > span {
   display: flex; flex-direction: column; gap: 1px;
+}
+
+/* I giri passati dal forfait al consumo (reperto C-5, 23/09/2026). In fondo
+   alla pagina Consumi: la domanda con cui la pagina si apre resta «quanto ho
+   speso», e questa e' la riga che spiega perche' e' cresciuto. */
+.usage-fallbacks { margin-top: var(--sp-6); }
+.fallback-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto auto;
+  gap: var(--sp-3);
+  align-items: baseline;
+  padding: var(--sp-2) 0;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-13);
+}
+.fallback-who { font-weight: 500; }
+.fallback-why, .fallback-when { color: var(--text-3); font-size: var(--fs-12); }
+.fallback-count { font-variant-numeric: tabular-nums; }
+@media (max-width: 560px) {
+  .fallback-row { grid-template-columns: 1fr auto; }
 }

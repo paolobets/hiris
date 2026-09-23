@@ -316,6 +316,17 @@ def test_aggiorna_porta_le_azioni_all_ultimo_major_e_non_tocca_altro(tmp_path, m
     # quello vero, o proverebbe il cancello contro un mondo che non esiste.
     (dentro / "requirements-dev.txt").write_text(
         "-r requirements.txt\nruff>=0.16.4,<0.17.0\n", encoding="utf-8")
+    # E `build.yaml`, dal 23/09/2026 (reperto D-3): il lettore SOLLEVA se non
+    # trova nessuna immagine fissata per impronta -- deliberatamente, perche'
+    # un cancello che tace su una forma cambiata non e' un cancello. Il repo
+    # finto deve quindi averlo, o proverebbe il cancello contro un mondo che
+    # non esiste.
+    (dentro / "build.yaml").write_text(
+        '# 3.13-alpine3.21\n'
+        'build_from:\n'
+        '  amd64: "ghcr.io/home-assistant/amd64-base-python@sha256:'
+        + "0" * 64 + '"\n',
+        encoding="utf-8")
     monkeypatch.setattr(vc, "RADICE", tmp_path)
 
     letti = vc.leggi_i_file()
@@ -350,6 +361,17 @@ def test_con_cli_il_dockerfile_si_tocca_eccome(tmp_path, monkeypatch):
     # quello vero, o proverebbe il cancello contro un mondo che non esiste.
     (dentro / "requirements-dev.txt").write_text(
         "-r requirements.txt\nruff>=0.16.4,<0.17.0\n", encoding="utf-8")
+    # E `build.yaml`, dal 23/09/2026 (reperto D-3): il lettore SOLLEVA se non
+    # trova nessuna immagine fissata per impronta -- deliberatamente, perche'
+    # un cancello che tace su una forma cambiata non e' un cancello. Il repo
+    # finto deve quindi averlo, o proverebbe il cancello contro un mondo che
+    # non esiste.
+    (dentro / "build.yaml").write_text(
+        '# 3.13-alpine3.21\n'
+        'build_from:\n'
+        '  amd64: "ghcr.io/home-assistant/amd64-base-python@sha256:'
+        + "0" * 64 + '"\n',
+        encoding="utf-8")
     monkeypatch.setattr(vc, "RADICE", tmp_path)
 
     nuova = vc.aggiorna_cli(vc.leggi_i_file(), {"cli": {"versione": "2.1.233"}})
@@ -383,3 +405,53 @@ def test_gitattributes_inchioda_la_fine_riga_degli_hook():
     attributi = (Path(__file__).parent.parent / ".gitattributes").read_text(
         encoding="utf-8")
     assert ".githooks/** text eol=lf" in attributi
+
+
+# ── Il cancello: lo scarto si FABBRICA, senza rete ────────────────────────
+#
+# `componi_scarti` e' pura (nessuna rete, nessun orologio): le prove possono
+# PRODURRE il difetto invece di descriverlo. E' la stessa divisione che il
+# resto di questo strumento ha gia'.
+
+_VUOTO = {"cli": {"versione": "1.0.0", "dove": "x"}, "azioni": {}, "tetti": {},
+          "pavimenti": {}}
+_REGISTRI_VUOTI = {"cli": {"versione": "1.0.0"}, "azioni": {}, "pypi": {}}
+
+
+def _scarto_base(impronta_scritta: str, impronta_viva: str | None,
+              errore: str = "") -> list:
+    letti = {**_VUOTO, "basi": {"amd64": {
+        "repository": "home-assistant/amd64-base-python",
+        "impronta": impronta_scritta, "etichetta": "3.13-alpine3.21",
+        "dove": "hiris/build.yaml"}}}
+    viva = {"errore": errore} if errore else {"impronta": impronta_viva}
+    return vc.componi_scarti(letti, {**_REGISTRI_VUOTI, "basi": {"amd64": viva}})
+
+
+def test_se_la_base_SI_E_MOSSA_il_cancello_parla():
+    """La domanda giusta per un'immagine fissata per impronta non e' «c'e' una
+    versione nuova»: e' «l'etichetta che le corrisponde punta ancora li'?».
+
+    Mutazione ESEGUITA: non confrontare le impronte -- rossa."""
+    scarti = _scarto_base("sha256:" + "a" * 64, "sha256:" + "b" * 64)
+
+    assert len(scarti) == 1
+    assert "immagine di base" in scarti[0].componente
+
+
+def test_se_la_base_e_FERMA_il_cancello_TACE():
+    """«Un componente allineato non compare»: un elenco che dice sempre
+    qualcosa e' un elenco che si smette di leggere.
+
+    Mutazione ESEGUITA: segnalare sempre -- rossa."""
+    assert _scarto_base("sha256:" + "a" * 64, "sha256:" + "a" * 64) == []
+
+
+def test_un_registro_MUTO_si_dichiara_invece_di_passare():
+    """Non aver potuto controllare non e' «va bene»: il rilascio deve saperlo.
+
+    Mutazione ESEGUITA: ignorare l'errore -- rossa."""
+    scarti = _scarto_base("sha256:" + "a" * 64, None, errore="rete assente")
+
+    assert len(scarti) == 1
+    assert scarti[0].motivo == "rete assente"

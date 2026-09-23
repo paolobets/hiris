@@ -52,6 +52,28 @@ CREATE TABLE IF NOT EXISTS ancora_saldo (
     PRIMARY KEY (provider, modello)
 );
 CREATE TABLE IF NOT EXISTS legacy_importati (percorso TEXT PRIMARY KEY);
+-- **I giri passati dal forfait al consumo** (reperto C-5, 23/09/2026).
+--
+-- Sta QUI perche' un ripiego e' un fatto sui soldi, e questo archivio e' gia'
+-- «l'UNICA casa di quanto ho speso, e per cosa». La pagina Consumi e' dove il
+-- proprietario va a chiedersi perche' la bolletta e' cresciuta.
+--
+-- La chiave e' (giorno, agente, motivo) e non una sola delle tre. L'agente
+-- perche' e' quello che si va a spegnere o a limitare; il motivo perche'
+-- «manca il token» si risolve incollando un token e «tetto giornaliero» si
+-- risolve alzando un numero -- sommarli direbbe una cosa sola dove ce ne sono
+-- due, e nessuna delle due azioni.
+-- Colonne NUOVE, quindi in inglese: le italiane di questo file sono debito
+-- dichiarato, e si migrano in una fetta loro.
+CREATE TABLE IF NOT EXISTS fallback (
+    day       TEXT    NOT NULL,
+    agent     TEXT    NOT NULL,
+    reason    TEXT    NOT NULL,
+    count     INTEGER NOT NULL DEFAULT 0,
+    first_ts  REAL    NOT NULL,
+    last_ts   REAL    NOT NULL,
+    PRIMARY KEY (day, agent, reason)
+);
 """
 
 # I contatori che si sommano. Uno solo, perche' l'elenco scritto tre volte in
@@ -142,6 +164,54 @@ class UsageStore:
                      errori_rate_limit, now, now,
                      day, provider, model))
             self._conn.commit()
+
+    def log_fallback(self, agent: str, reason: str, *, now: float) -> None:
+        """Un giro e' passato dal forfait al consumo: si conta.
+
+        Si CONTA, non si annota una riga per volta: duecento ripieghi in un
+        giorno e uno solo sono due storie diverse, e il numero e' quello che le
+        distingue -- ma duecento righe uguali renderebbero la pagina
+        illeggibile proprio nel caso in cui serve.
+
+        Non solleva mai, e non e' pigrizia: questa scrittura sta sul percorso
+        dell'analista e dell'attuatore, e un guasto qui non deve impedire un
+        giro. La dichiarazione serve a informare.
+        """
+        if not agent or not reason:
+            return
+        day = local_day(now, self._timezone())
+        try:
+            with self._lock:
+                self._conn.execute(
+                    "INSERT INTO fallback (day, agent, reason, count, "
+                    "first_ts, last_ts) VALUES (?,?,?,1,?,?) "
+                    "ON CONFLICT(day, agent, reason) DO UPDATE SET "
+                    "count=count+1, last_ts=MAX(last_ts, ?)",
+                    (day, agent, reason, now, now, now))
+                self._conn.commit()
+        except Exception as error:  # pragma: no cover - guasto dell'archivio
+            logger.warning("consumi: il ripiego di «%s» non si e' scritto "
+                           "(%s: %s)", agent, type(error).__name__, error)
+
+    def fallbacks(self, *, da: str = "", from_anchor: bool = False) -> list[dict]:
+        """I giri passati a consumo, i piu' recenti per primi.
+
+        Stesso interruttore delle sezioni («da ultimo azzeramento / da
+        sempre»): quella che si azzera dev'essere tutta la pagina, o un numero
+        resterebbe indietro rispetto all'altro accanto.
+        """
+        if from_anchor and not da:
+            da = self._anchor_day()
+        # `_where` compone su `giorno`, che e' la colonna delle tabelle
+        # vecchie: questa e' nuova e la sua colonna si chiama `day`.
+        where, params = ("WHERE day >= ?", (da,)) if da else ("", ())
+        with self._lock:
+            righe = self._conn.execute(
+                "SELECT day, agent, reason, count, first_ts, last_ts "
+                f"FROM fallback {where} "
+                "ORDER BY day DESC, count DESC, agent ASC",
+                params).fetchall()
+        return [dict(r) for r in righe]
 
     # -- leggere -------------------------------------------------------
     #

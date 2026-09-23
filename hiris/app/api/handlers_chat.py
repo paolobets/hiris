@@ -24,7 +24,7 @@ from ..chat_store import (
 from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
 from ..home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from ..model_resolution import downgrade_note
-from ..steering import who_answers
+from ..steering import declare_downgrade, who_answers
 from .handlers_home_space import compose_briefing
 from .soffitto import per_richiesta
 
@@ -334,14 +334,15 @@ def _who_answered_note(request: web.Request, *, reason: str) -> str:
     nessuna nota che una che nomina il provider sbagliato: questa riga parla di
     soldi, e una riga falsa sui soldi è peggio del silenzio.
     """
-    occurrence_registry = request.app.get("occurrence_registry")
-    if occurrence_registry is None:
+    # La MISURA vive in `steering.who_answered` dal 23/09/2026: da quando
+    # «Rifalla» fa la stessa domanda (reperto C-5), la stessa lettura scritta
+    # due volte sarebbe due letture che divergono -- fondamenta n.2.
+    from ..steering import who_answered
+
+    backend_name = who_answered(request.app)
+    if not backend_name:
         return ""
-    for backend_name in (request.app.get("model_chain") or []):
-        occurrence = occurrence_registry.occurrence(backend_name)
-        if occurrence and occurrence["tipo"] == "risposto":
-            return downgrade_note(reason=reason, who_answered=backend_name)
-    return ""
+    return downgrade_note(reason=reason, who_answered=backend_name)
 
 
 async def _enqueue_chat_job(
@@ -594,6 +595,9 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
         answer = exc.friendly_message
 
     # L'annuncio: chi ha davvero risposto, non chi è primo in catena.
+    # La scadenza del ponte e' un ripiego come gli altri, e conta nella
+    # pagina dei consumi insieme agli altri (reperto C-5).
+    declare_downgrade(request.app, agent="chat", reason="scadenza")
     note = _who_answered_note(request, reason="scadenza")
     # La nota entra nel JOB, così un poll che arriva DOPO il ripiego, o un
     # ricaricamento della pagina, la ritrova invariata: ciò che il turno ha
@@ -611,6 +615,9 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
     payload = {"status": "done", "reply": answer}
     if note:
         payload["nota"] = note
+    # Consegnata anche per questa strada (reperto C-6): la spazzata potra'
+    # dimenticarne il contenuto. La riga resta -- serve al conteggio del ponte.
+    queue.mark_delivered(job_id, time.time())
     return web.json_response(payload)
 
 
@@ -801,10 +808,11 @@ async def handle_chat(request: web.Request) -> web.Response:
             # annuncia (la `nota` in fondo a questa funzione). Senza quella
             # riga questo cambio sarebbe un prelievo silenzioso.
             _downgrade_reason = _subscription_reason
-            logger.warning(
-                "Il piano non può rispondere a questo turno (%s): il turno "
-                "passa alla catena. Il costo cambia -- dal forfait al consumo.",
-                _subscription_reason)
+            # L'imbuto unico (reperto C-5, 23/09/2026): dichiara nel registro
+            # E nell'archivio dei consumi, cosi' la pagina Consumi sa dire
+            # quante volte si e' pagato a consumo, e per chi.
+            declare_downgrade(request.app, agent="chat",
+                              reason=_subscription_reason)
         else:
             return await _enqueue_chat_job(request, settings, message, data_dir)
 

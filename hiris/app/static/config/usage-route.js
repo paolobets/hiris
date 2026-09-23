@@ -261,6 +261,40 @@
 
   /* ---- il montaggio -------------------------------------------------- */
 
+  /* ── I giri passati dal forfait al consumo (reperto C-5, 23/09/2026) ─────
+     Il passaggio dal Piano Max alla catena si annunciava in chat, sulle
+     promesse e sull'osservatore. Analista, attuatore e ricette finivano solo
+     nel registro -- e quei tre girano di notte, senza nessuno davanti allo
+     schermo: i ~35.000 token dell'analista potevano passare a consumo e lo si
+     scopriva dalla bolletta.
+
+     Sta in questa pagina perche' e' un fatto sui soldi, e questa e' la pagina
+     dei soldi. Le parole del motivo arrivano dal backend, non si compongono
+     qui: sono le stesse tre che `steering` misura.
+
+     Niente riquadro quando non e' mai successo: una sezione vuota che dice
+     «nessun ripiego» ruberebbe spazio alla domanda con cui si apre questa
+     pagina, che e' quanto ho speso. */
+  function fallbacks(righe) {
+    if (!righe || !righe.length) return '';
+    var totale = righe.reduce(function(n, r) { return n + (r.count || 0); }, 0);
+    return '<div class="usage-fallbacks" id="usage-fallbacks">'
+      + '<h2 class="sc-title">Giri passati a consumo</h2>'
+      + '<p class="sc-desc">' + totale + (totale === 1
+          ? ' giro non è stato servito dal Piano Claude Max ed è stato pagato a consumo.'
+          : ' giri non sono stati serviti dal Piano Claude Max e sono stati pagati a consumo.')
+      + '</p>'
+      + righe.map(function(r) {
+          return '<div class="fallback-row">'
+            + '<span class="fallback-who">' + escHtml(r.agent) + '</span>'
+            + '<span class="fallback-why">' + escHtml(r.reason) + '</span>'
+            + '<span class="fallback-when">' + escHtml(r.day) + '</span>'
+            + '<span class="fallback-count">' + r.count + '</span>'
+            + '</div>';
+        }).join('')
+      + '</div>';
+  }
+
   function draw(u, storia) {
     var outlet = document.getElementById('route-outlet');
     if (!outlet) return;
@@ -290,7 +324,8 @@
       + charts(storia, u.sections || [])
       + '<div class="usage-sections">'
       + (u.sections || []).map(section).join('')
-      + '</div>';
+      + '</div>'
+      + fallbacks(u.fallbacks);
 
     connect();
   }

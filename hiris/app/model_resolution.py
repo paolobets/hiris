@@ -82,6 +82,36 @@ DISPLAY_NAMES: dict[str, str] = {
 # Quattro categorie, non un prezzo: HIRIS non ha una fonte di listini, e un
 # prezzo vecchio è una bugia che sembra un servizio (progetto §12.1). Sono
 # l'unica cosa che serve per decidere l'ordine di una catena.
+# **Dove va il dato, e sotto quali condizioni** (reperto C-5, 23/09/2026).
+#
+# Le stesse righe stanno nelle traduzioni dell'add-on, ma quella e' la pagina
+# dove si INCOLLA una chiave; la catena e il ponte si decidono nella pagina
+# Modelli di HIRIS, che e' un'altra pagina. Chi accende il piano di la' non e'
+# mai passato dalla riga di privacy, e un prodotto che manda i dati di casa a
+# un fornitore terzo deve dirlo **dove il gesto si fa**.
+#
+# Stanno QUI con le altre affermazioni sul prodotto, e viaggiano nel payload:
+# la pagina non compone frasi, e un `if (id === 'subscription')` in JavaScript
+# sarebbe la regola scritta una seconda volta in un'altra lingua.
+#
+# Il piano NON ha la frase di Claude API: le condizioni d'uso e di
+# conservazione del Piano Max sono diverse da quelle dell'API a consumo, e una
+# frase buona per tutti e due nasconderebbe proprio la differenza che conta.
+PRIVACY: dict[str, str] = {
+    "subscription": (
+        "I tuoi messaggi e la conoscenza della casa passano da Anthropic "
+        "(USA), sotto le condizioni d’uso e di conservazione del Piano "
+        "Claude Max, diverse da quelle dell’API a consumo."),
+    "claude": (
+        "I tuoi messaggi e la conoscenza della casa passano da Anthropic "
+        "(USA)."),
+    "openrouter": (
+        "I tuoi messaggi passano da OpenRouter (USA) e dal fornitore del "
+        "modello che scegli."),
+    "openai": "I tuoi messaggi passano dai server di OpenAI (USA).",
+    "ollama": "Resta in casa tua: il tuo dato non esce dalla tua rete.",
+}
+
 NATURES: dict[str, str] = {
     "subscription": "nel piano",
     "claude": "a consumo",
@@ -159,6 +189,15 @@ def display_name(provider_id: str) -> str:
 
 def nature(provider_id: str) -> str:
     return NATURES.get(provider_id, "")
+
+
+def privacy(provider_id: str) -> str:
+    """Dove va il dato di chi usa questo provider. `""` se non si sa.
+
+    Il vuoto attraversa, come per la natura: una frase approssimativa sulla
+    privacy e' peggio del silenzio, perche' viene letta come una garanzia.
+    """
+    return PRIVACY.get(provider_id, "")
 
 
 def missing_reason(provider_id: str) -> str:
@@ -387,6 +426,30 @@ def downgrade_note(*, reason: str, who_answered: str) -> str:
     if not what_happened or not which_nature:
         return ""
     return (f"Il Piano Claude Max {what_happened}: ha risposto "
+            f"{display_name(who_answered)}, {which_nature}.")
+
+
+def synchronous_door_note(*, who_answered: str) -> str:
+    """La riga per una porta che **risponde subito** mentre il piano e' acceso.
+
+    **Non e' un ripiego, ed e' per questo che non riusa `downgrade_note`.** La'
+    si dice che cosa il piano non ha fatto; qui il piano sta benissimo -- e'
+    la porta che non puo' aspettarlo, perche' risponde nello stesso istante in
+    cui la si preme e il piano risponde minuti dopo, da un altro processo.
+
+    Dire «il Piano Claude Max non ha risposto» sarebbe **falso**, e manderebbe
+    il proprietario a cercare un guasto che non esiste: e' esattamente il
+    difetto che `downgrade_note` documenta per gli avvisi di `esegui`.
+
+    Stesso silenzio delle altre: un provider di cui non si conosce la natura
+    non produce una frase approssimativa. La natura e' la meta' che riguarda i
+    soldi, ed e' la ragione per cui questa riga esiste.
+    """
+    which_nature = nature(who_answered)
+    if not which_nature:
+        return ""
+    return (f"Il Piano Claude Max e' acceso, ma questo giro risponde subito "
+            f"e il piano risponde in differita: ha risposto "
             f"{display_name(who_answered)}, {which_nature}.")
 
 
@@ -770,6 +833,11 @@ def compose_topology(
             # nel frontend sarebbe la regola scritta una seconda volta.
             "modello_alias": is_alias(pid),
             "natura": nature(pid),
+            # **Dove va il dato**: nella riga del provider, accanto al gesto
+            # che lo accende. Non e' condizionata al fatto che la riga sia in
+            # catena -- chi sta per metterci una credenziale e' esattamente
+            # chi deve leggerla PRIMA.
+            "privacy": privacy(pid),
             "manca": "" if has_credential else missing_reason(pid),
             "nota": note(pid, in_chain, has_credential),
             "connettore": connettore(pid) if in_chain else "",

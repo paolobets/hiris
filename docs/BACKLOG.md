@@ -105,6 +105,20 @@ comportamento predefinito invece che una decisione. Il prossimo rilascio che **n
 fetta di sicurezza la prende, oppure si dichiara qui che la 2.1.276 è il pin scelto e il cancello
 si riancora — non c'è una terza risposta onesta.
 
+**Rimandata una decima volta il 23/09/2026, con la v3.64.0** — e questa volta con una data
+d'arrivo, non con un «prossimo». La 3.64.0 chiude la **fetta 7**, l'ultima dello sprint sicurezza:
+vale la stessa regola (una dipendenza non provata non sale sotto il changelog di una fetta di
+sicurezza), e la condizione scritta qui sopra — «il prossimo rilascio che **non** porti una fetta
+di sicurezza» — da adesso è **verificabile**, perché lo sprint è chiuso e il rilascio successivo è
+la fetta delle misure, che per costruzione non cambia comportamento.
+
+La CLI oggi disponibile è la **2.1.280** (non più la 2.1.278 di questa voce: nel frattempo ne sono
+uscite altre due). Il ripiego dichiarato resta la **2.1.276**, l'ultima di cui esista una lettura
+vera da `GET /api/health`.
+
+**Se la fetta delle misure non la prende, questa voce non si rimanda un'undicesima volta: si
+chiude dichiarando la 2.1.276 come pin scelto, e il cancello si riancora lì.**
+
 ### La CLI del ponte e' salita alla 2.1.267 — CHIUSA il 10/09/2026
 
 **Aperta e chiusa nello stesso giorno.** Il cancello

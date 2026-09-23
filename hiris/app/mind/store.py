@@ -50,6 +50,66 @@ from .scope import may_overwrite
 # entrare il fuso orario nell'archivio.
 READING_RETENTION_S = 22 * 86400
 
+#: **Per quanto tiene ogni tabella, e perche'** (reperto C-6, 23/09/2026).
+#:
+#: Fino a oggi la conservazione copriva **una tabella su otto**: solo il
+#: grezzo. Le altre sette non avevano nessun cancellatore -- non perche'
+#: qualcuno avesse deciso «per sempre», ma perche' **nessuno aveva deciso
+#: niente**, che e' una cosa diversa e non si vede guardando il disco.
+#:
+#: Misurate, sei delle sette devono restare, e adesso lo dichiarano. Il valore
+#: di questa tabella non e' aver aggiunto sette cancellatori: e' che una
+#: tabella nuova che nascesse domani **non puo' entrare senza una decisione
+#: scritta accanto** -- lo impedisce una prova che confronta questo elenco con
+#: le tabelle vere.
+#:
+#: `(giorni | None, ragione, cancellazione)`. `giorni` a `None` = per sempre,
+#: e allora la `cancellazione` e' `None` anche lei.
+#:
+#: **La `cancellazione` e' una frase SQL intera e letterale**, non un nome di
+#: colonna da cui comporla: `f"DELETE FROM {tabella}"` renderebbe questo file
+#: cieco al censimento (`scripts/censimento.py` vede una scrittura solo se il
+#: nome della tabella sta nello stesso letterale della parola chiave), e
+#: perderebbe la copertura su tutte le ventiquattro tabelle scritte qui.
+#: Misurato: il censimento passava da 38 reperti a 39.
+CONSERVAZIONE: dict[str, tuple[int | None, str, str | None]] = {
+    "cambi": (
+        22,
+        ("il grezzo: serve a vedere cosa e' successo di recente, e oltre tre "
+         "settimane nessuno lo rilegge piu'"),
+        "DELETE FROM cambi WHERE quando_ts < ?"),
+    "scope_attempt": (
+        30,
+        ("tentativi: diagnostica pura, una riga a ogni giro anche fallito, e "
+         "la pagina ne mostra una manciata. E' l'unica che cresce senza "
+         "portare niente con se'"),
+        "DELETE FROM scope_attempt WHERE tried_ts < ?"),
+    "analisi": (
+        None,
+        ("un'analisi al giorno, e ognuna e' cio' che si e' capito di quel "
+         "giorno: cancellarle libererebbe qualche megabyte e perderebbe mesi"),
+        None),
+    "resoconto": (
+        None,
+        ("un resoconto al giorno: e' la storia misurata della casa, la materia "
+         "prima dell'analista"),
+        None),
+    "proposte": (
+        None,
+        ("ogni riga porta la decisione che il proprietario ci ha messo sopra "
+         "-- accettata, rifiutata, fatta a mano: e' un registro delle sue "
+         "scelte, non un archivio tecnico"),
+        None),
+    "objective": (None, "parole sue", None),
+    "scope": (
+        None, "il perimetro: parole sue, una riga per soggetto", None),
+    "reconsideration": (
+        None,
+        ("quando e perche' il perimetro e' stato ripensato: poche righe, e "
+         "spiegano come si e' arrivati a quello di oggi"),
+        None),
+}
+
 
 logger = logging.getLogger(__name__)
 
@@ -1291,14 +1351,29 @@ class ObservationsStore:
         return out
 
     def prune(self, now_ts: float) -> int:
-        """Butta i cambi oltre la conservazione. **Non tocca gli oggetti**: le
-        due tabelle hanno due vite, e una potatura che si portasse via cio' che
-        si e' capito cancellerebbe mesi per liberare qualche megabyte."""
+        """Applica `CONSERVAZIONE`, tabella per tabella. Torna le righe tolte.
+
+        **Non c'e' piu' una tabella senza una decisione scritta accanto**
+        (reperto C-6, 23/09/2026). Prima questa funzione conosceva una sola
+        tabella e le altre sette restavano per sempre senza che nessuno
+        l'avesse deciso.
+
+        Chi sta a `None` non si tocca, ed e' la maggioranza: analisi,
+        resoconti, proposte, obiettivo, perimetro e riconsiderazioni sono cio'
+        che si e' capito e cio' che il proprietario ha deciso -- una potatura
+        che se li portasse via cancellerebbe mesi per liberare qualche
+        megabyte.
+        """
+        righe_tolte = 0
         with self._lock:
-            cur = self._conn.execute("DELETE FROM cambi WHERE quando_ts < ?",
-                                     (float(now_ts) - READING_RETENTION_S,))
+            for giorni, _ragione, cancellazione in CONSERVAZIONE.values():
+                if giorni is None or cancellazione is None:
+                    continue
+                cur = self._conn.execute(
+                    cancellazione, (float(now_ts) - giorni * 86400,))
+                righe_tolte += cur.rowcount or 0
             self._conn.commit()
-            return cur.rowcount or 0
+        return righe_tolte
 
     # **Gli OGGETTI sono usciti** (spec §13, 15/09/2026), e con loro
     # `facts()` e `replace_day()`. La tabella la lascia cadere

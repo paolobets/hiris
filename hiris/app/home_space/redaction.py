@@ -95,9 +95,38 @@ class SecretSeal:
         profondita'. Le chiavi dei dizionari non si toccano: un segreto usato
         come CHIAVE non e' un caso che Home Assistant produca, e sostituirla
         cambierebbe la forma della configurazione invece del suo contenuto.
+
+        **Anche i NUMERI** (reperto C-1, chiuso il 23/09/2026). Fino ad allora
+        `from_file` calcolava l'impronta anche per interi e decimali e questo
+        metodo sostituiva **solo le stringhe**: un'impronta calcolata e mai
+        confrontata. Riprodotto eseguendo -- `codice_allarme: 1234` tornava in
+        chiaro mentre `password_nas: zxqw-...` veniva oscurata -- e lo scenario
+        non era teorico: con `alarm_control_panel.alarm_disarm` Home Assistant
+        restituisce il corpo GIA' RISOLTO, quindi il codice di disarmo
+        dell'allarme arrivava al fornitore del modello.
+
+        `1234` e `"1234"` valgono uguale: per chi disarma un allarme sono la
+        stessa cosa, e HA restituisce l'uno o l'altro a seconda di come e'
+        scritta l'automazione.
+
+        **IL PREZZO, dichiarato dove si paga.** I segreti si riconoscono per
+        VALORE, non per nome: un `1234` innocente -- una temperatura, una
+        soglia, un numero di stanza -- verra' oscurato se qualcuno ha
+        dichiarato `1234` fra i segreti. Capita piu' spesso coi numeri che con
+        le stringhe, e si paga volentieri: un numero oscurato di troppo si
+        legge come `<secret ...>` e si capisce, un codice d'allarme in chiaro
+        no.
+
+        **Il tipo di cio' che NON e' segreto non cambia**: un `delay: 30` che
+        diventasse `"30"` sarebbe un dato cambiato, non un dato protetto.
         """
         if isinstance(value, str):
             name = self._names_by_fingerprint.get(_fingerprint(value))
+            return f"<secret {name}>" if name else value
+        # `bool` prima di `int`, perche' in Python un booleano E' un intero:
+        # senza questa riga un `True` verrebbe confrontato come `"True"`.
+        if isinstance(value, int | float) and not isinstance(value, bool):
+            name = self._names_by_fingerprint.get(_fingerprint(str(value)))
             return f"<secret {name}>" if name else value
         if isinstance(value, dict):
             return {k: self.redact(v) for k, v in value.items()}

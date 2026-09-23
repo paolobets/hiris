@@ -145,3 +145,42 @@ test('la pagina non chiama più «Chatbot» ciò che il prodotto non ha più', a
   assert.doesNotMatch(testo, /Chatbot/,
     'la 2.0 ha una chat sola: «Chatbot» è il vocabolario del prodotto vecchio');
 });
+
+/* ── I giri passati a consumo (reperto C-5, 23/09/2026) ────────────────────
+   Il ripiego dal forfait al consumo si annunciava in chat, sulle promesse e
+   sull'osservatore; analista, attuatore e ricette finivano solo nel registro,
+   e quei tre girano di notte. La pagina dei soldi è dove si va a chiedersi
+   perché la bolletta è cresciuta. */
+
+const MISURATO = {
+  measured: true, total_requests: 3, input_tokens: 10, output_tokens: 5,
+  total_tokens: 15, cost_usd: 0.01, cost_eur: 0.01, partial_cost: false,
+  rate_limit_errors: 0, last_reset: null, timezone: 'Europe/Rome',
+  timezone_known: true, sections: [],
+};
+
+test('i giri passati a consumo si leggono nella pagina, con chi e con quante volte', async () => {
+  const { testo } = await monta(() => ({
+    ok: true, status: 200,
+    json: () => Promise.resolve({ ...MISURATO, fallbacks: [
+      { day: '2026-09-22', agent: 'analista', reason: 'tetto giornaliero', count: 22, last_ts: 1 },
+      { day: '2026-09-22', agent: 'ricette', reason: 'manca il token', count: 1, last_ts: 1 },
+    ] }),
+  }));
+
+  assert.match(testo, /analista/);
+  assert.match(testo, /tetto giornaliero/);
+  assert.match(testo, /22/, 'il numero è la differenza fra un caso e un problema');
+  assert.match(testo, /ricette/);
+});
+
+test('senza ripieghi non compare nessun riquadro', async () => {
+  /* Una sezione vuota che dice «nessun ripiego» ruberebbe spazio alla domanda
+     con cui questa pagina si apre, che è quanto ho speso. */
+  const { outlet } = await monta(() => ({
+    ok: true, status: 200,
+    json: () => Promise.resolve({ ...MISURATO, fallbacks: [] }),
+  }));
+
+  assert.equal(outlet.querySelector('#usage-fallbacks'), null);
+});

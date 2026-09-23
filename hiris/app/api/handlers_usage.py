@@ -206,6 +206,14 @@ async def handle_usage(request: web.Request) -> web.Response:
         # un pavimento, e la pagina lo scrive con un «>=».
         "partial_cost": totals["costo_parziale"],
         "rate_limit_errors": totals["errori_rate_limit"],
+        # **I giri passati dal forfait al consumo** (reperto C-5, 23/09/2026).
+        # Fino a oggi il ripiego di analista, attuatore e ricette finiva solo
+        # nel registro, e quei tre girano di notte: si scopriva dalla bolletta.
+        # Qui perche' e' un fatto sui soldi, e questa e' la pagina dei soldi.
+        #
+        # Lista VUOTA e non chiave assente: «non e' mai successo» e «non lo
+        # so» sono due cose diverse, e la pagina deve poter scrivere la prima.
+        "fallbacks": store.fallbacks(from_anchor=from_anchor),
         "last_reset": _iso(store.anchor()),
         "timezone": timezone or "UTC",
         "timezone_known": bool(timezone),

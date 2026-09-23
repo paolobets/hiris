@@ -47,7 +47,16 @@
     if (sessionMsg) sessionMsg.style.display = reached ? '' : 'none';
   }
 
-  /* Costruisce la domanda della conferma dicendo COSA si perde, come si fa
+  /* E dal 23/09/2026 dice anche COSA RESTA (reperto C-6). Chi preme
+     «cancella» sta chiedendo «togli quello che ho detto a HIRIS»: tacere che i
+     ricordi sopravvivono gli fa credere di aver pulito tutto, e questo
+     prodotto non fa credere cose. Che restino e' giusto -- un ricordo e' una
+     cosa che hai chiesto di tenere, non un residuo della conversazione -- ma
+     finora era scritto solo nel codice. Si dice anche DOVE si tolgono: una
+     frase che dichiara e non indirizza lascia il proprietario con un
+     problema.
+
+     Costruisce la domanda della conferma dicendo COSA si perde, come si fa
      gia' nella pagina Memoria (dove il `confirm` cita la frase esatta del
      ricordo). Il vecchio testo -- «Cancellare la cronologia di questa
      conversazione?» -- sottodichiarava due volte: non diceva quanto, e
@@ -66,7 +75,9 @@
         ? 'Perdi il messaggio che vedi'
         : 'Perdi i ' + quanti + ' messaggi che vedi';
     return visible + ', e anche i riassunti delle conversazioni precedenti '
-      + 'che HIRIS si tiene da parte. Non si può annullare.\n\nCancellare?';
+      + 'che HIRIS si tiene da parte. Non si può annullare.\n\n'
+      + 'I ricordi NON si toccano: restano finché non li cancelli tu, uno '
+      + 'per uno, dalla pagina Memoria.' + '\n\nCancellare?';
   }
 
   async function clearConversation() {

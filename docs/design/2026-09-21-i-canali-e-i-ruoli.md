@@ -325,6 +325,7 @@ eseguita.
 | **1** | Il meccanismo (firma, finestra, valore irripetibile) e i cancelli | solo HIRIS | ✅ **fatta il 21/09** |
 | **1b** | **L'accoppiamento** (§7): archivio dei servizi, finestra di dieci minuti, codice a quattro cifre, approvazione e revoca dalla pagina — e il campo di testo esce | solo HIRIS | ✅ **fatta il 22/09** |
 | **2** | Retro Panel si accoppia e firma | due repository | da fare |
+| **7** | **I dati e la fornitura**: i segreti numerici, il registro in `debug`, i backup, cosa esce e verso chi, la conservazione, l'immagine per impronta, i caratteri in casa (C-1, C-2, C-4, C-5, C-6, D-3, D-7) | solo HIRIS | ✅ **fatta il 23/09** — lo sprint sicurezza è CHIUSO |
 | **6** | **Il modello**: la marcatura del contenuto, il freno di ritmo, le promesse che dichiarano cosa toccano (B-2, B-3, B-6) | solo HIRIS | ✅ **fatta il 22/09** |
 | **5** | **L'ingresso della catena**: i tre lettori grezzi passano dal confine, e l'anteprima dice cosa chiamerà (B-1, B-4) | solo HIRIS | ✅ **fatta il 22/09** |
 | **4** | **La fornitura**: CVE misurate e sorvegliate, CI stretto, l'immagine si alleggerisce (D-2, D-4, D-5, D-6) | solo HIRIS | ✅ **fatta il 22/09** |

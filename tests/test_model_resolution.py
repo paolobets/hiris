@@ -362,6 +362,11 @@ def test_la_catena_porta_posizione_nome_modello_e_natura():
     assert catena[0] == {"id": "claude", "nome": "Claude API",
                          "modello": "claude-opus-4-7", "modello_alias": False,
                          "natura": "a consumo",
+                         # Reperto C-5 (23/09/2026): dove va il dato viaggia
+                         # nella RIGA, perche' il gesto che lo manda fuori casa
+                         # si fa qui e non nella pagina del Supervisor.
+                         "privacy": ("I tuoi messaggi e la conoscenza della "
+                                     "casa passano da Anthropic (USA)."),
                          "manca": "", "nota": "",
                          "connettore": "se rifiuta, subito",
                          "connettore_nota": "",

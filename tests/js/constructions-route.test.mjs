@@ -390,3 +390,39 @@ test('una proposta che non chiama niente non inventa una riga', async () => {
 
   assert.doesNotMatch(testo, /Chiama/);
 });
+
+/* ── Da quale porta è passato il giro (reperto C-5, 23/09/2026) ────────────
+   «Rifalla» risponde subito e il Piano Max risponde in differita: col piano
+   acceso quel giro si paga a consumo. Il backend lo dichiara; prima questa
+   pagina buttava via la risposta (`.then(function () { reload(); })`) e la
+   frase non arrivava a nessuno. */
+
+test('«Rifalla» mostra la nota del backend su dove è passato il giro', async () => {
+  const dom = new JSDOM('<div id="route-outlet"></div>', { url: 'http://localhost/' });
+  global.window = dom.window;
+  global.document = dom.window.document;
+  /* Due risposte DIVERSE, una per rotta: la nota esiste solo sulla risposta
+     del redo, ed è l'unico modo di distinguere «la pagina legge il corpo del
+     redo» da «la pagina pesca un campo che c'era già nell'elenco». */
+  dom.window.fetch = async (url) => ({
+    ok: true, status: 200,
+    json: async () => (/redo/.test(String(url))
+      ? { proposta: {}, nota: 'Il Piano Claude Max e\' acceso, ma questo giro risponde subito.' }
+      : { constructions: [propostaAMano()] }),
+  });
+  global.fetch = dom.window.fetch;
+  new dom.window.Function(SORGENTE)();
+
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  [...dom.window.document.querySelectorAll('button')]
+    .filter((b) => /Rifalla/.test(b.textContent))[0].click();
+  dom.window.document.querySelector('textarea').value = 'dopo le 14';
+  [...dom.window.document.querySelectorAll('button')]
+    .filter((b) => /Rifalla adesso/.test(b.textContent))[0].click();
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
+
+  const stato = dom.window.document.getElementById('constructions-status');
+  assert.match(stato.textContent, /Piano Claude Max/,
+    'il giro è passato a consumo e la pagina non lo dice');
+});

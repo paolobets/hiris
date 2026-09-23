@@ -103,6 +103,19 @@ def componi_scarti(letti: dict, registri: dict) -> list[Scarto]:
             scarti.append(Scarto(nome, f"v{dati['major']}",
                                  f"v{reg['major']}", dati["dove"]))
 
+    # ── L'immagine di base: fissata per impronta, quindi lo scarto e' «si e'
+    #    mossa». Non c'e' un numero di versione da confrontare -- la domanda
+    #    e' se l'etichetta che le corrisponde punti ancora li'.
+    for arch, dati in sorted(letti.get("basi", {}).items()):
+        reg = registri.get("basi", {}).get(arch, {})
+        nome = f"immagine di base ({arch})"
+        if reg.get("errore"):
+            scarti.append(Scarto(nome, dati["impronta"][:19], "",
+                                 dati["dove"], reg["errore"]))
+        elif reg.get("impronta") and reg["impronta"] != dati["impronta"]:
+            scarti.append(Scarto(nome, dati["impronta"][:19],
+                                 reg["impronta"][:19], dati["dove"]))
+
     # ── I TETTI Python, e NON i pavimenti ──────────────────────────────────
     # Un pavimento sta per definizione sotto l'ultima uscita: confrontarlo
     # produrrebbe uno scarto per OGNI dipendenza, a ogni rilascio, per sempre.
@@ -149,6 +162,15 @@ def componi_scarti(letti: dict, registri: dict) -> list[Scarto]:
 # `[^@]*` fra `-g` e il pacchetto: dal 22/09/2026 c'e' `--ignore-scripts` in
 # mezzo (reperto D-4), e un cancello che pretende la forma di ieri tace invece
 # di rompersi -- che e' il modo in cui una verifica smette di verificare.
+#: `  aarch64: "ghcr.io/home-assistant/aarch64-base-python@sha256:..."`
+#: I tipi di manifesto che si accettano. Senza, il registro risponde con un
+#: manifesto tradotto e l'impronta che torna non e' quella che `build.yaml`
+#: scrive.
+_MANIFESTI = ("application/vnd.oci.image.index.v1+json, "
+              "application/vnd.docker.distribution.manifest.list.v2+json, "
+              "application/vnd.docker.distribution.manifest.v2+json")
+_RE_BASE = re.compile(
+    r'^\s*(\w+):\s*"ghcr\.io/([^"@]+)@(sha256:[0-9a-f]{64})"')
 _RE_CLI = re.compile(
     r"npm install -g [^@]*" + re.escape(PACCHETTO_CLI) + r"@([\d.]+)")
 
@@ -191,6 +213,32 @@ def leggi_i_file(requisiti=None) -> dict:
     # avrebbe fatto sparire in silenzio quattro righe dalla sorveglianza.
     requisiti = requisiti or [RADICE / "hiris" / "requirements.txt",
                               RADICE / "hiris" / "requirements-dev.txt"]
+
+    # **L'immagine di base, per impronta** (reperto D-3, 23/09/2026). Si legge
+    # l'etichetta dal commento SOPRA la riga: e' l'unica cosa che dice quale
+    # Python ci sia dentro, e senza di lei non si saprebbe nemmeno quale
+    # etichetta interrogare per sapere se la base si e' mossa.
+    basi: dict = {}
+    righe_build = (RADICE / "hiris" / "build.yaml").read_text(
+        encoding="utf-8").splitlines()
+    for indice, riga in enumerate(righe_build):
+        trovata_base = _RE_BASE.search(riga)
+        if not trovata_base:
+            continue
+        precedente = righe_build[indice - 1].strip() if indice else ""
+        etichetta = precedente.lstrip("# ").strip() if precedente.startswith("#") else ""
+        basi[trovata_base.group(1)] = {
+            "repository": trovata_base.group(2),
+            "impronta": trovata_base.group(3),
+            "etichetta": etichetta,
+            "dove": "hiris/build.yaml",
+        }
+    if not basi:
+        raise SystemExit(
+            f"Non trovo nessuna immagine di base fissata per impronta in "
+            f"{RADICE / 'hiris' / 'build.yaml'}. Se la forma e' cambiata, "
+            "aggiorna `_RE_BASE`: senza, questo controllo tacerebbe invece di "
+            "rompersi.")
 
     trovata = _RE_CLI.search(dockerfile.read_text(encoding="utf-8"))
     if not trovata:
@@ -244,13 +292,44 @@ def leggi_i_file(requisiti=None) -> dict:
         # produrrebbe uno scarto permanente su una riga sana.
         if massimo:
             tetti[nome] = {"tetto": massimo.group(1), "dove": dove}
-    return {"cli": cli, "azioni": azioni, "tetti": tetti, "pavimenti": pavimenti}
+    return {"cli": cli, "azioni": azioni, "tetti": tetti,
+            "pavimenti": pavimenti, "basi": basi}
 
 
 def _json(url: str) -> dict:
     richiesta = urllib.request.Request(url, headers={"User-Agent": "hiris-verifica"})
     with urllib.request.urlopen(richiesta, timeout=TIMEOUT) as risposta:
         return json.load(risposta)
+
+
+def _impronta_viva(repository: str, etichetta: str) -> str:
+    """L'impronta che OGGI sta dietro quell'etichetta su ghcr.io.
+
+    Non c'e' una «ultima versione» da confrontare come per npm o PyPI:
+    un'immagine fissata per impronta si e' mossa quando l'etichetta che le
+    corrisponde punta altrove. La domanda giusta e' quella, e la risposta e'
+    un'intestazione.
+
+    Il registro di GitHub vuole un gettone anche per le immagini pubbliche, e
+    lo da' a chiunque lo chieda: due chiamate, nessuna credenziale.
+    """
+    gettone = _json(
+        f"https://ghcr.io/token?scope=repository:{repository}:pull"
+        "&service=ghcr.io")["token"]
+    richiesta = urllib.request.Request(
+        f"https://ghcr.io/v2/{repository}/manifests/{etichetta}",
+        headers={
+            "Authorization": f"Bearer {gettone}",
+            "User-Agent": "hiris-verifica",
+            # Senza questo il registro risponde con un manifesto tradotto, e
+            # l'impronta che torna non e' quella che `build.yaml` scrive.
+            "Accept": _MANIFESTI,
+        })
+    with urllib.request.urlopen(richiesta, timeout=TIMEOUT) as risposta:
+        impronta = risposta.headers.get("Docker-Content-Digest")
+    if not impronta:
+        raise RuntimeError("il registro non ha dichiarato l'impronta")
+    return impronta
 
 
 def interroga_i_registri(letti: dict) -> dict:
@@ -277,6 +356,13 @@ def interroga_i_registri(letti: dict) -> dict:
             fuori["azioni"][nome] = {"major": int(re.findall(r"\d+", tag)[0])}
         except Exception as exc:
             fuori["azioni"][nome] = {"errore": str(exc)}
+
+    for arch, dati in letti.get("basi", {}).items():
+        try:
+            fuori.setdefault("basi", {})[arch] = {
+                "impronta": _impronta_viva(dati["repository"], dati["etichetta"])}
+        except Exception as exc:
+            fuori.setdefault("basi", {})[arch] = {"errore": str(exc)}
 
     for nome in letti["tetti"]:
         try:

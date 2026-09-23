@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import sqlite3
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -90,7 +91,7 @@ from .provider_occurrences import OccurrenceRegistry
 from .proxy.entity_cache import EntityCache, automation_config_id
 from .proxy.ha_client import HAClient
 from .proxy.state_translations import StateTranslations
-from .steering import who_answers
+from .steering import declare_downgrade, who_answers
 from .version import read_version
 
 logger = logging.getLogger(__name__)
@@ -1887,11 +1888,7 @@ async def reconsideration_round(app, ha_client) -> dict | None:
         # motivo e' una chiave di `model_resolution._DOWNGRADE_REASONS`, e
         # finisce anche nel tentativo, cosi' la pagina puo' dire da quale
         # porta e' passato quel giro.
-        if downgrade:
-            logger.warning(
-                "osservatore: il piano non puo' servire questo giro (%s): si "
-                "scende alla catena. Il costo cambia -- dal forfait al consumo.",
-                downgrade)
+        declare_downgrade(app, agent="osservatore", reason=downgrade)
         logger.info("osservatore: riconsidero la casa (%s), lotto di %d -- %s",
                     route, len(lotto), why)
         campagna_ts = time.time()
@@ -2133,8 +2130,7 @@ async def analyst_round(app) -> dict | None:
         if runner is None:
             logger.info("analista: nessun modello collegato, si riprova al giro dopo")
             return None
-        if downgrade:
-            logger.info("analista: il giro passa dalla catena (%s)", downgrade)
+        declare_downgrade(app, agent="analista", reason=downgrade)
 
         question = analyst_turn.build_question(series)
         if question is None:
@@ -2228,8 +2224,7 @@ async def actuator_round(app) -> dict | None:
         if runner is None:
             logger.info("attuatore: nessun modello collegato, si riprova al giro dopo")
             return None
-        if downgrade:
-            logger.info("attuatore: il giro passa dalla catena (%s)", downgrade)
+        declare_downgrade(app, agent="attuatore", reason=downgrade)
 
         # **La riparazione viene PRIMA della domanda**, e il modello lo viene a
         # sapere: se lo scoprisse dopo proporrebbe di riparare una cosa gia'
@@ -2660,11 +2655,7 @@ async def recipe_round(app) -> dict | None:
         if runner is None:
             logger.info("ricette: nessun modello a cui chiedere (%s)", downgrade)
             return None
-        if downgrade:
-            logger.warning(
-                "ricette: il piano non puo' servire questo giro (%s): si "
-                "scende alla catena. Il costo cambia -- dal forfait al consumo.",
-                downgrade)
+        declare_downgrade(app, agent="ricette", reason=downgrade)
         logger.info("ricette: chiedo come si misura «%s» (%s)", device_id, route)
         esito = await recipe_turn.ask(
             runner, sapere, home_space, device_id, objective=objective,
@@ -2762,6 +2753,61 @@ def _collect_recipe_turn(app, sapere, home_space: dict) -> dict | None:
     logger.info("ricette: risposta del piano applicata per «%s» -- %s",
                 device_id, esito)
     return esito
+
+
+def decidi_vault(data_dir: str) -> None:
+    """Cancella `vault.db`, e dice cosa conteneva (reperto C-6, 23/09/2026).
+
+    **Prima lo ANNUNCIAVA.** Una riga informativa all'avvio diceva che il file
+    conteneva «DATI PERSONALI IN CHIARO» -- la mappa PII<->token della
+    pseudonimizzazione, la cui cifratura a riposo fu rinviata e mai fatta --
+    che nessun codice lo legge piu', e che cancellarlo era «una decisione
+    tua». Ma una riga fra centinaia di righe di avvio non e' un modo di dire
+    una cosa a una persona, e quella persona per decidere avrebbe dovuto
+    aprire un file SQLite dentro il contenitore dell'add-on.
+
+    Quindi decide HIRIS, ed e' la decisione facile: un file che nessuno legge,
+    che nessuna interfaccia svuota e che contiene dati personali in chiaro e'
+    solo un rischio -- tanto piu' da quando si sa che entrava nei backup.
+
+    **Si dice cosa e' stato cancellato**, non «ho fatto pulizia»: cancellare
+    dati di un utente in silenzio e' proibito dalle fondamenta di questo
+    progetto. Un file vuoto se ne va senza avvisi: non c'era niente da
+    raccontare, e il rumore sano seppellisce quello vero.
+
+    Non solleva mai: e' igiene, non una condizione di funzionamento.
+    """
+    percorso = os.path.join(data_dir, "vault.db")
+    if not os.path.exists(percorso):
+        return
+    righe = None
+    try:
+        conn = sqlite3.connect(percorso)
+        try:
+            righe = conn.execute("SELECT COUNT(*) FROM pii").fetchone()[0]
+        finally:
+            conn.close()
+    except Exception as errore:
+        # Corrotto, o senza la tabella che ci si aspetta: si cancella lo
+        # stesso -- nessuno lo legge -- e si dice che non lo si e' potuto
+        # contare, invece di affermare uno zero che nessuno ha misurato.
+        logger.info("vault.db non si e' potuto leggere prima di cancellarlo "
+                    "(%s: %s)", type(errore).__name__, errore)
+    try:
+        os.remove(percorso)
+    except OSError as errore:
+        logger.warning("vault.db non si e' potuto cancellare (%s: %s): resta "
+                       "su disco, e contiene dati personali in chiaro",
+                       type(errore).__name__, errore)
+        return
+    if righe:
+        logger.warning(
+            "vault.db cancellato: conteneva %d righe della mappa PII<->token "
+            "della pseudonimizzazione, con la colonna `value` IN CHIARO (la "
+            "cifratura a riposo fu rinviata e mai fatta). Nessun codice lo "
+            "leggeva piu' da quando brain/privacy.py e' uscito, e nessuna "
+            "interfaccia lo svuotava: restava solo a farsi copiare nei backup.",
+            righe)
 
 
 def _record_attempt(store, outcome: dict, *, route: str = "ponte",
@@ -4246,19 +4292,7 @@ async def _on_startup(app: web.Application) -> None:
             _history_policy_path,
         )
 
-    _vault_db_path = os.path.join(data_dir, "vault.db")
-    if os.path.exists(_vault_db_path):
-        logger.info(
-            "vault.db presente in %s da un'installazione precedente: "
-            "brain/privacy.py (VaultStore/Pseudonymizer) e' uscito. Se il file "
-            "non e' vuoto contiene DATI PERSONALI IN CHIARO: la colonna "
-            "`value` della mappa PII<->token non e' mai stata cifrata "
-            "(cifratura at-rest differita e mai fatta). Nessun codice lo "
-            "legge piu' e nessuna interfaccia lo svuota: cancellarlo e' "
-            "sicuro, ed e' una decisione tua. Fino ad allora resta su disco, "
-            "intatto.",
-            _vault_db_path,
-        )
+    decidi_vault(data_dir)
 
     # Ricarica dell'inventario entita' dopo un avvio senza Home Assistant.
     # `entity_cache.load` piu' sopra logga e prosegue se fallisce: senza questo
@@ -5023,6 +5057,20 @@ async def _on_startup(app: web.Application) -> None:
         reasoning_queue.fail_stuck_downgrades(
             _time.time() - 2 * 60 * int(
                 (app.get("models_config") or {}).get("ponte", {}).get("scadenza_min", 5)))
+        # **Le risposte consegnate si dimenticano** (reperto C-6,
+        # 23/09/2026). La domanda si azzera alla consegna da sempre
+        # (`submit`); la risposta restava fino alla potatura a sette giorni,
+        # anche dopo che il proprietario aveva cancellato la conversazione.
+        #
+        # Un quarto d'ora di margine, e non zero: un ricaricamento della
+        # pagina rifa' il poll sullo stesso lavoro, e una risposta svuotata
+        # all'istante gli tornerebbe come «non e' arrivata in tempo». La
+        # spazzata gira ogni due minuti, quindi il ritardo vero e' il margine.
+        dimenticate = reasoning_queue.forget_delivered(
+            before_ts=_time.time() - 15 * 60)
+        if dimenticate:
+            logger.info("coda del ragionamento: dimenticate %d risposte gia' "
+                        "consegnate", dimenticate)
         reasoning_queue.prune(_time.time() - 7 * 86400)
 
     scheduler.add_job(
@@ -5429,9 +5477,13 @@ async def _security_headers(request: web.Request, handler) -> web.Response:
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     response.headers.setdefault(
         "Content-Security-Policy",
+        # **Chiusa verso l'esterno** (reperto D-7, 23/09/2026). I due domini
+        # dei caratteri sono usciti insieme ai `<link>` che li chiamavano: un
+        # permesso che non serve piu' e' debito, e finche' restava scritto
+        # qui un foglio di stile poteva ancora arrivare da fuori.
         "default-src 'self'; script-src 'self' 'unsafe-inline'; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'",
+        "style-src 'self' 'unsafe-inline'; "
+        "font-src 'self'; img-src 'self' data:; connect-src 'self'",
     )
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")

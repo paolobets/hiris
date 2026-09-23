@@ -128,6 +128,23 @@ async def handle_proposal_redo(request: web.Request) -> web.Response:
             {"errore": "nessun modello collegato: non posso rifare la proposta "
                        "adesso."}, status=503)
 
+    # **La stessa domanda che si fanno le altre sei porte, dalla stessa
+    # funzione** (reperto C-5, 23/09/2026). `steering.py` dichiara dal
+    # 22/08/2026 che «una terza porta che nascesse domani non potrebbe
+    # inventarsene una terza senza accorgersene»: questa porta e' nata dopo e
+    # se n'era inventata una, andando dritta al router. Su una casa che gira
+    # interamente sul Piano Max ogni «Rifalla» finiva a consumo, e non lo
+    # diceva nessuno -- il difetto pagato dal vivo il 21/08 sulle promesse.
+    #
+    # **Qui si DICHIARA, non si devia**: «Rifalla» risponde nello stesso
+    # istante in cui la si preme, e il piano risponde in differita da un altro
+    # processo. Mandarla sul ponte e' la forma giusta e costa una fetta sua --
+    # il bottone smette di rispondere e la pagina deve interrogare -- ed e' in
+    # `docs/BACKLOG.md` con questa ragione accanto. Fino ad allora il giro si
+    # paga a consumo, e si dice.
+    from ..steering import who_answers
+    route, downgrade = who_answers(request.app)
+
     lines = ["La proposta che hai fatto, e che il proprietario non vuole cosi':",
              f"  {row['testo']}",
              f"  (il perche' che avevi scritto: {row['perche']})"]
@@ -153,7 +170,41 @@ async def handle_proposal_redo(request: web.Request) -> web.Response:
                              now_ts=time.time())
     if perche:
         store.rewrite_proposal_why(ident, perche)
-    return web.json_response({"proposta": _row(store, ident)})
+    corpo = {"proposta": _row(store, ident)}
+    # La nota si compone DOPO la chiamata: chi ha risposto si misura, e prima
+    # si misurerebbe l'esito del turno precedente.
+    nota = _nota_porta(request.app, route=route, downgrade=downgrade)
+    if nota:
+        corpo["nota"] = nota
+    return web.json_response(corpo)
+
+
+def _nota_porta(app, *, route: str, downgrade: str) -> str:
+    """La riga che dichiara da dove e' passato questo giro. `""` se non c'e'
+    niente da dichiarare.
+
+    **Tre casi, e sono tre cose diverse.**
+
+    - Il piano non e' in gioco (spento, o mai avuto): niente da dire. Dirlo a
+      ogni giro direbbe al proprietario che sta perdendo qualcosa che non ha.
+    - Il piano non PUO' rispondere (token assente, tetto pieno): e' il ripiego
+      che le altre porte gia' dichiarano, con le sue parole di vocabolario.
+    - Il piano potrebbe, ma questa porta risponde subito: frase sua. Dire «il
+      piano non ha risposto» qui sarebbe falso.
+    """
+    from ..model_resolution import downgrade_note, synchronous_door_note
+    from ..steering import who_answered
+
+    chi = who_answered(app)
+    if not chi:
+        # Chi ha risposto non si e' potuto misurare: nessuna nota. Questa riga
+        # parla di soldi, e una riga falsa sui soldi e' peggio del silenzio.
+        return ""
+    if downgrade:
+        return downgrade_note(reason=downgrade, who_answered=chi)
+    if route == "ponte":
+        return synchronous_door_note(who_answered=chi)
+    return ""
 
 
 def _read_proposal(answer: str) -> tuple[str | None, str | None]:

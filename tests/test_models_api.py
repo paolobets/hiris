@@ -203,6 +203,10 @@ async def test_il_payload_porta_la_topologia_gia_composta(client):
         "claude", "subscription", "openai", "ollama"]
     for r in body["catena"] + body["fuori_catena"]:
         assert set(r.keys()) == {"id", "nome", "modello", "modello_alias",
+                                 # Reperto C-5 (23/09/2026): dove va il dato
+                                 # viaggia nella riga, perche' il gesto che lo
+                                 # manda fuori casa si fa in questa pagina.
+                                 "privacy",
                                  "natura", "manca", "nota", "connettore",
                                  "connettore_nota", "ha_credenziale",
                                  "posizione", "riordinabile",

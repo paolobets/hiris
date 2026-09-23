@@ -5,9 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>HIRIS — Configurazione</title>
   <link rel="icon" type="image/svg+xml" href="static/hiris-icon.svg">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- I caratteri stanno DENTRO l'add-on (reperto D-7, 23/09/2026). Fino a
+       oggi arrivavano da fonts.googleapis.com a ogni apertura: un terzo
+       imparava che questa casa e' sveglia e a che ora, l'add-on non si apriva
+       intero senza rete, e la politica dei contenuti doveva restare aperta
+       verso l'esterno. I file si rifanno con
+       `python scripts/vendora_caratteri.py`. -->
+  <link rel="stylesheet" href="static/hiris-fonts.css">
   <link rel="stylesheet" href="static/hiris-theme.css">
   <script>
     /* paint theme before first render to avoid flash */

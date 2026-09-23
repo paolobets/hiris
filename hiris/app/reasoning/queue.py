@@ -21,7 +21,12 @@ CREATE TABLE IF NOT EXISTS reasoning_jobs (
     deadline_ts REAL NOT NULL,
     created_ts REAL NOT NULL,
     claimed_ts REAL, decided_ts REAL,
-    decision_json TEXT
+    decision_json TEXT,
+    -- **Quando la risposta e' stata CONSEGNATA** (reperto C-6, 23/09/2026).
+    -- Non `decided_ts`: fra decisa e consegnata c'e' il poll della pagina, e
+    -- una risposta mai raccolta non va dimenticata -- sarebbe lavoro pagato e
+    -- buttato. Colonna nuova, quindi in inglese.
+    delivered_ts REAL
 );
 CREATE INDEX IF NOT EXISTS idx_reasoning_status ON reasoning_jobs(status, created_ts);
 """
@@ -38,11 +43,25 @@ def _row(r) -> dict:
             "context": json.loads(r["context_json"]),
             "deadline_ts": r["deadline_ts"], "created_ts": r["created_ts"]}
 
+def _migration_2(conn) -> None:
+    """Versione 2 (23/09/2026, reperto C-6): la colonna della consegna.
+
+    Un archivio gia' esistente ha righe senza `delivered_ts`, e restano a
+    `NULL`: per loro non si sa se la risposta sia stata consegnata, e nel
+    dubbio NON si dimentica. Le pota la potatura a sette giorni, come prima.
+    """
+    colonne = {r[1] for r in conn.execute(
+        "PRAGMA table_info(reasoning_jobs)").fetchall()}
+    if "delivered_ts" not in colonne:
+        conn.execute("ALTER TABLE reasoning_jobs ADD COLUMN delivered_ts REAL")
+
+
 class ReasoningQueue:
     def __init__(self, db_path: str, *, read_timezone=None) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=1)
+        init_schema(self._conn, _SCHEMA, version=2,
+                    migrations={2: _migration_2})
         # Una FUNZIONE e non un valore: all'avvio l'archivio della casa puo'
         # non esserci ancora, e il fuso va letto quando serve. Stesso pattern
         # gia' usato per UsageStore (server.py, costruzione di
@@ -372,6 +391,45 @@ class ReasoningQueue:
                 "WHERE created_ts >= ? AND created_ts < ?",
                 (day_start, day_end)).fetchone()
         return r["c"]
+
+    def mark_delivered(self, job_id: str, now: float) -> None:
+        """La risposta di questo lavoro e' arrivata a destinazione.
+
+        Si segna alla PRIMA consegna e non si riscrive: se la pagina rifa' il
+        poll dopo un ricaricamento, il momento che conta e' il primo, o la
+        finestra si allungherebbe a ogni sguardo.
+        """
+        with self._lock:
+            self._conn.execute(
+                "UPDATE reasoning_jobs SET delivered_ts=? "
+                "WHERE job_id=? AND delivered_ts IS NULL", (now, job_id))
+            self._conn.commit()
+
+    def forget_delivered(self, *, before_ts: float) -> int:
+        """Svuota la RISPOSTA dei lavori consegnati prima di `before_ts`.
+
+        **Il reperto C-6.** La cancellazione della conversazione svuotava
+        `chat.db`, ma la risposta del modello restava qui fino alla potatura a
+        sette giorni: il proprietario premeva «cancella» e il testo restava sul
+        disco per una settimana. La domanda era gia' azzerata alla consegna
+        (`submit`); adesso lo e' anche la risposta.
+
+        **Sparisce il contenuto, non la riga.** Il conteggio giornaliero del
+        ponte e la potatura contano le righe: toglierle qui falserebbe il tetto
+        che il proprietario ha impostato.
+
+        Chi e' gia' vuoto non si riconta: il numero che torna finisce in una
+        riga di registro, e contare due volte direbbe che il prodotto sta
+        lavorando mentre gira a vuoto.
+        """
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE reasoning_jobs SET decision_json='{}' "
+                "WHERE delivered_ts IS NOT NULL AND delivered_ts < ? "
+                "AND decision_json IS NOT NULL AND decision_json != '{}'",
+                (before_ts,))
+            self._conn.commit()
+            return cur.rowcount
 
     def prune(self, before_ts: float) -> int:
         with self._lock:

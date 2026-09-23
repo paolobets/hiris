@@ -1,6 +1,28 @@
+# **L'immagine di base e' fissata per IMPRONTA** (reperto D-3, 23/09/2026).
+#
+# Prima era per ETICHETTA, che e' un nome mobile: l'etichetta viene rispinta
+# ogni volta che la base cambia, quindi due costruzioni della STESSA versione
+# di HIRIS potevano contenere due CPython diversi, due OpenSSL diversi, due
+# musl diversi -- e quando qualcosa si rompeva fra una consegna e l'altra non
+# c'era un colpevole leggibile. E' lo stesso difetto che la CLI del ponte
+# aveva prima del pin alla versione esatta (vedi `Dockerfile`).
+#
+# **Cosa costa, detto per intero**: le patch della base non arrivano piu' da
+# sole, comprese quelle di sicurezza. Aggiornarla e' un atto deliberato di chi
+# rilascia, e `scripts/verifica_componenti.py` guarda queste due righe a ogni
+# giro perche' «fissato per impronta» non diventi «fermo da un anno».
+#
+# Come si ribumpano:
+#   1. scegliere l'etichetta nuova (es. 3.14-alpine3.22)
+#   2. risolverla in impronta:
+#      docker buildx imagetools inspect ghcr.io/home-assistant/<arch>-base-python:<etichetta>
+#   3. cambiare impronta E commento qui sotto -- l'etichetta resta scritta
+#      accanto perche' un'impronta da sola non dice quale Python ci sia dentro
 build_from:
-  aarch64: "ghcr.io/home-assistant/aarch64-base-python:3.13-alpine3.21"
-  amd64: "ghcr.io/home-assistant/amd64-base-python:3.13-alpine3.21"
+  # 3.13-alpine3.21
+  aarch64: "ghcr.io/home-assistant/aarch64-base-python@sha256:de1321d958f9f2ab1ea15c478285a602c0750111a8e4ee11dcb7f250ccf6c590"
+  # 3.13-alpine3.21
+  amd64: "ghcr.io/home-assistant/amd64-base-python@sha256:35d1dcdc69a44fdaaea2f3e14cf762176f03d4cadd6a8c77e8cafa8d2644848b"
 squash: false
 labels:
   org.opencontainers.image.title: "HIRIS"

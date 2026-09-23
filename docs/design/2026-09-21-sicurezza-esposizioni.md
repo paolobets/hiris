@@ -412,6 +412,12 @@ mano, e i nomi delle due porte-modulo.
 
 ### C-1 · Un segreto numerico dichiarato in `secrets.yaml` non viene oscurato
 
+> **CHIUSO il 23/09/2026** (fetta 7). `SecretSeal.redact` oscura adesso anche gli `int` e i `float`, e `"1234"` e `1234` si riconoscono tutti e due — Home Assistant restituisce l'uno o l'altro a seconda dell'entità, e sigillarne uno solo sarebbe stato un sigillo che dipende dal tipo.
+>
+> **Il `bool` si esclude PRIMA dell'`int`**, perché in Python un booleano *è* un intero: senza quella riga un `True` verrebbe confrontato come `"True"`.
+>
+> **Il prezzo è dichiarato accanto al codice**: un `1234` innocente — una temperatura, una soglia, un numero di stanza — verrà oscurato se qualcuno ha dichiarato `1234` fra i segreti. È il prezzo giusto: la dichiarazione è del proprietario, e un sigillo che indovina quando vale sarebbe un sigillo che si può aggirare.
+
 `redaction.py:88-90` contro `:99-106` — **riprodotto eseguendo**, il 21/09:
 
 ```
@@ -431,6 +437,12 @@ risolto, e il **codice di disarmo dell'allarme** arriva al fornitore.
 correzione. **Serve?** — **Sì, subito.**
 
 ### C-2 · Con il registro in modalità `debug` il prompt intero finisce nel registro
+
+> **CHIUSO il 23/09/2026** (fetta 7). `main.prepara_registri` mette un **pavimento a `INFO` alle librerie di terze parti** — `httpx`, `httpcore`, `anthropic`, `openai`, `aiohttp`, `urllib3` — e **solo** quando il livello richiesto sta sotto `INFO`: sopra non c'è niente da limitare, e limitare comunque zittirebbe avvisi utili. Verificato: chi chiede `warning` ottiene silenzio anche dalle librerie.
+>
+> **Il `debug` di HIRIS resta `debug`**: si mette un pavimento alle librerie, non al prodotto. Chi accende il debug lo accende per vedere cosa fa HIRIS, non per leggere come `httpx` serializza un corpo — un pavimento che spegnesse anche il nostro renderebbe l'opzione inutile, e la si toglierebbe.
+>
+> `LOG_LEVEL` viene da un'opzione dell'add-on: un valore che non è un livello non fa più cadere l'avvio.
 
 `main.py:10` imposta il livello sul logger **radice** senza pavimento per le terze parti; gli SDK
 installati stampano le opzioni della richiesta in `debug`, e quelle opzioni contengono il corpo
@@ -461,6 +473,14 @@ non si rattoppa.
 
 ### C-4 · Tutto `/data` entra nei backup di Home Assistant
 
+> **CHIUSO il 23/09/2026** (fetta 7), e con **una** esclusione invece delle tre che questa scheda prevedeva — misurato, non ridotto: `internal_token` era già uscito con A-5, e gli archivi della casa **non si escludono**.
+>
+> `backup_exclude: ["claude"]` toglie dall'archivio la cartella di configurazione della CLI, dove vive la **sessione del Piano Max**: non una traccia, una credenziale che ripristinata altrove funziona. Le trascrizioni delle sessioni stanno nella stessa cartella e escono con lei. Il nome della cartella basta: il Supervisor prova le esclusioni con `PurePath.match` sul percorso intero e **non scende** in una cartella esclusa — verificato sul sorgente (`supervisor/apps/app.py::_is_excluded_by_filter` e `securetar._atomic_contents_add`), non supposto, e la chiave `backup_exclude` è quella che lo schema vero legge (`vol.Optional(ATTR_BACKUP_EXCLUDE): [str]`). Una chiave sbagliata lì non fallisce: **viene ignorata**.
+>
+> **Gli archivi della casa restano nel backup, ed è deliberato**: conversazioni, ricordi, promesse, osservazioni devono tornare dopo un ripristino. Un backup che non li riporta non è più sicuro, è rotto. Per quelli la difesa è la password dell'archivio, che è una scelta di Home Assistant — detta nel README.
+>
+> **Il prezzo, scritto nel README**: dopo un ripristino il Piano Max va ricollegato.
+
 Nessuna esclusione dichiarata in `config.yaml`. L'archivio — non cifrato se l'utente non gli mette
 una password — contiene il token interno, le **credenziali di sessione della CLI** in `/data/claude`
 (una sessione ripristinata altrove funziona) e **quindici archivi** con conversazioni e ricordi.
@@ -471,6 +491,14 @@ consiglio della doc di HA). **Intervento** — tre righe di esclusione e una rig
 costo è onesto.
 
 ### C-5 · Il proprietario non sa cosa esce, né verso chi
+
+> **CHIUSO il 23/09/2026** (fetta 7), tre fatti e tre risposte diverse.
+>
+> **La riga di privacy sul Piano Max** era già entrata il 21/09 con la fetta 1 — questa scheda è stata scritta prima e non l'ha vista. Ma la pagina del Supervisor è dove si **incolla una chiave**, non dove si **decide chi risponde**: quella decisione si prende nella pagina Modelli di HIRIS, e lì non c'era scritto niente. Adesso ogni riga della catena porta la sua frase (`model_resolution.PRIVACY`), **dal payload**: la pagina non compone frasi, e un `if (id === 'subscription')` in JavaScript sarebbe la regola del prodotto scritta una seconda volta in un'altra lingua.
+>
+> **«Rifalla» chiede `who_answers`** come le altre sei porte. Non devia sul ponte — risponde nello stesso istante in cui la si preme, e il piano risponde in differita — quindi **dichiara**: se il piano è acceso, la risposta porta la riga che dice che quel giro è passato a consumo. Con parole **sue** e non quelle del ripiego: dire «il Piano Max non ha risposto» sarebbe falso, il piano sta benissimo. Mandare «Rifalla» sul ponte è in `docs/BACKLOG.md` con la sua ragione — il bottone smetterebbe di rispondere e la pagina dovrebbe interrogare, cioè una fetta sua.
+>
+> **Il ripiego dei giri automatici si vede in pagina.** Tutte le sei porte passano adesso da un imbuto solo, `steering.declare_downgrade`, che scrive nel registro **e** nell'archivio dei consumi (tabella `fallback`, una riga per giorno/agente/motivo). La pagina Consumi li mostra in fondo: è un fatto sui soldi, e quella è la pagina dei soldi. Finché la dichiarazione è stata una riga di `logger` copiata a mano in sei posti, **tre copie su sei sono rimaste indietro** — ed è precisamente il difetto che questa scheda descriveva.
 
 Tre fatti distinti che sono lo stesso problema:
 
@@ -492,6 +520,16 @@ dirlo nell'interfaccia è un problema che non si chiude con una correzione.
 **Costa** — nulla. **Serve?** — **Sì**, e per distribuire viene prima dei reperti tecnici.
 
 ### C-6 · Cancellare non cancella, e conservare non è dichiarato
+
+> **CHIUSO il 23/09/2026** (fetta 7), quattro fatti.
+>
+> **La risposta del modello si dimentica dopo la consegna.** La domanda si azzerava già a `submit`; la risposta restava in `reasoning.db` fino alla potatura a sette giorni, anche dopo che il proprietario aveva cancellato la conversazione. Adesso la consegna si **segna** (`delivered_ts`, colonna nuova quindi in inglese) e la spazzata svuota la decisione un quarto d'ora dopo. **Non subito, e la ragione è un caso reale**: un ricaricamento della pagina rifà il poll sullo stesso lavoro, e una risposta azzerata all'istante gli tornerebbe come «non è arrivata in tempo» — si chiuderebbe il reperto rompendo una cosa che funziona. Il momento si segna **una volta sola**: riscriverlo a ogni sguardo allungherebbe la finestra per sempre. **Sparisce il contenuto, non la riga**: il tetto giornaliero del ponte conta le righe.
+>
+> **La conservazione è per archivio, e ogni tabella ha una decisione scritta accanto** (`mind.store.CONSERVAZIONE`). Detto senza gonfiarlo: dei sette archivi che non avevano un cancellatore, **sei devono restare per sempre** e adesso lo dichiarano — un'analisi al giorno, un resoconto al giorno, le proposte con la decisione che il proprietario ci ha messo sopra, l'obiettivo e il perimetro che sono parole sue. Il settimo, `scope_attempt`, è diagnostica pura e scade a trenta giorni. Il valore non è aver aggiunto sette cancellatori: è che **nessuna tabella resta senza una decisione**, e una tabella nuova non può entrare senza prenderne una — lo impedisce una prova che confronta l'elenco con le tabelle vere.
+>
+> **Cancellare dice anche cosa resta.** La conferma della chat diceva bene cosa si perde e taceva sul resto: adesso dice che i ricordi non si toccano e **dove** si tolgono, e la pagina Memoria conferma la stessa cosa. Una frase che dichiara e non indirizza lascia il proprietario con un problema.
+>
+> **`vault.db` si cancella.** Prima lo si annunciava: una riga informativa fra centinaia di righe di avvio diceva che conteneva «DATI PERSONALI IN CHIARO» e che cancellarlo era «una decisione tua» — ma per decidere il proprietario avrebbe dovuto aprire un file SQLite dentro il contenitore. Decide HIRIS, ed è la decisione facile: un file che nessuno legge, che nessuna interfaccia svuota e che contiene dati personali in chiaro è solo un rischio. **Si dice cosa è stato cancellato** — il nome, quante righe, perché non serviva più — perché cancellare dati di un utente in silenzio è proibito dalle fondamenta di questo progetto. Un file vuoto se ne va senza avvisi.
 
 La cancellazione della conversazione svuota `chat.db`, ma la **risposta del modello** resta in
 `reasoning.db` per sette giorni (solo la domanda viene azzerata alla consegna) e i **ricordi**
@@ -522,6 +560,7 @@ Questa classe è la più pulita e la più economica da chiudere. **Nessun repert
 | D-4 | `claude` installato senza disattivare gli script di post-installazione né verificare la provenienza, e risolto dal **percorso di ricerca** | Ci si fida del registro npm al momento della costruzione | Disattivare gli script, verificare le firme facendo fallire la costruzione, percorso assoluto nell'eseguibile | Nulla | **Sì** |
 | D-5 | CI: **nessun blocco di permessi**, sei azioni a etichetta mobile | Il token del CI eredita il default del repository | Permessi di sola lettura, azioni fissate per impronta | Nulla | **Sì**, una riga |
 | D-6 | **CVE mai scansionate**: l'audit non aveva rete e non ha inventato numeri | Sconosciuto — che è diverso da «nessuno» | Scansione delle dipendenze Python e JS in un ambiente con rete, **transitive comprese** (`yarl`, `anyio`, `httpcore`, e l'albero di `model2vec`) | Nulla | **Sì, ed è la prima cosa misurabile** |
+| D-7 | I caratteri tipografici arrivano da un **fornitore di terze parti** a ogni apertura | Rivela indirizzo e programma del proprietario a un terzo; l'add-on non è autosufficiente senza rete; la politica dei contenuti resta aperta verso l'esterno | Portare i tre caratteri dentro l'add-on e stringere la politica | Qualche centinaio di KB nell'immagine | **Sì per distribuire** — in casa è una scelta |
 
 > **D-1 · CHIUSO il 21/09/2026.** Due file di requisiti; il `Dockerfile` installa solo la produzione.
 >
@@ -546,10 +585,11 @@ Questa classe è la più pulita e la più economica da chiudere. **Nessun repert
 > senza che noi tocchiamo una riga, e un avviso nuovo su una dipendenza ferma deve trovare qualcuno
 > che glielo chieda.
 >
-> **Restano aperti in classe D**: D-3 (immagine di base per etichetta) e D-7 (i caratteri
-> tipografici da un fornitore terzo) — tutti e due «sì per distribuire», nessuno dei due urgente in
-> casa.
-| D-7 | I caratteri tipografici arrivano da un **fornitore di terze parti** a ogni apertura | Rivela indirizzo e programma del proprietario a un terzo; l'add-on non è autosufficiente senza rete; la politica dei contenuti resta aperta verso l'esterno | Portare i tre caratteri dentro l'add-on e stringere la politica | Qualche centinaio di KB nell'immagine | **Sì per distribuire** — in casa è una scelta |
+> **D-3 · CHIUSO il 23/09/2026.** L'immagine di base è fissata per **impronta** in `build.yaml`, con l'etichetta scritta nel commento accanto — un'impronta da sola non dice quale Python ci sia dentro. Prima era per etichetta, che è un nome mobile: due costruzioni della stessa versione di HIRIS potevano contenere due CPython diversi. Il prezzo è che le patch della base non arrivano più da sole, comprese quelle di sicurezza, e per questo `scripts/verifica_componenti.py` guarda adesso anche quelle due righe: interroga ghcr.io e dice se l'etichetta ha smesso di puntare lì. «Fissato per impronta» non deve diventare «fermo da un anno».
+>
+> **D-7 · CHIUSO il 23/09/2026.** I tre caratteri stanno dentro l'add-on: **138 KB**, otto file woff2, solo latino e latino esteso — cirillico, greco e vietnamita erano il grosso del peso e questo prodotto parla italiano e inglese. Si scaricano **a mano** con `scripts/vendora_caratteri.py` e vivono nel repository: scaricarli al build sarebbe lo stesso difetto che il pin della CLI esiste per chiudere. Le licenze OFL viaggiano con loro. E la politica dei contenuti si è chiusa: `style-src` e `font-src` non ammettono più i due domini di Google — un permesso che non serve più è debito.
+>
+> **La classe D è chiusa per intero.**
 
 ---
 

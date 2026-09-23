@@ -153,7 +153,7 @@ async def interpreta_promise(app, promise: dict) -> dict:
     """
     from ..api.handlers_chat import create_tool_dispatcher
     from ..api.handlers_home_space import compose_briefing
-    from ..steering import who_answers
+    from ..steering import declare_downgrade, who_answers
 
     # La STESSA domanda che si fa la chat, dalla STESSA funzione. Fino al
     # 22/08/2026 questo turno non se la faceva affatto e andava dritto al
@@ -163,6 +163,10 @@ async def interpreta_promise(app, promise: dict) -> dict:
     # chiavi API esaurite mentre la chat funzionava, e nessuna pagina lo
     # diceva.
     route, downgrade_reason = who_answers(app)
+    # Lo stesso imbuto delle altre porte (reperto C-5, 23/09/2026): la nota
+    # che la pagina della promessa mostra resta dov'era, e in piu' il ripiego
+    # si conta nell'archivio dei consumi.
+    declare_downgrade(app, agent="promessa", reason=downgrade_reason)
     if route == "ponte":
         return _enqueue_to_bridge(app, promise)
 

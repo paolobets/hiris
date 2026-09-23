@@ -391,6 +391,24 @@ the turn is subject to `bridge_deadline_min` and to a separate daily cap.
 2. URL: `https://github.com/paolobets/hiris` — Category: **Add-ons**
 3. Install from the Add-ons section
 
+### Backups — what is in them, and what is not
+
+A Home Assistant backup takes the whole of the add-on's `/data` directory, and
+**it is not encrypted unless you give it a password**. Since HA's own
+documentation suggests copying backups to a remote disk, treat the archive as
+something that can leave your house.
+
+- **Excluded** (`backup_exclude` in [`hiris/config.yaml`](hiris/config.yaml)):
+  `/data/claude`, the CLI configuration directory. It holds the **Max Plan
+  session** — a credential, not a trace: restored on another machine it works.
+  The session transcripts live in the same directory and go with it.
+  **The price, stated up front: after a restore you have to sign in again to
+  the Max Plan.** Nothing else is lost by this.
+- **Included, deliberately**: every store of the house — conversations,
+  memories, promises, observations, the knowledge base. A backup that does not
+  bring those back is not a safer backup, it is a broken one. Those are what
+  the archive password protects, so **set one**.
+
 ---
 
 ## Configuration

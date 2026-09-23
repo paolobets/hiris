@@ -40,6 +40,7 @@ la chat).
 from __future__ import annotations
 
 import logging
+import time as _time
 
 from .api.handlers_models import _STORE_DEFAULTS
 from .model_resolution import subscription_has_token
@@ -83,6 +84,70 @@ def _subscription_can_answer(app) -> tuple[bool, str]:
             "alla catena.", ceiling)
         return False, "tetto giornaliero"
     return True, ""
+
+
+def declare_downgrade(app, *, agent: str, reason: str,
+                      now: float | None = None) -> None:
+    """Un giro e' passato dal forfait al consumo: lo si dichiara.
+
+    **Un imbuto solo, e non e' pedanteria.** La regola del proprietario (13
+    agosto) e' che il ripiego si annuncia ogni volta. Finche' la dichiarazione
+    e' stata una riga di `logger` copiata a mano in sei posti, tre copie su sei
+    sono rimaste indietro: analista, attuatore e ricette scrivevano nel
+    registro e basta -- e quei tre girano di notte, senza nessuno davanti allo
+    schermo. E' il difetto che questo modulo dichiara chiuso per la DOMANDA
+    («chi risponde?») e che era ancora aperto per la RISPOSTA («e allora
+    dillo»).
+
+    **Il motivo vuoto non e' un ripiego** e non si scrive: il ponte spento e'
+    la configurazione che il proprietario ha scelto, e contarlo riempirebbe la
+    pagina di righe che dicono «sto usando quello che hai scelto».
+
+    Non solleva mai: sta sul percorso dei giri automatici, e una dichiarazione
+    che facesse cadere il giro dell'analista sarebbe peggio del difetto che
+    chiude.
+    """
+    if not reason:
+        return
+    logger.warning(
+        "%s: il piano non puo' servire questo giro (%s): si scende alla "
+        "catena. Il costo cambia -- dal forfait al consumo.", agent, reason)
+    store = app.get("usage")
+    if store is None:
+        return
+    try:
+        store.log_fallback(agent, reason,
+                           now=_time.time() if now is None else now)
+    except Exception as error:  # pragma: no cover - guasto dell'archivio
+        logger.warning("il ripiego di «%s» non si e' potuto scrivere (%s: %s)",
+                       agent, type(error).__name__, error)
+
+
+def who_answered(app) -> str:
+    """Il backend che ha risposto DAVVERO, misurato. `""` se non si sa.
+
+    **Si misura, non si deduce.** La tentazione e' leggere `model_chain[0]`,
+    cioe' «ha risposto il primo della catena»: sarebbe falso proprio nel caso
+    che conta, perche' il router RIPIEGA -- il primo puo' aver fallito e aver
+    risposto il secondo. Si legge quindi il registro degli esiti, che il ciclo
+    di ripiego aggiorna per nome di backend dopo ogni chiamata, e si prende il
+    primo della catena il cui ultimo esito e' un successo.
+
+    **Va chiamata DOPO la chiamata al modello**, mai prima: prima misurerebbe
+    l'esito del turno precedente.
+
+    Vive qui e non piu' in `handlers_chat` perche' e' una meta' della stessa
+    decisione di `who_answers`, e perche' adesso la chiedono due porte: una
+    regola che vale solo se il chiamante se la ricorda non e' una regola.
+    """
+    registry = app.get("occurrence_registry")
+    if registry is None:
+        return ""
+    for name in (app.get("model_chain") or []):
+        occurrence = registry.occurrence(name)
+        if occurrence and occurrence["tipo"] == "risposto":
+            return name
+    return ""
 
 
 def who_answers(app) -> tuple[str, str]:

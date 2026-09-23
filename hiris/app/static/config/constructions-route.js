@@ -535,7 +535,21 @@ window.HirisConstructions = (function () {
         manda.disabled = true;
         api('api/proposals/' + encodeURIComponent(c.id) + '/redo',
             { method: 'POST', body: JSON.stringify({ richiesta: richiesta }) })
-          .then(function () { reload(); }, function () {
+          .then(function (r) { return r.json().then(function (b) { return b; },
+                                                    function () { return {}; }); })
+          .then(function (corpo) {
+            /* Da quale porta è passato questo giro (reperto C-5, 23/09/2026).
+               «Rifalla» risponde subito e il piano risponde in differita:
+               quando il piano è acceso, il giro si paga a consumo. La frase
+               arriva dal backend — è un'affermazione sul prodotto, e sui soldi
+               — e questa pagina la mostra e basta.
+
+               Va in `#constructions-status`, che il ridisegno NON ricrea:
+               scritta dentro la riga sparirebbe nell'istante stesso in cui
+               `reload()` la ridisegna, cioè non si leggerebbe mai. */
+            reload();
+            if (statusEl) statusEl.textContent = corpo && corpo.nota ? corpo.nota : '';
+          }, function () {
             manda.disabled = false;
             if (statusEl) statusEl.textContent = 'Non è stato possibile rifarla: riprova.';
           });

@@ -286,8 +286,10 @@ def _check_documentale(path_literal, next_marker):
 _MARK_LEGACY = '_legacy_memory_db_path = os.path.join(data_dir, "hiris_memory.db")'
 _MARK_HISTORY = '_history_db_path = os.path.join(data_dir, "history.db")'
 _MARK_POLICY = '_history_policy_path = os.path.join(data_dir, "history_policy.json")'
-_MARK_VAULT = '_vault_db_path = os.path.join(data_dir, "vault.db")'
-_MARK_DOPO_VAULT = "# Ricarica dell'inventario entita' dopo un avvio senza Home Assistant."
+# Dal 23/09/2026 (reperto C-6) `vault.db` non ha piu' un silenzio
+# dichiarato: viene CANCELLATO. `decidi_vault` chiude quindi il blocco
+# precedente, e il suo comportamento si prova in `test_vault_deciso.py`.
+_MARK_VAULT = "    decidi_vault(data_dir)"
 
 
 def test_knowledge_db_presence_logged_when_file_exists(tmp_path, caplog):
@@ -359,17 +361,10 @@ def test_history_policy_json_silent_when_file_absent(tmp_path, caplog):
     assert not caplog.records, "nessun history_policy.json sul disco -- nessun log deve uscire"
 
 
-def test_vault_db_presence_logged_when_file_exists(tmp_path, caplog):
-    check = _check_documentale("vault_db_path", _MARK_DOPO_VAULT)
-    (tmp_path / "vault.db").write_text("x")
-    with caplog.at_level("INFO"):
-        check(str(tmp_path), __import__("os"), logging.getLogger("test_vault_silence"))
-    assert any("vault.db" in rec.message and "installazione precedente" in rec.message
-               for rec in caplog.records)
-
-
-def test_vault_db_silent_when_file_absent(tmp_path, caplog):
-    check = _check_documentale("vault_db_path", _MARK_DOPO_VAULT)
-    with caplog.at_level("INFO"):
-        check(str(tmp_path), __import__("os"), logging.getLogger("test_vault_silence"))
-    assert not caplog.records, "nessun vault.db sul disco -- nessun log deve uscire"
+# **Le due prove di `vault.db` sono uscite di qui il 23/09/2026** (reperto
+# C-6). Quel file non ha piu' un silenzio dichiarato da difendere: viene
+# cancellato, e si dice cosa conteneva. Il comportamento nuovo -- si
+# cancella, si dice quante righe, un file vuoto se ne va in silenzio, un
+# file illeggibile non fa cadere l'avvio -- sta in `test_vault_deciso.py`.
+# Lasciarle qui a provare un blocco che non esiste piu' sarebbe stata una
+# prova che non puo' fallire.

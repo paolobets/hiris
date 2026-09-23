@@ -1,5 +1,5 @@
 name: "HIRIS"
-version: "3.63.0"
+version: "3.64.0"
 slug: "hiris"
 description: >-
   Home Intelligent Reasoning & Integration System.
@@ -50,6 +50,32 @@ map:
     read_only: true
 hassio_api: true
 homeassistant_api: true
+# **Cosa NON entra nei backup di Home Assistant** (reperto C-4, 23/09/2026).
+# Senza questa riga `/data` entrava intero nell'archivio -- che non e' cifrato
+# se il proprietario non gli mette una password, e che la doc di HA consiglia
+# di copiare su un disco remoto.
+#
+# `/data/claude` e' la cartella di configurazione della CLI
+# (`CLAUDE_CONFIG_DIR` in `run.sh`): dentro c'e' la **sessione del Piano Max**,
+# che non e' una traccia ma una credenziale -- ripristinata altrove, funziona.
+# Insieme a lei escono le trascrizioni delle sessioni, che stanno nella stessa
+# cartella.
+#
+# Basta il nome della cartella: il Supervisor prova le esclusioni col
+# `PurePath.match` sul percorso intero e **non scende** in una cartella
+# esclusa, quindi `.credentials.json` esce senza essere nominato (verificato
+# sul sorgente: `supervisor/apps/app.py::_is_excluded_by_filter` e
+# `securetar/_atomic_contents_add`).
+#
+# **Gli archivi della casa NON sono qui, ed e' deliberato**: conversazioni,
+# ricordi, promesse e osservazioni devono tornare dopo un ripristino. Un backup
+# che non li riporta non e' piu' sicuro, e' rotto. Per quelli la difesa e' la
+# password dell'archivio, che e' una scelta di Home Assistant -- detta nel
+# README.
+#
+# **Il prezzo, dichiarato**: dopo un ripristino il Piano Max va ricollegato.
+backup_exclude:
+  - "claude"
 # v0.10.11: porta 8099 esponibile via HA UI per debug remoto (sviluppo,
 # diagnostica). Default `null` = NON esposta. L'utente imposta la host port
 # nella sezione Network di HA UI per attivare il binding host→container.

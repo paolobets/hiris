@@ -395,7 +395,7 @@ _NOTE_ITALIANE = frozenset({
     "_DOMINI_DI_RECAPITO", "_DOMINI_NON_PIATTAFORMA",
     "_FALSITA_IN_ENTRAMBE_LE_VOCI", "_FUNZIONI_CHE_LEGGONO_LA_CREDENZIALE",
     "_LETTURE_VIVE_DELLA_CREDENZIALE",
-    "_MARK_DOPO_VAULT", "_NOMI_DEL_CATALOGO", "_NON_SLUG", "_SENZA_RECAPITO",
+    "_NOMI_DEL_CATALOGO", "_NON_SLUG", "_SENZA_RECAPITO",
     "_accoda_e_prendi", "_annuncia_fra_poco",
     "_app_col_ponte", "_archivio_con_una_casa",
     "_avvia_la_semina_della_catena", "_blocco_catena_dallo_startup",

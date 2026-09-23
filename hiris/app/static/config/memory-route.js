@@ -472,7 +472,8 @@ window.HirisMemoryRoute = (function () {
     outlet.appendChild(el('h1', 'page-title', 'Memoria'));
     outlet.appendChild(el('p', 'page-subtitle',
       'Ciò che hai detto a HIRIS, e cosa ne ha capito. Puoi correggere l’interpretazione — mai il ' +
-      'testo — o cancellare un ricordo per sempre.'));
+      'testo — o cancellare un ricordo per sempre. I ricordi non scadono: restano '
+      + 'finché non li togli tu, e non se ne vanno cancellando la conversazione.'));
     var status = el('p', 'sc-desc', '');
     status.id = 'memory-status';
     outlet.appendChild(status);

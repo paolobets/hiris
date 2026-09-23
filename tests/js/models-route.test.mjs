@@ -1380,3 +1380,27 @@ test('un preset scrive solo dopo che la pagina ha letto la configurazione', asyn
     'il preset deve scrivere: se non scrive, state.caricato e rimasto falso '
     + 'e la pagina rifiuta ogni gesto in silenzio');
 });
+
+/* ── Dove va il dato (reperto C-5, 23/09/2026) ─────────────────────────────
+   La riga di privacy c'era già nelle traduzioni dell'add-on, ma quella è la
+   pagina dove si incolla una chiave: la catena e il ponte si accendono QUI, e
+   chi accende il piano da questa pagina non è mai passato di là. */
+
+test('la riga del provider dice dove va il dato, con le parole del backend', async () => {
+  const conPrivacy = [
+    Object.assign({}, CATENA[0], {
+      privacy: 'I tuoi messaggi passano da un posto preciso, e questo è il testo del backend.',
+    }),
+    Object.assign({}, CATENA[1], { privacy: '' }),
+  ];
+  const ctx = monta({ config: { catena: conPrivacy, fuori_catena: FUORI } });
+  ctx.window.HirisModelsRoute.mount();
+  await tick(20);
+  const righe = righeCatena(ctx.document);
+
+  assert.equal(righe[0].querySelector('.row-privacy').textContent,
+    'I tuoi messaggi passano da un posto preciso, e questo è il testo del backend.');
+  /* Vuoto = niente riga. Un riquadro vuoto sotto un provider si legge come
+     «di questo non si sa», che sulla privacy è la cosa peggiore da dire. */
+  assert.equal(righe[1].querySelector('.row-privacy'), null);
+});

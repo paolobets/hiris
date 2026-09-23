@@ -1,5 +1,99 @@
 # HIRIS — Changelog
 
+## [3.64.0] — I dati e la fornitura: lo sprint sicurezza è chiuso (2026-09-23)
+
+Settima e ultima fetta. Sette reperti, e la domanda che li tiene insieme non è «chi può entrare»
+ma **cosa esce, dove resta, e chi te lo dice**.
+
+### Dove va il tuo dato, detto dove decidi
+
+La riga di privacy c'era già nella pagina del Supervisor. Ma quella è la pagina dove si **incolla
+una chiave**: chi risponde lo decidi nella pagina Modelli di HIRIS, e lì non c'era scritto niente.
+Adesso ogni riga della catena porta la sua: dove passano i tuoi messaggi, sotto quali condizioni, e
+per Ollama che **non escono di casa**. Il Piano Max ha una frase sua, perché le sue condizioni di
+conservazione sono diverse da quelle dell'API a consumo, ed è esattamente la differenza che una
+frase buona per tutti e due nasconderebbe.
+
+### I giri che ti costano, contati
+
+Il passaggio dal forfait al consumo si annunciava in chat, sulle promesse e sull'osservatore.
+Analista, attuatore e ricette finivano **solo nel registro** — e quei tre girano di notte, senza
+nessuno davanti allo schermo: i ~35.000 token dell'analista potevano passare a consumo e te ne
+accorgevi dalla bolletta.
+
+Adesso tutte le porte passano da un imbuto solo, e i ripieghi si contano nella pagina **Consumi**,
+per giorno, per agente e per motivo: un giro e duecento giri sono due storie diverse. Finché la
+dichiarazione è stata una riga di log copiata a mano in sei posti, tre copie su sei sono rimaste
+indietro — è il difetto, non l'aneddoto.
+
+E **«Rifalla»** era la settima porta verso un modello, l'unica che non chiedeva chi risponde: su una
+casa che gira sul Piano Max ogni giro finiva a consumo in silenzio. Adesso lo dice, con parole sue
+— il piano non ha fallito, è la porta che risponde subito mentre il piano risponde in differita.
+
+### Cancellare cancella, e conservare si dichiara
+
+- La **risposta del modello** restava in coda fino a sette giorni, anche dopo che avevi cancellato
+  la conversazione. Adesso si dimentica un quarto d'ora dopo la consegna — non subito, perché un
+  ricaricamento della pagina rifà la stessa domanda e una risposta svuotata all'istante tornerebbe
+  come «non è arrivata in tempo».
+- **Ogni archivio dice per quanto tiene.** Sei su sette restano per sempre, e adesso lo
+  dichiarano con la loro ragione; i tentativi diagnostici scadono a trenta giorni. Il punto non è
+  aver aggiunto sette cancellatori: è che nessuna tabella resta senza una decisione scritta
+  accanto.
+- La conferma di «cancella la conversazione» dice anche **cosa resta**: i ricordi non si toccano,
+  e si tolgono dalla pagina Memoria.
+- **`vault.db` si cancella.** Prima lo si annunciava in una riga di log: conteneva dati personali
+  in chiaro di un'installazione vecchia, nessuno lo leggeva più, e decidere avrebbe richiesto di
+  aprire un file SQLite dentro il contenitore. Adesso HIRIS decide, e dice cosa ha cancellato.
+
+### Backup, registro, segreti
+
+- **I backup non portano più via la sessione del Piano Max.** Un backup di Home Assistant non è
+  cifrato se non gli metti una password, e la doc di HA consiglia di copiarlo su un disco remoto:
+  quella sessione, ripristinata altrove, funziona. Gli archivi della casa restano dentro — un
+  backup che non riporta i tuoi ricordi non è più sicuro, è rotto. Il prezzo è scritto: dopo un
+  ripristino il Piano Max va ricollegato.
+- **Il livello `debug` non porta più il prompt nel registro.** È a un clic, e il registro è il file
+  che si incolla in una segnalazione: gli SDK installati ci stampavano il corpo intero delle
+  richieste. Il debug di HIRIS resta debug; il pavimento è per le librerie.
+- **Un segreto numerico adesso viene oscurato.** `1234` e `"1234"` si riconoscono tutti e due,
+  perché Home Assistant restituisce l'uno o l'altro. Il prezzo è dichiarato: un `1234` innocente
+  sparisce se lo hai messo fra i segreti — la dichiarazione è tua.
+
+### L'immagine e i caratteri
+
+- **L'immagine di base è fissata per impronta**, con l'etichetta scritta accanto. Due costruzioni
+  della stessa versione di HIRIS contenevano potenzialmente due CPython diversi. Il cancello del
+  rilascio interroga adesso anche il registro delle immagini: «fissato per impronta» non deve
+  diventare «fermo da un anno».
+- **I caratteri stanno dentro l'add-on**: 138 KB, solo latino. Prima li chiedeva a Google a ogni
+  apertura — che raccontava a un terzo quando la tua casa è sveglia, e lasciava HIRIS senza i suoi
+  caratteri quando la rete è giù. La politica dei contenuti si è chiusa di conseguenza.
+
+### Le prove
+
+Quarantotto mutazioni eseguite, tutte rosse. **Sette prove sono nate verdi senza saper fallire**,
+e i modi in cui sbagliavano si ripetono:
+
+- **due difese che si coprivano a vicenda** — la guardia dell'imbuto e quella dell'archivio: togline
+  una e l'altra rifiuta lo stesso, quindi nessuna delle due era dimostrabile. Adesso ognuna si prova
+  dove vive;
+- **guardare il file invece del comportamento** — una prova cercava due parole nel sorgente della
+  pagina, e togliendo la *chiamata* alla sezione le parole restavano nella funzione che nessuno
+  chiamava più;
+- **guardare troppo largo** — il livello *efficace* di un logger invece di sapere se qualcuno
+  l'aveva inchiodato; i due riferimenti *interi* delle immagini invece delle impronte dentro di
+  loro, che differiscono sempre perché il nome contiene l'architettura;
+- **una proprietà scritta nel docstring e mai provata** — «il momento si segna una volta sola»
+  passava verde con la mutazione che la toglieva.
+
+E una prova si fingeva dove la funzione è **definita** invece che dove viene **usata**: passava da
+sola — il token vero era nell'ambiente — e cadeva dentro la suite, dove un'altra prova lo toglie.
+Cioè non provava niente, in nessuno dei due casi.
+
+**Lo sprint sicurezza è chiuso**: quattro classi, sette fette, tutti i reperti di classe C e D
+chiusi o ritirati con la misura accanto.
+
 ## [3.63.0] — Il modello (2026-09-23)
 
 Fetta 6 dello sprint sicurezza. Era l'unica che richiedeva una decisione di disegno, e la misura
