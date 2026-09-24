@@ -1,5 +1,65 @@
 # HIRIS — Changelog
 
+## [3.67.0] — Quattro difetti che le misure hanno trovato (2026-09-24)
+
+Trentadue domande vere alla casa, prima sulla catena e poi sul ponte, hanno trovato quattro cose
+rotte. Tre erano **dati che la casa aveva e che al modello non arrivavano**: è esattamente la
+domanda per cui le misure esistono.
+
+### Il ponte non finiva nel registro dei turni
+
+Trentadue domande all'abbonamento Max hanno prodotto **zero righe**. Il registro ne aveva 37,
+tutte della catena, e la colonna `canale` conteneva un valore solo. La chat sul ponte passa dalla
+coda del ragionamento, che non tocca `misura_turno`: metà del prodotto era invisibile, e sopra
+quel buco ci avevo già costruito un confronto che appaiava le domande del ponte ai turni della
+catena di un'ora prima.
+
+Adesso il ponte scrive la propria riga dall'imbuto di `_reply` — sei rami di ritorno, un punto
+solo. I **carichi per giro restano assenti**, e non a zero: la CLI fa il proprio ciclo di
+strumenti dentro di sé e quei pesi da questa parte non esistono. Un'assenza è una risposta, uno
+zero sarebbe una bugia.
+
+### «Ignoto» su ogni turno della catena
+
+`misura_turno` chiede al runner chi ha risposto; il runner è `LLMRouter`, un proxy, che non lo
+diceva. Lo sapeva benissimo — `backend_name`, nel ciclo di ripiego — e lo usava solo per il
+registro degli esiti. Ora lo dichiara, su una ContextVar per non mescolare turni paralleli, e nel
+ramo del modello chiesto per nome oltre che nel ciclo.
+
+*Nota:* i sette `canale="catena"` letterali **non erano bugie**. Stanno tutti sul ramo catena di
+un bivio il cui altro ramo è la coda. La colonna aveva un valore solo perché l'altro ramo non
+veniva misurato.
+
+### «Accendi la luce della taverna» → «non esiste nessuna taverna»
+
+Le due luci esistevano — «Taverna 1» e «Taverna 2», vive, nell'area Cantina. `Lookup.find()`
+cerca **i termini dell'indice dentro la frase**: «taverna 1» non è contenuto in «taverna», quindi
+zero candidati. Catena e ponte si arrendevano uguale: non era il modello.
+
+`search` ha ora un ripiego, `Lookup.names_containing()`, che cerca nel verso opposto. `find()`
+**non cambia**: ancora i nomi nella prosa, e allargarlo farebbe agganciare a «ho pulito la cucina»
+le 22 entità che portano quella parola.
+
+Il primo disegno aveva una soglia sul numero di candidati. Misurata sulla casa vera (869 nomi, 604
+parole) avrebbe buttato via le parole **più** utili — «cucina» 22, «giardino» 28, «luci» 21 —
+mentre il rumore vero («reolink», «trackmix», «poe» a 166) non si distingue contando. Il tetto sta
+in `search`, che dichiara sempre quando taglia.
+
+### Un'automazione disabilitata segnalata come guasta
+
+HIRIS diceva «Gestione antimosche ferma da undici giorni» di un'automazione che il proprietario
+aveva spento lui. Lo stato arrivava dentro `behavior_states` e veniva buttato via. Ora le voci di
+comportamento portano `attiva`, e la riga del nucleo dice «disabilitata».
+
+**Solo per le automazioni**: per uno script `off` vuol dire «non sta girando adesso», che è vero
+quasi sempre.
+
+### Il divieto al posto del consiglio
+
+Il testo di `search` a vuoto diceva già «non è detto che la cosa non esista», e il modello lo
+ripeteva fedelmente — finché non aveva un compito da portare a casa. Suggeriva poi «riprova col
+nome esatto», che si dice a chi il nome ce l'ha. Ora vieta la frase e indica cosa fare davvero.
+
 ## [3.66.3] — L'impronta che misurava se stessa (2026-09-24)
 
 **La prima lettura vera dei registri ha trovato un difetto nei registri**, ed è il modo giusto in
