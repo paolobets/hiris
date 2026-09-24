@@ -113,12 +113,33 @@ async def test_senza_officina_lo_strumento_dichiara_un_errore_e_non_solleva():
 
 
 @pytest.mark.asyncio
-async def test_conferma_senza_identificatore_non_indovina():
+async def test_conferma_senza_identificatore_NON_sceglie_QUI():
+    """**Chi sceglie quale proposta, sceglie in un posto solo.**
+
+    Questa prova garantiva che senza id lo strumento rifiutasse e l'officina
+    non venisse nemmeno chiamata (`chiamate == []`). Dal 23/09/2026 non e'
+    piu' vero, ed e' deliberato: senza id si conferma l'unica proposta in
+    sospeso nata in un turno precedente. Il `proposta_id` nasce in un
+    risultato di strumento e la cronologia della chat porta solo testo, quindi
+    al turno della conferma il modello non ce l'ha MAI -- misurato sulla casa
+    vera, e ogni costruzione costava tre turni invece di due.
+
+    Cio' che non e' cambiato, ed e' la ragione per cui questa prova resta: **il
+    dispatcher non sceglie**. Inoltra `None` e lascia decidere l'officina, che
+    e' l'unica a conoscere l'archivio e i turni. Se scegliesse anche lui, la
+    stessa regola vivrebbe in due posti liberi di divergere -- e quello dei
+    due che il modello attraversa non e' sempre lo stesso.
+
+    Mutazione ESEGUITA: far scegliere al dispatcher (passare la prima
+    pendente invece di `None`) -- rossa.
+    Mutazione ESEGUITA: tornare a rifiutare qui senza chiamare l'officina --
+    rossa."""
     workshop = FintaOfficina()
     d = _dispatcher(workshop=workshop, exchange="t7")
-    esito = await d.dispatch("confirm", {})
-    assert "errore" in esito
-    assert workshop.chiamate == []
+    await d.dispatch("confirm", {})
+    assert workshop.chiamate == [("apply", None, "chat", "t7")], (
+        "il dispatcher non deve ne' rifiutare da solo ne' scegliere: "
+        "inoltra None e lascia decidere l'officina")
 
 
 @pytest.mark.asyncio

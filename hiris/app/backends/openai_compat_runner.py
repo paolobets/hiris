@@ -19,7 +19,10 @@ from ..claude_runner import (
     RESTRICT_PROMPT,
     RunnerBackendError,
     _current_tool_calls,
+    _misura_corrente,
     _PerCallList,
+    pesa_in_caratteri,
+    testo_canonico,
 )
 from ..provider_occurrences import error_family
 from .pricing import get_price as _prezzo
@@ -258,6 +261,48 @@ def parse_upstream_rate_limit(exc: Any) -> str | None:
         "(o aggiungi una tua API key del provider su "
         "openrouter.ai/settings/integrations)."
     )
+
+
+import hashlib as _hashlib
+
+
+def _pesa_carico_catena(messages: list, tools, context_str: str) -> dict:
+    """Di cosa e' fatto il carico di UN giro sulla catena, in caratteri.
+
+    Le cinque voci sono le STESSE di `claude_runner._pesa_carico`, perche' la
+    domanda e' la stessa e due vocabolari renderebbero i due percorsi
+    inconfrontabili -- che e' l'unica cosa per cui questa misura esiste.
+
+    La forma pero' e' diversa, e non si finge che non lo sia: qui la casa
+    compone **un solo messaggio di sistema**, quindi guida e core si
+    separano sul `context_str` che il chiamante ha passato, non su blocchi.
+    """
+    core = len(context_str or "")
+    guide = 0
+    results = 0
+    history = 0
+    for msg in messages or []:
+        weight = pesa_in_caratteri(msg.get("content"))
+        ruolo = msg.get("role")
+        if ruolo == "system":
+            guide += weight
+        elif ruolo == "tool":
+            results += weight
+        else:
+            history += weight
+    # Il gemello dell'impronta di `claude_runner`: il prefisso e' il
+    # messaggio di sistema piu' le definizioni. Qui pesa di piu' che di la',
+    # perche' il caching di questi provider e' IMPLICITO e per prefisso -- e
+    # il 74% pagato pieno e' su questa strada.
+    stabile = "".join(testo_canonico(m.get("content")) for m in (messages or [])
+                      if m.get("role") == "system")
+    fingerprint = _hashlib.sha256(
+        (stabile + testo_canonico(tools)).encode("utf-8")).hexdigest()[:16]
+    return {"tools_chars": pesa_in_caratteri(tools), "guide_chars": max(guide - core, 0),
+            "core_chars": core, "history_chars": history,
+            "results_chars": results,
+            "tools_sent": len(tools or []), "prefix_hash": fingerprint}
+
 
 
 def _cache_counts(usage: Any) -> tuple[int, int]:
@@ -639,7 +684,7 @@ class OpenAICompatRunner:
 
         # Build system message (OpenAI uses a single system message)
         #
-        # Fix della review totale della fetta "il ponte riceve il nucleo"
+        # Fix della review totale della fetta "il ponte riceve il core"
         # (parita' A, m-4): qui i modificatori stavano DOPO `context_str`, e
         # in `claude_runner.py::ClaudeRunner.chat` stanno PRIMA, con un
         # commento che dichiara l'ordine obbligatorio ("must precede
@@ -648,7 +693,7 @@ class OpenAICompatRunner:
         # muovere: l'invariante e' VERA e ha una ragione meccanica, cioe' che
         # i blocchi STABILI (BASE, persona, modificatori -- fissi per
         # configurazione) devono stare prima del blocco VOLATILE
-        # (`context_str`, che cambia a ogni turno perche' e' il nucleo). Di
+        # (`context_str`, che cambia a ogni turno perche' e' il core). Di
         # la' quella ragione e' l'unico breakpoint di cache cumulativo, che
         # va posato sull'ultimo blocco stabile; qui non ci sono breakpoint
         # espliciti, ma il caching di prefisso di OpenAI/OpenRouter (e la
@@ -709,6 +754,20 @@ class OpenAICompatRunner:
 
         max_iter = _OLLAMA_MAX_TOOL_ITERATIONS if self._local else MAX_TOOL_ITERATIONS
         for iter_idx in range(max_iter):
+            # **Il giro si conta e si pesa PRIMA di partire** (misure,
+            # 23/09/2026), come nel gemello di `claude_runner`. Qui la casa
+            # compone UN SOLO messaggio di sistema (e' la forma di OpenAI),
+            # quindi la guida e il core si separano sul `context_str` che il
+            # chiamante ha passato -- non su blocchi distinti.
+            #
+            # E questo percorso conta piu' dell'altro, oggi: il ponte e'
+            # spento, e il 74% della materia in ingresso di questa catena si
+            # paga a prezzo pieno.
+            _raccoglitore = _misura_corrente()
+            if _raccoglitore is not None:
+                _raccoglitore(iter_idx + 1,
+                              _pesa_carico_catena(messages, oai_tools,
+                                                  context_str))
             try:
                 kwargs: dict = {
                     "model": effective_model,
@@ -939,14 +998,14 @@ class OpenAICompatRunner:
         al loop successivo; il testo finale è streamato token per token.
 
         `strumenti`/`dispatcher` (Task 3 della fetta "il contesto della chat
-        viene dal nucleo"): a differenza di `ClaudeRunner.chat_stream`, che e'
+        viene dal core"): a differenza di `ClaudeRunner.chat_stream`, che e'
         gia' un guscio sottile attorno a `chat()`, questo metodo costruisce il
         proprio loop agentico da zero -- quindi i due punti dove `chat()`
         applica la stessa regola (catalogo tool, dispatch) sono replicati qui
         sotto uno per uno, non ereditati per delega. Senza questo, il ramo SSE
         (la card Lovelace) sarebbe rimasto sul catalogo di trentaquattro
         strumenti mentre la pagina chat (che non streamma, vedi
-        static/chat/send.js) passava ai quattro del nucleo -- due strade
+        static/chat/send.js) passava ai quattro del core -- due strade
         divergenti per la stessa conversazione, esattamente il difetto che
         questa fetta esiste per chiudere.
         """

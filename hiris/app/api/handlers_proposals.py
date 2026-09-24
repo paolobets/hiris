@@ -153,8 +153,15 @@ async def handle_proposal_redo(request: web.Request) -> web.Response:
         lines.append(f"  perche' lui aveva chiesto: {giro.get('richiesta')}")
     lines += ["", "Cosa ti chiede di cambiare:", f"  {richiesta}"]
     try:
-        answer = await runner.chat(user_message="\n".join(lines),
-                                   system_prompt=_REDO_SYSTEM)
+        # «Rifalla» è un turno di chat a tutti gli effetti: parte da un gesto
+        # del proprietario nella pagina, e il suo costo va contato con gli
+        # altri suoi — non in una specie a parte che nessuno guarderebbe.
+        from ..steering import misura_turno
+        async with misura_turno(request.app.get("usage"), runner,
+                                specie="chat", canale="catena",
+                                soggetto=request.get("soggetto")):
+            answer = await runner.chat(user_message="\n".join(lines),
+                                       system_prompt=_REDO_SYSTEM)
     except Exception as error:
         logger.warning("proposta: il giro di «rifalla» non e' partito (%s: %s)",
                        type(error).__name__, error)

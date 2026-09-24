@@ -1,5 +1,195 @@
 # HIRIS — Changelog
 
+## [3.66.0] — Le misure: due registri, e tre cose che non avevano bisogno di aspettarli (2026-09-24)
+
+Questa fetta **non ottimizza niente**. Costruisce gli strumenti per decidere *cosa* ottimizzare, e
+sistema tre cose che non avevano bisogno di un numero per essere giuste.
+
+Parte da una domanda del proprietario — «passiamo tanto ai modelli, forse troppo» — e da una
+misura fatta sulla casa vera prima di scrivere una riga di disegno.
+
+### Cosa si è misurato, e perché serviva un registro
+
+Tre domande vere, cronometrate sulla casa:
+
+| domanda | tempo | risposta |
+|---|---:|---:|
+| «che temperatura c'è in camera da letto?» | 5,9 s | 9 token |
+| «quali luci sono accese in casa adesso?» | **69,1 s** | 35 token |
+| «riassumimi cosa non va in casa oggi» | **132,3 s** | 391 token |
+
+Non è la generazione. **Ogni chiamata a uno strumento è un giro completo al modello, e ogni giro
+rispedisce tutto da capo** — le sedici definizioni (~13.000 token), la mappa della casa (~2.000),
+la guida, la cronologia, e i risultati degli strumenti accumulati fino a lì. Il tetto è
+`MAX_TOOL_ITERATIONS = 50`.
+
+Quindi **ogni leva sui token è anche una leva sulla latenza**, moltiplicata per il numero di giri:
+tagliare 8.000 caratteri non fa risparmiare 8.000, ne fa risparmiare 8.000 × N.
+
+E non si poteva sapere quanti giri: il registro dell'add-on dice soltanto che la richiesta HTTP è
+durata 69 secondi.
+
+### I due registri
+
+**Il turno**: specie, provider, modello, **canale**, **chi ha chiesto**, durata, **giri**, quali
+strumenti e in che ordine, esito. Alimentato da `last_tool_calls`, che esisteva già in tutti e due
+i runner e veniva letto soltanto per una riga di avviso quando le cinquanta iterazioni si
+esaurivano. **Non si è costruito un registro: si è smesso di buttarlo.**
+
+**Il carico, per iterazione e non per turno**: strumenti, guida, nucleo, cronologia, e **risultati
+accumulati** — l'unico che cresce di giro in giro, e che nessuno aveva mai visto crescere. Una
+media per turno ne avrebbe nascosto la curva.
+
+Conservazione **30 giorni, dichiarata**: un registro di misura che cresce per sempre è il difetto
+che il reperto C-6 ha chiuso ieri.
+
+**Mai gli argomenti degli strumenti.** Un `view` porta il nome di una stanza, un `execute` un
+valore impostato: sono dati personali, e questo archivio entra nei backup di Home Assistant.
+
+### Le sei specie, che erano quattro e ne nascondevano due
+
+Al runner arriva `agent_type`, che ha quattro valori e serve a **scegliere il modello**. Ma
+`mind/observer.py` e `mind/recipe_turn.py` passano tutti e due `"observer"`: misurando su quello,
+l'osservatore e le ricette sarebbero stati indistinguibili — proprio la distinzione che la fetta
+esiste per vedere.
+
+Il vocabolario giusto c'era già, ed è quello che il registro dei ripieghi usa da ieri: sei nomi,
+adesso in un posto solo. E `recipe_turn.ask` ne serve **due** — le ricette e la riparazione
+dell'attuatore — quindi la specie la dichiara il chiamante.
+
+### I quattro controlli che dicono dove intervenire
+
+Le regole di decisione sono state scritte **prima** di guardare i numeri, apposta: decidere dopo
+averli visti vuol dire farsi convincere di ciò che si pensava già.
+
+- **`prefix_hash`** — l'impronta di ciò che dovrebbe restare uguale fra un turno e l'altro. Sulla
+  catena il 74% della materia in ingresso si paga a prezzo pieno, e quel caching è implicito e per
+  prefisso: se l'impronta cambia, la cache non può colpire e il colpevole è dentro. Se resta
+  uguale, non è roba nostra. Una domanda che oggi è un'ipotesi, e domani sarà una riga.
+- **`tools_sent`** — quante definizioni spedite, contro quante usate. La differenza × i giri **è**
+  lo spreco, calcolabile prima di toccare niente.
+- **`channel`** — quale dei **quattro** composer ha spedito. Sono già divergiti una volta
+  (`tests/test_composition_order.py`), e senza questa colonna «ponte e catena mandano la stessa
+  cosa?» resta una speranza.
+- **`subject_json`** — chi ha chiesto, con la stessa forma del soggetto della cronaca. Oggi la chat
+  è una sola; quando ne arriverà una seconda — Retro Panel accanto alla propria — `species="chat"`
+  le avrebbe schiacciate insieme.
+
+E **`scripts/misure.py`**, che stampa i verdetti invece dei numeri, con le soglie in chiaro: la
+domanda si calcola sempre allo stesso modo, e il giorno in cui dirà «non intervenire» non si potrà
+far finta di niente. Zero superficie di prodotto: nessuna rotta, nessuna pagina.
+
+### «Notevole adesso» non è più vuota per costruzione
+
+Il nucleo della casa vera chiudeva così:
+
+    Il nucleo superava il tetto di 6800 caratteri:
+    19 elementi notevoli non inclusi; 2 voci di comportamento non incluse.
+
+E la sezione che dovrebbe dire *cosa sta succedendo adesso* era **vuota**. Non un guasto: gli
+elementi notevoli sono i primi a essere tagliati, e su una casa di quella taglia il tetto morde
+sempre — quindi quell'intestazione prometteva una cosa che non arrivava mai.
+
+Adesso ha una **riserva minima** che il taglio non tocca, sul modello di quella che la mappa aveva
+già. **Il numero è dichiarato provvisorio e non è misurato**: quanto valga davvero lo diranno i
+registri che partono con questa stessa fetta, e una prova impedisce che «provvisorio» diventi
+«permanente per dimenticanza».
+
+**Il prezzo è scritto**: a tetti strettissimi quei tre posti battono i ricordi. Al tetto vero di
+6.800 non succede.
+
+### Gli archivi dismessi se ne vanno
+
+Undici file erano dichiarati morti nel codice, annunciati a ogni avvio e tenuti per sempre, per una
+regola scritta: «mai dati utente in `/data`».
+
+Ma quella regola era già stata contraddetta ieri, da noi: `vault.db` è stato cancellato con la
+fetta 7. Due politiche per la stessa situazione, e nessun criterio che le separasse.
+
+Eccolo, e adesso è scritto: **un archivio che nessun codice legge più non è un dato dell'utente, è
+un residuo** — e un residuo entra nei backup di Home Assistant, che non sono cifrati se non ci
+metti una password. Il reperto C-4 ne ha escluso il solo `claude`; il C-6 ha dichiarato la
+conservazione delle sette tabelle **vive**, e questi file non sono tabelle di nessun archivio vivo:
+non avevano né una dichiarazione né un cancellatore.
+
+Dieci su undici se ne vanno, dicendo quale file e quanto era grande. **`chatbots.json` resta**, per
+decisione del proprietario: contiene il prompt personalizzato salvato sul bot di default, e va
+guardato prima. Un residuo si cancella quando è morto **e** quando qualcuno ha deciso.
+
+### Confermare non costa più tre turni
+
+Ogni conferma di una costruzione costava **tre turni invece di due**, sistematicamente. La catena,
+tutta osservata:
+
+1. al turno N `propose` restituisce `proposta_id` **in un risultato di strumento**;
+2. la cronologia della chat salva solo testo, quindi al turno N+1 l'id **non c'è più**;
+3. nessuno strumento elencava le proposte in sospeso, quindi era irrecuperabile;
+4. il modello rigenerava la proposta, che nasceva **in quel turno**;
+5. il cancello del consenso la rifiutava — correttamente — perché era lo stesso turno.
+
+Il codice lo sapeva già, scritto per un'altra ragione: *«la cronologia porta solo messaggi
+utente/assistente, un `proposta_id` non ci arriva mai»*. Nessuno aveva tirato la conclusione.
+
+Il pattern che funziona era nello stesso catalogo: `cancel` dice «prendi l'id da `agenda`», e
+`agenda` esiste. Per le proposte non era mai stata costruita.
+
+**La via scelta è la più economica**: l'id diventa facoltativo. Senza, si conferma l'unica proposta
+in sospeso nata in un turno precedente; con più d'una, **il rifiuto le elenca** — l'elenco arriva
+quando serve e costa zero quando non serve. Nessun diciassettesimo strumento, che si sarebbe pagato
+a ogni turno per sempre.
+
+### La CLI del ponte, finalmente
+
+Da **2.1.276 a 2.1.281**. Era stata rimandata **undici volte**, e la condizione scritta nel backlog
+era «il prossimo rilascio che non porti una fetta di sicurezza»: lo sprint è chiuso, questa è la
+fetta delle misure, e la condizione è diventata esigibile.
+
+Quattro uscite saltate (277, 278, 279, 280) — è il prezzo del rimando ripetuto: più si aspetta, più
+grande è il salto che si prende in una volta. **Il cancello dei componenti tace per la prima volta
+da undici rilasci**: questo push non porta `HIRIS_COMPONENTI_OK=1`.
+
+### Le prove
+
+**Quarantasei mutazioni eseguite.** Undici sono sopravvissute al primo giro, e i modi in cui le
+prove sbagliavano si ripetono — sono gli stessi di ieri:
+
+- **guardare il file invece del comportamento**: una prova contava le occorrenze di `frase=` nel
+  sorgente, e togliendone una ne restavano comunque due. Adesso si guarda l'**albero sintattico**;
+- **provare i pezzi e non il filo**: l'archivio sapeva scrivere e i runner sapevano contare, ma
+  nessuna prova li attraversava — togliere l'inoltro non faceva cadere niente;
+- **una prova che si misura su sé stessa**: «la riserva è piccola» confrontava con la costante che
+  doveva controllare, quindi alzandola si alzava anche il limite;
+- **cercare una parola invece di un'affermazione**: la prova che difende «provvisorio» passava
+  anche cancellando la dichiarazione, perché la stessa parola compariva in una frase accanto;
+- **uno scenario che non distingue più**: la prova sul taglio raggruppato chiedeva che l'escluso
+  fosse un multiplo — vero solo finché la sezione veniva svuotata *per intero*. Adesso verifica
+  l'invariante: quello che resta più quello che manca fa il totale.
+
+E due cose che il codice ha insegnato a chi lo stava scrivendo:
+
+- il raccoglitore della misura era posato su un attributo del runner — che è **costruito una volta
+  e vive quanto l'add-on**: due turni in parallelo si sarebbero sovrascritti a vicenda. La cura era
+  già scritta in quel file per `last_tool_calls`, con una `ContextVar` di modulo, e il commento che
+  la spiega era lì da leggere. Adesso c'è una prova che fa girare due turni insieme;
+- il cancello dei doppioni ha preso **due funzioni identiche con due nomi diversi** al primo giro,
+  scritte a dieci minuti di distanza da chi credeva di stare attento.
+
+`4786 passed, 3 skipped` · `512 JS pass`. Il censimento sale da 38 a **39**, e il reperto è
+dichiarato: `payloads()` è un lettore il cui unico consumatore è uno script, e il perimetro del
+censimento è `hiris/app/` — resterà così finché nessuna pagina leggerà le misure.
+
+### Cosa NON c'è dentro, e perché
+
+Le tre leve vere restano fuori, e si decidono coi numeri: **il sottoinsieme degli strumenti per
+specie** (il più grosso su entrambi gli assi), **la potatura della mappa**, **il prefisso della
+catena al 74%**. Toglierle al buio significa spegnere un turno che serviva.
+
+E resta fuori la domanda grossa — *serve un'altra tecnologia per la base dati?* La risposta
+provvisoria è **no**: l'architettura mappa + strumenti è già quella che un «second brain» o un
+grafo servirebbero a ottenere, e i difetti misurati non sono difetti di tecnologia. Ma quella
+risposta dipende da un dato che non esiste ancora — **se `search` e `view` trovano la cosa giusta
+al primo colpo** — e adesso c'è il registro che lo produrrà.
+
 ## [3.65.1] — Il filo che si spezzava proprio dove toglie (2026-09-23)
 
 Trovato **verificando dal vivo la 3.65.0**, non da una prova.

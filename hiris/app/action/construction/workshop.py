@@ -53,6 +53,14 @@ LABEL_NAME = "HIRIS"
 # modello da trattenere.
 HUMAN_ACTORS = ("pagina",)
 
+#: Il rifiuto di una proposta nata nel turno che la vorrebbe confermare.
+#: Scritto una volta sola perche' lo danno DUE porte -- il cancello, e il
+#: lettore che sceglie la proposta quando l'utente non l'ha nominata -- e
+#: due frasi diverse per lo stesso rifiuto insegnerebbero al modello che
+#: sono due casi diversi.
+_BORN_THIS_TURN = ("questa proposta e' nata in questo stesso turno: te l’ho "
+             "mostrata, ora dimmi tu se procedere.")
+
 OPERATIONS = ("crea", "modifica", "cancella")
 
 # Le due forme dell'articolo -- indeterminativo per «crea», determinativo per
@@ -360,8 +368,9 @@ class Workshop:
 
     # ---- applicare ------------------------------------------------------
 
-    async def apply(self, proposal_id: str, *, actor: str, exchange: str | None,
-                      now: float, subject: dict | None = None,
+    async def apply(self, proposal_id: str | None, *, actor: str,
+                      exchange: str | None, now: float,
+                      subject: dict | None = None,
                       confirm_phrase: str | None = None) -> dict:
         """`confirm_phrase` e' **la frase su cui l'oggetto e' nato** (B-5).
 
@@ -376,6 +385,10 @@ class Workshop:
         la costruzione. Questa e' quella che l'ha CONFERMATA: due fatti
         diversi, due parole diverse.
         """
+        if not proposal_id:
+            proposal_id, reason = self._only_pending(exchange)
+            if proposal_id is None:
+                return {"errore": reason}
         proposal = self._store.read(proposal_id)
         if proposal is None:
             return {"errore": "non ho nessuna proposta con quell’identificatore."}
@@ -497,6 +510,49 @@ class Workshop:
         return {"applicata": True, "esecuzione_id": execution_id,
                 "entita": entity, "avviso": notice}
 
+    def _only_pending(self, exchange: str | None) -> tuple[str | None, str]:
+        """Quale proposta l'utente sta confermando, quando non l'ha nominata.
+
+        **Il difetto che chiude** (23/09/2026, misurato sulla casa vera): il
+        `proposta_id` nasce in un risultato di strumento, la cronologia della
+        chat porta solo testo, e nessuno strumento elenca le pendenti --
+        quindi al turno dopo l'id non esiste piu' da nessuna parte e il
+        modello riproponeva, bruciando un terzo turno a ogni costruzione.
+
+        **Solo `in_attesa`**, non `pending_only`: una proposta `in_corso` la
+        sta applicando qualcun altro adesso, e sceglierla vorrebbe dire due
+        `apply` in corsa sulla stessa riga.
+
+        **Solo gli altri turni.** La guardia del consenso non si aggira per la
+        porta di servizio: una proposta nata in QUESTO turno non deve
+        diventare confermabile solo perche' l'utente non l'ha nominata. E il
+        rifiuto dice la cosa vera -- «te l'ho appena mostrata» invece di «non
+        hai niente in sospeso», che sarebbe falso e rimanderebbe il modello a
+        riproporla ancora.
+
+        **Con piu' d'una, il rifiuto E' l'elenco.** Sceglierne una a caso
+        applicherebbe una cosa che nessuno ha chiesto; rifiutare senza
+        nominarle lascerebbe il modello nello stesso vicolo cieco di prima.
+        Cosi' invece l'elenco costa zero quando non serve e arriva esatto
+        quando serve -- e un elenco che vive in un rifiuto non e' una
+        diciassettesima definizione di strumento pagata a ogni turno.
+        """
+        pending = [r for r in self._store.list(pending_only=True)
+                  if r["stato"] == "in_attesa"]
+        confirmable = [r for r in pending if r["turno"] != exchange]
+        if len(confirmable) == 1:
+            return confirmable[0]["id"], ""
+        if not confirmable:
+            if pending:
+                return None, _BORN_THIS_TURN
+            return None, ("non hai nessuna proposta in sospeso da confermare: "
+                          "dimmi cosa vuoi e te la propongo.")
+        lines = "\n".join(
+            f"- {r['id']}: {r['gesto']} {r['dominio']} «{r['chiave']}»"
+            for r in confirmable)
+        return None, ("ci sono piu' proposte in sospeso e non so quale "
+                      f"intendi. Dimmi l'identificatore:\n{lines}")
+
     def _cancello(self, proposal: dict, actor: str, exchange: str | None) -> str | None:
         """Il sì dell'umano, reso una guardia deterministica (spec §7).
 
@@ -524,8 +580,7 @@ class Workshop:
             return ("non riesco a distinguere i turni, quindi non posso confermare da qui: "
                     "apri la pagina Costruzioni e conferma di la'.")
         if proposal["turno"] == exchange:
-            return ("questa proposta e' nata in questo stesso turno: te l’ho mostrata, "
-                    "ora dimmi tu se procedere.")
+            return _BORN_THIS_TURN
         return None
 
     async def _rete(self, call) -> dict:

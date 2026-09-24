@@ -1,5 +1,6 @@
 import asyncio
 import contextvars
+import hashlib
 import json
 import logging
 import time
@@ -324,7 +325,9 @@ BASE_TOOL_RULES = (
     "Per costruire qualcosa in Home Assistant — un'automazione, uno script, una"
     " scena — usa `propose`: compone e fa validare, ma NON scrive. Mostra"
     " all'utente l'anteprima che ricevi e fermati. Solo quando l'utente ti"
-    " risponde di procedere chiami `confirm` con il `proposta_id`. Non"
+    " risponde di procedere chiami `confirm`. **Puoi chiamarlo senza il"
+    " `proposta_id`**: applico l'unica proposta in sospeso nata in un turno"
+    " precedente, e se ce ne fosse piu' d'una te le elenco. Non"
     " chiamare `confirm` nello stesso turno di `propose`: viene rifiutato,"
     " e la ragione è che il sì deve essere suo. Se l'anteprima contiene una"
     " nota sul mestiere (per esempio: quella cosa è uno script, non"
@@ -376,6 +379,89 @@ CHAT_MAX_TOKENS = 16000
 # piu' raro restare senza margine, il messaggio di esaurimento resta
 # necessario (R4) ma non e' piu' la prima difesa.
 MAX_TOOL_ITERATIONS = 50
+
+
+def pesa_in_caratteri(x) -> int:
+    """Quanto pesa una cosa, in caratteri. **Una sola**, e la importano tutti
+    e due i pesatori.
+
+    Erano due funzioni identiche con due nomi diversi -- `_peso` qui e
+    `_weight` nella catena -- e il cancello dei doppioni le ha prese al primo
+    giro. Due copie della stessa regola divergono al primo cambiamento fatto
+    da una parte sola, ed e' gia' successo in questo prodotto (l'ordine di
+    composizione, `tests/test_composition_order.py`).
+    """
+    if x is None:
+        return 0
+    if isinstance(x, str):
+        return len(x)
+    return len(json.dumps(x, ensure_ascii=False, default=str))
+
+
+def _pesa_carico(system_blocks: list, tools, messages: list,
+                 context_str: str) -> dict:
+    """Di cosa e' fatto il carico di UN giro, in caratteri.
+
+    Le cinque voci sono quelle che il proprietario vuole distinguere, e ognuna
+    si prende DOVE STA, non da una copia: `system_blocks` e' gia' composto,
+    `tools` e' il catalogo deciso dal chiamante, `messages` porta la
+    conversazione con dentro i risultati degli strumenti accumulati.
+
+    **`guida` e `nucleo` si separano dentro `system_blocks`**: il nucleo e' il
+    `context_str`, che viaggia come ultimo blocco DOPO il punto di
+    interruzione della cache (per questo e' l'unico che si paga pieno a ogni
+    giro). Tutto cio' che lo precede e' la guida, ed e' stabile.
+
+    **`risultati` e' l'unico che cresce**: i blocchi `tool_result` dentro i
+    messaggi. Separarlo dalla cronologia e' l'intero punto della misura --
+    confonderli direbbe «la conversazione e' lunga» dove la verita' e' «gli
+    strumenti hanno risposto molto».
+    """
+
+    nucleo = len(context_str or "")
+    guida = sum(pesa_in_caratteri(b) for b in (system_blocks or [])) - nucleo
+    # **L'impronta di cio' che DOVREBBE restare uguale fra un turno e
+    # l'altro**: guida piu' definizioni degli strumenti, cioe' il prefisso su
+    # cui ogni forma di caching si appoggia. Non si conservano i contenuti --
+    # portano il nome della casa e i ricordi -- ma sedici caratteri di
+    # impronta bastano a dire «e' cambiato» o «non e' cambiato», che e'
+    # l'intera domanda.
+    stabile = [b for b in (system_blocks or []) if pesa_in_caratteri(b) and
+               (not isinstance(b, dict) or b.get("text") != context_str)]
+    impronta = hashlib.sha256(
+        (testo_canonico(stabile) + testo_canonico(tools)).encode("utf-8")
+    ).hexdigest()[:16]
+    risultati = 0
+    cronologia = 0
+    for msg in messages or []:
+        contenuto = msg.get("content")
+        if isinstance(contenuto, list):
+            for blocco in contenuto:
+                peso = pesa_in_caratteri(blocco)
+                if isinstance(blocco, dict) and blocco.get("type") == "tool_result":
+                    risultati += peso
+                else:
+                    cronologia += peso
+        else:
+            cronologia += pesa_in_caratteri(contenuto)
+    return {"tools_chars": pesa_in_caratteri(tools), "guide_chars": max(guida, 0),
+            "core_chars": nucleo, "history_chars": cronologia,
+            "results_chars": risultati,
+            "tools_sent": len(tools or []), "prefix_hash": impronta}
+
+
+def testo_canonico(x) -> str:
+    """Il testo su cui si calcola un'impronta. **Una sola**, e la importano
+    tutti e due i pesatori: due copie darebbero due impronte diverse per lo
+    stesso prefisso, e i due canali diventerebbero inconfrontabili -- che e'
+    l'unica cosa per cui questa misura esiste.
+
+    `sort_keys` non e' un dettaglio: senza, due dizionari uguali con le
+    chiavi in ordine diverso darebbero impronte diverse, e la misura direbbe
+    «prefisso instabile» su un prefisso che non e' cambiato.
+    """
+    return x if isinstance(x, str) else json.dumps(x, ensure_ascii=False,
+                                                   sort_keys=True, default=str)
 MAX_RETRIES = 3
 RETRY_DELAYS = [5, 15, 45]
 
@@ -591,6 +677,39 @@ _current_tool_calls: "contextvars.ContextVar[list | None]" = contextvars.Context
 _current_thinking_blocks: "contextvars.ContextVar[list | None]" = contextvars.ContextVar(
     "hiris_current_thinking_blocks", default=None
 )
+# **La misura del carico, per CHIAMATA e non per oggetto** (23/09/2026).
+#
+# La prima versione posava il raccoglitore su `self.misura_carico`. E'
+# sbagliato per la stessa ragione, esatta, che questo modulo aveva gia'
+# scoperto e scritto qui sopra: il runner e' costruito UNA volta nell'app e
+# vive quanto l'add-on, quindi due turni in parallelo -- la chat del
+# proprietario e il giro notturno dell'analista -- si sovrascriverebbero il
+# gancio a vicenda, e il carico di uno finirebbe nella misura dell'altro.
+#
+# Stessa cura: una ContextVar di modulo, condivisa con
+# `OpenAICompatRunner` che la importa. Cosi' `LLMRouter` non deve inoltrare
+# niente -- legge lo stesso stato per-chiamata, come fa gia' per
+# `last_tool_calls`.
+_current_measure: "contextvars.ContextVar" = contextvars.ContextVar(
+    "hiris_current_measure", default=None
+)
+
+
+def posa_misura(raccoglitore):
+    """Attacca il raccoglitore del carico a QUESTA chiamata. Torna il gettone
+    da ridare a `togli_misura`, come vuole `contextvars`."""
+    return _current_measure.set(raccoglitore)
+
+
+def togli_misura(gettone) -> None:
+    """Stacca il raccoglitore. Si chiama sempre, anche quando il turno cade:
+    un gancio lasciato attaccato misurerebbe il turno dopo dentro quello
+    prima."""
+    _current_measure.reset(gettone)
+
+
+def _misura_corrente():
+    return _current_measure.get()
 # Fetta "esce il documentale": qui viveva `_current_pseudonym_map`, la
 # ContextVar per-Task della mappa token->PII di ogni scambio. Esce con
 # brain/privacy.py (VaultStore/Pseudonymizer): il suo unico scrittore -- il
@@ -880,7 +999,7 @@ class ClaudeRunner:
         # surfacing in the execution log / chat debug panel.
         self.last_thinking_blocks = []
 
-        for _ in range(MAX_TOOL_ITERATIONS):
+        for _giro in range(1, MAX_TOOL_ITERATIONS + 1):
             try:
                 _api_kwargs: dict = {
                     "model": effective_model,
@@ -889,6 +1008,24 @@ class ClaudeRunner:
                     "tools": tools,
                     "messages": messages,
                 }
+                # **Il giro si conta e si pesa PRIMA di partire** (misure,
+                # 23/09/2026). Qui, e non alla fine del turno, perche' e' il
+                # giro il moltiplicatore: una domanda come «quali luci sono
+                # accese» ha impiegato 69 secondi per 35 token di risposta, e
+                # quel tempo e' N volte questo carico. Una media per turno
+                # nasconderebbe la curva -- e cio' che cresce di giro in giro
+                # sono i risultati degli strumenti, che nessuno ha mai visto
+                # crescere.
+                #
+                # Si misurano CARATTERI e non token: qui non c'e' un
+                # tokenizzatore, e un conteggio approssimato presentato come
+                # token sarebbe una misura che mente. I token veri li porta
+                # gia' `usage` dalla risposta dell'API.
+                _raccoglitore = _misura_corrente()
+                if _raccoglitore is not None:
+                    _raccoglitore(_giro,
+                                  _pesa_carico(system_blocks, tools,
+                                               messages, context_str))
                 if thinking_param is not None:
                     _api_kwargs["thinking"] = thinking_param
                 response = await self._call_api(**_api_kwargs)

@@ -240,6 +240,39 @@ _GAP_SECTION_RESERVE = 400
 # nucleo non saprebbe piu' quali stanze esistono (IMPORTANT ⑥).
 _MIN_HOME_SPACE_LINES_RESERVE = 3
 
+# **Quante righe di «Notevole adesso» il taglio non tocca** (23/09/2026).
+#
+# Misurato sulla casa vera: il nucleo chiudeva con «19 elementi notevoli non
+# inclusi», e quella sezione era **vuota**. Non un guasto -- gli elementi
+# notevoli sono i primi a essere tagliati, e su una casa di quella taglia il
+# tetto morde sempre -- ma il risultato e' un'intestazione che promette cosa
+# sta succedendo adesso e non lo dice mai.
+#
+# **IL NUMERO E' PROVVISORIO, e non e' misurato.** E' scelto piccolo apposta:
+# la mappa resta la sezione che costa meno per riga e serve di piu' per
+# orientarsi, e questa riserva non deve rubarle il posto. Quanto valga
+# davvero lo diranno i registri delle misure che partono con questa stessa
+# fetta -- quante volte «Notevole adesso» viene davvero letto, e quanto
+# pesa. Finche' quella lettura non c'e', questo numero e' un segnaposto con
+# una ragione, non una decisione.
+#
+# `tests/test_notevole_ha_una_riserva.py` impedisce che «provvisorio»
+# diventi «permanente per dimenticanza»: e' la stessa disciplina della soglia
+# del freno di ritmo (reperto B-3).
+#
+# La riserva tiene un POSTO, non inventa un contenuto: una casa in cui non
+# sta succedendo niente continua a dirlo con una sezione vuota.
+#
+# **Il prezzo, detto per intero.** A tetti strettissimi questi tre posti
+# battono i ricordi. I ricordi restano l'ULTIMA cosa che il taglio tocca --
+# l'ordine non e' cambiato -- ma una riserva piu' in alto puo' esaurire il
+# budget prima che tocchi a loro: misurato, a 1.100 caratteri non ne
+# sopravvive nessuno, dove prima ne restava uno
+# (`tests/test_briefing.py::test_i_ricordi_tagliati_sono_ordinati_...`).
+# Al tetto vero di 6.800 non succede; e' uno dei numeri che le misure devono
+# rivedere.
+_MIN_HIGHLIGHT_LINES_RESERVE = 3
+
 # L'intestazione della sezione dei guasti. E' una domanda a cui l'utente vuole
 # una risposta, non una categoria di archivio: «cosa non va» si legge e si
 # riferisce, «cio' che HIRIS ignora» si salta.
@@ -2104,7 +2137,8 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     # piu' sotto.
     cut_order: list[tuple[str, list[str], list[int], int]] = []
     if not unreliable:
-        cut_order.append(("notevole", highlight_lines, highlight_weights, 0))
+        cut_order.append(("notevole", highlight_lines, highlight_weights,
+                          _MIN_HIGHLIGHT_LINES_RESERVE))
     cut_order.append(("comportamento", behavior_lines, behavior_weights, 0))
     # DOPO il comportamento e PRIMA della casa, e i due confini sono decisi
     # dalla stessa misura -- quanto una riga spiega per carattere che costa.

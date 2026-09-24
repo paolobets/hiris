@@ -17,9 +17,12 @@ giorno** -- un giro del modello costa, e ripeterlo ogni notte per un
 dispositivo gia' capito e' la spesa che non si vede finche' non si guarda la
 bolletta.
 
-**Il meccanismo e' lo stesso dello scope**, non un secondo accanto: una specie
-di turno, una domanda montata da funzioni che il ponte e la catena
-condividono, una risposta letta con la stessa tolleranza (`mind/observer.py`).
+**Il meccanismo e' lo stesso dello scope**, non un secondo accanto: una
+`specie` di turno -- ed e' il termine esatto, non un modo di dire: dal
+23/09/2026 questa funzione ne serve DUE, le ricette e la riparazione
+dell'attuatore, e il chiamante la dichiara -- una domanda montata da funzioni
+che il ponte e la catena condividono, una risposta letta con la stessa
+tolleranza (`mind/observer.py`).
 La spec lo chiede per nome -- *«un meccanismo solo per due problemi»*.
 
 **Il soggetto e' il DISPOSITIVO**, ed e' il quarto genere del sapere. La spec
@@ -43,6 +46,7 @@ import json
 import logging
 import re
 
+from ..steering import misura_turno
 from .knowledge import Fact
 from .operations import REGISTRY_VERSION
 from .recipes import Recipe
@@ -342,8 +346,8 @@ def apply_recipe(store, home_space: dict, device_id: str, answer: str, *,
 
     **Ma «il modello non ha capito» e «nessuno ha chiesto al modello» sono due
     cose**, e questa funzione ha scritto la prima al posto della seconda per
-    un'ora intera, il 13/09/2026. Il ponte non sapeva ragionare la specie di
-    turno, restituiva una decisione VUOTA, e quella risposta inesistente
+    un'ora intera, il 13/09/2026. Il ponte non sapeva ragionare quella `specie`
+    di turno, restituiva una decisione VUOTA, e quella risposta inesistente
     veniva scritta come `non_capito` -- un'affermazione sulla comprensione di
     un modello che non era mai stato interpellato. E siccome un rifiuto vale
     come risposta data, quel dispositivo non sarebbe stato chiesto **mai
@@ -351,7 +355,7 @@ def apply_recipe(store, home_space: dict, device_id: str, answer: str, *,
 
     Quindi: una risposta **vuota** non si scrive affatto. Non consuma il
     colpo, e il giro successivo richiede. Non c'e' bisogno di un freno --
-    quando il ponte rifiuta una specie lo fa in millisecondi, senza chiamare
+    quando il ponte rifiuta una `specie` lo fa in millisecondi, senza chiamare
     nessun modello: il giro a vuoto costa zero.
     """
     if not str(answer or "").strip():
@@ -577,7 +581,8 @@ def bridge_turn(objective: str, home_space: dict, device_id: str,
 async def ask(runner, store, home_space: dict, device_id: str, *,
               objective: str, who: str, when_ts: float,
               model: str = "auto",
-              with_series: set[str] | None = None) -> dict:
+              with_series: set[str] | None = None,
+              measurements=None, species: str = "ricette") -> dict:
     """Un giro intero sulla catena: mostra il dispositivo, chiede, applica.
 
     **Questa e' la porta della catena, non l'unica porta**: quando
@@ -589,9 +594,19 @@ async def ask(runner, store, home_space: dict, device_id: str, *,
     if question is None:
         return {"scritta": False, "problemi": ["il dispositivo non ha entita'"]}
     try:
-        answer = await runner.chat(user_message=question, system_prompt=SYSTEM,
-                                   model=model, agent_type="observer",
-                                   max_tokens=MAX_ANSWER_TOKENS)
+        # **La `specie` la dichiara il chiamante, e qui non e' una fissa.**
+        # Questa funzione ne serve DUE: il giro delle ricette
+        # (`server.recipe_round`) e la riparazione dell'attuatore
+        # (`server._repair_recipes`). Cablare «ricette» qui dentro
+        # attribuirebbe all'una il costo dell'altra -- ed e' lo stesso
+        # difetto di `agent_type="observer"`, che schiaccia questa funzione e
+        # l'osservatore in un nome solo.
+        async with misura_turno(measurements, runner, specie=species,
+                                canale="catena", modello=model):
+            answer = await runner.chat(
+                user_message=question, system_prompt=SYSTEM,
+                model=model, agent_type="observer",
+                max_tokens=MAX_ANSWER_TOKENS)
     except Exception as error:
         logger.warning("ricetta: il giro non e' partito (%s: %s)",
                        type(error).__name__, error)

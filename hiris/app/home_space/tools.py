@@ -1020,15 +1020,30 @@ CONFIRM_TOOL_DEF = {
         "stesso turno viene rifiutato, ed e' voluto -- il si' dell'utente non e' "
         "una cosa che puoi dare per scontata. "
         "L'esito dice cosa e' nato davvero (`entita`) e, se qualcosa non torna, "
-        "un `avviso`: riferiscilo invece di dichiarare un successo pieno."
+        "un `avviso`: riferiscilo invece di dichiarare un successo pieno. "
+        "**Il `proposta_id` puoi ometterlo**: senza, applico l'unica proposta "
+        "in sospeso nata in un turno precedente. Se ce ne fosse piu' d'una te "
+        "le elenco invece di sceglierne una."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
+            # **Dichiarato ma NON obbligatorio** (23/09/2026). Finche' era
+            # `required`, il modello che non aveva l'id non poteva chiamare
+            # `confirm` affatto -- e l'id non ce l'ha mai, perche' nasce in un
+            # risultato di strumento e la cronologia della chat porta solo
+            # testo. Misurato sulla casa vera: riproponeva, la proposta nasceva
+            # nel turno della conferma, il cancello la rifiutava, e ogni
+            # costruzione costava tre turni invece di due.
+            #
+            # Resta dichiarato perche' chi l'id ce l'ha -- la pagina, e il
+            # modello quando l'utente lo nomina -- deve poterlo passare: e'
+            # l'unico modo di essere precisi quando ce n'e' piu' d'una.
             "proposta_id": {"type": "string",
-                            "description": "L'identificatore restituito da `propose`."},
+                            "description": "L'identificatore restituito da "
+                                           "`propose`. Facoltativo: senza, "
+                                           "applico l'unica in sospeso."},
         },
-        "required": ["proposta_id"],
     },
 }
 
@@ -2590,9 +2605,14 @@ class ToolDispatcher:
         qui si passa `self._turno`, la stessa identita' coniata una volta per
         turno dal chiamante (`api/handlers_chat.py`/`api/handlers_mcp.py`)."""
         import time as _time
+        # **L'id puo' mancare, e nel caso normale manca sempre**: nasce in un
+        # risultato di strumento e la cronologia della chat porta solo testo,
+        # quindi al turno della conferma il modello non ce l'ha. Chi lo manda
+        # lo passa; chi non ce l'ha lascia decidere all'officina, che sceglie
+        # l'unica in sospeso di un altro turno o elenca le candidate.
         proposal_id = (arguments or {}).get("proposta_id")
-        if not isinstance(proposal_id, str) or not proposal_id.strip():
-            return {"errore": "serve il `proposta_id` che ti ha dato `propose`."}
+        proposal_id = (proposal_id.strip()
+                       if isinstance(proposal_id, str) else None)
         # Il soffitto (I-1): la porta della configurazione ha due lati, il clic
         # sulla pagina e questo strumento. Custodirne uno solo lascerebbe
         # spalancato l'altro -- e questo e' il piu' facile da attraversare,
@@ -2600,7 +2620,7 @@ class ToolDispatcher:
         if self._soffitto is not None and not self._soffitto["costruire"]:
             return {"errore": self._soffitto["perche"]}
         occurrence = await self._workshop.apply(
-            proposal_id.strip(), actor="chat", exchange=self._exchange,
+            proposal_id, actor="chat", exchange=self._exchange,
             now=_time.time(), subject=self._subject,
             # B-5: il cancello sa dire «in mezzo c'e' stato un turno», non «in
             # mezzo c'e' stato un si'». La frase di questo turno va in cronaca

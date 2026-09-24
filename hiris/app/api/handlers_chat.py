@@ -24,7 +24,7 @@ from ..chat_store import (
 from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
 from ..home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from ..model_resolution import downgrade_note
-from ..steering import declare_downgrade, who_answers
+from ..steering import declare_downgrade, misura_turno, who_answers
 from .handlers_home_space import compose_briefing
 from .soffitto import per_richiesta
 
@@ -566,42 +566,48 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
         # ed e' esattamente cio' che la guardia esiste per impedire. Chi
         # tocca questo contesto deve saperlo.
         exchange_id = secrets.token_urlsafe(8)
-        answer = await runner.chat(
-            user_message=ultimo,
-            system_prompt=contesto.get("system_prompt", ""),
-            context_str=contesto.get("contesto", ""),
-            # La cronologia del job CONTIENE GIÀ il turno dell'utente (pinnato
-            # da `test_job_context_history_includes_current_user_turn`):
-            # passarla intera come `conversation_history` E ripetere il
-            # messaggio come `user_message` lo manderebbe due volte.
-            conversation_history=cronologia[:-1],
-            # L'unico valore che fa girare il ciclo di ripiego del router: con
-            # un modello esplicito `_route()` sceglie una volta sola e non
-            # ripiega mai. Dal Task 4 è già l'unico che esiste, ma qui va
-            # SCRITTO, non ereditato.
-            model="auto",
-            max_tokens=CHAT_MAX_TOKENS,
-            agent_type="chat",
-            restrict_to_home=bool(contesto.get("restrict_to_home")),
-            response_mode=contesto.get("response_mode", "auto"),
-            # Il contesto del job NON porta `thinking_budget` (sei chiavi,
-            # pinnate da `test_context_del_job_porta_esattamente_queste_sei_
-            # chiavi_ne_una_di_piu`): inventarne uno qui significherebbe
-            # applicare al ripiego un'impostazione che il ponte aveva
-            # dichiarato inapplicabile, con un log, al momento
-            # dell'accodamento.
-            thinking_budget=0,
-            tools=KNOWLEDGE_TOOLS,
-            dispatcher=create_tool_dispatcher(
-                request.app, exchange=exchange_id,
-                soffitto=await per_richiesta(request.app, request),
-                soggetto=request.get("soggetto"),
-                # Lo STESSO testo che il modello ha davanti come ultimo turno
-                # (`user_message=ultimo`, qui sopra): se questo ramo leggesse
-                # da un'altra parte, la cronaca registrerebbe una frase
-                # diversa da quella su cui il modello ha deciso.
-                frase=ultimo),
-        )
+        # Il ripiego dalla coda alla catena e' un turno di chat: la
+        # specie e' quella di chi ha scritto, non della strada che il
+        # turno ha dovuto prendere.
+        async with misura_turno(request.app.get("usage"), runner,
+                                specie="chat", canale="catena",
+                                soggetto=request.get("soggetto")):
+            answer = await runner.chat(
+                user_message=ultimo,
+                system_prompt=contesto.get("system_prompt", ""),
+                context_str=contesto.get("contesto", ""),
+                # La cronologia del job CONTIENE GIÀ il turno dell'utente (pinnato
+                # da `test_job_context_history_includes_current_user_turn`):
+                # passarla intera come `conversation_history` E ripetere il
+                # messaggio come `user_message` lo manderebbe due volte.
+                conversation_history=cronologia[:-1],
+                # L'unico valore che fa girare il ciclo di ripiego del router: con
+                # un modello esplicito `_route()` sceglie una volta sola e non
+                # ripiega mai. Dal Task 4 è già l'unico che esiste, ma qui va
+                # SCRITTO, non ereditato.
+                model="auto",
+                max_tokens=CHAT_MAX_TOKENS,
+                agent_type="chat",
+                restrict_to_home=bool(contesto.get("restrict_to_home")),
+                response_mode=contesto.get("response_mode", "auto"),
+                # Il contesto del job NON porta `thinking_budget` (sei chiavi,
+                # pinnate da `test_context_del_job_porta_esattamente_queste_sei_
+                # chiavi_ne_una_di_piu`): inventarne uno qui significherebbe
+                # applicare al ripiego un'impostazione che il ponte aveva
+                # dichiarato inapplicabile, con un log, al momento
+                # dell'accodamento.
+                thinking_budget=0,
+                tools=KNOWLEDGE_TOOLS,
+                dispatcher=create_tool_dispatcher(
+                    request.app, exchange=exchange_id,
+                    soffitto=await per_richiesta(request.app, request),
+                    soggetto=request.get("soggetto"),
+                    # Lo STESSO testo che il modello ha davanti come ultimo turno
+                    # (`user_message=ultimo`, qui sopra): se questo ramo leggesse
+                    # da un'altra parte, la cronaca registrerebbe una frase
+                    # diversa da quella su cui il modello ha deciso.
+                    frase=ultimo),
+            )
     except RunnerBackendError as exc:
         # Stessa rete del ramo sincrono, e per la stessa ragione: `runner` può
         # essere `app["claude_runner"]`, cioè un backend diretto che SOLLEVA.
@@ -1057,21 +1063,24 @@ async def handle_chat(request: web.Request) -> web.Response:
         return stream_resp
 
     try:
-        response = await runner.chat(
-            user_message=message,
-            system_prompt=system_prompt,
-            context_str=context_str,
-            conversation_history=context_history,
-            model=agent_model,
-            max_tokens=agent_max_tokens,
-            agent_type=agent_type,
-            restrict_to_home=agent_restrict,
-            # Vedi il commento gemello sul ramo streaming sopra.
-            response_mode=agent_response_mode,
-            thinking_budget=agent_thinking_budget,
-            tools=KNOWLEDGE_TOOLS,
-            dispatcher=tool_dispatcher,
-        )
+        async with misura_turno(request.app.get("usage"), runner,
+                                specie="chat", canale="catena",
+                                soggetto=request.get("soggetto")):
+            response = await runner.chat(
+                user_message=message,
+                system_prompt=system_prompt,
+                context_str=context_str,
+                conversation_history=context_history,
+                model=agent_model,
+                max_tokens=agent_max_tokens,
+                agent_type=agent_type,
+                restrict_to_home=agent_restrict,
+                # Vedi il commento gemello sul ramo streaming sopra.
+                response_mode=agent_response_mode,
+                thinking_budget=agent_thinking_budget,
+                tools=KNOWLEDGE_TOOLS,
+                dispatcher=tool_dispatcher,
+            )
     except RunnerBackendError as exc:
         # Review C/#13: runners now raise instead of returning a friendly
         # string on API failure, so LLMRouter's auto-fallback loop actually

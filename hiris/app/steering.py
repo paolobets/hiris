@@ -39,6 +39,7 @@ la chat).
 """
 from __future__ import annotations
 
+import contextlib as _contextlib
 import logging
 import time as _time
 
@@ -84,6 +85,118 @@ def _subscription_can_answer(app) -> tuple[bool, str]:
             "alla catena.", ceiling)
         return False, "tetto giornaliero"
     return True, ""
+
+
+#: **Le sei specie di turno di HIRIS**, in un posto solo.
+#:
+#: Erano sei stringhe sparse nei chiamanti di `declare_downgrade`, e dal
+#: 23/09/2026 servono anche al registro dei turni: due elenchi liberi di
+#: divergere sarebbero diventati due verita' sulla stessa cosa.
+#:
+#: **Non e' `agent_type`**, e la differenza morde. `agent_type` ha quattro
+#: valori e risponde a «quale modello scelgo» (`AUTO_MODEL_MAP`); questa
+#: risponde a «chi sta chiedendo». `mind/observer.py` e `mind/recipe_turn.py`
+#: passano tutti e due `agent_type="observer"`, quindi misurando su quello
+#: l'osservatore e le ricette sarebbero indistinguibili -- proprio la
+#: distinzione che il proprietario vuole vedere.
+#: Il tetto di giri di strumento. **Si importa, non si ricopia**: il numero
+#: vive in `claude_runner`, che e' chi lo fa rispettare, e una seconda
+#: costante qui direbbe «esaurito» a un turno che non lo e' il giorno in cui
+#: qualcuno alza il tetto di la'.
+from .claude_runner import MAX_TOOL_ITERATIONS as MAX_GIRI
+from .claude_runner import posa_misura as _posa_misura
+from .claude_runner import togli_misura as _togli_misura
+
+SPECIE = frozenset({"analista", "attuatore", "chat", "osservatore",
+                    "promessa", "ricette"})
+
+
+@_contextlib.asynccontextmanager
+async def misura_turno(archivio, runner, *, specie: str, canale: str,
+                       provider: str = "", modello: str = "",
+                       soggetto: dict | None = None):
+    """Misura un turno di modello: quanto e' durato, quanti giri, quali
+    strumenti, e di cosa era fatto il carico a ogni giro.
+
+    **Un imbuto solo**, come `declare_downgrade` qui sotto e per la stessa
+    ragione: la dichiarazione copiata a mano in sei posti e' rimasta indietro
+    in tre. I chiamanti dichiarano la SPECIE e basta; come si misura lo decide
+    questo punto.
+
+    **Perche' esiste** (misurato sulla casa vera, 23/09/2026): «quali luci sono
+    accese in casa adesso?» ha impiegato 69 secondi per 35 token di risposta, e
+    non c'era modo di sapere perche' -- il registro dell'add-on dice soltanto
+    che la richiesta HTTP e' durata 69 secondi. Il moltiplicatore e' il giro di
+    strumento: ognuno rispedisce l'intero carico al modello, fino a cinquanta.
+
+    **Non cambia comportamento**, e non deve poterlo cambiare: se la misura
+    fallisce, il turno prosegue. Un registro che fa cadere il giro
+    dell'analista sarebbe peggio del buco che chiude.
+
+    Il turno si registra **anche quando fallisce**, ed e' il caso piu'
+    interessante: un giro che esaurisce le iterazioni e' quello che ha speso
+    di piu' senza dare niente.
+    """
+    if specie not in SPECIE:
+        # **Qui, non nell'archivio**: il vocabolario vive in questo modulo, e
+        # la regola sta dove sta il vocabolario. Solleva invece di scrivere
+        # una riga con un nome inventato: due nomi per lo stesso attore
+        # renderebbero il registro inservibile proprio sulla domanda per cui
+        # esiste -- «chi spende cosa».
+        raise ValueError(f"«{specie}» non e' una specie di turno: sono "
+                         f"{', '.join(sorted(SPECIE))}")
+    carichi: list = []
+    # **Per chiamata, non per oggetto.** Il runner e' costruito una volta
+    # nell'app e vive quanto l'add-on: un gancio posato su di lui farebbe
+    # finire il carico della chat del proprietario dentro la misura del giro
+    # notturno dell'analista, se i due si accavallano. E' la stessa cura che
+    # `claude_runner` si era gia' data per `last_tool_calls`.
+    gettone = _posa_misura(lambda giro, pesi: carichi.append((giro, pesi)))
+    inizio = _time.perf_counter()
+    esito = "riuscito"
+    try:
+        yield
+    except Exception:
+        esito = "fallito"
+        raise
+    finally:
+        _togli_misura(gettone)
+        durata_ms = int((_time.perf_counter() - inizio) * 1000)
+        try:
+            if archivio is not None:
+                strumenti = [c["tool"] for c in
+                             (getattr(runner, "last_tool_calls", None) or [])]
+                # **I giri li conta la misura stessa.** Un contatore
+                # sull'oggetto runner sarebbe una seconda verita' sullo stesso
+                # numero -- e per giunta condivisa fra turni paralleli, che e'
+                # il difetto che la ContextVar esiste per non avere. Il gancio
+                # scatta una volta per giro: contarli e' guardare quante volte
+                # ha scattato.
+                giri = len(carichi)
+                if esito == "riuscito" and giri >= MAX_GIRI:
+                    esito = "esaurito"
+                adesso = _time.time()
+                # **Chi ha risposto si MISURA, non si deduce.** Il
+                # chiamante lo passa quando lo sa; altrimenti lo dice il
+                # runner di se' (`provider_name`), che e' l'unico a saperlo
+                # davvero. Leggere `model_chain[0]` direbbe «ha risposto il
+                # primo della catena», che e' falso proprio nel caso
+                # interessante -- quello in cui il primo non ha risposto.
+                chi = (provider or getattr(runner, "provider_name", "")
+                       or "ignoto")
+                ident = archivio.log_turn(
+                    species=specie, provider=chi,
+                    model=modello or "ignoto", channel=canale,
+                    subject=soggetto,
+                    duration_ms=durata_ms, iterations=giri,
+                    tools=strumenti, outcome=esito, now=adesso)
+                for giro, pesi in carichi:
+                    archivio.log_payload(ident, iteration=giro, now=adesso,
+                                         **pesi)
+        except Exception as errore:  # pragma: no cover - guasto dell'archivio
+            logger.warning("la misura del turno «%s» non si e' potuta "
+                           "scrivere (%s: %s)", specie,
+                           type(errore).__name__, errore)
 
 
 def declare_downgrade(app, *, agent: str, reason: str,

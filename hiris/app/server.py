@@ -91,7 +91,7 @@ from .provider_occurrences import OccurrenceRegistry
 from .proxy.entity_cache import EntityCache, automation_config_id
 from .proxy.ha_client import HAClient
 from .proxy.state_translations import StateTranslations
-from .steering import declare_downgrade, who_answers
+from .steering import declare_downgrade, misura_turno, who_answers
 from .version import read_version
 
 logger = logging.getLogger(__name__)
@@ -1902,7 +1902,8 @@ async def reconsideration_round(app, ha_client) -> dict | None:
         outcome = await observer_reconsider(
             runner, store, home_space, reason=why,
             window_s=window_s, cadence_s=cadence_from(window_s),
-            only=lotto, record=not in_corso, campaign_ts=campagna_ts)
+            only=lotto, record=not in_corso, campaign_ts=campagna_ts,
+            measurements=app.get("usage"))
         _record_attempt(store, outcome, route="catena", downgrade=downgrade)
         logger.info("osservatore: giro finito -- %s", outcome)
         return outcome
@@ -2135,8 +2136,10 @@ async def analyst_round(app) -> dict | None:
         question = analyst_turn.build_question(series)
         if question is None:
             return None
-        answer = await runner.chat(user_message=question,
-                                   system_prompt=analyst_turn.SYSTEM)
+        async with misura_turno(app.get("usage"), runner,
+                                specie="analista", canale="catena"):
+            answer = await runner.chat(user_message=question,
+                                       system_prompt=analyst_turn.SYSTEM)
         esito = analyst_turn.apply_analysis(series, answer)
         _write_analysis(store, today, esito)
         return esito
@@ -2235,8 +2238,10 @@ async def actuator_round(app) -> dict | None:
         if question is None:
             return None
 
-        answer = await runner.chat(user_message=question,
-                                   system_prompt=actuator_turn.SYSTEM)
+        async with misura_turno(app.get("usage"), runner,
+                                specie="attuatore", canale="catena"):
+            answer = await runner.chat(user_message=question,
+                                       system_prompt=actuator_turn.SYSTEM)
         esito = actuator_turn.apply_actuation(pending, answer)
         await _file_proposals(app, store, esito, pending)
         _write_actuation(store, today, stamp, esito, repaired=repaired,
@@ -2279,7 +2284,12 @@ async def _repair_recipes(app, broken) -> list[dict]:
             continue
         esito = await recipe_turn.ask(
             runner, sapere, home_space, device_id,
-            objective=objective, who=ACTUATOR_AUTHOR, when_ts=time.time())
+            objective=objective, who=ACTUATOR_AUTHOR, when_ts=time.time(),
+            # **La riparazione e' lavoro dell'ATTUATORE**, non delle ricette:
+            # e' lui che l'ha chiesta. Attribuirla a «ricette» perche' passa
+            # dalla loro funzione gonfierebbe il costo di una specie con
+            # quello di un'altra.
+            measurements=app.get("usage"), species="attuatore")
         done.append({"soggetto": device_id, "misura": observation.get("misura"),
                      "impronta": actuator.observation_key(observation),
                      "riscritta": bool(esito.get("scritta"))})
@@ -2660,7 +2670,8 @@ async def recipe_round(app) -> dict | None:
         esito = await recipe_turn.ask(
             runner, sapere, home_space, device_id, objective=objective,
             who=f"modello ({route})", when_ts=time.time(),
-            with_series=with_series)
+            with_series=with_series, measurements=app.get("usage"),
+            species="ricette")
         logger.info("ricette: giro finito -- %s", esito)
         return esito
     except Exception as exc:
@@ -2753,6 +2764,77 @@ def _collect_recipe_turn(app, sapere, home_space: dict) -> dict | None:
     logger.info("ricette: risposta del piano applicata per «%s» -- %s",
                 device_id, esito)
     return esito
+
+
+#: **Gli archivi dismessi che si cancellano** (23/09/2026).
+#:
+#: Erano undici, dichiarati morti nel codice e annunciati a ogni avvio, e
+#: restavano per sempre per una regola scritta: «mai dati utente in /data».
+#: Ma quella regola era gia' stata contraddetta lo stesso giorno da noi --
+#: `vault.db`, cancellato con la fetta 7 -- e il criterio vero non era mai
+#: stato scritto.
+#:
+#: Eccolo: **un archivio che nessun codice legge piu' non e' un dato
+#: dell'utente, e' un residuo.** E un residuo entra nei backup di Home
+#: Assistant, che non sono cifrati se il proprietario non ci mette una
+#: password: il reperto C-4 ne ha escluso il solo `claude`, e il C-6 ha
+#: dichiarato la conservazione delle sette tabelle VIVE -- questi file non
+#: sono tabelle di nessun archivio vivo, quindi non avevano ne' una
+#: dichiarazione ne' un cancellatore.
+#:
+#: **`chatbots.json` NON e' in questo elenco**, per decisione del
+#: proprietario: contiene il prompt personalizzato che aveva salvato sul bot
+#: di default, e va guardato prima. Un residuo si cancella quando e' morto
+#: **e** quando qualcuno ha deciso -- non per la sola prima meta'.
+#:
+#: L'elenco e' NOMINATO, mai un'euristica sul nome: un archivio vivo che
+#: somigliasse a un residuo, o uno che nascera' domani, non deve poter
+#: sparire per assonanza.
+RESIDUI_DISMESSI = (
+    "advisory.db",
+    "dashboard_backups.json",
+    "ha_health.json",
+    "history.db",
+    "history_policy.json",
+    "hiris_memory.db",
+    "knowledge.db",
+    "portrait.db",
+    "proposals.db",
+    "sentinel.db",
+    "tasks.json",
+)
+
+
+def cancella_residui(data_dir: str) -> None:
+    """Cancella gli archivi dismessi, **dicendo quali e quanto erano grandi**.
+
+    Cancellare dati di un utente in silenzio e' proibito dalle fondamenta di
+    questo progetto: si dice il nome e la dimensione, non «ho fatto pulizia».
+
+    **Un file che non c'e' non fa rumore.** La casa di chi installa oggi non
+    ne ha nessuno, e una riga per ognuno a ogni avvio sarebbe rumore sano che
+    seppellisce quello vero.
+
+    Non solleva mai: e' igiene, non una condizione di funzionamento. Un
+    permesso negato o un disco pieno non devono impedire a HIRIS di partire --
+    stessa disciplina di `decidi_vault`.
+    """
+    for nome in RESIDUI_DISMESSI:
+        percorso = os.path.join(data_dir, nome)
+        try:
+            if not os.path.exists(percorso):
+                continue
+            quanto = os.path.getsize(percorso)
+            os.remove(percorso)
+        except OSError as errore:
+            logger.warning(
+                "%s non si e' potuto cancellare (%s: %s): resta su disco",
+                nome, type(errore).__name__, errore)
+            continue
+        logger.info(
+            "%s cancellato (%d byte): nessun codice lo leggeva piu', e un "
+            "archivio dismesso entra nei backup di Home Assistant come tutto "
+            "il resto di /data.", nome, quanto)
 
 
 def decidi_vault(data_dir: str) -> None:
@@ -4293,6 +4375,7 @@ async def _on_startup(app: web.Application) -> None:
         )
 
     decidi_vault(data_dir)
+    cancella_residui(data_dir)
 
     # Ricarica dell'inventario entita' dopo un avvio senza Home Assistant.
     # `entity_cache.load` piu' sopra logga e prosegue se fallisce: senza questo

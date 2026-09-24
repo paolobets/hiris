@@ -153,7 +153,7 @@ async def interpreta_promise(app, promise: dict) -> dict:
     """
     from ..api.handlers_chat import create_tool_dispatcher
     from ..api.handlers_home_space import compose_briefing
-    from ..steering import declare_downgrade, who_answers
+    from ..steering import declare_downgrade, misura_turno, who_answers
 
     # La STESSA domanda che si fa la chat, dalla STESSA funzione. Fino al
     # 22/08/2026 questo turno non se la faceva affatto e andava dritto al
@@ -186,18 +186,20 @@ async def interpreta_promise(app, promise: dict) -> dict:
         briefing = ""
 
     try:
-        answer = await runner.chat(
-            user_message=_domanda(promise),
-            system_prompt=_system_prompt(),
-            context_str=briefing,
-            conversation_history=[],
-            model="auto",
-            max_tokens=2000,
-            agent_type="promessa",
-            thinking_budget=0,
-            tools=promise_tools(),
-            dispatcher=dispatcher,
-        )
+        async with misura_turno(app.get("usage"), runner,
+                                specie="promessa", canale="catena"):
+            answer = await runner.chat(
+                user_message=_domanda(promise),
+                system_prompt=_system_prompt(),
+                context_str=briefing,
+                conversation_history=[],
+                model="auto",
+                max_tokens=2000,
+                agent_type="promessa",
+                thinking_budget=0,
+                tools=promise_tools(),
+                dispatcher=dispatcher,
+            )
     except Exception as error:
         logger.warning("turno della promessa %s fallito (%s: %s)",
                        promise["id"], type(error).__name__, error)

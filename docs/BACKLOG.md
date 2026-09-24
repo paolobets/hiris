@@ -151,7 +151,74 @@ la §3 chiedeva («un numero di volte senza finestra non significa niente»). Qu
 nessun contatore: va deciso su quale finestra si conta (il grezzo dura 22 giorni) e chi la conta.
 Finché non c'è, la pagina non dice un numero che non ha.
 
-### La CLI del ponte sale alla 2.1.278 nel prossimo rilascio — aperta il 20/09/2026
+### La fusione dei quattro composer — aperta il 24/09/2026
+
+`origine: il proprietario, domanda del 23/09/2026` · `misurato durante la fetta delle misure`
+
+Ciò che il modello vede è composto in **quattro posti**: `claude_runner.chat` (API Anthropic),
+`OpenAICompatRunner.chat` e `.chat_stream` (catena stile OpenAI), e `agent/prompts.build_chat_messages`
+(il ponte, in sottoprocesso).
+
+**Tre delle quattro esistono per una ragione vera**: sono protocolli diversi — Anthropic vuole
+`system` come lista di blocchi con `cache_control`, OpenAI un solo messaggio di sistema e caching
+implicito per prefisso, il ponte un argv e una cronologia. **La quarta no**: `chat` e `chat_stream`
+sono lo stesso protocollo, e compongono la stessa cosa due volte perché una risposta scorre e
+l'altra no.
+
+**Sono già divergiti**, e non è un'ipotesi: `tests/test_composition_order.py` esiste perché
+l'invariante «persona < modificatori < contesto» era dichiarata in `claude_runner` e **violata nei
+due punti di `openai_compat`** — il file li chiama «il punto violato n.1» e «n.2». Corretto, e oggi
+inchiodato da cinque prove.
+
+La conseguenza sulle tre domande del proprietario: **ogni leva sui token andrebbe applicata quattro
+volte**, o funzionerebbe su un canale e non sugli altri.
+
+Il disegno: un `componi(specie, casa, strumenti, cronologia) → pezzi` che produce le parti
+**neutre**, e quattro adattatori sottili che le mettono nella forma del loro protocollo. Così la
+regola vive una volta e i canali smettono di poter divergere.
+
+**Non prima delle misure.** La colonna `turn.channel` del registro esiste apposta: dopo qualche
+giorno dirà se il ponte e la catena stanno davvero mandando la stessa cosa, e se sono già scivolati
+la fusione diventa urgente invece che desiderabile.
+
+### La chat è una sola per costruzione — aperta il 24/09/2026
+
+`origine: il proprietario, fondamenta del 24/09/2026` · `misurato: hiris/app/chat_store.py`
+
+Oggi HIRIS riceve input da **una chat sola**, e lo schema lo dà per scontato:
+
+    chat_sessions(session_id, started_at, last_msg_at, summary)
+    chat_messages(id, session_id, role, content, timestamp)
+
+Nessuna colonna per **chi** né per **quale sistema**. E la sessione attiva si sceglie così:
+
+    SELECT session_id FROM chat_sessions WHERE summary IS NULL
+    ORDER BY last_msg_at DESC LIMIT 1
+
+**L'ultima che ha parlato, chiunque fosse.** Il giorno in cui Retro Panel manda un messaggio
+mentre il proprietario sta chattando, i due finiscono nella stessa sessione e ognuno legge la
+cronologia dell'altro come propria.
+
+Non è un limite dichiarato: è un'assunzione implicita, e va resa esplicita o tolta. Perché HIRIS
+riceva input da chat diverse per utente e per sistema, la sessione va chiavata su **(soggetto,
+origine)** e `load_context` deve leggere quella del chiamante.
+
+**Il registro dei turni è già pronto per quel giorno**: `turn.subject_json` porta chi ha chiesto,
+con la stessa forma del soggetto della cronaca. Quando la seconda chat arriverà, le misure sapranno
+già distinguerle — invece di scoprire allora che non possono.
+
+### `chatbots.json` resta finché non lo guardi — aperta il 24/09/2026
+
+`origine: decisione del proprietario, 24/09/2026`
+
+La 3.66.0 cancella **dieci** archivi dismessi su undici. `chatbots.json` no: contiene il prompt
+personalizzato che il proprietario aveva salvato sul bot di default, e il registro d'avvio dice da
+mesi che non viene migrato. Si guarda cosa c'è dentro, poi si decide.
+
+Il criterio scritto con la fetta è: **un archivio si cancella quando è morto E quando qualcuno ha
+deciso** — non per la sola prima metà.
+
+### ~~La CLI del ponte sale alla 2.1.278 nel prossimo rilascio~~ — **USCITA** con la v3.66.0
 
 Il cancello (`scripts/verifica_componenti.py`) ha fermato il rilascio della **v3.51.0** su
 `2.1.276 -> 2.1.278` (pin in `hiris/Dockerfile`). La 3.51.0 è uscita con `HIRIS_COMPONENTI_OK=1`,
@@ -196,6 +263,15 @@ sicurezza da fare, e il rilascio successivo è la fetta delle misure.
 
 **Se la fetta delle misure non la prende, questa voce non si rimanda una dodicesima volta: si
 chiude dichiarando la 2.1.276 come pin scelto, e il cancello si riancora lì.**
+
+**CHIUSA il 24/09/2026 con la v3.66.0, e la fetta delle misure l'ha presa.** Da 2.1.276 a
+**2.1.281**: quattro uscite saltate (277, 278, 279, 280), che è il prezzo di undici rimandi — più
+si aspetta, più grande è il salto che si prende in una volta. Il cancello dei componenti tace per
+la prima volta da undici rilasci: **questo push non porta `HIRIS_COMPONENTI_OK=1`**.
+
+Il ripiego dichiarato è la **2.1.276**, l'ultima ad aver girato davvero su questa casa. Il passo 4
+resta aperto: la 2.1.281 va letta dentro il container con `GET /api/health`, campo `ponte.cli`,
+dopo un turno di chat.
 
 ### La CLI del ponte e' salita alla 2.1.267 — CHIUSA il 10/09/2026
 

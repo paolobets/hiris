@@ -30,6 +30,12 @@ def _richiesta(app, match=None, corpo=None):
             if corpo is None:
                 raise ValueError("nessun corpo")
             return corpo
+        def get(self, chiave, default=None):
+            """Una `Request` vera e' una mappa: `request.get("soggetto")` e'
+            come il confine passa CHI sta chiamando (sprint sicurezza, A-1).
+            La finta lo deve sapere fare, o imita un contratto che non
+            esiste."""
+            return getattr(self, "_valori", {}).get(chiave, default)
     return _R()
 
 

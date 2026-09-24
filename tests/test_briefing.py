@@ -506,8 +506,19 @@ def test_i_ricordi_tagliati_sono_ordinati_esplicitamente_dal_codice():
         dict(_RICORDI[0], id=2, testo="RICORDO-DI-MEZZO " + "x" * 200),
         dict(_RICORDI[0], id=3, testo="RICORDO-FRESCHISSIMO " + "x" * 200),
     ]
+    # **1.250 e non piu' 1.100** (23/09/2026). Da quando «Notevole adesso»
+    # ha una riserva minima, a 1.100 caratteri non resta spazio per NESSUN
+    # ricordo -- e una prova sull'ORDINE in cui si scartano non puo' girare
+    # se non ne sopravvive nessuno: passerebbe a vuoto.
+    #
+    # **E la conseguenza va detta, perche' e' una scelta**: a tetti
+    # strettissimi i tre posti riservati ai notevoli battono i ricordi. I
+    # ricordi restano l'ULTIMA cosa che il taglio tocca, ma una riserva piu'
+    # in alto nell'ordine puo' esaurire il budget prima che tocchi a loro.
+    # E' il prezzo della riserva, ed e' uno dei numeri che le misure devono
+    # rivedere.
     testo, riepilogo = compose(_CASA, _COMPORTAMENTO, ricordi_in_ordine_sbagliato, _STATO,
-                               ceiling=1100)
+                               ceiling=1250)
     assert riepilogo["excluded_memories"] >= 1
     assert "RICORDO-VECCHISSIMO" not in testo
     assert "RICORDO-FRESCHISSIMO" in testo
@@ -853,15 +864,56 @@ def test_taglio_dei_notevoli_raggruppati_conta_elementi_non_righe():
                   or "elemento notevole non incluso" in a)
     import re
     n_esclusi = int(re.search(r"(\d+) element", avviso).group(1))
-    # Ogni riga raggruppata di questa casa vale 5 elementi (5 domini x 3
-    # entita' ciascuno raggruppati diversamente -- comunque un multiplo di
-    # 1 riga != 1 elemento): l'esclusione dichiarata deve essere un conteggio
-    # di ENTITA', non di righe -- quindi deve poter essere > del numero di
-    # righe effettivamente sparite.
+    # **Il controllo era un proxy, e si e' rotto il 23/09/2026.** Chiedeva
+    # che l'escluso fosse un multiplo della dimensione dei gruppi -- vero
+    # finche' la sezione veniva svuotata PER INTERO, perche' allora
+    # l'escluso era il totale. Da quando «Notevole adesso» ha una riserva
+    # minima il taglio e' parziale, il resto non e' piu' un multiplo, e il
+    # proxy arrossisce su un comportamento giusto.
+    #
+    # La proprieta' vera e' un'altra, ed e' quella che il titolo dice: **si
+    # contano gli ELEMENTI, non le righe**. Si misura direttamente --
+    # quante righe sono sparite, e quanti elementi sono stati dichiarati --
+    # invece di dedurla da una divisibilita'.
+    # **L'invariante vera: quello che resta piu' quello che manca fa il
+    # totale.** E' la forma piu' forte di «non sottostimare»: se l'avviso
+    # contasse le RIGHE invece degli elementi, la somma non tornerebbe --
+    # perche' una riga raggruppata ne rappresenta piu' d'una.
+    #
+    # L'intestazione raggruppata dichiara quanti elementi le righe rimaste
+    # rappresentano; il totale si legge da un nucleo composto senza tetto,
+    # dove ogni elemento ha la sua riga.
+    import re as _re
+
+    def _righe_sezione(testo: str) -> list[str]:
+        dentro, fuori = False, []
+        for riga in testo.splitlines():
+            if riga.startswith("## "):
+                dentro = riga.strip() == "## Notevole adesso"
+                continue
+            if dentro and riga.strip():
+                fuori.append(riga)
+        return fuori
+
+    def _dichiarati(testo: str) -> int:
+        """Quanti elementi l'intestazione raggruppata DICE di rappresentare.
+
+        Si legge la dichiarazione del prodotto da tutte e due le parti invece
+        di contare righe: contare righe e' esattamente l'errore che questa
+        prova esiste per vietare, e la sezione porta anche righe che elementi
+        non sono (l'avviso sulle traduzioni)."""
+        return int(_re.search(r"(\d+) element", _righe_sezione(testo)[0]).group(1))
+
+    rappresentati = _dichiarati(_testo)
+    intero, _ = compose(casa, [], [], stato, ceiling=100000)
+    totale = _dichiarati(intero)
+
     assert n_esclusi > 0
-    assert n_esclusi % 5 == 0 or n_esclusi % 3 == 0, (
-        "l'escluso dichiarato deve essere un conteggio di elementi (multiplo delle "
-        f"dimensioni dei gruppi), non di righe: {n_esclusi}")
+    assert n_esclusi + rappresentati == totale, (
+        f"{n_esclusi} esclusi + {rappresentati} rappresentati != {totale} "
+        "totali: l'avviso sta contando righe invece di elementi, e "
+        "sottostimare l'escluso e' peggio che non dichiararlo -- sembra "
+        "onesto e non lo e'")
 
 
 def test_mappa_ha_una_riserva_minima_anche_con_una_casa_grande_e_molti_ricordi():

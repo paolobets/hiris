@@ -29,6 +29,7 @@ import logging
 import re
 
 from ..home_space.briefing import digest_visible_entity_ids
+from ..steering import misura_turno
 from .scope import OBSERVER
 
 logger = logging.getLogger(__name__)
@@ -315,7 +316,7 @@ async def reconsider(runner, store, home_space: dict, *, reason: str,
                      window_s: float | None = None, cadence_s: float | None = None,
                      model: str = "auto", only: set[str] | None = None,
                      record: bool = True, campaign_ts: float | None = None,
-                     now: float | None = None) -> dict:
+                     now: float | None = None, measurements=None) -> dict:
     """Un giro intero **sulla catena**: guarda la casa, chiede, e consegna la
     risposta ad `apply_answer`.
 
@@ -335,9 +336,21 @@ async def reconsider(runner, store, home_space: dict, *, reason: str,
         # il runner vero, quello con la catena di ripiego -- prende `**kwargs`
         # e basta, e un posizionale ci morirebbe sopra al primo giro in
         # produzione senza che nessuna finta lo veda.
-        answer = await runner.chat(user_message=question, system_prompt=SYSTEM,
-                                   model=model, agent_type="observer",
-                                   max_tokens=MAX_ANSWER_TOKENS)
+        # **La specie si DICHIARA, non si deduce da `agent_type`.** Quello
+        # qui sopra vale «observer» e risponde a «quale modello scelgo»; lo
+        # passa anche `recipe_turn`, quindi misurare su di lui renderebbe
+        # l'osservatore e le ricette indistinguibili -- proprio la
+        # distinzione per cui il registro esiste.
+        #
+        # `misure` e' `None` quando nessuno misura (il caso dei test e di un
+        # chiamante che non ha l'archivio): la misura non e' un requisito per
+        # girare.
+        async with misura_turno(measurements, runner, specie="osservatore",
+                                canale="catena", modello=model):
+            answer = await runner.chat(
+                user_message=question, system_prompt=SYSTEM,
+                model=model, agent_type="observer",
+                max_tokens=MAX_ANSWER_TOKENS)
     except Exception as error:
         logger.warning("osservatore: il giro non e' partito (%s: %s)",
                        type(error).__name__, error)

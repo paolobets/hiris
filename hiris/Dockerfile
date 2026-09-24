@@ -77,6 +77,27 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 #      visto», che non e' «assente»: basta una domanda in chat e poi
 #      rileggere. Lo stesso oggetto porta `ponte.apiKeySource`, che vale
 #      `none` quando si sta usando l'abbonamento e non una chiave a consumo.
+# 24 settembre 2026 — alzata da 2.1.276 a **2.1.281**, col rilascio della
+# 3.66.0. **E' il rilascio che il backlog aspettava**: la voce «La CLI del
+# ponte sale...» era stata rimandata ELEVEN volte, e la condizione scritta la'
+# era «il prossimo rilascio che NON porti una fetta di sicurezza». Lo sprint
+# sicurezza e' chiuso dalla 3.65.0, questa e' la fetta delle misure, e la
+# condizione e' esigibile: o sale qui, o la voce si chiudeva dichiarando la
+# 2.1.276 come pin scelto.
+#
+# Uscite saltate: 2.1.277, .278, .279, .280 (cinque salti in tutto con la
+# .281). Non sono state provate una per una -- non lo sono mai state -- e
+# questo e' esattamente il prezzo del rimando ripetuto: piu' si aspetta, piu'
+# grande e' il salto che si prende in una volta.
+#
+# **Ripiego dichiarato: la 2.1.276**, che e' l'ultima ad aver girato davvero
+# su questa casa (dal 18/09, e lo dice `GET /api/health` campo `ponte.cli`).
+#
+# **Il passo 4 e' APERTO**: la 2.1.281 non e' ancora stata letta dentro il
+# container. Si salda alla prima verifica dal vivo dopo il rilascio, con un
+# turno di chat e una GET -- e a add-on appena riavviato `ponte` e' `null`,
+# perche' quel numero nasce da un turno, non dall'avvio.
+#
 # 28 agosto 2026 — alzata da 2.1.241 a 2.1.251 (otto uscite, tutte patch).
 # 4 settembre 2026 — alzata da 2.1.251 a 2.1.260 (cinque uscite: 252, 257,
 # 258, 259, 260; le altre non sono mai state pubblicate). Alzata SUBITO dopo
@@ -251,7 +272,7 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 # esce niente verso nessuno -- e' la rete che il 22/09 e' mancata al
 # reperto A-2, dove una verifica non provabile e' arrivata in produzione.
 RUN apk add --no-cache nodejs npm libgcc libstdc++ ripgrep \
-    && npm install -g @anthropic-ai/claude-code@2.1.276 \
+    && npm install -g @anthropic-ai/claude-code@2.1.281 \
     && npm cache clean --force \
     && mkdir -p /usr/lib/hiris \
     && ln -sf "$(command -v claude)" /usr/lib/hiris/claude \

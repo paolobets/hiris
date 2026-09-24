@@ -12,7 +12,9 @@ dentro sarebbe quello di quando l'add-on e' partito.
 """
 from __future__ import annotations
 
+import json
 import logging
+import secrets
 import threading
 
 from ..storage import connect, init_schema
@@ -74,10 +76,85 @@ CREATE TABLE IF NOT EXISTS fallback (
     last_ts   REAL    NOT NULL,
     PRIMARY KEY (day, agent, reason)
 );
+-- **I due registri della misura** (23/09/2026). Stanno qui e non in un
+-- archivio nuovo perche' rispondono alla stessa domanda di questo file --
+-- quanto costa un turno -- solo che la misurano in token E in secondi.
+--
+-- `turn` e' un turno intero; `payload` e' UN GIRO di quel turno. La divisione
+-- non e' normalizzazione per gusto: la moltiplicazione della latenza avviene
+-- per giro, e una media per turno la nasconderebbe.
+--
+-- `tools` porta i NOMI in ordine, mai gli argomenti: un `view` porta il nome
+-- di una stanza e un `execute` un valore impostato, e questo archivio entra
+-- nei backup di Home Assistant.
+--
+-- Colonne NUOVE, quindi in inglese.
+-- `subject_json` ha la STESSA forma del soggetto della cronaca
+-- (`action/journal.py`), e non e' un caso: e' la stessa domanda -- chi sta
+-- chiedendo, e da quale sistema. Oggi la chat e' una sola; il giorno in cui
+-- HIRIS riceve input da chat diverse per utente e per sistema (Retro Panel,
+-- per dire), `species='chat'` le schiaccerebbe insieme -- lo stesso difetto
+-- di `agent_type='observer'` che schiaccia osservatore e ricette. Una
+-- colonna sola per tutte e quattro le specie di soggetto, come per la
+-- cronaca: `NULL` quando non c'e' nessuna persona, che e' il fatto giusto
+-- per i giri notturni.
+--
+-- `channel` e' QUALE dei quattro composer ha spedito. I quattro compongono
+-- la stessa cosa in quattro posti, e sono gia' divergiti una volta -- il
+-- fix e' inchiodato da `tests/test_composition_order.py`. Senza questa
+-- colonna, «il ponte e la catena mandano la stessa cosa?» resta una
+-- speranza.
+CREATE TABLE IF NOT EXISTS turn (
+    id           TEXT    PRIMARY KEY,
+    ts           REAL    NOT NULL,
+    species      TEXT    NOT NULL,
+    provider     TEXT    NOT NULL,
+    model        TEXT    NOT NULL,
+    channel      TEXT    NOT NULL,
+    subject_json TEXT,
+    duration_ms  INTEGER NOT NULL,
+    iterations   INTEGER NOT NULL,
+    tools        TEXT    NOT NULL,
+    outcome      TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_turn_ts ON turn(ts DESC);
+-- `prefix_hash` e' l'impronta di cio' che DOVREBBE essere stabile fra un
+-- turno e l'altro -- guida piu' definizioni degli strumenti. E' la misura
+-- che decide da sola una domanda che altrimenti resta un'ipotesi: sulla
+-- catena il 74% della materia in ingresso si paga a prezzo pieno, e il
+-- caching di quei provider e' implicito e per PREFISSO. Se l'impronta
+-- cambia fra i turni, la cache non puo' colpire e il colpevole e' dentro il
+-- prefisso; se resta uguale e il 74% non scende, non e' roba nostra.
+--
+-- `tools_sent` e' quante definizioni sono state SPEDITE. Con `turn.tools`,
+-- che dice quante ne sono state usate, la differenza e' lo spreco --
+-- moltiplicato per il numero di giri.
+CREATE TABLE IF NOT EXISTS payload (
+    turn_id       TEXT    NOT NULL,
+    iteration     INTEGER NOT NULL,
+    ts            REAL    NOT NULL,
+    tools_chars   INTEGER NOT NULL,
+    tools_sent    INTEGER NOT NULL DEFAULT 0,
+    guide_chars   INTEGER NOT NULL,
+    core_chars    INTEGER NOT NULL,
+    history_chars INTEGER NOT NULL,
+    results_chars INTEGER NOT NULL,
+    prefix_hash   TEXT    NOT NULL DEFAULT '',
+    PRIMARY KEY (turn_id, iteration)
+);
 """
 
 # I contatori che si sommano. Uno solo, perche' l'elenco scritto tre volte in
 # tre query e' il modo in cui una colonna nuova entra in due su tre.
+#: **Per quanto si tengono i due registri della misura.** Trenta giorni, e si
+#: dichiara: un registro di misura che cresce per sempre e' esattamente il
+#: difetto che il reperto C-6 ha chiuso il 23/09/2026 -- ogni archivio dice
+#: per quanto tiene. E' il SOLO contenuto di questo file che scade: i
+#: secchielli al giorno sono minuscoli (meno di duemila righe l'anno) e
+#: restano per sempre, con la loro ragione scritta in cima al modulo. Questi
+#: no: un turno puo' scrivere fino a cinquanta righe di `payload`.
+TURNS_RETENTION_S = 30 * 86400
+
 CAMPI = ("richieste", "token_in", "token_out", "cache_lettura",
          "cache_scrittura", "errori_rate_limit")
 
@@ -192,6 +269,118 @@ class UsageStore:
         except Exception as error:  # pragma: no cover - guasto dell'archivio
             logger.warning("consumi: il ripiego di «%s» non si e' scritto "
                            "(%s: %s)", agent, type(error).__name__, error)
+
+    # ── I due registri della misura ──────────────────────────────────────
+    #
+    # **Nessuno dei due cambia comportamento**: sono due letture, e nascono per
+    # rispondere a una domanda che il 23/09/2026 non aveva strumento. «Quali
+    # luci sono accese in casa adesso?» ha impiegato 69 secondi per 35 token
+    # di risposta, e non si poteva sapere perche': il registro dell'add-on
+    # dice solo che la richiesta HTTP e' durata 69 secondi.
+
+    def log_turn(self, *, species: str, provider: str, model: str,
+                 channel: str, duration_ms: int, iterations: int, tools: list,
+                 outcome: str, now: float, subject: dict | None = None) -> str:
+        """Un turno intero, e quanto e' costato in giri e in secondi.
+
+        **`tools` porta i nomi in ORDINE**, non un insieme: «search, view,
+        search» racconta una ricerca che non ha trovato al primo colpo, tre
+        nomi in un insieme no.
+
+        **Mai gli argomenti.** Un `view` porta il nome di una stanza, un
+        `execute` un valore impostato: dati personali, e questo archivio
+        entra nei backup di Home Assistant, che non sono cifrati se il
+        proprietario non ci mette una password. E' la stessa scelta che
+        `claude_runner` fa gia' per la riga di avviso delle iterazioni
+        esaurite.
+
+        **Si scrive anche quando il turno e' andato male**, ed e' il caso piu'
+        interessante di tutti: un giro che esaurisce le cinquanta iterazioni
+        e' quello che ha speso di piu' senza dare niente. Registrare i soli
+        riusciti misurerebbe la casa nei giorni belli.
+        """
+        # **Il vocabolario delle specie NON vive qui**, e non e' una
+        # distrazione: lo possiede `steering`, che e' anche l'unico imbuto che
+        # scrive questo registro, ed e' li' che una specie inventata viene
+        # rifiutata. Un archivio che conoscesse l'elenco sarebbe il secondo
+        # posto in cui la stessa regola vive, libero di divergere -- e
+        # renderebbe questo modulo (ambito convertito) dipendente da un nome
+        # di dominio italiano.
+        ident = secrets.token_urlsafe(9)
+        with self._lock:
+            self._scadi_misure(now)
+            self._conn.execute(
+                "INSERT INTO turn(id,ts,species,provider,model,channel,"
+                "subject_json,duration_ms,iterations,tools,outcome) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                (ident, now, species, provider, model, channel,
+                 None if subject is None else json.dumps(subject),
+                 int(duration_ms), int(iterations), json.dumps(list(tools)),
+                 outcome))
+            self._conn.commit()
+        return ident
+
+    def log_payload(self, turn_id: str, *, iteration: int, tools_chars: int,
+                    guide_chars: int, core_chars: int, history_chars: int,
+                    results_chars: int, now: float, tools_sent: int = 0,
+                    prefix_hash: str = "") -> None:
+        """Di cosa e' fatto il carico a UN giro di quel turno.
+
+        Per iterazione e non per turno: la moltiplicazione della latenza
+        avviene per giro, e una media per turno la nasconderebbe. E
+        `results_chars` e' l'unico che cresce di giro in giro -- i risultati
+        degli strumenti si accumulano nella conversazione -- quindi e' il solo
+        modo di vedere la curva invece del suo punto medio.
+        """
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO payload(turn_id,iteration,ts,"
+                "tools_chars,tools_sent,guide_chars,core_chars,history_chars,"
+                "results_chars,prefix_hash) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (turn_id, int(iteration), now, int(tools_chars),
+                 int(tools_sent), int(guide_chars), int(core_chars),
+                 int(history_chars), int(results_chars), prefix_hash))
+            self._conn.commit()
+
+    def _scadi_misure(self, now: float) -> None:
+        """I due registri scadono INSIEME, e il carico non sopravvive al suo
+        turno: righe di `payload` orfane non rispondono a nessuna domanda --
+        la specie del turno e' cio' che distingue «l'analista spende cosi'» da
+        «la chat spende cosi'»."""
+        limit = now - TURNS_RETENTION_S
+        self._conn.execute(
+            "DELETE FROM payload WHERE turn_id IN "
+            "(SELECT id FROM turn WHERE ts < ?)", (limit,))
+        self._conn.execute("DELETE FROM turn WHERE ts < ?", (limit,))
+
+    def turns(self, *, limit: int = 500) -> list[dict]:
+        """I turni, dal piu' recente. `tools` torna SCIOLTO dal JSON: una
+        stringa che somiglia a una lista fa dire alla prima `len()` il numero
+        di caratteri."""
+        with self._lock:
+            righe = self._conn.execute(
+                "SELECT id,ts,species,provider,model,channel,subject_json,"
+                "duration_ms,iterations,tools,outcome FROM turn "
+                "ORDER BY ts DESC LIMIT ?",
+                (int(limit),)).fetchall()
+        return [{"id": r["id"], "ts": r["ts"], "species": r["species"],
+                 "provider": r["provider"], "model": r["model"],
+                 "channel": r["channel"],
+                 "subject": (None if r["subject_json"] is None
+                             else json.loads(r["subject_json"])),
+                 "duration_ms": r["duration_ms"], "iterations": r["iterations"],
+                 "tools": json.loads(r["tools"]), "outcome": r["outcome"]}
+                for r in righe]
+
+    def payloads(self, turn_id: str) -> list[dict]:
+        """Il carico di un turno, giro per giro, in ordine."""
+        with self._lock:
+            righe = self._conn.execute(
+                "SELECT iteration,ts,tools_chars,tools_sent,guide_chars,"
+                "core_chars,history_chars,results_chars,prefix_hash "
+                "FROM payload WHERE turn_id=? "
+                "ORDER BY iteration", (turn_id,)).fetchall()
+        return [dict(r) for r in righe]
 
     def fallbacks(self, *, da: str = "", from_anchor: bool = False) -> list[dict]:
         """I giri passati a consumo, i piu' recenti per primi.

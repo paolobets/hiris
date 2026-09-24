@@ -359,12 +359,26 @@ def test_a_seimila_le_capacita_sfrattavano_notevole_adesso_per_intero():
     Non e' una prova sul passato: e' l'oracolo dell'altra. Senza di lei, la
     prova qui sotto passerebbe anche su una casa che al tetto vecchio ci
     stava comoda -- e non direbbe piu' niente sul tetto.
+
+    **Il numero atteso e' cambiato il 23/09/2026, e la ragione e' nuova.**
+    Prima questa prova chiedeva ZERO righe: al tetto vecchio la sezione
+    spariva per intero. Adesso ne restano tante quante la riserva minima
+    (`_MIN_HIGHLIGHT_LINES_RESERVE`), perche' sulla casa vera si e' misurato
+    che quella sezione era vuota SEMPRE -- e un'intestazione che promette
+    cosa sta succedendo adesso e non lo dice mai e' peggio di una sezione
+    corta.
+
+    L'oracolo regge lo stesso, e dice ancora la cosa per cui esiste: al tetto
+    vecchio la sezione si riduce al minimo che il taglio non puo' toccare;
+    a quello di adesso resta intera (prova qui sotto).
     """
+    from hiris.app.home_space.briefing import _MIN_HIGHLIGHT_LINES_RESERVE
+
     testo, riepilogo = _nucleo_tetto(ceiling=6000)
     assert riepilogo["truncated"] is True
     notevole = _sezione(testo, "## Notevole adesso").splitlines()
-    assert notevole[1:] == [], (
-        "a 6.000 «Notevole adesso» deve restare la sola intestazione: "
+    assert 0 < len(notevole[1:]) <= _MIN_HIGHLIGHT_LINES_RESERVE, (
+        "a 6.000 «Notevole adesso» deve ridursi alla sola riserva: "
         f"invece porta {len(notevole) - 1} righe")
     automazioni = _sezione(testo, "## Cio' che la casa fa gia'").splitlines()[1:]
     assert len(automazioni) < _AUTOMAZIONI_TETTO
