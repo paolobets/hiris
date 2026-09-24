@@ -269,9 +269,28 @@ chiude dichiarando la 2.1.276 come pin scelto, e il cancello si riancora lì.**
 si aspetta, più grande è il salto che si prende in una volta. Il cancello dei componenti tace per
 la prima volta da undici rilasci: **questo push non porta `HIRIS_COMPONENTI_OK=1`**.
 
-Il ripiego dichiarato è la **2.1.276**, l'ultima ad aver girato davvero su questa casa. Il passo 4
-resta aperto: la 2.1.281 va letta dentro il container con `GET /api/health`, campo `ponte.cli`,
-dopo un turno di chat.
+Il ripiego dichiarato è la **2.1.276**, l'ultima ad aver girato davvero su questa casa.
+
+**Passo 4 SALDATO il 24/09/2026 alle 18:56.** `GET /api/health` dentro il container risponde
+`ponte.cli: "2.1.281"` e `apiKeySource: "none"` — la CLI pinnata è quella che gira davvero, e
+gira sull'abbonamento, non su una chiave API. Sono i due fatti che nessun file del repository
+può dire.
+
+### La CLI del ponte sale alla 2.1.282 nel prossimo rilascio
+
+**Aperta il 24/09/2026.** Il cancello dei componenti ha segnalato `2.1.281 -> 2.1.282` durante il
+rilascio della **v3.67.1**, che è uscita con `HIRIS_COMPONENTI_OK=1` — dichiarato qui, come
+chiede la regola: un salto segnalato a rilascio in corso non sale dentro il changelog di
+qualcun altro senza che nessuno l'abbia provato.
+
+La 3.67.1 portava due correzioni misurate dal vivo (il ripiego della ricerca, i nomi degli
+strumenti) e sta per reggere **due giorni di uso vero** che servono a decidere dove
+intervenire: cambiarle sotto la CLI sarebbe cambiare due variabili insieme.
+
+È **un solo salto di patch**, non undici: chi prende il prossimo rilascio lo alza con
+`python scripts/verifica_componenti.py --aggiorna`, l'annotazione nel `Dockerfile` (data,
+uscite saltate, piano di ripiego) e la suite intera. Il ripiego dichiarato è la **2.1.281**,
+di cui esiste una lettura vera dentro il container.
 
 ### La CLI del ponte e' salita alla 2.1.267 — CHIUSA il 10/09/2026
 
