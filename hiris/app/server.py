@@ -24,6 +24,7 @@ from .api.handlers_chat import handle_chat, handle_chat_reply_poll
 from .api.handlers_chat_history import handle_clear_chat_history, handle_get_chat_history
 from .api.handlers_config import handle_config
 from .api.handlers_entities import handle_list_entities
+from .api.handlers_misure import handle_misure
 from .api.handlers_models import (
     handle_get_models_config,
     handle_list_models,
@@ -5612,6 +5613,10 @@ def create_app() -> web.Application:
     # significa piu' niente con un bot solo. Nessun chiamante frontend (era
     # gia' una rotta solo-test nel censimento, prima di questo task).
     app.router.add_get("/api/config", handle_config)
+    # **ROTTA TEMPORANEA** (3.66.x): i due registri in lettura, per la
+    # fase delle misure. Esce quando i verdetti hanno deciso le tre leve
+    # -- vedi `api/handlers_misure.py` e `docs/BACKLOG.md`.
+    app.router.add_get("/api/misure", handle_misure)
     app.router.add_get("/api/usage", handle_usage)
     app.router.add_get("/api/usage/history", handle_usage_history)
     app.router.add_post("/api/usage/reset", handle_reset_usage)

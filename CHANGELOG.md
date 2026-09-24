@@ -1,5 +1,32 @@
 # HIRIS — Changelog
 
+## [3.66.2] — La rotta temporanea, perché una misura che nessuno legge non c'è (2026-09-24)
+
+I due registri della 3.66.0 scrivevano, e **nessuno poteva leggerli**. `consumi.db` vive in
+`/data` dentro il contenitore dell'add-on; `scripts/misure.py` vuole quel file; su Home Assistant
+non c'è un ambiente Python in cui farlo girare.
+
+«Zero superficie di prodotto» era stato difeso come un pregio fino a perdere il deliverable.
+
+**`GET /api/misure?giorni=7`** restituisce i turni della finestra col carico di ognuno **legato al
+suo turno** — non due liste da ricongiungere, perché una giunzione fatta due volte diverge.
+
+**È temporanea, e lo dice tre volte**: nel modulo, nella riga che la registra, e **dentro la
+risposta stessa** — chi la trova fra sei mesi deve sapere che non è un'interfaccia. Esce quando la
+fase delle misure ha deciso le tre leve; la voce è nel backlog. Una prova difende la
+dichiarazione, come per la riserva di «Notevole adesso»: è il solo modo perché «provvisorio» non
+diventi «permanente per dimenticanza».
+
+**Sta dietro il perimetro**, e ci deve restare: i turni portano `subject_json`, cioè chi ha
+chiesto. Una prova verifica che la rotta non compaia fra le eccezioni del middleware.
+
+`scripts/misure.py` adesso prende `--url` e `--chiave`, e **importa** `materia_firmata` da
+`api/canali.py` invece di riscriverla: se le due parti divergessero, ogni firma legittima verrebbe
+rifiutata e nessuno capirebbe perché.
+
+Sei mutazioni eseguite, tutte rosse. Il cancello delle preposizioni ne ha presi due
+(`GIORNI_DI_DEFAULT`, `_leggi_dalla_rotta`).
+
 ## [3.66.1] — Il bit che su Windows non si vede (2026-09-24)
 
 `scripts/misure.py` nasce con uno shebang e **senza il bit di esecuzione**: su Windows il permesso

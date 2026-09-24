@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Le misure dei turni, lette con le REGOLE DI DECISIONE scritte dentro.
 
-    python scripts/misure.py --db /percorso/consumi.db [--giorni 7]
+    python scripts/misure.py --db /percorso/consumi.db  [--giorni 7]
+    python scripts/misure.py --url http://casa:8099/api/misure
 
 **Perche' esiste, e perche' e' uno script e non una query.** Il 23/09/2026 una
 latenza e' stata misurata a 3,6 secondi con una query improvvisata: la domanda
@@ -13,7 +14,9 @@ potra' far finta di niente.
 **Le regole sono state scritte PRIMA di guardare i numeri**, apposta: decidere
 dopo averli visti vuol dire farsi convincere di cio' che si pensava gia'.
 
-Non tocca niente e non ha una rotta: zero superficie di prodotto.
+Non tocca niente. Legge dal file quando il file c'e', e dalla rotta
+temporanea `GET /api/misure` quando il file sta dentro il contenitore --
+che e' il caso normale su Home Assistant.
 """
 import argparse
 import os
@@ -58,6 +61,70 @@ def _leggi(percorso: str, da_ts: float):
         return [(t, archivio.payloads(t["id"])) for t in turni]
     finally:
         archivio.close()
+
+
+def _leggi_remoto(url: str, giorni: int, chiave: str = ""):
+    """Gli stessi dati, chiesti alla rotta invece che al file.
+
+    **Serve perche' il file non e' raggiungibile**: `consumi.db` vive in
+    `/data` dentro il contenitore dell'add-on, e su Home Assistant non c'e' un
+    ambiente in cui far girare questo script. La rotta e' temporanea e lo
+    dichiara nella sua stessa risposta -- se un giorno smettesse di dirlo,
+    vorrebbe dire che e' diventata un'interfaccia senza che nessuno l'abbia
+    deciso, e questo script lo fa notare.
+    """
+    import json as _json
+    import urllib.request
+
+    richiesta = urllib.request.Request(f"{url}?giorni={int(giorni)}")
+    if chiave:
+        for nome, valore in _firma(chiave, url).items():
+            richiesta.add_header(nome, valore)
+    with urllib.request.urlopen(richiesta, timeout=120) as risposta:
+        dati = _json.loads(risposta.read())
+    if "temporanea" not in dati:
+        print("  NOTA: la rotta non si dichiara piu' temporanea. O e' "
+              "diventata un'interfaccia, o qualcuno l'ha dimenticata li'.")
+    carichi = dati.get("carichi") or {}
+    return [(t, carichi.get(t["id"], [])) for t in dati.get("turni", [])]
+
+
+def _firma(percorso_chiave: str, url: str) -> dict:
+    """Le quattro intestazioni con cui un servizio approvato si presenta.
+
+    **Il contratto si IMPORTA, non si riscrive**: `materia_firmata` vive in
+    `api/canali.py`, ed e' scritto li' una volta sola apposta -- se le due
+    parti divergessero, ogni firma legittima verrebbe rifiutata e nessuno
+    capirebbe perche'. E' la stessa ragione per cui quel docstring esiste.
+    """
+    import base64
+    import uuid
+    from urllib.parse import urlparse
+
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+        Ed25519PrivateKey,
+    )
+
+    from hiris.app.api.canali import materia_firmata
+
+    seme = pathlib.Path(percorso_chiave).read_text(encoding="utf-8").strip()
+    privata = Ed25519PrivateKey.from_private_bytes(
+        base64.b64decode(seme, validate=True))
+    pubblica = base64.b64encode(privata.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw)).decode()
+
+    momento, unico = time.time(), uuid.uuid4().hex
+    # Il percorso si firma SENZA la query: `?giorni=` sta nell'URL e non nella
+    # materia firmata, come fa il resto del prodotto.
+    percorso = urlparse(url).path
+    firma = privata.sign(materia_firmata("GET", percorso, momento, unico, b""))
+    return {"X-HIRIS-Servizio": pubblica,
+            "X-HIRIS-Momento": str(int(momento)),
+            "X-HIRIS-Unico": unico,
+            "X-HIRIS-Firma": base64.b64encode(firma).decode()}
 
 
 def _titolo(testo: str) -> None:
@@ -221,15 +288,23 @@ def main() -> None:
     argomenti = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    argomenti.add_argument("--db", required=True,
-                           help="il consumi.db da leggere")
+    argomenti.add_argument("--db", help="il consumi.db da leggere")
+    argomenti.add_argument("--url", help="la rotta temporanea, es. "
+                                         "http://192.168.1.95:8099/api/misure")
+    argomenti.add_argument("--chiave", default="",
+                           help="la chiave Ed25519 con cui firmare (la rotta "
+                                "sta dietro il perimetro)")
     argomenti.add_argument("--giorni", type=int, default=7)
     scelte = argomenti.parse_args()
 
-    if not os.path.exists(scelte.db):
-        raise SystemExit(f"non trovo {scelte.db}")
-
-    dati = _leggi(scelte.db, time.time() - scelte.giorni * 86400)
+    if not scelte.db and not scelte.url:
+        raise SystemExit("serve --db oppure --url")
+    if scelte.url:
+        dati = _leggi_remoto(scelte.url, scelte.giorni, scelte.chiave)
+    else:
+        if not os.path.exists(scelte.db):
+            raise SystemExit(f"non trovo {scelte.db}")
+        dati = _leggi(scelte.db, time.time() - scelte.giorni * 86400)
     print(f"MISURE · ultimi {scelte.giorni} giorni · {len(dati)} turni")
     if len(dati) < MINIMO_TURNI:
         print(f"\n  ATTENZIONE: sotto {MINIMO_TURNI} turni non si giudica "
