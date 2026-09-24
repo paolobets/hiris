@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import time
+from contextvars import ContextVar
 from typing import Any
 
 from .claude_runner import (
@@ -13,6 +14,18 @@ from .claude_runner import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+#: Chi ha risposto in QUESTA chiamata. Il router e' costruito una volta e
+#: vive quanto l'add-on: un attributo su di lui farebbe dire al turno
+#: notturno dell'analista chi ha risposto alla chat del proprietario, se i
+#: due si accavallano. E' la stessa cura, e lo stesso meccanismo, di
+#: `last_tool_calls` e della misura del carico.
+#:
+#: Vuota finche' nessuno ha risposto: un nome presente PRIMA della chiamata
+#: sarebbe quello del turno precedente, e si leggerebbe come un fatto.
+_current_provider: ContextVar[str] = ContextVar(
+    "hiris_provider_corrente", default="")
 
 
 def _is_openai_model(model: str) -> bool:
@@ -196,12 +209,36 @@ class LLMRouter:
     # LLM interface (mirrors ClaudeRunner)
     # ------------------------------------------------------------------
 
+    @property
+    def provider_name(self) -> str:
+        """Chi ha risposto in questa chiamata, o "" se ancora nessuno.
+
+        La legge `steering.misura_turno`, che scriveva `ignoto` su ogni
+        turno della catena perche' nessuno dei sette punti che misurano
+        puo' saperlo: chiamano il router, e il router e' un proxy. Lo sa
+        lui, e fino al 24/09/2026 lo teneva per se'.
+        """
+        return _current_provider.get()
+
+    def _backend_name(self, runner) -> str:
+        """Il nome di catena di un backend gia' costruito. Si ricava dalla
+        stessa mappa che costruisce la catena, non da un secondo elenco che
+        potrebbe divergere."""
+        for name, candidate in self._backend_map().items():
+            if candidate is runner:
+                return name
+        return ""
+
     async def chat(self, **kwargs) -> str:
         model = kwargs.get("model", "auto")
         if model != "auto":
             runner = self._route(model)
             if runner is None:
                 return "Nessun provider AI configurato per questo modello."
+            # Anche qui, non solo nel ciclo: questo ramo e' meta' dei turni,
+            # e una dichiarazione che vive su un ramo solo lascia muta
+            # l'altra meta'.
+            _current_provider.set(self._backend_name(runner))
             return await runner.chat(**kwargs)
         # auto: try backends in chat_policy order with fallback
         ordered = self._ordered_backends_with_name()
@@ -247,6 +284,11 @@ class LLMRouter:
             else:
                 if self._registry is not None:
                     self._registry.successo(backend_name)
+                # **Chi ha risposto si dichiara qui**, dove si sa: e' il
+                # backend che NON ha sollevato, non il primo della catena.
+                # Leggere il primo direbbe «ha risposto claude» proprio nel
+                # caso interessante, quello in cui claude non ha risposto.
+                _current_provider.set(backend_name)
                 return answer
         return last_friendly or "Tutti i provider AI non disponibili. Riprova tra poco."
 

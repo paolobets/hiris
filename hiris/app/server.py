@@ -3256,6 +3256,12 @@ def _govern_bridge_worker(app) -> None:
             # processo separato (`main()`) `/data` non e' di quel processo, e
             # li' il registro resta `None` -- dichiarato, non dimenticato.
             _agent_runner.set_usage_logger(app["usage"].log)
+            # E il REGISTRO DEI TURNI, dalla stessa porta e per lo stesso
+            # motivo (24/09/2026). Senza questa riga il ponte non scriveva
+            # niente: 32 domande vere all'abbonamento Max avevano prodotto
+            # zero righe, e il registro diceva «catena» di tutto perche'
+            # quella era l'unica parola che qualcuno ci scriveva mai.
+            _agent_runner.set_turn_logger(_registra_turno_ponte(app["usage"]))
         # **Le intestazioni del ponte si coniano, non si leggono** (spec §5).
         # Prima veniva `build_headers`, che legge `INTERNAL_TOKEN`
         # dall'ambiente: un segreto unico, eterno, condiviso con ogni altra
@@ -6041,6 +6047,27 @@ async def _serve_config(request: web.Request) -> web.Response:
         content_type="text/html",
         headers=_NO_CACHE,
     )
+
+
+
+def _registra_turno_ponte(archivio):
+    """Collega il registro dei turni al ponte.
+
+    Non traduce niente: il ponte emette gia' le chiavi di `log_turn`. Un
+    vocabolario intermedio qui sarebbe un terzo posto in cui una colonna
+    nuova si dimentica di comparire.
+
+    `subject` esce **None, e non a caso**: il job della coda non porta il
+    soggetto della conversazione (`handlers_chat` non glielo mette), quindi
+    per i turni del ponte non si sa da quale chat venga la domanda. E' il
+    buco che la fondamenta «piu' chat, divise per utente e per sistema»
+    dovra' chiudere alla fonte, accodando il soggetto; riempirlo qui con un
+    valore inventato lo nasconderebbe proprio a chi lo deve vedere.
+    """
+    def registra(riga: dict) -> None:
+        archivio.log_turn(**riga, subject=None, now=time.time())
+
+    return registra
 
 
 async def _handle_health(request: web.Request) -> web.Response:

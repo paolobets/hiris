@@ -177,14 +177,32 @@ async def reread(client, home_space, ha_folder: Path | None) -> dict:
             body = None
         else:
             body = seal.redact(body)
-        entries.append({
+        entry = {
             "id": entity_id,
             "tipo": _BEHAVIOR_DOMAINS[domain_of(entity_id)],
             # Il nome amichevole e' quello che Home Assistant mostra: la
             # sanificazione sta dove sta sempre, al confine (`clean_name`).
             "nome": clean_name((state.get("attributes") or {}).get("friendly_name")),
             "corpo": body,
-        })
+        }
+        # `attiva` (24/09/2026). Lo stato arrivava fin qui dentro
+        # `behavior_states` e veniva buttato via: una scelta del proprietario
+        # -- ho disabilitato questa automazione -- e un guasto diventavano
+        # indistinguibili. Misurato sulla casa vera: HIRIS segnalava
+        # «Gestione antimosche ferma da undici giorni» come anomalia, e il
+        # proprietario ha risposto che e' giusto, l'ha spenta lui. Un allarme
+        # su una cosa voluta e' il rumore sano che seppellisce la rotta.
+        #
+        # **Solo per le automazioni.** Per un'automazione `off` vuol dire
+        # DISABILITATA; per uno script vuol dire «non sta girando in questo
+        # istante», che e' vero quasi sempre. Lo stesso campo per i due
+        # insegnerebbe al modello a leggere ogni script fermo come spento.
+        #
+        # Solo `on`/`off`: `unavailable` o `unknown` non sono una scelta del
+        # proprietario, e dire «attiva: false» li spaccerebbe per tale.
+        if entry["tipo"] == "automazione" and state.get("state") in ("on", "off"):
+            entry["attiva"] = state.get("state") == "on"
+        entries.append(entry)
 
     home_space.hold_behavior(entries, problems=problems, unread_bodies=unread)
 

@@ -1229,6 +1229,15 @@ def _behavior_lines(behavior: list[dict]) -> tuple[list[str], list[int]]:
         name = v.get("nome") or id_ or "(senza nome)"
         kind = v.get("tipo", "?")
         line = f"- {name_with_id(name, id_)} ({kind})"
+        # Un'automazione DISABILITATA dal proprietario (24/09/2026). Senza
+        # questa dichiarazione il modello la vede uguale alle altre e
+        # chiama «ferma da undici giorni» una cosa che e' stata spenta
+        # apposta -- misurato sulla casa vera, «Gestione antimosche».
+        # `is False` e non `not`: la chiave manca sugli script e su ogni
+        # voce letta prima che il campo esistesse, e «non lo so» non deve
+        # diventare «disabilitata».
+        if v.get("attiva") is False:
+            line += " -- disabilitata"
         if v.get("corpo") is None:
             line += " -- corpo non disponibile, solo il nome"
         lines.append(line)

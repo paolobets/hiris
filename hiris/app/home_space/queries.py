@@ -127,6 +127,61 @@ LINK_NAME = {
 HA_LINK_TYPE = {our: their for their, our in LINK_NAME.items()}
 
 
+#: Quanti nomi al massimo escono dal ripiego per frammento. Non e' una
+#: soglia sulla ricerca -- `Lookup.names_containing()` non scarta niente --
+#: ma sul CONTESTO: sulla casa del proprietario «reolink» sta in 166 nomi,
+#: e versarli tutti nel carico del modello e' il difetto che le misure
+#: esistono per trovare. Il taglio si dichiara sempre (`troppi_nomi`): una
+#: lista tagliata in silenzio fa dire al modello «ne ho trovati dodici» di
+#: una casa che ne ha centosessantasei.
+FRAMMENTO_MAX = 12
+
+
+def _per_frammento(lookup, text: str) -> list[dict]:
+    """I nomi che CONTENGONO `testo` come parola intera, nella forma che
+    `search` restituisce.
+
+    E' il ripiego di `search` quando `find()` non ha trovato niente, e solo
+    allora: quando un nome combacia per intero la domanda ha gia' la sua
+    risposta esatta, e aggiungerle accanto ogni nome che contiene quella
+    parola trasformerebbe una risposta certa in una lista ambigua --
+    «Cantina» tornerebbe l'area piu' tutto il resto.
+
+    Ogni voce porta `parte_di_un_nome`, il termine che ha combaciato. Il
+    modello DEVE poter distinguere «si chiama cosi'» da «si chiama cosi' e
+    qualcos'altro»: da quella differenza dipende se puo' agire senza
+    chiedere. La chiave compare solo qui, dove e' sempre vera e sempre
+    informativa -- non e' il `solo_una_parte` scartato in `search()`, che
+    sarebbe uscito su 11 frasi su 13 e che un modello impara a saltare.
+
+    L'ordine e' per lunghezza del nome crescente: il nome piu' corto e'
+    quello che aggiunge meno a cio' che e' stato cercato, quindi il piu'
+    probabile. Non e' un punteggio -- non sceglie, non scarta, e a parita'
+    l'ordine e' alfabetico perche' sia lo stesso a ogni chiamata.
+    """
+    if not hasattr(lookup, "names_containing"):
+        return []
+    entries = sorted(lookup.names_containing(text),
+                     key=lambda entry: (len(entry[1]), entry[1]))
+    if not entries:
+        return []
+    shown = entries[:FRAMMENTO_MAX]
+    results = [{"nome_visto": text,
+                "parte_di_un_nome": term,
+                "candidati": [{"tipo": kind, "riferimento": reference}
+                              for kind, reference in candidates],
+                "ambiguo": len(candidates) > 1}
+               for candidates, term in shown]
+    if len(entries) > len(shown):
+        # Stessa forma della voce «piattaforma» piu' sotto: una voce SENZA
+        # candidati, che dichiara un fatto sulla ricerca invece di
+        # aggiungere una cosa trovata.
+        results.append({"nome_visto": text, "candidati": [], "ambiguo": False,
+                        "troppi_nomi": {"mostrati": len(shown),
+                                        "in_tutto": len(entries)}})
+    return results
+
+
 def search(lookup, text: str) -> list[dict]:
     """Trova `testo` per nome o alias, con l'ambiguita' dichiarata.
 
@@ -191,6 +246,13 @@ def search(lookup, text: str) -> list[dict]:
     riconosciuto, mai la frase intera): lo dichiara la description dello
     strumento (`tools.py::SEARCH_TOOL_DEF`), non una chiave in piu' qui."""
     results = lookup.find(text)
+    if not results:
+        # Il ripiego del 24/09/2026. Prima di questa riga «taverna» tornava
+        # `nulla_riconosciuto` mentre «Taverna 1» e «Taverna 2» esistevano,
+        # e il modello -- su tutte e due le strade, catena e ponte -- diceva
+        # «non c'e' nessuna luce chiamata taverna»: esattamente la frase che
+        # il docstring qui sopra dichiara di non voler mai dire.
+        results = _per_frammento(lookup, text)
     whole_phrase = _normalize(text)
     for entry in results:
         for candidate in entry["candidati"]:

@@ -229,12 +229,25 @@ _ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 # riconosciuto niente, quindi non c'e' un id da suggerire -- si indica la
 # strada (il nome esatto, o `view` diretto se tipo e riferimento sono gia'
 # noti) invece di lasciare il modello a ripetere la stessa ricerca uguale.
+# **Un divieto, non piu' un consiglio** (24/09/2026). Questo testo diceva
+# gia' «non e' detto che la cosa non esista», e il modello, interrogato a
+# vuoto, lo ripeteva fedelmente. Ma quando aveva un COMPITO da portare a
+# casa -- «accendi la luce della taverna» -- rispondeva «in Home Assistant
+# non c'e' nessuna stanza ne' luce chiamata taverna», cioe' esattamente la
+# frase che `queries.search` dichiara di non voler mai dire con sicurezza.
+# Misurato su tutte e due le strade, catena e ponte: non era il modello.
+#
+# Il resto era un consiglio inservibile: «riprova col nome esatto» lo si da'
+# a chi il nome esatto ce l'ha, e chi cerca non ce l'ha mai. Al suo posto
+# c'e' cio' che il modello puo' davvero fare adesso.
 _NOTHING_RECOGNIZED_SUGGESTION = (
-    "Nessun nome ne' alias dichiarato in questa casa combacia con questo "
-    "testo -- non e' detto che la cosa non esista, «search» ha guardato i "
-    "nomi, non l'inventario. Se conosci il nome esatto con cui la casa "
-    "chiama cio' che cerchi, riprova «search» con quel nome; se conosci "
-    "gia' il tipo e il riferimento, chiama «view» direttamente."
+    "Nessun nome dichiarato in questa casa contiene questo testo, ne' per "
+    "intero ne' come parola. **Non rispondere che la cosa non esiste: non "
+    "lo sai.** «search» guarda i nomi, non l'inventario, e una cosa puo' "
+    "esistere con un nome che non somiglia a quello che hai cercato. "
+    "Prima di concludere: cerca la STANZA in cui la cosa dovrebbe stare e "
+    "chiama «view» su quell'area per vedere cosa contiene davvero; se "
+    "conosci gia' tipo e riferimento, «view» diretto."
 )
 
 logger = logging.getLogger(__name__)

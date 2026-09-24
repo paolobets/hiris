@@ -1133,6 +1133,98 @@ def set_usage_logger(fn) -> None:
     _log_usage = fn
 
 
+_log_turn = None
+
+
+def set_turn_logger(fn) -> None:
+    """Collega (o scollega) il registro dei TURNI al ponte.
+
+    Gemello di `set_usage_logger` qui sopra, e per la stessa ragione: la
+    misura sta in fondo a cinque chiamate e nessuna delle cinque ha motivo
+    di conoscere il registro. Due ganci e non uno perche' misurano due cose
+    diverse -- i consumi contano token per modello, il registro conta
+    durata, giri e strumenti per turno -- e fonderli vorrebbe dire una riga
+    che sa meta' di due cose.
+    """
+    global _log_turn
+    _log_turn = fn
+
+
+#: Come il ponte chiama le sue specie, e come le chiama il registro.
+#:
+#: Sono due vocabolari per gli stessi attori, e la traduzione esiste **in un
+#: posto solo**: `steering.misura_turno` RIFIUTA una specie che non conosce
+#: -- giustamente, perche' due nomi per lo stesso attore renderebbero il
+#: registro inservibile sulla domanda per cui esiste, «chi spende cosa» --
+#: e senza questa tabella il ponte gliene passerebbe tre inventate.
+#:
+#: `tests/test_misura_del_ponte.py` tiene la tabella allineata a
+#: `RAGIONABILI` da una parte e a `steering.SPECIE` dall'altra: il giorno in
+#: cui nasce una sesta specie ragionabile, la prova diventa rossa invece
+#: che il registro muto.
+JOB_SPECIES = {
+    "chat": "chat",
+    "promessa": "promessa",
+    "scope": "osservatore",
+    "ricetta": "ricette",
+    "analisi": "analista",
+}
+
+
+def _measure_turn(job: dict, *, duration_ms: int, tools: list,
+                  occurrence: "StreamOccurrence | None",
+                  outcome: str) -> None:
+    """La riga del registro per un turno del PONTE.
+
+    **Perche' non basta `steering.misura_turno`.** Quella misura avvolge una
+    chiamata a `runner.chat()` e raccoglie i pesi del carico a ogni giro dal
+    gancio di `claude_runner`. Il ponte non passa di la': lancia la CLI, che
+    fa il proprio ciclo di strumenti dentro di se'. I pesi per giro **non
+    esistono** da questa parte, e inventarli a zero direbbe «questo turno non
+    ha mandato niente al modello», che e' falso. Escono quindi i fatti che il
+    ponte conosce davvero, e i carichi restano assenti: un'assenza e' una
+    risposta, uno zero e' una bugia.
+
+    I giri li dichiara la CLI (`num_turns` -> `num_exchanges`): sono i suoi,
+    non se ne tiene un secondo conto che possa divergere.
+
+    **Non puo' far cadere un turno.** Vale qui la stessa legge di
+    `misura_turno`: il proprietario ha gia' la sua risposta, e un registro
+    rotto non gliela puo' togliere.
+    """
+    try:
+        if _log_turn is None:
+            return
+        species = JOB_SPECIES.get((job or {}).get("kind"))
+        if species is None:
+            # Un `reasoning.db` lasciato da un'installazione precedente puo'
+            # portare una specie che nessuno ragiona piu'. Si tace invece di
+            # scrivere un nome inventato: `reason()` l'ha gia' dichiarata nel
+            # log, e una riga sbagliata sarebbe peggio di una riga assente.
+            return
+        models = exchange_usages(occurrence) if occurrence is not None else []
+        # **Le chiavi sono quelle di `UsageStore.log_turn`**, non un terzo
+        # vocabolario da tradurre a meta' strada: `server.py` le passa
+        # dritte. Una traduzione in mezzo sarebbe un posto in piu' in cui
+        # una colonna nuova si dimentica.
+        _log_turn({
+            "species": species,
+            "channel": "ponte",
+            # Il nome con cui la pagina Modelli chiama questa strada, cosi'
+            # che il registro e la pagina dicano la stessa parola.
+            "provider": "subscription",
+            "model": models[0][0] if models else "ignoto",
+            "duration_ms": duration_ms,
+            "iterations": getattr(occurrence, "num_exchanges", None) or 0,
+            "tools": [c.get("tool") for c in (tools or [])
+                      if isinstance(c, dict) and c.get("tool")],
+            "outcome": outcome,
+        })
+    except Exception as error:  # pragma: no cover - guasto dell'archivio
+        log.warning("la misura del turno del ponte non si e' potuta scrivere "
+                    "(%s: %s)", type(error).__name__, error)
+
+
 def _logga_uso(occurrence: StreamOccurrence, job_id) -> None:
     """La misura che chiudera' la domanda aperta 2 (Task 2, Step 4).
 
@@ -1402,8 +1494,15 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # consegna alla fase sicurezze, con lo stesso perche' con cui il Task 5
     # della fetta A l'aveva appena tolto dal `context`.
     tools_called_in_exchange: list = []
+    # Il cronometro del TURNO, non di un'invocazione: `_invoca` puo' girare
+    # due volte (l'evento `init` smentisce la sonda degli strumenti) e il
+    # proprietario ha aspettato tutte e due. L'ultima occorrenza serve per i
+    # giri e il modello -- si tiene in una cella perche' `_reply` e' una
+    # chiusura e non puo' riassegnare una variabile del corpo.
+    turn_started = time.perf_counter()
+    last_occurrence: list = []
 
-    def _reply(text: str) -> dict:
+    def _reply(text: str, *, outcome: str = "riuscito") -> dict:
         """L'UNICO modo in cui una risposta esce da questa funzione.
 
         fix round 2, seconda meta' della difesa: redigere il solo stdout GREZZO
@@ -1436,6 +1535,16 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         strumenti"). Passa dallo STESSO cancello (`_reda_struttura`, sopra):
         l'`input` e' testo del modello, non nostro, e la regola del progetto
         e' che il token non compare in NESSUN canale nuovo."""
+        # La misura del turno vive QUI per la ragione scritta due paragrafi
+        # sopra: sei rami di ritorno, un imbuto solo. Su un ramo sarebbe una
+        # misura che perde i turni degli altri cinque, ed e' esattamente il
+        # buco che questa riga chiude -- il 24/09/2026 il registro aveva 37
+        # turni della catena e ZERO del ponte.
+        _measure_turn(
+            job, duration_ms=int((time.perf_counter() - turn_started) * 1000),
+            tools=tools_called_in_exchange,
+            occurrence=last_occurrence[-1] if last_occurrence else None,
+            outcome=outcome)
         return {"reply": reda_segreti(text, *forms),
                "tools_called": _reda_struttura(tools_called_in_exchange, *forms)}
 
@@ -1556,6 +1665,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # commento su `tools_called_in_exchange`, sopra: una chiamata MCP di
         # un'invocazione buttata e' gia' successa per davvero.
         tools_called_in_exchange.extend(occurrence.tools_called)
+        last_occurrence.append(occurrence)
         _logga_init(occurrence, job_id)   # la misura, a ogni giro
         _logga_uso(occurrence, job_id)    # Step 4: la misura per la domanda aperta 2
         if occurrence.lines_skipped:
@@ -1577,7 +1687,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
 
     invocation = _invoca(tools)
     if invocation is None:
-        return _reply(MISSING_RUNNER_SENTINEL)
+        return _reply(MISSING_RUNNER_SENTINEL, outcome="fallito")
 
     # ── LA DIFESA (2): l'`init` smentisce la sonda (Task 4) ────────────────
     # La sonda ha detto di si' DAL NOSTRO LATO; qui parla la CLI. Se le due si
@@ -1615,7 +1725,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             ritentato = True
             invocation = _invoca(tools)
             if invocation is None:
-                return _reply(MISSING_RUNNER_SENTINEL)
+                return _reply(MISSING_RUNNER_SENTINEL, outcome="fallito")
 
     # Da qui in giu' si legge UNA invocazione: la prima se e' bastata, la
     # seconda se la prima e' stata buttata. I rami sono gli stessi.
@@ -1679,7 +1789,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # Esiti (2) e (4): il testo del risultato, oppure il sentinella del vuoto.
     text = occurrence.text.strip()
     if not text:
-        return _reply(EMPTY_SENTINEL)
+        return _reply(EMPTY_SENTINEL, outcome="fallito")
     if degrado:
         # Solo QUI, e non sugli altri rami: `[errore runner rc=...]`,
         # `[runner non disponibile]`, `[flusso incompleto]` e `[vuoto]` sono

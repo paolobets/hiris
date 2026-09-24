@@ -236,6 +236,54 @@ class Lookup:
         trovate.sort(key=lambda t: t[0])
         return [entry for _, entry in trovate]
 
+    def names_containing(self, text: str) -> list[tuple[list[tuple[str, str]], str]]:
+        """I termini dell'indice che CONTENGONO `testo` come parola intera.
+
+        E' l'operazione opposta a `find()`, e sono due cose diverse che
+        fino al 24/09/2026 condividevano un meccanismo solo. `find()`
+        ancora i nomi dentro la PROSA e cerca i termini dentro la frase:
+        giusto li', perche' «ho pulito la cucina» non deve agganciare le 22
+        entita' che portano «cucina» nel nome. Una domanda DIRETTA --
+        «trovami le cose che si chiamano taverna» -- vuole il verso
+        contrario, e senza questo metodo non aveva nessun posto dove
+        succedere.
+
+        **Il difetto che l'ha fatta nascere**, misurato sulla casa vera:
+        «Accendi la luce della taverna» rispondeva «non c'e' nessuna stanza
+        ne' luce chiamata taverna» mentre `light.taverna_1_taverna_1` e
+        `light.taverna_2_taverna_2` -- «Taverna 1» e «Taverna 2», vive,
+        nell'area Cantina -- esistevano. I termini erano «taverna 1» e
+        «taverna 2»; la frase «taverna» non li contiene, quindi `find()`
+        non trovava niente e lo strumento dichiarava `nulla_riconosciuto`.
+        Sia la catena sia il ponte si arrendevano uguale: non era il
+        modello.
+
+        **Perche' non c'e' una soglia sul numero di candidati.** Il primo
+        disegno scartava le parole troppo frequenti, per non annegare il
+        modello. Misurato sulla casa vera (869 nomi vivi, 604 parole nuove)
+        quella soglia avrebbe buttato via le parole PIU' utili: «cucina»
+        (22 entita'), «giardino» (28), «luci» (21), «sala» (15). Il rumore
+        vero sta altrove ed e' pochissimo -- «reolink», «trackmix», «poe» a
+        166 -- e non si distingue da «cucina» contando. Chi taglia e'
+        `search` (`home_space/queries.py`), che conosce il proprio tetto e
+        dichiara quando ha tagliato; qui non si sceglie e non si scarta:
+        e' la stessa legge di `find()`.
+
+        **Il confine di parola vale anche qui**: «tav» non nomina niente,
+        altrimenti questa diventerebbe una ricerca per sottostringa e
+        «sala» troverebbe «salato».
+
+        Un testo che E' gia' un termine intero non esce di qui: lo trova
+        `find()`, e restituirlo due volte darebbe al chiamante la stessa
+        voce sdoppiata.
+        """
+        cercato = _normalize(text)
+        if not cercato:
+            return []
+        pattern = _compila(cercato)
+        return [(candidati, term) for term, candidati in self._termini_grezzi
+                if term != cercato and pattern.search(term)]
+
     def verify(self, type: str, reference: str) -> dict | None:
         """L'oggetto dell'anagrafe se `riferimento` esiste con quel `tipo`,
         altrimenti None.
