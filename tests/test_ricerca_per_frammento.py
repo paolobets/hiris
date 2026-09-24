@@ -142,3 +142,58 @@ def test_senza_tetto_superato_nessuna_dichiarazione(lookup):
     """Una dichiarazione sempre presente smette di essere un segnale: due
     nomi non sono «troppi»."""
     assert not any("troppi_nomi" in v for v in search(lookup, "taverna"))
+
+
+# --------------------------------------------------------------------------
+# Il difetto del 24/09 sera: «trovare qualcosa» non e' «trovare cio' che
+# si cercava»
+# --------------------------------------------------------------------------
+
+_CASA_OMONIMA = {
+    "aree": [{"id": "cantina", "nome": "Cantina", "alias": [], "piano_id": "interrato"},
+             {"id": "bagno", "nome": "Bagno", "alias": [], "piano_id": "terra"}],
+    "entita": [
+        {"id": "light.taverna_1", "nome": "Taverna 1", "alias": [], "area_id": "cantina",
+         "classe": None, "unita": None},
+        {"id": "light.taverna_2", "nome": "Taverna 2", "alias": [], "area_id": "cantina",
+         "classe": None, "unita": None},
+        # La luce del bagno si chiama proprio «Luce»: e' il caso vero della
+        # casa del proprietario, ed e' quello che ha fatto fallire il ripiego.
+        {"id": "light.bagno", "nome": "Luce", "alias": [], "area_id": "bagno",
+         "classe": None, "unita": None},
+    ],
+    "dispositivi": [], "piani": [], "etichette": [], "categorie": [],
+    "integrazioni": [],
+}
+
+
+def test_una_corrispondenza_qualunque_non_spegne_il_ripiego():
+    """Il difetto vero, misurato sulla casa il 24/09/2026 alle 19:10.
+
+    Il modello non cerca «taverna»: cerca **«luce della taverna»**, la
+    frase intera. `find()` ci trova dentro «Luce» -- la luce del bagno,
+    che si chiama proprio cosi' -- quindi il risultato NON era vuoto, e il
+    ripiego, che partiva solo sul vuoto, non e' mai partito. HIRIS ha
+    risposto di nuovo «non c'e' nessuna luce chiamata taverna».
+
+    «Trovare qualcosa» non e' «trovare cio' che si cercava»: il ripiego
+    guarda le parole che `find()` NON ha consumato.
+    """
+    lookup = costruisci_indice(_CASA_OMONIMA)
+    voci = search(lookup, "luce della taverna")
+    trovati = {c["riferimento"] for v in voci for c in v["candidati"]}
+    assert "light.taverna_1" in trovati and "light.taverna_2" in trovati
+    # La luce omonima resta: e' un risultato vero di `find()`, non si
+    # scarta perche' e' arrivata un'altra risposta.
+    assert "light.bagno" in trovati
+
+
+def test_le_parole_vuote_non_cercano_niente():
+    """«della» compare in undici nomi della casa vera. Cercarla porterebbe
+    undici candidati che non c'entrano niente, a ogni domanda che contiene
+    una preposizione -- cioe' quasi tutte."""
+    lookup = costruisci_indice(_CASA_OMONIMA)
+    voci = search(lookup, "la luce della taverna")
+    for v in voci:
+        assert v.get("parte_di_un_nome") != "della"
+        assert v["nome_visto"] not in ("la", "della")

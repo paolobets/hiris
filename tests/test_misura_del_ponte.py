@@ -127,3 +127,26 @@ def test_il_funnel_delle_risposte_misura():
         "la misura del turno del ponte non e' piu' nell'imbuto di `_reply`: "
         "o e' sparita, o e' stata copiata su un ramo -- e una copia resta "
         "indietro alla prima correzione fatta sull'altra")
+
+
+def test_gli_strumenti_hanno_UN_nome_solo(registro):
+    """Il registro deve poter SOMMARE le due strade.
+
+    Misurato sul primo turno vero del ponte (24/09/2026, 19:05): gli
+    strumenti uscivano come `mcp__hiris__search`, mentre la catena scrive
+    `search`. Due nomi per la stessa cosa, e la domanda «quali strumenti
+    non vengono mai usati» -- quella che mi aveva gia' fatto sbagliare una
+    volta -- sarebbe tornata a contare due volte lo stesso catalogo.
+
+    Il prefisso e' un dettaglio del TRASPORTO (MCP prefissa ogni nome col
+    nome del server), non dell'attore: si toglie al confine, dove il
+    trasporto finisce. Cio' che NON porta il prefisso -- `ToolSearch` e
+    gli altri strumenti della CLI -- resta com'e': e' un attore diverso, e
+    fonderlo coi nostri direbbe che HIRIS ha strumenti che non ha.
+    """
+    ponte._measure_turn(
+        {"job_id": "j5", "kind": "chat"}, duration_ms=1,
+        tools=[{"tool": "mcp__hiris__search"}, {"tool": "mcp__hiris__view"},
+               {"tool": "ToolSearch"}],
+        occurrence=_occorrenza(), outcome="riuscito")
+    assert registro[0]["tools"] == ["search", "view", "ToolSearch"]

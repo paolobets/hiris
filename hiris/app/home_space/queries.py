@@ -49,7 +49,11 @@ corpo e' vuoto» (un fatto sulla casa: `corpo: {}` o simile).
 from __future__ import annotations
 
 from ..action.registry import field_applies
-from ..memory.resolver import _normalize
+from ..memory.resolver import (
+    ITALIAN_ELISIONS,
+    ITALIAN_FUNCTION_WORDS,
+    _normalize,
+)
 from ..proxy._sanitize import sanitize_structure, sanitize_text
 from ..proxy.entity_cache import (
     ASSUMABLE,
@@ -137,7 +141,43 @@ HA_LINK_TYPE = {our: their for their, our in LINK_NAME.items()}
 FRAMMENTO_MAX = 12
 
 
-def _per_frammento(lookup, text: str) -> list[dict]:
+def _words_to_search(text: str, results: list[dict]) -> list[str]:
+    """Le parole di `testo` che `find()` NON ha consumato e che vale la pena
+    cercare fra i nomi.
+
+    **Il difetto che l'ha fatta nascere** (24/09/2026, sera). Il ripiego
+    partiva solo quando `find()` tornava a mani vuote. Ma il modello non
+    cerca «taverna»: cerca **«luce della taverna»**, la frase intera, e su
+    quella `find()` trova «Luce» -- la luce del bagno, che si chiama
+    proprio cosi'. Risultato non vuoto, ripiego mai partito, e HIRIS ha
+    risposto di nuovo «non c'e' nessuna luce chiamata taverna» con la
+    correzione gia' installata. **«Trovare qualcosa» non e' «trovare cio'
+    che si cercava»**, ed era il mio errore, non quello del modello.
+
+    Le parole funzionali restano fuori: sulla casa vera «della» compare in
+    undici nomi, «di» in sessantotto. Cercarle porterebbe decine di
+    candidati che non c'entrano a ogni domanda che contiene una
+    preposizione, cioe' quasi tutte. L'elenco e' quello di
+    `memory/resolver.ITALIAN_FUNCTION_WORDS`, lo stesso che vieta una
+    giuntura italiana dentro un identificatore: non se ne tiene un secondo.
+
+    I numeri non sono nomi («1» sta in quarantotto nomi di questa casa) e
+    sotto le tre lettere non si cerca: «tv» e «ha» troverebbero mezza casa.
+    """
+    consumed = {word
+                for entry in results
+                for word in _normalize(entry.get("nome_visto") or "").split()}
+    seen: list[str] = []
+    for word in _normalize(text).split():
+        if (word in consumed or word in ITALIAN_FUNCTION_WORDS
+                or word in ITALIAN_ELISIONS or len(word) < 3
+                or word.isdigit() or word in seen):
+            continue
+        seen.append(word)
+    return seen
+
+
+def _per_frammento(lookup, text: str, results: list[dict]) -> list[dict]:
     """I nomi che CONTENGONO `testo` come parola intera, nella forma che
     `search` restituisce.
 
@@ -161,7 +201,14 @@ def _per_frammento(lookup, text: str) -> list[dict]:
     """
     if not hasattr(lookup, "names_containing"):
         return []
-    entries = sorted(lookup.names_containing(text),
+    collected: dict[str, tuple] = {}
+    for word in _words_to_search(text, results):
+        for candidati, term in lookup.names_containing(word):
+            # Una parola sola per voce: due parole della domanda possono
+            # cadere sullo stesso nome, e ripeterlo direbbe al modello che
+            # sono due cose.
+            collected.setdefault(term, (candidati, term))
+    entries = sorted(collected.values(),
                      key=lambda entry: (len(entry[1]), entry[1]))
     if not entries:
         return []
@@ -245,14 +292,18 @@ def search(lookup, text: str) -> list[dict]:
     vero e gratis in `nome_visto` (gia' il testo del SOLO frammento
     riconosciuto, mai la frase intera): lo dichiara la description dello
     strumento (`tools.py::SEARCH_TOOL_DEF`), non una chiave in piu' qui."""
+    # Il ripiego del 24/09/2026. Prima di queste righe «taverna» tornava
+    # `nulla_riconosciuto` mentre «Taverna 1» e «Taverna 2» esistevano, e il
+    # modello -- su tutte e due le strade, catena e ponte -- diceva «non c'e'
+    # nessuna luce chiamata taverna»: esattamente la frase che il docstring
+    # qui sopra dichiara di non voler mai dire.
+    #
+    # Si AFFIANCA a `find()`, non lo sostituisce e non aspetta che fallisca:
+    # la prima versione partiva solo sul vuoto, e su «luce della taverna»
+    # non e' mai partita perche' «Luce» -- la luce del bagno -- e' un
+    # risultato. Vedi `_words_to_search`.
     results = lookup.find(text)
-    if not results:
-        # Il ripiego del 24/09/2026. Prima di questa riga «taverna» tornava
-        # `nulla_riconosciuto` mentre «Taverna 1» e «Taverna 2» esistevano,
-        # e il modello -- su tutte e due le strade, catena e ponte -- diceva
-        # «non c'e' nessuna luce chiamata taverna»: esattamente la frase che
-        # il docstring qui sopra dichiara di non voler mai dire.
-        results = _per_frammento(lookup, text)
+    results = results + _per_frammento(lookup, text, results)
     whole_phrase = _normalize(text)
     for entry in results:
         for candidate in entry["candidati"]:

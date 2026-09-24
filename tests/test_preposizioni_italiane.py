@@ -242,42 +242,19 @@ ROOT = Path(__file__).resolve().parents[1]
 # Preposizioni semplici e articolate, articoli e congiunzioni che NON sono
 # anche parole inglesi. `in` e `per` sono esclusi di proposito: vedi il
 # docstring del modulo, con la misura degli usi inglesi veri.
-_PIANE = frozenset([
-    # preposizioni proprie
-    "di", "da", "con", "su", "tra", "fra",
-    # preposizioni articolate
-    "del", "dello", "della", "dei", "degli", "delle",
-    "al", "allo", "alla", "ai", "agli", "alle",
-    "dal", "dallo", "dalla", "dai", "dagli", "dalle",
-    "nel", "nello", "nella", "nei", "negli", "nelle",
-    "col", "collo", "colla", "coi", "cogli", "colle",
-    "sul", "sullo", "sulla", "sui", "sugli", "sulle",
-    "pel", "pei",
-    # preposizioni improprie e locuzioni
-    "sopra", "sotto", "dopo", "prima", "senza", "oltre", "durante", "dentro",
-    "fuori", "verso", "contro", "tranne", "salvo", "presso", "mediante",
-    "tramite", "entro", "dietro", "davanti", "attraverso", "nonostante", "malgrado",
-    # articoli
-    "il", "lo", "la", "gli", "le", "un", "uno", "una",
-    # congiunzioni e negazione
-    "e", "ed", "che", "come", "non",
-    # Terza chiusura della lista (01/09). Le due volte precedenti mancavano
-    # forme CON occorrenze (`a` nuda e le elisioni la prima, `non`/`senza`/
-    # `che`/`come`/`oltre`/`durante` la seconda); questa volta le forme
-    # aggiunte hanno **zero occorrenze oggi**, ed e' il punto: il docstring
-    # gia' diceva che le forme senza occorrenze «costano nulla e chiudono la
-    # lista invece di aspettare la terza volta», e la terza volta e' arrivata
-    # lo stesso. Si chiude la CLASSE GRAMMATICALE, non i casi incontrati.
-    "ma", "se", "oppure", "pero", "quindi", "dunque", "anche", "pure",
-    "poiche", "benche", "sebbene", "finche", "mentre", "cioe", "invece",
-    "ne", "neanche", "nemmeno", "neppure", "anzi", "ossia", "nonche",
-    "insieme", "accanto", "vicino", "intorno", "rispetto", "riguardo",
-    "eccetto", "escluso", "incluso", "compreso",
-])
-
-# Elisioni: valgono SOLO davanti a vocale, perche' e' cio' che l'elisione e'.
-_ELISIONI = frozenset(["dell", "all", "nell", "sull", "coll", "dall", "l"])
-_VOCALI = frozenset("aeiou")
+# La lista vive in `memory/resolver.py` dal 24/09/2026: la usa anche il
+# prodotto (`home_space/queries.search`), e un cancello chiede il suo
+# elenco invece di ricopiarlo -- due copie sono due posti in cui la stessa
+# aggiunta si dimentica di uno.
+from hiris.app.memory.resolver import (
+    ITALIAN_ELISIONS as _ELISIONI,
+)
+from hiris.app.memory.resolver import (
+    ITALIAN_FUNCTION_WORDS as _PIANE,
+)
+from hiris.app.memory.resolver import (
+    ITALIAN_VOWELS as _VOCALI,
+)
 
 
 def giunture(nome: str) -> list[str]:

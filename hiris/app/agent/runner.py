@@ -1171,6 +1171,28 @@ JOB_SPECIES = {
 }
 
 
+def _bare_tool_name(name: str) -> str:
+    """`mcp__hiris__search` -> `search`. Il resto passa intatto.
+
+    Il prefisso e' un dettaglio del TRASPORTO -- MCP prefissa ogni nome col
+    nome del server -- non dell'attore, e si toglie al confine, dove il
+    trasporto finisce. Senza, il registro porta due nomi per lo stesso
+    strumento (la catena scrive `search`) e non puo' sommare le due strade:
+    la domanda «quali strumenti non vengono mai usati» conterebbe due volte
+    lo stesso catalogo, ed e' esattamente la domanda che il 23/09 mi aveva
+    gia' fatto dare una risposta sbagliata.
+
+    Il nome del server si CHIEDE (`_mcp_server_name`), non si ricopia: da
+    quello discendono anche `--allowedTools` e il testo del prompt.
+
+    Cio' che il prefisso non ce l'ha -- `ToolSearch` e gli altri strumenti
+    propri della CLI -- resta com'e': e' un attore diverso, e fonderlo coi
+    nostri direbbe che HIRIS ha strumenti che non ha.
+    """
+    prefix = f"mcp__{_mcp_server_name()}__"
+    return name.removeprefix(prefix)
+
+
 def _measure_turn(job: dict, *, duration_ms: int, tools: list,
                   occurrence: "StreamOccurrence | None",
                   outcome: str) -> None:
@@ -1216,7 +1238,7 @@ def _measure_turn(job: dict, *, duration_ms: int, tools: list,
             "model": models[0][0] if models else "ignoto",
             "duration_ms": duration_ms,
             "iterations": getattr(occurrence, "num_exchanges", None) or 0,
-            "tools": [c.get("tool") for c in (tools or [])
+            "tools": [_bare_tool_name(c.get("tool")) for c in (tools or [])
                       if isinstance(c, dict) and c.get("tool")],
             "outcome": outcome,
         })

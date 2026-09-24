@@ -79,6 +79,59 @@ _ARCHIVI = (("aree", "area"), ("entita", "entita"), ("dispositivi", "dispositivo
 STORE_KEY_PER_TYPE: dict[str, str] = {type: key for key, type in _ARCHIVI}
 
 
+# Le parole funzionali dell'italiano. **Vivono qui, non nel cancello**
+# (24/09/2026): erano nate in `tests/test_preposizioni_italiane.py`, che le
+# usa per vietare una giuntura italiana dentro un identificatore, e da oggi
+# servono anche al prodotto -- `home_space/queries.search` deve sapere che
+# «della» non e' il nome di niente prima di andarlo a cercare fra i nomi
+# della casa (sulla casa vera «della» compare in undici nomi: cercarla
+# porterebbe undici candidati che non c'entrano a ogni domanda che contiene
+# una preposizione, cioe' quasi tutte).
+#
+# La lista NON si ricopia di la': un cancello chiede il suo elenco
+# (CLAUDE.md, I-0), e due copie della stessa lista sono due posti in cui la
+# stessa aggiunta si dimentica di un posto. Il cancello importa da qui.
+#
+# Il nome e' inglese perche' questo modulo e' un ambito convertito; cio' che
+# la lista CONTIENE e' italiano, ed e' un'altra cosa.
+ITALIAN_FUNCTION_WORDS = frozenset([
+    # preposizioni proprie
+    "di", "da", "con", "su", "tra", "fra",
+    # preposizioni articolate
+    "del", "dello", "della", "dei", "degli", "delle",
+    "al", "allo", "alla", "ai", "agli", "alle",
+    "dal", "dallo", "dalla", "dai", "dagli", "dalle",
+    "nel", "nello", "nella", "nei", "negli", "nelle",
+    "col", "collo", "colla", "coi", "cogli", "colle",
+    "sul", "sullo", "sulla", "sui", "sugli", "sulle",
+    "pel", "pei",
+    # preposizioni improprie e locuzioni
+    "sopra", "sotto", "dopo", "prima", "senza", "oltre", "durante", "dentro",
+    "fuori", "verso", "contro", "tranne", "salvo", "presso", "mediante",
+    "tramite", "entro", "dietro", "davanti", "attraverso", "nonostante", "malgrado",
+    # articoli
+    "il", "lo", "la", "gli", "le", "un", "uno", "una",
+    # congiunzioni e negazione
+    "e", "ed", "che", "come", "non",
+    # Terza chiusura della lista (01/09). Le due volte precedenti mancavano
+    # forme CON occorrenze (`a` nuda e le elisioni la prima, `non`/`senza`/
+    # `che`/`come`/`oltre`/`durante` la seconda); questa volta le forme
+    # aggiunte hanno **zero occorrenze oggi**, ed e' il punto: il docstring
+    # gia' diceva che le forme senza occorrenze «costano nulla e chiudono la
+    # lista invece di aspettare la terza volta», e la terza volta e' arrivata
+    # lo stesso. Si chiude la CLASSE GRAMMATICALE, non i casi incontrati.
+    "ma", "se", "oppure", "pero", "quindi", "dunque", "anche", "pure",
+    "poiche", "benche", "sebbene", "finche", "mentre", "cioe", "invece",
+    "ne", "neanche", "nemmeno", "neppure", "anzi", "ossia", "nonche",
+    "insieme", "accanto", "vicino", "intorno", "rispetto", "riguardo",
+    "eccetto", "escluso", "incluso", "compreso",
+])
+
+# Elisioni: valgono SOLO davanti a vocale, perche' e' cio' che l'elisione e'.
+ITALIAN_ELISIONS = frozenset(["dell", "all", "nell", "sull", "coll", "dall", "l"])
+ITALIAN_VOWELS = frozenset("aeiou")
+
+
 def _normalize(text: str) -> str:
     """Minuscole, accenti tolti, spazi multipli compressi.
 
