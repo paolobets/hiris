@@ -1,5 +1,16 @@
 # HIRIS — Changelog
 
+## [3.66.1] — Il bit che su Windows non si vede (2026-09-24)
+
+`scripts/misure.py` nasce con uno shebang e **senza il bit di esecuzione**: su Windows il permesso
+non esiste, `ruff` locale non dice niente, e il CI su Linux risponde `EXE001`. È la trappola che
+questo progetto ha già scritto una volta — *«zero in locale non è zero, il CI comanda»* — e ci sono
+ricascato dieci minuti dopo aver dichiarato tutti i cancelli verdi.
+
+Il bit si mette **nell'indice di git** (`git update-index --chmod=+x`), che è l'unico posto dove
+conta: il filesystem di Windows non lo porta. Gli altri quattro script eseguibili di `scripts/` lo
+hanno già, e adesso sono cinque su cinque.
+
 ## [3.66.0] — Le misure: due registri, e tre cose che non avevano bisogno di aspettarli (2026-09-24)
 
 Questa fetta **non ottimizza niente**. Costruisce gli strumenti per decidere *cosa* ottimizzare, e
