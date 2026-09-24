@@ -296,6 +296,17 @@ def _pesa_carico_catena(messages: list, tools, context_str: str) -> dict:
     # il 74% pagato pieno e' su questa strada.
     stabile = "".join(testo_canonico(m.get("content")) for m in (messages or [])
                       if m.get("role") == "system")
+    # **Il nucleo esce dall'impronta**, e qui non basta guardare i ruoli: la
+    # casa compone UN SOLO messaggio di sistema e il nucleo ci sta DENTRO
+    # (`system_parts.append(context_str)`). Comprendendolo, l'impronta
+    # cambierebbe a ogni turno -- il nucleo porta l'ora -- e la misura
+    # direbbe «prefisso instabile» sempre, su ogni casa: una misura che
+    # sembra funzionare e non misura niente.
+    #
+    # Scoperto dalla PRIMA lettura vera sulla casa (24/09/2026): tre turni,
+    # tre impronte diverse, un numero troppo netto per essere vero.
+    if context_str:
+        stabile = stabile.replace(context_str, "")
     fingerprint = _hashlib.sha256(
         (stabile + testo_canonico(tools)).encode("utf-8")).hexdigest()[:16]
     return {"tools_chars": pesa_in_caratteri(tools), "guide_chars": max(guide - core, 0),

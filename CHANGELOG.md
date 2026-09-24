@@ -1,5 +1,28 @@
 # HIRIS — Changelog
 
+## [3.66.3] — L'impronta che misurava se stessa (2026-09-24)
+
+**La prima lettura vera dei registri ha trovato un difetto nei registri**, ed è il modo giusto in
+cui doveva andare.
+
+Il verdetto sulla leva del prefisso diceva, per la chat: *«3 impronte diverse su 3 turni →
+INTERVENIRE: la cache non può colpire»*. Troppo netto per essere vero — e infatti era un artefatto
+della misura.
+
+Sulla catena il nucleo **non è un blocco a sé**: `system_parts.append(context_str)` lo infila
+dentro l'unico messaggio di sistema. L'impronta lo comprendeva, il nucleo porta l'ora, quindi
+cambiava a ogni turno **per costruzione**. Una misura che sembra funzionare e non misura niente —
+e che avrebbe mandato la fetta successiva a cercare un colpevole dentro un prefisso che magari è
+stabilissimo.
+
+Le prove sull'impronta esistevano **solo per il percorso Anthropic**, dove il nucleo è un blocco
+separato e il problema non si pone. Adesso hanno il loro gemello per la catena, e due mutazioni le
+tengono oneste.
+
+Corretta anche la sonda di sviluppo che firmava il percorso **con la query**: il server verifica
+`request.path`, che la query non ce l'ha, e `/api/misure?giorni=7` prendeva 401 su una richiesta
+legittima. La nota era già scritta in `scripts/misure.py`; la sonda non la seguiva.
+
 ## [3.66.2] — La rotta temporanea, perché una misura che nessuno legge non c'è (2026-09-24)
 
 I due registri della 3.66.0 scrivevano, e **nessuno poteva leggerli**. `consumi.db` vive in

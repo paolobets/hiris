@@ -122,3 +122,50 @@ def test_il_pesatore_della_catena_separa_i_risultati():
 
     assert pesi["results_chars"] >= 3000
     assert pesi["history_chars"] < 100
+
+
+# --- Il gemello che mancava, e che il primo uso vero ha scoperto ----------
+#
+# Le prove sull'impronta esistevano SOLO per il percorso Anthropic. Sulla
+# catena il nucleo non e' un blocco a se': `system_parts.append(context_str)`
+# lo infila DENTRO l'unico messaggio di sistema, quindi l'impronta lo
+# comprendeva e cambiava a ogni turno per costruzione.
+#
+# Il verdetto che ne usciva -- «il prefisso cambia, la cache non puo'
+# colpire» -- era un artefatto della misura, non un fatto sul prodotto. Lo ha
+# scoperto la PRIMA lettura vera sulla casa: tre turni, tre impronte diverse,
+# un numero troppo netto per essere vero.
+
+
+def test_l_impronta_della_CATENA_ignora_il_nucleo():
+    """Il gemello di `test_l_impronta_IGNORA_il_nucleo_che_cambia_a_ogni_turno`,
+    per l'altra forma. Se l'impronta comprendesse il nucleo direbbe «prefisso
+    instabile» SEMPRE, su ogni casa e ogni turno: una misura che sembra
+    funzionare e non misura niente.
+
+    Mutazione ESEGUITA: non togliere il nucleo dal testo su cui si calcola
+    l'impronta -- rossa."""
+    def _sistema(nucleo):
+        return [{"role": "system", "content": "sei hiris\n" + nucleo},
+                {"role": "user", "content": "ciao"}]
+
+    uno = _pesa_carico_catena(_sistema("sono le 20:33"), STRUMENTI,
+                              "sono le 20:33")
+    due = _pesa_carico_catena(_sistema("sono le 20:34"), STRUMENTI,
+                              "sono le 20:34")
+
+    assert uno["prefix_hash"] == due["prefix_hash"]
+
+
+def test_l_impronta_della_catena_CAMBIA_se_cambia_la_guida():
+    """L'altra meta': un'impronta che non si accorge di niente sarebbe
+    altrettanto inutile.
+
+    Mutazione ESEGUITA: calcolare l'impronta sui soli strumenti -- rossa."""
+    uno = _pesa_carico_catena(
+        [{"role": "system", "content": "sei hiris\nx"}], STRUMENTI, "x")
+    due = _pesa_carico_catena(
+        [{"role": "system", "content": "sei hiris, sii conciso\nx"}],
+        STRUMENTI, "x")
+
+    assert uno["prefix_hash"] != due["prefix_hash"]
