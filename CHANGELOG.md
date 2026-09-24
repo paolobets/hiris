@@ -1,5 +1,35 @@
 # HIRIS — Changelog
 
+## [3.67.1] — «Trovare qualcosa» non è «trovare ciò che si cercava» (2026-09-24)
+
+La verifica dal vivo della 3.67.0 ha detto due cose. Il ponte **scrive davvero** nel registro
+(`canale=ponte`, `provider=subscription`, `modello=claude-opus-5-5`) e l'automazione disabilitata
+**si dichiara** («è spenta dal 19/09» invece di essere segnalata come guasta). Ma la taverna no.
+
+### Il ripiego non partiva mai
+
+Il modello non cerca «taverna»: cerca **«luce della taverna»**, la frase intera. `find()` ci trova
+dentro «Luce» — la luce del bagno, che si chiama proprio così — quindi il risultato non era vuoto
+e il ripiego, che partiva solo sul vuoto, non si accendeva. HIRIS ha ripetuto «non c'è nessuna
+luce chiamata taverna» con la correzione già installata.
+
+Era un difetto del disegno, non del modello: **«trovare qualcosa» non è «trovare ciò che si
+cercava»**. Il ripiego guarda ora le parole che `find()` **non ha consumato**, e si affianca a
+`find()` invece di aspettare che fallisca.
+
+Le parole funzionali restano fuori — sulla casa vera «della» compare in 11 nomi, «di» in 68 —
+usando l'elenco che già vieta una giuntura italiana dentro un identificatore. L'elenco si è
+**spostato** da `tests/` a `memory/resolver.py`, perché ora serve anche al prodotto: un cancello
+chiede il suo elenco, non se ne tiene una seconda copia.
+
+### Gli strumenti avevano due nomi
+
+Il primo turno misurato del ponte li scriveva `mcp__hiris__search`; la catena scrive `search`.
+Due nomi per la stessa cosa, e la domanda «quali strumenti non vengono mai usati» — quella che
+aveva già prodotto una risposta sbagliata il 23/09 — sarebbe tornata a contare due volte lo stesso
+catalogo. Il prefisso è un dettaglio del trasporto e si toglie al confine. `ToolSearch` e gli
+altri strumenti propri della CLI restano come sono: è un attore diverso.
+
 ## [3.67.0] — Quattro difetti che le misure hanno trovato (2026-09-24)
 
 Trentadue domande vere alla casa, prima sulla catena e poi sul ponte, hanno trovato quattro cose
