@@ -102,7 +102,8 @@ chiave).
 altrimenti `404` — la stessa risposta di un id inesistente, per non confermare che esiste. Il
 ripiego sulla catena usa il soggetto **del job**, non quello di chi fa il poll.
 
-**La consegna.** `submit_chat_reply(reply, filo)` scrive nel filo del job.
+**La consegna.** `app["submit_chat_reply"](reply, thread)` (in produzione
+`server.py::_submit_chat_reply(reply_text, thread)`) scrive nel filo del job.
 
 **La rotta MCP (il buco di sicurezza).** Per un job di chat il runner manda
 **`X-HIRIS-Chat: <job_id>`** nella `--mcp-config`, come già fa `X-HIRIS-Promessa` per le promesse.
@@ -126,7 +127,7 @@ che dichiarava il buco.
 
 ## §5 · Il modello sa chi gli parla, i ricordi sanno chi li ha detti
 
-**Chi parla.** `compose_chat_context(app, data_dir, *, thread, soggetto, ruolo, ruolo_letto)`
+**Chi parla.** `compose_chat_context(app, data_dir, *, thread, soggetto, ruolo, role_known)`
 aggiunge in testa una sezione `## Chi ti sta parlando` — nome, specie, ruolo, ingresso — e prende
 i riassunti **del filo**. È **un punto solo**: quella stringa arriva identica ai quattro
 compositori (catena Claude, catena OpenAI a blocchi e in streaming, ponte), quindi nessuno dei
