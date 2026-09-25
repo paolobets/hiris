@@ -172,8 +172,7 @@ def _same_thread(proposal: dict, thread: ChatThread) -> bool:
     """Vero se `proposal` e' nata esattamente nel filo `thread`. Il
     chiamante garantisce `thread` non `None` -- vedi `_thread_may_confirm`
     e `Workshop._only_pending`, che decidono loro cosa fare di `None`."""
-    return (proposal.get("subject_key") == thread.subject_key
-            and proposal.get("entry_point") == thread.entry_point)
+    return proposal.get("thread") == thread
 
 
 def _thread_may_confirm(proposal: dict, thread: ChatThread | None) -> bool:
@@ -188,14 +187,14 @@ def _thread_may_confirm(proposal: dict, thread: ChatThread | None) -> bool:
     soffitto (`self._soffitto is None` vuol dire «nessuna persona ha aperto
     questo turno», non «nessuno puo' fare niente»).
 
-    **Nata senza filo** (`subject_key` `None`: prima della fetta «le chat
+    **Nata senza filo** (`thread` `None`: prima della fetta «le chat
     divise», o da un attore che non ne porta uno -- l'attuatore) resta
     confermabile da chiunque nomini l'id, come prima di questa fetta.
 
     **Entrambi presenti**: devono combaciare esattamente, o il rifiuto e' lo
     stesso di un id inesistente (`_UNKNOWN_ID`) -- per non nominare la
     proposta di un altro filo (decisione 4)."""
-    if thread is None or proposal.get("subject_key") is None:
+    if thread is None or proposal.get("thread") is None:
         return True
     return _same_thread(proposal, thread)
 
@@ -636,7 +635,7 @@ class Workshop:
             if pending:
                 return None, _BORN_THIS_TURN
             if thread is not None and any(
-                    r.get("subject_key") is None for r in all_pending):
+                    r.get("thread") is None for r in all_pending):
                 return None, _ORPHANS_ELSEWHERE
             return None, ("non hai nessuna proposta in sospeso da confermare: "
                           "dimmi cosa vuoi e te la propongo.")

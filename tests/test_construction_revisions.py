@@ -249,8 +249,8 @@ def test_una_proposta_in_corso_compare_fra_le_pendenti_e_conta_contro_il_tetto(a
 def test_proporre_con_un_filo_lo_scrive(archivio):
     ident = _proponi(archivio, thread=PAOLO)["id"]
     riga = archivio.read(ident)
-    assert riga["subject_key"] == "persona:p"
-    assert riga["entry_point"] == "pannello"
+    assert riga["thread"] == ChatThread("persona:p", "pannello")
+    assert "subject_key" not in riga and "entry_point" not in riga
 
 
 def test_proporre_senza_filo_resta_senza(archivio):
@@ -258,8 +258,7 @@ def test_proporre_senza_filo_resta_senza(archivio):
     e' cosi' che propone anche l'attuatore (`server.py::_file_proposals`)."""
     ident = _proponi(archivio)["id"]
     riga = archivio.read(ident)
-    assert riga["subject_key"] is None
-    assert riga["entry_point"] is None
+    assert riga["thread"] is None
 
 
 def test_la_migrazione_v1_conserva_le_righe_come_senza_filo(tmp_path):
@@ -287,8 +286,7 @@ def test_la_migrazione_v1_conserva_le_righe_come_senza_filo(tmp_path):
 
     a = ConstructionStore(db)
     riga = a.read("c1")
-    assert riga["subject_key"] is None
-    assert riga["entry_point"] is None
+    assert riga["thread"] is None
     # Anche cio' che c'era prima resta intatto -- non solo cio' che e' nuovo.
     assert riga["stato"] == "in_attesa"
     assert riga["chiave"] == "1771"

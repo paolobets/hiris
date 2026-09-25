@@ -108,11 +108,12 @@ def _row(r) -> dict:
         "origine": r["origine"],
         "turno": r["turno"],
         "frase": r["frase"],
-        # Il FILO di chi ha proposto (spec §5): `None`/`None` per una riga
-        # nata senza filo -- vedi il commento su `_SCHEMA`. Stessi due nomi
-        # di colonna, in inglese, che porta ogni tabella del filo.
-        "subject_key": r["subject_key"],
-        "entry_point": r["entry_point"],
+        # Il FILO di chi ha proposto (spec §5), come `ChatThread` -- la stessa
+        # forma che la coda espone (`reasoning/queue.py::_row`): un filo solo
+        # fra le porte, non due campi piatti che ogni lettore ricompone a
+        # modo suo. `None` per una riga nata senza filo (vedi `_SCHEMA`).
+        "thread": (ChatThread(r["subject_key"], r["entry_point"])
+                   if r["subject_key"] else None),
         "prima": _load(r["prima_json"]),
         "dopo": _load(r["dopo_json"]),
         # **Cosa chiamera'**, sui due lati (reperto B-4, 22/09/2026). La

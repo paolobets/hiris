@@ -15,6 +15,7 @@ from hiris.app.api.handlers_constructions import (
     handle_reject_construction,
     handle_restore_construction,
 )
+from hiris.app.chat_thread import ChatThread
 from hiris.app.server import create_app
 from tests._contracts import assert_stessa_firma
 from tests.test_construction_workshop import FintoHA
@@ -215,27 +216,28 @@ async def test_una_costruzione_che_esiste_esce_nel_suo_involucro():
 async def test_il_filo_di_chi_ha_proposto_non_esce_dall_elenco():
     """Fix round 1, Task 7: `GET /api/constructions` non ha il soffitto --
     nessun `per_richiesta` la guarda, a differenza di `_act` -- quindi il
-    filo di chi ha proposto (`subject_key`/`entry_point`, che `_row()` porta
-    dal Task 7) non deve attraversare questo confine."""
+    filo di chi ha proposto (`thread`, che `_row()` porta dal Task 7) non
+    deve attraversare questo confine. Un `ChatThread` non e' nemmeno JSON:
+    se passasse, la risposta non si costruirebbe."""
     riga = {"id": "p1", "stato": "in_attesa",
-            "subject_key": "persona:paolo", "entry_point": "pannello"}
+            "thread": ChatThread("persona:paolo", "pannello")}
     app = _app(FintoArchivio([riga]))
     corpo = _corpo(await handle_get_constructions(FintaRichiesta(app)))
     vista = corpo["constructions"][0]
-    assert "subject_key" not in vista
-    assert "entry_point" not in vista
+    assert "thread" not in vista
+    assert "subject_key" not in vista and "entry_point" not in vista
     assert vista["id"] == "p1"  # il resto della riga passa, solo il filo no
 
 
 @pytest.mark.asyncio
 async def test_il_filo_di_chi_ha_proposto_non_esce_dalla_singola():
     riga = {"id": "p1", "stato": "in_attesa",
-            "subject_key": "persona:paolo", "entry_point": "pannello"}
+            "thread": ChatThread("persona:paolo", "pannello")}
     app = _app(FintoArchivio([riga]))
     corpo = _corpo(await handle_get_construction(FintaRichiesta(app, ident="p1")))
     vista = corpo["construction"]
-    assert "subject_key" not in vista
-    assert "entry_point" not in vista
+    assert "thread" not in vista
+    assert "subject_key" not in vista and "entry_point" not in vista
     assert vista["id"] == "p1"
 
 

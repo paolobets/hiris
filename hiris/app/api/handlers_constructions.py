@@ -68,18 +68,18 @@ async def handle_get_constructions(request: web.Request) -> web.Response:
 _APPLIES_HIRIS = "hiris"
 _APPLIES_YOU = "tu"
 
-#: Le due colonne del filo (fetta «le chat divise», Task 7). `_row()`
-#: (`action/construction/revisions.py`) le porta perche' l'officina deve
-#: poterle leggere -- ma queste due rotte GET non hanno il soffitto
-#: (nessun `per_richiesta` le guarda, a differenza di `_act`): chiunque
-#: apra la pagina le legge, quindi il filo di chi ha proposto NON attraversa
-#: questo confine (fix round 1 Task 7). Non e' una restrizione di *chi puo'
-#: leggere* -- e' cio' che la risposta PORTA.
-_THREAD_FIELDS = ("subject_key", "entry_point")
-
-
 def _strip_thread(row: dict) -> dict:
-    return {k: v for k, v in row.items() if k not in _THREAD_FIELDS}
+    """La riga senza il filo (fetta «le chat divise», Task 7).
+
+    `_row()` (`action/construction/revisions.py`) porta `thread` perche'
+    l'officina deve poterlo leggere -- ma queste due rotte GET non hanno il
+    soffitto (nessun `per_richiesta` le guarda, a differenza di `_act`):
+    chiunque apra la pagina le legge, quindi il filo di chi ha proposto NON
+    attraversa questo confine (fix round 1 Task 7). Non e' una restrizione di
+    *chi puo' leggere* -- e' cio' che la risposta PORTA. E un `ChatThread`
+    `json_response` non lo saprebbe nemmeno serializzare.
+    """
+    return {k: v for k, v in row.items() if k != "thread"}
 
 
 def _both_queues(app, store, pending_only: bool) -> list[dict]:
