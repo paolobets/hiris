@@ -235,6 +235,9 @@ async def test_remember_rifiuta_un_detto_da_dal_modello(archivio_casa, memoria):
         "testo": "ho freddo a 20 gradi", "detto_da": "Marta",
     })
     assert "errore" in esito
+    # Il rifiuto NOMINA «detto_da»: e' cio' che lo rende recuperabile in UN
+    # giro solo -- il modello legge il motivo e non lo rimanda piu'.
+    assert "detto_da" in esito["errore"]
     assert memoria.count() == 0
 
 

@@ -2245,12 +2245,20 @@ composto, quindi nessuna era comparsa nell'elenco da decidere.
 - `problemi`, il parametro pubblico di `compose()` e di `_problems_notice()` -> **`problems`**:
   MAI lo stesso nome del metodo di `HAClient.problems()` che lo alimenta (protetto a parte in
   `_METODI_HA_CLIENT`) -- qui non c'e' un punto davanti, e' un parametro, non un attributo.
-- `detto_da` (`_memory_lines`, letta da un ricordo) -> **`said_by`**: la chiave dati resta
+- `detto_da` (`_memory_lines`, letta da un ricordo) -> **`author_label`**: la chiave dati resta
   `"detto_da"`, la stessa colonna di `memory/store.py` -- resta italiana PER SEMPRE, come ogni
   colonna di database di questa fetta (regola permanente, non legata allo stato di conversione di
   `memory/`: cambierebbe solo se la colonna stessa venisse migrata, una decisione a parte).
   Cambia solo la variabile locale che la legge qui. La FRASE italiana che finisce nel testo
   ("detto da ...") resta italiana: e' cio' che il modello legge, non un identificatore.
+  **Corretto il 2026-09-25 (fetta "le chat divise", Task 6, fix round 1)**: questa riga
+  proponeva `said_by` per la variabile locale, ma quello stesso giorno `memory/store.py`
+  ha guadagnato una colonna VERA chiamata `said_by` -- la chiave dell'IDENTITA' del
+  soggetto (`specie:id`), non l'etichetta leggibile che questa riga di `_memory_lines`
+  stampa. Le due cose sono diverse (una identifica CHI, l'altra mostra un NOME), e un solo
+  nome inglese per entrambe le avrebbe confuse silenziosamente alla lettura -- lo stesso
+  errore che questo glossario esiste per prevenire. La variabile locale prende quindi
+  `author_label`, e `said_by` resta riservato alla colonna dell'identita'.
 - Forme plurali non incatenate dallo strumento perche' l'alias esistente traduce il singolare
   (`identificativo -> identificatore`, `dettaglio -> detail`) ma non la forma con la "i" finale:
   `identificativi` -> `identifiers`, `dettagli` -> `details`, `gruppi` -> `groups` (`gruppo ->

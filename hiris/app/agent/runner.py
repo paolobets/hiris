@@ -1524,10 +1524,17 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # fetta A (Task 5, reasoning/queue.py::submit) azzera `context_json` a
     # job risolto, ma NON `decision_json` -- la risposta, che serve al poll.
     # Questa lista vive quindi in `decision["tools_called"]` e resta su
-    # disco fino alla potatura a 7 giorni, con gli INPUT che il modello ha
-    # passato agli strumenti: per `remember`, non solo `testo` ma anche
-    # `detto_da` (un identificativo di PERSONA), `ancore` e `condizioni`
-    # (`home_space/tools.py::_remember`, `argomenti.get(...)`); per `search`, la
+    # disco fino alla potatura a 7 giorni, con gli INPUT GREZZI che il
+    # modello ha passato agli strumenti (presi dal blocco `tool_use` dello
+    # stream, PRIMA del dispatch -- vedi `occurrence.tools_called.append`
+    # sopra): per `remember`, `testo`, `ancore` e `condizioni`. Fix round 1
+    # (Task 6, "le chat divise"): `detto_da` non e' PIU' un input che
+    # `_remember` legge -- lo schema non lo chiede e un modello che lo mandi
+    # comunque si vede rifiutare l'intera chiamata (`_bad_arguments`) prima
+    # che `_remember` la veda. Ma questa lista accumula l'input grezzo del
+    # modello ANCHE quando il dispatch lo rifiuta: un `detto_da` (un
+    # identificativo di PERSONA) tentato dal modello resta scritto qui lo
+    # stesso, anche se non e' mai arrivato all'archivio. Per `search`, la
     # frase dell'utente. Cambiare la potatura di `decision_json` e' fuori dal
     # perimetro di questa fetta (regole-fetta.md): si dichiara qui, si
     # consegna alla fase sicurezze, con lo stesso perche' con cui il Task 5

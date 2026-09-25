@@ -1706,14 +1706,19 @@ def _memory_lines(memories: list[dict]) -> list[str]:
                               reverse=True)
     lines = []
     for r in sorted_memories:
-        said_by = r.get("detto_da") or "qualcuno"
+        # `author_label`, non `said_by` (fix round 1, Task 6): dal 2026-09-25
+        # `said_by` e' la colonna dell'IDENTITA' del soggetto (`specie:id`,
+        # memory/store.py) -- questa e' invece l'ETICHETTA leggibile
+        # (`detto_da`) che finisce nel testo del nucleo. Due cose diverse,
+        # due nomi diversi (docs/GLOSSARIO.md aggiornato di conseguenza).
+        author_label = r.get("detto_da") or "qualcuno"
         # L'ID, che mancava. Il modulo dichiara a inizio file che un ricordo
         # tagliato «si raggiunge con `view("ricordo", id)`» -- ma l'id non
         # era stampato da nessuna porta, e `fetch` esige un'ancora che i
         # ricordi come «mi piace il caffe'» non hanno. Il digesto dichiarava
         # una lacuna («12 ricordi non inclusi») e chiudeva l'unica strada per
         # colmarla.
-        lines.append(f"- [#{r.get('id')}] \"{r['testo']}\" (detto da {said_by})")
+        lines.append(f"- [#{r.get('id')}] \"{r['testo']}\" (detto da {author_label})")
     return lines
 
 

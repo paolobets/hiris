@@ -39,6 +39,7 @@ from aiohttp import web
 from ..home_space.topology import live_mirror
 from ..memory.interpretation import deduci_unit, validate
 from ..memory.resolver import STORE_KEY_PER_TYPE, costruisci_indice
+from ..proxy._sanitize import sanitize_ha_value
 
 # Gli stessi campi scalari che MemoryStore.correggi() accetta
 # (memory/store.py, `_CAMPI_MODIFICABILI`) piu' le due liste che quel
@@ -270,7 +271,14 @@ async def handle_patch_memory(request: web.Request) -> web.Response:
 
     updates: dict = {}
     if "detto_da" in fields:
-        updates["detto_da"] = fields["detto_da"]
+        # Fix round 1 (Task 6): questo campo lo scrive anche un utente da
+        # tastiera, ma finisce lo stesso nel nucleo a OGNI turno futuro
+        # (briefing.py::_memory_lines) -- la STESSA porta che sanifica il
+        # nome quando lo scrive `remember()` (tools.py::_remember) deve
+        # proteggere anche chi lo corregge da qui, o l'iniezione tornerebbe
+        # da una porta filtrata e dall'altra grezza.
+        updates["detto_da"] = sanitize_ha_value(fields["detto_da"]) \
+            if fields["detto_da"] else fields["detto_da"]
     if "forza" in fields:
         updates["forza"] = cleaned["forza"]
     if "grandezza" in fields:

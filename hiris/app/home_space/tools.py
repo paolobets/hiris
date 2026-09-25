@@ -592,8 +592,10 @@ RELATED_TOOL_DEF = {
 
 # Niente `detto_da` nello schema (fetta "le chat divise", Task 6, decisione 5):
 # l'autore non e' piu' un'ipotesi che il modello compila -- `_remember` lo
-# deriva dal SOGGETTO del turno (`self._subject`), e ignora qualunque
-# `detto_da` che il modello passi comunque.
+# deriva dal SOGGETTO del turno (`self._subject`). Fix round 1: un modello
+# che lo manda comunque non viene "ignorato" -- lo schema non lo conosce
+# piu', quindi il cancello sugli argomenti sconosciuti (`_bad_arguments`,
+# in `dispatch()`) RIFIUTA l'intera chiamata prima che `_remember` la veda.
 REMEMBER_TOOL_DEF = {
     "name": "remember",
     "description": (
@@ -2326,12 +2328,15 @@ class ToolDispatcher:
 
         # L'autore viene dal SOGGETTO del turno (decisione 5, Task 6), mai da
         # un argomento del modello -- `arguments.get("detto_da")` non si legge
-        # nemmeno piu' (lo schema qui sopra non lo chiede, ma un modello che
-        # lo mandi comunque va ignorato). Il nome e' controllato dall'utente
-        # (arriva dall'intestazione dell'ingress di Home Assistant) e finisce
-        # nel nucleo a OGNI turno futuro (briefing.py) -- sanificato con
-        # `sanitize_ha_value`, la stessa porta di "Chi ti sta parlando"
-        # (handlers_chat.py::_who_is_speaking, Task 5), prima di archiviarlo.
+        # nemmeno piu' (lo schema qui sopra non lo chiede). Fix round 1: un
+        # modello che lo mandi comunque non arriva neppure a questo metodo --
+        # `dispatch()` rifiuta l'intera chiamata PRIMA, perche' lo schema non
+        # conosce piu' quell'argomento (`_bad_arguments`). Il nome e'
+        # controllato dall'utente (arriva dall'intestazione dell'ingress di
+        # Home Assistant) e finisce nel nucleo a OGNI turno futuro
+        # (briefing.py) -- sanificato con `sanitize_ha_value`, la stessa
+        # porta di "Chi ti sta parlando" (handlers_chat.py::_who_is_speaking,
+        # Task 5), prima di archiviarlo.
         subject_name = (self._subject or {}).get("nome")
         memory_id = self._memory.remember(
             text,
