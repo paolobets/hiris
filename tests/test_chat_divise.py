@@ -277,3 +277,26 @@ async def test_la_cronologia_di_prima_va_al_proprietario(tmp_path):
                                         headers={"X-Chi": "paolo"})).json()
     assert _contenuti(paolo) == ["detto prima delle chat divise"]
     assert not has_orphans(data_dir)
+
+
+# L'adozione vale solo dal pannello: il proprietario che arriva da un servizio
+# firmato (ingresso `firma`) non si porta via la cronologia di prima.
+@pytest.mark.asyncio
+async def test_il_proprietario_da_un_altro_ingresso_non_adotta(tmp_path):
+    from hiris.app.chat_store import has_orphans
+
+    app, _q, data_dir = _make_app(tmp_path)
+    _semina_orfane(data_dir)
+
+    @web.middleware
+    async def _signed_boundary(request, handler):
+        request["auth_via"] = "canale"
+        request["soggetto"] = _persona("paolo")
+        return await handler(request)
+
+    app.middlewares.clear()
+    app.middlewares.append(_signed_boundary)
+    async with TestClient(TestServer(app)) as client:
+        paolo = await (await client.get("/api/chat/history")).json()
+    assert _contenuti(paolo) == []
+    assert has_orphans(data_dir), "le orfane aspettano il proprietario dal pannello"

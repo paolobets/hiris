@@ -38,7 +38,10 @@ async def handle_get_chat_history(request: web.Request) -> web.Response:
 
 async def handle_clear_chat_history(request: web.Request) -> web.Response:
     data_dir = request.app["data_dir"]
-    # Solo il PROPRIO filo: «cancella la cronologia» di una persona non
+    # Niente `adopt_if_owner` qui, apposta: le orfane non sono di chi chiede
+    # finche' non le ha adottate, e una cancellazione tocca solo il suo filo.
+    # Adottare per poi cancellare distruggerebbe la cronologia di prima con un
+    # gesto che non la nominava. Solo il PROPRIO filo: «cancella la cronologia» di una persona non
     # cancella quella degli altri.
     clear_history(data_dir, thread=request_thread(request))
     return web.json_response({"ok": True})

@@ -287,21 +287,26 @@ class ChatStore:
         return None
 
     def _active_session(self, thread: ChatThread) -> str | None:
-        """Return the thread's fresh session_id, closing its stale one as side
-        effect (write path only). La chiusura per silenzio tocca SOLO questo
-        filo: il silenzio di Paolo non chiude la conversazione di Marta."""
+        """Return the thread's fresh session_id, closing every OTHER open
+        session of the thread as side effect (write path only).
+
+        Una regola sola: un filo ha al piu' UNA sessione aperta, la piu'
+        fresca. Prima si chiudeva solo l'ultima ferma; ma l'adozione
+        (`adopt_orphans`) puo' portare in un filo una seconda sessione aperta
+        accanto a quella che il proprietario ha gia' cominciato, e quella non
+        si sarebbe chiusa mai -- ne' riassunta, ne' mostrata fra le sessioni
+        precedenti. La chiusura tocca SOLO questo filo: il silenzio di Paolo
+        non chiude la conversazione di Marta."""
         sid = self._fresh_session_id(thread)
-        if sid:
-            return sid
-        row = self._conn.execute(
+        rows = self._conn.execute(
             "SELECT session_id FROM chat_sessions WHERE summary IS NULL "
-            "AND subject_key = ? AND entry_point = ? "
-            "ORDER BY last_msg_at DESC LIMIT 1",
+            "AND subject_key = ? AND entry_point = ?",
             (thread.subject_key, thread.entry_point),
-        ).fetchone()
-        if row:
-            self._close_session(row["session_id"])
-        return None
+        ).fetchall()
+        for row in rows:
+            if row["session_id"] != sid:
+                self._close_session(row["session_id"])
+        return sid
 
     def _close_session(self, session_id: str) -> None:
         rows = self._conn.execute(

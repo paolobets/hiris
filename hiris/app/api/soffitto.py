@@ -129,16 +129,22 @@ async def _person_row(app, soggetto: dict | None) -> dict | None:
     if time.time() - visti["quando"] >= RUOLI_VALIDI_S:
         esito = await client.users()
         if "errore" in esito:
-            # `error` e non `warning`, e con la CONSEGUENZA scritta: finché
+            # `error` e non `warning`, e con le CONSEGUENZE scritte: finché
             # questa lettura non riesce NESSUNO può costruire — nemmeno il
-            # proprietario. È il verso giusto, ma è anche il guasto che spegne
-            # una funzione, e chi legge il registro deve capirlo alla prima riga
-            # invece di inseguire un 403 che non si spiega.
+            # proprietario — e la cronologia della chat di prima delle chat
+            # divise resta orfana (`is_owner` non sa chi è il proprietario).
+            # Sono i due lettori di questa riga; chi ne aggiunge un terzo
+            # aggiunge qui la sua conseguenza. È il verso giusto, ma è anche il
+            # guasto che spegne una funzione, e chi legge il registro deve
+            # capirlo alla prima riga invece di inseguire un 403 che non si
+            # spiega.
             logger.error(
-                "soffitto: non ho potuto leggere i ruoli da Home Assistant "
+                "soffitto: non ho potuto leggere gli utenti da Home Assistant "
                 "(%s). Finché non ci riesco NESSUNO può far scrivere "
-                "automazioni a HIRIS, perché non so chi è amministratore: "
-                "il comando è `config/auth/list` sul canale websocket",
+                "automazioni a HIRIS, perché non so chi è amministratore, e la "
+                "cronologia della chat di prima resta orfana, perché non so chi "
+                "è il proprietario: il comando è `config/auth/list` sul canale "
+                "websocket",
                 esito["errore"])
             return None
         # Si MUTA il contenitore, non si riscrive `app[...]`: scrivere in `app`

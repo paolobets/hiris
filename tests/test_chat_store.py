@@ -812,3 +812,28 @@ def test_migrazione_v3_conserva_le_righe_come_orfane_e_il_proprietario_le_adotta
     assert not s.has_orphans()
     assert [m["content"] for m in s.load_context(PAOLO)] == ["di prima"]
     assert s.adopt_orphans(MARTA) == 0          # una volta sola
+
+
+def test_una_sessione_orfana_adottata_e_ferma_si_chiude_alla_scrittura_dopo(tmp_path):
+    """Il proprietario ha gia' scritto dal pannello prima che l'adozione
+    riuscisse (Home Assistant non rispondeva alla prima richiesta): il filo
+    ha la sua sessione aperta e fresca, e l'adozione gli porta una seconda
+    sessione aperta, ferma da giorni. Un filo ha UNA sessione aperta: alla
+    scrittura successiva l'altra si chiude, e il suo riassunto entra fra le
+    sessioni precedenti invece di restare aperta per sempre."""
+    s = ChatStore(str(tmp_path / "c.db"))
+    s._conn.execute("INSERT INTO chat_sessions(session_id, started_at, last_msg_at) "
+                    "VALUES('prima', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')")
+    s._conn.execute("INSERT INTO chat_messages(session_id, role, content, timestamp) "
+                    "VALUES('prima', 'user', 'detto a gennaio', '2026-01-01T00:00:00Z')")
+    s._conn.commit()
+    s.append([{"role": "user", "content": "oggi"}], PAOLO)
+    assert s.adopt_orphans(PAOLO) == 1
+
+    s.append([{"role": "assistant", "content": "ciao"}], PAOLO)
+
+    aperte = s._conn.execute(
+        "SELECT session_id FROM chat_sessions WHERE summary IS NULL").fetchall()
+    assert [r["session_id"] for r in aperte] != ["prima"] and len(aperte) == 1
+    assert [p["session_id"] for p in s.get_past_summaries(PAOLO)] == ["prima"]
+    assert [m["content"] for m in s.load_context(PAOLO)] == ["oggi", "ciao"]
