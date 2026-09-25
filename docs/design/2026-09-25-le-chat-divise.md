@@ -50,7 +50,7 @@ del 16/09, decisione 5; misure del 24/09, «il ponte non sa da quale chat viene�
 
 ## §2 · Il filo
 
-**Un filo è la coppia (soggetto, ingresso).** Vive in un modulo suo, `hiris/app/filo.py`, perché è
+**Un filo è la coppia (soggetto, ingresso).** Vive in un modulo suo, `hiris/app/chat_thread.py` con la classe `ChatThread`, perché è
 un oggetto (fondamenta 4) e perché cinque punti devono calcolarlo **nello stesso modo**
 (fondamenta 2): la chat, il poll, la coda, la rotta MCP, l'officina.
 

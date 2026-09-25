@@ -1833,7 +1833,7 @@ def test_una_classe_senza_dataclass_non_porta_parole_chiave():
                                              "", coppie=coppie) == {}
 
 
-def test_le_dataclass_del_prodotto_sono_quindici_e_i_campi_settantacinque():
+def test_le_dataclass_del_prodotto_sono_sedici_e_i_campi_settantasette():
     """Il perimetro si misura come il contenuto. E' il conto che ha deciso di
     scrivere questa rete invece di dichiararla scoperta, come si e' fatto col
     criterio largo dell'ottava (1.424 occorrenze): tredici classi si leggono.

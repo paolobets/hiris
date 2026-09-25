@@ -1,8 +1,8 @@
-"""Il thread: la conversazione di UN soggetto da UN ingresso.
+"""Il filo: la conversazione di UN soggetto da UN ingresso.
 
 Spec `docs/design/2026-09-25-le-chat-divise.md` §2. Un modulo solo perche'
 cinque punti devono calcolarlo nello stesso modo -- la chat, il poll, la coda,
-la rotta MCP, l'officina -- e due calcoli dello stesso thread sono due fili.
+la rotta MCP, l'officina -- e due calcoli dello stesso filo sono due fili.
 
 «Ingresso» e non «canale»: canale in questo codice e' gia' il servizio
 firmato (`api/canali.py`) e la strada del modello (`misura_turno`).

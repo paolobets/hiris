@@ -1,4 +1,12 @@
-from hiris.app.chat_thread import ChatThread, subject_key_for, thread_from_context, thread_for, thread_to_context, entry_point_for
+from hiris.app.chat_thread import (
+    ChatThread,
+    entry_point_for,
+    request_thread,
+    subject_key_for,
+    thread_for,
+    thread_from_context,
+    thread_to_context,
+)
 
 
 def test_la_chiave_e_specie_e_id_mai_il_nome():
@@ -35,3 +43,8 @@ def test_il_filo_attraversa_il_contesto_del_job():
     assert thread_from_context(thread_to_context(f)) == f
     assert thread_from_context({}) is None
     assert thread_from_context(None) is None
+
+
+def test_request_thread_estrae_soggetto_e_auth_dalla_richiesta():
+    request = {"soggetto": {"specie": "persona", "id": "p"}, "auth_via": "ingress"}
+    assert request_thread(request) == ChatThread("persona:p", "pannello")
