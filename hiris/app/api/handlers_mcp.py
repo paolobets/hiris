@@ -256,28 +256,34 @@ def _exchange_promise_id(request: web.Request) -> str:
     return ident if row and row.get("stato") == "in_corso" else ""
 
 
-def _exchange_chat_job(request: web.Request) -> dict | None:
-    """Il job di chat che questo turno sta servendo, oppure `None`.
+def _exchange_chat_job(request: web.Request) -> tuple[bool, dict | None]:
+    """`(intestazione presente, job di chat)` per questo turno.
+
+    Un tri-stato e non un `None` solo, perche' «assente» e «presente ma non
+    valida» chiedono decisioni opposte (dispatcher di sempre contro chiamata
+    chiusa) e il chiamante deve decidere UNA volta su una lettura sola
+    dell'intestazione: `(False, None)` assente, `(True, None)` non valida,
+    `(True, job)` valida.
 
     `X-HIRIS-Chat` la aggiunge `agent/runner.py::config_mcp` quando il ponte
     serve un `kind="chat"` (fetta «le chat divise», spec §4). Come
     `X-HIRIS-Promessa` NON e' un'autenticazione -- quella resta la credenziale
     di turno -- e per questo si VERIFICA: vale solo un job di chat `claimed`
     (`ReasoningQueue.claimed_chat`). Un id che non vale non concede niente:
-    `None` qui, e `_call_tool` rifiuta la chiamata invece di ricadere sul
-    dispatcher senza soffitto (`_stale_chat_rejection`). Lo si scrive nel log
-    perche' un ponte che la manda sbagliata e' un guasto.
+    `(True, None)` qui, e `_call_tool` rifiuta la chiamata invece di ricadere
+    sul dispatcher senza soffitto (`_stale_chat_rejection`). Lo si scrive nel
+    log perche' un ponte che la manda sbagliata e' un guasto.
     """
     ident = (request.headers.get("X-HIRIS-Chat") or "").strip()
     if not ident:
-        return None
+        return False, None
     queue = request.app.get("reasoning_queue")
     job = queue.claimed_chat(ident) if queue is not None else None
     if job is None:
         logger.warning(
             "MCP: X-HIRIS-Chat nomina un job che non e' una chat presa in "
             "carico (%s): nessuno strumento gira per questa chiamata", ident)
-    return job
+    return True, job
 
 
 def _stale_chat_rejection(name: str) -> dict:
@@ -502,8 +508,8 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
     # soggetto: nessuna persona li ha aperti.
     # Un'intestazione PRESENTE che non vale chiude la chiamata: vedi
     # `_stale_chat_rejection`.
-    chat_job = _exchange_chat_job(request)
-    if chat_job is None and (request.headers.get("X-HIRIS-Chat") or "").strip():
+    chat_header_present, chat_job = _exchange_chat_job(request)
+    if chat_header_present and chat_job is None:
         return _answer(request_id, _stale_chat_rejection(name))
     if chat_job is not None:
         ctx = chat_job.get("context") or {}
