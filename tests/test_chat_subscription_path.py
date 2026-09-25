@@ -915,6 +915,7 @@ def test_gli_stati_sani_non_dicono_niente(ponte, token):
 @pytest.mark.asyncio
 async def test_job_context_porta_il_nucleo_identico_al_ramo_sincrono(tmp_path):
     from hiris.app.api.handlers_chat import compose_chat_context
+    from hiris.app.api.soffitto import ceiling_for
     from hiris.app.home_space.reader import HomeSpace
     from hiris.app.memory.store import MemoryStore
 
@@ -952,8 +953,13 @@ async def test_job_context_porta_il_nucleo_identico_al_ramo_sincrono(tmp_path):
 
         # ② ed e' ESATTAMENTE la stringa che il ramo sincrono compone per la
         # stessa app: se un giorno i due percorsi divergono, questo assert e'
-        # il primo a saperlo.
-        assert contesto == compose_chat_context(app, data_dir, thread=THREAD_TEST)
+        # il primo a saperlo. Nessun `soggetto` viaggia in questo file (vedi
+        # il docstring in cima), quindi il `ruolo` e' quello che `ceiling_for`
+        # calcola per un soggetto assente -- il fallback "utente" di
+        # `soffitto.consente`, non un valore inventato qui.
+        ruolo_atteso = (await ceiling_for(app, None)).get("ruolo")
+        assert contesto == compose_chat_context(app, data_dir, thread=THREAD_TEST,
+                                                 soggetto=None, ruolo=ruolo_atteso)
     finally:
         archivio_casa.close()
         archivio_memoria.close()

@@ -1,12 +1,13 @@
 """Task 1 della fetta "il ponte riceve il nucleo" (parita' A): una
 composizione sola del contesto della chat -- estratta, non duplicata.
 
-`compose_chat_context(app, data_dir, *, thread)` (hiris/app/api/handlers_chat.py)
-assorbe invariato il blocco che prima viveva solo dentro `handle_chat` (il
-ramo sincrono): sessioni precedenti + nucleo (col suo degrado dichiarato) in
-un'unica stringa. Il Task 2 mettera' la STESSA stringa nel job del ponte
-(chat via abbonamento) -- se la ricopiasse invece di chiamarla, i due
-percorsi avrebbero due composizioni destinate a divergere.
+`compose_chat_context(app, data_dir, *, thread, soggetto, ruolo=None)`
+(hiris/app/api/handlers_chat.py) assorbe invariato il blocco che prima viveva
+solo dentro `handle_chat` (il ramo sincrono): sessioni precedenti + nucleo
+(col suo degrado dichiarato) in un'unica stringa. Il Task 2 mettera' la
+STESSA stringa nel job del ponte (chat via abbonamento) -- se la ricopiasse
+invece di chiamarla, i due percorsi avrebbero due composizioni destinate a
+divergere.
 
 Questi test chiamano `compose_chat_context` DIRETTAMENTE, senza HTTP --
 tests/test_chat_briefing.py gia' verifica lo stesso comportamento passando
@@ -14,6 +15,12 @@ per `POST /api/chat` (e resta verde, invariato: e' la prova che lo
 spostamento non ha cambiato nulla per il ramo sincrono). Qui si verifica la
 funzione condivisa in se', cosi' che il Task 2 possa fidarsene senza dover
 rifare il giro HTTP.
+
+Task 5 («il modello sa chi gli parla»): `soggetto`/`ruolo` sono diventati
+parametri della funzione (sezione «Chi ti sta parlando» in testa al
+contesto). I test qui sopra non parlano di CHI scrive -- passano
+`soggetto=None` e verificano solo che la sezione ci sia (senza fermarsi sul
+suo contenuto); i test dedicati stanno in fondo al file.
 """
 from datetime import UTC, datetime
 
@@ -62,7 +69,7 @@ def test_con_archivi_seminati_contiene_nucleo_e_sessioni_precedenti(tmp_path):
     _semina_sessione_chiusa(data_dir, "parlato di irrigazione del giardino")
 
     app = {"home_space_store": archivio_casa}
-    contesto = compose_chat_context(app, data_dir, thread=PAOLO)
+    contesto = compose_chat_context(app, data_dir, thread=PAOLO, soggetto=None)
 
     assert "## La casa" in contesto
     assert "Cucina" in contesto
@@ -81,8 +88,8 @@ def test_le_sessioni_precedenti_di_un_filo_non_entrano_nel_contesto_di_un_altro(
                             thread=PAOLO)
 
     app = {"home_space_store": archivio_casa}
-    context_marta = compose_chat_context(app, data_dir, thread=MARTA)
-    context_paolo = compose_chat_context(app, data_dir, thread=PAOLO)
+    context_marta = compose_chat_context(app, data_dir, thread=MARTA, soggetto=None)
+    context_paolo = compose_chat_context(app, data_dir, thread=PAOLO, soggetto=None)
 
     assert "regalo per Marta" not in context_marta
     assert "Cucina" in context_marta
@@ -115,16 +122,128 @@ def test_un_archivio_chiuso_non_ferma_piu_il_nucleo(tmp_path):
     data_dir = str(tmp_path)
 
     app = {"home_space_store": home_space}
-    contesto = compose_chat_context(app, data_dir, thread=PAOLO)  # non deve sollevare
+    # non deve sollevare
+    contesto = compose_chat_context(app, data_dir, thread=PAOLO, soggetto=None)
 
     assert "nucleo non si e' potuto comporre" not in contesto
     assert "Cucina" in contesto
 
 def test_non_restituisce_mai_la_stringa_vuota_con_app_vuota(tmp_path):
     app: dict = {}
-    contesto = compose_chat_context(app, str(tmp_path), thread=PAOLO)
+    contesto = compose_chat_context(app, str(tmp_path), thread=PAOLO, soggetto=None)
 
     assert contesto != ""
     # E' il nucleo degradato-ma-dichiarato (nessun archivio wired), non il
     # testo di guasto del test ②: qui l'archivio manca, non e' rotto.
     assert "Nessun piano registrato." in contesto
+
+
+# ---------------------------------------------------------------------------
+# ③ Task 5 («il modello sa chi gli parla»): la sezione «Chi ti sta parlando»
+# apre il contesto, PRIMA del nucleo -- il modello sa chi ha scritto anche
+# quando il nucleo degrada. `_who_is_speaking` si prova qui direttamente:
+# nessuna cronologia/archivio serve per lei.
+# ---------------------------------------------------------------------------
+
+def test_il_contesto_dice_chi_sta_parlando(tmp_path):
+    app: dict = {}
+    testo = compose_chat_context(app, str(tmp_path),
+                                 thread=ChatThread("persona:p", "pannello"),
+                                 soggetto={"specie": "persona", "id": "p", "nome": "Paolo"},
+                                 ruolo="amministratore")
+
+    assert testo.startswith("## Chi ti sta parlando")
+    assert "Paolo" in testo and "amministratore" in testo and "pannello" in testo
+
+
+def test_who_is_speaking_senza_soggetto_non_inventa_un_nome(tmp_path):
+    """Un turno senza soggetto (schedulatore, promessa) non deve leggersi come
+    se qualcuno avesse scritto e non fosse stato nominato per errore: lo dice
+    esplicitamente, e non riporta un ruolo che nessuno ha misurato."""
+    app: dict = {}
+    testo = compose_chat_context(app, str(tmp_path), thread=PAOLO, soggetto=None)
+
+    assert testo.startswith("## Chi ti sta parlando")
+    assert "una persona che Home Assistant non ha nominato" in testo
+    assert "ruolo in Home Assistant" not in testo
+
+
+@pytest.mark.asyncio
+async def test_who_is_speaking_arriva_identico_al_ponte_e_alla_catena(tmp_path, monkeypatch):
+    """Stesso pattern di
+    test_chat_subscription_path.py::test_job_context_porta_il_nucleo_identico_al_ramo_sincrono,
+    per la sezione «Chi ti sta parlando»: il contesto del job (ponte) e il
+    `context_str` che il ramo sincrono passa al runner, per la STESSA persona,
+    portano la sezione IDENTICA -- gli stessi due chiamanti di
+    `handlers_chat.py`, la stessa funzione."""
+    # Col token il ponte esiste davvero e il turno si accoda (202) invece di
+    # ripiegare subito alla catena -- stessa premessa di test_chat_divise.py.
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "token-di-prova")
+
+    import os
+    from unittest.mock import AsyncMock
+
+    from aiohttp import web
+    from aiohttp.test_utils import TestClient, TestServer
+
+    from hiris.app.api.handlers_chat import handle_chat
+    from hiris.app.chat_settings import ChatSettings
+    from hiris.app.reasoning.queue import ReasoningQueue
+
+    persona = {"specie": "persona", "id": "paolo", "nome": "Paolo", "utente": "paolo"}
+
+    class _FintoHA:
+        async def users(self):
+            return {"utenti": [{"id": "paolo", "amministratore": True,
+                                "proprietario": True}]}
+
+    @web.middleware
+    async def _finto_confine(request, handler):
+        request["auth_via"] = "ingress"
+        request["soggetto"] = persona
+        return await handler(request)
+
+    def _sezione_chi_parla(testo: str) -> str:
+        # La sezione e' il PRIMO blocco del contesto (Task 5): i blocchi si
+        # separano con una riga vuota (`compose_chat_context`, join su "\n\n").
+        return testo.split("\n\n", 1)[0]
+
+    def _app(tmp_sub, *, ponte_attivo):
+        data_dir = str(tmp_sub / "data")
+        os.makedirs(data_dir, exist_ok=True)
+        runner = AsyncMock()
+        runner.chat = AsyncMock(return_value="risposta sincrona")
+        runner.last_tool_calls = []
+        runner.last_thinking_blocks = []
+        app = web.Application(middlewares=[_finto_confine])
+        app["llm_router"] = runner
+        app["claude_runner"] = runner
+        app["chat_settings"] = ChatSettings(
+            name="t", system_prompt="Sei HIRIS.", max_chat_turns=0)
+        app["data_dir"] = data_dir
+        app["bridge_active"] = ponte_attivo
+        app["ha_client"] = _FintoHA()
+        app["ruoli"] = {"quando": 0.0, "per_id": {}}
+        q = ReasoningQueue(str(tmp_sub / "reasoning.db"))
+        app["reasoning_queue"] = q
+        app.router.add_post("/api/chat", handle_chat)
+        return app, q, runner
+
+    app_ponte, q, _runner_ponte = _app(tmp_path / "ponte", ponte_attivo=True)
+    async with TestClient(TestServer(app_ponte)) as client:
+        resp = await client.post("/api/chat", json={"message": "ciao"})
+        assert resp.status == 202
+        job_id = (await resp.json())["job_id"]
+    job = q.get(job_id)
+    sezione_ponte = _sezione_chi_parla(job["context"]["contesto"])
+
+    app_sync, _q2, runner_sync = _app(tmp_path / "sync", ponte_attivo=False)
+    async with TestClient(TestServer(app_sync)) as client:
+        resp = await client.post("/api/chat", json={"message": "ciao"})
+        assert resp.status == 200
+    contesto_sincrono = runner_sync.chat.call_args.kwargs["context_str"]
+    sezione_sincrona = _sezione_chi_parla(contesto_sincrono)
+
+    assert sezione_ponte.startswith("## Chi ti sta parlando")
+    assert "Paolo" in sezione_ponte and "amministratore" in sezione_ponte
+    assert sezione_ponte == sezione_sincrona

@@ -230,8 +230,29 @@ def _build_system_prompt(settings) -> str:
     return ""
 
 
-def compose_chat_context(app, data_dir: str, *, thread: ChatThread) -> str:
-    """Il contesto della chat -- nucleo piu' sessioni precedenti -- in
+def _who_is_speaking(soggetto: dict | None, thread: ChatThread, ruolo: str | None) -> str:
+    """La sezione «Chi ti sta parlando» -- Task 5 («il modello sa chi gli
+    parla»). Nome/specie, ruolo (se si e' potuto sapere) e da dove il turno
+    e' entrato: senza questo il modello confonde chi ha scritto una cosa con
+    chi la riguarda ("mia moglie ha caldo" detto da Paolo resta detto da
+    Paolo, non da lei). Ritorna sempre una stringa non vuota: un turno senza
+    soggetto (schedulatore, promessa) lo dice esplicitamente, invece di
+    tacere ed essere confuso con un guasto.
+    """
+    s = soggetto or {}
+    nome = s.get("nome") or "una persona che Home Assistant non ha nominato"
+    righe = ["## Chi ti sta parlando", f"- {nome} ({s.get('specie') or 'nessuno'})"]
+    if ruolo:
+        righe.append(f"- ruolo in Home Assistant: {ruolo}")
+    righe.append(f"- da: {thread.entry_point}")
+    righe.append("- I ricordi dicono chi li ha detti: quando uno viene da un'altra persona, "
+                 "dillo, e riproponilo a chi riguarda.")
+    return "\n".join(righe)
+
+
+def compose_chat_context(app, data_dir: str, *, thread: ChatThread,
+                         soggetto: dict | None, ruolo: str | None = None) -> str:
+    """Il contesto della chat -- chi parla, nucleo, sessioni precedenti -- in
     un'unica stringa.
 
     Estratta dal corpo di `handle_chat` (fetta "il ponte riceve il nucleo",
@@ -242,6 +263,13 @@ def compose_chat_context(app, data_dir: str, *, thread: ChatThread) -> str:
     "funzione doppia" vietata da CLAUDE.md:70-72. Prende `app` (non
     `request`), stessa ragione di `compose_briefing` in handlers_home_space.py:
     nessun motivo di legarla a una request in corso.
+
+    Task 5 («il modello sa chi gli parla», spec §5): `soggetto`/`ruolo` sono
+    parametri OBBLIGATORI (il secondo no, per i chiamanti -- promesse,
+    schedulatore -- che non hanno un ruolo da dare) perche' i QUATTRO
+    compositori (catena Claude, catena OpenAI a blocchi e in streaming,
+    ponte) leggono tutti `context_str`: bastava metterla in testa a questa
+    stringa, invariati loro.
     """
     # Inject closed-session summaries so Claude remembers previous conversations.
     # Le sessioni precedenti restano una fonte A PARTE dal nucleo (Task 3):
@@ -321,7 +349,9 @@ def compose_chat_context(app, data_dir: str, *, thread: ChatThread) -> str:
             "Non e' una casa vuota -- e' un guasto: dillo a chi ti ha "
             "scritto, non rispondere come se conoscessi la casa."
         )
-    context_parts: list[str] = []
+    # La sezione «Chi ti sta parlando» va PRIMA di tutto (spec §5): il
+    # modello deve sapere chi ha scritto prima ancora di leggere la casa.
+    context_parts: list[str] = [_who_is_speaking(soggetto, thread, ruolo)]
     if briefing_text:
         context_parts.append(briefing_text)
     if past_str:
@@ -406,6 +436,12 @@ async def _enqueue_chat_job(
     sanitized_history = _trim_history(history)
     system_prompt = _build_system_prompt(settings)
 
+    # Task 5 («chi gli parla»): il soffitto di chi ha scritto, UNA volta --
+    # serve solo al `ruolo` della sezione «Chi ti sta parlando» qui sotto (il
+    # ponte non passa da `create_tool_dispatcher`, quello lo rilegge
+    # `_downgrade_to_chain` sul proprio soggetto se il turno ripiega).
+    soffitto = await ceiling_for(request.app, request.get("soggetto"))
+
     reasoning_queue = request.app["reasoning_queue"]
     now = time.time()
     # La scadenza viene dall'ARCHIVIO, riletto a ogni turno come il modello
@@ -433,7 +469,9 @@ async def _enqueue_chat_job(
         # l'unica cosa che il prompt puo' promettere al modello e' una
         # fotografia presa in questo istante, non una lettura dal vivo (vedi
         # `agent/prompts.py`).
-        "contesto": compose_chat_context(request.app, data_dir, thread=thread),
+        "contesto": compose_chat_context(request.app, data_dir, thread=thread,
+                                         soggetto=request.get("soggetto"),
+                                         ruolo=soffitto.get("ruolo")),
         # fetta "il ponte riceve il nucleo" (parita' A, Task 3): le due
         # impostazioni della chat che SONO testo di prompt -- gli stessi due
         # valori che il ramo sincrono legge qui sotto, a `handle_chat`
@@ -965,12 +1003,21 @@ async def handle_chat(request: web.Request) -> web.Response:
     # chi scrive (`thread`, calcolato in cima), non piu' una sola per tutti.
     system_prompt = _build_system_prompt(settings)
 
-    # Nucleo + sessioni precedenti, in un'unica stringa: `compose_chat_context`
-    # (Task 1 della fetta "il ponte riceve il nucleo", parita' A) estrae
-    # invariato il blocco che prima viveva qui -- vedi il suo docstring per il
-    # perche' (il Task 2 mette la STESSA stringa nel job del ponte, senza
-    # ricopiarla) e per il ragionamento storico su nucleo/degrado/sessioni.
-    context_str = compose_chat_context(request.app, data_dir, thread=thread)
+    # Il soffitto di chi ha scritto (I-1): si legge UNA volta per turno.
+    # Task 5 («chi gli parla») lo riusa anche per il `ruolo` della sezione
+    # "Chi ti sta parlando" (compose_chat_context, qui sotto) -- una lettura
+    # sola invece di due, come per il dispatcher piu' giu'.
+    soffitto = await per_richiesta(request.app, request)
+
+    # Chi parla + nucleo + sessioni precedenti, in un'unica stringa:
+    # `compose_chat_context` (Task 1 della fetta "il ponte riceve il nucleo",
+    # parita' A) estrae invariato il blocco che prima viveva qui -- vedi il
+    # suo docstring per il perche' (il Task 2 mette la STESSA stringa nel job
+    # del ponte, senza ricopiarla) e per il ragionamento storico su
+    # nucleo/degrado/sessioni. Task 5: guadagna `soggetto`/`ruolo`.
+    context_str = compose_chat_context(request.app, data_dir, thread=thread,
+                                       soggetto=request.get("soggetto"),
+                                       ruolo=soffitto.get("ruolo"))
 
     # I sedici strumenti della chat -- il perche' di ogni riga sta
     # nel docstring di `create_tool_dispatcher` (sopra), che dalla
@@ -994,13 +1041,13 @@ async def handle_chat(request: web.Request) -> web.Response:
     # basta. Serve alla guardia dell'officina (`propose`/`confirm`, vedi
     # il docstring di `create_tool_dispatcher`).
     exchange_id = secrets.token_urlsafe(8)
-    # Il soffitto di chi ha scritto (I-1): si legge UNA volta per turno,
-    # accanto all'identita' del turno, e si porta nel dispatcher. Leggerlo
+    # Lo STESSO `soffitto` letto sopra per la sezione "Chi ti sta parlando" --
+    # accanto all'identita' del turno, si porta nel dispatcher. Leggerlo
     # dentro lo strumento vorrebbe dire un secondo posto in cui si decide
     # chi puo' cosa.
     tool_dispatcher = create_tool_dispatcher(
         request.app, exchange=exchange_id,
-        soffitto=await per_richiesta(request.app, request),
+        soffitto=soffitto,
         soggetto=request.get("soggetto"),
         # Lo STESSO testo che va al modello come `user_message` piu' sotto.
         frase=message)
