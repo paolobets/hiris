@@ -155,8 +155,9 @@ async def test_una_risposta_in_volo_blocca_solo_il_suo_filo(tmp_path):
 
     job = q.get(job_id)
     assert job["thread"] == PAOLO
-    assert job["context"]["thread"] == {"subject_key": "persona:paolo",
-                                        "entry_point": "pannello"}
+    # Il filo ha una casa sola, le colonne della coda: il context non ne
+    # porta una copia (review finale, rilievo 1).
+    assert "thread" not in job["context"]
     assert job["context"]["soggetto"] == _persona("paolo")
 
 

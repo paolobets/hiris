@@ -59,12 +59,12 @@ async def handle_reasoning_claim(request: web.Request) -> web.Response:
     if q is None:
         return web.json_response({"job": None})
     job = q.claim(_now(request))
-    # Il filo del job e' un `ChatThread` dentro il processo, e sul filo HTTP
-    # diventa la sua forma di dizionario (`thread_to_context`, la stessa del
-    # `context`): senza questa riga `json_response` solleva per ogni job di
-    # chat che ne porta uno, cioe' il ponte non riceve piu' nessun turno di
-    # chat. Trovato dal Task 3 delle chat divise, primo a fare claim di un job
-    # con filo attraverso la rotta.
+    # Il filo del job e' un `ChatThread` dentro il processo, che `json_response`
+    # non sa serializzare: senza questa riga solleva per ogni job di chat che
+    # ne porta uno, cioe' il ponte non riceve piu' nessun turno di chat
+    # (trovato dal Task 3 delle chat divise). Il runner il filo del claim non
+    # lo legge -- consegna per `job_id`, e il filo lo ritrova il server dalla
+    # coda: la serializzazione c'e' solo perche' la risposta resti JSON.
     if job is not None and job.get("thread") is not None:
         job = {**job, "thread": thread_to_context(job["thread"])}
     return web.json_response({"job": job})

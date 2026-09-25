@@ -13,7 +13,7 @@ from ..chat_store import (
     get_past_summaries,
     load_history,
 )
-from ..chat_thread import ChatThread, adopt_if_owner, request_thread, thread_to_context
+from ..chat_thread import ChatThread, adopt_if_owner, request_thread
 
 # `cli_model` e `resolve_model` sono usciti da qui con la fetta «il modello
 # del piano»: servivano a comporre il modello del ponte da
@@ -593,15 +593,16 @@ async def _enqueue_chat_job(
         # campo prima che un turno possa arrivare qui.
         "model": ((request.app.get("models_config") or {})
                   .get("ponte", {}).get("modello", "sonnet")),
-        # Fetta «le chat divise»: il filo e il soggetto INTERO di chi ha
-        # scritto. Il filo serve a chi consegna e a chi ripiega (la risposta
-        # va nella cronologia giusta); il soggetto al soffitto e alla cronaca
-        # del ripiego, che vogliono specie e nome, non solo la chiave -- e
-        # vanno presi dal job, non da chi per caso fa il poll (spec §4).
-        "thread": thread_to_context(thread),
+        # Fetta «le chat divise»: il soggetto INTERO di chi ha scritto, che il
+        # soffitto e la cronaca del ripiego vogliono con specie e nome, non
+        # solo la chiave -- preso dal job, non da chi per caso fa il poll
+        # (spec §4). Il filo NON sta qui: ha una casa sola, le colonne della
+        # coda (`enqueue(thread=...)` sotto), e chi consegna o ripiega lo
+        # legge da `job["thread"]`. Una copia nel context sarebbe una seconda
+        # casa, libera di divergere.
         "soggetto": request.get("soggetto"),
     }
-    # fetta E5 Task 2, fix round 1 (I-2): il `context` qui sopra porta otto
+    # fetta E5 Task 2, fix round 1 (I-2): il `context` qui sopra porta sette
     # chiavi e `thinking_budget` NON e' fra loro -- il ponte parla con la CLI
     # dell'abbonamento, che non espone un budget di ragionamento per turno.
     # Finche' quel valore si poteva cambiare solo scrivendo a mano il JSON in
@@ -753,9 +754,9 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
                 agent_type="chat",
                 restrict_to_home=bool(contesto.get("restrict_to_home")),
                 response_mode=contesto.get("response_mode", "auto"),
-                # Il contesto del job NON porta `thinking_budget` (otto chiavi,
+                # Il contesto del job NON porta `thinking_budget` (sette chiavi,
                 # pinnate da `test_context_del_job_porta_esattamente_queste_
-                # otto_chiavi_ne_una_di_piu`): inventarne uno qui significherebbe
+                # sette_chiavi_ne_una_di_piu`): inventarne uno qui significherebbe
                 # applicare al ripiego un'impostazione che il ponte aveva
                 # dichiarato inapplicabile, con un log, al momento
                 # dell'accodamento.

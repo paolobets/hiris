@@ -42,13 +42,13 @@ def request_thread(request) -> ChatThread:
 
 
 def thread_to_context(thread: ChatThread) -> dict:
+    """La forma JSON del filo, per la risposta della rotta di claim.
+
+    Non c'e' la funzione inversa perche' nessuno la rilegge: il runner non usa
+    il filo del claim, e dentro il processo il filo si prende dalle colonne
+    della coda (`job["thread"]`), mai da un dizionario.
+    """
     return {"subject_key": thread.subject_key, "entry_point": thread.entry_point}
-
-
-def thread_from_context(d: dict | None) -> ChatThread | None:
-    if not d or not d.get("subject_key") or not d.get("entry_point"):
-        return None
-    return ChatThread(d["subject_key"], d["entry_point"])
 
 
 async def adopt_if_owner(app, request, thread: ChatThread) -> None:

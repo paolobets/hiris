@@ -160,14 +160,16 @@ async def test_flag_on_bridge_on_enqueues_pending_no_runner_call(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_context_del_job_porta_esattamente_queste_otto_chiavi_ne_una_di_piu(tmp_path):
+async def test_context_del_job_porta_esattamente_queste_sette_chiavi_ne_una_di_piu(tmp_path):
     # fetta "il ponte riceve il nucleo" (parita' A, Task 4, Step 3): il pin
     # dell'INSIEME ESATTO -- il silenzio su cio' che NON attraversa il ponte.
     # Dopo i Task 1-4 il context porta `history` + `system_prompt` (originari,
     # Slice 4b) + `contesto` (Task 1/2) + `restrict_to_home`/`response_mode`
-    # (Task 3) + `model` (Task 4, questo task) + `thread`/`soggetto` (fetta
-    # «le chat divise», Task 3: il filo in cui la risposta tornera' e il
-    # soggetto intero, che il ripiego usa per la cronaca e il soffitto).
+    # (Task 3) + `model` (Task 4, questo task) + `soggetto` (fetta «le chat
+    # divise», Task 3: il soggetto intero, che il ripiego usa per la cronaca
+    # e il soffitto). Il filo NON e' nel context: vive nelle colonne della
+    # coda (`job["thread"]`), la sua casa sola -- una copia qui sarebbe una
+    # seconda casa che nessuno legge (review finale, rilievo 1).
     # Chi resta fuori, e perche':
     #   - `thinking_budget` e `max_tokens` (CHAT_MAX_TOKENS): nessun
     #     equivalente sulla riga di comando della CLI `claude` -- non c'e'
@@ -192,8 +194,9 @@ async def test_context_del_job_porta_esattamente_queste_otto_chiavi_ne_una_di_pi
     assert set(job["context"]) == {
         "history", "system_prompt", "contesto",
         "restrict_to_home", "response_mode", "model",
-        "thread", "soggetto",
+        "soggetto",
     }
+    assert "thread" not in job["context"]
 
 
 @pytest.mark.asyncio
@@ -970,7 +973,7 @@ async def test_job_context_porta_il_nucleo_identico_al_ramo_sincrono(tmp_path):
 
 # ---------------------------------------------------------------------------
 # fetta E5 Task 2, fix round 1 (I-2): thinking_budget non attraversa il ponte,
-# e da oggi lo dice. Il pin dell'INSIEME ESATTO delle otto chiavi (sopra)
+# e da oggi lo dice. Il pin dell'INSIEME ESATTO delle sette chiavi (sopra)
 # certifica l'ASSENZA; questo certifica che l'assenza non sia piu' MUTA.
 # ---------------------------------------------------------------------------
 
@@ -997,7 +1000,7 @@ async def test_il_ponte_dichiara_che_thinking_budget_non_viene_applicato(tmp_pat
     assert "NON viene applicato" in detto
     assert "resta salvata" in detto, "deve dire che l'impostazione risulta salvata"
     # L'assenza dal context resta vera e non si aggira: la certifica il pin
-    # dell'insieme esatto delle otto chiavi, qui sopra in questo stesso file.
+    # dell'insieme esatto delle sette chiavi, qui sopra in questo stesso file.
 
 
 @pytest.mark.asyncio

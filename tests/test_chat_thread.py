@@ -4,7 +4,6 @@ from hiris.app.chat_thread import (
     request_thread,
     subject_key_for,
     thread_for,
-    thread_from_context,
     thread_to_context,
 )
 
@@ -38,11 +37,9 @@ def test_due_persone_due_fili_stessa_persona_due_ingressi_due_fili():
     assert thread_for(paolo, "ingress") == ChatThread("persona:p", "pannello")
 
 
-def test_il_filo_attraversa_il_contesto_del_job():
+def test_il_filo_diventa_un_dizionario_per_il_filo_http():
     f = ChatThread("persona:p", "pannello")
-    assert thread_from_context(thread_to_context(f)) == f
-    assert thread_from_context({}) is None
-    assert thread_from_context(None) is None
+    assert thread_to_context(f) == {"subject_key": "persona:p", "entry_point": "pannello"}
 
 
 def test_request_thread_estrae_soggetto_e_auth_dalla_richiesta():
