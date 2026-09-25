@@ -1857,13 +1857,17 @@ def test_le_dataclass_del_prodotto_sono_quindici_e_i_campi_settantacinque():
     **Quindici e 75 lo stesso giorno**: il settimo campo, `takes` -- la FORMA
     di ogni ingresso. Senza, restava aperto l'anello dopo: una ricetta che
     consegnava la serie di un'entita' dove si voleva un periodo passava la
-    validazione e moriva un passo dopo."""
+    validazione e moriva un passo dopo.
+
+    **Sedici e 77 dal 25/09/2026**, fetta «le chat divise»: `ChatThread`
+    (`hiris/app/chat_thread.py`) coi suoi due campi -- `subject_key`,
+    `entry_point` -- la conversazione di un soggetto da un ingresso."""
     classi = campi = 0
     for f in rinomina.file_py(rinomina.ROOT):
         trovate = rinomina.campi_dataclass(rinomina._leggi_grezzo(f))
         classi += len(trovate)
         campi += sum(len(c) for c in trovate.values())
-    assert (classi, campi) == (15, 75), (classi, campi)
+    assert (classi, campi) == (16, 77), (classi, campi)
 
 
 def _repo_finto(tmp_path, prima: dict, dopo: dict) -> None:

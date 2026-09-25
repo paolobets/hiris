@@ -1,0 +1,48 @@
+"""Il thread: la conversazione di UN soggetto da UN ingresso.
+
+Spec `docs/design/2026-09-25-le-chat-divise.md` §2. Un modulo solo perche'
+cinque punti devono calcolarlo nello stesso modo -- la chat, il poll, la coda,
+la rotta MCP, l'officina -- e due calcoli dello stesso thread sono due fili.
+
+«Ingresso» e non «canale»: canale in questo codice e' gia' il servizio
+firmato (`api/canali.py`) e la strada del modello (`misura_turno`).
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+_ENTRY_POINT_BY_AUTH = {"ingress": "pannello", "canale": "firma", "no_token": "sviluppo"}
+
+
+@dataclass(frozen=True)
+class ChatThread:
+    subject_key: str
+    entry_point: str
+
+
+def subject_key_for(soggetto: dict | None) -> str:
+    """`specie:id` -- mai il nome, che cambia. `-` quando l'id non c'e'."""
+    s = soggetto or {}
+    return f"{s.get('specie') or 'nessuno'}:{s.get('id') or '-'}"
+
+
+def entry_point_for(auth_via: str | None) -> str:
+    return _ENTRY_POINT_BY_AUTH.get(auth_via or "", "interno")
+
+
+def thread_for(soggetto: dict | None, auth_via: str | None) -> ChatThread:
+    return ChatThread(subject_key_for(soggetto), entry_point_for(auth_via))
+
+
+def request_thread(request) -> ChatThread:
+    return thread_for(request.get("soggetto"), request.get("auth_via"))
+
+
+def thread_to_context(thread: ChatThread) -> dict:
+    return {"subject_key": thread.subject_key, "entry_point": thread.entry_point}
+
+
+def thread_from_context(d: dict | None) -> ChatThread | None:
+    if not d or not d.get("subject_key") or not d.get("entry_point"):
+        return None
+    return ChatThread(d["subject_key"], d["entry_point"])
