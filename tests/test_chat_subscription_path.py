@@ -24,9 +24,15 @@ be keyed by (there's one conversation, full stop) — `append_messages`/
 one either (`handlers_chat.py::_enqueue_chat_job`).
 
 Real APIs verified before writing this test (matches Task 1's report):
-- ReasoningQueue.enqueue(kind, wake, context, deadline_ts, *, job_id=None, now)
-- ReasoningQueue.get(job_id) -> dict with "kind"/"context"/"decision" (decision
-  is None until ReasoningQueue.submit() has been called)
+- ReasoningQueue.enqueue(kind, wake, context, deadline_ts, *, job_id=None, now,
+  thread=None) -- Task 2 ("la coda porta il filo"): `thread` scrive
+  `subject_key`/`entry_point`, NULL se omesso.
+- ReasoningQueue.get(job_id) -> dict with "kind"/"context"/"decision"/"thread"
+  (decision is None until ReasoningQueue.submit() has been called; "thread" is
+  None for a job accodato senza `thread=`)
+- ReasoningQueue.has_pending_chat(thread, now=None) -> bool -- Task 2: `thread`
+  e' obbligatorio, nessun default (un 409 sganciato dal filo sarebbe il vecchio
+  difetto "un bot solo" tornato di un livello piu' su).
 - ReasoningQueue.submit(job_id, nonce, decision, now) -> bool
 - chat_store.append_messages(messages, data_dir) / chat_store.load_history(data_dir)
 """
@@ -46,13 +52,15 @@ from hiris.app.chat_thread import thread_for
 from hiris.app.reasoning.queue import ReasoningQueue
 
 # Task 2 (queue): `handle_chat` guarda ora `has_pending_chat(request_thread
-# (request))`, e una richiesta di test qui non porta ancora ne' "soggetto" ne'
-# "auth_via" (Task 3 li aggancia davvero) -- e' lo stesso filo che
-# `request_thread` calcola per QUALUNQUE richiesta di questo file. I job
-# accodati direttamente sulla coda (bypassando `_enqueue_chat_job`) devono
-# portare lo stesso filo, o il 409 che questi test si aspettano dalla
-# guardia sparirebbe: il job risulterebbe di un altro filo.
-FILO_TEST = thread_for(None, None)
+# (request))`. L'app di prova di questo file non monta
+# `middleware_internal_auth` (e' quel middleware che scrive "soggetto"/
+# "auth_via" sulla richiesta vera, in produzione), quindi ogni richiesta qui
+# risolve allo stesso filo di default -- ed e' lo stesso che
+# `thread_for(None, None)` calcola. I job accodati direttamente sulla coda
+# (bypassando `_enqueue_chat_job`) devono portare lo stesso filo, o il 409
+# che questi test si aspettano dalla guardia sparirebbe: il job
+# risulterebbe di un altro filo.
+THREAD_TEST = thread_for(None, None)
 
 
 @pytest.fixture(autouse=True)
@@ -1141,7 +1149,7 @@ async def test_una_risposta_gia_in_volo_NON_ripiega(tmp_path):
     ancora un turno in volo che si scrivera' in cronologia da solo."""
     app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     app["models_config"] = {"ponte": {"tetto_giornaliero": 0}}
-    q.enqueue("chat", {}, {}, time.time() + 300, now=time.time(), thread=FILO_TEST)
+    q.enqueue("chat", {}, {}, time.time() + 300, now=time.time(), thread=THREAD_TEST)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 409
@@ -1275,7 +1283,7 @@ async def test_un_turno_che_NON_ha_ripiegato_non_porta_nessuna_nota(tmp_path):
 # il runner della catena e' quello vero della fixture.
 
 
-def _accoda_scaduto(q, *, ora=None, history=None, thread=FILO_TEST, **contesto):
+def _accoda_scaduto(q, *, ora=None, history=None, thread=THREAD_TEST, **contesto):
     ora = time.time() if ora is None else ora
     ctx = {"history": history if history is not None
            else [{"role": "user", "content": "ciao"}]}
@@ -1437,9 +1445,9 @@ async def test_mentre_ripiega_la_conversazione_e_occupata(tmp_path):
     sarebbe sempre passata."""
     app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     jid = _accoda_scaduto(q)
-    assert q.has_pending_chat(FILO_TEST) is False, "scaduto e non ancora reclamato: libera"
+    assert q.has_pending_chat(THREAD_TEST) is False, "scaduto e non ancora reclamato: libera"
     assert q.reclaim_expired(jid, time.time()) is not None
-    assert q.has_pending_chat(FILO_TEST) is True
+    assert q.has_pending_chat(THREAD_TEST) is True
 
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "seconda"})

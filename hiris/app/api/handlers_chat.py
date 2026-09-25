@@ -468,10 +468,14 @@ async def _enqueue_chat_job(
             settings.thinking_budget,
         )
 
-    # Task 2 (queue): filo minimo -- `request_thread` calcola gia' il default
-    # per una richiesta senza soggetto/auth_via ancora agganciati (Task 3 li
-    # aggancia davvero). Qui basta che il job porti QUALCOSA di coerente con
-    # cio' che `handle_chat` interroga qualche riga sopra.
+    # Task 2 (queue): wiring minimo. In produzione `middleware_internal_auth.
+    # py` scrive gia' `request["soggetto"]`/`["auth_via"]` PRIMA che questa
+    # funzione giri, quindi `request_thread(request)` e' gia' il filo VERO di
+    # chi ha scritto il messaggio, non un segnaposto. Cio' che manca ancora e
+    # che il Task 3 aggiunge e' portare `thread` come parametro esplicito di
+    # questa funzione (oggi lo ricalcola qui) e farlo viaggiare nel resto
+    # della catena -- `context["thread"]`, `chat_store`, il poll -- cosi' due
+    # fili non si mescolano MAI, non solo in questo punto.
     job_id = reasoning_queue.enqueue("chat", {}, context, deadline, now=now,
                                       thread=request_thread(request))
     return web.json_response({"status": "pending", "job_id": job_id}, status=202)

@@ -11,10 +11,13 @@ coprire "una chiave qualsiasi nel context non rompe nulla") ma
 tests/test_reasoning_api.py per quel caso.
 
 Real APIs verified before writing this test:
-- ReasoningQueue.enqueue(kind, wake, context, deadline_ts, *, job_id=None, now)
+- ReasoningQueue.enqueue(kind, wake, context, deadline_ts, *, job_id=None, now,
+  thread=None) -- `thread` (fetta "le chat divise" Task 2) writes
+  subject_key/entry_point, NULL when omitted (as every job in this file does).
 - ReasoningQueue.claim(now) -> dict with job_id/kind/context/nonce/status
 - ReasoningQueue.submit(job_id, nonce, decision, now) -> bool
-- ReasoningQueue.get(job_id) -> dict including "kind", "context", "decision"
+- ReasoningQueue.get(job_id) -> dict including "kind", "context", "decision",
+  "thread" (None here -- no job in this file enqueues one)
 - chat_store.append_messages(messages, data_dir)
 - submit_chat_reply(reply_text) calls append_messages([{"role": "assistant", ...}], data_dir).
 """

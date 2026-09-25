@@ -39,16 +39,18 @@ CREATE INDEX IF NOT EXISTS idx_reasoning_status ON reasoning_jobs(status, create
 
 # `CREATE INDEX ... (kind, subject_key, entry_point, status)`: usato da
 # `has_pending_chat` per contare solo il filo di chi chiede. NON sta dentro
-# `_SCHEMA` sopra: `init_schema` (storage.py) esegue quello script PRIMA di
-# girare le migrazioni, anche su un archivio vecchio che non ha ancora
-# `subject_key`/`entry_point` -- e un `CREATE INDEX` su una colonna che non
-# esiste ancora fa fallire l'apertura invece di migrare (verificato: prova
-# diretta con sqlite3, "no such column"). L'indice si crea invece DOPO che le
-# colonne esistono davvero: dentro `_migration_3` per un archivio vecchio, e
-# di nuovo (idempotente) subito dopo `init_schema()` in `__init__` per un
-# archivio appena nato, che non passa da nessuna migrazione.
-_IDX_FILO_SQL = ("CREATE INDEX IF NOT EXISTS idx_reasoning_filo "
-                  "ON reasoning_jobs(kind, subject_key, entry_point, status)")
+# `_SCHEMA` sopra: `init_schema` (storage.py) esegue quello script SEMPRE
+# PRIMA di girare le migrazioni -- anche su un archivio vecchio (v1 o v2) che
+# non ha ancora `subject_key`/`entry_point` -- e un `CREATE INDEX` su una
+# colonna che non esiste ancora fa fallire l'apertura invece di migrare
+# (verificato: prova diretta con sqlite3, "no such column"). Si crea invece
+# UNA VOLTA SOLA, in `__init__`, subito dopo che `init_schema()` e' tornata:
+# a quel punto le colonne esistono davvero SEMPRE, che l'archivio sia appena
+# nato (le porta gia' `_SCHEMA`) o appena migrato da v1/v2 (le ha appena
+# aggiunte `_migration_3`) -- e' idempotente (`IF NOT EXISTS`), quindi non
+# importa se l'indice esisteva gia'.
+_IDX_THREAD_SQL = ("CREATE INDEX IF NOT EXISTS idx_reasoning_thread "
+                    "ON reasoning_jobs(kind, subject_key, entry_point, status)")
 
 def _row(r) -> dict:
     # `created_ts` viaggia dalla fetta «la catena diventa l'unica verita'»
@@ -81,17 +83,17 @@ def _migration_3(conn) -> None:
     """Versione 3 (fetta «le chat divise», Task 2): il filo del job.
 
     Stesso pattern di `_migration_2`: `ALTER TABLE ADD COLUMN` solo se manca,
-    cosi' una seconda apertura dello stesso archivio non fallisce. L'indice va
-    creato QUI, dopo l'ALTER: e' l'unico punto in cui, per un archivio
-    vecchio, le colonne esistono gia' quando serve (vedi il commento su
-    `_IDX_FILO_SQL`)."""
+    cosi' una seconda apertura dello stesso archivio non fallisce. L'indice
+    NON si crea qui: lo crea `__init__`, una volta sola, dopo `init_schema()`
+    (vedi il commento su `_IDX_THREAD_SQL`) -- farlo anche qui lo creerebbe
+    due volte a ogni migrazione, senza guadagnare nulla (e' gia' idempotente
+    li')."""
     colonne = {r[1] for r in conn.execute(
         "PRAGMA table_info(reasoning_jobs)").fetchall()}
     if "subject_key" not in colonne:
         conn.execute("ALTER TABLE reasoning_jobs ADD COLUMN subject_key TEXT")
     if "entry_point" not in colonne:
         conn.execute("ALTER TABLE reasoning_jobs ADD COLUMN entry_point TEXT")
-    conn.execute(_IDX_FILO_SQL)
 
 
 class ReasoningQueue:
@@ -100,11 +102,12 @@ class ReasoningQueue:
         self._lock = threading.Lock()
         init_schema(self._conn, _SCHEMA, version=3,
                     migrations={2: _migration_2, 3: _migration_3})
-        # Idempotente: su un archivio appena nato `init_schema` timbra subito
-        # la versione finale e NON gira `_migration_3` (vedi il commento su
-        # `_IDX_FILO_SQL`), quindi senza questa riga un archivio fresco non
-        # avrebbe mai l'indice.
-        self._conn.execute(_IDX_FILO_SQL)
+        # Qui e non dentro `_migration_3`, e non dentro `_SCHEMA`: e' l'UNICO
+        # punto in cui le colonne esistono sempre, per costruzione, qualunque
+        # sia stata la strada per arrivarci -- appena nato (`_SCHEMA` le
+        # porta gia'), o appena migrato da v1/v2 (`_migration_3` le ha appena
+        # aggiunte). Vedi il commento su `_IDX_THREAD_SQL`.
+        self._conn.execute(_IDX_THREAD_SQL)
         self._conn.commit()
         # Una FUNZIONE e non un valore: all'avvio l'archivio della casa puo'
         # non esserci ancora, e il fuso va letto quando serve. Stesso pattern
@@ -159,9 +162,11 @@ class ReasoningQueue:
     # solo `decision` dal job (`handlers_chat.py`, il ramo di poll), MAI
     # `context`; `handle_reasoning_submit` chiama `q.get(job_id)` anche lui
     # DOPO il proprio submit, ma legge solo `job.get("kind")`
-    # (`handlers_reasoning.py`); `has_pending_chat()` e' un COUNT indicizzato
-    # su `status`/`deadline_ts` che non riapre mai `context_json` (il metodo
-    # e' piu' sotto in questo stesso file: si cerca per NOME, perche' un
+    # (`handlers_reasoning.py`); `has_pending_chat(thread, now=None)` e' una
+    # SELECT indicizzata su `kind`/`subject_key`/`entry_point`/`status` (dal
+    # Task 2 "la coda porta il filo": prima solo su `status`/`deadline_ts`,
+    # senza filo) che non riapre mai `context_json` (il metodo e' piu' sotto
+    # in questo stesso file: si cerca per NOME, perche' un
     # rinvio al numero di riga invecchia al primo commit che sposta il
     # metodo -- ed e' gia' successo: quando questo commento e' stato
     # scritto citava `:96-125`, e il metodo era gia' altrove). Il record --
@@ -384,7 +389,17 @@ class ReasoningQueue:
         decine di secondi, e un secondo turno intanto metterebbe due risposte
         in volo sullo stesso filo. Il rischio simmetrico (un ripiego
         schiantato che tiene bloccato il filo per sempre) lo chiude
-        `fail_stuck_downgrades`, non un filtro sul tempo qui."""
+        `fail_stuck_downgrades`, non un filtro sul tempo qui.
+
+        **Debito accettato, alla frontiera dell'aggiornamento.** Un job di
+        chat accodato PRIMA di questa versione (senza `thread`, quindi con
+        `subject_key`/`entry_point` NULL) non corrisponde a nessun `thread`
+        reale, ed e' quindi invisibile a QUALSIASI chiamata di questo
+        metodo -- per lui la guardia «una risposta alla volta» non vale, per
+        al massimo una finestra di scadenza (i pochi minuti di
+        `ponte.scadenza_min`): dopo, o e' stato risolto o `sweep_expired`/
+        `fail_stuck_downgrades` lo hanno chiuso, e non ce n'e' piu' uno in
+        volo da perdere di vista."""
         ts = time.time() if now is None else now
         with self._lock:
             row = self._conn.execute(

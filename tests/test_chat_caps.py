@@ -7,24 +7,28 @@ Real APIs verified before writing this test (matches Task 2's report /
 tests/test_chat_subscription_path.py):
 - handle_chat gates on app["bridge_active"] AND app["reasoning_queue"]
   present (``steering._bridge_on``) before taking the async branch.
-- ReasoningQueue.enqueue(kind, wake, context, deadline_ts, *, job_id=None, now)
-  stores context as JSON; the chat job context carries "chatbot_id" (NOT
-  "conversation_id" -- chat_store has no separate conversation_id concept,
-  confirmed in Task 1/2).
+- ReasoningQueue.enqueue(kind, wake, context, deadline_ts, *, job_id=None, now,
+  thread=None) stores context as JSON; the chat job context carries
+  "chatbot_id" (NOT "conversation_id" -- chat_store has no separate
+  conversation_id concept, confirmed in Task 1/2). `thread` (fetta "le chat
+  divise" Task 2) writes subject_key/entry_point, NULL when omitted.
 - ReasoningQueue.submit(job_id, nonce, decision, now) -> bool resolves a job
   (status -> 'decided'), the only way to make a previously-enqueued chat job
   stop counting as "in flight" (pending/claimed).
 
 New in this task:
-- ReasoningQueue.has_pending_chat() -> bool: a kind="chat" job in
-  pending/claimed state. fetta E4 Task 5 ("un bot solo") dropped the
-  `chatbot_id` parameter this originally took (a conversation used to be a
-  chatbot's active session, keyed by chatbot_id; with one bot there's one
-  conversation, so "in flight for this id" and "in flight" collapsed into
-  the same question) -- its unit tests moved to test_reasoning_queue.py,
-  the queue class's natural home. What stays here are the HTTP-level 409
-  integration tests below (handle_chat's use of the guard), unaffected by
-  the signature change.
+- ReasoningQueue.has_pending_chat(thread, now=None) -> bool: a kind="chat"
+  job in pending/claimed state ON THAT THREAD. fetta E4 Task 5 ("un bot
+  solo") dropped the `chatbot_id` parameter this originally took (a
+  conversation used to be a chatbot's active session, keyed by chatbot_id;
+  with one bot there's one conversation, so "in flight for this id" and "in
+  flight" collapsed into the same question) -- its unit tests moved to
+  test_reasoning_queue.py, the queue class's natural home. fetta "le chat
+  divise" Task 2 then gave it back a required parameter, `thread` (no
+  default): with more than one thread "in flight" needs to say for WHOM.
+  What stays here are the HTTP-level 409 integration tests below
+  (handle_chat's use of the guard), unaffected by the signature change (the
+  guard reads `request_thread(request)` internally).
 - ReasoningQueue.count_exchanges_today(now=None) -> int: kind="chat" jobs whose
   created_ts falls on the same local calendar day as `now` (defaults to
   time.time()). Takes an explicit `now` -- like every other method on this
@@ -42,7 +46,13 @@ from aiohttp.test_utils import TestClient, TestServer
 from hiris.app.api.handlers_chat import handle_chat
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import close_all_stores
+from hiris.app.chat_thread import thread_for
 from hiris.app.reasoning.queue import ReasoningQueue
+
+# Lo stesso filo che `request_thread` calcola per una richiesta di questo
+# file: l'app di prova non monta `middleware_internal_auth`, quindi
+# `request.get("soggetto")`/`.get("auth_via")` sono sempre `None`.
+THREAD_TEST = thread_for(None, None)
 
 
 @pytest.fixture(autouse=True)
@@ -285,10 +295,16 @@ async def test_flag_off_guards_do_not_apply_sync_path_unchanged(tmp_path):
     regardless of pending jobs or the daily cap -- guards are subscription-only."""
     app, q, runner, _impostazioni, _data_dir = _make_app(
         tmp_path, ponte_attivo=False, tetto_giornaliero=0)
-    # Pre-seed a "pending" chat job on the queue -- fetta E4 Task 5:
-    # has_pending_chat() is unconditional now (no id to key it by) -- if the
-    # guard wrongly applied to the sync path this would still 409.
-    q.enqueue("chat", {}, {}, deadline_ts=time.time() + 300, now=time.time())
+    # Pre-seed a "pending" chat job on the SAME thread the request below
+    # resolves to (`THREAD_TEST` -- this app mounts no auth middleware, so
+    # `request_thread(request)` always computes `thread_for(None, None)`):
+    # if the guard wrongly applied to the sync path this would still 409.
+    # A job seeded with no thread (subject_key/entry_point NULL) would NOT
+    # do that -- has_pending_chat(thread) filters on an exact match, so a
+    # NULL row is invisible to any real thread and the test would pass even
+    # with the guard wrongly wired in, for the wrong reason.
+    q.enqueue("chat", {}, {}, deadline_ts=time.time() + 300, now=time.time(),
+              thread=THREAD_TEST)
 
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})

@@ -158,6 +158,18 @@ def test_claimed_chat_solo_per_un_job_di_chat_preso(tmp_path):
     assert q.claimed_chat("inventato") is None
 
 
+def test_claimed_chat_ignora_le_altre_specie(tmp_path):
+    """Un job di scope preso in carico non e' una chat -- claimed_chat non
+    deve confonderlo per uno, anche se lo status combacia."""
+    q = ReasoningQueue(str(tmp_path / "q.db"))
+    jid = q.enqueue("holistic", {"signal_kind": "holistic", "entity_id": "home",
+                     "severity_hint": "info", "evidence": {}, "ts": 1.0},
+                     {}, deadline_ts=9e9, now=1.0)
+    q.claim(now=2.0)
+    assert q.get(jid)["status"] == "claimed"    # preso in carico davvero
+    assert q.claimed_chat(jid) is None
+
+
 def test_migrazione_aggiunge_le_colonne_senza_perdere_righe(tmp_path):
     """Un archivio v2 scritto a mano (senza subject_key/entry_point): dopo
     l'apertura con ReasoningQueue la riga resta -- e il suo filo e' None,
@@ -193,6 +205,14 @@ def test_migrazione_aggiunge_le_colonne_senza_perdere_righe(tmp_path):
     job = q.get("vecchia-riga")
     assert job is not None
     assert job["thread"] is None
+
+    # La migrazione e' davvero girata (non solo "non e' esploso"): la
+    # versione e' salita e l'indice del filo esiste, sulle colonne appena
+    # aggiunte.
+    assert q._conn.execute("PRAGMA user_version").fetchone()[0] == 3
+    indici = {r["name"] for r in
+              q._conn.execute("PRAGMA index_list(reasoning_jobs)").fetchall()}
+    assert "idx_reasoning_thread" in indici
     q.close()
 
 
