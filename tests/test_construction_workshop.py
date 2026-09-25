@@ -11,8 +11,11 @@ from hiris.app.action.construction import workshop as officina_modulo
 from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.action.construction.workshop import Workshop
 from hiris.app.action.journal import Journal
+from hiris.app.chat_thread import ChatThread
 
 ADESSO = 1_756_000_000.0
+PAOLO = ChatThread("persona:p", "pannello")
+MARTA = ChatThread("persona:m", "pannello")
 
 # La stessa guardia di `HAClient._KEY_RE` (hiris/app/proxy/ha_client.py):
 # `key or ""` sostituisce SOLO i valori falsy (None, "") con la stringa
@@ -1267,3 +1270,110 @@ def test_la_data_del_ripristino_e_nel_fuso_della_casa():
     ts = 1787787000.0  # 2026-08-26T23:30:00Z == 27/08/2026 01:30 a Roma
     officina = Workshop(None, None, None, read_timezone=lambda: "Europe/Rome")
     assert officina._data(ts) == "27/08/2026 01:30"
+
+
+# ---------------------------------------------------------------------------
+# Task 7 «confirm resta nel filo» (spec §5, decisione 4)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_la_proposta_di_paolo_non_si_conferma_dal_filo_di_marta(banco):
+    """Senza id, la scelta implicita guarda solo il filo di chi conferma: la
+    proposta di Paolo non entra nella scelta di Marta, e il rifiuto non la
+    nomina (decisione 4)."""
+    officina, _ha, archivio, _ = banco
+    p = await officina.propose(_intento(), actor="chat", exchange="t1",
+                               thread=PAOLO, now=ADESSO)
+    esito = await officina.apply(None, actor="chat", exchange="t2",
+                                 thread=MARTA, now=ADESSO + 60)
+    assert "errore" in esito
+    assert p["proposta_id"] not in esito["errore"]
+    assert archivio.read(p["proposta_id"])["stato"] == "in_attesa"
+
+
+@pytest.mark.asyncio
+async def test_per_id_da_un_altro_filo_e_rifiutata(banco):
+    """Anche nominandola per id, un filo diverso non la conferma: stesso
+    testo di un id che non esiste, per non farla trapelare."""
+    officina, ha, archivio, _ = banco
+    p = await officina.propose(_intento(), actor="chat", exchange="t1",
+                               thread=PAOLO, now=ADESSO)
+    esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
+                                 thread=MARTA, now=ADESSO + 60)
+    assert "errore" in esito
+    assert esito["errore"] == "non ho nessuna proposta con quell’identificatore."
+    assert archivio.read(p["proposta_id"])["stato"] == "in_attesa"
+    assert ha.salvate == []
+
+
+@pytest.mark.asyncio
+async def test_nel_proprio_filo_si_conferma_come_prima(banco):
+    officina, ha, archivio, _ = banco
+    p = await officina.propose(_intento(), actor="chat", exchange="t1",
+                               thread=PAOLO, now=ADESSO)
+    esito = await officina.apply(None, actor="chat", exchange="t2",
+                                 thread=PAOLO, now=ADESSO + 60)
+    assert "errore" not in esito
+    assert esito["applicata"] is True
+    assert ha.salvate
+    assert archivio.read(p["proposta_id"])["stato"] == "applicata"
+
+
+@pytest.mark.asyncio
+async def test_una_proposta_senza_filo_resta_confermabile_per_id_da_chiunque(banco):
+    """Legacy (nata prima della fetta, o da un attore senza filo -- l'attuatore):
+    confermabile per id come oggi, anche da un filo diverso."""
+    officina, _ha, _, _ = banco
+    p = await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
+    esito = await officina.apply(p["proposta_id"], actor="chat", exchange="t2",
+                                 thread=MARTA, now=ADESSO + 60)
+    assert "errore" not in esito
+    assert esito["applicata"] is True
+
+
+@pytest.mark.asyncio
+async def test_una_proposta_senza_filo_non_entra_nella_scelta_implicita_di_un_filo(banco):
+    """Spec §5: le righe con `subject_key IS NULL` non entrano MAI nella
+    scelta implicita -- anche se sono le uniche pendenti in casa, il filo di
+    Paolo non le vede e il rifiuto dice che non ha niente in sospeso."""
+    officina, _ha, _, _ = banco
+    await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
+    esito = await officina.apply(None, actor="chat", exchange="t2",
+                                 thread=PAOLO, now=ADESSO + 60)
+    assert "errore" in esito
+    assert "nessuna proposta in sospeso" in esito["errore"]
+
+
+@pytest.mark.asyncio
+async def test_thread_assente_non_restringe_come_la_pagina(banco):
+    """I chiamanti interni (pagina, ripristino applicato subito) passano
+    `thread=None`: NON e' un filo senza proposte, e' l'assenza di
+    restrizione -- la proposta nata nel filo di Paolo resta confermabile per
+    id da chi non porta nessun filo (Task 7, decisione del brief)."""
+    officina, _ha, archivio, _ = banco
+    p = await officina.propose(_intento(), actor="chat", exchange="t1",
+                               thread=PAOLO, now=ADESSO)
+    esito = await officina.apply(p["proposta_id"], actor="pagina", exchange=None,
+                                 now=ADESSO + 60)
+    assert "errore" not in esito
+    assert esito["applicata"] is True
+    assert archivio.read(p["proposta_id"])["stato"] == "applicata"
+
+
+@pytest.mark.asyncio
+async def test_ripristinare_dalla_pagina_di_una_proposta_nata_con_filo_non_si_restringe(banco):
+    """`restore` (chiamata dalla pagina, `actor="pagina"`) chiama `apply`
+    internamente con `thread=None`: il ripristino di un oggetto la cui
+    ultima versione applicata porta un filo non deve inciampare nella
+    restrizione appena introdotta."""
+    officina, _ha, _archivio, _ = banco
+    p = await officina.propose(_intento(), actor="chat", exchange="t1",
+                               thread=PAOLO, now=ADESSO)
+    await officina.apply(p["proposta_id"], actor="pagina", exchange=None,
+                         now=ADESSO + 60)
+
+    esito = await officina.restore(p["proposta_id"], actor="pagina", exchange=None,
+                                   now=ADESSO + 120)
+
+    assert "errore" not in esito
+    assert esito["applicata"] is True

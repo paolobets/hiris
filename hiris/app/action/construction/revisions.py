@@ -24,6 +24,7 @@ import logging
 import secrets
 import threading
 
+from ...chat_thread import ChatThread
 from ...storage import connect, init_schema
 
 logger = logging.getLogger(__name__)
@@ -53,11 +54,37 @@ CREATE TABLE IF NOT EXISTS costruzioni (
     helper_json TEXT,
     anteprima TEXT,
     esecuzione_id TEXT,
-    motivo TEXT
+    motivo TEXT,
+    -- Il FILO di chi ha proposto (fetta «le chat divise», Task 7, spec §5
+    -- "confirm e' del filo"): (soggetto, ingresso) di chi ha aperto il turno
+    -- che ha chiamato `propose`. NULL per le proposte nate prima di questa
+    -- versione, o da un attore senza filo (l'attuatore, un ripristino
+    -- interno): quelle restano confermabili per id come oggi, e nessuna
+    -- riga con questa colonna vuota entra mai nella scelta implicita di un
+    -- filo (vedi `Workshop._only_pending`).
+    subject_key TEXT,
+    entry_point TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_costruzioni_stato ON costruzioni(stato, creata_ts DESC);
 CREATE INDEX IF NOT EXISTS idx_costruzioni_oggetto ON costruzioni(dominio, chiave, creata_ts DESC);
 """
+
+
+def _migration_2(conn) -> None:
+    """v1 -> v2 (fetta «le chat divise», Task 7): il filo della proposta.
+
+    `ALTER TABLE` solo se la colonna manca -- un archivio che nasce oggi la
+    porta gia' da `_SCHEMA` (stesso pattern di `chat_store.py::_migration_4`
+    e `reasoning/queue.py::_migration_3`). **Nessun indice qui**: a
+    differenza di `chat_sessions`/`reasoning_jobs`, le costruzioni non hanno
+    un volume che lo giustifichi -- il tetto e' 20 pendenti, e le due query
+    che leggono il filo (`_only_pending`, il controllo per id) gia' passano
+    da `list(pending_only=True)`/`read`, che restano su `stato`/`id`."""
+    colonne = {r[1] for r in conn.execute("PRAGMA table_info(costruzioni)").fetchall()}
+    if "subject_key" not in colonne:
+        conn.execute("ALTER TABLE costruzioni ADD COLUMN subject_key TEXT")
+    if "entry_point" not in colonne:
+        conn.execute("ALTER TABLE costruzioni ADD COLUMN entry_point TEXT")
 
 
 def _load(text):
@@ -81,6 +108,11 @@ def _row(r) -> dict:
         "origine": r["origine"],
         "turno": r["turno"],
         "frase": r["frase"],
+        # Il FILO di chi ha proposto (spec §5): `None`/`None` per una riga
+        # nata senza filo -- vedi il commento su `_SCHEMA`. Stessi due nomi
+        # di colonna, in inglese, che porta ogni tabella del filo.
+        "subject_key": r["subject_key"],
+        "entry_point": r["entry_point"],
         "prima": _load(r["prima_json"]),
         "dopo": _load(r["dopo_json"]),
         # **Cosa chiamera'**, sui due lati (reperto B-4, 22/09/2026). La
@@ -114,7 +146,7 @@ class ConstructionStore:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=1)
+        init_schema(self._conn, _SCHEMA, version=2, migrations={2: _migration_2})
 
     def close(self) -> None:
         with self._lock:
@@ -123,7 +155,7 @@ class ConstructionStore:
     def propose(self, *, operation: str, domain: str, key: str, actor: str,
                 exchange: str | None, phrase: str | None, prima: dict | None,
                 dopo: dict | None, helper: list, preview: str,
-                now: float) -> dict:
+                now: float, thread: ChatThread | None = None) -> dict:
         ident = secrets.token_urlsafe(9)
         with self._lock:
             self._prune(now)
@@ -146,11 +178,14 @@ class ConstructionStore:
             self._conn.execute(
                 "INSERT INTO costruzioni(id,creata_ts,aggiornata_ts,stato,gesto,dominio,"
                 "chiave,origine,turno,frase,prima_json,dopo_json,helper_json,anteprima,"
-                "esecuzione_id,motivo) VALUES(?,?,?,'in_attesa',?,?,?,?,?,?,?,?,?,?,NULL,NULL)",
+                "esecuzione_id,motivo,subject_key,entry_point) "
+                "VALUES(?,?,?,'in_attesa',?,?,?,?,?,?,?,?,?,?,NULL,NULL,?,?)",
                 (ident, now, now, operation, domain, key, actor, exchange, phrase,
                  None if prima is None else json.dumps(prima),
                  None if dopo is None else json.dumps(dopo),
-                 json.dumps(list(helper)), preview))
+                 json.dumps(list(helper)), preview,
+                 thread.subject_key if thread else None,
+                 thread.entry_point if thread else None))
             self._conn.commit()
         return {"id": ident}
 

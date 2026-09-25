@@ -506,7 +506,14 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
             request.app, exchange=exchange_id,
             soffitto=await ceiling_for(request.app, soggetto),
             soggetto=soggetto,
-            frase=last_phrase(ctx.get("history")))
+            frase=last_phrase(ctx.get("history")),
+            # Fetta «le chat divise» (Task 7): il filo DEL JOB, gia' un
+            # `ChatThread` -- `claimed_chat()` lo costruisce da
+            # `subject_key`/`entry_point` della riga (`reasoning/queue.py::
+            # _row`), non dal `context` serializzato (quello porta il
+            # soggetto INTERO per il soffitto/la cronaca, non il filo).
+            # `None` per un job accodato prima di questa versione.
+            thread=chat_job.get("thread"))
     else:
         dispatcher = create_tool_dispatcher(request.app, exchange=exchange_id)
     promise_id = _exchange_promise_id(request)

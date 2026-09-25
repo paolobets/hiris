@@ -195,6 +195,7 @@ def test_la_riga_dell_archivio_porta_i_servizi_dei_DUE_lati():
         "id": "p1", "creata_ts": 1, "aggiornata_ts": 1, "stato": "in_attesa",
         "gesto": "modifica", "dominio": "automation", "chiave": "x",
         "origine": "chat", "turno": "t1", "frase": "f",
+        "subject_key": None, "entry_point": None,
         "prima_json": '{"actions": [{"action": "light.turn_on"}]}',
         "dopo_json": '{"actions": [{"action": "light.turn_on"},'
                      ' {"action": "shell_command.riavvia"}]}',
@@ -217,6 +218,7 @@ def test_e_un_lato_ASSENTE_da_una_lista_vuota_non_un_buco():
         "id": "p1", "creata_ts": 1, "aggiornata_ts": 1, "stato": "in_attesa",
         "gesto": "crea", "dominio": "scene", "chiave": "x",
         "origine": "chat", "turno": "t1", "frase": "f",
+        "subject_key": None, "entry_point": None,
         "prima_json": None, "dopo_json": '{"entities": {"light.x": "on"}}',
         "helper_json": None, "anteprima": "a", "esecuzione_id": None,
         "motivo": None})

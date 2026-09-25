@@ -1,11 +1,14 @@
 """L'archivio delle costruzioni: proposte e atti, lo stesso oggetto in due momenti."""
 import os
+import sqlite3
 
 import pytest
 
 from hiris.app.action.construction.revisions import ConstructionStore
+from hiris.app.chat_thread import ChatThread
 
 ADESSO = 1_756_000_000.0
+PAOLO = ChatThread("persona:p", "pannello")
 
 
 @pytest.fixture()
@@ -239,4 +242,55 @@ def test_una_proposta_in_corso_compare_fra_le_pendenti_e_conta_contro_il_tetto(a
         assert "errore" not in _proponi(archivio, key=f"altra{n}")
     esito = _proponi(archivio, key="una_di_troppo")
     assert "id" not in esito, "in_corso deve continuare a contare per il tetto"
+
+
+# ==== Task 7 «confirm resta nel filo» ======================================
+
+def test_proporre_con_un_filo_lo_scrive(archivio):
+    ident = _proponi(archivio, thread=PAOLO)["id"]
+    riga = archivio.read(ident)
+    assert riga["subject_key"] == "persona:p"
+    assert riga["entry_point"] == "pannello"
+
+
+def test_proporre_senza_filo_resta_senza(archivio):
+    """Il comportamento di sempre: nessun filo passato, nessun filo scritto --
+    e' cosi' che propone anche l'attuatore (`server.py::_file_proposals`)."""
+    ident = _proponi(archivio)["id"]
+    riga = archivio.read(ident)
+    assert riga["subject_key"] is None
+    assert riga["entry_point"] is None
+
+
+def test_la_migrazione_v1_conserva_le_righe_come_senza_filo(tmp_path):
+    """Un archivio nato prima della fetta «le chat divise» (v1, senza
+    `subject_key`/`entry_point`): la migrazione aggiunge le colonne con
+    `ALTER TABLE` e la riga esistente resta leggibile, senza filo -- stesso
+    principio della migrazione v3 di `chat_store.py` per la cronologia di
+    prima (decisione 5)."""
+    db = str(tmp_path / "c.db")
+    c = sqlite3.connect(db)
+    c.executescript("""
+      CREATE TABLE costruzioni (
+          id TEXT PRIMARY KEY, creata_ts REAL NOT NULL, aggiornata_ts REAL NOT NULL,
+          stato TEXT NOT NULL, gesto TEXT NOT NULL, dominio TEXT NOT NULL, chiave TEXT NOT NULL,
+          origine TEXT NOT NULL, turno TEXT, frase TEXT, prima_json TEXT, dopo_json TEXT,
+          helper_json TEXT, anteprima TEXT, esecuzione_id TEXT, motivo TEXT
+      );
+      INSERT INTO costruzioni(id,creata_ts,aggiornata_ts,stato,gesto,dominio,chiave,origine,
+          turno,frase,prima_json,dopo_json,helper_json,anteprima,esecuzione_id,motivo)
+        VALUES ('c1', 1.0, 1.0, 'in_attesa', 'crea', 'automation', '1771', 'chat',
+          't1', 'apri le tapparelle', NULL, '{"id":"1771"}', '[]', 'anteprima', NULL, NULL);
+      PRAGMA user_version=1;
+    """)
+    c.close()
+
+    a = ConstructionStore(db)
+    riga = a.read("c1")
+    assert riga["subject_key"] is None
+    assert riga["entry_point"] is None
+    # Anche cio' che c'era prima resta intatto -- non solo cio' che e' nuovo.
+    assert riga["stato"] == "in_attesa"
+    assert riga["chiave"] == "1771"
+    a.close()
 

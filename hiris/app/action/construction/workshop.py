@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import logging
 
+from ...chat_thread import ChatThread
 from ...home_space.historian import home_space_zone
 from ...proxy._sanitize import truncate_with_marker as _truncate
 from . import composer
@@ -60,6 +61,15 @@ HUMAN_ACTORS = ("pagina",)
 #: sono due casi diversi.
 _BORN_THIS_TURN = ("questa proposta e' nata in questo stesso turno: te l’ho "
              "mostrata, ora dimmi tu se procedere.")
+
+#: Il rifiuto di un id che non esiste -- e, dal Task 7 «confirm resta nel
+#: filo», anche di un id che esiste ma appartiene al filo di qualcun altro
+#: (spec §5, decisione 4: si legge solo il proprio filo, e un rifiuto non
+#: nomina mai la proposta di un altro). Una sola costante per i due casi: dal
+#: lato di chi chiede sono indistinguibili PER COSTRUZIONE, e due testi
+#: diversi lascerebbero trapelare che una proposta con quell'id esiste
+#: davvero, solo altrove.
+_UNKNOWN_ID = "non ho nessuna proposta con quell’identificatore."
 
 OPERATIONS = ("crea", "modifica", "cancella")
 
@@ -149,6 +159,38 @@ def _add_phrase(subject: dict | None, phrase: str | None) -> dict | None:
 _NETWORK_ERROR_CAP = 300
 
 
+def _same_thread(proposal: dict, thread: ChatThread) -> bool:
+    """Vero se `proposal` e' nata esattamente nel filo `thread`. Il
+    chiamante garantisce `thread` non `None` -- vedi `_thread_may_confirm`
+    e `Workshop._only_pending`, che decidono loro cosa fare di `None`."""
+    return (proposal.get("subject_key") == thread.subject_key
+            and proposal.get("entry_point") == thread.entry_point)
+
+
+def _thread_may_confirm(proposal: dict, thread: ChatThread | None) -> bool:
+    """Vero se questo filo puo' confermare `proposal` PER ID (spec §5).
+
+    **`thread=None` non restringe.** E' il valore che passano i chiamanti
+    interni -- la pagina (`handlers_constructions.py`, che mostra e conferma
+    proposte di OGNI filo: e' la vista dell'amministratore, non una
+    conversazione) e il ramo di `restore` che l'origine umana applica subito
+    (sotto) -- e per loro vale il comportamento di sempre: nessuna
+    restrizione nuova. E' lo stesso principio gia' in vigore per il
+    soffitto (`self._soffitto is None` vuol dire «nessuna persona ha aperto
+    questo turno», non «nessuno puo' fare niente»).
+
+    **Nata senza filo** (`subject_key` `None`: prima della fetta «le chat
+    divise», o da un attore che non ne porta uno -- l'attuatore) resta
+    confermabile da chiunque nomini l'id, come prima di questa fetta.
+
+    **Entrambi presenti**: devono combaciare esattamente, o il rifiuto e' lo
+    stesso di un id inesistente (`_UNKNOWN_ID`) -- per non nominare la
+    proposta di un altro filo (decisione 4)."""
+    if thread is None or proposal.get("subject_key") is None:
+        return True
+    return _same_thread(proposal, thread)
+
+
 class Workshop:
     def __init__(self, ha, store, journal, *, read_timezone=None) -> None:
         self._ha = ha
@@ -173,7 +215,7 @@ class Workshop:
     # ---- proporre -------------------------------------------------------
 
     async def propose(self, intent: dict, *, actor: str, exchange: str | None,
-                      now: float) -> dict:
+                      now: float, thread: ChatThread | None = None) -> dict:
         operation = intent.get("gesto")
         domain = intent.get("dominio")
         if operation not in OPERATIONS:
@@ -245,7 +287,7 @@ class Workshop:
             operation=operation, domain=domain, key=key, actor=actor,
             exchange=exchange, phrase=intent.get("frase"), prima=prima, dopo=dopo,
             helper=list(intent.get("helper") or []), preview=preview,
-            now=now)
+            now=now, thread=thread)
         if "errore" in occurrence:
             return occurrence
         return {"proposta_id": occurrence["id"], "anteprima": preview,
@@ -371,7 +413,8 @@ class Workshop:
     async def apply(self, proposal_id: str | None, *, actor: str,
                       exchange: str | None, now: float,
                       subject: dict | None = None,
-                      confirm_phrase: str | None = None) -> dict:
+                      confirm_phrase: str | None = None,
+                      thread: ChatThread | None = None) -> dict:
         """`confirm_phrase` e' **la frase su cui l'oggetto e' nato** (B-5).
 
         Il cancello qui sotto sa dire «in mezzo c'e' stato un turno». Non sa
@@ -384,14 +427,25 @@ class Workshop:
         **Non e' la `frase` di una proposta**, che e' la frase che ha CHIESTO
         la costruzione. Questa e' quella che l'ha CONFERMATA: due fatti
         diversi, due parole diverse.
+
+        **`thread` e' del CONFERMANTE, non della proposta** (Task 7, spec
+        §5). `None` e' legittimo e NON restringe: e' cosi' che chiamano
+        `handlers_constructions.py` (un clic sulla pagina vede tutto) e il
+        ripristino interno (`restore`, sotto, quando lo chiama la pagina) --
+        nessuno dei due porta un filo di chat da confrontare. Solo il ramo
+        che passa da `home_space/tools.py::ToolDispatcher._confirm` porta un
+        `thread` vero, ed e' li' che la restrizione morde.
         """
         if not proposal_id:
-            proposal_id, reason = self._only_pending(exchange)
+            proposal_id, reason = self._only_pending(exchange, thread)
             if proposal_id is None:
                 return {"errore": reason}
         proposal = self._store.read(proposal_id)
-        if proposal is None:
-            return {"errore": "non ho nessuna proposta con quell’identificatore."}
+        if proposal is None or not _thread_may_confirm(proposal, thread):
+            # **Stesso testo per «non esiste» e «e' di un altro filo»**
+            # (decisione 4, spec §5): un rifiuto non deve far capire che una
+            # proposta con quell'id esiste, solo altrove -- vedi `_UNKNOWN_ID`.
+            return {"errore": _UNKNOWN_ID}
         if proposal["stato"] != "in_attesa":
             return {"errore": f"quella proposta e' gia' {_readable_state(proposal['stato'])}."}
         cancello = self._cancello(proposal, actor, exchange)
@@ -510,7 +564,8 @@ class Workshop:
         return {"applicata": True, "esecuzione_id": execution_id,
                 "entita": entity, "avviso": notice}
 
-    def _only_pending(self, exchange: str | None) -> tuple[str | None, str]:
+    def _only_pending(self, exchange: str | None,
+                      thread: ChatThread | None) -> tuple[str | None, str]:
         """Quale proposta l'utente sta confermando, quando non l'ha nominata.
 
         **Il difetto che chiude** (23/09/2026, misurato sulla casa vera): il
@@ -518,6 +573,21 @@ class Workshop:
         chat porta solo testo, e nessuno strumento elenca le pendenti --
         quindi al turno dopo l'id non esiste piu' da nessuna parte e il
         modello riproponeva, bruciando un terzo turno a ogni costruzione.
+
+        **Solo il filo di chi conferma** (Task 7, spec §5), quando `thread`
+        c'e'. Le righe di un ALTRO filo, o senza filo (`subject_key IS
+        NULL`: prima della fetta, o un attore che non ne porta uno), non
+        entrano MAI in questa scelta -- `_same_thread` le esclude. Restano
+        confermabili, quelle senza filo, ma solo NOMINANDOLE per id
+        (`_thread_may_confirm`, sopra `apply`): qui la domanda e' un'altra,
+        «quale delle TUE proposte», e il rifiuto non deve mai far sapere che
+        ne esistono di un altro filo (decisione 4).
+
+        **`thread=None` non restringe**, stessa regola di `_thread_may_confirm`
+        qui sopra: e' il valore dei chiamanti interni (mai di una chat vera,
+        che il suo filo lo calcola sempre -- vedi `create_tool_dispatcher`),
+        e per loro la scelta implicita resta quella di sempre, sulla casa
+        intera.
 
         **Solo `in_attesa`**, non `pending_only`: una proposta `in_corso` la
         sta applicando qualcun altro adesso, e sceglierla vorrebbe dire due
@@ -538,7 +608,8 @@ class Workshop:
         diciassettesima definizione di strumento pagata a ogni turno.
         """
         pending = [r for r in self._store.list(pending_only=True)
-                  if r["stato"] == "in_attesa"]
+                  if r["stato"] == "in_attesa"
+                  and (thread is None or _same_thread(r, thread))]
         confirmable = [r for r in pending if r["turno"] != exchange]
         if len(confirmable) == 1:
             return confirmable[0]["id"], ""

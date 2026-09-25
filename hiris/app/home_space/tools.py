@@ -153,7 +153,7 @@ from datetime import datetime, timedelta
 from typing import Any, ClassVar
 
 from ..action.construction.advisor import STRUCTURES
-from ..chat_thread import subject_key_for
+from ..chat_thread import ChatThread, subject_key_for
 from ..memory.interpretation import VOCABULARY, validate
 from ..memory.lookup_cache import LookupCache
 from ..memory.resolver import STORE_KEY_PER_TYPE, costruisci_indice
@@ -1587,7 +1587,8 @@ class ToolDispatcher:
                  judgments: TypeJudgments | None = None,
                  soffitto: dict | None = None,
                  subject: dict | None = None,
-                 phrase: str | None = None) -> None:
+                 phrase: str | None = None,
+                 thread: ChatThread | None = None) -> None:
         self._home_space = home_space_store
         # Il sigillo dei segreti si costruisce alla prima richiesta e si
         # ricorda: leggere `secrets.yaml` a ogni voce di registro sarebbe
@@ -1614,6 +1615,15 @@ class ToolDispatcher:
         # che nessuno ha detto niente. Un turno di chat del ponte porta
         # persona, soffitto e frase del job (`handlers_mcp._call_tool`).
         self._phrase = phrase
+        # Il FILO di chi ha aperto questo turno (fetta «le chat divise», Task
+        # 7, spec §5 "confirm e' del filo"): la coppia (soggetto, ingresso)
+        # calcolata UNA volta dal chiamante (`create_tool_dispatcher`), non
+        # dedotta qui da `_subject`, che porta specie/nome ma non l'ingresso.
+        # `None` e' legittimo come per `_soffitto`: nessuna persona ha aperto
+        # questo turno (promessa, osservatore) o il job e' precedente a
+        # questa versione -- e in quel caso `Workshop.apply` non restringe
+        # (vedi il suo docstring).
+        self._thread = thread
         # Il sapere (`mind/knowledge.py`): cio' che HIRIS ha capito, con la
         # provenienza. Oggi ne esce il SIGNIFICATO della classe di un'entita'
         # sul dettaglio di `guarda` -- la porta che rende interrogabile
@@ -2630,7 +2640,8 @@ class ToolDispatcher:
             "frase": arguments.get("frase"),
         }
         return await self._workshop.propose(
-            intent, actor="chat", exchange=self._exchange, now=_time.time())
+            intent, actor="chat", exchange=self._exchange, now=_time.time(),
+            thread=self._thread)
 
     async def _confirm(self, arguments: dict[str, Any]) -> dict:
         """Applica una proposta gia' creata da `propose`. La guardia del
@@ -2659,7 +2670,10 @@ class ToolDispatcher:
             # mezzo c'e' stato un si'». La frase di questo turno va in cronaca
             # accanto all'atto, cosi' che «chi ha detto si'» abbia una
             # risposta invece di essere dedotto dal silenzio.
-            confirm_phrase=self._phrase)
+            confirm_phrase=self._phrase,
+            # Task 7, spec §5: «confirm e' del filo». Il filo di QUESTO
+            # turno, non quello della proposta -- l'officina confronta i due.
+            thread=self._thread)
         # Punto 7 (residuo): `guasto_rete` e' interno (`Workshop._fallita`/
         # `_rete`) -- `handlers_constructions.py` lo toglie gia' sul percorso
         # HTTP (lo legge per scegliere 503 invece di 409, poi lo estrae dal

@@ -58,7 +58,7 @@ class FintaOfficina:
         self.chiamate = []
 
     async def apply(self, proposta_id, *, actor, exchange, now, subject=None,
-                    confirm_phrase=None):
+                    confirm_phrase=None, thread=None):
         self.chiamate.append(("apply", proposta_id, actor, exchange))
         return self.esito
 

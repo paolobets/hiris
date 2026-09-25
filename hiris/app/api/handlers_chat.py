@@ -80,7 +80,8 @@ def last_phrase(history) -> str | None:
 def create_tool_dispatcher(app, exchange: str | None = None,
                            soffitto: dict | None = None,
                            soggetto: dict | None = None,
-                           frase: str | None = None) -> ToolDispatcher:
+                           frase: str | None = None,
+                           thread: ChatThread | None = None) -> ToolDispatcher:
     """L'UNICO punto del prodotto in cui `ToolDispatcher` viene costruito.
 
     I sedici strumenti della chat (`home_space/tools.py`) -- non il catalogo
@@ -139,6 +140,18 @@ def create_tool_dispatcher(app, exchange: str | None = None,
     "non disponibile" (vedi il ramo `else` del dispatch loop in
     claude_runner.py/openai_compat_runner.py) -- passarlo sempre e' quello che
     tiene la chat viva.
+
+    `thread` (fetta «le chat divise», Task 7, facoltativo e `None` per
+    default: ogni chiamante che non lo passa non cambia comportamento) e' il
+    filo -- (soggetto, ingresso) -- di chi ha aperto QUESTO turno, calcolato
+    UNA volta dal chiamante come `exchange`: serve alla guardia
+    dell'officina, che non conferma la proposta del filo di Paolo dal filo di
+    Marta (spec §5, «confirm e' del filo»). Sul ramo sincrono lo calcola
+    `handle_chat` (`request_thread(request)`) e lo ripropone
+    `_downgrade_to_chain` dal job; sulla rotta MCP e' quello del job di chat
+    `claimed` (`handlers_mcp.py::_exchange_chat_job`). `None` per le
+    promesse e per un turno del ponte che non e' di chat: li' l'officina non
+    restringe (vedi `Workshop.apply`).
 
     Task B7 -- `cache_indice=app.get("tools_lookup_cache")`: l'oggetto di
     vita lunga costruito accanto a `entity_cache` in `server.py`, non uno
@@ -217,6 +230,9 @@ def create_tool_dispatcher(app, exchange: str | None = None,
         # gia' sul solo seme se riceve `None` -- in una vera richiesta questo
         # ramo non degrada mai, perche' l'avvio scrive sempre la chiave.
         judgments=app.get("type_judgments"),
+        # Il filo di chi ha aperto il turno -- vedi il docstring qui sopra
+        # per chi lo calcola e per la guardia che lo usa.
+        thread=thread,
     )
 
 
@@ -746,7 +762,11 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
                     # (`user_message=ultimo`, qui sopra): se questo ramo leggesse
                     # da un'altra parte, la cronaca registrerebbe una frase
                     # diversa da quella su cui il modello ha deciso.
-                    frase=ultimo),
+                    frase=ultimo,
+                    # Il filo DEL JOB (letto in cima a questa funzione),
+                    # non quello di chi per caso fa il poll che scopre la
+                    # scadenza (spec §4, come `soggetto` qui sopra).
+                    thread=thread),
             )
     except RunnerBackendError as exc:
         # Stessa rete del ramo sincrono, e per la stessa ragione: `runner` può
@@ -1115,7 +1135,10 @@ async def handle_chat(request: web.Request) -> web.Response:
         soffitto=soffitto,
         soggetto=request.get("soggetto"),
         # Lo STESSO testo che va al modello come `user_message` piu' sotto.
-        frase=message)
+        frase=message,
+        # Il filo di chi scrive, calcolato in cima a questa funzione: serve
+        # alla guardia dell'officina (spec §5, «confirm e' del filo»).
+        thread=thread)
 
     # fetta "la catena diventa l'unica verita'": qui c'era
     # `agent_model = settings.model`. Il campo e' uscito con la decisione
