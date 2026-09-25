@@ -1861,13 +1861,18 @@ def test_le_dataclass_del_prodotto_sono_sedici_e_i_campi_settantasette():
 
     **Sedici e 77 dal 25/09/2026**, fetta «le chat divise»: `ChatThread`
     (`hiris/app/chat_thread.py`) coi suoi due campi -- `subject_key`,
-    `entry_point` -- la conversazione di un soggetto da un ingresso."""
+    `entry_point` -- la conversazione di un soggetto da un ingresso.
+
+    **Diciassette e 79 dal 25/09/2026**, fetta «il seguito delle chat divise»,
+    Task 1: `Recipients` (`hiris/app/keeper/recipient.py`) coi suoi due campi
+    -- `services`, `reason` -- il recapito vero di un soggetto, mai scelto dal
+    modello."""
     classi = campi = 0
     for f in rinomina.file_py(rinomina.ROOT):
         trovate = rinomina.campi_dataclass(rinomina._leggi_grezzo(f))
         classi += len(trovate)
         campi += sum(len(c) for c in trovate.values())
-    assert (classi, campi) == (16, 77), (classi, campi)
+    assert (classi, campi) == (17, 79), (classi, campi)
 
 
 def _repo_finto(tmp_path, prima: dict, dopo: dict) -> None:
