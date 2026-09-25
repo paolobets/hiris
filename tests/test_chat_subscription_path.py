@@ -42,7 +42,17 @@ from aiohttp.test_utils import TestClient, TestServer
 from hiris.app.api.handlers_chat import handle_chat, handle_chat_reply_poll
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import append_messages, close_all_stores, load_history
+from hiris.app.chat_thread import thread_for
 from hiris.app.reasoning.queue import ReasoningQueue
+
+# Task 2 (queue): `handle_chat` guarda ora `has_pending_chat(request_thread
+# (request))`, e una richiesta di test qui non porta ancora ne' "soggetto" ne'
+# "auth_via" (Task 3 li aggancia davvero) -- e' lo stesso filo che
+# `request_thread` calcola per QUALUNQUE richiesta di questo file. I job
+# accodati direttamente sulla coda (bypassando `_enqueue_chat_job`) devono
+# portare lo stesso filo, o il 409 che questi test si aspettano dalla
+# guardia sparirebbe: il job risulterebbe di un altro filo.
+FILO_TEST = thread_for(None, None)
 
 
 @pytest.fixture(autouse=True)
@@ -1131,7 +1141,7 @@ async def test_una_risposta_gia_in_volo_NON_ripiega(tmp_path):
     ancora un turno in volo che si scrivera' in cronologia da solo."""
     app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     app["models_config"] = {"ponte": {"tetto_giornaliero": 0}}
-    q.enqueue("chat", {}, {}, time.time() + 300, now=time.time())
+    q.enqueue("chat", {}, {}, time.time() + 300, now=time.time(), thread=FILO_TEST)
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "ciao"})
         assert resp.status == 409
@@ -1265,12 +1275,12 @@ async def test_un_turno_che_NON_ha_ripiegato_non_porta_nessuna_nota(tmp_path):
 # il runner della catena e' quello vero della fixture.
 
 
-def _accoda_scaduto(q, *, ora=None, history=None, **contesto):
+def _accoda_scaduto(q, *, ora=None, history=None, thread=FILO_TEST, **contesto):
     ora = time.time() if ora is None else ora
     ctx = {"history": history if history is not None
            else [{"role": "user", "content": "ciao"}]}
     ctx.update(contesto)
-    return q.enqueue("chat", {}, ctx, ora - 1, now=ora - 300)
+    return q.enqueue("chat", {}, ctx, ora - 1, now=ora - 300, thread=thread)
 
 
 @pytest.mark.asyncio
@@ -1427,9 +1437,9 @@ async def test_mentre_ripiega_la_conversazione_e_occupata(tmp_path):
     sarebbe sempre passata."""
     app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     jid = _accoda_scaduto(q)
-    assert q.has_pending_chat() is False, "scaduto e non ancora reclamato: libera"
+    assert q.has_pending_chat(FILO_TEST) is False, "scaduto e non ancora reclamato: libera"
     assert q.reclaim_expired(jid, time.time()) is not None
-    assert q.has_pending_chat() is True
+    assert q.has_pending_chat(FILO_TEST) is True
 
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "seconda"})

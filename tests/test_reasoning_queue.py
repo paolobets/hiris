@@ -1,6 +1,16 @@
+import sqlite3
+
 import pytest
 
+from hiris.app.chat_thread import ChatThread
 from hiris.app.reasoning.queue import ReasoningQueue
+
+# Filo di comodo per i test che non riguardano il filo in se' (tutto tranne
+# la sezione "il filo" qui sotto): un solo soggetto, un solo ingresso, cosi'
+# enqueue e has_pending_chat/claimed_chat restano coerenti fra loro senza che
+# ogni test debba sceglierne uno.
+PAOLO = ChatThread("persona:p", "pannello")
+MARTA = ChatThread("persona:m", "pannello")
 
 
 @pytest.fixture
@@ -71,40 +81,40 @@ def test_prune(q):
 # ---------------------------------------------------------------------------
 
 def test_has_pending_chat_false_when_no_jobs(q):
-    assert q.has_pending_chat() is False
+    assert q.has_pending_chat(PAOLO) is False
 
 
 def test_has_pending_chat_true_for_pending_job(q):
-    q.enqueue("chat", {}, {}, deadline_ts=100.0, now=1.0)
+    q.enqueue("chat", {}, {}, deadline_ts=100.0, now=1.0, thread=PAOLO)
     # `now` explicit and still before deadline_ts (100.0) -- job is
     # genuinely in-flight, not merely unswept-but-expired.
-    assert q.has_pending_chat(now=50.0) is True
+    assert q.has_pending_chat(PAOLO, now=50.0) is True
 
 
 def test_has_pending_chat_true_for_claimed_job(q):
-    q.enqueue("chat", {}, {}, deadline_ts=100.0, now=1.0)
+    q.enqueue("chat", {}, {}, deadline_ts=100.0, now=1.0, thread=PAOLO)
     q.claim(now=2.0)
-    assert q.has_pending_chat(now=50.0) is True
+    assert q.has_pending_chat(PAOLO, now=50.0) is True
 
 
 def test_has_pending_chat_false_after_submit_resolves_job(q):
-    q.enqueue("chat", {}, {}, deadline_ts=100.0, now=1.0)
+    q.enqueue("chat", {}, {}, deadline_ts=100.0, now=1.0, thread=PAOLO)
     claimed = q.claim(now=2.0)
     q.submit(claimed["job_id"], claimed["nonce"], {"reply": "ciao"}, now=3.0)
-    assert q.has_pending_chat() is False
+    assert q.has_pending_chat(PAOLO) is False
 
 
 def test_has_pending_chat_false_after_expiry(q):
-    q.enqueue("chat", {}, {}, deadline_ts=100.0, now=1.0)
+    q.enqueue("chat", {}, {}, deadline_ts=100.0, now=1.0, thread=PAOLO)
     q.sweep_expired(now=200.0)
-    assert q.has_pending_chat() is False
+    assert q.has_pending_chat(PAOLO) is False
 
 
 def test_has_pending_chat_ignores_non_chat_kinds(q):
     q.enqueue("holistic", {"signal_kind": "holistic", "entity_id": "home",
               "severity_hint": "info", "evidence": {}, "ts": 1.0},
               {}, deadline_ts=100.0, now=1.0)
-    assert q.has_pending_chat() is False
+    assert q.has_pending_chat(PAOLO) is False
 
 
 def test_has_pending_chat_false_for_expired_but_unswept_job(q):
@@ -115,10 +125,75 @@ def test_has_pending_chat_false_for_expired_but_unswept_job(q):
     "in flight" -- altrimenti risponderebbe 409 per sempre senza modo di
     liberarsi. Ancora status='pending' nel DB (nessuna sweep_expired qui),
     ma `now` e' oltre il suo deadline_ts."""
-    q.enqueue("chat", {}, {}, deadline_ts=100.0, now=1.0)
+    q.enqueue("chat", {}, {}, deadline_ts=100.0, now=1.0, thread=PAOLO)
     # Still 'pending' in the DB -- no sweep_expired call -- but `now` (200.0)
     # is already past deadline_ts (100.0).
-    assert q.has_pending_chat(now=200.0) is False
+    assert q.has_pending_chat(PAOLO, now=200.0) is False
+
+
+# ---------------------------------------------------------------------------
+# Task 2 ("la coda porta il filo"): il 409 e' del filo, non della casa.
+# ---------------------------------------------------------------------------
+
+
+def test_la_risposta_in_arrivo_e_del_filo_non_della_casa(tmp_path):
+    q = ReasoningQueue(str(tmp_path / "q.db"))
+    q.enqueue("chat", {}, {}, deadline_ts=9e9, now=1.0, thread=PAOLO)
+    assert q.has_pending_chat(PAOLO)
+    assert not q.has_pending_chat(MARTA)
+
+
+def test_il_job_restituisce_il_suo_filo(tmp_path):
+    q = ReasoningQueue(str(tmp_path / "q.db"))
+    jid = q.enqueue("chat", {}, {}, deadline_ts=9e9, now=1.0, thread=PAOLO)
+    assert q.get(jid)["thread"] == PAOLO
+
+
+def test_claimed_chat_solo_per_un_job_di_chat_preso(tmp_path):
+    q = ReasoningQueue(str(tmp_path / "q.db"))
+    jid = q.enqueue("chat", {}, {}, deadline_ts=9e9, now=1.0, thread=PAOLO)
+    assert q.claimed_chat(jid) is None          # ancora pending
+    q.claim(now=2.0)
+    assert q.claimed_chat(jid)["job_id"] == jid
+    assert q.claimed_chat("inventato") is None
+
+
+def test_migrazione_aggiunge_le_colonne_senza_perdere_righe(tmp_path):
+    """Un archivio v2 scritto a mano (senza subject_key/entry_point): dopo
+    l'apertura con ReasoningQueue la riga resta -- e il suo filo e' None,
+    perche' non gliene inventiamo uno che non ha mai portato."""
+    db_path = str(tmp_path / "vecchio.db")
+    conn = sqlite3.connect(db_path)
+    conn.executescript("""
+        CREATE TABLE reasoning_jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT UNIQUE NOT NULL,
+            kind TEXT NOT NULL,
+            wake_json TEXT NOT NULL,
+            context_json TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            nonce TEXT,
+            deadline_ts REAL NOT NULL,
+            created_ts REAL NOT NULL,
+            claimed_ts REAL, decided_ts REAL,
+            decision_json TEXT,
+            delivered_ts REAL
+        );
+        CREATE INDEX idx_reasoning_status ON reasoning_jobs(status, created_ts);
+    """)
+    conn.execute(
+        "INSERT INTO reasoning_jobs(job_id,kind,wake_json,context_json,status,"
+        "deadline_ts,created_ts) VALUES(?,?,?,?, 'pending', ?, ?)",
+        ("vecchia-riga", "chat", "{}", "{}", 9e9, 1.0))
+    conn.execute("PRAGMA user_version=2")
+    conn.commit()
+    conn.close()
+
+    q = ReasoningQueue(db_path)
+    job = q.get("vecchia-riga")
+    assert job is not None
+    assert job["thread"] is None
+    q.close()
 
 
 # ---------------------------------------------------------------------------
@@ -128,9 +203,9 @@ def test_has_pending_chat_false_for_expired_but_unswept_job(q):
 # ---------------------------------------------------------------------------
 
 
-def _scaduto(q, *, nato=0.0, scade=100.0, kind="chat"):
+def _scaduto(q, *, nato=0.0, scade=100.0, kind="chat", thread=PAOLO):
     return q.enqueue(kind, {}, {"history": [{"role": "user", "content": "ciao"}]},
-                     scade, now=nato)
+                     scade, now=nato, thread=thread)
 
 
 def test_reclamare_uno_scaduto_lo_marca_ripiego_e_restituisce_il_contesto(q):
@@ -215,12 +290,12 @@ def test_un_ripiego_conta_come_risposta_in_volo(q):
     chiamata alla catena puo' durare decine di secondi, e un secondo turno
     intanto metterebbe due risposte in volo sulla stessa conversazione."""
     jid = _scaduto(q)
-    assert q.has_pending_chat(now=200.0) is False
+    assert q.has_pending_chat(PAOLO, now=200.0) is False
     q.reclaim_expired(jid, now=200.0)
-    assert q.has_pending_chat(now=200.0) is True
-    assert q.has_pending_chat(now=10_000.0) is True
+    assert q.has_pending_chat(PAOLO, now=200.0) is True
+    assert q.has_pending_chat(PAOLO, now=10_000.0) is True
     q.resolve_downgrade(jid, {"reply": "x"}, now=210.0)
-    assert q.has_pending_chat(now=220.0) is False
+    assert q.has_pending_chat(PAOLO, now=220.0) is False
 
 
 def test_un_ripiego_schiantato_diventa_failed_e_la_potatura_lo_prende(q):

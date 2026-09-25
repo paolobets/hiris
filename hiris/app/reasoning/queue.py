@@ -6,6 +6,7 @@ import threading
 import time
 from datetime import datetime, timedelta
 
+from ..chat_thread import ChatThread
 from ..home_space.historian import home_space_zone
 from ..storage import connect, init_schema
 
@@ -26,10 +27,28 @@ CREATE TABLE IF NOT EXISTS reasoning_jobs (
     -- Non `decided_ts`: fra decisa e consegnata c'e' il poll della pagina, e
     -- una risposta mai raccolta non va dimenticata -- sarebbe lavoro pagato e
     -- buttato. Colonna nuova, quindi in inglese.
-    delivered_ts REAL
+    delivered_ts REAL,
+    -- Il FILO (fetta «le chat divise», Task 2): CHI chiede e DA DOVE, stessi
+    -- nomi di `chat_sessions`/`costruzioni` (spec §2). NULL per i job che non
+    -- ne portano uno (le altre specie, o una riga scritta prima di questa
+    -- versione) -- non se ne inventa uno.
+    subject_key TEXT, entry_point TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_reasoning_status ON reasoning_jobs(status, created_ts);
 """
+
+# `CREATE INDEX ... (kind, subject_key, entry_point, status)`: usato da
+# `has_pending_chat` per contare solo il filo di chi chiede. NON sta dentro
+# `_SCHEMA` sopra: `init_schema` (storage.py) esegue quello script PRIMA di
+# girare le migrazioni, anche su un archivio vecchio che non ha ancora
+# `subject_key`/`entry_point` -- e un `CREATE INDEX` su una colonna che non
+# esiste ancora fa fallire l'apertura invece di migrare (verificato: prova
+# diretta con sqlite3, "no such column"). L'indice si crea invece DOPO che le
+# colonne esistono davvero: dentro `_migration_3` per un archivio vecchio, e
+# di nuovo (idempotente) subito dopo `init_schema()` in `__init__` per un
+# archivio appena nato, che non passa da nessuna migrazione.
+_IDX_FILO_SQL = ("CREATE INDEX IF NOT EXISTS idx_reasoning_filo "
+                  "ON reasoning_jobs(kind, subject_key, entry_point, status)")
 
 def _row(r) -> dict:
     # `created_ts` viaggia dalla fetta «la catena diventa l'unica verita'»
@@ -41,7 +60,9 @@ def _row(r) -> dict:
     return {"job_id": r["job_id"], "kind": r["kind"], "status": r["status"],
             "nonce": r["nonce"], "wake": json.loads(r["wake_json"]),
             "context": json.loads(r["context_json"]),
-            "deadline_ts": r["deadline_ts"], "created_ts": r["created_ts"]}
+            "deadline_ts": r["deadline_ts"], "created_ts": r["created_ts"],
+            "thread": ChatThread(r["subject_key"], r["entry_point"])
+                       if r["subject_key"] else None}
 
 def _migration_2(conn) -> None:
     """Versione 2 (23/09/2026, reperto C-6): la colonna della consegna.
@@ -56,12 +77,35 @@ def _migration_2(conn) -> None:
         conn.execute("ALTER TABLE reasoning_jobs ADD COLUMN delivered_ts REAL")
 
 
+def _migration_3(conn) -> None:
+    """Versione 3 (fetta «le chat divise», Task 2): il filo del job.
+
+    Stesso pattern di `_migration_2`: `ALTER TABLE ADD COLUMN` solo se manca,
+    cosi' una seconda apertura dello stesso archivio non fallisce. L'indice va
+    creato QUI, dopo l'ALTER: e' l'unico punto in cui, per un archivio
+    vecchio, le colonne esistono gia' quando serve (vedi il commento su
+    `_IDX_FILO_SQL`)."""
+    colonne = {r[1] for r in conn.execute(
+        "PRAGMA table_info(reasoning_jobs)").fetchall()}
+    if "subject_key" not in colonne:
+        conn.execute("ALTER TABLE reasoning_jobs ADD COLUMN subject_key TEXT")
+    if "entry_point" not in colonne:
+        conn.execute("ALTER TABLE reasoning_jobs ADD COLUMN entry_point TEXT")
+    conn.execute(_IDX_FILO_SQL)
+
+
 class ReasoningQueue:
     def __init__(self, db_path: str, *, read_timezone=None) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=2,
-                    migrations={2: _migration_2})
+        init_schema(self._conn, _SCHEMA, version=3,
+                    migrations={2: _migration_2, 3: _migration_3})
+        # Idempotente: su un archivio appena nato `init_schema` timbra subito
+        # la versione finale e NON gira `_migration_3` (vedi il commento su
+        # `_IDX_FILO_SQL`), quindi senza questa riga un archivio fresco non
+        # avrebbe mai l'indice.
+        self._conn.execute(_IDX_FILO_SQL)
+        self._conn.commit()
         # Una FUNZIONE e non un valore: all'avvio l'archivio della casa puo'
         # non esserci ancora, e il fuso va letto quando serve. Stesso pattern
         # gia' usato per UsageStore (server.py, costruzione di
@@ -73,14 +117,17 @@ class ReasoningQueue:
             self._conn.close()
 
     def enqueue(self, kind: str, wake: dict, context: dict, deadline_ts: float,
-                *, job_id: str | None = None, now: float) -> str:
+                *, job_id: str | None = None, now: float,
+                thread: ChatThread | None = None) -> str:
         jid = job_id or secrets.token_urlsafe(12)
         with self._lock:
             self._conn.execute(
                 "INSERT INTO reasoning_jobs(job_id,kind,wake_json,context_json,"
-                "status,deadline_ts,created_ts) "
-                "VALUES(?,?,?,?, 'pending', ?, ?)",
-                (jid, kind, json.dumps(wake), json.dumps(context), deadline_ts, now))
+                "status,deadline_ts,created_ts,subject_key,entry_point) "
+                "VALUES(?,?,?,?, 'pending', ?, ?, ?, ?)",
+                (jid, kind, json.dumps(wake), json.dumps(context), deadline_ts, now,
+                 thread.subject_key if thread else None,
+                 thread.entry_point if thread else None))
             self._conn.commit()
         return jid
 
@@ -308,47 +355,58 @@ class ReasoningQueue:
         out["decision"] = json.loads(r["decision_json"]) if r["decision_json"] else None
         return out
 
-    def has_pending_chat(self, now: float | None = None) -> bool:
-        """True if ANY kind="chat" job is still in flight (status 'pending'
-        or 'claimed') AND its deadline hasn't passed yet. Slice 4b Task 3 --
-        "one answer in flight per conversation" guard on the async
-        subscription path.
+    def has_pending_chat(self, thread: ChatThread, now: float | None = None) -> bool:
+        """True se QUESTO filo ha gia' un kind="chat" in volo (status
+        'pending'/'claimed' non ancora scaduto, o 'ripiego'). Slice 4b Task 3
+        -- guardia «una risposta alla volta» sul percorso async del piano.
 
-        fetta E4 Task 5 ("un bot solo"): this used to take a `chatbot_id`
-        and scan each in-flight row's context_json to match it (a
-        conversation was a chatbot's active session, keyed by chatbot_id).
-        With one bot there's exactly one conversation, so "in flight for
-        this id" and "in flight" collapsed into the same question -- the
-        per-row context parse is gone, this is now a single indexed COUNT.
+        fetta «le chat divise», Task 2: il 409 e' del FILO, non della casa.
+        Fino a qui era un COUNT unico su tutta la tabella (fetta E4 Task 5,
+        "un bot solo": con un bot solo "in volo per questa conversazione" e
+        "in volo" erano la stessa domanda). Con piu' fili quella scorciatoia
+        blocca il filo sbagliato -- due persone, o due ingressi della stessa
+        persona, possono avere ciascuno un turno in volo senza bloccarsi a
+        vicenda. `thread` non ha un default apposta: un 409 sganciato dal
+        filo di chi chiede sarebbe il vecchio difetto tornato di un livello
+        piu' su.
 
-        Task 5 fix (Task 3 review, MEDIUM; preserved through this
-        simplification): a job whose deadline_ts is already in the past is
-        excluded even if its status is still 'pending'/'claimed' -- e.g.
-        because the ponte-push sweep (server.py's _reasoning_sweep, gated on
-        app["bridge_active"]) never ran or is off. Without this, an
-        expired-but-unswept job would 409 the conversation forever with no
-        way to clear it. Takes an explicit `now`, like every other method on
-        this class (enqueue/claim/submit/sweep_expired/count_exchanges_today),
-        defaulting to time.time() only when the caller (production code)
-        doesn't pass one.
+        Task 5 fix (Task 3 review, MEDIUM; preservato): un job il cui
+        deadline_ts e' gia' passato e' escluso anche se lo status e' ancora
+        'pending'/'claimed' -- altrimenti un job scaduto e mai spazzato (lo
+        sweep di server.py spento o non ancora girato) darebbe 409 per
+        sempre, senza modo di liberarsi. `now` esplicito come ogni altro
+        metodo di questa classe, time.time() solo quando il chiamante di
+        produzione non lo passa.
 
-        Task 14 (il ripiego): 'ripiego' conta come in volo, e SENZA il filtro
+        Task 14 (il ripiego): 'ripiego' conta come in volo, SENZA il filtro
         sulla scadenza -- che per lui sarebbe sempre passata, visto che ci si
-        entra solo dopo. Un turno che sta ripiegando e' un turno in corso: la
-        chiamata al modello sulla catena puo' durare decine di secondi, e
-        lasciar partire un secondo turno intanto significherebbe due risposte
-        in volo sulla stessa conversazione -- che e' esattamente cio' che
-        questa guardia esiste per impedire. Il rischio simmetrico (un ripiego
-        schiantato che tiene bloccata la conversazione per sempre) e' chiuso
-        da `fail_stuck_downgrades`, non da un filtro sul tempo qui."""
+        entra solo dopo. La chiamata al modello sulla catena puo' durare
+        decine di secondi, e un secondo turno intanto metterebbe due risposte
+        in volo sullo stesso filo. Il rischio simmetrico (un ripiego
+        schiantato che tiene bloccato il filo per sempre) lo chiude
+        `fail_stuck_downgrades`, non un filtro sul tempo qui."""
         ts = time.time() if now is None else now
         with self._lock:
             row = self._conn.execute(
                 "SELECT 1 FROM reasoning_jobs "
-                "WHERE kind='chat' AND (status='ripiego' OR "
+                "WHERE kind='chat' AND subject_key=? AND entry_point=? AND "
+                "(status='ripiego' OR "
                 "(status IN ('pending','claimed') AND deadline_ts > ?)) LIMIT 1",
-                (ts,)).fetchone()
+                (thread.subject_key, thread.entry_point, ts)).fetchone()
         return row is not None
+
+    def claimed_chat(self, job_id: str) -> dict | None:
+        """Il job SOLO se e' una chat presa in carico (status='claimed'),
+        altrimenti None -- qualunque altro stato o specie.
+
+        Nasce per Task 3 (non ancora chiamata da nessuno qui): chi risponde
+        al ponte deve poter leggere il filo del job che sta servendo senza
+        ripetere il filtro kind/status a ogni chiamante."""
+        with self._lock:
+            r = self._conn.execute(
+                "SELECT * FROM reasoning_jobs WHERE job_id=? AND kind='chat' "
+                "AND status='claimed'", (job_id,)).fetchone()
+        return _row(r) if r is not None else None
 
     def count_exchanges_today(self, now: float | None = None) -> int:
         """Quanti turni del piano sono stati accodati oggi -- di OGNI specie.

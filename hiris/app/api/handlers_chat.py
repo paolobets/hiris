@@ -13,6 +13,7 @@ from ..chat_store import (
     get_past_summaries,
     load_history,
 )
+from ..chat_thread import request_thread
 
 # `cli_model` e `resolve_model` sono usciti da qui con la fetta «il modello
 # del piano»: servivano a comporre il modello del ponte da
@@ -467,7 +468,12 @@ async def _enqueue_chat_job(
             settings.thinking_budget,
         )
 
-    job_id = reasoning_queue.enqueue("chat", {}, context, deadline, now=now)
+    # Task 2 (queue): filo minimo -- `request_thread` calcola gia' il default
+    # per una richiesta senza soggetto/auth_via ancora agganciati (Task 3 li
+    # aggancia davvero). Qui basta che il job porti QUALCOSA di coerente con
+    # cio' che `handle_chat` interroga qualche riga sopra.
+    job_id = reasoning_queue.enqueue("chat", {}, context, deadline, now=now,
+                                      thread=request_thread(request))
     return web.json_response({"status": "pending", "job_id": job_id}, status=202)
 
 
@@ -808,7 +814,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         # l'N+1): ripiegando lì si manderebbe un turno sincrono sulla catena
         # mentre il ponte ne ha uno in volo che scriverà la sua risposta in
         # cronologia da solo (`server._submit_chat_reply`).
-        if reasoning_queue.has_pending_chat():
+        if reasoning_queue.has_pending_chat(request_thread(request)):
             return web.json_response(
                 {"error": "C’è già una risposta in arrivo per questa conversazione."},
                 status=409,
