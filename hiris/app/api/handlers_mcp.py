@@ -86,7 +86,7 @@ from aiohttp import web
 from ..home_space.tools import KNOWLEDGE_TOOLS
 from ..keeper.exchange import PromiseDispatcher, promise_tools
 from ..version import read_version
-from .handlers_chat import create_tool_dispatcher
+from .handlers_chat import create_tool_dispatcher, last_phrase
 from .soffitto import ceiling_for
 
 logger = logging.getLogger(__name__)
@@ -258,8 +258,9 @@ def _exchange_chat_job(request: web.Request) -> dict | None:
     `X-HIRIS-Promessa` NON e' un'autenticazione -- quella resta la credenziale
     di turno -- e per questo si VERIFICA: vale solo un job di chat `claimed`
     (`ReasoningQueue.claimed_chat`). Un id che non vale non concede niente:
-    il turno resta quello di prima, senza soggetto e senza soffitto, e lo si
-    scrive nel log perche' un ponte che la manda sbagliata e' un guasto.
+    `None` qui, e `_call_tool` rifiuta la chiamata invece di ricadere sul
+    dispatcher senza soffitto (`_stale_chat_rejection`). Lo si scrive nel log
+    perche' un ponte che la manda sbagliata e' un guasto.
     """
     ident = (request.headers.get("X-HIRIS-Chat") or "").strip()
     if not ident:
@@ -269,9 +270,30 @@ def _exchange_chat_job(request: web.Request) -> dict | None:
     if job is None:
         logger.warning(
             "MCP: X-HIRIS-Chat nomina un job che non e' una chat presa in "
-            "carico (%s): la chiamata non riceve ne' soggetto ne' soffitto",
-            ident)
+            "carico (%s): nessuno strumento gira per questa chiamata", ident)
     return job
+
+
+def _stale_chat_rejection(name: str) -> dict:
+    """Il `content` per un `X-HIRIS-Chat` presente che non vale piu'.
+
+    **Si chiude, non si ripiega** (fix round 1 del Task 4). Il job puo'
+    smettere di essere `claimed` mentre la CLI gira ancora: scaduto e
+    ripiegato sulla catena da un poll, spazzato, o gia' consegnato. Ricadere
+    sul dispatcher di prima -- senza soffitto e senza soggetto -- riaprirebbe
+    proprio la porta di scrittura che questa intestazione chiude. Il runner la
+    manda solo per i job di chat, quindi nessun turno legittimo perde niente.
+    Stessa forma del tetto dei giri: un esito dello strumento, non un guasto
+    di protocollo.
+    """
+    result = {"errore": (
+        "questo turno di chat non è più valido: la risposta è scaduta o è "
+        "già stata data, e senza sapere chi sta parlando non uso nessuno "
+        f"strumento (l'ultimo tentato: «{name}»).")}
+    return {
+        "content": [{"type": "text", "text": json.dumps(result, ensure_ascii=False)}],
+        "isError": True,
+    }
 
 
 def mcp_catalog(definitions: list[dict] | None = None) -> list[dict]:
@@ -472,16 +494,19 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
     # amministratrice poteva far scrivere un'automazione passando dal piano.
     # Promesse e osservatore non portano `X-HIRIS-Chat` e restano senza
     # soggetto: nessuna persona li ha aperti.
+    # Un'intestazione PRESENTE che non vale chiude la chiamata: vedi
+    # `_stale_chat_rejection`.
     chat_job = _exchange_chat_job(request)
+    if chat_job is None and (request.headers.get("X-HIRIS-Chat") or "").strip():
+        return _answer(request_id, _stale_chat_rejection(name))
     if chat_job is not None:
         ctx = chat_job.get("context") or {}
         soggetto = ctx.get("soggetto")
-        storia = ctx.get("history") or []
         dispatcher = create_tool_dispatcher(
             request.app, exchange=exchange_id,
             soffitto=await ceiling_for(request.app, soggetto),
             soggetto=soggetto,
-            frase=storia[-1]["content"] if storia else None)
+            frase=last_phrase(ctx.get("history")))
     else:
         dispatcher = create_tool_dispatcher(request.app, exchange=exchange_id)
     promise_id = _exchange_promise_id(request)

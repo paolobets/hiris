@@ -169,17 +169,26 @@ async def test_il_ponte_di_un_amministratore_attraversa_il_soffitto(
     assert visto["frase"] == "sì, procedi"
 
 
-# 3. Un'intestazione che non vale: il comportamento di oggi, e lo si dice.
+# 3. Un'intestazione presente che non vale: si chiude, non si ripiega.
+#
+# Fix round 1 (review del Task 4): prima un id che non valeva ricadeva sul
+# dispatcher SENZA soffitto -- cioe' un job scaduto, ripiegato o gia'
+# consegnato mentre la CLI girava ancora riapriva la porta della scrittura.
+# Il runner manda l'intestazione solo per i job di chat: se c'e' e non vale,
+# nessuno strumento gira.
 @pytest.mark.asyncio
-@pytest.mark.parametrize("quale", ["inventato", "pending", "promessa"])
-async def test_un_X_HIRIS_Chat_non_valido_non_concede_niente_in_piu(
+@pytest.mark.parametrize("quale", ["inventato", "pending", "ripiego", "promessa"])
+async def test_un_X_HIRIS_Chat_non_valido_non_fa_girare_nessuno_strumento(
         rotta, dispatcher_visti, caplog, quale):
-    client, coda, _archivio, _casa = rotta
+    client, coda, archivio, casa_ha = rotta
     proposta = await _proposta(client)
     if quale == "inventato":
         ident = "non-esiste"
     elif quale == "pending":
         ident = _accoda_chat(coda, MARTA, prendi=False)
+    elif quale == "ripiego":
+        ident = _accoda_chat(coda, MARTA)
+        assert coda.reclaim_expired(ident, time.time() + 400) is not None
     else:
         adesso = time.time()
         ident = coda.enqueue("promessa", {}, {"soggetto": MARTA},
@@ -187,23 +196,48 @@ async def test_un_X_HIRIS_Chat_non_valido_non_concede_niente_in_piu(
         coda.claim(adesso + 1)
 
     with caplog.at_level(logging.WARNING, logger=handlers_mcp.__name__):
-        await _confirm(client, proposta, chat=ident)
+        esito = await _confirm(client, proposta, chat=ident)
 
-    visto = dispatcher_visti[-1]
-    assert visto.get("soffitto") is None
-    assert visto.get("soggetto") is None
+    assert "non è più valido" in (esito.get("errore") or ""), esito
+    assert casa_ha.salvate == [], "Home Assistant ha ricevuto una scrittura"
+    assert archivio.read(proposta)["stato"] == "in_attesa"
+    assert dispatcher_visti == [], "il dispatcher non doveva nemmeno nascere"
     assert "X-HIRIS-Chat" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_senza_intestazione_nessun_avviso(rotta, dispatcher_visti, caplog):
-    """Promesse e osservatore non la portano: non e' un'anomalia."""
-    client, _coda, _archivio, _casa = rotta
+async def test_senza_intestazione_resta_il_comportamento_di_prima(
+        rotta, dispatcher_visti, caplog):
+    """Promesse e osservatore non la portano: non e' un'anomalia, e il turno
+    va com'e' sempre andato -- nessun soffitto, nessun soggetto."""
+    client, _coda, _archivio, casa_ha = rotta
     proposta = await _proposta(client)
     with caplog.at_level(logging.WARNING, logger=handlers_mcp.__name__):
-        await _confirm(client, proposta)
+        esito = await _confirm(client, proposta)
+    assert esito.get("applicata"), esito
+    assert casa_ha.salvate
     assert dispatcher_visti[-1].get("soffitto") is None
+    assert dispatcher_visti[-1].get("soggetto") is None
     assert "X-HIRIS-Chat" not in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("storia", [["sì"], [None], [{"role": "user"}], "sì"])
+async def test_una_cronologia_malformata_non_fa_cadere_la_rotta(
+        rotta, dispatcher_visti, storia):
+    """Un contesto storto da' una frase assente, non un 500."""
+    client, coda, _archivio, _casa = rotta
+    proposta = await _proposta(client)
+    adesso = time.time()
+    ident = coda.enqueue("chat", {}, {"history": storia, "soggetto": PAOLO},
+                         adesso + 300, now=adesso,
+                         thread=thread_for(PAOLO, "ingress"))
+    coda.claim(adesso + 1)
+
+    esito = await _confirm(client, proposta, chat=ident)
+
+    assert esito.get("applicata"), esito
+    assert dispatcher_visti[-1]["frase"] is None
 
 
 # 4. config_mcp porta l'intestazione solo quando c'e' un job di chat.

@@ -1592,8 +1592,9 @@ class ToolDispatcher:
         self._remembered_seal = None
         self._memory = memory_store
         # Il soffitto di chi ha aperto questo turno (invariante I-1). `None`
-        # vuol dire che nessuna persona ha aperto il turno -- il ponte, lo
-        # schedulatore, una promessa che si sveglia -- e li' vale il
+        # vuol dire che nessuna persona ha aperto il turno -- lo
+        # schedulatore, una promessa che si sveglia, un turno del ponte che
+        # non e' di chat -- e li' vale il
         # comportamento di ieri: il perimetro delle macchine e' l'invariante
         # dei canali esterni, e stringerlo qui a meta' spegnerebbe il gateway
         # senza che nessuno l'abbia deciso. **Dichiarato, non dedotto.**
@@ -1604,9 +1605,11 @@ class ToolDispatcher:
         self._subject = subject
         # **La frase di QUESTO turno** (B-5): quella su cui una conferma nasce.
         # Non e' la `frase` di una proposta, che e' la frase che ha CHIESTO la
-        # costruzione -- questa e' quella che la CONFERMA. `None` per MCP e
-        # per le promesse, dove non c'e' nessuna persona che parli, ed e' il
-        # fatto giusto: la cronaca dira' che nessuno ha detto niente.
+        # costruzione -- questa e' quella che la CONFERMA. `None` per le
+        # promesse e per un turno MCP che non e' di chat, dove non c'e'
+        # nessuna persona che parli, ed e' il fatto giusto: la cronaca dira'
+        # che nessuno ha detto niente. Un turno di chat del ponte porta
+        # persona, soffitto e frase del job (`handlers_mcp._call_tool`).
         self._phrase = phrase
         # Il sapere (`mind/knowledge.py`): cio' che HIRIS ha capito, con la
         # provenienza. Oggi ne esce il SIGNIFICATO della classe di un'entita'

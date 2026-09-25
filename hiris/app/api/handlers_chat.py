@@ -55,6 +55,22 @@ def _trim_history(history: list[dict], max_tokens: int = _MAX_HISTORY_TOKENS) ->
     return trimmed
 
 
+def last_phrase(history) -> str | None:
+    """Il testo dell'ultimo messaggio di una cronologia di job, o `None`.
+
+    Il contesto di un job e' JSON letto da un archivio: una forma storta
+    (un job di un'installazione precedente, un messaggio senza testo) deve
+    dare una frase assente, non far cadere la rotta con un 500. La leggono
+    la rotta MCP e il ripiego sulla catena: una sola lettura per la stessa
+    domanda.
+    """
+    if not isinstance(history, list) or not history:
+        return None
+    last = history[-1]
+    content = last.get("content") if isinstance(last, dict) else None
+    return content if isinstance(content, str) else None
+
+
 def create_tool_dispatcher(app, exchange: str | None = None,
                            soffitto: dict | None = None,
                            soggetto: dict | None = None,
@@ -563,7 +579,9 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
         "passa alla catena. Il costo cambia -- dal forfait al consumo.", job_id)
 
     cronologia = contesto.get("history") or []
-    ultimo = cronologia[-1]["content"] if cronologia else ""
+    if not isinstance(cronologia, list):
+        cronologia = []
+    ultimo = last_phrase(cronologia) or ""
     try:
         # L'identita' di QUESTO turno, coniata UNA volta qui e non dentro il
         # dispatcher: questa funzione risponde a UNA sola richiesta HTTP (il
