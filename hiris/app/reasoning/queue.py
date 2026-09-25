@@ -414,9 +414,9 @@ class ReasoningQueue:
         """Il job SOLO se e' una chat presa in carico (status='claimed'),
         altrimenti None -- qualunque altro stato o specie.
 
-        Nasce per Task 3 (non ancora chiamata da nessuno qui): chi risponde
-        al ponte deve poter leggere il filo del job che sta servendo senza
-        ripetere il filtro kind/status a ogni chiamante."""
+        La chiama `/api/mcp` (`handlers_mcp._exchange_chat_job`) per
+        verificare `X-HIRIS-Chat`: un job che non e' una chat presa in carico
+        non presta a nessuno il suo soggetto ne' il suo soffitto."""
         with self._lock:
             r = self._conn.execute(
                 "SELECT * FROM reasoning_jobs WHERE job_id=? AND kind='chat' "

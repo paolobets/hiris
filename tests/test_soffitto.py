@@ -153,3 +153,43 @@ def test_ogni_esito_risponde_a_TUTTI_i_gesti():
             for gesto in GESTI:
                 assert isinstance(esito.get(gesto), bool), (
                     f"{gesto} senza risposta per {soggetto['specie']}/{ruolo}")
+
+
+class _HA:
+    async def users(self):
+        return {"utenti": [{"id": "u-1", "amministratore": False},
+                           {"id": "u-2", "amministratore": True}]}
+
+
+class _Richiesta(dict):
+    """`request.get("soggetto")` e basta: e' tutto cio' che `per_richiesta` legge."""
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("soggetto", [
+    _PERSONA, {"specie": "persona", "id": "u-2"}, _ANONIMO, _CANALE,
+    {**_CANALE, "ruolo": "amministratore"}, None,
+])
+async def test_ceiling_for_e_per_richiesta_sono_UNA_regola(soggetto):
+    """Le chat divise: il ponte calcola il soffitto dal soggetto del job, la
+    rotta dal soggetto della richiesta. Due strade, una regola: per lo stesso
+    soggetto devono dire la stessa cosa, o una delle due concede di piu'."""
+    from hiris.app.api.soffitto import ceiling_for, per_richiesta, prepara_ruoli
+
+    app: dict = {"ha_client": _HA()}
+    prepara_ruoli(app)
+    by_subject = await ceiling_for(app, soggetto)
+    by_request = await per_richiesta(app, _Richiesta(soggetto=soggetto))
+
+    assert by_subject == by_request
+
+
+@pytest.mark.asyncio
+async def test_ceiling_for_legge_il_ruolo_da_home_assistant():
+    from hiris.app.api.soffitto import ceiling_for, prepara_ruoli
+
+    app: dict = {"ha_client": _HA()}
+    prepara_ruoli(app)
+    assert (await ceiling_for(app, _PERSONA))["costruire"] is False
+    assert (await ceiling_for(app, {"specie": "persona", "id": "u-2"}))[
+        "costruire"] is True

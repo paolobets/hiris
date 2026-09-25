@@ -5762,7 +5762,7 @@ def create_app() -> web.Application:
     # I ruoli di Home Assistant (invariante I-1): il contenitore nasce QUI,
     # mentre l'app si compone, per la stessa ragione dei contatori qui sopra --
     # scrivere in `app[...]` a richiesta gia' servita e' deprecato in aiohttp 3
-    # e un errore in aiohttp 4. Chi lo riempie e' `soffitto._amministratore`,
+    # e un errore in aiohttp 4. Chi lo riempie e' `soffitto._person_row`,
     # alla prima richiesta che ha bisogno di sapere chi comanda.
     from .api.soffitto import prepara_ruoli
     prepara_ruoli(app)
@@ -6059,15 +6059,15 @@ def _registra_turno_ponte(archivio):
     vocabolario intermedio qui sarebbe un terzo posto in cui una colonna
     nuova si dimentica di comparire.
 
-    `subject` esce **None, e non a caso**: il job della coda non porta il
-    soggetto della conversazione (`handlers_chat` non glielo mette), quindi
-    per i turni del ponte non si sa da quale chat venga la domanda. E' il
-    buco che la fondamenta «piu' chat, divise per utente e per sistema»
-    dovra' chiudere alla fonte, accodando il soggetto; riempirlo qui con un
-    valore inventato lo nasconderebbe proprio a chi lo deve vedere.
+    `subject` arriva nella riga: per un turno di chat e' il soggetto che
+    `handlers_chat` mette nel contesto del job all'accodamento (fetta «le chat
+    divise»), letto da `runner._measure_turn`; per le altre specie e' `None`,
+    perche' nessuna persona le ha aperte. Qui non si inventa niente.
     """
     def registra(riga: dict) -> None:
-        archivio.log_turn(**riga, subject=None, now=time.time())
+        riga = dict(riga)
+        soggetto = riga.pop("subject", None)
+        archivio.log_turn(**riga, subject=soggetto, now=time.time())
 
     return registra
 

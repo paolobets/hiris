@@ -181,22 +181,33 @@ async def is_owner(app, soggetto: dict | None) -> bool:
     return bool((await _person_row(app, soggetto) or {}).get("proprietario"))
 
 
-async def per_richiesta(app, request) -> dict:
-    """Il soffitto di questa richiesta.
+async def ceiling_for(app, soggetto: dict | None) -> dict:
+    """Il soffitto di questo soggetto.
 
-    Il soggetto lo ha stabilito il confine (`middleware_internal_auth`); il
-    ruolo arriva da Home Assistant se è una persona, e **viaggia già col
+    Si calcola da un soggetto e non da una richiesta (fetta «le chat divise»):
+    un turno di chat servito dal ponte arriva su `/api/mcp` con la credenziale
+    del ponte, e chi ha scritto il messaggio viaggia nel job, non nella
+    richiesta. Una regola sola per entrambi i casi -- `per_richiesta` e' una
+    riga che la chiama.
+
+    Il ruolo arriva da Home Assistant se è una persona, e **viaggia già col
     soggetto** se è un servizio, perché gliel'ha dato l'approvazione.
     """
-    soggetto = request.get("soggetto") or {}
+    soggetto = soggetto or {}
     if soggetto.get("specie") == "persona":
         return consente(soggetto, ruolo=await _ruolo_persona(app, soggetto))
     return consente(soggetto, ruolo=soggetto.get("ruolo"))
 
 
+async def per_richiesta(app, request) -> dict:
+    """Il soffitto di questa richiesta: quello del soggetto che il confine
+    (`middleware_internal_auth`) le ha attaccato."""
+    return await ceiling_for(app, request.get("soggetto") or {})
+
+
 def prepara_ruoli(app) -> None:
     """Il contenitore dei ruoli nasce quando l'app si compone, non alla prima
-    richiesta servita: vedi il commento dentro `_ruolo_persona`.
+    richiesta servita: vedi il commento dentro `_person_row`.
 
     `quando = 0` vuol dire «mai letto», e la prima richiesta che serve un ruolo
     lo legge — non c'è nessun ramo «prima volta» da ricordarsi.

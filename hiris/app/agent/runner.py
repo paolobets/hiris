@@ -220,7 +220,7 @@ def mcp_names(by_promise: bool = False) -> tuple[str, ...]:
 
 
 def config_mcp(base_url: str, token: str, exchange_id: str = "",
-               promise_id: str = "") -> str:
+               promise_id: str = "", chat_job_id: str = "") -> str:
     """La voce `--mcp-config` del ponte: una STRINGA JSON, mai un file.
 
     `exchange_id` (Task 6 della fetta, facoltativo e vuoto per default) diventa
@@ -303,6 +303,13 @@ def config_mcp(base_url: str, token: str, exchange_id: str = "",
     # chiave non la indebolisce -- non contiene il token.
     if promise_id:
         intestazioni["X-HIRIS-Promessa"] = promise_id
+    # Fetta «le chat divise» (spec §4): per un `kind="chat"` il ponte dice a
+    # `/api/mcp` QUALE job sta servendo, e da li' la rotta prende soggetto,
+    # soffitto e frase di chi ha scritto. Non e' un'autenticazione, e la rotta
+    # la verifica (`handlers_mcp._exchange_chat_job`): stessa disciplina di
+    # `X-HIRIS-Promessa` qui sopra.
+    if chat_job_id:
+        intestazioni["X-HIRIS-Chat"] = chat_job_id
     return json.dumps({
         "mcpServers": {
             _mcp_server_name(): {
@@ -1241,6 +1248,11 @@ def _measure_turn(job: dict, *, duration_ms: int, tools: list,
             "tools": [_bare_tool_name(c.get("tool")) for c in (tools or [])
                       if isinstance(c, dict) and c.get("tool")],
             "outcome": outcome,
+            # Chi ha scritto, per un turno di chat: il soggetto viaggia nel
+            # job da quando la chat e' divisa per persona. Le altre specie
+            # non hanno una persona davanti, e la colonna resta vuota.
+            "subject": (((job or {}).get("context") or {}).get("soggetto")
+                        if (job or {}).get("kind") == "chat" else None),
         })
     except Exception as error:  # pragma: no cover - guasto dell'archivio
         log.warning("la misura del turno del ponte non si e' potuta scrivere "
@@ -1457,6 +1469,11 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # l'id della promessa che questo turno sta mantenendo. Vuoto per un turno
     # di chat -- e' la stessa macchina, con un contenuto diverso.
     promise_id = (context.get("promessa_id") or "") if isinstance(context, dict) else ""
+    # Fetta «le chat divise»: un job di chat dice alla rotta MCP chi sta
+    # servendo, perche' gli strumenti ricevano il soffitto di chi ha scritto.
+    # Solo la chat: una promessa o un turno dell'osservatore non hanno nessuna
+    # persona davanti.
+    chat_job_id = (job_id or "") if job.get("kind") == "chat" else ""
     # ── L'INTERRUTTORE UNICO (Task 3, Step 4) ──────────────────────────────
     # Gli strumenti sono ATTESI solo se il chiamante ha passato di che sondarli
     # e di che raggiungerli: senza client o senza base_url non c'e' nessun
@@ -1615,7 +1632,8 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # turno (mintato una volta sola sopra, prima di questa funzione): e'
         # cosi' che il tetto per-turno della rotta MCP resta un tetto sul
         # turno anche quando il turno si sdoppia (Task 4).
-        mcp_config = (config_mcp(base_url, token, exchange_id, promise_id)
+        mcp_config = (config_mcp(base_url, token, exchange_id, promise_id,
+                                 chat_job_id=chat_job_id)
                       if active_tools else "")
         # Le DUE righe che leggono lo stesso booleano, una accanto all'altra.
         # Non esiste un secondo posto in cui il prompt e l'argv possono

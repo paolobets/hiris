@@ -27,7 +27,7 @@ from ..home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from ..model_resolution import downgrade_note
 from ..steering import declare_downgrade, misura_turno, who_answers
 from .handlers_home_space import compose_briefing
-from .soffitto import per_richiesta
+from .soffitto import ceiling_for, per_richiesta
 
 logger = logging.getLogger(__name__)
 
@@ -129,12 +129,14 @@ def create_tool_dispatcher(app, exchange: str | None = None,
         app.get("home_space_store"),
         app.get("memory_store"),
         # Il soffitto di chi ha aperto il turno (I-1): `None` quando non c'e'
-        # nessuna persona che l'ha aperto (ponte, schedulatore, promessa).
+        # nessuna persona che l'ha aperto (schedulatore, promessa, un turno
+        # del ponte che non porta `X-HIRIS-Chat`).
         soffitto=soffitto,
         subject=soggetto,
         # **La frase di QUESTO turno** (B-5), quella su cui una conferma
-        # nasce. Ha un default perche' due dei quattro chiamanti non hanno
-        # nessuna persona che parli -- la rotta MCP e le promesse -- e li' la
+        # nasce. Ha un default perche' non tutti i chiamanti hanno una
+        # persona che parli -- le promesse, e la rotta MCP quando il turno
+        # non e' di chat -- e li' la
         # cronaca deve poter dire che nessuno ha detto niente, invece di
         # ricevere una stringa vuota che si legge «ha parlato e non si
         # capiva».
@@ -617,10 +619,10 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
                 tools=KNOWLEDGE_TOOLS,
                 dispatcher=create_tool_dispatcher(
                     request.app, exchange=exchange_id,
-                    # Il soffitto si legge ancora dalla richiesta del poll: e'
-                    # dello stesso filo (il 404 sopra lo garantisce), e il
-                    # calcolo da un soggetto (`ceiling_for`) arriva col Task 4.
-                    soffitto=await per_richiesta(request.app, request),
+                    # Il soffitto di chi ha scritto il messaggio, dal soggetto
+                    # DEL JOB: e' la stessa regola del ramo sincrono e della
+                    # rotta MCP, non quella di chi fa il poll.
+                    soffitto=await ceiling_for(request.app, soggetto),
                     soggetto=soggetto,
                     # Lo STESSO testo che il modello ha davanti come ultimo turno
                     # (`user_message=ultimo`, qui sopra): se questo ramo leggesse

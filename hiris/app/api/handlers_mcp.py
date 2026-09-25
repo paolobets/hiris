@@ -42,6 +42,11 @@ turno di promessa sul ponte non avrebbe `conclude` -- cioe' nessun modo di
 finire -- e vedrebbe `execute`, cioe' potrebbe toccare la casa senza nessuno
 davanti.
 
+**Dalla fetta «le chat divise» sa anche CHI parla.** Per un turno di chat la
+`--mcp-config` porta `X-HIRIS-Chat`, la rotta la verifica contro un job di chat
+`claimed` (`_exchange_chat_job`) e costruisce il dispatcher col soffitto, il
+soggetto e la frase di quel job -- la stessa costruzione del ramo sincrono.
+
 **E' anche un canale di azione, dalla fetta «comandare», e dalla fetta
 «costruire» anche di configurazione.** Fino a quel momento qui si leggeva «gli
 strumenti restano quattro e nessuno tocca Home Assistant -- HIRIS conosce e
@@ -82,6 +87,7 @@ from ..home_space.tools import KNOWLEDGE_TOOLS
 from ..keeper.exchange import PromiseDispatcher, promise_tools
 from ..version import read_version
 from .handlers_chat import create_tool_dispatcher
+from .soffitto import ceiling_for
 
 logger = logging.getLogger(__name__)
 
@@ -242,6 +248,30 @@ def _exchange_promise_id(request: web.Request) -> str:
         return ""
     row = store.read(ident)
     return ident if row and row.get("stato") == "in_corso" else ""
+
+
+def _exchange_chat_job(request: web.Request) -> dict | None:
+    """Il job di chat che questo turno sta servendo, oppure `None`.
+
+    `X-HIRIS-Chat` la aggiunge `agent/runner.py::config_mcp` quando il ponte
+    serve un `kind="chat"` (fetta «le chat divise», spec §4). Come
+    `X-HIRIS-Promessa` NON e' un'autenticazione -- quella resta la credenziale
+    di turno -- e per questo si VERIFICA: vale solo un job di chat `claimed`
+    (`ReasoningQueue.claimed_chat`). Un id che non vale non concede niente:
+    il turno resta quello di prima, senza soggetto e senza soffitto, e lo si
+    scrive nel log perche' un ponte che la manda sbagliata e' un guasto.
+    """
+    ident = (request.headers.get("X-HIRIS-Chat") or "").strip()
+    if not ident:
+        return None
+    queue = request.app.get("reasoning_queue")
+    job = queue.claimed_chat(ident) if queue is not None else None
+    if job is None:
+        logger.warning(
+            "MCP: X-HIRIS-Chat nomina un job che non e' una chat presa in "
+            "carico (%s): la chiamata non riceve ne' soggetto ne' soffitto",
+            ident)
+    return job
 
 
 def mcp_catalog(definitions: list[dict] | None = None) -> list[dict]:
@@ -435,7 +465,25 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
     # ramo del log qui sopra) il dispatcher la propaga cosi' com'e':
     # l'officina rifiuta di applicare e lo dichiara, non finge un turno che
     # non esiste.
-    dispatcher = create_tool_dispatcher(request.app, exchange=exchange_id)
+    #
+    # Fetta «le chat divise» (spec §4): per un turno di chat il dispatcher
+    # riceve soffitto, soggetto e frase DEL JOB, come il ramo sincrono. Prima
+    # di questa riga il ponte costruiva senza soffitto: una persona non
+    # amministratrice poteva far scrivere un'automazione passando dal piano.
+    # Promesse e osservatore non portano `X-HIRIS-Chat` e restano senza
+    # soggetto: nessuna persona li ha aperti.
+    chat_job = _exchange_chat_job(request)
+    if chat_job is not None:
+        ctx = chat_job.get("context") or {}
+        soggetto = ctx.get("soggetto")
+        storia = ctx.get("history") or []
+        dispatcher = create_tool_dispatcher(
+            request.app, exchange=exchange_id,
+            soffitto=await ceiling_for(request.app, soggetto),
+            soggetto=soggetto,
+            frase=storia[-1]["content"] if storia else None)
+    else:
+        dispatcher = create_tool_dispatcher(request.app, exchange=exchange_id)
     promise_id = _exchange_promise_id(request)
     if promise_id:
         # Lo STESSO guardiano del ramo sincrono, non una seconda regola:

@@ -93,7 +93,9 @@ ESENTI = {
         "azzera i contatori dei consumi, che sono nostri",
     "POST /api/mcp":
         "porta un token, non una persona: il suo perimetro è l’invariante dei "
-        "canali esterni, e questo file non deve fingere di averlo già deciso",
+        "canali esterni. Quando serve un turno di chat il soffitto è quello "
+        "della persona del job, e viaggia nel dispatcher (`X-HIRIS-Chat`, "
+        "tests/test_mcp_chat_chat_thread.py)",
     "POST /api/reasoning/claim":
         "il worker del ponte, che porta un token e non una persona — stesso "
         "rinvio di «/api/mcp»",
