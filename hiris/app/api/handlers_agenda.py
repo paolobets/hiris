@@ -21,6 +21,14 @@ appiattito dentro `serializza()`. E' una rotta di lettura: nessun
 `csrf_middleware` da rispettare (e' un metodo "safe", stessa esenzione di
 `GET /api/agenda`), ma passa comunque dagli stessi middleware di ogni
 altra rotta -- non ne salta nessuno.
+
+**Ogni rotta lavora sul filo di chi chiede** (fetta «il seguito delle chat
+divise», spec 2026-09-26 §2): il filo lo dice il confine
+(`chat_thread.request_thread`), mai la query o il corpo. Un id di un altro
+filo risponde ESATTAMENTE come uno inesistente -- stesso status, stesso corpo:
+un 403 o un 409 direbbero a Marta che Paolo ha qualcosa in programma. Gli
+amministratori non sono esenti: una promessa e' di chi l'ha chiesta, non di
+chi puo' costruire.
 """
 from __future__ import annotations
 
@@ -28,6 +36,7 @@ import time
 
 from aiohttp import web
 
+from ..chat_thread import adopt_if_owner, request_thread, without_thread
 from .boundary import occurrence_out
 
 # Vedi `handle_mark_read`: sta qui e non in `keeper/`, perche' e' un limite
@@ -35,15 +44,25 @@ from .boundary import occurrence_out
 # dell'archivio.
 _MAX_IDS = 500
 
+# Il corpo del 404, uno solo per «non esiste» e «non e' tuo».
+_PROMISE_NOT_FOUND = {"error": "non ho nessuna promessa con quell’identificatore."}
+_EXECUTION_NOT_FOUND = {"error": "non ho nessuna esecuzione con quell’identificatore."}
+
 
 async def handle_get_agenda(request: web.Request) -> web.Response:
     store = request.app.get("agenda")
     if store is None:
         return web.json_response({"agenda": [], "error": "archivio non disponibile"},
                                  status=503)
+    thread = request_thread(request)
+    # Le promesse di prima vanno al proprietario alla sua prima lettura, con
+    # la stessa regola e nello stesso gesto della cronologia. Solo qui, fra
+    # le rotte degli Impegni: una DELETE o un «letto» su un'orfana non
+    # adottano prima di agire -- rispondono come per un id che non esiste.
+    await adopt_if_owner(request.app, request, thread)
     show_all = request.query.get("all") in ("1", "true", "si")
-    return web.json_response({"agenda": store.list(solo_in_sospeso=not show_all,
-                                                    limit=200)})
+    rows = store.list(thread=thread, solo_in_sospeso=not show_all, limit=200)
+    return web.json_response({"agenda": [without_thread(r) for r in rows]})
 
 
 async def handle_delete_promise(request: web.Request) -> web.Response:
@@ -51,13 +70,14 @@ async def handle_delete_promise(request: web.Request) -> web.Response:
     if store is None:
         return web.json_response({"error": "archivio non disponibile"}, status=503)
     ident = request.match_info["id"]
-    if store.read(ident) is None:
-        return web.json_response({"error": "non ho nessuna promessa con quell’identificatore."},
-                                 status=404)
-    occurrence = store.cancel(ident, now=time.time())
+    thread = request_thread(request)
+    if store.read_in_thread(ident, thread) is None:
+        return web.json_response(_PROMISE_NOT_FOUND, status=404)
+    occurrence = store.cancel(ident, thread=thread, now=time.time())
     if "errore" in occurrence:
         return web.json_response(occurrence_out(occurrence), status=409)
-    return web.json_response(occurrence_out(occurrence))
+    return web.json_response(occurrence_out(
+        {**occurrence, "promessa": without_thread(occurrence["promessa"])}))
 
 
 async def handle_mark_read(request: web.Request) -> web.Response:
@@ -97,7 +117,8 @@ async def handle_mark_read(request: web.Request) -> web.Response:
         return web.json_response(
             {"error": f"troppi identificatori in una volta (il tetto e' {_MAX_IDS})."},
             status=400)
-    return web.json_response({"marked": store.mark_read(ids, now=time.time())})
+    return web.json_response({"marked": store.mark_read(
+        ids, thread=request_thread(request), now=time.time())})
 
 
 async def handle_get_execution(request: web.Request) -> web.Response:
@@ -107,6 +128,11 @@ async def handle_get_execution(request: web.Request) -> web.Response:
     potata dopo 90 giorni (`journal.py::EXECUTIONS_RETENTION_S`): dal
     lato della pagina sono la stessa cosa -- non c'e' piu' niente da mostrare
     -- e nessuna delle due merita un errore che sembri un guasto.
+
+    **Un'esecuzione prodotta da una promessa e' di chi l'ha chiesta**: per
+    un altro filo -- e per una promessa orfana, finche' nessuno l'ha adottata
+    -- risponde lo stesso 404 di un id inesistente. Un'esecuzione che nessuna
+    promessa ha prodotto resta com'era: la spec tocca solo le promesse.
     """
     journal = request.app.get("journal")
     if journal is None:
@@ -114,7 +140,13 @@ async def handle_get_execution(request: web.Request) -> web.Response:
     ident = request.match_info["id"]
     row = journal.read(ident)
     if row is None:
-        return web.json_response(
-            {"error": "non ho nessuna esecuzione con quell’identificatore."},
-            status=404)
+        return web.json_response(_EXECUTION_NOT_FOUND, status=404)
+    agenda = request.app.get("agenda")
+    if agenda is None:
+        # Senza l'archivio delle promesse non si sa di chi sia: nel dubbio non
+        # si mostra, come le altre rotte di questo file senza archivio.
+        return web.json_response({"error": "archivio non disponibile"}, status=503)
+    promise = agenda.read_by_execution(ident)
+    if promise is not None and promise["thread"] != request_thread(request):
+        return web.json_response(_EXECUTION_NOT_FOUND, status=404)
     return web.json_response({"execution": row})

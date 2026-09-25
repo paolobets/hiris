@@ -172,7 +172,7 @@ async def test_senza_modello_RIFALLA_lo_dice_e_non_tocca_la_proposta(casa):
 # ---------------------------------------------------------------------------
 
 class _FintaAgenda:
-    def count_unread(self):
+    def count_unread(self, thread):
         return 0
 
 

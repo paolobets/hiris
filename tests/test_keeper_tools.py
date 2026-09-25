@@ -6,6 +6,7 @@ from typing import ClassVar
 import pytest
 
 from hiris.app.action.registry import ServiceRegistry
+from hiris.app.chat_thread import ChatThread
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.proxy.entity_cache import _to_minimal
@@ -43,13 +44,19 @@ def promesse(tmp_path):
     a.close()
 
 
+# Il filo del turno: una promessa e' di chi la chiede (spec 2026-09-26 §2), e
+# un dispatcher senza filo non ne prende. Le prove sul filo -- chi vede, chi
+# disdice, chi non ha un filo -- stanno in `test_promesse_divise.py`.
+PAOLO = ChatThread("persona:paolo", "pannello")
+
+
 def _dispatcher(promesse, **extra):
     """Un dispatcher con i soli pezzi che servono a questi test.
 
     Gli altri archivi restano `None`: i gestori dichiarano un errore invece di
     sollevare, ed e' il contratto della classe.
     """
-    return ToolDispatcher(None, None, agenda=promesse, **extra)
+    return ToolDispatcher(None, None, agenda=promesse, thread=PAOLO, **extra)
 
 
 def test_i_tre_strumenti_sono_nel_catalogo():
@@ -75,7 +82,7 @@ async def test_prometti_un_chiedi_crea_la_promessa(promesse):
     })
     assert "errore" not in esito
     assert esito["promessa"]["specie"] == "chiedi"
-    assert promesse.list(solo_in_sospeso=True)
+    assert promesse.list(thread=PAOLO, solo_in_sospeso=True)
 
 
 @pytest.mark.asyncio
@@ -123,7 +130,7 @@ async def test_un_fai_con_un_servizio_inesistente_e_rifiutato_SUBITO(promesse):
     assert "errore" in esito
     assert "light.inventato" in esito["errore"]
     assert "turn_on" in esito["errore"]  # il servizio vero, che il rifiuto elenca
-    assert promesse.list() == []
+    assert promesse.list(thread=PAOLO) == []
 
 
 @pytest.mark.asyncio
@@ -145,7 +152,7 @@ async def test_un_fai_senza_registro_e_rifiutato_non_verificato_in_silenzio(prom
         "chiamata": {"servizio": "light.turn_on",
                      "bersaglio": {"entita": ["light.studio"]}}})
     assert "errore" in esito
-    assert promesse.list() == []
+    assert promesse.list(thread=PAOLO) == []
 
 
 @pytest.mark.asyncio
@@ -173,7 +180,7 @@ async def test_un_fai_con_registro_presente_ma_mai_caricato_e_rifiutato_come_sen
                      "bersaglio": {"entita": ["light.studio"]}}})
     assert "errore" in esito
     assert "Domini disponibili" not in esito["errore"]
-    assert promesse.list() == []
+    assert promesse.list(thread=PAOLO) == []
 
 
 @pytest.mark.asyncio
@@ -191,7 +198,7 @@ async def test_un_fai_senza_specchio_e_rifiutato_non_verificato_in_silenzio(prom
         "chiamata": {"servizio": "light.turn_on",
                      "bersaglio": {"entita": ["light.studio"]}}})
     assert "errore" in esito
-    assert promesse.list() == []
+    assert promesse.list(thread=PAOLO) == []
 
 
 @pytest.mark.asyncio
@@ -224,100 +231,6 @@ async def test_un_fai_valido_nasce(promesse):
 
 
 @pytest.mark.asyncio
-async def test_un_recapito_inesistente_e_rifiutato_at_birth(promesse):
-    """Registro CARICO, recapito davvero inesistente: il rifiuto vero, non
-    quello di «non lo so ancora» -- le due frasi restano distinte (review
-    Task 7, Rilievo 1)."""
-    d = _dispatcher(promesse, registry=_RegistroFinto(), cache=_CacheFinta())
-    esito = await d.dispatch("promise", {
-        "specie": "chiedi", "frase": "x", "quando": _fra(60),
-        "domanda": "e' aumentata?", "recapito": "notify.non_esiste"})
-    assert "errore" in esito
-    assert "notify" in esito["errore"]
-    assert "non e' pronto" not in esito["errore"]
-
-
-@pytest.mark.asyncio
-async def test_un_recapito_che_PRETENDE_un_bersaglio_e_rifiutato_at_birth(promesse):
-    """Audit delle fondamenta, rilievo 1 -- il modo peggiore in cui una
-    promessa puo' rompersi, ed era quello che il codice lasciava aperto.
-
-    `_verify_recipient` controllava soltanto che il servizio ESISTESSE. La
-    verifica vera -- quella che lo schedulatore attraversa a scadenza, con
-    `bersaglio: {}` -- pretende un bersaglio quando il servizio ne dichiara
-    uno. `notify.send_message` lo dichiara (misurato su HA 2026.9.1), esiste
-    su questa casa, e lo strumento `promise` dice al modello «usa search per
-    trovare un servizio notify vero»: la promessa nasceva «verificata adesso»,
-    alle 17:00 la notifica non partiva, e il proprietario lo leggeva in
-    Impegni DOPO l'appuntamento.
-    """
-    d = _dispatcher(promesse, registry=_RegistroFinto(), cache=_CacheFinta())
-    esito = await d.dispatch("promise", {
-        "specie": "chiedi", "frase": "x", "quando": _fra(60),
-        "domanda": "e' aumentata?", "recapito": "notify.send_message"})
-
-    assert "errore" in esito
-    assert "bersaglio" in esito["errore"], (
-        "il rifiuto deve dire cosa manca, o il modello sceglie di nuovo lo "
-        f"stesso servizio: {esito['errore']!r}")
-    assert promesse.list() == [], (
-        "una promessa che non si potra' mantenere non deve nascere")
-
-
-def test_la_nascita_fa_la_STESSA_domanda_della_scadenza(promesse):
-    """La cucitura fra i due lettori, senza finte in mezzo.
-
-    A scadenza `keeper/sweeper.concludi_chiedi` costruisce la chiamata con
-    `promise.delivery_call` e la manda alla porta, che la passa a
-    `action/verification.verification`. Alla nascita `_verify_recipient`
-    costruisce la STESSA chiamata e chiede alla STESSA funzione. Questo test
-    lega le due risposte: se divergessero su un solo servizio del registro,
-    tornerebbe rosso -- ed e' l'unica forma che questa prova puo' avere,
-    perche' il difetto non era una frase sbagliata, erano due criteri diversi
-    sullo stesso fatto.
-    """
-    from hiris.app.action.verification import verification
-    from hiris.app.keeper.promise import delivery_call
-
-    registry, cache = _RegistroFinto(), _CacheFinta()
-    d = _dispatcher(promesse, registry=registry, cache=cache)
-    states = {s["id"]: s for s in cache.all_states()}
-
-    for domain, name in _RegistroFinto._SERVIZI:
-        service = f"{domain}.{name}"
-        at_birth = d._verify_recipient(service)
-        at_maturity = verification(
-            delivery_call(service, "il testo della risposta"), registry, states)
-        assert (at_birth is None) is at_maturity.ok, (
-            f"«{service}»: alla nascita {at_birth!r}, a scadenza "
-            f"{at_maturity.reason!r}")
-
-
-
-@pytest.mark.asyncio
-async \
-def test_un_recapito_con_registro_presente_ma_mai_caricato_e_rifiutato_come_non_ancora_verificabile(
-    promesse,
-):
-    """Il gemello del test sopra su `_verify_now` (review Task 7, Rilievo
-    1): prima del fix, un `_RegistroVuoto` (presente, `domains()` vuoto)
-    faceva rispondere `service(dominio, nome)` con `None` per QUALUNQUE
-    recapito -- «"notify.mobile_app_x" non esiste in questa casa», una frase
-    FALSA (il servizio esiste, e' il registro che non e' stato ancora letto).
-    Peggio del `fai` equivalente: un recapito sbagliato non fallisce
-    rumorosamente, fa si' che la risposta della promessa non arrivi a
-    nessuno."""
-    d = _dispatcher(promesse, registry=_RegistroVuoto(), cache=_CacheFinta())
-    esito = await d.dispatch("promise", {
-        "specie": "chiedi", "frase": "x", "quando": _fra(60),
-        "domanda": "e' aumentata?", "recapito": "notify.mobile_app_x"})
-    assert "errore" in esito
-    assert "non e' pronto" in esito["errore"]
-    assert "non esiste in questa casa" not in esito["errore"]
-    assert promesse.list() == []
-
-
-@pytest.mark.asyncio
 async def test_prometti_scalda_il_registro_vuoto_se_il_canale_ha_c_e(promesse):
     """Il difetto misurato dal vivo su 3.9.1: un add-on appena avviato ha un
     registro PRESENTE ma mai caricato (si carica pigramente alla prima
@@ -325,9 +238,11 @@ async def test_prometti_scalda_il_registro_vuoto_se_il_canale_ha_c_e(promesse):
     fix `_promise` interrogava `_registry_not_ready()` senza mai scaldare
     il registro. L'utente aveva appena chiesto di leggere le otto
     temperature (riuscito: quella lettura passa da un'altra strada, non dal
-    registro dei servizi) e poi un `promise` con recapito veniva rifiutato
-    per sempre con "il registro dei servizi non e' pronto", anche se Home
-    Assistant era raggiungibile e pronto a rispondere.
+    registro dei servizi) e poi un `promise` veniva rifiutato per sempre
+    con "il registro dei servizi non e' pronto", anche se Home Assistant era
+    raggiungibile e pronto a rispondere. (Il caso misurato era un `chiedi`
+    col recapito, uscito con la fetta «il seguito delle chat divise»; oggi
+    il registro lo interroga il `fai`, e la prova passa da li'.)
 
     `_HaConServizi` deve saper rispondere `get_services()` per DAVVERO (una
     lista non vuota, nella forma vera di `/api/services`): se rispondesse un
@@ -340,8 +255,10 @@ async def test_prometti_scalda_il_registro_vuoto_se_il_canale_ha_c_e(promesse):
     assert registry.empty()  # la premessa esatta del difetto: mai caricato
     d = _dispatcher(promesse, registry=registry, ha=ha, cache=_CacheFinta())
     esito = await d.dispatch("promise", {
-        "specie": "chiedi", "frase": "x", "quando": _fra(60),
-        "domanda": "e' aumentata?", "recapito": "notify.mobile_app_x"})
+        "specie": "fai", "frase": "alle 17 accendi lo studio",
+        "quando": _fra(60),
+        "chiamata": {"servizio": "light.turn_on",
+                     "bersaglio": {"entita": ["light.studio"]}}})
     assert "errore" not in esito
     assert ha.chiamate_get_services == 1
     assert not registry.empty()  # scaldato per davvero, non solo tollerato
@@ -362,8 +279,10 @@ async def test_prometti_senza_canale_ha_non_tenta_di_scaldare_il_registro(promes
     registry = _RegistroTracciaScaldamento()
     d = _dispatcher(promesse, registry=registry, cache=_CacheFinta())  # nessun ha
     esito = await d.dispatch("promise", {
-        "specie": "chiedi", "frase": "x", "quando": _fra(60),
-        "domanda": "e' aumentata?", "recapito": "notify.mobile_app_x"})
+        "specie": "fai", "frase": "alle 17 accendi lo studio",
+        "quando": _fra(60),
+        "chiamata": {"servizio": "light.turn_on",
+                     "bersaglio": {"entita": ["light.studio"]}}})
     assert not registry.chiamato  # non si e' nemmeno tentato di scaldarlo
     assert "errore" in esito
     assert "non e' pronto" in esito["errore"]
@@ -403,7 +322,7 @@ async def test_un_da_confrontare_con_riferimento_inesistente_e_rifiutato_at_birt
     assert "errore" in esito
     assert "sensor.soggiorno_t" in esito["errore"]
     assert "search" in esito["errore"]
-    assert promesse.list() == []
+    assert promesse.list(thread=PAOLO) == []
 
 
 @pytest.mark.asyncio
@@ -436,7 +355,7 @@ async def test_un_da_confrontare_senza_specchio_leggibile_e_rifiutato_non_verifi
         "quando": _fra(60),
         "domanda": "e' aumentata?", "da_confrontare": ["sensor.soggiorno_t"]})
     assert "errore" in esito
-    assert promesse.list() == []
+    assert promesse.list(thread=PAOLO) == []
 
 
 def test_la_cache_finta_riproduce_la_forma_minimale_vera():
@@ -470,7 +389,7 @@ async def test_un_quando_illeggibile_e_un_rifiuto_leggibile(promesse):
         "specie": "chiedi", "frase": "x", "quando": "domani verso sera",
         "domanda": "e' aumentata?"})
     assert "errore" in esito
-    assert promesse.list() == []
+    assert promesse.list(thread=PAOLO) == []
 
 
 class _RegistroFinto:
@@ -478,7 +397,7 @@ class _RegistroFinto:
 
     Fix review Task 6, Rilievo 1: espone SOLO i metodi che il percorso
     esercitato da questo file legge davvero -- `domains()` e `service()`
-    (chiamati da `_verify_now`/`_verify_recipient`), e `services_for()`, che
+    (chiamati da `_verify_now`), e `services_for()`, che
     `action/verification.py` chiama nel ramo «il servizio non esiste» per
     elencare quelli veri. Senza `services_for()` quel ramo faceva sollevare
     `AttributeError`, catturato solo dalla rete di sicurezza generica di

@@ -185,9 +185,23 @@ SORVEGLIATO: dict[str, tuple[tuple[int, int], ...] | None] = {
     "api/handlers_agenda.py": WHOLE_FILE,
     "api/handlers_constructions.py": WHOLE_FILE,
     "keeper/sweeper.py": WHOLE_FILE,
-    "keeper/store.py": ((209, 234), (261, 268)),  # cancel, risana (solo REASON_FAI/CHIEDI)
-    "keeper/promise.py": ((206, 215),),                    # delay_reason
-    "keeper/exchange.py": ((147, 211), (244, 263)),        # interpreta_promise, _downgrade_note
+    # **Dall'albero e dal contenuto, non dai numeri** (26/09/2026, fetta «il
+    # seguito delle chat divise»). Questi tre erano ancora intervalli scritti
+    # a mano, ed erano GIA' scivolati prima di questa fetta: sulla base
+    # `16a50237` `cancel` stava alle righe 239-264 e il cancello ne guardava
+    # 209-234 (`concludi` e `mark_read`); `delay_reason` a 228-237 contro
+    # 206-215; `_downgrade_note` a 250-269 contro 244-263. Sorvegliavano
+    # altro, in silenzio -- la stessa storia di `workshop.py` qui sopra.
+    "keeper/store.py": (
+        *corpo("keeper/store.py", "cancel"),
+        # risana: solo le due frasi del motivo, non il `logger.warning`.
+        *ancora("keeper/store.py", "_REASON_FAI = (", quante=8),
+    ),
+    "keeper/promise.py": corpo("keeper/promise.py", "delay_reason"),
+    "keeper/exchange.py": (
+        *corpo("keeper/exchange.py", "interpreta_promise"),
+        *corpo("keeper/exchange.py", "_downgrade_note"),
+    ),
     "home_space/topology.py": ((1332, 1371),),             # _compare_area
     "action/construction/advisor.py": ((73, 123),),        # consiglia, dopo il primo ritorno
     # Intervalli rinumerati l'09/09/2026 (rilievo 9 dell'audit delle

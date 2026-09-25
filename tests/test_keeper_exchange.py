@@ -318,9 +318,14 @@ class _CodaFinta:
     def count_exchanges_today(self, now=None):
         return 0
 
-    def enqueue(self, kind, wake, context, deadline_ts, *, job_id=None, now):
+    def enqueue(self, kind, wake, context, deadline_ts, *, job_id=None, now,
+                thread=None):
+        # `thread` come la coda vera (`ReasoningQueue.enqueue`): il job di una
+        # promessa porta il filo di chi l'ha chiesta (spec 2026-09-26 §2.4,
+        # provato sulla coda vera in `test_promesse_divise.py`).
         self.accodati.append({"kind": kind, "context": context,
-                              "deadline_ts": deadline_ts, "now": now})
+                              "deadline_ts": deadline_ts, "now": now,
+                              "thread": thread})
         return "job-1"
 
 
@@ -369,12 +374,20 @@ async def test_il_job_porta_cio_che_serve_a_mantenere_la_promessa(col_token_del_
     """Il ponte gira altrove e non ha gli archivi: cio' che non entra nel job
     non esiste per lui. Senza `promise_id` la rotta MCP non saprebbe quale
     turno sta parlando, e `conclude` non avrebbe niente da chiudere."""
+    from hiris.app.chat_thread import ChatThread
     from hiris.app.keeper.exchange import interpreta_promise
 
+    paolo = ChatThread("persona:paolo", "pannello")
     coda = _CodaFinta()
-    await interpreta_promise(coda and _app_col_ponte(coda), _promessa_chiedi())
+    await interpreta_promise(coda and _app_col_ponte(coda),
+                             _promessa_chiedi(thread=paolo))
 
+    # Il filo di chi l'ha chiesta viaggia nelle colonne della coda (spec
+    # 2026-09-26 §2.4), e il contesto non guadagna il soggetto: il turno resta
+    # in sola lettura, senza un soffitto da prestare (vincolo 2.8).
+    assert coda.accodati[0]["thread"] == paolo
     contesto = coda.accodati[0]["context"]
+    assert "soggetto" not in contesto
     assert contesto["promessa_id"] == "p1"
     # Le chiavi che il turno del ponte legge DAVVERO: se il job ne portasse
     # altre, sarebbero dati scritti che nessuno interroga.

@@ -17,6 +17,7 @@ chi installa da zero troverebbe l'add-on rotto.
 """
 import os
 
+from hiris.app.chat_thread import ChatThread
 from hiris.app.keeper.store import AgendaStore, _migration_2
 from hiris.app.storage import connect
 
@@ -49,6 +50,7 @@ CREATE INDEX IF NOT EXISTS idx_promesse_scadenza ON promesse(stato, quando_ts);
 """
 
 ADESSO = 1_755_600_000.0
+PAOLO = ChatThread("persona:paolo", "pannello")
 
 
 def _archivio_vecchio(path: str, righe: list[tuple[str, str]]) -> None:
@@ -66,7 +68,13 @@ def _archivio_vecchio(path: str, righe: list[tuple[str, str]]) -> None:
 
 
 def _per_id(store: AgendaStore) -> dict:
-    return {r["id"]: r for r in store.list(limit=50)}
+    """Le righe di un archivio vecchio sono ORFANE (senza filo, spec
+    2026-09-26 §2): nessuno le vede finche' il proprietario non le adotta.
+    Si leggono come le leggera' lui -- adottate, poi elencate nel suo filo --
+    cosi' che il conteggio del pallino qui sotto misuri il travaso e non
+    l'invisibilita' delle orfane (che darebbe zero comunque)."""
+    store.adopt_orphans(PAOLO)
+    return {r["id"]: r for r in store.list(thread=PAOLO, limit=50)}
 
 
 def test_travaso(tmp_path):
@@ -159,7 +167,7 @@ def test_caduta_fra_l_alter_e_il_travaso(tmp_path):
         assert righe["a"]["esito_letto_ts"] is not None
         assert righe["b"]["esito_letto_ts"] is not None
         assert righe["c"]["esito_letto_ts"] is None
-        assert store.count_unread() == 0, (
+        assert store.count_unread(PAOLO) == 0, (
             "il travaso non e' stato completato: al primo avvio il pallino "
             "si accenderebbe con tutto lo storico")
     finally:
@@ -179,13 +187,13 @@ def test_una_disdetta_non_e_un_esito_da_leggere(tmp_path):
     try:
         ident = store.create(
             {"specie": "chiedi", "frase": "x", "quando_ts": ADESSO + 3600,
-             "domanda": "y?"}, now=ADESSO)["promessa"]["id"]
-        store.cancel(ident, now=ADESSO + 1)
+             "domanda": "y?"}, thread=PAOLO, now=ADESSO)["promessa"]["id"]
+        store.cancel(ident, thread=PAOLO, now=ADESSO + 1)
 
         assert store.read(ident)["stato"] == "disdetta"
-        assert store.count_unread() == 0
+        assert store.count_unread(PAOLO) == 0
         # E non si puo' nemmeno segnare letta: non e' fra gli esiti.
-        assert store.mark_read([ident], now=ADESSO + 2) == 0
+        assert store.mark_read([ident], thread=PAOLO, now=ADESSO + 2) == 0
     finally:
         store.close()
 
@@ -202,6 +210,9 @@ def test_archivio_nuovo_nasce_gia_a_posto(tmp_path):
     try:
         colonne = {r["name"] for r in store._conn.execute("PRAGMA table_info(promesse)")}
         assert "esito_letto_ts" in colonne
-        assert store._conn.execute("PRAGMA user_version").fetchone()[0] == 3
+        # Lo stesso vale per il filo (versione 4, spec 2026-09-26 §2): nello
+        # schema, non solo nella migrazione.
+        assert {"subject_key", "entry_point"} <= colonne
+        assert store._conn.execute("PRAGMA user_version").fetchone()[0] == 4
     finally:
         store.close()

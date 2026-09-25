@@ -28,6 +28,7 @@ sapeva scrivere: era già scritto, per l'altra metà.
 """
 import pytest
 
+from hiris.app.chat_thread import ChatThread
 from hiris.app.keeper.store import AgendaStore
 
 
@@ -46,7 +47,8 @@ def _promessa(archivio, **extra):
             "chiamata": {"servizio": "light.turn_off",
                          "bersaglio": {"area": "piano di sopra"}}}
     dati.update(extra)
-    esito = archivio.create(dati, now=1_999_999_000.0)
+    esito = archivio.create(dati, thread=ChatThread("persona:paolo", "pannello"),
+                            now=1_999_999_000.0)
     assert "errore" not in esito, esito
     return esito["promessa"]["id"]
 

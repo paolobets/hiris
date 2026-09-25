@@ -51,25 +51,62 @@ def thread_to_context(thread: ChatThread) -> dict:
     return {"subject_key": thread.subject_key, "entry_point": thread.entry_point}
 
 
+def subject_from_thread(thread: ChatThread | None) -> dict | None:
+    """Il soggetto di un filo, per chi ha solo il filo: `{"specie", "id"}`.
+
+    Serve all'orologio, che al risveglio di una promessa non ha la richiesta
+    di chi l'ha chiesta -- ha la riga, e la riga ha il filo. Niente nome:
+    cambia, e chi legge questo soggetto (la cronaca, il recapito) si regge
+    sull'id. `-` torna `None`, com'era prima di diventare chiave.
+    """
+    if thread is None:
+        return None
+    specie, _sep, ident = thread.subject_key.partition(":")
+    return {"specie": specie, "id": None if ident in ("", "-") else ident}
+
+
+def without_thread(row: dict) -> dict:
+    """La riga senza il filo, per chi risponde fuori dal processo.
+
+    Il filo serve dentro (chi vede, chi riceve l'esito); fuori non si mostra,
+    e un `ChatThread` `json_response` non saprebbe nemmeno serializzarlo. Una
+    funzione sola per le rotte e per gli strumenti che rispondono con righe
+    che lo portano.
+    """
+    return {k: v for k, v in row.items() if k != "thread"}
+
+
 async def adopt_if_owner(app, request, thread: ChatThread) -> None:
-    """La cronologia di prima delle chat divise va al proprietario (spec §3).
+    """Cio' che c'era prima delle chat divise va al proprietario (spec §3).
 
     Alla prima richiesta di una persona che Home Assistant dice proprietaria,
-    dall'ingresso `pannello`, le sessioni orfane diventano sue. Non all'avvio:
-    li' Home Assistant puo' non rispondere ancora, e un proprietario sbagliato
-    non si ripara. Import locali: `chat_store` e le rotte di `api/` importano da
-    qui, e questo modulo deve restare una foglia.
+    dall'ingresso `pannello`, le sessioni orfane diventano sue -- e, dalla
+    fetta «il seguito delle chat divise» (spec 2026-09-26 §2), anche le
+    promesse orfane: nello stesso momento e con la stessa regola, perche' due
+    regole per lo stesso passaggio di proprieta' sarebbero due proprietari
+    possibili. Non all'avvio: li' Home Assistant puo' non rispondere ancora, e
+    un proprietario sbagliato non si ripara. Import locali: `chat_store` e le
+    rotte di `api/` importano da qui, e questo modulo deve restare una foglia.
     """
     from . import chat_store
     from .api.soffitto import is_owner
 
     data_dir = app.get("data_dir", "/data")
+    agenda = app.get("agenda")
     soggetto = request.get("soggetto") or {}
-    if (thread.entry_point != "pannello" or soggetto.get("specie") != "persona"
-            or not chat_store.has_orphans(data_dir)):
+    if thread.entry_point != "pannello" or soggetto.get("specie") != "persona":
+        return
+    chat_orphans = chat_store.has_orphans(data_dir)
+    promise_orphans = agenda is not None and agenda.has_orphans()
+    if not (chat_orphans or promise_orphans):
         return
     if not await is_owner(app, soggetto):
         return
-    n = chat_store.adopt_orphans(data_dir, thread=thread)
-    logger.info("cronologia di prima: %d sessioni passano al proprietario (%s)",
-                n, thread.subject_key)
+    if chat_orphans:
+        n = chat_store.adopt_orphans(data_dir, thread=thread)
+        logger.info("cronologia di prima: %d sessioni passano al proprietario (%s)",
+                    n, thread.subject_key)
+    if promise_orphans:
+        n = agenda.adopt_orphans(thread)
+        logger.info("promesse di prima: %d passano al proprietario (%s)",
+                    n, thread.subject_key)

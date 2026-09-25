@@ -198,7 +198,7 @@ def create_tool_dispatcher(app, exchange: str | None = None,
         # Il registro dei servizi (`action/registry.py`), la STESSA istanza
         # che riceve `action_actuator` qui sopra -- mai una seconda costruzione.
         # Serve a `promise` per verificare un `fai` ADESSO
-        # (`ToolDispatcher._verify_now`) e un `recapito`.
+        # (`ToolDispatcher._verify_now`).
         registry=app.get("service_registry"),
         # L'archivio delle promesse (`keeper/store.py`): la casa di
         # `promise`/`agenda`/`cancel`.

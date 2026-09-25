@@ -15,12 +15,13 @@ from __future__ import annotations
 
 import logging
 
-from .promise import TOLLERANZA_S, delay_reason, delivery_call
+from ..chat_thread import subject_from_thread
+from .promise import TOLLERANZA_S, delay_reason
 
 logger = logging.getLogger(__name__)
 
 _SENZA_RECAPITO = ("avevo qualcosa da dirti e nessun modo per venire a cercarti: "
-                   "nessun canale di notifica era stato scelto quando l’hai chiesta.")
+                   "la risposta resta qui, nella pagina «Impegni».")
 
 
 class Sweeper:
@@ -66,7 +67,12 @@ class Sweeper:
             await self._keep_chiedi(promise, now)
 
     async def _keep_fai(self, promise: dict, now: float) -> None:
-        occurrence = await self._execute(promise["chiamata"], actor="schedulatore")
+        # La cronaca nomina CHI l'aveva chiesta (ruling 2.7): il soggetto si
+        # ricostruisce dal filo della promessa -- specie e id, senza nome.
+        # `None` per un'orfana, ed e' il fatto vero: non si sa di chi era.
+        occurrence = await self._execute(
+            promise["chiamata"], actor="schedulatore",
+            subject=subject_from_thread(promise.get("thread")))
         if occurrence.get("eseguito"):
             # **Il bersaglio e' ancora quello di allora?** (reperto B-6,
             # 22/09/2026). Fra la nascita e adesso possono essere passati
@@ -125,20 +131,19 @@ class Sweeper:
         reason = None
         execution_id = None
 
-        if avvisare and promise["recapito"]:
-            # La notifica la manda LO SCHEDULATORE, dalla porta di tutti, sul
-            # canale approvato alla nascita. Il modello ha prodotto un testo,
-            # non una chiamata: non sceglie lui dove finisce.
-            occurrence = await self._execute(
-                delivery_call(promise["recapito"], text), actor="schedulatore")
-            execution_id = occurrence.get("esecuzione_id")
-            if not occurrence.get("eseguito"):
-                reason = ("te l’ho scritto qui ma la notifica non e' partita: %s"
-                          % (occurrence.get("errore") or "non so dire perche'."))
-        elif avvisare:
+        if avvisare:
             # Non si inventa un canale. La promessa e' mantenuta -- il testo
             # c'e' e si legge dalla pagina -- e dichiara la consegna mancata
             # invece di farla passare per riuscita.
+            #
+            # Il ramo che notificava sul `recapito` scelto dal modello alla
+            # nascita e' uscito con la fetta «il seguito delle chat divise»
+            # (spec 2026-09-26 §2, vincolo 2.5): quella colonna non si scrive
+            # piu', e le righe vecchie che la portano non devono far partire
+            # una notifica verso un indirizzo che nessuno ha piu' verificato.
+            # Il recapito vero -- i dispositivi di chi ha chiesto, risolti al
+            # risveglio -- e il messaggio nel suo filo li aggiunge il Task 3
+            # della stessa fetta.
             reason = _SENZA_RECAPITO
 
         # La nota del ripiego, quando c'e': il turno e' passato dal forfait al

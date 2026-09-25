@@ -153,7 +153,7 @@ from datetime import datetime, timedelta
 from typing import Any, ClassVar
 
 from ..action.construction.advisor import STRUCTURES
-from ..chat_thread import ChatThread, subject_key_for
+from ..chat_thread import ChatThread, subject_key_for, without_thread
 from ..memory.interpretation import VOCABULARY, validate
 from ..memory.lookup_cache import LookupCache
 from ..memory.resolver import STORE_KEY_PER_TYPE, costruisci_indice
@@ -849,10 +849,11 @@ PROMISE_TOOL_DEF = {
         "le entita' da misurare ADESSO, o piu' tardi non avrai con cosa "
         "confrontare. `quando` e' un istante ISO-8601 col fuso: risolvilo tu da "
         "«fra un'ora» o «alle 17», e riporta in `quando_detto` le parole della "
-        "persona. Un istante gia' passato viene rifiutato. `recapito` e' il "
-        "servizio notify con cui venirla a cercare (usa «search» per trovarne uno "
-        "vero): senza, la risposta resta solo nella pagina «Impegni». Quando "
-        "ne prendi una dillo alla persona, e dille che la ritrova li'. "
+        "persona. Un istante gia' passato viene rifiutato. La promessa e' di chi "
+        "te la chiede: l'esito torna a lei, e come avvisarla lo decide HIRIS, "
+        "non tu -- se non c'e' un modo, il risultato te lo dice e tu glielo "
+        "riferisci. Quando ne prendi una dillo alla persona, e dille che la "
+        "ritrova nella pagina «Impegni». "
         "NON usare questo strumento per qualcosa che si ripete ogni giorno: "
         "quella e' un'automazione di Home Assistant, dillo alla persona."
     ),
@@ -891,14 +892,23 @@ PROMISE_TOOL_DEF = {
                     "misurato ADESSO, per poterlo confrontare piu' tardi."
                 ),
             },
-            "recapito": {
-                "type": "string",
-                "description": "Il servizio notify con cui avvisare, es. «notify.mobile_app_x».",
-            },
         },
         "required": ["specie", "frase", "quando"],
     },
 }
+
+# Le promesse sono di chi le chiede (spec 2026-09-26 §2): un turno che nessuno
+# ha aperto -- un job del ponte di prima di questa versione, un percorso
+# interno -- non ha un filo, e una promessa nata li' non avrebbe a chi tornare.
+# Si rifiuta e lo si dice, per `promise`, `agenda` e `cancel` insieme.
+_NO_THREAD_REFUSAL = ("le promesse sono di chi le chiede, e questo turno non "
+                      "l'ha aperto nessuno: non posso prenderne, elencarle o "
+                      "disdirle da qui.")
+
+# La riga che precede il motivo di `Recipients.reason` nel risultato di un
+# `chiedi` senza strada (spec §2, «Nascita»): l'esito arrivera' comunque in
+# chat, e' la notifica che manca.
+_NO_RECIPIENT_NOTICE = "te lo dico qui in chat, senza notifica: "
 
 AGENDA_TOOL_DEF = {
     "name": "agenda",
@@ -1661,16 +1671,16 @@ class ToolDispatcher:
         # STESSA istanza che usa la porta -- non se ne apre un secondo, per la
         # stessa ragione di `_ha_channel`: due registri sarebbero due opinioni
         # su cosa esiste, e potrebbero divergere. Serve a `promise` per
-        # verificare un `fai` ADESSO (`_verify_now`) e un `recapito`
-        # (`_verify_recipient`). `None` e' legittimo e NON passa da
-        # `_missing_resource` (che solleverebbe un errore diverso, "l'archivio
-        # non e' caricato"): senza registro PRONTO -- assente o presente ma mai
-        # caricato da Home Assistant, `_registry_not_ready()` -- i due
-        # controlli RIFIUTANO invece di tacere (fix review Task 6 Rilievo 2 per
-        # `_verify_now`, esteso a `_verify_recipient` da review Task 7
-        # Rilievo 1): un `fai` o un recapito mai verificati nascerebbero con
-        # una promessa che dichiara "viene VERIFICATA adesso" senza esserlo
-        # stata.
+        # verificare un `fai` ADESSO (`_verify_now`). `None` e' legittimo e
+        # NON passa da `_missing_resource` (che solleverebbe un errore
+        # diverso, "l'archivio non e' caricato"): senza registro PRONTO --
+        # assente o presente ma mai caricato da Home Assistant,
+        # `_registry_not_ready()` -- il controllo RIFIUTA invece di tacere
+        # (fix review Task 6 Rilievo 2): un `fai` mai verificato nascerebbe
+        # con una promessa che dichiara "viene VERIFICATA adesso" senza
+        # esserlo stata. (Il recapito scelto dal modello, che questo registro
+        # verificava allo stesso modo, e' uscito con la fetta «il seguito
+        # delle chat divise»: lo risolve il sistema al risveglio.)
         self._registry = registry
         # L'archivio delle promesse (`keeper/store.py`). `None` e'
         # legittimo come per la porta: i tre strumenti dichiarano un errore
@@ -2505,22 +2515,44 @@ class ToolDispatcher:
         """Il modello propone, il codice restringe (spec §9.1).
 
         Tutto si verifica ADESSO: la chiamata contro questa installazione, il
-        canale di notifica, il valore di partenza. Un rifiuto alle 17 sarebbe
-        arrivato quando non c'e' piu' nessuno a correggerlo. `quando_ts` e i
-        due tetti (30 giorni, 50 in sospeso) restano a `promessa.validate` /
-        `archivio.create`: sono verifiche sulla FORMA della promessa, non su
-        questa installazione, e vivono gia' li'.
+        valore di partenza. Un rifiuto alle 17 sarebbe arrivato quando non
+        c'e' piu' nessuno a correggerlo. `quando_ts` e i tetti (30 giorni, 50
+        in sospeso per filo, il totale della casa) restano a
+        `promessa.validate` / `archivio.create`: sono verifiche sulla FORMA
+        della promessa, non su questa installazione, e vivono gia' li'.
 
-        Coroutine (non piu' sincrona) da quando questo metodo scalda il
-        registro (`_ensure_registry_fresh`, sopra): il dispatcher gia'
-        sapeva attendere un gestore awaitable (`dispatch`, `inspect.
-        isawaitable`), quindi renderlo `async` non ha toccato nessun
-        chiamante -- tutti passano gia' da `dispatch("promise", ...)`,
-        sempre atteso.
+        **La promessa e' del filo di questo turno** (fetta «il seguito delle
+        chat divise», spec 2026-09-26 §2), e il filo viene dal chiamante
+        (`self._thread`), mai dagli argomenti: `_bad_arguments` rifiuta
+        qualunque chiave che lo schema non conosce, e lo schema non conosce
+        ne' il filo ne' il recapito. Il recapito non lo sceglie piu' il
+        modello: si risolve al risveglio dal soggetto (`keeper/recipient.py`);
+        qui lo si guarda solo per dire SUBITO, a chi chiede un `chiedi`, se
+        una notifica non potra' arrivargli e perche'.
+
+        Coroutine perche' scalda il registro (`_ensure_registry_fresh`) e
+        chiede il recapito a Home Assistant: il dispatcher attende gia' ogni
+        gestore awaitable (`dispatch`, `inspect.isawaitable`).
         """
         import time as _time
 
         from ..action.verification import verification
+        from ..keeper.recipient import recipients_for
+
+        if self._thread is None:
+            return {"errore": _NO_THREAD_REFUSAL}
+
+        verb = arguments.get("specie")
+        # **Il soffitto di chi chiede vale anche per l'azione rimandata**
+        # (ruling 2.7 della revisione di sicurezza): chi non puo' comandare
+        # adesso non puo' farsi eseguire la stessa chiamata fra un'ora dallo
+        # schedulatore, che al risveglio non ha piu' nessun soffitto da
+        # guardare. Stesso `perche` di ogni altro rifiuto del soffitto. Un
+        # `chiedi` resta permesso: legge e basta. Senza soffitto (`None`: i
+        # percorsi interni) il comportamento e' quello di prima.
+        if (verb == "fai" and self._soffitto is not None
+                and not self._soffitto["comandare"]):
+            return {"errore": self._soffitto["perche"]}
 
         await self._ensure_registry_fresh()
 
@@ -2529,14 +2561,12 @@ class ToolDispatcher:
             return {"errore": ("non ho capito quando: dammi un istante come "
                                "«2026-08-19T17:00:00+02:00».")}
 
-        verb = arguments.get("specie")
         data = {
             "specie": verb,
             "frase": arguments.get("frase") or "",
             "quando_ts": when,
             "quando_detto": arguments.get("quando_detto"),
             "fuso": self._timezone(),
-            "recapito": arguments.get("recapito") or None,
         }
 
         if verb == "fai":
@@ -2567,12 +2597,19 @@ class ToolDispatcher:
             data["domanda"] = arguments.get("domanda")
             data["istantanea"] = self._snapshot(to_compare)
 
-        if data["recapito"]:
-            refusal = self._verify_recipient(data["recapito"])
-            if refusal is not None:
-                return {"errore": refusal}
-
-        return self._agenda.create(data, now=_time.time())
+        occurrence = self._agenda.create(data, thread=self._thread, now=_time.time())
+        if "errore" in occurrence:
+            return occurrence
+        result = {"promessa": without_thread(occurrence["promessa"])}
+        if verb == "chiedi":
+            # Solo per sapere SE una strada c'e': la notifica partira' al
+            # risveglio, dal recapito risolto allora (se nel frattempo la
+            # persona si collega, funziona gia'). Il motivo e' un testo di
+            # HIRIS (`Recipients.reason`), lo stesso che leggera' la pagina.
+            recipients = await recipients_for(self._subject, self._ha)
+            if not recipients.services:
+                result["avviso"] = f"{_NO_RECIPIENT_NOTICE}{recipients.reason}"
+        return result
 
     async def _count_target(self, call: dict) -> int | None:
         """Quante entita' copre il bersaglio di `call`, adesso — o `None`.
@@ -2602,21 +2639,33 @@ class ToolDispatcher:
         return len(found) if isinstance(found, list) else None
 
     def _list_agenda(self, arguments: dict[str, Any]) -> dict:
-        """«Cosa mi hai promesso?»: la fondamenta n.4 applicata alle promesse.
+        """«Cosa mi hai promesso?»: la fondamenta n.4 applicata alle promesse
+        -- quelle di CHI chiede, non della casa (spec 2026-09-26 §2).
 
         Il nome del metodo NON puo' essere `_promesse`: quell'attributo e'
         gia' l'archivio (vedi `__init__`). Due cose distinte, due nomi.
         """
+        if self._thread is None:
+            return {"errore": _NO_THREAD_REFUSAL}
         show_all = bool(arguments.get("tutte"))
-        return {"promesse": self._agenda.list(solo_in_sospeso=not show_all)}
+        rows = self._agenda.list(thread=self._thread, solo_in_sospeso=not show_all)
+        return {"promesse": [without_thread(r) for r in rows]}
 
     def _cancel(self, arguments: dict[str, Any]) -> dict:
+        """Disdice una promessa di QUESTO filo. Un id di un altro filo riceve
+        la stessa risposta di uno che non esiste (`AgendaStore.cancel`)."""
         import time as _time
 
+        if self._thread is None:
+            return {"errore": _NO_THREAD_REFUSAL}
         identifier = arguments.get("id")
         if not isinstance(identifier, str) or not identifier.strip():
             return {"errore": "«cancel» ha bisogno dell'`id` della promessa."}
-        return self._agenda.cancel(identifier.strip(), now=_time.time())
+        occurrence = self._agenda.cancel(identifier.strip(), thread=self._thread,
+                                         now=_time.time())
+        if "promessa" in occurrence:
+            return {**occurrence, "promessa": without_thread(occurrence["promessa"])}
+        return occurrence
 
     async def _propose(self, arguments: dict[str, Any]) -> dict:
         """Propone. Non scrive: lo fa `confirm`, e non nello stesso turno."""
@@ -2716,10 +2765,7 @@ class ToolDispatcher:
         ancora cosa questa casa sa fare») e si riconoscono con lo STESSO
         criterio della porta -- si CHIEDE al registro (`domains()` vuoto), non
         si reinventa la regola in un secondo posto. Il criterio vive in
-        `_registry_not_ready()`, condiviso con `_verify_recipient`: sono la
-        STESSA domanda («so gia' cosa questa casa sa fare?»), fatta da due
-        strumenti diversi -- una seconda copia della condizione sarebbe un
-        doppione appena creato (review Task 7, Rilievo 1).
+        `_registry_not_ready()` (review Task 7, Rilievo 1).
 
         Un terzo caso, trovato dalla review finale: uno specchio dello stato
         NON leggibile faceva tornare `None` (nessun rifiuto) invece di
@@ -2791,9 +2837,9 @@ class ToolDispatcher:
         nascere la promessa con `valore: null` e la nota "non esisteva
         quando l'hai chiesto" -- il danno matura fra un'ora, quando nessuno
         puo' piu' correggere. «Il modello propone, il codice restringe»
-        (spec §9.1), gia' applicato al `fai` (`_verify_now`) e al
-        recapito (`_verify_recipient`): un `chiedi` non puo' rispondere
-        diversamente alla stessa domanda solo perche' e' la terza specie.
+        (spec §9.1), gia' applicato al `fai` (`_verify_now`): un `chiedi`
+        non puo' rispondere diversamente alla stessa domanda solo perche'
+        e' l'altra specie.
         Il motivo nomina il riferimento (cosa non esiste) e la strada per
         correggersi (pattern `action/verification.py:430-432`: «usa "search"...»).
         """
@@ -2814,63 +2860,13 @@ class ToolDispatcher:
         (`None`) o presente ma mai caricato da Home Assistant (`domains()`
         vuoto). Le due assenze si trattano uguali -- e' lo stesso criterio di
         `action/actuator.py::ActionActuator.execute` per la guardia `_MUTE_REGISTRY` --
-        perche' senza domini non si puo' verificare NIENTE, ne' un `fai` ne'
-        un recapito. Estratta qui (review Task 7, Rilievo 1) perche'
-        `_verify_now` e `_verify_recipient` la interrogavano entrambe, e la
-        prima la scriveva mentre la seconda restava ferma al vecchio
-        `is None`: due letture della stessa domanda che potevano divergere --
-        e infatti divergevano, la seconda rifiutava un recapito ESISTENTE con
-        «non esiste in questa casa» invece di dire che non lo sapeva ancora.
+        perche' senza domini non si puo' verificare NIENTE. Estratta qui
+        (review Task 7, Rilievo 1) quando la interrogavano in due --
+        `_verify_now` e la verifica del recapito scelto dal modello, uscita
+        con la fetta «il seguito delle chat divise» -- e le due letture
+        divergevano; resta una funzione perche' la domanda ha un nome.
         """
         return self._registry is None or not self._registry.domains()
-
-    def _verify_recipient(self, service: str) -> str | None:
-        """Il rifiuto della verifica su un recapito, o `None`.
-
-        Senza registro pronto si RIFIUTA (allineato a `_verify_now`, non
-        piu' al silenzio di prima -- review Task 7, Rilievo 1): un recapito
-        che HIRIS non ha potuto verificare non fallisce rumorosamente quando
-        la promessa matura, fa si' che la risposta non arrivi a nessuno --
-        il modo peggiore in cui una promessa puo' rompersi, perche' nessuno
-        se ne accorge finche' non manca all'appuntamento.
-
-        **E fino all'08/09/2026 quel modo restava aperto** (audit delle
-        fondamenta, rilievo 1). Questa funzione chiedeva soltanto «il
-        servizio esiste?», mentre a scadenza lo schedulatore manda la
-        chiamata alla porta, che la passa a `verification()` -- e li' un
-        bersaglio vuoto passa SOLO se il servizio non dichiara un `target`.
-        Misurato sul registro vero (HA 2026.9.1): `notify.send_message`
-        dichiara `target={"entity": [{"domain": ["notify"]}]}` e risponde
-        `ok=False, «serve un bersaglio»`; `notify.mobile_app_*` e
-        `notify.notify` la chiave non ce l'hanno e passano. Il modello sceglie
-        col `search` che lo strumento gli suggerisce, la promessa nasce
-        «verificata adesso», e alle 17:00 la notifica non parte.
-
-        Adesso e' la STESSA domanda, non una piu' debole: si costruisce la
-        chiamata di recapito con `keeper.promise.delivery_call` -- l'unica
-        casa di quella forma, la stessa che usera' lo schedulatore -- e si
-        chiede a `verification()`, esattamente come fa `_verify_now` per un
-        `fai`. Due criteri diversi sullo stesso fatto erano il difetto; una
-        copia piu' furba del criterio sarebbe stata la sua seconda casa.
-
-        Lo specchio dello stato non e' una condizione: una chiamata di
-        recapito non nomina nessuna entita', quindi `verification()` non lo
-        guarda. Rifiutare qui per uno specchio cieco -- come fa `_verify_now`,
-        che le entita' le guarda eccome -- negherebbe una promessa
-        perfettamente legittima.
-        """
-        from ..action.verification import verification
-        from ..keeper.promise import delivery_call
-
-        if self._registry_not_ready():
-            return ("non posso ancora prometterlo con questo recapito: non so "
-                    "cosa questa casa sa fare, perche' il registro dei "
-                    "servizi non e' pronto. Riprova fra un momento.")
-        verdict = verification(delivery_call(service), self._registry,
-                               self._state_readings() or {})
-        if verdict.ok:
-            return None
-        return (f"non posso prometterlo con questo recapito: {verdict.reason}")
 
     def _snapshot(self, entities: list) -> list[dict]:
         """I valori di partenza, presi ADESSO, con la loro unita'.

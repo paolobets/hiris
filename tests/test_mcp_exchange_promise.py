@@ -24,6 +24,7 @@ import pytest_asyncio
 from hiris.app import server
 from hiris.app.action.actuator import ActionActuator
 from hiris.app.chat_settings import ChatSettings
+from hiris.app.chat_thread import ChatThread
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.keeper.sweeper import Sweeper
 from hiris.app.memory.store import MemoryStore
@@ -33,6 +34,9 @@ from tests.test_knowledge_tools import _semina_casa
 TOKEN = "token-di-prova-del-turno-di-promessa"
 INTESTAZIONI_CLI = {"X-HIRIS-Internal-Token": TOKEN}
 ADESSO = 1787324400.0
+# Il filo di chi ha chiesto: ogni promessa ne ha uno (spec 2026-09-26 §2), e
+# il job del ponte lo porta (§2.4). Il turno resta comunque in sola lettura.
+PAOLO = ChatThread("persona:paolo", "pannello")
 
 
 class PortaFinta:
@@ -105,12 +109,11 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
         casa.close()
 
 
-def _crea_in_corso(promesse, *, recapito=None) -> str:
+def _crea_in_corso(promesse) -> str:
     ident = promesse.create({
         "specie": "chiedi", "frase": "fra un'ora verifica la temperatura",
         "quando_ts": ADESSO + 10, "domanda": "e' aumentata?",
-        "recapito": recapito,
-    }, now=ADESSO)["promessa"]["id"]
+    }, thread=PAOLO, now=ADESSO)["promessa"]["id"]
     assert promesse.prendi(ident, now=ADESSO + 11) is True
     return ident
 
@@ -207,16 +210,22 @@ async def test_col_turno_di_promessa_guarda_funziona_ancora(rotta):
 
 
 @pytest.mark.asyncio
-async def test_concludi_dal_ponte_chiude_la_promessa_e_fa_partire_la_notifica(rotta):
+async def test_concludi_dal_ponte_chiude_la_promessa(rotta):
     """Il secondo tempo di `mantieni`, raggiunto dall'altra strada.
 
     Sul ramo sincrono la conclusione torna a `interpreta_promise` e
     l'orologio chiude. Sul ponte non torna niente a nessuno: `conclude` e'
     una `tools/call` come le altre, e se questa rotta si limitasse a
     registrarla nel dispatcher la promessa resterebbe `in_corso` per
-    sempre -- che e' peggio di una fallita, perche' non si vede."""
-    client, promesse, porta = rotta
-    ident = _crea_in_corso(promesse, recapito="notify.mobile_app_x")
+    sempre -- che e' peggio di una fallita, perche' non si vede.
+
+    Fino alla fetta «il seguito delle chat divise» questo test provava anche
+    la notifica sul `recapito` scelto alla nascita: quel ramo e' uscito
+    (spec 2026-09-26 §2, vincolo 2.5), e la notifica al recapito di chi ha
+    chiesto -- risolto al risveglio -- la riporta il Task 3 della stessa
+    fetta. Qui resta cio' che non cambia: la chiusura, e dall'orologio."""
+    client, promesse, _porta = rotta
+    ident = _crea_in_corso(promesse)
 
     risposta = await _jsonrpc(client, {
         "jsonrpc": "2.0", "id": 6, "method": "tools/call",
@@ -232,9 +241,6 @@ async def test_concludi_dal_ponte_chiude_la_promessa_e_fa_partire_la_notifica(ro
     assert p["stato"] == "mantenuta"
     assert p["testo"] == "in bagno +0,4 gradi"
     assert p["avvisare"] is True
-    assert porta.chiamate, "la notifica non e' partita dalla porta"
-    assert porta.chiamate[0][0]["servizio"] == "notify.mobile_app_x"
-    assert porta.chiamate[0][1] == "schedulatore"
 
 
 @pytest.mark.asyncio
@@ -266,7 +272,7 @@ async def test_concludere_senza_avvisare_chiude_lo_stesso_e_non_notifica(rotta):
     """«La condizione non si e' verificata» e' un esito RIUSCITO, e resta
     scritto: e' cio' che rende il silenzio un fatto dichiarato."""
     client, promesse, porta = rotta
-    ident = _crea_in_corso(promesse, recapito="notify.mobile_app_x")
+    ident = _crea_in_corso(promesse)
 
     await _jsonrpc(client, {
         "jsonrpc": "2.0", "id": 7, "method": "tools/call",
@@ -295,3 +301,32 @@ async def test_concludi_con_argomenti_sbagliati_non_chiude_niente(rotta):
 
     assert (await risposta.json())["result"]["isError"] is True
     assert promesse.read(ident)["stato"] == "in_corso"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("nome,argomenti", [
+    ("execute", {"servizio": "light.turn_on",
+                 "bersaglio": {"entity_id": "light.cucina_1"}}),
+    ("remember", {"testo": "a Paolo piace il caffe'"}),
+    ("propose", {"gesto": "crea", "dominio": "automation", "alias": "x",
+                 "descrizione": "x"}),
+    ("promise", {"specie": "chiedi", "frase": "x", "quando": "2099-01-01T00:00:00+00:00",
+                 "domanda": "?"}),
+])
+async def test_la_promessa_col_filo_resta_in_sola_lettura_sul_ponte(rotta, nome, argomenti):
+    """Vincolo 2.8: la promessa ha il filo di Paolo, e il suo turno sul ponte
+    non guadagna per questo niente di cio' che Paolo potrebbe fare in chat --
+    nessuno strumento che scrive, e nessuna promessa nuova."""
+    client, promesse, porta = rotta
+    ident = _crea_in_corso(promesse)
+    assert promesse.read(ident)["thread"] == PAOLO
+
+    risposta = await _jsonrpc(client, {
+        "jsonrpc": "2.0", "id": 10, "method": "tools/call",
+        "params": {"name": nome, "arguments": argomenti},
+    }, promessa=ident)
+
+    testo = (await risposta.json())["result"]["content"][0]["text"]
+    assert "non e' disponibile mentre mantengo una promessa" in testo
+    assert porta.chiamate == []
+    assert [p["id"] for p in promesse.list(thread=PAOLO)] == [ident]

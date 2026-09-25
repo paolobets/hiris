@@ -4,6 +4,7 @@ import os
 import pytest
 
 from hiris.app.action.actuator import ActionActuator
+from hiris.app.chat_thread import ChatThread
 from hiris.app.keeper.promise import TOLLERANZA_S, delivery_call
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.keeper.sweeper import Sweeper
@@ -11,6 +12,8 @@ from tests._contracts import assert_stessa_firma
 
 ADESSO = 1_755_600_000.0
 pytestmark = pytest.mark.asyncio
+# Il filo di chi ha chiesto (spec 2026-09-26 §2): ogni promessa ne ha uno.
+PAOLO = ChatThread("persona:paolo", "pannello")
 
 
 class PortaFinta:
@@ -19,11 +22,13 @@ class PortaFinta:
 
     def __init__(self, occurrence=None):
         self.chiamate = []
+        self.soggetti = []
         self._occurrence = occurrence or {"eseguito": True, "cambiato": ["light.studio"],
                                 "esecuzione_id": "e1"}
 
     async def __call__(self, chiamata, *, actor, subject=None):
         self.chiamate.append((chiamata, actor))
+        self.soggetti.append(subject)
         return self._occurrence
 
 
@@ -73,19 +78,30 @@ def archivio(tmp_path):
     a.close()
 
 
-def _crea_fai(archivio, *, quando, recapito=None):
+def _crea_fai(archivio, *, quando):
     return archivio.create({
         "specie": "fai", "frase": "alle 17 accendi lo studio", "quando_ts": quando,
         "chiamata": {"servizio": "light.turn_on", "bersaglio": {"entita": ["light.studio"]}},
-        "recapito": recapito,
-    }, now=ADESSO)["promessa"]["id"]
+    }, thread=PAOLO, now=ADESSO)["promessa"]["id"]
 
 
-def _crea_chiedi(archivio, *, quando, recapito=None):
+def _crea_chiedi(archivio, *, quando):
     return archivio.create({
         "specie": "chiedi", "frase": "fra un'ora verifica la temperatura",
-        "quando_ts": quando, "domanda": "e' aumentata?", "recapito": recapito,
-    }, now=ADESSO)["promessa"]["id"]
+        "quando_ts": quando, "domanda": "e' aumentata?",
+    }, thread=PAOLO, now=ADESSO)["promessa"]["id"]
+
+
+def _seed_legacy_chiedi(archivio, *, quando, recapito):
+    """Una promessa nata PRIMA delle promesse divise, col `recapito` che il
+    modello aveva scelto. `create` non la sa piu' far nascere cosi' -- ed e'
+    giusto -- quindi si scrive col SQL, com'e' sul disco di chi aggiorna."""
+    archivio._conn.execute(
+        "INSERT INTO promesse(id,specie,frase,quando_ts,domanda,recapito,stato,"
+        "nata_ts) VALUES('di-prima','chiedi','fra un''ora verifica',?,"
+        "'e'' aumentata?',?,'in_attesa',?)", (quando, recapito, ADESSO))
+    archivio._conn.commit()
+    return "di-prima"
 
 
 async def test_un_fai_scaduto_passa_dalla_porta_con_origine_schedulatore(archivio):
@@ -98,6 +114,17 @@ async def test_un_fai_scaduto_passa_dalla_porta_con_origine_schedulatore(archivi
     p = archivio.read(ident)
     assert p["stato"] == "mantenuta"
     assert p["esecuzione_id"] == "e1"
+
+
+async def test_la_cronaca_del_fai_nomina_chi_l_aveva_chiesto(archivio):
+    """Ruling 2.7: al risveglio la porta riceve il soggetto ricostruito dal
+    filo -- specie e id, niente nome -- cosi' che la cronaca dica per conto
+    di chi lo schedulatore ha agito."""
+    _crea_fai(archivio, quando=ADESSO + 10)
+    porta = PortaFinta()
+    await Sweeper(archivio, execute=porta, interpreta=TurnoFinto()).batti(ADESSO + 11)
+
+    assert porta.soggetti == [{"specie": "persona", "id": "paolo"}]
 
 
 async def test_oltre_la_tolleranza_non_si_esegue_mai_e_il_motivo_misura(archivio):
@@ -187,48 +214,31 @@ async def test_una_porta_che_solleva_non_ferma_il_battito(archivio):
     assert archivio.read(sana)["stato"] == "mantenuta"
 
 
-async def test_un_chiedi_con_recapito_notifica_e_registra_cio_che_ha_detto(archivio):
-    ident = _crea_chiedi(archivio, quando=ADESSO + 10, recapito="notify.mobile_app_x")
+async def test_una_promessa_di_prima_col_recapito_non_notifica_piu(archivio):
+    """Vincolo 2.5: il `recapito` delle righe vecchie non si usa per
+    recapitare. L'aveva scelto il modello, alla nascita, e nessuno lo ha piu'
+    verificato; il recapito vero si risolve al risveglio dal soggetto di chi
+    ha chiesto (spec 2026-09-26 §2.3). Mutazione eseguita: rimettere il ramo
+    `if avvisare and promise["recapito"]` fa diventare rosso questo test.
+
+    Prima (fino alla fetta «il seguito delle chat divise») questo test
+    provava il contrario: una riga col recapito notificava. La forma della
+    chiamata di recapito resta provata qui sotto
+    (`test_la_notifica_dello_schedulatore_attraversa_la_verifica_vera`)."""
+    ident = _seed_legacy_chiedi(archivio, quando=ADESSO + 10,
+                                  recapito="notify.mobile_app_x")
     porta = PortaFinta()
     turno = TurnoFinto({"avvisare": True, "testo": "e' salita di 2 gradi"})
     await Sweeper(archivio, execute=porta, interpreta=turno).batti(ADESSO + 11)
 
-    assert len(porta.chiamate) == 1
-    chiamata, actor = porta.chiamate[0]
-    assert chiamata["servizio"] == "notify.mobile_app_x"
-    assert "2 gradi" in chiamata["dati"]["message"]
-    assert actor == "schedulatore"
-
+    assert porta.chiamate == [], "una notifica e' partita verso il recapito vecchio"
     p = archivio.read(ident)
     assert (p["stato"], p["avvisare"], p["testo"]) == ("mantenuta", True, "e' salita di 2 gradi")
-
-    assert chiamata == delivery_call("notify.mobile_app_x", "e' salita di 2 gradi"), (
-        "la forma della chiamata di recapito ha UNA casa "
-        "(`keeper/promise.delivery_call`): e' quella che la verifica alla "
-        "NASCITA usa per fare la stessa domanda di questa qui")
-
-
-async def test_la_notifica_fallita_lascia_il_testo_e_dichiara_la_consegna_mancata(archivio):
-    """Un recapito VALIDO il cui invio fallisce: non e' il caso "nessun canale"
-    (quello e' gia' provato altrove) -- qui il canale c'e', ma la porta non ce
-    la fa. La promessa resta comunque mantenuta (l'ho guardata, ho una
-    risposta), il testo resta leggibile, e il motivo dichiara la consegna
-    mancata riportando l'errore vero della porta."""
-    ident = _crea_chiedi(archivio, quando=ADESSO + 10, recapito="notify.mobile_app_x")
-    porta = PortaFinta({"eseguito": False, "errore": "il servizio di notifica non risponde"})
-    turno = TurnoFinto({"avvisare": True, "testo": "e' salita di 2 gradi"})
-    await Sweeper(archivio, execute=porta, interpreta=turno).batti(ADESSO + 11)
-
-    assert len(porta.chiamate) == 1       # il tentativo c'e' stato
-    p = archivio.read(ident)
-    assert p["stato"] == "mantenuta"
-    assert p["testo"] == "e' salita di 2 gradi"
-    assert "non e' partita" in p["motivo"]
-    assert "non risponde" in p["motivo"]
+    assert "nessun modo" in p["motivo"]
 
 
 async def test_il_silenzio_non_notifica_ma_resta_scritto(archivio):
-    ident = _crea_chiedi(archivio, quando=ADESSO + 10, recapito="notify.mobile_app_x")
+    ident = _crea_chiedi(archivio, quando=ADESSO + 10)
     porta = PortaFinta()
     turno = TurnoFinto({"avvisare": False, "testo": "non e' cambiata: 21,4 gradi come prima"})
     await Sweeper(archivio, execute=porta, interpreta=turno).batti(ADESSO + 11)
@@ -241,7 +251,7 @@ async def test_il_silenzio_non_notifica_ma_resta_scritto(archivio):
 
 
 async def test_avvisare_senza_recapito_non_inventa_un_canale_e_lo_dichiara(archivio):
-    ident = _crea_chiedi(archivio, quando=ADESSO + 10, recapito=None)
+    ident = _crea_chiedi(archivio, quando=ADESSO + 10)
     porta = PortaFinta()
     await Sweeper(
         archivio, execute=porta,
@@ -323,32 +333,36 @@ class _CasaMinima:
         return [{"id": "sun.sun", "state": "above_horizon"}]
 
 
-async def test_la_notifica_dello_schedulatore_attraversa_la_verifica_vera(archivio):
-    from hiris.app.action.actuator import ActionActuator
+async def test_la_notifica_dello_schedulatore_attraversa_la_verifica_vera():
+    """La forma della chiamata di recapito (`delivery_call`) contro la porta e
+    la verifica VERE, con l'attore dello schedulatore.
+
+    Fino alla fetta «il seguito delle chat divise» ci passava l'orologio,
+    notificando sul `recapito` scelto alla nascita; quel ramo e' uscito
+    (vincolo 2.5) e il recapito risolto al risveglio lo cabla il Task 3 della
+    stessa fetta, che riporta l'orologio dentro questa prova (vincolo 3.1).
+    Nel frattempo la proprieta' che conta resta provata: la chiamata con cui
+    HIRIS notifica passa la verifica per un `notify.mobile_app_*` vero."""
     from hiris.app.action.registry import ServiceRegistry
 
-    ident = _crea_chiedi(archivio, quando=ADESSO + 10, recapito="notify.mobile_app_x")
     client = _ClientSoloNotifica()
     registro = ServiceRegistry()
     await registro.refresh(client)
     porta = ActionActuator(client, registro, _CasaMinima())
-    turno = TurnoFinto({"avvisare": True, "testo": "e' salita di 2 gradi"})
 
-    await Sweeper(archivio, execute=porta.execute, interpreta=turno).batti(ADESSO + 11)
+    esito = await porta.execute(
+        delivery_call("notify.mobile_app_x", "e' salita di 2 gradi"),
+        actor="schedulatore")
 
     assert client.chiamate == [
         ("notify", "mobile_app_x",
          {"message": "e' salita di 2 gradi", "title": "HIRIS"})], (
         "la chiamata non e' arrivata a Home Assistant: la guardia sul "
         "bersaglio vuoto ha rifiutato una notifica che non ha un bersaglio")
-    p = archivio.read(ident)
-    assert p["stato"] == "mantenuta"
-    assert p["motivo"] is None, (
-        f"la notifica non e' partita, ed e' esattamente il difetto CRITICO "
-        f"della review finale: {p['motivo']!r}")
+    assert esito.get("eseguito") is True, esito
 
 
-async def test_un_recapito_che_pretende_un_bersaglio_NON_arriva_a_scadenza(archivio):
+async def test_un_recapito_che_pretende_un_bersaglio_NON_arriva_a_scadenza():
     """L'altra meta' del rilievo 1: cosa succede se una promessa cosi' nasce.
 
     E' la cucitura vera, con la porta e il registro VERI. `notify.send_message`
@@ -356,29 +370,26 @@ async def test_un_recapito_che_pretende_un_bersaglio_NON_arriva_a_scadenza(archi
     costruzione il bersaglio vuoto: la verifica la rifiuta, la notifica non
     parte, e il proprietario legge il motivo in Impegni DOPO l'appuntamento.
 
-    Questo test non chiede di cambiare la scadenza -- il rifiuto qui e'
-    giusto, ed e' cio' che la nascita deve saper prevedere. E' la misura del
-    danno che la verifica alla nascita adesso impedisce, e la ragione per cui
-    quel rifiuto non e' una severita' in piu': e' la stessa risposta, data in
-    tempo utile."""
+    Il rifiuto qui e' giusto: un servizio che pretende un bersaglio non e'
+    un recapito. Dalla fetta «il seguito delle chat divise» nessuno sceglie
+    piu' un servizio cosi' -- il recapito sono i `notify.mobile_app_*` della
+    persona -- ma la verifica resta quella che decide, ed e' questo che la
+    prova tiene fermo finche' il Task 3 non la riporta dentro l'orologio."""
     from hiris.app.action.registry import ServiceRegistry
 
-    ident = _crea_chiedi(archivio, quando=ADESSO + 10, recapito="notify.send_message")
     client = _ClientSoloNotifica()
     registro = ServiceRegistry()
     await registro.refresh(client)
     porta = ActionActuator(client, registro, _CasaMinima())
-    turno = TurnoFinto({"avvisare": True, "testo": "e' salita di 2 gradi"})
 
-    await Sweeper(archivio, execute=porta.execute, interpreta=turno).batti(ADESSO + 11)
+    esito = await porta.execute(
+        delivery_call("notify.send_message", "e' salita di 2 gradi"),
+        actor="schedulatore")
 
     assert client.chiamate == [], "niente e' partito verso Home Assistant"
-    p = archivio.read(ident)
-    assert p["stato"] == "mantenuta", (
-        "la risposta c'e' e si legge dalla pagina: e' la CONSEGNA a essere "
-        "mancata")
-    assert "bersaglio" in (p["motivo"] or ""), (
-        f"il motivo deve dire cosa e' mancato: {p['motivo']!r}")
+    assert esito.get("eseguito") is False
+    assert "bersaglio" in (esito.get("errore") or ""), (
+        f"il rifiuto deve dire cosa e' mancato: {esito!r}")
 
 
 async def test_la_nota_del_ripiego_finisce_nel_motivo_della_promessa(archivio):

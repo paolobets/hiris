@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
+from hiris.app.chat_thread import ChatThread
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.tools import (
     EXECUTE_TOOL_DEF,
@@ -344,8 +345,13 @@ class _FakeAgendaStore:
     (nessun obbligatorio mancante, nessun nome ignoto) TERMINI con una
     risposta vera invece di un `errore` che nasconderebbe un falso verde."""
 
-    def list(self, solo_in_sospeso):
+    def list(self, *, thread, solo_in_sospeso):
         return []
+
+
+# Il filo del turno: `agenda` lavora sulle promesse di chi chiede (spec
+# 2026-09-26 §2), e un dispatcher senza filo la rifiuta.
+_THREAD = ChatThread("persona:paolo", "pannello")
 
 
 @pytest.mark.asyncio
@@ -450,7 +456,7 @@ async def test_a_tool_without_required_arguments_is_not_blocked():
     verrebbe rifiutato per mancanza di `tutte`, che invece e' facoltativo
     (verificato eseguendo: `AssertionError` su `assert "errore" not in result`).
     """
-    d = ToolDispatcher(None, None, agenda=_FakeAgendaStore())
+    d = ToolDispatcher(None, None, agenda=_FakeAgendaStore(), thread=_THREAD)
     result = await d.dispatch("agenda", {})
     assert "errore" not in result
     assert result["promesse"] == []
@@ -468,7 +474,7 @@ async def test_a_known_optional_argument_is_not_mistaken_for_unknown():
     ignoto (verificato eseguendo: `AssertionError` su
     `assert "errore" not in result`).
     """
-    d = ToolDispatcher(None, None, agenda=_FakeAgendaStore())
+    d = ToolDispatcher(None, None, agenda=_FakeAgendaStore(), thread=_THREAD)
     result = await d.dispatch("agenda", {"tutte": True})
     assert "errore" not in result
 

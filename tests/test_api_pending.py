@@ -28,6 +28,7 @@ import pytest_asyncio
 
 from hiris.app.action.construction.revisions import ConstructionStore
 from hiris.app.chat_store import close_all_stores
+from hiris.app.chat_thread import ChatThread
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.server import create_app
 
@@ -37,6 +38,10 @@ from hiris.app.server import create_app
 from tests.test_settings_api import csrf_stretto  # noqa: F401
 
 ADESSO = 1_756_000_000.0
+# Il filo di chi chiede con l'app vera in prova: il confine senza token
+# (`HIRIS_ALLOW_NO_TOKEN`, conftest.py) da' `sviluppo`. Le promesse sono di
+# chi le chiede (spec 2026-09-26 §2): quelle di queste prove sono sue.
+SVILUPPO = ChatThread("sviluppo:-", "sviluppo")
 
 
 @pytest.fixture(autouse=True)
@@ -80,7 +85,7 @@ def _promessa(archivio, n: int) -> str:
     return archivio.create(
         {"specie": "chiedi", "frase": f"promessa {n}",
          "quando_ts": ADESSO + 3600 + n, "domanda": "e' aumentata?"},
-        now=ADESSO)["promessa"]["id"]
+        thread=SVILUPPO, now=ADESSO)["promessa"]["id"]
 
 
 def _proposta(archivio, n: int, *, now: float | None = None) -> str:
@@ -145,14 +150,14 @@ async def test_segna_solo_gli_id_passati(client):
     identificatori = [_promessa(agenda, n) for n in range(3)]
     for ident in identificatori:
         agenda.concludi(ident, state="mantenuta", now=ADESSO + 1)
-    assert agenda.count_unread() == 3
+    assert agenda.count_unread(SVILUPPO) == 3
 
     risposta = await client.post("/api/agenda/read",
                                  json={"ids": identificatori[:2]},
                                  headers={"X-Requested-With": "fetch"})
     assert risposta.status == 200
     assert (await risposta.json())["marked"] == 2
-    assert agenda.count_unread() == 1
+    assert agenda.count_unread(SVILUPPO) == 1
 
 
 @pytest.mark.asyncio
@@ -195,7 +200,7 @@ async def test_post_senza_x_requested_with_e_403_e_non_segna(client, csrf_strett
 
     risposta = await client.post("/api/agenda/read", json={"ids": [ident]})
     assert risposta.status == 403
-    assert agenda.count_unread() == 1
+    assert agenda.count_unread(SVILUPPO) == 1
 
 
 @pytest.mark.asyncio

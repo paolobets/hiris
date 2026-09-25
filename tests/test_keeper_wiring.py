@@ -36,6 +36,7 @@ from hiris.app import server
 from hiris.app.action.actuator import ActionActuator
 from hiris.app.action.journal import Journal
 from hiris.app.api.handlers_chat import create_tool_dispatcher
+from hiris.app.chat_thread import ChatThread
 from hiris.app.keeper.exchange import interpreta_promise
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.keeper.sweeper import Sweeper
@@ -172,7 +173,7 @@ async def test_al_riavvio_le_promesse_in_corso_vengono_risanate(promesse, porta_
     ident = promesse.create({
         "specie": "fai", "frase": "x", "quando_ts": 1_000.0 + 3600.0,
         "chiamata": {"servizio": "light.turn_on", "bersaglio": {"entita": ["light.x"]}},
-    }, now=1_000.0)["promessa"]["id"]
+    }, thread=ChatThread("persona:paolo", "pannello"), now=1_000.0)["promessa"]["id"]
     promesse.prendi(ident, now=1_100.0)
     assert promesse.read(ident)["stato"] == "in_corso"  # precondizione del test
 

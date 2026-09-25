@@ -320,6 +320,12 @@ def _enqueue_to_bridge(app, promise: dict) -> dict:
         },
         now + deadline_min * 60,
         now=now,
+        # Il filo di chi l'ha chiesta (spec 2026-09-26 §2.4): nelle colonne
+        # della coda, non nel contesto -- il turno resta in sola lettura
+        # (`SOLA_LETTURA`) e non riceve ne' il soggetto ne' un soffitto; il
+        # filo serve a chi consegna l'esito, e `claimed_chat` continua a non
+        # vedere questo job perche' filtra `kind='chat'`.
+        thread=promise.get("thread"),
     )
     logger.info("promessa %s: turno accodato al piano (scadenza %d min)",
                 promise["id"], deadline_min)

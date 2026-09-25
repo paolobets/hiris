@@ -29,6 +29,7 @@ from aiohttp import web
 
 from hiris.app import server
 from hiris.app.chat_settings import ChatSettings
+from hiris.app.chat_thread import ChatThread
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.provider_occurrences import OccurrenceRegistry
 from hiris.app.reasoning.queue import ReasoningQueue
@@ -51,6 +52,8 @@ async def _finto_worker(request, handler):
 TOKEN = "token-di-prova-della-consegna"
 INTESTAZIONI = {"X-HIRIS-Internal-Token": TOKEN}
 ADESSO = 1787324400.0
+# Il filo di chi ha chiesto: ogni promessa ne ha uno (spec 2026-09-26 §2).
+PAOLO = ChatThread("persona:paolo", "pannello")
 
 
 @pytest_asyncio.fixture
@@ -89,8 +92,8 @@ async def consegna(aiohttp_client, tmp_path, monkeypatch):
 def _promessa_in_corso(promesse) -> str:
     ident = promesse.create({
         "specie": "chiedi", "frase": "fra un'ora verifica la temperatura",
-        "quando_ts": ADESSO + 10, "domanda": "e' aumentata?", "recapito": None,
-    }, now=ADESSO)["promessa"]["id"]
+        "quando_ts": ADESSO + 10, "domanda": "e' aumentata?",
+    }, thread=PAOLO, now=ADESSO)["promessa"]["id"]
     assert promesse.prendi(ident, now=ADESSO + 11) is True
     return ident
 

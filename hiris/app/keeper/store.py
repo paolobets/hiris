@@ -17,10 +17,12 @@ import secrets
 import threading
 import time
 
+from ..chat_thread import ChatThread
 from ..storage import connect, init_schema
 from .promise import (
     CEILING_IN_SOSPESO,
     CONSERVAZIONE_S,
+    HOUSE_CEILING_IN_SOSPESO,
     STATES_CONCLUSI,
     STATES_ESITO,
     STATES_SOSPESO,
@@ -41,6 +43,12 @@ CREATE TABLE IF NOT EXISTS promesse (
     chiamata_json TEXT,
     domanda TEXT,
     istantanea_json TEXT,
+    -- Il servizio notify che il MODELLO sceglieva alla nascita. Dalla fetta
+    -- «il seguito delle chat divise» (spec 2026-09-26 §2) non si scrive
+    -- piu' e non si legge piu' per recapitare: il recapito si risolve al
+    -- risveglio dal soggetto di chi ha chiesto (`keeper/recipient.py`). La
+    -- colonna resta perche' le righe vecchie la portano, e togliere una
+    -- colonna in SQLite e' una riscrittura della tabella per niente.
     recapito TEXT,
     stato TEXT NOT NULL DEFAULT 'in_attesa',
     motivo TEXT,
@@ -50,7 +58,12 @@ CREATE TABLE IF NOT EXISTS promesse (
     nata_ts REAL NOT NULL,
     risvegliata_ts REAL,
     esito_letto_ts REAL,
-    entities_at_birth INTEGER
+    entities_at_birth INTEGER,
+    -- Il filo di chi l'ha chiesta (spec 2026-09-26 §2): gli stessi nomi di
+    -- `chat_sessions`, `reasoning_jobs`, `costruzioni`. NULL per le promesse
+    -- nate prima, invisibili a tutti finche' il proprietario non le adotta.
+    subject_key TEXT,
+    entry_point TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_promesse_scadenza ON promesse(stato, quando_ts);
 """
@@ -133,6 +146,34 @@ def _migration_3(conn) -> None:
         conn.execute("ALTER TABLE promesse ADD COLUMN entities_at_birth INTEGER")
 
 
+def _migration_4(conn) -> None:
+    """v3 -> v4: il filo di chi ha chiesto (fetta «il seguito delle chat
+    divise», spec 2026-09-26 §2).
+
+    `ALTER TABLE` solo se la colonna manca -- un archivio che nasce oggi la
+    porta gia' da `_SCHEMA` (stesso pattern di `revisions.py::_migration_2`).
+    **Nessun indice**: le letture per filo restano entro il tetto della casa
+    (`HOUSE_CEILING_IN_SOSPESO` in sospeso, piu' novanta giorni di storico),
+    e l'indice su `stato` le serve gia'. Le righe esistenti restano NULL:
+    sono di prima, e le adotta il proprietario (`chat_thread.adopt_if_owner`).
+    """
+    colonne = {r[1] for r in conn.execute("PRAGMA table_info(promesse)")}
+    if "subject_key" not in colonne:
+        conn.execute("ALTER TABLE promesse ADD COLUMN subject_key TEXT")
+    if "entry_point" not in colonne:
+        conn.execute("ALTER TABLE promesse ADD COLUMN entry_point TEXT")
+
+
+# La condizione «di questo filo», una volta sola: ogni lettura e scrittura per
+# conto di qualcuno la porta, con i due valori come parametri (`?`), mai
+# incollati nel testo della query.
+_OF_THREAD = "subject_key = ? AND entry_point = ?"
+
+
+def _thread_params(thread: ChatThread) -> tuple[str, str]:
+    return (thread.subject_key, thread.entry_point)
+
+
 def _json(value) -> str | None:
     return None if value is None else json.dumps(value)
 
@@ -141,8 +182,8 @@ class AgendaStore:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=3,
-                    migrations={2: _migration_2, 3: _migration_3})
+        init_schema(self._conn, _SCHEMA, version=4,
+                    migrations={2: _migration_2, 3: _migration_3, 4: _migration_4})
 
     def close(self) -> None:
         with self._lock:
@@ -150,37 +191,59 @@ class AgendaStore:
 
     # -- scrivere ------------------------------------------------------
 
-    def create(self, data: dict, *, now: float) -> dict:
+    def create(self, data: dict, *, thread: ChatThread, now: float) -> dict:
+        """Una promessa nuova, nel filo di chi l'ha chiesta.
+
+        `thread` non ha un default: una promessa senza nessuno che l'abbia
+        chiesta non avrebbe a chi tornare. Chi non ha un filo lo dice prima
+        (`ToolDispatcher._promise`). `recapito` non si scrive, anche se
+        arriva nei dati: vedi lo schema.
+
+        Due tetti, in quest'ordine: quello del filo (e' il caso normale, e il
+        messaggio parla delle TUE promesse) e quello della casa (vedi
+        `promise.HOUSE_CEILING_IN_SOSPESO` per il perche').
+        """
         reason = validate(data, now=now)
         if reason is not None:
             return {"errore": reason}
         with self._lock:
             self._prune(now)
-            in_sospeso = self._conn.execute(
+            mine = self._conn.execute(
+                f"SELECT count(*) FROM promesse WHERE stato IN ({_SOSPESI}) "
+                f"AND {_OF_THREAD}", _thread_params(thread)).fetchone()[0]
+            if mine >= CEILING_IN_SOSPESO:
+                return {"errore": (
+                    f"hai gia' {CEILING_IN_SOSPESO} promesse in sospeso, che e' "
+                    "il tetto che HIRIS si e' dato: disdicine una prima di "
+                    "farne un'altra."
+                )}
+            house = self._conn.execute(
                 f"SELECT count(*) FROM promesse WHERE stato IN ({_SOSPESI})"
             ).fetchone()[0]
-            if in_sospeso >= CEILING_IN_SOSPESO:
+            if house >= HOUSE_CEILING_IN_SOSPESO:
                 return {"errore": (
-                    f"ho gia' {CEILING_IN_SOSPESO} promesse in sospeso, che e' il tetto "
-                    "che HIRIS si e' dato: disdicine una prima di "
-                    "farne un'altra."
+                    f"in questa casa ci sono gia' {HOUSE_CEILING_IN_SOSPESO} "
+                    "promesse in sospeso, che e' il tetto che HIRIS si e' dato "
+                    "per tutti insieme: ne potro' prendere un'altra quando "
+                    "qualcuna si sara' conclusa."
                 )}
             ident = secrets.token_urlsafe(9)
             self._conn.execute(
                 "INSERT INTO promesse(id,specie,frase,quando_ts,quando_detto,fuso,"
-                "chiamata_json,domanda,istantanea_json,recapito,stato,nata_ts,"
-                "entities_at_birth) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,'in_attesa',?,?)",
+                "chiamata_json,domanda,istantanea_json,stato,nata_ts,"
+                "entities_at_birth,subject_key,entry_point) "
+                "VALUES(?,?,?,?,?,?,?,?,?,'in_attesa',?,?,?,?)",
                 (ident, data["specie"], data["frase"].strip(), float(data["quando_ts"]),
                  data.get("quando_detto"), data.get("fuso"),
                  _json(data.get("chiamata")), data.get("domanda"),
-                 _json(data.get("istantanea")), data.get("recapito"),
+                 _json(data.get("istantanea")),
                  now,
                  # Quante entita' toccava il bersaglio alla nascita (B-6).
                  # `None` quando non c'e' niente da risolvere -- un bersaglio
                  # di sole entita' -- ed e' diverso da `0`, che direbbe
                  # «nessuna entita'».
-                 data.get("entities_at_birth")))
+                 data.get("entities_at_birth"),
+                 *_thread_params(thread)))
             self._conn.commit()
         return {"promessa": self.read(ident)}
 
@@ -211,7 +274,7 @@ class AgendaStore:
                  None if avvisare is None else int(avvisare), now, promise_id))
             self._conn.commit()
 
-    def mark_read(self, ids: list[str], *, now: float) -> int:
+    def mark_read(self, ids: list[str], *, thread: ChatThread, now: float) -> int:
         """Segna letti gli esiti degli id passati. Torna quante righe ha toccato.
 
         Le tre condizioni della `WHERE` servono tutte, e ognuna esclude un
@@ -223,7 +286,9 @@ class AgendaStore:
           leggere, e scriverle addosso un'ora di lettura sarebbe un fatto
           falso in archivio;
         - `esito_letto_ts IS NULL`: rimarcare una riga gia' letta ne
-          falserebbe il momento.
+          falserebbe il momento;
+        - il filo: l'id di un'altra persona non si segna, e conta zero come
+          uno inesistente (spec 2026-09-26 §2).
         """
         if not ids:
             return 0
@@ -231,12 +296,13 @@ class AgendaStore:
         with self._lock:
             cur = self._conn.execute(
                 f"UPDATE promesse SET esito_letto_ts=? WHERE id IN ({marks}) "
-                f"AND stato IN ({_ESITI}) AND esito_letto_ts IS NULL",
-                (now, *ids))
+                f"AND stato IN ({_ESITI}) AND esito_letto_ts IS NULL "
+                f"AND {_OF_THREAD}",
+                (now, *ids, *_thread_params(thread)))
             self._conn.commit()
             return cur.rowcount
 
-    def cancel(self, promise_id: str, *, now: float) -> dict:
+    def cancel(self, promise_id: str, *, thread: ChatThread, now: float) -> dict:
         """`in_attesa` -> `disdetta`, atomica sullo stesso modello di `prendi`.
 
         Non si legge lo stato per DECIDERE: si scrive con una
@@ -246,17 +312,23 @@ class AgendaStore:
         sarebbe avvenuta e l'archivio direbbe comunque «disdetta». La lettura
         resta -- serve a dire ALL'UTENTE perche' non si e' disdetta -- ma
         arriva dopo, per costruire il messaggio, mai per arbitrare.
+
+        **Solo nel filo di chi disdice**, in tutte e due le mosse: una
+        promessa di un altro filo risponde esattamente come una che non
+        esiste (spec 2026-09-26 §2) -- un «esiste, ma non e' tua» direbbe a
+        Marta che Paolo ha qualcosa in programma.
         """
         with self._lock:
             cur = self._conn.execute(
                 "UPDATE promesse SET stato='disdetta', "
                 "risvegliata_ts=COALESCE(risvegliata_ts, ?) "
-                "WHERE id=? AND stato='in_attesa'", (now, promise_id))
+                f"WHERE id=? AND stato='in_attesa' AND {_OF_THREAD}",
+                (now, promise_id, *_thread_params(thread)))
             self._conn.commit()
             riuscita = cur.rowcount == 1
+        row = self.read_in_thread(promise_id, thread)
         if riuscita:
-            return {"promessa": self.read(promise_id)}
-        row = self.read(promise_id)
+            return {"promessa": row}
         if row is None:
             return {"errore": "non ho nessuna promessa con quell’identificatore."}
         return {
@@ -317,20 +389,77 @@ class AgendaStore:
                 "SELECT * FROM promesse WHERE id=?", (promise_id,)).fetchone()
         return None if row is None else serializza(row)
 
-    def list(self, *, solo_in_sospeso: bool = False, limit: int = 50) -> list[dict]:
+    def read_in_thread(self, promise_id: str, thread: ChatThread) -> dict | None:
+        """La promessa, se e' di QUESTO filo; `None` se non esiste o e' di un
+        altro -- per chi chiede sono la stessa cosa (spec 2026-09-26 §2).
+
+        `read` senza filo resta, ed e' per chi lavora per conto della
+        promessa e non di chi guarda: l'orologio, la consegna del ponte, la
+        rotta MCP che verifica `X-HIRIS-Promessa`."""
+        with self._lock:
+            row = self._conn.execute(
+                f"SELECT * FROM promesse WHERE id=? AND {_OF_THREAD}",
+                (promise_id, *_thread_params(thread))).fetchone()
+        return None if row is None else serializza(row)
+
+    def read_by_execution(self, execution_id: str) -> dict | None:
+        """La promessa che ha prodotto questa esecuzione, o `None`.
+
+        Serve a `GET /api/executions/{id}`: la cronaca di cio' che una
+        promessa ha fatto e' di chi l'ha chiesta, non di chiunque ne indovini
+        l'id.
+        """
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM promesse WHERE esecuzione_id=? LIMIT 1",
+                (execution_id,)).fetchone()
+        return None if row is None else serializza(row)
+
+    def list(self, *, thread: ChatThread, solo_in_sospeso: bool = False,
+             limit: int = 50) -> list[dict]:
         with self._lock:
             if solo_in_sospeso:
                 righe = self._conn.execute(
                     f"SELECT * FROM promesse WHERE stato IN ({_SOSPESI}) "
-                    "ORDER BY quando_ts ASC LIMIT ?",
-                    (int(limit),)).fetchall()
+                    f"AND {_OF_THREAD} ORDER BY quando_ts ASC LIMIT ?",
+                    (*_thread_params(thread), int(limit))).fetchall()
             else:
                 righe = self._conn.execute(
-                    "SELECT * FROM promesse ORDER BY quando_ts DESC LIMIT ?",
-                    (int(limit),)).fetchall()
+                    f"SELECT * FROM promesse WHERE {_OF_THREAD} "
+                    "ORDER BY quando_ts DESC LIMIT ?",
+                    (*_thread_params(thread), int(limit))).fetchall()
         return [serializza(r) for r in righe]
 
-    def count_unread(self) -> int:
+    def count_pending(self, thread: ChatThread) -> int:
+        """Quante promesse di questo filo sono in sospeso: cio' che il tetto
+        per filo (`CEILING_IN_SOSPESO`) misura."""
+        with self._lock:
+            return self._conn.execute(
+                f"SELECT count(*) FROM promesse WHERE stato IN ({_SOSPESI}) "
+                f"AND {_OF_THREAD}", _thread_params(thread)).fetchone()[0]
+
+    def has_orphans(self) -> bool:
+        with self._lock:
+            return self._conn.execute(
+                "SELECT 1 FROM promesse WHERE subject_key IS NULL LIMIT 1"
+            ).fetchone() is not None
+
+    def adopt_orphans(self, thread: ChatThread) -> int:
+        """Le promesse senza filo diventano di `thread`. Torna quante.
+
+        CHI adotta non si decide qui: lo decide `chat_thread.adopt_if_owner`,
+        l'unico chiamante, con la stessa regola della cronologia. Una volta
+        sola per costruzione: dopo, nessuna riga ha piu' `subject_key IS
+        NULL`, e le promesse nuove nascono tutte con un filo.
+        """
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE promesse SET subject_key = ?, entry_point = ? "
+                "WHERE subject_key IS NULL", _thread_params(thread))
+            self._conn.commit()
+            return cur.rowcount
+
+    def count_unread(self, thread: ChatThread) -> int:
         """Quante promesse concluse hanno un esito che nessuno ha letto.
 
         E' il numero del pallino degli Impegni. NON conta le promesse in
@@ -341,12 +470,14 @@ class AgendaStore:
 
         Le due condizioni sono ENTRAMBE necessarie: `esito_letto_ts` e' NULL
         anche per ogni promessa in sospeso (non ha ancora un esito), quindi
-        da sola non dice «da leggere».
+        da sola non dice «da leggere». E il filo: il pallino di Marta non si
+        accende per un esito di Paolo (spec 2026-09-26 §2).
         """
         with self._lock:
             return self._conn.execute(
                 f"SELECT count(*) FROM promesse WHERE stato IN ({_ESITI}) "
-                "AND esito_letto_ts IS NULL").fetchone()[0]
+                f"AND esito_letto_ts IS NULL AND {_OF_THREAD}",
+                _thread_params(thread)).fetchone()[0]
 
     def scadute(self, now: float) -> list[dict]:
         with self._lock:

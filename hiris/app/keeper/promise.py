@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import json
 
+from ..chat_thread import ChatThread
+
 VERB = ("fai", "chiedi")
 STATES_CONCLUSI = ("mantenuta", "saltata", "disdetta", "fallita")
 # L'insieme «in sospeso» -- la sua UNICA casa (review finale, rilievo ②).
@@ -60,11 +62,21 @@ STATES_ESITO = ("mantenuta", "saltata", "fallita")
 # Copre il caso vero per cui esiste: un aggiornamento dell'add-on che cade
 # sopra l'orario.
 TOLLERANZA_S = 120
-# I due tetti (spec §9.1.6): non si promette oltre 30 giorni, e non stanno in
+# I tetti (spec §9.1.6): non si promette oltre 30 giorni, e non stanno in
 # sospeso piu' di 50 promesse. Servono perche' un modello che va in circolo non
 # deve poter riempire il disco.
 ORIZZONTE_S = 30 * 86400
+# **Le 50 sono PER FILO** dalla fetta «il seguito delle chat divise» (spec
+# 2026-09-26 §2): con un tetto della casa, le promesse di Marta avrebbero
+# potuto togliere a Paolo il diritto di prometterne una -- e il messaggio di
+# rifiuto gli avrebbe parlato di promesse che non vede.
 CEILING_IN_SOSPESO = 50
+# **E il totale resta limitato** (ruling 2.6 della revisione di sicurezza): un
+# tetto solo per filo lascerebbe il totale crescere col numero dei fili, e i
+# fili li moltiplica chiunque arrivi da un ingresso diverso. 200 tiene il disco
+# della scheda SD e il battito dell'orologio (che legge le scadute ogni 15
+# secondi) nell'ordine di grandezza di oggi: quattro fili pieni, non di piu'.
+HOUSE_CEILING_IN_SOSPESO = 200
 # Quanto si conserva una promessa CONCLUSA (spec §8.1). Un registro che cresce
 # per sempre su una scheda SD e' un guasto rimandato. E' una politica di
 # QUESTO strato (lo Schedulatore), indipendente da quella della cronaca delle
@@ -77,11 +89,18 @@ CONSERVAZIONE_S = 90 * 86400
 
 _CHIAVI = (
     "id", "specie", "frase", "quando_ts", "quando_detto", "fuso", "chiamata",
-    "domanda", "istantanea", "recapito", "stato", "motivo", "esecuzione_id",
+    "domanda", "istantanea", "stato", "motivo", "esecuzione_id",
     "testo", "avvisare", "nata_ts", "risvegliata_ts", "esito_letto_ts",
     # `entities_at_birth`: quante entita' toccava il bersaglio alla nascita
     # (reperto B-6, 22/09/2026). In inglese perche' le colonne nuove lo sono.
     "entities_at_birth",
+    # Il filo di chi l'ha chiesta (spec 2026-09-26 §2), come `ChatThread` --
+    # la stessa forma della coda e delle costruzioni. Serve DENTRO il
+    # processo (l'orologio, la consegna dell'esito); le rotte e lo strumento
+    # lo tolgono con `chat_thread.without_thread` prima di rispondere.
+    # `recapito` e' uscito da qui: la colonna resta per le righe vecchie, ma
+    # nessuno la legge piu' per recapitare (vedi lo schema in `store.py`).
+    "thread",
 )
 
 
@@ -94,31 +113,19 @@ DELIVERY_TITLE = "HIRIS"
 def delivery_call(recipient: str, message: str = "") -> dict:
     """La chiamata con cui una promessa arriva a chi l'ha chiesta.
 
-    **La sua UNICA casa**, e non e' un'astrazione di comodo: e' cio' che
-    permette alla verifica ALLA NASCITA e a quella A SCADENZA di fare la
-    stessa domanda invece di due domande diverse sullo stesso fatto (audit
-    delle fondamenta, rilievo 1).
+    **La sua UNICA casa**: la forma di una notifica di promessa vive qui e
+    in nessun altro posto, cosi' che chi la manda e chi la prova facciano la
+    stessa domanda a `action/verification.verification` invece di due domande
+    diverse sullo stesso fatto (audit delle fondamenta, rilievo 1, 08/09/2026:
+    `notify.send_message` dichiara un `target` e con bersaglio vuoto risponde
+    «serve un bersaglio»; `notify.mobile_app_*` no, e passa).
 
-    Fino all'08/09/2026 questa forma esisteva scritta a mano in un punto solo
-    -- `sweeper.concludi_chiedi` -- e la nascita non la conosceva:
-    `_verify_recipient` controllava soltanto che il servizio esistesse nel
-    registro, mentre a scadenza `action/verification.verification` pretende un
-    bersaglio quando il servizio ne DICHIARA uno. Misurato sul registro vero
-    (HA 2026.9.1): `notify.send_message` dichiara `target={"entity":
-    [{"domain": ["notify"]}]}` e con bersaglio vuoto risponde «serve un
-    bersaglio»; `notify.mobile_app_*` e `notify.notify` la chiave non ce
-    l'hanno e passano. Lo strumento `promise` dice al modello «usa search per
-    trovare un servizio notify vero», `search` trova `send_message`, la
-    promessa nasce «verificata adesso» e alle 17:00 la notifica non parte --
-    il modo peggiore in cui una promessa puo' rompersi, perche' nessuno se ne
-    accorge finche' non manca all'appuntamento.
-
-    Il `bersaglio` e' vuoto per costruzione: **la notifica la manda lo
-    schedulatore, sul canale approvato alla nascita**, e il modello non
-    sceglie dove finisce. `message` e' vuoto quando si sta solo verificando:
-    la verifica guarda i NOMI dei parametri contro quelli che il servizio
-    dichiara, mai i loro valori, quindi la chiamata di prova e' la stessa
-    chiamata -- non una sua approssimazione.
+    Il `bersaglio` e' vuoto per costruzione: **il servizio lo sceglie il
+    sistema, non il modello**. Dalla fetta «il seguito delle chat divise»
+    (spec 2026-09-26 §2.3) non lo sceglie piu' nemmeno alla nascita: si
+    risolve al risveglio dal soggetto di chi ha chiesto
+    (`keeper/recipient.py::recipients_for`), e il modello ha prodotto un
+    testo, mai un indirizzo.
     """
     return {"servizio": recipient, "bersaglio": {},
             "dati": {"message": message, "title": DELIVERY_TITLE}}
@@ -201,7 +208,6 @@ def serializza(row) -> dict:
         "chiamata": _load(row["chiamata_json"]),
         "domanda": row["domanda"],
         "istantanea": _load(row["istantanea_json"]),
-        "recapito": row["recapito"],
         "stato": row["stato"],
         "motivo": row["motivo"],
         "esecuzione_id": row["esecuzione_id"],
@@ -220,6 +226,10 @@ def serializza(row) -> dict:
         # ogni promessa IN SOSPESO -- che non ha ancora un esito -- quindi da
         # solo non basta a dire «da leggere»: serve anche uno stato concluso.
         "esito_letto_ts": row["esito_letto_ts"],
+        # `None` per le promesse nate prima delle promesse divise, finche' il
+        # proprietario non le adotta (`chat_thread.adopt_if_owner`).
+        "thread": (ChatThread(row["subject_key"], row["entry_point"])
+                   if _column(row, "subject_key") else None),
     }
     assert set(fuori) == set(_CHIAVI)  # la forma e' una sola, e si controlla qui
     return fuori

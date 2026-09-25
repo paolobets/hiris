@@ -24,6 +24,7 @@ import pytest_asyncio
 
 from hiris.app.action.journal import Journal
 from hiris.app.chat_store import close_all_stores
+from hiris.app.chat_thread import ChatThread
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.server import create_app
 
@@ -32,6 +33,11 @@ from hiris.app.server import create_app
 # praticato dal progetto per `client` (vedi `test_anthropic_list.py`,
 # `test_models_api.py`). Non ne scrivo una seconda identica.
 from tests.test_settings_api import csrf_stretto  # noqa: F401
+
+# Il filo di chi chiede con l'app vera in prova: il confine senza token
+# (`HIRIS_ALLOW_NO_TOKEN`, conftest.py) da' `sviluppo`. Le promesse sono di
+# chi le chiede (spec 2026-09-26 §2): quelle di queste prove sono sue.
+SVILUPPO = ChatThread("sviluppo:-", "sviluppo")
 
 
 @pytest.fixture(autouse=True)
@@ -62,7 +68,7 @@ async def client(aiohttp_client, tmp_path):
 async def test_get_promesse_torna_le_in_sospeso(client):
     archivio = client.app["agenda"]
     archivio.create({"specie": "chiedi", "frase": "x", "quando_ts": 3601.0,
-                   "domanda": "e' aumentata?"}, now=1.0)
+                   "domanda": "e' aumentata?"}, thread=SVILUPPO, now=1.0)
 
     risposta = await client.get("/api/agenda")
     assert risposta.status == 200
@@ -75,7 +81,7 @@ async def test_get_promesse_tutte_include_le_concluse(client):
     archivio = client.app["agenda"]
     ident = archivio.create({"specie": "chiedi", "frase": "x",
                            "quando_ts": 3601.0, "domanda": "?"},
-                          now=1.0)["promessa"]["id"]
+                          thread=SVILUPPO, now=1.0)["promessa"]["id"]
     archivio.concludi(ident, state="mantenuta", now=2.0)
 
     corpo = await (await client.get("/api/agenda?all=1")).json()
@@ -89,7 +95,7 @@ async def test_delete_disdice_e_una_gia_conclusa_da_409(client):
     archivio = client.app["agenda"]
     ident = archivio.create({"specie": "chiedi", "frase": "x",
                            "quando_ts": 3601.0, "domanda": "?"},
-                          now=1.0)["promessa"]["id"]
+                          thread=SVILUPPO, now=1.0)["promessa"]["id"]
 
     primo = await client.delete(f"/api/agenda/{ident}")
     assert primo.status == 200
@@ -119,7 +125,7 @@ async def test_delete_senza_x_requested_with_e_403_e_non_disdice(client, csrf_st
     archivio = client.app["agenda"]
     ident = archivio.create({"specie": "chiedi", "frase": "x",
                            "quando_ts": 3601.0, "domanda": "?"},
-                          now=1.0)["promessa"]["id"]
+                          thread=SVILUPPO, now=1.0)["promessa"]["id"]
 
     risposta = await client.delete(f"/api/agenda/{ident}")
     assert risposta.status == 403
@@ -132,7 +138,7 @@ async def test_delete_con_x_requested_with_disdice_anche_a_csrf_stretto(client, 
     archivio = client.app["agenda"]
     ident = archivio.create({"specie": "chiedi", "frase": "x",
                            "quando_ts": 3601.0, "domanda": "?"},
-                          now=1.0)["promessa"]["id"]
+                          thread=SVILUPPO, now=1.0)["promessa"]["id"]
 
     risposta = await client.delete(f"/api/agenda/{ident}",
                                    headers={"X-Requested-With": "fetch"})
@@ -146,7 +152,7 @@ async def test_la_rotta_e_lo_strumento_danno_la_STESSA_forma(client):
 
     **Cosa questo test prova, e cosa NON prova piu' (fetta «la rinomina»,
     lotto dei campi JSON).** Prova la PROMESSA: `serializza()` e' una sola, e i
-    suoi diciassette campi escono identici dalle due porte -- e' questo che la
+    suoi campi escono identici dalle due porte -- e' questo che la
     fondamenta n.3 protegge, ed e' rimasto intatto.
 
     Non prova piu' l'INVOLUCRO, e la divergenza NON e' piu' temporanea --
@@ -170,13 +176,19 @@ async def test_la_rotta_e_lo_strumento_danno_la_STESSA_forma(client):
 
     archivio = client.app["agenda"]
     archivio.create({"specie": "chiedi", "frase": "x", "quando_ts": 3601.0,
-                   "domanda": "?"}, now=1.0)
+                   "domanda": "?"}, thread=SVILUPPO, now=1.0)
 
     da_http = (await (await client.get("/api/agenda")).json())["agenda"][0]
-    d = ToolDispatcher(None, None, agenda=archivio)
+    # Lo strumento lavora sul filo del suo turno, come la rotta su quello
+    # della richiesta (spec 2026-09-26 §2): lo stesso filo, la stessa lista.
+    d = ToolDispatcher(None, None, agenda=archivio, thread=SVILUPPO)
     da_strumento = (await d.dispatch("agenda", {}))["promesse"][0]
 
     assert da_http == da_strumento
+    # Il filo resta DENTRO il processo: ne' la rotta ne' lo strumento lo
+    # portano fuori (vincolo 2.12).
+    assert "thread" not in da_http
+    assert "thread" not in da_strumento
     # La lista non deve essere vuota: un confronto fra due liste vuote
     # passerebbe a vuoto e non proverebbe niente sulla forma.
     assert da_http

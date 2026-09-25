@@ -36,6 +36,8 @@ import time
 
 from aiohttp import web
 
+from ..chat_thread import request_thread
+
 
 def _proposals_pending(app) -> int:
     """Quante proposte da fare a mano aspettano una tua decisione."""
@@ -55,7 +57,9 @@ async def handle_get_pending(request: web.Request) -> web.Response:
     if agenda is None or constructions is None:
         return web.json_response({"error": "archivio non disponibile"}, status=503)
     return web.json_response({
-        "agenda_unread": agenda.count_unread(),
+        # Il pallino degli Impegni e' di chi guarda (spec 2026-09-26 §2): gli
+        # esiti non letti del SUO filo, dal confine -- come la pagina.
+        "agenda_unread": agenda.count_unread(request_thread(request)),
         # **Le due code, sommate** (spec 2026-09-21 §3): un pallino che ne
         # contasse una sola direbbe un numero piu' piccolo di quello che ti
         # aspetta -- ed e' peggio di nessun pallino, perche' sembra un conto.

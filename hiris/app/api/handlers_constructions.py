@@ -32,6 +32,7 @@ import time
 
 from aiohttp import web
 
+from ..chat_thread import without_thread
 from .boundary import occurrence_out
 
 logger = logging.getLogger(__name__)
@@ -68,18 +69,10 @@ async def handle_get_constructions(request: web.Request) -> web.Response:
 _APPLIES_HIRIS = "hiris"
 _APPLIES_YOU = "tu"
 
-def _strip_thread(row: dict) -> dict:
-    """La riga senza il filo (fetta «le chat divise», Task 7).
-
-    `_row()` (`action/construction/revisions.py`) porta `thread` perche'
-    l'officina deve poterlo leggere -- ma queste due rotte GET non hanno il
-    soffitto (nessun `per_richiesta` le guarda, a differenza di `_act`):
-    chiunque apra la pagina le legge, quindi il filo di chi ha proposto NON
-    attraversa questo confine (fix round 1 Task 7). Non e' una restrizione di
-    *chi puo' leggere* -- e' cio' che la risposta PORTA. E un `ChatThread`
-    `json_response` non lo saprebbe nemmeno serializzare.
-    """
-    return {k: v for k, v in row.items() if k != "thread"}
+# Il filo di chi ha proposto NON attraversa queste due rotte GET (fix round 1
+# Task 7 delle chat divise): `_row()` lo porta perche' l'officina deve poterlo
+# leggere, ma la risposta no. La funzione e' quella di tutte le righe col filo
+# (`chat_thread.without_thread`), non una copia di questo modulo.
 
 
 def _both_queues(app, store, pending_only: bool) -> list[dict]:
@@ -89,7 +82,7 @@ def _both_queues(app, store, pending_only: bool) -> list[dict]:
     elenco il cui ordine dipende da quale archivio si legge per primo, cioe'
     da un dettaglio di implementazione.
     """
-    rows = [{**_strip_thread(row), "chi_applica": _APPLIES_HIRIS}
+    rows = [{**without_thread(row), "chi_applica": _APPLIES_HIRIS}
             for row in store.list(pending_only=pending_only, limit=200)]
     observations = app.get("observations")
     if observations is not None:
@@ -105,7 +98,7 @@ async def handle_get_construction(request: web.Request) -> web.Response:
     row = store.read(request.match_info["id"])
     if row is None:
         return web.json_response({"error": _NOT_FOUND}, status=404)
-    return web.json_response({"construction": _strip_thread(row)})
+    return web.json_response({"construction": without_thread(row)})
 
 
 async def _act(request: web.Request, verb: str) -> web.Response:
