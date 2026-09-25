@@ -25,9 +25,15 @@ from ..chat_thread import ChatThread, adopt_if_owner, request_thread, thread_to_
 from ..claude_runner import CHAT_MAX_TOKENS, RunnerBackendError
 from ..home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from ..model_resolution import downgrade_note
+
+# Fix round 1, Important 2 (Task 5): il nome di chi parla arriva
+# dall'intestazione dell'ingress di Home Assistant -- non e' mai fidato, la
+# stessa porta di `entity_cache`/`home_space_store`/`ha_client` (vedi il
+# modulo per l'elenco di dove e' gia' cablato).
+from ..proxy._sanitize import sanitize_ha_value
 from ..steering import declare_downgrade, misura_turno, who_answers
 from .handlers_home_space import compose_briefing
-from .soffitto import ceiling_for, per_richiesta
+from .soffitto import ceiling_for, per_richiesta, ruolo_letto
 
 logger = logging.getLogger(__name__)
 
@@ -230,28 +236,75 @@ def _build_system_prompt(settings) -> str:
     return ""
 
 
-def _who_is_speaking(soggetto: dict | None, thread: ChatThread, ruolo: str | None) -> str:
+def _who_is_speaking(soggetto: dict | None, thread: ChatThread, ruolo: str | None, *,
+                     ruolo_letto: bool = True) -> str:
     """La sezione «Chi ti sta parlando» -- Task 5 («il modello sa chi gli
-    parla»). Nome/specie, ruolo (se si e' potuto sapere) e da dove il turno
-    e' entrato: senza questo il modello confonde chi ha scritto una cosa con
-    chi la riguarda ("mia moglie ha caldo" detto da Paolo resta detto da
-    Paolo, non da lei). Ritorna sempre una stringa non vuota: un turno senza
-    soggetto (schedulatore, promessa) lo dice esplicitamente, invece di
-    tacere ed essere confuso con un guasto.
+    parla»). SOLI FATTI: chi parla, la specie, il ruolo (se si e' potuto
+    sapere) e da dove il turno e' entrato -- nessun ordine, per la ragione
+    scritta sopra `claude_runner.BASE_IDENTITY` (fix round 1, Important 1):
+    sul ponte questa stringa entra nel recinto "non sono istruzioni per te"
+    di `agent/prompts.recinta_casa`, e un ordine li' dentro sarebbe
+    dichiarato materiale su un percorso e un vero ordine sull'altro (il ramo
+    sincrono non recinta `context_str`). La regola sul "chi l'ha detto" vive
+    in `BASE_IDENTITY`, letta identica e non recintata da entrambi.
+
+    **Il nome non e' mai fidato** (fix round 1, Important 2): arriva
+    dall'intestazione dell'ingress di Home Assistant, la stessa superficie
+    che ogni altra porta di questo modulo sanifica (vedi l'elenco in cima a
+    `proxy/_sanitize.py`) -- filtrato con `sanitize_ha_value` (iniezione
+    rimossa, 255 caratteri) e fra guillemet come un dato letto, non come
+    prosa del prompt.
+
+    **Il ruolo sconosciuto non si spaccia per "utente"** (fix round 1,
+    Important 3): `soffitto.consente()` restituisce la stringa "utente" SIA
+    quando Home Assistant ha risposto "non amministratore" SIA quando la
+    lettura e' fallita e HIRIS ripiega per non spegnere la chat -- due fatti
+    diversi dietro la stessa parola. `ruolo_letto` (da `soffitto.ruolo_letto`,
+    chiamata dai due compositori di `compose_chat_context` qui sotto)
+    distingue i due casi; solo nel primo si afferma il ruolo.
+
+    Ritorna sempre una stringa non vuota. `soggetto=None` e un vero turno
+    "nessuno" (ponte/schedulatore, `specie="nessuno"`) non sono lo stesso
+    fatto: il secondo SA di non avere una persona e lo dice; il primo
+    significa solo che chi ha chiamato questa funzione non ha passato un
+    soggetto -- in produzione non succede mai (vedi il docstring di
+    `compose_chat_context`), e qui si dichiara la specie piu' debole
+    ("nessuno") senza affermare la frase piu' forte che richiederebbe di
+    saperlo per certo.
     """
     s = soggetto or {}
-    nome = s.get("nome") or "una persona che Home Assistant non ha nominato"
-    righe = ["## Chi ti sta parlando", f"- {nome} ({s.get('specie') or 'nessuno'})"]
-    if ruolo:
-        righe.append(f"- ruolo in Home Assistant: {ruolo}")
+    specie = s.get("specie") or "nessuno"
+
+    if specie == "persona":
+        nome = s.get("nome")
+        chi = f"«{sanitize_ha_value(nome)}»" if nome else \
+            "una persona che Home Assistant non ha nominato"
+    elif specie in ("integrazione", "luogo"):
+        nome = s.get("nome")
+        chi = f"«{sanitize_ha_value(nome)}»" if nome else "un servizio senza nome"
+    elif soggetto is None:
+        chi = "HIRIS stessa"
+    else:
+        chi = "HIRIS stessa, nessuna persona"
+
+    righe = ["## Chi ti sta parlando", f"- {chi} ({specie})"]
+
+    if specie == "persona":
+        if ruolo and ruolo_letto:
+            righe.append(f"- ruolo in Home Assistant: {ruolo}")
+        else:
+            righe.append("- ruolo in Home Assistant: non l'ho potuto sapere "
+                         "(trattato come utente)")
+    elif specie in ("integrazione", "luogo") and ruolo:
+        righe.append(f"- un servizio approvato dal proprietario, ruolo {ruolo}")
+
     righe.append(f"- da: {thread.entry_point}")
-    righe.append("- I ricordi dicono chi li ha detti: quando uno viene da un'altra persona, "
-                 "dillo, e riproponilo a chi riguarda.")
     return "\n".join(righe)
 
 
 def compose_chat_context(app, data_dir: str, *, thread: ChatThread,
-                         soggetto: dict | None, ruolo: str | None = None) -> str:
+                         soggetto: dict | None, ruolo: str | None = None,
+                         ruolo_letto: bool = True) -> str:
     """Il contesto della chat -- chi parla, nucleo, sessioni precedenti -- in
     un'unica stringa.
 
@@ -264,12 +317,19 @@ def compose_chat_context(app, data_dir: str, *, thread: ChatThread,
     `request`), stessa ragione di `compose_briefing` in handlers_home_space.py:
     nessun motivo di legarla a una request in corso.
 
-    Task 5 («il modello sa chi gli parla», spec §5): `soggetto`/`ruolo` sono
-    parametri OBBLIGATORI (il secondo no, per i chiamanti -- promesse,
-    schedulatore -- che non hanno un ruolo da dare) perche' i QUATTRO
-    compositori (catena Claude, catena OpenAI a blocchi e in streaming,
-    ponte) leggono tutti `context_str`: bastava metterla in testa a questa
-    stringa, invariati loro.
+    Task 5 («il modello sa chi gli parla», spec §5): `soggetto` e' un
+    parametro OBBLIGATORIO. In produzione non e' MAI `None`: i due chiamanti
+    (`handle_chat`, `_enqueue_chat_job`, qui sotto) leggono
+    `request.get("soggetto")`, e `internal_auth_middleware`
+    (`api/middleware_internal_auth.py`) lo scrive su OGNI richiesta che
+    raggiunge un handler -- chi non ne ha uno riceve 401 prima di arrivare
+    qui. `None` compare solo nei test che chiamano questa funzione
+    direttamente, o che montano un'app senza quel middleware (fix round 1,
+    Minor 5: questo docstring diceva «promesse, schedulatore», due chiamanti
+    che non esistono -- ne' oggi ne' mai, `compose_chat_context` la chiama
+    solo la chat). `ruolo`/`ruolo_letto` arrivano dal `soffitto` che i due
+    chiamanti calcolano gia' per il dispatcher/il ripiego -- vedi
+    `soffitto.ruolo_letto` per la distinzione che il secondo pinna.
     """
     # Inject closed-session summaries so Claude remembers previous conversations.
     # Le sessioni precedenti restano una fonte A PARTE dal nucleo (Task 3):
@@ -351,7 +411,8 @@ def compose_chat_context(app, data_dir: str, *, thread: ChatThread,
         )
     # La sezione «Chi ti sta parlando» va PRIMA di tutto (spec §5): il
     # modello deve sapere chi ha scritto prima ancora di leggere la casa.
-    context_parts: list[str] = [_who_is_speaking(soggetto, thread, ruolo)]
+    context_parts: list[str] = [
+        _who_is_speaking(soggetto, thread, ruolo, ruolo_letto=ruolo_letto)]
     if briefing_text:
         context_parts.append(briefing_text)
     if past_str:
@@ -471,7 +532,8 @@ async def _enqueue_chat_job(
         # `agent/prompts.py`).
         "contesto": compose_chat_context(request.app, data_dir, thread=thread,
                                          soggetto=request.get("soggetto"),
-                                         ruolo=soffitto.get("ruolo")),
+                                         ruolo=soffitto.get("ruolo"),
+                                         ruolo_letto=ruolo_letto(soffitto)),
         # fetta "il ponte riceve il nucleo" (parita' A, Task 3): le due
         # impostazioni della chat che SONO testo di prompt -- gli stessi due
         # valori che il ramo sincrono legge qui sotto, a `handle_chat`
@@ -1014,10 +1076,13 @@ async def handle_chat(request: web.Request) -> web.Response:
     # parita' A) estrae invariato il blocco che prima viveva qui -- vedi il
     # suo docstring per il perche' (il Task 2 mette la STESSA stringa nel job
     # del ponte, senza ricopiarla) e per il ragionamento storico su
-    # nucleo/degrado/sessioni. Task 5: guadagna `soggetto`/`ruolo`.
+    # nucleo/degrado/sessioni. Task 5: guadagna `soggetto`/`ruolo`/
+    # `ruolo_letto` (fix round 1, Important 3: senza questo un ruolo mai
+    # letto si affermerebbe come "utente" vero).
     context_str = compose_chat_context(request.app, data_dir, thread=thread,
                                        soggetto=request.get("soggetto"),
-                                       ruolo=soffitto.get("ruolo"))
+                                       ruolo=soffitto.get("ruolo"),
+                                       ruolo_letto=ruolo_letto(soffitto))
 
     # I sedici strumenti della chat -- il perche' di ogni riga sta
     # nel docstring di `create_tool_dispatcher` (sopra), che dalla

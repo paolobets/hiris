@@ -100,6 +100,17 @@ can enter the model's context calls one of the two functions below:
   injection phrase came back whole, in both `calendario` and `non_letti`.
   Sanitized ONCE before it reaches either destination, not twice.
 
+- `api/handlers_chat.py::_who_is_speaking` -- the "Chi ti sta parlando"
+  section that opens every chat context (fetta «le chat divise», Task 5, fix
+  round 1, Important 2). The display name comes from the ingress header a
+  person's own Home Assistant session sets (`api/middleware_internal_auth.py`
+  -- the SAME network-facing surface the friendly-name/state paths above
+  already treat as untrusted), and until this fix it reached the model raw.
+  Sanitized via `sanitize_ha_value` (it is `state`-shaped: a display name,
+  same cap as a friendly_name) and quoted with guillemets («»), the marker
+  this product's own prose already uses to set a name apart from running
+  text, so the model reads it as DATA and not as prompt prose.
+
 WAS DELIBERATELY NOT WIRED, and the reason EXPIRED (reperto B-1, 22/09/2026):
 the `corpo` of an automation/script was exempt because it was "a local file the
 house owner edits, not something a network device or a compromised integration

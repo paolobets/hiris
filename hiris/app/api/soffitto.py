@@ -106,6 +106,22 @@ def consente(soggetto: dict | None, *, ruolo: str | None) -> dict:
             "ruolo": None, "perche": _MACCHINA_MUTA}
 
 
+def ruolo_letto(soffitto: dict) -> bool:
+    """Il `ruolo` di questo soffitto viene da una lettura vera, o e' il
+    ripiego per una persona di cui non si e' potuto sapere se e'
+    amministratore?
+
+    Serve a chi deve DIRLO a qualcuno (fix round 1, Task 5, Important 3: la
+    sezione "Chi ti sta parlando" del contesto della chat), non solo a
+    deciderlo -- `consente()` sopra restituisce `_PERSONA_IGNOTA` ("utente")
+    ANCHE quando il ruolo e' stato letto davvero da Home Assistant e la
+    persona e' un'utenza non amministratrice: la stessa stringa copre due
+    fatti diversi, e solo `perche'` li distingue (contiene `_IGNOTO` solo nel
+    ramo di ripiego). Non si ridichiara qui il testo di `_IGNOTO` --
+    lo si CONFRONTA con quello vero, o i due potrebbero divergere."""
+    return _IGNOTO not in (soffitto.get("perche") or "")
+
+
 async def _person_row(app, soggetto: dict | None) -> dict | None:
     """La riga di questa utenza fra gli utenti di Home Assistant — o `None`.
 

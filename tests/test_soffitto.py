@@ -23,7 +23,7 @@ diritto di usarla, per un guasto di rete.
 """
 import pytest
 
-from hiris.app.api.soffitto import consente
+from hiris.app.api.soffitto import consente, ruolo_letto
 
 _PERSONA = {"specie": "persona", "id": "u-1", "nome": "Paolo"}
 _ANONIMO = {"specie": "persona", "id": None, "nome": None}
@@ -193,3 +193,36 @@ async def test_ceiling_for_legge_il_ruolo_da_home_assistant():
     assert (await ceiling_for(app, _PERSONA))["costruire"] is False
     assert (await ceiling_for(app, {"specie": "persona", "id": "u-2"}))[
         "costruire"] is True
+
+
+# ---------------------------------------------------------------------------
+# `ruolo_letto` -- fix round 1, Task 5 Important 3 (fetta «le chat divise»).
+# `consente()` restituisce "utente" SIA per una persona letta davvero da HA
+# come non-amministratrice SIA per il ripiego quando la lettura fallisce: la
+# sezione "Chi ti sta parlando" del contesto della chat deve poter dire quale
+# dei due e', e questa e' la funzione che glielo dice.
+# ---------------------------------------------------------------------------
+
+def test_ruolo_letto_e_falso_solo_nel_ripiego():
+    """Il ripiego (ruolo illeggibile, o un ruolo fuori dall'insieme) per una
+    persona: `ruolo_letto` e' `False`. Mutazione che la uccide: farla sempre
+    tornare `True` -- il test qui sotto la prenderebbe subito."""
+    assert ruolo_letto(consente(_PERSONA, ruolo=None)) is False
+    assert ruolo_letto(consente(_PERSONA, ruolo="capo")) is False
+
+
+def test_ruolo_letto_e_vero_per_una_lettura_vera_anche_se_utente():
+    """Il caso che la stringa da sola non distingue: un `utente` VERO, letto
+    da Home Assistant, non e' il ripiego -- stessa parola, fatto diverso.
+    Mutazione che la uccide: confondere questo esito con quello sopra li
+    renderebbe uguali, e il test sopra e questo si contraddirebbero."""
+    assert ruolo_letto(consente(_PERSONA, ruolo="utente")) is True
+    assert ruolo_letto(consente(_PERSONA, ruolo="amministratore")) is True
+    assert ruolo_letto(consente(_PERSONA, ruolo="lettore")) is True
+
+
+def test_ruolo_letto_e_vero_per_un_canale_senza_ruolo():
+    """Un canale/servizio senza ruolo non passa dal ramo "persona
+    sconosciuta" (`_IGNOTO`): il suo rifiuto e' un fatto diverso
+    (`_MACCHINA_MUTA`), e `ruolo_letto` non deve confonderli."""
+    assert ruolo_letto(consente(_CANALE, ruolo=None)) is True
