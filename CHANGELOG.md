@@ -1,5 +1,41 @@
 # HIRIS — Changelog
 
+## [Non rilasciato] — Le chat divise
+
+Fino a oggi la chat era **una sola per costruzione**: `chat_sessions` non aveva colonna per chi
+scrive, la sessione attiva era «l'ultima che ha parlato, chiunque fosse», e `clear()` cancellava
+la cronologia di tutti. Il ponte (`/api/mcp`) costruiva il dispatcher senza soffitto né soggetto:
+sul ponte il ruolo di chi chatta non limitava gli strumenti. I ricordi non sapevano chi li avesse
+detti davvero — l'autore era un parametro che il modello poteva compilare a piacere.
+
+### Un filo per chi parla, una memoria per la casa
+
+Ogni chat ora vive in un **filo**, la coppia `(subject_key, entry_point)` — chi parla e da dove
+è entrato (`hiris/app/chat_thread.py::ChatThread`). Archivio, coda del ragionamento, poll della
+risposta, rotta MCP e officina delle costruzioni lo calcolano tutti nello stesso modo. Ognuno
+legge solo il proprio filo, amministratore compreso; il 409 «risposta in arrivo» e il poll sono
+ora per filo, non per casa. La cronologia di prima della fetta resta orfana (`subject_key IS
+NULL`) finché non arriva la prima richiesta del proprietario dal pannello, che la adotta una
+volta sola.
+
+La **memoria resta di HIRIS, condivisa**: ogni ricordo sa chi l'ha detto (`said_by`, dal soggetto
+del turno — non più un argomento che il modello poteva scrivere) e il modello sa chi gli sta
+parlando («Chi ti sta parlando», in testa a ogni contesto), così può decidere a chi riproporre
+un'informazione invece di scoprire di essersela inventata.
+
+### Il ponte porta chi parla fino agli strumenti
+
+Un job di chat manda `X-HIRIS-Chat: <job_id>` a `/api/mcp`, verificato contro un job `claimed`
+(come già `X-HIRIS-Promessa` per le promesse): il dispatcher del ponte riceve soffitto, soggetto
+e frase, la stessa costruzione del ramo sincrono. Un'intestazione **presente ma non più valida**
+chiude la chiamata invece di ricadere sul dispatcher senza soffitto — fail closed, per non
+riaprire la porta di scrittura che l'intestazione esiste per chiudere. Il registro dei turni
+porta finalmente il soggetto anche sul ponte.
+
+`confirm` è del filo: una proposta nata nel filo di una persona non si conferma dal filo di
+un'altra, e il rifiuto non la nomina. La pagina Costruzioni, riservata agli amministratori,
+resta l'eccezione dichiarata — non è un filo, conferma per id qualunque proposta.
+
 ## [3.67.1] — «Trovare qualcosa» non è «trovare ciò che si cercava» (2026-09-24)
 
 La verifica dal vivo della 3.67.0 ha detto due cose. Il ponte **scrive davvero** nel registro

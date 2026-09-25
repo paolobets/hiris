@@ -110,6 +110,22 @@ can enter the model's context calls one of the two functions below:
   same cap as a friendly_name) and quoted with guillemets («»), the marker
   this product's own prose already uses to set a name apart from running
   text, so the model reads it as DATA and not as prompt prose.
+- `home_space/tools.py::ToolDispatcher._remember` -- the author of a memory
+  (fetta «le chat divise», Task 6, decisione 5). `detto_da` is no longer a
+  model argument (removed from `REMEMBER_TOOL_DEF`'s schema; a model that
+  sends it anyway gets the whole call rejected by `_bad_arguments`, before
+  `_remember` ever runs) -- it now comes from the turn's own subject
+  (`self._subject.get("nome")`), the SAME network-facing name
+  `_who_is_speaking` sanitizes above, and it reaches the nucleo on every
+  future turn the same way (`briefing.py`). Sanitized via `sanitize_ha_value`
+  before `remember()` archives it.
+- `api/handlers_memory.py::handle_patch_memory` -- the second door onto the
+  same field, from a person correcting a memory by hand on the Memoria page.
+  `detto_da` written from here reaches the nucleo through the same
+  `briefing.py` channel as the one `_remember` writes: leaving this door raw
+  would make the injection come back filtered from one path and unfiltered
+  from the other. Sanitized via `sanitize_ha_value`, same cap, before the
+  update is written.
 
 WAS DELIBERATELY NOT WIRED, and the reason EXPIRED (reperto B-1, 22/09/2026):
 the `corpo` of an automation/script was exempt because it was "a local file the

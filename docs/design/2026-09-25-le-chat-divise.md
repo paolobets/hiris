@@ -94,7 +94,7 @@ tutte le tabelle che portano un filo (fondamenta 3).
 limite dei turni e scrittura. Il 409 «risposta in arrivo» diventa **per filo**.
 
 **La coda.** `reasoning_jobs` guadagna `subject_key` ed `entry_point`; `enqueue` li scrive per i job
-di chat, `has_pending_chat(filo)` conta solo quel filo. Il `context` del job porta anche il
+di chat, `has_pending_chat(thread)` conta solo quel filo. Il `context` del job porta anche il
 `soggetto` intero (serve al soffitto e alla cronaca, che vogliono nome e specie, non solo la
 chiave).
 
@@ -109,9 +109,13 @@ ripiego sulla catena usa il soggetto **del job**, non quello di chi fa il poll.
 **Non è un'autenticazione** (quella resta la credenziale di turno) e per questo si **verifica**:
 vale solo se è un job `kind="chat"` in stato `claimed`. Da lì `/api/mcp` prende soggetto e frase
 del job e costruisce il dispatcher **con soffitto, soggetto e frase**, come il ramo sincrono. Senza
-intestazione (promesse, osservatore) resta com'è oggi.
+intestazione (promesse, osservatore) resta com'è oggi. Un `X-HIRIS-Chat` **presente ma non
+valido** — il job non è più `claimed` quando la CLI risponde: scaduto, ripiegato sulla catena da
+un poll, spazzato o già consegnato — **chiude la chiamata** invece di ricadere sul dispatcher
+senza soffitto: ricadere riaprirebbe proprio la porta di scrittura che l'intestazione chiude. È
+fail closed apposta, non un guasto di protocollo.
 
-Il soffitto si calcola da un soggetto, non da una richiesta: `soffitto.per_soggetto(app,
+Il soffitto si calcola da un soggetto, non da una richiesta: `soffitto.ceiling_for(app,
 soggetto)`, e `per_richiesta` diventa una riga che la chiama — **una regola sola**.
 
 **Il registro dei turni.** Il runner passa il soggetto del job a `log_turn`: la colonna
@@ -122,17 +126,22 @@ che dichiarava il buco.
 
 ## §5 · Il modello sa chi gli parla, i ricordi sanno chi li ha detti
 
-**Chi parla.** `compose_chat_context(app, filo, soggetto)` aggiunge in testa una sezione
-`## Chi ti sta parlando` — nome, specie, ruolo, ingresso — e prende i riassunti **del filo**.
-È **un punto solo**: quella stringa arriva identica ai quattro compositori (catena Claude, catena
-OpenAI a blocchi e in streaming, ponte), quindi nessuno dei quattro va toccato.
+**Chi parla.** `compose_chat_context(app, data_dir, *, thread, soggetto, ruolo, ruolo_letto)`
+aggiunge in testa una sezione `## Chi ti sta parlando` — nome, specie, ruolo, ingresso — e prende
+i riassunti **del filo**. È **un punto solo**: quella stringa arriva identica ai quattro
+compositori (catena Claude, catena OpenAI a blocchi e in streaming, ponte), quindi nessuno dei
+quattro va toccato.
 
 **Chi l'ha detto.** `remember` scrive l'autore **dal soggetto del turno**, non dal modello: il
-parametro `detto_da` esce dallo schema dello strumento (un comportamento solo). La tabella
-`ricordi` guadagna `said_by` (la chiave del soggetto, l'identità) accanto a `detto_da` (il nome
-leggibile al momento). Il nucleo resta **uno per tutti** — nessun ricordo è nascosto — e continua a
-rendere `(detto da X)`: con «stai parlando con X» accanto, il modello sa quando un'informazione
-viene da un altro e a chi riproporla.
+parametro `detto_da` esce dallo schema dello strumento (un comportamento solo). Un modello che lo
+mandi comunque non viene ignorato: lo schema non conosce più quell'argomento, e il cancello sugli
+argomenti sconosciuti (`_bad_arguments`) **rifiuta l'intera chiamata** prima che `remember` la
+veda. La tabella `ricordi` guadagna `said_by` (la chiave del soggetto, l'identità) accanto a
+`detto_da` (il nome leggibile al momento, **sanificato** con `sanitize_ha_value` prima di
+archiviarlo — arriva dall'intestazione dell'ingress, la stessa superficie controllata
+dall'utente che sanifica «Chi ti sta parlando»). Il nucleo resta **uno per tutti** — nessun
+ricordo è nascosto — e continua a rendere `(detto da X)`: con «stai parlando con X» accanto, il
+modello sa quando un'informazione viene da un altro e a chi riproporla.
 
 «*Mia moglie ha caldo*» detto da Paolo resta **detto da Paolo**: l'autore è chi l'ha detto, non di
 chi si parla. Il testo del ricordo porta il resto.
@@ -141,7 +150,15 @@ chi si parla. Il testo del ricordo porta il resto.
 scrive; `_only_pending` e la conferma per id **considerano solo le proposte del filo che
 conferma**. Una proposta nata nel filo di Paolo non si conferma dal filo di Marta — e il rifiuto
 non la nomina, per la decisione 4. Le proposte nate prima della fetta (senza filo)
-non entrano nella scelta implicita: si confermano solo nominandole per id.
+non entrano nella scelta implicita: si confermano solo nominandole per id. Quando la scelta
+implicita del filo non trova niente ma esistono proposte `in_attesa` **orfane** (nate prima della
+fetta, o dall'attuatore), la risposta non le nomina — dice solo che una pagina le mostra.
+
+**L'eccezione della pagina.** La pagina Costruzioni, **riservata agli amministratori** (il
+permesso `costruire` del soffitto), non è un filo: conferma per id qualunque proposta, di
+qualunque filo l'abbia creata — è un clic umano, non il modello che si dà il permesso da solo
+(spec §7 della fetta «costruire»). Da qui, una proposta senza turno riconoscibile o nata prima
+della fetta non è confermabile dalla chat: il testo lo dice esplicitamente e rimanda alla pagina.
 
 ---
 
@@ -165,7 +182,8 @@ non entrano nella scelta implicita: si confermano solo nominandole per id.
 - **Rotte**: due persone (intestazioni ingress diverse) non leggono l'una la cronologia dell'altra;
   il 409 di una non blocca l'altra; il poll di un job altrui dà 404.
 - **Ponte**: il job porta il filo; `/api/mcp` con `X-HIRIS-Chat` di un job `claimed` applica il
-  soffitto di una persona non amministratrice (un `propose` rifiutato); con un id falso o di un job non `claimed` non
+  soffitto di una persona non amministratrice (una `confirm` rifiutata: il soffitto vive su
+  `confirm`, `propose` scrive solo una bozza); con un id falso o di un job non `claimed` non
   concede niente in più; il registro dei turni porta il soggetto.
 - **Prompt**: il contesto contiene «Chi ti sta parlando» col nome della persona.
 - **Ricordi**: `remember` da un turno di Paolo scrive `said_by=persona:<id>` anche se il modello

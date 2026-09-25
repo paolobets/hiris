@@ -234,7 +234,7 @@ def test_un_ruolo_non_letto_non_si_spaccia_per_utente(tmp_path):
     testo_ripiego = compose_chat_context(
         app, str(tmp_path), thread=PAOLO,
         soggetto={"specie": "persona", "id": "p", "nome": "Paolo"},
-        ruolo="utente", ruolo_letto=False)
+        ruolo="utente", role_known=False)
 
     assert "ruolo in Home Assistant: utente" not in testo_ripiego
     assert ("ruolo in Home Assistant: non l'ho potuto sapere "
@@ -244,7 +244,7 @@ def test_un_ruolo_non_letto_non_si_spaccia_per_utente(tmp_path):
     testo_letto = compose_chat_context(
         app, str(tmp_path), thread=PAOLO,
         soggetto={"specie": "persona", "id": "p", "nome": "Paolo"},
-        ruolo="utente", ruolo_letto=True)
+        ruolo="utente", role_known=True)
 
     assert "ruolo in Home Assistant: utente" in testo_letto
     assert "non l'ho potuto sapere" not in testo_letto

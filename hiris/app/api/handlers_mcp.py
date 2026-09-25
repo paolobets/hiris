@@ -46,6 +46,12 @@ davanti.
 `--mcp-config` porta `X-HIRIS-Chat`, la rotta la verifica contro un job di chat
 `claimed` (`_exchange_chat_job`) e costruisce il dispatcher col soffitto, il
 soggetto e la frase di quel job -- la stessa costruzione del ramo sincrono.
+Un `X-HIRIS-Chat` PRESENTE ma che non vale piu' (il job non e' piu' `claimed`
+quando la CLI risponde) **chiude la chiamata** (`_stale_chat_rejection`)
+invece di ricadere sul dispatcher senza soffitto -- fail closed, non un
+ripiego: ricadere riaprirebbe la porta di scrittura che l'intestazione
+esiste per chiudere. L'ASSENZA dell'intestazione (promesse, osservatore)
+resta com'era prima di questa fetta.
 
 **E' anche un canale di azione, dalla fetta «comandare», e dalla fetta
 «costruire» anche di configurazione.** Fino a quel momento qui si leggeva «gli

@@ -825,14 +825,18 @@ test('clearConversation chiede conferma prima di cancellare', async (t) => {
 
   /* Il vecchio testo -- «Cancellare la cronologia di questa conversazione?»
      -- sottodichiarava due volte: non diceva quanto si perde e diceva
-     «questa» mentre `chat_store.clear()` svuota `chat_messages` E
-     `chat_sessions`, cioe' porta via anche i riassunti delle conversazioni
-     chiuse che finiscono nel prompt. La conferma adesso cita l'oggetto, come
-     gia' fa la pagina Memoria. */
+     «questa» mentre `chat_store.clear(thread)` svuota `chat_messages` E
+     `chat_sessions` DI QUEL FILO, cioe' porta via anche i riassunti delle
+     conversazioni chiuse che finiscono nel prompt. La conferma adesso cita
+     l'oggetto, come gia' fa la pagina Memoria -- e, dalla fetta «le chat
+     divise», dice che tocca SOLO il filo di chi cancella, non quello degli
+     altri in casa. */
   assert.match(confirmMsg, /Perdi il messaggio che vedi/,
     'la conferma deve dire QUANTO si perde');
-  assert.match(confirmMsg, /riassunti delle conversazioni precedenti/,
+  assert.match(confirmMsg, /riassunti delle tue conversazioni precedenti/,
     'e che non si perde soltanto quel che si vede');
+  assert.match(confirmMsg, /quelle degli altri in casa restano intatte/,
+    'e che non tocca la conversazione di altri in casa');
   assert.equal(calls.length, 0, 'con la conferma negata nessuna DELETE deve partire');
   assert.ok(document.querySelector('.msg-row.user'), 'i messaggi non devono sparire se non confermato');
 });

@@ -955,14 +955,14 @@ async def test_job_context_porta_il_nucleo_identico_al_ramo_sincrono(tmp_path):
         # ② ed e' ESATTAMENTE la stringa che il ramo sincrono compone per la
         # stessa app: se un giorno i due percorsi divergono, questo assert e'
         # il primo a saperlo. Nessun `soggetto` viaggia in questo file (vedi
-        # il docstring in cima), quindi `ruolo`/`ruolo_letto` sono quelli che
+        # il docstring in cima), quindi `ruolo`/`role_known` sono quelli che
         # `ceiling_for` calcola per un soggetto assente -- il ripiego
         # "utente" di `soffitto.consente`, non un valore inventato qui.
         soffitto_atteso = await ceiling_for(app, None)
         assert contesto == compose_chat_context(
             app, data_dir, thread=THREAD_TEST, soggetto=None,
             ruolo=soffitto_atteso.get("ruolo"),
-            ruolo_letto=_ruolo_letto(soffitto_atteso))
+            role_known=_ruolo_letto(soffitto_atteso))
     finally:
         archivio_casa.close()
         archivio_memoria.close()

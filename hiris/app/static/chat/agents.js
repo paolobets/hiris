@@ -58,14 +58,13 @@
 
      Costruisce la domanda della conferma dicendo COSA si perde, come si fa
      gia' nella pagina Memoria (dove il `confirm` cita la frase esatta del
-     ricordo). Il vecchio testo -- «Cancellare la cronologia di questa
-     conversazione?» -- sottodichiarava due volte: non diceva quanto, e
-     soprattutto diceva «questa» mentre la DELETE porta via TUTTO.
-     Verificato: `chat_store.ChatStore.clear()` svuota `chat_messages` e
-     `chat_sessions`, quindi spariscono anche i riassunti delle sessioni chiuse
-     che `handlers_chat.compose_chat_context` inietta nel prompt come
-     «Sessioni precedenti (memory)». Non e' una conversazione: e' la
-     memoria delle conversazioni. */
+     ricordo). Aggiornato dalla fetta «le chat divise» (Task 8, testo deciso
+     con `ux-ui-specialist` il 25/09/2026): la DELETE non porta via piu'
+     TUTTO, solo il FILO di chi la chiede -- `chat_store.ChatStore.clear(thread)`
+     cancella `chat_messages`/`chat_sessions` di quel `(subject_key,
+     entry_point)` e basta, quelle degli altri in casa restano. Il testo lo
+     dice esplicitamente, o chi vive con altri in casa capirebbe «cancella»
+     come «cancella per tutti». */
   function domandaDiConferma() {
     var quanti = state.els.messages
       ? state.els.messages.querySelectorAll('.msg-row').length : 0;
@@ -74,8 +73,9 @@
       : quanti === 1
         ? 'Perdi il messaggio che vedi'
         : 'Perdi i ' + quanti + ' messaggi che vedi';
-    return visible + ', e anche i riassunti delle conversazioni precedenti '
-      + 'che HIRIS si tiene da parte. Non si può annullare.\n\n'
+    return visible + ', e anche i riassunti delle tue conversazioni precedenti '
+      + 'che HIRIS si tiene da parte. Tocca solo la tua conversazione: quelle '
+      + 'degli altri in casa restano intatte. Non si può annullare.\n\n'
       + 'I ricordi NON si toccano: restano finché non li cancelli tu, uno '
       + 'per uno, dalla pagina Memoria.' + '\n\nCancellare?';
   }

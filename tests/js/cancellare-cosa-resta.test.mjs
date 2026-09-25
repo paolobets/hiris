@@ -34,7 +34,14 @@ function conferma() {
 }
 
 test('la conferma dice cosa si perde', () => {
-  assert.match(conferma(), /riassunti delle conversazioni precedenti/);
+  assert.match(conferma(), /riassunti delle tue conversazioni precedenti/);
+});
+
+test('e dice che tocca solo la propria conversazione (fetta «le chat divise»)', () => {
+  /* Mutazione che la uccide: togliere la frase che distingue il proprio
+     filo da quello degli altri in casa -- da questa fetta la DELETE non
+     cancella piu' tutto, solo il filo di chi la chiede. */
+  assert.match(conferma(), /quelle degli altri in casa restano intatte/);
 });
 
 test('e dice che i RICORDI restano, e dove si cancellano', () => {

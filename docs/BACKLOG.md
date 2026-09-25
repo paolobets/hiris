@@ -76,6 +76,9 @@ approva il suo ruolo confrontando il codice a quattro cifre. Poi firma come firm
 sviluppo: `X-HIRIS-Servizio` (la chiave pubblica, che e' l'identita'), `X-HIRIS-Momento`,
 `X-HIRIS-Unico`, `X-HIRIS-Firma`, sul contratto di `api/canali.py::materia_firmata`.
 
+**Dalla fetta «le chat divise» (25/09/2026):** quando Retro Panel si accoppia e parla, userà un
+`entry_point` nuovo, `hiris/app/chat_thread.py` — la fetta lo rende possibile, non lo costruisce.
+
 ### L'opzione `canali` e' rimasta nelle opzioni salvate dell'add-on — aperta il 23/09/2026
 
 `origine: misurata sul registro della casa vera, 23/09/2026`
@@ -181,7 +184,7 @@ regola vive una volta e i canali smettono di poter divergere.
 giorno dirà se il ponte e la catena stanno davvero mandando la stessa cosa, e se sono già scivolati
 la fusione diventa urgente invece che desiderabile.
 
-### La chat è una sola per costruzione — aperta il 24/09/2026
+### ~~La chat è una sola per costruzione~~ — **USCITA con la v3.68.0**
 
 `origine: il proprietario, fondamenta del 24/09/2026` · `misurato: hiris/app/chat_store.py`
 
@@ -206,6 +209,15 @@ origine)** e `load_context` deve leggere quella del chiamante.
 **Il registro dei turni è già pronto per quel giorno**: `turn.subject_json` porta chi ha chiesto,
 con la stessa forma del soggetto della cronaca. Quando la seconda chat arriverà, le misure sapranno
 già distinguerle — invece di scoprire allora che non possono.
+
+**CHIUSA il 25/09/2026 con la fetta «le chat divise»** (`docs/design/2026-09-25-le-chat-divise.md`).
+La chiave e' esattamente quella qui sopra prevista, **(soggetto, ingresso)**, in un modulo suo
+(`hiris/app/chat_thread.py::ChatThread`): `chat_sessions` guadagna `subject_key` ed `entry_point`,
+`load_context`/`clear`/il 409/il poll leggono e scrivono il filo del chiamante, e la cronologia di
+prima della fetta resta orfana finché il proprietario non la adotta dal pannello. Quello che la
+voce non prevedeva: la memoria (i ricordi) **non si è divisa** — resta di HIRIS, condivisa, ma ogni
+ricordo sa ora chi l'ha detto, e il modello sa chi gli sta parlando. Ciò che questa fetta lascia
+fuori è dichiarato sotto, voce per voce.
 
 ### `chatbots.json` resta finché non lo guardi — aperta il 24/09/2026
 
@@ -611,6 +623,67 @@ va corretto, in un posto solo.
 > GitHub, non esiste. Le voci qui sotto **non sono quella lista**: sono ricostruite dai documenti
 > del repository e da cio' che e' stato misurato sulla casa vera. La lista del proprietario va
 > reinserita da lui, e queste voci vanno lette come un fondo di magazzino, non come una sua scelta.
+
+### Chi ha chiesto una promessa
+
+`origine: dichiarato fuori perimetro dalla fetta «le chat divise», spec §6, 25/09/2026` · `docs/design/2026-09-25-le-chat-divise.md` §6
+
+La promessa (`mind/watcher.py`/l'agenda) **non porta il filo**: nasce da un turno ma non registra
+chi l'ha chiesta, e la sua notifica non sa a chi tornare. Ogni persona in casa la vede allo stesso
+modo di chi l'ha chiesta — il contrario del filo appena costruito per la chat, dove ognuno legge
+solo il proprio.
+
+### L'autore del giudizio fisso a `"proprietario"`
+
+`origine: misurato durante la fetta «le chat divise», 25/09/2026` · `mind/judgments.py:50`
+
+`JUDGMENT_AUTHOR = "proprietario"`: chiunque corregga un giudizio del sapere (genere, notevole,
+limiti operabili...) — anche una persona non amministratrice che ora, dalla fetta «le chat
+divise», puo' avere una conversazione sua — viene registrato come se fosse il proprietario.
+Non e' un buco di sicurezza (la porta di scrittura, `write_judgment`, non ha oggi un cancello di
+ruolo), ma e' un fatto scritto male: la cronaca del sapere mentirebbe su chi ha deciso, il giorno
+in cui a scrivere sara' qualcun altro.
+
+### Più conversazioni per filo, con elenco nella pagina
+
+`origine: decisione 2 della spec «le chat divise», rimandata il 25/09/2026` · `docs/design/2026-09-25-le-chat-divise.md` §0 (decisione 2), §6
+
+Il proprietario ha scelto **un filo solo** per soggetto (col meccanismo di oggi: sessione chiusa
+da due ore di silenzio, riassunto) per questa fetta. Più conversazioni nello stesso filo, con un
+elenco nella pagina per riaprirle o iniziarne una nuova, resta un passo dichiarato e non preso.
+
+### `GET /api/constructions` non ha il cancello del soffitto
+
+`origine: misurato durante la fetta «le chat divise», Task 7, 25/09/2026` · `hiris/app/api/handlers_constructions.py`
+
+Le due rotte GET della pagina Costruzioni (l'elenco e il dettaglio) non passano da
+`per_richiesta`/il soffitto — solo `apply`/`restore` lo fanno (`_act`). Oggi la risposta non porta
+piu' i campi del filo (`_strip_thread`, fix round 1 Task 7), quindi non rivela chi ha proposto
+cosa; ma **ogni utente dell'ingress vede le proposte di tutti i fili**, non solo le proprie —
+il contrario della decisione 4 della spec («ognuno legge solo il suo, amministratore compreso»),
+applicata finora solo alla chat.
+
+### Testi del prompt che assumono un proprietario unico
+
+`origine: misurato durante la fetta «le chat divise», Task 5, 25/09/2026` · `hiris/app/claude_runner.py`, `hiris/app/agent/prompts.py`
+
+Due testi fissi parlano ancora come se in casa parlasse una sola persona, il proprietario:
+`DICHIARAZIONE_CASA` (`agent/prompts.py`) dice di riferire una richiesta trovata nel materiale
+letto **«al proprietario, che e' l'unico che puo' decidere»**; `BASE_TOOL_RULES`
+(`claude_runner.py`) parla sempre de **«l'utente»**, al singolare. Da questa fetta il modello sa
+CHI gli sta parlando — e non e' detto che sia il proprietario. Nessuno dei due testi e' sbagliato
+sui fatti (execute/propose restano quello che sono), ma entrambi presumono un ascoltatore che
+questa fetta ha appena smesso di essere l'unico.
+
+### Le persone anonime dell'ingress condividono un filo
+
+`origine: dichiarato dalla fetta «le chat divise», spec §2, 25/09/2026` · `docs/design/2026-09-25-le-chat-divise.md` §2
+
+Una persona anonima (ingress senza intestazioni Home Assistant) ha soggetto `persona:-`: un filo
+anonimo condiviso, dichiarato apposta e non un difetto — ma resta un filo dove chi entra da quella
+porta legge la cronologia di chiunque altro sia entrato anonimo prima di lui. Non e' successo
+niente di simile finora (l'ingress porta sempre le intestazioni su questa casa), ma il giorno in
+cui succede due persone anonime si vedrebbero le conversazioni a vicenda.
 
 ### Le cinque cose che la fetta dei giudizi ha dichiarato fuori perimetro
 
@@ -1431,6 +1504,11 @@ quanto e' accurata in italiano con il modello di partenza.
 **Da NON fare prima dell'analisi:** scrivere codice. Questa voce esiste perche' la richiesta non
 vada persa, non perche' il perimetro sia chiaro -- come per la voce dei comandi qui sopra, **il
 perimetro non e' ancora stato scelto**.
+
+**Dalla fetta «le chat divise» (25/09/2026):** il filo per soggetto che questa voce chiedeva
+("un filo per ogni conversazione di Assist") esiste ora nel prodotto (`hiris/app/chat_thread.py`,
+chiave `(subject_key, entry_point)`) — quello che manca e' ancora e solo l'`entry_point` di
+Assist e della card lovelace: la fetta li rende possibili, non li costruisce.
 
 ### ~~La sicurezza~~ — **USCITA**: lo sprint c'e' stato, dal 21 al 23/09/2026
 
