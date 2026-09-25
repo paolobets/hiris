@@ -221,11 +221,12 @@ class AgendaStore:
                 f"SELECT count(*) FROM promesse WHERE stato IN ({_SOSPESI})"
             ).fetchone()[0]
             if house >= HOUSE_CEILING_IN_SOSPESO:
+                # Senza numeri e senza «gli altri» (extra 1 del Task 3): chi
+                # legge questo rifiuto non deve poter contare l'attivita' dei
+                # fili che non vede.
                 return {"errore": (
-                    f"in questa casa ci sono gia' {HOUSE_CEILING_IN_SOSPESO} "
-                    "promesse in sospeso, che e' il tetto che HIRIS si e' dato "
-                    "per tutti insieme: ne potro' prendere un'altra quando "
-                    "qualcuna si sara' conclusa."
+                    "non posso prenderne altre adesso: HIRIS ha raggiunto il "
+                    "suo tetto complessivo di impegni; riprova più tardi."
                 )}
             ident = secrets.token_urlsafe(9)
             self._conn.execute(

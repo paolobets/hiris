@@ -24,7 +24,9 @@ import pytest_asyncio
 from hiris.app import server
 from hiris.app.action.actuator import ActionActuator
 from hiris.app.chat_settings import ChatSettings
+from hiris.app.chat_store import append_assistant_line, close_all_stores, load_history
 from hiris.app.chat_thread import ChatThread
+from hiris.app.keeper.recipient import Recipients
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.keeper.sweeper import Sweeper
 from hiris.app.memory.store import MemoryStore
@@ -96,7 +98,25 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     async def _mai(_promessa):
         raise AssertionError("il turno non doveva passare dalla catena")
 
-    app["sweeper"] = Sweeper(promesse, execute=porta.execute, interpreta=_mai)
+    # Task 3: il recapito (finto: un telefono), la chat (vera, su disco
+    # temporaneo) e il soffitto -- gli stessi collaboratori del montaggio vero.
+    cartella_chat = tmp_path / "chat"
+    cartella_chat.mkdir()
+    app["data_dir"] = str(cartella_chat)
+
+    async def _one_phone(_subject):
+        return Recipients(("notify.mobile_app_iphone_bet",), None)
+
+    async def _comanda(_subject):
+        return {"leggere": True, "comandare": True, "costruire": False,
+                "ruolo": "utente", "perche": None}
+
+    app["sweeper"] = Sweeper(
+        promesse, execute=porta.execute, interpreta=_mai,
+        recipients=_one_phone,
+        write_to_thread=lambda thread, content, quoted=None: append_assistant_line(
+            content, str(cartella_chat), thread=thread, quoted=quoted),
+        ceiling=_comanda)
     app.on_startup.clear()
     app.on_cleanup.clear()
 
@@ -104,6 +124,7 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
     try:
         yield client, promesse, porta
     finally:
+        close_all_stores()
         promesse.close()
         memoria.close()
         casa.close()
@@ -241,6 +262,30 @@ async def test_concludi_dal_ponte_chiude_la_promessa(rotta):
     assert p["stato"] == "mantenuta"
     assert p["testo"] == "in bagno +0,4 gradi"
     assert p["avvisare"] is True
+
+
+@pytest.mark.asyncio
+async def test_concludi_dal_ponte_porta_l_esito_nel_filo_e_al_telefono(rotta):
+    """Task 3: le due strade della conclusione (orologio in processo e
+    `conclude` dal ponte) passano per UN solo punto, `concludi_chiedi` --
+    quindi anche dal ponte l'esito entra nel filo di chi l'ha chiesta e la
+    push parte al suo recapito, dalla porta."""
+    client, promesse, porta = rotta
+    ident = _crea_in_corso(promesse)
+
+    await _jsonrpc(client, {
+        "jsonrpc": "2.0", "id": 10, "method": "tools/call",
+        "params": {"name": "conclude",
+                   "arguments": {"avvisare": True,
+                                 "testo": "in bagno +0,4 gradi"}},
+    }, promessa=ident)
+
+    assert [c["servizio"] for c, _ in porta.chiamate] == [
+        "notify.mobile_app_iphone_bet"]
+    righe = load_history(client.app["data_dir"], thread=PAOLO)
+    assert len(righe) == 1 and righe[0]["role"] == "assistant"
+    assert "in bagno +0,4 gradi" in righe[0]["content"]
+    assert promesse.read(ident)["motivo"] is None
 
 
 @pytest.mark.asyncio

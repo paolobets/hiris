@@ -5,7 +5,8 @@ import pytest
 
 from hiris.app.action.actuator import ActionActuator
 from hiris.app.chat_thread import ChatThread
-from hiris.app.keeper.promise import TOLLERANZA_S, delivery_call
+from hiris.app.keeper.promise import TOLLERANZA_S
+from hiris.app.keeper.recipient import _REASON_LINK_PERSON, Recipients
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.keeper.sweeper import Sweeper
 from tests._contracts import assert_stessa_firma
@@ -78,6 +79,42 @@ def archivio(tmp_path):
     a.close()
 
 
+#: Il motivo con cui il recapito finto dice «nessuna strada»: una frase del
+#: Task 1 (`Recipients.reason`), non una scritta qui.
+_NESSUNA_STRADA = _REASON_LINK_PERSON
+
+
+class RecapitoFinto:
+    """`recipients_for` ridotto alla sua forma: soggetto -> `Recipients`."""
+
+    def __init__(self, services=(), reason=_NESSUNA_STRADA):
+        self.soggetti = []
+        self._esito = Recipients(tuple(services),
+                                 None if services else reason)
+
+    async def __call__(self, subject):
+        self.soggetti.append(subject)
+        return self._esito
+
+
+async def _ceiling_allowing(_subject):
+    return {"leggere": True, "comandare": True, "costruire": True,
+            "ruolo": "amministratore", "perche": None}
+
+
+def _orologio(archivio, *, execute, interpreta, recipients=None, righe=None):
+    """L'orologio coi collaboratori del Task 3: qui interessano porta e
+    archivio, quindi il recapito non ha strade (salvo dirlo), il soffitto
+    comanda e la chat e' un elenco in memoria."""
+    righe = [] if righe is None else righe
+    return Sweeper(
+        archivio, execute=execute, interpreta=interpreta,
+        recipients=recipients or RecapitoFinto(),
+        write_to_thread=lambda thread, content, quoted=None: righe.append(
+            (thread, content)),
+        ceiling=_ceiling_allowing)
+
+
 def _crea_fai(archivio, *, quando):
     return archivio.create({
         "specie": "fai", "frase": "alle 17 accendi lo studio", "quando_ts": quando,
@@ -107,7 +144,7 @@ def _seed_legacy_chiedi(archivio, *, quando, recapito):
 async def test_un_fai_scaduto_passa_dalla_porta_con_origine_schedulatore(archivio):
     ident = _crea_fai(archivio, quando=ADESSO + 10)
     porta = PortaFinta()
-    await Sweeper(archivio, execute=porta, interpreta=TurnoFinto()).batti(ADESSO + 11)
+    await _orologio(archivio, execute=porta, interpreta=TurnoFinto()).batti(ADESSO + 11)
 
     assert len(porta.chiamate) == 1
     assert porta.chiamate[0][1] == "schedulatore"
@@ -122,7 +159,7 @@ async def test_la_cronaca_del_fai_nomina_chi_l_aveva_chiesto(archivio):
     di chi lo schedulatore ha agito."""
     _crea_fai(archivio, quando=ADESSO + 10)
     porta = PortaFinta()
-    await Sweeper(archivio, execute=porta, interpreta=TurnoFinto()).batti(ADESSO + 11)
+    await _orologio(archivio, execute=porta, interpreta=TurnoFinto()).batti(ADESSO + 11)
 
     assert porta.soggetti == [{"specie": "persona", "id": "paolo"}]
 
@@ -130,7 +167,7 @@ async def test_la_cronaca_del_fai_nomina_chi_l_aveva_chiesto(archivio):
 async def test_oltre_la_tolleranza_non_si_esegue_mai_e_il_motivo_misura(archivio):
     ident = _crea_fai(archivio, quando=ADESSO + 10)
     porta = PortaFinta()
-    await Sweeper(archivio, execute=porta, interpreta=TurnoFinto()).batti(
+    await _orologio(archivio, execute=porta, interpreta=TurnoFinto()).batti(
         ADESSO + 10 + TOLLERANZA_S + 60)
 
     assert porta.chiamate == []          # la luce NON si accende in ritardo
@@ -149,12 +186,12 @@ async def test_dentro_la_tolleranza_si_esegue(archivio):
     """
     _crea_fai(archivio, quando=ADESSO + 10)
     porta = PortaFinta()
-    await Sweeper(archivio, execute=porta, interpreta=TurnoFinto()).batti(
+    await _orologio(archivio, execute=porta, interpreta=TurnoFinto()).batti(
         ADESSO + 10 + TOLLERANZA_S - 1)
     assert len(porta.chiamate) == 1
 
     _crea_fai(archivio, quando=ADESSO + 20)
-    await Sweeper(archivio, execute=porta, interpreta=TurnoFinto()).batti(
+    await _orologio(archivio, execute=porta, interpreta=TurnoFinto()).batti(
         ADESSO + 20 + TOLLERANZA_S)
     assert len(porta.chiamate) == 2
 
@@ -162,7 +199,7 @@ async def test_dentro_la_tolleranza_si_esegue(archivio):
 async def test_due_battiti_ravvicinati_non_la_mantengono_due_volte(archivio):
     _crea_fai(archivio, quando=ADESSO + 10)
     porta = PortaFinta()
-    orologio = Sweeper(archivio, execute=porta, interpreta=TurnoFinto())
+    orologio = _orologio(archivio, execute=porta, interpreta=TurnoFinto())
     await orologio.batti(ADESSO + 11)
     await orologio.batti(ADESSO + 12)
     assert len(porta.chiamate) == 1
@@ -178,7 +215,7 @@ async def test_una_presa_persa_non_esegue_e_non_conclude(archivio):
     ident = _crea_fai(archivio, quando=ADESSO + 10)
     porta = PortaFinta()
     involucro = ArchivioConCorsaSuPrendi(archivio)
-    await Sweeper(involucro, execute=porta, interpreta=TurnoFinto()).batti(ADESSO + 11)
+    await _orologio(involucro, execute=porta, interpreta=TurnoFinto()).batti(ADESSO + 11)
 
     assert porta.chiamate == []
     p = archivio.read(ident)
@@ -188,7 +225,7 @@ async def test_una_presa_persa_non_esegue_e_non_conclude(archivio):
 async def test_una_porta_che_fallisce_lascia_la_promessa_fallita_col_motivo(archivio):
     ident = _crea_fai(archivio, quando=ADESSO + 10)
     porta = PortaFinta({"eseguito": False, "errore": "quel servizio non esiste"})
-    await Sweeper(archivio, execute=porta, interpreta=TurnoFinto()).batti(ADESSO + 11)
+    await _orologio(archivio, execute=porta, interpreta=TurnoFinto()).batti(ADESSO + 11)
 
     p = archivio.read(ident)
     assert p["stato"] == "fallita"
@@ -208,7 +245,7 @@ async def test_una_porta_che_solleva_non_ferma_il_battito(archivio):
             raise RuntimeError("la rete e' caduta")
         return {"eseguito": True, "cambiato": [], "esecuzione_id": "e2"}
 
-    await Sweeper(archivio, execute=porta, interpreta=TurnoFinto()).batti(ADESSO + 12)
+    await _orologio(archivio, execute=porta, interpreta=TurnoFinto()).batti(ADESSO + 12)
 
     assert archivio.read(rotta)["stato"] == "fallita"
     assert archivio.read(sana)["stato"] == "mantenuta"
@@ -221,27 +258,45 @@ async def test_una_promessa_di_prima_col_recapito_non_notifica_piu(archivio):
     ha chiesto (spec 2026-09-26 §2.3). Mutazione eseguita: rimettere il ramo
     `if avvisare and promise["recapito"]` fa diventare rosso questo test.
 
-    Prima (fino alla fetta «il seguito delle chat divise») questo test
-    provava il contrario: una riga col recapito notificava. La forma della
-    chiamata di recapito resta provata qui sotto
-    (`test_la_notifica_dello_schedulatore_attraversa_la_verifica_vera`)."""
+    Dal Task 3 (extra 4) il motivo non e' piu' «nessun modo per venire a
+    cercarti»: una riga di prima e' ORFANA (senza filo), e l'orfana lo dice
+    col suo motivo -- non si sa di chi e', quindi non si cerca nessuno."""
     ident = _seed_legacy_chiedi(archivio, quando=ADESSO + 10,
                                   recapito="notify.mobile_app_x")
     porta = PortaFinta()
+    recapito = RecapitoFinto(["notify.mobile_app_iphone_bet"])
     turno = TurnoFinto({"avvisare": True, "testo": "e' salita di 2 gradi"})
-    await Sweeper(archivio, execute=porta, interpreta=turno).batti(ADESSO + 11)
+    await _orologio(archivio, execute=porta, interpreta=turno,
+                    recipients=recapito).batti(ADESSO + 11)
 
     assert porta.chiamate == [], "una notifica e' partita verso il recapito vecchio"
+    assert recapito.soggetti == [], "un'orfana non ha un soggetto da cercare"
     p = archivio.read(ident)
     assert (p["stato"], p["avvisare"], p["testo"]) == ("mantenuta", True, "e' salita di 2 gradi")
-    assert "nessun modo" in p["motivo"]
+    assert "non è mai stata adottata" in p["motivo"]
+
+
+async def test_una_promessa_di_prima_adottata_notifica_al_recapito_vero(archivio):
+    """La stessa riga di prima, adottata dal proprietario: ha un filo, e la
+    push va ai servizi di `recipients_for` -- mai alla colonna `recapito`."""
+    ident = _seed_legacy_chiedi(archivio, quando=ADESSO + 10,
+                                  recapito="notify.mobile_app_x")
+    assert archivio.adopt_orphans(PAOLO) == 1
+    porta = PortaFinta()
+    turno = TurnoFinto({"avvisare": True, "testo": "e' salita di 2 gradi"})
+    await _orologio(archivio, execute=porta, interpreta=turno,
+                    recipients=RecapitoFinto(["notify.mobile_app_iphone_bet"]),
+                    ).batti(ADESSO + 11)
+
+    assert [c["servizio"] for c, _ in porta.chiamate] == ["notify.mobile_app_iphone_bet"]
+    assert archivio.read(ident)["motivo"] is None
 
 
 async def test_il_silenzio_non_notifica_ma_resta_scritto(archivio):
     ident = _crea_chiedi(archivio, quando=ADESSO + 10)
     porta = PortaFinta()
     turno = TurnoFinto({"avvisare": False, "testo": "non e' cambiata: 21,4 gradi come prima"})
-    await Sweeper(archivio, execute=porta, interpreta=turno).batti(ADESSO + 11)
+    await _orologio(archivio, execute=porta, interpreta=turno).batti(ADESSO + 11)
 
     assert porta.chiamate == []          # nessuno e' stato disturbato
     p = archivio.read(ident)
@@ -251,9 +306,12 @@ async def test_il_silenzio_non_notifica_ma_resta_scritto(archivio):
 
 
 async def test_avvisare_senza_recapito_non_inventa_un_canale_e_lo_dichiara(archivio):
+    """Zero servizi: nessuna push, e il motivo e' quello del recapito
+    (`Recipients.reason`, extra 4) -- la frase che dice cosa manca e come
+    rimediare, non un generico «nessun modo»."""
     ident = _crea_chiedi(archivio, quando=ADESSO + 10)
     porta = PortaFinta()
-    await Sweeper(
+    await _orologio(
         archivio, execute=porta,
         interpreta=TurnoFinto({"avvisare": True, "testo": "fa caldo"}),
     ).batti(ADESSO + 11)
@@ -261,12 +319,12 @@ async def test_avvisare_senza_recapito_non_inventa_un_canale_e_lo_dichiara(archi
     assert porta.chiamate == []
     p = archivio.read(ident)
     assert p["stato"] == "mantenuta"
-    assert "nessun modo" in p["motivo"]
+    assert p["motivo"] == _NESSUNA_STRADA
 
 
 async def test_un_turno_che_non_conclude_lascia_la_promessa_fallita(archivio):
     ident = _crea_chiedi(archivio, quando=ADESSO + 10)
-    await Sweeper(archivio, execute=PortaFinta(),
+    await _orologio(archivio, execute=PortaFinta(),
                    interpreta=TurnoFinto({"errore": "il turno non ha concluso"})).batti(ADESSO + 11)
 
     p = archivio.read(ident)
@@ -333,63 +391,68 @@ class _CasaMinima:
         return [{"id": "sun.sun", "state": "above_horizon"}]
 
 
-async def test_la_notifica_dello_schedulatore_attraversa_la_verifica_vera():
-    """La forma della chiamata di recapito (`delivery_call`) contro la porta e
-    la verifica VERE, con l'attore dello schedulatore.
+async def test_la_notifica_dello_schedulatore_attraversa_la_verifica_vera(archivio):
+    """La notifica di una promessa, dall'OROLOGIO fino a Home Assistant, con la
+    porta e la verifica VERE (vincolo 3.1, extra 7).
 
     Fino alla fetta «il seguito delle chat divise» ci passava l'orologio,
-    notificando sul `recapito` scelto alla nascita; quel ramo e' uscito
-    (vincolo 2.5) e il recapito risolto al risveglio lo cabla il Task 3 della
-    stessa fetta, che riporta l'orologio dentro questa prova (vincolo 3.1).
-    Nel frattempo la proprieta' che conta resta provata: la chiamata con cui
-    HIRIS notifica passa la verifica per un `notify.mobile_app_*` vero."""
+    notificando sul `recapito` scelto alla nascita; il Task 2 aveva tolto
+    quel ramo e provato `delivery_call` da sola. Il Task 3 rimette qui
+    l'orologio: il servizio arriva dal recapito risolto al risveglio
+    (`recipients`), la chiamata la costruisce `delivery_call`, e a decidere
+    se parte e' `verification()` dentro `ActionActuator.execute`."""
     from hiris.app.action.registry import ServiceRegistry
 
     client = _ClientSoloNotifica()
     registro = ServiceRegistry()
     await registro.refresh(client)
     porta = ActionActuator(client, registro, _CasaMinima())
+    ident = _crea_chiedi(archivio, quando=ADESSO + 10)
 
-    esito = await porta.execute(
-        delivery_call("notify.mobile_app_x", "e' salita di 2 gradi"),
-        actor="schedulatore")
+    await _orologio(
+        archivio, execute=porta.execute,
+        interpreta=TurnoFinto({"avvisare": True, "testo": "e' salita di 2 gradi"}),
+        recipients=RecapitoFinto(["notify.mobile_app_x"]),
+    ).batti(ADESSO + 11)
 
     assert client.chiamate == [
         ("notify", "mobile_app_x",
          {"message": "e' salita di 2 gradi", "title": "HIRIS"})], (
         "la chiamata non e' arrivata a Home Assistant: la guardia sul "
         "bersaglio vuoto ha rifiutato una notifica che non ha un bersaglio")
-    assert esito.get("eseguito") is True, esito
+    p = archivio.read(ident)
+    assert (p["stato"], p["motivo"]) == ("mantenuta", None), p
 
 
-async def test_un_recapito_che_pretende_un_bersaglio_NON_arriva_a_scadenza():
-    """L'altra meta' del rilievo 1: cosa succede se una promessa cosi' nasce.
+async def test_un_recapito_che_pretende_un_bersaglio_NON_arriva_a_scadenza(archivio):
+    """L'altra meta' del rilievo 1, sullo stesso percorso dell'orologio.
 
-    E' la cucitura vera, con la porta e il registro VERI. `notify.send_message`
-    dichiara un `target` (misurato), e la chiamata di recapito ha per
-    costruzione il bersaglio vuoto: la verifica la rifiuta, la notifica non
-    parte, e il proprietario legge il motivo in Impegni DOPO l'appuntamento.
-
-    Il rifiuto qui e' giusto: un servizio che pretende un bersaglio non e'
-    un recapito. Dalla fetta «il seguito delle chat divise» nessuno sceglie
-    piu' un servizio cosi' -- il recapito sono i `notify.mobile_app_*` della
-    persona -- ma la verifica resta quella che decide, ed e' questo che la
-    prova tiene fermo finche' il Task 3 non la riporta dentro l'orologio."""
+    `notify.send_message` dichiara un `target` (misurato), e la chiamata di
+    recapito ha per costruzione il bersaglio vuoto: la verifica VERA la
+    rifiuta, la notifica non parte, e il motivo della promessa nomina il
+    servizio che non e' arrivato (vincolo 3.5). Dalla fetta «il seguito delle
+    chat divise» il recapito sono i `notify.mobile_app_*` della persona, ma e'
+    la verifica a decidere -- non la fiducia in chi ha scelto il servizio."""
     from hiris.app.action.registry import ServiceRegistry
 
     client = _ClientSoloNotifica()
     registro = ServiceRegistry()
     await registro.refresh(client)
     porta = ActionActuator(client, registro, _CasaMinima())
+    ident = _crea_chiedi(archivio, quando=ADESSO + 10)
 
-    esito = await porta.execute(
-        delivery_call("notify.send_message", "e' salita di 2 gradi"),
-        actor="schedulatore")
+    await _orologio(
+        archivio, execute=porta.execute,
+        interpreta=TurnoFinto({"avvisare": True, "testo": "e' salita di 2 gradi"}),
+        recipients=RecapitoFinto(["notify.send_message"]),
+    ).batti(ADESSO + 11)
 
     assert client.chiamate == [], "niente e' partito verso Home Assistant"
-    assert esito.get("eseguito") is False
-    assert "bersaglio" in (esito.get("errore") or ""), (
-        f"il rifiuto deve dire cosa e' mancato: {esito!r}")
+    p = archivio.read(ident)
+    assert p["stato"] == "mantenuta"
+    assert "notify.send_message" in (p["motivo"] or ""), p
+    assert "bersaglio" in (p["motivo"] or ""), (
+        f"il rifiuto deve dire cosa e' mancato: {p['motivo']!r}")
 
 
 async def test_la_nota_del_ripiego_finisce_nel_motivo_della_promessa(archivio):
@@ -402,7 +465,7 @@ async def test_la_nota_del_ripiego_finisce_nel_motivo_della_promessa(archivio):
                                 "rispondere: questo turno l'ha mantenuto la "
                                 "catena, a consumo."})
 
-    await Sweeper(archivio, execute=PortaFinta(), interpreta=turno).batti(ADESSO + 11)
+    await _orologio(archivio, execute=PortaFinta(), interpreta=turno).batti(ADESSO + 11)
 
     p = archivio.read(ident)
     assert p["stato"] == "mantenuta"
@@ -415,7 +478,7 @@ async def test_senza_nota_il_motivo_resta_pulito(archivio):
     ident = _crea_chiedi(archivio, quando=ADESSO + 10)
     turno = TurnoFinto({"avvisare": False, "testo": "tutto fermo"})
 
-    await Sweeper(archivio, execute=PortaFinta(), interpreta=turno).batti(ADESSO + 11)
+    await _orologio(archivio, execute=PortaFinta(), interpreta=turno).batti(ADESSO + 11)
 
     assert archivio.read(ident)["motivo"] is None
 

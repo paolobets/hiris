@@ -410,3 +410,31 @@ async def test_una_sola_lettura_per_lettore():
     await recipients_for({"specie": "persona", "id": USER_ID}, ha)
 
     assert ha.chiamate == ["get_states", "read_registries", "get_services"]
+
+
+@pytest.mark.asyncio
+async def test_due_tracker_che_convergono_sullo_stesso_servizio_danno_un_servizio_solo():
+    """Extra 5 del Task 3: due `device_trackers` della stessa persona che
+    portano allo STESSO `notify.mobile_app_*` (qui: il telefono nuovo ha
+    preso il nome di quello vecchio, che resta collegato alla persona) non
+    devono dare due push per un esito. Deduplicato qui, all'origine, in
+    ordine stabile: il primo tracker che lo trova lo tiene."""
+    ha = FintaHA(
+        stati=[_stato_persona(USER_ID, ["device_tracker.iphone_bet",
+                                        "device_tracker.telefono_nuovo",
+                                        "device_tracker.ipad_mini"])],
+        entita=[{"entity_id": "device_tracker.iphone_bet", "platform": "mobile_app",
+                 "device_id": "d1"},
+                {"entity_id": "device_tracker.telefono_nuovo",
+                 "platform": "mobile_app", "device_id": "d2"},
+                {"entity_id": "device_tracker.ipad_mini", "platform": "mobile_app",
+                 "device_id": "d3"}],
+        dispositivi=[{"id": "d1", "name": "iPhone Bet"},
+                     {"id": "d2", "name": "iPhone Bet"},
+                     {"id": "d3", "name": "iPad mini"}])
+
+    esito = await recipients_for({"specie": "persona", "id": USER_ID}, ha)
+
+    assert esito == Recipients(
+        services=("notify.mobile_app_iphone_bet", "notify.mobile_app_ipad_mini"),
+        reason=None)

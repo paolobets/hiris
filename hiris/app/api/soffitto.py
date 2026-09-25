@@ -215,6 +215,54 @@ async def ceiling_for(app, soggetto: dict | None) -> dict:
     return consente(soggetto, ruolo=soggetto.get("ruolo"))
 
 
+def _approved_service_role(app, subject: dict) -> str | None:
+    """Il ruolo del servizio approvato che porta questo nome, letto adesso
+    dall'archivio dei servizi -- o `None` se non si puo' sapere con certezza.
+
+    Il soggetto ricostruito da un filo (`chat_thread.subject_from_thread`)
+    porta specie e id -- per un servizio l'id e' il nome con cui e' stato
+    approvato (`middleware_internal_auth`) -- ma non il ruolo, che viaggiava
+    con la firma. Si rilegge dall'archivio, e nel dubbio si chiude: un
+    servizio revocato, sconosciuto o con due approvazioni di ruolo diverso
+    sotto lo stesso nome non ha un ruolo che si possa dedurre.
+    """
+    services = app.get("servizi")
+    if services is None:
+        return None
+    try:
+        rows = services.elenco()
+    except Exception as exc:
+        logger.warning("soffitto: archivio dei servizi non leggibile (%s)",
+                       type(exc).__name__)
+        return None
+    roles = {row.get("ruolo") for row in rows
+             if row.get("stato") == "autorizzato"
+             and row.get("nome") == subject.get("id")
+             and (row.get("specie") or "integrazione") == subject.get("specie")}
+    return roles.pop() if len(roles) == 1 else None
+
+
+async def ceiling_at_wake(app, subject: dict | None) -> dict:
+    """Il soffitto di chi ha chiesto una promessa, al suo risveglio.
+
+    Lo usa l'orologio (`keeper/sweeper.py`) prima di eseguire un `fai`
+    (extra 2 del Task 3 della fetta «il seguito delle chat divise»): fra la
+    nascita e la scadenza possono passare trenta giorni, e il soffitto di
+    allora non vale piu'. Per una persona il ruolo lo rilegge
+    `ceiling_for` da Home Assistant; per un servizio si rilegge
+    dall'archivio -- il ruolo eventualmente presente nel soggetto NON conta.
+    """
+    subject = dict(subject or {})
+    if not subject.get("specie"):
+        # Senza soggetto `consente` ripiegherebbe su «persona ignota», che
+        # comanda: giusto per chi e' passato dall'ingress, sbagliato per
+        # un'azione a scadenza di cui non si sa il padrone.
+        return consente({"specie": "nessuno"}, ruolo=None)
+    if subject.get("specie") != "persona":
+        subject["ruolo"] = _approved_service_role(app, subject)
+    return await ceiling_for(app, subject)
+
+
 async def per_richiesta(app, request) -> dict:
     """Il soffitto di questa richiesta: quello del soggetto che il confine
     (`middleware_internal_auth`) le ha attaccato."""

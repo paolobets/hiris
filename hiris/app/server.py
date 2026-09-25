@@ -53,6 +53,7 @@ from .home_space.topology import (
     tree_areas,
 )
 from .keeper.exchange import interpreta_promise
+from .keeper.outcome import tell_failure
 from .keeper.store import AgendaStore
 from .keeper.sweeper import Sweeper
 from .memory.lookup_cache import LookupCache
@@ -144,10 +145,12 @@ def _close_expired_promise(app, job: dict) -> None:
         return
     minuti = int((app.get("models_config") or {}).get("ponte", {}).get(
         "scadenza_min", 5))
-    store.concludi(
-        ident, state="fallita", now=time.time(),
-        reason=(f"ho aspettato il Piano Claude Max per {minuti} minuti e non ha "
-                "risposto: non so cosa dirti."))
+    reason = (f"ho aspettato il Piano Claude Max per {minuti} minuti e non ha "
+              "risposto: non so cosa dirti.")
+    store.concludi(ident, state="fallita", now=time.time(), reason=reason)
+    # Ruling 3.8: chi l'ha chiesta lo legge anche nella sua chat -- una riga,
+    # solo se la promessa ha un filo, e nessuna push.
+    tell_failure(app.get("data_dir"), riga, reason)
     # Rilievo R1 della revisione indipendente sul tratto `v3.22.2..HEAD`:
     # terza strada delle promesse sul ponte, dopo il successo (`api/
     # handlers_mcp`) e il turno finito senza «conclude» (`api/
@@ -163,6 +166,35 @@ def _close_expired_promise(app, job: dict) -> None:
     logger.warning(
         "promessa %s: il turno sul piano e' scaduto dopo %d minuti",
         ident, minuti)
+
+
+def _promise_delivery(app) -> dict:
+    """I tre collaboratori con cui l'orologio consegna l'esito di una
+    promessa (spec 2026-09-26 §2.4): chiusure su `app`, lette a ogni
+    risveglio -- l'orologio non sa ne' di Home Assistant ne' della chat.
+
+    - `recipients`: `recipients_for` sul client di Home Assistant di ADESSO;
+    - `write_to_thread`: `chat_store.append_assistant_line` nella cartella
+      dell'add-on (filtra i veleni, rifiuta un filo assente);
+    - `ceiling`: `api/soffitto.py::ceiling_at_wake`, il soffitto di chi ha
+      chiesto riletto al risveglio.
+    """
+    from .api.soffitto import ceiling_at_wake
+    from .chat_store import append_assistant_line
+    from .keeper.recipient import recipients_for
+
+    async def _recipients(subject):
+        return await recipients_for(subject, app.get("ha_client"))
+
+    def _write(thread, content, *, quoted=None):
+        return append_assistant_line(content, app["data_dir"], thread=thread,
+                                     quoted=quoted)
+
+    async def _ceiling(subject):
+        return await ceiling_at_wake(app, subject)
+
+    return {"recipients": _recipients, "write_to_thread": _write,
+            "ceiling": _ceiling}
 
 
 def _bridge_active(store: dict | None) -> bool:
@@ -4766,10 +4798,14 @@ async def _on_startup(app: web.Application) -> None:
     async def _interpreta(promise: dict) -> dict:
         return await interpreta_promise(app, promise)
 
+    # Fetta «il seguito delle chat divise» (spec 2026-09-26 §2.4): l'esito
+    # torna a chi l'ha chiesta -- il recapito, la riga nel filo e il soffitto
+    # riletto al risveglio (`_promise_delivery`, qui sopra nel modulo).
     app["sweeper"] = Sweeper(
         app["agenda"],
         execute=app["action_actuator"].execute,
         interpreta=_interpreta,
+        **_promise_delivery(app),
     )
 
     async def _battito() -> None:

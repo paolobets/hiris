@@ -29,6 +29,7 @@ from aiohttp import web
 
 from hiris.app import server
 from hiris.app.chat_settings import ChatSettings
+from hiris.app.chat_store import _get_store, close_all_stores, load_history
 from hiris.app.chat_thread import ChatThread
 from hiris.app.keeper.store import AgendaStore
 from hiris.app.provider_occurrences import OccurrenceRegistry
@@ -78,6 +79,9 @@ async def consegna(aiohttp_client, tmp_path, monkeypatch):
     promesse = AgendaStore(str(tmp_path / "promesse.db"))
     app["reasoning_queue"] = coda
     app["agenda"] = promesse
+    # Task 3 (ruling 3.8): la cronologia dove finisce la riga breve di un
+    # fallimento chiuso da qui.
+    app["data_dir"] = str(tmp_path)
     app.on_startup.clear()
     app.on_cleanup.clear()
 
@@ -85,6 +89,7 @@ async def consegna(aiohttp_client, tmp_path, monkeypatch):
     try:
         yield client, coda, promesse
     finally:
+        close_all_stores()
         promesse.close()
         coda.close()
 
@@ -314,3 +319,92 @@ def test_un_job_scaduto_senza_promessa_non_esplode(tmp_path):
     from hiris.app.server import _close_expired_promise
 
     _close_expired_promise({"agenda": None, "models_config": {}}, {"wake": {}})
+
+
+# --- ruling 3.8: i fallimenti chiusi da qui lo dicono nel filo, senza push ----
+
+_FRASE = "fra un'ora verifica la temperatura"
+
+
+def _chat_rows(cartella):
+    conn = _get_store(cartella)._conn
+    return (conn.execute("SELECT subject_key FROM chat_sessions").fetchall(),
+            conn.execute("SELECT content FROM chat_messages").fetchall())
+
+
+@pytest.mark.asyncio
+async def test_un_turno_senza_conclusione_lascia_una_riga_breve_nel_filo(consegna):
+    """Ruling 3.8: una riga sola di HIRIS nel filo di chi l'ha chiesta, che
+    nomina la promessa -- nessuna push (la consegna non ha una porta)."""
+    client, coda, promesse = consegna
+    ident = _promessa_in_corso(promesse)
+    job = _accoda_e_prendi(coda, ident)
+
+    await _consegna(client, job, {"reply": "ho guardato ma non concludo"})
+
+    righe = load_history(client.app["data_dir"], thread=PAOLO)
+    assert len(righe) == 1
+    assert righe[0]["role"] == "assistant"
+    assert _FRASE in righe[0]["content"]
+    assert "non si è potuta mantenere" in righe[0]["content"]
+
+
+def test_un_turno_scaduto_sul_piano_lascia_una_riga_breve_nel_filo(tmp_path):
+    from hiris.app.server import _close_expired_promise
+
+    promesse = AgendaStore(str(tmp_path / "p.db"))
+    try:
+        ident = _promessa_in_corso(promesse)
+        app = {"agenda": promesse, "data_dir": str(tmp_path),
+               "models_config": {"ponte": {"scadenza_min": 10}}}
+
+        _close_expired_promise(app, {"wake": {"promessa_id": ident}})
+
+        righe = load_history(str(tmp_path), thread=PAOLO)
+        assert len(righe) == 1
+        assert _FRASE in righe[0]["content"]
+        assert "10 minuti" in righe[0]["content"]
+    finally:
+        close_all_stores()
+        promesse.close()
+
+
+def test_una_scadenza_su_una_promessa_orfana_non_scrive_in_nessun_filo(tmp_path):
+    from hiris.app.server import _close_expired_promise
+
+    promesse = AgendaStore(str(tmp_path / "p.db"))
+    try:
+        promesse._conn.execute(
+            "INSERT INTO promesse(id,specie,frase,quando_ts,domanda,stato,nata_ts) "
+            "VALUES('orfana','chiedi','detta prima',?,'?','in_corso',?)",
+            (ADESSO + 10, ADESSO))
+        promesse._conn.commit()
+        app = {"agenda": promesse, "data_dir": str(tmp_path),
+               "models_config": {"ponte": {"scadenza_min": 10}}}
+
+        _close_expired_promise(app, {"wake": {"promessa_id": "orfana"}})
+
+        assert promesse.read("orfana")["stato"] == "fallita"
+        assert _chat_rows(str(tmp_path)) == ([], [])
+    finally:
+        close_all_stores()
+        promesse.close()
+
+
+def test_una_scadenza_gia_conclusa_non_scrive_una_seconda_riga(tmp_path):
+    from hiris.app.server import _close_expired_promise
+
+    promesse = AgendaStore(str(tmp_path / "p.db"))
+    try:
+        ident = _promessa_in_corso(promesse)
+        promesse.concludi(ident, state="mantenuta", now=ADESSO + 20,
+                          text="tutto fermo", avvisare=False)
+
+        _close_expired_promise({"agenda": promesse, "data_dir": str(tmp_path),
+                                "models_config": {}},
+                               {"wake": {"promessa_id": ident}})
+
+        assert load_history(str(tmp_path), thread=PAOLO) == []
+    finally:
+        close_all_stores()
+        promesse.close()

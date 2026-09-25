@@ -149,7 +149,11 @@ def test_il_tetto_della_casa_regge_qualunque_numero_di_fili(archivio):
     oltre = archivio.create(_chiedi(0, adesso=adesso),
                             thread=ChatThread("persona:nuovo", "pannello"), now=adesso)
     assert "errore" in oltre
-    assert str(tetto) in oltre["errore"]
+    # Extra 1 del Task 3: il rifiuto non rivela l'attivita' degli altri fili --
+    # niente numeri, niente «tutti»; dice che c'e' un tetto e cosa fare.
+    assert not any(c.isdigit() for c in oltre["errore"]), oltre["errore"]
+    assert "tutti" not in oltre["errore"]
+    assert "riprova più tardi" in oltre["errore"]
     totale = archivio._conn.execute("SELECT count(*) FROM promesse").fetchone()[0]
     assert totale == tetto
 

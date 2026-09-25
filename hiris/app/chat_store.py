@@ -559,6 +559,53 @@ def append_messages(messages: list[dict], data_dir: str, *, thread: ChatThread) 
     _get_store(data_dir).append(messages, thread)
 
 
+def append_assistant_line(content: str, data_dir: str, *,
+                          thread: ChatThread | None,
+                          quoted: str | None = None) -> bool:
+    """Una riga di HIRIS nel filo dato, senza un turno utente davanti; `True`
+    se e' stata scritta.
+
+    E' la strada dell'esito di una promessa (spec 2026-09-26 §2.4): chi ha
+    chiesto la ritrova nella sua conversazione attiva. Due rifiuti, entrambi
+    silenziosi per chi scrive e dichiarati dal `False`:
+    - **nessun filo, nessuna scrittura** (vincolo 3.2): una promessa orfana
+      non ha un padrone, e un filo inventato sarebbe la chat di qualcun altro;
+    - **un testo velenoso non entra** (`_is_toxic_assistant`, lo stesso filtro
+      delle risposte di chat): una sentinella d'errore tornerebbe al modello
+      a ogni turno. `quoted` e' il testo del MODELLO citato dentro `content`
+      (l'esito di un `chiedi`, dopo la riga che nomina la promessa): la riga
+      di HIRIS davanti lo nasconderebbe al filtro, quindi si filtra anche lui.
+    """
+    if thread is None:
+        return False
+    if not isinstance(content, str) or _is_toxic_assistant(content):
+        return False
+    if quoted is not None and (not isinstance(quoted, str)
+                               or _is_toxic_assistant(quoted)):
+        return False
+    _get_store(data_dir).append([{"role": "assistant", "content": content}], thread)
+    return True
+
+
+#: Il titolo di una conversazione che non ha una frase dell'utente (ruling
+#: 3.9): una conversazione aperta da un esito di promessa comincia con un
+#: messaggio di HIRIS, e inventare un turno utente per darle un titolo
+#: sarebbe scrivere nella cronologia una frase che nessuno ha detto.
+OUTCOME_ONLY_TITLE = "Esito di una promessa"
+
+
+def conversation_title(messages: list[dict]) -> str:
+    """Il titolo di una conversazione: la prima frase dell'utente, o
+    `OUTCOME_ONLY_TITLE` se non ce n'e'. Il tetto e il marcatore del taglio
+    li decide la pagina delle conversazioni (Task 6 della stessa fetta)."""
+    for message in messages:
+        if message.get("role") == "user":
+            text = str(message.get("content") or "").strip()
+            if text:
+                return text
+    return OUTCOME_ONLY_TITLE
+
+
 def clear_history(data_dir: str, *, thread: ChatThread) -> None:
     """Delete the thread's history and sessions -- only that thread."""
     _get_store(data_dir).clear(thread)

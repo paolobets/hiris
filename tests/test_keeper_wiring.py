@@ -105,7 +105,7 @@ def _load_battito_avvio():
     body = textwrap.dedent(src[start:end])
     func_src = (
         "async def _check(app, scheduler, _time, logger, Sweeper, "
-        "interpreta_promise):\n" + textwrap.indent(body, "    ")
+        "interpreta_promise, _promise_delivery):\n" + textwrap.indent(body, "    ")
     )
     namespace: dict = {}
     exec(compile(func_src, "<_on_startup battito>", "exec"), namespace)
@@ -147,7 +147,7 @@ async def test_il_battito_e_registrato_come_lavoro(promesse, porta_finta):
     scheduler = _SchedulerRegistratore()
 
     await check(app, scheduler, _time_module, server.logger, Sweeper,
-                interpreta_promise)
+                interpreta_promise, server._promise_delivery)
 
     assert isinstance(app["sweeper"], Sweeper)
     battiti = [c for c in scheduler.chiamate if c.get("id") == "hiris_keeper_heartbeat"]
@@ -182,7 +182,7 @@ async def test_al_riavvio_le_promesse_in_corso_vengono_risanate(promesse, porta_
     scheduler = _SchedulerRegistratore()
 
     await check(app, scheduler, _time_module, server.logger, Sweeper,
-                interpreta_promise)
+                interpreta_promise, server._promise_delivery)
 
     assert promesse.read(ident)["stato"] == "fallita"
     # E il battito NON deve averla toccata: risana() deve essere finita
@@ -404,3 +404,28 @@ def test_the_registered_periodic_jobs_are_seventeen_as_the_readme_declares():
     assert "registers **seventeen** APScheduler jobs" in readme, (
         "il README non dichiara piu' diciassette lavori periodici: il numero "
         "vive in due posti e questa prova esiste perche' non divergano.")
+
+
+@pytest.mark.asyncio
+async def test_l_orologio_montato_consegna_l_esito_nella_chat_vera(tmp_path):
+    """Task 3: i collaboratori del montaggio vero (`_promise_delivery`)
+    scrivono nella cronologia della cartella dell'add-on, rifiutano un filo
+    assente, e rileggono il soffitto -- non sono finte che il montaggio
+    dimentica."""
+    from hiris.app.chat_store import close_all_stores, load_history
+
+    paolo = ChatThread("persona:paolo", "pannello")
+    app = {"data_dir": str(tmp_path), "ha_client": None, "servizi": None,
+           "ruoli": {"quando": 0.0, "per_id": {}}}
+    try:
+        collaboratori = server._promise_delivery(app)
+        assert set(collaboratori) == {"recipients", "write_to_thread", "ceiling"}
+        assert collaboratori["write_to_thread"](paolo, "Esito della promessa «x»: y") is True
+        assert collaboratori["write_to_thread"](None, "nessun filo") is False
+        assert load_history(str(tmp_path), thread=paolo) == [
+            {"role": "assistant", "content": "Esito della promessa «x»: y"}]
+        # Un servizio senza archivio non comanda a scadenza (fail closed).
+        soffitto = await collaboratori["ceiling"]({"specie": "luogo", "id": "p"})
+        assert soffitto["comandare"] is False
+    finally:
+        close_all_stores()

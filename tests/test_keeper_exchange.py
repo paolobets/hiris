@@ -56,7 +56,9 @@ def test_concludi_dichiara_che_la_notifica_la_manda_hiris():
     La frase della persona arriva VERBATIM al turno (`_domanda`), e quando
     dice «mandami una notifica» il modello cerca uno strumento per mandarla.
     Non c'e', e non deve esserci: la manda lo Schedulatore DOPO `conclude`,
-    sul canale approvato alla nascita. Ma niente glielo diceva -- la
+    ai dispositivi di chi l'ha chiesta risolti al risveglio (dalla fetta «il
+    seguito delle chat divise»; prima era il recapito scelto alla nascita).
+    Ma niente glielo diceva -- la
     descrizione di `avvisare` parlava solo del GIUDIZIO («se valga la pena
     disturbarla»), mai del MECCANISMO -- e il modello rispondeva a parole
     invece di concludere. Riprodotto tre volte sull'add-on vero: senza la
@@ -69,6 +71,12 @@ def test_concludi_dichiara_che_la_notifica_la_manda_hiris():
     assert "non esiste uno strumento per notificare" in d, (
         "deve sapere che l'assenza dello strumento e' voluta, non una lacuna "
         "da aggirare rispondendo a parole")
+    # Extra 3 del Task 3: il modello nuovo -- l'esito torna nella chat di chi
+    # l'ha chiesta e, se ha un telefono collegato, come notifica. Nessun
+    # «canale approvato alla nascita»: non esiste piu'.
+    assert "canale" not in d
+    assert "nella chat di chi" in d
+    assert "telefono collegato" in d
 
 
 def test_il_prompt_manda_a_concludi_invece_di_dire_solo_nel_testo():

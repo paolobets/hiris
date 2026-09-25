@@ -103,6 +103,7 @@ async def handle_reasoning_submit(request: web.Request) -> web.Response:
         # restare su disco). `wake` no, ed e' per questo che
         # `keeper/exchange._enqueue_to_bridge` ce lo mette.
         from ..keeper.exchange import _senza_conclusione
+        from ..keeper.outcome import tell_failure
 
         ident = ((job or {}).get("wake") or {}).get("promessa_id") or ""
         store = request.app.get("agenda")
@@ -119,9 +120,11 @@ async def handle_reasoning_submit(request: web.Request) -> web.Response:
             outcome = "promessa_gia_conclusa"
         else:
             now = _now(request)
-            store.concludi(
-                ident, state="fallita", now=now,
-                reason=_senza_conclusione(decision.get("reply")))
+            reason = _senza_conclusione(decision.get("reply"))
+            store.concludi(ident, state="fallita", now=now, reason=reason)
+            # Ruling 3.8: una riga breve nel filo di chi l'ha chiesta, nessuna
+            # push -- la stessa forma della scadenza (`keeper/outcome.py`).
+            tell_failure(request.app.get("data_dir"), row, reason)
             # Rilievo R1 della revisione indipendente sul tratto
             # `v3.22.2..HEAD`: il registro degli esiti vedeva il successo
             # della chat e la scadenza, e niente delle promesse. Una promessa

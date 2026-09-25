@@ -347,7 +347,14 @@ async def recipients_for(subject: dict | None, ha) -> Recipients:
                 continue
             candidate = f"mobile_app_{slug}"
             if candidate in notify_services:
-                resolved.append(f"notify.{candidate}")
+                # Due tracker della stessa persona possono convergere sullo
+                # STESSO servizio (un telefono nuovo che ha preso il nome del
+                # vecchio, ancora collegato): un servizio compare una volta
+                # sola, al posto del primo tracker che lo trova -- ordine
+                # stabile, una push per telefono (extra 5 del Task 3).
+                service = f"notify.{candidate}"
+                if service not in resolved:
+                    resolved.append(service)
                 break
 
     if not resolved:

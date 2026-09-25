@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 
 from ..chat_thread import ChatThread
+from ..proxy._sanitize import truncate_with_marker
 
 VERB = ("fai", "chiedi")
 STATES_CONCLUSI = ("mantenuta", "saltata", "disdetta", "fallita")
@@ -108,6 +109,61 @@ _CHIAVI = (
 # qui, perche' e' parte della forma della chiamata di recapito -- e la forma
 # vive in un posto solo (`delivery_call`).
 DELIVERY_TITLE = "HIRIS"
+
+# Il tetto del testo che arriva al TELEFONO (vincolo 3.1). Il testo e'
+# prodotto dal modello: senza un tetto, un turno andato in circolo
+# spingerebbe pagine intere su una notifica. 500 caratteri stanno comodi
+# nel limite di 4 KB di un payload APNs anche con caratteri da 4 byte, e
+# sono gia' piu' di quanti un telefono ne mostri espanso. Nella chat il
+# testo resta intero: li' si legge, non si notifica.
+PUSH_MESSAGE_CAP = 500
+# Il tetto di un motivo o di un errore che entra in un racconto (vincolo
+# 3.7): stesso numero di `exchange._CEILING_RIPORTO`, per la stessa ragione --
+# una riga da leggere, non un allegato.
+REASON_CAP = 300
+# La frase originale citata nel messaggio d'esito: e' di chi ha chiesto e
+# torna a lui, ma resta un campo limitato come gli altri.
+PHRASE_CAP = 200
+# Al piu' tre servizi per promessa, a ogni risveglio (ruling 3.4). Una
+# persona vera ha un telefono e forse un tablet; un recapito che ne
+# risolvesse dieci farebbe di un esito dieci notifiche. Il limite
+# accettato: nessun freno GLOBALE sulle push in questa fetta -- il numero
+# delle promesse e' gia' limitato (`CEILING_IN_SOSPESO`,
+# `HOUSE_CEILING_IN_SOSPESO`), e questo tetto limita il resto.
+MAX_SERVICES_PER_PROMISE = 3
+
+
+def push_message(text) -> str:
+    """Il testo di una push d'esito: quello del modello, tagliato al tetto
+    col marcatore dichiarato."""
+    return truncate_with_marker(text if isinstance(text, str) else "",
+                                PUSH_MESSAGE_CAP)
+
+
+def _phrase(promise: dict) -> str:
+    return truncate_with_marker(str(promise.get("frase") or "").strip(), PHRASE_CAP)
+
+
+def outcome_message(promise: dict, text: str) -> str:
+    """Il messaggio di HIRIS nel filo di chi ha chiesto, quando un `chiedi`
+    si conclude (spec §2.4): una riga che nomina la promessa -- la frase di
+    allora -- e poi la risposta, intera."""
+    return f"Esito della promessa «{_phrase(promise)}»:\n{text}"
+
+
+def kept_message(promise: dict, notice: str | None) -> str:
+    """Il racconto di un `fai` mantenuto. `notice` e' l'avviso del bersaglio
+    cambiato (`sweeper.target_changed`), gia' una frase di HIRIS."""
+    line = f"Ho mantenuto la promessa «{_phrase(promise)}»."
+    return f"{line} {notice}" if notice else line
+
+
+def failure_message(promise: dict, reason) -> str:
+    """La riga breve di una promessa che non si e' potuta mantenere (ruling
+    3.8): stessa forma da qualunque strada arrivi il fallimento. Il motivo
+    entra tagliato al tetto."""
+    short = truncate_with_marker(str(reason or "").strip(), REASON_CAP)
+    return f"La promessa «{_phrase(promise)}» non si è potuta mantenere: {short}"
 
 
 def delivery_call(recipient: str, message: str = "") -> dict:

@@ -56,7 +56,11 @@ def _trim_history(history: list[dict], max_tokens: int = _MAX_HISTORY_TOKENS) ->
         if estimated_tokens > max_tokens:
             break
         trimmed.insert(0, msg)
-    if trimmed and trimmed[0].get("role") == "assistant":
+    # TUTTI gli `assistant` in testa, non il primo: dalla fetta «il seguito
+    # delle chat divise» l'esito di una promessa entra nel filo come
+    # messaggio di HIRIS senza un turno utente davanti, e due esiti arrivati
+    # prima che la persona riscriva sono due `assistant` di fila.
+    while trimmed and trimmed[0].get("role") == "assistant":
         trimmed = trimmed[1:]
     return trimmed
 
