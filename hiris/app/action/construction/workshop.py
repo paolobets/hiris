@@ -71,6 +71,15 @@ _BORN_THIS_TURN = ("questa proposta e' nata in questo stesso turno: te l’ho "
 #: davvero, solo altrove.
 _UNKNOWN_ID = "non ho nessuna proposta con quell’identificatore."
 
+#: Fix round 1 (Task 7): quando la scelta implicita di QUESTO filo non trova
+#: niente, ma esistono proposte `in_attesa` ORFANE (`subject_key IS NULL`:
+#: nate prima della fetta, o dall'attuatore) -- il difetto del 23/09/2026
+#: regredito. Dire «dimmi cosa vuoi e te la propongo» farebbe RIPROPORRE una
+#: cosa che esiste gia', bruciando un posto sotto il tetto per un doppione.
+#: Non le nomina (decisione 4): dice solo che una pagina le mostra.
+_ORPHANS_ELSEWHERE = ("ci sono proposte in sospeso che non sono nate in questa "
+                     "conversazione: si confermano dalla pagina Costruzioni.")
+
 OPERATIONS = ("crea", "modifica", "cancella")
 
 # Le due forme dell'articolo -- indeterminativo per «crea», determinativo per
@@ -606,16 +615,29 @@ class Workshop:
         Cosi' invece l'elenco costa zero quando non serve e arriva esatto
         quando serve -- e un elenco che vive in un rifiuto non e' una
         diciassettesima definizione di strumento pagata a ogni turno.
+
+        **Le orfane non fanno riproporre (fix round 1, Task 7).** Quando la
+        scelta di QUESTO filo e' vuota ma esistono proposte `in_attesa`
+        SENZA filo altrove -- il caso normale di chi usa HIRIS appena
+        aggiornato, o di una proposta dell'attuatore -- dire «dimmi cosa
+        vuoi e te la propongo» e' il difetto del 23/09/2026 che tornerebbe
+        indietro: il modello riproporrebbe una cosa che esiste gia',
+        bruciando un posto sotto il tetto per un doppione. Il rifiuto
+        rimanda alla pagina, senza nominarle (`_ORPHANS_ELSEWHERE`).
         """
-        pending = [r for r in self._store.list(pending_only=True)
-                  if r["stato"] == "in_attesa"
-                  and (thread is None or _same_thread(r, thread))]
+        all_pending = [r for r in self._store.list(pending_only=True)
+                      if r["stato"] == "in_attesa"]
+        pending = [r for r in all_pending
+                  if thread is None or _same_thread(r, thread)]
         confirmable = [r for r in pending if r["turno"] != exchange]
         if len(confirmable) == 1:
             return confirmable[0]["id"], ""
         if not confirmable:
             if pending:
                 return None, _BORN_THIS_TURN
+            if thread is not None and any(
+                    r.get("subject_key") is None for r in all_pending):
+                return None, _ORPHANS_ELSEWHERE
             return None, ("non hai nessuna proposta in sospeso da confermare: "
                           "dimmi cosa vuoi e te la propongo.")
         lines = "\n".join(

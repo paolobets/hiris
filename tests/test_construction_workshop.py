@@ -1280,15 +1280,44 @@ def test_la_data_del_ripristino_e_nel_fuso_della_casa():
 async def test_la_proposta_di_paolo_non_si_conferma_dal_filo_di_marta(banco):
     """Senza id, la scelta implicita guarda solo il filo di chi conferma: la
     proposta di Paolo non entra nella scelta di Marta, e il rifiuto non la
-    nomina (decisione 4)."""
+    nomina (decisione 4). Il testo e' quello del "non ho niente in sospeso":
+    con una sola pendente, pero', questo da solo non isola il filtro di
+    `_only_pending` da quello di `_thread_may_confirm` in `apply` -- vedi
+    `test_con_due_pendenti_di_paolo_marta_non_ha_niente_in_sospeso` qui
+    sotto per la prova che lo fa."""
     officina, _ha, archivio, _ = banco
     p = await officina.propose(_intento(), actor="chat", exchange="t1",
                                thread=PAOLO, now=ADESSO)
     esito = await officina.apply(None, actor="chat", exchange="t2",
                                  thread=MARTA, now=ADESSO + 60)
     assert "errore" in esito
+    assert "nessuna proposta in sospeso" in esito["errore"]
     assert p["proposta_id"] not in esito["errore"]
     assert archivio.read(p["proposta_id"])["stato"] == "in_attesa"
+
+
+@pytest.mark.asyncio
+async def test_con_due_pendenti_di_paolo_marta_non_ha_niente_in_sospeso(banco):
+    """Isola il filtro per filo di `_only_pending` da quello per id di
+    `_thread_may_confirm` (fix round 1, Task 7): con UNA sola pendente di
+    Paolo, il rifiuto di Marta e' lo stesso testo che filtri o no --
+    `_thread_may_confirm` la blocca comunque, per id, una volta scelta.
+    Con DUE, se `_only_pending` non filtrasse per filo la scelta
+    finirebbe nel ramo "ci sono piu' proposte in sospeso" e nominerebbe
+    id e chiave di Paolo a Marta."""
+    officina, _ha, archivio, _ = banco
+    p1 = await officina.propose(_intento(alias="Tapparelle A"), actor="chat",
+                                exchange="t1", thread=PAOLO, now=ADESSO)
+    p2 = await officina.propose(_intento(alias="Tapparelle B"), actor="chat",
+                                exchange="t1", thread=PAOLO, now=ADESSO + 1)
+    esito = await officina.apply(None, actor="chat", exchange="t2",
+                                 thread=MARTA, now=ADESSO + 60)
+    assert "errore" in esito
+    assert "nessuna proposta in sospeso" in esito["errore"]
+    assert p1["proposta_id"] not in esito["errore"]
+    assert p2["proposta_id"] not in esito["errore"]
+    assert archivio.read(p1["proposta_id"])["chiave"] not in esito["errore"]
+    assert archivio.read(p2["proposta_id"])["chiave"] not in esito["errore"]
 
 
 @pytest.mark.asyncio
@@ -1335,13 +1364,20 @@ async def test_una_proposta_senza_filo_resta_confermabile_per_id_da_chiunque(ban
 async def test_una_proposta_senza_filo_non_entra_nella_scelta_implicita_di_un_filo(banco):
     """Spec §5: le righe con `subject_key IS NULL` non entrano MAI nella
     scelta implicita -- anche se sono le uniche pendenti in casa, il filo di
-    Paolo non le vede e il rifiuto dice che non ha niente in sospeso."""
+    Paolo non le vede.
+
+    **Fix round 1 (Task 7): il rifiuto NON dice «dimmi cosa vuoi e te la
+    propongo».** Quella frase, qui, e' il difetto del 23/09/2026 regredito:
+    la proposta orfana esiste gia', e invitare a riproporla ne creerebbe un
+    doppione, bruciando un posto sotto il tetto. Rimanda alla pagina, senza
+    nominarla."""
     officina, _ha, _, _ = banco
     await officina.propose(_intento(), actor="chat", exchange="t1", now=ADESSO)
     esito = await officina.apply(None, actor="chat", exchange="t2",
                                  thread=PAOLO, now=ADESSO + 60)
     assert "errore" in esito
-    assert "nessuna proposta in sospeso" in esito["errore"]
+    assert "pagina Costruzioni" in esito["errore"]
+    assert "dimmi cosa vuoi" not in esito["errore"]
 
 
 @pytest.mark.asyncio

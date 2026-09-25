@@ -147,11 +147,17 @@ def create_tool_dispatcher(app, exchange: str | None = None,
     UNA volta dal chiamante come `exchange`: serve alla guardia
     dell'officina, che non conferma la proposta del filo di Paolo dal filo di
     Marta (spec §5, «confirm e' del filo»). Sul ramo sincrono lo calcola
-    `handle_chat` (`request_thread(request)`) e lo ripropone
-    `_downgrade_to_chain` dal job; sulla rotta MCP e' quello del job di chat
-    `claimed` (`handlers_mcp.py::_exchange_chat_job`). `None` per le
-    promesse e per un turno del ponte che non e' di chat: li' l'officina non
-    restringe (vedi `Workshop.apply`).
+    SEMPRE `handle_chat` (`request_thread(request)` non torna mai `None`) e lo
+    ripropone `_downgrade_to_chain` dal job; sulla rotta MCP e' quello del job
+    di chat `claimed` (`handlers_mcp.py::_exchange_chat_job`). `None` anche
+    per una chat vera in una FINESTRA transitoria: un job accodato PRIMA di
+    questa versione (`reasoning_jobs` senza `subject_key`/`entry_point`,
+    `reasoning/queue.py::_row`) non ha filo da propagare -- il ripiego sulla
+    catena e la rotta MCP lo trovano `None` finche' quel job non si esaurisce
+    (la coda si pota in giorni, non in mesi). Li', come per le promesse e un
+    turno del ponte che non e' di chat, l'officina non restringe PER FILO
+    (vedi `Workshop.apply`): il soffitto (chi puo' costruire) resta invariato
+    e continua a mordere.
 
     Task B7 -- `cache_indice=app.get("tools_lookup_cache")`: l'oggetto di
     vita lunga costruito accanto a `entity_cache` in `server.py`, non uno
