@@ -933,7 +933,7 @@ async def test_job_context_porta_il_nucleo_identico_al_ramo_sincrono(tmp_path):
         "etichette": [], "categorie": [], "integrazioni": [],
     })
     archivio_memoria = MemoryStore(str(tmp_path / "memoria.db"))
-    archivio_memoria.remember("La cucina ha i faretti dimmerabili", "paolo")
+    archivio_memoria.remember("La cucina ha i faretti dimmerabili", detto_da="paolo")
     app["home_space_store"] = archivio_casa
     app["memory_store"] = archivio_memoria
 

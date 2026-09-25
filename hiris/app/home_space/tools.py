@@ -153,6 +153,7 @@ from datetime import datetime, timedelta
 from typing import Any, ClassVar
 
 from ..action.construction.advisor import STRUCTURES
+from ..chat_thread import subject_key_for
 from ..memory.interpretation import VOCABULARY, validate
 from ..memory.lookup_cache import LookupCache
 from ..memory.resolver import STORE_KEY_PER_TYPE, costruisci_indice
@@ -589,6 +590,10 @@ RELATED_TOOL_DEF = {
     },
 }
 
+# Niente `detto_da` nello schema (fetta "le chat divise", Task 6, decisione 5):
+# l'autore non e' piu' un'ipotesi che il modello compila -- `_remember` lo
+# deriva dal SOGGETTO del turno (`self._subject`), e ignora qualunque
+# `detto_da` che il modello passi comunque.
 REMEMBER_TOOL_DEF = {
     "name": "remember",
     "description": (
@@ -618,10 +623,6 @@ REMEMBER_TOOL_DEF = {
                     "La frase cosi' come l'ha detta la persona -- "
                     "non riassunta, non riscritta."
                 ),
-            },
-            "detto_da": {
-                "type": "string",
-                "description": "Chi ha detto questa frase, se lo sai. Ometti se non lo sai.",
             },
             "forza": {
                 "type": "string",
@@ -2323,8 +2324,19 @@ class ToolDispatcher:
         cleaned, problems, corrections = validate(
             interpretation, lookup, unverifiable_kinds, reported_units)
 
+        # L'autore viene dal SOGGETTO del turno (decisione 5, Task 6), mai da
+        # un argomento del modello -- `arguments.get("detto_da")` non si legge
+        # nemmeno piu' (lo schema qui sopra non lo chiede, ma un modello che
+        # lo mandi comunque va ignorato). Il nome e' controllato dall'utente
+        # (arriva dall'intestazione dell'ingress di Home Assistant) e finisce
+        # nel nucleo a OGNI turno futuro (briefing.py) -- sanificato con
+        # `sanitize_ha_value`, la stessa porta di "Chi ti sta parlando"
+        # (handlers_chat.py::_who_is_speaking, Task 5), prima di archiviarlo.
+        subject_name = (self._subject or {}).get("nome")
         memory_id = self._memory.remember(
-            text, detto_da=arguments.get("detto_da"),
+            text,
+            detto_da=sanitize_ha_value(subject_name) if subject_name else None,
+            said_by=subject_key_for(self._subject) if self._subject else None,
             ancore=cleaned["ancore"], conditions=cleaned["condizioni"],
             modality=cleaned["forza"], grandezza=cleaned["grandezza"],
             minimum=cleaned["minimo"], maximum=cleaned["massimo"], unit=cleaned["unita"],

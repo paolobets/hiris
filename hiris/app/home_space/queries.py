@@ -1555,6 +1555,11 @@ def _view_memory(memories: list[dict], reference) -> dict:
     detail = {
         "esiste": True, "tipo": "ricordo", "id": memory["id"], "testo": memory["testo"],
         "detto_da": memory.get("detto_da"),
+        # La chiave stabile del soggetto (Task 6, decisione 5) -- stessa forma
+        # di `fetch` e di `/api/memories`, che la portano gia' perche' leggono
+        # la riga intera: qui il dettaglio e' composto a mano, e senza questa
+        # riga sarebbe l'unica porta a tacerla (fondamenta 3).
+        "said_by": memory.get("said_by"),
         "detto_il": memory.get("detto_il"),
         "forza": memory.get("forza"), "grandezza": memory.get("grandezza"),
         "minimo": memory.get("minimo"), "massimo": memory.get("massimo"),

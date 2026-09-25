@@ -164,7 +164,8 @@ async def test_api_nucleo_mostra_il_testo_e_il_riepilogo(aiohttp_client, tmp_pat
         "etichette": [], "categorie": [], "integrazioni": [],
     })
     archivio_memoria = MemoryStore(str(tmp_path / "memoria.db"))
-    archivio_memoria.remember("d'inverno la sala la preferisco fra 19 e 20 gradi", "paolo")
+    archivio_memoria.remember("d'inverno la sala la preferisco fra 19 e 20 gradi",
+                              detto_da="paolo")
     app = web.Application()
     app["home_space_store"] = archivio_casa
     app["memory_store"] = archivio_memoria
@@ -258,9 +259,10 @@ async def test_api_nucleo_non_tronca_i_ricordi_al_default_di_richiama(aiohttp_cl
     })
     archivio_memoria = MemoryStore(str(tmp_path / "memoria.db"))
     primo_ricordo = "d'inverno la sala la preferisco fra 19 e 20 gradi"
-    archivio_memoria.remember(primo_ricordo, "paolo")  # il PIU' VECCHIO (id piu' basso)
+    archivio_memoria.remember(primo_ricordo, detto_da="paolo")  # il PIU' VECCHIO (id piu' basso)
     for i in range(200):
-        archivio_memoria.remember(f"ricordo numero {i}: qualcosa che qualcuno ha detto", "paolo")
+        archivio_memoria.remember(f"ricordo numero {i}: qualcosa che qualcuno ha detto",
+                                  detto_da="paolo")
     app = web.Application()
     app["home_space_store"] = archivio_casa
     app["memory_store"] = archivio_memoria

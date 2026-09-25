@@ -30,9 +30,19 @@ difese vere si derivano dai rischi della 2.0, in una fase dedicata, non si
 ereditano da un prodotto diverso. In particolare: **niente colonna di
 scadenza**. Nella 1.x c'era (`valid_until`), e ha fatto sparire in silenzio
 ricordi veri dell'utente dopo novanta giorni. Qui la memoria non evapora.
+
+**L'autore e' un'identita', non un'ipotesi** (fetta "le chat divise", Task
+6, docs/design/2026-09-25-le-chat-divise.md §5). `said_by` (`specie:id`,
+`chat_thread.subject_key_for`) affianca `detto_da` (l'etichetta leggibile,
+correggibile dalla pagina): il primo e' la chiave stabile di CHI ha aperto
+il turno in cui il ricordo e' nato, il secondo il nome con cui HIRIS lo
+mostra oggi. Nessuno dei due lo decide il modello -- lo decide il soggetto
+del turno (`ToolDispatcher._subject`), prima ancora che `remember()` veda
+gli argomenti.
 """
 from __future__ import annotations
 
+import sqlite3
 from datetime import UTC, datetime
 
 from ..storage import connect, init_schema
@@ -42,6 +52,7 @@ CREATE TABLE IF NOT EXISTS ricordi (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     testo TEXT NOT NULL,
     detto_da TEXT,
+    said_by TEXT,
     detto_il TEXT NOT NULL,
     forza TEXT,
     grandezza TEXT,
@@ -73,17 +84,30 @@ CREATE INDEX IF NOT EXISTS idx_condizioni_ricordo ON condizioni(ricordo_id);
 # di colonna che non esistono: un `**campi` sbagliato solleva subito, invece
 # di fallire dentro la INSERT con un messaggio SQLite poco chiaro.
 _CAMPI_MODIFICABILI = {"detto_da", "forza", "grandezza", "minimo", "massimo", "unita"}
+# `said_by` NON e' qui: e' la chiave del soggetto che ha aperto il turno, non
+# un'etichetta che si "corregge" dalla pagina -- solo `detto_da` (il nome
+# leggibile) e' correggibile, `said_by` lo scrive solo `remember()`.
+
+
+def _migration_2(conn: sqlite3.Connection) -> None:
+    """v1 -> v2 (fetta "le chat divise", Task 6): `said_by` accanto a
+    `detto_da` -- un `ALTER TABLE`, non una riga di `_SCHEMA`: `init_schema`
+    esegue lo script PRIMA delle migrazioni, e su un archivio v1 uno script
+    che gia' cita questa colonna fallirebbe l'apertura invece di migrare
+    (stesso giro di `chat_store.py::_migration_4`)."""
+    conn.execute("ALTER TABLE ricordi ADD COLUMN said_by TEXT")
 
 
 class MemoryStore:
     def __init__(self, db_path: str = "/data/memoria.db") -> None:
         self._conn = connect(db_path)
-        init_schema(self._conn, _SCHEMA, version=1)
+        init_schema(self._conn, _SCHEMA, version=2, migrations={2: _migration_2})
 
     def close(self) -> None:
         self._conn.close()
 
-    def remember(self, text: str, detto_da: str | None, ancore=(), conditions=(),
+    def remember(self, text: str, *, detto_da: str | None = None,
+                said_by: str | None = None, ancore=(), conditions=(),
                 modality: str | None = None, grandezza: str | None = None,
                 minimum: float | None = None, maximum: float | None = None,
                 unit: str | None = None) -> int:
@@ -92,6 +116,11 @@ class MemoryStore:
         Un ricordo nudo (nessuna ancora, nessuna condizione, nessuna forza)
         e' un ricordo intero, non un ricordo a meta': la struttura e'
         un'aggiunta opzionale sopra il testo, mai una sua precondizione.
+
+        `detto_da`/`said_by` non sono un'ipotesi del modello: il chiamante
+        (`ToolDispatcher._remember`) li deriva dal SOGGETTO del turno, prima
+        di arrivare qui -- questo metodo li scrive cosi' come li riceve, mai
+        da un campo che il modello ha compilato lui stesso.
 
         Tutto in una transazione: se un'ancora e' malformata (manca
         `riferimento`, per esempio) l'intera scrittura si annulla, cosi' non
@@ -103,9 +132,9 @@ class MemoryStore:
             c.execute("BEGIN")
             cursore = c.execute(
                 "INSERT INTO ricordi "
-                "(testo, detto_da, detto_il, forza, grandezza, minimo, massimo, unita) "
-                "VALUES (?,?,?,?,?,?,?,?)",
-                (text, detto_da, datetime.now(UTC).isoformat(timespec="seconds"),
+                "(testo, detto_da, said_by, detto_il, forza, grandezza, minimo, massimo, unita) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
+                (text, detto_da, said_by, datetime.now(UTC).isoformat(timespec="seconds"),
                  modality, grandezza, minimum, maximum, unit))
             ricordo_id = cursore.lastrowid
             self._write_ancore(ricordo_id, ancore)

@@ -232,6 +232,16 @@ def test_guarda_un_ricordo_da_la_sua_interpretazione_NELLA_STESSA_FORMA():
     assert "detto_il" in dettaglio
 
 
+def test_guarda_un_ricordo_porta_said_by_come_fetch():
+    """Task 6, fondamenta 3: la stessa forma da `fetch`, `view("ricordo")` e
+    `/api/memories` -- `said_by` non puo' uscire da due porte e sparire dalla
+    terza."""
+    ricordi = [{"id": 7, "testo": "una frase qualsiasi", "detto_da": "Paolo",
+               "said_by": "persona:p", "ancore": [], "condizioni": [], "forza": None}]
+    dettaglio = view(_CASA, _COMPORTAMENTO, ricordi, _STATO, "ricordo", 7)
+    assert dettaglio["said_by"] == "persona:p"
+
+
 def test_guarda_un_ricordo_che_non_esiste_lo_dice():
     dettaglio = view(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, "ricordo", 999)
     assert dettaglio["esiste"] is False

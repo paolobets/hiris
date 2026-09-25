@@ -323,6 +323,30 @@ async def test_correggere_i_campi_non_correggibili_viene_dichiarato(aiohttp_clie
 
 
 @pytest.mark.asyncio
+async def test_patch_corregge_detto_da_ma_non_said_by(aiohttp_client, tmp_path):
+    """Decisione 5 (Task 6): `detto_da` e' l'etichetta leggibile, correggibile
+    dalla pagina -- `said_by` e' la chiave del soggetto che l'ha davvero
+    scritto, e nessuna pagina la puo' riscrivere. Un tentativo non solleva
+    ne' fallisce: cade nella stessa disciplina "ignorati" di sopra."""
+    memory = MemoryStore(str(tmp_path / "memoria.db"))
+    ident = memory.remember(_PHRASE, detto_da="paolo", said_by="persona:p")
+    app = _app(archivio_memoria=memory, archivio_casa=None)
+    client = await aiohttp_client(app)
+
+    resp = await client.patch(f"/api/memories/{ident}",
+                               json={"detto_da": "Paolo B.", "said_by": "persona:altro"})
+    assert resp.status == 200
+    body = await resp.json()
+    assert body["ignorati"] == ["said_by"]
+
+    r = memory.fetch()[0]
+    assert r["detto_da"] == "Paolo B."
+    assert r["said_by"] == "persona:p"
+
+    memory.close()
+
+
+@pytest.mark.asyncio
 async def test_correggere_la_grandezza_ridedduce_l_unita(aiohttp_client, tmp_path):
     """Correggere `grandezza` senza toccare `unita` non deve lasciare
     l'unita' vecchia: "umidita' 19-20 °C" sarebbe la stessa deriva che le

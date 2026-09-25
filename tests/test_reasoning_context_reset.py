@@ -217,7 +217,7 @@ async def test_un_ricordo_seminato_non_si_ritrova_piu_nel_file_dopo_la_risoluzio
     })
     archivio_memoria = MemoryStore(str(tmp_path / "memoria.db"))
     ricordo_segreto = "Il codice del cancello e' 1974, non dirlo a nessuno"
-    archivio_memoria.remember(ricordo_segreto, "paolo")
+    archivio_memoria.remember(ricordo_segreto, detto_da="paolo")
     app["home_space_store"] = archivio_casa
     app["memory_store"] = archivio_memoria
 

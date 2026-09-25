@@ -1,3 +1,5 @@
+import sqlite3
+
 import pytest
 
 from hiris.app.memory.store import MemoryStore
@@ -22,6 +24,59 @@ def test_un_ricordo_nudo_si_salva_e_si_rilegge(memory):
     assert memories[0]["ancore"] == []
     assert memories[0]["condizioni"] == []
     assert memories[0]["forza"] is None
+
+
+def test_said_by_si_scrive_e_si_rilegge_da_fetch_e_get(memory):
+    """Task 6: `said_by` e' una colonna vera, non un derivato -- scritta da
+    `remember()`, letta identica da `fetch()` E da `get()` (fondamenta 3)."""
+    ident = memory.remember("ho freddo", detto_da="Paolo", said_by="persona:p")
+    assert memory.fetch()[0]["said_by"] == "persona:p"
+    assert memory.get(ident)["said_by"] == "persona:p"
+
+
+def test_said_by_di_default_e_none_come_detto_da(memory):
+    """Nessun soggetto -> nessuna identita' inventata."""
+    ident = memory.remember("la caldaia fa rumore")
+    ricordo = memory.get(ident)
+    assert ricordo["detto_da"] is None
+    assert ricordo["said_by"] is None
+
+
+def test_migrazione_v1_aggiunge_said_by_e_conserva_le_righe(tmp_path):
+    """Un archivio v1 vero (prima di questo task, senza `said_by`): la
+    migrazione aggiunge la colonna con un `ALTER TABLE`, senza toccare le
+    righe gia' scritte -- stessa disciplina di
+    `test_chat_store.py::test_migrazione_v3_conserva_le_righe_come_orfane...`."""
+    db = str(tmp_path / "m.db")
+    c = sqlite3.connect(db)
+    c.executescript("""
+      CREATE TABLE ricordi (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          testo TEXT NOT NULL,
+          detto_da TEXT,
+          detto_il TEXT NOT NULL,
+          forza TEXT,
+          grandezza TEXT,
+          minimo REAL,
+          massimo REAL,
+          unita TEXT,
+          corretto_da_utente INTEGER NOT NULL DEFAULT 0
+      );
+      INSERT INTO ricordi (testo, detto_da, detto_il) VALUES
+          ('un ricordo di prima', 'paolo', '2026-09-01T00:00:00Z');
+      PRAGMA user_version=1;
+    """)
+    c.close()
+
+    m = MemoryStore(db)
+    try:
+        memories = m.fetch()
+        assert memories[0]["testo"] == "un ricordo di prima"
+        assert memories[0]["detto_da"] == "paolo"
+        assert memories[0]["said_by"] is None
+        assert m._conn.execute("PRAGMA user_version").fetchone()[0] == 2
+    finally:
+        m.close()
 
 
 def test_un_ricordo_interpretato_conserva_tutto(memory):
