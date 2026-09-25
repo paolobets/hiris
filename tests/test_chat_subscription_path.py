@@ -18,10 +18,11 @@ A new ``GET /api/chat/reply/{job_id}`` route polls the same queue
 (``ReasoningQueue.get``) and returns ``{"status": "pending"}`` until a
 decision exists, then ``{"status": "done", "reply": ...}``.
 
-fetta E4 Task 5 ("un bot solo"): chat_store lost the `chatbot_id` it used to
-be keyed by (there's one conversation, full stop) — `append_messages`/
-`load_history` take no id, and the enqueued job context no longer carries
-one either (`handlers_chat.py::_enqueue_chat_job`).
+fetta E4 Task 5 ("un bot solo") took the `chatbot_id` out of chat_store.
+Fetta «le chat divise» keys it again, by THREAD (who writes, from where):
+`append_messages`/`load_history` take `thread=` (mandatory), and the enqueued
+job carries the thread and the subject (`handlers_chat.py::_enqueue_chat_job`).
+Every request in this file resolves to `THREAD_TEST` (see below).
 
 Real APIs verified before writing this test (matches Task 1's report):
 - ReasoningQueue.enqueue(kind, wake, context, deadline_ts, *, job_id=None, now,
@@ -34,7 +35,8 @@ Real APIs verified before writing this test (matches Task 1's report):
   e' obbligatorio, nessun default (un 409 sganciato dal filo sarebbe il vecchio
   difetto "un bot solo" tornato di un livello piu' su).
 - ReasoningQueue.submit(job_id, nonce, decision, now) -> bool
-- chat_store.append_messages(messages, data_dir) / chat_store.load_history(data_dir)
+- chat_store.append_messages(messages, data_dir, *, thread) /
+  chat_store.load_history(data_dir, *, thread)
 """
 import os
 import time
@@ -51,10 +53,11 @@ from hiris.app.chat_store import append_messages, close_all_stores, load_history
 from hiris.app.chat_thread import thread_for
 from hiris.app.reasoning.queue import ReasoningQueue
 
-# Task 2 (queue): `handle_chat` guarda ora `has_pending_chat(request_thread
-# (request))`. L'app di prova di questo file non monta
-# `middleware_internal_auth` (e' quel middleware che scrive "soggetto"/
-# "auth_via" sulla richiesta vera, in produzione), quindi ogni richiesta qui
+# Fetta «le chat divise»: `handle_chat` calcola il filo della richiesta una
+# volta (`request_thread`) e lo usa per cronologia, limite, 409 e job. L'app
+# di prova di questo file non monta `middleware_internal_auth` (e' quel
+# middleware che scrive "soggetto"/"auth_via" sulla richiesta vera, in
+# produzione), quindi ogni richiesta qui
 # risolve allo stesso filo di default -- ed e' lo stesso che
 # `thread_for(None, None)` calcola. I job accodati direttamente sulla coda
 # (bypassando `_enqueue_chat_job`) devono portare lo stesso filo, o il 409
@@ -157,12 +160,15 @@ async def test_flag_on_bridge_on_enqueues_pending_no_runner_call(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_context_del_job_porta_esattamente_queste_sei_chiavi_ne_una_di_piu(tmp_path):
+async def test_context_del_job_porta_esattamente_queste_otto_chiavi_ne_una_di_piu(tmp_path):
     # fetta "il ponte riceve il nucleo" (parita' A, Task 4, Step 3): il pin
     # dell'INSIEME ESATTO -- il silenzio su cio' che NON attraversa il ponte.
     # Dopo i Task 1-4 il context porta `history` + `system_prompt` (originari,
     # Slice 4b) + `contesto` (Task 1/2) + `restrict_to_home`/`response_mode`
-    # (Task 3) + `model` (Task 4, questo task). Chi resta fuori, e perche':
+    # (Task 3) + `model` (Task 4, questo task) + `thread`/`soggetto` (fetta
+    # «le chat divise», Task 3: il filo in cui la risposta tornera' e il
+    # soggetto intero, che il ripiego usa per la cronaca e il soffitto).
+    # Chi resta fuori, e perche':
     #   - `thinking_budget` e `max_tokens` (CHAT_MAX_TOKENS): nessun
     #     equivalente sulla riga di comando della CLI `claude` -- non c'e'
     #     un `--thinking-budget` ne' un `--max-tokens` da passargli;
@@ -186,6 +192,7 @@ async def test_context_del_job_porta_esattamente_queste_sei_chiavi_ne_una_di_piu
     assert set(job["context"]) == {
         "history", "system_prompt", "contesto",
         "restrict_to_home", "response_mode", "model",
+        "thread", "soggetto",
     }
 
 
@@ -233,7 +240,7 @@ async def test_max_turns_reached_blocks_subscription_path(tmp_path):
     append_messages([
         {"role": "user", "content": "prima"},
         {"role": "assistant", "content": "risposta"},
-    ], data_dir)
+    ], data_dir, thread=THREAD_TEST)
 
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "seconda"})
@@ -260,7 +267,7 @@ async def test_max_turns_not_reached_still_enqueues_on_subscription_path(tmp_pat
     append_messages([
         {"role": "user", "content": "prima"},
         {"role": "assistant", "content": "risposta"},
-    ], data_dir)
+    ], data_dir, thread=THREAD_TEST)
 
     async with TestClient(TestServer(app)) as client:
         resp = await client.post("/api/chat", json={"message": "seconda"})
@@ -284,7 +291,7 @@ async def test_user_message_persisted_before_enqueue(tmp_path):
         resp = await client.post("/api/chat", json={"message": "salva questo"})
         assert resp.status == 202
 
-    history = load_history(data_dir)
+    history = load_history(data_dir, thread=THREAD_TEST)
     assert history == [{"role": "user", "content": "salva questo"}]
 
 
@@ -946,7 +953,7 @@ async def test_job_context_porta_il_nucleo_identico_al_ramo_sincrono(tmp_path):
         # ② ed e' ESATTAMENTE la stringa che il ramo sincrono compone per la
         # stessa app: se un giorno i due percorsi divergono, questo assert e'
         # il primo a saperlo.
-        assert contesto == compose_chat_context(app, data_dir)
+        assert contesto == compose_chat_context(app, data_dir, thread=THREAD_TEST)
     finally:
         archivio_casa.close()
         archivio_memoria.close()
@@ -954,7 +961,7 @@ async def test_job_context_porta_il_nucleo_identico_al_ramo_sincrono(tmp_path):
 
 # ---------------------------------------------------------------------------
 # fetta E5 Task 2, fix round 1 (I-2): thinking_budget non attraversa il ponte,
-# e da oggi lo dice. Il pin dell'INSIEME ESATTO delle sei chiavi (sopra)
+# e da oggi lo dice. Il pin dell'INSIEME ESATTO delle otto chiavi (sopra)
 # certifica l'ASSENZA; questo certifica che l'assenza non sia piu' MUTA.
 # ---------------------------------------------------------------------------
 
@@ -981,7 +988,7 @@ async def test_il_ponte_dichiara_che_thinking_budget_non_viene_applicato(tmp_pat
     assert "NON viene applicato" in detto
     assert "resta salvata" in detto, "deve dire che l'impostazione risulta salvata"
     # L'assenza dal context resta vera e non si aggira: la certifica il pin
-    # dell'insieme esatto delle sei chiavi, qui sopra in questo stesso file.
+    # dell'insieme esatto delle otto chiavi, qui sopra in questo stesso file.
 
 
 @pytest.mark.asyncio
@@ -1321,11 +1328,11 @@ async def test_il_ripiego_non_duplica_il_turno_dell_utente(tmp_path):
     """Il messaggio e' gia' in cronologia da prima dell'accodamento
     (`_enqueue_chat_job` lo scrive PRIMA di accodare)."""
     app, q, _runner, _, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
-    append_messages([{"role": "user", "content": "ciao"}], data_dir)
+    append_messages([{"role": "user", "content": "ciao"}], data_dir, thread=THREAD_TEST)
     jid = _accoda_scaduto(q)
     async with TestClient(TestServer(app)) as client:
         await client.get("/api/chat/reply/" + jid)
-    assert [m["role"] for m in load_history(data_dir)] == ["user", "assistant"]
+    assert [m["role"] for m in load_history(data_dir, thread=THREAD_TEST)] == ["user", "assistant"]
 
 
 @pytest.mark.asyncio
@@ -1350,7 +1357,7 @@ async def test_un_job_non_ancora_scaduto_continua_ad_aspettare_il_piano(tmp_path
     occasione."""
     app, q, runner, _, _ = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     ora = time.time()
-    jid = q.enqueue("chat", {}, {}, ora + 300, now=ora)
+    jid = q.enqueue("chat", {}, {}, ora + 300, now=ora, thread=THREAD_TEST)
     async with TestClient(TestServer(app)) as client:
         body = await (await client.get("/api/chat/reply/" + jid)).json()
     assert body == {"status": "pending"}
@@ -1396,12 +1403,12 @@ async def test_la_nota_non_finisce_in_cronologia(tmp_path):
     dovrebbe."""
     app, q, _runner, _, data_dir = _make_app(tmp_path, ponte_attivo=True, with_queue=True)
     _con_registro(app, catena=["openrouter"], chi_ha_risposto="openrouter")
-    append_messages([{"role": "user", "content": "ciao"}], data_dir)
+    append_messages([{"role": "user", "content": "ciao"}], data_dir, thread=THREAD_TEST)
     jid = _accoda_scaduto(q)
     async with TestClient(TestServer(app)) as client:
         body = await (await client.get("/api/chat/reply/" + jid)).json()
     assert body["nota"]
-    for m in load_history(data_dir):
+    for m in load_history(data_dir, thread=THREAD_TEST):
         assert "Piano Claude Max" not in m["content"]
 
 

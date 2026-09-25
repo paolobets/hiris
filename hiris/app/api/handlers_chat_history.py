@@ -1,21 +1,23 @@
 from aiohttp import web
 
 from ..chat_store import clear_history, load_history
+from ..chat_thread import adopt_if_owner, request_thread
 
 # fetta E5 Task 4 ("il frontend"): la rotta e' `GET/DELETE
-# /api/chat/history` (server.py) -- nessun identificatore nel percorso,
-# perche' c'e' UNA cronologia sola (chat_store non ha piu' un chatbot_id per
-# cui filtrare dalla E4 Task 5). Storia: fino a questo task il path portava
-# ancora un placeholder `{agent_id}` ereditato dall'epoca multi-assistente --
-# accettato ma non selezionava nulla: non era nemmeno piu' letto da
-# match_info (la validazione che c'era prima, `_validate_chatbot_id`, era
-# gia' uscita con lui, perche' non proteggeva piu' niente). Il placeholder e'
-# morto in questo task insieme al path che lo portava; gli handler sotto non
-# sono cambiati di una riga, perche' non hanno mai letto l'id.
+# /api/chat/history` (server.py), senza identificatori nel percorso. Fetta
+# «le chat divise»: nel percorso non serve ancora niente, perche' CHI legge lo
+# dice il confine (`request["soggetto"]`/`["auth_via"]`, scritti da
+# `middleware_internal_auth`) e da li' si calcola il filo. Un id nel percorso
+# sarebbe un secondo modo -- falsificabile -- di dire di chi e' la cronologia.
 
 
 async def handle_get_chat_history(request: web.Request) -> web.Response:
     data_dir = request.app["data_dir"]
+    thread = request_thread(request)
+    # La cronologia di prima va al proprietario alla sua prima lettura: e' la
+    # pagina che apre per prima, e senza questa riga la vedrebbe vuota finche'
+    # non scrive un messaggio (spec §3).
+    await adopt_if_owner(request.app, request, thread)
     # Task 12: prima di questo task `load_history` leggeva sempre il globale
     # `chat_store.HISTORY_RETENTION_DAYS` -- questa pagina era GIA' filtrata
     # dallo stesso numero, per accidente di implementazione condivisa, non
@@ -30,11 +32,13 @@ async def handle_get_chat_history(request: web.Request) -> web.Response:
     # falsa per ogni messaggio ripristinato. Il chiamante che nutre il
     # modello (`handlers_chat.py`) non passa questo argomento: resta
     # `{role, content}`, il formato che l'API del modello si aspetta.
-    messages = load_history(data_dir, days=giorni, include_timestamp=True)
+    messages = load_history(data_dir, thread=thread, days=giorni, include_timestamp=True)
     return web.json_response({"messages": messages})
 
 
 async def handle_clear_chat_history(request: web.Request) -> web.Response:
     data_dir = request.app["data_dir"]
-    clear_history(data_dir)
+    # Solo il PROPRIO filo: «cancella la cronologia» di una persona non
+    # cancella quella degli altri.
+    clear_history(data_dir, thread=request_thread(request))
     return web.json_response({"ok": True})

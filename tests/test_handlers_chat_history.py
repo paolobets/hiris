@@ -7,6 +7,14 @@ from aiohttp.test_utils import make_mocked_request
 
 from hiris.app.api.handlers_chat_history import handle_clear_chat_history, handle_get_chat_history
 from hiris.app.chat_store import close_all_stores
+from hiris.app.chat_thread import thread_for
+
+# Fetta «le chat divise»: gli handler leggono e cancellano il filo di chi
+# chiede. Le richieste finte di questo file non passano dal confine
+# (`middleware_internal_auth`), quindi non portano ne' soggetto ne' ingresso:
+# il loro filo e' quello che `thread_for(None, None)` calcola, e i messaggi
+# seminati vanno li'. La separazione fra fili vera e' in tests/test_chat_divise.py.
+T = thread_for(None, None)
 
 
 @pytest.fixture(autouse=True)
@@ -30,10 +38,9 @@ def _make_app(data_dir: str) -> MagicMock:
 
 # fetta E5 Task 4 ("nasce la rotta onesta, muore il placeholder"): la rotta
 # reale (server.py) e' ora `GET/DELETE /api/chat/history`, senza nessun
-# identificatore nel percorso -- c'e' UNA cronologia (dalla E4 Task 5), non
-# c'e' piu' niente da scegliere. Gli handler sotto non leggevano l'id da
-# match_info nemmeno prima: cambia solo la richiesta mockata, non il loro
-# corpo.
+# identificatore nel percorso: dalla fetta «le chat divise» la cronologia e'
+# quella del filo di chi chiede, e chi chiede lo dice il confine, non il
+# path.
 #
 # `test_get_chat_history_ignores_path_placeholder_value` (pin della E4 Task
 # 5: "qualunque valore nel placeholder {agent_id} legge la STESSA
@@ -46,16 +53,12 @@ def _make_app(data_dir: str) -> MagicMock:
 # livello di prodotto: verificato con `app.router.resolve()` su un
 # `create_app()` reale, `/api/chatbots/qualunque-cosa-mai-esistita/
 # chat-history` risolve a `MatchInfoError` (404) dopo questo task, contro
-# `UrlMappingMatchInfo` prima. Il comportamento che restava vivo -- "la
-# cronologia e' unica, chi la legge la legge sempre uguale" -- resta pinnato
-# da `test_get_chat_history_returns_messages` e
-# `test_get_chat_history_empty_when_no_messages` sotto, che non hanno
-# bisogno di un placeholder arbitrario per dirlo.
+# `UrlMappingMatchInfo` prima.
 
 @pytest.mark.asyncio
 async def test_get_chat_history_returns_messages(tmp_path):
     from hiris.app.chat_store import append_messages
-    append_messages([{"role": "user", "content": "ciao"}], str(tmp_path))
+    append_messages([{"role": "user", "content": "ciao"}], str(tmp_path), thread=T)
 
     app = _make_app(str(tmp_path))
     request = make_mocked_request(
@@ -79,7 +82,7 @@ async def test_get_chat_history_returns_messages(tmp_path):
 @pytest.mark.asyncio
 async def test_get_chat_history_returns_the_real_timestamp_not_read_time(tmp_path):
     from hiris.app.chat_store import append_messages
-    append_messages([{"role": "user", "content": "ciao"}], str(tmp_path))
+    append_messages([{"role": "user", "content": "ciao"}], str(tmp_path), thread=T)
 
     app = _make_app(str(tmp_path))
     request = make_mocked_request(
@@ -106,7 +109,7 @@ async def test_get_chat_history_empty_when_no_messages(tmp_path):
 @pytest.mark.asyncio
 async def test_clear_chat_history_removes_messages(tmp_path):
     from hiris.app.chat_store import append_messages, load_history
-    append_messages([{"role": "user", "content": "ciao"}], str(tmp_path))
+    append_messages([{"role": "user", "content": "ciao"}], str(tmp_path), thread=T)
 
     app = _make_app(str(tmp_path))
     request = make_mocked_request(
@@ -116,7 +119,7 @@ async def test_clear_chat_history_removes_messages(tmp_path):
     resp = await handle_clear_chat_history(request)
     data = json.loads(resp.body)
     assert data["ok"] is True
-    assert load_history(str(tmp_path)) == []
+    assert load_history(str(tmp_path), thread=T) == []
 
 
 @pytest.mark.asyncio

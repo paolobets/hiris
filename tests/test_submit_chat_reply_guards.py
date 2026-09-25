@@ -40,6 +40,10 @@ from hiris.app.chat_store import (
     close_all_stores,
     load_history,
 )
+from hiris.app.chat_thread import ChatThread
+
+# Fetta «le chat divise»: la consegna scrive nel filo del job.
+T = ChatThread("persona:paolo", "pannello")
 
 
 @pytest.fixture(autouse=True)
@@ -51,8 +55,9 @@ def reset_stores():
 
 def _load_real_submit_chat_reply(app, data_dir, append_fn=None):
     src = inspect.getsource(server._on_startup)
-    start = src.index("    async def _submit_chat_reply(reply_text: str) -> None:")
-    end_marker = '_append_chat_messages([{"role": "assistant", "content": reply_text}], data_dir)'
+    start = src.index(
+        "    async def _submit_chat_reply(reply_text: str, thread: ChatThread) -> None:")
+    end_marker = "thread=thread)"
     end = src.index(end_marker, start) + len(end_marker)
     func_src = textwrap.dedent(src[start:end])
 
@@ -61,6 +66,7 @@ def _load_real_submit_chat_reply(app, data_dir, append_fn=None):
         "data_dir": data_dir,
         "_append_chat_messages": append_fn if append_fn is not None else append_messages,
         "_is_toxic_chat_reply": _is_toxic_assistant,
+        "ChatThread": ChatThread,
     }
     exec(compile(func_src, "<_submit_chat_reply extracted from server.py>", "exec"), namespace)
     return namespace["_submit_chat_reply"]
@@ -81,13 +87,13 @@ async def test_toxic_reply_is_dropped_not_persisted(tmp_path):
     data_dir = str(tmp_path / "data")
     calls = []
 
-    def _fake_append(messages, data_dir):
+    def _fake_append(messages, data_dir, *, thread):
         calls.append(messages)
 
     app = {}
     submit = _load_real_submit_chat_reply(app, data_dir, append_fn=_fake_append)
 
-    await submit("Errore temporaneo del servizio AI. Riprova tra poco.")
+    await submit("Errore temporaneo del servizio AI. Riprova tra poco.", T)
 
     assert calls == []
 
@@ -123,13 +129,13 @@ async def test_bridge_error_sentinel_is_dropped_not_persisted(tmp_path):
     data_dir = str(tmp_path / "data")
     calls = []
 
-    def _fake_append(messages, data_dir):
+    def _fake_append(messages, data_dir, *, thread):
         calls.append(messages)
 
     app = {}
     submit = _load_real_submit_chat_reply(app, data_dir, append_fn=_fake_append)
 
-    await submit(sentinella)
+    await submit(sentinella, T)
 
     assert calls == [], (
         f"il sentinella del ponte {sentinella!r} e' stato persistito: "
@@ -142,9 +148,9 @@ async def test_clean_reply_is_persisted(tmp_path):
     app = {}
     submit = _load_real_submit_chat_reply(app, data_dir)
 
-    await submit("ecco la risposta")
+    await submit("ecco la risposta", T)
 
-    assert load_history(data_dir) == [
+    assert load_history(data_dir, thread=T) == [
         {"role": "assistant", "content": "ecco la risposta"},
     ]
 
@@ -158,14 +164,14 @@ async def test_empty_reply_still_short_circuits(tmp_path):
     data_dir = str(tmp_path / "data")
     calls = []
 
-    def _fake_append(messages, data_dir):
+    def _fake_append(messages, data_dir, *, thread):
         calls.append(messages)
 
     app = {}
     submit = _load_real_submit_chat_reply(app, data_dir, append_fn=_fake_append)
 
-    await submit("")
-    await submit(None)
+    await submit("", T)
+    await submit(None, T)
 
     assert calls == []
 

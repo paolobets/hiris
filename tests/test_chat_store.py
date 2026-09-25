@@ -13,8 +13,16 @@ from hiris.app.chat_store import (
     get_past_summaries,
     load_history,
 )
+from hiris.app.chat_thread import ChatThread
 
 _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
+
+# Fetta «le chat divise»: ogni operazione dell'archivio prende il filo. I test
+# che provano UNA cronologia (ritenzione, sessioni, riassunti, veleni) la
+# provano dentro un filo solo, `T`; le righe scritte a mano in `chat_sessions`
+# portano le sue due colonne (`_TK`), altrimenti sarebbero orfane e invisibili.
+T = ChatThread("persona:paolo", "pannello")
+_TK = (T.subject_key, T.entry_point)
 
 
 @pytest.fixture(autouse=True)
@@ -28,30 +36,26 @@ def reset_stores():
 # ---------------------------------------------------------------------------
 # Basic append / load / clear (backward-compat API)
 #
-# fetta E4 Task 5 ("un bot solo"): tutte le funzioni di modulo perdono il
-# parametro chatbot_id -- c'e' UNA cronologia, non piu' una per bot. I test
-# che pinnavano `test_different_agents_have_separate_histories` non hanno
-# piu' un soggetto: verificato che cade per costruzione (`append_messages()`
-# con due argomenti posizionali sollevava `TypeError: append_messages() takes
-# 2 positional arguments but 3 were given` prima di questa riscrittura) --
-# rimosso, non spostato: non c'e' piu' alcuna "separazione per bot" da
-# testare, e' proprio il concetto che il Task 5 ha tolto dallo schema.
+# fetta E4 Task 5 ("un bot solo") aveva tolto la partizione per bot. La fetta
+# «le chat divise» ne mette una diversa, per filo (chi parla, da dove): la
+# separazione fra fili e' provata in fondo al file (`test_due_fili_...`), qui
+# sotto il comportamento di una cronologia dentro il filo `T`.
 # ---------------------------------------------------------------------------
 
 def test_load_history_empty_when_no_data(tmp_path):
-    assert load_history(str(tmp_path)) == []
+    assert load_history(str(tmp_path), thread=T) == []
 
 
 def test_append_and_load_roundtrip(tmp_path):
     msgs = [{"role": "user", "content": "hello"}, {"role": "assistant", "content": "hi"}]
-    append_messages(msgs, str(tmp_path))
-    loaded = load_history(str(tmp_path))
+    append_messages(msgs, str(tmp_path), thread=T)
+    loaded = load_history(str(tmp_path), thread=T)
     assert loaded == msgs
 
 
 def test_load_strips_timestamps_from_output(tmp_path):
-    append_messages([{"role": "user", "content": "test"}], str(tmp_path))
-    result = load_history(str(tmp_path))
+    append_messages([{"role": "user", "content": "test"}], str(tmp_path), thread=T)
+    result = load_history(str(tmp_path), thread=T)
     assert "timestamp" not in result[0]
 
 
@@ -64,8 +68,8 @@ def test_load_strips_timestamps_from_output(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_load_history_with_timestamp_returns_the_stored_value(tmp_path):
-    append_messages([{"role": "user", "content": "ciao"}], str(tmp_path))
-    result = load_history(str(tmp_path), include_timestamp=True)
+    append_messages([{"role": "user", "content": "ciao"}], str(tmp_path), thread=T)
+    result = load_history(str(tmp_path), thread=T, include_timestamp=True)
     assert len(result) == 1
     assert result[0]["role"] == "user"
     assert result[0]["content"] == "ciao"
@@ -84,9 +88,10 @@ def test_load_history_with_timestamp_preserves_write_order_not_read_time(tmp_pat
     chiamate separate a `append_messages` (ognuna prende `_now()` al momento
     della SUA scrittura) e si verifica che la cronologia porti due valori
     indipendenti, non un unico valore "di adesso" per tutti e due."""
-    append_messages([{"role": "user", "content": "primo turno"}], str(tmp_path))
-    append_messages([{"role": "assistant", "content": "risposta al primo"}], str(tmp_path))
-    result = load_history(str(tmp_path), include_timestamp=True)
+    append_messages([{"role": "user", "content": "primo turno"}], str(tmp_path), thread=T)
+    append_messages([{"role": "assistant", "content": "risposta al primo"}], str(tmp_path),
+                    thread=T)
+    result = load_history(str(tmp_path), thread=T, include_timestamp=True)
     assert len(result) == 2
     # Entrambi i messaggi portano un timestamp non vuoto -- non e' l'assenza
     # a essere provata qui, e' che ESISTA una colonna scritta al momento
@@ -96,22 +101,22 @@ def test_load_history_with_timestamp_preserves_write_order_not_read_time(tmp_pat
 
 
 def test_append_accumulates(tmp_path):
-    append_messages([{"role": "user", "content": "first"}], str(tmp_path))
-    append_messages([{"role": "assistant", "content": "second"}], str(tmp_path))
-    result = load_history(str(tmp_path))
+    append_messages([{"role": "user", "content": "first"}], str(tmp_path), thread=T)
+    append_messages([{"role": "assistant", "content": "second"}], str(tmp_path), thread=T)
+    result = load_history(str(tmp_path), thread=T)
     assert len(result) == 2
     assert result[0]["content"] == "first"
     assert result[1]["content"] == "second"
 
 
 def test_clear_history(tmp_path):
-    append_messages([{"role": "user", "content": "x"}], str(tmp_path))
-    clear_history(str(tmp_path))
-    assert load_history(str(tmp_path)) == []
+    append_messages([{"role": "user", "content": "x"}], str(tmp_path), thread=T)
+    clear_history(str(tmp_path), thread=T)
+    assert load_history(str(tmp_path), thread=T) == []
 
 
 def test_clear_history_noop_when_empty(tmp_path):
-    clear_history(str(tmp_path))  # must not raise
+    clear_history(str(tmp_path), thread=T)  # must not raise
 
 
 # ---------------------------------------------------------------------------
@@ -135,8 +140,9 @@ def test_load_filters_messages_older_than_30_days(tmp_path):
     session_id = "sess-old"
     conn = store._conn
     conn.execute(
-        "INSERT INTO chat_sessions(session_id, started_at, last_msg_at) VALUES(?,?,?)",
-        (session_id, old_ts, new_ts),
+        "INSERT INTO chat_sessions(subject_key, entry_point, session_id, started_at, "
+        "last_msg_at) VALUES(?,?,?,?,?)",
+        (*_TK, session_id, old_ts, new_ts),
     )
     conn.execute(
         "INSERT INTO chat_messages(session_id, role, content, timestamp) VALUES(?,?,?,?)",
@@ -147,7 +153,7 @@ def test_load_filters_messages_older_than_30_days(tmp_path):
         (session_id, "assistant", "new msg", new_ts),
     )
     conn.commit()
-    result = store.load_context(days=30)
+    result = store.load_context(T, days=30)
     contents = [m["content"] for m in result]
     assert "old msg" not in contents
     assert "new msg" in contents
@@ -169,8 +175,9 @@ def test_i_giorni_limitano_anche_quanto_HIRIS_rilegge_della_conversazione(tmp_pa
     session_id = "sess-mista"
     conn = store._conn
     conn.execute(
-        "INSERT INTO chat_sessions(session_id, started_at, last_msg_at) VALUES(?,?,?)",
-        (session_id, vecchio_ts, ora_ts),
+        "INSERT INTO chat_sessions(subject_key, entry_point, session_id, started_at, "
+        "last_msg_at) VALUES(?,?,?,?,?)",
+        (*_TK, session_id, vecchio_ts, ora_ts),
     )
     conn.execute(
         "INSERT INTO chat_messages(session_id, role, content, timestamp) VALUES(?,?,?,?)",
@@ -178,7 +185,7 @@ def test_i_giorni_limitano_anche_quanto_HIRIS_rilegge_della_conversazione(tmp_pa
     )
     conn.commit()
 
-    riletto = store.load_context(days=1)
+    riletto = store.load_context(T, days=1)
     assert "messaggio di due giorni fa" not in [m["content"] for m in riletto]
 
     # Non cancellato: e' ancora sul disco, la riga sopra e' un rifiuto di
@@ -202,8 +209,9 @@ def test_zero_giorni_non_cancella_mai_niente(tmp_path):
     store = ChatStore(str(tmp_path / "chat_history.db"))
     conn = store._conn
     conn.execute(
-        "INSERT INTO chat_sessions(session_id, started_at, last_msg_at) VALUES(?,?,?)",
-        ("sess-antichissima", vecchissimo_ts, vecchissimo_ts),
+        "INSERT INTO chat_sessions(subject_key, entry_point, session_id, started_at, "
+        "last_msg_at) VALUES(?,?,?,?,?)",
+        (*_TK, "sess-antichissima", vecchissimo_ts, vecchissimo_ts),
     )
     conn.execute(
         "INSERT INTO chat_messages(session_id, role, content, timestamp) VALUES(?,?,?,?)",
@@ -235,8 +243,9 @@ def test_new_session_after_gap(tmp_path):
     sid1 = "sess-stale"
     conn = store._conn
     conn.execute(
-        "INSERT INTO chat_sessions(session_id, started_at, last_msg_at) VALUES(?,?,?)",
-        (sid1, old_ts, old_ts),
+        "INSERT INTO chat_sessions(subject_key, entry_point, session_id, started_at, "
+        "last_msg_at) VALUES(?,?,?,?,?)",
+        (*_TK, sid1, old_ts, old_ts),
     )
     conn.execute(
         "INSERT INTO chat_messages(session_id, role, content, timestamp) VALUES(?,?,?,?)",
@@ -245,7 +254,7 @@ def test_new_session_after_gap(tmp_path):
     conn.commit()
 
     # Appending now should start a new session
-    store.append([{"role": "user", "content": "fresh"}])
+    store.append([{"role": "user", "content": "fresh"}], T)
 
     # The old session should now be closed (summary set)
     row = conn.execute(
@@ -264,8 +273,8 @@ def test_new_session_after_gap(tmp_path):
 
 def test_active_session_reused_within_gap(tmp_path):
     store = ChatStore(str(tmp_path / "chat_history.db"))
-    store.append([{"role": "user", "content": "msg1"}])
-    store.append([{"role": "assistant", "content": "reply1"}])
+    store.append([{"role": "user", "content": "msg1"}], T)
+    store.append([{"role": "assistant", "content": "reply1"}], T)
     conn = store._conn
     sessions = conn.execute("SELECT * FROM chat_sessions").fetchall()
     assert len(sessions) == 1  # still same session
@@ -279,8 +288,9 @@ def test_load_context_returns_empty_for_stale_session(tmp_path):
     sid = "stale-read"
     conn = store._conn
     conn.execute(
-        "INSERT INTO chat_sessions(session_id, started_at, last_msg_at) VALUES(?,?,?)",
-        (sid, old_ts, old_ts),
+        "INSERT INTO chat_sessions(subject_key, entry_point, session_id, started_at, "
+        "last_msg_at) VALUES(?,?,?,?,?)",
+        (*_TK, sid, old_ts, old_ts),
     )
     conn.execute(
         "INSERT INTO chat_messages(session_id, role, content, timestamp) VALUES(?,?,?,?)",
@@ -288,8 +298,8 @@ def test_load_context_returns_empty_for_stale_session(tmp_path):
     )
     conn.commit()
     # load_context must treat stale session as empty — no side effects
-    assert store.load_context() == []
-    assert store.count_user_turns() == 0
+    assert store.load_context(T) == []
+    assert store.count_user_turns(T) == 0
     # Session is still "open" (not closed) since we only read
     still_open = conn.execute(
         "SELECT summary FROM chat_sessions WHERE session_id = ?", (sid,)
@@ -308,12 +318,12 @@ def test_get_past_summaries_returns_closed_sessions(tmp_path):
     for i in range(4):
         sid = f"closed-{i}"
         store._conn.execute(
-            "INSERT INTO chat_sessions(session_id, started_at, last_msg_at, summary) "
-            "VALUES(?,?,?,?)",
-            (sid, ts, ts, f"summary {i}"),
+            "INSERT INTO chat_sessions(session_id, started_at, last_msg_at, summary, "
+            "subject_key, entry_point) VALUES(?,?,?,?,?,?)",
+            (sid, ts, ts, f"summary {i}", *_TK),
         )
     store._conn.commit()
-    summaries = store.get_past_summaries(n=3)
+    summaries = store.get_past_summaries(T, n=3)
     assert len(summaries) == 3
     assert all(s["summary"] is not None for s in summaries)
     store.close()
@@ -321,15 +331,15 @@ def test_get_past_summaries_returns_closed_sessions(tmp_path):
 
 def test_get_past_summaries_empty_when_no_closed_sessions(tmp_path):
     store = ChatStore(str(tmp_path / "chat_history.db"))
-    store.append([{"role": "user", "content": "hi"}])
-    summaries = store.get_past_summaries()
+    store.append([{"role": "user", "content": "hi"}], T)
+    summaries = store.get_past_summaries(T)
     assert summaries == []
     store.close()
 
 
 def test_module_get_past_summaries(tmp_path):
-    append_messages([{"role": "user", "content": "hi"}], str(tmp_path))
-    result = get_past_summaries(str(tmp_path))
+    append_messages([{"role": "user", "content": "hi"}], str(tmp_path), thread=T)
+    result = get_past_summaries(str(tmp_path), thread=T)
     assert isinstance(result, list)
 
 
@@ -338,14 +348,14 @@ def test_module_get_past_summaries(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_count_user_turns(tmp_path):
-    append_messages([{"role": "user", "content": "q1"}], str(tmp_path))
-    append_messages([{"role": "assistant", "content": "a1"}], str(tmp_path))
-    append_messages([{"role": "user", "content": "q2"}], str(tmp_path))
-    assert count_user_turns(str(tmp_path)) == 2
+    append_messages([{"role": "user", "content": "q1"}], str(tmp_path), thread=T)
+    append_messages([{"role": "assistant", "content": "a1"}], str(tmp_path), thread=T)
+    append_messages([{"role": "user", "content": "q2"}], str(tmp_path), thread=T)
+    assert count_user_turns(str(tmp_path), thread=T) == 2
 
 
 def test_count_user_turns_zero_when_empty(tmp_path):
-    assert count_user_turns(str(tmp_path)) == 0
+    assert count_user_turns(str(tmp_path), thread=T) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -359,8 +369,9 @@ def test_summary_truncated_to_200_chars(tmp_path):
     sid = "sess-long"
     conn = store._conn
     conn.execute(
-        "INSERT INTO chat_sessions(session_id, started_at, last_msg_at) VALUES(?,?,?)",
-        (sid, ts_old, ts_old),
+        "INSERT INTO chat_sessions(subject_key, entry_point, session_id, started_at, "
+        "last_msg_at) VALUES(?,?,?,?,?)",
+        (*_TK, sid, ts_old, ts_old),
     )
     conn.execute(
         "INSERT INTO chat_messages(session_id, role, content, timestamp) VALUES(?,?,?,?)",
@@ -368,7 +379,7 @@ def test_summary_truncated_to_200_chars(tmp_path):
     )
     conn.commit()
 
-    store.append([{"role": "user", "content": "new"}])
+    store.append([{"role": "user", "content": "new"}], T)
 
     row = conn.execute("SELECT summary FROM chat_sessions WHERE session_id = ?", (sid,)).fetchone()
     assert row["summary"] is not None
@@ -552,8 +563,8 @@ def test_load_history_purges_pre_v098_corrupted_history(tmp_path):
         {"role": "user", "content": "ora?"},
         {"role": "assistant", "content": "**Tutto ok**"},
     ]
-    append_messages(msgs, str(tmp_path))
-    out = load_history(str(tmp_path))
+    append_messages(msgs, str(tmp_path), thread=T)
+    out = load_history(str(tmp_path), thread=T)
     # Two corrupted pairs dropped, only the last clean one survives
     assert out == [
         {"role": "user", "content": "ora?"},
@@ -626,10 +637,11 @@ def _make_legacy_v2_db(db_path: str, *, stamp_version: bool = True) -> None:
     conn.close()
 
 
-def test_opening_legacy_v2_db_drops_chatbot_id_and_bumps_to_v3(tmp_path):
+def test_opening_legacy_v2_db_drops_chatbot_id_and_bumps_to_v4(tmp_path):
     """Opening a legacy v2 db (chatbot_id columns + idx_msg_chatbot/
     idx_sess_chatbot, user_version=2) through ChatStore must: drop the old
-    rows, recreate the schema WITHOUT chatbot_id, and stamp user_version=3.
+    rows, recreate the schema WITHOUT chatbot_id, and stamp user_version=4
+    (v3 -> v4 adds the thread columns, `_migration_4`).
     No conversion — this is the azzeramento, not a migration."""
     db_path = str(tmp_path / "chat_history.db")
     _make_legacy_v2_db(db_path)
@@ -654,11 +666,11 @@ def test_opening_legacy_v2_db_drops_chatbot_id_and_bumps_to_v3(tmp_path):
         assert conn.execute("SELECT COUNT(*) FROM chat_sessions").fetchone()[0] == 0
 
         # user_version stamped at the latest schema version.
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
 
         # The store is immediately usable after the wipe.
-        store.append([{"role": "user", "content": "prima frase pulita"}])
-        assert store.load_context() == [{"role": "user", "content": "prima frase pulita"}]
+        store.append([{"role": "user", "content": "prima frase pulita"}], T)
+        assert store.load_context(T) == [{"role": "user", "content": "prima frase pulita"}]
     finally:
         store.close()
 
@@ -670,7 +682,7 @@ def test_azzeramento_is_idempotent_on_reopen(tmp_path):
     _make_legacy_v2_db(db_path)
 
     store1 = ChatStore(db_path)
-    store1.append([{"role": "user", "content": "dopo l'azzeramento"}])
+    store1.append([{"role": "user", "content": "dopo l'azzeramento"}], T)
     store1.close()
 
     store2 = ChatStore(db_path)  # must not raise, must not re-wipe
@@ -678,7 +690,7 @@ def test_azzeramento_is_idempotent_on_reopen(tmp_path):
         conn = store2._conn
         cols = {r[1] for r in conn.execute("PRAGMA table_info(chat_messages)").fetchall()}
         assert "chatbot_id" not in cols
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
         content = [r["content"] for r in conn.execute(
             "SELECT content FROM chat_messages"
         ).fetchall()]
@@ -734,3 +746,69 @@ def test_fresh_install_no_azzeramento_log(tmp_path, caplog):
         store = ChatStore(db_path)
     store.close()
     assert not any("azzerata" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# Fetta «le chat divise», Task 3: il filo. Ogni soggetto, da ogni ingresso,
+# ha la sua cronologia; la cronologia di prima resta orfana finche' il
+# proprietario non la adotta (spec §3).
+# ---------------------------------------------------------------------------
+
+PAOLO = ChatThread("persona:p", "pannello")
+MARTA = ChatThread("persona:m", "pannello")
+
+
+def test_due_fili_non_si_vedono(tmp_path):
+    s = ChatStore(str(tmp_path / "c.db"))
+    s.append([{"role": "user", "content": "sono Paolo"}], PAOLO)
+    s.append([{"role": "user", "content": "sono Marta"}], MARTA)
+    assert [m["content"] for m in s.load_context(PAOLO)] == ["sono Paolo"]
+    assert [m["content"] for m in s.load_context(MARTA)] == ["sono Marta"]
+    assert s.count_user_turns(PAOLO) == 1
+
+
+def test_clear_di_un_filo_lascia_l_altro(tmp_path):
+    s = ChatStore(str(tmp_path / "c.db"))
+    s.append([{"role": "user", "content": "a"}], PAOLO)
+    s.append([{"role": "user", "content": "b"}], MARTA)
+    s.clear(PAOLO)
+    assert s.load_context(PAOLO) == []
+    assert len(s.load_context(MARTA)) == 1
+
+
+def test_la_chiusura_per_silenzio_di_un_filo_non_chiude_l_altro(tmp_path):
+    s = ChatStore(str(tmp_path / "c.db"))
+    s.append([{"role": "user", "content": "vecchio"},
+              {"role": "assistant", "content": "ok"}], PAOLO)
+    s.append([{"role": "user", "content": "fresco"}], MARTA)
+    # invecchiare SOLO la sessione di Paolo oltre SESSION_GAP_HOURS
+    s._conn.execute("UPDATE chat_sessions SET last_msg_at='2000-01-01T00:00:00Z' "
+                    "WHERE subject_key='persona:p'")
+    s.append([{"role": "user", "content": "nuovo"}], PAOLO)
+    assert [x["content"] for x in s.load_context(PAOLO)] == ["nuovo"]
+    assert len(s.get_past_summaries(PAOLO)) == 1
+    assert s.get_past_summaries(MARTA) == []
+    assert [x["content"] for x in s.load_context(MARTA)] == ["fresco"]
+
+
+def test_migrazione_v3_conserva_le_righe_come_orfane_e_il_proprietario_le_adotta(tmp_path):
+    db = str(tmp_path / "c.db")
+    c = sqlite3.connect(db)
+    c.executescript("""
+      CREATE TABLE chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
+        role TEXT NOT NULL, content TEXT NOT NULL, timestamp TEXT NOT NULL);
+      CREATE TABLE chat_sessions (session_id TEXT PRIMARY KEY, started_at TEXT NOT NULL,
+        last_msg_at TEXT NOT NULL, summary TEXT);
+      INSERT INTO chat_sessions VALUES ('s1', '2026-09-25T08:00:00Z', '2099-01-01T00:00:00Z', NULL);
+      INSERT INTO chat_messages(session_id, role, content, timestamp)
+        VALUES ('s1', 'user', 'di prima', '2099-01-01T00:00:00Z');
+      PRAGMA user_version=3;
+    """)
+    c.close()
+    s = ChatStore(db)
+    assert s.has_orphans()
+    assert s.load_context(PAOLO) == []          # orfane: di nessuno
+    assert s.adopt_orphans(PAOLO) == 1
+    assert not s.has_orphans()
+    assert [m["content"] for m in s.load_context(PAOLO)] == ["di prima"]
+    assert s.adopt_orphans(MARTA) == 0          # una volta sola

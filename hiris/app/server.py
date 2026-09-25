@@ -4926,13 +4926,14 @@ async def _on_startup(app: web.Application) -> None:
 
     # Chat-via-abbonamento (Slice 4b, Task 1): submit-branch for kind="chat"
     # jobs — writes the runner's reply into chat_store instead of actuating
-    # the house. fetta E4 Task 5 ("un bot solo"): chat_store ha smesso di
-    # avere un concetto di id (o di "conversation_id") -- c'e' UNA
-    # cronologia, quindi non c'e' piu' nulla da instradare per chiave.
+    # the house. Fetta «le chat divise»: la risposta va nel filo del job
+    # (`thread`, letto dalla coda da `handle_reasoning_submit`) -- la
+    # cronologia di chi ha scritto, non una sola per tutti.
     from .chat_store import _is_toxic_assistant as _is_toxic_chat_reply
     from .chat_store import append_messages as _append_chat_messages
+    from .chat_thread import ChatThread
 
-    async def _submit_chat_reply(reply_text: str) -> None:
+    async def _submit_chat_reply(reply_text: str, thread: ChatThread) -> None:
         if not reply_text:
             return
         # Final-review Fix 3 (Slice 4b): mirror the sync path's persistence
@@ -5001,7 +5002,8 @@ async def _on_startup(app: web.Application) -> None:
         registry = app.get("occurrence_registry")
         if registry is not None:
             registry.successo("subscription")
-        _append_chat_messages([{"role": "assistant", "content": reply_text}], data_dir)
+        _append_chat_messages([{"role": "assistant", "content": reply_text}], data_dir,
+                              thread=thread)
     app["submit_chat_reply"] = _submit_chat_reply
 
     # Qui viveva `app["chat_daily_cap"]`, copia di `CHAT_DAILY_CAP` presa

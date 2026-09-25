@@ -1,7 +1,7 @@
 """Task 1 della fetta "il ponte riceve il nucleo" (parita' A): una
 composizione sola del contesto della chat -- estratta, non duplicata.
 
-`compose_chat_context(app, data_dir)` (hiris/app/api/handlers_chat.py)
+`compose_chat_context(app, data_dir, *, thread)` (hiris/app/api/handlers_chat.py)
 assorbe invariato il blocco che prima viveva solo dentro `handle_chat` (il
 ramo sincrono): sessioni precedenti + nucleo (col suo degrado dichiarato) in
 un'unica stringa. Il Task 2 mettera' la STESSA stringa nel job del ponte
@@ -21,7 +21,13 @@ import pytest
 
 from hiris.app.api.handlers_chat import compose_chat_context
 from hiris.app.chat_store import _TS_FMT, _get_store, close_all_stores
+from hiris.app.chat_thread import ChatThread
 from tests.test_chat_briefing import _semina_casa
+
+# Fetta «le chat divise»: le sessioni precedenti sono quelle del filo per cui
+# si compone il contesto; la casa (il nucleo) resta una per tutti.
+PAOLO = ChatThread("persona:paolo", "pannello")
+MARTA = ChatThread("persona:marta", "pannello")
 
 
 @pytest.fixture(autouse=True)
@@ -30,15 +36,16 @@ def _close_chat_stores_after_each_test():
     close_all_stores()
 
 
-def _semina_sessione_chiusa(data_dir: str, riepilogo: str) -> None:
+def _semina_sessione_chiusa(data_dir: str, riepilogo: str, thread=PAOLO,
+                            sid: str = "closed-1") -> None:
     """Stesso pattern di test_chat_briefing.py: una sessione GIA' chiusa
     (summary non nullo) inserita direttamente nella ChatStore del data_dir."""
     ts = datetime.now(UTC).strftime(_TS_FMT)
     store = _get_store(data_dir)
     store._conn.execute(
-        "INSERT INTO chat_sessions(session_id, started_at, last_msg_at, summary) "
-        "VALUES(?,?,?,?)",
-        ("closed-1", ts, ts, riepilogo),
+        "INSERT INTO chat_sessions(session_id, started_at, last_msg_at, summary, "
+        "subject_key, entry_point) VALUES(?,?,?,?,?,?)",
+        (sid, ts, ts, riepilogo, thread.subject_key, thread.entry_point),
     )
     store._conn.commit()
 
@@ -55,13 +62,31 @@ def test_con_archivi_seminati_contiene_nucleo_e_sessioni_precedenti(tmp_path):
     _semina_sessione_chiusa(data_dir, "parlato di irrigazione del giardino")
 
     app = {"home_space_store": archivio_casa}
-    contesto = compose_chat_context(app, data_dir)
+    contesto = compose_chat_context(app, data_dir, thread=PAOLO)
 
     assert "## La casa" in contesto
     assert "Cucina" in contesto
     assert "## Sessioni precedenti" in contesto
     assert "irrigazione del giardino" in contesto
 
+    archivio_casa.close()
+
+
+def test_le_sessioni_precedenti_di_un_filo_non_entrano_nel_contesto_di_un_altro(tmp_path):
+    """I riassunti di Paolo non arrivano al modello quando parla Marta; la
+    casa si', a tutti e due."""
+    archivio_casa = _semina_casa(tmp_path)
+    data_dir = str(tmp_path)
+    _semina_sessione_chiusa(data_dir, "Paolo ha parlato del regalo per Marta",
+                            thread=PAOLO)
+
+    app = {"home_space_store": archivio_casa}
+    context_marta = compose_chat_context(app, data_dir, thread=MARTA)
+    context_paolo = compose_chat_context(app, data_dir, thread=PAOLO)
+
+    assert "regalo per Marta" not in context_marta
+    assert "Cucina" in context_marta
+    assert "regalo per Marta" in context_paolo
     archivio_casa.close()
 
 
@@ -90,14 +115,14 @@ def test_un_archivio_chiuso_non_ferma_piu_il_nucleo(tmp_path):
     data_dir = str(tmp_path)
 
     app = {"home_space_store": home_space}
-    contesto = compose_chat_context(app, data_dir)  # non deve sollevare
+    contesto = compose_chat_context(app, data_dir, thread=PAOLO)  # non deve sollevare
 
     assert "nucleo non si e' potuto comporre" not in contesto
     assert "Cucina" in contesto
 
 def test_non_restituisce_mai_la_stringa_vuota_con_app_vuota(tmp_path):
     app: dict = {}
-    contesto = compose_chat_context(app, str(tmp_path))
+    contesto = compose_chat_context(app, str(tmp_path), thread=PAOLO)
 
     assert contesto != ""
     # E' il nucleo degradato-ma-dichiarato (nessun archivio wired), non il

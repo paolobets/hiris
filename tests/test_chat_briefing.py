@@ -53,6 +53,13 @@ import pytest
 from hiris.app.action.actuator import ActionActuator
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import _TS_FMT, _get_store, close_all_stores
+from hiris.app.chat_thread import thread_for
+
+# Fetta «le chat divise»: `create_app` qui gira senza credenziali (`no_token`),
+# quindi chi scrive e' il soggetto `sviluppo` dall'ingresso `sviluppo`. Le
+# sessioni chiuse seminate a mano stanno nel SUO filo: senza le due colonne
+# sarebbero orfane, di nessuno, e non entrerebbero nel contesto.
+THREAD_SVILUPPO = thread_for({"specie": "sviluppo"}, "no_token")
 from hiris.app.claude_runner import ClaudeRunner
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
@@ -355,15 +362,15 @@ async def test_le_sessioni_precedenti_restano(aiohttp_client, tmp_path):
 
     # Stesso pattern di tests/test_chat_store.py::test_get_past_summaries_returns_closed_sessions:
     # una sessione GIA' chiusa (summary non nullo), inserita direttamente nella
-    # stessa ChatStore che `handle_chat` legge per questo `data_dir`. fetta E4
-    # Task 5 ("un bot solo"): chat_sessions non ha piu' una colonna chatbot_id
-    # -- c'e' UNA cronologia, non serve piu' un id per riga.
+    # stessa ChatStore che `handle_chat` legge per questo `data_dir`, nel
+    # filo di chi scrive (`THREAD_SVILUPPO`).
     ts = datetime.now(UTC).strftime(_TS_FMT)
     store = _get_store(str(tmp_path))
     store._conn.execute(
-        "INSERT INTO chat_sessions(session_id, started_at, last_msg_at, summary) "
-        "VALUES(?,?,?,?)",
-        ("closed-1", ts, ts, "parlato di irrigazione del giardino"),
+        "INSERT INTO chat_sessions(session_id, started_at, last_msg_at, summary, "
+        "subject_key, entry_point) VALUES(?,?,?,?,?,?)",
+        ("closed-1", ts, ts, "parlato di irrigazione del giardino",
+         THREAD_SVILUPPO.subject_key, THREAD_SVILUPPO.entry_point),
     )
     store._conn.commit()
 
@@ -390,9 +397,10 @@ async def test_le_sessioni_precedenti_restano_anche_senza_nucleo(aiohttp_client,
     ts = datetime.now(UTC).strftime(_TS_FMT)
     store = _get_store(str(tmp_path))
     store._conn.execute(
-        "INSERT INTO chat_sessions(session_id, started_at, last_msg_at, summary) "
-        "VALUES(?,?,?,?)",
-        ("closed-1", ts, ts, "parlato di irrigazione del giardino"),
+        "INSERT INTO chat_sessions(session_id, started_at, last_msg_at, summary, "
+        "subject_key, entry_point) VALUES(?,?,?,?,?,?)",
+        ("closed-1", ts, ts, "parlato di irrigazione del giardino",
+         THREAD_SVILUPPO.subject_key, THREAD_SVILUPPO.entry_point),
     )
     store._conn.commit()
 

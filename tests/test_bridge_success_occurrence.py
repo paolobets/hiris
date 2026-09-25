@@ -31,8 +31,13 @@ from hiris.app.api.handlers_reasoning import (
     handle_reasoning_submit,
 )
 from hiris.app.chat_store import _is_toxic_assistant, append_messages
+from hiris.app.chat_thread import ChatThread
 from hiris.app.provider_occurrences import OccurrenceRegistry
 from hiris.app.reasoning.queue import ReasoningQueue
+
+# Fetta «le chat divise»: un job di chat porta il filo di chi ha scritto, e
+# senza filo la consegna non scrive (`chat_reply_senza_filo`).
+T = ChatThread("persona:paolo", "pannello")
 
 
 @web.middleware
@@ -56,9 +61,8 @@ def _load_real_submit_chat_reply(app, data_dir):
     divergere dal codice spedito senza che nessun test se ne accorga."""
     src = inspect.getsource(server._on_startup)
     start = src.index(
-        "    async def _submit_chat_reply(reply_text: str) -> None:")
-    end_marker = ('_append_chat_messages([{"role": "assistant", '
-                  '"content": reply_text}], data_dir)')
+        "    async def _submit_chat_reply(reply_text: str, thread: ChatThread) -> None:")
+    end_marker = "thread=thread)"
     end = src.index(end_marker, start) + len(end_marker)
     func_src = textwrap.dedent(src[start:end])
 
@@ -67,6 +71,7 @@ def _load_real_submit_chat_reply(app, data_dir):
         "data_dir": data_dir,
         "_append_chat_messages": append_messages,
         "_is_toxic_chat_reply": _is_toxic_assistant,
+        "ChatThread": ChatThread,
     }
     exec(compile(func_src, "<_submit_chat_reply extracted from server.py>",
                  "exec"), namespace)
@@ -94,7 +99,7 @@ async def test_un_turno_riuscito_del_ponte_lascia_una_traccia_nel_registro(
     app.router.add_post("/api/reasoning/claim", handle_reasoning_claim)
     app.router.add_post("/api/reasoning/submit", handle_reasoning_submit)
 
-    q.enqueue("chat", {}, {"history": []}, deadline_ts=100.0, job_id="J1", now=1.0)
+    q.enqueue("chat", {}, {"history": []}, deadline_ts=100.0, job_id="J1", now=1.0, thread=T)
     client = await aiohttp_client(app)
     claimed = await (await client.post("/api/reasoning/claim")).json()
     assert claimed["job"]["job_id"] == "J1"
@@ -147,7 +152,7 @@ async def test_un_sentinella_di_errore_del_ponte_registra_un_fallimento(
     app.router.add_post("/api/reasoning/claim", handle_reasoning_claim)
     app.router.add_post("/api/reasoning/submit", handle_reasoning_submit)
 
-    q.enqueue("chat", {}, {"history": []}, deadline_ts=100.0, job_id="J2", now=1.0)
+    q.enqueue("chat", {}, {"history": []}, deadline_ts=100.0, job_id="J2", now=1.0, thread=T)
     client = await aiohttp_client(app)
     claimed = await (await client.post("/api/reasoning/claim")).json()
 

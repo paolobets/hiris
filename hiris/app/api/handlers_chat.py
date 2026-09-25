@@ -13,7 +13,7 @@ from ..chat_store import (
     get_past_summaries,
     load_history,
 )
-from ..chat_thread import request_thread
+from ..chat_thread import ChatThread, adopt_if_owner, request_thread, thread_to_context
 
 # `cli_model` e `resolve_model` sono usciti da qui con la fetta «il modello
 # del piano»: servivano a comporre il modello del ponte da
@@ -212,7 +212,7 @@ def _build_system_prompt(settings) -> str:
     return ""
 
 
-def compose_chat_context(app, data_dir: str) -> str:
+def compose_chat_context(app, data_dir: str, *, thread: ChatThread) -> str:
     """Il contesto della chat -- nucleo piu' sessioni precedenti -- in
     un'unica stringa.
 
@@ -229,7 +229,10 @@ def compose_chat_context(app, data_dir: str) -> str:
     # Le sessioni precedenti restano una fonte A PARTE dal nucleo (Task 3):
     # sono cronologia di conversazioni chiuse, non conoscenza sulla casa --
     # il nucleo non le contiene e non deve contenerle.
-    past = get_past_summaries(data_dir)
+    # Fetta «le chat divise»: le sessioni precedenti DI QUESTO FILO -- i
+    # riassunti di Paolo non entrano nel contesto di Marta. La casa (il
+    # nucleo, qui sotto) resta una sola per tutti.
+    past = get_past_summaries(data_dir, thread=thread)
     past_str = ""
     if past:
         lines = ["Sessioni precedenti (memory):"]
@@ -355,7 +358,7 @@ def _who_answered_note(request: web.Request, *, reason: str) -> str:
 
 
 async def _enqueue_chat_job(
-    request: web.Request, settings, message: str, data_dir: str,
+    request: web.Request, settings, message: str, data_dir: str, thread: ChatThread,
 ) -> web.Response:
     """Chat-via-abbonamento (Slice 4b, Task 2): hand the turn to the async
     reasoning queue (``kind="chat"``) instead of calling a runner
@@ -367,22 +370,21 @@ async def _enqueue_chat_job(
     ultimately read history back, before this request even returns, and a
     session that opens on an assistant turn is rejected by the Claude API.
 
-    fetta E4 Task 5 ("un bot solo"): chat_store non prende piu' un id —
-    c'e' UNA cronologia, non piu' una per chatbot. Il parametro
-    `effective_chatbot_id` (e con lui il ramo `if effective_chatbot_id:`
-    che poteva saltare l'append) sparisce insieme al concetto: append e
-    load qui sotto sono sempre incondizionati.
+    Fetta «le chat divise»: `thread` e' il filo di chi scrive, calcolato una
+    volta da `handle_chat`. Append e load qui sotto lo usano, e il job lo
+    porta con se' -- nelle colonne della coda (per il 409 e il poll) e nel
+    `context` (per chi lo consegna): la risposta tornera' in QUESTO filo.
     """
     append_messages([
         {"role": "user", "content": message},
-    ], data_dir)
+    ], data_dir, thread=thread)
 
     # Built AFTER the append above, so the current user turn is the last
     # entry — the external runner needs it to know what it's replying to.
     # Task 12: stesso secondo lavoro di `giorni_conservazione` del ramo
     # sincrono qui sotto (`handle_chat`) — il ponte non deve rileggere piu'
     # conversazione di quanto l'utente abbia scelto.
-    history = load_history(data_dir, days=settings.retention_days)
+    history = load_history(data_dir, thread=thread, days=settings.retention_days)
     sanitized_history = _trim_history(history)
     system_prompt = _build_system_prompt(settings)
 
@@ -413,7 +415,7 @@ async def _enqueue_chat_job(
         # l'unica cosa che il prompt puo' promettere al modello e' una
         # fotografia presa in questo istante, non una lettura dal vivo (vedi
         # `agent/prompts.py`).
-        "contesto": compose_chat_context(request.app, data_dir),
+        "contesto": compose_chat_context(request.app, data_dir, thread=thread),
         # fetta "il ponte riceve il nucleo" (parita' A, Task 3): le due
         # impostazioni della chat che SONO testo di prompt -- gli stessi due
         # valori che il ramo sincrono legge qui sotto, a `handle_chat`
@@ -447,8 +449,15 @@ async def _enqueue_chat_job(
         # campo prima che un turno possa arrivare qui.
         "model": ((request.app.get("models_config") or {})
                   .get("ponte", {}).get("modello", "sonnet")),
+        # Fetta «le chat divise»: il filo e il soggetto INTERO di chi ha
+        # scritto. Il filo serve a chi consegna e a chi ripiega (la risposta
+        # va nella cronologia giusta); il soggetto al soffitto e alla cronaca
+        # del ripiego, che vogliono specie e nome, non solo la chiave -- e
+        # vanno presi dal job, non da chi per caso fa il poll (spec §4).
+        "thread": thread_to_context(thread),
+        "soggetto": request.get("soggetto"),
     }
-    # fetta E5 Task 2, fix round 1 (I-2): il `context` qui sopra porta sei
+    # fetta E5 Task 2, fix round 1 (I-2): il `context` qui sopra porta otto
     # chiavi e `thinking_budget` NON e' fra loro -- il ponte parla con la CLI
     # dell'abbonamento, che non espone un budget di ragionamento per turno.
     # Finche' quel valore si poteva cambiare solo scrivendo a mano il JSON in
@@ -468,16 +477,8 @@ async def _enqueue_chat_job(
             settings.thinking_budget,
         )
 
-    # Task 2 (queue): wiring minimo. In produzione `middleware_internal_auth.
-    # py` scrive gia' `request["soggetto"]`/`["auth_via"]` PRIMA che questa
-    # funzione giri, quindi `request_thread(request)` e' gia' il filo VERO di
-    # chi ha scritto il messaggio, non un segnaposto. Cio' che manca ancora e
-    # che il Task 3 aggiunge e' portare `thread` come parametro esplicito di
-    # questa funzione (oggi lo ricalcola qui) e farlo viaggiare nel resto
-    # della catena -- `context["thread"]`, `chat_store`, il poll -- cosi' due
-    # fili non si mescolano MAI, non solo in questo punto.
     job_id = reasoning_queue.enqueue("chat", {}, context, deadline, now=now,
-                                      thread=request_thread(request))
+                                      thread=thread)
     return web.json_response({"status": "pending", "job_id": job_id}, status=202)
 
 
@@ -537,6 +538,12 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
     runner = request.app.get("llm_router") or request.app.get("claude_runner")
     contesto = job.get("context") or {}
     data_dir = request.app.get("data_dir", "/data")
+    # Fetta «le chat divise»: soggetto e filo sono quelli DEL JOB, cioe' di chi
+    # ha scritto il messaggio -- non di chi per caso fa il poll che scopre la
+    # scadenza (spec §4). Il poll di un altro filo e' gia' un 404, ma il turno
+    # appartiene al job, e da li' si legge.
+    soggetto = contesto.get("soggetto")
+    thread = job.get("thread")
     if runner is None:
         # Nessuna nota: non c'è stato nessun ripiego da annunciare -- non ha
         # risposto nessuno. La nota parla di CHI ha risposto al posto del piano.
@@ -581,7 +588,7 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
         # turno ha dovuto prendere.
         async with misura_turno(request.app.get("usage"), runner,
                                 specie="chat", canale="catena",
-                                soggetto=request.get("soggetto")):
+                                soggetto=soggetto):
             answer = await runner.chat(
                 user_message=ultimo,
                 system_prompt=contesto.get("system_prompt", ""),
@@ -600,9 +607,9 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
                 agent_type="chat",
                 restrict_to_home=bool(contesto.get("restrict_to_home")),
                 response_mode=contesto.get("response_mode", "auto"),
-                # Il contesto del job NON porta `thinking_budget` (sei chiavi,
-                # pinnate da `test_context_del_job_porta_esattamente_queste_sei_
-                # chiavi_ne_una_di_piu`): inventarne uno qui significherebbe
+                # Il contesto del job NON porta `thinking_budget` (otto chiavi,
+                # pinnate da `test_context_del_job_porta_esattamente_queste_
+                # otto_chiavi_ne_una_di_piu`): inventarne uno qui significherebbe
                 # applicare al ripiego un'impostazione che il ponte aveva
                 # dichiarato inapplicabile, con un log, al momento
                 # dell'accodamento.
@@ -610,8 +617,11 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
                 tools=KNOWLEDGE_TOOLS,
                 dispatcher=create_tool_dispatcher(
                     request.app, exchange=exchange_id,
+                    # Il soffitto si legge ancora dalla richiesta del poll: e'
+                    # dello stesso filo (il 404 sopra lo garantisce), e il
+                    # calcolo da un soggetto (`ceiling_for`) arriva col Task 4.
                     soffitto=await per_richiesta(request.app, request),
-                    soggetto=request.get("soggetto"),
+                    soggetto=soggetto,
                     # Lo STESSO testo che il modello ha davanti come ultimo turno
                     # (`user_message=ultimo`, qui sopra): se questo ramo leggesse
                     # da un'altra parte, la cronaca registrerebbe una frase
@@ -640,7 +650,15 @@ async def _downgrade_to_chain(request: web.Request, job_id: str):
         # cui ragiona -- è la stessa famiglia del difetto dichiarato su «Errore
         # temporaneo del servizio AI», che in cronologia ci finisce e non
         # dovrebbe.
-        append_messages([{"role": "assistant", "content": answer}], data_dir)
+        if thread is not None:
+            append_messages([{"role": "assistant", "content": answer}], data_dir,
+                            thread=thread)
+        else:
+            # Un job senza filo (accodato prima delle chat divise) non arriva
+            # qui dal poll -- e' un 404 -- ma se ci arrivasse la risposta non
+            # si scrive in un filo inventato.
+            logger.warning("ripiego del job %s senza filo: risposta non "
+                           "scritta in cronologia", job_id)
     payload = {"status": "done", "reply": answer}
     if note:
         payload["nota"] = note
@@ -660,7 +678,12 @@ async def handle_chat_reply_poll(request: web.Request) -> web.Response:
     if reasoning_queue is None:
         return web.json_response({"error": "reasoning queue not configured"}, status=503)
     job = reasoning_queue.get(job_id)
-    if job is None:
+    # Fetta «le chat divise»: si risponde solo a chi e' dello stesso filo del
+    # job. Un job di un altro filo riceve la STESSA risposta di un id che non
+    # esiste, per non confermare che esiste (spec §4). Vale anche per un job
+    # senza filo (`None`, accodato prima di questa versione): non e' di
+    # nessuno, quindi non e' di chi chiede.
+    if job is None or job.get("thread") != request_thread(request):
         return web.json_response({"error": "not found"}, status=404)
     status = job.get("status")
     decision = job.get("decision") or {}
@@ -765,6 +788,12 @@ async def handle_chat(request: web.Request) -> web.Response:
 
     data_dir = request.app.get("data_dir", "/data")
     settings = request.app["chat_settings"]
+    # Fetta «le chat divise»: il filo di chi scrive, calcolato UNA volta qui e
+    # passato a tutto cio' che segue -- cronologia, riassunti, limite dei
+    # turni, 409, scrittura, job. Ricalcolarlo in ogni punto sarebbe cinque
+    # occasioni di calcolarlo diverso.
+    thread = request_thread(request)
+    await adopt_if_owner(request.app, request, thread)
 
     # Enforce max turns limit (count from DB, not from the trimmed context
     # window). Final-review Fix 1 (Slice 4b): hoisted ABOVE the subscription
@@ -776,7 +805,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     # never reached in that mode).
     max_turns = settings.max_chat_turns
     if max_turns > 0:
-        turn_count = count_user_turns(data_dir)
+        turn_count = count_user_turns(data_dir, thread=thread)
         if turn_count >= max_turns:
             return web.json_response({
                 "error": "max_turns_reached",
@@ -818,7 +847,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         # l'N+1): ripiegando lì si manderebbe un turno sincrono sulla catena
         # mentre il ponte ne ha uno in volo che scriverà la sua risposta in
         # cronologia da solo (`server._submit_chat_reply`).
-        if reasoning_queue.has_pending_chat(request_thread(request)):
+        if reasoning_queue.has_pending_chat(thread):
             return web.json_response(
                 {"error": "C’è già una risposta in arrivo per questa conversazione."},
                 status=409,
@@ -843,7 +872,7 @@ async def handle_chat(request: web.Request) -> web.Response:
             declare_downgrade(request.app, agent="chat",
                               reason=_subscription_reason)
         else:
-            return await _enqueue_chat_job(request, settings, message, data_dir)
+            return await _enqueue_chat_job(request, settings, message, data_dir, thread)
 
     runner = request.app.get("llm_router") or request.app.get("claude_runner")
     if runner is None:
@@ -895,7 +924,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     # (vedi il commento sulla scadenza del ponte qui sotto), non catturato
     # all'avvio: un utente che lo abbassa in `#/settings` lo vede avere
     # effetto dal messaggio successivo, senza riavviare.
-    history = load_history(data_dir, days=settings.retention_days)
+    history = load_history(data_dir, thread=thread, days=settings.retention_days)
 
     # (max-turns check now runs above, before the subscription branch — see
     # Fix 1 comment there.)
@@ -911,9 +940,9 @@ async def handle_chat(request: web.Request) -> web.Response:
     # restituisce mai) -- quel ramo di degrado e' impossibile per
     # costruzione, non solo non piu' preso. fetta E4 Task 5 ("un bot solo"):
     # anche l'id transitorio che qui sotto selezionava la cronologia
-    # (`effective_chatbot_id`) e' uscito -- chat_store non ha piu' alcuna
-    # nozione di id da cui degradare, `load_history`/`get_past_summaries`
-    # leggono sempre l'UNICA cronologia che esiste.
+    # (`effective_chatbot_id`) e' uscito. Dalla fetta «le chat divise»
+    # `load_history`/`get_past_summaries` leggono la cronologia del FILO di
+    # chi scrive (`thread`, calcolato in cima), non piu' una sola per tutti.
     system_prompt = _build_system_prompt(settings)
 
     # Nucleo + sessioni precedenti, in un'unica stringa: `compose_chat_context`
@@ -921,7 +950,7 @@ async def handle_chat(request: web.Request) -> web.Response:
     # invariato il blocco che prima viveva qui -- vedi il suo docstring per il
     # perche' (il Task 2 mette la STESSA stringa nel job del ponte, senza
     # ricopiarla) e per il ragionamento storico su nucleo/degrado/sessioni.
-    context_str = compose_chat_context(request.app, data_dir)
+    context_str = compose_chat_context(request.app, data_dir, thread=thread)
 
     # I sedici strumenti della chat -- il perche' di ogni riga sta
     # nel docstring di `create_tool_dispatcher` (sopra), che dalla
@@ -1069,7 +1098,7 @@ async def handle_chat(request: web.Request) -> web.Response:
             append_messages([
                 {"role": "user", "content": message},
                 {"role": "assistant", "content": full_response},
-            ], data_dir)
+            ], data_dir, thread=thread)
         return stream_resp
 
     try:
@@ -1130,7 +1159,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         append_messages([
             {"role": "user", "content": message},
             {"role": "assistant", "content": response},
-        ], data_dir)
+        ], data_dir, thread=thread)
 
     raw = getattr(runner, "last_tool_calls", None)
     # Pass the raw tool-call objects ({tool, input}) — the shape the panel's

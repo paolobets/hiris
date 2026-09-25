@@ -2,6 +2,7 @@ import pytest
 from aiohttp import web
 
 from hiris.app.api.handlers_reasoning import handle_reasoning_claim, handle_reasoning_submit
+from hiris.app.chat_thread import ChatThread
 from hiris.app.reasoning.queue import ReasoningQueue
 
 
@@ -90,22 +91,23 @@ async def test_submit_without_execute_decision_wired_records_and_logs(
 @pytest.mark.asyncio
 async def test_submit_delivers_reply_even_with_legacy_id_key_in_context(aiohttp_client, tmp_path):
     """fetta E4 Task 5 ("un bot solo"): handle_reasoning_submit non estrae
-    piu' nessun chatbot_id/agent_id dal context -- chat_store non ne ha
-    piu' bisogno, c'e' UNA cronologia. Prima di questo task, un job
+    piu' nessun chatbot_id/agent_id dal context: dalla fetta «le chat
+    divise» la cronologia si sceglie col FILO del job, che sta nelle colonne
+    della coda, non nel context. Prima di questo task, un job
     enqueued pre-deploy con SOLO `agent_id` nel context (prima della
     rinomina agent_id -> chatbot_id) dipendeva da un fallback a doppia
     chiave per non perdere la risposta; oggi il context non viene nemmeno
     piu' letto per un id, quindi qualunque chiave (o nessuna) ci sia
     dentro e' irrilevante -- verificato che questo pin cade per
     costruzione se si torna al vecchio `submit_chat_reply(chatbot_id,
-    reply)`: `TypeError: _submit_chat_reply() takes 1 positional argument
-    but 2 were given` nel chiamante reale (handlers_reasoning.py)."""
+    reply)` (verifica della fetta E4). Oggi il secondo argomento e' il filo."""
     app, q = _app(tmp_path)
     replies = []
-    async def _submit_chat_reply(reply):
+    async def _submit_chat_reply(reply, thread):
         replies.append(reply)
     app["submit_chat_reply"] = _submit_chat_reply
-    q.enqueue("chat", {}, {"agent_id": "agentX"}, deadline_ts=100.0, job_id="J", now=1.0)
+    q.enqueue("chat", {}, {"agent_id": "agentX"}, deadline_ts=100.0, job_id="J", now=1.0,
+              thread=ChatThread("persona:paolo", "pannello"))
     client = await aiohttp_client(app)
     c = await (await client.post("/api/reasoning/claim")).json()
     assert c["job"]["job_id"] == "J"

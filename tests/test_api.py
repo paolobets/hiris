@@ -8,6 +8,7 @@ import pytest_asyncio
 
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import close_all_stores
+from hiris.app.chat_thread import thread_for
 from hiris.app.server import create_app
 
 
@@ -19,6 +20,13 @@ def _cfg_version() -> str:
     m = re.search(r'^version:\s*"([^"]+)"',
                   cfg.read_text(encoding="utf-8"), re.MULTILINE)
     return m.group(1) if m else "unknown"
+
+
+# Fetta «le chat divise»: le richieste di questo file passano dal confine vero
+# senza credenziali (`no_token`, ambiente di sviluppo), quindi arrivano come
+# soggetto `sviluppo` dall'ingresso `sviluppo`. Le cronologie che i test
+# seminano o rileggono sono quelle di QUESTO filo.
+THREAD_SVILUPPO = thread_for({"specie": "sviluppo"}, "no_token")
 
 
 @pytest.fixture(autouse=True)
@@ -316,14 +324,13 @@ async def test_chat_max_turns_blocks_when_limit_reached(client):
     from hiris.app.chat_store import append_messages
     client.app["chat_settings"] = ChatSettings(max_chat_turns=2)
     data_dir = client.app["data_dir"]
-    # Pre-fill 2 user turns nell'UNICA cronologia server-side (fetta E4
-    # Task 5: chat_store non prende piu' un id -- vedi handlers_chat.py).
+    # Pre-fill 2 user turns nella cronologia del filo di chi scrive.
     append_messages([
         {"role": "user", "content": "first"},
         {"role": "assistant", "content": "reply1"},
         {"role": "user", "content": "second"},
         {"role": "assistant", "content": "reply2"},
-    ], data_dir)
+    ], data_dir, thread=THREAD_SVILUPPO)
 
     resp = await client.post("/api/chat", json={"message": "third message"})
     assert resp.status == 200
@@ -342,7 +349,7 @@ async def test_chat_persists_exchange_in_history(client):
 
     await client.post("/api/chat", json={"message": "persist me"})
 
-    history = load_history(data_dir)
+    history = load_history(data_dir, thread=THREAD_SVILUPPO)
     assert any(m["content"] == "persist me" for m in history)
     assert any(m["content"] == "stored response" for m in history)
 
@@ -369,8 +376,12 @@ async def test_chat_context_e_limitato_dai_giorni_di_conservazione(client):
     ora_ts = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     conn = store._conn
     conn.execute(
-        "INSERT INTO chat_sessions(session_id, started_at, last_msg_at) VALUES(?,?,?)",
-        ("sess-mista", vecchio_ts, ora_ts),
+        # Nel filo di chi scrive: una sessione senza filo sarebbe orfana e
+        # invisibile, e il test passerebbe anche senza il filtro dei giorni.
+        "INSERT INTO chat_sessions(session_id, started_at, last_msg_at, subject_key, "
+        "entry_point) VALUES(?,?,?,?,?)",
+        ("sess-mista", vecchio_ts, ora_ts, THREAD_SVILUPPO.subject_key,
+         THREAD_SVILUPPO.entry_point),
     )
     conn.execute(
         "INSERT INTO chat_messages(session_id, role, content, timestamp) VALUES(?,?,?,?)",
@@ -408,7 +419,7 @@ async def test_chat_does_not_persist_toxic_response(client):
 
     await client.post("/api/chat", json={"message": "fail me"})
 
-    history = load_history(data_dir)
+    history = load_history(data_dir, thread=THREAD_SVILUPPO)
     assert history == []  # nothing persisted
 
 
@@ -424,7 +435,7 @@ async def test_chat_does_not_persist_leaked_tool_call_response(client):
 
     await client.post("/api/chat", json={"message": "leak me"})
 
-    history = load_history(data_dir)
+    history = load_history(data_dir, thread=THREAD_SVILUPPO)
     assert history == []
 
 

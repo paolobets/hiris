@@ -106,12 +106,12 @@ def consente(soggetto: dict | None, *, ruolo: str | None) -> dict:
             "ruolo": None, "perche": _MACCHINA_MUTA}
 
 
-async def _ruolo_persona(app, soggetto: dict | None) -> str | None:
-    """Il ruolo di questa utenza in Home Assistant — o `None`.
+async def _person_row(app, soggetto: dict | None) -> dict | None:
+    """La riga di questa utenza fra gli utenti di Home Assistant — o `None`.
 
-    `None` non è «utente»: è «non l'ho potuto sapere». I due casi si separano
-    qui perché a valle si comportano allo stesso modo ma vanno detti in modo
-    diverso a chi legge il rifiuto.
+    Una lettura sola per due domande: il ruolo (`_ruolo_persona`) e se è il
+    proprietario (`is_owner`, fetta «le chat divise»). Due letture separate
+    sarebbero due cache che scadono in momenti diversi.
 
     La risposta si tiene per `RUOLI_VALIDI_S`. **Un guasto non si mette in
     cache**: se la lettura fallisce si riprova alla richiesta dopo, altrimenti
@@ -148,10 +148,31 @@ async def _ruolo_persona(app, soggetto: dict | None) -> str | None:
         visti["per_id"] = {u["id"]: u for u in esito["utenti"] if u.get("id")}
         visti["quando"] = time.time()
 
-    riga = visti["per_id"].get(identificatore)
+    return visti["per_id"].get(identificatore)
+
+
+async def _ruolo_persona(app, soggetto: dict | None) -> str | None:
+    """Il ruolo di questa utenza in Home Assistant — o `None`.
+
+    `None` non è «utente»: è «non l'ho potuto sapere». I due casi si separano
+    qui perché a valle si comportano allo stesso modo ma vanno detti in modo
+    diverso a chi legge il rifiuto.
+    """
+    riga = await _person_row(app, soggetto)
     if riga is None:
         return None
     return "amministratore" if riga.get("amministratore") else "utente"
+
+
+async def is_owner(app, soggetto: dict | None) -> bool:
+    """Home Assistant dice che questa persona è il proprietario?
+
+    `False` anche quando non lo si è potuto sapere: chi la usa
+    (`chat_thread.adopt_if_owner`) fa un gesto che non si ripara -- dare la
+    cronologia di prima a qualcuno -- e nel dubbio non lo fa. Ci riprova la
+    richiesta dopo.
+    """
+    return bool((await _person_row(app, soggetto) or {}).get("proprietario"))
 
 
 async def per_richiesta(app, request) -> dict:

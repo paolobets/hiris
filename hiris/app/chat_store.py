@@ -6,6 +6,7 @@ import threading
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from .chat_thread import ChatThread
 from .storage import connect, init_schema
 
 logger = logging.getLogger(__name__)
@@ -174,11 +175,25 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
     session_id  TEXT PRIMARY KEY,
     started_at  TEXT NOT NULL,
     last_msg_at TEXT NOT NULL,
-    summary     TEXT
+    summary     TEXT,
+    -- Il FILO (fetta «le chat divise», Task 3): di CHI e' la sessione e da
+    -- quale ingresso (spec §3). NULL = orfana: una sessione scritta prima di
+    -- questa versione, che nessuno vede finche' il proprietario non la adotta.
+    subject_key TEXT,
+    entry_point TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_msg_session  ON chat_messages(session_id, timestamp);
 CREATE INDEX IF NOT EXISTS idx_sess_last_msg ON chat_sessions(last_msg_at);
 """
+
+# L'indice del filo NON sta in `_SCHEMA`: `init_schema` esegue lo script PRIMA
+# delle migrazioni, e su un archivio v3 (senza le due colonne) un `CREATE INDEX`
+# su `subject_key` farebbe fallire l'apertura invece di migrare. Si crea in
+# `ChatStore.__init__`, subito dopo `init_schema()`: li' le colonne esistono
+# sempre, che l'archivio sia appena nato o appena migrato. Stesso giro di
+# `reasoning/queue.py::_IDX_THREAD_SQL`.
+_IDX_THREAD_SQL = ("CREATE INDEX IF NOT EXISTS idx_sess_thread "
+                   "ON chat_sessions(subject_key, entry_point, last_msg_at)")
 
 
 def _reset(conn: sqlite3.Connection) -> None:
@@ -222,11 +237,29 @@ def _reset(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migration_4(conn: sqlite3.Connection) -> None:
+    """v3 -> v4 (fetta «le chat divise», Task 3): il filo della sessione.
+
+    NON un `_reset`: decisione 5 del proprietario (spec §0, §3) -- la
+    cronologia di oggi resta, con `subject_key`/`entry_point` NULL, cioe'
+    orfana: invisibile a tutti finche' `adopt_orphans` non la da' al
+    proprietario. `ALTER TABLE` solo se la colonna manca: un DB che arriva
+    qui passando da `_reset` (pre-v3) ha gia' le colonne da `_SCHEMA`."""
+    colonne = {r[1] for r in conn.execute("PRAGMA table_info(chat_sessions)").fetchall()}
+    if "subject_key" not in colonne:
+        conn.execute("ALTER TABLE chat_sessions ADD COLUMN subject_key TEXT")
+    if "entry_point" not in colonne:
+        conn.execute("ALTER TABLE chat_sessions ADD COLUMN entry_point TEXT")
+
+
 class ChatStore:
     def __init__(self, db_path: str):
         self._conn = connect(db_path)
         self._mu = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=3, migrations={2: _reset, 3: _reset})
+        init_schema(self._conn, _SCHEMA, version=4,
+                    migrations={2: _reset, 3: _reset, 4: _migration_4})
+        self._conn.execute(_IDX_THREAD_SQL)
+        self._conn.commit()
 
     # ------------------------------------------------------------------
     # Internal helpers (called with self._mu already held)
@@ -235,11 +268,13 @@ class ChatStore:
     def _now(self) -> str:
         return datetime.now(UTC).strftime(_TS_FMT)
 
-    def _fresh_session_id(self) -> str | None:
-        """Return the open session_id only if within the gap window — no side effects."""
+    def _fresh_session_id(self, thread: ChatThread) -> str | None:
+        """Return the thread's open session_id only if within the gap window — no side effects."""
         row = self._conn.execute(
             "SELECT session_id, last_msg_at FROM chat_sessions "
-            "WHERE summary IS NULL ORDER BY last_msg_at DESC LIMIT 1"
+            "WHERE summary IS NULL AND subject_key = ? AND entry_point = ? "
+            "ORDER BY last_msg_at DESC LIMIT 1",
+            (thread.subject_key, thread.entry_point),
         ).fetchone()
         if not row:
             return None
@@ -251,14 +286,18 @@ class ChatStore:
             return row["session_id"]
         return None
 
-    def _active_session(self) -> str | None:
-        """Return fresh session_id, closing stale ones as side effect (write path only)."""
-        sid = self._fresh_session_id()
+    def _active_session(self, thread: ChatThread) -> str | None:
+        """Return the thread's fresh session_id, closing its stale one as side
+        effect (write path only). La chiusura per silenzio tocca SOLO questo
+        filo: il silenzio di Paolo non chiude la conversazione di Marta."""
+        sid = self._fresh_session_id(thread)
         if sid:
             return sid
         row = self._conn.execute(
             "SELECT session_id FROM chat_sessions WHERE summary IS NULL "
-            "ORDER BY last_msg_at DESC LIMIT 1"
+            "AND subject_key = ? AND entry_point = ? "
+            "ORDER BY last_msg_at DESC LIMIT 1",
+            (thread.subject_key, thread.entry_point),
         ).fetchone()
         if row:
             self._close_session(row["session_id"])
@@ -295,28 +334,29 @@ class ChatStore:
             (summary, session_id),
         )
 
-    def _new_session(self) -> str:
+    def _new_session(self, thread: ChatThread) -> str:
         session_id = str(uuid.uuid4())
         ts = self._now()
         self._conn.execute(
-            "INSERT INTO chat_sessions(session_id, started_at, last_msg_at) VALUES(?,?,?)",
-            (session_id, ts, ts),
+            "INSERT INTO chat_sessions(session_id, started_at, last_msg_at, "
+            "subject_key, entry_point) VALUES(?,?,?,?,?)",
+            (session_id, ts, ts, thread.subject_key, thread.entry_point),
         )
         return session_id
 
-    def _get_or_create_session(self) -> str:
-        sid = self._active_session()
+    def _get_or_create_session(self, thread: ChatThread) -> str:
+        sid = self._active_session(thread)
         if sid:
             return sid
-        return self._new_session()
+        return self._new_session(thread)
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    def append(self, messages: list[dict]) -> None:
+    def append(self, messages: list[dict], thread: ChatThread) -> None:
         with self._mu:
-            sid = self._get_or_create_session()
+            sid = self._get_or_create_session(thread)
             ts = self._now()
             for m in messages:
                 self._conn.execute(
@@ -330,9 +370,10 @@ class ChatStore:
             self._conn.commit()
 
     def load_context(
-        self, max_turns: int = 30, *, days: int = 90, include_timestamp: bool = False
+        self, thread: ChatThread, max_turns: int = 30, *, days: int = 90,
+        include_timestamp: bool = False,
     ) -> list[dict]:
-        """Return last max_turns pairs from the active (non-stale) session.
+        """Return last max_turns pairs from the thread's active (non-stale) session.
 
         `days` is the second job of `ChatSettings.retention_days`
         (Task 12): it does NOT free disk space here, it makes HIRIS forget
@@ -353,7 +394,7 @@ class ChatStore:
         colonna (`timestamp`, scritta da `append()` a ogni turno): mancava
         solo restituirla a chi la chiede, non inventare una seconda fonte."""
         with self._mu:
-            sid = self._fresh_session_id()
+            sid = self._fresh_session_id(thread)
             if not sid:
                 return []
             if days > 0:
@@ -386,20 +427,23 @@ class ChatStore:
                 messages = [{"role": m["role"], "content": m["content"]} for m in messages]
             return messages
 
-    def get_past_summaries(self, n: int = PAST_SESSIONS_LIMIT) -> list[dict]:
-        """Return closed sessions with summaries, most recent first."""
+    def get_past_summaries(
+        self, thread: ChatThread, n: int = PAST_SESSIONS_LIMIT
+    ) -> list[dict]:
+        """Return the thread's closed sessions with summaries, most recent first."""
         with self._mu:
             rows = self._conn.execute(
                 "SELECT session_id, started_at, last_msg_at, summary FROM chat_sessions "
-                "WHERE summary IS NOT NULL ORDER BY last_msg_at DESC LIMIT ?",
-                (n,),
+                "WHERE summary IS NOT NULL AND subject_key = ? AND entry_point = ? "
+                "ORDER BY last_msg_at DESC LIMIT ?",
+                (thread.subject_key, thread.entry_point, n),
             ).fetchall()
             return [dict(r) for r in rows]
 
-    def count_user_turns(self) -> int:
-        """Count user messages in the active (non-stale) session."""
+    def count_user_turns(self, thread: ChatThread) -> int:
+        """Count user messages in the thread's active (non-stale) session."""
         with self._mu:
-            sid = self._fresh_session_id()
+            sid = self._fresh_session_id(thread)
             if not sid:
                 return 0
             cnt = self._conn.execute(
@@ -408,11 +452,40 @@ class ChatStore:
             ).fetchone()
             return cnt[0] if cnt else 0
 
-    def clear(self) -> None:
+    def clear(self, thread: ChatThread) -> None:
+        """Cancella SOLO il filo dato: «cancella la cronologia» di Marta non
+        tocca quella di Paolo, ne' le orfane (che aspettano il proprietario)."""
+        key = (thread.subject_key, thread.entry_point)
         with self._mu:
-            self._conn.execute("DELETE FROM chat_messages")
-            self._conn.execute("DELETE FROM chat_sessions")
+            self._conn.execute(
+                "DELETE FROM chat_messages WHERE session_id IN "
+                "(SELECT session_id FROM chat_sessions "
+                "WHERE subject_key = ? AND entry_point = ?)", key)
+            self._conn.execute(
+                "DELETE FROM chat_sessions WHERE subject_key = ? AND entry_point = ?", key)
             self._conn.commit()
+
+    def has_orphans(self) -> bool:
+        """C'e' ancora cronologia di prima delle chat divise, di nessuno?"""
+        with self._mu:
+            return self._conn.execute(
+                "SELECT 1 FROM chat_sessions WHERE subject_key IS NULL LIMIT 1"
+            ).fetchone() is not None
+
+    def adopt_orphans(self, thread: ChatThread) -> int:
+        """Le sessioni orfane diventano del filo dato; ritorna quante.
+
+        CHI adotta non si decide qui (lo decide `chat_thread.adopt_if_owner`):
+        l'archivio non sa chi sia il proprietario. Una volta sola per
+        costruzione -- dopo, nessuna riga ha piu' `subject_key IS NULL`."""
+        with self._mu:
+            cur = self._conn.execute(
+                "UPDATE chat_sessions SET subject_key = ?, entry_point = ? "
+                "WHERE subject_key IS NULL",
+                (thread.subject_key, thread.entry_point),
+            )
+            self._conn.commit()
+            return cur.rowcount
 
     def delete_old_messages(self, retention_days: int) -> int:
         """Hard-delete chat messages older than retention_days. Returns row count deleted."""
@@ -451,14 +524,18 @@ def _get_store(data_dir: str) -> ChatStore:
 
 
 # ---------------------------------------------------------------------------
-# Backward-compatible public functions (same signatures as old JSON store,
-# minus `chatbot_id` -- fetta E4 Task 5, "un bot solo": c'e' UNA cronologia)
+# Funzioni di modulo. Fetta «le chat divise»: una cronologia PER FILO (un
+# soggetto da un ingresso, `chat_thread.py`). `thread` e' keyword obbligatorio
+# e senza default, apposta: un default sarebbe il filo unico che rientra dalla
+# porta di servizio, e un chiamante dimenticato scriverebbe nella chat di
+# qualcun altro invece di fallire subito.
 # ---------------------------------------------------------------------------
 
 def load_history(
-    data_dir: str, *, days: int = 90, include_timestamp: bool = False
+    data_dir: str, *, thread: ChatThread, days: int = 90,
+    include_timestamp: bool = False,
 ) -> list[dict]:
-    """Return [{role, content}] for the active session (Claude API format).
+    """Return [{role, content}] for the thread's active session (Claude API format).
 
     `days` threads through to `ChatStore.load_context` -- see its docstring
     for why this is NOT a housekeeping knob. Production callers pass
@@ -468,27 +545,40 @@ def load_history(
     `include_timestamp` threads through too -- see `ChatStore.load_context`.
     Default `False`: the model-facing callers (`api/handlers_chat.py`) must
     keep getting pure `{role, content}`, unchanged."""
-    return _get_store(data_dir).load_context(days=days, include_timestamp=include_timestamp)
+    return _get_store(data_dir).load_context(
+        thread, days=days, include_timestamp=include_timestamp)
 
 
-def append_messages(messages: list[dict], data_dir: str) -> None:
-    """Append [{role, content}] to the active session."""
-    _get_store(data_dir).append(messages)
+def append_messages(messages: list[dict], data_dir: str, *, thread: ChatThread) -> None:
+    """Append [{role, content}] to the thread's active session."""
+    _get_store(data_dir).append(messages, thread)
 
 
-def clear_history(data_dir: str) -> None:
-    """Delete all history and sessions."""
-    _get_store(data_dir).clear()
+def clear_history(data_dir: str, *, thread: ChatThread) -> None:
+    """Delete the thread's history and sessions -- only that thread."""
+    _get_store(data_dir).clear(thread)
 
 
-def get_past_summaries(data_dir: str, n: int = PAST_SESSIONS_LIMIT) -> list[dict]:
-    """Return up to n closed session summaries, most recent first."""
-    return _get_store(data_dir).get_past_summaries(n)
+def get_past_summaries(
+    data_dir: str, *, thread: ChatThread, n: int = PAST_SESSIONS_LIMIT
+) -> list[dict]:
+    """Return up to n of the thread's closed session summaries, most recent first."""
+    return _get_store(data_dir).get_past_summaries(thread, n)
 
 
-def count_user_turns(data_dir: str) -> int:
-    """Count user turns in the active session (used for max_chat_turns enforcement)."""
-    return _get_store(data_dir).count_user_turns()
+def count_user_turns(data_dir: str, *, thread: ChatThread) -> int:
+    """Count user turns in the thread's active session (max_chat_turns enforcement)."""
+    return _get_store(data_dir).count_user_turns(thread)
+
+
+def has_orphans(data_dir: str) -> bool:
+    """C'e' cronologia di prima della fetta ancora senza filo?"""
+    return _get_store(data_dir).has_orphans()
+
+
+def adopt_orphans(data_dir: str, *, thread: ChatThread) -> int:
+    """Le sessioni orfane passano al filo dato; ritorna quante."""
+    return _get_store(data_dir).adopt_orphans(thread)
 
 
 def delete_old_messages(data_dir: str, retention_days: int) -> int:

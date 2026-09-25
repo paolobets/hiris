@@ -5,6 +5,7 @@ import time
 
 from aiohttp import web
 
+from ..chat_thread import thread_to_context
 from ..mind.observer import SCOPE_TURN_KIND
 
 logger = logging.getLogger(__name__)
@@ -57,7 +58,16 @@ async def handle_reasoning_claim(request: web.Request) -> web.Response:
     q = request.app.get("reasoning_queue")
     if q is None:
         return web.json_response({"job": None})
-    return web.json_response({"job": q.claim(_now(request))})
+    job = q.claim(_now(request))
+    # Il filo del job e' un `ChatThread` dentro il processo, e sul filo HTTP
+    # diventa la sua forma di dizionario (`thread_to_context`, la stessa del
+    # `context`): senza questa riga `json_response` solleva per ogni job di
+    # chat che ne porta uno, cioe' il ponte non riceve piu' nessun turno di
+    # chat. Trovato dal Task 3 delle chat divise, primo a fare claim di un job
+    # con filo attraverso la rotta.
+    if job is not None and job.get("thread") is not None:
+        job = {**job, "thread": thread_to_context(job["thread"])}
+    return web.json_response({"job": job})
 
 
 async def handle_reasoning_submit(request: web.Request) -> web.Response:
@@ -138,20 +148,26 @@ async def handle_reasoning_submit(request: web.Request) -> web.Response:
         # execute_decision. Fail-closed: missing reply -> no write, but the
         # job stays "decided" (already committed by q.submit above).
         #
-        # fetta E4 Task 5 ("un bot solo"): submit_chat_reply non prende piu'
-        # un chatbot_id -- chat_store non ne ha piu' bisogno, c'e' UNA
-        # cronologia. Non estraiamo piu' nulla dal context_json: un job
-        # rimasto in reasoning.db da prima di questo task puo' ancora
-        # portare chatbot_id/agent_id dentro il suo context (scritto da un
-        # server piu' vecchio) -- quella chiave e' semplicemente ignorata,
-        # non impedisce piu' la consegna (prima, un context legacy con solo
-        # `agent_id` avrebbe fatto risolvere `chatbot_id` a `None` e saltare
-        # la scrittura: quel guasto non esiste piu' per costruzione).
+        # Fetta «le chat divise»: la risposta va nel FILO del job -- chi ha
+        # scritto il messaggio, da dove -- letto dalle colonne della coda
+        # (`job["thread"]`), non dal `context`, che `q.submit()` qui sopra ha
+        # gia' azzerato. Un job di chat accodato PRIMA di questa versione non
+        # ha filo: la risposta non si scrive in un filo inventato (sarebbe la
+        # chat di qualcun altro), si dichiara nel log e si lascia cadere.
+        # Un `chatbot_id`/`agent_id` rimasto nel context di un job vecchio
+        # resta ignorato, come dalla fetta E4.
         reply = decision.get("reply")
+        thread = (job or {}).get("thread")
         submit_chat_reply = request.app.get("submit_chat_reply")
-        if submit_chat_reply is not None and reply:
+        if thread is None:
+            logger.warning(
+                "consegna di un turno di chat senza filo (job_id=%s): accodato "
+                "prima delle chat divise, la risposta non si scrive in nessuna "
+                "cronologia", job_id)
+            outcome = "chat_reply_senza_filo"
+        elif submit_chat_reply is not None and reply:
             try:
-                await submit_chat_reply(reply)
+                await submit_chat_reply(reply, thread)
                 outcome = "chat_reply_recorded"
             except Exception:
                 logger.exception("submit_chat_reply failed")

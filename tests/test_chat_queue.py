@@ -1,9 +1,11 @@
 """Slice 4b Task 1: kind="chat" reasoning jobs must route their submitted
 reply into chat_store instead of actuating the house via execute_decision.
 
-fetta E4 Task 5 ("un bot solo"): chat_store non ha piu' un `chatbot_id` --
-c'e' UNA cronologia, non piu' una per agent. `submit_chat_reply` prende solo
-`reply_text` e chiama `append_messages([{"role": "assistant", ...}], data_dir)`.
+Fetta «le chat divise»: la cronologia e' per FILO. `submit_chat_reply` prende
+`(reply_text, thread)` -- il filo del job, letto dalle colonne della coda -- e
+chiama `append_messages([{"role": "assistant", ...}], data_dir, thread=thread)`.
+Un job di chat senza filo (accodato prima della fetta) non consegna:
+`chat_reply_senza_filo`, provato in tests/test_chat_divise.py.
 Il `context_json` di un job puo' ancora portare una chiave `chatbot_id`
 (scritta da un client/server piu' vecchio, o qui sotto per continuare a
 coprire "una chiave qualsiasi nel context non rompe nulla") ma
@@ -13,13 +15,13 @@ tests/test_reasoning_api.py per quel caso.
 Real APIs verified before writing this test:
 - ReasoningQueue.enqueue(kind, wake, context, deadline_ts, *, job_id=None, now,
   thread=None) -- `thread` (fetta "le chat divise" Task 2) writes
-  subject_key/entry_point, NULL when omitted (as every job in this file does).
+  subject_key/entry_point; every chat job here carries `T`.
 - ReasoningQueue.claim(now) -> dict with job_id/kind/context/nonce/status
 - ReasoningQueue.submit(job_id, nonce, decision, now) -> bool
 - ReasoningQueue.get(job_id) -> dict including "kind", "context", "decision",
-  "thread" (None here -- no job in this file enqueues one)
-- chat_store.append_messages(messages, data_dir)
-- submit_chat_reply(reply_text) calls append_messages([{"role": "assistant", ...}], data_dir).
+  "thread" (a ChatThread, `T` here)
+- chat_store.append_messages(messages, data_dir, *, thread)
+- submit_chat_reply(reply_text, thread) calls append_messages(..., data_dir, thread=thread).
 """
 import os
 
@@ -28,7 +30,10 @@ from aiohttp import web
 
 from hiris.app.api.handlers_reasoning import handle_reasoning_claim, handle_reasoning_submit
 from hiris.app.chat_store import append_messages, close_all_stores, load_history
+from hiris.app.chat_thread import ChatThread
 from hiris.app.reasoning.queue import ReasoningQueue
+
+T = ChatThread("persona:paolo", "pannello")
 
 
 @web.middleware
@@ -76,11 +81,11 @@ async def test_chat_job_submit_routes_reply_to_submit_chat_reply(aiohttp_client,
     submit_chat_reply -- e' l'unica cosa ancora verificata qui."""
     recorded = []
 
-    async def _submit_chat_reply(reply_text):
+    async def _submit_chat_reply(reply_text, thread):
         recorded.append(reply_text)
 
     app, q = _app(tmp_path, submit_chat_reply=_submit_chat_reply)
-    q.enqueue("chat", {}, {"history": []}, deadline_ts=100.0, job_id="C1", now=1.0)
+    q.enqueue("chat", {}, {"history": []}, deadline_ts=100.0, job_id="C1", now=1.0, thread=T)
     client = await aiohttp_client(app)
 
     c = await (await client.post("/api/reasoning/claim")).json()
@@ -99,11 +104,11 @@ async def test_chat_job_submit_routes_reply_to_submit_chat_reply(aiohttp_client,
 async def test_chat_job_missing_reply_fails_closed_but_job_resolved(aiohttp_client, tmp_path):
     recorded = []
 
-    async def _submit_chat_reply(reply_text):
+    async def _submit_chat_reply(reply_text, thread):
         recorded.append(reply_text)
 
     app, q = _app(tmp_path, submit_chat_reply=_submit_chat_reply)
-    q.enqueue("chat", {}, {}, deadline_ts=100.0, job_id="C2", now=1.0)
+    q.enqueue("chat", {}, {}, deadline_ts=100.0, job_id="C2", now=1.0, thread=T)
     client = await aiohttp_client(app)
 
     c = await (await client.post("/api/reasoning/claim")).json()
@@ -133,11 +138,12 @@ async def test_chat_job_legacy_context_key_does_not_break_delivery(aiohttp_clien
     presente, con o senza id nel context)."""
     recorded = []
 
-    async def _submit_chat_reply(reply_text):
+    async def _submit_chat_reply(reply_text, thread):
         recorded.append(reply_text)
 
     app, q = _app(tmp_path, submit_chat_reply=_submit_chat_reply)
-    q.enqueue("chat", {}, {"chatbot_id": "agentX"}, deadline_ts=100.0, job_id="C3", now=1.0)
+    q.enqueue("chat", {}, {"chatbot_id": "agentX"}, deadline_ts=100.0, job_id="C3", now=1.0,
+              thread=T)
     client = await aiohttp_client(app)
 
     c = await (await client.post("/api/reasoning/claim")).json()
@@ -168,7 +174,7 @@ async def test_chat_job_missing_submit_chat_reply_handler_does_not_crash(aiohttp
     """If app["submit_chat_reply"] isn't wired (misconfiguration), submit must
     still resolve the job instead of 500ing."""
     app, q = _app(tmp_path)  # no submit_chat_reply, no execute_decision
-    q.enqueue("chat", {}, {}, deadline_ts=100.0, job_id="C4", now=1.0)
+    q.enqueue("chat", {}, {}, deadline_ts=100.0, job_id="C4", now=1.0, thread=T)
     client = await aiohttp_client(app)
 
     c = await (await client.post("/api/reasoning/claim")).json()
@@ -187,13 +193,14 @@ async def test_chat_reply_lands_in_real_chat_store(aiohttp_client, tmp_path):
     data_dir = str(tmp_path / "data")
     os.makedirs(data_dir, exist_ok=True)
 
-    async def _submit_chat_reply(reply_text):
+    async def _submit_chat_reply(reply_text, thread):
         if not reply_text:
             return
-        append_messages([{"role": "assistant", "content": reply_text}], data_dir)
+        append_messages([{"role": "assistant", "content": reply_text}], data_dir,
+                        thread=thread)
 
     app, q = _app(tmp_path, submit_chat_reply=_submit_chat_reply)
-    q.enqueue("chat", {}, {"history": []}, deadline_ts=100.0, job_id="C5", now=1.0)
+    q.enqueue("chat", {}, {"history": []}, deadline_ts=100.0, job_id="C5", now=1.0, thread=T)
     client = await aiohttp_client(app)
 
     c = await (await client.post("/api/reasoning/claim")).json()
@@ -202,5 +209,5 @@ async def test_chat_reply_lands_in_real_chat_store(aiohttp_client, tmp_path):
     body = await r.json()
     assert body["ok"] is True
 
-    history = load_history(data_dir)
+    history = load_history(data_dir, thread=T)
     assert history == [{"role": "assistant", "content": "risposta dalla coda"}]

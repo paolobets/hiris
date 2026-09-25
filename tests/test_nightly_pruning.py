@@ -54,10 +54,15 @@ def test_la_potatura_legge_i_giorni_dall_archivio_non_da_una_costante_fissa(tmp_
     from datetime import datetime, timedelta
 
     from hiris.app.chat_store import append_messages, close_all_stores, load_history
+    from hiris.app.chat_thread import ChatThread
+
+    # La potatura e' della casa, non di un filo (spec §3): qui un filo solo
+    # basta a vedere che cosa resta.
+    T = ChatThread("persona:paolo", "pannello")
 
     close_all_stores()
     data_dir = str(tmp_path)
-    append_messages([{"role": "user", "content": "vecchio"}], data_dir)
+    append_messages([{"role": "user", "content": "vecchio"}], data_dir, thread=T)
 
     # Il messaggio "vecchio" e' scritto adesso (append_messages timestampa col
     # `now`): lo si retrodata a mano, cosi' la potatura ha davvero qualcosa da
@@ -74,12 +79,13 @@ def test_la_potatura_legge_i_giorni_dall_archivio_non_da_una_costante_fissa(tmp_
     app = {"chat_settings": ChatSettings(retention_days=5)}
     run_retention = check(app=app, data_dir=data_dir, logger=logging.getLogger("test"))
     run_retention()
-    assert load_history(data_dir) == [], "5 giorni: il messaggio di 10 giorni fa doveva sparire"
+    assert load_history(data_dir, thread=T) == [], (
+        "5 giorni: il messaggio di 10 giorni fa doveva sparire")
 
     # Ora lo stesso oggetto app, ma con la chiave riassegnata a un valore che
     # NON pota niente (com'e' dopo un PUT che alza la soglia): _run_retention
     # deve vederlo, non un 5 catturato alla costruzione della chiusura.
-    append_messages([{"role": "user", "content": "recente"}], data_dir)
+    append_messages([{"role": "user", "content": "recente"}], data_dir, thread=T)
     store2 = _get_store(data_dir)
     vecchio_ts2 = (datetime.now(UTC) - timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
     store2._conn.execute(
@@ -89,7 +95,7 @@ def test_la_potatura_legge_i_giorni_dall_archivio_non_da_una_costante_fissa(tmp_
     store2._conn.commit()
     app["chat_settings"] = ChatSettings(retention_days=0)
     run_retention()
-    assert load_history(data_dir) == [{"role": "user", "content": "recente"}], (
+    assert load_history(data_dir, thread=T) == [{"role": "user", "content": "recente"}], (
         "0: la potatura non deve aver toccato niente"
     )
     close_all_stores()
