@@ -79,6 +79,40 @@ def test_migrazione_v1_aggiunge_said_by_e_conserva_le_righe(tmp_path):
         m.close()
 
 
+def test_migrazione_v1_con_said_by_gia_presente_si_apre(tmp_path):
+    """Un archivio che dichiara v1 ma ha GIA' `said_by` (migrazione
+    interrotta dopo l'ALTER, prima del bump): senza la guardia su
+    `PRAGMA table_info` l'apertura fallirebbe con «duplicate column»."""
+    db = str(tmp_path / "m.db")
+    c = sqlite3.connect(db)
+    c.executescript("""
+      CREATE TABLE ricordi (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          testo TEXT NOT NULL,
+          detto_da TEXT,
+          detto_il TEXT NOT NULL,
+          forza TEXT,
+          grandezza TEXT,
+          minimo REAL,
+          massimo REAL,
+          unita TEXT,
+          corretto_da_utente INTEGER NOT NULL DEFAULT 0,
+          said_by TEXT
+      );
+      INSERT INTO ricordi (testo, detto_da, detto_il, said_by) VALUES
+          ('un ricordo di prima', 'paolo', '2026-09-01T00:00:00Z', 'persona:p');
+      PRAGMA user_version=1;
+    """)
+    c.close()
+
+    m = MemoryStore(db)
+    try:
+        assert m.fetch()[0]["said_by"] == "persona:p"
+        assert m._conn.execute("PRAGMA user_version").fetchone()[0] == 2
+    finally:
+        m.close()
+
+
 def test_un_ricordo_interpretato_conserva_tutto(memory):
     memory.remember(
         _PHRASE, detto_da="paolo",

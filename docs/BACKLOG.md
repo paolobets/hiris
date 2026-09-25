@@ -184,7 +184,7 @@ regola vive una volta e i canali smettono di poter divergere.
 giorno dirà se il ponte e la catena stanno davvero mandando la stessa cosa, e se sono già scivolati
 la fusione diventa urgente invece che desiderabile.
 
-### ~~La chat è una sola per costruzione~~ — **USCITA con la v3.68.0**
+### ~~La chat è una sola per costruzione~~ — **USCITA col prossimo rilascio**
 
 `origine: il proprietario, fondamenta del 24/09/2026` · `misurato: hiris/app/chat_store.py`
 
@@ -674,6 +674,16 @@ letto **«al proprietario, che e' l'unico che puo' decidere»**; `BASE_TOOL_RULE
 CHI gli sta parlando — e non e' detto che sia il proprietario. Nessuno dei due testi e' sbagliato
 sui fatti (execute/propose restano quello che sono), ma entrambi presumono un ascoltatore che
 questa fetta ha appena smesso di essere l'unico.
+
+### «Chi ti sta parlando» in testa al contesto rompe il prefisso condiviso del ponte
+
+`origine: review finale della fetta «le chat divise», 25/09/2026` · `hiris/app/api/handlers_chat.py::compose_chat_context`
+
+La sezione «Chi ti sta parlando» sta **prima** del nucleo (spec §5). Sul ponte la cache della CLI
+riusa il prefisso del messaggio: due persone che si alternano non condividono piu' il prefisso del
+nucleo, e ognuna paga di nuovo la lettura della casa. Non misurato: si guarda con le misure d'uso
+(la cache del ponte per turno). Se pesa, la sezione si sposta **dopo** il nucleo in
+`compose_chat_context` — un punto solo, nessun altro chiamante la compone.
 
 ### Le persone anonime dell'ingress condividono un filo
 

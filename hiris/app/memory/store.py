@@ -94,8 +94,13 @@ def _migration_2(conn: sqlite3.Connection) -> None:
     `detto_da` -- un `ALTER TABLE`, non una riga di `_SCHEMA`: `init_schema`
     esegue lo script PRIMA delle migrazioni, e su un archivio v1 uno script
     che gia' cita questa colonna fallirebbe l'apertura invece di migrare
-    (stesso giro di `chat_store.py::_migration_4`)."""
-    conn.execute("ALTER TABLE ricordi ADD COLUMN said_by TEXT")
+    (stesso giro di `chat_store.py::_migration_4`). `ALTER TABLE` solo se la
+    colonna manca, come le migrazioni sorelle: un archivio che la ha gia'
+    ma dichiara ancora v1 (una migrazione interrotta fra l'ALTER e il bump
+    della versione) altrimenti non si aprirebbe piu' -- «duplicate column»."""
+    colonne = {r[1] for r in conn.execute("PRAGMA table_info(ricordi)").fetchall()}
+    if "said_by" not in colonne:
+        conn.execute("ALTER TABLE ricordi ADD COLUMN said_by TEXT")
 
 
 class MemoryStore:
