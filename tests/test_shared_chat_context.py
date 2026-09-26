@@ -371,7 +371,7 @@ def test_gli_esiti_in_testa_sono_limitati(tmp_path):
 
 
 def test_le_righe_senza_risposta_sono_gli_assistant_prima_del_primo_utente():
-    from hiris.app.api.handlers_chat import unanswered_assistant_lines
+    from hiris.app.chat_store import unanswered_assistant_lines
 
     storia = [{"role": "assistant", "content": "esito 1"},
               {"role": "assistant", "content": "esito 2"},

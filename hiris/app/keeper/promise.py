@@ -112,10 +112,10 @@ DELIVERY_TITLE = "HIRIS"
 
 # Il tetto del testo che arriva al TELEFONO (vincolo 3.1). Il testo e'
 # prodotto dal modello: senza un tetto, un turno andato in circolo
-# spingerebbe pagine intere su una notifica. 500 caratteri stanno comodi
-# nel limite di 4 KB di un payload APNs anche con caratteri da 4 byte, e
-# sono gia' piu' di quanti un telefono ne mostri espanso. Nella chat il
-# testo resta intero: li' si legge, non si notifica.
+# spingerebbe pagine intere su una notifica. 500 caratteri, anche a 4 byte
+# l'uno, stanno sotto i 4096 byte che Apple dichiara come massimo di un
+# payload di notifica remota. Nella chat il testo resta intero: li' si
+# legge, non si notifica.
 PUSH_MESSAGE_CAP = 500
 # Il tetto di un motivo o di un errore che entra in un racconto (vincolo
 # 3.7): stesso numero di `exchange._CEILING_RIPORTO`, per la stessa ragione --

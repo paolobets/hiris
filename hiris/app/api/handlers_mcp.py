@@ -562,6 +562,16 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
                 "assenti, la promessa NON e' stata chiusa", promise_id)
             result = {"errore": ("ho ricevuto la conclusione ma non ho "
                                  "potuto chiudere la promessa.")}
+        elif row.get("stato") != "in_corso":
+            # Riletta adesso, non al primo controllo dell'intestazione: fra i
+            # due puo' essere arrivata la scadenza, o un `conclude` gemello.
+            # Una promessa gia' chiusa non si riconsegna (Task 3, fix round 1:
+            # niente seconda riga in chat, niente seconda push) -- e lo si dice
+            # al modello invece di fingere.
+            logger.info("MCP «conclude» per la promessa %s: gia' conclusa (%s)",
+                        promise_id, row.get("stato"))
+            result = {"errore": ("questa promessa era gia' conclusa: la tua "
+                                 "conclusione non cambia niente.")}
         else:
             await sweeper.concludi_chiedi(
                 row, dispatcher.conclusione, now=time.time())

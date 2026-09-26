@@ -408,3 +408,17 @@ def test_una_scadenza_gia_conclusa_non_scrive_una_seconda_riga(tmp_path):
     finally:
         close_all_stores()
         promesse.close()
+
+
+@pytest.mark.asyncio
+async def test_una_risposta_velenosa_non_entra_nella_riga_del_filo(consegna):
+    """Fix round 1, punto 5: la risposta del modello citata nel motivo passa
+    dal filtro dei veleni da sola -- una sentinella non torna in chat."""
+    client, coda, promesse = consegna
+    ident = _promessa_in_corso(promesse)
+    job = _accoda_e_prendi(coda, ident)
+
+    await _consegna(client, job, {"reply": "Rate limit — riprova tra poco."})
+
+    assert promesse.read(ident)["stato"] == "fallita"
+    assert load_history(client.app["data_dir"], thread=PAOLO) == []

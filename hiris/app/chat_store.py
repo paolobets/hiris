@@ -116,6 +116,25 @@ def _is_toxic_assistant(content: str) -> bool:
     return any(content.startswith(p) for p in _TOXIC_ASSISTANT_PREFIXES)
 
 
+def unanswered_assistant_lines(history: list[dict]) -> list[str]:
+    """I messaggi di HIRIS che aprono la conversazione, prima del primo turno
+    dell'utente -- gli esiti di promesse arrivati mentre la persona non c'era
+    (fetta «il seguito delle chat divise»).
+
+    La casa sola di questa domanda, per i suoi tre lettori: `_trim_history`
+    li toglie (l'API di Claude non accetta una cronologia che comincia con un
+    `assistant`), `compose_chat_context` li rimette nel contesto perche' il
+    modello sappia a cosa la persona sta rispondendo, e `_close_session` li
+    tiene nel riassunto, dove non fanno coppia con nessun turno utente.
+    """
+    lines: list[str] = []
+    for message in history or []:
+        if message.get("role") != "assistant":
+            break
+        lines.append(str(message.get("content") or ""))
+    return lines
+
+
 def _purge_toxic_turns(messages: list[dict]) -> list[dict]:
     """Drop assistant turns matching the toxic patterns AND their preceding user
     turn (so we don't leave dangling user messages with no answer in context).
@@ -319,24 +338,21 @@ class ChatStore:
             pairs: list[str] = []
             turns: list[tuple[str, str]] = []
             cur: dict[str, str] = {}
-            # Gli `assistant` prima del primo turno utente: gli esiti di
-            # promesse che hanno aperto la conversazione (fetta «il seguito
-            # delle chat divise»). Senza un turno utente davanti non fanno
-            # coppia, e senza questa lista il riassunto li perderebbe.
-            opening: list[str] = []
-            seen_user = False
             for r in reversed(rows):
                 role, content = r["role"], r["content"]
                 if role == "user":
-                    seen_user = True
                     cur = {"u": content}
                 elif role == "assistant" and cur:
                     cur["a"] = content
                     turns.append((cur["u"], cur["a"]))
                     cur = {}
-                elif role == "assistant" and not seen_user:
-                    opening.append(content)
+            # Gli esiti di promesse che hanno aperto la conversazione non
+            # fanno coppia con nessun turno utente: senza questa riga il
+            # riassunto li perderebbe.
             if turns:
+                opening = unanswered_assistant_lines(
+                    [{"role": r["role"], "content": r["content"]}
+                     for r in reversed(rows)])
                 for a in opening:
                     a_trunc = a[:_DIGEST_MSG_LEN] + "…" if len(a) > _DIGEST_MSG_LEN else a
                     pairs.append(f"A: {a_trunc}")
@@ -598,25 +614,6 @@ def append_assistant_line(content: str, data_dir: str, *,
         return False
     _get_store(data_dir).append([{"role": "assistant", "content": content}], thread)
     return True
-
-
-#: Il titolo di una conversazione che non ha una frase dell'utente (ruling
-#: 3.9): una conversazione aperta da un esito di promessa comincia con un
-#: messaggio di HIRIS, e inventare un turno utente per darle un titolo
-#: sarebbe scrivere nella cronologia una frase che nessuno ha detto.
-OUTCOME_ONLY_TITLE = "Esito di una promessa"
-
-
-def conversation_title(messages: list[dict]) -> str:
-    """Il titolo di una conversazione: la prima frase dell'utente, o
-    `OUTCOME_ONLY_TITLE` se non ce n'e'. Il tetto e il marcatore del taglio
-    li decide la pagina delle conversazioni (Task 6 della stessa fetta)."""
-    for message in messages:
-        if message.get("role") == "user":
-            text = str(message.get("content") or "").strip()
-            if text:
-                return text
-    return OUTCOME_ONLY_TITLE
 
 
 def clear_history(data_dir: str, *, thread: ChatThread) -> None:

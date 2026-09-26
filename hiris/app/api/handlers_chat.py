@@ -12,6 +12,7 @@ from ..chat_store import (
     count_user_turns,
     get_past_summaries,
     load_history,
+    unanswered_assistant_lines,
 )
 from ..chat_thread import ChatThread, adopt_if_owner, request_thread
 
@@ -59,29 +60,11 @@ def _trim_history(history: list[dict], max_tokens: int = _MAX_HISTORY_TOKENS) ->
     # TUTTI gli `assistant` in testa, non il primo: dalla fetta «il seguito
     # delle chat divise» l'esito di una promessa entra nel filo come
     # messaggio di HIRIS senza un turno utente davanti, e due esiti arrivati
-    # prima che la persona riscriva sono due `assistant` di fila.
-    while trimmed and trimmed[0].get("role") == "assistant":
-        trimmed = trimmed[1:]
-    return trimmed
-
-
-def unanswered_assistant_lines(history: list[dict]) -> list[str]:
-    """I messaggi di HIRIS che aprono la conversazione, prima del primo turno
-    dell'utente -- gli esiti di promesse arrivati mentre la persona non c'era.
-
-    `_trim_history` li deve togliere (l'API di Claude non accetta una
-    cronologia che comincia con un `assistant`): senza questa funzione il
-    modello non vedrebbe mai l'esito a cui la persona sta rispondendo. Si
-    leggono dalla cronologia INTERA, non da quella tagliata: gli `assistant`
-    che il taglio per token lascia in testa in mezzo a una conversazione
-    sono risposte normali, non cose dette prima che la persona scrivesse.
-    """
-    lines: list[str] = []
-    for message in history or []:
-        if message.get("role") != "assistant":
-            break
-        lines.append(str(message.get("content") or ""))
-    return lines
+    # prima che la persona riscriva sono due `assistant` di fila. Per il
+    # contesto (`said_before`) i chiamanti li leggono dalla cronologia
+    # INTERA, non da questa tagliata: gli `assistant` che il taglio per
+    # token lascia in testa a meta' conversazione sono risposte normali.
+    return trimmed[len(unanswered_assistant_lines(trimmed)):]
 
 
 #: L'intestazione della sezione del contesto con cio' che HIRIS ha gia' detto
