@@ -14,17 +14,19 @@ STATIC = Path(__file__).resolve().parents[1] / "hiris" / "app" / "static"
 INDEX = STATIC / "index.html"
 CHAT = STATIC / "chat"
 
-# fetta E5 Task 6: tasks.js e proposals.js sono usciti insieme alle rotte
-# /api/tasks* e /api/proposals*, che il backend non serve piu' dalla E3.
-# fetta E5 Task 9: knowledge-core.js e knowledge.js sono usciti a loro volta,
-# insieme al pannello Memoria della chat che interrogava la coda di
-# approvazione (vuota per costruzione da mesi) -- vedi
-# static/config/memory-route.js, che la sostituisce sulla pagina di
-# configurazione.
-EXPECTED_CHAT_FILES = (
-    "state.js", "messages.js", "agents.js", "send.js", "theme.js",
-    "sidebar.js", "keyboard.js", "main.js",
-)
+# I file della pagina si leggono dalla cartella, non da un elenco scritto qui:
+# l'elenco ricopiava un fatto del codice, e un file nuovo (chat/conversations.js,
+# fetta «il seguito delle chat divise») sarebbe rimasto fuori dal cancello che
+# pretende il suo `<script src>` -- cioe' la sua impronta per-file
+# (`server.py::_ASSET_REF_RE`) -- proprio il giorno in cui nasce. Lo storico
+# delle uscite (tasks.js, proposals.js, knowledge*.js: fetta E5 Task 6 e 9) sta
+# nel CHANGELOG.
+EXPECTED_CHAT_FILES = tuple(sorted(f.name for f in CHAT.glob("*.js")))
+
+
+def test_chat_files_are_read_from_the_folder():
+    # Una cartella vuota o spostata renderebbe verdi, a vuoto, i test sotto.
+    assert "main.js" in EXPECTED_CHAT_FILES and "conversations.js" in EXPECTED_CHAT_FILES
 
 
 def test_index_html_has_no_inline_script_block():

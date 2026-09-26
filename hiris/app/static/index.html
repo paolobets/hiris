@@ -76,6 +76,23 @@
         <span>Proposte</span>
       </a>
     </div>
+    <!-- LE CONVERSAZIONI DEL FILO (fetta «il seguito delle chat divise»,
+         spec 2026-09-26 §4, disegno con ux-ui-specialist del 25/09). Dopo le
+         voci esecutive: prima «Nuova conversazione», poi l'elenco, che ha
+         uno scroll suo e non spinge giu' Configurazione e i consumi. Le voci
+         le disegna chat/conversations.js dalla risposta del server; qui c'e'
+         solo lo scheletro. Sono `.sb-nav-item` come le voci qui sopra: stessa
+         misura, e chat/sidebar.js chiude il cassetto al tocco. -->
+    <div id="sidebar-conversations">
+      <button type="button" id="new-conv-btn" class="sb-nav-item">
+        <span class="ic">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        </span>
+        <span>Nuova conversazione</span>
+      </button>
+      <ul id="conv-list" aria-label="Le tue conversazioni" hidden></ul>
+      <p id="conv-empty" hidden></p>
+    </div>
     <div id="sidebar-footer">
       <a href="config" class="sb-nav-item">
         <span class="ic">
@@ -120,11 +137,15 @@
         <!-- Si chiamava «Nuova conv.», con un'icona di ricarica: prometteva
              di aprire una conversazione nuova e invece cancellava tutto, e la
              conferma che compariva parlava d'altro. Il nome e l'icona dicono
-             adesso quello che il bottone fa davvero -- cancellare -- e
-             `chat/send.js` lo spegne mentre HIRIS elabora. -->
-        <button id="delete-conv-btn" class="btn" title="Cancella tutta la cronologia della chat">
+             quello che il bottone fa davvero -- cancellare. Dalla fetta «il
+             seguito delle chat divise» cancella la conversazione APERTA
+             (decisione 9, niente «cancella tutte»), e nasce spento: lo
+             accende chat/conversations.js quando l'elenco del server dice
+             quale conversazione e' aperta, e lo rispegne mentre HIRIS
+             elabora. -->
+        <button id="delete-conv-btn" class="btn" title="Cancella la conversazione aperta" disabled>
           <svg width="14" height="14" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h12M7.5 5V3.5h3V5M4.5 5l.7 9.5a1 1 0 0 0 1 .9h5.6a1 1 0 0 0 1-.9L13.5 5M7.5 8v5M10.5 8v5"/></svg>
-          Cancella la chat
+          Cancella la conversazione
         </button>
         <div id="agent-pill" title="Assistente attivo">
           <span class="ap-avatar" id="ap-avatar">H</span>
@@ -184,7 +205,14 @@
       </div>
     </div>
     <div id="turn-counter" style="display:none"></div>
-    <div id="session-ended-msg" style="display:none">Sessione completata — avvia una nuova conversazione</div>
+    <!-- Cosa e' andato storto con una conversazione (nuova, ripresa,
+         cancellata): qui e non in barra, perche' su telefono la barra e' un
+         cassetto che il tocco ha appena chiuso. Il testo lo scrive
+         chat/conversations.js, via textContent. -->
+    <div id="conv-notice" role="status" hidden></div>
+    <!-- Vuoto apposta: la frase del limite ha una casa sola,
+         chat/agents.js (LIMIT_TEXT), che la scrive qui e nella bolla. -->
+    <div id="session-ended-msg" style="display:none"></div>
   </main>
 </div>
 
@@ -194,6 +222,7 @@
 <script src="static/chat/state.js"></script>
 <script src="static/chat/messages.js"></script>
 <script src="static/chat/agents.js"></script>
+<script src="static/chat/conversations.js"></script>
 <script src="static/chat/send.js"></script>
 <script src="static/chat/theme.js"></script>
 <script src="static/chat/sidebar.js"></script>

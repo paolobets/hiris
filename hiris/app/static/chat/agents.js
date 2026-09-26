@@ -1,5 +1,6 @@
-/* HIRIS · Chat page · una conversazione sola: nome, turn limit, cronologia
-   (fetta E5 Task 3 -- "via l'elenco dei bot dalla sidebar")
+/* HIRIS · Chat page · la conversazione a schermo: nome, turn limit,
+   cronologia, cestino (fetta E5 Task 3 -- "via l'elenco dei bot dalla
+   sidebar")
 
    Dalla E4 esiste un solo assistente: non c'e' piu' niente da elencare o da
    scambiare. Questo file non costruisce piu' una lista (era sempre un
@@ -7,15 +8,16 @@
    letterale) ne' seleziona un id diverso da se stesso -- portava rumore, e
    per un tester era una promessa falsa ("ci sono piu' assistenti"). Restano
    le funzioni con un comportamento reale da preservare: la cancellazione
-   della cronologia (con conferma), il limite di turni per sessione, il
-   ripristino della cronologia al boot, il nome mostrato nella pill
-   dell'header.
+   della conversazione aperta (con conferma), il limite di turni per
+   conversazione, la cronologia della conversazione attiva, il nome mostrato
+   nella pill dell'header.
 
-   Le due rotte di cronologia sono `GET/DELETE api/chat/history` (fetta E5
-   Task 4 -- "nasce la rotta onesta e muore il placeholder"): fino a quel
-   task portavano ancora un id di bot nel path (`{agent_id}`, sempre
-   'hiris-default', mai piu' letto dal server); ora il percorso non porta
-   nessun identificatore, perche' non c'e' niente da identificare. */
+   La cronologia si legge da `GET api/chat/history`, senza parametri: e' la
+   conversazione attiva del filo di chi guarda, e il filo lo decide il
+   confine del server, non la pagina. Le conversazioni del filo (elenco,
+   nuova, riprendi, cancella) sono di chat/conversations.js (fetta «il
+   seguito delle chat divise», spec 2026-09-26 §4): da li' passa anche la
+   DELETE del cestino, che cancella UNA conversazione per id. */
 (function() {
   var state = window.HirisChatState;
 
@@ -31,6 +33,15 @@
     counter.style.color = current >= max ? 'var(--err-ink)' : 'var(--text-3)';
   }
 
+  /* La frase del limite ha una casa sola (spec 2026-09-26 §4): la riga fissa
+     sotto il campo (`#session-ended-msg`, che index.html lascia vuota) e la
+     bolla che chat/send.js scrive quando il server risponde
+     `max_turns_reached` la leggono tutte e due da qui. Erano due testi, e
+     dicevano «avvia una nuova conversazione» senza nessun bottone dietro:
+     adesso il bottone c'e', e la frase dice dove. */
+  var LIMIT_TEXT = 'Hai raggiunto il limite di messaggi per questa conversazione. '
+    + 'Avviane una nuova dalla barra laterale.';
+
   function checkTurnLimit() {
     var max = state.maxChatTurns || 0;
     var sessionMsg = document.getElementById('session-ended-msg');
@@ -44,74 +55,53 @@
     var reached = current >= max;
     state.els.input.disabled = reached;
     state.els.sendBtn.disabled = reached;
-    if (sessionMsg) sessionMsg.style.display = reached ? '' : 'none';
+    if (sessionMsg) {
+      sessionMsg.textContent = LIMIT_TEXT;
+      sessionMsg.style.display = reached ? '' : 'none';
+    }
   }
 
-  /* E dal 23/09/2026 dice anche COSA RESTA (reperto C-6). Chi preme
-     «cancella» sta chiedendo «togli quello che ho detto a HIRIS»: tacere che i
-     ricordi sopravvivono gli fa credere di aver pulito tutto, e questo
-     prodotto non fa credere cose. Che restino e' giusto -- un ricordo e' una
-     cosa che hai chiesto di tenere, non un residuo della conversazione -- ma
-     finora era scritto solo nel codice. Si dice anche DOVE si tolgono: una
-     frase che dichiara e non indirizza lascia il proprietario con un
-     problema.
-
-     Costruisce la domanda della conferma dicendo COSA si perde, come si fa
-     gia' nella pagina Memoria (dove il `confirm` cita la frase esatta del
-     ricordo). Aggiornato dalla fetta «le chat divise» (Task 8, testo deciso
-     con `ux-ui-specialist` il 25/09/2026): la DELETE non porta via piu'
-     TUTTO, solo il FILO di chi la chiede -- `chat_store.ChatStore.clear(thread)`
-     cancella `chat_messages`/`chat_sessions` di quel `(subject_key,
-     entry_point)` e basta, quelle degli altri in casa restano. Il testo lo
-     dice esplicitamente, o chi vive con altri in casa capirebbe «cancella»
-     come «cancella per tutti». */
-  function domandaDiConferma() {
-    var quanti = state.els.messages
-      ? state.els.messages.querySelectorAll('.msg-row').length : 0;
-    var visible = quanti === 0
-      ? 'Qui non c’è niente da cancellare'
-      : quanti === 1
-        ? 'Perdi il messaggio che vedi'
-        : 'Perdi i ' + quanti + ' messaggi che vedi';
-    return visible + ', e anche i riassunti delle tue conversazioni precedenti '
-      + 'che HIRIS si tiene da parte. Tocca solo la tua conversazione: quelle '
-      + 'degli altri in casa restano intatte. Non si può annullare.\n\n'
-      + 'I ricordi NON si toccano: restano finché non li cancelli tu, uno '
-      + 'per uno, dalla pagina Memoria.' + '\n\nCancellare?';
-  }
+  /* La conferma del cestino dice COSA si perde e COSA RESTA (reperto C-6,
+     23/09/2026): chi preme «cancella» sta chiedendo «togli quello che ho
+     detto a HIRIS», e tacere che i ricordi sopravvivono gli farebbe credere
+     di aver pulito tutto -- questo prodotto non fa credere cose. Si dice
+     anche DOVE si tolgono. Dalla fetta «il seguito delle chat divise» il
+     cestino cancella la conversazione APERTA, non tutto il filo (decisione
+     9): il testo lo dice, e dice che le altre restano in elenco. Testo
+     esatto della spec 2026-09-26 §4, deciso con ux-ui-specialist. */
+  var DELETE_CONFIRM = 'Perdi i messaggi di questa conversazione e il suo riassunto. '
+    + 'Le tue altre conversazioni restano, in elenco qui a fianco.\n'
+    + 'I ricordi non si toccano: restano finché non li cancelli tu, uno per uno, '
+    + 'dalla pagina Memoria.\n'
+    + 'Non si può annullare.\n\n'
+    + 'Cancellare questa conversazione?';
 
   async function clearConversation() {
-    /* Irreversibile: la conferma qui mancava, ed e' stata aggiunta copiando
-       il testo dalla card Lovelace, che per la stessa azione la chiedeva. La
-       card e' uscita col Task 5 della E5: la conferma resta perche' e' il
-       comportamento giusto, non perche' un'altra superficie la imponga. */
-    if (!window.confirm(domandaDiConferma())) return;
-    try {
-      var r = await fetch('api/chat/history', { method: 'DELETE', headers: { 'X-Requested-With': 'fetch' } });
-      if (!r.ok) {
-        /* Se il server non ha cancellato, la UI non deve fingere che l'abbia
-           fatto: altrove in questo file un catch vuoto ha nascosto per mesi
-           un guasto identico (vedi A9/api.js). */
-        console.error('clearConversation failed', r.status);
-        window.alert('Non è stato possibile cancellare la cronologia. Riprova più tardi.');
-        return;
-      }
-    } catch (e) {
-      console.error('clearConversation failed', e);
-      window.alert('Non è stato possibile cancellare la cronologia. Riprova più tardi.');
-      return;
-    }
-    /* Prima di buttare via le righe, ferma quello che ci gira dentro: un
-       indicatore d'attesa lasciato acceso continuerebbe a far battere il suo
-       cronometro su un nodo che non esiste piu'. In pratica non ci si arriva
-       (il bottone e' spento durante l'elaborazione), ma un timer orfano non
-       deve dipendere da un `disabled` per non nascere. */
+    /* L'id e' quello che il server marca `attiva` nell'elenco: senza, non
+       c'e' niente da cancellare (il bottone e' gia' spento, vedi
+       chat/conversations.js::syncDeleteButton) e nessuna domanda ha senso.
+       Irreversibile, quindi con conferma. Un fallimento lascia la vista
+       com'e' e lo dice (chat/conversations.js): la UI non finge di aver
+       cancellato quello che il server ha tenuto. */
+    var id = window.HirisChatConversations.activeId();
+    if (id === null) return;
+    if (!window.confirm(DELETE_CONFIRM)) return;
+    await window.HirisChatConversations.remove(id);
+  }
+
+  /* Svuota la vista prima di disegnarci un'altra conversazione. Prima di
+     buttare via le righe ferma quello che ci gira dentro: un indicatore
+     d'attesa lasciato acceso continuerebbe a far battere il suo cronometro
+     su un nodo che non esiste piu'. */
+  function resetView() {
     window.HirisChatMessages.stopAllWaits();
     state.els.messages.innerHTML = '';
     state.els.messages.appendChild(state.els.welcome);
     state.els.welcome.style.display = '';
     state.hasMessages = false;
     state.turnCount = 0;
+    /* Il limite della conversazione di prima non resta appeso alla vista
+       vuota se la storia poi non arriva. */
     updateTurnCounter();
     checkTurnLimit();
   }
@@ -189,9 +179,13 @@
     }
   }
 
-  /* Boot: senza questo, tornando alla chat da config (reload pieno) si
-     vedeva una chat vuota pur essendo salvata lato server. */
+  /* Mostra, da capo, la conversazione che il server dice attiva. Al boot
+     (senza, tornando alla chat da config si vedeva una chat vuota pur
+     essendo salvata) e dopo ogni nuova/ripresa/cancellazione
+     (chat/conversations.js): il contatore dei turni viene dalla storia
+     riletta, cosi' una conversazione ripresa porta il SUO limite. */
   async function restore() {
+    resetView();
     await applyHistory();
   }
 
@@ -203,5 +197,6 @@
     updateGreeting: updateGreeting,
     loadSettings: loadSettings,
     restore: restore,
+    LIMIT_TEXT: LIMIT_TEXT,
   };
 })();

@@ -57,6 +57,7 @@ function fixtureHtml() {
         <button id="delete-conv-btn"></button>
         <div id="input-area"><textarea id="input"></textarea><button id="send-btn"></button></div>
         <div id="turn-counter" style="display:none"></div>
+        <div id="conv-notice" role="status" hidden></div>
         <div id="session-ended-msg" style="display:none"></div>
       </main>
     </div>
@@ -71,8 +72,8 @@ function fixtureHtml() {
    spegne tutti insieme. */
 function setupChat(t) {
   const ctx = loadScripts(
-    ['config/api.js', 'chat/state.js', 'chat/messages.js', 'chat/agents.js', 'chat/send.js',
-     'pending-badge.js'],
+    ['config/api.js', 'chat/state.js', 'chat/messages.js', 'chat/agents.js',
+     'chat/conversations.js', 'chat/send.js', 'pending-badge.js'],
     { html: fixtureHtml() },
   );
   if (t) t.after(() => {
@@ -86,6 +87,20 @@ function setupChat(t) {
     ctx.dom.window.close();
   });
   return ctx;
+}
+
+/* Il cestino cancella la conversazione che l'elenco del server marca
+   `attiva` (chat/conversations.js): i test che lo premono ne hanno bisogno
+   di una. `altrimenti` risponde a tutto il resto. */
+function conUnaConversazioneAperta(window, altrimenti) {
+  window.fetch = async (url, opts) => {
+    if (String(url) === 'api/chat/conversations' && !(opts && opts.method)) {
+      return { ok: true, status: 200, json: async () => ({ conversations: [
+        { id: 'c1', titolo: 'ciao', ultimo_messaggio: '', attiva: true }] }) };
+    }
+    return altrimenti(url, opts);
+  };
+  return window.HirisChatConversations.refresh();
 }
 
 // ---------------------------------------------------------------------------
@@ -333,11 +348,13 @@ test('la nota non viene interpretata: è testo, non markup', async (t) => {
 // pieno) la conversazione spariva perche' la history non veniva MAI
 // ricaricata al boot. restore() la ricarica.
 // Task 3 ("via l'elenco dei bot"): non esiste piu' un "agente attivo" da
-// scegliere -- c'e' una sola conversazione. Task 4 ("nasce la rotta
-// onesta"): la cronologia vive su `GET/DELETE api/chat/history`, senza
-// piu' nessun id di bot nel percorso (prima era una chiave fissa,
-// 'hiris-default', dentro `/api/chatbots/{id}/chat-history` -- un
-// placeholder mai letto dal server).
+// scegliere. Task 4 ("nasce la rotta onesta"): la cronologia si legge da
+// `GET api/chat/history`, senza nessun id nel percorso (prima era una chiave
+// fissa, 'hiris-default', dentro `/api/chatbots/{id}/chat-history` -- un
+// placeholder mai letto dal server). Fetta «il seguito delle chat divise»:
+// nel filo ci sono piu' conversazioni, e questa rotta da' quella ATTIVA; la
+// `DELETE api/chat/history` («cancella tutto») e' uscita, il cestino
+// cancella una conversazione per id (chat-conversations.test.mjs).
 // ---------------------------------------------------------------------------
 
 test('restore() ricarica la history salvata della conversazione', async (t) => {
@@ -657,7 +674,8 @@ test('svuotare la conversazione ferma i cronometri delle attese che ci vivevano 
     t.after(() => clearInterval(idIntervallo));
 
     window.confirm = () => true;
-    window.fetch = async () => ({ ok: true, status: 200, json: async () => ({}) });
+    await conUnaConversazioneAperta(window,
+      async () => ({ ok: true, status: 200, json: async () => ({}) }));
     await window.HirisChatAgents.clearConversation();
 
     assert.equal(row._attesa, null,
@@ -670,12 +688,17 @@ test('svuotare la conversazione ferma i cronometri delle attese che ci vivevano 
 test('durante la risposta via abbonamento (202) l\'input resta bloccato e un secondo invio non parte', async (t) => {
   const { window, document } = setupChat(t);
   const state = window.HirisChatState;
-  window.fetch = async (url) => {
+  /* Una conversazione aperta: senza, il cestino resterebbe spento per
+     l'altra ragione (niente da cancellare), e il test non vedrebbe piu'
+     quella che pinna -- l'elaborazione in corso. */
+  await conUnaConversazioneAperta(window, async (url) => {
     const u = String(url);
     if (u.endsWith('api/chat')) return { ok: true, status: 202, json: async () => ({ status: 'pending', job_id: 'j1' }) };
     if (u.includes('api/chat/reply/')) return { ok: true, status: 200, json: async () => ({ status: 'done', reply: 'fatto' }) };
     return { ok: true, status: 200, json: async () => ({}) };
-  };
+  });
+  assert.equal(document.getElementById('delete-conv-btn').disabled, false,
+    "precondizione: prima dell'invio il cestino e' acceso");
 
   await window.HirisChatSend.send('ciao');
   assert.equal(state.isLoading, true, 'lock attivo durante il poll');
@@ -809,65 +832,72 @@ test('turn-limit raggiunto disabilita input e send-btn (blocca l\'invio)', (t) =
 // Fratello nello stesso file: il fetch DELETE aveva un catch(e) {} vuoto --
 // se il server falliva, la UI cancellava comunque i messaggi mostrati,
 // dicendo "fatto" quando non lo era.
+// Fetta «il seguito delle chat divise» (spec 2026-09-26 §4): il cestino
+// cancella la conversazione APERTA, per id, con la conferma della spec. Le
+// tre proprieta' qui restano (conferma prima, niente DELETE se negata, vista
+// intatta e avviso se il server non cancella); il testo esatto, il percorso
+// codificato e l'avviso a schermo sono provati in
+// chat-conversations.test.mjs.
 // ---------------------------------------------------------------------------
 
 test('clearConversation chiede conferma prima di cancellare', async (t) => {
   const { window, document } = setupChat(t);
+  const calls = [];
+  await conUnaConversazioneAperta(window, async (url, opts) => {
+    calls.push({ url: String(url), opts });
+    return { ok: true, status: 200, json: async () => ({}) };
+  });
   window.HirisChatMessages.appendMsg('user', 'ciao');
-  document.getElementById('welcome').style.display = 'none';
 
   let confirmMsg = null;
   window.confirm = (msg) => { confirmMsg = msg; return false; };
-  const calls = [];
-  window.fetch = async (url, opts) => { calls.push({ url: String(url), opts }); return { ok: true, status: 200, json: async () => ({}) }; };
 
   await window.HirisChatAgents.clearConversation();
 
-  /* Il vecchio testo -- «Cancellare la cronologia di questa conversazione?»
-     -- sottodichiarava due volte: non diceva quanto si perde e diceva
-     «questa» mentre `chat_store.clear(thread)` svuota `chat_messages` E
-     `chat_sessions` DI QUEL FILO, cioe' porta via anche i riassunti delle
-     conversazioni chiuse che finiscono nel prompt. La conferma adesso cita
-     l'oggetto, come gia' fa la pagina Memoria -- e, dalla fetta «le chat
-     divise», dice che tocca SOLO il filo di chi cancella, non quello degli
-     altri in casa. */
-  assert.match(confirmMsg, /Perdi il messaggio che vedi/,
-    'la conferma deve dire QUANTO si perde');
-  assert.match(confirmMsg, /riassunti delle tue conversazioni precedenti/,
-    'e che non si perde soltanto quel che si vede');
-  assert.match(confirmMsg, /quelle degli altri in casa restano intatte/,
-    'e che non tocca la conversazione di altri in casa');
+  /* La conferma cita cosa si perde e cosa resta, come gia' fa la pagina
+     Memoria: i messaggi e il riassunto di QUESTA conversazione se ne vanno,
+     le altre conversazioni e i ricordi restano. */
+  assert.match(confirmMsg, /Perdi i messaggi di questa conversazione e il suo riassunto/,
+    'la conferma deve dire COSA si perde');
+  assert.match(confirmMsg, /Le tue altre conversazioni restano/,
+    'e che le altre conversazioni non si toccano');
   assert.equal(calls.length, 0, 'con la conferma negata nessuna DELETE deve partire');
   assert.ok(document.querySelector('.msg-row.user'), 'i messaggi non devono sparire se non confermato');
 });
 
 test('clearConversation confermata: DELETE parte e i messaggi si svuotano', async (t) => {
   const { window, document } = setupChat(t);
+  const calls = [];
+  await conUnaConversazioneAperta(window, async (url, opts) => {
+    calls.push({ url: String(url), opts });
+    return { ok: true, status: 200, json: async () => ({}) };
+  });
   window.HirisChatMessages.appendMsg('user', 'ciao');
   window.confirm = () => true;
-  const calls = [];
-  window.fetch = async (url, opts) => { calls.push({ url: String(url), opts }); return { ok: true, status: 200, json: async () => ({}) }; };
 
   await window.HirisChatAgents.clearConversation();
 
   const del = calls.find((c) => c.opts && c.opts.method === 'DELETE');
   assert.ok(del, 'la DELETE deve partire dopo conferma');
-  assert.match(del.url, /api\/chat\/history$/);
+  assert.equal(del.url, 'api/chat/conversations/c1');
   assert.equal(document.querySelectorAll('.msg-row.user').length, 0, 'i messaggi devono svuotarsi');
 });
 
 test('clearConversation: se la DELETE fallisce lato server, i messaggi NON spariscono e viene avvisato', async (t) => {
   const { window, document } = setupChat(t);
+  await conUnaConversazioneAperta(window,
+    async () => ({ ok: false, status: 500, json: async () => ({}) }));
   window.HirisChatMessages.appendMsg('user', 'messaggio importante');
   window.confirm = () => true;
-  window.fetch = async () => ({ ok: false, status: 500, json: async () => ({}) });
-  const alerts = [];
-  window.alert = (m) => alerts.push(m);
 
   await window.HirisChatAgents.clearConversation();
 
-  assert.equal(alerts.length, 1, 'un fallimento non deve restare invisibile');
-  assert.match(alerts[0], /[Nn]on è stato possibile cancellare/);
+  /* L'avviso sta nella pagina (`#conv-notice`, via textContent), non piu' in
+     un `alert`: e' la stessa strada del 409 «risposta in arrivo», ed e'
+     visibile anche col cassetto chiuso. */
+  const avviso = document.getElementById('conv-notice');
+  assert.equal(avviso.hidden, false, 'un fallimento non deve restare invisibile');
+  assert.match(avviso.textContent, /[Nn]on è stato possibile cancellare/);
   assert.ok(document.querySelector('.msg-row.user'),
     'la UI non deve fingere di aver cancellato se il server non lo ha fatto');
 });

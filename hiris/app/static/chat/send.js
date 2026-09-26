@@ -69,8 +69,12 @@
                promessa o una proposta, e il pallino deve accendersi mentre
                l'utente sta ancora leggendo la frase che lo manda a
                guardarlo. Terza coppia di gemelle di questo file -- l'altra
-               meta' sta in fondo a send(), sul ramo diretto. */
+               meta' sta in fondo a send(), sul ramo diretto. E l'elenco delle
+               conversazioni: il primo turno fa nascere la conversazione (la
+               sessione nasce scrivendo), e la pagina ne ha bisogno per il
+               titolo in barra e per l'id che il cestino cancella. */
             window.HirisPendingBadge.refresh();
+            window.HirisChatConversations.refresh();
             return;
           }
           if (data.status === 'error') {
@@ -127,10 +131,11 @@
     /* Il bottone «cancella conversazione» non deve poter rispondere mentre
        HIRIS elabora: premuto in quel momento svuotava la lista, e la risposta
        -- gia' pagata in token -- veniva poi scritta dentro una riga staccata
-       dal DOM, che nessuno vedeva mai. E' la stessa condizione che blocca il
-       composer, quindi vive qui e non in un secondo posto da tenere allineato. */
-    var clearBtn = document.getElementById('delete-conv-btn');
-    if (clearBtn) clearBtn.disabled = loading;
+       dal DOM, che nessuno vedeva mai. La condizione e' `state.isLoading`,
+       scritta qui sopra; l'altra ragione per cui il cestino si spegne (nessuna
+       conversazione aperta) e' dell'elenco: le legge tutte e due
+       chat/conversations.js, in un posto solo. */
+    window.HirisChatConversations.syncDeleteButton();
     state.els.sendBtn.classList.toggle('loading', loading);
   }
 
@@ -175,7 +180,7 @@
         return;
       }
       if (data.error === 'max_turns_reached') {
-        window.HirisChatMessages.updateBubble(pending, 'Sessione completata. Avvia una nuova conversazione.');
+        window.HirisChatMessages.updateBubble(pending, window.HirisChatAgents.LIMIT_TEXT);
         window.HirisChatAgents.checkTurnLimit();
         return;
       }
@@ -192,6 +197,7 @@
          e' arrivata nessuna risposta, quindi non puo' essere nato niente da
          contare. */
       window.HirisPendingBadge.refresh();
+      window.HirisChatConversations.refresh();
     } catch {
       window.HirisChatMessages.updateBubble(pending, 'Errore di connessione. Riprova tra poco.');
     } finally {

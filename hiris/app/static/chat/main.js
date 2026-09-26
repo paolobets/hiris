@@ -95,6 +95,13 @@
     setInterval(window.HirisChatAgents.updateGreeting, 60 * 60 * 1000); /* refresh greeting every hour */
 
     window.HirisChatSidebar.init();
+    /* L'elenco delle conversazioni del filo: si legge una volta qui, poi a
+       ogni turno finito (chat/send.js) e dopo ogni nuova/ripresa/
+       cancellazione. Nessun intervallo: quasi sempre l'elenco cambia per un
+       gesto di chi guarda; cio' che cambia da solo (l'esito di una promessa
+       scritto nel filo, la chiusura dopo due ore di silenzio) compare alla
+       lettura successiva. */
+    window.HirisChatConversations.init();
     window.HirisChatKeyboard.init();
     window.HirisChatSend.wireComposer();
     wireHeaderAndSidebarButtons();

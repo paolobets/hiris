@@ -43,24 +43,42 @@
       html:not([data-theme="light"]) #sidebar { background: oklch(0.185 0.020 280); }
     }
     /* #sidebar-header e #agent-list (l'elenco bot, sempre un elemento solo)
-       sono usciti dalla sidebar con la fetta E5 Task 3 -- una conversazione
-       sola non ha piu' niente da elencare. `#sidebar-footer` guadagna
-       `flex: 1` al posto del vecchio spaziatore: era `#agent-list` (flex: 1)
-       a spingere footer e usage-widget in fondo alla sidebar, altrimenti
-       resterebbero incollati in alto lasciando vuoto sotto. */
-    /* Le due voci esecutive (fetta «i menu esecutivi», 03/09). Sopra
-       `#sidebar-footer` e non dentro: il footer ha `flex: 1` per spingere il
-       riquadro dei consumi in fondo, e mettercele dentro le avrebbe legate a
-       quella spinta invece che alla cima del pannello. Stessa spaziatura del
+       sono usciti dalla sidebar con la fetta E5 Task 3. Qualcosa deve
+       comunque spingere footer e usage-widget in fondo, o resterebbero
+       incollati in alto lasciando vuoto sotto: dalla fetta «il seguito delle
+       chat divise» e' `#sidebar-conversations` (flex: 1), piu' sotto. */
+    /* Le due voci esecutive (fetta «i menu esecutivi», 03/09), in cima al
+       pannello e fuori dal blocco che si allunga. Stessa spaziatura del
        footer -- sono le stesse `.sb-nav-item`, e due misure diverse per la
        stessa riga si vedrebbero. */
     #sidebar-nav {
       padding: 8px 12px 0;
       display: flex; flex-direction: column; gap: 2px;
     }
+    /* Le conversazioni del filo (spec 2026-09-26 §4). La spinta che teneva
+       il riquadro dei consumi in fondo era `flex: 1` su `#sidebar-footer`:
+       adesso e' di questo blocco, che occupa lo spazio fra le voci
+       esecutive e Configurazione. `min-height: 0` e' cio' che permette
+       all'elenco di scorrere dentro di se': senza, un figlio di un flex in
+       colonna non scende sotto l'altezza del suo contenuto e cento
+       conversazioni allungherebbero il pannello invece di scorrere. */
+    #sidebar-conversations {
+      flex: 1; min-height: 0;
+      padding: 8px 12px 0;
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    #conv-list {
+      list-style: none; margin: 0; padding: 0;
+      overflow-y: auto; min-height: 0;
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    #conv-empty {
+      margin: 6px 10px; font-size: 12px; line-height: 1.45;
+      color: var(--text-3);
+    }
     #sidebar-footer {
-      flex: 1;
       padding: 8px 12px;
+      border-top: 1px solid var(--border);
       display: flex; flex-direction: column; gap: 2px;
     }
     /* Solo mobile (vedi @media max-width:768px per la posizione): su
@@ -79,6 +97,29 @@
     .sb-nav-item:hover { background: var(--hover); color: var(--text); }
     .sb-nav-item.active { color: var(--accent-ink); background: var(--accent-tint); }
     .sb-nav-item .ic { width: 16px; height: 16px; display: grid; place-items: center; color: currentColor; }
+    /* Da questa fetta alcune voci sono `<button>` («Nuova conversazione» e
+       le conversazioni): senza questo azzeramento portano il fondo, il bordo
+       e il carattere del bottone di sistema, e non somigliano piu' alle voci
+       `<a>` accanto. */
+    button.sb-nav-item {
+      width: 100%; border: 0; background: transparent;
+      font: inherit; font-size: 13px; font-weight: 500; text-align: left;
+    }
+    button.sb-nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+    /* Una conversazione in elenco: due righe, il titolo e il giorno. Il
+       titolo e' la prima frase dell'utente e puo' essere lunga (il server la
+       taglia solo contro gli abusi): l'ellissi e' del foglio, su una riga.
+       `min-width: 0` sul testo, o in un flex l'ellissi non scatta mai. */
+    .sb-nav-item.conv-item {
+      flex-direction: column; align-items: stretch; gap: 1px;
+      padding: 7px 10px;
+    }
+    .conv-title {
+      min-width: 0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .conv-when { font-size: 11px; font-weight: 400; color: var(--text-3); }
+    .sb-nav-item.conv-item.active .conv-when { color: var(--accent-ink); }
 
     .task-badge {
       margin-left: auto;
@@ -511,6 +552,15 @@
       font-size: 10.5px; text-align: center;
       padding: 4px 8px;
       color: var(--text-3); font-family: var(--font-mono);
+    }
+    /* L'avviso di un gesto sulle conversazioni che non e' riuscito (una
+       risposta ancora in arrivo, la rete). E' «incerto», non un guasto: si
+       puo' riprovare, quindi i toni --warn e non --err. */
+    #conv-notice {
+      font-size: 12px; text-align: center;
+      padding: 8px 12px;
+      color: var(--warn-ink); background: var(--warn-tint);
+      border-top: 1px solid var(--border);
     }
     #session-ended-msg {
       font-size: 12px; text-align: center;

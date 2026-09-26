@@ -80,7 +80,7 @@ function fixtureHtml() {
 
 const MODULI = [
   'config/api.js', 'chat/state.js', 'chat/messages.js', 'chat/agents.js',
-  'chat/send.js', 'chat/theme.js', 'chat/sidebar.js', 'chat/keyboard.js',
+  'chat/conversations.js', 'chat/send.js', 'chat/theme.js', 'chat/sidebar.js', 'chat/keyboard.js',
   'pending-badge.js',
 ];
 

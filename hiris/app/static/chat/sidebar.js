@@ -21,13 +21,19 @@
        da sotto. */
     var closeBtn = document.getElementById('sidebar-close-btn');
     if (closeBtn) closeBtn.addEventListener('click', function() { toggle(false); });
-    /* Close the drawer after tapping a nav item (fetta E5 Task 3: l'elenco
-       bot -- .agent-item -- e' uscito dalla sidebar, non c'e' piu' niente da
-       scegliere li' dentro). */
+    /* Il tocco su una voce chiude il cassetto: le voci di navigazione e,
+       dalla fetta «il seguito delle chat divise» (spec 2026-09-26 §4), le
+       conversazioni e «Nuova conversazione», che sono `.sb-nav-item` anche
+       loro. La domanda e' «il cassetto e' aperto?», e la risposta e' la
+       classe `open`: prima si chiedeva a una larghezza scritta qui (720 px)
+       mentre il foglio fa del pannello un cassetto fino a 768 px
+       (hiris-chat.css), e fra le due -- l'iPad in verticale -- il cassetto
+       restava aperto sopra la conversazione appena scelta. Su schermo largo
+       il pannello non e' mai `open`, e chiuderlo non cambia niente. */
     var sb = document.getElementById('sidebar');
     if (sb) sb.addEventListener('click', function(e) {
       var hit = e.target.closest('.sb-nav-item');
-      if (hit && window.matchMedia('(max-width: 720px)').matches) toggle(false);
+      if (hit && sb.classList.contains('open')) toggle(false);
     });
   }
 
