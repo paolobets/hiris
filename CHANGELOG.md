@@ -1,6 +1,11 @@
 # HIRIS — Changelog
 
-## [Non rilasciato] — Le chat divise
+## [3.68.0] — Una chat per ciascuno (2026-09-26)
+
+Due fette insieme: **le chat divise** (ognuno ha il suo filo, e HIRIS sa chi gli parla) e **il
+loro seguito** (promesse, pagina Costruzioni, testi, più conversazioni).
+
+### Le chat divise
 
 Fino a oggi la chat era **una sola per costruzione**: `chat_sessions` non aveva colonna per chi
 scrive, la sessione attiva era «l'ultima che ha parlato, chiunque fosse», e `clear()` cancellava
@@ -36,7 +41,7 @@ porta finalmente il soggetto anche sul ponte.
 un'altra, e il rifiuto non la nomina. La pagina Costruzioni, riservata agli amministratori,
 resta l'eccezione dichiarata — non è un filo, conferma per id qualunque proposta.
 
-## [Non rilasciato] — Il seguito delle chat divise
+### Il seguito delle chat divise
 
 Fino a oggi una promessa non sapeva chi l'avesse chiesta: ogni persona in casa vedeva e disdiceva
 quelle di chiunque, e il suo esito partiva come push su un `recapito` che era il **modello** a
