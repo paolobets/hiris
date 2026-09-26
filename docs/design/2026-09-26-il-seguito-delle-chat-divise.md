@@ -46,7 +46,7 @@ dominio in italiano; colonne nuove in inglese, gli stessi nomi del filo ovunque 
 - `person.marta`: **`user_id` vuoto** (l'utente «Marta consoli» esiste ma la persona non è collegata); tracker `iphone_di_marta`.
 - Servizi notify: `mobile_app_iphone_bet`, `mobile_app_ipad_mini`, `mobile_app_iphone_di_marta`, `mobile_app_nbbet_001` — il nome segue il nome del dispositivo; il Watch non ne ha uno.
 - Quale utente ha registrato un dispositivo dell'app **non** è esposto da REST né da WebSocket (`config_entries/get` dà solo il titolo): sta nei file interni `.storage`. Non si usa (decisione 4).
-- **Da verificare in implementazione, sulla documentazione ufficiale di HA** prima di scriverlo nel codice: come si forma il nome `notify.mobile_app_<dispositivo>` (slug del nome del dispositivo) e se esiste una via ufficiale dal dispositivo al servizio notify.
+- **Verificato in implementazione (Task 1, 25-26/09/2026).** `home-assistant.io/integrations/mobile_app/` non descrive la regola: elenca solo le app ufficiali. La regola vive nel sorgente (`home-assistant/core`, branch `dev`): `mobile_app/config_flow.py::async_step_registration` fissa l'entity_id del device_tracker **una sola volta**, alla prima registrazione (`object_id_base=` il nome del dispositivo di ALLORA); `mobile_app/webhook.py::webhook_update_registration` aggiorna invece `device_registry.name` a ogni rinomina successiva e ricarica la piattaforma notify; `notify/legacy.py::PlatformNotify.async_register_services` ricostruisce il nome del servizio (`slugify("mobile_app_" + nome ATTUALE)`) a ogni reload. Il nome del dispositivo nel registro dei dispositivi e l'entity_id del device_tracker **possono quindi divergere dopo una rinomina**: non esiste una via ufficiale dispositivo → servizio notify che li tenga insieme. La regola scelta (`keeper/recipient.py::recipients_for`): il nome del dispositivo nel registro dei dispositivi è il **primo candidato**, il suffisso dell'entity_id il **secondo** (il ripiego per un dispositivo mai rinominato, o un registro dei dispositivi non disponibile); **il cancello dell'esistenza sceglie** — il primo dei due candidati che risulta davvero fra i servizi che `get_services()` dichiara vince, mai un nome per supposizione.
 
 ---
 
@@ -65,12 +65,22 @@ Un punto solo, `hiris/app/keeper/recipient.py::recipients_for(subject, ha) -> Re
 - **nessuno / anonimo**: nessuna strada.
 Il risultato porta i servizi trovati **e il motivo** quando sono zero (fondamenta 1: si interpreta da solo).
 
+`_slugify` replica la traslitterazione Latina di Home Assistant solo per **decomposizione** NFKD
+(un accento si scarta: `"é"` → `"e"`), non per la **tabella** che `python-slugify` usa per i
+caratteri senza un equivalente scomposto — l'esempio misurato è la «ß» tedesca, che HA rende `ss`
+e questa funzione riduce a stringa vuota. Non è un buco: un candidato del genere non risulta
+comunque fra i servizi che `get_services()` dichiara, quindi la conseguenza è **zero servizi col
+motivo dichiarato**, mai una notifica al dispositivo sbagliato — si fallisce in modo sicuro.
+
 ### §2.4 · L'esito
 
 - Il recapito si risolve **al risveglio**, non alla nascita: se nel frattempo la persona è stata collegata, funziona già.
 - L'esito di un `chiedi` (e il racconto di un `fai` concluso) diventa **un messaggio `assistant` nel filo di chi ha chiesto** (`chat_store.append_messages(..., thread=)`), nella conversazione attiva di quel filo, preceduto da una riga che dice che è l'esito di una promessa (la frase originale).
 - La push va a ogni servizio del recapito; se sono zero si registra il motivo (come oggi `_SENZA_RECAPITO`).
 - Il job del ponte si accoda col filo (`reasoning_queue.enqueue("promessa", …, thread=)`); il turno resta in sola lettura (`SOLA_LETTURA`) e la cronaca lo attribuisce a chi l'ha chiesta.
+- Un esito senza un turno dell'utente davanti (la conversazione si apre proprio con lui) non diventa un turno `assistant` finto in testa alla cronologia inviata al modello — l'API Anthropic rifiuta una cronologia che comincia da un `assistant`. Entra invece nel contesto del turno successivo come una sezione propria, **«Ciò che HIRIS ha già detto a chi ti sta parlando, prima che scrivesse (esiti di promesse):»** (`handlers_chat.py::SAID_BEFORE_HEADER`), coi tetti dichiarati `SAID_BEFORE_LINE_CAP=1000` per riga e `SAID_BEFORE_CAP=3000` per l'intera sezione; resta comunque visibile per intero nella pagina.
+- Al risveglio di un `fai` il soffitto **si rivaluta da capo** (`soffitto.ceiling_at_wake`), mai quello portato dal soggetto di allora: per una persona il ruolo si rilegge da Home Assistant, per un servizio dall'archivio. Se non si può sapere (persona sparita dagli utenti, id assente, Home Assistant muto) **nel dubbio non si comanda** — fallisce chiuso col motivo dichiarato `WAKE_UNVERIFIED_PERSON`.
+- Il testo della push non può diventare un comando eseguito dall'app Companion invece che letto: un esito che coincidesse per intero con una parola d'esecuzione nota (verificate sulla documentazione ufficiale, 26/09/2026: `request_location_update`, `clear_badge`, `clear_notification`, `update_complications`, `update_widgets`, `remove_channel`, `tts`, `delete_alert`, o una singola parola delle famiglie `command_*`/`kiosk_*`) diventa `COMMAND_REPLACEMENT` («l'esito è nella tua chat.») sul telefono — l'esito intero resta comunque, per intero, nella chat.
 
 ---
 
@@ -78,21 +88,21 @@ Il risultato porta i servizi trovati **e il motivo** quando sono zero (fondament
 
 - **Un cancello solo**: in `api/soffitto.py`, una funzione che risponde `403` con il motivo del soffitto quando manca `costruire`. La usano `GET /api/constructions`, `GET /api/constructions/{id}`, `POST …/reject`, `/api/proposals/{id}/reject|done|redo`, `POST /api/mind/judgment`, e `_act` passa alla stessa funzione (una regola, non due).
 - **La pagina Costruzioni**, per chi costruisce: ogni proposta mostra **chi l'ha chiesta** (nome leggibile, non la chiave). Per chi non costruisce: la voce «Proposte» sparisce dal menu (lo decide la risposta del server, non un ruolo indovinato dal browser) e `GET /api/pending` conta zero proposte.
-- **I giudizi**: `write_judgment(…, subject)` registra autore (nome) e `said_by` (chiave), come i ricordi. `JUDGMENT_AUTHOR` esce. I giudizi già scritti restano «proprietario» (per loro è vero). La pagina: «Le tue correzioni» → «Correzioni», con chi.
+- **I giudizi**: `write_judgment(…, author_name, said_by)` registra autore (nome) e `said_by` (chiave), come i ricordi — letti dal soggetto del confine (`soffitto.subject_name`), mai dal corpo della richiesta. `JUDGMENT_AUTHOR` esce. I giudizi già scritti restano «proprietario» (per loro è vero). La pagina: «Le tue correzioni» → «Correzioni», con chi.
 - **I testi**: «l'utente» → «chi ti sta parlando» nei prompt e nelle descrizioni degli strumenti; `DICHIARAZIONE_CASA`: la segnalazione va a chi ti sta parlando, le decisioni restano a chi amministra la casa; osservatore/attuatore/«Rifalla»: «il proprietario» → «chi amministra la casa»; `motivo` di rifiuto → una costante sola «rifiutata dalla pagina», letta anche dalla pagina. Il prefisso statico in cache resta statico (si cambia testo, non si aggiunge niente per turno).
 
 ---
 
 ## §4 · Più conversazioni nel filo
 
-- **Dato**: nessuna tabella nuova. Una conversazione è una sessione di `chat_sessions`. Il **titolo non si salva**: è la prima frase dell'utente nella sessione, letta quando serve. Una sessione nasce solo quando si scrive.
+- **Dato**: nessuna tabella nuova. Una conversazione è una sessione di `chat_sessions`. Il **titolo non si salva**: è la prima frase **non vuota** dell'utente fra i messaggi conservati della sessione, letta quando serve (una frase fatta di soli spazi o di soli caratteri invisibili — categoria Unicode Cf — conta come vuota ai fini della scelta, ma il testo mostrato resta quello originale, invisibili compresi); se nessuna si vede (la conversazione l'ha aperta solo un esito di promessa), il titolo di ripiego è `OUTCOME_ONLY_TITLE` («Esito di una promessa»). Il tetto `CONVERSATION_TITLE_MAX_CHARS=500` non è per la barra laterale — quella la taglia il CSS con un'ellissi — è un limite contro l'abuso, per una frase incollata senza un punto. Una sessione nasce solo quando si scrive.
 - **Archivio** (`chat_store`), tutto limitato al filo (un id altrui = inesistente):
   `list_conversations(thread)` → id, titolo, `last_msg_at`, attiva sì/no ·
   `new_conversation(thread)` → chiude quella aperta col riassunto ·
-  `resume(thread, session_id)` → chiude quella aperta, riapre questa (il riassunto si azzera: si rifarà alla chiusura), `last_msg_at` = adesso ·
+  `resume_conversation(thread, session_id)` → chiude quella aperta, riapre questa (il riassunto si azzera: si rifarà alla chiusura), `last_msg_at` = adesso ·
   `delete_conversation(thread, session_id)`.
   La chiusura dopo 2 ore di silenzio resta com'è.
-- **Rotte**: `GET /api/chat/conversations` · `POST /api/chat/conversations` · `POST /api/chat/conversations/{id}/resume` · `DELETE /api/chat/conversations/{id}`. `GET /api/chat/history` resta (la conversazione attiva). `DELETE /api/chat/history` **esce**. Tutte rispondono `409` se nel filo c'è una risposta in arrivo (`has_pending_chat(thread)`).
+- **Rotte**: `GET /api/chat/conversations` · `POST /api/chat/conversations` · `POST /api/chat/conversations/{id}/resume` · `DELETE /api/chat/conversations/{id}`. `GET /api/chat/history` resta (la conversazione attiva). `DELETE /api/chat/history` **esce**. Tutte rispondono `409` se nel filo c'è una risposta in arrivo (`has_pending_chat(thread)`) — **e il 409 vale anche durante un turno sincrono in corso sullo stesso filo**, non solo per il turno del ponte: un contatore per filo (`chat_thread.SyncTurnsInFlight`, `app["sync_turns"]`) segna l'intero tratto da quando la cronologia si legge a quando la risposta si scrive, e le tre scritture rispondono 409 con la stessa costante finché non si libera.
 - **Contesto del modello**: invariato — la conversazione attiva più i riassunti delle ultime tre chiuse del filo.
 - **Pagina** (con `ux-ui-specialist`, 25/09/2026):
   - nella barra laterale, dopo Impegni/Proposte: **«Nuova conversazione»**, poi l'**elenco** (titolo con ellissi in CSS, data relativa oggi/ieri/gg-mm in `--text-3`; voce attiva con `.active` **e** `aria-current="true"`; voci come `<button>`; contenitore con scroll proprio `overflow-y:auto; min-height:0` fra `#sidebar-nav` e `#sidebar-footer`; riuso di `.sb-nav-item`, `hiris-chat.css:69-81`);

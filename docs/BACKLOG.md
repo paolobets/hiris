@@ -79,6 +79,13 @@ sviluppo: `X-HIRIS-Servizio` (la chiave pubblica, che e' l'identita'), `X-HIRIS-
 **Dalla fetta «le chat divise» (25/09/2026):** quando Retro Panel si accoppia e parla, userà un
 `entry_point` nuovo, `hiris/app/chat_thread.py` — la fetta lo rende possibile, non lo costruisce.
 
+**Dalla fetta «il seguito delle chat divise» (26/09/2026):** anche il recapito delle notifiche
+aspetta lo stesso momento. `keeper/recipient.py::recipients_for` oggi non ha nessuna strada per un
+soggetto di specie `luogo`/`integrazione` (Retro Panel compreso): il motivo dichiarato è «il
+servizio non ha ancora dichiarato come si avvisa». **Retro Panel dichiarerà il suo recapito
+all'accoppiamento**, insieme al ruolo: finché non lo fa, un esito che dovesse tornare a lui resta
+solo nel filo, mai in push.
+
 ### L'opzione `canali` e' rimasta nelle opzioni salvate dell'add-on — aperta il 23/09/2026
 
 `origine: misurata sul registro della casa vera, 23/09/2026`
@@ -624,11 +631,22 @@ va corretto, in un posto solo.
 > del repository e da cio' che e' stato misurato sulla casa vera. La lista del proprietario va
 > reinserita da lui, e queste voci vanno lette come un fondo di magazzino, non come una sua scelta.
 
-### Chi ha chiesto una promessa
+### ~~Chi ha chiesto una promessa~~ — **USCITA col prossimo rilascio**
 
 `origine: dichiarato fuori perimetro dalla fetta «le chat divise», spec §6, 25/09/2026` · `docs/design/2026-09-25-le-chat-divise.md` §6
 
-La promessa (`mind/watcher.py`/l'agenda) **non porta il filo**: nasce da un turno ma non registra
+**CHIUSA il 26/09/2026 con la fetta «il seguito delle chat divise»**
+(`docs/design/2026-09-26-il-seguito-delle-chat-divise.md` §2), Task 1-3. `promesse`
+(`keeper/store.py`) porta ora `subject_key`/`entry_point`; `agenda`, `cancel`, le rotte
+`GET/DELETE /api/agenda`, `POST /api/agenda/read`, `GET /api/executions/{id}` e il conteggio
+`agenda_unread` lavorano solo sul filo di chi ha chiesto (un id di un altro filo risponde come
+inesistente); l'esito torna nel filo di chi ha chiesto e, quando risolve un recapito
+(`keeper/recipient.py::recipients_for`), come push al suo telefono. Le promesse di prima della
+fetta si adottano col proprietario, come la cronologia. Il testo sotto è il reperto com'era, con
+il rimando corretto (era `mind/watcher.py`, che non esiste: il codice dell'agenda è
+`keeper/store.py`).
+
+La promessa (`keeper/store.py`/l'agenda) **non porta il filo**: nasce da un turno ma non registra
 chi l'ha chiesta, e la sua notifica non sa a chi tornare. Ogni persona in casa la vede allo stesso
 modo di chi l'ha chiesta — il contrario del filo appena costruito per la chat, dove ognuno legge
 solo il proprio.
@@ -651,17 +669,34 @@ Non e' un buco di sicurezza (la porta di scrittura, `write_judgment`, non ha ogg
 ruolo), ma e' un fatto scritto male: la cronaca del sapere mentirebbe su chi ha deciso, il giorno
 in cui a scrivere sara' qualcun altro.
 
-### Più conversazioni per filo, con elenco nella pagina
+### ~~Più conversazioni per filo, con elenco nella pagina~~ — **USCITA col prossimo rilascio**
 
 `origine: decisione 2 della spec «le chat divise», rimandata il 25/09/2026` · `docs/design/2026-09-25-le-chat-divise.md` §0 (decisione 2), §6
+
+**CHIUSA il 26/09/2026 con la fetta «il seguito delle chat divise»**
+(`docs/design/2026-09-26-il-seguito-delle-chat-divise.md` §4), Task 6-7. Una conversazione è una
+sessione di `chat_sessions`, tutta limitata al filo (`chat_store.list_conversations`,
+`new_conversation`, `resume_conversation`, `delete_conversation`); le rotte
+`GET/POST /api/chat/conversations`, `POST .../resume`, `DELETE .../{id}` rispondono 409 se nel
+filo c'è già una risposta in arrivo. La pagina porta l'elenco in barra laterale (col pulsante
+«Nuova conversazione», il titolo, la data relativa, la voce attiva) e il cestino cancella la
+conversazione aperta. Il testo sotto è il reperto com'era.
 
 Il proprietario ha scelto **un filo solo** per soggetto (col meccanismo di oggi: sessione chiusa
 da due ore di silenzio, riassunto) per questa fetta. Più conversazioni nello stesso filo, con un
 elenco nella pagina per riaprirle o iniziarne una nuova, resta un passo dichiarato e non preso.
 
-### `GET /api/constructions` non ha il cancello del soffitto
+### ~~`GET /api/constructions` non ha il cancello del soffitto~~ — **USCITA col prossimo rilascio**
 
 `origine: misurato durante la fetta «le chat divise», Task 7, 25/09/2026` · `hiris/app/api/handlers_constructions.py`
+
+**CHIUSA il 26/09/2026 con la fetta «il seguito delle chat divise»**
+(`docs/design/2026-09-26-il-seguito-delle-chat-divise.md` §3, decisione 5), Task 4.
+`api/soffitto.py::require_builder` è ora la PRIMA istruzione di ogni rotta della pagina
+Costruzioni, delle proposte a mano e dei giudizi (le due GET comprese): un non amministratore
+riceve 403 su tutte, e `GET /api/pending` conta zero proposte per lui. Un amministratore vede
+ogni proposta con chi l'ha chiesta (`chiesta_da`, il nome — mai la chiave). Il testo sotto è il
+reperto com'era.
 
 Le due rotte GET della pagina Costruzioni (l'elenco e il dettaglio) non passano da
 `per_richiesta`/il soffitto — solo `apply`/`restore` lo fanno (`_act`). Oggi la risposta non porta
@@ -670,9 +705,17 @@ cosa; ma **ogni utente dell'ingress vede le proposte di tutti i fili**, non solo
 il contrario della decisione 4 della spec («ognuno legge solo il suo, amministratore compreso»),
 applicata finora solo alla chat.
 
-### Testi del prompt che assumono un proprietario unico
+### ~~Testi del prompt che assumono un proprietario unico~~ — **USCITA col prossimo rilascio**
 
 `origine: misurato durante la fetta «le chat divise», Task 5, 25/09/2026` · `hiris/app/claude_runner.py`, `hiris/app/agent/prompts.py`
+
+**CHIUSA il 26/09/2026 con la fetta «il seguito delle chat divise»**
+(`docs/design/2026-09-26-il-seguito-delle-chat-divise.md` §3), Task 5. «L'utente»/«il proprietario»
+sono usciti dai prompt e dalle descrizioni degli strumenti citati sotto: `DICHIARAZIONE_CASA`
+riferisce a **chi ti sta parlando**, e lascia la decisione a **chi amministra la casa**, nella
+stessa frase; `BASE_TOOL_RULES` e le descrizioni degli strumenti dicono **«chi ti sta parlando»**
+(o «la persona», per un'impostazione HA generica non legata a chi chatta ora); osservatore,
+attuatore e «Rifalla» dicono **«chi amministra la casa»**. Il testo sotto è il reperto com'era.
 
 Due testi fissi parlano ancora come se in casa parlasse una sola persona, il proprietario:
 `DICHIARAZIONE_CASA` (`agent/prompts.py`) dice di riferire una richiesta trovata nel materiale
@@ -701,6 +744,77 @@ anonimo condiviso, dichiarato apposta e non un difetto — ma resta un filo dove
 porta legge la cronologia di chiunque altro sia entrato anonimo prima di lui. Non e' successo
 niente di simile finora (l'ingress porta sempre le intestazioni su questa casa), ma il giorno in
 cui succede due persone anonime si vedrebbero le conversazioni a vicenda.
+
+**Dalla fetta «il seguito delle chat divise» (26/09/2026):** lo stesso filo condiviso ora può
+anche **creare promesse `fai`** — un anonimo comanda quanto un altro anonimo. Rischio accettato,
+non nuovo rispetto a sopra (è la stessa non-identità), ma con un freno vero: al risveglio
+`soffitto.ceiling_at_wake` rilegge il ruolo da capo, e un soggetto senza `id` (`persona:-` non ne
+porta uno) non risolve a nessun ruolo che comandi — la promessa fallisce chiusa, mai eseguita
+alla cieca.
+
+### Il legame utente→dispositivo dell'app companion non è esposto dalle API di Home Assistant
+
+`origine: misurato durante la fetta «il seguito delle chat divise», Task 1, 25/09/2026` · `docs/design/2026-09-26-il-seguito-delle-chat-divise.md` §1
+
+Quale **utente** di Home Assistant ha registrato un dato dispositivo dell'app Companion non è un
+fatto che REST o WebSocket dichiarino (`config_entries/get` dà solo il titolo della config entry):
+vive nei file interni `.storage`, che HIRIS non legge. Decisione accettata: si usa la **persona**
+(`person.*`, che porta `user_id` e `device_trackers` come dato ufficiale) invece del legame diretto
+utente→dispositivo — chi vuole meno notifiche toglie un dispositivo dalla sua persona in Home
+Assistant, non da HIRIS.
+
+### `GET /api/mind/knowledge` resta aperta, solo la scrittura è riservata
+
+`origine: decisione della fetta «il seguito delle chat divise», Task 4, 26/09/2026` · `docs/design/2026-09-26-il-seguito-delle-chat-divise.md` §3
+
+Il cancello di chi costruisce (`soffitto.require_builder`) protegge `POST /api/mind/judgment` (la
+scrittura di un giudizio) e le rotte delle Costruzioni/Proposte, ma non `GET /api/mind/knowledge`
+(la lettura del sapere della casa): chi non costruisce vede ancora il modulo «Correzioni» nella
+pagina, e riceve solo il 403 del server se prova a scriverci. Il brief del Task 4 non nominava
+questa rotta fra quelle da chiudere; resta aperta finché una decisione non dica il contrario.
+
+### Una promessa «fai» non manda push, solo il racconto in chat
+
+`origine: decisione di prodotto della fetta «il seguito delle chat divise», Task 2-3, 26/09/2026` · `docs/design/2026-09-26-il-seguito-delle-chat-divise.md` §2.4
+
+L'esito di un `chiedi` va nel filo di chi ha chiesto **e** in push al suo recapito; il racconto di
+un `fai` concluso (o fallito) va **solo** nel filo, mai in push — anche quando il recapito esiste
+e risolve. Non è un buco: è la decisione presa per questa fetta (spec §2.4, «il racconto di un
+`fai` concluso»), non un caso dimenticato.
+
+### In sviluppo (senza token) una «fai» non si esegue al risveglio
+
+`origine: misurato durante la fetta «il seguito delle chat divise», Task 3, 26/09/2026` · `hiris/app/api/soffitto.py::ceiling_at_wake`
+
+Il filo di sviluppo (nessun token, `specie: "sviluppo"`) non è una persona né un servizio
+approvato: al risveglio di un `fai`, `ceiling_at_wake` non trova nessun ruolo per lui
+(`_approved_service_role` non trova righe, `consente` chiude su una specie che non è `persona`) e
+la promessa fallisce con lo stesso motivo di un servizio sconosciuto. **Chiude nel dubbio**, come
+la regola vuole; non è stato provato dal vivo se sia il comportamento che si vuole in sviluppo
+(dove oggi non serve comandare per davvero) o se meriti un ruolo dichiarato apposta.
+
+### Il freno delle push è per promessa, non per casa
+
+`origine: ruling 3.4 della fetta «il seguito delle chat divise», 26/09/2026` · `hiris/app/keeper/promise.py::MAX_SERVICES_PER_PROMISE`
+
+Ogni promessa spinge al più **3** servizi (`MAX_SERVICES_PER_PROMISE`) — una persona vera ha un
+telefono e forse un tablet, non dieci. Rischio accettato e dichiarato: **nessun freno globale**
+sul numero di push che la casa manda in una finestra di tempo. Il numero di promesse pendenti è
+già limitato (`CEILING_IN_SOSPESO` per filo, `HOUSE_CEILING_IN_SOSPESO` per la casa), e quel tetto
+limita anche questo — ma non è la stessa cosa di un freno sulle notifiche in sé.
+
+### Le liste dei moduli JS ricopiate a mano in quattro test
+
+`origine: misurato durante la fetta «il seguito delle chat divise», Task 7, 26/09/2026` · `tests/js/chat-page.test.mjs`, `tests/js/chat-build-check-wiring.test.mjs`, `tests/js/chat-usage-non-misurata.test.mjs`, `tests/js/cancellare-cosa-resta.test.mjs`
+
+Quattro file di test JS portano ciascuno una propria copia a mano dell'ordine degli script che
+`index.html` carica (`setupChat`, due `MODULI`, l'elenco di `cancellare-cosa-resta`). Il Task 7 ha
+aggiunto `chat/conversations.js` a mano in tutti e quattro, invece di derivarli da una fonte sola,
+perché uno dei quattro test (B8, in `chat-build-check-wiring.test.mjs`) ha un caso che **toglie
+apposta** `build-check.js` dall'elenco per provare un guasto — una derivazione pura non avrebbe
+saputo escluderlo. Candidato per una fetta di pulizia: un helper condiviso (`scriptsFromIndex()`
+o simile) che legga l'ordine da `index.html` e permetta ai singoli test di togliere un file per
+il proprio scenario, invece di quattro copie che possono divergere a ogni script nuovo.
 
 ### Le cinque cose che la fetta dei giudizi ha dichiarato fuori perimetro
 

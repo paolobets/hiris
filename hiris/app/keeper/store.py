@@ -208,9 +208,7 @@ class AgendaStore:
             return {"errore": reason}
         with self._lock:
             self._prune(now)
-            mine = self._conn.execute(
-                f"SELECT count(*) FROM promesse WHERE stato IN ({_SOSPESI}) "
-                f"AND {_OF_THREAD}", _thread_params(thread)).fetchone()[0]
+            mine = self._count_pending(thread)
             if mine >= CEILING_IN_SOSPESO:
                 return {"errore": (
                     f"hai gia' {CEILING_IN_SOSPESO} promesse in sospeso, che e' "
@@ -449,13 +447,20 @@ class AgendaStore:
                     (*_thread_params(thread), int(limit))).fetchall()
         return [serializza(r) for r in righe]
 
+    def _count_pending(self, thread: ChatThread) -> int:
+        """La stessa conta, senza il lock: per chi lo tiene gia' (`create`).
+        Una casa sola per la query (fondamenta: nessun doppione) -- prima
+        `create` la riscriveva da se', e `count_pending` restava senza un
+        chiamante di produzione (misurato in Task 8, 26/09/2026)."""
+        return self._conn.execute(
+            f"SELECT count(*) FROM promesse WHERE stato IN ({_SOSPESI}) "
+            f"AND {_OF_THREAD}", _thread_params(thread)).fetchone()[0]
+
     def count_pending(self, thread: ChatThread) -> int:
         """Quante promesse di questo filo sono in sospeso: cio' che il tetto
         per filo (`CEILING_IN_SOSPESO`) misura."""
         with self._lock:
-            return self._conn.execute(
-                f"SELECT count(*) FROM promesse WHERE stato IN ({_SOSPESI}) "
-                f"AND {_OF_THREAD}", _thread_params(thread)).fetchone()[0]
+            return self._count_pending(thread)
 
     def has_orphans(self) -> bool:
         with self._lock:

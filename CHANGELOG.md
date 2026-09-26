@@ -36,6 +36,81 @@ porta finalmente il soggetto anche sul ponte.
 un'altra, e il rifiuto non la nomina. La pagina Costruzioni, riservata agli amministratori,
 resta l'eccezione dichiarata — non è un filo, conferma per id qualunque proposta.
 
+## [Non rilasciato] — Il seguito delle chat divise
+
+Fino a oggi una promessa non sapeva chi l'avesse chiesta: ogni persona in casa vedeva e disdiceva
+quelle di chiunque, e il suo esito partiva come push su un `recapito` che era il **modello** a
+scegliere a parole («es. `notify.mobile_app_x`», trovato con `search`). La pagina Costruzioni non
+aveva un cancello sulle sue due rotte di lettura: chiunque passasse dall'ingress vedeva le
+proposte di tutti i fili, anche se non poteva più agire su di esse. Ogni giudizio del sapere (una
+correzione al genere di un'entità, a un notevole...) si registrava come se l'avesse scritto sempre
+lo stesso «proprietario» — anche una persona non amministratrice che oggi può avere una
+conversazione sua. I prompt e le descrizioni degli strumenti parlavano ancora de «l'utente», al
+singolare, o riferivano una scoperta «al proprietario, che è l'unico che può decidere» — come se in
+casa parlasse sempre la stessa persona. E una chat restava un filo solo per soggetto: nessun modo
+di aprirne una nuova restando nello stesso filo, né di riprenderne una vecchia.
+
+### Le promesse tornano a chi le ha chieste
+
+Una promessa porta ora il filo di chi l'ha chiesta (`subject_key`, `entry_point`, come la chat):
+l'agenda, il badge e la disdetta lavorano solo sul proprio filo, un id di un altro risponde come
+inesistente. Il `recapito` **esce dallo strumento**: chi chiede una promessa non sceglie più a
+parole a chi arriverà, ed è HIRIS a risolverlo — al **risveglio**, non alla nascita — dai
+dispositivi `mobile_app` della `person` di Home Assistant collegata a chi ha chiesto, mai da un
+nome supposto. Se la persona non ha un telefono collegato, o le sue notifiche non sono attive, lo
+dice con un motivo leggibile invece di restare muta.
+
+L'esito di un «chiedi» (e il racconto di un «fai» concluso) entra ora nel filo di chi l'ha chiesto
+come messaggio di HIRIS, **oltre** alla push quando un recapito esiste. Un «fai» invece **non
+manda mai push**, solo il racconto in chat — una decisione di prodotto, non un buco. Il
+testo di una push non può diventare un comando eseguito dall'app Home Assistant Companion al posto
+di un messaggio letto: le parole che l'app esegue invece di mostrare (verificate sulla
+documentazione ufficiale) diventano «l'esito è nella tua chat.». Ogni promessa spinge al più tre
+servizi; non c'è ancora un freno sul totale delle notifiche che la casa manda.
+
+Chi ha promesse pendenti da prima di questa fetta le ritrova adottate nel proprio filo, come già la
+cronologia della chat.
+
+### La pagina Costruzioni è di chi costruisce
+
+Un cancello solo (`api/soffitto.py::require_builder`) protegge ora **ogni** rotta della pagina
+Costruzioni, delle proposte a mano e dei giudizi del sapere — comprese le due letture che prima ne
+erano fuori. Chi non costruisce non vede più la voce «Proposte» nel menu, e `GET /api/pending`
+gli conta zero proposte; chi costruisce vede, per ogni proposta, **chi l'ha chiesta** — il nome,
+mai la chiave interna. `GET /api/mind/knowledge` (la lettura del sapere) resta aperta a chiunque:
+solo la sua scrittura è riservata.
+
+Un giudizio sul sapere porta ora l'**autore vero**, nome e chiave, invece del letterale
+`"proprietario"` fisso: la sezione «Le tue correzioni» diventa «Correzioni», con chi. I giudizi
+scritti prima di questa fetta restano attribuiti al proprietario — per loro è ancora vero.
+
+### I testi parlano a chi sta parlando
+
+I prompt e le descrizioni degli strumenti non dicono più «l'utente» al singolare, ma **«chi ti sta
+parlando»** — o «la persona», quando il testo riguarda un'impostazione di Home Assistant e non
+necessariamente chi sta chattando in quel momento. Una scoperta nel materiale letto si riferisce a
+chi ti sta parlando, ma la decisione sulla casa resta a **chi la amministra**. Il motivo di un «no»
+su una proposta è ora una costante sola («rifiutata dalla pagina»), letta anche dalla pagina
+invece di essere ricopiata a parole.
+
+### Più conversazioni, nello stesso filo
+
+La barra laterale porta ora **«Nuova conversazione»** e l'elenco delle conversazioni del proprio
+filo (titolo, data relativa, quella attiva evidenziata); si può riaprire una conversazione vecchia
+o cancellare quella aperta, senza toccare le altre. Ogni scrittura (nuova, riprendi, cancella)
+risponde 409 se nel filo c'è già una risposta in arrivo — vale anche **durante** un turno
+sincrono, non solo per quello del ponte. `DELETE /api/chat/history` **esce**, sostituita da
+`DELETE /api/chat/conversations/{id}`.
+
+### Da sapere
+
+- Una promessa «fai» non ha mai mandato push, e continua a non mandarne: solo il racconto in chat.
+- Nel filo di sviluppo (senza token), una «fai» non si esegue al suo risveglio: senza un ruolo da
+  rileggere, si chiude nel dubbio.
+- Per ricevere le notifiche di una promessa, la propria persona va collegata al proprio utente in
+  Home Assistant (Impostazioni → Persone): il legame diretto fra un utente e un dispositivo
+  dell'app non è un dato che le API di Home Assistant espongano.
+
 ## [3.67.1] — «Trovare qualcosa» non è «trovare ciò che si cercava» (2026-09-24)
 
 La verifica dal vivo della 3.67.0 ha detto due cose. Il ponte **scrive davvero** nel registro
