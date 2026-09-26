@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 
+from ..chat_store import append_assistant_line
 from .promise import failure_message
 
 logger = logging.getLogger(__name__)
@@ -48,7 +49,6 @@ def tell_failure(data_dir: str | None, promise: dict, reason, *,
     sbagliato."""
     if not data_dir:
         return False
-    from ..chat_store import append_assistant_line
 
     def write(thread, content, *, quoted=None):
         return append_assistant_line(content, data_dir, thread=thread,

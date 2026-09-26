@@ -133,7 +133,7 @@ def test_il_tetto_delle_cinquanta_e_per_filo(archivio):
     oltre = archivio.create(_chiedi(99, adesso=adesso), thread=PAOLO, now=adesso)
     assert "errore" in oltre
     assert str(promise_module.CEILING_IN_SOSPESO) in oltre["errore"]
-    assert archivio.count_pending(PAOLO) == promise_module.CEILING_IN_SOSPESO
+    assert archivio._count_pending(PAOLO) == promise_module.CEILING_IN_SOSPESO
 
     assert "errore" not in archivio.create(_chiedi(0, adesso=adesso),
                                            thread=MARTA, now=adesso)
@@ -190,7 +190,7 @@ def test_le_orfane_sono_invisibili_finche_non_si_adottano(archivio):
 
     assert archivio.has_orphans()
     assert archivio.list(thread=PAOLO) == []
-    assert archivio.count_pending(PAOLO) == 0
+    assert archivio.list(thread=PAOLO, solo_in_sospeso=True) == []
     assert "errore" in archivio.cancel(orfana, thread=PAOLO, now=adesso)
     assert archivio.read(orfana)["thread"] is None
 
@@ -570,6 +570,24 @@ async def test_delete_non_adotta_prima_di_disdire(rotte):
     assert risposta.status == 404
     assert agenda.read(orfana)["stato"] == "in_attesa"
     assert agenda.has_orphans()
+
+
+def test_le_promesse_di_prima_si_adottano_solo_da_due_porte():
+    """2.11 + review finale, punto 1: chi chiama `adopt_orphans` sulle
+    promesse sono la prima lettura dal pannello (`chat_thread.adopt_if_owner`)
+    e il risveglio (`keeper/sweeper.py::_adopt_orphan`), entrambi dietro il
+    proprietario verificato in Home Assistant. Nessuna rotta. L'elenco si
+    deriva dal sorgente: una terza porta lo fa diventare rosso."""
+    import pathlib
+
+    radice = pathlib.Path(__file__).resolve().parents[1] / "hiris" / "app"
+    chiamanti = {str(p.relative_to(radice)).replace("\\", "/")
+                 for p in radice.rglob("*.py")
+                 if ".adopt_orphans(" in p.read_text(encoding="utf-8")}
+    assert chiamanti == {"chat_thread.py", "keeper/sweeper.py",
+                         "chat_store.py"}, chiamanti
+    # `chat_store.py` e' la funzione di modulo che gira alla sua classe, per
+    # la cronologia: non adotta promesse.
 
 
 # ---------------------------------------------------------------------------

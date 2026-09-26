@@ -111,12 +111,15 @@ async def rotta(aiohttp_client, tmp_path, monkeypatch):
         return {"leggere": True, "comandare": True, "costruire": False,
                 "ruolo": "utente", "perche": None}
 
+    async def _no_owner():
+        return None
+
     app["sweeper"] = Sweeper(
         promesse, execute=porta.execute, interpreta=_mai,
         recipients=_one_phone,
         write_to_thread=lambda thread, content, quoted=None: append_assistant_line(
             content, str(cartella_chat), thread=thread, quoted=quoted),
-        ceiling=_comanda)
+        ceiling=_comanda, owner_thread=_no_owner)
     app.on_startup.clear()
     app.on_cleanup.clear()
 

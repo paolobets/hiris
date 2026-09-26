@@ -419,7 +419,8 @@ async def test_l_orologio_montato_consegna_l_esito_nella_chat_vera(tmp_path):
            "ruoli": {"quando": 0.0, "per_id": {}}}
     try:
         collaboratori = server._promise_delivery(app)
-        assert set(collaboratori) == {"recipients", "write_to_thread", "ceiling"}
+        assert set(collaboratori) == {"recipients", "write_to_thread", "ceiling",
+                                      "owner_thread"}
         assert collaboratori["write_to_thread"](paolo, "Esito della promessa «x»: y") is True
         assert collaboratori["write_to_thread"](None, "nessun filo") is False
         assert load_history(str(tmp_path), thread=paolo) == [
@@ -427,5 +428,15 @@ async def test_l_orologio_montato_consegna_l_esito_nella_chat_vera(tmp_path):
         # Un servizio senza archivio non comanda a scadenza (fail closed).
         soffitto = await collaboratori["ceiling"]({"specie": "luogo", "id": "p"})
         assert soffitto["comandare"] is False
+        # Senza Home Assistant nessun proprietario: un'orfana resta orfana.
+        assert await collaboratori["owner_thread"]() is None
+
+        class _Utenti:
+            async def users(self):
+                return {"utenti": [{"id": "marta", "proprietario": False},
+                                   {"id": "paolo", "proprietario": True}]}
+
+        app["ha_client"] = _Utenti()
+        assert await collaboratori["owner_thread"]() == paolo
     finally:
         close_all_stores()

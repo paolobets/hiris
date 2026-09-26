@@ -552,6 +552,7 @@ test('gesto riuscito ma storia non arrivata: lo si dice, niente vista vuota muta
   assert.equal(esito, true, 'la ripresa e\' avvenuta sul server');
   const avviso = document.getElementById('conv-notice');
   assert.equal(avviso.hidden, false);
+  assert.equal(avviso.textContent, window.HirisChatConversations.HISTORY_TEXT);
   assert.match(avviso.textContent, /messaggi/);
 });
 

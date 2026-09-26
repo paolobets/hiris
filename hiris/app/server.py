@@ -45,7 +45,7 @@ from .api.middleware_csrf import csrf_middleware
 from .api.middleware_internal_auth import internal_auth_middleware
 from .backends.embeddings import build_embedding_provider
 from .chat_settings import ChatSettings, file_lacks_retention_days
-from .chat_thread import SyncTurnsInFlight
+from .chat_thread import SyncTurnsInFlight, thread_for
 from .env_util import env_bool
 from .home_space.behavior import reread, reread_dashboards
 from .home_space.briefing import digest_visible_entity_ids
@@ -185,9 +185,13 @@ def _promise_delivery(app) -> dict:
     - `write_to_thread`: `chat_store.append_assistant_line` nella cartella
       dell'add-on (filtra i veleni, rifiuta un filo assente);
     - `ceiling`: `api/soffitto.py::ceiling_at_wake`, il soffitto di chi ha
-      chiesto riletto al risveglio.
+      chiesto riletto al risveglio;
+    - `owner_thread`: il filo del pannello del proprietario, se Home
+      Assistant ne dice uno solo (`api/soffitto.py::sole_owner`) -- a chi
+      l'orologio da' una promessa orfana che si sveglia prima che lui apra
+      il pannello.
     """
-    from .api.soffitto import ceiling_at_wake
+    from .api.soffitto import ceiling_at_wake, sole_owner
     from .chat_store import append_assistant_line
     from .keeper.recipient import recipients_for
 
@@ -201,8 +205,14 @@ def _promise_delivery(app) -> dict:
     async def _ceiling(subject):
         return await ceiling_at_wake(app, subject)
 
+    async def _owner_thread():
+        # Il filo lo calcola `thread_for`, come per ogni richiesta dal
+        # pannello (`ingress`): due calcoli dello stesso filo sono due fili.
+        owner = await sole_owner(app)
+        return thread_for(owner, "ingress") if owner else None
+
     return {"recipients": _recipients, "write_to_thread": _write,
-            "ceiling": _ceiling}
+            "ceiling": _ceiling, "owner_thread": _owner_thread}
 
 
 def _bridge_active(store: dict | None) -> bool:

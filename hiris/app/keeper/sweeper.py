@@ -33,11 +33,12 @@ from .promise import (
 
 logger = logging.getLogger(__name__)
 
-# Una promessa ORFANA -- nata prima delle promesse divise e mai adottata dal
-# proprietario -- non ha un filo: non si sa di chi e'. L'esito resta nella
-# riga (e nella pagina, a chi la adotta), ma non si scrive in nessuna chat e
-# non si cerca nessun telefono: un filo inventato sarebbe la chat di
-# qualcun altro (vincolo 3.2).
+# Una promessa ORFANA -- nata prima delle promesse divise e mai adottata --
+# al risveglio va al proprietario se Home Assistant ne dice uno solo
+# (`_adopt_orphan`). Se non lo dice, non ha un filo: non si sa di chi e'.
+# L'esito resta nella riga (e nella pagina, a chi la adotta), ma non si
+# scrive in nessuna chat e non si cerca nessun telefono: un filo inventato
+# sarebbe la chat di qualcun altro (vincolo 3.2).
 _ORPHAN_REASON = ("questa promessa è di prima delle chat divise e non è mai "
                   "stata adottata: non so di chi è, quindi l’esito resta solo "
                   "qui, nella pagina «Impegni».")
@@ -58,7 +59,7 @@ _RECIPIENTS_FAILED = "non sono riuscito a sapere a quale telefono mandarlo."
 
 class Sweeper:
     def __init__(self, store, *, execute, interpreta, recipients,
-                 write_to_thread, ceiling,
+                 write_to_thread, ceiling, owner_thread,
                  tolleranza_s: float = TOLLERANZA_S) -> None:
         """I collaboratori arrivano al montaggio, e l'orologio non sa da dove:
 
@@ -70,7 +71,10 @@ class Sweeper:
           HIRIS nel filo (`chat_store.append_assistant_line`, che filtra i
           veleni -- anche nel testo del modello citato, `quoted`);
         - `ceiling(subject) -> dict`: il soffitto di chi ha chiesto, riletto
-          al risveglio (`api/soffitto.py::ceiling_at_wake`).
+          al risveglio (`api/soffitto.py::ceiling_at_wake`);
+        - `owner_thread() -> ChatThread | None`: il filo del pannello del
+          proprietario, se Home Assistant ne dice uno solo
+          (`api/soffitto.py::sole_owner`), per le promesse orfane.
 
         Tutti obbligatori, apposta: un default «niente» farebbe di un
         montaggio dimenticato un esito che non arriva a nessuno, in silenzio.
@@ -81,10 +85,12 @@ class Sweeper:
         self._recipients = recipients
         self._write = write_to_thread
         self._ceiling = ceiling
+        self._owner_thread = owner_thread
         self._tolleranza = tolleranza_s
 
     async def batti(self, now: float) -> None:
         for promise in self._store.scadute(now):
+            promise = await self._adopt_orphan(promise)
             delay = now - promise["quando_ts"]
             # Il controllo del ritardo viene PRIMA della presa: una promessa
             # saltata non deve nemmeno passare per `in_corso`, o un guasto qui
@@ -117,6 +123,33 @@ class Sweeper:
                 if closed:
                     self._tell(promise,
                                failure_message(promise, _UNEXPECTED_FAILURE))
+
+    async def _adopt_orphan(self, promise: dict) -> dict:
+        """Una promessa orfana che si sveglia va al proprietario, se Home
+        Assistant dice chi e' -- uno e uno solo (review finale, ruling del
+        coordinatore): senza, chi usa HIRIS dal giorno prima si vedrebbe
+        chiudere `fallita` un `fai` che il giorno prima partiva.
+
+        Adotta l'archivio, con la funzione della prima lettura dal pannello
+        (`AgendaStore.adopt_orphans`): tutte le orfane, una volta sola. La
+        cronologia della chat no -- resta a quella lettura. Nel dubbio (HA
+        muto, nessun proprietario, due, un guasto) la promessa resta orfana
+        e segue le sue regole: l'adozione non si ripara.
+        """
+        if promise.get("thread") is not None:
+            return promise
+        try:
+            owner = await self._owner_thread()
+        except Exception as error:
+            logger.warning("promessa %s: proprietario non letto (%s)",
+                           promise["id"], type(error).__name__)
+            return promise
+        if owner is None:
+            return promise
+        n = self._store.adopt_orphans(owner)
+        logger.info("promesse di prima: %d passano al proprietario (%s) al "
+                    "risveglio di %s", n, owner.subject_key, promise["id"])
+        return self._store.read(promise["id"]) or promise
 
     def _tell(self, promise: dict, content: str, *,
               quoted: str | None = None) -> bool:

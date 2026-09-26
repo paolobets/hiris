@@ -991,3 +991,42 @@ def test_impalcatura_NON_rifa_la_cronaca():
     from hiris.app.home_space.type_judgments import CHRONICLE_FIELDS
 
     assert "impalcatura" not in CHRONICLE_FIELDS
+
+
+def test_un_archivio_v7_si_riapre_e_le_correzioni_di_prima_restano_correzioni(tmp_path):
+    """`knowledge._migration_8` (review finale, punto 10): un archivio v7 --
+    senza la colonna `said_by` -- si riapre con la colonna, le righe di prima
+    rileggono `said_by IS NULL` (nessuno aveva registrato la chiave) e un
+    giudizio scritto allora dalla porta, `who='proprietario'`, resta una
+    `correzione` nell'elenco della pagina.
+
+    L'archivio v7 si ricava da uno v8 togliendo la colonna: e' la forma che
+    aveva prima della fetta. Mutazione ESEGUITA: togliere `8: _migration_8`
+    dalla mappa di `init_schema` -- rossa (la colonna non c'e').
+    """
+    from hiris.app.storage import connect
+
+    db = str(tmp_path / "sapere.db")
+    vecchio = KnowledgeStore(db)
+    vecchio.write(Fact(subject_kind="tipo", subject="light", field="genere",
+                       value="sicurezza", provenance="nostro", who=AUTORE_STORICO,
+                       when_ts=2.0))
+    vecchio.close()
+    conn = connect(db)
+    conn.execute("ALTER TABLE knowledge DROP COLUMN said_by")
+    conn.execute("PRAGMA user_version = 7")
+    conn.commit()
+    conn.close()
+
+    nuovo = KnowledgeStore(db)
+    try:
+        colonne = {r[1] for r in nuovo._conn.execute("PRAGMA table_info(knowledge)")}
+        assert "said_by" in colonne
+        assert [r[0] for r in nuovo._conn.execute(
+            "SELECT said_by FROM knowledge WHERE subject='light' AND field='genere'"
+        )] == [None]
+        [riga] = [g for g in judgment_listing(nuovo)
+                  if (g["soggetto"], g["campo"]) == ("light", "genere")]
+        assert (riga["da"], riga["chi"]) == ("correzione", AUTORE_STORICO)
+    finally:
+        nuovo.close()

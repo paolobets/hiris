@@ -68,8 +68,9 @@ di un messaggio letto: le parole che l'app esegue invece di mostrare (verificate
 documentazione ufficiale) diventano «l'esito è nella tua chat.». Ogni promessa spinge al più tre
 servizi; non c'è ancora un freno sul totale delle notifiche che la casa manda.
 
-Chi ha promesse pendenti da prima di questa fetta le ritrova adottate nel proprio filo, come già la
-cronologia della chat.
+Le promesse pendenti da prima di questa fetta passano al proprietario della casa, nel suo filo dal
+pannello: alla sua prima apertura, insieme alla cronologia della chat, oppure — se una matura prima
+— al suo risveglio.
 
 ### La pagina Costruzioni è di chi costruisce
 
@@ -110,6 +111,12 @@ sincrono, non solo per quello del ponte. `DELETE /api/chat/history` **esce**, so
 - Per ricevere le notifiche di una promessa, la propria persona va collegata al proprio utente in
   Home Assistant (Impostazioni → Persone): il legame diretto fra un utente e un dispositivo
   dell'app non è un dato che le API di Home Assistant espongano.
+- Una promessa di prima di questa fetta che si sveglia prima che il proprietario apra il pannello
+  va a lui se Home Assistant dice chi è il proprietario, **uno e uno solo**: si mantiene come ogni
+  altra — il soffitto riletto, l'esito nella sua chat, la push ai suoi telefoni. Se Home Assistant
+  non risponde in quel momento, o i proprietari non sono esattamente uno, si chiude nel dubbio: una
+  «fai» non agisce, l'esito di una «chiedi» resta solo nella pagina «Impegni». La cronologia della
+  chat di prima passa invece solo alla prima apertura del pannello.
 
 ## [3.67.1] — «Trovare qualcosa» non è «trovare ciò che si cercava» (2026-09-24)
 

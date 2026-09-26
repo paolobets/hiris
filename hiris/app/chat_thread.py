@@ -119,7 +119,11 @@ async def adopt_if_owner(app, request, thread: ChatThread) -> None:
     promesse orfane: nello stesso momento e con la stessa regola, perche' due
     regole per lo stesso passaggio di proprieta' sarebbero due proprietari
     possibili. Non all'avvio: li' Home Assistant puo' non rispondere ancora, e
-    un proprietario sbagliato non si ripara. Import locali: `chat_store` e le
+    un proprietario sbagliato non si ripara. Le promesse hanno una seconda
+    porta, il loro risveglio (`keeper/sweeper.py::_adopt_orphan`): una
+    promessa che matura prima di questa lettura va al proprietario che Home
+    Assistant dice unico, con la stessa funzione dell'archivio; la
+    cronologia resta a questa lettura. Import locali: `chat_store` e le
     rotte di `api/` importano da qui, e questo modulo deve restare una foglia.
     """
     from . import chat_store

@@ -168,7 +168,9 @@ async def _ha_users(app) -> dict | None:
             # questa lettura non riesce NESSUNO può costruire — nemmeno il
             # proprietario — e la cronologia della chat di prima delle chat
             # divise resta orfana (`is_owner` non sa chi è il proprietario),
-            # e i nomi delle persone non si leggono (`subject_name`). Chi
+            # una promessa di prima che si sveglia si chiude senza agire
+            # (`sole_owner`), e i nomi delle persone non si leggono
+            # (`subject_name`). Chi
             # aggiunge un lettore aggiunge qui la sua conseguenza. È il verso
             # giusto, ma è anche il guasto che spegne una funzione, e chi
             # legge il registro deve capirlo alla prima riga invece di
@@ -186,8 +188,9 @@ async def _ha_users(app) -> dict | None:
                 "soffitto: non ho potuto leggere gli utenti da Home Assistant "
                 "(%s). Finché non ci riesco NESSUNO può far scrivere "
                 "automazioni a HIRIS, perché non so chi è amministratore, e la "
-                "cronologia della chat di prima resta orfana, perché non so chi "
-                "è il proprietario: il comando è `config/auth/list` sul canale "
+                "cronologia della chat e le promesse di prima restano orfane, "
+                "perché non so chi è il proprietario: il comando è "
+                "`config/auth/list` sul canale "
                 "websocket",
                 esito["errore"])
             return None
@@ -223,6 +226,22 @@ async def is_owner(app, soggetto: dict | None) -> bool:
     richiesta dopo.
     """
     return bool((await _person_row(app, soggetto) or {}).get("proprietario"))
+
+
+async def sole_owner(app) -> dict | None:
+    """Il soggetto (`{"specie", "id"}`) del proprietario della casa, se Home
+    Assistant ne dice UNO e uno solo -- altrimenti `None`.
+
+    Lo usa l'orologio quando si sveglia una promessa di prima delle promesse
+    divise e il proprietario non ha ancora aperto il pannello (review finale
+    della fetta «il seguito delle chat divise», ruling del coordinatore).
+    Stessa lettura e stesso campo di `is_owner`. Nessuna risposta, nessun
+    proprietario o due: «non lo so», e l'adozione -- che non si ripara --
+    non si fa.
+    """
+    owners = [uid for uid, row in (await _ha_users(app) or {}).items()
+              if row.get("proprietario")]
+    return {"specie": "persona", "id": owners[0]} if len(owners) == 1 else None
 
 
 async def ceiling_for(app, soggetto: dict | None) -> dict:
@@ -358,8 +377,8 @@ async def ceiling_at_wake(app, subject: dict | None) -> dict:
         # Home Assistant non rispondere -- e nel dubbio non si comanda.
         role = await _ruolo_persona(app, subject)
         if role is None:
-            return {"leggere": False, "comandare": False, "costruire": False,
-                    "ruolo": None, "perche": WAKE_UNVERIFIED_PERSON}
+            return {**{g: False for g in GESTI}, "ruolo": None,
+                    "perche": WAKE_UNVERIFIED_PERSON}
         return consente(subject, ruolo=role)
     subject["ruolo"] = _approved_service_role(app, subject)
     return await ceiling_for(app, subject)

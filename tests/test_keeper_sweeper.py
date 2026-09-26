@@ -97,6 +97,10 @@ class RecapitoFinto:
         return self._esito
 
 
+async def _no_owner():
+    """Home Assistant non dice UN proprietario: un'orfana resta orfana."""
+
+
 async def _ceiling_allowing(_subject):
     return {"leggere": True, "comandare": True, "costruire": True,
             "ruolo": "amministratore", "perche": None}
@@ -112,7 +116,7 @@ def _orologio(archivio, *, execute, interpreta, recipients=None, righe=None):
         recipients=recipients or RecapitoFinto(),
         write_to_thread=lambda thread, content, quoted=None: righe.append(
             (thread, content)),
-        ceiling=_ceiling_allowing)
+        ceiling=_ceiling_allowing, owner_thread=_no_owner)
 
 
 def _crea_fai(archivio, *, quando):

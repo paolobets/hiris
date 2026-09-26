@@ -119,6 +119,11 @@ class SoffittoFinto:
         return self._esito
 
 
+async def _nessun_proprietario():
+    """Home Assistant non dice UN proprietario: un'orfana resta orfana (i
+    casi veri -- HA muto, zero, due -- li prova `_orologio_montato`)."""
+
+
 def _orologio(archivio, cartella, *, porta=None, turno=None, recapito=None,
               soffitto=None):
     return Sweeper(
@@ -129,6 +134,7 @@ def _orologio(archivio, cartella, *, porta=None, turno=None, recapito=None,
         write_to_thread=lambda thread, content, quoted=None: append_assistant_line(
             content, cartella, thread=thread, quoted=quoted),
         ceiling=soffitto or SoffittoFinto(),
+        owner_thread=_nessun_proprietario,
     )
 
 
@@ -692,7 +698,7 @@ def _sweeper_with_real_ceiling(archivio, cartella, app, porta):
         recipients=RecapitoFinto(),
         write_to_thread=lambda thread, content, quoted=None: append_assistant_line(
             content, cartella, thread=thread, quoted=quoted),
-        ceiling=ceiling)
+        ceiling=ceiling, owner_thread=_nessun_proprietario)
 
 
 @pytest.mark.parametrize("caso", ["non_in_ha", "ha_guasto", "senza_id"])
@@ -820,3 +826,125 @@ async def test_l_errore_di_home_assistant_entra_nella_chat_ripulito(archivio, ca
     contenuto = load_history(cartella, thread=PAOLO)[0]["content"]
     assert "<|system|>" not in contenuto
     assert "[FILTERED]" in contenuto
+
+
+# ---------------------------------------------------------------------------
+# Il giorno dell'aggiornamento (review finale, punto 1, ruling del
+# coordinatore): una promessa di prima che matura PRIMA che il proprietario
+# apra il pannello non si chiude nel dubbio se Home Assistant dice chi e' il
+# proprietario -- uno e uno solo. La adotta lo stesso archivio
+# (`AgendaStore.adopt_orphans`) e prosegue con le regole di sempre. I
+# collaboratori veri del montaggio (`server._promise_delivery`): il soffitto
+# e il proprietario si leggono dagli utenti di Home Assistant (finti), la
+# chat e' vera su disco.
+# ---------------------------------------------------------------------------
+
+_PAOLO_PROPRIETARIO = {"id": "paolo", "amministratore": True, "proprietario": True}
+_MARTA = {"id": "marta", "amministratore": False, "proprietario": False}
+
+
+def _orologio_montato(archivio, cartella, app, *, porta, turno=None, recapito=None):
+    from hiris.app import server
+
+    app["data_dir"] = cartella
+    veri = server._promise_delivery(app)
+    return Sweeper(
+        archivio, execute=porta,
+        interpreta=turno or TurnoFinto({"avvisare": False, "testo": "x"}),
+        recipients=recapito or RecapitoFinto(),
+        write_to_thread=veri["write_to_thread"], ceiling=veri["ceiling"],
+        owner_thread=veri["owner_thread"])
+
+
+def _semina_cronologia_orfana(cartella):
+    conn = _get_store(cartella)._conn
+    conn.execute("INSERT INTO chat_sessions(session_id, started_at, last_msg_at) "
+                 "VALUES('prima', '2099-01-01T00:00:00Z', '2099-01-01T00:00:00Z')")
+    conn.commit()
+
+
+async def test_un_fai_orfano_che_matura_prima_di_ogni_accesso_si_esegue_nel_filo_del_proprietario(
+        archivio, cartella, tmp_path):
+    from hiris.app.chat_store import has_orphans
+
+    app = _app_with_ceiling(tmp_path, utenti=[_MARTA, _PAOLO_PROPRIETARIO])
+    _semina_cronologia_orfana(cartella)
+    ident = _semina_orfana(archivio, "fai")
+    porta = PortaFinta()
+    try:
+        await _orologio_montato(archivio, cartella, app, porta=porta).batti(ADESSO + 11)
+    finally:
+        app["servizi"].close()
+
+    assert [c["servizio"] for c, _ in porta.chiamate] == ["light.turn_on"]
+    assert porta.soggetti == [{"specie": "persona", "id": "paolo"}]
+    p = archivio.read(ident)
+    assert (p["stato"], p["thread"]) == ("mantenuta", PAOLO)
+    assert [m["content"] for m in load_history(cartella, thread=PAOLO)] == [
+        "Ho mantenuto la promessa «detta prima»."]
+    assert has_orphans(cartella), "la cronologia di prima aspetta il pannello"
+
+
+@pytest.mark.parametrize("caso", ["ha_guasto", "due_proprietari", "nessun_proprietario"])
+async def test_un_fai_orfano_senza_UN_proprietario_verificato_fallisce_come_prima(
+        archivio, cartella, tmp_path, caso):
+    utenti = {"ha_guasto": [_PAOLO_PROPRIETARIO],
+              "due_proprietari": [_PAOLO_PROPRIETARIO, {**_MARTA, "proprietario": True}],
+              "nessun_proprietario": [_MARTA, {**_PAOLO_PROPRIETARIO,
+                                               "proprietario": False}]}[caso]
+    app = _app_with_ceiling(tmp_path, utenti=utenti)
+    if caso == "ha_guasto":
+        app["ha_client"] = _UtentiGuasti()
+    ident = _semina_orfana(archivio, "fai")
+    porta = PortaFinta()
+    try:
+        await _orologio_montato(archivio, cartella, app, porta=porta).batti(ADESSO + 11)
+    finally:
+        app["servizi"].close()
+
+    assert porta.chiamate == []
+    p = archivio.read(ident)
+    assert (p["stato"], p["thread"]) == ("fallita", None)
+    assert "non è mai stata adottata" in p["motivo"]
+    assert _chat_rows(cartella) == ([], [])
+
+
+async def test_un_chiedi_orfano_porta_l_esito_nel_filo_del_proprietario_e_ai_suoi_telefoni(
+        archivio, cartella, tmp_path):
+    app = _app_with_ceiling(tmp_path, utenti=[_MARTA, _PAOLO_PROPRIETARIO])
+    ident = _semina_orfana(archivio)
+    porta = PortaFinta()
+    recapito = RecapitoFinto(["notify.mobile_app_iphone_bet"])
+    try:
+        await _orologio_montato(
+            archivio, cartella, app, porta=porta, recapito=recapito,
+            turno=TurnoFinto({"avvisare": True, "testo": "fa caldo"}),
+        ).batti(ADESSO + 11)
+    finally:
+        app["servizi"].close()
+
+    assert recapito.soggetti == [{"specie": "persona", "id": "paolo"}]
+    assert [c["servizio"] for c, _ in porta.chiamate] == ["notify.mobile_app_iphone_bet"]
+    assert [m["content"] for m in load_history(cartella, thread=PAOLO)] == [
+        "Esito della promessa «detta prima»:\nfa caldo"]
+    p = archivio.read(ident)
+    assert (p["stato"], p["thread"], p["motivo"]) == ("mantenuta", PAOLO, None)
+
+
+async def test_un_proprietario_che_non_si_puo_chiedere_non_adotta(archivio, cartella):
+    """Il collaboratore che solleva vale «non lo so»: nel dubbio non si adotta,
+    e il battito non muore."""
+    ident = _semina_orfana(archivio, "fai")
+    porta = PortaFinta()
+
+    async def _solleva():
+        raise RuntimeError("Home Assistant non risponde")
+
+    orologio = _orologio(archivio, cartella, porta=porta)
+    orologio._owner_thread = _solleva
+    await orologio.batti(ADESSO + 11)
+
+    assert porta.chiamate == []
+    p = archivio.read(ident)
+    assert (p["stato"], p["thread"]) == ("fallita", None)
+    assert "non è mai stata adottata" in p["motivo"]

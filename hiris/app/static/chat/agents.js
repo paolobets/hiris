@@ -81,7 +81,7 @@
   async function clearConversation() {
     /* L'id e' quello che il server marca `attiva` nell'elenco: senza, non
        c'e' niente da cancellare (il bottone e' gia' spento, vedi
-       chat/conversations.js::syncDeleteButton) e nessuna domanda ha senso.
+       chat/conversations.js::syncControls) e nessuna domanda ha senso.
        Irreversibile, quindi con conferma. Un fallimento lascia la vista
        com'e' e lo dice (chat/conversations.js): la UI non finge di aver
        cancellato quello che il server ha tenuto. */

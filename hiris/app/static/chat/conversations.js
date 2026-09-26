@@ -258,5 +258,8 @@
     syncControls: syncControls,
     relativeDay: relativeDay,
     idle: idle,
+    /* La frase di una ripresa riuscita senza messaggi: esposta perche' la
+       prova la legga da qui, come `HirisChatState.NETWORK_ERROR_TEXT`. */
+    HISTORY_TEXT: HISTORY_TEXT,
   };
 })();

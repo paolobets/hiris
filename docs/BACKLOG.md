@@ -642,7 +642,8 @@ va corretto, in un posto solo.
 `agenda_unread` lavorano solo sul filo di chi ha chiesto (un id di un altro filo risponde come
 inesistente); l'esito torna nel filo di chi ha chiesto e, quando risolve un recapito
 (`keeper/recipient.py::recipients_for`), come push al suo telefono. Le promesse di prima della
-fetta si adottano col proprietario, come la cronologia. Il testo sotto è il reperto com'era, con
+fetta si adottano col proprietario, come la cronologia — o al loro risveglio, se maturano prima
+che lui apra il pannello e Home Assistant dice un proprietario solo. Il testo sotto è il reperto com'era, con
 il rimando corretto (era `mind/watcher.py`, che non esiste: il codice dell'agenda è
 `keeper/store.py`).
 
@@ -802,6 +803,19 @@ telefono e forse un tablet, non dieci. Rischio accettato e dichiarato: **nessun 
 sul numero di push che la casa manda in una finestra di tempo. Il numero di promesse pendenti è
 già limitato (`CEILING_IN_SOSPESO` per filo, `HOUSE_CEILING_IN_SOSPESO` per la casa), e quel tetto
 limita anche questo — ma non è la stessa cosa di un freno sulle notifiche in sé.
+
+### L'elenco delle conversazioni rilegge ogni messaggio dell'utente a ogni apertura
+
+`origine: re-review del Task 7 e review finale della fetta «il seguito delle chat divise», 26/09/2026` · `hiris/app/chat_store.py::ChatStore.list_conversations`
+
+Per scegliere il titolo di ogni conversazione, `list_conversations` legge **tutti** i messaggi
+dell'utente ancora conservati nel filo, a ogni `GET /api/chat/conversations`: il titolo è il primo
+che non è vuoto per `_is_blank`, e la regola del vuoto vive in Python, non in SQL. Con la
+conservazione predefinita (90 giorni) il costo è limitato dalla conservazione stessa; con
+`history_retention_days = 0` (nessuna scadenza) non ha un limite e cresce con la vita del filo.
+Proposta della re-review: un cursore pigro per sessione, che si ferma al primo messaggio non vuoto
+di ciascuna invece di caricarli tutti. Non misurato sulla casa vera: nessun numero su quanti
+messaggi servano perché si senta.
 
 ### Le liste dei moduli JS ricopiate a mano in quattro test
 

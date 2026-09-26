@@ -448,19 +448,13 @@ class AgendaStore:
         return [serializza(r) for r in righe]
 
     def _count_pending(self, thread: ChatThread) -> int:
-        """La stessa conta, senza il lock: per chi lo tiene gia' (`create`).
-        Una casa sola per la query (fondamenta: nessun doppione) -- prima
-        `create` la riscriveva da se', e `count_pending` restava senza un
-        chiamante di produzione (misurato in Task 8, 26/09/2026)."""
+        """Quante promesse di questo filo sono in sospeso: cio' che il tetto
+        per filo (`CEILING_IN_SOSPESO`) misura. Senza il lock: la chiama solo
+        `create`, che lo tiene gia'. Non c'e' una versione pubblica: nessuno
+        in produzione la chiedeva (review finale, 26/09/2026)."""
         return self._conn.execute(
             f"SELECT count(*) FROM promesse WHERE stato IN ({_SOSPESI}) "
             f"AND {_OF_THREAD}", _thread_params(thread)).fetchone()[0]
-
-    def count_pending(self, thread: ChatThread) -> int:
-        """Quante promesse di questo filo sono in sospeso: cio' che il tetto
-        per filo (`CEILING_IN_SOSPESO`) misura."""
-        with self._lock:
-            return self._count_pending(thread)
 
     def has_orphans(self) -> bool:
         with self._lock:
@@ -471,8 +465,10 @@ class AgendaStore:
     def adopt_orphans(self, thread: ChatThread) -> int:
         """Le promesse senza filo diventano di `thread`. Torna quante.
 
-        CHI adotta non si decide qui: lo decide `chat_thread.adopt_if_owner`,
-        l'unico chiamante, con la stessa regola della cronologia. Una volta
+        CHI adotta non si decide qui: lo decidono la prima lettura dal
+        pannello (`chat_thread.adopt_if_owner`) e il risveglio di un'orfana
+        (`sweeper._adopt_orphan`), tutti e due col proprietario che Home
+        Assistant dice (`is_owner`, `sole_owner`). Una volta
         sola per costruzione: dopo, nessuna riga ha piu' `subject_key IS
         NULL`, e le promesse nuove nascono tutte con un filo.
         """
