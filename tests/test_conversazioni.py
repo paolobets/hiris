@@ -156,19 +156,40 @@ def test_una_prima_frase_di_soli_spazi_non_nasconde_il_titolo_vero(tmp_path):
     assert list_conversations(d, thread=PAOLO)[0]["titolo"] == "Com'è il meteo?"
 
 
-def test_una_prima_frase_di_soli_caratteri_invisibili_vale_come_vuota(tmp_path):
-    """Security Low-5 (review del Task 7): i caratteri di formato (categoria
-    Unicode Cf: spazio a larghezza zero, BOM, controlli di direzione) non si
-    vedono, e un titolo fatto solo di loro sarebbe un pulsante vuoto. Si
-    tolgono prima del controllo del vuoto: il titolo ricade come per una
-    frase vuota; dentro un titolo vero spariscono, e con loro il ribaltamento
-    di direzione che U+202E farebbe sul testo accanto."""
+def test_un_primo_messaggio_di_soli_invisibili_non_nasconde_il_titolo_vero(tmp_path):
+    """Security Low-5 e correzione 2 del Task 7: i caratteri di formato
+    (categoria Unicode Cf: spazio a larghezza zero, BOM, controlli di
+    direzione) non si vedono, quindi un messaggio fatto solo di loro e' vuoto
+    come uno di soli spazi -- e come quello non fa da titolo: il titolo e' la
+    frase che viene dopo."""
     d = str(tmp_path)
-    append_messages(_turn("\u200b\ufeff\u200b", "?"), d, thread=PAOLO)
-    assert list_conversations(d, thread=PAOLO)[0]["titolo"] == OUTCOME_ONLY_TITLE
-    new_conversation(d, thread=PAOLO)
-    append_messages(_turn("Acc\u200bendi\u202e la luce", "ok"), d, thread=PAOLO)
+    append_messages(_turn("\u200b\u200b", "?"), d, thread=PAOLO)
+    append_messages(_turn("Accendi la luce", "ok"), d, thread=PAOLO)
     assert list_conversations(d, thread=PAOLO)[0]["titolo"] == "Accendi la luce"
+
+
+def test_solo_messaggi_invisibili_e_un_esito_danno_il_titolo_di_ripiego(tmp_path):
+    d = str(tmp_path)
+    assert append_assistant_line("La promessa delle 17: la porta è chiusa.", d, thread=PAOLO)
+    append_messages(_user("\ufeff \u200b"), d, thread=PAOLO)
+    append_messages(_user("\u202e"), d, thread=PAOLO)
+    assert list_conversations(d, thread=PAOLO)[0]["titolo"] == OUTCOME_ONLY_TITLE
+
+
+def test_il_titolo_mostrato_tiene_il_testo_originale_anche_le_emoji_composte(tmp_path):
+    """I Cf servono solo a decidere se una frase e' vuota: il titolo resta
+    il testo scritto. La famiglia e' tre emoji unite da U+200D (ZWJ, un Cf):
+    toglierlo la spezzerebbe in tre figure."""
+    d = str(tmp_path)
+    family = "\U0001F468\u200d\U0001F469\u200d\U0001F467"
+    append_messages(_turn(f"Promemoria per la {family} stasera", "ok"), d, thread=PAOLO)
+    assert list_conversations(d, thread=PAOLO)[0]["titolo"] == f"Promemoria per la {family} stasera"
+
+
+def test_una_prima_frase_invisibile_nello_stesso_messaggio_non_fa_da_titolo(tmp_path):
+    d = str(tmp_path)
+    append_messages(_turn("\u200b\nAccendi la luce. Poi il resto", "ok"), d, thread=PAOLO)
+    assert list_conversations(d, thread=PAOLO)[0]["titolo"] == "Accendi la luce."
 
 
 def test_una_conversazione_aperta_da_un_esito_ha_il_titolo_di_ripiego(tmp_path):

@@ -5,6 +5,7 @@ import sqlite3
 import threading
 import unicodedata
 import uuid
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 
 from .chat_thread import ChatThread
@@ -137,23 +138,28 @@ def unanswered_assistant_lines(history: list[dict]) -> list[str]:
     return lines
 
 
-def conversation_title(first_user_message: str | None) -> str:
-    """La prima frase di `first_user_message`, spazi ricomposti, dentro
-    `CONVERSATION_TITLE_MAX_CHARS`; `OUTCOME_ONLY_TITLE` se non c'e'.
+def _is_blank(text: str) -> bool:
+    """Vero se `text` non ha niente che si veda: solo spazi o caratteri di
+    formato (categoria Unicode Cf: spazio a larghezza zero, BOM, controlli di
+    direzione). E' l'unica regola del «vuoto» per il titolo: prima la query
+    ne aveva una sua (solo spazi) e un messaggio di soli invisibili passava
+    per una frase (security Low-5, review del Task 7). I Cf servono solo a
+    DECIDERE: il testo mostrato resta quello scritto, perche' fra i Cf c'e'
+    anche U+200D, che tiene insieme le emoji composte."""
+    return all(ch.isspace() or unicodedata.category(ch) == "Cf" for ch in text)
 
-    I caratteri di formato (categoria Unicode Cf: spazio a larghezza zero,
-    BOM, controlli di direzione come U+202E) escono PRIMA del controllo del
-    vuoto: non si vedono, e un messaggio fatto solo di loro darebbe un
-    pulsante senza testo (security Low-5, review del Task 7). Limite
-    dichiarato: la query di `list_conversations` salta solo i messaggi vuoti
-    di spazi, quindi un primo messaggio di soli invisibili da' il titolo di
-    ripiego invece della frase che viene dopo."""
-    text = "".join(ch for ch in (first_user_message or "")
-                   if unicodedata.category(ch) != "Cf").strip()
-    sentence = " ".join(_SENTENCE_END_RE.split(text, maxsplit=1)[0].split())
-    if not sentence:
-        return OUTCOME_ONLY_TITLE
-    return truncate_with_marker(sentence, CONVERSATION_TITLE_MAX_CHARS)
+
+def conversation_title(user_messages: Iterable[str]) -> str:
+    """La prima frase che si vede fra i messaggi dell'utente, in ordine,
+    spazi ricomposti, dentro `CONVERSATION_TITLE_MAX_CHARS`;
+    `OUTCOME_ONLY_TITLE` se nessuna si vede (la conversazione l'ha aperta
+    l'esito di una promessa, o l'utente ha scritto solo invisibili)."""
+    for message in user_messages:
+        for part in _SENTENCE_END_RE.split(message or ""):
+            sentence = " ".join(part.split())
+            if not _is_blank(sentence):
+                return truncate_with_marker(sentence, CONVERSATION_TITLE_MAX_CHARS)
+    return OUTCOME_ONLY_TITLE
 
 
 def _purge_toxic_turns(messages: list[dict]) -> list[dict]:
@@ -560,22 +566,29 @@ class ChatStore:
         with self._mu:
             active = self._fresh_session_id(thread)
             rows = self._conn.execute(
-                "SELECT s.session_id, s.last_msg_at, "
-                "(SELECT m.content FROM chat_messages m "
-                " WHERE m.session_id = s.session_id AND m.role = 'user' "
-                " AND trim(m.content, ' ' || char(9) || char(10) || char(13)) != '' "
-                " AND m.timestamp >= ? "
-                " ORDER BY m.id LIMIT 1) AS first_user "
-                "FROM chat_sessions s "
+                "SELECT s.session_id, s.last_msg_at FROM chat_sessions s "
                 "WHERE s.subject_key = ? AND s.entry_point = ? AND "
                 + _HAS_RETAINED_MESSAGE
                 # A pari secondo (una ripresa subito dopo l'ultimo messaggio)
                 # l'attiva sta in testa: e' la conversazione piu' recente.
                 + " ORDER BY s.last_msg_at DESC, s.session_id = ? DESC, s.rowid DESC",
-                (cutoff, thread.subject_key, thread.entry_point, cutoff, active),
+                (thread.subject_key, thread.entry_point, cutoff, active),
             ).fetchall()
+            # I messaggi dell'utente ancora ricordati, in ordine: quale fa da
+            # titolo lo decide `_is_blank`, in Python, perche' SQLite non sa
+            # cos'e' un carattere di formato e due regole del «vuoto» ne
+            # farebbero passare uno per una frase.
+            said: dict[str, list[str]] = {}
+            for m in self._conn.execute(
+                "SELECT m.session_id, m.content FROM chat_messages m "
+                "JOIN chat_sessions s ON s.session_id = m.session_id "
+                "WHERE s.subject_key = ? AND s.entry_point = ? "
+                "AND m.role = 'user' AND m.timestamp >= ? ORDER BY m.id",
+                (thread.subject_key, thread.entry_point, cutoff),
+            ):
+                said.setdefault(m["session_id"], []).append(m["content"])
         return [{"id": r["session_id"],
-                 "titolo": conversation_title(r["first_user"]),
+                 "titolo": conversation_title(said.get(r["session_id"], [])),
                  "ultimo_messaggio": r["last_msg_at"],
                  "attiva": r["session_id"] == active}
                 for r in rows]
