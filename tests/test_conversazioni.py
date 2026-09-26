@@ -12,6 +12,7 @@ quella a mano di `test_chat_divise.py` (il confine finto `X-Chi`, per avere
 Paolo e Marta) e quella VERA (`create_app`), per il CSRF e per le rotte che
 esistono davvero.
 """
+import asyncio
 import os
 from datetime import UTC, datetime, timedelta
 
@@ -42,7 +43,8 @@ from hiris.app.chat_store import (
     new_conversation,
     resume_conversation,
 )
-from hiris.app.chat_thread import ChatThread
+from hiris.app.chat_thread import ChatThread, SyncTurnsInFlight
+from hiris.app.proxy._sanitize import _TRUNCATED
 from hiris.app.reasoning.queue import ReasoningQueue
 from tests.test_chat_divise import MARTA, PAOLO, _make_app, _semina_orfane
 from tests.test_settings_api import csrf_stretto  # noqa: F401
@@ -123,16 +125,35 @@ def test_il_titolo_e_la_prima_frase_dell_utente(tmp_path):
     assert titles == {old: "Com'è la temperatura in sala?", new: "Accendi la luce"}
 
 
-def test_il_titolo_lungo_si_tronca_col_segno(tmp_path):
+def test_una_frase_scritta_a_mano_non_porta_il_segno_del_taglio(tmp_path):
+    """Il taglio che si vede e' del CSS (spec §4): una prima frase lunga ma
+    normale arriva intera, senza il segno nel testo del pulsante."""
     d = str(tmp_path)
-    long_sentence = "parola " * 40
-    append_messages(_turn(long_sentence, "ok"), d, thread=PAOLO)
+    sentence = ("Vorrei capire perché la caldaia si accende alle sei anche nei giorni "
+                "in cui nessuno è in casa e la temperatura esterna supera i quindici gradi")
+    append_messages(_turn(sentence, "ok"), d, thread=PAOLO)
     title = list_conversations(d, thread=PAOLO)[0]["titolo"]
-    # Il segno di taglio della casa (`truncate_with_marker`), dentro il tetto.
-    marker = " [troncato]"
+    assert title == sentence
+    assert _TRUNCATED not in title
+
+
+def test_un_muro_di_testo_incollato_si_ferma_al_tetto_col_segno(tmp_path):
+    """Il tetto e' contro l'abuso: un testo incollato senza un punto."""
+    d = str(tmp_path)
+    wall = "parola " * 200
+    append_messages(_turn(wall, "ok"), d, thread=PAOLO)
+    title = list_conversations(d, thread=PAOLO)[0]["titolo"]
     assert len(title) == CONVERSATION_TITLE_MAX_CHARS
-    assert title.endswith(marker)
-    assert long_sentence.startswith(title[:-len(marker)])
+    assert title.endswith(_TRUNCATED)
+    assert wall.startswith(title[:-len(_TRUNCATED)])
+
+
+def test_una_prima_frase_di_soli_spazi_non_nasconde_il_titolo_vero(tmp_path):
+    """Tabulazioni e a capo contano come vuoto, non solo gli spazi."""
+    d = str(tmp_path)
+    append_messages(_turn(" \t\r\n\t ", "?"), d, thread=PAOLO)
+    append_messages(_turn("Com'è il meteo?", "Sereno"), d, thread=PAOLO)
+    assert list_conversations(d, thread=PAOLO)[0]["titolo"] == "Com'è il meteo?"
 
 
 def test_una_conversazione_aperta_da_un_esito_ha_il_titolo_di_ripiego(tmp_path):
@@ -358,6 +379,8 @@ def test_cancellare_non_tocca_le_orfane(tmp_path):
 
 def _app_with_conversations(tmp_path, **kw):
     app, q, data_dir = _make_app(tmp_path, **kw)
+    # Come in `create_app`: il segno dei turni sincroni nasce con l'app.
+    app["sync_turns"] = SyncTurnsInFlight()
     app.router.add_get("/api/chat/conversations", handle_list_conversations)
     app.router.add_post("/api/chat/conversations", handle_new_conversation)
     app.router.add_post("/api/chat/conversations/{id}/resume", handle_resume_conversation)
@@ -449,6 +472,98 @@ async def test_con_una_risposta_in_arrivo_le_tre_scritture_rispondono_409(tmp_pa
         assert _sessions(d, PAOLO) == before
 
         assert (await client.post("/api/chat/conversations", headers=_M)).status == 200
+
+
+def _session_contents(data_dir, session_id):
+    return [r["content"] for r in _get_store(data_dir)._conn.execute(
+        "SELECT content FROM chat_messages WHERE session_id = ? ORDER BY id",
+        (session_id,)).fetchall()]
+
+
+async def _writes_during_turn(client, data_dir, old):
+    """Le tre scritture di Paolo a meta' turno: 409, e l'archivio fermo."""
+    before = _sessions(data_dir, PAOLO)
+    for method, path in (("POST", "/api/chat/conversations"),
+                         ("POST", f"/api/chat/conversations/{old}/resume"),
+                         ("DELETE", f"/api/chat/conversations/{old}")):
+        r = await client.request(method, path, headers=_P)
+        assert r.status == 409, path
+        assert await r.json() == {"error": PENDING_REPLY_ERROR}
+    assert _sessions(data_dir, PAOLO) == before
+    # Marta non aspetta la risposta di Paolo.
+    assert (await client.post("/api/chat/conversations", headers=_M)).status == 200
+
+
+@pytest.mark.asyncio
+async def test_durante_un_turno_sincrono_le_tre_scritture_rispondono_409(tmp_path):
+    """Review di sicurezza Low-1: il turno della catena non ha una riga in
+    coda, e senza il suo segno la risposta atterrava nella conversazione
+    ripresa a meta' turno."""
+    app, _q, d = _app_with_conversations(tmp_path)
+    old, new = _two_conversations(d)
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def slow_chat(**_kw):
+        started.set()
+        await release.wait()
+        return "risposta lenta"
+
+    app["llm_router"].chat = slow_chat
+    async with TestClient(TestServer(app)) as client:
+        turn = asyncio.ensure_future(client.post(
+            "/api/chat", json={"message": "domanda lenta"}, headers=_P))
+        await asyncio.wait_for(started.wait(), 5)
+        await _writes_during_turn(client, d, old)
+        release.set()
+        assert (await turn).status == 200
+        after = await client.post(f"/api/chat/conversations/{old}/resume", headers=_P)
+        assert after.status == 200
+    # La risposta e' nella conversazione in cui e' stata chiesta.
+    assert _session_contents(d, new)[-2:] == ["domanda lenta", "risposta lenta"]
+    assert "risposta lenta" not in _session_contents(d, old)
+
+
+@pytest.mark.asyncio
+async def test_durante_un_turno_in_streaming_le_tre_scritture_rispondono_409(tmp_path):
+    app, _q, d = _app_with_conversations(tmp_path)
+    old, new = _two_conversations(d)
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def slow_stream(**_kw):
+        started.set()
+        await release.wait()
+        yield 'data: {"type": "token", "text": "risposta in streaming"}\n\n'
+
+    app["llm_router"].chat_stream = slow_stream
+    async with TestClient(TestServer(app)) as client:
+        turn = asyncio.ensure_future(client.post(
+            "/api/chat", json={"message": "domanda in streaming", "stream": True},
+            headers=_P))
+        await asyncio.wait_for(started.wait(), 5)
+        await _writes_during_turn(client, d, old)
+        release.set()
+        resp = await turn
+        assert resp.status == 200
+        await resp.read()
+        after = await client.post("/api/chat/conversations", headers=_P)
+        assert after.status == 200
+    assert _session_contents(d, new)[-2:] == ["domanda in streaming",
+                                              "risposta in streaming"]
+
+
+@pytest.mark.asyncio
+async def test_un_turno_sincrono_che_fallisce_libera_il_filo(tmp_path):
+    app, _q, d = _app_with_conversations(tmp_path)
+    _two_conversations(d)
+
+    async def broken_chat(**_kw):
+        raise RuntimeError("guasto del modello")
+
+    app["llm_router"].chat = broken_chat
+    async with TestClient(TestServer(app)) as client:
+        assert (await client.post("/api/chat", json={"message": "x"},
+                                  headers=_P)).status == 500
+        assert (await client.post("/api/chat/conversations", headers=_P)).status == 200
 
 
 @pytest.mark.asyncio
@@ -556,6 +671,8 @@ async def test_delete_conversazione_senza_x_requested_with_e_403_e_non_cancella(
 
 @pytest.mark.asyncio
 async def test_l_elenco_dell_app_vera_risponde(real_client):
+    # Il segno dei turni sincroni nasce con l'app, non all'avvio.
+    assert isinstance(real_client.app["sync_turns"], SyncTurnsInFlight)
     _d, old, new = _real_session(real_client)
     body = await (await real_client.get("/api/chat/conversations")).json()
     assert [c["id"] for c in body["conversations"]] == [new, old]

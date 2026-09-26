@@ -45,6 +45,7 @@ from .api.middleware_csrf import csrf_middleware
 from .api.middleware_internal_auth import internal_auth_middleware
 from .backends.embeddings import build_embedding_provider
 from .chat_settings import ChatSettings, file_lacks_retention_days
+from .chat_thread import SyncTurnsInFlight
 from .env_util import env_bool
 from .home_space.behavior import reread, reread_dashboards
 from .home_space.briefing import digest_visible_entity_ids
@@ -5653,6 +5654,11 @@ def create_app() -> web.Application:
     # partito» e' un'eta' dichiarabile (progetto §11.2). Nessuna scadenza: un
     # esito di due ore fa resta li', vecchio, e la pagina ne dice l'eta'.
     app["occurrence_registry"] = OccurrenceRegistry()
+    # I fili con un turno sincrono in volo (fetta «il seguito delle chat
+    # divise»): scritto da `handle_chat`, letto dalle rotte delle
+    # conversazioni per il 409. Nasce qui per la stessa ragione del registro
+    # sopra: non dipende da niente, e dopo l'avvio l'app non si scrive piu'.
+    app["sync_turns"] = SyncTurnsInFlight()
     app.router.add_static("/static", static_path, show_index=False)
 
     app.router.add_get("/", _serve_index)

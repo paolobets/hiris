@@ -182,11 +182,15 @@ _DIGEST_MSG_LEN = 120   # max chars per message in the digest
 _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 #: Il titolo di una conversazione (spec 2026-09-26 §4) non si salva: e' la
-#: prima frase dell'utente nella sessione, letta quando serve. Il tetto e'
-#: una scelta, non una misura: un titolo in una barra laterale, non un
-#: paragrafo -- il resto lo taglia gia' l'ellissi del CSS. Il segno del taglio
-#: e' quello della casa (`truncate_with_marker`), non un secondo.
-CONVERSATION_TITLE_MAX_CHARS = 60
+#: prima frase dell'utente nella sessione, letta quando serve. Il taglio che
+#: si VEDE e' dell'ellissi del CSS (spec §4), non di questo tetto: questo e'
+#: un limite contro l'abuso -- un muro di testo incollato senza un punto che
+#: altrimenti viaggerebbe intero, per ogni conversazione, in ogni risposta
+#: dell'elenco. Una scelta, non una misura: abbastanza alto che una prima
+#: frase scritta a mano non lo raggiunga, cosi' nessun titolo normale porta
+#: il segno del taglio (quello della casa, `truncate_with_marker`) ne' nel
+#: testo ne' nel nome accessibile del pulsante.
+CONVERSATION_TITLE_MAX_CHARS = 500
 #: Il titolo di una conversazione senza nessuna frase dell'utente: l'ha
 #: aperta l'esito di una promessa (RULING 3.9). Non si inventa un turno
 #: dell'utente per avere un titolo.
@@ -549,7 +553,8 @@ class ChatStore:
                 "SELECT s.session_id, s.last_msg_at, "
                 "(SELECT m.content FROM chat_messages m "
                 " WHERE m.session_id = s.session_id AND m.role = 'user' "
-                " AND trim(m.content) != '' AND m.timestamp >= ? "
+                " AND trim(m.content, ' ' || char(9) || char(10) || char(13)) != '' "
+                " AND m.timestamp >= ? "
                 " ORDER BY m.id LIMIT 1) AS first_user "
                 "FROM chat_sessions s "
                 "WHERE s.subject_key = ? AND s.entry_point = ? AND "

@@ -10,6 +10,8 @@ firmato (`api/canali.py`) e la strada del modello (`misura_turno`).
 from __future__ import annotations
 
 import logging
+from collections import Counter
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -21,6 +23,38 @@ _ENTRY_POINT_BY_AUTH = {"ingress": "pannello", "canale": "firma", "no_token": "s
 class ChatThread:
     subject_key: str
     entry_point: str
+
+
+class SyncTurnsInFlight:
+    """I fili con un turno SINCRONO in volo (la catena, JSON o SSE).
+
+    Il turno del ponte ha la sua guardia nella coda (`has_pending_chat`); il
+    turno sincrono no: dura quanto la chiamata al modello, e per tutto quel
+    tempo nessuna riga dice che la risposta sta per essere scritta nella
+    conversazione attiva. Senza questo segno «nuova», «riprendi» e «cancella»
+    rispondevano 200 a meta' turno e la risposta atterrava nella conversazione
+    ripresa (fetta «il seguito delle chat divise», review di sicurezza Low-1).
+
+    Un contatore e non un insieme: due turni dello stesso filo possono
+    sovrapporsi, e il primo che finisce non deve liberare il filo al secondo.
+    In memoria, come la chiamata che protegge: muore col processo.
+    """
+
+    def __init__(self) -> None:
+        self._counts: Counter[ChatThread] = Counter()
+
+    @contextmanager
+    def turn(self, thread: ChatThread):
+        self._counts[thread] += 1
+        try:
+            yield
+        finally:
+            self._counts[thread] -= 1
+            if self._counts[thread] <= 0:
+                del self._counts[thread]
+
+    def busy(self, thread: ChatThread) -> bool:
+        return self._counts.get(thread, 0) > 0
 
 
 def subject_key_for(soggetto: dict | None) -> str:

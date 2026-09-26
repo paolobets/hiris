@@ -32,12 +32,16 @@ _CONVERSATION_NOT_FOUND = {"error": "non ho nessuna conversazione con quell’id
 def _reply_in_flight(request: web.Request, thread) -> web.Response | None:
     """Il 409 delle tre scritture sulle conversazioni, o `None`.
 
-    Una risposta del ponte in volo verra' scritta nella conversazione attiva
-    del filo (`server._submit_chat_reply`): chiuderla, sostituirla o
-    cancellarla adesso la farebbe atterrare altrove. Stessa guardia e stessa
-    frase del turno di chat (`handle_chat`)."""
+    Una risposta in volo verra' scritta nella conversazione attiva del filo:
+    chiuderla, sostituirla o cancellarla adesso la farebbe atterrare altrove.
+    Due strade, una frase (quella di `handle_chat`): il turno del ponte, che
+    la coda conosce (`has_pending_chat`, ripieghi compresi), e il turno
+    sincrono della catena, che dura quanto la chiamata al modello e lascia il
+    suo segno in `app["sync_turns"]` (`handlers_chat._sync_turn`)."""
     queue = request.app.get("reasoning_queue")
-    if queue is not None and queue.has_pending_chat(thread):
+    sync_turns = request.app.get("sync_turns")
+    if ((queue is not None and queue.has_pending_chat(thread))
+            or (sync_turns is not None and sync_turns.busy(thread))):
         return web.json_response({"error": PENDING_REPLY_ERROR}, status=409)
     return None
 

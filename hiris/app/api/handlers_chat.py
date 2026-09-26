@@ -2,6 +2,7 @@ import json
 import logging
 import secrets
 import time
+from contextlib import nullcontext
 
 from aiohttp import web
 
@@ -42,6 +43,16 @@ logger = logging.getLogger(__name__)
 # Always keep an even number of messages (user+assistant pairs) to preserve
 # conversation structure. Full history is still persisted and counted.
 _MAX_HISTORY_TOKENS = 6000
+
+def _sync_turn(app, thread: ChatThread):
+    """Il turno sincrono di `thread`, segnato in `app["sync_turns"]`.
+
+    L'app vera lo crea in `create_app`; un'app di prova costruita a mano che
+    non lo porta non ha nessuna rotta delle conversazioni da proteggere, e il
+    turno gira senza segno."""
+    turns = app.get("sync_turns")
+    return turns.turn(thread) if turns is not None else nullcontext()
+
 
 #: Il 409 «una risposta per volta» del filo: lo dicono questo turno e le
 #: rotte delle conversazioni (`handlers_chat_history.py`), che non possono
@@ -1109,213 +1120,162 @@ async def handle_chat(request: web.Request) -> web.Response:
             status=503,
         )
 
-    # Load server-side history (client-sent history field is ignored).
-    # Task 12: `giorni_conservazione` fa qui il suo SECONDO lavoro -- non solo
-    # la potatura notturna, ma anche quanto di questa conversazione HIRIS
-    # rilegge adesso. Riletto a ogni turno dall'archivio come il modello
-    # (vedi il commento sulla scadenza del ponte qui sotto), non catturato
-    # all'avvio: un utente che lo abbassa in `#/settings` lo vede avere
-    # effetto dal messaggio successivo, senza riavviare.
-    history = load_history(data_dir, thread=thread, days=settings.retention_days)
+    # Il segno del turno sincrono in volo, dalla lettura della cronologia
+    # alla scrittura della risposta: finche' c'e', le scritture sulle
+    # conversazioni del filo rispondono 409 come per un turno del ponte
+    # (`handlers_chat_history._reply_in_flight`). Rileggere il contesto da
+    # una conversazione e scrivere la risposta in un'altra sarebbe peggio.
+    with _sync_turn(request.app, thread):
+        # Load server-side history (client-sent history field is ignored).
+        # Task 12: `giorni_conservazione` fa qui il suo SECONDO lavoro -- non solo
+        # la potatura notturna, ma anche quanto di questa conversazione HIRIS
+        # rilegge adesso. Riletto a ogni turno dall'archivio come il modello
+        # (vedi il commento sulla scadenza del ponte qui sotto), non catturato
+        # all'avvio: un utente che lo abbassa in `#/settings` lo vede avere
+        # effetto dal messaggio successivo, senza riavviare.
+        history = load_history(data_dir, thread=thread, days=settings.retention_days)
 
-    # (max-turns check now runs above, before the subscription branch — see
-    # Fix 1 comment there.)
+        # (max-turns check now runs above, before the subscription branch — see
+        # Fix 1 comment there.)
 
-    context_history = _trim_history(history)
+        context_history = _trim_history(history)
 
-    # fetta E4 Task 4: il ramo "agent is None -> BASE_SYSTEM_PROMPT senza
-    # cronologia" non esiste piu'. Prima, un chatbot seminato mancante (id
-    # sbagliato, seed mai girato) faceva silenziosamente cadere `agent` a
-    # `None`: il prompt degradava a una stringa vuota E la cronologia
-    # smetteva di essere letta/scritta, senza che nessun log lo dicesse.
-    # `chat_settings` non e' mai `None` (`ChatSettings.load` non lo
-    # restituisce mai) -- quel ramo di degrado e' impossibile per
-    # costruzione, non solo non piu' preso. fetta E4 Task 5 ("un bot solo"):
-    # anche l'id transitorio che qui sotto selezionava la cronologia
-    # (`effective_chatbot_id`) e' uscito. Dalla fetta «le chat divise»
-    # `load_history`/`get_past_summaries` leggono la cronologia del FILO di
-    # chi scrive (`thread`, calcolato in cima), non piu' una sola per tutti.
-    system_prompt = _build_system_prompt(settings)
+        # fetta E4 Task 4: il ramo "agent is None -> BASE_SYSTEM_PROMPT senza
+        # cronologia" non esiste piu'. Prima, un chatbot seminato mancante (id
+        # sbagliato, seed mai girato) faceva silenziosamente cadere `agent` a
+        # `None`: il prompt degradava a una stringa vuota E la cronologia
+        # smetteva di essere letta/scritta, senza che nessun log lo dicesse.
+        # `chat_settings` non e' mai `None` (`ChatSettings.load` non lo
+        # restituisce mai) -- quel ramo di degrado e' impossibile per
+        # costruzione, non solo non piu' preso. fetta E4 Task 5 ("un bot solo"):
+        # anche l'id transitorio che qui sotto selezionava la cronologia
+        # (`effective_chatbot_id`) e' uscito. Dalla fetta «le chat divise»
+        # `load_history`/`get_past_summaries` leggono la cronologia del FILO di
+        # chi scrive (`thread`, calcolato in cima), non piu' una sola per tutti.
+        system_prompt = _build_system_prompt(settings)
 
-    # Il soffitto di chi ha scritto (I-1): si legge UNA volta per turno.
-    # Task 5 («chi gli parla») lo riusa anche per il `ruolo` della sezione
-    # "Chi ti sta parlando" (compose_chat_context, qui sotto) -- una lettura
-    # sola invece di due, come per il dispatcher piu' giu'.
-    soffitto = await per_richiesta(request.app, request)
+        # Il soffitto di chi ha scritto (I-1): si legge UNA volta per turno.
+        # Task 5 («chi gli parla») lo riusa anche per il `ruolo` della sezione
+        # "Chi ti sta parlando" (compose_chat_context, qui sotto) -- una lettura
+        # sola invece di due, come per il dispatcher piu' giu'.
+        soffitto = await per_richiesta(request.app, request)
 
-    # Chi parla + nucleo + sessioni precedenti, in un'unica stringa:
-    # `compose_chat_context` (Task 1 della fetta "il ponte riceve il nucleo",
-    # parita' A) estrae invariato il blocco che prima viveva qui -- vedi il
-    # suo docstring per il perche' (il Task 2 mette la STESSA stringa nel job
-    # del ponte, senza ricopiarla) e per il ragionamento storico su
-    # nucleo/degrado/sessioni. Task 5: guadagna `soggetto`/`ruolo`/
-    # `role_known` (fix round 1, Important 3: senza questo un ruolo mai
-    # letto si affermerebbe come "utente" vero; rinominato dal Task 8 perche'
-    # faceva ombra alla funzione importata `soffitto.ruolo_letto`).
-    context_str = compose_chat_context(request.app, data_dir, thread=thread,
-                                       soggetto=request.get("soggetto"),
-                                       ruolo=soffitto.get("ruolo"),
-                                       role_known=ruolo_letto(soffitto),
-                                       said_before=unanswered_assistant_lines(
-                                           history))
+        # Chi parla + nucleo + sessioni precedenti, in un'unica stringa:
+        # `compose_chat_context` (Task 1 della fetta "il ponte riceve il nucleo",
+        # parita' A) estrae invariato il blocco che prima viveva qui -- vedi il
+        # suo docstring per il perche' (il Task 2 mette la STESSA stringa nel job
+        # del ponte, senza ricopiarla) e per il ragionamento storico su
+        # nucleo/degrado/sessioni. Task 5: guadagna `soggetto`/`ruolo`/
+        # `role_known` (fix round 1, Important 3: senza questo un ruolo mai
+        # letto si affermerebbe come "utente" vero; rinominato dal Task 8 perche'
+        # faceva ombra alla funzione importata `soffitto.ruolo_letto`).
+        context_str = compose_chat_context(request.app, data_dir, thread=thread,
+                                           soggetto=request.get("soggetto"),
+                                           ruolo=soffitto.get("ruolo"),
+                                           role_known=ruolo_letto(soffitto),
+                                           said_before=unanswered_assistant_lines(
+                                               history))
 
-    # I sedici strumenti della chat -- il perche' di ogni riga sta
-    # nel docstring di `create_tool_dispatcher` (sopra), che dalla
-    # parita' B e' l'unico costruttore del dispatcher: qui e nella rotta
-    # `/api/mcp` del ponte si chiama la STESSA funzione, non due costruzioni
-    # che possono divergere.
-    #
-    # fix round 1 (Important 3 della review indipendente): il commento che
-    # viveva qui descriveva un ramo -- il "dispatcher di scorta"
-    # `self._dispatcher`, che leggeva `visible_entity_ids` e degradava APERTO
-    # quando assente -- gia' uscito dai runner alla fetta E2 Task 7
-    # (`ToolDispatcher`) e i cui ultimi resti (il costruttore `dispatcher=`,
-    # l'`elif self._dispatcher is not None`) sono usciti dalla fetta E4,
-    # Task 6. `visible_entity_ids` non e' piu' un parametro di nessuna firma:
-    # non c'e' piu' niente da riaprire ne' da tenere chiuso su quel fronte, la
-    # trappola stessa non esiste piu'.
-    #
-    # fetta «costruire»: l'identita' di QUESTO turno si conia UNA volta qui,
-    # non dentro il dispatcher -- questa funzione risponde a UNA richiesta
-    # HTTP sola (sincrona o in streaming, mai entrambe), quindi un turno le
-    # basta. Serve alla guardia dell'officina (`propose`/`confirm`, vedi
-    # il docstring di `create_tool_dispatcher`).
-    exchange_id = secrets.token_urlsafe(8)
-    # Lo STESSO `soffitto` letto sopra per la sezione "Chi ti sta parlando" --
-    # accanto all'identita' del turno, si porta nel dispatcher. Leggerlo
-    # dentro lo strumento vorrebbe dire un secondo posto in cui si decide
-    # chi puo' cosa.
-    tool_dispatcher = create_tool_dispatcher(
-        request.app, exchange=exchange_id,
-        soffitto=soffitto,
-        soggetto=request.get("soggetto"),
-        # Lo STESSO testo che va al modello come `user_message` piu' sotto.
-        frase=message,
-        # Il filo di chi scrive, calcolato in cima a questa funzione: serve
-        # alla guardia dell'officina (spec §5, «confirm e' del filo»).
-        thread=thread)
+        # I sedici strumenti della chat -- il perche' di ogni riga sta
+        # nel docstring di `create_tool_dispatcher` (sopra), che dalla
+        # parita' B e' l'unico costruttore del dispatcher: qui e nella rotta
+        # `/api/mcp` del ponte si chiama la STESSA funzione, non due costruzioni
+        # che possono divergere.
+        #
+        # fix round 1 (Important 3 della review indipendente): il commento che
+        # viveva qui descriveva un ramo -- il "dispatcher di scorta"
+        # `self._dispatcher`, che leggeva `visible_entity_ids` e degradava APERTO
+        # quando assente -- gia' uscito dai runner alla fetta E2 Task 7
+        # (`ToolDispatcher`) e i cui ultimi resti (il costruttore `dispatcher=`,
+        # l'`elif self._dispatcher is not None`) sono usciti dalla fetta E4,
+        # Task 6. `visible_entity_ids` non e' piu' un parametro di nessuna firma:
+        # non c'e' piu' niente da riaprire ne' da tenere chiuso su quel fronte, la
+        # trappola stessa non esiste piu'.
+        #
+        # fetta «costruire»: l'identita' di QUESTO turno si conia UNA volta qui,
+        # non dentro il dispatcher -- questa funzione risponde a UNA richiesta
+        # HTTP sola (sincrona o in streaming, mai entrambe), quindi un turno le
+        # basta. Serve alla guardia dell'officina (`propose`/`confirm`, vedi
+        # il docstring di `create_tool_dispatcher`).
+        exchange_id = secrets.token_urlsafe(8)
+        # Lo STESSO `soffitto` letto sopra per la sezione "Chi ti sta parlando" --
+        # accanto all'identita' del turno, si porta nel dispatcher. Leggerlo
+        # dentro lo strumento vorrebbe dire un secondo posto in cui si decide
+        # chi puo' cosa.
+        tool_dispatcher = create_tool_dispatcher(
+            request.app, exchange=exchange_id,
+            soffitto=soffitto,
+            soggetto=request.get("soggetto"),
+            # Lo STESSO testo che va al modello come `user_message` piu' sotto.
+            frase=message,
+            # Il filo di chi scrive, calcolato in cima a questa funzione: serve
+            # alla guardia dell'officina (spec §5, «confirm e' del filo»).
+            thread=thread)
 
-    # fetta "la catena diventa l'unica verita'": qui c'era
-    # `agent_model = settings.model`. Il campo e' uscito con la decisione
-    # del proprietario del 13 agosto: il modello si sceglie per provider, nella
-    # pagina Modelli, e la chat chiede SEMPRE `auto`. Non e' una costante di
-    # comodo: `auto` e' l'UNICO valore che fa passare il turno dal ciclo di
-    # ripiego di `LLMRouter.chat` invece che da `_route()`, che sceglie una
-    # volta sola e non ripiega mai.
-    agent_model = "auto"
-    # Personas are always the chat entity (Slice 5 retired the non-chat
-    # "agent" type and the `type` field itself) — no per-type branch needed
-    # here. Kept as a literal only because runner.chat/chat_stream still take
-    # `agent_type` for model auto-resolution (AUTO_MODEL_MAP).
-    agent_type = "chat"
-    # fetta E4 Task 4: `max_tokens` era uno dei sette campi che il turno di
-    # chat leggeva dal vecchio `Chatbot`, ma GIA' inerte in pratica -- non e'
-    # entrato in `ChatSettings`, diventa qui una costante diretta:
-    # la chat interattiva ha un tetto d'uscita piu' alto del `MAX_TOKENS` di
-    # modulo dei runner (4096), perche' una risposta lunga -- il riepilogo di
-    # una casa grande, un elenco di ricordi -- lo supera legittimamente.
-    #
-    # fetta E4 Task 9 (il conto): questo commento diceva "higher output ceiling
-    # than the per-agent eval cap" e "complex requests -- a multi-view
-    # dashboard, a long script -- legitimately need more room, and the old 4096
-    # default truncated them mid-tool-call". Tre dichiarazioni false al
-    # presente, stessa famiglia bonificata al Task 8 in claude_runner.py
-    # (`_TRUNCATION_NOTICE`, il commento su `MAX_TOKENS`): l'agente di
-    # valutazione col suo tetto e' uscito con la fetta E3 Task 8
-    # (`run_with_actions`/`EVALUATION_TOOL_DEFS`) -- non c'e' piu' un "eval cap"
-    # con cui confrontarsi; le plance e gli script non sono piu' cose che HIRIS
-    # sa fare (l'attuazione e' uscita con la fetta E2), quindi non sono l'uso
-    # che riempie il tetto; e nessun tool-call puo' essere troncato "a meta'"
-    # per colpa di un default che nessun chiamante di produzione raggiunge piu'
-    # (qui si passa SEMPRE `CHAT_MAX_TOKENS`).
-    #
-    # Il vecchio codice "floorava" un valore persistito fino a
-    # CHAT_MAX_TOKENS -- ma senza piu' un editor che possa persisterne uno
-    # diverso da 4096 (uscito con la E4 Task 3), il floor scattava SEMPRE:
-    # usare direttamente CHAT_MAX_TOKENS e' lo stesso comportamento, senza il
-    # giro morto.
-    # `require_confirmation` (l'altro dei sette campi, gia' inerte da fetta E2
-    # Task 5) e' uscito per intero dalla firma dei runner alla fetta E4 Task 6:
-    # non c'e' piu' nulla da passare qui.
-    agent_max_tokens = CHAT_MAX_TOKENS
-    agent_restrict = settings.restrict_to_home
-    agent_response_mode = settings.response_mode
-    agent_thinking_budget = settings.thinking_budget
+        # fetta "la catena diventa l'unica verita'": qui c'era
+        # `agent_model = settings.model`. Il campo e' uscito con la decisione
+        # del proprietario del 13 agosto: il modello si sceglie per provider, nella
+        # pagina Modelli, e la chat chiede SEMPRE `auto`. Non e' una costante di
+        # comodo: `auto` e' l'UNICO valore che fa passare il turno dal ciclo di
+        # ripiego di `LLMRouter.chat` invece che da `_route()`, che sceglie una
+        # volta sola e non ripiega mai.
+        agent_model = "auto"
+        # Personas are always the chat entity (Slice 5 retired the non-chat
+        # "agent" type and the `type` field itself) — no per-type branch needed
+        # here. Kept as a literal only because runner.chat/chat_stream still take
+        # `agent_type` for model auto-resolution (AUTO_MODEL_MAP).
+        agent_type = "chat"
+        # fetta E4 Task 4: `max_tokens` era uno dei sette campi che il turno di
+        # chat leggeva dal vecchio `Chatbot`, ma GIA' inerte in pratica -- non e'
+        # entrato in `ChatSettings`, diventa qui una costante diretta:
+        # la chat interattiva ha un tetto d'uscita piu' alto del `MAX_TOKENS` di
+        # modulo dei runner (4096), perche' una risposta lunga -- il riepilogo di
+        # una casa grande, un elenco di ricordi -- lo supera legittimamente.
+        #
+        # fetta E4 Task 9 (il conto): questo commento diceva "higher output ceiling
+        # than the per-agent eval cap" e "complex requests -- a multi-view
+        # dashboard, a long script -- legitimately need more room, and the old 4096
+        # default truncated them mid-tool-call". Tre dichiarazioni false al
+        # presente, stessa famiglia bonificata al Task 8 in claude_runner.py
+        # (`_TRUNCATION_NOTICE`, il commento su `MAX_TOKENS`): l'agente di
+        # valutazione col suo tetto e' uscito con la fetta E3 Task 8
+        # (`run_with_actions`/`EVALUATION_TOOL_DEFS`) -- non c'e' piu' un "eval cap"
+        # con cui confrontarsi; le plance e gli script non sono piu' cose che HIRIS
+        # sa fare (l'attuazione e' uscita con la fetta E2), quindi non sono l'uso
+        # che riempie il tetto; e nessun tool-call puo' essere troncato "a meta'"
+        # per colpa di un default che nessun chiamante di produzione raggiunge piu'
+        # (qui si passa SEMPRE `CHAT_MAX_TOKENS`).
+        #
+        # Il vecchio codice "floorava" un valore persistito fino a
+        # CHAT_MAX_TOKENS -- ma senza piu' un editor che possa persisterne uno
+        # diverso da 4096 (uscito con la E4 Task 3), il floor scattava SEMPRE:
+        # usare direttamente CHAT_MAX_TOKENS e' lo stesso comportamento, senza il
+        # giro morto.
+        # `require_confirmation` (l'altro dei sette campi, gia' inerte da fetta E2
+        # Task 5) e' uscito per intero dalla firma dei runner alla fetta E4 Task 6:
+        # non c'e' piu' nulla da passare qui.
+        agent_max_tokens = CHAT_MAX_TOKENS
+        agent_restrict = settings.restrict_to_home
+        agent_response_mode = settings.response_mode
+        agent_thinking_budget = settings.thinking_budget
 
-    wants_stream = (
-        "text/event-stream" in request.headers.get("Accept", "")
-        or body.get("stream") is True
-    )
-
-    if wants_stream:
-        stream_resp = web.StreamResponse(
-            status=200,
-            headers={
-                "Content-Type": "text/event-stream",
-                "Cache-Control": "no-cache",
-                "X-Accel-Buffering": "no",
-            },
+        wants_stream = (
+            "text/event-stream" in request.headers.get("Accept", "")
+            or body.get("stream") is True
         )
-        await stream_resp.prepare(request)
-        collected_tokens: list[str] = []
-        async for chunk in runner.chat_stream(
-            user_message=message,
-            system_prompt=system_prompt,
-            context_str=context_str,
-            conversation_history=context_history,
-            model=agent_model,
-            max_tokens=agent_max_tokens,
-            agent_type=agent_type,
-            restrict_to_home=agent_restrict,
-            # fetta E4 Task 6 ("un bot solo"): `chatbot_id`/`require_confirmation`
-            # sono usciti dalla firma dei runner -- non c'e' piu' nulla da
-            # passare qui. `chatbot_id` alimentava solo il tracking dei consumi
-            # per-bot (uscito con lui) e il campo di debug `agent_id` del
-            # done-event SSE (uscito anche lui, nessun lettore in static/).
-            response_mode=agent_response_mode,
-            thinking_budget=agent_thinking_budget,
-            tools=KNOWLEDGE_TOOLS,
-            dispatcher=tool_dispatcher,
-        ):
-            await stream_resp.write(chunk.encode())
-            try:
-                evt = json.loads(chunk.removeprefix("data: ").strip())
-                etype = evt.get("type")
-                if etype == "token":
-                    collected_tokens.append(evt.get("text", ""))
-                elif etype == "discard_collected":
-                    # Runner detected a leaked tool-call rendered as text and
-                    # asked us to drop the polluted assistant turn before it
-                    # reaches chat_store (would corrupt next turn's history).
-                    collected_tokens.clear()
-            except Exception as exc:
-                # Non-JSON chunk (e.g. heartbeat ': keep-alive') is normal in SSE.
-                logger.debug("SSE chunk parse skipped: %s", exc)
-        await stream_resp.write_eof()
-        full_response = "".join(collected_tokens)
-        # Fetta "esce il documentale": qui c'era la detokenizzazione della
-        # risposta accumulata (`pseudonymizer.detokenize(full_response,
-        # runner.last_pseudonym_map)`), uscita con brain/privacy.py. Era un
-        # no-op: nessun percorso del prodotto chiamava piu' `pseudonymize()`,
-        # quindi `last_pseudonym_map` era sempre vuota e non c'era nessun
-        # token da riespandere. Vedi il commento gemello nel ramo sincrono.
-        # Skip persistence for toxic / synthetic-error responses so the next
-        # turn does not see a poisoned history. discard_collected already
-        # zeroes collected_tokens for tool-call leaks; this also covers the
-        # rare case where the runner returns a known-bad payload some other
-        # way (e.g. partial leak that slipped past detection).
-        if full_response and not _is_toxic_assistant(full_response):
-            append_messages([
-                {"role": "user", "content": message},
-                {"role": "assistant", "content": full_response},
-            ], data_dir, thread=thread)
-        return stream_resp
 
-    try:
-        async with misura_turno(request.app.get("usage"), runner,
-                                specie="chat", canale="catena",
-                                soggetto=request.get("soggetto")):
-            response = await runner.chat(
+        if wants_stream:
+            stream_resp = web.StreamResponse(
+                status=200,
+                headers={
+                    "Content-Type": "text/event-stream",
+                    "Cache-Control": "no-cache",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+            await stream_resp.prepare(request)
+            collected_tokens: list[str] = []
+            async for chunk in runner.chat_stream(
                 user_message=message,
                 system_prompt=system_prompt,
                 context_str=context_str,
@@ -1324,52 +1284,109 @@ async def handle_chat(request: web.Request) -> web.Response:
                 max_tokens=agent_max_tokens,
                 agent_type=agent_type,
                 restrict_to_home=agent_restrict,
-                # Vedi il commento gemello sul ramo streaming sopra.
+                # fetta E4 Task 6 ("un bot solo"): `chatbot_id`/`require_confirmation`
+                # sono usciti dalla firma dei runner -- non c'e' piu' nulla da
+                # passare qui. `chatbot_id` alimentava solo il tracking dei consumi
+                # per-bot (uscito con lui) e il campo di debug `agent_id` del
+                # done-event SSE (uscito anche lui, nessun lettore in static/).
                 response_mode=agent_response_mode,
                 thinking_budget=agent_thinking_budget,
                 tools=KNOWLEDGE_TOOLS,
                 dispatcher=tool_dispatcher,
-            )
-    except RunnerBackendError as exc:
-        # Review C/#13: runners now raise instead of returning a friendly
-        # string on API failure, so LLMRouter's auto-fallback loop actually
-        # engages — reproduce the exact same string-shaped degraded response
-        # so everything below (toxicity/persistence/serialization) is
-        # unaffected.
-        #
-        # fetta "la catena diventa l'unica verita'" (Task 4): questo commento
-        # diceva «that loop only ever raises here when `agent_model` pins an
-        # explicit non-"auto" model». Non e' piu' vero, perche' `agent_model`
-        # e' SEMPRE "auto" (sopra): quel ramo di `LLMRouter.chat` non esiste
-        # piu' per nessun turno. Sul ramo "auto" il router cattura ogni
-        # eccezione di ogni backend e restituisce una stringa, quindi
-        # attraverso `app["llm_router"]` questo `except` non e' piu'
-        # raggiungibile. Resta perche' `runner` puo' anche essere
-        # `app["claude_runner"]` (handle_chat, la riga che sceglie il
-        # runner), cioe' un backend diretto che invece SOLLEVA: e' li' che
-        # questa rete serve ancora. Detto, non taciuto: un ramo che non si sa
-        # se e' vivo e' esattamente cio' che questa fetta chiude altrove.
-        response = exc.friendly_message
+            ):
+                await stream_resp.write(chunk.encode())
+                try:
+                    evt = json.loads(chunk.removeprefix("data: ").strip())
+                    etype = evt.get("type")
+                    if etype == "token":
+                        collected_tokens.append(evt.get("text", ""))
+                    elif etype == "discard_collected":
+                        # Runner detected a leaked tool-call rendered as text and
+                        # asked us to drop the polluted assistant turn before it
+                        # reaches chat_store (would corrupt next turn's history).
+                        collected_tokens.clear()
+                except Exception as exc:
+                    # Non-JSON chunk (e.g. heartbeat ': keep-alive') is normal in SSE.
+                    logger.debug("SSE chunk parse skipped: %s", exc)
+            await stream_resp.write_eof()
+            full_response = "".join(collected_tokens)
+            # Fetta "esce il documentale": qui c'era la detokenizzazione della
+            # risposta accumulata (`pseudonymizer.detokenize(full_response,
+            # runner.last_pseudonym_map)`), uscita con brain/privacy.py. Era un
+            # no-op: nessun percorso del prodotto chiamava piu' `pseudonymize()`,
+            # quindi `last_pseudonym_map` era sempre vuota e non c'era nessun
+            # token da riespandere. Vedi il commento gemello nel ramo sincrono.
+            # Skip persistence for toxic / synthetic-error responses so the next
+            # turn does not see a poisoned history. discard_collected already
+            # zeroes collected_tokens for tool-call leaks; this also covers the
+            # rare case where the runner returns a known-bad payload some other
+            # way (e.g. partial leak that slipped past detection).
+            if full_response and not _is_toxic_assistant(full_response):
+                append_messages([
+                    {"role": "user", "content": message},
+                    {"role": "assistant", "content": full_response},
+                ], data_dir, thread=thread)
+            return stream_resp
 
-    # Fetta "esce il documentale": qui c'era la detokenizzazione della
-    # risposta prima del controllo di tossicita', della persistenza e della
-    # serializzazione. Esce con brain/privacy.py, e non cambia il testo di un
-    # carattere: la pseudonimizzazione era INERTE nell'intero prodotto --
-    # l'unico ramo che popolava `last_pseudonym_map` (il dispatcher che
-    # passava `pseudonym_map=` a `dispatch()`) e' uscito con la fetta E2
-    # Task 7, quindi da allora `detokenize` girava su un dizionario vuoto.
-    # Era, testualmente, una promessa di protezione non mantenuta: la stessa
-    # famiglia della frase su `mayan.sensitivity` che esce con questa fetta.
+        try:
+            async with misura_turno(request.app.get("usage"), runner,
+                                    specie="chat", canale="catena",
+                                    soggetto=request.get("soggetto")):
+                response = await runner.chat(
+                    user_message=message,
+                    system_prompt=system_prompt,
+                    context_str=context_str,
+                    conversation_history=context_history,
+                    model=agent_model,
+                    max_tokens=agent_max_tokens,
+                    agent_type=agent_type,
+                    restrict_to_home=agent_restrict,
+                    # Vedi il commento gemello sul ramo streaming sopra.
+                    response_mode=agent_response_mode,
+                    thinking_budget=agent_thinking_budget,
+                    tools=KNOWLEDGE_TOOLS,
+                    dispatcher=tool_dispatcher,
+                )
+        except RunnerBackendError as exc:
+            # Review C/#13: runners now raise instead of returning a friendly
+            # string on API failure, so LLMRouter's auto-fallback loop actually
+            # engages — reproduce the exact same string-shaped degraded response
+            # so everything below (toxicity/persistence/serialization) is
+            # unaffected.
+            #
+            # fetta "la catena diventa l'unica verita'" (Task 4): questo commento
+            # diceva «that loop only ever raises here when `agent_model` pins an
+            # explicit non-"auto" model». Non e' piu' vero, perche' `agent_model`
+            # e' SEMPRE "auto" (sopra): quel ramo di `LLMRouter.chat` non esiste
+            # piu' per nessun turno. Sul ramo "auto" il router cattura ogni
+            # eccezione di ogni backend e restituisce una stringa, quindi
+            # attraverso `app["llm_router"]` questo `except` non e' piu'
+            # raggiungibile. Resta perche' `runner` puo' anche essere
+            # `app["claude_runner"]` (handle_chat, la riga che sceglie il
+            # runner), cioe' un backend diretto che invece SOLLEVA: e' li' che
+            # questa rete serve ancora. Detto, non taciuto: un ramo che non si sa
+            # se e' vivo e' esattamente cio' che questa fetta chiude altrove.
+            response = exc.friendly_message
 
-    # Persist the new user+assistant exchange — but skip when the runner
-    # returned a synthetic error / leak sentinel, so the next turn doesn't
-    # inherit a degraded history. The user retains the visible error in the
-    # current response payload.
-    if not _is_toxic_assistant(response):
-        append_messages([
-            {"role": "user", "content": message},
-            {"role": "assistant", "content": response},
-        ], data_dir, thread=thread)
+        # Fetta "esce il documentale": qui c'era la detokenizzazione della
+        # risposta prima del controllo di tossicita', della persistenza e della
+        # serializzazione. Esce con brain/privacy.py, e non cambia il testo di un
+        # carattere: la pseudonimizzazione era INERTE nell'intero prodotto --
+        # l'unico ramo che popolava `last_pseudonym_map` (il dispatcher che
+        # passava `pseudonym_map=` a `dispatch()`) e' uscito con la fetta E2
+        # Task 7, quindi da allora `detokenize` girava su un dizionario vuoto.
+        # Era, testualmente, una promessa di protezione non mantenuta: la stessa
+        # famiglia della frase su `mayan.sensitivity` che esce con questa fetta.
+
+        # Persist the new user+assistant exchange — but skip when the runner
+        # returned a synthetic error / leak sentinel, so the next turn doesn't
+        # inherit a degraded history. The user retains the visible error in the
+        # current response payload.
+        if not _is_toxic_assistant(response):
+            append_messages([
+                {"role": "user", "content": message},
+                {"role": "assistant", "content": response},
+            ], data_dir, thread=thread)
 
     raw = getattr(runner, "last_tool_calls", None)
     # Pass the raw tool-call objects ({tool, input}) — the shape the panel's
