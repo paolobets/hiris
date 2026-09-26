@@ -295,7 +295,13 @@ Il ripiego dichiarato è la **2.1.276**, l'ultima ad aver girato davvero su ques
 gira sull'abbonamento, non su una chiave API. Sono i due fatti che nessun file del repository
 può dire.
 
-### La CLI del ponte sale alla 2.1.282 nel prossimo rilascio
+### La CLI del ponte sale alla 2.1.283 nel prossimo rilascio
+
+**Rimandata di nuovo il 26/09/2026.** Il cancello dei componenti ha segnalato `2.1.281 -> 2.1.283`
+durante il rilascio della **v3.68.0** (le chat divise e il loro seguito), uscita con
+`HIRIS_COMPONENTI_OK=1` — dichiarato qui. Stessa ragione della volta prima: la 3.68.0 cambia chi
+parla con HIRIS, le promesse e le notifiche, e va verificata dal vivo da sola; alzare la CLI sotto
+di lei vorrebbe dire cambiare due variabili insieme. Ora sono **due salti di patch** (282, 283).
 
 **Aperta il 24/09/2026.** Il cancello dei componenti ha segnalato `2.1.281 -> 2.1.282` durante il
 rilascio della **v3.67.1**, che è uscita con `HIRIS_COMPONENTI_OK=1` — dichiarato qui, come
