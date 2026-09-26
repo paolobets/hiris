@@ -12,7 +12,7 @@ il potere che al modello non e' stato dato:
   Rispondere vale piu' che proporre, e una coda che non si riempie e' il primo
   obiettivo di questo attore.
 - `proposta` -- non scrive niente: passa da `costruisci`, che compone e valida
-  ma non tocca la casa, e lascia i tre esiti al proprietario.
+  ma non tocca la casa, e lascia i tre esiti a chi amministra la casa.
 - `riparazione` -- **la fa il codice**, non il modello: il giro riscrive la
   ricetta rotta prima di chiamarlo e aggiunge l'esito come fatto. Se potesse
   dichiararla lui, potrebbe dichiarare una riparazione che non e' avvenuta --

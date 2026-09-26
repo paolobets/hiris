@@ -7,13 +7,14 @@ la storia -- brief Task 5) e le proprieta' di sicurezza 5.1-5.6 di
 `security-constraints.md`.
 """
 import json
+import sqlite3
 import time
 
 import pytest
 
 from hiris.app.action.construction.revisions import (
-    MOTIVO_DISDETTA,
-    MOTIVO_DISDETTA_LEGACY_20260926,
+    _SCHEMA,
+    REASON_DISDETTA,
     ConstructionStore,
 )
 from hiris.app.action.construction.workshop import _invalid_form
@@ -158,14 +159,14 @@ def test_il_nucleo_non_nomina_l_utente_per_le_entita_nascoste():
 
 
 # ── 5.5: il motivo di rifiuto e' UNA costante, non retipata in JS ───────────
+# Fix round 1 (RULING: migrate): nessun lettore di produzione leggeva il
+# testo legacy, quindi non resta una seconda costante a runtime -- si
+# migrano le righe vecchie una volta sola, all'apertura dell'archivio
+# (`revisions.py::_migration_3`), e il vecchio letterale vive SOLO li'.
 
-def test_motivo_disdetta_e_una_costante_sola_che_non_nomina_un_proprietario():
-    assert MOTIVO_DISDETTA == "rifiutata dalla pagina"
-    assert "proprietario" not in MOTIVO_DISDETTA
-    # il letterale legacy resta dichiarato, con la data, per le righe vecchie
-    # -- non si cancella, si tiene distinto (5.5)
-    assert MOTIVO_DISDETTA_LEGACY_20260926 == "rifiutata dal proprietario"
-    assert MOTIVO_DISDETTA != MOTIVO_DISDETTA_LEGACY_20260926
+def test_reason_disdetta_e_una_costante_sola_che_non_nomina_un_proprietario():
+    assert REASON_DISDETTA == "rifiutata dalla pagina"
+    assert "proprietario" not in REASON_DISDETTA
 
 
 def test_mark_cancelled_scrive_la_costante_non_un_letterale_ricopiato(tmp_path):
@@ -179,29 +180,39 @@ def test_mark_cancelled_scrive_la_costante_non_un_letterale_ricopiato(tmp_path):
         riga = archivio.read(ident)
     finally:
         archivio.close()
-    assert riga["motivo"] == MOTIVO_DISDETTA
+    assert riga["motivo"] == REASON_DISDETTA
 
 
-def test_una_riga_col_motivo_legacy_e_ancora_un_no_leggibile(tmp_path):
-    """Le righe scritte prima del 26/09/2026 non si migrano (5.5): l'API le
-    legge cosi' come sono, col vecchio testo -- e' la pagina (guardando
-    `stato`, mai `motivo`) a farle rendere come un «no», non un valore
-    diverso scritto qui."""
-    archivio = ConstructionStore(str(tmp_path / "costruzioni.db"))
+def test_una_riga_col_vecchio_letterale_legge_quello_nuovo_dopo_la_migrazione(tmp_path):
+    """Il RULING del fix round 1: un archivio scritto PRIMA di questa
+    versione (schema v2, il letterale «rifiutata dal proprietario» sul
+    disco) non resta cosi' per sempre -- aprirlo con `ConstructionStore`
+    (che porta lo schema a v3, `_migration_3`) lo riscrive UNA volta.
+
+    Si simula un DB "vecchio" a mano (schema v2 gia' applicato, timbrato con
+    `PRAGMA user_version=2`) perche' un DB nuovo, senza tabelle preesistenti,
+    nasce gia' alla versione piu' recente e non farebbe girare nessuna
+    migrazione -- non proverebbe niente."""
+    percorso = str(tmp_path / "vecchio.db")
+    grezza = sqlite3.connect(percorso)
+    grezza.executescript(_SCHEMA)
+    grezza.execute(
+        "INSERT INTO costruzioni(id,creata_ts,aggiornata_ts,stato,gesto,dominio,"
+        "chiave,origine,turno,frase,prima_json,dopo_json,helper_json,anteprima,"
+        "esecuzione_id,motivo,subject_key,entry_point) "
+        "VALUES('v1',1.0,1.0,'disdetta','crea','automation','1','chat',NULL,NULL,"
+        "NULL,NULL,'[]','',NULL,'rifiutata dal proprietario',NULL,NULL)")
+    grezza.execute("PRAGMA user_version = 2")
+    grezza.commit()
+    grezza.close()
+
+    archivio = ConstructionStore(percorso)
     try:
-        ident = archivio.propose(
-            operation="crea", domain="automation", key="1", actor="chat",
-            exchange=None, phrase=None, prima=None, dopo={"alias": "x"},
-            helper=[], preview="", now=time.time())["id"]
-        archivio._conn.execute(
-            "UPDATE costruzioni SET stato='disdetta', motivo=? WHERE id=?",
-            (MOTIVO_DISDETTA_LEGACY_20260926, ident))
-        archivio._conn.commit()
-        riga = archivio.read(ident)
+        riga = archivio.read("v1")
     finally:
         archivio.close()
     assert riga["stato"] == "disdetta"
-    assert riga["motivo"] == MOTIVO_DISDETTA_LEGACY_20260926
+    assert riga["motivo"] == REASON_DISDETTA
 
 
 # ── 5.3: niente di per-turno entra nel prefisso in cache ────────────────────

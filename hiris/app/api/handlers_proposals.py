@@ -160,7 +160,7 @@ async def handle_proposal_redo(request: web.Request) -> web.Response:
              f"  (il perche' che avevi scritto: {row['perche']})"]
     for giro in row["giri"]:
         lines.append(f"  gia' scartata prima: {giro.get('scartata')}")
-        lines.append(f"  perche' lui aveva chiesto: {giro.get('richiesta')}")
+        lines.append(f"  la richiesta di allora: {giro.get('richiesta')}")
     lines += ["", "Cosa ti chiede di cambiare:", f"  {richiesta}"]
     try:
         # «Rifalla» è un turno di chat a tutti gli effetti: parte da un gesto

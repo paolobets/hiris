@@ -574,7 +574,7 @@ class Workshop:
 
     def _only_pending(self, exchange: str | None,
                       thread: ChatThread | None) -> tuple[str | None, str]:
-        """Quale proposta l'utente sta confermando, quando non l'ha nominata.
+        """Quale proposta sta confermando chi ti sta parlando, quando non l'ha nominata.
 
         **Il difetto che chiude** (23/09/2026, misurato sulla casa vera): il
         `proposta_id` nasce in un risultato di strumento, la cronologia della

@@ -106,16 +106,19 @@
    Applicata, Non riuscita, Scaduta) -- "Hai detto no", la prima versione,
    parlava in seconda persona e stonava nella fila dei badge (review Task 11).
    SCOPERTA VERA, non solo del test: `revisions.py::mark_cancelled` scrive
-   la COSTANTE `MOTIVO_DISDETTA` ("rifiutata dalla pagina", fetta "il seguito
+   la COSTANTE `REASON_DISDETTA` ("rifiutata dalla pagina", fetta "il seguito
    delle chat divise" Task 5, 26/09/2026 -- prima era letteralmente
-   `motivo="rifiutata dal proprietario"`, mai riscritta sulle righe vecchie:
-   `MOTIVO_DISDETTA_LEGACY_20260926` dichiara quel valore) su OGNI riga
-   `disdetta` -- se la pagina mostrasse `motivo` verbatim anche li' (come fa
-   per `rifiutata`), la parola "rifiutata" tornerebbe dentro dalla porta sul
-   retro, vecchia o nuova che sia. Questa pagina non mostra mai `motivo`
-   quando `stato === 'disdetta'`, guardando lo STATO e non il testo: e' per
-   questo che il valore legacy si comporta gia' come quello nuovo, senza
-   bisogno di distinguerli qui.
+   `motivo="rifiutata dal proprietario"`). Fix round 1: il vecchio testo non
+   resta una seconda costante a runtime che nessuno legge -- le righe scritte
+   prima di questa versione si riscrivono UNA volta sola in una migrazione
+   dell'archivio (`revisions.py::_migration_3`), col vecchio letterale
+   dichiarato solo li', con la sua data. Se la pagina mostrasse `motivo`
+   verbatim anche per `disdetta` (come fa per `rifiutata`), la parola
+   "rifiutata" tornerebbe dentro dalla porta sul retro. Questa pagina non
+   mostra mai `motivo` quando `stato === 'disdetta'`, guardando lo STATO e
+   non il testo: e' per questo che una riga non ancora migrata (o letta da
+   un archivio non aggiornato) si comporta gia' come una migrata, senza
+   bisogno di distinguerle qui.
 
    -- Comportamenti (guida §7) --
    Approva: nessuna conferma, la card e' gia' la revisione completa.
@@ -628,10 +631,12 @@ window.HirisConstructions = (function () {
     if (c.prima || c.dopo) box.appendChild(detailsDisclosure(c));
 
     /* motivo: MAI per `disdetta` -- vedi il commento di testa, `revisions.py`
-       scrive la costante `MOTIVO_DISDETTA` ("rifiutata dalla pagina") su ogni
-       riga disdetta, righe vecchie comprese (che portano ancora il testo
-       legacy "rifiutata dal proprietario"), e mostrarlo tornerebbe a far
-       leggere la parola "rifiutata" su una riga che e' il "no" di chi
+       scrive la costante `REASON_DISDETTA` ("rifiutata dalla pagina") su ogni
+       riga disdetta; le righe scritte prima del fix round 1 (col vecchio
+       testo "rifiutata dal proprietario") si migrano una volta sola
+       all'apertura dell'archivio (`_migration_3`), ma anche una non ancora
+       migrata mostrerebbe la stessa faccia: mostrare `motivo` tornerebbe a
+       far leggere la parola "rifiutata" su una riga che e' il "no" di chi
        costruisce. */
     if (c.motivo && c.stato !== 'disdetta') {
       var reason = el('p', null, c.motivo);

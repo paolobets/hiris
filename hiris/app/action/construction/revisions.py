@@ -38,15 +38,16 @@ logger = logging.getLogger(__name__)
 #: da un soggetto che questo metodo non riceve. UNA costante: la pagina la
 #: legge dal campo `motivo` che l'API espone gia' su ogni riga (`_row`,
 #: `handlers_constructions._out`), non la retipa in JavaScript.
-MOTIVO_DISDETTA = "rifiutata dalla pagina"
-
-#: Il testo legacy: le righe scritte PRIMA del 26/09/2026 lo portano ancora
-#: sul disco e non si riscrivono (nessuna migrazione a freddo dei valori
-#: gia' scritti). Restano un «no» lo stesso: `constructions-route.js`
-#: nasconde `motivo` guardando lo STATO (`disdetta`), mai il testo -- vedi il
-#: commento di testa di quel file -- quindi il valore vecchio si comporta
-#: gia' come quello nuovo, senza bisogno di leggerlo qui.
-MOTIVO_DISDETTA_LEGACY_20260926 = "rifiutata dal proprietario"
+#:
+#: Fix round 1 (review Task 5): si chiamava `MOTIVO_DISDETTA` -- un
+#: identificatore italiano nell'ambito chiuso `action/`, dove il glossario
+#: decide gia' `motivo -> reason` (`docs/GLOSSARIO.md`). Rinominata seguendo
+#: la stessa convenzione della sorella `STATES_SOSPESO` due righe sotto:
+#: prefisso inglese deciso (`REASON`), radice del dominio non tradotta
+#: (`DISDETTA`, un valore di dominio che il glossario rinvia di proposito,
+#: vedi «I valori di dominio»). Il VALORE resta italiano: e' testo per
+#: l'archivio e per la pagina, non un nome.
+REASON_DISDETTA = "rifiutata dalla pagina"
 
 # L'insieme «in sospeso» -- stessa forma di `STATES_SOSPESO` in
 # `keeper/promise.py`, per lo stesso motivo: una proposta rivendicata
@@ -104,6 +105,29 @@ def _migration_2(conn) -> None:
         conn.execute("ALTER TABLE costruzioni ADD COLUMN subject_key TEXT")
     if "entry_point" not in colonne:
         conn.execute("ALTER TABLE costruzioni ADD COLUMN entry_point TEXT")
+
+
+def _migration_3(conn) -> None:
+    """v2 -> v3 (fetta "il seguito delle chat divise", Task 5, fix round 1,
+    26/09/2026 -- RULING del controllore: nessun lettore di produzione legge
+    il testo legacy, quindi si migra invece di tenere una seconda costante a
+    runtime che nessuno usa).
+
+    Il "no" scritto da `mark_cancelled` cambiava testo da «rifiutata dal
+    proprietario» a `REASON_DISDETTA` ("rifiutata dalla pagina"): un
+    proprietario solo non e' piu' vero (spec 2026-09-26 §3). Le righe
+    scritte PRIMA di questa versione portano ancora il vecchio letterale sul
+    disco -- e qui si riscrivono UNA volta sola, invece di lasciarle
+    diverse per sempre. Il vecchio testo vive SOLO qui, con la sua data e la
+    sua ragione: nessun'altra riga del modulo lo nomina piu'.
+
+    Doppia guardia (`stato='disdetta' AND motivo=?`) perche' e' un'UPDATE
+    sui DATI, non sullo schema: tocca solo le righe che portano ESATTAMENTE
+    il vecchio testo, mai una `rifiutata`/`applicata` che porta un motivo
+    diverso per un'altra ragione."""
+    conn.execute(
+        "UPDATE costruzioni SET motivo=? WHERE stato='disdetta' AND motivo=?",
+        (REASON_DISDETTA, "rifiutata dal proprietario"))
 
 
 def _load(text):
@@ -166,7 +190,8 @@ class ConstructionStore:
     def __init__(self, db_path: str) -> None:
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=2, migrations={2: _migration_2})
+        init_schema(self._conn, _SCHEMA, version=3,
+                   migrations={2: _migration_2, 3: _migration_3})
 
     def close(self) -> None:
         with self._lock:
@@ -229,11 +254,11 @@ class ConstructionStore:
         return [_row(r) for r in righe]
 
     def count_pending(self, *, now: float) -> int:
-        """Quante proposte aspettano una risposta dell'utente.
+        """Quante proposte aspettano una risposta di chi costruisce.
 
         Qui il pallino conta i sospesi e sugli Impegni no
         (`keeper/store.py::count_unread`), e non e' un'incoerenza: una
-        proposta in attesa aspetta letteralmente il proprietario -- senza il
+        proposta in attesa aspetta letteralmente chi costruisce -- senza il
         suo si' non succede niente -- mentre un impegno in sospeso aspetta
         l'ora.
 
@@ -249,7 +274,7 @@ class ConstructionStore:
         `propose`. Una proposta lasciata scadere senza che nessuno apra la
         pagina resterebbe `in_attesa` sul disco per sempre, e il pallino
         continuerebbe a dire «1 in attesa» a ogni turno di chat e a ogni
-        ritorno del fuoco. L'utente apre, `scadi()` gira, e la pagina dice
+        ritorno del fuoco. Chi costruisce apre, `scadi()` gira, e la pagina dice
         «Nessuna proposta in attesa»: il pallino l'avrebbe mandato in una
         pagina vuota, cioe' avrebbe fatto il contrario del suo mestiere, che
         e' dire se vale la pena aprirla.
@@ -378,7 +403,7 @@ class ConstructionStore:
             cur = self._conn.execute(
                 "UPDATE costruzioni SET stato='disdetta', aggiornata_ts=?, motivo=? "
                 "WHERE id=? AND stato='in_attesa'",
-                (now, MOTIVO_DISDETTA, ident))
+                (now, REASON_DISDETTA, ident))
             self._conn.commit()
         if cur.rowcount == 0:
             return {"errore": "quella proposta non e' piu' in attesa"}

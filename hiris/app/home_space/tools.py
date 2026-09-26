@@ -963,7 +963,7 @@ PROPOSE_TOOL_DEF = {
         "con un `proposta_id`. Per farla diventare vera serve `confirm`, e "
         "**non nello stesso turno**: mostra l'anteprima a chi ti sta parlando, digli che "
         "la proposta resta in attesa nella pagina «Proposte», e aspetta che sia "
-        "lui a dire di procedere. "
+        "chi ti sta parlando a dire di procedere. "
         "`gesto` e' «crea», «modifica» o «cancella». `dominio` e' «automation», "
         "«script» o «scene». Per modificare o cancellare serve `chiave` (l'id "
         "dell'automazione o della scena, lo slug dello script): la trovi con "
@@ -1020,9 +1020,9 @@ PROPOSE_TOOL_DEF = {
             # e il consigliere dissentiva da se stesso -- misurato sulla casa
             # vera (audit delle fondamenta, rilievo 5).
             "richiesto": {"type": "string", "enum": list(STRUCTURES),
-                          "description": "Solo se chi ti sta parlando ha nominato lui "
-                                         "una delle tre strutture, con quella "
-                                         "parola. Serve a dirti se non sono "
+                          "description": "Solo se chi ti sta parlando ha nominato, di "
+                                         "sua iniziativa, una delle tre strutture, con "
+                                         "quella parola. Serve a dirti se non sono "
                                          "d'accordo. La sua frase va in «frase», "
                                          "non qui: se non ha nominato nessuna "
                                          "struttura, ometti questo campo."},

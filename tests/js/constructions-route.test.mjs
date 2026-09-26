@@ -106,13 +106,15 @@ test('il no di chi costruisce non si mostra come un fallimento', async () => {
 });
 
 test('una riga «disdetta» col vecchio motivo (righe scritte prima del 26/09/2026) resta un no, non un fallimento', async () => {
-  // Sicurezza 5.5: `revisions.py::MOTIVO_DISDETTA_LEGACY_20260926` dichiara
-  // il testo che le righe vecchie portano ancora sul disco
-  // ("rifiutata dal proprietario"). Questa pagina non lo riscrive e non lo
-  // distingue dal nuovo ("rifiutata dalla pagina"): nasconde `motivo`
-  // guardando lo STATO (`disdetta`), mai il testo -- quindi il valore legacy
-  // deve rendere ESATTAMENTE come il nuovo, con entrambi i letterali provati
-  // qui uno accanto all'altro.
+  // Sicurezza 5.5, fix round 1: `revisions.py::_migration_3` riscrive UNA
+  // volta le righe vecchie (dal letterale "rifiutata dal proprietario" alla
+  // costante `REASON_DISDETTA`, "rifiutata dalla pagina") aprendo
+  // l'archivio -- ma un archivio non ancora aggiornato, o una riga letta
+  // prima che la migrazione giri, porta ancora il vecchio testo. Questa
+  // pagina non lo riscrive e non lo distingue dal nuovo: nasconde `motivo`
+  // guardando lo STATO (`disdetta`), mai il testo -- quindi il valore
+  // vecchio deve rendere ESATTAMENTE come il nuovo, con entrambi i
+  // letterali provati qui uno accanto all'altro.
   const { dom } = montaCon({ constructions: [
     { id: 'd1', stato: 'disdetta', gesto: 'crea', dominio: 'automation',
       chiave: '1', anteprima: '', prima: null, dopo: {}, creata_ts: 2,
