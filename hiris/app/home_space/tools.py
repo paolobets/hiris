@@ -267,7 +267,7 @@ SEARCH_TOOL_DEF = {
         "piu' voci si chiamano allo stesso modo (due «Bagno» su piani diversi, "
         "un alias che collide col nome vero di un'altra area) la lista ne ha "
         "piu' di uno e il risultato e' marcato `ambiguo` -- in quel caso scegli "
-        "tu, guardando il resto della conversazione, o chiedi all'utente: non "
+        "tu, guardando il resto della conversazione, o chiedi a chi ti sta parlando: non "
         "prendere semplicemente il primo della lista. "
         "Ogni candidato porta il `nome` con cui la casa lo conosce e, per le entita', "
         "il `dominio` (`light`, `sensor`, `switch`, ...): **guarda il dominio prima di "
@@ -276,20 +276,20 @@ SEARCH_TOOL_DEF = {
         "booleano -- la stessa forma in `view`), il nome che vedi in `nome` non l'ha "
         "scelto chi vive in questa casa: viene dedotto da cio' che Home Assistant mostra "
         "a schermo, e i due campi portano lo stesso testo. "
-        "Un candidato di tipo `entita` può portare anche `nascosta: true`: l'utente l'ha "
+        "Un candidato di tipo `entita` può portare anche `nascosta: true`: la persona l'ha "
         "tolta dalle proprie viste in Home Assistant, ma esiste comunque, ed è per questo "
         "che qui NON viene esclusa come invece accade nelle liste di `view` — dire "
         "«non esiste» di una cosa che c'è sarebbe peggio che dirla nascosta. Non proporla "
-        "spontaneamente se la domanda non la riguarda; se invece la riguarda — l'utente "
-        "ha cercato proprio quel nome, o chiede esplicitamente cosa è nascosto — usala "
-        "e dillo, non negarla. "
+        "spontaneamente se la domanda non la riguarda; se invece la riguarda — chi ti sta "
+        "parlando ha cercato proprio quel nome, o chiede esplicitamente cosa è nascosto — "
+        "usala e dillo, non negarla. "
         "`nome_visto` è il PEZZO del testo che ha combaciato, non necessariamente tutta "
         "la frase che hai cercato: il riconoscimento avviene DENTRO il testo, quindi «la "
         "lampada di sopra» può agganciare un'entità chiamata esattamente «lampada». "
         "Confrontalo con quello che hai chiesto: se è più corto, hai un riferimento "
         "preciso per QUELLA parola, non per il resto — una posizione, un dettaglio che "
-        "il match non ha catturato — e non dare per scontato che l'utente parlasse "
-        "proprio di quella cosa. "
+        "il match non ha catturato — e non dare per scontato che chi ti sta parlando si "
+        "riferisse proprio a quella cosa. "
         "Un candidato di tipo `piano` NON si passa a `view`, che non sa aprire un "
         "piano da solo: serve a `execute(piani=...)`, per agire su tutte le aree di "
         "quel piano insieme. `automazione` e `script` invece si passano a `view` "
@@ -348,8 +348,8 @@ SEARCH_TOOL_DEF = {
                 "type": "string",
                 "description": (
                     "Il testo in cui cercare nomi di aree, entita', dispositivi, piani, "
-                    "automazioni, script o etichette, cosi' come l'ha scritto l'utente "
-                    "(es. 'quanto fa caldo in soggiorno?')."
+                    "automazioni, script o etichette, cosi' come l'ha scritto chi ti sta "
+                    "parlando (es. 'quanto fa caldo in soggiorno?')."
                 ),
             },
         },
@@ -459,13 +459,13 @@ VIEW_TOOL_DEF = {
         "caso: e' l'unica risposta che tiene conto di cosa questa entita' sa "
         "fare davvero. Ci sono solo i servizi del dominio dell'entita'. "
         "Le liste `entita` di un'area o di un dispositivo NON includono le entità che "
-        "l'utente ha nascosto dalle proprie viste in Home Assistant: non proporle mai di "
+        "la persona ha nascosto dalle proprie viste in Home Assistant: non proporle mai di "
         "tua iniziativa quando descrivi cosa c'è in una stanza o su un dispositivo. Se ce "
         "ne sono, le trovi complete — mai troncate — nella chiave separata "
         "`entita_nascoste` (stessa forma di `entita`, presente solo quando non è vuota): "
         "usala quando la domanda le riguarda davvero — «cosa hai nascosto in sala da "
         "pranzo?», «c'è qualcos'altro oltre a quello che vedo?» — e in quel caso dille, "
-        "non negarle: esistono, l'utente le ha solo tolte dalle proprie viste, non "
+        "non negarle: esistono, la persona le ha solo tolte dalle proprie viste, non "
         "cancellate. Un'entità guardata da sola (`tipo: 'entita'`) non ha questa chiave: "
         "porta invece il campo `nascosta: true` su se stessa, per lo stesso motivo — hai "
         "chiesto esplicitamente proprio lei. "
@@ -480,8 +480,8 @@ VIEW_TOOL_DEF = {
         "se ce ne sono): sono due stati diversi in Home Assistant, non lo "
         "stesso problema -- una piattaforma con sole entita' `unknown` (una "
         "lampadina spenta, non guasta) non ha nessuna entita' che 'non "
-        "risponde'. E quante l'utente ha disabilitato (`entita_disabilitate`, "
-        "solo se ce ne sono -- una cosa spenta dall'utente non conta fra "
+        "risponde'. E quante la persona ha disabilitato (`entita_disabilitate`, "
+        "solo se ce ne sono -- una cosa spenta dalla persona non conta fra "
         "quelle che non rispondono). Quando le `unavailable` sono diventate "
         "mute quasi nello stesso istante porta anche `mute_da`: NON e' un "
         "verdetto -- dice solo che sono diventate mute INSIEME, e un riavvio "
@@ -716,7 +716,7 @@ FETCH_TOOL_DEF = {
         "ancorato a quel riferimento, `ricordi` e' una lista vuota: non "
         "significa che la casa non ha ricordi, significa solo che nessuno di "
         "quelli salvati nomina proprio questa parte -- prova `fetch` senza "
-        "ancore su una parte piu' ampia, o chiedi all'utente."
+        "ancore su una parte piu' ampia, o chiedi a chi ti sta parlando."
     ),
     "input_schema": {
         "type": "object",
@@ -762,12 +762,12 @@ EXECUTE_TOOL_DEF = {
         "Con un bersaglio risolto l'esito porta anche `bersaglio`, che "
         "dice cosa conteneva (`risolte`), su cosa la chiamata e' partita "
         "(`toccate`) e cosa e' rimasto fuori perche' di un altro dominio o "
-        "senza stato: se `toccate` e' piu' corto di `risolte`, dillo all'utente "
+        "senza stato: se `toccate` e' piu' corto di `risolte`, dillo a chi ti sta parlando "
         "invece di dichiarare che hai fatto tutto. "
         "Dopo l'esecuzione lo stato viene RILETTO: `prima`, `dopo` e "
         "`cambiato` dicono cosa e' successo per davvero. Se `cambiato` e' vuoto "
         "arriva un `avviso`: la chiamata e' riuscita ma nulla e' cambiato, e "
-        "va detto all'utente invece di dichiarare un successo."
+        "va detto a chi ti sta parlando invece di dichiarare un successo."
     ),
     "input_schema": {
         "type": "object",
@@ -961,7 +961,7 @@ PROPOSE_TOOL_DEF = {
         "o una scena in Home Assistant. **Non scrive niente**: compone, fa "
         "validare la configurazione a QUESTA casa e restituisce un'anteprima "
         "con un `proposta_id`. Per farla diventare vera serve `confirm`, e "
-        "**non nello stesso turno**: mostra l'anteprima all'utente, digli che "
+        "**non nello stesso turno**: mostra l'anteprima a chi ti sta parlando, digli che "
         "la proposta resta in attesa nella pagina «Proposte», e aspetta che sia "
         "lui a dire di procedere. "
         "`gesto` e' «crea», «modifica» o «cancella». `dominio` e' «automation», "
@@ -977,7 +977,7 @@ PROPOSE_TOOL_DEF = {
         "insieme all'oggetto, e se l'oggetto viene rifiutato vengono disfatti. "
         "Se quello che chiedi ha la forma sbagliata -- un'automazione per una "
         "cosa che e' uno script -- l'anteprima te lo dice: riferiscilo "
-        "all'utente invece di ignorarlo."
+        "a chi ti sta parlando invece di ignorarlo."
     ),
     "input_schema": {
         "type": "object",
@@ -1020,8 +1020,8 @@ PROPOSE_TOOL_DEF = {
             # e il consigliere dissentiva da se stesso -- misurato sulla casa
             # vera (audit delle fondamenta, rilievo 5).
             "richiesto": {"type": "string", "enum": list(STRUCTURES),
-                          "description": "Solo se l'utente ha nominato lui una "
-                                         "delle tre strutture, con quella "
+                          "description": "Solo se chi ti sta parlando ha nominato lui "
+                                         "una delle tre strutture, con quella "
                                          "parola. Serve a dirti se non sono "
                                          "d'accordo. La sua frase va in «frase», "
                                          "non qui: se non ha nominato nessuna "
@@ -1030,7 +1030,8 @@ PROPOSE_TOOL_DEF = {
                        "description": "Gli helper da creare insieme: ognuno con "
                                       "`dominio` e `dati`."},
             "frase": {"type": "string",
-                      "description": "La frase dell'utente da cui nasce, verbatim."},
+                      "description": "La frase di chi ti sta parlando da cui nasce, "
+                                     "verbatim."},
         },
         "required": ["gesto", "dominio"],
     },
@@ -1041,9 +1042,9 @@ CONFIRM_TOOL_DEF = {
     "description": (
         "Applica una proposta creata da `propose`: da qui in poi la cosa "
         "esiste davvero in Home Assistant. "
-        "**Chiamalo SOLO dopo che l'utente ha detto di procedere**, in un turno "
-        "successivo a quello in cui hai mostrato l'anteprima: se lo chiami nello "
-        "stesso turno viene rifiutato, ed e' voluto -- il si' dell'utente non e' "
+        "**Chiamalo SOLO dopo che chi ti sta parlando ha detto di procedere**, in un "
+        "turno successivo a quello in cui hai mostrato l'anteprima: se lo chiami nello "
+        "stesso turno viene rifiutato, ed e' voluto -- il suo si' non e' "
         "una cosa che puoi dare per scontata. "
         "L'esito dice cosa e' nato davvero (`entita`) e, se qualcosa non torna, "
         "un `avviso`: riferiscilo invece di dichiarare un successo pieno. "

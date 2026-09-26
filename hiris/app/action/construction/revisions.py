@@ -29,6 +29,25 @@ from ...storage import connect, init_schema
 
 logger = logging.getLogger(__name__)
 
+#: Il motivo scritto quando chi costruisce dice no da questa pagina, prima
+#: che l'officina abbia mai provato a scrivere niente (fetta "il seguito
+#: delle chat divise", Task 5, 26/09/2026). Diceva letteralmente «rifiutata
+#: dal proprietario»: un testo che assumeva un proprietario solo, mentre la
+#: pagina Costruzioni e' oggi di chiunque abbia `costruire` (spec 2026-09-26
+#: §3, decisione 5) -- non una persona per nome, che richiederebbe leggerla
+#: da un soggetto che questo metodo non riceve. UNA costante: la pagina la
+#: legge dal campo `motivo` che l'API espone gia' su ogni riga (`_row`,
+#: `handlers_constructions._out`), non la retipa in JavaScript.
+MOTIVO_DISDETTA = "rifiutata dalla pagina"
+
+#: Il testo legacy: le righe scritte PRIMA del 26/09/2026 lo portano ancora
+#: sul disco e non si riscrivono (nessuna migrazione a freddo dei valori
+#: gia' scritti). Restano un «no» lo stesso: `constructions-route.js`
+#: nasconde `motivo` guardando lo STATO (`disdetta`), mai il testo -- vedi il
+#: commento di testa di quel file -- quindi il valore vecchio si comporta
+#: gia' come quello nuovo, senza bisogno di leggerlo qui.
+MOTIVO_DISDETTA_LEGACY_20260926 = "rifiutata dal proprietario"
+
 # L'insieme «in sospeso» -- stessa forma di `STATES_SOSPESO` in
 # `keeper/promise.py`, per lo stesso motivo: una proposta rivendicata
 # (`in_corso`) non e' ancora conclusa, e non deve sparire dall'elenco delle
@@ -326,11 +345,11 @@ class ConstructionStore:
         return self._change_state(ident, "rifiutata", now, None, reason)
 
     def mark_cancelled(self, ident: str, *, now: float) -> dict:
-        """Il «no» del proprietario -- che NON e' un fallimento.
+        """Il «no» di chi costruisce -- che NON e' un fallimento.
 
         `rifiutata` vuol dire «ho provato e non ci sono riuscito»: validazione
         caduta, Home Assistant che rifiuta, riavvio a meta'. Questo e' l'altro
-        caso, ed e' quello che vogliamo sia facile: l'utente ha guardato la
+        caso, ed e' quello che vogliamo sia facile: la persona ha guardato la
         proposta e ha detto di no. Tenerli separati e' cio' che permette alla
         pagina di non colorare di rosso l'esercizio del controllo per cui
         l'intero giro in due tempi esiste. Stessa distinzione che lo
@@ -359,7 +378,7 @@ class ConstructionStore:
             cur = self._conn.execute(
                 "UPDATE costruzioni SET stato='disdetta', aggiornata_ts=?, motivo=? "
                 "WHERE id=? AND stato='in_attesa'",
-                (now, "rifiutata dal proprietario", ident))
+                (now, MOTIVO_DISDETTA, ident))
             self._conn.commit()
         if cur.rowcount == 0:
             return {"errore": "quella proposta non e' piu' in attesa"}

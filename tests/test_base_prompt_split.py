@@ -62,19 +62,24 @@ def test_base_regole_strumenti_tiene_gli_ordini_che_presuppongono_un_tool():
 
 
 def test_la_riga_sulla_lingua_sta_nella_meta_che_il_ponte_emette():
-    """Fix della review totale della fetta (m-2). "Rispondi nella lingua
-    dell'utente" NON e' una regola sugli strumenti: non ne nomina, non ne
-    ordina e non ne presuppone nessuno. Stava in `BASE_TOOL_RULES` per
+    """Fix della review totale della fetta (m-2). "Rispondi nella lingua di
+    chi ti sta parlando" NON e' una regola sugli strumenti: non ne nomina,
+    non ne ordina e non ne presuppone nessuno. Stava in `BASE_TOOL_RULES` per
     contiguita' (ultimo trattino dell'elenco), e quindi sul ponte -- che di
     BASE emette la sola `BASE_IDENTITY` -- non arrivava affatto: l'unica
     istruzione di lingua che gli restava era `prompts._CHAT_INSTRUCTION`, che
     imponeva SEMPRE l'italiano. Divergenza di comportamento fra i due percorsi
     di chat, in una fetta che si chiama "parita'".
 
+    Fetta "il seguito delle chat divise" (Task 5): il testo della riga e'
+    cambiato ("dell'utente" -> "di chi ti sta parlando", piu' persone parlano
+    con HIRIS oggi), non la sua POSIZIONE -- e questo test pinna la
+    posizione, non le parole esatte di prima.
+
     Questo test la pinna DA ENTRAMBI I LATI, cosi' non puo' rimigrare in
     silenzio: dev'essere nella meta' che il ponte emette, e non dev'essere in
     quella che il ponte NON emette."""
-    riga = "Rispondi nella lingua dell'utente"
+    riga = "Rispondi nella lingua di chi ti sta parlando"
     assert riga in BASE_IDENTITY, (
         "la riga sulla lingua e' uscita da BASE_IDENTITY: il ponte torna "
         "senza istruzione di lingua, e _CHAT_INSTRUCTION da sola non basta")
@@ -89,15 +94,16 @@ def test_il_ponte_e_il_sincrono_non_si_contraddicono_sulla_lingua():
     """L'altra meta' del fix m-2. `prompts._CHAT_INSTRUCTION` e' l'ultima riga
     del prompt UTENTE del ponte, letta dopo tutto il system: se dicesse
     «SEMPRE in italiano» mentre `BASE_IDENTITY` (che ora il ponte emette) dice
-    «nella lingua dell'utente», il prompt si contraddirebbe da solo e
-    vincerebbe l'ultima letta. Le due istruzioni devono dire la stessa cosa."""
+    «nella lingua di chi ti sta parlando», il prompt si contraddirebbe da solo
+    e vincerebbe l'ultima letta. Le due istruzioni devono dire la stessa
+    cosa."""
     from hiris.app.agent import prompts
 
     assert "SEMPRE in italiano" not in prompts._CHAT_INSTRUCTION, (
         "il ponte impone di nuovo l'italiano mentre BASE_IDENTITY dice di "
-        "rispondere nella lingua dell'utente: e' il difetto m-2, riaperto "
-        "dall'altro lato")
-    assert "lingua dell'utente" in prompts._CHAT_INSTRUCTION
+        "rispondere nella lingua di chi ti sta parlando: e' il difetto m-2, "
+        "riaperto dall'altro lato")
+    assert "lingua di chi ti sta parlando" in prompts._CHAT_INSTRUCTION
 
 
 def test_il_percorso_sincrono_continua_a_comporre_la_costante_intera():

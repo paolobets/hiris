@@ -43,8 +43,8 @@ _NO_STORE = "l’archivio delle proposte non e’ disponibile in questo momento.
 #: La domanda del «Rifalla». Porta la proposta scartata e la richiesta di
 #: modifica: **senza la scartata il modello potrebbe riproporla**, ed e' il
 #: motivo per cui il filo dei giri si accoda invece di sostituirsi.
-_REDO_SYSTEM = """Sei l'attuatore di HIRIS. Hai gia' fatto una proposta al
-proprietario, e lui ti chiede di rifarla in un altro modo.
+_REDO_SYSTEM = """Sei l'attuatore di HIRIS. Hai gia' fatto una proposta a
+chi amministra la casa, che ti chiede di rifarla in un altro modo.
 
 Non rifare la stessa cosa: cambia strada, tenendo la domanda a cui la proposta
 risponde. Se la richiesta di modifica rende la proposta impossibile, dillo
@@ -155,7 +155,7 @@ async def handle_proposal_redo(request: web.Request) -> web.Response:
     from ..steering import who_answers
     route, downgrade = who_answers(request.app)
 
-    lines = ["La proposta che hai fatto, e che il proprietario non vuole cosi':",
+    lines = ["La proposta che hai fatto, e che chi amministra la casa non vuole cosi':",
              f"  {row['testo']}",
              f"  (il perche' che avevi scritto: {row['perche']})"]
     for giro in row["giri"]:

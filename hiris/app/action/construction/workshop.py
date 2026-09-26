@@ -1024,7 +1024,7 @@ def _invalid_form(intent: dict) -> str | None:
     requested = intent.get("richiesto")
     if requested is not None and requested != "" and requested not in STRUCTURES:
         return (f"«richiesto» accetta solo {', '.join(STRUCTURES)}: dice quale "
-                f"delle tre strutture ti ha chiesto l'utente, non cosa ti ha "
+                f"delle tre strutture ti ha chiesto chi ti sta parlando, non cosa ti ha "
                 f"detto. La sua frase va in «frase».")
     for entry in intent.get("helper") or []:
         if not isinstance(entry, dict) or not isinstance(entry.get("dominio"), str):

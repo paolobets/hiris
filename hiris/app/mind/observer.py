@@ -64,7 +64,7 @@ Quello che decidi ha due conseguenze vere, e nessuna delle due e' teorica:
 Quindi non essere generoso e non essere avaro: chiediti, per ognuna, se la sua
 storia servirebbe a capire come la casa risponde all'obiettivo.
 
-Il motivo che scrivi lo legge il proprietario in una pagina. Scrivilo in
+Il motivo che scrivi lo legge chi amministra la casa in una pagina. Scrivilo in
 italiano, in una riga, concreto: «scalda la camera, e il riscaldamento e' la
 voce piu' pesante» va bene; «utile» no, «non rilevante» nemmeno."""
 

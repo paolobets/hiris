@@ -83,15 +83,15 @@ test('una proposta in attesa offre sia Approva sia Rifiuta', async () => {
   assert.equal(dom.window.document.querySelectorAll('[data-azione="reject"]').length, 1);
 });
 
-test('il no del proprietario non si mostra come un fallimento', async () => {
+test('il no di chi costruisce non si mostra come un fallimento', async () => {
   // `disdetta` e `rifiutata` sono due cose diverse e non devono leggersi
-  // uguali: la prima e' l'utente che ha deciso, la seconda e' HIRIS che non
+  // uguali: la prima e' la persona che ha deciso, la seconda e' HIRIS che non
   // ce l'ha fatta. Se il vocabolario le confondesse, la pagina punirebbe
   // l'unica cosa che deve essere facile fare.
   const { dom } = montaCon({ constructions: [
     { id: 'd1', stato: 'disdetta', gesto: 'crea', dominio: 'automation',
       chiave: '1', anteprima: '', prima: null, dopo: {}, creata_ts: 1,
-      motivo: 'rifiutata dal proprietario' },
+      motivo: 'rifiutata dalla pagina' },
     { id: 'r1', stato: 'rifiutata', gesto: 'crea', dominio: 'automation',
       chiave: '2', anteprima: '', prima: null, dopo: {}, creata_ts: 1,
       motivo: 'Home Assistant ha rifiutato' },
@@ -102,7 +102,33 @@ test('il no del proprietario non si mostra come un fallimento', async () => {
     'gli stati interni non devono uscire come token grezzi');
   const righe = dom.window.document.querySelectorAll('.construction');
   assert.notEqual(righe[0].className, righe[1].className,
-    'il no dell utente e il fallimento di HIRIS non possono avere la stessa faccia');
+    'il no della persona e il fallimento di HIRIS non possono avere la stessa faccia');
+});
+
+test('una riga «disdetta» col vecchio motivo (righe scritte prima del 26/09/2026) resta un no, non un fallimento', async () => {
+  // Sicurezza 5.5: `revisions.py::MOTIVO_DISDETTA_LEGACY_20260926` dichiara
+  // il testo che le righe vecchie portano ancora sul disco
+  // ("rifiutata dal proprietario"). Questa pagina non lo riscrive e non lo
+  // distingue dal nuovo ("rifiutata dalla pagina"): nasconde `motivo`
+  // guardando lo STATO (`disdetta`), mai il testo -- quindi il valore legacy
+  // deve rendere ESATTAMENTE come il nuovo, con entrambi i letterali provati
+  // qui uno accanto all'altro.
+  const { dom } = montaCon({ constructions: [
+    { id: 'd1', stato: 'disdetta', gesto: 'crea', dominio: 'automation',
+      chiave: '1', anteprima: '', prima: null, dopo: {}, creata_ts: 2,
+      motivo: 'rifiutata dal proprietario' },
+    { id: 'd2', stato: 'disdetta', gesto: 'crea', dominio: 'automation',
+      chiave: '2', anteprima: '', prima: null, dopo: {}, creata_ts: 1,
+      motivo: 'rifiutata dalla pagina' },
+  ] });
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  const testo = dom.window.document.body.textContent;
+  assert.doesNotMatch(testo, /disdetta|rifiutata\b|proprietario/i,
+    'ne\' lo stato interno ne\' il vecchio motivo devono uscire come testo grezzo');
+  const righe = dom.window.document.querySelectorAll('.construction');
+  assert.equal(righe.length, 2);
+  assert.equal(righe[0].className, righe[1].className,
+    'vecchio e nuovo motivo devono avere la stessa faccia: sono entrambi un no, non un fallimento');
 });
 
 test('solo le costruzioni applicate offrono il ripristino', async () => {
