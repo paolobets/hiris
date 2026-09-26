@@ -120,11 +120,16 @@ async def handle_reasoning_submit(request: web.Request) -> web.Response:
             outcome = "promessa_gia_conclusa"
         else:
             now = _now(request)
-            reason = _senza_conclusione(decision.get("reply"))
-            store.concludi(ident, state="fallita", now=now, reason=reason)
+            reply = decision.get("reply")
+            reason = _senza_conclusione(reply)
             # Ruling 3.8: una riga breve nel filo di chi l'ha chiesta, nessuna
-            # push -- la stessa forma della scadenza (`keeper/outcome.py`).
-            tell_failure(request.app.get("data_dir"), row, reason)
+            # push -- la stessa forma della scadenza (`keeper/outcome.py`). La
+            # risposta del modello citata nel motivo passa dal filtro dei
+            # veleni da sola (`quoted`).
+            if store.concludi(ident, state="fallita", now=now, reason=reason):
+                tell_failure(request.app.get("data_dir"), row, reason,
+                             quoted=reply if isinstance(reply, str) and reply.strip()
+                             else None)
             # Rilievo R1 della revisione indipendente sul tratto
             # `v3.22.2..HEAD`: il registro degli esiti vedeva il successo
             # della chat e la scadenza, e niente delle promesse. Una promessa

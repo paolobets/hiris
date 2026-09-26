@@ -133,11 +133,39 @@ PHRASE_CAP = 200
 MAX_SERVICES_PER_PROMISE = 3
 
 
+# I `message` che l'app Companion NON mostra ma ESEGUE come comando sul
+# dispositivo. Verificati sulla documentazione ufficiale il 26/09/2026:
+# companion.home-assistant.io/docs/notifications/notification-commands
+# (iOS: request_location_update, clear_badge, clear_notification,
+# update_complications, update_widgets, la famiglia kiosk_*; Android:
+# clear_notification, remove_channel, request_location_update, la famiglia
+# command_*) e .../notifications-basic (TTS su Android, delete_alert su iOS).
+# Il testo della push lo scrive il modello: un esito che fosse esattamente una
+# di queste parole diventerebbe un comando al telefono invece di una frase.
+_COMPANION_COMMANDS = frozenset({
+    "request_location_update", "clear_badge", "clear_notification",
+    "update_complications", "update_widgets", "remove_channel", "tts",
+    "delete_alert",
+})
+_COMPANION_COMMAND_PREFIXES = ("command_", "kiosk_")
+# Cio' che arriva al telefono al posto di un comando: l'esito intero resta
+# nella chat.
+COMMAND_REPLACEMENT = "l’esito è nella tua chat."
+
+
 def push_message(text) -> str:
     """Il testo di una push d'esito: quello del modello, tagliato al tetto
-    col marcatore dichiarato."""
-    return truncate_with_marker(text if isinstance(text, str) else "",
-                                PUSH_MESSAGE_CAP)
+    col marcatore dichiarato -- e mai un comando dell'app Companion."""
+    message = truncate_with_marker(text if isinstance(text, str) else "",
+                                   PUSH_MESSAGE_CAP)
+    word = message.strip().lower()
+    # Le famiglie valgono per una parola SOLA (`command_dnd`), come le parole
+    # esatte: una frase che comincia cosi' non e' un comando.
+    single_word = bool(word) and not any(c.isspace() for c in word)
+    if word in _COMPANION_COMMANDS or (
+            single_word and word.startswith(_COMPANION_COMMAND_PREFIXES)):
+        return COMMAND_REPLACEMENT
+    return message
 
 
 def _phrase(promise: dict) -> str:

@@ -329,3 +329,54 @@ async def test_who_is_speaking_arriva_identico_al_ponte_e_alla_catena(tmp_path, 
     assert sezione_ponte.startswith("## Chi ti sta parlando")
     assert "Paolo" in sezione_ponte and "amministratore" in sezione_ponte
     assert sezione_ponte == sezione_sincrona
+
+
+# ---------------------------------------------------------------------------
+# Fetta «il seguito delle chat divise», Task 3 fix round 1: cio' che HIRIS ha
+# gia' detto prima che la persona scrivesse (l'esito di una promessa in testa
+# alla conversazione, che `_trim_history` deve togliere dalla cronologia).
+# ---------------------------------------------------------------------------
+
+
+def test_senza_esiti_in_testa_il_contesto_e_identico_a_prima(tmp_path):
+    data_dir = str(tmp_path)
+    _semina_sessione_chiusa(data_dir, "RIASSUNTO-VECCHIO")
+    prima = compose_chat_context({}, data_dir, thread=PAOLO, soggetto=None)
+    assert compose_chat_context({}, data_dir, thread=PAOLO, soggetto=None,
+                                said_before=()) == prima
+
+
+def test_gli_esiti_in_testa_entrano_dopo_le_sessioni_precedenti(tmp_path):
+    from hiris.app.api.handlers_chat import SAID_BEFORE_HEADER
+
+    data_dir = str(tmp_path)
+    _semina_sessione_chiusa(data_dir, "RIASSUNTO-VECCHIO")
+    contesto = compose_chat_context(
+        {}, data_dir, thread=PAOLO, soggetto=None,
+        said_before=["Esito della promessa «x»: 21 gradi"])
+    assert SAID_BEFORE_HEADER in contesto
+    assert "21 gradi" in contesto
+    assert contesto.index("RIASSUNTO-VECCHIO") < contesto.index(SAID_BEFORE_HEADER)
+
+
+def test_gli_esiti_in_testa_sono_limitati(tmp_path):
+    from hiris.app.api.handlers_chat import SAID_BEFORE_CAP, SAID_BEFORE_HEADER
+
+    contesto = compose_chat_context(
+        {}, str(tmp_path), thread=PAOLO, soggetto=None,
+        said_before=["y" * 10_000, "z" * 10_000])
+    sezione = contesto[contesto.index("## " + SAID_BEFORE_HEADER):]
+    assert len(sezione) <= SAID_BEFORE_CAP + 10
+    assert "[troncato]" in sezione
+
+
+def test_le_righe_senza_risposta_sono_gli_assistant_prima_del_primo_utente():
+    from hiris.app.api.handlers_chat import unanswered_assistant_lines
+
+    storia = [{"role": "assistant", "content": "esito 1"},
+              {"role": "assistant", "content": "esito 2"},
+              {"role": "user", "content": "e quindi?"},
+              {"role": "assistant", "content": "risposta"}]
+    assert unanswered_assistant_lines(storia) == ["esito 1", "esito 2"]
+    assert unanswered_assistant_lines(storia[2:]) == []
+    assert unanswered_assistant_lines([]) == []

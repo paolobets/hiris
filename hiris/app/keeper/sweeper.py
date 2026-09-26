@@ -17,7 +17,8 @@ from __future__ import annotations
 import logging
 
 from ..chat_thread import subject_from_thread
-from ..proxy._sanitize import truncate_with_marker
+from ..proxy._sanitize import sanitize_ha_value, truncate_with_marker
+from .outcome import write_line
 from .promise import (
     MAX_SERVICES_PER_PROMISE,
     REASON_CAP,
@@ -90,11 +91,14 @@ class Sweeper:
             # in mezzo la lascerebbe fallita invece che saltata, cioe'
             # racconterebbe un'altra storia.
             if delay > self._tolleranza:
-                self._store.concludi(promise["id"], state="saltata",
-                                        reason=delay_reason(delay), now=now)
+                closed = self._store.concludi(
+                    promise["id"], state="saltata", reason=delay_reason(delay),
+                    now=now)
                 logger.info("promessa %s saltata: %s", promise["id"],
                             delay_reason(delay))
-                self._tell(promise, failure_message(promise, delay_reason(delay)))
+                if closed:
+                    self._tell(promise,
+                               failure_message(promise, delay_reason(delay)))
                 continue
             if not self._store.prendi(promise["id"], now=now):
                 continue  # qualcun altro l'ha presa: mai due volte
@@ -103,35 +107,25 @@ class Sweeper:
             except Exception as error:
                 logger.warning("promessa %s: guasto imprevisto (%s: %s)",
                                promise["id"], type(error).__name__, error)
-                self._store.concludi(
+                closed = self._store.concludi(
                     promise["id"], state="fallita", now=now,
                     reason=(
                         f"guasto imprevisto mentre la mantenevo "
                         f"({type(error).__name__}: {error})."
                     ),
                 )
-                self._tell(promise, failure_message(promise, _UNEXPECTED_FAILURE))
+                if closed:
+                    self._tell(promise,
+                               failure_message(promise, _UNEXPECTED_FAILURE))
 
     def _tell(self, promise: dict, content: str, *,
               quoted: str | None = None) -> bool:
         """Una riga nel filo di chi ha chiesto; `False` se non c'e' filo o la
         riga non e' entrata. `quoted` e' il testo del modello citato dentro
-        `content`, che il filtro dei veleni deve vedere da solo. Non solleva
-        MAI: un disco che non collabora non deve rompere il battito, ne'
-        riaprire una promessa gia' conclusa."""
-        thread = promise.get("thread")
-        if thread is None:
-            return False
-        try:
-            written = bool(self._write(thread, content, quoted=quoted))
-        except Exception as error:
-            logger.warning("promessa %s: esito non scritto nel filo (%s)",
-                           promise["id"], type(error).__name__)
-            return False
-        if not written:
-            logger.info("promessa %s: esito non scritto nel filo (filtrato)",
-                        promise["id"])
-        return written
+        `content`, che il filtro dei veleni deve vedere da solo. La guardia
+        vive in `outcome.write_line`, la stessa delle strade fuori
+        dall'orologio: qui si passa solo lo scrittore montato."""
+        return write_line(self._write, promise, content, quoted=quoted)
 
     async def _keep(self, promise: dict, now: float) -> None:
         if promise["specie"] == "fai":
@@ -156,9 +150,9 @@ class Sweeper:
         ceiling = await self._ceiling(subject)
         if not ceiling.get("comandare"):
             reason = ceiling.get("perche") or "oggi non puoi comandare la casa."
-            self._store.concludi(promise["id"], state="fallita", now=now,
-                                 reason=reason)
-            self._tell(promise, failure_message(promise, reason))
+            if self._store.concludi(promise["id"], state="fallita", now=now,
+                                    reason=reason):
+                self._tell(promise, failure_message(promise, reason))
             return
         occurrence = await self._execute(
             promise["chiamata"], actor="schedulatore", subject=subject)
@@ -176,21 +170,26 @@ class Sweeper:
                 promise.get("entities_at_birth"),
                 len((occurrence.get("anteprima") or {}).get("toccate") or [])
                 if occurrence.get("anteprima") else None)
-            self._store.concludi(promise["id"], state="mantenuta", now=now,
-                                    execution_id=occurrence.get("esecuzione_id"),
-                                    reason=notice)
+            closed = self._store.concludi(
+                promise["id"], state="mantenuta", now=now,
+                execution_id=occurrence.get("esecuzione_id"), reason=notice)
             # Il racconto nel filo (spec §2.4), da campi limitati: la frase
             # tagliata e l'avviso del bersaglio, testo di HIRIS (vincolo 3.7).
             # Nessuna push: un `fai` non ha mai notificato, e l'azione si vede
             # in casa.
-            self._tell(promise, kept_message(promise, notice))
+            if closed:
+                self._tell(promise, kept_message(promise, notice))
         else:
             error = (occurrence.get("errore")
                      or "non e' andata, e non so dire perche'.")
-            self._store.concludi(
+            closed = self._store.concludi(
                 promise["id"], state="fallita", now=now, reason=error,
                 execution_id=occurrence.get("esecuzione_id"))
-            self._tell(promise, failure_message(promise, error))
+            # L'errore viene da Home Assistant (o dalla porta che lo riporta):
+            # nella chat entra ripulito come ogni valore di HA, poi tagliato.
+            if closed:
+                self._tell(promise,
+                           failure_message(promise, sanitize_ha_value(error)))
 
     async def _keep_chiedi(self, promise: dict, now: float) -> None:
         answer = await self._interpreta(promise)
@@ -201,9 +200,13 @@ class Sweeper:
             # col resto del giro.
             return
         if "errore" in answer:
-            self._store.concludi(promise["id"], state="fallita", now=now,
-                                    reason=answer["errore"])
-            self._tell(promise, failure_message(promise, answer["errore"]))
+            # Il motivo puo' citare cio' che il modello aveva risposto al posto
+            # di concludere (`exchange._senza_conclusione`): quella citazione,
+            # `excerpt`, passa dal filtro dei veleni da sola.
+            if self._store.concludi(promise["id"], state="fallita", now=now,
+                                    reason=answer["errore"]):
+                self._tell(promise, failure_message(promise, answer["errore"]),
+                           quoted=answer.get("excerpt") or None)
             return
         await self.concludi_chiedi(promise, answer, now=now)
 
@@ -233,10 +236,16 @@ class Sweeper:
 
         # Si conclude PRIMA di consegnare: le consegne aspettano la rete, e
         # nel frattempo la promessa deve gia' risultare chiusa -- un secondo
-        # `conclude` arrivato in quella finestra la trova non piu' `in_corso`
-        # (la rotta MCP lo controlla) invece di rifare la consegna.
-        self._store.concludi(promise["id"], state="mantenuta", now=now,
-                             reason=note or None, text=text, avvisare=avvisare)
+        # `conclude` arrivato in quella finestra la trova non piu' in sospeso
+        # e non riconsegna. `concludi` e' guardato sullo stato: se la
+        # promessa era gia' conclusa (una scadenza, un `conclude` ripetuto)
+        # qui non si consegna niente.
+        if not self._store.concludi(promise["id"], state="mantenuta", now=now,
+                                    reason=note or None, text=text,
+                                    avvisare=avvisare):
+            logger.info("promessa %s: gia' conclusa, nessuna consegna",
+                        promise["id"])
+            return
 
         if promise.get("thread") is None:
             delivery_reason = _ORPHAN_REASON
@@ -251,10 +260,12 @@ class Sweeper:
         # Il motivo della consegna e la nota del ripiego sono due fatti
         # diversi, e il primo non smette di essere vero perche' e' arrivato il
         # secondo: si accodano.
+        # Seconda scrittura, solo il motivo: com'e' andata la consegna si sa
+        # dopo la chiusura, e `concludi` (guardato) non riscrive una promessa
+        # conclusa.
         if delivery_reason:
             reason = f"{delivery_reason} {note}" if note else delivery_reason
-            self._store.concludi(promise["id"], state="mantenuta", now=now,
-                                 reason=reason, text=text, avvisare=avvisare)
+            self._store.set_reason(promise["id"], reason)
 
     async def _push(self, promise: dict, text: str) -> str | None:
         """Una push a ogni servizio del recapito di chi ha chiesto; il motivo

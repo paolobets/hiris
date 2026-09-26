@@ -210,7 +210,10 @@ async def interpreta_promise(app, promise: dict) -> dict:
         logger.warning("promessa %s: il turno non ha chiamato «conclude»; "
                        "aveva risposto %d caratteri di testo",
                        promise["id"], len(answer or ""))
-        return {"errore": _senza_conclusione(answer)}
+        # `excerpt`: cio' che il modello aveva risposto, citato dentro il
+        # motivo. Chi lo porta in chat lo filtra da solo (fix round 1, 5).
+        return {"errore": _senza_conclusione(answer),
+                "excerpt": answer if isinstance(answer, str) else None}
     conclusione = dict(dispatcher.conclusione)
     note = _downgrade_note(downgrade_reason)
     if note:

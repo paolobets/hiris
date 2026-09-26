@@ -147,10 +147,11 @@ def _close_expired_promise(app, job: dict) -> None:
         "scadenza_min", 5))
     reason = (f"ho aspettato il Piano Claude Max per {minuti} minuti e non ha "
               "risposto: non so cosa dirti.")
-    store.concludi(ident, state="fallita", now=time.time(), reason=reason)
     # Ruling 3.8: chi l'ha chiesta lo legge anche nella sua chat -- una riga,
-    # solo se la promessa ha un filo, e nessuna push.
-    tell_failure(app.get("data_dir"), riga, reason)
+    # solo se la promessa ha un filo, e nessuna push. `concludi` e' guardato
+    # sullo stato: se nel frattempo e' arrivato `conclude`, niente riga.
+    if store.concludi(ident, state="fallita", now=time.time(), reason=reason):
+        tell_failure(app.get("data_dir"), riga, reason)
     # Rilievo R1 della revisione indipendente sul tratto `v3.22.2..HEAD`:
     # terza strada delle promesse sul ponte, dopo il successo (`api/
     # handlers_mcp`) e il turno finito senza «conclude» (`api/

@@ -837,3 +837,36 @@ def test_una_sessione_orfana_adottata_e_ferma_si_chiude_alla_scrittura_dopo(tmp_
     assert [r["session_id"] for r in aperte] != ["prima"] and len(aperte) == 1
     assert [p["session_id"] for p in s.get_past_summaries(PAOLO)] == ["prima"]
     assert [m["content"] for m in s.load_context(PAOLO)] == ["oggi", "ciao"]
+
+
+# ---------------------------------------------------------------------------
+# Fetta «il seguito delle chat divise», Task 3 fix round 1: una conversazione
+# che si apre con l'esito di una promessa (un `assistant` senza un turno utente
+# davanti) non perde quell'esito quando si chiude.
+# ---------------------------------------------------------------------------
+
+def test_il_riassunto_tiene_l_esito_che_ha_aperto_la_conversazione(tmp_path):
+    store = ChatStore(str(tmp_path / "chat_history.db"))
+    ts_old = (datetime.now(UTC) - timedelta(hours=3)).strftime(_TS_FMT)
+    sid = "sess-esito"
+    conn = store._conn
+    conn.execute(
+        "INSERT INTO chat_sessions(subject_key, entry_point, session_id, started_at, "
+        "last_msg_at) VALUES(?,?,?,?,?)",
+        (*_TK, sid, ts_old, ts_old),
+    )
+    for role, content in (("assistant", "Esito della promessa «x»: 21 gradi"),
+                          ("user", "e quindi?"),
+                          ("assistant", "quindi va bene")):
+        conn.execute(
+            "INSERT INTO chat_messages(session_id, role, content, timestamp) "
+            "VALUES(?,?,?,?)", (sid, role, content, ts_old))
+    conn.commit()
+
+    store.append([{"role": "user", "content": "nuova"}], T)
+
+    row = conn.execute("SELECT summary FROM chat_sessions WHERE session_id = ?",
+                       (sid,)).fetchone()
+    assert "21 gradi" in row["summary"]
+    assert "quindi va bene" in row["summary"]
+    store.close()

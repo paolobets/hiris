@@ -30,7 +30,7 @@ from ..model_resolution import downgrade_note
 # dall'intestazione dell'ingress di Home Assistant -- non e' mai fidato, la
 # stessa porta di `entity_cache`/`home_space_store`/`ha_client` (vedi il
 # modulo per l'elenco di dove e' gia' cablato).
-from ..proxy._sanitize import sanitize_ha_value
+from ..proxy._sanitize import sanitize_ha_value, truncate_with_marker
 from ..steering import declare_downgrade, misura_turno, who_answers
 from .handlers_home_space import compose_briefing
 from .soffitto import ceiling_for, per_richiesta, ruolo_letto
@@ -63,6 +63,47 @@ def _trim_history(history: list[dict], max_tokens: int = _MAX_HISTORY_TOKENS) ->
     while trimmed and trimmed[0].get("role") == "assistant":
         trimmed = trimmed[1:]
     return trimmed
+
+
+def unanswered_assistant_lines(history: list[dict]) -> list[str]:
+    """I messaggi di HIRIS che aprono la conversazione, prima del primo turno
+    dell'utente -- gli esiti di promesse arrivati mentre la persona non c'era.
+
+    `_trim_history` li deve togliere (l'API di Claude non accetta una
+    cronologia che comincia con un `assistant`): senza questa funzione il
+    modello non vedrebbe mai l'esito a cui la persona sta rispondendo. Si
+    leggono dalla cronologia INTERA, non da quella tagliata: gli `assistant`
+    che il taglio per token lascia in testa in mezzo a una conversazione
+    sono risposte normali, non cose dette prima che la persona scrivesse.
+    """
+    lines: list[str] = []
+    for message in history or []:
+        if message.get("role") != "assistant":
+            break
+        lines.append(str(message.get("content") or ""))
+    return lines
+
+
+#: L'intestazione della sezione del contesto con cio' che HIRIS ha gia' detto
+#: prima che la persona scrivesse (fetta «il seguito delle chat divise»).
+SAID_BEFORE_HEADER = ("Ciò che HIRIS ha già detto a chi ti sta parlando, prima "
+                      "che scrivesse (esiti di promesse):")
+#: Tetti di quella sezione: una riga e la sezione intera. Sono esiti di
+#: promesse, gia' interi nella chat della persona; qui servono a sapere a
+#: cosa sta rispondendo, e un esito lungo non deve riempire il contesto.
+SAID_BEFORE_LINE_CAP = 1000
+SAID_BEFORE_CAP = 3000
+
+
+def _said_before_section(said_before) -> str:
+    """La sezione, o "" se non c'e' niente: una sezione vuota cambierebbe il
+    contesto (e il suo prefisso) per chi non ha esiti in testa."""
+    lines = [truncate_with_marker(line, SAID_BEFORE_LINE_CAP)
+             for line in (said_before or ()) if line]
+    if not lines:
+        return ""
+    body = "\n".join(f"- {line}" for line in lines)
+    return truncate_with_marker(f"## {SAID_BEFORE_HEADER}\n{body}", SAID_BEFORE_CAP)
 
 
 def last_phrase(history) -> str | None:
@@ -333,7 +374,8 @@ def _who_is_speaking(soggetto: dict | None, thread: ChatThread, ruolo: str | Non
 
 def compose_chat_context(app, data_dir: str, *, thread: ChatThread,
                          soggetto: dict | None, ruolo: str | None = None,
-                         role_known: bool = True) -> str:
+                         role_known: bool = True,
+                         said_before: list[str] | tuple = ()) -> str:
     """Il contesto della chat -- chi parla, nucleo, sessioni precedenti -- in
     un'unica stringa.
 
@@ -447,6 +489,13 @@ def compose_chat_context(app, data_dir: str, *, thread: ChatThread,
         context_parts.append(briefing_text)
     if past_str:
         context_parts.append(f"## Sessioni precedenti\n{past_str}")
+    # Gli esiti di promesse che aprono la conversazione (`said_before`, da
+    # `unanswered_assistant_lines`): fatti gia' detti, in coda come le
+    # sessioni precedenti. Assente quando non ce ne sono: il contesto resta
+    # byte per byte quello di prima.
+    said = _said_before_section(said_before)
+    if said:
+        context_parts.append(said)
     return "\n\n".join(context_parts)
 
 
@@ -563,7 +612,9 @@ async def _enqueue_chat_job(
         "contesto": compose_chat_context(request.app, data_dir, thread=thread,
                                          soggetto=request.get("soggetto"),
                                          ruolo=soffitto.get("ruolo"),
-                                         role_known=ruolo_letto(soffitto)),
+                                         role_known=ruolo_letto(soffitto),
+                                         said_before=unanswered_assistant_lines(
+                                             history)),
         # fetta "il ponte riceve il nucleo" (parita' A, Task 3): le due
         # impostazioni della chat che SONO testo di prompt -- gli stessi due
         # valori che il ramo sincrono legge qui sotto, a `handle_chat`
@@ -1118,7 +1169,9 @@ async def handle_chat(request: web.Request) -> web.Response:
     context_str = compose_chat_context(request.app, data_dir, thread=thread,
                                        soggetto=request.get("soggetto"),
                                        ruolo=soffitto.get("ruolo"),
-                                       role_known=ruolo_letto(soffitto))
+                                       role_known=ruolo_letto(soffitto),
+                                       said_before=unanswered_assistant_lines(
+                                           history))
 
     # I sedici strumenti della chat -- il perche' di ogni riga sta
     # nel docstring di `create_tool_dispatcher` (sopra), che dalla

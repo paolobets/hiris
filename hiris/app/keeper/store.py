@@ -264,15 +264,33 @@ class AgendaStore:
 
     def concludi(self, promise_id: str, *, state: str, now: float,
                  reason: str | None = None, execution_id: str | None = None,
-                 text: str | None = None, avvisare: bool | None = None) -> None:
+                 text: str | None = None, avvisare: bool | None = None) -> bool:
+        """Chiude una promessa IN SOSPESO; `True` se l'ha chiusa.
+
+        La guardia sullo stato (fetta «il seguito delle chat divise», Task 3
+        fix round 1) rende una seconda conclusione un nulla per costruzione:
+        un `conclude` ripetuto, o una scadenza arrivata dopo, non riscrivono
+        un esito gia' dato -- e chi chiama non riconsegna (niente seconda
+        riga in chat, niente seconda push)."""
         if state not in STATES_CONCLUSI:
             raise ValueError(f"«{state}» non e' uno stato conclusivo")
         with self._lock:
-            self._conn.execute(
+            cur = self._conn.execute(
                 "UPDATE promesse SET stato=?, motivo=?, esecuzione_id=?, testo=?, "
-                "avvisare=?, risvegliata_ts=COALESCE(risvegliata_ts, ?) WHERE id=?",
+                "avvisare=?, risvegliata_ts=COALESCE(risvegliata_ts, ?) "
+                f"WHERE id=? AND stato IN ({_SOSPESI})",
                 (state, reason, execution_id, text,
                  None if avvisare is None else int(avvisare), now, promise_id))
+            self._conn.commit()
+            return cur.rowcount > 0
+
+    def set_reason(self, promise_id: str, reason: str | None) -> None:
+        """Riscrive SOLO il motivo di una promessa gia' conclusa: la
+        consegna dell'esito (le push) si sa dopo la chiusura, e il suo esito
+        va nel motivo senza riaprire ne' ritoccare il resto."""
+        with self._lock:
+            self._conn.execute("UPDATE promesse SET motivo=? WHERE id=?",
+                               (reason, promise_id))
             self._conn.commit()
 
     def mark_read(self, ids: list[str], *, thread: ChatThread, now: float) -> int:

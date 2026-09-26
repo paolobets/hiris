@@ -319,14 +319,27 @@ class ChatStore:
             pairs: list[str] = []
             turns: list[tuple[str, str]] = []
             cur: dict[str, str] = {}
+            # Gli `assistant` prima del primo turno utente: gli esiti di
+            # promesse che hanno aperto la conversazione (fetta «il seguito
+            # delle chat divise»). Senza un turno utente davanti non fanno
+            # coppia, e senza questa lista il riassunto li perderebbe.
+            opening: list[str] = []
+            seen_user = False
             for r in reversed(rows):
                 role, content = r["role"], r["content"]
                 if role == "user":
+                    seen_user = True
                     cur = {"u": content}
                 elif role == "assistant" and cur:
                     cur["a"] = content
                     turns.append((cur["u"], cur["a"]))
                     cur = {}
+                elif role == "assistant" and not seen_user:
+                    opening.append(content)
+            if turns:
+                for a in opening:
+                    a_trunc = a[:_DIGEST_MSG_LEN] + "…" if len(a) > _DIGEST_MSG_LEN else a
+                    pairs.append(f"A: {a_trunc}")
             for u, a in turns[-_DIGEST_TURNS:]:
                 u_trunc = u[:_DIGEST_MSG_LEN] + "…" if len(u) > _DIGEST_MSG_LEN else u
                 a_trunc = a[:_DIGEST_MSG_LEN] + "…" if len(a) > _DIGEST_MSG_LEN else a

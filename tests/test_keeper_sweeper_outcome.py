@@ -626,7 +626,7 @@ async def test_al_risveglio_il_ruolo_portato_dal_soggetto_non_vale(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_una_conversazione_con_solo_l_esito_ha_il_titolo_dichiarato(cartella):
+async def test_una_conversazione_con_solo_l_esito_ha_il_titolo_dichiarato(cartella):
     from hiris.app.chat_store import (
         OUTCOME_ONLY_TITLE,
         conversation_title,
@@ -672,3 +672,96 @@ async def test_un_orfana_che_fallisce_non_scrive_in_nessun_filo(archivio, cartel
 
     assert archivio.read(ident)["stato"] in ("saltata", "fallita")
     assert _chat_rows(cartella) == ([], [])
+
+
+# ---------------------------------------------------------------------------
+# Fix round 1, punto 2: al risveglio una persona il cui ruolo non si legge NON
+# comanda (a differenza della chat, dove l'ingress e' gia' una prova).
+# ---------------------------------------------------------------------------
+
+
+class _UtentiGuasti:
+    async def users(self):
+        return {"errore": "Home Assistant non ha risposto"}
+
+
+def _orologio_col_soffitto_vero(archivio, cartella, app, porta):
+    from hiris.app.api.soffitto import ceiling_at_wake
+
+    async def ceiling(subject):
+        return await ceiling_at_wake(app, subject)
+
+    return Sweeper(
+        archivio, execute=porta,
+        interpreta=TurnoFinto({"avvisare": False, "testo": "x"}),
+        recipients=RecapitoFinto(),
+        write_to_thread=lambda thread, content, quoted=None: append_assistant_line(
+            content, cartella, thread=thread, quoted=quoted),
+        ceiling=ceiling)
+
+
+@pytest.mark.parametrize("caso", ["non_in_ha", "ha_guasto", "senza_id"])
+async def test_un_fai_di_una_persona_non_verificabile_non_si_esegue(
+        archivio, cartella, tmp_path, caso):
+    from hiris.app.api.soffitto import WAKE_UNVERIFIED_PERSON
+
+    app = _app_with_ceiling(tmp_path, utenti=[{"id": "marta", "amministratore": True}])
+    if caso == "ha_guasto":
+        app["ha_client"] = _UtentiGuasti()
+    thread = ChatThread("persona:-", "pannello") if caso == "senza_id" else PAOLO
+    try:
+        ident = _crea_fai(archivio, thread=thread)
+        porta = PortaFinta()
+
+        await _orologio_col_soffitto_vero(archivio, cartella, app, porta).batti(
+            ADESSO + 11)
+
+        assert porta.chiamate == []
+        p = archivio.read(ident)
+        assert (p["stato"], p["motivo"]) == ("fallita", WAKE_UNVERIFIED_PERSON)
+    finally:
+        app["servizi"].close()
+
+
+async def test_un_fai_di_una_persona_amministratrice_si_esegue_al_risveglio(
+        archivio, cartella, tmp_path):
+    app = _app_with_ceiling(tmp_path, utenti=[{"id": "paolo", "amministratore": True}])
+    try:
+        ident = _crea_fai(archivio)
+        porta = PortaFinta()
+
+        await _orologio_col_soffitto_vero(archivio, cartella, app, porta).batti(
+            ADESSO + 11)
+
+        assert [c["servizio"] for c, _ in porta.chiamate] == ["light.turn_on"]
+        assert archivio.read(ident)["stato"] == "mantenuta"
+    finally:
+        app["servizi"].close()
+
+
+# ---------------------------------------------------------------------------
+# Fix round 1, punto 3: un testo che e' un comando dell'app Companion non
+# diventa un comando sul telefono.
+# ---------------------------------------------------------------------------
+
+_COMANDI = ["request_location_update", "clear_badge", "clear_notification",
+            "update_complications", "update_widgets", "remove_channel", "TTS",
+            "delete_alert", "kiosk_reload", "kiosk_show_screensaver",
+            "command_screen_on", "command_launch_app", "command_dnd",
+            "  Request_Location_Update  ", "COMMAND_WEBVIEW"]
+
+
+@pytest.mark.parametrize("comando", _COMANDI)
+async def test_un_comando_della_companion_non_arriva_come_messaggio(comando):
+    from hiris.app.keeper.promise import COMMAND_REPLACEMENT, push_message
+
+    assert push_message(comando) == COMMAND_REPLACEMENT
+
+
+@pytest.mark.parametrize("testo", [
+    "e' salita di 2 gradi", "tts attivo in cucina", "clear_badge fatto",
+    "il comando command_dnd non esiste", "command_dnd e' acceso da ieri"])
+async def test_un_testo_normale_resta_com_e(testo):
+    from hiris.app.keeper.promise import push_message
+
+    assert push_message(testo) == testo

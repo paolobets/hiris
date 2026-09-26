@@ -228,3 +228,30 @@ def test_la_potatura_misura_l_eta_dalla_conclusione_non_dalla_nascita(archivio):
         "partire dalla conclusione (risvegliata_ts), non dalla nascita "
         "(nata_ts) -- altrimenti una promessa legittimamente mantenuta ieri "
         "sparirebbe oggi solo perche' e' nata tardi")
+
+
+def test_concludere_una_promessa_gia_conclusa_non_cambia_niente(archivio):
+    """Task 3, fix round 1 punto 4: `concludi` scrive solo su una promessa in
+    sospeso e dice se ha scritto. Una seconda conclusione (un `conclude`
+    ripetuto, una scadenza arrivata dopo) e' strutturalmente un nulla."""
+    ident = archivio.create({
+        "specie": "chiedi", "frase": "x", "quando_ts": ADESSO + 3600,
+        "domanda": "?"}, thread=PAOLO, now=ADESSO)["promessa"]["id"]
+    assert archivio.concludi(ident, state="fallita", now=ADESSO + 1,
+                             reason="prima") is True
+    assert archivio.concludi(ident, state="mantenuta", now=ADESSO + 2,
+                             reason="dopo", text="t", avvisare=True) is False
+    p = archivio.read(ident)
+    assert (p["stato"], p["motivo"], p["testo"]) == ("fallita", "prima", None)
+
+
+def test_il_motivo_di_una_promessa_conclusa_si_aggiorna_da_solo(archivio):
+    ident = archivio.create({
+        "specie": "chiedi", "frase": "x", "quando_ts": ADESSO + 3600,
+        "domanda": "?"}, thread=PAOLO, now=ADESSO)["promessa"]["id"]
+    archivio.concludi(ident, state="mantenuta", now=ADESSO + 1, text="t",
+                      avvisare=True)
+    archivio.set_reason(ident, "la notifica non è arrivata")
+    p = archivio.read(ident)
+    assert (p["stato"], p["motivo"], p["testo"]) == (
+        "mantenuta", "la notifica non è arrivata", "t")

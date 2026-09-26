@@ -1487,3 +1487,66 @@ async def test_un_ripiego_in_corso_si_aspetta_e_non_si_ritenta(tmp_path):
         body = await (await client.get("/api/chat/reply/" + jid)).json()
     assert body == {"status": "pending"}
     runner.chat.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Fetta «il seguito delle chat divise», Task 3 fix round 1: una conversazione
+# che si apre con l'esito di una promessa. La cronologia verso il modello deve
+# cominciare da un turno utente (`_trim_history` toglie l'esito), quindi
+# l'esito viaggia nel CONTESTO -- sui due rami, dalla stessa funzione.
+# ---------------------------------------------------------------------------
+
+_ESITO = "Esito della promessa «fra un'ora verifica»: 21,4 gradi in bagno"
+
+
+@pytest.mark.asyncio
+async def test_ramo_sincrono_l_esito_in_testa_arriva_al_modello(tmp_path):
+    app, _q, runner, _impostazioni, data_dir = _make_app(
+        tmp_path, ponte_attivo=False, with_queue=True)
+    append_messages([{"role": "assistant", "content": _ESITO}], data_dir,
+                    thread=THREAD_TEST)
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "e quindi?"})
+        assert resp.status == 200
+
+    assert "21,4 gradi in bagno" in runner.chat.await_args.kwargs["context_str"]
+
+
+@pytest.mark.asyncio
+async def test_ramo_del_ponte_l_esito_in_testa_arriva_nel_contesto(tmp_path):
+    app, q, _runner, _impostazioni, data_dir = _make_app(
+        tmp_path, ponte_attivo=True, with_queue=True)
+    append_messages([{"role": "assistant", "content": _ESITO}], data_dir,
+                    thread=THREAD_TEST)
+
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.post("/api/chat", json={"message": "e quindi?"})
+        body = await resp.json()
+
+    job = q.get(body["job_id"])
+    assert "21,4 gradi in bagno" in job["context"]["contesto"]
+    assert job["context"]["history"] == [{"role": "user", "content": "e quindi?"}]
+
+
+@pytest.mark.asyncio
+async def test_una_conversazione_che_comincia_dall_utente_ha_il_contesto_di_prima(tmp_path):
+    """La proprieta' del prefisso in cache: senza esiti in testa il contesto
+    e' byte per byte quello di prima -- nessuna sezione vuota aggiunta."""
+    from hiris.app.api.handlers_chat import compose_chat_context
+    from hiris.app.api.soffitto import ceiling_for
+    from hiris.app.api.soffitto import ruolo_letto as _ruolo_letto
+
+    app, _q, runner, _impostazioni, data_dir = _make_app(
+        tmp_path, ponte_attivo=False, with_queue=True)
+    append_messages([{"role": "user", "content": "ciao"},
+                     {"role": "assistant", "content": _ESITO}], data_dir,
+                    thread=THREAD_TEST)
+
+    async with TestClient(TestServer(app)) as client:
+        await client.post("/api/chat", json={"message": "e quindi?"})
+
+    soffitto = await ceiling_for(app, None)
+    assert runner.chat.await_args.kwargs["context_str"] == compose_chat_context(
+        app, data_dir, thread=THREAD_TEST, soggetto=None,
+        ruolo=soffitto.get("ruolo"), role_known=_ruolo_letto(soffitto))

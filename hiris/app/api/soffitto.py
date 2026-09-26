@@ -215,6 +215,14 @@ async def ceiling_for(app, soggetto: dict | None) -> dict:
     return consente(soggetto, ruolo=soggetto.get("ruolo"))
 
 
+#: Il `perche` di un'azione a scadenza che non parte perche' non si e' potuto
+#: sapere chi l'aveva chiesta (una persona senza id, sparita dagli utenti di
+#: Home Assistant, o Home Assistant che non risponde).
+WAKE_UNVERIFIED_PERSON = ("non ho potuto verificare in Home Assistant chi aveva "
+                          "chiesto questa azione: a scadenza, nel dubbio, non "
+                          "si comanda")
+
+
 def _approved_service_role(app, subject: dict) -> str | None:
     """Il ruolo del servizio approvato che porta questo nome, letto adesso
     dall'archivio dei servizi -- o `None` se non si puo' sapere con certezza.
@@ -258,8 +266,18 @@ async def ceiling_at_wake(app, subject: dict | None) -> dict:
         # comanda: giusto per chi e' passato dall'ingress, sbagliato per
         # un'azione a scadenza di cui non si sa il padrone.
         return consente({"specie": "nessuno"}, ruolo=None)
-    if subject.get("specie") != "persona":
-        subject["ruolo"] = _approved_service_role(app, subject)
+    if subject.get("specie") == "persona":
+        # **Al risveglio il dubbio chiude** (fix round 1, punto 2). In chat
+        # una persona senza ruolo leggibile vale «utente», perche' e' appena
+        # passata dall'ingress: e' una prova. Un'azione a scadenza non ha
+        # nessuna prova fresca -- l'utente puo' essere stato cancellato, o
+        # Home Assistant non rispondere -- e nel dubbio non si comanda.
+        role = await _ruolo_persona(app, subject)
+        if role is None:
+            return {"leggere": False, "comandare": False, "costruire": False,
+                    "ruolo": None, "perche": WAKE_UNVERIFIED_PERSON}
+        return consente(subject, ruolo=role)
+    subject["ruolo"] = _approved_service_role(app, subject)
     return await ceiling_for(app, subject)
 
 
