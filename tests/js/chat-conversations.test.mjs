@@ -68,7 +68,7 @@ test('schermo largo: il tocco su una voce non apre niente', (t) => {
    davvero, con la forma esatta (metodo, percorso, intestazione). */
 
 const CONFERMA = 'Perdi i messaggi di questa conversazione e il suo riassunto. '
-  + 'Le tue altre conversazioni restano, in elenco qui a fianco.\n'
+  + 'Le tue altre conversazioni restano nell\'elenco delle conversazioni.\n'
   + 'I ricordi non si toccano: restano finché non li cancelli tu, uno per uno, dalla pagina Memoria.\n'
   + 'Non si può annullare.\n\nCancellare questa conversazione?';
 const VUOTO = 'Le tue conversazioni con HIRIS compariranno qui.';
@@ -477,6 +477,126 @@ test('la frase del limite ha una casa sola: la stessa nella riga fissa e nella b
   assert.equal(bolle[bolle.length - 1].textContent, LIMITE);
 });
 
+/* ── Correzione 1 (review UX e sicurezza del Task 7) ─────────────────────── */
+
+test('dopo una cancellazione riuscita il fuoco va a #input, non al <body>', async (t) => {
+  /* Il cestino premuto si spegne (non c'e' piu' una conversazione aperta):
+     senza questo il fuoco cadrebbe sul <body> e chi usa la tastiera
+     ripartirebbe dall'inizio della pagina. */
+  const { window, document } = avviaChat(t);
+  server(window, {
+    'GET api/chat/conversations': { conversations: DUE },
+    'DELETE api/chat/conversations/c2': { ok: true },
+    'GET api/chat/history': { messages: [] },
+  });
+  await window.HirisChatConversations.refresh();
+  window.confirm = () => true;
+  document.getElementById('delete-conv-btn').focus();
+
+  await window.HirisChatAgents.clearConversation();
+
+  assert.equal(document.activeElement, document.getElementById('input'));
+});
+
+test('mentre HIRIS risponde «Nuova conversazione» e le voci sono spente; dopo, riaccese', async (t) => {
+  const { window, document } = avviaChat(t);
+  let rispondi;
+  const chiamate = server(window, {
+    'GET api/chat/conversations': { conversations: DUE },
+    'POST api/chat': () => new Promise((r) => { rispondi = () => r(risposta(200, { response: 'ok' })); }),
+  });
+  await window.HirisChatConversations.refresh();
+  const comandi = () => [document.getElementById('new-conv-btn'),
+    ...document.querySelectorAll('#conv-list button')];
+  assert.ok(comandi().every((b) => !b.disabled), 'precondizione: tutto acceso');
+
+  const invio = window.HirisChatSend.send('ciao');
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(comandi().length, 3);
+  assert.ok(comandi().every((b) => b.disabled), 'durante il turno: tutto spento');
+
+  rispondi();
+  await invio;
+  await window.HirisChatConversations.idle();
+  assert.ok(comandi().every((b) => !b.disabled), 'dopo il turno: tutto riacceso');
+  assert.equal(chiamate.filter((c) => c.metodo === 'POST' && c.percorso !== 'api/chat').length, 0);
+});
+
+test('un doppio tocco su una voce fa partire UNA ripresa sola', async (t) => {
+  const { window, document } = avviaChat(t);
+  const chiamate = server(window, {
+    'GET api/chat/conversations': { conversations: DUE },
+    'POST api/chat/conversations/c1/resume': { ok: true },
+    'GET api/chat/history': { messages: [] },
+  });
+  await window.HirisChatConversations.init();
+
+  const voce = document.querySelectorAll('#conv-list button')[1];
+  voce.click();
+  voce.click();
+  await window.HirisChatConversations.idle();
+
+  assert.equal(chiamate.filter((c) => c.metodo === 'POST').length, 1);
+});
+
+test('gesto riuscito ma storia non arrivata: lo si dice, niente vista vuota muta', async (t) => {
+  const { window, document } = avviaChat(t);
+  server(window, {
+    'POST api/chat/conversations/c1/resume': { ok: true },
+    'GET api/chat/history': () => risposta(500, {}),
+    'GET api/chat/conversations': { conversations: DUE },
+  });
+
+  const esito = await window.HirisChatConversations.resume('c1');
+
+  assert.equal(esito, true, 'la ripresa e\' avvenuta sul server');
+  const avviso = document.getElementById('conv-notice');
+  assert.equal(avviso.hidden, false);
+  assert.match(avviso.textContent, /messaggi/);
+});
+
+test('senza rete la frase e\' quella della chat, con una casa sola', async (t) => {
+  const { window, document } = avviaChat(t);
+  window.fetch = async () => { throw new Error('rete giu'); };
+  await window.HirisChatConversations.startNew();
+  assert.equal(document.getElementById('conv-notice').textContent,
+    window.HirisChatState.NETWORK_ERROR_TEXT);
+
+  await window.HirisChatSend.send('ciao');
+  const bolle = document.querySelectorAll('.msg-row.assistant .bubble');
+  assert.equal(bolle[bolle.length - 1].textContent, window.HirisChatState.NETWORK_ERROR_TEXT);
+  for (const nome of ['chat/send.js', 'chat/conversations.js']) {
+    assert.doesNotMatch(sorgente(nome), /Errore di connessione|raggiungere HIRIS/, nome);
+  }
+});
+
+test('un titolo con caratteri di direzione e invisibili resta testo, e la data accanto non cambia (Low-3)', async (t) => {
+  const { window, document } = avviaChat(t);
+  const titolo = 'abc' + String.fromCharCode(0x202e) + 'def' + String.fromCharCode(0x200b) + 'ghi';
+  server(window, { 'GET api/chat/conversations': { conversations: [
+    { id: 'c1', titolo, ultimo_messaggio: '2026-09-20T08:00:00Z', attiva: true }] } });
+
+  await window.HirisChatConversations.refresh();
+
+  assert.equal(document.querySelector('.conv-title').textContent, titolo);
+  assert.equal(document.querySelector('.conv-when').textContent,
+    window.HirisChatConversations.relativeDay('2026-09-20T08:00:00Z'));
+  assert.equal(document.querySelector('.conv-when').parentElement,
+    document.querySelector('.conv-title').parentElement, 'fratelli, non l\'uno dentro l\'altro');
+  /* Il ribaltamento lo contiene il foglio: `unicode-bidi: isolate` chiude la
+     direzione dentro il titolo. jsdom non calcola la resa, si guarda la regola. */
+  const css = sorgente('hiris-chat.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(css, /\.conv-title\s*\{[^}]*unicode-bidi:\s*isolate/);
+});
+
+test('il cestino dice la stessa cosa a chi lo legge e a chi ci passa sopra', () => {
+  const html = sorgente('index.html');
+  const bottone = html.match(/<button id="delete-conv-btn"[^>]*title="([^"]*)"[^>]*>([\s\S]*?)<\/button>/);
+  assert.ok(bottone, 'il cestino con un title');
+  const visibile = bottone[2].replace(/<svg[\s\S]*?<\/svg>/, '').trim();
+  assert.equal(bottone[1], visibile);
+});
+
 /* ── Il sorgente: le proprieta' che nessun comportamento mostra ─────────── */
 
 function sorgente(nome) {
@@ -485,7 +605,8 @@ function sorgente(nome) {
 
 test('conversations.js non scrive mai HTML e lo dichiara in testa (7.1)', () => {
   const testo = sorgente('chat/conversations.js');
-  assert.doesNotMatch(testo, /innerHTML|outerHTML|insertAdjacentHTML/);
+  assert.doesNotMatch(testo,
+    /innerHTML|outerHTML|insertAdjacentHTML|document\.write|createContextualFragment|DOMParser|srcdoc|\beval\(|new Function/);
   assert.match(testo.slice(0, 1500), /Sicurezza: testi via textContent/);
   assert.doesNotMatch(testo, /formatContent/, 'il formattatore dei messaggi non serve ai titoli');
 });

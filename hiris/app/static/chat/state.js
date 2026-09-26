@@ -40,5 +40,9 @@
     maxChatTurns: 0,
     turnCount: 0,
     isLoading: false,
+    /* La frase di quando HIRIS non si raggiunge, per la bolla di un invio
+       (chat/send.js) e per l'avviso di un gesto sulle conversazioni
+       (chat/conversations.js): una casa sola, qui dove i due la leggono. */
+    NETWORK_ERROR_TEXT: 'Errore di connessione. Riprova tra poco.',
   };
 })();

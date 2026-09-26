@@ -132,10 +132,10 @@
        HIRIS elabora: premuto in quel momento svuotava la lista, e la risposta
        -- gia' pagata in token -- veniva poi scritta dentro una riga staccata
        dal DOM, che nessuno vedeva mai. La condizione e' `state.isLoading`,
-       scritta qui sopra; l'altra ragione per cui il cestino si spegne (nessuna
-       conversazione aperta) e' dell'elenco: le legge tutte e due
-       chat/conversations.js, in un posto solo. */
-    window.HirisChatConversations.syncDeleteButton();
+       scritta qui sopra; la stessa spegne «Nuova conversazione» e le voci
+       dell'elenco, e il cestino ha una ragione in piu' (nessuna conversazione
+       aperta): decide tutto chat/conversations.js, in un posto solo. */
+    window.HirisChatConversations.syncControls();
     state.els.sendBtn.classList.toggle('loading', loading);
   }
 
@@ -199,7 +199,7 @@
       window.HirisPendingBadge.refresh();
       window.HirisChatConversations.refresh();
     } catch {
-      window.HirisChatMessages.updateBubble(pending, 'Errore di connessione. Riprova tra poco.');
+      window.HirisChatMessages.updateBubble(pending, state.NETWORK_ERROR_TEXT);
     } finally {
       if (!handedOff) {
         setLoadingState(false);

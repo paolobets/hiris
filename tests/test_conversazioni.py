@@ -156,6 +156,21 @@ def test_una_prima_frase_di_soli_spazi_non_nasconde_il_titolo_vero(tmp_path):
     assert list_conversations(d, thread=PAOLO)[0]["titolo"] == "Com'è il meteo?"
 
 
+def test_una_prima_frase_di_soli_caratteri_invisibili_vale_come_vuota(tmp_path):
+    """Security Low-5 (review del Task 7): i caratteri di formato (categoria
+    Unicode Cf: spazio a larghezza zero, BOM, controlli di direzione) non si
+    vedono, e un titolo fatto solo di loro sarebbe un pulsante vuoto. Si
+    tolgono prima del controllo del vuoto: il titolo ricade come per una
+    frase vuota; dentro un titolo vero spariscono, e con loro il ribaltamento
+    di direzione che U+202E farebbe sul testo accanto."""
+    d = str(tmp_path)
+    append_messages(_turn("\u200b\ufeff\u200b", "?"), d, thread=PAOLO)
+    assert list_conversations(d, thread=PAOLO)[0]["titolo"] == OUTCOME_ONLY_TITLE
+    new_conversation(d, thread=PAOLO)
+    append_messages(_turn("Acc\u200bendi\u202e la luce", "ok"), d, thread=PAOLO)
+    assert list_conversations(d, thread=PAOLO)[0]["titolo"] == "Accendi la luce"
+
+
 def test_una_conversazione_aperta_da_un_esito_ha_il_titolo_di_ripiego(tmp_path):
     d = str(tmp_path)
     assert append_assistant_line("La promessa delle 17: la porta è chiusa.", d, thread=PAOLO)

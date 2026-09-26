@@ -76,6 +76,9 @@
       margin: 6px 10px; font-size: 12px; line-height: 1.45;
       color: var(--text-3);
     }
+    /* Il filo sopra Configurazione serve all'elenco che scorre: senza, la
+       voce del footer si legge come l'ultima conversazione e non si vede
+       dove l'elenco finisce. */
     #sidebar-footer {
       padding: 8px 12px;
       border-top: 1px solid var(--border);
@@ -114,9 +117,13 @@
       flex-direction: column; align-items: stretch; gap: 1px;
       padding: 7px 10px;
     }
+    /* `unicode-bidi: isolate` (security Low-3): il titolo e' testo grezzo, e
+       un controllo di direzione dentro (U+202E) non deve ribaltare la data
+       accanto. */
     .conv-title {
       min-width: 0;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      unicode-bidi: isolate;
     }
     .conv-when { font-size: 11px; font-weight: 400; color: var(--text-3); }
     .sb-nav-item.conv-item.active .conv-when { color: var(--accent-ink); }

@@ -98,7 +98,7 @@ Il risultato porta i servizi trovati **e il motivo** quando sono zero (fondament
   - nella barra laterale, dopo Impegni/Proposte: **«Nuova conversazione»**, poi l'**elenco** (titolo con ellissi in CSS, data relativa oggi/ieri/gg-mm in `--text-3`; voce attiva con `.active` **e** `aria-current="true"`; voci come `<button>`; contenitore con scroll proprio `overflow-y:auto; min-height:0` fra `#sidebar-nav` e `#sidebar-footer`; riuso di `.sb-nav-item`, `hiris-chat.css:69-81`);
   - su telefono la barra è già un cassetto: il tocco su una voce lo chiude (`sidebar.js`) e il fuoco va a `#input`;
   - elenco vuoto: «Le tue conversazioni con HIRIS compariranno qui.»;
-  - il cestino dell'header cancella la conversazione aperta; conferma: «Perdi i messaggi di questa conversazione e il suo riassunto. Le tue altre conversazioni restano, in elenco qui a fianco.\nI ricordi non si toccano: restano finché non li cancelli tu, uno per uno, dalla pagina Memoria.\nNon si può annullare.\n\nCancellare questa conversazione?»;
+  - il cestino dell'header cancella la conversazione aperta; conferma: «Perdi i messaggi di questa conversazione e il suo riassunto. Le tue altre conversazioni restano nell'elenco delle conversazioni.\nI ricordi non si toccano: restano finché non li cancelli tu, uno per uno, dalla pagina Memoria.\nNon si può annullare.\n\nCancellare questa conversazione?» (26/09/2026, review UX del Task 7: era «restano, in elenco qui a fianco», falso sul telefono, dove l'elenco sta nel cassetto);
   - `#session-ended-msg` e il testo gemello in `send.js`: «Hai raggiunto il limite di messaggi per questa conversazione. Avviane una nuova dalla barra laterale.»
 
 ---

@@ -3,6 +3,7 @@ import os
 import re
 import sqlite3
 import threading
+import unicodedata
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -138,8 +139,17 @@ def unanswered_assistant_lines(history: list[dict]) -> list[str]:
 
 def conversation_title(first_user_message: str | None) -> str:
     """La prima frase di `first_user_message`, spazi ricomposti, dentro
-    `CONVERSATION_TITLE_MAX_CHARS`; `OUTCOME_ONLY_TITLE` se non c'e'."""
-    text = (first_user_message or "").strip()
+    `CONVERSATION_TITLE_MAX_CHARS`; `OUTCOME_ONLY_TITLE` se non c'e'.
+
+    I caratteri di formato (categoria Unicode Cf: spazio a larghezza zero,
+    BOM, controlli di direzione come U+202E) escono PRIMA del controllo del
+    vuoto: non si vedono, e un messaggio fatto solo di loro darebbe un
+    pulsante senza testo (security Low-5, review del Task 7). Limite
+    dichiarato: la query di `list_conversations` salta solo i messaggi vuoti
+    di spazi, quindi un primo messaggio di soli invisibili da' il titolo di
+    ripiego invece della frase che viene dopo."""
+    text = "".join(ch for ch in (first_user_message or "")
+                   if unicodedata.category(ch) != "Cf").strip()
     sentence = " ".join(_SENTENCE_END_RE.split(text, maxsplit=1)[0].split())
     if not sentence:
         return OUTCOME_ONLY_TITLE

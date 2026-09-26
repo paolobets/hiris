@@ -68,9 +68,11 @@
      anche DOVE si tolgono. Dalla fetta «il seguito delle chat divise» il
      cestino cancella la conversazione APERTA, non tutto il filo (decisione
      9): il testo lo dice, e dice che le altre restano in elenco. Testo
-     esatto della spec 2026-09-26 §4, deciso con ux-ui-specialist. */
+     esatto della spec 2026-09-26 §4, deciso con ux-ui-specialist; «in elenco
+     qui a fianco» e' diventato «nell'elenco delle conversazioni» il 26/09
+     (review UX): sul telefono l'elenco sta nel cassetto, non a fianco. */
   var DELETE_CONFIRM = 'Perdi i messaggi di questa conversazione e il suo riassunto. '
-    + 'Le tue altre conversazioni restano, in elenco qui a fianco.\n'
+    + 'Le tue altre conversazioni restano nell\'elenco delle conversazioni.\n'
     + 'I ricordi non si toccano: restano finché non li cancelli tu, uno per uno, '
     + 'dalla pagina Memoria.\n'
     + 'Non si può annullare.\n\n'
@@ -161,7 +163,7 @@
            catch sotto lasciavano traccia -- la cronologia restava vuota senza
            che nulla lo dicesse nemmeno in console. */
         console.error('applyHistory failed', r.status);
-        return;
+        return false;
       }
       var data = await r.json();
       var msgs = data.messages || [];
@@ -174,8 +176,10 @@
       state.turnCount = msgs.filter(function(m) { return m.role === 'user'; }).length;
       updateTurnCounter();
       checkTurnLimit();
+      return true;
     } catch (e) {
       console.error('applyHistory failed', e);
+      return false;
     }
   }
 
@@ -183,10 +187,11 @@
      (senza, tornando alla chat da config si vedeva una chat vuota pur
      essendo salvata) e dopo ogni nuova/ripresa/cancellazione
      (chat/conversations.js): il contatore dei turni viene dalla storia
-     riletta, cosi' una conversazione ripresa porta il SUO limite. */
+     riletta, cosi' una conversazione ripresa porta il SUO limite. Dice se
+     la storia e' arrivata: chat/conversations.js lo fa sapere a chi guarda. */
   async function restore() {
     resetView();
-    await applyHistory();
+    return applyHistory();
   }
 
   window.HirisChatAgents = {

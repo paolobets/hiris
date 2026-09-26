@@ -24,9 +24,15 @@
   var BASE = 'api/chat/conversations';
   var EMPTY_TEXT = 'Le tue conversazioni con HIRIS compariranno qui.';
   var NOTHING_TO_DELETE = 'Cancella la conversazione: nessuna conversazione aperta';
-  var NETWORK_TEXT = 'Non è stato possibile raggiungere HIRIS. Riprova tra poco.';
+  var HISTORY_TEXT = 'Non è stato possibile caricare i messaggi di questa conversazione. '
+    + 'Ricarica la pagina tra poco.';
 
   var active = null;
+  /* Una scrittura alla volta (security Low-2, review del Task 7): un doppio
+     tocco su una voce faceva partire due riprese, e la seconda chiudeva e
+     riapriva la stessa sessione buttandone il riassunto. La seconda si
+     ignora, non si accoda: e' lo stesso gesto ripetuto, non un altro. */
+  var writing = false;
   /* L'ultima operazione partita (lettura dell'elenco o scrittura). La
      aspettano le prove, che toccano i bottoni come un utente e poi guardano
      il risultato; la pagina non ne ha bisogno. */
@@ -57,16 +63,28 @@
     return pad2(d.getDate()) + '-' + pad2(d.getMonth() + 1);
   }
 
-  /* Il cestino ha due ragioni per spegnersi: HIRIS sta rispondendo (la
-     risposta atterrerebbe in una conversazione sparita) o non c'e' una
-     conversazione aperta. Tutte e due si leggono qui, in un posto solo:
-     chat/send.js chiama questa funzione invece di scrivere `disabled`. */
-  function syncDeleteButton() {
+  /* Chi decide se i comandi delle conversazioni si possono premere: uno solo,
+     qui, e chat/send.js lo chiama invece di scrivere `disabled`. Mentre HIRIS
+     risponde (`state.isLoading`) sono spenti tutti -- cestino, «Nuova
+     conversazione», voci: la risposta atterrerebbe in una conversazione
+     chiusa o sparita, e il server risponderebbe comunque 409 (review UX e
+     security Low-1 del Task 7). Il cestino ha una ragione in piu': nessuna
+     conversazione aperta, e lo dice a chi non lo vede spento. */
+  function syncControls() {
+    var busy = !!state.isLoading;
     var btn = document.getElementById('delete-conv-btn');
-    if (!btn) return;
-    btn.disabled = state.isLoading || active === null;
-    if (active === null) btn.setAttribute('aria-label', NOTHING_TO_DELETE);
-    else btn.removeAttribute('aria-label');
+    if (btn) {
+      btn.disabled = busy || active === null;
+      if (active === null) btn.setAttribute('aria-label', NOTHING_TO_DELETE);
+      else btn.removeAttribute('aria-label');
+    }
+    var newBtn = document.getElementById('new-conv-btn');
+    if (newBtn) newBtn.disabled = busy;
+    var list = document.getElementById('conv-list');
+    if (list) {
+      var items = list.querySelectorAll('button');
+      for (var i = 0; i < items.length; i++) items[i].disabled = busy;
+    }
   }
 
   function showNotice(text) {
@@ -122,7 +140,7 @@
       empty.textContent = EMPTY_TEXT;
       empty.hidden = rows.length > 0;
     }
-    syncDeleteButton();
+    syncControls();
   }
 
   /* Rilegge l'elenco. Un elenco riletto e' anche la fine di un avviso
@@ -150,6 +168,8 @@
      la conversazione che il server dice attiva -- la storia riletta, non una
      vista svuotata a mano -- e rilegge l'elenco. */
   function act(method, url, fallback) {
+    if (writing) return Promise.resolve(false);
+    writing = true;
     return track((async function() {
       hideNotice();
       var r;
@@ -157,7 +177,7 @@
         r = await fetch(url, { method: method, headers: { 'X-Requested-With': 'fetch' } });
       } catch (e) {
         console.error('conversation ' + method + ' failed', e);
-        showNotice(NETWORK_TEXT);
+        showNotice(state.NETWORK_ERROR_TEXT);
         return false;
       }
       if (!r.ok) {
@@ -174,10 +194,14 @@
         showNotice(text);
         return false;
       }
-      await window.HirisChatAgents.restore();
+      /* Il gesto e' riuscito sul server; se poi la storia non arriva la
+         vista resterebbe vuota senza dire niente (review spec, minore 2).
+         L'avviso si scrive dopo la rilettura dell'elenco, che lo spegnerebbe. */
+      var shown = await window.HirisChatAgents.restore();
       await refresh();
+      if (!shown) showNotice(HISTORY_TEXT);
       return true;
-    })());
+    })().finally(function() { writing = false; }));
   }
 
   function focusInput() {
@@ -196,9 +220,13 @@
       .then(function(ok) { if (ok) focusInput(); return ok; });
   }
 
+  /* Anche dopo una cancellazione il fuoco va al campo: il cestino appena
+     premuto si spegne (non c'e' piu' una conversazione aperta), e senza
+     questo il fuoco cadrebbe sul <body> (review UX del Task 7). */
   function remove(id) {
     return act('DELETE', BASE + '/' + encodeURIComponent(id),
-      'Non è stato possibile cancellare la conversazione. Riprova più tardi.');
+      'Non è stato possibile cancellare la conversazione. Riprova più tardi.')
+      .then(function(ok) { if (ok) focusInput(); return ok; });
   }
 
   /* Il cassetto su telefono lo chiude chat/sidebar.js, che ascolta i tocchi
@@ -227,7 +255,7 @@
     resume: resume,
     remove: remove,
     activeId: activeId,
-    syncDeleteButton: syncDeleteButton,
+    syncControls: syncControls,
     relativeDay: relativeDay,
     idle: idle,
   };
