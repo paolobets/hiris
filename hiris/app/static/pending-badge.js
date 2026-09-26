@@ -108,16 +108,11 @@ window.HirisPendingBadge = (function () {
         if (n > 0) accendi(VOCI[k].voce, n);
         else spegni(VOCI[k].voce);
       }
-      /* La voce «Proposte» c'e' solo per chi costruisce (spec 2026-09-26 §3,
-         decisione 5), e lo dice il server a OGNI risposta -- `can_build` --
-         non un ruolo indovinato qui. Nasce nascosta nei due gusci e si mostra
-         solo su un `true` esplicito: una risposta che non lo porta non e' un
-         permesso. Nasconderla non e' la difesa (la pagina risponde 403 da
-         sola): e' non offrire una strada chiusa. Un errore qui sotto non la
-         tocca -- non e' una risposta, e farla sparire a ogni rete caduta
-         sarebbe un menu che lampeggia. */
-      var proposte = ospite('constructions');
-      if (proposte) proposte.hidden = dati.can_build !== true;
+      /* Chi costruisce lo dice il server a OGNI risposta (`can_build`), e
+         si ricorda per la prossima apertura: vedi `applyBuilder`. */
+      var puo = dati.can_build === true;
+      applyBuilder(puo);
+      remember(puo);
     }).catch(function (err) {
       /* Il ramo che il badge morto non aveva. Spegne anche cio' che era
          acceso al giro prima: un numero vecchio lasciato li' mentre la rete
@@ -127,10 +122,47 @@ window.HirisPendingBadge = (function () {
     });
   }
 
+  /* ── Chi costruisce (spec 2026-09-26 §3, decisioni 5 e 6) ─────────────
+     Cio' che e' solo di chi costruisce -- la voce «Proposte» nei due gusci,
+     il modulo delle correzioni nel sapere -- porta `data-builder-only` e
+     nasce `hidden`. Lo mostra solo un `can_build: true` del server: una
+     risposta che non lo porta non e' un permesso. Nasconderlo non e' la
+     difesa (le rotte rispondono 403 da sole): e' non offrire una strada
+     chiusa.
+
+     **L'ultima risposta si ricorda** (fix round 1 del Task 4): senza, la
+     voce compariva a un amministratore un giro di rete dopo ogni apertura,
+     e mai se la prima risposta falliva. Il ricordo e' una comodita' di chi
+     guarda (`localStorage`, per questo browser): si applica all'avvio, ogni
+     risposta lo riscrive, un errore lo lascia com'e'. Non apre niente -- il
+     server continua a decidere -- e senza ricordo (o con lo storage che
+     solleva, in una finestra privata) si parte nascosti. */
+  var RICORDO = 'hiris.can_build';
+  var canBuildNow = false;
+
+  function remembered() {
+    try { return window.localStorage.getItem(RICORDO) === '1'; } catch { return false; }
+  }
+
+  function remember(puo) {
+    try { window.localStorage.setItem(RICORDO, puo ? '1' : '0'); } catch { /* comodita': senza, si riparte nascosti */ }
+  }
+
+  function applyBuilder(puo) {
+    canBuildNow = puo;
+    var nodi = document.querySelectorAll('[data-builder-only]');
+    for (var i = 0; i < nodi.length; i++) nodi[i].hidden = !puo;
+  }
+
   function mount() {
+    applyBuilder(remembered());
     window.addEventListener('focus', refresh);
     return refresh();
   }
 
-  return { mount: mount, refresh: refresh };
+  /* Per chi disegna DOPO una risposta (il modulo delle correzioni): nasce
+     gia' nello stato giusto, e le risposte successive lo aggiornano. */
+  function canBuild() { return canBuildNow; }
+
+  return { mount: mount, refresh: refresh, canBuild: canBuild };
 })();

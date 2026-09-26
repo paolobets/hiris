@@ -36,9 +36,9 @@ import time
 
 from aiohttp import web
 
-from ..chat_thread import without_thread
+from ..chat_thread import subject_from_thread, without_thread
 from .boundary import occurrence_out
-from .soffitto import requester_name, require_builder
+from .soffitto import approved_services, require_builder, subject_name
 
 # Un solo testo per «quell'id non esiste», usato sia da chi legge sia da chi
 # agisce: due frasi diverse per lo stesso fatto sarebbero una piccola
@@ -75,7 +75,7 @@ async def handle_get_constructions(request: web.Request) -> web.Response:
 _APPLIES_HIRIS = "hiris"
 _APPLIES_YOU = "tu"
 
-async def _out(app, row: dict) -> dict:
+async def _out(app, row: dict, approved: list[dict]) -> dict:
     """Una riga come esce dalle due rotte GET: senza il filo, con chi l'ha
     chiesta.
 
@@ -85,10 +85,13 @@ async def _out(app, row: dict) -> dict:
     tutte le righe col filo. Al suo posto esce `chiesta_da`, il NOME di chi
     l'ha chiesta (spec 2026-09-26 §3): una riga senza filo -- le proposte a
     mano, nate dall'osservatore, e le orfane -- porta `None`, cosi' le due
-    code hanno la stessa forma.
+    code hanno la stessa forma. Il nome viene da `soffitto.subject_name`, la
+    stessa casa dell'autore di un giudizio; `approved` e' l'archivio dei
+    servizi letto UNA volta per risposta, non una per riga.
     """
     return {**without_thread(row),
-            "chiesta_da": await requester_name(app, row.get("thread"))}
+            "chiesta_da": await subject_name(app, subject_from_thread(row.get("thread")),
+                                             approved=approved)}
 
 
 async def _both_queues(app, store, pending_only: bool) -> list[dict]:
@@ -98,11 +101,13 @@ async def _both_queues(app, store, pending_only: bool) -> list[dict]:
     elenco il cui ordine dipende da quale archivio si legge per primo, cioe'
     da un dettaglio di implementazione.
     """
-    rows = [{**await _out(app, row), "chi_applica": _APPLIES_HIRIS}
+    approved = approved_services(app)
+    rows = [{**await _out(app, row, approved), "chi_applica": _APPLIES_HIRIS}
             for row in store.list(pending_only=pending_only, limit=200)]
     observations = app.get("observations")
     if observations is not None:
-        rows += [{**await _out(app, row), "chi_applica": _APPLIES_YOU, "a_mano": True}
+        rows += [{**await _out(app, row, approved), "chi_applica": _APPLIES_YOU,
+                  "a_mano": True}
                  for row in observations.proposals(pending_only=pending_only)]
     return sorted(rows, key=lambda r: r.get("creata_ts") or 0, reverse=True)
 
@@ -117,7 +122,8 @@ async def handle_get_construction(request: web.Request) -> web.Response:
     row = store.read(request.match_info["id"])
     if row is None:
         return web.json_response({"error": _NOT_FOUND}, status=404)
-    return web.json_response({"construction": await _out(request.app, row)})
+    return web.json_response(
+        {"construction": await _out(request.app, row, approved_services(request.app))})
 
 
 async def _act(request: web.Request, verb: str) -> web.Response:

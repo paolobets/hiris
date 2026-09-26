@@ -16,7 +16,6 @@ import re
 import sqlite3
 import time as _time
 
-from ..chat_thread import subject_key_for
 from ..home_space.type_judgments import (
     _SUBJECT_KINDS,
     DA_SAPERE_SUBITO_FIELD,
@@ -37,7 +36,6 @@ from ..home_space.type_vocabulary import (
     REPO_JUDGMENTS,
     judgment_seed_rows,
 )
-from ..proxy._sanitize import sanitize_ha_value
 
 # Nome privato importato da un altro modulo, di proposito: la guardia stretta
 # sulla forma `dominio.oggetto` vive in quattro copie (docs/BACKLOG.md, voce
@@ -321,21 +319,8 @@ def _check(subject_kind: str, subject: str, field: str, value, current: TypeJudg
                 "riposo -- scrivi prima `riposo` o `lavoro`")
 
 
-def _author_name(author: dict | None) -> str:
-    """Il nome di chi scrive un giudizio, per `who`.
-
-    Il nome arriva dall'intestazione dell'ingress di Home Assistant: testo di
-    chi chiede, che la pagina mostra e che nessuno rilegge prima -- passa da
-    `sanitize_ha_value`, la stessa porta dei ricordi (`tools._remember`).
-    Senza un nome (un ingress che non lo porta) resta la chiave: `who` e'
-    obbligatorio, e la chiave e' vera -- un nome inventato non lo sarebbe.
-    """
-    name = sanitize_ha_value((author or {}).get("nome"))
-    return name or subject_key_for(author)
-
-
 def write_judgment(app, *, subject_kind: str, subject: str, field: str, value: str | None,
-                   author: dict, now=_time.time) -> dict:
+                   author_name: str, said_by: str, now=_time.time) -> dict:
     """**La porta unica** (spec §4): valida, scrive, ricostruisce l'istantanea e
     sostituisce INSIEME `app["type_judgments"]` e `app["type_judgments_status"]`
     -- la correzione vale subito (spec §0, decisione 2).
@@ -352,9 +337,11 @@ def write_judgment(app, *, subject_kind: str, subject: str, field: str, value: s
     Nessuna ricarica della `EntityCache` (D1: nessun giudizio del sapere e'
     tenuto calcolato dalla cache).
 
-    `author` e' il SOGGETTO che scrive, dal confine (spec 2026-09-26 §3,
-    decisione 6): la riga porta il suo nome in `who` e la sua chiave in
-    `said_by`, come i ricordi. Non viene mai dal corpo di una richiesta.
+    `author_name` e `said_by` sono chi scrive (spec 2026-09-26 §3, decisione
+    6): il nome in `who`, la chiave del soggetto in `said_by`, come i ricordi.
+    Li decide chi chiama dal soggetto del confine -- il nome da
+    `soffitto.subject_name`, la casa dei nomi -- e mai dal corpo di una
+    richiesta.
     """
     knowledge = app.get("knowledge")
     if knowledge is None:
@@ -374,8 +361,8 @@ def write_judgment(app, *, subject_kind: str, subject: str, field: str, value: s
                    [] if fact is None else [fact], priority=REPO_PRIORITY)
     else:
         fact = Fact(subject_kind=subject_kind, subject=subject, field=field, value=value,
-                    provenance="nostro", who=_author_name(author),
-                    said_by=subject_key_for(author), when_ts=now())
+                    provenance="nostro", who=author_name, said_by=said_by,
+                    when_ts=now())
         _writing(knowledge.write, fact)
     judgments, status = build_judgments(knowledge)
     app["type_judgments"], app["type_judgments_status"] = judgments, status

@@ -633,9 +633,16 @@ chi l'ha chiesta, e la sua notifica non sa a chi tornare. Ogni persona in casa l
 modo di chi l'ha chiesta — il contrario del filo appena costruito per la chat, dove ognuno legge
 solo il proprio.
 
-### L'autore del giudizio fisso a `"proprietario"`
+### ~~L'autore del giudizio fisso a `"proprietario"`~~ — **USCITA col prossimo rilascio**
 
 `origine: misurato durante la fetta «le chat divise», 25/09/2026` · `mind/judgments.py:50`
+
+**CHIUSA il 26/09/2026 con la fetta «il seguito delle chat divise»**, Task 4
+(`docs/design/2026-09-26-il-seguito-delle-chat-divise.md` §3, decisione 6). `JUDGMENT_AUTHOR` e'
+uscito: un giudizio porta il nome di chi l'ha scritto (`who`, dalla casa dei nomi
+`soffitto.subject_name`) e la sua chiave (`said_by`, colonna nuova del sapere), e la porta di
+scrittura ha il cancello di chi costruisce (`soffitto.require_builder`). I giudizi scritti prima
+restano «proprietario»: per loro e' vero. Il testo sotto e' il reperto com'era.
 
 `JUDGMENT_AUTHOR = "proprietario"`: chiunque corregga un giudizio del sapere (genere, notevole,
 limiti operabili...) — anche una persona non amministratrice che ora, dalla fetta «le chat

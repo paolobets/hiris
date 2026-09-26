@@ -24,7 +24,7 @@ import { loadScripts, tick } from './helpers/dom.mjs';
 
 const HTML = '<!doctype html><body>'
   + '<a id="v-agenda" data-badge="agenda"><span>Impegni</span></a>'
-  + '<a id="v-cost" data-badge="constructions"><span>Proposte</span></a>'
+  + '<a id="v-cost" data-badge="constructions" data-builder-only hidden><span>Proposte</span></a>'
   + '</body>';
 
 function rispostaCon(corpo) {
@@ -159,9 +159,9 @@ test('PIN: una terza chiave nella risposta non fa scattare il controllo stretto'
 
 /* ── La voce «Proposte» e' di chi costruisce (spec 2026-09-26 §3) ──────
    La decide il server a ogni risposta di `GET /api/pending` (`can_build`),
-   non un ruolo indovinato dal browser. Mutazioni ESEGUITE: togliere la riga
-   `proposte.hidden = ...` -- rosse le prime due; `dati.can_build === false`
-   al posto di `!== true` -- rossa la terza. */
+   non un ruolo indovinato dal browser. Mutazioni ESEGUITE: svuotare il
+   ciclo di `applyBuilder` -- rosse quattro prove di questo file;
+   `dati.can_build !== false` al posto di `=== true` -- rossa la terza. */
 
 function voceProposte(ctx) {
   return ctx.document.querySelector('[data-badge="constructions"]');
@@ -209,4 +209,58 @@ test('un errore non tocca la voce: non e\' una risposta', async () => {
   await tick(0);
 
   assert.equal(voceProposte(ctx).hidden, false);
+});
+
+/* ── Il ricordo dell'ultima risposta (fix round 1 del Task 4) ─────────
+   Senza, la voce compariva a un amministratore un giro di rete dopo ogni
+   apertura, e mai se la prima risposta falliva. Mutazioni ESEGUITE: togliere
+   `applyBuilder(remembered())` da `mount` -- rossa la prima; togliere
+   `remember(puo)` -- rossa la seconda; togliere il try/catch di
+   `remembered` -- rossa la terza. */
+
+function montaSenzaRisposta(prima) {
+  const ctx = loadScripts(['pending-badge.js'], { html: HTML });
+  if (prima) prima(ctx);
+  ctx.window.fetch = () => new Promise(() => {});
+  ctx.window.HirisPendingBadge.mount();
+  return ctx;
+}
+
+test('un «può costruire» ricordato mostra la voce SUBITO, prima della risposta', () => {
+  const ctx = montaSenzaRisposta((c) => c.window.localStorage.setItem('hiris.can_build', '1'));
+
+  assert.equal(voceProposte(ctx).hidden, false);
+  assert.equal(ctx.window.HirisPendingBadge.canBuild(), true);
+});
+
+test('la risposta del server vince sul ricordo, e diventa il ricordo', async () => {
+  const ctx = loadScripts(['pending-badge.js'], { html: HTML });
+  ctx.window.localStorage.setItem('hiris.can_build', '1');
+  ctx.window.fetch = rispostaCon({ agenda_unread: 0, constructions_pending: 0, can_build: false });
+  await ctx.window.HirisPendingBadge.mount();
+  await tick(0);
+
+  assert.equal(voceProposte(ctx).hidden, true);
+  assert.equal(ctx.window.localStorage.getItem('hiris.can_build'), '0');
+});
+
+test('uno storage che solleva non rompe niente: si parte nascosti e la risposta decide', async () => {
+  const ctx = loadScripts(['pending-badge.js'], { html: HTML });
+  Object.defineProperty(ctx.window, 'localStorage', {
+    configurable: true, get() { throw new Error('SecurityError'); },
+  });
+  ctx.window.fetch = rispostaCon({ agenda_unread: 0, constructions_pending: 2, can_build: true });
+  const montaggio = ctx.window.HirisPendingBadge.mount();
+  assert.equal(voceProposte(ctx).hidden, true, 'senza ricordo si parte nascosti');
+  await montaggio;
+  await tick(0);
+
+  assert.equal(voceProposte(ctx).hidden, false);
+  assert.equal(pallino(ctx, 'constructions').textContent, '2');
+});
+
+test('senza ricordo si parte nascosti', () => {
+  const ctx = montaSenzaRisposta();
+
+  assert.equal(voceProposte(ctx).hidden, true);
 });

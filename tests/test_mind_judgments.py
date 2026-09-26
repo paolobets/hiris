@@ -19,10 +19,10 @@ from hiris.app.mind.judgments import (
 from hiris.app.mind.knowledge import Fact, KnowledgeStore
 from hiris.app.mind.seed import REPO_PRIORITY, SEED_AUTHOR, judgment_seed
 
-#: Chi scrive i giudizi di queste prove, come il confine lo attacca alla
-#: richiesta. Dal 26/09/2026 `write_judgment` registra l'autore vero (spec
-#: 2026-09-26 §3, decisione 6): prima firmava tutto «proprietario».
-AUTORE = {"specie": "persona", "id": "u-admin", "nome": "Paolo"}
+#: Chi scrive i giudizi di queste prove: il nome e la chiave che la rotta
+#: ricava dal soggetto. Dal 26/09/2026 `write_judgment` registra l'autore
+#: vero (spec 2026-09-26 §3, decisione 6): prima firmava tutto «proprietario».
+AUTORE = {"author_name": "Paolo", "said_by": "persona:u-admin"}
 #: L'autore delle righe scritte dalla porta PRIMA del 26/09/2026: per loro e'
 #: vero, e restano correzioni (`judgments._LEGACY_AUTHOR`).
 AUTORE_STORICO = "proprietario"
@@ -31,7 +31,7 @@ AUTORE_STORICO = "proprietario"
 def _scrivi(app, **argomenti):
     """`write_judgment` con l'autore di queste prove: la porta vera, a cui
     si aggiunge solo chi scrive."""
-    return write_judgment(app, author=AUTORE, **argomenti)
+    return write_judgment(app, **AUTORE, **argomenti)
 
 
 def _sapere(tmp_path):

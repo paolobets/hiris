@@ -1256,3 +1256,52 @@ test('seam _rendiSapere: una correzione dice CHI l\'ha scritta, e il nome resta 
   assert.equal(corpo.querySelectorAll('img').length, 0, 'il nome e\' diventato markup');
   assert.doesNotMatch(corpo.textContent, /da te/, 'nessuna seconda persona: chi legge puo\' non essere chi ha scritto');
 });
+
+/* ── Il modulo delle correzioni è di chi costruisce (fix round 1, punto 9) ──
+   Leggere il sapere resta di tutti; SCRIVERE una correzione no (la rotta
+   risponde 403 da sola). Il modulo porta `data-builder-only` e segue lo
+   stato che `pending-badge.js` conosce. Mutazioni ESEGUITE: togliere
+   `wrap.hidden = ...` -- rosse la seconda e la quarta; togliere
+   `data-builder-only` -- rossa la terza. */
+
+async function sapereConCostruire(canBuild) {
+  const ctx = loadScripts([...SCRIPTS, 'pending-badge.js'], { html: fixtureHtml() });
+  const risposte = [canBuild];
+  ctx.window.fetch = async () => jsonResponse(
+    { agenda_unread: 0, constructions_pending: 0, can_build: risposte[risposte.length - 1] });
+  await ctx.window.HirisPendingBadge.mount();
+  await tick(0);
+  const corpo = ctx.document.createElement('div');
+  ctx.document.body.appendChild(corpo);
+  ctx.window.HirisWatcherSapere._rendiSapere(corpo, sapereFinto());
+  return { ctx, corpo, risposte };
+}
+
+test('chi costruisce vede il modulo delle correzioni', async () => {
+  const { corpo } = await sapereConCostruire(true);
+
+  assert.equal(corpo.querySelector('form.jr-add-form').hidden, false);
+});
+
+test('chi non costruisce legge il sapere ma non vede il modulo', async () => {
+  const { corpo } = await sapereConCostruire(false);
+
+  assert.equal(corpo.querySelector('form.jr-add-form').hidden, true);
+  assert.match(corpo.textContent, /Correzioni/, 'la lettura resta');
+});
+
+test('il modulo segue ogni risposta di /api/pending, anche dopo essere nato', async () => {
+  const { ctx, corpo, risposte } = await sapereConCostruire(true);
+
+  risposte.push(false);
+  await ctx.window.HirisPendingBadge.refresh();
+  await tick(0);
+
+  assert.equal(corpo.querySelector('form.jr-add-form').hidden, true);
+});
+
+test('senza chi sappia se si costruisce, il modulo nasce nascosto', () => {
+  const { corpo } = rendiSapere(sapereFinto());
+
+  assert.equal(corpo.querySelector('form.jr-add-form').hidden, true);
+});

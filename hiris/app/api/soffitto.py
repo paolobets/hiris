@@ -36,9 +36,10 @@ import time
 
 from aiohttp import web
 
-from ..chat_thread import subject_from_thread, subject_key_for
+from ..chat_thread import subject_key_for
 from ..proxy._sanitize import sanitize_ha_value
 from .canali import PUO, RUOLI
+from .servizi import SPECIE as SERVICE_SPECIES
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +132,7 @@ async def _person_row(app, soggetto: dict | None) -> dict | None:
 
     Una lettura sola per tre domande: il ruolo (`_ruolo_persona`), se è il
     proprietario (`is_owner`, fetta «le chat divise») e come si chiama
-    (`requester_name`, fetta «il seguito delle chat divise»). Letture
+    (`subject_name`, fetta «il seguito delle chat divise»). Letture
     separate sarebbero cache che scadono in momenti diversi.
     """
     identificatore = (soggetto or {}).get("id")
@@ -166,12 +167,21 @@ async def _ha_users(app) -> dict | None:
             # `error` e non `warning`, e con le CONSEGUENZE scritte: finché
             # questa lettura non riesce NESSUNO può costruire — nemmeno il
             # proprietario — e la cronologia della chat di prima delle chat
-            # divise resta orfana (`is_owner` non sa chi è il proprietario).
-            # Sono i due lettori di questa riga; chi ne aggiunge un terzo
-            # aggiunge qui la sua conseguenza. È il verso giusto, ma è anche il
-            # guasto che spegne una funzione, e chi legge il registro deve
-            # capirlo alla prima riga invece di inseguire un 403 che non si
-            # spiega.
+            # divise resta orfana (`is_owner` non sa chi è il proprietario),
+            # e i nomi delle persone non si leggono (`subject_name`). Chi
+            # aggiunge un lettore aggiunge qui la sua conseguenza. È il verso
+            # giusto, ma è anche il guasto che spegne una funzione, e chi
+            # legge il registro deve capirlo alla prima riga invece di
+            # inseguire un 403 che non si spiega.
+            #
+            # **Il guasto non si mette in cache, la sua riga si'** (fix round
+            # 1 del Task 4): ogni `GET /api/pending` rilegge, e durante un
+            # guasto di HA ogni clic scriverebbe questa riga. Una volta ogni
+            # `RUOLI_VALIDI_S` basta a dire che il guasto dura.
+            adesso = time.time()
+            if adesso - visti.get("guasto_detto", 0.0) < RUOLI_VALIDI_S:
+                return None
+            visti["guasto_detto"] = adesso
             logger.error(
                 "soffitto: non ho potuto leggere gli utenti da Home Assistant "
                 "(%s). Finché non ci riesco NESSUNO può far scrivere "
@@ -252,18 +262,17 @@ def _approved_service_role(app, subject: dict) -> str | None:
     servizio revocato, sconosciuto o con due approvazioni di ruolo diverso
     sotto lo stesso nome non ha un ruolo che si possa dedurre.
     """
-    roles = {row.get("ruolo") for row in _service_rows(app, subject)
-             if row.get("stato") == "autorizzato"}
+    roles = {row.get("ruolo") for row in _service_rows(subject, approved_services(app))}
     return roles.pop() if len(roles) == 1 else None
 
 
-def _service_rows(app, subject: dict) -> list[dict]:
-    """Le righe dell'archivio dei servizi che portano il nome e la specie di
-    questo soggetto -- vuoto se l'archivio non c'e' o non si legge.
+def approved_services(app) -> list[dict]:
+    """Le righe dei servizi APPROVATI, lette una volta -- vuoto se
+    l'archivio non c'e' o non si legge.
 
-    Una ricerca sola per le due domande sul servizio: il suo ruolo al
-    risveglio (`_approved_service_role`) e il suo nome sulla pagina
-    Costruzioni (`requester_name`)."""
+    Chi deve nominare molti soggetti in una risposta (l'elenco delle
+    Costruzioni) la legge una volta e la passa a `subject_name`, invece di
+    rileggere l'archivio per ogni riga."""
     services = app.get("servizi")
     if services is None:
         return []
@@ -273,32 +282,56 @@ def _service_rows(app, subject: dict) -> list[dict]:
         logger.warning("soffitto: archivio dei servizi non leggibile (%s)",
                        type(exc).__name__)
         return []
-    return [row for row in rows
+    return [row for row in rows if row.get("stato") == "autorizzato"]
+
+
+def _service_rows(subject: dict, approved: list[dict]) -> list[dict]:
+    """Le righe approvate che portano il nome e la specie di questo soggetto:
+    una ricerca sola per il ruolo al risveglio (`_approved_service_role`) e
+    il nome sulla pagina (`subject_name`)."""
+    return [row for row in approved
             if row.get("nome") == subject.get("id")
             and (row.get("specie") or "integrazione") == subject.get("specie")]
 
 
-async def requester_name(app, thread) -> str | None:
-    """Il nome leggibile di chi ha aperto questo filo, per la pagina
-    Costruzioni (spec 2026-09-26 §3: «chi l'ha chiesta, nome leggibile, non
-    la chiave») -- o `None` quando non c'e' nessuno da nominare.
+#: Le specie che hanno un nome da qualche parte: una persona fra gli utenti
+#: di Home Assistant, un servizio nel suo archivio. `nessuno` (il ponte, un
+#: turno interno) e `sviluppo` non ne hanno: il loro «nome» al confine e' il
+#: mestiere, non qualcuno da mostrare.
+_NAMED_SPECIES = ("persona", *SERVICE_SPECIES)
 
-    Il nome si legge da chi lo SA, mai dal filo, che porta solo la chiave:
-    per una persona gli utenti di Home Assistant, per un servizio il suo
-    archivio. Un filo orfano, un turno senza soggetto o una persona sparita
-    da Home Assistant danno `None`: la chiave al posto del nome sarebbe un
-    identificatore interno sulla pagina, non una risposta. Il nome e' testo
-    scrivibile da fuori (un utente di HA, un servizio che si presenta):
-    passa da `sanitize_ha_value` come ogni altro nome che HIRIS mostra.
+
+async def subject_name(app, subject: dict | None, *,
+                       approved: list[dict] | None = None) -> str | None:
+    """Il nome leggibile di un soggetto -- **la casa di questo fatto** (fix
+    round 1 del Task 4): chi ha chiesto una proposta (`chiesta_da`) e chi ha
+    scritto un giudizio si nominano qui, allo stesso modo.
+
+    Si legge da chi lo SA: per una persona gli utenti di Home Assistant, per
+    un servizio l'archivio -- dove il nome e' lo stesso id con cui e' stato
+    approvato, e la lettura aggiunge che e' **ancora** approvato. Se non c'e',
+    il nome che il confine ha attaccato al soggetto (l'intestazione
+    dell'ingress, la firma); un soggetto rifatto da un filo non ne porta. Mai
+    la chiave: sulla pagina sarebbe un identificatore interno, non un nome.
+    `None` quando nessuno lo sa. Il nome e' testo scrivibile da fuori (un
+    utente di HA, un servizio che si presenta): passa da `sanitize_ha_value`
+    una volta, qui.
+
+    `approved`: le righe di `approved_services`, se chi chiama le ha gia'.
     """
-    subject = subject_from_thread(thread)
-    if not subject or not subject.get("id"):
+    subject = subject or {}
+    if subject.get("specie") not in _NAMED_SPECIES:
         return None
-    if subject["specie"] == "persona":
-        name = ((await _person_row(app, subject)) or {}).get("nome")
-    else:
-        name = next((row.get("nome") for row in _service_rows(app, subject)), None)
-    return sanitize_ha_value(name) if name else None
+    name = None
+    if subject.get("id"):
+        if subject["specie"] == "persona":
+            name = ((await _person_row(app, subject)) or {}).get("nome")
+        else:
+            rows = _service_rows(subject, approved_services(app) if approved is None
+                                 else approved)
+            name = next((row.get("nome") for row in rows), None)
+    name = sanitize_ha_value(name or subject.get("nome"))
+    return name or None
 
 
 async def ceiling_at_wake(app, subject: dict | None) -> dict:
@@ -338,6 +371,16 @@ async def per_richiesta(app, request) -> dict:
     return await ceiling_for(app, request.get("soggetto") or {})
 
 
+def _route_pattern(request) -> str:
+    """Il MODELLO della rotta (`/api/constructions/{id}`), non il percorso:
+    `request.path` e' decodificato, e un `%0A` nell'id diventerebbe una riga
+    falsa nel registro (fix round 1 del Task 4, Low-3). `?` fuori da una
+    rotta registrata."""
+    info = getattr(request, "match_info", None)
+    resource = getattr(getattr(info, "route", None), "resource", None)
+    return getattr(resource, "canonical", None) or "?"
+
+
 async def require_builder(app, request) -> web.Response | None:
     """**Il cancello di chi costruisce** (spec 2026-09-26 §3, decisioni 5 e
     6): `None` se questa richiesta puo' costruire, altrimenti il 403 col
@@ -356,7 +399,7 @@ async def require_builder(app, request) -> web.Response | None:
     permesso = await per_richiesta(app, request)
     if permesso["costruire"]:
         return None
-    logger.info("soffitto: %s %s negato a %s — %s", request.method, request.path,
+    logger.info("soffitto: %s %s negato a %s — %s", request.method, _route_pattern(request),
                 subject_key_for(request.get("soggetto")), permesso["perche"])
     return web.json_response({"errore": permesso["perche"]}, status=403)
 

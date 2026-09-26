@@ -40,6 +40,7 @@ from datetime import datetime, timedelta
 
 from aiohttp import web
 
+from ..chat_thread import subject_key_for
 from ..home_space.historian import home_space_zone
 from ..home_space.type_census import OPEN_QUESTIONS
 from ..mind.facts import day_boundaries
@@ -51,7 +52,7 @@ from ..mind.judgments import (
     write_judgment,
 )
 from ..mind.report import as_document, as_page, integration_of
-from .soffitto import require_builder
+from .soffitto import require_builder, subject_name
 
 #: Quanti giorni di volume la pagina mostra. **Non e' la durata del grezzo**
 #: (22 giorni, `store.READING_RETENTION_S`): e' quanto serve a vedere se il
@@ -343,6 +344,13 @@ async def handle_set_objective(request) -> web.Response:
 
 _JUDGMENT_TEXT_KEYS = ("soggetto_genere", "soggetto", "campo")
 
+#: L'autore di un giudizio quando nessuno sa dirne il nome (un ingress senza
+#: intestazione del nome E Home Assistant che non risponde). Vero per
+#: costruzione: il cancello di questa rotta ha appena verificato che chi
+#: scrive puo' costruire, cioe' e' un amministratore. Mai la chiave: sulla
+#: pagina sarebbe un identificatore interno (fix round 1 del Task 4).
+UNNAMED_BUILDER = "un amministratore"
+
 
 async def handle_set_judgment(request) -> web.Response:
     """Scrive un giudizio su un tipo o un'entita' (spec 2026-09-16 §4).
@@ -389,10 +397,14 @@ async def handle_set_judgment(request) -> web.Response:
             {"errore": "servono `soggetto_genere`, `soggetto` e `campo` come testo, e "
                        "`valore` (testo, oppure null per tornare al seme)."},
             status=400)
+    soggetto = request.get("soggetto")
     try:
         outcome = write_judgment(
             request.app, subject_kind=body["soggetto_genere"], subject=body["soggetto"],
-            field=body["campo"], value=body["valore"], author=request.get("soggetto"))
+            field=body["campo"], value=body["valore"],
+            author_name=(await subject_name(request.app, soggetto)
+                         or UNNAMED_BUILDER),
+            said_by=subject_key_for(soggetto))
     except JudgmentRefused as refused:
         return web.json_response({"errore": str(refused)}, status=400)
     except JudgmentStoreFailed as failed:
