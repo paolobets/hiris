@@ -7,6 +7,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from .chat_thread import ChatThread
+from .proxy._sanitize import truncate_with_marker
 from .storage import connect, init_schema
 
 logger = logging.getLogger(__name__)
@@ -135,6 +136,16 @@ def unanswered_assistant_lines(history: list[dict]) -> list[str]:
     return lines
 
 
+def conversation_title(first_user_message: str | None) -> str:
+    """La prima frase di `first_user_message`, spazi ricomposti, dentro
+    `CONVERSATION_TITLE_MAX_CHARS`; `OUTCOME_ONLY_TITLE` se non c'e'."""
+    text = (first_user_message or "").strip()
+    sentence = " ".join(_SENTENCE_END_RE.split(text, maxsplit=1)[0].split())
+    if not sentence:
+        return OUTCOME_ONLY_TITLE
+    return truncate_with_marker(sentence, CONVERSATION_TITLE_MAX_CHARS)
+
+
 def _purge_toxic_turns(messages: list[dict]) -> list[dict]:
     """Drop assistant turns matching the toxic patterns AND their preceding user
     turn (so we don't leave dangling user messages with no answer in context).
@@ -169,6 +180,35 @@ SUMMARY_MAX_CHARS = 200
 _DIGEST_TURNS = 3       # user+assistant pairs to include in the session digest
 _DIGEST_MSG_LEN = 120   # max chars per message in the digest
 _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
+
+#: Il titolo di una conversazione (spec 2026-09-26 §4) non si salva: e' la
+#: prima frase dell'utente nella sessione, letta quando serve. Il tetto e'
+#: una scelta, non una misura: un titolo in una barra laterale, non un
+#: paragrafo -- il resto lo taglia gia' l'ellissi del CSS. Il segno del taglio
+#: e' quello della casa (`truncate_with_marker`), non un secondo.
+CONVERSATION_TITLE_MAX_CHARS = 60
+#: Il titolo di una conversazione senza nessuna frase dell'utente: l'ha
+#: aperta l'esito di una promessa (RULING 3.9). Non si inventa un turno
+#: dell'utente per avere un titolo.
+OUTCOME_ONLY_TITLE = "Esito di una promessa"
+# Una frase finisce su `.`, `!` o `?` seguiti da uno spazio, o su un a capo:
+# lo spazio richiesto tiene intero «22.5 gradi».
+_SENTENCE_END_RE = re.compile(r"(?<=[.!?])\s|\n")
+
+# Una sessione di cui la conservazione ricorda ancora almeno un messaggio.
+# Frammento di SQL, non funzione: sta dentro la WHERE sulla sessione `s`.
+_HAS_RETAINED_MESSAGE = ("EXISTS (SELECT 1 FROM chat_messages m "
+                         "WHERE m.session_id = s.session_id AND m.timestamp >= ?)")
+
+
+def _retention_cutoff(days: int) -> str:
+    """Il primo istante che la conservazione ricorda; `""` quando `days` e'
+    `0` (nessun filtro: ogni `timestamp` e' `>= ""`), la stessa regola di
+    `delete_old_messages`."""
+    if days <= 0:
+        return ""
+    return (datetime.now(UTC) - timedelta(days=days)).strftime(_TS_FMT)
+
 
 _stores: dict[str, "ChatStore"] = {}
 _lock = threading.Lock()
@@ -317,17 +357,21 @@ class ChatStore:
         precedenti. La chiusura tocca SOLO questo filo: il silenzio di Paolo
         non chiude la conversazione di Marta."""
         sid = self._fresh_session_id(thread)
+        self._close_other_open_sessions(thread, keep=sid)
+        return sid
+
+    def _close_other_open_sessions(self, thread: ChatThread, keep: str | None) -> None:
+        """Chiude, riassumendole, le sessioni aperte del filo tranne `keep`."""
         rows = self._conn.execute(
             "SELECT session_id FROM chat_sessions WHERE summary IS NULL "
             "AND subject_key = ? AND entry_point = ?",
             (thread.subject_key, thread.entry_point),
         ).fetchall()
         for row in rows:
-            if row["session_id"] != sid:
-                self._close_session(row["session_id"])
-        return sid
+            if row["session_id"] != keep:
+                self._close_session(thread, row["session_id"])
 
-    def _close_session(self, session_id: str) -> None:
+    def _close_session(self, thread: ChatThread, session_id: str) -> None:
         rows = self._conn.execute(
             "SELECT role, content FROM chat_messages WHERE session_id = ? "
             "ORDER BY id DESC LIMIT ?",
@@ -363,9 +407,14 @@ class ChatStore:
             summary = "\n---\n".join(pairs) if pairs else rows[0]["content"][:SUMMARY_MAX_CHARS]
         else:
             summary = "(nessuna risposta)"
+        # Il filo nella clausola anche qui: chiudere e' scrivere, e una
+        # scrittura su `chat_sessions` lega sempre id, soggetto e ingresso
+        # (security 6.3) -- un id arrivato da fuori non chiude la sessione
+        # di un altro filo.
         self._conn.execute(
-            "UPDATE chat_sessions SET summary = ? WHERE session_id = ?",
-            (summary, session_id),
+            "UPDATE chat_sessions SET summary = ? "
+            "WHERE session_id = ? AND subject_key = ? AND entry_point = ?",
+            (summary, session_id, thread.subject_key, thread.entry_point),
         )
 
     def _new_session(self, thread: ChatThread) -> str:
@@ -431,21 +480,11 @@ class ChatStore:
             sid = self._fresh_session_id(thread)
             if not sid:
                 return []
-            if days > 0:
-                cutoff = (
-                    datetime.now(UTC) - timedelta(days=days)
-                ).strftime(_TS_FMT)
-                rows = self._conn.execute(
-                    "SELECT role, content, timestamp FROM chat_messages "
-                    "WHERE session_id = ? AND timestamp >= ? ORDER BY id",
-                    (sid, cutoff),
-                ).fetchall()
-            else:
-                rows = self._conn.execute(
-                    "SELECT role, content, timestamp FROM chat_messages "
-                    "WHERE session_id = ? ORDER BY id",
-                    (sid,),
-                ).fetchall()
+            rows = self._conn.execute(
+                "SELECT role, content, timestamp FROM chat_messages "
+                "WHERE session_id = ? AND timestamp >= ? ORDER BY id",
+                (sid, _retention_cutoff(days)),
+            ).fetchall()
             messages = [
                 {"role": r["role"], "content": r["content"], "timestamp": r["timestamp"]}
                 for r in rows
@@ -486,18 +525,116 @@ class ChatStore:
             ).fetchone()
             return cnt[0] if cnt else 0
 
-    def clear(self, thread: ChatThread) -> None:
-        """Cancella SOLO il filo dato: «cancella la cronologia» di Marta non
-        tocca quella di Paolo, ne' le orfane (che aspettano il proprietario)."""
-        key = (thread.subject_key, thread.entry_point)
+    # ------------------------------------------------------------------
+    # Le conversazioni del filo (fetta «il seguito delle chat divise», spec
+    # 2026-09-26 §4). Una conversazione e' una sessione. Ogni istruzione su
+    # `chat_sessions` lega id, soggetto E ingresso: un id arrivato dalla rotta
+    # che non e' di questo filo -- di un altro, o orfano -- non trova niente,
+    # esattamente come un id che non esiste (security 6.3).
+    # ------------------------------------------------------------------
+
+    def list_conversations(self, thread: ChatThread, *, days: int = 90) -> list[dict]:
+        """Le conversazioni del filo, la piu' recente in testa: `{id, titolo,
+        ultimo_messaggio, attiva}`.
+
+        `days` e' `ChatSettings.retention_days`, con la regola di
+        `load_context`: una conversazione di cui la conservazione ha fatto
+        dimenticare ogni messaggio non si elenca, e il titolo si legge fra i
+        messaggi ancora ricordati. `attiva` e' la sessione che il prossimo
+        turno continuerebbe -- una al piu'."""
+        cutoff = _retention_cutoff(days)
         with self._mu:
-            self._conn.execute(
-                "DELETE FROM chat_messages WHERE session_id IN "
-                "(SELECT session_id FROM chat_sessions "
-                "WHERE subject_key = ? AND entry_point = ?)", key)
-            self._conn.execute(
-                "DELETE FROM chat_sessions WHERE subject_key = ? AND entry_point = ?", key)
-            self._conn.commit()
+            active = self._fresh_session_id(thread)
+            rows = self._conn.execute(
+                "SELECT s.session_id, s.last_msg_at, "
+                "(SELECT m.content FROM chat_messages m "
+                " WHERE m.session_id = s.session_id AND m.role = 'user' "
+                " AND trim(m.content) != '' AND m.timestamp >= ? "
+                " ORDER BY m.id LIMIT 1) AS first_user "
+                "FROM chat_sessions s "
+                "WHERE s.subject_key = ? AND s.entry_point = ? AND "
+                + _HAS_RETAINED_MESSAGE
+                # A pari secondo (una ripresa subito dopo l'ultimo messaggio)
+                # l'attiva sta in testa: e' la conversazione piu' recente.
+                + " ORDER BY s.last_msg_at DESC, s.session_id = ? DESC, s.rowid DESC",
+                (cutoff, thread.subject_key, thread.entry_point, cutoff, active),
+            ).fetchall()
+        return [{"id": r["session_id"],
+                 "titolo": conversation_title(r["first_user"]),
+                 "ultimo_messaggio": r["last_msg_at"],
+                 "attiva": r["session_id"] == active}
+                for r in rows]
+
+    def new_conversation(self, thread: ChatThread) -> None:
+        """Chiude, col riassunto, la conversazione aperta del filo.
+
+        Non crea niente: la sessione nuova nasce alla prossima `append`, perche'
+        la regola «una sessione nasce solo quando si scrive» (spec §4) resta
+        una sola. Ripetuta, non trova niente da chiudere (security 6.10)."""
+        with self._mu:
+            try:
+                self._close_other_open_sessions(thread, keep=None)
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
+
+    def resume_conversation(self, thread: ChatThread, session_id: str, *,
+                            days: int = 90) -> bool:
+        """Torna attiva una conversazione del filo; `False` se non ce n'e'
+        una con quell'id -- altrui, orfana, inesistente o dimenticata.
+
+        Chiude, col riassunto, quella aperta del filo (di NESSUN altro filo,
+        security 6.4), e riapre questa: il riassunto si azzera (si rifara'
+        alla prossima chiusura) e `last_msg_at` diventa adesso, cosi' la
+        conversazione ripresa rientra nella regola delle due ore invece di
+        richiudersi al primo turno. `days` come in `list_conversations`: si
+        riprende solo cio' che l'elenco mostra, e `load_context` rilegge poi
+        solo i messaggi dentro la conservazione (security 6.9)."""
+        key = (session_id, thread.subject_key, thread.entry_point)
+        with self._mu:
+            found = self._conn.execute(
+                "SELECT 1 FROM chat_sessions s WHERE s.session_id = ? "
+                "AND s.subject_key = ? AND s.entry_point = ? AND "
+                + _HAS_RETAINED_MESSAGE,
+                (*key, _retention_cutoff(days)),
+            ).fetchone()
+            if found is None:
+                return False
+            try:
+                self._close_other_open_sessions(thread, keep=session_id)
+                self._conn.execute(
+                    "UPDATE chat_sessions SET summary = NULL, last_msg_at = ? "
+                    "WHERE session_id = ? AND subject_key = ? AND entry_point = ?",
+                    (self._now(), *key),
+                )
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
+            return True
+
+    def delete_conversation(self, thread: ChatThread, session_id: str) -> bool:
+        """Cancella una conversazione del filo -- messaggi e sessione nella
+        STESSA transazione, cosi' nessun messaggio resta appeso a una sessione
+        che non c'e' piu' (security 6.6). `False` se non c'e' una conversazione
+        del filo con quell'id. Le orfane e gli altri fili restano intatti: la
+        condizione sul filo sta in tutte e due le istruzioni."""
+        key = (session_id, thread.subject_key, thread.entry_point)
+        with self._mu:
+            try:
+                self._conn.execute(
+                    "DELETE FROM chat_messages WHERE session_id IN "
+                    "(SELECT session_id FROM chat_sessions "
+                    "WHERE session_id = ? AND subject_key = ? AND entry_point = ?)", key)
+                cur = self._conn.execute(
+                    "DELETE FROM chat_sessions "
+                    "WHERE session_id = ? AND subject_key = ? AND entry_point = ?", key)
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
+            return cur.rowcount > 0
 
     def has_orphans(self) -> bool:
         """C'e' ancora cronologia di prima delle chat divise, di nessuno?"""
@@ -525,9 +662,7 @@ class ChatStore:
         """Hard-delete chat messages older than retention_days. Returns row count deleted."""
         if retention_days <= 0:
             return 0
-        cutoff = (
-            datetime.now(UTC) - timedelta(days=retention_days)
-        ).strftime(_TS_FMT)
+        cutoff = _retention_cutoff(retention_days)
         with self._mu:
             cur = self._conn.execute(
                 "DELETE FROM chat_messages WHERE timestamp < ?", (cutoff,)
@@ -616,9 +751,26 @@ def append_assistant_line(content: str, data_dir: str, *,
     return True
 
 
-def clear_history(data_dir: str, *, thread: ChatThread) -> None:
-    """Delete the thread's history and sessions -- only that thread."""
-    _get_store(data_dir).clear(thread)
+def list_conversations(data_dir: str, *, thread: ChatThread,
+                       days: int = 90) -> list[dict]:
+    """Le conversazioni del filo -- vedi `ChatStore.list_conversations`."""
+    return _get_store(data_dir).list_conversations(thread, days=days)
+
+
+def new_conversation(data_dir: str, *, thread: ChatThread) -> None:
+    """Chiude la conversazione aperta del filo -- vedi `ChatStore.new_conversation`."""
+    _get_store(data_dir).new_conversation(thread)
+
+
+def resume_conversation(data_dir: str, *, thread: ChatThread, session_id: str,
+                        days: int = 90) -> bool:
+    """Riprende una conversazione del filo -- vedi `ChatStore.resume_conversation`."""
+    return _get_store(data_dir).resume_conversation(thread, session_id, days=days)
+
+
+def delete_conversation(data_dir: str, *, thread: ChatThread, session_id: str) -> bool:
+    """Cancella una conversazione del filo -- vedi `ChatStore.delete_conversation`."""
+    return _get_store(data_dir).delete_conversation(thread, session_id)
 
 
 def get_past_summaries(

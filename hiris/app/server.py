@@ -21,7 +21,13 @@ from .action.construction.workshop import Workshop
 from .action.journal import Journal
 from .action.registry import ServiceRegistry
 from .api.handlers_chat import handle_chat, handle_chat_reply_poll
-from .api.handlers_chat_history import handle_clear_chat_history, handle_get_chat_history
+from .api.handlers_chat_history import (
+    handle_delete_conversation,
+    handle_get_chat_history,
+    handle_list_conversations,
+    handle_new_conversation,
+    handle_resume_conversation,
+)
 from .api.handlers_config import handle_config
 from .api.handlers_entities import handle_list_entities
 from .api.handlers_misure import handle_misure
@@ -5687,13 +5693,21 @@ def create_app() -> web.Application:
     # {agent_id} che il handler non leggeva mai da match_info (c'e' UNA
     # cronologia dalla E4 Task 5). Rotta onesta: nessun identificatore nel
     # percorso, perche' non c'e' niente da identificare. Chiamante unico e
-    # vivo: static/chat/agents.js (ripristino e cancellazione della
-    # cronologia) -- riscritto in questo stesso task. La card Lovelace non le
+    # vivo: static/chat/agents.js (ripristino della cronologia). La card Lovelace non le
     # ha mai chiamate (teneva la propria cronologia in localStorage) ed e'
     # comunque uscita per intero con la E5 Task 5. Gli handler non cambiano:
     # non hanno mai visto l'id, cambia solo la firma pubblica della rotta.
     app.router.add_get("/api/chat/history", handle_get_chat_history)
-    app.router.add_delete("/api/chat/history", handle_clear_chat_history)
+    # Fetta «il seguito delle chat divise» (spec 2026-09-26 §4): piu'
+    # conversazioni nel filo. `GET /api/chat/history` resta -- e' la
+    # conversazione attiva -- e `DELETE /api/chat/history` («cancella tutto»)
+    # e' uscita: il cestino cancella una conversazione per volta
+    # (decisione 9). Le tre scritture passano dal `csrf_middleware` come ogni
+    # altra su /api/.
+    app.router.add_get("/api/chat/conversations", handle_list_conversations)
+    app.router.add_post("/api/chat/conversations", handle_new_conversation)
+    app.router.add_post("/api/chat/conversations/{id}/resume", handle_resume_conversation)
+    app.router.add_delete("/api/chat/conversations/{id}", handle_delete_conversation)
     # fetta E3 Task 9: le tre rotte /api/tasks* sono uscite insieme al Task
     # Engine -- hanno lasciato rotte la pagina #/tasks (tasks-route.js) e il
     # pannello Task della chat (chat/tasks.js) per due fette. Il Task 6

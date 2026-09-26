@@ -1,14 +1,45 @@
 from aiohttp import web
 
-from ..chat_store import clear_history, load_history
+from ..chat_store import (
+    delete_conversation,
+    list_conversations,
+    load_history,
+    new_conversation,
+    resume_conversation,
+)
 from ..chat_thread import adopt_if_owner, request_thread
+from .handlers_chat import PENDING_REPLY_ERROR
 
-# fetta E5 Task 4 ("il frontend"): la rotta e' `GET/DELETE
-# /api/chat/history` (server.py), senza identificatori nel percorso. Fetta
-# «le chat divise»: nel percorso non serve ancora niente, perche' CHI legge lo
-# dice il confine (`request["soggetto"]`/`["auth_via"]`, scritti da
-# `middleware_internal_auth`) e da li' si calcola il filo. Un id nel percorso
-# sarebbe un secondo modo -- falsificabile -- di dire di chi e' la cronologia.
+# fetta E5 Task 4 ("il frontend"): la rotta e' `GET /api/chat/history`
+# (server.py), senza identificatori nel percorso. Fetta «le chat divise»: nel
+# percorso non serve niente, perche' CHI legge lo dice il confine
+# (`request["soggetto"]`/`["auth_via"]`, scritti da `middleware_internal_auth`)
+# e da li' si calcola il filo. Un id nel percorso sarebbe un secondo modo --
+# falsificabile -- di dire di chi e' la cronologia.
+#
+# Fetta «il seguito delle chat divise» (spec 2026-09-26 §4): nel filo ci sono
+# piu' conversazioni, e le loro rotte un id nel percorso lo portano -- quello
+# della conversazione, mai quello del filo. Il filo resta del confine, e
+# l'archivio lega l'id al filo in ogni istruzione: l'id di un altro e' un id
+# che non esiste. `DELETE /api/chat/history` («cancella tutto») e' uscita:
+# si cancella una conversazione per volta (decisione 9).
+
+# Il corpo del 404, uno solo per «non esiste» e «non e' tuo» (security 6.3):
+# due corpi diversi direbbero a chi prova gli id quali sono di qualcun altro.
+_CONVERSATION_NOT_FOUND = {"error": "non ho nessuna conversazione con quell’identificatore."}
+
+
+def _reply_in_flight(request: web.Request, thread) -> web.Response | None:
+    """Il 409 delle tre scritture sulle conversazioni, o `None`.
+
+    Una risposta del ponte in volo verra' scritta nella conversazione attiva
+    del filo (`server._submit_chat_reply`): chiuderla, sostituirla o
+    cancellarla adesso la farebbe atterrare altrove. Stessa guardia e stessa
+    frase del turno di chat (`handle_chat`)."""
+    queue = request.app.get("reasoning_queue")
+    if queue is not None and queue.has_pending_chat(thread):
+        return web.json_response({"error": PENDING_REPLY_ERROR}, status=409)
+    return None
 
 
 async def handle_get_chat_history(request: web.Request) -> web.Response:
@@ -36,12 +67,45 @@ async def handle_get_chat_history(request: web.Request) -> web.Response:
     return web.json_response({"messages": messages})
 
 
-async def handle_clear_chat_history(request: web.Request) -> web.Response:
-    data_dir = request.app["data_dir"]
-    # Niente `adopt_if_owner` qui, apposta: le orfane non sono di chi chiede
-    # finche' non le ha adottate, e una cancellazione tocca solo il suo filo.
-    # Adottare per poi cancellare distruggerebbe la cronologia di prima con un
-    # gesto che non la nominava. Solo il PROPRIO filo: «cancella la cronologia» di una persona non
-    # cancella quella degli altri.
-    clear_history(data_dir, thread=request_thread(request))
+async def handle_list_conversations(request: web.Request) -> web.Response:
+    thread = request_thread(request)
+    # Adotta come `GET /api/chat/history`: la barra laterale si apre insieme
+    # alla cronologia, e il proprietario deve trovarci anche le conversazioni
+    # di prima. Le tre scritture qui sotto NON adottano: su un'orfana
+    # rispondono come per un id che non esiste.
+    await adopt_if_owner(request.app, request, thread)
+    rows = list_conversations(request.app["data_dir"], thread=thread,
+                              days=request.app["chat_settings"].retention_days)
+    return web.json_response({"conversations": rows})
+
+
+async def handle_new_conversation(request: web.Request) -> web.Response:
+    thread = request_thread(request)
+    busy = _reply_in_flight(request, thread)
+    if busy is not None:
+        return busy
+    new_conversation(request.app["data_dir"], thread=thread)
+    return web.json_response({"ok": True})
+
+
+async def handle_resume_conversation(request: web.Request) -> web.Response:
+    thread = request_thread(request)
+    busy = _reply_in_flight(request, thread)
+    if busy is not None:
+        return busy
+    if not resume_conversation(request.app["data_dir"], thread=thread,
+                               session_id=request.match_info["id"],
+                               days=request.app["chat_settings"].retention_days):
+        return web.json_response(_CONVERSATION_NOT_FOUND, status=404)
+    return web.json_response({"ok": True})
+
+
+async def handle_delete_conversation(request: web.Request) -> web.Response:
+    thread = request_thread(request)
+    busy = _reply_in_flight(request, thread)
+    if busy is not None:
+        return busy
+    if not delete_conversation(request.app["data_dir"], thread=thread,
+                               session_id=request.match_info["id"]):
+        return web.json_response(_CONVERSATION_NOT_FOUND, status=404)
     return web.json_response({"ok": True})

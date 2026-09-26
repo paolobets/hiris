@@ -6,7 +6,6 @@ import pytest
 from hiris.app.chat_store import (
     ChatStore,
     append_messages,
-    clear_history,
     close_all_stores,
     count_user_turns,
     delete_old_messages,
@@ -34,7 +33,7 @@ def reset_stores():
 
 
 # ---------------------------------------------------------------------------
-# Basic append / load / clear (backward-compat API)
+# Basic append / load (backward-compat API)
 #
 # fetta E4 Task 5 ("un bot solo") aveva tolto la partizione per bot. La fetta
 # «le chat divise» ne mette una diversa, per filo (chi parla, da dove): la
@@ -109,14 +108,9 @@ def test_append_accumulates(tmp_path):
     assert result[1]["content"] == "second"
 
 
-def test_clear_history(tmp_path):
-    append_messages([{"role": "user", "content": "x"}], str(tmp_path), thread=T)
-    clear_history(str(tmp_path), thread=T)
-    assert load_history(str(tmp_path), thread=T) == []
-
-
-def test_clear_history_noop_when_empty(tmp_path):
-    clear_history(str(tmp_path), thread=T)  # must not raise
+# `clear`/`clear_history` sono usciti con `DELETE /api/chat/history` (fetta
+# «il seguito delle chat divise», Task 6): si cancella una conversazione alla
+# volta, e le loro proprieta' vivono in tests/test_conversazioni.py.
 
 
 # ---------------------------------------------------------------------------
@@ -765,15 +759,6 @@ def test_due_fili_non_si_vedono(tmp_path):
     assert [m["content"] for m in s.load_context(PAOLO)] == ["sono Paolo"]
     assert [m["content"] for m in s.load_context(MARTA)] == ["sono Marta"]
     assert s.count_user_turns(PAOLO) == 1
-
-
-def test_clear_di_un_filo_lascia_l_altro(tmp_path):
-    s = ChatStore(str(tmp_path / "c.db"))
-    s.append([{"role": "user", "content": "a"}], PAOLO)
-    s.append([{"role": "user", "content": "b"}], MARTA)
-    s.clear(PAOLO)
-    assert s.load_context(PAOLO) == []
-    assert len(s.load_context(MARTA)) == 1
 
 
 def test_la_chiusura_per_silenzio_di_un_filo_non_chiude_l_altro(tmp_path):

@@ -43,6 +43,12 @@ logger = logging.getLogger(__name__)
 # conversation structure. Full history is still persisted and counted.
 _MAX_HISTORY_TOKENS = 6000
 
+#: Il 409 «una risposta per volta» del filo: lo dicono questo turno e le
+#: rotte delle conversazioni (`handlers_chat_history.py`), che non possono
+#: chiudere, riaprire o cancellare una conversazione mentre la risposta sta
+#: per esservi scritta. Una frase sola per le due porte.
+PENDING_REPLY_ERROR = "C’è già una risposta in arrivo per questa conversazione."
+
 
 def _trim_history(history: list[dict], max_tokens: int = _MAX_HISTORY_TOKENS) -> list[dict]:
     """Keep the most recent messages within an estimated token budget, always
@@ -1037,10 +1043,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         # mentre il ponte ne ha uno in volo che scriverà la sua risposta in
         # cronologia da solo (`server._submit_chat_reply`).
         if reasoning_queue.has_pending_chat(thread):
-            return web.json_response(
-                {"error": "C’è già una risposta in arrivo per questa conversazione."},
-                status=409,
-            )
+            return web.json_response({"error": PENDING_REPLY_ERROR}, status=409)
         if _subscription_reason:
             # Ripiego a monte: il piano NON PUÒ rispondere a questo turno --
             # gli manca il token (il worker non parte, `should_start_agent_

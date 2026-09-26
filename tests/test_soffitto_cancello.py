@@ -87,8 +87,16 @@ ESENTI = {
     "PATCH /api/memories/{id}":
         "correggere un ricordo tocca il sapere di HIRIS, non la casa: e chi non "
         "può correggere ciò che HIRIS ha capito di lui resta descritto male",
-    "DELETE /api/chat/history":
-        "la conversazione è di HIRIS",
+    "POST /api/chat/conversations":
+        "chiude la conversazione aperta di chi chiede, nel suo filo: la "
+        "conversazione è di HIRIS e di chi la fa, non tocca la casa",
+    "POST /api/chat/conversations/{id}/resume":
+        "riapre una conversazione del filo di chi chiede; l’id di un altro è "
+        "un 404 (l’archivio lega id e filo): non tocca Home Assistant",
+    "DELETE /api/chat/conversations/{id}":
+        "cancella una conversazione del filo di chi chiede, e solo quella: "
+        "vietarlo a chi non è amministratore gli impedirebbe di togliere le "
+        "proprie parole",
     "PUT /api/chat-settings":
         "le impostazioni della chat sono di HIRIS",
     "PUT /api/models/config":

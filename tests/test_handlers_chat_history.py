@@ -5,11 +5,11 @@ from unittest.mock import MagicMock
 import pytest
 from aiohttp.test_utils import make_mocked_request
 
-from hiris.app.api.handlers_chat_history import handle_clear_chat_history, handle_get_chat_history
+from hiris.app.api.handlers_chat_history import handle_get_chat_history
 from hiris.app.chat_store import close_all_stores
 from hiris.app.chat_thread import thread_for
 
-# Fetta «le chat divise»: gli handler leggono e cancellano il filo di chi
+# Fetta «le chat divise»: l'handler legge il filo di chi
 # chiede. Le richieste finte di questo file non passano dal confine
 # (`middleware_internal_auth`), quindi non portano ne' soggetto ne' ingresso:
 # il loro filo e' quello che `thread_for(None, None)` calcola, e i messaggi
@@ -37,7 +37,7 @@ def _make_app(data_dir: str) -> MagicMock:
 
 
 # fetta E5 Task 4 ("nasce la rotta onesta, muore il placeholder"): la rotta
-# reale (server.py) e' ora `GET/DELETE /api/chat/history`, senza nessun
+# reale (server.py) e' ora `GET /api/chat/history`, senza nessun
 # identificatore nel percorso: dalla fetta «le chat divise» la cronologia e'
 # quella del filo di chi chiede, e chi chiede lo dice il confine, non il
 # path.
@@ -106,29 +106,6 @@ async def test_get_chat_history_empty_when_no_messages(tmp_path):
     assert data["messages"] == []
 
 
-@pytest.mark.asyncio
-async def test_clear_chat_history_removes_messages(tmp_path):
-    from hiris.app.chat_store import append_messages, load_history
-    append_messages([{"role": "user", "content": "ciao"}], str(tmp_path), thread=T)
-
-    app = _make_app(str(tmp_path))
-    request = make_mocked_request(
-        "DELETE", "/api/chat/history", app=app, match_info={},
-    )
-
-    resp = await handle_clear_chat_history(request)
-    data = json.loads(resp.body)
-    assert data["ok"] is True
-    assert load_history(str(tmp_path), thread=T) == []
-
-
-@pytest.mark.asyncio
-async def test_clear_chat_history_noop_when_empty(tmp_path):
-    app = _make_app(str(tmp_path))
-    request = make_mocked_request(
-        "DELETE", "/api/chat/history", app=app, match_info={},
-    )
-
-    resp = await handle_clear_chat_history(request)
-    data = json.loads(resp.body)
-    assert data["ok"] is True
+# I due test di `handle_clear_chat_history` sono usciti con la rotta
+# `DELETE /api/chat/history` (fetta «il seguito delle chat divise», Task 6):
+# si cancella una conversazione per volta, provato in tests/test_conversazioni.py.

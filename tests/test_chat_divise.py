@@ -17,10 +17,7 @@ from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
 from hiris.app.api.handlers_chat import handle_chat, handle_chat_reply_poll
-from hiris.app.api.handlers_chat_history import (
-    handle_clear_chat_history,
-    handle_get_chat_history,
-)
+from hiris.app.api.handlers_chat_history import handle_get_chat_history
 from hiris.app.api.handlers_reasoning import handle_reasoning_claim, handle_reasoning_submit
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import append_messages, close_all_stores, load_history
@@ -96,7 +93,6 @@ def _make_app(tmp_path, *, ponte_attivo=False, max_chat_turns=0):
     app.router.add_post("/api/chat", handle_chat)
     app.router.add_get("/api/chat/reply/{job_id}", handle_chat_reply_poll)
     app.router.add_get("/api/chat/history", handle_get_chat_history)
-    app.router.add_delete("/api/chat/history", handle_clear_chat_history)
     app.router.add_post("/api/reasoning/claim", handle_reasoning_claim)
     app.router.add_post("/api/reasoning/submit", handle_reasoning_submit)
     return app, q, data_dir
@@ -121,18 +117,9 @@ async def test_la_cronologia_di_ognuno_e_solo_sua(tmp_path):
     assert _contenuti(marta) == ["sono Marta"]
 
 
-# 2. DELETE di Marta non tocca il filo di Paolo.
-@pytest.mark.asyncio
-async def test_cancellare_la_propria_cronologia_non_tocca_quella_degli_altri(tmp_path):
-    app, _q, data_dir = _make_app(tmp_path)
-    append_messages([{"role": "user", "content": "sono Paolo"}], data_dir, thread=PAOLO)
-    append_messages([{"role": "user", "content": "sono Marta"}], data_dir, thread=MARTA)
-    async with TestClient(TestServer(app)) as client:
-        resp = await client.delete("/api/chat/history", headers={"X-Chi": "marta"})
-        assert resp.status == 200
-    assert load_history(data_dir, thread=MARTA) == []
-    assert load_history(data_dir, thread=PAOLO) == [
-        {"role": "user", "content": "sono Paolo"}]
+# 2. «Cancellare il mio non tocca quello degli altri» vive ora sulla
+# conversazione cancellata (`DELETE /api/chat/conversations/{id}`, fetta «il
+# seguito delle chat divise»): tests/test_conversazioni.py.
 
 
 # 3 + 4. Il 409 e' per filo; il job porta filo e soggetto.
