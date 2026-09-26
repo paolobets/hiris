@@ -67,12 +67,25 @@ def _piano_acceso(monkeypatch) -> None:
                         lambda: True)
 
 
+#: Chi preme «Rifalla»: un amministratore. Dal 26/09/2026 le proposte sono
+#: di chi costruisce (spec 2026-09-26 §3, decisione 5); queste prove parlano
+#: della porta del modello, non del cancello, e dichiarano la premessa.
+AMMINISTRATORE = {"specie": "persona", "id": "u-admin", "nome": "Paolo"}
+
+
+class _RuoliFinti:
+    async def users(self):
+        return {"utenti": [{"id": "u-admin", "nome": "Paolo",
+                            "amministratore": True, "proprietario": True}]}
+
+
 def _richiesta(app, ident, corpo):
     class _R:
         def __init__(self):
             self.app = app
             self.match_info = {"id": ident}
             self.query = {}
+            self._valori = {"soggetto": AMMINISTRATORE}
 
         async def json(self):
             return corpo
@@ -101,6 +114,8 @@ def casa(tmp_path):
         "reasoning_queue": _Coda(),
         "models_config": {"ponte": {"tetto_giornaliero": 50}},
         "bridge_active": False,
+        "ha_client": _RuoliFinti(),
+        "ruoli": {"quando": 0.0, "per_id": {}},
     }
     try:
         yield app, store, ident

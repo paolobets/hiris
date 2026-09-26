@@ -18,6 +18,19 @@ from hiris.app.api.handlers_proposals import (
 )
 from hiris.app.mind.store import ObservationsStore
 
+#: Chi decide, in queste prove: un amministratore. Dal 26/09/2026 le
+#: proposte sono di chi costruisce (spec 2026-09-26 §3, decisione 5) e ogni
+#: rotta chiede CHI; queste prove parlano degli esiti e dei codici, non del
+#: cancello -- che ha le sue in `test_chi_costruisce.py` -- quindi dichiarano
+#: la premessa invece di subirla.
+AMMINISTRATORE = {"specie": "persona", "id": "u-admin", "nome": "Paolo"}
+
+
+class _RuoliFinti:
+    async def users(self):
+        return {"utenti": [{"id": "u-admin", "nome": "Paolo",
+                            "amministratore": True, "proprietario": True}]}
+
 
 def _richiesta(app, match=None, corpo=None):
     class _R:
@@ -25,6 +38,7 @@ def _richiesta(app, match=None, corpo=None):
             self.app = app
             self.match_info = match or {}
             self.query = {}
+            self._valori = {"soggetto": AMMINISTRATORE}
 
         async def json(self):
             if corpo is None:
@@ -48,7 +62,8 @@ def casa(tmp_path):
         fingerprint="dev1|prelievo|None|1",
         prova={"base": 19}, chi_applica="tu", now_ts=100.0)
     try:
-        yield {"observations": store}, store, ident
+        yield ({"observations": store, "ha_client": _RuoliFinti(),
+                "ruoli": {"quando": 0.0, "per_id": {}}}, store, ident)
     finally:
         store.close()
 

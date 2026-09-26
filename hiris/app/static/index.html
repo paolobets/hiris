@@ -58,7 +58,9 @@
 
          `data-badge` e' l'unico aggancio del pallino
          (static/pending-badge.js), che qui e' identico all'altro guscio
-         perche' e' lo stesso fatto. -->
+         perche' e' lo stesso fatto. «Proposte» nasce `hidden`: la mostra lo
+         stesso script quando `GET /api/pending` dice `can_build` (spec
+         2026-09-26 §3, la pagina e' di chi costruisce). -->
     <div id="sidebar-nav">
       <a href="config#/agenda" class="sb-nav-item" data-badge="agenda" title="Impegni" aria-label="Impegni">
         <span class="ic">
@@ -66,7 +68,7 @@
         </span>
         <span>Impegni</span>
       </a>
-      <a href="config#/constructions" class="sb-nav-item" data-badge="constructions" title="Proposte" aria-label="Proposte">
+      <a href="config#/constructions" class="sb-nav-item" data-badge="constructions" title="Proposte" aria-label="Proposte" hidden>
         <span class="ic">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
         </span>

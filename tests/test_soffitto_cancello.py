@@ -45,6 +45,25 @@ SOFFITTATE = {
         "apre l’unica superficie non autenticata di questo prodotto, per dieci "
         "minuti: esporla è un gesto da amministratore come scrivere "
         "un’automazione",
+    # Dal 26/09/2026 (spec 2026-09-26 §3, decisioni 5 e 6) la pagina
+    # Costruzioni, le proposte a mano e le correzioni al sapere sono di chi
+    # costruisce: stavano in `ESENTI` perche' «non toccano Home Assistant», e
+    # la ragione nuova non e' Home Assistant ma di chi sono.
+    "POST /api/constructions/{id}/reject":
+        "dire di no a una proposta è decidere cosa si costruisce in casa, e "
+        "la coda delle proposte è di chi costruisce (decisione 5)",
+    "POST /api/proposals/{id}/reject":
+        "stesso rifiuto, sull’archivio gemello delle proposte da fare a mano: "
+        "stessa pagina, stesso padrone",
+    "POST /api/proposals/{id}/done":
+        "chiude una proposta come applicata: è una decisione sulla coda, e la "
+        "coda è di chi costruisce",
+    "POST /api/proposals/{id}/redo":
+        "fa rifare una proposta al modello, e la paga: è un gesto sulla coda "
+        "di chi costruisce",
+    "POST /api/mind/judgment":
+        "corregge ciò che HIRIS ha capito della casa per tutti quelli che ci "
+        "vivono: le correzioni al sapere sono di chi amministra (decisione 6)",
     "POST /api/services/window/close":
         "la richiude. Passa dallo stesso soffitto dell’apertura perché un "
         "estraneo che potesse chiuderla toglierebbe al proprietario "
@@ -55,27 +74,12 @@ SOFFITTATE = {
 #: copia di niente: e' la decisione, scritta. Una rotta nuova non entra qui da
 #: sola -- va messa a mano, ed e' li' che qualcuno deve pensarci.
 ESENTI = {
-    "POST /api/constructions/{id}/reject":
-        "dire di no non scrive niente in Home Assistant, e chiuderlo dietro un "
-        "permesso lascerebbe in coda per sempre, a chi non può costruire, una "
-        "proposta che non vuole",
-    "POST /api/proposals/{id}/reject":
-        "stesso rifiuto, sull’archivio gemello delle proposte da fare a mano",
-    "POST /api/proposals/{id}/done":
-        "dichiara che l’ha fatta una persona FUORI da Home Assistant: HIRIS non "
-        "scrive niente e non può verificarlo in nessun oggetto",
-    "POST /api/proposals/{id}/redo":
-        "rifà il testo di una proposta: non tocca la casa, e la proposta resta "
-        "in attesa di una decisione che passerà dalle rotte sopra",
     "POST /api/agenda/read":
         "segna come letti degli esiti già mostrati: non tocca la casa",
     "DELETE /api/agenda/{id}":
         "disdice una promessa. Toglie un potere invece di darne uno, e vietarlo "
         "a chi non è amministratore vorrebbe dire che non può fermare ciò che "
         "ha messo in moto",
-    "POST /api/mind/judgment":
-        "corregge un giudizio nel sapere di HIRIS: scrive nel nostro archivio, "
-        "mai in Home Assistant",
     "POST /api/mind/objective":
         "l’obiettivo dell’osservatore, nel nostro archivio",
     "DELETE /api/memories/{id}":
@@ -173,9 +177,11 @@ def test_le_due_scritture_verso_home_assistant_passano_DAVVERO_dal_soffitto():
     intenzioni.
 
     Il punto unico e' `handlers_constructions._act`, da cui passano sia
-    «applica» sia «rimetti com'era».
+    «applica» sia «rimetti com'era». Dal 26/09/2026 chiede al cancello di
+    tutta la pagina, `require_builder` (spec 2026-09-26 §3: «`_act` passa
+    alla stessa funzione, una regola, non due»).
 
-    Mutazione ESEGUITA: tolto `per_richiesta` da `_act` -- rossa.
+    Mutazione ESEGUITA: tolto `require_builder` da `_act` -- rossa.
     """
     sorgente = (RADICE / "hiris" / "app" / "api"
                 / "handlers_constructions.py").read_text(encoding="utf-8")
@@ -185,6 +191,113 @@ def test_le_due_scritture_verso_home_assistant_passano_DAVVERO_dal_soffitto():
     chiamate = {getattr(n.func, "id", None) or getattr(n.func, "attr", None)
                 for n in ast.walk(atto) if isinstance(n, ast.Call)}
 
-    assert "per_richiesta" in chiamate, (
-        "`_act` non interroga più il soffitto: le due scritture verso Home "
+    assert "require_builder" in chiamate, (
+        "`_act` non interroga più il cancello: le due scritture verso Home "
         "Assistant sono tornate a passare senza chiedere chi le chiede")
+
+
+# --- il cancello di chi costruisce (spec 2026-09-26 §3) ----------------------
+
+#: I prefissi delle rotte che sono di chi costruisce. **E' la decisione**
+#: (spec 2026-09-26 §0, decisioni 5 e 6), non una copia: le rotte sotto questi
+#: prefissi si CHIEDONO al router, e una rotta nuova sotto uno di essi entra
+#: da sola nella verifica.
+_BUILDER_PREFIXES = ("/api/constructions", "/api/proposals", "/api/mind/judgment")
+
+_API = RADICE / "hiris" / "app" / "api"
+
+
+def builder_routes() -> dict[str, str]:
+    """`"METODO percorso" -> nome del gestore`, DERIVATO dal router: ogni
+    metodo, letture comprese -- la pagina e' di chi costruisce anche quando
+    guarda."""
+    sorgente = _SERVER.read_text(encoding="utf-8")
+    trovate = {f"{metodo.upper()} {percorso}": gestore
+               for metodo, percorso, gestore in re.findall(
+                   r'router\.add_(get|post|put|patch|delete)\("([^"]+)",\s*(\w+)\)',
+                   sorgente)
+               if percorso.startswith(_BUILDER_PREFIXES)}
+    for prefisso in _BUILDER_PREFIXES:
+        assert any(r.split(" ", 1)[1].startswith(prefisso) for r in trovate), (
+            f"nessuna rotta derivata sotto {prefisso}: la derivazione si è "
+            "rotta, e un cancello che deriva male sembra vivo mentre non "
+            "guarda più niente")
+    return trovate
+
+
+def _funzioni_api() -> dict[str, ast.AsyncFunctionDef]:
+    funzioni = {}
+    for percorso in _API.glob("handlers_*.py"):
+        for nodo in ast.walk(ast.parse(percorso.read_text(encoding="utf-8"))):
+            if isinstance(nodo, ast.AsyncFunctionDef):
+                funzioni[nodo.name] = nodo
+    return funzioni
+
+
+def _first_statement(funzione: ast.AsyncFunctionDef) -> ast.stmt:
+    corpo = funzione.body
+    if (corpo and isinstance(corpo[0], ast.Expr)
+            and isinstance(corpo[0].value, ast.Constant)):
+        corpo = corpo[1:]  # la docstring
+    return corpo[0]
+
+
+def _chiama(istruzione: ast.stmt) -> set[str]:
+    return {getattr(n.func, "id", None) or getattr(n.func, "attr", None)
+            for n in ast.walk(istruzione) if isinstance(n, ast.Call)}
+
+
+def _gate_comes_first(nome: str, funzioni: dict) -> bool:
+    """La PRIMA istruzione del gestore chiama `require_builder` -- o delega
+    subito a un aiutante di `api/` (`return await _act(...)`) la cui prima
+    istruzione lo chiama. «Per prima» e non «da qualche parte»: il cancello
+    deve venire prima di qualunque archivio (`store.scadi` scrive)."""
+    prima = _first_statement(funzioni[nome])
+    chiamate = _chiama(prima)
+    if "require_builder" in chiamate:
+        return True
+    aiutanti = [c for c in chiamate if c in funzioni and c != nome]
+    return (isinstance(prima, ast.Return) and len(aiutanti) == 1
+            and "require_builder" in _chiama(_first_statement(funzioni[aiutanti[0]])))
+
+
+def test_ogni_rotta_di_chi_costruisce_passa_PER_PRIMA_dal_cancello():
+    """**Il cancello delle decisioni 5 e 6.** Ogni gestore registrato sotto
+    `/api/constructions`, `/api/proposals` e `/api/mind/judgment` chiama
+    `soffitto.require_builder` come prima cosa. Una rotta nuova sotto questi
+    prefissi entra da sola in questa verifica.
+
+    Mutazioni ESEGUITE: tolto `require_builder` da `handle_proposal_redo` --
+    rossa col nome della rotta; spostato dopo `store.scadi` in
+    `handle_get_constructions` -- rossa; aggiunta a `server.py` una
+    `router.add_get("/api/proposals/prova", handle_get_pending)` -- rossa.
+    """
+    funzioni = _funzioni_api()
+    scoperte = sorted(rotta for rotta, gestore in builder_routes().items()
+                      if gestore not in funzioni
+                      or not _gate_comes_first(gestore, funzioni))
+
+    assert not scoperte, (
+        f"rotte di chi costruisce senza il cancello davanti: {scoperte}. La "
+        "pagina Costruzioni, le proposte e i giudizi sono di chi costruisce "
+        "(spec 2026-09-26 §3): la prima istruzione del gestore è "
+        "`require_builder`")
+
+
+def test_la_derivazione_delle_rotte_di_chi_costruisce_VEDE_le_rotte_vere():
+    """La prova che la derivazione non si e' rotta: le rotte che la spec
+    nomina (§3) stanno fra quelle derivate. Se la forma delle registrazioni in
+    `server.py` cambiasse, la regex non ne troverebbe piu' e la prova sopra
+    sarebbe verde su un insieme vuoto.
+
+    Mutazione ESEGUITA: `add_(post|put|patch|delete)` al posto di
+    `add_(get|post|put|patch|delete)` nella regex -- rossa (le due GET
+    mancano)."""
+    derivate = set(builder_routes())
+
+    assert {"GET /api/constructions", "GET /api/constructions/{id}",
+            "POST /api/constructions/{id}/confirm",
+            "POST /api/constructions/{id}/restore",
+            "POST /api/constructions/{id}/reject",
+            "POST /api/proposals/{id}/reject", "POST /api/proposals/{id}/done",
+            "POST /api/proposals/{id}/redo", "POST /api/mind/judgment"} <= derivate

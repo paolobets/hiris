@@ -2041,7 +2041,7 @@
 }
 .section-card .jr-subject { overflow-wrap: anywhere; }
 /* Fix round 1 (revisione Fable, IMPORTANT 1): il wrapper del badge
-   «Corretto da te» + la frase sulla cronaca che si rifà da sola, impilati
+   «Corretto da …» + la frase sulla cronaca che si rifà da sola, impilati
    invece che in riga -- due frasi affiancate sulla stessa altezza di riga
    sarebbero difficili da leggere separate. */
 .section-card .jr-provenance {

@@ -108,6 +108,16 @@ window.HirisPendingBadge = (function () {
         if (n > 0) accendi(VOCI[k].voce, n);
         else spegni(VOCI[k].voce);
       }
+      /* La voce «Proposte» c'e' solo per chi costruisce (spec 2026-09-26 §3,
+         decisione 5), e lo dice il server a OGNI risposta -- `can_build` --
+         non un ruolo indovinato qui. Nasce nascosta nei due gusci e si mostra
+         solo su un `true` esplicito: una risposta che non lo porta non e' un
+         permesso. Nasconderla non e' la difesa (la pagina risponde 403 da
+         sola): e' non offrire una strada chiusa. Un errore qui sotto non la
+         tocca -- non e' una risposta, e farla sparire a ogni rete caduta
+         sarebbe un menu che lampeggia. */
+      var proposte = ospite('constructions');
+      if (proposte) proposte.hidden = dati.can_build !== true;
     }).catch(function (err) {
       /* Il ramo che il badge morto non aveva. Spegne anche cio' che era
          acceso al giro prima: un numero vecchio lasciato li' mentre la rete

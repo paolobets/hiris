@@ -51,6 +51,7 @@ from ..mind.judgments import (
     write_judgment,
 )
 from ..mind.report import as_document, as_page, integration_of
+from .soffitto import require_builder
 
 #: Quanti giorni di volume la pagina mostra. **Non e' la durata del grezzo**
 #: (22 giorni, `store.READING_RETENTION_S`): e' quanto serve a vedere se il
@@ -366,7 +367,15 @@ async def handle_set_judgment(request) -> web.Response:
     il rimedio e' lo stesso -- con la ragione vera nel corpo.
 
     E' una scrittura: passa dal `csrf_middleware` come l'obiettivo.
+
+    **Ed e' di chi costruisce** (spec 2026-09-26 §3, decisione 6): il
+    cancello `soffitto.require_builder` viene prima di tutto. L'autore della
+    riga e' il soggetto che il confine ha attaccato alla richiesta, mai un
+    campo del corpo.
     """
+    refusal = await require_builder(request.app, request)
+    if refusal is not None:
+        return refusal
     if request.app.get("knowledge") is None:
         return web.json_response({"errore": "il sapere non e' disponibile"},
                                  status=503)
@@ -383,7 +392,7 @@ async def handle_set_judgment(request) -> web.Response:
     try:
         outcome = write_judgment(
             request.app, subject_kind=body["soggetto_genere"], subject=body["soggetto"],
-            field=body["campo"], value=body["valore"])
+            field=body["campo"], value=body["valore"], author=request.get("soggetto"))
     except JudgmentRefused as refused:
         return web.json_response({"errore": str(refused)}, status=400)
     except JudgmentStoreFailed as failed:

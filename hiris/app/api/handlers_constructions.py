@@ -24,18 +24,21 @@ Assistant; questa no -- il «no» del proprietario si scrive nell'archivio e
 basta, e farlo passare dall'officina gli darebbe la stessa superficie di
 rischio di una conferma. Non e' una quinta rotta uguale alle altre: e'
 un'assenza deliberata.
+
+**Tutte e cinque sono di chi costruisce** (spec 2026-09-26 §3, decisione 5):
+ognuna chiama per prima `soffitto.require_builder`, prima di toccare un
+archivio. `tests/test_soffitto_cancello.py` deriva l'elenco dal router e lo
+verifica.
 """
 from __future__ import annotations
 
-import logging
 import time
 
 from aiohttp import web
 
 from ..chat_thread import without_thread
 from .boundary import occurrence_out
-
-logger = logging.getLogger(__name__)
+from .soffitto import requester_name, require_builder
 
 # Un solo testo per «quell'id non esiste», usato sia da chi legge sia da chi
 # agisce: due frasi diverse per lo stesso fatto sarebbero una piccola
@@ -48,6 +51,9 @@ def _store(request):
 
 
 async def handle_get_constructions(request: web.Request) -> web.Response:
+    refusal = await require_builder(request.app, request)
+    if refusal is not None:
+        return refusal
     store = _store(request)
     if store is None:
         return web.json_response(
@@ -58,7 +64,7 @@ async def handle_get_constructions(request: web.Request) -> web.Response:
     store.scadi(time.time())
     pending_only = request.query.get("pending_only") in ("1", "true", "si")
     return web.json_response(
-        {"constructions": _both_queues(request.app, store, pending_only)})
+        {"constructions": await _both_queues(request.app, store, pending_only)})
 
 
 #: Chi applica una proposta. Le costruibili le scrive HIRIS in Home Assistant
@@ -69,56 +75,62 @@ async def handle_get_constructions(request: web.Request) -> web.Response:
 _APPLIES_HIRIS = "hiris"
 _APPLIES_YOU = "tu"
 
-# Il filo di chi ha proposto NON attraversa queste due rotte GET (fix round 1
-# Task 7 delle chat divise): `_row()` lo porta perche' l'officina deve poterlo
-# leggere, ma la risposta no. La funzione e' quella di tutte le righe col filo
-# (`chat_thread.without_thread`), non una copia di questo modulo.
+async def _out(app, row: dict) -> dict:
+    """Una riga come esce dalle due rotte GET: senza il filo, con chi l'ha
+    chiesta.
+
+    Il filo di chi ha proposto NON attraversa il confine (fix round 1 Task 7
+    delle chat divise): `_row()` lo porta perche' l'officina deve poterlo
+    leggere, ma la risposta no -- `chat_thread.without_thread`, la funzione di
+    tutte le righe col filo. Al suo posto esce `chiesta_da`, il NOME di chi
+    l'ha chiesta (spec 2026-09-26 §3): una riga senza filo -- le proposte a
+    mano, nate dall'osservatore, e le orfane -- porta `None`, cosi' le due
+    code hanno la stessa forma.
+    """
+    return {**without_thread(row),
+            "chiesta_da": await requester_name(app, row.get("thread"))}
 
 
-def _both_queues(app, store, pending_only: bool) -> list[dict]:
+async def _both_queues(app, store, pending_only: bool) -> list[dict]:
     """Le due code in un elenco solo, dalla piu' recente.
 
     **Si riordina**, e non si concatena: due code messe in fila darebbero un
     elenco il cui ordine dipende da quale archivio si legge per primo, cioe'
     da un dettaglio di implementazione.
     """
-    rows = [{**without_thread(row), "chi_applica": _APPLIES_HIRIS}
+    rows = [{**await _out(app, row), "chi_applica": _APPLIES_HIRIS}
             for row in store.list(pending_only=pending_only, limit=200)]
     observations = app.get("observations")
     if observations is not None:
-        rows += [{**row, "chi_applica": _APPLIES_YOU, "a_mano": True}
+        rows += [{**await _out(app, row), "chi_applica": _APPLIES_YOU, "a_mano": True}
                  for row in observations.proposals(pending_only=pending_only)]
     return sorted(rows, key=lambda r: r.get("creata_ts") or 0, reverse=True)
 
 
 async def handle_get_construction(request: web.Request) -> web.Response:
+    refusal = await require_builder(request.app, request)
+    if refusal is not None:
+        return refusal
     store = _store(request)
     if store is None:
         return web.json_response({"error": "archivio non disponibile"}, status=503)
     row = store.read(request.match_info["id"])
     if row is None:
         return web.json_response({"error": _NOT_FOUND}, status=404)
-    return web.json_response({"construction": without_thread(row)})
+    return web.json_response({"construction": await _out(request.app, row)})
 
 
 async def _act(request: web.Request, verb: str) -> web.Response:
     """Le due scritture della pagina verso Home Assistant, da un punto solo.
 
-    **Il soffitto morde qui** (invariante I-1, 21/09/2026), e qui soltanto:
-    `apply` e `restore` sono le uniche due strade da cui la pagina tocca la
-    configurazione della casa. `reject` non passa di qui, e non e' una svista --
-    non scrive niente su Home Assistant, e chiudere un rifiuto dietro un
-    permesso lascerebbe in coda per sempre, a chi non puo' costruire, una
-    proposta che non vuole.
+    Passano dallo stesso cancello di tutte le rotte di questa pagina
+    (`soffitto.require_builder`): dal 26/09/2026 la pagina intera e' di chi
+    costruisce (spec 2026-09-26 §3, decisione 5), e una regola per le
+    scritture e un'altra per le letture sarebbero due regole.
     """
-    from .soffitto import per_richiesta
-
-    permesso = await per_richiesta(request.app, request)
-    if not permesso["costruire"]:
-        logger.warning(
-            "soffitto: «%s» negato a %r — %s", verb,
-            (request.get("soggetto") or {}).get("nome"), permesso["perche"])
-        return web.json_response({"errore": permesso["perche"]}, status=403)
+    refusal = await require_builder(request.app, request)
+    if refusal is not None:
+        return refusal
 
     store = _store(request)
     workshop = request.app.get("workshop")
@@ -158,7 +170,14 @@ async def handle_reject_construction(request: web.Request) -> web.Response:
     Non passa dall'officina, e non e' una svista: non c'e' niente da scrivere
     su Home Assistant, e farlo passare da li' darebbe a un rifiuto la stessa
     superficie di rischio di una conferma.
+
+    **Ma passa dal cancello** (spec 2026-09-26 §3, decisione 5): fino al
+    26/09 dire di no era di tutti, perche' chi non costruiva vedeva comunque
+    la coda. Adesso la coda e' di chi costruisce, e il suo «no» con lei.
     """
+    refusal = await require_builder(request.app, request)
+    if refusal is not None:
+        return refusal
     store = _store(request)
     if store is None:
         return web.json_response({"error": "archivio non disponibile"}, status=503)

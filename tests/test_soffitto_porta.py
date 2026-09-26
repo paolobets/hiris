@@ -4,10 +4,10 @@
 «rimetti com'era»: le due scritture che HIRIS fa sulla configurazione di Home
 Assistant dalla pagina. E' li' che il soffitto morde, e in un posto solo.
 
-`reject` non passa di qui e non deve: non scrive niente su Home Assistant, e
-chiudere un rifiuto dietro un permesso vorrebbe dire che chi non puo' costruire
-non puo' nemmeno dire di no -- cioe' lasciargli in coda per sempre una proposta
-che non vuole.
+Dal 26/09/2026 lo stesso cancello (`soffitto.require_builder`) sta davanti a
+TUTTA la pagina, `reject` compreso: la coda delle proposte e' di chi costruisce
+(spec 2026-09-26 §0, decisione 5). Le prove del cancello sulle altre rotte
+stanno in `test_chi_costruisce.py`.
 """
 import time
 from unittest.mock import AsyncMock, MagicMock
@@ -135,16 +135,22 @@ async def test_anche_RIMETTI_COM_ERA_passa_dal_soffitto(cliente):
 
 
 @pytest.mark.asyncio
-async def test_RIFIUTARE_resta_di_tutti(cliente):
-    """Chi non puo' costruire deve comunque poter dire di no, o si ritrova in
-    coda per sempre una proposta che non vuole. E il rifiuto non scrive niente
-    su Home Assistant: non c'e' nessun potere da custodire.
+async def test_RIFIUTARE_e_di_chi_costruisce(cliente):
+    """**Demolita e rovesciata il 26/09/2026, apposta.** Qui viveva
+    `test_RIFIUTARE_resta_di_tutti`: «chi non puo' costruire deve comunque
+    poter dire di no, o si ritrova in coda per sempre una proposta che non
+    vuole». Era vero finche' la coda era di tutti. La decisione 5 della spec
+    2026-09-26 (§0) la da' a chi costruisce -- chi non costruisce non la vede
+    piu', quindi non c'e' nessuna proposta che gli resti addosso -- e il suo
+    «no» va con lei.
 
-    Mutazione: mettere il soffitto anche sul rifiuto -- rossa."""
+    Mutazione ESEGUITA: togliere `require_builder` da
+    `handle_reject_construction` -- rossa."""
     risposta = await cliente.post("/api/constructions/c1/reject",
                                   headers=_testate("u-ospite"))
 
-    assert risposta.status != 403
+    assert risposta.status == 403
+    assert (await risposta.json())["errore"]
 
 
 @pytest.mark.asyncio

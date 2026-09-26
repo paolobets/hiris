@@ -13,18 +13,43 @@ from hiris.app import server
 from hiris.app.api.handlers_mind import handle_knowledge, handle_set_judgment
 from hiris.app.home_space import type_vocabulary as tv
 from hiris.app.home_space.type_census import OPEN_QUESTIONS
-from hiris.app.mind.judgments import JUDGMENT_AUTHOR, build_judgments
+from hiris.app.mind.judgments import build_judgments
 from hiris.app.mind.knowledge import Fact, KnowledgeStore
 from hiris.app.mind.seed import REPO_PRIORITY, SEED_AUTHOR, judgment_seed
 
 _ILLEGGIBILE = object()
 
+#: Chi scrive i giudizi di queste prove, come il confine lo attacca alla
+#: richiesta. Dal 26/09/2026 `write_judgment` registra l'autore vero (spec
+#: 2026-09-26 §3, decisione 6): prima firmava tutto «proprietario».
+AUTORE = {"specie": "persona", "id": "u-admin", "nome": "Paolo"}
+#: L'autore delle righe scritte dalla porta PRIMA del 26/09/2026: per loro e'
+#: vero, e restano correzioni (`judgments._LEGACY_AUTHOR`).
+AUTORE_STORICO = "proprietario"
+
+
+class _RuoliFinti:
+    async def users(self):
+        return {"utenti": [{"id": AUTORE["id"], "nome": AUTORE["nome"],
+                            "amministratore": True, "proprietario": True}]}
+
 
 def _richiesta(app, corpo=None):
-    class _R:
+    class _R(dict):
+        """Una `Request` vera e' una mappa, e il confine ci deposita il
+        soggetto: qui l'amministratore. Il cancello della rotta
+        (`soffitto.require_builder`) ha le sue prove in
+        `test_chi_costruisce.py`; queste parlano della porta dei giudizi."""
+
         def __init__(self):
+            super().__init__(soggetto=AUTORE)
+            # Home Assistant finto che dice amministratore l'autore: la
+            # premessa, dichiarata qui una volta per tutte le prove.
+            app.setdefault("ha_client", _RuoliFinti())
+            app.setdefault("ruoli", {"quando": 0.0, "per_id": {}})
             self.app = app
             self.query = {}
+            self.method, self.path = "POST", "/api/mind/judgment"
 
         async def json(self):
             if corpo is _ILLEGGIBILE:
@@ -56,7 +81,7 @@ async def test_scrivere_giudizio_200_impronta_nuova(tmp_path):
         assert corpo["impronta"] == app["type_judgments_status"]["impronta"]
         assert corpo["provenienza_istantanea"] == "sapere"
         assert corpo["riga"]["valore"] == "presenza"
-        assert corpo["riga"]["chi"] == JUDGMENT_AUTHOR
+        assert corpo["riga"]["chi"] == "Paolo"
     finally:
         s.close()
 
@@ -159,7 +184,7 @@ async def test_da_sapere_subito_compare_in_giudizi_e_la_rotta_lo_scrive(tmp_path
     piu' sopra): sorveglia che (1) il campo passi ancora dal filtro
     dell'archivio come gli altri e (2) che la `POST` scriva davvero
     (`knowledge.write`, non un successo finto) e con l'origine giusta (`da`
-    passa da «seme» a «proprietario»).
+    passa da «seme» a «correzione»).
 
     Mutazione ESEGUITA: togliere `DA_SAPERE_SUBITO_FIELD` da
     `JUDGMENT_FIELD_NAMES` (`home_space/type_judgments.py`) -- rossa, ma non
@@ -195,7 +220,7 @@ async def test_da_sapere_subito_compare_in_giudizi_e_la_rotta_lo_scrive(tmp_path
         giudizi_corretti = {(g["soggetto_genere"], g["soggetto"], g["campo"]): g
                             for g in json.loads(r.text)["giudizi"]}
         corretta = giudizi_corretti[("tipo", "lock", "da_sapere_subito")]
-        assert (corretta["valore"], corretta["da"]) == ("no", "proprietario")
+        assert (corretta["valore"], corretta["da"]) == ("no", "correzione")
     finally:
         s.close()
 
@@ -215,7 +240,7 @@ async def test_sapere_porta_giudizi_ORIGINE_quando(tmp_path):
     try:
         s.write(Fact(subject_kind="tipo", subject="binary_sensor.occupancy",
                      field="genere", value="presenza", provenance="nostro",
-                     who=JUDGMENT_AUTHOR, when_ts=5.0))
+                     who=AUTORE_STORICO, when_ts=5.0))
         r = await handle_knowledge(_richiesta(app))
         assert r.status == 200
         giudizi = json.loads(r.text)["giudizi"]
@@ -223,8 +248,8 @@ async def test_sapere_porta_giudizi_ORIGINE_quando(tmp_path):
         per_chiave = {(g["soggetto_genere"], g["soggetto"], g["campo"]): g for g in giudizi}
         assert per_chiave[("tipo", "binary_sensor.occupancy", "genere")] == {
             "soggetto_genere": "tipo", "soggetto": "binary_sensor.occupancy",
-            "campo": "genere", "valore": "presenza", "da": "proprietario",
-            "chi": JUDGMENT_AUTHOR, "quando_ts": 5.0}
+            "campo": "genere", "valore": "presenza", "da": "correzione",
+            "chi": AUTORE_STORICO, "quando_ts": 5.0}
         persona = per_chiave[("tipo", "person", "genere")]
         assert (persona["da"], persona["valore"], persona["quando_ts"]) == ("seme", "presenza", 1.0)
     finally:

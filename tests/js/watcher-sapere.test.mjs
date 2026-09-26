@@ -230,7 +230,7 @@ test('mount: la sezione 04 legge il sapere dalla sua rotta', () => {
 
    Forma approvata dal proprietario il 17/09/2026
    (.superpowers/sdd/2026-09-16-il-giudizio-dei-tipi/task-9-ux-approvata.md):
-   «Cosa non ha capito» -> «Le tue correzioni» (righe `proprietario`+`altro`,
+   «Cosa non ha capito» -> «Correzioni» (righe `correzione`+`altro`,
    modulo di aggiunta in testa) -> «I giudizi del seme» (sette gruppi chiusi:
    i sei approvati il 17/09/2026 piu' `da_sapere_subito`, 3.50.0)
    -> «Le domande aperte» (sei, chiuse) -> «Cosa ha capito». */
@@ -241,11 +241,13 @@ test('seam _rendiSapere: con solo giudizi «dal seme» non c’è «Torna al sem
   assert.equal(bottone(corpo, 'Torna al seme'), undefined);
 });
 
-test('mount: una riga «da: proprietario» mostra la data e il comando a due passi «Torna al seme», che manda valore: null', async () => {
+test('mount: una correzione di PRIMA mostra il suo autore «proprietario», la data e il comando a due passi «Torna al seme», che manda valore: null', async () => {
   // Mutazione che la uccide: non mostrare la data con l'anno, o mandare un
-  // valore diverso da null, o saltare il secondo passo.
+  // valore diverso da null, o saltare il secondo passo. Dal 26/09/2026 (spec
+  // 2026-09-26 §3) l'origine si chiama `correzione` e l'autore e' `chi`: le
+  // righe scritte prima portano «proprietario», e per loro e' vero.
   const g = giudizio({
-    da: 'proprietario', chi: 'proprietario', quando_ts: 1787000000,
+    da: 'correzione', chi: 'proprietario', quando_ts: 1787000000,
     campo: 'notevole', valore: 'true',
   });
   const ctx = montaConServer({ sapere: sapereFinto({ giudizi: [g] }) });
@@ -253,10 +255,10 @@ test('mount: una riga «da: proprietario» mostra la data e il comando a due pas
   await tick(20);
 
   const card4 = ctx.document.getElementById('watcher-panel-sapere');
-  assert.match(card4.textContent, /Corretto da te il \d{2}\/\d{2}\/\d{4}/);
+  assert.match(card4.textContent, /Corretto da proprietario il \d{2}\/\d{2}\/\d{4}/);
 
   const start = bottone(ctx.document, 'Torna al seme', card4);
-  assert.ok(start, 'il comando esiste per una riga corretta dal proprietario');
+  assert.ok(start, 'il comando esiste per una correzione');
   const yes = bottone(ctx.document, 'Sì, torna al seme', card4);
   assert.ok(yes, 'il secondo passo esiste nel DOM (nascosto)');
   assert.equal(isHiddenAncestor(yes, card4), true,
@@ -368,14 +370,14 @@ test('seam _rendiSapere: i gruppi del seme mostrano il conteggio calcolato dai d
   const giudizi = [
     giudizio({ campo: 'genere', da: 'seme', soggetto: 'light', soggetto_genere: 'tipo' }),
     giudizio({ campo: 'genere', da: 'seme', soggetto: 'light.dimmable', soggetto_genere: 'tipo' }),
-    giudizio({ campo: 'genere', da: 'proprietario', soggetto: 'light.cucina', soggetto_genere: 'entita' }),
+    giudizio({ campo: 'genere', da: 'correzione', soggetto: 'light.cucina', soggetto_genere: 'entita' }),
     giudizio({ campo: 'riposo', da: 'seme', soggetto: 'switch', soggetto_genere: 'tipo' }),
   ];
   const { corpo } = rendiSapere(sapereFinto({ giudizi }));
   const genere = riassuntoGruppo(corpo, 'Genere');
   assert.ok(genere, 'il gruppo «Genere» esiste');
-  assert.match(genere.textContent, /2 dal seme/, 'due righe restano nel seme (la terza vive in «Le tue correzioni»)');
-  assert.match(genere.textContent, /1 corretta da te/);
+  assert.match(genere.textContent, /2 dal seme/, 'due righe restano nel seme (la terza vive in «Correzioni»)');
+  assert.match(genere.textContent, /1 corretta/);
 
   const riposo = riassuntoGruppo(corpo, 'Riposo');
   assert.ok(riposo);
@@ -448,13 +450,13 @@ test('mount: scelto tipo/entità, la scelta guida soggetto_genere', async () => 
 
 // -- IMPORTANT 1: manca «la cronaca dei giorni passati si rifà da sola» -----
 
-test('seam _rendiSapere: una riga «da: proprietario» dice anche che la cronaca dei giorni passati si rifà da sola (forma approvata, punto 3)', () => {
+test('seam _rendiSapere: una riga «da: correzione» dice anche che la cronaca dei giorni passati si rifà da sola (forma approvata, punto 3)', () => {
   // Mutazione che la uccide: non scrivere questa frase, o scriverla solo
   // come notifica transitoria invece che accanto al badge della riga.
-  const g = giudizio({ da: 'proprietario', quando_ts: 1787000000 });
+  const g = giudizio({ da: 'correzione', chi: 'Paolo', quando_ts: 1787000000 });
   const { corpo } = rendiSapere(sapereFinto({ giudizi: [g] }));
   const badge = corpo.querySelector('.agent-badge.badge-on');
-  assert.ok(badge, 'il badge «corretto da te» esiste');
+  assert.ok(badge, 'il badge «corretto da Paolo» esiste');
   assert.match(corpo.textContent, /La cronaca dei giorni passati si rifà da sola/);
 });
 
@@ -498,7 +500,7 @@ test('seam _rendiSapere: il select dell’editor del genere (dentro una riga) ha
 test('mount: «Torna al seme» sposta il focus ad ogni passo — niente focus perso su <body>', async () => {
   // Mutazione che la uccide: nascondere il bottone che ha il focus senza
   // spostarlo altrove (start.hidden/confirmBox.hidden senza .focus()).
-  const g = giudizio({ da: 'proprietario', campo: 'notevole', soggetto: 'light.focus_revert' });
+  const g = giudizio({ da: 'correzione', campo: 'notevole', soggetto: 'light.focus_revert' });
   const ctx = montaConServer({ sapere: sapereFinto({ giudizi: [g] }) });
   ctx.window.HirisWatcherRoute.mount('sapere');
   await tick(20);
@@ -558,7 +560,7 @@ test('mount: il messaggio del 409 mette un punto dopo {errore}, senza raddoppiar
 // -- MINOR 5: le righe «altro» non entrano nel conteggio del gruppo del seme
 
 test('seam _rendiSapere: il gruppo del seme conta anche le righe «altro» (modificate a mano)', () => {
-  // Mutazione che la uccide: contare solo `da === 'proprietario'`.
+  // Mutazione che la uccide: contare solo `da === 'correzione'`.
   const giudizi = [
     giudizio({ campo: 'riposo', da: 'seme', soggetto: 'switch' }),
     giudizio({ campo: 'riposo', da: 'seme', soggetto: 'switch.x' }),
@@ -569,23 +571,23 @@ test('seam _rendiSapere: il gruppo del seme conta anche le righe «altro» (modi
   assert.ok(riposo);
   assert.match(riposo.textContent, /2 dal seme/);
   assert.match(riposo.textContent, /1 modificata a mano/);
-  assert.doesNotMatch(riposo.textContent, /corretta da te/, 'nessuna correzione del proprietario in questo gruppo');
+  assert.doesNotMatch(riposo.textContent, /corrett/, 'nessuna correzione in questo gruppo');
 });
 
 test('seam _rendiSapere: il gruppo del seme mostra tutte e tre le parti quando ci sono sia correzioni che modifiche a mano', () => {
   const giudizi = [
     giudizio({ campo: 'lavoro', da: 'seme', soggetto: 'climate' }),
-    giudizio({ campo: 'lavoro', da: 'proprietario', soggetto: 'climate.x' }),
+    giudizio({ campo: 'lavoro', da: 'correzione', soggetto: 'climate.x' }),
     giudizio({ campo: 'lavoro', da: 'altro', chi: 'qualcun altro', soggetto: 'climate.y' }),
   ];
   const { corpo } = rendiSapere(sapereFinto({ giudizi }));
   const lavoro = riassuntoGruppo(corpo, 'Lavoro');
-  assert.equal(lavoro.textContent, 'Lavoro · 1 dal seme · 1 corretta da te · 1 modificata a mano');
+  assert.equal(lavoro.textContent, 'Lavoro · 1 dal seme · 1 corretta · 1 modificata a mano');
 });
 
 // -- MINOR 6: dopo un 200/409 il focus resta su <body> ----------------------
 
-test('mount: dopo un 200 il focus si sposta sul titolo «Le tue correzioni», non si perde su <body>', async () => {
+test('mount: dopo un 200 il focus si sposta sul titolo «Correzioni», non si perde su <body>', async () => {
   const g = giudizio({ da: 'seme', campo: 'genere', soggetto_genere: 'tipo', soggetto: 'light.focus200' });
   const ctx = montaConServer({ sapere: sapereFinto({ giudizi: [g] }) });
   ctx.window.HirisWatcherRoute.mount('sapere');
@@ -598,12 +600,12 @@ test('mount: dopo un 200 il focus si sposta sul titolo «Le tue correzioni», no
   await tick(30);
 
   card4 = ctx.document.getElementById('watcher-panel-sapere');
-  const titolo = Array.from(card4.querySelectorAll('h3')).find((h) => h.textContent === 'Le tue correzioni');
+  const titolo = Array.from(card4.querySelectorAll('h3')).find((h) => h.textContent === 'Correzioni');
   assert.ok(titolo, 'il titolo esiste dopo il ricaricamento');
   assert.equal(ctx.document.activeElement, titolo, 'il focus non torna su <body> dopo il ricaricamento');
 });
 
-test('mount: dopo un 409 il focus si sposta comunque sul titolo «Le tue correzioni»', async () => {
+test('mount: dopo un 409 il focus si sposta comunque sul titolo «Correzioni»', async () => {
   const g = giudizio({ da: 'seme', campo: 'genere', soggetto_genere: 'tipo', soggetto: 'light.focus409' });
   const ctx = montaConServer({
     sapere: sapereFinto({ giudizi: [g] }),
@@ -620,7 +622,7 @@ test('mount: dopo un 409 il focus si sposta comunque sul titolo «Le tue correzi
   await tick(30);
 
   card4 = ctx.document.getElementById('watcher-panel-sapere');
-  const titolo = Array.from(card4.querySelectorAll('h3')).find((h) => h.textContent === 'Le tue correzioni');
+  const titolo = Array.from(card4.querySelectorAll('h3')).find((h) => h.textContent === 'Correzioni');
   assert.equal(ctx.document.activeElement, titolo);
 });
 
@@ -756,7 +758,7 @@ test('seam _rendiSapere: i cinque titoli della sezione 04 sono h3 veri, nell\'or
      `renderSeedGroups(...)` in `renderKnowledge` -- rossa (i due titoli di
      mezzo si invertono); ripristinata con l'editor, sha256 identico. */
   const { corpo } = rendiSapere(sapereFinto({
-    giudizi: [giudizio({ da: 'proprietario', chi: 'proprietario' })],
+    giudizi: [giudizio({ da: 'correzione', chi: 'proprietario' })],
     domande_aperte: [domandaAperta()],
   }));
   /* **L'ordine e' cambiato il 20/09** (spec §4C): le domande aperte sono
@@ -764,17 +766,17 @@ test('seam _rendiSapere: i cinque titoli della sezione 04 sono h3 veri, nell\'or
      «Cosa non ha capito» non compare quando non ha niente da dire (qui non
      ce l'ha). */
   assert.deepEqual(titoli(corpo), [
-    'Le domande aperte', 'Le tue correzioni', 'I giudizi del seme',
+    'Le domande aperte', 'Correzioni', 'I giudizi del seme',
     'Cosa ha capito']);
 });
 
-test('seam _rendiSapere: «Torna al seme» c\'è anche sulle righe «da: altro», non solo «proprietario»', () => {
+test('seam _rendiSapere: «Torna al seme» c\'è anche sulle righe «da: altro», non solo «correzione»', () => {
   /* Forma approvata: una riga modificata a mano fuori dalla porta è
      esattamente quella che il proprietario vuole poter rimettere a posto, e
      una mutazione che restringesse il controllo a `proprietario` sarebbe
      rimasta verde.
-     Mutazione ESEGUITA: `if (g.da === 'proprietario')` al posto di
-     `if (g.da === 'proprietario' || g.da === 'altro')` -- rossa (il bottone
+     Mutazione ESEGUITA: `if (g.da === 'correzione')` al posto di
+     `if (g.da === 'correzione' || g.da === 'altro')` -- rossa (il bottone
      non c'è); ripristinata con l'editor, sha256 identico. */
   const { corpo } = rendiSapere(sapereFinto({
     giudizi: [giudizio({ da: 'altro', soggetto: 'light.a_mano', chi: 'ignoto' })],
@@ -783,7 +785,7 @@ test('seam _rendiSapere: «Torna al seme» c\'è anche sulle righe «da: altro»
     const s = r.querySelector('.jr-subject');
     return s && s.textContent === 'light.a_mano';
   });
-  assert.ok(riga, 'la riga «altro» compare in «Le tue correzioni»');
+  assert.ok(riga, 'la riga «altro» compare in «Correzioni»');
   assert.ok(Array.from(riga.querySelectorAll('button')).some((b) => b.textContent === 'Torna al seme'),
     'anche una riga modificata a mano si può rimettere al seme');
 });
@@ -955,11 +957,11 @@ test('seam _rendiSapere: la frase sulla cronaca compare per TUTTI e SOLI i campi
   for (const campo of campiDichiarati()) {
     const { corpo } = rendiSapere(sapereFinto({
       giudizi: [giudizio({
-        da: 'proprietario', campo, soggetto: 'light.a', soggetto_genere: 'entita',
+        da: 'correzione', chi: 'Paolo', campo, soggetto: 'light.a', soggetto_genere: 'entita',
         valore: VALORE_PER_CAMPO[campo] || 'x',
       })],
     }));
-    assert.match(corpo.textContent, /Corretto da te il/, 'il badge c\'e\' per ogni campo: ' + campo);
+    assert.match(corpo.textContent, /Corretto da Paolo il/, 'il badge c\'e\' per ogni campo: ' + campo);
     if (impronta.has(campo)) {
       assert.match(corpo.textContent, frase,
         '`' + campo + '` entra nell\'impronta: la cronaca si rifa\' davvero, e va detto');
@@ -981,7 +983,7 @@ test('seam _rendiSapere: «Torna al seme» avvisa del costo della cronaca per TU
   for (const campo of campiDichiarati()) {
     const { corpo } = rendiSapere(sapereFinto({
       giudizi: [giudizio({
-        da: 'proprietario', campo, soggetto: 'light.a', soggetto_genere: 'entita',
+        da: 'correzione', chi: 'Paolo', campo, soggetto: 'light.a', soggetto_genere: 'entita',
         valore: VALORE_PER_CAMPO[campo] || 'x',
       })],
     }));
@@ -997,14 +999,14 @@ test('seam _rendiSapere: «Torna al seme» avvisa del costo della cronaca per TU
   }
 });
 
-test('seam _rendiSapere: in «Le tue correzioni» ogni riga dice QUALE campo è', () => {
+test('seam _rendiSapere: in «Correzioni» ogni riga dice QUALE campo è', () => {
   /* Senza, due righe dello stesso soggetto sono indistinguibili: «lock · no ·
-     Corretto da te» vale identica per `notevole` e per `da_sapere_subito`.
+     Corretto da Paolo» vale identica per `notevole` e per `da_sapere_subito`.
      Mutazione che la uccide: togliere il campo dalla riga. */
   const { corpo } = rendiSapere(sapereFinto({
     giudizi: [
-      giudizio({ da: 'proprietario', campo: 'notevole', soggetto: 'lock', soggetto_genere: 'tipo', valore: 'no' }),
-      giudizio({ da: 'proprietario', campo: 'da_sapere_subito', soggetto: 'lock', soggetto_genere: 'tipo', valore: 'no' }),
+      giudizio({ da: 'correzione', campo: 'notevole', soggetto: 'lock', soggetto_genere: 'tipo', valore: 'no' }),
+      giudizio({ da: 'correzione', campo: 'da_sapere_subito', soggetto: 'lock', soggetto_genere: 'tipo', valore: 'no' }),
     ],
   }));
   const campi = Array.from(corpo.querySelectorAll('.jr-row .jr-field')).map((n) => n.textContent);
@@ -1157,7 +1159,7 @@ test("seam _rendiSapere: correggere l'impalcatura NON avvisa del costo della cro
    ------------------------------------------------------------------------- */
 
 test('seam _rendiSapere: in testa la riga di PESO, coi numeri del sapere', () => {
-  /* «121 giudizi · 6 domande aperte · N righe di sapere · N corrette da te»
+  /* «121 giudizi · 6 domande aperte · N righe di sapere · N correzioni»
      (spec §4C): la risposta breve alla domanda della scheda, prima di ogni
      elenco.
 
@@ -1165,14 +1167,14 @@ test('seam _rendiSapere: in testa la riga di PESO, coi numeri del sapere', () =>
      delle correzioni. */
   const { corpo } = rendiSapere(sapereFinto({
     giudizi: [giudizio({ da: 'seme', soggetto: 'light' }),
-      giudizio({ da: 'proprietario', soggetto: 'switch', campo: 'genere' })],
+      giudizio({ da: 'correzione', soggetto: 'switch', campo: 'genere' })],
     domande_aperte: [{ chiavi: ['lock=jammed'], domanda: 'Una serratura inceppata?' }],
   }));
 
   const testo = corpo.textContent;
   assert.match(testo, /2 giudizi/);
   assert.match(testo, /1 domanda aperta/);
-  assert.match(testo, /1 corretto da te/);
+  assert.match(testo, /· 1 correzione(?!i)/);
 });
 
 test('seam _rendiSapere: le domande aperte vengono PRIMA dei giudizi', () => {
@@ -1233,4 +1235,24 @@ test('seam _rendiSapere: i giudizi di un gruppo stanno dietro un bottone, non in
   assert.ok(apri, 'manca il bottone del gruppo');
   apri.click();
   assert.equal(corpo.querySelectorAll('.jr-row').length, 12);
+});
+
+/* ── Chi corregge (spec 2026-09-26 §3, decisione 6) ─────────────────── */
+
+test('seam _rendiSapere: una correzione dice CHI l\'ha scritta, e il nome resta testo', () => {
+  /* Il gruppo era «Le tue correzioni» e la riga «Corretto da te»: in una casa
+     con due amministratori mentivano a uno dei due. Il nome arriva dal
+     server gia' filtrato, ma resta testo di fuori: textContent.
+     Mutazione ESEGUITA: 'Corretto da te il' al posto di
+     'Corretto da ' + chi -- rossa. */
+  const { corpo } = rendiSapere(sapereFinto({
+    giudizi: [
+      giudizio({ da: 'correzione', chi: 'Marta', soggetto: 'switch', campo: 'genere' }),
+      giudizio({ da: 'correzione', chi: '<img src=x onerror=1>', soggetto: 'light', campo: 'genere' })],
+  }));
+
+  assert.match(corpo.textContent, /Corretto da Marta il/);
+  assert.match(corpo.textContent, /Corretto da <img src=x onerror=1> il/);
+  assert.equal(corpo.querySelectorAll('img').length, 0, 'il nome e\' diventato markup');
+  assert.doesNotMatch(corpo.textContent, /da te/, 'nessuna seconda persona: chi legge puo\' non essere chi ha scritto');
 });

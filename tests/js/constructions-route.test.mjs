@@ -426,3 +426,77 @@ test('«Rifalla» mostra la nota del backend su dove è passato il giro', async 
   assert.match(stato.textContent, /Piano Claude Max/,
     'il giro è passato a consumo e la pagina non lo dice');
 });
+
+/* ── Chi costruisce, chi ha chiesto (spec 2026-09-26 §3) ─────────────── */
+
+test('ogni proposta dice CHI l’ha chiesta, e il nome resta testo', async () => {
+  /* Il nome viene da Home Assistant: e' testo di fuori, e una pagina che lo
+     scrivesse come markup eseguirebbe cio' che un utente di HA si e' messo
+     come nome. Mutazione ESEGUITA: `requesterLine` che torna sempre null --
+     rossa. */
+  const { dom } = montaCon({ constructions: [
+    { id: 'p1', stato: 'in_attesa', gesto: 'crea', dominio: 'automation',
+      chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: 2,
+      chiesta_da: '<img src=x onerror=1>' },
+    { id: 'p2', stato: 'in_attesa', gesto: 'crea', dominio: 'automation',
+      chiave: '2', anteprima: 'y', prima: null, dopo: {}, creata_ts: 1,
+      chiesta_da: 'Marta' },
+    { id: 'a1', stato: 'attesa', a_mano: true, testo: 'Sposta la lavatrice',
+      chi_applica: 'tu', creata_ts: 3, chiesta_da: null },
+  ] });
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  const document = dom.window.document;
+
+  assert.match(document.body.textContent, /Chiesta da Marta/);
+  assert.match(document.body.textContent, /Chiesta da <img src=x onerror=1>/);
+  assert.equal(document.querySelectorAll('img').length, 0, 'il nome e\' diventato markup');
+  assert.equal((document.body.textContent.match(/Chiesta da/g) || []).length, 2,
+    'una proposta senza chi l\'ha chiesta non inventa una riga');
+});
+
+test('chi arriva per indirizzo senza poter costruire legge il motivo del server', async () => {
+  /* La voce di menu non c'e' per chi non costruisce, ma l'indirizzo si puo'
+     scrivere. Nascondere la voce non e' la difesa: il server risponde 403, e
+     la pagina mostra il SUO motivo -- come testo -- senza un «Riprova» che
+     non cambierebbe niente. Mutazione ESEGUITA: togliere il ramo 403 da
+     `draw` -- rossa (resta il messaggio generico col «Riprova»). */
+  const dom = new JSDOM('<div id="route-outlet"></div>', { url: 'http://localhost/' });
+  global.window = dom.window;
+  global.document = dom.window.document;
+  const motivo = 'scrivere automazioni è riservato agli amministratori <img src=x onerror=1>';
+  dom.window.fetch = async () => ({ ok: false, status: 403, json: async () => ({ errore: motivo }) });
+  global.fetch = dom.window.fetch;
+  new dom.window.Function(SORGENTE)();
+
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+  const aperte = dom.window.document.getElementById('constructions-open-body');
+
+  assert.equal(aperte.textContent, motivo);
+  assert.equal(dom.window.document.querySelectorAll('img').length, 0);
+  assert.equal(dom.window.document.querySelectorAll('#route-outlet button:not(.sc-toggle)').length, 0,
+    'nessun «Riprova»: riprovare non cambierebbe chi sei');
+});
+
+test('un’azione negata dal cancello mostra il motivo del server, non «Errore HTTP 403»', async () => {
+  const dom = new JSDOM('<div id="route-outlet"></div>', { url: 'http://localhost/' });
+  global.window = dom.window;
+  global.document = dom.window.document;
+  dom.window.fetch = async (url, opzioni) => {
+    if (opzioni && opzioni.method === 'POST') {
+      return { ok: false, status: 403, json: async () => ({ errore: 'non sei amministratore' }) };
+    }
+    return { ok: true, status: 200, json: async () => ({ constructions: [
+      { id: 'p1', stato: 'in_attesa', gesto: 'crea', dominio: 'automation',
+        chiave: '1', anteprima: 'x', prima: null, dopo: {}, creata_ts: 1 }] }) };
+  };
+  global.fetch = dom.window.fetch;
+  new dom.window.Function(SORGENTE)();
+  await dom.window.HirisConstructions.mount(dom.window.document.getElementById('route-outlet'));
+
+  dom.window.document.querySelector('[data-azione="reject"]').click();
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
+
+  assert.equal(dom.window.document.getElementById('constructions-status').textContent,
+    'non sei amministratore');
+});

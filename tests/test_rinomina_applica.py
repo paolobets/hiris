@@ -1866,13 +1866,17 @@ def test_le_dataclass_del_prodotto_sono_sedici_e_i_campi_settantasette():
     **Diciassette e 79 dal 25/09/2026**, fetta «il seguito delle chat divise»,
     Task 1: `Recipients` (`hiris/app/keeper/recipient.py`) coi suoi due campi
     -- `services`, `reason` -- il recapito vero di un soggetto, mai scelto dal
-    modello."""
+    modello.
+
+    **Diciassette e 80 dal 26/09/2026**, stessa fetta, Task 4: l'undicesimo
+    campo di `Fact`, `said_by` -- la chiave di chi ha scritto la riga, accanto
+    al nome in `who`, come i ricordi (un giudizio porta il suo autore vero)."""
     classi = campi = 0
     for f in rinomina.file_py(rinomina.ROOT):
         trovate = rinomina.campi_dataclass(rinomina._leggi_grezzo(f))
         classi += len(trovate)
         campi += sum(len(c) for c in trovate.values())
-    assert (classi, campi) == (17, 79), (classi, campi)
+    assert (classi, campi) == (17, 80), (classi, campi)
 
 
 def _repo_finto(tmp_path, prima: dict, dopo: dict) -> None:

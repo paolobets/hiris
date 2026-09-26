@@ -34,6 +34,10 @@ from __future__ import annotations
 import logging
 import time
 
+from aiohttp import web
+
+from ..chat_thread import subject_from_thread, subject_key_for
+from ..proxy._sanitize import sanitize_ha_value
 from .canali import PUO, RUOLI
 
 logger = logging.getLogger(__name__)
@@ -125,18 +129,32 @@ def ruolo_letto(soffitto: dict) -> bool:
 async def _person_row(app, soggetto: dict | None) -> dict | None:
     """La riga di questa utenza fra gli utenti di Home Assistant — o `None`.
 
-    Una lettura sola per due domande: il ruolo (`_ruolo_persona`) e se è il
-    proprietario (`is_owner`, fetta «le chat divise»). Due letture separate
-    sarebbero due cache che scadono in momenti diversi.
+    Una lettura sola per tre domande: il ruolo (`_ruolo_persona`), se è il
+    proprietario (`is_owner`, fetta «le chat divise») e come si chiama
+    (`requester_name`, fetta «il seguito delle chat divise»). Letture
+    separate sarebbero cache che scadono in momenti diversi.
+    """
+    identificatore = (soggetto or {}).get("id")
+    if not identificatore:
+        return None
+    return (await _ha_users(app) or {}).get(identificatore)
+
+
+async def _ha_users(app) -> dict | None:
+    """Gli utenti di Home Assistant per id, riletti se la copia e' scaduta --
+    o `None` se non si possono sapere.
 
     La risposta si tiene per `RUOLI_VALIDI_S`. **Un guasto non si mette in
     cache**: se la lettura fallisce si riprova alla richiesta dopo, altrimenti
     un singolo momento storto di Home Assistant chiuderebbe la costruzione per
     un minuto intero.
+
+    **E' anche chi la RIEMPIE**: la copia nasce vuota (`prepara_ruoli`) e
+    nessuno la carica all'avvio. Chi legge un nome senza passare di qui
+    leggerebbe il vuoto ogni volta che nessun ruolo di persona e' stato
+    chiesto nell'ultimo minuto -- un servizio amministratore che apre le
+    Costruzioni, per esempio.
     """
-    identificatore = (soggetto or {}).get("id")
-    if not identificatore:
-        return None
     client = app.get("ha_client")
     visti = app.get("ruoli")
     if client is None or visti is None:
@@ -170,7 +188,7 @@ async def _person_row(app, soggetto: dict | None) -> dict | None:
         visti["per_id"] = {u["id"]: u for u in esito["utenti"] if u.get("id")}
         visti["quando"] = time.time()
 
-    return visti["per_id"].get(identificatore)
+    return visti["per_id"]
 
 
 async def _ruolo_persona(app, soggetto: dict | None) -> str | None:
@@ -234,20 +252,53 @@ def _approved_service_role(app, subject: dict) -> str | None:
     servizio revocato, sconosciuto o con due approvazioni di ruolo diverso
     sotto lo stesso nome non ha un ruolo che si possa dedurre.
     """
+    roles = {row.get("ruolo") for row in _service_rows(app, subject)
+             if row.get("stato") == "autorizzato"}
+    return roles.pop() if len(roles) == 1 else None
+
+
+def _service_rows(app, subject: dict) -> list[dict]:
+    """Le righe dell'archivio dei servizi che portano il nome e la specie di
+    questo soggetto -- vuoto se l'archivio non c'e' o non si legge.
+
+    Una ricerca sola per le due domande sul servizio: il suo ruolo al
+    risveglio (`_approved_service_role`) e il suo nome sulla pagina
+    Costruzioni (`requester_name`)."""
     services = app.get("servizi")
     if services is None:
-        return None
+        return []
     try:
         rows = services.elenco()
     except Exception as exc:
         logger.warning("soffitto: archivio dei servizi non leggibile (%s)",
                        type(exc).__name__)
+        return []
+    return [row for row in rows
+            if row.get("nome") == subject.get("id")
+            and (row.get("specie") or "integrazione") == subject.get("specie")]
+
+
+async def requester_name(app, thread) -> str | None:
+    """Il nome leggibile di chi ha aperto questo filo, per la pagina
+    Costruzioni (spec 2026-09-26 §3: «chi l'ha chiesta, nome leggibile, non
+    la chiave») -- o `None` quando non c'e' nessuno da nominare.
+
+    Il nome si legge da chi lo SA, mai dal filo, che porta solo la chiave:
+    per una persona gli utenti di Home Assistant, per un servizio il suo
+    archivio. Un filo orfano, un turno senza soggetto o una persona sparita
+    da Home Assistant danno `None`: la chiave al posto del nome sarebbe un
+    identificatore interno sulla pagina, non una risposta. Il nome e' testo
+    scrivibile da fuori (un utente di HA, un servizio che si presenta):
+    passa da `sanitize_ha_value` come ogni altro nome che HIRIS mostra.
+    """
+    subject = subject_from_thread(thread)
+    if not subject or not subject.get("id"):
         return None
-    roles = {row.get("ruolo") for row in rows
-             if row.get("stato") == "autorizzato"
-             and row.get("nome") == subject.get("id")
-             and (row.get("specie") or "integrazione") == subject.get("specie")}
-    return roles.pop() if len(roles) == 1 else None
+    if subject["specie"] == "persona":
+        name = ((await _person_row(app, subject)) or {}).get("nome")
+    else:
+        name = next((row.get("nome") for row in _service_rows(app, subject)), None)
+    return sanitize_ha_value(name) if name else None
 
 
 async def ceiling_at_wake(app, subject: dict | None) -> dict:
@@ -285,6 +336,29 @@ async def per_richiesta(app, request) -> dict:
     """Il soffitto di questa richiesta: quello del soggetto che il confine
     (`middleware_internal_auth`) le ha attaccato."""
     return await ceiling_for(app, request.get("soggetto") or {})
+
+
+async def require_builder(app, request) -> web.Response | None:
+    """**Il cancello di chi costruisce** (spec 2026-09-26 §3, decisioni 5 e
+    6): `None` se questa richiesta puo' costruire, altrimenti il 403 col
+    motivo del soffitto.
+
+    Una funzione sola per ogni rotta della pagina Costruzioni, delle proposte
+    a mano e dei giudizi: la regola e' una, e due copie divergerebbero al
+    primo ritocco. Si chiama PRIMA di toccare qualunque archivio -- anche la
+    lettura dell'elenco scrive (`store.scadi`), e un 403 detto dopo avrebbe
+    gia' scritto.
+
+    Il rifiuto si registra a `info`: un non amministratore che apre la pagina
+    per URL e' un caso normale, non un allarme. Si scrive la chiave del
+    soggetto e non il nome visualizzato, che e' testo di chi chiede.
+    """
+    permesso = await per_richiesta(app, request)
+    if permesso["costruire"]:
+        return None
+    logger.info("soffitto: %s %s negato a %s — %s", request.method, request.path,
+                subject_key_for(request.get("soggetto")), permesso["perche"])
+    return web.json_response({"errore": permesso["perche"]}, status=403)
 
 
 def prepara_ruoli(app) -> None:

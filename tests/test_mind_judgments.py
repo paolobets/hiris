@@ -10,7 +10,6 @@ from hiris.app.home_space import type_vocabulary as tv
 from hiris.app.home_space.type_judgments import JUDGMENT_FIELD_NAMES
 from hiris.app.mind.facts import genre_for
 from hiris.app.mind.judgments import (
-    JUDGMENT_AUTHOR,
     JudgmentNotInEffect,
     JudgmentRefused,
     build_judgments,
@@ -19,6 +18,20 @@ from hiris.app.mind.judgments import (
 )
 from hiris.app.mind.knowledge import Fact, KnowledgeStore
 from hiris.app.mind.seed import REPO_PRIORITY, SEED_AUTHOR, judgment_seed
+
+#: Chi scrive i giudizi di queste prove, come il confine lo attacca alla
+#: richiesta. Dal 26/09/2026 `write_judgment` registra l'autore vero (spec
+#: 2026-09-26 §3, decisione 6): prima firmava tutto «proprietario».
+AUTORE = {"specie": "persona", "id": "u-admin", "nome": "Paolo"}
+#: L'autore delle righe scritte dalla porta PRIMA del 26/09/2026: per loro e'
+#: vero, e restano correzioni (`judgments._LEGACY_AUTHOR`).
+AUTORE_STORICO = "proprietario"
+
+
+def _scrivi(app, **argomenti):
+    """`write_judgment` con l'autore di queste prove: la porta vera, a cui
+    si aggiunge solo chi scrive."""
+    return write_judgment(app, author=AUTORE, **argomenti)
 
 
 def _sapere(tmp_path):
@@ -238,7 +251,7 @@ def test_scrivere_rileggere_DAL_LETTORE(tmp_path):
     s, app = _app_seminata(tmp_path)
     try:
         prima = app["type_judgments_status"]
-        esito = write_judgment(app, subject_kind="tipo", subject="binary_sensor.occupancy",
+        esito = _scrivi(app, subject_kind="tipo", subject="binary_sensor.occupancy",
                                field="genere", value="presenza", now=lambda: 2.0)
         assert genre_for("binary_sensor.fp300", "occupancy",
                          judgments=app["type_judgments"]) == "presenza"
@@ -252,9 +265,10 @@ def test_scrivere_rileggere_DAL_LETTORE(tmp_path):
         assert esito["riga"] == {"soggetto_genere": "tipo",
                                  "soggetto": "binary_sensor.occupancy",
                                  "campo": "genere", "valore": "presenza",
-                                 "chi": JUDGMENT_AUTHOR, "quando_ts": 2.0}
+                                 "chi": "Paolo", "quando_ts": 2.0}
         riga = s.get("tipo", "binary_sensor.occupancy", "genere")
-        assert (riga.value, riga.who, riga.provenance) == ("presenza", JUDGMENT_AUTHOR, "nostro")
+        assert (riga.value, riga.who, riga.provenance) == ("presenza", "Paolo", "nostro")
+        assert riga.said_by == "persona:u-admin"
     finally:
         s.close()
 
@@ -265,17 +279,17 @@ def test_tornare_seme(tmp_path):
     la scrittura lo dichiara)."""
     s, app = _app_seminata(tmp_path)
     try:
-        write_judgment(app, subject_kind="tipo", subject="light", field="genere",
+        _scrivi(app, subject_kind="tipo", subject="light", field="genere",
                        value="sicurezza", now=lambda: 2.0)
         assert app["type_judgments"].rows() != tv.REPO_JUDGMENTS.rows()
-        esito = write_judgment(app, subject_kind="tipo", subject="light", field="genere",
+        esito = _scrivi(app, subject_kind="tipo", subject="light", field="genere",
                                value=None, now=lambda: 3.0)
         assert app["type_judgments"].rows() == tv.REPO_JUDGMENTS.rows()
         assert esito["riga"]["chi"] == SEED_AUTHOR
-        write_judgment(app, subject_kind="entita", subject="switch.x", field="genere",
+        _scrivi(app, subject_kind="entita", subject="switch.x", field="genere",
                        value="nessuno", now=lambda: 4.0)
         assert s.get("entita", "switch.x", "genere") is not None
-        esito = write_judgment(app, subject_kind="entita", subject="switch.x", field="genere",
+        esito = _scrivi(app, subject_kind="entita", subject="switch.x", field="genere",
                                value=None, now=lambda: 5.0)
         assert s.get("entita", "switch.x", "genere") is None
         assert esito["riga"] is None
@@ -293,12 +307,12 @@ def test_tornare_seme_RIAGGANCIA_riga_seme(tmp_path):
     s = _sapere(tmp_path)
     try:
         s.write(Fact(subject_kind="tipo", subject="light", field="genere", value="nessuno",
-                     provenance="nostro", who=JUDGMENT_AUTHOR, when_ts=1.0))
+                     provenance="nostro", who=AUTORE_STORICO, when_ts=1.0))
         s.seed(judgment_seed(when_ts=1.0), priority=REPO_PRIORITY)
         assert s.get("tipo", "light", "genere").value == "nessuno"
         j, stato = build_judgments(s)
         app = {"knowledge": s, "type_judgments": j, "type_judgments_status": stato}
-        write_judgment(app, subject_kind="tipo", subject="light", field="genere",
+        _scrivi(app, subject_kind="tipo", subject="light", field="genere",
                        value=None, now=lambda: 2.0)
         rilascio = Fact(subject_kind="tipo", subject="light", field="genere",
                         value="sicurezza", provenance="nostro", who=SEED_AUTHOR, when_ts=3.0)
@@ -328,9 +342,9 @@ def test_porta_RIFIUTA_fatto_ha_genere_inventato_ARCHIVIO_intatto(tmp_path):
         ]
         for kind, subject, field, value in rifiutate:
             with pytest.raises(JudgmentRefused):
-                write_judgment(app, subject_kind=kind, subject=subject, field=field, value=value)
+                _scrivi(app, subject_kind=kind, subject=subject, field=field, value=value)
         with pytest.raises(JudgmentRefused):
-            write_judgment(app, subject_kind="tipo", subject="light", field="riposo",
+            _scrivi(app, subject_kind="tipo", subject="light", field="riposo",
                            value=["off"])
         assert [(f.subject_kind, f.subject, f.field, f.value, f.who)
                 for f in s.judgment_rows()] == righe
@@ -365,16 +379,16 @@ def test_porta_RIFIUTA_da_sapere_subito_SENZA_riposo_ne_lavoro(tmp_path):
     try:
         righe = [(f.subject_kind, f.subject, f.field, f.value, f.who) for f in s.judgment_rows()]
         with pytest.raises(JudgmentRefused, match="riposo"):
-            write_judgment(app, subject_kind="tipo", subject="update", field="da_sapere_subito",
+            _scrivi(app, subject_kind="tipo", subject="update", field="da_sapere_subito",
                            value="si")
         assert s.get("tipo", "update", "da_sapere_subito") is None
         assert [(f.subject_kind, f.subject, f.field, f.value, f.who)
                 for f in s.judgment_rows()] == righe
         # Con un riposo dichiarato PRIMA, la stessa riga passa: il rifiuto
         # segue lo stato del sapere, non un elenco scritto a mano.
-        write_judgment(app, subject_kind="tipo", subject="update", field="riposo",
+        _scrivi(app, subject_kind="tipo", subject="update", field="riposo",
                        value='["off"]')
-        write_judgment(app, subject_kind="tipo", subject="update", field="da_sapere_subito",
+        _scrivi(app, subject_kind="tipo", subject="update", field="da_sapere_subito",
                        value="si")
         assert app["type_judgments"].da_sapere_subito("update") is True
     finally:
@@ -390,7 +404,7 @@ def test_porta_RIFIUTA_guasto(tmp_path):
     try:
         for kind, subject in (("tipo", "light"), ("entita", "light.x")):
             with pytest.raises(JudgmentRefused, match="guasto"):
-                write_judgment(app, subject_kind=kind, subject=subject, field="genere",
+                _scrivi(app, subject_kind=kind, subject=subject, field="genere",
                                value="guasto")
         assert s.get("entita", "light.x", "genere") is None
     finally:
@@ -456,7 +470,7 @@ def test_livello_ammesso_LETTO_lettore(tmp_path, kind, subject, field, value, le
     Mutazione: rifiutare le entita' per `genere` -- rossa."""
     s, app = _app_seminata(tmp_path)
     try:
-        write_judgment(app, subject_kind=kind, subject=subject, field=field, value=value)
+        _scrivi(app, subject_kind=kind, subject=subject, field=field, value=value)
         assert letta(app["type_judgments"])
     finally:
         s.close()
@@ -472,7 +486,7 @@ def test_livello_MUTO_rifiutato(tmp_path, kind, subject, field, value):
     try:
         righe = [(f.subject_kind, f.subject, f.field, f.value, f.who) for f in s.judgment_rows()]
         with pytest.raises(JudgmentRefused, match="nessuna domanda|soggetto"):
-            write_judgment(app, subject_kind=kind, subject=subject, field=field, value=value)
+            _scrivi(app, subject_kind=kind, subject=subject, field=field, value=value)
         assert [(f.subject_kind, f.subject, f.field, f.value, f.who)
                 for f in s.judgment_rows()] == righe
     finally:
@@ -486,7 +500,7 @@ def test_ogni_soggetto_seme_HA_forma_ammessa(tmp_path):
     s, app = _app_seminata(tmp_path)
     try:
         for kind, subject, field, value in tv.judgment_seed_rows():
-            write_judgment(app, subject_kind=kind, subject=subject, field=field, value=value)
+            _scrivi(app, subject_kind=kind, subject=subject, field=field, value=value)
     finally:
         s.close()
 
@@ -502,7 +516,7 @@ def test_scrittura_NON_IN_VIGORE_si_dichiara(tmp_path):
         s.write(Fact(subject_kind="tipo", subject="light", field="genere",
                      value="acceso", provenance="nostro", who="a mano", when_ts=2.0))
         with pytest.raises(JudgmentNotInEffect) as preso:
-            write_judgment(app, subject_kind="tipo", subject="binary_sensor.occupancy",
+            _scrivi(app, subject_kind="tipo", subject="binary_sensor.occupancy",
                            field="genere", value="presenza", now=lambda: 3.0)
         assert "solo seme" in str(preso.value) and "light" in str(preso.value)
         assert preso.value.status["provenienza_istantanea"] == "solo seme"
@@ -518,7 +532,7 @@ def test_senza_sapere_porta_RIFIUTA():
     """Mutazione: togliere la guardia -- `AttributeError`, non un rifiuto."""
     app = {"type_judgments": tv.REPO_JUDGMENTS}
     with pytest.raises(JudgmentRefused):
-        write_judgment(app, subject_kind="tipo", subject="light", field="genere",
+        _scrivi(app, subject_kind="tipo", subject="light", field="genere",
                        value="sicurezza")
 
 
@@ -552,7 +566,7 @@ async def test_le_due_parole_doppie_sono_SEPARATE_alla_fonte(tmp_path):
     """
     s, app = _app_seminata(tmp_path)
     try:
-        esito = write_judgment(app, subject_kind="tipo", subject="binary_sensor.occupancy",
+        esito = _scrivi(app, subject_kind="tipo", subject="binary_sensor.occupancy",
                                field="genere", value="presenza", now=lambda: 2.0)
         assert esito["provenienza_istantanea"] == "sapere"
         assert "da" not in esito, "`da` nel listato e' l'origine della RIGA: non si riusa qui"
@@ -566,7 +580,7 @@ async def test_le_due_parole_doppie_sono_SEPARATE_alla_fonte(tmp_path):
 
         [riga] = [g for g in judgment_listing(s)
                   if (g["soggetto"], g["campo"]) == ("binary_sensor.occupancy", "genere")]
-        assert riga["da"] == "proprietario"
+        assert riga["da"] == "correzione"
     finally:
         s.close()
 
@@ -605,7 +619,7 @@ def test_l_archivio_che_SOLLEVA_scrivendo_diventa_un_rifiuto_dichiarato(tmp_path
 
         s.write = _rotto
         with pytest.raises(JudgmentStoreFailed) as preso:
-            write_judgment(app, subject_kind="tipo", subject="binary_sensor.occupancy",
+            _scrivi(app, subject_kind="tipo", subject="binary_sensor.occupancy",
                            field="genere", value="presenza", now=lambda: 2.0)
         assert "disco pieno" in str(preso.value)
         assert app["type_judgments"] is giudizi_iniziali
@@ -633,7 +647,7 @@ def test_tornare_al_seme_e_UNA_transazione_sola(tmp_path):
     s = _sapere(tmp_path)
     try:
         s.write(Fact(subject_kind="tipo", subject="light", field="genere",
-                     value="sicurezza", provenance="nostro", who=JUDGMENT_AUTHOR,
+                     value="sicurezza", provenance="nostro", who=AUTORE_STORICO,
                      when_ts=2.0))
         seme = Fact(subject_kind="tipo", subject="light", field="genere",
                     value="funzionamento", provenance="nostro", who=SEED_AUTHOR,
@@ -651,7 +665,7 @@ def test_tornare_al_seme_e_UNA_transazione_sola(tmp_path):
 
         rimasta = s.get("tipo", "light", "genere")
         assert rimasta is not None, "la cancellazione deve essere tornata indietro"
-        assert rimasta.value == "sicurezza" and rimasta.who == JUDGMENT_AUTHOR
+        assert rimasta.value == "sicurezza" and rimasta.who == AUTORE_STORICO
 
         # E quando non solleva, le due meta' si vedono entrambe.
         assert s.forget_and_seed("tipo", "light", "genere", [seme],
@@ -684,7 +698,7 @@ def test_tornare_al_seme_su_un_campo_che_non_esiste_e_RIFIUTATO(tmp_path):
     s, app = _app_seminata(tmp_path)
     try:
         with pytest.raises(JudgmentRefused) as preso:
-            write_judgment(app, subject_kind="tipo", subject="light",
+            _scrivi(app, subject_kind="tipo", subject="light",
                            field="colore_preferito", value=None)
         assert "colore_preferito" in str(preso.value)
 
@@ -693,9 +707,9 @@ def test_tornare_al_seme_su_un_campo_che_non_esiste_e_RIFIUTATO(tmp_path):
         # togliere.
         s.write(Fact(subject_kind="entita", subject="light.salotto", field="lavoro",
                      value='{"on": "accesa"}', provenance="nostro",
-                     who=JUDGMENT_AUTHOR, when_ts=2.0))
+                     who=AUTORE_STORICO, when_ts=2.0))
         assert s.get("entita", "light.salotto", "lavoro") is not None
-        write_judgment(app, subject_kind="entita", subject="light.salotto",
+        _scrivi(app, subject_kind="entita", subject="light.salotto",
                        field="lavoro", value=None, now=lambda: 3.0)
         assert s.get("entita", "light.salotto", "lavoro") is None
     finally:
@@ -720,12 +734,12 @@ def test_la_porta_scrive_da_sapere_subito_su_un_dominio_e_su_una_coppia(tmp_path
     `JUDGMENT_FIELD_NAMES` devono avere le stesse chiavi)."""
     s, app = _app_seminata(tmp_path)
     try:
-        esito = write_judgment(app, subject_kind="tipo", subject="binary_sensor.motion",
+        esito = _scrivi(app, subject_kind="tipo", subject="binary_sensor.motion",
                                field="da_sapere_subito", value="si", now=lambda: 5.0)
         assert esito["riga"]["campo"] == "da_sapere_subito"
-        assert esito["riga"]["chi"] == JUDGMENT_AUTHOR
+        assert esito["riga"]["chi"] == "Paolo"
         assert app["type_judgments"].da_sapere_subito("binary_sensor", "motion") is True
-        write_judgment(app, subject_kind="tipo", subject="light",
+        _scrivi(app, subject_kind="tipo", subject="light",
                        field="da_sapere_subito", value="si", now=lambda: 6.0)
         assert app["type_judgments"].da_sapere_subito("light") is True
     finally:
@@ -755,11 +769,11 @@ def test_il_SI_basta_il_LAVORO_da_solo_senza_riposo(tmp_path):
     try:
         assert not app["type_judgments"].resting_of("update")
         assert not app["type_judgments"].working_of("update")
-        write_judgment(app, subject_kind="tipo", subject="update", field="lavoro",
+        _scrivi(app, subject_kind="tipo", subject="update", field="lavoro",
                        value='{"installing": "sta installando un aggiornamento"}',
                        now=lambda: 5.0)
         assert not app["type_judgments"].resting_of("update")  # il riposo resta assente
-        write_judgment(app, subject_kind="tipo", subject="update",
+        _scrivi(app, subject_kind="tipo", subject="update",
                        field="da_sapere_subito", value="si", now=lambda: 6.0)
         assert app["type_judgments"].da_sapere_subito("update") is True
         # E la regola usa il lavoro, senza nessun riposo da consultare.
@@ -791,7 +805,7 @@ def test_la_porta_scrive_un_ELENCO_di_stati_e_NON_chiede_riposo_ne_lavoro(tmp_pa
     try:
         assert not app["type_judgments"].resting_of("update")
         assert not app["type_judgments"].working_of("update")
-        esito = write_judgment(app, subject_kind="tipo", subject="update",
+        esito = _scrivi(app, subject_kind="tipo", subject="update",
                                field="da_sapere_subito", value='["failed"]', now=lambda: 5.0)
         assert esito["riga"]["valore"] == '["failed"]'
         assert app["type_judgments"].da_sapere_subito("update") == frozenset({"failed"})
@@ -817,13 +831,13 @@ def test_la_porta_RIFIUTA_un_elenco_di_stati_STORTO(tmp_path):
     try:
         righe = [(f.subject_kind, f.subject, f.field, f.value) for f in s.judgment_rows()]
         with pytest.raises(JudgmentRefused, match="vuoto"):
-            write_judgment(app, subject_kind="tipo", subject="lock",
+            _scrivi(app, subject_kind="tipo", subject="lock",
                            field="da_sapere_subito", value="[]")
         with pytest.raises(JudgmentRefused, match="si/no"):
-            write_judgment(app, subject_kind="tipo", subject="lock",
+            _scrivi(app, subject_kind="tipo", subject="lock",
                            field="da_sapere_subito", value="[3]")
         with pytest.raises(JudgmentRefused, match="assenza"):
-            write_judgment(app, subject_kind="tipo", subject="lock",
+            _scrivi(app, subject_kind="tipo", subject="lock",
                            field="da_sapere_subito", value='["jammed", "none"]')
         assert [(f.subject_kind, f.subject, f.field, f.value)
                 for f in s.judgment_rows()] == righe
@@ -839,16 +853,16 @@ def test_da_sapere_subito_torna_al_seme_come_gli_altri(tmp_path):
     s, app = _app_seminata(tmp_path)
     try:
         # Un tipo DEL SEME, corretto e poi rimesso: torna «si», non sparisce.
-        write_judgment(app, subject_kind="tipo", subject="alarm_control_panel",
+        _scrivi(app, subject_kind="tipo", subject="alarm_control_panel",
                        field="da_sapere_subito", value="no", now=lambda: 5.0)
         assert app["type_judgments"].da_sapere_subito("alarm_control_panel") is False
-        write_judgment(app, subject_kind="tipo", subject="alarm_control_panel",
+        _scrivi(app, subject_kind="tipo", subject="alarm_control_panel",
                        field="da_sapere_subito", value=None, now=lambda: 6.0)
         assert app["type_judgments"].da_sapere_subito("alarm_control_panel") is True
         # Un tipo che il seme NON ha: il ritorno al seme la cancella.
-        write_judgment(app, subject_kind="tipo", subject="light",
+        _scrivi(app, subject_kind="tipo", subject="light",
                        field="da_sapere_subito", value="si", now=lambda: 7.0)
-        esito = write_judgment(app, subject_kind="tipo", subject="light",
+        esito = _scrivi(app, subject_kind="tipo", subject="light",
                                field="da_sapere_subito", value=None, now=lambda: 8.0)
         assert esito["riga"] is None
         assert app["type_judgments"].da_sapere_subito("light") is False
@@ -869,11 +883,11 @@ def test_una_correzione_di_da_sapere_subito_NON_cambia_l_impronta(tmp_path):
     s, app = _app_seminata(tmp_path)
     try:
         prima = app["type_judgments_status"]["impronta"]
-        esito = write_judgment(app, subject_kind="tipo", subject="light",
+        esito = _scrivi(app, subject_kind="tipo", subject="light",
                                field="da_sapere_subito", value="si", now=lambda: 5.0)
         assert esito["impronta"] == prima
         # E il contro-caso, che rende la prova discriminante: `genere` la muove.
-        dopo = write_judgment(app, subject_kind="tipo", subject="light",
+        dopo = _scrivi(app, subject_kind="tipo", subject="light",
                               field="genere", value="nessuno", now=lambda: 6.0)
         assert dopo["impronta"] != prima
     finally:
@@ -939,7 +953,7 @@ def test_impalcatura_su_un_TIPO_e_rifiutata(tmp_path):
     s, app = _app_seminata(tmp_path)
     try:
         with pytest.raises(JudgmentRefused):
-            write_judgment(app, subject_kind="tipo", subject="light",
+            _scrivi(app, subject_kind="tipo", subject="light",
                            field="impalcatura", value="si", now=lambda: 1.0)
     finally:
         s.close()
@@ -954,12 +968,12 @@ def test_un_soggetto_integrazione_con_una_forma_che_nessuna_chiave_incontra_e_ri
     s, app = _app_seminata(tmp_path)
     try:
         with pytest.raises(JudgmentRefused):
-            write_judgment(app, subject_kind="integrazione",
+            _scrivi(app, subject_kind="integrazione",
                            subject="custom_components.hacs", field="impalcatura",
                            value="si", now=lambda: 1.0)
         # E la forma giusta si scrive: senza questa meta', un controllo che
         # rifiuta TUTTO passerebbe la prova qui sopra.
-        write_judgment(app, subject_kind="integrazione", subject="hydrawise",
+        _scrivi(app, subject_kind="integrazione", subject="hydrawise",
                        field="impalcatura", value="si", now=lambda: 2.0)
         assert app["type_judgments"].is_scaffolding("hydrawise") is True
     finally:

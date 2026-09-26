@@ -37,6 +37,7 @@ import time
 from aiohttp import web
 
 from ..chat_thread import request_thread
+from .soffitto import per_richiesta
 
 
 def _proposals_pending(app) -> int:
@@ -56,6 +57,14 @@ async def handle_get_pending(request: web.Request) -> web.Response:
     # spento -- cioe' di nuovo «non c'e' niente» al posto di «non lo so».
     if agenda is None or constructions is None:
         return web.json_response({"error": "archivio non disponibile"}, status=503)
+    # **Le Proposte sono di chi costruisce** (spec 2026-09-26 §3, decisione
+    # 5): a chi non puo' deciderle il pallino conta zero, e `can_build` dice
+    # al guscio se mostrare la voce -- lo decide il server a ogni risposta,
+    # non un ruolo indovinato dal browser. Nascondere la voce non e' la
+    # difesa: la difesa e' il 403 di `soffitto.require_builder` sulla pagina.
+    # Il soffitto qui si LEGGE e basta: gli Impegni restano del filo di chi
+    # guarda, amministratore compreso.
+    can_build = (await per_richiesta(request.app, request))["costruire"]
     return web.json_response({
         # Il pallino degli Impegni e' di chi guarda (spec 2026-09-26 §2): gli
         # esiti non letti del SUO filo, dal confine -- come la pagina.
@@ -64,5 +73,6 @@ async def handle_get_pending(request: web.Request) -> web.Response:
         # contasse una sola direbbe un numero piu' piccolo di quello che ti
         # aspetta -- ed e' peggio di nessun pallino, perche' sembra un conto.
         "constructions_pending": (constructions.count_pending(now=time.time())
-                                  + _proposals_pending(request.app)),
+                                  + _proposals_pending(request.app)) if can_build else 0,
+        "can_build": can_build,
     })

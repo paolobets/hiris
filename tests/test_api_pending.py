@@ -42,6 +42,18 @@ ADESSO = 1_756_000_000.0
 # (`HIRIS_ALLOW_NO_TOKEN`, conftest.py) da' `sviluppo`. Le promesse sono di
 # chi le chiede (spec 2026-09-26 §2): quelle di queste prove sono sue.
 SVILUPPO = ChatThread("sviluppo:-", "sviluppo")
+# Dal 26/09/2026 le Proposte sono di chi costruisce (spec 2026-09-26 §3): il
+# loro pallino conta solo per un amministratore, che bussa dall'ingress. Il
+# suo filo e' questo.
+AMMINISTRATORE = ChatThread("persona:u-admin", "pannello")
+_INGRESS_ADMIN = {"X-Ingress-Path": "/api/hassio_ingress/abc/",
+                  "X-Remote-User-Id": "u-admin"}
+
+
+class _RuoliFinti:
+    async def users(self):
+        return {"utenti": [{"id": "u-admin", "nome": "Paolo",
+                            "amministratore": True, "proprietario": True}]}
 
 
 @pytest.fixture(autouse=True)
@@ -57,6 +69,8 @@ async def client(aiohttp_client, tmp_path):
     app["agenda"] = AgendaStore(os.path.join(str(tmp_path), "promesse.db"))
     app["constructions"] = ConstructionStore(
         os.path.join(str(tmp_path), "costruzioni.db"))
+    app["ha_client"] = _RuoliFinti()
+    app["supervisor_ingress_cidrs"] = ["0.0.0.0/0"]  # il client di prova e' locale
     app.on_startup.clear()
     app.on_cleanup.clear()
     c = await aiohttp_client(app)
@@ -81,11 +95,11 @@ async def client_nudo(aiohttp_client):
     return await aiohttp_client(app)
 
 
-def _promessa(archivio, n: int) -> str:
+def _promessa(archivio, n: int, thread: ChatThread = SVILUPPO) -> str:
     return archivio.create(
         {"specie": "chiedi", "frase": f"promessa {n}",
          "quando_ts": ADESSO + 3600 + n, "domanda": "e' aumentata?"},
-        thread=SVILUPPO, now=ADESSO)["promessa"]["id"]
+        thread=thread, now=ADESSO)["promessa"]["id"]
 
 
 def _proposta(archivio, n: int, *, now: float | None = None) -> str:
@@ -120,7 +134,7 @@ async def test_i_due_numeri_contano_cose_diverse(client):
     agenda = client.app["agenda"]
     costruzioni = client.app["constructions"]
 
-    identificatori = [_promessa(agenda, n) for n in range(7)]
+    identificatori = [_promessa(agenda, n, AMMINISTRATORE) for n in range(7)]
     for ident in identificatori[:2]:
         agenda.concludi(ident, state="mantenuta", now=ADESSO + 1)
 
@@ -130,9 +144,10 @@ async def test_i_due_numeri_contano_cose_diverse(client):
             # `in_corso` conta come sospesa: e' rivendicata, non decisa.
             costruzioni.claim(ident, now=ADESSO + 1)
 
-    risposta = await client.get("/api/pending")
+    risposta = await client.get("/api/pending", headers=_INGRESS_ADMIN)
     assert risposta.status == 200
-    assert await risposta.json() == {"agenda_unread": 2, "constructions_pending": 4}
+    assert await risposta.json() == {"agenda_unread": 2, "constructions_pending": 4,
+                                     "can_build": True}
 
 
 @pytest.mark.asyncio

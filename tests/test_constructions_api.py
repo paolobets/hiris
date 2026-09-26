@@ -121,7 +121,12 @@ class FintaRichiesta:
         self.app = app
         self.match_info = {"id": ident} if ident else {}
         self.query = query or {}
-        self._deposito = {"soggetto": soggetto} if soggetto else {}
+        self.method, self.path = "GET", "/api/constructions"
+        # Dal 26/09/2026 ogni rotta di questa pagina e' di chi costruisce
+        # (spec 2026-09-26 §3, decisione 5): la richiesta di queste prove e'
+        # dell'amministratore, dichiarato qui una volta. Il cancello ha le
+        # sue prove in `test_chi_costruisce.py`.
+        self._deposito = {"soggetto": soggetto or AMMINISTRATORE}
 
     def get(self, chiave, predefinito=None):
         return self._deposito.get(chiave, predefinito)
@@ -214,11 +219,12 @@ async def test_una_costruzione_che_esiste_esce_nel_suo_involucro():
 
 @pytest.mark.asyncio
 async def test_il_filo_di_chi_ha_proposto_non_esce_dall_elenco():
-    """Fix round 1, Task 7: `GET /api/constructions` non ha il soffitto --
-    nessun `per_richiesta` la guarda, a differenza di `_act` -- quindi il
-    filo di chi ha proposto (`thread`, che `_row()` porta dal Task 7) non
-    deve attraversare questo confine. Un `ChatThread` non e' nemmeno JSON:
-    se passasse, la risposta non si costruirebbe."""
+    """Fix round 1, Task 7: il filo di chi ha proposto (`thread`, che
+    `_row()` porta dal Task 7) non deve attraversare questo confine -- anche
+    dopo il 26/09/2026, quando la rotta e' diventata di chi costruisce: al
+    suo posto esce il NOME di chi l'ha chiesta (`chiesta_da`), mai la chiave.
+    Un `ChatThread` non e' nemmeno JSON: se passasse, la risposta non si
+    costruirebbe."""
     riga = {"id": "p1", "stato": "in_attesa",
             "thread": ChatThread("persona:paolo", "pannello")}
     app = _app(FintoArchivio([riga]))
@@ -459,7 +465,8 @@ async def test_rifiuta_senza_x_requested_with_e_403_e_non_scrive_niente(client, 
         dopo={"alias": "Tapparelle"}, helper=[], preview="anteprima",
         now=ADESSO_HTTP)["id"]
 
-    risposta = await client.post(f"/api/constructions/{ident}/reject")
+    risposta = await client.post(f"/api/constructions/{ident}/reject",
+                                 headers=_INGRESS_ADMIN)
     assert risposta.status == 403
     assert (await risposta.json())["error"] == "csrf_required"
     # La meta' che conta: sul 403 la proposta resta `in_attesa`.
@@ -476,6 +483,6 @@ async def test_rifiuta_con_x_requested_with_rifiuta_anche_a_csrf_stretto(client,
         now=ADESSO_HTTP)["id"]
 
     risposta = await client.post(f"/api/constructions/{ident}/reject",
-                                 headers={"X-Requested-With": "fetch"})
+                                 headers={**_INGRESS_ADMIN, "X-Requested-With": "fetch"})
     assert risposta.status == 200
     assert archivio.read(ident)["stato"] == "disdetta"

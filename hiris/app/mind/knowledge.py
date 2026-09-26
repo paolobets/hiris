@@ -152,6 +152,11 @@ class Fact:
     verification: str | None = None
     evidence: str | None = None
     source: str | None = None
+    #: La CHIAVE di chi l'ha scritta (`specie:id`, `chat_thread.subject_key_for`),
+    #: accanto al nome in `who` -- come `said_by` dei ricordi (spec 2026-09-26
+    #: §3). Il nome cambia, la chiave no. `None` per chi non e' un soggetto: il
+    #: seme, le deduzioni, e i giudizi scritti prima del 26/09/2026.
+    said_by: str | None = None
 
     def __post_init__(self) -> None:
         if self.subject_kind not in SUBJECT_KINDS:
@@ -202,6 +207,7 @@ CREATE TABLE IF NOT EXISTS knowledge (
     source       TEXT,
     who          TEXT NOT NULL,
     when_ts      REAL NOT NULL,
+    said_by      TEXT,
     -- Cosa il SEME aveva scritto l'ultima volta, e con quale precedenza.
     --
     -- **Serve perche' `who` non basta** (revisione indipendente su Fable 5.1,
@@ -451,6 +457,18 @@ def _migration_7(conn) -> None:
             spostate, cancellate)
 
 
+def _migration_8(conn) -> None:
+    """v7 -> v8: `said_by`, la chiave di chi ha scritto la riga (fetta «il
+    seguito delle chat divise», spec 2026-09-26 §3).
+
+    Le righe di prima rileggono `NULL`, ed e' vero: nessuno aveva registrato
+    la chiave. I giudizi scritti dalla porta prima di allora restano
+    riconoscibili dal loro autore, «proprietario» (`judgments.judgment_listing`).
+    """
+    if "said_by" not in {r[1] for r in conn.execute("PRAGMA table_info(knowledge)")}:
+        conn.execute("ALTER TABLE knowledge ADD COLUMN said_by TEXT")
+
+
 def _why_from_evidence(evidence: str | None) -> str:
     """Il `why` del modello dentro le prove, o la stringa vuota.
 
@@ -482,10 +500,10 @@ def _why_from_evidence(evidence: str | None) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-_SCHEMA_VERSION = 7
+_SCHEMA_VERSION = 8
 
 _COLUMNS = ("subject_kind", "subject", "field", "value", "provenance",
-            "verification", "evidence", "source", "who", "when_ts")
+            "verification", "evidence", "source", "who", "when_ts", "said_by")
 
 
 def _facts(rows) -> list[Fact]:
@@ -548,7 +566,7 @@ class KnowledgeStore:
                     migrations={2: _migration_2, 3: _migration_3,
                                 4: _migration_4, 5: _migration_5,
                                 6: _migration_6,
-                                7: _migration_7})
+                                7: _migration_7, 8: _migration_8})
 
     def close(self) -> None:
         with self._lock:
@@ -565,7 +583,8 @@ class KnowledgeStore:
                 "ON CONFLICT(subject_kind, subject, field) DO UPDATE SET "
                 "value=excluded.value, provenance=excluded.provenance, "
                 "verification=excluded.verification, evidence=excluded.evidence, "
-                "source=excluded.source, who=excluded.who, when_ts=excluded.when_ts",
+                "source=excluded.source, who=excluded.who, when_ts=excluded.when_ts, "
+                "said_by=excluded.said_by",
                 tuple(getattr(fact, c) for c in _COLUMNS))
             self._conn.commit()
 
@@ -589,7 +608,7 @@ class KnowledgeStore:
             "ON CONFLICT(subject_kind, subject, field) DO UPDATE SET "
             "value=excluded.value, provenance=excluded.provenance, "
             "verification=excluded.verification, evidence=excluded.evidence, "
-            "source=excluded.source, who=excluded.who, "
+            "source=excluded.source, who=excluded.who, said_by=excluded.said_by, "
             "when_ts=excluded.when_ts, seeded_value=excluded.seeded_value, "
             "seeded_priority=excluded.seeded_priority "
             "WHERE knowledge.seeded_value IS NOT NULL "

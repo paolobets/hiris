@@ -20,7 +20,9 @@ scrivere in Home Assistant. Quella strada e' l'officina.
 I codici portano la distinzione che conta, come le rotte gemelle: 404 «non
 esiste», 409 «esiste ma non e' piu' in attesa», 503 «non disponibile» -- cosi'
 la pagina non deve leggere il testo dell'errore per sapere quale delle tre
-mostrare.
+mostrare. Prima di tutti, 403: le proposte sono di chi costruisce (spec
+2026-09-26 §3, decisione 5), e ognuna delle tre chiama per prima
+`soffitto.require_builder`, lo stesso cancello della pagina Costruzioni.
 """
 from __future__ import annotations
 
@@ -29,6 +31,8 @@ import logging
 import time
 
 from aiohttp import web
+
+from .soffitto import require_builder
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +66,9 @@ def _row(store, ident: str) -> dict | None:
 
 
 async def _close(request, outcome: str) -> web.Response:
+    refusal = await require_builder(request.app, request)
+    if refusal is not None:
+        return refusal
     store = _store(request)
     if store is None:
         return web.json_response({"errore": _NO_STORE}, status=503)
@@ -103,6 +110,9 @@ async def handle_proposal_redo(request: web.Request) -> web.Response:
     **Il giro si scrive solo a risposta arrivata**: una proposta riscritta a
     meta' sarebbe peggio di una non riscritta.
     """
+    refusal = await require_builder(request.app, request)
+    if refusal is not None:
+        return refusal
     store = _store(request)
     if store is None:
         return web.json_response({"errore": _NO_STORE}, status=503)

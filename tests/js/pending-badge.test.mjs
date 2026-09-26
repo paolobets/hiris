@@ -145,3 +145,68 @@ test('due giri di seguito non lasciano due pallini sulla stessa voce', async () 
   const host = ctx.document.querySelector('[data-badge="agenda"]');
   assert.equal(host.querySelectorAll('.nav-badge').length, 1);
 });
+
+test('PIN: una terza chiave nella risposta non fa scattare il controllo stretto', async () => {
+  /* security-constraints «NOT pinned» 13: il controllo delle chiavi di
+     `refresh` e' stretto su cio' che MANCA, e una chiave in piu' -- quella
+     che dice se chi guarda puo' costruire, fetta «il seguito delle chat
+     divise» -- non deve spegnere i pallini come se fosse un guasto. */
+  const ctx = await monta(rispostaCon({ agenda_unread: 2, constructions_pending: 4, can_build: true }));
+
+  assert.equal(pallino(ctx, 'agenda').textContent, '2');
+  assert.equal(pallino(ctx, 'constructions').textContent, '4');
+});
+
+/* ── La voce «Proposte» e' di chi costruisce (spec 2026-09-26 §3) ──────
+   La decide il server a ogni risposta di `GET /api/pending` (`can_build`),
+   non un ruolo indovinato dal browser. Mutazioni ESEGUITE: togliere la riga
+   `proposte.hidden = ...` -- rosse le prime due; `dati.can_build === false`
+   al posto di `!== true` -- rossa la terza. */
+
+function voceProposte(ctx) {
+  return ctx.document.querySelector('[data-badge="constructions"]');
+}
+
+test('chi non costruisce non vede la voce «Proposte»', async () => {
+  const ctx = await monta(rispostaCon({ agenda_unread: 1, constructions_pending: 0, can_build: false }));
+
+  assert.equal(voceProposte(ctx).hidden, true);
+  assert.equal(pallino(ctx, 'agenda').textContent, '1', 'gli Impegni restano di tutti');
+});
+
+test('la voce si decide a OGNI risposta, non una volta sola', async () => {
+  let giro = 0;
+  const ctx = await monta(() => {
+    giro += 1;
+    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(
+      { agenda_unread: 0, constructions_pending: giro === 1 ? 3 : 0, can_build: giro === 1 }) });
+  });
+  assert.equal(voceProposte(ctx).hidden, false, 'al primo giro chi guarda costruisce');
+
+  await ctx.window.HirisPendingBadge.refresh();
+  await tick(0);
+
+  assert.equal(voceProposte(ctx).hidden, true, 'al secondo non piu\': la voce sparisce');
+});
+
+test('una risposta che non dice can_build non e\' un permesso', async () => {
+  const ctx = await monta(rispostaCon({ agenda_unread: 0, constructions_pending: 2 }));
+
+  assert.equal(voceProposte(ctx).hidden, true);
+});
+
+test('un errore non tocca la voce: non e\' una risposta', async () => {
+  let giro = 0;
+  const ctx = await monta(() => {
+    giro += 1;
+    return giro === 1
+      ? Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(
+        { agenda_unread: 0, constructions_pending: 1, can_build: true }) })
+      : Promise.reject(new Error('rete giu'));
+  });
+
+  await ctx.window.HirisPendingBadge.refresh();
+  await tick(0);
+
+  assert.equal(voceProposte(ctx).hidden, false);
+});

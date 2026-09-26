@@ -126,7 +126,8 @@
    generico. Un fallimento della GET (rete giu', o il 503 che porta gia'
    `costruzioni: []` e sembra una lista vuota senza esserlo) mostra un
    messaggio distinto con "Riprova", mai lo stesso testo di "non c'e' niente
-   qui".
+   qui". Il 403 della GET (la pagina e' di chi costruisce, spec 2026-09-26
+   §3) e' un terzo caso: il motivo del server, senza "Riprova".
 
    -- Sicurezza -- testi via textContent/createElement, MAI scrivendo markup
    HTML grezzo nel DOM: alias e anteprime nascono in una chat, e una chat puo'
@@ -408,7 +409,10 @@ window.HirisConstructions = (function () {
         if (occurrence.res.ok) { reload(); return; }
         /* guida §7: si legge `errore` verbatim, mai un messaggio sintetico
            per casi che il server ha gia' separato (404/409/503). */
-        statusEl.textContent = (occurrence.corpo && occurrence.corpo.error) ||
+        /* `errore` e' la chiave del cancello (403, `soffitto.require_builder`)
+           e delle rotte delle proposte; `error` quella di 404/409/503 qui. */
+        statusEl.textContent = (occurrence.corpo &&
+          (occurrence.corpo.errore || occurrence.corpo.error)) ||
           ('Errore HTTP ' + occurrence.res.status);
         button.forEach(function (b) { b.disabled = false; });
       }, function () {
@@ -447,6 +451,14 @@ window.HirisConstructions = (function () {
 
      Vivono in un archivio gemello e si leggono in questo elenco: «un posto
      solo dove si decide» e' una promessa sulla PAGINA, non sulla tabella. */
+  /* Chi l'ha chiesta (spec 2026-09-26 §3): il NOME che il server legge da
+     Home Assistant o dall'archivio dei servizi, mai la chiave. `null` -- una
+     proposta dell'osservatore, una orfana -- non scrive niente: «chiesta da
+     nessuno» direbbe un fatto che non si sa. Testo di fuori: textContent. */
+  function requesterLine(c) {
+    return c.chiesta_da ? el('div', 'field-hint', 'Chiesta da ' + c.chiesta_da) : null;
+  }
+
   function lineAMano(c, statusEl, reload) {
     var box = el('div', 'construction construction--' + c.stato);
     box.style.cssText = 'border-top:1px solid var(--border);padding:var(--sp-4) 0;' +
@@ -457,6 +469,8 @@ window.HirisConstructions = (function () {
     head.appendChild(el('span', null, c.testo || ''));
     head.appendChild(el('span', 'agent-badge badge-off', 'la fai tu'));
     box.appendChild(head);
+    var chiA = requesterLine(c);
+    if (chiA) box.appendChild(chiA);
     if (c.perche) box.appendChild(el('div', 'field-hint', c.perche));
 
     /* Il filo dei giri: cosa hai gia' scartato, e cosa avevi chiesto. Al
@@ -574,6 +588,8 @@ window.HirisConstructions = (function () {
     head.appendChild(el('span', 'agent-badge ' + (STATE_BADGE[c.stato] || 'badge-off'),
       STATE_LABEL[c.stato] || c.stato));
     box.appendChild(head);
+    var chi = requesterLine(c);
+    if (chi) box.appendChild(chi);
 
     if (eraGiaLi(c)) {
       box.appendChild(el('div', 'field-hint', 'Questo oggetto esiste già in casa tua.'));
@@ -652,6 +668,18 @@ window.HirisConstructions = (function () {
       return;
     }
     sort(list).forEach(function (c) { body.appendChild(line(c, statusEl, reload)); });
+  }
+
+  /* Il 403 della pagina (spec 2026-09-26 §3): chi non costruisce ci arriva
+     solo scrivendo l'indirizzo -- la voce di menu non c'e' -- e legge il
+     motivo del SERVER, verbatim e via textContent, non un «riprova» che non
+     servirebbe a niente. Lo storico non si mostra: e' la stessa coda. */
+  function renderDenied(outlet, openBody, historyBody, reason) {
+    clearEl(openBody);
+    clearEl(historyBody);
+    setHistoryCount(outlet, null);
+    openBody.appendChild(el('p', 'proposals-error',
+      reason || 'Questa pagina è di chi può costruire.'));
   }
 
   function renderError(openBody, historyBody, reload) {
@@ -747,9 +775,18 @@ window.HirisConstructions = (function () {
     clearEl(historyBody); historyBody.appendChild(el('p', 'field-hint', 'Caricamento…'));
 
     return fetch('api/constructions').then(function (r) {
+      if (r.status === 403) {
+        return r.json().catch(function () { return {}; }).then(function (corpo) {
+          return { negato: (corpo && corpo.errore) || '' };
+        });
+      }
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
     }).then(function (data) {
+      if (data && data.negato !== undefined) {
+        renderDenied(outlet, openBody, historyBody, data.negato);
+        return;
+      }
       var all = (data && data.constructions) || [];
       var open = all.filter(function (c) { return OPEN_STATES.indexOf(c.stato) !== -1; });
       var history = all.filter(function (c) { return OPEN_STATES.indexOf(c.stato) === -1; });

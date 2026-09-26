@@ -16,6 +16,7 @@ import re
 import sqlite3
 import time as _time
 
+from ..chat_thread import subject_key_for
 from ..home_space.type_judgments import (
     _SUBJECT_KINDS,
     DA_SAPERE_SUBITO_FIELD,
@@ -36,6 +37,7 @@ from ..home_space.type_vocabulary import (
     REPO_JUDGMENTS,
     judgment_seed_rows,
 )
+from ..proxy._sanitize import sanitize_ha_value
 
 # Nome privato importato da un altro modulo, di proposito: la guardia stretta
 # sulla forma `dominio.oggetto` vive in quattro copie (docs/BACKLOG.md, voce
@@ -46,8 +48,17 @@ from ..proxy.ha_client import _ENTITY_ID_RE
 from .knowledge import Fact
 from .seed import REPO_PRIORITY, SEED_AUTHOR
 
-#: Chi scrive un giudizio dalla porta: la casa, cioe' il suo proprietario.
-JUDGMENT_AUTHOR = "proprietario"
+#: L'autore dei giudizi scritti dalla porta PRIMA del 26/09/2026, quando la
+#: porta non sapeva chi scriveva e firmava tutto cosi'. Per quelle righe e'
+#: vero (spec 2026-09-26 §3: «i giudizi gia' scritti restano "proprietario"»),
+#: e resta scritto qui solo per riconoscerle: nessuna riga nuova lo porta.
+_LEGACY_AUTHOR = "proprietario"
+
+#: L'origine di una riga scritta dalla porta, in `judgment_listing`: una
+#: CORREZIONE, di chiunque sia -- chi l'ha scritta e' `chi`, un altro campo.
+#: Fino al 26/09/2026 si chiamava «proprietario», cioe' l'autore dentro
+#: l'origine: due fatti in una parola, separati qui alla fonte.
+CORRECTION_ORIGIN = "correzione"
 
 #: A quale livello di soggetto ogni campo e' CONSULTATO da `TypeJudgments`
 #: (le sue domande, lette nel codice il 17/09/2026): `genre_of` e `resting_of`
@@ -168,7 +179,7 @@ def _status(source: str, why: str | None, judgments: TypeJudgments) -> dict:
 
     **`provenienza_istantanea` e non `da`** (giro di correzioni 1, punto 3,
     fondamenta 3): `da` e' gia' l'origine di una RIGA in `judgment_listing`
-    (`seme`/`proprietario`/`altro`), e qui vale una cosa diversa -- da dove e'
+    (`seme`/`correzione`/`altro`), e qui vale una cosa diversa -- da dove e'
     stata costruita l'istantanea intera (`sapere`/`solo seme`). Due cose con
     una parola sola si separano **alla fonte**, che e' questa riga: cosi'
     nessuna delle porte a valle (`/api/health`, la risposta della POST, il
@@ -218,10 +229,13 @@ def judgment_listing(knowledge) -> list[dict]:
 
     `da` non si legge dal solo `who`: l'archivio si corregge anche a mano con
     un `UPDATE` che non cambia l'autore (`knowledge.py`, schema). Quindi:
-    `proprietario` se l'ha scritta la porta; `seme` se l'autore e' il seme E il
-    valore e' quello che il seme del repo scrive oggi; `altro` in ogni altro
-    caso -- una riga che nessuno dei due rivendica. Una riga che l'archivio
-    salta perche' non si regge (`knowledge._facts`) qui non compare.
+    `correzione` se l'ha scritta la porta -- dal 26/09/2026 la riga porta la
+    chiave di chi l'ha scritta (`said_by`), prima portava l'autore
+    `_LEGACY_AUTHOR`; `seme` se l'autore e' il seme E il valore e' quello che
+    il seme del repo scrive oggi; `altro` in ogni altro caso -- una riga che
+    nessuno rivendica. Chi ha scritto una correzione lo dice `chi`. Una riga
+    che l'archivio salta perche' non si regge (`knowledge._facts`) qui non
+    compare. La chiave non esce: alla pagina serve il nome.
 
     **`da` qui e' l'origine della RIGA**, e non si confonde con la provenienza
     dell'ISTANTANEA, che si chiama `provenienza_istantanea` da dove nasce
@@ -230,8 +244,8 @@ def judgment_listing(knowledge) -> list[dict]:
     seeded = _seed_values()
     listing = []
     for fact in knowledge.judgment_rows():
-        if fact.who == JUDGMENT_AUTHOR:
-            origin = "proprietario"
+        if fact.said_by is not None or fact.who == _LEGACY_AUTHOR:
+            origin = CORRECTION_ORIGIN
         elif (fact.who == SEED_AUTHOR
               and seeded.get((fact.subject_kind, fact.subject, fact.field)) == fact.value):
             origin = "seme"
@@ -307,8 +321,21 @@ def _check(subject_kind: str, subject: str, field: str, value, current: TypeJudg
                 "riposo -- scrivi prima `riposo` o `lavoro`")
 
 
+def _author_name(author: dict | None) -> str:
+    """Il nome di chi scrive un giudizio, per `who`.
+
+    Il nome arriva dall'intestazione dell'ingress di Home Assistant: testo di
+    chi chiede, che la pagina mostra e che nessuno rilegge prima -- passa da
+    `sanitize_ha_value`, la stessa porta dei ricordi (`tools._remember`).
+    Senza un nome (un ingress che non lo porta) resta la chiave: `who` e'
+    obbligatorio, e la chiave e' vera -- un nome inventato non lo sarebbe.
+    """
+    name = sanitize_ha_value((author or {}).get("nome"))
+    return name or subject_key_for(author)
+
+
 def write_judgment(app, *, subject_kind: str, subject: str, field: str, value: str | None,
-                   now=_time.time) -> dict:
+                   author: dict, now=_time.time) -> dict:
     """**La porta unica** (spec §4): valida, scrive, ricostruisce l'istantanea e
     sostituisce INSIEME `app["type_judgments"]` e `app["type_judgments_status"]`
     -- la correzione vale subito (spec §0, decisione 2).
@@ -324,6 +351,10 @@ def write_judgment(app, *, subject_kind: str, subject: str, field: str, value: s
     se la riga e' scritta ma l'istantanea ricostruita e' del solo seme.
     Nessuna ricarica della `EntityCache` (D1: nessun giudizio del sapere e'
     tenuto calcolato dalla cache).
+
+    `author` e' il SOGGETTO che scrive, dal confine (spec 2026-09-26 §3,
+    decisione 6): la riga porta il suo nome in `who` e la sua chiave in
+    `said_by`, come i ricordi. Non viene mai dal corpo di una richiesta.
     """
     knowledge = app.get("knowledge")
     if knowledge is None:
@@ -343,7 +374,8 @@ def write_judgment(app, *, subject_kind: str, subject: str, field: str, value: s
                    [] if fact is None else [fact], priority=REPO_PRIORITY)
     else:
         fact = Fact(subject_kind=subject_kind, subject=subject, field=field, value=value,
-                    provenance="nostro", who=JUDGMENT_AUTHOR, when_ts=now())
+                    provenance="nostro", who=_author_name(author),
+                    said_by=subject_key_for(author), when_ts=now())
         _writing(knowledge.write, fact)
     judgments, status = build_judgments(knowledge)
     app["type_judgments"], app["type_judgments_status"] = judgments, status

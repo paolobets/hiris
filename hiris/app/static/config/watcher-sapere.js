@@ -13,16 +13,24 @@
    -- i giudizi sui tipi (spec «i tre attori» §4, §7) --
    Gerarchia approvata dal proprietario il 17/09/2026 (task 9,
    .superpowers/sdd/2026-09-16-il-giudizio-dei-tipi/task-9-ux-approvata.md):
-   «Cosa non ha capito» -> «Le tue correzioni» (righe `proprietario`+`altro`, e
+   «Cosa non ha capito» -> «Correzioni» (righe `correzione`+`altro`, e
    il modulo di aggiunta in testa) -> «I giudizi del seme» (sette gruppi
    chiusi, uno per campo -- sei approvati il 17/09/2026 piu'
    `da_sapere_subito`, spec 2026-09-18-da-sapere-subito.md §5) -> «Le domande
    aperte» (chiuse) -> «Cosa ha capito».
 
    **Una riga vive in un posto solo** (fondamenta HIRIS): chi ha corretto un
-   giudizio del seme sparisce dal SUO gruppo e vive solo in «Le tue
-   correzioni» -- il gruppo del seme ne conta il numero rimasto, non la
-   nasconde e basta.
+   giudizio del seme sparisce dal SUO gruppo e vive solo in «Correzioni» --
+   il gruppo del seme ne conta il numero rimasto, non la nasconde e basta.
+
+   -- chi corregge (spec 2026-09-26 §3, decisione 6) --
+   Le correzioni sono di chi amministra, e portano l'autore VERO: il gruppo
+   era «Le tue correzioni» e la riga «Corretto da te», che in una casa con
+   piu' amministratori mentivano. Ora «Correzioni», e ogni riga dice chi
+   (`chi`, un nome che il server ha filtrato; qui resta testo, textContent).
+   L'origine della riga e' `correzione` -- era `proprietario`, cioe' l'autore
+   scritto dentro l'origine. I giudizi di prima dicono «proprietario»: per
+   loro e' vero.
 
    -- il giro di correzioni 1 (revisione Fable, 17/09/2026) --
    Cinque difetti misurati e chiusi, che i commenti puntuali qui sotto
@@ -140,8 +148,8 @@ window.HirisWatcherSapere = (function () {
   }
 
   /* L'etichetta italiana di un campo, dall'elenco qui sopra: serve alla riga di
-     «Le tue correzioni», dove righe di campi diversi stanno mescolate e
-     «lock · no · Corretto da te» non distingue `notevole` da
+     «Correzioni», dove righe di campi diversi stanno mescolate e
+     «lock · no · Corretto da Paolo» non distingue `notevole` da
      `da_sapere_subito` (revisione finale, I-4). Un campo sconosciuto torna
      com'è scritto: meglio il nome tecnico che il silenzio. */
   function judgmentFieldLabel(campo) {
@@ -246,9 +254,9 @@ window.HirisWatcherSapere = (function () {
     ui.esito.textContent = 'Scrivo…';
     return write('api/mind/judgment', payload).then(function (occurrence) {
       if (occurrence.ok) {
-        /* 200: la scheda si ricarica intera -- la riga riappare in «Le tue
-           correzioni» con la sua provenienza nuova (forma approvata, punto 3).
-           `true`: sposta il focus sul titolo di «Le tue correzioni» dopo il
+        /* 200: la scheda si ricarica intera -- la riga riappare in
+           «Correzioni» con la sua provenienza nuova (forma approvata, punto 3).
+           `true`: sposta il focus sul titolo di «Correzioni» dopo il
            ricaricamento (fix round 1, MINOR 6) -- senza, il bottone appena
            premuto sparisce col resto del corpo e il focus cade su `<body>`. */
         carica(ui.outerBody, undefined, true);
@@ -326,7 +334,7 @@ window.HirisWatcherSapere = (function () {
   }
 
   /* «Torna al seme» (forma approvata, punto 5): niente `confirm()`, due
-     passi in linea. Vale per righe `proprietario` E `altro`, di qualunque
+     passi in linea. Vale per righe `correzione` E `altro`, di qualunque
      campo -- manda `valore: null`. */
   function revertToSeedControl(g, outerBody) {
     var wrap = el('div');
@@ -378,14 +386,14 @@ window.HirisWatcherSapere = (function () {
   }
 
   /* La provenienza di una riga (forma approvata, punto 4): `seme` è un
-     testo quieto, `proprietario`/`altro` sono badge -- lo stesso linguaggio
+     testo quieto, `correzione`/`altro` sono badge -- lo stesso linguaggio
      di `.agent-badge` già in uso nel resto della pagina, non un componente
      nuovo.
 
      **Fix round 1, IMPORTANT 1**: la forma approvata dice che una riga
-     corretta dal proprietario porta ANCHE «La cronaca dei giorni passati si
+     corretta dalla porta porta ANCHE «La cronaca dei giorni passati si
      rifà da sola» -- mancava del tutto. Sta qui, accanto al badge, perché è
-     una proprietà della riga finché resta `proprietario` (non una notifica
+     una proprietà della riga finché resta `correzione` (non una notifica
      che sparisce al primo ricaricamento): chi rivede la pagina domani deve
      rileggerla, non solo chi l'ha appena scritta.
 
@@ -395,9 +403,10 @@ window.HirisWatcherSapere = (function () {
      per costruzione (spec §6) -- la pagina prometteva a chi corregge una
      ricostruzione che non avviene. */
   function provenanceNode(g) {
-    if (g.da === 'proprietario') {
+    if (g.da === 'correzione') {
       var wrap = el('span', 'jr-provenance');
-      wrap.appendChild(el('span', 'agent-badge badge-on', 'Corretto da te il ' + (fmtDateOnly(g.quando_ts) || '—')));
+      wrap.appendChild(el('span', 'agent-badge badge-on',
+        'Corretto da ' + (g.chi || '—') + ' il ' + (fmtDateOnly(g.quando_ts) || '—')));
       if (rifaLaCronaca(g.campo)) {
         wrap.appendChild(el('span', 'field-hint', 'La cronaca dei giorni passati si rifà da sola.'));
       }
@@ -461,9 +470,9 @@ window.HirisWatcherSapere = (function () {
      punto 6), a griglia larga e impilata sotto i 768px -- mai una
      `<table>` (CSS: `.jr-row` in hiris-config.css).
 
-     `mostraCampo` (revisione finale, I-4): in «Le tue correzioni» righe di
+     `mostraCampo` (revisione finale, I-4): in «Correzioni» righe di
      campi diversi stanno mescolate, e senza il nome del campo «lock · no ·
-     Corretto da te» vale identica per `notevole` e per `da_sapere_subito` --
+     Corretto da Paolo» vale identica per `notevole` e per `da_sapere_subito` --
      chi legge non sa cosa ha corretto. Dentro «I giudizi del seme» il campo è
      già il titolo del gruppo e ripeterlo su ogni riga sarebbe rumore. */
   function judgmentRow(g, outerBody, mostraCampo) {
@@ -478,7 +487,7 @@ window.HirisWatcherSapere = (function () {
     if (Object.prototype.hasOwnProperty.call(EDITABLE_JUDGMENT_FIELDS, g.campo)) {
       actions.appendChild(judgmentCorrectControl(g, outerBody));
     }
-    if (g.da === 'proprietario' || g.da === 'altro') actions.appendChild(revertToSeedControl(g, outerBody));
+    if (g.da === 'correzione' || g.da === 'altro') actions.appendChild(revertToSeedControl(g, outerBody));
     riga.appendChild(actions);
     return riga;
   }
@@ -548,8 +557,8 @@ window.HirisWatcherSapere = (function () {
     return wrap;
   }
 
-  /* «Le tue correzioni» (forma approvata, gerarchia): il modulo di aggiunta
-     in testa, sempre visibile, poi le righe `proprietario` e `altro` --
+  /* «Correzioni» (forma approvata, gerarchia): il modulo di aggiunta
+     in testa, sempre visibile, poi le righe `correzione` e `altro` --
      ovunque vivessero nel seme, qui vivono UNA volta sola.
 
      Torna il titolo (`<h3>`): fix round 1, MINOR 6 lo rende focalizzabile
@@ -558,12 +567,12 @@ window.HirisWatcherSapere = (function () {
      del corpo e il focus cade su `<body>`, e chi naviga da tastiera perde
      il posto. */
   function renderCorrections(body, giudizi, outerBody) {
-    var heading = subheading(body, 'Le tue correzioni');
+    var heading = subheading(body, 'Correzioni');
     heading.tabIndex = -1;
     body.appendChild(addJudgmentForm(outerBody));
 
     var corrette = sortJudgmentRows(giudizi.filter(function (g) {
-      return g.da === 'proprietario' || g.da === 'altro';
+      return g.da === 'correzione' || g.da === 'altro';
     }));
     if (!corrette.length) {
       line(body, 'Nessuna correzione ancora: le righe che scrivi da qui vivono da sole.', TONE_CALM);
@@ -576,14 +585,14 @@ window.HirisWatcherSapere = (function () {
   /* «I giudizi del seme» (forma approvata, punto 2): sette gruppi chiusi, uno
      per campo, ordinati per soggetto dentro. Il conteggio si calcola dai
      dati -- mai scritto a mano -- e porta anche le correzioni tolte da qui
-     («25 dal seme · 1 corretta da te»): la riga vive solo in «Le tue
-     correzioni», ma il numero del gruppo racconta lo storico intero.
+     («25 dal seme · 1 corretta»): la riga vive solo in «Correzioni», ma il
+     numero del gruppo racconta lo storico intero.
 
-     **Fix round 1, MINOR 5**: il conteggio contava solo `da === 'proprietario'`
+     **Fix round 1, MINOR 5**: il conteggio contava solo le correzioni
      -- una riga `altro` (modificata a mano, fuori da questa porta) spariva dal
      gruppo E dal conteggio, e il commento sopra («racconta lo storico intero»)
      era falso proprio per quel caso. Ora conta entrambe, separate: «N dal seme
-     · M corretta/e da te · K modificata/e a mano» (una parte si omette se il
+     · M corretta/e · K modificata/e a mano» (una parte si omette se il
      suo numero è zero). */
   function renderSeedGroups(body, giudizi, outerBody) {
     subheading(body, 'I giudizi del seme');
@@ -592,7 +601,7 @@ window.HirisWatcherSapere = (function () {
         return g.campo === gruppo.campo && g.da === 'seme';
       }));
       var correzioni = giudizi.filter(function (g) {
-        return g.campo === gruppo.campo && g.da === 'proprietario';
+        return g.campo === gruppo.campo && g.da === 'correzione';
       }).length;
       var modificheAMano = giudizi.filter(function (g) {
         return g.campo === gruppo.campo && g.da === 'altro';
@@ -600,7 +609,7 @@ window.HirisWatcherSapere = (function () {
       var parti = [];
       if (correzioni || modificheAMano) {
         parti.push(fmtCount(semeRighe.length) + ' dal seme');
-        if (correzioni) parti.push(fmtCount(correzioni) + (correzioni === 1 ? ' corretta da te' : ' corrette da te'));
+        if (correzioni) parti.push(fmtCount(correzioni) + (correzioni === 1 ? ' corretta' : ' corrette'));
         if (modificheAMano) {
           parti.push(fmtCount(modificheAMano) + (modificheAMano === 1 ? ' modificata a mano' : ' modificate a mano'));
         }
@@ -657,14 +666,14 @@ window.HirisWatcherSapere = (function () {
        ogni elenco. È la risposta breve alla domanda della scheda -- «cosa ha
        capito della casa, e dove sbaglia?» -- e prima di questa fetta
        bisognava scorrere centoventuno righe per ricavarla. */
-    var corrette = giudizi.filter(function (g) { return g.da === 'proprietario'; }).length;
+    var corrette = giudizi.filter(function (g) { return g.da === 'correzione'; }).length;
     var righeSapere = (sapere && sapere.conteggi && sapere.conteggi.totale) || 0;
     var peso = [fmtCount(giudizi.length) + (giudizi.length === 1 ? ' giudizio' : ' giudizi'),
                 fmtCount(domande.length) + (domande.length === 1 ? ' domanda aperta' : ' domande aperte')];
     if (righeSapere) {
       peso.push(fmtCount(righeSapere) + (righeSapere === 1 ? ' riga di sapere' : ' righe di sapere'));
     }
-    peso.push(fmtCount(corrette) + (corrette === 1 ? ' corretto da te' : ' corretti da te'));
+    peso.push(fmtCount(corrette) + (corrette === 1 ? ' correzione' : ' correzioni'));
     line(body, peso.join(' · '), TONE_CALM);
 
     /* **Ciò che non ha capito viene PRIMA, e TACE quando non c'è** (spec
@@ -694,7 +703,7 @@ window.HirisWatcherSapere = (function () {
        numerosi e i meno urgenti.
 
        `outerBody` è la scheda intera: ogni scrittura la ricarica per intero
-       (la correzione vale subito). Il titolo di «Le tue correzioni» torna
+       (la correzione vale subito). Il titolo di «Correzioni» torna
        indietro: `carica` lo usa per rimettere il focus dopo una scrittura. */
     renderOpenQuestions(body, domande);
     var correctionsHeading = renderCorrections(body, giudizi, body);

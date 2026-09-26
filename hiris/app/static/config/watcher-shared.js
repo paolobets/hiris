@@ -137,8 +137,8 @@ window.HirisWatcherShared = (function () {
       pad2(d.getHours()) + ':' + pad2(d.getMinutes());
   }
 
-  /* Solo la DATA (senza l'ora): `proprietario` la vuole con l'anno
-     («Corretto da te il gg/mm/aaaa», forma approvata punto 4) -- `fmtWhenFull`
+  /* Solo la DATA (senza l'ora): `correzione` la vuole con l'anno
+     («Corretto da Paolo il gg/mm/aaaa», forma approvata punto 4) -- `fmtWhenFull`
      porta anche l'ora, che li' e' un dato in piu' da leggere. */
   function fmtDateOnly(ts) {
     if (ts == null) return null;
