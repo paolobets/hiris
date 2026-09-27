@@ -58,7 +58,12 @@ configuration:
       name: "Model (inactive)"
       description: "Which model it would use: text-embedding-3-small, nomic-embed-text, minishlab/potion-base-8M. Today it is never invoked."
 
-  # ── 4. Advanced: log, security ────────────────────────────────────────────
+  # ── 4. Who uses HIRIS ─────────────────────────────────────────────────────
+  non_admin_access:
+    name: "Allow HIRIS for non-administrator users"
+    description: "Users who are not administrators also see HIRIS in the menu and use the chat, their own commitments and memories (read-only); configuration stays with administrators."
+
+  # ── 5. Advanced: log, security ────────────────────────────────────────────
   log_level:
     name: "Advanced · log detail"
     description: "How much HIRIS writes to the log. To report a fault: set 'debug', reproduce the problem, attach what you see."

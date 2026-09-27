@@ -55,7 +55,13 @@ export MEMORY_EMBEDDING_MODEL=$(bashio::config 'memory.embedding_model' '')
 # ci ha scaricato un modello, quel file NON viene toccato da questa fetta.
 export HF_HOME=/config/hiris/models/huggingface
 
-# ── 4. Avanzate: registro, sicurezza ────────────────────────────────────────
+# ── 4. Chi usa HIRIS ────────────────────────────────────────────────────────
+# `true`/`false`, come `bashio::config` scrive un `bool`. Il codice apre solo
+# su `true` (`panel_visibility.parse_access_flag`) e lo legge una volta,
+# in `create_app`.
+export HIRIS_NON_ADMIN_ACCESS=$(bashio::config 'non_admin_access')
+
+# ── 5. Avanzate: registro, sicurezza ────────────────────────────────────────
 export LOG_LEVEL=$(bashio::config 'log_level' 'info')
 # `INTERNAL_TOKEN` e' uscito il 22/09/2026 col segreto condiviso (reperto A-5):
 # un servizio esterno adesso si accoppia dalla pagina Servizi e firma.

@@ -113,7 +113,8 @@ ports_description:
 # l'indirizzo di Ollama, e le tre voci avanzate che governano il perimetro
 # d'accesso. Piu' `theme` e i due campi `memory.*`, dichiarati inerti: sono
 # rimasti deliberatamente, perche' toglierli avrebbe fatto perdere il valore
-# salvato in cambio di niente.
+# salvato in cambio di niente. E una DECISIONE sola, `non_admin_access`
+# (sezione 4, 27/09/2026): la sua ragione e' scritta accanto a lei.
 #
 # L'ORDINE DI QUESTO FILE E' LA PAGINA CHE L'UTENTE VEDE. Il Supervisor non sa
 # rendere separatori ne' campi condizionali, e i commenti `# ── N.` di questo
@@ -196,7 +197,17 @@ options:
     embedding_provider: ""
     embedding_model: ""
 
-  # ── 4. Avanzate: registro, sicurezza ──────────────────────────────────────
+  # ── 4. Chi usa HIRIS ──────────────────────────────────────────────────────
+  # L'unica DECISIONE rimasta in questa pagina, e lo e' per scelta del
+  # proprietario (spec 2026-09-27 §0, decisione 2): chi puo' usare HIRIS e'
+  # una scelta di chi amministra la casa, e deve valere prima che HIRIS apra
+  # una qualunque delle sue pagine. Spenta per difetto: HIRIS resta ai soli
+  # amministratori finche' qualcuno non lo decide. Accesa, la voce di menu si
+  # apre a tutti (`panel_visibility.py`) e il cancello al confine lascia
+  # passare chat, Impegni e memorie di chi non amministra -- nient'altro.
+  non_admin_access: false
+
+  # ── 5. Avanzate: registro, sicurezza ──────────────────────────────────────
   # In fondo e con il prefisso "Avanzate · " nell'etichetta perche' il
   # Supervisor non sa marcare un campo come pericoloso: la posizione e il nome
   # sono l'unico segnale disponibile.
@@ -266,6 +277,9 @@ schema:
     embedding_provider: str
     embedding_model: str
 
-  # ── 4. Avanzate: registro, sicurezza ──────────────────────────────────────
+  # ── 4. Chi usa HIRIS ──────────────────────────────────────────────────────
+  non_admin_access: bool
+
+  # ── 5. Avanzate: registro, sicurezza ──────────────────────────────────────
   log_level: "list(debug|info|warning|error)"
   supervisor_ingress_cidr: "str?"

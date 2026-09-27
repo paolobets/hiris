@@ -684,6 +684,38 @@ class HAClient:
              "sistema": bool(r.get("system_generated"))}
             for r in rows if isinstance(r, dict)]}
 
+    async def update_panel(self, url_path: str, require_admin: bool | None) -> dict:
+        """Scrive l'override di `require_admin` per UN pannello del menu.
+
+        Verificato il 27/09/2026 sul sorgente di Core 2026.9.3
+        (`components/frontend/__init__.py::websocket_update_panel`, dalla
+        2026.3, `@require_admin`): `None` toglie la chiave dall'override,
+        `not_found` per un pannello che non c'e'. Si manda SOLO
+        `require_admin`: titolo, icona e barra laterale non sono decisioni di
+        HIRIS. Il `codice` torna accanto al motivo perche' un HA piu' vecchio
+        risponde `unknown_command`, e quel caso si dice con parole sue.
+        """
+        msg = await self._ws_command(
+            "frontend/update_panel",
+            {"url_path": url_path, "require_admin": require_admin})
+        occurrence = self._ws_occurrence(msg, "_")
+        if "errore" not in occurrence:
+            return {"aggiornato": True}
+        error = (msg or {}).get("error") or {}
+        return {"errore": occurrence["errore"], "codice": error.get("code")}
+
+    async def panels(self) -> dict:
+        """I pannelli del menu come li vede HIRIS: `{"pannelli": {url_path:
+        {...}}}` oppure il motivo. `get_panels` applica gia' l'override di
+        `frontend/update_panel` (`websocket_get_panels`, stesso sorgente e
+        stessa data qui sopra): e' lo stato vero, non quello chiesto."""
+        occurrence = self._ws_occurrence(await self._ws_command("get_panels"), "pannelli")
+        if "errore" in occurrence:
+            return occurrence
+        if not isinstance(occurrence["pannelli"], dict):
+            return {"errore": "l'elenco dei pannelli non è arrivato come oggetto"}
+        return occurrence
+
     async def create_label(self, name: str) -> dict:
         """Crea un'etichetta. La paternita' di cio' che HIRIS costruisce vive
         QUI, nel registro di Home Assistant, e non in una tabella nostra: e'

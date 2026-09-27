@@ -96,6 +96,7 @@ from .mind.seed import (
 from .mind.store import READING_RETENTION_S, ObservationsStore
 from .mind.watcher import Watcher
 from .model_resolution import subscription_has_token
+from .panel_visibility import parse_access_flag, sync_panel_visibility
 from .provider_occurrences import OccurrenceRegistry
 from .proxy.entity_cache import EntityCache, automation_config_id
 from .proxy.ha_client import HAClient
@@ -5521,6 +5522,10 @@ async def _on_startup(app: web.Application) -> None:
         logger.warning(_notice)
 
 
+async def _start_panel_sync(app: web.Application) -> None:
+    _spawn(sync_panel_visibility(app), name="panel_visibility")
+
+
 async def _on_cleanup(app: web.Application) -> None:
     from .chat_store import close_all_stores
     # M-2 (Plan 2B final review, fast-follow): stop the reasoning-queue
@@ -5644,7 +5649,17 @@ def create_app() -> web.Application:
     ])
 
     app.on_startup.append(_on_startup)
+    # Dopo `_on_startup`, che crea `app["ha_client"]`. Parte in un compito a
+    # parte e non si aspetta: l'add-on puo' avviarsi prima del nucleo, e una
+    # Home Assistant che non risponde non deve tenere chiuso HIRIS.
+    app.on_startup.append(_start_panel_sync)
     app.on_cleanup.append(_on_cleanup)
+
+    # Spec 2026-09-27 §2: l'opzione dell'add-on e' l'UNICA fonte della scelta,
+    # letta qui una volta. Chi decide l'accesso legge `app[...]`, mai
+    # l'ambiente per richiesta: cambiarlo a processo avviato non apre niente.
+    app["non_admin_access"] = parse_access_flag(
+        os.environ.get("HIRIS_NON_ADMIN_ACCESS"))
 
     static_path = os.path.join(os.path.dirname(__file__), "static")
     # Build stamp: hash del contenuto del frontend, per verificare in UI/health

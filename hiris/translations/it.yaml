@@ -60,7 +60,12 @@ configuration:
       name: "Modello (inattivo)"
       description: "Quale modello userebbe: text-embedding-3-small, nomic-embed-text, minishlab/potion-base-8M. Oggi non viene mai invocato."
 
-  # ── 4. Avanzate: registro, sicurezza ──────────────────────────────────────
+  # ── 4. Chi usa HIRIS ──────────────────────────────────────────────────────
+  non_admin_access:
+    name: "Consenti HIRIS agli utenti non amministratori"
+    description: "Anche chi non è amministratore vede HIRIS nel menu e usa la chat, i suoi Impegni e le sue memorie (sola lettura); la configurazione resta agli amministratori."
+
+  # ── 5. Avanzate: registro, sicurezza ──────────────────────────────────────
   log_level:
     name: "Avanzate · dettaglio del registro"
     description: "Quanto scrive HIRIS nel registro. Per segnalare un guasto: metti 'debug', riproduci il problema, allega quello che vedi."
