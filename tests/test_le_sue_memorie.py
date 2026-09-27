@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
+from aiohttp import web
 from aiohttp.test_utils import make_mocked_request
 
 from conftest import credenziale_ponte, firma, servizio_approvato
@@ -406,3 +407,119 @@ def test_la_riduzione_e_cio_che_la_CHAT_legge():
 
     assert "api/chat-settings" in corpo
     assert set(re.findall(r"\bdata\.(\w+)", corpo)) == set(CHAT_PAGE_FIELDS)
+
+
+# --- fix round 1: un soffitto per richiesta, una casa sola --------------------
+#
+# PIN scritti e visti verdi su efc38564, prima di togliere `per_richiesta`:
+# la stessa decisione per amministratore, utente, lettore, servizio, ponte e
+# sviluppo sulle strade che la usavano -- `require_builder`
+# (`GET /api/constructions`), `handlers_servizi._solo_amministratori`
+# (`POST /api/services/window/open`) e il soffitto del turno di chat.
+
+async def _chat_ceiling(request):
+    """Come `handlers_chat` calcola il soffitto del turno (efc38564)."""
+    from hiris.app.api.soffitto import per_richiesta
+
+    return await per_richiesta(request.app, request)
+
+
+_CHI_CHIEDE = ("admin", "utente", "lettore", "servizio-amministratore",
+               "servizio-utente", "servizio-lettore", "ponte", "sviluppo")
+
+
+def _caller_headers(client, chi, monkeypatch, method, path):
+    """Le intestazioni di chi chiede, come il confine le riceve davvero."""
+    if chi in ("admin", "utente", "lettore"):
+        utente = {"admin": "u-admin", "utente": "u-marta", "lettore": "u-lettore"}[chi]
+        return _persona(utente)
+    if chi.startswith("servizio-"):
+        privata, pubblica = servizio_approvato(client.app, chi.split("-", 1)[1],
+                                               nome=f"svc-{chi}")
+        return {**firma(privata, pubblica, method, path), "X-Requested-With": "fetch"}
+    if chi == "ponte":
+        return {**credenziale_ponte(client.app, "segreto-di-turno"),
+                "X-Requested-With": "fetch"}
+    monkeypatch.setenv("HIRIS_ALLOW_NO_TOKEN", "1")
+    monkeypatch.setenv("HIRIS_ALLOW_NO_CSRF", "1")
+    return {}
+
+
+#: Lo status di ogni strada per ogni chiamante, misurato su efc38564. Chi non
+#: amministra dall'ingress lo ferma gia' il cancello (403); il 503 e' un
+#: archivio che la fixture non monta, cioe' il cancello di chi costruisce
+#: superato.
+_STRADE_EFC38564 = {
+    ("GET", "/api/constructions"): {
+        "admin": 503, "utente": 403, "lettore": 403, "servizio-amministratore": 503,
+        "servizio-utente": 403, "servizio-lettore": 403, "ponte": 403, "sviluppo": 403},
+    ("POST", "/api/services/window/open"): {
+        "admin": 200, "utente": 403, "lettore": 403, "servizio-amministratore": 200,
+        "servizio-utente": 403, "servizio-lettore": 403, "ponte": 403, "sviluppo": 403},
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("chi", _CHI_CHIEDE)
+@pytest.mark.parametrize("method,path", list(_STRADE_EFC38564))
+async def test_PIN_la_stessa_DECISIONE_sulle_strade_di_chi_costruisce(
+        aiohttp_client, tmp_path, monkeypatch, chi, method, path):
+    app = _compose(tmp_path, access=True)
+    client = await aiohttp_client(app)
+    try:
+        headers = _caller_headers(client, chi, monkeypatch, method, path)
+        risposta = await client.request(method, path, headers=headers)
+        assert risposta.status == _STRADE_EFC38564[(method, path)][chi]
+    finally:
+        app["memory_store"].close()
+        app["servizi"].close()
+
+
+#: Il soffitto che la chat mette nel turno (`ruolo`, i gesti, e se il ruolo e'
+#: stato letto), per ogni chiamante, misurato su efc38564.
+_TUTTO = {"leggere": True, "comandare": True, "costruire": True, "amministrare": True}
+_UTENTE = {"leggere": True, "comandare": True, "costruire": False, "amministrare": False}
+_LETTORE = {"leggere": True, "comandare": False, "costruire": False, "amministrare": False}
+_NIENTE = {"leggere": False, "comandare": False, "costruire": False, "amministrare": False}
+_SOFFITTO_EFC38564 = {
+    "admin": ({**_TUTTO, "ruolo": "amministratore"}, True),
+    "utente": ({**_UTENTE, "ruolo": "utente"}, True),
+    "lettore": ({**_LETTORE, "ruolo": "lettore"}, True),
+    "servizio-amministratore": ({**_TUTTO, "ruolo": "amministratore"}, True),
+    "servizio-utente": ({**_UTENTE, "ruolo": "utente"}, True),
+    "servizio-lettore": ({**_LETTORE, "ruolo": "lettore"}, True),
+    "ponte": ({**_NIENTE, "ruolo": None}, True),
+    "sviluppo": ({**_NIENTE, "ruolo": None}, True),
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("chi", _CHI_CHIEDE)
+async def test_PIN_il_SOFFITTO_della_richiesta_per_ogni_chiamante(
+        aiohttp_client, tmp_path, monkeypatch, chi):
+    """Cio' che il turno di chat riceve (`handlers_chat`: `ruolo`,
+    `ruolo_letto` e il soffitto del dispatcher), da una rotta di prova che lo
+    calcola come la chat."""
+    from hiris.app.api import admission
+    from hiris.app.api.soffitto import ruolo_letto
+
+    app = _compose(tmp_path, access=True)
+
+    async def eco(request):
+        soffitto = await _chat_ceiling(request)
+        return web.json_response({"soffitto": soffitto, "letto": ruolo_letto(soffitto)})
+
+    app.router.add_get("/api/prova-soffitto", eco)
+    monkeypatch.setattr(admission, "_ADMITTED",
+                        admission._ADMITTED | {("GET", "/api/prova-soffitto")})
+    client = await aiohttp_client(app)
+    try:
+        headers = _caller_headers(client, chi, monkeypatch, "GET", "/api/prova-soffitto")
+        corpo = await (await client.get("/api/prova-soffitto", headers=headers)).json()
+    finally:
+        app["memory_store"].close()
+        app["servizi"].close()
+
+    soffitto, letto = _SOFFITTO_EFC38564[chi]
+    assert {k: corpo["soffitto"][k] for k in (*_TUTTO, "ruolo")} == soffitto
+    assert corpo["letto"] is letto
