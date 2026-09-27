@@ -630,6 +630,47 @@ va corretto, in un posto solo.
 
 ## In attesa
 
+### Chi non amministra può sapere, chiedendo, cosa gli altri hanno detto a HIRIS — aperta il 27/09/2026
+
+`origine: rischio dichiarato dalla fetta «HIRIS per chi non amministra» (security-auditor, 27/09/2026), messo in coda dal proprietario` · `docs/design/2026-09-27-hiris-per-chi-non-amministra.md`
+
+Con l'accesso ai non amministratori, la pagina Memoria mostra a ciascuno **solo i ricordi che ha
+detto lui**, ma in chat la memoria di HIRIS **resta condivisa** (decisione delle chat divise,
+25/09/2026): il modello legge i ricordi di tutti (lo strumento `fetch`, il nucleo). Quindi un non
+amministratore può farsi ripetere, chiedendo, ciò che un altro ha detto a HIRIS. E ciò che lui fa
+ricordare (`remember`) entra nei turni successivi di tutti, amministratori compresi: un canale di
+iniezione nel contesto della stessa classe di B-2 (registro dei rischi del 21/09).
+
+**Da decidere**: se certi ricordi diventano personali (visibili al modello solo nel filo di chi li
+ha detti), o se si accetta la memoria della casa come condivisa per costruzione e lo si scrive nella
+pagina Memoria.
+
+### Le chat di chi non amministra consumano il budget dei modelli senza un tetto per persona — aperta il 27/09/2026
+
+`origine: rischio dichiarato dalla fetta «HIRIS per chi non amministra» (security-auditor, 27/09/2026), messo in coda dal proprietario` · nessun documento
+
+Ogni turno di chat di un non amministratore spende sui provider configurati dal proprietario (catena
+e piano). Esiste solo il tetto globale dei turni per conversazione (`max_chat_turns`), non un tetto
+per persona né per giorno; nascondere il widget dei consumi a chi non amministra non toglie la spesa.
+Il registro dei turni (`turn.subject_json`) sa già chi ha chiesto: la misura per persona c'è, manca
+il freno.
+
+**Da decidere**: se serve un tetto per persona (turni o costo al giorno), e dove si imposta.
+
+### Un servizio firmato con ruolo «utente» può ancora cambiare la configurazione di HIRIS — aperta il 27/09/2026
+
+`origine: rischio dichiarato dalla fetta «HIRIS per chi non amministra» (security-auditor, 27/09/2026), messo in coda dal proprietario` · `hiris/app/api/middleware_internal_auth.py`
+
+La lista di ammissione al confine vale per le **persone** che arrivano dall'ingress. I servizi
+firmati (porta 8099, Retro Panel quando si accoppierà) seguono ancora `canali.consente_metodo`, che
+distingue solo lettura e scrittura: un servizio approvato come `utente` può chiamare le rotte di
+configurazione (`PUT /api/models/config`, `PUT /api/chat-settings`, `POST /api/usage/reset`, …)
+che a una persona non amministratrice sono negate. È un'incoerenza col principio «mai più di quanto
+il chiamante può in HA».
+
+**Cosa serve**: la stessa lista di ammissione (o il suo complemento «riservato agli amministratori»)
+applicata anche ai servizi con ruolo diverso da `amministratore`.
+
 > **Avvertenza sulla prima stesura (04/09/2026).** Il proprietario aveva chiesto di annotare una
 > lista di argomenti per il prossimo sprint, e quella lista **non e' stata salvata da nessuna
 > parte**: cercata in tutto il repository, nelle cartelle ignorate, nelle issue e nelle milestone di
