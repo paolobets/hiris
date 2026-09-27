@@ -417,63 +417,35 @@ Every option below exists in [`hiris/config.yaml`](hiris/config.yaml); the full
 descriptions are in [`hiris/translations/en.yaml`](hiris/translations/en.yaml)
 and are what the add-on UI shows.
 
-The page is ordered for someone opening it for the first time to get the chat
-working: each provider switch sits **immediately above the credential it
-needs**, then the fallback order, then the bridge, then appearance and
-retention, and last the advanced fields that can open HIRIS's API on your LAN.
-`config.yaml`'s `options:` and `schema:` are kept in that same order — if you
-reorder one, reorder the other.
+Since 3.0.0 the add-on page only **keeps** things: the four credentials, Ollama's
+address, the theme, the two embedding fields and the advanced fields. The
+decisions — which providers are used and in what order, the bridge, Ollama's
+model, how long conversations are kept — are made inside HIRIS, on the
+**Models** page and in **Chat settings**, where their effect is seen. A provider
+is used if and only if it is in the chain, and the chain is composed on the
+Models page. See the 3.0.0 entry of the CHANGELOG for where each removed option
+went.
 
-Nested keys (`ponte`, `local_model`, `memory`) are the only thing the Supervisor
-renders as a titled section. They are used sparingly and never for credentials:
-nesting renames an option, and a renamed option loses its stored value silently.
+Nested keys (`local_model`, `memory`) are the only thing the Supervisor renders
+as a titled section. They are used sparingly and never for credentials: nesting
+renames an option, and a renamed option loses its stored value silently.
 
 ### To get answers
 
 | Option | Description |
 |---|---|
-| `provider_claude` + `claude_api_key` | Claude, paid per use. A provider is used only if enabled **and** credentialed |
-| `provider_subscription` + `claude_code_oauth_token` | Your Claude Max plan instead of the metered API. **With the token present, this pair routes the chat over the bridge on its own** — both bridge switches below turn on regardless |
-| `provider_openrouter` + `openrouter_api_key` | One key for 200+ models |
-| `hide_free_models` | Hide OpenRouter `:free` models from the model lists |
-| `provider_openai` + `openai_api_key` | The OpenAI models |
-| `provider_ollama` + `local_model.url` · `local_model.model` · `local_model.request_timeout` | Ollama base URL, model name, per-call timeout (10–1800s). With this as the only provider, HIRIS needs no cloud key |
-| `llm_strategy` | `balanced` (default) · `quality_first` · `cost_first`. Only orders the providers that are on; an order saved on the Models page wins |
+| `claude_api_key` | Claude, paid per use |
+| `claude_code_oauth_token` | Your Claude Max plan instead of the metered API. On its own it is not enough: the plan is turned on from the Models page inside HIRIS |
+| `openrouter_api_key` | One key for 200+ models |
+| `openai_api_key` | The OpenAI models |
+| `local_model.url` | Ollama's address. The model and the wait are picked on the Models page inside HIRIS |
 
-> With `local_model.url` + `local_model.model` set and `provider_ollama`
-> enabled, HIRIS runs offline against Ollama: the chat, the nucleo and the sixteen
-> tools all work without any cloud key. If no provider is both enabled and
-> credentialed, AI calls are disabled.
+> With `local_model.url` set and Ollama in the chain, HIRIS runs offline
+> against Ollama: the chat, the nucleo and the sixteen tools all work without
+> any cloud key.
 
-### Subscription bridge
-
-| Option | Description |
-|---|---|
-Since 2.4.0 these live under the `ponte:` key, which the Supervisor renders as
-a titled section — the only grouping it renders at all — and the bridge is **one
-switch**. It used to be two (`bridge_enabled` and `chat_via_subscription`) that
-had to be on together; they were never two decisions, so they were merged. An
-active `provider_subscription` with a token still turns the bridge on by itself.
-
-| Option | Description |
-|---|---|
-| `ponte.attivo` | Routes chat turns to the plan's runner instead of the metered provider |
-| `ponte.bridge_deadline_min` | Minutes before a queued turn expires (1–120, default 5). No automatic fallback to the metered provider |
-| `ponte.chat_daily_cap` | Max chat turns routed per day (0–1000, default 50). **0 blocks all of them**, it does not mean unlimited |
-
-The fail-safe the old `AND` protected — never enqueue into a queue nothing
-sweeps — is now structural: one expression (`server.py::_bridge_active`) gates
-both the sweep and the routing, so they cannot disagree.
-
-> **Upgrading from an earlier 2.x?** These options changed name (nested under
-> `ponte:`, and the two switches merged into one), and the Supervisor does not
-> migrate values — it drops any key its schema does not know
-> (`supervisor/apps/options.py`). They therefore come back at their defaults,
-> i.e. the bridge **off**. If you were using it, switch it back on once under
-> the **Bridge** section. If you use the Claude Max plan the normal way
-> (`provider_subscription` + token) there is nothing to do: the bridge turns
-> itself on. Everything else, credentials included, was deliberately left flat
-> and is untouched.
+The subscription bridge has no add-on option since 3.0.0: it is turned on from
+the Models page inside HIRIS.
 
 ### General
 
@@ -481,10 +453,13 @@ both the sweep and the routing, so they cannot disagree.
 |---|---|
 | `theme` | `light` · `dark` · `auto`. Only the theme HIRIS opens with: once you use the light/dark toggle inside HIRIS, that browser's choice wins |
 | `log_level` | `debug` · `info` · `warning` · `error` |
-| `history_retention_days` | Days of conversation history kept before automatic deletion (default 90, `0` = keep forever). The same number also caps how much of the ongoing conversation HIRIS reads back — lowering it makes it forget sooner, not just tidier |
-| `internal_token` | Shared secret required by `/api/*` when the call does not come from the Supervisor ingress |
 | `supervisor_ingress_cidr` | Source ranges treated as genuine Supervisor ingress (default `172.30.32.0/23`) |
-| `debug_expose_port` | **Dev only.** Logs a warning at every startup; it does *not* open port 8099 by itself — that is the Network section of the add-on page |
+
+How long conversations are kept is set in **Chat settings** inside HIRIS since
+3.0.0 (it was `history_retention_days`). `internal_token` was removed in 3.60.0:
+an integration is paired from the **Services** page instead. `debug_expose_port`
+was removed in 3.0.0: port 8099 is opened from the Network section of the
+add-on page.
 
 ### Who uses HIRIS
 

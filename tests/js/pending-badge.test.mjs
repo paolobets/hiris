@@ -248,7 +248,6 @@ test('un «può costruire» ricordato mostra la voce SUBITO, prima della rispost
   const ctx = montaSenzaRisposta((c) => c.window.localStorage.setItem('hiris.can_build', '1'));
 
   assert.equal(voceProposte(ctx).hidden, false);
-  assert.equal(ctx.window.HirisPendingBadge.canBuild(), true);
 });
 
 test('la risposta del server vince sul ricordo, e diventa il ricordo', async () => {

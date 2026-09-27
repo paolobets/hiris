@@ -25,13 +25,13 @@
   // che qualcuno verifica.
   "env": { "browser": true, "es2021": true },
 
-  // I 33 non sono scelti: sono i nomi che un file LEGGE senza dichiararli --
-  // 25 namespace pubblicati su `window` e 8 nomi nudi di `config/api.js`
-  // (sette funzioni e una costante, `SUBSCRIPTION_ONLY_COST_LABEL`, dal
+  // I 34 non sono scelti: sono i nomi che un file LEGGE senza dichiararli --
+  // 25 namespace pubblicati su `window` e 9 nomi nudi di `config/api.js`
+  // (otto funzioni e una costante, `SUBSCRIPTION_ONLY_COST_LABEL`, dal
   // collaudo 3.22 C5 -- `isSubscriptionOnly`/`SUBSCRIPTION_ONLY_COST_LABEL`
   // sono lette da `config/usage-route.js`, non solo da chi le dichiara).
   //
-  // `config/api.js` ne dichiara DIECI di nomi nudi, ma `_setUsageText` e
+  // `config/api.js` ne dichiara UNDICI di nomi nudi, ma `_setUsageText` e
   // `_mostraRigheConsumi` NON stanno qui, ed e' deliberato: nessun altro file
   // le legge, quindi restano sorvegliate dall'analisi di ambito. Aggiungerle
   // sarebbe un buco -- il giorno in cui qualcuno rinominasse la loro `function`
@@ -78,6 +78,7 @@
     "HirisWatcherSapere": "readonly",
     "HirisWatcherShared": "readonly",
     "applyTheme": "readonly",
+    "configures": "readonly",
     "esc": "readonly",
     "fmtDateTime": "readonly",
     "fmtEuro": "readonly",
@@ -91,7 +92,7 @@
     {
       // La suite gira su Node e MONTA i globali del browser nel proprio realm
       // (vedi `tests/js/helpers/dom.mjs`): qui `process`/`global` esistono, e i
-      // 33 si scrivono invece di leggersi soltanto.
+      // 34 si scrivono invece di leggersi soltanto.
       "files": ["tests/js/**"],
       "env": { "browser": true, "es2021": true, "node": true },
       "globals": {
@@ -121,6 +122,7 @@
         "HirisWatcherSapere": "writable",
         "HirisWatcherShared": "writable",
         "applyTheme": "writable",
+        "configures": "writable",
         "esc": "writable",
         "fmtDateTime": "writable",
         "fmtEuro": "writable",

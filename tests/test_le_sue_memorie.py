@@ -238,7 +238,6 @@ def _richiesta(app, *, ruolo, soggetto):
     request["auth_via"] = "ingress"
     request["soggetto"] = soggetto
     request["ruolo"] = ruolo
-    request["ruolo_letto"] = True
     return request
 
 

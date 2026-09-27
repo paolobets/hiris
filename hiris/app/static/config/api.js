@@ -83,6 +83,17 @@ function isSubscriptionOnly(sections) {
    toglie, spostato di un carattere. */
 var SUBSCRIPTION_ONLY_COST_LABEL = 'In abbonamento';
 
+/* Chi guarda configura? Una regola sola, chiusa nel dubbio (spec
+   2026-09-27 §4): decide `HirisPendingBadge.configures()` -- il `true` del
+   server o del ricordo -- e senza il pallino (script non caricato) no. Qui
+   e non in ogni pagina: prima il guscio (config/main.js) e la Memoria
+   (config/memory-route.js) ne avevano una copia ciascuno, e una regola di
+   riservatezza scritta due volte e' un doppione che puo' divergere. */
+// eslint-disable-next-line no-unused-vars -- letta da config/main.js e config/memory-route.js
+function configures() {
+  return !!(window.HirisPendingBadge && window.HirisPendingBadge.configures());
+}
+
 /* Theme: localStorage > server config > system. */
 // global bare (nessun modulo): chiamata da chat/theme.js::init(), non da questo file.
 // Verificato con grep sull'intero repo (task-13); il contratto e' pinnato da

@@ -20,7 +20,7 @@ function fixtureHtml() {
 
 /* Il pallino c'e' perche' correggere e cancellare sono di chi configura
    (spec 2026-09-27 §4): queste prove guardano un amministratore. */
-const SCRIPTS = ['pending-badge.js', 'config/memory-route.js'];
+const SCRIPTS = ['config/api.js', 'pending-badge.js', 'config/memory-route.js'];
 
 function jsonResponse(body, status) {
   return { ok: (status || 200) < 400, status: status || 200, json: async () => body };

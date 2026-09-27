@@ -217,11 +217,10 @@ window.HirisPendingBadge = (function () {
     return node;
   }
 
-  function canBuild() { return grantedNow.can_build === true; }
-  function canConfigure() {
-    var v = grantedNow.can_configure;
-    return v === true || v === false ? v : null;
-  }
+  /* La regola di chi configura, una volta sola: solo il `true` detto dal
+     server o dal ricordo. Finche' non si sa, no. Le pagine la leggono da
+     `configures()` di config/api.js, che chiude anche se il pallino manca. */
+  function configures() { return grantedNow.can_configure === true; }
   /* Il testo del server per una pagina di configurazione rifiutata, o ''
      quando non e' arrivato (un «no» ricordato, prima della risposta). */
   function configureRefusal() { return refusalNow.can_configure || ''; }
@@ -232,6 +231,6 @@ window.HirisPendingBadge = (function () {
 
   return {
     mount: mount, refresh: refresh, mark: mark, onChange: onChange,
-    canBuild: canBuild, canConfigure: canConfigure, configureRefusal: configureRefusal
+    configures: configures, configureRefusal: configureRefusal
   };
 })();

@@ -659,7 +659,7 @@ il freno.
 
 ### Un servizio firmato con ruolo «utente» può ancora cambiare la configurazione di HIRIS — aperta il 27/09/2026
 
-`origine: rischio dichiarato dalla fetta «HIRIS per chi non amministra» (security-auditor, 27/09/2026), messo in coda dal proprietario` · `hiris/app/api/middleware_internal_auth.py`
+`origine: rischio dichiarato dalla fetta «HIRIS per chi non amministra» (security-auditor, 27/09/2026), messo in coda dal proprietario` · `hiris/app/api/middleware_internal_auth.py` · `hiris/app/api/handlers_memory.py` · `hiris/app/api/handlers_settings.py`
 
 La lista di ammissione al confine vale per le **persone** che arrivano dall'ingress. I servizi
 firmati (porta 8099, Retro Panel quando si accoppierà) seguono ancora `canali.consente_metodo`, che
@@ -708,6 +708,14 @@ e' falso. In sviluppo il menu mostra quindi la configurazione ma non le Proposte
 **dichiarata**, non un buco: in produzione quel soggetto non esiste. **Cosa la chiude**: calcolare
 `can_build` con la stessa domanda (`not denies(ceiling, "costruire", subject)`), dopo aver
 guardato chi, fra le prove, pinna il comportamento di oggi.
+
+**Misurato alla review finale (27/09/2026)**: la stessa lettura nuda c'e' anche in
+`soffitto.require_builder` e in `handlers_servizi._solo_amministratori`. Su ogni specie per ogni
+ruolo, interruttore acceso e spento, `ceiling["costruire"]` e `not denies(...)` differiscono in un
+caso solo: lo sviluppo con l'interruttore acceso. Lo pinna
+`test_chi_costruisce.py::test_il_cancello_decide_per_ogni_ingresso` (la riga `sviluppo` diventa
+rossa con `denies`). Il comportamento resta com'e'; unirle apre la pagina Costruzioni e i gesti
+della pagina Servizi allo sviluppo, ed e' una scelta del proprietario.
 
 ### «Ogni utente e' fidato»: il cancello di HIRIS e' l'unica protezione — aperta il 27/09/2026
 

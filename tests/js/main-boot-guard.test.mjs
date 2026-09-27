@@ -33,10 +33,11 @@ const HTML = `<!doctype html><body>
   <template id="tpl-page-chrome"></template>
 </body>`;
 
-/* Solo le due dipendenze che main.js usa davvero al parse (HirisState,
-   HirisRouter). NESSUN modulo di route: è la simulazione di "ognuno di loro
-   ha fallito il parse/caricamento". */
-const SOLO_LO_SCHELETRO = ['config/state.js', 'config/router.js', 'config/main.js'];
+/* Solo le dipendenze che main.js usa davvero (HirisState, HirisRouter, e
+   `configures` di config/api.js, la regola di chi configura). NESSUN modulo
+   di route: è la simulazione di "ognuno di loro ha fallito il
+   parse/caricamento". */
+const SOLO_LO_SCHELETRO = ['config/api.js', 'config/state.js', 'config/router.js', 'config/main.js'];
 
 /* Il pallino non e' un modulo di route: c'e' perche' i segnaposto provati qui
    sono quelli di un amministratore (spec 2026-09-27 §4 -- senza sapere chi

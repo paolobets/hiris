@@ -5526,7 +5526,10 @@ async def _on_startup(app: web.Application) -> None:
 
 
 async def _start_panel_sync(app: web.Application) -> None:
-    _spawn(sync_panel_visibility(app), name="panel_visibility")
+    # Il compito si tiene in `app`: il tetto della sincronia e' di dieci
+    # minuti, e un arresto durante l'attesa del nucleo lo lascerebbe pendente
+    # a chiusura. `_on_cleanup` lo ferma.
+    app["panel_sync_task"] = _spawn(sync_panel_visibility(app), name="panel_visibility")
 
 
 async def _on_cleanup(app: web.Application) -> None:
@@ -5547,6 +5550,14 @@ async def _on_cleanup(app: web.Application) -> None:
         aw.cancel()
         with contextlib.suppress(asyncio.CancelledError, asyncio.TimeoutError):
             await asyncio.wait_for(aw, timeout=5)
+    # La sincronia della voce di menu (`_start_panel_sync`): puo' essere
+    # ancora in attesa del nucleo. Non tiene niente da chiudere, quindi si
+    # ferma e si aspetta senza tetto proprio.
+    panel_sync = app.get("panel_sync_task")
+    if panel_sync is not None:
+        panel_sync.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await panel_sync
     if "reasoning_queue" in app:
         app["reasoning_queue"].close()
     if "home_space_store" in app:

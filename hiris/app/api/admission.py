@@ -186,15 +186,13 @@ async def admission_refusal(app, request: web.Request) -> web.Response | None:
     comunque. Ruoli illeggibili chiudono tutti, proprietario compreso, col
     loro testo (ruling R-2.8): nel dubbio si chiude, e si dice perche'.
 
-    **Il ruolo letto resta sulla richiesta** (`request["ruolo"]`,
-    `request["ruolo_letto"]`, fix round 1, I4): chi viene dopo -- la salute,
-    le pagine dei task successivi -- lo legge da qui invece di chiederlo di
-    nuovo a Home Assistant.
+    **Il ruolo letto resta sulla richiesta** (`request["ruolo"]`, fix
+    round 1, I4): chi viene dopo -- la salute, le pagine dei task successivi
+    -- lo legge da qui invece di chiederlo di nuovo a Home Assistant.
     """
     subject = request.get("soggetto")
     seen = await boundary_role(app, subject)
     request["ruolo"] = seen.role
-    request["ruolo_letto"] = seen.read
     if is_admin_role(seen.role):
         return None
     if not seen.read:

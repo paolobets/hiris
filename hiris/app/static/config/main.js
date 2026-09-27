@@ -118,10 +118,8 @@
      col `true` detto dal server o dal ricordo. Senza il pallino, o finche'
      non si sa, no -- come la Memoria (config/memory-route.js). Un
      amministratore non lo vede: senza ricordo il guscio aspetta la prima
-     risposta prima di scegliere la pagina (sotto, `ROUTER_WAIT_MS`). */
-  function configures() {
-    return !!(window.HirisPendingBadge && window.HirisPendingBadge.canConfigure() === true);
-  }
+     risposta prima di scegliere la pagina (sotto, `ROUTER_WAIT_MS`). La
+     regola e' `configures()` di config/api.js, la stessa della Memoria. */
 
   /* Mai una pagina vuota: il titolo, il testo del server quando c'e' (un
      «no» ricordato arriva senza, e la pagina si ridisegna quando la risposta

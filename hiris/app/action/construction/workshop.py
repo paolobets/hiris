@@ -236,6 +236,13 @@ class Workshop:
         `view`: `script/config` non e' riservato. Il «prima» si archivia
         comunque intero: applicare e rimettere com'era ne hanno bisogno, e
         la pagina delle costruzioni e' di chi costruisce.
+
+        **L'anteprima coperta e' anche quella che vede l'amministratore**
+        (review finale): si archivia com'e' composta qui, e la pagina delle
+        Costruzioni la mostra per intero (`anteprima`,
+        config/constructions-route.js). Sulla proposta di chi non amministra
+        l'amministratore legge «Prima:» coperto; il «prima» intero resta
+        dietro il rivelatore prima/dopo della stessa pagina, dall'archivio.
         """
         operation = intent.get("gesto")
         domain = intent.get("dominio")

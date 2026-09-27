@@ -76,7 +76,14 @@ async def sync_panel_visibility(app) -> None:
 
 async def _sync(app) -> None:
     access = app["non_admin_access"]
-    own = await read_own_slug(os.environ.get("SUPERVISOR_TOKEN", ""))
+    # Senza token non c'e' un Supervisor (sviluppo locale, `.smoke-test`):
+    # chiamarlo costerebbe fino a dieci secondi e un avviso sullo slug a ogni
+    # avvio, per un guasto che non c'e'. Lo si dice una volta, a livello info.
+    token = os.environ.get("SUPERVISOR_TOKEN", "")
+    if not token:
+        logger.info("nessun Supervisor: la voce di menu non si tocca")
+        return
+    own = await read_own_slug(token)
     if "errore" in own:
         logger.warning("voce di menu: non tocco niente, manca lo slug di HIRIS: %s",
                        own["errore"])

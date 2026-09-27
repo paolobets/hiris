@@ -115,10 +115,8 @@ window.HirisMemoryRoute = (function () {
      rifiuta comunque. Per lui i pulsanti non si disegnano affatto: quando
      la risposta del server cambia, il guscio rimonta la pagina
      (config/main.js), quindi ogni montaggio legge lo stato di adesso.
-     Senza il pallino, o finche' non si sa, non si configura. */
-  function configures() {
-    return !!(window.HirisPendingBadge && window.HirisPendingBadge.canConfigure() === true);
-  }
+     Senza il pallino, o finche' non si sa, non si configura: la regola e'
+     `configures()` di config/api.js, la stessa del guscio. */
 
   function showCardError(node, text) {
     node.textContent = text;

@@ -804,6 +804,36 @@ async def test_un_guasto_NON_si_moltiplica_per_ogni_asset(aperta):
 
 
 @pytest.mark.asyncio
+async def test_una_lettura_dei_ruoli_che_SOLLEVA_e_un_guasto_come_gli_altri(
+        aperta, caplog, monkeypatch):
+    """Review finale, punto 3: se `users()` solleva invece di rispondere
+    `{"errore"}` il cancello non dipende da come e' scritto l'altro modulo --
+    stesso rifiuto col testo dei ruoli illeggibili (non un 500), stessa riga
+    d'errore una volta sola, e i file della pagina non richiamano Home
+    Assistant per tutta l'attesa.
+
+    Mutazione ESEGUITA: tolto il `try/except` intorno a `client.users()` in
+    `soffitto._refresh_users` -- rossa (500 invece del 403)."""
+    from hiris.app.api import soffitto
+
+    caplog.set_level("ERROR", logger="hiris.app.api.soffitto")
+    ha = aperta.app["ha_client"]
+    ha.users = AsyncMock(side_effect=RuntimeError("socket chiuso"))
+    # L'orologio fermo: tutte le richieste cadono dentro l'attesa del guasto.
+    monkeypatch.setattr(soffitto.time, "time", lambda: 1_000_000.0)
+
+    assert await _gate_refused(aperta, "GET", "/api/config", _persona("u-marta"),
+                               testo=ROLES_UNREADABLE)
+    for _ in range(20):
+        await aperta.get("/static/hiris-icon.svg", headers=_persona("u-marta"))
+    errori = [r for r in caplog.records
+              if r.name == "hiris.app.api.soffitto" and r.levelname == "ERROR"]
+
+    assert ha.users.await_count == 1
+    assert len(errori) == 1 and "RuntimeError" in errori[0].getMessage()
+
+
+@pytest.mark.asyncio
 async def test_la_voce_di_menu_che_FALLISCE_non_apre_niente(chiusa, monkeypatch):
     """1.7: il cancello legge l'opzione e il ruolo, mai l'esito della voce di
     menu. `update_panel` fallisce, l'opzione e' spenta: chi non amministra
@@ -821,6 +851,8 @@ async def test_la_voce_di_menu_che_FALLISCE_non_apre_niente(chiusa, monkeypatch)
         return {"slug": "6354e165_hiris"}
 
     monkeypatch.setattr(panel_visibility, "read_own_slug", slug)
+    # Senza token la sincronia non chiama nessuno (review finale, punto 4).
+    monkeypatch.setenv("SUPERVISOR_TOKEN", "token-del-supervisor")
     await panel_visibility.sync_panel_visibility(app)
 
     assert ha.update_panel.await_count == 1
@@ -1146,15 +1178,14 @@ async def test_il_cancello_lascia_il_RUOLO_sulla_richiesta(aiohttp_client, tmp_p
     app = _compose(tmp_path, access=True)
 
     async def eco(request):
-        return web.json_response({"ruolo": request.get("ruolo"),
-                                  "letto": request.get("ruolo_letto")})
+        return web.json_response({"ruolo": request.get("ruolo")})
 
     app.router.add_get("/api/prova-ruolo", eco)
     client = await aiohttp_client(app)
 
     corpo = await (await client.get("/api/prova-ruolo", headers=_persona("u-admin"))).json()
 
-    assert corpo == {"ruolo": "amministratore", "letto": True}
+    assert corpo == {"ruolo": "amministratore"}
     app["memory_store"].close()
     app["servizi"].close()
 
@@ -1375,18 +1406,22 @@ def _officina(tmp_path):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("soffitto,dominio,rivela", [
-    (consente(_PERSONA_MARTA, ruolo="utente"), "automation", False),
-    (consente(_PERSONA_MARTA, ruolo="lettore"), "scene", False),
+@pytest.mark.parametrize("soffitto,dominio,gesto,rivela", [
+    (consente(_PERSONA_MARTA, ruolo="utente"), "automation", "modifica", False),
+    (consente(_PERSONA_MARTA, ruolo="lettore"), "scene", "modifica", False),
     # Il soffitto di un risveglio senza ruolo verificato: niente.
     ({"leggere": False, "comandare": False, "costruire": False,
-      "amministrare": False, "ruolo": None, "perche": "x"}, "automation", False),
-    (consente(_PERSONA_MARTA, ruolo="utente"), "script", True),
-    (consente(_PERSONA_MARTA, ruolo="amministratore"), "automation", True),
-    (None, "automation", True),
+      "amministrare": False, "ruolo": None, "perche": "x"}, "automation", "modifica",
+     False),
+    (consente(_PERSONA_MARTA, ruolo="utente"), "script", "modifica", True),
+    (consente(_PERSONA_MARTA, ruolo="amministratore"), "automation", "modifica", True),
+    (None, "automation", "modifica", True),
+    # Review finale: anche `cancella` legge il corpo attuale, e la sua
+    # anteprima ne dice solo il nome -- per chiunque, quindi anche qui.
+    (consente(_PERSONA_MARTA, ruolo="utente"), "automation", "cancella", False),
 ])
 async def test_la_BOZZA_di_chi_non_amministra_non_rivela_com_e_adesso(
-        tmp_path, soffitto, dominio, rivela):
+        tmp_path, soffitto, dominio, gesto, rivela):
     """Fix round 2, punto 1: `propose modifica` legge il corpo attuale col
     token di amministratore di HIRIS, e l'anteprima lo riassumeva («Prima:»
     con descrizione e servizi chiamati). Per automazioni e scene Home
@@ -1394,13 +1429,15 @@ async def test_la_BOZZA_di_chi_non_amministra_non_rivela_com_e_adesso(
     (`components/config/view.py`, `@require_admin`, Core 2026.9.3); gli
     script restano come in `view`. Il «prima» resta archiviato intero.
 
-    Mutazione ESEGUITA: `_propose` con `reveal_before=True` sempre -- rossa."""
+    Mutazione ESEGUITA: `_propose` con `reveal_before=True` sempre -- rossa.
+    Riga `cancella`, mutazione ESEGUITA: l'anteprima di `cancella` con
+    `_compatta(prima)` -- rossa."""
     from tests.test_construction_workshop import _intento
 
     officina, archivio, cronaca = _officina(tmp_path)
     chat = ToolDispatcher(None, None, workshop=officina, soffitto=soffitto,
                           subject=_PERSONA_MARTA, exchange="t-1")
-    intento = _intento(gesto="modifica", chiave="1771", dominio=dominio)
+    intento = _intento(gesto=gesto, chiave="1771", dominio=dominio)
     if dominio == "scene":
         intento.update(richiesto="scena", innesco=[], azioni=[],
                        stati=[{"entity_id": "light.cucina", "state": "on"}])
@@ -1417,7 +1454,8 @@ async def test_la_BOZZA_di_chi_non_amministra_non_rivela_com_e_adesso(
     assert "proposta_id" in esito, esito
     assert ("SEGRETO" in testo) is rivela
     assert ("lock.unlock" in testo) is rivela
-    assert ("com'è adesso lo vedono solo gli amministratori" in testo) is not rivela
+    assert (("com'è adesso lo vedono solo gli amministratori" in testo)
+            is (gesto == "modifica" and not rivela))
     assert "Tapparelle all'alba" in testo, "l'alias e' pubblico e resta"
     assert stored_before == _CORPO_ATTUALE, "il «prima» si archivia intero"
 

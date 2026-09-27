@@ -234,8 +234,10 @@ async def test_uno_slug_che_non_si_sa_non_tocca_niente(supervisor, caplog, corpo
 @pytest.mark.asyncio
 async def test_un_supervisor_che_non_risponde_non_ferma_niente(monkeypatch, caplog):
     """Nessun Supervisor raggiungibile (sviluppo, o rete giu'): una riga nel
-    registro, nessuna eccezione, nessun comando a Home Assistant."""
+    registro, nessuna eccezione, nessun comando a Home Assistant. Il token
+    c'e': senza, non si chiama nessuno (la prova qui sotto)."""
     monkeypatch.setattr(panel_visibility, "SUPERVISOR_URL", "http://127.0.0.1:9")
+    monkeypatch.setenv("SUPERVISOR_TOKEN", "token-del-supervisor")
     ha = _FiloHA(_risposte_buone())
 
     with caplog.at_level(logging.INFO, logger="hiris.app.panel_visibility"):
@@ -243,6 +245,32 @@ async def test_un_supervisor_che_non_risponde_non_ferma_niente(monkeypatch, capl
 
     assert ha.mandati == []
     assert any("slug" in r.getMessage() for r in caplog.records), caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("token", [None, ""])
+async def test_senza_supervisor_non_si_chiama_nessuno(supervisor, monkeypatch, caplog,
+                                                      token):
+    """Review finale, punto 4: senza `SUPERVISOR_TOKEN` (sviluppo locale,
+    `.smoke-test`) non c'e' un Supervisor da chiamare. Una riga `info` che lo
+    dice, nessuna richiesta a `http://supervisor`, nessun comando a Home
+    Assistant -- e non l'avviso sullo slug a ogni avvio.
+
+    Mutazione ESEGUITA: tolto il ritorno anticipato sul token vuoto in
+    `_sync` -- rossa (la richiesta parte e la riga e' l'avviso sullo slug)."""
+    if token is None:
+        monkeypatch.delenv("SUPERVISOR_TOKEN", raising=False)
+    else:
+        monkeypatch.setenv("SUPERVISOR_TOKEN", token)
+    ha = _FiloHA(_risposte_buone())
+
+    with caplog.at_level(logging.INFO, logger="hiris.app.panel_visibility"):
+        await panel_visibility.sync_panel_visibility(_app(True, ha))
+
+    assert supervisor["chieste"] == []
+    assert ha.mandati == []
+    righe = [(r.levelname, r.getMessage()) for r in caplog.records]
+    assert righe == [("INFO", "nessun Supervisor: la voce di menu non si tocca")], righe
 
 
 # ── Gli esiti di Home Assistant: detti una volta, mai ritentati ─────────────
@@ -344,7 +372,6 @@ async def test_l_avvio_chiama_la_sincronia_e_non_la_aspetta(aiohttp_client, supe
     monkeypatch.setenv("HIRIS_NON_ADMIN_ACCESS", "true")
     app = server.create_app()
     app.on_startup.remove(server._on_startup)
-    app.on_cleanup.clear()
     ha = _FiloHA(_risposte_buone(), sospeso="frontend/update_panel")
     app["ha_client"] = ha
     app["chat_settings"] = ChatSettings()
@@ -356,19 +383,16 @@ async def test_l_avvio_chiama_la_sincronia_e_non_la_aspetta(aiohttp_client, supe
     app["entity_cache"] = MagicMock()
 
     client = await asyncio.wait_for(aiohttp_client(app), timeout=5)
-    try:
-        resp = await client.get("/api/health")
-        assert resp.status == 200
-        for _ in range(100):
-            if ha.mandati:
-                break
-            await asyncio.sleep(0.01)
-        assert ha.mandati == [
-            ("frontend/update_panel", {"url_path": HOUSE_SLUG, "require_admin": False})]
-    finally:
-        for task in list(server._background_tasks):
-            if task.get_name() == "panel_visibility":
-                task.cancel()
+    resp = await client.get("/api/health")
+    assert resp.status == 200
+    for _ in range(100):
+        if ha.mandati:
+            break
+        await asyncio.sleep(0.01)
+    assert ha.mandati == [
+        ("frontend/update_panel", {"url_path": HOUSE_SLUG, "require_admin": False})]
+    # Niente arresto a mano: la sincronia appesa la ferma `_on_cleanup`,
+    # alla chiusura del client (la prova qui sotto).
 
 
 def test_il_cancello_non_dipende_dalla_voce_di_menu():
@@ -414,6 +438,50 @@ async def test_un_nucleo_che_non_arriva_si_dice_e_non_si_chiama(supervisor, capl
     assert ha.mandati == []
     righe = [r.getMessage() for r in caplog.records]
     assert len(righe) == 1 and "non si è collegato" in righe[0], righe
+
+
+@pytest.mark.asyncio
+async def test_un_nucleo_collegato_che_non_risponde_si_dice_e_non_solleva(
+        supervisor, caplog, monkeypatch):
+    """Il ramo `else` del tetto: il WebSocket c'e', ma `frontend/update_panel`
+    resta appeso oltre `SYNC_CEILING_S`. Una riga che dice «non ha
+    risposto», nessuna eccezione, nessuna rilettura.
+
+    Mutazione ESEGUITA: i due rami del tetto scambiati (`if
+    ha.ws_ready.is_set()`) -- rossa (la riga dice «non si è collegato»)."""
+    monkeypatch.setattr(panel_visibility, "SYNC_CEILING_S", 0.2)
+    ha = _FiloHA(_risposte_buone(), sospeso="frontend/update_panel")
+
+    with caplog.at_level(logging.INFO, logger="hiris.app.panel_visibility"):
+        await asyncio.wait_for(
+            panel_visibility.sync_panel_visibility(_app(True, ha)), timeout=5)
+
+    assert ha.mandati == [
+        ("frontend/update_panel", {"url_path": HOUSE_SLUG, "require_admin": False})]
+    righe = [r.getMessage() for r in caplog.records]
+    assert len(righe) == 1 and "non ha risposto" in righe[0], righe
+
+
+@pytest.mark.asyncio
+async def test_la_sincronia_appesa_si_ferma_alla_chiusura(supervisor):
+    """Review finale: il tetto e' di dieci minuti, e un arresto durante
+    l'attesa lasciava un compito pendente distrutto a chiusura. `_on_cleanup`
+    lo ferma e lo aspetta.
+
+    Mutazione ESEGUITA: tolto l'arresto di `panel_sync_task` da
+    `_on_cleanup` -- rossa (il compito e' ancora vivo dopo la chiusura)."""
+    ha = _FiloHA(_risposte_buone(), sospeso="frontend/update_panel")
+    app = _app(True, ha)
+    await server._start_panel_sync(app)
+    for _ in range(100):
+        if ha.mandati:
+            break
+        await asyncio.sleep(0.01)
+    assert ha.mandati, "precondizione: la sincronia e' appesa su update_panel"
+
+    await asyncio.wait_for(server._on_cleanup(app), timeout=5)
+
+    assert app["panel_sync_task"].done()
 
 
 @pytest.mark.asyncio

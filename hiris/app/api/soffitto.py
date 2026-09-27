@@ -219,8 +219,17 @@ async def _ha_users(app, *, hold_failure_s: float = 0.0) -> dict | None:
 
 async def _refresh_users(client, visti: dict) -> dict | None:
     """La lettura vera di `config/auth/list`, e cio' che se ne tiene: la
-    copia se riesce, l'ora del guasto e la sua riga d'errore se no."""
-    esito = await client.users()
+    copia se riesce, l'ora del guasto e la sua riga d'errore se no.
+
+    **Anche un'eccezione e' un guasto** (review finale, punto 3): oggi
+    `HAClient` la trasforma gia' in `{"errore"}`, ma il cancello non deve
+    dipendere da come e' scritto un altro modulo. Senza, salirebbe fino ad
+    aiohttp come 500: niente attesa, niente testo dei ruoli illeggibili,
+    niente riga nel registro."""
+    try:
+        esito = await client.users()
+    except Exception as exc:
+        esito = {"errore": type(exc).__name__}
     if "errore" in esito:
         visti["fallito"] = time.time()
         # `error` e non `warning`, e con le CONSEGUENZE scritte: finché
@@ -322,7 +331,18 @@ async def boundary_role(app, subject: dict | None) -> BoundaryRole:
 
 
 def denies(ceiling: dict | None, gesture: str, subject: dict | None) -> bool:
-    """**La domanda unica**: questo soffitto nega questo gesto?
+    """Questo soffitto nega questo gesto? La domanda degli strumenti del
+    turno (`tools._ceiling_denies`) e di `can_configure` nei pallini.
+
+    **Non e' l'unica** (review finale, punto 5): il cancello di chi
+    costruisce (`require_builder`), quello dei servizi
+    (`handlers_servizi._solo_amministratori`) e `can_build` leggono
+    `ceiling["costruire"]` nudo. Misurato il 27/09/2026 su ogni specie per
+    ogni ruolo, interruttore acceso e spento: una differenza sola, lo
+    sviluppo con l'interruttore acceso -- per loro non costruisce, per questa
+    funzione si'. La pinna `test_chi_costruisce.py::
+    test_il_cancello_decide_per_ogni_ingresso`; unirle cambierebbe lo
+    sviluppo, e la scelta sta in `docs/BACKLOG.md`.
 
     `None` (nessuna persona ha aperto il turno: l'osservatore, lo
     schedulatore) non nega niente -- il perimetro delle macchine e'

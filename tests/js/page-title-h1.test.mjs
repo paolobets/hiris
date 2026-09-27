@@ -31,7 +31,7 @@ const HTML_BASE = '<!doctype html><body>'
 /* Da amministratore: i segnaposto che si provano qui sono i suoi (per chi
    non configura le stesse rotte disegnano il rifiuto, can-configure.test.mjs). */
 function bootSoloGuscio() {
-  const ctx = loadScripts(['pending-badge.js', 'config/state.js', 'config/router.js', 'config/main.js'],
+  const ctx = loadScripts(['config/api.js', 'pending-badge.js', 'config/state.js', 'config/router.js', 'config/main.js'],
     { html: HTML_BASE });
   asAdministrator(ctx.window);
   return ctx;
