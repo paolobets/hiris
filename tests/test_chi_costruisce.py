@@ -19,6 +19,7 @@ import pytest
 import pytest_asyncio
 
 from hiris.app.action.construction.revisions import ConstructionStore
+from hiris.app.api.admission import NOT_ADMITTED
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import close_all_stores
 from hiris.app.chat_thread import ChatThread
@@ -299,8 +300,11 @@ async def test_il_pallino_delle_proposte_e_ZERO_per_chi_non_costruisce(cliente):
     risposta = await cliente.get("/api/pending", headers=_testate("u-ospite"))
 
     assert risposta.status == 200
+    # `configure_refusal`: chi non configura riceve anche il testo del
+    # rifiuto delle pagine (fix round 1 del Task 4 del 27/09).
     assert await risposta.json() == {"agenda_unread": 0, "constructions_pending": 0,
-                                     "can_build": False, "can_configure": False}
+                                     "can_build": False, "can_configure": False,
+                                     "configure_refusal": NOT_ADMITTED}
 
 
 @pytest.mark.asyncio

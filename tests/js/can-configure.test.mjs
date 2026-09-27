@@ -9,7 +9,8 @@ import { loadScripts, tick, staticSnapshotDir, installaFogli, displayRisolto } f
  * `GET /api/pending` porta `can_configure` accanto a `can_build`: con
  * `false` la chat non offre i consumi ne' «Configurazione», il guscio
  * `/config` offre solo Impegni e Memoria, la Memoria e' in sola lettura, e
- * una pagina aperta per indirizzo dice il rifiuto del SERVER. Il server resta
+ * una pagina aperta per indirizzo dice il rifiuto del SERVER, che arriva
+ * nella stessa risposta (`configure_refusal`, fix round 1). Il server resta
  * il giudice -- ogni porta che qui sparisce e' gia' chiusa dal cancello
  * (`api/admission.py`) -- la pagina smette solo di offrirla.
  *
@@ -32,8 +33,14 @@ function json(status, body) {
   return { ok: status >= 200 && status < 300, status, json: async () => body };
 }
 
+/* Un testo qualunque: la prova e' che la pagina scriva QUELLO che il server
+   manda, non una frase sua. */
+const SERVER_REFUSAL = 'testo del rifiuto, dal server';
+
 function pendingBody(canConfigure, extra = {}) {
-  return { agenda_unread: 0, constructions_pending: 0, can_build: canConfigure, can_configure: canConfigure, ...extra };
+  const body = { agenda_unread: 0, constructions_pending: 0, can_build: canConfigure, can_configure: canConfigure };
+  if (canConfigure === false) body.configure_refusal = SERVER_REFUSAL;
+  return { ...body, ...extra };
 }
 
 /* Il fetch finto: `answers` mappa un frammento d'indirizzo a una risposta
@@ -52,9 +59,30 @@ function fakeFetch(window, answers) {
 }
 
 const asked = (calls, frag) => calls.some((c) => c.url.includes(frag));
+const never = () => new Promise(() => {});
 
 async function settle(n = 6) {
   for (let i = 0; i < n; i++) await tick(0);
+}
+
+/* Si vede? Nessun antenato (ne' lui) porta `hidden`, e -- dove la cascata
+   si sa risolvere -- il foglio vero non lo spegne. `[hidden]` vince su tutto
+   per `hiris-theme.css` (`display: none !important`), caricato da entrambi i
+   gusci; le etichette della barra hanno regole dentro @media che
+   `displayRisolto` rifiuta di indovinare, e li' basta l'attributo. */
+function shown(el) {
+  if (el.closest('[hidden]')) return false;
+  try { return displayRisolto(el) !== 'none'; } catch { return true; }
+}
+
+/* Il testo che si LEGGE: quello dei nodi che nessun antenato spegne. */
+function visibleText(root) {
+  const walker = root.ownerDocument.createTreeWalker(root, 4);
+  let out = '';
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (!n.parentElement.closest('[hidden]')) out += n.textContent;
+  }
+  return out;
 }
 
 /* ── La chat ─────────────────────────────────────────────────────────── */
@@ -112,15 +140,6 @@ function usageWidget(doc) { return doc.getElementById('usage-widget'); }
 function configureLink(doc) {
   return [...doc.querySelectorAll('#sidebar a')].find((a) => a.textContent.trim() === 'Configurazione');
 }
-/* Si vede? Nessun antenato (ne' lui) porta `hidden`, e -- dove la cascata
-   si sa risolvere -- il foglio vero non lo spegne. `[hidden]` vince su tutto
-   per `hiris-theme.css` (`display: none !important`), caricato da entrambi i
-   gusci; le etichette della barra hanno regole dentro @media che
-   `displayRisolto` rifiuta di indovinare, e li' basta l'attributo. */
-function shown(el) {
-  if (el.closest('[hidden]')) return false;
-  try { return displayRisolto(el) !== 'none'; } catch { return true; }
-}
 
 test('PIN chat: un amministratore vede i consumi e «Configurazione», e il giro dei consumi gira', async (t) => {
   const { document, calls, runIntervals } = await bootChat(t, { canConfigure: true });
@@ -136,8 +155,9 @@ test('PIN chat: un amministratore vede i consumi e «Configurazione», e il giro
 
 /* ── Il guscio /config ───────────────────────────────────────────────── */
 
-async function bootConfig(t, { canConfigure, hash = '', remembered, answers = {}, pending }) {
-  const ctx = loadScripts(shellScripts('config.html'), { html: read('config.html') });
+async function bootConfig(t, { canConfigure, hash = '', remembered, answers = {}, pending, without = [] }) {
+  const scripts = shellScripts('config.html').filter((s) => !without.includes(s));
+  const ctx = loadScripts(scripts, { html: read('config.html') });
   installaFogli(ctx.document, 'config.html');
   if (remembered !== undefined) ctx.window.localStorage.setItem('hiris.can_configure', remembered);
   if (hash) ctx.window.history.replaceState(null, '', hash);
@@ -193,6 +213,13 @@ function button(doc, label) {
   return [...doc.querySelectorAll('#route-outlet button')].find((b) => b.textContent.trim() === label);
 }
 
+const MEMORY_SUBTITLE_ADMIN = 'Ciò che hai detto a HIRIS, e cosa ne ha capito. Puoi correggere '
+  + 'l’interpretazione — mai il testo — o cancellare un ricordo per sempre. I ricordi non scadono: '
+  + 'restano finché non li togli tu, e non se ne vanno cancellando la conversazione.';
+const MEMORY_SUBTITLE_READER = 'Ciò che hai detto a HIRIS, e cosa ne ha capito. I ricordi non scadono '
+  + 'e restano anche se cancelli la conversazione: per correggerne o toglierne uno, chiedi a chi '
+  + 'gestisce HIRIS.';
+
 test('PIN Memoria: un amministratore vede «Correggi» e «Dimentica»', async (t) => {
   const { document } = await bootConfig(t, { canConfigure: true, hash: '#/memory' });
 
@@ -206,19 +233,16 @@ test('PIN Memoria: un amministratore vede «Correggi» e «Dimentica»', async (
       node = node.parentElement;
     }
   }
-  assert.match(visibleText(document.querySelector('#route-outlet .page-subtitle')), /Puoi correggere/);
+  assert.equal(visibleText(document.querySelector('#route-outlet .page-subtitle')), MEMORY_SUBTITLE_ADMIN);
 });
 
 /* ════════════════════════════════════════════════════════════════════════
    Chi non configura (`can_configure: false`).
    ════════════════════════════════════════════════════════════════════════ */
 
-/* Il testo del rifiuto e' quello del SERVER, e arriva come testo: la forma
-   di `api/admission.py::_refusal` per le rotte `/api/` e' `{"errore": ...}`.
-   Qui porta un pezzo di markup, perche' la prova e' che resti testo
-   (security-constraints 4.3). */
+/* Il testo del rifiuto arriva in `configure_refusal` e deve restare testo
+   (security-constraints 4.3): qui porta un pezzo di markup. */
 const HOSTILE = '<img src=x onerror=alert(1)>';
-const REFUSED = json(403, { errore: HOSTILE });
 
 /* Le rotte che per un amministratore portano dati di configurazione e che
    chi non configura non deve nemmeno chiedere (security-constraints 4.5). */
@@ -237,6 +261,8 @@ test('chat: chi non configura non vede consumi ne\' «Configurazione», e il gir
 
   assert.equal(shown(usageWidget(document)), false, 'il riquadro dei consumi non si vede');
   assert.equal(shown(configureLink(document)), false, 'il link «Configurazione» non si vede');
+  assert.equal(shown(document.getElementById('sidebar-footer')), false,
+    'si spegne il piede intero, non solo il link');
   await runIntervals();
   assertNoAdminData(calls);
 });
@@ -254,7 +280,7 @@ test('chat: un «configura» ricordato e poi smentito dal server ferma il giro d
 });
 
 test('chat: senza ricordo e senza risposta, consumi e «Configurazione» restano spenti', async (t) => {
-  const { document, calls } = await bootChat(t, { pending: () => new Promise(() => {}) });
+  const { document, calls } = await bootChat(t, { pending: never });
 
   assert.equal(shown(usageWidget(document)), false);
   assert.equal(shown(configureLink(document)), false);
@@ -262,7 +288,7 @@ test('chat: senza ricordo e senza risposta, consumi e «Configurazione» restano
 });
 
 test('chat: un «configura» ricordato mostra i consumi SUBITO, prima della risposta', async (t) => {
-  const { document, calls } = await bootChat(t, { remembered: '1', pending: () => new Promise(() => {}) });
+  const { document, calls } = await bootChat(t, { remembered: '1', pending: never });
 
   assert.ok(shown(usageWidget(document)));
   assert.ok(shown(configureLink(document)));
@@ -282,28 +308,89 @@ test('/config: chi non configura trova solo Chat, Impegni e Memoria, e atterra s
   assertNoAdminData(calls);
 });
 
-for (const [hash, title] of [
+const BY_ADDRESS = [
   ['#/tree', 'Albero della casa'], ['#/watcher', 'L’osservatore'], ['#/watcher/sapere', 'L’osservatore'],
   ['#/settings', 'Impostazioni chat'], ['#/models', 'Modelli'], ['#/services', 'Servizi'],
   ['#/usage', 'Consumi'],
-]) {
+];
+
+/* La pagina rifiutata: il titolo, il testo del server e una strada per uscire. */
+function refusal(doc) {
+  const outlet = doc.getElementById('route-outlet');
+  const exit = outlet.querySelector('a[href="#/agenda"]');
+  const paragraphs = [...outlet.querySelectorAll('p')].filter((p) => !p.contains(exit));
+  return {
+    title: outlet.querySelector('h1.page-title').textContent,
+    reason: paragraphs.map((p) => p.textContent).join(''),
+    exit: exit && exit.textContent,
+    img: outlet.querySelector('img'),
+  };
+}
+
+for (const [hash, title] of BY_ADDRESS) {
   test(`/config: ${hash} per indirizzo dice il rifiuto del server, come testo`, async (t) => {
     const { document, calls } = await bootConfig(t, {
-      canConfigure: false, hash, answers: { 'api/models/config': REFUSED },
+      hash, pending: json(200, pendingBody(false, { configure_refusal: HOSTILE })),
     });
 
-    const outlet = document.getElementById('route-outlet');
+    const seen = refusal(document);
     assert.equal(document.getElementById('chrome-here').textContent, title);
-    assert.equal(outlet.querySelector('h1.page-title').textContent, title);
-    assert.equal(outlet.querySelector('p.page-subtitle').textContent, HOSTILE);
-    assert.equal(outlet.querySelector('img'), null, 'il testo del server non diventa markup');
+    assert.equal(seen.title, title);
+    assert.equal(seen.reason, HOSTILE);
+    assert.equal(seen.img, null, 'il testo del server non diventa markup');
+    assert.equal(seen.exit, 'Vai agli Impegni');
     assertNoAdminData(calls);
-    /* La pagina non si monta: nessuna delle sue letture parte, tranne la
-       domanda del rifiuto. */
-    const reads = calls.map((c) => c.url).filter((u) => !/^api\/(pending|health|models\/config)$/.test(u));
-    assert.deepEqual(reads, []);
+    /* La pagina non si monta, e il rifiuto non si chiede a nessuna rotta
+       negata: le sole richieste sono quelle del guscio. */
+    assert.deepEqual(calls.map((c) => c.url).filter((u) => !/^api\/(pending|health)$/.test(u)), []);
   });
 }
+
+test('/config: col «no» ricordato la pagina rifiutata non e\' mai vuota, e il testo arriva con la risposta', async (t) => {
+  let answer;
+  const late = () => new Promise((resolve) => { answer = () => resolve(json(200, pendingBody(false))); });
+  const { document } = await bootConfig(t, { remembered: '0', hash: '#/models', pending: late });
+
+  let seen = refusal(document);
+  assert.equal(seen.title, 'Modelli');
+  assert.equal(seen.exit, 'Vai agli Impegni', 'prima della risposta c\'e\' gia\' la strada per uscire');
+  answer();
+  await settle();
+
+  seen = refusal(document);
+  assert.equal(seen.reason, SERVER_REFUSAL);
+  assert.equal(seen.exit, 'Vai agli Impegni');
+});
+
+test('/config: con api/pending in errore e senza ricordo si atterra sugli Impegni, senza dati di configurazione', async (t) => {
+  const { window, calls } = await bootConfig(t, { pending: json(503, { error: 'archivio non disponibile' }) });
+
+  assert.equal(window.location.hash, '#/agenda');
+  assertNoAdminData(calls);
+});
+
+test('/config: con api/pending appesa il guscio parte lo stesso, allo scadere dell\'attesa', async (t) => {
+  const { window, document, calls } = await bootConfig(t, { pending: never });
+  assert.equal(document.getElementById('chrome-here').textContent, '…', 'precondizione: si sta aspettando');
+
+  await tick(3200);
+  await settle();
+
+  assert.equal(window.location.hash, '#/agenda');
+  assert.equal(document.getElementById('chrome-here').textContent, 'Impegni');
+  assertNoAdminData(calls);
+});
+
+test('/config: la prima api/pending appesa, una successiva risponde -- il guscio parte da quella', async (t) => {
+  let turn = 0;
+  const pending = () => { turn += 1; return turn === 1 ? never() : json(200, pendingBody(true)); };
+  const { window, document } = await bootConfig(t, { pending });
+
+  window.dispatchEvent(new window.Event('focus'));
+  await settle();
+
+  assert.equal(document.getElementById('chrome-here').textContent, 'Cosa HIRIS sa');
+});
 
 test('/config: un «configura» ricordato e smentito dal server riporta sugli Impegni', async (t) => {
   const { window, document } = await bootConfig(t, { canConfigure: false, remembered: '1' });
@@ -325,29 +412,40 @@ test('/config: un «non configura» ricordato e smentito dal server apre la pagi
   assert.ok(shown(navItem(document, 'models')));
 });
 
+test('/config senza il pallino: chi non si sa che configuri non configura', async (t) => {
+  const { window, document, calls } = await bootConfig(t, { without: ['pending-badge.js'] });
+
+  assert.equal(window.location.hash, '#/agenda');
+  assertNoAdminData(calls);
+  window.location.hash = '#/memory';
+  window.dispatchEvent(new window.Event('hashchange'));
+  await settle();
+  assert.equal(button(document, 'Correggi'), undefined);
+  window.location.hash = '#/models';
+  window.dispatchEvent(new window.Event('hashchange'));
+  await settle();
+  assert.equal(refusal(document).exit, 'Vai agli Impegni');
+  assert.ok(!asked(calls, 'api/models/config'));
+});
+
+test('/config: la pagina che non esiste rimanda all\'inizio, non a una pagina precisa', async (t) => {
+  const { document } = await bootConfig(t, { canConfigure: false, hash: '#/nessuna' });
+
+  const link = document.querySelector('#route-outlet a');
+  assert.equal(link.getAttribute('href'), '#/');
+  assert.equal(link.textContent, 'Torna all’inizio');
+});
+
 test('Memoria: chi non configura la legge senza «Correggi» ne\' «Dimentica»', async (t) => {
   const { document } = await bootConfig(t, { canConfigure: false, hash: '#/memory' });
 
   assert.match(document.getElementById('route-outlet').textContent, /Mi piace il caffè/);
-  for (const label of ['Correggi', 'Dimentica']) {
-    const b = button(document, label);
-    assert.ok(!b || !shown(b), `«${label}» non si offre`);
-  }
-  assert.doesNotMatch(visibleText(document.querySelector('#route-outlet .page-subtitle')), /correggere|cancellare/,
-    'il sottotitolo non promette cio\' che la pagina non fa');
+  assert.equal(button(document, 'Correggi'), undefined, '«Correggi» non si disegna');
+  assert.equal(button(document, 'Dimentica'), undefined, '«Dimentica» non si disegna');
+  assert.equal(visibleText(document.querySelector('#route-outlet .page-subtitle')), MEMORY_SUBTITLE_READER);
 });
 
-/* Il testo che si LEGGE: quello dei nodi che nessun antenato spegne. */
-function visibleText(root) {
-  const walker = root.ownerDocument.createTreeWalker(root, 4);
-  let out = '';
-  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-    if (!n.parentElement.closest('[hidden]')) out += n.textContent;
-  }
-  return out;
-}
-
-test('Memoria: i pulsanti disegnati con un ricordo vecchio si spengono alla risposta del server', async (t) => {
+test('Memoria: i pulsanti disegnati con un ricordo vecchio escono alla risposta del server', async (t) => {
   /* La risposta arriva DOPO le card, e la si lascia partire a mano: con un
      ritardo a tempo arrivava prima (misurato con 30 ms: l'avvio del guscio
      in jsdom se li mangia da solo). */
@@ -358,14 +456,29 @@ test('Memoria: i pulsanti disegnati con un ricordo vecchio si spengono alla risp
   answer();
   await settle();
 
-  for (const label of ['Correggi', 'Dimentica']) {
-    const b = button(document, label);
-    assert.ok(!b || !shown(b), `«${label}» non si offre piu'`);
-  }
+  assert.equal(button(document, 'Correggi'), undefined);
+  assert.equal(button(document, 'Dimentica'), undefined);
+  assert.equal(visibleText(document.querySelector('#route-outlet .page-subtitle')), MEMORY_SUBTITLE_READER);
 });
 
 test('pallino: `can_configure` si ricorda come `can_build`, e la risposta del server vince', async (t) => {
   const { document } = await bootConfig(t, { canConfigure: true, remembered: '0' });
 
   assert.equal(rememberedConfigure(document), '1');
+});
+
+test('pallino: `mark` marca un nodo nato dopo e lo tiene allineato alle risposte', async (t) => {
+  let turn = 0;
+  /* Si parte dal «no»: un nodo appena creato e' visibile, quindi e' il
+     «no» che prova che `mark` lo dipinge (mutazione J11). */
+  const pending = () => { turn += 1; return json(200, pendingBody(turn !== 1)); };
+  const { window, document } = await bootConfig(t, { pending });
+  const node = document.createElement('div');
+  document.body.appendChild(node);
+
+  window.HirisPendingBadge.mark(node, 'can_configure');
+  assert.equal(node.hasAttribute('data-configure-only'), true);
+  assert.equal(node.hidden, true, 'nasce nello stato di adesso: non configura');
+  await window.HirisPendingBadge.refresh();
+  assert.equal(node.hidden, false, 'la risposta dopo lo accende');
 });

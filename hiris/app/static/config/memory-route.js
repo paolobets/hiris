@@ -112,15 +112,12 @@ window.HirisMemoryRoute = (function () {
   /* Correggere e cancellare sono di chi configura (decisione 4 del
      proprietario, spec 2026-09-27 §4): chi non amministra legge i SUOI
      ricordi e basta -- `PATCH`/`DELETE /api/memories/{id}` il cancello glieli
-     rifiuta comunque. Il nodo nasce nello stato che static/pending-badge.js
-     sa ADESSO (le card si disegnano dopo la sua prima risposta, o prima,
-     col ricordo), e porta `data-configure-only` perche' le risposte
-     successive lo aggiornino. Senza il pallino (un guscio che non lo carica)
-     si parte spenti, come ogni `data-configure-only`. */
-  function configureOnly(node) {
-    node.setAttribute('data-configure-only', '');
-    node.hidden = !(window.HirisPendingBadge && window.HirisPendingBadge.canConfigure() === true);
-    return node;
+     rifiuta comunque. Per lui i pulsanti non si disegnano affatto: quando
+     la risposta del server cambia, il guscio rimonta la pagina
+     (config/main.js), quindi ogni montaggio legge lo stato di adesso.
+     Senza il pallino, o finche' non si sa, non si configura. */
+  function configures() {
+    return !!(window.HirisPendingBadge && window.HirisPendingBadge.canConfigure() === true);
   }
 
   function showCardError(node, text) {
@@ -363,9 +360,24 @@ window.HirisMemoryRoute = (function () {
         r.condizioni.map(function (c) { return c.tipo + ': ' + c.valore; }).join(' · ')));
     }
 
+    if (configures()) {
+      var formWrap = el('div');
+      formWrap.style.display = 'none';
+      var cardErr = el('p', 'proposals-error', '');
+      cardErr.style.display = 'none';
+      body.appendChild(correctionBar(r, reload, formWrap, cardErr));
+      body.appendChild(formWrap);
+      body.appendChild(cardErr);
+    }
+
+    card.appendChild(body);
+    return card;
+  }
+
+  /* «Correggi» e «Dimentica», con i loro gestori: solo per chi configura. */
+  function correctionBar(r, reload, formWrap, cardErr) {
     var bar = el('div');
     bar.style.cssText = 'display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap';
-    configureOnly(bar);
     var btnCorreggi = el('button', 'btn btn-ghost btn-sm', 'Correggi');
     btnCorreggi.type = 'button';
     /* «Dimentica» era l'unico elemento della riga che sembrasse un bottone --
@@ -376,15 +388,6 @@ window.HirisMemoryRoute = (function () {
     clearBtn.type = 'button';
     bar.appendChild(btnCorreggi);
     bar.appendChild(clearBtn);
-    body.appendChild(bar);
-
-    var formWrap = el('div');
-    formWrap.style.display = 'none';
-    body.appendChild(formWrap);
-
-    var cardErr = el('p', 'proposals-error', '');
-    cardErr.style.display = 'none';
-    body.appendChild(cardErr);
 
     function chiudiModulo() {
       clearEl(formWrap);
@@ -419,8 +422,7 @@ window.HirisMemoryRoute = (function () {
       });
     });
 
-    card.appendChild(body);
-    return card;
+    return bar;
   }
 
   /* ── I tre stati della lista: vuota, illeggibile, piena (ambiguità
@@ -485,14 +487,15 @@ window.HirisMemoryRoute = (function () {
     if (!outlet) return;
     clearEl(outlet);
     outlet.appendChild(el('h1', 'page-title', 'Memoria'));
-    /* La seconda meta' del sottotitolo parla di correggere e togliere: per
-       chi legge soltanto sarebbe una promessa che la pagina non mantiene. */
-    var subtitle = el('p', 'page-subtitle', 'Ciò che hai detto a HIRIS, e cosa ne ha capito.');
-    subtitle.appendChild(configureOnly(el('span', null,
-      ' Puoi correggere l’interpretazione — mai il ' +
-      'testo — o cancellare un ricordo per sempre. I ricordi non scadono: restano '
-      + 'finché non li togli tu, e non se ne vanno cancellando la conversazione.')));
-    outlet.appendChild(subtitle);
+    /* Chi configura legge cosa puo' fare qui; chi legge soltanto, a chi
+       chiedere (testo rivisto con l'ux-ui-specialist, fix round 1 del
+       Task 4). */
+    outlet.appendChild(el('p', 'page-subtitle', 'Ciò che hai detto a HIRIS, e cosa ne ha capito. ' + (configures()
+      ? 'Puoi correggere l’interpretazione — mai il testo — o cancellare un ricordo per sempre. '
+        + 'I ricordi non scadono: restano finché non li togli tu, '
+        + 'e non se ne vanno cancellando la conversazione.'
+      : 'I ricordi non scadono e restano anche se cancelli la conversazione: per correggerne o '
+        + 'toglierne uno, chiedi a chi gestisce HIRIS.')));
     var status = el('p', 'sc-desc', '');
     status.id = 'memory-status';
     outlet.appendChild(status);

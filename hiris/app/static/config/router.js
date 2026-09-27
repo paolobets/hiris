@@ -16,6 +16,12 @@
      monta regolarmente. */
   var lastResolvedHash = null;
 
+  /* Quante redirezioni si seguono dentro un giro solo: oggi ce n'e' una
+     (la home di chi non configura), e un giro A -> B -> A futuro deve
+     fermarsi con un errore in console, non ricorrere per sempre. */
+  var MAX_REDIRECTS = 3;
+  var redirectDepth = 0;
+
   /* ── Gli indirizzi DI PRIMA ───────────────────────────────────
      Fino alla fetta della rinomina (02/09) le sei pagine italiane avevano
      un hash italiano. L'hash si vede nella barra del browser e finisce nei
@@ -109,8 +115,17 @@
            `replaceState`, nessuna voce di cronologia, montaggio in questo
            stesso giro -- e il nuovo indirizzo si risolve come ogni altro. */
         if (typeof redirect === 'string' && redirect !== hash) {
-          replaceHash(redirect);
-          resolveRoute();
+          if (redirectDepth >= MAX_REDIRECTS) {
+            console.error('route redirect loop', hash, redirect);
+            return;
+          }
+          redirectDepth += 1;
+          try {
+            replaceHash(redirect);
+            resolveRoute();
+          } finally {
+            redirectDepth -= 1;
+          }
           return;
         }
         lastResolvedHash = hash;
@@ -123,6 +138,8 @@
     renderNotFound();
   }
 
+  /* «All'inizio» e non «a Cosa HIRIS sa»: `#/` e' la home di chi configura,
+     e gli Impegni per chi no (config/main.js). Testo fisso, mai del server. */
   function renderNotFound() {
     var here = document.getElementById('chrome-here');
     if (here) here.textContent = 'Pagina non trovata';
@@ -130,7 +147,7 @@
     if (outlet) {
       outlet.innerHTML =
         '<h1 class="page-title">Pagina non trovata</h1>' +
-        '<p class="page-subtitle">La pagina richiesta non esiste. <a href="#/">Torna a «Cosa HIRIS sa»</a></p>';
+        '<p class="page-subtitle">La pagina richiesta non esiste. <a href="#/">Torna all’inizio</a></p>';
     }
   }
 

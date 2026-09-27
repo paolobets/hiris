@@ -408,24 +408,6 @@ def test_la_lista_NON_tocca_le_rotte_vietate():
     assert not toccate, f"la lista ammette rotte vietate: {toccate}"
 
 
-def test_la_porta_del_RIFIUTO_delle_pagine_esiste_ed_e_chiusa():
-    """Il guscio `/config` chiede il testo del rifiuto a `REFUSAL_DOOR`
-    (`static/config/main.js`, Task 4): perche' risponda il 403 del cancello
-    -- e non la pagina, o un 404 -- la porta deve essere una GET vera del
-    router e stare FUORI dalla lista. Si legge dal sorgente, non si ricopia.
-
-    Mutazioni ESEGUITE: porta `api/chat-settings` (ammessa) -- rossa sulla
-    lista; porta `api/nessuna` -- rossa sul router."""
-    import pathlib
-    main_js = (pathlib.Path(admission.__file__).parents[1] / "static" / "config"
-               / "main.js").read_text(encoding="utf-8")
-    found = re.findall(r"var REFUSAL_DOOR = '([^']+)';", main_js)
-    assert len(found) == 1, found
-    door = ("GET", "/" + found[0])
-
-    assert door in live_routes(create_app()), f"{door} non e' una rotta del router"
-    assert door not in {(m, c) for m, c, _ in ADMISSION}, f"{door} e' nella lista"
-
 
 _CHI = {"amministratore": "u-admin", "utente": "u-marta",
         "ignoto": "u-sconosciuto", "anonimo": None}

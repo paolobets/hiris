@@ -508,11 +508,13 @@ window.HirisWatcherSapere = (function () {
   function addJudgmentForm(outerBody) {
     var wrap = el('form', 'field-group jr-add-form');
     /* Scrivere una correzione e' di chi costruisce (spec 2026-09-26 §3,
-       decisione 6): il modulo porta `data-builder-only` e nasce nello stato
-       che `pending-badge.js` conosce -- nascosto se non lo sa. Solo pagina:
-       la rotta risponde 403 da sola. Leggere il sapere resta di tutti. */
-    wrap.setAttribute('data-builder-only', '');
-    wrap.hidden = !(window.HirisPendingBadge && window.HirisPendingBadge.canBuild());
+       decisione 6): il modulo porta la marca di `can_build` e nasce nello
+       stato che `pending-badge.js` conosce -- nascosto se non lo sa, e
+       nascosto senza il pallino. La marca la mette il pallino (`mark`), che
+       e' l'unico a sapere la regola. Solo pagina: la rotta risponde 403 da
+       sola. Leggere il sapere resta di tutti. */
+    wrap.hidden = true;
+    if (window.HirisPendingBadge) window.HirisPendingBadge.mark(wrap, 'can_build');
     wrap.style.cssText = 'border:1px solid var(--border-2);border-radius:8px;padding:10px 12px;' +
       'margin-bottom:10px;display:flex;flex-direction:column;gap:8px;max-width:420px';
 

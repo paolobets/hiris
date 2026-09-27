@@ -22,6 +22,7 @@ from aiohttp.test_utils import make_mocked_request
 
 from conftest import credenziale_ponte, firma, servizio_approvato
 from hiris.app.action.construction.revisions import ConstructionStore
+from hiris.app.api.admission import NOT_ADMITTED
 from hiris.app.api.handlers_memory import handle_get_memories
 from hiris.app.api.handlers_settings import _payload
 from hiris.app.chat_settings import ChatSettings
@@ -310,6 +311,22 @@ async def test_can_configure_e_VERO_solo_per_l_amministratore(casa, utente, puo)
 
     assert corpo["can_configure"] is puo
     assert corpo["can_build"] is puo
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("utente,rifiuto", [
+    ("u-admin", None), ("u-marta", NOT_ADMITTED), ("u-lettore", NOT_ADMITTED)])
+async def test_chi_non_configura_riceve_il_testo_del_RIFIUTO_delle_pagine(casa, utente, rifiuto):
+    """Fix round 1 del Task 4: il guscio `/config` scrive il rifiuto di una
+    pagina aperta per indirizzo senza chiederlo a una rotta negata. Il testo
+    e' la costante del cancello, non una copia; all'amministratore la chiave
+    non arriva affatto (la sua risposta e' quella di prima)."""
+    corpo = await (await casa.get("/api/pending", headers=_persona(utente))).json()
+
+    if rifiuto is None:
+        assert "configure_refusal" not in corpo
+    else:
+        assert corpo["configure_refusal"] == rifiuto
 
 
 @pytest.mark.asyncio

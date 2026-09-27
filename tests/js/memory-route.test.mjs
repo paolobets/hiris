@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadScripts, tick } from './helpers/dom.mjs';
+import { loadScripts, tick, asAdministrator } from './helpers/dom.mjs';
 
 /* fetta E5 Task 9: la pagina #/memory (config/memory-route.js). Sostituisce
    il pannello Memoria della chat (coda di approvazione, uscita con questo
@@ -18,7 +18,9 @@ function fixtureHtml() {
   return '<!doctype html><body><div id="route-outlet"></div></body>';
 }
 
-const SCRIPTS = ['config/memory-route.js'];
+/* Il pallino c'e' perche' correggere e cancellare sono di chi configura
+   (spec 2026-09-27 §4): queste prove guardano un amministratore. */
+const SCRIPTS = ['pending-badge.js', 'config/memory-route.js'];
 
 function jsonResponse(body, status) {
   return { ok: (status || 200) < 400, status: status || 200, json: async () => body };
@@ -47,6 +49,7 @@ const RICORDO = {
    solo il pezzo che gli interessa, come in settings-route.test.mjs. */
 function montaConServer(opts = {}) {
   const ctx = loadScripts(SCRIPTS, { html: fixtureHtml() });
+  asAdministrator(ctx.window);
   const chiamate = [];
   let getCount = 0;
   ctx.window.fetch = async (url, options) => {

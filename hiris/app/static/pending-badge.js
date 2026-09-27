@@ -111,9 +111,12 @@ window.HirisPendingBadge = (function () {
       /* Chi costruisce e chi configura lo dice il server a OGNI risposta, e
          si ricorda per la prossima apertura: vedi `PERMISSIONS`. */
       for (var p = 0; p < PERMISSIONS.length; p++) {
-        var granted = dati[PERMISSIONS[p].field] === true;
-        applyPermission(PERMISSIONS[p], granted);
-        remember(PERMISSIONS[p], granted);
+        var permission = PERMISSIONS[p];
+        var granted = dati[permission.field] === true;
+        var refusal = permission.refusalField && typeof dati[permission.refusalField] === 'string'
+          ? dati[permission.refusalField] : null;
+        applyPermission(permission, granted, refusal);
+        remember(permission, granted);
       }
     }).catch(function (err) {
       /* Il ramo che il badge morto non aveva. Spegne anche cio' che era
@@ -129,8 +132,8 @@ window.HirisPendingBadge = (function () {
      (spec 2026-09-26 §3: la voce «Proposte» nei due gusci, il modulo delle
      correzioni nel sapere) porta `data-builder-only`; cio' che e' solo di
      chi configura (spec 2026-09-27 §4: i consumi e «Configurazione» nella
-     chat, le voci di configurazione nel guscio, correggere e cancellare un
-     ricordo) porta `data-configure-only`. Tutti nascono `hidden`, e li
+     chat, le voci di configurazione nel guscio) porta
+     `data-configure-only`. Tutti nascono `hidden`, e li
      mostra solo un `true` del server: una risposta che non lo porta non e'
      un permesso. Nasconderli non e' la difesa (le rotte rispondono 403 da
      sole, `api/admission.py` e `soffitto.require_builder`): e' non offrire
@@ -144,16 +147,30 @@ window.HirisPendingBadge = (function () {
      com'e'. Non apre niente -- il server continua a decidere -- e senza
      ricordo (o con lo storage che solleva, in una finestra privata) si parte
      nascosti. */
+  /* `refusalField`: il testo con cui il server rifiuta cio' che il
+     permesso non concede (fix round 1 del Task 4: `configure_refusal`, la
+     costante del cancello). Si tiene quello dell'ultima risposta e non si
+     ricorda: e' una frase del server, non una comodita' di chi guarda. */
   var PERMISSIONS = [
     { field: 'can_build', storageKey: 'hiris.can_build', attribute: 'data-builder-only' },
-    { field: 'can_configure', storageKey: 'hiris.can_configure', attribute: 'data-configure-only' }
+    { field: 'can_configure', storageKey: 'hiris.can_configure', attribute: 'data-configure-only',
+      refusalField: 'configure_refusal' }
   ];
 
   /* `true`/`false` dal server o dal ricordo; `null` quando non lo sa
      nessuno dei due. Il terzo stato serve al guscio `/config`, che senza
      sapere non sceglie la pagina d'atterraggio (config/main.js). */
   var grantedNow = {};
+  var refusalNow = {};
   var listeners = [];
+
+  function permissionFor(field) {
+    for (var i = 0; i < PERMISSIONS.length; i++) if (PERMISSIONS[i].field === field) return PERMISSIONS[i];
+    throw new Error('permesso sconosciuto: ' + field);
+  }
+
+  /* La regola del nodo, una volta sola: si vede solo col `true`. */
+  function paint(node, granted) { node.hidden = granted !== true; }
 
   function remembered(permission) {
     try {
@@ -166,14 +183,18 @@ window.HirisPendingBadge = (function () {
     try { window.localStorage.setItem(permission.storageKey, granted ? '1' : '0'); } catch { /* comodita': senza, si riparte nascosti */ }
   }
 
-  function applyPermission(permission, granted) {
-    var changed = grantedNow[permission.field] !== granted;
+  function applyPermission(permission, granted, refusal) {
+    refusal = refusal || null;
+    var changed = grantedNow[permission.field] !== granted || refusalNow[permission.field] !== refusal;
     grantedNow[permission.field] = granted;
+    refusalNow[permission.field] = refusal;
     var nodi = document.querySelectorAll('[' + permission.attribute + ']');
-    for (var i = 0; i < nodi.length; i++) nodi[i].hidden = granted !== true;
-    /* Solo sul CAMBIO: ogni ritorno del fuoco rilegge i permessi, e chi
-       ascolta (il giro dei consumi, la pagina aperta nel guscio) non deve
-       ripartire a ogni giro con la stessa risposta. */
+    for (var i = 0; i < nodi.length; i++) paint(nodi[i], granted);
+    /* Solo sul CAMBIO (del permesso o del suo testo di rifiuto): ogni
+       ritorno del fuoco rilegge i permessi, e chi ascolta (il giro dei
+       consumi, la pagina aperta nel guscio) non deve ripartire a ogni giro
+       con la stessa risposta. Il testo conta: un «no» ricordato arriva
+       senza, e la pagina rifiutata lo scrive quando la risposta lo porta. */
     if (!changed) return;
     for (var j = 0; j < listeners.length; j++) {
       try { listeners[j](permission.field, granted); } catch (err) { console.error('[permessi] ascoltatore', err); }
@@ -186,18 +207,31 @@ window.HirisPendingBadge = (function () {
     return refresh();
   }
 
-  /* Per chi disegna DOPO una risposta (il modulo delle correzioni, le card
-     della Memoria): nasce gia' nello stato giusto, e le risposte successive
-     lo aggiornano. */
+  /* Per chi disegna DOPO una risposta (il modulo delle correzioni nel
+     sapere): il nodo prende la marca del permesso e nasce gia' nello stato
+     giusto, e le risposte successive lo aggiornano. L'unico posto, oltre a
+     `applyPermission`, che mette `hidden` per un permesso. */
+  function mark(node, field) {
+    node.setAttribute(permissionFor(field).attribute, '');
+    paint(node, grantedNow[field]);
+    return node;
+  }
+
   function canBuild() { return grantedNow.can_build === true; }
   function canConfigure() {
     var v = grantedNow.can_configure;
     return v === true || v === false ? v : null;
   }
+  /* Il testo del server per una pagina di configurazione rifiutata, o ''
+     quando non e' arrivato (un «no» ricordato, prima della risposta). */
+  function configureRefusal() { return refusalNow.can_configure || ''; }
 
   /* `fn(field, granted)` a ogni cambio di un permesso, compreso il primo
      (dal ricordo, al montaggio): chi ascolta si iscrive PRIMA di `mount`. */
   function onChange(fn) { listeners.push(fn); }
 
-  return { mount: mount, refresh: refresh, canBuild: canBuild, canConfigure: canConfigure, onChange: onChange };
+  return {
+    mount: mount, refresh: refresh, mark: mark, onChange: onChange,
+    canBuild: canBuild, canConfigure: canConfigure, configureRefusal: configureRefusal
+  };
 })();

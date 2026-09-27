@@ -220,6 +220,22 @@ export function stubFetch(window, routes) {
 
 export const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
+/** Chi guarda e' un amministratore, per le prove che parlano di lui.
+ *
+ * Dal fix round 1 del Task 4 (spec 2026-09-27 §4) le pagine di
+ * configurazione, i pulsanti della Memoria e la home del guscio sono di chi
+ * configura, e senza saperlo si parte chiusi. Qui si usa il pallino VERO
+ * (`pending-badge.js`, che il test deve aver caricato) col ricordo «configura»
+ * e una `api/pending` che non risponde: lo stato e' quello del ricordo, e il
+ * finto fetch del test, messo dopo, non vede la richiesta del pallino. */
+export function asAdministrator(window) {
+  window.localStorage.setItem('hiris.can_configure', '1');
+  const fetchBefore = window.fetch;
+  window.fetch = () => new Promise(() => {});
+  window.HirisPendingBadge.mount();
+  window.fetch = fetchBefore;
+}
+
 /* ───────────────────────────────────────────────────────────────────────────
  * La visibilita' calcolata: i fogli VERI, e una cascata scritta a mano.
  *
