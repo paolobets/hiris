@@ -62,20 +62,18 @@ RUOLI = ("amministratore", "utente", "lettore")
 #: Cosa concede ogni ruolo. `utente` e' quello che il proprietario ha descritto
 #: il 21/09: «cosi' non gestisce automazioni e altro, quindi comanda».
 #:
-#: `costruire` e `diagnosticare` sono le cose riservate, e non i servizi di
-#: sistema: quelli sono gia' irraggiungibili dalla porta perche' non
-#: dichiarano un bersaglio, e un bersaglio vuoto e' sempre un rifiuto
-#: (`action/verification.py`). `diagnosticare` e' leggere cio' che Home
-#: Assistant mostra ai soli amministratori (`system_log/list`, `trace/list`,
-#: `trace/get` sono `@websocket_api.require_admin` in Core 2026.9.3,
-#: verificato il 27/09/2026).
+#: `costruire` e `amministrare` sono le cose riservate. `amministrare` e'
+#: toccare cio' che Home Assistant riserva ai soli amministratori, verificato
+#: il 27/09/2026 su Core 2026.9.3: le letture `@websocket_api.require_admin`
+#: (`system_log/list`, `trace/list`, `trace/get`, `automation/config`) e i
+#: servizi `async_register_admin_service` del dominio `homeassistant`.
 PUO = {
     "amministratore": {"leggere": True, "comandare": True, "costruire": True,
-                       "diagnosticare": True},
+                       "amministrare": True},
     "utente": {"leggere": True, "comandare": True, "costruire": False,
-               "diagnosticare": False},
+               "amministrare": False},
     "lettore": {"leggere": True, "comandare": False, "costruire": False,
-                "diagnosticare": False},
+                "amministrare": False},
 }
 
 #: I metodi che non cambiano niente. Un `lettore` fa questi e basta.

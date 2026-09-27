@@ -59,9 +59,9 @@ ADMISSION: tuple[tuple[str, str, str], ...] = (
      ("il tema della pagina (`config/api.js::applyTheme`), chiamato da "
       "entrambi i gusci all'avvio")),
     ("GET", "/api/health",
-     ("connesso o no (`chat/main.js::checkHealth`, `config/main.js`) e la "
-      "versione del guscio (`build-check.js`); a chi non amministra arrivano "
-      "solo stato e versione")),
+     ("connesso o no (`chat/main.js::checkHealth`, `config/main.js`) e "
+      "l'impronta del guscio (`build-check.js`); a chi non amministra arrivano "
+      "solo stato, versione e impronta, che il guscio porta gia' scritta")),
     ("GET", "/api/pending",
      ("i pallini del menu (`pending-badge.js`): gli esiti non letti dei SUOI "
       "Impegni, e le proposte a zero per chi non costruisce")),
@@ -107,13 +107,17 @@ ADMISSION: tuple[tuple[str, str, str], ...] = (
 
 _ADMITTED = frozenset((method, canonical) for method, canonical, _ in ADMISSION)
 
-#: I testi dei rifiuti, decisi dal coordinatore il 27/09/2026 (decisione 7).
-#: Solo questi tre distinguono qualcosa: opzione spenta, rotta non concessa,
-#: ruoli illeggibili. Niente rotta, ruolo o soggetto nel testo.
+#: I testi dei rifiuti, decisi dal coordinatore il 27/09/2026 (decisione 7 e
+#: fix round 1, punto 11). Solo questi quattro distinguono qualcosa: opzione
+#: spenta, rotta non concessa, ruoli illeggibili, persona che Home Assistant
+#: non riconosce. Niente rotta, ruolo o soggetto nel testo.
 OPTION_OFF = ("HIRIS in questa casa è riservato agli amministratori: chiedi a "
               "chi lo gestisce di attivarlo per tutti.")
 NOT_ADMITTED = "Questa parte di HIRIS è riservata agli amministratori."
 ROLES_UNREADABLE = "Non ho potuto leggere i ruoli da Home Assistant: riprova tra poco."
+UNKNOWN_PERSON = ("Home Assistant non mi ha detto chi sei: HIRIS risponde solo "
+                  "agli utenti di Home Assistant che riconosce. Se sei appena "
+                  "stato aggiunto, riprova tra un minuto.")
 
 #: Le intestazioni che il rifiuto si mette da se': esce dal primo middleware e
 #: non passa da `_security_headers` (security-constraints 2.4). La pagina non
@@ -123,20 +127,20 @@ _PAGE_CSP = "default-src 'none'"
 
 
 def _page(text: str) -> bytes:
+    # Solo il guasto dei ruoli si risolve da se': la sua pagina si ricarica,
+    # le altre direbbero lo stesso rifiuto ogni sei secondi.
+    refresh = ('<meta http-equiv="refresh" content="6">'
+               if text == ROLES_UNREADABLE else "")
     return ("<!DOCTYPE html>\n<html lang=\"it\"><head><meta charset=\"utf-8\">"
             "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-            f"<title>HIRIS</title></head><body><p>{text}</p></body></html>\n"
+            f"{refresh}<title>HIRIS</title></head><body><p>{text}</p></body></html>\n"
             ).encode()
 
 
-#: Le pagine si compongono una volta, all'import, dai tre testi fissi: niente
-#: che venga dalla richiesta ci finisce dentro.
-_PAGES = {text: _page(text) for text in (OPTION_OFF, NOT_ADMITTED, ROLES_UNREADABLE)}
-
-
-def refusal_page(text: str) -> bytes:
-    """La pagina di rifiuto di un guscio, byte per byte."""
-    return _PAGES[text]
+#: Le pagine si compongono una volta, all'import, dai testi fissi: niente che
+#: venga dalla richiesta ci finisce dentro.
+_PAGES = {text: _page(text)
+          for text in (OPTION_OFF, NOT_ADMITTED, ROLES_UNREADABLE, UNKNOWN_PERSON)}
 
 
 def admitted(method: str, match_info) -> bool:
@@ -181,24 +185,46 @@ async def admission_refusal(app, request: web.Request) -> web.Response | None:
     Il ruolo si legge anche con l'opzione spenta: l'amministratore passa
     comunque. Ruoli illeggibili chiudono tutti, proprietario compreso, col
     loro testo (ruling R-2.8): nel dubbio si chiude, e si dice perche'.
+
+    **Il ruolo letto resta sulla richiesta** (`request["ruolo"]`,
+    `request["ruolo_letto"]`, fix round 1, I4): chi viene dopo -- la salute,
+    le pagine dei task successivi -- lo legge da qui invece di chiederlo di
+    nuovo a Home Assistant.
     """
     subject = request.get("soggetto")
-    role, read = await boundary_role(app, subject)
-    if role == "amministratore":
+    seen = await boundary_role(app, subject)
+    request["ruolo"] = seen.role
+    request["ruolo_letto"] = seen.read
+    if seen.role == "amministratore":
         return None
-    if not read:
+    if not seen.read:
         text, why = ROLES_UNREADABLE, "ruoli illeggibili"
     elif not app.get("non_admin_access"):
         text, why = OPTION_OFF, "opzione spenta"
-    elif role is None:
-        text, why = NOT_ADMITTED, "persona sconosciuta a Home Assistant"
+    elif not seen.known:
+        text, why = UNKNOWN_PERSON, "persona sconosciuta a Home Assistant"
+    elif seen.role is None:
+        text, why = NOT_ADMITTED, "senza gruppi in Home Assistant"
     elif admitted(request.method, request.match_info):
         return None
     else:
         text, why = NOT_ADMITTED, "rotta fuori dalla lista"
+    if not _is_static(request.match_info):
+        _log_refusal(request, subject, why)
+    return _refusal(request, text)
+
+
+def _is_static(match_info) -> bool:
+    resource = getattr(getattr(match_info, "route", None), "resource", None)
+    return isinstance(resource, StaticResource)
+
+
+def _log_refusal(request: web.Request, subject, why: str) -> None:
     # A `info`: una persona che apre per indirizzo una pagina che non e' sua e'
-    # un caso normale. Il MODELLO della rotta, mai il percorso decodificato; la
-    # chiave del soggetto, mai il nome (security-constraints 2.18).
+    # un caso normale. Non per ogni file della pagina: un guscio rifiutato
+    # si porta dietro i suoi asset, e venti righe uguali non dicono niente
+    # in piu' della prima (fix round 1, punto 12). Il MODELLO della rotta, mai
+    # il percorso decodificato; la chiave del soggetto, mai il nome
+    # (security-constraints 2.18).
     logger.info("cancello: %s %s negato a %s — %s", request.method,
                 _route_pattern(request), subject_key_for(subject), why)
-    return _refusal(request, text)

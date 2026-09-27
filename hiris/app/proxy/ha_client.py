@@ -659,7 +659,7 @@ class HAClient:
     #: `group_ids` e **non** `is_admin`, che si ricava di qui. Riverificato il
     #: 27/09/2026 su Core 2026.9.3 (`auth/const.py`) e sulla casa, dove il
     #: gruppo di sola lettura esiste.
-    GRUPPO_AMMINISTRATORI = "system-admin"
+    ADMIN_GROUP = "system-admin"
     USERS_GROUP = "system-users"
     READ_ONLY_GROUP = "system-read-only"
 
@@ -701,17 +701,19 @@ class HAClient:
 
         `sola_lettura`: il gruppo `system-read-only` SENZA `system-users` --
         Core unisce le politiche dei gruppi (`auth/permissions/merge.py`), e chi
-        e' in entrambi comanda. Il ruolo che ne segue lo decide
-        `soffitto._role_of`.
+        e' in entrambi comanda. `senza_gruppi`: nessun gruppo, e per chi non e'
+        il proprietario vuol dire nessun permesso (`merge_policies([])`). Il
+        ruolo che ne segue lo decide `soffitto._role_of`.
         """
         groups = r.get("group_ids") or []
         admin = bool(r.get("is_owner")) or (
-            r.get("is_active") is True and cls.GRUPPO_AMMINISTRATORI in groups)
+            r.get("is_active") is True and cls.ADMIN_GROUP in groups)
         return {"id": r.get("id"),
                 "nome": r.get("name"),
                 "amministratore": admin,
                 "sola_lettura": (cls.READ_ONLY_GROUP in groups
                                  and cls.USERS_GROUP not in groups),
+                "senza_gruppi": not groups,
                 "proprietario": bool(r.get("is_owner")),
                 "sistema": bool(r.get("system_generated"))}
 
@@ -1701,11 +1703,13 @@ class HAClient:
             identifiers, {"start_time": from_iso, "end_time": to_iso, "period": "hour"})
 
     #: Quale comando WebSocket porta la configurazione di un'entita', per
-    #: dominio. Verificato sul sorgente di Home Assistant al tag `2026.9.1`:
-    #: `components/automation/__init__.py` e `components/script/__init__.py`
-    #: registrano `<dominio>/config` con `@websocket_api.require_admin` e
+    #: dominio. `components/automation/__init__.py` e
+    #: `components/script/__init__.py` registrano `<dominio>/config` e
     #: tornano `raw_config` -- la configurazione dell'ENTITA', quindi anche
     #: quella di un'automazione che vive in un pacchetto o in un `!include`.
+    #: **Corretto il 27/09/2026 rileggendo il tag `2026.9.3`**: qui c'era
+    #: scritto che entrambi sono `@websocket_api.require_admin`. Lo e' solo
+    #: `automation/config`; `script/config` no.
     #: Un dominio che non e' qui dentro non ha una configurazione da chiedere,
     #: e non se ne inventa una.
     _CONFIG_COMMAND_BY_DOMAIN: ClassVar[dict[str, str]] = {

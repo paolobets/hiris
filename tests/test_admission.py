@@ -14,6 +14,7 @@ sviluppo il cancello non deve cambiare niente.
 import asyncio
 import base64
 import re
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -301,7 +302,14 @@ from hiris.app.api.admission import (
     NOT_ADMITTED,
     OPTION_OFF,
     ROLES_UNREADABLE,
+    UNKNOWN_PERSON,
 )
+
+
+def _pagina(testo: str) -> bytes:
+    """La pagina di rifiuto di un guscio, come la compone il cancello: la
+    forma e' fissa, cambia solo il testo."""
+    return admission._PAGES[testo]
 
 
 @pytest_asyncio.fixture
@@ -422,7 +430,12 @@ async def test_la_TABELLA_delle_regole(aiohttp_client, tmp_path, chi, accesa, am
 
     status, body = await _risposta(client, "GET", path, headers)
 
-    atteso = OPTION_OFF if not accesa else NOT_ADMITTED
+    if not accesa:
+        atteso = OPTION_OFF
+    elif chi in ("ignoto", "anonimo"):
+        atteso = UNKNOWN_PERSON
+    else:
+        atteso = NOT_ADMITTED
     if passa:
         assert status == 200, body
     else:
@@ -469,7 +482,7 @@ async def test_con_l_opzione_spenta_NIENTE_si_apre_a_chi_non_amministra(chiusa):
         status, body = await _risposta(chiusa, method, _concrete(canonical),
                                        _persona("u-marta"), **kw)
         if status != 403 or (method != "HEAD" and body not in (
-                _rifiuto_json(OPTION_OFF), admission.refusal_page(OPTION_OFF))):
+                _rifiuto_json(OPTION_OFF), _pagina(OPTION_OFF))):
             aperte.append((method, canonical, status))
 
     assert not aperte, aperte
@@ -526,14 +539,14 @@ async def test_cio_che_non_risolve_esattamente_e_CHIUSO(aperta, method, path):
         # La forma segue il percorso, non la rotta: `//api/...` non comincia
         # per `/api/` ed e' la pagina -- la stessa per ogni percorso cosi'.
         assert body == (_rifiuto_json(NOT_ADMITTED) if path.startswith("/api/")
-                        else admission.refusal_page(NOT_ADMITTED))
+                        else _pagina(NOT_ADMITTED))
 
 
 @pytest.mark.asyncio
 async def test_il_PROPFIND_sul_guscio_e_la_stessa_pagina_di_rifiuto(aperta):
     status, body = await _risposta(aperta, "PROPFIND", "/", _persona("u-marta"))
 
-    assert (status, body) == (403, admission.refusal_page(NOT_ADMITTED))
+    assert (status, body) == (403, _pagina(NOT_ADMITTED))
 
 
 @pytest.mark.asyncio
@@ -675,7 +688,11 @@ async def test_il_rifiuto_di_una_rotta_API_e_JSON_col_solo_testo(chiusa):
 
 
 def test_i_testi_dei_rifiuti_sono_quelli_DECISI():
-    """Decisione 7 del coordinatore: alla lettera."""
+    """Decisione 7 del coordinatore e fix round 1 (punto 11): alla lettera."""
+    assert UNKNOWN_PERSON == (
+        "Home Assistant non mi ha detto chi sei: HIRIS risponde solo agli "
+        "utenti di Home Assistant che riconosce. Se sei appena stato aggiunto, "
+        "riprova tra un minuto.")
     assert OPTION_OFF == ("HIRIS in questa casa è riservato agli amministratori: "
                           "chiedi a chi lo gestisce di attivarlo per tutti.")
     assert NOT_ADMITTED == "Questa parte di HIRIS è riservata agli amministratori."
@@ -847,12 +864,13 @@ def test_il_cancello_sta_DOPO_il_soggetto_e_PRIMA_del_gestore():
 
 @pytest.mark.asyncio
 async def test_la_salute_di_chi_non_amministra_dice_solo_STATO_e_VERSIONE(aperta):
-    """R-2.23: la diagnostica (`ponte`, `riparazione`, `istantanea`, `build`)
-    resta all'amministratore."""
+    """R-2.23 e fix round 1 (I1): la diagnostica (`ponte`, `riparazione`,
+    `istantanea`) resta all'amministratore; l'impronta del guscio (`build`),
+    che il guscio porta gia' scritta, arriva a tutti."""
     corpo = await (await aperta.get("/api/health", headers=_persona("u-marta"))).json()
     admin = await (await aperta.get("/api/health", headers=_persona("u-admin"))).json()
 
-    assert set(corpo) == {"status", "version"}
+    assert set(corpo) == {"status", "version", "build"}
     assert set(admin) == {"status", "version", "build", "ponte", "riparazione",
                           "istantanea"}
 
@@ -982,18 +1000,18 @@ async def test_il_ruolo_di_SOLA_LETTURA_arriva_al_soffitto_della_chat(casa):
 
     assert soffitto["ruolo"] == "lettore"
     assert (soffitto["leggere"], soffitto["comandare"], soffitto["costruire"],
-            soffitto["diagnosticare"]) == (True, False, False, False)
-    assert await boundary_role(casa.app, {"specie": "persona", "id": "u-lettore"}) == (
-        "lettore", True)
+            soffitto["amministrare"]) == (True, False, False, False)
+    visto = await boundary_role(casa.app, {"specie": "persona", "id": "u-lettore"})
+    assert (visto.role, visto.read, visto.known) == ("lettore", True, True)
 
 
 @pytest.mark.asyncio
-async def test_senza_un_RUOLO_lo_sviluppo_resta_come_ieri():
-    """Lo sviluppo (`HIRIS_ALLOW_NO_TOKEN`) porta un soffitto SENZA ruolo:
-    li' `execute` e il registro restano come ieri -- stringerli e' una
-    decisione che nessuno ha preso (`ToolDispatcher._role_denies`).
+async def test_lo_SVILUPPO_non_si_restringe_per_ruolo():
+    """Lo sviluppo (`HIRIS_ALLOW_NO_TOKEN`) ha l'autenticazione spenta per
+    definizione: `execute` e il registro restano aperti (fix round 1, I3,
+    `soffitto.denies`).
 
-    Mutazione ESEGUITA: `_role_denies` senza la condizione sul ruolo -- rossa
+    Mutazione ESEGUITA: `denies` senza l'eccezione dello sviluppo -- rossa
     (e rossa anche `test_chat_briefing::test_conversazione_4`)."""
     sviluppo = {"specie": "sviluppo", "id": None}
     ha, porta = _HaLettore(), _Porta()
@@ -1005,3 +1023,326 @@ async def test_senza_un_RUOLO_lo_sviluppo_resta_come_ieri():
                                     "bersaglio": {"entity_id": ["light.x"]}})
 
     assert registro["voci"] and porta.eseguite == ["light.turn_on"]
+
+
+# --- fix round 1 del Task 2 -------------------------------------------------
+
+from hiris.app.api.soffitto import ADMIN_SERVICES_REFUSAL, denies
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("servizio", ["homeassistant.restart", "homeassistant.stop",
+                                      "homeassistant.reload_all",
+                                      "homeassistant.set_location",
+                                      "homeassistant.save_persistent_states"])
+async def test_i_servizi_di_HA_riservati_agli_amministratori_non_partono(servizio):
+    """M-1: il dominio `homeassistant` e' universale per la porta, e HIRIS
+    chiama col proprio token. Core 2026.9.3 registra `stop`, `restart`,
+    `reload_*`, `set_location`, `check_config` con
+    `async_register_admin_service`.
+
+    Mutazione ESEGUITA: tolto il controllo sul dominio da `_execute` --
+    rossa."""
+    porta = _Porta()
+
+    esito = await _chat("utente", porta=porta).dispatch(
+        "execute", {"servizio": servizio, "bersaglio": {"entity_id": ["light.x"]}})
+
+    assert esito == {"errore": ADMIN_SERVICES_REFUSAL}
+    assert porta.eseguite == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ruolo,servizio,passa", [
+    ("utente", "homeassistant.turn_on", True),
+    ("utente", "homeassistant.toggle", True),
+    ("utente", "homeassistant.update_entity", True),
+    ("amministratore", "homeassistant.restart", True),
+])
+async def test_i_servizi_di_HA_concessi_restano_concessi(ruolo, servizio, passa):
+    porta = _Porta()
+
+    await _chat(ruolo, porta=porta).dispatch(
+        "execute", {"servizio": servizio, "bersaglio": {"entity_id": ["light.x"]}})
+
+    assert (porta.eseguite == [servizio]) is passa
+
+
+def test_la_domanda_UNICA_al_soffitto():
+    """I3: lo sviluppo non si restringe per ruolo; una macchina senza ruolo
+    fuori dallo sviluppo si', e un turno senza soffitto (l'osservatore) no.
+
+    Mutazione ESEGUITA: `denies` senza l'eccezione dello sviluppo -- rossa."""
+    sviluppo = {"specie": "sviluppo", "id": None}
+    nessuno = {"specie": "nessuno", "id": None}
+
+    assert denies(consente(sviluppo, ruolo=None), "comandare", sviluppo) is False
+    assert denies(consente(nessuno, ruolo=None), "comandare", nessuno) is True
+    assert denies(None, "amministrare", None) is False
+    assert denies(consente(_PERSONA_MARTA, ruolo="utente"), "amministrare",
+                  _PERSONA_MARTA) is True
+
+
+@pytest.mark.asyncio
+async def test_senza_GRUPPI_in_HA_non_si_entra(aiohttp_client, tmp_path, caplog):
+    """I5: un utente che non e' il proprietario e non ha gruppi, in Home
+    Assistant, non ha permessi (`merge_policies([])`). Il cancello lo chiude
+    anche sulle rotte della lista, e il registro dice perche'.
+
+    Mutazione ESEGUITA: `_role_of` senza il ramo `senza_gruppi` -- rossa."""
+    caplog.set_level("INFO", logger="hiris.app.api.admission")
+    app = _compose(tmp_path, access=True)
+    app["ha_client"].users = AsyncMock(return_value={"utenti": [
+        *_UTENTI["utenti"],
+        {"id": "u-vuoto", "nome": "Vuoto", "amministratore": False,
+         "senza_gruppi": True, "proprietario": False, "sistema": False}]})
+    client = await aiohttp_client(app)
+
+    assert await _gate_refused(client, "GET", "/api/config", _persona("u-vuoto"))
+    [riga] = [r.getMessage() for r in caplog.records
+              if r.name == "hiris.app.api.admission"]
+    assert "senza gruppi in Home Assistant" in riga
+    app["memory_store"].close()
+    app["servizi"].close()
+
+
+@pytest.mark.asyncio
+async def test_UNA_lettura_dei_ruoli_per_tante_richieste_insieme(casa):
+    """I2: una pagina chiede i suoi file tutti insieme; a copia scaduta, una
+    sola `config/auth/list` per tutti.
+
+    Mutazione ESEGUITA: tolta la lettura condivisa (ogni chiamante chiama
+    `users()`) -- rossa (otto chiamate)."""
+    from hiris.app.api.soffitto import _ha_users
+
+    ha = casa.app["ha_client"]
+    entrata = asyncio.Event()
+
+    async def lenta():
+        await entrata.wait()
+        return _UTENTI
+
+    ha.users = AsyncMock(side_effect=lenta)
+    letture = [asyncio.ensure_future(_ha_users(casa.app)) for _ in range(8)]
+    await asyncio.sleep(0)
+    entrata.set()
+    esiti = await asyncio.gather(*letture)
+
+    assert ha.users.await_count == 1
+    assert all(e is not None and "u-marta" in e for e in esiti)
+
+
+@pytest.mark.asyncio
+async def test_il_cancello_lascia_il_RUOLO_sulla_richiesta(aiohttp_client, tmp_path):
+    """I4: chi viene dopo il cancello legge il ruolo da qui, senza chiedere di
+    nuovo a Home Assistant.
+
+    Mutazione ESEGUITA: il cancello non scrive `request["ruolo"]` -- rossa."""
+    app = _compose(tmp_path, access=True)
+
+    async def eco(request):
+        return web.json_response({"ruolo": request.get("ruolo"),
+                                  "letto": request.get("ruolo_letto")})
+
+    app.router.add_get("/api/prova-ruolo", eco)
+    client = await aiohttp_client(app)
+
+    corpo = await (await client.get("/api/prova-ruolo", headers=_persona("u-admin"))).json()
+
+    assert corpo == {"ruolo": "amministratore", "letto": True}
+    app["memory_store"].close()
+    app["servizi"].close()
+
+
+@pytest.mark.asyncio
+async def test_un_asset_rifiutato_NON_scrive_una_riga(chiusa, caplog):
+    """Punto 12: un guscio rifiutato si porta dietro i suoi file; una riga
+    per il guscio, nessuna per gli asset.
+
+    Mutazione ESEGUITA: tolto il controllo `_is_static` -- rossa."""
+    caplog.set_level("INFO", logger="hiris.app.api.admission")
+
+    await chiusa.get("/config", headers=_persona("u-marta"))
+    for nome in ("hiris-icon.svg", "hiris-theme.css", "hiris-fonts.css"):
+        await chiusa.get(f"/static/{nome}", headers=_persona("u-marta"))
+
+    righe = [r for r in caplog.records if r.name == "hiris.app.api.admission"]
+    assert len(righe) == 1 and "/config" in righe[0].getMessage()
+
+
+def test_solo_la_pagina_dei_ruoli_illeggibili_si_ricarica():
+    """Punto 12: il guasto dei ruoli si risolve da se', gli altri rifiuti no."""
+    assert b'http-equiv="refresh"' in _pagina(ROLES_UNREADABLE)
+    for testo in (OPTION_OFF, NOT_ADMITTED, UNKNOWN_PERSON):
+        assert b"refresh" not in _pagina(testo)
+
+
+def test_nello_statico_non_ci_sono_segreti():
+    """2.15: lo statico si serve a chi non amministra -- niente in quella
+    cartella deve somigliare a una credenziale."""
+    import pathlib
+    cartella = pathlib.Path(admission.__file__).parents[1] / "static"
+    sospetti = re.compile(r"(sk-[A-Za-z0-9]{16,}|sk-ant-|eyJ[A-Za-z0-9_-]{20,}\.|"
+                          r"api[_-]?key\s*[:=]\s*['\"][^'\"]{8,}|Bearer\s+[A-Za-z0-9._-]{16,}|"
+                          r"-----BEGIN)")
+    trovati = [f"{f.name}: {m.group(0)[:20]}"
+               for f in cartella.rglob("*") if f.is_file()
+               and f.suffix in (".js", ".html", ".css", ".svg", ".json")
+               for m in [sospetti.search(f.read_text(encoding="utf-8", errors="ignore"))]
+               if m]
+
+    assert not trovati, trovati
+
+
+# --- H-1: il turno di una promessa porta il soffitto di chi l'ha chiesta ------
+
+class _HaDiMarta(_HaLettore):
+    async def users(self):
+        return _UTENTI
+
+
+class _RunnerCheLegge:
+    """Chiede il registro e le tracce, poi conclude: cio' che un modello
+    farebbe se glielo si chiedesse in una promessa."""
+
+    def __init__(self):
+        self.risposte = []
+        self.contesto = None
+
+    async def chat(self, **kwargs):
+        self.contesto = kwargs.get("context_str")
+        d = kwargs["dispatcher"]
+        self.risposte.append(await d.dispatch("system_log", {}))
+        self.risposte.append(await d.dispatch("automation_trace",
+                                              {"entita": "automation.luci"}))
+        await d.dispatch("conclude", {"avvisare": False, "testo": "fatto"})
+
+
+@pytest.mark.asyncio
+async def test_la_promessa_di_chi_non_amministra_NON_legge_il_registro():
+    """H-1, strada sincrona: la promessa di Marta si sveglia, il turno chiede
+    il registro, Home Assistant non viene nemmeno interrogato.
+
+    Mutazione ESEGUITA: `interpreta_promise` col dispatcher senza soffitto --
+    rossa (il registro arriva al modello)."""
+    from hiris.app.api.soffitto import prepara_ruoli
+    from hiris.app.chat_thread import ChatThread
+    from hiris.app.keeper.exchange import interpreta_promise
+
+    ha, runner = _HaDiMarta(), _RunnerCheLegge()
+    app = {"llm_router": runner, "ha_client": ha}
+    prepara_ruoli(app)
+    promessa = {"id": "p1", "frase": "fra un'ora guarda il registro",
+                "domanda": "ci sono errori?", "istantanea": [],
+                "thread": ChatThread("persona:u-marta", "pannello")}
+
+    esito = await interpreta_promise(app, promessa)
+
+    assert esito["testo"] == "fatto"
+    assert runner.risposte[0] == {"errore": ADMIN_READS_REFUSAL}
+    assert ha.chiesto == []
+
+
+@pytest.mark.asyncio
+async def test_la_promessa_dell_amministratore_legge_come_prima():
+    from hiris.app.api.soffitto import prepara_ruoli
+    from hiris.app.chat_thread import ChatThread
+    from hiris.app.keeper.exchange import interpreta_promise
+
+    ha, runner = _HaDiMarta(), _RunnerCheLegge()
+    app = {"llm_router": runner, "ha_client": ha}
+    prepara_ruoli(app)
+    promessa = {"id": "p1", "frase": "guarda il registro", "domanda": "errori?",
+                "istantanea": [], "thread": ChatThread("persona:u-admin", "pannello")}
+
+    await interpreta_promise(app, promessa)
+
+    assert "system_log/list" in ha.chiesto
+
+
+@pytest.mark.asyncio
+async def test_la_promessa_di_chi_non_amministra_NON_legge_dal_PONTE(casa):
+    """H-1, strada del ponte: il turno arriva su `/api/mcp` con la
+    credenziale di turno e `X-HIRIS-Promessa`; il soffitto e' quello di chi
+    ha chiesto la promessa.
+
+    Mutazione ESEGUITA: il ramo della promessa in `handle_mcp` senza soffitto
+    -- rossa."""
+    from hiris.app.chat_thread import ChatThread
+    from hiris.app.keeper.store import AgendaStore
+
+    app = casa.app
+    ha = _HaDiMarta()
+    ha.users = AsyncMock(return_value=_UTENTI)
+    app["ha_client"] = ha
+    agenda = AgendaStore(str(pathlib_tmp(app) / "promesse.db"))
+    app["agenda"] = agenda
+    adesso = time.time()
+    ident = agenda.create({"specie": "chiedi", "frase": "fra un'ora il registro",
+                           "quando_ts": adesso + 10, "domanda": "errori?"},
+                          thread=ChatThread("persona:u-marta", "pannello"),
+                          now=adesso)["promessa"]["id"]
+    assert agenda.prendi(ident, now=adesso + 11) is True
+
+    risposta = await casa.post("/api/mcp", json={
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {"name": "system_log", "arguments": {}}},
+        headers={**credenziale_ponte(app, "turno-della-promessa"),
+                 "X-HIRIS-Promessa": ident})
+    corpo = await risposta.json()
+    agenda.close()
+
+    assert ADMIN_READS_REFUSAL in json_text(corpo)
+    assert ha.chiesto == []
+
+
+def pathlib_tmp(app):
+    import pathlib
+    return pathlib.Path(app["data_dir"])
+
+
+def json_text(corpo) -> str:
+    import json
+    return json.dumps(corpo, ensure_ascii=False)
+
+
+# --- L-2: il corpo di un'automazione non esce da `view` per chi non amministra
+
+_CORPO = {"alias": "Luci all'alba", "trigger": [{"platform": "sun",
+                                                  "event": "CORPO-RISERVATO"}]}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ruolo,vede", [("utente", False), ("lettore", False),
+                                        ("amministratore", True), (None, True)])
+async def test_il_CORPO_di_un_automazione_e_degli_amministratori(tmp_path, ruolo, vede):
+    """`automation/config` e' `@websocket_api.require_admin` in Core 2026.9.3,
+    `script/config` no. Il nucleo della chat non porta i corpi; `view` si':
+    a chi non amministra dice che l'automazione c'e', non cosa fa.
+
+    Mutazione ESEGUITA: tolto il controllo `amministrare` da `_view` --
+    rossa."""
+    from hiris.app.memory.store import MemoryStore
+    from tests.test_knowledge_tools import _semina_casa
+
+    casa_seminata = _semina_casa(tmp_path, comportamento=[
+        {"id": "automation.luci_alba", "tipo": "automazione",
+         "nome": "Luci all'alba", "corpo": _CORPO},
+        {"id": "script.buonanotte", "tipo": "script", "nome": "Buonanotte",
+         "corpo": {"alias": "CORPO-DELLO-SCRIPT"}}])
+    memoria = MemoryStore(str(tmp_path / "memoria.db"))
+    soffitto = None if ruolo is None else consente(_PERSONA_MARTA, ruolo=ruolo)
+    chat = ToolDispatcher(casa_seminata, memoria, soffitto=soffitto,
+                          subject=_PERSONA_MARTA)
+
+    automazione = await chat.dispatch("view", {"tipo": "automazione",
+                                               "riferimento": "automation.luci_alba"})
+    script = await chat.dispatch("view", {"tipo": "script",
+                                          "riferimento": "script.buonanotte"})
+    memoria.close()
+    casa_seminata.close()
+
+    assert ("CORPO-RISERVATO" in json_text(automazione)) is vede
+    assert ("solo agli amministratori" in json_text(automazione)) is not vede
+    assert automazione["esiste"] is True
+    assert "CORPO-DELLO-SCRIPT" in json_text(script)

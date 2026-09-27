@@ -36,7 +36,7 @@ import time
 
 from aiohttp import web
 
-from ..chat_thread import adopt_if_owner, request_thread, without_thread
+from ..chat_thread import adopt_if_owner, request_thread, subject_key_for, without_thread
 from .boundary import occurrence_out
 
 # Vedi `handle_mark_read`: sta qui e non in `keeper/`, perche' e' un limite
@@ -148,5 +148,15 @@ async def handle_get_execution(request: web.Request) -> web.Response:
         return web.json_response({"error": "archivio non disponibile"}, status=503)
     promise = agenda.read_by_execution(ident)
     if promise is not None and promise["thread"] != request_thread(request):
+        return web.json_response(_EXECUTION_NOT_FOUND, status=404)
+    # **A chi non amministra, solo cio' che e' suo** (spec 2026-09-27, fix
+    # round 1, L-3): un'esecuzione che nessuna promessa ha prodotto -- un
+    # comando dato in chat, da chiunque -- si mostra solo a chi l'ha fatta.
+    # Il ruolo e' quello che il cancello ha lasciato sulla richiesta; stesso
+    # 404 di un id che non c'e'.
+    if (promise is None and request.get("auth_via") == "ingress"
+            and request.get("ruolo") != "amministratore"
+            and subject_key_for(row.get("soggetto"))
+            != subject_key_for(request.get("soggetto"))):
         return web.json_response(_EXECUTION_NOT_FOUND, status=404)
     return web.json_response({"execution": row})

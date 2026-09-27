@@ -178,3 +178,17 @@ async def test_il_gruppo_di_SOLA_LETTURA_si_riconosce(gruppi, sola_lettura):
 
     assert per_id["u-x"]["sola_lettura"] is sola_lettura
     assert per_id["u-x"]["amministratore"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("gruppi,senza", [([], True), (["system-users"], False)])
+async def test_chi_non_ha_GRUPPI_si_riconosce(gruppi, senza):
+    """Fix round 1, I5: Core 2026.9.3, `auth/models.py::User.permissions` --
+    chi non e' il proprietario ha `merge_policies` dei suoi gruppi, e senza
+    gruppi non ha nessun permesso.
+
+    Mutazione ESEGUITA: `senza_gruppi` sempre falso -- rossa."""
+    per_id = await _per_id([{"id": "u-x", "is_owner": False, "is_active": True,
+                             "group_ids": gruppi}])
+
+    assert per_id["u-x"]["senza_gruppi"] is senza

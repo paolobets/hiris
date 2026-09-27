@@ -48,6 +48,10 @@ class _Richiesta(dict):
         # li nomina: una finta senza si difenderebbe da un mondo che non esiste.
         self.method = "GET"
         self.path = "/api/entities"
+        # La rotta risolta da aiohttp prima dei middleware: una finta senza
+        # rotta e' una richiesta a un indirizzo che non esiste, e il cancello
+        # al confine la tratta cosi'.
+        self.match_info = None
         self.app = {"internal_token": token,
                     # **L'indirizzo ESATTO del proxy**, che in produzione
                     # `reti_di_fiducia` risolve dal nome «supervisor». La rete

@@ -6,6 +6,8 @@ import time
 
 from aiohttp import web
 
+from .admission import admission_refusal
+
 logger = logging.getLogger(__name__)
 
 # Supervisor adds X-Ingress-Path = "/api/hassio_ingress/<token>/..." to every
@@ -235,8 +237,6 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
         # solo se amministra, o se la lista la ammette e l'opzione e' accesa.
         # Qui e non nel gestore perche' il ruolo si legge SOLO per chi arriva
         # dall'ingress, e prima di qualunque archivio.
-        from .admission import admission_refusal
-
         refusal = await admission_refusal(request.app, request)
         if refusal is not None:
             return refusal

@@ -6177,15 +6177,17 @@ async def _handle_health(request: web.Request) -> web.Response:
     # delle righe, qui era lo STATO dell'istantanea. Due cose diverse dette con
     # una parola sola si separano alla fonte, non a valle.
     #
-    # **A una persona che non amministra, solo stato e versione** (spec
-    # 2026-09-27, ruling R-2.23): il resto e' diagnostica dell'add-on, che
-    # Home Assistant a lei non mostrerebbe. Il ruolo si legge come al cancello
-    # e solo per chi arriva dall'ingress; servizi, ponte e sviluppo invariati.
-    if request.get("auth_via") == "ingress":
-        from .api.soffitto import boundary_role
-        role, _ = await boundary_role(request.app, request.get("soggetto"))
-        if role != "amministratore":
-            return web.json_response({"status": "ok", "version": read_version()})
+    # **A una persona che non amministra, solo stato, versione e impronta del
+    # guscio** (spec 2026-09-27, ruling R-2.23 e fix round 1, I1): il resto e'
+    # diagnostica dell'add-on, che Home Assistant a lei non mostrerebbe;
+    # l'impronta no -- il guscio la porta gia' scritta, e senza `build-check.js`
+    # non saprebbe dirle che la sua pagina e' vecchia. Il ruolo e' quello che
+    # il cancello ha letto e lasciato sulla richiesta: nessuna seconda domanda
+    # a Home Assistant. Servizi, ponte e sviluppo invariati.
+    if (request.get("auth_via") == "ingress"
+            and request.get("ruolo") != "amministratore"):
+        return web.json_response({"status": "ok", "version": read_version(),
+                                  "build": request.app.get("build_stamp", "")})
     return web.json_response({"status": "ok", "version": read_version(),
                               "build": request.app.get("build_stamp", ""),
                               "ponte": last_bridge_init(),

@@ -31,8 +31,10 @@ decide.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
+from typing import NamedTuple
 
 from aiohttp import web
 
@@ -53,10 +55,12 @@ RUOLI_VALIDI_S = 60.0
 #: I gesti su cui questo modulo si pronuncia. Insieme CHIUSO: un gesto che non
 #: c'e' non e' «permesso», e' un gesto su cui nessuno ha deciso -- e la prova
 #: `test_ogni_esito_risponde_a_TUTTI_i_gesti` lo trasforma in un rosso invece
-#: che in un silenzio. `diagnosticare` (spec 2026-09-27, ruling R-2.25) e'
-#: leggere cio' che Home Assistant mostra ai soli amministratori: il registro
-#: di sistema e le tracce delle automazioni.
-GESTI = ("leggere", "comandare", "costruire", "diagnosticare")
+#: che in un silenzio. `amministrare` (spec 2026-09-27, ruling R-2.25 e fix
+#: round 1) e' toccare cio' che Home Assistant riserva ai soli
+#: amministratori: le letture `@websocket_api.require_admin` (registro di
+#: sistema, tracce, corpo delle automazioni) e i servizi registrati con
+#: `async_register_admin_service` (`homeassistant.restart` e fratelli).
+GESTI = ("leggere", "comandare", "costruire", "amministrare")
 
 #: Quanto il cancello al confine tiene per buono un guasto nella lettura dei
 #: ruoli (spec 2026-09-27, ruling R-2.8/2.9). Il cancello gira su ogni
@@ -68,12 +72,14 @@ GATE_FAILURE_HOLD_S = 5.0
 
 #: Cosa vale una persona di cui non si e' potuto leggere il ruolo.
 #:
-#: **Non `lettore`**, e la ragione e' il fatto che distingue una persona da una
-#: macchina: chi e' passato dall'ingress *ha comunque superato Home Assistant*,
-#: quindi comanda gia' dalla plancia. Negarglielo per un guasto di rete gli
-#: toglierebbe cio' che ha comunque, cioe' sarebbe teatro pagato con un guasto.
-#: Costruire invece resta chiuso: quello HA glielo negherebbe davvero.
-_PERSONA_IGNOTA = "utente"
+#: **`lettore`, dal 27/09/2026** (fix round 1 del Task 2, ruling L-4). Prima
+#: valeva `utente`, sul presupposto che chi e' passato dall'ingress comandi
+#: gia' dalla plancia: non e' vero per tutti -- un utente di sola lettura, o
+#: senza gruppi, in Home Assistant non comanda niente -- e un guasto nella
+#: lettura non deve dargli piu' di quanto ha. Un ingress non arriva qui (il
+#: cancello al confine lo chiude prima): ci arriva un turno servito dal ponte,
+#: che il ruolo lo rilegge al momento dello strumento.
+_PERSONA_IGNOTA = "lettore"
 
 _TEATRO = ("comandare le entità è ciò che Home Assistant concede già dalla "
            "plancia: vietarlo qui non toglierebbe nessun potere a nessuno")
@@ -88,13 +94,18 @@ _READ_ONLY = ("questa utenza ha il ruolo di sola lettura: legge, ma non "
                  "comanda la casa e non costruisce, come Home Assistant non "
                  "le concede di fare")
 #: Il rifiuto degli strumenti che leggono cio' che Home Assistant riserva agli
-#: amministratori (il gesto `diagnosticare`).
+#: amministratori (il gesto `amministrare`).
 ADMIN_READS_REFUSAL = ("il registro di sistema e le tracce delle automazioni "
                        "Home Assistant li mostra solo agli amministratori: "
                        "HIRIS non li legge per chi non lo è")
-_IGNOTO = ("non ho potuto sapere se questa utenza è amministratore, e finché "
-           "non lo so non si costruisce: un guasto nella lettura non deve "
-           "diventare un permesso in più")
+#: Il rifiuto dei servizi di Home Assistant riservati agli amministratori.
+ADMIN_SERVICES_REFUSAL = ("questo servizio di Home Assistant è riservato agli "
+                          "amministratori (riavviare, fermare, ricaricare la "
+                          "configurazione): HIRIS non lo chiama per chi non lo "
+                          "è")
+_IGNOTO = ("non ho potuto sapere che ruolo ha questa utenza in Home "
+           "Assistant, e finché non lo so leggo soltanto: un guasto nella "
+           "lettura non deve diventare un permesso in più")
 #: **Corretto il 22/09/2026 leggendolo dal vivo.** Diceva «si decide quando la
 #: si registra», e la registrazione non esiste piu': un rifiuto che manda a
 #: compiere un gesto che il prodotto non ha e' peggio di un rifiuto muto --
@@ -111,10 +122,9 @@ def consente(soggetto: dict | None, *, ruolo: str | None) -> dict:
     Il ruolo arriva già risolto: da Home Assistant per una persona, dalla
     l'approvazione per un servizio. Qui si decide soltanto, e si decide una volta.
 
-    **Il verso del dubbio è diverso per le due specie**, e la differenza è il
-    fatto che le distingue: una persona senza ruolo leggibile ha comunque
-    superato l'ingress di Home Assistant, quindi vale `utente`; una macchina
-    senza ruolo **non ha superato niente**, e non può niente.
+    **Il verso del dubbio è diverso per le due specie**: una persona senza
+    ruolo leggibile vale `lettore` (legge, e basta); una macchina senza ruolo
+    **non ha superato niente**, e non può niente.
     """
     specie = (soggetto or {}).get("specie") or "persona"
     persona = specie == "persona"
@@ -131,8 +141,7 @@ def consente(soggetto: dict | None, *, ruolo: str | None) -> dict:
 
     if persona:
         puo = PUO[_PERSONA_IGNOTA]
-        return {**puo, "ruolo": _PERSONA_IGNOTA,
-                "perche": f"{_IGNOTO}. {_TEATRO}."}
+        return {**puo, "ruolo": _PERSONA_IGNOTA, "perche": f"{_IGNOTO}."}
 
     return {**{gesto: False for gesto in GESTI},
             "ruolo": None, "perche": _MACCHINA_MUTA}
@@ -193,49 +202,65 @@ async def _ha_users(app, *, hold_failure_s: float = 0.0) -> dict | None:
     if time.time() - visti["quando"] >= RUOLI_VALIDI_S:
         if time.time() - visti.get("fallito", float("-inf")) < hold_failure_s:
             return None
-        esito = await client.users()
-        if "errore" in esito:
-            visti["fallito"] = time.time()
-            # `error` e non `warning`, e con le CONSEGUENZE scritte: finché
-            # questa lettura non riesce NESSUNO può costruire — nemmeno il
-            # proprietario — e la cronologia della chat di prima delle chat
-            # divise resta orfana (`is_owner` non sa chi è il proprietario),
-            # una promessa di prima che si sveglia si chiude senza agire
-            # (`sole_owner`), i nomi delle persone non si leggono
-            # (`subject_name`), e nessuna persona entra dall'ingress --
-            # proprietario compreso -- perche' il cancello al confine non sa
-            # chi amministra (`admission.py`). Chi
-            # aggiunge un lettore aggiunge qui la sua conseguenza. È il verso
-            # giusto, ma è anche il guasto che spegne una funzione, e chi
-            # legge il registro deve capirlo alla prima riga invece di
-            # inseguire un 403 che non si spiega.
-            #
-            # **Il guasto non si mette in cache, la sua riga si'** (fix round
-            # 1 del Task 4): ogni `GET /api/pending` rilegge, e durante un
-            # guasto di HA ogni clic scriverebbe questa riga. Una volta ogni
-            # `RUOLI_VALIDI_S` basta a dire che il guasto dura.
-            adesso = time.time()
-            if adesso - visti.get("guasto_detto", 0.0) < RUOLI_VALIDI_S:
-                return None
-            visti["guasto_detto"] = adesso
-            logger.error(
-                "soffitto: non ho potuto leggere gli utenti da Home Assistant "
-                "(%s). Finché non ci riesco nessuna persona entra in HIRIS "
-                "dal pannello, e NESSUNO può far scrivere "
-                "automazioni a HIRIS, perché non so chi è amministratore, e la "
-                "cronologia della chat e le promesse di prima restano orfane, "
-                "perché non so chi è il proprietario: il comando è "
-                "`config/auth/list` sul canale "
-                "websocket",
-                esito["errore"])
-            return None
-        # Si MUTA il contenitore, non si riscrive `app[...]`: scrivere in `app`
-        # a richiesta già servita fa emettere ad aiohttp «Changing state of
-        # started or joined application is deprecated» — oggi un avviso, con
-        # aiohttp 4 un errore.
-        visti["per_id"] = {u["id"]: u for u in esito["utenti"] if u.get("id")}
-        visti["quando"] = time.time()
+        # **Una lettura in volo alla volta** (fix round 1, I2): una pagina che
+        # si apre chiede i suoi file tutti insieme, e ogni richiesta passa dal
+        # cancello. Senza questo, a copia scaduta, partirebbero tante
+        # `config/auth/list` quanti file: chi arriva mentre una e' in volo
+        # aspetta quella.
+        in_flight = visti.get("in_volo")
+        if in_flight is None:
+            in_flight = asyncio.ensure_future(_refresh_users(client, visti))
+            visti["in_volo"] = in_flight
+            in_flight.add_done_callback(lambda _done: visti.pop("in_volo", None))
+        return await asyncio.shield(in_flight)
+    return visti["per_id"]
 
+
+async def _refresh_users(client, visti: dict) -> dict | None:
+    """La lettura vera di `config/auth/list`, e cio' che se ne tiene: la
+    copia se riesce, l'ora del guasto e la sua riga d'errore se no."""
+    esito = await client.users()
+    if "errore" in esito:
+        visti["fallito"] = time.time()
+        # `error` e non `warning`, e con le CONSEGUENZE scritte: finché
+        # questa lettura non riesce NESSUNO può costruire — nemmeno il
+        # proprietario — e la cronologia della chat di prima delle chat
+        # divise resta orfana (`is_owner` non sa chi è il proprietario),
+        # una promessa di prima che si sveglia si chiude senza agire
+        # (`sole_owner`), i nomi delle persone non si leggono
+        # (`subject_name`), e nessuna persona entra dall'ingress --
+        # proprietario compreso -- perche' il cancello al confine non sa
+        # chi amministra (`admission.py`). Chi
+        # aggiunge un lettore aggiunge qui la sua conseguenza. È il verso
+        # giusto, ma è anche il guasto che spegne una funzione, e chi
+        # legge il registro deve capirlo alla prima riga invece di
+        # inseguire un 403 che non si spiega.
+        #
+        # **Il guasto non si mette in cache, la sua riga si'** (fix round
+        # 1 del Task 4): ogni `GET /api/pending` rilegge, e durante un
+        # guasto di HA ogni clic scriverebbe questa riga. Una volta ogni
+        # `RUOLI_VALIDI_S` basta a dire che il guasto dura.
+        adesso = time.time()
+        if adesso - visti.get("guasto_detto", 0.0) < RUOLI_VALIDI_S:
+            return None
+        visti["guasto_detto"] = adesso
+        logger.error(
+            "soffitto: non ho potuto leggere gli utenti da Home Assistant "
+            "(%s). Finché non ci riesco nessuna persona entra in HIRIS "
+            "dal pannello, e NESSUNO può far scrivere "
+            "automazioni a HIRIS, perché non so chi è amministratore, e la "
+            "cronologia della chat e le promesse di prima restano orfane, "
+            "perché non so chi è il proprietario: il comando è "
+            "`config/auth/list` sul canale "
+            "websocket",
+            esito["errore"])
+        return None
+    # Si MUTA il contenitore, non si riscrive `app[...]`: scrivere in `app`
+    # a richiesta già servita fa emettere ad aiohttp «Changing state of
+    # started or joined application is deprecated» — oggi un avviso, con
+    # aiohttp 4 un errore.
+    visti["per_id"] = {u["id"]: u for u in esito["utenti"] if u.get("id")}
+    visti["quando"] = time.time()
     return visti["per_id"]
 
 
@@ -243,11 +268,19 @@ def _role_of(row: dict | None) -> str | None:
     """**La regola del ruolo di una persona**, una sola: dalla riga di
     `ha_client.users()` al vocabolario di `canali.RUOLI`. Chi e' amministratore
     e chi e' di sola lettura lo dice `users()`, che legge i gruppi di Home
-    Assistant; qui si traduce e basta."""
+    Assistant; qui si traduce e basta.
+
+    **Senza gruppi, nessun ruolo** (fix round 1, I5): verificato il 27/09/2026
+    su Core 2026.9.3, un utente che non e' il proprietario e non ha gruppi ha
+    `merge_policies([])` -- nessun permesso su nessuna entita'. Non e'
+    `utente`, e non e' nemmeno `lettore`: per Home Assistant non puo' niente.
+    """
     if row is None:
         return None
     if row.get("amministratore"):
         return "amministratore"
+    if row.get("senza_gruppi"):
+        return None
     return "lettore" if row.get("sola_lettura") else "utente"
 
 
@@ -261,22 +294,45 @@ async def _ruolo_persona(app, soggetto: dict | None) -> str | None:
     return _role_of(await _person_row(app, soggetto))
 
 
-async def boundary_role(app, subject: dict | None) -> tuple[str | None, bool]:
-    """Il ruolo di una persona arrivata dall'ingress, per il cancello al
-    confine (spec 2026-09-27 §3): `(ruolo, letto)`.
+class BoundaryRole(NamedTuple):
+    """Cio' che il cancello al confine sa di una persona dall'ingress.
 
-    `letto` separa i due «non lo so», che il cancello chiude entrambi ma dice
-    in modo diverso: Home Assistant non ha risposto (`False` -- rifiuto per
-    tutti, proprietario compreso, col suo testo) oppure ha risposto e questa
-    persona non c'e' o non ha un id (`True`, ruolo `None`). La regola e' quella
-    di `_role_of`, la stessa del soffitto; la sola differenza e' il freno sul
-    guasto, `GATE_FAILURE_HOLD_S`.
+    `role`: il ruolo di `_role_of`, o `None`. I tre «non lo so» si separano
+    perche' si dicono in tre modi diversi: `read` falso -- Home Assistant non
+    ha risposto; `known` falso -- ha risposto, e questa persona non c'e' o non
+    ha un id; tutti e due veri e `role` `None` -- c'e', ma senza gruppi.
     """
+    role: str | None
+    read: bool
+    known: bool
+
+
+async def boundary_role(app, subject: dict | None) -> BoundaryRole:
+    """Il ruolo di una persona arrivata dall'ingress, per il cancello al
+    confine (spec 2026-09-27 §3). La regola e' quella di `_role_of`, la
+    stessa del soffitto; la sola differenza e' il freno sul guasto,
+    `GATE_FAILURE_HOLD_S`."""
     users = await _ha_users(app, hold_failure_s=GATE_FAILURE_HOLD_S)
     if users is None:
-        return None, False
+        return BoundaryRole(None, False, False)
     user_id = (subject or {}).get("id")
-    return _role_of(users.get(user_id) if user_id else None), True
+    row = users.get(user_id) if user_id else None
+    return BoundaryRole(_role_of(row), True, row is not None)
+
+
+def denies(ceiling: dict | None, gesture: str, subject: dict | None) -> bool:
+    """**La domanda unica**: questo soffitto nega questo gesto?
+
+    `None` (nessuna persona ha aperto il turno: l'osservatore, lo
+    schedulatore) non nega niente -- il perimetro delle macchine e'
+    l'invariante dei canali esterni. **Lo sviluppo non si restringe per
+    ruolo** (fix round 1, I3): con `HIRIS_ALLOW_NO_TOKEN` l'autenticazione e'
+    spenta per definizione, il soggetto `sviluppo` non ha un ruolo da
+    rispettare, e restringerlo darebbe solo un prodotto diverso da provare.
+    """
+    if ceiling is None or (subject or {}).get("specie") == "sviluppo":
+        return False
+    return not ceiling.get(gesture)
 
 
 async def is_owner(app, soggetto: dict | None) -> bool:

@@ -376,6 +376,11 @@ async def _finto_confine(request, handler):
     else:
         request["auth_via"] = "ingress"
         request["soggetto"] = _persona(chi)
+    # Il ruolo che il cancello al confine lascia sulla richiesta (spec
+    # 2026-09-27, fix round 1 del Task 2, I4): chi lo legge dopo non richiede
+    # a Home Assistant.
+    if request["auth_via"] == "ingress":
+        request["ruolo"] = "amministratore" if chi == "paolo" else "utente"
     return await handler(request)
 
 
@@ -502,14 +507,26 @@ async def test_la_cronaca_di_una_promessa_altrui_e_il_404_di_una_inesistente(rot
 
 
 @pytest.mark.asyncio
-async def test_la_cronaca_non_legata_a_una_promessa_resta_leggibile(rotte):
-    """Cio' che la spec non tocca non cambia: un'esecuzione della chat non e'
-    una promessa, e la rotta la serve come prima."""
+async def test_la_cronaca_non_legata_a_una_promessa_e_di_chi_l_ha_fatta(rotte):
+    """Un'esecuzione della chat non e' una promessa. Dal 27/09/2026 (spec
+    2026-09-27, fix round 1 del Task 2, L-3) a chi non amministra si mostra
+    solo la sua -- quella di un altro risponde come un id che non c'e' --
+    e all'amministratore tutte, come prima.
+
+    Mutazione ESEGUITA: tolto il controllo sul soggetto in
+    `handle_get_execution` -- rossa."""
     journal = rotte.app["journal"]
-    esecuzione = journal.log(actor="chat", service="light.turn_on",
-                             entity=["light.studio"], executed=True, now=time.time())
-    risposta = await rotte.get(f"/api/executions/{esecuzione}", headers=_chi("marta"))
-    assert risposta.status == 200
+    sua = journal.log(actor="chat", service="light.turn_on", entity=["light.studio"],
+                      executed=True, now=time.time(), subject=_persona("marta"))
+    altrui = journal.log(actor="chat", service="light.turn_on", entity=["light.studio"],
+                         executed=True, now=time.time())
+
+    assert (await rotte.get(f"/api/executions/{sua}", headers=_chi("marta"))).status == 200
+    negata = await rotte.get(f"/api/executions/{altrui}", headers=_chi("marta"))
+    inesistente = await rotte.get("/api/executions/mai-esistita", headers=_chi("marta"))
+    assert negata.status == inesistente.status == 404
+    assert await negata.json() == await inesistente.json()
+    assert (await rotte.get(f"/api/executions/{altrui}", headers=_chi("paolo"))).status == 200
 
 
 # --- le orfane --------------------------------------------------------------
@@ -668,3 +685,28 @@ async def test_il_job_di_una_promessa_col_filo_non_vale_come_chat(rotta_chat):
     assert "non è più valido" in (esito.get("errore") or ""), esito
     assert casa_ha.salvate == []
     assert archivio.read(proposta)["stato"] == "in_attesa"
+
+
+@pytest.mark.asyncio
+async def test_nello_SVILUPPO_il_fai_non_si_ferma_al_soffitto(archivio):
+    """Fix round 1 del Task 2 (spec 2026-09-27, I3): con
+    `HIRIS_ALLOW_NO_TOKEN` l'autenticazione e' spenta per definizione, e il
+    soggetto `sviluppo` non si restringe per ruolo -- prima il suo soffitto
+    senza ruolo gli negava il `fai` e gli lasciava `execute`. Il `fai` puo'
+    ancora fermarsi per altro (qui: nessun registro dei servizi), mai per il
+    soffitto.
+
+    Mutazione ESEGUITA: `denies` senza l'eccezione dello sviluppo -- rossa."""
+    from hiris.app.api.soffitto import consente
+
+    sviluppo = {"specie": "sviluppo", "id": None}
+    soffitto = consente(sviluppo, ruolo=None)
+    d = _dispatcher(archivio, ChatThread("sviluppo:-", "sviluppo"), sviluppo,
+                    soffitto=soffitto)
+
+    fai = await d.dispatch("promise", {
+        "specie": "fai", "frase": "alle 17 accendi lo studio", "quando": _fra(60),
+        "chiamata": {"servizio": "light.turn_on",
+                     "bersaglio": {"entita": ["light.studio"]}}})
+
+    assert fai.get("errore") != soffitto["perche"], fai
