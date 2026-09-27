@@ -486,6 +486,45 @@ both the sweep and the routing, so they cannot disagree.
 | `supervisor_ingress_cidr` | Source ranges treated as genuine Supervisor ingress (default `172.30.32.0/23`) |
 | `debug_expose_port` | **Dev only.** Logs a warning at every startup; it does *not* open port 8099 by itself — that is the Network section of the add-on page |
 
+### Who uses HIRIS
+
+| Option | Description |
+|---|---|
+| `non_admin_access` | **Off by default.** On: Home Assistant users who are not administrators can use HIRIS — the chat, their own conversations, their own Commitments and their own memories (read-only). Off: HIRIS refuses them, however they reach it |
+
+This option **is the gate, not the menu entry.** Since 2021.12 Home Assistant lets any logged-in
+user open an ingress session for any add-on, and its security page states that it assumes every
+user is trusted: hiding an add-on from the sidebar (`panel_admin`) hides only the menu entry. So
+HIRIS checks every request that arrives through ingress itself, at the boundary
+(`hiris/app/api/admission.py`): it reads the person's role from Home Assistant (at most a minute
+old) and lets an administrator through everywhere. A non-administrator gets through only when the
+option is on, and only on the routes the chat, the Commitments page and the read-only Memory page
+actually call. Everything else — Models, Services, Usage, Chat settings, Proposals, the home
+views, correcting or deleting a memory — answers 403 with a short Italian sentence saying why. The
+same holds, option or not, for anyone Home Assistant does not recognise (anonymous ingress
+included) or has no group for; and if Home Assistant cannot say who is an administrator, **everyone
+is refused, administrators included**, with a message that says so, until it answers again.
+
+Inside the chat a non-administrator gets what Home Assistant would give them, no more: they command
+entities as from a dashboard (a user in the `system-read-only` group only reads), they cannot build
+automations, scripts or scenes, they cannot read the system log, automation traces or an
+automation's body, and in the `homeassistant` domain they can call only `turn_on`, `turn_off`,
+`toggle` and `update_entity`. Memories used by the chat stay **shared by the whole house**: a
+non-administrator can ask what others told HIRIS, and what they ask it to remember reaches everyone.
+Their chat turns spend the providers you configured, with no per-person cap. Both are recorded as
+open risks in [`docs/BACKLOG.md`](docs/BACKLOG.md).
+
+**The menu entry follows the option.** At startup HIRIS asks Home Assistant to show its sidebar
+entry to everyone (option on) or removes that override (option off), with `frontend/update_panel`,
+available since **Home Assistant 2026.3**; it then reads the entry back and writes its real state
+to the add-on log. On an older Home Assistant the entry stays admin-only and the log says so —
+access is still decided by HIRIS, so a non-administrator can reach it only by address. The override
+is stored by Home Assistant (`.storage/frontend_panels`), not by HIRIS: it survives add-on updates
+and restarts, **and an uninstall** — if you turned the option on, turn it off and restart the add-on
+before uninstalling.
+
+The option is read once at startup: after changing it, restart the add-on.
+
 ### Carried over from 1.x — read, but inert
 
 | Option | Description |
@@ -534,6 +573,13 @@ Opening the add-on shows the chat. A configuration panel is served at
 | `#/models` | **Models** — active providers, the automatic chain and the default model per provider |
 | `#/usage` | **Usage** — tokens and cost, or the reason why they cannot be measured |
 | `#/services` | **Services** — who, besides you, may talk to HIRIS: panels and integrations on other machines. Open the ten-minute pairing window, compare the four-digit code the service shows on its own screen, approve it with a role, and revoke it at any time with immediate effect |
+
+A person who is not a Home Assistant administrator (with `non_admin_access` on) sees a smaller
+HIRIS: in the chat, no usage widget and no «Configurazione» link; in the configuration panel, only
+**Commitments** (`#/agenda`, their landing page) and **Memory** (`#/memory`, their own memories,
+without the buttons to correct or forget). Any other route opened by address shows the server's
+refusal and a link back to Commitments. Hiding is only the interface: the server refuses those
+routes anyway.
 
 Both surfaces share one stylesheet and one palette. The rebuild inventory in
 [`docs/out-of-scope/2026-08-08-frontend-da-rifare.md`](docs/out-of-scope/2026-08-08-frontend-da-rifare.md)

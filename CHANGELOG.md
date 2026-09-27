@@ -1,5 +1,107 @@
 # HIRIS — Changelog
 
+## [Non rilasciato] — HIRIS per chi non amministra
+
+Chi installa HIRIS può ora **aprirlo agli utenti di Home Assistant che non sono amministratori**,
+con un'opzione dell'add-on e senza toccare codice. E da questa versione HIRIS **controlla da sé chi
+entra**: fino a oggi lo faceva solo la voce di menu, che non è un controllo d'accesso.
+
+### L'opzione `non_admin_access`
+
+Nella configurazione dell'add-on, sezione «Chi usa HIRIS»: **«Consenti HIRIS agli utenti non
+amministratori»**, **spenta per difetto**. Si legge una volta all'avvio: dopo averla cambiata, si
+riavvia l'add-on.
+
+- **Accesa**: chi non è amministratore vede HIRIS nel menu e usa **la chat, le sue conversazioni, i
+  suoi Impegni e le sue memorie in sola lettura**. Non vede la configurazione.
+- **Spenta**: HIRIS lo rifiuta, **da qualunque parte arrivi** — anche aprendo la sessione ingress a
+  mano, cosa che Home Assistant concede a ogni utente loggato (verificato il 27/09/2026 su Core
+  2026.9.3 e Supervisor 2026.09.2).
+
+**La voce di menu segue l'opzione.** All'avvio, appena Home Assistant risponde, HIRIS chiede lo
+slug al Supervisor, scrive l'override della propria voce con `frontend/update_panel` (visibile a
+tutti con l'opzione accesa; override tolto con l'opzione spenta), la rilegge e ne scrive lo stato
+vero nel registro. Il comando esiste da **Home Assistant 2026.3**: su una versione precedente la voce
+resta ai soli amministratori e il registro lo dice; l'accesso lo decide comunque HIRIS. L'override lo
+conserva Home Assistant e sopravvive anche alla disinstallazione: chi toglie HIRIS dopo averla
+accesa, la spegne e riavvia l'add-on prima.
+
+### Il cancello al confine
+
+Ogni richiesta di una persona arrivata dall'ingress passa ora da **un cancello** (`api/admission.py`),
+subito dopo che HIRIS ha riconosciuto chi è. Il ruolo si legge da Home Assistant con la sua regola
+(proprietario, oppure attivo e nel gruppo `system-admin`), una volta per richiesta, al massimo vecchio
+di un minuto.
+
+- **Un amministratore passa ovunque**, come prima.
+- **Chi non lo è** passa solo sulle rotte di una **lista di ammissione** scritta a mano, ognuna con
+  la sua ragione: i due gusci e i loro asset, ciò che chiamano all'avvio, la chat e le conversazioni,
+  gli Impegni, la Memoria in lettura. Tutto il resto risponde 403, e una rotta nuova nasce chiusa.
+- **Nel dubbio si chiude**: un utente che Home Assistant non riconosce (una persona anonima
+  dell'ingress compresa) o che non ha gruppi è rifiutato; se Home Assistant non dice i ruoli,
+  **sono rifiutati tutti, amministratori compresi**, con un testo che lo dice e una pagina che si
+  ricarica da sola.
+- **Il rifiuto** è un JSON 403 per le rotte `/api`, una pagina semplice per i gusci, e dice solo il
+  perché: opzione spenta, pagina riservata, ruoli illeggibili, persona non riconosciuta. Nel registro
+  il modello della rotta e la chiave di chi chiedeva, mai il nome.
+- **Servizi firmati, ponte e sviluppo** non passano dal cancello: hanno le loro regole, invariate.
+
+### Sei rotte che erano aperte a chiunque passasse dall'ingress
+
+**Correzione di sicurezza.** `PUT /api/models/config`, `PUT /api/chat-settings`,
+`POST /api/mind/objective`, `POST /api/usage/reset`, `PATCH` e `DELETE /api/memories/{id}` non
+chiedevano il ruolo: si dava per scontato che a `/config` arrivassero solo amministratori, ed era
+falso — un utente non amministratore loggato poteva raggiungerle aprendo la sessione ingress a mano.
+Ora sono **riservate agli amministratori per costruzione**: non sono nella lista, e il cancello le
+chiude a chiunque altro, con l'opzione accesa o spenta.
+
+### Dentro la chat, mai più di quanto Home Assistant concede
+
+La lista dice dove si entra; il soffitto dice cosa si fa lì. Un quarto gesto, **`amministrare`**
+(toccare ciò che Home Assistant riserva agli amministratori), è solo dell'amministratore:
+
+- `system_log` e `automation_trace` rifiutano per chi non amministra; `view` dice che
+  un'automazione c'è e come si chiama, ma non ne mostra il corpo; l'anteprima di `propose` non
+  descrive com'è adesso un'automazione o una scena. Gli script restano visibili: Home Assistant non
+  li riserva.
+- `execute` nel dominio `homeassistant`, per chi non amministra, chiama solo `turn_on`, `turn_off`,
+  `toggle` e `update_entity`: riavviare, fermare o ricaricare la configurazione no.
+- Un utente del gruppo **`system-read-only`** di Home Assistant è ora `lettore`: legge, non comanda
+  e non costruisce.
+- **I turni delle promesse** portano il soffitto di chi le ha chieste, riletto al risveglio, sia
+  sulla strada sincrona sia sul ponte: prima l'orologio leggeva per tutti col token di HIRIS.
+- **Il proprietario della casa fuori dal gruppo `system-admin`** ora è amministratore anche per
+  HIRIS, come per Home Assistant; e un utente disattivato non lo è più, anche se è nel gruppo.
+  Prima contava solo il gruppo.
+
+### Cosa vede chi non amministra
+
+- **`GET /api/memories`**: solo i ricordi che ha detto lui (`said_by`), col conto dei suoi. La
+  memoria che la chat usa **resta condivisa** — rischio dichiarato, in BACKLOG.
+- **`GET /api/pending`** porta `can_configure` accanto a `can_build`, e per chi non configura
+  `configure_refusal`, il testo del rifiuto del cancello.
+- **`GET /api/health`**: solo stato, versione e impronta del guscio. **`GET /api/chat-settings`**:
+  solo nome dell'assistente e tetto dei turni.
+- **`GET /api/executions/{id}`**: un comando dato in chat da un altro è un 404, come un id che non
+  c'è.
+- **Nella chat** spariscono il riquadro dei consumi e il link «Configurazione» (e il giro dei
+  consumi non parte). **Nel guscio `/config`** restano Impegni — la sua pagina d'atterraggio — e
+  Memoria, senza i pulsanti per correggere e cancellare; una pagina di configurazione aperta per
+  indirizzo non chiede i suoi dati e mostra il rifiuto del server con un link agli Impegni.
+
+**Per un amministratore su un browser che non ha mai aperto HIRIS**, le voci di configurazione del
+menu compaiono dopo la prima risposta del server (un giro di rete), e il guscio `/config` aspetta
+quella risposta — fino a tre secondi — prima di scegliere la pagina. Poi il browser lo ricorda.
+
+### Cosa resta fuori
+
+Dichiarato in `docs/BACKLOG.md`, voce per voce: la memoria condivisa in chat, nessun tetto di spesa
+per persona, i servizi firmati con ruolo `utente` o `lettore` (scrivono la configurazione e leggono
+tutte le memorie), i servizi riservati di altri domini con un bersaglio, `can_configure` vero in
+sviluppo, «ogni utente è fidato» per gli altri add-on, il ricordo di `can_configure` su un browser
+condiviso, la Memoria raggiungibile dalla chat solo dagli Impegni, il testo della pagina non
+concessa, il ridisegno per una risposta tardiva.
+
 ## [3.68.0] — Una chat per ciascuno (2026-09-26)
 
 Due fette insieme: **le chat divise** (ognuno ha il suo filo, e HIRIS sa chi gli parla) e **il

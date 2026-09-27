@@ -668,8 +668,103 @@ configurazione (`PUT /api/models/config`, `PUT /api/chat-settings`, `POST /api/u
 che a una persona non amministratrice sono negate. È un'incoerenza col principio «mai più di quanto
 il chiamante può in HA».
 
+**Anche in lettura** (aggiunto dal Task 5 della stessa fetta, 27/09/2026): i filtri che la fetta
+ha messo sulle letture valgono solo per le persone dall'ingress (`soffitto.restricted_person`,
+che guarda `auth_via == "ingress"`). Un servizio firmato con ruolo `utente` o `lettore` riceve da
+`GET /api/memories` **tutti** i ricordi (non solo i suoi) e da `GET /api/chat-settings` **tutte**
+le impostazioni della chat, prompt di sistema compreso — non solo `name` e `max_chat_turns`.
+
 **Cosa serve**: la stessa lista di ammissione (o il suo complemento «riservato agli amministratori»)
-applicata anche ai servizi con ruolo diverso da `amministratore`.
+applicata anche ai servizi con ruolo diverso da `amministratore`, e gli stessi filtri di lettura
+(`restricted_person` che guardi il ruolo, non solo l'ingresso). Si chiude quando un servizio
+`utente` riceve 403 su `PUT /api/models/config` e solo i propri ricordi su `GET /api/memories`.
+
+### I servizi di Home Assistant riservati agli amministratori, fuori dal dominio `homeassistant` — aperta il 27/09/2026
+
+`origine: re-review del Task 2 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/home_space/tools.py::_HA_CORE_USER_SERVICES`
+
+Home Assistant registra alcuni servizi con `async_register_admin_service`: a un non amministratore
+li rifiuta (`helpers/service.py`). HIRIS li chiama col proprio token di amministratore, quindi deve
+rifiutarli da sé. Oggi lo fa **solo per il dominio `homeassistant`** (verificato il 27/09/2026 su
+Core 2026.9.3): a chi non amministra `execute` concede solo `turn_on`, `turn_off`, `toggle`,
+`update_entity`. I servizi riservati di **altri domini che dichiarano un bersaglio** (entità,
+dispositivo, area) passano la porta come qualunque comando: quelli senza bersaglio sono gia'
+irraggiungibili (`action/verification.py`, un bersaglio vuoto e' sempre un rifiuto).
+
+**Perche' resta fuori**: l'elenco di quali servizi di quali domini siano riservati non e' esposto
+da nessuna API di Home Assistant (lo dice solo il sorgente di ogni integrazione), e scriverlo a mano
+per tutte sarebbe una lista che invecchia. **Cosa la chiude**: una fonte per sapere, servizio per
+servizio, se Home Assistant lo riserva agli amministratori — o la misura che sulla casa non ce n'e'
+nessuno raggiungibile con un bersaglio.
+
+### In sviluppo `can_configure` e' vero mentre `can_build` e' falso — aperta il 27/09/2026
+
+`origine: review del Task 3 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/api/handlers_pending.py`
+
+Con `HIRIS_ALLOW_NO_TOKEN=1` il soggetto `sviluppo` non si restringe per ruolo
+(`soffitto.denies`): `can_configure` in `/api/pending` e' vero. `can_build` invece viene dal
+soffitto nudo (`request_ceiling(request)["costruire"]`), e il soggetto di sviluppo non ha un ruolo:
+e' falso. In sviluppo il menu mostra quindi la configurazione ma non le Proposte. Incoerenza
+**dichiarata**, non un buco: in produzione quel soggetto non esiste. **Cosa la chiude**: calcolare
+`can_build` con la stessa domanda (`not denies(ceiling, "costruire", subject)`), dopo aver
+guardato chi, fra le prove, pinna il comportamento di oggi.
+
+### «Ogni utente e' fidato»: il cancello di HIRIS e' l'unica protezione — aperta il 27/09/2026
+
+`origine: misurato per la fetta «HIRIS per chi non amministra», 27/09/2026 (Core 2026.9.3, Supervisor 2026.09.2)` · `docs/design/2026-09-27-hiris-per-chi-non-amministra.md` §1
+
+`panel_admin` nasconde **solo la voce di menu**: un non amministratore loggato puo' aprire una
+sessione ingress per qualunque add-on con due chiamate WebSocket che Core gli concede
+(`hassio/websocket_api.py`, `WS_NO_ADMIN_ENDPOINTS`), e il proxy ingress del Supervisor non
+controlla ruoli. La pagina di sicurezza di Home Assistant lo dichiara: «assume che ogni utente sia
+fidato». Per HIRIS la protezione e' **solo** il cancello al confine, con l'opzione spenta o accesa;
+per gli **altri add-on** della casa la porta resta aperta, e HIRIS non la puo' chiudere.
+
+**Perche' resta fuori**: non e' codice di HIRIS. **Cosa la chiude**: niente dentro HIRIS; va
+detto a chi installa, e riverificato se Home Assistant cambia `WS_NO_ADMIN_ENDPOINTS` o il proxy
+ingress.
+
+### Sullo stesso browser, il ricordo di `can_configure` passa da un amministratore a chi viene dopo — aperta il 27/09/2026
+
+`origine: review di sicurezza del Task 4 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/static/pending-badge.js`
+
+Il guscio ricorda `can_configure` in `localStorage["hiris.can_configure"]`, per profilo del
+browser. Su un dispositivo condiviso, se un amministratore ha aperto HIRIS e poi entra un non
+amministratore con lo stesso profilo, questo vede **per un attimo** il menu di configurazione e il
+guscio fa **una** lettura riservata, che il server rifiuta; alla prima risposta di `/api/pending`
+il menu si chiude. Solo interfaccia: il cancello al confine rifiuta comunque, nessun dato passa.
+**Cosa la chiude**: legare il ricordo alla persona (per esempio alla chiave del soggetto), o non
+usarlo per `true` finche' il server non ha risposto — col prezzo di un menu che compare dopo anche
+per l'amministratore.
+
+### La Memoria si raggiunge dalla chat solo passando dagli Impegni — aperta il 27/09/2026
+
+`origine: review UX del Task 4 della fetta «HIRIS per chi non amministra», 27/09/2026` · nessun documento
+
+Per chi non amministra la barra laterale della chat mostra «Impegni» (`config#/agenda`) ma non il
+link «Configurazione»: la Memoria c'e', ma la si trova solo dal menu del guscio `/config`, dopo
+esserci entrati dagli Impegni. E' trovabilita', non un difetto della fetta: serve una voce nuova nella chat, fuori dal
+perimetro deciso. **Cosa la chiude**: una voce «Memoria» (o «I tuoi ricordi») nella barra laterale
+della chat per chi non configura.
+
+### Il testo della pagina non concessa — aperta il 27/09/2026
+
+`origine: review UX del Task 4 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/api/admission.py::NOT_ADMITTED`
+
+Oggi: «Questa parte di HIRIS è riservata agli amministratori.» La review UX ha suggerito «…riservata
+a chi gestisce la casa in Home Assistant.»: «amministratori» e' la parola di Home Assistant, ma chi
+la legge puo' non sapere chi lo sia in casa sua. **Decisione del proprietario**; il testo vive in un
+posto solo (arriva anche al guscio come `configure_refusal`).
+
+### Una risposta tardiva di `can_configure` rimonta la pagina aperta — aperta il 27/09/2026
+
+`origine: re-review del Task 4 della fetta «HIRIS per chi non amministra», 27/09/2026` · `hiris/app/static/config/main.js`
+
+Senza ricordo, il guscio `/config` aspetta la prima risposta di `/api/pending` fino a 3 secondi
+(`ROUTER_WAIT_MS`), poi parte chiuso. Una risposta che arriva dopo rimonta la pagina aperta
+(`HirisRouter.refresh()`), anche quando la pagina era gia' quella giusta: un ridisegno in piu', non
+un errore. **Cosa la chiude**: rimontare solo se il permesso cambia davvero cio' che la pagina
+mostra.
 
 > **Avvertenza sulla prima stesura (04/09/2026).** Il proprietario aveva chiesto di annotare una
 > lista di argomenti per il prossimo sprint, e quella lista **non e' stata salvata da nessuna
@@ -799,6 +894,15 @@ non nuovo rispetto a sopra (è la stessa non-identità), ma con un freno vero: a
 `soffitto.ceiling_at_wake` rilegge il ruolo da capo, e un soggetto senza `id` (`persona:-` non ne
 porta uno) non risolve a nessun ruolo che comandi — la promessa fallisce chiusa, mai eseguita
 alla cieca.
+
+**Dalla fetta «HIRIS per chi non amministra» (27/09/2026):** dall'ingress una persona anonima non
+entra piu'. Il cancello al confine (`api/admission.py`) non trova chi e' fra gli utenti di Home
+Assistant e la rifiuta su ogni rotta — con l'opzione `non_admin_access` spenta col testo
+dell'opzione, accesa con «Home Assistant non mi ha detto chi sei…» — provato in
+`tests/test_admission.py` (la tabella {amministratore, utente, ignoto, anonimo} × opzione × rotta).
+Il filo `persona:-` non si scrive piu' da quella porta; resta cio' che c'era prima, finche' esiste.
+La voce si chiude quando qualcuno guarda se sulla casa esiste un filo anonimo e decide cosa
+farne.
 
 ### Il legame utente→dispositivo dell'app companion non è esposto dalle API di Home Assistant
 
@@ -1521,9 +1625,24 @@ membri sono nella cesta `members` dello specchio, e `queries.group_membership` e
 (`light.lampadario_sala_da_pranzo`) ha tre membri con capacita' identiche, misurato il 09/09/2026.
 Morde il giorno in cui il proprietario mette una luce a colore accanto a due prese.
 
-### HIRIS per gli utenti non-admin di Home Assistant
+### ~~HIRIS per gli utenti non-admin di Home Assistant~~ — **USCITA col prossimo rilascio**
 
-`origine: il proprietario, 05/09/2026, brainstorming` · `nessun documento`
+`origine: il proprietario, 05/09/2026, brainstorming` · `nessun documento` (alla chiusura: `docs/design/2026-09-27-hiris-per-chi-non-amministra.md`)
+
+**CHIUSA il 27/09/2026 con la fetta «HIRIS per chi non amministra»**
+(`docs/design/2026-09-27-hiris-per-chi-non-amministra.md`). Il blocco qui sotto — *come* HIRIS
+sappia chi e' amministratore — l'aveva gia' sciolto il soffitto (`api/soffitto.py`, sprint
+sicurezza): il ruolo si legge da `config/auth/list`, con la regola di Home Assistant
+(`User.is_admin`: proprietario, oppure attivo e nel gruppo `system-admin`). La fetta aggiunge
+l'opzione dell'add-on `non_admin_access` (spenta per difetto), che sposta anche la voce di menu con
+`frontend/update_panel` (HA 2026.3 e dopo), e **un cancello al confine**
+(`api/admission.py::ADMISSION`): a una persona non amministratrice dall'ingress passano solo la
+chat, le sue conversazioni, i suoi Impegni e le sue memorie in sola lettura; con l'opzione spenta
+nemmeno quelle. Delle tre decisioni del brainstorming: la 1 («poteri uguali per tutti») e'
+superata dal soffitto — chi non amministra comanda come dalla plancia, ma non costruisce, non
+configura e non legge cio' che Home Assistant riserva agli amministratori (gesto `amministrare`);
+la 2 l'ha costruita la fetta «le chat divise»; la 3 e' la forma di questa fetta, con la «Casa»
+chiusa anche lei a chi non amministra (legge rotte di configurazione). Cio' che resta fuori e' nelle voci del 27/09/2026 in «In attesa». Il testo sotto e' il reperto com'era.
 
 **Il bersaglio**: gli utenti HA **non amministratori**, che oggi l'add-on non lo vedono nemmeno.
 La distribuzione ad altre case e' l'orizzonte dichiarato, non il problema di questa voce.
