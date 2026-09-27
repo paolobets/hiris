@@ -346,10 +346,17 @@ async def test_can_configure_nello_SVILUPPO_e_vero(casa, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_il_ruolo_si_legge_UNA_volta_per_richiesta(casa):
-    """Extra 1: il ruolo lo legge il cancello, e `/api/pending` lo prende
-    dalla richiesta. Con la copia dei ruoli scaduta ad ogni lettura, una
-    seconda domanda nel gestore farebbe due letture per richiesta."""
+@pytest.mark.parametrize("method,path,utente", [
+    ("GET", "/api/pending", "u-marta"),
+    ("GET", "/api/constructions", "u-admin"),
+    ("POST", "/api/services/window/open", "u-admin"),
+])
+async def test_il_ruolo_si_legge_UNA_volta_per_richiesta(casa, method, path, utente):
+    """Extra 1 e fix round 1: il ruolo lo legge il cancello, e i gestori --
+    i pallini, il cancello di chi costruisce (`require_builder`), quello dei
+    servizi -- lo prendono dalla richiesta. Con la copia dei ruoli scaduta ad
+    ogni lettura, una seconda domanda nel gestore farebbe due letture per
+    richiesta."""
     app = casa.app
     app["ha_client"].users.reset_mock()
     ruoli = app["ruoli"]
@@ -360,7 +367,7 @@ async def test_il_ruolo_si_legge_UNA_volta_per_richiesta(casa):
 
     app["ruoli"] = _SempreScaduta(ruoli)
     try:
-        risposta = await casa.get("/api/pending", headers=_persona("u-marta"))
+        risposta = await casa.request(method, path, headers=_persona(utente))
     finally:
         app["ruoli"] = ruoli
 
@@ -418,10 +425,12 @@ def test_la_riduzione_e_cio_che_la_CHAT_legge():
 # (`POST /api/services/window/open`) e il soffitto del turno di chat.
 
 async def _chat_ceiling(request):
-    """Come `handlers_chat` calcola il soffitto del turno (efc38564)."""
-    from hiris.app.api.soffitto import per_richiesta
+    """Come `handlers_chat` calcola il soffitto del turno: fino a efc38564
+    `await per_richiesta(request.app, request)`, dal fix round 1
+    `request_ceiling(request)`. I valori attesi sono quelli misurati prima."""
+    from hiris.app.api.soffitto import request_ceiling
 
-    return await per_richiesta(request.app, request)
+    return request_ceiling(request)
 
 
 _CHI_CHIEDE = ("admin", "utente", "lettore", "servizio-amministratore",

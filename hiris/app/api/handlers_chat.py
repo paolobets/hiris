@@ -35,7 +35,7 @@ from ..model_resolution import downgrade_note
 from ..proxy._sanitize import sanitize_ha_value, truncate_with_marker
 from ..steering import declare_downgrade, misura_turno, who_answers
 from .handlers_home_space import compose_briefing
-from .soffitto import ceiling_for, per_richiesta, ruolo_letto
+from .soffitto import ceiling_for, request_ceiling, ruolo_letto
 
 logger = logging.getLogger(__name__)
 
@@ -580,7 +580,7 @@ async def _enqueue_chat_job(
     # serve solo al `ruolo` della sezione «Chi ti sta parlando» qui sotto (il
     # ponte non passa da `create_tool_dispatcher`, quello lo rilegge
     # `_downgrade_to_chain` sul proprio soggetto se il turno ripiega).
-    soffitto = await ceiling_for(request.app, request.get("soggetto"))
+    soffitto = request_ceiling(request)
 
     reasoning_queue = request.app["reasoning_queue"]
     now = time.time()
@@ -1158,7 +1158,7 @@ async def handle_chat(request: web.Request) -> web.Response:
         # Task 5 («chi gli parla») lo riusa anche per il `ruolo` della sezione
         # "Chi ti sta parlando" (compose_chat_context, qui sotto) -- una lettura
         # sola invece di due, come per il dispatcher piu' giu'.
-        soffitto = await per_richiesta(request.app, request)
+        soffitto = request_ceiling(request)
 
         # Chi parla + nucleo + sessioni precedenti, in un'unica stringa:
         # `compose_chat_context` (Task 1 della fetta "il ponte riceve il nucleo",

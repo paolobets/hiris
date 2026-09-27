@@ -164,10 +164,15 @@ async def test_PIN_un_giudizio_scritto_prima_resta_del_proprietario(cliente):
 
 class _RichiestaFinta(dict):
     """Quanto basta di una `web.Request` al cancello: la mappa in cui il
-    confine deposita il soggetto, l'app, il metodo e il percorso."""
+    confine deposita il soggetto, l'app, il metodo e il percorso -- e, per una
+    persona, l'ingresso e il ruolo che il cancello al confine ha letto
+    (`soffitto.request_role`)."""
 
-    def __init__(self, app, soggetto):
+    def __init__(self, app, soggetto, ruolo=None):
         super().__init__(soggetto=soggetto)
+        if (soggetto or {}).get("specie") == "persona":
+            self["auth_via"] = "ingress"
+            self["ruolo"] = ruolo
         self.app = app
         self.method = "GET"
         self.path = "/api/constructions"
@@ -203,11 +208,14 @@ class _UtentiFinti:
     ({"specie": "sviluppo", "id": None, "nome": None}, _UTENTI, False),
 ])
 async def test_il_cancello_decide_per_ogni_ingresso(soggetto, utenti, passa):
-    from hiris.app.api.soffitto import require_builder
+    from hiris.app.api.soffitto import boundary_role, require_builder
 
     app = {"ha_client": _UtentiFinti(utenti), "ruoli": {"quando": 0.0, "per_id": {}}}
+    # Il ruolo lo legge il cancello al confine, con la stessa regola del
+    # soffitto; `require_builder` lo prende dalla richiesta.
+    letto = await boundary_role(app, soggetto)
 
-    rifiuto = await require_builder(app, _RichiestaFinta(app, soggetto))
+    rifiuto = require_builder(_RichiestaFinta(app, soggetto, letto.role))
 
     if passa:
         assert rifiuto is None

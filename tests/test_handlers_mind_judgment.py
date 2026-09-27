@@ -42,9 +42,12 @@ def _richiesta(app, corpo=None):
         `test_chi_costruisce.py`; queste parlano della porta dei giudizi."""
 
         def __init__(self):
-            super().__init__(soggetto=AUTORE)
-            # Home Assistant finto che dice amministratore l'autore: la
-            # premessa, dichiarata qui una volta per tutte le prove.
+            # Come il confine la lascia: una persona dall'ingress, col ruolo
+            # che il cancello al confine ha letto (`soffitto.request_role`):
+            # amministratore, la premessa di tutte le prove. Home Assistant
+            # finto resta per il NOME dell'autore (`subject_name`).
+            super().__init__(soggetto=AUTORE, auth_via="ingress",
+                             ruolo="amministratore")
             app.setdefault("ha_client", _RuoliFinti())
             app.setdefault("ruoli", {"quando": 0.0, "per_id": {}})
             self.app = app

@@ -160,7 +160,8 @@ class _HA:
 
 
 class _Richiesta(dict):
-    """`request.get("soggetto")` e basta: e' tutto cio' che `per_richiesta` legge."""
+    """La mappa che il confine lascia: soggetto, ingresso e -- per una persona
+    -- il ruolo letto dal cancello. E' tutto cio' che `request_ceiling` legge."""
 
 
 @pytest.mark.asyncio
@@ -168,16 +169,26 @@ class _Richiesta(dict):
     _PERSONA, {"specie": "persona", "id": "u-2"}, _ANONIMO, _CANALE,
     {**_CANALE, "ruolo": "amministratore"}, None,
 ])
-async def test_ceiling_for_e_per_richiesta_sono_UNA_regola(soggetto):
+async def test_ceiling_for_e_request_ceiling_sono_UNA_regola(soggetto):
     """Le chat divise: il ponte calcola il soffitto dal soggetto del job, la
-    rotta dal soggetto della richiesta. Due strade, una regola: per lo stesso
-    soggetto devono dire la stessa cosa, o una delle due concede di piu'."""
-    from hiris.app.api.soffitto import ceiling_for, per_richiesta, prepara_ruoli
+    rotta dalla richiesta, col ruolo che il cancello al confine ha letto
+    (`boundary_role`). Due strade, una regola: per lo stesso soggetto devono
+    dire la stessa cosa, o una delle due concede di piu'."""
+    from hiris.app.api.soffitto import (
+        boundary_role,
+        ceiling_for,
+        prepara_ruoli,
+        request_ceiling,
+    )
 
     app: dict = {"ha_client": _HA()}
     prepara_ruoli(app)
     by_subject = await ceiling_for(app, soggetto)
-    by_request = await per_richiesta(app, _Richiesta(soggetto=soggetto))
+    request = _Richiesta(soggetto=soggetto)
+    if (soggetto or {}).get("specie") == "persona":
+        request["auth_via"] = "ingress"
+        request["ruolo"] = (await boundary_role(app, soggetto)).role
+    by_request = request_ceiling(request)
 
     assert by_subject == by_request
 

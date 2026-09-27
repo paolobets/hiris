@@ -380,8 +380,9 @@ async def ceiling_for(app, soggetto: dict | None) -> dict:
     Si calcola da un soggetto e non da una richiesta (fetta «le chat divise»):
     un turno di chat servito dal ponte arriva su `/api/mcp` con la credenziale
     del ponte, e chi ha scritto il messaggio viaggia nel job, non nella
-    richiesta. Una regola sola per entrambi i casi -- `per_richiesta` e' una
-    riga che la chiama.
+    richiesta. Una regola sola per entrambi i casi, `consente`: qui il ruolo
+    di una persona si legge da Home Assistant, per una richiesta l'ha gia'
+    letto il cancello al confine e `request_ceiling` lo prende da li'.
 
     Il ruolo arriva da Home Assistant se è una persona, e **viaggia già col
     soggetto** se è un servizio, perché gliel'ha dato l'approvazione.
@@ -515,10 +516,11 @@ async def ceiling_at_wake(app, subject: dict | None) -> dict:
     return await ceiling_for(app, subject)
 
 
-async def per_richiesta(app, request) -> dict:
-    """Il soffitto di questa richiesta: quello del soggetto che il confine
-    (`middleware_internal_auth`) le ha attaccato."""
-    return await ceiling_for(app, request.get("soggetto") or {})
+def is_admin_role(role: str | None) -> bool:
+    """**La regola dell'amministratore**, scritta una volta: il cancello al
+    confine (`admission.py`) e le pagine che si adattano a chi guarda
+    (`restricted_person`) la chiedono qui."""
+    return role == "amministratore"
 
 
 def request_role(request) -> str | None:
@@ -534,8 +536,12 @@ def request_role(request) -> str | None:
 
 
 def request_ceiling(request) -> dict:
-    """Il soffitto di questa richiesta dal ruolo gia' letto (`request_role`):
-    la stessa regola di `ceiling_for`, senza rileggere i ruoli."""
+    """**Il soffitto di questa richiesta**, dal ruolo gia' letto
+    (`request_role`): la stessa regola di `ceiling_for`, senza rileggere i
+    ruoli. E' la sola strada per chi decide su una richiesta -- il cancello di
+    chi costruisce, quello dei servizi, il turno di chat, i pallini: fino al
+    fix round 1 del Task 3 c'era anche `per_richiesta`, che rileggeva il ruolo
+    da Home Assistant dopo il cancello, ed e' uscita."""
     return consente(request.get("soggetto") or {}, ruolo=request_role(request))
 
 
@@ -545,7 +551,7 @@ def restricted_person(request) -> bool:
     mostrano solo cio' che e' suo (spec 2026-09-27 §4). Servizi, ponte e
     sviluppo hanno le loro regole e restano come prima."""
     return (request.get("auth_via") == "ingress"
-            and request_role(request) != "amministratore")
+            and not is_admin_role(request_role(request)))
 
 
 def _route_pattern(request) -> str:
@@ -558,7 +564,7 @@ def _route_pattern(request) -> str:
     return getattr(resource, "canonical", None) or "?"
 
 
-async def require_builder(app, request) -> web.Response | None:
+def require_builder(request) -> web.Response | None:
     """**Il cancello di chi costruisce** (spec 2026-09-26 §3, decisioni 5 e
     6): `None` se questa richiesta puo' costruire, altrimenti il 403 col
     motivo del soffitto.
@@ -573,7 +579,7 @@ async def require_builder(app, request) -> web.Response | None:
     per URL e' un caso normale, non un allarme. Si scrive la chiave del
     soggetto e non il nome visualizzato, che e' testo di chi chiede.
     """
-    permesso = await per_richiesta(app, request)
+    permesso = request_ceiling(request)
     if permesso["costruire"]:
         return None
     logger.info("soffitto: %s %s negato a %s — %s", request.method, _route_pattern(request),

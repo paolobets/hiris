@@ -85,7 +85,10 @@ def _richiesta(app, ident, corpo):
             self.app = app
             self.match_info = {"id": ident}
             self.query = {}
-            self._valori = {"soggetto": AMMINISTRATORE}
+            # Come il confine la lascia: dall'ingress, col ruolo che il
+            # cancello al confine ha letto (`soffitto.request_role`).
+            self._valori = {"soggetto": AMMINISTRATORE, "auth_via": "ingress",
+                            "ruolo": "amministratore"}
 
         async def json(self):
             return corpo

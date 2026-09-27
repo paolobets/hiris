@@ -23,7 +23,7 @@ from aiohttp import web
 from aiohttp.web_urldispatcher import StaticResource
 
 from ..chat_thread import subject_key_for
-from .soffitto import _route_pattern, boundary_role
+from .soffitto import _route_pattern, boundary_role, is_admin_role
 
 logger = logging.getLogger(__name__)
 
@@ -195,7 +195,7 @@ async def admission_refusal(app, request: web.Request) -> web.Response | None:
     seen = await boundary_role(app, subject)
     request["ruolo"] = seen.role
     request["ruolo_letto"] = seen.read
-    if seen.role == "amministratore":
+    if is_admin_role(seen.role):
         return None
     if not seen.read:
         text, why = ROLES_UNREADABLE, "ruoli illeggibili"

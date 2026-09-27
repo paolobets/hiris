@@ -283,6 +283,8 @@ async def test_who_is_speaking_arriva_identico_al_ponte_e_alla_catena(tmp_path, 
     async def _finto_confine(request, handler):
         request["auth_via"] = "ingress"
         request["soggetto"] = persona
+        # Il ruolo che il cancello al confine avrebbe letto da `_FintoHA`.
+        request["ruolo"] = "amministratore"
         return await handler(request)
 
     def _sezione_chi_parla(testo: str) -> str:
