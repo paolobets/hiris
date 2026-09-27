@@ -72,15 +72,19 @@ def confine_vero(monkeypatch):
 
 
 async def _passa(richiesta):
-    visto = {}
+    """Cosa il confine ha attaccato alla richiesta, e se l'ha lasciata passare.
 
+    Il soggetto si legge dalla RICHIESTA e non dal gestore: dal 27/09/2026
+    una persona dall'ingress passa anche dal cancello al confine (spec
+    2026-09-27 §3), che viene dopo il riconoscimento e puo' fermarla -- e il
+    fatto che questo file custodisce e' chi il confine ha riconosciuto, non se
+    la lista di ammissione l'ha fatta entrare (`tests/test_admission.py`)."""
     async def prosegui(r):
-        visto["soggetto"] = r.get("soggetto")
-        visto["auth_via"] = r.get("auth_via")
         return "ok"
 
     esito = await internal_auth_middleware(richiesta, prosegui)
-    return esito, visto
+    return esito, {"soggetto": richiesta.get("soggetto"),
+                   "auth_via": richiesta.get("auth_via")}
 
 
 @pytest.mark.asyncio

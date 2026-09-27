@@ -231,6 +231,15 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
     if await _is_supervisor_ingress(request):
         request["auth_via"] = "ingress"
         request["soggetto"] = _soggetto(request, "persona")
+        # **Il cancello al confine** (spec 2026-09-27 §3): una persona passa
+        # solo se amministra, o se la lista la ammette e l'opzione e' accesa.
+        # Qui e non nel gestore perche' il ruolo si legge SOLO per chi arriva
+        # dall'ingress, e prima di qualunque archivio.
+        from .admission import admission_refusal
+
+        refusal = await admission_refusal(request.app, request)
+        if refusal is not None:
+            return refusal
         return await handler(request)
 
     # **La credenziale EFFIMERA del ponte** (spec §5, ingresso 7), e si guarda

@@ -153,6 +153,7 @@ from datetime import datetime, timedelta
 from typing import Any, ClassVar
 
 from ..action.construction.advisor import STRUCTURES
+from ..api.soffitto import ADMIN_READS_REFUSAL
 from ..chat_thread import ChatThread, subject_key_for, without_thread
 from ..memory.interpretation import VOCABULARY, validate
 from ..memory.lookup_cache import LookupCache
@@ -2430,7 +2431,13 @@ class ToolDispatcher:
         -- vive in `action/actuator.py`, perche' domani lo schedulatore e il brain
         chiederanno alla STESSA porta senza passare da qui. Se un giorno questo
         metodo cresce, la logica sta migrando nel posto sbagliato.
+
+        L'unica riga in piu' e' il soffitto (ruling R-2.10b, 27/09/2026): chi
+        ha il ruolo di sola lettura -- in Home Assistant il gruppo
+        `system-read-only` -- non comanda, e la porta non lo sa.
         """
+        if self._role_denies("comandare"):
+            return {"errore": self._soffitto["perche"]}
         return await self._actuator.execute(
             arguments, actor="chat", subject=self._subject)
 
@@ -3003,6 +3010,34 @@ class ToolDispatcher:
     # giudica, cosa dire e cosa tacere e' di chi compone» -- qui chi compone
     # e' la description dello strumento, non un livello di codice in piu').
 
+    def _role_denies(self, gesture: str) -> bool:
+        """Il soffitto di un RUOLO dice di no a questo gesto?
+
+        Solo un soffitto con un ruolo decide qui (spec 2026-09-27, ruling
+        R-2.25): una persona ne ha sempre uno, un servizio quello della sua
+        approvazione. Senza soffitto (promesse, osservatore) o senza ruolo --
+        lo sviluppo, `HIRIS_ALLOW_NO_TOKEN` -- `execute` e le due letture
+        riservate restano come ieri: stringerle li' cambierebbe un perimetro
+        che nessuno ha deciso di cambiare. **Dichiarato, non dedotto.**
+        """
+        ceiling = self._soffitto
+        return (ceiling is not None and ceiling.get("ruolo") is not None
+                and not ceiling.get(gesture))
+
+    def _admin_reads_refusal(self) -> dict | None:
+        """Il rifiuto dei due strumenti che leggono cio' che Home Assistant
+        mostra ai soli amministratori -- `None` se questo turno puo'.
+
+        Verificato il 27/09/2026 su Core 2026.9.3: `system_log/list`
+        (`components/system_log/__init__.py`), `trace/list` e `trace/get`
+        (`components/trace/websocket_api.py`) sono `@websocket_api.require_admin`.
+        HIRIS li chiama col proprio token di amministratore: senza questa
+        domanda li leggerebbe per chiunque chatti (ruling R-2.25).
+        """
+        if self._role_denies("diagnosticare"):
+            return {"errore": ADMIN_READS_REFUSAL}
+        return None
+
     def _seal(self):
         """Il sigillo dei segreti, costruito una volta per questo dispatcher.
 
@@ -3041,6 +3076,9 @@ class ToolDispatcher:
         traccia dice la cosa che serve in fondo, e tagliarne la testa come per
         ogni altro campo butterebbe la risposta tenendo la domanda.
         """
+        refusal = self._admin_reads_refusal()
+        if refusal is not None:
+            return refusal
         answer = await self._ha_channel().system_log()
         # `voci` e' la CHIAVE DEL DATO e resta italiana: e' il vocabolario che
         # il client dichiara e che il modello legge. Cio' che diventa inglese
@@ -3119,6 +3157,9 @@ class ToolDispatcher:
         difetto e' sopravvissuto nei fratelli (vedi il commento sopra quelle
         costanti).
         """
+        refusal = self._admin_reads_refusal()
+        if refusal is not None:
+            return refusal
         entity = arguments.get("entita")
         if not isinstance(entity, str) or not entity.strip():
             return {"errore": "«automation_trace» richiede «entita»: l'identificatore "

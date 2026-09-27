@@ -6176,6 +6176,16 @@ async def _handle_health(request: web.Request) -> web.Response:
     # correzioni 1, punto 3): in `/api/mind/knowledge` `giudizi` e' l'ELENCO
     # delle righe, qui era lo STATO dell'istantanea. Due cose diverse dette con
     # una parola sola si separano alla fonte, non a valle.
+    #
+    # **A una persona che non amministra, solo stato e versione** (spec
+    # 2026-09-27, ruling R-2.23): il resto e' diagnostica dell'add-on, che
+    # Home Assistant a lei non mostrerebbe. Il ruolo si legge come al cancello
+    # e solo per chi arriva dall'ingress; servizi, ponte e sviluppo invariati.
+    if request.get("auth_via") == "ingress":
+        from .api.soffitto import boundary_role
+        role, _ = await boundary_role(request.app, request.get("soggetto"))
+        if role != "amministratore":
+            return web.json_response({"status": "ok", "version": read_version()})
     return web.json_response({"status": "ok", "version": read_version(),
                               "build": request.app.get("build_stamp", ""),
                               "ponte": last_bridge_init(),

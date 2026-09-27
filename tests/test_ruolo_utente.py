@@ -25,14 +25,16 @@ import pytest
 
 from hiris.app.proxy.ha_client import HAClient
 
+#: La forma VERA di `config/auth/list` (Core 2026.9.3,
+#: `components/config/auth.py::_user_info`): porta anche `is_active`.
 _UTENTI = [
-    {"id": "u-owner", "name": "Paolo", "is_owner": True,
+    {"id": "u-owner", "name": "Paolo", "is_owner": True, "is_active": True,
      "system_generated": False, "group_ids": ["system-admin"]},
-    {"id": "u-admin", "name": "Seconda", "is_owner": False,
+    {"id": "u-admin", "name": "Seconda", "is_owner": False, "is_active": True,
      "system_generated": False, "group_ids": ["system-admin"]},
-    {"id": "u-ospite", "name": "Ospite", "is_owner": False,
+    {"id": "u-ospite", "name": "Ospite", "is_owner": False, "is_active": True,
      "system_generated": False, "group_ids": ["system-users"]},
-    {"id": "u-sistema", "name": "Supervisor", "is_owner": False,
+    {"id": "u-sistema", "name": "Supervisor", "is_owner": False, "is_active": True,
      "system_generated": True, "group_ids": ["system-admin"]},
 ]
 
@@ -121,3 +123,58 @@ async def test_una_risposta_STORTA_non_fa_cadere_la_lettura():
     esito = await _Finto({"success": True, "result": {"non": "un elenco"}}).users()
 
     assert "errore" in esito
+
+
+# --- chi e' amministratore lo dice la regola di Home Assistant (R-2.10) -----
+
+async def _per_id(righe):
+    esito = await _Finto({"success": True, "result": righe}).users()
+    return {u["id"]: u for u in esito["utenti"]}
+
+
+@pytest.mark.asyncio
+async def test_il_PROPRIETARIO_e_amministratore_anche_fuori_dal_gruppo():
+    """Core 2026.9.3, `auth/models.py::User.is_admin`: `is_owner or
+    (is_active and system-admin)`. Un proprietario tolto dal gruppo resta
+    amministratore per Home Assistant, e il cancello al confine non deve
+    chiuderlo fuori.
+
+    Mutazione ESEGUITA: tornare al solo gruppo -- rossa."""
+    per_id = await _per_id([{"id": "u-owner", "is_owner": True, "is_active": True,
+                             "group_ids": ["system-users"]}])
+
+    assert per_id["u-owner"]["amministratore"] is True
+
+
+@pytest.mark.asyncio
+async def test_un_amministratore_DISATTIVATO_non_e_amministratore():
+    """Stessa regola: senza `is_active` il gruppo non basta.
+
+    Mutazione ESEGUITA: ignorare `is_active` -- rossa."""
+    per_id = await _per_id([
+        {"id": "u-spento", "is_owner": False, "is_active": False,
+         "group_ids": ["system-admin"]},
+        {"id": "u-muto", "is_owner": False, "group_ids": ["system-admin"]}])
+
+    assert per_id["u-spento"]["amministratore"] is False
+    assert per_id["u-muto"]["amministratore"] is False, (
+        "un campo che manca non e' un «si'»")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("gruppi,sola_lettura", [
+    (["system-read-only"], True),
+    # Core unisce le politiche dei gruppi (`auth/permissions/merge.py`): chi
+    # e' anche in `system-users` comanda.
+    (["system-read-only", "system-users"], False),
+    (["system-users"], False),
+])
+async def test_il_gruppo_di_SOLA_LETTURA_si_riconosce(gruppi, sola_lettura):
+    """R-2.10b: chi in Home Assistant legge e basta non deve comandare da HIRIS.
+
+    Mutazione ESEGUITA: `sola_lettura` sempre falso -- rossa."""
+    per_id = await _per_id([{"id": "u-x", "is_owner": False, "is_active": True,
+                             "group_ids": gruppi}])
+
+    assert per_id["u-x"]["sola_lettura"] is sola_lettura
+    assert per_id["u-x"]["amministratore"] is False

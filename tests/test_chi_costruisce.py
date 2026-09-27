@@ -48,6 +48,11 @@ def chiudi_archivi():
 @pytest_asyncio.fixture
 async def cliente(aiohttp_client, tmp_path):
     app = create_app()
+    # L'opzione accesa (spec 2026-09-27 §2): qui si prova cio' che una persona
+    # non amministratrice trova DENTRO HIRIS quando il proprietario l'ha
+    # aperto a tutti. Le rotte di chi costruisce le restano chiuse comunque, al
+    # confine (`api/admission.py`).
+    app["non_admin_access"] = True
     ha = AsyncMock()
     ha.start = AsyncMock()
     ha.stop = AsyncMock()
@@ -491,55 +496,89 @@ async def test_il_nome_di_un_servizio_e_quello_APPROVATO(tmp_path):
 
 # --- il registro (4.10) ------------------------------------------------------
 
-@pytest.mark.asyncio
-async def test_il_rifiuto_si_scrive_a_INFO_e_senza_il_nome(cliente, caplog):
-    """Un non amministratore che apre la pagina e' un caso normale, non un
-    allarme: `info`. E il nome visualizzato e' testo di chi chiede -- nel
-    registro basta la chiave."""
-    caplog.set_level("INFO", logger="hiris.app.api.soffitto")
+#: Dal 27/09/2026 una PERSONA che non amministra si ferma al confine, prima
+#: di `require_builder` (spec 2026-09-27 §3): le due prove gemelle del suo
+#: rifiuto stanno in `tests/test_admission.py`. Il cancello di chi costruisce
+#: scrive ancora la sua riga per chi ci arriva davvero -- un servizio firmato
+#: col ruolo `utente` -- e queste due prove la guardano li'.
+def _firmata(app, tmp_path, path):
+    from conftest import firma, servizio_approvato
+    from hiris.app.api.servizi import ServiziStore
 
-    await cliente.get("/api/constructions", headers=_testate("u-ospite", "Nome Riservato"))
+    app["servizi"] = ServiziStore(str(tmp_path / "servizi.db"))
+    privata, pubblica = servizio_approvato(app, "utente")
+    return firma(privata, pubblica, "GET", path)
+
+
+@pytest.mark.asyncio
+async def test_il_rifiuto_si_scrive_a_INFO_e_senza_il_nome(cliente, caplog, tmp_path):
+    """Un rifiuto del cancello di chi costruisce e' un caso normale, non un
+    allarme: `info`. E un nome scritto dal chiamante non entra nel registro:
+    basta la chiave."""
+    caplog.set_level("INFO", logger="hiris.app.api.soffitto")
+    testate = {**_firmata(cliente.app, tmp_path, "/api/constructions"),
+               "X-Remote-User-Display-Name": "Nome Riservato"}
+
+    risposta = await cliente.get("/api/constructions", headers=testate)
+    cliente.app["servizi"].close()
 
     rifiuti = [r for r in caplog.records if r.name == "hiris.app.api.soffitto"]
+    assert risposta.status == 403
     assert rifiuti, "il rifiuto non ha lasciato nessuna riga"
     assert all(r.levelname == "INFO" for r in rifiuti)
     assert all("Nome Riservato" not in r.getMessage() for r in rifiuti)
-    assert any("persona:u-ospite" in r.getMessage() for r in rifiuti)
+    assert any("luogo:retropanel" in r.getMessage() for r in rifiuti)
 
 
 @pytest.mark.asyncio
-async def test_il_rifiuto_scrive_il_MODELLO_della_rotta_non_il_percorso(cliente, caplog):
+async def test_il_rifiuto_scrive_il_MODELLO_della_rotta_non_il_percorso(cliente, caplog,
+                                                                       tmp_path):
     """Low-3: `request.path` e' decodificato, e un `%0A` nell'id diventerebbe
     una seconda riga -- finta -- nel registro. Si scrive il modello.
 
     Mutazione ESEGUITA: `request.path` al posto di `_route_pattern(request)`
     -- rossa."""
     caplog.set_level("INFO", logger="hiris.app.api.soffitto")
+    testate = _firmata(cliente.app, tmp_path, "/api/constructions/abc\nsoffitto: concesso")
 
-    await cliente.get("/api/constructions/abc%0Asoffitto:%20concesso",
-                      headers=_testate("u-ospite"))
+    risposta = await cliente.get("/api/constructions/abc%0Asoffitto:%20concesso",
+                                 headers=testate)
+    cliente.app["servizi"].close()
 
     [riga] = [r.getMessage() for r in caplog.records if r.name == "hiris.app.api.soffitto"]
+    assert risposta.status == 403
     assert "/api/constructions/{id}" in riga
     assert "\n" not in riga and "concesso" not in riga
 
 
 @pytest.mark.asyncio
-async def test_un_guasto_di_home_assistant_si_dice_UNA_volta_per_finestra(cliente, caplog):
-    """Low-4: durante un guasto ogni `/api/pending` rilegge (il guasto non si
-    mette in cache, e si resta chiusi), ma la riga d'errore esce una volta
-    ogni `RUOLI_VALIDI_S`, non a ogni clic.
+async def test_un_guasto_di_home_assistant_si_dice_UNA_volta_per_finestra(cliente, caplog,
+                                                                         monkeypatch):
+    """Low-4: durante un guasto si rilegge (il guasto non si mette in cache
+    oltre il freno del cancello, `GATE_FAILURE_HOLD_S`), ma la riga d'errore
+    esce una volta ogni `RUOLI_VALIDI_S`, non a ogni clic.
+
+    Dal 27/09/2026 (ruling R-2.8) durante il guasto nessuna persona entra,
+    proprietario compreso, e il rifiuto lo dice.
 
     Mutazione ESEGUITA: togliere il freno sulla riga -- rossa (tre righe)."""
+    from hiris.app.api import soffitto
+    from hiris.app.api.admission import ROLES_UNREADABLE
+
     caplog.set_level("ERROR", logger="hiris.app.api.soffitto")
     ha = cliente.app["ha_client"]
     ha.users = AsyncMock(return_value={"errore": "Home Assistant non ha risposto"})
+    adesso = [1_000_000.0]
+    monkeypatch.setattr(soffitto.time, "time", lambda: adesso[0])
 
-    risposte = [await (await cliente.get("/api/pending", headers=_testate("u-admin"))).json()
-                for _ in range(3)]
+    risposte = []
+    for _ in range(3):
+        risposte.append(await (await cliente.get("/api/pending",
+                                                 headers=_testate("u-admin"))).json())
+        adesso[0] += soffitto.GATE_FAILURE_HOLD_S
 
-    assert [r["can_build"] for r in risposte] == [False, False, False]
-    assert ha.users.await_count == 3, "il guasto non si mette in cache"
+    assert risposte == [{"errore": ROLES_UNREADABLE}] * 3
+    assert ha.users.await_count == 3, "passato il freno, il guasto si rilegge"
     errori = [r for r in caplog.records
               if r.name == "hiris.app.api.soffitto" and r.levelname == "ERROR"]
     assert len(errori) == 1

@@ -654,10 +654,14 @@ class HAClient:
         rows = occurrence["etichette"]
         return {"etichette": rows if isinstance(rows, list) else []}
 
-    #: Il gruppo con cui Home Assistant marca un amministratore. Verificato il
-    #: 21/09/2026 sul sorgente (`components/config/auth.py`): `config/auth/list`
-    #: restituisce `group_ids` e **non** `is_admin`, che si ricava di qui.
+    #: I gruppi di sistema di Home Assistant. Verificato il 21/09/2026 sul
+    #: sorgente (`components/config/auth.py`): `config/auth/list` restituisce
+    #: `group_ids` e **non** `is_admin`, che si ricava di qui. Riverificato il
+    #: 27/09/2026 su Core 2026.9.3 (`auth/const.py`) e sulla casa, dove il
+    #: gruppo di sola lettura esiste.
     GRUPPO_AMMINISTRATORI = "system-admin"
+    USERS_GROUP = "system-users"
+    READ_ONLY_GROUP = "system-read-only"
 
     async def users(self) -> dict:
         """Chi sono le persone di questa casa, e chi comanda.
@@ -682,13 +686,34 @@ class HAClient:
         rows = occurrence["utenti"]
         if not isinstance(rows, list):
             return {"errore": "l’elenco degli utenti non è arrivato come elenco"}
-        return {"utenti": [
-            {"id": r.get("id"),
-             "nome": r.get("name"),
-             "amministratore": self.GRUPPO_AMMINISTRATORI in (r.get("group_ids") or []),
-             "proprietario": bool(r.get("is_owner")),
-             "sistema": bool(r.get("system_generated"))}
-            for r in rows if isinstance(r, dict)]}
+        return {"utenti": [self._user_row(r) for r in rows if isinstance(r, dict)]}
+
+    @classmethod
+    def _user_row(cls, r: dict) -> dict:
+        """Una riga di `config/auth/list` nelle parole di HIRIS.
+
+        **`amministratore` e' la regola di Home Assistant, non un suo pezzo**:
+        verificato il 27/09/2026 su Core 2026.9.3,
+        `auth/models.py::User.is_admin` = `is_owner or (is_active and
+        system-admin nei gruppi)`. Fino a oggi qui contava solo il gruppo, e un
+        proprietario fuori dal gruppo sarebbe stato chiuso fuori dal cancello
+        al confine. Un `is_active` che manca non e' un «si'».
+
+        `sola_lettura`: il gruppo `system-read-only` SENZA `system-users` --
+        Core unisce le politiche dei gruppi (`auth/permissions/merge.py`), e chi
+        e' in entrambi comanda. Il ruolo che ne segue lo decide
+        `soffitto._role_of`.
+        """
+        groups = r.get("group_ids") or []
+        admin = bool(r.get("is_owner")) or (
+            r.get("is_active") is True and cls.GRUPPO_AMMINISTRATORI in groups)
+        return {"id": r.get("id"),
+                "nome": r.get("name"),
+                "amministratore": admin,
+                "sola_lettura": (cls.READ_ONLY_GROUP in groups
+                                 and cls.USERS_GROUP not in groups),
+                "proprietario": bool(r.get("is_owner")),
+                "sistema": bool(r.get("system_generated"))}
 
     async def update_panel(self, url_path: str, require_admin: bool | None) -> dict:
         """Scrive l'override di `require_admin` per UN pannello del menu.

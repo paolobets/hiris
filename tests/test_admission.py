@@ -14,16 +14,14 @@ sviluppo il cancello non deve cambiare niente.
 import asyncio
 import base64
 import re
-import secrets
-import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
+from aiohttp import web
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from conftest import credenziale_ponte
-from hiris.app.api import canali
+from conftest import credenziale_ponte, firma, servizio_approvato
 from hiris.app.api.servizi import ServiziStore
 from hiris.app.chat_settings import ChatSettings
 from hiris.app.chat_store import close_all_stores
@@ -35,7 +33,9 @@ _UTENTI = {"utenti": [
     {"id": "u-admin", "nome": "Paolo", "amministratore": True,
      "proprietario": True, "sistema": False},
     {"id": "u-marta", "nome": "Marta", "amministratore": False,
-     "proprietario": False, "sistema": False}]}
+     "proprietario": False, "sistema": False},
+    {"id": "u-lettore", "nome": "Lia", "amministratore": False,
+     "sola_lettura": True, "proprietario": False, "sistema": False}]}
 
 
 @pytest.fixture(autouse=True)
@@ -46,8 +46,10 @@ def confine_vero(monkeypatch):
     close_all_stores()
 
 
-def _compose(tmp_path):
+def _compose(tmp_path, *, access=None):
     app = create_app()
+    if access is not None:
+        app["non_admin_access"] = access
     ha = AsyncMock()
     ha.start = AsyncMock()
     ha.stop = AsyncMock()
@@ -105,26 +107,6 @@ async def _ask(client, method, path, headers, **kw):
     except TimeoutError:
         return "attesa"
     return response.status
-
-
-def _sign(privata, pubblica, method, path, body=b""):
-    momento = time.time()
-    unico = secrets.token_hex(8)
-    firma = base64.b64encode(privata.sign(
-        canali.materia_firmata(method, path, momento, unico, body))).decode("ascii")
-    return {"X-HIRIS-Servizio": pubblica, "X-HIRIS-Momento": str(int(momento)),
-            "X-HIRIS-Unico": unico, "X-HIRIS-Firma": firma}
-
-
-def _service(app, ruolo):
-    privata = Ed25519PrivateKey.generate()
-    pubblica = base64.b64encode(
-        privata.public_key().public_bytes_raw()).decode("ascii")
-    adesso = time.time()
-    app["servizi"].presenta(nome="retropanel", chiave=pubblica,
-                            indirizzo="192.168.1.31", now_ts=adesso)
-    app["servizi"].approva(pubblica, ruolo=ruolo, specie="luogo", now_ts=adesso)
-    return privata, pubblica
 
 
 # --- PIN: il comportamento di prima del cancello (verdi su 302ae885) ----------
@@ -238,9 +220,9 @@ async def test_PIN_un_servizio_utente_firmato_passa_come_prima(casa, method, pat
     (`consente_metodo` guarda solo lettura contro scrittura -- rischio
     dichiarato, security-constraints 5.9): il cancello non lo tocca, perche'
     vale solo per le persone dall'ingress."""
-    privata, pubblica = _service(casa.app, "utente")
+    privata, pubblica = servizio_approvato(casa.app, "utente")
     body = b"{}"
-    headers = {**_sign(privata, pubblica, method, path, body),
+    headers = {**firma(privata, pubblica, method, path, body),
                "Content-Type": "application/json", "X-Requested-With": "fetch"}
 
     assert await _ask(casa, method, path, headers, data=body) == status
@@ -278,12 +260,12 @@ async def test_PIN_il_ruolo_NON_si_legge_per_chi_non_e_una_persona(casa, monkeyp
     """Pin 7 (2.19): firma, credenziale di turno, accoppiamento e sviluppo
     non chiedono mai a Home Assistant chi e' amministratore."""
     app = casa.app
-    privata, pubblica = _service(app, "lettore")
+    privata, pubblica = servizio_approvato(app, "lettore")
     await casa.post("/api/services/window/open", headers=_persona("u-admin"))
     app["ha_client"].users.reset_mock()
 
     firmata = await casa.get("/api/health",
-                             headers=_sign(privata, pubblica, "GET", "/api/health"))
+                             headers=firma(privata, pubblica, "GET", "/api/health"))
     turno = await casa.get("/api/health", headers=credenziale_ponte(app, "segreto-di-turno"))
     presentata = await casa.post("/api/services/present",
                                  json={"nome": "x", "chiave": _service_key()})
@@ -309,3 +291,717 @@ async def test_PIN_le_intestazioni_del_rifiuto_401(casa):
     assert risposta.status == 401
     assert "Content-Security-Policy" not in risposta.headers
     assert risposta.headers["Content-Type"].startswith("application/json")
+
+
+# --- il cancello (spec 2026-09-27 §3, security-constraints 2.1-2.29) --------
+
+from hiris.app.api import admission
+from hiris.app.api.admission import (
+    ADMISSION,
+    NOT_ADMITTED,
+    OPTION_OFF,
+    ROLES_UNREADABLE,
+)
+
+
+@pytest_asyncio.fixture
+async def aperta(aiohttp_client, tmp_path):
+    """L'opzione accesa: chi non amministra entra dove la lista lo ammette."""
+    app = _compose(tmp_path, access=True)
+    client = await aiohttp_client(app)
+    yield client
+    app["memory_store"].close()
+    app["servizi"].close()
+
+
+@pytest_asyncio.fixture
+async def chiusa(aiohttp_client, tmp_path):
+    """L'opzione spenta, esplicita: nessuna prova si appoggia al difetto."""
+    app = _compose(tmp_path, access=False)
+    client = await aiohttp_client(app)
+    yield client
+    app["memory_store"].close()
+    app["servizi"].close()
+
+
+_MUTANTI = ("POST", "PUT", "PATCH", "DELETE")
+
+
+async def _risposta(client, method, path, headers, **kw):
+    if path.startswith("//"):
+        # Il client di prova leggerebbe `//api/...` come un indirizzo di un
+        # altro host: la barra doppia si manda nel percorso, come un browser.
+        response = await asyncio.wait_for(client.session.request(
+            method, client.make_url("/").with_path(path, encoded=True),
+            headers=headers, **kw), timeout=15)
+    else:
+        response = await asyncio.wait_for(
+            client.request(method, path, headers=headers, **kw), timeout=15)
+    return response.status, await response.read()
+
+
+def _rifiuto_json(testo):
+    import json
+    return json.dumps({"errore": testo}).encode("utf-8")
+
+
+async def _gate_refused(client, method, path, headers, testo=NOT_ADMITTED, **kw):
+    status, body = await _risposta(client, method, path, headers, **kw)
+    return status == 403 and body == _rifiuto_json(testo)
+
+
+def test_la_lista_nomina_solo_rotte_VERE_del_router():
+    """Nessun fantasma (2.27): ogni voce e' una rotta del router vivo.
+
+    Mutazione ESEGUITA: tolta `add_get("/api/memories", ...)` da `server.py`
+    -- rossa col nome della voce."""
+    vive = live_routes(create_app())
+    fantasmi = [(m, c) for m, c, _ in ADMISSION if (m, c) not in vive]
+
+    assert not fantasmi, f"voci della lista che il router non ha: {fantasmi}"
+
+
+def test_la_derivazione_dal_router_VEDE_le_rotte():
+    """Il pavimento (2.27): se la derivazione si rompesse, le prove sotto
+    sarebbero verdi su un insieme vuoto.
+
+    Mutazione ESEGUITA: derivare solo le rotte con `{` nel modello -- rossa."""
+    vive = live_routes(create_app())
+
+    assert len(vive) > 40, f"ne ho derivate solo {len(vive)}"
+    assert ("HEAD", "/api/health") in vive and ("GET", "/static") in vive
+
+
+def test_ogni_voce_porta_la_sua_RAGIONE_e_nessuna_e_doppia():
+    assert len({(m, c) for m, c, _ in ADMISSION}) == len(ADMISSION)
+    for method, canonical, reason in ADMISSION:
+        assert method == method.upper() and method != "HEAD", (method, canonical)
+        assert canonical.startswith("/"), canonical
+        assert reason and len(reason) > 20, f"«{method} {canonical}» senza ragione"
+
+
+#: Cio' che chi non amministra NON deve mai raggiungere (security-constraints
+#: 2.22). Non e' una copia della lista: e' l'altra meta' della decisione, e la
+#: prova sotto dice che le due meta' non si toccano.
+_VIETATE_PREFISSI = ("/api/usage", "/api/models", "/api/entities", "/api/home-space",
+                     "/api/briefing", "/api/mind/", "/api/services",
+                     "/api/constructions", "/api/proposals", "/api/misure",
+                     "/api/reasoning/", "/api/mcp")
+_VIETATE_ESATTE = {("PUT", "/api/chat-settings"), ("PATCH", "/api/memories/{id}"),
+                   ("DELETE", "/api/memories/{id}")}
+
+
+def test_la_lista_NON_tocca_le_rotte_vietate():
+    """Mutazione ESEGUITA: aggiunta a `ADMISSION` la voce `GET /api/usage` --
+    rossa."""
+    toccate = [(m, c) for m, c, _ in ADMISSION
+               if c.startswith(_VIETATE_PREFISSI) or (m, c) in _VIETATE_ESATTE]
+
+    assert not toccate, f"la lista ammette rotte vietate: {toccate}"
+
+
+_CHI = {"amministratore": "u-admin", "utente": "u-marta",
+        "ignoto": "u-sconosciuto", "anonimo": None}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("chi", list(_CHI))
+@pytest.mark.parametrize("accesa", [True, False])
+@pytest.mark.parametrize("ammessa", [True, False])
+async def test_la_TABELLA_delle_regole(aiohttp_client, tmp_path, chi, accesa, ammessa):
+    """2.6: {amministratore, utente, ignoto, anonimo} x {accesa, spenta} x
+    {ammessa, no}. Passa l'amministratore sempre; l'utente solo su una rotta
+    ammessa con l'opzione accesa; ignoto e anonimo mai."""
+    app = _compose(tmp_path, access=accesa)
+    client = await aiohttp_client(app)
+    utente = _CHI[chi]
+    headers = ({**_INGRESS, "X-Requested-With": "fetch"} if utente is None
+               else _persona(utente))
+    path = "/api/config" if ammessa else "/api/models"
+    passa = chi == "amministratore" or (chi == "utente" and accesa and ammessa)
+
+    status, body = await _risposta(client, "GET", path, headers)
+
+    atteso = OPTION_OFF if not accesa else NOT_ADMITTED
+    if passa:
+        assert status == 200, body
+    else:
+        assert (status, body) == (403, _rifiuto_json(atteso))
+    app["memory_store"].close()
+    app["servizi"].close()
+
+
+@pytest.mark.asyncio
+async def test_ogni_rotta_NON_in_lista_e_chiusa_a_chi_non_amministra(aperta):
+    """**Il cancello, derivato dal router vivo** (2.27): per ogni rotta che la
+    lista non nomina -- HEAD, statico e rotte future compresi -- una persona
+    non amministratrice riceve lo stesso 403, senza che nessuno l'abbia
+    elencata qui.
+
+    Mutazione ESEGUITA: aggiunta a `server.py` una
+    `router.add_get("/api/prova", handle_config)` senza toccare la lista --
+    la prova la vede e resta verde, perche' la rotta nasce chiusa. Che la
+    derivazione non si sia rotta lo dice il pavimento qui sopra."""
+    ammesse = {(m, c) for m, c, _ in ADMISSION}
+    aperte = []
+    for method, canonical in sorted(live_routes(aperta.app)):
+        guardata = "GET" if method == "HEAD" else method
+        if (guardata, canonical) in ammesse:
+            continue
+        kw = {"json": {}} if method in _MUTANTI else {}
+        status, body = await _risposta(aperta, method, _concrete(canonical),
+                                       _persona("u-marta"), **kw)
+        if method == "HEAD":
+            if status != 403:
+                aperte.append((method, canonical, status))
+        elif (status, body) != (403, _rifiuto_json(NOT_ADMITTED)):
+            aperte.append((method, canonical, status))
+
+    assert not aperte, f"rotte fuori lista raggiunte da chi non amministra: {aperte}"
+
+
+@pytest.mark.asyncio
+async def test_con_l_opzione_spenta_NIENTE_si_apre_a_chi_non_amministra(chiusa):
+    """2.7: gusci, statico e `/api/health` compresi."""
+    aperte = []
+    for method, canonical in sorted(live_routes(chiusa.app)):
+        kw = {"json": {}} if method in _MUTANTI else {}
+        status, body = await _risposta(chiusa, method, _concrete(canonical),
+                                       _persona("u-marta"), **kw)
+        if status != 403 or (method != "HEAD" and body not in (
+                _rifiuto_json(OPTION_OFF), admission.refusal_page(OPTION_OFF))):
+            aperte.append((method, canonical, status))
+
+    assert not aperte, aperte
+
+
+@pytest.mark.asyncio
+async def test_ogni_voce_della_lista_si_APRE_a_chi_non_amministra(aperta):
+    """La contropartita: una voce ammessa non riceve il rifiuto del cancello
+    (riceve cio' che il suo gestore risponde)."""
+    chiuse = []
+    for method, canonical, _ in ADMISSION:
+        kw = {"json": {}} if method in _MUTANTI else {}
+        if await _gate_refused(aperta, method, _concrete(canonical),
+                               _persona("u-marta"), **kw):
+            chiuse.append((method, canonical))
+
+    assert not chiuse
+
+
+@pytest.mark.asyncio
+async def test_una_rotta_NUOVA_nasce_chiusa(aiohttp_client, tmp_path):
+    """Una rotta aggiunta al router senza toccare la lista e' chiusa a chi non
+    amministra e aperta all'amministratore."""
+    app = _compose(tmp_path, access=True)
+
+    async def prova(request):
+        return web.json_response({"ok": True})
+
+    app.router.add_get("/api/prova", prova)
+    client = await aiohttp_client(app)
+
+    assert await _gate_refused(client, "GET", "/api/prova", _persona("u-marta"))
+    assert (await _risposta(client, "GET", "/api/prova", _persona("u-admin")))[0] == 200
+    app["memory_store"].close()
+    app["servizi"].close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method,path", [
+    ("GET", "/api/nope"), ("GET", "/api/memories/"), ("OPTIONS", "/api/chat"),
+    ("PROPFIND", "/api/chat"), ("GET", "/api/memories%2F1"),
+    ("GET", "//api/memories"), ("GET", "/api/Memories"),
+    ("HEAD", "/api/models/config"),
+])
+async def test_cio_che_non_risolve_esattamente_e_CHIUSO(aperta, method, path):
+    """2.2, 2.11-2.14: rotte che non esistono, barre in piu', maiuscole,
+    codifiche e verbi strani ricevono lo stesso 403 di una rotta vietata --
+    mai 404 o 405, che direbbero cosa esiste (2.16). HEAD solo dove e' ammesso
+    GET (R-2.13): `/api/models/config` no."""
+    status, body = await _risposta(aperta, method, path, _persona("u-marta"))
+
+    assert status == 403
+    if method != "HEAD":
+        # La forma segue il percorso, non la rotta: `//api/...` non comincia
+        # per `/api/` ed e' la pagina -- la stessa per ogni percorso cosi'.
+        assert body == (_rifiuto_json(NOT_ADMITTED) if path.startswith("/api/")
+                        else admission.refusal_page(NOT_ADMITTED))
+
+
+@pytest.mark.asyncio
+async def test_il_PROPFIND_sul_guscio_e_la_stessa_pagina_di_rifiuto(aperta):
+    status, body = await _risposta(aperta, "PROPFIND", "/", _persona("u-marta"))
+
+    assert (status, body) == (403, admission.refusal_page(NOT_ADMITTED))
+
+
+@pytest.mark.asyncio
+async def test_la_query_non_apre_niente_e_non_chiude_la_voce_esatta(aperta):
+    """`/api/memories?x=/api/chat` e' la voce ammessa `GET /api/memories`: la
+    query non si guarda, in nessuno dei due versi."""
+    status, _ = await _risposta(aperta, "GET", "/api/memories?x=/api/chat",
+                                _persona("u-marta"))
+
+    assert status == 200
+
+
+@pytest.mark.asyncio
+async def test_HEAD_passa_dove_passa_GET(aperta):
+    assert (await _risposta(aperta, "HEAD", "/api/health", _persona("u-marta")))[0] == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["/static/../server.py", "/static/%2e%2e/server.py",
+                                  "/static/"])
+async def test_lo_statico_non_risale_le_cartelle(aperta, path):
+    """2.15: lo statico e' ammesso per IDENTITA' della risorsa, e la
+    protezione di aiohttp resta la sua."""
+    assert (await _risposta(aperta, "GET", path, _persona("u-marta")))[0] != 200
+
+
+@pytest.mark.asyncio
+async def test_lo_statico_si_serve_a_chi_non_amministra(aperta):
+    assert (await _risposta(aperta, "GET", "/static/hiris-icon.svg",
+                            _persona("u-marta")))[0] == 200
+
+
+def test_lo_statico_e_ammesso_solo_come_RISORSA_STATICA():
+    """Una rotta qualunque che si chiamasse `/static` non erediterebbe
+    l'ammissione della cartella.
+
+    Mutazione ESEGUITA: togliere il controllo `isinstance(..., StaticResource)`
+    -- rossa."""
+    app = web.Application()
+
+    async def finta(request):
+        return web.Response()
+
+    app.router.add_get("/static", finta)
+    [route] = [r for r in app.router.routes() if r.method == "GET"]
+
+    class _Match:
+        pass
+
+    match = _Match()
+    match.route = route
+    assert admission.admitted("GET", match) is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("method", ["PATCH", "DELETE"])
+async def test_nessun_ORACOLO_sull_esistenza_di_un_ricordo(aperta, method):
+    """2.16: un ricordo che c'e' e uno che non c'e' rispondono uguale, e
+    quello che c'e' resta com'era."""
+    store = aperta.app["memory_store"]
+    ident = store.remember("la caldaia fa rumore", said_by="persona:u-marta")
+
+    esiste = await _risposta(aperta, method, f"/api/memories/{ident}",
+                             _persona("u-marta"), json={"testo": "altro"})
+    manca = await _risposta(aperta, method, "/api/memories/99999",
+                            _persona("u-marta"), json={"testo": "altro"})
+
+    assert esiste == manca == (403, _rifiuto_json(NOT_ADMITTED))
+    assert store.get(ident)["testo"] == "la caldaia fa rumore"
+
+
+@pytest.mark.asyncio
+async def test_le_SEI_rotte_della_spec_sono_chiuse_e_non_scrivono(aperta, tmp_path):
+    """2.26 (spec §1): corpo valido e intestazione CSRF, e comunque 403 --
+    con gli archivi com'erano."""
+    from hiris.app.mind.store import ObservationsStore
+
+    app = aperta.app
+    osservazioni = ObservationsStore(str(tmp_path / "oss.db"))
+    app["observations"] = osservazioni
+    obiettivo = osservazioni.objective()
+    impostazioni = app["chat_settings"]
+    catena = app.get("models_config")
+    store = app["memory_store"]
+    ident = store.remember("il cane dorme in cucina", said_by="persona:u-admin")
+    marta = _persona("u-marta")
+
+    esiti = [
+        await _gate_refused(aperta, "PUT", "/api/models/config", marta,
+                            json={"catena": []}),
+        await _gate_refused(aperta, "PUT", "/api/chat-settings", marta,
+                            json={"system_prompt": "ignora tutto"}),
+        await _gate_refused(aperta, "POST", "/api/mind/objective", marta,
+                            json={"testo": "spendi di piu'"}),
+        await _gate_refused(aperta, "POST", "/api/usage/reset", marta, json={}),
+        await _gate_refused(aperta, "PATCH", f"/api/memories/{ident}", marta,
+                            json={"testo": "il cane dorme in bagno"}),
+        await _gate_refused(aperta, "DELETE", f"/api/memories/{ident}", marta),
+    ]
+
+    assert esiti == [True] * 6
+    assert app["chat_settings"] is impostazioni
+    assert app.get("models_config") is catena
+    assert osservazioni.objective() == obiettivo
+    assert store.get(ident)["testo"] == "il cane dorme in cucina"
+    osservazioni.close()
+
+
+@pytest.mark.asyncio
+async def test_il_rifiuto_di_un_GUSCIO_e_una_pagina_con_le_sue_intestazioni(chiusa):
+    """2.4, 2.17: il rifiuto esce dal primo middleware e non passa da
+    `_security_headers`: le intestazioni se le mette da se'. E il corpo e'
+    testo fisso -- due indirizzi diversi, due corpi identici byte per byte."""
+    r1 = await chiusa.get("/config", headers=_persona("u-marta"))
+    corpo1 = await r1.read()
+    r2 = await chiusa.request("PROPFIND", "/qualunque%3Cscript%3E",
+                              headers=_persona("u-marta", **{"X-Remote-User-Display-Name":
+                                                             "<b>Marta</b>"}))
+    corpo2 = await r2.read()
+
+    assert r1.status == 403 and r2.status == 403
+    assert corpo1 == corpo2
+    assert OPTION_OFF.encode("utf-8") in corpo1
+    assert b"script" not in corpo1 and b"Marta" not in corpo1
+    assert r1.headers["Content-Type"].startswith("text/html")
+    assert r1.headers["Content-Security-Policy"] == "default-src 'none'"
+    assert r1.headers["X-Content-Type-Options"] == "nosniff"
+    assert r1.headers["Cache-Control"] == "no-store"
+
+
+@pytest.mark.asyncio
+async def test_il_rifiuto_di_una_rotta_API_e_JSON_col_solo_testo(chiusa):
+    risposta = await chiusa.get("/api/chat/history", headers=_persona("u-marta"))
+
+    assert risposta.status == 403
+    assert await risposta.json() == {"errore": OPTION_OFF}
+    assert risposta.headers["X-Content-Type-Options"] == "nosniff"
+    assert risposta.headers["Cache-Control"] == "no-store"
+
+
+def test_i_testi_dei_rifiuti_sono_quelli_DECISI():
+    """Decisione 7 del coordinatore: alla lettera."""
+    assert OPTION_OFF == ("HIRIS in questa casa è riservato agli amministratori: "
+                          "chiedi a chi lo gestisce di attivarlo per tutti.")
+    assert NOT_ADMITTED == "Questa parte di HIRIS è riservata agli amministratori."
+    assert ROLES_UNREADABLE == ("Non ho potuto leggere i ruoli da Home Assistant: "
+                                "riprova tra poco.")
+
+
+@pytest.mark.asyncio
+async def test_il_rifiuto_si_scrive_a_INFO_col_MODELLO_e_la_chiave(aperta, caplog):
+    """2.18: il modello della rotta (mai il percorso decodificato: un `%0A`
+    farebbe una riga finta), la chiave del soggetto, mai il nome.
+
+    Mutazione ESEGUITA: `request.path` al posto del modello -- rossa."""
+    caplog.set_level("INFO", logger="hiris.app.api.admission")
+
+    await aperta.get("/api/constructions/abc%0Acancello:%20concesso",
+                     headers=_persona("u-marta", **{"X-Remote-User-Display-Name":
+                                                    "Nome Riservato"}))
+
+    [riga] = [r for r in caplog.records if r.name == "hiris.app.api.admission"]
+    testo = riga.getMessage()
+    assert riga.levelname == "INFO"
+    assert "/api/constructions/{id}" in testo and "persona:u-marta" in testo
+    assert "\n" not in testo and "concesso" not in testo
+    assert "Nome Riservato" not in testo and "Marta" not in testo
+
+
+@pytest.mark.asyncio
+async def test_il_CSRF_resta_davanti_alle_rotte_ammesse(aperta):
+    """2.3: il cancello dice DOVE si entra, non toglie il resto del confine."""
+    headers = {**_INGRESS, "X-Remote-User-Id": "u-marta"}
+
+    risposta = await aperta.post("/api/chat", json={"message": "ciao"}, headers=headers)
+
+    assert risposta.status == 403
+    assert await risposta.json() == {"error": "csrf_required"}
+
+
+@pytest.mark.asyncio
+async def test_il_flusso_SSE_si_ferma_prima_di_partire(chiusa):
+    """2.21: la chat in streaming e' `POST /api/chat` con Accept
+    event-stream: il cancello risponde prima."""
+    risposta = await chiusa.post(
+        "/api/chat", json={"message": "ciao"},
+        headers=_persona("u-marta", Accept="text/event-stream"))
+
+    assert risposta.status == 403
+    assert await risposta.json() == {"errore": OPTION_OFF}
+
+
+@pytest.mark.asyncio
+async def test_senza_il_client_di_HA_nessuna_persona_entra(aiohttp_client, tmp_path):
+    """2.29: nessun ramo «senza client passa»."""
+    app = _compose(tmp_path, access=True)
+    app["ha_client"] = None
+    client = await aiohttp_client(app)
+
+    for utente in ("u-admin", "u-marta"):
+        assert await _gate_refused(client, "GET", "/api/config", _persona(utente),
+                                   testo=ROLES_UNREADABLE)
+    app["memory_store"].close()
+    app["servizi"].close()
+
+
+@pytest.mark.asyncio
+async def test_ruoli_ILLEGGIBILI_chiudono_anche_il_proprietario_col_suo_testo(
+        aperta, caplog, monkeypatch):
+    """R-2.8: il proprietario e' chiuso fuori, col testo che dice perche'; la
+    riga d'errore esce una volta; e appena Home Assistant risponde, si
+    rientra.
+
+    Mutazione ESEGUITA: `letto` ignorato (sempre il testo della lista) --
+    rossa."""
+    from hiris.app.api import soffitto
+
+    caplog.set_level("ERROR", logger="hiris.app.api.soffitto")
+    ha = aperta.app["ha_client"]
+    ha.users = AsyncMock(return_value={"errore": "Home Assistant non ha risposto"})
+    adesso = [1_000_000.0]
+    monkeypatch.setattr(soffitto.time, "time", lambda: adesso[0])
+
+    rifiuti = [await _gate_refused(aperta, "GET", "/api/config", _persona("u-admin"),
+                                   testo=ROLES_UNREADABLE) for _ in range(3)]
+    errori = [r for r in caplog.records
+              if r.name == "hiris.app.api.soffitto" and r.levelname == "ERROR"]
+
+    assert rifiuti == [True, True, True]
+    assert len(errori) == 1
+    ha.users = AsyncMock(return_value=_UTENTI)
+    adesso[0] += soffitto.GATE_FAILURE_HOLD_S
+    assert (await _risposta(aperta, "GET", "/api/config", _persona("u-admin")))[0] == 200
+
+
+@pytest.mark.asyncio
+async def test_un_guasto_NON_si_moltiplica_per_ogni_asset(aperta):
+    """R-2.9: venti file della pagina durante un guasto, UNA chiamata a
+    `config/auth/list`.
+
+    Mutazione ESEGUITA: `hold_failure_s` a zero nel cancello -- rossa
+    (venti chiamate)."""
+    ha = aperta.app["ha_client"]
+    ha.users = AsyncMock(return_value={"errore": "Home Assistant non ha risposto"})
+
+    for _ in range(20):
+        await aperta.get("/static/hiris-icon.svg", headers=_persona("u-marta"))
+
+    assert ha.users.await_count <= 2
+
+
+@pytest.mark.asyncio
+async def test_la_voce_di_menu_che_FALLISCE_non_apre_niente(chiusa, monkeypatch):
+    """1.7: il cancello legge l'opzione e il ruolo, mai l'esito della voce di
+    menu. `update_panel` fallisce, l'opzione e' spenta: chi non amministra
+    resta fuori."""
+    from hiris.app import panel_visibility
+
+    app = chiusa.app
+    ha = app["ha_client"]
+    ha.ws_ready = asyncio.Event()
+    ha.ws_ready.set()
+    ha.update_panel = AsyncMock(return_value={"errore": "rotto", "codice": "unknown_error"})
+    ha.panels = AsyncMock(return_value={"errore": "rotto"})
+
+    async def slug(_token):
+        return {"slug": "6354e165_hiris"}
+
+    monkeypatch.setattr(panel_visibility, "read_own_slug", slug)
+    await panel_visibility.sync_panel_visibility(app)
+
+    assert ha.update_panel.await_count == 1
+    assert await _gate_refused(chiusa, "GET", "/api/config", _persona("u-marta"),
+                               testo=OPTION_OFF)
+
+
+def test_il_cancello_non_conosce_la_VOCE_DI_MENU():
+    """1.7: nessun import del modulo della voce di menu nel cancello."""
+    import ast
+    import pathlib
+    radice = pathlib.Path(admission.__file__).parent
+    for nome in ("admission.py", "middleware_internal_auth.py"):
+        albero = ast.parse((radice / nome).read_text(encoding="utf-8"))
+        moduli = {getattr(n, "module", None) or "" for n in ast.walk(albero)
+                  if isinstance(n, ast.ImportFrom)}
+        moduli |= {a.name for n in ast.walk(albero) if isinstance(n, ast.Import)
+                   for a in n.names}
+        assert not any("panel_visibility" in m for m in moduli), nome
+
+
+def test_il_cancello_sta_DOPO_il_soggetto_e_PRIMA_del_gestore():
+    """2.1: nel ramo dell'ingress, fra `request["soggetto"] = ...` e
+    `return await handler(request)`.
+
+    Mutazione ESEGUITA: spostato il cancello dopo `handler` -- rossa."""
+    import ast
+    import inspect
+
+    from hiris.app.api import middleware_internal_auth as mia
+
+    albero = ast.parse(inspect.getsource(mia.internal_auth_middleware))
+    ramo = next(n for n in ast.walk(albero) if isinstance(n, ast.If)
+                and "_is_supervisor_ingress" in ast.unparse(n.test))
+    righe = [ast.unparse(s) for s in ramo.body]
+    soggetto = next(i for i, r in enumerate(righe) if "request['soggetto']" in r)
+    cancello = next(i for i, r in enumerate(righe) if "admission_refusal" in r)
+    gestore = next(i for i, r in enumerate(righe) if "await handler(request)" in r)
+
+    assert soggetto < cancello < gestore
+
+
+@pytest.mark.asyncio
+async def test_la_salute_di_chi_non_amministra_dice_solo_STATO_e_VERSIONE(aperta):
+    """R-2.23: la diagnostica (`ponte`, `riparazione`, `istantanea`, `build`)
+    resta all'amministratore."""
+    corpo = await (await aperta.get("/api/health", headers=_persona("u-marta"))).json()
+    admin = await (await aperta.get("/api/health", headers=_persona("u-admin"))).json()
+
+    assert set(corpo) == {"status", "version"}
+    assert set(admin) == {"status", "version", "build", "ponte", "riparazione",
+                          "istantanea"}
+
+
+@pytest.mark.asyncio
+async def test_chi_ha_SOLA_LETTURA_entra_come_chi_non_amministra(aperta):
+    assert (await _risposta(aperta, "GET", "/api/config", _persona("u-lettore")))[0] == 200
+    assert await _gate_refused(aperta, "GET", "/api/models", _persona("u-lettore"))
+
+
+# --- la chat segue i diritti di Home Assistant (ruling R-2.10b, R-2.25) -----
+
+from hiris.app.api.soffitto import (
+    ADMIN_READS_REFUSAL,
+    boundary_role,
+    ceiling_for,
+    consente,
+)
+from hiris.app.home_space.tools import ToolDispatcher
+
+
+class _HaLettore:
+    """Home Assistant che risponde: conta cosa gli si chiede."""
+
+    def __init__(self):
+        self.chiesto = []
+
+    async def system_log(self):
+        self.chiesto.append("system_log/list")
+        return {"voci": [{"level": "ERROR", "message": "zigbee giu'"}]}
+
+    async def automation_traces(self, automation_id):
+        self.chiesto.append("trace/list")
+        return {"esecuzioni": []}
+
+    async def automation_trace(self, automation_id, run_id):
+        self.chiesto.append("trace/get")
+        return {"esecuzione": {}}
+
+
+class _Porta:
+    def __init__(self):
+        self.eseguite = []
+
+    async def execute(self, arguments, *, actor, subject):
+        self.eseguite.append(arguments["servizio"])
+        return {"esito": "fatto"}
+
+
+_PERSONA_MARTA = {"specie": "persona", "id": "u-marta"}
+
+
+def _chat(ruolo, *, ha=None, porta=None):
+    soffitto = None if ruolo is None else consente(_PERSONA_MARTA, ruolo=ruolo)
+    return ToolDispatcher(None, None, ha=ha, actuator=porta, soffitto=soffitto,
+                          subject=_PERSONA_MARTA)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("strumento,argomenti", [
+    ("system_log", {}),
+    ("automation_trace", {"entita": "automation.luci"}),
+    ("automation_trace", {"entita": "automation.luci", "esecuzione": "r-1"}),
+])
+@pytest.mark.parametrize("ruolo", ["utente", "lettore"])
+async def test_le_letture_RISERVATE_agli_amministratori_non_escono_dalla_chat(
+        strumento, argomenti, ruolo):
+    """`system_log/list`, `trace/list` e `trace/get` sono
+    `@websocket_api.require_admin` in Core 2026.9.3 (verificato il 27/09/2026):
+    HIRIS, che parla da amministratore, non li legge per chi non lo e'.
+
+    Mutazione ESEGUITA: tolto il controllo da `_system_log` -- rossa (la voce
+    del registro arriva al modello)."""
+    ha = _HaLettore()
+
+    esito = await _chat(ruolo, ha=ha).dispatch(strumento, argomenti)
+
+    assert esito == {"errore": ADMIN_READS_REFUSAL}
+    assert ha.chiesto == [], "Home Assistant e' stato interrogato lo stesso"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ruolo", ["amministratore", None])
+async def test_l_amministratore_e_i_turni_senza_persona_leggono_come_prima(ruolo):
+    """Il metro opposto: chi amministra, e i turni che nessuna persona ha
+    aperto (`soffitto=None`: promesse, osservatore), leggono il registro."""
+    ha = _HaLettore()
+
+    esito = await _chat(ruolo, ha=ha).dispatch("system_log", {})
+
+    assert esito["voci"][0]["message"] == "zigbee giu'"
+
+
+@pytest.mark.asyncio
+async def test_chi_ha_SOLA_LETTURA_non_comanda_dalla_chat():
+    """R-2.10b: a una persona del gruppo `system-read-only` Home Assistant
+    nega di chiamare servizi (READ_ONLY_POLICY). Dalla chat, lo stesso.
+
+    Mutazione ESEGUITA: tolto il controllo da `_execute` -- rossa (la porta
+    esegue)."""
+    porta = _Porta()
+
+    esito = await _chat("lettore", porta=porta).dispatch(
+        "execute", {"servizio": "light.turn_on", "bersaglio": {"entity_id": ["light.x"]}})
+
+    assert "sola lettura" in esito["errore"]
+    assert porta.eseguite == []
+
+
+@pytest.mark.asyncio
+async def test_chi_e_UTENTE_comanda_dalla_chat_come_prima():
+    porta = _Porta()
+
+    await _chat("utente", porta=porta).dispatch(
+        "execute", {"servizio": "light.turn_on", "bersaglio": {"entity_id": ["light.x"]}})
+
+    assert porta.eseguite == ["light.turn_on"]
+
+
+@pytest.mark.asyncio
+async def test_il_ruolo_di_SOLA_LETTURA_arriva_al_soffitto_della_chat(casa):
+    """Dalla riga di Home Assistant al soffitto: `sola_lettura` diventa
+    `lettore`, che legge e non comanda ne' costruisce.
+
+    Mutazione ESEGUITA: `_role_of` senza il ramo `sola_lettura` -- rossa."""
+    soffitto = await ceiling_for(casa.app, {"specie": "persona", "id": "u-lettore"})
+
+    assert soffitto["ruolo"] == "lettore"
+    assert (soffitto["leggere"], soffitto["comandare"], soffitto["costruire"],
+            soffitto["diagnosticare"]) == (True, False, False, False)
+    assert await boundary_role(casa.app, {"specie": "persona", "id": "u-lettore"}) == (
+        "lettore", True)
+
+
+@pytest.mark.asyncio
+async def test_senza_un_RUOLO_lo_sviluppo_resta_come_ieri():
+    """Lo sviluppo (`HIRIS_ALLOW_NO_TOKEN`) porta un soffitto SENZA ruolo:
+    li' `execute` e il registro restano come ieri -- stringerli e' una
+    decisione che nessuno ha preso (`ToolDispatcher._role_denies`).
+
+    Mutazione ESEGUITA: `_role_denies` senza la condizione sul ruolo -- rossa
+    (e rossa anche `test_chat_briefing::test_conversazione_4`)."""
+    sviluppo = {"specie": "sviluppo", "id": None}
+    ha, porta = _HaLettore(), _Porta()
+    chat = ToolDispatcher(None, None, ha=ha, actuator=porta,
+                          soffitto=consente(sviluppo, ruolo=None), subject=sviluppo)
+
+    registro = await chat.dispatch("system_log", {})
+    await chat.dispatch("execute", {"servizio": "light.turn_on",
+                                    "bersaglio": {"entity_id": ["light.x"]}})
+
+    assert registro["voci"] and porta.eseguite == ["light.turn_on"]
