@@ -43,6 +43,7 @@ from .api.handlers_settings import (
 from .api.handlers_usage import handle_reset_usage, handle_usage, handle_usage_history
 from .api.middleware_csrf import csrf_middleware
 from .api.middleware_internal_auth import internal_auth_middleware
+from .api.soffitto import restricted_person
 from .backends.embeddings import build_embedding_provider
 from .chat_settings import ChatSettings, file_lacks_retention_days
 from .chat_thread import SyncTurnsInFlight, thread_for
@@ -6183,9 +6184,8 @@ async def _handle_health(request: web.Request) -> web.Response:
     # l'impronta no -- il guscio la porta gia' scritta, e senza `build-check.js`
     # non saprebbe dirle che la sua pagina e' vecchia. Il ruolo e' quello che
     # il cancello ha letto e lasciato sulla richiesta: nessuna seconda domanda
-    # a Home Assistant. Servizi, ponte e sviluppo invariati.
-    if (request.get("auth_via") == "ingress"
-            and request.get("ruolo") != "amministratore"):
+    # a Home Assistant (`restricted_person`). Servizi, ponte e sviluppo invariati.
+    if restricted_person(request):
         return web.json_response({"status": "ok", "version": read_version(),
                                   "build": request.app.get("build_stamp", "")})
     return web.json_response({"status": "ok", "version": read_version(),

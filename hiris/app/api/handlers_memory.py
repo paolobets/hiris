@@ -36,10 +36,12 @@ from __future__ import annotations
 
 from aiohttp import web
 
+from ..chat_thread import subject_key_for
 from ..home_space.topology import live_mirror
 from ..memory.interpretation import deduci_unit, validate
 from ..memory.resolver import STORE_KEY_PER_TYPE, costruisci_indice
 from ..proxy._sanitize import sanitize_ha_value
+from .soffitto import restricted_person
 
 # Gli stessi campi scalari che MemoryStore.correggi() accetta
 # (memory/store.py, `_CAMPI_MODIFICABILI`) piu' le due liste che quel
@@ -155,7 +157,21 @@ async def handle_get_memories(request: web.Request) -> web.Response:
               if topology_loaded else None)
     unverifiable = _unverifiable_types(home_space_store, topology_loaded)
 
-    memories = store.fetch(limit=_MEMORIES_SHOWN_LIMIT)
+    # **A chi non amministra, solo i suoi** (spec 2026-09-27 §4): i ricordi
+    # che ha detto lei, con la chiave che scrive `remember` in chat e dal ponte
+    # (`subject_key_for`). Il filtro lo decide il ruolo, mai la richiesta; sta
+    # nell'archivio prima del taglio, e il `total` e' il suo. Una persona
+    # senza id non ha ricordi: `persona:-` e' la chiave di nessuno, e
+    # filtrarci le darebbe quelli di ogni altro soggetto senza id.
+    if restricted_person(request):
+        subject = request.get("soggetto") or {}
+        said_by = subject_key_for(subject) if subject.get("id") else None
+        memories = (store.fetch(limit=_MEMORIES_SHOWN_LIMIT, said_by=said_by)
+                    if said_by else [])
+        total = store.count(said_by=said_by) if said_by else 0
+    else:
+        memories = store.fetch(limit=_MEMORIES_SHOWN_LIMIT)
+        total = store.count()
     for r in memories:
         r["corretto_da_utente"] = bool(r["corretto_da_utente"])
         r["ancore"] = [_resolve_tether(a, lookup, unverifiable) for a in r["ancore"]]
@@ -167,7 +183,7 @@ async def handle_get_memories(request: web.Request) -> web.Response:
         # ricordo invisibile e' indistinguibile da uno cancellato -- la
         # memoria non evapora (memory/store.py), ma senza dichiarare
         # il taglio sembrerebbe farlo.
-        "total": store.count(),
+        "total": total,
         "shown": len(memories),
     })
 

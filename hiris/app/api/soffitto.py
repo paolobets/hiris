@@ -521,6 +521,33 @@ async def per_richiesta(app, request) -> dict:
     return await ceiling_for(app, request.get("soggetto") or {})
 
 
+def request_role(request) -> str | None:
+    """**Il ruolo di chi fa questa richiesta, gia' letto** (spec 2026-09-27,
+    fix round 1 del Task 2, I4): per una persona dall'ingress quello che il
+    cancello al confine ha lasciato su `request["ruolo"]`, per un servizio
+    quello dell'approvazione, che viaggia col soggetto. Nessuna seconda
+    domanda a Home Assistant: le pagine che si adattano a chi guarda
+    (salute, memorie, impostazioni, pallini) lo prendono tutte da qui."""
+    if request.get("auth_via") == "ingress":
+        return request.get("ruolo")
+    return (request.get("soggetto") or {}).get("ruolo")
+
+
+def request_ceiling(request) -> dict:
+    """Il soffitto di questa richiesta dal ruolo gia' letto (`request_role`):
+    la stessa regola di `ceiling_for`, senza rileggere i ruoli."""
+    return consente(request.get("soggetto") or {}, ruolo=request_role(request))
+
+
+def restricted_person(request) -> bool:
+    """Una persona dall'ingress che il cancello non ha letto come
+    amministratrice -- un ruolo ignoto compreso. E' a lei che le pagine
+    mostrano solo cio' che e' suo (spec 2026-09-27 §4). Servizi, ponte e
+    sviluppo hanno le loro regole e restano come prima."""
+    return (request.get("auth_via") == "ingress"
+            and request_role(request) != "amministratore")
+
+
 def _route_pattern(request) -> str:
     """Il MODELLO della rotta (`/api/constructions/{id}`), non il percorso:
     `request.path` e' decodificato, e un `%0A` nell'id diventerebbe una riga

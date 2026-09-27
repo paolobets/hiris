@@ -292,7 +292,7 @@ async def test_il_pallino_delle_proposte_e_ZERO_per_chi_non_costruisce(cliente):
 
     assert risposta.status == 200
     assert await risposta.json() == {"agenda_unread": 0, "constructions_pending": 0,
-                                     "can_build": False}
+                                     "can_build": False, "can_configure": False}
 
 
 @pytest.mark.asyncio
@@ -303,7 +303,7 @@ async def test_il_pallino_delle_proposte_conta_davvero_per_chi_costruisce(client
     risposta = await cliente.get("/api/pending", headers=_testate("u-admin"))
 
     assert await risposta.json() == {"agenda_unread": 0, "constructions_pending": 2,
-                                     "can_build": True}
+                                     "can_build": True, "can_configure": True}
 
 
 # --- chi ha chiesto (4.8) ----------------------------------------------------

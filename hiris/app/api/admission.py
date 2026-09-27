@@ -66,9 +66,9 @@ ADMISSION: tuple[tuple[str, str, str], ...] = (
      ("i pallini del menu (`pending-badge.js`): gli esiti non letti dei SUOI "
       "Impegni, e le proposte a zero per chi non costruisce")),
     ("GET", "/api/chat-settings",
-     ("nome dell'assistente e forma delle risposte "
-      "(`chat/agents.js::loadSettings`), in sola lettura: scriverle resta agli "
-      "amministratori")),
+     ("nome dell'assistente e tetto dei turni (`chat/agents.js::loadSettings`), "
+      "e solo quelli (`handlers_settings.CHAT_PAGE_FIELDS`): leggerle tutte e "
+      "scriverle resta agli amministratori")),
     # La chat e le conversazioni, tutte nel filo di chi chiede.
     ("POST", "/api/chat",
      ("il turno di chat (`chat/send.js`): cosa si puo' fare dentro lo decide il "

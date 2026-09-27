@@ -83,6 +83,7 @@ import logging
 from aiohttp import web
 
 from ..chat_settings import DEFAULT_SYSTEM_PROMPT, ChatSettings
+from .soffitto import restricted_person
 
 # I nomi di HTTP e i nomi del FILE non sono piu' gli stessi, e la differenza e'
 # voluta (fetta «la rinomina», lotto dei campi JSON). Il payload e' il confine e
@@ -294,13 +295,25 @@ def _payload(settings: ChatSettings) -> dict:
     }
 
 
+#: I campi che la pagina della chat legge (`chat/agents.js::loadSettings`):
+#: tutto cio' che riceve chi non amministra (spec 2026-09-27, ruling R-2.24).
+#: Il prompt di sistema, quello di difetto, la conservazione e il resto sono
+#: della pagina Impostazioni, che a lei e' chiusa. Scritto a mano perche' e'
+#: una decisione; che coincida con cio' che la chat legge lo prova
+#: `test_la_riduzione_e_cio_che_la_CHAT_legge`.
+CHAT_PAGE_FIELDS = ("name", "max_chat_turns")
+
+
 async def handle_get_settings(request: web.Request) -> web.Response:
     """Le impostazioni in vigore ADESSO -- quelle che il prossimo turno di
     chat leggera'. Si prendono da `app["chat_settings"]` e non dal disco:
     e' lo stesso oggetto che usa `handlers_chat.py`, quindi la pagina non puo'
     mostrare qualcosa di diverso da cio' che la chat sta usando."""
     settings = request.app.get("chat_settings") or ChatSettings()
-    return web.json_response(_payload(settings))
+    payload = _payload(settings)
+    if restricted_person(request):
+        payload = {field: payload[field] for field in CHAT_PAGE_FIELDS}
+    return web.json_response(payload)
 
 
 async def handle_save_settings(request: web.Request) -> web.Response:

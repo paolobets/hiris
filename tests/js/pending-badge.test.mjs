@@ -157,6 +157,19 @@ test('PIN: una terza chiave nella risposta non fa scattare il controllo stretto'
   assert.equal(pallino(ctx, 'constructions').textContent, '4');
 });
 
+test('can_configure accanto ai numeri non spegne i pallini e non tocca la voce «Proposte»', async () => {
+  /* Spec 2026-09-27 §4: `GET /api/pending` porta anche `can_configure`, un
+     booleano. Il controllo stretto guarda solo le chiavi NUMERICHE dei
+     pallini: una chiave booleana in piu' non e' un guasto. E la voce
+     «Proposte» resta di `can_build`, non di questa chiave. */
+  const ctx = await monta(rispostaCon(
+    { agenda_unread: 2, constructions_pending: 4, can_build: true, can_configure: false }));
+
+  assert.equal(pallino(ctx, 'agenda').textContent, '2');
+  assert.equal(pallino(ctx, 'constructions').textContent, '4');
+  assert.equal(ctx.document.querySelector('[data-badge="constructions"]').hidden, false);
+});
+
 /* ── La voce «Proposte» e' di chi costruisce (spec 2026-09-26 §3) ──────
    La decide il server a ogni risposta di `GET /api/pending` (`can_build`),
    non un ruolo indovinato dal browser. Mutazioni ESEGUITE: svuotare il

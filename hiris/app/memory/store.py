@@ -39,6 +39,11 @@ il turno in cui il ricordo e' nato, il secondo il nome con cui HIRIS lo
 mostra oggi. Nessuno dei due lo decide il modello -- lo decide il soggetto
 del turno (`ToolDispatcher._subject`), prima ancora che `remember()` veda
 gli argomenti.
+
+**Chi lo legge per autore** (spec 2026-09-27 §4): la pagina Memoria di una
+persona che non amministra, con `fetch`/`count` filtrati per `said_by`. E' un
+filtro della lettura, non un ambito dell'archivio: la memoria che la chat usa
+resta condivisa.
 """
 from __future__ import annotations
 
@@ -103,6 +108,12 @@ def _migration_2(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE ricordi ADD COLUMN said_by TEXT")
 
 
+def _author_clause(said_by: str | None) -> tuple[str, tuple]:
+    """Il filtro per autore di `fetch` e `count`, scritto una volta: i due
+    devono contare lo stesso insieme."""
+    return (" WHERE said_by = ?", (said_by,)) if said_by is not None else ("", ())
+
+
 class MemoryStore:
     def __init__(self, db_path: str = "/data/memoria.db") -> None:
         self._conn = connect(db_path)
@@ -150,11 +161,20 @@ class MemoryStore:
             c.rollback()
             raise
 
-    def fetch(self, limit: int = 20) -> list[dict]:
+    def fetch(self, limit: int = 20, *, said_by: str | None = None) -> list[dict]:
         """Gli ultimi `limit` ricordi, i piu' recenti prima, con ancore e
-        condizioni gia' risolte."""
+        condizioni gia' risolte.
+
+        `said_by`: solo i ricordi di quell'autore (spec 2026-09-27 §4, la
+        pagina Memoria di chi non amministra). Il filtro sta nel WHERE, prima
+        del LIMIT: filtrati dopo, i suoi ricordi sparirebbero sotto il taglio
+        di quelli degli altri. Un ricordo senza autore non e' di nessuno, e
+        `=` non lo trova mai.
+        """
+        where, params = _author_clause(said_by)
         righe = self._conn.execute(
-            "SELECT * FROM ricordi ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+            f"SELECT * FROM ricordi{where} ORDER BY id DESC LIMIT ?",
+            (*params, limit)).fetchall()
         return [self._compose(dict(r)) for r in righe]
 
     def per_tether(self, type: str, reference: str) -> list[dict]:
@@ -189,13 +209,17 @@ class MemoryStore:
         row = self._conn.execute("SELECT * FROM ricordi WHERE id = ?", (id,)).fetchone()
         return self._compose(dict(row)) if row else None
 
-    def count(self) -> int:
+    def count(self, *, said_by: str | None = None) -> int:
         """Quanti ricordi ci sono in tutto -- non solo i `limit` che
         `fetch()` restituisce. La memoria non evapora (regola del
         modulo): oltre `limit` voci restano vere e proprio invisibili
         senza questo numero, e un ricordo invisibile e' indistinguibile
-        da uno cancellato."""
-        row = self._conn.execute("SELECT COUNT(*) AS n FROM ricordi").fetchone()
+        da uno cancellato. Con `said_by`, quelli di quell'autore: lo stesso
+        insieme di `fetch`, o il conto direbbe quanti ricordi hanno gli
+        altri."""
+        where, params = _author_clause(said_by)
+        row = self._conn.execute(
+            f"SELECT COUNT(*) AS n FROM ricordi{where}", params).fetchone()
         return row["n"]
 
     def correggi(self, id: int, **campi) -> bool:
