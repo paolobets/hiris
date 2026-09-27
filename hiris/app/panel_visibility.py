@@ -22,12 +22,15 @@ SUPERVISOR_URL = "http://supervisor"
 #: La forma di uno slug del Supervisor (`6354e165_hiris` sulla casa, 27/09/2026).
 #: Tutto il resto non diventa un `url_path`: lo slug arriva da una risposta
 #: HTTP, e un valore strano deve fermare il comando, non viaggiare fino a HA.
-SLUG_SHAPE = re.compile(r"^[a-z0-9_]+$")
+#: Si usa con `fullmatch`, non con `match` e `^...$`: `$` accetta anche un
+#: a-capo finale, e `"6354e165_hiris\n"` passerebbe.
+SLUG_SHAPE = re.compile(r"[a-z0-9_]+")
 
-#: Il tetto dell'intera sincronia. Non e' una misura: e' quanto si accetta di
-#: lasciare un compito appeso dietro un Home Assistant che non risponde. Il
-#: Supervisor avvia l'add-on anche prima del nucleo (`startup: services`).
-SYNC_CEILING_S = 60
+#: Il tetto dell'intera sincronia, attesa del nucleo compresa. Non e' una
+#: misura: e' una scelta. Il Supervisor avvia l'add-on prima del nucleo
+#: (`startup: services`), e dopo un riavvio della macchina il nucleo puo'
+#: metterci minuti; oltre questo tetto la voce resta com'era, e lo si dice.
+SYNC_CEILING_S = 600
 
 
 def parse_access_flag(raw: str | None) -> bool:
@@ -58,7 +61,7 @@ async def read_own_slug(token: str) -> dict:
         return {"errore": f"il Supervisor non ha risposto ({type(exc).__name__})"}
     data = body.get("data") if isinstance(body, dict) else None
     slug = data.get("slug") if isinstance(data, dict) else None
-    if not isinstance(slug, str) or not SLUG_SHAPE.match(slug):
+    if not isinstance(slug, str) or not SLUG_SHAPE.fullmatch(slug):
         return {"errore": "il Supervisor non ha dato uno slug di forma attesa"}
     return {"slug": slug}
 
@@ -66,50 +69,66 @@ async def read_own_slug(token: str) -> dict:
 async def sync_panel_visibility(app) -> None:
     """Allinea la voce di menu all'opzione. Non solleva mai."""
     try:
-        await asyncio.wait_for(_sync(app), timeout=SYNC_CEILING_S)
-    except TimeoutError:
-        logger.warning("voce di menu: Home Assistant non ha risposto entro %d s, "
-                       "la voce resta com'era", SYNC_CEILING_S)
+        await _sync(app)
     except Exception as exc:
         logger.warning("voce di menu: sincronia non riuscita (%s)", type(exc).__name__)
 
 
 async def _sync(app) -> None:
-    accesso = app["non_admin_access"]
+    access = app["non_admin_access"]
     own = await read_own_slug(os.environ.get("SUPERVISOR_TOKEN", ""))
     if "errore" in own:
         logger.warning("voce di menu: non tocco niente, manca lo slug di HIRIS: %s",
                        own["errore"])
         return
-    slug = own["slug"]
     ha = app["ha_client"]
+    try:
+        await asyncio.wait_for(_apply(ha, own["slug"], access), timeout=SYNC_CEILING_S)
+    except TimeoutError:
+        if not ha.ws_ready.is_set():
+            logger.warning("voce di menu: Home Assistant non si è collegato entro %d s, "
+                           "nessun comando mandato: la voce resta com'era "
+                           "(non_admin_access=%s)", SYNC_CEILING_S, access)
+        else:
+            logger.warning("voce di menu: Home Assistant non ha risposto entro %d s, "
+                           "la voce resta com'era (non_admin_access=%s)",
+                           SYNC_CEILING_S, access)
+
+
+async def _apply(ha, slug: str, access: bool) -> None:
+    """UNA chiamata, dopo che il WebSocket di HIRIS si e' autenticato: prima il
+    nucleo potrebbe non esserci ancora, e la chiamata fallirebbe per certo.
+    Poi lo stato si rilegge, e tutto si dice in UNA riga del registro."""
+    await ha.ws_ready.wait()
     # Spenta si manda `None` e non `True`: toglie l'override e torna il
     # predefinito di Home Assistant (il manifest: `panel_admin`) senza tracce.
-    esito = await ha.update_panel(slug, False if accesso else None)
-    if esito.get("codice") == "unknown_command":
-        logger.warning(
-            "voce di menu: questo Home Assistant non conosce frontend/update_panel "
-            "(arriva con la 2026.3), quindi la voce resta ai soli amministratori; "
-            "chi può entrare lo decide comunque HIRIS (non_admin_access=%s)", accesso)
-    elif "errore" in esito:
-        logger.warning("voce di menu: Home Assistant ha rifiutato l'override di %s "
-                       "(non_admin_access=%s): %s", slug, accesso, esito["errore"])
-    await _log_real_state(ha, slug, accesso)
+    outcome = await ha.update_panel(slug, False if access else None)
+    if outcome.get("codice") == "unknown_command":
+        failure = ("questo Home Assistant non conosce frontend/update_panel (arriva "
+                   "con la 2026.3), quindi la voce resta ai soli amministratori; chi "
+                   "può entrare lo decide comunque HIRIS")
+    elif "errore" in outcome:
+        failure = f"Home Assistant ha rifiutato l'override: {outcome['errore']}"
+    else:
+        failure = None
+    state = await _real_state(ha, slug)
+    if failure:
+        logger.warning("voce di menu %s: %s; %s (non_admin_access=%s)",
+                       slug, failure, state, access)
+    else:
+        logger.info("voce di menu %s: %s (non_admin_access=%s)", slug, state, access)
 
 
-async def _log_real_state(ha, slug: str, accesso: bool) -> None:
+async def _real_state(ha, slug: str) -> str:
     """Lo stato si rilegge, non si deduce dal comando mandato. Solo la voce di
     HIRIS: gli altri pannelli della casa non finiscono nel registro."""
-    letti = await ha.panels()
-    if "errore" in letti:
-        logger.warning("voce di menu: stato di %s non riletto: %s", slug, letti["errore"])
-        return
-    pannello = letti["pannelli"].get(slug)
-    if not isinstance(pannello, dict):
-        logger.warning("voce di menu: %s non è fra i pannelli di Home Assistant", slug)
-        return
-    chi = ("ai soli amministratori" if pannello.get("require_admin")
+    read = await ha.panels()
+    if "errore" in read:
+        return f"stato non riletto: {read['errore']}"
+    panel = read["pannelli"].get(slug)
+    if not isinstance(panel, dict):
+        return "non è fra i pannelli di Home Assistant"
+    who = ("ai soli amministratori" if panel.get("require_admin")
            else "a tutti gli utenti")
-    barra = "" if pannello.get("show_in_sidebar", True) else ", nascosta dalla barra laterale"
-    logger.info("voce di menu: %s è visibile %s%s (non_admin_access=%s)",
-                slug, chi, barra, accesso)
+    sidebar = "" if panel.get("show_in_sidebar", True) else ", nascosta dalla barra laterale"
+    return f"visibile {who}{sidebar}"

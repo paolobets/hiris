@@ -63,7 +63,7 @@ configuration:
   # ── 4. Chi usa HIRIS ──────────────────────────────────────────────────────
   non_admin_access:
     name: "Consenti HIRIS agli utenti non amministratori"
-    description: "Anche chi non è amministratore vede HIRIS nel menu e usa la chat, i suoi Impegni e le sue memorie (sola lettura); la configurazione resta agli amministratori."
+    description: "Accesa: chi non è amministratore vede HIRIS nel menu e usa la chat, i suoi Impegni e le sue memorie (sola lettura), non la configurazione. Spenta: HIRIS lo rifiuta, da qualunque parte arrivi."
 
   # ── 5. Avanzate: registro, sicurezza ──────────────────────────────────────
   log_level:

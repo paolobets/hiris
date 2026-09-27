@@ -61,7 +61,7 @@ configuration:
   # ── 4. Who uses HIRIS ─────────────────────────────────────────────────────
   non_admin_access:
     name: "Allow HIRIS for non-administrator users"
-    description: "Users who are not administrators also see HIRIS in the menu and use the chat, their own commitments and memories (read-only); configuration stays with administrators."
+    description: "On: non-administrators see HIRIS in the menu and use the chat, their own Commitments and memories (read-only), not the configuration. Off: HIRIS refuses them, however they reach it."
 
   # ── 5. Advanced: log, security ────────────────────────────────────────────
   log_level:

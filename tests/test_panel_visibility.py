@@ -47,10 +47,13 @@ class _FiloHA(HAClient):
     `risposte` associa un tipo di comando al messaggio INTERO che Home
     Assistant manderebbe (`{success, result, error}`), oppure `None` per «la
     connessione non c'e'». `sospeso` fa restare appeso un tipo: serve a provare
-    che l'avvio non aspetta Home Assistant."""
+    che l'avvio non aspetta Home Assistant. `pronto=False` finge un nucleo non
+    ancora collegato: `ws_ready` resta spento finche' la prova non lo accende."""
 
-    def __init__(self, risposte: dict, sospeso: str | None = None):
+    def __init__(self, risposte: dict, sospeso: str | None = None, pronto: bool = True):
         super().__init__("http://supervisor/core", "token-finto")
+        if pronto:
+            self.ws_ready.set()
         self._risposte = risposte
         self._sospeso = sospeso
         self.mandati: list[tuple[str, dict | None]] = []
@@ -205,6 +208,7 @@ async def test_lo_slug_e_quello_che_dice_il_supervisor(supervisor):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("corpo, status", [
     ({"result": "ok", "data": {"slug": "../x"}}, 200),
+    ({"result": "ok", "data": {"slug": f"{HOUSE_SLUG}\n"}}, 200),
     ({"result": "ok", "data": {"slug": ""}}, 200),
     ({"result": "ok", "data": {"slug": "Hiris-Maiuscolo"}}, 200),
     ({"result": "ok", "data": {"slug": 42}}, 200),
@@ -373,3 +377,63 @@ def test_il_cancello_non_dipende_dalla_voce_di_menu():
     auth = (ROOT / "hiris" / "app" / "api" / "middleware_internal_auth.py").read_text(
         encoding="utf-8")
     assert "panel_visibility" not in auth
+
+
+# ── L'attesa del nucleo: una chiamata sola, dopo che Home Assistant c'e' ─────
+
+@pytest.mark.asyncio
+async def test_la_chiamata_aspetta_che_home_assistant_ci_sia(supervisor):
+    """L'add-on parte prima del nucleo (`startup: services`): la chiamata parte
+    solo quando il WebSocket di HIRIS si e' autenticato, e parte una volta.
+    Mutazione: non aspettare `ws_ready` -- rossa (il comando parte subito)."""
+    ha = _FiloHA(_risposte_buone(), pronto=False)
+    task = asyncio.create_task(panel_visibility.sync_panel_visibility(_app(True, ha)))
+    await asyncio.sleep(0.2)
+    assert ha.mandati == []
+
+    ha.ws_ready.set()
+    await asyncio.wait_for(task, timeout=5)
+
+    assert ha.mandati == [
+        ("frontend/update_panel", {"url_path": HOUSE_SLUG, "require_admin": False}),
+        ("get_panels", None),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_un_nucleo_che_non_arriva_si_dice_e_non_si_chiama(supervisor, caplog,
+                                                                 monkeypatch):
+    """Oltre il tetto: una riga che lo dice, nessun comando, nessuna eccezione."""
+    monkeypatch.setattr(panel_visibility, "SYNC_CEILING_S", 0.2)
+    ha = _FiloHA(_risposte_buone(), pronto=False)
+
+    with caplog.at_level(logging.INFO, logger="hiris.app.panel_visibility"):
+        await asyncio.wait_for(
+            panel_visibility.sync_panel_visibility(_app(True, ha)), timeout=5)
+
+    assert ha.mandati == []
+    righe = [r.getMessage() for r in caplog.records]
+    assert len(righe) == 1 and "non si è collegato" in righe[0], righe
+
+
+@pytest.mark.asyncio
+async def test_rifiuto_e_rilettura_fallita_stanno_in_una_riga(supervisor, caplog):
+    """Quando l'override fallisce e neanche la rilettura riesce, il registro lo
+    dice in UNA riga: due righe separate si leggono come due guasti."""
+    ha = _FiloHA({"frontend/update_panel": None, "get_panels": None})
+
+    with caplog.at_level(logging.INFO, logger="hiris.app.panel_visibility"):
+        await panel_visibility.sync_panel_visibility(_app(True, ha))
+
+    righe = [r.getMessage() for r in caplog.records]
+    assert len(righe) == 1, righe
+    assert "rifiutato" in righe[0] and "stato non riletto" in righe[0], righe
+
+
+def test_la_sincronia_parte_dopo_l_avvio_che_crea_il_client():
+    """`_start_panel_sync` legge `app["ha_client"]`, che nasce in `_on_startup`:
+    l'ordine dei due e' un fatto, e si pinna."""
+    app = server.create_app()
+    hooks = list(app.on_startup)
+    assert server._on_startup in hooks and server._start_panel_sync in hooks
+    assert hooks.index(server._start_panel_sync) > hooks.index(server._on_startup)

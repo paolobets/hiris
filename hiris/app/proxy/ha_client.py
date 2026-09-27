@@ -346,6 +346,12 @@ class HAClient:
         self._dashboard_listeners: list[Callable[[dict], None]] = []
         self._service_listeners: list[Callable[[str], None]] = []
         self._automation_listeners: list[Callable[[dict], None]] = []
+        #: Acceso quando il WebSocket di lunga vita si e' autenticato la prima
+        #: volta: e' il segno che il nucleo di Home Assistant risponde. Serve a
+        #: chi deve fare UNA chiamata all'avvio (`panel_visibility`): l'add-on
+        #: parte prima del nucleo (`startup: services`), e senza aspettare la
+        #: chiamata fallirebbe a ogni riavvio della macchina.
+        self.ws_ready = asyncio.Event()
 
     async def start(self) -> None:
         self._session = aiohttp.ClientSession(headers=self._headers)
@@ -2495,6 +2501,7 @@ class HAClient:
                             logger.error("HA WebSocket auth failed")
                             return
 
+                    self.ws_ready.set()
                     await ws.send_json(
                         {"id": 1, "type": "subscribe_events", "event_type": "state_changed"}
                     )

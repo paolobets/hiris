@@ -3571,6 +3571,8 @@ async def _on_startup(app: web.Application) -> None:
     # e' uscita dal prodotto: adesso quelle tre tracce si **tolgono**, una
     # volta, riconoscendo solo cio' che l'add-on stesso aveva messo. Vedi il
     # commento esteso su `_disinstalla_card_lovelace`.
+    # NON e' lo slug del Supervisor (`panel_visibility.read_own_slug`): e' il
+    # nome della cartella con cui il vecchio installatore della card la copiava.
     hiris_slug = os.environ.get("HIRIS_SLUG", "hiris")
     await _disinstalla_card_lovelace(
         ha_base_url,
