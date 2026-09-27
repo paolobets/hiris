@@ -172,9 +172,11 @@ test('can_configure accanto ai numeri non spegne i pallini e non tocca la voce �
 
 /* ── La voce «Proposte» e' di chi costruisce (spec 2026-09-26 §3) ──────
    La decide il server a ogni risposta di `GET /api/pending` (`can_build`),
-   non un ruolo indovinato dal browser. Mutazioni ESEGUITE: svuotare il
-   ciclo di `applyBuilder` -- rosse quattro prove di questo file;
-   `dati.can_build !== false` al posto di `=== true` -- rossa la terza. */
+   non un ruolo indovinato dal browser. Mutazioni ESEGUITE (rieseguite il
+   27/09/2026, quando `applyBuilder` e' diventato `applyPermission`, lo
+   stesso meccanismo per `can_build` e `can_configure`): svuotare il ciclo
+   di `applyPermission` -- rosse cinque prove di questo file; `!== false` al
+   posto di `=== true` sul campo della risposta -- rossa la terza. */
 
 function voceProposte(ctx) {
   return ctx.document.querySelector('[data-badge="constructions"]');
@@ -226,10 +228,13 @@ test('un errore non tocca la voce: non e\' una risposta', async () => {
 
 /* ── Il ricordo dell'ultima risposta (fix round 1 del Task 4) ─────────
    Senza, la voce compariva a un amministratore un giro di rete dopo ogni
-   apertura, e mai se la prima risposta falliva. Mutazioni ESEGUITE: togliere
-   `applyBuilder(remembered())` da `mount` -- rossa la prima; togliere
-   `remember(puo)` -- rossa la seconda; togliere il try/catch di
-   `remembered` -- rossa la terza. */
+   apertura, e mai se la prima risposta falliva. Mutazioni ESEGUITE
+   (rieseguite il 27/09/2026 sui nomi di oggi): togliere
+   `applyPermission(..., remembered(...))` da `mount` -- rossa la prima;
+   togliere `remember(...)` dalla risposta -- rossa la seconda; togliere il
+   try/catch di `remembered` -- rossa la terza. Il ricordo di
+   `can_configure` e' lo stesso meccanismo: le sue prove stanno in
+   `can-configure.test.mjs`. */
 
 function montaSenzaRisposta(prima) {
   const ctx = loadScripts(['pending-badge.js'], { html: HTML });

@@ -66,16 +66,31 @@
      chiamata ogni 30 secondi produce solo rumore -- prima erano un 503 e un
      console.error ogni mezzo minuto, per sempre, senza che l'utente leggesse
      mai il perche'. Un errore di rete o un HTTP non-200 restituiscono invece
-     `true`: quelli possono passare, e il timer resta. */
+     `true`: quelli possono passare, e il timer resta.
+
+     **Il giro e' di chi configura** (spec 2026-09-27 §4): parte quando
+     `can_configure` diventa vero -- dal ricordo o dal server -- e si ferma
+     quando diventa falso, anche se era partito da un ricordo vecchio. Chi
+     non configura non chiede mai `api/usage`: il cancello gliela
+     rifiuterebbe ogni mezzo minuto, per sempre (security-constraints 4.5). */
   var usageTimer = null;
 
   function refreshUsage() {
     return loadUsage().then(function (keepGoing) {
-      if (keepGoing === false && usageTimer !== null) {
-        clearInterval(usageTimer);
-        usageTimer = null;
-      }
+      if (keepGoing === false) stopUsage();
     });
+  }
+
+  function startUsage() {
+    if (usageTimer !== null) return;
+    refreshUsage();
+    usageTimer = setInterval(refreshUsage, 30000);
+  }
+
+  function stopUsage() {
+    if (usageTimer === null) return;
+    clearInterval(usageTimer);
+    usageTimer = null;
   }
 
   function boot() {
@@ -88,10 +103,8 @@
     /* Ricarica la history della conversazione: senza questo, tornando alla chat
        da config (reload pieno) si vedeva una chat vuota pur essendo salvata. */
     window.HirisChatAgents.restore();
-    refreshUsage();
     window.HirisChatAgents.updateGreeting();
     setInterval(window.HirisChatAgents.loadSettings, 30000);
-    usageTimer = setInterval(refreshUsage, 30000);
     setInterval(window.HirisChatAgents.updateGreeting, 60 * 60 * 1000); /* refresh greeting every hour */
 
     window.HirisChatSidebar.init();
@@ -106,7 +119,14 @@
     window.HirisChatSend.wireComposer();
     wireHeaderAndSidebarButtons();
     /* Le due voci esecutive stanno nella barra laterale, che qui e' statica
-       in `index.html`: nessun montaggio da aspettare. */
+       in `index.html`: nessun montaggio da aspettare. L'iscrizione viene
+       PRIMA del montaggio, che applica gia' il ricordo: un amministratore
+       che lo ha vede i consumi subito, come prima. */
+    window.HirisPendingBadge.onChange(function (field, granted) {
+      if (field !== 'can_configure') return;
+      if (granted === true) startUsage();
+      else stopUsage();
+    });
     window.HirisPendingBadge.mount();
   }
 

@@ -109,6 +109,20 @@ window.HirisMemoryRoute = (function () {
     return null;
   }
 
+  /* Correggere e cancellare sono di chi configura (decisione 4 del
+     proprietario, spec 2026-09-27 §4): chi non amministra legge i SUOI
+     ricordi e basta -- `PATCH`/`DELETE /api/memories/{id}` il cancello glieli
+     rifiuta comunque. Il nodo nasce nello stato che static/pending-badge.js
+     sa ADESSO (le card si disegnano dopo la sua prima risposta, o prima,
+     col ricordo), e porta `data-configure-only` perche' le risposte
+     successive lo aggiornino. Senza il pallino (un guscio che non lo carica)
+     si parte spenti, come ogni `data-configure-only`. */
+  function configureOnly(node) {
+    node.setAttribute('data-configure-only', '');
+    node.hidden = !(window.HirisPendingBadge && window.HirisPendingBadge.canConfigure() === true);
+    return node;
+  }
+
   function showCardError(node, text) {
     node.textContent = text;
     node.style.display = '';
@@ -351,6 +365,7 @@ window.HirisMemoryRoute = (function () {
 
     var bar = el('div');
     bar.style.cssText = 'display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap';
+    configureOnly(bar);
     var btnCorreggi = el('button', 'btn btn-ghost btn-sm', 'Correggi');
     btnCorreggi.type = 'button';
     /* «Dimentica» era l'unico elemento della riga che sembrasse un bottone --
@@ -470,10 +485,14 @@ window.HirisMemoryRoute = (function () {
     if (!outlet) return;
     clearEl(outlet);
     outlet.appendChild(el('h1', 'page-title', 'Memoria'));
-    outlet.appendChild(el('p', 'page-subtitle',
-      'Ciò che hai detto a HIRIS, e cosa ne ha capito. Puoi correggere l’interpretazione — mai il ' +
+    /* La seconda meta' del sottotitolo parla di correggere e togliere: per
+       chi legge soltanto sarebbe una promessa che la pagina non mantiene. */
+    var subtitle = el('p', 'page-subtitle', 'Ciò che hai detto a HIRIS, e cosa ne ha capito.');
+    subtitle.appendChild(configureOnly(el('span', null,
+      ' Puoi correggere l’interpretazione — mai il ' +
       'testo — o cancellare un ricordo per sempre. I ricordi non scadono: restano '
-      + 'finché non li togli tu, e non se ne vanno cancellando la conversazione.'));
+      + 'finché non li togli tu, e non se ne vanno cancellando la conversazione.')));
+    outlet.appendChild(subtitle);
     var status = el('p', 'sc-desc', '');
     status.id = 'memory-status';
     outlet.appendChild(status);

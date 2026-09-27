@@ -62,16 +62,19 @@
      Il ripiego per un browser senza `replaceState` assegna l'hash: il
      `hashchange` che ne segue viene assorbito da `lastResolvedHash`, che a
      quel punto vale gia' l'hash NUOVO. */
-  function correggiHashDiPrima(hash) {
-    var nudo = hash.replace(/\/$/, '');
-    if (!Object.prototype.hasOwnProperty.call(HASH_DI_PRIMA, nudo)) return hash;
-    var nuovo = HASH_DI_PRIMA[nudo];
+  function replaceHash(nuovo) {
     if (window.history && window.history.replaceState) {
       window.history.replaceState(null, '', nuovo);
     } else {
       window.location.hash = nuovo;
     }
     return nuovo;
+  }
+
+  function correggiHashDiPrima(hash) {
+    var nudo = hash.replace(/\/$/, '');
+    if (!Object.prototype.hasOwnProperty.call(HASH_DI_PRIMA, nudo)) return hash;
+    return replaceHash(HASH_DI_PRIMA[nudo]);
   }
 
   function resolveRoute() {
@@ -81,8 +84,9 @@
       var r = routes[i];
       var m = hash.match(r.pattern);
       if (m) {
+        var redirect;
         try {
-          r.handler(m);
+          redirect = r.handler(m);
         } catch(e) {
           console.error('route handler error', e);
           /* Review finale pre-1.0, finding I3 (Important): NON marcare
@@ -97,6 +101,16 @@
              reload. Ritornando qui SENZA aggiornare lastResolvedHash (né
              HirisState.route, sotto), un secondo dispatch dello stesso
              hash rientra nel for e richiama di nuovo r.handler(m). */
+          return;
+        }
+        /* Una route puo' rispondere con un altro indirizzo invece di
+           montarsi: la home di chi non configura sono gli Impegni
+           (config/main.js). Stessa correzione degli indirizzi di prima --
+           `replaceState`, nessuna voce di cronologia, montaggio in questo
+           stesso giro -- e il nuovo indirizzo si risolve come ogni altro. */
+        if (typeof redirect === 'string' && redirect !== hash) {
+          replaceHash(redirect);
+          resolveRoute();
           return;
         }
         lastResolvedHash = hash;
@@ -130,6 +144,13 @@
     },
     navigate: function(hash) {
       window.location.hash = hash;
+    },
+    /* Rimonta la route corrente anche se l'indirizzo non e' cambiato:
+       quando cambia chi sei per il server (`can_configure`), la stessa
+       pagina ha un'altra risposta. */
+    refresh: function() {
+      lastResolvedHash = null;
+      resolveRoute();
     },
     _internal_routes: routes, /* exposed for test only */
     _hash_di_prima: HASH_DI_PRIMA, /* exposed for test only */

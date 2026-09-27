@@ -109,6 +109,12 @@ async function avviaChat(rispostaUsage) {
     const u = String(url);
     if (u.includes('api/usage')) return rispostaUsage();
     if (u.includes('api/health')) return jsonResponse({ status: 'ok', version: '2.0.0' });
+    /* Il riquadro e il suo giro sono di chi configura (spec 2026-09-27 §4):
+       partono al `can_configure: true` del server. Qui guarda un
+       amministratore, cioe' chi aveva il riquadro anche prima. */
+    if (u.includes('api/pending')) {
+      return jsonResponse({ agenda_unread: 0, constructions_pending: 0, can_build: true, can_configure: true });
+    }
     return jsonResponse({});
   };
 
