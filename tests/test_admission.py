@@ -758,7 +758,7 @@ async def test_senza_il_client_di_HA_nessuna_persona_entra(aiohttp_client, tmp_p
 
 
 @pytest.mark.asyncio
-async def test_ruoli_ILLEGGIBILI_chiudono_anche_il_proprietario_col_suo_testo(
+async def test_ruoli_ILLEGGIBILI_chiudono_anche_owner_col_suo_testo(
         aperta, caplog, monkeypatch):
     """R-2.8: il proprietario e' chiuso fuori, col testo che dice perche'; la
     riga d'errore esce una volta; e appena Home Assistant risponde, si
@@ -1006,13 +1006,14 @@ async def test_il_ruolo_di_SOLA_LETTURA_arriva_al_soffitto_della_chat(casa):
 
 
 @pytest.mark.asyncio
-async def test_lo_SVILUPPO_non_si_restringe_per_ruolo():
+async def test_lo_SVILUPPO_non_si_restringe_per_ruolo(monkeypatch):
     """Lo sviluppo (`HIRIS_ALLOW_NO_TOKEN`) ha l'autenticazione spenta per
     definizione: `execute` e il registro restano aperti (fix round 1, I3,
     `soffitto.denies`).
 
     Mutazione ESEGUITA: `denies` senza l'eccezione dello sviluppo -- rossa
     (e rossa anche `test_chat_briefing::test_conversazione_4`)."""
+    monkeypatch.setenv("HIRIS_ALLOW_NO_TOKEN", "1")
     sviluppo = {"specie": "sviluppo", "id": None}
     ha, porta = _HaLettore(), _Porta()
     chat = ToolDispatcher(None, None, ha=ha, actuator=porta,
@@ -1068,14 +1069,17 @@ async def test_i_servizi_di_HA_concessi_restano_concessi(ruolo, servizio, passa)
     assert (porta.eseguite == [servizio]) is passa
 
 
-def test_la_domanda_UNICA_al_soffitto():
-    """I3: lo sviluppo non si restringe per ruolo; una macchina senza ruolo
-    fuori dallo sviluppo si', e un turno senza soffitto (l'osservatore) no.
+def test_la_domanda_UNICA_al_soffitto(monkeypatch):
+    """I3: lo sviluppo non si restringe per ruolo -- ma solo con
+    l'interruttore acceso (fix round 2); una macchina senza ruolo si', e un
+    turno senza soffitto (l'osservatore) no.
 
     Mutazione ESEGUITA: `denies` senza l'eccezione dello sviluppo -- rossa."""
     sviluppo = {"specie": "sviluppo", "id": None}
     nessuno = {"specie": "nessuno", "id": None}
 
+    assert denies(consente(sviluppo, ruolo=None), "comandare", sviluppo) is True
+    monkeypatch.setenv("HIRIS_ALLOW_NO_TOKEN", "1")
     assert denies(consente(sviluppo, ruolo=None), "comandare", sviluppo) is False
     assert denies(consente(nessuno, ruolo=None), "comandare", nessuno) is True
     assert denies(None, "amministrare", None) is False
@@ -1346,3 +1350,147 @@ async def test_il_CORPO_di_un_automazione_e_degli_amministratori(tmp_path, ruolo
     assert ("solo agli amministratori" in json_text(automazione)) is not vede
     assert automazione["esiste"] is True
     assert "CORPO-DELLO-SCRIPT" in json_text(script)
+
+
+# --- fix round 2: la bozza di chi non amministra non rivela il «prima» -------
+
+_CORPO_ATTUALE = {"id": "1771", "alias": "Tapparelle all'alba",
+                  "description": "SEGRETO",
+                  "triggers": [{"trigger": "sun", "event": "sunrise"}],
+                  "actions": [{"action": "lock.unlock",
+                               "target": {"entity_id": "lock.porta"}}]}
+
+
+def _officina(tmp_path):
+    from hiris.app.action.construction.revisions import ConstructionStore
+    from hiris.app.action.construction.workshop import Workshop
+    from hiris.app.action.journal import Journal
+    from tests.test_construction_workshop import FintoHA
+
+    archivio = ConstructionStore(str(tmp_path / "costruzioni.db"))
+    cronaca = Journal(str(tmp_path / "azioni.db"))
+    ha = FintoHA(leggi={"corpo": dict(_CORPO_ATTUALE)})
+    return Workshop(ha, archivio, cronaca), archivio, cronaca
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("soffitto,dominio,rivela", [
+    (consente(_PERSONA_MARTA, ruolo="utente"), "automation", False),
+    (consente(_PERSONA_MARTA, ruolo="lettore"), "scene", False),
+    # Il soffitto di un risveglio senza ruolo verificato: niente.
+    ({"leggere": False, "comandare": False, "costruire": False,
+      "amministrare": False, "ruolo": None, "perche": "x"}, "automation", False),
+    (consente(_PERSONA_MARTA, ruolo="utente"), "script", True),
+    (consente(_PERSONA_MARTA, ruolo="amministratore"), "automation", True),
+    (None, "automation", True),
+])
+async def test_la_BOZZA_di_chi_non_amministra_non_rivela_com_e_adesso(
+        tmp_path, soffitto, dominio, rivela):
+    """Fix round 2, punto 1: `propose modifica` legge il corpo attuale col
+    token di amministratore di HIRIS, e l'anteprima lo riassumeva («Prima:»
+    con descrizione e servizi chiamati). Per automazioni e scene Home
+    Assistant quel corpo lo mostra solo agli amministratori
+    (`components/config/view.py`, `@require_admin`, Core 2026.9.3); gli
+    script restano come in `view`. Il «prima» resta archiviato intero.
+
+    Mutazione ESEGUITA: `_propose` con `reveal_before=True` sempre -- rossa."""
+    from tests.test_construction_workshop import _intento
+
+    officina, archivio, cronaca = _officina(tmp_path)
+    chat = ToolDispatcher(None, None, workshop=officina, soffitto=soffitto,
+                          subject=_PERSONA_MARTA, exchange="t-1")
+    intento = _intento(gesto="modifica", chiave="1771", dominio=dominio)
+    if dominio == "scene":
+        intento.update(richiesto="scena", innesco=[], azioni=[],
+                       stati=[{"entity_id": "light.cucina", "state": "on"}])
+    elif dominio == "script":
+        intento.update(richiesto="script", innesco=[])
+
+    esito = await chat.dispatch("propose", intento)
+    testo = json_text(esito)
+    stored_before = (archivio.read(esito["proposta_id"]) or {}).get("prima") \
+        if "proposta_id" in esito else None
+    archivio.close()
+    cronaca.close()
+
+    assert "proposta_id" in esito, esito
+    assert ("SEGRETO" in testo) is rivela
+    assert ("lock.unlock" in testo) is rivela
+    assert ("com'è adesso lo vedono solo gli amministratori" in testo) is not rivela
+    assert "Tapparelle all'alba" in testo, "l'alias e' pubblico e resta"
+    assert stored_before == _CORPO_ATTUALE, "il «prima» si archivia intero"
+
+
+@pytest.mark.asyncio
+async def test_una_promessa_nata_in_SVILUPPO_non_legge_in_produzione(monkeypatch):
+    """Fix round 2, punto 2: l'eccezione dello sviluppo la decide
+    l'interruttore, non la specie. Una promessa col filo `sviluppo:-` che si
+    sveglia con l'interruttore spento non legge il registro.
+
+    Mutazione ESEGUITA: `denies` che guarda solo la specie -- rossa."""
+    from hiris.app.api.soffitto import prepara_ruoli
+    from hiris.app.chat_thread import ChatThread
+    from hiris.app.keeper.exchange import interpreta_promise
+
+    monkeypatch.delenv("HIRIS_ALLOW_NO_TOKEN", raising=False)
+    ha, runner = _HaDiMarta(), _RunnerCheLegge()
+    app = {"llm_router": runner, "ha_client": ha}
+    prepara_ruoli(app)
+    promessa = {"id": "p1", "frase": "guarda il registro", "domanda": "errori?",
+                "istantanea": [], "thread": ChatThread("sviluppo:-", "sviluppo")}
+
+    await interpreta_promise(app, promessa)
+
+    assert runner.risposte[0] == {"errore": ADMIN_READS_REFUSAL}
+    assert ha.chiesto == []
+
+    monkeypatch.setenv("HIRIS_ALLOW_NO_TOKEN", "1")
+    ha2, runner2 = _HaDiMarta(), _RunnerCheLegge()
+    app2 = {"llm_router": runner2, "ha_client": ha2}
+    prepara_ruoli(app2)
+    await interpreta_promise(app2, promessa)
+    assert "system_log/list" in ha2.chiesto, "con l'interruttore acceso, come ieri"
+
+
+@pytest.mark.asyncio
+async def test_l_orfana_ADOTTATA_dal_proprietario_legge_coi_suoi_diritti(tmp_path):
+    """Fix round 2, punto 4: una promessa di prima delle promesse divise si
+    sveglia, l'orologio la da' al proprietario (`owner_thread`), e il suo
+    `chiedi` legge il registro coi diritti di lui."""
+    from hiris.app.api.soffitto import ceiling_at_wake, prepara_ruoli
+    from hiris.app.chat_thread import ChatThread
+    from hiris.app.keeper.exchange import interpreta_promise
+    from hiris.app.keeper.recipient import Recipients
+    from hiris.app.keeper.store import AgendaStore
+    from hiris.app.keeper.sweeper import Sweeper
+
+    ha, runner = _HaDiMarta(), _RunnerCheLegge()
+    app = {"llm_router": runner, "ha_client": ha}
+    prepara_ruoli(app)
+    agenda = AgendaStore(str(tmp_path / "promesse.db"))
+    adesso = time.time()
+    agenda._conn.execute(
+        "INSERT INTO promesse(id,specie,frase,quando_ts,domanda,recapito,stato,"
+        "nata_ts) VALUES('vecchia','chiedi','detta prima',?,'errori?',NULL,"
+        "'in_attesa',?)", (adesso - 1, adesso - 100))
+    agenda._conn.commit()
+    proprietario = ChatThread("persona:u-admin", "pannello")
+
+    async def _nessun_telefono(_subject):
+        return Recipients((), "nessun telefono")
+
+    async def _owner():
+        return proprietario
+
+    orologio = Sweeper(
+        agenda, execute=None, interpreta=lambda p: interpreta_promise(app, p),
+        recipients=_nessun_telefono, write_to_thread=lambda *a, **k: True,
+        ceiling=lambda s: ceiling_at_wake(app, s), owner_thread=_owner)
+
+    await orologio.batti(adesso)
+    riga = agenda.read("vecchia")
+    agenda.close()
+
+    assert riga["thread"] == proprietario
+    assert runner.risposte and runner.risposte[0].get("voci"), runner.risposte
+    assert "system_log/list" in ha.chiesto

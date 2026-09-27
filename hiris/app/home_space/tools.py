@@ -2733,7 +2733,8 @@ class ToolDispatcher:
         }
         return await self._workshop.propose(
             intent, actor="chat", exchange=self._exchange, now=_time.time(),
-            thread=self._thread)
+            thread=self._thread,
+            reveal_before=not self._ceiling_denies("amministrare"))
 
     async def _confirm(self, arguments: dict[str, Any]) -> dict:
         """Applica una proposta gia' creata da `propose`. La guardia del

@@ -154,12 +154,13 @@ def ruolo_letto(soffitto: dict) -> bool:
 
     Serve a chi deve DIRLO a qualcuno (fix round 1, Task 5, Important 3: la
     sezione "Chi ti sta parlando" del contesto della chat), non solo a
-    deciderlo -- `consente()` sopra restituisce `_PERSONA_IGNOTA` ("utente")
-    ANCHE quando il ruolo e' stato letto davvero da Home Assistant e la
-    persona e' un'utenza non amministratrice: la stessa stringa copre due
-    fatti diversi, e solo `perche'` li distingue (contiene `_IGNOTO` solo nel
-    ramo di ripiego). Non si ridichiara qui il testo di `_IGNOTO` --
-    lo si CONFRONTA con quello vero, o i due potrebbero divergere."""
+    deciderlo -- `consente()` sopra restituisce `_PERSONA_IGNOTA` ("lettore",
+    dal fix round 1 del Task 2 della spec 2026-09-27) ANCHE quando il ruolo
+    e' stato letto davvero da Home Assistant e la persona e' del gruppo di
+    sola lettura: la stessa stringa copre due fatti diversi, e solo
+    `perche'` li distingue (contiene `_IGNOTO` solo nel ramo di ripiego).
+    Non si ridichiara qui il testo di `_IGNOTO` -- lo si CONFRONTA con
+    quello vero, o i due potrebbero divergere."""
     return _IGNOTO not in (soffitto.get("perche") or "")
 
 
@@ -327,10 +328,21 @@ def denies(ceiling: dict | None, gesture: str, subject: dict | None) -> bool:
     schedulatore) non nega niente -- il perimetro delle macchine e'
     l'invariante dei canali esterni. **Lo sviluppo non si restringe per
     ruolo** (fix round 1, I3): con `HIRIS_ALLOW_NO_TOKEN` l'autenticazione e'
-    spenta per definizione, il soggetto `sviluppo` non ha un ruolo da
-    rispettare, e restringerlo darebbe solo un prodotto diverso da provare.
+    spenta per definizione, e restringerlo darebbe solo un prodotto diverso da
+    provare.
+
+    **A decidere e' l'interruttore dello sviluppo, non la specie** (fix round
+    2): un soggetto `sviluppo` e' nato quando l'interruttore era acceso, ma
+    una promessa nata allora si puo' svegliare in produzione -- e li' non
+    deve leggere cio' che Home Assistant riserva agli amministratori. Le due
+    condizioni insieme: l'interruttore da solo aprirebbe anche le persone e i
+    servizi che passano di li'.
     """
-    if ceiling is None or (subject or {}).get("specie") == "sviluppo":
+    from .middleware_internal_auth import allow_no_token
+
+    if ceiling is None:
+        return False
+    if allow_no_token() and (subject or {}).get("specie") == "sviluppo":
         return False
     return not ceiling.get(gesture)
 
@@ -484,15 +496,16 @@ async def ceiling_at_wake(app, subject: dict | None) -> dict:
     subject = dict(subject or {})
     if not subject.get("specie"):
         # Senza soggetto `consente` ripiegherebbe su «persona ignota», che
-        # comanda: giusto per chi e' passato dall'ingress, sbagliato per
-        # un'azione a scadenza di cui non si sa il padrone.
+        # legge (`lettore`): per un'azione a scadenza di cui non si sa il
+        # padrone nemmeno quello -- una macchina senza ruolo, che non puo'
+        # niente.
         return consente({"specie": "nessuno"}, ruolo=None)
     if subject.get("specie") == "persona":
         # **Al risveglio il dubbio chiude** (fix round 1, punto 2). In chat
-        # una persona senza ruolo leggibile vale «utente», perche' e' appena
-        # passata dall'ingress: e' una prova. Un'azione a scadenza non ha
-        # nessuna prova fresca -- l'utente puo' essere stato cancellato, o
-        # Home Assistant non rispondere -- e nel dubbio non si comanda.
+        # una persona senza ruolo leggibile vale «lettore» (`_PERSONA_IGNOTA`):
+        # legge e basta. Al risveglio nemmeno quello -- l'utente puo' essere
+        # stato cancellato, o Home Assistant non rispondere -- e nel dubbio
+        # non si fa niente: nessun gesto, nemmeno le letture riservate.
         role = await _ruolo_persona(app, subject)
         if role is None:
             return {**{g: False for g in GESTI}, "ruolo": None,

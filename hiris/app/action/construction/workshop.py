@@ -223,7 +223,20 @@ class Workshop:
     # ---- proporre -------------------------------------------------------
 
     async def propose(self, intent: dict, *, actor: str, exchange: str | None,
-                      now: float, thread: ChatThread | None = None) -> dict:
+                      now: float, thread: ChatThread | None = None,
+                      reveal_before: bool = True) -> dict:
+        """Propone; non scrive.
+
+        `reveal_before` falso (chi propone non amministra, spec 2026-09-27, fix
+        round 2 del Task 2): l'anteprima non descrive com'e' adesso
+        un'automazione o una scena -- Home Assistant quel corpo lo mostra
+        solo agli amministratori (`/api/config/<dominio>/config/<chiave>`,
+        `@require_admin` in `components/config/view.py`, Core 2026.9.3; per
+        le automazioni anche `automation/config`). Gli script restano come in
+        `view`: `script/config` non e' riservato. Il «prima» si archivia
+        comunque intero: applicare e rimettere com'era ne hanno bisogno, e
+        la pagina delle costruzioni e' di chi costruisce.
+        """
         operation = intent.get("gesto")
         domain = intent.get("dominio")
         if operation not in OPERATIONS:
@@ -290,7 +303,8 @@ class Workshop:
                 return {"errore": prova}
 
         preview = self._preview(operation, domain, key, intent, prima, dopo,
-                                    consiglio)
+                                consiglio,
+                                reveal_before=reveal_before or domain not in _BODY_ADMIN_ONLY)
         occurrence = self._store.propose(
             operation=operation, domain=domain, key=key, actor=actor,
             exchange=exchange, phrase=intent.get("frase"), prima=prima, dopo=dopo,
@@ -379,7 +393,7 @@ class Workshop:
         return None
 
     def _preview(self, operation, domain, key, intent, prima, dopo,
-                   consiglio) -> str:
+                 consiglio, *, reveal_before: bool = True) -> str:
         # `.get(dominio, dominio)`, non un indice nudo: l'elenco dei domini
         # configurabili e' del client (`HAClient.CONFIGURABLE_DOMAINS`), non
         # di queste tabelle locali (ARTICOLO_INDETERMINATIVO/DETERMINATIVO,
@@ -397,7 +411,8 @@ class Workshop:
             righe.append(f"Modifico {ARTICOLO_DETERMINATIVO.get(domain, domain)} "
                          f"«{(prima or {}).get('alias') or key}», "
                          "che esiste già in casa tua.")
-            righe.append(f"Prima: {_compatta(prima)}")
+            righe.append(f"Prima: {_compatta(prima)}" if reveal_before
+                         else f"Prima: {_BEFORE_ADMIN_ONLY}")
             righe.append(f"Dopo: {_compatta(dopo)}")
         else:
             righe.append(f"Cancello {ARTICOLO_DETERMINATIVO.get(domain, domain)} "
@@ -1097,6 +1112,14 @@ def services_named(body: dict | None) -> list[str]:
 
     walk(body or {}, 0)
     return found
+
+
+#: I domini il cui corpo attuale Home Assistant mostra solo agli
+#: amministratori, e la riga che li sostituisce nell'anteprima di chi non lo
+#: e' (vedi `Workshop.propose`). L'alias resta: e' lo stesso nome che la
+#: plancia mostra a tutti.
+_BODY_ADMIN_ONLY = frozenset({"automation", "scene"})
+_BEFORE_ADMIN_ONLY = "com'è adesso lo vedono solo gli amministratori."
 
 
 def _compatta(body: dict | None) -> str:

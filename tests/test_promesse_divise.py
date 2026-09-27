@@ -688,7 +688,7 @@ async def test_il_job_di_una_promessa_col_filo_non_vale_come_chat(rotta_chat):
 
 
 @pytest.mark.asyncio
-async def test_nello_SVILUPPO_il_fai_non_si_ferma_al_soffitto(archivio):
+async def test_nello_SVILUPPO_il_fai_non_si_ferma_al_soffitto(archivio, monkeypatch):
     """Fix round 1 del Task 2 (spec 2026-09-27, I3): con
     `HIRIS_ALLOW_NO_TOKEN` l'autenticazione e' spenta per definizione, e il
     soggetto `sviluppo` non si restringe per ruolo -- prima il suo soffitto
@@ -699,6 +699,9 @@ async def test_nello_SVILUPPO_il_fai_non_si_ferma_al_soffitto(archivio):
     Mutazione ESEGUITA: `denies` senza l'eccezione dello sviluppo -- rossa."""
     from hiris.app.api.soffitto import consente
 
+    # L'interruttore acceso, esplicito: e' lui a decidere (fix round 2), non
+    # il valore che la suite imposta per tutti.
+    monkeypatch.setenv("HIRIS_ALLOW_NO_TOKEN", "1")
     sviluppo = {"specie": "sviluppo", "id": None}
     soffitto = consente(sviluppo, ruolo=None)
     d = _dispatcher(archivio, ChatThread("sviluppo:-", "sviluppo"), sviluppo,
