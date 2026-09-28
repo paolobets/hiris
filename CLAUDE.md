@@ -233,35 +233,46 @@ per-entità) che non ci sono più.
 
 ## Struttura reale
 
-Verificala con `ls hiris/app/` — questa lista deriva dal codice, non da un piano.
+Verificala con `ls hiris/app/` — questa lista deriva dal codice, non da un piano. Ricavata il
+28/09/2026 da `ls` e dai docstring dei moduli (il numero fra parentesi conta i `.py`, `__init__`
+compreso).
 
 ```
 hiris/                    # config.yaml, Dockerfile, run.sh, requirements.txt
 └── app/
     ├── main.py           # factory aiohttp + run_app
-    ├── server.py         # 4.340 righe: registrazione rotte E gran parte del wiring
-    ├── claude_runner.py  # loop agentico Claude + orchestrazione tool
-    ├── llm_router.py · chat_store.py · chat_settings.py · model_activation.py
+    ├── server.py         # 6.229 righe: registrazione rotte, giri del cervello E gran parte del wiring
+    ├── claude_runner.py · llm_router.py   # la catena: loop agentico Claude, instradamento
+    ├── steering.py       # chi risponde a questo turno: il ponte, o la catena (e il registro dei turni)
+    ├── model_resolution.py · model_activation.py · provider_occurrences.py
+    ├── chat_store.py · chat_thread.py · chat_settings.py
+    ├── panel_visibility.py · options_migration.py
     ├── config.py · storage.py · env_util.py · version.py
-    ├── api/        (16 file) handlers_* — la superficie HTTP
-    ├── casa/       (9)       lettore (l'anagrafe dal vivo), comportamento, nucleo,
-    │                         domande, strumenti — `casa.db` tiene solo comportamento e plance
-    ├── azione/     (5)       porta.py — i SERVIZI, l'unica porta sul canale — verifica.py,
-    │                         registro.py, cronaca.py; costruzione/ (4) — officina.py, l'unica
-    │                         porta sul canale della CONFIGURAZIONE — composer.py, mestiere.py,
-    │                         versioni.py (fetta «costruire»)
-    ├── backends/   (7)       runner OpenAI-compat, embeddings, pricing
-    ├── memoria/    (4)       archivio, interpretazione, resolver
-    ├── proxy/      (4)       ha_client.py (il VERO client HA: REST+WS), entity_cache, _sanitize
+    ├── api/        (28)      handlers_* — la superficie HTTP; ingresso, soffitto, canali,
+    │                         servizi, credenziali: chi entra e cosa puo'
+    ├── home_space/ (14)      l'anagrafe dal vivo (reader, topology), il nucleo (briefing), le tre
+    │                         domande (queries), gli strumenti della chat (tools), il tempo della casa
+    │                         (historian), i giudizi sui tipi, il sigillo dei segreti (redaction)
+    ├── action/     (6)       «cosa questa casa sa fare, e il farlo»: actuator.py — i SERVIZI, l'unica
+    │                         porta sul canale — verification.py, registry.py, journal.py, rhythm.py;
+    │                         construction/ (5) — workshop.py, l'unica porta sul canale della
+    │                         CONFIGURAZIONE — composer.py, advisor.py, revisions.py
+    ├── mind/       (18)      il cervello: osservatore (observer, watcher, scope, facts, report),
+    │                         sapere e ricette (knowledge, recipes, recipe_turn, operations, seed),
+    │                         analista (analyst, analyst_turn), attuatore (actuator, actuator_turn)
+    ├── memory/     (5)       cio' che le persone hanno detto: store, interpretation, resolver
+    ├── keeper/     (7)       le promesse dell'utente: promise, store, sweeper, exchange, outcome
     ├── agent/      (3)       runner.py (il ponte push) + prompts.py
-    ├── keeper/     (5)       promise, store, sweeper, exchange — le promesse dell'utente
-    ├── reasoning/  (2)
+    ├── reasoning/  (2)       queue.py — la coda dei turni del ponte
+    ├── usage/      (3)       l'archivio dei consumi e le sue parole
+    ├── proxy/      (5)       ha_client.py (il VERO client HA: REST+WS), entity_cache, _sanitize
+    ├── backends/   (7)       runner OpenAI-compat, embeddings, pricing
     └── static/     index.html · config.html · chat/*.js · config/*.js
 ```
 
-`server.py` era dichiarato «~1.900 righe» — già falso prima della fetta «l'osservatore» (2026-08-26),
-di più dopo. Misurato con `wc -l hiris/app/server.py` il 10 settembre: **4.340**. Verifica di nuovo
-prima di fidartene: è un numero che invecchia da solo, non un fatto che questo file possa custodire.
+`server.py` era dichiarato «~1.900 righe», poi «4.340» il 10 settembre. Misurato con
+`wc -l hiris/app/server.py` il 28 settembre: **6.229**. Verifica di nuovo prima di fidartene: è un
+numero che invecchia da solo, non un fatto che questo file possa custodire.
 
 **Non esistono più** (li citano vecchi documenti e i commenti storici del codice):
 `app/routes.py`, `app/ha_client.py`, `app/agent_engine.py`, `api/handlers_agents.py`,
@@ -288,8 +299,8 @@ sono uscite con le fette E2 ed E3.
 
 ### Test
 ```bash
-python -m pytest -q          # 3.806 test + 4 skip (misurato 10/09/2026)
-npm test                     # 389 test frontend: node --test + jsdom
+python -m pytest -q          # 5.385 test + 3 skip (misurato 28/09/2026)
+npm test                     # 592 test frontend: node --test + jsdom (misurato 28/09/2026)
 ```
 Il frontend ha **test comportamentali reali**, non solo `node --check`. Il `Dockerfile` copia solo
 `app/`, `config.yaml` e `run.sh`: `package.json` e `node_modules` **non** entrano nell'immagine.
