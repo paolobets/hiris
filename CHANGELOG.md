@@ -1,6 +1,6 @@
 # HIRIS — Changelog
 
-## [Non rilasciato] — HIRIS per chi non amministra
+## [3.69.0] — HIRIS per chi non amministra (2026-09-28)
 
 Chi installa HIRIS può ora **aprirlo agli utenti di Home Assistant che non sono amministratori**,
 con un'opzione dell'add-on e senza toccare codice. E da questa versione HIRIS **controlla da sé chi
