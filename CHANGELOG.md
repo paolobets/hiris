@@ -1,6 +1,6 @@
 # HIRIS — Changelog
 
-## [Non rilasciato]
+## [3.69.1] — L'attuatore sul ponte (2026-09-28)
 
 ### La CLI del ponte sale alla 2.1.283
 
