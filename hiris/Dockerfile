@@ -88,7 +88,8 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 # **Ripiego dichiarato: la 2.1.281**, l'ultima LETTA dentro il container
 # (`GET /api/health`, `ponte.cli: "2.1.281"`, 24/09/2026 alle 18:56).
 #
-# **Il passo 4 e' APERTO**: la 2.1.283 non e' ancora stata letta dentro il
+# **Passo 4 SALDATO il 28/09/2026 alle 13:31** (`ponte.cli: "2.1.283"`,
+# `apiKeySource: "none"`, v3.69.1). Nota originale: la 2.1.283 non era ancora letta dentro il
 # container. Si salda alla prima verifica dal vivo dopo il rilascio, con un
 # turno di chat e una GET.
 #

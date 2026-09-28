@@ -298,8 +298,7 @@ può dire.
 ### ~~La CLI del ponte sale alla 2.1.283 nel prossimo rilascio~~ — **USCITA** con la v3.69.1
 
 **Chiusa il 28/09/2026**, su decisione del proprietario: la 2.1.283 sale insieme alla correzione
-dell'attuatore sul ponte. Ripiego dichiarato nel `Dockerfile`: la 2.1.281. Il passo 4 (leggere
-`ponte.cli` dentro il container con `GET /api/health`) è aperto fino alla verifica dal vivo.
+dell'attuatore sul ponte. Ripiego dichiarato nel `Dockerfile`: la 2.1.281. **Passo 4 SALDATO il 28/09/2026**: `GET /api/health` sulla v3.69.1 risponde `ponte.cli: "2.1.283"`, `apiKeySource: "none"`. Lo stesso giorno l'attuatore sul ponte ha ragionato il suo primo turno (12:58, senza strumenti) e alle 13:58 ha scritto l'attuazione con 3 esiti e archiviato 2 proposte da fare a mano.
 
 **Rimandata di nuovo il 28/09/2026.** Stesso salto `2.1.281 -> 2.1.283`, segnalato durante il
 rilascio della **v3.69.0** (HIRIS per chi non amministra), uscita con `HIRIS_COMPONENTI_OK=1` —
