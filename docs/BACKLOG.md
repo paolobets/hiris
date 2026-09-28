@@ -638,6 +638,32 @@ va corretto, in un posto solo.
 
 ## In attesa
 
+### Ottimizzazione: base dati, chiamate e consumo di token — il tema che aspettava le misure — aperta il 28/09/2026
+
+`origine: proprietario, 28/09/2026 («dovremmo avere tutte le misure necessarie»)` · `sprint misure del 24/09/2026` · `GET /api/misure` · `hiris/app/usage/store.py`
+
+Il tema era in sospeso dal 24/09/2026 in attesa di **giorni di uso vero** sulla 3.67.1, per decidere
+**su prove** dove intervenire: dati giusti e completi, token, latenza, e se serva un'altra
+tecnologia per la conoscenza.
+
+**Cosa si sapeva il 24/09** (41 turni, 96 giri, 7.497.066 caratteri): le definizioni degli
+strumenti erano il **57,5%** del carico, rispedite in 95 giri su 96; i risultati degli strumenti
+il 14,8%; la mappa/nucleo solo il **9,7%** (non e' la leva); cache del prefisso **74% sul ponte**
+contro **29% sulla catena**; mediana di 2 strumenti distinti per turno su 16.
+
+**Cosa c'e' adesso** (letto da `GET /api/misure` il 28/09/2026 alle 13:40): **70 turni** registrati
+dal 24/09 14:16 al 28/09 13:39 — chat 55 (catena 37, ponte 18), osservatore 6, analista 4,
+promessa 3, ricette 1, attuatore 1. Dell'attuatore c'e' **un solo turno**: fino alla 3.69.1 sul
+ponte non lavorava (vedi la voce qui sotto), quindi il suo peso si misura da oggi.
+
+**In coda a questo tema** (decisioni del proprietario):
+- «Sul ponte una risposta rifiutata ferma l'attuatore fino al giorno dopo» (28/09/2026): richiedere
+  a ogni giro costa una domanda all'ora; si decide con i numeri di questo tema, insieme alla stessa
+  regola per l'analista.
+
+**Cosa lo chiude**: una lettura dei numeri che dica dove sta il costo (per specie, canale, giri,
+strumenti) e le fette che ne escono, ognuna con la sua misura prima e dopo.
+
 ### Sul ponte l'attuatore non ripara le ricette rotte — aperta il 28/09/2026
 
 `origine: fetta «l'attuatore sul ponte» (28/09/2026), decisione del coordinatore` · `hiris/app/server.py::actuator_round` · `hiris/app/server.py::_enqueue_actuator_turn` · `hiris/app/mind/actuator_turn.py::SYSTEM`
@@ -684,6 +710,9 @@ forma, stessa conseguenza. Non e' una svista di una sola strada.
 sempre la stessa forma), una domanda all'ora pagata sul piano per tutto il giorno; fermarsi vuol
 dire perdere l'attuazione di quel giorno per una risposta storta. Oggi il codice sceglie la
 seconda senza dirlo. La fetta non ha cambiato il comportamento (decisione del coordinatore).
+
+**In coda al tema «Ottimizzazione: base dati, chiamate e consumo di token»** (proprietario,
+28/09/2026): si decide con le misure di quel tema.
 
 **Da decidere, dal proprietario**: se una risposta rifiutata sul ponte si richiede (magari con un
 tetto di tentativi al giorno), e se la stessa regola vale per l'analista.
