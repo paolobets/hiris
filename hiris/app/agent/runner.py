@@ -130,6 +130,7 @@ from ..home_space.tools import KNOWLEDGE_TOOLS
 from ..keeper.exchange import promise_tools
 from ..mind.actuator_turn import ACTUATION_TURN_KIND
 from ..model_resolution import SUBSCRIPTION_ALIAS
+from ..usage.giro import anthropic_turn_tokens
 from . import prompts
 
 log = logging.getLogger("hiris.agent")
@@ -820,7 +821,22 @@ class StreamOccurrence:
       (mutualmente esclusiva con `"is_error"`: una voce e' o RISOLTA -- riuscita
       senza terza chiave, o fallita con `is_error` -- o SCONOSCIUTA, mai due
       cose insieme): tre stati, tre forme, e nessuno dei tre si confonde con
-      un altro."""
+      un altro.
+    - `exchanges`: fetta «le misure complete», Task 5. Un elemento per
+      CHIAMATA ALL'API (`message.id` distinto), NELL'ORDINE d'arrivo: i token
+      di quel giro (Task 3, `anthropic_turn_tokens`) e quante chiamate MCP ha
+      fatto. Il giro e' il `message.id`, non l'evento -- una chiamata reale
+      emette piu' eventi `assistant` con lo stesso id, uno per blocco. Vuota
+      (mai `None`) quando lo stream non porta nessun evento `assistant`;
+    - `output_tokens`: l'uscita del TURNO (non del giro), dall'evento `result`
+      -- l'unica esatta. Nello stream ogni evento porta `usage.output_tokens
+      = 1`, il conteggio parziale dello streaming: per questo ogni voce di
+      `exchanges` ha `output_tokens` sempre `None`, e questo campo prende il
+      suo posto;
+    - `list_cost_usd`: quanto sarebbe costato il turno A CONSUMO, somma di
+      `result.modelUsage[*].costUSD`. Non e' un costo pagato -- il ponte gira
+      sull'abbonamento -- ed e' una misura di riferimento, non una fattura.
+      `None` se la CLI non dichiara `modelUsage`."""
 
     text: str = ""
     init: dict | None = None
@@ -830,6 +846,16 @@ class StreamOccurrence:
     result: dict | None = None
     num_exchanges: int | None = None
     tools_called: list = field(default_factory=list)
+    #: Un elemento per CHIAMATA ALL'API (`message.id` distinto), nell'ordine:
+    #: i token di quel giro e quante chiamate MCP ha fatto. Spec «le misure
+    #: complete» §4(3). L'uscita per giro e' sempre None: nello stream vale 1.
+    exchanges: list = field(default_factory=list)
+    #: L'uscita del TURNO, dall'evento `result` -- l'unica esatta.
+    output_tokens: int | None = None
+    #: Quanto sarebbe costato il turno A CONSUMO: somma di
+    #: `result.modelUsage[*].costUSD`. Non e' un costo pagato (richiesta del
+    #: proprietario, 28/09/2026). None se la CLI non lo dichiara.
+    list_cost_usd: float | None = None
 
     @property
     def has_result(self) -> bool:
@@ -872,6 +898,11 @@ def read_stream(stdout: str) -> StreamOccurrence:
     # lineare: un turno puo' avere piu' chiamate in parallelo, e cercarle a
     # ogni `tool_result` sarebbe quadratico per niente.
     calls_by_id: dict[str, dict] = {}
+    # fetta «le misure complete» (Task 5): i giri gia' visti, per `message.id`
+    # -- una chiamata reale all'API emette piu' eventi `assistant` con lo
+    # STESSO id (uno per blocco), e il giro e' l'id, non l'evento.
+    exchange_by_id: dict[str, dict] = {}
+    mcp_prefix = f"mcp__{_mcp_server_name()}__"
     for line in (stdout or "").splitlines():
         line = line.strip()
         if not line:
@@ -898,8 +929,22 @@ def read_stream(stdout: str) -> StreamOccurrence:
             # `{"type":"tool_use","id":...,"name":...,"input":...}`, in mezzo
             # a blocchi `text`/`thinking` che si ignorano qui (non sono lo
             # strumento).
-            blocchi = ((event.get("message") or {}).get("content")
-                      if isinstance(event.get("message"), dict) else None)
+            message = event.get("message") if isinstance(event.get("message"), dict) else {}
+            message_id = message.get("id")
+            exchange = (exchange_by_id.get(message_id)
+                        if isinstance(message_id, str) else None)
+            if exchange is None:
+                exchange = {"message_id": message_id if isinstance(message_id, str) else "",
+                            **anthropic_turn_tokens(message.get("usage")),
+                            "mcp_calls": 0}
+                # Lo stream porta `output_tokens` = 1 per evento: e' il
+                # conteggio parziale dello streaming. L'uscita vera sta solo
+                # nell'evento `result`, per turno.
+                exchange["output_tokens"] = None
+                occurrence.exchanges.append(exchange)
+                if isinstance(message_id, str):
+                    exchange_by_id[message_id] = exchange
+            blocchi = message.get("content")
             for block in (blocchi or []):
                 if not (isinstance(block, dict) and block.get("type") == "tool_use"):
                     continue
@@ -912,6 +957,8 @@ def read_stream(stdout: str) -> StreamOccurrence:
                 entry = {"tool": name if isinstance(name, str) else "",
                        "input": block.get("input")}
                 occurrence.tools_called.append(entry)
+                if isinstance(name, str) and name.startswith(mcp_prefix):
+                    exchange["mcp_calls"] += 1
                 call_id = block.get("id")
                 if isinstance(call_id, str):
                     calls_by_id[call_id] = entry
@@ -960,6 +1007,15 @@ def read_stream(stdout: str) -> StreamOccurrence:
     occurrence.text = text if isinstance(text, str) else ""
     uso = result.get("usage")
     occurrence.usage = uso if isinstance(uso, dict) else {}
+    # fetta «le misure complete» (Task 5): l'uscita del TURNO, dall'evento
+    # `result` -- l'unica esatta (vedi il docstring di `StreamOccurrence`).
+    uscita = occurrence.usage.get("output_tokens")
+    occurrence.output_tokens = uscita if isinstance(uscita, int) else None
+    per_modello = result.get("modelUsage")
+    costi = ([c.get("costUSD") for c in per_modello.values() if isinstance(c, dict)]
+             if isinstance(per_modello, dict) else [])
+    costi = [float(c) for c in costi if isinstance(c, (int, float))]
+    occurrence.list_cost_usd = sum(costi) if costi else None
     # `num_turns` sta in cima all'evento `result`, non dentro `usage` (verificato
     # sul flusso vero): si legge di la', con `usage` come ripiego.
     exchanges = result.get("num_turns")
