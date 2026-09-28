@@ -89,3 +89,33 @@ def test_senza_usage_tutto_e_NULL():
     Mutazione ESEGUITA: `_int_or_none` restituisce `int(value or 0)` -- rossa."""
     assert all(v is None for v in anthropic_turn_tokens(None).values())
     assert all(v is None for v in openai_turn_tokens(None).values())
+
+
+def test_un_campo_malformato_diventa_NULL_non_solleva():
+    """Fix round 1 (Task 5, coordinatore): un aggiornamento della CLI puo'
+    cambiare la forma dello stream senza preavviso. Un campo non numerico
+    (stringa o dizionario dove ci si aspetta un intero) deve diventare NULL,
+    mai far cadere il turno.
+
+    Mutazione ESEGUITA (due, verificate separatamente): (1) ripristinato
+    `_int_or_none` a `int(value)` senza `try/except` -- rossa (`ValueError`
+    non catturato sul campo stringa); (2) con `_int_or_none` intatto,
+    ripristinato `cache_ttl` a `int(x or 0)` -- rossa comunque
+    (`TypeError` non catturato sul dizionario annidato: il guardiano di
+    `cache_ttl` e' indipendente da quello di `_int_or_none`, entrambi
+    necessari)."""
+    t = anthropic_turn_tokens({"input_tokens": "n/a",
+                               "cache_creation": {
+                                   "ephemeral_1h_input_tokens": {"x": 1}}})
+    assert t["input_tokens"] is None
+    assert t["cache_ttl"] is None
+
+
+def test_un_booleano_non_e_un_conteggio_di_token():
+    """`bool` e' un sottotipo di `int` in Python: senza l'esclusione
+    esplicita, `True` passerebbe per un conteggio di UN token vero.
+
+    Mutazione ESEGUITA: tolta l'esclusione `isinstance(value, bool)` da
+    `_int_or_none` -- rossa (`input_tokens` diventerebbe `1`, non `None`)."""
+    t = anthropic_turn_tokens({"input_tokens": True})
+    assert t["input_tokens"] is None

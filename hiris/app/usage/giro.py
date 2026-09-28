@@ -23,7 +23,20 @@ def _field(source, name: str):
 
 
 def _int_or_none(value):
-    return None if value is None else int(value)
+    """Un intero, o `None` -- MAI un'eccezione.
+
+    Fix round 1 (Task 5, coordinatore): un aggiornamento della CLI puo'
+    cambiare la forma dello stream senza preavviso, e un campo che arriva
+    stringa o dizionario invece di numero non deve far cadere il turno --
+    «la misura non fa mai cadere un turno». `bool` e' un sottotipo di `int`
+    in Python (`isinstance(True, int)` e' vero): senza l'esclusione esplicita
+    `int(True) == 1` passerebbe per un conteggio vero."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def cache_ttl(five_minutes, one_hour) -> str | None:
@@ -31,9 +44,13 @@ def cache_ttl(five_minutes, one_hour) -> str | None:
 
     Conta perche' la scrittura a un'ora costa piu' di quella a cinque minuti,
     e i giri di fondo (un turno all'ora o al giorno) la scrivono senza mai
-    rileggerla: misurato sulla casa il 27-28/09/2026."""
-    five = int(five_minutes or 0)
-    hour = int(one_hour or 0)
+    rileggerla: misurato sulla casa il 27-28/09/2026.
+
+    Fix round 1 (Task 5): gli argomenti passano per `_int_or_none`, non per
+    `int(x or 0)` -- un valore malformato (stringa, dizionario) diventa un
+    conteggio NULL invece di sollevare, e `None` decide come zero."""
+    five = _int_or_none(five_minutes) or 0
+    hour = _int_or_none(one_hour) or 0
     if five and hour:
         return "misto"
     if hour:

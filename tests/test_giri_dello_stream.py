@@ -101,3 +101,19 @@ def test_un_messaggio_senza_id_non_si_fonde_con_un_altro():
                  "content": [], "usage": {"input_tokens": 2}}})]
     e = runner.read_stream("\n".join(righe))
     assert [g["input_tokens"] for g in e.exchanges] == [1, 2]
+
+
+def test_un_token_malformato_nello_stream_non_fa_cadere_il_turno():
+    """Fix round 1 (Task 5, coordinatore): `read_stream` e' documentata come
+    "non solleva mai" -- prima di questo fix un `input_tokens` non numerico
+    nello stream vero (un aggiornamento della CLI che cambia forma) faceva
+    risalire un `ValueError`/`TypeError` fino a `_invoca`, che non lo cattura.
+
+    Mutazione ESEGUITA: ripristinato `giro._int_or_none` a `int(value)`
+    senza `try/except` -- rossa (`read_stream` solleva `ValueError` invece
+    di restituire un giro con `input_tokens is None`)."""
+    riga = json.dumps({"type": "assistant", "message": {
+        "id": "msg_X", "content": [],
+        "usage": {"input_tokens": "n/a"}}})
+    e = runner.read_stream(riga)
+    assert e.exchanges[0]["input_tokens"] is None
