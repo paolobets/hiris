@@ -444,24 +444,37 @@ class OpenAICompatRunner:
     # `reset_chatbot_usage` sono usciti -- stessa mossa e stessa storia del
     # commento gemello in claude_runner.py.
 
+    def _cost_state(self, usage: Any, model: str) -> tuple[str, float | None, int, int]:
+        """Stato del costo, costo, token IN e OUT -- per UNA `usage` gia'
+        presente (il chiamante ha gia' escluso `None`).
+
+        Un solo calcolo del listino e dello stato per le due letture che lo
+        fanno (`_response_cost`, la misura del giro; `_track_usage`,
+        l'archivio dei consumi): prima erano due copie della stessa regola,
+        e due copie della stessa regola sono gia' costate care a questo
+        prodotto una volta (vedi il commento sul difetto OpenRouter, sotto
+        in `_track_usage`)."""
+        from ..usage.vocabulary import cost_state_and_value
+
+        inp = getattr(usage, "prompt_tokens", 0) or 0
+        out = getattr(usage, "completion_tokens", 0) or 0
+        prices = _prezzo(model)
+        listino = (inp * prices["input"] + out * prices["output"]) / 1_000_000
+        state, cost = cost_state_and_value(self.provider_name, model,
+                                           cost_dichiarato=getattr(usage, "cost", None),
+                                           cost_da_listino=listino)
+        return state, cost, inp, out
+
     def _response_cost(self, response: Any, model: str) -> float | None:
         """Il costo di UNA risposta, con la regola della pagina Consumi.
 
         Separato da `_track_usage` perche' quello esce presto quando manca
         l'archivio dei consumi, e la misura del giro non deve dipendere da
         quel gancio (spec «le misure complete» §3)."""
-        from ..usage.vocabulary import cost_state_and_value
-
         usage = getattr(response, "usage", None)
         if not usage:
             return None
-        inp = getattr(usage, "prompt_tokens", 0) or 0
-        out = getattr(usage, "completion_tokens", 0) or 0
-        prices = _prezzo(model)
-        listino = (inp * prices["input"] + out * prices["output"]) / 1_000_000
-        _, cost = cost_state_and_value(self.provider_name, model,
-                                       cost_dichiarato=getattr(usage, "cost", None),
-                                       cost_da_listino=listino)
+        _, cost, _, _ = self._cost_state(usage, model)
         return cost
 
     def _track_usage(self, response: Any, model: str) -> None:
@@ -485,10 +498,8 @@ class OpenAICompatRunner:
         if not usage:
             logger.debug("Model %s: risposta senza 'usage' -- nessun contatore aggiornato", model)
             return
-        inp = getattr(usage, "prompt_tokens", 0) or 0
-        out = getattr(usage, "completion_tokens", 0) or 0
-        prices = _prezzo(model)
-        cost = (inp * prices["input"] + out * prices["output"]) / 1_000_000
+        if self._log_usage is None:
+            return
 
         # OpenRouter dichiara il costo VERO in ogni risposta -- `usage.cost`,
         # sempre presente, anche in streaming (Usage Accounting, verificato
@@ -496,14 +507,7 @@ class OpenAICompatRunner:
         # fatto quella che era una stima, e la stima valeva ZERO: `_prezzo` non
         # conosce nessun identificativo OpenRouter e cadeva su `_default`. E'
         # il difetto da cui nasce l'intera fetta.
-        if self._log_usage is None:
-            return
-        from ..usage.vocabulary import cost_state_and_value
-
-        declared = getattr(usage, "cost", None)
-        state, cost = cost_state_and_value(self.provider_name, model,
-                                     cost_dichiarato=declared,
-                                     cost_da_listino=cost)
+        state, cost, inp, out = self._cost_state(usage, model)
         cache_read, cache_write = _cache_counts(usage)
         self._log_usage(
             self.provider_name, model, token_in=inp, token_out=out,

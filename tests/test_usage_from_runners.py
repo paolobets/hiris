@@ -10,6 +10,7 @@ produrre quella differenza non la puo' provare.
 from __future__ import annotations
 
 from typing import ClassVar
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from openai.types import CompletionUsage
@@ -286,6 +287,9 @@ async def test_claude_consegna_i_token_DOPO_la_risposta(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_claude_fuori_listino_consegna_costo_NULL(monkeypatch):
+    """Mutazione ESEGUITA: `_costo_giro = cost` al posto della lettura da
+    `cost_state_and_value` -- rossa (`claude-opus-4-8` cade sul ripiego a
+    0.0 del listino, non su `None`)."""
     runner = ClaudeRunner(api_key="x", read_model=lambda: "claude-opus-4-8")
 
     async def _finta(**kwargs):
@@ -304,9 +308,42 @@ def test_la_catena_sa_il_costo_anche_SENZA_archivio_dei_consumi():
     """`_track_usage` esce presto quando `log_usage` e' None: il costo del
     giro per la misura non deve dipendere da quel gancio.
 
-    Mutazione ESEGUITA: calcolare il costo dentro `_track_usage` dopo il
-    `return` sul logger assente -- rossa."""
+    Mutazione ESEGUITA: in `_response_cost`, `return None` anche quando
+    `self._log_usage is None` -- lo stesso ramo d'uscita anticipata di
+    `_track_usage`, che qui non deve esistere -- rossa."""
     runner = OpenRouterRunner(api_key="x")
     assert runner._response_cost(_Risposta(_uso(cost=0.0031)),
                                  "anthropic/claude-sonnet-4-6") == 0.0031
     assert runner._response_cost(_Risposta(_uso()), "un/modello") is None
+
+
+@pytest.mark.asyncio
+async def test_openrouter_consegna_i_token_DOPO_la_risposta():
+    """Il gemello, sull'altra catena, di
+    `test_claude_consegna_i_token_DOPO_la_risposta`: la seconda consegna
+    arriva DOPO la risposta, sullo stesso giro della prima -- qui il primo
+    giro e' `iter_idx + 1` con `iter_idx == 0`, cioe' 1, come in Claude.
+
+    Mutazione ESEGUITA: togliere la seconda consegna in
+    openai_compat_runner (il blocco dopo `self._track_usage(response,
+    effective_model)`) -- rossa."""
+    runner = OpenRouterRunner(api_key="x")
+    msg = MagicMock()
+    msg.content = "fatto"
+    msg.tool_calls = None
+    choice = MagicMock(finish_reason="stop", message=msg)
+    response = MagicMock(choices=[choice])
+    response.usage = _uso(cost=0.0031)
+    runner._client.chat.completions.create = AsyncMock(return_value=response)
+
+    consegne, gettone = _raccogli()
+    try:
+        await runner.chat(user_message="ciao", model="anthropic/claude-sonnet-4-6")
+    finally:
+        togli_misura(gettone)
+
+    assert [g for g, _ in consegne] == [1, 1], "caratteri e token, stesso giro"
+    token = consegne[1][1]
+    assert token["input_tokens"] == 100
+    assert token["output_tokens"] == 20
+    assert token["cost_usd"] == 0.0031
