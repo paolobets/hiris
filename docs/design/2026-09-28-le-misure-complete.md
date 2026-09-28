@@ -115,6 +115,13 @@ Conservazione invariata (30 giorni, `TURNS_RETENTION_S`). **Mai gli argomenti de
 > esatto sulla catena, NULL sul ponte) e **`cost_usd`** (per giro: il costo della catena, NULL sul
 > ponte). Senza `cost_usd` per giro la pagina «Chi consuma» (§5) non potrebbe dare il costo per
 > attore: il registro dei consumi è per modello e giorno, non per attore.
+>
+> **Aggiunto dal proprietario (28/09/2026): «la riga del costo».** `turn` porta **`list_cost_usd`**:
+> quanto sarebbe costato il turno **a consumo**, come lo dichiara la CLI del ponte
+> (`result.modelUsage[*].costUSD`, visto sul flusso vero: 0,0696 $ per un turno di due giri).
+> **Non è un costo pagato** — sul ponte il turno è compreso nell'abbonamento — e per questo ha una
+> colonna sua e non entra in `cost_usd`: due cose diverse, due colonne. «Chi consuma» (§5) lo mostra
+> distinto dal pagato.
 
 ## §3 · La catena: i token accanto ai caratteri
 
