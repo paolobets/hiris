@@ -167,7 +167,10 @@ def test_il_ponte_non_e_piu_un_interruttore_di_questa_pagina():
                 booleani.append(prefisso + chiave)
 
     cerca(cfg["options"])
-    assert booleani == [], (
+    # L'UNICA eccezione, scritta a mano con la sua ragione: `non_admin_access`
+    # e' qui per decisione del proprietario (spec 2026-09-27 §0, decisione 2),
+    # perche' chi puo' usare HIRIS deve valere prima di qualunque sua pagina.
+    assert booleani == ["non_admin_access"], (
         f"un interruttore e' tornato nella pagina dell'add-on: {booleani}. "
         "Questa pagina custodisce credenziali, non prende decisioni"
     )
@@ -277,11 +280,16 @@ def test_le_decisioni_sono_uscite_da_tutti_e_cinque_i_posti():
 def test_la_pagina_add_on_tiene_solo_cio_che_si_custodisce():
     """Spec §4: le credenziali dove si custodiscono, le decisioni dove si
     prendono. Questo test e' l'elenco di cio' che RESTA, e si rompe se qualcuno
-    ci rimette una decisione."""
+    ci rimette una decisione.
+
+    `non_admin_access` e' l'unica decisione ammessa, per scelta del
+    proprietario (spec 2026-09-27 §0, decisione 2): chi puo' usare HIRIS deve
+    valere prima che HIRIS apra una qualunque delle sue pagine."""
     cfg = _config()
     assert set(cfg["options"]) == {
         "claude_api_key", "claude_code_oauth_token", "openrouter_api_key",
         "openai_api_key", "local_model", "theme", "memory",
+        "non_admin_access",
         "log_level", "supervisor_ingress_cidr",
     }
 

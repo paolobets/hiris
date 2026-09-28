@@ -105,11 +105,68 @@
     if (here) here.textContent = text;
   }
 
+  /* ── Chi non configura (spec 2026-09-27 §4) ─────────────────────────
+     Per lui il guscio e' Impegni e Memoria: le altre voci portano
+     `data-configure-only` (config.html) e le spegne static/pending-badge.js.
+     Una pagina di configurazione aperta per indirizzo non si monta -- non
+     chiede i suoi dati (security-constraints 4.5) e non disegna moduli che
+     il server rifiuterebbe al salvataggio -- e dice il rifiuto del SERVER,
+     che arriva nella stessa risposta di `api/pending` (`configure_refusal`,
+     la costante del cancello: fix round 1 del Task 4).
+
+     **Una regola sola, chiusa nel dubbio** (fix round 1): si configura solo
+     col `true` detto dal server o dal ricordo. Senza il pallino, o finche'
+     non si sa, no -- come la Memoria (config/memory-route.js). Un
+     amministratore non lo vede: senza ricordo il guscio aspetta la prima
+     risposta prima di scegliere la pagina (sotto, `ROUTER_WAIT_MS`). La
+     regola e' `configures()` di config/api.js, la stessa della Memoria. */
+
+  /* Mai una pagina vuota: il titolo, il testo del server quando c'e' (un
+     «no» ricordato arriva senza, e la pagina si ridisegna quando la risposta
+     lo porta) e una strada per uscire. Tutto via `textContent`. */
+  function renderRefusal(title) {
+    var outlet = document.getElementById('route-outlet');
+    if (!outlet) return;
+    while (outlet.firstChild) outlet.removeChild(outlet.firstChild);
+    var h1 = document.createElement('h1');
+    h1.className = 'page-title';
+    h1.textContent = title;
+    outlet.appendChild(h1);
+    var text = window.HirisPendingBadge ? window.HirisPendingBadge.configureRefusal() : '';
+    if (text) {
+      var reason = document.createElement('p');
+      reason.className = 'page-subtitle';
+      reason.textContent = text;
+      outlet.appendChild(reason);
+    }
+    var exit = document.createElement('p');
+    exit.className = 'page-subtitle';
+    var link = document.createElement('a');
+    link.href = '#/agenda';
+    link.textContent = 'Vai agli Impegni';
+    exit.appendChild(link);
+    outlet.appendChild(exit);
+  }
+
+  /* Una route di configurazione: la briciola la scrive il guscio per
+     entrambi i rami, il titolo e' lo stesso, montata o rifiutata. */
+  function configureOnlyRoute(title, mount) {
+    return function (m) {
+      setCrumbHere(title);
+      if (configures()) mount(m);
+      else renderRefusal(title);
+    };
+  }
+
   /* Le route della SPA di configurazione. Ognuna ha una voce di nav in
      config.html (tranne nessuna: il rapporto e' 1:1 dopo la fetta E5
      Task 6) e un modulo che la monta; il ramo `else` e' il degrado se lo
      script del modulo non ha caricato. */
   HirisRouter.register(/^#\/?$/, function() {
+    /* La home di chi non configura -- e di chi non si sa -- sono gli
+       Impegni: «Cosa HIRIS sa» legge `api/home-space` e `api/briefing`, che
+       il cancello gli chiude. */
+    if (!configures()) return '#/agenda';
     setCrumbHere('Cosa HIRIS sa');
     if (window.HirisDashboard) {
       HirisDashboard.mount();
@@ -120,14 +177,13 @@
   });
   /* Reperto 26: la faccia di `casa.piani` -- vedi config/tree-route.js
      per il perché. */
-  HirisRouter.register(/^#\/tree\/?$/, function() {
-    setCrumbHere('Albero della casa');
+  HirisRouter.register(/^#\/tree\/?$/, configureOnlyRoute('Albero della casa', function() {
     if (window.HirisTreeRoute) {
       HirisTreeRoute.mount();
     } else {
       document.getElementById('route-outlet').innerHTML = '<h1 class="page-title">Albero della casa</h1>';
     }
-  });
+  }));
   /* fetta E5 Task 9: sostituisce il pannello Memoria della chat -- vedi
      config/memory-route.js per il perché. */
   HirisRouter.register(/^#\/memory\/?$/, function() {
@@ -172,45 +228,41 @@
      `mount(scheda)` legge da solo `#route-outlet`: stesso pattern di
      tree-route.js e memory-route.js, non quello di constructions-route.js
      (che porta l'outlet come parametro). */
-  HirisRouter.register(/^#\/watcher(?:\/(giorno|cosa-fare|sapere|lavoro))?\/?$/, function(m) {
-    setCrumbHere('L’osservatore');
+  HirisRouter.register(/^#\/watcher(?:\/(giorno|cosa-fare|sapere|lavoro))?\/?$/, configureOnlyRoute('L’osservatore', function(m) {
     if (window.HirisWatcherRoute) {
       HirisWatcherRoute.mount(m && m[1]);
     } else {
       document.getElementById('route-outlet').innerHTML = '<h1 class="page-title">L’osservatore</h1>';
     }
-  });
-  HirisRouter.register(/^#\/usage\/?$/, function() {
-    setCrumbHere('Consumi');
+  }));
+  HirisRouter.register(/^#\/usage\/?$/, configureOnlyRoute('Consumi', function() {
     if (window.HirisUsageRoute) {
       HirisUsageRoute.mount();
     } else {
       document.getElementById('route-outlet').innerHTML = '<h1 class="page-title">Consumi</h1>';
     }
-  });
-  HirisRouter.register(/^#\/models\/?$/, function() {
-    setCrumbHere('Modelli');
+  }));
+  HirisRouter.register(/^#\/models\/?$/, configureOnlyRoute('Modelli', function() {
     if (window.HirisModelsRoute) {
       HirisModelsRoute.mount();
     } else {
       document.getElementById('route-outlet').innerHTML = '<h1 class="page-title">Modelli</h1>';
     }
-  });
+  }));
   /* fetta «l'accoppiamento» (22/09/2026): la pagina dei servizi esterni --
      vedi config/services-route.js per il perche'. E' l'unica route di questa
      SPA che si RILEGGE da sola: le righe in attesa arrivano da un'altra
      macchina mentre la finestra e' aperta, e chi dovesse ricaricare per
      vederle penserebbe che l'accoppiamento non funziona. Il giro si ferma da
      se' quando la finestra si chiude o quando si lascia la pagina. */
-  HirisRouter.register(/^#\/services\/?$/, function() {
-    setCrumbHere('Servizi');
+  HirisRouter.register(/^#\/services\/?$/, configureOnlyRoute('Servizi', function() {
     if (window.HirisServicesRoute) {
       HirisServicesRoute.mount();
     } else {
       document.getElementById('route-outlet').innerHTML =
         '<h1 class="page-title">Servizi</h1>';
     }
-  });
+  }));
   /* fetta "esce il documentale": qui era registrata la route #/history
      (Storicizzazione). Esce con la pagina, il suo modulo
      (config/history-route.js) e le rotte /api/history/policy. */
@@ -218,15 +270,14 @@
      placeholder vuoto (`#/settings`, «Implementata in Phase 11») rinasce qui
      con contenuto reale e con il nome italiano del resto della fetta:
      `#/settings`, i sette campi di ChatSettings. */
-  HirisRouter.register(/^#\/settings\/?$/, function() {
-    setCrumbHere('Impostazioni chat');
+  HirisRouter.register(/^#\/settings\/?$/, configureOnlyRoute('Impostazioni chat', function() {
     if (window.HirisSettingsRoute) {
       HirisSettingsRoute.mount();
     } else {
       document.getElementById('route-outlet').innerHTML =
         '<h1 class="page-title">Impostazioni chat</h1>';
     }
-  });
+  }));
 
   /* Task B8: la pagina Modelli mostrava i testi nuovi (dal backend) senza il
      bottone nuovo (nel JavaScript) -- il guscio HTML era rimasto vecchio
@@ -245,18 +296,45 @@
     }).catch(function() { /* nessun health, nessuna verifica possibile: silenzio */ });
   }
 
+  var routerStarted = false;
+
+  /* Quanto si aspetta la prima risposta di `api/pending` prima di scegliere
+     la pagina senza saperla: una richiesta appesa non deve lasciare il
+     guscio bianco (fix round 1, F1). Scaduta l'attesa si parte chiusi -- gli
+     Impegni -- e una risposta che arriva dopo rimonta la pagina. */
+  var ROUTER_WAIT_MS = 3000;
+
+  function startRouter() {
+    if (routerStarted) return;
+    routerStarted = true;
+    HirisRouter.start();
+    updateNavActive();
+  }
+
   document.addEventListener('DOMContentLoaded', function() {
     mountChrome();
     checkBuild();
     window.addEventListener('hashchange', updateNavActive);
     HirisState.subscribe('route', updateNavActive);
-    HirisRouter.start();
-    updateNavActive();
     /* Il pallino DOPO `mountChrome()`: le voci di menu nascono da
        `tpl-side-nav`, e prima di quella riga i due `data-badge` non
        esistono ancora nel DOM -- il pallino non troverebbe dove attaccarsi
        e non lo direbbe a nessuno (per disegno: non e' un guasto che una
-       pagina non abbia quelle voci). */
-    window.HirisPendingBadge.mount();
+       pagina non abbia quelle voci). E PRIMA del router: la pagina
+       d'atterraggio dipende da `can_configure`. */
+    var badge = window.HirisPendingBadge;
+    if (!badge) { startRouter(); return; }
+    /* Il router parte al primo `can_configure` saputo -- dal ricordo, gia'
+       dentro `mount`, o da una risposta, anche una successiva alla prima
+       (il ritorno del fuoco) -- oppure allo scadere dell'attesa, o se la
+       prima risposta fallisce. Dopo, un cambio rimonta la pagina aperta:
+       quella rifiutata diventa vera, quella vera diventa il rifiuto. */
+    badge.onChange(function (field, granted) {
+      if (field !== 'can_configure') return;
+      if (routerStarted) HirisRouter.refresh();
+      else if (granted !== null) startRouter();
+    });
+    badge.mount().then(startRouter);
+    setTimeout(startRouter, ROUTER_WAIT_MS);
   });
 })();

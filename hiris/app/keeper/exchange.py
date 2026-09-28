@@ -175,7 +175,9 @@ async def interpreta_promise(app, promise: dict) -> dict:
     if runner is None:
         return {"errore": "non c’era nessun modello a cui chiedere."}
 
-    dispatcher = PromiseDispatcher(create_tool_dispatcher(app))
+    subject, ceiling = await promise_ceiling(app, promise)
+    dispatcher = PromiseDispatcher(create_tool_dispatcher(
+        app, soffitto=ceiling, soggetto=subject))
     try:
         # Lo STESSO nucleo della chat (`compose_briefing`), non una
         # composizione parallela: due contesti che descrivono la stessa casa
@@ -271,6 +273,24 @@ def _downgrade_note(reason: str) -> str:
         return ""
     return (f"Il Piano Claude Max {fatto}: questo turno l’ha mantenuto la catena, "
             "a consumo.")
+
+
+async def promise_ceiling(app, promise: dict | None) -> tuple[dict | None, dict]:
+    """Chi ha chiesto questa promessa, e il suo soffitto ADESSO.
+
+    Un turno `chiedi` legge soltanto, ma legge col token di amministratore di
+    HIRIS: senza il soffitto di chi l'ha chiesta, una persona non
+    amministratrice si farebbe leggere dall'orologio il registro di sistema e
+    le tracce che la chat le nega (fix round 1 del Task 2, H-1). Il soggetto
+    si rifa' dal filo della promessa e il soffitto e' quello del risveglio
+    (`ceiling_at_wake`): nel dubbio chiude. Lo usano le due strade del turno,
+    quella sincrona qui sotto e quella del ponte (`api/handlers_mcp.py`).
+    """
+    from ..api.soffitto import ceiling_at_wake
+    from ..chat_thread import subject_from_thread
+
+    subject = subject_from_thread((promise or {}).get("thread"))
+    return subject, await ceiling_at_wake(app, subject)
 
 
 def _enqueue_to_bridge(app, promise: dict) -> dict:

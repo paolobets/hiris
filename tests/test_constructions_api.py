@@ -125,8 +125,11 @@ class FintaRichiesta:
         # Dal 26/09/2026 ogni rotta di questa pagina e' di chi costruisce
         # (spec 2026-09-26 §3, decisione 5): la richiesta di queste prove e'
         # dell'amministratore, dichiarato qui una volta. Il cancello ha le
-        # sue prove in `test_chi_costruisce.py`.
-        self._deposito = {"soggetto": soggetto or AMMINISTRATORE}
+        # sue prove in `test_chi_costruisce.py`. Come il confine la lascia:
+        # dall'ingress, col ruolo che il cancello al confine ha letto
+        # (`soffitto.request_role`).
+        self._deposito = {"soggetto": soggetto or AMMINISTRATORE,
+                          "auth_via": "ingress", "ruolo": "amministratore"}
 
     def get(self, chiave, predefinito=None):
         return self._deposito.get(chiave, predefinito)

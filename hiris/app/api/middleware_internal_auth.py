@@ -6,6 +6,8 @@ import time
 
 from aiohttp import web
 
+from .admission import admission_refusal
+
 logger = logging.getLogger(__name__)
 
 # Supervisor adds X-Ingress-Path = "/api/hassio_ingress/<token>/..." to every
@@ -18,8 +20,10 @@ _INGRESS_PATH_RE = re.compile(r"^/api/hassio_ingress/[A-Za-z0-9_\-]+(/.*)?$")
 _DEFAULT_SUPERVISOR_CIDRS = ["172.30.32.0/23"]
 
 
-def _allow_no_token() -> bool:
-    """Re-read env var at each request so tests can patch it without import-order issues."""
+def allow_no_token() -> bool:
+    """L'interruttore dello sviluppo, riletto a ogni richiesta (cosi' le prove
+    lo cambiano senza dipendere dall'ordine degli import). La sua sola casa:
+    lo legge anche `soffitto.denies`."""
     return os.environ.get("HIRIS_ALLOW_NO_TOKEN", "").strip() == "1"
 
 
@@ -231,6 +235,13 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
     if await _is_supervisor_ingress(request):
         request["auth_via"] = "ingress"
         request["soggetto"] = _soggetto(request, "persona")
+        # **Il cancello al confine** (spec 2026-09-27 §3): una persona passa
+        # solo se amministra, o se la lista la ammette e l'opzione e' accesa.
+        # Qui e non nel gestore perche' il ruolo si legge SOLO per chi arriva
+        # dall'ingress, e prima di qualunque archivio.
+        refusal = await admission_refusal(request.app, request)
+        if refusal is not None:
+            return refusal
         return await handler(request)
 
     # **La credenziale EFFIMERA del ponte** (spec §5, ingresso 7), e si guarda
@@ -273,7 +284,7 @@ async def internal_auth_middleware(request: web.Request, handler) -> web.Respons
     # Restano tre strade, e ognuna dice chi e': la FIRMA di un servizio
     # approvato, l'INGRESS con la sessione che il Supervisor riconosce, la
     # CREDENZIALE DI TURNO del ponte.
-    if _allow_no_token():
+    if allow_no_token():
         logger.critical(
             "SECURITY: HIRIS_ALLOW_NO_TOKEN=1 is set — authentication is DISABLED")
         request["auth_via"] = "no_token"

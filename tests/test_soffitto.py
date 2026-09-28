@@ -15,11 +15,12 @@ per un turno senza soggetto lo dice il suo mestiere. Quattro sorgenti, **una
 funzione sola** che decide -- invece di quattro funzioni che si somigliano e
 divergono al primo cambiamento (fondamenta 2).
 
-**Il grado piu' basso non e' «niente».** Chi e' passato dall'ingress di Home
-Assistant *e' comunque un utente di HA*, quindi comanda: il grado piu' basso
-compatibile con l'essere passati di li' e' `utente`, non `lettore`. Trattare un
-ruolo illeggibile come «non puo' niente» spegnerebbe la chat a chi ha tutto il
-diritto di usarla, per un guasto di rete.
+**Il grado piu' basso non e' «niente», e non e' nemmeno «comanda».** Fino al
+27/09/2026 una persona dal ruolo illeggibile valeva `utente`, sul presupposto
+che chi e' passato da Home Assistant comandi gia' dalla plancia. Non e' vero
+per tutti -- chi e' di sola lettura, o senza gruppi, in HA non comanda -- e dal
+fix round 1 del Task 2 (spec 2026-09-27, ruling L-4) vale `lettore`: legge, e
+basta, finche' non si sa.
 """
 import pytest
 
@@ -63,32 +64,29 @@ def test_un_utente_qualunque_NON_costruisce_ma_comanda():
     assert esito["perche"], "un rifiuto senza motivo e' un ordine"
 
 
-def test_il_ruolo_ILLEGGIBILE_vale_utente_non_lettore():
-    """**Il grado piu' basso compatibile con l'essere passati da HA.** Se Home
-    Assistant non ha risposto, chi sta chiedendo e' comunque un utente che ha
-    superato l'ingress: negargli di comandare per un guasto di rete gli
-    toglierebbe cio' che la plancia gli da' comunque.
+def test_il_ruolo_ILLEGGIBILE_vale_lettore():
+    """Ruling L-4 (27/09/2026): se Home Assistant non ha risposto, chi chiede
+    legge e basta -- un guasto nella lettura non diventa un permesso.
 
-    Ma costruire no: quello resta chiuso finche' non si sa.
-
-    Mutazione ESEGUITA: ripiegare su `lettore` -- rossa (la chat si spegne per
-    un guasto)."""
+    Mutazione ESEGUITA: `_PERSONA_IGNOTA` di nuovo `utente` -- rossa."""
     esito = consente(_PERSONA, ruolo=None)
 
-    assert esito["comandare"] is True
-    assert esito["costruire"] is False
-    assert "non" in esito["perche"].lower()
+    assert esito["ruolo"] == "lettore"
+    assert (esito["leggere"], esito["comandare"], esito["costruire"],
+            esito["amministrare"]) == (True, False, False, False)
+    assert "leggo soltanto" in esito["perche"]
+    assert ruolo_letto(esito) is False, "e si sa che il ruolo non e' stato letto"
 
 
-def test_un_ingress_ANONIMO_comanda_ma_non_costruisce():
+def test_un_ANONIMO_legge_e_basta():
     """`X-Remote-User-Id` non e' garantito: con provider di autenticazione non
-    nativi puo' mancare. Chi e' senza identita' ha comunque una sessione di HA
-    valida, quindi vale `utente`.
+    nativi puo' mancare. Dall'ingress il cancello al confine lo ferma; dove
+    arriva comunque un soffitto (un turno del ponte), legge e basta.
 
     Mutazione: trattare l'anonimo come amministratore -- rossa."""
     esito = consente(_ANONIMO, ruolo=None)
 
-    assert esito["comandare"] is True
+    assert esito["comandare"] is False
     assert esito["costruire"] is False
 
 
@@ -125,13 +123,13 @@ def test_un_ruolo_INVENTATO_ricade_dove_ricade_uno_MANCANTE():
     esisterebbero due strade per la stessa condizione.
 
     Quindi vale l'asimmetria fra le specie, non una terza regola: per una
-    persona `utente` (ha comunque superato l'ingress), per una macchina niente
-    (non ha superato niente).
+    persona `lettore` (legge, e basta), per una macchina niente (non ha
+    superato niente).
 
     Mutazione ESEGUITA: trattare la parola inventata come un ruolo valido --
     rossa."""
     persona = consente(_PERSONA, ruolo="capo")
-    assert persona["comandare"] is True
+    assert persona["leggere"] is True and persona["comandare"] is False
     assert persona["costruire"] is False
     assert persona == consente(_PERSONA, ruolo=None)
 
@@ -162,7 +160,8 @@ class _HA:
 
 
 class _Richiesta(dict):
-    """`request.get("soggetto")` e basta: e' tutto cio' che `per_richiesta` legge."""
+    """La mappa che il confine lascia: soggetto, ingresso e -- per una persona
+    -- il ruolo letto dal cancello. E' tutto cio' che `request_ceiling` legge."""
 
 
 @pytest.mark.asyncio
@@ -170,16 +169,26 @@ class _Richiesta(dict):
     _PERSONA, {"specie": "persona", "id": "u-2"}, _ANONIMO, _CANALE,
     {**_CANALE, "ruolo": "amministratore"}, None,
 ])
-async def test_ceiling_for_e_per_richiesta_sono_UNA_regola(soggetto):
+async def test_ceiling_for_e_request_ceiling_sono_UNA_regola(soggetto):
     """Le chat divise: il ponte calcola il soffitto dal soggetto del job, la
-    rotta dal soggetto della richiesta. Due strade, una regola: per lo stesso
-    soggetto devono dire la stessa cosa, o una delle due concede di piu'."""
-    from hiris.app.api.soffitto import ceiling_for, per_richiesta, prepara_ruoli
+    rotta dalla richiesta, col ruolo che il cancello al confine ha letto
+    (`boundary_role`). Due strade, una regola: per lo stesso soggetto devono
+    dire la stessa cosa, o una delle due concede di piu'."""
+    from hiris.app.api.soffitto import (
+        boundary_role,
+        ceiling_for,
+        prepara_ruoli,
+        request_ceiling,
+    )
 
     app: dict = {"ha_client": _HA()}
     prepara_ruoli(app)
     by_subject = await ceiling_for(app, soggetto)
-    by_request = await per_richiesta(app, _Richiesta(soggetto=soggetto))
+    request = _Richiesta(soggetto=soggetto)
+    if (soggetto or {}).get("specie") == "persona":
+        request["auth_via"] = "ingress"
+        request["ruolo"] = (await boundary_role(app, soggetto)).role
+    by_request = request_ceiling(request)
 
     assert by_subject == by_request
 

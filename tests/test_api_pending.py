@@ -147,7 +147,7 @@ async def test_i_due_numeri_contano_cose_diverse(client):
     risposta = await client.get("/api/pending", headers=_INGRESS_ADMIN)
     assert risposta.status == 200
     assert await risposta.json() == {"agenda_unread": 2, "constructions_pending": 4,
-                                     "can_build": True}
+                                     "can_build": True, "can_configure": True}
 
 
 @pytest.mark.asyncio

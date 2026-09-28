@@ -51,7 +51,7 @@ def _store(request):
 
 
 async def handle_get_constructions(request: web.Request) -> web.Response:
-    refusal = await require_builder(request.app, request)
+    refusal = require_builder(request)
     if refusal is not None:
         return refusal
     store = _store(request)
@@ -113,7 +113,7 @@ async def _both_queues(app, store, pending_only: bool) -> list[dict]:
 
 
 async def handle_get_construction(request: web.Request) -> web.Response:
-    refusal = await require_builder(request.app, request)
+    refusal = require_builder(request)
     if refusal is not None:
         return refusal
     store = _store(request)
@@ -134,7 +134,7 @@ async def _act(request: web.Request, verb: str) -> web.Response:
     costruisce (spec 2026-09-26 §3, decisione 5), e una regola per le
     scritture e un'altra per le letture sarebbero due regole.
     """
-    refusal = await require_builder(request.app, request)
+    refusal = require_builder(request)
     if refusal is not None:
         return refusal
 
@@ -181,7 +181,7 @@ async def handle_reject_construction(request: web.Request) -> web.Response:
     26/09 dire di no era di tutti, perche' chi non costruiva vedeva comunque
     la coda. Adesso la coda e' di chi costruisce, e il suo «no» con lei.
     """
-    refusal = await require_builder(request.app, request)
+    refusal = require_builder(request)
     if refusal is not None:
         return refusal
     store = _store(request)

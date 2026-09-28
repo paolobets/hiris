@@ -37,7 +37,8 @@ import time
 from aiohttp import web
 
 from ..chat_thread import request_thread
-from .soffitto import per_richiesta
+from .admission import NOT_ADMITTED
+from .soffitto import denies, request_ceiling
 
 
 def _proposals_pending(app) -> int:
@@ -64,8 +65,19 @@ async def handle_get_pending(request: web.Request) -> web.Response:
     # difesa: la difesa e' il 403 di `soffitto.require_builder` sulla pagina.
     # Il soffitto qui si LEGGE e basta: gli Impegni restano del filo di chi
     # guarda, amministratore compreso.
-    can_build = (await per_richiesta(request.app, request))["costruire"]
-    return web.json_response({
+    #
+    # **`can_configure`, accanto** (spec 2026-09-27 §4): dice al guscio se
+    # mostrare le pagine di configurazione. Vero dove il soffitto non nega
+    # `amministrare` -- un amministratore, e lo sviluppo, che non si restringe
+    # per ruolo (`denies`). Come `can_build`, la difesa non e' questa chiave:
+    # e' il cancello al confine, che quelle rotte le chiude comunque.
+    #
+    # Il soffitto viene dal ruolo che il cancello ha GIA' letto
+    # (`request_ceiling`): una lettura dei ruoli per richiesta, non due.
+    ceiling = request_ceiling(request)
+    can_build = ceiling["costruire"]
+    can_configure = not denies(ceiling, "amministrare", request.get("soggetto"))
+    answer = {
         # Il pallino degli Impegni e' di chi guarda (spec 2026-09-26 §2): gli
         # esiti non letti del SUO filo, dal confine -- come la pagina.
         "agenda_unread": agenda.count_unread(request_thread(request)),
@@ -75,4 +87,14 @@ async def handle_get_pending(request: web.Request) -> web.Response:
         "constructions_pending": (constructions.count_pending(now=time.time())
                                   + _proposals_pending(request.app)) if can_build else 0,
         "can_build": can_build,
-    })
+        "can_configure": can_configure,
+    }
+    # **Il testo del rifiuto viaggia qui** (fix round 1 del Task 4): il
+    # guscio `/config` lo scrive su una pagina di configurazione aperta per
+    # indirizzo, invece di chiederlo a una rotta negata -- che lasciava nel
+    # registro del cancello una riga falsa sulla pagina. E' la costante del
+    # cancello, non una copia. All'amministratore non arriva: la sua
+    # risposta resta quella di prima.
+    if not can_configure:
+        answer["configure_refusal"] = NOT_ADMITTED
+    return web.json_response(answer)

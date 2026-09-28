@@ -381,7 +381,7 @@ async def handle_set_judgment(request) -> web.Response:
     riga e' il soggetto che il confine ha attaccato alla richiesta, mai un
     campo del corpo.
     """
-    refusal = await require_builder(request.app, request)
+    refusal = require_builder(request)
     if refusal is not None:
         return refusal
     if request.app.get("knowledge") is None:

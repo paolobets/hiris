@@ -38,7 +38,11 @@ def _richiesta(app, match=None, corpo=None):
             self.app = app
             self.match_info = match or {}
             self.query = {}
-            self._valori = {"soggetto": AMMINISTRATORE}
+            # Come il confine la lascia: una persona arriva dall'ingress, e il
+            # cancello le attacca il ruolo che ha letto (spec 2026-09-27,
+            # `soffitto.request_role`).
+            self._valori = {"soggetto": AMMINISTRATORE, "auth_via": "ingress",
+                            "ruolo": "amministratore"}
 
         async def json(self):
             if corpo is None:

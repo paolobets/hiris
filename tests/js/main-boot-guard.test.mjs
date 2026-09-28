@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { loadScripts, stubFetch } from './helpers/dom.mjs';
+import { loadScripts, stubFetch, asAdministrator } from './helpers/dom.mjs';
 
 /* `config/main.js` è l'ultimo script di config.html ed è l'unico posto in cui
    OGNI route della SPA di configurazione viene registrata. Se il suo IIFE si
@@ -33,10 +33,16 @@ const HTML = `<!doctype html><body>
   <template id="tpl-page-chrome"></template>
 </body>`;
 
-/* Solo le due dipendenze che main.js usa davvero al parse (HirisState,
-   HirisRouter). NESSUN modulo di route: è la simulazione di "ognuno di loro
-   ha fallito il parse/caricamento". */
-const SOLO_LO_SCHELETRO = ['config/state.js', 'config/router.js', 'config/main.js'];
+/* Solo le dipendenze che main.js usa davvero (HirisState, HirisRouter, e
+   `configures` di config/api.js, la regola di chi configura). NESSUN modulo
+   di route: è la simulazione di "ognuno di loro ha fallito il
+   parse/caricamento". */
+const SOLO_LO_SCHELETRO = ['config/api.js', 'config/state.js', 'config/router.js', 'config/main.js'];
+
+/* Il pallino non e' un modulo di route: c'e' perche' i segnaposto provati qui
+   sono quelli di un amministratore (spec 2026-09-27 §4 -- senza sapere chi
+   guarda, il guscio si chiude). */
+const COL_PALLINO = ['pending-badge.js', ...SOLO_LO_SCHELETRO];
 
 /* Le route che config.html deve saper montare, con il testo del segnaposto
    che il ramo `else` di ciascuna promette. Se questo elenco e main.js
@@ -72,7 +78,8 @@ const ROUTE = [
 ];
 
 function avvia() {
-  const ctx = loadScripts(SOLO_LO_SCHELETRO, { html: HTML });
+  const ctx = loadScripts(COL_PALLINO, { html: HTML });
+  asAdministrator(ctx.window);
   // fetta E5 Task 8: mountChrome() non fa piu' NESSUNA fetch -- il badge
   // `#nav-adv-count`, che interrogava una rotta uscita con la fetta E3 e
   // scriveva `0` sul suo 404, e' uscito con la sua fonte. Lo stub resta

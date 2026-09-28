@@ -38,7 +38,7 @@ from .servizi import (
     finestra_aperta,
     finestra_resta,
 )
-from .soffitto import per_richiesta
+from .soffitto import request_ceiling
 
 logger = logging.getLogger(__name__)
 
@@ -112,8 +112,8 @@ async def handle_services(request: web.Request) -> web.Response:
         "ruoli": list(RUOLI), "specie": list(SPECIE)})
 
 
-async def _solo_amministratori(request) -> web.Response | None:
-    permesso = await per_richiesta(request.app, request)
+def _solo_amministratori(request) -> web.Response | None:
+    permesso = request_ceiling(request)
     if permesso["costruire"]:
         return None
     logger.warning("servizi: gesto negato a %r — %s",
@@ -123,7 +123,7 @@ async def _solo_amministratori(request) -> web.Response | None:
 
 async def handle_open_window(request: web.Request) -> web.Response:
     """Apre l'accoppiamento per dieci minuti."""
-    negato = await _solo_amministratori(request)
+    negato = _solo_amministratori(request)
     if negato is not None:
         return negato
     finestra = request.app.get("finestra_servizi")
@@ -139,7 +139,7 @@ async def handle_open_window(request: web.Request) -> web.Response:
 
 async def handle_close_window(request: web.Request) -> web.Response:
     """La chiude subito, senza aspettare i minuti che avanzano."""
-    negato = await _solo_amministratori(request)
+    negato = _solo_amministratori(request)
     if negato is not None:
         return negato
     chiudi_finestra(request.app.get("finestra_servizi") or {})
@@ -149,7 +149,7 @@ async def handle_close_window(request: web.Request) -> web.Response:
 
 async def handle_service_approve(request: web.Request) -> web.Response:
     """Il sì: il servizio è autorizzato, col ruolo e la specie che decidi tu."""
-    negato = await _solo_amministratori(request)
+    negato = _solo_amministratori(request)
     if negato is not None:
         return negato
     archivio = _archivio(request)
@@ -173,7 +173,7 @@ async def handle_service_approve(request: web.Request) -> web.Response:
 
 async def handle_service_revoke(request: web.Request) -> web.Response:
     """Il no, o il ripensamento. Vale **subito**."""
-    negato = await _solo_amministratori(request)
+    negato = _solo_amministratori(request)
     if negato is not None:
         return negato
     archivio = _archivio(request)

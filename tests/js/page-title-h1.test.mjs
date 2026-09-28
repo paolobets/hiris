@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { loadScripts, STATIC_VIVO } from './helpers/dom.mjs';
+import { loadScripts, STATIC_VIVO, asAdministrator } from './helpers/dom.mjs';
 
 /* Collaudo usabilita' 3.22.3, rilievo A: il titolo di ogni pagina della SPA
  * di configurazione ESISTEVA -- ventidue occorrenze in undici file -- ma era
@@ -28,8 +28,13 @@ import { loadScripts, STATIC_VIVO } from './helpers/dom.mjs';
 const HTML_BASE = '<!doctype html><body>'
   + '<div id="chrome-here"></div><div id="route-outlet"></div></body>';
 
+/* Da amministratore: i segnaposto che si provano qui sono i suoi (per chi
+   non configura le stesse rotte disegnano il rifiuto, can-configure.test.mjs). */
 function bootSoloGuscio() {
-  return loadScripts(['config/state.js', 'config/router.js', 'config/main.js'], { html: HTML_BASE });
+  const ctx = loadScripts(['config/api.js', 'pending-badge.js', 'config/state.js', 'config/router.js', 'config/main.js'],
+    { html: HTML_BASE });
+  asAdministrator(ctx.window);
+  return ctx;
 }
 
 test('ogni rotta registrata da main.js mostra ESATTAMENTE un h1 nel proprio segnaposto, con la classe page-title', () => {

@@ -24,7 +24,7 @@ import { loadScripts, tick } from './helpers/dom.mjs';
  * con quella mutazione, poi ripristinando. */
 
 const HTML = '<!doctype html><body><div id="route-outlet"></div></body>';
-const SCRIPTS = ['config/memory-route.js'];
+const SCRIPTS = ['config/api.js', 'config/memory-route.js'];
 
 function jsonResponse(body, status) {
   return { ok: (status || 200) < 400, status: status || 200, json: async () => body };

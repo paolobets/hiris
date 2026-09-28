@@ -35,6 +35,12 @@ def _make_app(tmp_path, cidrs=None):
     mock_ha.stop = AsyncMock()
     mock_ha.add_state_listener = MagicMock()
     mock_ha.start_websocket = AsyncMock()
+    # Dal 27/09/2026 dietro l'ingress c'e' il cancello al confine (spec
+    # 2026-09-27 §3): la persona che entra qui e' un'amministratrice, perche'
+    # queste prove guardano la STRADA, non la lista di ammissione
+    # (`tests/test_admission.py`).
+    mock_ha.users = AsyncMock(return_value={"utenti": [
+        {"id": "u-admin", "amministratore": True}]})
     app["ha_client"] = mock_ha
     app["chat_settings"] = ChatSettings()
     app["claude_runner"] = None
@@ -138,7 +144,7 @@ async def test_ingress_path_from_trusted_source_bypasses_auth(
     resp = await client_trust_loopback.get(
         "/api/health",
         headers={"X-Ingress-Path": "/api/hassio_ingress/hiris",
-     },
+                 "X-Remote-User-Id": "u-admin"},
     )
     assert resp.status == 200
 
@@ -222,6 +228,6 @@ async def test_ingress_path_real_supervisor_token_pattern_passes(
     resp = await client_trust_loopback.get(
         "/api/health",
         headers={"X-Ingress-Path": "/api/hassio_ingress/AbCdEf123-XyZ_456/",
-     },
+                 "X-Remote-User-Id": "u-admin"},
     )
     assert resp.status == 200

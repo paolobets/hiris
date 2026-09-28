@@ -73,6 +73,16 @@ SOFFITTATE = {
 #: Le rotte mutanti ESENTI, ognuna con la ragione per cui lo è. Non e' una
 #: copia di niente: e' la decisione, scritta. Una rotta nuova non entra qui da
 #: sola -- va messa a mano, ed e' li' che qualcuno deve pensarci.
+#:
+#: **Sei ragioni riscritte il 27/09/2026** (spec 2026-09-27 §1 e §3): dicevano
+#: «sono di HIRIS», sul presupposto -- falso -- che a `/config` arrivassero
+#: solo amministratori. Una persona non amministratrice ci arrivava con due
+#: chiamate WebSocket. Adesso la chiude il cancello al confine, perche' non
+#: sono nella lista di ammissione (`api/admission.py`).
+_CONFINE = ("a una persona che non amministra la chiude il cancello al confine: "
+            "non è nella lista di ammissione (`api/admission.py`, spec "
+            "2026-09-27 §3). Un servizio firmato come `utente` la raggiunge "
+            "ancora, rischio dichiarato (security-constraints 5.9)")
 ESENTI = {
     "POST /api/agenda/read":
         "segna come letti degli esiti già mostrati: non tocca la casa",
@@ -81,12 +91,16 @@ ESENTI = {
         "a chi non è amministratore vorrebbe dire che non può fermare ciò che "
         "ha messo in moto",
     "POST /api/mind/objective":
-        "l’obiettivo dell’osservatore, nel nostro archivio",
+        "l’obiettivo dell’osservatore non tocca Home Assistant, ma è "
+        f"configurare HIRIS: {_CONFINE}",
     "DELETE /api/memories/{id}":
-        "i ricordi sono di HIRIS, non di Home Assistant",
+        "cancellare un ricordo non tocca Home Assistant, ma è correggere la "
+        "memoria di tutta la casa, riservata agli amministratori (decisione 4 "
+        f"del 27/09/2026): {_CONFINE}",
     "PATCH /api/memories/{id}":
-        "correggere un ricordo tocca il sapere di HIRIS, non la casa: e chi non "
-        "può correggere ciò che HIRIS ha capito di lui resta descritto male",
+        "correggere un ricordo non tocca Home Assistant, ma cambia ciò che "
+        "HIRIS sa per tutti quelli che ci vivono (decisione 4 del 27/09/2026): "
+        f"{_CONFINE}",
     "POST /api/chat/conversations":
         "chiude la conversazione aperta di chi chiede, nel suo filo: la "
         "conversazione è di HIRIS e di chi la fa, non tocca la casa",
@@ -98,11 +112,14 @@ ESENTI = {
         "vietarlo a chi non è amministratore gli impedirebbe di togliere le "
         "proprie parole",
     "PUT /api/chat-settings":
-        "le impostazioni della chat sono di HIRIS",
+        "le impostazioni della chat non toccano Home Assistant, ma sono la "
+        f"configurazione di HIRIS: {_CONFINE}",
     "PUT /api/models/config":
-        "la catena dei modelli è di HIRIS, e non nomina nessuna entità",
+        "la catena dei modelli non nomina nessuna entità, ma decide chi paga "
+        f"ogni turno: è configurazione. {_CONFINE}",
     "POST /api/usage/reset":
-        "azzera i contatori dei consumi, che sono nostri",
+        "azzerare i contatori dei consumi non tocca Home Assistant, ma cancella "
+        f"la misura del proprietario: {_CONFINE}",
     "POST /api/mcp":
         "porta un token, non una persona: il suo perimetro è l’invariante dei "
         "canali esterni. Quando serve un turno di chat il soffitto è quello "

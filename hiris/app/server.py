@@ -43,6 +43,7 @@ from .api.handlers_settings import (
 from .api.handlers_usage import handle_reset_usage, handle_usage, handle_usage_history
 from .api.middleware_csrf import csrf_middleware
 from .api.middleware_internal_auth import internal_auth_middleware
+from .api.soffitto import restricted_person
 from .backends.embeddings import build_embedding_provider
 from .chat_settings import ChatSettings, file_lacks_retention_days
 from .chat_thread import SyncTurnsInFlight, thread_for
@@ -96,6 +97,7 @@ from .mind.seed import (
 from .mind.store import READING_RETENTION_S, ObservationsStore
 from .mind.watcher import Watcher
 from .model_resolution import subscription_has_token
+from .panel_visibility import parse_access_flag, sync_panel_visibility
 from .provider_occurrences import OccurrenceRegistry
 from .proxy.entity_cache import EntityCache, automation_config_id
 from .proxy.ha_client import HAClient
@@ -3570,6 +3572,8 @@ async def _on_startup(app: web.Application) -> None:
     # e' uscita dal prodotto: adesso quelle tre tracce si **tolgono**, una
     # volta, riconoscendo solo cio' che l'add-on stesso aveva messo. Vedi il
     # commento esteso su `_disinstalla_card_lovelace`.
+    # NON e' lo slug del Supervisor (`panel_visibility.read_own_slug`): e' il
+    # nome della cartella con cui il vecchio installatore della card la copiava.
     hiris_slug = os.environ.get("HIRIS_SLUG", "hiris")
     await _disinstalla_card_lovelace(
         ha_base_url,
@@ -5521,6 +5525,13 @@ async def _on_startup(app: web.Application) -> None:
         logger.warning(_notice)
 
 
+async def _start_panel_sync(app: web.Application) -> None:
+    # Il compito si tiene in `app`: il tetto della sincronia e' di dieci
+    # minuti, e un arresto durante l'attesa del nucleo lo lascerebbe pendente
+    # a chiusura. `_on_cleanup` lo ferma.
+    app["panel_sync_task"] = _spawn(sync_panel_visibility(app), name="panel_visibility")
+
+
 async def _on_cleanup(app: web.Application) -> None:
     from .chat_store import close_all_stores
     # M-2 (Plan 2B final review, fast-follow): stop the reasoning-queue
@@ -5539,6 +5550,14 @@ async def _on_cleanup(app: web.Application) -> None:
         aw.cancel()
         with contextlib.suppress(asyncio.CancelledError, asyncio.TimeoutError):
             await asyncio.wait_for(aw, timeout=5)
+    # La sincronia della voce di menu (`_start_panel_sync`): puo' essere
+    # ancora in attesa del nucleo. Non tiene niente da chiudere, quindi si
+    # ferma e si aspetta senza tetto proprio.
+    panel_sync = app.get("panel_sync_task")
+    if panel_sync is not None:
+        panel_sync.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await panel_sync
     if "reasoning_queue" in app:
         app["reasoning_queue"].close()
     if "home_space_store" in app:
@@ -5644,7 +5663,17 @@ def create_app() -> web.Application:
     ])
 
     app.on_startup.append(_on_startup)
+    # Dopo `_on_startup`, che crea `app["ha_client"]`. Parte in un compito a
+    # parte e non si aspetta: l'add-on puo' avviarsi prima del nucleo, e una
+    # Home Assistant che non risponde non deve tenere chiuso HIRIS.
+    app.on_startup.append(_start_panel_sync)
     app.on_cleanup.append(_on_cleanup)
+
+    # Spec 2026-09-27 §2: l'opzione dell'add-on e' l'UNICA fonte della scelta,
+    # letta qui una volta. Chi decide l'accesso legge `app[...]`, mai
+    # l'ambiente per richiesta: cambiarlo a processo avviato non apre niente.
+    app["non_admin_access"] = parse_access_flag(
+        os.environ.get("HIRIS_NON_ADMIN_ACCESS"))
 
     static_path = os.path.join(os.path.dirname(__file__), "static")
     # Build stamp: hash del contenuto del frontend, per verificare in UI/health
@@ -6159,6 +6188,17 @@ async def _handle_health(request: web.Request) -> web.Response:
     # correzioni 1, punto 3): in `/api/mind/knowledge` `giudizi` e' l'ELENCO
     # delle righe, qui era lo STATO dell'istantanea. Due cose diverse dette con
     # una parola sola si separano alla fonte, non a valle.
+    #
+    # **A una persona che non amministra, solo stato, versione e impronta del
+    # guscio** (spec 2026-09-27, ruling R-2.23 e fix round 1, I1): il resto e'
+    # diagnostica dell'add-on, che Home Assistant a lei non mostrerebbe;
+    # l'impronta no -- il guscio la porta gia' scritta, e senza `build-check.js`
+    # non saprebbe dirle che la sua pagina e' vecchia. Il ruolo e' quello che
+    # il cancello ha letto e lasciato sulla richiesta: nessuna seconda domanda
+    # a Home Assistant (`restricted_person`). Servizi, ponte e sviluppo invariati.
+    if restricted_person(request):
+        return web.json_response({"status": "ok", "version": read_version(),
+                                  "build": request.app.get("build_stamp", "")})
     return web.json_response({"status": "ok", "version": read_version(),
                               "build": request.app.get("build_stamp", ""),
                               "ponte": last_bridge_init(),

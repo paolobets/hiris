@@ -66,7 +66,7 @@ def _row(store, ident: str) -> dict | None:
 
 
 async def _close(request, outcome: str) -> web.Response:
-    refusal = await require_builder(request.app, request)
+    refusal = require_builder(request)
     if refusal is not None:
         return refusal
     store = _store(request)
@@ -110,7 +110,7 @@ async def handle_proposal_redo(request: web.Request) -> web.Response:
     **Il giro si scrive solo a risposta arrivata**: una proposta riscritta a
     meta' sarebbe peggio di una non riscritta.
     """
-    refusal = await require_builder(request.app, request)
+    refusal = require_builder(request)
     if refusal is not None:
         return refusal
     store = _store(request)

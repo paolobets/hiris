@@ -108,11 +108,16 @@ window.HirisPendingBadge = (function () {
         if (n > 0) accendi(VOCI[k].voce, n);
         else spegni(VOCI[k].voce);
       }
-      /* Chi costruisce lo dice il server a OGNI risposta (`can_build`), e
-         si ricorda per la prossima apertura: vedi `applyBuilder`. */
-      var puo = dati.can_build === true;
-      applyBuilder(puo);
-      remember(puo);
+      /* Chi costruisce e chi configura lo dice il server a OGNI risposta, e
+         si ricorda per la prossima apertura: vedi `PERMISSIONS`. */
+      for (var p = 0; p < PERMISSIONS.length; p++) {
+        var permission = PERMISSIONS[p];
+        var granted = dati[permission.field] === true;
+        var refusal = permission.refusalField && typeof dati[permission.refusalField] === 'string'
+          ? dati[permission.refusalField] : null;
+        applyPermission(permission, granted, refusal);
+        remember(permission, granted);
+      }
     }).catch(function (err) {
       /* Il ramo che il badge morto non aveva. Spegne anche cio' che era
          acceso al giro prima: un numero vecchio lasciato li' mentre la rete
@@ -122,47 +127,110 @@ window.HirisPendingBadge = (function () {
     });
   }
 
-  /* ── Chi costruisce (spec 2026-09-26 §3, decisioni 5 e 6) ─────────────
-     Cio' che e' solo di chi costruisce -- la voce «Proposte» nei due gusci,
-     il modulo delle correzioni nel sapere -- porta `data-builder-only` e
-     nasce `hidden`. Lo mostra solo un `can_build: true` del server: una
-     risposta che non lo porta non e' un permesso. Nasconderlo non e' la
-     difesa (le rotte rispondono 403 da sole): e' non offrire una strada
-     chiusa.
+  /* ── Chi costruisce e chi configura ───────────────────────────────────
+     Due permessi, un meccanismo solo. Cio' che e' solo di chi costruisce
+     (spec 2026-09-26 §3: la voce «Proposte» nei due gusci, il modulo delle
+     correzioni nel sapere) porta `data-builder-only`; cio' che e' solo di
+     chi configura (spec 2026-09-27 §4: i consumi e «Configurazione» nella
+     chat, le voci di configurazione nel guscio) porta
+     `data-configure-only`. Tutti nascono `hidden`, e li
+     mostra solo un `true` del server: una risposta che non lo porta non e'
+     un permesso. Nasconderli non e' la difesa (le rotte rispondono 403 da
+     sole, `api/admission.py` e `soffitto.require_builder`): e' non offrire
+     una strada chiusa.
 
-     **L'ultima risposta si ricorda** (fix round 1 del Task 4): senza, la
-     voce compariva a un amministratore un giro di rete dopo ogni apertura,
-     e mai se la prima risposta falliva. Il ricordo e' una comodita' di chi
-     guarda (`localStorage`, per questo browser): si applica all'avvio, ogni
-     risposta lo riscrive, un errore lo lascia com'e'. Non apre niente -- il
-     server continua a decidere -- e senza ricordo (o con lo storage che
-     solleva, in una finestra privata) si parte nascosti. */
-  var RICORDO = 'hiris.can_build';
-  var canBuildNow = false;
+     **L'ultima risposta si ricorda** (fix round 1 del Task 4 della fetta
+     del 26/09): senza, la voce compariva a un amministratore un giro di rete
+     dopo ogni apertura, e mai se la prima risposta falliva. Il ricordo e'
+     una comodita' di chi guarda (`localStorage`, per questo browser): si
+     applica all'avvio, ogni risposta lo riscrive, un errore lo lascia
+     com'e'. Non apre niente -- il server continua a decidere -- e senza
+     ricordo (o con lo storage che solleva, in una finestra privata) si parte
+     nascosti. */
+  /* `refusalField`: il testo con cui il server rifiuta cio' che il
+     permesso non concede (fix round 1 del Task 4: `configure_refusal`, la
+     costante del cancello). Si tiene quello dell'ultima risposta e non si
+     ricorda: e' una frase del server, non una comodita' di chi guarda. */
+  var PERMISSIONS = [
+    { field: 'can_build', storageKey: 'hiris.can_build', attribute: 'data-builder-only' },
+    { field: 'can_configure', storageKey: 'hiris.can_configure', attribute: 'data-configure-only',
+      refusalField: 'configure_refusal' }
+  ];
 
-  function remembered() {
-    try { return window.localStorage.getItem(RICORDO) === '1'; } catch { return false; }
+  /* `true`/`false` dal server o dal ricordo; `null` quando non lo sa
+     nessuno dei due. Il terzo stato serve al guscio `/config`, che senza
+     sapere non sceglie la pagina d'atterraggio (config/main.js). */
+  var grantedNow = {};
+  var refusalNow = {};
+  var listeners = [];
+
+  function permissionFor(field) {
+    for (var i = 0; i < PERMISSIONS.length; i++) if (PERMISSIONS[i].field === field) return PERMISSIONS[i];
+    throw new Error('permesso sconosciuto: ' + field);
   }
 
-  function remember(puo) {
-    try { window.localStorage.setItem(RICORDO, puo ? '1' : '0'); } catch { /* comodita': senza, si riparte nascosti */ }
+  /* La regola del nodo, una volta sola: si vede solo col `true`. */
+  function paint(node, granted) { node.hidden = granted !== true; }
+
+  function remembered(permission) {
+    try {
+      var v = window.localStorage.getItem(permission.storageKey);
+      return v === '1' ? true : (v === '0' ? false : null);
+    } catch { return null; }
   }
 
-  function applyBuilder(puo) {
-    canBuildNow = puo;
-    var nodi = document.querySelectorAll('[data-builder-only]');
-    for (var i = 0; i < nodi.length; i++) nodi[i].hidden = !puo;
+  function remember(permission, granted) {
+    try { window.localStorage.setItem(permission.storageKey, granted ? '1' : '0'); } catch { /* comodita': senza, si riparte nascosti */ }
+  }
+
+  function applyPermission(permission, granted, refusal) {
+    refusal = refusal || null;
+    var changed = grantedNow[permission.field] !== granted || refusalNow[permission.field] !== refusal;
+    grantedNow[permission.field] = granted;
+    refusalNow[permission.field] = refusal;
+    var nodi = document.querySelectorAll('[' + permission.attribute + ']');
+    for (var i = 0; i < nodi.length; i++) paint(nodi[i], granted);
+    /* Solo sul CAMBIO (del permesso o del suo testo di rifiuto): ogni
+       ritorno del fuoco rilegge i permessi, e chi ascolta (il giro dei
+       consumi, la pagina aperta nel guscio) non deve ripartire a ogni giro
+       con la stessa risposta. Il testo conta: un «no» ricordato arriva
+       senza, e la pagina rifiutata lo scrive quando la risposta lo porta. */
+    if (!changed) return;
+    for (var j = 0; j < listeners.length; j++) {
+      try { listeners[j](permission.field, granted); } catch (err) { console.error('[permessi] ascoltatore', err); }
+    }
   }
 
   function mount() {
-    applyBuilder(remembered());
+    for (var i = 0; i < PERMISSIONS.length; i++) applyPermission(PERMISSIONS[i], remembered(PERMISSIONS[i]));
     window.addEventListener('focus', refresh);
     return refresh();
   }
 
-  /* Per chi disegna DOPO una risposta (il modulo delle correzioni): nasce
-     gia' nello stato giusto, e le risposte successive lo aggiornano. */
-  function canBuild() { return canBuildNow; }
+  /* Per chi disegna DOPO una risposta (il modulo delle correzioni nel
+     sapere): il nodo prende la marca del permesso e nasce gia' nello stato
+     giusto, e le risposte successive lo aggiornano. L'unico posto, oltre a
+     `applyPermission`, che mette `hidden` per un permesso. */
+  function mark(node, field) {
+    node.setAttribute(permissionFor(field).attribute, '');
+    paint(node, grantedNow[field]);
+    return node;
+  }
 
-  return { mount: mount, refresh: refresh, canBuild: canBuild };
+  /* La regola di chi configura, una volta sola: solo il `true` detto dal
+     server o dal ricordo. Finche' non si sa, no. Le pagine la leggono da
+     `configures()` di config/api.js, che chiude anche se il pallino manca. */
+  function configures() { return grantedNow.can_configure === true; }
+  /* Il testo del server per una pagina di configurazione rifiutata, o ''
+     quando non e' arrivato (un «no» ricordato, prima della risposta). */
+  function configureRefusal() { return refusalNow.can_configure || ''; }
+
+  /* `fn(field, granted)` a ogni cambio di un permesso, compreso il primo
+     (dal ricordo, al montaggio): chi ascolta si iscrive PRIMA di `mount`. */
+  function onChange(fn) { listeners.push(fn); }
+
+  return {
+    mount: mount, refresh: refresh, mark: mark, onChange: onChange,
+    configures: configures, configureRefusal: configureRefusal
+  };
 })();

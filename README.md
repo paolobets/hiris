@@ -417,63 +417,35 @@ Every option below exists in [`hiris/config.yaml`](hiris/config.yaml); the full
 descriptions are in [`hiris/translations/en.yaml`](hiris/translations/en.yaml)
 and are what the add-on UI shows.
 
-The page is ordered for someone opening it for the first time to get the chat
-working: each provider switch sits **immediately above the credential it
-needs**, then the fallback order, then the bridge, then appearance and
-retention, and last the advanced fields that can open HIRIS's API on your LAN.
-`config.yaml`'s `options:` and `schema:` are kept in that same order — if you
-reorder one, reorder the other.
+Since 3.0.0 the add-on page only **keeps** things: the four credentials, Ollama's
+address, the theme, the two embedding fields and the advanced fields. The
+decisions — which providers are used and in what order, the bridge, Ollama's
+model, how long conversations are kept — are made inside HIRIS, on the
+**Models** page and in **Chat settings**, where their effect is seen. A provider
+is used if and only if it is in the chain, and the chain is composed on the
+Models page. See the 3.0.0 entry of the CHANGELOG for where each removed option
+went.
 
-Nested keys (`ponte`, `local_model`, `memory`) are the only thing the Supervisor
-renders as a titled section. They are used sparingly and never for credentials:
-nesting renames an option, and a renamed option loses its stored value silently.
+Nested keys (`local_model`, `memory`) are the only thing the Supervisor renders
+as a titled section. They are used sparingly and never for credentials: nesting
+renames an option, and a renamed option loses its stored value silently.
 
 ### To get answers
 
 | Option | Description |
 |---|---|
-| `provider_claude` + `claude_api_key` | Claude, paid per use. A provider is used only if enabled **and** credentialed |
-| `provider_subscription` + `claude_code_oauth_token` | Your Claude Max plan instead of the metered API. **With the token present, this pair routes the chat over the bridge on its own** — both bridge switches below turn on regardless |
-| `provider_openrouter` + `openrouter_api_key` | One key for 200+ models |
-| `hide_free_models` | Hide OpenRouter `:free` models from the model lists |
-| `provider_openai` + `openai_api_key` | The OpenAI models |
-| `provider_ollama` + `local_model.url` · `local_model.model` · `local_model.request_timeout` | Ollama base URL, model name, per-call timeout (10–1800s). With this as the only provider, HIRIS needs no cloud key |
-| `llm_strategy` | `balanced` (default) · `quality_first` · `cost_first`. Only orders the providers that are on; an order saved on the Models page wins |
+| `claude_api_key` | Claude, paid per use |
+| `claude_code_oauth_token` | Your Claude Max plan instead of the metered API. On its own it is not enough: the plan is turned on from the Models page inside HIRIS |
+| `openrouter_api_key` | One key for 200+ models |
+| `openai_api_key` | The OpenAI models |
+| `local_model.url` | Ollama's address. The model and the wait are picked on the Models page inside HIRIS |
 
-> With `local_model.url` + `local_model.model` set and `provider_ollama`
-> enabled, HIRIS runs offline against Ollama: the chat, the nucleo and the sixteen
-> tools all work without any cloud key. If no provider is both enabled and
-> credentialed, AI calls are disabled.
+> With `local_model.url` set and Ollama in the chain, HIRIS runs offline
+> against Ollama: the chat, the nucleo and the sixteen tools all work without
+> any cloud key.
 
-### Subscription bridge
-
-| Option | Description |
-|---|---|
-Since 2.4.0 these live under the `ponte:` key, which the Supervisor renders as
-a titled section — the only grouping it renders at all — and the bridge is **one
-switch**. It used to be two (`bridge_enabled` and `chat_via_subscription`) that
-had to be on together; they were never two decisions, so they were merged. An
-active `provider_subscription` with a token still turns the bridge on by itself.
-
-| Option | Description |
-|---|---|
-| `ponte.attivo` | Routes chat turns to the plan's runner instead of the metered provider |
-| `ponte.bridge_deadline_min` | Minutes before a queued turn expires (1–120, default 5). No automatic fallback to the metered provider |
-| `ponte.chat_daily_cap` | Max chat turns routed per day (0–1000, default 50). **0 blocks all of them**, it does not mean unlimited |
-
-The fail-safe the old `AND` protected — never enqueue into a queue nothing
-sweeps — is now structural: one expression (`server.py::_bridge_active`) gates
-both the sweep and the routing, so they cannot disagree.
-
-> **Upgrading from an earlier 2.x?** These options changed name (nested under
-> `ponte:`, and the two switches merged into one), and the Supervisor does not
-> migrate values — it drops any key its schema does not know
-> (`supervisor/apps/options.py`). They therefore come back at their defaults,
-> i.e. the bridge **off**. If you were using it, switch it back on once under
-> the **Bridge** section. If you use the Claude Max plan the normal way
-> (`provider_subscription` + token) there is nothing to do: the bridge turns
-> itself on. Everything else, credentials included, was deliberately left flat
-> and is untouched.
+The subscription bridge has no add-on option since 3.0.0: it is turned on from
+the Models page inside HIRIS.
 
 ### General
 
@@ -481,10 +453,52 @@ both the sweep and the routing, so they cannot disagree.
 |---|---|
 | `theme` | `light` · `dark` · `auto`. Only the theme HIRIS opens with: once you use the light/dark toggle inside HIRIS, that browser's choice wins |
 | `log_level` | `debug` · `info` · `warning` · `error` |
-| `history_retention_days` | Days of conversation history kept before automatic deletion (default 90, `0` = keep forever). The same number also caps how much of the ongoing conversation HIRIS reads back — lowering it makes it forget sooner, not just tidier |
-| `internal_token` | Shared secret required by `/api/*` when the call does not come from the Supervisor ingress |
 | `supervisor_ingress_cidr` | Source ranges treated as genuine Supervisor ingress (default `172.30.32.0/23`) |
-| `debug_expose_port` | **Dev only.** Logs a warning at every startup; it does *not* open port 8099 by itself — that is the Network section of the add-on page |
+
+How long conversations are kept is set in **Chat settings** inside HIRIS since
+3.0.0 (it was `history_retention_days`). `internal_token` was removed in 3.60.0:
+an integration is paired from the **Services** page instead. `debug_expose_port`
+was removed in 3.0.0: port 8099 is opened from the Network section of the
+add-on page.
+
+### Who uses HIRIS
+
+| Option | Description |
+|---|---|
+| `non_admin_access` | **Off by default.** On: Home Assistant users who are not administrators can use HIRIS — the chat, their own conversations, their own Commitments and their own memories (read-only). Off: HIRIS refuses them, however they reach it |
+
+This option **is the gate, not the menu entry.** Since 2021.12 Home Assistant lets any logged-in
+user open an ingress session for any add-on, and its security page states that it assumes every
+user is trusted: hiding an add-on from the sidebar (`panel_admin`) hides only the menu entry. So
+HIRIS checks every request that arrives through ingress itself, at the boundary
+(`hiris/app/api/admission.py`): it reads the person's role from Home Assistant (at most a minute
+old) and lets an administrator through everywhere. A non-administrator gets through only when the
+option is on, and only on the routes the chat, the Commitments page and the read-only Memory page
+actually call. Everything else — Models, Services, Usage, Chat settings, Proposals, the home
+views, correcting or deleting a memory — answers 403 with a short Italian sentence saying why. The
+same holds, option or not, for anyone Home Assistant does not recognise (anonymous ingress
+included) or has no group for; and if Home Assistant cannot say who is an administrator, **everyone
+is refused, administrators included**, with a message that says so, until it answers again.
+
+Inside the chat a non-administrator gets what Home Assistant would give them, no more: they command
+entities as from a dashboard (a user in the `system-read-only` group only reads), they cannot build
+automations, scripts or scenes, they cannot read the system log, automation traces or an
+automation's body, and in the `homeassistant` domain they can call only `turn_on`, `turn_off`,
+`toggle` and `update_entity`. Memories used by the chat stay **shared by the whole house**: a
+non-administrator can ask what others told HIRIS, and what they ask it to remember reaches everyone.
+Their chat turns spend the providers you configured, with no per-person cap. Both are recorded as
+open risks in [`docs/BACKLOG.md`](docs/BACKLOG.md).
+
+**The menu entry follows the option.** At startup HIRIS asks Home Assistant to show its sidebar
+entry to everyone (option on) or removes that override (option off), with `frontend/update_panel`,
+available since **Home Assistant 2026.3**; it then reads the entry back and writes its real state
+to the add-on log. On an older Home Assistant the entry stays admin-only and the log says so —
+access is still decided by HIRIS, so a non-administrator can reach it only by address. The override
+is stored by Home Assistant (`.storage/frontend_panels`), not by HIRIS: it survives add-on updates
+and restarts, **and an uninstall** — if you turned the option on, turn it off and restart the add-on
+before uninstalling.
+
+The option is read once at startup: after changing it, restart the add-on.
 
 ### Carried over from 1.x — read, but inert
 
@@ -534,6 +548,13 @@ Opening the add-on shows the chat. A configuration panel is served at
 | `#/models` | **Models** — active providers, the automatic chain and the default model per provider |
 | `#/usage` | **Usage** — tokens and cost, or the reason why they cannot be measured |
 | `#/services` | **Services** — who, besides you, may talk to HIRIS: panels and integrations on other machines. Open the ten-minute pairing window, compare the four-digit code the service shows on its own screen, approve it with a role, and revoke it at any time with immediate effect |
+
+A person who is not a Home Assistant administrator (with `non_admin_access` on) sees a smaller
+HIRIS: in the chat, no usage widget and no «Configurazione» link; in the configuration panel, only
+**Commitments** (`#/agenda`, their landing page) and **Memory** (`#/memory`, their own memories,
+without the buttons to correct or forget). Any other route opened by address shows the server's
+refusal and a link back to Commitments. Hiding is only the interface: the server refuses those
+routes anyway.
 
 Both surfaces share one stylesheet and one palette. The rebuild inventory in
 [`docs/out-of-scope/2026-08-08-frontend-da-rifare.md`](docs/out-of-scope/2026-08-08-frontend-da-rifare.md)

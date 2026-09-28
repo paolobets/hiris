@@ -44,7 +44,7 @@ const HTML = `<!doctype html><body>
    è quanto basta per dire SU QUALE pagina si è atterrati. Stessa ipotesi di
    `main-boot-guard.test.mjs`, e per la stessa ragione: il soggetto qui è il
    router, non le pagine. */
-const SCRIPTS = ['config/state.js', 'config/router.js', 'config/main.js'];
+const SCRIPTS = ['config/api.js', 'config/state.js', 'config/router.js', 'config/main.js'];
 
 /* Il segnaposto che ogni bersaglio deve rendere -- è così che si prova di
    essere ATTERRATI sulla pagina, invece di guardare solo la barra. */

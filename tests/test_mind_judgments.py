@@ -541,7 +541,9 @@ async def test_salute_espone_stato_ISTANTANEA():
     """Spec §8: da fuori si deve poter chiedere da dove vengono i giudizi.
     Mutazione: togliere la chiave `istantanea` da `_handle_health` -- rossa."""
     _, stato = build_judgments(None)
-    request = SimpleNamespace(app={"type_judgments_status": stato})
+    # `get`: una richiesta vera ce l'ha, e la salute la usa per sapere da che
+    # strada arriva (spec 2026-09-27, R-2.23). Nessuna strada: come lo sviluppo.
+    request = SimpleNamespace(app={"type_judgments_status": stato}, get={}.get)
     response = await server._handle_health(request)
     assert json.loads(response.body)["istantanea"] == stato
 
@@ -573,7 +575,7 @@ async def test_le_due_parole_doppie_sono_SEPARATE_alla_fonte(tmp_path):
         stato = app["type_judgments_status"]
         assert set(stato) == {"provenienza_istantanea", "perche", "impronta"}
 
-        response = await server._handle_health(SimpleNamespace(app=app))
+        response = await server._handle_health(SimpleNamespace(app=app, get={}.get))
         salute = json.loads(response.body)
         assert salute["istantanea"] == stato
         assert "giudizi" not in salute, "`giudizi` e' l'elenco delle righe, non uno stato"

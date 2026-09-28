@@ -106,3 +106,41 @@ async def ponte_produzione(aiohttp_client, tmp_path, monkeypatch):
         yield client, coda, app, intestazioni
     finally:
         coda.close()
+
+
+def servizio_approvato(app, ruolo: str, nome: str = "retropanel",
+                       specie: str = "luogo"):
+    """Un servizio **accoppiato davvero** nell'archivio `app["servizi"]`: si
+    presenta e viene approvato col ruolo dato. Torna la chiave privata e la
+    pubblica, che e' la sua identita'."""
+    import base64
+    import time
+
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    privata = Ed25519PrivateKey.generate()
+    pubblica = base64.b64encode(
+        privata.public_key().public_bytes_raw()).decode("ascii")
+    adesso = time.time()
+    app["servizi"].presenta(nome=nome, chiave=pubblica, indirizzo="192.168.1.31",
+                            now_ts=adesso)
+    app["servizi"].approva(pubblica, ruolo=ruolo, specie=specie, now_ts=adesso)
+    return privata, pubblica
+
+
+def firma(privata, pubblica, method: str, path: str, body: bytes = b"") -> dict:
+    """Le intestazioni di una richiesta firmata, col contratto vero
+    (`canali.materia_firmata`). `path` e' il percorso come il server lo vede,
+    cioe' decodificato."""
+    import base64
+    import secrets
+    import time
+
+    from hiris.app.api import canali
+
+    momento = time.time()
+    unico = secrets.token_hex(8)
+    segno = base64.b64encode(privata.sign(
+        canali.materia_firmata(method, path, momento, unico, body))).decode("ascii")
+    return {"X-HIRIS-Servizio": pubblica, "X-HIRIS-Momento": str(int(momento)),
+            "X-HIRIS-Unico": unico, "X-HIRIS-Firma": segno}

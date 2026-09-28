@@ -90,7 +90,7 @@ from collections import OrderedDict
 from aiohttp import web
 
 from ..home_space.tools import KNOWLEDGE_TOOLS
-from ..keeper.exchange import PromiseDispatcher, promise_tools
+from ..keeper.exchange import PromiseDispatcher, promise_ceiling, promise_tools
 from ..version import read_version
 from .handlers_chat import create_tool_dispatcher, last_phrase
 from .soffitto import ceiling_for
@@ -504,8 +504,9 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
     # riceve soffitto, soggetto e frase DEL JOB, come il ramo sincrono. Prima
     # di questa riga il ponte costruiva senza soffitto: una persona non
     # amministratrice poteva far scrivere un'automazione passando dal piano.
-    # Promesse e osservatore non portano `X-HIRIS-Chat` e restano senza
-    # soggetto: nessuna persona li ha aperti.
+    # L'osservatore non porta `X-HIRIS-Chat` e resta senza soggetto: nessuna
+    # persona l'ha aperto. Una promessa nemmeno, ma una persona l'ha chiesta:
+    # il suo soffitto si rifa' dal filo della promessa, qui sotto.
     # Un'intestazione PRESENTE che non vale chiude la chiamata: vedi
     # `_stale_chat_rejection`.
     chat_header_present, chat_job = _exchange_chat_job(request)
@@ -526,9 +527,19 @@ async def _call_tool(request: web.Request, params, request_id) -> web.Response:
             # soggetto INTERO per il soffitto/la cronaca, non il filo).
             # `None` per un job accodato prima di questa versione.
             thread=chat_job.get("thread"))
-    else:
-        dispatcher = create_tool_dispatcher(request.app, exchange=exchange_id)
     promise_id = _exchange_promise_id(request)
+    if chat_job is None and promise_id:
+        # Il turno di una promessa porta il soffitto di chi l'ha chiesta, come
+        # il ramo sincrono (`keeper/exchange.promise_ceiling`, fix round 1 del
+        # Task 2, H-1): senza, il ponte leggerebbe per lei cio' che Home
+        # Assistant le nega.
+        agenda = request.app.get("agenda")
+        subject, ceiling = await promise_ceiling(
+            request.app, agenda.read(promise_id) if agenda is not None else None)
+        dispatcher = create_tool_dispatcher(request.app, exchange=exchange_id,
+                                            soffitto=ceiling, soggetto=subject)
+    elif chat_job is None:
+        dispatcher = create_tool_dispatcher(request.app, exchange=exchange_id)
     if promise_id:
         # Lo STESSO guardiano del ramo sincrono, non una seconda regola:
         # `SOLA_LETTURA` e' un elenco di AMMISSIONE, e con due implementazioni

@@ -232,6 +232,10 @@ async def _chiedi(strumento, argomenti=None):
     canale = _CanaleFinto()
     dispatcher._ha_channel = lambda: canale
     dispatcher._seal = lambda: None
+    # Nessuna persona ha aperto questo turno: il soffitto di chi chatta non
+    # si pronuncia (`ToolDispatcher.__init__`, `soffitto=None`).
+    dispatcher._soffitto = None
+    dispatcher._subject = None
     # L'inventario: `_automation_trace` lo guarda PRIMA di risolvere, per non
     # dare la colpa all'identificatore quando la colpa e' nostra.
     dispatcher._cache = _InventarioFinto()

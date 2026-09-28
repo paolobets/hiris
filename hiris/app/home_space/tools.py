@@ -153,6 +153,7 @@ from datetime import datetime, timedelta
 from typing import Any, ClassVar
 
 from ..action.construction.advisor import STRUCTURES
+from ..api.soffitto import ADMIN_READS_REFUSAL, ADMIN_SERVICES_REFUSAL, denies
 from ..chat_thread import ChatThread, subject_key_for, without_thread
 from ..memory.interpretation import VOCABULARY, validate
 from ..memory.lookup_cache import LookupCache
@@ -1576,6 +1577,29 @@ def _bad_arguments(name: str, arguments: dict[str, Any]) -> dict | None:
     return {"errore": f"«{name}»: " + "; ".join(parts) + "."}
 
 
+#: I servizi del dominio `homeassistant` che Home Assistant concede a chi non
+#: amministra. Verificato il 27/09/2026 su Core 2026.9.3,
+#: `components/homeassistant/__init__.py`: `turn_on`, `turn_off`, `toggle`,
+#: `update_entity` (e `save_persistent_states`) si registrano con
+#: `hass.services.async_register`; `stop`, `restart`, `check_config`,
+#: `reload_core_config`, `set_location`, `reload_custom_templates`,
+#: `reload_config_entry` e `reload_all` con `async_register_admin_service`.
+#: `save_persistent_states` resta fuori per decisione (fix round 1, M-1): e'
+#: manutenzione del nucleo, non un comando di casa.
+_HA_CORE_USER_SERVICES = frozenset({"turn_on", "turn_off", "toggle", "update_entity"})
+
+
+#: Perche' `view` non mostra il corpo di un'automazione a chi non amministra.
+#: Verificato il 27/09/2026 su Core 2026.9.3 (fix round 1 del Task 2, L-2):
+#: `automation/config` (`components/automation/__init__.py`) e'
+#: `@websocket_api.require_admin`; `script/config` no, e il corpo degli
+#: script resta visibile a tutti. Il nucleo della chat non porta i corpi --
+#: solo il nome e se il corpo c'e' -- quindi il solo punto da chiudere e' qui.
+_AUTOMATION_BODY_ADMIN_ONLY = ("Home Assistant mostra il corpo delle "
+                               "automazioni solo agli amministratori: si sa "
+                               "che c'e' e come si chiama, non cosa fa")
+
+
 class ToolDispatcher:
     """Collega i sedici strumenti agli archivi, alla porta, all'officina e al
     canale HA -- e non altro.
@@ -2187,6 +2211,11 @@ class ToolDispatcher:
         # "non letto" qui.
         if isinstance(detail, dict) and (not loaded or not inventory_is_readable(self._cache)):
             detail["stato_non_letto"] = True
+        if (kind == "automazione" and isinstance(detail, dict)
+                and detail.get("corpo") is not None
+                and self._ceiling_denies("amministrare")):
+            detail = {**detail, "corpo": None,
+                      "corpo_non_disponibile": _AUTOMATION_BODY_ADMIN_ONLY}
         return detail
 
     def _mirror(self) -> tuple[dict[str, str], dict[str, str], dict[str, str],
@@ -2430,7 +2459,21 @@ class ToolDispatcher:
         -- vive in `action/actuator.py`, perche' domani lo schedulatore e il brain
         chiederanno alla STESSA porta senza passare da qui. Se un giorno questo
         metodo cresce, la logica sta migrando nel posto sbagliato.
+
+        Le sole righe in piu' sono il soffitto (spec 2026-09-27, ruling
+        R-2.10b e fix round 1, M-1), che la porta non conosce: chi ha il ruolo
+        di sola lettura -- in Home Assistant il gruppo `system-read-only` --
+        non comanda; e i servizi del dominio `homeassistant` che Home
+        Assistant riserva agli amministratori non si chiamano per chi non lo
+        e'. Il dominio e' universale per la porta (`action/verification.py`)
+        e HIRIS chiama col proprio token di amministratore.
         """
+        if self._ceiling_denies("comandare"):
+            return {"errore": self._soffitto["perche"]}
+        domain, _dot, service = str(arguments.get("servizio") or "").partition(".")
+        if (domain == "homeassistant" and service not in _HA_CORE_USER_SERVICES
+                and self._ceiling_denies("amministrare")):
+            return {"errore": ADMIN_SERVICES_REFUSAL}
         return await self._actuator.execute(
             arguments, actor="chat", subject=self._subject)
 
@@ -2551,8 +2594,7 @@ class ToolDispatcher:
         # guardare. Stesso `perche` di ogni altro rifiuto del soffitto. Un
         # `chiedi` resta permesso: legge e basta. Senza soffitto (`None`: i
         # percorsi interni) il comportamento e' quello di prima.
-        if (verb == "fai" and self._soffitto is not None
-                and not self._soffitto["comandare"]):
+        if verb == "fai" and self._ceiling_denies("comandare"):
             return {"errore": self._soffitto["perche"]}
 
         await self._ensure_registry_fresh()
@@ -2691,7 +2733,8 @@ class ToolDispatcher:
         }
         return await self._workshop.propose(
             intent, actor="chat", exchange=self._exchange, now=_time.time(),
-            thread=self._thread)
+            thread=self._thread,
+            reveal_before=not self._ceiling_denies("amministrare"))
 
     async def _confirm(self, arguments: dict[str, Any]) -> dict:
         """Applica una proposta gia' creata da `propose`. La guardia del
@@ -2711,7 +2754,7 @@ class ToolDispatcher:
         # sulla pagina e questo strumento. Custodirne uno solo lascerebbe
         # spalancato l'altro -- e questo e' il piu' facile da attraversare,
         # perche' basta scrivere «conferma» in chat.
-        if self._soffitto is not None and not self._soffitto["costruire"]:
+        if self._ceiling_denies("costruire"):
             return {"errore": self._soffitto["perche"]}
         occurrence = await self._workshop.apply(
             proposal_id, actor="chat", exchange=self._exchange,
@@ -3003,6 +3046,26 @@ class ToolDispatcher:
     # giudica, cosa dire e cosa tacere e' di chi compone» -- qui chi compone
     # e' la description dello strumento, non un livello di codice in piu').
 
+    def _ceiling_denies(self, gesture: str) -> bool:
+        """Il soffitto di questo turno nega questo gesto? L'unica domanda che
+        gli strumenti fanno al soffitto -- la regola, sviluppo e turni senza
+        persona compresi, e' `soffitto.denies`."""
+        return denies(self._soffitto, gesture, self._subject)
+
+    def _admin_reads_refusal(self) -> dict | None:
+        """Il rifiuto dei due strumenti che leggono cio' che Home Assistant
+        mostra ai soli amministratori -- `None` se questo turno puo'.
+
+        Verificato il 27/09/2026 su Core 2026.9.3: `system_log/list`
+        (`components/system_log/__init__.py`), `trace/list` e `trace/get`
+        (`components/trace/websocket_api.py`) sono `@websocket_api.require_admin`.
+        HIRIS li chiama col proprio token di amministratore: senza questa
+        domanda li leggerebbe per chiunque chatti (ruling R-2.25).
+        """
+        if self._ceiling_denies("amministrare"):
+            return {"errore": ADMIN_READS_REFUSAL}
+        return None
+
     def _seal(self):
         """Il sigillo dei segreti, costruito una volta per questo dispatcher.
 
@@ -3041,6 +3104,9 @@ class ToolDispatcher:
         traccia dice la cosa che serve in fondo, e tagliarne la testa come per
         ogni altro campo butterebbe la risposta tenendo la domanda.
         """
+        refusal = self._admin_reads_refusal()
+        if refusal is not None:
+            return refusal
         answer = await self._ha_channel().system_log()
         # `voci` e' la CHIAVE DEL DATO e resta italiana: e' il vocabolario che
         # il client dichiara e che il modello legge. Cio' che diventa inglese
@@ -3119,6 +3185,9 @@ class ToolDispatcher:
         difetto e' sopravvissuto nei fratelli (vedi il commento sopra quelle
         costanti).
         """
+        refusal = self._admin_reads_refusal()
+        if refusal is not None:
+            return refusal
         entity = arguments.get("entita")
         if not isinstance(entity, str) or not entity.strip():
             return {"errore": "«automation_trace» richiede «entita»: l'identificatore "

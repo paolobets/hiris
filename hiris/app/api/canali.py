@@ -53,20 +53,27 @@ FINESTRA_S = 30.0
 
 #: Il vocabolario dei ruoli, e **non e' nostro**: `amministratore` e `utente`
 #: sono cio' che Home Assistant chiama admin e non-admin, cosi' chi conosce HA
-#: non deve imparare un secondo sistema. `lettore` e' il terzo e serve a un caso
-#: che HA non ha: una macchina che deve **misurare senza toccare**.
+#: non deve imparare un secondo sistema. `lettore` e' il terzo: una macchina
+#: che deve **misurare senza toccare** e, dal 27/09/2026, una persona del
+#: gruppo `system-read-only` di Home Assistant (verificato sul sorgente di Core
+#: 2026.9.3, `auth/const.py::GROUP_ID_READ_ONLY`): il caso c'era anche in HA.
 RUOLI = ("amministratore", "utente", "lettore")
 
 #: Cosa concede ogni ruolo. `utente` e' quello che il proprietario ha descritto
 #: il 21/09: «cosi' non gestisce automazioni e altro, quindi comanda».
 #:
-#: `costruire` e' la sola cosa riservata, e non i servizi di sistema: quelli
-#: sono gia' irraggiungibili dalla porta perche' non dichiarano un bersaglio, e
-#: un bersaglio vuoto e' sempre un rifiuto (`action/verification.py`).
+#: `costruire` e `amministrare` sono le cose riservate. `amministrare` e'
+#: toccare cio' che Home Assistant riserva ai soli amministratori, verificato
+#: il 27/09/2026 su Core 2026.9.3: le letture `@websocket_api.require_admin`
+#: (`system_log/list`, `trace/list`, `trace/get`, `automation/config`) e i
+#: servizi `async_register_admin_service` del dominio `homeassistant`.
 PUO = {
-    "amministratore": {"leggere": True, "comandare": True, "costruire": True},
-    "utente": {"leggere": True, "comandare": True, "costruire": False},
-    "lettore": {"leggere": True, "comandare": False, "costruire": False},
+    "amministratore": {"leggere": True, "comandare": True, "costruire": True,
+                       "amministrare": True},
+    "utente": {"leggere": True, "comandare": True, "costruire": False,
+               "amministrare": False},
+    "lettore": {"leggere": True, "comandare": False, "costruire": False,
+                "amministrare": False},
 }
 
 #: I metodi che non cambiano niente. Un `lettore` fa questi e basta.
