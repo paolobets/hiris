@@ -176,8 +176,10 @@ async def misura_turno(archivio, runner, *, specie: str, canale: str,
                 # sull'oggetto runner sarebbe una seconda verita' sullo stesso
                 # numero -- e per giunta condivisa fra turni paralleli, che e'
                 # il difetto che la ContextVar esiste per non avere. Il gancio
-                # scatta una volta per giro: contarli e' guardare quante volte
-                # ha scattato.
+                # scatta DUE volte per giro (i caratteri prima della chiamata,
+                # i token dopo la risposta), ma entrambe le consegne cadono
+                # sulla stessa chiave: i giri sono le chiavi distinte di
+                # `carichi`, non le volte che il gancio ha scattato.
                 giri = len(carichi)
                 if esito == "riuscito" and giri >= MAX_GIRI:
                     esito = "esaurito"

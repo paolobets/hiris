@@ -175,9 +175,10 @@ CREATE TABLE IF NOT EXISTS payload (
 TURNS_RETENTION_S = 30 * 86400
 
 #: Le colonne dei token di un giro, nell'ordine della tabella. **Una sola
-#: lista**: la leggono l'INSERT, la lettura e chi compone le righe
-#: (`steering`, `usage/giro.py`), e una colonna nuova non puo' entrare in due
-#: posti su tre.
+#: lista, dentro questo file**: la leggono la migrazione, l'INSERT e la
+#: lettura, e una colonna nuova non puo' entrare in due posti su tre. Chi
+#: compone le righe (`steering`, `usage/giro.py`) NON la legge: scrive le
+#: chiavi per nome, e `log_payload` le riceve come argomenti.
 TOKEN_COLUMNS = ("input_tokens", "output_tokens", "cache_read_tokens",
                  "cache_write_tokens", "cache_ttl", "cost_usd")
 
@@ -186,9 +187,18 @@ def _migration_2(conn) -> None:
     """Versione 2 (28/09/2026, spec «le misure complete» §2): i token.
 
     `ALTER TABLE ADD COLUMN` solo se la colonna manca, come le altre
-    migrazioni del progetto (`reasoning/queue.py::_migration_2`): una seconda
-    apertura dello stesso archivio non deve fallire. Le righe gia' scritte
-    restano NULL -- non sono state misurate, e non si inventa che lo siano.
+    migrazioni del progetto (`reasoning/queue.py::_migration_2`). Non per
+    una seconda apertura -- quella la salta `user_version` -- ma per due
+    casi in cui la migrazione ritrova colonne gia' aggiunte:
+
+    (a) il ritorno alla 3.69.x: la versione vecchia apre l'archivio con
+        `version=1` e lo ritimbra `user_version = 1`, ma le colonne restano;
+        il nuovo aggiornamento rifa' la migrazione 2 su di esse;
+    (b) il DDL di SQLite fa commit da solo: un crollo fra gli `ALTER` e il
+        timbro lascia un archivio alla versione 1 con parte delle colonne.
+
+    Le righe gia' scritte restano NULL -- non sono state misurate, e non si
+    inventa che lo siano.
     """
     columns = {r[1] for r in conn.execute("PRAGMA table_info(payload)").fetchall()}
     column_types = {"cache_ttl": "TEXT", "cost_usd": "REAL"}
