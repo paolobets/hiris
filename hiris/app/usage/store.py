@@ -190,17 +190,17 @@ def _migration_2(conn) -> None:
     apertura dello stesso archivio non deve fallire. Le righe gia' scritte
     restano NULL -- non sono state misurate, e non si inventa che lo siano.
     """
-    colonne = {r[1] for r in conn.execute("PRAGMA table_info(payload)").fetchall()}
-    tipi = {"cache_ttl": "TEXT", "cost_usd": "REAL"}
-    for nome in TOKEN_COLUMNS:
-        if nome not in colonne:
-            conn.execute(f"ALTER TABLE payload ADD COLUMN {nome} "
-                         f"{tipi.get(nome, 'INTEGER')}")
-    colonne_turno = {r[1] for r in conn.execute(
+    columns = {r[1] for r in conn.execute("PRAGMA table_info(payload)").fetchall()}
+    column_types = {"cache_ttl": "TEXT", "cost_usd": "REAL"}
+    for name in TOKEN_COLUMNS:
+        if name not in columns:
+            conn.execute(f"ALTER TABLE payload ADD COLUMN {name} "
+                         f"{column_types.get(name, 'INTEGER')}")
+    turn_columns = {r[1] for r in conn.execute(
         "PRAGMA table_info(turn)").fetchall()}
-    if "output_tokens" not in colonne_turno:
+    if "output_tokens" not in turn_columns:
         conn.execute("ALTER TABLE turn ADD COLUMN output_tokens INTEGER")
-    if "list_cost_usd" not in colonne_turno:
+    if "list_cost_usd" not in turn_columns:
         conn.execute("ALTER TABLE turn ADD COLUMN list_cost_usd REAL")
 
 

@@ -1833,7 +1833,7 @@ def test_una_classe_senza_dataclass_non_porta_parole_chiave():
                                              "", coppie=coppie) == {}
 
 
-def test_le_dataclass_del_prodotto_sono_diciassette_e_i_campi_ottanta():
+def test_le_dataclass_del_prodotto_sono_diciassette_e_i_campi_ottantatre():
     """Il perimetro si misura come il contenuto. E' il conto che ha deciso di
     scrivere questa rete invece di dichiararla scoperta, come si e' fatto col
     criterio largo dell'ottava (1.424 occorrenze): tredici classi si leggono.
@@ -1870,13 +1870,18 @@ def test_le_dataclass_del_prodotto_sono_diciassette_e_i_campi_ottanta():
 
     **Diciassette e 80 dal 26/09/2026**, stessa fetta, Task 4: l'undicesimo
     campo di `Fact`, `said_by` -- la chiave di chi ha scritto la riga, accanto
-    al nome in `who`, come i ricordi (un giudizio porta il suo autore vero)."""
+    al nome in `who`, come i ricordi (un giudizio porta il suo autore vero).
+
+    **Diciassette e 83 dal 28/09/2026**, fetta «le misure complete»:
+    `StreamOccurrence` guadagna `exchanges`, `output_tokens`, `list_cost_usd`
+    -- i giri del ponte letti dallo stream, l'uscita e il costo a listino del
+    turno."""
     classi = campi = 0
     for f in rinomina.file_py(rinomina.ROOT):
         trovate = rinomina.campi_dataclass(rinomina._leggi_grezzo(f))
         classi += len(trovate)
         campi += sum(len(c) for c in trovate.values())
-    assert (classi, campi) == (17, 80), (classi, campi)
+    assert (classi, campi) == (17, 83), (classi, campi)
 
 
 def _repo_finto(tmp_path, prima: dict, dopo: dict) -> None:
