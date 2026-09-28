@@ -150,3 +150,48 @@ def test_gli_strumenti_hanno_UN_nome_solo(registro):
                {"tool": "ToolSearch"}],
         occurrence=_occorrenza(), outcome="riuscito")
     assert registro[0]["tools"] == ["search", "view", "ToolSearch"]
+
+
+def test_la_riga_del_ponte_porta_giri_composizione_e_identita(registro):
+    """La riga porta cio' che serve alla giunzione in `server`: l'identita'
+    del turno, la composizione, i giri dello stream, l'uscita e il costo a
+    listino.
+
+    Mutazione ESEGUITA: non passare `exchanges` nella riga (chiave tolta dal
+    dizionario di `_measure_turn`) -- rossa (KeyError); ripristinata, verde."""
+    e = _occorrenza(giri=2)
+    e.exchanges = [{"message_id": "a", "input_tokens": 10, "output_tokens": None,
+                    "cache_read_tokens": 1, "cache_write_tokens": 2,
+                    "cache_ttl": "1h", "mcp_calls": 1},
+                   {"message_id": "b", "input_tokens": 8, "output_tokens": None,
+                    "cache_read_tokens": 3, "cache_write_tokens": 0,
+                    "cache_ttl": None, "mcp_calls": 0}]
+    e.output_tokens = 623
+    e.list_cost_usd = 0.07
+    ponte._measure_turn({"job_id": "j6", "kind": "analisi"}, duration_ms=5,
+                        tools=[], occurrence=e, outcome="riuscito",
+                        exchange_id="TURNO-9",
+                        composition={"guide_chars": 1, "core_chars": 2,
+                                     "history_chars": 3})
+    riga = registro[0]
+    assert riga["species"] == "analista"
+    assert riga["exchange_id"] == "TURNO-9"
+    assert riga["composition"]["history_chars"] == 3
+    assert len(riga["exchanges"]) == 2
+    assert riga["output_tokens"] == 623
+    assert riga["list_cost_usd"] == 0.07
+
+
+def test_la_composizione_si_pesa_in_TUTTE_le_invocazioni():
+    """Il pin della forma: la cella della composizione si scrive dentro
+    `_invoca`, accanto a `build_chat_messages`, non su un ramo.
+
+    Mutazione ESEGUITA: non passare `exchange_id=exchange_id` a
+    `_measure_turn` in `_reply` -- rossa; ripristinata, verde. (La forma
+    «solo sul ramo con strumenti» non e' distinguibile dal conteggio: la
+    prova pinna che la cella esista e venga letta, non dove.)"""
+    import inspect
+
+    sorgente = inspect.getsource(ponte._reason_chat)
+    assert sorgente.count("composition_cell") >= 2
+    assert "exchange_id=exchange_id" in sorgente

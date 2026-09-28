@@ -1262,17 +1262,19 @@ def _bare_tool_name(name: str) -> str:
 
 def _measure_turn(job: dict, *, duration_ms: int, tools: list,
                   occurrence: "StreamOccurrence | None",
-                  outcome: str) -> None:
+                  outcome: str, exchange_id: str = "",
+                  composition: dict | None = None) -> None:
     """La riga del registro per un turno del PONTE.
 
     **Perche' non basta `steering.misura_turno`.** Quella misura avvolge una
     chiamata a `runner.chat()` e raccoglie i pesi del carico a ogni giro dal
     gancio di `claude_runner`. Il ponte non passa di la': lancia la CLI, che
-    fa il proprio ciclo di strumenti dentro di se'. I pesi per giro **non
-    esistono** da questa parte, e inventarli a zero direbbe «questo turno non
-    ha mandato niente al modello», che e' falso. Escono quindi i fatti che il
-    ponte conosce davvero, e i carichi restano assenti: un'assenza e' una
-    risposta, uno zero e' una bugia.
+    fa il proprio ciclo di strumenti dentro di se'. I pesi per giro arrivano
+    da due parti: i token dallo stream (`message.usage`, un giro per
+    `message.id`) e la composizione da `_invoca`. Le definizioni e i risultati
+    li ha visti `/api/mcp`, e li unisce `server._registra_turno_ponte`. Fino
+    al 28/09/2026 qui c'era scritto che non esistevano: era falso (spec «le
+    misure complete» §1).
 
     I giri li dichiara la CLI (`num_turns` -> `num_exchanges`): sono i suoi,
     non se ne tiene un secondo conto che possa divergere.
@@ -1292,6 +1294,14 @@ def _measure_turn(job: dict, *, duration_ms: int, tools: list,
             # log, e una riga sbagliata sarebbe peggio di una riga assente.
             return
         models = exchange_usages(occurrence) if occurrence is not None else []
+        # Due conti degli stessi giri: se divergono, la forma dello stream e'
+        # cambiata e i giri scritti non sono piu' quelli della CLI.
+        n_stream = len(getattr(occurrence, "exchanges", None) or [])
+        n_cli = getattr(occurrence, "num_exchanges", None)
+        if occurrence is not None and n_cli is not None and n_stream != n_cli:
+            log.warning("ponte: lo stream ha %d giri, la CLI ne dichiara %d "
+                        "(job_id=%s) -- la forma dello stream e' cambiata?",
+                        n_stream, n_cli, (job or {}).get("job_id"))
         # **Le chiavi sono quelle di `UsageStore.log_turn`**, non un terzo
         # vocabolario da tradurre a meta' strada: `server.py` le passa
         # dritte. Una traduzione in mezzo sarebbe un posto in piu' in cui
@@ -1313,6 +1323,14 @@ def _measure_turn(job: dict, *, duration_ms: int, tools: list,
             # non hanno una persona davanti, e la colonna resta vuota.
             "subject": (((job or {}).get("context") or {}).get("soggetto")
                         if (job or {}).get("kind") == "chat" else None),
+            # Spec «le misure complete» §4: la riga porta cio' che serve alla
+            # giunzione in `server._registra_turno_ponte`, che ha l'app e
+            # quindi cio' che /api/mcp ha annotato per questo turno.
+            "exchange_id": exchange_id,
+            "composition": composition,
+            "exchanges": list(getattr(occurrence, "exchanges", None) or []),
+            "output_tokens": getattr(occurrence, "output_tokens", None),
+            "list_cost_usd": getattr(occurrence, "list_cost_usd", None),
         })
     except Exception as error:  # pragma: no cover - guasto dell'archivio
         log.warning("la misura del turno del ponte non si e' potuta scrivere "
@@ -1607,6 +1625,11 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # chiusura e non puo' riassegnare una variabile del corpo.
     turn_started = time.perf_counter()
     last_occurrence: list = []
+    # Spec «le misure complete» §4(1): cio' che HIRIS consegna alla CLI, in
+    # caratteri. Una cella per la stessa ragione di `last_occurrence`: `_reply`
+    # e' una chiusura. Si scrive in `_invoca`, accanto alla composizione: vale
+    # l'ultima invocazione, quella che ha risposto.
+    composition_cell: list = []
 
     def _reply(text: str, *, outcome: str = "riuscito") -> dict:
         """L'UNICO modo in cui una risposta esce da questa funzione.
@@ -1650,7 +1673,9 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             job, duration_ms=int((time.perf_counter() - turn_started) * 1000),
             tools=tools_called_in_exchange,
             occurrence=last_occurrence[-1] if last_occurrence else None,
-            outcome=outcome)
+            outcome=outcome,
+            exchange_id=exchange_id,
+            composition=composition_cell[-1] if composition_cell else None)
         return {"reply": reda_segreti(text, *forms),
                "tools_called": _reda_struttura(tools_called_in_exchange, *forms)}
 
@@ -1718,6 +1743,13 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             # «l'osservatore chiede a chi risponde davvero», 11/09/2026).
             istruzione=(context.get("istruzione") or "")
             if isinstance(context, dict) else "")
+        # Il nucleo si misura sul `contesto` grezzo, come la catena misura il
+        # suo `context_str`: stessa definizione, due strade confrontabili.
+        core_chars = len((contesto or "").strip())
+        composition_cell.append({
+            "guide_chars": max(len(system) - core_chars, 0),
+            "core_chars": core_chars,
+            "history_chars": len(user)})
         argv = _chat_claude_args(system, user, model,
                                  active_tools=active_tools,
                                  mcp_config=mcp_config,
