@@ -1,6 +1,6 @@
 """Il cervello di HIRIS.
 
-Tre attori e cio' su cui lavorano (ricavato da `ls` il 28/09/2026):
+Gli attori e cio' su cui lavorano (ricavato da `ls` il 28/09/2026):
 
 - l'**osservatore** guarda la casa e ne ricava oggetti: `watcher`, `observer`,
   `scope`, `cadence`, `facts`, `report`;
