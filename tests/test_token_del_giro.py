@@ -38,6 +38,10 @@ def test_anthropic_da_DIZIONARIO_come_nello_stream_del_ponte():
 
 
 def test_anthropic_da_OGGETTO_come_nel_runner():
+    """La stessa lettura, ma dall'oggetto `Usage` dell'SDK (non da un dizionario).
+
+    Mutazione ESEGUITA: leggere `cache_write_tokens` da `cache_read_input_tokens`
+    invece che da `cache_creation_input_tokens` -- rossa."""
     class _Uso:
         input_tokens = 100
         output_tokens = 20
@@ -80,5 +84,8 @@ def test_openai_SENZA_dettagli_la_cache_e_NULL_non_zero():
 
 
 def test_senza_usage_tutto_e_NULL():
+    """Nessun giro (`usage` assente): ogni campo resta `None`, mai `0`.
+
+    Mutazione ESEGUITA: `_int_or_none` restituisce `int(value or 0)` -- rossa."""
     assert all(v is None for v in anthropic_turn_tokens(None).values())
     assert all(v is None for v in openai_turn_tokens(None).values())
