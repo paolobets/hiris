@@ -208,3 +208,28 @@ def test_il_codice_dichiara_QUANDO_la_rotta_esce():
         assert parola in sorgente.lower(), (
             f"il modulo non dice quando «{parola}»: manca la condizione di "
             "uscita")
+
+
+@pytest.mark.asyncio
+async def test_la_rotta_porta_i_token_dei_giri(app):
+    """La rotta non cambia (Task 9): legge `turns()` e `payloads()`, che dal
+    Task 1 portano le colonne nuove -- si pinna che arrivino fino in fondo.
+
+    Mutazione ESEGUITA: togliere TOKEN_COLUMNS dalla SELECT di payloads --
+    rossa."""
+    archivio = app["usage"]
+    ident = archivio.log_turn(species="chat", provider="subscription",
+                              model="m", channel="ponte", duration_ms=1,
+                              iterations=1, tools=[], outcome="riuscito",
+                              now=ADESSO, output_tokens=7,
+                              list_cost_usd=0.05)
+    archivio.log_payload(ident, iteration=1, tools_chars=1, guide_chars=1,
+                         core_chars=1, history_chars=1, results_chars=0,
+                         now=ADESSO, input_tokens=3, cache_ttl="1h")
+
+    dati = await _chiedi(app)
+
+    assert dati["carichi"][ident][0]["input_tokens"] == 3
+    assert dati["carichi"][ident][0]["cache_ttl"] == "1h"
+    assert dati["turni"][0]["output_tokens"] == 7
+    assert dati["turni"][0]["list_cost_usd"] == 0.05
