@@ -672,6 +672,25 @@ sezioni: `docs/design/2026-09-28-le-misure-complete.md` — il ponte si pesa per
 la batteria delle 32 domande entra nel repo e si rilancia su catena e ponte, Consumi e Modelli
 mostrano i dati nuovi.
 
+**28/09/2026 — la prima fase (le misure) e' costruita, in attesa del rilascio.** Sul ramo
+`misure-complete` (§2, §3, §4 della spec: il registro esteso, la catena, i tre punti di cattura del
+ponte) e' pronta la v3.70.0 — non ancora rilasciata, il proprietario deve confermarla. Restano da
+fare la batteria (§6, §7) e le pagine (§5): la fase 1 apre solo la strada che le due misura.
+
+### Sul ponte un `result` con `is_error: true` e codice 0 si registra `riuscito` — aperta il 28/09/2026
+
+`origine: revisione finale della fetta «le misure complete», 28/09/2026` · `hiris/app/agent/runner.py::_reason_chat`
+
+Un difetto gia' esistente prima di questa fetta, e la sua misura l'ha solo reso visibile: quando la
+CLI del ponte risponde con codice di uscita 0 ma l'evento `result` porta `is_error: true`,
+`_reason_chat` scrive comunque `outcome: "riuscito"`. Il registro non guarda dentro l'esito, solo
+il codice di processo — e i due possono raccontare cose diverse.
+
+**Cosa lo chiude**: `_reason_chat` pesa anche `is_error` dell'evento `result`, non solo il codice
+di uscita, e un `result` che lo dichiara vero scrive `outcome: "fallito"` come gia' fa un errore di
+processo. Fino ad allora, il documento di esito (§8 della spec) che conta i turni riusciti del
+ponte include un numero non ancora corretto di errori della CLI travestiti da successi.
+
 ### Sul ponte l'attuatore non ripara le ricette rotte — aperta il 28/09/2026
 
 `origine: fetta «l'attuatore sul ponte» (28/09/2026), decisione del coordinatore` · `hiris/app/server.py::actuator_round` · `hiris/app/server.py::_enqueue_actuator_turn` · `hiris/app/mind/actuator_turn.py::SYSTEM`

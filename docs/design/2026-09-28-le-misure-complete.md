@@ -106,6 +106,12 @@ cache, non ha il numero — e «non misurato» non è «zero» (la regola che `_
 «un'assenza è una risposta, uno zero è una bugia»). Le colonne carattere esistenti restano NOT NULL
 e restano ciò che sono.
 
+> **Cambiato durante la costruzione.** Un valore di token malformato (una stringa, un dizionario,
+> un booleano dove serve un intero) diventa **NULL alla fonte**, non un'eccezione che fa cadere il
+> turno: `usage/giro.py::_int_or_none` è il solo posto che legge un numero di token, per la catena
+> e per lo stream del ponte insieme — un valore inatteso protegge tutti e tre i lettori con la
+> stessa regola, invece di farlo tre volte.
+
 Migrazione: `ALTER TABLE … ADD COLUMN`, nello stile delle migrazioni di `storage.init_schema`.
 Conservazione invariata (30 giorni, `TURNS_RETENTION_S`). **Mai gli argomenti degli strumenti.**
 
@@ -166,9 +172,27 @@ i caratteri della risposta a `tools/list` (le definizioni che la CLI ha ricevuto
 > Un archivio suo, `usage/bridge_loads.py::BridgeLoads`, con un lock. Una chiamata senza `X-HIRIS-Turno` non si
 attribuisce a nessun turno e lo dichiara nel log (come già fa per il tetto).
 
+> **Cambiato durante la costruzione.** Un errore JSON-RPC (chiamata malformata) non ha `result`: al
+> modello arriva comunque il suo `error.message`, e `handlers_mcp.py::_annota_risultato` pesa quel
+> testo invece di scrivere zero — zero direbbe che il modello non ha ricevuto niente, ed è falso.
+> La misura non solleva: un guasto qui non toglie mai gli strumenti alla CLI, si logga e la
+> chiamata risponde lo stesso.
+
+> **Cambiato durante la costruzione.** Un turno **rifatto dopo un primo tentativo** (l'invocazione
+> scartata e quella che ha risposto) non lega più i carichi MCP accumulati dalla prima alla riga
+> scritta per la seconda: `_measure_turn` riceve un `exchange_id` vuoto quando il turno arriva da
+> un ciclo già rilanciato, così l'annotazione orfana della prima invocazione resta orfana — esce
+> dal tetto LRU di `BridgeLoads` — invece di attribuirsi a un turno che non l'ha ricevuta.
+
 **(3) Alla lettura dello stream — i token di ogni giro.** `read_stream` raccoglie `message.usage`
 **raggruppando per `message.id`**: un giro = una chiamata all'API. `StreamOccurrence` guadagna la
 lista dei giri, nell'ordine. Da `result.usage` il totale dell'uscita.
+
+> **Cambiato durante la costruzione.** Il conto dello stream come ripiego (§4, punto 3) vale
+> **quando la CLI non dichiara `num_turns`**: `n_cli is not None else n_stream`. È un caso diverso
+> dal disaccordo fra i due conti descritto sopra — lì entrambi i numeri esistono e non
+> coincidono, e si scrivono comunque i giri dello stream col log che porta entrambi; qui la CLI
+> tace del tutto, e mai uno zero che dica «nessun giro» di un turno che ne ha fatti.
 
 **La scrittura.** `_measure_turn` passa al gancio la riga del turno **con l'`exchange_id`** e i
 giri dello stream (token) e della composizione (caratteri del primo giro).
@@ -192,6 +216,11 @@ tutti.
 
 **La legge che resta**: la misura non può far cadere un turno (la regola di `misura_turno` e di
 `_measure_turn`). Un guasto del registro si logga e il proprietario ha la sua risposta.
+
+> **Cambiato durante la costruzione.** Un turno del ponte che finisce in fallimento si registra ora
+> con `outcome: "fallito"`, non più con l'esito di una risposta arrivata: prima della fetta, un
+> guasto sul ponte poteva scrivere una riga che diceva «riuscito» su un turno che non lo era, e chi
+> legge il registro non ha modo di saperlo se la parola stessa mente.
 
 ---
 

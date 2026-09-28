@@ -1,5 +1,74 @@
 # HIRIS — Changelog
 
+## [3.70.0] — Il ponte si pesa (2026-09-28)
+
+Chiude la prima meta' del tema «Ottimizzazione: base dati, chiamate e consumo di token»
+(`docs/BACKLOG.md`): non ottimizza niente, **rende decidibili** le leve. Le misure del 24/09/2026
+si erano fermate su una premessa falsa; questa fetta la corregge e pesa il ponte per tutte e sei
+le specie.
+
+### Cosa mancava, e perche'
+
+`agent/runner.py::_measure_turn` dichiarava che «i pesi per giro non esistono da questa parte» —
+il CHANGELOG della 3.67.0 lo ripeteva. Era falso: lo stream della CLI porta `message.usage` a ogni
+evento, raggruppato per `message.id` — un giro e' un `message.id`, non un evento — e il ponte lo
+leggeva solo per gli strumenti, scartando l'uso. Il registro, cosi' com'era, non poteva rispondere:
+**70 turni dal 24/09 al 28/09**, di cui 55 di chat — 40 dalla porta di sviluppo, 13 senza soggetto,
+**solo 2 del proprietario** — e tutti i 96 carichi misurati fermi al 24/09, l'ultimo giorno passato
+sulla catena prima che tutto si spostasse sul ponte.
+
+### Cosa si scrive adesso
+
+Il registro dei giri (`payload`) guadagna `input_tokens`, `cache_read_tokens`, `cache_write_tokens`
+e `cache_ttl` (`5m`, `1h`, `misto`); il registro dei turni guadagna `output_tokens`. La catena
+consegna i token con una **seconda consegna sullo stesso giro**, dopo la risposta — stesso
+raccoglitore, nessun secondo gancio.
+
+Sul ponte tre punti di cattura, legati dallo stesso `exchange_id`: la **composizione** (guida,
+nucleo, cronologia, domanda) a ogni giro — non solo il primo, o il ponte sembrerebbe piu' leggero
+per costruzione; **definizioni e risultati** su `/api/mcp`, le definizioni sul giro in cui
+`tools/list` e' stata servita, i risultati su ogni giro che li rispedisce; i **token** dallo
+stream, un giro per `message.id`. Vale per tutte e sei le specie — chat, promessa, osservatore,
+analista, attuatore, ricette.
+
+**«La riga del costo», chiesta dal proprietario a esecuzione avviata**: `turn.list_cost_usd` e'
+quanto sarebbe costato il turno a consumo, come lo dichiara la CLI (`result.modelUsage[*].costUSD`).
+**Non e' un costo pagato** — sul ponte il turno e' compreso nell'abbonamento — e per questo ha una
+colonna sua, mai unita a `payload.cost_usd`: due cose diverse, due colonne.
+
+### Cambiato durante la costruzione
+
+- Un fallimento del ponte si registra ora `outcome: "fallito"`, non piu' come se avesse risposto.
+- Un turno **rifatto dopo un primo tentativo** non lega piu' i carichi MCP dell'invocazione scartata
+  a quella che ha risposto: passa un `exchange_id` vuoto, cosi' l'annotazione orfana resta orfana
+  invece di attribuirsi al giro sbagliato.
+- Un valore di token malformato (una stringa, un dizionario) diventa **NULL alla fonte**
+  (`usage/giro.py::_int_or_none`), non un'eccezione che fa cadere il turno.
+- Se la CLI non dichiara `num_turns`, i giri del turno sul ponte prendono il conto dello stream —
+  mai uno zero che dica «nessun giro» di un turno che ne ha fatti; se i due conti divergono, il log
+  porta entrambi i numeri.
+- La misura su `/api/mcp` (`handlers_mcp.py::_annota_risultato`) non toglie mai gli strumenti alla
+  CLI: un guasto del registro si logga e la chiamata risponde lo stesso. Un errore JSON-RPC senza
+  `result` pesa `error.message`, non zero — e' comunque cio' che il modello riceve.
+
+### Cosa resta dichiarato, non inventato
+
+L'**uscita** esiste solo per turno sul ponte, mai per giro: e' un limite della CLI, non del
+registro. I **caratteri dicono cio' che HIRIS ha fornito, i token cio' che il modello ha ricevuto**:
+la CLI aggiunge il proprio contorno (il suo prompt di base, `ToolSearch`, i riepiloghi degli
+strumenti in differita), e lo scarto fra i due e' la sola misura che esista di quel contorno.
+
+**Resta aperto, segnalato al proprietario e non chiuso in questa fetta**: un turno con `rc 0` e
+`result.is_error: true` si registra ancora `riuscito` — il registro non guarda dentro il testo
+dell'esito. Voce in `docs/BACKLOG.md`, «In attesa».
+
+### Migrazione e ripiego
+
+`usage/store.py` passa da schema v1 a v2 con `ALTER TABLE ... ADD COLUMN`, come le altre
+migrazioni del progetto: righe scritte prima di questa versione restano NULL sulle colonne nuove
+(un'assenza e' una risposta, non uno zero). Un ripiego alla 3.69.x resta sicuro: le colonne nuove
+restano nella tabella, inosservate dal codice vecchio.
+
 ## [3.69.1] — L'attuatore sul ponte (2026-09-28)
 
 ### La CLI del ponte sale alla 2.1.283
