@@ -44,7 +44,8 @@ def test_turno_e_giri_finiscono_nel_registro_col_risultato_MCP(tmp_path):
     giri = archivio.payloads(turno["id"])
     assert [g["results_chars"] for g in giri] == [0, 1500]
     assert giri[0]["cache_write_tokens"] == 11368
-    assert giri[1]["tools_chars"] == 45388
+    assert [g["tools_chars"] for g in giri] == [45388, 0], (
+        "le definizioni sul giro in cui tools/list e' stata servita")
     assert carichi.take("T1") is None, "il turno preso si dimentica"
 
 

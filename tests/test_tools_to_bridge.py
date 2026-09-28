@@ -1406,6 +1406,32 @@ def test_l_init_regolare_non_fa_ricomporre_niente(caplog):
     assert not [r for r in caplog.records if r.name == "hiris.agent"]
 
 
+def test_il_turno_ritentato_non_si_prende_i_carichi_dell_invocazione_buttata():
+    """Spec «le misure complete» §4. Cio' che /api/mcp annota sotto
+    l'`exchange_id` (la `tools/list`, i risultati) l'ha servito la PRIMA
+    invocazione, quella buttata perche' l'`init` smentiva la sonda: la
+    seconda gira senza mcp-config. La riga del turno ritentato non porta
+    l'`exchange_id`, cosi' la giunzione non da' a chi ha risposto definizioni
+    che non ha ricevuto; il turno non ritentato lo porta.
+
+    Mutazione ESEGUITA: `exchange_id=exchange_id` in `_reply` (senza guardare
+    `retried_cell`) -- rossa (l'id coniato invece di ""); ripristinata,
+    verde. Mutazione ESEGUITA: `exchange_id=""` sempre -- rossa sul turno non
+    ritentato; ripristinata, verde."""
+    righe: list[dict] = []
+    runner.set_turn_logger(righe.append)
+    try:
+        init_rotto = _riga_init(stato="failed")
+        _turno(_CliFinta(_proc(0, init_rotto + "\n" + _RIGA_RESULT + "\n"),
+                         _ProcFelice()), job_id="J-ritentato")
+        _turno(_CliFinta(_ProcFelice()), job_id="J-buono")
+    finally:
+        runner.set_turn_logger(None)
+    ritentato, buono = righe
+    assert ritentato["exchange_id"] == ""
+    assert buono["exchange_id"]
+
+
 def test_senza_strumenti_attesi_l_init_rotto_non_scatena_niente(caplog):
     """Il secondo tentativo non ha nessun `init` da verificare, e chi non ha
     mai atteso gli strumenti nemmeno: la verifica gira **solo** quando il

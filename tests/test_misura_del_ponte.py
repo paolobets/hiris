@@ -186,15 +186,18 @@ def test_la_composizione_si_pesa_in_TUTTE_le_invocazioni():
     """Il pin della forma: la cella della composizione si scrive dentro
     `_invoca`, accanto a `build_chat_messages`, non su un ramo.
 
-    Mutazione ESEGUITA: non passare `exchange_id=exchange_id` a
-    `_measure_turn` in `_reply` -- rossa; ripristinata, verde. (La forma
-    «solo sul ramo con strumenti» non e' distinguibile dal conteggio: la
-    prova pinna che la cella esista e venga letta, non dove.)"""
+    Mutazione ESEGUITA: non passare `exchange_id` a `_measure_turn` in
+    `_reply` -- rossa; ripristinata, verde. (La forma «solo sul ramo con
+    strumenti» non e' distinguibile dal conteggio: la prova pinna che la
+    cella esista e venga letta, non dove.) Dal fix dopo la revisione
+    l'`exchange_id` passa solo se il turno non e' stato ritentato: il
+    comportamento lo prova `test_tools_to_bridge.py::
+    test_il_turno_ritentato_non_si_prende_i_carichi_dell_invocazione_buttata`."""
     import inspect
 
     sorgente = inspect.getsource(ponte._reason_chat)
     assert sorgente.count("composition_cell") >= 2
-    assert "exchange_id=exchange_id" in sorgente
+    assert 'exchange_id="" if retried_cell else exchange_id' in sorgente
 
 
 class _ProcessoFinto:
@@ -206,11 +209,21 @@ class _ProcessoFinto:
     stderr = "la CLI non e' stata lanciata: e' una prova"
 
 
-def _turno_di_attuazione(monkeypatch, **extra_context):
+class _StreamTroncato(_ProcessoFinto):
+    """La CLI esce 0 ma il flusso si chiude senza l'evento `result`: un
+    giro dell'assistente e poi niente (esito (3) di `_reason_chat`)."""
+
+    returncode = 0
+    stdout = ('{"type": "assistant", "message": {"id": "m1", "content": '
+              '[{"type": "text", "text": "a meta"}]}}\n')
+    stderr = ""
+
+
+def _attuazione_finta(monkeypatch, processo=_ProcessoFinto, **extra_context):
     """Un turno di attuazione vero fino a `subprocess.run`: specie senza
     strumenti e autosufficiente, quindi nessuna sonda."""
     monkeypatch.setattr(ponte.subprocess, "run",
-                        lambda argv, *a, **kw: _ProcessoFinto())
+                        lambda argv, *a, **kw: processo())
     context = {"history": [{"role": "user", "content": "le osservazioni"}],
                "system_prompt": "sei l'attuatore",
                "istruzione": "Rispondi SOLO con un oggetto JSON."}
@@ -228,7 +241,7 @@ def test_un_giro_di_fondo_SENZA_strumenti_scrive_la_sua_composizione(
 
     Mutazione ESEGUITA: avvolgere l'append in `_invoca` in `if active_tools:`
     -- rossa (composition None); ripristinata, verde."""
-    _turno_di_attuazione(monkeypatch)
+    _attuazione_finta(monkeypatch)
     riga = registro[0]
     assert riga["species"] == "attuatore"
     assert riga["composition"] is not None
@@ -244,7 +257,45 @@ def test_con_la_propria_istruzione_il_nucleo_consegnato_e_zero(
 
     Mutazione ESEGUITA: `core_chars = len((contesto or "").strip())` senza
     guardare l'istruzione -- rossa (core_chars 24); ripristinata, verde."""
-    _turno_di_attuazione(monkeypatch, contesto="il nucleo della casa, 24")
+    _attuazione_finta(monkeypatch, contesto="il nucleo della casa, 24")
     composizione = registro[0]["composition"]
     assert composizione["core_chars"] == 0
     assert composizione["guide_chars"] > 0
+
+
+def test_la_CLI_che_esce_con_errore_e_un_turno_FALLITO(registro, monkeypatch):
+    """`rc != 0` restituisce `[errore runner rc=...]`: un sentinella, non
+    una risposta del modello. Scritto `riuscito`, il registro contava i
+    guasti del ponte fra i successi.
+
+    Mutazione ESEGUITA: tolto `outcome="fallito"` dal `_reply` del ramo
+    `rc != 0` -- rossa ('riuscito' invece di 'fallito'); ripristinata,
+    verde."""
+    _attuazione_finta(monkeypatch)
+    assert registro[0]["outcome"] == "fallito"
+
+
+def test_il_flusso_SENZA_result_e_un_turno_FALLITO(registro, monkeypatch):
+    """Esito (3): la CLI esce 0 ma il flusso si chiude senza l'evento finale.
+    La reply dichiara che non c'e' una risposta completa: e' un fallimento.
+
+    Mutazione ESEGUITA: tolto `outcome="fallito"` dal `_reply` del ramo
+    `not occurrence.has_result` -- rossa ('riuscito' invece di 'fallito');
+    ripristinata, verde."""
+    _attuazione_finta(monkeypatch, processo=_StreamTroncato)
+    assert registro[0]["outcome"] == "fallito"
+    assert len(registro[0]["exchanges"]) == 1, "il ramo e' davvero il (3)"
+
+
+def test_senza_num_turns_i_giri_sono_quelli_dello_stream(registro):
+    """La CLI uccisa non dichiara `num_turns`: il turno ha comunque fatto i
+    suoi giri, e lo stream li ha visti. Zero direbbe «nessun giro».
+
+    Mutazione ESEGUITA: `"iterations": n_cli or 0` (il vecchio) -- rossa
+    (0 invece di 2); ripristinata, verde."""
+    e = _occorrenza()
+    e.num_exchanges = None
+    e.exchanges = [{"message_id": "a"}, {"message_id": "b"}]
+    ponte._measure_turn({"job_id": "j7", "kind": "chat"}, duration_ms=1,
+                        tools=[], occurrence=e, outcome="fallito")
+    assert registro[0]["iterations"] == 2

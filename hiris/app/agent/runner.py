@@ -1276,8 +1276,11 @@ def _measure_turn(job: dict, *, duration_ms: int, tools: list,
     al 28/09/2026 qui c'era scritto che non esistevano: era falso (spec «le
     misure complete» §1).
 
-    I giri li dichiara la CLI (`num_turns` -> `num_exchanges`): sono i suoi,
-    non se ne tiene un secondo conto che possa divergere.
+    I giri del turno li dichiara la CLI (`num_turns` -> `num_exchanges`).
+    Un secondo conto c'e': i giri dello stream, uno per `message.id`, da cui
+    nascono le righe di `payload`. Se i due divergono si scrive un
+    avvertimento nel log (la forma dello stream e' cambiata); se la CLI non
+    dichiara `num_turns` il turno prende il conto dello stream, non zero.
 
     **Non puo' far cadere un turno.** Vale qui la stessa legge di
     `misura_turno`: il proprietario ha gia' la sua risposta, e un registro
@@ -1314,7 +1317,9 @@ def _measure_turn(job: dict, *, duration_ms: int, tools: list,
             "provider": "subscription",
             "model": models[0][0] if models else "ignoto",
             "duration_ms": duration_ms,
-            "iterations": getattr(occurrence, "num_exchanges", None) or 0,
+            # La CLI comanda; se tace, il conto dello stream -- mai uno zero
+            # che dica «nessun giro» di un turno che ne ha fatti.
+            "iterations": n_cli if n_cli is not None else n_stream,
             "tools": [_bare_tool_name(c.get("tool")) for c in (tools or [])
                       if isinstance(c, dict) and c.get("tool")],
             "outcome": outcome,
@@ -1630,6 +1635,10 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
     # e' una chiusura. Si scrive in `_invoca`, accanto alla composizione: vale
     # l'ultima invocazione, quella che ha risposto.
     composition_cell: list = []
+    # Il turno e' stato ritentato (l'`init` ha smentito la sonda). Una cella
+    # per la stessa ragione delle due sopra: `_reply` e' una chiusura, e il
+    # suo primo ramo di ritorno puo' scattare prima che si sappia.
+    retried_cell: list = []
 
     def _reply(text: str, *, outcome: str = "riuscito") -> dict:
         """L'UNICO modo in cui una risposta esce da questa funzione.
@@ -1674,7 +1683,13 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             tools=tools_called_in_exchange,
             occurrence=last_occurrence[-1] if last_occurrence else None,
             outcome=outcome,
-            exchange_id=exchange_id,
+            # Dopo un ritentativo NON si passa l'`exchange_id`: cio' che
+            # /api/mcp ha annotato sotto quell'id (la `tools/list`, i
+            # risultati) l'ha servito all'invocazione BUTTATA -- la seconda
+            # gira senza mcp-config e non chiama /api/mcp. Unirli a quella che
+            # ha risposto le darebbe definizioni che non ha ricevuto. Le
+            # annotazioni orfane escono dal tetto LRU di `BridgeLoads`.
+            exchange_id="" if retried_cell else exchange_id,
             composition=composition_cell[-1] if composition_cell else None)
         return {"reply": reda_segreti(text, *forms),
                "tools_called": _reda_struttura(tools_called_in_exchange, *forms)}
@@ -1870,6 +1885,7 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             tools = False
             degrado = True
             ritentato = True
+            retried_cell.append(True)
             invocation = _invoca(tools)
             if invocation is None:
                 return _reply(MISSING_RUNNER_SENTINEL, outcome="fallito")
@@ -1899,9 +1915,11 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             # Nessun evento finale da cui ricavarlo (processo morto a meta'):
             # meglio il flusso grezzo che un silenzio.
             detail = (stdout or stderr).strip()
+        # Un sentinella d'errore, non una risposta del modello: e' un
+        # fallimento, e il registro lo chiama cosi'.
         return _reply(
             f"{RUNNER_ERROR_PREFIX}{invocation.rc}] "
-            f"{str(detail)[:300]}".strip())
+            f"{str(detail)[:300]}".strip(), outcome="fallito")
 
     if not occurrence.has_result:
         # Esito (3), IL SILENZIO DICHIARATO della fetta. Il processo e' uscito
@@ -1930,8 +1948,9 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # non parsabile": e' l'unico modo di diagnosticare dall'interfaccia un
         # cambio di formato durante l'UAT. Compromesso dichiarato: e' brutto da
         # leggere, ma un ramo muto sarebbe peggio.
+        # Nessuna risposta completa: fallito, come il `[vuoto]` qui sotto.
         return _reply(f"{notice} (ultimo pezzo di flusso letto: {tail})"
-                      if tail else notice)
+                      if tail else notice, outcome="fallito")
 
     # Esiti (2) e (4): il testo del risultato, oppure il sentinella del vuoto.
     text = occurrence.text.strip()

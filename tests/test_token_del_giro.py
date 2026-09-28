@@ -171,20 +171,53 @@ def test_i_risultati_arrivano_al_modello_il_GIRO_DOPO():
 
 
 def test_ogni_giro_rispedisce_la_composizione_e_porta_i_suoi_token():
+    """La composizione torna a ogni giro (la conversazione si rispedisce),
+    ogni giro porta i suoi token, e il piano non ha prezzo per giro.
+
+    Mutazione ESEGUITA: `"input_tokens": exchanges[0].get("input_tokens")`
+    (i token del primo giro su tutti) -- rossa ([10, 10] invece di [10, 8]);
+    ripristinata, verde."""
     righe = payload_rows_ponte(COMPOSIZIONE, [_giro(inp=10), _giro(inp=8)],
                                {"tools_chars": 45388, "tools_sent": 16,
                                 "results": []})
     assert all(r["guide_chars"] == 7000 and r["core_chars"] == 7600
                for r in righe)
     assert [r["input_tokens"] for r in righe] == [10, 8]
-    assert all(r["tools_chars"] == 45388 and r["tools_sent"] == 16
-               for r in righe)
     assert all(r["cost_usd"] is None for r in righe), "il piano non ha prezzo per turno"
+
+
+def test_le_definizioni_stanno_SOLO_sul_giro_in_cui_tools_list_e_servita():
+    """Spec §4: le definizioni si registrano sul giro in cui `tools/list` e'
+    stata servita, non su tutti. La CLI la chiede all'avvio, prima del giro
+    1: il giro 1 porta i 45388 caratteri consegnati, i giri dopo 0.
+
+    Mutazione ESEGUITA: `**served` su tutte le righe (senza
+    `if index == 1`) -- rossa ([45388, 45388, 45388]); ripristinata, verde."""
+    righe = payload_rows_ponte(COMPOSIZIONE, [_giro(), _giro(), _giro()],
+                               {"tools_chars": 45388, "tools_sent": 16,
+                                "results": []})
+    assert [r["tools_chars"] for r in righe] == [45388, 0, 0]
+    assert [r["tools_sent"] for r in righe] == [16, 0, 0]
+
+
+def test_uno_stream_SENZA_giri_porta_comunque_le_definizioni_servite():
+    """CLI uccisa dopo `tools/list`: le definizioni sono state consegnate, e
+    la riga unica del turno le porta.
+
+    Mutazione ESEGUITA: la riga unica senza `**served` -- rossa (0 invece
+    di 45388); ripristinata, verde."""
+    righe = payload_rows_ponte(COMPOSIZIONE, [],
+                               {"tools_chars": 45388, "tools_sent": 16})
+    assert righe[0]["tools_chars"] == 45388 and righe[0]["tools_sent"] == 16
 
 
 def test_un_turno_SENZA_strumenti_ha_definizioni_a_zero_VERO():
     """Osservatore, analista, attuatore: nessuna `tools/list` servita. Zero
-    qui e' un fatto -- nessuna definizione consegnata -- non un buco."""
+    qui e' un fatto -- nessuna definizione consegnata -- non un buco.
+
+    Mutazione ESEGUITA: `"tools_chars": loads.get("tools_chars")` senza
+    `int(... or 0)` (il buco al posto del fatto) -- rossa (None invece di
+    0); ripristinata, verde."""
     righe = payload_rows_ponte(COMPOSIZIONE, [_giro()], None)
     assert righe[0]["tools_chars"] == 0 and righe[0]["tools_sent"] == 0
 
@@ -201,4 +234,10 @@ def test_uno_stream_SENZA_giri_scrive_una_riga_di_sola_composizione():
 
 
 def test_senza_composizione_non_si_inventa_niente():
+    """Senza la composizione consegnata (riga del ponte vecchia) non si
+    fabbricano giri: nessuna riga, non righe di zeri.
+
+    Mutazione ESEGUITA: tolto il ritorno anticipato `if composition is
+    None` (con `composition or {}`) -- rossa (una riga invece di nessuna);
+    ripristinata, verde."""
     assert payload_rows_ponte(None, [_giro()], None) == []
