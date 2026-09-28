@@ -182,3 +182,20 @@ def test_i_gesti_dell_ARCHIVIO_sono_tre_e_quelli_della_RISPOSTA_due():
 
     Mutazione: allineare i due elenchi -- rossa."""
     assert set(at.OUTCOME_GESTURES) - set(at.GESTURES) == {"riparazione"}
+
+
+def test_il_prompt_NON_afferma_una_riparazione_che_sul_ponte_non_avviene():
+    """Fix round 1 della fetta «l'attuatore sul ponte» (28/09/2026). Il SYSTEM
+    diceva «Le ricette rotte le ho gia' riscritte io prima di chiamarti»: vero
+    sulla catena, falso sul ponte, dove nessuna ricetta si riscrive. Un prompt
+    che afferma un fatto non avvenuto insegna al modello a non proporre cio'
+    che andrebbe proposto.
+
+    Il fatto sul testo: l'affermazione incondizionata non c'e' piu', e il
+    prompt dice cosa fare quando la domanda non parla di riparazioni.
+
+    Mutazione ESEGUITA: rimettere la frase di prima -- rossa.
+    """
+    testo = " ".join(at.SYSTEM.split())
+    assert "le ho gia' riscritte io prima di chiamarti" not in testo
+    assert "se la domanda non ne parla, nessuna e' stata riscritta" in testo

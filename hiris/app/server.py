@@ -2441,7 +2441,10 @@ def _write_actuation(store, day: str, stamp: str | None, esito: dict,
 
     **Una risposta rifiutata non si archivia**: un'attuazione con dentro dei
     problemi non e' un'attuazione, e scriverla direbbe che quel giorno e' stato
-    attuato. Il giro dopo riprova, perche' `su_fondamento` resta assente.
+    attuato. **Sulla catena** il giro dopo riprova, perche' `su_fondamento`
+    resta assente. Sul ponte no: la raccolta rilegge a ogni giro la stessa
+    risposta rifiutata e il giro si ferma li', fino al giorno dopo -- come
+    l'analista. E' una voce di `docs/BACKLOG.md` («In attesa»).
     """
     actuation = esito.get("attuazione")
     if actuation is None:

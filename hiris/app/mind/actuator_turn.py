@@ -57,8 +57,10 @@ Hai due gesti, e nessun altro:
    cosa che deve fare una persona: molte cose utili non sono oggetti di Home
    Assistant, e proporle come tali le fa fallire.
 
-Le ricette rotte le ho gia' riscritte io prima di chiamarti, e te lo dico nella
-domanda: non riproporle.
+Le ricette rotte non le ripari tu. Se in questo giro ne ho gia' riscritte, te
+lo dico nella domanda e non le riproponi; se la domanda non ne parla, nessuna
+e' stata riscritta, e una ricetta che non si esegue piu' la segnali come
+proposta da fare a mano, senza dichiarare una riparazione.
 
 **Non tocchi la casa.** Non accendi, non spegni, non scrivi configurazioni: le
 proposte le decide chi amministra la casa, una per una.

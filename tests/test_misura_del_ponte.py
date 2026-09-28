@@ -70,7 +70,7 @@ def test_ogni_specie_del_ponte_ha_un_nome_nel_registro():
     Il ponte chiama le sue specie `scope`, `ricetta`, `analisi`; il registro
     le chiama `osservatore`, `ricette`, `analista`. Due vocabolari per gli
     stessi attori esistono davvero, quindi la traduzione esiste in UN posto
-    -- e il giorno in cui qualcuno aggiunge una sesta specie ragionabile,
+    -- e il giorno in cui qualcuno aggiunge una specie ragionabile nuova,
     questa prova diventa rossa invece di far scrivere al registro un nome
     che `misura_turno` rifiuterebbe.
     """
