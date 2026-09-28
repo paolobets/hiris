@@ -115,7 +115,13 @@ CREATE TABLE IF NOT EXISTS turn (
     duration_ms  INTEGER NOT NULL,
     iterations   INTEGER NOT NULL,
     tools        TEXT    NOT NULL,
-    outcome      TEXT    NOT NULL
+    outcome      TEXT    NOT NULL,
+    -- `list_cost_usd`: quanto sarebbe costato il turno A CONSUMO, come lo
+    -- dichiara la CLI del ponte (`modelUsage[*].costUSD`). NON e' un costo
+    -- pagato -- sul ponte il turno e' compreso nell'abbonamento -- e per
+    -- questo non sta in `payload.cost_usd`: due cose diverse, due colonne.
+    output_tokens INTEGER,
+    list_cost_usd REAL
 );
 CREATE INDEX IF NOT EXISTS idx_turn_ts ON turn(ts DESC);
 -- `prefix_hash` e' l'impronta di cio' che DOVREBBE essere stabile fra un
@@ -129,6 +135,13 @@ CREATE INDEX IF NOT EXISTS idx_turn_ts ON turn(ts DESC);
 -- `tools_sent` e' quante definizioni sono state SPEDITE. Con `turn.tools`,
 -- che dice quante ne sono state usate, la differenza e' lo spreco --
 -- moltiplicato per il numero di giri.
+--
+-- **I token accanto ai caratteri** (28/09/2026, spec «le misure complete»
+-- §2). I caratteri dicono DI COSA e' fatto il carico; i token dicono QUANTO
+-- e' costato davvero, cache compresa. Tutti NULL-abili: una riga scritta
+-- prima di questa versione, o un provider che non dichiara la cache, non ha
+-- il numero, e NULL e' «non misurato» -- zero sarebbe «non e' costato niente».
+-- `cache_ttl`: `5m`, `1h`, `misto`, o NULL quando il provider non lo dice.
 CREATE TABLE IF NOT EXISTS payload (
     turn_id       TEXT    NOT NULL,
     iteration     INTEGER NOT NULL,
@@ -140,6 +153,12 @@ CREATE TABLE IF NOT EXISTS payload (
     history_chars INTEGER NOT NULL,
     results_chars INTEGER NOT NULL,
     prefix_hash   TEXT    NOT NULL DEFAULT '',
+    input_tokens       INTEGER,
+    output_tokens      INTEGER,
+    cache_read_tokens  INTEGER,
+    cache_write_tokens INTEGER,
+    cache_ttl          TEXT,
+    cost_usd           REAL,
     PRIMARY KEY (turn_id, iteration)
 );
 """
@@ -155,6 +174,36 @@ CREATE TABLE IF NOT EXISTS payload (
 #: no: un turno puo' scrivere fino a cinquanta righe di `payload`.
 TURNS_RETENTION_S = 30 * 86400
 
+#: Le colonne dei token di un giro, nell'ordine della tabella. **Una sola
+#: lista**: la leggono l'INSERT, la lettura e chi compone le righe
+#: (`steering`, `usage/giro.py`), e una colonna nuova non puo' entrare in due
+#: posti su tre.
+TOKEN_COLUMNS = ("input_tokens", "output_tokens", "cache_read_tokens",
+                 "cache_write_tokens", "cache_ttl", "cost_usd")
+
+
+def _migration_2(conn) -> None:
+    """Versione 2 (28/09/2026, spec «le misure complete» §2): i token.
+
+    `ALTER TABLE ADD COLUMN` solo se la colonna manca, come le altre
+    migrazioni del progetto (`reasoning/queue.py::_migration_2`): una seconda
+    apertura dello stesso archivio non deve fallire. Le righe gia' scritte
+    restano NULL -- non sono state misurate, e non si inventa che lo siano.
+    """
+    colonne = {r[1] for r in conn.execute("PRAGMA table_info(payload)").fetchall()}
+    tipi = {"cache_ttl": "TEXT", "cost_usd": "REAL"}
+    for nome in TOKEN_COLUMNS:
+        if nome not in colonne:
+            conn.execute(f"ALTER TABLE payload ADD COLUMN {nome} "
+                         f"{tipi.get(nome, 'INTEGER')}")
+    colonne_turno = {r[1] for r in conn.execute(
+        "PRAGMA table_info(turn)").fetchall()}
+    if "output_tokens" not in colonne_turno:
+        conn.execute("ALTER TABLE turn ADD COLUMN output_tokens INTEGER")
+    if "list_cost_usd" not in colonne_turno:
+        conn.execute("ALTER TABLE turn ADD COLUMN list_cost_usd REAL")
+
+
 CAMPI = ("richieste", "token_in", "token_out", "cache_lettura",
          "cache_scrittura", "errori_rate_limit")
 
@@ -164,7 +213,7 @@ class UsageStore:
         self._read_timezone = read_timezone
         self._conn = connect(db_path)
         self._lock = threading.Lock()
-        init_schema(self._conn, _SCHEMA, version=1)
+        init_schema(self._conn, _SCHEMA, version=2, migrations={2: _migration_2})
 
     def close(self) -> None:
         with self._lock:
@@ -280,7 +329,9 @@ class UsageStore:
 
     def log_turn(self, *, species: str, provider: str, model: str,
                  channel: str, duration_ms: int, iterations: int, tools: list,
-                 outcome: str, now: float, subject: dict | None = None) -> str:
+                 outcome: str, now: float, subject: dict | None = None,
+                 output_tokens: int | None = None,
+                 list_cost_usd: float | None = None) -> str:
         """Un turno intero, e quanto e' costato in giri e in secondi.
 
         **`tools` porta i nomi in ORDINE**, non un insieme: «search, view,
@@ -311,19 +362,25 @@ class UsageStore:
             self._scadi_misure(now)
             self._conn.execute(
                 "INSERT INTO turn(id,ts,species,provider,model,channel,"
-                "subject_json,duration_ms,iterations,tools,outcome) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                "subject_json,duration_ms,iterations,tools,outcome,"
+                "output_tokens,list_cost_usd) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (ident, now, species, provider, model, channel,
                  None if subject is None else json.dumps(subject),
                  int(duration_ms), int(iterations), json.dumps(list(tools)),
-                 outcome))
+                 outcome, None if output_tokens is None else int(output_tokens),
+                 None if list_cost_usd is None else float(list_cost_usd)))
             self._conn.commit()
         return ident
 
     def log_payload(self, turn_id: str, *, iteration: int, tools_chars: int,
                     guide_chars: int, core_chars: int, history_chars: int,
                     results_chars: int, now: float, tools_sent: int = 0,
-                    prefix_hash: str = "") -> None:
+                    prefix_hash: str = "", input_tokens: int | None = None,
+                    output_tokens: int | None = None,
+                    cache_read_tokens: int | None = None,
+                    cache_write_tokens: int | None = None,
+                    cache_ttl: str | None = None,
+                    cost_usd: float | None = None) -> None:
         """Di cosa e' fatto il carico a UN giro di quel turno.
 
         Per iterazione e non per turno: la moltiplicazione della latenza
@@ -331,15 +388,21 @@ class UsageStore:
         `results_chars` e' l'unico che cresce di giro in giro -- i risultati
         degli strumenti si accumulano nella conversazione -- quindi e' il solo
         modo di vedere la curva invece del suo punto medio.
+
+        I token sono NULL-abili: vedi il commento su `payload` nello schema.
         """
+        valori_token = (input_tokens, output_tokens, cache_read_tokens,
+                        cache_write_tokens, cache_ttl, cost_usd)
         with self._lock:
             self._conn.execute(
                 "INSERT OR REPLACE INTO payload(turn_id,iteration,ts,"
                 "tools_chars,tools_sent,guide_chars,core_chars,history_chars,"
-                "results_chars,prefix_hash) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                f"results_chars,prefix_hash,{','.join(TOKEN_COLUMNS)}) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (turn_id, int(iteration), now, int(tools_chars),
                  int(tools_sent), int(guide_chars), int(core_chars),
-                 int(history_chars), int(results_chars), prefix_hash))
+                 int(history_chars), int(results_chars), prefix_hash,
+                 *valori_token))
             self._conn.commit()
 
     def _scadi_misure(self, now: float) -> None:
@@ -360,7 +423,8 @@ class UsageStore:
         with self._lock:
             righe = self._conn.execute(
                 "SELECT id,ts,species,provider,model,channel,subject_json,"
-                "duration_ms,iterations,tools,outcome FROM turn "
+                "duration_ms,iterations,tools,outcome,output_tokens,"
+                "list_cost_usd FROM turn "
                 "ORDER BY ts DESC LIMIT ?",
                 (int(limit),)).fetchall()
         return [{"id": r["id"], "ts": r["ts"], "species": r["species"],
@@ -369,7 +433,9 @@ class UsageStore:
                  "subject": (None if r["subject_json"] is None
                              else json.loads(r["subject_json"])),
                  "duration_ms": r["duration_ms"], "iterations": r["iterations"],
-                 "tools": json.loads(r["tools"]), "outcome": r["outcome"]}
+                 "tools": json.loads(r["tools"]), "outcome": r["outcome"],
+                 "output_tokens": r["output_tokens"],
+                 "list_cost_usd": r["list_cost_usd"]}
                 for r in righe]
 
     def payloads(self, turn_id: str) -> list[dict]:
@@ -377,7 +443,8 @@ class UsageStore:
         with self._lock:
             righe = self._conn.execute(
                 "SELECT iteration,ts,tools_chars,tools_sent,guide_chars,"
-                "core_chars,history_chars,results_chars,prefix_hash "
+                "core_chars,history_chars,results_chars,prefix_hash"
+                f",{','.join(TOKEN_COLUMNS)} "
                 "FROM payload WHERE turn_id=? "
                 "ORDER BY iteration", (turn_id,)).fetchall()
         return [dict(r) for r in righe]

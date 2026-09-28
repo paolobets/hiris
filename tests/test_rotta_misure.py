@@ -167,7 +167,10 @@ async def test_gli_ARGOMENTI_degli_strumenti_non_escono(app):
 
     grezzo = json.dumps(await _chiedi(app), ensure_ascii=False)
 
-    for vietato in ("input", "argument", "stanza", "arguments"):
+    # `"input":` e non il semplice `input`: dal 28/09/2026 la rotta porta
+    # anche `input_tokens`, una colonna legittima -- il divieto riguarda la
+    # CHIAVE degli argomenti dello strumento, non ogni parola che la contiene.
+    for vietato in ('"input":', "argument", "stanza", "arguments"):
         assert vietato not in grezzo.lower(), (
             f"«{vietato}» esce dalla rotta: sono dati personali")
 
