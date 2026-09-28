@@ -5880,6 +5880,10 @@ def create_app() -> web.Application:
     # deprecated» -- oggi un warning nell'output della suite, con aiohttp 4 un
     # errore.
     create_rounds_per_exchange(app)
+    # Spec «le misure complete» §4(2): cio' che /api/mcp consegna al ponte,
+    # per turno. Creato qui per la stessa ragione dei contatori (M-2).
+    from .usage.bridge_loads import create_bridge_loads
+    create_bridge_loads(app)
 
     # I ruoli di Home Assistant (invariante I-1): il contenitore nasce QUI,
     # mentre l'app si compone, per la stessa ragione dei contatori qui sopra --

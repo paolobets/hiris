@@ -730,3 +730,71 @@ async def test_la_rotta_usa_la_stessa_costruzione_del_turno_sincrono(rotta, monk
         "X-HIRIS-Turno: la guardia dell'officina riceverebbe un'identita' "
         "sbagliata (o nessuna) e non potrebbe piu' distinguere il turno "
         "della proposta da quello della conferma")
+
+
+# ---------------------------------------------------------------------------
+# Spec «le misure complete» §4(2) -- cio' che la rotta consegna, per turno
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_la_rotta_annota_la_lista_e_la_chiamata_sotto_il_turno(rotta):
+    """`handle_mcp` VERO, con `X-HIRIS-Turno`: le definizioni servite da
+    `tools/list` e il testo del risultato di `tools/call` finiscono in
+    `BridgeLoads` sotto quel turno -- e pesano ESATTAMENTE cio' che e' uscito.
+
+    Mutazioni ESEGUITE: tolta la chiamata a `tools_listed` nel ramo
+    tools/list -- rossa; tolta la chiamata a `_annota_risultato` nel ramo
+    tools/call -- rossa; `len(testo)` sostituito da `len(corpo)` (il JSON
+    intero invece del testo al modello) -- rossa."""
+    from hiris.app.claude_runner import pesa_in_caratteri
+    from hiris.app.usage.bridge_loads import BRIDGE_LOADS_KEY
+
+    client, _ = rotta
+    intestazioni = {**INTESTAZIONI_CLI, "X-HIRIS-Turno": "TURNO-1"}
+    lista = await (await _jsonrpc(
+        client, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+        intestazioni=intestazioni)).json()
+    chiamata = await (await _chiama_cerca(client, 2, intestazioni)).json()
+
+    preso = client.app[BRIDGE_LOADS_KEY].take("TURNO-1")
+    catalogo = lista["result"]["tools"]
+    assert preso["tools_chars"] == pesa_in_caratteri(catalogo) > 1000
+    assert preso["tools_sent"] == len(catalogo) >= 1
+    assert preso["results"] == [len(chiamata["result"]["content"][0]["text"])]
+    assert preso["results"][0] > 0
+
+
+@pytest.mark.asyncio
+async def test_la_sonda_senza_turno_non_si_annota(rotta):
+    """`probe_tools` chiede `tools/list` SENZA `X-HIRIS-Turno`: non e' un
+    turno, e non deve occupare un posto nell'archivio.
+
+    Mutazione ESEGUITA: in `handle_mcp` l'identita' di ripiego «sonda» al
+    posto di "" (`request.headers.get("X-HIRIS-Turno", "sonda")`) -- rossa."""
+    from hiris.app.usage.bridge_loads import BRIDGE_LOADS_KEY
+
+    client, _ = rotta
+    await _jsonrpc(client, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+    await _chiama_cerca(client, 2, INTESTAZIONI_CLI)
+    carichi = client.app[BRIDGE_LOADS_KEY]
+    assert carichi.take("sonda") is None
+    assert len(carichi._per_exchange) == 0
+
+
+@pytest.mark.asyncio
+async def test_anche_il_rifiuto_del_tetto_pesa_sul_turno(rotta):
+    """Il rifiuto del tetto arriva al modello come un risultato qualunque:
+    pesa anche lui. Si misura la RISPOSTA che esce, non il dispatcher.
+
+    Mutazione ESEGUITA: `_annota_risultato` chiamato solo quando la risposta
+    NON ha `isError` -- rossa (un risultato in meno)."""
+    from hiris.app.usage.bridge_loads import BRIDGE_LOADS_KEY
+
+    client, _ = rotta
+    intestazioni = {**INTESTAZIONI_CLI, "X-HIRIS-Turno": "turno-pesato-al-tetto"}
+    for i in range(handlers_mcp.MAX_TOOL_ROUNDS + 1):
+        ultima = await (await _chiama_cerca(client, i, intestazioni)).json()
+    assert ultima["result"]["isError"] is True
+    preso = client.app[BRIDGE_LOADS_KEY].take("turno-pesato-al-tetto")
+    assert len(preso["results"]) == handlers_mcp.MAX_TOOL_ROUNDS + 1
+    assert preso["results"][-1] == len(ultima["result"]["content"][0]["text"])

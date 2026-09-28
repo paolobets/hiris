@@ -89,8 +89,10 @@ from collections import OrderedDict
 
 from aiohttp import web
 
+from ..claude_runner import pesa_in_caratteri
 from ..home_space.tools import KNOWLEDGE_TOOLS
 from ..keeper.exchange import PromiseDispatcher, promise_ceiling, promise_tools
+from ..usage.bridge_loads import BRIDGE_LOADS_KEY
 from ..version import read_version
 from .handlers_chat import create_tool_dispatcher, last_phrase
 from .soffitto import ceiling_for
@@ -214,6 +216,28 @@ def create_rounds_per_exchange(app) -> None:
 
 def _answer(request_id, result: dict) -> web.Response:
     return web.json_response({"jsonrpc": "2.0", "id": request_id, "result": result})
+
+
+def _annota_risultato(request: web.Request, risposta: web.Response) -> None:
+    """Quanti caratteri di risultato tornano al modello per questo turno.
+
+    Si misura la RISPOSTA che esce, non il risultato del dispatcher: cosi'
+    contano anche il tetto dei giri e la chiamata chiusa, che al modello
+    arrivano allo stesso modo. Mai il contenuto: solo la lunghezza del testo.
+    Non solleva: e' una misura (spec «le misure complete», legge del §4)."""
+    carichi = request.app.get(BRIDGE_LOADS_KEY)
+    turno = request.headers.get("X-HIRIS-Turno", "")
+    if carichi is None or not turno:
+        return
+    try:
+        corpo = json.loads(risposta.body)
+        testo = "".join(b.get("text", "") for b in
+                        ((corpo.get("result") or {}).get("content") or [])
+                        if isinstance(b, dict))
+        carichi.result_served(turno, len(testo))
+    except Exception as errore:  # pragma: no cover - forma inattesa
+        logger.warning("MCP: il peso del risultato non si e' annotato (%s)",
+                       type(errore).__name__)
 
 
 def _error(code: int, message: str, request_id=None, *, status: int = 200) -> web.Response:
@@ -721,10 +745,19 @@ async def handle_mcp(request: web.Request) -> web.Response:
             # di `KNOWLEDGE_TOOLS` (promise_tools le filtra, non
             # le riscrive), quindi una descrizione migliorata vale su
             # entrambe le strade.
-            return _answer(request_id, {"tools": mcp_catalog(
-                promise_tools() if _promise_id else None)})
+            catalogo = mcp_catalog(promise_tools() if _promise_id else None)
+            # Spec «le misure complete» §4(2): quante definizioni la CLI ha
+            # ricevuto per QUESTO turno. La sonda di `probe_tools` non porta
+            # `X-HIRIS-Turno` e non si annota: non e' un turno.
+            carichi = request.app.get(BRIDGE_LOADS_KEY)
+            if carichi is not None:
+                carichi.tools_listed(request.headers.get("X-HIRIS-Turno", ""),
+                                     pesa_in_caratteri(catalogo), len(catalogo))
+            return _answer(request_id, {"tools": catalogo})
         if method == "tools/call":
-            return await _call_tool(request, body.get("params") or {}, request_id)
+            risposta = await _call_tool(request, body.get("params") or {}, request_id)
+            _annota_risultato(request, risposta)
+            return risposta
         return _error(
             -32601,
             f"metodo «{method}» sconosciuto: questa rotta e' un adattatore di "
