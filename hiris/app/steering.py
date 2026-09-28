@@ -145,13 +145,19 @@ async def misura_turno(archivio, runner, *, specie: str, canale: str,
         # esiste -- «chi spende cosa».
         raise ValueError(f"«{specie}» non e' una specie di turno: sono "
                          f"{', '.join(sorted(SPECIE))}")
-    carichi: list = []
+    # **Un giro, piu' consegne** (spec «le misure complete» §3). Il runner
+    # consegna i caratteri PRIMA della chiamata e i token DOPO la risposta:
+    # sono lo stesso giro, e diventano una riga sola. Un dizionario per
+    # giro, fuso per chiave -- non una lista, che conterebbe due giri dove
+    # ce n'e' uno.
+    carichi: dict[int, dict] = {}
     # **Per chiamata, non per oggetto.** Il runner e' costruito una volta
     # nell'app e vive quanto l'add-on: un gancio posato su di lui farebbe
     # finire il carico della chat del proprietario dentro la misura del giro
     # notturno dell'analista, se i due si accavallano. E' la stessa cura che
     # `claude_runner` si era gia' data per `last_tool_calls`.
-    gettone = _posa_misura(lambda giro, pesi: carichi.append((giro, pesi)))
+    gettone = _posa_misura(
+        lambda giro, pesi: carichi.setdefault(int(giro), {}).update(pesi))
     inizio = _time.perf_counter()
     esito = "riuscito"
     try:
@@ -184,13 +190,28 @@ async def misura_turno(archivio, runner, *, specie: str, canale: str,
                 # interessante -- quello in cui il primo non ha risposto.
                 chi = (provider or getattr(runner, "provider_name", "")
                        or "ignoto")
+                # L'uscita del turno e' la somma dei giri SOLO se ogni giro
+                # l'ha dichiarata: una somma su buchi direbbe un numero
+                # piu' piccolo del vero, con l'aria di essere esatto.
+                uscite = [p.get("output_tokens") for p in carichi.values()]
+                uscita = (sum(uscite) if uscite and
+                          all(u is not None for u in uscite) else None)
                 ident = archivio.log_turn(
                     species=specie, provider=chi,
                     model=modello or "ignoto", channel=canale,
                     subject=soggetto,
                     duration_ms=durata_ms, iterations=giri,
-                    tools=strumenti, outcome=esito, now=adesso)
-                for giro, pesi in carichi:
+                    tools=strumenti, outcome=esito, now=adesso,
+                    output_tokens=uscita)
+                for giro, pesi in sorted(carichi.items()):
+                    if "tools_chars" not in pesi:
+                        # Un giro coi soli token: la consegna dei caratteri
+                        # non c'e' stata. Non si inventano caratteri a zero.
+                        logger.warning(
+                            "misura del turno «%s»: il giro %d ha i token ma "
+                            "non la composizione -- riga non scritta",
+                            specie, giro)
+                        continue
                     archivio.log_payload(ident, iteration=giro, now=adesso,
                                          **pesi)
         except Exception as errore:  # pragma: no cover - guasto dell'archivio

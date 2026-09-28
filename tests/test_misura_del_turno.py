@@ -265,3 +265,56 @@ async def test_una_specie_INVENTATA_viene_rifiutata(app):
             pass
 
     assert app["usage"].turns() == []
+
+
+class RunnerCoiToken(FintoRunner):
+    """Come i runner veri dopo la fetta «le misure complete»: DUE consegne
+    per giro -- i caratteri prima della chiamata, i token dopo la risposta."""
+
+    async def chat(self):
+        for giro in range(1, self._giri + 1):
+            raccoglitore = _misura_corrente()
+            if raccoglitore is not None:
+                raccoglitore(giro, {
+                    "tools_chars": 44876, "guide_chars": 6200,
+                    "core_chars": 6518, "history_chars": 1000,
+                    "results_chars": 0, "tools_sent": 16,
+                    "prefix_hash": "abc123"})
+                raccoglitore(giro, {"input_tokens": 100 * giro,
+                                    "output_tokens": 7,
+                                    "cache_read_tokens": 900,
+                                    "cache_write_tokens": 0,
+                                    "cache_ttl": None, "cost_usd": 0.001})
+            await asyncio.sleep(0)
+        return "fatto"
+
+
+@pytest.mark.asyncio
+async def test_due_consegne_dello_stesso_giro_sono_UNA_riga(app):
+    """Mutazione ESEGUITA: `carichi.append((giro, pesi))` invece della
+    fusione per chiave -- rossa (iterations 6 invece di 3)."""
+    await _gira(app, RunnerCoiToken(giri=3))
+
+    turno = app["usage"].turns()[0]
+    assert turno["iterations"] == 3
+    giri = app["usage"].payloads(turno["id"])
+    assert [g["iteration"] for g in giri] == [1, 2, 3]
+    assert giri[1]["tools_chars"] == 44876 and giri[1]["input_tokens"] == 200
+    assert giri[2]["cost_usd"] == 0.001
+
+
+@pytest.mark.asyncio
+async def test_l_uscita_del_turno_e_la_somma_dei_giri(app):
+    """Mutazione ESEGUITA: non passare `output_tokens` a `log_turn` -- rossa."""
+    await _gira(app, RunnerCoiToken(giri=3))
+    assert app["usage"].turns()[0]["output_tokens"] == 21
+
+
+@pytest.mark.asyncio
+async def test_senza_token_l_uscita_del_turno_resta_NULL(app):
+    """Il FintoRunner di sempre non consegna token: il turno NON deve dire
+    «zero token di uscita».
+
+    Mutazione ESEGUITA: `sum(... or 0)` al posto del controllo sui None -- rossa."""
+    await _gira(app, FintoRunner(giri=2))
+    assert app["usage"].turns()[0]["output_tokens"] is None
