@@ -25,6 +25,7 @@ import anthropic
 # unico import di `openai_compat_runner` è dentro `error_family`) -- quindi
 # nessun ciclo.
 from .provider_occurrences import error_family
+from .usage.giro import anthropic_turn_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -1080,6 +1081,20 @@ class ClaudeRunner:
             ) / 1_000_000
             self._write_usage(effective_model, inp, out,
                               cache_creation, cache_read, cost)
+
+            # **La seconda consegna del giro** (spec «le misure complete»
+            # §3): i token, DOPO la risposta. La prima -- i caratteri -- e'
+            # partita prima della chiamata; `steering.misura_turno` le fonde.
+            # Il costo e' quello del listino, con la stessa regola della
+            # pagina Consumi: un modello fuori listino e' `None`, non zero.
+            _raccoglitore = _misura_corrente()
+            if _raccoglitore is not None:
+                from .usage.vocabulary import cost_state_and_value
+                _, _costo_giro = cost_state_and_value(
+                    "claude", effective_model, cost_dichiarato=None,
+                    cost_da_listino=cost)
+                _raccoglitore(_giro, {**anthropic_turn_tokens(response.usage),
+                                      "cost_usd": _costo_giro})
 
             if response.stop_reason == "end_turn":
                 text_blocks = [b.text for b in response.content if b.type == "text"]

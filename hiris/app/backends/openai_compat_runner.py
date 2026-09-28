@@ -25,6 +25,7 @@ from ..claude_runner import (
     testo_canonico,
 )
 from ..provider_occurrences import error_family
+from ..usage.giro import openai_turn_tokens
 from .pricing import get_price as _prezzo
 
 # Circuit-breaker: after this many consecutive connection-class failures, skip
@@ -442,6 +443,26 @@ class OpenAICompatRunner:
     # fetta E4 Task 6 ("un bot solo"): `_ensure_today_reset`/`get_chatbot_usage`/
     # `reset_chatbot_usage` sono usciti -- stessa mossa e stessa storia del
     # commento gemello in claude_runner.py.
+
+    def _response_cost(self, response: Any, model: str) -> float | None:
+        """Il costo di UNA risposta, con la regola della pagina Consumi.
+
+        Separato da `_track_usage` perche' quello esce presto quando manca
+        l'archivio dei consumi, e la misura del giro non deve dipendere da
+        quel gancio (spec «le misure complete» §3)."""
+        from ..usage.vocabulary import cost_state_and_value
+
+        usage = getattr(response, "usage", None)
+        if not usage:
+            return None
+        inp = getattr(usage, "prompt_tokens", 0) or 0
+        out = getattr(usage, "completion_tokens", 0) or 0
+        prices = _prezzo(model)
+        listino = (inp * prices["input"] + out * prices["output"]) / 1_000_000
+        _, cost = cost_state_and_value(self.provider_name, model,
+                                       cost_dichiarato=getattr(usage, "cost", None),
+                                       cost_da_listino=listino)
+        return cost
 
     def _track_usage(self, response: Any, model: str) -> None:
         """Aggiorna i contatori GLOBALI (total_input_tokens/total_output_tokens/
@@ -879,6 +900,14 @@ class OpenAICompatRunner:
 
             self._record_success()
             self._track_usage(response, effective_model)
+
+            # La seconda consegna del giro: i token, dopo la risposta.
+            _raccoglitore = _misura_corrente()
+            if _raccoglitore is not None:
+                _raccoglitore(iter_idx + 1, {
+                    **openai_turn_tokens(getattr(response, "usage", None)),
+                    "cost_usd": self._response_cost(response, effective_model)})
+
             choice = response.choices[0]
 
             if choice.finish_reason == "stop":

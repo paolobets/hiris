@@ -249,3 +249,64 @@ def test_una_risposta_senza_usage_non_scrive_niente():
     runner._track_usage(_Risposta(None), "gpt-4o")
 
     assert registro.scritte == []
+
+
+# ── La seconda consegna: i token del giro (spec «le misure complete» §3) ──
+
+from hiris.app.claude_runner import posa_misura, togli_misura
+
+
+def _raccogli():
+    consegne: list = []
+    return consegne, posa_misura(lambda giro, pesi: consegne.append((giro, pesi)))
+
+
+@pytest.mark.asyncio
+async def test_claude_consegna_i_token_DOPO_la_risposta(monkeypatch):
+    """Mutazione ESEGUITA: togliere la seconda consegna -- rossa."""
+    runner = ClaudeRunner(api_key="x", read_model=lambda: "claude-sonnet-4-6")
+
+    async def _finta(**kwargs):
+        return _RispostaClaude()
+
+    monkeypatch.setattr(runner, "_call_api", _finta)
+    consegne, gettone = _raccogli()
+    try:
+        await runner.chat(user_message="ciao")
+    finally:
+        togli_misura(gettone)
+
+    assert [g for g, _ in consegne] == [1, 1], "caratteri e token, stesso giro"
+    token = consegne[1][1]
+    assert token["input_tokens"] == 100
+    assert token["cache_read_tokens"] == 40 and token["cache_write_tokens"] == 30
+    assert token["output_tokens"] == 20
+    assert token["cost_usd"] > 0
+
+
+@pytest.mark.asyncio
+async def test_claude_fuori_listino_consegna_costo_NULL(monkeypatch):
+    runner = ClaudeRunner(api_key="x", read_model=lambda: "claude-opus-4-8")
+
+    async def _finta(**kwargs):
+        return _RispostaClaude()
+
+    monkeypatch.setattr(runner, "_call_api", _finta)
+    consegne, gettone = _raccogli()
+    try:
+        await runner.chat(user_message="ciao")
+    finally:
+        togli_misura(gettone)
+    assert consegne[1][1]["cost_usd"] is None
+
+
+def test_la_catena_sa_il_costo_anche_SENZA_archivio_dei_consumi():
+    """`_track_usage` esce presto quando `log_usage` e' None: il costo del
+    giro per la misura non deve dipendere da quel gancio.
+
+    Mutazione ESEGUITA: calcolare il costo dentro `_track_usage` dopo il
+    `return` sul logger assente -- rossa."""
+    runner = OpenRouterRunner(api_key="x")
+    assert runner._response_cost(_Risposta(_uso(cost=0.0031)),
+                                 "anthropic/claude-sonnet-4-6") == 0.0031
+    assert runner._response_cost(_Risposta(_uso()), "un/modello") is None
