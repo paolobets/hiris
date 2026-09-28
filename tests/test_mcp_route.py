@@ -798,3 +798,53 @@ async def test_anche_il_rifiuto_del_tetto_pesa_sul_turno(rotta):
     preso = client.app[BRIDGE_LOADS_KEY].take("turno-pesato-al-tetto")
     assert len(preso["results"]) == handlers_mcp.MAX_TOOL_ROUNDS + 1
     assert preso["results"][-1] == len(ultima["result"]["content"][0]["text"])
+
+
+@pytest.mark.asyncio
+async def test_l_errore_JSON_RPC_pesa_il_suo_messaggio(rotta):
+    """Una `tools/call` malformata (senza `name`) torna al modello come
+    errore JSON-RPC: non ha `result`, ma il modello legge `error.message`.
+    Pesa quello, non zero.
+
+    Mutazione ESEGUITA: tolto il ramo `if corpo.get("result") is None and
+    isinstance(errore_rpc, dict)` in `_annota_risultato` -- rossa ([0]
+    invece della lunghezza del messaggio); ripristinata, verde."""
+    from hiris.app.usage.bridge_loads import BRIDGE_LOADS_KEY
+
+    client, _ = rotta
+    intestazioni = {**INTESTAZIONI_CLI, "X-HIRIS-Turno": "turno-malformato"}
+    corpo = await (await _jsonrpc(client, {
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {"arguments": {}}}, intestazioni=intestazioni)).json()
+    assert "result" not in corpo
+    preso = client.app[BRIDGE_LOADS_KEY].take("turno-malformato")
+    assert preso["results"] == [len(corpo["error"]["message"])]
+    assert preso["results"][0] > 0
+
+
+@pytest.mark.asyncio
+async def test_una_misura_rotta_non_toglie_il_catalogo_alla_CLI(
+        rotta, monkeypatch, caplog):
+    """La misura delle definizioni non puo' far cadere `tools/list`: senza
+    catalogo la CLI resta senza strumenti. Un `BridgeLoads` che solleva si
+    avverte nel log, e la risposta porta il catalogo lo stesso.
+
+    Mutazione ESEGUITA: tolto il `try/except` intorno a `tools_listed` nel
+    ramo tools/list -- rossa (errore JSON-RPC -32603, nessun `result`);
+    ripristinata, verde."""
+    from hiris.app.usage.bridge_loads import BRIDGE_LOADS_KEY
+
+    client, _ = rotta
+
+    def esplode(*_a, **_k):
+        raise RuntimeError("archivio dei carichi giu'")
+
+    monkeypatch.setattr(client.app[BRIDGE_LOADS_KEY], "tools_listed", esplode)
+    intestazioni = {**INTESTAZIONI_CLI, "X-HIRIS-Turno": "turno-misura-rotta"}
+    with caplog.at_level(logging.WARNING):
+        corpo = await (await _jsonrpc(
+            client, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+            intestazioni=intestazioni)).json()
+    assert len(corpo["result"]["tools"]) >= 1
+    assert any("definizioni non si e' annotato" in r.getMessage()
+               for r in caplog.records)

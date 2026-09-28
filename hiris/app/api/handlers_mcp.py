@@ -224,6 +224,8 @@ def _annota_risultato(request: web.Request, risposta: web.Response) -> None:
     Si misura la RISPOSTA che esce, non il risultato del dispatcher: cosi'
     contano anche il tetto dei giri e la chiamata chiusa, che al modello
     arrivano allo stesso modo. Mai il contenuto: solo la lunghezza del testo.
+    Un errore JSON-RPC (chiamata malformata) non ha `result`: al modello
+    arriva il suo `error.message`, e si pesa quello -- non zero.
     Non solleva: e' una misura (spec «le misure complete», legge del §4)."""
     carichi = request.app.get(BRIDGE_LOADS_KEY)
     turno = request.headers.get("X-HIRIS-Turno", "")
@@ -231,9 +233,13 @@ def _annota_risultato(request: web.Request, risposta: web.Response) -> None:
         return
     try:
         corpo = json.loads(risposta.body)
-        testo = "".join(b.get("text", "") for b in
-                        ((corpo.get("result") or {}).get("content") or [])
-                        if isinstance(b, dict))
+        errore_rpc = corpo.get("error")
+        if corpo.get("result") is None and isinstance(errore_rpc, dict):
+            testo = str(errore_rpc.get("message") or "")
+        else:
+            testo = "".join(b.get("text", "") for b in
+                            ((corpo.get("result") or {}).get("content") or [])
+                            if isinstance(b, dict))
         carichi.result_served(turno, len(testo))
     except Exception as errore:  # pragma: no cover - forma inattesa
         logger.warning("MCP: il peso del risultato non si e' annotato (%s)",
@@ -749,10 +755,17 @@ async def handle_mcp(request: web.Request) -> web.Response:
             # Spec «le misure complete» §4(2): quante definizioni la CLI ha
             # ricevuto per QUESTO turno. La sonda di `probe_tools` non porta
             # `X-HIRIS-Turno` e non si annota: non e' un turno.
-            carichi = request.app.get(BRIDGE_LOADS_KEY)
-            if carichi is not None:
-                carichi.tools_listed(request.headers.get("X-HIRIS-Turno", ""),
-                                     pesa_in_caratteri(catalogo), len(catalogo))
+            # Come `_annota_risultato`: una misura rotta non toglie il
+            # catalogo alla CLI -- si avverte e si risponde lo stesso.
+            try:
+                carichi = request.app.get(BRIDGE_LOADS_KEY)
+                if carichi is not None:
+                    carichi.tools_listed(
+                        request.headers.get("X-HIRIS-Turno", ""),
+                        pesa_in_caratteri(catalogo), len(catalogo))
+            except Exception as errore:
+                logger.warning("MCP: il peso delle definizioni non si e' "
+                               "annotato (%s)", type(errore).__name__)
             return _answer(request_id, {"tools": catalogo})
         if method == "tools/call":
             risposta = await _call_tool(request, body.get("params") or {}, request_id)
