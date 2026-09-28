@@ -2,6 +2,12 @@
 
 ## [Non rilasciato]
 
+### La CLI del ponte sale alla 2.1.283
+
+`@anthropic-ai/claude-code` passa da 2.1.281 a **2.1.283** (salta la 2.1.282), su decisione del
+proprietario: era rimandata dalla 3.67.1. Ripiego dichiarato nel `Dockerfile`: la 2.1.281, l'ultima
+letta davvero dentro il container. Si verifica dal vivo con `GET /api/health`, campo `ponte.cli`.
+
 ### L'attuatore sul ponte
 
 **Cosa non funzionava.** Dalla 3.56.0 (21/09/2026), con il piano attivo, l'attuatore **non ha mai

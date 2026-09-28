@@ -295,7 +295,11 @@ Il ripiego dichiarato è la **2.1.276**, l'ultima ad aver girato davvero su ques
 gira sull'abbonamento, non su una chiave API. Sono i due fatti che nessun file del repository
 può dire.
 
-### La CLI del ponte sale alla 2.1.283 nel prossimo rilascio
+### ~~La CLI del ponte sale alla 2.1.283 nel prossimo rilascio~~ — **USCITA** con la v3.69.1
+
+**Chiusa il 28/09/2026**, su decisione del proprietario: la 2.1.283 sale insieme alla correzione
+dell'attuatore sul ponte. Ripiego dichiarato nel `Dockerfile`: la 2.1.281. Il passo 4 (leggere
+`ponte.cli` dentro il container con `GET /api/health`) è aperto fino alla verifica dal vivo.
 
 **Rimandata di nuovo il 28/09/2026.** Stesso salto `2.1.281 -> 2.1.283`, segnalato durante il
 rilascio della **v3.69.0** (HIRIS per chi non amministra), uscita con `HIRIS_COMPONENTI_OK=1` —
