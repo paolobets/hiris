@@ -295,7 +295,11 @@ Il ripiego dichiarato è la **2.1.276**, l'ultima ad aver girato davvero su ques
 gira sull'abbonamento, non su una chiave API. Sono i due fatti che nessun file del repository
 può dire.
 
-### La CLI del ponte sale alla 2.1.283 nel prossimo rilascio
+### ~~La CLI del ponte sale alla 2.1.283 nel prossimo rilascio~~ — **USCITA** con la v3.69.1
+
+**Chiusa il 28/09/2026**, su decisione del proprietario: la 2.1.283 sale insieme alla correzione
+dell'attuatore sul ponte. Ripiego dichiarato nel `Dockerfile`: la 2.1.281. Il passo 4 (leggere
+`ponte.cli` dentro il container con `GET /api/health`) è aperto fino alla verifica dal vivo.
 
 **Rimandata di nuovo il 28/09/2026.** Stesso salto `2.1.281 -> 2.1.283`, segnalato durante il
 rilascio della **v3.69.0** (HIRIS per chi non amministra), uscita con `HIRIS_COMPONENTI_OK=1` —
@@ -634,6 +638,56 @@ va corretto, in un posto solo.
 ---
 
 ## In attesa
+
+### Sul ponte l'attuatore non ripara le ricette rotte — aperta il 28/09/2026
+
+`origine: fetta «l'attuatore sul ponte» (28/09/2026), decisione del coordinatore` · `hiris/app/server.py::actuator_round` · `hiris/app/server.py::_enqueue_actuator_turn` · `hiris/app/mind/actuator_turn.py::SYSTEM`
+
+Sulla catena il giro dell'attuatore **riscrive le ricette rotte prima di chiedere**
+(`_repair_recipes`, che chiama `recipe_turn.ask` col modello della catena) e aggiunge le
+riparazioni all'attuazione come fatti. Sul ponte no: `_enqueue_actuator_turn` compone la domanda
+con l'elenco delle riparazioni **vuoto**, e nessuna ricetta viene riscritta. Una ricetta rotta,
+sul ponte, arriva al modello come osservazione qualunque e resta rotta.
+
+Il prompt di sistema (`actuator_turn.SYSTEM`) e' vero su entrambe le strade dal fix round 1 della
+fetta (28/09/2026): prima affermava «Le ricette rotte le ho gia' riscritte io prima di chiamarti»,
+falso sul ponte. Ora dice che le riparazioni avvenute stanno nella domanda, e che se la domanda non
+ne parla nessuna e' stata riscritta: una ricetta rotta si segnala come proposta da fare a mano. Resta
+aperta solo la riparazione che manca.
+
+**Perche' resta fuori**: la riparazione e' un turno di ricetta, e sul ponte un turno si accoda e
+si raccoglie minuti dopo; farla «prima della domanda» vorrebbe dire due turni in fila, con la
+domanda dell'attuatore che aspetta la raccolta delle ricette. La fetta non l'ha inventata.
+
+**Cosa la chiude**: sul ponte, una ricetta rotta si riscrive (accodando il turno di ricetta
+esistente, `kind="ricetta"`, e facendo partire la domanda dell'attuatore solo quando e' stato
+raccolto), e l'attuazione archiviata porta l'esito `riparazione` come sulla catena. Si verifica
+dal vivo: una
+ricetta rotta sulla casa vera, attuatore sul ponte, e la riga del sapere riscritta.
+
+### Sul ponte una risposta rifiutata ferma l'attuatore fino al giorno dopo — aperta il 28/09/2026
+
+`origine: review del fix round 1 della fetta «l'attuatore sul ponte» (28/09/2026)` · `hiris/app/server.py::_collect_actuator_turn` · `hiris/app/server.py::actuator_round` · `hiris/app/server.py::_collect_analyst_turn`
+
+Quando la risposta del ponte e' **rifiutata** (`actuator_turn.apply_actuation` torna
+`attuazione: None` con i `problemi`), `_collect_actuator_turn` la restituisce con `risposta: True`
+senza scrivere niente, e `actuator_round` si ferma li' (`if collected is not None and
+collected.get("risposta"): return collected`). Al giro dopo `queue.latest("attuazione")` e' ancora
+quel turno, con la stessa risposta: la raccolta la rilegge, la rifiuta di nuovo e il giro torna
+senza accodare una domanda nuova. L'attuatore resta fermo **per il resto del giorno**, finche' la
+sveglia del turno (`giorno`) non smette di essere oggi. Sulla catena no: la risposta rifiutata non
+si archivia e il giro dopo richiede.
+
+**L'analista si comporta allo stesso modo** (`_collect_analyst_turn` e `analyst_round`): stessa
+forma, stessa conseguenza. Non e' una svista di una sola strada.
+
+**Il compromesso**: riaccodare a ogni giro vuol dire, nel caso peggiore (un modello che sbaglia
+sempre la stessa forma), una domanda all'ora pagata sul piano per tutto il giorno; fermarsi vuol
+dire perdere l'attuazione di quel giorno per una risposta storta. Oggi il codice sceglie la
+seconda senza dirlo. La fetta non ha cambiato il comportamento (decisione del coordinatore).
+
+**Da decidere, dal proprietario**: se una risposta rifiutata sul ponte si richiede (magari con un
+tetto di tentativi al giorno), e se la stessa regola vale per l'analista.
 
 ### Chi non amministra può sapere, chiedendo, cosa gli altri hanno detto a HIRIS — aperta il 27/09/2026
 

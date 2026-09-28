@@ -128,6 +128,7 @@ from ..chat_store import (
 )
 from ..home_space.tools import KNOWLEDGE_TOOLS
 from ..keeper.exchange import promise_tools
+from ..mind.actuator_turn import ACTUATION_TURN_KIND
 from ..model_resolution import SUBSCRIPTION_ALIAS
 from . import prompts
 
@@ -1167,14 +1168,17 @@ def set_turn_logger(fn) -> None:
 #:
 #: `tests/test_misura_del_ponte.py` tiene la tabella allineata a
 #: `RAGIONABILI` da una parte e a `steering.SPECIE` dall'altra: il giorno in
-#: cui nasce una sesta specie ragionabile, la prova diventa rossa invece
-#: che il registro muto.
+#: cui nasce una specie ragionabile nuova, la prova diventa rossa invece
+#: che il registro muto. E dal 28/09/2026 `tests/test_attuatore_sul_ponte.py`
+#: la tiene allineata anche a cio' che il server ACCODA: la sesta specie,
+#: `attuazione`, si accodava da una settimana e non stava in nessuna delle due.
 JOB_SPECIES = {
     "chat": "chat",
     "promessa": "promessa",
     "scope": "osservatore",
     "ricetta": "ricette",
     "analisi": "analista",
+    ACTUATION_TURN_KIND: "attuatore",
 }
 
 
@@ -1897,10 +1901,23 @@ _ANALYSIS_KIND = "analisi"
 #: potrebbe agire sulla casa senza che nessun si' lo autorizzi. E' il rilievo
 #: che la review indipendente aveva chiuso per lo scope l'11/09/2026, e che il
 #: turno delle ricette avrebbe riaperto.
-_SELF_CONTAINED_KINDS = (_SCOPE_KIND, _RECIPE_KIND, _ANALYSIS_KIND)
+#:
+#: **L'attuatore entra il 28/09/2026, una settimana tardi.** Dalla 3.56.0 (21/09)
+#: `server.py::_enqueue_actuator_turn` accodava `attuazione` ogni ora e il
+#: ponte la mandava nel ramo della decisione vuota: misurato dal vivo nel
+#: registro dell'add-on, l'attuatore sul ponte non ha mai prodotto niente.
+#: Sulla catena chiama `runner.chat` SENZA strumenti -- sul ponte uguale: e'
+#: un attore che per contratto «non tocca la casa», e col catalogo della chat
+#: avrebbe `execute`. La costante e' quella del produttore
+#: (`mind/actuator_turn`), non una copia: quel modulo non importa niente di
+#: HIRIS, e l'import non chiude nessun ciclo. Da allora il cancello
+#: `tests/test_attuatore_sul_ponte.py` RICAVA dal codice ogni specie che si
+#: accoda e pretende che sia qui: la prossima volta non la scopre il registro.
+_SELF_CONTAINED_KINDS = (_SCOPE_KIND, _RECIPE_KIND, _ANALYSIS_KIND,
+                         ACTUATION_TURN_KIND)
 
 RAGIONABILI = ("chat", "promessa", _SCOPE_KIND, _RECIPE_KIND,
-               _ANALYSIS_KIND)
+               _ANALYSIS_KIND, ACTUATION_TURN_KIND)
 
 
 def reason(job: dict, mode: str, *, client=None, base_url: str = "",

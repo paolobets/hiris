@@ -1,5 +1,38 @@
 # HIRIS — Changelog
 
+## [Non rilasciato]
+
+### La CLI del ponte sale alla 2.1.283
+
+`@anthropic-ai/claude-code` passa da 2.1.281 a **2.1.283** (salta la 2.1.282), su decisione del
+proprietario: era rimandata dalla 3.67.1. Ripiego dichiarato nel `Dockerfile`: la 2.1.281, l'ultima
+letta davvero dentro il container. Si verifica dal vivo con `GET /api/health`, campo `ponte.cli`.
+
+### L'attuatore sul ponte
+
+**Cosa non funzionava.** Dalla 3.56.0 (21/09/2026), con il piano attivo, l'attuatore **non ha mai
+prodotto niente**. Ogni ora HIRIS accodava al ponte la sua domanda (`attuazione`), e il ponte la
+scartava: sapeva ragionare chat, promesse, osservatore, ricette e analista, non l'attuatore. Nel
+registro dell'add-on restava una riga — «job non-chat in coda: nessun ramo lo ragiona piu'» — e la
+risposta vuota veniva raccolta come «niente da fare». Misurato dal vivo il 28/09/2026 sulla 3.69.0.
+
+Dietro ce n'era un secondo, mai visto perché il primo lo copriva: anche con una risposta, la
+raccolta dal ponte **non archiviava le proposte** e non passava le costruibili all'officina. Le
+scriveva nell'attuazione e basta.
+
+**Cosa cambia.**
+- Il ponte ragiona il turno dell'attuatore, **senza strumenti** come sulla catena: l'attuatore non
+  tocca la casa, e sul ponte non riceve `execute`. Il registro dei turni lo conta come `attuatore`.
+- Catena e ponte finiscono nella **stessa coda**: proposte da fare a mano in archivio, costruibili
+  all'officina, attuazione scritta dentro l'analisi.
+- Un nuovo cancello ricava dal codice **ogni specie che HIRIS accoda** al ponte e pretende che il
+  ponte la sappia ragionare e che il registro la sappia nominare: è la seconda volta che una specie
+  nasce senza (le ricette il 13/09, l'attuatore il 21/09), e la prossima la ferma la suite invece
+  del registro.
+
+**Cosa resta fuori.** Sul ponte l'attuatore non ripara le ricette rotte: lo fa solo la catena.
+È una voce di `docs/BACKLOG.md` («In attesa»).
+
 ## [3.69.0] — HIRIS per chi non amministra (2026-09-28)
 
 Chi installa HIRIS può ora **aprirlo agli utenti di Home Assistant che non sono amministratori**,

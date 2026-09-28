@@ -455,3 +455,93 @@ async def test_la_stessa_proposta_non_si_scrive_DUE_volte(casa):
     await server.actuator_round(app)
 
     assert len(store.proposals()) == 1
+
+
+@pytest.mark.asyncio
+async def test_PIN_sulla_catena_la_proposta_si_archivia_E_l_attuazione_si_scrive(casa):
+    """Pin della fetta «l'attuatore sul ponte» (28/09/2026), scritto PRIMA di
+    toccare il giro: sulla catena lo stesso turno archivia la proposta da fare
+    a mano **e** scrive l'attuazione col suo fondamento. La coda «esito ->
+    proposte -> scrittura» si e' spostata in una funzione sola condivisa col
+    ponte, e questo pin dice che la strada della catena non e' cambiata.
+
+    Mutazione ESEGUITA: togliere l'archiviazione delle proposte dalla coda
+    comune -- rossa."""
+    app, store, _modello = casa
+    app["llm_router"] = _modello_proponente(False)
+    store.replace_analysis(OGGI, _analisi())
+
+    await server.actuator_round(app)
+
+    assert [r["impronta"] for r in store.proposals()] == ["dev1|prelievo|None|1"]
+    attuazione = store.analysis(OGGI)["attuazione"]
+    assert attuazione["su_fondamento"] == "aaa"
+    assert attuazione["esiti"][0]["gesto"] == "proposta"
+    assert attuazione["esiti"][0]["impronta"] == "dev1|prelievo|None|1"
+
+
+# ---------------------------------------------------------------------------
+# Le proposte raccolte dal PONTE (fetta «l'attuatore sul ponte», 28/09/2026).
+#
+# Il secondo difetto dietro il primo: la raccolta del ponte applicava la
+# risposta e scriveva l'attuazione, ma **non archiviava le proposte** ne' le
+# passava all'officina. Mai visto, perche' la risposta del ponte era sempre
+# vuota -- il ponte non ragionava la specie.
+# ---------------------------------------------------------------------------
+
+def _risposta_proponente(costruibile, intenzione=None):
+    corpo = {"osservazione": 0, "gesto": "proposta",
+             "trovato": "Sposta la lavatrice nel primo pomeriggio",
+             "costruibile": costruibile}
+    if intenzione is not None:
+        corpo["intenzione"] = intenzione
+    return json.dumps({"esiti": [corpo]})
+
+
+def _bridge_replied(app, risposta):
+    app.update({"bridge_active": True,
+                "models_config": {"ponte": {"scadenza_min": 10}},
+                "reasoning_queue": _FintaCoda(
+                    {"wake": {"giorno": OGGI}, "decision": {"reply": risposta}})})
+
+
+@pytest.mark.asyncio
+async def test_col_PONTE_una_proposta_da_fare_a_mano_si_ARCHIVIA(casa, piano_acceso):
+    """Come sulla catena: la proposta che fa una persona va nella coda che la
+    pagina mostra, con la sua impronta e la sua prova.
+
+    Mutazione ESEGUITA: la raccolta del ponte che scrive senza passare dalla
+    coda comune (com'era) -- rossa."""
+    app, store, modello = casa
+    store.replace_analysis(OGGI, _analisi())
+    _bridge_replied(app, _risposta_proponente(False))
+
+    await server.actuator_round(app)
+
+    righe = store.proposals()
+    assert [r["impronta"] for r in righe] == ["dev1|prelievo|None|1"]
+    assert righe[0]["chi_applica"] == "tu"
+    assert store.analysis(OGGI)["attuazione"]["su_fondamento"] == "aaa"
+    assert modello.chiamate == 0
+
+
+@pytest.mark.asyncio
+async def test_col_PONTE_una_proposta_COSTRUIBILE_passa_dall_OFFICINA(casa, piano_acceso):
+    """Come sulla catena: una costruibile passa da `costruisci`, e l'attuatore
+    resta senza un canale di scrittura suo.
+
+    Mutazione ESEGUITA: la raccolta del ponte che scrive senza passare dalla
+    coda comune (com'era) -- rossa."""
+    app, store, _modello = casa
+    officina = _FintaOfficina()
+    app["workshop"] = officina
+    store.replace_analysis(OGGI, _analisi())
+    _bridge_replied(app, _risposta_proponente(
+        True, {"gesto": "crea", "dominio": "automation",
+               "richiesto": "accendi la lavatrice alle 14"}))
+
+    await server.actuator_round(app)
+
+    assert [(i["gesto"], attore) for i, attore in officina.intenzioni] == [
+        ("crea", "attuatore")]
+    assert store.proposals() == []

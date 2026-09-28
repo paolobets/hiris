@@ -77,6 +77,21 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 #      visto», che non e' «assente»: basta una domanda in chat e poi
 #      rileggere. Lo stesso oggetto porta `ponte.apiKeySource`, che vale
 #      `none` quando si sta usando l'abbonamento e non una chiave a consumo.
+# 28 settembre 2026 — alzata da 2.1.281 a **2.1.283**, col rilascio della
+# 3.69.1, su decisione del proprietario. Era rimandata dalla 3.67.1 (tre
+# rilasci: 3.67.1, 3.68.0, 3.69.0), sempre con `HIRIS_COMPONENTI_OK=1`
+# dichiarato nel BACKLOG.
+#
+# Uscite saltate: 2.1.282 (due salti di patch con la .283). Non provate una
+# per una.
+#
+# **Ripiego dichiarato: la 2.1.281**, l'ultima LETTA dentro il container
+# (`GET /api/health`, `ponte.cli: "2.1.281"`, 24/09/2026 alle 18:56).
+#
+# **Il passo 4 e' APERTO**: la 2.1.283 non e' ancora stata letta dentro il
+# container. Si salda alla prima verifica dal vivo dopo il rilascio, con un
+# turno di chat e una GET.
+#
 # 24 settembre 2026 — alzata da 2.1.276 a **2.1.281**, col rilascio della
 # 3.66.0. **E' il rilascio che il backlog aspettava**: la voce «La CLI del
 # ponte sale...» era stata rimandata ELEVEN volte, e la condizione scritta la'
@@ -93,7 +108,8 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 # **Ripiego dichiarato: la 2.1.276**, che e' l'ultima ad aver girato davvero
 # su questa casa (dal 18/09, e lo dice `GET /api/health` campo `ponte.cli`).
 #
-# **Il passo 4 e' APERTO**: la 2.1.281 non e' ancora stata letta dentro il
+# **Passo 4 SALDATO il 24/09/2026 alle 18:56** (`ponte.cli: "2.1.281"`,
+# `apiKeySource: "none"`). Nota originale: la 2.1.281 non era ancora letta dentro il
 # container. Si salda alla prima verifica dal vivo dopo il rilascio, con un
 # turno di chat e una GET -- e a add-on appena riavviato `ponte` e' `null`,
 # perche' quel numero nasce da un turno, non dall'avvio.
@@ -272,7 +288,7 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 # esce niente verso nessuno -- e' la rete che il 22/09 e' mancata al
 # reperto A-2, dove una verifica non provabile e' arrivata in produzione.
 RUN apk add --no-cache nodejs npm libgcc libstdc++ ripgrep \
-    && npm install -g @anthropic-ai/claude-code@2.1.281 \
+    && npm install -g @anthropic-ai/claude-code@2.1.283 \
     && npm cache clean --force \
     && mkdir -p /usr/lib/hiris \
     && ln -sf "$(command -v claude)" /usr/lib/hiris/claude \

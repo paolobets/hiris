@@ -2252,7 +2252,7 @@ async def actuator_round(app) -> dict | None:
         # **La risposta del piano si raccoglie PRIMA di chiedere di nuovo**:
         # il ponte gira altrove e risponde minuti dopo, e senza questo passo
         # accoderebbe una domanda a ogni giro e non ne leggerebbe mai una.
-        collected = _collect_actuator_turn(app, store, today, stamp)
+        collected = await _collect_actuator_turn(app, store, today, stamp)
         if collected is not None and collected.get("risposta"):
             return collected
         analysis = store.analysis(today) or analysis
@@ -2296,9 +2296,8 @@ async def actuator_round(app) -> dict | None:
             answer = await runner.chat(user_message=question,
                                        system_prompt=actuator_turn.SYSTEM)
         esito = actuator_turn.apply_actuation(pending, answer)
-        await _file_proposals(app, store, esito, pending)
-        _write_actuation(store, today, stamp, esito, repaired=repaired,
-                         pending=pending)
+        await _settle_actuation(app, store, today, stamp, esito, pending,
+                                repaired=repaired)
         return esito
     except Exception as error:
         logger.warning("attuatore: giro fallito (%s: %s) -- si riprova al giro "
@@ -2353,6 +2352,29 @@ async def _repair_recipes(app, broken) -> list[dict]:
 #: seme»: chi legge una riga del sapere deve poter sapere **quale attore** l'ha
 #: messa li', o il verificatore non potrebbe attribuire niente a nessuno.
 ACTUATOR_AUTHOR = "attuatore"
+
+
+async def _settle_actuation(app, store, day: str, stamp: str | None,
+                            esito: dict, pending, *, repaired=()) -> None:
+    """La coda del turno dell'attuatore: **una sola, per le due strade.**
+
+    Una risposta applicata diventa proposte in coda e un'attuazione scritta
+    dentro l'analisi, che sia arrivata dalla catena (il giro) o dal ponte (la
+    raccolta). Fino al 28/09/2026 le strade erano due righe copiate, e la
+    copia del ponte aveva perso le proposte: un esito «proposta» raccolto dal
+    ponte si scriveva nell'attuazione e non arrivava mai ne' all'archivio ne'
+    all'officina. Nessuno se n'era accorto perche' il ponte non ragionava la
+    specie, e la risposta era sempre vuota.
+
+    Le **riparazioni** restano un argomento: le fa solo la catena, prima della
+    domanda. Sul ponte la domanda parte con l'elenco delle riparazioni vuoto
+    (`_enqueue_actuator_turn`), e una ricetta rotta non si riscrive: e' un
+    buco dichiarato in `docs/BACKLOG.md`, non una seconda strada da inventare
+    qui.
+    """
+    await _file_proposals(app, store, esito, pending)
+    _write_actuation(store, day, stamp, esito, repaired=repaired,
+                     pending=pending)
 
 
 async def _file_proposals(app, store, esito: dict, pending) -> None:
@@ -2419,7 +2441,10 @@ def _write_actuation(store, day: str, stamp: str | None, esito: dict,
 
     **Una risposta rifiutata non si archivia**: un'attuazione con dentro dei
     problemi non e' un'attuazione, e scriverla direbbe che quel giorno e' stato
-    attuato. Il giro dopo riprova, perche' `su_fondamento` resta assente.
+    attuato. **Sulla catena** il giro dopo riprova, perche' `su_fondamento`
+    resta assente. Sul ponte no: la raccolta rilegge a ogni giro la stessa
+    risposta rifiutata e il giro si ferma li', fino al giorno dopo -- come
+    l'analista. E' una voce di `docs/BACKLOG.md` («In attesa»).
     """
     actuation = esito.get("attuazione")
     if actuation is None:
@@ -2460,7 +2485,8 @@ def _write_actuation(store, day: str, stamp: str | None, esito: dict,
                 day, len(actuation.get("esiti") or []))
 
 
-def _collect_actuator_turn(app, store, today: str, stamp: str | None) -> dict | None:
+async def _collect_actuator_turn(app, store, today: str,
+                                 stamp: str | None) -> dict | None:
     """La risposta che il piano ha dato alla domanda dell'attuatore.
 
     **Un turno gia' raccolto non si rilegge**, e la traccia e' l'attuazione
@@ -2491,7 +2517,7 @@ def _collect_actuator_turn(app, store, today: str, stamp: str | None) -> dict | 
     esito = actuator_turn.apply_actuation(pending, reply)
     if not esito.get("risposta"):
         return esito
-    _write_actuation(store, day, stamp, esito, pending=pending)
+    await _settle_actuation(app, store, day, stamp, esito, pending)
     return esito
 
 
