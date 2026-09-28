@@ -195,3 +195,56 @@ def test_la_composizione_si_pesa_in_TUTTE_le_invocazioni():
     sorgente = inspect.getsource(ponte._reason_chat)
     assert sorgente.count("composition_cell") >= 2
     assert "exchange_id=exchange_id" in sorgente
+
+
+class _ProcessoFinto:
+    """Cio' che `subprocess.run` restituirebbe, senza lanciare la CLI: una
+    prova unitaria non spende un turno dell'abbonamento."""
+
+    returncode = 1
+    stdout = ""
+    stderr = "la CLI non e' stata lanciata: e' una prova"
+
+
+def _turno_di_attuazione(monkeypatch, **extra_context):
+    """Un turno di attuazione vero fino a `subprocess.run`: specie senza
+    strumenti e autosufficiente, quindi nessuna sonda."""
+    monkeypatch.setattr(ponte.subprocess, "run",
+                        lambda argv, *a, **kw: _ProcessoFinto())
+    context = {"history": [{"role": "user", "content": "le osservazioni"}],
+               "system_prompt": "sei l'attuatore",
+               "istruzione": "Rispondi SOLO con un oggetto JSON."}
+    context.update(extra_context)
+    ponte.reason({"kind": "attuazione", "job_id": "ja", "context": context},
+                 "live", client=object(), base_url="http://127.0.0.1:8099")
+
+
+def test_un_giro_di_fondo_SENZA_strumenti_scrive_la_sua_composizione(
+        registro, monkeypatch):
+    """Il consumo di osservatore, analista e attuatore sul ponte e' la
+    richiesta esplicita del proprietario: una specie senza strumenti deve
+    scrivere la composizione come la chat. Il pin sul sorgente non lo vede,
+    questa prova si': passa da `reason()` fino alla CLI finta.
+
+    Mutazione ESEGUITA: avvolgere l'append in `_invoca` in `if active_tools:`
+    -- rossa (composition None); ripristinata, verde."""
+    _turno_di_attuazione(monkeypatch)
+    riga = registro[0]
+    assert riga["species"] == "attuatore"
+    assert riga["composition"] is not None
+    assert riga["composition"]["history_chars"] > 0
+    assert riga["exchange_id"]
+
+
+def test_con_la_propria_istruzione_il_nucleo_consegnato_e_zero(
+        registro, monkeypatch):
+    """Un turno che porta la propria `istruzione` non riceve il blocco
+    guida/contesto (`build_chat_messages`): il `contesto` del job non arriva
+    al modello, e contarlo come nucleo direbbe il falso.
+
+    Mutazione ESEGUITA: `core_chars = len((contesto or "").strip())` senza
+    guardare l'istruzione -- rossa (core_chars 24); ripristinata, verde."""
+    _turno_di_attuazione(monkeypatch, contesto="il nucleo della casa, 24")
+    composizione = registro[0]["composition"]
+    assert composizione["core_chars"] == 0
+    assert composizione["guide_chars"] > 0

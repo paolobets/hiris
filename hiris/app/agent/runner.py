@@ -1332,7 +1332,7 @@ def _measure_turn(job: dict, *, duration_ms: int, tools: list,
             "output_tokens": getattr(occurrence, "output_tokens", None),
             "list_cost_usd": getattr(occurrence, "list_cost_usd", None),
         })
-    except Exception as error:  # pragma: no cover - guasto dell'archivio
+    except Exception as error:  # guasto dell'archivio
         log.warning("la misura del turno del ponte non si e' potuta scrivere "
                     "(%s: %s)", type(error).__name__, error)
 
@@ -1731,6 +1731,10 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
         # Non esiste un secondo posto in cui il prompt e l'argv possono
         # divergere: se un giorno queste due righe si allontanano, e' li' che
         # rientra il difetto numero uno di questo prodotto.
+        # L'istruzione si legge UNA volta: la stessa che compone il prompt
+        # decide anche come si pesa (sotto).
+        instruction = ((context.get("istruzione") or "")
+                       if isinstance(context, dict) else "")
         system, user = prompts.build_chat_messages(
             system_prompt, history, contesto=contesto,
             active_tools=active_tools,
@@ -1741,11 +1745,15 @@ def _reason_chat(job: dict, mode: str, *, client=None, base_url: str = "",
             # JSON; il turno dell'osservatore chiede un solo array JSON e
             # senza questa riga riceverebbe l'ordine opposto (fetta
             # «l'osservatore chiede a chi risponde davvero», 11/09/2026).
-            istruzione=(context.get("istruzione") or "")
-            if isinstance(context, dict) else "")
+            istruzione=instruction)
         # Il nucleo si misura sul `contesto` grezzo, come la catena misura il
         # suo `context_str`: stessa definizione, due strade confrontabili.
-        core_chars = len((contesto or "").strip())
+        # Il recinto di `recinta_casa` (la dichiarazione e i delimitatori)
+        # resta quindi in `guide_chars`: e' il sovrappiu' costante del ponte
+        # nella guida, non nucleo. Un turno con la propria `istruzione` non
+        # riceve affatto il blocco guida/contesto (`build_chat_messages`):
+        # il nucleo consegnato e' zero, anche se il job porta un `contesto`.
+        core_chars = 0 if instruction else len((contesto or "").strip())
         composition_cell.append({
             "guide_chars": max(len(system) - core_chars, 0),
             "core_chars": core_chars,
