@@ -664,6 +664,14 @@ ponte non lavorava (vedi la voce qui sotto), quindi il suo peso si misura da ogg
 **Cosa lo chiude**: una lettura dei numeri che dica dove sta il costo (per specie, canale, giri,
 strumenti) e le fette che ne escono, ognuna con la sua misura prima e dopo.
 
+**28/09/2026 sera — le misure NON bastavano, e la fetta che le completa e' disegnata.** La lettura
+di `GET /api/misure` ha mostrato che i 96 carichi sono tutti del 24/09, che dal 25/09 tutto e'
+passato sul ponte (che non scriveva i carichi, su una premessa falsa: lo stream della CLI porta i
+token di ogni giro) e che nel registro le chat del proprietario sono 2 su 55. Spec approvata a
+sezioni: `docs/design/2026-09-28-le-misure-complete.md` — il ponte si pesa per tutte e sei le specie,
+la batteria delle 32 domande entra nel repo e si rilancia su catena e ponte, Consumi e Modelli
+mostrano i dati nuovi.
+
 ### Sul ponte l'attuatore non ripara le ricette rotte — aperta il 28/09/2026
 
 `origine: fetta «l'attuatore sul ponte» (28/09/2026), decisione del coordinatore` · `hiris/app/server.py::actuator_round` · `hiris/app/server.py::_enqueue_actuator_turn` · `hiris/app/mind/actuator_turn.py::SYSTEM`
