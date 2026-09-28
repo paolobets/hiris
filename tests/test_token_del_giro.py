@@ -10,6 +10,7 @@ from hiris.app.usage.giro import (
     anthropic_turn_tokens,
     cache_ttl,
     openai_turn_tokens,
+    payload_rows_ponte,
 )
 
 
@@ -119,3 +120,85 @@ def test_un_booleano_non_e_un_conteggio_di_token():
     `_int_or_none` -- rossa (`input_tokens` diventerebbe `1`, non `None`)."""
     t = anthropic_turn_tokens({"input_tokens": True})
     assert t["input_tokens"] is None
+
+
+def test_prompt_tokens_malformato_diventa_NULL_non_solleva():
+    """Reperto (revisione Task 5): `openai_turn_tokens` leggeva `prompt`
+    senza passare da `_int_or_none`, cosi' `max(int(prompt) - ..., 0)`
+    sollevava `ValueError` su un `prompt_tokens` non numerico -- e questa
+    lettura corre sul giro della catena: un turno malformato faceva cadere
+    l'intero turno, non solo il suo campo.
+
+    Mutazione ESEGUITA: ripristinato `prompt = _field(usage, "prompt_tokens")`
+    (bypassando `_int_or_none`) -- rossa (`ValueError` non catturato)."""
+    uso = CompletionUsage.model_validate({
+        "prompt_tokens": 1000, "completion_tokens": 50, "total_tokens": 1050})
+    uso.prompt_tokens = "n/a"
+    t = openai_turn_tokens(uso)
+    assert t["input_tokens"] is None
+
+
+def test_un_infinito_non_e_un_conteggio_di_token():
+    """`json.loads` accetta `Infinity` come float valido: un fornitore che lo
+    scrive nello stream non deve far cadere il turno. `int(float("inf"))`
+    solleva `OverflowError`, non catturata dai due `except` esistenti.
+
+    Mutazione ESEGUITA: tolto `OverflowError` dalla tupla catturata in
+    `_int_or_none` -- rossa (`OverflowError` non catturato)."""
+    t = anthropic_turn_tokens({"input_tokens": float("inf")})
+    assert t["input_tokens"] is None
+
+
+COMPOSIZIONE = {"guide_chars": 7000, "core_chars": 7600, "history_chars": 900}
+
+
+def _giro(n_mcp=0, inp=10):
+    return {"message_id": "m", "input_tokens": inp, "output_tokens": None,
+            "cache_read_tokens": 5, "cache_write_tokens": 6,
+            "cache_ttl": "1h", "mcp_calls": n_mcp}
+
+
+def test_i_risultati_arrivano_al_modello_il_GIRO_DOPO():
+    """Il giro 1 chiama due strumenti; i loro risultati entrano nel giro 2,
+    e restano nel 3 (la conversazione li rispedisce tutti).
+
+    Mutazione ESEGUITA: contare le chiamate del giro stesso -- rossa."""
+    righe = payload_rows_ponte(
+        COMPOSIZIONE, [_giro(n_mcp=2), _giro(n_mcp=1), _giro()],
+        {"tools_chars": 45388, "tools_sent": 16, "results": [100, 200, 50]})
+    assert [r["results_chars"] for r in righe] == [0, 300, 350]
+    assert [r["iteration"] for r in righe] == [1, 2, 3]
+
+
+def test_ogni_giro_rispedisce_la_composizione_e_porta_i_suoi_token():
+    righe = payload_rows_ponte(COMPOSIZIONE, [_giro(inp=10), _giro(inp=8)],
+                               {"tools_chars": 45388, "tools_sent": 16,
+                                "results": []})
+    assert all(r["guide_chars"] == 7000 and r["core_chars"] == 7600
+               for r in righe)
+    assert [r["input_tokens"] for r in righe] == [10, 8]
+    assert all(r["tools_chars"] == 45388 and r["tools_sent"] == 16
+               for r in righe)
+    assert all(r["cost_usd"] is None for r in righe), "il piano non ha prezzo per turno"
+
+
+def test_un_turno_SENZA_strumenti_ha_definizioni_a_zero_VERO():
+    """Osservatore, analista, attuatore: nessuna `tools/list` servita. Zero
+    qui e' un fatto -- nessuna definizione consegnata -- non un buco."""
+    righe = payload_rows_ponte(COMPOSIZIONE, [_giro()], None)
+    assert righe[0]["tools_chars"] == 0 and righe[0]["tools_sent"] == 0
+
+
+def test_uno_stream_SENZA_giri_scrive_una_riga_di_sola_composizione():
+    """CLI uccisa: nessun evento assistant. Il turno ha comunque consegnato
+    la sua composizione; i token restano NULL.
+
+    Mutazione ESEGUITA: restituire [] quando non ci sono giri -- rossa."""
+    righe = payload_rows_ponte(COMPOSIZIONE, [], None)
+    assert len(righe) == 1
+    assert righe[0]["input_tokens"] is None
+    assert righe[0]["history_chars"] == 900
+
+
+def test_senza_composizione_non_si_inventa_niente():
+    assert payload_rows_ponte(None, [_giro()], None) == []

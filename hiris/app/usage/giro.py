@@ -35,7 +35,7 @@ def _int_or_none(value):
         return None
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
 
 
@@ -82,11 +82,11 @@ def openai_turn_tokens(usage) -> dict:
     `prompt_tokens_details` il fornitore non ha detto niente sulla cache, e
     i due campi della cache restano `None` -- non zero.
     """
-    prompt = _field(usage, "prompt_tokens")
+    prompt = _int_or_none(_field(usage, "prompt_tokens"))
     details = _field(usage, "prompt_tokens_details")
     read = _int_or_none(_field(details, "cached_tokens"))
     written = _int_or_none(_field(details, "cache_write_tokens"))
-    fresh = None if prompt is None else max(int(prompt) - (read or 0), 0)
+    fresh = None if prompt is None else max(prompt - (read or 0), 0)
     return {
         "input_tokens": fresh,
         "output_tokens": _int_or_none(_field(usage, "completion_tokens")),
@@ -94,3 +94,49 @@ def openai_turn_tokens(usage) -> dict:
         "cache_write_tokens": written,
         "cache_ttl": None,
     }
+
+
+def payload_rows_ponte(composition: dict | None, exchanges: list,
+                       loads: dict | None) -> list[dict]:
+    """Le righe di `payload` di un turno del ponte (spec §4, la scrittura).
+
+    - **La composizione si rispedisce a ogni giro**: ogni chiamata all'API
+      riporta il prompt di sistema e la conversazione. Per questo sta su
+      tutti i giri, come sulla catena.
+    - **I risultati entrano il giro DOPO**: le chiamate MCP del giro k
+      tornano al modello nel giro k+1, e da li' restano. I caratteri si
+      prendono nell'ordine in cui la rotta li ha serviti.
+    - **Definizioni a zero quando non ne e' stata servita nessuna**: un turno
+      senza strumenti non ne ha ricevute, ed e' un fatto.
+    - **Nessun giro nello stream** (CLI uccisa): una riga sola, la
+      composizione consegnata, token NULL.
+    - `cost_usd` resta NULL: l'abbonamento non espone il prezzo del giro.
+    """
+    if composition is None:
+        return []
+    loads = loads or {}
+    results = list(loads.get("results") or [])
+    base = {"tools_chars": int(loads.get("tools_chars") or 0),
+            "tools_sent": int(loads.get("tools_sent") or 0),
+            "guide_chars": int(composition.get("guide_chars") or 0),
+            "core_chars": int(composition.get("core_chars") or 0),
+            "history_chars": int(composition.get("history_chars") or 0),
+            "prefix_hash": ""}
+    if not exchanges:
+        return [{**base, "iteration": 1, "results_chars": 0,
+                 "input_tokens": None, "output_tokens": None,
+                 "cache_read_tokens": None, "cache_write_tokens": None,
+                 "cache_ttl": None, "cost_usd": None}]
+    rows = []
+    calls_before = 0
+    for index, exchange in enumerate(exchanges, start=1):
+        rows.append({**base, "iteration": index,
+                     "results_chars": sum(results[:calls_before]),
+                     "input_tokens": exchange.get("input_tokens"),
+                     "output_tokens": None,
+                     "cache_read_tokens": exchange.get("cache_read_tokens"),
+                     "cache_write_tokens": exchange.get("cache_write_tokens"),
+                     "cache_ttl": exchange.get("cache_ttl"),
+                     "cost_usd": None})
+        calls_before += int(exchange.get("mcp_calls") or 0)
+    return rows
