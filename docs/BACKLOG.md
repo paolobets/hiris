@@ -635,6 +635,30 @@ va corretto, in un posto solo.
 
 ## In attesa
 
+### Sul ponte l'attuatore non ripara le ricette rotte — aperta il 28/09/2026
+
+`origine: fetta «l'attuatore sul ponte» (28/09/2026), decisione del coordinatore` · `hiris/app/server.py::actuator_round` · `hiris/app/server.py::_enqueue_actuator_turn` · `hiris/app/mind/actuator_turn.py::SYSTEM`
+
+Sulla catena il giro dell'attuatore **riscrive le ricette rotte prima di chiedere**
+(`_repair_recipes`, che chiama `recipe_turn.ask` col modello della catena) e aggiunge le
+riparazioni all'attuazione come fatti. Sul ponte no: `_enqueue_actuator_turn` compone la domanda
+con l'elenco delle riparazioni **vuoto**, e nessuna ricetta viene riscritta. Una ricetta rotta,
+sul ponte, arriva al modello come osservazione qualunque e resta rotta.
+
+C'e' anche una frase che sul ponte diventa falsa: il prompt di sistema (`actuator_turn.SYSTEM`)
+dice «Le ricette rotte le ho gia' riscritte io prima di chiamarti, e te lo dico nella domanda».
+Sul ponte non e' successo, e la domanda non lo dice perche' non c'e' niente da dire.
+
+**Perche' resta fuori**: la riparazione e' un turno di ricetta, e sul ponte un turno si accoda e
+si raccoglie minuti dopo; farla «prima della domanda» vorrebbe dire due turni in fila, con la
+domanda dell'attuatore che aspetta la raccolta delle ricette. La fetta non l'ha inventata.
+
+**Cosa la chiude**: sul ponte, una ricetta rotta si riscrive (accodando il turno di ricetta
+esistente, `kind="ricetta"`, e facendo partire la domanda dell'attuatore solo quando e' stato
+raccolto), e l'attuazione archiviata porta l'esito `riparazione` come sulla catena -- oppure il
+prompt smette di affermare la riparazione quando non e' avvenuta. Si verifica dal vivo: una
+ricetta rotta sulla casa vera, attuatore sul ponte, e la riga del sapere riscritta.
+
 ### Chi non amministra può sapere, chiedendo, cosa gli altri hanno detto a HIRIS — aperta il 27/09/2026
 
 `origine: rischio dichiarato dalla fetta «HIRIS per chi non amministra» (security-auditor, 27/09/2026), messo in coda dal proprietario` · `docs/design/2026-09-27-hiris-per-chi-non-amministra.md`
