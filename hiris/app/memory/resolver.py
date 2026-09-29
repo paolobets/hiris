@@ -144,6 +144,38 @@ def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", senza_accenti).strip()
 
 
+#: Sotto questa lunghezza una parola si confronta intera: togliere la vocale a
+#: «luce» troverebbe «luci», a «tv» niente di sensato.
+STEM_MIN_LENGTH = 5
+
+
+def _stem(word: str) -> str:
+    """La radice di una parola italiana, nel senso piu' povero e dichiarato:
+    la vocale finale tolta. Basta a far incontrare singolare e plurale
+    («rifiuto»/«rifiuti», «indifferenziato»/«indifferenziata»), ed e' tutto
+    cio' che la batteria del 29/09/2026 ha chiesto."""
+    if len(word) >= STEM_MIN_LENGTH and word[-1] in "aeiou":
+        return word[:-1]
+    return word
+
+
+def name_matches(query: str, name: str) -> bool:
+    """Vero se ogni parola significativa di `query` sta in `name`, intera o
+    (dalle cinque lettere in su) come radice a inizio di parola."""
+    words = [w for w in _normalize(query).split()
+             if w and w not in ITALIAN_FUNCTION_WORDS]
+    if not words:
+        return False
+    target = _normalize(name)
+    for word in words:
+        stem = _stem(word)
+        pattern = (rf"(?<!\w){re.escape(stem)}\w*" if stem != word
+                   else rf"(?<!\w){re.escape(word)}(?!\w)")
+        if not re.search(pattern, target):
+            return False
+    return True
+
+
 def _normalize_con_mappa(text: str) -> tuple[str, list[int]]:
     """Come `_normalizza`, ma restituisce anche la mappa posizione
     normalizzata -> posizione originale.
