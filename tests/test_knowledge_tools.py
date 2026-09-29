@@ -155,7 +155,10 @@ def test_il_catalogo_e_questo_e_le_due_strade_che_scrivono_su_home_assistant():
     non potrebbe mai tenere una promessa «avvisami la sera prima di un
     impegno»)."""
     nomi = {s["name"] for s in KNOWLEDGE_TOOLS}
-    assert nomi == {"search", "view", "related", "remember", "fetch", "execute",
+    # 29/09/2026 («una porta sola per la casa», spec §4): `view` esce, e il
+    # suo dettaglio e' la voce di `search` quando l'insieme ne ha una sola.
+    # Da sedici a quindici.
+    assert nomi == {"search", "related", "remember", "fetch", "execute",
                     "promise", "agenda", "cancel", "propose", "confirm",
                     "trend", "logbook", "system_log", "automation_trace",
                     "calendar"}
@@ -171,24 +174,30 @@ def test_ogni_definizione_ha_una_descrizione_utile():
 
 @pytest.mark.asyncio
 async def test_cerca_dichiara_l_ambiguita(dispatcher_ambiguo):
-    """Due «Bagno» su piani diversi: il contratto e' `candidati` sempre lista
-    piu' `ambiguo`, e appiattirlo qui rifarebbe un difetto gia' costato un fix."""
-    esito = await dispatcher_ambiguo.dispatch("search", {"testo": "il bagno"})
-    assert esito["trovati"][0]["ambiguo"] is True
-    assert len(esito["trovati"][0]["candidati"]) == 2
+    """Due «Bagno» su piani diversi: appiattirli in uno rifarebbe un difetto
+    gia' costato un fix. Dal 29/09/2026 l'ambiguita' e' un insieme di due voci
+    (spec §2): entrambe escono, con i loro id distinti -- non c'e' piu' una
+    chiave `ambiguo`, lo dice `trovate`."""
+    esito = await dispatcher_ambiguo.dispatch("search", {"nome": "il bagno"})
+    assert esito["trovate"] == 2
+    assert {v["nome"] for v in esito["voci"]} == {"Bagno"}
+    assert {v["id"] for v in esito["voci"]} == {"bagno_terra", "bagno_primo"}
 
 
 @pytest.mark.asyncio
 async def test_guarda_un_area_da_entita_stati_e_ricordi(dispatcher):
-    esito = await dispatcher.dispatch("view", {"tipo": "area", "riferimento": "cucina"})
-    assert esito["esiste"] is True
-    assert esito["entita"]
+    esito = await dispatcher.dispatch("search", {"genere": "area", "riferimento": "cucina"})
+    assert esito["voci"][0]["esiste"] is True
+    assert esito["voci"][0]["entita"]
 
 
 @pytest.mark.asyncio
 async def test_guarda_qualcosa_che_non_esiste_lo_dice(dispatcher):
-    esito = await dispatcher.dispatch("view", {"tipo": "area", "riferimento": "taverna"})
-    assert esito["esiste"] is False
+    """Un'area che non c'e' e' un insieme vuoto: `trovate: 0`, nessuna voce
+    inventata (prima: il dettaglio con `esiste: False`)."""
+    esito = await dispatcher.dispatch("search", {"genere": "area", "riferimento": "taverna"})
+    assert esito["trovate"] == 0
+    assert esito["voci"] == []
 
 
 @pytest.mark.asyncio
@@ -327,7 +336,7 @@ async def test_uno_strumento_che_non_esiste_lo_dice(dispatcher):
 
 @pytest.mark.asyncio
 async def test_argomenti_mancanti_non_esplodono(dispatcher):
-    esito = await dispatcher.dispatch("view", {})
+    esito = await dispatcher.dispatch("related", {})
     assert "errore" in esito
 
 
@@ -504,8 +513,9 @@ async def test_a_required_argument_present_but_null_is_missing_too(archivio_casa
     VIVE e non morte.
     """
     d = ToolDispatcher(archivio_casa, memoria, ha=object())
+    # Dal 29/09/2026 `view` non e' piu' uno strumento (il suo dettaglio e'
+    # una voce di `search`, che non ha obbligatori): restano gli altri due.
     for name, arguments in (
-        ("view", {"tipo": "area", "riferimento": None}),
         ("related", {"tipo": "area", "riferimento": None}),
         ("fetch", {"riferimento": None}),
     ):
@@ -542,29 +552,38 @@ async def test_richiama_senza_riferimento_non_esplode(dispatcher):
 @pytest.mark.asyncio
 async def test_guarda_un_automazione_porta_il_corpo(dispatcher):
     esito = await dispatcher.dispatch(
-        "view", {"tipo": "automazione", "riferimento": "automation.sveglia"})
-    assert esito["esiste"] is True
-    assert esito["corpo"] == {"trigger": []}
+        "search", {"genere": "automazione", "riferimento": "automation.sveglia"})
+    assert esito["voci"][0]["esiste"] is True
+    assert esito["voci"][0]["corpo"] == {"trigger": []}
 
 
 @pytest.mark.asyncio
 async def test_guarda_un_ricordo_per_id(dispatcher, memoria):
     ident = memoria.remember("mi piace il caffe' la mattina", detto_da="paolo", modality="fatto")
-    esito = await dispatcher.dispatch("view", {"tipo": "ricordo", "riferimento": ident})
-    assert esito["esiste"] is True
-    assert esito["testo"] == "mi piace il caffe' la mattina"
+    esito = await dispatcher.dispatch("search", {"genere": "ricordo", "riferimento": ident})
+    assert esito["voci"][0]["esiste"] is True
+    assert esito["voci"][0]["testo"] == "mi piace il caffe' la mattina"
 
 
 @pytest.mark.asyncio
-async def test_cerca_senza_testo_non_esplode(dispatcher):
-    esito = await dispatcher.dispatch("search", {})
-    assert "errore" in esito
+async def test_cerca_col_vecchio_testo_dice_quali_argomenti_valgono(dispatcher):
+    """Dal 29/09/2026 `search` non ha obbligatori (senza filtri elenca le
+    entita'), e `testo` e' diventato `nome`. Un modello che manda ancora
+    `testo` -- l'ha visto in un turno vecchio -- non riceve un silenzio: il
+    rifiuto nomina gli argomenti validi, `nome` compreso.
+
+    Mutazione ESEGUITA: `testo` di nuovo fra le proprieta' dello schema --
+    rossa."""
+    esito = await dispatcher.dispatch("search", {"testo": "cucina"})
+    assert "testo" in esito["errore"]
+    assert "«nome»" in esito["errore"]
 
 
 @pytest.mark.asyncio
 async def test_cerca_niente_di_riconoscibile_non_e_un_errore(dispatcher):
-    esito = await dispatcher.dispatch("search", {"testo": "xyzzy qwerty"})
-    assert esito["trovati"] == []
+    esito = await dispatcher.dispatch("search", {"nome": "xyzzy qwerty"})
+    assert "errore" not in esito
+    assert esito["trovate"] == 0
 
 
 # --- Correzione del 06/09 al §6a: i due bordi veri (T2) ---------------------
@@ -583,32 +602,34 @@ async def test_nothing_recognised_is_not_the_same_as_nothing_exists(dispatcher):
     vuoto (rimuovere il ramo `if not found` in `ToolDispatcher._search`) --
     il test torna rosso su `assert result["nulla_riconosciuto"] is True`
     (`KeyError: 'nulla_riconosciuto'`)."""
-    result = await dispatcher.dispatch("search", {"testo": "xyzzy qwerty"})
-    assert result["trovati"] == []
+    result = await dispatcher.dispatch("search", {"nome": "xyzzy qwerty"})
+    assert result["trovate"] == 0
     assert result["nulla_riconosciuto"] is True
     assert result.get("suggerimento")
 
 
 @pytest.mark.asyncio
-async def test_a_platform_recognised_alone_is_not_nothing_recognised(archivio_casa, memoria):
-    """L'Attenzione del brief del Task 2: `search()` aggiunge gia' una voce
-    SENZA candidati quando il testo E' il dominio di una piattaforma
-    (`queries.search`, il ramo «piattaforma» -- vedi `test_queries.py`).
-    Quella voce non e' «niente riconosciuto»: e' un nome (di tipo diverso da
-    un candidato) che la casa riconosce comunque. Guardare "candidati non
-    vuoti" invece di "lista non vuota" avrebbe dichiarato `nulla_riconosciuto`
-    proprio in questo caso -- l'errore che l'Attenzione avverte di non fare.
+async def test_le_cose_di_un_integrazione_si_chiedono_col_filtro(archivio_casa, memoria):
+    """Fino al 29/09/2026 `search` riconosceva il dominio di una piattaforma
+    DENTRO il testo e ne dava una voce a parte (`piattaforma`). La porta
+    nuova lo chiede come filtro, `integrazione`: si prova che il filtro
+    arriva davvero dal dispatcher alla porta. Il dettaglio dell'integrazione
+    resta `genere: integrazione` con `riferimento`.
 
-    Mutazione che uccide: calcolare `nulla_riconosciuto` da "nessun candidato
-    in nessuna voce" invece che da "`trovati` vuoto" -- il test torna rosso
-    su `assert "nulla_riconosciuto" not in result` (diventerebbe presente)."""
+    La seconda entita', di un'altra piattaforma, e' cio' che la fa fallire:
+    con una sola, un dispatcher che perdesse il filtro darebbe la stessa
+    risposta. Mutazione ESEGUITA: `_search` azzera `platform` prima di
+    `query_house` -- rossa (2 invece di 1)."""
     archivio_casa.hold_registries({"entita": [
-        {"entity_id": "sensor.giardino_minuti", "name": "Minuti", "platform": "hydrawise"}]}, [])
+        {"entity_id": "sensor.giardino_minuti", "name": "Minuti", "platform": "hydrawise"},
+        {"entity_id": "light.giardino", "name": "Faro", "platform": "hue"}]}, [])
     d = ToolDispatcher(archivio_casa, memoria)
-    result = await d.dispatch("search", {"testo": "hydrawise"})
-    assert result["trovati"][0]["candidati"] == []
-    assert result["trovati"][0]["piattaforma"]["dominio"] == "hydrawise"
-    assert "nulla_riconosciuto" not in result
+    result = await d.dispatch("search", {"integrazione": "hydrawise"})
+    assert result["trovate"] == 1
+    assert result["voci"][0]["id"] == "sensor.giardino_minuti"
+    dettaglio = await d.dispatch("search", {"genere": "integrazione",
+                                            "riferimento": "hydrawise"})
+    assert dettaglio["voci"][0]["esiste"] is True
 
 
 @pytest.mark.asyncio
@@ -633,8 +654,8 @@ async def test_a_fallen_registry_is_not_the_same_as_nothing_recognised(archivio_
     il test torna rosso su `assert "nulla_riconosciuto" not in result`."""
     archivio_casa.hold_registries({"aree": [], "entita": []}, ["entita"])
     result = await ToolDispatcher(archivio_casa, memoria).dispatch(
-        "search", {"testo": "il bagno"})
-    assert result["trovati"] == []
+        "search", {"nome": "il bagno"})
+    assert result["trovate"] == 0
     assert any("entita" in m for m in result["non_ho_potuto_guardare"])
     assert "nulla_riconosciuto" not in result
     assert "suggerimento" not in result
@@ -670,84 +691,57 @@ async def test_a_stable_naming_gap_does_not_silence_nulla_riconosciuto(archivio_
 
     result = await ToolDispatcher(archivio_casa, memoria,
                                    cache=_MirrorWithoutThisEntry()).dispatch(
-        "search", {"testo": "abat-jour"})
-    assert result["trovati"] == []
+        "search", {"nome": "abat-jour"})
+    assert result["trovate"] == 0
     assert result["nulla_riconosciuto"] is True
     assert result.get("suggerimento")
     assert any("limite stabile" in m for m in result["non_ho_potuto_guardare"])
 
 
-def test_search_description_names_the_nome_visto_comparison():
-    """Il secondo bordo della correzione del 06/09 al §6a non e' piu' una
-    chiave (`solo_una_parte` e' stata tolta -- misurato dal revisore: scattava
-    su 11 frasi su 13 sulla casa vera, rumore che si impara a saltare anche
-    il giorno in cui conta). Il fatto resta vero e gratis in `nome_visto`
-    (gia' il SOLO frammento riconosciuto): questo test assicura che la
-    sostituzione non sia una perdita silenziosa -- la description deve dire
-    al modello di confrontare `nome_visto` con cio' che ha cercato.
-
-    Onesta' sulla prova (ri-review): e' un filo d'inciampo sulla PRESENZA
-    della frase, non sul suo SIGNIFICATO -- ne' `assert "nome_visto" in
-    description` ne' `assert "Confrontalo..." in description` si accorgono
-    se quella frase dicesse l'opposto (es. «se e' piu' corto, vale comunque
-    per tutta la frase»): resterebbero verdi lo stesso. E' il massimo onesto
-    per della prosa: custodisce che la spiegazione ESISTA, non che sia
-    corretta.
-
-    Mutazione che uccide: togliere la frase che nomina il confronto
-    («Confrontalo con quello che hai chiesto...») dalla description di
-    `SEARCH_TOOL_DEF` -- il test torna rosso su `assert "Confrontalo con
-    quello che hai chiesto" in description` (il primo assert, su
-    `"nome_visto"`, resta verde: quella parola compare anche nella frase
-    precedente che introduce il campo; serve togliere l'INTERO paragrafo per
-    far cadere anche quello)."""
-    description = SEARCH_TOOL_DEF["description"]
-    assert "nome_visto" in description
-    assert "Confrontalo con quello che hai chiesto" in description
-
-
 # --- R2 (T7): `search` impara piani, automazioni e script -------------------
+#
+# Dal 29/09/2026 (spec §2) un piano non e' piu' un candidato da trovare per
+# nome: e' un FILTRO (`piano`), e le etichette non entrano affatto nella porta
+# (spec §2.2, «0 entita' le usano in questa casa»).
 
 
 @pytest.mark.asyncio
-async def test_cerca_trova_un_piano_per_nome(dispatcher):
-    """Requisito 1 del brief: i piani entrano nell'indice con la stessa
-    forma degli altri candidati (`_CASA` porta `{"id": "terra", "nome":
-    "Piano terra", ...}`, vedi tests/test_briefing.py)."""
-    esito = await dispatcher.dispatch("search", {"testo": "il piano terra"})
-    candidati = [c for t in esito["trovati"] for c in t["candidati"] if c["tipo"] == "piano"]
-    # `domande.search()` arricchisce ogni candidato col `nome` (non solo
-    # `Lookup.find()`, che ne resta scarico -- vedi test_memory_resolver.py).
-    assert candidati == [{"tipo": "piano", "riferimento": "terra", "nome": "Piano terra"}]
+async def test_il_piano_e_un_filtro_della_porta(dispatcher):
+    """`_CASA` porta un solo piano, «Piano terra», con cucina e sala: il
+    filtro deve arrivare dal dispatcher alla porta e trovarle tutte e quattro.
+
+    Il piano che non c'e' e' la meta' che fa fallire la prova: le quattro
+    sono TUTTE le entita' di `_CASA`, e un dispatcher che perdesse il filtro
+    le darebbe lo stesso. Mutazione ESEGUITA: `_search` azzera `floor` prima
+    di `query_house` -- rossa (sul piano che non c'e': 4 invece di 0)."""
+    esito = await dispatcher.dispatch("search", {"piano": "Piano terra"})
+    assert esito["trovate"] == 4
+    assert {v["area"] for v in esito["voci"]} == {"Cucina", "Sala"}
+    altrove = await dispatcher.dispatch("search", {"piano": "Mansarda"})
+    assert altrove["trovate"] == 0
 
 
 @pytest.mark.asyncio
 async def test_cerca_poi_guarda_un_automazione_end_to_end(dispatcher):
-    """Requisito 2 del brief, alla superficie del dispatcher: `view` deve
-    accettare DAVVERO cio' che `search` restituisce, non solo un id che il
-    modello sapeva gia'."""
-    trovato = await dispatcher.dispatch("search", {"testo": "sveglia"})
-    candidato = next(c for t in trovato["trovati"] for c in t["candidati"]
-                     if c["tipo"] == "automazione")
-    assert candidato["riferimento"] == "automation.sveglia"
-
-    esito = await dispatcher.dispatch(
-        "view", {"tipo": candidato["tipo"], "riferimento": candidato["riferimento"]})
-    assert esito["esiste"] is True
-    assert esito["corpo"] == {"trigger": []}
+    """Requisito 2 del brief, alla superficie del dispatcher: il NOME di
+    un'automazione porta al suo dettaglio. Dal 29/09/2026 e' una chiamata
+    sola: una voce trovata e' gia' il dettaglio completo, corpo compreso."""
+    trovato = await dispatcher.dispatch("search", {"nome": "sveglia"})
+    assert trovato["trovate"] == 1
+    assert trovato["profondita"] == "completa"
+    assert trovato["voci"][0]["esiste"] is True
+    assert trovato["voci"][0]["corpo"] == {"trigger": []}
 
 
 @pytest.mark.asyncio
-async def test_un_automazione_rinominata_invalida_la_cache_dell_indice(archivio_casa, memoria):
-    """Requisito 3 del brief: un'automazione rinominata deve invalidare
-    l'indice come fa un'area rinominata. La cache dell'indice si tiene
-    dietro `aggiornata_il()` (l'anagrafe) SOLO -- se non imparasse anche
-    `comportamento_letto_il()`, questo test servirebbe per sempre l'indice
-    di prima, con l'automazione ancora sotto il nome vecchio."""
+async def test_un_automazione_rinominata_si_trova_col_nome_nuovo(archivio_casa, memoria):
+    """Requisito 3 del brief: un'automazione rinominata si trova col nome
+    nuovo e non piu' col vecchio. Nato per la cache dell'indice (che doveva
+    imparare `comportamento_letto_il()`); dal 29/09/2026 `search` non usa
+    piu' l'indice, e la proprieta' resta da provare sulla porta nuova."""
     d = ToolDispatcher(archivio_casa, memoria, lookup_cache=LookupCache())
-    prima = await d.dispatch("search", {"testo": "sveglia"})
-    assert any(c["riferimento"] == "automation.sveglia"
-              for t in prima["trovati"] for c in t["candidati"])
+    prima = await d.dispatch("search", {"nome": "sveglia"})
+    assert [v.get("id") for v in prima["voci"]] == ["automation.sveglia"]
 
     archivio_casa.hold_behavior([
         {"id": "automation.sveglia", "tipo": "automazione", "nome": "Risveglio mattutino",
@@ -758,25 +752,34 @@ async def test_un_automazione_rinominata_invalida_la_cache_dell_indice(archivio_
     # forza, cosi' il test non dipende dalla velocita' della macchina.
     archivio_casa._behavior_loaded_at = "sentinella-2"
 
-    dopo = await d.dispatch("search", {"testo": "sveglia"})
-    assert dopo["trovati"] == [], "il nome vecchio non deve piu' risultare trovabile"
-    dopo_nuovo = await d.dispatch("search", {"testo": "risveglio mattutino"})
-    assert any(c["riferimento"] == "automation.sveglia"
-              for t in dopo_nuovo["trovati"] for c in t["candidati"])
+    # Il nome vecchio vive ancora nell'id (Home Assistant non lo cambia a una
+    # rinomina), e la porta confronta anche l'id di automazioni e script
+    # (decisione del Task 3, 29/09/2026): la voce si trova, ma porta il nome
+    # NUOVO -- nessun indice stantio che la chiami ancora «Sveglia».
+    dopo = await d.dispatch("search", {"nome": "sveglia"})
+    assert [v.get("nome") for v in dopo["voci"]] == ["Risveglio mattutino"]
+    dopo_nuovo = await d.dispatch("search", {"nome": "risveglio mattutino"})
+    assert [v.get("id") for v in dopo_nuovo["voci"]] == ["automation.sveglia"]
 
 
-def test_cerca_tool_def_dichiara_i_tipi_nuovi():
-    """Requisito 4 del brief T7 (esteso da T8): la descrizione di
-    `SEARCH_TOOL_DEF` deve dire cio' che lo strumento ora sa fare, non solo
-    cio' che sapeva prima. «etichetta» (T8, R2) e' il tipo piu' recente:
-    senza dichiararlo qui, un modello che leggesse solo le definizioni degli
-    strumenti non scoprirebbe mai che `search` risolve un'etichetta per nome
-    -- il requisito 2 del brief T8 lo pretende esplicitamente («un modello
-    che sa solo il NOME di un'etichetta deve poter arrivare al label_id con
-    UNA chiamata»)."""
-    for parola in ("piano", "automazione", "script", "etichetta"):
-        assert parola in SEARCH_TOOL_DEF["description"], \
-            f"CERCA_TOOL_DEF non dichiara «{parola}»"
+def test_cerca_tool_def_dichiara_i_generi():
+    """La descrizione di `SEARCH_TOOL_DEF` deve dire cio' che lo strumento sa
+    cercare: ogni genere della porta, derivato da `house_query.KINDS` invece
+    che ricopiato (un genere nuovo non dichiarato arrossisce qui). Fino al
+    29/09/2026 pretendeva anche «piano» ed «etichetta» come tipi di
+    candidato: il piano e' diventato un filtro, l'etichetta e' uscita.
+
+    La presenza di una parola nella prosa non basta («ricordo» compare anche
+    accanto a `riferimento`): lo schema deve ammettere ESATTAMENTE i generi
+    della porta. Mutazione ESEGUITA: l'`enum` di `genere` senza l'ultimo
+    genere -- rossa."""
+    from hiris.app.home_space.house_query import KINDS
+    genere = SEARCH_TOOL_DEF["input_schema"]["properties"]["genere"]
+    assert genere["enum"] == list(KINDS)
+    for parola in KINDS:
+        assert parola in SEARCH_TOOL_DEF["description"], (
+            f"SEARCH_TOOL_DEF non dichiara «{parola}»")
+    assert "piano" in SEARCH_TOOL_DEF["description"]
 
 
 def test_la_descrizione_del_bersaglio_etichette_dice_da_dove_si_prende_l_id():
@@ -810,8 +813,8 @@ async def test_guarda_mostra_lo_stato_vivo(archivio_casa, memoria):
     onesto ma inutile."""
     cache = _CacheFinta({"light.cucina_1": "on", "light.cucina_2": "off"})
     d = ToolDispatcher(archivio_casa, memoria, cache=cache)
-    esito = await d.dispatch("view", {"tipo": "area", "riferimento": "cucina"})
-    stati = {e["id"]: e["stato"] for e in esito["entita"]}
+    esito = await d.dispatch("search", {"genere": "area", "riferimento": "cucina"})
+    stati = {e["id"]: e["stato"] for e in esito["voci"][0]["entita"]}
     assert stati["light.cucina_1"] == "on"
     assert stati["light.cucina_2"] == "off"
     assert "stato_non_letto" not in esito
@@ -822,7 +825,7 @@ async def test_senza_inventario_leggibile_lo_stato_si_dichiara_non_letto(archivi
     """Ogni `stato: None` sarebbe altrimenti ambiguo fra «l'entita' non ha
     stato» e «non ho potuto guardare»."""
     d = ToolDispatcher(archivio_casa, memoria, cache=None)
-    esito = await d.dispatch("view", {"tipo": "area", "riferimento": "cucina"})
+    esito = await d.dispatch("search", {"genere": "area", "riferimento": "cucina"})
     assert esito["stato_non_letto"] is True
 
 
@@ -845,7 +848,7 @@ async def test_uno_stato_vivo_che_solleva_si_dichiara_non_letto(archivio_casa, m
     indistinguibile da "nessuna entita' ha stato" -- con la cache che si
     dichiara comunque caricata, `stato_non_letto` non scattava mai."""
     d = ToolDispatcher(archivio_casa, memoria, cache=_CacheGuastaMaDichiarataPronta())
-    esito = await d.dispatch("view", {"tipo": "area", "riferimento": "cucina"})
+    esito = await d.dispatch("search", {"genere": "area", "riferimento": "cucina"})
     assert esito["stato_non_letto"] is True
 
 
@@ -882,8 +885,8 @@ async def test_cerca_trova_un_entita_senza_nome_grazie_al_friendly_name(archivio
     archivio_casa.hold_registries({"entita": [
         {"entity_id": "light.abat_jour_1", "name": None, "original_name": None}]}, [])
     d = ToolDispatcher(archivio_casa, memoria, cache=_CacheConNomi())
-    esito = await d.dispatch("search", {"testo": "accendi l'abat-jour"})
-    riferimenti = [c["riferimento"] for v in esito["trovati"] for c in v["candidati"]]
+    esito = await d.dispatch("search", {"nome": "abat-jour"})
+    riferimenti = [v.get("id") for v in esito["voci"]]
     assert riferimenti == ["light.abat_jour_1"]
     assert "non_ho_potuto_guardare" not in esito
 
@@ -902,10 +905,10 @@ async def test_guarda_un_entita_senza_nome_dichiara_il_nome_dedotto_dal_dispatch
     archivio_casa.hold_registries({"entita": [
         {"entity_id": "light.abat_jour_1", "name": None, "original_name": None}]}, [])
     d = ToolDispatcher(archivio_casa, memoria, cache=_CacheConNomi())
-    esito = await d.dispatch("view", {"tipo": "entita", "riferimento": "light.abat_jour_1"})
-    assert esito["esiste"] is True
-    assert esito["nome"] is None
-    assert esito["nome_dedotto"] == "Abat-jour"
+    esito = await d.dispatch("search", {"genere": "entita", "riferimento": "light.abat_jour_1"})
+    assert esito["voci"][0]["esiste"] is True
+    assert esito["voci"][0]["nome"] is None
+    assert esito["voci"][0]["nome_dedotto"] == "Abat-jour"
 
 
 @pytest.mark.asyncio
@@ -925,9 +928,9 @@ async def test_guarda_un_area_dichiara_il_nome_dedotto_delle_sue_entita_dal_disp
                     "name": None, "original_name": None}],
     }, [])
     d = ToolDispatcher(archivio_casa, memoria, cache=_CacheConNomi())
-    esito = await d.dispatch("view", {"tipo": "area", "riferimento": "giardino"})
-    assert esito["esiste"] is True
-    entita = {e["id"]: e for e in esito["entita"]}
+    esito = await d.dispatch("search", {"genere": "area", "riferimento": "giardino"})
+    assert esito["voci"][0]["esiste"] is True
+    entita = {e["id"]: e for e in esito["voci"][0]["entita"]}
     assert entita["light.abat_jour_1"]["nome"] is None
     assert entita["light.abat_jour_1"]["nome_dedotto"] == "Abat-jour"
 
@@ -946,9 +949,9 @@ async def test_guarda_un_dispositivo_dichiara_il_nome_dedotto_delle_sue_entita_d
                     "name": None, "original_name": None}],
     }, [])
     d = ToolDispatcher(archivio_casa, memoria, cache=_CacheConNomi())
-    esito = await d.dispatch("view", {"tipo": "dispositivo", "riferimento": "dev_irr"})
-    assert esito["esiste"] is True
-    entita = {e["id"]: e for e in esito["entita"]}
+    esito = await d.dispatch("search", {"genere": "dispositivo", "riferimento": "dev_irr"})
+    assert esito["voci"][0]["esiste"] is True
+    entita = {e["id"]: e for e in esito["voci"][0]["entita"]}
     assert entita["light.abat_jour_1"]["nome"] is None
     assert entita["light.abat_jour_1"]["nome_dedotto"] == "Abat-jour"
 
@@ -959,11 +962,11 @@ def test_nome_dedotto_e_documentato_in_tutti_gli_strumenti_che_lo_restituiscono(
     affatto -- un modello che avesse imparato la forma da `search` avrebbe
     letto male il campo di `view` (`nome: null` + una chiave non
     descritta), concludendo «senza nome» mentre il nome c'era. Una forma
-    sola, dichiarata in entrambe le definizioni."""
-    from hiris.app.home_space.tools import SEARCH_TOOL_DEF, VIEW_TOOL_DEF
-    for tool_def in (SEARCH_TOOL_DEF, VIEW_TOOL_DEF):
-        assert "nome_dedotto" in tool_def["description"], (
-            f"«{tool_def['name']}» restituisce nome_dedotto ma non lo dichiara")
+    sola, dichiarata in entrambe le definizioni. Dal 29/09/2026 la
+    definizione e' una sola (`view` e' uscito, il suo dettaglio e' una voce
+    di `search`), e deve dichiararlo lei."""
+    assert "nome_dedotto" in SEARCH_TOOL_DEF["description"], (
+        "«search» restituisce nome_dedotto ma non lo dichiara")
 
 
 @pytest.mark.asyncio
@@ -971,8 +974,8 @@ async def test_cerca_dichiara_un_registro_caduto_invece_di_restituire_una_lista_
         archivio_casa, memoria):
     archivio_casa.hold_registries({"aree": [], "entita": []}, ["entita"])
     esito = await ToolDispatcher(archivio_casa, memoria).dispatch(
-        "search", {"testo": "il bagno"})
-    assert esito["trovati"] == []
+        "search", {"nome": "il bagno"})
+    assert esito["trovate"] == 0
     assert any("entita" in m for m in esito["non_ho_potuto_guardare"])
 
 
@@ -989,7 +992,7 @@ async def test_cerca_dichiara_lo_specchio_illeggibile_quando_ci_sono_entita_senz
         def all_states(self): return []
 
     esito = await ToolDispatcher(archivio_casa, memoria, cache=_NonPronta()).dispatch(
-        "search", {"testo": "abat-jour"})
+        "search", {"nome": "abat-jour"})
     assert any("specchio" in m for m in esito["non_ho_potuto_guardare"])
 
 
@@ -1003,7 +1006,7 @@ async def test_su_una_casa_intera_con_lo_specchio_giu_cerca_non_si_lamenta(archi
         def all_states(self): return []
 
     esito = await ToolDispatcher(archivio_casa, memoria, cache=_NonPronta()).dispatch(
-        "search", {"testo": "luce cucina"})
+        "search", {"nome": "luce cucina"})
     assert "non_ho_potuto_guardare" not in esito
 
 
@@ -1029,8 +1032,8 @@ async def test_cerca_dichiara_le_entita_senza_nome_anche_a_specchio_leggibile(
 
     esito = await ToolDispatcher(archivio_casa, memoria,
                                       cache=_SpecchioSenzaQuestaVoce()).dispatch(
-        "search", {"testo": "abat-jour"})
-    assert esito["trovati"] == []
+        "search", {"nome": "abat-jour"})
+    assert esito["trovate"] == 0
     assert "non_ho_potuto_guardare" in esito
     # m3 (ri-review): `"1" in m` passava anche con "10 entita'", "11", "312"
     # -- il conteggio, meta' di cio' che il motivo deve dire, non era
@@ -1075,8 +1078,8 @@ async def test_cerca_non_dichiara_cecita_permanente_su_una_ricerca_riuscita(arch
 
     esito = await ToolDispatcher(archivio_casa, memoria,
                                       cache=_SpecchioSenzaLaSecondaVoce()).dispatch(
-        "search", {"testo": "luce cucina"})
-    riferimenti = [c["riferimento"] for v in esito["trovati"] for c in v["candidati"]]
+        "search", {"nome": "luce cucina"})
+    riferimenti = [v.get("id") for v in esito["voci"]]
     assert riferimenti == ["light.c"]
     assert "non_ho_potuto_guardare" not in esito, (
         "la ricerca ha trovato cio' che cercava: non_ho_potuto_guardare non deve "
@@ -1110,9 +1113,9 @@ async def test_cerca_dichiara_caduti_e_specchio_ma_non_il_ramo_strutturale_su_ri
         def all_states(self): return []
 
     esito = await ToolDispatcher(archivio_casa, memoria, cache=_NonPronta()).dispatch(
-        "search", {"testo": "luce cucina"})
+        "search", {"nome": "luce cucina"})
 
-    riferimenti = [c["riferimento"] for v in esito["trovati"] for c in v["candidati"]]
+    riferimenti = [v.get("id") for v in esito["voci"]]
     assert riferimenti == ["light.c"], "premessa del test: la ricerca deve riuscire"
 
     motivi = esito["non_ho_potuto_guardare"]
@@ -1137,7 +1140,7 @@ async def test_cerca_non_conta_un_entita_disabilitata_senza_nome_come_cecita(
         {"entity_id": "light.disabilitata", "name": None, "original_name": None,
          "disabled_by": "user"}]}, [])
     esito = await ToolDispatcher(archivio_casa, memoria).dispatch(
-        "search", {"testo": "luce cucina"})
+        "search", {"nome": "luce cucina"})
     assert "non_ho_potuto_guardare" not in esito
 
 
@@ -1152,8 +1155,8 @@ async def test_cerca_dichiara_il_registro_etichette_caduto(archivio_casa, memori
     nudo -- indistinguibile da 'nessuna etichetta con quel nome'."""
     archivio_casa.hold_registries({"aree": [], "entita": []}, ["etichette"])
     esito = await ToolDispatcher(archivio_casa, memoria).dispatch(
-        "search", {"testo": "da controllare"})
-    assert esito["trovati"] == []
+        "search", {"nome": "da controllare"})
+    assert esito["trovate"] == 0
     assert "non_ho_potuto_guardare" in esito
     assert any("etichette" in m for m in esito["non_ho_potuto_guardare"])
 
@@ -1173,8 +1176,8 @@ async def test_cerca_dichiara_i_corpi_non_letti(archivio_casa, memoria):
         [{"id": "automation.muta", "tipo": "automazione", "nome": "Muta", "corpo": None}],
         unread_bodies={"automation.muta": "configurazione non letta da Home Assistant"})
     esito = await ToolDispatcher(archivio_casa, memoria).dispatch(
-        "search", {"testo": "una automazione che non esiste per niente"})
-    assert esito["trovati"] == []
+        "search", {"nome": "una automazione che non esiste per niente"})
+    assert esito["trovate"] == 0
     assert "non_ho_potuto_guardare" in esito
     assert any("non si conosce il corpo" in m for m in esito["non_ho_potuto_guardare"])
     # E «nulla_riconosciuto» TACE: la casa non e' stata guardata per intero,
@@ -1229,8 +1232,8 @@ async def test_senza_archivi_dice_cosa_manca_non_un_errore_python():
     ne' di spiegarlo all'utente -- solo di riprovare all'infinito."""
     d = ToolDispatcher(None, None, cache=None)
     for nome, argomenti in [
-        ("search", {"testo": "cucina"}),
-        ("view", {"tipo": "area", "riferimento": "cucina"}),
+        ("search", {"nome": "cucina"}),
+        ("search", {"genere": "area", "riferimento": "cucina"}),
         ("remember", {"testo": "una frase"}),
         ("fetch", {"riferimento": "cucina"}),
     ]:
@@ -1273,26 +1276,21 @@ def _conta_costruzioni(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_due_cerca_di_fila_a_stato_invariato_costruiscono_un_solo_indice(
+async def test_search_non_costruisce_piu_l_indice_dei_nomi(
         archivio_casa, memoria, monkeypatch):
-    chiamate = _conta_costruzioni(monkeypatch)
-    d = ToolDispatcher(archivio_casa, memoria, lookup_cache=LookupCache())
-    await d.dispatch("search", {"testo": "cucina"})
-    await d.dispatch("search", {"testo": "sala"})
-    assert len(chiamate) == 1
+    """Dal 29/09/2026 `search` confronta i nomi dentro la porta
+    (`house_query`, `name_matches`) e non costruisce piu' un `Lookup`: le due
+    prove che contavano le sue costruzioni (una con la cache, due senza) non
+    hanno piu' un soggetto. Resta da provare che non ne costruisca affatto --
+    un indice costruito e buttato a ogni ricerca sarebbe lavoro senza uso.
 
-
-@pytest.mark.asyncio
-async def test_senza_cache_indice_il_comportamento_resta_quello_di_oggi(
-        archivio_casa, memoria, monkeypatch):
-    """Default `None`: mutazione 'usare sempre la cache anche quando il
-    chiamante non la passa' rovinerebbe questo test -- due `search` devono
-    ricostruire due volte, come prima del Task B7."""
+    Mutazione ESEGUITA: una chiamata a `costruisci_indice` in `_search` --
+    rossa."""
     chiamate = _conta_costruzioni(monkeypatch)
-    d = ToolDispatcher(archivio_casa, memoria)  # cache_indice non passata
-    await d.dispatch("search", {"testo": "cucina"})
-    await d.dispatch("search", {"testo": "sala"})
-    assert len(chiamate) == 2
+    d = ToolDispatcher(archivio_casa, memoria)
+    await d.dispatch("search", {"nome": "cucina"})
+    await d.dispatch("search", {"nome": "sala"})
+    assert chiamate == []
 
 
 @pytest.mark.asyncio
@@ -1303,8 +1301,8 @@ async def test_cambia_l_anagrafe_e_cerca_vede_la_nuova_entita_anche_con_la_cache
     davvero. Qui la si aggiunge dopo la prima `search` e si pretende che la
     seconda la trovi."""
     d = ToolDispatcher(archivio_casa, memoria, lookup_cache=LookupCache())
-    prima = await d.dispatch("search", {"testo": "frullatore"})
-    assert prima["trovati"] == []
+    prima = await d.dispatch("search", {"nome": "frullatore"})
+    assert prima["trovate"] == 0
 
     archivio_casa.hold_registries({"entita": [
         {"entity_id": "light.frullatore", "name": "Frullatore", "area_id": "cucina"}]}, [])
@@ -1313,8 +1311,8 @@ async def test_cambia_l_anagrafe_e_cerca_vede_la_nuova_entita_anche_con_la_cache
     # di due consegne nello stesso secondo di orologio.
     archivio_casa._updated_at = "sentinella-2"
 
-    dopo = await d.dispatch("search", {"testo": "frullatore"})
-    riferimenti = [c["riferimento"] for v in dopo["trovati"] for c in v["candidati"]]
+    dopo = await d.dispatch("search", {"nome": "frullatore"})
+    riferimenti = [v.get("id") for v in dopo["voci"]]
     assert riferimenti == ["light.frullatore"]
 
 
@@ -1337,29 +1335,30 @@ async def test_cambiano_i_nomi_vivi_e_cerca_vede_il_nuovo_ripiego_anche_con_la_c
     cache_stato = _CacheMutevole("")  # nessun nome ancora
     lookup_cache = LookupCache()
     d = ToolDispatcher(archivio_casa, memoria, cache=cache_stato, lookup_cache=lookup_cache)
-    prima = await d.dispatch("search", {"testo": "abat-jour"})
-    assert prima["trovati"] == []
+    prima = await d.dispatch("search", {"nome": "abat-jour"})
+    assert prima["trovate"] == 0
 
     cache_stato.nome = "Abat-jour"  # ora HA ha un nome vivo per l'entita'
-    dopo = await d.dispatch("search", {"testo": "abat-jour"})
-    riferimenti = [c["riferimento"] for v in dopo["trovati"] for c in v["candidati"]]
+    dopo = await d.dispatch("search", {"nome": "abat-jour"})
+    riferimenti = [v.get("id") for v in dopo["voci"]]
     assert riferimenti == ["light.abat_jour_1"]
 
 
 @pytest.mark.asyncio
 async def test_cerca_e_ricorda_non_condividono_indice_anche_con_la_cache(
         archivio_casa, memoria, monkeypatch):
-    """`_search` passa i nomi di ripiego, `_remember` no: alternarli a stato
-    invariato deve costruire ESATTAMENTE due indici (uno per spazio), mai
-    quattro (rimbalzo) e mai uno solo condiviso (servirebbe contenuti
-    sbagliati all'uno o all'altro)."""
+    """`_search` passava i nomi di ripiego, `_remember` no: alternarli a
+    stato invariato costruiva ESATTAMENTE due indici (uno per spazio). Dal
+    29/09/2026 `search` non costruisce piu' l'indice (vedi la prova sopra):
+    resta solo quello di `_remember`, costruito una volta e poi riusato --
+    una `search` in mezzo non deve invalidarlo."""
     chiamate = _conta_costruzioni(monkeypatch)
     d = ToolDispatcher(archivio_casa, memoria, lookup_cache=LookupCache())
-    await d.dispatch("search", {"testo": "cucina"})
+    await d.dispatch("search", {"nome": "cucina"})
     await d.dispatch("remember", {"testo": "una frase qualsiasi"})
-    await d.dispatch("search", {"testo": "sala"})
+    await d.dispatch("search", {"nome": "sala"})
     await d.dispatch("remember", {"testo": "un'altra frase"})
-    assert len(chiamate) == 2
+    assert len(chiamate) == 1
 
 
 @pytest.mark.asyncio
@@ -1449,8 +1448,8 @@ async def test_l_unita_ARRIVA_dalla_cache_fino_a_guarda(archivio_casa, memoria):
         {"id": "light.cucina_1", "state": "on", "name": "Faretti"},
     ])
     d = ToolDispatcher(archivio_casa, memoria, cache=cache)
-    esito = await d.dispatch("view", {"tipo": "area", "riferimento": "cucina"})
-    per_id = {e["id"]: e for e in esito["entita"]}
+    esito = await d.dispatch("search", {"genere": "area", "riferimento": "cucina"})
+    per_id = {e["id"]: e for e in esito["voci"][0]["entita"]}
     assert per_id["sensor.cucina_t"]["stato"] == "21.5"
     assert per_id["sensor.cucina_t"]["unita"] == "°C", (
         "l'unita' non arriva dalla cache: `_specchio()` non la estrae, oppure "

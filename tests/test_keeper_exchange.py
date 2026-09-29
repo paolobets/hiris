@@ -118,8 +118,8 @@ async def test_esegui_non_arriva_al_dispatcher_sottostante():
 async def test_un_lettore_passa_al_dispatcher_sottostante():
     sotto = DispatcherFinto()
     d = PromiseDispatcher(sotto)
-    assert await d.dispatch("view", {}) == {"ok": "view"}
-    assert sotto.chiamati == ["view"]
+    assert await d.dispatch("search", {}) == {"ok": "search"}
+    assert sotto.chiamati == ["search"]
 
 
 @pytest.mark.asyncio

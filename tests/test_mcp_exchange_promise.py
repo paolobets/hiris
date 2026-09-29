@@ -217,20 +217,21 @@ async def test_col_turno_di_promessa_esegui_viene_RIFIUTATO_e_la_casa_non_si_toc
 
 @pytest.mark.asyncio
 async def test_col_turno_di_promessa_guarda_funziona_ancora(rotta):
-    """L'elenco AMMETTE i nove lettori: chiuderli tutti renderebbe il turno
+    """L'elenco AMMETTE gli otto lettori: chiuderli tutti renderebbe il turno
     cieco invece che prudente."""
     client, promesse, _ = rotta
     ident = _crea_in_corso(promesse)
 
     risposta = await _jsonrpc(client, {
         "jsonrpc": "2.0", "id": 5, "method": "tools/call",
-        "params": {"name": "view",
-                   "arguments": {"tipo": "entita", "riferimento": "light.cucina_1"}},
+        "params": {"name": "search",
+                   "arguments": {"genere": "entita", "riferimento": "light.cucina_1"}},
     }, promessa=ident)
 
     corpo = await risposta.json()
     assert corpo["result"].get("isError") is not True
-    assert json.loads(corpo["result"]["content"][0]["text"])["esiste"] is True
+    esito = json.loads(corpo["result"]["content"][0]["text"])
+    assert esito["voci"][0]["esiste"] is True
 
 
 @pytest.mark.asyncio

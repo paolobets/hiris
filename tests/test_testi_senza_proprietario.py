@@ -40,7 +40,6 @@ _PROMPT_COSTANTI = {
 # soli primi livelli).
 _TOOL_DEFS = {
     "search": home_tools.SEARCH_TOOL_DEF,
-    "view": home_tools.VIEW_TOOL_DEF,
     "fetch": home_tools.FETCH_TOOL_DEF,
     "execute": home_tools.EXECUTE_TOOL_DEF,
     "propose": home_tools.PROPOSE_TOOL_DEF,
@@ -71,7 +70,7 @@ def test_i_nomi_degli_strumenti_non_sono_cambiati():
     """5.4: la riscrittura e' di testo, non di firma -- `promise_tools`
     deriva il catalogo per NOME, e un nome spostato lo romperebbe in
     silenzio."""
-    attesi = {"search": "search", "view": "view", "fetch": "fetch",
+    attesi = {"search": "search", "fetch": "fetch",
               "execute": "execute", "propose": "propose", "confirm": "confirm"}
     for chiave, atteso in attesi.items():
         assert _TOOL_DEFS[chiave]["name"] == atteso

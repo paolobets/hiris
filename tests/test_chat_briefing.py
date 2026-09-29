@@ -569,7 +569,7 @@ async def test_conversazione_2_cosa_fa_la_sveglia_chiama_guarda_e_riporta_il_cor
         giro["n"] += 1
         if giro["n"] == 1:
             return _falsa_risposta_tool_use(
-                "view", {"tipo": "automazione", "riferimento": "automation.sveglia"})
+                "search", {"genere": "automazione", "riferimento": "automation.sveglia"})
         return _falsa_risposta_testo(
             "La sveglia ha un trigger configurato, l'ho letto dal suo corpo vero.")
 
@@ -584,7 +584,7 @@ async def test_conversazione_2_cosa_fa_la_sveglia_chiama_guarda_e_riporta_il_cor
     # legge piu' dal payload -- i nomi degli strumenti non si scrivono in chat --
     # ma dal canale che li ha sostituiti: la riga di log a livello debug. Questa
     # asserzione e' quindi anche la prova che quel canale esiste davvero.
-    assert "view" in _strumenti_loggati(caplog)
+    assert "search" in _strumenti_loggati(caplog)
 
     # La prova vera: il SECONDO giro della stessa conversazione -- non
     # un'assunzione del test, la vera seconda chiamata a
@@ -596,7 +596,7 @@ async def test_conversazione_2_cosa_fa_la_sveglia_chiama_guarda_e_riporta_il_cor
     assert ultimo_messaggio["role"] == "user"
     blocco_risultato = ultimo_messaggio["content"][0]
     assert blocco_risultato["type"] == "tool_result"
-    corpo_ricevuto_dal_modello = json.loads(blocco_risultato["content"])
+    corpo_ricevuto_dal_modello = json.loads(blocco_risultato["content"])["voci"][0]
     assert corpo_ricevuto_dal_modello["esiste"] is True
     assert corpo_ricevuto_dal_modello["corpo"] == {"trigger": []}
 

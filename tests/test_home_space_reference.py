@@ -379,8 +379,8 @@ async def test_le_unita_della_casa_non_diventano_l_unita_di_un_entita(tmp_path):
             {"id": "sensor.termo", "state": "72", "unit": "F"},
         ])
         d = ToolDispatcher(archivio, memoria, cache=cache)
-        esito = await d.dispatch("view", {"tipo": "area", "riferimento": "cucina"})
-        per_id = {e["id"]: e for e in esito["entita"]}
+        esito = await d.dispatch("search", {"genere": "area", "riferimento": "cucina"})
+        per_id = {e["id"]: e for e in esito["voci"][0]["entita"]}
 
         assert "unita" not in per_id["sensor.indice"], (
             "l'unita' della casa e' finita su un'entita' che non ne ha una")

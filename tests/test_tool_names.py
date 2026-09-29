@@ -176,18 +176,19 @@ def test_ogni_nome_del_catalogo_e_nell_elenco_storico():
         "riconoscera' piu' la citazione del loro nome precedente")
 
 
-def test_the_catalog_has_seventeen_distinct_names():
-    """Sedici e' il numero del perimetro della CHAT (13 -> 15 con la fetta
+def test_the_catalog_has_sixteen_distinct_names():
+    """Quindici e' il numero del perimetro della CHAT (13 -> 15 con la fetta
     «le tracce e il log», Task 5: `system_log`, `automation_trace`; 15 -> 16
-    con la fetta «i calendari», Task 3: `calendar`), diciassette quello
-    delle definizioni: e' la sesta volta, in questa fetta, che un
+    con la fetta «i calendari», Task 3: `calendar`; 16 -> 15 con «una porta
+    sola per la casa», 29/09/2026: esce `view`), sedici quello delle
+    definizioni: e' la sesta volta, in questa fetta, che un
     numero giusto su un perimetro sembra sbagliato su un altro (vedi la nota
     in cima a "I nomi degli strumenti" nel glossario). Pinnato qui perche'
     un doppione fra i due cataloghi -- `concludi` che finisse anche nella
     chat -- non lo vedrebbe nessun altro test."""
     nomi = [d["name"] for d in _DEFINIZIONI]
-    assert len(nomi) == 17, nomi
-    assert len(set(nomi)) == 17, "due definizioni portano lo stesso nome"
+    assert len(nomi) == 16, nomi
+    assert len(set(nomi)) == 16, "due definizioni portano lo stesso nome"
 
 
 def _prose_runtime():
