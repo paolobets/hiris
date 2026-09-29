@@ -2,6 +2,14 @@
 
 ## [3.70.0] — Il ponte si pesa (2026-09-28)
 
+### La CLI del ponte sale alla 2.1.284
+
+`@anthropic-ai/claude-code` passa da 2.1.283 a **2.1.284**, su decisione del proprietario: il
+cancello pre-push l'ha segnalata a rilascio gia' in corso, e invece di rimandarla col
+`HIRIS_COMPONENTI_OK=1` si e' scelto di salire qui, con la suite intera rigirata dopo il salto.
+Ripiego dichiarato nel `Dockerfile`: la 2.1.283, l'ultima letta davvero dentro il container. Si
+verifica dal vivo con `GET /api/health`, campo `ponte.cli`.
+
 Chiude la prima meta' del tema «Ottimizzazione: base dati, chiamate e consumo di token»
 (`docs/BACKLOG.md`): non ottimizza niente, **rende decidibili** le leve. Le misure del 24/09/2026
 si erano fermate su una premessa falsa; questa fetta la corregge e pesa il ponte per tutte e sei
