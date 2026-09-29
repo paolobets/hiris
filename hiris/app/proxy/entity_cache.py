@@ -247,6 +247,14 @@ _CREDENTIAL_ATTRIBUTES: dict[str, str] = {
     # salva gli argomenti di una chiamata (`usage/store.py::compact_tool_args`),
     # e la lista resta UNA, questa.
     "code": "un codice di allarme o di serratura",
+    # I campi veri di Home Assistant per i codici delle serrature e degli
+    # allarmi: `zha.set_lock_user_code` (`user_code`),
+    # `zwave_js.set_lock_usercode` (`usercode`), `alarm_code`, `lock_code`.
+    # Un PIN di 4-6 cifre non ha una forma che la regola sul valore prenda.
+    "user_code": "il codice di un utente di una serratura",
+    "usercode": "il codice di un utente di una serratura",
+    "alarm_code": "un codice di allarme",
+    "lock_code": "un codice di serratura",
     "pin": "un PIN",
     "password": "una password",
     "passcode": "un codice di accesso",
@@ -274,7 +282,7 @@ _HEXADECIMAL_SECRET = re.compile(r"(?<![0-9a-fA-F])[0-9a-fA-F]{32,}(?![0-9a-fA-F
 _MAC_ADDRESS = re.compile(r"^(?:[0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$")
 
 
-def _is_credential(name: str, value) -> bool:
+def is_credential(name: str, value) -> bool:
     """Se questo attributo va trattenuto dal testo che il modello riceve.
 
     Per NOME o per VALORE, e i due non sono la stessa difesa: il nome copre
@@ -397,7 +405,7 @@ def inherited_attributes(raw_attributes: dict, domain: str) -> dict[str, dict]:
             continue
         if _has_nothing_to_say(value):
             continue
-        if _is_credential(name, value):
+        if is_credential(name, value):
             basket = CREDENTIALS
         elif name in capability_names:
             basket = CAPABILITIES

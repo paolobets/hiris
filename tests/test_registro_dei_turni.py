@@ -167,6 +167,57 @@ def test_le_CREDENZIALI_negli_argomenti_non_si_salvano_mai(consumi):
     assert salvati[1]["password"] == "***"
 
 
+def test_i_campi_VERI_dei_codici_di_Home_Assistant_si_mascherano():
+    """Le forme vere dei servizi delle serrature e degli allarmi: un PIN di
+    4-6 cifre non ha una forma che la regola sul valore prenda, quindi conta
+    il NOME (`_CREDENTIAL_ATTRIBUTES`, lista unica).
+
+    Mutazione ESEGUITA: togliere `user_code` dalla lista -- rossa."""
+    from hiris.app.usage.store import compact_tool_args
+    fuori = compact_tool_args([
+        {"service": "zha.set_lock_user_code",
+         "data": {"entity_id": "lock.porta", "code_slot": 2,
+                  "user_code": "1234"}},
+        {"service": "zwave_js.set_lock_usercode",
+         "data": {"code_slot": 1, "usercode": "5678"}},
+        {"service": "alarm_control_panel.alarm_arm_away",
+         "data": {"alarm_code": 1234, "lock_code": "0000"}}])
+    grezzo = json.dumps(fuori)
+    for segreto in ("1234", "5678", "0000"):
+        assert segreto not in grezzo
+    assert fuori[0]["data"]["user_code"] == "***"
+    assert fuori[1]["data"]["usercode"] == "***"
+    assert fuori[2]["data"] == {"alarm_code": "***", "lock_code": "***"}
+    assert fuori[0]["data"]["code_slot"] == 2
+
+
+def test_il_testo_libero_NON_si_maschera_e_si_dichiara():
+    """Il limite noto: il mascheramento e' per nome e per forma, non per
+    contenuto. Se un giorno cambia, questa prova cambia con la docstring."""
+    from hiris.app.usage.store import compact_tool_args
+    assert compact_tool_args([{"message": "codice 4321"}]) == [
+        {"message": "codice 4321"}]
+
+
+def test_la_POSIZIONE_di_persone_e_dispositivi_non_si_salva():
+    """Spec §7: gli argomenti passano «dallo stesso filtro di §3». Un
+    `device_tracker.see` porta `gps` e `location_name`, come gli attributi
+    `latitude`/`longitude` che la porta toglie: stessa lista
+    (`privacy.POSITION_ATTRIBUTES`).
+
+    Mutazione ESEGUITA: non togliere le chiavi di posizione -- rossa."""
+    from hiris.app.usage.store import compact_tool_args
+    fuori = compact_tool_args([{
+        "service": "device_tracker.see",
+        "data": {"dev_id": "telefono_paolo", "gps": [45.46, 9.19],
+                 "gps_accuracy": 10, "location_name": "Lavoro",
+                 "battery": 80, "nested": {"latitude": 45.4, "longitude": 9.1,
+                                           "ok": 1}}}])
+    dati = fuori[0]["data"]
+    assert dati == {"dev_id": "telefono_paolo", "battery": 80,
+                    "nested": {"ok": 1}}
+
+
 def test_un_valore_che_e_un_segreto_si_maschera_anche_con_un_nome_innocuo():
     """La regola sul VALORE di `entity_cache` (indirizzo con `token=`, chiave
     esadecimale) vale anche qui: e' la stessa funzione, non una copia.

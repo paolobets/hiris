@@ -17,7 +17,8 @@ import logging
 import secrets
 import threading
 
-from ..proxy.entity_cache import _is_credential
+from ..home_space.privacy import POSITION_ATTRIBUTES
+from ..proxy.entity_cache import is_credential
 from ..storage import connect, init_schema
 from .vocabulary import local_day, piu_debole
 
@@ -247,7 +248,7 @@ _ARG_TRUNCATED = "..."
 def _compact_value(value, depth: int):
     """Un valore ridotto: credenziali mascherate, testi e contenitori tagliati.
 
-    Le chiavi credenziali le decide `entity_cache._is_credential` -- per NOME
+    Le chiavi credenziali le decide `entity_cache.is_credential` -- per NOME
     (`code`, `pin`, `password`, `token`... e quelle di Home Assistant) e per
     VALORE (un indirizzo con `token=`, una chiave esadecimale, un MAC): e'
     l'UNICA lista del prodotto, e non ce n'e' una seconda qui.
@@ -264,7 +265,7 @@ def _compact_value(value, depth: int):
             return _compact_mapping(value, depth + 1)
         out = []
         for item in list(value)[:_ARG_KEYS_MAX]:
-            if isinstance(item, str) and _is_credential("", item):
+            if isinstance(item, str) and is_credential("", item):
                 out.append(_ARG_MASK)
             else:
                 out.append(_compact_value(item, depth + 1))
@@ -278,7 +279,11 @@ def _compact_mapping(item: dict, depth: int) -> dict:
     kept = {}
     for key in list(item)[:_ARG_KEYS_MAX]:
         value = item[key]
-        if _is_credential(str(key).lower(), value):
+        # La posizione di persone e dispositivi non si salva: stesso elenco
+        # del filtro della porta (`privacy.POSITION_ATTRIBUTES`, spec §3).
+        if str(key).lower() in POSITION_ATTRIBUTES:
+            continue
+        if is_credential(str(key).lower(), value):
             kept[str(key)] = _ARG_MASK
         else:
             kept[str(key)] = _compact_value(value, depth)
@@ -286,14 +291,21 @@ def _compact_mapping(item: dict, depth: int) -> dict:
 
 
 def compact_tool_args(inputs: list) -> list[dict]:
-    """Gli argomenti di ogni chiamata, ridotti e SENZA credenziali.
+    """Gli argomenti di ogni chiamata, ridotti, con le credenziali mascherate
+    e senza la posizione di persone e dispositivi.
 
     Sono filtri e nomi della casa, non contenuti -- ma un testo libero lungo
-    non deve gonfiare il registro (200 caratteri, 20 chiavi). E il valore di
-    una chiave credenziale (`code`, `pin`, `password`, `token`...) non entra
-    MAI: `execute` e `propose` portano i dati di un servizio, e quel servizio
-    puo' essere il disarmo di un allarme. Il valore diventa `***`, a qualunque
-    profondita'. Restano in casa, in `consumi.db`, con la sua retention."""
+    non deve gonfiare il registro (200 caratteri, 20 chiavi). `execute` e
+    `propose` portano i dati di un servizio, e quel servizio puo' essere il
+    disarmo di un allarme: il valore di una chiave credenziale (`code`,
+    `user_code`, `pin`, `password`, `token`...) diventa `***`, a qualunque
+    profondita'; le chiavi di posizione (`latitude`, `longitude`, `gps`...,
+    `privacy.POSITION_ATTRIBUTES`) si tolgono.
+
+    **Il limite, dichiarato**: il mascheramento va per NOME della chiave e per
+    FORMA del valore (un indirizzo con `token=`, una chiave esadecimale, un
+    MAC). Il TESTO LIBERO non si maschera: `{"message": "codice 4321"}` si
+    salva com'e'. Restano in casa, in `consumi.db`, con la sua retention."""
     out = []
     for item in inputs or []:
         out.append(_compact_mapping(item, 0) if isinstance(item, dict) else {})

@@ -22,8 +22,12 @@ from .type_vocabulary import domains_by_genre
 #: I due soli domini il cui genere e' "presenza", ricavati dalla dichiarazione
 #: nel vocabolario dei tipi.
 MOVING_DOMAINS = domains_by_genre("presenza")
+#: Le chiavi che dicono DOVE si trova una persona o un dispositivo. Le usano
+#: anche gli argomenti salvati nel registro dei turni (`usage/store.py`, spec
+#: §7: «dallo stesso filtro di §3»): `gps` e `location_name` sono i campi di
+#: `device_tracker.see`, e `location_name` porta il nome di una zona.
 POSITION_ATTRIBUTES = frozenset({"latitude", "longitude", "gps_accuracy",
-                                 "in_zones"})
+                                 "in_zones", "gps", "location_name"})
 HOME_ZONE = "zone.home"
 #: Gli stati che non dicono dove si trova qualcuno: restano come sono.
 _NEUTRAL_STATES = frozenset({"home", "not_home", "unavailable", "unknown"})
