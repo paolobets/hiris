@@ -613,7 +613,7 @@ def test_il_prompt_del_ponte_smentisce_gli_strumenti_nominati_dalla_persona():
     system, _user = prompts.build_chat_messages(DEFAULT_SYSTEM_PROMPT, [],
                                                 active_tools=False)
 
-    assert "search" in DEFAULT_SYSTEM_PROMPT and "view" in DEFAULT_SYSTEM_PROMPT
+    assert "search" in DEFAULT_SYSTEM_PROMPT and "view" not in DEFAULT_SYSTEM_PROMPT
     assert "quelle istruzioni non si applicano" in system
 
     # fetta E4, fix della review totale (m9): questi due assert erano su
@@ -631,7 +631,7 @@ def test_il_prompt_del_ponte_smentisce_gli_strumenti_nominati_dalla_persona():
     # si adegua invece di essere cancellato (verificato prima dell'adeguamento
     # che falliva con AttributeError, cioe' per costruzione).
     guida = prompts._GUIDE_WITHOUT_TOOLS
-    assert "`search`" in guida and "`view`" in guida
+    assert "`search`" in guida and "`view`" not in guida
     assert "`remember`" in guida and "`fetch`" in guida
     assert guida in system
 
@@ -662,11 +662,10 @@ def test_col_ramo_attivo_la_persona_non_viene_smentita_ma_ricollegata():
     # invece di lasciare questo test a sorvegliarne quattro su cinque.
     for voce in KNOWLEDGE_TOOLS:
         assert f"`{voce['name']}`" in guida
-    # ...e i due che la persona nomina davvero (impostazioni_chat.py ne scrive
-    # due soli, ed e' una decisione: vedi il commento sopra
-    # `DEFAULT_SYSTEM_PROMPT`) sono proprio quelli che la guida ricollega.
-    for nudo in ("`search`", "`view`"):
-        assert nudo in DEFAULT_SYSTEM_PROMPT
+    # ...e quello che la persona nomina davvero (chat_settings.py ne scrive
+    # uno solo dal 29/09/2026, «una porta sola per la casa»: vedi il commento
+    # sopra `DEFAULT_SYSTEM_PROMPT`) e' proprio quello che la guida ricollega.
+    assert "`search`" in DEFAULT_SYSTEM_PROMPT
 
 
 # ── LA LAPIDE DEL PIN, e perche' e' cambiato ─────────────────────────────

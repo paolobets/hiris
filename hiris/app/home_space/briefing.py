@@ -1198,7 +1198,7 @@ def _capability_lines(attributes: dict[str, dict] | None,
         # ENTRAMBI i casi, che il rinvio sopravviva o no.
         entity = _plural(left_out, "entita'", "entita'")
         lines.append(f"- (altre {left_out} {entity} con capacita' rare non elencate qui: "
-                     "chiedile con `view`.)")
+                     "chiedile con `search`.)")
         weights.append(left_out)
     return (lines, weights, True)
 
@@ -1974,8 +1974,8 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
         entry = _plural(n, "entita' nascosta", "entita' nascoste")
         notices.append(
             f"{n} {entry} in Home Assistant: non entrano in «Notevole adesso» "
-            "perche' la persona le ha nascoste, ma esistono e `view` le "
-            "riporta se gliele chiedi.")
+            "perche' la persona le ha nascoste, ma esistono e `search` le "
+            "riporta se gliele chiedi (`includi_nascoste`).")
 
     # `entity_category`: fuori dalle gestioni, dentro la conoscenza -- stessa
     # legge delle nascoste due righe sopra, per lo stesso dato che
@@ -2003,8 +2003,8 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
         notices.append(
             f"{n} entita' di servizio (config/diagnostic) in Home Assistant: "
             "non entrano in «Notevole adesso» "
-            "perche' l’integrazione le marca cosi', ma esistono e `view` le "
-            "riporta se gliele chiedi.")
+            "perche' l’integrazione le marca cosi', ma esistono e `search` le "
+            "riporta se gliele chiedi (`includi_servizio`).")
 
     # IMPORTANT ④: si CONTA, non si elenca -- la stessa regola che il
     # nucleo applica a trecento entita' (vedi il docstring del modulo),

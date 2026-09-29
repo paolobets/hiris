@@ -423,8 +423,8 @@ def _unmet_reason(key: str, reading: str, domain: str, detail,
         return (f"«{key}» di «{reading}» non si applica a {_who(entities)}: Home "
                 f"Assistant offre questo parametro solo alle entita' il cui "
                 f"«{name}» vale una fra {ammessi}, {_declares(name, pictures)}. "
-                f"Guarda l'entita' con «view»: sotto «comandi» c'e' cosa accetta "
-                f"davvero.")
+                f"Guarda l'entita' con «search» e il suo «riferimento»: sotto "
+                f"«comandi» c'e' cosa accetta davvero.")
     bits = [b for b in reading_filter.get("supported_features") or []
             if isinstance(b, int) and not isinstance(b, bool)]
     names = capability_names(domain) or {}
@@ -433,8 +433,8 @@ def _unmet_reason(key: str, reading: str, domain: str, detail,
     return (f"«{key}» di «{reading}» non si applica a {_who(entities)}: Home "
             f"Assistant offre questo parametro solo alle entita' che dichiarano "
             f"{serve}, e {'questa' if len(entities) == 1 else 'nessuna di loro'} "
-            f"non lo fa. Guarda l'entita' con «view»: sotto «comandi» c'e' cosa "
-            f"accetta davvero.")
+            f"non lo fa. Guarda l'entita' con «search» e il suo «riferimento»: "
+            f"sotto «comandi» c'e' cosa accetta davvero.")
 
 
 def _capability_refusal(reading: str, domain: str, definition: dict, data: dict,

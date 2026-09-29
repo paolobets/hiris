@@ -244,7 +244,8 @@ def test_nessun_prompt_a_runtime_nomina_uno_strumento_che_non_esiste():
 # Non e' un doppione dell'elenco storico sopra: quello dice CHE una parola e'
 # stata un nome di strumento, questo dice A QUALE nome corrisponde oggi.
 _NOMI_NUOVI = {
-    "cerca": "search", "guarda": "view", "legami": "related",
+    "cerca": "search", "guarda": "search", "view": "search",
+    "legami": "related",
     "ricorda": "remember", "richiama": "fetch", "esegui": "execute",
     "prometti": "promise", "promesse": "agenda", "disdici": "cancel",
     "costruisci": "propose", "conferma": "confirm", "andamento": "trend",
@@ -303,3 +304,44 @@ def test_l_avviso_e_l_unico_testo_che_puo_nominare_un_nome_vecchio():
     # refuso che nessun altro test vedrebbe.
     estranee = citati - _NOMI_MAI_STATI_STRUMENTO
     assert not estranee, f"l'avviso cita parole che non sono nomi di strumento: {sorted(estranee)}"
+
+
+def test_nessun_testo_che_il_modello_legge_nomina_view():
+    """Spec §4: view esce ovunque. I testi di risposta (suggerimenti, rifiuti
+    di execute, righe del nucleo) arrivano al modello come le guide, e il
+    cancello di sopra guarda solo definizioni e guide (rischio 4 della mappa).
+
+    Si guardano le STRINGHE del sorgente (letterali di codice), non i commenti
+    ne' i docstring: quelli sono prosa per chi legge il codice. L'unico testo
+    che puo' nominare `view` e' l'avviso dei vecchi nomi, che dice che e'
+    diventato `search`: lo si toglie dal sorgente per nome, non si allarga il
+    filtro.
+
+    Mutazione ESEGUITA: lasciare «view» in `_NOTHING_RECOGNIZED_SUGGESTION` -- rossa."""
+    import ast
+    import inspect
+
+    from hiris.app import chat_settings, claude_runner
+    from hiris.app.action import verification
+    from hiris.app.agent import prompts
+    from hiris.app.home_space import briefing, queries, tools, type_census
+
+    citazione = re.compile(r"[«`\"']view[»`\"']|\bview\(")
+    colpevoli = []
+    for modulo in (verification, prompts, briefing, queries, tools,
+                   type_census, claude_runner, chat_settings):
+        albero = ast.parse(inspect.getsource(modulo))
+        docstring = {id(n.body[0].value) for n in ast.walk(albero)
+                     if isinstance(n, (ast.Module, ast.FunctionDef,
+                                       ast.AsyncFunctionDef, ast.ClassDef))
+                     and n.body and isinstance(n.body[0], ast.Expr)
+                     and isinstance(n.body[0].value, ast.Constant)}
+        for nodo in ast.walk(albero):
+            if (isinstance(nodo, ast.Constant) and isinstance(nodo.value, str)
+                    and id(nodo) not in docstring):
+                testo = nodo.value
+                if modulo is prompts:
+                    testo = testo.replace(prompts._OLD_NAMES_NOTICE, "")
+                if citazione.search(testo):
+                    colpevoli.append((modulo.__name__, testo[:80]))
+    assert not colpevoli, colpevoli[:5]

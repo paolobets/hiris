@@ -392,7 +392,7 @@ def costruisci_indice(home_space: dict,
     trovata": e' INESISTENTE nello spazio in cui si cerca -- nessun nome,
     nessun termine, invisibile. E' lo stesso criterio del nucleo: il modello
     perde la possibilita' di sapere che quella cosa esiste, e sono i quattro
-    giri di `cerca` bruciati sulle abat-jour.
+    giri di `search` (allora `cerca`) bruciati sulle abat-jour.
 
     Il ripiego e' il `friendly_name`, non l'`entity_id`: e' cio' che Home
     Assistant mostra all'utente ed e' la parola che una persona userebbe
@@ -475,7 +475,7 @@ def costruisci_indice(home_space: dict,
             # sentinelle `None` degli alias), ma questo indice legge
             # l'ARCHIVIO -- che su un'installazione gia' avvelenata
             # contiene ancora `[null]` finche' l'anagrafe non si ricostruisce.
-            # Un rilevatore che muore sul dato vecchio lascia `cerca` e
+            # Un rilevatore che muore sul dato vecchio lascia `search` e
             # `remember` rotti fino al riavvio successivo. Vedi `_log`.
             for term_originale in [deduced or name, *(entry.get("alias") or []),
                                       *labels_with_name(entry, nomi_etichette),
@@ -491,10 +491,12 @@ def costruisci_indice(home_space: dict,
     # sequenza di chiamate produceva mai il suo `label_id`, che
     # `esegui(bersaglio.etichette=...)` pretende -- il vicolo cieco piu'
     # radicale della famiglia (R2). Qui il suo NOME diventa un termine che
-    # porta a SE STESSA -- tipo "etichetta", riferimento il suo `label_id`
-    # -- cosi' un modello che sa solo il nome arriva all'id con UNA sola
-    # chiamata a `cerca`, invece di doverne prima trovare una cosa che la
-    # porta (che potrebbe non esistere).
+    # porta a SE STESSA -- tipo "etichetta", riferimento il suo `label_id`.
+    # Era pensato perche' un modello che sa solo il nome arrivasse all'id con
+    # UNA sola chiamata di ricerca; dal 29/09/2026 («una porta sola per la
+    # casa», spec §2.2) `search` non risolve piu' un nome di etichetta nel
+    # suo id, e le etichette si danno a `execute` per id: questo indice le
+    # tiene, ma nessuna porta promette piu' quella strada.
     #
     # Fonte diversa da `_ARCHIVI` (vedi il commento su `_ARCHIVI` in cima
     # al modulo): la tabella

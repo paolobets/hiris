@@ -783,16 +783,20 @@ def test_cerca_tool_def_dichiara_i_generi():
     assert "piano" in SEARCH_TOOL_DEF["description"]
 
 
-def test_la_descrizione_del_bersaglio_etichette_dice_da_dove_si_prende_l_id():
-    """Requisito 3 del brief T8 (R2): fino a questa fetta il `label_id` non
-    usciva da NESSUNA porta, e la descrizione del bersaglio non diceva
-    nemmeno DOVE andarlo a cercare -- un modello che leggesse solo la
-    definizione dello strumento non aveva modo di scoprire che «search» e
-    «view» lo producono ora."""
+def test_la_descrizione_del_bersaglio_etichette_dice_che_si_danno_per_id():
+    """Una porta sola (29/09/2026, spec §2.2): nessuno strumento trasforma
+    piu' il NOME di un'etichetta nel suo `label_id` (e la casa ha 0
+    etichette). La descrizione non deve promettere quella strada, ne'
+    mandare a `view` che non e' piu' uno strumento: dice che le etichette
+    si danno per id.
+
+    Mutazione ESEGUITA: rimettere nella descrizione «Si prendono da
+    «search» sul NOME dell'etichetta» -- rossa."""
     descrizione = EXECUTE_TOOL_DEF["input_schema"]["properties"]["bersaglio"][
         "properties"]["etichette"]["description"].lower()
-    assert "search" in descrizione
-    assert "view" in descrizione
+    assert "view" not in descrizione
+    assert "si danno per id" in descrizione
+    assert "si prendono da" not in descrizione
 
 
 class _CacheFinta:
@@ -901,8 +905,9 @@ async def test_guarda_un_entita_senza_nome_dichiara_il_nome_dedotto_dal_dispatch
     di inoltrare i nomi vivi dell'archivio -- esattamente il difetto che
     questo task esiste per chiudere. Solo passando da `dispatch()` con una
     cache che porta un `friendly_name` si prova che il collegamento c'e'
-    davvero (mutazione che uccide: togliere `nomi_di_ripiego=nomi_vivi`
-    dalla chiamata a `_guarda_dettaglio` in `strumenti._view`)."""
+    davvero (mutazione che uccide: togliere `fallback_names=reported_names`
+    dalla chiamata a `_view_detail` in `_full_detail_sync`, il percorso di
+    `search` con `riferimento` in `tools.py`)."""
     archivio_casa.hold_registries({"entita": [
         {"entity_id": "light.abat_jour_1", "name": None, "original_name": None}]}, [])
     d = ToolDispatcher(archivio_casa, memoria, cache=_CacheConNomi())
@@ -918,11 +923,12 @@ async def test_guarda_un_area_dichiara_il_nome_dedotto_delle_sue_entita_dal_disp
     """I1 (review finale): il test che prova la FETTA per il ramo area, non
     solo la funzione pura -- stessa lezione di B5. I due test di
     `test_queries.py` chiamano `view()` direttamente e passano
-    `nomi_di_ripiego` a mano: restano verdi anche se `_view` smette di
-    inoltrarlo a `_guarda_dettaglio`, o se `view()` smette di inoltrarlo a
-    `_view_area`. Solo passando da `dispatch()` con una cache vera si prova
-    il collegamento (mutazione che uccide: togliere l'inoltro su QUESTO
-    ramo, lasciando intatto quello di `_view_entity`)."""
+    `nomi_di_ripiego` a mano: restano verdi anche se `_full_detail_sync`
+    (tools.py) smette di inoltrare `fallback_names` a `queries.view`, o se
+    `view()` smette di inoltrarlo a `_view_area`. Solo passando da
+    `dispatch()` con una cache vera si prova il collegamento (mutazione che
+    uccide: togliere `fallback_names` dalla chiamata a `_view_area` in
+    `queries.view`, lasciando intatto il ramo di `_view_entity`)."""
     archivio_casa.hold_registries({
         "aree": [{"area_id": "giardino", "name": "Giardino"}],
         "entita": [{"entity_id": "light.abat_jour_1", "area_id": "giardino",

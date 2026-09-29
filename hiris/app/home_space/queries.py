@@ -458,7 +458,7 @@ def _search_suggestion(reference) -> str:
     finche' il turno muore.
 
     Il pattern esiste gia' in `action/verification.py::_no` per il bersaglio
-    non risolto («Usa "cerca" per trovare il nome giusto e ripeti il
+    non risolto («Usa «search» per trovare il nome giusto e ripeti il
     comando») -- questa funzione lo estende a `guarda`, non lo reinventa:
     UNA sola sorgente per i tre rami (fondamenta 3, "stessa forma"), cosi'
     che togliere il richiamo da un ramo solo non lascia gli altri due
@@ -466,7 +466,7 @@ def _search_suggestion(reference) -> str:
     """
     return (f"«{reference}» non e' stato trovato. Se e' un NOME (non un "
             f"id), chiama «search» con questo testo per trovare l'id giusto, "
-            f"poi ripeti «view» con quello.")
+            f"poi ripeti «search» con quello come `riferimento`.")
 
 
 def _not_found_detail(kind: str, reference, unavailable: bool) -> dict:

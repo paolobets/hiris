@@ -732,7 +732,7 @@ OPEN_QUESTIONS: tuple[OpenQuestion, ...] = (
         "ha mai deciso: oggi non e' notevole ne' osservato, semplicemente "
         "perche' `update` non e' nell'elenco dei domini-evento. Si dichiara "
         "notevole il giorno in cui un aggiornamento diventa disponibile, o "
-        "resta un fatto che si va a chiedere con `view`? `update=off` (nessun "
+        "resta un fatto che si va a chiedere con `search`? `update=off` (nessun "
         "aggiornamento) resta aperto con lui: e' la stessa domanda vista al "
         "contrario, non una seconda domanda.",
         {state_key("update", None, "off")}),

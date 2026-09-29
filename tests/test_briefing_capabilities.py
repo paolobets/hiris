@@ -242,7 +242,7 @@ def test_la_sezione_ha_un_tetto_suo_e_dichiara_cio_che_ci_lascia_fuori():
 
     Mutazione ESEGUITA: alzare `_CAPABILITY_SECTION_BUDGET` a 100000 (togliere il tetto) -- la
     sezione elenca tutte e 300 le firme e la prova arrossisce sul rinvio a
-    `view`.
+    `search`.
     """
     tante = {f"light.luce{n}": {CAPABILITIES: {"effect_list": [f"effetto{n}"]}}
              for n in range(300)}
@@ -250,7 +250,7 @@ def test_la_sezione_ha_un_tetto_suo_e_dichiara_cio_che_ci_lascia_fuori():
     sezione = _sezione(testo, "## Cosa si puo' chiedere")
     assert len(sezione) <= briefing._CAPABILITY_SECTION_BUDGET + 200
     assert "non elencate qui" in sezione
-    assert "`view`" in sezione
+    assert "`search`" in sezione
 
 
 # ---------------------------------------------------------------------------
