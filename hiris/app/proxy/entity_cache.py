@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 
@@ -575,6 +576,14 @@ class EntityCache:
         # i casi ("la casa e' vuota"). Il controllo comune era
         # `ToolDispatcher._cache_non_leggibile`, uscito -- fetta E2 Task 7.
         self._loaded = False
+        # Tampone della rilettura (`reload`): None fuori dalla rilettura; durante
+        # l'await sulla fotografia raccoglie gli eventi che arrivano, per
+        # riapplicarli sopra di essa.
+        self._pending: list | None = None
+        # Due riconnessioni ravvicinate lanciano due `reload` che si
+        # sovrappongono: il secondo azzerava il tampone del primo e il primo,
+        # finendo, lo metteva a None -- il secondo poi iterava None.
+        self._reload_lock = asyncio.Lock()
 
     @property
     def loaded(self) -> bool:
@@ -600,6 +609,41 @@ class EntityCache:
         # la cache resta dichiaratamente non pronta.
         self._loaded = True
 
+    async def reload(self, ha_client) -> None:
+        """Rilegge lo specchio dopo una riconnessione (spec §6).
+
+        Gli eventi emessi mentre la connessione era giu' non tornano: fino
+        alla 3.70 lo specchio restava stantio fino al riavvio dell'add-on
+        (misurato il 29/09/2026: 15 entita' diverse da Home Assistant dopo
+        il riavvio delle 09:11). Qui si rilegge tutto, e gli eventi che
+        arrivano DURANTE la rilettura si tengono da parte e si riapplicano
+        sopra la fotografia: una fotografia presa prima di loro non puo'
+        cancellarli. `loaded` non cambia: chi legge nel frattempo vede lo
+        specchio di prima, che e' meglio di nessuno.
+
+        Le riletture si serializzano (`_reload_lock`): due riconnessioni di
+        fila non condividono il tampone.
+        """
+        async with self._reload_lock:
+            self._pending = []
+            try:
+                raw_states = await ha_client.get_states([])
+            except Exception as error:  # lo specchio resta com'era
+                logger.warning("specchio: rilettura dopo la riconnessione fallita "
+                               "(%s: %s)", type(error).__name__, error)
+                self._pending = None
+                return
+            fresh = {}
+            for raw in raw_states:
+                eid = raw.get("entity_id")
+                if eid:
+                    fresh[eid] = _to_minimal(raw)
+            pending, self._pending = self._pending, None
+            self._states = fresh
+            for event_data in pending:
+                self.on_state_changed(event_data)
+            self._loaded = True
+
     def on_state_changed(self, event_data: dict) -> None:
         """L'unico rubinetto che tiene vivo lo specchio: `state_changed`.
 
@@ -610,9 +654,8 @@ class EntityCache:
         `{"entity_id": ..., "old_state": <State>, "new_state": None}` -- e'
         l'UNICO segnale che Home Assistant manda quando un'entita' sparisce, e
         fino all'09/09/2026 HIRIS lo scartava con un `return` muto. Nessun
-        altro percorso toglieva una voce: `server.reload_entity_inventory`
-        rilegge solo se il caricamento iniziale era fallito, e la
-        riconnessione WS rifa' l'anagrafe e i servizi, non lo specchio.
+        altro percorso toglieva una voce (allora: la riconnessione WS non
+        rileggeva lo specchio, ora lo fa `reload`).
 
         Il danno non era solo un elenco piu' lungo del vero: `GET
         /api/entities` continuava a mostrare l'ultimo stato di un'entita'
@@ -623,12 +666,11 @@ class EntityCache:
         a ogni `entity_registry_updated`, lo specchio no -- due porte, due
         case.
 
-        **Il residuo dichiarato**: gli eventi emessi mentre la connessione WS
-        era giu' non tornano (`ha_client._ws_loop` ricostruisce anagrafe,
-        servizi e plance a ogni riconnessione, lo specchio no). Una rimozione
-        avvenuta in quella finestra resta invisibile fino al riavvio
-        dell'add-on, esattamente come vi resta un cambio di stato.
+        Gli eventi emessi mentre la connessione WS era giu' non tornano: a
+        ogni riconnessione `reload` rilegge lo specchio intero.
         """
+        if self._pending is not None:
+            self._pending.append(event_data)
         new_state = event_data.get("new_state")
         if not new_state:
             # `entity_id` sta nell'evento, non nello stato: e' la sola chiave

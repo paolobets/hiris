@@ -688,6 +688,7 @@ def test_la_riparazione_di_avvio_riceve_home_space_store_gia_costruito(tmp_path)
         "app": {}, "ha_client": cliente, "entity_cache": specchio,
         "rebuild": server.rebuild,
         "schedule_registry_rebuild": lambda *a, **k: (lambda *_: None),
+        "mirror_reload_listener": lambda *a, **k: (lambda *_: None),
         "reaggregate_last_two_days": _spia,
         "logger": logging.getLogger("test_riparazione_riceve_home_space_store"),
     }

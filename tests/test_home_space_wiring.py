@@ -7,7 +7,11 @@ import pytest
 from hiris.app.home_space.reader import HomeSpace
 from hiris.app.proxy.entity_cache import EntityCache
 from hiris.app.proxy.ha_client import HAClient
-from hiris.app.server import schedule_behavior_reread, schedule_registry_rebuild
+from hiris.app.server import (
+    mirror_reload_listener,
+    schedule_behavior_reread,
+    schedule_registry_rebuild,
+)
 
 # La config minima che Home Assistant restituisce a `get_config`: da questa
 # fetta la ricostruzione dell'anagrafe legge anche il sistema di riferimento
@@ -396,3 +400,81 @@ def test_l_avvio_CABLA_davvero_l_ascoltatore_dei_servizi():
         "non invalidano niente")
     assert ".invalidate()" in src, (
         "l'ascoltatore c'e' ma non invalida: il registro resta vecchio")
+
+
+class _FintoWSCheCade(_FintoWSEventi):
+    """La connessione si rompe subito dopo l'handshake: `_ws_loop` ne apre
+    un'altra (la riconnessione)."""
+
+    async def __anext__(self):
+        raise ConnectionError("giu'")
+
+
+class _FintaSessioneDueConnessioni:
+    def __init__(self, *connessioni):
+        self._connessioni = list(connessioni)
+
+    def ws_connect(self, url):
+        return self._connessioni.pop(0)
+
+
+@pytest.mark.asyncio
+async def test_alla_seconda_connessione_lo_specchio_si_rilegge(monkeypatch):
+    """Spec «una porta sola» §6. Ogni connessione emette «riconnessione», la
+    PRIMA compresa (all'avvio, dopo il `load`, segue quindi un `reload` in
+    piu', innocuo). Qui la prima connessione cade e ne segue una seconda:
+    `get_states` deve girare una volta PER CONNESSIONE, cioe' due -- la
+    seconda e' la rilettura dopo la riconnessione.
+
+    Mutazione ESEGUITA: non registrare `mirror_reload_listener` sul client --
+    rossa (nessuna chiamata a `get_states`). Che l'avvio lo registri davvero
+    lo prova la prova sul sorgente qui sotto."""
+    vero_sleep = asyncio.sleep
+
+    async def _backoff_istantaneo(_secondi):
+        await vero_sleep(0)   # il backoff di 10s fra due connessioni
+
+    monkeypatch.setattr("hiris.app.proxy.ha_client.asyncio.sleep", _backoff_istantaneo)
+
+    client = HAClient(base_url="http://ha.test", token="t")
+    client._session = _FintaSessioneDueConnessioni(
+        _FintoWSCheCade([]), _FintoWSEventi([]))
+    ha_letture = AsyncMock(return_value=[])
+    finto_ha = type("HA", (), {"get_states": ha_letture})()
+    cache = _specchio_caricato()
+    client.add_topology_listener(mirror_reload_listener(finto_ha, cache))
+
+    task = asyncio.create_task(client._ws_loop("ws://ha.test/api/websocket"))
+    await vero_sleep(0.2)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    # una per connessione: la prima all'avvio, la seconda alla riconnessione
+    assert ha_letture.await_count == 2
+
+
+def test_l_avvio_CABLA_davvero_l_ascoltatore_dello_specchio():
+    """Provare `mirror_reload_listener` non prova che qualcuno lo registri.
+    Mutazione ESEGUITA: togliere la riga in `_on_startup` -- rossa."""
+    import inspect
+
+    from hiris.app import server
+
+    src = inspect.getsource(server._on_startup)
+    assert "mirror_reload_listener(ha_client, entity_cache)" in src
+
+
+@pytest.mark.asyncio
+async def test_gli_altri_eventi_dell_anagrafe_non_rileggono_lo_specchio():
+    """Mutazione ESEGUITA: togliere il `if event_type == "riconnessione"` --
+    rossa (ogni evento di registro rilegge tutti gli stati)."""
+    letture = AsyncMock(return_value=[])
+    finto_ha = type("HA", (), {"get_states": letture})()
+    ascoltatore = mirror_reload_listener(finto_ha, _specchio_caricato())
+    ascoltatore("floor_registry_updated")
+    ascoltatore("entity_registry_updated")
+    await asyncio.sleep(0.05)
+    assert letture.await_count == 0

@@ -1790,6 +1790,20 @@ def schedule_registry_rebuild(client, store, entity_cache, delay: float = 3.0):
     return trigger
 
 
+def mirror_reload_listener(client, entity_cache):
+    """Restituisce l'ascoltatore di topologia che rilegge lo specchio.
+
+    Spec «una porta sola» §6: il quarto avvisato, dopo anagrafe, servizi e
+    plance. Gli altri eventi dell'anagrafe non lo toccano. `_ws_loop` emette
+    «riconnessione» a OGNI connessione riuscita, la prima compresa: all'avvio
+    segue al `load` una rilettura in piu', innocua.
+    """
+    def _mirror_on_reconnect(event_type: str) -> None:
+        if event_type == "riconnessione":
+            _spawn(entity_cache.reload(client), name="specchio-riconnessione")
+    return _mirror_on_reconnect
+
+
 def schedule_dashboards_reread(client, store, delay: float = 3.0):
     """Restituisce `trigger(event_data)`: rilegge le plance, una volta sola.
 
@@ -3849,6 +3863,7 @@ async def _on_startup(app: web.Application) -> None:
         logger.warning("costruzione iniziale dell'anagrafe fallita: %s", exc)
     ha_client.add_topology_listener(
         schedule_registry_rebuild(ha_client, home_space_store, entity_cache))
+    ha_client.add_topology_listener(mirror_reload_listener(ha_client, entity_cache))
 
     # La riparazione di avvio (task-5-fix-brief.md, punto 2b): riaggrega gli
     # ultimi due giorni pieni, COI comprimari (riparazione-impoverisce-brief.md)

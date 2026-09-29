@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -427,3 +428,140 @@ def test_automation_config_id_is_none_without_a_mirror_at_all():
     """
     assert automation_config_id(None, "automation.x") is None
     assert automation_config_id(object(), "automation.x") is None
+
+
+# --- la rilettura dopo la riconnessione (spec «una porta sola» §6) ---------
+
+def _stato(eid, s):
+    return {"entity_id": eid, "state": s, "attributes": {},
+            "last_changed": "2026-09-29T07:11:00+00:00"}
+
+
+class _FotografiaFissa:
+    def __init__(self, stati):
+        self.stati = stati
+
+    async def get_states(self, _):
+        return self.stati
+
+
+class _HALento:
+    """Un Home Assistant la cui fotografia arriva DOPO un evento."""
+    def __init__(self, cache, fotografia, evento):
+        self.cache, self.fotografia, self.evento = cache, fotografia, evento
+
+    async def get_states(self, _):
+        self.cache.on_state_changed(self.evento)   # arriva durante l'await
+        await asyncio.sleep(0)
+        return self.fotografia
+
+
+@pytest.mark.asyncio
+async def test_un_evento_arrivato_durante_la_rilettura_non_si_perde():
+    """Review Focus 4. Mutazione ESEGUITA: `reload` = `load` -- rossa
+    (la fotografia vecchia sovrascrive `on`)."""
+    cache = EntityCache()
+    await cache.load(_FotografiaFissa([_stato("light.a", "off")]))
+    ha = _HALento(cache, [_stato("light.a", "off")],
+                  {"entity_id": "light.a", "new_state": _stato("light.a", "on")})
+    await cache.reload(ha)
+    assert {s["id"]: s["state"] for s in cache.all_states()}["light.a"] == "on"
+
+
+@pytest.mark.asyncio
+async def test_una_rimozione_arrivata_durante_la_rilettura_non_si_perde():
+    """Mutazione ESEGUITA: `on_state_changed` non accoda al tampone -- rossa
+    (la fotografia, presa prima della rimozione, la resuscita)."""
+    cache = EntityCache()
+    await cache.load(_FotografiaFissa([_stato("light.a", "off")]))
+    ha = _HALento(cache, [_stato("light.a", "off")],
+                  {"entity_id": "light.a", "new_state": None})
+    await cache.reload(ha)
+    assert cache.all_states() == []
+
+
+@pytest.mark.asyncio
+async def test_la_rilettura_toglie_cio_che_home_assistant_non_ha_piu():
+    """Il caso del 29/09: dopo il riavvio lo specchio teneva entita' che
+    Home Assistant non aveva piu'. Mutazione ESEGUITA: `reload` non
+    sostituisce `_states` -- rossa."""
+    cache = EntityCache()
+    await cache.load(_FotografiaFissa([_stato("light.a", "on"), _stato("light.b", "on")]))
+    await cache.reload(_FotografiaFissa([_stato("light.a", "off")]))
+    assert {s["id"]: s["state"] for s in cache.all_states()} == {"light.a": "off"}
+
+
+@pytest.mark.asyncio
+async def test_durante_la_rilettura_lo_specchio_resta_pronto():
+    """Mutazione ESEGUITA: `reload` mette `_loaded = False` prima dell'await --
+    rossa."""
+    cache = EntityCache()
+    await cache.load(_FotografiaFissa([_stato("light.a", "off")]))
+    visti = []
+
+    class _Guarda:
+        async def get_states(self, _):
+            visti.append(cache.loaded)
+            return [_stato("light.a", "on")]
+
+    await cache.reload(_Guarda())
+    assert visti == [True] and cache.loaded
+
+
+@pytest.mark.asyncio
+async def test_se_home_assistant_non_risponde_lo_specchio_resta_com_era():
+    """Mutazione ESEGUITA: togliere il `try/except` di `reload` -- rossa
+    (l'errore risale al chiamante)."""
+    cache = EntityCache()
+    await cache.load(_FotografiaFissa([_stato("light.a", "off")]))
+
+    class _Rotto:
+        async def get_states(self, _):
+            raise ConnectionError("giu'")
+
+    await cache.reload(_Rotto())
+    assert cache.all_states()[0]["state"] == "off"
+
+
+@pytest.mark.asyncio
+async def test_dopo_una_rilettura_fallita_gli_eventi_non_si_accumulano():
+    """Il tampone si chiude anche sul ramo d'errore. Mutazione ESEGUITA:
+    togliere `self._pending = None` dal ramo d'errore -- rossa."""
+    cache = EntityCache()
+    await cache.load(_FotografiaFissa([]))
+
+    class _Rotto:
+        async def get_states(self, _):
+            raise ConnectionError("giu'")
+
+    await cache.reload(_Rotto())
+    assert cache._pending is None
+
+
+@pytest.mark.asyncio
+async def test_due_riletture_sovrapposte_non_si_rompono_e_non_perdono_eventi():
+    """Due riconnessioni ravvicinate lanciano due `reload` insieme. Senza
+    serializzarle il secondo azzerava il tampone del primo, il primo lo
+    metteva a None, e il secondo iterava None (TypeError). Mutazione
+    ESEGUITA: togliere `async with self._reload_lock` -- rossa."""
+    cache = EntityCache()
+    await cache.load(_FotografiaFissa([_stato("light.a", "off")]))
+
+    accesa = []   # l'evento e' avvenuto: ogni fotografia PRESA dopo lo vede
+
+    class _Lento:
+        async def get_states(self, _):
+            presa = "on" if accesa else "off"
+            await asyncio.sleep(0.02)
+            return [_stato("light.a", presa)]
+
+    primo = asyncio.create_task(cache.reload(_Lento()))
+    await asyncio.sleep(0.005)
+    secondo = asyncio.create_task(cache.reload(_Lento()))
+    await asyncio.sleep(0.005)
+    accesa.append(True)
+    cache.on_state_changed(
+        {"entity_id": "light.a", "new_state": _stato("light.a", "on")})
+    await asyncio.gather(primo, secondo)
+    assert {s["id"]: s["state"] for s in cache.all_states()}["light.a"] == "on"
+    assert cache._pending is None
