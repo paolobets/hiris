@@ -526,7 +526,7 @@ async def test_se_home_assistant_non_risponde_lo_specchio_resta_com_era():
 @pytest.mark.asyncio
 async def test_dopo_una_rilettura_fallita_gli_eventi_non_si_accumulano():
     """Il tampone si chiude anche sul ramo d'errore. Mutazione ESEGUITA:
-    togliere `self._pending = None` dal ramo d'errore -- rossa."""
+    togliere il `finally` che chiude il tampone -- rossa."""
     cache = EntityCache()
     await cache.load(_FotografiaFissa([]))
 
@@ -536,6 +536,35 @@ async def test_dopo_una_rilettura_fallita_gli_eventi_non_si_accumulano():
 
     await cache.reload(_Rotto())
     assert cache._pending is None
+
+
+@pytest.mark.asyncio
+async def test_una_rilettura_cancellata_non_lascia_il_tampone_aperto():
+    """Review finale, M2 (30/09/2026): `CancelledError` non e' un
+    `Exception`, e scavalcava il ramo d'errore -- il tampone restava aperto e
+    ogni evento successivo ci si accodava, per sempre.
+
+    Mutazione ESEGUITA: togliere il `finally` e rimettere `self._pending =
+    None` nel solo ramo d'errore -- rossa."""
+    cache = EntityCache()
+    await cache.load(_FotografiaFissa([_stato("light.a", "off")]))
+    mai = asyncio.Event()
+
+    class _Appeso:
+        async def get_states(self, _):
+            await mai.wait()
+            return []
+
+    rilettura = asyncio.create_task(cache.reload(_Appeso()))
+    await asyncio.sleep(0.01)
+    rilettura.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await rilettura
+    assert cache._pending is None
+    cache.on_state_changed(
+        {"entity_id": "light.a", "new_state": _stato("light.a", "on")})
+    assert cache._pending is None
+    assert cache.all_states()[0]["state"] == "on"
 
 
 @pytest.mark.asyncio

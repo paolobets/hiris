@@ -170,9 +170,10 @@ def test_le_CREDENZIALI_negli_argomenti_non_si_salvano_mai(consumi):
 def test_i_campi_VERI_dei_codici_di_Home_Assistant_si_mascherano():
     """Le forme vere dei servizi delle serrature e degli allarmi: un PIN di
     4-6 cifre non ha una forma che la regola sul valore prenda, quindi conta
-    il NOME (`_CREDENTIAL_ATTRIBUTES`, lista unica).
+    il NOME (`entity_cache.SERVICE_CALL_SECRETS`, l'insieme dei segreti di una
+    chiamata di servizio).
 
-    Mutazione ESEGUITA: togliere `user_code` dalla lista -- rossa."""
+    Mutazione ESEGUITA: togliere `user_code` dall'insieme -- rossa."""
     from hiris.app.usage.store import compact_tool_args
     fuori = compact_tool_args([
         {"service": "zha.set_lock_user_code",
@@ -533,3 +534,24 @@ def test_si_registra_quante_definizioni_sono_state_SPEDITE(consumi):
     assert carico["tools_sent"] == 16
     assert carico["tools_sent"] - usati == 15, (
         "quindici definizioni spedite e mai chiamate, in questo turno")
+
+
+def test_un_attributo_di_stato_che_si_chiama_code_resta_nello_specchio():
+    """Review finale, M1 (30/09/2026): i segreti di una CHIAMATA non sono gli
+    attributi di STATO che lo specchio trattiene. Un attributo che si chiama
+    davvero `code` -- un codice di punto dati Tuya, un codice d'errore -- non
+    e' una credenziale e deve arrivare al modello; negli argomenti salvati di
+    una chiamata, `code` resta mascherato.
+
+    Mutazione ESEGUITA: rimettere `"code"` in `_CREDENTIAL_ATTRIBUTES` --
+    rossa; `compact_tool_args` che chiama `is_credential` senza
+    `CALL_ARGUMENT_SECRETS` -- rossa sulla seconda meta'."""
+    from hiris.app.proxy import entity_cache
+    from hiris.app.usage.store import compact_tool_args
+    ceste = entity_cache.inherited_attributes(
+        {"code": "E21", "error_code": 4}, "sensor")
+    assert "code" not in ceste.get(entity_cache.CREDENTIALS, {})
+    visibili = {k for cesta, valori in ceste.items()
+                if cesta != entity_cache.CREDENTIALS for k in valori}
+    assert "code" in visibili
+    assert compact_tool_args([{"data": {"code": "1234"}}]) == [{"data": {"code": "***"}}]

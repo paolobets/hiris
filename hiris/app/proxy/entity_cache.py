@@ -240,28 +240,30 @@ _CREDENTIAL_ATTRIBUTES: dict[str, str] = {
     "last_scanned_by_device_id": "l’identificativo del dispositivo che ha letto il tag",
     "serial": "il numero di serie del dispositivo",
     "media_content_id": "l’indirizzo del contenuto, con la chiave della sessione dentro",
-    # Le chiavi con cui una CHIAMATA DI SERVIZIO porta un segreto (29/09/2026,
-    # registro dei turni: `execute` e `propose` mettono i dati del servizio
-    # negli argomenti, e `alarm_control_panel.alarm_disarm` vuole `code`).
-    # Nessuna e' un attributo di stato di Home Assistant: le aggiunge chi
-    # salva gli argomenti di una chiamata (`usage/store.py::compact_tool_args`),
-    # e la lista resta UNA, questa.
-    "code": "un codice di allarme o di serratura",
-    # I campi veri di Home Assistant per i codici delle serrature e degli
-    # allarmi: `zha.set_lock_user_code` (`user_code`),
-    # `zwave_js.set_lock_usercode` (`usercode`), `alarm_code`, `lock_code`.
-    # Un PIN di 4-6 cifre non ha una forma che la regola sul valore prenda.
-    "user_code": "il codice di un utente di una serratura",
-    "usercode": "il codice di un utente di una serratura",
-    "alarm_code": "un codice di allarme",
-    "lock_code": "un codice di serratura",
-    "pin": "un PIN",
-    "password": "una password",
-    "passcode": "un codice di accesso",
-    "token": "un token",
-    "secret": "un segreto",
-    "api_key": "una chiave di accesso a un servizio",
 }
+
+#: Le chiavi con cui una CHIAMATA DI SERVIZIO porta un segreto (29/09/2026,
+#: registro dei turni: `execute` e `propose` mettono i dati del servizio negli
+#: argomenti, e `alarm_control_panel.alarm_disarm` vuole `code`). I campi veri
+#: di Home Assistant per i codici di serrature e allarmi: `zha.set_lock_user_code`
+#: (`user_code`), `zwave_js.set_lock_usercode` (`usercode`), `alarm_code`,
+#: `lock_code` -- un PIN di 4-6 cifre non ha una forma che la regola sul valore
+#: prenda.
+#:
+#: **Un insieme suo, non dentro `_CREDENTIAL_ATTRIBUTES`** (review finale della
+#: fetta «una porta sola», 30/09/2026): quella tabella decide cosa lo SPECCHIO
+#: trattiene degli attributi di stato, e un attributo che si chiama davvero
+#: `code` -- i codici dei punti dati Tuya, i codici d'errore di un
+#: elettrodomestico -- non e' un segreto e non deve sparire dal testo che il
+#: modello riceve. La FUNZIONE resta una (`is_credential`), con due insiemi
+#: dichiarati; le regole sul valore valgono per tutti e due.
+SERVICE_CALL_SECRETS = frozenset({
+    "code", "user_code", "usercode", "alarm_code", "lock_code", "pin", "password",
+    "passcode", "token", "secret", "api_key"})
+#: Cio' che si maschera negli argomenti salvati di una chiamata: i segreti di
+#: un servizio e, per le stesse chiavi che il modello puo' ricopiare da
+#: un'entita', gli attributi di stato che lo specchio trattiene.
+CALL_ARGUMENT_SECRETS = SERVICE_CALL_SECRETS | frozenset(_CREDENTIAL_ATTRIBUTES)
 
 # La ragione con cui esce cio' che nessun nome della tabella prevedeva.
 _CREDENTIAL_BY_VALUE = (
@@ -282,7 +284,7 @@ _HEXADECIMAL_SECRET = re.compile(r"(?<![0-9a-fA-F])[0-9a-fA-F]{32,}(?![0-9a-fA-F
 _MAC_ADDRESS = re.compile(r"^(?:[0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}$")
 
 
-def is_credential(name: str, value) -> bool:
+def is_credential(name: str, value, secret_names=_CREDENTIAL_ATTRIBUTES) -> bool:
     """Se questo attributo va trattenuto dal testo che il modello riceve.
 
     Per NOME o per VALORE, e i due non sono la stessa difesa: il nome copre
@@ -291,8 +293,12 @@ def is_credential(name: str, value) -> bool:
     questa casa (sono icone `/api/brands/...`): la regola si scrive sulla
     chiave, perche' la STESSA chiave porta un token su `camera`, `image` e
     `media_player`. E' una perdita accettata, non un'assenza.
+
+    `secret_names` e' l'insieme dei NOMI: di norma gli attributi di stato
+    (`_CREDENTIAL_ATTRIBUTES`); gli argomenti salvati di una chiamata passano
+    `CALL_ARGUMENT_SECRETS`. Le regole sul valore sono le stesse.
     """
-    if name in _CREDENTIAL_ATTRIBUTES:
+    if name in secret_names:
         return True
     if not isinstance(value, str):
         return False
@@ -647,23 +653,31 @@ class EntityCache:
         """
         async with self._reload_lock:
             self._pending = []
+            # Il tampone si chiude su OGNI uscita, `finally`: anche quando la
+            # rilettura viene CANCELLATA durante l'await (l'ascoltatore che si
+            # chiude, una riconnessione abbandonata). `CancelledError` non e'
+            # un `Exception` e scavalcava il ramo d'errore: il tampone restava
+            # aperto e cresceva a ogni evento, per sempre (review finale, M2,
+            # 30/09/2026).
             try:
-                raw_states = await ha_client.get_states([])
-            except Exception as error:  # lo specchio resta com'era
-                logger.warning("specchio: rilettura dopo la riconnessione fallita "
-                               "(%s: %s)", type(error).__name__, error)
+                try:
+                    raw_states = await ha_client.get_states([])
+                except Exception as error:  # lo specchio resta com'era
+                    logger.warning("specchio: rilettura dopo la riconnessione fallita "
+                                   "(%s: %s)", type(error).__name__, error)
+                    return
+                fresh = {}
+                for raw in raw_states:
+                    eid = raw.get("entity_id")
+                    if eid:
+                        fresh[eid] = _to_minimal(raw)
+                pending, self._pending = self._pending, None
+                self._states = fresh
+                for event_data in pending:
+                    self.on_state_changed(event_data)
+                self._loaded = True
+            finally:
                 self._pending = None
-                return
-            fresh = {}
-            for raw in raw_states:
-                eid = raw.get("entity_id")
-                if eid:
-                    fresh[eid] = _to_minimal(raw)
-            pending, self._pending = self._pending, None
-            self._states = fresh
-            for event_data in pending:
-                self.on_state_changed(event_data)
-            self._loaded = True
 
     def on_state_changed(self, event_data: dict) -> None:
         """L'unico rubinetto che tiene vivo lo specchio: `state_changed`.

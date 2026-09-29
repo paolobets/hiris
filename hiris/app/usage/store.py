@@ -18,7 +18,7 @@ import secrets
 import threading
 
 from ..home_space.privacy import POSITION_ATTRIBUTES
-from ..proxy.entity_cache import is_credential
+from ..proxy.entity_cache import CALL_ARGUMENT_SECRETS, is_credential
 from ..storage import connect, init_schema
 from .vocabulary import local_day, piu_debole
 
@@ -248,10 +248,12 @@ _ARG_TRUNCATED = "..."
 def _compact_value(value, depth: int):
     """Un valore ridotto: credenziali mascherate, testi e contenitori tagliati.
 
-    Le chiavi credenziali le decide `entity_cache.is_credential` -- per NOME
-    (`code`, `pin`, `password`, `token`... e quelle di Home Assistant) e per
-    VALORE (un indirizzo con `token=`, una chiave esadecimale, un MAC): e'
-    l'UNICA lista del prodotto, e non ce n'e' una seconda qui.
+    Le chiavi credenziali le decide `entity_cache.is_credential` -- per NOME,
+    sull'insieme `entity_cache.CALL_ARGUMENT_SECRETS` (`code`, `pin`,
+    `password`, `token`... e gli attributi che lo specchio trattiene), e per
+    VALORE (un indirizzo con `token=`, una chiave esadecimale, un MAC). La
+    funzione e' una e gli insiemi sono dichiarati la': qui non se ne scrive
+    un terzo.
 
     Nei contenitori annidati valgono gli stessi tetti del livello alto: al
     massimo 20 chiavi (o elementi), testi a 200 caratteri, e la discesa si
@@ -265,7 +267,7 @@ def _compact_value(value, depth: int):
             return _compact_mapping(value, depth + 1)
         out = []
         for item in list(value)[:_ARG_KEYS_MAX]:
-            if isinstance(item, str) and is_credential("", item):
+            if isinstance(item, str) and is_credential("", item, CALL_ARGUMENT_SECRETS):
                 out.append(_ARG_MASK)
             else:
                 out.append(_compact_value(item, depth + 1))
@@ -283,7 +285,7 @@ def _compact_mapping(item: dict, depth: int) -> dict:
         # del filtro della porta (`privacy.POSITION_ATTRIBUTES`, spec §3).
         if str(key).lower() in POSITION_ATTRIBUTES:
             continue
-        if is_credential(str(key).lower(), value):
+        if is_credential(str(key).lower(), value, CALL_ARGUMENT_SECRETS):
             kept[str(key)] = _ARG_MASK
         else:
             kept[str(key)] = _compact_value(value, depth)
