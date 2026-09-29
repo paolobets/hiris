@@ -255,6 +255,20 @@ _NOTHING_RECOGNIZED_SUGGESTION = (
     "`riferimento` della cosa, chiedilo diretto."
 )
 
+#: I registri dell'anagrafe che la porta legge per rispondere: aree, entita' e
+#: dispositivi (i nomi) e i PIANI, perche' `piano` e' un filtro della porta
+#: (`house_query._place_matches`, `_area_rows`, `_device_rows`). Col registro
+#: dei piani caduto `search(piano=...)` trova zero e deve dirlo (spec §2.4:
+#: il silenzio si dichiara sempre). Le etichette no: la porta non le cerca.
+_SEARCHED_STORES = frozenset(STORE_KEY_PER_TYPE.values()) | {"piani"}
+
+
+def _fallen_stores_message(stores: list[str]) -> str:
+    return (f"registri non letti all'ultima ricostruzione dell'anagrafe: "
+            f"{', '.join(stores)}. Cio' che sta li' dentro non e' cercabile "
+            "adesso, e potrebbe esistere lo stesso.")
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -1828,6 +1842,11 @@ class ToolDispatcher:
             response["stato_non_letto"] = True
         if filters.name:
             self._declare_name_gaps(response, filters, mirror[1], mirror_loaded)
+        elif filters.floor and "piani" in self._home_space.unavailable():
+            # Una domanda per `piano` senza nome: col registro dei piani
+            # caduto nessuna area ha un piano, e `trovate: 0` sarebbe un
+            # silenzio non dichiarato (re-review della fetta, 30/09/2026).
+            response["non_ho_potuto_guardare"] = [_fallen_stores_message(["piani"])]
         return response
 
     def _declare_name_gaps(self, response: dict, filters, reported_names: dict,
@@ -1911,20 +1930,14 @@ class ToolDispatcher:
         stessa irraggiungibile) e "illeggibile: ..." producono una voce dal
         ramo sui file di comportamento, sotto."""
         entries: list[tuple[str, bool]] = []
-        # I registri in cui una ricerca per NOME guarda: aree, entita',
-        # dispositivi. Fino al 30/09/2026 c'erano anche «piani» ed
-        # «etichette», perche' la vecchia ricerca li offriva come candidati;
-        # la porta della casa non cerca ne' piani ne' etichette per nome, e un
-        # loro registro caduto non nasconde niente a chi cerca (review finale,
-        # M3).
-        fallen_stores = sorted(set(self._home_space.unavailable())
-                               & set(STORE_KEY_PER_TYPE.values()))
+        # I registri che la porta legge (`_SEARCHED_STORES`). Fino al
+        # 30/09/2026 c'erano anche le «etichette», perche' la vecchia ricerca
+        # le offriva come candidati; la porta non le cerca, e un loro registro
+        # caduto non nasconde niente a chi cerca (review finale, M3). I
+        # «piani» restano: `piano` e' un filtro della porta.
+        fallen_stores = sorted(set(self._home_space.unavailable()) & _SEARCHED_STORES)
         if fallen_stores:
-            message = (
-                f"registri non letti all'ultima ricostruzione dell'anagrafe: "
-                f"{', '.join(fallen_stores)}. Cio' che sta li' dentro non e' cercabile "
-                "adesso, e potrebbe esistere lo stesso.")
-            entries.append((message, False))
+            entries.append((_fallen_stores_message(fallen_stores), False))
         # Il comportamento non passa MAI da `non_disponibili()` -- la sua
         # fonte non e' un registro dell'anagrafe, e ha un segnale di
         # incompletezza suo: `unread_bodies()`, le entita' di cui non si

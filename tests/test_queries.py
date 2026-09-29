@@ -264,10 +264,15 @@ def test_senza_registri_caduti_l_elenco_non_si_dichiara_incompleto():
     assert "elenco_incompleto" not in dettaglio
 
 
-def test_guarda_un_dispositivo_dice_se_e_spento_e_quali_entita_sono_morte():
+def test_guarda_un_dispositivo_dice_se_e_spento_e_quante_entita_sono_morte():
     """Stessa ragione di `_view_entity`: qui si legge l'anagrafe grezza, fuori
     da `hierarchy()`, che le disabilitate le esclude. Senza dirlo, un
-    dispositivo spento ha la stessa forma di uno che funziona."""
+    dispositivo spento ha la stessa forma di uno che funziona. Dal 30/09/2026
+    le entita' disabilitate si CONTANO, come nell'area e nell'integrazione
+    (spec §2.4, «escluse e contate»).
+
+    Mutazione ESEGUITA: in `_view_device` rimettere le disabilitate in
+    `raw_visible` -- rossa."""
     casa = dict(
         _CASA,
         dispositivi=[{"id": "d1", "nome": "Frigo", "area_id": "cucina", "disabilitato": 1}],
@@ -277,7 +282,8 @@ def test_guarda_un_dispositivo_dice_se_e_spento_e_quali_entita_sono_morte():
              "disabilitata": 1}])
     dettaglio = view(casa, _COMPORTAMENTO, _RICORDI, _STATO, "dispositivo", "d1")
     assert dettaglio["disabilitato"] is True
-    assert dettaglio["entita"][0]["disabilitata"] is True
+    assert dettaglio["entita"] == []
+    assert dettaglio["entita_disabilitate"] == 1
 
 
 def test_guarda_un_entita_non_trovata_dichiara_il_registro_caduto():
@@ -744,20 +750,21 @@ def test_guarda_un_dispositivo_riporta_le_nascoste_complete_in_una_chiave_a_part
 
 def test_guarda_un_dispositivo_disabilitata_e_nascosta_insieme_resta_fra_le_disabilitate():
     """Stessa precedenza di `hierarchy()`/`briefing.py`: chi e' disabilitata E
-    nascosta non duplica il fatto in due chiavi -- resta fra le disabilitate,
-    marcata `disabilitata: true`, mai in `entita_nascoste`."""
+    nascosta non duplica il fatto in due chiavi -- resta fra le disabilitate
+    (dal 30/09/2026 contate in `entita_disabilitate`), mai in `entita_nascoste`.
+
+    Mutazione ESEGUITA: in `_view_device` contare solo le disabilitate non
+    nascoste -- rossa."""
     casa = _casa_sala_da_pranzo()
     casa["entita"] = casa["entita"] + [
         {"id": "light.lampadario_morto", "nome": None, "classe": None, "unita": None,
          "area_id": None, "dispositivo_id": "dev_lampadario",
          "disabilitata": 1, "nascosta": 1}]
     dettaglio = view(casa, [], [], {}, "dispositivo", "dev_lampadario")
-    ids_entita = {e["id"] for e in dettaglio["entita"]}
-    assert "light.lampadario_morto" in ids_entita
+    assert "light.lampadario_morto" not in {e["id"] for e in dettaglio["entita"]}
     assert "light.lampadario_morto" not in {
         e["id"] for e in dettaglio.get("entita_nascoste", [])}
-    marcata = next(e for e in dettaglio["entita"] if e["id"] == "light.lampadario_morto")
-    assert marcata["disabilitata"] is True
+    assert dettaglio["entita_disabilitate"] == 1
 
 
 def test_guarda_un_area_disabilitata_e_nascosta_insieme_resta_fra_le_disabilitate():

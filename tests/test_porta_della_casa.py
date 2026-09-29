@@ -10,6 +10,7 @@ from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.keeper.exchange import SOLA_LETTURA
 from hiris.app.memory.store import MemoryStore
 from hiris.app.proxy.entity_cache import _to_minimal
+from tests.test_briefing import _CASA as _CASA_BRIEFING
 from tests.test_house_query import BRIDGE_CEILING_CHARS
 
 # Le fixture della casa seminata hanno UNA definizione, in
@@ -160,6 +161,32 @@ async def test_senza_la_memoria_la_porta_risponde_e_il_ricordo_lo_dice(archivio_
     r = await d.dispatch("search", {"genere": "area", "riferimento": "cucina"})
     voce, = r["voci"]
     assert "ricordi" not in voce and voce["ricordi_non_letti"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("arguments", [
+    {"piano": "Piano terra"},
+    {"genere": "area", "piano": "Piano terra"},
+    {"nome": "cucina"},
+])
+async def test_col_registro_dei_piani_caduto_la_porta_lo_dichiara(tmp_path, memoria,
+                                                                  arguments):
+    """Re-review (30/09/2026): `piano` e' un filtro della porta. Col registro
+    dei piani caduto nessuna area ha un piano, e `search(piano=...)` trova
+    zero: il silenzio si dichiara (spec §2.4). La M3 aveva tolto «piani» dai
+    registri dichiarati insieme ai candidati morti dell'indice.
+
+    Mutazione ESEGUITA: `_SEARCHED_STORES` senza «piani» e senza il ramo
+    `filters.floor` di `_search` -- rossa su tutti e tre i casi; solo senza il
+    ramo `filters.floor` -- rossi i due casi senza nome."""
+    casa = _semina_casa(tmp_path, casa={**_CASA_BRIEFING, "piani": []}, comportamento=[])
+    casa.hold({**_CASA_BRIEFING, "piani": []}, ["piani"],
+              reference_frame={"fuso": "Europe/Rome"})
+    try:
+        r = await ToolDispatcher(casa, memoria).dispatch("search", arguments)
+    finally:
+        casa.close()
+    assert any("piani" in m for m in r["non_ho_potuto_guardare"]), r
 
 
 def test_la_porta_della_casa_non_tocca_mai_una_porta_di_home_assistant():

@@ -1248,12 +1248,19 @@ def _view_device(home_space: dict, memories: list[dict], state: dict, reference,
     # (fetta "nascoste fuori dagli elenchi", 2026-08-25) -- STESSA chiave,
     # STESSA forma della porta area, cosi' il modello non impara due
     # vocabolari per lo stesso fatto su due porte diverse.
+    #
+    # Le DISABILITATE si contano in `entita_disabilitate`, come nell'area e
+    # nell'integrazione (re-review della fetta «una porta sola», 30/09/2026):
+    # elencate dentro `entita` spendevano il tetto di `ROWS_MAX` righe con
+    # voci senza stato. La regola della porta e' una: «disabilitate sempre
+    # escluse e contate» (spec §2.4). `disabilitato` del dispositivo resta.
     raw_device_entities = [
         e for e in home_space.get("entita") or [] if e.get("dispositivo_id") == reference]
+    disabled_count = sum(1 for e in raw_device_entities if e.get("disabilitata"))
     raw_hidden = [e for e in raw_device_entities
                        if e.get("nascosta") and not e.get("disabilitata")]
     raw_visible = [e for e in raw_device_entities
-                       if not (e.get("nascosta") and not e.get("disabilitata"))]
+                       if not e.get("nascosta") and not e.get("disabilitata")]
     device_entities = [
         _enrich_entity(
             # `stato` come dall'area: la stessa entita' e' la stessa cosa da
@@ -1286,6 +1293,8 @@ def _view_device(home_space: dict, memories: list[dict], state: dict, reference,
     # Solo quando ce n'e' almeno una -- stessa disciplina della porta area.
     if device_hidden_entities:
         detail["entita_nascoste"] = device_hidden_entities
+    if disabled_count:
+        detail["entita_disabilitate"] = disabled_count
     # Lo stesso tetto dell'area: un dispositivo «Home Assistant» ne porta 55.
     _within_ceiling(detail, "chiedi «search» con un filtro (tipo, stato, "
                             "integrazione, area) per restringere l'insieme, o "
@@ -1642,10 +1651,10 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     esplicitamente". Restano complete e raggiungibili nella chiave parallela
     `entita_nascoste` (presente solo quando ce n'e' almeno una), la stessa
     forma di `hierarchy()` per le disabilitate. La differenza col
-    trattamento delle disabilitate e' voluta: quelle, nel dettaglio di un
-    dispositivo, restano DENTRO `entita`, marcate (`disabilitata: true`), e
-    in quello di un'area si CONTANO (`entita_disabilitate`, dal 30/09/2026:
-    Telecamere ne elencava 120 con lo stato vuoto); le nascoste sono una scelta
+    trattamento delle disabilitate e' voluta: quelle, nel dettaglio di
+    un'area, di un dispositivo e di un'integrazione, si CONTANO
+    (`entita_disabilitate`, dal 30/09/2026: Telecamere ne elencava 120 con lo
+    stato vuoto), perche' non hanno uno stato da dire; le nascoste sono una scelta
     di VISTA dell'utente, e la misura in produzione (`guarda("area",
     "sala_da_pranzo")`, sette luci mescolate, quattro nascoste) ha mostrato
     che marcarle SENZA separarle non basta -- il campo c'era gia' e non ha

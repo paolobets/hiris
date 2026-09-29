@@ -8,10 +8,14 @@ from hiris.app.home_space import house_query as hq
 from tests.test_briefing import _casa_grande  # 20 aree x 15 entita'
 
 T0 = 1_790_700_000.0
-#: La soglia che tiene il ponte sotto i 25.000 token per risultato MCP (spec
-#: §1 causa 2, §2.3; il limite e' della CLI di Claude Code): a 2,5 caratteri
-#: per token sono ~60.000 caratteri, e se ne tiene la meta' di margine. Una
-#: cifra sola per tutti i cancelli del peso.
+#: La soglia dei cancelli del peso, in caratteri. **Il tetto vero e' sulle
+#: RIGHE** (`ROWS_MAX` = 50, spec §2.3), non sui caratteri: la porta non
+#: misura quanto scrive. Il limite da rispettare e' della CLI di Claude Code,
+#: 25.000 token per risultato MCP (spec §1 causa 2); a 2,5 caratteri per token
+#: sono ~60.000 caratteri, e questa soglia ne tiene la meta'. Non e' una
+#: garanzia: un caso di prova con 50 righe ricche arriva a ~32.700 caratteri
+#: (re-review, 30/09/2026) -- oltre questa soglia, ma ~13.000 token, ben sotto
+#: il limite del ponte. Le case di questi cancelli stanno sotto i 30.000.
 BRIDGE_CEILING_CHARS = 30_000
 
 
