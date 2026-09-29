@@ -193,11 +193,18 @@ async def test_guarda_un_area_da_entita_stati_e_ricordi(dispatcher):
 
 @pytest.mark.asyncio
 async def test_guarda_qualcosa_che_non_esiste_lo_dice(dispatcher):
-    """Un'area che non c'e' e' un insieme vuoto: `trovate: 0`, nessuna voce
-    inventata (prima: il dettaglio con `esiste: False`)."""
+    """Un'area che non c'e': `trovate: 0`, e la voce lo DICE -- `esiste:
+    False` col suggerimento di cercarla per nome (review finale, I3,
+    30/09/2026: prima usciva un insieme vuoto muto, indistinguibile da un
+    filtro che non prende niente).
+
+    Mutazione ESEGUITA: in `house_query._select` togliere il ramo di
+    `_missing_reference` -- rossa (`voci == []`)."""
     esito = await dispatcher.dispatch("search", {"genere": "area", "riferimento": "taverna"})
     assert esito["trovate"] == 0
-    assert esito["voci"] == []
+    voce, = esito["voci"]
+    assert voce["esiste"] is False and voce["riferimento"] == "taverna"
+    assert "search" in voce["suggerimento"]
 
 
 @pytest.mark.asyncio

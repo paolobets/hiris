@@ -437,3 +437,161 @@ def test_su_una_casa_grande_nessuna_risposta_supera_la_soglia_del_ponte():
         r = hq.query_house(casa, [], _specchio(stati),
                            hq.parse_filters(argomenti), detail=_dettaglio, now=T0)
         assert len(json.dumps(r, ensure_ascii=False)) < BRIDGE_CEILING_CHARS, argomenti
+
+
+# -- Review finale della fetta (30/09/2026): alias, filtri, riferimenti -------
+
+
+def _two_rooms():
+    """La casa di `_casa()` con una cucina al primo piano, un suo dispositivo
+    hue, e gli alias che l'utente ha scritto in Home Assistant."""
+    casa = _casa()
+    casa["piani"].append({"id": "primo", "nome": "Primo piano", "livello": 1})
+    casa["aree"][0]["alias"] = ["salotto"]
+    casa["aree"].append({"id": "cucina", "nome": "Cucina", "piano_id": "primo",
+                         "alias": [], "etichette": []})
+    casa["dispositivi"].append({**casa["dispositivi"][0], "id": "dev_faretti",
+                                "nome": "Faretti", "area_id": "cucina"})
+    casa["dispositivi"].append({**casa["dispositivi"][0], "id": "dev_router",
+                                "nome": "Router", "area_id": None})
+    casa["entita"].append({**_luce("light.faretti", None, dispositivo_id="dev_faretti",
+                                   piattaforma="hue"), "nome": "Faretti"})
+    casa["entita"].append({**_luce("light.comodino", "soggiorno"),
+                           "nome": "Lampada comodino", "alias": ["abat-jour"]})
+    return casa
+
+
+def _ask(casa, **argomenti):
+    filtri = hq.parse_filters(argomenti)
+    assert not isinstance(filtri, dict), filtri
+    return hq.query_house(casa, [], _specchio(STATI), filtri, detail=_dettaglio, now=T0)
+
+
+def test_un_entita_si_trova_anche_per_il_suo_alias():
+    """I1: il vecchio `search` trovava «per nome o alias».
+
+    Mutazione ESEGUITA: `_any_name_matches` che guarda solo il nome -- rossa."""
+    r = _ask(_two_rooms(), nome="abat-jour")
+    assert [v["id"] for v in r["voci"]] == ["light.comodino"]
+
+
+def test_un_area_si_trova_anche_per_il_suo_alias():
+    """Mutazione ESEGUITA: in `_area_rows` confrontare solo `nome` -- rossa."""
+    r = _ask(_two_rooms(), genere="area", nome="salotto")
+    assert r["trovate"] == 1 and r["voci"][0]["id"] == "soggiorno"
+
+
+def test_i_dispositivi_si_filtrano_per_area_piano_e_integrazione():
+    """I2: `genere=dispositivo, area=Cucina` restituiva tutti i dispositivi.
+
+    Mutazione ESEGUITA: in `_device_rows` saltare `_place_matches` -- rossa;
+    saltare il controllo di `integrazione` -- rossa sull'ultimo caso."""
+    casa = _two_rooms()
+    assert [v["id"] for v in _ask(casa, genere="dispositivo", area="Cucina")["voci"]] \
+        == ["dev_faretti"]
+    assert [v["id"] for v in _ask(casa, genere="dispositivo",
+                                  piano="primo piano")["voci"]] == ["dev_faretti"]
+    assert [v["id"] for v in _ask(casa, genere="dispositivo",
+                                  area="senza area")["voci"]] == ["dev_router"]
+    assert [v["id"] for v in _ask(casa, genere="dispositivo",
+                                  integrazione="hue")["voci"]] == ["dev_faretti"]
+
+
+def test_le_aree_si_filtrano_per_piano():
+    """Mutazione ESEGUITA: in `_area_rows` ignorare `piano` -- rossa."""
+    r = _ask(_two_rooms(), genere="area", piano="Primo piano")
+    assert [v["id"] for v in r["voci"]] == ["cucina"]
+
+
+@pytest.mark.parametrize("argomenti", [
+    {"genere": "dispositivo", "stato": "on"},
+    {"genere": "dispositivo", "tipo": "light"},
+    {"genere": "area", "integrazione": "hue"},
+    {"genere": "area", "area": "Cucina"},
+    {"genere": "ricordo", "stato": "on"},
+    {"genere": "integrazione", "area": "Cucina"},
+    {"genere": "entita", "in_esecuzione": True},
+    {"tipo": "light", "in_esecuzione": False},
+    {"genere": "automazione", "tipo": "light"},
+    {"genere": "automazione", "classe": "motion"},
+])
+def test_un_filtro_che_non_vale_per_il_genere_si_dice(argomenti):
+    """I2, spec §2.4: mai un filtro lasciato cadere in silenzio.
+
+    Mutazione ESEGUITA: togliere il controllo di `_FILTERS_BY_KIND` in
+    `query_house` -- rossa su ogni caso."""
+    filtri = hq.parse_filters(argomenti)
+    r = hq.query_house(_two_rooms(), [], _specchio(STATI), filtri,
+                       detail=_dettaglio, now=T0)
+    assert "errore" in r, argomenti
+    assert "voci" not in r
+
+
+def test_i_filtri_che_valgono_non_sono_un_errore():
+    """Il gemello: senza, un controllo che rifiutasse tutto passerebbe.
+
+    Mutazione ESEGUITA: `_FILTERS_BY_KIND["dispositivo"]` senza `_PLACE` --
+    rossa."""
+    for argomenti in ({"genere": "dispositivo", "area": "Cucina", "integrazione": "hue"},
+                      {"genere": "area", "piano": "Primo piano"},
+                      {"tipo": "light", "stato": "on", "area": "soggiorno"}):
+        assert "errore" not in _ask(_two_rooms(), **argomenti), argomenti
+
+
+def test_un_riferimento_numerico_senza_genere_e_un_ricordo():
+    """I3: la descrizione promette «il numero di un ricordo».
+
+    Mutazione ESEGUITA: togliere il ramo `isdigit` di `_missing_reference` --
+    rossa."""
+    r = _ask(_two_rooms(), riferimento="7")
+    assert r["trovate"] == 1 and r["voci"][0]["tipo"] == "ricordo"
+
+
+def test_il_dominio_di_un_integrazione_senza_genere_e_un_integrazione():
+    """Mutazione ESEGUITA: togliere il ramo delle piattaforme -- rossa."""
+    r = _ask(_two_rooms(), riferimento="hue")
+    assert r["voci"][0]["tipo"] == "integrazione"
+
+
+def test_un_riferimento_che_non_esiste_lo_dice():
+    """I3: prima era `trovate: 0` muto.
+
+    Mutazione ESEGUITA: restituire l'insieme vuoto quando nessuna riga
+    combacia -- rossa."""
+    r = _ask(_two_rooms(), riferimento="light.inesistente")
+    assert r["trovate"] == 0
+    voce, = r["voci"]
+    assert voce == {"esiste": False, "riferimento": "light.inesistente",
+                    "suggerimento": voce["suggerimento"]}
+    assert "search" in voce["suggerimento"]
+
+
+def test_un_riferimento_non_trovato_con_un_registro_caduto_non_dice_non_esiste():
+    """Il riferimento potrebbe stare proprio nel registro che non ha risposto.
+
+    Mutazione ESEGUITA: passare `False` a `_not_found_detail` -- rossa."""
+    filtri = hq.parse_filters({"riferimento": "light.inesistente"})
+    r = hq.query_house(_two_rooms(), [], _specchio(STATI), filtri,
+                       detail=_dettaglio, now=T0, unavailable=("entita",))
+    voce, = r["voci"]
+    assert voce["non_disponibile"] is True and "suggerimento" not in voce
+
+
+def test_trovate_non_conta_una_voce_che_non_esiste():
+    """`trovate: 1` accanto a `esiste: False` era una cosa trovata che non c'e'.
+
+    Mutazione ESEGUITA: `_one` che restituisce sempre 1 -- rossa."""
+    def nothing(kind, reference):
+        return {"esiste": False, "tipo": kind, "riferimento": reference}
+    filtri = hq.parse_filters({"genere": "ricordo", "riferimento": "99"})
+    r = hq.query_house(_two_rooms(), [], _specchio(STATI), filtri,
+                       detail=nothing, now=T0)
+    assert r["trovate"] == 0 and r["voci"][0]["esiste"] is False
+
+
+def test_un_riferimento_con_altri_filtri_senza_esito_resta_un_insieme_vuoto():
+    """La cosa c'e', e' il filtro a non prenderla: nessuna voce «non esiste».
+
+    Mutazione ESEGUITA: `_only_the_reference` sempre vero -- rossa."""
+    r = _ask(_two_rooms(), riferimento="light.soggiorno_2", stato="on")
+    assert r["trovate"] == 0 and r["voci"] == []

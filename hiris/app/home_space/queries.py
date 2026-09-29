@@ -502,6 +502,10 @@ def _not_found_detail(kind: str, reference, unavailable: bool) -> dict:
     logica con un `file_non_letti` scambiato per `unavailable`.
     """
     detail = {"esiste": False, "tipo": kind, "riferimento": reference}
+    if kind is None:
+        # Un `riferimento` dato alla porta senza genere (`house_query`, dal
+        # 30/09/2026): il tipo non si inventa.
+        del detail["tipo"]
     if unavailable:
         detail["non_disponibile"] = True
     else:
