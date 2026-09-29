@@ -571,6 +571,12 @@ _ECCEZIONI_MOTIVATE: dict[tuple[str, tuple[str, ...]], str] = {
         "due che quel file replica, non perche' qualcuno abbia giudicato "
         "qualcosa di loro: nessuna delle metriche del vocabolario risponde "
         "alla domanda «di quali domini questo modulo tiene una copia».",
+    ("home_space/privacy.py", ("device_tracker", "person")):
+        "`privacy.MOVING_DOMAINS`: non e' un vocabolario di tipi, e' il filtro "
+        "che identifica le entita' che si spostano nello spazio (persone e "
+        "device tracker) per applicare la redazione della loro posizione. I due "
+        "domini sono li' perche' hanno una semantica comune di movimento, non "
+        "perche' nessuna metrica del vocabolario li colleghi.",
 }
 
 
