@@ -2,7 +2,6 @@ import re
 
 from hiris.app.home_space import briefing
 from hiris.app.home_space.briefing import compose
-from tests._house_translations import house_translations
 
 _CASA = {
     "piani": [{"id": "terra", "nome": "Piano terra", "livello": 0}],
@@ -135,7 +134,8 @@ def test_una_casa_vuota_non_produce_un_nucleo_bugiardo():
 
     `assert testo.strip()` non bastava, e il nome della prova prometteva molto
     di piu' di quello che la prova faceva: `_assemble()` scrive SEMPRE i titoli
-    di sezione ("## La casa", "## Notevole adesso", ...) anche a righe vuote,
+    di sezione ("## La casa", "## Cio' che la casa fa gia' da sola", ...)
+    anche a righe vuote,
     quindi quel controllo non poteva fallire mai, qualunque cosa contenesse la
     sezione. Con un `_home_space_lines()` che restituiva "Piano terra: - Cucina
     fantasma: 5 luci" la prova restava verde -- e con lei tutte e 41 le prove
@@ -550,7 +550,7 @@ def test_una_sezione_VUOTA_non_dichiara_un_elemento_escluso():
                for i in range(39)]
 
     _testo, riepilogo = compose(casa, [], ricordi, {"light.cucina_1": "off"},
-                                ceiling=2500, translations=house_translations())
+                                ceiling=2500)
 
     assert riepilogo["truncated"] is True, "il test presuppone che il tetto morda"
     esclusi = _esclusi_dichiarati(riepilogo)
@@ -560,7 +560,7 @@ def test_una_sezione_VUOTA_non_dichiara_un_elemento_escluso():
     # pinnano: cio' che non puo' succedere e' che l'avviso dichiari una voce
     # che non e' mai esistita.
     intero, riepilogo_intero = compose(casa, [], ricordi, {"light.cucina_1": "off"},
-                                       ceiling=100_000, translations=house_translations())
+                                       ceiling=100_000)
     assert riepilogo_intero["truncated"] is False
     assert "Nessuna automazione o script registrati." in intero
 
@@ -590,8 +590,7 @@ def test_il_taglio_non_dichiara_MAI_piu_elementi_di_quanti_ne_esistano():
     for nome, (casa, stato, comportamento) in case.items():
         for tetto in (900, 1100, 1500, 2000, 2500, 4000):
             _testo, riepilogo = compose(casa, comportamento, ricordi, stato,
-                                        ceiling=tetto,
-                                        translations=house_translations())
+                                        ceiling=tetto)
             esclusi = _esclusi_dichiarati(riepilogo)
             assert esclusi["comportamento"] <= len(comportamento), (
                 f"casa «{nome}», tetto {tetto}: dichiarate "

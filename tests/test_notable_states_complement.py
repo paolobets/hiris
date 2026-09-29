@@ -7,7 +7,8 @@ insieme letterale a livello di modulo dove stava, e la prova lo verifica
 leggendo i sorgenti -- cosi' la settima non nasce per distrazione, e chi ne
 riporta una indietro trova un rosso invece di un commento di buone intenzioni.
 
-La seconda e' il perche' della **sesta**. `briefing._ACTIVE_STATES` doveva
+La seconda e' il perche' della **sesta**. `_ACTIVE_STATES` (in `briefing.py`
+fino al 29/09/2026, oggi in `type_census.py` accanto al suo unico lettore) doveva
 sciogliersi derivandola dai riposi che il vocabolario dei tipi gia' dichiara:
 `unlocked` e' il complemento di `locked`, `open` di `closed`, `on` di `off` --
 la stessa conoscenza, detta due volte dai due lati opposti. **Il complemento
@@ -28,15 +29,15 @@ import ast
 import json
 from pathlib import Path
 
-from hiris.app.home_space import briefing, type_vocabulary
+from hiris.app.home_space import type_census, type_vocabulary
 
 
 def _domini_notevoli() -> set[str]:
-    """I domini che il repo dei giudizi (seme di `type_vocabulary`) dichiara
-    degni di un annuncio -- stesso fatto di `notable_types()` (cancellata col
-    Task 8, spec 2026-09-16 §11), letto dalla nuova porta."""
-    return {domain for domain in type_vocabulary.declared_domains()
-            if type_vocabulary.REPO_JUDGMENTS.is_notable(domain)}
+    """I domini che il seme dei giudizi dichiara degni di un annuncio: la
+    stessa lettura delle prove R9 (`test_type_vocabulary.domini_notevoli`),
+    non una seconda copia."""
+    from tests.test_type_vocabulary import domini_notevoli
+    return domini_notevoli()
 
 _PRODOTTO = Path(__file__).resolve().parents[1] / "hiris" / "app"
 _PUBBLICATO = Path(__file__).resolve().parent / "data" / "pubblicato-dalla-casa.json"
@@ -66,15 +67,21 @@ _TRASLOCATE = {
     "STATE_CLASSES_WITH_STATISTICS": (
         "home_space/historian.py",
         "`ha_vocabulary`, che per `state_class` aveva gia' una casa"),
+    # 29/09/2026: uscita «Notevole adesso», il nucleo non la leggeva piu' e
+    # il suo solo lettore rimasto era il censore.
+    "_ACTIVE_STATES": (
+        "home_space/briefing.py",
+        "`type_census._ACTIVE_STATES`, accanto al censore che la legge"),
 }
 
-#: L'unica delle sei rimasta dov'era, col suo motivo. **Sta qui perche' la
+#: L'unica delle sei non sciolta, col suo motivo (traslocata il 29/09/2026,
+#: non sciolta: vedi `_TRASLOCATE`). **Sta qui perche' la
 #: prova la pretenda**: se un giorno traslocasse e nessuno togliesse questa
 #: riga, resterebbe una deroga che non copre piu' niente -- la stessa forma di
 #: difetto che `test_un_tipo_ha_una_casa_sola` chiude dall'altro lato.
 _RIMASTE = {
     "_ACTIVE_STATES": (
-        "home_space/briefing.py",
+        "home_space/type_census.py",
         "il complemento dei riposi non e' esatto: vedi la misura qui sotto"),
 }
 
@@ -188,7 +195,7 @@ def test_il_complemento_dei_riposi_non_coincide_con_gli_stati_attivi():
                   | type_vocabulary.unknown_states()
                   | type_vocabulary.ABSENT_STATE_FORMS.value)
         for stato in _stati_pubblicati(dominio) - riposi:
-            if stato not in briefing._ACTIVE_STATES:
+            if stato not in type_census._ACTIVE_STATES:
                 divario.add(f"{dominio}={stato}")
     assert divario == _DIVARIO_MISURATO, (
         "il divario fra «non a riposo» e «attivo» e' cambiato -- in piu': "
@@ -211,7 +218,7 @@ def test_nessuno_stato_attivo_e_il_riposo_di_un_tipo_che_lo_porta():
     contraddizioni = sorted(
         f"{dominio}={stato}"
         for dominio in _domini_notevoli()
-        for stato in briefing._ACTIVE_STATES
+        for stato in type_census._ACTIVE_STATES
         if stato in type_vocabulary.REPO_JUDGMENTS.resting_of(dominio))
     assert not contraddizioni, (
         "stati che il nucleo conta come attivi e il vocabolario dichiara "

@@ -22,7 +22,6 @@ import pathlib
 from hiris.app.home_space import topology
 from hiris.app.home_space.queries import view
 from hiris.app.proxy import state_translations
-from hiris.app.proxy.state_translations import StateTranslations
 from tests._house_translations import house_translations, unread_translations
 
 _PRODOTTO = pathlib.Path(__file__).resolve().parents[1] / "hiris"
@@ -303,20 +302,3 @@ def test_una_categoria_che_non_esiste_e_il_terzo_silenzio_non_il_primo():
     assert esito["silenzio"] == state_translations.SILENCE_UNDEFINED
 
 
-def test_la_cache_non_va_in_rete_e_dichiara_di_non_aver_ancora_letto():
-    """`cached()` e' cio' che permette al nucleo -- che si compone in una
-    funzione SINCRONA -- di leggere le parole senza diventare `async`. Non
-    chiede niente a nessuno: se nessuno ha ancora letto, lo dice.
-
-    Mutazione ESEGUITA: far tornare a `cached()` un `{"lette": True,
-    "risorse": {}}` quando non c'e' niente -- la prova arrossisce, e il nucleo
-    direbbe «questa casa non pubblica niente» invece di «non ho ancora letto».
-    """
-    class _ClienteCheEsplode:
-        async def get_translations(self, language, category):  # pragma: no cover
-            raise AssertionError("`cached()` non deve andare in rete")
-
-    cache = StateTranslations(_ClienteCheEsplode())
-    esito = cache.cached()
-    assert esito["lette"] is False
-    assert "non sono ancora state lette" in esito["motivo"]

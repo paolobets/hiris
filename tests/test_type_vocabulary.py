@@ -30,7 +30,7 @@ sono uscite con lei. Restano le prove sulle PAROLE (`readable_state`), sui
 conteggi che il nucleo porta ancora e su cio' che `guarda` riporta a chi chiede.
 """
 
-from hiris.app.home_space import briefing, topology, type_vocabulary
+from hiris.app.home_space import briefing, topology, type_census, type_vocabulary
 from hiris.app.home_space.briefing import compose
 from hiris.app.proxy import state_translations
 
@@ -43,8 +43,7 @@ from tests.test_briefing import _CASA, _COMPORTAMENTO, _RICORDI, _STATO
 
 def _con(entita, stato_extra):
     casa = dict(_CASA, entita=_CASA["entita"] + entita)
-    return compose(casa, _COMPORTAMENTO, _RICORDI, dict(_STATO, **stato_extra),
-                   translations=house_translations())[0]
+    return compose(casa, _COMPORTAMENTO, _RICORDI, dict(_STATO, **stato_extra))[0]
 
 
 def _voce(eid, nome, **extra):
@@ -252,7 +251,7 @@ def test_una_nascosta_DISABILITATA_non_si_conta_due_volte():
 
 # ── R9: il vocabolario del nucleo pinnato alla fonte ───────────────────────
 #
-# `briefing._ACTIVE_STATES` e il campo `notable` del vocabolario dei tipi sono
+# `type_census._ACTIVE_STATES` e il campo `notable` del vocabolario dei tipi sono
 # scritti a mano. Senza queste prove, togliere una voce (o non aggiungerne una
 # quando Home Assistant introduce un dominio o una device_class nuova) non
 # farebbe rosso nessun test -- lo stesso rischio gia' pagato con
@@ -276,18 +275,31 @@ def test_una_nascosta_DISABILITATA_non_si_conta_due_volte():
 # dominio/classe nuova nel prodotto.
 
 
+def _seed_says_notable(dominio: str, classe: str | None = None) -> bool:
+    """Il giudizio `notevole` del seme, letto dalle righe: coppia, poi
+    dominio. Fino al 29/09/2026 lo leggeva `TypeJudgments.is_notable`, uscita
+    col suo unico lettore di produzione («Notevole adesso» del nucleo); il
+    seme resta, e queste prove lo pinnano alla fonte. Verificato quel giorno,
+    prima di togliere la domanda: stessi 10 domini e stesse 13 coppie."""
+    giudizi = {soggetto: valore for _, soggetto, campo, valore
+               in type_vocabulary.judgment_seed_rows() if campo == "notevole"}
+    if classe and f"{dominio}.{classe}" in giudizi:
+        return giudizi[f"{dominio}.{classe}"] == "si"
+    return giudizi.get(dominio) == "si"
+
+
 def domini_notevoli() -> set[str]:
     """I domini che il repo dei giudizi dichiara degni di un annuncio --
     stesso fatto di `notable_types()` (cancellata col Task 8, spec
-    2026-09-16 §11), letto dalla nuova porta."""
+    2026-09-16 §11)."""
     return {dominio for dominio in type_vocabulary.declared_domains()
-            if type_vocabulary.REPO_JUDGMENTS.is_notable(dominio)}
+            if _seed_says_notable(dominio)}
 
 
 def classi_notevoli() -> set[tuple[str, str]]:
     """Le coppie (dominio, classe) degne di un annuncio."""
     return {coppia for coppia in type_vocabulary.declared_pairs()
-            if type_vocabulary.REPO_JUDGMENTS.is_notable(*coppia)}
+            if _seed_says_notable(*coppia)}
 
 _STATI_ATTIVI_HA = {"on", "open", "unlocked", "playing", "cleaning"}
 
@@ -295,8 +307,8 @@ _STATI_ATTIVI_HA = {"on", "open", "unlocked", "playing", "cleaning"}
 def test_stati_attivi_e_pinnato_alla_fonte():
     """Mutazione: togliere uno stato da `_ACTIVE_STATES` deve far rosso
     questo test."""
-    senza = sorted(_STATI_ATTIVI_HA - briefing._ACTIVE_STATES)
-    extra = sorted(briefing._ACTIVE_STATES - _STATI_ATTIVI_HA)
+    senza = sorted(_STATI_ATTIVI_HA - type_census._ACTIVE_STATES)
+    extra = sorted(type_census._ACTIVE_STATES - _STATI_ATTIVI_HA)
     assert not senza and not extra, (
         f"_STATI_ATTIVI e' cambiato senza aggiornare questo pin -- mancanti: "
         f"{senza}, in piu': {extra}")

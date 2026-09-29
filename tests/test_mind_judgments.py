@@ -413,9 +413,11 @@ def test_porta_RIFIUTA_guasto(tmp_path):
 
 # Il livello del soggetto: una riga che nessuna domanda consulta non si scrive
 # (revisione del Task 1). Le domande di `TypeJudgments`: `genre_of` e
-# `resting_of` salgono entita' -> coppia -> dominio; `working_of` e `is_notable`
-# coppia -> dominio; `operable_domains` e `parameter_limits` solo
-# dominio.
+# `resting_of` salgono entita' -> coppia -> dominio; `working_of` coppia ->
+# dominio; `operable_domains` e `parameter_limits` solo dominio. (Fino al
+# 29/09/2026 c'era anche `is_notable`, coppia -> dominio: uscita col suo unico
+# lettore, «Notevole adesso» del nucleo, e con lei la sua riga qui sotto. Il
+# campo `notevole` resta scrivibile senza lettori: vedi `_LEVELS`.)
 _LIVELLI_LETTI = [
     ("entita", "switch.x", "genere", "sicurezza",
      lambda j: j.genre_of("switch.x", None) == "sicurezza"),
@@ -427,8 +429,6 @@ _LIVELLI_LETTI = [
      lambda j: j.resting_of("sensor", "power") == frozenset({"on"})),
     ("tipo", "binary_sensor.occupancy", "lavoro", '{"on": "occupato"}',
      lambda j: dict(j.working_of("binary_sensor", "occupancy")) == {"on": "occupato"}),
-    ("tipo", "sensor.power", "notevole", "si",
-     lambda j: j.is_notable("sensor", "power")),
     ("tipo", "sensor", "accendibile", "si",
      lambda j: "sensor" in j.operable_domains()),
     ("tipo", "sensor", "limiti_parametri", '{"x": {"options": "y"}}',

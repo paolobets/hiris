@@ -175,9 +175,13 @@ def test_una_chiave_DOPPIA_e_storta():
     assert len(e.value.rows) == 2
 
 
-def test_notevole_accendibile_limiti_assumibili_lavoro():
-    """Mutazione: `is_notable` che non passa `device_class` alla ricerca
-    (chiede solo il dominio) -- rossa su `is_notable("binary_sensor", "smoke")`."""
+def test_accendibile_limiti_lavoro():
+    """Le domande del giudizio che hanno ancora un lettore. (Fino al
+    29/09/2026 la prova chiedeva anche `is_notable`, uscita col suo unico
+    lettore, «Notevole adesso» del nucleo.)
+
+    Mutazione ESEGUITA: `operable_domains` che restituisce un insieme vuoto
+    -- rossa su `== frozenset({"light"})`."""
     j = _j(("tipo", "light", "notevole", "si"),
            ("tipo", "light", "accendibile", "si"),
            ("tipo", "binary_sensor", "notevole", "no"),
@@ -188,8 +192,6 @@ def test_notevole_accendibile_limiti_assumibili_lavoro():
              ' "effect": {"options": "effect_list"}}')),
            ("tipo", "alarm_control_panel", "lavoro",
             '{"triggered": "e\' il fatto piu\' notevole"}'))
-    assert j.is_notable("light")
-    assert not j.is_notable("binary_sensor") and j.is_notable("binary_sensor", "smoke")
     assert j.operable_domains() == frozenset({"light"})
     assert j.parameter_limits("light", "color_temp_kelvin")["min"] == "min_color_temp_kelvin"
     assert j.parameter_limits("light", "effect")["options"] == "effect_list"
@@ -203,7 +205,7 @@ def test_il_giudizio_da_sapere_subito_si_legge_su_coppia_e_dominio():
     non «vale la pena raccontarlo» (`notevole`), non «che genere di fatto e'»
     (`genere`).
 
-    Sale coppia -> dominio come `is_notable`, e per la stessa ragione:
+    Sale coppia -> dominio come `working_of`, e per la stessa ragione:
     `binary_sensor` puo' dire «no» in generale e «si'» sulle classi che lo
     meritano.
 

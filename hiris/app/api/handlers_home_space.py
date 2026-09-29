@@ -19,7 +19,6 @@ from aiohttp import web
 
 from ..home_space.briefing import compose
 from ..home_space.topology import category_names, hierarchy, live_mirror
-from ..home_space.type_vocabulary import REPO_JUDGMENTS
 from ..proxy.entity_cache import inventory_is_readable
 
 
@@ -255,41 +254,26 @@ def compose_briefing(app) -> tuple[str, dict]:
         memories = []
 
     # Lo specchio dello stato, dalla funzione condivisa e non riletto a mano:
-    # `home_space.topology.live_mirror` e' la stessa che usano `guarda`, `cerca` e
-    # la correzione dei ricordi. Prima questa porta -- che alimenta SIA
-    # `GET /api/briefing` SIA il contesto della chat, cioe' la piu' importante --
-    # se lo rileggeva da sola: una normalizzazione imparata li' non sarebbe mai
-    # arrivata qui, e il modello avrebbe letto nel digesto stati che non
-    # coincidono con quelli che ottiene chiamando `guarda`.
+    # `home_space.topology.live_mirror` e' la stessa che usano `search` e la
+    # correzione dei ricordi.
     #
-    # `reported_classes` e' la ragione per cui questo cablaggio conta davvero: il
-    # registro delle entita' non manda `device_class`, quindi senza queste
-    # nessun allagamento e nessun allarme monossido entra in «Notevole adesso»
-    # (vedi `anagrafe.actual_class`).
-    #
-    # `attributes` e' l'ultimo arrivato di questa stessa lettura, e non costa
-    # niente in piu': lo specchio lo produce gia'. Serve alla sezione «cosa si
-    # puo' chiedere alle cose di casa», che aggrega le CAPACITA' -- senza di
-    # lui il modello sapeva rispondere sull’Alberello e non sapeva di poter
-    # chiedere. Resta `None` quando lo specchio non si e' potuto leggere:
-    # «non ho guardato» e «non c’e' niente da chiedere» sono due fatti diversi,
-    # e `compose()` li dice diversi.
+    # Dal 29/09/2026 il nucleo non porta piu' lo stato del momento («Notevole
+    # adesso» e' uscita): dello specchio servono due cose sole. `state`, perche'
+    # `compose()` distingue ancora «ho guardato» da «non ho potuto guardare»
+    # (CRITICAL ②); `attributes`, per la sezione «cosa si puo' chiedere alle
+    # cose di casa», che aggrega le CAPACITA'. Le classi e i nomi dello
+    # specchio -- che servivano solo alle righe di quella sezione -- non si
+    # leggono piu' qui. `attributes` resta `None` quando lo specchio non si e'
+    # potuto leggere: «non ho guardato» e «non c’e' niente da chiedere» sono
+    # due fatti diversi, e `compose()` li dice diversi.
     state: dict[str, str] = {}
-    reported_classes: dict[str, str] = {}
     attributes: dict[str, dict] | None = None
-    # I NOMI dello specchio non si scartano piu' (audit delle fondamenta,
-    # rilievo 3). `live_mirror` li produce gia' -- sono gli stessi
-    # `nomi_di_ripiego` che `guarda` e `cerca` ricevono -- e finche' questa
-    # riga li buttava via il nucleo chiamava «switch.smart_wi_fi_plug_2» cio'
-    # che le altre porte chiamavano «Fuoco e tv». Su questa casa 82 entita'
-    # hanno il registro muto e un `friendly_name` vivo.
-    fallback_names: dict[str, str] = {}
     if cache is not None:
         try:
-            state, fallback_names, _units, reported_classes, _since_when, attributes = (
+            state, _names, _units, _classes, _since_when, attributes = (
                 live_mirror(cache.all_states()))
         except Exception:
-            state, fallback_names, reported_classes, attributes = {}, {}, {}, None
+            state, attributes = {}, None
 
     # I guasti che Home Assistant ha gia' diagnosticato (`repairs/list_issues`).
     #
@@ -324,44 +308,12 @@ def compose_briefing(app) -> tuple[str, dict]:
     # `compose()`, che sa distinguerlo da «guardato e combacia».
     comparison = app.get("tree_comparison")
 
-    # LE PAROLE CON CUI SI RENDE UNO STATO, e dall'08/09/2026 sono le sole:
-    # le quattro tabelle scritte a mano di `topology.py` non esistono piu'
-    # (spec §6). Si legge dalla cache **senza andare in rete** (`cached()`):
-    # questa funzione e' sincrona, la condividono `GET /api/briefing` e il
-    # contesto della chat, e renderla `async` per una tabella che
-    # `server._prime_state_translations` ha gia' letto allo startup avrebbe
-    # voluto dire cambiare la forma di mezzo prodotto.
-    #
-    # Un esito «non lette» non e' un guasto e non si nasconde: `compose()` lo
-    # DICHIARA in testa a «Notevole adesso» e mostra gli stati grezzi. E' la
-    # condizione che la spec pone alla cancellazione delle tabelle -- si
-    # cancella solo se il consumatore sa dire «traduzioni non lette».
-    translations_cache = app.get("state_translations")
-    translations = (translations_cache.cached() if translations_cache is not None
-                    else {"lette": False,
-                          "motivo": "la lettura delle traduzioni non e' collegata a "
-                                    "questa istanza"})
-
     # Affidabile SOLO se sappiamo sia quali entita' esistono (archivio della
     # casa) sia in che stato sono adesso (inventario vivo pronto). Una delle
     # due sole non basta: un archivio letto ma una cache non ancora caricata
-    # produrrebbe uno stato vuoto che "Notevole adesso" leggerebbe come
-    # "niente acceso" invece di "non ho potuto guardare".
+    # produrrebbe uno stato vuoto che il nucleo leggerebbe come "niente da
+    # dire" invece di "non ho potuto guardare".
     reliable_state = home_space_store is not None and inventory_is_readable(cache)
-
-    # L'istantanea dei giudizi (spec 2026-09-16 §3): in produzione e' sempre
-    # `app["type_judgments"]`, scritta all'avvio prima di ogni rotta
-    # (`server.py::_on_startup`). `.get()` e non l'indice diretto perche'
-    # questa funzione accetta anche un `app` finto -- un dizionario qualunque,
-    # come dice il suo stesso docstring -- e lo fanno gia' `tests/
-    # test_ha_problems.py`, `test_home_space_reference.py` e
-    # `test_verifiable_tree.py` passando `{}` per provare altre sezioni: senza
-    # il ripiego quei test cadrebbero con un `KeyError` che non parla di loro.
-    # In una vera richiesta questo ramo non scatta mai: il seme "solo seme" di
-    # `server.py` esiste apposta per non lasciare MAI la chiave assente.
-    judgments = app.get("type_judgments")
-    if judgments is None:
-        judgments = REPO_JUDGMENTS
 
     return compose(
         home_space, behavior, memories, state,
@@ -370,12 +322,9 @@ def compose_briefing(app) -> tuple[str, dict]:
         behavior_problems=behavior_problems,
         unread_bodies=unread_bodies,
         reference_frame=reference_frame,
-        reported_classes=reported_classes,
         problems=problems,
         comparison=comparison,
         attributes=attributes,
-        translations=translations,
-        fallback_names=fallback_names,
         # L'orologio entra QUI, nell'unico compositore di produzione (chat
         # sincrona, ponte e GET /api/briefing passano tutti di qua), perche'
         # `compose` e' pura e non legge nulla da sola. Senza questa riga il
@@ -383,7 +332,6 @@ def compose_briefing(app) -> tuple[str, dict]:
         # continuerebbe a indovinare l'ora quando `prometti` gli chiede di
         # risolvere «fra un'ora» -- che e' il difetto misurato il 21/08/2026.
         now=time.time(),
-        judgments=judgments,
     )
 
 

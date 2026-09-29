@@ -52,8 +52,9 @@ guardato, `alarm_control_panel=triggered` compreso. Nessuna e' stata silenziata:
 o e' entrata nel vocabolario col suo giudizio (`working_states`), o porta
 un'eccezione motivata qui sotto.
 
-**Il limite che RESTA**, e va detto invece che sottinteso: `briefing._ACTIVE_STATES`
-e' ancora cieco al dominio, e rivendica `on`/`open`/`unlocked`/`playing`/`cleaning`
+**Il limite che RESTA**, e va detto invece che sottinteso: `_ACTIVE_STATES`
+(in questo modulo dal 29/09/2026, prima in `briefing.py`) e' ancora cieco al
+dominio, e rivendica `on`/`open`/`unlocked`/`playing`/`cleaning`
 per qualunque tipo. Si vede in una sola eccezione -- quella di `group`, dove
 tre voci sono eccettuate proprio perche' quella rivendicazione non vale come
 giudizio.
@@ -155,14 +156,51 @@ def bit_key(domain: str, bit: int) -> str:
 # stessa cosa a due granularita' adesso la dicono una volta sola, e il censore
 # li sorveglia con lo STESSO conto.
 #
-# **Restano due lettori col nome privato**, `briefing._DOMAIN_NAMES` e
-# `briefing._ACTIVE_STATES`, e per ciascuno la ragione e' scritta accanto alla
-# lista stessa: il primo perche' dare una riga a tutti e 63 i domini nominabili
-# allargherebbe il cancello `test_un_tipo_ha_una_casa_sola` fino a nominare sei
-# elenchi che tipi non sono, il secondo perche' il complemento dei riposi non e'
-# esatto (`tests/test_notable_states_complement.py`). Il censore e' un lettore
-# dichiarato: il giorno in cui una delle due trasloca, trasloca anche la riga
-# qui sotto.
+# **Resta un lettore col nome privato**, `briefing._DOMAIN_NAMES`, e la
+# ragione e' scritta accanto alla lista stessa: dare una riga a tutti e 63 i
+# domini nominabili allargherebbe il cancello `test_un_tipo_ha_una_casa_sola`
+# fino a nominare sei elenchi che tipi non sono. Il censore e' un lettore
+# dichiarato: il giorno in cui la lista trasloca, trasloca anche la riga qui
+# sotto. (Erano due fino al 29/09/2026: `_ACTIVE_STATES` e' traslocata QUI,
+# accanto al suo unico lettore rimasto -- vedi la sua dichiarazione.)
+
+
+# Gli stati «attivi» che il nucleo chiamava NOTEVOLI: acceso, aperto, in
+# funzione. **Vivono qui dal 29/09/2026**, accanto al loro unico lettore. Fino a
+# quel giorno stavano in `briefing.py`, dove li leggeva `_is_event` per decidere
+# cosa entrava in «Notevole adesso»; uscita quella sezione dal nucleo (spec «una
+# porta sola per la casa» §5), il censore e' rimasto il solo a leggerli -- li
+# conta fra gli stati RIVENDICATI (`claimed_states`). Se quella rivendicazione
+# valga ancora, senza piu' un annuncio che la usi, lo decide una fetta sua.
+#
+# La fonte, stato per stato -- verificata su home-assistant/core il
+# 20/08/2026 (ramo `dev`, non un modulo installato):
+#   "on"       -- STATE_ON,       homeassistant/const.py
+#   "open"     -- STATE_OPEN,     homeassistant/const.py
+#   "playing"  -- STATE_PLAYING,  homeassistant/const.py
+#   "unlocked" -- LockState.UNLOCKED,   homeassistant/components/lock/const.py
+#   "cleaning" -- VacuumActivity.CLEANING, homeassistant/components/vacuum/const.py
+# Senza Home Assistant installato non c'e' un enum da importare e confrontare
+# a runtime: l'elenco e' ricopiato a mano e pinnato (con lo stesso limite
+# dichiarato) in tests/test_type_vocabulary.py.
+#
+# **E' l'ULTIMA delle sei liste non sciolte, ed e' rimasta per una ragione
+# misurata.** La fetta che ha sciolto le altre cinque doveva scioglierla
+# derivandola dai riposi che il vocabolario dei tipi gia' dichiara --
+# `unlocked` e' il complemento di `locked`, `open` di `closed`, `on` di `off`.
+# **Il complemento non e' esatto**, e la misura sta in
+# `tests/test_notable_states_complement.py`: sui tipi che meritano un annuncio,
+# UNDICI stati che questa casa PUBBLICA non sono riposi e non sono qui dentro --
+# `cover`/`valve` in `opening` e `closing`, `lock` in `locking`, `unlocking`,
+# `opening` e `jammed`, `media_player` in `paused` e `buffering`, `vacuum` in
+# `paused`.
+#
+# Il verso opposto invece TORNA: nessuna di queste cinque parole e' un riposo
+# per nessuno dei tipi che le puo' portare. Il difetto che resta e' uno solo:
+# queste cinque parole sono CIECHE AL TIPO -- `open` conta come «attivo» tanto
+# per una tapparella quanto per una serratura -- ed e' lo stesso difetto per
+# cui `topology._STATE_TRANSLATION` e' stata cancellata l'08/09/2026.
+_ACTIVE_STATES = {"on", "open", "unlocked", "playing", "cleaning"}
 
 
 def claimed_domains() -> frozenset[str]:
@@ -191,7 +229,8 @@ def claimed_states(domain: str, device_class: str | None) -> frozenset[str]:
       dell'unico giudizio per tipo;
     - **`unavailable`/`unknown`** e le due forme dell'assenza, che attraversano
       ogni tipo e per questo non stanno su nessuna riga;
-    - gli **stati attivi** del nucleo, che sono CIECHI AL DOMINIO.
+    - gli **stati attivi** (`_ACTIVE_STATES`, un tempo del nucleo), che sono
+      CIECHI AL DOMINIO.
 
     **Erano quattro fino all'08/09/2026**, e la quarta era la piu' larga:
     `topology._STATE_TRANSLATION` (cieca al dominio) e `_READABLE_HVAC_MODE`
@@ -208,7 +247,7 @@ def claimed_states(domain: str, device_class: str | None) -> frozenset[str]:
     claimed |= set(type_vocabulary.REPO_JUDGMENTS.working_of(domain, device_class))
     claimed |= set(type_vocabulary.unknown_states())
     claimed |= set(type_vocabulary.ABSENT_STATE_FORMS.value)
-    claimed |= set(briefing._ACTIVE_STATES)
+    claimed |= set(_ACTIVE_STATES)
     return frozenset(claimed)
 
 
@@ -625,7 +664,8 @@ EXCEPTIONS.update(_same_reason(
     "un modo di guardarne molte -- il suo stato e' quello dei membri, gia' "
     "osservati uno per uno, e osservarlo di nuovo qui conterebbe due volte lo "
     "stesso fatto. **Sette dei dieci stati, non tutti**: `on`, `open` e "
-    "`unlocked` restano rivendicati da `briefing._ACTIVE_STATES`, che e' CIECO "
+    "`unlocked` restano rivendicati da `_ACTIVE_STATES` (in `type_census` dal "
+    "29/09/2026), che e' CIECO "
     "AL DOMINIO -- l'ultimo residuo della stessa cecita' che questa fetta ha "
     "tolto alle traduzioni. Non si possono eccettuare: una prova chiama "
     "(giustamente) permesso-che-non-difende-niente un'eccezione su una voce "

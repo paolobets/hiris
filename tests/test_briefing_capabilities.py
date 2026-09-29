@@ -21,7 +21,6 @@ ridotti ai casi che decidono.
 from hiris.app.home_space import briefing
 from hiris.app.home_space.briefing import compose
 from hiris.app.proxy.entity_cache import CAPABILITIES, UNINTERPRETED, VALUES
-from tests._house_translations import house_translations
 
 _PIANI = [{"id": "terra", "nome": "Piano terra", "livello": 0}]
 
@@ -348,8 +347,7 @@ _COMPORTAMENTO_TETTO = [
 def _nucleo_tetto(ceiling=None):
     extra = {} if ceiling is None else {"ceiling": ceiling}
     return compose(_CASA_TETTO, _COMPORTAMENTO_TETTO, [], _STATO_TETTO,
-                   attributes=_ATTRIBUTI_TETTO,
-                   translations=house_translations(), **extra)
+                   attributes=_ATTRIBUTI_TETTO, **extra)
 
 
 def test_a_seimila_il_taglio_morde_le_capacita_e_non_il_comportamento():

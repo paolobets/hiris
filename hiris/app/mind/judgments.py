@@ -60,13 +60,19 @@ CORRECTION_ORIGIN = "correzione"
 
 #: A quale livello di soggetto ogni campo e' CONSULTATO da `TypeJudgments`
 #: (le sue domande, lette nel codice il 17/09/2026): `genre_of` e `resting_of`
-#: salgono entita' -> coppia -> dominio; `working_of`, `is_notable` e
+#: salgono entita' -> coppia -> dominio; `working_of` e
 #: `da_sapere_subito` coppia -> dominio (spec `2026-09-18-da-sapere-subito.md`
-#: §2: stessa forma di `is_notable`, per la stessa ragione -- `binary_sensor`
+#: §2: stessa forma di `working_of`, per la stessa ragione -- `binary_sensor`
 #: dice «no» in generale e «si'» sulle classi che lo meritano, mai su
 #: un'entita' singola); `operable_domains` e `parameter_limits` solo il
 #: dominio. Una riga a un livello che nessuna domanda legge non si scrive: il
 #: proprietario la vedrebbe accettata e la casa non cambierebbe.
+#:
+#: **`notevole` e' l'eccezione aperta, dal 29/09/2026**: la sua domanda
+#: (`is_notable`) e' uscita col suo unico lettore, «Notevole adesso» del
+#: nucleo. I livelli qui sotto sono quelli a cui era letto; oggi nessuna
+#: domanda lo consulta, e per la regola appena scritta il campo intero -- seme,
+#: porta, pagina -- va tolto o ridato a un lettore. E' una fetta sua.
 _LEVELS = {
     GENRE_FIELD: frozenset({"entita", "coppia", "dominio"}),
     RESTING_FIELD: frozenset({"entita", "coppia", "dominio"}),

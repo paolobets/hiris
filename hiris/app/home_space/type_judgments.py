@@ -23,8 +23,10 @@ PARAMETER_LIMITS_FIELD = "limiti_parametri"
 #: «Quando una cosa di questo tipo esce dal suo riposo, il proprietario deve
 #: saperlo subito?» (spec `2026-09-18-da-sapere-subito.md` §2). **Non e'
 #: `notevole`**, che risponde a «vale la pena raccontarlo nel riassunto?» -- e'
-#: cosi' che la usa `home_space/briefing._is_event`, ed e' per questo che una
-#: luce accesa e' `notevole` e non e' da sapere subito. Misurato il 18/09/2026:
+#: cosi' che la usava `home_space/briefing._is_event` fino al 29/09/2026 (uscita
+#: con «Notevole adesso»; da quel giorno `notevole` non ha piu' un lettore nel
+#: codice), ed e' per questo che una luce accesa e' `notevole` e non e' da
+#: sapere subito. Misurato il 18/09/2026:
 #: leggendo `notevole` come criterio della banda, 71 voci di cronaca su 75
 #: finivano in prima pagina, 35 delle quali accensioni di luce.
 #:
@@ -278,14 +280,11 @@ class TypeJudgments:
         """
         return bool(self._by_key.get(("integrazione", str(integration), SCAFFOLDING_FIELD)))
 
-    def is_notable(self, domain, device_class=None) -> bool:
-        return bool(self._lookup(NOTABLE_FIELD, domain, device_class))
-
     def da_sapere_subito(self, domain, device_class=None):
         """Il **giudizio scritto** su questo tipo, nella forma in cui e'
         scritto: `True`/`False` per `si`/`no`, un `frozenset` di stati per
         l'elenco, `False` se la riga non c'e' (l'assenza e' una risposta).
-        Coppia, poi dominio -- come `is_notable`, e per la stessa ragione:
+        Coppia, poi dominio -- come `working_of`, e per la stessa ragione:
         `binary_sensor` dice «no» in generale e «si'» sulle classi che lo
         meritano.
 

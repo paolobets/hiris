@@ -29,15 +29,16 @@ _limits_of_entity`): chiama la funzione di TESTA con un'istantanea diversa
 dal seme e guarda il DETTAGLIO finale, non solo il keyword scritto a una riga.
 Fino al 29/09/2026 ce n'era una seconda sulla catena del nucleo
 (`compose -> _highlight_lines -> _is_event`); e' uscita con «Notevole
-adesso», e da quel giorno `compose` riceve `judgments` senza leggerlo (vedi il
-suo docstring): il keyword resta sorvegliato qui, ma dietro non c'e' piu' un
-lettore.
+adesso», e lo stesso giorno `compose` ha perso il parametro `judgments`
+(non lo leggeva piu' nessuno): il nucleo non e' piu' fra le funzioni
+sorvegliate, perche' la sua firma non lo dichiara piu'.
 
-Mutazione ESEGUITA: tolto `judgments=` dalla chiamata `compose(` in
-`api/handlers_home_space.py` -- rossa, con file e riga nel messaggio;
-ripristinato con l'editor (verificato che `git diff` dopo il ripristino
-mostri solo le righe volute di questa fetta, nessuna persa -- non c'e' nessun
-commit, quindi niente `git status` da dire "pulito").
+Mutazione ESEGUITA (29/09/2026, rieseguita dopo l'uscita di `compose` da
+questo insieme): tolto `judgments=self._judgments` dalla chiamata in
+`home_space/tools.py` -- rossa, con file e riga nel messaggio; ripristinato
+riscrivendo il file originale (sha256 identico). Prima era eseguita sulla
+chiamata `compose(` di `api/handlers_home_space.py`, che non porta piu'
+l'istantanea.
 
 **`ToolDispatcher` in `FUNZIONI`.** Il costruttore riceve `judgments=None`
 (Task 5, `tools.py::ToolDispatcher.__init__`) con una ricaduta interna su
@@ -45,7 +46,7 @@ commit, quindi niente `git status` da dire "pulito").
 opzionali della classe (`cache`, `actuator`, ...). Perche' quella ricaduta non
 sia la stessa ricaduta silenziosa che questo test esiste per vietare, il suo
 UNICO sito di costruzione di produzione deve essere sorvegliato qui esattamente
-come `compose`/`view`: e' per questo che `ToolDispatcher` e' nell'insieme,
+come `view`: e' per questo che `ToolDispatcher` e' nell'insieme,
 anche se il piano non lo elencava per nome -- senza, il default della classe
 sarebbe garantito da niente.
 

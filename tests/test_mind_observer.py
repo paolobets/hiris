@@ -105,9 +105,10 @@ def test_la_regola_e_QUELLA_DEL_NUCLEO_non_una_seconda_uguale(monkeypatch):
     """Il nucleo applica gia' questa legge al digesto
     (`briefing.digest_visible_entity_ids`). Riscriverla qui la farebbe
     divergere al primo cambiamento da una parte sola -- la seconda fondamenta,
-    e questo prodotto l'ha gia' violata esattamente cosi' (`_highlight_lines`
-    contro `_capability_lines`, rilievo R1 dell'08/09/2026: due totali diversi
-    per la stessa parola nella stessa pagina).
+    e questo prodotto l'ha gia' violata esattamente cosi' (`_highlight_lines`,
+    uscita dal nucleo il 29/09/2026, contro `_capability_lines`, rilievo R1
+    dell'08/09/2026: due totali diversi per la stessa parola nella stessa
+    pagina).
 
     **Si cambia la regola del nucleo e si guarda se l'osservatore la segue.**
     Confrontare i due risultati non basterebbe: una COPIA fedele dei tre

@@ -58,8 +58,6 @@ from .topology import (
     hierarchy,
     name_with_id,
 )
-from .type_judgments import TypeJudgments
-from .type_vocabulary import REPO_JUDGMENTS
 
 # **Perche' questa tabella e' rimasta qui mentre le altre traslocavano**
 # (08/09/2026). I nomi sono vocabolario di un tipo, e la loro casa naturale e'
@@ -168,54 +166,6 @@ _DOMAIN_NAMES = {
     "input_datetime": ("data helper", "date helper"),
     "input_button": ("pulsante helper", "pulsanti helper"),
 }
-
-
-# Gli stati che rendono un'entita' NOTEVOLE adesso: acceso, aperto, in allarme
-# SCATTATO. Il resto e' rumore in una casa da trecento entita' -- una
-# temperatura di 19.5 non e' notevole solo perche' e' un numero, uno stato
-# "on"/"open" lo e' perche' e' un'eccezione rispetto al riposo.
-#
-# La fonte, stato per stato -- verificata su home-assistant/core il
-# 20/08/2026 (ramo `dev`, non un modulo installato: questo modulo resta PURO,
-# vedi il docstring in testa al file):
-#   "on"       -- STATE_ON,       homeassistant/const.py
-#   "open"     -- STATE_OPEN,     homeassistant/const.py
-#   "playing"  -- STATE_PLAYING,  homeassistant/const.py
-#   "unlocked" -- LockState.UNLOCKED,   homeassistant/components/lock/const.py
-#   "cleaning" -- VacuumActivity.CLEANING, homeassistant/components/vacuum/const.py
-# Senza Home Assistant installato non c'e' un enum da importare e confrontare
-# a runtime: l'elenco e' ricopiato a mano e pinnato (con lo stesso limite
-# dichiarato) in tests/test_type_vocabulary.py.
-#
-# **E' l'ULTIMA delle sei liste rimasta qui, ed e' rimasta per una ragione
-# misurata, non per mancanza di tempo.** La fetta che ha sciolto le altre
-# cinque doveva scioglierla derivandola dai riposi che il vocabolario dei tipi
-# gia' dichiara -- `unlocked` e' il complemento di `locked`, `open` di
-# `closed`, `on` di `off`: la stessa conoscenza, detta due volte dai due lati
-# opposti. **Il complemento non e' esatto**, e la misura sta in
-# `tests/test_notable_states_complement.py`: sui tipi che meritano un annuncio,
-# UNDICI stati che questa casa PUBBLICA non sono riposi e non sono qui dentro --
-# `cover`/`valve` in `opening` e `closing`, `lock` in `locking`, `unlocking`,
-# `opening` e `jammed`, `media_player` in `paused` e `buffering`, `vacuum` in
-# `paused`. Derivare dai riposi li conterebbe tutti e undici, e cambierebbe i
-# conteggi del nucleo: una correzione, forse giusta, ma una correzione -- e va
-# fatta in una fetta sua, col suo changelog, non di straforo dentro una che si
-# era impegnata a non cambiare un solo numero.
-#
-# Il verso opposto invece TORNA: nessuna di queste cinque parole e' un riposo
-# per nessuno dei tipi che le puo' portare, e anche quello e' pinnato dalla
-# stessa prova. Il difetto che resta e' quindi uno solo, e ha un nome: queste
-# cinque parole sono CIECHE AL TIPO -- `open` conta come «attivo» tanto per una
-# tapparella quanto per una serratura -- ed e' lo stesso difetto per cui
-# `topology._STATE_TRANSLATION` e' stata cancellata l'08/09/2026.
-#
-# **Dal 29/09/2026 il nucleo non la legge piu'**: «Notevole adesso» e' uscita
-# dal testo composto (vedi `compose()`), e con lei `_is_event`, l'unico
-# lettore di questo modulo. Resta qui perche' ha ancora un lettore FUORI:
-# il censore (`type_census.py`) la conta fra gli stati rivendicati. Se quella
-# rivendicazione valga ancora, senza un annuncio che la usi, lo decide una
-# fetta sua -- non questa, che si era impegnata a toccare solo il nucleo.
-_ACTIVE_STATES = {"on", "open", "unlocked", "playing", "cleaning"}
 
 
 # Il buffer riservato alla sezione "cio' che HIRIS ignora": deve poter contenere
@@ -631,18 +581,20 @@ def digest_visible_entity_ids(home_space: dict) -> frozenset[str]:
     (`categoria` = `config`/`diagnostic`).
 
     **Nata dal rilievo R1** (revisione del tratto v3.23.0..HEAD, 08/09/2026):
-    `_highlight_lines` applicava gia' queste tre regole scrivendole a mano
-    riga per riga, e `_capability_lines` -- la sezione «Cosa si puo' chiedere
-    alle cose di casa», nata nello stesso tratto -- non le riceveva affatto:
+    la sezione «Notevole adesso» (uscita dal nucleo il 29/09/2026) applicava
+    gia' queste tre regole scrivendole a mano riga per riga, e
+    `_capability_lines` -- la sezione «Cosa si puo' chiedere alle cose di
+    casa», nata nello stesso tratto -- non le riceveva affatto:
     iterava lo specchio INTERO della cache (`live_mirror`), quindi contava le
     nascoste, le entita' di servizio, e perfino un'entita' presente in cache
     ma assente dall'anagrafe (mai arrivata, o rimossa da Home Assistant). Sulla
     casa del proprietario: quattro luci nascoste in piu' e 113 `config` + 66
-    `diagnostic` che «La casa» e «Notevole adesso» non contano, contate qui --
-    lo stesso testo che dava due totali diversi per la stessa parola. Una
-    funzione sola, usata da entrambe le sezioni, e' l'unico modo per cui le
-    due non possano tornare a divergere in silenzio: e' la terza fondamenta,
-    consistenza, dentro un'unica pagina.
+    `diagnostic` che «Notevole adesso» non contava, contate qui -- lo stesso
+    testo che dava due totali diversi per la stessa parola. Una funzione sola
+    era l'unico modo per cui le due sezioni non potessero tornare a divergere
+    in silenzio: e' la terza fondamenta, consistenza, dentro un'unica pagina.
+    Dal 29/09/2026 nel nucleo la legge solo `_capability_lines`; fuori,
+    l'osservatore e `server.py` (qui sotto).
 
     **Pubblica dall'11/09/2026**, e per la stessa ragione per cui lo divento'
     `historian.home_space_zone`: l'osservatore (`mind/observer.py`) applica la
@@ -935,10 +887,10 @@ def _integrations_notice(integrations: list[dict]) -> str | None:
     leggeva ne' l'uno ne' l'altro -- poteva solo contare le entita' non
     disponibili e non sapere perche'.
 
-    Sta fra gli AVVISI e non in «Notevole adesso» perche' non e' un evento:
-    e' una condizione, e resta vera finche' qualcuno non la ripara. E' anche
-    la sezione giusta per un altro motivo: dichiara cio' che HIRIS NON puo'
-    raccontare della casa, ed e' esattamente il caso -- le entita' di
+    Non e' un evento: e' una condizione, e resta vera finche' qualcuno non
+    la ripara. Per questo sta in «Cosa non va in casa», la sezione dei guasti
+    subito dopo «La casa» (vedi `compose()`), e non fra le lacune: e' un
+    fatto che HIRIS SA e deve dire -- la ragione per cui le entita' di
     quell'integrazione non hanno uno stato leggibile.
 
     Il motivo esce solo se c'e': HA lo riempie per `setup_error` e
@@ -1081,8 +1033,6 @@ def _problems_notice(problems: dict | None) -> str | None:
     stessa ragione: quello dice PERCHE' un'integrazione non e' partita,
     questo dice cosa HA ha diagnosticato in generale. Nessuno dei due e' un
     evento -- sono condizioni, e restano vere finche' qualcuno non le ripara.
-    In «Notevole adesso» annuncerebbero a ogni messaggio una cosa che non e'
-    successa adesso.
 
     `problemi` arriva gia' letto dal chiamante (`handlers_home_space.compose_briefing`,
     da `app["ha_problems"]`), esattamente come `stato` e
@@ -1457,14 +1407,10 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
             behavior_problems: tuple[str, ...] = (),
             unread_bodies: dict[str, str] | None = None,
             reference_frame: dict | None = None,
-            reported_classes: dict[str, str] | None = None,
             problems: dict | None = None,
             comparison: dict | None = None,
             attributes: dict[str, dict] | None = None,
-            translations: dict | None = None,
-            fallback_names: dict[str, str] | None = None,
-            now: float | None = None,
-            judgments: TypeJudgments = REPO_JUDGMENTS) -> tuple[str, dict]:
+            now: float | None = None) -> tuple[str, dict]:
     """Compone il nucleo: la stessa casa per chiunque ragioni.
 
     Pura -- nessun I/O, nessuna rete. Restituisce `(testo, riepilogo)`:
@@ -1488,13 +1434,12 @@ def compose(home_space: dict, behavior: list[dict], memories: list[dict],
     mai avuto una chiave per quella sezione: cambia solo l'avviso di taglio,
     che non conta piu' «elementi notevoli».
 
-    **Quattro argomenti servivano solo a quella sezione** -- `translations`,
-    `fallback_names`, `reported_classes`, `judgments` -- e da quel giorno
-    questa funzione non li legge. Restano nella firma perche' il chiamante
-    di produzione (`handlers_home_space.compose_briefing`) li passa, e la
-    prova strutturale `test_judgments_passed_in_production.py` pretende
-    `judgments=`: toglierli e' una fetta che tocca il chiamante e quella
-    prova, non questa.
+    **Quattro argomenti servivano solo a quella sezione** -- le traduzioni
+    degli stati, i nomi e le classi dello specchio, l'istantanea dei giudizi
+    sui tipi -- e sono usciti dalla firma lo stesso giorno, insieme alla
+    lettura che il chiamante (`handlers_home_space.compose_briefing`) ne
+    faceva per nessuno (decisione del proprietario: il codice morto si
+    elimina).
 
     `attributi` sono le ceste degli attributi vivi, entita' per entita', come
     `topology.live_mirror` le consegna gia' al chiamante. Servono a una cosa
