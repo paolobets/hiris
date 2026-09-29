@@ -91,6 +91,22 @@ l'ambiguità di oggi («due Bagno») è un insieme di due voci, marcato come ogg
 `integrazione` — tutto ciò che `view` sapeva aprire. I filtri valgono dove hanno senso, e la
 descrizione lo dice per ciascuno.
 
+> **Cambiato durante la costruzione: i dispositivi si trovano per nome (29/09/2026).** La vecchia
+> `search` trovava un dispositivo dal nome («la lavatrice»); perderlo sarebbe stato una regressione
+> contro «tutto ciò che `view` sapeva aprire». Una domanda solo di `nome` restituisce quindi anche
+> righe `dispositivo` (id, nome, genere, area), oltre a quelle delle entità e delle aree.
+
+> **Cambiato durante la costruzione: `riferimento` da solo arriva a ricordo e integrazione, e uno
+> che non esiste lo dice (30/09/2026).** Una domanda fatta del solo `riferimento` che nessuna riga
+> prende (`house_query._only_the_reference`, `_missing_reference`) non si ferma a `trovate: 0`:
+> senza genere un numero va al ricordo e il dominio di una piattaforma nota va all'integrazione;
+> con il genere risponde il dettaglio di `queries.view`, che trova anche le pseudo-aree come
+> `__senza_area__`. Se non c'è nulla risponde `esiste: False` con un `suggerimento` (oppure
+> `non_disponibile`, se è caduto uno dei registri aree, entità, dispositivi, integrazioni, perché
+> «non esiste» sarebbe falso). `trovate` vale 0 per ogni voce che dice `esiste: False`. Una cosa
+> che un'entità, un'area o un dispositivo prendono vince sempre; con altri filtri accanto,
+> `trovate: 0` resta la risposta onesta.
+
 ### §2.2 · I filtri — tutti facoltativi, combinabili
 
 | parametro | valori | note |
@@ -112,6 +128,27 @@ descrizione lo dice per ciascuno.
 **Non** entrano: le **etichette** (0 entità le usano in questa casa: peso nella descrizione senza
 uso), e «cosa tocca un'automazione» (già servito da `related` e dal dettaglio completo).
 
+> **Cambiato durante la costruzione: un filtro che non vale si dice, non si lascia cadere
+> (29-30/09/2026).** La spec diceva «solo entità» per `classe`, `sopra`, `sotto` e non diceva cosa
+> succede a chi li usa altrove; ma §2.4 vieta il filtro taciuto. Con un genere di comportamento
+> (`automazione`, `script`) `classe`, `sopra` e `sotto` rispondono `{"errore": ...}`; lo stesso
+> vale per ogni filtro fuori dall'elenco del genere (`house_query._FILTERS_BY_KIND`: aree e
+> dispositivi, ricordi e integrazioni hanno il loro), compreso `in_esecuzione` senza genere. Il
+> messaggio nomina i filtri validi. `includi_nascoste`, `includi_servizio`, `ordina`, `limite` e
+> `salta` non sono filtri e non danno mai errore. Per gli stessi generi `area`, `piano` e
+> `integrazione` valgono davvero: le automazioni li prendono dalla voce dell'anagrafe con lo stesso
+> id, i dispositivi dall'albero delle aree.
+
+> **Cambiato durante la costruzione: `nome` confronta anche gli alias (30/09/2026).** Il confronto
+> per frammento e per radice guarda il nome e gli alias di un'entità e di un'area
+> (`_any_name_matches`); l'anagrafe non dà alias ai dispositivi.
+
+> **Cambiato durante la costruzione: «luce» e «luci» si trovano (30/09/2026).** La radice di
+> `memory/resolver.py` tagliava le parole corte: «luce» non trovava «Luci». Ora una parola di 4
+> lettere che finisce in vocale si confronta intera e cambia solo nella coppia singolare/plurale
+> (`_NUMBER_PAIRS`: -a/-e, -e/-i, -o/-i). Costo dichiarato: la regola conosce la grammatica, non il
+> significato, quindi «casi» trova anche «case» e «sale» anche «sala».
+
 ### §2.3 · La profondità, decisa dallo strumento
 
 | voci trovate | ogni voce porta | peso massimo |
@@ -122,6 +159,19 @@ uso), e «cosa tocca un'automazione» (già servito da `related` e dal dettaglio
 
 Il tetto sta **nella regola**, non in un taglio a valle: nessuna risposta supera la soglia che tiene
 il ponte sotto i 25.000 token, per costruzione.
+
+> **Cambiato durante la costruzione: il dettaglio completo ha un tetto di 50 righe (30/09/2026).**
+> La riga «1 voce = il dettaglio di oggi» reintroduceva la causa 2 di §1: un'area da 287 entità
+> apriva ~94.000 caratteri, e la «soglia» stava in una prova che usava un dettaglio finto. Il
+> dettaglio completo di un'area, di un dispositivo e di un'integrazione (le mute) tiene le righe
+> annidate (`entita`, poi `entita_nascoste`, le visibili per prime) a `queries.ROWS_MAX` = 50 **in
+> tutto**; il resto esce in `oltre` (`{"entita": n, "entita_nascoste": m, "suggerimento": ...}`)
+> con l'invito a restringere con `search`. `entita_mute` resta il numero intero. Misurato sulla
+> casa di prova (Telecamere 287 entità): 20.800 caratteri per l'area, 21.500 per dispositivo e
+> integrazione. **`BRIDGE_CEILING_CHARS` (30.000) è dunque un limite sulle righe, non sui
+> caratteri**: è la soglia con cui i cancelli misurano, non una garanzia; 50 righe molto ricche
+> arrivano a ~32.700 caratteri (~13.000 token), sotto i 25.000 del ponte con un margine di circa il
+> doppio.
 
 ### §2.4 · La risposta — sempre la stessa forma
 
@@ -140,6 +190,24 @@ data con sicurezza — con i default decisi, «luci accese» trova 0 voci visibi
 La descrizione dice: «se `oltre` è maggiore di zero, **restringi** con un filtro; scorri con
 `salta` solo se ti servono davvero tutte» — ogni pagina è un giro, e le pagine lette restano nella
 cronologia.
+
+> **Cambiato durante la costruzione: le disabilitate si contano dappertutto (29-30/09/2026).**
+> La regola «disabilitate sempre escluse e contate» valeva per la ricerca; il dettaglio di un
+> dispositivo le elencava, marcate. Ora area, dispositivo e integrazione le tolgono da `entita` e
+> da `entita_nascoste` e le contano in `entita_disabilitate` (una disabilitata e nascosta insieme
+> resta fra le disabilitate); `disabilitato` del dispositivo resta. Anche i dispositivi disabilitati
+> escono dalle righe della ricerca e si contano sotto `disabilitate`.
+
+> **Cambiato durante la costruzione: i registri caduti si dichiarano anche per il piano
+> (30/09/2026).** `non_ho_potuto_guardare` non vale solo per una domanda con `nome`: una domanda
+> con `piano` (senza `nome`) dichiara il registro dei piani caduto, altrimenti un `trovate: 0`
+> sarebbe una risposta falsa data con sicurezza. Le etichette non si dichiarano: la porta non le
+> filtra (`_SEARCHED_STORES`).
+
+> **Cambiato durante la costruzione: la memoria serve solo al dettaglio del ricordo
+> (30/09/2026).** `search` non aspetta più la memoria per rispondere a una domanda di soli filtri:
+> senza memoria il ricordo risponde `esiste: False, non_disponibile: True`, e gli altri dettagli
+> escono con `ricordi_non_letti` invece di un `ricordi: []` che direbbe «nessuno».
 
 ---
 
@@ -161,6 +229,23 @@ cloud. Decisione 10:
 
 È una **stretta** rispetto a oggi. Il filtro vive in **un punto solo** (la porta, non lo specchio:
 lo specchio serve anche a chi agisce e a chi verifica) e ha la sua prova.
+
+> **Cambiato durante la costruzione: le altre zone perdono le coordinate (29/09/2026).** Il
+> proprietario: «la posizione di casa sì»; le altre zone rivelerebbero dove vanno le persone. Solo
+> `zone.home` tiene `latitude` e `longitude` (`privacy.HOME_ZONE`); ogni altra `zone.*` le perde.
+
+> **Cambiato durante la costruzione: chi si sposta lo decide il vocabolario (29/09/2026).**
+> `privacy.MOVING_DOMAINS` non è un insieme scritto a mano né letto dal quadro dei giudizi caricato
+> a runtime: deriva dal vocabolario statico dei tipi (`type_vocabulary`, genere `presenza`, cioè
+> `person` e `device_tracker`). Una porta che dipendesse da un quadro caricato pigramente sarebbe
+> aperta finché non si carica; un dominio aggiunto a `presenza` è redatto da solo.
+
+> **Cambiato durante la costruzione: il filtro scende nelle righe annidate (30/09/2026).** Il
+> primo filtro rediggeva solo la voce di primo livello: il dettaglio di un'area o di un dispositivo
+> porta `entita` e `entita_nascoste`, e lì una persona in «Palestra» o un telefono in «Lavoro»
+> uscivano interi. `privacy.redact_row` ora è ricorsiva sulle liste di dizionari (il punto di
+> redazione resta uno), e quando lo stato di chi si sposta si riduce a `not_home` escono con lui
+> `stato_leggibile` e `stato_non_reso`, che potevano ripeterlo.
 
 ---
 
@@ -199,6 +284,13 @@ strumenti** (#9, #10, #19, #20; sulla catena anche #12 e #30) — e una sbagliat
 Il commento falso a `briefing.py:1773` si corregge. `mind/observer.py:98` usa la stessa funzione
 del digesto: l'osservatore va riletto contro questa regola nella costruzione.
 
+> **Cambiato durante la costruzione: con «Notevole adesso» esce anche il codice che lo serviva
+> (29/09/2026).** Il proprietario, «il codice morto va eliminato»: la sezione usciva dal nucleo e
+> con lei i quattro parametri di `compose` che nessuno leggeva più, il calcolo lato chiamante in
+> `handlers_home_space.compose_briefing` e `TypeJudgments.is_notable`, il cui unico lettore era
+> quella sezione. **Resta un residuo, aperto in BACKLOG:** il campo `notevole` del giudizio di tipo
+> (seme, API, pagina dei giudizi, `watcher-sapere.js`) non ha più un lettore.
+
 ---
 
 ## §6 · Lo specchio si risincronizza a ogni riconnessione
@@ -212,6 +304,14 @@ del digesto: l'osservatore va riletto contro questa regola nella costruzione.
 - `loaded` resta vero solo dopo una lettura completa.
 - Il residuo dichiarato a `entity_cache.py:626` esce.
 
+> **Cambiato durante la costruzione: la rilettura parte anche alla prima connessione, e le
+> riletture si mettono in fila (30/09/2026).** `ha_client` avvisa «riconnessione» a ogni
+> connessione riuscita, la prima compresa (`server.py`, ascoltatore `specchio-riconnessione`):
+> all'avvio si legge e poi si rilegge, e la rilettura chiude la finestra fra `load` e
+> `subscribe`, come fa l'anagrafe. Due riconnessioni ravvicinate non si sovrappongono:
+> `EntityCache.reload` è serializzata da un `asyncio.Lock` (`_reload_lock`), e il tampone degli
+> eventi si chiude in un `finally`, quindi una rilettura cancellata non lo lascia aperto.
+
 ---
 
 ## §7 · Il registro dei turni salva gli argomenti
@@ -220,6 +320,17 @@ Oggi salva solo i nomi degli strumenti: non si è potuto verificare quale ricerc
 l'Indifferenziato. Per chiudere (§9) serve vedere se il modello usa i filtri. Gli argomenti di ogni
 chiamata entrano nel registro locale delle misure (`consumi.db`), sulle due strade, passati dallo
 stesso filtro di §3; restano in casa come il resto del registro, con la sua retention.
+
+> **Cambiato durante la costruzione: «lo stesso filtro» sono due insiemi e una funzione
+> (29-30/09/2026).** `compact_tool_args` (`usage/store.py`) maschera i segreti di una chiamata di
+> servizio (`code`, `pin`, `password`, `token`, `user_code`, `alarm_code`, `lock_code`…) con un
+> insieme suo, `entity_cache.SERVICE_CALL_SECRETS`, unito agli attributi dello specchio in
+> `CALL_ARGUMENT_SECRETS`; la funzione di controllo (`is_credential`) è una sola e le regole sul
+> valore sono comuni. Non si è usata una lista unica perché un attributo di stato che si chiama
+> `code` (Tuya) non deve sparire dallo specchio. Le posizioni (`latitude`, `longitude`…) si
+> tolgono con `privacy.POSITION_ATTRIBUTES`, la stessa fonte di §3. **Il testo libero non si
+> maschera**: il filtro guarda la chiave e la forma del valore, e il limite è dichiarato nel
+> docstring e fissato da una prova.
 
 ---
 

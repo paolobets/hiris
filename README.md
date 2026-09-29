@@ -63,7 +63,7 @@ first, safeguards as a designed phase of their own. What there is instead is a
 boundary on **judgment, not on time**: nothing decides to act, or decides what
 to say, on its own — every execution traces back to a sentence you typed. What
 that does *not* mean is *immediately*, or *never on a schedule*: `promise`,
-one of the sixteen tools below, lets a sentence you type now run later, at a
+one of the fifteen tools below, lets a sentence you type now run later, at a
 time you name, with nobody in the chat when it happens — see the next
 paragraph for what that means in practice.
 
@@ -269,15 +269,14 @@ Saved memories come back in the nucleo on the next turn, under
 
 ---
 
-## The chat, and its sixteen tools
+## The chat, and its fifteen tools
 
-The chat is the only surface. The model gets the nucleo plus exactly sixteen tools
+The chat is the only surface. The model gets the nucleo plus exactly fifteen tools
 (`hiris/app/home_space/tools.py`, passed at `hiris/app/api/handlers_chat.py`):
 
 | Tool | What it does |
 |---|---|
-| `search` | finds an area, entity or device from a name or alias — and returns **every** candidate, flagging the ambiguous ones instead of silently picking the first |
-| `view` | the detail of one single thing: an area with its entities and states, an entity, a device, an automation or script *with its body*, or a memory with its interpretation |
+| `search` | asks the house a structured question and returns the whole set that matches: filters by name (fragment, stem and alias), kind, state, class, area, floor, integration, idle time and value, over entities, areas, devices, automations, scripts, memories and integrations. One match comes back in full detail, a few with their attributes, many as one line each (at most 50, the rest behind `oltre`). What was left out — hidden, service, disabled — is counted under `escluse`, never silently dropped; a filter that does not apply to the kind asked is an `errore`, and a reference that does not exist says `esiste: False` |
 | `related` | who touches a thing, according to Home Assistant — which automations, scripts, scenes, groups or people name it, and where it lives |
 | `remember` | saves what a person said, with its anchors to the house |
 | `fetch` | the memories anchored to one part of the house |
@@ -293,7 +292,7 @@ The chat is the only surface. The model gets the nucleo plus exactly sixteen too
 | `automation_trace` | how an automation's recent runs went, or — given one run's id — the full step-by-step graph of that single run; a run missing from the list means it aged out of what HA keeps, not that it succeeded |
 | `calendar` | the next appointments across every calendar in the house — tries to read each one rather than trusting its state, so a calendar that fails to answer is named in `non_letti` instead of silently vanishing; `impegni: []` means nothing is written down, not that the house will be empty |
 
-Two of the sixteen write to Home Assistant the moment they are called. `execute` does it
+Two of the fifteen write to Home Assistant the moment they are called. `execute` does it
 immediately, through the services door (`action/actuator.py`), with no confirmation step — verified
 against your installation, not approved by you first. `confirm` does it through the configuration
 door (`azione/construction/workshop.py`), applying a proposal `propose` already composed and
@@ -359,7 +358,7 @@ turn is enqueued together with the same context the synchronous chat composes
 before it starts (`agent/runner.py::probe_tools`). One boolean comes out of
 that probe and decides two things at once: the prompt the model reads and the
 arguments the CLI is launched with. When the probe succeeds the model gets the
-same sixteen tools as the synchronous path, under an `mcp__hiris__` prefix: it
+same fifteen tools as the synchronous path, under an `mcp__hiris__` prefix: it
 can look at the current state, not just the snapshot, and it can act — through
 the same two doors as the synchronous path, never one of its own.
 When it fails, the answer
@@ -441,7 +440,7 @@ renames an option, and a renamed option loses its stored value silently.
 | `local_model.url` | Ollama's address. The model and the wait are picked on the Models page inside HIRIS |
 
 > With `local_model.url` set and Ollama in the chain, HIRIS runs offline
-> against Ollama: the chat, the nucleo and the sixteen tools all work without
+> against Ollama: the chat, the nucleo and the fifteen tools all work without
 > any cloud key.
 
 The subscription bridge has no add-on option since 3.0.0: it is turned on from
@@ -596,7 +595,7 @@ rewritten, with a design of its own.
   yourself, not one of its own
 - **MQTT**, the gateway, Test Run, the sandbox
 - **HA health monitoring** — no `get_ha_health`, no `GET /api/health/ha`
-- **The thirty-four-tool catalogue** — replaced by the sixteen above
+- **The thirty-four-tool catalogue** — replaced by the fifteen above
 
 ---
 
