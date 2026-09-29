@@ -195,6 +195,14 @@ async def misura_turno(archivio, runner, *, specie: str, canale: str,
                 # L'uscita del turno e' la somma dei giri SOLO se ogni giro
                 # l'ha dichiarata: una somma su buchi direbbe un numero
                 # piu' piccolo del vero, con l'aria di essere esatto.
+                # Il modello, come il provider: chi chiama lo passa quando lo
+                # sa, altrimenti lo dice il runner consegnando i token del
+                # giro -- l'ultimo giro e' quello che ha risposto. Fino alla
+                # 3.70.0 la chat (che non lo passa) scriveva «ignoto» su
+                # ogni turno della catena (misurato dal vivo il 29/09).
+                dichiarati = [m for _, p in sorted(carichi.items())
+                              if (m := p.pop("model", None))]
+                modello = modello or (dichiarati[-1] if dichiarati else "")
                 uscite = [p.get("output_tokens") for p in carichi.values()]
                 uscita = (sum(uscite) if uscite and
                           all(u is not None for u in uscite) else None)

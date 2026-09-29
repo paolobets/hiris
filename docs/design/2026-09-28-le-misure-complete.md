@@ -46,7 +46,20 @@ Nomi: identificatori e colonne in inglese, prosa e valori di dominio in italiano
    / `ephemeral_1h_input_tokens`. Una chiamata all'API emette **più eventi con lo stesso
    `message.id`** (uno per blocco: `thinking`, `tool_use`, `text`) e lo stesso `usage`: il giro è
    il `message.id`, non l'evento. Il numero di `message.id` distinti coincide con `num_turns` (2 su
-   2). `read_stream` legge quegli eventi per i `tool_use` e scarta `usage`.
+   2).
+
+   > **Cambiato dopo il rilascio (3.70.1, verifica dal vivo del 29/09/2026).** «Coincide» valeva
+   > per un turno con UNO strumento. Sulla casa vera, 16 strumenti di cui 12 `view` partiti
+   > insieme in una chiamata: `num_turns=17`, `message.id` distinti **5**, e la somma dei 5 giri
+   > coincide al token con l'`usage` del turno (10 / 60.021 / 79.401). Le chiamate al modello
+   > sono i `message.id`; `num_turns` conta altro. Il turno prende `iterations` dallo stream
+   > (come la catena: chiamate al modello), `num_turns` resta solo ripiego e riga di log.
+   > Scoperta nello stesso turno: al giro 1 arrivano al modello **17.645 token** contro 18.694
+   > caratteri di guida+nucleo+cronologia e 44.842 di definizioni: le definizioni, in differita,
+   > **non** entrano nel giro 1. Lo scarto caratteri/token del ponte si calcola senza di loro, e
+   > dice che il contorno della CLI vale circa 12.000 token per giro.
+
+   `read_stream` legge quegli eventi per i `tool_use` e scarta `usage`.
    `output_tokens` per evento vale **1** (conteggio parziale dello streaming): il totale vero sta
    solo nell'evento `result`.
 2. **L'uso vero nel registro è quasi zero.** 70 turni dal 24/09 14:16 al 28/09 13:39. Di 55 turni

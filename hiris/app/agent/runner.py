@@ -1276,11 +1276,11 @@ def _measure_turn(job: dict, *, duration_ms: int, tools: list,
     al 28/09/2026 qui c'era scritto che non esistevano: era falso (spec «le
     misure complete» §1).
 
-    I giri del turno li dichiara la CLI (`num_turns` -> `num_exchanges`).
-    Un secondo conto c'e': i giri dello stream, uno per `message.id`, da cui
-    nascono le righe di `payload`. Se i due divergono si scrive un
-    avvertimento nel log (la forma dello stream e' cambiata); se la CLI non
-    dichiara `num_turns` il turno prende il conto dello stream, non zero.
+    I giri del turno sono quelli dello stream, uno per `message.id`: le
+    chiamate al modello, da cui nascono anche le righe di `payload`.
+    `num_turns` della CLI (`num_exchanges`) conta altro -- con strumenti in
+    parallelo lo supera -- e resta solo il ripiego quando lo stream non ha
+    letto nessun giro; quel caso, e solo quello, si avverte nel log.
 
     **Non puo' far cadere un turno.** Vale qui la stessa legge di
     `misura_turno`: il proprietario ha gia' la sua risposta, e un registro
@@ -1297,14 +1297,21 @@ def _measure_turn(job: dict, *, duration_ms: int, tools: list,
             # log, e una riga sbagliata sarebbe peggio di una riga assente.
             return
         models = exchange_usages(occurrence) if occurrence is not None else []
-        # Due conti degli stessi giri: se divergono, la forma dello stream e'
-        # cambiata e i giri scritti non sono piu' quelli della CLI.
+        # I giri sono le chiamate al modello, uno per `message.id`: e' cio'
+        # che `iterations` vuol dire sulla catena. `num_turns` della CLI NON
+        # e' lo stesso conto -- misurato dal vivo il 29/09/2026: 12 strumenti
+        # partiti insieme in una chiamata, 5 `message.id` la cui somma
+        # coincide al token con l'`usage` del turno, e `num_turns=17`. Fino
+        # alla 3.70.0 qui comandava la CLI, e un avvertimento chiamava
+        # «stream cambiato» ogni turno con strumenti in parallelo.
         n_stream = len(getattr(occurrence, "exchanges", None) or [])
         n_cli = getattr(occurrence, "num_exchanges", None)
-        if occurrence is not None and n_cli is not None and n_stream != n_cli:
-            log.warning("ponte: lo stream ha %d giri, la CLI ne dichiara %d "
+        if occurrence is not None and n_cli and not n_stream:
+            # Questo si' che e' uno stream cambiato: la CLI dice di aver
+            # lavorato e nessun `message.id` e' stato letto.
+            log.warning("ponte: la CLI dichiara %d giri e lo stream nessuno "
                         "(job_id=%s) -- la forma dello stream e' cambiata?",
-                        n_stream, n_cli, (job or {}).get("job_id"))
+                        n_cli, (job or {}).get("job_id"))
         # **Le chiavi sono quelle di `UsageStore.log_turn`**, non un terzo
         # vocabolario da tradurre a meta' strada: `server.py` le passa
         # dritte. Una traduzione in mezzo sarebbe un posto in piu' in cui
@@ -1317,9 +1324,10 @@ def _measure_turn(job: dict, *, duration_ms: int, tools: list,
             "provider": "subscription",
             "model": models[0][0] if models else "ignoto",
             "duration_ms": duration_ms,
-            # La CLI comanda; se tace, il conto dello stream -- mai uno zero
-            # che dica «nessun giro» di un turno che ne ha fatti.
-            "iterations": n_cli if n_cli is not None else n_stream,
+            # Lo stream comanda; se non ha letto niente, il conto della CLI
+            # -- mai uno zero che dica «nessun giro» di un turno che ne ha
+            # fatti.
+            "iterations": n_stream or (n_cli or 0),
             "tools": [_bare_tool_name(c.get("tool")) for c in (tools or [])
                       if isinstance(c, dict) and c.get("tool")],
             "outcome": outcome,

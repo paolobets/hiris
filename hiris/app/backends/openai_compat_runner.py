@@ -910,7 +910,10 @@ class OpenAICompatRunner:
             if _raccoglitore is not None:
                 _raccoglitore(iter_idx + 1, {
                     **openai_turn_tokens(getattr(response, "usage", None)),
-                    "cost_usd": self._response_cost(response, effective_model)})
+                    "cost_usd": self._response_cost(response, effective_model),
+                    # Chi ha risposto con QUALE modello: lo sa solo questo
+                    # punto (la chat non lo passa all'imbuto).
+                    "model": effective_model})
 
             choice = response.choices[0]
 

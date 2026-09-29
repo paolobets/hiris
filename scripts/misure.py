@@ -78,7 +78,7 @@ def _leggi_remoto(url: str, giorni: int, chiave: str = ""):
 
     richiesta = urllib.request.Request(f"{url}?giorni={int(giorni)}")
     if chiave:
-        for nome, valore in _firma(chiave, url).items():
+        for nome, valore in intestazioni_firmate(chiave, url).items():
             richiesta.add_header(nome, valore)
     with urllib.request.urlopen(richiesta, timeout=120) as risposta:
         dati = _json.loads(risposta.read())
@@ -89,8 +89,12 @@ def _leggi_remoto(url: str, giorni: int, chiave: str = ""):
     return [(t, carichi.get(t["id"], [])) for t in dati.get("turni", [])]
 
 
-def _firma(percorso_chiave: str, url: str) -> dict:
+def intestazioni_firmate(percorso_chiave: str, url: str, metodo: str = "GET",
+                         corpo: bytes = b"") -> dict:
     """Le quattro intestazioni con cui un servizio approvato si presenta.
+
+    Pubblica perche' la usa anche `batteria_misure.py`, che fa domande in
+    `POST`: una firma sola fra gli script, non una copia per script.
 
     **Il contratto si IMPORTA, non si riscrive**: `materia_firmata` vive in
     `api/canali.py`, ed e' scritto li' una volta sola apposta -- se le due
@@ -120,7 +124,7 @@ def _firma(percorso_chiave: str, url: str) -> dict:
     # Il percorso si firma SENZA la query: `?giorni=` sta nell'URL e non nella
     # materia firmata, come fa il resto del prodotto.
     percorso = urlparse(url).path
-    firma = privata.sign(materia_firmata("GET", percorso, momento, unico, b""))
+    firma = privata.sign(materia_firmata(metodo, percorso, momento, unico, corpo))
     return {"X-HIRIS-Servizio": pubblica,
             "X-HIRIS-Momento": str(int(momento)),
             "X-HIRIS-Unico": unico,
@@ -132,6 +136,87 @@ def _titolo(testo: str) -> None:
     print("-" * len(testo))
 
 
+#: Gli strumenti propri della CLI del ponte: non sono del catalogo di HIRIS, e
+#: contarli nei «mai chiamati» dava un numero negativo (28/09/2026).
+STRUMENTI_CLI = frozenset({"ToolSearch"})
+PREFISSO_MCP = "mcp__hiris__"
+
+
+def strumenti_catalogo(nomi: list[str]) -> list[str]:
+    return [n.removeprefix(PREFISSO_MCP) for n in nomi
+            if n not in STRUMENTI_CLI]
+
+
+def canali_per_specie(dati) -> dict:
+    """I canali di ogni specie letti dai TURNI: il ponte fino alla 3.70.0 non
+    scriveva carichi, e leggerli di la' diceva «un canale solo» (28/09)."""
+    canali = defaultdict(set)
+    for turno, _ in dati:
+        canali[turno["species"]].add(turno["channel"])
+    return canali
+
+
+def token_per_attore(dati) -> dict:
+    somme: dict = {}
+    for turno, carichi in dati:
+        v = somme.setdefault((turno["species"], turno["channel"]), {
+            "turni": 0, "nuovi": 0, "letti": 0, "scritti": 0, "scritti_1h": 0,
+            "uscita": 0, "giri_senza_token": 0})
+        v["turni"] += 1
+        v["uscita"] += turno.get("output_tokens") or 0
+        for c in carichi:
+            if c.get("input_tokens") is None:
+                v["giri_senza_token"] += 1
+                continue
+            v["nuovi"] += c["input_tokens"]
+            v["letti"] += c.get("cache_read_tokens") or 0
+            v["scritti"] += c.get("cache_write_tokens") or 0
+            if c.get("cache_ttl") in ("1h", "misto"):
+                v["scritti_1h"] += c.get("cache_write_tokens") or 0
+    for v in somme.values():
+        totale = v["nuovi"] + v["letti"] + v["scritti"]
+        v["quota_cache"] = v["letti"] / totale if totale else None
+    return somme
+
+
+def sezione_token(dati) -> None:
+    _titolo("TOKEN · per attore e canale")
+    for (specie, canale), v in sorted(token_per_attore(dati).items()):
+        quota = ("n/d" if v["quota_cache"] is None
+                 else f"{v['quota_cache'] * 100:.0f}%")
+        print(f"  {specie:12} {canale:8} {v['turni']:>4} turni · nuovi "
+              f"{v['nuovi']:>9,} · letti {v['letti']:>10,} · scritti "
+              f"{v['scritti']:>9,} (1h: {v['scritti_1h']:,}) · uscita "
+              f"{v['uscita']:>8,} · cache {quota}")
+        if v["giri_senza_token"]:
+            print(f"               {v['giri_senza_token']} giri senza token "
+                  "(prima della 3.70.0, o provider che non li dichiara)")
+
+
+def sezione_batteria(file_esiti: list[str]) -> None:
+    """I riassunti della batteria, e il confronto dei giudizi domanda per
+    domanda dove due file hanno la stessa domanda."""
+    import json as _json
+
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    from batteria_misure import riassunto
+
+    _titolo("BATTERIA")
+    tutti = {}
+    for f in file_esiti:
+        esiti = _json.loads(pathlib.Path(f).expanduser().read_text(encoding="utf-8"))
+        tutti[f] = {e["n"]: e for e in esiti}
+        print(f"  {pathlib.Path(f).name}: "
+              f"{_json.dumps(riassunto(esiti), ensure_ascii=False)}")
+    if len(tutti) < 2:
+        return
+    nomi = list(tutti)
+    for n in sorted(set().union(*(set(v) for v in tutti.values()))):
+        voci = [tutti[f].get(n, {}).get("giudizio") or "-" for f in nomi]
+        if len(set(voci)) > 1:
+            print(f"  #{n:>2} " + " · ".join(voci))
+
+
 def leva_1_strumenti(dati) -> None:
     """Quali strumenti chiama davvero ogni specie -- e quali mai."""
     _titolo("LEVA 1 · sottoinsieme degli strumenti per specie")
@@ -140,7 +225,7 @@ def leva_1_strumenti(dati) -> None:
     catalogo = 0
     for turno, carichi in dati:
         conta[turno["species"]] += 1
-        per_specie[turno["species"]].update(turno["tools"])
+        per_specie[turno["species"]].update(strumenti_catalogo(turno["tools"]))
         for c in carichi:
             catalogo = max(catalogo, c["tools_sent"] or 0)
     print(f"  definizioni spedite a ogni giro: {catalogo}")
@@ -258,12 +343,14 @@ def leva_5_canali(dati) -> None:
     if not per_specie:
         print("  nessun carico registrato nella finestra.")
         return
-    for specie, canali in sorted(per_specie.items()):
-        if len(canali) < 2:
+    canali = canali_per_specie(dati)
+    for specie, voci in sorted(per_specie.items()):
+        if len(canali[specie]) < 2:
             print(f"  {specie:12} un canale solo: niente da confrontare")
             continue
-        print(f"  {specie:12} {len(canali)} canali:")
-        for canale, (s, g, n, quanti) in sorted(canali):
+        print(f"  {specie:12} {len(canali[specie])} canali "
+              f"({len(voci)} con carichi):")
+        for canale, (s, g, n, quanti) in sorted(voci):
             print(f"      {canale:18} strumenti {s // quanti:>8} · guida "
                   f"{g // quanti:>7} · nucleo {n // quanti:>7}")
         print("      -> se le parti divergono oltre il rumore, i composer sono")
@@ -295,12 +382,15 @@ def main() -> None:
                            help="la chiave Ed25519 con cui firmare (la rotta "
                                 "sta dietro il perimetro)")
     argomenti.add_argument("--giorni", type=int, default=7)
+    argomenti.add_argument("--esiti", nargs="*", default=[],
+                           help="i file di esiti di batteria_misure.py")
     scelte = argomenti.parse_args()
 
     if not scelte.db and not scelte.url:
         raise SystemExit("serve --db oppure --url")
     if scelte.url:
-        dati = _leggi_remoto(scelte.url, scelte.giorni, scelte.chiave)
+        dati = _leggi_remoto(scelte.url, scelte.giorni,
+                             os.path.expanduser(scelte.chiave))
     else:
         if not os.path.exists(scelte.db):
             raise SystemExit(f"non trovo {scelte.db}")
@@ -314,7 +404,10 @@ def main() -> None:
     leva_3_mappa(dati)
     leva_4_latenza(dati)
     leva_5_canali(dati)
+    sezione_token(dati)
     chi_ha_chiesto(dati)
+    if scelte.esiti:
+        sezione_batteria(scelte.esiti)
 
 
 if __name__ == "__main__":

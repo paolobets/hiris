@@ -1094,7 +1094,8 @@ class ClaudeRunner:
                     "claude", effective_model, cost_dichiarato=None,
                     cost_da_listino=cost)
                 _raccoglitore(_giro, {**anthropic_turn_tokens(response.usage),
-                                      "cost_usd": _costo_giro})
+                                      "cost_usd": _costo_giro,
+                                      "model": effective_model})
 
             if response.stop_reason == "end_turn":
                 text_blocks = [b.text for b in response.content if b.type == "text"]

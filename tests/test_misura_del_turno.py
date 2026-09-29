@@ -318,3 +318,53 @@ async def test_senza_token_l_uscita_del_turno_resta_NULL(app):
     Mutazione ESEGUITA: `sum(... or 0)` al posto del controllo sui None -- rossa."""
     await _gira(app, FintoRunner(giri=2))
     assert app["usage"].turns()[0]["output_tokens"] is None
+
+
+class RunnerCheDichiaraIlModello(RunnerCoiToken):
+    """Come i runner veri dopo la 3.70.1: la consegna dei token porta anche
+    il modello che ha risposto davvero (`effective_model`)."""
+
+    async def chat(self):
+        raccoglitore = _misura_corrente()
+        raccoglitore(1, {"tools_chars": 1, "guide_chars": 1, "core_chars": 1,
+                         "history_chars": 1, "results_chars": 0})
+        raccoglitore(1, {"input_tokens": 10, "output_tokens": 2,
+                         "model": "qwen/qwen3.8-27b"})
+        return "fatto"
+
+
+@pytest.mark.asyncio
+async def test_il_modello_della_chat_si_MISURA_dal_giro(app):
+    """Misurato dal vivo il 29/09/2026: la chat sulla catena scriveva
+    `model = ignoto` su ogni turno, perche' i due punti della chat non
+    passano `modello` e l'imbuto non aveva altro da leggere. Il modello lo
+    sa il runner, quando consegna i token del giro.
+
+    Mutazione ESEGUITA: `model=modello or "ignoto"` (il vecchio) -- rossa."""
+    async with misura_turno(app["usage"], RunnerCheDichiaraIlModello(),
+                            specie="chat", canale="catena"):
+        await RunnerCheDichiaraIlModello().chat()
+    turno = app["usage"].turns()[0]
+    assert turno["model"] == "qwen/qwen3.8-27b"
+    # La chiave in piu' non e' una colonna del giro: la riga si scrive.
+    assert app["usage"].payloads(turno["id"])[0]["input_tokens"] == 10
+
+
+def test_i_DUE_runner_veri_consegnano_il_modello_coi_token():
+    """Mutazione ESEGUITA: togliere `"model"` dalla consegna di uno dei due
+    -- rossa."""
+    import inspect
+    import re
+
+    from hiris.app.backends.openai_compat_runner import OpenAICompatRunner
+    from hiris.app.claude_runner import ClaudeRunner
+
+    # DENTRO la consegna: `"model": effective_model` compare gia' nella
+    # richiesta all'API, e un controllo sul sorgente intero passava anche
+    # senza la correzione (vista passare a vuoto il 29/09).
+    consegna = re.compile(r'_raccoglitore\([^;]{0,400}?"model": effective_model',
+                          re.DOTALL)
+    for classe in (ClaudeRunner, OpenAICompatRunner):
+        assert consegna.search(inspect.getsource(classe.chat)), (
+            f"{classe.__name__} non dice quale modello ha risposto: la chat "
+            "sulla catena tornerebbe «ignoto»")

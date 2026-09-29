@@ -299,3 +299,21 @@ def test_senza_num_turns_i_giri_sono_quelli_dello_stream(registro):
     ponte._measure_turn({"job_id": "j7", "kind": "chat"}, duration_ms=1,
                         tools=[], occurrence=e, outcome="fallito")
     assert registro[0]["iterations"] == 2
+
+
+def test_strumenti_in_parallelo_i_giri_sono_le_chiamate_non_num_turns(registro):
+    """Misurato dal vivo il 29/09/2026 (turno `og7xwGjc4Yji`, 3.70.0): 16
+    strumenti, 12 `view` partiti insieme in UNA chiamata; la CLI dichiara
+    `num_turns=17`, lo stream ha 5 `message.id` -- e la somma dei 5 giri
+    coincide al token con l'`usage` del turno (10 / 60021 / 79401). Le
+    chiamate al modello sono 5: `num_turns` conta altro, e sulla catena
+    `iterations` sono le chiamate. Una parola, una cosa sola.
+
+    Mutazione ESEGUITA: `"iterations": n_cli if n_cli is not None else
+    n_stream` (il vecchio) -- rossa (17 invece di 5); ripristinata, verde."""
+    e = _occorrenza()
+    e.num_exchanges = 17
+    e.exchanges = [{"message_id": m} for m in "abcde"]
+    ponte._measure_turn({"job_id": "j8", "kind": "chat"}, duration_ms=1,
+                        tools=[], occurrence=e, outcome="riuscito")
+    assert registro[0]["iterations"] == 5
