@@ -638,7 +638,7 @@ def test_il_prompt_del_ponte_smentisce_gli_strumenti_nominati_dalla_persona():
 
 def test_col_ramo_attivo_la_persona_non_viene_smentita_ma_ricollegata():
     """Il gemello (parita' B, Task 3). Sul ramo con gli strumenti la persona
-    dice il VERO -- `search` e `view` esistono davvero -- e smentirla sarebbe
+    dice il VERO -- `search` esiste davvero -- e smentirla sarebbe
     la falsita' speculare, lo stesso difetto girato al contrario.
 
     Cio' che il prompt deve fare qui e' un'altra cosa: **ricollegare** i nomi

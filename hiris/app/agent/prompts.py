@@ -260,9 +260,11 @@ _GUIDE_WITHOUT_TOOLS = (
 # installazione ha o il default nuovo o un prompt riscritto a mano. Non si
 # misura dal repository: si misura sulle installazioni vive.
 #
-# I tre esempi bastano perche' il catalogo intero e' elencato due righe sopra,
-# e perche' il default storico ne nominava DUE soli (`cerca`, `guarda`) -- il
-# terzo copre il caso piu' frequente fra i prompt riscritti a mano.
+# I quattro nomi bastano perche' il catalogo intero e' elencato due righe
+# sopra. Il default storico ne nominava DUE soli (`cerca`, `guarda`); `view`
+# (il nome inglese di `guarda`, uscito il 29/09/2026 con «una porta sola per
+# la casa») e `ricorda` coprono i prompt salvati dopo la rinomina e i piu'
+# frequenti fra quelli riscritti a mano.
 _OLD_NAMES_NOTICE = (
     "Se il testo qui sopra nomina gli strumenti in italiano (`cerca`, "
     "`guarda`, `ricorda`...) o `view`, sono i nomi DI PRIMA: oggi `cerca`, "
@@ -321,12 +323,14 @@ _GUIDE_WITH_TOOLS = (
     "parallele: il risparmio vero e' risolvere piu' nomi con UNA "
     "`mcp__hiris__search` (vedi sopra) ed essere parsimoniosi con le "
     "chiamate, non il parallelismo in se'.\n"
-    "Se invece la richiesta riguarda una STANZA, un piano, un'etichetta o un "
-    "dispositivo, passali a `mcp__hiris__execute` cosi' come sono (`aree`, "
-    "`piani`, `etichette`, `dispositivi`) e NON raccogliere gli id a mano: li "
-    "risolve Home Assistant, che e' l'unico a saperli tutti. Raccoglierli a "
-    "mano significa spegnerne quattordici su quindici e dire di averle spente "
-    "tutte."
+    "Se invece la richiesta riguarda una STANZA, un piano o un dispositivo, "
+    "passane l'id a `mcp__hiris__execute` cosi' com'e' (`aree`, `piani`, "
+    "`dispositivi`) e NON raccogliere a mano gli id delle entita' che "
+    "contengono: li risolve Home Assistant, che e' l'unico a saperli tutti. "
+    "Raccoglierli a mano significa spegnerne quattordici su quindici e dire "
+    "di averle spente tutte. Le etichette (`etichette`) si danno per id, "
+    "come le conosce Home Assistant: nessuno strumento le risolve dal nome, "
+    "quindi non indovinare l'id di un'etichetta.\n"
 )
 
 # Le due frasi sul CONTESTO, complementari fra loro: una sola delle due entra

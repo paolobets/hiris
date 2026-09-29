@@ -317,7 +317,9 @@ def test_nessun_testo_che_il_modello_legge_nomina_view():
     diventato `search`: lo si toglie dal sorgente per nome, non si allarga il
     filtro.
 
-    Mutazione ESEGUITA: lasciare «view» in `_NOTHING_RECOGNIZED_SUGGESTION` -- rossa."""
+    Mutazione ESEGUITA: lasciare «view» in `_NOTHING_RECOGNIZED_SUGGESTION` -- rossa.
+    Mutazione ESEGUITA: rimettere «più view, più related» (view NUDO) in
+    `BASE_TOOL_RULES` -- rossa (la prima forma del filtro, con virgolette, era verde)."""
     import ast
     import inspect
 
@@ -326,7 +328,7 @@ def test_nessun_testo_che_il_modello_legge_nomina_view():
     from hiris.app.agent import prompts
     from hiris.app.home_space import briefing, queries, tools, type_census
 
-    citazione = re.compile(r"[«`\"']view[»`\"']|\bview\(")
+    citazione = re.compile(r"\bview\b")
     colpevoli = []
     for modulo in (verification, prompts, briefing, queries, tools,
                    type_census, claude_runner, chat_settings):
