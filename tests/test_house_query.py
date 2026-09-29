@@ -22,12 +22,17 @@ def _luce(i, a, **k):
 def _casa():
     """Una casa piccola ma con tutti i casi veri del 29/09: due luci di
     servizio NASCOSTE e senza area, accese; entita' di servizio; una
-    disabilitata; una persona fuori casa."""
+    disabilitata; una persona fuori casa. E, come nella casa vera, le
+    automazioni stanno ANCHE nel registro delle entita', e i dispositivi nel
+    loro registro."""
     return {
         "piani": [{"id": "terra", "nome": "Piano terra", "livello": 0}],
         "aree": [{"id": "soggiorno", "nome": "Soggiorno", "piano_id": "terra",
                   "alias": [], "etichette": []}],
-        "dispositivi": [],
+        "dispositivi": [{"id": "dev_lavatrice", "nome": "Lavatrice",
+                         "nome_utente": None, "produttore": None, "modello": None,
+                         "area_id": "soggiorno", "disabilitato": 0,
+                         "etichette": []}],
         "entita": [
             _luce("light.soggiorno_1", "soggiorno"),
             _luce("light.soggiorno_2", "soggiorno"),
@@ -36,6 +41,8 @@ def _casa():
             _luce("switch.echo_dnd", "soggiorno", categoria="config"),
             _luce("light.vecchia", "soggiorno", disabilitata=1),
             {**_luce("person.marta", None), "piattaforma": "person"},
+            {**_luce("automation.sveglia", None), "nome": "Sveglia",
+             "piattaforma": "automation"},
         ],
         "etichette": [], "categorie": [], "integrazioni": [],
     }
@@ -73,6 +80,23 @@ def _chiedi(**argomenti):
                           detail=_dettaglio, now=T0)
 
 
+def _automazioni(*coppie):
+    """(comportamento, specchio) per automazioni con la loro ultima
+    esecuzione (None = mai eseguita)."""
+    comportamento = [{"id": f"automation.{n}", "tipo": "automazione",
+                      "nome": n.capitalize()} for n, _ in coppie]
+    attributi = {f"automation.{n}": {"values": {"last_triggered": t}}
+                 for n, t in coppie if t}
+    stati = {f"automation.{n}": "on" for n, _ in coppie}
+    return comportamento, (stati, {}, {}, {}, {}, attributi)
+
+
+def _chiedi_automazioni(coppie, argomenti: dict):
+    comportamento, specchio = _automazioni(*coppie)
+    return hq.query_house(_casa(), comportamento, specchio,
+                          hq.parse_filters(argomenti), detail=_dettaglio, now=T0)
+
+
 def test_luci_accese_con_le_accese_nascoste_non_e_uno_zero_muto():
     """Il caso della batteria del 29/09 (#4).
 
@@ -84,6 +108,7 @@ def test_luci_accese_con_le_accese_nascoste_non_e_uno_zero_muto():
 
 
 def test_includi_nascoste_le_riporta_e_dice_che_sono_nascoste():
+    """Mutazione ESEGUITA: non scrivere `nascosta` sulla riga -- rossa."""
     r = _chiedi(tipo="light", stato="on", includi_nascoste=True)
     assert r["trovate"] == 3
     nascoste = [v for v in r["voci"] if v.get("nascosta")]
@@ -100,19 +125,28 @@ def test_le_disabilitate_sono_sempre_fuori_e_contate():
 
 
 def test_le_entita_di_servizio_si_chiedono_esplicitamente():
+    """Mutazione ESEGUITA: escluderle anche con `includi_servizio` -- rossa."""
     assert _chiedi(stato="unavailable")["escluse"]["servizio"] == 1
     r = _chiedi(stato="unavailable", includi_servizio=True)
     assert [v["id"] for v in r["voci"]] == ["switch.echo_dnd"]
 
 
 def test_area_e_filtri_si_combinano():
+    """Mutazione ESEGUITA: ignorare il filtro `area` -- rossa (le nascoste
+    senza area rientrerebbero)."""
     r = _chiedi(area="soggiorno", tipo="light")
+    assert {v["id"] for v in r["voci"]} == {"light.soggiorno_1",
+                                            "light.soggiorno_2"}
+    r = _chiedi(area="soggiorno", tipo="light", includi_nascoste=True)
     assert {v["id"] for v in r["voci"]} == {"light.soggiorno_1",
                                             "light.soggiorno_2"}
 
 
 def test_area_mancante_e_un_valore_valido():
-    """Il valore «senza area» del filtro `area`."""
+    """Il valore «senza area» del filtro `area`.
+
+    Mutazione ESEGUITA: `_area_name` che restituisce il nome anche delle
+    pseudo-aree -- rossa."""
     r = _chiedi(area="senza area", includi_nascoste=True, tipo="light")
     assert r["trovate"] == 2
 
@@ -120,15 +154,17 @@ def test_area_mancante_e_un_valore_valido():
 def test_la_profondita_la_decide_lo_strumento():
     """1 voce: completa (il dettaglio del dispatcher); 2-10: media; oltre: corta.
 
-    Mutazione ESEGUITA: soglia media a 9 -- rossa sul caso da 10."""
+    Mutazione ESEGUITA: righe delle entita' sempre corte (`medium=False`) --
+    rossa."""
     uno = _chiedi(riferimento="light.soggiorno_1")
     assert uno["profondita"] == "completa" and uno["voci"][0]["completo"]
     due = _chiedi(tipo="light")
     assert due["profondita"] == "media"
-    assert "attributi" in due["voci"][0] or "ultimo_cambio" in due["voci"][0]
+    assert due["voci"][0]["genere"] == "entita"
 
 
 def test_dieci_voci_sono_ancora_medie_undici_sono_corte():
+    """Mutazione ESEGUITA: soglia media a 9 -- rossa sul caso da 10."""
     casa = _casa()
     casa["entita"] = [{"id": f"sensor.s{i}", "nome": "", "area_id": "soggiorno",
                        "dispositivo_id": None, "piattaforma": "x",
@@ -140,6 +176,7 @@ def test_dieci_voci_sono_ancora_medie_undici_sono_corte():
     r10 = hq.query_house(casa, [], _specchio(stati), f10, detail=_dettaglio, now=T0)
     r11 = hq.query_house(casa, [], _specchio(stati), f11, detail=_dettaglio, now=T0)
     assert r10["trovate"] == 10 and r10["profondita"] == "media"
+    assert "genere" in r10["voci"][0]
     assert r11["trovate"] == 11 and r11["profondita"] == "corta"
     assert set(r11["voci"][0]) <= {"id", "nome", "area", "stato",
                                    "ultimo_cambio", "nascosta"}
@@ -174,6 +211,12 @@ def test_limite_zero_restituisce_solo_i_conteggi():
     assert r["voci"] == [] and r["trovate"] == 1 and r["escluse"]["nascoste"] == 2
 
 
+def test_limite_zero_con_piu_voci_non_promette_un_oltre():
+    """Mutazione ESEGUITA: `oltre` scritto anche con `limite=0` -- rossa."""
+    r = _chiedi(tipo="light", limite=0)
+    assert r["voci"] == [] and r["trovate"] == 2 and "oltre" not in r
+
+
 def test_la_persona_fuori_casa_esce_senza_zona_e_senza_coordinate():
     """Review Focus 3. Mutazione ESEGUITA: non passare da `redact_row` -- rossa."""
     r = _chiedi(tipo="person")
@@ -182,55 +225,125 @@ def test_la_persona_fuori_casa_esce_senza_zona_e_senza_coordinate():
     assert "latitude" not in str(voce)
 
 
+def test_lo_stato_si_filtra_su_quello_che_il_lettore_vede():
+    """Marta e' «Lavoro» nello specchio, `not_home` alla porta: chi chiede
+    `not_home` deve trovarla.
+
+    Mutazione ESEGUITA: confrontare lo stato grezzo -- rossa."""
+    r = _chiedi(tipo="person", stato="not_home")
+    assert r["trovate"] == 1 and r["voci"][0]["id"] == "person.marta"
+
+
 def test_nessun_riepilogo_per_stato():
-    """Decisione 5: le voci, non i conti."""
+    """Decisione 5: le voci, non i conti.
+
+    Mutazione ESEGUITA: aggiungere `per_stato` al risultato -- rossa."""
     r = _chiedi(tipo="light", includi_nascoste=True)
     assert set(r) <= {"trovate", "escluse", "profondita", "voci", "oltre"}
 
 
 def test_solo_il_nome_cerca_in_tutti_i_generi():
-    """Review Focus 1: «soggiorno» e' un'AREA, non un'entita'."""
+    """Review Focus 1: «soggiorno» e' un'AREA, e anche due luci.
+
+    Mutazione ESEGUITA: cercare solo fra le entita' -- rossa."""
     r = _chiedi(nome="soggiorno")
-    assert any(v.get("genere") == "area" for v in r["voci"]) or \
-        r["voci"][0].get("tipo") == "area"
+    assert r["trovate"] == 3
+    assert [v["id"] for v in r["voci"] if v.get("genere") == "area"] == ["soggiorno"]
+    assert {v["id"] for v in r["voci"] if v.get("genere") == "entita"} == {
+        "light.soggiorno_1", "light.soggiorno_2"}
+
+
+def test_i_dispositivi_si_trovano_per_nome():
+    """Il vecchio `search` trovava «la lavatrice»; la porta nuova pure, e
+    una voce sola e' il dettaglio del dispositivo.
+
+    Mutazione ESEGUITA: non cercare fra i dispositivi -- rossa."""
+    r = _chiedi(nome="lavatrice")
+    assert r["trovate"] == 1 and r["profondita"] == "completa"
+    assert r["voci"][0]["tipo"] == "dispositivo"
+    assert r["voci"][0]["id"] == "dev_lavatrice"
+
+
+def test_un_automazione_non_si_conta_due_volte():
+    """`automation.sveglia` sta nel registro delle entita' E nel
+    comportamento: la riga di comportamento la rappresenta.
+
+    Mutazione ESEGUITA: non saltare le entita' `automation` -- rossa."""
+    r = _chiedi_automazioni([("sveglia", "2026-09-28T06:30:00+00:00")],
+                            {"nome": "sveglia"})
+    assert r["trovate"] == 1 and r["profondita"] == "completa"
+    assert r["voci"][0]["tipo"] == "automazione"
 
 
 def test_le_automazioni_ordinate_dalla_piu_ferma():
-    """#31 della batteria. Mutazione ESEGUITA: ordinare per nome -- rossa."""
-    comportamento = [
-        {"id": "automation.nuova", "tipo": "automazione", "nome": "Nuova"},
-        {"id": "automation.vecchia", "tipo": "automazione", "nome": "Vecchia"}]
-    specchio = ({"automation.nuova": "on", "automation.vecchia": "on"}, {}, {},
-                {}, {}, {"automation.nuova": {"values": {
-                    "last_triggered": "2026-09-28T10:00:00+00:00"}},
-                    "automation.vecchia": {"values": {
-                        "last_triggered": "2026-02-17T10:00:00+00:00"}}})
-    r = hq.query_house(_casa(), comportamento, specchio,
-                       hq.parse_filters({"genere": "automazione",
-                                         "ordina": "ultimo_cambio"}),
-                       detail=_dettaglio, now=T0)
-    assert [v["id"] for v in r["voci"]] == ["automation.vecchia",
+    """#31 della batteria: la mai eseguita e' la piu' ferma di tutte.
+
+    Mutazione ESEGUITA: ordinare per nome -- rossa. Mutazione ESEGUITA:
+    «mai» ordinato come stringa (in fondo) -- rossa."""
+    r = _chiedi_automazioni([("nuova", "2026-09-28T10:00:00+00:00"),
+                             ("vecchia", "2026-02-17T10:00:00+00:00"),
+                             ("abbandonata", None)],
+                            {"genere": "automazione", "ordina": "ultimo_cambio"})
+    assert [v["id"] for v in r["voci"]] == ["automation.abbandonata",
+                                            "automation.vecchia",
                                             "automation.nuova"]
-    assert r["voci"][0]["ultima_esecuzione"].startswith("2026-02-17")
+    assert r["voci"][0]["ultima_esecuzione"] == "mai"
+    assert r["voci"][1]["ultima_esecuzione"].startswith("2026-02-17")
 
 
 def test_il_filtro_fermo_legge_l_ultima_esecuzione_delle_automazioni():
-    """Il filtro `fermo_da` sulle automazioni."""
-    comportamento = [{"id": "automation.vecchia", "tipo": "automazione",
-                      "nome": "Vecchia"}]
-    specchio = ({"automation.vecchia": "on"}, {}, {}, {}, {},
-                {"automation.vecchia": {"values": {
-                    "last_triggered": "2026-02-17T10:00:00+00:00"}}})
+    """Il filtro `fermo_da` sulle automazioni.
+
+    Mutazione ESEGUITA: ignorare `fermo_da` fra le automazioni -- rossa."""
+    r = _chiedi_automazioni([("vecchia", "2026-02-17T10:00:00+00:00"),
+                             ("nuova", "2026-09-28T10:00:00+00:00")],
+                            {"genere": "automazione", "fermo_da": "30d"})
+    assert r["trovate"] == 1 and r["voci"][0]["id"] == "automation.vecchia"
+
+
+def test_tipo_automation_senza_genere_legge_l_ultima_esecuzione():
+    """Spec §2.2: per automazioni e script conta l'ultima esecuzione, anche
+    quando il modello scrive il dominio (`tipo`) invece del genere.
+
+    Mutazione ESEGUITA: non tradurre `tipo=automation` nel genere -- rossa."""
+    r = _chiedi_automazioni([("vecchia", "2026-02-17T10:00:00+00:00"),
+                             ("antica", "2026-01-01T10:00:00+00:00"),
+                             ("nuova", "2026-09-28T10:00:00+00:00")],
+                            {"tipo": "automation", "fermo_da": "30d"})
+    assert r["trovate"] == 2
+    assert {v["id"] for v in r["voci"]} == {"automation.vecchia",
+                                            "automation.antica"}
+    assert all(v["ultima_esecuzione"].startswith("2026-0") for v in r["voci"])
+
+
+def test_nella_profondita_corta_il_comportamento_sta_in_una_riga():
+    """Mutazione ESEGUITA: `modalita` scritta anche nelle righe corte -- rossa."""
+    coppie = [(f"a{i:02}", "2026-09-28T10:00:00+00:00") for i in range(11)]
+    comportamento, specchio = _automazioni(*coppie)
+    for voce in specchio[5].values():
+        voce["values"]["mode"] = "single"
     r = hq.query_house(_casa(), comportamento, specchio,
-                       hq.parse_filters({"genere": "automazione",
-                                         "fermo_da": "30d"}),
+                       hq.parse_filters({"genere": "automazione"}),
                        detail=_dettaglio, now=T0)
-    assert r["trovate"] == 1
+    assert r["profondita"] == "corta"
+    assert all("modalita" not in v for v in r["voci"])
+
+
+def test_una_domanda_vuota_cerca_solo_le_entita():
+    """Spec §2.1: il genere di default e' `entita`.
+
+    Mutazione ESEGUITA: `only_by_name` vero anche senza nome -- rossa."""
+    r = _chiedi()
+    assert all(v.get("genere") == "entita" for v in r["voci"])
+    assert r["trovate"] == 4
 
 
 @pytest.mark.parametrize("argomenti", [{"limite": 51}, {"fermo_da": "tre giorni"},
                                        {"genere": "piano"}, {"sopra": "x"}])
 def test_un_filtro_sbagliato_si_dice_non_si_indovina(argomenti):
+    """Mutazione ESEGUITA, una per caso: togliere il tetto di `limite`, il
+    controllo della durata, quello del genere, quello del numero -- ognuna
+    rossa sul proprio caso."""
     assert "errore" in hq.parse_filters(argomenti)
 
 

@@ -21,7 +21,7 @@ from datetime import datetime
 
 from ..memory.resolver import name_matches
 from . import topology
-from .privacy import redact_row
+from .privacy import redact_row, redact_state
 
 DETAIL_MEDIUM_MAX = 10
 ROWS_MAX = 50
@@ -32,8 +32,13 @@ _DURATION = re.compile(r"^\s*(\d+)\s*([smhd])\s*$")
 _UNIT_S = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 #: I generi che hanno uno stato nello specchio e un'ultima esecuzione.
 _BEHAVIOR_KINDS = {"automazione": "automation", "script": "script"}
-#: I generi che non si elencano: si chiedono per `riferimento` e rispondono
-#: sempre col dettaglio completo di `queries.view`.
+#: Il dominio di Home Assistant -> il genere: `tipo=automation` senza
+#: `genere` e' una domanda sulle automazioni, e per loro conta l'ultima
+#: esecuzione, non l'ultimo cambio di stato (spec §2.2).
+_BEHAVIOR_DOMAINS = {v: k for k, v in _BEHAVIOR_KINDS.items()}
+#: I generi che si chiedono per `riferimento` e rispondono col dettaglio
+#: completo di `queries.view`. Un dispositivo senza `riferimento` si cerca
+#: invece per nome, come faceva il vecchio `search` («la lavatrice»).
 _DETAIL_ONLY_KINDS = ("dispositivo", "ricordo", "integrazione")
 
 
@@ -61,10 +66,12 @@ class HouseFilters:
 
     @property
     def only_by_name(self) -> bool:
-        """Solo `nome`/`riferimento`: si cerca in tutti i generi."""
-        return self.kind is None and not any((
+        """Solo `nome`/`riferimento`: si cerca in tutti i generi. Una
+        domanda vuota non lo e': il genere di default e' `entita` (spec §2.1)."""
+        return bool(self.name or self.reference) and self.kind is None and not any((
             self.domain, self.state, self.device_class, self.area, self.floor,
-            self.platform, self.idle_for_s, self.changed_within_s,
+            self.platform, self.idle_for_s is not None,
+            self.changed_within_s is not None,
             self.above is not None, self.below is not None,
             self.running is not None))
 
@@ -156,7 +163,9 @@ def _entity_matches(f: HouseFilters, entry, area, floor, mirror, now) -> bool:
         return False
     if f.domain and domain != f.domain:
         return False
-    if f.state and stato.get(eid) != f.state:
+    # Lo stato che il lettore VEDE, non quello grezzo: «Lavoro» di una
+    # persona esce come `not_home`, e `stato=not_home` deve trovarla.
+    if f.state and redact_state(eid, stato.get(eid)) != f.state:
         return False
     if f.device_class and (classi.get(eid) or entry.get("classe")) != f.device_class:
         return False
@@ -208,23 +217,23 @@ def _entity_row(entry, area, where, mirror, medium: bool) -> dict:
             row["integrazione"] = entry["piattaforma"]
         if attributi.get(eid):
             row["attributi"] = attributi[eid]
-    return redact_row(row)
+    return row
 
 
-def _behavior_rows(f: HouseFilters, behavior, mirror, now, medium: bool):
+def _behavior_matches(f: HouseFilters, behavior, mirror, now) -> list[tuple[dict, dict]]:
+    """(voce, valori dello specchio) per ogni automazione o script che passa
+    i filtri: la riga si scrive dopo, quando si sa quante sono."""
     stato, _n, _u, _c, _d, attributi = mirror
-    rows = []
+    out = []
     for item in behavior or []:
-        kind = item.get("tipo")
-        if f.kind and kind != f.kind:
+        if f.kind and item.get("tipo") != f.kind:
             continue
         if f.reference and item.get("id") != f.reference:
             continue
         if f.name and not name_matches(f.name, item.get("nome") or ""):
             continue
         values = (attributi.get(item["id"]) or {}).get("values") or {}
-        last = values.get("last_triggered")
-        age = _age_s(last, now)
+        age = _age_s(values.get("last_triggered"), now)
         if f.idle_for_s is not None and age is not None and age < f.idle_for_s:
             continue
         if f.changed_within_s is not None and (age is None or age > f.changed_within_s):
@@ -233,15 +242,19 @@ def _behavior_rows(f: HouseFilters, behavior, mirror, now, medium: bool):
             continue
         if f.running is not None and bool(values.get("current")) != f.running:
             continue
-        row = {"id": item["id"], "nome": item.get("nome"), "genere": kind,
-               "stato": stato.get(item["id"]),
-               "ultima_esecuzione": last or "mai"}
-        if medium:
-            for key, label in (("mode", "modalita"), ("current", "in_esecuzione")):
-                if key in values:
-                    row[label] = values[key]
-        rows.append(row)
-    return rows
+        out.append((item, values))
+    return out
+
+
+def _behavior_row(item, values, mirror, medium: bool) -> dict:
+    row = {"id": item["id"], "nome": item.get("nome"), "genere": item.get("tipo"),
+           "stato": mirror[0].get(item["id"]),
+           "ultima_esecuzione": values.get("last_triggered") or "mai"}
+    if medium:
+        for key, label in (("mode", "modalita"), ("current", "in_esecuzione")):
+            if key in values:
+                row[label] = values[key]
+    return row
 
 
 def _area_rows(f: HouseFilters, home_space, unavailable):
@@ -259,9 +272,31 @@ def _area_rows(f: HouseFilters, home_space, unavailable):
     return rows
 
 
+def _device_rows(f: HouseFilters, home_space) -> list[dict]:
+    """I dispositivi del registro, per nome: il vecchio `search` trovava «la
+    lavatrice», la porta nuova non deve perderla (decisione 29/09/2026)."""
+    area_names = {a.get("id"): a.get("nome") for a in home_space.get("aree") or []}
+    rows = []
+    for device in home_space.get("dispositivi") or []:
+        if not device.get("id"):
+            continue
+        if f.reference and device["id"] != f.reference:
+            continue
+        if f.name and not name_matches(f.name, device.get("nome") or ""):
+            continue
+        rows.append({"id": device["id"], "nome": device.get("nome"),
+                     "genere": "dispositivo",
+                     "area": area_names.get(device.get("area_id"))})
+    return rows
+
+
 def _sort_key(order_by: str):
     if order_by == "ultimo_cambio":
-        return lambda r: r.get("ultima_esecuzione") or r.get("ultimo_cambio") or ""
+        # «mai» prima di tutto: un'automazione mai eseguita e' la piu' ferma (#31).
+        def since(r):
+            last = r.get("ultima_esecuzione")
+            return "" if last == "mai" else (last or r.get("ultimo_cambio") or "")
+        return since
     if order_by == "valore":
         def key(r):
             try:
@@ -272,19 +307,21 @@ def _sort_key(order_by: str):
     return lambda r: (r.get("nome") or r.get("id") or "").lower()
 
 
-def query_house(home_space: dict, behavior, mirror, filters: HouseFilters, *,
-                detail, unavailable=(), now: float | None = None) -> dict:
-    now = time.time() if now is None else now
-    f = filters
-    excluded = {"nascoste": 0, "servizio": 0, "disabilitate": 0}
-    if f.kind in _DETAIL_ONLY_KINDS:
+def _select(f: HouseFilters, home_space, behavior, mirror, detail, unavailable,
+            now, excluded: dict) -> tuple[int, str, list[dict], dict | None]:
+    """(trovate, profondita, voci NON ancora filtrate, oltre)."""
+    if f.kind in _DETAIL_ONLY_KINDS and (f.reference or f.kind != "dispositivo"):
         # Senza `riferimento` la voce di `queries.view` porta gia' `esiste: False`.
-        return {"trovate": 1, "escluse": excluded, "profondita": "completa",
-                "voci": [redact_row(detail(f.kind, f.reference or f.name or ""))]}
+        return 1, "completa", [detail(f.kind, f.reference or f.name or "")], None
     kinds = KINDS if f.only_by_name else ((f.kind,) if f.kind else ("entita",))
-    matched: list[tuple[str, dict, dict, dict, str | None]] = []
+    # La riga di comportamento rappresenta gia' l'automazione: la sua entita'
+    # di registro sarebbe un doppione della stessa cosa.
+    shadowed = {_BEHAVIOR_KINDS[k] for k in kinds if k in _BEHAVIOR_KINDS}
+    matched = []
     if "entita" in kinds:
         for entry, area, floor, where in _entity_entries(home_space, unavailable):
+            if entry["id"].split(".", 1)[0] in shadowed:
+                continue
             if not _entity_matches(f, entry, area, floor, mirror, now):
                 continue
             if where == "disabilitata":
@@ -296,32 +333,52 @@ def query_house(home_space: dict, behavior, mirror, filters: HouseFilters, *,
             if entry.get("categoria") and not f.include_service:
                 excluded["servizio"] += 1
                 continue
-            matched.append(("entita", entry, area, floor, where))
-    total_entities = len(matched)
-    extra: list[dict] = []
+            matched.append((entry, area, where))
+    behaving = []
+    others: list[dict] = []
     for kind in kinds:
         if kind in _BEHAVIOR_KINDS:
-            extra.extend(_behavior_rows(replace(f, kind=kind), behavior, mirror,
-                                        now, medium=True))
+            behaving.extend(_behavior_matches(replace(f, kind=kind), behavior,
+                                              mirror, now))
         elif kind == "area":
-            extra.extend(_area_rows(f, home_space, unavailable))
-    found = total_entities + len(extra)
-    result: dict = {"trovate": found, "escluse": excluded}
+            others.extend(_area_rows(f, home_space, unavailable))
+        elif kind == "dispositivo":
+            others.extend(_device_rows(f, home_space))
+    found = len(matched) + len(behaving) + len(others)
     if found == 1 and f.limit > 0:
         if matched:
-            _k, entry, *_ = matched[0]
-            voce = detail("entita", entry["id"])
-        else:
-            voce = detail(extra[0]["genere"], extra[0]["id"])
-        result.update(profondita="completa", voci=[redact_row(voce)])
-        return result
+            return 1, "completa", [detail("entita", matched[0][0]["id"])], None
+        item = behaving[0][0] if behaving else others[0]
+        kind = item.get("tipo") if behaving else item["genere"]
+        return 1, "completa", [detail(kind, item["id"])], None
     medium = found <= DETAIL_MEDIUM_MAX
-    rows = [_entity_row(entry, area, where, mirror, medium)
-            for _k, entry, area, _floor, where in matched] + extra
+    rows = ([_entity_row(entry, area, where, mirror, medium)
+             for entry, area, where in matched]
+            + [_behavior_row(item, values, mirror, medium) for item, values in behaving]
+            + others)
     rows.sort(key=_sort_key(f.order_by))
     page = rows[f.offset:f.offset + min(f.limit, ROWS_MAX)]
-    result.update(profondita="media" if medium else "corta", voci=page)
     left = len(rows) - f.offset - len(page)
-    if left > 0 and f.limit > 0:
-        result["oltre"] = {"restano": left, "salta": f.offset + len(page)}
+    beyond = ({"restano": left, "salta": f.offset + len(page)}
+              if left > 0 and f.limit > 0 else None)
+    return found, "media" if medium else "corta", page, beyond
+
+
+def query_house(home_space: dict, behavior, mirror, filters: HouseFilters, *,
+                detail, unavailable=(), now: float | None = None) -> dict:
+    now = time.time() if now is None else now
+    f = filters
+    if f.kind is None and f.domain in _BEHAVIOR_DOMAINS:
+        f = replace(f, kind=_BEHAVIOR_DOMAINS[f.domain], domain=None)
+    excluded = {"nascoste": 0, "servizio": 0, "disabilitate": 0}
+    found, depth, page, beyond = _select(f, home_space, behavior, mirror, detail,
+                                         unavailable, now, excluded)
+    # Il filtro di riservatezza, in un punto solo: ogni voce, di ogni genere e
+    # di ogni profondita', passa di qui prima di uscire.
+    result: dict = {"trovate": found, "escluse": excluded, "profondita": depth,
+                    "voci": [redact_row(v) for v in page]}
+    if beyond:
+        result["oltre"] = beyond
     return result
+
+
