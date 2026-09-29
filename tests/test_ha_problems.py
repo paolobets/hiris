@@ -132,12 +132,12 @@ def test_un_registro_vuoto_non_produce_nessuna_riga():
     assert riepilogo["faults"] == []
 
 
-def test_i_guasti_hanno_una_SEZIONE_PROPRIA_prima_di_notevole_adesso():
-    """Non fra le lacune, e non in «Notevole adesso».
+def test_i_guasti_hanno_una_SEZIONE_PROPRIA_subito_dopo_la_casa():
+    """Non fra le lacune, e non in una sezione dello stato del momento.
 
     Sono CONDIZIONI, non eventi: restano vere finche' qualcuno non le ripara,
-    e in «Notevole adesso» annuncerebbero a ogni messaggio una cosa che non e'
-    successa adesso.
+    e in «Notevole adesso» (uscita dal nucleo il 29/09/2026) avrebbero
+    annunciato a ogni messaggio una cosa che non e' successa adesso.
 
     Ma NEMMENO sotto «Cio' che HIRIS ignora», dov'erano fino al 2026-08-18: un
     modello che legge quel titolo capisce «roba che non so, non da riferire».
@@ -146,8 +146,8 @@ def test_i_guasti_hanno_una_SEZIONE_PROPRIA_prima_di_notevole_adesso():
     un errore suo: era il titolo a dire il falso. Nove integrazioni rotte non
     sono cio' che HIRIS ignora, sono cio' che HIRIS SA e deve dire.
 
-    L'ordine di lettura e': com'e' fatta la casa -> cosa e' rotto -> cosa sta
-    succedendo.
+    L'ordine di lettura e': com'e' fatta la casa -> cosa e' rotto -> cosa fa
+    gia' da sola.
     """
     testo, _ = _nucleo({"problemi": [
         _p(domain="reolink", issue_id="autenticazione", severity="error"),
@@ -157,9 +157,10 @@ def test_i_guasti_hanno_una_SEZIONE_PROPRIA_prima_di_notevole_adesso():
     assert "reolink" in dai_guasti
     assert "reolink" not in prima_dei_guasti
 
-    # PRIMA di «Notevole adesso», DOPO «La casa».
+    # DOPO «La casa», PRIMA di tutto il resto.
     assert testo.index("## La casa") < testo.index("## Cosa non va in casa")
-    assert testo.index("## Cosa non va in casa") < testo.index("## Notevole adesso")
+    assert testo.index("## Cosa non va in casa") < testo.index(
+        "## Cio' che la casa fa gia' da sola")
 
     # E NON fra le lacune: e' li' che si perdeva.
     lacune = testo.split("## Cio' che HIRIS ignora")[1]
@@ -342,11 +343,12 @@ def test_compose_briefing_passa_l_istantanea_dei_giudizi_a_compose():
     sincrona userebbero silenziosamente il solo seme anche quando
     `app["type_judgments"]` porta una correzione viva del proprietario.
 
-    Spia leggera su `compose` stesso (nessuna casa vera necessaria: il testo
-    che ne uscirebbe con una casa vera lo guarda gia' end-to-end
-    `tests/test_briefing.py::
-    test_una_correzione_su_notevole_arriva_dal_nucleo_intero_non_solo_da_is_event`)
-    -- qui basta il KEYWORD ricevuto.
+    Spia leggera su `compose` stesso -- qui basta il KEYWORD ricevuto.
+    (Fino al 29/09/2026 il testo che ne usciva lo guardava end-to-end una
+    prova di `test_briefing.py` sulla catena di «Notevole adesso»; uscita la
+    sezione, `compose` riceve l'istantanea senza leggerla, vedi il suo
+    docstring. La prova resta perche' il cablaggio c'e' ancora, e toglierlo
+    e' una fetta che tocca il chiamante.)
 
     Mutazione ESEGUITA: cambiato `judgments=judgments` in
     `judgments=REPO_JUDGMENTS` (letterale, ignorando quanto letto da `app`)

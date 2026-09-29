@@ -26,9 +26,14 @@ finta non sapeva produrre il difetto -- il difetto n.1 del progetto.
 Il rimedio non costa nessuna chiamata: `device_class` e' gia' in RAM, in ogni
 voce dello specchio dello stato (`entity_cache._to_minimal`). E' anche la fonte
 che Home Assistant stesso preferisce (`helpers/entity.py::get_device_class`).
+
+Le due prove che guardavano il digesto («un allagamento entra nel digesto»,
+«una lampadina accesa non diventa un allagamento») sono uscite il 29/09/2026
+con «Notevole adesso»: il nucleo non porta piu' lo stato del momento. La
+classe dallo specchio resta provata dove si legge ancora, nel dettaglio di
+un'entita' (`test_guarda_dice_la_classe_che_prometteva`).
 """
 
-from hiris.app.home_space.briefing import compose
 from hiris.app.home_space.queries import view
 from hiris.app.home_space.topology import actual_class, live_mirror
 from tests._house_translations import house_translations
@@ -57,33 +62,6 @@ def test_la_regola_sta_in_un_posto_solo():
 def test_lo_specchio_porta_anche_le_classi():
     _stato, _nomi, _unita, classi, _da_quando, _attributi = live_mirror(_SPECCHIO)
     assert classi["binary_sensor.perdita_lavatrice"] == "moisture"
-
-
-def test_un_allagamento_entra_nel_digesto():
-    """LA PROVA CHE CONTA. Con la classe dal solo registro questa e' rossa:
-    il sensore e' `on` e il digesto dice «Niente di notevole al momento»."""
-    stato, _n, _u, classi, _da_quando, _attributi = live_mirror(_SPECCHIO)
-    testo, _ = compose(_CASA, [], [], stato, reported_classes=classi,
-                       translations=house_translations())
-    sezione = testo.split("## Notevole adesso")[1].split("## ")[0]
-    assert "Bagnato" in sezione, sezione
-    assert "Niente di notevole" not in sezione
-
-
-def test_una_lampadina_accesa_non_diventa_un_allagamento():
-    """Il contrario, e serve quanto l'altra: senza, un rimedio che scrivesse
-    «Bagnato» su tutto farebbe passare la prova di sopra."""
-    casa = {"aree": [{"id": "c", "nome": "Cucina"}],
-            "entita": [{"id": "light.cucina", "nome": "Faretto", "area_id": "c",
-                        "classe": None}]}
-    specchio = [{"id": "light.cucina", "state": "on", "name": "Faretto",
-                 "device_class": None, "unit": ""}]
-    stato, _n, _u, classi, _da_quando, _attributi = live_mirror(specchio)
-    testo, _ = compose(casa, [], [], stato, reported_classes=classi,
-                       translations=house_translations())
-    sezione = testo.split("## Notevole adesso")[1].split("## ")[0]
-    assert "Acceso" in sezione
-    assert "Bagnato" not in sezione
 
 
 def test_guarda_dice_la_classe_che_prometteva():

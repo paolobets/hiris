@@ -36,6 +36,16 @@ _STATO = {"light.cucina_1": "on", "light.cucina_2": "off",
           "sensor.cucina_t": "19.5", "binary_sensor.porta": "on"}
 
 
+def _sezione_casa(testo: str) -> str:
+    """Solo la sezione «La casa», fino all'intestazione successiva.
+
+    Fino al 29/09/2026 le prove la ritagliavano con
+    `split("## Notevole adesso")[0]`: uscita quella sezione, lo stesso
+    ritaglio restituirebbe il testo INTERO, e una prova su «La casa»
+    passerebbe per una parola scritta in un avviso."""
+    return testo.split("## La casa")[1].split("\n## ")[0]
+
+
 def test_il_nucleo_conta_invece_di_elencare():
     """Con trecento entita' elencarle tutte sfonderebbe il contesto: il nucleo
     dice quante ce ne sono per tipo, e il dettaglio si va a chiedere."""
@@ -43,13 +53,6 @@ def test_il_nucleo_conta_invece_di_elencare():
     assert "Cucina" in testo
     assert "2 luci" in testo or "luci: 2" in testo
     assert "light.cucina_1" not in testo          # i singoli id non ci stanno
-
-
-def test_cio_che_e_notevole_adesso_si_vede():
-    testo, _ = compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)
-    assert "Faretti" in testo                     # accesa: e' notevole
-    assert "Tavolo" not in testo                  # spenta: non lo e'
-    assert "Porta" in testo                       # aperta
 
 
 def test_i_ricordi_dichiarati_entrano_interi():
@@ -194,7 +197,7 @@ def test_un_registro_caduto_si_dichiara_nel_nucleo():
          "classe": None, "unita": None, "disabilitata": 0}])
     testo_orfana, _ = compose(casa_con_orfana, _COMPORTAMENTO, _RICORDI, _STATO,
                               unavailable=("aree", "dispositivi"))
-    sezione_casa = testo_orfana.split("## Notevole adesso")[0]
+    sezione_casa = _sezione_casa(testo_orfana)
     assert "Aree non lette" in sezione_casa
     assert "Senza area" not in sezione_casa
 
@@ -215,28 +218,30 @@ def test_registro_aree_caduto_non_dice_senza_area():
         {"id": "light.orfana", "nome": "Orfana", "area_id": None, "dispositivo_id": None,
          "classe": None, "unita": None, "disabilitata": 0}])
     testo, _ = compose(casa, _COMPORTAMENTO, _RICORDI, _STATO, unavailable=("aree",))
-    sezione_casa = testo.split("## Notevole adesso")[0]
+    sezione_casa = _sezione_casa(testo)
     assert "Aree non lette" in sezione_casa
     assert "Senza area" not in sezione_casa
 
 
-def test_notevole_usa_lo_stesso_albero_della_casa():
-    """CRITICAL ①, seconda meta': `_highlight_lines` non deve ricalcolare
-    l'area a mano (`e.get("area_id") or device_area.get(...)`) --
-    quella logica non sa distinguere un riferimento penzolante da
-    un'assenza vera, e lascia l'entita' senza prefisso in silenzio. Deve
-    usare lo STESSO albero di «La casa», che a un'area_id sconosciuta da'
-    un nome esplicito ("Area sconosciuta").
+def test_un_area_penzolante_ha_nome_e_id_nell_albero():
+    """CRITICAL ①: un'area_id che non esiste non e' un'assenza vera, e
+    l'albero di «La casa» le da' un nome esplicito ("Area sconosciuta").
 
-    IMPORTANT ⑦: "Area sconosciuta" e' una pseudo-area (mai un'area vera di
-    Home Assistant), quindi il nucleo mostra anche l'id -- l'unica chiave
-    con cui `guarda('area', ...)` la ritrova davvero."""
+    IMPORTANT ⑦: e' una pseudo-area (mai un'area vera di Home Assistant),
+    quindi il nucleo mostra anche l'id -- l'unica chiave con cui
+    `search(riferimento=...)` la ritrova davvero.
+
+    Fino al 29/09/2026 questa prova guardava il prefisso di «Notevole
+    adesso» (`test_notevole_usa_lo_stesso_albero_della_casa`); uscita quella
+    sezione, resta da provare la parte che vive: l'albero.
+
+    Mutazione ESEGUITA: `_tree_area_name` che restituisce solo
+    `area["nome"]` -- rossa."""
     casa = dict(_CASA, entita=_CASA["entita"] + [
         {"id": "light.penzolante", "nome": "Penzolante", "area_id": "non_esiste",
          "dispositivo_id": None, "classe": None, "unita": None, "disabilitata": 0}])
-    stato = dict(_STATO, **{"light.penzolante": "on"})
-    testo, _ = compose(casa, _COMPORTAMENTO, _RICORDI, stato)
-    assert "Area sconosciuta (id: __area_sconosciuta__): Penzolante" in testo
+    testo, _ = compose(casa, _COMPORTAMENTO, _RICORDI, _STATO)
+    assert "Area sconosciuta (id: __area_sconosciuta__): 1 luce" in _sezione_casa(testo)
 
 
 # --- R1 "i riferimenti": l'albero porta gli id ------------------------------
@@ -244,9 +249,9 @@ def test_notevole_usa_lo_stesso_albero_della_casa():
 # Il difetto vero, l'incidente del 2026-08-20: l'albero della casa mostra i
 # nomi, gli strumenti (`guarda`, `esegui`, ...) pretendono l'id esatto e
 # vietano di indovinarlo dal nome. Qui si prova che l'id compare accanto al
-# nome in "La casa" (aree, piani, comportamento) -- e che "Notevole adesso"
-# NON lo eredita (decisione del proprietario: 15 id a ogni turno costano piu'
-# di quel che rendono, il batch di `cerca` li copre).
+# nome in "La casa" (aree, piani, comportamento). (La prova gemella, che
+# «Notevole adesso» NON lo ereditasse, e' uscita con quella sezione il
+# 29/09/2026.)
 
 
 def test_un_area_reale_mostra_l_id_accanto_al_nome_nell_albero():
@@ -256,7 +261,7 @@ def test_un_area_reale_mostra_l_id_accanto_al_nome_nell_albero():
     dove prenderlo se non indovinando dal nome mostrato, ed e' esattamente il
     meccanismo che ha ucciso il turno da otto stanze."""
     testo, _ = compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)
-    sezione_casa = testo.split("## Notevole adesso")[0]
+    sezione_casa = _sezione_casa(testo)
     assert "Cucina (id: cucina):" in sezione_casa
 
 
@@ -269,14 +274,14 @@ def test_un_area_il_cui_id_coincide_col_nome_non_ripete_l_id():
                        "alias": [], "etichette": []}],
                 entita=[dict(_CASA["entita"][0], area_id="Cucina")])
     testo, _ = compose(casa, [], [], {})
-    sezione_casa = testo.split("## Notevole adesso")[0]
+    sezione_casa = _sezione_casa(testo)
     assert "Cucina (id: Cucina)" not in sezione_casa
     assert "  - Cucina:" in sezione_casa
 
 
 def test_un_piano_mostra_l_id_accanto_al_nome_nell_albero():
     testo, _ = compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)
-    sezione_casa = testo.split("## Notevole adesso")[0]
+    sezione_casa = _sezione_casa(testo)
     assert "Piano terra (id: terra):" in sezione_casa
 
 
@@ -288,34 +293,24 @@ def test_un_automazione_e_uno_script_mostrano_l_id_accanto_al_nome():
     assert "Buonanotte (id: script.buonanotte) (script)" in sezione_comportamento
 
 
-def test_notevole_adesso_non_eredita_l_id_delle_aree_reali():
-    """Decisione del proprietario (spec "i riferimenti", 2026-08-20): l'id
-    nell'albero e' un beneficio misurato sull'incidente da otto stanze; nel
-    prefisso di ogni entita' notevole sarebbe un costo ripetuto ad ogni turno
-    senza il bisogno corrispondente -- a differenza delle pseudo-aree, `cerca`
-    e `guarda` risolvono un'area reale per nome."""
-    testo, _ = compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)
-    sezione_notevole = testo.split("## Notevole adesso")[1].split("## Cio' che la casa fa")[0]
-    assert "(id: cucina)" not in sezione_notevole
-    assert "Cucina:" in sezione_notevole   # il prefisso resta, senza id
-
-
-def test_stato_vuoto_non_e_niente_di_notevole():
+def test_stato_vuoto_si_dichiara_non_letto():
     """CRITICAL ②: stato={} con la casa piena (HIRIS non ha ancora letto lo
-    stato) non deve produrre "Niente di notevole al momento." -- non ho
-    guardato e' diverso da ho guardato e va tutto bene."""
+    stato) -- non ho guardato e' diverso da ho guardato e va tutto bene, e il
+    nucleo lo DICE anche ora che lo stato non lo porta (29/09/2026): fino ad
+    allora la prova chiedeva che «Notevole adesso» non dicesse «Niente di
+    notevole», frase che non esiste piu'."""
     testo, riepilogo = compose(_CASA, _COMPORTAMENTO, _RICORDI, {})
-    assert "Niente di notevole al momento." not in testo
+    assert "non si e' potuto guardare" in testo
     assert any("non e' stato letto" in a or "non attendibile" in a for a in riepilogo["notices"])
 
 
-def test_tutte_entita_unknown_non_e_niente_di_notevole():
+def test_tutte_entita_unknown_si_dichiara_non_letto():
     """"unknown" e' lo stato comunissimo di un'entita' subito dopo un
     riavvio di Home Assistant, prima che il primo aggiornamento arrivi --
-    non e' un dato, e' l'assenza di un dato."""
+    non e' un dato, e' l'assenza di un dato, e il nucleo lo dichiara."""
     stato_unknown = {e["id"]: "unknown" for e in _CASA["entita"]}
     testo, _ = compose(_CASA, _COMPORTAMENTO, _RICORDI, stato_unknown)
-    assert "Niente di notevole al momento." not in testo
+    assert "non si e' potuto guardare" in testo
 
 
 def test_chiamante_puo_dichiarare_stato_non_affidabile():
@@ -326,174 +321,19 @@ def test_chiamante_puo_dichiarare_stato_non_affidabile():
               "sensor.cucina_t": "19.5", "binary_sensor.porta": "off"}
     testo_dichiarato, _ = compose(_CASA, _COMPORTAMENTO, _RICORDI, calma,
                                   reliable_state=False)
-    assert "Niente di notevole al momento." not in testo_dichiarato
-    # la stessa identica casa calma, SENZA la dichiarazione, produce
-    # legittimamente la frase di quiete -- la firma di prima non lasciava
-    # scelta al chiamante.
+    assert "non si e' potuto guardare" in testo_dichiarato
+    # la stessa identica casa calma, SENZA la dichiarazione, non lo dice --
+    # la firma di prima non lasciava scelta al chiamante.
     testo_normale, _ = compose(_CASA, _COMPORTAMENTO, _RICORDI, calma)
-    assert "Niente di notevole al momento." in testo_normale
+    assert "non si e' potuto guardare" not in testo_normale
 
 
-def test_casa_vuota_con_stato_vuoto_resta_niente_di_notevole():
+def test_casa_vuota_con_stato_vuoto_non_e_uno_stato_non_letto():
     """Una casa senza entita' non e' un silenzio: non c'e' nulla da
-    guardare, quindi "niente di notevole" resta vero."""
+    guardare, e il nucleo non deve dichiarare di non aver potuto farlo."""
     vuota = {chiave: [] for chiave in _CASA}
     testo, _ = compose(vuota, [], [], {})
-    assert "Niente di notevole al momento." in testo
-
-
-def test_allarme_scattato_e_notevole_armato_no():
-    """MINOR ⑨: era affiancato da `test_stato_alarm_non_e_uno_stato_reale`,
-    che asseriva il contenuto della COSTANTE `_STATI_NOTEVOLI` -- difendeva
-    la costante, non il comportamento. Il gemello comportamentale (questo
-    test) e' l'unico che conta davvero: se "alarm" tornasse per errore in
-    quella costante, sarebbe questo test a fallire, non un controllo
-    sull'implementazione. Rimosso il ridondante.
-
-    Solo "triggered" e' notevole per un allarme -- "armed_away"
-    fa parte della routine quotidiana (si arma e si disarma piu' volte al
-    giorno) tanto quanto accendere e spegnere una luce, non e' un'eccezione
-    rispetto al riposo."""
-    casa = dict(_CASA, entita=_CASA["entita"] + [
-        {"id": "alarm_control_panel.ingresso", "nome": "Allarme", "area_id": "sala",
-         "dispositivo_id": None, "classe": None, "unita": None, "disabilitata": 0}])
-    stato_scattato = dict(_STATO, **{"alarm_control_panel.ingresso": "triggered"})
-    testo, _ = compose(casa, _COMPORTAMENTO, _RICORDI, stato_scattato)
-    assert "Allarme" in testo.split("## Cio' che la casa fa")[0]
-
-    stato_armato = dict(_STATO, **{"alarm_control_panel.ingresso": "armed_away"})
-    testo_armato, _ = compose(casa, _COMPORTAMENTO, _RICORDI, stato_armato)
-    sezione_notevole = testo_armato.split("## Notevole adesso")[1].split(
-        "## Cio' che la casa fa")[0]
-    assert "Allarme" not in sezione_notevole
-
-
-def test_lallarme_notevole_lo_dice_l_istantanea_non_un_letterale_qui():
-    """Audit delle fondamenta, «sotto la soglia dei dieci» n.1 (09/09/2026):
-    prima di questa correzione `_is_event` portava un ramo scritto a mano,
-    `if domain == "alarm_control_panel": return v == "triggered"` -- una
-    TERZA sede dello stesso fatto che il vocabolario dei tipi gia' dichiara
-    (`{"triggered": "..."}`, con la sua ragione scritta li'). Il test gemello
-    sopra (`test_allarme_scattato_e_notevole_armato_no`) prova il
-    COMPORTAMENTO, ma non poteva distinguere «letto dalla fonte giusta» da
-    «scritto qui»: la stessa uscita ("triggered" notevole, "armed_away" no)
-    l'avrebbe prodotta anche il vecchio letterale. Questo test guarda davvero
-    il pannello d'allarme cambiando la fonte, non il valore.
-
-    **Dal 17/09/2026 (spec 2026-09-16 §3, D3) la fonte e' l'istantanea dei
-    giudizi (`judgments=`), non piu' il modulo `type_vocabulary` letto a
-    mano**: un monkeypatch di `type_vocabulary.working_states_of` (la forma
-    di prima) non intercetterebbe piu' niente, perche' `_is_event` non legge
-    piu' quel simbolo -- e' esattamente il test che, dopo il Task 5, restava
-    verde per la ragione sbagliata (orfano ai sensi di CLAUDE.md, «i test si
-    smontano insieme a cio' che testavano»). Riscritto per passare
-    un'istantanea diversa, come fa il test gemello sul campo `notevole` in
-    questo stesso file.
-
-    Mutazione ESEGUITA: rimesso `if domain == "alarm_control_panel": return v
-    == "triggered"` (letterale, cieco all'istantanea) al posto di `return v
-    in judgments.working_of(domain)` -- l'istantanea sostituita qui sotto
-    smette di cambiare l'esito e questa prova diventa rossa; ripristinato
-    riscrivendo il file con l'editor (verificato che `git diff` dopo il
-    ripristino mostri solo le righe di questa fetta, nessuna riga persa:
-    non e' stato fatto nessun commit, quindi non c'e' uno stato pulito da
-    verificare con `git status`).
-    """
-    from hiris.app.home_space import type_vocabulary as tv
-    from hiris.app.home_space.type_judgments import TypeJudgments
-
-    assert briefing._is_event("alarm_control_panel", None, "triggered") is True
-    for stato in ("armed_home", "armed_away", "armed_night", "disarmed",
-                  "arming", "disarming", "pending"):
-        assert briefing._is_event("alarm_control_panel", None, stato) is False
-
-    righe = tuple(r for r in tv.judgment_seed_rows()
-                  if not (r[1] == "alarm_control_panel" and r[2] == "lavoro"))
-    giudizi = TypeJudgments.from_rows(
-        righe + (("tipo", "alarm_control_panel", "lavoro", '{"armed_home": "prova"}'),),
-        genres=tv.CHRONICLE_GENRES, absent_forms=tv.ABSENT_STATE_FORMS.value)
-
-    assert briefing._is_event(
-        "alarm_control_panel", None, "armed_home", judgments=giudizi) is True, (
-        "il valore che conta deve venire dall'istantanea: con un `lavoro` "
-        "diverso, anche uno stato diverso da \"triggered\" deve diventare "
-        "notevole")
-    assert briefing._is_event(
-        "alarm_control_panel", None, "triggered", judgments=giudizi) is False, (
-        "e il vecchio valore non deve restare notevole per un motivo suo: se "
-        "lo fosse, la funzione starebbe ancora leggendo un letterale invece "
-        "dell'istantanea")
-
-
-def test_una_correzione_della_casa_su_notevole_arriva_al_nucleo():
-    """Spec §3: il nucleo legge l'istantanea che riceve.
-
-    Mutazione ESEGUITA (giro di correzioni 1, punto 7): in `_is_event`,
-    ignorare il parametro e leggere il seme del repo -- `judgments =
-    REPO_JUDGMENTS` in testa al corpo -- rossa
-    (`assert True is False` sulla riga con `judgments=giudizi`); ripristinata
-    con l'editor, sha256 identico.
-
-    **La mutazione dichiarata prima era impossibile**: diceva «tornare a
-    `type_vocabulary.is_notable`», e quella funzione e' uscita col Task 8 --
-    una docstring che dichiara una mutazione che non si puo' piu' eseguire e'
-    una ragione falsa accanto al codice.
-    """
-    from hiris.app.home_space import type_vocabulary as tv
-    from hiris.app.home_space.briefing import _is_event
-    from hiris.app.home_space.type_judgments import TypeJudgments
-    righe = tuple(r for r in tv.judgment_seed_rows()
-                  if not (r[1] == "light" and r[2] == "notevole"))
-    giudizi = TypeJudgments.from_rows(righe + (("tipo", "light", "notevole", "no"),),
-                                      genres=tv.CHRONICLE_GENRES,
-                                      absent_forms=tv.ABSENT_STATE_FORMS.value)
-    assert _is_event("light", None, "on") is True
-    assert _is_event("light", None, "on", judgments=giudizi) is False
-
-
-def test_una_correzione_su_notevole_arriva_dal_nucleo_intero_non_solo_da_is_event():
-    """Fix round 1 (revisione Fable), rilievo ALTO: il test gemello sopra
-    prova che `_is_event`, chiamata DIRETTAMENTE, legge `judgments` -- ma non
-    che `compose()` gliela CONSEGNI. `_highlight_lines` e `_is_event` sono
-    chiamate interne che nessuna funzione in `FUNZIONI` di
-    `tests/test_judgments_passed_in_production.py` sorveglia (quel test
-    controlla solo i nomi che elenca, non «ogni chiamata interna inoltra»,
-    nonostante il commento che lo diceva -- corretto anche quello): un
-    inoltro tolto a meta' catena sarebbe passato inosservato da OGNI prova
-    scritta nel Task 5. Questa e' la prova DAL LETTORE (spec §9.3), non
-    dalla funzione foglia: chiama `compose()`, come fa davvero
-    `handlers_home_space.compose_briefing`.
-
-    Mutazioni ESEGUITE: tolto `judgments=judgments` dalla chiamata
-    `_highlight_lines(` dentro `compose` -- rossa (l'Alberello/Faretti torna
-    notevole anche con l'istantanea corretta); ripristinato con l'editor,
-    verde. Tolto `judgments=judgments` dalla chiamata `_is_event(` dentro
-    `_highlight_lines` -- rossa per la stessa ragione; ripristinato, verde.
-    """
-    from hiris.app.home_space import type_vocabulary as tv
-    from hiris.app.home_space.type_judgments import TypeJudgments
-
-    testo_seme, _ = compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO)
-    sezione_seme = testo_seme.split("## Notevole adesso")[1].split(
-        "## Cio' che la casa fa")[0]
-    assert "Faretti" in sezione_seme, "col seme la luce accesa e' notevole"
-
-    righe = tuple(r for r in tv.judgment_seed_rows()
-                  if not (r[1] == "light" and r[2] == "notevole"))
-    giudizi = TypeJudgments.from_rows(righe + (("tipo", "light", "notevole", "no"),),
-                                      genres=tv.CHRONICLE_GENRES,
-                                      absent_forms=tv.ABSENT_STATE_FORMS.value)
-    testo_corretto, _ = compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO, judgments=giudizi)
-    sezione_corretta = testo_corretto.split("## Notevole adesso")[1].split(
-        "## Cio' che la casa fa")[0]
-    assert "Faretti" not in sezione_corretta, (
-        "la correzione della casa (`light` non piu' notevole) deve arrivare "
-        "fino al testo che `compose()` restituisce, non solo a `_is_event` "
-        "chiamata da sola")
-    # Il sensore di porta resta notevole (non l'ho toccato): la sezione non
-    # e' vuota per un altro motivo (`unreliable`/casa vuota), che renderebbe
-    # l'assert sopra vero per la ragione sbagliata.
-    assert "Porta" in sezione_corretta
+    assert "non si e' potuto guardare" not in testo
 
 
 def test_i_ricordi_tagliati_sono_ordinati_esplicitamente_dal_codice():
@@ -506,19 +346,14 @@ def test_i_ricordi_tagliati_sono_ordinati_esplicitamente_dal_codice():
         dict(_RICORDI[0], id=2, testo="RICORDO-DI-MEZZO " + "x" * 200),
         dict(_RICORDI[0], id=3, testo="RICORDO-FRESCHISSIMO " + "x" * 200),
     ]
-    # **1.250 e non piu' 1.100** (23/09/2026). Da quando «Notevole adesso»
-    # ha una riserva minima, a 1.100 caratteri non resta spazio per NESSUN
-    # ricordo -- e una prova sull'ORDINE in cui si scartano non puo' girare
-    # se non ne sopravvive nessuno: passerebbe a vuoto.
-    #
-    # **E la conseguenza va detta, perche' e' una scelta**: a tetti
-    # strettissimi i tre posti riservati ai notevoli battono i ricordi. I
-    # ricordi restano l'ULTIMA cosa che il taglio tocca, ma una riserva piu'
-    # in alto nell'ordine puo' esaurire il budget prima che tocchi a loro.
-    # E' il prezzo della riserva, ed e' uno dei numeri che le misure devono
-    # rivedere.
+    # **Di nuovo 1.100** (29/09/2026). Dal 23/09 era 1.250, perche' la
+    # riserva di tre righe di «Notevole adesso» a 1.100 caratteri non
+    # lasciava spazio a NESSUN ricordo -- e una prova sull'ORDINE in cui si
+    # scartano passerebbe a vuoto se non ne sopravvive nessuno. Uscita quella
+    # sezione (e la sua riserva), il tetto di prima torna a bastare; le due
+    # asserzioni qui sotto dicono che taglio e sopravvissuto ci sono entrambi.
     testo, riepilogo = compose(_CASA, _COMPORTAMENTO, ricordi_in_ordine_sbagliato, _STATO,
-                               ceiling=1250)
+                               ceiling=1100)
     assert riepilogo["excluded_memories"] >= 1
     assert "RICORDO-VECCHISSIMO" not in testo
     assert "RICORDO-FRESCHISSIMO" in testo
@@ -550,12 +385,14 @@ def _casa_grande(n_aree: int = 20, entita_per_area: int = 15) -> dict:
 
 
 def test_una_casa_grande_la_mappa_sopravvive_al_taglio():
-    """IMPORTANT ③: 300 entita', 20 aree, 40 automazioni, ~200 notevoli --
+    """IMPORTANT ③: 300 entita', 20 aree, 40 automazioni, ~200 accese --
     col tetto di DEFAULT il nucleo deve ancora contenere la mappa completa
     delle aree e le automazioni. Prima del fix, il taglio svuotava per
     intero "La casa" e "Cio' che la casa fa gia' da sola" pur di tenere
     quasi intatta la lista dei notevoli, il contrario di quanto dichiara il
-    docstring del modulo ("il nucleo CONTA, non elenca")."""
+    docstring del modulo ("il nucleo CONTA, non elenca"). (Quella lista e'
+    uscita dal nucleo il 29/09/2026; la prova resta perche' difende la mappa
+    e il comportamento, che restano.)"""
     casa = _casa_grande()
     assert len(casa["entita"]) >= 200
     stato = {e["id"]: ("on" if i < 200 else "off") for i, e in enumerate(casa["entita"])}
@@ -566,7 +403,7 @@ def test_una_casa_grande_la_mappa_sopravvive_al_taglio():
     ]
     testo, _riepilogo = compose(casa, comportamento, [], stato)
 
-    sezione_casa = testo.split("## Notevole adesso")[0]
+    sezione_casa = _sezione_casa(testo)
     righe_area = [l for l in sezione_casa.splitlines() if l.strip().startswith("- Area")]
     assert len(righe_area) == 20, "la mappa delle aree deve sopravvivere col tetto di default"
 
@@ -576,47 +413,16 @@ def test_una_casa_grande_la_mappa_sopravvive_al_taglio():
                          if l.strip().startswith("- Automazione")]
     assert len(righe_automazioni) == 40, "le automazioni devono sopravvivere col tetto di default"
 
-    # La sezione notevole, essendo grande, conta invece di elencare una per
-    # una -- coerente col docstring del modulo.
-    sezione_notevole = testo.split("## Notevole adesso")[1].split("## Cio' che la casa fa")[0]
-    righe_notevole_singole = [l for l in sezione_notevole.splitlines()
-                              if l.strip().startswith("- Area") and "acceso" in l]
-    assert len(righe_notevole_singole) < 200, "oltre soglia, i notevoli si raggruppano"
-    assert "elementi notevoli" in sezione_notevole
-
-
-def test_il_notevole_raggruppato_tiene_insieme_le_aree():
-    """La stessa area finiva sparsa in tre punti diversi dell'elenco, nell'ordine
-    in cui capitavano le entita'. Leggibilita' e' un requisito dichiarato: chi
-    legge deve vedere una stanza per volta, non ricomporla a mente."""
-    entita, stato = [], {}
-    for i in range(30):
-        area = "cucina" if i % 2 else "sala"
-        eid = f"light.e{i}"
-        entita.append({"id": eid, "nome": f"Luce {i}", "area_id": area,
-                       "dispositivo_id": None, "classe": None, "unita": None,
-                       "disabilitata": 0})
-        stato[eid] = "on"
-    casa = dict(_CASA, entita=entita,
-                aree=[{"id": "cucina", "nome": "Cucina", "piano_id": "terra",
-                       "alias": [], "etichette": []},
-                      {"id": "sala", "nome": "Sala", "piano_id": "terra",
-                       "alias": [], "etichette": []}])
-    testo, _ = compose(casa, [], [], stato, translations=house_translations())
-    sezione = testo.split("## Notevole adesso")[1].split("##")[0]
-    aree_in_ordine = [r.split(":")[0].removeprefix("- ").strip()
-                      for r in sezione.splitlines() if r.startswith("- ")]
-    assert aree_in_ordine == sorted(aree_in_ordine)   # ogni area in un blocco solo
-
 
 def test_registro_entita_caduto_rende_lo_stato_inaffidabile():
     """CRITICAL ②: aree e piani letti, registro "entita" caduto (tabella
     vuota, com'e' dopo un `replace` parziale), cinque luci accese nella
     cache viva. Prima del fix: `casa.get("entita", [])` vuota faceva
     scattare il ramo "casa senza entita' = niente da guardare", e
-    "Notevole adesso" diceva "Niente di notevole al momento." -- una
-    quiete che il nucleo stesso contraddice due sezioni dopo, nell'avviso
-    sul registro caduto."""
+    "Notevole adesso" (uscita il 29/09/2026) diceva "Niente di notevole al
+    momento." -- una quiete che il nucleo stesso contraddiceva due sezioni
+    dopo, nell'avviso sul registro caduto. Oggi resta da provare che lo
+    stato si dichiari non letto."""
     casa = {
         "piani": [{"id": "terra", "nome": "Piano terra", "livello": 0}],
         "aree": [{"id": "ingresso", "nome": "Ingresso", "piano_id": "terra",
@@ -628,7 +434,7 @@ def test_registro_entita_caduto_rende_lo_stato_inaffidabile():
                   "light.corridoio": "on", "light.bagno": "on"}
     testo, riepilogo = compose(casa, [], [], stato_vivo, unavailable=("entita",),
                                reliable_state=True)
-    assert "Niente di notevole al momento." not in testo
+    assert "non si e' potuto guardare" in testo
     assert any("non e' stato letto" in a or "non attendibile" in a for a in riepilogo["notices"])
 
 
@@ -693,42 +499,13 @@ def test_rete_di_sicurezza_taglia_anche_senza_ricordi_da_tagliare():
     assert riepilogo["truncated"] is True
 
 
-def test_intestazione_dei_notevoli_raggruppati_torna_dopo_il_taglio():
-    """IMPORTANT ⑤: l'intestazione ("N elementi notevoli") deve corrispondere
-    SEMPRE alla somma delle righe che restano sotto, anche dopo il taglio --
-    prima del fix l'intestazione restava quella di PRIMA del taglio,
-    contraddicendo le righe sotto (es. "150 elementi" con righe che ne
-    sommano 95)."""
-    casa = _casa_grande(30, 5)
-    stato = {e["id"]: "on" for e in casa["entita"]}  # 150 luci accese
-    comportamento = [
-        {"id": f"automation.a{i}", "tipo": "automazione", "nome": f"Auto {i}",
-         "corpo": {"trigger": []}, "origine": "file"}
-        for i in range(20)
-    ]
-    testo, riepilogo = compose(casa, comportamento, [], stato, ceiling=6000,
-                               translations=house_translations())
-    assert riepilogo["truncated"] is True
-    sezione = testo.split("## Notevole adesso")[1].split("## Cio' che la casa fa")[0]
-    import re
-    righe_non_vuote = [r for r in sezione.strip().splitlines() if r]
-    assert righe_non_vuote, "il test presuppone un taglio parziale (righe superstiti)"
-    prima_riga = righe_non_vuote[0]
-    intestazione_totale = int(re.match(r"\((\d+) element", prima_riga).group(1))
-    righe_dati = [r for r in righe_non_vuote[1:] if r.startswith("- ")]
-    somma_righe = sum(int(re.search(r": (\d+) ", r).group(1)) for r in righe_dati)
-    assert intestazione_totale == somma_righe, (
-        f"l'intestazione ({intestazione_totale}) deve corrispondere alla somma delle "
-        f"righe rimaste ({somma_righe}), non al totale di prima del taglio")
-
-
 # Quanti elementi l'avviso di taglio DICHIARA esclusi, sezione per sezione.
 # Legge le frasi di `_cut_notice` (`cut_labels` in `compose`), che sono
 # concordate al singolare e al plurale: si cercano tutte e due le forme,
-# altrimenti «1 elemento notevole non incluso» sfuggirebbe -- ed e'
-# esattamente il caso del rilievo 4.
+# altrimenti «1 voce di comportamento non inclusa» sfuggirebbe -- ed e'
+# esattamente il caso del rilievo 4. (Fino al 29/09/2026 c'era anche la
+# forma degli «elementi notevoli», uscita con la loro sezione.)
 _ESCLUSI_RE = {
-    "notevole": re.compile(r"(\d+) element[oi] notevol[ei] non inclus"),
     "comportamento": re.compile(r"(\d+) voc[ei] di comportamento non inclus"),
 }
 
@@ -754,7 +531,9 @@ def test_una_sezione_VUOTA_non_dichiara_un_elemento_escluso():
     automazione: il modello leggeva che ne esiste uno che non vede.
 
     Il caso e' quello misurato dall'audit -- una luce spenta, nessuna
-    automazione, 39 ricordi, tetto 2.500."""
+    automazione, 39 ricordi, tetto 2.500. La meta' su «Niente di notevole»
+    e' uscita con quella sezione il 29/09/2026; resta la meta' sul
+    comportamento."""
     casa = {
         "piani": [{"id": "terra", "nome": "Piano terra", "livello": 0}],
         "aree": [{"id": "cucina", "nome": "Cucina", "piano_id": "terra",
@@ -775,20 +554,14 @@ def test_una_sezione_VUOTA_non_dichiara_un_elemento_escluso():
 
     assert riepilogo["truncated"] is True, "il test presuppone che il tetto morda"
     esclusi = _esclusi_dichiarati(riepilogo)
-    assert esclusi["notevole"] == 0, (
-        "non c'era nessun elemento notevole: l'avviso non puo' dichiararne uno escluso")
     assert esclusi["comportamento"] == 0, (
         "non c'era nessuna automazione: l'avviso non puo' dichiararne una esclusa")
-    # La sezione puo' restare VUOTA, ed e' voluto: «Notevole adesso» senza
-    # righe dice gia' cio' che la frase segnaposto diceva, e proteggerla dal
-    # taglio costerebbe una riga della mappa delle stanze (vedi il commento
-    # accanto al peso, in `_highlight_lines`). Cio' che non puo' succedere e'
-    # che l'avviso dichiari un elemento che non e' mai esistito -- e senza il
-    # tetto la frase c'e', come gli altri test di questo file gia' pinnano.
+    # Senza il tetto la frase c'e', come gli altri test di questo file gia'
+    # pinnano: cio' che non puo' succedere e' che l'avviso dichiari una voce
+    # che non e' mai esistita.
     intero, riepilogo_intero = compose(casa, [], ricordi, {"light.cucina_1": "off"},
                                        ceiling=100_000, translations=house_translations())
     assert riepilogo_intero["truncated"] is False
-    assert "Niente di notevole al momento." in intero
     assert "Nessuna automazione o script registrati." in intero
 
 
@@ -815,105 +588,15 @@ def test_il_taglio_non_dichiara_MAI_piu_elementi_di_quanti_ne_esistano():
                 "forza": "preferenza"}
                for i in range(39)]
     for nome, (casa, stato, comportamento) in case.items():
-        # Quanti elementi ci sono DAVVERO: quelli che il nucleo elenca quando
-        # il tetto non morde. Contarli riapplicando qui la regola di
-        # `_highlight_lines` sarebbe scriverla due volte, e la seconda copia
-        # direbbe sempre di si' al codice che deve sorvegliare.
-        intero, riepilogo_intero = compose(casa, comportamento, [], stato,
-                                           ceiling=100_000,
-                                           translations=house_translations())
-        assert riepilogo_intero["truncated"] is False
-        sezione = intero.split("## Notevole adesso")[1].split("## Cio' che")[0]
-        notevoli_veri = sum(1 for riga in sezione.strip().splitlines()
-                            if riga.startswith("- ") and "non rispondono" not in riga)
         for tetto in (900, 1100, 1500, 2000, 2500, 4000):
             _testo, riepilogo = compose(casa, comportamento, ricordi, stato,
                                         ceiling=tetto,
                                         translations=house_translations())
             esclusi = _esclusi_dichiarati(riepilogo)
-            assert esclusi["notevole"] <= notevoli_veri, (
-                f"casa «{nome}», tetto {tetto}: dichiarati {esclusi['notevole']} "
-                f"elementi notevoli esclusi su {notevoli_veri} esistenti")
             assert esclusi["comportamento"] <= len(comportamento), (
                 f"casa «{nome}», tetto {tetto}: dichiarate "
                 f"{esclusi['comportamento']} voci di comportamento escluse su "
                 f"{len(comportamento)} esistenti")
-
-
-def test_taglio_dei_notevoli_raggruppati_conta_elementi_non_righe():
-    """IMPORTANT ⑤: una riga raggruppata rappresenta N entita' -- tagliarla
-    deve dichiarare N elementi esclusi, non 1 riga. Sottostimare l'escluso
-    e' peggio di non dichiararlo: sembra onesto e non lo e'.
-
-    **Perche' la vecchia forma di questa prova non poteva fallire sul
-    rilievo 4** (audit delle fondamenta, 08/09/2026): qui la casa ha 150
-    entita' accese, quindi c'e' SEMPRE qualcosa di vero da escludere, e il
-    `next(...)` qui sotto accetta l'avviso senza mai chiedersi se un
-    elemento ci fosse. Il difetto viveva nel caso opposto -- zero elementi e
-    un avviso che ne dichiarava uno -- che nessuna casa di prova di questo
-    file produceva: erano tutte case piene. La prova che mancava e' quella
-    sopra (`test_una_sezione_VUOTA_non_dichiara_un_elemento_escluso`), e la
-    proprieta' che la generalizza e' `test_il_taglio_non_dichiara_MAI_piu_
-    elementi_di_quanti_ne_esistano`. Questa resta perche' difende l'altra
-    meta' -- non SOTTOstimare -- che e' un difetto diverso."""
-    casa = _casa_grande(30, 5)
-    stato = {e["id"]: "on" for e in casa["entita"]}
-    _testo, riepilogo = compose(casa, [], [], stato, ceiling=1500)
-    assert riepilogo["truncated"] is True
-    avviso = next(a for a in riepilogo["notices"] if "elementi notevoli non inclusi" in a
-                  or "elemento notevole non incluso" in a)
-    import re
-    n_esclusi = int(re.search(r"(\d+) element", avviso).group(1))
-    # **Il controllo era un proxy, e si e' rotto il 23/09/2026.** Chiedeva
-    # che l'escluso fosse un multiplo della dimensione dei gruppi -- vero
-    # finche' la sezione veniva svuotata PER INTERO, perche' allora
-    # l'escluso era il totale. Da quando «Notevole adesso» ha una riserva
-    # minima il taglio e' parziale, il resto non e' piu' un multiplo, e il
-    # proxy arrossisce su un comportamento giusto.
-    #
-    # La proprieta' vera e' un'altra, ed e' quella che il titolo dice: **si
-    # contano gli ELEMENTI, non le righe**. Si misura direttamente --
-    # quante righe sono sparite, e quanti elementi sono stati dichiarati --
-    # invece di dedurla da una divisibilita'.
-    # **L'invariante vera: quello che resta piu' quello che manca fa il
-    # totale.** E' la forma piu' forte di «non sottostimare»: se l'avviso
-    # contasse le RIGHE invece degli elementi, la somma non tornerebbe --
-    # perche' una riga raggruppata ne rappresenta piu' d'una.
-    #
-    # L'intestazione raggruppata dichiara quanti elementi le righe rimaste
-    # rappresentano; il totale si legge da un nucleo composto senza tetto,
-    # dove ogni elemento ha la sua riga.
-    import re as _re
-
-    def _righe_sezione(testo: str) -> list[str]:
-        dentro, fuori = False, []
-        for riga in testo.splitlines():
-            if riga.startswith("## "):
-                dentro = riga.strip() == "## Notevole adesso"
-                continue
-            if dentro and riga.strip():
-                fuori.append(riga)
-        return fuori
-
-    def _dichiarati(testo: str) -> int:
-        """Quanti elementi l'intestazione raggruppata DICE di rappresentare.
-
-        Si legge la dichiarazione del prodotto da tutte e due le parti invece
-        di contare righe: contare righe e' esattamente l'errore che questa
-        prova esiste per vietare, e la sezione porta anche righe che elementi
-        non sono (l'avviso sulle traduzioni)."""
-        return int(_re.search(r"(\d+) element", _righe_sezione(testo)[0]).group(1))
-
-    rappresentati = _dichiarati(_testo)
-    intero, _ = compose(casa, [], [], stato, ceiling=100000)
-    totale = _dichiarati(intero)
-
-    assert n_esclusi > 0
-    assert n_esclusi + rappresentati == totale, (
-        f"{n_esclusi} esclusi + {rappresentati} rappresentati != {totale} "
-        "totali: l'avviso sta contando righe invece di elementi, e "
-        "sottostimare l'escluso e' peggio che non dichiararlo -- sembra "
-        "onesto e non lo e'")
 
 
 def test_mappa_ha_una_riserva_minima_anche_con_una_casa_grande_e_molti_ricordi():
@@ -936,7 +619,7 @@ def test_mappa_ha_una_riserva_minima_anche_con_una_casa_grande_e_molti_ricordi()
                for i in range(200)]
     testo, riepilogo = compose(casa, comportamento, ricordi, stato)  # tetto di default
     assert riepilogo["truncated"] is True
-    sezione_casa = testo.split("## Notevole adesso")[0]
+    sezione_casa = _sezione_casa(testo)
     righe_area = [l for l in sezione_casa.splitlines() if l.strip().startswith("- Area")]
     assert len(righe_area) >= 1, "la mappa non deve mai sparire per intero, se c'e' una casa"
     # R1: il piano ora porta anche l'id (differisce dal nome: "terra" vs
@@ -961,7 +644,7 @@ def test_taglio_non_lascia_intestazioni_di_piano_orfane():
                for i in range(50)]
     for tetto_prova in (500, 800, 1200, 2000, 3000, 6000):
         testo, _ = compose(casa, comportamento, ricordi, stato, ceiling=tetto_prova)
-        sezione_casa = testo.split("## Notevole adesso")[0]
+        sezione_casa = _sezione_casa(testo)
         righe = [r for r in sezione_casa.splitlines() if r.strip()][1:]  # senza "## La casa"
         for i, riga in enumerate(righe):
             e_intestazione = riga.endswith(":") and not riga.startswith("  ")
@@ -1300,58 +983,3 @@ def test_same_title_different_domains_stay_separate_not_merged():
     assert "2 voci di configurazione" in text
 
 
-def test_il_nucleo_chiama_un_entita_col_nome_che_le_danno_le_altre_porte():
-    """Audit delle fondamenta, rilievo 3 -- la stessa entita' con due nomi.
-
-    Misurato dal vivo l'08/09/2026: il nucleo diceva «Soggiorno:
-    switch.smart_wi_fi_plug_2 (Acceso)», mentre `view` e `search` sulla stessa
-    entita' rispondevano «Fuoco e tv». Su quella casa **82 entita'** hanno il
-    registro muto e un `friendly_name` vivo: il registro delle entita' non
-    porta un nome quando l'utente non lo ha cambiato a mano, e il nome vero
-    vive nello specchio dello stato.
-
-    `compose()` non lo riceveva affatto -- `handlers_home_space` scartava i
-    nomi dello specchio -- quindi il testo che il modello ha SEMPRE davanti
-    chiamava una cosa con l'identificatore, e ogni altra porta con il suo
-    nome.
-
-    Il difetto era invisibile perche' ogni casa di prova di questo file da'
-    un `nome` a tutte le entita': la prova nuova ha l'entita' col registro
-    muto, che e' il caso vero.
-    """
-    casa = {**_CASA, "entita": [
-        *_CASA["entita"],
-        {"id": "switch.smart_wi_fi_plug_2", "nome": None, "area_id": "sala",
-         "dispositivo_id": None, "classe": None, "unita": None, "disabilitata": 0},
-    ]}
-    stato = {**_STATO, "switch.smart_wi_fi_plug_2": "on"}
-
-    testo, _ = compose(casa, _COMPORTAMENTO, _RICORDI, stato,
-                       fallback_names={"switch.smart_wi_fi_plug_2": "Fuoco e tv"})
-
-    assert "Fuoco e tv" in testo
-    assert "switch.smart_wi_fi_plug_2" not in testo, (
-        "l'identificatore non e' un nome: `view` e `search` dicono «Fuoco e tv»")
-
-
-def test_senza_nome_da_nessuna_parte_il_nucleo_mostra_l_id_e_non_lo_inventa():
-    """Il confine: quando nemmeno lo specchio ha un `friendly_name`,
-    l'identificatore resta l'unica cosa vera che si puo' scrivere."""
-    casa = {**_CASA, "entita": [
-        *_CASA["entita"],
-        {"id": "switch.anonimo", "nome": None, "area_id": "sala",
-         "dispositivo_id": None, "classe": None, "unita": None, "disabilitata": 0},
-    ]}
-    testo, _ = compose(casa, _COMPORTAMENTO, _RICORDI,
-                       {**_STATO, "switch.anonimo": "on"}, fallback_names={})
-    assert "switch.anonimo" in testo
-
-
-def test_un_nome_dichiarato_batte_quello_dello_specchio():
-    """La stessa disciplina di `_enrich_entity`: il dedotto non si scrive mai
-    sopra il dichiarato -- sono due fatti diversi, e il primo e' quello che
-    l'utente ha scelto."""
-    testo, _ = compose(_CASA, _COMPORTAMENTO, _RICORDI, _STATO,
-                       fallback_names={"light.cucina_1": "Nome dello specchio"})
-    assert "Faretti" in testo
-    assert "Nome dello specchio" not in testo

@@ -21,16 +21,17 @@ che mancava, non un difetto.
 
 **Resta cio' che questa prova non puo' fare**: guarda il keyword su una riga,
 non il valore che ci passa. La proprieta' vera -- che una correzione della casa
-arrivi in fondo alla catena -- la difendono due prove **dal lettore**:
-`tests/test_briefing.py::
-test_una_correzione_su_notevole_arriva_dal_nucleo_intero_non_solo_da_is_event`
-(la catena `compose -> _highlight_lines -> _is_event`) e
+arrivi in fondo alla catena -- la difende una prova **dal lettore**:
 `tests/test_queries.py::
 test_una_correzione_su_limiti_arriva_dalla_vista_intera_non_solo_dalla_foglia`
 (la catena `view -> _view_entity -> commands_for -> _command_parameters ->
-_limits_of_entity`): chiamano la funzione di TESTA con un'istantanea diversa
-dal seme e guardano il TESTO/DETTAGLIO finale, non solo il keyword scritto a
-una riga.
+_limits_of_entity`): chiama la funzione di TESTA con un'istantanea diversa
+dal seme e guarda il DETTAGLIO finale, non solo il keyword scritto a una riga.
+Fino al 29/09/2026 ce n'era una seconda sulla catena del nucleo
+(`compose -> _highlight_lines -> _is_event`); e' uscita con «Notevole
+adesso», e da quel giorno `compose` riceve `judgments` senza leggerlo (vedi il
+suo docstring): il keyword resta sorvegliato qui, ma dietro non c'e' piu' un
+lettore.
 
 Mutazione ESEGUITA: tolto `judgments=` dalla chiamata `compose(` in
 `api/handlers_home_space.py` -- rossa, con file e riga nel messaggio;

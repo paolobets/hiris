@@ -142,8 +142,8 @@ async def test_la_risposta_dice_di_essere_TEMPORANEA(app):
     sapere che era per una fase, e quale.
 
     **Questa prova non difende il codice: difende la dichiarazione.** È la
-    stessa disciplina della riserva di «Notevole adesso» e della soglia del
-    freno di ritmo — impedire che «provvisorio» diventi «permanente per
+    stessa disciplina della soglia del freno di ritmo (e della riserva di
+    «Notevole adesso», finché è esistita) — impedire che «provvisorio» diventi «permanente per
     dimenticanza».
 
     Mutazione ESEGUITA: togliere il campo dalla risposta -- rossa."""

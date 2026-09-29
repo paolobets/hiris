@@ -12,7 +12,9 @@ su 205. Il tetto del nucleo era 6.000 e ne erano gia' occupati 5.676, con un
 taglio gia' in corso: e' il vincolo che ha deciso la forma di questa sezione.
 **Dall'08/09/2026 il tetto e' 6.800** (`briefing.DEFAULT_CEILING`), deciso dal
 proprietario proprio perche' a 6.000 questa sezione sfrattava «Notevole
-adesso» per intero -- vedi in fondo a questo file la prova che lo pinna.
+adesso» per intero. **Dal 29/09/2026 quella sezione non c'e' piu'** e le
+capacita' si tagliano PRIMA del comportamento -- vedi in fondo a questo file
+le prove che lo pinnano.
 La suite gira senza la casa: qui gli attributi sono quelli letti allora,
 ridotti ai casi che decidono.
 """
@@ -94,7 +96,7 @@ def _righe_area(testo):
 def test_il_nucleo_dice_che_in_questa_casa_qualcosa_sa_fare_colore():
     """La differenza che questa sezione esiste per fare: «in questa casa
     quattro luci sanno fare colore» sta nel nucleo, «l’Alberello arriva a
-    9000 K» resta in `view`.
+    9000 K» resta in `search`.
 
     Mutazione ESEGUITA: togliere `capability_section` da `print_order` in
     `compose()` -- la sezione sparisce e la prova arrossisce su
@@ -110,7 +112,7 @@ def test_il_nucleo_dice_che_in_questa_casa_qualcosa_sa_fare_colore():
 def test_una_firma_aggregata_e_mappa_non_dettaglio():
     """**I valori numerici non entrano** (spec §15.1): il NOME del limite dice
     «di questa luce si puo' cambiare la temperatura», il numero e' cio' che
-    `view` dice quando la si guarda. Scriverlo qui costerebbe il doppio
+    `search` dice quando la si guarda. Scriverlo qui costerebbe il doppio
     (2.497 caratteri contro 1.096, misurati) per un’informazione che ha gia'
     una porta sua.
 
@@ -303,18 +305,19 @@ def test_a_stato_non_letto_le_capacita_si_dichiarano_e_non_si_tagliano():
 #
 # La casa qui sotto e' la casa del proprietario in miniatura, e le sue
 # proporzioni non sono scelte a occhio: 26 aree, 156 luci di cui quattro
-# accese, 36 automazioni, una firma di capacita' diversa per ogni luce. Con
-# queste, il nucleo pesa 6.178 caratteri -- fra i due tetti che questa prova
-# confronta -- e si comporta come si comporta quello vero:
+# accese, 36 automazioni, una firma di capacita' diversa per ogni luce.
 #
-#   a 6.000  «Notevole adesso» resta la sola intestazione (4 elementi fuori)
-#            e quattro automazioni su 36 non entrano;
-#   a 6.800  entrambe intere, la mappa delle capacita' pure, nessun taglio.
+# Fino al 29/09/2026 pesava 6.178 caratteri, e a 6.000 «Notevole adesso»
+# restava la sola riserva mentre quattro automazioni su 36 non entravano.
+# Uscita quella sezione, e con le capacita' tagliate PRIMA del comportamento,
+# la stessa casa pesa **6.020** caratteri (misurato il 29/09/2026):
 #
-# Sulla casa vera, ricomposta in locale sugli ingressi veri l'08/09/2026:
-# a 6.000 «Notevole adesso» passava da quattro righe a ZERO e sette voci di
-# comportamento su venti restavano fuori; a 6.800 «Notevole adesso» sale a sei
-# righe e il comportamento esce completo (20 su 20).
+#   a 6.000  il taglio morde le capacita' (7 firme su 18, 149 entita' senza)
+#            e il comportamento resta intero, 36 su 36;
+#   a 6.800  tutto intero, nessun taglio.
+#
+# Sulla casa vera, il 29/09/2026 al tetto di 6.800: il comportamento usciva
+# 12 voci su 17, cinque automazioni tagliate (vedi `briefing.DEFAULT_CEILING`).
 
 _AREE_TETTO = 26
 _LUCI_TETTO = 156
@@ -344,60 +347,47 @@ _COMPORTAMENTO_TETTO = [
 
 def _nucleo_tetto(ceiling=None):
     extra = {} if ceiling is None else {"ceiling": ceiling}
-    # Le traduzioni ci sono: questa misura riguarda il TETTO, e un nucleo che
-    # dichiara «traduzioni non lette» porterebbe una riga in piu' che non
-    # c'entra niente col taglio -- e la falserebbe di un rigo.
     return compose(_CASA_TETTO, _COMPORTAMENTO_TETTO, [], _STATO_TETTO,
                    attributes=_ATTRIBUTI_TETTO,
                    translations=house_translations(), **extra)
 
 
-def test_a_seimila_le_capacita_sfrattavano_notevole_adesso_per_intero():
-    """La misura che ha fatto alzare il tetto, e sta qui perche' il numero
-    nuovo si legga insieme a cio' che il vecchio costava.
+def test_a_seimila_il_taglio_morde_le_capacita_e_non_il_comportamento():
+    """L'ordine di taglio del 29/09/2026: le capacita' PRIMA del comportamento.
 
-    Non e' una prova sul passato: e' l'oracolo dell'altra. Senza di lei, la
-    prova qui sotto passerebbe anche su una casa che al tetto vecchio ci
-    stava comoda -- e non direbbe piu' niente sul tetto.
+    Fino ad allora era l'inverso (una riga di capacita' spiega piu' entita'),
+    e al tetto vero cinque automazioni su 17 restavano fuori: un'automazione
+    tagliata e' una cosa che il modello non sa che esiste, una firma di
+    capacita' tagliata e' una mappa che `search` ridice sull'entita'.
 
-    **Il numero atteso e' cambiato il 23/09/2026, e la ragione e' nuova.**
-    Prima questa prova chiedeva ZERO righe: al tetto vecchio la sezione
-    spariva per intero. Adesso ne restano tante quante la riserva minima
-    (`_MIN_HIGHLIGHT_LINES_RESERVE`), perche' sulla casa vera si e' misurato
-    che quella sezione era vuota SEMPRE -- e un'intestazione che promette
-    cosa sta succedendo adesso e non lo dice mai e' peggio di una sezione
-    corta.
+    E' anche l'oracolo della prova qui sotto: senza un tetto che morda, quella
+    passerebbe anche su una casa che ci sta comoda.
 
-    L'oracolo regge lo stesso, e dice ancora la cosa per cui esiste: al tetto
-    vecchio la sezione si riduce al minimo che il taglio non puo' toccare;
-    a quello di adesso resta intera (prova qui sotto).
+    Mutazione ESEGUITA: in `compose()`, rimettere `("comportamento", ...)`
+    PRIMA di `("capacita", ...)` in `cut_order` -- a 6.000 le automazioni
+    scendono sotto 36 e la prova arrossisce.
     """
-    from hiris.app.home_space.briefing import _MIN_HIGHLIGHT_LINES_RESERVE
-
     testo, riepilogo = _nucleo_tetto(ceiling=6000)
     assert riepilogo["truncated"] is True
-    notevole = _sezione(testo, "## Notevole adesso").splitlines()
-    assert 0 < len(notevole[1:]) <= _MIN_HIGHLIGHT_LINES_RESERVE, (
-        "a 6.000 «Notevole adesso» deve ridursi alla sola riserva: "
-        f"invece porta {len(notevole) - 1} righe")
     automazioni = _sezione(testo, "## Cio' che la casa fa gia'").splitlines()[1:]
-    assert len(automazioni) < _AUTOMAZIONI_TETTO
+    assert len(automazioni) == _AUTOMAZIONI_TETTO, (
+        f"il comportamento deve restare intero: ne sono entrate {len(automazioni)}")
+    firme = _sezione(testo, "## Cosa si puo' chiedere").splitlines()[1:]
+    intere = _sezione(_nucleo_tetto(ceiling=100_000)[0],
+                      "## Cosa si puo' chiedere").splitlines()[1:]
+    assert len(firme) < len(intere), "il taglio deve aver morso le capacita'"
+    assert "cosa sanno fare" in " ".join(riepilogo["notices"])
 
 
-def test_al_tetto_di_adesso_notevole_adesso_e_il_comportamento_restano_interi():
+def test_al_tetto_di_adesso_comportamento_e_capacita_restano_interi():
     """**Il tetto di default e' 6.800, e questa prova dice cosa compra.**
     Senza chiamante che lo sovrascriva, e' questo numero a decidere quanto il
     modello sa della casa a ogni turno.
 
-    Mutazione ESEGUITA: `DEFAULT_CEILING = 6000` in `briefing.py` --
-    «Notevole adesso» torna a zero righe e la prova arrossisce su
-    `assert 0 == 4`.
+    Mutazione ESEGUITA: `DEFAULT_CEILING = 6000` in `briefing.py` -- il taglio
+    morde le capacita' e la prova arrossisce su `truncated`.
     """
     testo, riepilogo = _nucleo_tetto()
-    notevole = _sezione(testo, "## Notevole adesso").splitlines()[1:]
-    assert len(notevole) == 4, (
-        "al tetto di adesso le quattro luci accese devono entrare tutte: "
-        f"ne sono entrate {len(notevole)}")
     automazioni = _sezione(testo, "## Cio' che la casa fa gia'").splitlines()[1:]
     assert len(automazioni) == _AUTOMAZIONI_TETTO
     assert "## Cosa si puo' chiedere" in testo
@@ -458,8 +448,8 @@ def test_r1_la_sezione_conta_come_la_casa_non_come_lo_specchio_della_cache():
     `_capability_lines` iterava lo specchio INTERO della cache
     (`topology.live_mirror`) senza ricevere l'anagrafe -- contava una luce
     nascosta, una luce presente solo in cache e le capacita' di un'entita' di
-    servizio (`categoria: diagnostic`) che «La casa» e «Notevole adesso» non
-    considerano. Sulla casa vera: quattro luci nascoste in piu' in sala da
+    servizio (`categoria: diagnostic`) che «Notevole adesso» (uscita il
+    29/09/2026) non considerava. Sulla casa vera: quattro luci nascoste in piu' in sala da
     pranzo e 113 `config` + 66 `diagnostic` in tutta la casa -- lo stesso
     testo dava due totali diversi per la stessa parola, tre sezioni piu'
     sotto ("1 luce" in «La casa», "3 luci" in «Cosa si puo' chiedere»).
