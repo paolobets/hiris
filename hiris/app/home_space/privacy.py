@@ -71,12 +71,39 @@ def redact_attributes(entity_id: str, attributes: dict | None) -> dict | None:
     return kept
 
 
+#: Le chiavi che portano gli attributi di UNA voce: il filtro li passa da
+#: `redact_attributes`, non li attraversa come elenchi di righe.
+_ATTRIBUTE_KEYS = ("attributi", "attributes")
+#: Lo stato in parole accanto al grezzo (`queries._enrich_entity`). Quando il
+#: grezzo si riduce a `not_home`, la resa del grezzo non vale piu' e il suo
+#: motivo potrebbe ripeterlo: escono con lui.
+_RENDERED_STATE_KEYS = ("stato_leggibile", "stato_non_reso")
+
+
 def redact_row(row: dict) -> dict:
+    """Il filtro su UNA voce, e -- ricorsivo -- su ogni riga che la voce porta
+    dentro di se'.
+
+    **In tutte le profondita'** (spec §3), e il dettaglio completo ne ha piu'
+    d'una: un dispositivo, un'area o un'integrazione portano le loro entita'
+    in `entita` e `entita_nascoste`, righe con il loro `id` e il loro `stato`
+    grezzo. Fino al 30/09/2026 il filtro guardava solo il primo livello, e
+    `search(nome="iphone")` -- un telefono con l'app di Home Assistant ha
+    SEMPRE un `device_tracker` -- consegnava «Lavoro» dentro il dispositivo
+    (review finale della fetta, C1). Un punto solo resta un punto solo: la
+    discesa e' qui, non in ogni ramo che costruisce un elenco."""
     entity_id = str(row.get("id") or "")
     out = dict(row)
     if "stato" in out:
-        out["stato"] = redact_state(entity_id, out["stato"])
-    for key in ("attributi", "attributes"):
-        if key in out:
-            out[key] = redact_attributes(entity_id, out[key])
+        seen = redact_state(entity_id, out["stato"])
+        if seen != out["stato"]:
+            for key in _RENDERED_STATE_KEYS:
+                out.pop(key, None)
+        out["stato"] = seen
+    for key, value in out.items():
+        if key in _ATTRIBUTE_KEYS:
+            out[key] = redact_attributes(entity_id, value)
+        elif isinstance(value, list):
+            out[key] = [redact_row(item) if isinstance(item, dict) else item
+                        for item in value]
     return out
