@@ -157,22 +157,29 @@ async def test_la_risposta_dice_di_essere_TEMPORANEA(app):
 
 
 @pytest.mark.asyncio
-async def test_gli_ARGOMENTI_degli_strumenti_non_escono(app):
-    """Non sono nell'archivio — `log_turn` non li accetta — e questa prova
-    esiste perché continuino a non esserci anche se un domani qualcuno
-    arricchisse il registro: la rotta è il punto in cui uscirebbero di casa.
+async def test_gli_ARGOMENTI_escono_col_nome_tool_args_e_senza_credenziali(app):
+    """**Cambiata DELIBERATAMENTE il 29/09/2026** (spec «una porta sola» §7):
+    la rotta porta gli argomenti degli strumenti, sotto UN nome (`tool_args`),
+    e mai una credenziale. Non escono sotto i nomi vecchi.
 
-    Mutazione ESEGUITA: aggiungere gli argomenti alla risposta -- rossa."""
-    _turno(app["usage"])
+    Mutazione ESEGUITA: non esporre `tool_args` dall'archivio -- rossa."""
+    archivio = app["usage"]
+    archivio.log_turn(species="chat", provider="p", model="m",
+                      channel="catena-openai", duration_ms=1, iterations=1,
+                      tools=["execute"], outcome="riuscito", now=ADESSO,
+                      tool_args=[{"stanza": "camera",
+                                  "data": {"code": "1234"}}])
 
-    grezzo = json.dumps(await _chiedi(app), ensure_ascii=False)
+    dati = await _chiedi(app)
+    grezzo = json.dumps(dati, ensure_ascii=False)
 
-    # `"input":` e non il semplice `input`: dal 28/09/2026 la rotta porta
-    # anche `input_tokens`, una colonna legittima -- il divieto riguarda la
-    # CHIAVE degli argomenti dello strumento, non ogni parola che la contiene.
-    for vietato in ('"input":', "argument", "stanza", "arguments"):
-        assert vietato not in grezzo.lower(), (
-            f"«{vietato}» esce dalla rotta: sono dati personali")
+    assert dati["turni"][0]["tool_args"] == [
+        {"stanza": "camera", "data": {"code": "***"}}]
+    assert "1234" not in grezzo
+    # `"input":` e non il semplice `input`: la rotta porta anche
+    # `input_tokens`, una colonna legittima.
+    for vietato in ('"input":', '"arguments"', '"argomenti"'):
+        assert vietato not in grezzo.lower()
 
 
 def test_la_rotta_e_DIETRO_il_perimetro():

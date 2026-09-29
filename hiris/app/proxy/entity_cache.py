@@ -240,6 +240,19 @@ _CREDENTIAL_ATTRIBUTES: dict[str, str] = {
     "last_scanned_by_device_id": "l’identificativo del dispositivo che ha letto il tag",
     "serial": "il numero di serie del dispositivo",
     "media_content_id": "l’indirizzo del contenuto, con la chiave della sessione dentro",
+    # Le chiavi con cui una CHIAMATA DI SERVIZIO porta un segreto (29/09/2026,
+    # registro dei turni: `execute` e `propose` mettono i dati del servizio
+    # negli argomenti, e `alarm_control_panel.alarm_disarm` vuole `code`).
+    # Nessuna e' un attributo di stato di Home Assistant: le aggiunge chi
+    # salva gli argomenti di una chiamata (`usage/store.py::compact_tool_args`),
+    # e la lista resta UNA, questa.
+    "code": "un codice di allarme o di serratura",
+    "pin": "un PIN",
+    "password": "una password",
+    "passcode": "un codice di accesso",
+    "token": "un token",
+    "secret": "un segreto",
+    "api_key": "una chiave di accesso a un servizio",
 }
 
 # La ragione con cui esce cio' che nessun nome della tabella prevedeva.

@@ -170,8 +170,11 @@ async def misura_turno(archivio, runner, *, specie: str, canale: str,
         durata_ms = int((_time.perf_counter() - inizio) * 1000)
         try:
             if archivio is not None:
-                strumenti = [c["tool"] for c in
-                             (getattr(runner, "last_tool_calls", None) or [])]
+                chiamate = getattr(runner, "last_tool_calls", None) or []
+                strumenti = [c["tool"] for c in chiamate]
+                # Gli argomenti, alla stessa posizione dei nomi (spec §7):
+                # `log_turn` li riduce e maschera le credenziali.
+                argomenti = [c.get("input") or {} for c in chiamate]
                 # **I giri li conta la misura stessa.** Un contatore
                 # sull'oggetto runner sarebbe una seconda verita' sullo stesso
                 # numero -- e per giunta condivisa fra turni paralleli, che e'
@@ -212,7 +215,7 @@ async def misura_turno(archivio, runner, *, specie: str, canale: str,
                     subject=soggetto,
                     duration_ms=durata_ms, iterations=giri,
                     tools=strumenti, outcome=esito, now=adesso,
-                    output_tokens=uscita)
+                    output_tokens=uscita, tool_args=argomenti)
                 for giro, pesi in sorted(carichi.items()):
                     if "tools_chars" not in pesi:
                         # Un giro coi soli token: la consegna dei caratteri

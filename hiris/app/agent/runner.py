@@ -1330,6 +1330,10 @@ def _measure_turn(job: dict, *, duration_ms: int, tools: list,
             "iterations": n_stream or (n_cli or 0),
             "tools": [_bare_tool_name(c.get("tool")) for c in (tools or [])
                       if isinstance(c, dict) and c.get("tool")],
+            # Stesso filtro e stesso ordine di `tools`: allineati per
+            # posizione. Il registro li riduce e maschera le credenziali.
+            "tool_args": [c.get("input") or {} for c in (tools or [])
+                          if isinstance(c, dict) and c.get("tool")],
             "outcome": outcome,
             # Chi ha scritto, per un turno di chat: il soggetto viaggia nel
             # job da quando la chat e' divisa per persona. Le altre specie

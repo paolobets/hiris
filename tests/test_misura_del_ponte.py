@@ -152,6 +152,20 @@ def test_gli_strumenti_hanno_UN_nome_solo(registro):
     assert registro[0]["tools"] == ["search", "view", "ToolSearch"]
 
 
+def test_il_ponte_registra_gli_argomenti(registro):
+    """Spec §7: `tool_args` alla stessa posizione di `tools`, stesso filtro.
+
+    Mutazione ESEGUITA: non emettere `tool_args` da `_measure_turn` -- rossa."""
+    ponte._measure_turn(
+        {"job_id": "j6", "kind": "chat"}, duration_ms=1,
+        tools=[{"tool": "mcp__hiris__search", "input": {"tipo": "light"}},
+               {"input": {"scartato": 1}},
+               {"tool": "mcp__hiris__view"}],
+        occurrence=_occorrenza(), outcome="riuscito")
+    assert registro[0]["tools"] == ["search", "view"]
+    assert registro[0]["tool_args"] == [{"tipo": "light"}, {}]
+
+
 def test_la_riga_del_ponte_porta_giri_composizione_e_identita(registro):
     """La riga porta cio' che serve alla giunzione in `server`: l'identita'
     del turno, la composizione, i giri dello stream, l'uscita e il costo a

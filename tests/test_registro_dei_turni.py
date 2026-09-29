@@ -70,23 +70,146 @@ def test_gli_strumenti_si_registrano_IN_ORDINE(consumi):
     assert consumi.turns()[0]["tools"] == ["search", "view", "search"]
 
 
-def test_gli_ARGOMENTI_degli_strumenti_non_si_registrano(consumi):
-    """Un `view` porta il nome di una stanza, un `execute` un valore
-    impostato: sono dati personali, e questo archivio finisce nei backup di
-    Home Assistant, che non sono cifrati se non ci metti una password.
+def test_gli_ARGOMENTI_degli_strumenti_hanno_UN_nome_solo(consumi):
+    """**Cambiata DELIBERATAMENTE il 29/09/2026** (spec «una porta sola» §7).
+    Fino alla 3.70 questa prova diceva «mai gli argomenti»: un `view` porta il
+    nome di una stanza, e l'archivio finisce nei backup di Home Assistant. Il
+    29/09 nessuno ha saputo dire quale `search` avesse mancato
+    l'Indifferenziato, perche' c'erano solo i nomi: ora gli argomenti si
+    salvano, ridotti e senza credenziali.
 
-    La stessa scelta che `claude_runner` fa già per la riga di avviso delle
-    iterazioni esaurite: **solo i nomi, mai `input`**.
+    Cio' che resta vietato sono i NOMI alternativi: `arguments`, `argomenti`,
+    `input`, `inputs` -- una seconda parola per la stessa cosa. Il nome e'
+    uno, `tool_args`, ed e' ammesso.
 
-    Mutazione ESEGUITA: accettare e salvare anche gli argomenti -- rossa."""
+    Mutazione ESEGUITA: chiamare il parametro `arguments` -- rossa."""
     import inspect
 
     firma = inspect.signature(UsageStore.log_turn).parameters
 
     assert "tools" in firma
+    assert "tool_args" in firma
     for vietato in ("arguments", "argomenti", "input", "inputs"):
         assert vietato not in firma, (
-            f"«{vietato}» farebbe entrare dati personali in consumi.db")
+            f"«{vietato}»: gli argomenti hanno un nome solo, `tool_args`")
+
+
+def test_gli_argomenti_si_salvano_allineati_agli_strumenti(tmp_path):
+    """Spec §7: il 29/09 non si e' potuto sapere quale ricerca avesse perso
+    l'Indifferenziato. Mutazione ESEGUITA: non scrivere la colonna -- rossa."""
+    s = UsageStore(str(tmp_path / "c.db"))
+    s.log_turn(species="chat", provider="p", model="m", channel="catena",
+               duration_ms=1, iterations=1, tools=["search"],
+               tool_args=[{"tipo": "light", "stato": "on"}],
+               outcome="riuscito", now=1.0)
+    t = s.turns()[0]
+    assert t["tools"] == ["search"]
+    assert t["tool_args"] == [{"tipo": "light", "stato": "on"}]
+
+
+def test_senza_argomenti_la_colonna_resta_NULL(consumi):
+    """`None` e' «non registrati», e non `[]`: due fatti diversi."""
+    consumi.log_turn(species="chat", provider="p", model="m", channel="catena",
+                     duration_ms=1, iterations=1, tools=["search"],
+                     outcome="riuscito", now=ADESSO)
+    assert consumi.turns()[0]["tool_args"] is None
+
+
+def test_un_argomento_lungo_si_accorcia():
+    """Mutazione ESEGUITA: togliere il taglio a 200 -- rossa; togliere il
+    tetto delle 20 chiavi -- rossa."""
+    from hiris.app.usage.store import compact_tool_args
+    fuori = compact_tool_args(
+        [{"testo": "x" * 1000, **{f"k{i}": i for i in range(30)}}])
+    assert len(fuori[0]["testo"]) == 200 and len(fuori[0]) == 20
+
+
+def test_i_tetti_valgono_ANCHE_nei_dati_annidati():
+    """Un `execute` mette i dati del servizio sotto una chiave: un testo lungo
+    li' dentro gonfierebbe il registro come al livello alto.
+
+    Mutazione ESEGUITA: non ricorrere nei dict (tetti solo al livello alto)
+    -- rossa."""
+    from hiris.app.usage.store import compact_tool_args
+    fuori = compact_tool_args([{"data": {"testo": "y" * 500,
+                                         "lista": ["z" * 500] * 30}}])
+    assert len(fuori[0]["data"]["testo"]) == 200
+    assert len(fuori[0]["data"]["lista"]) == 20
+    assert len(fuori[0]["data"]["lista"][0]) == 200
+
+
+def test_le_CREDENZIALI_negli_argomenti_non_si_salvano_mai(consumi):
+    """**Decisione del controllore, 29/09/2026.** `execute` e `propose`
+    portano i dati di un servizio, e il servizio puo' essere il disarmo di un
+    allarme: `{"code": "1234"}`. Il valore non entra in `consumi.db`, che
+    finisce nei backup di Home Assistant, a NESSUNA profondita'. La lista
+    delle chiavi e' quella di `entity_cache` (una sola).
+
+    Mutazione ESEGUITA: togliere il mascheramento delle chiavi credenziali
+    (`_compact_mapping` copia il valore com'e') -- rossa."""
+    consumi.log_turn(
+        species="chat", provider="p", model="m", channel="catena",
+        duration_ms=1, iterations=1, tools=["execute", "propose"],
+        tool_args=[
+            {"service": "alarm_control_panel.alarm_disarm",
+             "data": {"entity_id": "alarm_control_panel.casa", "code": "1234"}},
+            {"passi": [{"data": {"pin": "9876", "nome": "porta"}}],
+             "password": "hunter2"}],
+        outcome="riuscito", now=ADESSO)
+
+    grezzo = json.dumps(consumi.turns()[0]["tool_args"])
+    for segreto in ("1234", "9876", "hunter2"):
+        assert segreto not in grezzo
+    salvati = consumi.turns()[0]["tool_args"]
+    assert salvati[0]["data"] == {"entity_id": "alarm_control_panel.casa",
+                                  "code": "***"}
+    assert salvati[1]["passi"][0]["data"] == {"pin": "***", "nome": "porta"}
+    assert salvati[1]["password"] == "***"
+
+
+def test_un_valore_che_e_un_segreto_si_maschera_anche_con_un_nome_innocuo():
+    """La regola sul VALORE di `entity_cache` (indirizzo con `token=`, chiave
+    esadecimale) vale anche qui: e' la stessa funzione, non una copia.
+
+    Mutazione ESEGUITA: mascherare solo per nome -- rossa."""
+    from hiris.app.usage.store import compact_tool_args
+    fuori = compact_tool_args([{"url": "http://x/img?token=abc",
+                                "voci": ["a" * 40, "ok"]}])
+    assert fuori[0]["url"] == "***"
+    assert fuori[0]["voci"] == ["***", "ok"]
+
+
+def test_un_archivio_vecchio_si_migra(tmp_path):
+    """Un `consumi.db` alla versione 2 guadagna la colonna senza perdere righe.
+
+    Mutazione ESEGUITA: togliere `3: _migration_3` dal dizionario -- rossa
+    (init_schema solleva «manca la migrazione»)."""
+    import sqlite3
+    percorso = str(tmp_path / "consumi.db")
+    conn = sqlite3.connect(percorso)
+    conn.executescript("""
+        CREATE TABLE turn (id TEXT PRIMARY KEY, ts REAL NOT NULL,
+            species TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL,
+            channel TEXT NOT NULL, subject_json TEXT,
+            duration_ms INTEGER NOT NULL, iterations INTEGER NOT NULL,
+            tools TEXT NOT NULL, outcome TEXT NOT NULL,
+            output_tokens INTEGER, list_cost_usd REAL);
+        INSERT INTO turn VALUES ('vecchio', 9e9, 'chat', 'p', 'm', 'catena',
+            NULL, 1, 1, '["search"]', 'riuscito', NULL, NULL);
+        PRAGMA user_version = 2;
+    """)
+    conn.commit()
+    conn.close()
+
+    a = UsageStore(percorso)
+
+    riga = a.turns()[0]
+    assert riga["id"] == "vecchio" and riga["tools"] == ["search"]
+    assert riga["tool_args"] is None
+    a.log_turn(species="chat", provider="p", model="m", channel="ponte",
+               duration_ms=1, iterations=1, tools=["view"],
+               tool_args=[{"stanza": "camera"}], outcome="riuscito", now=9e9)
+    assert any(t["tool_args"] == [{"stanza": "camera"}] for t in a.turns())
 
 
 def test_il_carico_si_misura_per_ITERAZIONE(consumi):
