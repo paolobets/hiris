@@ -1159,20 +1159,19 @@ async def test_cerca_non_conta_un_entita_disabilitata_senza_nome_come_cecita(
 
 
 @pytest.mark.asyncio
-async def test_cerca_dichiara_il_registro_etichette_caduto(archivio_casa, memoria):
-    """Fix finale ①: `etichette` e' una tabella vera di `_TABELLE` che puo'
-    comparire in `non_disponibili()` (T8, R2 -- `search` indicizza le
-    etichette stesse come candidati), ma `_blind_spots` filtrava i registri
-    caduti con `STORE_KEY_PER_TYPE.values()`, che non la contiene
-    (deliberatamente: non e' un tipo di ancora, vedi il commento su
-    `_ARCHIVI`). Un registro etichette caduto restituiva 'trovati': []
-    nudo -- indistinguibile da 'nessuna etichetta con quel nome'."""
+async def test_un_registro_etichette_caduto_non_si_dichiara_a_chi_cerca(archivio_casa,
+                                                                        memoria):
+    """Fino al 30/09/2026 un registro etichette caduto si dichiarava: la
+    vecchia ricerca offriva le etichette stesse come candidati. La porta della
+    casa non cerca etichette per nome (spec §2.2), e un registro che non
+    nasconde niente a chi cerca non va segnalato (review finale, M3).
+
+    Mutazione ESEGUITA: rimettere `| {"etichette"}` fra i registri di
+    `_blind_spots` -- rossa."""
     archivio_casa.hold_registries({"aree": [], "entita": []}, ["etichette"])
     esito = await ToolDispatcher(archivio_casa, memoria).dispatch(
         "search", {"nome": "da controllare"})
-    assert esito["trovate"] == 0
-    assert "non_ho_potuto_guardare" in esito
-    assert any("etichette" in m for m in esito["non_ho_potuto_guardare"])
+    assert not any("etichette" in m for m in esito.get("non_ho_potuto_guardare", []))
 
 
 @pytest.mark.asyncio

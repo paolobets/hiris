@@ -247,14 +247,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # elenco invece di ricopiarlo -- due copie sono due posti in cui la stessa
 # aggiunta si dimentica di uno.
 from hiris.app.memory.resolver import (
-    ITALIAN_ELISIONS as _ELISIONI,
-)
-from hiris.app.memory.resolver import (
     ITALIAN_FUNCTION_WORDS as _PIANE,
 )
-from hiris.app.memory.resolver import (
-    ITALIAN_VOWELS as _VOCALI,
-)
+
+# Le elisioni, invece, sono tornate qui il 30/09/2026 (review finale della
+# fetta «una porta sola», M3): nel prodotto non le legge nessuno --
+# `name_matches` confronta parole, e «dell'» non e' una parola che si cerca --
+# e l'unico lettore e' questo cancello. Valgono SOLO davanti a vocale, perche'
+# e' cio' che l'elisione e'.
+_ELISIONI = frozenset(["dell", "all", "nell", "sull", "coll", "dall", "l"])
+_VOCALI = frozenset("aeiou")
 
 
 def giunture(nome: str) -> list[str]:

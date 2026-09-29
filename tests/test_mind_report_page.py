@@ -251,8 +251,10 @@ def test_una_LUCE_accesa_non_entra_in_primo_piano():
     `switch`, `cover`…): col criterio del briefing il 17/09 sarebbero finite
     in primo piano 71 voci su 75, e 35 erano accensioni di luce.
 
-    Mutazione: leggere `is_notable` invece di `stato_da_sapere_subito` --
-    rossa."""
+    Mutazione ESEGUITA (30/09/2026, `is_notable` e' uscita il 29/09): in
+    `report._front_page_mark` togliere il controllo
+    `judgments.stato_da_sapere_subito(...)`, cosi' che ogni stato conosciuto
+    entri in primo piano -- rossa."""
     pagina = as_page(_resoconto(_episodio("light.studio", "on", nome="Studio")),
                      judgments=_giudizi())
     assert pagina["primo_piano"] == []

@@ -140,6 +140,28 @@ async def test_una_domanda_per_filtri_senza_esito_non_porta_il_suggerimento_dei_
     assert "nulla_riconosciuto" not in r
 
 
+@pytest.mark.asyncio
+async def test_senza_la_memoria_la_porta_risponde_e_il_ricordo_lo_dice(archivio_casa):
+    """Review finale, M5 (30/09/2026): la memoria serve solo al dettaglio di
+    un ricordo. Una domanda per filtri non si rifiuta perche' l'archivio dei
+    ricordi non e' pronto; il ricordo dichiara che non si e' potuto leggere,
+    e il dettaglio di un'area non dice «nessun ricordo» senza averli letti.
+
+    Mutazione ESEGUITA: rimettere "memoria" in `_RESOURCE_PER_TOOL["search"]`
+    -- rossa; togliere il ramo `self._memory is None` del ricordo -- rossa
+    (`non_disponibile` manca); togliere `ricordi_non_letti` -- rossa."""
+    d = ToolDispatcher(archivio_casa, None)
+    r = await d.dispatch("search", {"tipo": "light"})
+    assert "errore" not in r and r["trovate"] >= 1
+    r = await d.dispatch("search", {"genere": "ricordo", "riferimento": "1"})
+    voce, = r["voci"]
+    assert voce["esiste"] is False and voce["non_disponibile"] is True
+    assert r["trovate"] == 0
+    r = await d.dispatch("search", {"genere": "area", "riferimento": "cucina"})
+    voce, = r["voci"]
+    assert "ricordi" not in voce and voce["ricordi_non_letti"]
+
+
 def test_la_porta_della_casa_non_tocca_mai_una_porta_di_home_assistant():
     """Mutazione ESEGUITA: una chiamata `ha.call_service` in house_query.py -- rossa."""
     root = pathlib.Path(__file__).resolve().parents[1] / "hiris" / "app" / "home_space"

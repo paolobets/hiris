@@ -45,14 +45,14 @@ from ..home_space.topology import (
 # contesto, cosi' l'ancora che nomina "area" o "entita" e' gia' la chiave
 # con cui si cerca qui.
 #
-# "piani" (T7, R2 -- docs/design/2026-08-20-i-riferimenti.md): stesso
-# trattamento di aree/entita/dispositivi, perche' e' la stessa cosa che
-# loro sono -- un REGISTRO dell'anagrafe (`_TABELLE`, home_space/store.py),
-# gia' dentro la `casa` che ogni chiamante legge, che puo' mancare
-# all'appello di una ricostruzione esattamente come gli altri tre
-# (`HomeSpaceStore.non_disponibili()`). Prima di questo task nessuna
-# sequenza di chiamate produceva mai un id di piano: `esegui(piani=...)`
-# lo pretende (`claude_runner.py`), e non esisteva modo di procurarselo.
+# I PIANI (e le ETICHETTE come candidati di se stesse) ci sono stati dal T7
+# (R2, docs/design/2026-08-20-i-riferimenti.md) al 30/09/2026: servivano alla
+# vecchia ricerca per nome, che doveva produrre l'id di un piano per
+# `execute(piani=...)`. Da «una porta sola per la casa» il piano e' un FILTRO
+# della porta (`house_query`), e l'unico lettore rimasto di questo indice e'
+# `remember`, che ancora solo aree, entita' e dispositivi
+# (`memory/interpretation.VOCABULARY`): un candidato che nessuno puo' usare e'
+# codice morto, ed e' uscito (review finale, M3).
 #
 # Automazioni e script NON entrano qui, apposta: vengono da
 # `HomeSpaceStore.comportamento()`, una fonte diversa (file YAML riletti a
@@ -71,8 +71,7 @@ from ..home_space.topology import (
 # chiamante le chiedeva piu' -- la porta della casa (`home_space/
 # house_query.py`) confronta i nomi da se' -- e il parametro e' uscito con
 # lei.
-_ARCHIVI = (("aree", "area"), ("entita", "entita"), ("dispositivi", "dispositivo"),
-           ("piani", "piano"))
+_ARCHIVI = (("aree", "area"), ("entita", "entita"), ("dispositivi", "dispositivo"))
 
 # Stessa mappa di _ARCHIVI, capovolta: dato il tipo di un'ancora, la chiave
 # del registro che l'anagrafe usa per quel tipo. Pubblica perche' serve a chi
@@ -130,10 +129,6 @@ ITALIAN_FUNCTION_WORDS = frozenset([
     "eccetto", "escluso", "incluso", "compreso",
 ])
 
-# Elisioni: valgono SOLO davanti a vocale, perche' e' cio' che l'elisione e'.
-ITALIAN_ELISIONS = frozenset(["dell", "all", "nell", "sull", "coll", "dall", "l"])
-ITALIAN_VOWELS = frozenset("aeiou")
-
 
 def _normalize(text: str) -> str:
     """Minuscole, accenti tolti, spazi multipli compressi.
@@ -147,8 +142,9 @@ def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", senza_accenti).strip()
 
 
-#: Sotto questa lunghezza una parola si confronta intera: togliere la vocale a
-#: «luce» troverebbe «luci», a «tv» niente di sensato.
+#: Sotto questa lunghezza una parola non ha radice: «luc» a inizio di parola
+#: troverebbe «lucernario», e «tv» senza vocale niente di sensato. A quattro
+#: lettere cambia solo il numero (`_NUMBER_PAIRS`, sotto).
 STEM_MIN_LENGTH = 5
 
 
@@ -162,21 +158,40 @@ def _stem(word: str) -> str:
     return word
 
 
+#: Le vocali finali che fanno coppia singolare/plurale in italiano: -o/-i
+#: («faro»/«fari»), -a/-e («casa»/«case»), -e/-i («luce»/«luci»). Servono
+#: alle parole di QUATTRO lettere (review finale della fetta «una porta
+#: sola», M4, 30/09/2026): «luci» non trovava «Luce». Una parola di quattro
+#: lettere si confronta ancora INTERA -- nessun prefisso: «luce» non trova
+#: «lucernario» -- e la sua vocale finale puo' cambiare solo nella propria
+#: coppia: «casa» trova «case» ma non «caso», «pala» non trova «palo». Il
+#: residuo dichiarato: la regola sa di grammatica, non di significato, e
+#: «casi» trova anche «case» (tutte e due plurali di parole diverse).
+_NUMBER_PAIRS = {"a": "ae", "e": "eai", "i": "ieo", "o": "oi"}
+#: La lunghezza a cui vale la coppia: sotto e' sempre intera, sopra c'e' la
+#: radice (`STEM_MIN_LENGTH`).
+_PAIR_LENGTH = 4
+
+
+def _word_pattern(word: str) -> str:
+    stem = _stem(word)
+    if stem != word:
+        return rf"(?<!\w){re.escape(stem)}\w*"
+    if len(word) == _PAIR_LENGTH and word[-1] in _NUMBER_PAIRS:
+        return rf"(?<!\w){re.escape(word[:-1])}[{_NUMBER_PAIRS[word[-1]]}](?!\w)"
+    return rf"(?<!\w){re.escape(word)}(?!\w)"
+
+
 def name_matches(query: str, name: str) -> bool:
     """Vero se ogni parola significativa di `query` sta in `name`, intera o
-    (dalle cinque lettere in su) come radice a inizio di parola."""
+    (dalle cinque lettere in su) come radice a inizio di parola; a quattro
+    lettere, intera o col numero cambiato (`_NUMBER_PAIRS`)."""
     words = [w for w in _normalize(query).split()
              if w and w not in ITALIAN_FUNCTION_WORDS]
     if not words:
         return False
     target = _normalize(name)
-    for word in words:
-        stem = _stem(word)
-        pattern = (rf"(?<!\w){re.escape(stem)}\w*" if stem != word
-                   else rf"(?<!\w){re.escape(word)}(?!\w)")
-        if not re.search(pattern, target):
-            return False
-    return True
+    return all(re.search(_word_pattern(word), target) for word in words)
 
 
 def _normalize_con_mappa(text: str) -> tuple[str, list[int]]:
@@ -481,36 +496,5 @@ def costruisci_indice(home_space: dict,
                                       *labels_with_name(entry, nomi_etichette),
                                       *categories_with_name(entry, nomi_categorie).values()]:
                 _log(termini, term_originale, (type, reference))
-
-    # Le etichette STESSE (T8, R2 -- docs/design/2026-08-20-i-riferimenti.md
-    # §2): fin qui sopra un'etichetta entrava nell'indice SOLO come termine
-    # che porta a un'entita'/area/dispositivo/automazione che la porta (vedi
-    # "Nome, alias E ETICHETTE" piu' sopra) -- mai come candidato essa
-    # stessa. Un'etichetta ancora inutilizzata, o assegnata solo a cose
-    # disabilitate o fuori registro, restava IRRAGGIUNGIBILE: nessuna
-    # sequenza di chiamate produceva mai il suo `label_id`, che
-    # `esegui(bersaglio.etichette=...)` pretende -- il vicolo cieco piu'
-    # radicale della famiglia (R2). Qui il suo NOME diventa un termine che
-    # porta a SE STESSA -- tipo "etichetta", riferimento il suo `label_id`.
-    # Era pensato perche' un modello che sa solo il nome arrivasse all'id con
-    # UNA sola chiamata di ricerca; dal 29/09/2026 («una porta sola per la
-    # casa», spec §2.2) `search` non risolve piu' un nome di etichetta nel
-    # suo id, e le etichette si danno a `execute` per id: questo indice le
-    # tiene, ma nessuna porta promette piu' quella strada.
-    #
-    # Fonte diversa da `_ARCHIVI` (vedi il commento su `_ARCHIVI` in cima
-    # al modulo): la tabella
-    # `etichette` non e' una voce con `nome`/`alias`/`etichette` proprie, e'
-    # gia' l'unione id->nome (`label_names`, sopra). Un nome vuoto o
-    # un id assente non e' un'etichetta indicizzabile: si scarta invece di
-    # registrare un termine muto o un candidato senza riferimento.
-    label_registry = per_type.setdefault("etichetta", {})
-    for e in home_space.get("etichette") or []:
-        label_id = e.get("id")
-        if label_id is None:
-            continue
-        label_name = (e.get("nome") or "").strip() or str(label_id)
-        label_registry[label_id] = {"id": label_id, "nome": label_name}
-        _log(termini, label_name, ("etichetta", label_id))
 
     return Lookup(termini, per_type)

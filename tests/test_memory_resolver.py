@@ -392,38 +392,29 @@ def test_le_entita_senza_stato_vivo_restano_senza_nome_e_non_spariscono():
     assert "nome_dedotto" not in senza_stato_vivo
 
 
-# -- R2 (T7): i piani --------------------------------------------------------
+# -- Piani ed etichette non sono candidati (review finale, M3, 30/09/2026) --
 #
-# Prima di questo task nessuna sequenza di chiamate produceva mai un id di
-# piano: `_ARCHIVI` non li conosceva. Vedi
-# docs/design/2026-08-20-i-riferimenti.md. Automazioni e script entravano
-# nell'indice per la vecchia ricerca per nome, e ne sono usciti con lei il
-# 29/09/2026 (spec «una porta sola per la casa»).
+# Dal T7/T8 (R2, docs/design/2026-08-20-i-riferimenti.md) al 30/09/2026 l'indice
+# offriva anche piani ed etichette come candidati, per la vecchia ricerca per
+# nome. L'unico lettore rimasto e' `remember`, che ancora solo aree, entita' e
+# dispositivi: quei candidati erano codice morto, e sono usciti.
 
 
-def test_trova_un_piano_per_nome():
-    home_space = dict(_HOME_SPACE, piani=[{"id": "terra", "nome": "Piano terra", "livello": 0}])
-    trovate = costruisci_indice(home_space).find("accendi tutto al piano terra")
-    assert len(trovate) == 1
-    assert trovate[0]["ambiguo"] is False
-    assert trovate[0]["candidati"] == [{"tipo": "piano", "riferimento": "terra"}]
+def test_piani_ed_etichette_non_sono_candidati():
+    """Un'etichetta resta un TERMINE che porta a chi la porta
+    (`test_si_cerca_per_etichetta`, tests/test_home_space_unexpressed_knowledge.py):
+    esce solo come candidato di se stessa.
 
-
-def test_verifica_un_piano():
-    home_space = dict(_HOME_SPACE, piani=[{"id": "terra", "nome": "Piano terra", "livello": 0}])
-    trovato = costruisci_indice(home_space).verify("piano", "terra")
-    assert trovato["nome"] == "Piano terra"
-
-
-def test_due_piani_omonimi_sono_ambigui():
-    """Stessa regola delle due «Bagno»: l'ambiguita' si dichiara, non si
-    sceglie in silenzio in base all'ordine di raccolta."""
-    home_space = dict(_HOME_SPACE, piani=[{"id": "p1", "nome": "Mansarda", "livello": 2},
-                              {"id": "p2", "nome": "Mansarda", "livello": 2}])
-    trovate = costruisci_indice(home_space).find("in mansarda")
-    assert len(trovate) == 1
-    assert trovate[0]["ambiguo"] is True
-    assert _riferimenti(trovate[0]) == {"p1", "p2"}
+    Mutazione ESEGUITA: rimettere `("piani", "piano")` in `_ARCHIVI` -- rossa
+    sul piano."""
+    home_space = dict(_HOME_SPACE,
+                      piani=[{"id": "terra", "nome": "Piano terra", "livello": 0}],
+                      etichette=[{"id": "da_controllare", "nome": "Da controllare"}])
+    indice = costruisci_indice(home_space)
+    assert indice.find("accendi tutto al piano terra") == []
+    assert indice.find("segna da controllare") == []
+    assert indice.verify("piano", "terra") is None
+    assert indice.verify("etichetta", "da_controllare") is None
 
 
 def test_l_indice_costruito_senza_ripiego_e_identico_a_prima():
@@ -439,65 +430,6 @@ def test_l_indice_costruito_senza_ripiego_e_identico_a_prima():
         assert [_riferimenti(t) for t in trovate] == [{"cucina"}, {"light.c"}]
         assert [t["nome_visto"] for t in trovate] == ["cucina", "luce"]
         assert "nome_dedotto" not in lookup.verify("entita", "light.c")
-
-
-# --- T8 (R2): le etichette stesse, come candidati -------------------------
-#
-# Prima di questo task un'etichetta entrava nell'indice SOLO come termine
-# che porta a chi la porta (vedi test_si_cerca_per_etichetta in
-# tests/test_home_space_unexpressed_knowledge.py) -- mai come candidato essa
-# stessa: il suo `label_id` non usciva da NESSUNA porta, il vicolo cieco
-# piu' radicale della famiglia (R2). Vedi
-# docs/design/2026-08-20-i-riferimenti.md.
-
-
-def test_trova_un_etichetta_per_nome():
-    home_space = dict(_HOME_SPACE, etichette=[{"id": "da_controllare", "nome": "Da controllare"}])
-    trovate = costruisci_indice(home_space).find("segna da controllare")
-    assert len(trovate) == 1
-    assert trovate[0]["ambiguo"] is False
-    assert trovate[0]["candidati"] == [{"tipo": "etichetta", "riferimento": "da_controllare"}]
-
-
-def test_verifica_un_etichetta():
-    home_space = dict(_HOME_SPACE, etichette=[{"id": "da_controllare", "nome": "Da controllare"}])
-    trovato = costruisci_indice(home_space).verify("etichetta", "da_controllare")
-    assert trovato["nome"] == "Da controllare"
-
-
-def test_un_etichetta_orfana_si_trova_lo_stesso():
-    """Il caso che dimostra la chiusura del vicolo cieco: un'etichetta che
-    NON e' ancora assegnata a niente (nessuna entita', area o dispositivo
-    la porta) restava IRRAGGIUNGIBILE con la sola indicizzazione "come
-    termine di chi la porta" -- qui si trova comunque, perche' e' indicizzata
-    anche come candidato di se stessa."""
-    home_space = {"aree": [], "entita": [], "dispositivi": [], "piani": [],
-            "categorie": [], "integrazioni": [],
-            "etichette": [{"id": "vacanza", "nome": "Vacanza"}]}
-    trovate = costruisci_indice(home_space).find("vacanza")
-    assert _riferimenti(trovate[0]) == {"vacanza"}
-    assert costruisci_indice(home_space).verify("etichetta", "vacanza") == {
-        "id": "vacanza", "nome": "Vacanza"}
-
-
-def test_due_etichette_omonime_sono_ambigue():
-    """Stessa regola delle due «Bagno» e dei due piani «Mansarda»:
-    l'ambiguita' si dichiara, non si sceglie in silenzio."""
-    home_space = dict(_HOME_SPACE, etichette=[{"id": "e1", "nome": "Da controllare"},
-                                  {"id": "e2", "nome": "Da controllare"}])
-    trovate = costruisci_indice(home_space).find("da controllare")
-    assert len(trovate) == 1
-    assert trovate[0]["ambiguo"] is True
-    assert _riferimenti(trovate[0]) == {"e1", "e2"}
-
-
-def test_un_etichetta_senza_nome_si_indicizza_col_suo_id():
-    """Stessa disciplina di `label_names` (anagrafe.py): un
-    registro con un'etichetta senza nome non produce un termine muto -- si
-    usa l'id, l'unica cosa che si conosce di lei."""
-    home_space = dict(_HOME_SPACE, etichette=[{"id": "senza_nome", "nome": None}])
-    trovate = costruisci_indice(home_space).find("senza_nome")
-    assert _riferimenti(trovate[0]) == {"senza_nome"}
 
 
 def test_la_prosa_resta_stretta():

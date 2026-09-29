@@ -431,10 +431,8 @@ def _add_labels(detail: dict, entry: dict, label_lookup: dict[str, str]) -> dict
     piu' radicale della famiglia, docs/design/2026-08-20-i-riferimenti.md).
     La scelta di leggibilita' di questo modulo NON cambia: la parentesi entra
     solo perche' l'id serve, non al posto del nome. L'unione la fa
-    `anagrafe.label_names`, la stessa che usa l'indice dei nomi --
-    che da T8 conosce anche le etichette stesse come candidati
-    (`memory/resolver.py::costruisci_indice`), per chi sa solo il nome
-    e non ha ancora nessuna cosa che la porti.
+    `anagrafe.label_names`, la stessa che usa l'indice dei nomi
+    (`memory/resolver.py::costruisci_indice`).
 
     Compare solo quando ce n'e' almeno una: `etichette: []` su ogni cosa
     sarebbe rumore in ogni risposta e -- peggio -- indistinguibile da un

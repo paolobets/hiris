@@ -193,15 +193,16 @@ from .type_vocabulary import REPO_JUDGMENTS
 #
 # T7 (R2): prima di questo task le due fonti coincidevano per coincidenza
 # (`_ARCHIVI` aveva solo i tre tipi che sono anche ancore valide), e
-# derivare da `STORE_KEY_PER_TYPE` sembrava innocuo. Da quando
-# `_ARCHIVI` include anche "piano" -- un registro dell'anagrafe vero, ma
-# NON un tipo di ancora che `remember` possa mai scrivere -- le due cose
-# sono tornate a essere quello che sono sempre state: due vocabolari
-# diversi con scopi diversi. Se fossero rimaste legate, `fetch`
-# avrebbe accettato silenziosamente `tipo="piano"` (nessun errore, solo
-# una lista di ricordi sempre vuota, perche' nessuna ancora di quel tipo
-# puo' esistere) al posto del messaggio che insegna i tipi validi -- lo
-# stesso genere di secondo vocabolario silenzioso che R9 denuncia altrove.
+# derivare da `STORE_KEY_PER_TYPE` sembrava innocuo. Quando `_ARCHIVI`
+# includeva anche "piano" (dal T7 al 30/09/2026) -- un registro
+# dell'anagrafe vero, ma NON un tipo di ancora che `remember` possa mai
+# scrivere -- le due cose sono tornate a essere quello che sono sempre
+# state: due vocabolari diversi con scopi diversi, e restano separati. Se
+# fossero rimaste legate, `fetch` avrebbe accettato silenziosamente
+# `tipo="piano"` (nessun errore, solo una lista di ricordi sempre vuota,
+# perche' nessuna ancora di quel tipo puo' esistere) al posto del messaggio
+# che insegna i tipi validi -- lo stesso genere di secondo vocabolario
+# silenzioso che R9 denuncia altrove.
 _TETHER_TYPES = tuple(sorted(VOCABULARY["ancore"]))
 
 # La forma canonica `dominio.oggetto` di un `entity_id`. DOPPIONE DICHIARATO
@@ -1629,7 +1630,11 @@ class ToolDispatcher:
         self._judgments = judgments if judgments is not None else REPO_JUDGMENTS
 
     _RESOURCE_PER_TOOL: ClassVar[dict[str, tuple[str, ...]]] = {
-        "search": ("casa", "memoria"),
+        # Solo la casa: la memoria serve al dettaglio di un ricordo, e quello
+        # lo dichiara da se' quando manca (`_full_detail_sync`). Rifiutare
+        # «luci accese» perche' l'archivio dei ricordi non e' pronto sarebbe
+        # un no a una domanda che non lo tocca (review finale, M5, 30/09/2026).
+        "search": ("casa",),
         "related": ("ha",),
         "remember": ("casa", "memoria"), "fetch": ("memoria",),
         "execute": ("porta",),
@@ -1906,15 +1911,14 @@ class ToolDispatcher:
         stessa irraggiungibile) e "illeggibile: ..." producono una voce dal
         ramo sui file di comportamento, sotto."""
         entries: list[tuple[str, bool]] = []
-        # `STORE_KEY_PER_TYPE` e' apposta SENZA "etichette" (non e' un tipo di
-        # ancora -- allargarla rifarebbe il secondo vocabolario che R9
-        # denuncia). Ma "etichette" e' comunque un registro vero che PUO'
-        # cadere in `non_disponibili()`, e `search` indicizza le etichette
-        # stesse come candidati: un registro etichette caduto merita lo stesso
-        # motivo degli altri, aggiunto qui invece che dentro una mappa che
-        # serve a un altro scopo.
+        # I registri in cui una ricerca per NOME guarda: aree, entita',
+        # dispositivi. Fino al 30/09/2026 c'erano anche «piani» ed
+        # «etichette», perche' la vecchia ricerca li offriva come candidati;
+        # la porta della casa non cerca ne' piani ne' etichette per nome, e un
+        # loro registro caduto non nasconde niente a chi cerca (review finale,
+        # M3).
         fallen_stores = sorted(set(self._home_space.unavailable())
-                               & (set(STORE_KEY_PER_TYPE.values()) | {"etichette"}))
+                               & set(STORE_KEY_PER_TYPE.values()))
         if fallen_stores:
             message = (
                 f"registri non letti all'ultima ricostruzione dell'anagrafe: "
@@ -2008,6 +2012,10 @@ class ToolDispatcher:
         # `parse_filters` rende ogni riferimento un testo. Un riferimento non
         # convertibile non e' un errore da sollevare -- e' lo stesso "non l'ho
         # trovato" degli altri tipi.
+        if kind == "ricordo" and self._memory is None:
+            return {"esiste": False, "tipo": "ricordo", "riferimento": reference,
+                    "non_disponibile": True,
+                    "motivo": "l'archivio della memoria non e' ancora stato caricato"}
         if kind == "ricordo" and not isinstance(reference, int):
             try:
                 reference = int(reference)
@@ -2019,7 +2027,8 @@ class ToolDispatcher:
         # `fetch()`): un ricordo vecchio ancorato a QUESTA cosa non deve
         # sparire dal suo stesso dettaglio solo perche' non e' fra i piu'
         # recenti -- stessa scelta di `handlers_home_space.handle_get_briefing`.
-        memories = self._memory.fetch(limit=self._memory.count())
+        memories = ([] if self._memory is None
+                    else self._memory.fetch(limit=self._memory.count()))
         detail = _view_detail(self._home_space.read(), self._home_space.behavior(),
                               memories, state, kind, reference,
                               unavailable=tuple(self._home_space.unavailable()),
@@ -2042,6 +2051,12 @@ class ToolDispatcher:
                               # L'istantanea dei giudizi (spec §3): mai `None`
                               # qui -- `__init__` l'ha gia' ricaduta sul seme.
                               judgments=self._judgments)
+        if self._memory is None and isinstance(detail, dict) and "ricordi" in detail:
+            # I ricordi ancorati a questa cosa non si sono potuti leggere: si
+            # dice, invece di un `ricordi: []` che direbbe «nessuno».
+            del detail["ricordi"]
+            detail["ricordi_non_letti"] = ("l'archivio della memoria non e' "
+                                           "ancora stato caricato")
         if (kind == "automazione" and isinstance(detail, dict)
                 and detail.get("corpo") is not None
                 and self._ceiling_denies("amministrare")):
