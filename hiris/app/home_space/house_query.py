@@ -22,9 +22,9 @@ from datetime import datetime
 from ..memory.resolver import name_matches
 from . import topology
 from .privacy import redact_row, redact_state
+from .queries import ROWS_MAX
 
 DETAIL_MEDIUM_MAX = 10
-ROWS_MAX = 50
 KINDS = ("entita", "area", "dispositivo", "automazione", "script",
          "ricordo", "integrazione")
 ORDERS = ("nome", "ultimo_cambio", "valore")

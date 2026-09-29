@@ -548,6 +548,47 @@ def _entity_rows(entries: list[dict], state: dict, reported_since_when: dict[str
     ]
 
 
+#: Il tetto delle righe di UNA risposta della porta della casa (spec
+#: `2026-09-29-una-porta-sola-per-la-casa.md` §2.3): le voci di un insieme
+#: (`house_query`) e le entita' annidate nel dettaglio completo di un'area, di
+#: un dispositivo o di un'integrazione. Vive qui e non nella porta perche' il
+#: dettaglio si costruisce qui, e la porta lo importa: una cifra sola.
+ROWS_MAX = 50
+
+#: Gli elenchi di righe annidati nel dettaglio completo, nell'ordine in cui
+#: si spende il tetto: prima le visibili, poi le nascoste.
+_NESTED_ROWS = ("entita", "entita_nascoste")
+
+
+def _within_ceiling(detail: dict, hint: str) -> dict:
+    """Il dettaglio completo sotto il tetto della porta, per costruzione.
+
+    **Il tetto sta nella regola** (spec §2.3): fino al 30/09/2026 il dettaglio
+    di un'area elencava ogni sua entita' -- Telecamere 287, ~64.000
+    caratteri; «senza area» ~126.000 -- e sul ponte il risultato superava i
+    25.000 token che la CLI accetta, e diventava un rimando a un file che il
+    modello non puo' leggere (spec §1, causa 2). Qui le righe annidate si
+    fermano a `ROWS_MAX` IN TUTTO, visibili prima; cio' che resta si dichiara
+    in `oltre` con il modo di chiederlo -- mai tagliato in silenzio."""
+    budget = ROWS_MAX
+    left: dict = {}
+    for key in _NESTED_ROWS:
+        rows = detail.get(key)
+        if not rows:
+            continue
+        kept = rows[:budget]
+        budget -= len(kept)
+        if len(rows) > len(kept):
+            left[key] = len(rows) - len(kept)
+        if kept or key == "entita":
+            detail[key] = kept
+        else:
+            del detail[key]
+    if left:
+        detail["oltre"] = {**left, "suggerimento": hint}
+    return detail
+
+
 def _view_area(home_space: dict, memories: list[dict], state: dict, reference,
                  unavailable: tuple[str, ...] = (),
                  fallback_names: dict[str, str] | None = None,
@@ -574,20 +615,17 @@ def _view_area(home_space: dict, memories: list[dict], state: dict, reference,
         # affermazione che nessuno ha il diritto di fare. La scelta fra
         # `non_disponibile` e `suggerimento` e' in `_not_found_detail`.
         return _not_found_detail("area", reference, "aree" in unavailable)
-    entity = (
-        # Marcate, non nascoste (MINOR): una vista di DETTAGLIO deve poter
-        # dire "questa luce c'e' ma e' disabilitata" -- `_view_device`
-        # e `_view_entity` lo fanno gia', `_view_area` no. `hierarchy()`
-        # le tiene apposta fuori dai conteggi ma raggiungibili qui (vedi
-        # anagrafe.py). Restano dentro `entita`, marcate: sapere che quella
-        # luce c'e' ma non funziona e' informazione, non rumore.
-        _entity_rows(area["entita"], state, reported_since_when, False, fallback_names,
-                     reported_units, label_lookup, reported_classes, category_lookup,
-                     reported_attributes, translations)
-        + _entity_rows(area.get("entita_disabilitate", []), state, reported_since_when, True,
-                       fallback_names, reported_units, label_lookup, reported_classes,
-                       category_lookup, reported_attributes, translations)
-    )
+    # Le DISABILITATE si contano, non si elencano (30/09/2026, review finale
+    # della fetta «una porta sola», C2). Fino ad allora restavano dentro
+    # `entita`, marcate: sulla casa vera l'area Telecamere ne porta 120 su
+    # 287, con lo stato vuoto -- righe che non dicono niente e che portavano
+    # il dettaglio a ~64.000 caratteri, oltre il limite del ponte. E' la
+    # regola della porta per ogni insieme («disabilitate sempre escluse e
+    # contate», spec §2.4), e `_view_integration` la applicava gia'.
+    entity = _entity_rows(area["entita"], state, reported_since_when, False, fallback_names,
+                          reported_units, label_lookup, reported_classes, category_lookup,
+                          reported_attributes, translations)
+    disabled_count = len(area.get("entita_disabilitate") or [])
     # Le NASCOSTE, invece, in una chiave A PARTE -- non marcate dentro
     # `entita` come le disabilitate qui sopra (fetta "nascoste fuori dagli
     # elenchi", 2026-08-25). Il proprietario ha misurato in produzione che
@@ -617,6 +655,14 @@ def _view_area(home_space: dict, memories: list[dict], state: dict, reference,
     # -- stessa disciplina di `unita`/`etichette`/`categorie` in questo file.
     if hidden_entities:
         detail["entita_nascoste"] = hidden_entities
+    if disabled_count:
+        detail["entita_disabilitate"] = disabled_count
+    # Il filtro della porta si scrive col nome che il nucleo usa: le
+    # pseudo-aree (`__senza_area__` e le sorelle) sono tutte «senza area».
+    where = "senza area" if str(area["id"]).startswith("__") else area["id"]
+    _within_ceiling(detail, f"chiedi «search» con area=\"{where}\" e un filtro "
+                            "(tipo, stato, classe): l'insieme si restringe, e "
+                            "la porta lo pagina con `oltre` e `salta`")
     # Le entita' di riferimento della stanza: solo quando l'utente le ha
     # dichiarate. Una chiave `null` su ogni area sarebbe rumore, e per giunta
     # indistinguibile da un registro delle aree caduto.
@@ -1238,6 +1284,11 @@ def _view_device(home_space: dict, memories: list[dict], state: dict, reference,
     # Solo quando ce n'e' almeno una -- stessa disciplina della porta area.
     if device_hidden_entities:
         detail["entita_nascoste"] = device_hidden_entities
+    # Lo stesso tetto dell'area: un dispositivo «Home Assistant» ne porta 55.
+    _within_ceiling(detail, "chiedi «search» con un filtro (tipo, stato, "
+                            "integrazione, area) per restringere l'insieme, o "
+                            "con `riferimento` = l'id di un'entita' per il suo "
+                            "dettaglio")
     # Marca e modello: letti a ogni ricostruzione, e mai usciti da nessuna
     # porta. «Di che marca e' la valvola del bagno? Devo ordinarne un'altra
     # uguale» e' una domanda che si fa davvero, e la risposta era in tabella.
@@ -1533,6 +1584,10 @@ def _view_integration(home_space: dict, state: dict, reference,
                                category_names(home_space), reported_attributes,
                                translations),
     }
+    # `entita` sono le mute, e `entita_mute` resta il loro numero intero.
+    _within_ceiling(detail, f"chiedi «search» con integrazione=\"{domain}\" e "
+                            "stato=\"unavailable\": la porta pagina l'insieme con "
+                            "`oltre` e `salta`")
     if unknown:
         detail["entita_stato_ignoto"] = len(unknown)
     if disabled:
@@ -1585,9 +1640,10 @@ def view(home_space: dict, behavior: list[dict], memories: list[dict], state: di
     esplicitamente". Restano complete e raggiungibili nella chiave parallela
     `entita_nascoste` (presente solo quando ce n'e' almeno una), la stessa
     forma di `hierarchy()` per le disabilitate. La differenza col
-    trattamento delle disabilitate e' voluta: quelle restano DENTRO `entita`,
-    marcate (`disabilitata: true`) -- e' un dato utile su un impianto che
-    esiste, "questa luce c'e' ma non funziona"; le nascoste sono una scelta
+    trattamento delle disabilitate e' voluta: quelle, nel dettaglio di un
+    dispositivo, restano DENTRO `entita`, marcate (`disabilitata: true`), e
+    in quello di un'area si CONTANO (`entita_disabilitate`, dal 30/09/2026:
+    Telecamere ne elencava 120 con lo stato vuoto); le nascoste sono una scelta
     di VISTA dell'utente, e la misura in produzione (`guarda("area",
     "sala_da_pranzo")`, sette luci mescolate, quattro nascoste) ha mostrato
     che marcarle SENZA separarle non basta -- il campo c'era gia' e non ha

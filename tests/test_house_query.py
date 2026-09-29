@@ -8,6 +8,11 @@ from hiris.app.home_space import house_query as hq
 from tests.test_briefing import _casa_grande  # 20 aree x 15 entita'
 
 T0 = 1_790_700_000.0
+#: La soglia che tiene il ponte sotto i 25.000 token per risultato MCP (spec
+#: §1 causa 2, §2.3; il limite e' della CLI di Claude Code): a 2,5 caratteri
+#: per token sono ~60.000 caratteri, e se ne tiene la meta' di margine. Una
+#: cifra sola per tutti i cancelli del peso.
+BRIDGE_CEILING_CHARS = 30_000
 
 
 def _luce(i, a, **k):
@@ -431,4 +436,4 @@ def test_su_una_casa_grande_nessuna_risposta_supera_la_soglia_del_ponte():
     for argomenti in ({}, {"stato": "on"}, {"tipo": "light"}, {"salta": 50}):
         r = hq.query_house(casa, [], _specchio(stati),
                            hq.parse_filters(argomenti), detail=_dettaglio, now=T0)
-        assert len(json.dumps(r, ensure_ascii=False)) < 30_000, argomenti
+        assert len(json.dumps(r, ensure_ascii=False)) < BRIDGE_CEILING_CHARS, argomenti

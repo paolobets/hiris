@@ -463,16 +463,21 @@ def test_guarda_non_sa_aprire_un_piano():
     assert dettaglio["non_so_guardare"] is True
 
 
-def test_guarda_un_area_marca_le_entita_disabilitate_invece_di_nasconderle():
-    """MINOR: `_view_area` nascondeva le entita' disabilitate senza dirlo,
-    mentre `_view_device` le mostra marcate. Per una vista di
-    dettaglio e' informazione, non rumore."""
+def test_guarda_un_area_conta_le_entita_disabilitate_invece_di_elencarle():
+    """Le disabilitate di un'area non si tacciono: si CONTANO (30/09/2026,
+    review finale della fetta «una porta sola», C2). Elencate una per una
+    portavano l'area Telecamere a 287 righe, 120 con lo stato vuoto, oltre il
+    limite del ponte; la regola della porta e' «escluse e contate».
+
+    Mutazione ESEGUITA: rimetterle in `entita` -- rossa; non scrivere
+    `entita_disabilitate` -- rossa."""
     casa = dict(_CASA, entita=_CASA["entita"] + [
         {"id": "light.cucina_morta", "nome": "Faretto rotto", "area_id": "cucina",
          "dispositivo_id": None, "classe": None, "unita": None, "disabilitata": 1}])
     dettaglio = view(casa, _COMPORTAMENTO, _RICORDI, _STATO, "area", "cucina")
     per_id = {e["id"]: e for e in dettaglio["entita"]}
-    assert per_id["light.cucina_morta"]["disabilitata"] is True
+    assert "light.cucina_morta" not in per_id
+    assert dettaglio["entita_disabilitate"] == 1
     assert per_id["light.cucina_1"]["disabilitata"] is False
 
 
@@ -757,15 +762,16 @@ def test_guarda_un_dispositivo_disabilitata_e_nascosta_insieme_resta_fra_le_disa
 
 def test_guarda_un_area_disabilitata_e_nascosta_insieme_resta_fra_le_disabilitate():
     """Stessa prova, sul ramo area -- la precedenza la decide `hierarchy()`,
-    ma va verificata dalla porta che il modello chiama davvero."""
+    ma va verificata dalla porta che il modello chiama davvero. Dal
+    30/09/2026 le disabilitate dell'area si contano invece di elencarsi: la
+    disabilitata e nascosta sta nel conto, non fra le nascoste."""
     casa = _casa_sala_da_pranzo()
     casa["entita"] = casa["entita"] + [
         {"id": "light.lampadario_morto", "nome": None, "classe": None, "unita": None,
          "area_id": "sala_da_pranzo", "dispositivo_id": None,
          "disabilitata": 1, "nascosta": 1}]
     dettaglio = view(casa, [], [], {}, "area", "sala_da_pranzo")
-    ids_entita = {e["id"] for e in dettaglio["entita"]}
-    assert "light.lampadario_morto" in ids_entita
+    assert dettaglio["entita_disabilitate"] == 1
     assert "light.lampadario_morto" not in {
         e["id"] for e in dettaglio.get("entita_nascoste", [])}
 
