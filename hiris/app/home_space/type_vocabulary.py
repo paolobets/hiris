@@ -1859,6 +1859,19 @@ def dropped_capability_attributes() -> Mapping[str, Mapping[str, str]]:
         if _vocabulary.value(domain, None, CAPABILITY_ATTRIBUTES_DROPPED) is not None})
 
 
+def domains_by_genre(genre: str) -> frozenset[str]:
+    """I domini il cui genere corrisponde a quello passato.
+
+    Serve a chi ha bisogno di raggruppare i tipi per semantica senza un
+    vocabolario parallelo: `privacy.MOVING_DOMAINS` raccoglie i due soli domini
+    il cui genere e' "presenza", ricavati dalla dichiarazione che vive qui.
+    """
+    return frozenset(
+        row.domain for row in _vocabulary.rows()
+        if row.device_class is None
+        and _vocabulary.value(row.domain, None, GENRE) == genre)
+
+
 # --------------------------------------------------------------------------
 # LA REGOLA, imposta alla costruzione
 # --------------------------------------------------------------------------

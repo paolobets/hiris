@@ -16,8 +16,12 @@ profondita' -- decisione del proprietario, 29/09/2026:
 from __future__ import annotations
 
 from ..proxy.entity_cache import CREDENTIALS
+from .queries import WITHHELD_BASKET
+from .type_vocabulary import domains_by_genre
 
-MOVING_DOMAINS = frozenset({"person", "device_tracker"})
+#: I due soli domini il cui genere e' "presenza", ricavati dalla dichiarazione
+#: nel vocabolario dei tipi.
+MOVING_DOMAINS = domains_by_genre("presenza")
 POSITION_ATTRIBUTES = frozenset({"latitude", "longitude", "gps_accuracy",
                                  "in_zones"})
 HOME_ZONE = "zone.home"
@@ -39,18 +43,22 @@ def redact_state(entity_id: str, state: str | None) -> str | None:
 #: gli attributi arrivano alla porta: le ceste dello specchio (`_to_minimal`)
 #: e il dettaglio di `queries.view` (`valori`, `campo_di_manovra`,
 #: `non_interpretati`, `trattenuti`).
-_NEVER_BASKETS = frozenset({CREDENTIALS, "trattenuti"})
+_NEVER_BASKETS = frozenset({CREDENTIALS, WITHHELD_BASKET})
 
 
 def redact_attributes(entity_id: str, attributes: dict | None) -> dict | None:
     if not attributes:
         return attributes
-    moving = _domain(entity_id) in MOVING_DOMAINS and entity_id != HOME_ZONE
+    domain = _domain(entity_id)
+    #: Rimuove coordinate da: persone e dispositivi che si spostano, e zone
+    #: che non siano zone.home (altre zone rivelerebbero dove vanno le persone).
+    redact_position = (domain in MOVING_DOMAINS or
+                       (domain == "zone" and entity_id != HOME_ZONE))
     kept: dict = {}
     for basket, values in attributes.items():
         if basket in _NEVER_BASKETS:
             continue
-        if moving and isinstance(values, dict):
+        if redact_position and isinstance(values, dict):
             values = {k: v for k, v in values.items()
                       if k not in POSITION_ATTRIBUTES}
             if not values:

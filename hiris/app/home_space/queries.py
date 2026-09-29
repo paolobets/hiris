@@ -430,6 +430,9 @@ _BASKET_NAMES = {
 #: La cesta che dice cosa e' stato trattenuto, e perche'. Non i valori: i nomi
 #: e la ragione. Vedi `entity_cache.withheld_credentials`.
 _WITHHELD_BASKET = "trattenuti"
+#: Esposto per il filtro di riservatezza: il nome della cesta che raccoglie
+#: cio' che non passa la porta al modello.
+WITHHELD_BASKET = _WITHHELD_BASKET
 
 
 def _enrich_entity(entity_detail: dict, entry: dict,
