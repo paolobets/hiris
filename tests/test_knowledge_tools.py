@@ -734,12 +734,17 @@ async def test_cerca_poi_guarda_un_automazione_end_to_end(dispatcher):
 
 
 @pytest.mark.asyncio
-async def test_un_automazione_rinominata_si_trova_col_nome_nuovo(archivio_casa, memoria):
-    """Requisito 3 del brief: un'automazione rinominata si trova col nome
-    nuovo e non piu' col vecchio. Nato per la cache dell'indice (che doveva
-    imparare `comportamento_letto_il()`); dal 29/09/2026 `search` non usa
-    piu' l'indice, e la proprieta' resta da provare sulla porta nuova."""
-    d = ToolDispatcher(archivio_casa, memoria, lookup_cache=LookupCache())
+async def test_search_legge_il_comportamento_di_adesso_non_quello_di_prima(
+        archivio_casa, memoria):
+    """Requisito 3 del brief T7: un'automazione rinominata si trova col nome
+    nuovo. Nata per la cache dell'indice (che doveva imparare
+    `comportamento_letto_il()`); dal 29/09/2026 `search` non ha piu' un
+    indice, e cio' che resta da provare e' che lo stesso dispatcher, fra due
+    chiamate, rilegga il comportamento invece di tenerne una copia.
+
+    Mutazione ESEGUITA: `_search` che tiene il comportamento della prima
+    chiamata e lo riusa nelle successive -- rossa (esce ancora «Sveglia»)."""
+    d = ToolDispatcher(archivio_casa, memoria)
     prima = await d.dispatch("search", {"nome": "sveglia"})
     assert [v.get("id") for v in prima["voci"]] == ["automation.sveglia"]
 
@@ -747,10 +752,6 @@ async def test_un_automazione_rinominata_si_trova_col_nome_nuovo(archivio_casa, 
         {"id": "automation.sveglia", "tipo": "automazione", "nome": "Risveglio mattutino",
          "corpo": {"trigger": []}},
     ])
-    # `hold_behavior` marca la data col secondo corrente, e due consegne nello
-    # stesso secondo di orologio darebbero la stessa stringa: la sentinella si
-    # forza, cosi' il test non dipende dalla velocita' della macchina.
-    archivio_casa._behavior_loaded_at = "sentinella-2"
 
     # Il nome vecchio vive ancora nell'id (Home Assistant non lo cambia a una
     # rinomina), e la porta confronta anche l'id di automazioni e script
@@ -1245,10 +1246,11 @@ async def test_senza_archivi_dice_cosa_manca_non_un_errore_python():
 
 # -- Task B7: l'indice si riusa invece di essere ricostruito e buttato -----
 #
-# `_search` e `_remember` sono i due punti che costruiscono un `Lookup`
-# (verificato con `awk` sul brief prima di scrivere -- riga 440 e 565).
-# Ogni test qui sotto dichiara quale mutazione lo fa cadere: il difetto
-# numero uno di questa campagna e' un test che non puo' fallire.
+# Fino al 29/09/2026 `_search` e `_remember` erano i due punti che
+# costruivano un `Lookup`; da allora e' solo `_remember` (la porta della
+# casa confronta i nomi da se'). Ogni test qui sotto dichiara quale
+# mutazione lo fa cadere: il difetto numero uno di questa campagna e' un
+# test che non puo' fallire.
 
 import hiris.app.home_space.tools as _modulo_strumenti
 import hiris.app.memory.lookup_cache as _lookup_cache_modulo
@@ -1266,9 +1268,9 @@ def _conta_costruzioni(monkeypatch):
     chiamate = []
     originale = _modulo_strumenti.costruisci_indice
 
-    def spia(casa, nomi=None, comportamento=None):
+    def spia(casa, nomi=None):
         chiamate.append(1)
-        return originale(casa, nomi, comportamento)
+        return originale(casa, nomi)
 
     monkeypatch.setattr(_modulo_strumenti, "costruisci_indice", spia)
     monkeypatch.setattr(_lookup_cache_modulo, "costruisci_indice", spia)
@@ -1294,34 +1296,30 @@ async def test_search_non_costruisce_piu_l_indice_dei_nomi(
 
 
 @pytest.mark.asyncio
-async def test_cambia_l_anagrafe_e_cerca_vede_la_nuova_entita_anche_con_la_cache(
+async def test_un_entita_nuova_nell_anagrafe_si_trova_alla_ricerca_dopo(
         archivio_casa, memoria):
-    """Il rischio peggiore del task: una cache con la chiave sbagliata
-    servirebbe un indice VECCHIO, facendo sparire un'entita' che esiste
-    davvero. Qui la si aggiunge dopo la prima `search` e si pretende che la
-    seconda la trovi."""
-    d = ToolDispatcher(archivio_casa, memoria, lookup_cache=LookupCache())
+    """Nata per la cache dell'indice (Task B7: una chiave sbagliata avrebbe
+    servito un indice VECCHIO). Dal 29/09/2026 `search` non ha indice: resta
+    che lo stesso dispatcher, fra due chiamate, veda l'anagrafe di adesso.
+    Qui un'entita' si aggiunge dopo la prima `search` e la seconda la
+    trova."""
+    d = ToolDispatcher(archivio_casa, memoria)
     prima = await d.dispatch("search", {"nome": "frullatore"})
     assert prima["trovate"] == 0
 
     archivio_casa.hold_registries({"entita": [
         {"entity_id": "light.frullatore", "name": "Frullatore", "area_id": "cucina"}]}, [])
-    # `hold()` marca l'aggiornamento col secondo corrente: forzare un valore
-    # diverso da quello di prima garantisce che il test non dipenda dal caso
-    # di due consegne nello stesso secondo di orologio.
-    archivio_casa._updated_at = "sentinella-2"
-
     dopo = await d.dispatch("search", {"nome": "frullatore"})
     riferimenti = [v.get("id") for v in dopo["voci"]]
     assert riferimenti == ["light.frullatore"]
 
 
 @pytest.mark.asyncio
-async def test_cambiano_i_nomi_vivi_e_cerca_vede_il_nuovo_ripiego_anche_con_la_cache(
-        archivio_casa, memoria):
-    """Stessa anagrafe, stesso `aggiornata_il`: solo il friendly_name dello
-    specchio dello stato cambia. Una chiave che non catturasse i nomi vivi
-    servirebbe un indice senza quell'entita' per sempre."""
+async def test_un_nome_vivo_nuovo_si_trova_alla_ricerca_dopo(archivio_casa, memoria):
+    """Stessa anagrafe: solo il friendly_name dello specchio dello stato
+    cambia. Nata per la chiave della cache dell'indice (i nomi vivi); dal
+    29/09/2026 `search` rilegge lo specchio a ogni chiamata, e la seconda
+    ricerca deve trovare il nome nuovo."""
     archivio_casa.hold_registries({"entita": [
         {"entity_id": "light.abat_jour_1", "name": None, "original_name": None}]}, [])
 
@@ -1333,8 +1331,7 @@ async def test_cambiano_i_nomi_vivi_e_cerca_vede_il_nuovo_ripiego_anche_con_la_c
             return [{"id": "light.abat_jour_1", "state": "off", "name": self.nome}]
 
     cache_stato = _CacheMutevole("")  # nessun nome ancora
-    lookup_cache = LookupCache()
-    d = ToolDispatcher(archivio_casa, memoria, cache=cache_stato, lookup_cache=lookup_cache)
+    d = ToolDispatcher(archivio_casa, memoria, cache=cache_stato)
     prima = await d.dispatch("search", {"nome": "abat-jour"})
     assert prima["trovate"] == 0
 
@@ -1345,13 +1342,12 @@ async def test_cambiano_i_nomi_vivi_e_cerca_vede_il_nuovo_ripiego_anche_con_la_c
 
 
 @pytest.mark.asyncio
-async def test_cerca_e_ricorda_non_condividono_indice_anche_con_la_cache(
+async def test_una_search_in_mezzo_non_invalida_l_indice_di_remember(
         archivio_casa, memoria, monkeypatch):
-    """`_search` passava i nomi di ripiego, `_remember` no: alternarli a
-    stato invariato costruiva ESATTAMENTE due indici (uno per spazio). Dal
-    29/09/2026 `search` non costruisce piu' l'indice (vedi la prova sopra):
-    resta solo quello di `_remember`, costruito una volta e poi riusato --
-    una `search` in mezzo non deve invalidarlo."""
+    """Fino al 29/09/2026 `_search` e `_remember` tenevano due spazi nella
+    cache dell'indice. Da allora `search` non costruisce indici (vedi la
+    prova sopra): resta quello di `_remember`, costruito una volta e poi
+    riusato -- una `search` in mezzo non deve invalidarlo."""
     chiamate = _conta_costruzioni(monkeypatch)
     d = ToolDispatcher(archivio_casa, memoria, lookup_cache=LookupCache())
     await d.dispatch("search", {"nome": "cucina"})

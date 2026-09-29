@@ -243,7 +243,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # anche parole inglesi. `in` e `per` sono esclusi di proposito: vedi il
 # docstring del modulo, con la misura degli usi inglesi veri.
 # La lista vive in `memory/resolver.py` dal 24/09/2026: la usa anche il
-# prodotto (`home_space/queries.search`), e un cancello chiede il suo
+# prodotto (`memory/resolver.name_matches`), e un cancello chiede il suo
 # elenco invece di ricopiarlo -- due copie sono due posti in cui la stessa
 # aggiunta si dimentica di uno.
 from hiris.app.memory.resolver import (
@@ -367,7 +367,7 @@ _NOTE_ITALIANE = frozenset({
     "CLIMA_A_21", "CREDENZIALI_DEL_PROPRIETARIO", "HA_RIPORTA_IL_SALOTTO_SPENTO",
     "HA_RIPORTA_LA_CAMERA_A_19_5", "METTI_A_21", "METTI_LA_CAMERA_A_19_5", "SCADENZA_NEI_TEST",
     "SPEGNI_IL_SALOTTO", "TUTTA_LA_CUCINA",
-    "_ARCHIVIO_DELL_UTENTE", "_BLOCCHI_A_TUTTA_LARGHEZZA", "_CASA_CON_ETICHETTA",
+    "_ARCHIVIO_DELL_UTENTE", "_BLOCCHI_A_TUTTA_LARGHEZZA",
     "_CHIAVI_NOMINATE_DAL_PROMPT",
     "_DOMINI_DI_RECAPITO", "_DOMINI_NON_PIATTAFORMA",
     "_FALSITA_IN_ENTRAMBE_LE_VOCI", "_FUNZIONI_CHE_LEGGONO_LA_CREDENZIALE",

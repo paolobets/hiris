@@ -392,11 +392,13 @@ def test_le_entita_senza_stato_vivo_restano_senza_nome_e_non_spariscono():
     assert "nome_dedotto" not in senza_stato_vivo
 
 
-# -- R2 (T7): piani, automazioni e script -----------------------------------
+# -- R2 (T7): i piani --------------------------------------------------------
 #
 # Prima di questo task nessuna sequenza di chiamate produceva mai un id di
-# piano, automazione o script: `_ARCHIVI` non li conosceva. Vedi
-# docs/design/2026-08-20-i-riferimenti.md.
+# piano: `_ARCHIVI` non li conosceva. Vedi
+# docs/design/2026-08-20-i-riferimenti.md. Automazioni e script entravano
+# nell'indice per la vecchia ricerca per nome, e ne sono usciti con lei il
+# 29/09/2026 (spec «una porta sola per la casa»).
 
 
 def test_trova_un_piano_per_nome():
@@ -422,74 +424,6 @@ def test_due_piani_omonimi_sono_ambigui():
     assert len(trovate) == 1
     assert trovate[0]["ambiguo"] is True
     assert _riferimenti(trovate[0]) == {"p1", "p2"}
-
-
-def test_senza_comportamento_nessuna_automazione_si_indicizza():
-    """Il parametro e' opzionale (default `None`): i chiamanti che ancora
-    non lo passano (`_remember`, le pagine di `handlers_memory.py`) non
-    devono vedere comparire nulla sotto "automazione"/"script"."""
-    lookup = costruisci_indice(_HOME_SPACE)
-    assert lookup.find("sveglia") == []
-    assert lookup.verify("automazione", "automation.sveglia") is None
-
-
-def test_trova_un_automazione_per_nome():
-    behavior = [{"id": "automation.sveglia", "tipo": "automazione", "nome": "Sveglia",
-                      "corpo": {"trigger": []}, "origine": "file"}]
-    trovate = costruisci_indice(_HOME_SPACE, behavior=behavior).find("spegni la sveglia")
-    assert len(trovate) == 1
-    assert trovate[0]["candidati"] == [{"tipo": "automazione", "riferimento": "automation.sveglia"}]
-
-
-def test_trova_uno_script_per_nome():
-    behavior = [{"id": "script.buonanotte", "tipo": "script", "nome": "Buonanotte",
-                      "corpo": None, "origine": "solo_stato"}]
-    trovate = costruisci_indice(_HOME_SPACE, behavior=behavior).find("lancia buonanotte")
-    assert len(trovate) == 1
-    assert _riferimenti(trovate[0]) == {"script.buonanotte"}
-    assert trovate[0]["candidati"][0]["tipo"] == "script"
-
-
-def test_verifica_un_automazione_e_uno_script():
-    behavior = [
-        {"id": "automation.sveglia", "tipo": "automazione", "nome": "Sveglia", "corpo": {}},
-        {"id": "script.buonanotte", "tipo": "script", "nome": "Buonanotte", "corpo": None},
-    ]
-    lookup = costruisci_indice(_HOME_SPACE, behavior=behavior)
-    assert lookup.verify("automazione", "automation.sveglia")["nome"] == "Sveglia"
-    assert lookup.verify("script", "script.buonanotte")["nome"] == "Buonanotte"
-    # Spazi di nomi diversi: un id di script non deve passare per un'automazione.
-    assert lookup.verify("automazione", "script.buonanotte") is None
-
-
-def test_automazione_e_script_con_lo_stesso_nome_sono_ambigui():
-    behavior = [
-        {"id": "automation.buonanotte", "tipo": "automazione", "nome": "Buonanotte", "corpo": {}},
-        {"id": "script.buonanotte", "tipo": "script", "nome": "Buonanotte", "corpo": None},
-    ]
-    trovate = costruisci_indice(_HOME_SPACE, behavior=behavior).find("buonanotte")
-    assert len(trovate) == 1
-    assert trovate[0]["ambiguo"] is True
-    assert _riferimenti(trovate[0]) == {"automation.buonanotte", "script.buonanotte"}
-
-
-def test_una_voce_di_comportamento_con_tipo_ignoto_non_si_indicizza():
-    """Una voce col `tipo` che non e' ne' "automazione" ne' "script" (o
-    senza id) non e' una voce di comportamento valida: si scarta invece di
-    inventare un terzo tipo che ne' `guarda` ne' `verifica()` conoscono."""
-    behavior = [{"id": "scene.arrivo", "tipo": "scena", "nome": "Arrivo"},
-                     {"id": None, "tipo": "automazione", "nome": "Senza id"}]
-    lookup = costruisci_indice(_HOME_SPACE, behavior=behavior)
-    assert lookup.find("arrivo") == []
-    assert lookup.find("senza id") == []
-
-
-def test_gli_alias_e_le_etichette_valgono_anche_per_il_comportamento():
-    """Stessa disciplina degli altri tre archivi: non solo il nome."""
-    behavior = [{"id": "automation.sveglia", "tipo": "automazione", "nome": "Sveglia",
-                      "alias": ["buongiorno"]}]
-    trovate = costruisci_indice(_HOME_SPACE, behavior=behavior).find("attiva buongiorno")
-    assert _riferimenti(trovate[0]) == {"automation.sveglia"}
 
 
 def test_l_indice_costruito_senza_ripiego_e_identico_a_prima():
@@ -566,47 +500,23 @@ def test_un_etichetta_senza_nome_si_indicizza_col_suo_id():
     assert _riferimenti(trovate[0]) == {"senza_nome"}
 
 
-def test_platforms_key_is_normalized_and_entities_without_one_are_skipped():
-    """Prova diretta di `Lookup.platforms()`, senza passare da `search()`:
-    prima di questa prova, togliere `_normalize()` da UNO solo dei due lati
-    che lo applicano (qui, in `resolver.py`, o dal lato di `queries.py` che
-    cerca) lasciava la suite tutta verde -- nessuna prova esercitava la
-    normalizzazione della chiave in isolamento, solo indirettamente
-    attraverso `search`, dove un secondo `_normalize` sul testo cercato
-    poteva mascherare l'assenza del primo.
+def test_la_prosa_resta_stretta():
+    """`find()` cerca i termini DENTRO la frase, mai la frase dentro i
+    termini: e' cio' che protegge l'ancoraggio dei ricordi. «ho pulito la
+    taverna» non deve ancorare un ricordo a «Taverna 1» e «Taverna 2».
 
-    Mutazione: togliere `_normalize(domain)` nella costruzione della mappa
-    -- il test torna rosso perche' la chiave resta `"Hydrawise "` (maiuscola
-    e spazio in coda) invece di `"hydrawise"`, e l'uguaglianza
-    `platforms == {"hydrawise": ["valve.giardino"]}` fallisce (la chiave vera
-    e' `"Hydrawise "`, non `"hydrawise"`)."""
-    home_space = dict(_HOME_SPACE, entita=[
-        {"id": "valve.giardino", "nome": "Irrigazione", "piattaforma": "Hydrawise ",
-         "alias": [], "area_id": None, "classe": None, "unita": None},
-        {"id": "light.cucina", "nome": "Faretti", "piattaforma": "",
-         "alias": [], "area_id": None, "classe": None, "unita": None},
-    ])
-    platforms = costruisci_indice(home_space).platforms()
-    assert platforms == {"hydrawise": ["valve.giardino"]}
+    Nata in `tests/test_ricerca_per_frammento.py` (24/09/2026), accanto al
+    ripiego per frammento di `queries.search`; spostata qui il 29/09/2026,
+    quando quel ripiego e' uscito con la vecchia ricerca per nome (spec «una
+    porta sola per la casa»): la proprieta' e' di `find()`, e resta.
 
-
-def test_platforms_excludes_disabled_entities_like_view_does():
-    """I-3 (revisione finale, spec §4): `search "lifx"` (`Lookup.platforms()`,
-    qui) e `view tipo: "integrazione"` (`_view_integration.own`, queries.py)
-    devono contare lo STESSO insieme -- sulla casa vera divergevano,
-    `quante_entita: 30` contro `entita_totali: 28`, due «quante» diverse per
-    la stessa domanda lette una dopo l'altra dallo stesso modello. Qui una
-    piattaforma con un'entita' disabilitata: `quante_entita` non la conta.
-
-    Mutazione: togliere `if entry.get("disabilitata"): continue` dal ciclo
-    -- rosso su `assert platforms == {"hydrawise": ["valve.giardino"]}`
-    (uscirebbe `{"hydrawise": ["valve.giardino", "valve.spenta"]}`, la
-    disabilitata contata dentro)."""
-    home_space = dict(_HOME_SPACE, entita=[
-        {"id": "valve.giardino", "nome": "Irrigazione", "piattaforma": "hydrawise",
-         "alias": [], "area_id": None, "classe": None, "unita": None, "disabilitata": 0},
-        {"id": "valve.spenta", "nome": "Valvola disattivata", "piattaforma": "hydrawise",
-         "alias": [], "area_id": None, "classe": None, "unita": None, "disabilitata": 1},
-    ])
-    platforms = costruisci_indice(home_space).platforms()
-    assert platforms == {"hydrawise": ["valve.giardino"]}
+    Mutazione ESEGUITA: `find()` che accetta anche un termine che CONTIENE
+    una parola della frase -- rossa."""
+    casa = _casa_con_aree([])
+    casa["entita"] = [
+        {"id": "light.taverna_1", "nome": "Taverna 1", "alias": [], "area_id": None,
+         "classe": None, "unita": None},
+        {"id": "light.taverna_2", "nome": "Taverna 2", "alias": [], "area_id": None,
+         "classe": None, "unita": None},
+    ]
+    assert costruisci_indice(casa).find("accendi la luce della taverna") == []

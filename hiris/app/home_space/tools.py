@@ -237,7 +237,7 @@ _ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 # vuoto, lo ripeteva fedelmente. Ma quando aveva un COMPITO da portare a
 # casa -- «accendi la luce della taverna» -- rispondeva «in Home Assistant
 # non c'e' nessuna stanza ne' luce chiamata taverna», cioe' esattamente la
-# frase che `queries.search` dichiara di non voler mai dire con sicurezza.
+# frase che la vecchia ricerca per nome dichiarava di non voler mai dire.
 # Misurato su tutte e due le strade, catena e ponte: non era il modello.
 #
 # Il resto era un consiglio inservibile: «riprova col nome esatto» lo si da'
@@ -1557,8 +1557,8 @@ class ToolDispatcher:
         # LUNGA -- non nasce con questo dispatcher (che nasce a ogni turno,
         # vedi `handlers_chat.py::create_tool_dispatcher`) ma vive
         # accanto a `entity_cache` in `hiris/app/server.py` e arriva qui come
-        # dipendenza. Default `None`: nessuna cache, `_search`/`_remember`
-        # ricostruiscono l'indice ogni volta come facevano prima di questo
+        # dipendenza. Default `None`: nessuna cache, `_remember` ricostruisce
+        # l'indice ogni volta come faceva prima di questo
         # task -- ogni chiamante esistente (i test, e ogni altro punto del
         # prodotto che non la passa esplicitamente) non cambia comportamento.
         self._lookup_cache = lookup_cache
@@ -2151,13 +2151,12 @@ class ToolDispatcher:
             # basta a decidere un colpo a segno SENZA leggere l'anagrafe --
             # su un hit questa funzione non viene mai chiamata, e la lettura
             # SQL vera (+ json.loads per riga, quando l'anagrafe era su disco) non
-            # si paga. A differenza di `_search`, dove `casa` serve comunque a
-            # `_blind_spots()` piu' sotto e non c'e' niente da rimandare.
+            # si paga.
             return self._home_space.read() if topology_loaded else {}
 
-        # Task B7, spazio "ricorda": MAI nomi di ripiego (a differenza di
-        # "cerca"), e `aggiornata_il` porta gia' la distinzione fra "anagrafe
-        # letta" e "non letta" -- `None` qui e un valore vero non sono mai la
+        # Task B7, spazio "ricorda": MAI nomi di ripiego, e `aggiornata_il`
+        # porta gia' la distinzione fra "anagrafe letta" e "non letta" --
+        # `None` qui e un valore vero non sono mai la
         # stessa chiave, quindi l'indice della casa vuota (non letta) e quello
         # della casa piena non si confondono mai (memory/lookup_cache.py).
         if self._lookup_cache is not None:

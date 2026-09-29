@@ -7,30 +7,18 @@ import pytest
 from hiris.app.api.soffitto import consente
 from hiris.app.home_space.tools import KNOWLEDGE_TOOLS, ToolDispatcher
 from hiris.app.keeper.exchange import SOLA_LETTURA
-from hiris.app.memory.store import MemoryStore
-from tests.test_knowledge_tools import _semina_casa
+
+# Le fixture della casa seminata hanno UNA definizione, in
+# `tests/test_knowledge_tools.py`: importate, pytest le trova nel namespace
+# del modulo. Ricopiarle qui era un doppione (review del Task 4, 29/09/2026).
+from tests.test_knowledge_tools import (  # noqa: F401 -- fixture di pytest
+    archivio_casa,
+    dispatcher,
+    memoria,
+)
 from tests.test_mind_actuator_guards import _attributi, porte_home_assistant
 
 _PERSONA_MARTA = {"specie": "persona", "id": "u-marta"}
-
-
-@pytest.fixture
-def archivio_casa(tmp_path):
-    a = _semina_casa(tmp_path)
-    yield a
-    a.close()
-
-
-@pytest.fixture
-def memoria(tmp_path):
-    m = MemoryStore(str(tmp_path / "memoria.db"))
-    yield m
-    m.close()
-
-
-@pytest.fixture
-def dispatcher(archivio_casa, memoria):
-    return ToolDispatcher(archivio_casa, memoria)
 
 
 @pytest.fixture

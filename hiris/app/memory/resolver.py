@@ -66,8 +66,11 @@ from ..home_space.topology import (
 # lei `_TETHER_TYPES` in home_space/tools.py) a tipi che la memoria non puo'
 # mai scrivere come ancora (`memory/interpretation.VOCABULARY`),
 # creando esattamente il secondo vocabolario che R9 denuncia altrove.
-# `costruisci_indice()` le indicizza per conto suo, sotto: stessa forma
-# dei candidati, fonte e ciclo di vita diversi.
+# Fino al 29/09/2026 `costruisci_indice()` le indicizzava per conto suo, per
+# la vecchia ricerca per nome (`queries.search`); uscita quella, nessun
+# chiamante le chiedeva piu' -- la porta della casa (`home_space/
+# house_query.py`) confronta i nomi da se' -- e il parametro e' uscito con
+# lei.
 _ARCHIVI = (("aree", "area"), ("entita", "entita"), ("dispositivi", "dispositivo"),
            ("piani", "piano"))
 
@@ -82,11 +85,11 @@ STORE_KEY_PER_TYPE: dict[str, str] = {type: key for key, type in _ARCHIVI}
 # Le parole funzionali dell'italiano. **Vivono qui, non nel cancello**
 # (24/09/2026): erano nate in `tests/test_preposizioni_italiane.py`, che le
 # usa per vietare una giuntura italiana dentro un identificatore, e da oggi
-# servono anche al prodotto -- `home_space/queries.search` deve sapere che
-# «della» non e' il nome di niente prima di andarlo a cercare fra i nomi
-# della casa (sulla casa vera «della» compare in undici nomi: cercarla
-# porterebbe undici candidati che non c'entrano a ogni domanda che contiene
-# una preposizione, cioe' quasi tutte).
+# servono anche al prodotto -- `name_matches` (qui sotto, la porta della
+# casa dal 29/09/2026) deve sapere che «della» non e' il nome di niente
+# prima di andarlo a cercare fra i nomi della casa (sulla casa vera «della»
+# compare in undici nomi: cercarla porterebbe undici candidati che non
+# c'entrano a ogni domanda che contiene una preposizione, cioe' quasi tutte).
 #
 # La lista NON si ricopia di la': un cancello chiede il suo elenco
 # (CLAUDE.md, I-0), e due copie della stessa lista sono due posti in cui la
@@ -249,8 +252,7 @@ class Lookup:
     verificare. Si costruisce con `costruisci_indice()`, non direttamente."""
 
     def __init__(self, termini: dict[str, list[tuple[str, str]]],
-                 per_type: dict[str, dict[str, dict]],
-                 platforms: dict[str, list[str]] | None = None) -> None:
+                 per_type: dict[str, dict[str, dict]]) -> None:
         # I termini piu' lunghi vincono e consumano il testo, cosi' "sala da
         # pranzo" non collassa su "sala": l'ordine e' deciso una volta sola,
         # non a ogni chiamata di trova(). Un testo normalizzato che piu'
@@ -268,7 +270,6 @@ class Lookup:
         self._termini_grezzi = sorted(termini.items(), key=lambda kv: len(kv[0]), reverse=True)
         self._termini_compilati: list[tuple[list[tuple[str, str]], re.Pattern[str]]] | None = None
         self._per_type = per_type
-        self._platforms = platforms or {}
 
     def _termini(self) -> list[tuple[list[tuple[str, str]], re.Pattern[str]]]:
         if self._termini_compilati is None:
@@ -321,54 +322,6 @@ class Lookup:
         trovate.sort(key=lambda t: t[0])
         return [entry for _, entry in trovate]
 
-    def names_containing(self, text: str) -> list[tuple[list[tuple[str, str]], str]]:
-        """I termini dell'indice che CONTENGONO `testo` come parola intera.
-
-        E' l'operazione opposta a `find()`, e sono due cose diverse che
-        fino al 24/09/2026 condividevano un meccanismo solo. `find()`
-        ancora i nomi dentro la PROSA e cerca i termini dentro la frase:
-        giusto li', perche' «ho pulito la cucina» non deve agganciare le 22
-        entita' che portano «cucina» nel nome. Una domanda DIRETTA --
-        «trovami le cose che si chiamano taverna» -- vuole il verso
-        contrario, e senza questo metodo non aveva nessun posto dove
-        succedere.
-
-        **Il difetto che l'ha fatta nascere**, misurato sulla casa vera:
-        «Accendi la luce della taverna» rispondeva «non c'e' nessuna stanza
-        ne' luce chiamata taverna» mentre `light.taverna_1_taverna_1` e
-        `light.taverna_2_taverna_2` -- «Taverna 1» e «Taverna 2», vive,
-        nell'area Cantina -- esistevano. I termini erano «taverna 1» e
-        «taverna 2»; la frase «taverna» non li contiene, quindi `find()`
-        non trovava niente e lo strumento dichiarava `nulla_riconosciuto`.
-        Sia la catena sia il ponte si arrendevano uguale: non era il
-        modello.
-
-        **Perche' non c'e' una soglia sul numero di candidati.** Il primo
-        disegno scartava le parole troppo frequenti, per non annegare il
-        modello. Misurato sulla casa vera (869 nomi vivi, 604 parole nuove)
-        quella soglia avrebbe buttato via le parole PIU' utili: «cucina»
-        (22 entita'), «giardino» (28), «luci» (21), «sala» (15). Il rumore
-        vero sta altrove ed e' pochissimo -- «reolink», «trackmix», «poe» a
-        166 -- e non si distingue da «cucina» contando. Chi taglia e'
-        `search` (`home_space/queries.py`), che conosce il proprio tetto e
-        dichiara quando ha tagliato; qui non si sceglie e non si scarta:
-        e' la stessa legge di `find()`.
-
-        **Il confine di parola vale anche qui**: «tav» non nomina niente,
-        altrimenti questa diventerebbe una ricerca per sottostringa e
-        «sala» troverebbe «salato».
-
-        Un testo che E' gia' un termine intero non esce di qui: lo trova
-        `find()`, e restituirlo due volte darebbe al chiamante la stessa
-        voce sdoppiata.
-        """
-        cercato = _normalize(text)
-        if not cercato:
-            return []
-        pattern = _compila(cercato)
-        return [(candidati, term) for term, candidati in self._termini_grezzi
-                if term != cercato and pattern.search(term)]
-
     def verify(self, type: str, reference: str) -> dict | None:
         """L'oggetto dell'anagrafe se `riferimento` esiste con quel `tipo`,
         altrimenti None.
@@ -391,18 +344,12 @@ class Lookup:
         """
         return list(self._per_type.get(type, {}).values())
 
-    def platforms(self) -> dict[str, list[str]]:
-        """`{piattaforma normalizzata: [entity_id, ...]}`. Vuota quando
-        l'anagrafe non e' stata letta: un dizionario vuoto dice «non lo so»
-        allo stesso modo in cui lo dice `find()`."""
-        return self._platforms
-
 
 def _log(termini: dict[str, list[tuple[str, str]]], term_originale,
               candidate: tuple[str, str]) -> None:
     """Aggiunge `candidato` (tipo, riferimento) al termine che
     `term_originale` normalizza a -- il cuore di `costruisci_indice()`,
-    estratto perche' anagrafe e comportamento (sotto) lo condividono: due
+    estratto perche' anagrafe ed etichette (sotto) lo condividono: due
     copie della stessa regola di dedup/ambiguita' sarebbero due posti in
     cui la stessa correzione si dimentica di un posto.
 
@@ -420,11 +367,9 @@ def _log(termini: dict[str, list[tuple[str, str]]], term_originale,
 
 
 def costruisci_indice(home_space: dict,
-                      nomi_di_ripiego: dict[str, str] | None = None,
-                      behavior: list[dict] | None = None) -> Lookup:
+                      nomi_di_ripiego: dict[str, str] | None = None) -> Lookup:
     """Costruisce l'indice di una casa: nome e alias di aree, entita',
-    dispositivi e piani, PIU' automazioni e script (`comportamento`, T7),
-    normalizzati e pronti per trova()/verifica().
+    dispositivi e piani, normalizzati e pronti per trova()/verifica().
 
     Due voci diverse possono normalizzarsi allo stesso termine (due aree
     omonime, un alias che e' il nome vero di un'altra voce): il termine
@@ -474,19 +419,6 @@ def costruisci_indice(home_space: dict,
     Il ripiego vale solo per le entita': lo specchio dello stato non ha
     `friendly_name` per aree e dispositivi, e un ripiego li' sarebbe di
     nuovo un id travestito da nome.
-
-    `comportamento` (T7, R2): le voci di `HomeSpaceStore.comportamento()` --
-    automazioni e script, col loro `tipo` ("automazione" o "script") gia'
-    dentro ogni voce, non nella chiave del dizionario `casa` come per
-    `_ARCHIVI` sopra. Indicizzate con la STESSA disciplina (nome, alias,
-    etichette, categorie; ambiguita' dichiarata, mai scelta), ma FUORI dal
-    ciclo su `_ARCHIVI`: sono lette da una fonte diversa, con un ciclo di
-    vita diverso (file YAML riletti a una cadenza propria, non un registro
-    di Home Assistant) -- vedi il commento su `_ARCHIVI` per la ragione per
-    cui non condividono la stessa tupla. Nessun ripiego sul nome qui: le
-    voci di comportamento arrivano gia' con un nome (`friendly_name` dello
-    stato o l'`alias` dello YAML -- vedi `home_space/behavior.py`), mai nullo
-    per costruzione.
     """
     termini: dict[str, list[tuple[str, str]]] = {}
     per_type: dict[str, dict[str, dict]] = {}
@@ -550,25 +482,6 @@ def costruisci_indice(home_space: dict,
                                       *categories_with_name(entry, nomi_categorie).values()]:
                 _log(termini, term_originale, (type, reference))
 
-    # Automazioni e script (T7, R2): stessa disciplina, fonte diversa --
-    # vedi il commento su `_ARCHIVI` e il docstring qui sopra. `tipo` viene
-    # dalla VOCE stessa, non da `_ARCHIVI`: una lista sola porta entrambi i
-    # tipi, distinti campo per campo (`home_space/behavior.py`). Una voce col
-    # `tipo` che non e' ne' "automazione" ne' "script", o senza `id`, non e'
-    # una voce di comportamento valida: si scarta invece di indicizzarla
-    # sotto un tipo che ne' `guarda` ne' `verifica()` altrove riconoscono.
-    for entry in behavior or []:
-        entry_type = entry.get("tipo")
-        reference = entry.get("id")
-        if entry_type not in ("automazione", "script") or reference is None:
-            continue
-        registry = per_type.setdefault(entry_type, {})
-        registry[reference] = entry
-        for term_originale in [entry.get("nome") or "", *(entry.get("alias") or []),
-                                  *labels_with_name(entry, nomi_etichette),
-                                  *categories_with_name(entry, nomi_categorie).values()]:
-            _log(termini, term_originale, (entry_type, reference))
-
     # Le etichette STESSE (T8, R2 -- docs/design/2026-08-20-i-riferimenti.md
     # §2): fin qui sopra un'etichetta entrava nell'indice SOLO come termine
     # che porta a un'entita'/area/dispositivo/automazione che la porta (vedi
@@ -583,8 +496,8 @@ def costruisci_indice(home_space: dict,
     # chiamata a `cerca`, invece di doverne prima trovare una cosa che la
     # porta (che potrebbe non esistere).
     #
-    # Fonte diversa da `_ARCHIVI` per lo stesso motivo di `comportamento`
-    # (vedi il commento su `_ARCHIVI` in cima al modulo): la tabella
+    # Fonte diversa da `_ARCHIVI` (vedi il commento su `_ARCHIVI` in cima
+    # al modulo): la tabella
     # `etichette` non e' una voce con `nome`/`alias`/`etichette` proprie, e'
     # gia' l'unione id->nome (`label_names`, sopra). Un nome vuoto o
     # un id assente non e' un'etichetta indicizzabile: si scarta invece di
@@ -598,25 +511,4 @@ def costruisci_indice(home_space: dict,
         label_registry[label_id] = {"id": label_id, "nome": label_name}
         _log(termini, label_name, ("etichetta", label_id))
 
-    # Le piattaforme NON entrano nell'indice dei nomi: un'entita' non si
-    # chiama «hydrawise», ci appartiene. Sta in una mappa a parte perche' e'
-    # una cosa di tipo diverso, e `search` la riporta come tale invece di
-    # spacciarla per un nome (spec §3.1b).
-    #
-    # Le DISABILITATE si escludono qui come in `queries.py::_view_integration`
-    # (`entita_totali`, stesso ruling del controller): senza questo filtro
-    # `search "lifx"` e `view tipo: "integrazione"` contavano due insiemi
-    # diversi per la stessa piattaforma -- sulla casa vera, `quante_entita:
-    # 30` contro `entita_totali: 28` (revisione indipendente, I-3) -- due
-    # «quante» diverse per la stessa domanda, lette una dopo l'altra dallo
-    # stesso modello.
-    platforms: dict[str, list[str]] = {}
-    for entry in home_space.get("entita") or []:
-        if entry.get("disabilitata"):
-            continue
-        domain = (entry.get("piattaforma") or "").strip()
-        entity_id = (entry.get("id") or "").strip()
-        if domain and entity_id:
-            platforms.setdefault(_normalize(domain), []).append(entity_id)
-
-    return Lookup(termini, per_type, platforms)
+    return Lookup(termini, per_type)
