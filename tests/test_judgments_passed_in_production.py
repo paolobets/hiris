@@ -138,16 +138,39 @@ def posizioni_giudizi() -> dict[str, set[int]]:
     return posizioni
 
 
+def alias_importati(tree) -> dict[str, str]:
+    """`from x import nome as alias` -> `{alias: nome}`, per un modulo.
+
+    Serve perche' il cancello confronta il NOME scritto alla chiamata: fino al
+    29/09/2026 `home_space/tools.py` chiamava `queries.view` come
+    `_view_detail(...)` (`from .queries import view as _view_detail`, Task 4),
+    e quella chiamata passava sotto il cancello senza essere guardata --
+    misurato: tolto `judgments=` li', la prova restava verde.
+    """
+    return {a.asname: a.name
+            for nodo in ast.walk(tree) if isinstance(nodo, ast.ImportFrom)
+            for a in nodo.names if a.asname}
+
+
 def test_ogni_chiamata_di_produzione_passa_l_istantanea():
+    """Mutazione ESEGUITA (29/09/2026): tolto `judgments=self._judgments`
+    dalla chiamata `_view_detail(` in `home_space/tools.py` -- prima di
+    `alias_importati` VERDE (l'alias non combaciava con nessun nome
+    sorvegliato), dopo rossa; ripristinato, sha256 identico."""
     sorvegliate = funzioni_sorvegliate()
     posizioni = posizioni_giudizi()
     mancanti = []
     for path in RADICE.rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
+        alias = alias_importati(tree)
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
             name = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
+            # Solo un nome NUDO puo' essere un alias importato: `x.attr` e'
+            # l'attributo di un oggetto, non il nome locale di un import.
+            if isinstance(node.func, ast.Name):
+                name = alias.get(name, name)
             if name not in sorvegliate:
                 continue
             # Per NOME o per POSIZIONE: cio' che conta e' che l'istantanea
