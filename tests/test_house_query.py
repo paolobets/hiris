@@ -91,9 +91,9 @@ def _automazioni(*coppie):
     return comportamento, (stati, {}, {}, {}, {}, attributi)
 
 
-def _chiedi_automazioni(coppie, argomenti: dict):
+def _chiedi_automazioni(coppie, argomenti: dict, casa=None):
     comportamento, specchio = _automazioni(*coppie)
-    return hq.query_house(_casa(), comportamento, specchio,
+    return hq.query_house(casa or _casa(), comportamento, specchio,
                           hq.parse_filters(argomenti), detail=_dettaglio, now=T0)
 
 
@@ -336,6 +336,80 @@ def test_una_domanda_vuota_cerca_solo_le_entita():
     r = _chiedi()
     assert all(v.get("genere") == "entita" for v in r["voci"])
     assert r["trovate"] == 4
+
+
+T_IERI = "2026-09-28T10:00:00+00:00"
+
+
+def test_le_automazioni_si_filtrano_per_area_dalla_loro_entita():
+    """Spec §2.4: `tipo=automation, area=soggiorno` non puo' dare TUTTE le
+    automazioni con sicurezza. L'area e' quella dell'entita' di registro; chi
+    non ce l'ha (o non e' nel registro) sta «senza area».
+
+    Mutazione ESEGUITA: non applicare area/piano/integrazione al
+    comportamento -- rossa."""
+    casa = _casa()
+    casa["entita"].append({**_luce("automation.luci_soggiorno", "soggiorno"),
+                           "piattaforma": "automation"})
+    coppie = [("luci_soggiorno", T_IERI), ("sveglia", T_IERI), ("fantasma", T_IERI)]
+    r = _chiedi_automazioni(coppie, {"tipo": "automation", "area": "soggiorno"}, casa)
+    assert r["trovate"] == 1 and r["voci"][0]["id"] == "automation.luci_soggiorno"
+    r = _chiedi_automazioni(coppie, {"genere": "automazione", "area": "senza area"}, casa)
+    assert {v["id"] for v in r["voci"]} == {"automation.sveglia",
+                                            "automation.fantasma"}
+
+
+@pytest.mark.parametrize("argomenti", [{"genere": "automazione", "sopra": 3},
+                                       {"tipo": "automation", "sotto": 3},
+                                       {"tipo": "script", "classe": "motion"}])
+def test_un_filtro_che_non_vale_per_le_automazioni_si_dice(argomenti):
+    """Mutazione ESEGUITA: togliere il controllo in `query_house` -- rossa."""
+    r = _chiedi_automazioni([("sveglia", T_IERI)], argomenti)
+    assert "errore" in r and "voci" not in r
+
+
+def test_un_automazione_che_il_comportamento_non_conosce_resta_un_entita():
+    """Si nasconde solo l'entita' che una riga di comportamento rappresenta.
+
+    Mutazione ESEGUITA: nascondere ogni entita' `automation.*` quando si
+    cerca il comportamento -- rossa."""
+    r = _chiedi_automazioni([("altra", T_IERI)], {"nome": "sveglia"})
+    assert r["trovate"] == 1 and r["voci"][0]["tipo"] == "entita"
+    assert r["voci"][0]["id"] == "automation.sveglia"
+
+
+def test_un_automazione_disabilitata_nel_registro_si_conta():
+    """Mutazione ESEGUITA: nascondere ogni entita' `automation.*` quando si
+    cerca il comportamento -- rossa."""
+    casa = _casa()
+    casa["entita"].append({**_luce("automation.spenta", None, disabilitata=1),
+                           "nome": "Spenta", "piattaforma": "automation"})
+    r = _chiedi_automazioni([("altra", T_IERI)], {"nome": "spenta"}, casa)
+    assert r["trovate"] == 0 and r["escluse"]["disabilitate"] == 1
+
+
+def test_il_nome_di_un_automazione_si_cerca_anche_nell_id():
+    """«sveglia» trova `automation.sveglia_mattina` che si chiama «Buongiorno».
+
+    Mutazione ESEGUITA: confrontare solo il nome -- rossa."""
+    comportamento = [{"id": "automation.sveglia_mattina", "tipo": "automazione",
+                      "nome": "Buongiorno"}]
+    specchio = ({"automation.sveglia_mattina": "on"}, {}, {}, {}, {}, {})
+    r = hq.query_house(_casa(), comportamento, specchio,
+                       hq.parse_filters({"nome": "sveglia"}),
+                       detail=_dettaglio, now=T0)
+    assert "automation.sveglia_mattina" in {v["id"] for v in r["voci"]}
+
+
+def test_un_dispositivo_disabilitato_e_fuori_e_contato():
+    """Mutazione ESEGUITA: elencare anche i disabilitati -- rossa."""
+    casa = _casa()
+    casa["dispositivi"].append({**casa["dispositivi"][0], "id": "dev_asciugatrice",
+                                "nome": "Asciugatrice", "disabilitato": 1})
+    r = hq.query_house(casa, [], _specchio(STATI),
+                       hq.parse_filters({"nome": "asciugatrice"}),
+                       detail=_dettaglio, now=T0)
+    assert r["trovate"] == 0 and r["escluse"]["disabilitate"] == 1
 
 
 @pytest.mark.parametrize("argomenti", [{"limite": 51}, {"fermo_da": "tre giorni"},

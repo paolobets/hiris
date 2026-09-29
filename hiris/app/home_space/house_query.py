@@ -155,6 +155,22 @@ def _area_name(area: dict) -> str | None:
     return None if str(area.get("id", "")).startswith("__") else area.get("nome")
 
 
+def _place_matches(f: HouseFilters, entry: dict, area: dict, floor: dict) -> bool:
+    """`area`, `piano`, `integrazione`: dove sta e da dove viene. Vale per le
+    entita' e per automazioni e script, che li prendono dalla propria entita'
+    di registro."""
+    if f.area:
+        wanted = f.area.strip().lower()
+        if wanted == "senza area":
+            if _area_name(area) is not None:
+                return False
+        elif (area.get("nome") or "").lower() != wanted and area.get("id") != wanted:
+            return False
+    if f.floor and (floor.get("nome") or "").lower() != f.floor.strip().lower():
+        return False
+    return not (f.platform and entry.get("piattaforma") != f.platform)
+
+
 def _entity_matches(f: HouseFilters, entry, area, floor, mirror, now) -> bool:
     stato, nomi, _unita, classi, da_quando, _attributi = mirror
     eid = entry["id"]
@@ -169,16 +185,7 @@ def _entity_matches(f: HouseFilters, entry, area, floor, mirror, now) -> bool:
         return False
     if f.device_class and (classi.get(eid) or entry.get("classe")) != f.device_class:
         return False
-    if f.area:
-        wanted = f.area.strip().lower()
-        if wanted == "senza area":
-            if _area_name(area) is not None:
-                return False
-        elif (area.get("nome") or "").lower() != wanted and area.get("id") != wanted:
-            return False
-    if f.floor and (floor.get("nome") or "").lower() != f.floor.strip().lower():
-        return False
-    if f.platform and entry.get("piattaforma") != f.platform:
+    if not _place_matches(f, entry, area, floor):
         return False
     if f.name and not name_matches(f.name, nomi.get(eid) or entry.get("nome") or eid):
         return False
@@ -220,9 +227,17 @@ def _entity_row(entry, area, where, mirror, medium: bool) -> dict:
     return row
 
 
-def _behavior_matches(f: HouseFilters, behavior, mirror, now) -> list[tuple[dict, dict]]:
+#: Dove sta un'automazione che il registro delle entita' non conosce: in
+#: nessuna area, su nessun piano, da nessuna integrazione.
+_NOWHERE = ({}, {"id": "__senza_area__"}, {})
+
+
+def _behavior_matches(f: HouseFilters, behavior, mirror, now,
+                      places: dict) -> list[tuple[dict, dict]]:
     """(voce, valori dello specchio) per ogni automazione o script che passa
-    i filtri: la riga si scrive dopo, quando si sa quante sono."""
+    i filtri: la riga si scrive dopo, quando si sa quante sono. `places` e'
+    `{id: (entry, area, piano)}` dell'albero: area, piano e integrazione di
+    un'automazione sono quelli della sua entita' di registro."""
     stato, _n, _u, _c, _d, attributi = mirror
     out = []
     for item in behavior or []:
@@ -230,7 +245,10 @@ def _behavior_matches(f: HouseFilters, behavior, mirror, now) -> list[tuple[dict
             continue
         if f.reference and item.get("id") != f.reference:
             continue
-        if f.name and not name_matches(f.name, item.get("nome") or ""):
+        if f.name and not (name_matches(f.name, item.get("nome") or "")
+                           or name_matches(f.name, item["id"])):
+            continue
+        if not _place_matches(f, *places.get(item["id"], _NOWHERE)):
             continue
         values = (attributi.get(item["id"]) or {}).get("values") or {}
         age = _age_s(values.get("last_triggered"), now)
@@ -272,9 +290,10 @@ def _area_rows(f: HouseFilters, home_space, unavailable):
     return rows
 
 
-def _device_rows(f: HouseFilters, home_space) -> list[dict]:
+def _device_rows(f: HouseFilters, home_space, excluded: dict) -> list[dict]:
     """I dispositivi del registro, per nome: il vecchio `search` trovava «la
-    lavatrice», la porta nuova non deve perderla (decisione 29/09/2026)."""
+    lavatrice», la porta nuova non deve perderla (decisione 29/09/2026). I
+    disabilitati fuori e contati, come le entita'."""
     area_names = {a.get("id"): a.get("nome") for a in home_space.get("aree") or []}
     rows = []
     for device in home_space.get("dispositivi") or []:
@@ -283,6 +302,9 @@ def _device_rows(f: HouseFilters, home_space) -> list[dict]:
         if f.reference and device["id"] != f.reference:
             continue
         if f.name and not name_matches(f.name, device.get("nome") or ""):
+            continue
+        if device.get("disabilitato"):
+            excluded["disabilitate"] += 1
             continue
         rows.append({"id": device["id"], "nome": device.get("nome"),
                      "genere": "dispositivo",
@@ -314,13 +336,16 @@ def _select(f: HouseFilters, home_space, behavior, mirror, detail, unavailable,
         # Senza `riferimento` la voce di `queries.view` porta gia' `esiste: False`.
         return 1, "completa", [detail(f.kind, f.reference or f.name or "")], None
     kinds = KINDS if f.only_by_name else ((f.kind,) if f.kind else ("entita",))
+    entries = _entity_entries(home_space, unavailable)
     # La riga di comportamento rappresenta gia' l'automazione: la sua entita'
-    # di registro sarebbe un doppione della stessa cosa.
-    shadowed = {_BEHAVIOR_KINDS[k] for k in kinds if k in _BEHAVIOR_KINDS}
+    # di registro sarebbe un doppione. SOLO quelle che il comportamento
+    # conosce: un'automazione che non c'e' resta un'entita', non sparisce.
+    searching_behavior = any(k in _BEHAVIOR_KINDS for k in kinds)
+    shadowed = {b.get("id") for b in behavior or []} if searching_behavior else set()
     matched = []
     if "entita" in kinds:
-        for entry, area, floor, where in _entity_entries(home_space, unavailable):
-            if entry["id"].split(".", 1)[0] in shadowed:
+        for entry, area, floor, where in entries:
+            if entry["id"] in shadowed:
                 continue
             if not _entity_matches(f, entry, area, floor, mirror, now):
                 continue
@@ -334,16 +359,17 @@ def _select(f: HouseFilters, home_space, behavior, mirror, detail, unavailable,
                 excluded["servizio"] += 1
                 continue
             matched.append((entry, area, where))
+    places = {entry["id"]: (entry, area, floor) for entry, area, floor, _w in entries}
     behaving = []
     others: list[dict] = []
     for kind in kinds:
         if kind in _BEHAVIOR_KINDS:
             behaving.extend(_behavior_matches(replace(f, kind=kind), behavior,
-                                              mirror, now))
+                                              mirror, now, places))
         elif kind == "area":
             others.extend(_area_rows(f, home_space, unavailable))
         elif kind == "dispositivo":
-            others.extend(_device_rows(f, home_space))
+            others.extend(_device_rows(f, home_space, excluded))
     found = len(matched) + len(behaving) + len(others)
     if found == 1 and f.limit > 0:
         if matched:
@@ -370,6 +396,14 @@ def query_house(home_space: dict, behavior, mirror, filters: HouseFilters, *,
     f = filters
     if f.kind is None and f.domain in _BEHAVIOR_DOMAINS:
         f = replace(f, kind=_BEHAVIOR_DOMAINS[f.domain], domain=None)
+    # Qui convergono `genere=automazione` e `tipo=automation`: un filtro che
+    # su automazioni e script non ha senso si dice, non si ignora -- ignorato,
+    # darebbe con sicurezza TUTTE le automazioni (spec §2.4).
+    if f.kind in _BEHAVIOR_KINDS and (f.device_class or f.above is not None
+                                      or f.below is not None):
+        return {"errore": "classe, sopra e sotto non valgono per automazioni "
+                          "e script: filtra per area, piano, integrazione, "
+                          "stato, fermo_da, cambiato_da, in_esecuzione"}
     excluded = {"nascoste": 0, "servizio": 0, "disabilitate": 0}
     found, depth, page, beyond = _select(f, home_space, behavior, mirror, detail,
                                          unavailable, now, excluded)
