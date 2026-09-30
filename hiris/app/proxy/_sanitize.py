@@ -138,11 +138,12 @@ this module was actually wired, that silently mangled real content -- an
 `input_text` state (HA allows up to 255) -- into something that read as
 complete. The clamp is now 255 (Home Assistant's own ceiling on a state
 string, `homeassistant.core.MAX_LENGTH_STATE_STATE`, not a margin picked for
-caution) for fields that actually ARE `state`. A logbook `messaggio` and an
-integration's failure `motivo` are NOT `state` -- HA does not cap them at
-all, and a legitimate one can honestly run longer than 255 -- so they now go
-through `sanitize_ha_free_text` (cap 500, see its docstring for the number)
-instead of `sanitize_ha_value`. Both functions, and the shared `sanitize_text`
+caution) for fields that actually ARE `state`. A logbook `messaggio` (a
+reader that left on 30/09/2026) and an integration's failure `motivo` are NOT
+`state` -- HA does not cap them at all, and a legitimate one can honestly run
+longer than 255 -- so they went, and the `motivo` still goes, through
+`sanitize_ha_free_text` (cap 500, see its docstring for the number) instead of `sanitize_ha_value`.
+Both functions, and the shared `sanitize_text`
 underneath them, append a trailing marker (`_TRUNCATED`, " [troncato]") when a
 cut actually happens -- the same convention `proxy/ha_client.py::_truncate`
 uses (the two truncators were unified into one function, M1 in
@@ -326,9 +327,9 @@ def sanitize_ha_value(v) -> str:
 
 # M2 (August 2026 review): 255 is Home Assistant's own ceiling on a
 # `state` string -- correct for `sanitize_ha_value` above, wrong for fields
-# that are not `state`. `messaggio` (a logbook entry's free text,
-# a reader that left on 30/09/2026) and `motivo` (why an integration failed to start --
-# home_space/store.py::sostituisci) are HA free text with no such ceiling: a
+# that are not `state`. `messaggio` (a logbook entry's free text, a reader
+# that left on 30/09/2026) and `motivo` (why an integration failed to start,
+# `home_space/reader.py::clean_reason`) are HA free text with no such ceiling: a
 # legitimate one -- an automation message that quotes an SMS/email body, an
 # exception summary from a broken integration -- can honestly run past 255
 # without being an attack. Clamping them to the `state` ceiling was honest
@@ -339,8 +340,11 @@ def sanitize_ha_value(v) -> str:
 # whenever a tool returns many entries at once. 500 characters is roughly a
 # short SMS/email paragraph or a one-line exception with its message: generous
 # for the legitimate case, without letting one crafted message eat most of the
-# model's context. Its callers today: `motivo` of a broken integration and the
-# calendar fields.
+# model's context. The many-entries-at-once callers are live today:
+# `sanitize_structure` -> `_filter` runs every string of a `history` trace and of
+# an error-log entry through it (`home_space/tools.py`, the `esecuzioni` and
+# `errori` genres), and the same for automation bodies (`home_space/queries.py`);
+# `motivo` and the calendar fields are the single-entry callers.
 MAX_FREE_TEXT = 500
 
 

@@ -424,11 +424,12 @@ class Watcher:
         l'unico, quindi basta controllare qui.
 
         **Cosa NON e' piu' vero, dal Task 6.** Questa guardia era stata
-        scritta perche' `HAClient.automation_traces()` e il metodo singolare
-        che la affiancava (uscito il 30/09/2026) spaccavano l'`entity_id`
-        sul primo punto: un identificatore malformato ci produceva un elenco
-        vuoto silenzioso. Quei due metodi non prendevano piu' un `entity_id` ma l'id di
-        CONFIGURAZIONE, risolto dal collettore contro lo specchio (`proxy/entity_cache.
+        scritta perche' `HAClient.automation_traces()` e lo
+        `automation_trace()` singolare che la affiancava (uscito il
+        30/09/2026) spaccavano l'`entity_id` sul primo punto: un
+        identificatore malformato ci produceva un elenco vuoto silenzioso.
+        `automation_traces()`, che resta, non prende piu' un `entity_id` ma
+        l'id di CONFIGURAZIONE, risolto dal collettore contro lo specchio (`proxy/entity_cache.
         automation_config_id`), e un identificatore malformato non si
         risolve. La guardia resta per la ragione detta sopra -- non
         sporcare l'insieme dei segnati -- non piu' per quella.

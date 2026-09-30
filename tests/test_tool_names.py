@@ -58,6 +58,7 @@ citazioni sparse dentro funzioni (`home_space/queries.py`, `home_space/briefing.
 sono lette a mano.
 """
 import re
+from pathlib import Path
 
 import pytest
 
@@ -313,36 +314,43 @@ def test_l_avviso_e_l_unico_testo_che_puo_nominare_un_nome_vecchio():
     assert not estranee, f"l'avviso cita parole che non sono nomi di strumento: {sorted(estranee)}"
 
 
-def _letterali(moduli):
-    """(modulo, testo) per ogni stringa letterale del sorgente che non sia un
-    docstring: i testi che il modello puo' ricevere. I commenti e i docstring
-    sono prosa per chi legge il codice, e non si guardano: quelli di
-    `house_history.py` e di `tools.py` nominano i quattro lettori usciti
-    come STORIA, apposta (ruling P1 del 30/09/2026)."""
-    import ast
-    import inspect
+_RADICE = Path(__file__).resolve().parent.parent / "hiris" / "app"
 
-    for modulo in moduli:
-        albero = ast.parse(inspect.getsource(modulo))
+# I letterali che nominano un vecchio nome e NON sono testo per il modello.
+# Breve e a mano: chi ne aggiunge una riga scrive perche'.
+_ECCEZIONI_DEL_CANCELLO = (
+    # comando WebSocket di Home Assistant, non il nome di uno strumento
+    ("proxy/ha_client.py", "system_log/list"),
+    # riga di log per chi gestisce l'add-on, mai servita al modello
+    ("server.py", "system_log() ha "),
+    # SQL: `view` e' una colonna/valore della tabella dei consumi
+    ("usage/store.py", "CREATE TABLE IF NOT EXISTS consumo_giorno"),
+)
+
+
+def _letterali(radice=None):
+    """(percorso relativo, testo) per ogni stringa letterale di OGNI modulo
+    di `hiris/app` che non sia un docstring: i testi che il modello puo'
+    ricevere, ovunque nascano. I commenti e i docstring sono prosa per chi
+    legge il codice, e non si guardano: quelli di `house_history.py` e
+    `tools.py` nominano i quattro lettori usciti come STORIA, apposta
+    (ruling P1 del 30/09/2026). Il perimetro e' tutto il pacchetto, non un
+    elenco di moduli: un elenco lascia fuori proprio il modulo dimenticato."""
+    import ast
+
+    radice = radice or _RADICE
+    for percorso in sorted(radice.rglob("*.py")):
+        albero = ast.parse(percorso.read_text(encoding="utf-8"))
         docstring = {id(n.body[0].value) for n in ast.walk(albero)
                      if isinstance(n, (ast.Module, ast.FunctionDef,
                                        ast.AsyncFunctionDef, ast.ClassDef))
                      and n.body and isinstance(n.body[0], ast.Expr)
                      and isinstance(n.body[0].value, ast.Constant)}
+        relativo = percorso.relative_to(radice).as_posix()
         for nodo in ast.walk(albero):
             if (isinstance(nodo, ast.Constant) and isinstance(nodo.value, str)
                     and id(nodo) not in docstring):
-                yield modulo, nodo.value
-
-
-def _moduli_letti():
-    from hiris.app import chat_settings, claude_runner
-    from hiris.app.action import verification
-    from hiris.app.agent import prompts
-    from hiris.app.home_space import briefing, house_history, queries, tools, type_census
-    from hiris.app.keeper import exchange
-    return (verification, prompts, briefing, queries, tools, type_census,
-            claude_runner, chat_settings, exchange, house_history)
+                yield relativo, nodo.value
 
 
 def _nomina(*nomi: str) -> re.Pattern:
@@ -355,17 +363,32 @@ def _nomina(*nomi: str) -> re.Pattern:
 
 
 def _citati(citazione):
-    """Le stringhe che nominano `citazione`, tolto l'avviso dei vecchi nomi:
-    l'unico testo che PUO' nominarli, per dire cosa sono diventati."""
+    """Le stringhe che nominano `citazione`, tolto l'avviso dei vecchi nomi
+    (per identita': l'unico testo che PUO' nominarli, per dire cosa sono
+    diventati) e la lista breve dei letterali che non sono per il modello."""
     from hiris.app.agent import prompts
 
     colpevoli = []
-    for modulo, testo in _letterali(_moduli_letti()):
-        if modulo is prompts:
+    for relativo, testo in _letterali():
+        if relativo == "agent/prompts.py":
             testo = testo.replace(prompts._OLD_NAMES_NOTICE, "")
+        if any(relativo == f and t in testo
+               for f, t in _ECCEZIONI_DEL_CANCELLO):
+            continue
         if citazione.search(testo):
-            colpevoli.append((modulo.__name__, testo[:80]))
+            colpevoli.append((relativo, testo[:80]))
     return colpevoli
+
+
+def test_ogni_eccezione_del_cancello_nomina_ancora_un_vecchio_nome():
+    """Una voce di `_ECCEZIONI_DEL_CANCELLO` che non copre piu' niente e' un buco
+    che resta aperto: il cancello ignorerebbe per sempre quel letterale.
+
+    Mutazione ESEGUITA: una voce inventata (`("server.py", "xx")`) -- rossa."""
+    vecchi = _nomina("view", *_QUATTRO_USCITI)
+    letterali = list(_letterali())
+    for f, t in _ECCEZIONI_DEL_CANCELLO:
+        assert any(r == f and t in x and vecchi.search(x) for r, x in letterali), (f, t)
 
 
 def test_nessun_testo_che_il_modello_legge_nomina_view():
@@ -401,7 +424,11 @@ def test_nessun_testo_che_il_modello_legge_nomina_i_quattro_strumenti_della_hist
 
     Mutazione ESEGUITA: lasciare «nel logbook» nel testo di `type_census`
     -- rossa.
-    Mutazione ESEGUITA: «`mcp__hiris__trend`» in `_GUIDE_WITH_TOOLS` -- rossa."""
+    Mutazione ESEGUITA: «`mcp__hiris__trend`» in `_GUIDE_WITH_TOOLS` -- rossa.
+    Mutazione ESEGUITA: un letterale «leggi il logbook» in fondo a
+    `mind/watcher.py` -- rossa (il perimetro e' tutto `hiris/app`).
+    Mutazione ESEGUITA: un letterale «chiama mcp__hiris__trend» in fondo a
+    `agent/runner.py` -- rossa."""
     colpevoli = _citati(_nomina(*_QUATTRO_USCITI))
     assert not colpevoli, colpevoli[:5]
 
