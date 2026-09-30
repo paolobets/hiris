@@ -290,13 +290,13 @@ def test_su_una_casa_grande_una_riga_per_soggetto_e_sotto_la_soglia_del_ponte():
     query = _q()
     chosen = _scegli(query, casa=casa, stati=stati)
     assert chosen.depth == "corta" and chosen.found == 300
-    assert len(chosen.subjects) == 50 and chosen.beyond["restano"] == 250
+    assert len(chosen.subjects) == 300   # si legge tutto, si impagina dopo
     serie = {s.ident: [_punto(_INIZIO, "off")] + [
         _punto(f"2026-09-29T0{i}:00:00+00:00", "on" if i % 2 else "off")
         for i in range(1, 6)] for s in chosen.subjects}
     uscita = hh.state_rows(query, chosen, serie, truncated=False, acts=[],
                            current=stati)
-    assert len(uscita["voci"]) == 50
+    assert len(uscita["voci"]) == 50 and uscita["oltre"]["restano"] == 250
     assert set(uscita["voci"][0]) == {"id", "nome", "cambi", "ultimo_cambio", "stato"}
     assert uscita["voci"][0]["cambi"] == 5
     assert len(json.dumps(uscita, ensure_ascii=False)) < BRIDGE_CEILING_CHARS
@@ -392,3 +392,114 @@ def test_la_profondita_la_decide_lo_strumento(quante, profondita):
 
     Mutazione ESEGUITA: `DETAIL_MEDIUM_MAX` letto come 9 -- rossa sul 10."""
     assert hh.depth_for(quante) == profondita
+
+
+# -- Revisione del Task 3 (30/09/2026) ----------------------------------------
+
+
+def _sedici_luci():
+    """16 luci in soggiorno, nella casa in ordine INVERSO di id: cosi' un
+    ordine che seguisse la casa (o lo specchio) si vede."""
+    casa = _casa()
+    casa["entita"] = [_luce(f"light.l{i:02}", "soggiorno") for i in reversed(range(16))]
+    stati = {f"light.l{i:02}": "off" for i in range(16)}
+    serie = {f"light.l{i:02}": [_punto(_INIZIO, "off")] for i in range(16)}
+    serie["light.l15"] += [_punto(f"2026-09-29T1{i}:00:00+00:00", "on" if i % 2 else "off")
+                           for i in range(5, 0, -1)][::-1]
+    serie["light.l03"].append(_punto("2026-09-29T09:00:00+00:00", "on"))
+    del serie["light.l14"]
+    return casa, stati, serie
+
+
+def test_nella_corta_chi_e_cambiato_nella_finestra_viene_prima():
+    """Review Task 3 (#1): 16 luci, `limite=5`, una sola cambiata 5 volte.
+    Nella prima forma la pagina si tagliava in `choose` dall'ultimo cambio
+    dello specchio, e le 5 mostrate avevano tutte `cambi: 0`.
+
+    Mutazione ESEGUITA: in `state_rows` non ordinare `ranked` (resta
+    l'ordine della casa) -- rossa; tagliare la pagina in `choose` sui
+    soggetti come prima -- rossa (`subjects` sono 5, non 16)."""
+    casa, stati, serie = _sedici_luci()
+    query = _q(tipo="light", limite=5)
+    chosen = _scegli(query, casa=casa, stati=stati)
+    assert chosen.depth == "corta" and len(chosen.subjects) == 16
+    uscita = hh.state_rows(query, chosen, serie, truncated=False, acts=[],
+                           current=stati)
+    assert [v["id"] for v in uscita["voci"]] == [
+        "light.l15", "light.l03", "light.l00", "light.l01", "light.l02"]
+    assert [v["cambi"] for v in uscita["voci"]] == [5, 1, 0, 0, 0]
+    assert uscita["oltre"]["restano"] == 11 and uscita["oltre"]["salta"] == 5
+
+
+def test_nella_corta_salta_su_una_finestra_fissa_non_salta_ne_ripete():
+    """Review Task 3 (#1): scorrendo con `salta` sulla stessa finestra ogni
+    soggetto compare una volta sola; a parita' (nessun cambio) decide l'id,
+    non l'ordine della casa. E `nessuna_registrazione` nomina solo i
+    soggetti della pagina.
+
+    Mutazione ESEGUITA: togliere l'id dalla chiave di `_activity` -- rossa
+    (a parita' vince l'ordine inverso della casa); `_declare_gaps` su tutti
+    i soggetti invece che sulla pagina -- rossa sulla prima pagina."""
+    casa, stati, serie = _sedici_luci()
+    visti, pagine = [], []
+    for salta in (0, 5, 10, 15):
+        query = _q(tipo="light", limite=5, salta=salta)
+        uscita = hh.state_rows(query, _scegli(query, casa=casa, stati=stati), serie,
+                               truncated=False, acts=[], current=stati)
+        visti += [v["id"] for v in uscita["voci"]]
+        pagine.append(uscita)
+    assert visti == ["light.l15", "light.l03"] + sorted(
+        f"light.l{i:02}" for i in range(16) if i not in (3, 15))
+    assert "nessuna_registrazione" not in pagine[0]
+    assert pagine[3]["nessuna_registrazione"]["soggetti"] == ["light.l14"]
+
+
+def test_una_finestra_tagliata_dice_da_quando_i_dati_ci_sono_davvero():
+    """Review Task 3 (#2), spec §3: `finestra` e' il periodo DAVVERO coperto.
+    Home Assistant tiene la coda: se la serie comincia alle 10:00 UTC, prima
+    non si sa, e `da` lo dice; la domanda resta in `chiesta_da`.
+
+    Mutazione ESEGUITA: in `_declare_gaps` lasciare `da` alla finestra
+    chiesta -- rossa."""
+    query = _q(riferimento="light.soggiorno_1")
+    coda = _LUCE_1[1:]
+    uscita = hh.state_rows(query, _scegli(query), {"light.soggiorno_1": coda},
+                           truncated=True, acts=[], current=STATI)
+    assert uscita["finestra"]["da"] == "2026-09-29T12:00:00+02:00"
+    assert uscita["finestra"]["chiesta_da"] == "2026-09-28T18:40:00+02:00"
+    assert "troncata" in uscita["finestra"]
+    intera = hh.state_rows(query, _scegli(query), {"light.soggiorno_1": _LUCE_1},
+                           truncated=False, acts=[], current=STATI)
+    assert "chiesta_da" not in intera["finestra"]
+
+
+def test_nella_corta_scelta_davvero_chi_si_sposta_resta_in_casa_o_fuori():
+    """Review Task 3 (#4): la corta per la strada vera di `choose`, con una
+    persona e un device_tracker fra piu' di 10 soggetti, «casa -> Lavoro ->
+    Palestra -> casa»: due cambi, nessun nome di zona, nessuna coordinata.
+
+    Mutazione ESEGUITA: `redact_state` DOPO il confronto in `_changes` --
+    rossa (tre cambi); nella corta `stato` senza `redact_state` -- rossa
+    («Lavoro» nel testo)."""
+    casa = _casa()
+    casa["entita"] += [_luce("device_tracker.iphone", None)] + [
+        _luce(f"light.corridoio_{i}", None) for i in range(10)]
+    viaggio = [_punto(_INIZIO, "home"), _punto("2026-09-29T08:00:00+00:00", "Lavoro"),
+               _punto("2026-09-29T12:00:00+00:00", "Palestra"),
+               _punto("2026-09-29T15:00:00+00:00", "home")]
+    stati = {**STATI, "device_tracker.iphone": "Palestra",
+             **{f"light.corridoio_{i}": "off" for i in range(10)}}
+    query = _q(area="senza area", includi_nascoste=True)
+    chosen = _scegli(query, casa=casa, stati=stati)
+    assert chosen.depth == "corta"
+    uscita = hh.state_rows(query, chosen, {"person.marta": viaggio,
+                                           "device_tracker.iphone": viaggio},
+                           truncated=False, acts=[], current=stati)
+    testo = json.dumps(uscita, ensure_ascii=False)
+    for vietato in ("Lavoro", "Palestra", "latitude", "longitude", "45.0"):
+        assert vietato not in testo, vietato
+    suoi = {v["id"]: v for v in uscita["voci"]
+            if v["id"] in ("person.marta", "device_tracker.iphone")}
+    assert len(suoi) == 2
+    for riga in suoi.values():
+        assert riga["cambi"] == 2 and riga["stato"] == "not_home", riga

@@ -236,7 +236,8 @@ _NOTHING = object()
 class Subject:
     """Un soggetto della storia: l'identificatore, il nome, e l'ultimo cambio
     (entita') o l'ultima esecuzione (automazioni e script) secondo lo
-    specchio -- serve a ordinare la corta dal piu' vivo."""
+    specchio. NON ordina la corta degli stati: l'ordine lo da' la finestra
+    letta (revisione del Task 3, 30/09/2026 -- vedi `Chosen`)."""
     ident: str
     name: str
     last: str | None = None
@@ -244,14 +245,23 @@ class Subject:
 
 @dataclass(frozen=True)
 class Chosen:
-    """Chi, quanti e quanto: `found` conta i soggetti PRIMA della pagina,
-    `subjects` sono quelli da leggere a Home Assistant (nella corta, solo la
-    pagina: una casa di 300 entita' non si legge intera per darne 50)."""
+    """Chi, quanti e quanto: `found` conta i soggetti scelti, `subjects` sono
+    TUTTI quelli da leggere a Home Assistant (vuoto solo con `limite` 0, che
+    chiede il conto), in ogni profondita'. La pagina si taglia DOPO la
+    lettura, in `state_rows`.
+
+    Revisione del Task 3 (30/09/2026): la prima forma tagliava la pagina
+    della corta QUI, ordinata per l'ultimo cambio dello specchio. Provato su
+    16 luci con `limite=5`: le 5 mostrate avevano tutte `cambi: 0`, e l'unica
+    cambiata 5 volte nella finestra restava fuori; con `da`/`a` nel passato
+    la pagina era arbitraria, e in una casa viva `salta` scorreva su un
+    ordine che cambiava fra una chiamata e l'altra. Una chiamata a
+    `HAClient.history` copre molte entita': si legge tutto, si ordina per cio'
+    che e' successo NELLA finestra, e poi si impagina."""
     found: int
     excluded: dict
     depth: str
     subjects: list[Subject]
-    beyond: dict | None = None
 
 
 def depth_for(count: int) -> str:
@@ -296,8 +306,12 @@ def choose(query: HistoryQuery, home_space: dict, behavior, mirror, *,
     """Di chi (la scelta di `search`, `select_subjects`) e quanto.
 
     Stati e valori guardano le entita'; le esecuzioni automazioni e script.
-    I soggetti si ordinano dal piu' vivo (ultimo cambio o ultima esecuzione
-    dello specchio): nella corta si legge solo la pagina."""
+
+    **Il contratto col gestore** (revisione del Task 3, 30/09/2026): in OGNI
+    profondita', corta compresa, `subjects` e' l'elenco INTERO dei soggetti
+    da leggere a Home Assistant, e la pagina (`limite`, `salta`) si taglia
+    dopo la lettura, sulle righe. `choose` decide la profondita' dal conto;
+    non taglia nulla, salvo `limite` 0 (solo il conto: nessuno da leggere)."""
     f = query.who
     if query.kind == "esecuzioni":
         kinds = ((BEHAVIOR_DOMAINS[f.domain],) if f.domain
@@ -320,13 +334,8 @@ def choose(query: HistoryQuery, home_space: dict, behavior, mirror, *,
     if query.run_id is not None and len(subjects) != 1:
         return {"errore": f"esecuzione vale per UNA sola automazione, e questi filtri "
                           f"ne scelgono {len(subjects)}: restringi con riferimento"}
-    subjects.sort(key=lambda s: _epoch(s.last) or 0.0, reverse=True)
-    depth = depth_for(len(subjects))
-    if depth != "corta":
-        return Chosen(len(subjects), selection.excluded, depth,
-                      subjects if f.limit > 0 else [])
-    page, beyond = _page(subjects, f)
-    return Chosen(len(subjects), selection.excluded, depth, page, beyond)
+    return Chosen(len(subjects), selection.excluded, depth_for(len(subjects)),
+                  subjects if f.limit > 0 else [])
 
 
 def _frame(query: HistoryQuery, chosen: Chosen) -> dict:
@@ -346,8 +355,6 @@ def empty_answer(query: HistoryQuery, chosen: Chosen) -> dict:
     """Nessuno da leggere: nessun soggetto, o `limite` 0. Senza soggetti e
     senza escluse la strada si indica: il nome si trova con `search`."""
     out = _frame(query, chosen)
-    if chosen.beyond:
-        out["oltre"] = {**chosen.beyond, "consiglio": _NARROW}
     if chosen.found == 0 and not any(chosen.excluded.values()):
         out["suggerimento"] = _NOTHING_CHOSEN
     return out
@@ -379,6 +386,9 @@ def _changes(entity_id: str, points: list[dict],
         epoch = _epoch(point.get("quando"))
         if epoch is None:
             continue
+        # `redact_state` e non `privacy.redact_row`: queste righe non portano
+        # le chiavi di stato che `redact_row` riconosce, e nella completa non
+        # hanno nemmeno l'`id` da cui leggerebbe il dominio.
         value = redact_state(entity_id, point.get("valore"))
         changed = epoch > start_ts if previous is _NOTHING else value != previous
         if changed:
@@ -406,12 +416,49 @@ def _by_hand(entity_id: str, epoch: float, acts: list[dict] | None) -> dict:
                      "servizio": best.get("servizio")}}
 
 
-def _declare_gaps(out: dict, chosen: Chosen, series: dict, *, truncated: bool) -> None:
-    missing = [s.ident for s in chosen.subjects if not series.get(s.ident)]
+def _covered_since(idents: list[str], series: dict, start_ts: float) -> float:
+    """Da quando i dati coprono DAVVERO tutti i soggetti letti (spec §3,
+    `finestra` e' «il periodo davvero coperto dai dati»).
+
+    `HAClient.history` taglia ogni entita' per conto suo e ne tiene la CODA:
+    la serie di un'entita' tagliata comincia al suo primo punto tenuto, non
+    all'inizio della finestra. Prima del piu' tardo di questi primi punti,
+    almeno un soggetto ha cambi che mancano: e' da li' che la risposta e'
+    intera. Sull'epoch, come ogni conto di tempo di questo modulo."""
+    firsts = [_epoch(series[i][0].get("quando")) for i in idents if series.get(i)]
+    return max([start_ts] + [epoch for epoch in firsts if epoch is not None])
+
+
+def _declare_gaps(out: dict, idents: list[str], series: dict, *, truncated: bool,
+                  query: HistoryQuery) -> None:
+    """Cio' che la risposta non copre: i soggetti MOSTRATI senza registrazioni
+    (nella corta solo la pagina -- 250 identificatori fuori pagina
+    sfonderebbero la soglia del ponte), e la finestra tagliata da Home
+    Assistant, con `da` spostato dove i dati cominciano davvero e la domanda
+    in `chiesta_da`."""
+    missing = [i for i in idents if not series.get(i)]
     if missing:
         out["nessuna_registrazione"] = {"soggetti": missing, "perche": _NO_RECORDING}
     if truncated:
+        start_ts = query.start.timestamp()
+        covered = _covered_since(idents, series, start_ts)
+        out["finestra"]["chiesta_da"] = out["finestra"]["da"]
+        out["finestra"]["da"] = _local(covered, query.start.tzinfo)
         out["finestra"]["troncata"] = _TRUNCATED
+
+
+def _oltre(beyond: dict) -> dict:
+    """`oltre` della storia: quello di `page_rows`, e il consiglio di
+    restringere solo quando restano righe davvero (non oltre la fine)."""
+    return {**beyond, "consiglio": _NARROW} if beyond.get("restano") else beyond
+
+
+def _activity(row: dict, epoch: float | None) -> tuple:
+    """L'ordine della corta: chi e' cambiato piu' di recente NELLA finestra
+    prima, chi non e' cambiato mai in fondo, e a parita' l'id -- un ordine
+    che non dipende dallo specchio ne' dall'ordine della casa, cosi' `salta`
+    su una finestra fissa non salta ne' ripete nessuno."""
+    return (epoch is None, -(epoch or 0.0), row["id"])
 
 
 def state_rows(query: HistoryQuery, chosen: Chosen, series: dict[str, list[dict]], *,
@@ -419,20 +466,26 @@ def state_rows(query: HistoryQuery, chosen: Chosen, series: dict[str, list[dict]
                current: dict[str, str]) -> dict:
     """Gli stati (spec §3): completa -- ogni cambio, con «per mano di»;
     media -- ogni cambio con l'id, una riga per evento; corta -- una riga per
-    soggetto (quanti cambi, l'ultimo, lo stato adesso). Nelle prime due le
-    righe vanno dal piu' recente e si fermano a `ROWS_MAX`."""
+    soggetto (quanti cambi, l'ultimo, lo stato adesso), dal piu' attivo nella
+    finestra. Ogni profondita' si ferma a `ROWS_MAX` righe, tagliate DOPO la
+    lettura di tutti i soggetti (vedi `Chosen`)."""
     zone = query.start.tzinfo
     start_ts = query.start.timestamp()
     out = _frame(query, chosen)
     changes = {s.ident: _changes(s.ident, series.get(s.ident) or [], start_ts)
                for s in chosen.subjects}
+    shown = [s.ident for s in chosen.subjects]
     if chosen.depth == "corta":
-        out["voci"] = [{"id": s.ident, "nome": s.name, "cambi": len(changes[s.ident]),
-                        "ultimo_cambio": (_local(changes[s.ident][-1][0], zone)
-                                          if changes[s.ident] else None),
-                        "stato": redact_state(s.ident, current.get(s.ident))}
-                       for s in chosen.subjects]
-        beyond = chosen.beyond
+        ranked = []
+        for s in chosen.subjects:
+            mine = changes[s.ident]
+            row = {"id": s.ident, "nome": s.name, "cambi": len(mine),
+                   "ultimo_cambio": _local(mine[-1][0], zone) if mine else None,
+                   "stato": redact_state(s.ident, current.get(s.ident))}
+            ranked.append((_activity(row, mine[-1][1] if mine else None), row))
+        ranked.sort(key=lambda item: item[0])
+        out["voci"], beyond = _page([row for _key, row in ranked], query.who)
+        shown = [row["id"] for row in out["voci"]]
     else:
         events = []
         for s in chosen.subjects:
@@ -451,6 +504,6 @@ def state_rows(query: HistoryQuery, chosen: Chosen, series: dict[str, list[dict]
         if acts is None:
             out["cronaca_non_letta"] = _JOURNAL_UNREAD
     if beyond:
-        out["oltre"] = {**beyond, "consiglio": _NARROW}
-    _declare_gaps(out, chosen, series, truncated=truncated)
+        out["oltre"] = _oltre(beyond)
+    _declare_gaps(out, shown, series, truncated=truncated, query=query)
     return out

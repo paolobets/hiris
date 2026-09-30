@@ -699,10 +699,29 @@ def test_la_pagina_e_il_resto_si_calcolano_in_un_punto_solo():
     assert hq.page_rows(righe, 8, 4) == ([8, 9], None)
     assert hq.page_rows(righe, 4, 4) == ([4, 5, 6, 7], {"restano": 2, "salta": 8})
     assert hq.page_rows(righe, 0, 0) == ([], None)
-    assert hq.page_rows(righe, 20, 4) == ([], None)
     grandi = list(range(hq.ROWS_MAX + 5))
     pagina, oltre = hq.page_rows(grandi, 0, hq.ROWS_MAX + 100)
     assert len(pagina) == hq.ROWS_MAX and oltre == {"restano": 5, "salta": hq.ROWS_MAX}
+
+
+def test_salta_oltre_la_fine_si_dice_invece_di_una_pagina_vuota_muta():
+    """Revisione del Task 3 della storia (30/09/2026): `salta` oltre le righe
+    dava `([], None)`, e una pagina vuota senza segnale si legge «non c'e'
+    niente». Ora `oltre` dice quante righe ci sono e che salta le supera --
+    per `search` e per `history`, che impaginano con la stessa funzione.
+
+    Mutazione ESEGUITA: togliere il ramo `offset >= len(rows)` in
+    `page_rows` -- rossa (`oltre` torna `None`, e manca in `search`)."""
+    righe = list(range(10))
+    for salta in (10, 20):
+        pagina, oltre = hq.page_rows(righe, salta, 4)
+        assert pagina == []
+        assert oltre["disponibili"] == 10
+        assert f"salta={salta} supera le 10 righe" in oltre["salta_oltre_la_fine"]
+    assert hq.page_rows(righe, 20, 0) == ([], None)
+    assert hq.page_rows([], 0, 4) == ([], None)
+    risposta = _chiedi(tipo="light", salta=5)
+    assert risposta["voci"] == [] and risposta["oltre"]["disponibili"] == 2
 
 
 def test_search_pagina_con_la_funzione_condivisa(monkeypatch):

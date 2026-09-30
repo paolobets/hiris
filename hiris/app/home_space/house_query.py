@@ -483,8 +483,18 @@ def page_rows(rows: list, offset: int, limit: int) -> tuple[list, dict | None]:
     restano righe, `{"restano", "salta"}` per chiedere la successiva.
 
     Un punto solo per `search` e per la storia (30/09/2026): con `limit` 0 non
-    c'e' `oltre`, perche' chi chiede zero righe vuole solo il conto."""
+    c'e' `oltre`, perche' chi chiede zero righe vuole solo il conto.
+
+    `salta` oltre la fine (revisione del Task 3 della storia, 30/09/2026):
+    una pagina vuota senza segnale si legge «non c'e' niente», che e' falso
+    -- le righe ci sono, prima. `oltre` lo dice: `disponibili` e' quante
+    righe ci sono in tutto, `salta_oltre_la_fine` la frase."""
     page = rows[offset:offset + min(limit, ROWS_MAX)]
+    if limit > 0 and offset > 0 and offset >= len(rows):
+        return page, {"disponibili": len(rows),
+                      "salta_oltre_la_fine": (
+                          f"salta={offset} supera le {len(rows)} righe disponibili: "
+                          "questa pagina e' vuota, le righe si leggono da salta=0")}
     left = len(rows) - offset - len(page)
     beyond = ({"restano": left, "salta": offset + len(page)}
               if left > 0 and limit > 0 else None)
