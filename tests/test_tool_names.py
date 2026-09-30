@@ -88,6 +88,8 @@ _NOMI_MAI_STATI_STRUMENTO = frozenset({
     # `automation_trace` due righe sopra -- uno strumento nuovo, non una
     # rinomina.
     "calendar",
+    # fetta «la storia» (30/09/2026): uno strumento nuovo al posto di quattro.
+    "history",
 })
 
 _DEFINIZIONI = list(KNOWLEDGE_TOOLS) + [CONCLUDI_TOOL_DEF]
@@ -176,19 +178,21 @@ def test_ogni_nome_del_catalogo_e_nell_elenco_storico():
         "riconoscera' piu' la citazione del loro nome precedente")
 
 
-def test_the_catalog_has_sixteen_distinct_names():
-    """Quindici e' il numero del perimetro della CHAT (13 -> 15 con la fetta
+def test_the_catalog_has_thirteen_distinct_names():
+    """Dodici e' il numero del perimetro della CHAT (13 -> 15 con la fetta
     «le tracce e il log», Task 5: `system_log`, `automation_trace`; 15 -> 16
     con la fetta «i calendari», Task 3: `calendar`; 16 -> 15 con «una porta
-    sola per la casa», 29/09/2026: esce `view`), sedici quello delle
+    sola per la casa», 29/09/2026: esce `view`; 15 -> 12 con «la storia»,
+    30/09/2026: escono `trend`, `logbook`, `system_log`, `automation_trace`,
+    entra `history`), tredici quello delle
     definizioni: e' la sesta volta, in questa fetta, che un
     numero giusto su un perimetro sembra sbagliato su un altro (vedi la nota
     in cima a "I nomi degli strumenti" nel glossario). Pinnato qui perche'
     un doppione fra i due cataloghi -- `concludi` che finisse anche nella
     chat -- non lo vedrebbe nessun altro test."""
     nomi = [d["name"] for d in _DEFINIZIONI]
-    assert len(nomi) == 16, nomi
-    assert len(set(nomi)) == 16, "due definizioni portano lo stesso nome"
+    assert len(nomi) == 13, nomi
+    assert len(set(nomi)) == 13, "due definizioni portano lo stesso nome"
 
 
 def _prose_runtime():

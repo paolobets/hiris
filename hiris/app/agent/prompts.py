@@ -233,6 +233,10 @@ _GUIDE_WITHOUT_TOOLS = (
 #   di logica. Legge i calendari di questa casa e i prossimi appuntamenti,
 #   non lo stato di adesso: e' l'unica cosa in piu' che questo testo --
 #   quello dei NOMI -- deve dire su di lui.
+#
+# fetta «la storia» (30/09/2026). Da 15 (`view` era gia' uscito) a 12:
+#   `trend`, `logbook`, `system_log` e `automation_trace` escono ed entra
+#   `history`, che risponde alle loro quattro domande con una forma sola.
 # **La riga di compatibilita' sui nomi VECCHI degli strumenti -- temporanea, e
 # qui sotto c'e' scritto cosa la fa sparire.**
 #
@@ -289,16 +293,15 @@ _GUIDE_WITH_TOOLS = (
     "mantenuta, `mcp__hiris__propose` per proporre di creare, modificare o "
     "cancellare un'automazione, uno script o una scena (non scrive: restituisce "
     "un'anteprima), `mcp__hiris__confirm` per applicare quella proposta, "
-    "`mcp__hiris__trend` per come e' andato nel tempo il valore di UNA "
-    "entita', `mcp__hiris__logbook` per cosa e' successo in casa e per mano "
-    "di chi, `mcp__hiris__system_log` per cosa non va nel registro degli "
-    "errori di Home Assistant, `mcp__hiris__automation_trace` per come sono "
-    "andate le esecuzioni recenti di un'automazione, `mcp__hiris__calendar` "
+    "`mcp__hiris__history` per cio' che e' successo nel tempo -- come sono "
+    "cambiati gli stati e per mano di chi, come sono andati i valori, come "
+    "sono andate le esecuzioni di automazioni e script, cosa c'e' nel "
+    "registro degli errori di Home Assistant --, `mcp__hiris__calendar` "
     "per i prossimi appuntamenti nei calendari di questa casa. "
     "Quando il prompt qui sopra parla "
     "di `search`, `related`, `remember`, `fetch`, `execute`, "
-    "`promise`, `agenda`, `cancel`, `propose`, `confirm`, `trend`, "
-    "`logbook`, `system_log`, `automation_trace` o `calendar` parla di "
+    "`promise`, `agenda`, `cancel`, `propose`, `confirm`, `history` "
+    "o `calendar` parla di "
     "questi STESSI strumenti, non di altri: usa il nome prefissato per "
     "chiamarli.\n"
 ) + _OLD_NAMES_NOTICE + (

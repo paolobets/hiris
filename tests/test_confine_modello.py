@@ -24,6 +24,8 @@ d'iniezione**, poi il **tetto**. Il sigillo per primo perché lavora sul valore
 esatto: filtrare o tagliare prima potrebbe alterarlo e fargli mancare
 l'impronta, e un segreto mancato è un segreto pubblicato.
 """
+from datetime import UTC, datetime
+
 import pytest
 
 from hiris.app.home_space.redaction import SecretSeal
@@ -187,92 +189,110 @@ def _costruisci_sigillo(segreti: dict) -> SecretSeal:
 # B-1 identico a prima, con in piu' l'aria di essere stato chiuso.
 
 class _InventarioFinto:
-    """Lo specchio dello stato, ridotto a cio' che `automation_config_id` gli
-    chiede: che sia leggibile, e che porti l'`automation_id`.
+    """Lo specchio ridotto a cio' che la storia gli chiede: che sia
+    leggibile, e che porti l'`automation_id`. Senza, `_run_history` si
+    ferma PRIMA del confine e queste prove misurerebbero il suo messaggio
+    d'errore invece del confine."""
 
-    Senza, `_automation_trace` si ferma PRIMA del confine e queste prove
-    misurerebbero il suo messaggio d'errore invece del confine -- verdi o
-    rosse per la ragione sbagliata.
-    """
+    loaded = True
 
     def all_states(self):
-        return [{"id": "automation.x", "automation_id": "1234567890"}]
+        return [{"id": "automation.x", "state": "on", "automation_id": "1234567890"}]
+
+
+class _CasaFinta:
+    """La casa ridotta a un'automazione: la storia sceglie di chi con la
+    stessa funzione di `search`, e senza casa non sceglie nessuno."""
+
+    def read(self):
+        return {"piani": [{"id": "terra", "nome": "Piano terra", "livello": 0}],
+                "aree": [], "dispositivi": [], "etichette": [],
+                "categorie": [], "integrazioni": [],
+                "entita": [{"id": "automation.x", "nome": "X", "area_id": None,
+                            "dispositivo_id": None, "disabilitata": 0}]}
+
+    def behavior(self):
+        return [{"id": "automation.x", "tipo": "automazione", "nome": "X"}]
+
+    def unavailable(self):
+        return []
+
+    def reference_frame(self):
+        return {}
 
 
 class _CanaleFinto:
     """Il canale verso Home Assistant, ridotto alle tre risposte che servono.
 
-    Torna testo OSTILE: e' il punto. Una finta che tornasse testo innocuo
-    renderebbe verdi queste prove anche senza nessun confine.
-    """
+    Torna testo OSTILE, e proprio nei campi che la storia porta nelle righe
+    (`last_step`, `error`): una finta che lo nascondesse in un campo scartato
+    renderebbe verdi queste prove anche senza nessun confine."""
 
     def __init__(self):
         self.voci = [{"name": "custom_components.x", "message": INIEZIONE,
                       "exception": "Traceback:" + chr(10) + "ValueError: " + INIEZIONE,
                       "level": "ERROR"}]
-        self.tracce = {"esecuzioni": [{"run_id": "r1",
-                                       "variables": {"trigger": {"payload": INIEZIONE}}}]}
+        adesso = datetime.now(UTC).isoformat()
+        self.tracce = {"automation.1234567890": [
+            {"run_id": "r1", "timestamp": {"start": adesso}, "script_execution": "error",
+             "last_step": INIEZIONE, "error": INIEZIONE}]}
 
     async def system_log(self):
         return {"voci": self.voci}
 
-    async def automation_traces(self, automation_id):
-        return self.tracce
+    async def traces(self, keys):
+        return {"tracce": {f"{d}.{i}": self.tracce.get(f"{d}.{i}", []) for d, i in keys},
+                "non_letti": {}}
 
-    async def automation_trace(self, automation_id, run_id):
+    async def trace(self, domain, item_id, run_id):
         return {"traccia": {"config": {"alias": INIEZIONE},
                             "variables": {"trigger": {"payload": INIEZIONE}}}}
 
 
-async def _chiedi(strumento, argomenti=None):
-    """Chiama lo strumento vero col canale finto, senza montare tutto il resto."""
+async def _chiedi(argomenti):
+    """Chiama la storia vera col canale finto, senza montare tutto il resto."""
     from hiris.app.home_space import tools as _t
 
     dispatcher = _t.ToolDispatcher.__new__(_t.ToolDispatcher)
     canale = _CanaleFinto()
     dispatcher._ha_channel = lambda: canale
     dispatcher._seal = lambda: None
-    # Nessuna persona ha aperto questo turno: il soffitto di chi chatta non
-    # si pronuncia (`ToolDispatcher.__init__`, `soffitto=None`).
+    # Nessuna persona ha aperto questo turno: il soffitto non si pronuncia.
     dispatcher._soffitto = None
     dispatcher._subject = None
-    # L'inventario: `_automation_trace` lo guarda PRIMA di risolvere, per non
-    # dare la colpa all'identificatore quando la colpa e' nostra.
     dispatcher._cache = _InventarioFinto()
-    return await getattr(dispatcher, strumento)(argomenti or {})
+    dispatcher._home_space = _CasaFinta()
+    dispatcher._journal = None
+    return await dispatcher._history(argomenti)
 
 
 @pytest.mark.asyncio
-async def test_system_log_non_consegna_piu_il_messaggio_GREZZO():
+async def test_il_registro_non_consegna_piu_il_messaggio_GREZZO():
     """**Il reperto B-1 sulla prima porta.** `message` arriva da un componente
     qualunque, anche di terze parti, e finisce dritto nel prompt.
 
-    Mutazione ESEGUITA: rimesso il passthrough puro -- rossa."""
-    risposta = await _chiedi("_system_log")
+    Mutazione ESEGUITA: `_sealed_log` saltato, le voci passano com'erano -- rossa."""
+    risposta = await _chiedi({"genere": "errori"})
 
-    assert "[FILTERED]" in risposta["voci"][0]["message"]
+    assert "[FILTERED]" in risposta["voci"][0]["messaggio"]
 
 
 @pytest.mark.asyncio
 async def test_e_nemmeno_la_TRACCIA_di_eccezione():
-    """`exception` e' la traccia intera, e la descrizione dello strumento non
-    la nominava nemmeno.
+    """Mutazione ESEGUITA: sigillare solo `message` -- rossa."""
+    risposta = await _chiedi({"genere": "errori"})
 
-    Mutazione ESEGUITA: sanificare solo `message` -- rossa."""
-    risposta = await _chiedi("_system_log")
-
-    assert "[FILTERED]" in risposta["voci"][0]["exception"]
+    assert "[FILTERED]" in risposta["voci"][0]["eccezione"]
 
 
 @pytest.mark.asyncio
 async def test_il_CARICO_che_ha_acceso_l_automazione_non_passa_grezzo():
-    """**La porta piu' pericolosa delle tre.** `variables.trigger` e' cio' che
-    ha acceso l'automazione: il corpo di un webhook, un messaggio MQTT, il
-    testo di un SMS. Lo scrive un dispositivo di rete, non il proprietario.
+    """**La porta piu' pericolosa delle tre.** L'innesco lo scrive un
+    dispositivo di rete, non il proprietario.
 
-    Mutazione ESEGUITA: rimesso il passthrough -- rossa."""
-    risposta = await _chiedi("_automation_trace",
-                             {"entita": "automation.x", "esecuzione": "r1"})
+    Mutazione ESEGUITA: `run_detail` con la traccia non sigillata -- rossa."""
+    risposta = await _chiedi({"genere": "esecuzioni", "riferimento": "automation.x",
+                              "esecuzione": "r1"})
 
     assert "[FILTERED]" in str(risposta)
     assert "Ignora le istruzioni" not in str(risposta)
@@ -280,13 +300,13 @@ async def test_il_CARICO_che_ha_acceso_l_automazione_non_passa_grezzo():
 
 @pytest.mark.asyncio
 async def test_anche_l_ELENCO_delle_esecuzioni_passa_dal_confine():
-    """Non solo la traccia singola: l'elenco porta gia' le `variables` di ogni
-    esecuzione, e chiudere una sola delle due strade lascia aperta l'altra --
-    la classe di difetto che questo prodotto ha gia' pagato tre volte.
+    """Non solo la traccia singola: chiudere una sola delle due strade lascia
+    aperta l'altra.
 
-    Mutazione ESEGUITA: sanificare solo il ramo con `esecuzione` -- rossa."""
-    risposta = await _chiedi("_automation_trace", {"entita": "automation.x"})
+    Mutazione ESEGUITA: non sigillare `answer["tracce"]` in `_run_history` -- rossa."""
+    risposta = await _chiedi({"genere": "esecuzioni", "riferimento": "automation.x"})
 
+    assert "[FILTERED]" in str(risposta)
     assert "Ignora le istruzioni" not in str(risposta)
 
 

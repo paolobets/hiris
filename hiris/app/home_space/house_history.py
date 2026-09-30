@@ -174,8 +174,14 @@ def _window(a: dict, *, now: float,
         end = now_local
     # Confronti sull'epoch, mai tra `datetime` dello stesso fuso: quelli
     # ignorano il cambio d'ora (vedi `HistoryQuery.hours`).
-    if end.timestamp() > now:
-        return "a e' nel futuro: la storia arriva al piu' ad adesso"
+    #
+    # «Adesso» e' `now_local`, non `now` (Task 7, 30/09/2026): un `datetime`
+    # tiene i microsecondi e `time.time()` ne ha di piu', quindi
+    # `fromtimestamp` arrotonda e la finestra senza `a` -- che FINISCE
+    # adesso -- risultava «nel futuro» di mezzo microsecondo a una chiamata
+    # su due. Le prove pure passavano un `now` intero e non lo vedevano.
+    if end.timestamp() > now_local.timestamp():
+        return "a e' nel futuro: `history` arriva al piu' ad adesso"
     if start.timestamp() >= end.timestamp():
         return "da deve venire prima di a"
     if end.timestamp() - start.timestamp() > WINDOW_MAX_HOURS * 3600:

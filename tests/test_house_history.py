@@ -155,6 +155,20 @@ def test_un_argomento_sbagliato_e_un_errore_mai_un_altra_domanda(argomenti, paro
     assert isinstance(risposta, dict) and parole in risposta["errore"], risposta
 
 
+@pytest.mark.parametrize("argomenti", [{}, {"da": "oggi"}, {"da": "ieri", "a": "oggi"}])
+def test_adesso_col_suo_orologio_vero_non_e_nel_futuro(argomenti):
+    """`time.time()` ha piu' cifre dei microsecondi di un `datetime`: la
+    finestra che finisce adesso non e' «nel futuro» per l'arrotondamento
+    (trovato eseguendo il gestore del Task 7, 30/09/2026).
+
+    Mutazione ESEGUITA: `end.timestamp() > now` in `_window` -- rossa."""
+    adesso = T0 + 0.1234567
+    # il caso c'e' davvero: l'arrotondamento porta «adesso» dopo `adesso`
+    assert datetime.fromtimestamp(adesso, tz=ZoneInfo(ROMA)).timestamp() > adesso
+    query = hh.parse_query(argomenti, now=adesso, timezone=ROMA)
+    assert not isinstance(query, dict), query
+
+
 def test_gli_errori_accettano_integrazione_e_livello():
     """Spec §2: per `errori` valgono solo `integrazione` e `livello`, e il
     livello si porta in maiuscolo.
