@@ -836,3 +836,246 @@ def test_una_serie_tagliata_dice_da_quando_la_risposta_e_intera():
     intera = _valori(_q(genere="valori"), ["sensor.temperatura"], dettaglio=_TEMPERATURA)
     assert intera["finestra"] == {"da": "2026-09-28T18:40:00+02:00",
                                   "a": "2026-09-29T18:40:00+02:00"}
+
+
+def _fa(ore):
+    return datetime.fromtimestamp(T0 - ore * 3600, ZoneInfo("UTC")).isoformat()
+
+
+def _traccia(run_id, ore, esito="finished", **altro):
+    """Una riga di `trace/list`, nella forma di Home Assistant."""
+    return {"run_id": run_id, "timestamp": {"start": _fa(ore)},
+            "script_execution": esito, "last_step": "action/0", **altro}
+
+
+def _esecuzioni(soggetti, query=None, **argomenti):
+    chosen = hh.Chosen(len(soggetti), dict(_NESSUNA), hh.depth_for(len(soggetti)),
+                       [hh.Subject(i, i.split(".")[1], _fa(1)) for i in soggetti])
+    return hh.run_rows(query or _q(genere="esecuzioni"), chosen, **argomenti)
+
+
+def test_una_automazione_da_le_sue_esecuzioni_nella_finestra():
+    """Spec §3, completa: com'e' finita, l'ultimo passo, il guasto. Il guasto
+    dell'esecuzione si chiama `guasto`: `errore` e' la chiave con cui lo
+    strumento dice che non ha potuto rispondere.
+
+    Mutazione ESEGUITA: non filtrare per finestra -- rossa (tre righe);
+    `row["errore"]` al posto di `row["guasto"]` -- rossa."""
+    tracce = {"automation.1001": [_traccia("r3", 1), _traccia("r2", 5, "error",
+                                                              error="timeout"),
+                                  _traccia("r1", 30)]}
+    uscita = _esecuzioni(["automation.carta"], traces=tracce,
+                         keys={"automation.carta": "automation.1001"}, unread={})
+    assert uscita["profondita"] == "completa"
+    assert uscita["voci"] == [
+        {"esecuzione": "r3", "inizio": "2026-09-29T17:40:00+02:00",
+         "esito": "finished", "ultimo_passo": "action/0"},
+        {"esecuzione": "r2", "inizio": "2026-09-29T13:40:00+02:00",
+         "esito": "error", "ultimo_passo": "action/0", "guasto": "timeout"}]
+    assert uscita["soggetto"] == {"id": "automation.carta", "nome": "carta",
+                                  "ultima_esecuzione": "2026-09-29T17:40:00+02:00"}
+    assert "non_letti" not in uscita and "oltre" not in uscita
+
+
+def test_cinque_automazioni_danno_le_ultime_tre_ciascuna():
+    """La #26: «perche' sono partite le automazioni dei rifiuti». Per
+    automazione le ultime tre, raggruppate, dall'automazione partita piu' di
+    recente nella finestra. Tutte le tracce sono dentro la finestra: prima
+    della piu' vecchia Home Assistant puo' averne scartate, e `dal` lo dice.
+
+    Mutazione ESEGUITA: `RECENT_RUNS = 5` -- rossa (25 righe); ordinare le
+    righe per istante invece che per automazione -- rossa (si mescolano);
+    `dal` mai dichiarato -- rossa."""
+    nomi = [f"automation.rifiuto_{n}" for n in range(5)]
+    tracce = {f"automation.10{n}": [_traccia(f"r{n}{k}", 5 - n + k) for k in range(5)]
+              for n in range(5)}
+    uscita = _esecuzioni(nomi, traces=tracce,
+                         keys={f"automation.rifiuto_{n}": f"automation.10{n}"
+                               for n in range(5)}, unread={})
+    assert uscita["profondita"] == "media" and len(uscita["voci"]) == 15
+    assert set(uscita["soggetti"]) == set(nomi)
+    assert [v["id"] for v in uscita["voci"]] == [
+        f"automation.rifiuto_{n}" for n in (4, 3, 2, 1, 0) for _ in range(3)]
+    assert [v["esecuzione"] for v in uscita["voci"][:3]] == ["r40", "r41", "r42"]
+    assert uscita["dal"]["automation.rifiuto_4"] == datetime.fromtimestamp(
+        T0 - 5 * 3600, ZoneInfo(ROMA)).isoformat()
+    assert "conservate" in uscita
+
+
+def test_molte_automazioni_una_riga_ciascuna_con_le_partenze_conservate():
+    """Mutazione ESEGUITA: `partenze_conservate` contate fuori finestra -- rossa."""
+    nomi = [f"automation.a{n}" for n in range(12)]
+    tracce = {f"automation.{n}": [_traccia("x", 2), _traccia("y", 40)] for n in range(12)}
+    uscita = _esecuzioni(nomi, traces=tracce,
+                         keys={f"automation.a{n}": f"automation.{n}" for n in range(12)},
+                         unread={})
+    assert uscita["profondita"] == "corta" and len(uscita["voci"]) == 12
+    assert uscita["voci"][0]["partenze_conservate"] == 1
+    assert uscita["voci"][0]["esito_ultima"] == "finished"
+    assert "dal" not in uscita["voci"][0] and "conservate" not in uscita
+
+
+def _dodici_automazioni():
+    nomi = [f"automation.a{n:02}" for n in range(12)]
+    tracce = {f"automation.k{n:02}": [_traccia("r", 10), _traccia("v", 30)]
+              for n in range(12)}
+    tracce["automation.k05"] = [_traccia("r", 1), _traccia("v", 30)]
+    tracce["automation.k02"] = [_traccia("r", 3)]
+    tracce["automation.k07"] = [_traccia("r", 3), _traccia("v", 50)]
+    tracce["automation.k09"] = [_traccia("v", 40)]
+    chiavi = {n: f"automation.k{n[-2:]}" for n in nomi}
+    chiavi["automation.a11"] = None
+    return nomi, tracce, chiavi
+
+
+def test_nella_corta_le_automazioni_partite_di_recente_vengono_prima():
+    """Il contratto degli stati (revisione del Task 3): si leggono tutte, si
+    ordinano per l'ultima esecuzione NELLA finestra, a parita' l'id, e poi si
+    impagina. Chi non e' partita nella finestra sta in fondo; chi non si e'
+    potuta leggere si nomina in `non_letti` nella SUA pagina.
+
+    Mutazione ESEGUITA: non ordinare le righe della corta -- rossa; nominare
+    in `non_letti` tutte le non lette invece di quelle della pagina -- rossa
+    sulla prima pagina; `dal` mai dichiarato -- rossa."""
+    nomi, tracce, chiavi = _dodici_automazioni()
+    pagine = [_esecuzioni(nomi, _q(genere="esecuzioni", limite=5, salta=salta),
+                          traces=tracce, keys=chiavi, unread={})
+              for salta in (0, 5, 10)]
+    visti = [v["id"] for p in pagine for v in p["voci"]]
+    assert visti == ["automation.a05", "automation.a02", "automation.a07",
+                     "automation.a00", "automation.a01", "automation.a03",
+                     "automation.a04", "automation.a06", "automation.a08",
+                     "automation.a10", "automation.a09"]
+    assert pagine[0]["oltre"]["restano"] == 7 and pagine[0]["oltre"]["salta"] == 5
+    assert "non_letti" not in pagine[0]
+    assert list(pagine[2]["non_letti"]) == ["automation.a11"]
+    righe = {v["id"]: v for p in pagine for v in p["voci"]}
+    assert righe["automation.a09"]["partenze_conservate"] == 0
+    assert "esito_ultima" not in righe["automation.a09"]
+    # a02 ha una sola traccia, dentro la finestra: prima, non si sa.
+    assert righe["automation.a02"]["dal"] == datetime.fromtimestamp(
+        T0 - 3 * 3600, ZoneInfo(ROMA)).isoformat()
+    assert "dal" not in righe["automation.a07"] and "dal" not in righe["automation.a09"]
+
+
+def test_chi_non_si_legge_e_nominato_e_gli_altri_rispondono():
+    """Review Focus 4: fra cinque automazioni dei rifiuti, una scritta in
+    YAML senza `id:` non spegne le altre quattro, e non e' «mai partita».
+    Una che Home Assistant rifiuta porta il SUO motivo.
+
+    Mutazione ESEGUITA: tornare `errore` alla prima chiave irrisolta --
+    rossa; saltare in silenzio la chiave irrisolta -- rossa (`non_letti`)."""
+    nomi = ["automation.carta", "automation.plastica", "automation.a_mano",
+            "automation.umido", "automation.vetro"]
+    chiavi = {"automation.carta": "automation.1", "automation.plastica": "automation.2",
+              "automation.a_mano": None, "automation.umido": "automation.4",
+              "automation.vetro": "automation.5"}
+    tracce = {f"automation.{n}": [_traccia(f"r{n}", n)] for n in (1, 2, 4, 5)}
+    uscita = _esecuzioni(nomi, traces=tracce, keys=chiavi, unread={})
+    assert [v["id"] for v in uscita["voci"]] == [
+        "automation.carta", "automation.plastica", "automation.umido",
+        "automation.vetro"]
+    assert list(uscita["non_letti"]) == ["automation.a_mano"]
+    assert "Non vuol dire che non sia mai partita" in uscita["non_letti"]["automation.a_mano"]
+    assert "errore" not in uscita
+    rifiutata = _esecuzioni(nomi, traces=tracce, keys=chiavi,
+                            unread={"automation.5": "non trovato"})
+    assert rifiutata["non_letti"]["automation.vetro"] == "non trovato"
+    assert "automation.vetro" not in [v["id"] for v in rifiutata["voci"]]
+
+
+def test_la_traccia_di_una_esecuzione_non_dice_dove_e_chi_l_ha_accesa():
+    """Review Focus 1 sulle tracce: l'innesco di una persona che si sposta,
+    ripetuto nei passi.
+
+    Mutazione ESEGUITA: `run_detail` senza `redact_nested` -- rossa."""
+    chosen = hh.Chosen(1, dict(_NESSUNA), "completa", [hh.Subject("automation.x", "X")])
+    marta = {"entity_id": "person.marta", "state": "Palestra",
+             "attributes": {"latitude": 45.1, "longitude": 9.2}}
+    traccia = {"run_id": "r1", "trace": {"trigger/0": [{"changed_variables": {
+        "trigger": {"from_state": {**marta, "state": "Lavoro"}, "to_state": marta}}}]}}
+    uscita = hh.run_detail(_q(genere="esecuzioni", esecuzione="r1"), chosen, traccia)
+    testo = json.dumps(uscita, ensure_ascii=False)
+    for dove in ("Lavoro", "Palestra", "latitude", "longitude"):
+        assert dove not in testo, dove
+    assert uscita["soggetto"]["id"] == "automation.x"
+    assert uscita["voci"][0]["run_id"] == "r1"
+
+
+_REGISTRO = [
+    {"name": "homeassistant.components.zha.core", "level": "ERROR",
+     "message": ["prima", "zigbee giu'"], "source": ["homeassistant/components/zha/core.py", 10],
+     "timestamp": T0 - 600, "first_occurred": T0 - 7200, "count": 12,
+     "exception": "Traceback (most recent call last):\n  File x\nValueError: boom"},
+    {"name": "custom_components.meteo.sensor", "level": "WARNING", "message": ["lento"],
+     "source": ["custom_components/meteo/sensor.py", 3], "timestamp": T0 - 60,
+     "first_occurred": T0 - 60, "count": 1},
+    {"name": "homeassistant.components.zha.core", "level": "ERROR", "message": ["vecchio"],
+     "source": ["x.py", 1], "timestamp": T0 - 3 * 86400, "first_occurred": T0 - 3 * 86400,
+     "count": 1},
+    {"name": "homeassistant.core", "level": "CRITICAL", "message": "senza istante"},
+]
+
+
+def test_gli_errori_una_riga_per_voce_nella_finestra_dalla_piu_recente():
+    """Spec §3: livello, messaggio accorciato, fonte, count, prima e ultima.
+    `count: 12` e' una voce, non dodici. Dall'ultima volta piu' recente; la
+    voce senza istante leggibile non si scarta (non si sa se e' fuori) e sta
+    in fondo.
+
+    Mutazione ESEGUITA: non filtrare per finestra -- rossa (quattro voci);
+    non ordinare per l'ultima volta -- rossa (zha prima di meteo)."""
+    uscita = hh.error_rows(_q(genere="errori"), _REGISTRO)
+    assert uscita["trovate"] == 3 and uscita["profondita"] == "corta"
+    assert [v["messaggio"] for v in uscita["voci"]] == [
+        "lento", "zigbee giu'", "senza istante"]
+    assert uscita["voci"][1] == {"livello": "ERROR", "messaggio": "zigbee giu'",
+                                 "fonte": "homeassistant/components/zha/core.py:10",
+                                 "integrazione": "zha", "count": 12,
+                                 "prima": "2026-09-29T16:40:00+02:00",
+                                 "ultima": "2026-09-29T18:30:00+02:00",
+                                 "eccezione": "ValueError: boom"}
+    assert uscita["finestra"] == {"da": "2026-09-28T18:40:00+02:00",
+                                  "a": "2026-09-29T18:40:00+02:00"}
+
+
+def test_gli_errori_si_filtrano_per_livello_e_integrazione():
+    """`integrazione` si legge dal nome del logger, anche di un componente
+    di terze parti (`custom_components.<nome>`).
+
+    Mutazione ESEGUITA: ignorare `livello` -- rossa; ignorare
+    `integrazione` -- rossa; `_integration_of` che non riconosce
+    `custom_components` -- rossa."""
+    assert [v["messaggio"] for v in hh.error_rows(
+        _q(genere="errori", livello="WARNING"), _REGISTRO)["voci"]] == ["lento"]
+    assert [v["messaggio"] for v in hh.error_rows(
+        _q(genere="errori", integrazione="meteo"), _REGISTRO)["voci"]] == ["lento"]
+    assert [v["messaggio"] for v in hh.error_rows(
+        _q(genere="errori", integrazione="zha"), _REGISTRO)["voci"]] == ["zigbee giu'"]
+
+
+def test_un_messaggio_lungo_si_accorcia_e_l_eccezione_e_la_sua_ultima_riga():
+    """Spec §3, «messaggio accorciato»; l'eccezione e' l'ultima riga (il
+    «cosa»), poi accorciata -- in quest'ordine.
+
+    Mutazione ESEGUITA: `_short` che non taglia -- rossa; accorciare
+    l'eccezione PRIMA di prenderne l'ultima riga -- rossa (299 caratteri
+    diventano meno)."""
+    lungo = [{"level": "ERROR", "message": "x" * 1000, "timestamp": T0 - 1,
+              "exception": "Traceback\n  File y\nValueError: " + "z" * 1000}]
+    riga = hh.error_rows(_q(genere="errori"), lungo)["voci"][0]
+    assert len(riga["messaggio"]) == hh.MESSAGE_MAX and riga["messaggio"].endswith("…")
+    assert len(riga["eccezione"]) == hh.MESSAGE_MAX
+    assert riga["eccezione"].startswith("ValueError: zzz")
+
+
+def test_gli_errori_si_impaginano_con_oltre():
+    """La pagina e `oltre` di `search` (`_page`, `_oltre`), anche oltre la fine.
+
+    Mutazione ESEGUITA: `voci` senza `_page` -- rossa."""
+    prima = hh.error_rows(_q(genere="errori", limite=1), _REGISTRO)
+    assert [v["messaggio"] for v in prima["voci"]] == ["lento"]
+    assert prima["oltre"]["restano"] == 2 and prima["oltre"]["salta"] == 1
+    assert "consiglio" in prima["oltre"]
+    fuori = hh.error_rows(_q(genere="errori", salta=9), _REGISTRO)
+    assert fuori["voci"] == [] and fuori["oltre"]["disponibili"] == 3

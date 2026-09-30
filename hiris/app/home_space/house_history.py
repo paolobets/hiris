@@ -36,7 +36,7 @@ from .house_query import (
     parse_filters,
     select_subjects,
 )
-from .privacy import redact_state
+from .privacy import redact_nested, redact_state
 from .queries import ROWS_MAX
 
 KINDS = ("stati", "valori", "esecuzioni", "errori")
@@ -462,12 +462,13 @@ def _oltre(beyond: dict) -> dict:
     return {**beyond, "consiglio": _NARROW} if beyond.get("restano") else beyond
 
 
-def _activity(row: dict, epoch: float | None) -> tuple:
+def _activity(tie: str, epoch: float | None) -> tuple:
     """L'ordine della corta: chi e' cambiato piu' di recente NELLA finestra
-    prima, chi non e' cambiato mai in fondo, e a parita' l'id -- un ordine
-    che non dipende dallo specchio ne' dall'ordine della casa, cosi' `salta`
-    su una finestra fissa non salta ne' ripete nessuno."""
-    return (epoch is None, -(epoch or 0.0), row["id"])
+    prima, chi non e' cambiato mai in fondo, e a parita' `tie` (l'id; per il
+    registro, che non ha id, la fonte e il messaggio) -- un ordine che non
+    dipende dallo specchio ne' dall'ordine della casa, cosi' `salta` su una
+    finestra fissa non salta ne' ripete nessuno."""
+    return (epoch is None, -(epoch or 0.0), tie)
 
 
 def state_rows(query: HistoryQuery, chosen: Chosen, series: dict[str, list[dict]], *,
@@ -491,7 +492,7 @@ def state_rows(query: HistoryQuery, chosen: Chosen, series: dict[str, list[dict]
             row = {"id": s.ident, "nome": s.name, "cambi": len(mine),
                    "ultimo_cambio": _local(mine[-1][0], zone) if mine else None,
                    "stato": redact_state(s.ident, current.get(s.ident))}
-            ranked.append((_activity(row, mine[-1][1] if mine else None), row))
+            ranked.append((_activity(s.ident, mine[-1][1] if mine else None), row))
         ranked.sort(key=lambda item: item[0])
         out["voci"], beyond = _page([row for _key, row in ranked], query.who)
         shown = [row["id"] for row in out["voci"]]
@@ -820,7 +821,7 @@ def value_rows(query: HistoryQuery, chosen: Chosen, *, detail: dict[str, list[di
             # legge: le fasce lo hanno in `inizio`, i cambi in `quando`.
             key = "inizio" if surface == "oraria" else "quando"
             firsts[s.ident] = [{"quando": points[0].get(key)}]
-        ranked.append((_activity(row, activity), surface, row))
+        ranked.append((_activity(s.ident, activity), surface, row))
     ranked.sort(key=lambda item: item[0])
     page, beyond = _page([(surface, row) for _key, surface, row in ranked], query.who)
     shown = [row["id"] for _surface, row in page]
@@ -835,4 +836,235 @@ def value_rows(query: HistoryQuery, chosen: Chosen, *, detail: dict[str, list[di
     if beyond:
         out["oltre"] = _oltre(beyond)
     _declare_gaps(out, shown, firsts, truncated=truncated, query=query)
+    return out
+
+
+#: Le esecuzioni per automazione nella profondita' media (spec §3).
+RECENT_RUNS = 3
+#: Quanto di un messaggio del registro arriva al modello: la frase che dice
+#: cosa e' successo, non il paragrafo (spec §3, «messaggio accorciato»).
+MESSAGE_MAX = 300
+UNRESOLVED_RUNS = ("non trovo la chiave con cui Home Assistant ne conserva le "
+                   "esecuzioni (l'id della configurazione): puo' essere scritta in YAML "
+                   "senza «id:», o non la conosco ancora. Non vuol dire che non sia "
+                   "mai partita: vuol dire che non ho potuto guardare")
+#: Home Assistant conserva le ULTIME esecuzioni di ognuna (`stored_traces`,
+#: 5 se non si cambia) e ne scarta le piu' vecchie: se la piu' vecchia
+#: conservata e' dentro la finestra, prima di lei non si sa.
+_RUNS_KEPT = ("Home Assistant conserva solo le ultime esecuzioni di ognuna: `dal` dice "
+              "da quando cominciano quelle conservate, e prima, nella finestra, possono "
+              "essercene state altre -- una traccia che manca non vuol dire andata bene")
+
+
+def _run_row(trace: dict, zone) -> dict:
+    row = {"esecuzione": trace.get("run_id"),
+           "inizio": _local((trace.get("timestamp") or {}).get("start"), zone),
+           "esito": trace.get("script_execution"),
+           "ultimo_passo": trace.get("last_step")}
+    if trace.get("error"):
+        # `guasto` e non `errore`: `errore` e' la chiave con cui lo strumento
+        # dice che non ha potuto rispondere, e dentro una riga confonderebbe.
+        row["guasto"] = trace["error"]
+    return row
+
+
+def _runs_in_window(traces: list, start_ts: float,
+                    end_ts: float) -> tuple[list[tuple[float, dict]], float | None]:
+    """(esecuzioni nella finestra dalla piu' recente, `dal` o `None`).
+
+    `dal` e' l'inizio della piu' vecchia esecuzione CONSERVATA, se cade dentro
+    la finestra: Home Assistant tiene le ultime, quindi se ne conserva una di
+    prima della finestra tutte quelle della finestra ci sono; se no, prima
+    della piu' vecchia non si sa (la regola di `dal` dei valori, Task 4:
+    detto sulla riga di chi, la finestra di tutti non si sposta)."""
+    kept, oldest = [], None
+    for trace in traces or []:
+        if not isinstance(trace, dict):
+            continue
+        began = _epoch((trace.get("timestamp") or {}).get("start"))
+        if began is None:
+            continue
+        oldest = began if oldest is None else min(oldest, began)
+        if start_ts <= began <= end_ts:
+            kept.append((began, trace))
+    kept.sort(key=lambda run: run[0], reverse=True)
+    return kept, (oldest if oldest is not None and oldest > start_ts else None)
+
+
+def run_rows(query: HistoryQuery, chosen: Chosen, *, traces: dict[str, list],
+             keys: dict[str, str | None], unread: dict[str, str]) -> dict:
+    """Le esecuzioni (spec §3): completa -- le esecuzioni conservate nella
+    finestra; media -- le ultime `RECENT_RUNS` per automazione, raggruppate;
+    corta -- una riga per automazione.
+
+    Il contratto degli stati (revisione del Task 3, 30/09/2026): si leggono
+    TUTTI i soggetti, si ordinano per l'ultima esecuzione NELLA finestra
+    (`_activity`; chi non e' partita nella finestra in fondo, a parita' l'id),
+    e solo poi si impagina (`_page`, `_oltre`).
+
+    Chi non si e' potuto leggere si nomina in `non_letti`, col suo motivo, e
+    non e' una riga: un elenco vuoto si leggerebbe «mai partita» (Review
+    Focus 4). Nella corta, come `nessuna_registrazione` degli stati, solo
+    quelli della pagina: 250 automazioni YAML senza `id:` sfonderebbero la
+    soglia del ponte.
+
+    `traces`: chiave -> righe di `trace/list`, gia' sigillate dal gestore;
+    `keys`: soggetto -> la sua chiave (`None` se irrisolta); `unread`:
+    chiave -> il motivo per cui Home Assistant non ha risposto."""
+    zone = query.start.tzinfo
+    start_ts, end_ts = query.start.timestamp(), query.end.timestamp()
+    out = _frame(query, chosen)
+    not_read: dict[str, str] = {}
+    runs: dict[str, list[tuple[float, dict]]] = {}
+    since: dict[str, float] = {}
+    for s in chosen.subjects:
+        key = keys.get(s.ident)
+        if key is None:
+            not_read[s.ident] = UNRESOLVED_RUNS
+        elif key in unread:
+            not_read[s.ident] = unread[key]
+        else:
+            runs[s.ident], born = _runs_in_window(traces.get(key) or [], start_ts, end_ts)
+            if born is not None:
+                since[s.ident] = born
+    ranked = sorted(chosen.subjects, key=lambda s: _activity(
+        s.ident, runs[s.ident][0][0] if runs.get(s.ident) else None))
+    if chosen.depth == "corta":
+        page, beyond = _page(ranked, query.who)
+        rows = []
+        for s in page:
+            if s.ident not in runs:
+                continue
+            row = {"id": s.ident, "nome": s.name,
+                   "partenze_conservate": len(runs[s.ident]),
+                   "ultima_esecuzione": _local(s.last, zone) if s.last else "mai"}
+            if runs[s.ident]:
+                row["esito_ultima"] = runs[s.ident][0][1].get("script_execution")
+            if s.ident in since:
+                row["dal"] = _local(since[s.ident], zone)
+            rows.append(row)
+        out["voci"] = rows
+        shown = {s.ident for s in page}
+        not_read = {ident: why for ident, why in not_read.items() if ident in shown}
+        since = {ident: when for ident, when in since.items() if ident in shown}
+    else:
+        per_subject = RECENT_RUNS if chosen.depth == "media" else None
+        events = []
+        for s in ranked:
+            for _began, trace in runs.get(s.ident, [])[:per_subject]:
+                row = _run_row(trace, zone)
+                events.append({"id": s.ident, **row} if chosen.depth == "media" else row)
+        out["voci"], beyond = _page(events, query.who)
+        _name_subjects(out, chosen)
+        if "soggetto" in out:
+            s = chosen.subjects[0]
+            out["soggetto"]["ultima_esecuzione"] = _local(s.last, zone) if s.last else "mai"
+            if s.ident in since:
+                out["soggetto"]["dal"] = _local(since[s.ident], zone)
+        elif since:
+            out["dal"] = {ident: _local(when, zone) for ident, when in since.items()}
+    if since:
+        out["conservate"] = _RUNS_KEPT
+    if beyond:
+        out["oltre"] = _oltre(beyond)
+    if not_read:
+        out["non_letti"] = not_read
+    return out
+
+
+def run_detail(query: HistoryQuery, chosen: Chosen, trace: dict) -> dict:
+    """Una sola esecuzione passo per passo (`esecuzione` = il `run_id`): la
+    traccia intera di `trace/get`, gia' sigillata dal gestore, senza le
+    posizioni di chi si muove (`redact_nested`: l'innesco e le variabili dei
+    passi portano `to_state` interi)."""
+    out = _frame(query, chosen)
+    _name_subjects(out, chosen)
+    out["voci"] = [redact_nested(trace)]
+    return out
+
+
+def _integration_of(logger_name) -> str | None:
+    """L'integrazione che ha scritto una voce, dal nome del logger:
+    `homeassistant.components.zha.core` -> `zha`,
+    `custom_components.meteo.sensor` -> `meteo`."""
+    parts = str(logger_name or "").split(".")
+    if len(parts) >= 2 and parts[0] == "custom_components":
+        return parts[1]
+    if "components" in parts:
+        index = parts.index("components")
+        if index + 1 < len(parts):
+            return parts[index + 1]
+    return None
+
+
+def _last_message(raw) -> str | None:
+    """Home Assistant tiene fino a cinque messaggi per voce (`LogEntry.message`
+    e' una coda che cresce in fondo): l'ultimo e' il piu' recente."""
+    if isinstance(raw, list | tuple):
+        texts = [str(item) for item in raw if item not in (None, "")]
+        return texts[-1] if texts else None
+    return None if raw in (None, "") else str(raw)
+
+
+def _last_line(text) -> str | None:
+    lines = [line.strip() for line in str(text).splitlines() if line.strip()]
+    return lines[-1] if lines else None
+
+
+def _short(text: str | None) -> str | None:
+    if text is None or len(text) <= MESSAGE_MAX:
+        return text
+    return text[:MESSAGE_MAX - 1] + "…"
+
+
+def _source(raw) -> str | None:
+    if isinstance(raw, list | tuple) and len(raw) == 2:
+        return f"{raw[0]}:{raw[1]}"
+    return None if raw is None else str(raw)
+
+
+def error_rows(query: HistoryQuery, entries: list) -> dict:
+    """Il registro di Home Assistant (spec §3): una forma sola, la corta, una
+    riga per voce -- livello, messaggio accorciato, fonte, `count`, prima e
+    ultima volta, e l'ultima riga dell'eccezione (il «cosa»). Filtrato per
+    `livello`, `integrazione` e finestra; una voce senza istante leggibile
+    non si scarta: non si sa se e' fuori.
+
+    L'ordine e la pagina sono quelli delle altre corte: dall'ultima volta piu'
+    recente (`_activity`, a parita' fonte e messaggio), poi `_page` e `_oltre`.
+
+    `entries`: le voci di `system_log/list` con `message` ed `exception` GIA'
+    passati dal sigillo dei segreti dal gestore (reperto B-1): qui non si
+    sigilla niente, si accorcia."""
+    zone = query.start.tzinfo
+    start_ts, end_ts = query.start.timestamp(), query.end.timestamp()
+    ranked = []
+    for entry in entries or []:
+        if not isinstance(entry, dict):
+            continue
+        level = str(entry.get("level") or "").upper() or None
+        if query.level and level != query.level:
+            continue
+        integration = _integration_of(entry.get("name"))
+        if query.who.platform and integration != query.who.platform:
+            continue
+        last = _epoch(entry.get("timestamp"))
+        if last is not None and not start_ts <= last <= end_ts:
+            continue
+        row = {"livello": level, "messaggio": _short(_last_message(entry.get("message"))),
+               "fonte": _source(entry.get("source")), "integrazione": integration,
+               "count": entry.get("count"),
+               "prima": _local(entry.get("first_occurred"), zone),
+               "ultima": _local(entry.get("timestamp"), zone)}
+        if entry.get("exception"):
+            row["eccezione"] = _short(_last_line(entry["exception"]))
+        ranked.append((_activity(f"{row['fonte']}|{row['messaggio']}", last), row))
+    ranked.sort(key=lambda item: item[0])
+    page, beyond = _page([row for _key, row in ranked], query.who)
+    out = {"trovate": len(ranked),
+           "escluse": {"nascoste": 0, "servizio": 0, "disabilitate": 0},
+           "profondita": "corta", "voci": page,
+           "finestra": {"da": query.start.isoformat(), "a": query.end.isoformat()}}
+    if beyond:
+        out["oltre"] = _oltre(beyond)
     return out

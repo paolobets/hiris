@@ -50,14 +50,18 @@ def redact_state(entity_id: str, state: str | None) -> str | None:
 _NEVER_BASKETS = frozenset({CREDENTIALS, WITHHELD_BASKET})
 
 
+def _hides_position(entity_id: str) -> bool:
+    """Chi perde le coordinate: persone e dispositivi che si spostano, e zone
+    che non siano `zone.home` (le altre direbbero dove vanno le persone). Un
+    punto solo per `redact_attributes` e `redact_nested` (30/09/2026)."""
+    domain = _domain(entity_id)
+    return domain in MOVING_DOMAINS or (domain == "zone" and entity_id != HOME_ZONE)
+
+
 def redact_attributes(entity_id: str, attributes: dict | None) -> dict | None:
     if not attributes:
         return attributes
-    domain = _domain(entity_id)
-    #: Rimuove coordinate da: persone e dispositivi che si spostano, e zone
-    #: che non siano zone.home (altre zone rivelerebbero dove vanno le persone).
-    redact_position = (domain in MOVING_DOMAINS or
-                       (domain == "zone" and entity_id != HOME_ZONE))
+    redact_position = _hides_position(entity_id)
     kept: dict = {}
     for basket, values in attributes.items():
         if basket in _NEVER_BASKETS:
@@ -106,4 +110,33 @@ def redact_row(row: dict) -> dict:
         elif isinstance(value, list):
             out[key] = [redact_row(item) if isinstance(item, dict) else item
                         for item in value]
+    return out
+
+
+def redact_nested(value):
+    """Ogni stato di Home Assistant annidato in una struttura, ridotto.
+
+    La traccia di un'esecuzione porta `trigger.to_state`/`from_state` interi,
+    e li ripete nelle `changed_variables` dei passi: la zona di chi si muove
+    come stato, e le coordinate fra gli attributi (spec «la storia» §5,
+    Review Focus 1, 30/09/2026). `redact_row` guarda le righe della porta,
+    con `id` e `stato`; qui si guarda la forma di Home Assistant (`entity_id`,
+    `state`, `attributes`) a ogni profondita', e si restituisce una copia.
+
+    Le stesse fonti di `redact_attributes`, nessuna seconda lista:
+    `MOVING_DOMAINS` per lo stato, `_hides_position` e `POSITION_ATTRIBUTES`
+    per le coordinate -- anche quelle della zona di un innesco `zone`."""
+    if isinstance(value, list | tuple):
+        return [redact_nested(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    out = {key: redact_nested(item) for key, item in value.items()}
+    entity_id = out.get("entity_id")
+    if not isinstance(entity_id, str):
+        return out
+    if "state" in out and isinstance(out["state"], str | None):
+        out["state"] = redact_state(entity_id, out["state"])
+    if _hides_position(entity_id) and isinstance(out.get("attributes"), dict):
+        out["attributes"] = {key: item for key, item in out["attributes"].items()
+                             if key not in POSITION_ATTRIBUTES}
     return out
