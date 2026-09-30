@@ -12,8 +12,9 @@ import os
 import pytest
 
 from hiris.app.home_space import type_vocabulary as tv
+from hiris.app.home_space.historian import day_boundaries
 from hiris.app.home_space.type_judgments import TypeJudgments
-from hiris.app.mind.facts import GENRES, aggregate_day, day_boundaries, genre_for
+from hiris.app.mind.facts import GENRES, aggregate_day, genre_for
 from hiris.app.mind.store import ObservationsStore
 from hiris.app.mind.watcher import Watcher
 

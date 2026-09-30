@@ -1880,7 +1880,13 @@ def test_le_dataclass_del_prodotto_sono_diciannove_e_i_campi_centocinque():
     **Diciotto e 102 dal 29/09/2026**, fetta «una porta sola per la casa»,
     Task 3: `HouseFilters` (`hiris/app/home_space/house_query.py`) coi suoi
     diciannove campi -- i filtri con cui si interroga la casa, dal genere
-    alla paginazione."""
+    alla paginazione.
+
+    **Diciannove e 105 dal 30/09/2026**, fetta «la storia», Task 1:
+    `Selection` (`hiris/app/home_space/house_query.py`) coi suoi tre campi --
+    `entities`, `behavior`, `excluded` -- la scelta di «di chi» che un punto
+    solo decide per `search` e per `history`, invece di due copie.
+    """
     classi = campi = 0
     for f in rinomina.file_py(rinomina.ROOT):
         trovate = rinomina.campi_dataclass(rinomina._leggi_grezzo(f))
