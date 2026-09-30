@@ -532,11 +532,19 @@ def _excluded_note(found: int, excluded: dict) -> str | None:
     gia' «leggi sempre `escluse`». Non e' un riepilogo (decisione 5): dice
     cio' che NON e' stato dato, che e' l'unica cosa che HIRIS dichiara.
     """
-    parts = [f"{n} {label}" for label, n in excluded.items() if n]
+    parts = [f"{n} {_EXCLUDED_WORDS[key][n != 1]}" for key, n in excluded.items() if n]
     if not parts:
         return None
-    return (f"trovate conta solo cio' che ti ho dato: con le escluse sono "
-            f"{found + sum(excluded.values())} ({found} date, {', '.join(parts)}). "
+    # `found` e' il conto PRIMA della pagina: con `oltre` o con `limite` 0 le
+    # voci date sono meno, quindi la nota dice «trovate», mai «date».
+    return (f"trovate conta cio' che corrisponde ai filtri, non le escluse: in tutto "
+            f"sono {found + sum(excluded.values())} ({found} trovate, {', '.join(parts)}). "
             "Se dai un numero, di' anche le escluse.")
+
+
+# (singolare, plurale) di ogni chiave di `escluse`, concordati col sostantivo.
+_EXCLUDED_WORDS = {"nascoste": ("nascosta", "nascoste"),
+                   "servizio": ("di servizio", "di servizio"),
+                   "disabilitate": ("disabilitata", "disabilitate")}
 
 

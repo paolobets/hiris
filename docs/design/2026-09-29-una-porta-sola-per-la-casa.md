@@ -181,7 +181,13 @@ escluse:    { nascoste: 2, servizio: 21, disabilitate: 120 }   ← cosa NON e' s
 profondita: completa | media | corta
 voci:       [ ... ]
 oltre:      quante restano dopo il limite, e come chiederle (salta=…)
+nota:       SOLO se escluse non e' vuoto: il totale con le escluse («in tutto sono 275 (72 trovate, 190 di servizio, 13 nascoste)»)
 ```
+
+**Cambiato dopo la verifica dal vivo (30/09/2026, v3.71.1)**: `nota`. Sulla batteria il modello ha
+detto «74 in totale» e «72 in tutto» con 179 e 203 escluse dichiarate: il numero era vero, il totale
+no, e la prosa «leggi sempre `escluse`» non era bastata. La nota dichiara cio' che NON e' stato dato,
+come `escluse`: non e' un riepilogo (decisione 5).
 
 **Nessun riepilogo** (decisione 5): niente «4 accese, 3 spente». `escluse` non è un riepilogo, è la
 dichiarazione di ciò che manca: senza, «nessuna luce accesa» tornerebbe a essere una risposta falsa

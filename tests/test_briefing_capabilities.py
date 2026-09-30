@@ -387,8 +387,10 @@ def test_al_tetto_di_adesso_comportamento_e_capacita_restano_interi():
     Senza chiamante che lo sovrascriva, e' questo numero a decidere quanto il
     modello sa della casa a ogni turno.
 
-    Mutazione ESEGUITA: `DEFAULT_CEILING = 6000` in `briefing.py` -- il taglio
-    morde le capacita' e la prova arrossisce su `truncated`.
+    Mutazione ESEGUITA: `DEFAULT_CEILING = 5600` in `briefing.py` -- il taglio
+    morde le capacita' e la prova arrossisce su `truncated`. (Era 6000 fino al
+    30/09/2026: tolto il suffisso «(automazione)» dalle righe, questa casa pesa
+    5.516 caratteri e a 6000 il taglio non morde piu'.)
     """
     testo, riepilogo = _nucleo_tetto()
     automazioni = _sezione(testo, "## Cio' che la casa fa gia'").splitlines()[1:]

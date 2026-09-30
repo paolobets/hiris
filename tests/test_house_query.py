@@ -261,7 +261,17 @@ def test_con_le_escluse_la_nota_dice_il_totale_vero():
     Mutazione ESEGUITA: non scrivere `nota` -- rossa."""
     r = _chiedi(tipo="light", stato="on")
     assert r["trovate"] == 1 and r["escluse"]["nascoste"] == 2
-    assert "3" in r["nota"] and "2 nascoste" in r["nota"]
+    assert "in tutto sono 3 (1 trovate, 2 nascoste)" in r["nota"]
+
+
+def test_la_nota_non_dice_date_quando_la_pagina_e_vuota():
+    """`trovate` e' il conto prima della pagina: con `limite` 0 non e' stato
+    dato niente, e la nota non deve dire il contrario.
+
+    Mutazione ESEGUITA: riscrivere «trovate» come «date» nella nota -- rossa."""
+    r = _chiedi(tipo="light", stato="on", limite=0)
+    assert r["voci"] == [] and "date" not in r["nota"]
+    assert "1 trovate" in r["nota"]
 
 
 def test_senza_escluse_nessuna_nota():
