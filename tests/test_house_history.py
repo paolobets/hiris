@@ -503,3 +503,240 @@ def test_nella_corta_scelta_davvero_chi_si_sposta_resta_in_casa_o_fuori():
     assert len(suoi) == 2
     for riga in suoi.values():
         assert riga["cambi"] == 2 and riga["stato"] == "not_home", riga
+
+
+# --- I valori (Task 4) ---------------------------------------------------
+
+def _valori(query, soggetti, *, dettaglio=None, fasce=None, superfici=None,
+            classi=None, unita=None, troncato=False):
+    chosen = hh.Chosen(len(soggetti), dict(_NESSUNA), hh.depth_for(len(soggetti)),
+                       [hh.Subject(i, i) for i in soggetti])
+    return hh.value_rows(query, chosen, detail=dettaglio or {}, bands=fasce or {},
+                         truncated=troncato,
+                         surfaces=superfici or {i: "dettaglio" for i in soggetti},
+                         units=unita or {}, state_classes=classi or {})
+
+
+def test_entro_un_giorno_i_cambi_veri_oltre_le_fasce_per_chi_le_ha():
+    """Da `historian.choose_surface` (24/08/2026). La soglia e' inclusiva.
+
+    Mutazione ESEGUITA: `<` al posto di `<=` -- rossa sulle 24 ore;
+    `bool(state_class)` al posto di `produces_statistics` -- rossa sulla
+    banderuola."""
+    assert hh.value_surface(_q(genere="valori", ore=24), "measurement") == "dettaglio"
+    assert hh.value_surface(_q(genere="valori", ore=48), "measurement") == "oraria"
+    assert hh.value_surface(_q(genere="valori", ore=48), None) == "dettaglio"
+    assert hh.value_surface(_q(genere="valori", ore=48), "measurement_angle") == "dettaglio"
+
+
+_TEMPERATURA = {"sensor.temperatura": [
+    _punto(_INIZIO, "20.0"), _punto("2026-09-28T22:40:00+00:00", "22.0"),
+    _punto("2026-09-29T10:40:00+00:00", "18.0")]}
+
+
+def test_i_conti_di_una_serie_sono_di_hiris_e_la_media_pesa_il_tempo():
+    """Decisione 2: primo, ultimo, minimo, massimo, media, dichiarati. Il 20
+    vale 6 ore, il 22 dodici, il 18 sei: la media e' 20,5, non 20.
+
+    Mutazione ESEGUITA: media aritmetica dei punti -- rossa (20,0)."""
+    riga = _valori(_q(genere="valori", tipo="sensor"), ["sensor.temperatura"],
+                   dettaglio=_TEMPERATURA,
+                   classi={"sensor.temperatura": "measurement"},
+                   unita={"sensor.temperatura": "°C"})["voci"][0]
+    assert (riga["primo"], riga["ultimo"], riga["minimo"], riga["massimo"]) == (
+        20.0, 18.0, 18.0, 22.0)
+    assert riga["media"] == 20.5
+    assert riga["conti"] == "calcolati da HIRIS sulla finestra"
+    assert riga["unita"] == "°C"
+    assert "consumato" not in riga
+
+
+def test_un_contatore_che_si_azzera_a_mezzanotte_somma_i_due_giorni():
+    """Review Focus 2, la #14: «energia consumata oggi» da ieri. A
+    mezzanotte il contatore torna a zero: 5 + 4 + 4,5 = 13,5 -- mai un
+    numero negativo, mai il solo ultimo giorno.
+
+    Mutazione ESEGUITA: consumato = ultimo - primo anche per
+    `total_increasing` -- rossa (4,5)."""
+    energia = {"sensor.energia": [
+        _punto("2026-09-27T22:00:00+00:00", "0.0"), _punto("2026-09-28T10:00:00+00:00", "5.0"),
+        _punto("2026-09-28T21:59:00+00:00", "9.0"), _punto("2026-09-28T22:00:00+00:00", "0.0"),
+        _punto("2026-09-29T12:00:00+00:00", "4.5")]}
+    riga = _valori(_q(genere="valori", da="ieri"), ["sensor.energia"], dettaglio=energia,
+                   classi={"sensor.energia": "total_increasing"})["voci"][0]
+    assert riga["consumato"] == 13.5
+
+
+def test_le_fasce_di_un_contatore_sommano_il_cambio_di_home_assistant():
+    """Il `cambio` di ogni ora e' gia' corretto da Home Assistant per gli
+    azzeramenti (misurato il 27/08/2026): si somma, non si ricalcola.
+
+    Mutazione ESEGUITA: consumato = ultimo stato - primo stato -- rossa."""
+    fasce = {"sensor.energia": [
+        {"inizio": "2026-09-28T22:00:00+00:00", "fine": "2026-09-28T23:00:00+00:00",
+         "minimo": None, "massimo": None, "media": None, "stato": 0.4, "cambio": 0.4},
+        {"inizio": "2026-09-28T23:00:00+00:00", "fine": "2026-09-29T00:00:00+00:00",
+         "minimo": None, "massimo": None, "media": None, "stato": 0.9, "cambio": 0.5},
+        {"inizio": "2026-09-29T00:00:00+00:00", "fine": "2026-09-29T01:00:00+00:00",
+         "minimo": None, "massimo": None, "media": None, "stato": 0.2, "cambio": 0.2}]}
+    uscita = _valori(_q(genere="valori", ore=48), ["sensor.energia"], fasce=fasce,
+                     superfici={"sensor.energia": "oraria"},
+                     classi={"sensor.energia": "total_increasing"})
+    assert uscita["grana"] == "oraria"
+    assert uscita["voci"][0]["consumato"] == 1.1
+    assert uscita["voci"][0]["punti"][0]["inizio"] == "2026-09-29T00:00:00+02:00"
+
+
+def test_una_finestra_piu_corta_di_quella_chiesta_si_dice():
+    """Spec §3: `finestra` e' il periodo DAVVERO coperto.
+
+    Mutazione ESEGUITA: lasciare `finestra` com'era chiesta -- rossa."""
+    serie = {"sensor.temperatura": _TEMPERATURA["sensor.temperatura"][1:]}
+    uscita = _valori(_q(genere="valori"), ["sensor.temperatura"], dettaglio=serie)
+    assert uscita["finestra"] == {"da": "2026-09-29T00:40:00+02:00",
+                                  "a": "2026-09-29T18:40:00+02:00",
+                                  "chiesta_da": "2026-09-28T18:40:00+02:00"}
+
+
+def _lunga():
+    return [_punto(datetime.fromtimestamp(T0 - 86_000 + i * 280, ZoneInfo("UTC"))
+                   .isoformat(), str(i)) for i in range(300)]
+
+
+def test_una_serie_lunga_si_campiona_a_cinquanta_punti_col_primo_e_l_ultimo():
+    """Mutazione ESEGUITA: dare tutti i punti -- rossa (300)."""
+    riga = _valori(_q(genere="valori"), ["sensor.temperatura"],
+                   dettaglio={"sensor.temperatura": _lunga()})["voci"][0]
+    assert len(riga["punti"]) == 50
+    assert riga["punti"][0]["valore"] == "0" and riga["punti"][-1]["valore"] == "299"
+    assert "300 punti" in riga["campione"]
+    assert riga["massimo"] == 299.0
+
+
+def test_la_completa_campiona_ma_i_conti_sono_della_serie_intera():
+    """Ruling P3 (30/09/2026): il campione puo' saltare il picco, i conti no.
+    Il picco sta all'indice 1, e il campione di 50 su 300 va a passi di 6,1:
+    lo salta.
+
+    Mutazione ESEGUITA: conti calcolati sul campione invece che sulla serie
+    -- rossa (massimo 299)."""
+    lunga = _lunga()
+    lunga[1] = _punto(lunga[1]["quando"], "1000")
+    riga = _valori(_q(genere="valori"), ["sensor.temperatura"],
+                   dettaglio={"sensor.temperatura": lunga})["voci"][0]
+    assert "1000" not in [p["valore"] for p in riga["punti"]]
+    assert riga["massimo"] == 1000.0
+    assert riga["conti"] == hh.COUNTED
+
+
+def test_una_serie_vuota_non_ha_conti_e_si_dichiara():
+    """Spec §9: una serie vuota. Senza registrazioni non c'e' riga (i conti
+    di niente sarebbero inventati) e si dice in `nessuna_registrazione`; una
+    serie di soli `unavailable` ha la riga ma nessun conto.
+
+    Mutazione ESEGUITA: tenere la riga anche senza punti -- rossa (due id in
+    `voci`); `conti` scritto anche senza numeri -- rossa sull'umidita'."""
+    uscita = _valori(_q(genere="valori"),
+                     ["sensor.temperatura", "sensor.energia", "sensor.umidita"],
+                     dettaglio={**_TEMPERATURA,
+                                "sensor.umidita": [_punto(_INIZIO, "unavailable")]})
+    assert [v["id"] for v in uscita["voci"]] == ["sensor.temperatura", "sensor.umidita"]
+    assert uscita["nessuna_registrazione"]["soggetti"] == ["sensor.energia"]
+    umidita = uscita["voci"][1]
+    assert "conti" not in umidita and "media" not in umidita
+
+
+def test_superfici_diverse_si_dichiarano_serie_per_serie():
+    """Due grane nella stessa risposta: `grana` in cima dice «per serie», e
+    ogni riga la sua.
+
+    Mutazione ESEGUITA: la grana solo in cima, dalla prima serie -- rossa."""
+    fasce = {"sensor.energia": [{"inizio": "2026-09-28T22:00:00+00:00",
+                                 "fine": "2026-09-28T23:00:00+00:00", "minimo": 1.0,
+                                 "massimo": 2.0, "media": 1.5}]}
+    uscita = _valori(_q(genere="valori", ore=48), ["sensor.temperatura", "sensor.energia"],
+                     dettaglio=_TEMPERATURA, fasce=fasce,
+                     superfici={"sensor.temperatura": "dettaglio",
+                                "sensor.energia": "oraria"})
+    assert uscita["grana"] == "per serie"
+    assert {v["id"]: v["grana"] for v in uscita["voci"]} == {
+        "sensor.temperatura": "dettaglio", "sensor.energia": "oraria"}
+
+
+def test_una_fascia_con_un_inizio_illeggibile_e_un_guasto_non_un_vuoto():
+    """Da F1 dell'onda finale di `trend` (25/08/2026).
+
+    Mutazione ESEGUITA: togliere il controllo degli inizi illeggibili --
+    rossa (la riga ha i conti e nessun `errore`)."""
+    fasce = {"sensor.energia": [{"inizio": {"non": "un istante"}, "media": 1.0}]}
+    riga = _valori(_q(genere="valori", ore=48), ["sensor.energia"], fasce=fasce,
+                   superfici={"sensor.energia": "oraria"})["voci"][0]
+    assert "non le leggo" in riga["errore"]
+
+
+@pytest.mark.parametrize("ident", ["person.marta", "device_tracker.iphone"])
+def test_i_valori_di_chi_si_sposta_non_dicono_la_zona(ident):
+    """Review Focus 1 sui valori: la serie di una persona e' fatta di zone.
+
+    Mutazione ESEGUITA: non passare i punti da `redact_state` -- rossa."""
+    viaggio = {ident: [_punto(_INIZIO, "home"),
+                       _punto("2026-09-29T08:00:00+00:00", "Lavoro")]}
+    uscita = _valori(_q(genere="valori"), [ident], dettaglio=viaggio)
+    assert "Lavoro" not in json.dumps(uscita, ensure_ascii=False)
+    assert uscita["voci"][0]["punti"][1]["valore"] == "not_home"
+
+
+def _dodici_sensori():
+    """12 sensori, nella chiamata in ordine INVERSO di id: s07 cambia per
+    ultimo, s02 prima, gli altri mai, s11 non ha registrazioni."""
+    soggetti = [f"sensor.s{i:02}" for i in reversed(range(12))]
+    serie = {f"sensor.s{i:02}": [_punto(_INIZIO, "1.0")] for i in range(11)}
+    serie["sensor.s07"].append(_punto("2026-09-29T15:00:00+00:00", "2.0"))
+    serie["sensor.s02"].append(_punto("2026-09-29T09:00:00+00:00", "3.0"))
+    return soggetti, serie
+
+
+def test_i_valori_si_impaginano_dopo_la_lettura_dal_piu_attivo():
+    """Il contratto del Task 3 anche per i valori: si leggono tutte le serie,
+    si ordinano per cio' che e' successo NELLA finestra, poi si impagina; chi
+    non ha registrazioni si nomina nella sua pagina.
+
+    Mutazione ESEGUITA: non ordinare le righe (resta l'ordine della
+    chiamata) -- rossa; `nessuna_registrazione` su tutte le serie invece che
+    sulla pagina -- rossa sulla prima pagina."""
+    soggetti, serie = _dodici_sensori()
+    prima = _valori(_q(genere="valori", limite=3), soggetti, dettaglio=serie)
+    assert prima["profondita"] == "corta"
+    assert [v["id"] for v in prima["voci"]] == ["sensor.s07", "sensor.s02", "sensor.s00"]
+    assert prima["oltre"]["restano"] == 9 and prima["oltre"]["salta"] == 3
+    assert "nessuna_registrazione" not in prima
+    ultima = _valori(_q(genere="valori", limite=3, salta=9), soggetti, dettaglio=serie)
+    assert [v["id"] for v in ultima["voci"]] == ["sensor.s09", "sensor.s10"]
+    assert ultima["nessuna_registrazione"]["soggetti"] == ["sensor.s11"]
+    assert "oltre" not in ultima
+    media = _valori(_q(genere="valori"), ["sensor.s00", "sensor.s07"], dettaglio=serie)
+    assert [v["id"] for v in media["voci"]] == ["sensor.s07", "sensor.s00"]
+
+
+def test_una_serie_tagliata_dice_da_quando_la_risposta_e_intera():
+    """`finestra` coi dati tagliati da Home Assistant (`_covered_since`, la
+    stessa degli stati): `da` e' dove TUTTE le serie mostrate hanno i loro
+    dati -- il piu' tardo dei primi punti --, la domanda in `chiesta_da`.
+
+    Mutazione ESEGUITA: il piu' presto dei primi punti invece del piu'
+    tardo -- rossa; non spostare `da` quando e' troncata -- rossa."""
+    tagliata = {**_TEMPERATURA,
+                "sensor.energia": [_punto("2026-09-29T10:40:00+00:00", "1.0")]}
+    uscita = _valori(_q(genere="valori"), ["sensor.temperatura", "sensor.energia"],
+                     dettaglio=tagliata, troncato=True)
+    assert uscita["finestra"]["da"] == "2026-09-29T12:40:00+02:00"
+    assert uscita["finestra"]["chiesta_da"] == "2026-09-28T18:40:00+02:00"
+    assert "troncata" in uscita["finestra"]
+    # Tagliata di mezz'ora: dentro lo scarto di un'ora, ma il taglio si dice.
+    poco = {"sensor.temperatura": [_punto("2026-09-28T17:10:00+00:00", "20.0")]}
+    mezz_ora = _valori(_q(genere="valori"), ["sensor.temperatura"], dettaglio=poco,
+                       troncato=True)
+    assert mezz_ora["finestra"]["da"] == "2026-09-28T19:10:00+02:00"
+    intera = _valori(_q(genere="valori"), ["sensor.temperatura"], dettaglio=_TEMPERATURA)
+    assert intera["finestra"] == {"da": "2026-09-28T18:40:00+02:00",
+                                  "a": "2026-09-29T18:40:00+02:00"}
