@@ -1240,6 +1240,18 @@ def test_gli_errori_si_filtrano_per_livello_e_integrazione():
         _q(genere="errori", integrazione="zha"), _REGISTRO)["voci"]] == ["zigbee giu'"]
 
 
+def test_salta_su_un_registro_senza_voci_non_promette_voci():
+    """Revisione finale della fetta (M-2, 30/09/2026): nessuna voce del
+    filtro e `salta=5` davano «le righe si leggono da salta=0», e non ce
+    n'e' nessuna. La pagina vuota dice il vero: niente `oltre`.
+
+    Mutazione ESEGUITA: togliere la guardia `> 0` sulle righe in
+    `house_query.page_rows` -- rossa (`oltre` con `disponibili: 0`)."""
+    uscita = hh.error_rows(_q(genere="errori", integrazione="nessuna", salta=5), _REGISTRO)
+    assert uscita["trovate"] == 0 and uscita["voci"] == []
+    assert "oltre" not in uscita
+
+
 def test_un_messaggio_lungo_si_accorcia_e_l_eccezione_e_la_sua_ultima_riga():
     """Spec §3, «messaggio accorciato»; l'eccezione e' l'ultima riga (il
     «cosa»), poi accorciata -- in quest'ordine.

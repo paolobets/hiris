@@ -724,6 +724,19 @@ def test_salta_oltre_la_fine_si_dice_invece_di_una_pagina_vuota_muta():
     assert risposta["voci"] == [] and risposta["oltre"]["disponibili"] == 2
 
 
+def test_salta_su_zero_righe_non_promette_righe_che_non_ci_sono():
+    """Revisione finale della fetta (M-2, 30/09/2026): con zero righe e
+    `salta` > 0, `oltre` diceva «le righe si leggono da salta=0» -- e non ce
+    n'e' nessuna. Senza righe la pagina vuota e' la verita': niente `oltre`.
+
+    Mutazione ESEGUITA: togliere la guardia `> 0` sulle righe in
+    `page_rows` -- rossa (`oltre` con `disponibili: 0`)."""
+    assert hq.page_rows([], 5, 4) == ([], None)
+    risposta = _chiedi(nome="nessuna cosa si chiama cosi'", salta=5)
+    assert risposta["trovate"] == 0 and risposta["voci"] == []
+    assert "oltre" not in risposta
+
+
 def test_search_pagina_con_la_funzione_condivisa(monkeypatch):
     """`_select` impagina con `page_rows`, non con una sua copia.
 
