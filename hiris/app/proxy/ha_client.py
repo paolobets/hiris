@@ -1947,6 +1947,94 @@ class HAClient:
             return {"errore": "risposta in forma inattesa"}
         return {"voci": result}
 
+    async def traces(self, keys: list[tuple[str, str]]) -> dict:
+        """Le esecuzioni RECENTI di piu' automazioni e script, in **una
+        raffica sola** (`trace/list`, WS, `require_admin`).
+
+        Nasce il 30/09/2026 con la storia (spec `2026-09-30-la-storia.md`
+        §8.3): «perche' sono partite le automazioni dei rifiuti» costava
+        cinque chiamate allo strumento e cinque connessioni. `keys` e'
+        `[(domain, item_id)]`: per un'automazione `item_id` e' l'id della
+        CONFIGURAZIONE (catena verificata sui tag `2024.7.0` e `2026.9.0` nel
+        docstring di `automation_traces` qui sotto); per uno script e' la sua
+        chiave di configurazione, che e' anche il suo `unique_id` e il suo
+        `object_id` (`script.<chiave>`) -- VERIFICATO ALLA FONTE il
+        30/09/2026 sui tag `2024.7.0` e `2026.9.0`:
+
+        - `components/script/__init__.py`: `self._attr_unique_id = key`
+          (2024.7.0 r.509, 2026.9.0 r.568) e `self.entity_id =
+          ENTITY_ID_FORMAT.format(key)` (r.511 / r.570): stessa chiave;
+        - `_async_run` traccia con `trace_script(self.hass, self.unique_id,
+          ...)` (2024.7.0 r.637-639; 2026.9.0 r.708-710 con `_attr_unique_id`);
+        - `components/script/trace.py`: `ScriptTrace._domain = DOMAIN` (r.22
+          / r.20), `trace_script(hass, item_id, ...)` (r.28 / r.26) e
+          `ScriptTrace(item_id, ...)`: la chiave e' `script.<item_id>`;
+        - `components/trace/websocket_api.py`, `trace/list` (r.87-101) e
+          `trace/get` (r.53-69), identici sui due tag: `domain` (validato
+          contro `TRACE_DOMAINS`) e `item_id` (stringa libera) si ricompongono
+          in `f"{domain}.{item_id}"`, senza passare dal registro delle entita'.
+
+        Per gli script, dunque, l'`object_id` dell'entita' E' l'`item_id`.
+
+        Torna `{"tracce": {"<domain>.<item_id>": [...]}, "non_letti": {...}}`:
+        una chiave che Home Assistant rifiuta, o che non risponde, finisce in
+        `non_letti` col suo motivo e NON spegne le altre -- e non diventa mai
+        `[]`, che direbbe «non e' mai partita». Se la raffica non parte
+        affatto, `{"errore": ...}`. Il client legge e non giudica: le righe
+        escono come Home Assistant le manda.
+        """
+        if not keys:
+            return {"tracce": {}, "non_letti": {}}
+        try:
+            replies = await self._ws_batch(
+                [("trace/list", {"domain": domain, "item_id": item_id})
+                 for domain, item_id in keys])
+        except Exception as e:
+            logger.debug("tracce non lette (%s): %s", keys, e)
+            return {"errore": "Home Assistant non ha risposto"}
+        found: dict[str, list] = {}
+        unread: dict[str, str] = {}
+        for index, (domain, item_id) in enumerate(keys):
+            key = f"{domain}.{item_id}"
+            msg = replies[index] if index < len(replies) else None
+            if msg and msg.get("error"):
+                error = msg["error"]
+                unread[key] = error.get("message") or error.get("code") or "rifiutato"
+                continue
+            result = msg.get("result") if msg else None
+            if not isinstance(result, list):
+                unread[key] = "risposta in forma inattesa"
+                continue
+            found[key] = result
+        return {"tracce": found, "non_letti": unread}
+
+    async def trace(self, domain: str, item_id: str, run_id: str) -> dict:
+        """UNA esecuzione di un'automazione o di uno script, col grafo intero
+        dei passi (`trace/get`, WS, `require_admin`): stessa fonte e stessa
+        chiave di `traces`, piu' `run_id`.
+
+        Il risultato E' un dizionario (`ActionTrace.as_extended_dict()`,
+        verificato): i campi della riga breve piu' `trace`, `config`,
+        `blueprint_inputs`, `context`. Se `run_id` e' gia' uscito dal tetto,
+        Home Assistant risponde con un errore esplicito (`ERR_NOT_FOUND`), che
+        arriva qui come ogni altro rifiuto. `{"errore": ...}` su ogni guasto.
+        """
+        try:
+            msg = await self._ws_batch(
+                [("trace/get", {"domain": domain, "item_id": item_id,
+                                "run_id": run_id})])
+        except Exception as e:
+            logger.debug("traccia %s.%s/%s non letta: %s", domain, item_id, run_id, e)
+            return {"errore": "Home Assistant non ha risposto"}
+        msg = msg[0] if msg else None
+        if msg and msg.get("error"):
+            error = msg["error"]
+            return {"errore": error.get("message") or error.get("code") or "rifiutato"}
+        result = msg.get("result") if msg else None
+        if not isinstance(result, dict):
+            return {"errore": "risposta in forma inattesa"}
+        return {"traccia": result}
+
     async def automation_traces(self, automation_id: str) -> dict:
         """Le esecuzioni RECENTI di un'automazione, cosi' come HA le riassume.
 
@@ -2061,24 +2149,20 @@ class HAClient:
         `voci`: un elenco vuoto affermerebbe «questa automazione non ha mai
         girato», che e' un'affermazione, non un silenzio.
         """
-        try:
-            msg = await self._ws_batch(
-                [("trace/list", {"domain": "automation",
-                                 "item_id": automation_id})])
-        except Exception as e:
-            logger.debug("tracce di %s non lette: %s", automation_id, e)
-            return {"errore": "Home Assistant non ha risposto"}
-        msg = msg[0] if msg else None
-        if msg and msg.get("error"):
-            error = msg["error"]
-            return {"errore": error.get("message") or error.get("code") or "rifiutato"}
-        result = msg.get("result") if msg else None
-        if not isinstance(result, list):
-            return {"errore": "risposta in forma inattesa"}
-        return {"tracce": result}
+        answer = await self.traces([("automation", automation_id)])
+        if "errore" in answer:
+            return answer
+        key = f"automation.{automation_id}"
+        if key in answer["non_letti"]:
+            return {"errore": answer["non_letti"][key]}
+        return {"tracce": answer["tracce"][key]}
 
     async def automation_trace(self, automation_id: str, run_id: str) -> dict:
-        """UNA esecuzione di un'automazione, con la storia intera del suo
+        """Dal 30/09/2026 delega a `trace`, che vale anche per gli script;
+        esce quando la storia sostituisce l'ultimo chiamante (Task 8 del
+        piano).
+
+        UNA esecuzione di un'automazione, con la storia intera del suo
         grafo di passi.
 
         `trace/get`, WS, `require_admin`. Stessa fonte di
@@ -2113,21 +2197,7 @@ class HAClient:
         `{"errore": ...}` su ogni guasto di lettura, stessa disciplina di
         `automation_traces()` e di tutto il resto del file.
         """
-        try:
-            msg = await self._ws_batch(
-                [("trace/get", {"domain": "automation", "item_id": automation_id,
-                                "run_id": run_id})])
-        except Exception as e:
-            logger.debug("traccia %s/%s non letta: %s", automation_id, run_id, e)
-            return {"errore": "Home Assistant non ha risposto"}
-        msg = msg[0] if msg else None
-        if msg and msg.get("error"):
-            error = msg["error"]
-            return {"errore": error.get("message") or error.get("code") or "rifiutato"}
-        result = msg.get("result") if msg else None
-        if not isinstance(result, dict):
-            return {"errore": "risposta in forma inattesa"}
-        return {"traccia": result}
+        return await self.trace("automation", automation_id, run_id)
 
     # Le quattordici righe che stavano QUI sono uscite il 12/09/2026 (fetta
     # «il sapere e le ricette»): erano una tabella `translation_key ->

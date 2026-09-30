@@ -291,3 +291,81 @@ async def test_every_trace_failure_shape_says_error_not_an_empty_dict(fake, why)
     outcome = await _client(fake).automation_trace(_CONFIG_ID, "xyz")
     assert "errore" in outcome, why
     assert "traccia" not in outcome
+
+
+class _FakeBatch:
+    """Una risposta per comando, nell'ordine in cui partono: la raffica vera
+    (`_ws_batch`) ne manda N su una connessione e ne raccoglie N."""
+
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.batches = []
+
+    async def _ws_batch(self, commands, timeout=10.0):
+        self.batches.append(list(commands))
+        return list(self.responses)
+
+
+@pytest.mark.asyncio
+async def test_the_runs_of_many_automations_travel_in_one_batch():
+    """Spec «la storia» §8.3: «perche' sono partite le automazioni dei
+    rifiuti» erano cinque chiamate. Ora una raffica, N comandi.
+
+    Mutazione ESEGUITA: un `_ws_batch` per chiave -- rossa su
+    `len(fake.batches)`."""
+    fake = _FakeBatch([{"result": [_short_trace(run_id="a")]}, {"result": []}])
+    outcome = await _client(fake).traces([("automation", _CONFIG_ID),
+                                          ("script", "buonanotte")])
+    assert len(fake.batches) == 1
+    assert fake.batches[0] == [
+        ("trace/list", {"domain": "automation", "item_id": _CONFIG_ID}),
+        ("trace/list", {"domain": "script", "item_id": "buonanotte"})]
+    assert outcome == {"tracce": {f"automation.{_CONFIG_ID}": [_short_trace(run_id="a")],
+                                  "script.buonanotte": []},
+                       "non_letti": {}}
+
+
+@pytest.mark.asyncio
+async def test_a_refused_key_is_named_and_the_others_answer():
+    """Una chiave rifiutata non spegne le altre, e non diventa `[]`.
+
+    Mutazione ESEGUITA: il primo rifiuto rende `errore` tutta la risposta
+    -- rossa."""
+    fake = _FakeBatch([{"error": {"message": "non trovato"}},
+                       {"result": [_short_trace()]}, None])
+    outcome = await _client(fake).traces([("automation", "1"), ("automation", "2"),
+                                          ("automation", "3")])
+    assert outcome["non_letti"] == {"automation.1": "non trovato",
+                                    "automation.3": "risposta in forma inattesa"}
+    assert list(outcome["tracce"]) == ["automation.2"]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_batch_says_error_never_no_runs():
+    """Una raffica che non parte e' un `errore`, mai «nessuna esecuzione».
+
+    Mutazione ESEGUITA: il `except` torna `{"tracce": {}, "non_letti": {}}`
+    -- rossa."""
+    outcome = await _client(_FakeConnection(raises=True)).traces([("automation", "1")])
+    assert "errore" in outcome and "tracce" not in outcome
+
+
+@pytest.mark.asyncio
+async def test_no_keys_ask_nothing():
+    """Nessuna chiave, nessuna rete.
+
+    Mutazione ESEGUITA: tolto il ritorno anticipato su `not keys` -- rossa
+    su `fake.batches == []`."""
+    fake = _FakeBatch([])
+    assert await _client(fake).traces([]) == {"tracce": {}, "non_letti": {}}
+    assert fake.batches == []
+
+
+@pytest.mark.asyncio
+async def test_a_single_run_of_a_script_is_asked_under_the_script_domain():
+    """Mutazione ESEGUITA: `domain` fisso a `automation` in `trace` -- rossa."""
+    fake = _FakeConnection({"result": _extended_trace()})
+    outcome = await _client(fake).trace("script", "buonanotte", "r1")
+    assert fake.commands == [("trace/get", {"domain": "script", "item_id": "buonanotte",
+                                            "run_id": "r1"})]
+    assert outcome["traccia"]["run_id"] == "abc123"
