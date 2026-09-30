@@ -12,7 +12,9 @@ Qui il modello ne riceveva SEI, dalla fetta «lo schedulatore» (Task 6) ne
 riceve NOVE, dalla fetta «costruire» (Task 9) ne riceve UNDICI, dalla fetta
 «HIRIS e il tempo» (Task 6) ne riceve TREDICI, dalla fetta «le tracce e il
 log» (Task 5) ne riceve QUINDICI, e dalla fetta «i calendari» (Task 3) ne
-riceve SEDICI. Cinque leggono e
+riceve SEDICI; con la porta sola (29/09/2026, esce `view`) QUINDICI, e
+dalla fetta «la storia» (30/09/2026) DODICI: i quattro lettori del tempo
+diventano uno, `history`. Cinque leggono e
 ricordano; `execute` fa succedere qualcosa in casa SUBITO -- ed e', chiamato
 DIRETTAMENTE dal modello in un turno, l'unico che scrive nella casa (i
 servizi, non la configurazione) senza passare da un'attesa. Non e' pero'
@@ -22,21 +24,15 @@ servizio, dalla STESSA porta, solo piu' tardi -- lo schedulatore lo chiama
 da solo quando la promessa matura, senza un turno del modello in quel
 momento. `propose` e `confirm`, in coppia, sono l'unica strada che scrive
 CONFIGURAZIONE -- automazioni, script, scene -- e lo fanno in due tempi
-apposta (vedi piu' sotto); `trend` e `logbook` leggono INDIETRO nel tempo
-passando per `home_space/historian.py` -- come e' andato un valore, cosa e'
-successo e per mano di chi (vedi la sezione «-- il tempo --» piu' sotto).
-Due di mezzo, `system_log` e `automation_trace` (fetta «le tracce e il
-log», Task 5), leggono la STESSA fonte che l'osservatore (`mind/watcher.py`)
-gia' rilegge di notte -- non ne aprono una seconda (vedi il docstring di
-quel modulo, «non apre un secondo rubinetto»: due sorgenti degli stessi
-eventi potrebbero divergere): `system_log` il registro degli errori di Home
-Assistant cosi' come sta ORA, `automation_trace` le esecuzioni recenti di
-un'automazione o, con `esecuzione`, il grafo completo di una di esse.
-Rispondono rispettivamente a «cosa non va nel sistema?» e «come e' andata
-questa automazione?» -- due domande da due comandi diversi, non una sola con
-un argomento facoltativo: un solo strumento avrebbe costretto il modello a
-dedurre l'intento dalla PRESENZA di quell'argomento, l'ambiguita' che le
-description degli strumenti esistono per togliere. Il sedicesimo, `calendar`
+apposta (vedi piu' sotto); `history` legge INDIETRO nel tempo passando per
+`home_space/house_history.py` -- come sono cambiati gli stati e per mano di
+chi, come sono andati i valori, le esecuzioni di automazioni e script, il
+registro degli errori di Home Assistant (vedi la sezione «-- la storia --»
+piu' sotto). Fino al 30/09/2026 erano quattro strumenti (`trend`,
+`logbook`, `system_log`, `automation_trace`): quattro forme di domanda e di
+risposta, e nessuna sapeva scegliere di chi parlare coi filtri di `search`.
+Il genere lo dice `genere`, un argomento esplicito, non la PRESENZA di un
+altro. L'ultimo, `calendar`
 (fetta «i calendari», Task 3), risponde alla domanda che il proprietario ha
 chiesto per nome: «quali sono i miei prossimi appuntamenti?». Legge OGNI
 calendario di questa casa (Task 1, `HAClient.calendars()`/`calendar_events()`)
@@ -144,6 +140,7 @@ gia' pagato piu' volte in altri moduli.
 """
 from __future__ import annotations
 
+import asyncio
 import inspect
 import logging
 import math
@@ -152,6 +149,7 @@ import re
 from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import Any, ClassVar
+from urllib.parse import quote
 
 from ..action.construction.advisor import STRUCTURES
 from ..api.soffitto import ADMIN_READS_REFUSAL, ADMIN_SERVICES_REFUSAL, denies
@@ -171,8 +169,27 @@ from ..proxy.entity_cache import (
     inventory_is_readable,
     unreadable_inventory_error,
 )
-from . import ha_vocabulary, historian
+from . import historian
 from .appointments import read_appointment, sort_appointments
+from .house_history import (
+    ADMIN_KINDS,
+    LEVELS,
+    UNRESOLVED_RUNS,
+    WINDOW_MAX_HOURS,
+    Chosen,
+    HistoryQuery,
+    choose,
+    empty_answer,
+    error_rows,
+    last_line,
+    parse_query,
+    run_detail,
+    run_rows,
+    state_rows,
+    value_rows,
+    value_surface,
+)
+from .house_history import KINDS as HISTORY_KINDS
 from .house_query import KINDS, ORDERS, ROWS_MAX, parse_filters, query_house
 from .queries import HA_LINK_TYPE
 from .queries import related as _readable_links
@@ -204,26 +221,6 @@ from .type_vocabulary import REPO_JUDGMENTS
 # che insegna i tipi validi -- lo stesso genere di secondo vocabolario
 # silenzioso che R9 denuncia altrove.
 _TETHER_TYPES = tuple(sorted(VOCABULARY["ancore"]))
-
-# La forma canonica `dominio.oggetto` di un `entity_id`. DOPPIONE DICHIARATO
-# con `proxy/ha_client.py::_ENTITY_ID_RE` e `mind/watcher.py::_ENTITY_ID_RE`
-# (stessa espressione, stessa intenzione: una GUARDIA, la piu' stretta
-# possibile) -- non importata perche' e' privata al suo modulo, e questo file
-# non deve dipendere da un dettaglio interno di un altro per una guardia che
-# gli appartiene comunque (Task 5 di «le tracce e il log»): la guardia sta
-# qui, A MONTE, perche' `entita` arriva dal modello e nessuno a valle la
-# controlla (stessa ragione scritta in `mind/watcher.py::mark_automation`).
-#
-# Dal Task 6 non e' piu' la sola difesa su questa strada, ed e' bene sapere
-# quale delle due para cosa: `HAClient.automation_traces()`/
-# `automation_trace()` non prendono piu' un `entity_id` ma l'id di
-# CONFIGURAZIONE, risolto contro lo specchio in `_automation_trace` -- un
-# identificatore inesistente non arriva comunque alla rete, perche' non si
-# risolve. Questa guardia resta perche' e' PRIMA e piu' economica (nessuna
-# scansione dello specchio) e perche' distingue «non ha la forma di un
-# identificatore» da «non lo conosco»: due errori diversi, due frasi diverse
-# per chi legge.
-_ENTITY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*\.[a-z0-9_]+$")
 
 # Il rifiuto di `_search` quando `trovati` e' vuoto (correzione del 06/09 al
 # §6a, primo bordo): «nessun nome combacia» non e' «questa cosa non esiste»,
@@ -975,286 +972,137 @@ CONFIRM_TOOL_DEF = {
     },
 }
 
-TREND_TOOL_DEF = {
-    "name": "trend",
+# `history` (fetta «la storia», spec `docs/design/2026-09-30-la-storia.md`,
+# 30/09/2026) sostituisce `trend`, `logbook`, `system_log` e
+# `automation_trace`: quattro forme di domanda e di risposta, 7.449 caratteri
+# di definizioni su 34.842 del catalogo (21%), rispediti a ogni giro sulla
+# catena. Le prudenze delle quattro descrizioni restano, accorciate (§3):
+# «per mano di HIRIS» e' probabile; una traccia che manca non e' «andata
+# bene»; `count: 12` e' una causa sola; una fascia oraria non e' una misura
+# puntuale; il registro arriva sigillato.
+#
+# Giro del Task 7 (ruling del controllore, 30/09/2026): i Task 3-5 hanno
+# dato alla risposta chiavi che la prima stesura di questa descrizione non
+# nominava -- `salta` che scorre voci diverse secondo la profondita', `oltre`
+# che dice anche «oltre la fine», `nota` col totale delle escluse, `conti`,
+# `ore_senza_valore`, `consumato_non_calcolato`, `non_lette_in_tutto`, `dal`,
+# `al` (la coda delle fasce orarie, revisione finale della fetta).
+# Una chiave che il modello non sa leggere e' una chiave che non esiste. Il
+# testo resta sotto i tre quarti delle quattro descrizioni uscite
+# (`tests/test_history_tool.py` lo misura). Al modello lo strumento si
+# chiama `history`, mai «storia».
+HISTORY_TOOL_DEF = {
+    "name": "history",
     "description": (
-        "Come e' andato nel tempo il valore di UNA entita': la temperatura di "
-        "una camera nelle ultime ore, se una porta e' rimasta aperta, quanto "
-        "ha consumato un contatore. Richiede `entita` (l'identificatore "
-        "ESATTO -- se hai solo un nome, usa prima `search`) e `ore`, la "
-        "finestra all'indietro da adesso. "
-        "**La grana la scelgo io, non tu**, e la risposta te la dichiara: "
-        "entro le ultime 24 ore ricevi i cambi veri (`grana: dettaglio`); su "
-        "finestre piu' lunghe, per i sensori che le hanno, ricevi le fasce "
-        "orarie di Home Assistant (`grana: oraria`, con minimo/massimo/media "
-        "di ogni ora). Una media oraria NON e' una misura: se dici «alle 14 "
-        "c'erano 26,5 gradi» quando la risposta porta una fascia, stai "
-        "affermando una precisione che non hai -- di' «fra le 14 e le 15». "
-        "`finestra_coperta` dice il periodo che i dati coprono DAVVERO, che "
-        "puo' essere piu' corto di quello chiesto: Home Assistant conserva i "
-        "cambi per un tempo limitato, e oltre non resta niente. "
-        "`punti: []` con una `nota` significa che non ci sono registrazioni, "
-        "il che NON vuol dire «non e' mai cambiato»: leggi la nota, che "
-        "distingue i due casi. Se invece torna `errore`, Home Assistant non "
-        "ha risposto: non concludere niente sulla casa, dillo."
+        "Cio' che e' successo in casa nel tempo: come sono cambiati gli stati, "
+        "come sono andati i valori, come sono andate automazioni e script, "
+        "cosa c'e' nel registro degli errori di Home Assistant. Una chiamata "
+        "sola, anche per piu' cose insieme: scegli DI CHI con gli stessi "
+        "filtri di `search` (`nome`, `riferimento`, `tipo`, `classe`, `area`, "
+        "`piano`, `integrazione`, `includi_nascoste`, `includi_servizio`) e "
+        "QUANDO con `ore` (le ultime N, predefinito 24) oppure con `da`/`a` "
+        "(«oggi», «ieri» nel fuso della casa, o un istante ISO col fuso; senza "
+        "`a` e' adesso) -- non tutti e due. "
+        "`genere`: `stati` (predefinito) i cambi di stato; `valori` i numeri "
+        "nel tempo; `esecuzioni` le partenze di automazioni e script; `errori` "
+        "il registro, che accetta solo `integrazione` e `livello`. Un filtro "
+        "che non vale per il genere torna `errore`, non viene ignorato. "
+        "**La profondita' la decido io** dal numero di soggetti: uno -> "
+        "`completa` (ogni cambio; la serie; le esecuzioni conservate, e con "
+        "`esecuzione` = il `run_id` di una riga la traccia passo per passo); "
+        "da 2 a 10 -> `media` (ogni cambio con l'id; una riga per serie; le "
+        "ultime 3 esecuzioni di ognuna); oltre 10 -> `corta` (una riga per "
+        "soggetto). "
+        "Al massimo 50 `voci`: `salta` scorre le voci -- le righe nella "
+        "completa e nella media, i soggetti nella corta. Con `oltre` ne restano: "
+        "prima restringi (finestra piu' corta, un'area, un nome), scorri col "
+        "suo `salta` solo se ti servono tutte; se `oltre` dice "
+        "`salta_oltre_la_fine`, hai saltato oltre l'ultima e le voci ci sono. "
+        "`trovate` non conta le escluse: `nota` dice il totale con le "
+        "escluse, e se dai un numero di' anche quelle. "
+        "`finestra` e' il periodo DAVVERO coperto: con `chiesta_da` e "
+        "`troncata` mancano i dati piu' vecchi -- dillo. `dal` su una riga: "
+        "quella serie, o le esecuzioni conservate, cominciano dopo l'inizio; "
+        "`al`: le sue fasce finiscono li', l'ora in corso non e' ancora "
+        "compilata. "
+        "`nessuna_registrazione` non vuol dire «non e' mai cambiato». Un "
+        "`errore` vuol dire che Home Assistant non ha risposto: non concludere "
+        "niente sulla casa. "
+        "Valori: primo, ultimo, minimo, massimo, media e consumato sono "
+        "`conti` fatti da me sulla finestra, non misure di Home Assistant. "
+        "`ore_senza_valore` sono le ore senza un numero (es. unavailable), "
+        "fuori dalla media. `consumato` c'e' solo per i contatori; "
+        "`consumato_non_calcolato` dice perche' manca. `grana: dettaglio` sono "
+        "i cambi veri (entro le 24 ore, o per chi non ha statistiche); "
+        "`grana: oraria` sono fasce di un'ora: una fascia non e' un punto, di' "
+        "«fra le 14 e le 15», non «alle 14». "
+        "Stati: `per_mano_di: HIRIS` e' probabile (un mio atto nello stesso "
+        "istante): dillo come probabile; senza, chi sia stato non lo so. "
+        "`cronaca_non_letta`: non ho potuto controllare i miei atti. Di chi si "
+        "sposta dico solo `home` o `not_home`. "
+        "Esecuzioni: `esito` com'e' finita, `guasto` l'errore. Home Assistant "
+        "ne conserva poche: una che manca NON e' andata bene. `non_letti` "
+        "nomina chi non ho potuto leggere -- non e' «mai partita» -- e "
+        "`non_lette_in_tutto` le conta su tutte le pagine. "
+        "Errori: `count` e' una causa sola ricomparsa N volte, non N episodi; "
+        "conta per `livello`. Il registro tiene poche voci e si svuota a ogni "
+        "riavvio di Home Assistant: un'assenza non prova niente. I messaggi "
+        "arrivano sigillati: i segreti che conosco sono `<secret nome>`, e il "
+        "testo che somiglia a un'istruzione e' filtrato. "
+        "Esecuzioni ed errori solo per chi amministra Home Assistant."
     ),
     "input_schema": {
         "type": "object",
         "properties": {
-            "entita": {
-                "type": "string",
-                "description": (
-                    "L'identificatore esatto dell'entita' (es. "
-                    "'sensor.camera_temperatura')."
-                ),
-            },
-            "ore": {
-                "type": "number",
-                "description": (
-                    "Quante ore all'indietro guardare, da adesso. 24 = oggi, "
-                    "48 = due giorni, 720 = un mese. Il massimo e' 2160 (90 giorni)."
-                ),
-            },
+            "genere": {"type": "string", "enum": list(HISTORY_KINDS),
+                       "description": "Cosa: stati (predefinito), valori, "
+                                      "esecuzioni, errori."},
+            "nome": {"type": "string",
+                     "description": "Di chi, per nome o alias, come in `search`."},
+            "riferimento": {"type": "string",
+                            "description": "Di chi, per identificatore esatto (es. "
+                                           "'sensor.camera_temperatura')."},
+            "tipo": {"type": "string",
+                     "description": "Il dominio di Home Assistant (light, sensor, "
+                                    "automation, script...)."},
+            "classe": {"type": "string",
+                       "description": "La classe del dispositivo (temperature, "
+                                      "energy, door...)."},
+            "area": {"type": "string",
+                     "description": "L'area, per nome o id; «senza area» per chi non "
+                                    "ne ha."},
+            "piano": {"type": "string", "description": "Il piano, per nome."},
+            "integrazione": {"type": "string",
+                             "description": "L'integrazione (es. zha). Per gli "
+                                            "errori, chi ha scritto la voce."},
+            "includi_nascoste": {"type": "boolean",
+                                 "description": "Anche le entita' nascoste."},
+            "includi_servizio": {"type": "boolean",
+                                 "description": "Anche le entita' di configurazione e "
+                                                "diagnostica."},
+            "ore": {"type": "number", "maximum": WINDOW_MAX_HOURS,
+                    "description": "Le ultime N ore, da adesso. Predefinito 24, al "
+                                   "massimo 2160 (90 giorni). Non insieme a da/a."},
+            "da": {"type": "string",
+                   "description": "L'inizio: «oggi», «ieri» (la loro mezzanotte, nel "
+                                  "fuso della casa) o un istante ISO col fuso."},
+            "a": {"type": "string",
+                  "description": "La fine: «oggi» (adesso), «ieri» (la mezzanotte che "
+                                 "lo chiude) o un istante ISO col fuso. Senza, "
+                                 "adesso. Vuole `da`."},
+            "esecuzione": {"type": "string",
+                           "description": "Solo con genere=esecuzioni e UNA "
+                                          "automazione o script: il run_id di una "
+                                          "riga, per la traccia passo per passo."},
+            "livello": {"type": "string", "enum": list(LEVELS),
+                        "description": "Solo con genere=errori."},
+            "limite": {"type": "integer", "minimum": 0, "maximum": ROWS_MAX,
+                       "description": "Quante voci al massimo (predefinito e tetto "
+                                      "50); 0 da' solo i conteggi."},
+            "salta": {"type": "integer", "minimum": 0,
+                      "description": "Quante voci saltare: il valore di "
+                                     "oltre.salta."},
         },
-        "required": ["entita", "ore"],
-    },
-}
-
-LOGBOOK_TOOL_DEF = {
-    "name": "logbook",
-    "description": (
-        # F5 (onda finale): la versione precedente prometteva «quale
-        # automazione, quale persona» come se fossero sempre disponibili. Il
-        # diario di Home Assistant (`ha_client.logbook`) oggi scarta i campi
-        # `context_*` -- il posto dove vive quella paternita' -- e la loro
-        # forma vera non e' mai stata misurata dal vivo (spec §7): la
-        # promessa era piu' grande di cio' che il codice consegna. Questa
-        # descrizione dice solo cio' che avviene oggi: HIRIS riconosce i
-        # PROPRI atti (unendo la propria cronaca); per il resto riporta il
-        # messaggio del diario cosi' com'e', che puo' nominare o non
-        # nominare chi ha agito.
-        "Cosa e' successo in casa in una finestra di tempo, e -- dove si puo' "
-        "dire -- per mano di chi. Serve alle domande «perche' si e' accesa?», "
-        "«cosa e' successo stanotte?». `entita` e' facoltativa: senza, guarda "
-        "tutta la casa. "
-        "Riconosco i MIEI atti confrontando il diario con la mia cronaca: "
-        "quando una voce porta `per_mano_di: HIRIS` significa che in quel "
-        "momento avevo eseguito io un'azione su quella entita' -- e "
-        "`abbinamento: probabile` e' li' apposta: Home Assistant non firma le "
-        "voci del suo diario, l'aggancio e' l'istante. Dillo come probabile "
-        "(«dovrei averla accesa io alle 18:04, me l'avevi chiesto»), non come "
-        "certo. Una voce SENZA `per_mano_di` non e' mia, ma il diario non "
-        "dice sempre chi e' stato: il messaggio arriva cosi' com'e' -- puo' "
-        "nominare un'automazione o una persona, o dire solo che il servizio "
-        "e' stato chiamato. Se non lo dice, la risposta onesta e' «l'ha "
-        "accesa qualcuno e non so chi». "
-        "`troncato: true` o una `nota` significano che l'elenco non e' "
-        "completo: non concludere «non e' successo altro». `errore` significa "
-        "che il diario non e' disponibile: non e' una giornata tranquilla."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "entita": {
-                "type": "string",
-                "description": (
-                    "Facoltativa: l'identificatore esatto su cui restringere. "
-                    "Senza, tutta la casa."
-                ),
-            },
-            "ore": {
-                "type": "number",
-                "description": (
-                    "Quante ore all'indietro guardare. Il diario copre al piu' 168 "
-                    "ore (7 giorni)."
-                ),
-            },
-        },
-        "required": ["ore"],
-    },
-}
-
-SYSTEM_LOG_TOOL_DEF = {
-    "name": "system_log",
-    "description": (
-        # Task 5 di «le tracce e il log»: stessa fonte dell'osservatore
-        # (`HAClient.system_log()`, Task 1), non una seconda -- «non apre un
-        # secondo rubinetto» (docstring di `mind/watcher.py`). Le tre cose
-        # che questa description deve dire (lezione della fetta precedente,
-        # vedi `LOGBOOK_TOOL_DEF` qui sopra): cosa contiene la risposta, cosa
-        # NON si puo' concludere da essa, cosa succede quando la fonte non
-        # risponde.
-        #
-        # Giro di correzioni (revisione indipendente): quattro fatti che la
-        # prima stesura sbagliava o taceva, tutti gia' verificati altrove in
-        # questo stesso ramo, non ipotizzati qui:
-        # 1. Il livello e' maiuscolo (`"ERROR"`, `"WARNING"` -- `record.
-        #    levelname`, verificato in `mind/watcher.py:447-449`): il
-        #    registro NON e' solo errori, e contarlo per lunghezza
-        #    dell'elenco invece che per `level` fa dire «dodici errori»
-        #    quando nove delle dodici voci sono avvisi.
-        # 2. `count`/`first_occurred` ci sono SEMPRE (`LogEntry.to_dict()`,
-        #    vedi `HAClient.system_log()`), non solo «quando HA la rivede
-        #    piu' volte» -- la prima stesura lo lasciava intendere.
-        # 3. L'ordine e' dal PIU' RECENTE al piu' vecchio (`DedupStore.
-        #    to_list()`, "Return reversed list of log entries - LIFO",
-        #    citato in `HAClient.system_log()`, che dice esplicitamente «chi
-        #    consuma questo metodo non deve ipotizzarlo»): la prima stesura
-        #    non lo diceva a chi legge, cioe' al modello, non solo a chi
-        #    legge il codice.
-        # 4. Il registro vive nella memoria di HOME ASSISTANT, non
-        #    dell'add-on: un riavvio di HIRIS non lo tocca. La prima
-        #    stesura diceva «lo tiene finche' l'add-on gira», falso e senza
-        #    fonte -- corretto contro `mind/watcher.py:464`, «HA tiene le
-        #    voci dall'ultimo SUO riavvio».
-        #
-        # SECONDO giro di correzioni (Task 6), due insiemi chiusi che non lo
-        # erano, entrambi verificati sui tag rilasciati `2024.7.0` e
-        # `2026.9.0` (non su `dev`):
-        # 5. «`ERROR` o `WARNING`» era un insieme chiuso NON fondato. Il
-        #    gestore che riempie il registro e' installato con
-        #    `handler.setLevel(logging.WARNING)`
-        #    (`components/system_log/__init__.py`, `async_setup`), cioe' con
-        #    una SOGLIA: entra tutto cio' che sta a `WARNING` o sopra, e
-        #    `CRITICAL` sta sopra. `level` e' `record.levelname`, quindi la
-        #    stringa del livello vero, `"CRITICAL"` compresa (e il nome di un
-        #    livello personalizzato, se qualche integrazione ne registra uno).
-        #    La description dice adesso la soglia, non l'elenco.
-        # 6. «lo svuota dal proprio ultimo riavvio in poi» lasciava intendere
-        #    che il registro fosse COMPLETO da li' in avanti. Non lo e': c'e'
-        #    anche un tetto. `DEFAULT_MAX_ENTRIES = 50` (configurabile con
-        #    `system_log: max_entries:`), e `DedupStore.add_entry` fa
-        #    `if len(self) > self.maxlen: self.popitem(last=False)` -- la
-        #    voce piu' vecchia sparisce, senza nessun riavvio. Il tetto conta
-        #    voci DISTINTE, non ricorrenze: una voce che ricompare aggiorna
-        #    `count` e torna in coda (`move_to_end`), non ne consuma una
-        #    seconda.
-        "Cosa c'e' nel registro di Home Assistant, ADESSO -- errori E avvisi, non "
-        "solo errori: ogni voce porta `level` (il livello cosi' come HA lo scrive, "
-        "in maiuscolo). Il registro raccoglie tutto cio' che e' `WARNING` o piu' "
-        "grave -- quindi `WARNING`, `ERROR` e anche `CRITICAL`: e' una soglia, non "
-        "un elenco chiuso, non dare per scontato di aver visto tutti i livelli "
-        "possibili. Guarda `level` voce per voce: su un elenco di dodici voci di "
-        "cui nove `WARNING` la risposta onesta e' «tre errori», non «dodici». "
-        "Serve alla domanda «cosa "
-        "non va nel sistema?». Ogni voce porta anche `message`, `source`, e "
-        "SEMPRE `count` (quante volte e' ricorsa: Home Assistant DEDUPLICA gia' "
-        "da solo, non scrive una seconda riga per la stessa causa) e "
-        "`first_occurred` (quando e' comparsa la prima volta) -- non solo quando "
-        "ricorre piu' volte. `count: 12` non sono dodici episodi da raccontare "
-        "uno per uno, e' la stessa causa ricomparsa dodici volte. **L'ordine e' "
-        "dal PIU' RECENTE al piu' vecchio**: Home Assistant lo manda gia' cosi', "
-        "`voci[0]` e' l'ultima comparsa, non la prima. Non e' l'unica finestra "
-        "sui guasti della casa: un repair attivo o un'integrazione che non "
-        "risponde piu' possono non lasciare mai una riga qui dentro, il registro "
-        "raccoglie solo cio' che qualcosa ha esplicitamente loggato. `voci: []` "
-        "significa che il registro e' vuoto in questo momento, NON che nulla sia "
-        "mai andato storto -- e non e' nemmeno detto che duri: il registro vive "
-        "nella memoria di HOME ASSISTANT, non dell'add-on -- un riavvio di HIRIS "
-        "non lo tocca, un riavvio di Home Assistant si' (riparte da zero). "
-        "**E nemmeno fra un riavvio e l'altro il registro e' completo**: c'e' un "
-        "TETTO di voci distinte (cinquanta per difetto, l'installazione puo' "
-        "alzarlo o abbassarlo), e quando si supera sparisce la piu' vecchia. Una "
-        "voce che non c'e' puo' quindi essere semplicemente uscita dal tetto: "
-        "l'assenza di una riga non e' la prova che quel guasto non sia mai "
-        "successo. Il tetto conta voci distinte, non ricorrenze: una causa che "
-        "ricompare fa salire `count` della sua riga e non ne consuma una seconda. "
-        "Se torna `errore`, Home Assistant non ha "
-        "risposto: non concludere «va tutto bene», dillo."
-    ),
-    "input_schema": {"type": "object", "properties": {}, "required": []},
-}
-
-AUTOMATION_TRACE_TOOL_DEF = {
-    "name": "automation_trace",
-    "description": (
-        # Task 5 di «le tracce e il log»: stessa fonte dell'osservatore
-        # (`HAClient.automation_traces()`/`automation_trace()`, Task 3), non
-        # una seconda. Il tetto delle tracce conservate (verificato alla
-        # fonte nel docstring di `HAClient.automation_traces()`, e datato sui
-        # tag rilasciati, non sul ramo dev) e' il fatto che decide la
-        # SECONDA cosa che questa description deve dire: una traccia
-        # mancante non e' un «e' andato tutto bene».
-        #
-        # I valori di `script_execution` citati (`finished`, `failed_
-        # conditions`, `aborted`) sono verificati alla fonte, non inventati:
-        # `homeassistant/components/automation/__init__.py` (tag `2024.7.0`
-        # e `2026.9.0`, vedi il commento sopra `AUTOMATION_TRIGGERED_EVENT`
-        # in questo stesso file per `failed_conditions`) e `helpers/script.py`
-        # (tag `2026.9.0`, vedi `server.py::watch_automation_outcome` per
-        # l'elenco completo di cosa scrive `aborted`).
-        #
-        # SECONDO giro di correzioni (Task 6): la stesura precedente diceva
-        # al modello «un id scritto male produce la STESSA lista vuota di
-        # un'automazione vera mai scattata», e dichiarava di NON controllare
-        # `entita` contro lo specchio. Quella frase non descrive piu' il
-        # comportamento, e la decisione che la reggeva era fondata su un
-        # fatto sbagliato: si credeva che l'`object_id` dell'entita' fosse la
-        # chiave delle tracce. NON lo e'. La chiave e' l'id della
-        # CONFIGURAZIONE (`automation.<config id>`, catena verificata sui tag
-        # `2024.7.0` e `2026.9.0` nel docstring di
-        # `HAClient.automation_traces()`), e con l'`object_id` `trace/list`
-        # risponde `[]` per OGNI automazione della casa, scattata o no.
-        #
-        # Lo specchio quindi non e' piu' un CANCELLO sull'esistenza -- il
-        # ruolo che «un solo rubinetto» giustamente vietava: e' l'unico posto
-        # da cui l'id si puo' ricavare senza aprire una seconda lettura verso
-        # Home Assistant (`proxy/entity_cache.automation_config_id`). E cio'
-        # che il modello deve sapere e' cambiato di conseguenza: un id che
-        # non si risolve torna un `errore` esplicito, non una lista vuota, e
-        # `tracce: []` significa adesso una cosa sola -- questa automazione,
-        # che esiste ed e' stata risolta, non ha esecuzioni conservate.
-        #
-        # `trace/util.py::_get_debug_traces` resta quello che era (un
-        # `dict.get(key)` NUDO sul magazzino delle tracce vive, senza passare
-        # mai dal registro delle entita', stessi due tag): e' proprio per
-        # questo che una chiave sbagliata non da' mai errore, solo silenzio.
-        "Come sono andate le esecuzioni RECENTI di un'automazione. Serve alla "
-        "domanda «come e' andata questa automazione?». Richiede `entita`, "
-        "l'identificatore ESATTO (se hai solo un nome, usa prima `search`). Senza "
-        "altro, torna l'elenco delle ultime esecuzioni (`tracce`), ciascuna con "
-        "`script_execution` (com'e' finita -- es. `finished`, `failed_conditions`, "
-        "`aborted`: non dare per scontato quali altri valori esistano), `last_step` "
-        "e, quando c'e' stato un errore, `error`. Passa anche `esecuzione` (il "
-        "`run_id` di una voce di `tracce`) per avere il grafo COMPLETO di UNA sola "
-        "esecuzione, passo per passo (`traccia`): stessa fonte, stessa domanda, "
-        "solo piu' grana -- non chiamarlo come prima cosa, senza aver visto "
-        "prima l'elenco e il `run_id` che ti interessa. "
-        "**Un'esecuzione che manca da `tracce` NON significa che sia andata bene**: "
-        "Home Assistant ne conserva solo un numero limitato per automazione -- "
-        "cinque sull'installazione piu' vecchia che HIRIS puo' incontrare, fino al "
-        "doppio sulle versioni piu' recenti, e un'automazione puo' averne chiesti "
-        "di piu' da sola in YAML -- quella esecuzione puo' semplicemente essere "
-        "USCITA dal tetto, non essere andata bene. "
-        "**Un id che non riesco a risolvere non e' un elenco vuoto, ed e' detto "
-        "come tale**: se `entita` non corrisponde a nessuna automazione che "
-        "conosco, torna un `errore` che lo dice -- non `tracce: []`. Le due cose "
-        "sono diverse e non vanno confuse: `tracce: []` (dentro il tetto qui "
-        "sopra) significa che questa automazione, che esiste, non ha esecuzioni "
-        "conservate; un `errore` significa che non ho potuto guardare. Se torna "
-        "`errore`, non concludere niente su come sia andata -- ne' «non ha mai "
-        "girato» ne' «e' andato tutto bene»: dillo."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "entita": {
-                "type": "string",
-                "description": (
-                    "L'identificatore esatto dell'automazione (es. "
-                    "'automation.buonanotte')."
-                ),
-            },
-            "esecuzione": {
-                "type": "string",
-                "description": (
-                    "Facoltativa: il `run_id` di una voce di `tracce`, per il "
-                    "grafo completo di quella sola esecuzione invece dell'elenco "
-                    "riassuntivo."
-                ),
-            },
-        },
-        "required": ["entita"],
     },
 }
 
@@ -1262,8 +1110,8 @@ AUTOMATION_TRACE_TOOL_DEF = {
 # a differenza del 30 predefinito qui sotto, che e' una misura sulla casa
 # vera. Oltre un ANNO in ciascuna direzione la domanda non e' piu' sui
 # PROSSIMI appuntamenti ma una scansione del calendario -- la stessa soglia
-# concettuale di `historian.MAX_WINDOW_HOURS` (90 giorni, la' per un valore
-# nel tempo, anch'esso scelto e non misurato), spostata piu' in la' perche'
+# concettuale dei 90 giorni che la storia ammette per un valore nel tempo
+# (`house_history`, anch'essi scelti e non misurati), spostata piu' in la' perche'
 # un calendario vive per natura su questa scala: un impegno come «Ferie
 # estive» o «Anniversario» (`home_space/appointments.py`) e' proprio
 # annuale.
@@ -1282,11 +1130,11 @@ DEFAULT_CALENDAR_DAYS_AHEAD = 30
 def _clamp_days(raw, *, default: float, ceiling: float) -> float:
     """Qualunque cosa -> un numero di giorni fra 0 e `ceiling`.
 
-    Gemella di `historian.normalize_hours` (stesso contratto totale: NaN,
-    stringhe, numeri fuori scala diventano tutti il default, mai
-    un'eccezione), ma con un minimo diverso apposta: qui 0 e' un valore
+    Contratto totale (NaN, stringhe, numeri fuori scala diventano tutti il
+    default, mai un'eccezione) e minimo a 0 apposta: qui 0 e' un valore
     LEGITTIMO -- e' il default di `giorni_indietro`, "niente passato" -- e
-    alzarlo a 1 come fa `normalize_hours` trasformerebbe "niente passato" in
+    alzarlo a 1 (come faceva `normalize_hours`, uscita il 30/09/2026 con gli
+    strumenti del tempo) trasformerebbe "niente passato" in
     "un giorno di passato" a ogni chiamata senza l'argomento esplicito.
     """
     try:
@@ -1343,9 +1191,8 @@ CALENDAR_TOOL_DEF = {
         "guarda questa chiave, non solo `impegni`, prima di dire «non hai "
         "impegni». "
         "**`troncato: true` significa che almeno un calendario aveva PIU' "
-        "impegni di quanti ne siano tornati** -- come per `logbook`, non "
-        "concludere «non e' successo altro» (qui: «non ci sono altri "
-        "impegni»). Non dice QUALE calendario e' stato tagliato, solo che "
+        "impegni di quanti ne siano tornati** -- non concludere «non ci sono "
+        "altri impegni». Non dice QUALE calendario e' stato tagliato, solo che "
         "ne e' successo almeno uno. Cio' che manca e' cio' che sta PIU' "
         "LONTANO dall'inizio della finestra chiesta -- che di solito e' "
         "ADESSO, quindi di solito manca cio' che e' piu' in la' nel futuro; "
@@ -1383,9 +1230,7 @@ KNOWLEDGE_TOOLS: list[dict] = [
     FETCH_TOOL_DEF, EXECUTE_TOOL_DEF,
     PROMISE_TOOL_DEF, AGENDA_TOOL_DEF, CANCEL_TOOL_DEF,
     PROPOSE_TOOL_DEF, CONFIRM_TOOL_DEF,
-    TREND_TOOL_DEF, LOGBOOK_TOOL_DEF,
-    SYSTEM_LOG_TOOL_DEF, AUTOMATION_TRACE_TOOL_DEF,
-    CALENDAR_TOOL_DEF,
+    HISTORY_TOOL_DEF, CALENDAR_TOOL_DEF,
 ]
 
 # I nomi che `dispatch()` accetta. Si DERIVANO dal catalogo qui sopra: erano
@@ -1400,7 +1245,7 @@ _TOOL_NAMES = frozenset(d["name"] for d in KNOWLEDGE_TOOLS)
 
 # Lo schema di OGNI strumento, per nome -- stessa ragione di `_TOOL_NAMES` qui
 # sopra: si DERIVA dal catalogo invece di ricopiarlo. Usato da `_bad_arguments`
-# per sapere, senza toccare i sedici gestori, quali argomenti uno strumento
+# per sapere, senza toccare i dodici gestori, quali argomenti uno strumento
 # dichiara obbligatori (`input_schema["required"]`) e quali conosce affatto
 # (`input_schema["properties"]`).
 _TOOL_SCHEMA_PER_NAME = {d["name"]: d["input_schema"] for d in KNOWLEDGE_TOOLS}
@@ -1416,7 +1261,7 @@ def _quoted(names) -> str:
 def _bad_arguments(name: str, arguments: dict[str, Any]) -> dict | None:
     """Il controllo unico sugli argomenti di uno strumento, usato da
     `ToolDispatcher.dispatch` PRIMA di chiamare qualunque gestore -- non nei
-    sedici gestori, cosi' che uno strumento futuro nasca gia' protetto.
+    dodici gestori, cosi' che uno strumento futuro nasca gia' protetto.
 
     Consuma `input_schema["required"]` e `input_schema["properties"]`, che
     ogni voce di `KNOWLEDGE_TOOLS` gia' dichiara: nessuna firma nuova, nessun
@@ -1437,8 +1282,8 @@ def _bad_arguments(name: str, arguments: dict[str, Any]) -> dict | None:
       non dimostra che il codice fosse morto, dimostra che non era
       provato»). Un valore non-`null` ma comunque vuoto (`""`) resta fuori
       da questa disciplina apposta: uno strumento che lo vuole non vuoto lo
-      controlla gia' da se', come fa `_search` con `testo` o `_trend` con
-      `entita` -- un controllo che questa funzione non duplica;
+      controlla gia' da se', come fa `_search` con `testo` o `_history` con
+      `esecuzione` -- un controllo che questa funzione non duplica;
     - un nome che lo schema non conosce affatto: ignorarlo in silenzio
       lascerebbe il modello convinto di aver chiesto una cosa che in realta'
       non e' mai stata letta.
@@ -1499,9 +1344,108 @@ _AUTOMATION_BODY_ADMIN_ONLY = ("Home Assistant mostra il corpo delle "
                                "automazioni solo agli amministratori: si sa "
                                "che c'e' e come si chiama, non cosa fa")
 
+#: Quanti byte di identificatori (gia' codificati per l'URL, virgole
+#: comprese) vanno in UNA richiesta a `/api/history/period`. Il server aiohttp
+#: di Home Assistant, e il proxy del Supervisor che gli sta davanti, rifiutano
+#: una riga di richiesta oltre 8.190 byte (`max_line_size`); il resto della
+#: riga -- metodo, percorso, i due istanti, i parametri fissi -- sta sotto i
+#: 200. 6.000 lascia margine anche a un percorso di base piu' lungo di
+#: `/core`. Scelto, non misurato: la misura dal vivo e' la verifica
+#: (30/09/2026, ~300 entita' vere superano il tetto in un pezzo solo).
+_HISTORY_FILTER_MAX = 6000
+
+
+def _history_chunks(entity_ids: list[str]) -> list[list[str]]:
+    """Gli identificatori in pezzi che stanno ognuno sotto
+    `_HISTORY_FILTER_MAX`, nell'ordine dato. Il costo di ognuno e' quello che
+    `HAClient.history` gli fara' pagare: `quote(..., safe="")`, e `%2C` per la
+    virgola che lo separa dal precedente. Un identificatore da solo piu' lungo
+    del tetto fa un pezzo suo: rifiutarlo qui sarebbe tacerlo."""
+    chunks: list[list[str]] = []
+    current: list[str] = []
+    size = 0
+    for ident in entity_ids:
+        cost = len(quote(ident, safe=""))
+        if current and size + len("%2C") + cost > _HISTORY_FILTER_MAX:
+            chunks.append(current)
+            current, size = [], 0
+        size += cost + (len("%2C") if current else 0)
+        current.append(ident)
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+#: I separatori di un `chiave=valore`, delle virgolette e delle parentesi. Il
+#: sigillo riconosce un segreto per impronta del valore ESATTO
+#: (`redaction.SecretSeal.redact`): su un messaggio di registro intero non
+#: combacia mai, perche' il segreto sta DENTRO la frase
+#: («credenziali 'Zq9-...' rifiutate»).
+_SEAL_NARROW_RE = re.compile(r"[\s'\"`=:,;()\[\]{}<>]+")
+#: Anche i separatori di un indirizzo e di una query (`/`, `@`, `&`, `?`,
+#: `#`, `|`, `\`), il punto e il `!`. Revisione del Task 7 (30/09/2026):
+#: col solo elenco stretto quattro prove su un `secrets.yaml` vero passavano
+#: in chiaro -- «rifiutato per Zq9-segreto-77.» (il punto a fine frase, la
+#: forma piu' comune di un registro), `http://admin:hunter2@host`,
+#: `token=X&y=1`, `X/retry`. Da solo pero' questo elenco spezzerebbe una
+#: password che il punto o il `!` li contiene: per questo si provano tutte e
+#: due le grane (`_sealed_token`).
+_SEAL_BROAD_RE = re.compile(r"[\s'\"`=:,;()\[\]{}<>/&@?!.#|\\]+")
+#: La punteggiatura che si toglie dai bordi di un pezzo: tutta, oppure tutta
+#: tranne `!` e `?`, che in una password stanno spesso in fondo.
+_SEAL_EDGES = ("'\"`.,;:!?()[]{}<>", "'\"`.,;:()[]{}<>")
+
+
+def _sealed_token(token: str, seal) -> str:
+    """Una parola (cio' che sta fra due spazi) col sigillo passato su ogni
+    lettura plausibile di dove il segreto cominci e finisca: la parola
+    intera, i pezzi fra i separatori stretti e quelli larghi, e ognuno anche
+    senza la punteggiatura dei bordi. Una quindicina di impronte per parola,
+    non una per ogni sottostringa: il sigillo tiene solo impronte, e cercare
+    davvero una sottostringa vorrebbe il testo dei segreti in memoria.
+
+    Il piu' lungo si sostituisce per primo: un segreto che ne contiene un
+    altro non si spezza a meta'."""
+    candidates = set()
+    for piece in {token, *_SEAL_NARROW_RE.split(token), *_SEAL_BROAD_RE.split(token)}:
+        candidates.add(piece)
+        candidates.update(piece.strip(edges) for edges in _SEAL_EDGES)
+    for candidate in sorted(candidates, key=len, reverse=True):
+        if not candidate:
+            continue
+        sealed = seal.redact(candidate)
+        if sealed != candidate:
+            token = token.replace(candidate, sealed)
+    return token
+
+
+def _sealed_free_text(text, seal):
+    """Il testo libero di un registro col sigillo passato tre volte: il testo
+    intero, ogni riga, ogni parola (`_sealed_token`). Il prezzo e' quello gia'
+    dichiarato dal sigillo: un pezzo innocente IDENTICO a un segreto viene
+    oscurato. Resta fuori un segreto che contiene uno spazio, dentro una
+    frase: il limite di un sigillo che tiene solo impronte, dichiarato qui e
+    non taciuto.
+
+    `seal` puo' essere `None` (un dispatcher costruito a meta' nei test del
+    confine): il testo torna com'e'."""
+    if seal is None or not isinstance(text, str):
+        return text
+    whole = seal.redact(text)
+    if whole != text:
+        return whole
+    lines = []
+    for line in text.split("\n"):
+        sealed_line = seal.redact(line.strip())
+        if sealed_line != line.strip():
+            lines.append(sealed_line)
+            continue
+        lines.append(re.sub(r"\S+", lambda word: _sealed_token(word.group(0), seal), line))
+    return "\n".join(lines)
+
 
 class ToolDispatcher:
-    """Collega i sedici strumenti agli archivi, alla porta, all'officina e al
+    """Collega i dodici strumenti agli archivi, alla porta, all'officina e al
     canale HA -- e non altro.
 
     Prende `home_space_store` e `memory_store` gia' costruiti dal chiamante
@@ -1623,8 +1567,8 @@ class ToolDispatcher:
         self._exchange = exchange
         # La cronaca degli atti (`action/journal.py`), la STESSA istanza che
         # riceve l'officina -- non una seconda apertura dello stesso file
-        # SQLite. Serve ad `logbook` per dire «l'ho fatto io» dove il diario
-        # di Home Assistant direbbe soltanto «servizio chiamato». `None` e'
+        # SQLite. Serve a `history` per dire «l'ho fatto io» accanto a un cambio
+        # che Home Assistant non firma. `None` e'
         # legittimo e NON passa da `_missing_resource`: senza cronaca lo
         # strumento risponde lo stesso, perdendo l'attribuzione e non la
         # risposta -- che e' una degradazione, non un guasto.
@@ -1657,8 +1601,9 @@ class ToolDispatcher:
         "promise": ("promesse",), "agenda": ("promesse",),
         "cancel": ("promesse",),
         "propose": ("officina",), "confirm": ("officina",),
-        "trend": ("ha",), "logbook": ("ha",),
-        "system_log": ("ha",), "automation_trace": ("ha",),
+        # Il canale, non la casa: gli errori si chiedono anche con la casa
+        # non ancora caricata, e il gestore dice da se' quando gli serve.
+        "history": ("ha",),
         "calendar": ("ha",),
     }
 
@@ -1733,11 +1678,12 @@ class ToolDispatcher:
             return {"errore": f"lo strumento «{name}» non e' fra quelli disponibili "
                               f"({available})."}
         # Task 1 di «rifiutare e importare» (§6b): un obbligatorio mancante e
-        # un nome ignoto si rifiutano QUI, una volta sola per tutti e sedici
+        # un nome ignoto si rifiutano QUI, una volta sola per tutti e dodici
         # gli strumenti -- non nei gestori, che fino ad oggi lo facevano a
-        # mano (quattro di loro) o non lo facevano affatto (`logbook`
-        # dichiara `required: ["ore"]` e non lo controllava; un argomento
-        # sconosciuto veniva ignorato in silenzio da ognuno). Vedi
+        # mano (quattro di loro) o non lo facevano affatto (un lettore
+        # del tempo, uscito il 30/09/2026 con la storia, dichiarava un
+        # obbligatorio e non lo controllava; un argomento sconosciuto veniva
+        # ignorato in silenzio da ognuno). Vedi
         # `_bad_arguments` per le due discipline e perche' sono diverse.
         bad_arguments = _bad_arguments(name, arguments)
         if bad_arguments is not None:
@@ -1753,22 +1699,18 @@ class ToolDispatcher:
             "cancel": self._cancel,
             "propose": self._propose,
             "confirm": self._confirm,
-            "trend": self._trend,
-            "logbook": self._happened,
-            "system_log": self._system_log,
-            "automation_trace": self._automation_trace,
+            "history": self._history,
             "calendar": self._calendar,
         }[name]
         try:
             # `_execute`, `_related`, `_promise`, `_propose`, `_confirm`,
-            # `_trend`, `_happened`, `_system_log`, `_automation_trace`,
-            # `_calendar` e -- dal 29/09/2026 -- `_search` sono coroutine
+            # `_history`, `_calendar` e -- dal 29/09/2026 -- `_search` sono coroutine
             # (fanno rete, o -- `_promise` e `_search` -- possono scaldare il
             # registro dei servizi prima di verificarlo o di mostrarlo; fino
             # al 29/09 lo faceva `_view`, uscito dal catalogo); gli altri
             # quattro no. Si attende cio' che e' attendibile invece di
             # rendere `async` anche i quattro sincroni: cambiare la loro firma
-            # avrebbe toccato quindici gestori per un bisogno di undici.
+            # avrebbe toccato dodici gestori per un bisogno di otto.
             # (`_legami` era il refuso del nome italiano di `_related`,
             # sopravvissuto alla fetta dei nomi degli strumenti del 02/09:
             # corretto qui, di passaggio, mentre questo commento si tocca
@@ -2079,8 +2021,9 @@ class ToolDispatcher:
                       "corpo_non_disponibile": _AUTOMATION_BODY_ADMIN_ONLY}
         return detail
 
-    def _mirror(self) -> tuple[dict[str, str], dict[str, str], dict[str, str],
-                                 dict[str, str], dict[str, str], dict[str, dict], bool]:
+    def _mirror(self, rows_out: list | None = None
+                ) -> tuple[dict[str, str], dict[str, str], dict[str, str],
+                           dict[str, str], dict[str, str], dict[str, dict], bool]:
         """Lo specchio vivo in UNA lettura:
         `(stato, nomi, unita, classi, da_quando, attributi, letto)`.
 
@@ -2123,17 +2066,24 @@ class ToolDispatcher:
         `letto` conserva esattamente la semantica del fix E1-(3): False solo
         quando la lettura di QUESTA chiamata e' fallita davvero. Cache assente
         resta `True` -- non e' successo niente di male, e a dire che
-        l'inventario non e' guardabile ci pensa `inventory_is_readable`."""
+        l'inventario non e' guardabile ci pensa `inventory_is_readable`.
+
+        `rows_out`, se c'e', riceve le righe GREZZE della stessa lettura: la
+        storia ci legge `state_class`, che lo specchio derivato non porta, e
+        una seconda `all_states()` sarebbe la divergenza che questo metodo
+        esiste per chiudere (revisione del Task 7, 30/09/2026)."""
         if self._cache is None or not hasattr(self._cache, "all_states"):
             return {}, {}, {}, {}, {}, {}, True
         try:
             # La lettura vera e' in `anagrafe.live_mirror`, condivisa con chi
             # legge lo specchio da fuori dal dispatcher: qui restano solo la
             # difesa sulla cache assente e la semantica di `letto`.
-            state, names, units, classes, since_when, attributes = \
-                live_mirror(self._cache.all_states())
+            rows = self._cache.all_states()
+            state, names, units, classes, since_when, attributes = live_mirror(rows)
         except Exception:
             return {}, {}, {}, {}, {}, {}, False
+        if rows_out is not None:
+            rows_out.extend(row for row in rows or [] if isinstance(row, dict))
         return state, names, units, classes, since_when, attributes, True
 
     # -- legami --------------------------------------------------------
@@ -2851,60 +2801,7 @@ class ToolDispatcher:
             return None
         return self._home_space.reference_frame().get("fuso")
 
-    # -- il tempo ------------------------------------------------------
-
-    async def _trend(self, arguments: dict[str, Any]) -> dict:
-        """Un valore nel tempo. La scelta della superficie e' di `home_space/historian.py`.
-
-        Qui si legge dallo specchio cio' che il modello non deve doverci
-        dire: l'unita' di misura e `state_class`. Chiederglieli sarebbe
-        chiedergli di sapere una cosa che abbiamo noi -- e sbaglierebbe in
-        silenzio (spec §3.1).
-        """
-        entity = arguments.get("entita")
-        if not isinstance(entity, str) or not entity.strip():
-            return {"errore": "«trend» richiede «entita»: l'identificatore esatto."}
-        import time as _time
-
-        entity = entity.strip()
-        states = self._state_readings() or {}
-        entry = states.get(entity) or {}
-        return await historian.trend(
-            ha=self._ha_channel(), entity=entity, hours=arguments.get("ore"),
-            unit=entry.get("unit") or None,
-            # `ha_vocabulary.produces_statistics`, non `bool(state_class)`
-            # (fix onda finale, F4): `measurement_angle` e' un `state_class`
-            # vero e proprio ma NON produce statistiche (spec §1) -- una
-            # banderuola interrogata oltre la soglia di grana finirebbe su un
-            # elenco vuoto invece che sul dettaglio, la superficie giusta per
-            # lei.
-            has_statistics=ha_vocabulary.produces_statistics(
-                entry.get("state_class")),
-            now_ts=_time.time(), timezone=self._timezone())
-
-    async def _happened(self, arguments: dict[str, Any]) -> dict:
-        entity = arguments.get("entita")
-        if entity is not None and (not isinstance(entity, str) or not entity.strip()):
-            return {"errore": "«logbook» vuole «entita» come identificatore, oppure niente."}
-        import time as _time
-
-        return await historian.logbook(
-            ha=self._ha_channel(), journal=self._journal,
-            entity=entity.strip() if isinstance(entity, str) else None,
-            hours=arguments.get("ore"), now_ts=_time.time())
-
-    # -- il secondo lettore ----------------------------------------------
-    #
-    # `system_log` e `automation_trace` (Task 5 di «le tracce e il log»)
-    # leggono la STESSA fonte che l'osservatore (`mind/watcher.py`) gia'
-    # rilegge di notte -- `HAClient.system_log()`/`automation_traces()`/
-    # `automation_trace()`, i metodi dei Task 1 e 3 della stessa fetta, non
-    # una seconda strada. Nessuna trasformazione qui: a differenza di
-    # `_trend`/`_happened`, che passano per `historian.py` per la grana e
-    # l'attribuzione, questi due metodi del client tornano gia' la forma che
-    # il modello deve leggere (vedi i loro docstring: «il client legge e non
-    # giudica, cosa dire e cosa tacere e' di chi compone» -- qui chi compone
-    # e' la description dello strumento, non un livello di codice in piu').
+    # -- il soffitto e il sigillo -----------------------------------------
 
     def _ceiling_denies(self, gesture: str) -> bool:
         """Il soffitto di questo turno nega questo gesto? L'unica domanda che
@@ -2913,8 +2810,9 @@ class ToolDispatcher:
         return denies(self._soffitto, gesture, self._subject)
 
     def _admin_reads_refusal(self) -> dict | None:
-        """Il rifiuto dei due strumenti che leggono cio' che Home Assistant
-        mostra ai soli amministratori -- `None` se questo turno puo'.
+        """Il rifiuto delle letture che Home Assistant mostra ai soli
+        amministratori -- dal 30/09/2026 i generi `esecuzioni` ed `errori` di
+        `history` -- `None` se questo turno puo'.
 
         Verificato il 27/09/2026 su Core 2026.9.3: `system_log/list`
         (`components/system_log/__init__.py`), `trace/list` e `trace/get`
@@ -2946,154 +2844,272 @@ class ToolDispatcher:
                 if folder else SecretSeal({}, readable=False))
         return self._remembered_seal
 
-    async def _system_log(self, arguments: dict[str, Any]) -> dict:
-        """Il registro di sistema di Home Assistant, cosi' come sta ora.
+    # -- la storia ------------------------------------------------------
 
-        Nessun argomento da validare: `system_log` non ne prende. La
-        disciplina `{"voci": [...]}` / `{"errore": ...}` e' del client (vedi il
-        suo docstring).
+    async def _history(self, arguments: dict[str, Any]) -> dict:
+        """La storia della casa (spec `2026-09-30-la-storia.md`): chiama Home
+        Assistant e passa cio' che ha letto a `house_history`, dove vivono la
+        scelta, la profondita' e le righe.
 
-        **Non e' piu' un passthrough puro** (reperto B-1, 22/09/2026). Era
-        scritto qui accanto che lo fosse, e quella riga descriveva il difetto
-        senza saperlo: `message` e `exception` arrivano da un componente
-        qualunque -- anche di terze parti -- e finivano nel prompt grezzi.
-        `exception` e' la traccia INTERA, e la descrizione dello strumento non
-        la nominava nemmeno.
+        Dal 30/09/2026 sostituisce quattro gestori (`_trend`, `_happened`,
+        `_system_log`, `_automation_trace`): quattro forme, misurate sulla
+        v3.71.0 fra 3.600 e 35.000 caratteri a chiamata.
 
-        `exception` passa da `sanitize_traceback`, che tiene la **coda**: una
-        traccia dice la cosa che serve in fondo, e tagliarne la testa come per
-        ogni altro campo butterebbe la risposta tenendo la domanda.
-        """
-        refusal = self._admin_reads_refusal()
-        if refusal is not None:
-            return refusal
-        answer = await self._ha_channel().system_log()
-        # `voci` e' la CHIAVE DEL DATO e resta italiana: e' il vocabolario che
-        # il client dichiara e che il modello legge. Cio' che diventa inglese
-        # sono i nomi del codice, in un ambito convertito.
-        entries = answer.get("voci")
-        if not isinstance(entries, list):
+        **L'ordine dei controlli e' il contratto.** Prima gli argomenti (un
+        errore si dice senza toccare niente); poi chi non amministra
+        (`trace/list`, `trace/get`, `system_log/list` sono `require_admin`:
+        rifiutati PRIMA di qualunque lettura, ruling R-2.25); poi la casa, che
+        serve a ogni genere fuorche' agli errori.
+
+        `choose` da' TUTTI i soggetti da leggere (vuoto solo con `limite` 0):
+        la pagina si taglia dopo la lettura, dentro le funzioni delle righe
+        (revisione del Task 3). Qui non si impagina niente."""
+        import time as _time
+
+        now = _time.time()
+        query = parse_query(arguments, now=now, timezone=self._timezone())
+        if isinstance(query, dict):
+            return query
+        if query.kind in ADMIN_KINDS:
+            refusal = self._admin_reads_refusal()
+            if refusal is not None:
+                return refusal
+        if query.kind == "errori":
+            answer = await self._ha_channel().system_log()
+            if not isinstance(answer.get("voci"), list):
+                return {"errore": answer.get("errore",
+                                             "il registro di Home Assistant non ha risposto")}
+            return error_rows(query, self._sealed_log(answer["voci"]))
+        if self._home_space is None:
+            return {"errore": "`history` non e' disponibile: la conoscenza della casa "
+                              "non e' ancora stata caricata."}
+        # UNA lettura dello specchio e UNA della casa per tutta la chiamata:
+        # le righe grezze servono ai valori (`state_class`), la casa alle
+        # chiavi degli script (revisione del Task 7).
+        rows: list[dict] = []
+        mirror = self._mirror(rows_out=rows)
+        home = self._home_space.read()
+        chosen = choose(query, home, self._home_space.behavior(),
+                        mirror[:6], unavailable=tuple(self._home_space.unavailable()),
+                        now=now)
+        if isinstance(chosen, dict):
+            return chosen
+        if not chosen.subjects:
+            return empty_answer(query, chosen)
+        if query.kind == "esecuzioni":
+            return await self._run_history(query, chosen, home)
+        if query.kind == "valori":
+            # La stessa guardia di `_state_readings`: da un inventario non
+            # leggibile non si prende nemmeno lo `state_class`.
+            readable = inventory_is_readable(self._cache)
+            state_classes = {row.get("id"): row.get("state_class")
+                             for row in rows if readable}
+            response = await self._value_history(query, chosen, mirror, state_classes)
+        else:
+            response = await self._state_history(query, chosen, mirror)
+        # Come in `search`: senza specchio leggibile lo stato di adesso e
+        # l'unita' sarebbero `None` ambigui fra «non c'e'» e «non ho guardato».
+        if "errore" not in response and (not mirror[6]
+                                         or not inventory_is_readable(self._cache)):
+            response["stato_non_letto"] = True
+        return response
+
+    async def _read_history(self, entity_ids: list[str], query: HistoryQuery) -> dict:
+        """Lo storico di tutti i soggetti, A PEZZI (`_history_chunks`), uniti:
+        `{"serie", "troncato"}` o `{"errore"}`.
+
+        **Perche' a pezzi** (30/09/2026): `HAClient.history` mette gli
+        identificatori nell'URL di `/api/history/period`, e con ~300 entita'
+        vere la riga di richiesta supera gli 8.190 byte che il server aiohttp
+        di Home Assistant (e del Supervisor) accetta. Un pezzo solo non e'
+        una risposta lenta: e' nessuna risposta.
+
+        `troncato` e' vero se Home Assistant ha tagliato in ALMENO un pezzo:
+        il taglio e' per entita' (`MAX_HISTORY_POINTS`), e un pezzo non lo
+        cambia. Un pezzo che non risponde e' un `errore` di tutti: una
+        risposta con le serie di meta' casa si leggerebbe «l'altra meta' non
+        e' cambiata» (Review Focus 5).
+
+        Gli istanti passano col loro ISO intero, secondi e microsecondi: la
+        finestra delle righe (`dal`, con un secondo di scarto) e' calcolata
+        sugli stessi."""
+        ha = self._ha_channel()
+        start, end = query.start.isoformat(), query.end.isoformat()
+        answers = await asyncio.gather(*(ha.history(chunk, start, end)
+                                         for chunk in _history_chunks(entity_ids)))
+        series: dict[str, list[dict]] = {}
+        truncated = False
+        for answer in answers:
+            if not isinstance(answer, dict) or "serie" not in answer:
+                return {"errore": (answer or {}).get(
+                    "errore", "lo storico di Home Assistant non ha risposto")}
+            series.update(answer["serie"])
+            truncated = truncated or bool(answer.get("troncato"))
+        return {"serie": series, "troncato": truncated}
+
+    async def _state_history(self, query: HistoryQuery, chosen: Chosen,
+                             mirror: tuple) -> dict:
+        """Gli stati, dallo storico: le serie di tutti i soggetti, con la
+        finestra esplicita («ieri» incluso). Il diario di Home Assistant non si
+        usa piu': sa solo «N ore da adesso», un'entita' alla volta, e non
+        registra i sensori numerici (decisione del piano, 30/09/2026)."""
+        answer = await self._read_history([s.ident for s in chosen.subjects], query)
+        if "errore" in answer:
             return answer
+        return state_rows(query, chosen, answer["serie"], truncated=answer["troncato"],
+                          acts=self._journal_acts(query), current=mirror[0])
+
+    async def _value_history(self, query: HistoryQuery, chosen: Chosen,
+                             mirror: tuple, known_classes: dict[str, str | None]) -> dict:
+        """I valori: lo `state_class` dallo specchio decide la superficie
+        (chiederlo al modello sarebbe chiedergli un fatto che abbiamo noi, spec
+        «la storia» §3.1), e ogni superficie e' UNA lettura per tutte le serie
+        che la usano. `known_classes` viene dalla STESSA lettura dello specchio
+        di `mirror` (revisione del Task 7: una seconda `all_states()` poteva
+        dare un'altra casa).
+
+        `attributes` sono le ceste dello specchio (`mirror[5]`) com'erano:
+        `value_rows` ci guarda se un `total` ha `last_reset` (revisione del
+        Task 4)."""
+        state_classes = {s.ident: known_classes.get(s.ident) for s in chosen.subjects}
+        surfaces = {ident: value_surface(query, state_class)
+                    for ident, state_class in state_classes.items()}
+        detail_ids = [ident for ident, surface in surfaces.items() if surface == "dettaglio"]
+        band_ids = [ident for ident, surface in surfaces.items() if surface == "oraria"]
+        detail = (await self._read_history(detail_ids, query) if detail_ids
+                  else {"serie": {}, "troncato": False})
+        if "errore" in detail:
+            return detail
+        bands = (await self._ha_channel().hourly_statistics(
+            band_ids, query.start.isoformat(), query.end.isoformat()) if band_ids
+            else {"serie": {}})
+        if not isinstance(bands, dict) or "serie" not in bands:
+            return {"errore": (bands or {}).get("errore", "Home Assistant non ha risposto")}
+        return value_rows(query, chosen, detail=detail["serie"], bands=bands["serie"],
+                          truncated=detail["troncato"], surfaces=surfaces,
+                          units=mirror[2], state_classes=state_classes,
+                          attributes=mirror[5])
+
+    def _run_key(self, ident: str, registry: dict[str, dict]) -> tuple[str, str] | None:
+        """La chiave con cui Home Assistant conserva le esecuzioni di `ident`,
+        o `None` se non si risolve (e allora non si chiede: `trace/list` con
+        una chiave sconosciuta torna `[]`, che si leggerebbe «mai partita» --
+        docstring di `HAClient.traces`).
+
+        - Un'automazione: l'id della CONFIGURAZIONE, dallo specchio
+          (`automation_config_id`, la stessa risoluzione del vecchio
+          `_automation_trace`). Una YAML senza `id:` non ne ha: `None`.
+        - Uno script: la chiave di configurazione, che Home Assistant usa come
+          `unique_id` e da cui fa l'`entity_id` (`script.<chiave>`, verificato
+          alla fonte nel Task 6). Si prende l'`unique_id` del registro, perche'
+          un'entita' RINOMINATA cambia l'`object_id` e non la chiave; senza
+          voce di registro non c'e' rinomina possibile, e l'`object_id` E' la
+          chiave."""
+        domain, _, object_id = ident.partition(".")
+        if domain == "automation":
+            config_id = automation_config_id(self._cache, ident)
+            return ("automation", config_id) if config_id else None
+        unique_id = (registry.get(ident) or {}).get("unique_id")
+        key = unique_id or object_id
+        return ("script", str(key)) if key else None
+
+    async def _run_history(self, query: HistoryQuery, chosen: Chosen,
+                           home: dict) -> dict:
+        """Le esecuzioni: la chiave di Home Assistant di ogni soggetto
+        (`_run_key`), UNA raffica per tutti (`HAClient.traces`), le righe da
+        `house_history`. Le chiavi irrisolte non si chiedono: vanno in
+        `non_letti` dalle righe (Review Focus 4).
+
+        **Senza inventario leggibile non si risolve nessuna automazione, e lo
+        si dice prima**: «non trovo quell'automazione» su una casa non
+        guardata darebbe la colpa all'identificatore (Task 6 di «le tracce e il
+        log»).
+
+        **Tutte e due le strade passano dal confine** (reperto B-1, 22/09/2026):
+        `config` porta i segreti gia' risolti da Home Assistant, e l'innesco e'
+        testo che scrive un dispositivo di rete."""
+        if any(s.ident.startswith("automation.") for s in chosen.subjects):
+            fault = unreadable_inventory_error(self._cache)
+            if fault is not None:
+                return {"errore": fault["error"]}
+        # `home` e' la casa che `choose` ha gia' letto: la stessa, non una
+        # seconda lettura.
+        registry = {e.get("id"): e for e in home.get("entita") or []}
+        keys = {s.ident: self._run_key(s.ident, registry) for s in chosen.subjects}
+        ha = self._ha_channel()
         seal = self._seal()
-        cleaned = []
+        if query.run_id is not None:
+            subject = chosen.subjects[0]
+            key = keys[subject.ident]
+            if key is None:
+                return {"errore": f"«{subject.ident}»: {UNRESOLVED_RUNS}."}
+            answer = await ha.trace(key[0], key[1], query.run_id)
+            if not isinstance(answer, dict) or "traccia" not in answer:
+                return {"errore": (answer or {}).get("errore",
+                                                     "Home Assistant non ha risposto")}
+            return run_detail(query, chosen,
+                              sanitize_structure(answer["traccia"], seal=seal))
+        wanted = [key for key in keys.values() if key is not None]
+        answer = (await ha.traces(wanted)) if wanted else {"tracce": {}, "non_letti": {}}
+        if not isinstance(answer, dict) or not isinstance(answer.get("tracce"), dict):
+            return {"errore": (answer or {}).get("errore", "Home Assistant non ha risposto")}
+        traces = {name: sanitize_structure(runs, seal=seal)
+                  for name, runs in answer["tracce"].items()}
+        return run_rows(query, chosen, traces=traces,
+                        keys={ident: (f"{key[0]}.{key[1]}" if key else None)
+                              for ident, key in keys.items()},
+                        unread=answer.get("non_letti") or {})
+
+    def _sealed_log(self, entries: list) -> list[dict]:
+        """Le voci del registro, sigillate e filtrate PRIMA di diventare righe
+        (reperto B-1, 22/09/2026): `message` ed `exception` arrivano da un
+        componente qualunque, anche di terze parti.
+
+        **Anche `exception` passa dal sigillo dei segreti** (30/09/2026): fino
+        a `_system_log` passava dal solo `sanitize_traceback`, e una password
+        rifiutata scritta nel messaggio dell'eccezione arrivava al fornitore
+        del modello. Il sigillo guarda il testo PEZZO PER PEZZO
+        (`_sealed_free_text`), perche' un segreto in un registro sta dentro una
+        frase. Poi `sanitize_traceback` (il filtro delle istruzioni e il
+        tetto).
+
+        **Dell'eccezione si sigilla solo l'ultima riga** (revisione finale
+        della fetta, M-3, 30/09/2026): `error_rows` porta solo quella
+        (`house_history.last_line`, la stessa regola, importata), e sigillare
+        parola per parola tutta la traccia costava una quindicina di impronte
+        a parola per righe che non arrivano mai al modello. Le righe prima
+        non si sigillano perche' si BUTTANO: la sicurezza e' la stessa."""
+        seal = self._seal()
+        sealed = []
         for entry in entries:
             if not isinstance(entry, dict):
-                cleaned.append(sanitize_structure(entry, seal=seal))
                 continue
-            clean = sanitize_structure(
-                {k: v for k, v in entry.items() if k != "exception"}, seal=seal)
-            if "exception" in entry:
-                clean["exception"] = sanitize_traceback(entry["exception"])
-            cleaned.append(clean)
-        return {**answer, "voci": cleaned}
+            plain = {key: value for key, value in entry.items() if key != "exception"}
+            if isinstance(plain.get("message"), list):
+                plain["message"] = [_sealed_free_text(m, seal) for m in plain["message"]]
+            elif "message" in plain:
+                plain["message"] = _sealed_free_text(plain["message"], seal)
+            clean = sanitize_structure(plain, seal=seal)
+            tail = last_line(entry["exception"]) if entry.get("exception") else None
+            if tail is not None:
+                clean["exception"] = sanitize_traceback(_sealed_free_text(tail, seal))
+            sealed.append(clean)
+        return sealed
 
-    async def _automation_trace(self, arguments: dict[str, Any]) -> dict:
-        """Le esecuzioni recenti di un'automazione, o -- con `esecuzione` --
-        il grafo completo di una sola di esse.
-
-        **Prima la FORMA di `entita`, e non e' un doppione della
-        risoluzione.** La minaccia per cui questa guardia era nata -- un
-        identificatore malformato spaccato sul primo punto dal client, che
-        produceva un elenco vuoto silenzioso -- non esiste piu': il client
-        prende l'id di configurazione, e un identificatore malformato non si
-        risolve comunque. Cio' che solo la guardia garantisce e' la
-        DISTINZIONE fra due errori diversi: «non ha la forma di un
-        identificatore Home Assistant» e «non lo conosco» dicono a chi legge
-        due cose diverse, e la prima si dice senza nemmeno scandire lo
-        specchio (vedi il commento accanto a `_ENTITY_ID_RE`, in cima al
-        modulo, per la stessa ragione detta per esteso).
-
-        **Poi RISOLVE l'`entity_id` nell'id di CONFIGURAZIONE**, che e' la
-        chiave con cui Home Assistant archivia davvero le tracce
-        (`automation.<id della configurazione>`, catena verificata sui tag
-        `2024.7.0` e `2026.9.0` nel docstring di
-        `HAClient.automation_traces()`). Il modello nomina l'automazione col
-        suo `entity_id` -- e' quello che `search` gli ha dato -- ma
-        `trace/list` con l'`object_id` non torna una traccia sbagliata:
-        torna `[]` sempre, per ogni automazione della casa. La traduzione sta
-        qui e non nel client (che resta «legge e non giudica»):
-        `proxy/entity_cache.automation_config_id` legge `self._cache`, lo
-        specchio gia' cablato e in SOLA LETTURA -- nessuna lettura nuova
-        verso Home Assistant.
-
-        **Un id che non si risolve si DICHIARA, e non e' «non ha mai
-        girato».** Un elenco vuoto e un id irrisolto sono due cose diverse, e
-        confonderle e' esattamente la bugia che questo verticale esiste per
-        togliere: qui si torna un `errore` che nomina le tre cause vere (nome
-        sbagliato, automazione che lo specchio non conosce ancora,
-        automazione YAML senza `id:` -- le cui tracce non sono comunque
-        indirizzabili per automazione).
-
-        **Ma prima si guarda se lo specchio si puo' leggere affatto, e la
-        ragione e' la stessa legge.** `automation_config_id` torna `None`
-        anche quando l'inventario non e' cablato o non e' ancora caricato --
-        all'avvio dell'add-on, o dopo un caricamento iniziale fallito. Se in
-        quel caso rispondessimo col messaggio delle tre cause,
-        attribuiremmo la colpa all'IDENTIFICATORE su una casa che non abbiamo
-        ancora guardato: un'affermazione che non possiamo fare, cioe' la cosa
-        che questa fetta esiste per togliere, ricomparsa un livello piu' in
-        basso. Il controllo sta quindi PRIMA della risoluzione, e le due
-        risposte restano distinte -- «non ho l'inventario» e «non trovo
-        quell'automazione» chiedono a chi legge due cose diverse.
-
-        Il testo dei due guasti dell'inventario vive in un posto solo
-        (`proxy/entity_cache.NO_INVENTORY_ERROR` /
-        `INVENTORY_NOT_READY_ERROR`, via `unreadable_inventory_error`), lo
-        stesso che serve la rotta `/api/entities`: qui si ri-chiavizza da
-        `error` a `errore` perche' quella e' la chiave del dispatcher, ma il
-        testo non si riscrive -- duplicarlo era il modo in cui lo stesso
-        difetto e' sopravvissuto nei fratelli (vedi il commento sopra quelle
-        costanti).
-        """
-        refusal = self._admin_reads_refusal()
-        if refusal is not None:
-            return refusal
-        entity = arguments.get("entita")
-        if not isinstance(entity, str) or not entity.strip():
-            return {"errore": "«automation_trace» richiede «entita»: l'identificatore "
-                              "esatto (es. 'automation.buonanotte')."}
-        entity = entity.strip()
-        if not _ENTITY_ID_RE.match(entity):
-            return {"errore": f"«{entity}» non ha la forma di un identificatore Home "
-                              "Assistant (dominio.oggetto)."}
-        run_id = arguments.get("esecuzione")
-        if run_id is not None and not (isinstance(run_id, str) and run_id.strip()):
-            return {"errore": "«esecuzione», se presente, deve essere il «run_id» di "
-                              "una voce di «tracce»: una stringa non vuota."}
-        fault = unreadable_inventory_error(self._cache)
-        if fault is not None:
-            # PRIMA della risoluzione: senza inventario ogni identificatore
-            # risulterebbe irrisolvibile, e il messaggio sotto darebbe la
-            # colpa a lui invece che a noi che non abbiamo guardato.
-            return {"errore": fault["error"]}
-        automation_id = automation_config_id(self._cache, entity)
-        if automation_id is None:
-            return {"errore": f"non riesco a risolvere «{entity}»: non trovo il suo id "
-                              "di configurazione, che e' la chiave con cui Home "
-                              "Assistant archivia le tracce. Puo' essere un "
-                              "identificatore sbagliato, un'automazione che non "
-                              "conosco ancora, oppure un'automazione scritta in YAML "
-                              "senza «id:» (di quelle Home Assistant non conserva "
-                              "tracce leggibili una per una). Questo NON significa "
-                              "che non abbia mai girato: significa che non ho potuto "
-                              "guardare."}
-        ha = self._ha_channel()
-        # **Tutte e due le strade passano dal confine** (reperto B-1): l'elenco
-        # porta gia' le `variables` di ogni esecuzione, quindi chiuderne una
-        # sola lascerebbe aperta l'altra -- la classe di difetto che questo
-        # prodotto ha gia' pagato tre volte.
-        #
-        # Cio' che c'e' dentro non e' testo del proprietario: `config` porta i
-        # segreti GIA' RISOLTI da Home Assistant, e `variables.trigger` e' il
-        # carico che ha acceso l'automazione -- il corpo di un webhook, un
-        # messaggio MQTT, il testo di un SMS. Lo scrive un dispositivo di rete.
-        if run_id:
-            raw = await ha.automation_trace(automation_id, run_id.strip())
-        else:
-            raw = await ha.automation_traces(automation_id)
-        if isinstance(raw, dict) and "errore" in raw:
-            return raw
-        return sanitize_structure(raw, seal=self._seal())
+    def _journal_acts(self, query: HistoryQuery) -> list[dict] | None:
+        """Gli atti di HIRIS nella finestra, per dire «per mano di HIRIS».
+        `None` -- non `[]` -- quando la cronaca non c'e' o non risponde: «non
+        l'ha fatto HIRIS» e «non ho potuto guardare» hanno due facce diverse
+        (fix F3 dell'onda finale del diario, 25/08/2026)."""
+        if self._journal is None:
+            return None
+        try:
+            return self._journal.list(from_ts=query.start.timestamp(),
+                                      to_ts=query.end.timestamp())
+        except Exception as error:
+            logger.warning("cronaca illeggibile durante `history` (%s: %s)",
+                           type(error).__name__, error)
+            return None
 
     # -- i calendari ------------------------------------------------------
 
@@ -3129,7 +3145,7 @@ class ToolDispatcher:
         gli altri due.
 
         **Il fuso e' UNO SOLO, quello del dispatcher** (`self._timezone()`,
-        `ToolDispatcher._timezone()` qui sopra, la stessa fonte di `_trend`
+        `ToolDispatcher._timezone()` qui sopra, la stessa fonte di `_history`
         -- non se ne apre una seconda): serve due volte, una per calcolare `now` con
         `historian.home_space_zone` (nessun doppione: e' la stessa funzione
         che gestisce gia' un fuso non riconosciuto con un avviso e il
@@ -3145,10 +3161,10 @@ class ToolDispatcher:
         consumatore prima di questo strumento) -- e' questo il punto in cui
         quel testo, scritto da una persona in un calendario condiviso, entra
         DAVVERO in un prompt. `titolo`/`luogo`/`descrizione` passano da
-        `sanitize_ha_free_text`, la stessa strada dei fratelli (`logbook`,
-        `system_log`), non una seconda. **Il NOME del calendario passa da
+        `sanitize_ha_free_text`, la stessa strada dei fratelli (`motivo` di
+        un'integrazione rotta), non una seconda. **Il NOME del calendario passa da
         `sanitize_ha_value`** (non `sanitize_ha_free_text`: e' un
-        `friendly_name`, la stessa forma di `nome` in `logbook()`, non testo
+        `friendly_name`, la stessa forma di `nome` per le altre entita', non testo
         libero senza tetto HA) -- e' `state.name` di
         `HAClient.calendars()`, scelto da una persona e potenzialmente
         condiviso (un Google Calendar puo' esserlo), quindi un vettore di

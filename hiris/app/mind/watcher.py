@@ -424,11 +424,12 @@ class Watcher:
         l'unico, quindi basta controllare qui.
 
         **Cosa NON e' piu' vero, dal Task 6.** Questa guardia era stata
-        scritta perche' `HAClient.automation_traces()`/`automation_trace()`
-        spaccavano l'`entity_id` sul primo punto: un identificatore
-        malformato ci produceva un elenco vuoto silenzioso. Quei due metodi
-        non prendono piu' un `entity_id` ma l'id di CONFIGURAZIONE, risolto
-        dal collettore contro lo specchio (`proxy/entity_cache.
+        scritta perche' `HAClient.automation_traces()` e lo
+        `automation_trace()` singolare che la affiancava (uscito il
+        30/09/2026) spaccavano l'`entity_id` sul primo punto: un
+        identificatore malformato ci produceva un elenco vuoto silenzioso.
+        `automation_traces()`, che resta, non prende piu' un `entity_id` ma
+        l'id di CONFIGURAZIONE, risolto dal collettore contro lo specchio (`proxy/entity_cache.
         automation_config_id`), e un identificatore malformato non si
         risolve. La guardia resta per la ragione detta sopra -- non
         sporcare l'insieme dei segnati -- non piu' per quella.
@@ -659,7 +660,7 @@ class Watcher:
 
         **Un `log:` chiude anche quando NON e' guarito, e qui non e' ancora
         scritto -- lo e' gia' per la chat (giro di correzioni sul Task 7).**
-        `SYSTEM_LOG_TOOL_DEF` (`home_space/tools.py`) dice all'analista che
+        `HISTORY_TOOL_DEF` (`home_space/tools.py`, genere errori) dice all'analista che
         il registro di HA vive nella memoria di Home Assistant, non
         dell'add-on: un riavvio di HA lo svuota (riparte da zero), e porta
         comunque un TETTO di voci distinte (cinquanta per difetto,

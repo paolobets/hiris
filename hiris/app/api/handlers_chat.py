@@ -129,23 +129,20 @@ def create_tool_dispatcher(app, exchange: str | None = None,
                            thread: ChatThread | None = None) -> ToolDispatcher:
     """L'UNICO punto del prodotto in cui `ToolDispatcher` viene costruito.
 
-    I sedici strumenti della chat (`home_space/tools.py`) -- non il catalogo
-    di trentaquattro di ALL_TOOL_DEFS: cinque conoscono la casa (`search`,
-    `view`, `related`, `remember`, `fetch`), il sesto, `execute`, la comanda
+    I dodici strumenti della chat (`home_space/tools.py`) -- non il catalogo
+    di trentaquattro di ALL_TOOL_DEFS: quattro conoscono la casa (`search`,
+    `related`, `remember`, `fetch`), il quinto, `execute`, la comanda
     passando per la porta unica (vedi il docstring di quel modulo), tre
     (`promise`, `agenda`, `cancel`, fetta «lo schedulatore») la impegnano
     per un momento futuro passando per l'archivio delle promesse
     (`keeper/store.py`), due (`propose`, `confirm`,
     fetta «costruire») scrivono CONFIGURAZIONE -- non un servizio, un'entita'
-    nuova -- passando per l'officina (`action/construction/workshop.py`), due
-    (`trend`, `logbook`, fetta «HIRIS e il tempo») guardano
-    INDIETRO nel tempo -- come e' andato un valore, cosa e' successo e per
-    mano di chi -- passando per `home_space/historian.py`, due
-    (`system_log`, `automation_trace`, fetta «le tracce e il log») leggono
-    la STESSA fonte che l'osservatore (`mind/watcher.py`) gia' rilegge di
-    notte -- il registro degli errori di Home Assistant e le esecuzioni
-    recenti di un'automazione -- senza passare per `historian.py`, ne'
-    aprire un secondo collegamento, e l'ultimo (`calendar`, fetta «i
+    nuova -- passando per l'officina (`action/construction/workshop.py`), uno
+    (`history`, fetta «la storia», 30/09/2026, al posto di `trend`,
+    `logbook`, `system_log` e `automation_trace`) guarda INDIETRO nel tempo
+    -- stati e per mano di chi, valori, esecuzioni, il registro degli errori
+    di Home Assistant -- passando per `home_space/house_history.py`, e
+    l'ultimo (`calendar`, fetta «i
     calendari») fonde i prossimi appuntamenti di OGNI calendario di questa
     casa, provando a leggere ciascuno invece di fidarsi dello stato -- un
     calendario che non risponde finisce nominato in `non_letti`, mai in
@@ -256,8 +253,8 @@ def create_tool_dispatcher(app, exchange: str | None = None,
         # la conia e perche' non e' mai il dispatcher stesso a farlo.
         exchange=exchange,
         # La cronaca degli atti: la STESSA istanza che riceve l'officina in
-        # `server.py`, mai una seconda apertura di `azioni.db`. Serve ad
-        # `logbook` per attribuire a HIRIS cio' che ha fatto HIRIS.
+        # `server.py`, mai una seconda apertura di `azioni.db`. Serve a
+        # `history` per attribuire a HIRIS cio' che ha fatto HIRIS.
         journal=app.get("journal"),
         # Le parole con cui uno stato si rende, dall'08/09/2026 lette da Home
         # Assistant e non piu' da quattro tabelle scritte a mano (spec §6). E'

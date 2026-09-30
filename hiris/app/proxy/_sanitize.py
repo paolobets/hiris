@@ -30,22 +30,11 @@ can enter the model's context calls one of the two functions below:
   now the SHAPE, not the name. NOT sanitized: numbers, booleans and instants
   -- they are not attacker-writable free text, and running them through a
   text filter would silently coerce them to strings for no real gain.
-- `proxy/ha_client.py::logbook` -- the logbook boundary. Sanitizes `nome`,
-  `stato` AND `messaggio` per entry (free text HA does not control) -- `stato`
-  was missed in the first pass: for a message-sensor (email/ntfy/SMS, the
-  FIRST vector L1-sicurezza.md names) the hostile text often IS the state, not
-  the logbook message. Leaves `None` fields as `None` rather than
-  manufacturing an empty string. `nome`/`stato` go through `sanitize_ha_value`
-  (they are `state`-shaped: a friendly_name, a state string); `messaggio` is
-  arbitrary logbook prose with no HA-imposed ceiling, so it goes through
-  `sanitize_ha_free_text` instead (M2, correzioni-minori.md).
-- `proxy/ha_client.py::storico` -- the historical-series boundary
-  (`trend`'s tool). Sanitizes `valore`. The first pass left this one
-  unwired on the claim that the series is "numeric by construction"; that
-  claim was false -- `valore` is `voce.get("state")`, the raw state of
-  WHATEVER entity was asked for, and `trend`'s own tool description
-  promotes it for "whether a door was left open". Same vector as `logbook`,
-  same fix.
+- `proxy/ha_client.py::history` -- the historical-series boundary (the
+  `history` tool, states and values). Sanitizes `valore`: it is the raw state
+  of WHATEVER entity was asked for, not a number by construction. (The
+  logbook boundary that stood here left on 30/09/2026 with the four time
+  tools.)
 - `home_space/store.py::HomeSpaceStore.replace` -- the SOLE writer of the
   house registry mirror. Sanitizes `nome`/`alias`/`titolo`/`motivo` for
   piani, aree, dispositivi (incl. produttore/modello), entita, etichette,
@@ -86,7 +75,7 @@ can enter the model's context calls one of the two functions below:
 - `home_space/tools.py::ToolDispatcher._calendar` -- the `calendar` tool's
   boundary (fetta «i calendari», Task 3). Sanitizes `titolo`/`luogo`/
   `descrizione` per appointment, via `sanitize_ha_free_text` (500, same cap
-  as `logbook`'s `messaggio`): a calendar's summary/description/location are
+  as an integration's failure `motivo`): a calendar's summary/description/location are
   written by a PERSON in a calendar that can be shared, exactly the vector
   L1-sicurezza.md names. `HAClient.calendar_events()` deliberately leaves
   these three fields raw (see its own docstring: "questo metodo non ha oggi
@@ -149,11 +138,12 @@ this module was actually wired, that silently mangled real content -- an
 `input_text` state (HA allows up to 255) -- into something that read as
 complete. The clamp is now 255 (Home Assistant's own ceiling on a state
 string, `homeassistant.core.MAX_LENGTH_STATE_STATE`, not a margin picked for
-caution) for fields that actually ARE `state`. A logbook `messaggio` and an
-integration's failure `motivo` are NOT `state` -- HA does not cap them at
-all, and a legitimate one can honestly run longer than 255 -- so they now go
-through `sanitize_ha_free_text` (cap 500, see its docstring for the number)
-instead of `sanitize_ha_value`. Both functions, and the shared `sanitize_text`
+caution) for fields that actually ARE `state`. A logbook `messaggio` (a
+reader that left on 30/09/2026) and an integration's failure `motivo` are NOT
+`state` -- HA does not cap them at all, and a legitimate one can honestly run
+longer than 255 -- so they went, and the `motivo` still goes, through
+`sanitize_ha_free_text` (cap 500, see its docstring for the number) instead of `sanitize_ha_value`.
+Both functions, and the shared `sanitize_text`
 underneath them, append a trailing marker (`_TRUNCATED`, " [troncato]") when a
 cut actually happens -- the same convention `proxy/ha_client.py::_truncate`
 uses (the two truncators were unified into one function, M1 in
@@ -337,26 +327,24 @@ def sanitize_ha_value(v) -> str:
 
 # M2 (August 2026 review): 255 is Home Assistant's own ceiling on a
 # `state` string -- correct for `sanitize_ha_value` above, wrong for fields
-# that are not `state`. `messaggio` (a logbook entry's free text --
-# ha_client.py::diario) and `motivo` (why an integration failed to start --
-# home_space/store.py::sostituisci) are HA free text with no such ceiling: a
+# that are not `state`. `messaggio` (a logbook entry's free text, a reader
+# that left on 30/09/2026) and `motivo` (why an integration failed to start,
+# `home_space/reader.py::clean_reason`) are HA free text with no such ceiling: a
 # legitimate one -- an automation message that quotes an SMS/email body, an
 # exception summary from a broken integration -- can honestly run past 255
 # without being an attack. Clamping them to the `state` ceiling was honest
 # (the marker said so) but not generous: it threw away real content that had
 # every right to be there.
 #
-# 500, not "as large as possible": `messaggio` is capped per-entry but NOT
-# per-call -- `logbook()` returns up to MAX_LOGBOOK_ENTRIES (200) entries in one
-# response, so this cap multiplies straight into the prompt budget. At 500
-# chars the worst case (200 entries every one of them at the cap) is ~100 KB
-# of text, tens of thousands of tokens -- large, but still a bounded slice of
-# ONE tool call's answer, not an unbounded one; at 255 the same worst case
-# was already ~50 KB, so 500 roughly doubles the ceiling without changing its
-# order of magnitude. 500 characters is also roughly the length of a short
-# SMS/email paragraph or a one-line exception with its message (not a full
-# traceback): generous for the legitimate case this fix exists for, without
-# letting one crafted logbook message eat most of the model's context.
+# 500, not "as large as possible": free text multiplies into the prompt budget
+# whenever a tool returns many entries at once. 500 characters is roughly a
+# short SMS/email paragraph or a one-line exception with its message: generous
+# for the legitimate case, without letting one crafted message eat most of the
+# model's context. The many-entries-at-once callers are live today:
+# `sanitize_structure` -> `_filter` runs every string of a `history` trace and of
+# an error-log entry through it (`home_space/tools.py`, the `esecuzioni` and
+# `errori` genres), and the same for automation bodies (`home_space/queries.py`);
+# `motivo` and the calendar fields are the single-entry callers.
 MAX_FREE_TEXT = 500
 
 
@@ -370,8 +358,8 @@ def sanitize_ha_free_text(v) -> str:
 # ── Il confine per ciò che arriva GREZZO dalla casa (reperto B-1, 22/09/2026) ──
 #
 # Tre porte consegnavano al modello il testo più ostile che una casa possa
-# produrre, senza passare di qui: `system_log` (`message` e `exception`),
-# `automation_trace` (`config` coi segreti già risolti da HA, e
+# produrre, senza passare di qui: il registro di Home Assistant (`message` e `exception`),
+# le tracce delle esecuzioni (`config` coi segreti già risolti da HA, e
 # `variables.trigger` — cioè il carico che ha acceso l'automazione: il corpo di
 # un webhook, un messaggio MQTT, il testo di un SMS), e il `corpo` di
 # un'automazione.
@@ -417,7 +405,7 @@ def _filter(value):
 #: elenco di chiamate — e a 500 caratteri resterebbe solo l'intestazione, cioè
 #: la parte che non risponde a nessuna domanda.
 #:
-#: 4000 e non «il più possibile»: `system_log` torna fino a molte voci in una
+#: 4000 e non «il più possibile»: il registro di Home Assistant torna fino a molte voci in una
 #: risposta sola, e questo tetto si moltiplica dritto nel contesto del modello.
 #: Quattromila caratteri sono circa quaranta righe di stack — abbondanti per
 #: capire cosa è successo, lontane dal poter mangiare un contesto.

@@ -241,3 +241,51 @@ def test_una_resa_dello_stato_grezzo_esce_col_grezzo():
     assert privacy.redact_row(riga) == {"id": "person.marta", "stato": "not_home"}
     casa = {"id": "person.marta", "stato": "home", "stato_leggibile": "A casa"}
     assert privacy.redact_row(casa) == casa
+
+
+def test_gli_stati_annidati_di_chi_si_sposta_perdono_zona_e_coordinate():
+    """La traccia di un'esecuzione porta `trigger.to_state` intero, e lo
+    ripete nei passi (spec «la storia» §5, Review Focus 1): «Lavoro» ->
+    «Palestra», con le coordinate, a ogni profondita'.
+
+    Mutazione ESEGUITA: `redact_nested` che non scende nelle liste -- rossa
+    (`passi`); che non riduce gli `attributes` -- rossa (`latitude`)."""
+    traccia = {"variables": {"trigger": {
+        "from_state": {"entity_id": "person.marta", "state": "Lavoro",
+                       "attributes": {"latitude": 45.1, "longitude": 9.2,
+                                      "friendly_name": "Marta"}},
+        "to_state": {"entity_id": "person.marta", "state": "Palestra",
+                     "attributes": {"latitude": 45.3, "longitude": 9.4,
+                                    "gps_accuracy": 5, "friendly_name": "Marta"}}}},
+        "passi": [{"changed_variables": [{"entity_id": "device_tracker.iphone",
+                                          "state": "Palestra"}]}],
+        "altro": {"entity_id": "light.sala", "state": "on",
+                  "attributes": {"latitude": 1.0}}}
+    fuori = privacy.redact_nested(traccia)
+    testo = json.dumps({chiave: v for chiave, v in fuori.items() if chiave != "altro"})
+    for dove in ("Lavoro", "Palestra", "latitude", "longitude", "gps_accuracy"):
+        assert dove not in testo, dove
+    stato = fuori["variables"]["trigger"]["to_state"]
+    assert stato["state"] == "not_home"
+    assert stato["attributes"] == {"friendly_name": "Marta"}
+    assert fuori["passi"][0]["changed_variables"][0]["state"] == "not_home"
+    assert fuori["altro"] == traccia["altro"]
+    assert traccia["variables"]["trigger"]["to_state"]["state"] == "Palestra"
+
+
+def test_la_zona_di_un_innesco_perde_le_coordinate_ma_la_casa_no():
+    """Un innesco `zone` porta lo stato della zona, con le sue coordinate: la
+    stessa regola di `redact_attributes` (le zone che non sono `zone.home`),
+    dalla stessa fonte.
+
+    Mutazione ESEGUITA: in `redact_nested` `_domain(entity_id) in
+    MOVING_DOMAINS` al posto di `_hides_position` -- rossa."""
+    innesco = {"zone": {"entity_id": "zone.lavoro", "state": "1",
+                        "attributes": {"latitude": 45.1, "longitude": 9.2,
+                                       "radius": 100}},
+               "casa": {"entity_id": "zone.home", "state": "2",
+                        "attributes": {"latitude": 45.0, "longitude": 9.0}}}
+    fuori = privacy.redact_nested(innesco)
+    assert fuori["zone"] == {"entity_id": "zone.lavoro", "state": "1",
+                             "attributes": {"radius": 100}}
+    assert fuori["casa"] == innesco["casa"]

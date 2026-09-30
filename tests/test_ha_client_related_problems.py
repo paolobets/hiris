@@ -11,15 +11,12 @@ from hiris.app.proxy.ha_client import HAClient
 
 
 class _Finto:
-    def __init__(self, risposta=None, solleva=False):
+    def __init__(self, risposta=None):
         self.risposta = risposta
-        self.solleva = solleva
         self.comandi = []
 
     async def _ws_batch(self, commands, timeout=10.0):
         self.comandi.extend(commands)
-        if self.solleva:
-            raise OSError("HA muto")
         return [self.risposta]
 
 
@@ -57,7 +54,7 @@ async def test_un_tipo_che_home_assistant_non_conosce_si_rifiuta_prima():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("finto,perche", [
-    (_Finto(solleva=True), "connessione caduta"),
+    (_Finto(None), "connessione caduta"),
     (_Finto({"error": {"message": "non trovato"}}), "HA ha rifiutato"),
     (_Finto({"result": "non un dizionario"}), "forma inattesa"),
 ])
@@ -97,7 +94,7 @@ async def test_un_problema_IGNORATO_non_esce():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("finto,perche", [
-    (_Finto(solleva=True), "connessione caduta"),
+    (_Finto(None), "connessione caduta"),
     (_Finto({"error": {"code": "unknown_command"}}), "HA ha rifiutato"),
     (_Finto({"result": {"issues": "non una lista"}}), "forma inattesa"),
 ])

@@ -24,40 +24,30 @@ from ..model_resolution import _DOWNGRADE_REASONS
 
 logger = logging.getLogger(__name__)
 
-# I nove che leggono e basta. Non `execute` (tocca la casa), non `remember`
+# I cinque che leggono e basta. Non `execute` (tocca la casa), non `remember`
 # (scrive nella memoria, che dal giro 1 di questa correzione entra nel
 # prompt di sistema SANIFICATA -- C-2 -- non piu' verbatim), non
 # `promise`/`cancel` (un turno che si da' appuntamenti da solo e' autonomia
 # costruita per sbaglio), non `propose`/`confirm` (scrivono
 # configurazione: un turno che nessuno guarda non costruisce).
 #
-# `trend` e `logbook` (fetta «HIRIS e il tempo») entrano: leggono e
-# basta, ed e' cio' che permette a una promessa delle 17:00 di confrontare la
-# temperatura con quella di un'ora prima invece di portarsi dietro una
-# fotografia scattata alla nascita.
-#
-# `system_log` e `automation_trace` (fetta «le tracce e il log», giro di
-# correzioni del Task 5) entrano anch'essi, per la STESSA ragione di
-# `trend`/`logbook`: leggono e basta, dalla stessa fonte che l'osservatore
-# (`mind/watcher.py`) gia' rilegge di notte, e non e' un'ammissione
-# automatica -- questo elenco resta di AMMISSIONE, non di esclusione, quindi
-# la deliberazione va scritta: senza i due, il ponte vede la casa ma non
-# cio' che vi si e' rotto, e una promessa «avvisami se un'automazione
-# fallisce» sarebbe cieca. Verificato (revisione indipendente) che
-# l'ammissione non porti con se' nulla che scriva: ne' `system_log` ne'
-# `automation_trace` toccano `action/actuator.py` o l'officina, entrambi
-# passano solo dal canale HA in sola lettura (`ToolDispatcher._ha`).
+# `history` (fetta «la storia», 30/09/2026) prende il posto dei quattro
+# lettori del tempo entrati qui uno alla volta -- due con «HIRIS e il
+# tempo», due con «le tracce e il log» -- e per la STESSA ragione: legge e
+# basta, ed e' cio' che permette a una promessa delle 17:00 di confrontare
+# la temperatura con quella di un'ora prima, o di accorgersi che
+# un'automazione e' fallita. Non scrive: il suo gestore passa solo dal
+# canale HA in sola lettura (`ToolDispatcher._ha`), mai da
+# `action/actuator.py` ne' dall'officina.
 #
 # `calendar` (fetta «i calendari», Task 3) entra anche lui, per la STESSA
-# ragione dei quattro sopra e non per contagio: legge e basta (due chiamate
-# REST, `HAClient.calendars()`/`calendar_events()`, mai una scrittura), e
-# senza di lui il ponte non potrebbe mai tenere una promessa del tipo
-# «avvisami la sera prima di un impegno» -- resterebbe cieco esattamente
-# sulla fonte che quella promessa deve guardare. Deliberato, non automatico:
-# questo elenco resta di AMMISSIONE, e uno strumento nuovo non ci entra da
-# solo finche' qualcuno non scrive perche'.
-SOLA_LETTURA = ("search", "related", "fetch", "trend", "logbook",
-                "system_log", "automation_trace", "calendar")
+# ragione e non per contagio: legge e basta (due chiamate REST,
+# `HAClient.calendars()`/`calendar_events()`, mai una scrittura), e senza di
+# lui il ponte non potrebbe mai tenere una promessa del tipo «avvisami la
+# sera prima di un impegno». Deliberato, non automatico: questo elenco resta
+# di AMMISSIONE, e uno strumento nuovo non ci entra da solo finche' qualcuno
+# non scrive perche'.
+SOLA_LETTURA = ("search", "related", "fetch", "history", "calendar")
 
 CONCLUDI_TOOL_DEF = {
     "name": "conclude",

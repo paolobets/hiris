@@ -102,7 +102,7 @@ _ABSENT = object()
 #: fetta: `scene/config` esiste, ma il vocabolario di `tipo` ha due valori e
 #: allargarlo tocca la pagina, il nucleo e le ricerche -- si fa quando serve,
 #: non "gia' che ci siamo".
-_BEHAVIOR_DOMAINS = {"automation": "automazione", "script": "script"}
+BEHAVIOR_DOMAINS = {"automation": "automazione", "script": "script"}
 
 #: Le due ragioni per cui un corpo puo' mancare. Sono due, non una: la prima e'
 #: un guasto di adesso (Home Assistant non ha risposto per quella voce), la
@@ -135,7 +135,7 @@ async def reread(client, home_space, ha_folder: Path | None) -> dict:
     # `[]` significa «tutte»: e' la convenzione di `HAClient.get_states`.
     states = await client.get_states([]) or []
     behavior_states = [s for s in states
-                       if domain_of(s.get("entity_id", "")) in _BEHAVIOR_DOMAINS]
+                       if domain_of(s.get("entity_id", "")) in BEHAVIOR_DOMAINS]
 
     if not behavior_states and home_space.behavior():
         message = (
@@ -171,7 +171,8 @@ async def reread(client, home_space, ha_folder: Path | None) -> dict:
         entity_id = state["entity_id"]
         body = configs.get(entity_id)
         if body is None:
-            unread[entity_id] = failure or BODY_NOT_READ
+            unread[entity_id] = (failure or (report.get("non_letti") or {}).get(entity_id)
+                                 or BODY_NOT_READ)
         elif not seal.readable:
             unread[entity_id] = SECRETS_UNCHECKABLE
             body = None
@@ -179,7 +180,7 @@ async def reread(client, home_space, ha_folder: Path | None) -> dict:
             body = seal.redact(body)
         entry = {
             "id": entity_id,
-            "tipo": _BEHAVIOR_DOMAINS[domain_of(entity_id)],
+            "tipo": BEHAVIOR_DOMAINS[domain_of(entity_id)],
             # Il nome amichevole e' quello che Home Assistant mostra: la
             # sanificazione sta dove sta sempre, al confine (`clean_name`).
             "nome": clean_name((state.get("attributes") or {}).get("friendly_name")),

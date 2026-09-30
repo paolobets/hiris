@@ -57,7 +57,7 @@ non una scelta di una integrazione in particolare. La riscrittura qui sotto
 (`astimezone`, in `read_appointment`) e' percio' un NO-OP in pratica, non la
 correzione di una divergenza fra calendari che non esiste -- la si tiene
 comunque perche' e' la stessa disciplina che il resto del prodotto applica
-a OGNI istante uscente (`historian.window`, `facts.day_boundaries`): il
+a OGNI istante uscente (`historian.day_boundaries`): il
 fuso e' dichiarato esplicitamente via `home_space_zone`, non ereditato per
 fiducia da una lettura di HA che questo modulo non riverifica ad ogni
 chiamata.

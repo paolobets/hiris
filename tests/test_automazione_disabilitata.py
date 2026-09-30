@@ -21,7 +21,7 @@ darli allo stesso campo insegnerebbe al modello a leggere uno script fermo
 """
 import pytest
 
-from hiris.app.home_space.behavior import _BEHAVIOR_DOMAINS, reread
+from hiris.app.home_space.behavior import BEHAVIOR_DOMAINS, reread
 
 
 class FintoHomeSpace:
@@ -100,7 +100,7 @@ def test_i_domini_del_comportamento_restano_due():
     """La guardia del campo: se un giorno entra un terzo dominio, chi lo
     aggiunge deve decidere cosa significa «attiva» per lui invece di
     ereditare in silenzio la regola dell'automazione."""
-    assert set(_BEHAVIOR_DOMAINS) == {"automation", "script"}
+    assert set(BEHAVIOR_DOMAINS) == {"automation", "script"}
 
 
 # --------------------------------------------------------------------------

@@ -15,8 +15,9 @@ Un catalogo che ordina al modello di chiamare un nome che non esiste piu'
 e' il guasto peggiore di questa fetta, perche' non produce un'eccezione:
 produce un turno in cui HIRIS dice "ho guardato" senza aver guardato.
 
-**Cosa fa.** Per ognuna delle DICIASSETTE definizioni (i sedici di
-`home_space/tools.py`, il catalogo della chat -- tredici fino alla fetta
+**Cosa fa.** Per ognuna delle TREDICI definizioni (i dodici di
+`home_space/tools.py` dal 30/09/2026 -- sedici prima de «la storia» -- il
+catalogo della chat -- tredici fino alla fetta
 «le tracce e il log», che vi aggiunge `system_log` e `automation_trace`,
 Task 5, quindici fino alla fetta «i calendari», che vi aggiunge
 `calendar`, Task 3 -- piu' `CONCLUDI_TOOL_DEF` di
@@ -29,7 +30,7 @@ inglese, e che NON sia nel catalogo di oggi, fa fallire.
 
 **Il limite, ed e' importante scriverlo qui e non altrove: questo cancello
 vede solo le citazioni DELIMITATE.** Dentro le quattordici description
-misurate il giorno di questo file (non le diciassette di oggi -- vedi
+misurate il giorno di questo file (non le tredici di oggi -- vedi
 sopra) ci sono anche **otto occorrenze NUDE** di quelle stesse parole, e non sono
 citazioni: sono italiano ordinario, il verbo o il nome comune. Elencate,
 perche' chi legge questo file non deve "correggerle":
@@ -50,13 +51,14 @@ e' per questo che il commit che traduce le citazioni si legge riga per riga
 e le elenca nel proprio messaggio.
 
 **Cosa questo cancello NON copre**: la prosa a runtime che vive FUORI dalle
-diciassette definizioni. Quella ha il suo cancello gemello in fondo a
+tredici definizioni. Quella ha il suo cancello gemello in fondo a
 questo file, sui testi che si possono importare come costanti; le sei
 citazioni sparse dentro funzioni (`home_space/queries.py`, `home_space/briefing.py`,
 `memory/interpretation.py`, `action/verification.py`) non hanno rete e si
 sono lette a mano.
 """
 import re
+from pathlib import Path
 
 import pytest
 
@@ -88,6 +90,8 @@ _NOMI_MAI_STATI_STRUMENTO = frozenset({
     # `automation_trace` due righe sopra -- uno strumento nuovo, non una
     # rinomina.
     "calendar",
+    # fetta «la storia» (30/09/2026): uno strumento nuovo al posto di quattro.
+    "history",
 })
 
 _DEFINIZIONI = list(KNOWLEDGE_TOOLS) + [CONCLUDI_TOOL_DEF]
@@ -164,8 +168,8 @@ def test_nessuna_citazione_nomina_uno_strumento_che_non_esiste(definizione):
 
 
 def test_ogni_nome_del_catalogo_e_nell_elenco_storico():
-    """La guardia sull'elenco scritto a mano. Un diciottesimo strumento --
-    o un nome nuovo per uno dei diciassette -- che non venisse aggiunto a
+    """La guardia sull'elenco scritto a mano. Un quattordicesimo strumento --
+    o un nome nuovo per uno dei tredici -- che non venisse aggiunto a
     `_NOMI_MAI_STATI_STRUMENTO` renderebbe il cancello sopra cieco su
     quella riga, e in silenzio: nessuna citazione del nome VECCHIO verrebbe
     piu' riconosciuta come nome di strumento."""
@@ -176,19 +180,21 @@ def test_ogni_nome_del_catalogo_e_nell_elenco_storico():
         "riconoscera' piu' la citazione del loro nome precedente")
 
 
-def test_the_catalog_has_sixteen_distinct_names():
-    """Quindici e' il numero del perimetro della CHAT (13 -> 15 con la fetta
+def test_the_catalog_has_thirteen_distinct_names():
+    """Dodici e' il numero del perimetro della CHAT (13 -> 15 con la fetta
     «le tracce e il log», Task 5: `system_log`, `automation_trace`; 15 -> 16
     con la fetta «i calendari», Task 3: `calendar`; 16 -> 15 con «una porta
-    sola per la casa», 29/09/2026: esce `view`), sedici quello delle
+    sola per la casa», 29/09/2026: esce `view`; 15 -> 12 con «la storia»,
+    30/09/2026: escono `trend`, `logbook`, `system_log`, `automation_trace`,
+    entra `history`), tredici quello delle
     definizioni: e' la sesta volta, in questa fetta, che un
     numero giusto su un perimetro sembra sbagliato su un altro (vedi la nota
     in cima a "I nomi degli strumenti" nel glossario). Pinnato qui perche'
     un doppione fra i due cataloghi -- `concludi` che finisse anche nella
     chat -- non lo vedrebbe nessun altro test."""
     nomi = [d["name"] for d in _DEFINIZIONI]
-    assert len(nomi) == 16, nomi
-    assert len(set(nomi)) == 16, "due definizioni portano lo stesso nome"
+    assert len(nomi) == 13, nomi
+    assert len(set(nomi)) == 13, "due definizioni portano lo stesso nome"
 
 
 def _prose_runtime():
@@ -248,8 +254,10 @@ _NOMI_NUOVI = {
     "legami": "related",
     "ricorda": "remember", "richiama": "fetch", "esegui": "execute",
     "prometti": "promise", "promesse": "agenda", "disdici": "cancel",
-    "costruisci": "propose", "conferma": "confirm", "andamento": "trend",
-    "accaduto": "logbook", "concludi": "conclude",
+    "costruisci": "propose", "conferma": "confirm", "andamento": "history",
+    "accaduto": "history", "concludi": "conclude",
+    "trend": "history", "logbook": "history", "system_log": "history",
+    "automation_trace": "history",
 }
 
 
@@ -264,7 +272,7 @@ def test_l_avviso_e_l_unico_testo_che_puo_nominare_un_nome_vecchio():
     scarto. Ogni nome vecchio che l'avviso cita deve (1) essere davvero
     fuori dal catalogo di oggi, (2) avere il proprio nome nuovo **citato
     nell'avviso stesso**, e (3) quel nome nuovo deve essere nel catalogo.
-    Cosi' il giorno in cui uno dei sedici venisse rinominato di nuovo,
+    Cosi' il giorno in cui uno dei dodici venisse rinominato di nuovo,
     l'avviso diventerebbe rosso invece di restare a insegnare una
     corrispondenza scaduta.
 
@@ -306,44 +314,144 @@ def test_l_avviso_e_l_unico_testo_che_puo_nominare_un_nome_vecchio():
     assert not estranee, f"l'avviso cita parole che non sono nomi di strumento: {sorted(estranee)}"
 
 
-def test_nessun_testo_che_il_modello_legge_nomina_view():
-    """Spec §4: view esce ovunque. I testi di risposta (suggerimenti, rifiuti
-    di execute, righe del nucleo) arrivano al modello come le guide, e il
-    cancello di sopra guarda solo definizioni e guide (rischio 4 della mappa).
+_RADICE = Path(__file__).resolve().parent.parent / "hiris" / "app"
 
-    Si guardano le STRINGHE del sorgente (letterali di codice), non i commenti
-    ne' i docstring: quelli sono prosa per chi legge il codice. L'unico testo
-    che puo' nominare `view` e' l'avviso dei vecchi nomi, che dice che e'
-    diventato `search`: lo si toglie dal sorgente per nome, non si allarga il
-    filtro.
+# I letterali che nominano un vecchio nome e NON sono testo per il modello.
+# Breve e a mano: chi ne aggiunge una riga scrive perche'.
+_ECCEZIONI_GATE = (
+    # comando WebSocket di Home Assistant, non il nome di uno strumento
+    ("proxy/ha_client.py", "system_log/list"),
+    # riga di log per chi gestisce l'add-on, mai servita al modello
+    ("server.py", "system_log() ha "),
+    # SQL: `view` e' una colonna/valore della tabella dei consumi
+    ("usage/store.py", "CREATE TABLE IF NOT EXISTS consumo_giorno"),
+)
 
-    Mutazione ESEGUITA: lasciare «view» in `_NOTHING_RECOGNIZED_SUGGESTION` -- rossa.
-    Mutazione ESEGUITA: rimettere «più view, più related» (view NUDO) in
-    `BASE_TOOL_RULES` -- rossa (la prima forma del filtro, con virgolette, era verde)."""
+
+def _letterali(radice=None):
+    """(percorso relativo, testo) per ogni stringa letterale di OGNI modulo
+    di `hiris/app` che non sia un docstring: i testi che il modello puo'
+    ricevere, ovunque nascano. I commenti e i docstring sono prosa per chi
+    legge il codice, e non si guardano: quelli di `house_history.py` e
+    `tools.py` nominano i quattro lettori usciti come STORIA, apposta
+    (ruling P1 del 30/09/2026). Il perimetro e' tutto il pacchetto, non un
+    elenco di moduli: un elenco lascia fuori proprio il modulo dimenticato."""
     import ast
-    import inspect
 
-    from hiris.app import chat_settings, claude_runner
-    from hiris.app.action import verification
-    from hiris.app.agent import prompts
-    from hiris.app.home_space import briefing, queries, tools, type_census
-
-    citazione = re.compile(r"\bview\b")
-    colpevoli = []
-    for modulo in (verification, prompts, briefing, queries, tools,
-                   type_census, claude_runner, chat_settings):
-        albero = ast.parse(inspect.getsource(modulo))
+    radice = radice or _RADICE
+    for percorso in sorted(radice.rglob("*.py")):
+        albero = ast.parse(percorso.read_text(encoding="utf-8"))
         docstring = {id(n.body[0].value) for n in ast.walk(albero)
                      if isinstance(n, (ast.Module, ast.FunctionDef,
                                        ast.AsyncFunctionDef, ast.ClassDef))
                      and n.body and isinstance(n.body[0], ast.Expr)
                      and isinstance(n.body[0].value, ast.Constant)}
+        relativo = percorso.relative_to(radice).as_posix()
         for nodo in ast.walk(albero):
             if (isinstance(nodo, ast.Constant) and isinstance(nodo.value, str)
                     and id(nodo) not in docstring):
-                testo = nodo.value
-                if modulo is prompts:
-                    testo = testo.replace(prompts._OLD_NAMES_NOTICE, "")
-                if citazione.search(testo):
-                    colpevoli.append((modulo.__name__, testo[:80]))
+                yield relativo, nodo.value
+
+
+def _nomina(*nomi: str) -> re.Pattern:
+    """Il nome NUDO oppure col prefisso del ponte. il solo confine di parola
+    non vede `mcp__hiris__view`: il trattino basso e' una lettera per lui, e
+    non c'e' confine fra `__` e `v` -- ed e' in quella forma che le guide del
+    ponte citano gli strumenti (ruling P14)."""
+    alternativa = "|".join(nomi)
+    return re.compile(rf"\b(?:{alternativa})\b|{_PREFISSO_MCP}(?:{alternativa})\b")
+
+
+def _citati(citazione):
+    """Le stringhe che nominano `citazione`, tolto l'avviso dei vecchi nomi
+    (per identita': l'unico testo che PUO' nominarli, per dire cosa sono
+    diventati) e la lista breve dei letterali che non sono per il modello."""
+    from hiris.app.agent import prompts
+
+    colpevoli = []
+    for relativo, testo in _letterali():
+        if relativo == "agent/prompts.py":
+            testo = testo.replace(prompts._OLD_NAMES_NOTICE, "")
+        if any(relativo == f and t in testo
+               for f, t in _ECCEZIONI_GATE):
+            continue
+        if citazione.search(testo):
+            colpevoli.append((relativo, testo[:80]))
+    return colpevoli
+
+
+def test_ogni_eccezione_del_cancello_nomina_ancora_un_vecchio_nome():
+    """Una voce di `_ECCEZIONI_GATE` che non copre piu' niente e' un buco
+    che resta aperto: il cancello ignorerebbe per sempre quel letterale.
+
+    Mutazione ESEGUITA: una voce inventata (`("server.py", "xx")`) -- rossa."""
+    vecchi = _nomina("view", *_QUATTRO_USCITI)
+    letterali = list(_letterali())
+    for f, t in _ECCEZIONI_GATE:
+        assert any(r == f and t in x and vecchi.search(x) for r, x in letterali), (f, t)
+
+
+def test_nessun_testo_che_il_modello_legge_nomina_view():
+    """Spec «una porta sola» §4: view esce ovunque. I testi di risposta
+    (suggerimenti, rifiuti di execute, righe del nucleo) arrivano al modello
+    come le guide, e il cancello di sopra guarda solo definizioni e guide.
+
+    Si guardano le STRINGHE del sorgente (letterali di codice), non i commenti
+    ne' i docstring. L'unico testo che puo' nominare `view` e' l'avviso dei
+    vecchi nomi: lo si toglie dal sorgente per nome, non si allarga il filtro.
+
+    Mutazione ESEGUITA: lasciare «view» in `_NOTHING_RECOGNIZED_SUGGESTION` -- rossa.
+    Mutazione ESEGUITA: rimettere «più view, più related» (view NUDO) in
+    `BASE_TOOL_RULES` -- rossa (la prima forma del filtro, con virgolette, era verde).
+    Mutazione ESEGUITA: «`mcp__hiris__view`» in `_GUIDE_WITH_TOOLS` -- rossa
+    (il filtro col solo confine di parola era VERDE: ruling P14)."""
+    colpevoli = _citati(_nomina("view"))
     assert not colpevoli, colpevoli[:5]
+
+
+_QUATTRO_USCITI = ("trend", "logbook", "system_log", "automation_trace")
+
+
+def test_nessun_testo_che_il_modello_legge_nomina_i_quattro_strumenti_della_history():
+    """Spec «la storia» §4: `trend`, `logbook`, `system_log` e
+    `automation_trace` escono ovunque, come `view` il 29/09 -- anche NUDI,
+    non solo fra virgolette, e anche nella forma del ponte
+    `mcp__hiris__<nome>`: la descrizione di `calendar` diceva «come per
+    `logbook`», e un censimento dei tipi «nel logbook».
+
+    Il cancello guarda i LETTERALI, non i docstring ne' i commenti: quelli di
+    `house_history.py` e `tools.py` nominano i quattro come storia, apposta.
+
+    Mutazione ESEGUITA: lasciare «nel logbook» nel testo di `type_census`
+    -- rossa.
+    Mutazione ESEGUITA: «`mcp__hiris__trend`» in `_GUIDE_WITH_TOOLS` -- rossa.
+    Mutazione ESEGUITA: un letterale «leggi il logbook» in fondo a
+    `mind/watcher.py` -- rossa (il perimetro e' tutto `hiris/app`).
+    Mutazione ESEGUITA: un letterale «chiama mcp__hiris__trend» in fondo a
+    `agent/runner.py` -- rossa."""
+    colpevoli = _citati(_nomina(*_QUATTRO_USCITI))
+    assert not colpevoli, colpevoli[:5]
+
+
+def test_la_forma_col_prefisso_del_ponte_e_vista_dal_cancello():
+    """Il cancello sopra e' un'espressione regolare, e un'espressione che non
+    vede una forma lascia passare in silenzio: questa prova pinna che la
+    forma del ponte sia vista per tutti e cinque i nomi usciti, e che
+    `history` (il nome vivo) non lo sia.
+
+    Mutazione ESEGUITA: `_nomina` senza la seconda alternativa (solo il confine di parola)
+    -- rossa."""
+    for nome in ("view",) + _QUATTRO_USCITI:
+        assert _nomina(nome).search(f"usa `{_PREFISSO_MCP}{nome}`"), nome
+        assert _nomina(nome).search(f"usa {nome} per"), nome
+    assert not _nomina(*_QUATTRO_USCITI).search(f"usa `{_PREFISSO_MCP}history`")
+
+
+def test_l_avviso_dice_che_i_quattro_sono_diventati_history():
+    """Chi ha salvato il proprio prompt con «usa `logbook`» deve sapere che
+    oggi si chiama `history` (spec §4).
+
+    Mutazione ESEGUITA: l'avviso senza `automation_trace` -- rossa."""
+    from hiris.app.agent.prompts import _OLD_NAMES_NOTICE
+    citati = {parola for parola, _ in _citazioni(_OLD_NAMES_NOTICE)}
+    assert {"trend", "logbook", "system_log", "automation_trace", "history"} <= citati

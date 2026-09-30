@@ -3,15 +3,14 @@ import logging
 import re
 from collections.abc import Callable
 from contextlib import suppress
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any, ClassVar
 from urllib.parse import quote
 
 import aiohttp
 
-from ..home_space.historian import normalize_hours
 from ..home_space.topology import PROBLEM_SEVERITY
-from ._sanitize import sanitize_ha_free_text, sanitize_ha_value
+from ._sanitize import sanitize_ha_value
 from ._sanitize import truncate_with_marker as _truncate
 
 # Review finale fetta E3, Important #3: `_IDENTIFIER_RE` serviva solo a
@@ -101,24 +100,15 @@ AUTOMATION_TRIGGERED_EVENT = "automation_triggered"
 
 # Cap espliciti: questi dati finiscono nel prompt di un LLM, quindi la loro
 # dimensione va limitata alla fonte.
-# Il logbook di una settimana puo' contenere decine di migliaia di voci.
-MAX_LOGBOOK_ENTRIES = 200
-# Finestra massima interrogabile dal diario. Il cap sulle voci limita la
-# risposta, non il costo della query: senza un tetto sulle ore HA scandisce
-# l'intero database del recorder. 168 ore = 7 giorni, quanto basta per "cosa e'
-# successo questa settimana?" e non di piu' (il recorder di default ne conserva
-# 10, quindi oltre non c'e' comunque granche' da leggere).
-MAX_LOGBOOK_HOURS = 168
-# Finestra usata quando `ore` non e' un numero interpretabile.
-DEFAULT_LOGBOOK_HOURS = 24
 # Cap sui punti di storico dettagliato riportati per SINGOLA entita' -- non
 # per chiamata: con N entita' nella lista la risposta puo' portarne fino a
 # N x MAX_HISTORY_POINTS. Due giorni di un sensore chiacchierone ne producono
 # migliaia: il cap protegge la memoria di QUESTO processo per ogni singola
 # serie, non la leggibilita' della risposta (di quella si occupa
-# `home_space/historian.py`, che riassume). Chi legge deve poter sapere che e' scattato,
-# quindi la risposta lo dichiara invece di tacere -- e' la stessa regola del
-# troncamento del diario, imparata li'.
+# `home_space/house_history.py`, che non ne da' mai piu' di 50). Chi legge
+# deve poter sapere che e' scattato, quindi la risposta lo dichiara invece
+# di tacere -- la stessa regola che il diario di Home Assistant aveva
+# insegnato (uscito il 30/09/2026).
 MAX_HISTORY_POINTS = 5000
 # Cap sugli eventi restituiti da UNA chiamata a `calendar_events()`.
 # Misurato sulla casa vera il 06/09/2026: 297 eventi in tutto, su una
@@ -128,7 +118,7 @@ MAX_HISTORY_POINTS = 5000
 # da chi chiama), ne' cio' che attraversa la rete -- il JSON intero arriva
 # comunque: limita solo cio' che QUESTO processo tiene e passa a valle, la
 # stessa cosa che protegge `MAX_HISTORY_POINTS` qui sopra. Stessa regola
-# del troncamento di `history()`/`logbook()`: chi legge deve poter sapere
+# del troncamento di `history()`: chi legge deve poter sapere
 # che e' scattato, la risposta lo dichiara invece di tacere.
 MAX_CALENDAR_EVENTS = 2000
 # Template accettato in ingresso: oltre questa soglia non e' piu' una domanda
@@ -139,6 +129,10 @@ MAX_TEMPLATE_LEN = 2000
 MAX_TEMPLATE_RESPONSE_LEN = 2000
 
 logger = logging.getLogger(__name__)
+
+# Il motivo di una lettura di tracce in cui Home Assistant non ha risposto
+# affatto (`_ws_batch` non solleva: torna `None` per comando).
+_HA_SILENT = "Home Assistant non ha risposto"
 
 
 def _instant_from_ha(raw):
@@ -174,8 +168,8 @@ def _translate_statistics(raw: dict) -> dict[str, list[dict]]:
 
     **L'UNICO punto che traduce le chiavi di `recorder/statistics_during_
     period`** (`HAClient._richiedi_statistiche`, l'UNICO chiamante):
-    `statistics()` e `hourly_statistics()` condividono questa funzione
-    invece di avere ciascuna la propria copia -- una seconda tabella di
+    `hourly_statistics()` la usa attraverso `_request_statistics`, e una
+    seconda entrata userebbe questa invece di una propria copia -- una seconda tabella di
     traduzione sarebbe il doppione che questo progetto ha gia' pagato altrove
     (fondamenta 2).
 
@@ -392,7 +386,8 @@ class HAClient:
     # verificato di nuovo, zero chiamanti in tutto il repo.
     #
     # 24/08/2026, fetta «HIRIS e il tempo»: lo storico dettagliato e' TORNATO, come
-    # `history()` qui sotto, e questa volta con un chiamante vero (`home_space/historian.py`).
+    # `history()` qui sotto, e questa volta con un chiamante vero (la storia,
+    # `home_space/house_history.py`).
     # La rimozione raccontata sopra resta vera come storia -- usci' perche' nessuno
     # leggeva -- ma non descrive piu' lo stato di adesso.
 
@@ -1009,66 +1004,12 @@ class HAClient:
     # invocava mai (lo nominava solo nei propri messaggi d'errore, come
     # suggerimento per l'LLM), ne' alcun altro modulo vivo.
 
-    @staticmethod
-    def _health_value(value: Any) -> Any:
-        """Appiattisce un valore di system_health in uno scalare presentabile.
-
-        HA restituisce sia scalari sia valori "tipizzati" come
-        {"type": "date", "value": ...}, {"type": "pending"} oppure
-        {"type": "failed", "error": "..."}. Il formato non e' documentato: si
-        riconosce quello che si capisce e si scarta il resto (None = ignora)."""
-        if isinstance(value, (str, int, float, bool)) or value is None:
-            return value
-        if isinstance(value, dict):
-            if value.get("error"):
-                return _truncate(str(value["error"]), 200)
-            if "value" in value:
-                inner = value["value"]
-                if isinstance(inner, (str, int, float, bool)) or inner is None:
-                    return inner
-                return None
-            if value.get("type"):
-                return str(value["type"])
-        return None
-
-    async def get_system_health(self) -> dict:
-        """Salute nativa delle integrazioni via WS `system_health/info`.
-
-        Ritorna una mappa dominio -> {chiave: valore} con le sole informazioni
-        riconosciute; {} se il dato non e' disponibile. Sola lettura, non
-        solleva mai: ogni fallimento vale come "dato non disponibile"."""
-        try:
-            result = await self._ws_request("system_health/info")
-        except Exception as exc:
-            logger.debug("get_system_health: WS non disponibile (%s)", exc)
-            return {}
-        if not isinstance(result, dict):
-            return {}
-        health: dict = {}
-        for domain, payload in result.items():
-            if not isinstance(payload, dict):
-                continue
-            # HA annida le informazioni sotto "info", ma non e' garantito:
-            # se manca si legge il payload stesso.
-            info = payload.get("info")
-            if not isinstance(info, dict):
-                info = payload
-            entries = {}
-            for key, raw in info.items():
-                value = self._health_value(raw)
-                if value is not None or raw is None:
-                    entries[str(key)] = value
-            if entries:
-                health[str(domain)] = entries
-        return health
-
     async def history(self, entities: list[str], from_iso: str, to_iso: str) -> dict:
         """Lo storico DETTAGLIATO -- ogni cambio di stato -- via
         GET /api/history/period/<da>.
 
         Ritorna `{"serie": {entity_id: [{"quando", "valore"}, ...]}, "troncato":
-        bool}`. `troncato` c'e' SEMPRE (mai omesso quando falso: stessa forma
-        di `logbook`, non due modi di dire la stessa cosa) ed e' vero se il cap
+        bool}`. `troncato` c'e' SEMPRE (mai omesso quando falso) ed e' vero se il cap
         sui punti e' scattato su almeno un'entita'. In caso di guasto ritorna
         `{"errore": str}` e NON la chiave `serie`: una serie vuota afferma «il
         valore non e' mai cambiato», che e' una cosa che non sappiamo quando
@@ -1078,7 +1019,8 @@ class HAClient:
 
         **Questa primitiva era gia' esistita ed e' uscita come orfana**
         (`get_history`, censimento del 17/08/2026: scriveva e nessuno
-        leggeva). Torna adesso con un chiamante vero, `home_space/historian.py`.
+        leggeva). Torna con un chiamante vero: la storia (`ToolDispatcher._history`,
+        genere stati e valori).
 
         `minimal_response` + `no_attributes`: senza, Home Assistant rimanda
         l'intero dizionario degli attributi a ogni cambio di stato. Il prezzo
@@ -1087,11 +1029,12 @@ class HAClient:
         avanti l'identificatore.
 
         **Valida ogni `entity_id` PRIMA di fare rete** (F6, onda finale): era
-        l'ultima asimmetria rimasta con `logbook` qui sotto, che lo fa gia'.
+        l'ultima asimmetria rimasta con il diario (uscito il 30/09/2026), che
+        lo faceva gia'.
         Il percent-encoding chiude comunque l'iniezione nella URL -- non e'
         un buco di sicurezza -- ma un identificatore ostile o malformato deve
         fermarsi con un errore leggibile, non partire verso Home Assistant.
-        `entities` e' una LISTA (quella di `logbook` e' singola): tutti gli
+        `entities` e' una LISTA: tutti gli
         elementi devono avere una forma valida, o nessuna richiesta parte.
         """
         invalid = [e for e in entities if not _ENTITY_ID_RE.match(str(e))]
@@ -1135,8 +1078,7 @@ class HAClient:
                 # GREZZO di QUALUNQUE entita' richiesta, non un numero per
                 # costruzione -- un'affermazione contraria era finita anche
                 # nel docstring di `_sanitize.py`, ed era falsa: si vede qui.
-                # `trend` (home_space/historian.py) promuove esplicitamente questo
-                # strumento anche per «se una porta e' rimasta aperta», e
+                # la storia chiede proprio gli stati («se una porta e' rimasta aperta»), e
                 # L1-sicurezza.md elenca il sensore-messaggio (testo libero)
                 # come il PRIMO vettore concreto -- si applica identico alla
                 # storia quanto allo stato vivo.
@@ -1216,114 +1158,12 @@ class HAClient:
             ))
         return counts
 
-    async def logbook(self, entity: str | None, hours: int) -> dict:
-        """Cronologia eventi via GET /api/logbook/<ISO start>.
-
-        `entity` filtra su una singola entita' (None = tutta la casa), `ore`
-        e' la finestra all'indietro da adesso, normalizzata fra 1 e
-        MAX_LOGBOOK_HOURS (valori non numerici valgono DEFAULT_LOGBOOK_HOURS).
-
-        Ritorna `{"voci": [{"quando", "nome", "stato", "messaggio", "entita"},
-        ...],
-        "troncato": bool, "ore": int}`, tenendo al piu' MAX_LOGBOOK_ENTRIES voci
-        (le piu' recenti). In caso di guasto -- o di un'entita' non valida --
-        ritorna `{"errore": str}` e NON la chiave `voci`: una lista vuota
-        affermerebbe «non e' successo niente», che e' un'altra cosa dal «non
-        ho potuto chiedere» (spec §3.3). Non solleva mai: ogni fallimento
-        diventa `errore`.
-
-        Sia `ore` sia `troncato` tornano DICHIARATI al chiamante che
-        confeziona la risposta per l'utente: prima questo dato restava dentro
-        il metodo e il docstring gli chiedeva di ricostruirlo da
-        `len(voci) == MAX_LOGBOOK_ENTRIES` -- cioe' di indovinarlo -- e lo stesso
-        valeva per la finestra clampata, altrimenti l'LLM concludeva «non e'
-        successo altro» o diceva «nell'ultimo mese» avendo guardato una
-        settimana.
-        """
-        if entity is not None and not _ENTITY_ID_RE.match(str(entity)):
-            logger.warning("diario: entita' non valida: %r", entity)
-            return {"errore": _truncate(f"entita' non valida: {entity!r}", 200)}
-        window = int(normalize_hours(hours, ceiling=MAX_LOGBOOK_HOURS,
-                                      default=DEFAULT_LOGBOOK_HOURS))
-        now = datetime.now(UTC)
-        start = (now - timedelta(hours=window)).isoformat()
-        # start sta nel path (come /api/history/period); end_time ed entity
-        # stanno nella query, dove il "+" del fuso orario va percent-encoded
-        # o verrebbe letto come spazio.
-        url = (f"{self._base_url}/api/logbook/{start}"
-               f"?end_time={quote(now.isoformat(), safe='')}")
-        if entity is not None:
-            url += f"&entity={quote(entity, safe='')}"
-        try:
-            async with self._session.get(url) as resp:
-                if resp.status != 200:
-                    logger.debug("diario: HTTP %s — nessun dato", resp.status)
-                    return {"errore": f"Home Assistant ha risposto {resp.status}"}
-                data = await resp.json()
-        except Exception as exc:
-            logger.debug("diario: non disponibile (%s)", exc)
-            return {"errore": f"Home Assistant non ha risposto: {_truncate(str(exc), 200)}"}
-        if not isinstance(data, list):
-            return {"errore": "Home Assistant ha risposto in una forma non attesa"}
-        entries = []
-        for item in data:
-            if not isinstance(item, dict):
-                continue
-            # `nome`/`messaggio` sono testo LIBERO che Home Assistant non
-            # controlla -- il titolo di un brano, il testo di
-            # un'automazione, il nome che un ospite ha dato a un device --
-            # e finiscono grezzi nel contesto del modello via `_happened`
-            # (home_space/historian.py) se non si sanificano QUI, al confine (C-2,
-            # L1-sicurezza.md). Solo quando c'e' davvero un valore: un
-            # `None` sanificato non deve diventare una stringa vuota, che
-            # affermerebbe un fatto ("questa voce ha un nome") che il
-            # logbook non ha dichiarato.
-            name = item.get("name")
-            message = item.get("message")
-            state = item.get("state")
-            entries.append({
-                "quando": item.get("when"),
-                "nome": sanitize_ha_value(name) if name else name,
-                # `stato` e `messaggio` restano DUE campi, non se ne fonde uno:
-                # «on» e «entered zone Casa» sono fatti di natura diversa, e
-                # chi legge deve poterli distinguere. La misura del 24/08/2026
-                # su questa casa: 754 voci su 755 portano `state`, una sola
-                # porta `message` -- e prima di quella misura questa proiezione
-                # teneva solo il secondo, cioe' buttava il testo di quasi
-                # tutte le voci.
-                #
-                # I1 (review indipendente 25/08/2026): `stato` va sanificato
-                # esattamente come `nome`/`messaggio` -- per un sensore che
-                # porta testo libero (un sensore-messaggio: email/ntfy/SMS,
-                # il vettore che L1-sicurezza.md elenca per PRIMO) il testo
-                # ostile e' proprio il valore dello stato, non il nome o il
-                # messaggio del logbook. Prima di questa riga `nome` usciva
-                # filtrato e `stato` grezzo per la STESSA voce -- due facce
-                # diverse dello stesso rischio.
-                "stato": sanitize_ha_value(state) if state else state,
-                # `messaggio` non e' uno `state` -- non ha il tetto di HA a
-                # 255 che giustifica sanitize_ha_value per nome/stato. M2
-                # (revisione di agosto 2026): cap dedicato piu' alto (500),
-                # vedi sanitize_ha_free_text in _sanitize.py per il perche'
-                # del numero.
-                "messaggio": sanitize_ha_free_text(message) if message else message,
-                "entita": item.get("entity_id"),
-            })
-        # `ore` torna al chiamante CLAMPATO: chi compone la risposta per
-        # l'utente deve poter dire «nell'ultima settimana» invece di ripetere
-        # il mese che gli era stato chiesto. Prima questo dato restava dentro
-        # il metodo e il docstring chiedeva al chiamante di ricostruirlo --
-        # cioe' di indovinarlo.
-        return {"voci": entries[-MAX_LOGBOOK_ENTRIES:],
-                "troncato": len(entries) > MAX_LOGBOOK_ENTRIES,
-                "ore": window}
-
     async def calendars(self) -> dict:
         """L'elenco dei calendari di questa casa, via GET /api/calendars.
 
         **Trasporto verificato alla fonte, non assunto.** I tre fratelli di
         questo metodo -- `system_log()`, `automation_traces()`,
-        `automation_trace()` qui sopra -- leggono via WebSocket; i calendari
+        `trace()` qui sopra -- leggono via WebSocket; i calendari
         no. Verificato su `home-assistant/core`,
         `homeassistant/components/calendar/__init__.py`, classe
         `CalendarListView` (`url = "/api/calendars"`), sui tag RILASCIATI che
@@ -1414,8 +1254,8 @@ class HAClient:
         sanificati.** E' una scelta deliberata e non un'omissione: questo
         metodo non ha oggi nessun consumatore (arriva nel task successivo,
         lo strumento della chat), quindi non c'e' oggi una fuga possibile.
-        Ma e' diversa dalla scelta di `logbook()` qui sopra, che sanifica
-        `nome`/`stato`/`messaggio` AL CONFINE proprio perche' un consumatore
+        Ma e' diversa dalla scelta del diario (uscito il 30/09/2026), che
+        sanificava `nome`/`stato`/`messaggio` AL CONFINE proprio perche' un consumatore
         futuro potrebbe dimenticarsene: un calendario condiviso e' un
         vettore di testo iniettato quanto un sensore-messaggio (L1-
         sicurezza.md). **Chi consuma questo metodo per metterlo in un
@@ -1423,17 +1263,17 @@ class HAClient:
         solo** -- il client qui non lo fa.
 
         Valida `entity_id` PRIMA di fare rete (stessa guardia di `history()`
-        e `logbook()` qui sopra): un identificatore ostile o malformato non
+        qui sopra): un identificatore ostile o malformato non
         deve comporre un URL, anche se il percent-encoding qui sotto chiude
         comunque l'iniezione.
 
         **Tetto a `MAX_CALENDAR_EVENTS` (vedi la costante qui sopra per la
         misura e la ragione del numero), ORDINATO e tagliato dalla TESTA --
-        DIREZIONE OPPOSTA a `history()`/`logbook()` qui sopra, e non per
-        distrazione.** Per quei due la finestra finisce ad ADESSO: la coda
-        sono i punti/le voci piu' RECENTI, cioe' i piu' rilevanti, e
+        DIREZIONE OPPOSTA a `history()` qui sopra, e non per distrazione.**
+        Per quella la finestra finisce ad ADESSO: la coda
+        sono i punti piu' RECENTI, cioe' i piu' rilevanti, e
         tagliare dalla coda e' la scelta giusta (`points[-N:]` in
-        `history()`, `entries[-N:]` in `logbook()`). Per un calendario la
+        `history()`). Per un calendario la
         finestra tipica PARTE da adesso e va in avanti: la coda sono gli
         eventi piu' LONTANI nel tempo, la testa sono i PROSSIMI
         appuntamenti -- esattamente cio' per cui questo strumento esiste.
@@ -1483,9 +1323,8 @@ class HAClient:
         a parita' di istante l'ordine con cui HA li ha mandati si conserva.
 
         **Un elenco tagliato non deve poter sembrare completo.** A
-        differenza di `history()`/`logbook()` qui sopra, che dichiarano
-        `troncato` SEMPRE (anche a falso, motivato solo dalla loro
-        coerenza reciproca), qui la chiave `troncato` esce **SOLO quando
+        differenza di `history()` qui sopra, che dichiara
+        `troncato` SEMPRE (anche a falso), qui la chiave `troncato` esce **SOLO quando
         il taglio e' avvenuto** -- stessa disciplina di
         `elenco_incompleto`/`mute_da`/`entita_stato_ignoto` in
         `home_space/queries.py`: "le chiavi che non hanno niente da dire
@@ -1633,24 +1472,6 @@ class HAClient:
         result = await self._ws_request(msg_type, timeout=timeout)
         return result if isinstance(result, list) else []
 
-    async def statistics(self, identifiers: list[str], period: str,
-                         days: int) -> dict:
-        """Le statistiche a lungo termine, N giorni indietro da adesso.
-
-        `period`: "5minute" | "hour" | "day" | "week" | "month". Comoda per
-        una domanda umana ("l'ultima settimana") -- per una finestra
-        ESPLICITA, un giorno preciso sul fuso della casa, vedi la sorella
-        `hourly_statistics` qui sotto (nata per il bilancio dell'energia,
-        mandato 27/08/2026).
-
-        Costruisce la richiesta e traduce la risposta con `_richiedi_
-        statistiche`: vedi il SUO docstring per la forma esatta, misurata, e
-        per la ragione per cui la traduzione vive in un posto solo.
-        """
-        start = (datetime.now(UTC) - timedelta(days=days)).isoformat()
-        return await self._request_statistics(
-            identifiers, {"start_time": start, "period": period})
-
     async def statistic_ids(self) -> set[str] | None:
         """Le entita' per cui Home Assistant TIENE statistiche, per nome.
 
@@ -1682,12 +1503,12 @@ class HAClient:
         """Le statistiche ORARIE di una finestra ESPLICITA -- nata per il
         bilancio dell'energia (mandato 27/08/2026), che ha bisogno di UN
         giorno preciso, gia' chiuso, e non di «N giorni indietro da adesso»
-        (`statistiche` sopra).
+        (la sorella «N giorni da adesso» e' uscita il 30/09/2026: nessuno la chiamava piu').
 
         `da_iso`/`a_iso` sono istanti ISO gia' calcolati dal chiamante --
         stesso contratto di `history()` qui sopra: il fuso della casa e il
-        confine di un «giorno» sono decisioni di CHI CHIAMA (`mind/
-        facts.py::day_boundaries`), non di questo client, che parla solo
+        confine di un «giorno» sono decisioni di CHI CHIAMA (`home_space/
+        historian.py::day_boundaries`), non di questo client, che parla solo
         di istanti espliciti.
 
         `period="hour"` fisso: e' la grana su cui si costruisce il bilancio
@@ -1695,9 +1516,8 @@ class HAClient:
         calcola»), e renderlo un parametro per un solo chiamante sarebbe
         generalita' speculativa.
 
-        Stessa richiesta+traduzione di `statistiche` sopra (`_richiedi_
-        statistiche`, l'UNICO confine): stesso contratto, `{"serie": ...}`
-        o `{"errore": ...}`.
+        Richiesta e traduzione passano da `_request_statistics` (l'UNICO
+        confine): contratto `{"serie": ...}` o `{"errore": ...}`.
         """
         return await self._request_statistics(
             identifiers, {"start_time": from_iso, "end_time": to_iso, "period": "hour"})
@@ -1721,7 +1541,14 @@ class HAClient:
         Torna `{"configurazioni": {entity_id: corpo}}` oppure
         `{"errore": str}` -- mai un dizionario vuoto, che direbbe «questa casa
         non ha automazioni» anche col websocket giu' (stessa disciplina di
-        `related`, `problems` e `energy_directions`).
+        `related` e `problems`).
+
+        **Se TUTTE le risposte mancano** (connessione o autenticazione
+        cadute: `_ws_batch` non solleva, torna una `None` per comando) il
+        risultato e' `{"errore": ...}`, mai una mappa vuota. **Se solo alcune**
+        mancano o sono rifiutate, le altre restano e le prime si nominano in
+        `non_letti` -- `{entity_id: motivo}`, presente SOLO se c'e' almeno una
+        voce non letta (stessa forma di `traces`).
 
         **Una voce che non risponde MANCA dalla mappa, e non vale `{}`**:
         «non ho letto il corpo» e «il corpo e' vuoto» sono due fatti diversi --
@@ -1742,27 +1569,39 @@ class HAClient:
         wanted = [(eid, command) for eid, command in wanted if command]
         if not wanted:
             return {"configurazioni": {}}
-        try:
-            replies = await self._ws_batch(
-                [(command, {"entity_id": eid}) for eid, command in wanted])
-        except Exception as error:
-            return {"errore": f"configurazioni non lette ({type(error).__name__}: {error})"}
+        replies = await self._ws_batch(
+            [(command, {"entity_id": eid}) for eid, command in wanted])
+        if all(reply is None for reply in replies):
+            return {"errore": "Home Assistant non ha risposto"}
         configs: dict[str, dict] = {}
-        for (eid, _command), msg in zip(wanted, replies, strict=False):
-            result = msg.get("result") if isinstance(msg, dict) else None
+        unread: dict[str, str] = {}
+        for index, (eid, _command) in enumerate(wanted):
+            msg = replies[index] if index < len(replies) else None
+            if msg is None:
+                unread[eid] = "Home Assistant non ha risposto in tempo"
+                continue
+            if msg.get("error"):
+                error = msg["error"]
+                unread[eid] = error.get("message") or error.get("code") or "rifiutato"
+                continue
+            result = msg.get("result")
             body = result.get("config") if isinstance(result, dict) else None
             if isinstance(body, dict):
                 configs[eid] = body
-        return {"configurazioni": configs}
+            else:
+                unread[eid] = "risposta in forma inattesa"
+        answer: dict = {"configurazioni": configs}
+        if unread:
+            answer["non_letti"] = unread
+        return answer
 
     async def _request_statistics(self, identifiers: list[str],
                                   window: dict) -> dict:
         """`recorder/statistics_during_period` -> `{"serie": ...}` o
         `{"errore": ...}`. L'UNICO punto che parla con questo comando WS e
-        l'UNICO che traduce la sua risposta: `statistiche` e `statistiche_
-        orarie` differiscono solo nella FINESTRA che passano qui (`start_
-        time`/`end_time`/`period`) -- non duplicano ne' la richiesta ne' la
-        traduzione delle chiavi (fondamenta 2, nessun doppione).
+        l'UNICO che traduce la sua risposta. Chi chiama passa solo la FINESTRA
+        (`start_time`/`end_time`/`period`): la richiesta e la traduzione
+        delle chiavi sono qui una volta sola (fondamenta 2, nessun doppione).
 
         Nessun `types` esplicito nella richiesta: **misurato il 27/08/2026
         sulla casa vera** che, senza restringerlo, Home Assistant risponde
@@ -1842,12 +1681,8 @@ class HAClient:
         """
         if item_type not in self.RELATED_ITEM_TYPES:
             return {"errore": f"tipo non riconosciuto da Home Assistant: {item_type}"}
-        try:
-            msg = await self._ws_batch(
-                [("search/related", {"item_type": item_type, "item_id": identifier})])
-        except Exception as e:
-            logger.debug("legami di %s/%s non letti: %s", item_type, identifier, e)
-            return {"errore": "Home Assistant non ha risposto"}
+        msg = await self._ws_batch(
+            [("search/related", {"item_type": item_type, "item_id": identifier})])
         msg = msg[0] if msg else None
         if msg and msg.get("error"):
             error = msg["error"]
@@ -1885,11 +1720,7 @@ class HAClient:
         `{"errore": ...}` su guasto, per la stessa ragione dei legami: un
         elenco vuoto significherebbe «non c'e' niente che non va».
         """
-        try:
-            msg = await self._ws_batch([("repairs/list_issues", None)])
-        except Exception as e:
-            logger.debug("problemi diagnosticati da HA non letti: %s", e)
-            return {"errore": "Home Assistant non ha risposto"}
+        msg = await self._ws_batch([("repairs/list_issues", None)])
         msg = msg[0] if msg else None
         if msg and msg.get("error"):
             error = msg["error"]
@@ -1933,11 +1764,7 @@ class HAClient:
         `legami`: un elenco vuoto significherebbe «non c'e' niente nel
         registro», che e' un'affermazione, non un silenzio.
         """
-        try:
-            msg = await self._ws_batch([("system_log/list", None)])
-        except Exception as e:
-            logger.debug("registro di sistema non letto: %s", e)
-            return {"errore": "Home Assistant non ha risposto"}
+        msg = await self._ws_batch([("system_log/list", None)])
         msg = msg[0] if msg else None
         if msg and msg.get("error"):
             error = msg["error"]
@@ -1946,6 +1773,108 @@ class HAClient:
         if not isinstance(result, list):
             return {"errore": "risposta in forma inattesa"}
         return {"voci": result}
+
+    async def traces(self, keys: list[tuple[str, str]]) -> dict:
+        """Le esecuzioni RECENTI di piu' automazioni e script, in **una
+        raffica sola** (`trace/list`, WS, `require_admin`).
+
+        Nasce il 30/09/2026 con la storia (spec `2026-09-30-la-storia.md`
+        §1 e §8 punto 3): «perche' sono partite le automazioni dei rifiuti» costava
+        cinque chiamate allo strumento e cinque connessioni. `keys` e'
+        `[(domain, item_id)]`: per un'automazione `item_id` e' l'id della
+        CONFIGURAZIONE (catena verificata sui tag `2024.7.0` e `2026.9.0` nel
+        docstring di `automation_traces` qui sotto); per uno script e' la sua
+        chiave di configurazione, che e' anche il suo `unique_id` e il suo
+        `object_id` (`script.<chiave>`) -- VERIFICATO ALLA FONTE il
+        30/09/2026 sui tag `2024.7.0` e `2026.9.0`:
+
+        - `components/script/__init__.py`: `self._attr_unique_id = key`
+          (2024.7.0 r.509, 2026.9.0 r.568) e `self.entity_id =
+          ENTITY_ID_FORMAT.format(key)` (r.511 / r.570): stessa chiave;
+        - `_async_run` traccia con `trace_script(self.hass, self.unique_id,
+          ...)` (2024.7.0 r.637-639; 2026.9.0 r.708-710 con `_attr_unique_id`);
+        - `components/script/trace.py`: `ScriptTrace._domain = DOMAIN` (r.22
+          / r.20), `trace_script(hass, item_id, ...)` (r.28 / r.26) e
+          `ScriptTrace(item_id, ...)`: la chiave e' `script.<item_id>`;
+        - `components/trace/websocket_api.py`, `trace/list` (r.87-101) e
+          `trace/get` (r.53-69), identici sui due tag: `domain` (validato
+          contro `TRACE_DOMAINS`) e `item_id` (stringa libera) si ricompongono
+          in `f"{domain}.{item_id}"`, senza passare dal registro delle entita'.
+
+        Per gli script, dunque, l'`object_id` dell'entita' E' l'`item_id`.
+
+        Torna `{"tracce": {"<domain>.<item_id>": [...]}, "non_letti": {...}}`:
+        una chiave che Home Assistant rifiuta, o che non risponde, finisce in
+        `non_letti` col suo motivo e NON spegne le altre -- e non diventa mai
+        `[]`, che direbbe «non e' mai partita». Il client legge e non giudica:
+        le righe escono come Home Assistant le manda.
+
+        **`_ws_batch` non solleva mai**: connessione caduta, autenticazione
+        rifiutata o timeout totale tornano come UNA `None` per comando
+        (`_ws_batch`, `except Exception` finale; `tests/test_ws_batch.py`).
+        Quindi la «raffica che non parte» e' quella in cui TUTTE le risposte
+        sono `None`: `{"errore": ...}`, mai «nessuna esecuzione». Se solo
+        alcune sono `None` (il timeout ne taglia la coda), quelle chiavi
+        vanno in `non_letti` con «non ha risposto in tempo».
+
+        **Una chiave SCONOSCIUTA torna `[]`, non un errore**: un id di script
+        scritto male, o un'automazione YAML senza `id:` (che vive sotto
+        `automation.None`, condivisa), sono indistinguibili da «mai partita».
+        `trace/util.py::_get_debug_traces` usa `.get(key)` e non solleva.
+        Perche' un `[]` significhi qualcosa, **il chiamante DEVE risolvere le
+        chiavi PRIMA di chiedere**, e una chiave irrisolta va in `non_letti`
+        senza essere mandata qui.
+        """
+        if not keys:
+            return {"tracce": {}, "non_letti": {}}
+        replies = await self._ws_batch(
+            [("trace/list", {"domain": domain, "item_id": item_id})
+             for domain, item_id in keys])
+        if all(reply is None for reply in replies):
+            return {"errore": _HA_SILENT}
+        found: dict[str, list] = {}
+        unread: dict[str, str] = {}
+        for index, (domain, item_id) in enumerate(keys):
+            key = f"{domain}.{item_id}"
+            msg = replies[index] if index < len(replies) else None
+            if msg is None:
+                unread[key] = "Home Assistant non ha risposto in tempo"
+                continue
+            if msg.get("error"):
+                error = msg["error"]
+                unread[key] = error.get("message") or error.get("code") or "rifiutato"
+                continue
+            result = msg.get("result")
+            if not isinstance(result, list):
+                unread[key] = "risposta in forma inattesa"
+                continue
+            found[key] = result
+        return {"tracce": found, "non_letti": unread}
+
+    async def trace(self, domain: str, item_id: str, run_id: str) -> dict:
+        """UNA esecuzione di un'automazione o di uno script, col grafo intero
+        dei passi (`trace/get`, WS, `require_admin`): stessa fonte e stessa
+        chiave di `traces`, piu' `run_id`.
+
+        Il risultato E' un dizionario (`ActionTrace.as_extended_dict()`,
+        verificato): i campi della riga breve piu' `trace`, `config`,
+        `blueprint_inputs`, `context`. Se `run_id` e' gia' uscito dal tetto,
+        Home Assistant risponde con un errore esplicito (`ERR_NOT_FOUND`), che
+        arriva qui come ogni altro rifiuto. `{"errore": ...}` su ogni guasto.
+        """
+        msg = await self._ws_batch(
+            [("trace/get", {"domain": domain, "item_id": item_id,
+                            "run_id": run_id})])
+        msg = msg[0] if msg else None
+        if msg is None:
+            return {"errore": _HA_SILENT}
+        if msg.get("error"):
+            error = msg["error"]
+            return {"errore": error.get("message") or error.get("code") or "rifiutato"}
+        result = msg.get("result")
+        if not isinstance(result, dict):
+            return {"errore": "risposta in forma inattesa"}
+        return {"traccia": result}
 
     async def automation_traces(self, automation_id: str) -> dict:
         """Le esecuzioni RECENTI di un'automazione, cosi' come HA le riassume.
@@ -1983,8 +1912,8 @@ class HAClient:
         un `entity_id`, e il disallineamento non si puo' riconfondere.
 
         **La risoluzione `entity_id -> automation_id` NON avviene qui**, ma
-        ai chiamanti (`server.py::watch_automation_outcomes` e
-        `home_space/tools.py::ToolDispatcher._automation_trace`), dove lo
+        ai chiamanti (`server.py::watch_automation_outcomes` e la
+        storia, `ToolDispatcher._run_history`), dove lo
         specchio dello stato gia' vive: il client resta «legge e non
         giudica», senza una seconda lettura dentro di se' e senza dipendere
         dallo stato. L'id sta in `attributes["id"]` dello stato
@@ -2061,180 +1990,13 @@ class HAClient:
         `voci`: un elenco vuoto affermerebbe «questa automazione non ha mai
         girato», che e' un'affermazione, non un silenzio.
         """
-        try:
-            msg = await self._ws_batch(
-                [("trace/list", {"domain": "automation",
-                                 "item_id": automation_id})])
-        except Exception as e:
-            logger.debug("tracce di %s non lette: %s", automation_id, e)
-            return {"errore": "Home Assistant non ha risposto"}
-        msg = msg[0] if msg else None
-        if msg and msg.get("error"):
-            error = msg["error"]
-            return {"errore": error.get("message") or error.get("code") or "rifiutato"}
-        result = msg.get("result") if msg else None
-        if not isinstance(result, list):
-            return {"errore": "risposta in forma inattesa"}
-        return {"tracce": result}
-
-    async def automation_trace(self, automation_id: str, run_id: str) -> dict:
-        """UNA esecuzione di un'automazione, con la storia intera del suo
-        grafo di passi.
-
-        `trace/get`, WS, `require_admin`. Stessa fonte di
-        `automation_traces()` (`homeassistant/components/trace/websocket_api.py`,
-        funzione `websocket_trace_get`; `trace/util.py`, `async_get_trace`):
-        stessi `domain`/`item_id`, piu' `run_id` -- la chiave che `trace/list`
-        ha gia' dato in `run_id`.
-
-        **`automation_id` e' l'id della CONFIGURAZIONE**, per la stessa
-        catena verificata sui tag `2024.7.0` e `2026.9.0` e scritta per
-        esteso nel docstring di `automation_traces()` qui sopra:
-        `websocket_trace_get` ricompone `f"{msg['domain']}.{msg['item_id']}"`
-        e lo cerca con un `.get(key)` nudo, e quella chiave nasce da
-        `self.unique_id`, cioe' da `config_block.get(CONF_ID)`. Con
-        l'`object_id` al posto suo non si sbaglia UNA traccia: non se ne
-        legge mai nessuna. La risoluzione avviene ai chiamanti, non qui.
-
-        A differenza di `trace/list`, qui il risultato E' un dizionario
-        (`ActionTrace.as_extended_dict()`, `trace/models.py`, verificato):
-        tutti i campi di `as_short_dict()` (vedi `automation_traces()`) piu'
-        `trace` (il grafo: per ogni nodo eseguito, la lista dei suoi passi),
-        `config`, `blueprint_inputs`, `context`. Il client legge e non
-        giudica, come ovunque in questo file.
-
-        Se `run_id` e' gia' caduto fuori dalle tracce conservate, HA non
-        manda un vuoto: `websocket_trace_get` intercetta il `KeyError` di
-        `async_get_trace` e risponde con un errore esplicito
-        (`ERR_NOT_FOUND`, "The trace could not be found", verificato alla
-        stessa fonte) -- arriva qui come lo stesso `{"errore": ...}` di ogni
-        altro rifiuto, non come un caso a parte da distinguere.
-
-        `{"errore": ...}` su ogni guasto di lettura, stessa disciplina di
-        `automation_traces()` e di tutto il resto del file.
-        """
-        try:
-            msg = await self._ws_batch(
-                [("trace/get", {"domain": "automation", "item_id": automation_id,
-                                "run_id": run_id})])
-        except Exception as e:
-            logger.debug("traccia %s/%s non letta: %s", automation_id, run_id, e)
-            return {"errore": "Home Assistant non ha risposto"}
-        msg = msg[0] if msg else None
-        if msg and msg.get("error"):
-            error = msg["error"]
-            return {"errore": error.get("message") or error.get("code") or "rifiutato"}
-        result = msg.get("result") if msg else None
-        if not isinstance(result, dict):
-            return {"errore": "risposta in forma inattesa"}
-        return {"traccia": result}
-
-    # Le quattordici righe che stavano QUI sono uscite il 12/09/2026 (fetta
-    # «il sapere e le ricette»): erano una tabella `translation_key ->
-    # direzione` scritta nel codice, e per correggerne una serviva un
-    # rilascio. Adesso sono righe del sapere (`mind/seed.py`), col loro
-    # soggetto (l'integrazione `zcsazzurro`), la loro provenienza (`dedotto`)
-    # e le loro prove -- si leggono, si correggono a caldo, e si esportano a
-    # chiunque abbia lo stesso inverter.
-    #
-    # **Questo lettore non sa piu' cosa voglia dire `energy_generating_today`,
-    # ed e' giusto cosi'**: sa leggere il registro delle entita' di Home
-    # Assistant, non sa che quella chiave significhi «produzione». Quel salto
-    # e' un giudizio, e arriva da fuori come parametro -- la stessa disciplina
-    # con cui `mind/operations.episodio` riceve `is_on` invece di sapere quali
-    # stati siano un riposo.
-
-    async def energy_directions(self, *, direction_by_translation_key: dict) -> dict:
-        """Le direzioni dell'energia: chi produce, chi preleva, chi immette,
-        chi carica, chi scarica -- lette da dove Home Assistant le dichiara,
-        mai indovinate dal nome del sensore (`CLAUDE.md`, «su Home Assistant
-        non si ipotizza mai»).
-
-        Due fonti, sulla STESSA connessione (`_ws_batch` con due comandi):
-
-        - **`energy/get_prefs`** (la dashboard Energia): **dichiarata**
-          dall'utente, vale per qualunque integrazione. Copre, su questa
-          casa, 6 delle 17 entita' dell'inverter -- **vince sempre**.
-        - **`config/entity_registry/list`**, campo `translation_key`:
-          **dedotta**, scritta dall'integrazione e interpretata con la mappa
-          che il chiamante consegna (`direction_by_translation_key`, che
-          viene dal sapere -- `mind/knowledge.directions_by_translation_key`).
-          Copre tutte le direzioni, ma solo sulle integrazioni di cui il
-          sapere ha righe -- un altro inverter usera' chiavi sue, e finche'
-          nessuno gliele insegna quella mappa per lui e' vuota. Si applica
-          SOLO dove la dichiarata tace.
-
-        **La mappa e' obbligatoria, e un dizionario vuoto e' una risposta
-        legittima.** Non ha un valore per difetto proprio perche' un difetto
-        silenzioso qui vorrebbe dire perdere la meta' dedotta senza che
-        nessuno se ne accorga: chi chiama deve dire cosa sa, anche quando non
-        sa niente.
-
-        Torna `entity_id -> {"direzione": ..., "provenienza": "dichiarata" |
-        "dedotta"}`.
-
-        **Trappola di forma, misurata il 27/08/2026 sulla casa vera** (gia'
-        pagata una volta, il 26/08, da un altro script): la sorgente `grid`
-        di `energy_sources` porta i suoi due sensori in campi SCALARI
-        (`stat_energy_from`/`stat_energy_to`), non in una lista di flussi
-        come `solar`/`battery`. Un lettore che si aspettasse liste ovunque
-        leggerebbe una configurazione piena come se fosse vuota. La sorgente
-        `solar` porta anche `stat_rate` (la POTENZA prodotta, non solo
-        l'energia): stessa direzione, entita' diversa.
-
-        `{"errore": ...}` su guasto, per la stessa ragione di `legami` e
-        `problemi`: un dizionario vuoto significherebbe «nessuna direzione
-        esiste», non «non ho potuto leggere».
-        """
-        try:
-            msg_prefs, msg_registry = await self._ws_batch(
-                [("energy/get_prefs", None), ("config/entity_registry/list", None)])
-        except Exception as e:
-            logger.debug("direzioni dell'energia non lette: %s", e)
-            return {"errore": "Home Assistant non ha risposto"}
-        if msg_prefs is None or msg_registry is None:
-            return {"errore": "Home Assistant non ha risposto"}
-        for msg in (msg_prefs, msg_registry):
-            if msg.get("error"):
-                error = msg["error"]
-                return {"errore": error.get("message") or error.get("code") or "rifiutato"}
-        prefs = msg_prefs.get("result")
-        registry = msg_registry.get("result")
-        if not isinstance(prefs, dict) or not isinstance(registry, list):
-            return {"errore": "risposta in forma inattesa"}
-
-        by_entity: dict[str, dict] = {}
-
-        def _declare(entity_id, direction: str) -> None:
-            if isinstance(entity_id, str) and entity_id:
-                by_entity[entity_id] = {"direzione": direction, "provenienza": "dichiarata"}
-
-        for energy_source in prefs.get("energy_sources") or []:
-            if not isinstance(energy_source, dict):
-                continue
-            kind = energy_source.get("type")
-            if kind == "grid":
-                _declare(energy_source.get("stat_energy_from"), "prelievo")
-                _declare(energy_source.get("stat_energy_to"), "immissione")
-            elif kind == "solar":
-                _declare(energy_source.get("stat_energy_from"), "produzione")
-                _declare(energy_source.get("stat_rate"), "produzione")
-            elif kind == "battery":
-                _declare(energy_source.get("stat_energy_from"), "scarica")
-                _declare(energy_source.get("stat_energy_to"), "carica")
-
-        for row in registry:
-            if not isinstance(row, dict):
-                continue
-            eid = row.get("entity_id")
-            if not isinstance(eid, str) or eid in by_entity:
-                continue  # la dichiarata vince sempre: la dedotta tace qui
-            direction = (direction_by_translation_key or {}).get(
-                row.get("translation_key"))
-            if direction:
-                by_entity[eid] = {"direzione": direction, "provenienza": "dedotta"}
-
-        return by_entity
+        answer = await self.traces([("automation", automation_id)])
+        if "errore" in answer:
+            return answer
+        key = f"automation.{automation_id}"
+        if key in answer["non_letti"]:
+            return {"errore": answer["non_letti"][key]}
+        return {"tracce": answer["tracce"][key]}
 
     async def get_translations(self, language: str,
                                category: str = "entity_component") -> dict:
@@ -2259,13 +2021,9 @@ class HAClient:
         si costruisce una chiave, sta in `proxy/state_translations.py` -- il
         client non ha un'opinione su cosa della casa valga la pena tenere.
         """
-        try:
-            msg = await self._ws_command(
-                "frontend/get_translations",
-                {"language": language, "category": category})
-        except Exception as e:
-            logger.debug("traduzioni non lette (%s/%s): %s", language, category, e)
-            return {"errore": "Home Assistant non ha risposto"}
+        msg = await self._ws_command(
+            "frontend/get_translations",
+            {"language": language, "category": category})
         if msg is None:
             return {"errore": "Home Assistant non ha risposto"}
         if msg.get("error"):

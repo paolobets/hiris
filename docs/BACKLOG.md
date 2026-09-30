@@ -638,7 +638,7 @@ va corretto, in un posto solo.
 
 ## In attesa
 
-### La storia, con la stessa forma — la fetta successiva a «una porta sola» — aperta il 30/09/2026
+### La storia, con la stessa forma — la fetta successiva a «una porta sola» — COSTRUITA sul ramo `la-storia` il 30/09/2026, in attesa di rilascio (3.72.0)
 
 `origine: il proprietario, decisione 11 della spec del 29/09/2026` · `docs/design/2026-09-29-una-porta-sola-per-la-casa.md §8` · nessun altro documento
 
@@ -652,6 +652,80 @@ il tetto **nella regola**, non in un taglio a valle. Gli strumenti che **scrivon
 **Prima di disegnarla** si guardano i numeri della batteria di §9: se `search` ha ridotto le
 chiamate come promesso, si sa quanta parte del peso resta alla storia. Nessuno dei quattro
 strumenti è stato toccato dalla fetta della porta.
+
+**Costruita**: `history` al posto dei quattro, catalogo da 15 a 12 (piano
+`docs/superpowers/plans/2026-09-30-la-storia.md`). **Resta**: la batteria delle 28 domande sulle
+due strade dopo il rilascio, coi cinque criteri di §8 della spec; la verifica dal vivo della chiave
+delle tracce degli script (`script.<unique_id>`) su una casa con script tracciati.
+
+### `history`: cosa va provato dal vivo prima di dirla chiusa — aperta il 30/09/2026
+
+`origine: emerso costruendo, registro del piano «la storia»` · `docs/design/2026-09-30-la-storia.md §6, §8`
+
+Sette cose che nessuna prova in locale puo' dire, perche' dipendono da una casa vera, e un minore
+da ottimizzare sui numeri veri:
+
+- **Lo spezzettamento della richiesta allo storico.** `/api/history/period` porta gli id nell'URL e
+  il server aiohttp rifiuta una riga di richiesta oltre 8.190 byte: con ~300 entita' si
+  sfora. Il gestore legge a pezzi (`_HISTORY_FILTER_MAX = 6000` byte di filtro per richiesta,
+  `home_space/tools.py`). Il 6.000 e' un margine scelto, **non misurato**: va provato con una
+  ricerca che scelga ~300 entita' (per esempio `history(genere=valori, tipo=sensor)` su tutta la casa).
+- **Le domande #14 e #26 della batteria**, le due che la spec nomina: #14 (`da="ieri"`, consumato,
+  fasce orarie di Home Assistant oltre le 24 ore) e #26. Si leggono coi cinque criteri di §8.
+  Sulla #14 la riga deve portare `al` (l'ora in corso non e' ancora compilata: revisione finale,
+  I-1) e la risposta del modello deve dirlo.
+- **Uno script rinominato dall'interfaccia.** La chiave della traccia e' `unique_id` del registro
+  (il nome dell'oggetto cambia rinominando, l'unique_id no): verificato alla fonte di Home
+  Assistant, mai su una casa con uno script rinominato.
+- **I rifiuti a chi non amministra**: `esecuzioni` ed `errori` dalla chat di un non-admin, dalla
+  promessa sincrona e dalla promessa del ponte. Le prove coprono il rifiuto, non la casa vera.
+- **Il sigillo coi segreti veri**: `message` ed `exception` del registro passano dal sigillo; le
+  prove hanno usato un `secrets.yaml` di prova. Va provato col file vero della casa.
+- **`history()` senza argomenti** (revisione finale, I-2). La lettura senza filtri e' la casa
+  intera: misurare sulla casa vera il tempo e i byte trasferiti da Home Assistant.
+- **Il peso di un `run_detail` vero** (revisione finale, I-3). Misurare la traccia di una
+  esecuzione di un'automazione lunga; se passa i ~60 KB, decidere se togliere `context` o
+  `blueprint_inputs`, o dichiarare un taglio.
+- **Frasi lunghe ripetute su ogni riga** (minore M-1, rinviato). `_CYCLES_UNSEEN` e
+  `UNRESOLVED_RUNS` si ripetono riga per riga: su una risposta di 60 contatori sono circa il 60%
+  del testo. Si dicono una volta in cima; si ottimizza dopo, sui numeri veri.
+
+### Minori rinviati dalla costruzione di «la storia» — aperta il 30/09/2026
+
+`origine: revisioni dei Task 1-9, registro del piano` · nessun altro documento
+
+Tutti dichiarati, nessuno mette in pericolo un dato; si raccolgono qui perche' non si perdano.
+
+- **Il sigillo dei segreti** (Task 7). Riconosce un segreto per impronta del valore esatto, una
+  parola alla volta: un segreto che contiene uno spazio, dentro una frase, **non** si prende
+  (limite dichiarato). In senso opposto sigilla troppo: un segreto che e' una parola comune sigilla
+  ogni sua occorrenza, e uno contenuto in un'altra parola puo' sigillarne il prefisso
+  (`casa` dentro `casa.casalinga`).
+- **Un punto di partenza tirato in avanti** (Task 3): `_covered_since` puo' spostarsi piu' tardi
+  se una entita' e' nata a meta' finestra, perche' Home Assistant non dice quale entita' ha
+  troncato i dati. Dichiarato nel docstring, non nella risposta.
+- **Contatori** (Task 4). Un `total` il cui `last_reset` sta solo nei punti vecchi, e non negli
+  attributi di adesso, riceve comunque ultimo-meno-primo. Una pagina `corta` fatta solo di serie
+  vuote (per esempio `trovate: 6`, `voci: []`, con `nessuna_registrazione`) e' coerente e
+  dichiarata, ma occupa un posto in pagina.
+- **Riservatezza delle tracce** (Task 5). Se il percorso di una condizione non si riconosce e nella
+  configurazione c'e' un'entita' che si muove, anche lo stato di un'entita' che non si muove viene
+  ridotto: sbaglia dalla parte sicura (provato).
+- **Un `except Exception` morto** (Task 8) attorno a `_ws_request`, che non solleva: nella
+  lettura dei campi estesi del registro (`ha_client.py`, ~2350). L'altro stava in
+  `get_system_health`, uscito senza chiamanti con la revisione finale (M-4).
+- **I bilanci non seminano niente** (emerso nella revisione finale, M-4, 30/09/2026).
+  `server.build_balances` sceglie i candidati dalle direzioni che riceve, e l'unico chiamante
+  (`_aggrega_ieri`) passa `directions={}`: nessun dispositivo diventa candidato, la funzione torna
+  `([], 0)` e `_balance_recipe_for` non semina nessuna ricetta. Il commento accanto alla chiamata
+  diceva il contrario. `mind/knowledge.directions_by_translation_key` e' rimasta senza chiamanti
+  di produzione (la usava solo `HAClient.energy_directions`, uscito). Da decidere: le direzioni
+  tornano da un'altra fonte, o i bilanci e la funzione escono. Non riprogettato nella fetta.
+- **Il cancello dei nomi** (Task 2, Task 9). Il confronto per nome e' una sottostringa: una
+  reimplementazione con un altro nome passa. L'elenco delle eccezioni (`_ECCEZIONI_GATE`) confronta
+  file piu' sottostringa, non il letterale intero: un `==` sarebbe piu' stretto.
+- **Prosa** (Task 9). La fine del docstring del modulo `_sanitize` ha ancora il testo vecchio, e
+  una riga di commento di `watcher.py` e' piu' lunga del resto.
 
 ### L5 — `ToolSearch` spento sul ponte, prova misurata — aperta il 30/09/2026
 
@@ -2143,21 +2217,22 @@ player, valvole...) oggi non producono nessun oggetto — il pavimento non li la
 nell'immagine Docker pubblicata, mentre `LICENSE` dice «PROPRIETARY SOFTWARE LICENSE». Da sanare
 prima di un rilascio.
 
-### `_ENTITY_ID_RE` vive in quattro copie
+### `_ENTITY_ID_RE` vive in tre copie
 
 `origine: rilevata nel giro di correzioni del Task 5 di «le tracce e il log», 05/09/2026` ·
 `nessun documento`
 
 Stessa espressione (`^[a-z][a-z0-9_]*\.[a-z0-9_]+$`), stessa intenzione — una guardia sulla forma
-`dominio.oggetto` di un `entity_id`, la piu' stretta possibile — duplicata a mano quattro volte,
-ognuna dichiarata "DOPPIONE" nel proprio commento invece di importata: `proxy/ha_client.py:36`
-(la prima), `home_space/behavior.py:45` (indipendente, un'espressione diversa nello scopo ma
-identica nel testo), `mind/watcher.py:82` (Task 4 di questa stessa fetta) e
-`home_space/tools.py:188` (Task 5, questo giro; il rimando diceva `:352`, corretto nel Task 6 --
-`:352` e' dentro lo schema di `view`, non la guardia). Non si unifica adesso: ogni fetta che
+`dominio.oggetto` di un `entity_id`, la piu' stretta possibile — duplicata a mano quattro volte
+(tre dal 30/09/2026: la copia di `home_space/tools.py` e' uscita con i quattro lettori del
+tempo, quando `history` ha preso il loro posto), ognuna dichiarata "DOPPIONE" nel proprio commento invece di importata: `proxy/ha_client.py:36`
+(la prima), `home_space/behavior.py:89` (indipendente, un'espressione diversa nello scopo ma
+identica nel testo), `mind/watcher.py:88` (Task 4 di questa stessa fetta) e
+`home_space/tools.py` (Task 5, questo giro; la copia e' uscita il 30/09/2026 con la
+storia). Non si unifica adesso: ogni fetta che
 l'ha scritta aveva una ragione dichiarata per non importarla da un'altra (modulo diverso,
 accoppiamento non voluto), e unificarle tutte e quattro e' un lavoro suo, con la sua verifica — non un effetto
-collaterale di un giro di correzioni. Ma quattro copie della stessa guardia, scoperte una alla
+collaterale di un giro di correzioni. Ma tre copie della stessa guardia, scoperte una alla
 volta invece che in un colpo solo, sono il tipo di cosa che questo registro esiste per non
 lasciar perdere.
 
@@ -2216,7 +2291,7 @@ difetto: chi aggiunge la quarta voce non ha niente che gli ricordi le altre tre,
 una sola al riavvio rompe un invariante che nessuna firma dichiara. Chi la chiude raccolga le
 tre in un oggetto con le sue prove, invece di aggiungerne una quarta accanto.
 
-Vale la stessa disciplina della voce sulle quattro copie di `_ENTITY_ID_RE`: si nomina adesso
+Vale la stessa disciplina della voce sulle copie di `_ENTITY_ID_RE` (quattro quando fu scritta, tre oggi): si nomina adesso
 perche' e' stato visto adesso,
 e si chiude in una fetta sua, non come effetto collaterale di un giro di correzioni.
 

@@ -57,7 +57,7 @@ arrivate l'08/09/2026 invece hanno
 un lettore vivo ciascuna, e non e' lo stesso**: `config_entry_is_broken` la
 usa il digesto, per la riga degli avvisi; `config_entry_is_healthy`
 l'osservatore, per decidere cosa scrive nell'archivio; `produces_statistics`
-`_trend`, per dire su quale superficie si legge un andamento. Sono
+la storia (`house_history.value_surface`), per dire su quale superficie si leggono i valori. Sono
 qui perche' sono vocabolario del fornitore, non perche' nessuno le legga.
 Ma `entity_category_measure_rule()` (sotto, insieme a
 `ENTITY_CATEGORY_MEANING`) e' il PRIMO consumatore vero a runtime: `queries.
@@ -484,7 +484,8 @@ def config_entry_is_healthy(state: str | None) -> bool:
 # classe che non aggrega.
 #
 # **Perche' qui e non accanto a chi lo consuma.** Fino all'08/09/2026 questo
-# insieme viveva in `home_space/historian.py`, dove `choose_surface` lo legge.
+# insieme viveva in `home_space/historian.py`, dove lo leggeva la scelta della superficie (oggi
+# `house_history.value_surface`).
 # E' vocabolario di Home Assistant, e questo modulo e' la casa del vocabolario
 # di Home Assistant: `state_class` ce l'ha gia', due righe piu' su. Che le due
 # chiavi coincidano oggi con quelle di `STATE_CLASS_MEANING` NON le rende lo
@@ -503,10 +504,9 @@ def produces_statistics(state_class) -> bool:
     oltre la soglia di grana riceverebbe un elenco vuoto -- «non e' mai
     cambiata» -- mentre il dettaglio, la superficie giusta per lei, esiste.
 
-    Il nome e' diverso dal parametro `has_statistics` che `historian` passa in
-    giro (`trend`, `choose_surface`): quello e' gia' il booleano risolto,
-    questa e' la funzione che lo risolve dal vocabolario di HA -- due cose
-    diverse, non due nomi per la stessa.
+    Il consumatore e' `house_history.value_surface`, che la chiede quando
+    deve scegliere fra il dettaglio e le fasce: questa e' la funzione che
+    risolve la domanda dal vocabolario di HA, non un booleano gia' pronto.
     """
     return state_class in STATE_CLASSES_WITH_STATISTICS
 

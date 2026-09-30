@@ -27,15 +27,12 @@ class _FakeConnection:
     """La stessa finta di `test_ha_client_related_problems.py` (che copre
     `related()` e `problems()`): non se ne inventa una nuova per verticale."""
 
-    def __init__(self, response=None, raises=False):
+    def __init__(self, response=None):
         self.response = response
-        self.raises = raises
         self.commands = []
 
     async def _ws_batch(self, commands, timeout=10.0):
         self.commands.extend(commands)
-        if self.raises:
-            raise OSError("HA muto")
         return [self.response]
 
 
@@ -103,7 +100,7 @@ async def test_a_failed_read_says_error_not_an_empty_log():
     Mutazione: tornare `{"voci": []}` invece di `{"errore": ...}` -- il test
     torna rosso su `assert "errore" in outcome`.
     """
-    fake = _FakeConnection(raises=True)
+    fake = _FakeConnection(None)
     outcome = await _client(fake).system_log()
     assert "errore" in outcome
     assert "voci" not in outcome
@@ -111,7 +108,7 @@ async def test_a_failed_read_says_error_not_an_empty_log():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("fake,why", [
-    (_FakeConnection(raises=True), "connessione caduta"),
+    (_FakeConnection(None), "connessione caduta"),
     (_FakeConnection({"error": {"message": "non trovato"}}), "HA ha rifiutato"),
     (_FakeConnection({"result": {"issues": "non una lista nuda"}}),
      "forma inattesa: HA non manda un dizionario qui"),

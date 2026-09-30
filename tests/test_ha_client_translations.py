@@ -27,15 +27,12 @@ RISPOSTA_VERA = {
 
 
 class _Finto:
-    def __init__(self, risposta=None, *, solleva=False):
+    def __init__(self, risposta=None):
         self.risposta = risposta
-        self.solleva = solleva
         self.comandi = []
 
     async def _ws_batch(self, commands, timeout=10.0):
         self.comandi.extend(commands)
-        if self.solleva:
-            raise OSError("HA muto")
         return [self.risposta]
 
 
@@ -109,12 +106,3 @@ async def test_una_risposta_in_forma_inattesa_e_un_guasto_dichiarato():
         _Finto({"success": True, "result": {}})).get_translations("it")
     assert "risorse" not in await _client(
         _Finto({"success": True, "result": []})).get_translations("it")
-
-
-@pytest.mark.asyncio
-async def test_un_guasto_di_rete_non_solleva_mai():
-    """Le traduzioni sono un di piu' sulla pagina: una rotta che esplodesse
-    per una tabella non letta toglierebbe al proprietario gli episodi, che
-    sono il fatto."""
-    esito = await _client(_Finto(solleva=True)).get_translations("it")
-    assert esito == {"errore": "Home Assistant non ha risposto"}

@@ -935,13 +935,13 @@ class _HaLettore:
         self.chiesto.append("system_log/list")
         return {"voci": [{"level": "ERROR", "message": "zigbee giu'"}]}
 
-    async def automation_traces(self, automation_id):
+    async def traces(self, keys):
         self.chiesto.append("trace/list")
-        return {"esecuzioni": []}
+        return {"tracce": {}, "non_letti": {}}
 
-    async def automation_trace(self, automation_id, run_id):
+    async def trace(self, domain, item_id, run_id):
         self.chiesto.append("trace/get")
-        return {"esecuzione": {}}
+        return {"traccia": {}}
 
 
 class _Porta:
@@ -963,23 +963,24 @@ def _chat(ruolo, *, ha=None, porta=None):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("strumento,argomenti", [
-    ("system_log", {}),
-    ("automation_trace", {"entita": "automation.luci"}),
-    ("automation_trace", {"entita": "automation.luci", "esecuzione": "r-1"}),
+@pytest.mark.parametrize("argomenti", [
+    {"genere": "errori"},
+    {"genere": "esecuzioni", "riferimento": "automation.luci"},
+    {"genere": "esecuzioni", "riferimento": "automation.luci", "esecuzione": "r-1"},
 ])
 @pytest.mark.parametrize("ruolo", ["utente", "lettore"])
 async def test_le_letture_RISERVATE_agli_amministratori_non_escono_dalla_chat(
-        strumento, argomenti, ruolo):
+        argomenti, ruolo):
     """`system_log/list`, `trace/list` e `trace/get` sono
     `@websocket_api.require_admin` in Core 2026.9.3 (verificato il 27/09/2026):
-    HIRIS, che parla da amministratore, non li legge per chi non lo e'.
+    HIRIS, che parla da amministratore, non li legge per chi non lo e'. Dal
+    30/09/2026 passano da `history` (genere errori ed esecuzioni).
 
-    Mutazione ESEGUITA: tolto il controllo da `_system_log` -- rossa (la voce
-    del registro arriva al modello)."""
+    Mutazione ESEGUITA: tolto il controllo del soffitto da `_history` --
+    rossa (la voce del registro arriva al modello)."""
     ha = _HaLettore()
 
-    esito = await _chat(ruolo, ha=ha).dispatch(strumento, argomenti)
+    esito = await _chat(ruolo, ha=ha).dispatch("history", argomenti)
 
     assert esito == {"errore": ADMIN_READS_REFUSAL}
     assert ha.chiesto == [], "Home Assistant e' stato interrogato lo stesso"
@@ -992,9 +993,9 @@ async def test_l_amministratore_e_i_turni_senza_persona_leggono_come_prima(ruolo
     aperto (`soffitto=None`: promesse, osservatore), leggono il registro."""
     ha = _HaLettore()
 
-    esito = await _chat(ruolo, ha=ha).dispatch("system_log", {})
+    esito = await _chat(ruolo, ha=ha).dispatch("history", {"genere": "errori"})
 
-    assert esito["voci"][0]["message"] == "zigbee giu'"
+    assert esito["voci"][0]["messaggio"] == "zigbee giu'"
 
 
 @pytest.mark.asyncio
@@ -1052,7 +1053,7 @@ async def test_lo_SVILUPPO_non_si_restringe_per_ruolo(monkeypatch):
     chat = ToolDispatcher(None, None, ha=ha, actuator=porta,
                           soffitto=consente(sviluppo, ruolo=None), subject=sviluppo)
 
-    registro = await chat.dispatch("system_log", {})
+    registro = await chat.dispatch("history", {"genere": "errori"})
     await chat.dispatch("execute", {"servizio": "light.turn_on",
                                     "bersaglio": {"entity_id": ["light.x"]}})
 
@@ -1248,9 +1249,9 @@ class _RunnerCheLegge:
     async def chat(self, **kwargs):
         self.contesto = kwargs.get("context_str")
         d = kwargs["dispatcher"]
-        self.risposte.append(await d.dispatch("system_log", {}))
-        self.risposte.append(await d.dispatch("automation_trace",
-                                              {"entita": "automation.luci"}))
+        self.risposte.append(await d.dispatch("history", {"genere": "errori"}))
+        self.risposte.append(await d.dispatch(
+            "history", {"genere": "esecuzioni", "riferimento": "automation.luci"}))
         await d.dispatch("conclude", {"avvisare": False, "testo": "fatto"})
 
 
@@ -1322,7 +1323,7 @@ async def test_la_promessa_di_chi_non_amministra_NON_legge_dal_PONTE(casa):
 
     risposta = await casa.post("/api/mcp", json={
         "jsonrpc": "2.0", "id": 1, "method": "tools/call",
-        "params": {"name": "system_log", "arguments": {}}},
+        "params": {"name": "history", "arguments": {"genere": "errori"}}},
         headers={**credenziale_ponte(app, "turno-della-promessa"),
                  "X-HIRIS-Promessa": ident})
     corpo = await risposta.json()

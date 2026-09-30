@@ -852,7 +852,13 @@ def now_ts() -> float:
 
 
 def directions_by_translation_key(store, integration: str | None = None) -> dict[str, str]:
-    """`{translation_key: direzione}` come lo vuole `HAClient.energy_directions`.
+    """`{translation_key: direzione}`, dalle righe del sapere.
+
+    **Nessun chiamante di produzione dal 30/09/2026**: lo consumava solo
+    `HAClient.energy_directions`, uscito senza chiamanti con la revisione
+    finale della storia. Resta finche' non si decide dei bilanci
+    (`server.build_balances` riceve oggi `directions={}`): debito in
+    `docs/BACKLOG.md`.
 
     **La lettura e' del sapere, non del proxy.** Il lettore di Home Assistant
     sa leggere un registro di entita': non sa, e non deve sapere, che

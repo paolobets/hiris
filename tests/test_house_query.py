@@ -629,3 +629,128 @@ def test_un_riferimento_con_altri_filtri_senza_esito_resta_un_insieme_vuoto():
     Mutazione ESEGUITA: `_only_the_reference` sempre vero -- rossa."""
     r = _ask(_two_rooms(), riferimento="light.soggiorno_2", stato="on")
     assert r["trovate"] == 0 and r["voci"] == []
+
+
+# --- un punto solo che decide «di chi» (spec «la storia» §2, 30/09/2026) ---
+
+def test_la_scelta_di_chi_e_una_funzione_sola_per_search_e_per_la_storia_del_tempo():
+    """`search` e la storia scelgono i soggetti con `select_subjects`: le voci
+    della porta sono esattamente le entita' scelte, e le escluse le stesse.
+
+    Mutazione ESEGUITA: in `_select`, non sommare `chosen.excluded` alle
+    escluse della porta (togliere il ciclo `excluded[key] += count`) --
+    rossa: la porta direbbe zero escluse dove la scelta ne conta."""
+    for argomenti in ({"tipo": "light"}, {"stato": "unavailable"},
+                      {"tipo": "light", "includi_nascoste": True},
+                      {"area": "soggiorno"}):
+        filtri = hq.parse_filters(argomenti)
+        scelta = hq.select_subjects(filtri, ("entita",), _casa(), [],
+                                    _specchio(STATI), now=T0)
+        porta = hq.query_house(_casa(), [], _specchio(STATI), filtri,
+                               detail=_dettaglio, now=T0)
+        assert porta["escluse"] == scelta.excluded, argomenti
+        assert {v["id"] for v in porta["voci"]} == {
+            voce["id"] for voce, _area, _dove in scelta.entities}, argomenti
+
+
+def test_la_scelta_delle_automazioni_passa_dalla_stessa_funzione():
+    """«rifiuti» trova «Rifiuto» per radice, come in `search`.
+
+    Mutazione ESEGUITA: in `select_subjects`, non scendere nei generi di
+    comportamento (`behaving` sempre vuoto) -- rossa."""
+    comportamento, specchio = _automazioni(("rifiuto_carta", T_IERI),
+                                           ("rifiuto_vetro", None),
+                                           ("luci", T_IERI))
+    scelta = hq.select_subjects(hq.parse_filters({"nome": "rifiuti"}),
+                                ("automazione",), _casa(), comportamento,
+                                specchio, now=T0)
+    assert sorted(voce["id"] for voce, _valori in scelta.behavior) == [
+        "automation.rifiuto_carta", "automation.rifiuto_vetro"]
+    assert scelta.entities == []
+
+
+def test_search_chiama_select_subjects_e_non_ne_tiene_una_copia(monkeypatch):
+    """L'accordo tra `search` e `select_subjects` non vede una COPIA: resterebbe
+    verde con la logica duplicata dentro `_select`. Qui si prova la chiamata.
+
+    Mutazione ESEGUITA: in `_select`, ricopiare il ciclo di scelta al posto di
+    `select_subjects(...)` -- rossa (nessuna chiamata registrata)."""
+    chiamate = []
+    vera = hq.select_subjects
+
+    def spia(*args, **kwargs):
+        chiamate.append(args[1])
+        return vera(*args, **kwargs)
+
+    monkeypatch.setattr(hq, "select_subjects", spia)
+    hq.query_house(_casa(), [], _specchio(STATI), hq.parse_filters({"tipo": "light"}),
+                   detail=_dettaglio, now=T0)
+    assert chiamate == [("entita",)]
+
+
+def test_la_pagina_e_il_resto_si_calcolano_in_un_punto_solo():
+    """`page_rows` taglia a `limit`, dichiara quante restano e da dove
+    riprendere; con `limit` 0 non c'e' `oltre`; il tetto e' `ROWS_MAX`.
+
+    Mutazione ESEGUITA: `salta: offset` invece di `offset + len(page)` --
+    rossa."""
+    righe = list(range(10))
+    assert hq.page_rows(righe, 0, 4) == ([0, 1, 2, 3], {"restano": 6, "salta": 4})
+    assert hq.page_rows(righe, 8, 4) == ([8, 9], None)
+    assert hq.page_rows(righe, 4, 4) == ([4, 5, 6, 7], {"restano": 2, "salta": 8})
+    assert hq.page_rows(righe, 0, 0) == ([], None)
+    grandi = list(range(hq.ROWS_MAX + 5))
+    pagina, oltre = hq.page_rows(grandi, 0, hq.ROWS_MAX + 100)
+    assert len(pagina) == hq.ROWS_MAX and oltre == {"restano": 5, "salta": hq.ROWS_MAX}
+
+
+def test_salta_oltre_la_fine_si_dice_invece_di_una_pagina_vuota_muta():
+    """Revisione del Task 3 della storia (30/09/2026): `salta` oltre le righe
+    dava `([], None)`, e una pagina vuota senza segnale si legge «non c'e'
+    niente». Ora `oltre` dice quante righe ci sono e che salta le supera --
+    per `search` e per `history`, che impaginano con la stessa funzione.
+
+    Mutazione ESEGUITA: togliere il ramo `offset >= len(rows)` in
+    `page_rows` -- rossa (`oltre` torna `None`, e manca in `search`)."""
+    righe = list(range(10))
+    for salta in (10, 20):
+        pagina, oltre = hq.page_rows(righe, salta, 4)
+        assert pagina == []
+        assert oltre["disponibili"] == 10
+        assert f"salta={salta} supera le 10 righe" in oltre["salta_oltre_la_fine"]
+    assert hq.page_rows(righe, 20, 0) == ([], None)
+    assert hq.page_rows([], 0, 4) == ([], None)
+    risposta = _chiedi(tipo="light", salta=5)
+    assert risposta["voci"] == [] and risposta["oltre"]["disponibili"] == 2
+
+
+def test_salta_su_zero_righe_non_promette_righe_che_non_ci_sono():
+    """Revisione finale della fetta (M-2, 30/09/2026): con zero righe e
+    `salta` > 0, `oltre` diceva «le righe si leggono da salta=0» -- e non ce
+    n'e' nessuna. Senza righe la pagina vuota e' la verita': niente `oltre`.
+
+    Mutazione ESEGUITA: togliere la guardia `> 0` sulle righe in
+    `page_rows` -- rossa (`oltre` con `disponibili: 0`)."""
+    assert hq.page_rows([], 5, 4) == ([], None)
+    risposta = _chiedi(nome="nessuna cosa si chiama cosi'", salta=5)
+    assert risposta["trovate"] == 0 and risposta["voci"] == []
+    assert "oltre" not in risposta
+
+
+def test_search_pagina_con_la_funzione_condivisa(monkeypatch):
+    """`_select` impagina con `page_rows`, non con una sua copia.
+
+    Mutazione ESEGUITA: in `_select`, riscrivere la fetta `rows[offset:...]`
+    al posto di `page_rows(...)` -- rossa (nessuna chiamata registrata)."""
+    chiamate = []
+    vera = hq.page_rows
+
+    def spia(righe, salta, limite):
+        chiamate.append((salta, limite))
+        return vera(righe, salta, limite)
+
+    monkeypatch.setattr(hq, "page_rows", spia)
+    hq.query_house(_casa(), [], _specchio(STATI),
+                   hq.parse_filters({"tipo": "light", "limite": 2}),
+                   detail=_dettaglio, now=T0)
+    assert chiamate == [(0, 2)]

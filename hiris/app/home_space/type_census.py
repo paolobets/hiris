@@ -493,7 +493,7 @@ def _same_reason(subject: Subject, keys, reason: str) -> dict[tuple[Subject, str
 # `ARMED_*`. E' una chiave di traduzione generica che HA pubblica per altri
 # usi (`entity_component._.state.armed` = "Armed", `strings.json`), come lo
 # "state.alarm_control_panel.armed" usato per raggruppare gli eventi armati
-# nel logbook -- non un valore che una lettura di stato possa mai restituire.
+# nel diario di Home Assistant -- non un valore che una lettura di stato possa mai restituire.
 # Stessa forma di `button=2` qui sopra: irraggiungibile, non inventabile.
 #
 # `disarmed`, `arming`, `disarming`, `pending` NON hanno una ragione vera da
@@ -505,7 +505,7 @@ EXCEPTIONS[(Subject.STATE, state_key("alarm_control_panel", None, "armed"))] = (
     "Non e' mai lo stato reale di un'entita': `AlarmControlPanelState` non "
     "ha un membro bare `ARMED` (verificato alla fonte), solo i cinque "
     "`ARMED_*`. E' una chiave di traduzione generica che Home Assistant "
-    "pubblica per altri usi (raggruppare gli stati armati nel logbook, negli "
+    "pubblica per altri usi (raggruppare gli stati armati nel diario di Home Assistant, negli "
     "automation trigger «armed» senza modo), non un valore che uno stato "
     "possa avere. Stessa forma di `button=2`: irraggiungibile.")
 
